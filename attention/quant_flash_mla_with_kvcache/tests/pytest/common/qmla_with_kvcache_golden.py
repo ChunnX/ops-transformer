@@ -575,6 +575,263 @@ def torch_broadcast_kv(num_heads, num_kv_heads, tensor):
     return tensor.repeat_interleave(factor, dim=1).contiguous()
 
 
+# ==============================================================================
+# Kernel 分段信息解码
+# NPU kernel 按 (bn, m-block) 为单位将 s2 范围切分为多个分段 (分核/分 section),
+# 每个分段独立维护 running max 并以 P*fp8max 量化 P, 段间按 FD 语义合并。
+# golden 需按相同分段模拟才能对齐 fp8 舍入网格。
+# ==============================================================================
+_QMLA_SECTION_CACHE = {}
+
+
+def get_qmla_section_info(seqused_q, cache_seqlens):
+    """调用 metadata 算子并解码 FA 分核分段信息, 返回 (m_base, s2_base, segments)
+
+    segments[bn] = [ [(s2块起, s2块止), ...] 每个 m-block 的分段列表 ]
+    解码失败时返回 None, golden 退化为全局量化语义。
+    """
+    key = (
+        tuple(int(s) for s in seqused_q),
+        tuple(int(s) for s in cache_seqlens),
+        N_q, N_kv, MASK_MODE, INPUT_LAYOUT,
+    )
+    if key in _QMLA_SECTION_CACHE:
+        return _QMLA_SECTION_CACHE[key]
+    info = _build_qmla_section_info(seqused_q, cache_seqlens)
+    _QMLA_SECTION_CACHE[key] = info
+    return info
+
+
+def _build_qmla_section_info(seqused_q, cache_seqlens):
+    if quant_flash_mla_with_kvcache_metadata is None:
+        logger.warning("[Section] metadata 算子不可用, golden 使用全局量化语义")
+        return None
+    try:
+        cache_seqlens_t = torch.tensor(
+            cache_seqlens, dtype=torch.int32, device="npu"
+        ).contiguous()
+        cu_q = [0]
+        acc = 0
+        for s in seqused_q:
+            acc += int(s)
+            cu_q.append(acc)
+        cu_seqlens_q = torch.tensor(cu_q, dtype=torch.int32, device="npu").contiguous()
+        seqused_q_t = torch.tensor(seqused_q, dtype=torch.int32, device="npu").contiguous()
+        max_sq = MAX_SEQLEN_Q if MAX_SEQLEN_Q > 0 else max(seqused_q)
+        max_skv = MAX_SEQLEN_KV if MAX_SEQLEN_KV > 0 else max(cache_seqlens)
+        meta = quant_flash_mla_with_kvcache_metadata(
+            cache_seqlens=cache_seqlens_t,
+            num_heads_q=N_q,
+            num_heads_kv=N_kv,
+            quant_mode=QMLA_QUANT_MODE,
+            cu_seqlens_q=cu_seqlens_q,
+            seqused_q=seqused_q_t,
+            max_seqlen_q=max_sq,
+            max_seqlen_kv=max_skv,
+            head_dim_qk=QMLA_QK_HEAD_DIM,
+            head_dim_v=QMLA_V_HEAD_DIM,
+            mask_mode=MASK_MODE,
+            layout_q=INPUT_LAYOUT,
+        )
+        torch.npu.synchronize()
+        meta_flat = meta.contiguous().cpu().view(-1).tolist()
+        return _decode_qmla_sections(meta_flat, seqused_q, cache_seqlens)
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.warning("[Section] metadata 调用/解码失败(%s), golden 使用全局量化语义", exc)
+        return None
+
+
+def _decode_qmla_sections(meta_flat, seqused_q, cache_seqlens):
+    """解码 metadata: header[16] + FA区[section][aicCore(36)][16] + FD区
+
+    每个 FA chunk 是 (bn, m, s2) 线性迭代空间上的一段 [start, end),
+    m 轴为 GS1 合轴: bn 内 row = s1 * group + g。
+    """
+    AIC_CORE_NUM = 36
+    META_SIZE = 16
+    HEAD_SIZE = 16
+    section_num = int(meta_flat[0])
+    m_base = int(meta_flat[2])
+    s2_base = int(meta_flat[3])
+    if section_num <= 0 or m_base <= 0 or s2_base <= 0:
+        raise ValueError(
+            f"invalid metadata header: section={section_num}, mBase={m_base}, s2Base={s2_base}"
+        )
+
+    batch = len(cache_seqlens)
+    bn_total = batch * N_kv
+    group = N_q // N_kv
+    m_blocks = [
+        (int(seqused_q[b]) * group + m_base - 1) // m_base for b in range(batch)
+    ]
+    s2_blocks = [
+        (int(cache_seqlens[b]) + s2_base - 1) // s2_base for b in range(batch)
+    ]
+    segments = [
+        [[] for _ in range(m_blocks[b // N_kv])] for b in range(bn_total)
+    ]
+
+    for sec in range(section_num):
+        for core in range(AIC_CORE_NUM):
+            base_idx = HEAD_SIZE + (sec * AIC_CORE_NUM + core) * META_SIZE
+            bn_s, m_s, s2_s, bn_e, m_e, s2_e = (
+                int(v) for v in meta_flat[base_idx:base_idx + 6]
+            )
+            if bn_s == bn_e and m_s == m_e and s2_s == s2_e:
+                continue
+            bn, mi, s2 = bn_s, m_s, s2_s
+            steps = 0
+            while (bn, mi, s2) != (bn_e, m_e, s2_e):
+                steps += 1
+                if steps > 100000000 or bn >= bn_total:
+                    raise ValueError("metadata chunk walk 越界")
+                b_idx = bn // N_kv
+                row_end = s2_blocks[b_idx]
+                m_end = m_blocks[b_idx]
+                if mi >= m_end or row_end == 0:
+                    mi += 1
+                    s2 = 0
+                    if mi >= m_end:
+                        mi = 0
+                        bn += 1
+                    continue
+                if bn == bn_e and mi == m_e:
+                    seg_end = min(s2_e, row_end)
+                else:
+                    seg_end = row_end
+                if seg_end > s2:
+                    segments[bn][mi].append((s2, seg_end))
+                if seg_end >= row_end:
+                    mi += 1
+                    s2 = 0
+                    if mi >= m_end:
+                        mi = 0
+                        bn += 1
+                else:
+                    s2 = seg_end
+
+    # 覆盖率校验: 每个 m-block 的分段必须完整覆盖其 s2 范围
+    for bn in range(bn_total):
+        b_idx = bn // N_kv
+        for mi in range(m_blocks[b_idx]):
+            cover = sum(bb - aa for aa, bb in segments[bn][mi])
+            if cover != s2_blocks[b_idx]:
+                raise ValueError(
+                    f"bn={bn} m={mi} 分段覆盖 {cover} != {s2_blocks[b_idx]}"
+                )
+    return m_base, s2_base, segments
+
+
+def _cpu_fp8_fullquant_mla_golden_sectioned(
+    q_tensor, k_tensor, v_tensor, deq_q, deq_k, deq_v,
+    seqused_q, cache_seqlens, section_info,
+):
+    """分段 golden: 按 kernel 分段调度模拟 online softmax 与 P 量化
+
+    每个 (bn, m-block) 的各 s2 分段独立维护 running max, P 以 P*fp8max 量化,
+    分段结果按 FD 语义 (max 重标定) 合并, 与 NPU isMlaFullQuant 路径一致。
+    """
+    softmax_scale = get_softmax_scale(SCALE_VALUE, D)
+    m_base, s2_base, segments = section_info
+    batch, heads, q_seq, _ = q_tensor.shape
+    v_dim = v_tensor.shape[-1]
+    group = heads // N_kv
+    minValue = -3.402823466e38
+    fp8_e4m3_max = 448.0
+    deq_k_scalar = deq_k.reshape(-1)[0] if deq_k.numel() == 1 else deq_k
+    deq_v_scalar = deq_v.reshape(-1)[0] if deq_v.numel() == 1 else deq_v
+
+    result = torch.zeros((batch, heads, q_seq, v_dim), dtype=torch.float32)
+    lse = torch.full((batch, heads, q_seq, 1), float("inf"), dtype=torch.float32)
+
+    for b in range(batch):
+        q_len = int(seqused_q[b])
+        kv_len = int(cache_seqlens[b])
+        for n2 in range(N_kv):
+            bn = b * N_kv + n2
+            k_bn = k_tensor[b, n2 * group]
+            v_bn = v_tensor[b, n2 * group]
+            for mi, segs in enumerate(segments[bn]):
+                r0 = mi * m_base
+                r1 = min((mi + 1) * m_base, q_len * group)
+                if r1 <= r0:
+                    continue
+                rows = torch.arange(r0, r1)
+                s1_idx = (rows // group).long()
+                g_idx = (rows % group).long()
+                head_idx = n2 * group + g_idx
+                q_sel = q_tensor[b, head_idx, s1_idx, :]
+                dq_sel = deq_q[b, head_idx, s1_idx, 0]
+                dq_scaled = (dq_sel * softmax_scale)[:, None]
+
+                o_g = torch.zeros((r1 - r0, v_dim), dtype=torch.float32)
+                s_g = torch.zeros((r1 - r0, 1), dtype=torch.float32)
+                m_g = torch.full((r1 - r0, 1), minValue, dtype=torch.float32)
+
+                for blk_a, blk_b in segs:
+                    o = torch.zeros_like(o_g)
+                    s = torch.zeros_like(s_g)
+                    mx = torch.full_like(m_g, minValue)
+                    for j in range(blk_a, blk_b):
+                        lo = j * s2_base
+                        kj = k_bn[lo:lo + s2_base]
+                        vj = v_bn[lo:lo + s2_base]
+                        n_col = kj.shape[0]
+                        sij = torch.matmul(q_sel, kj.transpose(0, 1))
+                        sij = sij * dq_scaled * deq_k_scalar
+                        cols = torch.arange(lo, lo + n_col)
+                        col_mask = cols >= kv_len
+                        if MASK_MODE == 3:
+                            causal = cols[None, :] > (
+                                s1_idx[:, None] + kv_len - q_len
+                            )
+                            col_mask = col_mask[None, :] | causal
+                        sij = sij.masked_fill(col_mask, float("-inf"))
+
+                        m_block, _ = torch.max(sij, dim=-1, keepdims=True)
+                        mx_old = mx.clone()
+                        mx_new = torch.maximum(m_block, mx)
+                        upd = torch.exp(mx_old - mx_new)
+                        upd = torch.where(
+                            mx_old <= minValue, torch.zeros_like(upd), upd
+                        )
+                        pij = torch.exp(sij - mx_new)
+                        pij = torch.where(
+                            sij == float("-inf"), torch.zeros_like(pij), pij
+                        )
+                        s_blk = torch.sum(pij, dim=-1, keepdims=True)
+                        # MLA rescale: P 直接乘 fp8 max 量化 (无 rowmax_p 重标定)
+                        pij_scaled = (pij * fp8_e4m3_max).to(FP8_DTYPE).to(torch.float32)
+                        bmm2_res = torch.matmul(pij_scaled, vj)
+                        o = o * upd + bmm2_res
+                        s = s * upd + s_blk
+                        mx = mx_new
+                    # 分段合并 (FD 语义: max 重标定累加)
+                    mg_new = torch.maximum(m_g, mx)
+                    sc_g = torch.exp(m_g - mg_new)
+                    sc_g = torch.where(m_g <= minValue, torch.zeros_like(sc_g), sc_g)
+                    sc_s = torch.exp(mx - mg_new)
+                    sc_s = torch.where(mx <= minValue, torch.zeros_like(sc_s), sc_s)
+                    o_g = o_g * sc_g + o * sc_s
+                    s_g = s_g * sc_g + s * sc_s
+                    m_g = mg_new
+
+                all_masked = (m_g <= minValue).squeeze(-1)
+                denom = s_g + EPSILON
+                res_rows = o_g / denom / fp8_e4m3_max * deq_v_scalar
+                res_rows = torch.where(
+                    all_masked[:, None], torch.zeros_like(res_rows), res_rows
+                )
+                result[b, head_idx, s1_idx, :] = res_rows
+                lse_rows = torch.where(
+                    all_masked,
+                    torch.full_like(all_masked, float("inf"), dtype=torch.float32),
+                    (m_g + torch.log(denom)).squeeze(-1),
+                )
+                lse[b, head_idx, s1_idx, 0] = lse_rows
+    return result.contiguous(), lse.contiguous()
+
+
 def cpu_fp8_fullquant_mla_golden(
     q_fp8,
     k_fp8,
@@ -622,6 +879,14 @@ def cpu_fp8_fullquant_mla_golden(
             (batch, heads, q_seq, 1), float("inf"), dtype=torch.float32
         ).contiguous()
         return result, lse
+
+    # 对齐 kernel 分段量化语义: 解码 metadata 分核分段, 按 (bn, m-block) 分段模拟
+    section_info = get_qmla_section_info(seqused_q, cache_seqlens)
+    if section_info is not None:
+        return _cpu_fp8_fullquant_mla_golden_sectioned(
+            q_tensor, k_tensor, v_tensor, deq_q, deq_k, deq_v,
+            seqused_q, cache_seqlens, section_info,
+        )
 
     out = torch.zeros((batch, heads, q_seq, v_dim), dtype=torch.float32).contiguous()
     o_sum = torch.zeros(q_tensor.shape[:-1], dtype=torch.float32)[
@@ -701,14 +966,11 @@ def cpu_fp8_fullquant_mla_golden(
             pij = torch.where(sij == float("-inf"), torch.zeros_like(pij), pij)
             s_block = torch.sum(pij, dim=-1, keepdims=True)
 
-            # MLA rescale: quantScale = 448 / rowMax_A (与 NPU isMlaFullQuant=true 一致)
-            rowMax_A = torch.exp(m_block - mi_new) + EPSILON
-            quantScale = fp8_e4m3_max / rowMax_A
-            pij_scaled = (pij * quantScale).to(FP8_DTYPE).to(torch.float32)
+            # MLA rescale: P 直接乘 fp8 max 量化 (无 rowmax_p 重标定, 与 NPU isMlaFullQuant=true 一致)
+            pij_scaled = (pij * fp8_e4m3_max).to(FP8_DTYPE).to(torch.float32)
 
-            # bmm2: P_fp8 @ V, 乘 rowMax_A (deq_v 在最终输出时统一乘)
+            # bmm2: P_fp8 @ V (deq_v 在最终输出时统一乘)
             bmm2_res = torch.matmul(pij_scaled, vj)
-            bmm2_res = bmm2_res * rowMax_A
 
             # O_flash 累加: O = O * update_mul + bmm2_res
             o_blocks[i] = oi * update_mul + bmm2_res

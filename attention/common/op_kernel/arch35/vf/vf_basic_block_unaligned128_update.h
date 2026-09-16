@@ -57,7 +57,6 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl128VF(
     RegTensor<float> vreg_sel_drop;
     RegTensor<float> vreg_sel_drop2;
     RegTensor<float> vreg_zero;
-    RegTensor<float> vreg_rowmax_p;
     RegTensor<float> vreg_scale_qk;
     RegTensor<float> vreg_sink_input;
     // bfloat16_t
@@ -201,11 +200,6 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl128VF(
     LoadAlign(vreg_input_max, tmpMaxUb2);                     // 获取新的max[s1, 1]
     Max(vreg_max_new, vreg_input_max, vreg_in_max, preg_all); // 计算新、旧max的最大值
     StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)tmpMaxUb2, vreg_max_new, preg_all);
-    if constexpr (isMlaFullQuant) {
-        ExpSub(vreg_rowmax_p, vreg_input_max, vreg_max_new, preg_all);
-        Adds(vreg_rowmax_p, vreg_rowmax_p, floatEps, preg_all);
-        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)pScaleUb, vreg_rowmax_p, preg_all);
-    }
 
     if constexpr (hasDrop == 1) {
         Duplicate<T, Reg::MaskMergeMode::ZEROING, float>(vreg_zero, 0.0f, preg_all);
@@ -230,16 +224,15 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl128VF(
         StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpExpSumUb), vreg_exp_sum,
                                                                 ureg_exp_sum, 1);
         if constexpr (isMlaFullQuant) {
-            LoadAlign<T, Reg::LoadDist::DIST_BRC_B32>(vreg_rowmax_p, pScaleUb + i);
             if constexpr (IsSameType<T2, int8_t>::value) {
-                USE_MLA_FULLQUANT_V1_P_INT8(vreg_exp_even, vreg_rowmax_p, preg_all);
-                USE_MLA_FULLQUANT_V1_P_INT8(vreg_exp_odd, vreg_rowmax_p, preg_all);
+                Muls(vreg_exp_even, vreg_exp_even, int8MaxValue, preg_all);
+                Muls(vreg_exp_odd, vreg_exp_odd, int8MaxValue, preg_all);
             } else if constexpr (IsSameType<T2, fp8_e4m3fn_t>::value) {
-                USE_MLA_FULLQUANT_V1_P(vreg_exp_even, vreg_rowmax_p, preg_all);
-                USE_MLA_FULLQUANT_V1_P(vreg_exp_odd, vreg_rowmax_p, preg_all);
+                Muls(vreg_exp_even, vreg_exp_even, fp8e4m3MaxValue, preg_all);
+                Muls(vreg_exp_odd, vreg_exp_odd, fp8e4m3MaxValue, preg_all);
             } else {
-                USE_MLA_FULLQUANT_V1_P_HIFP8(vreg_exp_even, vreg_rowmax_p, preg_all);
-                USE_MLA_FULLQUANT_V1_P_HIFP8(vreg_exp_odd, vreg_rowmax_p, preg_all);
+                Muls(vreg_exp_even, vreg_exp_even, hifp8MaxValue, preg_all);
+                Muls(vreg_exp_odd, vreg_exp_odd, hifp8MaxValue, preg_all);
             }
         }
         // dropmask compute
