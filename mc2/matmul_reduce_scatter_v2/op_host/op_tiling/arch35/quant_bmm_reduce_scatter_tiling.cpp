@@ -1069,8 +1069,8 @@ CutResult QuantBmmReduceScatterTiling::GetTilingResult()
                                                               TopoType::EIGHT_P, (commMode_ == TPL_AICPU_COMM_MODE));
         return quantBmmScatterTiling.GetTiling();
     } else {
-        MMPlusReduceScatter quantBmmScatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER, npuArch_,
-                                                  false, (commMode_ == TPL_AICPU_COMM_MODE));
+        MMPlusReduceScatter quantBmmScatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER, npuArch_, false,
+                                                  (commMode_ == TPL_AICPU_COMM_MODE));
         quantBmmScatterTiling.GetTiling();
         return quantBmmScatterTiling.tilingM_.cutRes;
     }
