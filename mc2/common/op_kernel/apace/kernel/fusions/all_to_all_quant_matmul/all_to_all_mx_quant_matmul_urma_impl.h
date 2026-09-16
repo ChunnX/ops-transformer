@@ -283,11 +283,15 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
 {
     ProblemShape problemShape{mmTile->m, mmTile->n, mmTile->k, 1UL};
     BlockMmadParams mmadParams;
-    LocalParams localParams{baseParams_.rankId, baseParams_.rankSize, baseParams_.axisM, baseParams_.aGm,
-                            baseParams_.scaleAGm, tilingData_->localMatmul, 1UL, matmulMode,
-                            static_cast<uint32_t>(baseParams_.headMSize),
-                            // 显式通信轮数, 支持尾轮大于头轮的合并切分(见 qbmm kernel 的 totalTiles)
-                            static_cast<uint32_t>(baseParams_.commTurn)};
+    LocalParams localParams{baseParams_.rankId,
+                            baseParams_.rankSize,
+                            baseParams_.axisM,
+                            baseParams_.aGm,
+                            baseParams_.scaleAGm,
+                            tilingData_->localMatmul,
+                            1UL,
+                            matmulMode,
+                            static_cast<uint32_t>(baseParams_.headMSize)};
     L1Params l1Params{static_cast<uint64_t>(mmTile->stepK) * mmTile->baseK, mmTile->scaleKL1, mmTile->nBufferNum};
 
     if (matmulMode == MatmulMode::LOCAL) {
