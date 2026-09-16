@@ -922,6 +922,7 @@ private:
             auto ret = HcclRankGraphGetTopoTypeByLayerFunc(commHandle, layerId, &topoType);
             TORCH_CHECK(ret == HCCL_SUCCESS, "Get HCCL topology type failed, layer: ", layerId, ", ret: ", ret);
             if (topoType != COMM_TOPO_CLOS && topoType != COMM_TOPO_1DMESH) {
+                ASCEND_LOGI("Rank %u ignores layer %u with topology type %u", srcRankId, layerId, topoType);
                 continue;
             }
             const uint32_t slot = topoType == COMM_TOPO_CLOS ? 0U : 1U;
