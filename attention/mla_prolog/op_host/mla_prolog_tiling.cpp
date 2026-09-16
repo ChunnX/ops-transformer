@@ -348,7 +348,7 @@ ge::graphStatus MlaPrologTiling::SetScenarioInfo()
         scenarioInfo_.actualSeqMode_ = ACTUAL_SEQ_MODE::DISABLED;
     }
     uint32_t cvRatio = aivNum_ / aicNum_;
-    // 当前仅在BS>=8K且数据类型为MXFP8时路由到切M模板，其他情况均路由到切N模板
+    // 当前仅在 BS >= 8K 且数据类型为MXFP8时路由到切M模板，其他情况均路由到切N模板
     scenarioInfo_.splitMFlag_ = 0U;
     if (scenarioInfo_.weightQuantMode_ == WEIGHT_QUANT_MODE::MXFP8_FULL_QUANT && cvRatio == CVRATIO_VALUE_2 &&
         baseShapeInfo_.tSize >= 8192) { // 8192：BS >= 8K

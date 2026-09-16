@@ -109,6 +109,7 @@ aclnnStatus aclnnMlaPrologV2WeightNzGetWorkspaceSize(
                 "We apologize for any inconvenience caused and appreciate your timely migration to the new interface.");
         isFirstCall = false;
     }
+
     auto dequantScaleQNopeHolder =
         TensorHolder(dequantScaleQNopeOutOptional, aclDataType::ACL_FLOAT, std::string("dequantScaleQNopeOut"));
     if (dequantScaleQNopeOutOptional == nullptr) {

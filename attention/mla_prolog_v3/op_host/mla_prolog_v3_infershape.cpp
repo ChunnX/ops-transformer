@@ -26,7 +26,7 @@ static ge::graphStatus ValidateInputShapeDims(const gert::InferShapeContext *con
                 OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "weightUk",
                                              std::to_string(weightUkShape->GetDimNum()) + "D", "3D"),
                 return ge::GRAPH_FAILED);
-    // do_rope=false 且 rope 为空 tensor 时跳过 ropeSin 常规维度校验
+    // do_rope = false 且 rope 为空 tensor 时跳过 ropeSin 常规维度校验
     OP_CHECK_IF(doRope && ((ropeSinShape->GetDimNum() != DIM_NUM_2) && (ropeSinShape->GetDimNum() != DIM_NUM_3)),
                 OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "ropeSin",
                                              std::to_string(ropeSinShape->GetDimNum()) + "D", "2D or 3D"),

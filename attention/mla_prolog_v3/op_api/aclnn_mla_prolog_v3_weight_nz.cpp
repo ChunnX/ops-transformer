@@ -253,9 +253,9 @@ aclnnStatus aclnnMlaPrologV3WeightNzGetWorkspaceSize(
         OP_LOGE_WITH_INVALID_INPUT("MlaPrologV3", "dequantScaleQNormOut");
         return ge::GRAPH_FAILED;
     }
-    // weightQuantMode == 2,4,5:全量化场景(int8,fp8,hif8)
-    // weightQuantMode == 3:mxfp8全量化场景
-    // kvCacheQuantMode == 1:KV_PER_TENSOR量化场景
+    // weightQuantMode == 2, 4, 5:全量化场景(int8, fp8, hif8)
+    // weightQuantMode == 3: mxfp8全量化场景
+    // kvCacheQuantMode == 1: KV_PER_TENSOR量化场景
     if (!dequantScaleQNopeHolder.CheckTensorConditionalNotNull((weightQuantMode == WEIGHT_QUANT_MODE_FULL_QUANT ||
                                                                 weightQuantMode == WEIGHT_QUANT_MODE_MXFP8_FULL_QUANT ||
                                                                 weightQuantMode == WEIGHT_QUANT_MODE_FULL_QUANT_FP8 ||

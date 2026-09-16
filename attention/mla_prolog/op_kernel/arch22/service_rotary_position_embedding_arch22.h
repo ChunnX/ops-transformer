@@ -63,9 +63,9 @@ __aicore__ inline void PreprocessRopeInput(const GlobalTensor<T> &inputGm, Local
  * @param sinLocal sin系数
  * @param shareTmpUb 临时buffer，需要大小为 cnt * 5 * sizeof(float)
  * @param ropeParams 描述待处理数据的排布，包括
-          row 行数
-          col 列数
-          stride 一行的真实长度
+                     row 行数
+                     col 列数
+                     stride 一行的真实长度
  * @param channelDeqScaleGm 量化参数；该tensor的每个元素不同
  * @param scale 量化参数；该tensor共用
  */

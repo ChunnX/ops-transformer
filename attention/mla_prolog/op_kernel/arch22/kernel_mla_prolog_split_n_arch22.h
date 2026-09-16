@@ -195,7 +195,7 @@ private:
     uint32_t curStepVecFrontToken_;
     uint64_t dequantScaleCqSize_ = 1;
     bool enableSmoothScalesCq_;
-    static constexpr uint32_t cvMode = MLAPT::cvRatio; // 编译态，默认cv1:2
+    static constexpr uint32_t cvMode = MLAPT::cvRatio; // 编译态，默认cv 1:2
     uint32_t cvRatio_ = 2U;                            // 默认cv 1:2
 
     struct DequantTool {

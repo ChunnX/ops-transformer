@@ -82,6 +82,11 @@ public:
 
 private:
     __aicore__ inline void CopyGlobalParams();
+    __aicore__ inline void InputInit(__gm__ uint8_t *tokenX, __gm__ uint8_t *weightDq, __gm__ uint8_t *weightUqQr,
+                                     __gm__ uint8_t *weightUk, __gm__ uint8_t *weightDkvKr,
+                                     __gm__ uint8_t *rmsnormGammaCq, __gm__ uint8_t *rmsnormGammaCkv,
+                                     __gm__ uint8_t *ropeSin, __gm__ uint8_t *ropeCos, __gm__ uint8_t *cacheIndex,
+                                     __gm__ uint8_t *kvCache, __gm__ uint8_t *krCache);
     __aicore__ inline void OutputInit(__gm__ uint8_t *queryOut, __gm__ uint8_t *queryRopeOut,
                                       __gm__ uint8_t *dequantScaleQNopeOut, __gm__ uint8_t *queryNormOut,
                                       __gm__ uint8_t *dequantScaleQNormOut);
@@ -323,6 +328,30 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::Init(
     }
     curVecTokenMax_ = (curVectorBlockNum_ + vectorCoreNum_ - 1) / vectorCoreNum_;
     enableSmoothScalesCq_ = smoothScaleCq == nullptr ? false : true;
+    InputInit(tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos,
+              cacheIndex, kvCache, krCache);
+
+    OutputInit(actualSeqLen, queryOut, queryRopeOut, dequantScaleQNopeOut, queryNormOut, dequantScaleQNormOut);
+    ScaleInit(dequantScaleX, dequantScaleWDq, deqScaleQcQrW, dequantScaleWDkvkr, quantScaleCkv, quantScaleCkr,
+              smoothScaleCq, kNopeClipAlpha);
+    MmParamInit();
+    WorkspaceInit(workspace);
+    if ASCEND_IS_AIV {
+        VectorBufferInit();
+    } else {
+        CubeBufferInit();
+    }
+}
+
+template <typename MLAPT>
+__aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::InputInit(__gm__ uint8_t *tokenX, __gm__ uint8_t *weightDq,
+                                                             __gm__ uint8_t *weightUqQr, __gm__ uint8_t *weightUk,
+                                                             __gm__ uint8_t *weightDkvKr,
+                                                             __gm__ uint8_t *rmsnormGammaCq,
+                                                             __gm__ uint8_t *rmsnormGammaCkv, __gm__ uint8_t *ropeSin,
+                                                             __gm__ uint8_t *ropeCos, __gm__ uint8_t *cacheIndex,
+                                                             __gm__ uint8_t *kvCache, __gm__ uint8_t *krCache)
+{
     // GM
     tokenXGm_.SetGlobalBuffer((__gm__ mmInputType *)tokenX);
     weightDqGm_.SetGlobalBuffer((__gm__ mmInputType *)weightDq);         // NZ
@@ -338,20 +367,6 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::Init(
     }
     kvCacheGm_.SetGlobalBuffer((__gm__ kvCacheType *)kvCache);
     krCacheGm_.SetGlobalBuffer((__gm__ krCacheType *)krCache);
-    if constexpr (MLAPT::actualSeqMode == ACTUAL_SEQ_MODE::EN_Q_LEN) {
-        actualSeqLenGm_.SetGlobalBuffer((__gm__ int32_t *)actualSeqLen);
-    }
-
-    OutputInit(queryOut, queryRopeOut, dequantScaleQNopeOut, queryNormOut, dequantScaleQNormOut);
-    ScaleInit(dequantScaleX, dequantScaleWDq, deqScaleQcQrW, dequantScaleWDkvkr, quantScaleCkv, quantScaleCkr,
-              smoothScaleCq, kNopeClipAlpha);
-    MmParamInit();
-    WorkspaceInit(workspace);
-    if ASCEND_IS_AIV {
-        VectorBufferInit();
-    } else {
-        CubeBufferInit();
-    }
 }
 
 template <typename MLAPT>

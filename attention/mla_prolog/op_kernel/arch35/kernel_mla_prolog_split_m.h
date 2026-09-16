@@ -535,13 +535,13 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::VectorBufferInit()
 
     uint64_t usedAddr;
     if constexpr (MLAPT::enableDequantOpt) {
-        sinLocal_ = cosLocal_[baseParams_->dimHeadRope * ((baseParams_->stepBatchSize + 1) >> 1)];
         cosLocal_ = sincosBuffer_.Get<ropeComputType>();
+        sinLocal_ = cosLocal_[baseParams_->dimHeadRope * ((baseParams_->stepBatchSize + 1) >> 1)];
         usedAddr = reinterpret_cast<uint64_t>(
             sinLocal_[baseParams_->dimHeadRope * ((baseParams_->stepBatchSize + 1) >> 1)].GetPhyAddr());
     } else {
-        sinLocal_ = cosLocal_[baseParams_->dimHeadRope * curVecTokenMax_];
         cosLocal_ = sincosBuffer_.Get<ropeComputType>();
+        sinLocal_ = cosLocal_[baseParams_->dimHeadRope * curVecTokenMax_];
         usedAddr = reinterpret_cast<uint64_t>(sinLocal_[baseParams_->dimHeadRope * curVecTokenMax_].GetPhyAddr());
     }
 

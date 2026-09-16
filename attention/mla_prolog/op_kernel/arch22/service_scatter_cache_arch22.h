@@ -59,6 +59,7 @@ __aicore__ inline void ScatterCacheUnAligned(const GlobalTensor<T> &cacheGm, con
     if (scatterCacheParams.paTokenIndex < 0) {
         return;
     }
+
     if constexpr (!IS_NZ) {
         int64_t cacheOffset = GetCacheOffset(scatterCacheParams.paTokenIndex, scatterCacheParams.blockSize,
                                              scatterCacheParams.stride, scatterCacheParams.cacheStride0);
