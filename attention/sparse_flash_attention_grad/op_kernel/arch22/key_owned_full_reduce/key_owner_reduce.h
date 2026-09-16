@@ -159,7 +159,8 @@ __aicore__ inline void BuildKeyOwnedBucketTotalsBs1(GM_ADDR workspace, const TIL
     GlobalTensor<float> coreTotalsGm;
     GlobalTensor<uint32_t> totalsGm;
     coreTotalsGm.SetGlobalBuffer((__gm__ float *)(workspace + KeyOwnedCoreBucketTotalsByteOffset(td)));
-    totalsGm.SetGlobalBuffer((__gm__ uint32_t *)(workspace + KeyOwnedBucketTotalsByteOffset(td)));
+    totalsGm.SetGlobalBuffer((__gm__ uint32_t *)(workspace +
+                            KeyOwnedBucketTotalsTileByteOffset(td, queryRangeBegin)));
     const event_t scalarVector = static_cast<event_t>(pipe.AllocEventID<HardEvent::S_V>());
     const event_t vectorMte2 = static_cast<event_t>(pipe.AllocEventID<HardEvent::V_MTE2>());
     const event_t mte2Vector = static_cast<event_t>(pipe.AllocEventID<HardEvent::MTE2_V>());
@@ -212,7 +213,8 @@ __aicore__ inline void BuildKeyOwnedBucketTotalsGeneric(GM_ADDR workspace, const
     LocalTensor<uint32_t> totals(TPosition::VECCALC, 32768, ownersPerChunk);
     GlobalTensor<uint32_t> headersGm, totalsGm;
     headersGm.SetGlobalBuffer((__gm__ uint32_t *)(workspace + KeyOwnedHeaderByteOffset(td)));
-    totalsGm.SetGlobalBuffer((__gm__ uint32_t *)(workspace + KeyOwnedBucketTotalsByteOffset(td)));
+    totalsGm.SetGlobalBuffer((__gm__ uint32_t *)(workspace +
+                            KeyOwnedBucketTotalsTileByteOffset(td, queryRangeBegin)));
     const event_t scalarMte2 = static_cast<event_t>(pipe.AllocEventID<HardEvent::S_MTE2>());
     const event_t mte2Scalar = static_cast<event_t>(pipe.AllocEventID<HardEvent::MTE2_S>());
     const event_t scalarMte3 = static_cast<event_t>(pipe.AllocEventID<HardEvent::S_MTE3>());
@@ -483,7 +485,8 @@ __aicore__ inline void ReduceKeyOwnedEdges(GM_ADDR workspace, const TILING_CLASS
     edgeGm.SetGlobalBuffer((__gm__ float *)extension);
     headersGm.SetGlobalBuffer((__gm__ uint32_t *)(workspace + KeyOwnedHeaderByteOffset(td)));
     orderedGm.SetGlobalBuffer((__gm__ int32_t *)(workspace + KeyOwnedSortedIndicesByteOffset(td)));
-    totalsGm.SetGlobalBuffer((__gm__ uint32_t *)(workspace + KeyOwnedBucketTotalsByteOffset(td)));
+    totalsGm.SetGlobalBuffer((__gm__ uint32_t *)(workspace +
+                            KeyOwnedBucketTotalsTileByteOffset(td, queryRangeBegin)));
     partialGm.SetGlobalBuffer((__gm__ float *)(workspace + KeyOwnedPartialByteOffset(td)));
     dkGm.SetGlobalBuffer((__gm__ float *)((__gm__ uint8_t *)workspace + KeyOwnedPostByteOffset(td) +
                                        static_cast<uint64_t>(td->opInfo.dqWorkspaceLen)));
@@ -508,6 +511,7 @@ __aicore__ inline void ReduceKeyOwnedEdges(GM_ADDR workspace, const TILING_CLASS
     SetFlag<HardEvent::V_MTE2>(release);
 
     uint64_t partialBase = 0;
+    bool hasPartialRows = false;
     for (uint32_t owner = 0; owner < ownerCount; ++owner) {
         const uint32_t ownerRows = totalsGm.GetValue(owner);
         if (ownerRows == 0 && !firstTile) {
@@ -531,6 +535,7 @@ __aicore__ inline void ReduceKeyOwnedEdges(GM_ADDR workspace, const TILING_CLASS
 
         const uint32_t partition = (block + vectorCoreCount - owner % vectorCoreCount) % vectorCoreCount;
         if (partition < partitions) {
+            hasPartialRows = true;
             const uint64_t rangeBegin = static_cast<uint64_t>(ownerRows) * partition / partitions;
             const uint64_t rangeEnd = static_cast<uint64_t>(ownerRows) * (partition + 1) / partitions;
             const uint64_t partialOffset = (partialBase + partition) * KeyOwnedBucketWidth * edgeWidth;
@@ -545,6 +550,10 @@ __aicore__ inline void ReduceKeyOwnedEdges(GM_ADDR workspace, const TILING_CLASS
 
     WaitFlag<HardEvent::V_MTE2>(release);
     SyncAll();
+    // A core with no partial work cannot own a final partial reduction.
+    if (!hasPartialRows) {
+        return;
+    }
     SetFlag<HardEvent::V_MTE2>(release);
     partialBase = 0;
     for (uint32_t owner = 0; owner < ownerCount; ++owner) {

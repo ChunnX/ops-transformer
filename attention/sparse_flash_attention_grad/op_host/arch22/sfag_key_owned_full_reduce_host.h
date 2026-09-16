@@ -80,7 +80,7 @@ inline void TryKeyOwnedFullReduce(gert::TilingContext *context)
     size_t *workspaces = context->GetWorkspaceSizes(1);
     const uint64_t dAlign = (static_cast<uint64_t>(d) + ropeD + 15) / 16 * 16;
     const uint64_t selectedCount = static_cast<uint64_t>(selected);
-    constexpr uint64_t queryWavesPerTile = 8;
+    constexpr uint64_t queryWavesPerTile = 13;
     const uint64_t edgeQueryCapacity = std::min<uint64_t>(queryCount, aicNum * queryWavesPerTile);
     const uint64_t edgeBytes = edgeQueryCapacity * selectedCount * dAlign * sizeof(float);
     const uint64_t headerBytes = bucketCount * queryCount * 8 * sizeof(uint32_t);
@@ -88,7 +88,9 @@ inline void TryKeyOwnedFullReduce(gert::TilingContext *context)
     const uint64_t ownerCount = static_cast<uint64_t>(b) * bucketCount;
     const uint64_t coreBucketTotalsBytes =
         b == 1 ? static_cast<uint64_t>(aivNum) * bucketCount * sizeof(uint32_t) : 0;
-    const uint64_t bucketTotalsBytes = (ownerCount * sizeof(uint32_t) + 31) / 32 * 32;
+    const uint64_t bucketTotalsTileBytes = (ownerCount * sizeof(uint32_t) + 31) / 32 * 32;
+    const uint64_t bucketTotalsBytes =
+        bucketTotalsTileBytes * ((queryCount + edgeQueryCapacity - 1) / edgeQueryCapacity);
     const uint64_t partialBytes = 2 * static_cast<uint64_t>(aivNum) * 64 * dAlign * sizeof(float);
     workspaces[0] += edgeBytes + headerBytes + sortedBytes + coreBucketTotalsBytes + bucketTotalsBytes + partialBytes;
     OP_LOGI(context, "SFAG_KEY_OWNED_FULL_REDUCE active host marker=%u", markerValue);

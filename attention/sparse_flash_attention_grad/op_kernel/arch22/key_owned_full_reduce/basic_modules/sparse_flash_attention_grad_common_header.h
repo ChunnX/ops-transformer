@@ -35,7 +35,7 @@ constexpr static uint64_t KeyOwnedMaxG = 64;
 constexpr static uint64_t KeyOwnedMaxDTotal = 576;
 constexpr static uint64_t KeyOwnedMaxDv = 512;
 constexpr static uint64_t KeyOwnedMaxPartialFactor = 2;
-constexpr static uint64_t KeyOwnedQueryWavesPerTile = 8;
+constexpr static uint64_t KeyOwnedQueryWavesPerTile = 13;
 
 template <typename TILING_CLASS>
 __aicore__ inline uint64_t KeyOwnedQueryCount(const TILING_CLASS *td)
@@ -89,9 +89,17 @@ __aicore__ inline uint64_t KeyOwnedOwnerCount(const TILING_CLASS *td)
 }
 
 template <typename TILING_CLASS>
-__aicore__ inline uint64_t KeyOwnedBucketTotalsByteSize(const TILING_CLASS *td)
+__aicore__ inline uint64_t KeyOwnedBucketTotalsTileByteSize(const TILING_CLASS *td)
 {
     return (KeyOwnedOwnerCount(td) * sizeof(uint32_t) + 31) / 32 * 32;
+}
+
+template <typename TILING_CLASS>
+__aicore__ inline uint64_t KeyOwnedBucketTotalsByteSize(const TILING_CLASS *td)
+{
+    const uint64_t capacity = KeyOwnedEdgeQueryCapacity(td);
+    const uint64_t tileCount = (KeyOwnedQueryCount(td) + capacity - 1) / capacity;
+    return tileCount * KeyOwnedBucketTotalsTileByteSize(td);
 }
 
 template <typename TILING_CLASS>
@@ -158,6 +166,13 @@ template <typename TILING_CLASS>
 __aicore__ inline uint64_t KeyOwnedBucketTotalsByteOffset(const TILING_CLASS *td)
 {
     return KeyOwnedCoreBucketTotalsByteOffset(td) + KeyOwnedCoreBucketTotalsByteSize(td);
+}
+
+template <typename TILING_CLASS>
+__aicore__ inline uint64_t KeyOwnedBucketTotalsTileByteOffset(const TILING_CLASS *td, uint32_t queryRangeBegin)
+{
+    const uint64_t tile = queryRangeBegin / KeyOwnedEdgeQueryCapacity(td);
+    return KeyOwnedBucketTotalsByteOffset(td) + tile * KeyOwnedBucketTotalsTileByteSize(td);
 }
 
 template <typename TILING_CLASS>
