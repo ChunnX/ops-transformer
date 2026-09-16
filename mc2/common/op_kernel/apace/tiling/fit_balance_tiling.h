@@ -20,7 +20,8 @@
  * 核利用率优先的实现问题(修复走独立事项)。相关标定方法论与实测数据仍有效,
  * 存档于 tiling-plan/ALLTO_ALL_MATMUL_V2_FIT_BALANCE_*。
  *
- * 布局: 零、公共类型与常量 / 一、模型层(HCCL 通信 + matmul 算力梯度) /
+ * 布局: 零、公共类型与常量(含客户标定大结构体 FitBalanceCalibration) /
+ *       一、模型层(HCCL 通信 + matmul 算力梯度; 内部查表结构勿在算子侧引用) /
  *       二、切分与输出层(FormPartition + CutResult 适配) /
  *       三、求解层(自由长度求解器, ctx+钩子注入) / 四、公共钩子片段
  *
@@ -281,16 +282,18 @@ inline CommEngine ParseCommEngine(const char *commMode)
 constexpr double FULL_MESH_TIME_FACTOR = 2.0; // allreduce time is 2.0x allgather or reducescatter
 constexpr uint64_t FITTING_RANK = 8;          // 拟合采用 8 die 通信
 
-// ====== 拟合表注入 schema（行数据由算子侧标定头维护）======
+// ====== 拟合表（引擎内部结构——算子侧一律使用 FitBalanceCalibration 大结构体,
+//      此处类型由 InitCtx 内部适配构造并按值持有, 勿在算子侧直接引用）======
 struct CommFitRow {
     const char *key; // 查表 key: "{soc}_{kernelType}_{topoType}_{rankDim}", soc 段恒为 4(SOC950)
     HCCLFittingParameters params;
 };
 
 struct CommFitTable {
-    const CommFitRow *rows;
-    size_t rowCount;
-    HCCLFittingParameters defaultParams; // key 未命中时的回退行 + rankDim 折算因子缩放
+    static constexpr size_t MAX_ROWS = 4;
+    CommFitRow rows[MAX_ROWS] = {};
+    size_t rowCount = 0;
+    HCCLFittingParameters defaultParams = {}; // key 未命中时的回退行 + rankDim 折算因子缩放
 };
 
 // 精确 key 匹配, 未命中返回 nullptr（语义与旧 map::find == end 一致）
@@ -460,7 +463,7 @@ public:
     }
 
 protected:
-    const CommFitTable &fitTable_; // 拟合表由构造方注入（算子侧标定头）
+    CommFitTable fitTable_; // 拟合表按值持有(自包含, 由 InitCtx 从大结构体适配)
 };
 
 // ---- 1.2 matmul 模型（HCCL 算力/梯度模型, 自由长度分支专用）----
@@ -482,9 +485,8 @@ constexpr double MAX_CUBE_UTIL = 0.95;
 constexpr double AVERAGE_CUBE_UTIL = 0.75;
 } // namespace MatmulPerformance
 
-// ====== 模型参数注入 schema（行数据由算子侧标定头维护）======
-// key 规则见 MatmulPerformanceArch35::GetCalcTypeString: "soc_calcType_aDtype_bDtype_cDtype",
-// soc 段恒为 4(SOC950)
+// ====== 模型参数表（引擎内部结构——算子侧一律使用 FitBalanceCalibration 大结构体,
+//      此处类型由 InitCtx 内部适配构造并按值持有, 勿在算子侧直接引用）======
 struct CubeCalcRow {
     const char *key;
     double computesPerCycle;
@@ -501,18 +503,18 @@ struct BestBaseRow {
 };
 
 struct MatmulPerfTable {
-    // 算力查表（旧 CUBE_CALC_PER_CYCLE_MAP）
-    const CubeCalcRow *cubeCalcRows;
-    size_t cubeCalcCount;
-    double defaultComputesPerCycle; // key 未命中回退（旧实现为常量 COMPUTES_PER_CYCLE, 由标定头回填同值）
-    // L2 档位查表（旧 L2_PARAMETER_MAP; FindCubeUtilByL2Usage 的 diff/maxTileLen 仍消费）
-    const L2ParamRow *l2Rows;
-    size_t l2Count;
-    L2CacheEstimateParameters defaultL2Params; // key 未命中回退（旧 DEFAULT_KEY 行内容 {128, 192, 0.85, 0.75, 0.65}）
-    // arch35 最优基本块查表（旧 TILING_BEST_BASE_MAP）
-    const BestBaseRow *bestBaseRows;
-    size_t bestBaseCount;
-    TilingBestBaseBlock defaultBaseBlock; // soc 未命中回退（旧实现为 {BASE_BLOCK_M/N/K}, 由标定头回填同值）
+    static constexpr size_t MAX_CUBE_ROWS = 4;
+    static constexpr size_t MAX_L2_ROWS = 4;
+    static constexpr size_t MAX_BASE_ROWS = 2;
+    CubeCalcRow cubeCalcRows[MAX_CUBE_ROWS] = {};
+    size_t cubeCalcCount = 0;
+    double defaultComputesPerCycle = 4096.0; // key 未命中回退
+    L2ParamRow l2Rows[MAX_L2_ROWS] = {};
+    size_t l2Count = 0;
+    L2CacheEstimateParameters defaultL2Params = {128, 192, 0.85, 0.75, 0.65};
+    BestBaseRow bestBaseRows[MAX_BASE_ROWS] = {};
+    size_t bestBaseCount = 0;
+    TilingBestBaseBlock defaultBaseBlock = {128, 256, 64};
 };
 
 class MatmulPerformanceArch35 {
@@ -690,7 +692,7 @@ public:
     }
 
 protected:
-    const MatmulPerfTable &perfTable_; // 模型参数表由构造方注入（算子侧标定头）
+    MatmulPerfTable perfTable_; // 模型参数表按值持有(自包含, 由 InitCtx 从大结构体适配)
 };
 
 // ============================================================================
@@ -1015,10 +1017,121 @@ struct FitBasedBalanceCtx {
 };
 
 // 上下文构造 = 旧基类构造函数逐行对应
-// (soc 恒 SOC950: 引擎仅支持 arch35, SocVersion 参数已随旧芯片逻辑剥离)
-inline FitBasedBalanceCtx InitCtx(const TilingArgs &args, KernelType kernelType, const CommFitTable &commTable,
-                                  const MatmulPerfTable &mmTable, TopoType topoType = TopoType::STANDARD_CARD)
+// ============================================================================
+// 客户标定数据总集（算子侧唯一需要接触的标定类型, 2026-09-15 评审裁定:
+// 单一大结构体替代"引擎侧一堆小结构体 + 算子侧一堆具名 constexpr"）
+//
+// 用法（算子侧标定头, 填一个实例传给 InitCtx 即可）:
+//   static const FitBalanceCalibration CALIBRATION = {
+//       /* aicpu */  { /* rows */ { {"4_1_0_4", 斜率, 截距} } },
+//       /* ccu */    { /* rows */ { {"4_1_0_4", 斜率, 截距} } },
+//       /* matmul */ { /* cubeCalc */ { {"4_1_1_1_2", 算力} }, ... },
+//   };
+//
+// 填写规则:
+//   - 未填的行/字段自动取默认值(零值或 NSDMI 平台默认), 查表 miss 走回退路径;
+//   - rows 按前缀填, 留空 = 该形态未标定;
+//   - platformDefault/default* 为平台级默认(三段式, 通常勿动), 已给默认值可整段省略;
+//   - 通信已标定行为纯线性拟合(客户标定产出即 斜率+截距 两个数), 引擎内部转三段式。
+// ============================================================================
+
+struct FitBalanceCalibration {
+    static constexpr size_t MAX_COMM_FIT_ROWS = 4;   // 已标定通信形态数上限
+    static constexpr size_t MAX_CUBE_CALC_ROWS = 4;  // matmul 算力档位数上限
+    static constexpr size_t MAX_L2_PARAM_ROWS = 4;   // L2 档位数上限
+    static constexpr size_t MAX_BASE_BLOCK_ROWS = 2; // 最优基本块档位数上限
+
+    // —— 通信拟合（单引擎）——
+    struct CommFit {
+        struct Row {
+            const char *key;     // "{soc=4}_{kernelType}_{topoType}_{rankDim}"
+            double linearSlope;  // 线性段斜率 (us/MB)
+            double linearOffset; // 线性段截距 (us), 含每轮同步固定开销
+        };
+        Row rows[MAX_COMM_FIT_ROWS] = {}; // 已标定行, 未填(key=null)自动跳过
+        // 平台默认回退行(未标定形态走此行 + rankDim 折算缩放; 三段式 12 参数, 勿动)
+        HCCLFittingParameters platformDefault = {0.032, 1.371,  2.59568, 5.8887, 0, 2.86702,
+                                                 5.608, 5.6997, 9.448,   0,      0, 0};
+    };
+    CommFit aicpu; // AICPU 引擎(comm_mode != "ccu")
+    CommFit ccu;   // CCU 引擎(comm_mode == "ccu")
+
+    // —— matmul 模型（字段序: 用户常改字段在前, 平台默认在后——聚合初始化可省尾部,
+    //    省略的尾部字段自动取 NSDMI 默认值）——
+    struct Matmul {
+        struct CubeCalc {
+            const char *key;         // "{soc=4}_{calcType}_{aBytes}_{bBytes}_{cBytes}"
+            double computesPerCycle; // 有效算力 (MACs/cycle, 含 cube 利用率)
+        };
+        struct L2Param {
+            const char *key; // 同上 key 规则
+            L2CacheEstimateParameters params;
+        };
+        struct BaseBlock {
+            SocVersion soc; // 基本块适用的 soc(当前仅 SOC950)
+            TilingBestBaseBlock block;
+        };
+        CubeCalc cubeCalc[MAX_CUBE_CALC_ROWS] = {};
+        L2Param l2Param[MAX_L2_PARAM_ROWS] = {};
+        BaseBlock baseBlock[MAX_BASE_BLOCK_ROWS] = {};
+        double defaultComputesPerCycle = 4096.0;                                 // 算力档回退(通常勿动)
+        L2CacheEstimateParameters defaultL2Param = {128, 192, 0.85, 0.75, 0.65}; // L2 档回退(通常勿动)
+        TilingBestBaseBlock defaultBaseBlock = {128, 256, 64};                   // 基本块回退(通常勿动)
+    };
+    Matmul matmul;
+};
+
+// 大结构体 → 引擎内部查表结构的适配辅助(数有效行, null key 截断)
+namespace detail {
+template <typename RowT, size_t N>
+inline size_t ValidRowCount(const RowT (&rows)[N])
 {
+    size_t n = 0;
+    while ((n < N) && (rows[n].key != nullptr)) {
+        ++n;
+    }
+    return n;
+}
+
+// 客户线性行 → 引擎三段式参数
+inline HCCLFittingParameters AdaptCommRow(const FitBalanceCalibration::CommFit::Row &row)
+{
+    return MakeLinearCommFit(row.linearSlope, row.linearOffset);
+}
+} // namespace detail
+
+// 统一入口: 算子侧只传大结构体标定数据 + 通信引擎枚举(soc 恒 SOC950, 引擎仅支持 arch35)
+inline FitBasedBalanceCtx InitCtx(const TilingArgs &args, KernelType kernelType, CommEngine commEngine,
+                                  const FitBalanceCalibration &calib, TopoType topoType = TopoType::STANDARD_CARD)
+{
+    // 引擎分路 + 大结构体 → 引擎内部表适配(线性行转三段式, 按 null key 截断)
+    const FitBalanceCalibration::CommFit &commFit = (commEngine == CommEngine::CCU) ? calib.ccu : calib.aicpu;
+    CommFitTable commTable;
+    commTable.defaultParams = commFit.platformDefault;
+    for (size_t i = 0; i < detail::ValidRowCount(commFit.rows); ++i) {
+        commTable.rows[i] = {commFit.rows[i].key,
+                             MakeLinearCommFit(commFit.rows[i].linearSlope, commFit.rows[i].linearOffset)};
+    }
+    commTable.rowCount = detail::ValidRowCount(commFit.rows);
+    MatmulPerfTable mmTable;
+    mmTable.defaultComputesPerCycle = calib.matmul.defaultComputesPerCycle;
+    mmTable.defaultL2Params = calib.matmul.defaultL2Param;
+    mmTable.defaultBaseBlock = calib.matmul.defaultBaseBlock;
+    mmTable.cubeCalcCount = detail::ValidRowCount(calib.matmul.cubeCalc);
+    for (size_t i = 0; i < mmTable.cubeCalcCount; ++i) {
+        mmTable.cubeCalcRows[i] = {calib.matmul.cubeCalc[i].key, calib.matmul.cubeCalc[i].computesPerCycle};
+    }
+    mmTable.l2Count = detail::ValidRowCount(calib.matmul.l2Param);
+    for (size_t i = 0; i < mmTable.l2Count; ++i) {
+        mmTable.l2Rows[i] = {calib.matmul.l2Param[i].key, calib.matmul.l2Param[i].params};
+    }
+    while ((mmTable.bestBaseCount < FitBalanceCalibration::MAX_BASE_BLOCK_ROWS) &&
+           (calib.matmul.baseBlock[mmTable.bestBaseCount].soc == SocVersion::SOC950)) {
+        ++mmTable.bestBaseCount;
+    }
+    for (size_t i = 0; i < mmTable.bestBaseCount; ++i) {
+        mmTable.bestBaseRows[i] = {calib.matmul.baseBlock[i].soc, calib.matmul.baseBlock[i].block};
+    }
     FitBasedBalanceCtx ctx{MatmulPerformanceArch35(args, mmTable),
                            HCCLPerformanceArch35(args.rankDim, kernelType, commTable, topoType),
                            FormPartition(args),

@@ -13,10 +13,10 @@
  * \brief AllGatherMatmulV2 fit-balance 算子侧唯一维护点
  *
  * 内容分区（迁移方案 MC2_LEGACY_TILING_APACE_MIGRATION_PLAN.md §4.9 统一接口模式）:
- *   一、客户标定常量区 —— **重新标定后只改本区的 constexpr 值**，其余分区勿动;
- *   二、标定表组装 —— 仅包装上方常量，无任何魔数;
- *   三、算子特有钩子（原派生类 override 的逐行拷贝）;
- *   四、组装与新旧切换: GetFitBalanceCut(args) 一行调用; kUseNewEngine 置 false 即回老类
+ *   一、客户标定数据 —— 唯一实例 CALIBRATION(单一 FitBalanceCalibration 大结构体,
+ *      2026-09-15 评审修订), 重新标定后只改其中数值;
+ *   二、算子特有钩子（原派生类 override 的逐行拷贝; 含少量算子逻辑参数）;
+ *   三、组装与新旧切换: GetFitBalanceCut(args) 一行调用; kUseNewEngine 置 false 即回老类
  *      （老类 all_gather_fit_balance_tiling.h 原样保留）。
  *
  * 公共逻辑（模型/切分引擎/调度流）在 apace/tiling/fit_balance_tiling.h 三、3.1（自由长度求解器）,
@@ -36,186 +36,62 @@
 
 namespace agmm_v2_fit_balance {
 
-// ============================================================================
-// 一、客户标定常量区 —— 重新标定后只改本区，各常量的物理含义/单位/来源见行尾注释
-//     （当前值提取自旧公共层全量表的本算子可达行, 2026-09-14）
-// ============================================================================
-
-// ---- 1. 通信拟合 · AICPU 模式（commMode != "ccu" 时查本组表）----
-// 标定产出: 单轮通信时延 y(us) = 斜率·x + 截距, x = 单轮单 rank 发送量(MB)。
-// 注: key 为四段式(无引擎维度), AICPU/CCU 分路靠调用点按 commMode 选表, 两表 key 值相同。
-constexpr const char *AGMM_COMM_AICPU_4P_KEY =
-    "4_1_0_4"; // 查表 key: soc(4=950)_kernelType(1=ALL_GATHER)_topo(0=标卡)_rankDim(4)
-constexpr double AGMM_COMM_AICPU_4P_SLOPE_US_PER_MB = 5.841842; // 拟合斜率 (us/MB)
-constexpr double AGMM_COMM_AICPU_4P_INTERCEPT_US = 8.590666;    // 拟合截距 (us), 含每轮同步固定开销
-
-// AICPU 8P 占位（未标定: 常量已定义但表区行未接线, 8P 仍走 DEFAULT 回退行+折算缩放;
-// 标定后填实测值并取消表区该行注释即生效。key 的 topo 段: 调用点 topo 硬编码
-// STANDARD_CARD(0) 故为 "4_1_0_8"; 若将来调用点改传 EIGHT_P(1), key 需同步改为 "4_1_1_8"）
-constexpr const char *AGMM_COMM_AICPU_8P_KEY = "4_1_0_8"; // soc(4)_kernelType(1)_topo(0)_rankDim(8)
-constexpr double AGMM_COMM_AICPU_8P_SLOPE_US_PER_MB = 0;  // TODO(8P标定): 填实测拟合斜率 (us/MB)
-constexpr double AGMM_COMM_AICPU_8P_INTERCEPT_US = 0;     // TODO(8P标定): 填实测拟合截距 (us)
-
-// AICPU 未标定形态回退行（rankDim=2 等走此行 + rankDim 折算因子缩放）
-constexpr double AGMM_COMM_AICPU_DEF_SMALL_BOUNDARY_MB = 0.032; // 小包段上界 (MB)
-constexpr double AGMM_COMM_AICPU_DEF_LARGE_BOUNDARY_MB = 1.371; // 线性段下界 (MB)
-constexpr double AGMM_COMM_AICPU_DEF_SLOPE_US_PER_MB = 2.59568; // 线性段斜率 (us/MB)
-constexpr double AGMM_COMM_AICPU_DEF_INTERCEPT_US = 5.8887;     // 线性段截距 (us)
-constexpr double AGMM_COMM_AICPU_DEF_PARABOLIC_B = 2.86702; // 小包段 y = a·x²+b·x+c 之 b (本行 a=0, 退化为线性)
-constexpr double AGMM_COMM_AICPU_DEF_PARABOLIC_C = 5.608;       // 小包段常数项 c (us)
-constexpr double AGMM_COMM_AICPU_DEF_INV_BOUNDARY1_US = 5.6997; // 反解(t→x)分段下界 (us)
-constexpr double AGMM_COMM_AICPU_DEF_INV_BOUNDARY2_US = 9.448;  // 反解(t→x)分段上界 (us)
-
-// ---- 2. 通信拟合 · CCU 模式（commMode == "ccu" 时查本组表）----
-// 当前值沿用历史共用数据(与 AICPU 组相同, 旧 ARCH35 表无引擎维度), 待 Ccu 环境重标后替换。
-// CCU 模式另有调用点后置修正 AdjustCutResultForCCU(按 HCCL buffer 容量上限约束单轮数据量)。
-constexpr const char *AGMM_COMM_CCU_4P_KEY = "4_1_0_4";       // 查表 key 同 AICPU(四段式, 引擎分路靠选表)
-constexpr double AGMM_COMM_CCU_4P_SLOPE_US_PER_MB = 5.841842; // TODO(CCU重标): 沿用历史共用值, 填 CCU 实测斜率
-constexpr double AGMM_COMM_CCU_4P_INTERCEPT_US = 8.590666; // TODO(CCU重标): 沿用历史共用值, 填 CCU 实测截距
-
-// CCU 8P 占位（同 AICPU 8P 说明）
-constexpr const char *AGMM_COMM_CCU_8P_KEY = "4_1_0_8"; // soc(4)_kernelType(1)_topo(0)_rankDim(8)
-constexpr double AGMM_COMM_CCU_8P_SLOPE_US_PER_MB = 0;  // TODO(8P标定): 填 CCU 实测拟合斜率 (us/MB)
-constexpr double AGMM_COMM_CCU_8P_INTERCEPT_US = 0;     // TODO(8P标定): 填 CCU 实测拟合截距 (us)
-
-// CCU 未标定形态回退行（当前沿用历史共用值, 待重标）
-constexpr double AGMM_COMM_CCU_DEF_SMALL_BOUNDARY_MB = 0.032; // 小包段上界 (MB)
-constexpr double AGMM_COMM_CCU_DEF_LARGE_BOUNDARY_MB = 1.371; // 线性段下界 (MB)
-constexpr double AGMM_COMM_CCU_DEF_SLOPE_US_PER_MB = 2.59568; // 线性段斜率 (us/MB)
-constexpr double AGMM_COMM_CCU_DEF_INTERCEPT_US = 5.8887;     // 线性段截距 (us)
-constexpr double AGMM_COMM_CCU_DEF_PARABOLIC_B = 2.86702; // 小包段 y = a·x²+b·x+c 之 b (本行 a=0, 退化为线性)
-constexpr double AGMM_COMM_CCU_DEF_PARABOLIC_C = 5.608;       // 小包段常数项 c (us)
-constexpr double AGMM_COMM_CCU_DEF_INV_BOUNDARY1_US = 5.6997; // 反解(t→x)分段下界 (us)
-constexpr double AGMM_COMM_CCU_DEF_INV_BOUNDARY2_US = 9.448;  // 反解(t→x)分段上界 (us)
-
-// ---- 3. 切分决策阈值（通信侧鼓励细分的门控, 表E 口径）----
-constexpr double AGMM_MM_EXPANSION_TIME_US = 40;   // 短块减半仅当半块计算耗时 > 此值
-constexpr double AGMM_COMM_EXPANSION_TIME_US = 40; // 且半块通信耗时 > 此值
-
-// ---- 4. matmul 有效算力（标定产出, MACs/cycle, 含 cube 利用率）----
-constexpr const char *AGMM_MM_KEY_QUANT =
-    "4_1_1_1_2"; // 查表 key: soc(4)_calcType(1=QUANT)_dtype 1B/1B/2B(fp8/fp4 量化)
-constexpr const char *AGMM_MM_KEY_FP16 = "4_0_2_2_2";   // 查表 key: soc(4)_calcType(0=FP16)_dtype 2B/2B/2B(半精度)
-constexpr double AGMM_MM_QUANT_MACS_PER_CYCLE = 8192;   // 量化路径有效算力
-constexpr double AGMM_MM_DEFAULT_MACS_PER_CYCLE = 4096; // 未命中 key 时的回退算力
-
-// ---- 5. fp4 建模参数（fp4 公共层不识别, 需手工折算）----
-constexpr uint64_t AGMM_FP4_EXPANSION_RATIO = 2; // fp4 通信按"1 字节打包 2 元素"建模的分母
-constexpr double AGMM_FP4_MACS_RATIO = 4;        // fp4 有效算力 = 此倍数 × 基础算力(4096)
-
-// ---- 6. matmul L2 档位利用率（数据量 ≤PART/≤FULL/超出 三档 cube 利用率）----
-constexpr uint64_t AGMM_L2_QUANT_PART_MB = 80;     // 量化路径部分命中阈值 (MB)
-constexpr uint64_t AGMM_L2_QUANT_FULL_MB = 128;    // 量化路径完全命中阈值 (MB)
-constexpr double AGMM_L2_QUANT_UTIL_PART = 0.95;   // 量化: ≤PART 时 cube 利用率
-constexpr double AGMM_L2_QUANT_UTIL_FULL = 0.85;   // 量化: PART~FULL 时 cube 利用率
-constexpr double AGMM_L2_QUANT_UTIL_OUT = 0.75;    // 量化: 超出 L2 时 cube 利用率
-constexpr uint64_t AGMM_L2_FP16_PART_MB = 80;      // 半精度路径部分命中阈值 (MB)
-constexpr uint64_t AGMM_L2_FP16_FULL_MB = 128;     // 半精度路径完全命中阈值 (MB)
-constexpr double AGMM_L2_FP16_UTIL_PART = 0.95;    // 半精度: ≤PART 时 cube 利用率
-constexpr double AGMM_L2_FP16_UTIL_FULL = 0.85;    // 半精度: PART~FULL 时 cube 利用率
-constexpr double AGMM_L2_FP16_UTIL_OUT = 0.75;     // 半精度: 超出 L2 时 cube 利用率
-constexpr uint64_t AGMM_L2_DEFAULT_PART_MB = 128;  // 回退档部分命中阈值 (MB)
-constexpr uint64_t AGMM_L2_DEFAULT_FULL_MB = 192;  // 回退档完全命中阈值 (MB)
-constexpr double AGMM_L2_DEFAULT_UTIL_PART = 0.85; // 回退: ≤PART 时 cube 利用率
-constexpr double AGMM_L2_DEFAULT_UTIL_FULL = 0.75; // 回退: PART~FULL 时 cube 利用率
-constexpr double AGMM_L2_DEFAULT_UTIL_OUT = 0.65;  // 回退: 超出 L2 时 cube 利用率
-
-// ---- 7. matmul 最优基本块（硬件结构性参数, 通常勿动）----
-constexpr uint32_t AGMM_BEST_BASE_M = 256;    // SOC950 最优 baseM
-constexpr uint32_t AGMM_BEST_BASE_N = 256;    // SOC950 最优 baseN
-constexpr uint32_t AGMM_BEST_BASE_K = 128;    // SOC950 最优 baseK
-constexpr uint32_t AGMM_DEFAULT_BASE_M = 128; // 非 950 soc 回退 baseM
-constexpr uint32_t AGMM_DEFAULT_BASE_N = 256; // 非 950 soc 回退 baseN
-constexpr uint32_t AGMM_DEFAULT_BASE_K = 64;  // 非 950 soc 回退 baseK
+namespace fb = mc2tiling::fit_balance; // fit-balance 家族公共层
 
 // ============================================================================
-// 二、标定表组装（勿动: 仅包装上方常量; 新增标定形态时在此按同 schema 加行）
+// 一、客户标定数据（唯一实例; 结构与字段含义见公共文件 FitBalanceCalibration 定义。
+//     当前值提取自旧公共层全量表的本算子可达行, 2026-09-14）
 // ============================================================================
 
-static const mc2tiling::fit_balance::CommFitRow AICPU_COMM_FIT_ROWS[] = {
-    {AGMM_COMM_AICPU_4P_KEY,
-     mc2tiling::fit_balance::MakeLinearCommFit(AGMM_COMM_AICPU_4P_SLOPE_US_PER_MB, AGMM_COMM_AICPU_4P_INTERCEPT_US)},
-    // 8P 行占位: 标定后取消下行注释即生效(未接线时 8P 走 DEFAULT 回退行+折算缩放)
-    // {AGMM_COMM_AICPU_8P_KEY,
-    //  mc2tiling::fit_balance::MakeLinearCommFit(AGMM_COMM_AICPU_8P_SLOPE_US_PER_MB,
-    //  AGMM_COMM_AICPU_8P_INTERCEPT_US)},
+static const fb::FitBalanceCalibration CALIBRATION = {
+    /* aicpu（commMode != "ccu"）*/
+    {
+        /* rows: 已标定形态 */
+        {
+            {"4_1_0_4", 5.841842, 8.590666}, // 950 AllGather 标卡 4P: R²=1.0000
+            // 8P 未标定(留空, 查表 miss 走平台默认行 + rankDim 折算缩放);
+            // 标定后在此追加 {"4_1_0_8", 斜率, 截距} 即生效
+        },
+        // platformDefault: 平台默认回退行, 用公共层默认值(勿动)
+    },
+    /* ccu（commMode == "ccu"）*/
+    {
+        /* rows */
+        {
+            {"4_1_0_4", 5.841842, 8.590666}, // TODO(CCU 重标): 当前沿用历史共用值(旧表无引擎维度)
+        },
+    },
+    /* matmul */
+    {
+        /* cubeCalc: 按 dtype×calcType 查表的有效算力 (MACs/cycle) */
+        {
+            {"4_1_1_1_2", 8192}, // 量化路径(fp8/fp4, 1B/1B/2B)
+        },
+
+        /* defaultComputesPerCycle = 4096(公共层默认, key 未命中回退) */
+        /* l2Param: L2 档位利用率 */
+        {
+            {"4_0_2_2_2", {80, 128, 0.95, 0.85, 0.75}}, // 半精度(2B/2B/2B)
+            {"4_1_1_1_2", {80, 128, 0.95, 0.85, 0.75}}, // 量化
+        },
+        /* defaultL2Param = {128,192,0.85,0.75,0.65}(公共层默认) */
+        /* baseBlock: soc 最优基本块 */
+        {
+            {fb::SocVersion::SOC950, {256, 256, 128}},
+        },
+        /* defaultBaseBlock = {128,256,64}(公共层默认) */
+    },
 };
 
-// AICPU 未标定 key 的回退行（勿删: rankDim=2/8 等未标定形态依赖此行走折算因子缩放路径）
-static const mc2tiling::fit_balance::HCCLFittingParameters AICPU_COMM_FIT_DEFAULT = {
-    AGMM_COMM_AICPU_DEF_SMALL_BOUNDARY_MB,
-    AGMM_COMM_AICPU_DEF_LARGE_BOUNDARY_MB,
-    AGMM_COMM_AICPU_DEF_SLOPE_US_PER_MB,
-    AGMM_COMM_AICPU_DEF_INTERCEPT_US,
-    0 /* 抛物线 a: 本行未启用 */,
-    AGMM_COMM_AICPU_DEF_PARABOLIC_B,
-    AGMM_COMM_AICPU_DEF_PARABOLIC_C,
-    AGMM_COMM_AICPU_DEF_INV_BOUNDARY1_US,
-    AGMM_COMM_AICPU_DEF_INV_BOUNDARY2_US,
-    0,
-    0,
-    0 /* 反解抛物线参数: 本行未启用 */};
-
-static const mc2tiling::fit_balance::CommFitTable AICPU_COMM_FIT_TABLE = {
-    AICPU_COMM_FIT_ROWS, sizeof(AICPU_COMM_FIT_ROWS) / sizeof(AICPU_COMM_FIT_ROWS[0]), AICPU_COMM_FIT_DEFAULT};
-
-static const mc2tiling::fit_balance::CommFitRow CCU_COMM_FIT_ROWS[] = {
-    {AGMM_COMM_CCU_4P_KEY,
-     mc2tiling::fit_balance::MakeLinearCommFit(AGMM_COMM_CCU_4P_SLOPE_US_PER_MB, AGMM_COMM_CCU_4P_INTERCEPT_US)},
-    // 8P 行占位: 标定后取消下行注释即生效
-    // {AGMM_COMM_CCU_8P_KEY,
-    //  mc2tiling::fit_balance::MakeLinearCommFit(AGMM_COMM_CCU_8P_SLOPE_US_PER_MB, AGMM_COMM_CCU_8P_INTERCEPT_US)},
-};
-
-// CCU 未标定 key 的回退行（当前沿用历史共用值, 待 Ccu 环境重标）
-static const mc2tiling::fit_balance::HCCLFittingParameters CCU_COMM_FIT_DEFAULT = {AGMM_COMM_CCU_DEF_SMALL_BOUNDARY_MB,
-                                                                                   AGMM_COMM_CCU_DEF_LARGE_BOUNDARY_MB,
-                                                                                   AGMM_COMM_CCU_DEF_SLOPE_US_PER_MB,
-                                                                                   AGMM_COMM_CCU_DEF_INTERCEPT_US,
-                                                                                   0 /* 抛物线 a: 本行未启用 */,
-                                                                                   AGMM_COMM_CCU_DEF_PARABOLIC_B,
-                                                                                   AGMM_COMM_CCU_DEF_PARABOLIC_C,
-                                                                                   AGMM_COMM_CCU_DEF_INV_BOUNDARY1_US,
-                                                                                   AGMM_COMM_CCU_DEF_INV_BOUNDARY2_US,
-                                                                                   0,
-                                                                                   0,
-                                                                                   0 /* 反解抛物线参数: 本行未启用 */};
-
-static const mc2tiling::fit_balance::CommFitTable CCU_COMM_FIT_TABLE = {
-    CCU_COMM_FIT_ROWS, sizeof(CCU_COMM_FIT_ROWS) / sizeof(CCU_COMM_FIT_ROWS[0]), CCU_COMM_FIT_DEFAULT};
-
-static const mc2tiling::fit_balance::CubeCalcRow CUBE_CALC_ROWS[] = {
-    {AGMM_MM_KEY_QUANT, AGMM_MM_QUANT_MACS_PER_CYCLE},
-};
-
-static const mc2tiling::fit_balance::L2ParamRow L2_PARAM_ROWS[] = {
-    {AGMM_MM_KEY_FP16,
-     {AGMM_L2_FP16_PART_MB, AGMM_L2_FP16_FULL_MB, AGMM_L2_FP16_UTIL_PART, AGMM_L2_FP16_UTIL_FULL,
-      AGMM_L2_FP16_UTIL_OUT}},
-    {AGMM_MM_KEY_QUANT,
-     {AGMM_L2_QUANT_PART_MB, AGMM_L2_QUANT_FULL_MB, AGMM_L2_QUANT_UTIL_PART, AGMM_L2_QUANT_UTIL_FULL,
-      AGMM_L2_QUANT_UTIL_OUT}},
-};
-
-static const mc2tiling::fit_balance::BestBaseRow BEST_BASE_ROWS[] = {
-    {mc2tiling::fit_balance::SocVersion::SOC950, {AGMM_BEST_BASE_M, AGMM_BEST_BASE_N, AGMM_BEST_BASE_K}},
-};
-
-static const mc2tiling::fit_balance::MatmulPerfTable MATMUL_PERF_TABLE = {
-    CUBE_CALC_ROWS,
-    sizeof(CUBE_CALC_ROWS) / sizeof(CUBE_CALC_ROWS[0]),
-    AGMM_MM_DEFAULT_MACS_PER_CYCLE,
-    L2_PARAM_ROWS,
-    sizeof(L2_PARAM_ROWS) / sizeof(L2_PARAM_ROWS[0]),
-    {AGMM_L2_DEFAULT_PART_MB, AGMM_L2_DEFAULT_FULL_MB, AGMM_L2_DEFAULT_UTIL_PART, AGMM_L2_DEFAULT_UTIL_FULL,
-     AGMM_L2_DEFAULT_UTIL_OUT},
-    BEST_BASE_ROWS,
-    sizeof(BEST_BASE_ROWS) / sizeof(BEST_BASE_ROWS[0]),
-    {AGMM_DEFAULT_BASE_M, AGMM_DEFAULT_BASE_N, AGMM_DEFAULT_BASE_K}};
-
 // ============================================================================
-// 三、算子特有钩子（= 老 all_gather_fit_balance_tiling.cpp 逐行拷贝, 状态存本结构体）
+// 二、算子特有钩子（= 老 all_gather_fit_balance_tiling.cpp 逐行拷贝, 状态存本结构体;
+//     以下 4 个常量为钩子逻辑参数(非标定数据): 减半鼓励门与 fp4 建模折算）
 // ============================================================================
+
+constexpr double MM_EXPANSION_TIME = 40;    // 短块减半仅当半块计算耗时 > 此值(us)
+constexpr double COMM_EXPANSION_TIME = 40;  // 且半块通信耗时 > 此值(us)
+constexpr uint64_t FP4_EXPANSION_RATIO = 2; // fp4 通信按"1字节打包2元素"建模的分母
+constexpr double FP4_MACS_RATIO = 4;        // fp4 有效算力 = 此倍数 × 基础算力(4096)
 
 struct AgMmV2Hooks {
     double frontMMTime = 0;
@@ -259,7 +135,7 @@ struct AgMmV2Hooks {
         uint64_t cutLen = ctx.tilingM.GetAlignLength() / mc2tiling::fit_balance::TWO;
         double mmCost = ctx.matmulPerf.MatmulTime(cutLen, ctx.rankDim);
         double commCost = ctx.commPerf.CommTime(cutLen);
-        if (isCalcCommBalance && (mmCost > AGMM_MM_EXPANSION_TIME_US) && (commCost > AGMM_COMM_EXPANSION_TIME_US)) {
+        if (isCalcCommBalance && (mmCost > MM_EXPANSION_TIME) && (commCost > COMM_EXPANSION_TIME)) {
             ctx.tilingM.SetAlignLength(cutLen);
             ctx.tilingM.SetMinLenByMin(cutLen);
         }
@@ -276,7 +152,7 @@ struct AgMmV2Hooks {
 };
 
 // ============================================================================
-// 四、边界转换 + 组装与新旧切换
+// 三、边界转换 + 组装与新旧切换
 // ============================================================================
 
 inline mc2tiling::fit_balance::TilingArgs ToEngineTilingArgs(const mc2tiling::TilingArgs &args)
@@ -332,19 +208,14 @@ inline CutResult ToLegacyCut(const mc2tiling::fit_balance::CutResult &cut)
 
 // 统一引擎路径: 上下文构造 + 算子后置初始化(= 老类构造函数体逐行对应) + 统一调度
 // baseMOut(可空): 回传 matmul 基本块(调用点 AdjustCutResultForAICPU 需要)
-namespace fb = mc2tiling::fit_balance; // fit-balance 家族公共层
-
 inline CutResult ScheduleFitBalance(const mc2tiling::TilingArgs &args, fb::CommEngine commEngine,
                                     uint32_t *baseMOut = nullptr)
 {
-    // 通信拟合数据按引擎分路: commMode 选表(key 四段式不含引擎维度, 分路靠此处选表)。
-    // 本算子 kernel 仅 HCCL 两引擎, AIV_URMA 不可达(命中时按 AICPU 表处理, 与
-    // 三引擎统一分派模式兼容——未来支持 URMA 的算子在此改走 wave-packing 分支即可)
-    const bool isCcuMode = (commEngine == fb::CommEngine::CCU);
-    const fb::CommFitTable &commTable = isCcuMode ? CCU_COMM_FIT_TABLE : AICPU_COMM_FIT_TABLE;
+    // 引擎分路在 InitCtx 内完成(按 CommEngine 选 CALIBRATION 的 aicpu/ccu 分区);
+    // 本算子 kernel 仅 HCCL 两引擎, AIV_URMA 不可达(枚举值保留供三引擎分派框架)
     fb::TilingArgs engineArgs = ToEngineTilingArgs(args);
     auto ctx =
-        fb::InitCtx(engineArgs, fb::KernelType::ALL_GATHER, commTable, MATMUL_PERF_TABLE, fb::TopoType::STANDARD_CARD);
+        fb::InitCtx(engineArgs, fb::KernelType::ALL_GATHER, commEngine, CALIBRATION, fb::TopoType::STANDARD_CARD);
     ctx.commPerf.SetCommShapeLen(ctx.mmInfo.kValue);
     // mxfp4(DT_FLOAT4_E2M1)每元素占0.5字节，uint64_t无法表达0.5
     // 此处按"1字节打包2个fp4元素"建模：通信侧用SetCommDTypeSize(1)+ExpansionFraction(2)表达0.5字节/元素
@@ -352,7 +223,7 @@ inline CutResult ScheduleFitBalance(const mc2tiling::TilingArgs &args, fb::CommE
     // matmul侧inMatrixADtypeSize置1(L2占用按2x高估，避免0导致memUsage/kLength退化为0)。
     if (engineArgs.geAType == ge::DataType::DT_FLOAT4_E2M1) {
         ctx.commPerf.SetCommDTypeSize(1);
-        ctx.commPerf.SetCommDtypeSizeExpansionFraction(AGMM_FP4_EXPANSION_RATIO);
+        ctx.commPerf.SetCommDtypeSizeExpansionFraction(FP4_EXPANSION_RATIO);
         ctx.matmulPerf.mmShapeInfo_.inMatrixADtypeSize = 1;
         ctx.matmulPerf.mmShapeInfo_.inMatrixBDtypeSize = 1;
         ctx.mmInfo.inMatrixADtypeSize = 1;
@@ -362,7 +233,7 @@ inline CutResult ScheduleFitBalance(const mc2tiling::TilingArgs &args, fb::CommE
         // (fp8 拿到 8192), totalMatmulTime 被高估4x。此处把fp4归类为QUANT并覆盖 computesPerCycle
         // = 4×基础算力(=16384)。GetMachineParameters 已在 InitCtx 按FP16跑过, 此处覆盖。
         ctx.matmulPerf.calcType_ = fb::MatmulCalcType::QUANT;
-        ctx.matmulPerf.mmShapeInfo_.computesPerCycle = AGMM_FP4_MACS_RATIO * fb::MatmulPerformance::COMPUTES_PER_CYCLE;
+        ctx.matmulPerf.mmShapeInfo_.computesPerCycle = FP4_MACS_RATIO * fb::MatmulPerformance::COMPUTES_PER_CYCLE;
         ctx.mmInfo.computesPerCycle = ctx.matmulPerf.mmShapeInfo_.computesPerCycle;
     } else {
         ctx.commPerf.SetCommDTypeSize(ctx.mmInfo.inMatrixADtypeSize);
