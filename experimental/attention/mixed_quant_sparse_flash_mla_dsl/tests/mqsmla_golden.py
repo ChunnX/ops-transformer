@@ -42,8 +42,9 @@ def e2m1_encode(n_f32):
     torch = _torch()
     table = torch.tensor(E2M1_VALUES, dtype=torch.float32)
     # 分块仅限制16倍距离表的临时内存；argmin及平局选择与整块计算完全一致。
-    flat = n_f32.reshape(-1)
-    codes = torch.empty(flat.shape, dtype=torch.uint8, device=n_f32.device)
+    # golden 一律在 CPU 上计算：输入先搬回 CPU，避免在 NPU 上调用小算子。
+    flat = n_f32.cpu().reshape(-1)
+    codes = torch.empty(flat.shape, dtype=torch.uint8)
     for start in range(0, flat.numel(), 1 << 20):
         chunk = flat[start:start + (1 << 20)]
         dist = (chunk.unsqueeze(-1) - table).abs()
@@ -69,8 +70,9 @@ def pack_fp4_to_uint8(enc):
 def unpack_uint8_to_fp4(packed):
     """打包字节 → e2m1 码点（`pack_fp4_to_uint8` 的逆）：低 nibble = 偶元素。"""
     torch = _torch()
+    packed = packed.cpu()  # golden 只在 CPU 上计算
     out = torch.zeros(*packed.shape[:-1], packed.shape[-1] * 2,
-                      dtype=torch.uint8, device=packed.device)
+                      dtype=torch.uint8)
     out[..., 0::2] = packed & 0x0F
     out[..., 1::2] = (packed >> 4) & 0x0F
     return out

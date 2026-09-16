@@ -307,11 +307,11 @@ python3 -m pytest --collect-only -q experimental/attention/mixed_quant_sparse_fl
 ```
 
 - 支持 `.xlsx`，默认 sheet 为 `decode`，第一行为列名；必需列和值为 `Testcase_Name`（唯一非空文本）和 `template_run_mode`（`ORI_SPARSE` / `ORI_CMP_SPARSE`）。空行忽略，空单元格、文本 `None` / `null` 使用测试默认值。
-- 可添加 `备注` 列描述泛化目标；读取器忽略备注内容，不传入测试参数。精简白盒表位于 `tests/excel/mqsmla_whitebox_cases.xlsx`，使用默认 `decode` sheet，当前启用的典型参数集场景位于表格前部，其后为B、S1、S2、block_size等形状参数代表值。
+- 可添加 `备注` 列描述泛化目标；读取器忽略备注内容，不传入测试参数。精简白盒表位于 `tests/excel/mqsmla_whitebox_cases.xlsx`，使用默认 `decode` sheet，当前启用的典型参数集场景位于表格前部，其后为B、S2、block_size等形状参数代表值。
 - 形状列：`B`、`S1`、`S2`、`S2C`、`K1`、`K2`、`block_size1`、`block_size2`。`S1/S2/S2C` 可填整数或 `[1, 3]` 这样的 B 元素列表，列表表示每个 batch 的长度，不做笛卡尔积。
 - `cu_seqlens_q` / `seqused_q`：可填一维整数列表，分别为 B+1 个累积偏移（从0开始）和 B 个实际query长度。例如 `B=3`、`cu_seqlens_q=[0,1,4,6]`、`seqused_q=[1,3,2]` 生成 `q.shape=(6,64,512)`。可只传其中一项；只传 `seqused_q` 时测试框架生成 `cu_seqlens_q`。两者都传必须满足相邻差分等于 `seqused_q`，每个batch长度须为正，不支持padding。任一字段传入时忽略 `S1`；均未传时才使用 `S1`（标量表示每个batch等长，也兼容B元素列表）。参数集中写成 `"cu_seqlens_q": [[0,1,4,6]]` / `"seqused_q": [[1,3,2]]`，也接受整数Tensor候选值；保存/回放保留这些输入。
 - `win_topk_length` / `cmp_topk_length`：手动指定的有效前缀长度，优先于对应fullK/random模式。可填长度为T的列表`[17,32,64]` / `[[17],[32],[64]]`（按TND顺序，每个query一个长度，T1由query长度字段决定）。每项必须在`[0,K1]` / `[0,K2]`内；K1/K2仍是indices容量，不会随有效长度改变。活动侧长度同时为0的空query不支持。两侧独立处理，只有空单元格/None/null才使用该侧fullK/random生成默认长度。
-- 参数集仍按候选列表展开：`"win_topk_length": [[17,32,64]]`表示一组T1=3的逐query长度；`[None]`表示按模式生成。当前decode参数按B分别配置T个长度；大prefill省略长度字段，使用fullK。白盒表S1≥512的行留空，其余行填T个长度，保持原有计算量。
+- 参数集仍按候选列表展开：`"win_topk_length": [[17,32,64]]`表示一组T1=3的逐query长度；`[None]`表示按模式生成。当前decode参数按B分别配置T个长度；大prefill用例仍可省略长度字段并使用fullK。白盒表仅保留S1=1的decode用例。
 - 输入控制列：`ori_kv_topk_mode` / `cmp_kv_topk_mode`（`fullK` / `random`）、`seed`、`dist`（仅支持 `norm`，默认值也是 `norm`）、`softmax_scale`（留空使用默认缩放）。
 - 布尔列：`return_softmax_lse`、`kv_axis0_noncontiguous`，接受 Excel 布尔值、大小写 TRUE/FALSE 或 1/0。第0轴非连续仅通过 `kv_axis0_noncontiguous` 开关控制，不配置两侧独立开关、padding大小或storage offset。
 - 兼容列：主线 `K` 映射为压缩侧 `K2`，`win_kv_topk_mode` 映射为 `ori_kv_topk_mode`；`cmp_ratio` 可按 `S2 // cmp_ratio` 推导 `S2C`，显式给出冲突值时报错。可填固定契约列 `layout_q=TND`、`layout_kv=PA_BBND`、`N1=64`、`N2=1`、`D=512`、`rope_head_dim=64`、`quant_mode=1`。
@@ -326,7 +326,7 @@ python3 -m pytest --collect-only -q experimental/attention/mixed_quant_sparse_fl
 | 命令 | 行为 |
 | --- | --- |
 | `single` | 按当前paramset生成输入和golden并运行；可用`--excel`切换用例来源 |
-| `batch_save` | 默认从60条白盒Excel生成CPU输入和golden，每例保存一个.pt；无需NPU或wheel |
+| `batch_save` | 默认从36条decode白盒Excel生成CPU输入和golden，每例保存一个.pt；无需NPU或wheel |
 | `batch_exec` | 读取目录中的.pt运行NPU并比较，不读取Excel，不重新生成输入/golden |
 | `batch` | 每例生成并保存，再读取该文件运行NPU；数据默认保留 |
 
@@ -354,7 +354,7 @@ bash experimental/attention/mixed_quant_sparse_flash_mla_dsl/tests/test_run.sh b
 
 直接pytest也支持`--data-mode run/save/replay/save-run`与`--pt-dir`；默认run保持原测试行为。save模式仅执行CPU数据准备，replay模式完全以文件为用例来源。
 
-保存/回放验证：两个小用例（ORI_SPARSE连续KV、ORI_CMP_SPARSE非连续KV且开启LSE）保存2/2通过，读取保存文件后的真实NPU精度比较2/2通过。另验证了逐Tensor读写一致、回放不调用生成/golden、原子写失败保留旧文件、损坏/不兼容文件报错、跨目录和空格路径，以及默认60条用例收集。未执行完整60条NPU批跑。
+保存/回放验证：两个小用例（ORI_SPARSE连续KV、ORI_CMP_SPARSE非连续KV且开启LSE）保存2/2通过，读取保存文件后的真实NPU精度比较2/2通过。另验证了逐Tensor读写一致、回放不调用生成/golden、原子写失败保留旧文件、损坏/不兼容文件报错、跨目录和空格路径，以及默认36条decode用例收集。未执行完整36条NPU批跑。
 
 
 ## net Native wheel 调用

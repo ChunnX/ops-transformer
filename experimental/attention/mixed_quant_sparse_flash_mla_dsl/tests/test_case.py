@@ -216,12 +216,15 @@ def _get_metadata_cube_core_num(device):
 
 
 def _make_metadata_python(rows, device):
-    """Build the same [starts..., counts...] partition with Python-launched torch ops."""
+    """Build the same [starts..., counts...] partition on CPU.
+
+    device is only used for the ACL core-count query; all torch tensors stay on CPU.
+    """
     blocks = _get_metadata_cube_core_num(device)
     if not 0 < blocks <= 2147483647 or rows > 2147483647:
         raise ValueError("rows and core count must fit positive int32 metadata")
 
-    core_ids = torch.arange(blocks, device=device, dtype=torch.int32)
+    core_ids = torch.arange(blocks, dtype=torch.int32)
     rows_per_core = rows // blocks
     extra_rows = rows % blocks
     starts = core_ids * rows_per_core + torch.clamp(core_ids, max=extra_rows)
@@ -246,10 +249,9 @@ def _call_public(kwargs, mode, t1, *, omit_win_length=False, omit_cmp_length=Fal
         # Metadata also requires a zero length tensor for the inactive cmp side.
         cmp_lengths = kwargs["cmp_topk_length"]
         if mode == "ORI_SPARSE":
-            cmp_lengths = torch.zeros((t1, 1), dtype=torch.int32,
-                                      device=kwargs["q"].device)
+            cmp_lengths = torch.zeros((t1, 1), dtype=torch.int32).npu()
         if metadata_backend == "python":
-            kwargs["metadata"] = _make_metadata_python(t1, kwargs["q"].device)
+            kwargs["metadata"] = _make_metadata_python(t1, kwargs["q"].device).npu()
         else:
             aicpu_metadata = mixed_quant_sparse_flash_mla_metadata(
                 kwargs["win_topk_length"], cmp_lengths,
@@ -260,7 +262,7 @@ def _call_public(kwargs, mode, t1, *, omit_win_length=False, omit_cmp_length=Fal
             if verify_metadata_backends:
                 python_metadata = _make_metadata_python(t1, kwargs["q"].device)
                 torch.testing.assert_close(
-                    python_metadata.cpu(), aicpu_metadata.cpu(), rtol=0, atol=0)
+                    python_metadata, aicpu_metadata.cpu(), rtol=0, atol=0)
                 print("[mqsmla metadata] aicpu/python partition match")
     # Metadata keeps its required length inputs; attention can omit either side.
     if omit_win_length:
@@ -269,9 +271,10 @@ def _call_public(kwargs, mode, t1, *, omit_win_length=False, omit_cmp_length=Fal
         kwargs.pop("cmp_topk_length")
     want_lse = kwargs.get("return_softmax_lse", False)
     out, lse = mixed_quant_sparse_flash_mla(**kwargs)
+    output = out.cpu().reshape(-1, C.D)
+    lse = lse.cpu()
     if want_lse:
         assert torch.isfinite(lse).all()
     else:
         assert lse.shape == (0,) and lse.dtype == torch.float32
-    output = out.cpu().reshape(-1, C.D)
-    return output, lse.cpu()
+    return output, lse
