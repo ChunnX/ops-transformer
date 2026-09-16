@@ -84,6 +84,6 @@ bash test_run.sh single
   C++ 实现内部已按 IR 顺序重排。
 - `A_log` / `dt_bias` 为 1-D `[num_heads]`，dtype 须一致（FP32/BF16/FP16）。
 - `a` / `b` 为 2-D `[batch, num_heads]`，dtype 须一致（BF16 或 FP16）。
-- 输出 `g` 为 FP32 `[1, batch, num_heads]`（阈值门控结果：`softplus(beta*(a+dt_bias))` 在阈值之上取线性分支、之下取 softplus 分支）。
-- 输出 `beta_output` 与 `b` 同 dtype `[1, batch, num_heads]`（乘以 `A_log` 的累积门控结果）。
+- 输出 `g` 为 FP32 `[1, batch, num_heads]`（门控结果 `-exp(A_log) * softplus(a+dt_bias)`，其中 `softplus(x) = log(1+exp(beta*x))/beta`，在 `beta*x > threshold` 时取线性分支 `x`）。
+- 输出 `beta_output` 与 `b` 同 dtype `[1, batch, num_heads]`（`sigmoid(b)` 门控结果）。
 - `beta` / `threshold` 为 float 标量，默认 `1.0` / `20.0`，分别控制 softplus 缩放与阈值分支切换。

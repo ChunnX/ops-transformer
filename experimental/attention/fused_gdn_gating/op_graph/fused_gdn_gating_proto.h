@@ -25,9 +25,10 @@ namespace ge {
  * @brief FusedGdnGating operator.
  *
  * Computes a fused GDN gating operation:
- *   g = softplus(beta * (a + dt_bias)) * exp(-a_log)
+ *   g = -exp(a_log) * softplus(a + dt_bias)
  *   beta_output = sigmoid(b)
- * with threshold masking for numerical stability.
+ * where softplus(x) = log(1 + exp(beta * x)) / beta, reverting to the linear
+ * branch softplus(x) = x when beta * x > threshold.
  *
  * @par Inputs:
  * Four inputs, including:
@@ -43,7 +44,7 @@ namespace ge {
  * @par Outputs:
  * Two outputs, including:
  * @li g: A 3-D Tensor of shape [1, batch, num_heads]. dtype fp32.
- *        The gate output: softplus(beta*(a+dt_bias)) * exp(-a_log).
+ *        The gate output: -exp(a_log) * softplus(a + dt_bias).
  * @li beta_output: A 3-D Tensor of shape [1, batch, num_heads]. dtype same as a/b.
  *        The sigmoid(b) output.
  */

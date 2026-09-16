@@ -21,10 +21,10 @@
   门控输出$g$的计算：
 
   $$
-  g = \text{softplus}(\beta \cdot (a + dt\_bias)) \cdot e^{-a\_log}
+  g = -e^{a\_log} \cdot \text{softplus}(a + dt\_bias)
   $$
 
-  其中$\text{softplus}(x) = \ln(1 + e^{x})$，当$\beta \cdot (a + dt\_bias) > \text{threshold}$时，采用线性近似$\text{softplus}(x) \approx x$以避免数值溢出。
+  其中$\text{softplus}(x) = \frac{1}{\beta}\ln(1 + e^{\beta x})$，当$\beta \cdot (a + dt\_bias) > \text{threshold}$时，采用线性近似$\text{softplus}(x) \approx x$以避免数值溢出。
 
   门控输出$\text{beta\_output}$的计算：
 
