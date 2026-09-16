@@ -337,7 +337,7 @@ FragmentTensor 方案通过 `QmmMxBlockMmadFragment` 管理 L1，per-fragment �
 
 - **workspace**：`m × n × sizeof(CType)` 字节（Host 侧申请传入，存放 AIC 计算的 C_i）
 - **win 区**：`rankSize × chunkM × n × sizeof(CType)` 字节（AllToAll PUT 接收缓冲区）
-- **reduceSum UB 缓冲区**：`LocalTensor` 手动 UB 偏移管理（无 TPipe），`ReduceSumForAlltoAll<IOType, SumType=float>` 模板化（IOType 支持 bf16/fp16/fp32，同型免 Cast），UB_SLOT_NUM=6 slots 布局：`[sum | inIO_A | inSum_A | inIO_B | inSum_B | outIO]`，slot 偏移按元素计数记录（无除法），pingpong 双 buffer 交替（`pingPongCount_ & (PINGPONG_NUM-1)`），N 分段自适应（maxSegLen = `AscendC::TOTAL_UB_SIZE` / (6 × sizeof(SumType))，dav-3510 上 248KB），外部传参归纳为 `RsParams` 结构体，逐行同步的 ExecuteReduceSum（曾实现多行批量接口 ExecuteReduceSumBatch，因多行批量+单次 flag 模式存在时序竞态（尾段数据错乱）已删除）
+- **reduceSum UB 缓冲区**：`LocalTensor` 手动 UB 偏移管理（无 TPipe），`ReduceSumForAlltoAll<IOType, SumType=float>` 模板化（IOType 支持 bf16/fp16/fp32，同型免 Cast），UB_SLOT_NUM=6 slots 布局：`[sum | inIO_A | inSum_A | inIO_B | inSum_B | outIO]`，slot 偏移按元素计数记录（无除法），pingpong 双 buffer 交替（`pingPongCount_ & (PINGPONG_NUM-1)`），N 分段自适应（maxSegLen = (`AscendC::TOTAL_UB_SIZE` − UB_RESERVED_BYTES) / (6 × sizeof(SumType))；UB 顶部为 AICore 栈保留区 32KB + 安全余量 16KB，dav-3510 上预算 200KB，全额使用 TOTAL_UB_SIZE 会踩踏栈区致数据损坏），外部传参归纳为 `RsParams` 结构体，逐行同步的 ExecuteReduceSum（曾实现多行批量接口 ExecuteReduceSumBatch，因多行批量+单次 flag 模式存在时序竞态（尾段数据错乱）已删除）
 
 ---
 
@@ -489,7 +489,7 @@ if (isCommBlock) { Finalize<BARRIER_NONE>(); }
 - BF16→Cast float32→Add→Cast 回 BF16，精度优先（R=4 时 4 个 rank 累加，float32 中间转换累加误差放大）
 - SumType 为模板参数（默认 float），IOType 支持 bf16/fp16/fp32；IOType == SumType 时免 Cast 直加
 - V 指令数 3 条/rank (Cast+Add+PipeBarrier)，输出 1 次/tile Cast (F32→BF16)
-- UB 布局: UB_SLOT_NUM=6 slots (sum + 2×(inIO+inSum) + out)，slot 偏移按元素计数（无除法），分段上限 `AscendC::TOTAL_UB_SIZE`
+- UB 布局: UB_SLOT_NUM=6 slots (sum + 2×(inIO+inSum) + out)，slot 偏移按元素计数（无除法），分段上限 `AscendC::TOTAL_UB_SIZE - UB_RESERVED_BYTES`（避开 UB 顶部栈保留区）
 - 精度验证通过：97/97 case ALL PASS（R=2 + R=4）
 - 性能影响极小：相比 float32 中间转换累加平均 +0.4%（reduceSum 被 AIC 掩盖）
 

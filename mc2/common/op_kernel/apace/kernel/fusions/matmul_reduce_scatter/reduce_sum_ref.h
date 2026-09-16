@@ -38,6 +38,20 @@ constexpr static uint64_t UB_ALIGN_BYTES = 32UL;
 constexpr int32_t FLAG_ID_NUM_ONE = 1;
 constexpr uint32_t PINGPONG_NUM = 2U;
 
+// UB 顶部栈保留区防护: AICore 栈保留 32KB + 安全余量 16KB = 48KB。reduceSum 的 6-slot pingpong
+// 布局若全额使用 TOTAL_UB_SIZE, slot 数据会踩踏 UB 顶部栈区导致数据损坏;
+// UB 预算 = TOTAL_UB_SIZE - 48KB (dav-3510: 248KB - 48KB = 200KB),
+// maxSegLen = 预算 / (UB_SLOT_NUM x sizeof(SumType))。
+// 注: AscendC::TOTAL_UB_SIZE 定义于 CANN kernel_utils_constants.h 的 __NPU_ARCH__ 设备编译分支内
+// (3510 分支 = 248KB), host 编译 (main.cpp 经 impl.h 包含本文件) 不可见; host 分支回退为
+// dav-3510 等值字面量 248KB, 若切换目标架构需与设备侧 AscendC::TOTAL_UB_SIZE 保持同步。
+constexpr static uint64_t UB_RESERVED_BYTES = 48UL * 1024UL;
+#if defined(__NPU_ARCH__)
+constexpr static uint64_t SEG_UB_BUDGET_BYTES = AscendC::TOTAL_UB_SIZE - UB_RESERVED_BYTES;
+#else
+constexpr static uint64_t SEG_UB_BUDGET_BYTES = 248UL * 1024UL - UB_RESERVED_BYTES; // dav-3510 TOTAL_UB_SIZE
+#endif
+
 template <typename IOType, typename SumType = float>
 class ReduceSumForAlltoAll {
 public:
@@ -66,8 +80,9 @@ public:
         // 行长按 32B 对齐后的元素数 (保证各分段 DataCopy/Cast 对齐)
         uint64_t alignedN = ApaceKernel::CeilDiv(rsParams_.nSize, SEG_ALIGN_ELEMS) * SEG_ALIGN_ELEMS;
 
-        // N 分段: UB_SLOT_NUM 个 slot × SumType, 上限 TOTAL_UB_SIZE
-        uint64_t maxSegLen = AscendC::TOTAL_UB_SIZE / (UB_SLOT_NUM * sizeof(SumType));
+        // N 分段: UB_SLOT_NUM 个 slot × SumType, 上限 = UB 预算 (TOTAL_UB_SIZE - 栈保留区 48KB,
+        // 见文件头 SEG_UB_BUDGET_BYTES; 全额使用 TOTAL_UB_SIZE 会踩踏 AICore 栈区致数据损坏)
+        uint64_t maxSegLen = SEG_UB_BUDGET_BYTES / (UB_SLOT_NUM * sizeof(SumType));
         if (maxSegLen > alignedN) {
             maxSegLen = alignedN;
         }
