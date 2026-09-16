@@ -26,6 +26,8 @@
 #include "lightning_indexer_v2_service_cube_arch35.h"
 #include "../lightning_indexer_v2_metadata.h"
 
+#include "common/lightning_indexer_v2_kernel_base_arch35.h"
+
 namespace LIV2Kernel {
 using namespace LIV2Common;
 using namespace matmul;
@@ -143,7 +145,6 @@ protected:
 
     // ================================Init functions==================================
     __aicore__ inline void InitTilingData(const LIV2TilingData *__restrict tilingData);
-    __aicore__ inline void InitBuffers();
     __aicore__ inline void InitActualSeqLen(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensK,
                                             __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedK,
                                             __gm__ uint8_t *cmpResidualK);
@@ -152,27 +153,19 @@ protected:
     __aicore__ inline void SplitCoreByAICPU(uint32_t cubeCoreIdx, uint32_t vecCoreIdx,
                                             GlobalTensor<uint32_t> &metadataGm);
     __aicore__ inline uint32_t GetTotalBaseBlockNum();
-    __aicore__ inline uint32_t GetS2BaseBlockNumOnMask(uint32_t s1gIdx, uint32_t actS1Size, uint32_t actS2SizeOrig);
     // ================================Process functions================================
     __aicore__ inline void ProcessMain();
     __aicore__ inline void ProcessDecode();
     __aicore__ inline void ProcessBaseBlock(uint32_t loop, uint64_t s2LoopIdx, LIV2Common::RunInfo runInfo);
     __aicore__ inline void ProcessInvalid();
     // ================================Params Calc=====================================
-    __aicore__ inline void CalcGS1LoopParams(uint32_t bN2Idx);
-    __aicore__ inline void GetBN2Idx(uint32_t bN2Idx);
-    __aicore__ inline uint32_t GetActualSeqLen(uint32_t bIdx, uint32_t actualLenDims, bool isAccumSeq,
-                                               GlobalTensor<uint32_t> &cuSeqlensQGm, GlobalTensor<uint32_t> &sequsedQGm,
-                                               uint32_t defaultSeqLen);
     __aicore__ inline uint32_t GetActualSeqLenKey(uint32_t bIdx, uint32_t actualLenDims, bool isAccumSeq,
                                                   GlobalTensor<uint32_t> &cuSeqlensKGm,
                                                   GlobalTensor<uint32_t> &sequsedKGm, uint32_t defaultSeqLen,
                                                   uint32_t cmpRatio, GlobalTensor<uint32_t> &cmpResidualKGm);
     __aicore__ inline void GetS1S2ActualSeqLen(uint32_t bIdx, uint32_t &actS1Size, uint32_t &actS2Size,
                                                uint32_t &actS2SizeOrig);
-    __aicore__ inline void CalcS2LoopParams(uint32_t bN2LoopIdx, uint32_t gS1LoopIdx);
     __aicore__ inline void CalcRunInfo(uint32_t loop, uint32_t s2LoopIdx, LIV2Common::RunInfo &runInfo);
-    __aicore__ inline void DealActSeqLenIsZero(uint32_t bIdx, uint32_t n2Idx, uint32_t s1Start);
 };
 
 template <typename LIT>
@@ -213,16 +206,6 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::InitTilingData(const LIV2T
 }
 
 template <typename LIT>
-__aicore__ inline void LightningIndexerV2Kernel<LIT>::InitBuffers()
-{
-    if ASCEND_IS_AIV {
-        vectorService.InitBuffers(pipe);
-    } else {
-        matmulService.InitBuffers(pipe);
-    }
-}
-
-template <typename LIT>
 __aicore__ inline void LightningIndexerV2Kernel<LIT>::InitActualSeqLen(__gm__ uint8_t *cuSeqlensQ,
                                                                        __gm__ uint8_t *cuSeqlensK,
                                                                        __gm__ uint8_t *sequsedQ,
@@ -252,22 +235,6 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::InitActualSeqLen(__gm__ ui
 }
 
 template <typename LIT>
-__aicore__ inline uint32_t LightningIndexerV2Kernel<LIT>::GetActualSeqLen(uint32_t bIdx, uint32_t actualLenDims,
-                                                                          bool isAccumSeq,
-                                                                          GlobalTensor<uint32_t> &cuSeqlensQGm,
-                                                                          GlobalTensor<uint32_t> &sequsedQGm,
-                                                                          uint32_t defaultSeqLen)
-{
-    if (hasSequsedQ) {
-        return sequsedQGm.GetValue(bIdx);
-    } else if (hasCuSeqlensQ) {
-        return cuSeqlensQGm.GetValue(bIdx + 1) - cuSeqlensQGm.GetValue(bIdx);
-    } else {
-        return defaultSeqLen;
-    }
-}
-
-template <typename LIT>
 __aicore__ inline uint32_t LightningIndexerV2Kernel<LIT>::GetActualSeqLenKey(uint32_t bIdx, uint32_t actualLenDims,
                                                                              bool isAccumSeq,
                                                                              GlobalTensor<uint32_t> &cuSeqlensKGm,
@@ -289,8 +256,8 @@ template <typename LIT>
 __aicore__ inline void LightningIndexerV2Kernel<LIT>::GetS1S2ActualSeqLen(uint32_t bIdx, uint32_t &actS1Size,
                                                                           uint32_t &actS2Size, uint32_t &actS2SizeOrig)
 {
-    actS1Size = GetActualSeqLen(bIdx, constInfo.actualLenQDims, constInfo.isAccumSeqS1, cuSeqlensQGm, sequsedQGm,
-                                constInfo.qSeqSize);
+    actS1Size = LIV2Common::GetActualSeqLen(bIdx, hasCuSeqlensQ, hasSequsedQ, cuSeqlensQGm, sequsedQGm,
+                                            constInfo.qSeqSize);
     // 压缩前的actS2Size
     actS2SizeOrig = GetActualSeqLenKey(bIdx, constInfo.actualLenDims, constInfo.isAccumSeqS2, cuSeqlensKGm, sequsedKGm,
                                        constInfo.kSeqSize, constInfo.cmpRatio, cmpResidualKGm);
@@ -343,7 +310,9 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::SplitCoreByAICPU(uint32_t 
             // s2的切块数量
             uint32_t s2BaseNum;
             if (constInfo.attenMaskFlag) {
-                s2BaseNum = GetS2BaseBlockNumOnMask(splitCoreInfo.gS1End, actS1Size, actS2SizeOrig);
+                s2BaseNum = LIV2Common::GetMaskedS2BaseBlockNum(
+                    splitCoreInfo.gS1End, actS1Size, actS2SizeOrig, constInfo.s1BaseSize, constInfo.cmpRatio,
+                    constInfo.s2BaseSize);
             } else {
                 s2BaseNum = CeilDiv(actS2Size, constInfo.s2BaseSize);
             }
@@ -365,7 +334,9 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::SplitCoreByAICPU(uint32_t 
             // s2的切块数量
             uint32_t s2BaseNum;
             if (constInfo.attenMaskFlag) {
-                s2BaseNum = GetS2BaseBlockNumOnMask(splitCoreInfo.gS1End, actS1Size, actS2SizeOrig);
+                s2BaseNum = LIV2Common::GetMaskedS2BaseBlockNum(
+                    splitCoreInfo.gS1End, actS1Size, actS2SizeOrig, constInfo.s1BaseSize, constInfo.cmpRatio,
+                    constInfo.s2BaseSize);
             } else {
                 s2BaseNum = CeilDiv(actS2Size, constInfo.s2BaseSize);
             }
@@ -412,24 +383,6 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::SplitCoreByAICPU(uint32_t 
 }
 
 template <typename LIT>
-__aicore__ inline uint32_t LightningIndexerV2Kernel<LIT>::GetS2BaseBlockNumOnMask(uint32_t s1gIdx, uint32_t actS1Size,
-                                                                                  uint32_t actS2SizeOrig)
-{
-    if (actS2SizeOrig / constInfo.cmpRatio == 0) {
-        return 0;
-    }
-    uint32_t s1Offset = constInfo.s1BaseSize * s1gIdx;
-    // 压缩前的validS2LenBase
-    int32_t validS2LenBase = static_cast<int32_t>(actS2SizeOrig) - static_cast<int32_t>(actS1Size);
-    int32_t validS2Len =
-        (static_cast<int32_t>(s1Offset) + validS2LenBase + static_cast<int32_t>(constInfo.s1BaseSize)) /
-        static_cast<int32_t>(constInfo.cmpRatio);
-    validS2Len = Min(validS2Len, static_cast<int32_t>(actS2SizeOrig) / constInfo.cmpRatio);
-    validS2Len = Max(validS2Len, 1);
-    return (validS2Len + constInfo.s2BaseSize - 1) / constInfo.s2BaseSize;
-}
-
-template <typename LIT>
 __aicore__ inline uint32_t LightningIndexerV2Kernel<LIT>::GetTotalBaseBlockNum()
 {
     uint32_t totalBlockNum = 0;
@@ -444,8 +397,11 @@ __aicore__ inline uint32_t LightningIndexerV2Kernel<LIT>::GetTotalBaseBlockNum()
             continue;
         }
         for (uint32_t s1gIdx = 0; s1gIdx < s1GBaseNum; s1gIdx++) {
-            s2BaseNum = constInfo.isLDOpen ? GetS2BaseBlockNumOnMask(s1gIdx, actS1Size, actS2SizeOrig) :
-                                             (actS2Size > 0 ? 1 : 0);
+            s2BaseNum = constInfo.isLDOpen ?
+                              LIV2Common::GetMaskedS2BaseBlockNum(s1gIdx, actS1Size, actS2SizeOrig,
+                                                                 constInfo.s1BaseSize, constInfo.cmpRatio,
+                                                                 constInfo.s2BaseSize) :
+                              (actS2Size > 0 ? 1 : 0);
             totalBlockNum += s2BaseNum * constInfo.kHeadNum;
         }
     }
@@ -491,7 +447,9 @@ __aicore__ void inline LightningIndexerV2Kernel<LIT>::SplitCore(uint32_t curCore
         }
         for (uint32_t gS1Idx = 0; gS1Idx < s1GBaseNum; gS1Idx++) {
             if (constInfo.attenMaskFlag) {
-                s2BaseNum = GetS2BaseBlockNumOnMask(gS1Idx, actS1Size, actS2SizeOrig);
+                s2BaseNum = LIV2Common::GetMaskedS2BaseBlockNum(
+                    gS1Idx, actS1Size, actS2SizeOrig, constInfo.s1BaseSize, constInfo.cmpRatio,
+                    constInfo.s2BaseSize);
             }
             if (findLastCoreEnd && s2BaseNum == 0U) {
                 info.bN2Start = bN2Idx;
@@ -535,34 +493,6 @@ __aicore__ void inline LightningIndexerV2Kernel<LIT>::SplitCore(uint32_t curCore
                     lastGS1RemainBlockCnt += s2RemainBaseNum;
                     break;
                 }
-            }
-        }
-    }
-}
-
-template <typename LIT>
-__aicore__ inline void LightningIndexerV2Kernel<LIT>::DealActSeqLenIsZero(uint32_t bIdx, uint32_t n2Idx,
-                                                                          uint32_t s1Start)
-{
-    if ASCEND_IS_AIV {
-        if (constInfo.outputLayout == LI_V2_LAYOUT::TND) {
-            uint32_t tBase = cuSeqlensQGm.GetValue(bIdx);
-            uint32_t s1Count = cuSeqlensQGm.GetValue(bIdx + 1) - tBase;
-
-            for (uint32_t s1Idx = s1Start; s1Idx < s1Count; s1Idx++) {
-                uint64_t indiceOutOffset =
-                    (static_cast<uint64_t>(tBase) + s1Idx) * constInfo.kHeadNum * constInfo.topk + // T轴、s1轴偏移
-                    static_cast<uint64_t>(n2Idx) * constInfo.topk;                                 // N2轴偏移
-                vectorService.CleanInvalidOutput(indiceOutOffset);
-            }
-        } else if (constInfo.outputLayout == LI_V2_LAYOUT::BSND) {
-            for (uint32_t s1Idx = s1Start; s1Idx < constInfo.qSeqSize; s1Idx++) {
-                // B,S1,N2,K
-                uint64_t indiceOutOffset =
-                    static_cast<uint64_t>(bIdx) * constInfo.qSeqSize * constInfo.kHeadNum * constInfo.topk +
-                    static_cast<uint64_t>(s1Idx) * constInfo.kHeadNum * constInfo.topk +
-                    static_cast<uint64_t>(n2Idx) * constInfo.topk;
-                vectorService.CleanInvalidOutput(indiceOutOffset);
             }
         }
     }
@@ -638,106 +568,17 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::Init(__gm__ uint8_t *query
         keyGm.SetGlobalBuffer((__gm__ K_T *)key);
         matmulService.InitMm1GlobalTensor(blockTableGm, keyGm, queryGm);
     }
-    InitBuffers();
-}
-
-template <typename LIT>
-__aicore__ inline void LightningIndexerV2Kernel<LIT>::GetBN2Idx(uint32_t bN2Idx)
-{
-    tempLoopInfo.bN2Idx = bN2Idx;
-    tempLoopInfo.bIdx = bN2Idx / constInfo.kHeadNum;
-    tempLoopInfo.n2Idx = bN2Idx % constInfo.kHeadNum;
-}
-
-template <typename LIT>
-__aicore__ inline void LightningIndexerV2Kernel<LIT>::CalcS2LoopParams(uint32_t bN2LoopIdx, uint32_t gS1LoopIdx)
-{
-    tempLoopInfo.gS1Idx = gS1LoopIdx;
-    tempLoopInfo.actMBaseSize = constInfo.mBaseSize;
-    uint32_t remainedGS1Size = tempLoopInfo.actS1Size * constInfo.gSize - tempLoopInfo.gS1Idx * constInfo.mBaseSize;
-    if (remainedGS1Size <= constInfo.mBaseSize && remainedGS1Size > 0) {
-        tempLoopInfo.actMBaseSize = tempLoopInfo.mBasicSizeTail;
-    }
-
-    bool isEnd = (bN2LoopIdx == splitCoreInfo.bN2End) && (gS1LoopIdx == splitCoreInfo.gS1End);
-    uint32_t s2BlockNum;
-    if (constInfo.attenMaskFlag) {
-        s2BlockNum = GetS2BaseBlockNumOnMask(gS1LoopIdx, tempLoopInfo.actS1Size, tempLoopInfo.actS2SizeOrig);
-    } else {
-        s2BlockNum = (tempLoopInfo.actS2Size + constInfo.s2BaseSize - 1) / constInfo.s2BaseSize;
-    }
-    tempLoopInfo.s2LoopEnd = isEnd ? splitCoreInfo.s2End : s2BlockNum - 1;
-    if (splitCoreInfo.s2Start > 0 || tempLoopInfo.s2LoopEnd < s2BlockNum - 1) {
-        tempLoopInfo.isNeedLD = true;
-    } else {
-        tempLoopInfo.isNeedLD = false;
-    }
-}
-
-template <typename LIT>
-__aicore__ inline void LightningIndexerV2Kernel<LIT>::CalcGS1LoopParams(uint32_t bN2LoopIdx)
-{
-    GetBN2Idx(bN2LoopIdx);
-    GetS1S2ActualSeqLen(tempLoopInfo.bIdx, tempLoopInfo.actS1Size, tempLoopInfo.actS2Size, tempLoopInfo.actS2SizeOrig);
-    if ((tempLoopInfo.actS2Size == 0) || (tempLoopInfo.actS1Size == 0)) {
-        tempLoopInfo.curActSeqLenIsZero = true;
-        return;
-    }
-    tempLoopInfo.curActSeqLenIsZero = false;
-    tempLoopInfo.s2BasicSizeTail = tempLoopInfo.actS2Size % constInfo.s2BaseSize;
-    tempLoopInfo.s2BasicSizeTail =
-        (tempLoopInfo.s2BasicSizeTail == 0) ? constInfo.s2BaseSize : tempLoopInfo.s2BasicSizeTail;
-    tempLoopInfo.mBasicSizeTail = (tempLoopInfo.actS1Size * constInfo.gSize) % constInfo.mBaseSize;
-    tempLoopInfo.mBasicSizeTail =
-        (tempLoopInfo.mBasicSizeTail == 0) ? constInfo.mBaseSize : tempLoopInfo.mBasicSizeTail;
-
-    uint32_t gS1SplitNum = (tempLoopInfo.actS1Size * constInfo.gSize + constInfo.mBaseSize - 1) / constInfo.mBaseSize;
-    tempLoopInfo.gS1LoopEnd = (bN2LoopIdx == splitCoreInfo.bN2End) ? splitCoreInfo.gS1End : gS1SplitNum - 1;
-    if constexpr (LAYOUT_T == LI_V2_LAYOUT::BSND) {
-        if (tempLoopInfo.gS1LoopEnd == gS1SplitNum - 1 && constInfo.qSeqSize > tempLoopInfo.actS1Size) {
-            tempLoopInfo.needDealActS1LessThanS1 = true;
-        }
-    }
+    LIV2Common::InitBuffers(vectorService, matmulService, pipe);
 }
 
 template <typename LIT>
 __aicore__ inline void LightningIndexerV2Kernel<LIT>::CalcRunInfo(uint32_t loop, uint32_t s2LoopIdx,
                                                                   LIV2Common::RunInfo &runInfo)
 {
-    runInfo.loop = loop;
-    runInfo.bIdx = tempLoopInfo.bIdx;
-    runInfo.gS1Idx = tempLoopInfo.gS1Idx;
-    runInfo.s2Idx = s2LoopIdx;
-    runInfo.bN2Idx = tempLoopInfo.bN2Idx;
-    runInfo.isValid = s2LoopIdx <= tempLoopInfo.s2LoopEnd;
-    runInfo.isNeedLD = tempLoopInfo.isNeedLD;
-    if (runInfo.isNeedLD && s2LoopIdx == tempLoopInfo.s2LoopEnd) {
-        runInfo.saveWorkSpaceIdx = ldInfo.saveWorkSpaceIdx;
-        ldInfo.saveWorkSpaceIdx++;
-    }
-
-    if (!runInfo.isValid) {
+    if (!LIV2Common::InitRunInfo(loop, s2LoopIdx, runInfo, tempLoopInfo, constInfo, splitCoreInfo, ldInfo,
+                                 isOutputIdxOffsetValid)) {
         return;
     }
-
-    runInfo.actS1Size = tempLoopInfo.actS1Size;
-    runInfo.actS2Size = tempLoopInfo.actS2Size;
-    runInfo.actS2SizeOrig = tempLoopInfo.actS2SizeOrig;
-    // 计算实际基本块size
-    runInfo.actMBaseSize = tempLoopInfo.actMBaseSize;
-    runInfo.actualSingleProcessSInnerSize = constInfo.s2BaseSize;
-    uint32_t s2SplitNum = (tempLoopInfo.actS2Size + constInfo.s2BaseSize - 1) / constInfo.s2BaseSize;
-    if (runInfo.s2Idx == s2SplitNum - 1) {
-        runInfo.actualSingleProcessSInnerSize = tempLoopInfo.s2BasicSizeTail;
-    }
-    runInfo.actualSingleProcessSInnerSizeAlign =
-        LIV2Common::Align((uint32_t)runInfo.actualSingleProcessSInnerSize, LIV2Common::ConstInfo::BUFFER_SIZE_BYTE_32B);
-
-    runInfo.isFirstS2InnerLoop = s2LoopIdx == splitCoreInfo.s2Start;
-    runInfo.isLastS2InnerLoop = s2LoopIdx == tempLoopInfo.s2LoopEnd;
-    runInfo.isAllLoopEnd = (runInfo.bN2Idx == splitCoreInfo.bN2End) && (runInfo.gS1Idx == splitCoreInfo.gS1End) &&
-                           (runInfo.s2Idx == splitCoreInfo.s2End);
-    runInfo.isOutputIdxOffsetValid = isOutputIdxOffsetValid;
     runInfo.needTndPadding = false;
     if (runInfo.isFirstS2InnerLoop) {
         uint64_t actualSeqQPrefixSum;
@@ -785,7 +626,8 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::CalcRunInfo(uint32_t loop,
     runInfo.outputIdxCoreOffset = outputIdxCoreOffset;
     if ASCEND_IS_AIV {
         if (runInfo.needTndPadding) {
-            vectorService.DoTndPadding(runInfo);
+            LIV2Common::DoTndPadding(runInfo, constInfo.topk, constInfo.returnValueFlag, constInfo.NEG_INF_FLOAT,
+                                     constInfo.kHeadNum, constInfo.INVALID_IDX, EVENT_ID6, indiceOutGm, valueOutGm);
         }
     }
 }
@@ -851,13 +693,19 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::ProcessMain()
     LIV2Common::RunInfo runInfo;
     uint32_t gloop = 0;
     for (uint32_t bN2LoopIdx = splitCoreInfo.bN2Start; bN2LoopIdx <= splitCoreInfo.bN2End; bN2LoopIdx++) {
-        CalcGS1LoopParams(bN2LoopIdx);
+        LIV2Common::GetBN2Idx(tempLoopInfo, constInfo, bN2LoopIdx);
+        GetS1S2ActualSeqLen(
+            tempLoopInfo.bIdx, tempLoopInfo.actS1Size, tempLoopInfo.actS2Size, tempLoopInfo.actS2SizeOrig);
+        LIV2Common::CalcGS1LoopParams<LAYOUT_T == LI_V2_LAYOUT::BSND>(
+            tempLoopInfo, constInfo, splitCoreInfo, bN2LoopIdx);
         if (tempLoopInfo.curActSeqLenIsZero) {
-            DealActSeqLenIsZero(tempLoopInfo.bIdx, tempLoopInfo.n2Idx, 0U);
+            LIV2Common::DealActSeqLenIsZero<LI_V2_LAYOUT::TND, LI_V2_LAYOUT::BSND>(
+                tempLoopInfo.bIdx, tempLoopInfo.n2Idx, 0U, constInfo.topk, constInfo, cuSeqlensQGm, vectorService);
             continue;
         }
         for (uint32_t gS1LoopIdx = splitCoreInfo.gS1Start; gS1LoopIdx <= tempLoopInfo.gS1LoopEnd; gS1LoopIdx++) {
-            CalcS2LoopParams(bN2LoopIdx, gS1LoopIdx);
+            LIV2Common::CalcS2LoopParams(
+                tempLoopInfo, constInfo, splitCoreInfo, bN2LoopIdx, gS1LoopIdx);
             runInfo.s2Start = splitCoreInfo.s2Start;
             runInfo.s2LoopEnd = tempLoopInfo.s2LoopEnd;
             for (int s2LoopIdx = splitCoreInfo.s2Start; s2LoopIdx <= tempLoopInfo.s2LoopEnd; s2LoopIdx++) {
@@ -867,7 +715,9 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::ProcessMain()
             splitCoreInfo.s2Start = 0;
         }
         if (tempLoopInfo.needDealActS1LessThanS1) {
-            DealActSeqLenIsZero(tempLoopInfo.bIdx, tempLoopInfo.n2Idx, tempLoopInfo.actS1Size);
+            LIV2Common::DealActSeqLenIsZero<LI_V2_LAYOUT::TND, LI_V2_LAYOUT::BSND>(
+                tempLoopInfo.bIdx, tempLoopInfo.n2Idx, tempLoopInfo.actS1Size, constInfo.topk, constInfo,
+                cuSeqlensQGm, vectorService);
         }
         splitCoreInfo.gS1Start = 0;
     }
