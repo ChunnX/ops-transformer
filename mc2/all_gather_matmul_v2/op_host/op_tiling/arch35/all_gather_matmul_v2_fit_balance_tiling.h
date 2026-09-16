@@ -46,11 +46,10 @@ namespace fb = mc2tiling::fit_balance; // fit-balance 家族公共层
 static const fb::FitBalanceCalibration CALIBRATION = {
     /* aicpu（commMode != "ccu"）*/
     {
-        /* rows: 已标定形态 */
+        /* rows: {卡数, 斜率(us/MB), 截距(us)} */
         {
-            {"4_1_0_4", 5.841842, 8.590666}, // 950 AllGather 标卡 4P: R²=1.0000
-            // 8P 未标定(留空, 查表 miss 走平台默认行 + rankDim 折算缩放);
-            // 标定后在此追加 {"4_1_0_8", 斜率, 截距} 即生效
+            {4, 5.841842, 8.590666}, // 950 AllGather 标卡 4P: R²=1.0000
+            // 8P 未标定(留空, miss 走平台默认行 + rankDim 折算缩放); 标定后追加 {8, 斜率, 截距}
         },
         // platformDefault: 平台默认回退行, 用公共层默认值(勿动)
     },
@@ -58,21 +57,21 @@ static const fb::FitBalanceCalibration CALIBRATION = {
     {
         /* rows */
         {
-            {"4_1_0_4", 5.841842, 8.590666}, // TODO(CCU 重标): 当前沿用历史共用值(旧表无引擎维度)
+            {4, 5.841842, 8.590666}, // TODO(CCU 重标): 当前沿用历史共用值(旧表无引擎维度)
         },
     },
     /* matmul */
     {
-        /* cubeCalc: 按 dtype×calcType 查表的有效算力 (MACs/cycle) */
+        /* cubeCalc: {计算类型, A/B/C 字节数, 有效算力(MACs/cycle)} */
         {
-            {"4_1_1_1_2", 8192}, // 量化路径(fp8/fp4, 1B/1B/2B)
+            {fb::MatmulCalcType::QUANT, 1, 1, 2, 8192}, // 量化路径(fp8/fp4, 1B/1B/2B)
         },
 
         /* defaultComputesPerCycle = 4096(公共层默认, key 未命中回退) */
-        /* l2Param: L2 档位利用率 */
+        /* l2Param: {计算类型, A/B/C 字节数, L2 档位参数} */
         {
-            {"4_0_2_2_2", {80, 128, 0.95, 0.85, 0.75}}, // 半精度(2B/2B/2B)
-            {"4_1_1_1_2", {80, 128, 0.95, 0.85, 0.75}}, // 量化
+            {fb::MatmulCalcType::FP16, 2, 2, 2, {80, 128, 0.95, 0.85, 0.75}},  // 半精度(2B/2B/2B)
+            {fb::MatmulCalcType::QUANT, 1, 1, 2, {80, 128, 0.95, 0.85, 0.75}}, // 量化
         },
         /* defaultL2Param = {128,192,0.85,0.75,0.65}(公共层默认) */
         /* baseBlock: soc 最优基本块 */
