@@ -173,6 +173,11 @@ static void CheckMegaMoeInputs(const MegaMoeTensorInputs &inputs, int64_t epWorl
     TORCH_CHECK(((inputs.x.scalar_type() == at::kBFloat16) || (inputs.x.scalar_type() == at::kHalf)) &&
                     (inputs.topkIds.scalar_type() == at::kInt),
                 "dtype of x should be bfloat16, float16, dtype of topk_ids should be int.");
+    // CheckMegaMoeInputsA5 (which guards the mandatory weight lists) only runs for Ascend950, so A2/A3
+    // would otherwise reach the tiling path with an empty weight list.
+    if (!isAscend950) {
+        TORCH_CHECK(!inputs.weight1.empty() && !inputs.weight2.empty(), "weight1 and weight2 must not be empty");
+    }
     if (inputs.maskBuffer.has_value()) {
         const at::Tensor &mask = inputs.maskBuffer.value();
         TORCH_CHECK(mask.scalar_type() == at::kInt, "mask_buffer dtype must be int32.");
@@ -551,7 +556,11 @@ int64_t GetMegaMoeCclBufferSize(int64_t epWorldSize, int64_t moeExpertNum, int64
         TORCH_CHECK(dispatchQuantMode == 0 || dispatchQuantMode == 2 || dispatchQuantMode == 4,
                     "dispatch_quant_mode only support {0, 2, 4} on A2/A3, but got ", dispatchQuantMode);
 
-        bool isQuantRouting = (dispatchQuantMode == 4);
+        // A2/A3 only accept dispatch_quant_mode 0 (non-quant) or 2 (per-tensor INT8); mode 4 is the
+        // Ascend950 MXFP path. Deriving this from `== 4` left isQuantRouting permanently false here, so
+        // quant-routing calls were sized with the non-quant branch and the per-token scale region was
+        // dropped. This must agree with arch22 tiling's isQuantRouting (weight dtype derived).
+        bool isQuantRouting = (dispatchQuantMode == 2);
         // max_recv_token_num 为 0 时自动计算为 bs * epWorldSize * min(topK, expertPerRank)，
         if (maxRecvTokenNum == 0) {
             int64_t expertPerRank = moeExpertNum / epWorldSize;
