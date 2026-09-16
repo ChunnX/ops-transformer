@@ -238,7 +238,8 @@ CutResult WeightQuantMatmulAllReduceTiling310P::GetTilingResult()
         quantAllReduceTilingObj.GetTiling();
         mCutAllreduceOut = quantAllReduceTilingObj.tilingM_.cutRes;
     } else {
-        MMPlusAllReduce allReduceTilingObj(args_, args_.rankDim, KernelType::ALL_REDUCE, socVersionInput, isPerBlock_);
+        MMPlusAllReduce allReduceTilingObj(args_, args_.rankDim, KernelType::ALL_REDUCE, socVersionInput, isPerBlock_,
+                                           npuArch_);
         allReduceTilingObj.GetTiling();
         mCutAllreduceOut = allReduceTilingObj.tilingM_.cutRes;
     }

@@ -149,7 +149,8 @@ CutResult QuantMatmulAllReduceTiling310General::GetTilingResult()
         quantAllReduceTilingHcclObj.GetTiling();
         mCutAllreduceResult = quantAllReduceTilingHcclObj.tilingM_.cutRes;
     } else {
-        MMPlusAllReduce allReduceTilingHcclObj(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVer, isPerBlock_);
+        MMPlusAllReduce allReduceTilingHcclObj(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVer, isPerBlock_,
+                                               npuArch_);
         allReduceTilingHcclObj.GetTiling();
         mCutAllreduceResult = allReduceTilingHcclObj.tilingM_.cutRes;
     }
