@@ -24,8 +24,7 @@ std::string QfaLayoutToSerialString(QfaLayout layout)
         {QfaLayout::BSND, "BSND"},       {QfaLayout::BNSD, "BNSD"},       {QfaLayout::TND, "TND"},
         {QfaLayout::PA_BBND, "PA_BBND"}, {QfaLayout::PA_BNBD, "PA_BNBD"}, {QfaLayout::PA_NZ, "PA_NZ"},
         {QfaLayout::LSE_BNS, "LSE_BNS"}, {QfaLayout::LSE_NT, "LSE_NT"},   {QfaLayout::N2TGD, "N2TGD"},
-        {QfaLayout::NTD, "NTD"}};
-
+        {QfaLayout::NTD, "NTD"},         {QfaLayout::NT, "NT"},           {QfaLayout::BN2S1GD, "BN2S1GD"}};
     if (layout2Str.find(layout) != layout2Str.end()) {
         return layout2Str.at(layout);
     }
