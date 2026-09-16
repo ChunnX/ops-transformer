@@ -41,7 +41,7 @@ std::vector<bool> IsContiguousAxes(const at::Tensor &tensor)
 
     std::vector<int64_t> contiguousStride(ndim, 1);
     for (int64_t i = ndim - 2; i >= 0; i--) {
-        contiguousStride[i] = contiguousStride[i + 1] * sizes[i + 1];
+        contiguousStride[i] = contiguousStride[i + 1] * std::max(sizes[i + 1], int64_t(1));
     }
 
     for (int64_t i = 0; i < ndim; i++) {
