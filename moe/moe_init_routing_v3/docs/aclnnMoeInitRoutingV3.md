@@ -222,7 +222,10 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>x（aclTensor）</td>
       <td>输入</td>
       <td>MOE的输入，即token特征输入</td>
-      <td>shape为(NUM_ROWS, H)</td>
+      <td><ul>
+        <li>shape为(NUM_ROWS, H);</li>
+        <li>quantMode为9或13的MXFP4/INT4动态量化场景，以及quantMode为-1且x数据类型为FLOAT4_E2M1的非量化透传场景，H要求为偶数。</li>
+        </ul></td>
       <td><ul>
         <li>quantMode=-1：支持FLOAT16、BFLOAT16、FLOAT32、INT8、HIFLOAT8、FLOAT4_E2M1、FLOAT8_E4M3FN、FLOAT8_E5M2;</li>
         <li>quantMode=0、1：支持FLOAT16、BFLOAT16、FLOAT32;</li>
