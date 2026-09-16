@@ -12,13 +12,11 @@ import torch_npu
 from torch.library import impl
 from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
-ATTN_PROLOG_QWKV_OP_NAME = "ds41.attn_prolog_qwkv"
 
-
-class AttnPrologQwkvOpBuilder(OpBuilder):
+class IndexerPrologueQwOpBuilder(OpBuilder):
     def __init__(self):
-        super(AttnPrologQwkvOpBuilder, self).__init__(
-            ATTN_PROLOG_QWKV_OP_NAME, category="attention"
+        super(IndexerPrologueQwOpBuilder, self).__init__(
+            "ds41.indexer_prologue_qw", category="attention"
         )
 
     def sources(self):
@@ -29,7 +27,7 @@ class AttnPrologQwkvOpBuilder(OpBuilder):
         """PyTorch operator signature."""
         return [
             (
-                "ds41.attn_prolog_qwkv(Tensor x, Tensor qr, Tensor wqb, Tensor ww, "
+                "ds41.indexer_prologue_qw(Tensor x, Tensor qr, Tensor wqb, Tensor ww, "
                 "Tensor descale_qr, Tensor descale_wqb, Tensor rope_sin, Tensor rope_cos, "
                 "*, float softmax_scale, Tensor? q=None, Tensor? descale_q=None, "
                 "Tensor? w=None) -> (Tensor, Tensor, Tensor)"
@@ -39,7 +37,7 @@ class AttnPrologQwkvOpBuilder(OpBuilder):
     def register_meta(self):
         """Register the FakeTensor/Meta output implementation."""
         @impl(get_as_library(), self.name, "Meta")
-        def attn_prolog_qwkv_meta(
+        def indexer_prologue_qw_meta(
             x,
             qr,
             wqb,
@@ -66,11 +64,12 @@ class AttnPrologQwkvOpBuilder(OpBuilder):
             return q_out, descale_out, w_out
 
 
-attn_prolog_qwkv_op_builder = AttnPrologQwkvOpBuilder()
-attn_prolog_qwkv_op_builder._ensure_initialized()
+indexer_prologue_qw_op_builder = IndexerPrologueQwOpBuilder()
+indexer_prologue_qw_op_builder._ensure_initialized()
 
 
-def _run_dsl(
+@impl(get_as_library(), indexer_prologue_qw_op_builder.name, "PrivateUse1")
+def indexer_prologue_qw(
     x,
     qr,
     wqb,
@@ -85,9 +84,10 @@ def _run_dsl(
     descale_q=None,
     w=None,
 ):
-    from .op import attn_prolog_qwkv as dsl_attn_prolog_qwkv
+    """Run the CANNBotDSL kernel through the Torch NPU dispatcher."""
+    from ops.indexer_prologue_qw import indexer_prologue_qw as dsl_indexer_prologue_qw
 
-    return dsl_attn_prolog_qwkv(
+    return dsl_indexer_prologue_qw(
         x,
         qr,
         wqb,
@@ -101,73 +101,3 @@ def _run_dsl(
         descale_q=descale_q,
         w=w,
     )
-
-
-@impl(get_as_library(), attn_prolog_qwkv_op_builder.name, "PrivateUse1")
-def attn_prolog_qwkv(
-    x,
-    qr,
-    wqb,
-    ww,
-    descale_qr,
-    descale_wqb,
-    rope_sin,
-    rope_cos,
-    *,
-    softmax_scale,
-    q=None,
-    descale_q=None,
-    w=None,
-):
-    """Dispatch to the in-tree CANNBotDSL host entry."""
-    return _run_dsl(
-        x,
-        qr,
-        wqb,
-        ww,
-        descale_qr,
-        descale_wqb,
-        rope_sin,
-        rope_cos,
-        softmax_scale=softmax_scale,
-        q=q,
-        descale_q=descale_q,
-        w=w,
-    )
-
-
-@torch.library.register_kernel(
-    "cann_ops_transformer::" + ATTN_PROLOG_QWKV_OP_NAME, None
-)
-def attn_prolog_qwkv_fallback(
-    x,
-    qr,
-    wqb,
-    ww,
-    descale_qr,
-    descale_wqb,
-    rope_sin,
-    rope_cos,
-    *,
-    softmax_scale,
-    q=None,
-    descale_q=None,
-    w=None,
-):
-    return attn_prolog_qwkv(
-        x,
-        qr,
-        wqb,
-        ww,
-        descale_qr,
-        descale_wqb,
-        rope_sin,
-        rope_cos,
-        softmax_scale=softmax_scale,
-        q=q,
-        descale_q=descale_q,
-        w=w,
-    )
-
-
-torch.compiler.allow_in_graph(attn_prolog_qwkv)

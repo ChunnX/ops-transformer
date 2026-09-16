@@ -1,4 +1,3 @@
-#!/usr/bin/env bash
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
@@ -7,8 +6,4 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 
-set -euo pipefail
-
-ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
-cd "$ROOT"
-exec "${PYTHON:-python3}" -m pytest -q experimental/attention/attn_prolog_qwkv_dsl/tests "$@"
+"""CPU golden lives in this tests/ directory; torch_extension is schema-only."""
