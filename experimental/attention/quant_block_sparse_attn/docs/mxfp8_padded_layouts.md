@@ -20,7 +20,11 @@ nor prefetches cu_seqlens_q in these layout instances. TND still requires its in
 Sparse tensors retain [B,Nq,Qb,Kb] / [B,Nq,Qb]; Qb must cover ceil(Sq/q_block_size).
 Each batch uses the full Sq dimension, including a final partial sparse block.
 The existing metadata scheduler is driven by these sparse rows and requires no
-new layout-specific scheduling format. Regenerate metadata when sparse rows change.
+new layout-specific scheduling format. Both metadata and main-op calls must use
+the same layout and null Q length inputs. Metadata validates the layout/mode,
+requires 3D [B,Nq,Qb] sparse rows for padded Q, and preserves None at the Torch/ACLNN
+boundary. Regenerate metadata when sparse rows change. The MX kernel clips each
+metadata partition end to ceil(Sq/q_block_size), even when Qb has excess capacity.
 
 Layout is encoded in the existing LAYOUT_T tiling key and selected by constexpr
 branches. Physical Sq is passed in MX tiling data. Rebuild host and device together:
@@ -30,8 +34,9 @@ and TND/TN output conventions are retained.
 Validation: the existing InferShape CSV runner includes BSND/BNSD cases, and
 test_quant_block_sparse_attn_shape_infershape.cpp checks the production address helpers on CPU.
 On an Ascend device, set `QBSA_CHECK_PADDED_LAYOUTS=1` when running the existing
-MXFP8 golden in eager mode. It reuses each TND case's Q/K/V/scales/sparse metadata,
-repackages Q and Q scale, and compares both padded outputs and BNS LSE exactly.
+MXFP8 golden in eager mode. It reuses each TND case's Q/K/V/scales/sparse inputs,
+regenerates metadata separately for BSND/BNSD, repackages Q and Q scale, and
+compares both padded outputs and BNS LSE exactly.
 The equivalence check skips TND cases with unequal or zero Q lengths.
 Include B>1, GQA, S1 tails, empty sparse rows and causal cases;
 enable LSE to exercise its output. Performance must be checked on device separately.
@@ -55,3 +60,6 @@ python qbsa_mxfp8_golden.py --csv --case_files qbsa_mxfp8_stc.csv --case_name <c
 The graph path uses the same public-layout packing and valid-token comparison.
 The CPU reference stays in packed TND/TN; the test adapters convert only at the
 operator boundary. Existing STC cases are retained.
+
+See [layout/metadata review](QBSA_LAYOUT_METADATA_REVIEW.md) for the follow-up
+fixes, portable CPU regression commands and device validation still required.

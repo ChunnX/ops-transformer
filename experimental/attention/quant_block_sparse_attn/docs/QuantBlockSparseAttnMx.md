@@ -71,6 +71,13 @@ torch.ops.custom.npu_quant_block_sparse_attn(
 ) -> Tuple[Tensor, Tensor]
 ```
 
+## BSND / BNSD 布局与 metadata
+
+`quant_mode=2` 的完整布局约定见 [padded layout 说明](mxfp8_padded_layouts.md)，
+本轮核查、补齐内容与验证状态见 [layout 与 metadata 复核说明](QBSA_LAYOUT_METADATA_REVIEW.md)。
+metadata 与主算子必须使用相同的 `layout_q` 和稀疏输入；新布局的两处调用均传
+`cu_seqlens_q=None`、`seqused_q=None`。metadata 调度格式仍为逻辑 `(B,Nq,Qb)` 分核范围。
+
 ## 参数说明
 
 维度符号说明：
@@ -119,10 +126,10 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>query</td>
       <td>输入</td>
       <td>Query 输入。</td>
-      <td>不支持空 Tensor。PyTorch 接入层会将该输入转为连续 Tensor。MXFP8 路径仅支持 TND 布局。</td>
+      <td>不支持空 Tensor。MXFP8 支持 TND、BSND、BNSD；BSND/BNSD 要求调用者传入连续 Q 和 q_descale。</td>
       <td>FLOAT8_E4M3FN</td>
       <td>ND</td>
-      <td>(T1,N1,D)</td>
+      <td>TND:(T1,N1,D)；BSND:(B,Sq,N1,D)；BNSD:(B,N1,Sq,D)</td>
     </tr>
     <tr>
       <td>key</td>
@@ -149,7 +156,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>每 32 个 D 元素对应一个 e8m0 scale；末维 2 表示相邻两个 32-group 的 scale 打包。</td>
       <td>FLOAT8_E8M0</td>
       <td>ND</td>
-      <td>(T1,N1,D/64,2)</td>
+      <td>TND:(T1,N1,D/64,2)；BSND:(B,Sq,N1,D/64,2)；BNSD:(B,N1,Sq,D/64,2)</td>
     </tr>
     <tr>
       <td>k_descale</td>
@@ -209,7 +216,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>cu_seqlens_q</td>
       <td>输入</td>
       <td>Query 累积序列长度。</td>
-      <td>TND + PA_BNBD 场景必传，实际 Q 长度由相邻前缀差计算。</td>
+      <td>TND 场景必传，实际 Q 长度由相邻前缀差计算；BSND/BNSD 必须传 None，每个 batch 的 Q 长度为 shape 中的 Sq。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B+1)</td>
@@ -236,7 +243,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>seqused_kv</td>
       <td>输入</td>
       <td>每个 batch 的 KV 实际使用长度。</td>
-      <td>TND + PA_BNBD 场景必传。</td>
+      <td>TND、BSND、BNSD + PA_BNBD 场景均必传。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B)</td>
@@ -254,7 +261,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>metadata</td>
       <td>输入</td>
       <td>负载均衡元数据。</td>
-      <td>MXFP8 路径下为可选输入，不允许传空（None）；如传入则必须为由 npu_quant_block_sparse_attn_metadata 生成的有效 1D INT32 Tensor。</td>
+      <td>接口声明为可选输入，但 MXFP8 路径必传，必须为 npu_quant_block_sparse_attn_metadata 生成的有效 1D INT32 Tensor。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(metadata_size)</td>
@@ -299,7 +306,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>layout_q</td>
       <td>输入属性</td>
       <td>Query 数据布局。</td>
-      <td>MXFP8 路径仅支持 "TND"。</td>
+      <td>MXFP8 支持 "TND"、"BSND"、"BNSD"。</td>
       <td>STRING</td>
       <td>-</td>
       <td>-</td>
@@ -317,7 +324,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>layout_out</td>
       <td>输入属性</td>
       <td>输出布局。</td>
-      <td>仅支持 "TND"。</td>
+      <td>必须与 layout_q 相同："TND"、"BSND" 或 "BNSD"。</td>
       <td>STRING</td>
       <td>-</td>
       <td>-</td>
@@ -356,7 +363,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>-</td>
       <td>BFLOAT16</td>
       <td>ND</td>
-      <td>(T1,N1,D_v)</td>
+      <td>TND:(T1,N1,D_v)；BSND:(B,Sq,N1,D_v)；BNSD:(B,N1,Sq,D_v)</td>
     </tr>
     <tr>
       <td>softmax_lse</td>
@@ -365,7 +372,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>-</td>
       <td>FLOAT32</td>
       <td>ND</td>
-      <td>return_softmax_lse=True:(T1,N1); return_softmax_lse=False:()</td>
+      <td>开启时 TND:(T1,N1)，BSND/BNSD:(B,N1,Sq)；关闭时无有效 LSE，新布局返回 shape (0,)</td>
     </tr>
   </tbody>
   </table>
@@ -374,8 +381,8 @@ torch.ops.custom.npu_quant_block_sparse_attn(
 
 PyTorch 接口返回 `(attention_out, softmax_lse)`：
 
-- `attention_out`：BF16 Tensor，最后一维为 `D_v`。MXFP8 路径固定按 TND 语义返回 `(T1,N1,D_v)`。
-- `softmax_lse`：FLOAT32 Tensor。`return_softmax_lse=True` 时返回 `(T1,N1)`（注意：与 `quant_mode=1` 的 `(N1,T1)` 布局不同）；`return_softmax_lse=False` 时返回无有效 LSE 的占位 Tensor。
+- `attention_out`：BF16 Tensor，最后一维为 `D_v`。布局与 Q 一致：TND 为 `(T1,N1,D_v)`，BSND 为 `(B,Sq,N1,D_v)`，BNSD 为 `(B,N1,Sq,D_v)`。
+- `softmax_lse`：FLOAT32 Tensor。`return_softmax_lse=True` 时，TND 返回 `(T1,N1)`，BSND/BNSD 返回 `(B,N1,Sq)`（与 `quant_mode=1` 的 `(N1,T1)` 布局不同）；`return_softmax_lse=False` 时返回无有效 LSE 的占位 Tensor。
 
 
 ## 约束说明
@@ -561,8 +568,8 @@ QuantBlockSparseAttnMx 算子约束分为 4 个档位，按约束复杂程度递
 | PA_BNBD | Paged Attention KV Cache 排布，逻辑形态为 `[block_num, N2, pa_block_size, D或D_v]`。 |
 | 4D PA | 当前支持的 KV Cache 存储形态；接口传入 4D `key`、4D `value` 和 5D `k_descale`、5D `v_descale` 视图。 |
 | BatchSize | Batch 数，对应 `sparse_indices`、`sparse_seq_len`、`block_table` 的第 1 维。 |
-| QueryTokenNum | 所有 batch 的 Query 有效 token 数之和，对应 `query` 的 T 轴。 |
-| QueryMaxSeqLen | 单个 batch 的 Query 实际最大序列长度，由 `cu_seqlens_q` 的相邻前缀差语义决定。 |
+| QueryTokenNum | 所有 batch 的 Query 有效 token 数之和；TND 对应 T 轴，BSND/BNSD 为 B*Sq。 |
+| QueryMaxSeqLen | TND 由 `cu_seqlens_q` 相邻前缀差决定；BSND/BNSD 固定为 Q shape 的 Sq。 |
 | KeyValueMaxSeqLen | 单个 batch 的 KV 实际最大序列长度，由 `seqused_kv` 的数值语义决定。 |
 | N1 | Query head 数，对应 `query` 的 N 轴和 `sparse_indices` 的第 2 维。 |
 | N2 | KV head 数，对应 `key`、`value` 的 N 轴。 |
@@ -584,14 +591,14 @@ QuantBlockSparseAttnMx 算子约束分为 4 个档位，按约束复杂程度递
 - 单参数约束
 
   - `query`、`key`、`value` 数据类型仅支持 `FLOAT8_E4M3FN`，数据格式仅支持 ND。
-  - `query` 仅支持 3D Tensor，MXFP8 路径下 `layout_q` 必须为 `"TND"`，shape 为 `(QueryTokenNum, N1, D)`。
+  - `query` 支持 3D TND `(QueryTokenNum,N1,D)`、4D BSND `(B,Sq,N1,D)` 和 4D BNSD `(B,N1,Sq,D)`；BSND/BNSD 的所有 batch 均使用完整 Sq。
   - `query` 不支持空 Tensor，且 `D` 当前固定为 128。
   - `key` 仅支持 4D PA 形态，shape 为 `(block_num, N2, pa_block_size, D)`，其中 `D` 固定为 128，`pa_block_size` 必须为 `sparse_kv_block_size` 的正整数倍且不超过 1024。
   - `value` 仅支持与 `key` 对应的 4D PA 形态，shape 为 `(block_num, N2, pa_block_size, D_v)`，其中 `D_v` 固定为 128，`pa_block_size` 必须与 `key` 第 3 维一致。
-  - `attention_out` 数据类型为 `BFLOAT16`，数据格式为 ND。输出 shape 固定为 `(QueryTokenNum, N1, D_v)`。
+  - `attention_out` 数据类型为 `BFLOAT16`，数据格式为 ND。输出布局与 Q 相同，最后一维为 D_v。
   - `sparse_q_block_size` 和 `sparse_kv_block_size` 各支持 64 或 128，且二者必须相等。
-  - `layout_q` 仅支持 `TND`。
-  - `layout_out` 仅支持 `TND`。
+  - `layout_q` 支持 `TND`、`BSND`、`BNSD`。
+  - `layout_out` 必须显式设置为与 `layout_q` 相同的布局。
   - `quant_mode` 支持1 和 2，1表示`FP8`量化，2表示 `MXFP8`量化。
   - `softmax_scale` 为 float 属性，取值范围必须为 `(0, 1]`，常用值为 `1 / sqrt(D)`。
 
@@ -604,7 +611,7 @@ QuantBlockSparseAttnMx 算子约束分为 4 个档位，按约束复杂程度递
 - 一致性约束
 
   - `N1` 必须是 `N2` 的整数倍。
-  - `sparse_indices` 必须按 `(BatchSize, N1, max_Qb, max_Kb)` 传入，`sparse_seq_len` 必须按 `(BatchSize, N1, max_Qb)` 传入；当前主算子默认这两个 Tensor 的 shape 正确，不在 host 中对 max_Qb 和 max_Kb 进行拦截校验。
+  - `sparse_indices` 必须按 `(BatchSize, N1, max_Qb, max_Kb)` 传入，`sparse_seq_len` 必须按 `(BatchSize, N1, max_Qb)` 传入；host 校验这些 Tensor 的 shape 一致性；BSND/BNSD 还要求 max_Qb 至少为 ceil(Sq/sparse_q_block_size)。
   - `block_table` 必须按 `(BatchSize, max_block_num_per_batch)` 传入。主算子使用 `sparse_indices.shape[2]` 作为 `max_Qb`，使用 `block_table.shape[1]` 作为 `max_block_num_per_batch`，二者均必须大于 0。
   - `BatchSize`、`N1`、`N2`、`G` 均必须大于 0。`BatchSize`<= `65536`，`N1` <= `128`，`N2` <= `8`，`G` <= `16`。
   - `S1`、`S2` 均小于 `20M` ，不拦截。
@@ -613,7 +620,7 @@ QuantBlockSparseAttnMx 算子约束分为 4 个档位，按约束复杂程度递
 - 特性交叉约束
 
   - `query`、`key`、`value` 的 head dim 必须与量化参数、稀疏 block 参数和输出 head dim 保持一致。
-  - `layout_q` 固定为 TND，`attention_out`、`softmax_lse` 按固定输出语义返回。
+  - `attention_out` 与 Q 布局相同；TND 的 LSE 为 TN，BSND/BNSD 的 LSE 为 BNS。
 
 #### 量化参数组
 
@@ -621,7 +628,7 @@ QuantBlockSparseAttnMx 算子约束分为 4 个档位，按约束复杂程度递
 
   - `q_descale`、`k_descale`、`v_descale` 数据类型仅支持 `FLOAT8_E8M0`，数据格式仅支持 ND。
   - `p_scale` 数据类型支持 `FLOAT8_E8M0` 或 `FLOAT32`，数据格式仅支持 ND。
-  - `q_descale` 表示 Query per-token-group 反量化缩放，shape 为 4D `(QueryTokenNum, N1, D/64, 2)`，其中末维 2 表示相邻两个 32-group scale 打包，`D/64` 为 D 轴 scale group 对数。
+  - `q_descale` 表示 Query per-token-group 反量化缩放，TND 的 shape 为 4D `(QueryTokenNum,N1,D/64,2)`；BSND/BNSD 的 shape 分别为 5D `(B,Sq,N1,D/64,2)` / `(B,N1,Sq,D/64,2)`，其中末维 2 表示相邻两个 32-group scale 打包，`D/64` 为 D 轴 scale group 对数。
   - `k_descale` 表示 Key per-token-group 反量化缩放，需与 PA KV Cache 的物理 block、KV head、block 内 token 和 D-group 对应，shape 为 5D `(block_num, N2, pa_block_size, D/64, 2)`。
   - `v_descale` 表示 Value per-channel-group 反量化缩放，沿 S 轴每 32 个 token 分一组，shape 为 5D `(block_num, N2, pa_block_size/64, D_v, 2)`。
   - `p_scale` 表示 softmax 概率 per-tensor 静态量化缩放，允许传空，传空时使用默认值 1.0 进行量化计算；非空传入时 shape 必须为 `(1)`，数据类型为 `FLOAT8_E8M0` 或 `FLOAT32`。
@@ -632,7 +639,7 @@ QuantBlockSparseAttnMx 算子约束分为 4 个档位，按约束复杂程度递
 
 - 一致性约束
 
-  - `q_descale` 的 token/head/D-group 维度必须与 `query` 的 `QueryTokenNum`、`N1`、`D` 对齐。
+  - `q_descale` 的 batch/sequence/head 轴顺序必须与 Q 一致，末两维为 `(ceil(D/64),2)`；BSND/BNSD 的 Q 和 q_descale 必须连续。
   - `k_descale` 的 PA block、KV head、block 内 token、D-group 维度必须与 `key`、`block_table`、`pa_block_size`、`D` 对齐。
   - `v_descale` 的 PA block、KV head、S-group、D_v 维度必须与 `value`、`block_table`、`pa_block_size`、`D_v` 对齐。
   - `p_scale` 非空时数值应大于 0，且是有限正数；Tiling 阶段无法读取 Tensor 数值，该数值合法性由调用者保证。
@@ -703,16 +710,16 @@ QuantBlockSparseAttnMx 算子约束分为 4 个档位，按约束复杂程度递
 - 单参数约束
 
   - `cu_seqlens_q`、`seqused_kv` 数据类型仅支持 `INT32`，数据格式仅支持 ND。
-  - `cu_seqlens_q` shape 为 `(BatchSize + 1)`，`seqused_kv` shape 为 `(BatchSize)`。
+  - TND 的 `cu_seqlens_q` shape 为 `(BatchSize + 1)`；BSND/BNSD 的 `cu_seqlens_q` 必须为 None。三种布局的 `seqused_kv` shape 均为 `(BatchSize)`。
 
 - 存在性约束
 
-  - TND + PA_BNBD 场景必须传入 `cu_seqlens_q` 和 `seqused_kv`。
+  - TND + PA_BNBD 必须传入 `cu_seqlens_q` 和 `seqused_kv`；BSND/BNSD + PA_BNBD 必须传入 `seqused_kv`，但 `cu_seqlens_q` 和 `seqused_q` 必须为 None。
   - `cu_seqlens_kv` 和 `seqused_q` 为预留参数，必须传空；传入非空 Tensor 时 host 侧将拦截并报错。
 
 - 一致性约束
 
-  - `cu_seqlens_q` 应从 0 开始单调非降，末尾值等于 QueryTokenNum。
+  - TND 的 `cu_seqlens_q` 应从 0 开始单调非降，末尾值等于 QueryTokenNum；BSND/BNSD 不接受 Q 长度 Tensor，batch 起点为 b*Sq。
   - `seqused_kv` 每个元素应在 `[0, KeyValueMaxSeqLen]` 范围内。
   - `seqused_*`、`cu_seqlens_*` 的 Batch 语义必须与 `sparse_indices`、`sparse_seq_len`、`block_table` 保持一致。
 
@@ -778,7 +785,7 @@ QuantBlockSparseAttnMx 算子约束分为 4 个档位，按约束复杂程度递
 
 - 一致性约束
 
-  - `softmax_lse` 的 token/head 维度需与 `query` 的 N1 对齐。MXFP8 路径下 `softmax_lse` shape 为 `(T1, N1)`。
+  - LSE 开启时，TND 的 `softmax_lse` shape 为 `(T1,N1)`；BSND/BNSD 均为 `(B,N1,Sq)`。关闭时新布局返回 shape `(0,)`。
   - 当 `sparse_seq_len` 对应行没有有效 KV block 时，该行 LSE 置为 `-FLT_MAX`。
 
 - 特性交叉约束

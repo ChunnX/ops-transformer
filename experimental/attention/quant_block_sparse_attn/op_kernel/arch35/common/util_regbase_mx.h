@@ -19,6 +19,14 @@
 #include "../../quant_block_sparse_attn_const.h"
 
 namespace regbasemx {
+// Metadata partitions sparse table capacity, which may exceed the physical Q
+// sequence. Always clip a partition end before reading rows or computing tails.
+__aicore__ inline constexpr uint32_t MxS1LoopEnd(uint32_t actualS1Size, uint32_t blockSize, uint32_t metadataEnd)
+{
+    const uint32_t rows = actualS1Size / blockSize + (actualS1Size % blockSize != 0U);
+    return metadataEnd != 0U && metadataEnd < rows ? metadataEnd : rows;
+}
+
 // tokenBase is cu_seqlens_q[b] for TND, b * physical Sq for padded layouts.
 // Return the token/head slot; multiply by D, Dv or scale width at the call site.
 template <QBSALayout layout>

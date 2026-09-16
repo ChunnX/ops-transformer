@@ -1,5 +1,9 @@
 # QBSA-MXFP8 新增 BSND / BNSD 修改说明
 
+> 本文记录 PR #11704 原始实现。本轮复核发现并修复了 metadata 接口校验、None 透传、
+> metadata 终点越过实际 Sq 等遗漏，详见 [layout 与 metadata 复核说明](QBSA_LAYOUT_METADATA_REVIEW.md)。
+> 本文末尾的历史验证记录不代表本轮环境已执行过相同测试。
+
 ## 基线与范围
 
 基于本地 `master` 提交 `125200e0a`，目标分支为 `layout`。
@@ -18,11 +22,11 @@ MX tiling data 新增 `qSeqSize`，传递 padded Q 的物理序列长度 Sq。
 
 ## 输入输出约定
 
-| layout_q / layout_out | Q | Q descale | attention_out | LSE |
-| --- | --- | --- | --- | --- |
-| TND | [T,Nq,D] | [T,Nq,ceil(D/64),2] | [T,Nq,Dv] | [T,Nq] |
-| BSND | [B,Sq,Nq,D] | [B,Sq,Nq,ceil(D/64),2] | [B,Sq,Nq,Dv] | [B,Nq,Sq] |
-| BNSD | [B,Nq,Sq,D] | [B,Nq,Sq,ceil(D/64),2] | [B,Nq,Sq,Dv] | [B,Nq,Sq] |
+| layout_q / layout_out | Q           | Q descale              | attention_out | LSE       |
+| --------------------- | ----------- | ---------------------- | ------------- | --------- |
+| TND                   | [T,Nq,D]    | [T,Nq,ceil(D/64),2]    | [T,Nq,Dv]     | [T,Nq]    |
+| BSND                  | [B,Sq,Nq,D] | [B,Sq,Nq,ceil(D/64),2] | [B,Sq,Nq,Dv]  | [B,Nq,Sq] |
+| BNSD                  | [B,Nq,Sq,D] | [B,Nq,Sq,ceil(D/64),2] | [B,Nq,Sq,Dv]  | [B,Nq,Sq] |
 
 必须显式传入匹配的 `layout_q` 和 `layout_out`。本版不增加两者之间的布局转换。
 Q 和 Q descale 要求连续。attention_out 为 BF16，LSE 为 FP32。
@@ -57,8 +61,10 @@ TND 仍要求 int32 [B+1] 的累积 Q 长度。
    额外提供 `QBSA_CHECK_PADDED_LAYOUTS=1` 的 TND 等价回归入口，仅比较各 batch Q 等长且非零的用例。
 9. **TTK**：`tests/assets/bsa_ttk_ops.py` 修正 BNSD 的 batch/head/sequence 识别；
    `tests/assets/impl/inputs.py` 生成对应公共 Q/QScale 布局，`impl/golden.py` 返回对应 output 和 BNS LSE。
-10. **Metadata**：已检查独立 metadata 算子，它按 sparse_seq_len 的 batch/head/query-row 调度，
-    不使用 Q 的物理地址，本版不改变 metadata 格式；修改有效长度/稀疏行后需重新生成 metadata。
+10. **Metadata**：独立 metadata 算子按 sparse_seq_len 的 batch/head/query-row 调度，
+    不使用 Q 的物理地址，因此不需要改变 metadata 格式。但原 PR 的接口校验及 Torch None 透传未适配完整，
+    已在本轮补齐；主 kernel 同时截断 metadata 的 Q 行终点，避免超额稀疏行越过实际 Sq。
+    修改稀疏行后需重新生成 metadata。
 
 ## STC 与单元测试
 

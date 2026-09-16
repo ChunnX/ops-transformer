@@ -211,11 +211,8 @@ private:
     __aicore__ inline uint32_t GetS1LoopEnd(uint32_t bn1Idx, uint32_t bn1EndIdx, uint32_t s1EndIdx,
                                             uint32_t actualS1Size) const
     {
-        const uint32_t loopEnd = (actualS1Size + constInfo.qSparseBlockSize - 1U) / constInfo.qSparseBlockSize;
-        if (s1EndIdx != 0U && bn1Idx == bn1EndIdx - 1U) {
-            return s1EndIdx;
-        }
-        return loopEnd;
+        const uint32_t metadataEnd = bn1Idx == bn1EndIdx - 1U ? s1EndIdx : 0U;
+        return MxS1LoopEnd(actualS1Size, constInfo.qSparseBlockSize, metadataEnd);
     }
 
     __aicore__ inline bool ShouldMoveSparseBlockBack(int64_t previousBlockIdx, int64_t currentBlockIdx) const
