@@ -13,26 +13,66 @@
  * \brief onnx plugin for npu custom operator npu_scaled_masked_softmax
  */
 
-#include "onnx_common.h"
+#include <cstdint>
+#include <limits>
+
+#include "nlohmann/json.hpp"
+#include "graph/operator.h"
+#include "register/register.h"
 
 namespace domi {
-using NodeProto = ge::onnx::NodeProto;
-
-static Status ParseParamsNPUScaledMaskedSoftmax(const Message *op_src, ge::Operator &op_dest)
+static bool GetInt64(const nlohmann::json &value, int64_t &parsed_value)
 {
-    const NodeProto *node = dynamic_cast<const NodeProto *>(op_src);
-    if (node == nullptr) {
-        OP_LOGE(GetOpName(op_dest).c_str(), "Dynamic cast op_src to NodeProto failed!");
-        return FAILED;
+    if (!value.is_number_integer() ||
+        (value.is_number_unsigned() &&
+         value.get<uint64_t>() > static_cast<uint64_t>(std::numeric_limits<int64_t>::max()))) {
+        return false;
     }
+    parsed_value = value.get<int64_t>();
+    return true;
+}
 
+static Status ParseParamsNPUScaledMaskedSoftmax(const ge::Operator &op_src, ge::Operator &op_dest)
+{
     float scale = 1.0;
     bool fixed_triu_mask = false;
-    for (const auto &attr : node->attribute()) {
-        if (attr.name() == "scale" && attr.type() == ge::onnx::AttributeProto::FLOAT) {
-            scale = attr.f();
-        } else if (attr.name() == "fixed_triu_mask" && attr.type() == ge::onnx::AttributeProto::INT && attr.i() == 1) {
-            fixed_triu_mask = true;
+    ge::AscendString attributes;
+    // ONNX repeated AttributeProto messages are exposed as JSON in "attribute".
+    if (op_src.GetAttr("attribute", attributes) == ge::GRAPH_SUCCESS) {
+        if (attributes.GetString() == nullptr) {
+            return FAILED;
+        }
+        try {
+            const auto root = nlohmann::json::parse(attributes.GetString());
+            if (!root.is_object() || (root.contains("attribute") && !root.at("attribute").is_array())) {
+                return FAILED;
+            }
+            for (const auto &attr : root.value("attribute", nlohmann::json::array())) {
+                if (!attr.is_object()) {
+                    return FAILED;
+                }
+                if (attr.value("name", "") == "scale" && attr.value("type", 0) == 1) {
+                    if (!attr.contains("f")) {
+                        scale = 0.0F;
+                    } else if (!attr.at("f").is_number()) {
+                        return FAILED;
+                    } else {
+                        scale = attr.at("f").get<float>();
+                    }
+                } else if (attr.value("name", "") == "fixed_triu_mask" && attr.value("type", 0) == 2) {
+                    if (!attr.contains("i")) {
+                        fixed_triu_mask = false;
+                    } else {
+                        int64_t integer_value = 0;
+                        if (!GetInt64(attr.at("i"), integer_value)) {
+                            return FAILED;
+                        }
+                        fixed_triu_mask = integer_value == 1;
+                    }
+                }
+            }
+        } catch (const nlohmann::json::exception &) {
+            return FAILED;
         }
     }
     op_dest.SetAttr("scale", scale);
@@ -53,6 +93,6 @@ REGISTER_CUSTOM_OP("ScaledMaskedSoftmax")
                    ge::AscendString("ai.onnx::16::NPUScaledMaskedSoftmax"),
                    ge::AscendString("ai.onnx::17::NPUScaledMaskedSoftmax"),
                    ge::AscendString("ai.onnx::18::NPUScaledMaskedSoftmax")})
-    .ParseParamsFn(ParseParamsNPUScaledMaskedSoftmax)
+    .ParseParamsByOperatorFn(ParseParamsNPUScaledMaskedSoftmax)
     .ImplyType(ImplyType::TVM);
 } // namespace domi
