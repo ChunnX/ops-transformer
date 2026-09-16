@@ -18,6 +18,7 @@
 #include "checkers/sparse_flash_mla_checker.h"
 #include "../op_kernel/sparse_flash_mla_template_tiling_key.h"
 #include "register/op_def_registry.h"
+#include "err/ops_err.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -901,8 +902,8 @@ ge::graphStatus SMLAInfoParser::GetMaxBlockNumPerBatch()
 
 ge::graphStatus SMLAInfoParser::GetBlockSize()
 {
-    oriBlockSize_ = GetAxisNum(oriKvShape_, SMLAAxis::Bs, kvLayout_);
-    cmpBlockSize_ = GetAxisNum(cmpKvShape_, SMLAAxis::Bs, kvLayout_);
+    oriBlockSize_ = static_cast<int32_t>(GetAxisNum(oriKvShape_, SMLAAxis::Bs, kvLayout_));
+    cmpBlockSize_ = static_cast<int32_t>(GetAxisNum(cmpKvShape_, SMLAAxis::Bs, kvLayout_));
     return ge::GRAPH_SUCCESS;
 }
 
@@ -2237,7 +2238,7 @@ ge::graphStatus SMLATilingCheck::CheckActualSeqLens() const
     }
     return ge::GRAPH_SUCCESS;
 }
-ge::graphStatus SMLATilingCheck::CheckMultiParaConsistency()
+ge::graphStatus SMLATilingCheck::CheckMultiParaConsistency() const
 {
     if (ge::GRAPH_SUCCESS != CheckOriAndCmpKv() || ge::GRAPH_SUCCESS != CheckAttenOut() ||
         ge::GRAPH_SUCCESS != CheckActualSeqLensQ() || ge::GRAPH_SUCCESS != CheckActualSeqLens()) {

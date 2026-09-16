@@ -15,9 +15,9 @@
 #ifndef QUANT_SPARSE_FLASH_MLA_CHECK_H
 #define QUANT_SPARSE_FLASH_MLA_CHECK_H
 
-#include "register/op_def_registry.h"
 #include "tiling/tiling_api.h"
 #include "../../sparse_flash_mla/op_host/common/smla_host_common_defs.h"
+#include "platform/soc_spec.h"
 
 namespace optiling {
 
