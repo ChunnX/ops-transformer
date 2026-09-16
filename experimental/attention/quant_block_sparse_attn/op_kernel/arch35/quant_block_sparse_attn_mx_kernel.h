@@ -360,11 +360,16 @@ private:
             }
             if (likely(runInfoCur.isValid)) {
                 Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &pBuf = l1PBuffers.GetVec();
+                // V1 contains both SAT FP8 quantization and NO_SAT BF16 conversions, selected by each CastTrait.
+                AscendC::SetCtrlSpr<FaVectorApi::CAST_SAT_MODE_CTRL_BIT, FaVectorApi::CAST_SAT_MODE_CTRL_BIT>(
+                    FaVectorApi::CAST_USE_INSTRUCTION_SAT_MODE);
                 // ProcessMainLoop已过滤全无效section；有效task固定先跑subLoop0。
                 vecBlock.template ProcessVec1<0U>(pBuf, bmm1Buffers.Get(), runInfoCur, constInfo);
                 if (likely(runInfoCur.actSingleLoopS2Size > S2_SPLIT)) {
                     vecBlock.template ProcessVec1<1U>(pBuf, bmm1Buffers.Get(), runInfoCur, constInfo);
                 }
+                AscendC::SetCtrlSpr<FaVectorApi::CAST_SAT_MODE_CTRL_BIT, FaVectorApi::CAST_SAT_MODE_CTRL_BIT>(
+                    FaVectorApi::CAST_USE_GLOBAL_SAT_MODE);
             }
         }
     }
