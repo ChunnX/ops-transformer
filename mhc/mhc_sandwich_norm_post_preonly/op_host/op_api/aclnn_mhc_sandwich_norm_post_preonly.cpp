@@ -28,12 +28,20 @@ namespace {
 
 static aclnnStatus MhcSandwichNormPostPreonlyCommonProcess(
     const aclTensor *hOut, const aclTensor *residual, const aclTensor *hPost, const aclTensor *hRes,
-    const aclTensor *phi, const aclTensor *alpha0, const aclTensor *bias, const aclTensor *gamma0,
+    const aclTensor *phi, const aclTensor *alpha0, const aclTensor *bias, const aclTensor *gamma0Optional,
     const aclTensor *gamma1, const aclTensor *gamma2Optional, double normEps, double mhcPreNormEps, double hcEps,
-    bool returnHInF32, const aclTensor *hInPrime, const aclTensor *x2Out, const aclTensor *hInF32,
+    bool returnHInF32, const aclTensor *hInPrimeOut, const aclTensor *x2Out, const aclTensor *hInF32OutOptional,
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     auto uniqueExecutor = CREATE_EXECUTOR();
+
+    if (returnHInF32) {
+        CHECK_COND(hInF32OutOptional != nullptr, ACLNN_ERR_PARAM_NULLPTR,
+                   "hInF32OutOptional must not be nullptr when returnHInF32 is true.");
+    } else {
+        CHECK_COND(hInF32OutOptional == nullptr, ACLNN_ERR_PARAM_INVALID,
+                   "hInF32OutOptional must be nullptr when returnHInF32 is false.");
+    }
 
     hOut = l0op::Contiguous(hOut, uniqueExecutor.get());
     CHECK_COND(hOut != nullptr, ACLNN_ERR_INNER_NULLPTR, "Contiguous hOut failed.");
@@ -56,8 +64,8 @@ static aclnnStatus MhcSandwichNormPostPreonlyCommonProcess(
     bias = l0op::Contiguous(bias, uniqueExecutor.get());
     CHECK_COND(bias != nullptr, ACLNN_ERR_INNER_NULLPTR, "Contiguous bias failed.");
 
-    gamma0 = l0op::Contiguous(gamma0, uniqueExecutor.get());
-    CHECK_COND(gamma0 != nullptr, ACLNN_ERR_INNER_NULLPTR, "Contiguous gamma0 failed.");
+    gamma0Optional = l0op::Contiguous(gamma0Optional, uniqueExecutor.get());
+    CHECK_COND(gamma0Optional != nullptr, ACLNN_ERR_INNER_NULLPTR, "Contiguous gamma0Optional failed.");
 
     gamma1 = l0op::Contiguous(gamma1, uniqueExecutor.get());
     CHECK_COND(gamma1 != nullptr, ACLNN_ERR_INNER_NULLPTR, "Contiguous gamma1 failed.");
@@ -68,8 +76,8 @@ static aclnnStatus MhcSandwichNormPostPreonlyCommonProcess(
     }
 
     bool ok = MhcSandwichNormPostPreonlyl0op::MhcSandwichNormPostPreonly(
-        hOut, residual, hPost, hRes, phi, alpha0, bias, gamma0, gamma1, gamma2Optional, normEps, mhcPreNormEps, hcEps,
-        returnHInF32, hInPrime, x2Out, hInF32, uniqueExecutor.get());
+        hOut, residual, hPost, hRes, phi, alpha0, bias, gamma0Optional, gamma1, gamma2Optional, normEps, mhcPreNormEps,
+        hcEps, returnHInF32, hInPrimeOut, x2Out, hInF32OutOptional, uniqueExecutor.get());
 
     CHECK_RET(ok, ACLNN_ERR_INNER_NULLPTR);
 
