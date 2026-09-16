@@ -62,6 +62,7 @@ private:
     GlobalTensor<int64_t> groupListGm;
     GlobalTensor<float> xRowSumGm;
 
+    uint32_t m;
     uint32_t vK;
     uint32_t vKAlign;
     uint32_t totalGroup{0};
@@ -72,6 +73,8 @@ private:
     uint32_t groupNum;
     uint32_t xRowSumRepeatNum;
     uint32_t withOffset;
+    uint32_t quantGroupNum;
+    uint32_t quantGroupSize;
 };
 
 __aicore__ inline void GMMA8W4PreProcess::Init(GM_ADDR x, GM_ADDR y, GM_ADDR groupList, GM_ADDR workspace, const GMMBaseParams& tilingData, TPipe *pipe){
@@ -79,8 +82,11 @@ __aicore__ inline void GMMA8W4PreProcess::Init(GM_ADDR x, GM_ADDR y, GM_ADDR gro
     yGm.SetGlobalBuffer(GetTensorAddr<int8_t>(0, y));
     groupListGm.SetGlobalBuffer((__gm__ int64_t *)groupList);
 
+    m = tilingData.m;
     vK = tilingData.k;
     withOffset = tilingData.withOffset;
+    quantGroupNum = tilingData.quantGroupNum;
+    quantGroupSize = vK / quantGroupNum;
     pipe->InitBuffer(vecInQueueX, BUFFER_NUM_A8W4_PRE, vK * sizeof(int8_t)); // 2KB
     pipe->InitBuffer(vecOutQueueA1, BUFFER_NUM_A8W4_PRE, vK * sizeof(int4b_t)); // 1KB
     pipe->InitBuffer(vecOutQueueA2, BUFFER_NUM_A8W4_PRE, vK * sizeof(int4b_t)); // 1KB
@@ -162,15 +168,18 @@ __aicore__ inline void GMMA8W4PreProcess::Process()
             Cast(xHighFloatTensor, xHighHalfTensor, AscendC::RoundMode::CAST_NONE, vK);
             PipeBarrier<PIPE_V>();
 
-            SetFlag<HardEvent::MTE3_V>(EVENT_ID2);
-            WaitFlag<HardEvent::MTE3_V>(EVENT_ID2);
-            ReduceSum(xRowSumTensor, xHighFloatTensor, workTensor, vK);
-            SetFlag<HardEvent::V_MTE3>(EVENT_ID2);
-            WaitFlag<HardEvent::V_MTE3>(EVENT_ID2);
-
             DataCopyExtParams xRowSumParams{1, static_cast<uint32_t>(1 * sizeof(float)), 0, 0, 0};
-            DataCopyPad(xRowSumGm[xloop], xRowSumTensor, xRowSumParams);
-            AscendC::PipeBarrier<PIPE_V>();
+            for (uint32_t quantGroupIdx = 0; quantGroupIdx < quantGroupNum; ++quantGroupIdx) {
+                SetFlag<HardEvent::MTE3_V>(EVENT_ID2);
+                WaitFlag<HardEvent::MTE3_V>(EVENT_ID2);
+                ReduceSum(xRowSumTensor, xHighFloatTensor[quantGroupIdx * quantGroupSize], workTensor, quantGroupSize);
+                SetFlag<HardEvent::V_MTE3>(EVENT_ID2);
+                WaitFlag<HardEvent::V_MTE3>(EVENT_ID2);
+
+                uint64_t xRowSumOffset = static_cast<uint64_t>(quantGroupIdx) * m + xloop;
+                DataCopyPad(xRowSumGm[xRowSumOffset], xRowSumTensor, xRowSumParams);
+                AscendC::PipeBarrier<PIPE_V>();
+            }
         }
 
         Muls(xHighHalfTensor, xHighHalfTensor, one_eight, vK);
