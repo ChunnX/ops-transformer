@@ -13,36 +13,90 @@
  * \brief
  */
 
-#include "onnx_common.h"
+#include <cstdint>
+#include <limits>
+
+#include "nlohmann/json.hpp"
+#include "graph/operator.h"
+#include "register/register.h"
+#include "graph/graph.h"
+#include "stub_ops.h"
+#include "log/log.h"
 #include "op_transformer_proto_extend.h"
 
 namespace domi {
-using NodeProto = ge::onnx::NodeProto;
-constexpr int OUTPUT_INDEX = 1;
-// x, atten_mask, relative_pos_bias, scale_value, inner_precision_mode float scale_value=1.0, int inner_precision_mode=0
-static Status ParseParamsNpuMaskedSoftmaxWithRelPosBias(const Message *op_src, ge::Operator &op_dest)
+
+static std::string GetOpName(const ge::Operator &op)
 {
-    const NodeProto *node = dynamic_cast<const NodeProto *>(op_src);
-    if (node == nullptr) {
-        OP_LOGE("MaskedSoftmaxWithRelPosBias", "Dynamic cast op_src to NodeProto failed.");
-        return FAILED;
+    ge::AscendString name;
+    if (op.GetName(name) != ge::GRAPH_SUCCESS || name.GetString() == nullptr) {
+        return "None";
     }
+    return name.GetString();
+}
 
-    int input_size = node->input_size();
-    int output_size = node->output_size();
-    op_dest.DynamicInputRegister("x", input_size);
-    op_dest.DynamicOutputRegister("y", output_size);
+constexpr int OUTPUT_INDEX = 1;
 
-    float scale_value = 0;
-    int inner_precision_mode = 1.0;
-    for (const auto &attr : node->attribute()) {
-        if (attr.name() == "inner_precision_mode" && attr.type() == ge::onnx::AttributeProto::INT) {
-            inner_precision_mode = attr.i();
-        } else if (attr.name() == "scale_value" && attr.type() == ge::onnx::AttributeProto::FLOAT) {
-            scale_value = attr.f();
+static bool GetInt64(const nlohmann::json &value, int64_t &parsed_value)
+{
+    if (!value.is_number_integer() ||
+        (value.is_number_unsigned() &&
+         value.get<uint64_t>() > static_cast<uint64_t>(std::numeric_limits<int64_t>::max()))) {
+        return false;
+    }
+    parsed_value = value.get<int64_t>();
+    return true;
+}
+// x, atten_mask, relative_pos_bias, scale_value, inner_precision_mode float scale_value=1.0, int inner_precision_mode=0
+static Status ParseParamsNpuMaskedSoftmaxWithRelPosBias(const ge::Operator &op_src, ge::Operator &op_dest)
+{
+    op_dest.DynamicInputRegister("x", static_cast<uint32_t>(op_src.GetInputsSize()));
+    op_dest.DynamicOutputRegister("y", static_cast<uint32_t>(op_src.GetOutputsSize()));
+
+    float scale_value = 0.0F;
+    int64_t inner_precision_mode = 1;
+    ge::AscendString attributes;
+    // ONNX repeated AttributeProto messages are exposed as JSON in "attribute".
+    if (op_src.GetAttr("attribute", attributes) == ge::GRAPH_SUCCESS) {
+        if (attributes.GetString() == nullptr) {
+            return FAILED;
+        }
+        try {
+            const auto root = nlohmann::json::parse(attributes.GetString());
+            if (!root.is_object() || (root.contains("attribute") && !root.at("attribute").is_array())) {
+                return FAILED;
+            }
+            for (const auto &attr : root.value("attribute", nlohmann::json::array())) {
+                if (!attr.is_object()) {
+                    return FAILED;
+                }
+                if (attr.value("name", "") == "inner_precision_mode" && attr.value("type", 0) == 2) {
+                    if (!attr.contains("i")) {
+                        inner_precision_mode = 0;
+                    } else {
+                        if (!GetInt64(attr.at("i"), inner_precision_mode)) {
+                            return FAILED;
+                        }
+                    }
+                } else if (attr.value("name", "") == "scale_value" && attr.value("type", 0) == 1) {
+                    if (!attr.contains("f")) {
+                        scale_value = 0.0F;
+                    } else if (!attr.at("f").is_number()) {
+                        return FAILED;
+                    } else {
+                        scale_value = attr.at("f").get<float>();
+                    }
+                }
+            }
+        } catch (const nlohmann::json::exception &) {
+            return FAILED;
         }
     }
-    op_dest.SetAttr("name", node->name());
+    ge::AscendString name;
+    if (op_src.GetName(name) != ge::GRAPH_SUCCESS || name.GetString() == nullptr) {
+        return FAILED;
+    }
+    op_dest.SetAttr("name", name.GetString());
     op_dest.SetAttr("inner_precision_mode", inner_precision_mode);
     op_dest.SetAttr("scale_value", scale_value);
     op_dest.SetAttr("original_type", "npu::1::NPUMaskedSoftmaxWithRelPosBias");
@@ -99,7 +153,7 @@ REGISTER_CUSTOM_OP("PartitionedCall")
                    ge::AscendString("ai.onnx::17::NPUMaskedSoftmaxWithRelPosBias"),
                    ge::AscendString("ai.onnx::18::NPUMaskedSoftmaxWithRelPosBias"),
                    ge::AscendString("ai.onnx::19::NPUMaskedSoftmaxWithRelPosBias")})
-    .ParseParamsFn(ParseParamsNpuMaskedSoftmaxWithRelPosBias)
+    .ParseParamsByOperatorFn(ParseParamsNpuMaskedSoftmaxWithRelPosBias)
     .ParseOpToGraphFn(ParseOpToGraphNpuMaskedSoftmaxWithRelPosBias)
     .ImplyType(ImplyType::TVM);
 } // namespace domi
