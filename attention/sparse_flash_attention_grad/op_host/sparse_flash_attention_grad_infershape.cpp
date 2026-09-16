@@ -70,7 +70,10 @@ ge::graphStatus InferShape4SparseFlashAttentionGrad(gert::InferShapeContext *con
 
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
-    auto scaleValue = attrs->GetInt(static_cast<size_t>(AttrIndex::SCALE_VALUE));
+    // scale_value is declared as a float attribute.  Infer-shape does not use
+    // its numeric value, but still validates that the required attribute is
+    // present using the correct typed accessor.
+    auto scaleValue = attrs->GetFloat(static_cast<size_t>(AttrIndex::SCALE_VALUE));
     OP_CHECK_NULL_WITH_CONTEXT(context, scaleValue);
     auto selectedBlockSize = attrs->GetInt(static_cast<size_t>(AttrIndex::SELECTED_BLOCK_SIZE));
     OP_CHECK_NULL_WITH_CONTEXT(context, selectedBlockSize);
