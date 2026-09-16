@@ -19,6 +19,7 @@ operator_group_1:
   - mla_preprocess_v2
   - mla_preprocess
   - block_attention_residuals_grad
+  - block_attention_residuals
 operator_group_2:
   - incre_flash_attention
   - prompt_flash_attention

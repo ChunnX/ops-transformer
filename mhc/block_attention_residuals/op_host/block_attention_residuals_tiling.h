@@ -65,6 +65,7 @@ protected:
     ge::graphStatus GetNormEps();
     ge::graphStatus GetNeedBackward();
     ge::graphStatus FillStagingFields();
+    uint64_t GetBlockResStride0() const;
     uint64_t EstimateUbComputeBytes(bool resident) const;
     bool CanResidentAllBlocks(int64_t blockCount, int64_t hiddenSize) const;
     uint32_t CalcMaxResidentRows(int64_t hiddenSize) const;

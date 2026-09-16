@@ -47,6 +47,10 @@ public:
         numTokens_ = tiling_->numTokens;
         numBlocks_ = tiling_->numBlocks;
         hiddenSize_ = tiling_->hiddenSize;
+        blockResStride0_ = tiling_->blockResStride0;
+        if (blockResStride0_ <= 0) {
+            blockResStride0_ = numBlocks_ * hiddenSize_;
+        }
         blockCount_ = tiling_->blockCount;
         normEps_ = tiling_->normEps;
         invHiddenSize_ = tiling_->invHiddenSize;
@@ -204,7 +208,7 @@ private:
     __aicore__ inline int64_t GetLogicRowOffset(int64_t tokenIdx, int64_t n) const
     {
         if (n < numBlocks_) {
-            return tokenIdx * numBlocks_ * hiddenSize_ + n * hiddenSize_;
+            return tokenIdx * blockResStride0_ + n * hiddenSize_;
         }
         return tokenIdx * hiddenSize_;
     }
@@ -427,6 +431,7 @@ private:
     int64_t numTokens_{0};
     int64_t numBlocks_{0};
     int64_t hiddenSize_{0};
+    int64_t blockResStride0_{0};
     int64_t hiddenSizeChunk_{0};
     uint32_t hChunkAlignBf16_{0};
     uint32_t hChunkAlignFp32_{0};

@@ -12,6 +12,7 @@
  * \file aclnn_block_attention_residuals.cpp
  * \brief BlockAttentionResiduals ACLNN 两段式接口
  */
+#include <limits>
 #include "aclnn_block_attention_residuals.h"
 #include "block_attention_residuals.h"
 
@@ -167,6 +168,78 @@ static aclnnStatus CheckParams(BlockAttentionResidualsParams &params)
     return ACLNN_SUCCESS;
 }
 
+// 仅支持 [T,k,H] 连续存储后沿 block 维切成 [T,N,H]：stride 为 [k*H, H, 1]，k>=N。
+// 该场景 kernel 用 token stride0=k*H 直接读，不转 Contiguous。
+static bool IsBlockResTokenSlicedView(const aclTensor *blockRes)
+{
+    if (blockRes == nullptr || IsContiguous(blockRes)) {
+        return false;
+    }
+    const auto &viewShape = blockRes->GetViewShape();
+    const auto &storageShape = blockRes->GetStorageShape();
+    const auto &viewStrides = blockRes->GetViewStrides();
+    if (viewShape.GetDimNum() != BLOCK_RES_DIM_NUM) {
+        return false;
+    }
+    if (viewStrides.size() < BLOCK_RES_DIM_NUM) {
+        return false;
+    }
+    const int64_t T = viewShape.GetDim(DIM_INDEX_ZERO);
+    const int64_t N = viewShape.GetDim(DIM_INDEX_ONE);
+    const int64_t H = viewShape.GetDim(DIM_INDEX_TWO);
+    if (T <= 0 || N < 1 || H <= 0) {
+        return false;
+    }
+    const int64_t stride0 = viewStrides[DIM_INDEX_ZERO];
+    const int64_t stride1 = viewStrides[DIM_INDEX_ONE];
+    const int64_t stride2 = viewStrides[DIM_INDEX_TWO];
+    if (stride2 != 1 || stride1 != H || stride0 <= 0 || stride0 / H < N || (stride0 % H) != 0) {
+        return false;
+    }
+    // Storage shape may be flattened by the Torch bridge; only its capacity matters.
+    if (storageShape.GetDimNum() == 0) {
+        return false;
+    }
+    int64_t storageElements = 1;
+    for (size_t i = 0; i < storageShape.GetDimNum(); ++i) {
+        const int64_t dim = storageShape.GetDim(i);
+        if (dim <= 0 || storageElements > std::numeric_limits<int64_t>::max() / dim) {
+            return false;
+        }
+        storageElements *= dim;
+    }
+    const int64_t offset = blockRes->GetViewOffset();
+    // N * H is bounded by stride0 above. Use subtraction/division to avoid overflow.
+    const int64_t rowElements = N * H;
+    if (offset < 0 || offset > storageElements || rowElements > storageElements - offset) {
+        return false;
+    }
+    // Positive stride0 makes the last row end the highest accessed address; checking it covers all rows.
+    return T - 1 <= (storageElements - offset - rowElements) / stride0;
+}
+
+static const aclTensor *NormalizeBlockRes(const aclTensor *blockRes, aclOpExecutor *executor)
+{
+    if (blockRes == nullptr || executor == nullptr) {
+        return nullptr;
+    }
+    if (IsContiguous(blockRes)) {
+        return l0op::Contiguous(blockRes, executor);
+    }
+    if (!IsBlockResTokenSlicedView(blockRes)) {
+        return l0op::Contiguous(blockRes, executor);
+    }
+    auto strideView = executor->CreateView(blockRes, blockRes->GetViewShape(), blockRes->GetStorageShape(),
+                                           blockRes->GetViewStrides(), blockRes->GetViewOffset());
+    if (strideView == nullptr) {
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "CreateView for sliced block_res [T,k,H]->[T,N,H] failed.");
+        return nullptr;
+    }
+    OP_LOGD("Keep block_res [T,k,H]->[T,N,H] sliced view without Contiguous, stride0=%ld.",
+            blockRes->GetViewStrides()[DIM_INDEX_ZERO]);
+    return strideView;
+}
+
 static aclnnStatus PreProcess(BlockAttentionResidualsParams &params)
 {
     params.partialBlock->SetOriginalShape(params.partialBlock->GetViewShape());
@@ -211,7 +284,7 @@ aclnnStatus aclnnBlockAttentionResidualsGetWorkspaceSize(const aclTensor *partia
 
     auto partialBlock_ = l0op::Contiguous(partialBlock, uniqueExecutor.get());
     CHECK_RET(partialBlock_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    auto blockRes_ = l0op::Contiguous(blockRes, uniqueExecutor.get());
+    auto blockRes_ = NormalizeBlockRes(blockRes, uniqueExecutor.get());
     CHECK_RET(blockRes_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto projWeight_ = l0op::Contiguous(projWeight, uniqueExecutor.get());
     CHECK_RET(projWeight_ != nullptr, ACLNN_ERR_INNER_NULLPTR);

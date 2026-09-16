@@ -143,7 +143,7 @@ aclnnStatus aclnnBlockAttentionResiduals(
       <td>blockRes（aclTensor*）</td>
       <td>输入</td>
       <td>前向输入分块残差，对应公式中前N个value。</td>
-      <td><ul><li>支持空Tensor，T可以为0。</li><li>shape为(T, N, H)。</li><li>数据类型须与partialBlock保持一致。</li></ul></td>
+      <td><ul><li>支持空Tensor，T可以为0。</li><li>shape为(T, N, H)。</li><li>支持由连续(T, k, H)沿block维切成(T, N, H)的非连续view（k>=N，stride为[k*H, H, 1]），该场景不转Contiguous。</li><li>数据类型须与partialBlock保持一致。</li></ul></td>
       <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>3</td>
@@ -361,7 +361,7 @@ aclnnStatus aclnnBlockAttentionResiduals(
   - shape须满足：partialBlock为(T, H)，blockRes为(T, N, H)，projWeight为(H)或(1, H)，normWeight为(H)，hiddenStates为(T, H)；needBackward为true时invNorm、probs为(T, N+1)。
   - validBlockNum为预留属性，默认值为-1，当前不参与计算；仅支持传入-1。
   - normEps须大于0，默认值为1e-6。
-  - 输入张量支持非连续Tensor，接口内部转为Contiguous后计算；输出不支持非连续Tensor。
+  - 输入张量支持非连续Tensor。`block_res` 的 `[T,k,H]` 沿 block 维切成 `[T,N,H]`（stride 为 `[k*H,H,1]`，`k>=N`）由 kernel 按 token stride0 直接处理，不再转 Contiguous；其余非连续输入仍在接口内转为 Contiguous。输出不支持非连续Tensor。
   - workspace仅使用平台系统预留，不追加用户侧workspace。
 
 ## 调用示例
