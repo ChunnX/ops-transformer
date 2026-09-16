@@ -107,10 +107,10 @@ aclnnStatus aclnnMoeTokenPermuteWithEpGrad(
       <td>permutedTokensOutputGrad</td>
       <td>输入</td>
       <td>表示正向输出permutedTokens的梯度。</td>
-      <td>shape支持2D维度，不支持空tensor，topK_num为numTopk的值。</td>
+      <td>shape支持2D维度，不支持空tensor。</td>
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
-      <td>((rangeOptional[1] - rangeOptional[0])* topK_num,hidden_size)</td>
+      <td>(rangeOptional[1] - rangeOptional[0], hidden_size)</td>
       <td>√</td>
   </tr>
   <tr>
@@ -128,11 +128,11 @@ aclnnStatus aclnnMoeTokenPermuteWithEpGrad(
       <td>可选输入</td>
       <td>正向输出permutedProbs的梯度。</td>
       <td>
-      • shape支持1D维度，topK_num为numTopk的值；<br>
+      • shape支持1D维度；<br>
       • 与计算输出probsGradOut对应，传入空则不输出probsGradOut。</td>
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
-      <td>((rangeOptional[1] - rangeOptional[0]) * topK_num)</td>
+      <td>(rangeOptional[1] - rangeOptional[0])</td>
       <td>√</td>
   </tr>
   <tr>
@@ -414,8 +414,8 @@ int main() {
   int64_t num_topk = 2;
   std::vector<float> permuted_token_output_grad_Data = {2, 2, 1, 1, 3, 3, 2, 2};
   std::vector<float> permuted_prob_output_grad_Data = {0.2, 0.5, 0.4, 0.4};
-  std::vector<int64_t> permuted_token_output_grad_Shape = {8, 2};
-  std::vector<int64_t> permuted_prob_output_grad_Shape = {8};
+  std::vector<int64_t> permuted_token_output_grad_Shape = {4, 2};
+  std::vector<int64_t> permuted_prob_output_grad_Shape = {4};
   void *permuted_token_output_grad_Addr = nullptr;
   void *permuted_prob_output_grad_Addr = nullptr;
   aclTensor *permuted_token_output_grad = nullptr;
