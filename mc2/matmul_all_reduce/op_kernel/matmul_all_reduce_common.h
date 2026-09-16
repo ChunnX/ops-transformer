@@ -226,7 +226,7 @@ struct MC2GmAddrs {
 struct QuantGmAddrs {
     GM_ADDR antiquantScaleGM;
     GM_ADDR antiquantOffsetGM;
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510 || __NPU_ARCH__ == 9201) // A6复用A5结构
     GM_ADDR offsetGM;
 #endif
     GM_ADDR dequantGM;
@@ -241,7 +241,7 @@ struct ArnGmAddrs {
 };
 
 struct MC2TilingHeader {
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510 || __NPU_ARCH__ == 9201) // A6复用A5 tiling结构
     Mc2InitTiling mc2InitTiling;
     Mc2CcTiling mc2CcTiling;
     Mc2CcTiling mc2CcTilingComm;
