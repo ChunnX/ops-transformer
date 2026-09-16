@@ -114,7 +114,12 @@ __aicore__ inline void MulQr(const GlobalTensor<T> &outputGmRope, const GlobalTe
 
         Cast(qrFp32Local, qrInputLocal[inputLocalRopeOffset], RoundMode::CAST_NONE, computeSizeRope);
         PipeBarrier<PIPE_V>();
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
+        MulQrVF(qrFp32Local, qrFp32Local, dequantScaleBrcbLocal[dequantScaleOffset], quantScaleCkvRope, computeSizeRope,
+                computeBlockAlign);
+#else
         MulQrVF(qrFp32Local, qrFp32Local, dequantScaleBrcbLocal, quantScaleCkvRope, computeSizeRope, computeBlockAlign);
+#endif
         PipeBarrier<PIPE_V>();
         Cast(outputLocalRope, qrFp32Local, RoundMode::CAST_RINT, computeSizeRope);
         PipeBarrier<PIPE_V>();
@@ -176,7 +181,7 @@ __aicore__ inline void DynamicQuantQnWithMulQr(
     constexpr uint64_t inputBlockAlign = (ALIGN_BLOCK_SIZE / sizeof(T));
     constexpr float maxInt8 = 127.0;
     // Dynamic Quant 局部变量
-    uint64_t rowStepSize = 8 * cvRatio; // 单次处理最大行数, cv1:1场景，改为8行进行计算，降低UB使用
+    uint64_t rowStepSize = 8 * cvRatio;
 
     uint64_t subRow = row < rowStepSize ? row : rowStepSize;
     uint32_t computeSize = subRow * col;
