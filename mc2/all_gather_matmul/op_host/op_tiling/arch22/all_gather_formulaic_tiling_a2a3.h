@@ -21,7 +21,7 @@ class AllGatherPlusMMA2A3 : public AllGatherPlusMM {
 public:
     // Constructor
     explicit AllGatherPlusMMA2A3(const mc2tiling::TilingArgs &args, uint32_t inputRankDim, KernelType inputKernelType,
-                                 SocVersion inputSocVersion = SocVersion::SOC910_B)
+                                 SocVersion2201 inputSocVersion = SocVersion2201::SOC910_B)
         : AllGatherPlusMM(args, inputRankDim, inputKernelType, inputSocVersion)
     {
         commPerf_.SetCommShapeLen(clusterInfo_.kValue);
@@ -29,7 +29,7 @@ public:
         rankTileNum_ = commPerf_.GetRankTileNum();
         tilingM_.SetMinLenByMax(commPerf_.GetLinearThresholdLen());
 
-        if (clusterInfo_.socType == SocVersion::SOC910_B) {
+        if (clusterInfo_.socType == SocVersion2201::SOC910_B) {
             tilingM_.SetMinLenByMax(matmulPerf_.GetLinearThresholdLen(rankDim_));
         } else {
             tilingM_.SetMinLenByMax(matmulPerf_.GetLinearThresholdLen(rankTileNum_));

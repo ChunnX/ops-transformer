@@ -279,7 +279,7 @@ void MatmulAllReduceTilingBase::DoRCSTiling()
     SetCommQuantScale();
 }
 
-void MatmulAllReduceTilingBase::SetMCutSocVersion(SocVersion &inputSocVersion)
+void MatmulAllReduceTilingBase::SetMCutSocVersion(SocVersion2201 &inputSocVersion)
 {
     if (npuArch_ == Ops::Base::DAV_2002) {
         // 310P:档位key已迁出枚举(与DAV_2002一一对应),保持调用方初始化的占位值;
@@ -299,16 +299,16 @@ void MatmulAllReduceTilingBase::SetMCutSocVersion(SocVersion &inputSocVersion)
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     uint64_t socMemSize = L2_CACHE_SIZE_910_B4;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, socMemSize);
-    inputSocVersion = (socMemSize == L2_CACHE_SIZE_910_B4) ? SocVersion::SOC910_B4 : inputSocVersion;
+    inputSocVersion = (socMemSize == L2_CACHE_SIZE_910_B4) ? SocVersion2201::SOC910_B4 : inputSocVersion;
     if (socMemSize == L2_CACHE_SIZE_910_B4) {
-        inputSocVersion = SocVersion::SOC910_B4;
+        inputSocVersion = SocVersion2201::SOC910_B4;
         OP_LOGD(opName_, "TileCnt enter 910B4 branch.");
     }
 }
 
 CutResult MatmulAllReduceTilingBase::GetTilingResult()
 {
-    SocVersion inputSocVersion = SocVersion::SOC910_B;
+    SocVersion2201 inputSocVersion = SocVersion2201::SOC910_B;
     SetMCutSocVersion(inputSocVersion); // 判断是否是310P或者910B4
     MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_,
                                         npuArch_);

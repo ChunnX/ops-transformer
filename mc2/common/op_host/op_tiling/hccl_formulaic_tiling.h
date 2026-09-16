@@ -123,7 +123,7 @@ public:
 
     // Constructor
     explicit OneCalcOneCommBase(const mc2tiling::TilingArgs &args, uint32_t inputRankDim, KernelType inputKernelType,
-                                SocVersion inputSocVersion = SocVersion::SOC910_B,
+                                SocVersion2201 inputSocVersion = SocVersion2201::SOC910_B,
                                 NpuArch npuArch = Ops::Base::DAV_2201)
         : matmulPerf_(args, inputSocVersion, npuArch),
           commPerf_(inputRankDim, inputKernelType, inputSocVersion, npuArch),

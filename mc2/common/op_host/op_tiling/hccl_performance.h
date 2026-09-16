@@ -37,7 +37,7 @@ public:
     double commTimeFactor_ = 1.0; // allreduce time is 2.0x allgather or reducescatter
     uint64_t lookUpTileNum_ = 1;  // 数据拟合查表参数
     std::string keyToFittingMap_ = DEFAULT_KEY_FOR_FITTING_MAP;
-    SocVersion socVersion_ = SocVersion::SOC910_B;
+    SocVersion2201 socVersion_ = SocVersion2201::SOC910_B;
     NpuArch npuArch_ = Ops::Base::DAV_2201; // 目标平台arch:调用点经框架GetCurNpuArch取后传入,3510/2002/2201判定
 
     // 拟合查表序列号:arch映射原枚举序值(3510→4,2002→1),保持拟合表键兼容;2201系为档位显式序值
@@ -56,7 +56,7 @@ public:
     }
 
     // arch粗分入口:3510→A5;2002→310P;2201→系列细分(910B/910_93/B4)
-    void SetCommParametersBaseArchType(SocVersion series)
+    void SetCommParametersBaseArchType(SocVersion2201 series)
     {
         if (npuArch_ == Ops::Base::DAV_3510) { // __NPU_ARCH__ == 3510
             InitParametersForFullMesh();
@@ -68,18 +68,18 @@ public:
     }
 
     // 系列细分:仅DAV_2201系(910B/910_93/B4)到达,内部不再含arch判定
-    void SetCommParametersBySocType(SocVersion series)
+    void SetCommParametersBySocType(SocVersion2201 series)
     {
-        if (series == SocVersion::SOC910_93) {
+        if (series == SocVersion2201::SOC910_93) {
             InitSOC91093();
-            socVersion_ = SocVersion::SOC910_93;
+            socVersion_ = SocVersion2201::SOC910_93;
         } else { // SOC910_B/SOC910_B4等
             InitParametersForFullMesh();
         }
     }
     // Constructor
     explicit HCCLPerformanceModel(uint32_t inputRankDim, KernelType inputKernelType,
-                                  SocVersion inputSocVersion = SocVersion::SOC910_B,
+                                  SocVersion2201 inputSocVersion = SocVersion2201::SOC910_B,
                                   NpuArch npuArch = Ops::Base::DAV_2201)
         : npuArch_(npuArch)
     {

@@ -175,7 +175,7 @@ ge::graphStatus UnQuantMatmulAllReduceTiling310::DoUnQuantTiling()
 CutResult UnQuantMatmulAllReduceTiling310::GetTilingResult()
 {
     CutResult mCutAllreduceRet;
-    SocVersion socVer = SocVersion::SOC910_B;
+    SocVersion2201 socVer = SocVersion2201::SOC910_B;
     SetMCutSocVersion(socVer);
     const gert::StorageShape *commQuantScaleOne = mmrCtxInfo_.comm_quant_scale_1_shape;
     const gert::StorageShape *commQuantScaleTwo = mmrCtxInfo_.comm_quant_scale_2_shape;

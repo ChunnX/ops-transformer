@@ -32,7 +32,7 @@ public:
     // Constructor
     explicit MMPlusReduceScatter(
         const mc2tiling::TilingArgs &args, uint32_t inputRankDim, KernelType inputKernelType,
-        SocVersion inputSocVersion = SocVersion::SOC910_B, bool deterministicFlag = false,
+        SocVersion2201 inputSocVersion = SocVersion2201::SOC910_B, bool deterministicFlag = false,
         bool isAicpuComm = false, // 是否AICPU通信模式，AICPU时触发M轴切分封顶至AICPU_M_TILE_CAP
         NpuArch npuArch = Ops::Base::DAV_2201)
         : OneCalcOneCommBase(args, inputRankDim, inputKernelType, inputSocVersion, npuArch),

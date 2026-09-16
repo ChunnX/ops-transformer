@@ -385,9 +385,9 @@ aclnnStatus aclnnMatmulAlltoAllBase(void *workspace, uint64_t workspaceSize, acl
                 OP_LOGD("MatmulAlltoAll: use AICPU mode");
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
             }
-        } else if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910_93) {
+        } else if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion2201::ASCEND910_93) {
             NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-        } else if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B) {
+        } else if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion2201::ASCEND910B) {
             NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
         }
     }

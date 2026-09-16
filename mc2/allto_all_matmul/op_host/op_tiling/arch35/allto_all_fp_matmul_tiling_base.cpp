@@ -99,7 +99,7 @@ CutResult AllToAllFpMatmulTilingBase::GetCutResOfCommAndCompute()
     } else {
         OP_LOGD(opName_, "Falling back to formulaic tiling for arch35 tiling");
         AlltoAllMM alltoallMatmulTileFormulate(contextInfo_.args_, contextInfo_.args_.rankDim, KernelType::ALL_TO_ALL,
-                                               SocVersion::SOC910_B, true, Ops::Base::DAV_3510);
+                                               SocVersion2201::SOC910_B, true, Ops::Base::DAV_3510);
         if (commMode == mc2tiling::A5_AICPU_TS_ENGINE) {
             constexpr uint64_t FP_AICPU_TILING_MAX_NUM = 5;
             alltoallMatmulTileFormulate.tilingM_.SetMaxTileCnt(FP_AICPU_TILING_MAX_NUM);

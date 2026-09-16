@@ -385,7 +385,7 @@ MatmulAllReduceTilingA5::MatmulAllReduceTilingA5(gert::TilingContext *context, M
 CutResult MatmulAllReduceTilingA5::GetTilingResult()
 {
     CutResult mCutAllreduce;
-    SocVersion inputSocVersion = SocVersion::SOC910_B;
+    SocVersion2201 inputSocVersion = SocVersion2201::SOC910_B;
     SetMCutSocVersion(inputSocVersion);
     const gert::StorageShape *commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
     const gert::StorageShape *commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;

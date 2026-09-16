@@ -75,7 +75,7 @@ inline CutResult GetArch35TilingResult(const mc2tiling::TilingArgs &args, Kernel
     }
 
     OP_LOGD("Arch35TilingResult", "Falling back to formulaic tiling");
-    AlltoAllMM formulaicTiling(args, args.rankDim, kernelType, SocVersion::SOC910_B, false, Ops::Base::DAV_3510);
+    AlltoAllMM formulaicTiling(args, args.rankDim, kernelType, SocVersion2201::SOC910_B, false, Ops::Base::DAV_3510);
     if (commMode == Mc2Comm::COMM_MODE_AICPU) {
         OP_LOGD("Arch35TilingResult", "AICPU mode, limit maxTileCnt to %lu", AICPU_MAX_TILE_CNT);
         formulaicTiling.tilingM_.SetMaxTileCnt(AICPU_MAX_TILE_CNT);

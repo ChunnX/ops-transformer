@@ -86,7 +86,7 @@ public:
                                                   (args.aType == matmul_tiling::DataType::DT_FLOAT4_E1M2))) {
             calcType_ = MatmulCalcType::QUANT;
         } else if ((args.aType == matmul_tiling::DataType::DT_INT8) &&
-                   (mmShapeInfo_.socType != SocVersion::SOC910_B)) { // A8W8
+                   (mmShapeInfo_.socType != SocVersion2201::SOC910_B)) { // A8W8
             calcType_ = MatmulCalcType::QUANT;
         } else if ((npuArch_ == Ops::Base::DAV_2002) && (args.bType == matmul_tiling::DataType::DT_INT8)) { // A16W8
             mmShapeInfo_.inMatrixBDtypeSize = MatmulPerformance::INT8_DTYPE_SIZE;
@@ -95,7 +95,7 @@ public:
     }
     // Constructor
     explicit MatmulPerformanceModel(const mc2tiling::TilingArgs &args,
-                                    SocVersion inputSocVersion = SocVersion::SOC910_B,
+                                    SocVersion2201 inputSocVersion = SocVersion2201::SOC910_B,
                                     NpuArch npuArch = Ops::Base::DAV_2201)
         : calcType_(MatmulCalcType::FP16),
           npuArch_(npuArch)

@@ -22,7 +22,7 @@
 class All2AllAllGatherBMM : public OneCalcTwoCommBase {
 public:
     explicit All2AllAllGatherBMM(const mc2tiling::TilingArgs &args, uint64_t inputEpDim, uint64_t inputTpDim,
-                                 uint64_t batchSize, SocVersion inputSocVersion = SocVersion::SOC910_93)
+                                 uint64_t batchSize, SocVersion2201 inputSocVersion = SocVersion2201::SOC910_93)
         : OneCalcTwoCommBase(args, inputEpDim, inputTpDim, batchSize, inputSocVersion)
     {
         epCommPerf.SetCommShapeLen(clusterInfo.kValue / tpDim);
@@ -35,7 +35,7 @@ public:
 class All2AllAllGatherBMMShardH : public OneCalcTwoCommShardHBase {
 public:
     explicit All2AllAllGatherBMMShardH(const mc2tiling::TilingArgs &args, uint64_t inputEpDim, uint64_t inputTpDim,
-                                       uint64_t batchSize, SocVersion inputSocVersion = SocVersion::SOC910_93)
+                                       uint64_t batchSize, SocVersion2201 inputSocVersion = SocVersion2201::SOC910_93)
         : OneCalcTwoCommShardHBase(args, inputEpDim, inputTpDim, batchSize, inputSocVersion)
     {
         epCommPerf.SetCommShapeLen(clusterInfo.kValue);

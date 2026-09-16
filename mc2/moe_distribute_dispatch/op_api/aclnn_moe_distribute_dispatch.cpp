@@ -81,7 +81,7 @@ static aclnnStatus CheckParams(const aclTensor *x, const aclTensor *expertIds, c
     if (groupTp == nullptr) {
         groupTp = "";
     }
-    const static bool is910B = GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B;
+    const static bool is910B = GetCurrentPlatformInfo().GetSocVersion() == SocVersion2201::ASCEND910B;
     if (is910B) {
         OP_LOGD("A2 platform, groupTp should be empty");
         CHECK_RET(strnlen(groupTp, HCCL_GROUP_NAME_MAX) == 0, ACL_ERROR_INVALID_PARAM);
@@ -140,7 +140,7 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSize(
     aclTensor *dynamicScales, aclTensor *expandIdx, aclTensor *expertTokenNums, aclTensor *epRecvCounts,
     aclTensor *tpRecvCounts, aclTensor *expandScales, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B) {
+    if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion2201::ASCEND910B) {
         const char *groupTpEmptyWord = "";
         aclnnStatus distributeDispatchRet = MoeDistributeDispatchGetWorkspaceSize(
             x, expertIds, scales, xActiveMask, expertScales, groupEp, epWorldSize, epRankId, moeExpertNum,
@@ -160,7 +160,7 @@ aclnnStatus aclnnMoeDistributeDispatch(void *workspace, uint64_t workspaceSize, 
                                        aclrtStream stream)
 {
     if (NnopbaseSetHcclServerType) {
-        if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B) {
+        if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion2201::ASCEND910B) {
             NnopbaseSetHcclServerType(executor, NNOPBASE_HCCL_SERVER_TYPE_AICPU);
         } else {
             NnopbaseSetHcclServerType(executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
