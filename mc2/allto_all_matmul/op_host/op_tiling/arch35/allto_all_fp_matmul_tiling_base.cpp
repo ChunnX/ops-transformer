@@ -93,7 +93,7 @@ CutResult AllToAllFpMatmulTilingBase::GetCutResOfCommAndCompute()
     if (contextInfo_.args_.rankDim == COMM_RANKDIM_FOUR || contextInfo_.args_.rankDim == COMM_RANKDIM_EIGHT) {
         TopoType topoType =
             contextInfo_.args_.rankDim == COMM_RANKDIM_FOUR ? TopoType::STANDARD_CARD : TopoType::EIGHT_P;
-        // 950的4卡和8卡形态使用基于拟合数据的公式化tiling
+        // A5的4卡和8卡形态使用基于拟合数据的公式化tiling
         AlltoAllMatmulFitBalanceTiling tiling(matmulQuantType_, contextInfo_.args_, topoType, commMode);
         return tiling.GetTiling();
     } else {

@@ -425,7 +425,7 @@ CutResult AllToAllMxQuantMatmulTilingBase::GetCutResOfCommAndCompute()
     }
     CutResult cutRes;
     if ((!usingApaceImpl_) && (contextInfo_.args_.rankDim == COMM_RANKDIM_FOUR)) {
-        // 950的4卡形态使用基于拟合数据的公式化tiling
+        // A5的4卡形态使用基于拟合数据的公式化tiling
         AlltoAllMatmulFitBalanceTiling tiling(matmulQuantType_, contextInfo_.args_, TopoType::STANDARD_CARD, commMode);
         cutRes = tiling.GetTiling();
     } else {

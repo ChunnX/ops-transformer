@@ -165,7 +165,7 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_LOGD("enter to the  aclnnMoeDistributeDispatchGetWorkspaceSizeBase\n");
-    const static bool is910B = GetCurrentPlatformInfo().GetSocVersion() == SocVersion_2201::ASCEND910B;
+    const static bool is910B = GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B;
     const static bool is950 = GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510;
     auto retParam =
         DispatchCheckParams(x, expertIds, scalesOptional, groupEp, groupTp, quantMode, expandXOut, dynamicScalesOut,

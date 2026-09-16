@@ -289,7 +289,7 @@ void MatmulAllReduceTilingBase::SetMCutSocVersion(SocVersion_2201 &inputSocVersi
     }
     // __NPU_ARCH__ == 3510
     if (npuArch_ == Ops::Base::DAV_3510) {
-        // A5:档位key不再承载950(枚举已删),保持调用方初始化的占位值;
+        // A5:档位保持调用方初始化的占位值(平台判定已由arch承担);
         // 模型内由arch(调用点传入的npuArch_)直接走3510分支
         OP_LOGD(opName_, "TileCnt enter 3510 branch.");
         return;
@@ -495,7 +495,7 @@ ge::graphStatus MatmulAllReduceTilingBase::GetWorkspaceSize()
     uint64_t gmcFloat = 0;
 
     // __NPU_ARCH__ == 3510
-    // 950需要自己申请一块workSpace存放mm的输出
+    // A5需要自己申请一块workSpace存放mm的输出
     if (npuArch_ == Ops::Base::DAV_3510) {
         gmcFloat = static_cast<uint64_t>(MutableRCSTilingData().rankM) *
                    static_cast<uint64_t>(MutableRCSTilingData().rankN) * static_cast<uint64_t>(args_.outputDtypeSize);

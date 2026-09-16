@@ -19,8 +19,8 @@
 
 class MatmulPerformanceArch35 : public MatmulPerformanceModel {
 public:
-    // A5(950系)专用拟合模型:仅服务于DAV_3510平台,A5内蕴于类本身,不再接收档位key
-    static constexpr uint64_t A5_BASE_BLOCK_M = 256; // A5最优base block(原TILING_BEST_BASE_MAP中950档)
+    // A5专用拟合模型:仅服务于DAV_3510平台,A5内蕴于类本身,不再接收档位key
+    static constexpr uint64_t A5_BASE_BLOCK_M = 256; // A5最优base block
     static constexpr uint64_t A5_BASE_BLOCK_N = 256;
     static constexpr uint64_t A5_BASE_BLOCK_K = 128;
 

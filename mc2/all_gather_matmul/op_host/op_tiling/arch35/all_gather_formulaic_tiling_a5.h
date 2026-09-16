@@ -20,7 +20,7 @@
 class AllGatherPlusMMA5 : public AllGatherPlusMM {
 public:
     // Constructor
-    // A5(950系)专用:A5内蕴于类本身,不再接收档位key
+    // A5专用:A5内蕴于类本身,不再接收档位key
     explicit AllGatherPlusMMA5(const mc2tiling::TilingArgs &args, uint32_t inputRankDim, KernelType inputKernelType)
         : AllGatherPlusMM(args, inputRankDim, inputKernelType, SocVersion_2201::SOC910_B, Ops::Base::DAV_3510)
     {

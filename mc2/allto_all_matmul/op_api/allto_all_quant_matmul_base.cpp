@@ -234,7 +234,7 @@ static bool CheckAllDtypesValid(const aclTensor *x1, const aclTensor *x2, int64_
     return true;
 }
 
-// 950数据类型校验
+// A5数据类型校验
 // 量化模式下X支持的FP16数据类型（PerToken动态量化）(A5)
 static const std::initializer_list<op::DataType> X_DTYPE_FP16_SUPPORT_LIST_A5 = {op::DataType::DT_FLOAT16,
                                                                                  op::DataType::DT_BF16};
@@ -469,7 +469,7 @@ static aclnnStatus CheckAndHandleParams(const aclTensor *x1, const aclTensor *x2
                   ACLNN_ERR_PARAM_INVALID);
     }
     // 检查输入的数据类型是否在API支持的数据类型范围之内，需要根据芯片型号和api定义校验
-    if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion_2201::ASCEND910B) {
+    if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B) {
         CHECK_RET(CheckAllDtypesValid(x1, x2, x1QuantMode, x1ScaleOptional, x2Scale, output, alltoAllOutOptional),
                   ACLNN_ERR_PARAM_INVALID);
     } else if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
@@ -625,7 +625,7 @@ extern "C" aclnnStatus aclnnAlltoAllQuantMatmulBase(void *workspace, uint64_t wo
             } else {
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
             }
-        } else if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion_2201::ASCEND910B) {
+        } else if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B) {
             NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
         }
     }
