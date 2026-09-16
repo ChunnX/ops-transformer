@@ -66,10 +66,6 @@ struct ExpertTokenRange {
 
 using Mc2MoeContext = Mc2Aclnn::Mc2MoeContext;
 
-#ifndef MEGA_MOE_PERSISTENT_A8W4
-#define MEGA_MOE_PERSISTENT_A8W4 1
-#endif
-
 struct GMMAddrInfo {
     // Per-core C++ object owned by the A8W4 wave scope; never a GM allocation.
     void *a8w4PersistentResource = nullptr;

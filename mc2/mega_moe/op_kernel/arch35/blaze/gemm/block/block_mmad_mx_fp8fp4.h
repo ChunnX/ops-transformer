@@ -22,13 +22,6 @@
 #include "../utils/mega_moe_mx_l1_layout.h"
 #include "../utils/mega_moe_overlap_config.h"
 
-// A/B L1 rings; scale remains double buffered.
-#ifndef MEGA_MOE_A_L1_BUFFERS
-#define MEGA_MOE_A_L1_BUFFERS 2
-#endif
-static_assert(MEGA_MOE_A_L1_BUFFERS == 2 || MEGA_MOE_A_L1_BUFFERS == 4,
-              "A L1 buffers must be 2 or 4");
-
 namespace Blaze {
 namespace Gemm {
 namespace Block {
@@ -143,7 +136,6 @@ private:
         uint64_t l0KSize;
     };
 
-#if MEGA_MOE_A8W4_L0_REUSE || MEGA_MOE_A8W4_EARLY_FIX
     template <typename TensorC>
     __aicore__ inline void ProcessTileL1MStrip(int64_t kbOffset, uint64_t kbL1RealSize,
                                                      const BlockMmadOffsetParam &param, const TensorC &tensorC,
@@ -161,7 +153,6 @@ private:
     uint64_t l0aBufIdx_ = 0;
     uint64_t l0bBufIdx_ = 0;
     static constexpr TEventID eventIdMToMte1B_ = 2;
-#endif
 
     __aicore__ inline void WaitAivToAic();
     __aicore__ inline void SetAicToAiv();
@@ -234,7 +225,7 @@ private:
     TensorScaleBL1 tensorScaleBL1_;
 
     // --- sync ---
-    static constexpr uint64_t A_BUFFER_COUNT = MEGA_MOE_A_L1_BUFFERS;
+    static constexpr uint64_t A_BUFFER_COUNT = 2;
     using L1Layout = Blaze::Gemm::MegaMoeMxL1Layout;
     static constexpr uint64_t B_BUFFER_COUNT = L1Layout::B_STAGES;
     static constexpr TEventID eventIdsMte1ToMte2_ = 0;
@@ -505,9 +496,7 @@ __aicore__ inline BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::BlockMmad(bool enable) : 
     }
     for (uint64_t i = 0; i < DOUBLE_BUFFER; i++) {
         SetFlag<HardEvent::M_MTE1>(eventIdMToMte1_ + i);
-#if MEGA_MOE_A8W4_L0_REUSE || MEGA_MOE_A8W4_EARLY_FIX
         SetFlag<HardEvent::M_MTE1>(eventIdMToMte1B_ + i);
-#endif
         SetFlag<HardEvent::MTE1_MTE2>(eventIdsMxScaleMte1ToMte2_ + i);
     }
     for (uint64_t i = 0; i < A_BUFFER_COUNT; i++) {
@@ -521,9 +510,7 @@ __aicore__ inline BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::~BlockMmad()
     if (!resourceEnabled_) { return; }
     for (uint64_t i = 0; i < DOUBLE_BUFFER; i++) {
         WaitFlag<HardEvent::M_MTE1>(eventIdMToMte1_ + i);
-#if MEGA_MOE_A8W4_L0_REUSE || MEGA_MOE_A8W4_EARLY_FIX
         WaitFlag<HardEvent::M_MTE1>(eventIdMToMte1B_ + i);
-#endif
         WaitFlag<HardEvent::MTE1_MTE2>(eventIdsMxScaleMte1ToMte2_ + i);
     }
     for (uint64_t i = 0; i < A_BUFFER_COUNT; i++) {
@@ -551,10 +538,8 @@ __aicore__ inline void BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::Init(const ProblemSh
         bL1BufIdx_ = 0;
         scaleL1BufIdx_ = 0;
         l0BufIdx_ = 0;
-#if MEGA_MOE_A8W4_L0_REUSE || MEGA_MOE_A8W4_EARLY_FIX
         l0aBufIdx_ = 0;
         l0bBufIdx_ = 0;
-#endif
     }
     hasInitConfig_ = true;
 }
@@ -670,11 +655,7 @@ __aicore__ inline void BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::operator()(const Ten
         }
 
         WaitAivToAic();
-#if MEGA_MOE_A8W4_L0_REUSE || MEGA_MOE_A8W4_EARLY_FIX
         ProcessTileL1MStrip(kbGmOffset, kbL1RealSize, blockParam, tensorC, copyUbToV1);
-#else
-        ProcessTileL1(kbGmOffset, kbL1RealSize, blockParam);
-#endif
         uint64_t nextKbGmOffset = kbGmOffset + blockParam.kbL1Size;
         if (nextKbGmOffset % blockParam.kaL1Size == 0 || nextKbGmOffset >= blockParam.kSize) {
             uint64_t releasedSlot = aL1BufIdx_;
@@ -691,16 +672,7 @@ __aicore__ inline void BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::operator()(const Ten
         }
         SetAicToAiv();
     }
-#if MEGA_MOE_A8W4_L0_REUSE || MEGA_MOE_A8W4_EARLY_FIX
-    if constexpr (!MEGA_MOE_A8W4_EARLY_FIX) {
-        for (uint64_t mOffset = 0; mOffset < blockParam.mL1Size; mOffset += MX_FP8FP4_M_STRIP) {
-            CopyCStripL0c2GmOrUb(tensorC, blockParam, copyUbToV1, mOffset,
-                                min(MX_FP8FP4_M_STRIP, blockParam.mL1Size - mOffset));
-        }
-    }
-#else
-    CopyCL0c2GmOrUb(tensorC, blockParam, copyUbToV1);
-#endif
+
 }
 
 BLOCK_MMAD_MX_FP8FP4_TEMPLATE_PARAMS
@@ -715,7 +687,6 @@ __aicore__ inline void BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::SetAicToAiv()
     CrossCoreSetFlag<SYNC_MODE4, PIPE_MTE1>(SYNC_AIV_AIC_FLAG);
 }
 
-#if MEGA_MOE_A8W4_L0_REUSE || MEGA_MOE_A8W4_EARLY_FIX
 BLOCK_MMAD_MX_FP8FP4_TEMPLATE_PARAMS
 __aicore__ inline void BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::CopyAStripL1ToL0(uint64_t l1KOffset, uint64_t kbOffset,
                                                                              uint64_t realL0K, uint64_t realL0ScaleK,
@@ -813,16 +784,13 @@ __aicore__ inline void BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::ProcessTileL1MStrip(
         const bool finalK = isLastGmK && l1KOffset + realL0K == kbL1RealSize;
         // One B/scaleB load serves all M strips for this K split. Its free event
         // is returned only after the last strip's MAD has stopped reading it.
-        if constexpr (MEGA_MOE_A8W4_L0_REUSE) {
+        {
             WaitFlag<HardEvent::M_MTE1>(eventIdMToMte1B_ + l0bBufIdx_);
             CopyBSharedL1ToL0(tensorBL1, l1KOffset, kbOffset, realL0K, realL0ScaleK, param);
         }
         for (uint64_t mOffset = 0; mOffset < param.mL1Size; mOffset += MX_FP8FP4_M_STRIP) {
             const uint64_t mSize = min(MX_FP8FP4_M_STRIP, param.mL1Size - mOffset);
-            if constexpr (!MEGA_MOE_A8W4_L0_REUSE) {
-                WaitFlag<HardEvent::M_MTE1>(eventIdMToMte1B_ + l0bBufIdx_);
-                CopyBSharedL1ToL0(tensorBL1, l1KOffset, kbOffset, realL0K, realL0ScaleK, param);
-            }
+
             auto tensorBL0 = asc::te::make_tensor(
                 asc::te::make_mem_ptr<asc::te::location::l0b, AType>(l0bBufIdx_ * L0_BUF_OFFSET),
                 MakeLayoutBL0{}(realL0K, param.nL1Size));
@@ -854,22 +822,17 @@ __aicore__ inline void BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::ProcessTileL1MStrip(
                               tensorL0C, tensorAL0, tensorBL0);
             SetFlag<HardEvent::M_MTE1>(eventIdMToMte1_ + l0aBufIdx_);
             l0aBufIdx_ ^= 1;
-            if constexpr (!MEGA_MOE_A8W4_L0_REUSE) {
-                SetFlag<HardEvent::M_MTE1>(eventIdMToMte1B_ + l0bBufIdx_);
-                l0bBufIdx_ ^= 1;
-            }
-            if (MEGA_MOE_A8W4_EARLY_FIX && finalK) {
+
+            if (finalK) {
                 CopyCStripL0c2GmOrUb(tensorC, param, copyUbToV1, mOffset, mSize);
             }
         }
-        if constexpr (MEGA_MOE_A8W4_L0_REUSE) {
+        {
             SetFlag<HardEvent::M_MTE1>(eventIdMToMte1B_ + l0bBufIdx_);
             l0bBufIdx_ ^= 1;
         }
     }
 }
-
-#endif
 
 #undef BLOCK_MMAD_MX_FP8FP4_TEMPLATE_PARAMS
 #undef BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION
