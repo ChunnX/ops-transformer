@@ -6,17 +6,24 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 
-"""Make the sibling torch_extension modules importable as top-level names.
-
-setup.py only packages top-level ``.py`` files from ``torch_extension/``, so the
-DSL host lives there as ``golden`` / ``op`` / ``kernel`` rather than a nested
-package.  Tests import those modules directly and do not load ``__init__.py``,
-which would pull in torch_npu and OpBuilder.
-"""
-
-import os
 import sys
+import types
 
-_TE = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "torch_extension"))
-if _TE not in sys.path:
-    sys.path.insert(0, _TE)
+import torch
+
+from .indexer_prologue_qw import indexer_prologue_qw
+
+# Share the ds41 module with the other experimental operators.
+parent_pkg = sys.modules["cann_ops_transformer.ops"].__name__
+module_name = f"{parent_pkg}.ds41"
+ds41 = sys.modules.get(module_name)
+if ds41 is None:
+    ds41 = types.ModuleType(module_name)
+    ds41.__package__ = parent_pkg
+    sys.modules[module_name] = ds41
+
+ds41.indexer_prologue_qw = (
+    torch.ops.cann_ops_transformer.ds41.indexer_prologue_qw
+)
+
+__all__ = ["ds41"]

@@ -6,7 +6,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 
-"""CPU golden for the fused attn_prolog_qwkv operator.
+"""CPU golden for the fused indexer_prologue_qw operator.
 
 Q path: MXFP8 matmul → reshape → inplace RoPE on the last Dr dims → MXFP4 quant.
 W path: BF16 matmul → scalar mul.
@@ -172,7 +172,7 @@ def mx_quant_along_last(x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
 
 
 @dataclass
-class AttnPrologInputs:
+class IndexerPrologueQwInputs:
     x: torch.Tensor
     qr: torch.Tensor
     wqb: torch.Tensor
@@ -185,7 +185,7 @@ class AttnPrologInputs:
 
 
 @dataclass
-class AttnPrologOutputs:
+class IndexerPrologueQwOutputs:
     q: torch.Tensor
     descale_q: torch.Tensor
     w: torch.Tensor
@@ -220,7 +220,7 @@ def make_inputs(
     softmax_scale: float = 1.0,
     rope_identity: bool = False,
     seed: int = 0,
-) -> AttnPrologInputs:
+) -> IndexerPrologueQwInputs:
     if dr > d:
         raise ValueError(f"Dr={dr} exceeds D={d}")
     if dr % 2 != 0:
@@ -239,7 +239,7 @@ def make_inputs(
         theta = torch.rand((t, dr), generator=gen, dtype=torch.float32) * (2 * math.pi)
         rope_cos = torch.cos(theta)
         rope_sin = torch.sin(theta)
-    return AttnPrologInputs(
+    return IndexerPrologueQwInputs(
         x=x,
         qr=qr,
         wqb=wqb,
@@ -252,7 +252,7 @@ def make_inputs(
     )
 
 
-def attn_prolog_qwkv_golden(inputs: AttnPrologInputs) -> AttnPrologOutputs:
+def indexer_prologue_qw_golden(inputs: IndexerPrologueQwInputs) -> IndexerPrologueQwOutputs:
     t = inputs.qr.shape[0]
     n_d = inputs.wqb.shape[0]
     # Infer N, D from q output contract: wqb is (N*D, q_lora), ww is (N, dim).
@@ -267,7 +267,7 @@ def attn_prolog_qwkv_golden(inputs: AttnPrologInputs) -> AttnPrologOutputs:
     q, descale_q = mx_quant_along_last(q_fp32)
 
     w = inputs.softmax_scale * (inputs.x.float() @ inputs.ww.float().T)
-    return AttnPrologOutputs(q=q, descale_q=descale_q, w=w, q_fp32=q_fp32)
+    return IndexerPrologueQwOutputs(q=q, descale_q=descale_q, w=w, q_fp32=q_fp32)
 
 
 def dequant_mx_last(q: torch.Tensor, descale: torch.Tensor, d: int) -> torch.Tensor:

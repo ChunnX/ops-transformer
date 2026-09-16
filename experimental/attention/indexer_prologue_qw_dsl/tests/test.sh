@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
@@ -6,22 +7,9 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 
-import sys
-import types
+set -euo pipefail
 
-import torch
-
-from .attn_prolog_qwkv import attn_prolog_qwkv
-
-# Share the ds41 module with the other experimental operators.
-parent_pkg = sys.modules["cann_ops_transformer.ops"].__name__
-module_name = f"{parent_pkg}.ds41"
-ds41 = sys.modules.get(module_name)
-if ds41 is None:
-    ds41 = types.ModuleType(module_name)
-    ds41.__package__ = parent_pkg
-    sys.modules[module_name] = ds41
-
-ds41.attn_prolog_qwkv = torch.ops.cann_ops_transformer.ds41.attn_prolog_qwkv
-
-__all__ = ["ds41"]
+ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
+cd "$ROOT"
+exec "${PYTHON:-python3}" -m pytest -q \
+    experimental/attention/indexer_prologue_qw_dsl/tests/test_npu_precision.py "$@"

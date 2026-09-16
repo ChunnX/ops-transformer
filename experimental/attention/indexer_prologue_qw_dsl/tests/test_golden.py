@@ -6,7 +6,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 
-"""CPU golden tests for attn_prolog_qwkv. No NPU required."""
+"""CPU golden tests for indexer_prologue_qw. No NPU required."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from golden import (  # noqa: E402
     E2M1_POS,
     E8M0_BIAS,
     apply_rope_inplace,
-    attn_prolog_qwkv_golden,
+    indexer_prologue_qw_golden,
     dequant_mx_last,
     e2m1_nibble_to_fp32,
     fp32_to_e2m1_nibble,
@@ -28,7 +28,6 @@ from golden import (  # noqa: E402
     rotate_half,
     unpack_e2m1_nibbles,
 )
-from op import attn_prolog_qwkv  # noqa: E402
 
 
 CASES = [
@@ -72,7 +71,7 @@ def test_output_contracts(t, dim, q_lora, n, d, dr, scale, rope_identity):
     inputs = make_inputs(
         t, dim, q_lora, n, d, dr, softmax_scale=scale, rope_identity=rope_identity
     )
-    out = attn_prolog_qwkv_golden(inputs)
+    out = indexer_prologue_qw_golden(inputs)
     assert out.q.shape == (t, n, d // 2)
     assert out.q.dtype == torch.uint8
     assert out.descale_q.shape == (t, n, paired_scale_groups(d), 2)
@@ -87,7 +86,7 @@ def test_w_path_matches_naive(t, dim, q_lora, n, d, dr, scale, rope_identity):
     inputs = make_inputs(
         t, dim, q_lora, n, d, dr, softmax_scale=scale, rope_identity=rope_identity, seed=7
     )
-    out = attn_prolog_qwkv_golden(inputs)
+    out = indexer_prologue_qw_golden(inputs)
     naive = scale * (inputs.x.float() @ inputs.ww.float().T)
     assert torch.allclose(out.w, naive, atol=0.0, rtol=0.0)
 
@@ -95,13 +94,13 @@ def test_w_path_matches_naive(t, dim, q_lora, n, d, dr, scale, rope_identity):
 def test_q_gemm_matches_mx_formula():
     inputs = make_inputs(8, 32, 64, 2, 64, 32, rope_identity=True, seed=3)
     y = mx_matmul_fp32(inputs.qr, inputs.wqb, inputs.descale_qr, inputs.descale_wqb)
-    out = attn_prolog_qwkv_golden(inputs)
+    out = indexer_prologue_qw_golden(inputs)
     assert torch.allclose(out.q_fp32.reshape(8, 2 * 64), y, atol=0.0, rtol=0.0)
 
 
 def test_quant_roundtrip_bounded_by_fp4_step():
     inputs = make_inputs(4, 32, 64, 1, 64, 32, rope_identity=True, seed=11)
-    out = attn_prolog_qwkv_golden(inputs)
+    out = indexer_prologue_qw_golden(inputs)
     recovered = dequant_mx_last(out.q, out.descale_q, d=64)
     nibbles = unpack_e2m1_nibbles(out.q)
     assert torch.equal(pack_e2m1_nibbles(nibbles), out.q)
@@ -115,29 +114,10 @@ def test_quant_roundtrip_bounded_by_fp4_step():
     assert out.descale_q.max() <= 255
 
 
-def test_public_wrapper_shapes():
-    inputs = make_inputs(4, 32, 64, 2, 64, 32, softmax_scale=0.5, seed=1)
-    q, descale_q, w = attn_prolog_qwkv(
-        inputs.x,
-        inputs.qr,
-        inputs.wqb,
-        inputs.ww,
-        inputs.descale_qr,
-        inputs.descale_wqb,
-        inputs.rope_sin,
-        inputs.rope_cos,
-        softmax_scale=inputs.softmax_scale,
-    )
-    assert q.shape == (4, 2, 32)
-    assert q.dtype == torch.uint8
-    assert descale_q.shape == (4, 2, 1, 2)
-    assert w.shape == (4, 2)
-
-
 def test_identity_scale_bytes():
     """Zero activations encode e8m0=127 (2^0) after padding unused pair slots."""
     inputs = make_inputs(2, 32, 64, 1, 96, 32, rope_identity=True, seed=0)
-    out = attn_prolog_qwkv_golden(inputs)
+    out = indexer_prologue_qw_golden(inputs)
     assert out.descale_q.shape == (2, 1, 2, 2)
     pad_slot = out.descale_q[:, :, 1, 1]
     assert torch.equal(pad_slot, torch.full_like(pad_slot, E8M0_BIAS))
