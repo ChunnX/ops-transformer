@@ -21,6 +21,16 @@
 
 namespace MegaMoeImpl {
 
+template <typename Config>
+__aicore__ inline auto MakePersistentA8W4Resource()
+{
+    if constexpr (g_coreType == AIC) {
+        return typename Config::BlockMmad(true);
+    } else {
+        return typename Config::BlockPrologue(0U, GetSubBlockIdx() == 0U);
+    }
+}
+
 #define TemplateMegaMoeA8W4WaveTypeClass \
     typename XType, typename OutputType, typename TopkWeightsType, typename MoeWeightType, int32_t MoeQuantMode, \
         typename SharedWeightType, int32_t SharedQuantMode, int32_t MoeWeight1Format, int32_t MoeWeight2Format, \
@@ -286,6 +296,14 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
     const bool gmm2LagActive = commonConfig_.tokenNum >= 4096U;
     bool hasPendingWave = false;
     ExpertTokenRange pendingWaveRange{};
+#if MEGA_MOE_PERSISTENT_A8W4
+    using ReuseConfig = GmmKernel::Config<true, 0, typename MoeQuantConfig::QuantOutType,
+        MoeWeightType, bfloat16_t, typename MoeQuantConfig::QuantScaleType,
+        typename MoeQuantConfig::QuantScaleType, false, TopkWeightsPrefetch, false, false, true>;
+    auto persistentResource = MakePersistentA8W4Resource<ReuseConfig>();
+    gmm1AddrInfo.a8w4PersistentResource = &persistentResource;
+    gmm2AddrInfo.a8w4PersistentResource = &persistentResource;
+#endif
     ExpertTokenPosition gmm1Position{};
     while (gmm1Position.expertIdx < commonConfig_.moeExpertPerRank) {
         ExpertTokenRange waveRange = ProcessNextDispatchAndCurrentGmm1(
