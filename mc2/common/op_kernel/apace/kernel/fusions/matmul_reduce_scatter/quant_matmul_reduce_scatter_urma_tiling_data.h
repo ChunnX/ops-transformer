@@ -52,3 +52,8 @@ struct QuantMatmulReduceScatterTilingData {
     QuantMatmulTilingData subMmTilingData;  // 子问题 tiling (m=headMSize, T>1 per-tile head tile 路径)
     QuantMatmulTilingData tailMmTilingData; // tail tile tiling (m=rankSize*tailMSize, T>1 tail tile 路径)
 };
+
+// 通信 tiles (splitAxisTileCnt + splitAxisTailCnt) 上限 — host/kernel 同源常量。
+// 单 REMOTE flag 轮转安全边界: 每计数器深度 0-15, 轮转周期 11,
+// 最坏单 id 积压 = ⌊(T−1)/11⌋+1 ≤ 15 ⇒ T ≤ 165(触界)/154(留1余量), 取 64 留 2.4x 余量。
+constexpr uint32_t QMRS_MAX_COMM_TILES = 64;

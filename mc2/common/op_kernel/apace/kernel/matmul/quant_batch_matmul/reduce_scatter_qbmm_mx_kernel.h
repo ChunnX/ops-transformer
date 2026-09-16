@@ -19,7 +19,7 @@
  *     → A 数据全在本卡 GM 连续 [m,k], 各 rank 段天然连续
  *     → FragmentTensor 打包本卡 GM 中各 rank 段的地址 (虽然连续, fragment 边界保持 L1 隔离)
  *     → C 输出到 workspace 连续 [m,n], FragmentTensor 打包 workspace 中各 rank 段地址
- *     → 无需 CrossCoreWaitFlag (计算不依赖通信), 仅 SetFlag(1) 通知 AIV remote 段完成
+ *     → 无需 CrossCoreWaitFlag (计算不依赖通信); C→V 同步在 impl 层 per-tile SetFlag (v2 三段式)
  *
  * FragmentTensor 消除 R 循环的核心：
  *   - 完整逻辑 M 划分为 HEAD / MAIN(按轮) / TAIL 区域 (ResolveTileCtx):
@@ -63,6 +63,12 @@ enum RegionTag {
     HEAD,
     MAIN,
     TAIL
+};
+
+// fragment 选择范围 (v2 三段式: 段1/2 仅 remote 片段, 段3 仅本 rank 片段)
+enum FragScope : uint8_t {
+    FRAG_SCOPE_REMOTE = 0, // 仅 remote rank 片段 (rankSize−1 个, 升序剔除 self)
+    FRAG_SCOPE_LOCAL = 1,  // 仅本 rank 片段 (1 个)
 };
 
 template <typename AType, typename BType, typename CType>
@@ -122,8 +128,8 @@ public:
         uint64_t k{0};
         uint64_t n{0};
         uint64_t scaleKLen{0};
-        bool localLast{false};
-        uint32_t fragCount{0};
+        uint8_t fragScope{FRAG_SCOPE_REMOTE}; // 0 = 仅 remote 片段; 1 = 仅本 rank 片段
+        uint32_t fragCount{0};                // 0 = 按 scope 自动: REMOTE→rankSize−1 / LOCAL→1
     };
 
     struct Params {
@@ -265,7 +271,8 @@ __aicore__ inline void QmmMxKernelRsFrag<AType, BType, CType>::Run(const Params 
     const int64_t scaleKLen = static_cast<int64_t>(fp.scaleKLen);
 
     bool hasTail = (fp.tailCnt > 0 && fp.tailM > 0);
-    uint32_t effRankCnt = (fp.fragCount > 0) ? fp.fragCount : fp.rankSize;
+    uint32_t effRankCnt = (fp.fragCount > 0) ?
+        fp.fragCount : ((fp.fragScope == FRAG_SCOPE_LOCAL) ? 1U : fp.rankSize - 1U);
     const int64_t headMainRows = static_cast<int64_t>(fp.headRows) * effRankCnt / fp.rankSize;
     const int64_t mainRoundRows = static_cast<int64_t>(effRankCnt) * static_cast<int64_t>(fp.tileM);
     const int64_t mainSectionRows = static_cast<int64_t>(fp.tileCnt) * mainRoundRows;
@@ -306,7 +313,8 @@ __aicore__ inline void QmmMxKernelRsFrag<AType, BType, CType>::Process(const Par
     const int64_t Ni = static_cast<int64_t>(fp.n);
     const int64_t scaleKLen = static_cast<int64_t>(fp.scaleKLen);
 
-    uint32_t effRankCnt = (fp.fragCount > 0) ? fp.fragCount : fp.rankSize;
+    uint32_t effRankCnt = (fp.fragCount > 0) ?
+        fp.fragCount : ((fp.fragScope == FRAG_SCOPE_LOCAL) ? 1U : fp.rankSize - 1U);
     const int64_t headMainRows = static_cast<int64_t>(fp.headRows) * effRankCnt / fp.rankSize;
     const int64_t mainRoundRows = static_cast<int64_t>(effRankCnt) * static_cast<int64_t>(fp.tileM);
     const int64_t mainSectionRows = static_cast<int64_t>(fp.tileCnt) * mainRoundRows;
@@ -320,11 +328,6 @@ __aicore__ inline void QmmMxKernelRsFrag<AType, BType, CType>::Process(const Par
     Te::Coord<int64_t, int64_t, int64_t, int64_t> blockIdx;
     int64_t mPos = 0L, nPos = 0L;
 
-    // localLast 模式: 检测 remote→local fragment 边界, 提前 SetFlag(1)
-    int64_t fragM = headMainRows / effRankCnt;
-    int64_t localFragBoundary = fp.localLast ? (headMainRows - fragM) : -1;
-    bool remoteFlagSet = false;
-
     while (sch.GetTileIdx(blockIdx)) {
         auto singleShape =
             sch.template GetBlockShape<Blaze::Gemm::QuantMode::MX_PERGROUP_MODE,
@@ -335,12 +338,6 @@ __aicore__ inline void QmmMxKernelRsFrag<AType, BType, CType>::Process(const Par
             break;
         }
         sch.GetTileCoord(blockIdx, mPos, nPos);
-
-        // localLast: mPos 跨越 remote→local 边界时, 提前 SetFlag(1) 通知 AIV 启动 AllToAll
-        if (fp.localLast && !remoteFlagSet && mPos >= localFragBoundary) {
-            CrossCoreSetFlag<0x2, PIPE_FIX>(1);
-            remoteFlagSet = true;
-        }
 
         auto ctx = ResolveTileCtx(mPos, headMainRows, mainRoundRows, mainSectionRows, effRankCnt, fp.commTurn);
 
@@ -372,12 +369,8 @@ __aicore__ inline void QmmMxKernelRsFrag<AType, BType, CType>::Process(const Par
         auto blockC = ctx.fragC->Slice(coordC, shapeC);
         mmadFrag(blockA, gmBlockB, blockScaleA, gmBlockScaleB, gmBlockBias, cFragAddrs_,
                  static_cast<uint64_t>(fp.mPerRank), static_cast<uint64_t>(fp.tileM), static_cast<uint64_t>(fp.tileCnt),
-                 static_cast<uint64_t>(fp.tailM), ctx.rankCnt, Ni, singleShape, ctx.regionMPos, nPos, 0, blockC);
-    }
-
-    // localLast: 确保所有 core 都设置 flag(1) (某些 core 可能未跨越边界)
-    if (fp.localLast && !remoteFlagSet) {
-        CrossCoreSetFlag<0x2, PIPE_FIX>(1);
+                 static_cast<uint64_t>(fp.tailM), static_cast<uint64_t>(effRankCnt), Ni, singleShape,
+                 ctx.regionMPos, nPos, 0, blockC);
     }
 }
 
@@ -405,8 +398,7 @@ __aicore__ inline void QmmMxKernelRsFrag<AType, BType, CType>::BuildFragmentTens
 
     const auto &fp = params.fragParams;
 
-    // C fragment 地址: workspace 中各 rank 段的起始位置 (保持原始 rank 顺序)
-    // localLast 模式下 addrListC 会按 [remote..., local] 重排, 但 cFragAddrs_ 保持原始顺序
+    // C fragment 地址: workspace 中各 rank 段的起始位置 (保持原始 rank 顺序, 按 scope 全量构建不重排)
     // mmadFrag 内部用 cFragAddrs_ 做 L1 cache 管理, 用 blockC (从 FragmentTensor) 做实际输出
     for (uint32_t r = 0; r < fp.rankSize; ++r) {
         cFragAddrs_[r] = params.cGM + static_cast<uint64_t>(r) * fp.mPerRank * params.cBytesPerM;
@@ -416,10 +408,16 @@ __aicore__ inline void QmmMxKernelRsFrag<AType, BType, CType>::BuildFragmentTens
     tileMScaleStride_ = static_cast<uint64_t>(fp.tileM) * params.scaleBytesPerMRow;
     tileMCStride_ = static_cast<uint64_t>(fp.tileM) * params.cBytesPerM;
 
-    // HEAD: 当前 comm tile 的所有 rank 段
+    // HEAD: 当前 comm tile 的 rank 段 (按 fragScope 选择, cFragAddrs_ 保持原始 rank 顺序)
     // 每个 fragment 指向 aGm + r * chunkM * K + tileOffset (当前 tile 在 chunkM 内的偏移)
     // tileOffset 由调用方通过 params.aGM 的偏移传入 (impl.h 设置 aGM = aGm + tileMOffset * K)
-    if (fp.localLast) {
+    if (fp.fragScope == FRAG_SCOPE_LOCAL) {
+        // 段3: 仅本 rank 片段 (1 个)
+        headAddrListA_[0] = params.aGM + static_cast<uint64_t>(fp.rankId) * fp.mPerRank * params.dataBytesPerMRow;
+        headAddrListScale_[0] =
+            params.aScaleGM + static_cast<uint64_t>(fp.rankId) * fp.mPerRank * params.scaleBytesPerMRow;
+        headAddrListC_[0] = cFragAddrs_[fp.rankId];
+    } else { // FRAG_SCOPE_REMOTE (段1/2: 升序遍历、剔除 self)
         uint32_t idx = 0;
         for (uint32_t r = 0; r < fp.rankSize; ++r) {
             if (r == fp.rankId) {
@@ -431,19 +429,10 @@ __aicore__ inline void QmmMxKernelRsFrag<AType, BType, CType>::BuildFragmentTens
             headAddrListC_[idx] = cFragAddrs_[r];
             ++idx;
         }
-        headAddrListA_[idx] = params.aGM + static_cast<uint64_t>(fp.rankId) * fp.mPerRank * params.dataBytesPerMRow;
-        headAddrListScale_[idx] =
-            params.aScaleGM + static_cast<uint64_t>(fp.rankId) * fp.mPerRank * params.scaleBytesPerMRow;
-        headAddrListC_[idx] = cFragAddrs_[fp.rankId];
-    } else {
-        for (uint32_t r = 0; r < fp.rankSize; ++r) {
-            headAddrListA_[r] = params.aGM + static_cast<uint64_t>(r) * fp.mPerRank * params.dataBytesPerMRow;
-            headAddrListScale_[r] = params.aScaleGM + static_cast<uint64_t>(r) * fp.mPerRank * params.scaleBytesPerMRow;
-            headAddrListC_[r] = cFragAddrs_[r];
-        }
     }
     uint64_t fragM = fp.headRows / fp.rankSize;
-    uint32_t fragCnt = (fp.fragCount > 0) ? fp.fragCount : fp.rankSize;
+    uint32_t fragCnt = (fp.fragCount > 0) ?
+        fp.fragCount : ((fp.fragScope == FRAG_SCOPE_LOCAL) ? 1U : fp.rankSize - 1U);
     headFragA_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, MakeLayoutA, AType>(
         MakeFragParam(fragM, fragM, fragCnt, fp.k), headAddrListA_);
     headFragScaleA_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, MakeLayoutScaleA, fp8_e8m0_t>(

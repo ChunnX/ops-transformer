@@ -174,6 +174,30 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n, co
     uint32_t tailTileCnt = (tailMSize > 0) ? 1 : 0;
     uint32_t tileCnt = headTileCnt + tailTileCnt;
 
+    // 通信 tiles 上限校验: 单 REMOTE flag 轮转安全边界 (kernel 侧同源常量, 经 include 链引入).
+    // 轮转周期 11, 每 flagid 计数器深度 15: 最坏单 id 积压 floor((T-1)/11)+1 <= 15 => T <= 154(留1余量),
+    // 上限取 64 留 2.4x 余量 (方案 v2 §4.3/§4.5).
+    if (tileCnt > QMRS_MAX_COMM_TILES) {
+        throw std::invalid_argument("ERROR: tileCnt=" + std::to_string(tileCnt) +
+                                    " exceeds QMRS_MAX_COMM_TILES=" + std::to_string(QMRS_MAX_COMM_TILES) +
+                                    " (flagid rotation safety bound). Reduce M or increase headMSize.");
+    }
+
+    // win 容量防御校验: data win = [0,128) 保留区(对齐 kernel 侧 WIN_DATA_OFFSET, barrier counter) +
+    // [128, 128+R*chunkBytes) PUT 数据区, 需 <= hcclBufSize. tiling 阶段 HCCL 建链未完成、
+    // 实际 hcclBufSize 不可得, 以实测上限 400MB 为界 (方案 v2 §4.5/§8.1).
+    constexpr uint64_t QMRS_WIN_RESERVED_BYTES = 128;                  // 与 impl.h WIN_DATA_OFFSET 同口径
+    constexpr uint64_t QMRS_HCCL_BUF_SIZE_LIMIT = 400UL * 1024 * 1024; // hcclBufSize 实测上限
+    uint64_t chunkBytes = static_cast<uint64_t>(chunkM) * static_cast<uint64_t>(n) * sizeof(uint16_t);
+    uint64_t winRequiredBytes = QMRS_WIN_RESERVED_BYTES + static_cast<uint64_t>(rankNum) * chunkBytes;
+    if (winRequiredBytes > QMRS_HCCL_BUF_SIZE_LIMIT) {
+        throw std::invalid_argument("ERROR: win required=" + std::to_string(winRequiredBytes) +
+                                    " bytes (128 reserved + rankNum=" + std::to_string(rankNum) +
+                                    " x chunkBytes=" + std::to_string(chunkBytes) +
+                                    ") exceeds hcclBufSize limit=" + std::to_string(QMRS_HCCL_BUF_SIZE_LIMIT) +
+                                    " bytes. Reduce m/n or rankNum.");
+    }
+
     tilingData.commTilingData.splitAxisTileCnt = static_cast<uint64_t>(headTileCnt);
     tilingData.commTilingData.splitAxisTileSize = static_cast<uint64_t>(headMSize);
     tilingData.commTilingData.splitAxisTailSize = static_cast<uint64_t>(tailMSize);
