@@ -24,6 +24,8 @@
 #include "../arch35/vf/lightning_indexer_v2_vector1.h"
 #include "../arch35/vf/lightning_indexer_v2_topk.h"
 
+#include "common/lightning_indexer_v2_service_vector_base_arch35.h"
+
 namespace LIV2Kernel {
 using namespace LIV2Common;
 constexpr uint32_t TRUNK_LEN_16K = 16384;
@@ -299,24 +301,8 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::CleanInvalidOutput(
 template <typename LIT>
 __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::DoTndPadding(const LIV2Common::RunInfo &runInfo)
 {
-    uint32_t paddingLen = runInfo.curCuSeqlensQ - runInfo.curSequsedQ;
-    uint64_t paddingOffset = runInfo.indiceOutOffset + runInfo.curSequsedQ * constInfo_.kHeadNum * constInfo_.topk;
-    uint64_t dealSize = paddingLen * constInfo_.kHeadNum * constInfo_.topk;
-    GlobalTensor<int32_t> indiceOutPaddingStart = indiceOutGm[paddingOffset];
-    AscendC::InitGlobalMemory(indiceOutPaddingStart, dealSize, constInfo_.INVALID_IDX);
-
-    if (constInfo_.returnValueFlag) {
-        SetFlag<HardEvent::MTE3_V>(MTE3_V_EVENT);
-        WaitFlag<HardEvent::MTE3_V>(MTE3_V_EVENT);
-
-        GlobalTensor<uint32_t> valueOutGmTmp;
-        valueOutGmTmp.SetGlobalBuffer((__gm__ uint32_t *)valueOutGm.GetPhyAddr());
-        GlobalTensor<uint32_t> valueOut = valueOutGmTmp[paddingOffset];
-
-        AscendC::InitGlobalMemory(valueOut, dealSize, constInfo_.NEG_INF_FLOAT);
-        SetFlag<HardEvent::MTE3_V>(MTE3_V_EVENT);
-        WaitFlag<HardEvent::MTE3_V>(MTE3_V_EVENT);
-    }
+    LIV2Common::DoTndPadding(runInfo, constInfo_.topk, constInfo_.returnValueFlag, constInfo_.NEG_INF_FLOAT,
+                             constInfo_.kHeadNum, constInfo_.INVALID_IDX, MTE3_V_EVENT, indiceOutGm, valueOutGm);
 }
 
 template <typename LIT>
@@ -910,9 +896,8 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessLD()
 
             int32_t s2Len = topkCountAlign16_ * ldProWorkspaceNum + ldProcessOffset;
             uint32_t s2LenAlign = LIV2Common::Align(s2Len, (int32_t)256); // 寄存器需要256对齐
-            uint64_t LDGmOffset = ldInfo_.workspaceIdx * s1BaseSize_ * topkCountAlign16_ +
-                                  topkCountAlign16_ * (ldInfo_.mStart + j) +
-                                  i * ldWorkspaceNum * s1BaseSize_ * topkCountAlign16_; // 加入LD处理偏移
+            uint64_t LDGmOffset = LIV2Common::GetLdGmOffset(ldInfo_, s1BaseSize_, topkCountAlign16_, j, i,
+                                                            ldWorkspaceNum); // 加入LD处理偏移
             SetFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
             WaitFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
             AscendC::DataCopyPad(mrgValueLocal_[ldProcessOffset], ldScoreGm[LDGmOffset], ldScoreParams, scorePadParams);
