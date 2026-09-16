@@ -10,7 +10,7 @@
 
 #include "matmul_reduce_scatter_v2_transpose_a5_fusion_pass.h"
 
-#if CANN_VERSION_NUM >= GRAPH_FUSION_SUPPORT_VERSION
+#if GE_COMPILER_VERSION_NUM >= GRAPH_FUSION_SUPPORT_VERSION
 #include "es_MatmulReduceScatterV2.h" // es autogen header
 #include "es_math_ops.h"              // math ops stub
 #include "common/utils/op_mc2.h"

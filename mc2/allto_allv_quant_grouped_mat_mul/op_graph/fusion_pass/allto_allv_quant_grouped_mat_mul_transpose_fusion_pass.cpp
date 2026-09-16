@@ -10,7 +10,7 @@
 
 #include "allto_allv_quant_grouped_mat_mul_transpose_fusion_pass.h"
 
-#if CANN_VERSION_NUM >= GRAPH_FUSION_SUPPORT_VERSION
+#if GE_COMPILER_VERSION_NUM >= GRAPH_FUSION_SUPPORT_VERSION
 #include "es_AlltoAllvQuantGroupedMatMul.h" // es autogen header
 #include "es_math_ops.h"                    // math ops stub
 #include "mc2_platform_info.h"

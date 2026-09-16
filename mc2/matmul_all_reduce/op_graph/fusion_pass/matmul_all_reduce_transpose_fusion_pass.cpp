@@ -10,7 +10,7 @@
 
 #include "matmul_all_reduce_transpose_fusion_pass.h"
 
-#if CANN_VERSION_NUM >= GRAPH_FUSION_SUPPORT_VERSION
+#if GE_COMPILER_VERSION_NUM >= GRAPH_FUSION_SUPPORT_VERSION
 #include "es_MatmulAllReduce.h"
 #include "es_MatmulAllReduceAddRmsNorm.h"
 #include "es_InplaceMatmulAllReduceAddRmsNorm.h"

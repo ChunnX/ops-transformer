@@ -10,9 +10,9 @@
 
 #ifndef TRANSFORMER_MATMUL_ALL_REDUCE_TRANSPOSE_A5_FUSION_PASS_H
 #define TRANSFORMER_MATMUL_ALL_REDUCE_TRANSPOSE_A5_FUSION_PASS_H
-#include "version/cann_version.h"
+#include "version/ge-compiler_version.h"
 #define GRAPH_FUSION_SUPPORT_VERSION 90000000
-#if CANN_VERSION_NUM >= GRAPH_FUSION_SUPPORT_VERSION
+#if GE_COMPILER_VERSION_NUM >= GRAPH_FUSION_SUPPORT_VERSION
 #include "ge/fusion/pass/pattern_fusion_pass.h"
 
 namespace ops {
