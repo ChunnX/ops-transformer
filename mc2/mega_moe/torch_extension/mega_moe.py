@@ -86,7 +86,7 @@ class _MegaMoeOpBuilder(OpBuilder):
             "Tensor? mask_buffer=None, "
             "int max_recv_token_num=0, "
             "int dispatch_quant_mode=0, int combine_quant_mode=0, "
-            'str comm_alg="", int num_max_tokens_per_rank=0, str activation="swiglu", '
+            'str comm_alg="", int combine_comm_mode=0, int num_max_tokens_per_rank=0, str activation="swiglu", '
             "float? activation_clamp=None, Dict(str, float)? activation_params=None, "
             "int? dispatch_quant_out_dtype=None, int? shared_expert_quant_out_dtype=None, "
             "int? weight1_type=None, int? weight2_type=None, "
@@ -122,6 +122,7 @@ class _MegaMoeOpBuilder(OpBuilder):
             dispatch_quant_mode=0,
             combine_quant_mode=0,
             comm_alg="",
+            combine_comm_mode=0,
             num_max_tokens_per_rank=0,
             activation="swiglu",
             activation_clamp=None,
@@ -179,6 +180,7 @@ def _npu_mega_moe(
     dispatch_quant_mode=0,
     combine_quant_mode=0,
     comm_alg="",
+    combine_comm_mode=0,
     num_max_tokens_per_rank=0,
     activation="swiglu",
     activation_clamp=None,
@@ -193,6 +195,7 @@ def _npu_mega_moe(
     rank_num_per_server=None,
     topk_weights_type=0,
 ):
+    comm_alg = _resolve_comm_alg(combine_comm_mode, comm_alg)
     activation_params_list = _normalize_activation_params(
         activation, activation_clamp, activation_params
     )
@@ -292,6 +295,7 @@ class SymmBuffer:
         dispatch_quant_out_dtype: Optional[torch.dtype] = None,
         combine_quant_mode: int = 0,
         comm_alg: str = "",
+        combine_comm_mode: int = 0,
         topk_weights_type: int = 0,
     ):
         # Metadata
@@ -305,7 +309,7 @@ class SymmBuffer:
         self.dispatch_quant_mode = dispatch_quant_mode
         self.dispatch_quant_out_dtype = dispatch_quant_out_dtype
         self.combine_quant_mode = combine_quant_mode
-        self.comm_alg = comm_alg
+        self.comm_alg = _resolve_comm_alg(combine_comm_mode, comm_alg)
         self.topk_weights_type = topk_weights_type
         self._check_params()
 
@@ -324,7 +328,7 @@ class SymmBuffer:
             dispatch_quant_mode=dispatch_quant_mode,
             dispatch_quant_out_dtype=dispatch_quant_out_dtype,
             combine_quant_mode=combine_quant_mode,
-            comm_alg=comm_alg,
+            comm_alg=self.comm_alg,
             topk_weights_type=topk_weights_type,
         )
         # Use the exact MTE size initially; cross-super context replaces it with the URMA size before malloc.
@@ -555,9 +559,11 @@ def _get_mega_moe_ccl_buffer_size(
     dispatch_quant_out_dtype: Optional[torch.dtype] = None,
     combine_quant_mode: int = 0,
     comm_alg: str = "",
+    combine_comm_mode: int = 0,
     topk_weights_type: int = 0,
     server_num: int = 0,
 ) -> int:
+    comm_alg = _resolve_comm_alg(combine_comm_mode, comm_alg)
     _op_module = _mega_moe_op_builder.load()
     quant_dtype_int = _dtype_to_int(dispatch_quant_out_dtype)  # 将torch.dtype转换为int
     return _op_module.get_mega_moe_ccl_buffer_size(
@@ -576,6 +582,23 @@ def _get_mega_moe_ccl_buffer_size(
     )
 
 
+def _resolve_comm_alg(combine_comm_mode, comm_alg):
+    """架构师定案接口（2026-09-17）：dispatch 去重由 tiling 收益门按形状自动判定（调用方恒请求）；
+    combine 去重由 combine_comm_mode 属性显式控制（0=关，1=开）。comm_alg 降为兼容通道：
+    显式传了非空 comm_alg 时按旧语义直通（内部调试/AB 对比用），否则由 combine_comm_mode 翻译。"""
+    if comm_alg:
+        return comm_alg
+    if combine_comm_mode not in (0, 1):
+        raise ValueError(f"combine_comm_mode only supports 0 or 1, got {combine_comm_mode!r}")
+    if combine_comm_mode == 1:
+        return "dedup"
+    # 架构师终态：dispatch 去重恒请求、由 tiling 收益门自动判定。为不静默改变存量调用
+    # （comm_alg 空历史语义=全关）的行为，终态暂由 MGB_AUTO_DISPATCH=1 启用，确认后翻转默认。
+    if os.environ.get("MGB_AUTO_DISPATCH") == "1":
+        return "dedup_dispatch"
+    return ""
+
+
 def get_symm_buffer_for_mega_moe(
     group,
     num_experts: int,
@@ -589,6 +612,7 @@ def get_symm_buffer_for_mega_moe(
     dispatch_quant_out_dtype: Optional[torch.dtype] = None,
     combine_quant_mode: int = 0,
     comm_alg: str = "",
+    combine_comm_mode: int = 0,
     topk_weights_type: int = 0,
 ) -> SymmBuffer:
     return SymmBuffer(
@@ -603,6 +627,7 @@ def get_symm_buffer_for_mega_moe(
         dispatch_quant_out_dtype,
         combine_quant_mode,
         comm_alg,
+        combine_comm_mode,
         topk_weights_type,
     )
 
