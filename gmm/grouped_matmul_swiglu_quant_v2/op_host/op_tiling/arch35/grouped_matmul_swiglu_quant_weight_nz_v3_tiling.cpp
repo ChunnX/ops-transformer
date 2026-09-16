@@ -35,6 +35,11 @@ bool IsFinitePositive(float value)
     return std::isfinite(value) && value > 0.0F;
 }
 
+bool IsDenseFormat(ge::Format format)
+{
+    return format == ge::FORMAT_ND || format == ge::FORMAT_NCL || format == ge::FORMAT_NCHW;
+}
+
 } // namespace
 
 void GroupedMatmulSwigluQuantV3Tiling950::Reset()
@@ -112,6 +117,7 @@ bool GroupedMatmulSwigluQuantV3Tiling950::AnalyzeAttrs()
     int64_t dequantMode = 0;
     int64_t dequantDtype = 0;
     int64_t quantMode = 0;
+    int64_t quantDtype = 0;
     bool transposeWeight = false;
     int64_t groupListType = 0;
     int64_t swigluMode = SWIGLU_MODE;
@@ -121,6 +127,7 @@ bool GroupedMatmulSwigluQuantV3Tiling950::AnalyzeAttrs()
     OP_CHECK_IF(!GetAttrInt(attrs, ATTR_INDEX_DEQUANT_MODE, dequantMode) ||
                     !GetAttrInt(attrs, ATTR_INDEX_DEQUANT_DTYPE, dequantDtype) ||
                     !GetAttrInt(attrs, ATTR_INDEX_QUANT_MODE, quantMode) ||
+                    !GetAttrInt(attrs, ATTR_INDEX_QUANT_DTYPE, quantDtype) ||
                     !GetAttrBool(attrs, ATTR_INDEX_TRANSPOSE_WEIGHT, transposeWeight) ||
                     !GetAttrInt(attrs, ATTR_INDEX_GROUPLIST_TYPE, groupListType) ||
                     !GetAttrInt(attrs, ATTR_INDEX_SWIGLU_MODE, swigluMode) ||
@@ -138,6 +145,8 @@ bool GroupedMatmulSwigluQuantV3Tiling950::AnalyzeAttrs()
     OP_CHECK_IF(groupListType != 0 && groupListType != 1,
                 OP_LOGE(context_->GetNodeName(), "group_list_type must be 0 or 1, but got %ld", groupListType),
                 return false);
+    OP_CHECK_IF(quantDtype != static_cast<int64_t>(inputParams_.outDataDtype),
+                OP_LOGE(context_->GetNodeName(), "quant_dtype must match the FP8 output dtype"), return false);
     OP_CHECK_IF(swigluMode != SWIGLU_MODE,
                 OP_LOGE(context_->GetNodeName(), "swiglu_mode currently only supports 2, but got %ld", swigluMode),
                 return false);
@@ -212,7 +221,9 @@ bool GroupedMatmulSwigluQuantV3Tiling950::AnalyzeDtype()
                 OP_LOGE(context_->GetNodeName(), "V3 output must be FLOAT8_E4M3FN with FLOAT8_E8M0 scale"),
                 return false);
     OP_CHECK_IF(inputParams_.aFormat != ge::FORMAT_ND || inputParams_.bFormat != ge::FORMAT_FRACTAL_NZ ||
-                    inputParams_.scaleFormat != ge::FORMAT_ND || inputParams_.cFormat != ge::FORMAT_ND,
+                    inputParams_.scaleFormat != ge::FORMAT_ND || inputParams_.cFormat != ge::FORMAT_ND ||
+                    !IsDenseFormat(static_cast<ge::Format>(ge::GetPrimaryFormat(xScaleDesc->GetFormat().GetStorageFormat()))) ||
+                    !IsDenseFormat(static_cast<ge::Format>(ge::GetPrimaryFormat(yScaleDesc->GetFormat().GetStorageFormat()))),
                 OP_LOGE(context_->GetNodeName(), "V3 requires x/scale/output ND and weight FRACTAL_NZ"), return false);
     return true;
 }
@@ -260,6 +271,8 @@ bool GroupedMatmulSwigluQuantV3Tiling950::CheckShapeAndScale(
     OP_CHECK_IF(xScaleShape.GetDimNum() != X_SCALE_DIM_NUM || xScaleShape.GetDim(0) != m ||
                     xScaleShape.GetDim(1) != kScale || xScaleShape.GetDim(2) != 2,
                 OP_LOGE(context_->GetNodeName(), "x_scale must be (M, ceil(K/64), 2)"), return false);
+    OP_CHECK_IF(weightScaleShape.GetDimNum() != WEIGHT_SCALE_DIM_NUM,
+                OP_LOGE(context_->GetNodeName(), "weight_scale must be 4D"), return false);
     const int64_t weightScaleN = transposeWeight_ ? weightScaleShape.GetDim(1) : weightScaleShape.GetDim(2);
     const int64_t weightScaleK = transposeWeight_ ? weightScaleShape.GetDim(2) : weightScaleShape.GetDim(1);
     OP_CHECK_IF(weightScaleShape.GetDimNum() != WEIGHT_SCALE_DIM_NUM || weightScaleShape.GetDim(0) != e ||
@@ -324,11 +337,32 @@ bool GroupedMatmulSwigluQuantV3Tiling950::AnalyzeInputs()
     OP_CHECK_IF(!CheckShapeAndScale(xShape, xScaleShape, weightShape, weightNzShape, weightScaleShape, groupListShape),
                 OP_LOGE(context_->GetNodeName(), "shape and scale validation failed"), return false);
     OP_CHECK_IF(!CheckOutputShape(), OP_LOGE(context_->GetNodeName(), "output shape validation failed"), return false);
-    // The current V3 contract supports only mode 2.  Keep the existing
-    // Tensor API/CGMCT routing split: aligned K uses Tensor API and the
-    // remaining K values use the compatibility path.
-    useTensorApi_ = (inputParams_.kSize % 128U) == 0U;
     return true;
+}
+
+bool GroupedMatmulSwigluQuantV3Tiling950::IsTensorApiCapable() const
+{
+    // Match V2 BasicApiTiling950::IsCapable after the V3-specific FP8/NZ,
+    // single-tensor and MX scale shape checks above. As in V2, compile-info
+    // alone is insufficient for the Tensor API memory/platform contract.
+    auto platformInfo = context_->GetPlatformInfo();
+    if (platformInfo == nullptr || aicoreParams_.l1Size == 0 || aicoreParams_.l0cSize == 0) {
+        return false;
+    }
+    auto platform = platform_ascendc::PlatformAscendC(platformInfo);
+    const uint64_t aivNum = platform.GetCoreNumAiv();
+    const uint64_t averageM = inputParams_.mSize / inputParams_.groupNum;
+    const uint64_t minAverageM = transposeWeight_ ? 128U : 512U;
+    const bool capable = aicoreParams_.aicNum > 0 && aivNum == 2 * aicoreParams_.aicNum &&
+                         averageM > minAverageM && (transposeWeight_ || inputParams_.mSize > 512U) &&
+                         inputParams_.nSize % 128U == 0 && inputParams_.kSize > 64U &&
+                         inputParams_.kSize % 128U == 0;
+    OP_LOGD(context_->GetNodeName(),
+            "V3 Tensor API capability: M=%lu, N=%lu, K=%lu, groups=%lu, averageM=%lu, "
+            "transB=%d, cores=%lu:%lu, capable=%d",
+            inputParams_.mSize, inputParams_.nSize, inputParams_.kSize, inputParams_.groupNum,
+            averageM, transposeWeight_, aicoreParams_.aicNum, aivNum, capable);
+    return capable;
 }
 
 bool GroupedMatmulSwigluQuantV3Tiling950::CheckCoreNum() const
@@ -338,6 +372,8 @@ bool GroupedMatmulSwigluQuantV3Tiling950::CheckCoreNum() const
 
 ge::graphStatus GroupedMatmulSwigluQuantV3Tiling950::DoOpTiling()
 {
+    // Platform resources are populated after AnalyzeInputs by the base tiling lifecycle.
+    useTensorApi_ = IsTensorApiCapable();
     tilingData_.gmmSwigluQuantParams.set_groupNum(static_cast<uint32_t>(inputParams_.groupNum));
     tilingData_.gmmSwigluQuantParams.set_groupListType(static_cast<uint8_t>(inputParams_.groupListType));
     tilingData_.gmmSwigluQuantParams.set_quantDtype(static_cast<uint8_t>(inputParams_.outDataDtype));
@@ -358,10 +394,6 @@ ge::graphStatus GroupedMatmulSwigluQuantV3Tiling950::DoLibApiTiling()
     CalBasicBlock();
     basicTiling_.baseM = GroupedMatmul::CeilAlign(std::min(basicTiling_.baseM, static_cast<uint64_t>(128)),
                                                   GmmConstant::CUBE_BLOCK);
-    // The CGMCT MX epilogue currently consumes one 32-element C0 block per
-    // vector tile.  Keep the output-half tile at one C0 block so both halves
-    // use the same physical width; this also bounds the Tensor API's
-    // concatenated L0C/UB width to 64 elements.
     // CGMCT currently needs one C0 output-half tile for its vector epilogue,
     // while the Tensor API path is safe with a two-C0 tile.  Keep the limits
     // independent so a CGMCT workaround does not unnecessarily fragment the
@@ -369,9 +401,17 @@ ge::graphStatus GroupedMatmulSwigluQuantV3Tiling950::DoLibApiTiling()
     const uint64_t maxBaseN = useTensorApi_ ? 64U : 32U;
     basicTiling_.baseN = GroupedMatmul::CeilAlign(std::min(basicTiling_.baseN, maxBaseN),
                                                   GmmConstant::CUBE_BLOCK);
+    // The common tiler must budget BOTH halves of B/ScaleB and L0C for
+    // Tensor API. Export baseN as the epilogue's single-half width afterwards.
+    if (useTensorApi_) {
+        basicTiling_.baseN *= SWIGLU_SPLIT;
+    }
     OP_CHECK_IF(CalL1Tiling() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed for V3 MXFP8 weight-NZ"),
                 return ge::GRAPH_FAILED);
+    if (useTensorApi_) {
+        basicTiling_.baseN /= SWIGLU_SPLIT;
+    }
 
     // The common QGMM helper historically derives the MX scale factor with
     // integer division.  That is sufficient when K is an exact multiple of

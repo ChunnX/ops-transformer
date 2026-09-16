@@ -143,6 +143,7 @@ private:
                             const gert::Shape &weightShape, const gert::Shape &weightStorageShape,
                             const gert::Shape &weightScaleShape, const gert::Shape &groupListShape) const;
     bool CheckOutputShape() const;
+    bool IsTensorApiCapable() const;
     bool CheckCoreNum() const;
     bool GetAttrInt(const gert::RuntimeAttrs *attrs, uint32_t index, int64_t &value) const;
     bool GetAttrBool(const gert::RuntimeAttrs *attrs, uint32_t index, bool &value) const;
