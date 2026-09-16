@@ -224,16 +224,16 @@ __aicore__ inline void Gmm1AicMmadGeneric(WorkSet &workSet, const GMMAddrInfo &g
 
 // 执行 A8W4 GMM1 AIC tile 循环，并维持 Dispatch/GMM1 和 GMM1/Activation 的同步关系。
 template <typename BlockMmad, bool IsShared, bool TopkWeightsPrefetch, typename WorkSet, typename Config>
-__aicore__ inline void Gmm1AicMmadA8W4(WorkSet &workSet, const Params &params, const GMMAddrInfo &gmmAddrInfo,
+__aicore__ inline void Gmm1AicMmadA8W4(BlockMmad &blockMmad, WorkSet &workSet, const Params &params, const GMMAddrInfo &gmmAddrInfo,
                                        const Config &config, uint32_t startLoopIdx, uint32_t tileNum,
                                        int32_t &gmm1TileReadySequence, uint32_t expertIdx)
 {
     Gmm1GmActivationSync<TopkWeightsPrefetch, GMMAddrInfo> sync(gmmAddrInfo, &gmm1TileReadySequence);
-    BlockMmad blockMmad{};
     typename BlockMmad::BlockShape l0TileShape{config.blockMmadTiling.tileM, config.blockMmadTiling.tileN, L0_TILE_K,
                                                0};
     typename BlockMmad::ProblemShape matmulShape{config.m, config.schedulerN, config.k, 0};
-    blockMmad.Init(matmulShape, l0TileShape, config.blockMmadTiling.l1Params, true);
+    blockMmad.Init(matmulShape, l0TileShape, config.blockMmadTiling.l1Params, true,
+                   gmmAddrInfo.a8w4PersistentResource == nullptr);
 
     uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
@@ -370,10 +370,10 @@ __aicore__ inline void Gmm1Aiv1EpilogueTileA8W4(ActivationQuantOp &activationQua
 
 // AIV0 在 UB 拼接 gate/up 并展开 A8W4 权重，每个配对 tile 只提交一次 prologue。
 template <typename BlockPrologue, typename Scheduler, typename TensorB, typename Config>
-__aicore__ inline void Gmm1Aiv0PrologueA8W4(Scheduler &scheduler, TensorB &gmB, const Config &config,
+__aicore__ inline void Gmm1Aiv0PrologueA8W4(BlockPrologue &blockPrologue, Scheduler &scheduler, TensorB &gmB, const Config &config,
                                             uint32_t startLoopIdx, uint32_t tileNum)
 {
-    BlockPrologue blockPrologue(config.outputN);
+    blockPrologue.SetConcatHalfN(config.outputN);
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
         auto actualShape = scheduler.GetBlockShape(blockCoord);
@@ -589,10 +589,23 @@ __aicore__ inline void Gmm1ExecA8W4(Scheduler &scheduler, const Params &params, 
                                     decltype(gmC), decltype(metaInfoGm)>;
     WorkSetType workSet{scheduler, gmA, gmB, gmScaleA, gmScaleB, gmC, metaInfoGm};
     if constexpr (g_coreType == AscendC::AIC) {
-        Gmm1AicMmadA8W4<BlockMmad, IsShared, TopkWeightsPrefetch>(workSet, params, gmmAddrInfo, config, startLoopIdx,
-                                                                  tileNum, gmm1TileReadySequence, expertIdx);
+        if (gmmAddrInfo.a8w4PersistentResource != nullptr) {
+            auto &blockMmad = *reinterpret_cast<BlockMmad *>(gmmAddrInfo.a8w4PersistentResource);
+            Gmm1AicMmadA8W4<BlockMmad, IsShared, TopkWeightsPrefetch>(blockMmad, workSet, params, gmmAddrInfo,
+                config, startLoopIdx, tileNum, gmm1TileReadySequence, expertIdx);
+        } else {
+            BlockMmad blockMmad{};
+            Gmm1AicMmadA8W4<BlockMmad, IsShared, TopkWeightsPrefetch>(blockMmad, workSet, params, gmmAddrInfo,
+                config, startLoopIdx, tileNum, gmm1TileReadySequence, expertIdx);
+        }
     } else if (GetSubBlockIdx() == 0) {
-        Gmm1Aiv0PrologueA8W4<BlockPrologue>(workSet.scheduler, workSet.gmB, config, startLoopIdx, tileNum);
+        if (gmmAddrInfo.a8w4PersistentResource != nullptr) {
+            auto &blockPrologue = *reinterpret_cast<BlockPrologue *>(gmmAddrInfo.a8w4PersistentResource);
+            Gmm1Aiv0PrologueA8W4<BlockPrologue>(blockPrologue, workSet.scheduler, workSet.gmB, config, startLoopIdx, tileNum);
+        } else {
+            BlockPrologue blockPrologue;
+            Gmm1Aiv0PrologueA8W4<BlockPrologue>(blockPrologue, workSet.scheduler, workSet.gmB, config, startLoopIdx, tileNum);
+        }
     } else {
         if constexpr (TopkWeightsPrefetch) {
             Gmm1Aiv1PrefetchEpilogueA8W4<ElementC, MakeLayoutC, IsWaveFlagGrained>(
