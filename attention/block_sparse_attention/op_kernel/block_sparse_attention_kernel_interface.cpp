@@ -501,10 +501,10 @@ __global__ __aicore__ void BsaInferInterfaceHIF8FullQuant(
     using EpilogueMask2Idx =
         Epilogue::Block::BlockEpilogue<DispatchPolicyMask2Idx, ElementSparseMask, ElementSparseIdx, ElementSparseCount>;
 
-    // MM1: reuse block_mmad_k_qt_st_arch35.hpp.
+    // HIF8 MM1: K[256, 128] * Q^T[128, 128] -> S^T[256, 128].
     using L1TileShapeQK = Shape<Int<128>, Int<128>, Int<128>>;
-    using L0TileShapeQK = Shape<Int<128>, Int<128>, Int<128>>;
-    using DispatchPolicyQK = Gemm::MmadAtlasA5BsaQK<true, false>;
+    using L0TileShapeQK = Shape<Int<256>, Int<128>, Int<128>>;
+    using DispatchPolicyQK = Gemm::MmadAtlasA5BsaQKHif8<true>;
     using TileCopyQK = Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementQ, LayoutQ, ElementK, LayoutK, ElementS,
                                                          LayoutS, void, mm1L0C2UBMode, false,
                                                          Gemm::Tile::ScaleGranularity::PER_TENSOR>;
@@ -518,10 +518,10 @@ __global__ __aicore__ void BsaInferInterfaceHIF8FullQuant(
     using SType = Gemm::GemmType<ElementS, LayoutS>;
     using EpilogueOnlineSoftmax = Epilogue::Block::BlockEpilogue<DispatchPolicyOnlineSoftmax, PType, SType>;
 
-    // MM2: reuse block_mmad_pv_arch35_ABf16_C_to_UB.hpp.
+    // HIF8 MM2: P[128, 256] * V[256, 128] -> OTmp[128, 128].
     using L1TileShapePV = Shape<Int<128>, Int<128>, Int<128>>;
-    using L0TileShapePV = Shape<Int<128>, Int<128>, Int<128>>;
-    using DispatchPolicyPV = Gemm::MmadAtlasA5BsaPV<true>;
+    using L0TileShapePV = Shape<Int<128>, Int<128>, Int<256>>;
+    using DispatchPolicyPV = Gemm::MmadAtlasA5BsaPVHif8<true>;
     using TileCopyPV =
         Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementP, LayoutPDummy, ElementV, LayoutV, ElementOTmp, LayoutOTmp,
                                           void, Gemm::Tile::CopyL0CToUBMode::SPLIT_M, false,
