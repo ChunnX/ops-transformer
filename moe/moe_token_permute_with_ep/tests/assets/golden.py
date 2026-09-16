@@ -212,10 +212,9 @@ def _compute_core(prepared):
       稳定排序的输出顺序只取决于元素间的比较结果；int32→int64 是严格单调映射，
       比较结果不变，故 order/rank 逐位一致（实测 50 组随机 trial 双向一致）；
       tf.gather 对 int32/int64 索引结果一致，int32 // 标量整除原生合法；
-      rank 的算子输出规格（固定 INT32，SE 6.5/def.cpp）由 TF 契约天然满足：
-      tf.argsort 输出恒为 int32（TF 契约，实测 50 组随机 trial 验证），本函数返回的
-      rank 天然即规格 dtype，无需出口再 cast；依赖 TF 该契约，若未来 TF 版本变更
-      argsort 输出 dtype，TTK binary 比对会立即暴露。
+      rank 的算子输出规格（固定 INT32，SE 6.5/def.cpp）在 return 处统一落点：
+      tf.argsort 输出恒为 int32（TF 契约，实测 50 组随机 trial 验证），return 处的
+      cast 为规格意图的显式声明（no-op 兜底），出口无需再处理。
     返回 (permute_tokens, rank, permute_probs)；probs 缺省时第三项为 None。
     """
     # topK 与 totalLength（indices 1 维时 topK=1，2 维时 topK=dim(1)，SE 1.2）
@@ -256,7 +255,9 @@ def _compute_core(prepared):
     permute_probs = None
     if prepared.probs is not None:
         permute_probs = tf.gather(tf.reshape(prepared.probs, [-1]), sel, axis=0)
-    return permute_tokens, rank, permute_probs
+    # sorted_indices 输出规格（固定 INT32，SE 6.5/def.cpp）在此落点统一：
+    # tf.argsort 输出恒为 int32（TF 契约，实测 50 组验证），cast 为规格意图的显式声明（no-op 兜底）
+    return permute_tokens, tf.cast(rank, tf.int32), permute_probs
 
 
 def _run_numpy_flow(tokens, indices, probs, num_out_tokens, range_, padded_mode):
