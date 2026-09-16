@@ -108,6 +108,49 @@ __aicore__ inline DedupConfig CreateDedupConfig(const Params &params)
  * 即 route 槽到达，是 DispatchRankTokens 沿用的既有契约）。
  * 函数尾部含 AIV1 间栅栏：所有 AIV1 返回后整张 rowDesc 表可读。
  */
+
+/*
+ * prepass 单槽扫描体（从 BuildDedupRowDescTable 主循环提取，2026-09-17 双缓冲流水改造）：
+ * 对已装载进 UB 半区的一个 route 槽段做判界扫描并更新 count/member 表。语义与提取前逐字等价。
+ */
+__aicore__ inline void DedupPrepassScanSlot(LocalTensor<int32_t> &routeSeg, LocalTensor<int32_t> &countTensor,
+                                            LocalTensor<int32_t> &memberTensor, int32_t segCount, int32_t rowBase,
+                                            int32_t segBase, int32_t tokenLo, int32_t targetLo, int32_t targetHi,
+                                            uint32_t topK, uint32_t maxOutputSize, uint32_t expertIdx,
+                                            int32_t expertRowBegin, int32_t dispatchFlagSlotCountPerExpert)
+{
+    for (int32_t entryIdx = 0; entryIdx < segCount; ++entryIdx) {
+        const int32_t topkIndex = routeSeg.GetValue(entryIdx);
+        if (topkIndex < targetLo) {
+            continue;
+        }
+        if (topkIndex >= targetHi) {
+            break;
+        }
+        const int32_t row = rowBase + segBase + entryIdx;
+        const int32_t localToken = topkIndex / static_cast<int32_t>(topK) - tokenLo;
+        const int32_t k = topkIndex % static_cast<int32_t>(topK);
+        int32_t packed = countTensor.GetValue(localToken);
+        int32_t survivorCount = packed & 0xFF;
+        int32_t fullCount = (packed >> 8) & 0xFF;
+        int32_t fullMinK = (packed >> 16) & 0xFF;
+        ++fullCount;
+        fullMinK = k < fullMinK ? k : fullMinK;
+        if (row < static_cast<int32_t>(maxOutputSize)) {
+            const int32_t tileIdx = (row - expertRowBegin) / static_cast<int32_t>(L1_TILE_M_256);
+            const int32_t flagSlotOffset =
+                static_cast<int32_t>(expertIdx) * dispatchFlagSlotCountPerExpert + tileIdx * INT_CACHELINE;
+            const uint32_t memberBase =
+                static_cast<uint32_t>(localToken) * topK * 3U + static_cast<uint32_t>(survivorCount) * 3U;
+            memberTensor.SetValue(memberBase, row);
+            memberTensor.SetValue(memberBase + 1U, topkIndex);
+            memberTensor.SetValue(memberBase + 2U, flagSlotOffset);
+            ++survivorCount;
+        }
+        countTensor.SetValue(localToken, survivorCount | (fullCount << 8) | (fullMinK << 16));
+    }
+}
+
 template <typename DispatchScratch>
 __aicore__ inline void BuildDedupRowDescTable(const DedupConfig &dedup, const MoeStageCommonConfig &common,
                                               const BlockJobContext &blockJob,
@@ -175,6 +218,26 @@ __aicore__ inline void BuildDedupRowDescTable(const DedupConfig &dedup, const Mo
         SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();
 
         MM_KTS_T(ktsScanT0);
+        /*
+         * 槽间 MTE2 双缓冲流水（2026-09-17，KTS 定位：每工作项对 moeExpertPerRank 个小槽的
+         * MTE2 装载与标量扫描完全串行 = prepass 主耗时，B256 实测 73us/核）。
+         * routeLoad 分两半（各 ROUTE_HALF_INT32）：单段槽（slotCount<=半区）装载槽 e+1 与
+         * 扫描槽 e 重叠；大槽（罕见，大 bs）flush 流水后退回原地分段串行。
+         * 事件配平：half0=SYNC_EVENT_ID4、half1=SYNC_EVENT_ID6，每半区两方向
+         * （S_MTE2=扫描完可复写、MTE2_S=装载完可扫描）；函数头武装两半 S_MTE2，
+         * 主循环结束全部回到已武装 S_MTE2 态后统一消费，零悬挂。
+         */
+        constexpr int32_t ROUTE_HALF_INT32 = static_cast<int32_t>(DEDUP_ROUTE_LOAD_UB_BYTES / 2U / sizeof(int32_t));
+        const int32_t targetLo = tokenLo * static_cast<int32_t>(topK);
+        const int32_t targetHi = tokenHi * static_cast<int32_t>(topK);
+        SetFlag<AscendC::HardEvent::S_MTE2>(static_cast<TEventID>(SYNC_EVENT_ID4));
+        SetFlag<AscendC::HardEvent::S_MTE2>(static_cast<TEventID>(SYNC_EVENT_ID6));
+        uint32_t loadHalf = 0U;
+        int32_t pendExpert = -1;
+        int32_t pendRowBase = 0;
+        int32_t pendSlotCount = 0;
+        int32_t pendExpertRowBegin = 0;
+        uint32_t pendHalf = 0U;
         for (uint32_t expertIdx = 0U; expertIdx < common.moeExpertPerRank; ++expertIdx) {
             const uint32_t prefixIdx = expertIdx * common.worldSize + srcRank;
             const int32_t rowBase =
@@ -188,66 +251,85 @@ __aicore__ inline void BuildDedupRowDescTable(const DedupConfig &dedup, const Mo
             __gm__ int32_t *slotPtr = reinterpret_cast<__gm__ int32_t *>(
                 params.peermemInfo.maskRecvPtr + static_cast<uint64_t>(prefixIdx) * routeIndexAlignSize);
 
-            /*
-             * 定界与装载一体化：对槽做分段 MTE2 装载（与基线 dispatch 同款访问方式），UB 内标量
-             * 流式判界。**禁对 route 槽做 GM 标量读**——实测（2026-09-08 通宵二分 F2/F3 铁证）
-             * 标量密集读大 route 窗口区在大 bs 下触发 aicore 访问异常（count 小区标量读无恙，
-             * 基线对 route 槽从来只走 MTE2）；改 MTE2 后与基线访问方式同构。
-             * 槽内 topkIndex 升序：段内见 token>=tokenHi 即可早停。
-             */
-            const int32_t segCap = static_cast<int32_t>(DEDUP_ROUTE_LOAD_UB_BYTES / sizeof(int32_t));
-            const int32_t targetLo = tokenLo * static_cast<int32_t>(topK);
-            const int32_t targetHi = tokenHi * static_cast<int32_t>(topK);
-            bool reachedEnd = false;
-            for (int32_t segBase = 0; segBase < slotCount && !reachedEnd; segBase += segCap) {
-                const int32_t segCount = (slotCount - segBase) < segCap ? (slotCount - segBase) : segCap;
-                GlobalTensor<int32_t> slotGm;
-                slotGm.SetGlobalBuffer(slotPtr + segBase);
-                SyncFuncStatic<AscendC::HardEvent::S_MTE2, SYNC_EVENT_ID2>();
-                DataCopyPad(routeLoadTensor, slotGm,
-                            {1U, static_cast<uint32_t>(segCount * sizeof(int32_t)), 0U, 0U, 0U},
-                            {false, 0U, 0U, 0U});
-                SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();
-                // 段级快跳：段尾 < targetLo 则整段在区间前，跳过（保持升序扫描的低成本）。
-                if (routeLoadTensor.GetValue(static_cast<uint32_t>(segCount - 1)) < targetLo) {
-                    continue;
+            if (slotCount > ROUTE_HALF_INT32) {
+                // 大槽：flush 流水中的 pending，再原地分段串行（复用 half loadHalf）。
+                if (pendExpert >= 0) {
+                    const TEventID pevt = static_cast<TEventID>(pendHalf == 0U ? SYNC_EVENT_ID4 : SYNC_EVENT_ID6);
+                    WaitFlag<AscendC::HardEvent::MTE2_S>(pevt);
+                    LocalTensor<int32_t> pendSeg = routeLoadTensor[pendHalf * static_cast<uint32_t>(ROUTE_HALF_INT32)];
+                    DedupPrepassScanSlot(pendSeg, countTensor, memberTensor, pendSlotCount, pendRowBase, 0, tokenLo,
+                                         targetLo, targetHi, topK, maxOutputSize,
+                                         static_cast<uint32_t>(pendExpert), pendExpertRowBegin,
+                                         syncLayout.dispatchFlagSlotCountPerExpert);
+                    SetFlag<AscendC::HardEvent::S_MTE2>(pevt);
+                    pendExpert = -1;
                 }
-            for (int32_t entryIdx = 0; entryIdx < segCount; ++entryIdx) {
-                const int32_t topkIndex = routeLoadTensor.GetValue(entryIdx);
-                if (topkIndex < targetLo) {
-                    continue;
+                const TEventID evt = static_cast<TEventID>(loadHalf == 0U ? SYNC_EVENT_ID4 : SYNC_EVENT_ID6);
+                LocalTensor<int32_t> seg = routeLoadTensor[loadHalf * static_cast<uint32_t>(ROUTE_HALF_INT32)];
+                bool reachedEnd = false;
+                for (int32_t segBase = 0; segBase < slotCount && !reachedEnd; segBase += ROUTE_HALF_INT32) {
+                    const int32_t segCount =
+                        (slotCount - segBase) < ROUTE_HALF_INT32 ? (slotCount - segBase) : ROUTE_HALF_INT32;
+                    GlobalTensor<int32_t> slotGm;
+                    slotGm.SetGlobalBuffer(slotPtr + segBase);
+                    WaitFlag<AscendC::HardEvent::S_MTE2>(evt);
+                    DataCopyPad(seg, slotGm, {1U, static_cast<uint32_t>(segCount * sizeof(int32_t)), 0U, 0U, 0U},
+                                {false, 0U, 0U, 0U});
+                    SetFlag<AscendC::HardEvent::MTE2_S>(evt);
+                    WaitFlag<AscendC::HardEvent::MTE2_S>(evt);
+                    if (seg.GetValue(static_cast<uint32_t>(segCount - 1)) >= targetLo) {
+                        const int32_t lastVal = seg.GetValue(static_cast<uint32_t>(segCount - 1));
+                        DedupPrepassScanSlot(seg, countTensor, memberTensor, segCount, rowBase, segBase, tokenLo,
+                                             targetLo, targetHi, topK, maxOutputSize, expertIdx, expertRowBegin,
+                                             syncLayout.dispatchFlagSlotCountPerExpert);
+                        if (lastVal >= targetHi) {
+                            reachedEnd = true;
+                        }
+                    }
+                    SetFlag<AscendC::HardEvent::S_MTE2>(evt);
                 }
-                if (topkIndex >= targetHi) {
-                    reachedEnd = true;
-                    break;
-                }
-                const int32_t row = rowBase + segBase + entryIdx;
-                const int32_t localToken = topkIndex / static_cast<int32_t>(topK) - tokenLo;
-                const int32_t k = topkIndex % static_cast<int32_t>(topK);
-                int32_t packed = countTensor.GetValue(localToken);
-                int32_t survivorCount = packed & 0xFF;
-                int32_t fullCount = (packed >> 8) & 0xFF;
-                int32_t fullMinK = (packed >> 16) & 0xFF;
-                // 全量口径先更新（含将被 clamp 裁掉的成员），保证 minK 与归属卡 canonical 约定一致。
-                ++fullCount;
-                fullMinK = k < fullMinK ? k : fullMinK;
-                if (row < static_cast<int32_t>(maxOutputSize)) {
-                    // dispatch→GMM1 flag 槽偏移在此预计算，扇出发布方无需再依赖 cumsum。
-                    const int32_t tileIdx = (row - expertRowBegin) / static_cast<int32_t>(L1_TILE_M_256);
-                    const int32_t flagSlotOffset =
-                        static_cast<int32_t>(expertIdx) * syncLayout.dispatchFlagSlotCountPerExpert +
-                        tileIdx * INT_CACHELINE;
-                    const uint32_t memberBase =
-                        static_cast<uint32_t>(localToken) * topK * 3U + static_cast<uint32_t>(survivorCount) * 3U;
-                    memberTensor.SetValue(memberBase, row);
-                    memberTensor.SetValue(memberBase + 1U, topkIndex);
-                    memberTensor.SetValue(memberBase + 2U, flagSlotOffset);
-                    ++survivorCount;
-                }
-                countTensor.SetValue(localToken, survivorCount | (fullCount << 8) | (fullMinK << 16));
+                continue;
             }
-            } // 段循环收尾
+
+            // 单段槽：发起本槽装载（与 pending 槽的扫描重叠）。
+            const TEventID levt = static_cast<TEventID>(loadHalf == 0U ? SYNC_EVENT_ID4 : SYNC_EVENT_ID6);
+            LocalTensor<int32_t> loadSeg = routeLoadTensor[loadHalf * static_cast<uint32_t>(ROUTE_HALF_INT32)];
+            GlobalTensor<int32_t> slotGm;
+            slotGm.SetGlobalBuffer(slotPtr);
+            WaitFlag<AscendC::HardEvent::S_MTE2>(levt);
+            DataCopyPad(loadSeg, slotGm, {1U, static_cast<uint32_t>(slotCount * sizeof(int32_t)), 0U, 0U, 0U},
+                        {false, 0U, 0U, 0U});
+            SetFlag<AscendC::HardEvent::MTE2_S>(levt);
+            if (pendExpert >= 0) {
+                const TEventID pevt = static_cast<TEventID>(pendHalf == 0U ? SYNC_EVENT_ID4 : SYNC_EVENT_ID6);
+                WaitFlag<AscendC::HardEvent::MTE2_S>(pevt);
+                LocalTensor<int32_t> pendSeg = routeLoadTensor[pendHalf * static_cast<uint32_t>(ROUTE_HALF_INT32)];
+                DedupPrepassScanSlot(pendSeg, countTensor, memberTensor, pendSlotCount, pendRowBase, 0, tokenLo,
+                                     targetLo, targetHi, topK, maxOutputSize,
+                                     static_cast<uint32_t>(pendExpert), pendExpertRowBegin,
+                                     syncLayout.dispatchFlagSlotCountPerExpert);
+                SetFlag<AscendC::HardEvent::S_MTE2>(pevt);
+            }
+            pendExpert = static_cast<int32_t>(expertIdx);
+            pendRowBase = rowBase;
+            pendSlotCount = slotCount;
+            pendExpertRowBegin = expertRowBegin;
+            pendHalf = loadHalf;
+            loadHalf ^= 1U;
         }
+        if (pendExpert >= 0) {
+            const TEventID pevt = static_cast<TEventID>(pendHalf == 0U ? SYNC_EVENT_ID4 : SYNC_EVENT_ID6);
+            WaitFlag<AscendC::HardEvent::MTE2_S>(pevt);
+            LocalTensor<int32_t> pendSeg = routeLoadTensor[pendHalf * static_cast<uint32_t>(ROUTE_HALF_INT32)];
+            DedupPrepassScanSlot(pendSeg, countTensor, memberTensor, pendSlotCount, pendRowBase, 0, tokenLo,
+                                 targetLo, targetHi, topK, maxOutputSize,
+                                 static_cast<uint32_t>(pendExpert), pendExpertRowBegin,
+                                 syncLayout.dispatchFlagSlotCountPerExpert);
+            SetFlag<AscendC::HardEvent::S_MTE2>(pevt);
+            pendExpert = -1;
+        }
+        WaitFlag<AscendC::HardEvent::S_MTE2>(static_cast<TEventID>(SYNC_EVENT_ID4));
+        WaitFlag<AscendC::HardEvent::S_MTE2>(static_cast<TEventID>(SYNC_EVENT_ID6));
 
         MM_KTS_SPAN(MgbKts::MM_DEDUP_PREPASS_SCAN, 0U, srcRank, chunkIdx, 0U, ktsScanT0);
         MM_KTS_T(ktsDescT0);

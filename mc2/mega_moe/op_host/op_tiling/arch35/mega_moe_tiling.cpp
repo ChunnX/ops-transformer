@@ -2755,7 +2755,7 @@ static void SetDedupModeParams(const gert::TilingContext *context, const MegaMoe
         const double actBytesPerElem = IsA4W4GmmMode(tilingData->moeGmmMode) ? 0.5 : 1.0;
         double savedBytes = static_cast<double>(tilingData->bs) * topKf * dupRatio *
                             static_cast<double>(tilingData->h) * actBytesPerElem;
-        constexpr double DEDUP_MIN_SAVED_BYTES = 6.0 * 1024.0 * 1024.0;
+        constexpr double DEDUP_MIN_SAVED_BYTES = 60.0 * 1024.0 * 1024.0;
         // 中档 bs 口袋（实测 2026-09-09）：bs2048 时 savedBytes=40MB 仍复现 +1.0~1.2% 微亏——此档
         // GMM 计算已能完全遮住 dispatch 通信，省下的字节不在关键路径上，只剩建表成本；bs≥4096
         // （savedBytes≥80MB）通信重新成为瓶颈，收益回归（-1.6%/-5.4%）。故 bs>1024 时门槛抬到
@@ -2769,7 +2769,7 @@ static void SetDedupModeParams(const gert::TilingContext *context, const MegaMoe
          * 中档 60MB 分界由 PF3(39.8MB,+1.5%)/PF2(79.6MB,-3.7%) 两侧实测支撑，combine
          * 与 dispatch 同界。数据：2026-09-10 cv2b 门降实验批 + PF 域批（4P）。
          */
-        constexpr double DEDUP_COMBINE_MIN_SAVED_BYTES = 3.0 * 1024.0 * 1024.0;
+        constexpr double DEDUP_COMBINE_MIN_SAVED_BYTES = 60.0 * 1024.0 * 1024.0;
         constexpr int32_t DEDUP_SMALL_BS_LIMIT = 1024;
         const bool combineDedupOn = (tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0;
         const bool dispatchDedupOn = (tilingData->dedupMode & DEDUP_MODE_DISPATCH) != 0;
