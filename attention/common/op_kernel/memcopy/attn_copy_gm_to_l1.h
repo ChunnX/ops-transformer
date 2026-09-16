@@ -520,6 +520,9 @@ public:
             } else {
                 ProcessContinuous(dstTensor, srcTensor, gmCoord);
             }
+        } else if constexpr (GM_FORMAT == GmFormat::BNSGD) {
+            // BSND decode: B-N2-S1-G-D, S1-major 的 gS1 合并维连续 (行 stride = D)
+            ProcessS1G(dstTensor, srcTensor, gmCoord);
         }
     }
 
