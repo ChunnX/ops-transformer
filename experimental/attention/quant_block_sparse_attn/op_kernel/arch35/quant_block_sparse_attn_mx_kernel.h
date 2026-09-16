@@ -101,6 +101,8 @@ public:
         if (constInfo.aicIdx >= constInfo.coreNum || constInfo.aicIdx >= QBSA_FA_AIC_CORE_NUM) {
             return;
         }
+        const int64_t originalOverflowMode = AscendC::GetCtrlSpr<60, 60>();
+        AscendC::SetCtrlSpr<60, 60>(0);
         CrossCoreBufferInit();
         if ASCEND_IS_AIC {
             cubeBlock.InitBuffers();
@@ -109,6 +111,7 @@ public:
         }
         ProcessMainLoop();
         CrossCoreBufferUninit();
+        AscendC::SetCtrlSpr<60, 60>(originalOverflowMode);
     }
 
 private:
