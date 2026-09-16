@@ -16,6 +16,7 @@
 #include <algorithm>
 #include "register/op_def_registry.h"
 #include "rope_quant_kvcache_tiling.h"
+#include "log/log.h"
 using namespace ge;
 
 namespace {
@@ -33,6 +34,7 @@ namespace optiling {
 
 static ge::graphStatus TilingForRopeQuantKvcache(gert::TilingContext* context)
 {
+    OP_LOGD(context->GetNodeName(), "Begin the tiling process for RopeQuantKvcache.");
     const gert::StorageShape* cacheShape = context->GetInputShape(KVCACHE_INPUT_INDEX);
 
     auto attrs = context->GetAttrs();
