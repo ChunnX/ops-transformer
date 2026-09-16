@@ -2,11 +2,13 @@
 """BSA MXFP8 OCP 单次前向，供 msprof op 包一层。不做 golden。
 
 环境变量:
-  BSA_S              qs=kvs
+  BSA_S              qs=kvs（方阵默认）
+  BSA_S1 / BSA_S2    非方阵时覆盖 qs / kvs
   BSA_KEEP           每行保留的 KV block 比例 (0.5=稀疏度50%, 0.2=稀疏度80%)
   BSA_DEVICE         逻辑 device id (配合 ASCEND_RT_VISIBLE_DEVICES)
   BSA_B / BSA_N1 / BSA_N2 / BSA_D / BSA_OUT
 """
+
 import math
 import os
 import sys
@@ -44,8 +46,12 @@ def _pack_v_e8m0(b, n2, s, d, device):
         pad = torch.full((b, n2, 1, d), E8M0_BIAS, dtype=torch.uint8, device=device)
         raw = torch.cat([raw, pad], dim=2)
         nb += 1
-    return raw.reshape(b, n2, nb // 2, 2, d).permute(0, 1, 2, 4, 3).contiguous().view(
-        torch.float8_e8m0fnu)
+    return (
+        raw.reshape(b, n2, nb // 2, 2, d)
+        .permute(0, 1, 2, 4, 3)
+        .contiguous()
+        .view(torch.float8_e8m0fnu)
+    )
 
 
 def _make_mask(b, n1, s1, s2, keep, device):
@@ -64,6 +70,8 @@ def _make_mask(b, n1, s1, s2, keep, device):
 
 def main():
     s = _env_int("BSA_S", 8422)
+    s1 = _env_int("BSA_S1", s)
+    s2 = _env_int("BSA_S2", s)
     keep = _env_float("BSA_KEEP", 0.5)
     b = _env_int("BSA_B", 1)
     n1 = _env_int("BSA_N1", 1)
@@ -79,38 +87,60 @@ def main():
 
     # 造数放 CPU，避免 msprof 把 RandomNormal 当成目标 kernel
     def _fp8(shape):
-        return torch.randint(0, 120, shape, dtype=torch.uint8).view(torch.float8_e4m3fn).to(device)
+        return (
+            torch.randint(0, 120, shape, dtype=torch.uint8)
+            .view(torch.float8_e4m3fn)
+            .to(device)
+        )
 
-    q = _fp8((b, n1, s, d))
-    k = _fp8((b, n2, s, d))
-    v = _fp8((b, n2, s, d))
-    q_scale = _pack_qk_e8m0(b, n1, s, d, "cpu").to(device)
-    k_scale = _pack_qk_e8m0(b, n2, s, d, "cpu").to(device)
-    v_scale = _pack_v_e8m0(b, n2, s, d, "cpu").to(device)
-    mask = _make_mask(b, n1, s, s, keep, "cpu").to(device)
-    act_q = [s] * b
-    act_kv = [s] * b
+    q = _fp8((b, n1, s1, d))
+    k = _fp8((b, n2, s2, d))
+    v = _fp8((b, n2, s2, d))
+    q_scale = _pack_qk_e8m0(b, n1, s1, d, "cpu").to(device)
+    k_scale = _pack_qk_e8m0(b, n2, s2, d, "cpu").to(device)
+    v_scale = _pack_v_e8m0(b, n2, s2, d, "cpu").to(device)
+    mask = _make_mask(b, n1, s1, s2, keep, "cpu").to(device)
+    act_q = [s1] * b
+    act_kv = [s2] * b
     scale = 1.0 / math.sqrt(d)
     torch.npu.synchronize()
 
     print(
-        f"[mxfp8_perf] start S={s} keep={keep} B={b} N={n1} D={d} "
+        f"[mxfp8_perf] start S1={s1} S2={s2} keep={keep} B={b} N={n1} D={d} "
         f"mask={tuple(mask.shape)} q={tuple(q.shape)}",
         flush=True,
     )
     npu_out, _ = block_sparse_attention_v3(
-        q.contiguous(), k.contiguous(), v.contiguous(),
-        mask.contiguous(), list(BLOCK), act_q, act_kv,
-        num_heads=n1, num_key_value_heads=n2,
-        q_input_layout="BNSD", kv_input_layout="BNSD",
-        mask_type=0, scale_value=scale, inner_precise=4, block_size=0,
-        pre_tokens=2147483647, next_tokens=2147483647,
-        softmax_lse_flag=False, quant_mode=QUANT_MODE_MXFP8_OCP, dst_type_max=0.0,
-        q_dequant_scale=q_scale, k_dequant_scale=k_scale, v_dequant_scale=v_scale,
+        q.contiguous(),
+        k.contiguous(),
+        v.contiguous(),
+        mask.contiguous(),
+        list(BLOCK),
+        act_q,
+        act_kv,
+        num_heads=n1,
+        num_key_value_heads=n2,
+        q_input_layout="BNSD",
+        kv_input_layout="BNSD",
+        mask_type=0,
+        scale_value=scale,
+        inner_precise=4,
+        block_size=0,
+        pre_tokens=2147483647,
+        next_tokens=2147483647,
+        softmax_lse_flag=False,
+        quant_mode=QUANT_MODE_MXFP8_OCP,
+        dst_type_max=0.0,
+        q_dequant_scale=q_scale,
+        k_dequant_scale=k_scale,
+        v_dequant_scale=v_scale,
         attention_out_dtype=out_dtype,
     )
     torch.npu.synchronize()
-    print(f"[mxfp8_perf] done out={tuple(npu_out.shape)} dtype={npu_out.dtype}", flush=True)
+    print(
+        f"[mxfp8_perf] done out={tuple(npu_out.shape)} dtype={npu_out.dtype}",
+        flush=True,
+    )
     return 0
 
 

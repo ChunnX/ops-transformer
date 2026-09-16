@@ -94,7 +94,7 @@ __simd_vf__ inline void softmax_with_group_max_align_qs64_kvs32_vf(__ubuf__ T2 *
     Max(group_gmax, group_gmax, curr_group_max, preg_VL64_16bit);
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(local_group_max, curr_group_max, preg_VL64_16bit);
     if constexpr (MX_QUANT_MODE == MXQuantMode::OCP) {
-        Adds(curr_group_max, curr_group_max, NEG_TWO_VALE, preg_VL64_16bit);
+        Adds(curr_group_max, curr_group_max, NEG_EIGHT_VALE, preg_VL64_16bit);
     }
     Muls(curr_group_max, curr_group_max, LN2, preg_VL64_16bit);
 
@@ -125,10 +125,8 @@ __simd_vf__ inline void softmax_with_group_max_align_qs64_kvs32_vf(__ubuf__ T2 *
             LoadAlign(src_c2, s + (rowOffset_cur * QsBase + 2 * QsBase) * 2);
             LoadAlign(src_c3, s + (rowOffset_cur * QsBase + 3 * QsBase) * 2);
 
-            BSA_MXFP8_FUSED_EXPSUB_EVEN64(src_f0, src_c0, curr_group_max, preg_VL64_16bit);
-            BSA_MXFP8_FUSED_EXPSUB_EVEN64(src_f1, src_c1, curr_group_max, preg_VL64_16bit);
-            BSA_MXFP8_FUSED_EXPSUB_EVEN64(src_f2, src_c2, curr_group_max, preg_VL64_16bit);
-            BSA_MXFP8_FUSED_EXPSUB_EVEN64(src_f3, src_c3, curr_group_max, preg_VL64_16bit);
+            BSA_MXFP8_EXPSUB_EVEN64_4WAY_MINS(src_f0, src_f1, src_f2, src_f3, src_c0, src_c1, src_c2, src_c3,
+                                              curr_group_max, preg_VL64_16bit, preg_all_fp32);
             uint32_t pOff = i * 2048 + j * 256;
             BSA_MXFP8_PACK_STORE_E4M3_VL128(pDest, pOff, pOff + 8064, src_f0, src_f1, src_f2, src_f3, idx_nd2nz,
                                             preg_all_fp32, preg_all_8bit, preg_vl128, preg_vl128_not);
@@ -155,10 +153,8 @@ __simd_vf__ inline void softmax_with_group_max_align_qs64_kvs32_vf(__ubuf__ T2 *
             LoadAlign(src_c2, s + (rowOffset_cur * QsBase + 2 * QsBase) * 2);
             LoadAlign(src_c3, s + (rowOffset_cur * QsBase + 3 * QsBase) * 2);
 
-            BSA_MXFP8_FUSED_EXPSUB_EVEN64(src_f0, src_c0, curr_group_max, preg_VL64_16bit);
-            BSA_MXFP8_FUSED_EXPSUB_EVEN64(src_f1, src_c1, curr_group_max, preg_VL64_16bit);
-            BSA_MXFP8_FUSED_EXPSUB_EVEN64(src_f2, src_c2, curr_group_max, preg_VL64_16bit);
-            BSA_MXFP8_FUSED_EXPSUB_EVEN64(src_f3, src_c3, curr_group_max, preg_VL64_16bit);
+            BSA_MXFP8_EXPSUB_EVEN64_4WAY_MINS(src_f0, src_f1, src_f2, src_f3, src_c0, src_c1, src_c2, src_c3,
+                                              curr_group_max, preg_VL64_16bit, preg_all_fp32);
             uint32_t pOff = i * 2048 + j * 256;
             BSA_MXFP8_PACK_STORE_E4M3_VL128(pDest, pOff + 128, pOff + 8192, src_f0, src_f1, src_f2, src_f3, idx_nd2nz,
                                             preg_all_fp32, preg_all_8bit, preg_vl128, preg_vl128_not);
@@ -177,7 +173,7 @@ __simd_vf__ inline void softmax_with_group_max_align_qs64_kvs32_vf(__ubuf__ T2 *
         //                                                   preg_valid_max);
 
         // // 更新当前块最大值，用于下一次循环
-        // Adds(next_group_max, next_group_max, NEG_TWO_VALE, preg_all_16bit);
+        // Adds(next_group_max, next_group_max, NEG_EIGHT_VALE, preg_all_16bit);
         // Muls(curr_group_max, next_group_max, LN2, preg_valid_max);
     }
 

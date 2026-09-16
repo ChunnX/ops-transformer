@@ -99,7 +99,9 @@ constexpr static AscendC::MicroAPI::CastTrait castTraitRintThree = {
 
 constexpr half NUM_127 = static_cast<half>(127.0f);
 constexpr half NUM_NEG_127 = static_cast<half>(-127.0f);
-constexpr half NUM_NEG_125 = static_cast<half>(-125.0f);
+// OCP P-scale e8m0: shared_exp + 127 = K_block - K_global - emax + 127
+// e4m3 emax=8 → 127-8=119。不可照搬 mxfp4 e2m1 emax=2 的 NUM_NEG_125。
+constexpr half NUM_NEG_119 = static_cast<half>(-119.0f);
 constexpr half ZERO_VALUE = static_cast<half>(0.0f);
 constexpr int16_t SHIFT_VALUE = 23;
 
@@ -110,9 +112,13 @@ constexpr int8_t indexSubLength = static_cast<int8_t>(32);
 
 constexpr half LN2 = static_cast<half>(0.6931471806f);
 constexpr half INV_LN2 = static_cast<half>(1.4426950409f);
-constexpr half NEG_TWO_VALE = static_cast<half>(-2.0f);
+// OCP P snap: m_snap = (K - emax)*ln2。e4m3 emax=8，不是 mxfp4 的 -2。
+constexpr half NEG_EIGHT_VALE = static_cast<half>(-8.0f);
 constexpr half TWO_VALE = static_cast<half>(2.0f);
 constexpr half MIN_VALUE = static_cast<half>(-65504.0f);
+// OCP emax=8 → P∈[256,512)。e4m3fn 有限最大值 448，超了是 NaN 不是 Inf。
+// Cast SAT 挡不住这条编码，Cast 前钳到 destmax，与 golden .to(e4m3fn) 同构。
+constexpr float E4M3_MAX = 448.0f;
 
 // P 量化（FIA TWO_CAST）：fp16 Exp → Cast<float> → e4m3 RINT。
 // 3510 没有 bf16→e4m3 单指令；不再做 fp16↔bf16 RT4。
@@ -143,7 +149,54 @@ constexpr half MIN_VALUE = static_cast<half>(-65504.0f);
                                                                                               (maxHalf), (preg16)); \
     } while (0)
 
+// VEXPDIF 16 elem/cyc、VMINS 64 elem/cyc 且均可双发。Mins 插进下一行 ExpSub 之前，
+// 避免 PACK 里 4/8 条 Mins 全部 RAW 堵在 Cast 前。elementwise min 与 Interleave 可交换。
+#define BSA_MXFP8_EXPSUB_EVEN64_4WAY_MINS(f0, f1, f2, f3, c0, c1, c2, c3, maxHalf, preg16, pregFp32) \
+    do { \
+        BSA_MXFP8_FUSED_EXPSUB_EVEN64((f0), (c0), (maxHalf), (preg16)); \
+        BSA_MXFP8_FUSED_EXPSUB_EVEN64((f1), (c1), (maxHalf), (preg16)); \
+        Mins((f0), (f0), E4M3_MAX, (pregFp32)); \
+        BSA_MXFP8_FUSED_EXPSUB_EVEN64((f2), (c2), (maxHalf), (preg16)); \
+        Mins((f1), (f1), E4M3_MAX, (pregFp32)); \
+        BSA_MXFP8_FUSED_EXPSUB_EVEN64((f3), (c3), (maxHalf), (preg16)); \
+        Mins((f2), (f2), E4M3_MAX, (pregFp32)); \
+        Mins((f3), (f3), E4M3_MAX, (pregFp32)); \
+    } while (0)
+
+#define BSA_MXFP8_EXPSUB_SPLIT_4WAY_MINS(f0, f1, f2, f3, f4, f5, f6, f7, c0, c1, c2, c3, maxHalf, preg16, pregFp32) \
+    do { \
+        FusedExpSub<float, half, MicroAPI::RegLayout::ZERO, MicroAPI::MaskMergeMode::ZEROING>((f0), (c0), (maxHalf), \
+                                                                                              (preg16)); \
+        FusedExpSub<float, half, MicroAPI::RegLayout::ONE, MicroAPI::MaskMergeMode::ZEROING>((f4), (c0), (maxHalf), \
+                                                                                             (preg16)); \
+        FusedExpSub<float, half, MicroAPI::RegLayout::ZERO, MicroAPI::MaskMergeMode::ZEROING>((f1), (c1), (maxHalf), \
+                                                                                              (preg16)); \
+        Mins((f0), (f0), E4M3_MAX, (pregFp32)); \
+        FusedExpSub<float, half, MicroAPI::RegLayout::ONE, MicroAPI::MaskMergeMode::ZEROING>((f5), (c1), (maxHalf), \
+                                                                                             (preg16)); \
+        Mins((f4), (f4), E4M3_MAX, (pregFp32)); \
+        FusedExpSub<float, half, MicroAPI::RegLayout::ZERO, MicroAPI::MaskMergeMode::ZEROING>((f2), (c2), (maxHalf), \
+                                                                                              (preg16)); \
+        Mins((f1), (f1), E4M3_MAX, (pregFp32)); \
+        FusedExpSub<float, half, MicroAPI::RegLayout::ONE, MicroAPI::MaskMergeMode::ZEROING>((f6), (c2), (maxHalf), \
+                                                                                             (preg16)); \
+        Mins((f5), (f5), E4M3_MAX, (pregFp32)); \
+        FusedExpSub<float, half, MicroAPI::RegLayout::ZERO, MicroAPI::MaskMergeMode::ZEROING>((f3), (c3), (maxHalf), \
+                                                                                              (preg16)); \
+        Mins((f2), (f2), E4M3_MAX, (pregFp32)); \
+        FusedExpSub<float, half, MicroAPI::RegLayout::ONE, MicroAPI::MaskMergeMode::ZEROING>((f7), (c3), (maxHalf), \
+                                                                                             (preg16)); \
+        Mins((f6), (f6), E4M3_MAX, (pregFp32)); \
+        Mins((f3), (f3), E4M3_MAX, (pregFp32)); \
+        Mins((f7), (f7), E4M3_MAX, (pregFp32)); \
+        Interleave((f0), (f4), (f0), (f4)); \
+        Interleave((f1), (f5), (f1), (f5)); \
+        Interleave((f2), (f6), (f2), (f6)); \
+        Interleave((f3), (f7), (f3), (f7)); \
+    } while (0)
+
 // FIA ProcessVec1DnMxfp8：4 路 float→e4m3 RINT + Gather + DATA_BLOCK_COPY（指针 POST_MODE_UPDATE）
+// clamp 已在 EXPSUB_*_4WAY_MINS 里与 ExpSub 双发，这里不再 Mins。
 #define BSA_MXFP8_PACK_STORE_E4M3_DBC(pPtr, x0, x1, x2, x3, idx, pregFp32, pregAll8, blkStride, repStride) \
     do { \
         RegTensor<fp8_e4m3fn_t> _q0; \

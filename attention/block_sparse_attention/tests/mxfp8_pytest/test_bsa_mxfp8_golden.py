@@ -16,7 +16,7 @@ TND varlen(s1_list/s2_list) / act_s pad / gap_sparse / ocp_scale_stride_trap 已
     ./run.sh --reg
 
 
-golden: Q/K/V mxfp8 qdq(fp32)；P 走 kernel 同构 snap_local(m_snap=(K-2)*ln2) 再 e4m3。
+golden: Q/K/V mxfp8 qdq(fp32)；P 走 kernel 同构 snap_local(m_snap=(K-8)*ln2) 再 e4m3。
 Kernel tile 固定 kvs128；blockShapeY 可为 128 的倍数（含 256）。Y>128 时一 Y 块拆成
 多个 kernel tile 再按 TILE_GROUP_N=16 组尾 pscale / rescale O。
 判据: 与 MXFP4 同构 (np.isclose rtol=1/128 atol=1e-4, 满足率≥99.5% 且 maxRE<10)。
@@ -119,15 +119,6 @@ def make_ocp_cross_head_scale_trap(shape_bnsd, dtype=torch.float32):
     out = torch.empty(B, N, S, D, dtype=dtype)
     for n in range(N):
         lo, hi = (2.0, 3.4) if (n % 2) == 0 else (4.0, 6.8)
-        chunk = lo + (hi - lo) * torch.rand(B, S, D, dtype=dtype)
-        sign = torch.where(torch.rand(B, S, D) > 0.5, 1.0, -1.0).to(dtype)
-        out[:, n, :, :] = chunk * sign
-    return out
-    B, N, S, D = shape_bnsd
-    assert N >= 2, f"scale-stride trap 需要 N>=2, 当前 N={N}"
-    out = torch.empty(B, N, S, D, dtype=dtype)
-    for n in range(N):
-        lo, hi = (0.60, 0.90) if (n % 2) == 0 else (1.20, 1.80)
         chunk = lo + (hi - lo) * torch.rand(B, S, D, dtype=dtype)
         sign = torch.where(torch.rand(B, S, D) > 0.5, 1.0, -1.0).to(dtype)
         out[:, n, :, :] = chunk * sign
@@ -302,10 +293,18 @@ def _blockwise_snap_local_raw(S, seqk_dim=0, mx_block_size=32):
     inv_ln2 = torch.tensor(1.0 / ln2, dtype=torch.float16, device=device)
     ln2_fp16 = torch.tensor(ln2, dtype=torch.float16, device=device)
     k_block = torch.floor(m_block_raw_safe * inv_ln2)
-    m_block_snap = (k_block - 2) * ln2_fp16
-    p_local = torch.exp(s_r - m_block_snap.unsqueeze(-1))
-    # FIA TWO_CAST：fp16 Exp → float → e4m3 RINT（不再经 bf16 RT4）
-    p_q = p_local.float().to(torch.float8_e4m3fn).float().to(src_dtype)
+    m_block_snap = (k_block - FP8_E4M3_EMAX) * ln2_fp16
+    # Kernel FusedExpSub：half 输入、float 指数。fp16 Exp 在 emax=8 时会把
+    # 偏离组 max 较远的 P 冲到 0，整行 O 变成 0。
+    p_local = torch.exp(s_r.float() - m_block_snap.float().unsqueeze(-1))
+    # emax=8 → P∈[256,512)；e4m3fn 有限最大 448，须先钳再转（与 kernel Mins 同构）
+    p_q = (
+        p_local.float()
+        .clamp(-FP8_E4M3_MAX, FP8_E4M3_MAX)
+        .to(torch.float8_e4m3fn)
+        .float()
+        .to(src_dtype)
+    )
     k_ij = k_block.max(dim=-1).values.float()
     p_q_moved = p_q.reshape(*other, n_blk * mx_block_size)[..., :seqk_len].movedim(
         -1, skp
@@ -314,12 +313,12 @@ def _blockwise_snap_local_raw(S, seqk_dim=0, mx_block_size=32):
 
 
 def _pscale_corr(p_q_moved, k_block, k_g, seqk_dim=0, mx_block_size=32):
-    """pscale = 2^(K_block - K_global - 2)，与 kernel OCP e8m0（NUM_NEG_125）同构。"""
+    """pscale = 2^(K_block - K_global - 8)，与 kernel OCP e8m0（NUM_NEG_119=127-emax）同构。"""
     skp = seqk_dim if seqk_dim >= 0 else p_q_moved.dim() + seqk_dim
     seqk_len = p_q_moved.shape[skp]
     k_new_s = k_g.to(p_q_moved.dtype)
     k_diff = k_block - k_new_s.unsqueeze(-1)
-    corr = torch.exp2(k_diff - 2.0)
+    corr = torch.exp2(k_diff - float(FP8_E4M3_EMAX))
     corr_broad = corr.repeat_interleave(mx_block_size, dim=-1)[..., :seqk_len].movedim(
         -1, skp
     )
@@ -526,7 +525,7 @@ def compare(golden, real, src_dtype):
         return 0.0, "Failed"
     golden_fp32 = golden.to(torch.float32)
     real_fp32 = real.cpu().to(torch.float32)
-    if os.environ.get("BSA_MXFP8_HOST_DIAG", "0") == "1":
+    if os.environ.get("BSA_MXFP8_HOST_DIAG", "0") == "1" and golden_fp32.dim() >= 2:
         g = golden_fp32.reshape(-1, golden_fp32.shape[-2], golden_fp32.shape[-1])
         r = real_fp32.reshape(-1, real_fp32.shape[-2], real_fp32.shape[-1])
         gs = g[0]
@@ -613,6 +612,25 @@ def compare(golden, real, src_dtype):
                 f"gold={float(g.reshape(-1)[w]):.6f} rel={float(rel.reshape(-1)[w]):.3f} "
                 f"ratio={float(ratio.reshape(-1)[w]):.4f}"
             )
+        else:
+            gf, rf = g.reshape(-1), r.reshape(-1)
+            print(
+                f"[TRAP-DIAG] 1d gold min/max/absmean={float(gf.min()):.6g}/"
+                f"{float(gf.max()):.6g}/{float(gf.abs().mean()):.6g} "
+                f"npu min/max/absmean={float(rf.min()):.6g}/"
+                f"{float(rf.max()):.6g}/{float(rf.abs().mean()):.6g}"
+            )
+            w = int(rel.argmax())
+            print(
+                f"[TRAP-DIAG] worst i={w} npu={float(rf[w]):.6f} gold={float(gf[w]):.6f} "
+                f"ratio={float(ratio.reshape(-1)[w]):.4f}"
+            )
+            n = gf.numel()
+            if n % 128 == 0:
+                d_fail = fail.reshape(-1, 128).sum(0)
+                print(
+                    f"[TRAP-DIAG] fail_by_D64={[int(d_fail[i : i + 64].sum()) for i in range(0, 128, 64)]}"
+                )
     if PRINTF_CHECK_RES:
         return check_result_printf_res(golden_fp32, real_fp32, src_dtype)
     return check_result(golden_fp32, real_fp32, src_dtype)

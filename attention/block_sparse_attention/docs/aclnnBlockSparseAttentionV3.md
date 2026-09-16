@@ -728,6 +728,16 @@ aclnnStatus aclnnBlockSparseAttentionV3(
 
       $$ P_{\text{Scale}} = 2^{\lceil \log_2 \left( P_{\text{max}} / dstTypeMax \right) \rceil} = 2^{\lceil \log_2 P_{\text{max}} - \log_2 dstTypeMax \rceil} $$
 
+- **quantMode=4 (MXFP8 OCP量化模式)相关约束（新增）**
+
+  - 仅Ascend 950PR/Ascend 950DT支持
+  - 输入 query/key/value 为 FLOAT8_E4M3FN，scale 为 FLOAT8_E8M0；blockShapeY 须为 128 的倍数；D 仅支持 64/128。
+  - **量化公式**（与 MXFP4 的 e2m1 emax=2 不同，e4m3 的 emax=8）
+    - 以P的量化为例, 其中 $P_{\text{max}}$ 为一个group（32个元素）内元素绝对值的最大值。
+    - **OCP 量化公式**
+
+      $$ P_{\text{Scale}} = 2^{\lfloor \log_2 P_{\text{max}} \rfloor - 8} $$
+
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。

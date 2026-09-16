@@ -1,8 +1,8 @@
 # BSA MXFP8 全量化设计说明（kvs128 修订版）
 
-日期：2026-08-17；板上修订：2026-08-18、**2026-08-19（跨组 CopyPScale / layout+fp16out / D=64 / 对标 MXFP4 pytest 1–3）**、**2026-08-20（性能基线；P0 Q 双槽试过 −2% 后回退；S=118800 keep1 vs FIA/MXFP4）**、**2026-08-25（§17.6–17.7 P1 已上板 −3.5%；§17.8 P2：压 AIV 组尾 gmax / softmax VF / pScale）**。**组窗口 2048（G=16）见 `2026-08-25-bsa-mxfp8-tile2048-design.md`（分支 `mxfp8_0825`）。**  
-基线：`mxfp8_0814` 上已有 MXFP8 脚手架；本文件**取代** `2026-08-14-bsa-mxfp8-design.md` 的几何与内存决策。  
-状态：**官方 qs128 套件 + qs64/kvs128 + 跨 TILE_GROUP（s2>1024）+ BSND/TND 冒烟 + fp16out + D=64（已拷中短例）已过线**；**对标 MXFP4 的 OCP pytest 1–3（TND varlen / act_s pad / BSND·TND×D=64·sparse·非对齐 / gap_sparse / scale-stride-trap）已接线**（分支 `mxfp8_0817`；几何仍为本修订；板上修正见 §15 / §16）  
+日期：2026-08-17；板上修订：2026-08-18、**2026-08-19（跨组 CopyPScale / layout+fp16out / D=64 / 对标 MXFP4 pytest 1–3）**、**2026-08-20（性能基线；P0 Q 双槽试过 −2% 后回退；S=118800 keep1 vs FIA/MXFP4）**、**2026-08-25（§17.6–17.7 P1 已上板 −3.5%；§17.8 P2：压 AIV 组尾 gmax / softmax VF / pScale）**。**组窗口 2048（G=16）见 `2026-08-25-bsa-mxfp8-tile2048-design.md`（分支 `mxfp8_0825`）。**
+基线：`mxfp8_0814` 上已有 MXFP8 脚手架；本文件**取代** `2026-08-14-bsa-mxfp8-design.md` 的几何与内存决策。
+状态：**官方 qs128 套件 + qs64/kvs128 + 跨 TILE_GROUP（s2>1024）+ BSND/TND 冒烟 + fp16out + D=64（已拷中短例）已过线**；**对标 MXFP4 的 OCP pytest 1–3（TND varlen / act_s pad / BSND·TND×D=64·sparse·非对齐 / gap_sparse / scale-stride-trap）已接线**（分支 `mxfp8_0817`；几何仍为本修订；板上修正见 §15 / §16）
 画布：Cursor [`S118800-pipe-compare.canvas.tsx`](/home/npu_user5/.cursor/projects/home-npu-user5/canvases/S118800-pipe-compare.canvas.tsx)、`BSA-MXFP8-vs-FP16-analysis.canvas.tsx`、`BSA-MXFP8-design-report.canvas.tsx`；仓库副本 `docs/superpowers/canvases/`
 
 ## 1. 目标
@@ -25,9 +25,9 @@
 
 不变：
 
-- `qs` 基块 128；**D ∈ {64, 128}**（Cube / rescale / `processOut` 仍按 D=128 槽；D=64 只在 Vᵀ L0 `dstStride` 上 pad 到 144 行，同 MXFP4）  
-- Q/K/V/P = `e4m3fn`，scale = `e8m0`，MX 组 32，**仅 OCP**（不做 CX）  
-- 操作数角色 **K→L0A、Q→L0B**（不可对调）  
+- `qs` 基块 128；**D ∈ {64, 128}**（Cube / rescale / `processOut` 仍按 D=128 槽；D=64 只在 Vᵀ L0 `dstStride` 上 pad 到 144 行，同 MXFP4）
+- Q/K/V/P = `e4m3fn`，scale = `e8m0`，MX 组 32，**仅 OCP**（不做 CX）
+- 操作数角色 **K→L0A、Q→L0B**（不可对调）
 - Softmax：**低精**（S = fp16）；rescale / oTmp：**fp32**
 
 
@@ -49,7 +49,7 @@
 
 1. Cube **一次** QK `128×128`（P1；0817 曾拆成两次 64×128）→ 同一 AIV 的 UB S（128×128 fp16）
 2. 该 AIV 整块 softmax → 整块 P（16KB）→ L1 **P 与 P-scale** 槽均为 `loop % 12`
-3. 基块按 `loop % 2` 交替 AIV0/AIV1；一组 8 块中每 AIV 各 4 块；组尾经 L1 交换 localGlobalMax  
+3. 基块按 `loop % 2` 交替 AIV0/AIV1；一组 8 块中每 AIV 各 4 块；组尾经 L1 交换 localGlobalMax
    UB `localGroupMax` 是每 AIV 自己的环：`loop/2 % 12`。CopyPScale 写 L1 时必须把该下标映射回 `loop % 12`（见 §15.2），不能直接当 L1 行号。
 
 
@@ -93,7 +93,7 @@ G = 8 → 下界 **11**。取 **Dpv = 12**（+1 余量且为偶数，两 AIV 各
 
 ## 4. L1 分配（512 KB）
 
-规则：数据槽按 fp8 字节计；scale 分形与位宽无关（`yStep` 公式同 0814）。  
+规则：数据槽按 fp8 字节计；scale 分形与位宽无关（`yStep` 公式同 0814）。
 **KV 单槽仍取 32 KB**（Vᵀ+rowsum seed 镜像 18 KB > 16 KB，不能把 KV 缩到 16 KB）。
 
 
@@ -164,15 +164,15 @@ S 变为 128×128 fp16 → 单槽 32KB；相对 0814 的 128KB S **省 64KB**，
 
 ## 7. 数据类型与量化
 
-与 0814 相同：GM e4m3/e8m0；S fp16；P e4m3；P-scale e8m0；L0C fp32；Fixpipe **NO_QUANT**；seed `0x38`×`0x7F`。  
-C0：`FP8_C0_ELEMS = 32`。  
+与 0814 相同：GM e4m3/e8m0；S fp16；P e4m3；P-scale e8m0；L0C fp32；Fixpipe **NO_QUANT**；seed `0x38`×`0x7F`。
+C0：`FP8_C0_ELEMS = 32`。
 组覆盖仍为 1024 S2，精度窗口与 0814 同量级（优于 MXFP4 的 4096）。
 
 ## 8. 主机侧
 
-- `QuantMode::MXFP8_OCP_QUANT`、dtype、tiling key、分发：同 0814 方向。  
-- `CalcBaseTileTilingParams950`**：MXFP8 强制** `kvBaseTile_ = 128`（不再 256）。  
-- sparse `blockShapeY` 对齐改为 **128**（或 64 的偶数倍）；workspace/idx 按新基块重算。  
+- `QuantMode::MXFP8_OCP_QUANT`、dtype、tiling key、分发：同 0814 方向。
+- `CalcBaseTileTilingParams950`**：MXFP8 强制** `kvBaseTile_ = 128`（不再 256）。
+- sparse `blockShapeY` 对齐改为 **128**（或 64 的偶数倍）；workspace/idx 按新基块重算。
 - 验收尾块：kvs = 64 / 128 / 非对齐。
 
 
@@ -181,11 +181,11 @@ C0：`FP8_C0_ELEMS = 32`。
 
 在 0814 已列 mxfp8 文件上**改几何与循环**，而非再开一套命名：
 
-- 常量表：`KVS_BASE=128`，P 环 12，L0C QK 32KB，去掉默认 `QK_K_SPLIT`/`PV_K_SPLIT`  
-- QK：P1 起 `n` 方向一次 128（`L0TileShapeQK=<128,128,128>`）；0817 曾按 64 出两轮  
-- PV：单次 k=128；P 槽 `% 12`  
-- Softmax VF：整块 128×128；删除半块 P 双槽语义  
-- Kernel：`PV_RE_DELAY_N=12`，`TILE_GROUP_N=8`；`V1_C1` wait 在 K gather 之后（P0.5）  
+- 常量表：`KVS_BASE=128`，P 环 12，L0C QK 32KB，去掉默认 `QK_K_SPLIT`/`PV_K_SPLIT`
+- QK：P1 起 `n` 方向一次 128（`L0TileShapeQK=<128,128,128>`）；0817 曾按 64 出两轮
+- PV：单次 k=128；P 槽 `% 12`
+- Softmax VF：整块 128×128；删除半块 P 双槽语义
+- Kernel：`PV_RE_DELAY_N=12`，`TILE_GROUP_N=8`；`V1_C1` wait 在 K gather 之后（P0.5）
 - Host：`kvBaseTile=128` + 对齐校验
 
 
@@ -202,9 +202,9 @@ C0：`FP8_C0_ELEMS = 32`。
 
 ## 11. 验收
 
-- L1/L0/UB `static_assert` 通过。  
-- Golden：与 MXFP4 同口径（`rtol=1/128`、`atol=1e-4`、满足率 ≥99.5%、`maxRE<10`）。  
-- **已过线（2026-08-18 / 19，dump-off，**`cann_bsa_0817`**）**：官方 qs128 套件；**qs64 / kvs128**；**跨组** s2=1056 / 1152 / 1280 / 2048 / 3072 / 16384（含 qs64、GQA、sparse、b=2）；套件外 **s2=32/48/96**。  
+- L1/L0/UB `static_assert` 通过。
+- Golden：与 MXFP4 同口径（`rtol=1/128`、`atol=1e-4`、满足率 ≥99.5%、`maxRE<10`）。
+- **已过线（2026-08-18 / 19，dump-off，**`cann_bsa_0817`**）**：官方 qs128 套件；**qs64 / kvs128**；**跨组** s2=1056 / 1152 / 1280 / 2048 / 3072 / 16384（含 qs64、GQA、sparse、b=2）；套件外 **s2=32/48/96**。
 - 性能：对比 MXFP4 / FP16 已测（§17）；P0 已回退（§17.4）；P1 已上板（§17.7）；**下一阶段压 AIV 见 §17.8**。
 
 
@@ -358,7 +358,7 @@ C0：`FP8_C0_ELEMS = 32`。
 | QK 半面 / 基块 / G / Dpv | 64×128 / 128×128 / 8 / 12 | **一致**                                                                                                                                                                                                                                                                 |
 | kvBaseTile           | 128                       | **一致**                                                                                                                                                                                                                                                                 |
 | 多 tile softmax       | 未写死                       | **与 mxfp4 同构**：`TILE_GROUP_N=8` + last-tile Vec2；**不要**改成 per-tile online softmax                                                                                                                                                                                      |
-| P snap               | 未写 −2 vs −8               | `NEG_TWO_VALE`（−2），同 mxfp4；**不要**用 −8                                                                                                                                                                                                                                  |
+| P snap               | 未写 −2 vs −8               | **e4m3 emax=8**：`NEG_EIGHT_VALE` / `NUM_NEG_119`。不可照搬 mxfp4 e2m1 的 −2 / `NUM_NEG_125`。2026-09-15 已改 kernel+golden。 |
 | Cube dtype           | 未写 LoadData/Mmad 一致性      | LoadData dest **与** Mmad 必须是 `mx_fp8_e4m3_t`。Mmad 仍用 `fp8_e4m3fn_t` 会使 S 溢出 inf → 全 NaN                                                                                                                                                                                |
 | LoadData stride      | 未写                        | mx 路径 `srcStride = yStep`                                                                                                                                                                                                                                              |
 | P NZ 打包              | 「两路 ZERO/ONE」             | **mxfp4 even/odd + VL128**，再按 FP8 C0=32 **K-outer** 平面。4 行连续 load + 4-way Gather；even/odd `j` 偏移见 VF                                                                                                                                                                   |
@@ -387,14 +387,14 @@ C0：`FP8_C0_ELEMS = 32`。
 
 ### 15.4 仍开放 / 已关闭（2026-08-19 续）
 
-- 套件外短 kvs 精度已关闭（s2=32/48/96 均过）。  
-- 跨组精度已关闭（见 §15.1 / §15.3.6）。  
-- **BSND / uniform TND** pytest runner 已放开（golden 仍 BNSD，NPU I/O permute/flatten）；qs128 冒烟 **100%**。  
-- **TND varlen / `act_s` pad / gap_sparse / scale-stride-trap / BSND·TND×D=64·sparse·非对齐**：本期已把 mxfp4 driver 路径接到 `test_bsa_mxfp8_golden.py`（代表性子集，非整份 dump）。板上抽跑见 §16.5。  
-- **fp16out**（D=128，已拷 mxfp4 例，跳过 `qs25600`）**7/7 PASS 100%**。  
-- **D=64**：host 一直放行，但 Vᵀ `LoadData.dstStride` 阈值误用 `FP8_C0=32`，D=64 得不到与 MXFP4 相同的 pad-to-144。改 `dAct <= CONST_64` 后已拷中短例 **5/5 过线**（含 qs128/kvs128=100%、sparse qs1/kvs31=100%、GQA qs256/kvs512=99.98%）。`qs256/kvs4097_d64` 已 100%；两条 `kvs4096_d64` 长 golden 未重跑。  
-- 性能 vs MXFP4 / FP16：见 §17（P0 前基线已采；P0 试探 42.4→41.5 ms 后 **已回退**；S=118800 keep1 vs FIA/MXFP4 见 §17.5）。  
-- Q L0B 双缓冲：P0 已回退为单缓 16KB。  
+- 套件外短 kvs 精度已关闭（s2=32/48/96 均过）。
+- 跨组精度已关闭（见 §15.1 / §15.3.6）。
+- **BSND / uniform TND** pytest runner 已放开（golden 仍 BNSD，NPU I/O permute/flatten）；qs128 冒烟 **100%**。
+- **TND varlen / `act_s` pad / gap_sparse / scale-stride-trap / BSND·TND×D=64·sparse·非对齐**：本期已把 mxfp4 driver 路径接到 `test_bsa_mxfp8_golden.py`（代表性子集，非整份 dump）。板上抽跑见 §16.5。
+- **fp16out**（D=128，已拷 mxfp4 例，跳过 `qs25600`）**7/7 PASS 100%**。
+- **D=64**：host 一直放行，但 Vᵀ `LoadData.dstStride` 阈值误用 `FP8_C0=32`，D=64 得不到与 MXFP4 相同的 pad-to-144。改 `dAct <= CONST_64` 后已拷中短例 **5/5 过线**（含 qs128/kvs128=100%、sparse qs1/kvs31=100%、GQA qs256/kvs512=99.98%）。`qs256/kvs4097_d64` 已 100%；两条 `kvs4096_d64` 长 golden 未重跑。
+- 性能 vs MXFP4 / FP16：见 §17（P0 前基线已采；P0 试探 42.4→41.5 ms 后 **已回退**；S=118800 keep1 vs FIA/MXFP4 见 §17.5）。
+- Q L0B 双缓冲：P0 已回退为单缓 16KB。
 
 ## 16. 相对 MXFP4 未实现 / 未对齐特性（2026-08-19）
 
@@ -404,10 +404,10 @@ OCP 主路径（BNSD、D=64/128、fp16out、layout 冒烟）已经能对上 MXFP
 
 ### 16.1 已经对齐（不必再补 kernel）
 
-- OCP `quantMode=4`：qs64/128、跨组、尾块、GQA、sparse  
-- D=64（Vᵀ `dstStride` pad 到 144，见 §16.2）  
-- fp16 / bf16 out  
-- BSND / uniform TND（qs128 冒烟 100%）  
+- OCP `quantMode=4`：qs64/128、跨组、尾块、GQA、sparse
+- D=64（Vᵀ `dstStride` pad 到 144，见 §16.2）
+- fp16 / bf16 out
+- BSND / uniform TND（qs128 冒烟 100%）
 - `blockShapeX=64`（Q pad 到 128 VF）
 
 ### 16.1b 产品 / 设计范围（不做或不测）
@@ -426,11 +426,11 @@ OCP 主路径（BNSD、D=64/128、fp16out、layout 冒烟）已经能对上 MXFP
 
 MXFP4 **没有**单独的 D=64 tiling key。做法是 **PV 永远按 D=128 槽跑**：
 
-- `ROW_SUM_NUM=128`，`PV_MMAD_M_DIM=144`，`processOut` / rescale `EMB_ALIGN128=128`  
-- Vᵀ L1→L0：`dstStride = (dAct+15)/16 + 1`，**`if (dAct <= FP4_C0)` 且 `FP4_C0=64`** → D=64 时 dstStride **5→9**（与 D=128 同构）  
-- `kStep = dAct / FP4_C0` 仍按实际 D（D=64 只搬 1 个 fp4 C0）  
-- PadVS2 用 `halfEmbed = ROW_SUM_NUM/2`，始终清 **D=128 的两面**（D=64 的后一面写在 KV 槽余量）  
-- QK 不 pad D：`MatmulQK(..., embed)`，k=实际 D  
+- `ROW_SUM_NUM=128`，`PV_MMAD_M_DIM=144`，`processOut` / rescale `EMB_ALIGN128=128`
+- Vᵀ L1→L0：`dstStride = (dAct+15)/16 + 1`，**`if (dAct <= FP4_C0)` 且 `FP4_C0=64`** → D=64 时 dstStride **5→9**（与 D=128 同构）
+- `kStep = dAct / FP4_C0` 仍按实际 D（D=64 只搬 1 个 fp4 C0）
+- PadVS2 用 `halfEmbed = ROW_SUM_NUM/2`，始终清 **D=128 的两面**（D=64 的后一面写在 KV 槽余量）
+- QK 不 pad D：`MatmulQK(..., embed)`，k=实际 D
 
 MXFP8 0817 原稿把同一判断写成 `if (dAct <= FP8_C0)`（**32**），D=64 不进分支，dstStride 停在 5；PV 仍 mmad M=144 → L0A 读垃圾，fulfill ~0%。改阈值后板上 5/5 过线。
 
@@ -462,19 +462,19 @@ QK / softmax / rescale **不用**为 D=64 另开几何；GM 只 copy 实际 64 �
 
 ### 16.4 例已拷、还没跑完（覆盖率，不是功能洞）
 
-- 从 mxfp4 抄来的 BNSD OCP 大 shape（`qs25600`、`b56`、很多 GQA）多数没单跑  
-- D=64：`qs256/kvs4096` sparse 未跑；`qs256/kvs4097` 已 100%  
-- fp16out monster `qs25600` 未跑  
+- 从 mxfp4 抄来的 BNSD OCP 大 shape（`qs25600`、`b56`、很多 GQA）多数没单跑
+- D=64：`qs256/kvs4096` sparse 未跑；`qs256/kvs4097` 已 100%
+- fp16out monster `qs25600` 未跑
 
 大 shape 抽跑即可，不必全套 `qs25600`。
 
 ### 16.5 建议补齐顺序与板上抽跑
 
-1. **TND varlen + `act_s` pad** — 和 MXFP4 产品面差最大，kernel 已按实际长度累加  
-2. **BSND/TND 扩到 D=64、sparse、非对齐** — runner 已放开，缺的是例  
-3. **gap_sparse / scale-stride-trap** — 防回归  
-4. 大 shape 抽跑（不必全套 `qs25600`）  
-5. CX / Y=256：产品点名再做。性能迭代见 §17。  
+1. **TND varlen + `act_s` pad** — 和 MXFP4 产品面差最大，kernel 已按实际长度累加
+2. **BSND/TND 扩到 D=64、sparse、非对齐** — runner 已放开，缺的是例
+3. **gap_sparse / scale-stride-trap** — 防回归
+4. 大 shape 抽跑（不必全套 `qs25600`）
+5. CX / Y=256：产品点名再做。性能迭代见 §17。
 
 若「对标」只指 **OCP 能跑的 layout×shape 矩阵**，补 1–3 就齐了。若还要 **CX 和 blockY=256**，那是新设计，不是现成缺口。
 
@@ -766,5 +766,3 @@ P2-A 与 P2-B 不要绑成一个 PR：A 验证核间 wait，B 验证 vec 绝对�
 | 辅标尺 | S=243000 keep=0.5（现 40.65 ms）；S=8422 只防头开销回退，不当收益 |
 | 判定 | P2-A 成功：Duration 降且 aiv_vec **几乎不变**（吃的是 wait）。P2-B 成功：aiv_vec 明显下降。vec 不变只 Duration 微降 → 还在抠 AIC，停手 |
 | 回退 | 精度掉点或 vec 上升立刻回退该子轮；不要把 A/B 绑死再测 |
-
-
