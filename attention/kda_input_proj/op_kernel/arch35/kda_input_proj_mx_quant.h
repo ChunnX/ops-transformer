@@ -46,8 +46,6 @@ constexpr int16_t BF16_SHR_NUM = 7;
 constexpr uint16_t BF16_EXP_BIAS = 0x7f00;
 constexpr uint16_t FP8_E4M3_MAX_EXP = 0x0400;
 
-// 双缓冲的每个 slot 必须持有独立的 event id：共用一个 id 时 slot0 的 WaitFlag 会被 slot1 的
-// SetFlag 满足，Vector 就可能读到 MTE2 尚未搬完的 buffer。
 __aicore__ inline event_t EvtMte2V(int64_t slot)
 {
     return slot == 0 ? EVENT_ID0 : EVENT_ID1;
@@ -83,9 +81,6 @@ __aicore__ inline T CeilAlign(T a, T b)
     return CeilDiv(a, b) * b;
 }
 
-// 只预置「消费者侧」的 flag：MTE3_MTE2 表示 buffer 可写入，MTE3_V 表示 buffer 可计算。
-// MTE2_V / V_MTE3 是生产者产生的，绝不能预置，否则首轮 Compute 的 WaitFlag 会被预置 flag
-// 直接满足，从而在 MTE2 还没搬完时就开始向量计算。
 __aicore__ inline void InitUbEventFlags()
 {
     for (int64_t slot = 0; slot < DB_BUFFER; ++slot) {
@@ -94,8 +89,6 @@ __aicore__ inline void InitUbEventFlags()
     }
 }
 
-// event flag 的状态跨 kernel launch 保留，退出前必须把残留的 flag 全部消费掉，
-// 否则下一次 launch 的 WaitFlag 会立即返回。
 __aicore__ inline void ClearUbEventFlags()
 {
     for (int64_t slot = 0; slot < DB_BUFFER; ++slot) {

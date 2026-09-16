@@ -100,8 +100,7 @@ public:
                     OP_LOGE(opName, "MxQuant failed to fit UB, ubSize=%ld.", ubSize), return ge::GRAPH_FAILED);
 
         const int64_t colBlocks = colNum / MX_BLOCK_SIZE;
-        // 一行能进 UB 时只按行切核，列方向连续搬。T=8 每核 1 行；T=128 大约 43 核、每核 3 行，
-        // 避免旧的 8×7 列切把 blockDim 抬到 28，也避免每核只搬 1KB。
+        // 一行能进 UB 时只按行切核，列方向连续搬。T=8 每核 1 行；T=128 大约 43 核、每核 3 行
         if (colBlocks > 0L && colBlocks <= maxUbBlockNum) {
             const int64_t rowNormalBlockNum = CeilDiv(rowNum, std::min(rowNum, totalCoreNum));
             const int64_t rowTileNum = CeilDiv(rowNum, rowNormalBlockNum);
