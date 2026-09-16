@@ -118,7 +118,7 @@ public:
     uint64_t rankTileNum_ = 1;
     double ratioCalcComm_ = 1.0;
     bool noCutFlag_ = false;
-    bool inferFlag_ = false; // 部分逻辑只适配了推理或者训练算子，进行区分
+    bool inferFlag_ = false;                // 部分逻辑只适配了推理或者训练算子，进行区分
     NpuArch npuArch_ = Ops::Base::DAV_2201; // 目标平台arch:由调用点经框架GetCurNpuArch取后传入
 
     // Constructor
