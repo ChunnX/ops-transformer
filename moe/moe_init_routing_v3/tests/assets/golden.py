@@ -738,28 +738,9 @@ def _moe_init_routing_v3_numpy(
         expanded_x = numpy.rint((expanded_x * mul).astype(numpy.float32))
         expanded_x = numpy.clip(expanded_x, -8, 7).astype(numpy_int4())
 
-        if actual_expert_total_num < x_out_num:
-            expanded_x = numpy.concatenate(
-                [
-                    expanded_x,
-                    numpy.ones(
-                        (x_out_num - actual_expert_total_num, h), dtype=expanded_x.dtype
-                    ),
-                ],
-                axis=0,
-            )
-            expanded_scale = numpy.concatenate(
-                [
-                    expanded_scale.reshape(-1),
-                    numpy.ones(
-                        (x_out_num - actual_expert_total_num,),
-                        dtype=expanded_scale.dtype,
-                    ),
-                ]
-            )
-        else:
-            expanded_x = expanded_x[:x_out_num, :]
-            expanded_scale = expanded_scale.reshape(-1)[:x_out_num]
+        valid_num = min(actual_expert_total_num, x_out_num)
+        expanded_x = expanded_x[:valid_num, :]
+        expanded_scale = expanded_scale.reshape(-1)[:valid_num]
 
     if expert_tokens_num_type == 0:
         counts = numpy.bincount(
@@ -857,7 +838,7 @@ def _drop_rowidx_tail_len(npu_arr, golden_arr, golden0_arr, min_len):
     if golden0.ndim < 1:
         return min_len
     prefix_len = int(golden0.shape[0])
-    if 0 < prefix_len < golden_flat.size:
+    if 0 <= prefix_len < golden_flat.size:
         return prefix_len
     return min_len
 
