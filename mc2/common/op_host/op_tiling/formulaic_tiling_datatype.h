@@ -39,18 +39,15 @@ constexpr uint64_t MIN_DATA_PAR2 = 6 * ONE_MBYTE;
 constexpr uint64_t MIN_M_SIZE_SOC310P = 512;
 constexpr uint64_t MIN_COMM_RANKDIM = 2;
 
-// A5(DAV_3510)/310系(DAV_2002)在拟合查表键中的序列号。
-// 对应平台档位迁出枚举后,由arch经下列常量映射至序列号,保持拟合表键兼容(如"4_0"、"1_3"、"1_4")。
-constexpr int32_t NPUARCH_3510_FITTING_CODE = 4;
-constexpr int32_t NPUARCH_2002_FITTING_CODE = 1;
+// 拟合表键内嵌序列号(如"4_0"/"1_3"/"2_1"):arch映射值与枚举序值均显式钉住,不可漂移
+constexpr uint64_t NPUARCH_3510_FITTING_CODE = 4; // A5(DAV_3510)查表序列号
+constexpr uint64_t NPUARCH_2002_FITTING_CODE = 1; // 310系(DAV_2002)查表序列号
 
-// DAV_2201系(A2/A3)拟合档位枚举:A5(1:1对应DAV_3510)与310P(1:1对应DAV_2002)
-// 均已迁出,剩余档位均属DAV_2201,故又名实相符。序值显式钉住历史值——拟合表键("2_1"、"3_..."等)
-// 内嵌枚举序值,漂移会破坏查表。
+// DAV_2201系(A2/A3)拟合档位:A5/310P与arch一一对应已迁出,故名
 enum class SocVersion_2201 {
     SOC910_B = 0,
-    SOC910_93 = 2, // 显式2:历史序值(原SOC310_P占1),拟合表键"2_..."依赖
-    SOC910_B4 = 3, // 显式3:拟合表键"3_..."依赖
+    SOC910_93 = 2, // 历史序值,表键"2_1"依赖
+    SOC910_B4 = 3, // 历史序值,表键"3_..."依赖
 };
 
 enum class KernelType {

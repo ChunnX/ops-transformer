@@ -119,7 +119,7 @@ public:
     };
 
     // 拟合查表序列号:arch映射原枚举序值(3510→4,2002→1),保持拟合表键兼容;2201系为档位显式序值
-    int32_t GetFittingSeriesCode() const
+    uint64_t GetFittingSeriesCode() const
     {
         if (npuArch_ == Ops::Base::DAV_3510) {
             return NPUARCH_3510_FITTING_CODE;
@@ -128,9 +128,9 @@ public:
             return NPUARCH_2002_FITTING_CODE;
         }
         if (npuArch_ == Ops::Base::DAV_2201) { // A2/A3系(910B/910_93/B4):档位显式序值
-            return static_cast<int32_t>(mmShapeInfo_.socType);
+            return static_cast<uint32_t>(mmShapeInfo_.socType);
         }
-        return static_cast<int32_t>(mmShapeInfo_.socType); // 未识别arch兜底,语义同原catch-all
+        return static_cast<uint32_t>(mmShapeInfo_.socType); // 未识别arch兜底,语义同原catch-all
     }
 
     std::string GetCalcTypeString()
