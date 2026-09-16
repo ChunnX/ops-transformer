@@ -39,15 +39,19 @@ constexpr uint64_t MIN_DATA_PAR2 = 6 * ONE_MBYTE;
 constexpr uint64_t MIN_M_SIZE_SOC310P = 512;
 constexpr uint64_t MIN_COMM_RANKDIM = 2;
 
-// A5(950系)在拟合查表键中的序列号(原SOC950枚举序值)。
-// 枚举不再持有950档位后,A5由arch(DAV_3510)经该常量映射回原序列号,保持拟合表键兼容。
+// arch在拟合查表键中的序列号(原SOC950/SOC310_P枚举序值)。
+// 枚举不再持有950/310P档位后,由arch(DAV_3510/DAV_2002)经下列常量映射回原序列号,
+// 保持拟合表键兼容(如"4_0"、"1_3"、"1_4")。
 constexpr int32_t NPUARCH_3510_FITTING_CODE = 4;
+constexpr int32_t NPUARCH_2002_FITTING_CODE = 1;
 
+// 非A5的2201系(A2/A3)拟合档位枚举:310P(1:1对应DAV_2002)与950系(1:1对应DAV_3510)
+// 均已迁出,剩余档位均属DAV_2201。序值显式钉住历史值——拟合表键("2_1"、"3_..."等)
+// 内嵌枚举序值,漂移会破坏查表。
 enum class SocVersion {
-    SOC910_B,
-    SOC310_P,
-    SOC910_93,
-    SOC910_B4,
+    SOC910_B = 0,
+    SOC910_93 = 2, // 显式2:历史序值(原SOC310_P占1),拟合表键"2_..."依赖
+    SOC910_B4 = 3, // 显式3:拟合表键"3_..."依赖
 };
 
 enum class KernelType {

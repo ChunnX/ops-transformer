@@ -118,10 +118,16 @@ public:
         GetMachineParameters();
     };
 
-    // 拟合查表序列号:A5映射为原SOC950枚举序值(4),保持拟合表键兼容;非A5为档位枚举序值
+    // 拟合查表序列号:arch映射原枚举序值(3510→4,2002→1),保持拟合表键兼容;2201系为档位显式序值
     int32_t GetFittingSeriesCode() const
     {
-        return npuArch_ == Ops::Base::DAV_3510 ? NPUARCH_3510_FITTING_CODE : static_cast<int32_t>(mmShapeInfo_.socType);
+        if (npuArch_ == Ops::Base::DAV_3510) {
+            return NPUARCH_3510_FITTING_CODE;
+        }
+        if (npuArch_ == Ops::Base::DAV_2002) {
+            return NPUARCH_2002_FITTING_CODE;
+        }
+        return static_cast<int32_t>(mmShapeInfo_.socType);
     }
 
     std::string GetCalcTypeString()

@@ -66,7 +66,7 @@ uint64_t MatmulPerformanceModel::GetLinearThresholdLen(uint64_t rankTileNum)
 
     uint64_t thresholdSize = 0;
     MinMatmulShapeParameters minShapePar;
-    bool adaptCoreNumFlag = (mmShapeInfo_.socType != SocVersion::SOC310_P);
+    bool adaptCoreNumFlag = (npuArch_ != Ops::Base::DAV_2002);
     if (adaptCoreNumFlag) {
         minShapePar.mmMinDataSize1 =
             minShapePar.mmMinDataSize1 / MatmulPerformance::MARK_CORE_NUM_SOC910B * mmShapeInfo_.coreNum;
@@ -184,7 +184,7 @@ void MatmulPerformanceModel::ChangeCubeUtilByKAlign()
 void MatmulPerformanceModel::FindCubeUtil(uint64_t mSize, uint64_t rankTileNum, bool flagAllReduce,
                                           uint64_t *maxTileLen)
 {
-    if (mmShapeInfo_.socType == SocVersion::SOC310_P) {
+    if (npuArch_ == Ops::Base::DAV_2002) {
         if (calcType_ == MatmulCalcType::QUANT) {
             cubeUtil_ = FindCubeUtilQuantVersion310P();
         } else {

@@ -282,7 +282,8 @@ void MatmulAllReduceTilingBase::DoRCSTiling()
 void MatmulAllReduceTilingBase::SetMCutSocVersion(SocVersion &inputSocVersion)
 {
     if (npuArch_ == Ops::Base::DAV_2002) {
-        inputSocVersion = SocVersion::SOC310_P;
+        // 310P:档位key已迁出枚举(与DAV_2002一一对应),保持调用方初始化的占位值;
+        // 模型内由arch(调用点传入的npuArch_)直接走2002分支
         OP_LOGD(opName_, "TileCnt enter 310P branch.");
         return;
     }
