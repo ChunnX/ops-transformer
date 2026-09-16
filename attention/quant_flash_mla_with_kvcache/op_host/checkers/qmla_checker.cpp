@@ -72,13 +72,20 @@ ge::graphStatus QmlaChecker::CheckNonContiguousSupport(const QmlaTilingInfo &qml
     if (CheckTensorContiguous(kCacheShape->GetStorageShape(), qmlaInfo.keyStrides, dimIndex) == ge::GRAPH_SUCCESS) {
         return ge::GRAPH_SUCCESS;
     }
-    // PA_BBND 仅 0 轴可非连续, PA_BNBD/PA_NZ 仅 0/1 轴可非连续
-    const int32_t maxNonContiguousAxis = (qmlaInfo.layoutKv == QmlaKvLayout::PA_BBND) ? 0 : 1;
-    OP_CHECK_IF(dimIndex > maxNonContiguousAxis,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    opName, K_CACHE_NAME, std::to_string(dimIndex).c_str(),
-                    "In PA scenario, only the first two axes of k_cache can be non-contiguous"),
-                return ge::GRAPH_FAILED);
+    // PA_BBND(BnBsH) 仅 0 轴可非连续, PA_BNBD(BnNBsD)/PA_NZ 仅 0、1 轴可非连续
+    const bool isBbnd = (qmlaInfo.layoutKv == QmlaKvLayout::PA_BBND);
+    const int32_t maxNonContiguousAxis = isBbnd ? 0 : 1;
+    if (dimIndex > maxNonContiguousAxis) {
+        const char *layoutName = isBbnd ? "PA_BBND (BnBsH)"
+                                 : (qmlaInfo.layoutKv == QmlaKvLayout::PA_NZ) ? "PA_NZ" : "PA_BNBD (BnNBsD)";
+        const std::string reason = "k_cache layout is " + std::string(layoutName) +
+                                   ", only axis 0" + (isBbnd ? "" : " and axis 1") +
+                                   " can be non-contiguous, but axis " + std::to_string(dimIndex) +
+                                   " is non-contiguous";
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            opName, K_CACHE_NAME, std::to_string(dimIndex).c_str(), reason.c_str());
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
