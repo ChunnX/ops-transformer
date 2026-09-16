@@ -9,15 +9,6 @@
  */
 
 #pragma once
-#ifndef MEGA_MOE_A8W4_L0_REUSE
-#define MEGA_MOE_A8W4_L0_REUSE 1
-#endif
-#ifndef MEGA_MOE_A8W4_EARLY_FIX
-#define MEGA_MOE_A8W4_EARLY_FIX 1
-#endif
-#ifndef MEGA_MOE_PROLOGUE_PREFETCH
-#define MEGA_MOE_PROLOGUE_PREFETCH 1
-#endif
 namespace Blaze::Gemm {
 constexpr uint64_t MX_FP8FP4_M_STRIP = 128;
 }

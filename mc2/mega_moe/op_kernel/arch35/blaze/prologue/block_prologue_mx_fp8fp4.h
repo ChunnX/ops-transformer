@@ -164,11 +164,9 @@ protected:
     __aicore__ inline void ComputeBasicBlockAivNdKnNzNk(const PrologueMxCastWOffsetParam &offsetParam,
                                                         const GMWeightTensorType &gmWeightTensor);
 
-#if MEGA_MOE_PROLOGUE_PREFETCH
     template <typename GMWeightTensorType>
     __aicore__ inline void PrefetchWeightHalf(const PrologueMxCastWOffsetParam &param,
                                              const GMWeightTensorType &gmWeightTensor, uint64_t halfSeq);
-#endif
     __aicore__ inline void WaitVectorToMTE2();
     __aicore__ inline void SetVectorToMTE2();
     template <typename Weight4BitTensorType, typename Weight8BitTensorType>
@@ -290,7 +288,6 @@ template <typename GMWeightTensorType>
 __aicore__ inline void BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::ComputeBasicBlockAivNdKnNzNk(
     const PrologueMxCastWOffsetParam &param, const GMWeightTensorType &gmWeightTensor)
 {
-#if MEGA_MOE_PROLOGUE_PREFETCH
     const uint64_t halfK = param.kbL1Size >> 1;
     const uint64_t totalHalves = CeilDiv(param.kSize, param.kbL1Size) * SERIAL_HALF_K_PARTS;
     uint64_t nextHalf = 0;
@@ -323,44 +320,6 @@ __aicore__ inline void BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::ComputeBasicBloc
         }
         SetAivToAic();
     }
-#else
-
-    // A single V core preserves the original half-K granularity for UB fit,
-    // but processes the two halves serially before notifying the cube core.
-    const uint64_t kMte2BaseSize = param.kbL1Size >> 1;
-
-    for (uint64_t kOffset = 0; kOffset < param.kSize; kOffset += param.kbL1Size, cvLoopIdx_++) {
-        uint64_t l1RealLen = (kOffset + param.kbL1Size) > param.kSize ? param.kSize - kOffset : param.kbL1Size;
-
-        auto l1BaseTensor = MakeL1WeightTensor(l1RealLen, param.nL1Size);
-
-        for (uint64_t halfIdx = 0; halfIdx < SERIAL_HALF_K_PARTS; ++halfIdx) {
-            uint64_t l1SplitOffset = halfIdx * kMte2BaseSize;
-            uint64_t mte2RealK = halfIdx == 0 ? min(kMte2BaseSize, l1RealLen) :
-                                                (l1RealLen > kMte2BaseSize ? l1RealLen - kMte2BaseSize : 0);
-
-            auto weight4BitTensor = MakeWeight4BitTensor(mte2RealK, param.nL1Size);
-            auto weight8BitTensor = MakeWeight8BitTensor(mte2RealK, param.nL1Size);
-            auto l1Tensor = l1BaseTensor.slice(asc::te::make_coord(l1SplitOffset, 0),
-                                               asc::te::make_shape(mte2RealK, param.nL1Size));
-
-            WaitVectorToMTE2();
-            CopyGmToUb(kOffset + l1SplitOffset, mte2RealK, param, gmWeightTensor, weight4BitTensor);
-
-            if (halfIdx == 0) {
-                WaitAicToAiv();
-            }
-
-            WeightAntiQuantComputeNzNk(weight4BitTensor, weight8BitTensor);
-            SetVectorToMTE2();
-            ubMte2LoopIdx_++;
-
-            CopyWeightToL1(mte2RealK, weight8BitTensor, l1Tensor);
-        }
-
-        SetAivToAic();
-    }
-#endif
 }
 
 BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS
@@ -379,12 +338,10 @@ __aicore__ inline void BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::operator()(const
     offsetParam.nL1Size = nL1Size;
     offsetParam.nOffset = nOffset;
     offsetParam.kbL1Size = configuredKL1Size != 0 ? configuredKL1Size : CalcDynamicKBlock(mL1Size, nL1Size);
-#if MEGA_MOE_A_L1_BUFFERS == 4 || MEGA_MOE_B_L1_BUFFERS == 4
     // Match the AIC 64 KiB A-slot limit; converted A8W4 activations use one byte.
     if (((mL1Size + 15U) / 16U * 16U) * offsetParam.kbL1Size > 64U * 1024U) {
         offsetParam.kbL1Size = MX_FP8FP4_L1_K_CONFIG_256;
     }
-#endif
     offsetParam.nAlign = nAlign;
     ComputeBasicBlockAivNdKnNzNk(offsetParam, gmWeightTensor);
 }
@@ -440,11 +397,6 @@ __aicore__ inline void BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::CopyGmToUb(
         }
     }
 
-#if !MEGA_MOE_PROLOGUE_PREFETCH
-    // The lookahead path sets and consumes a distinct ready event per UB slot.
-    SetFlag<HardEvent::MTE2_V>(EVENT_ID_MTE2_TO_V);
-    WaitFlag<HardEvent::MTE2_V>(EVENT_ID_MTE2_TO_V);
-#endif
 }
 
 BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS
@@ -520,8 +472,6 @@ __aicore__ inline auto BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::MakeL1WeightTens
         l1BaseLayout);
 }
 
-
-#if MEGA_MOE_PROLOGUE_PREFETCH
 BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS
 template <typename GMWeightTensorType>
 __aicore__ inline void BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::PrefetchWeightHalf(
@@ -538,7 +488,6 @@ __aicore__ inline void BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::PrefetchWeightHa
     SetFlag<HardEvent::MTE2_V>(EVENT_ID_MTE2_TO_V + slot);
     ++ubMte2LoopIdx_;
 }
-#endif
 
 #undef BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION
 #undef BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS

@@ -4,13 +4,6 @@
  */
 #pragma once
 
-#ifndef MEGA_MOE_A_L1_BUFFERS
-#define MEGA_MOE_A_L1_BUFFERS 2
-#endif
-#ifndef MEGA_MOE_B_L1_BUFFERS
-#define MEGA_MOE_B_L1_BUFFERS 4
-#endif
-
 namespace Blaze {
 namespace Gemm {
 
@@ -18,8 +11,8 @@ namespace Gemm {
 // persistent GMM calls, including tails; only the tensor's valid shape changes.
 struct MegaMoeMxL1Layout {
     static constexpr uint64_t KB = 1024;
-    static constexpr uint64_t A_STAGES = MEGA_MOE_A_L1_BUFFERS;
-    static constexpr uint64_t B_STAGES = MEGA_MOE_B_L1_BUFFERS;
+    static constexpr uint64_t A_STAGES = 2;
+    static constexpr uint64_t B_STAGES = 4;
     static_assert(A_STAGES == 2 || A_STAGES == 4, "A stages must be 2 or 4");
     static_assert(B_STAGES == 2 || B_STAGES == 4, "B stages must be 2 or 4");
     static_assert(B_STAGES != 4 || A_STAGES == 2, "B4 requires A2");
