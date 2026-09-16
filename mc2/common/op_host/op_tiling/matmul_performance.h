@@ -17,6 +17,7 @@
 #pragma once
 #include "matmul_formulaic_tiling.h"
 #include "formulaic_tiling_datatype.h"
+#include "op_host/util/op_const_def.h"
 namespace MatmulPerformance {
 constexpr double COMPUTES_PER_CYCLE = 4096;
 constexpr double K_UNALIGN_UTIL_RATIO_SOC310P = 0.8;
@@ -62,13 +63,14 @@ public:
     double cubeUtil_ = 0.8;
     double matmulGradient_ = 1.0;
     uint64_t mmMinDataSize_ = MatmulPerformance::MM_MIN_DATASIZE_OTHER_SOC;
+    NpuArch npuArch_ = Ops::Base::DAV_2201; // 目标平台arch:调用点经框架GetCurNpuArch取后传入,3510/2002/2201判定
 
-    void SetCyclePerMicroSec(SocVersion inputSocVersion)
+    void SetCyclePerMicroSec()
     {
         mmShapeInfo_.cyclePerMicroSec = MatmulPerformance::CYCLE_PER_MICRO_SEC;
-        if (inputSocVersion == SocVersion::SOC310_P) {
+        if (npuArch_ == Ops::Base::DAV_2002) { // 310系
             mmShapeInfo_.cyclePerMicroSec = MatmulPerformance::CYCLE_PER_MICRO_SEC_VERSION310_P;
-        } else if (inputSocVersion == SocVersion::SOC950) {
+        } else if (npuArch_ == Ops::Base::DAV_3510) { // A5
             mmShapeInfo_.cyclePerMicroSec = MatmulPerformance::CYCLE_PER_MICRO_SEC_NPUARCH_3510;
             mmMinDataSize_ = MatmulPerformance::MM_MIN_DATASIZE_NPUARCH_3510;
         } else {
@@ -77,7 +79,7 @@ public:
     }
     void SetCalcType(const mc2tiling::TilingArgs &args)
     {
-        if ((mmShapeInfo_.socType == SocVersion::SOC950) &&
+        if ((npuArch_ == Ops::Base::DAV_3510) &&
             ((args.aType == matmul_tiling::DataType::DT_HIFLOAT8) ||
              (args.aType == matmul_tiling::DataType::DT_FLOAT8_E4M3FN) ||
              (args.aType == matmul_tiling::DataType::DT_FLOAT8_E5M2) ||
@@ -87,7 +89,7 @@ public:
         } else if ((args.aType == matmul_tiling::DataType::DT_INT8) &&
                    (mmShapeInfo_.socType != SocVersion::SOC910_B)) { // A8W8
             calcType_ = MatmulCalcType::QUANT;
-        } else if ((mmShapeInfo_.socType == SocVersion::SOC310_P) &&
+        } else if ((npuArch_ == Ops::Base::DAV_2002) &&
                    (args.bType == matmul_tiling::DataType::DT_INT8)) { // A16W8
             mmShapeInfo_.inMatrixBDtypeSize = MatmulPerformance::INT8_DTYPE_SIZE;
             calcType_ = MatmulCalcType::ANTI_QUANT;
@@ -95,8 +97,9 @@ public:
     }
     // Constructor
     explicit MatmulPerformanceModel(const mc2tiling::TilingArgs &args,
-                                    SocVersion inputSocVersion = SocVersion::SOC910_B)
-        : calcType_(MatmulCalcType::FP16)
+                                    SocVersion inputSocVersion = SocVersion::SOC910_B,
+                                    NpuArch npuArch = Ops::Base::DAV_2201)
+        : calcType_(MatmulCalcType::FP16), npuArch_(npuArch)
     {
         mmShapeInfo_.socType = inputSocVersion;
         mmShapeInfo_.coreNum = args.aicCoreNum; // 每die核数
@@ -112,13 +115,19 @@ public:
         mmShapeInfo_.baseK = mc2tiling::BASE_BLOCK_K;
         mmShapeInfo_.batchSize = 1UL; // 初始值
         SetCalcType(args);
-        SetCyclePerMicroSec(inputSocVersion);
+        SetCyclePerMicroSec();
         GetMachineParameters();
     };
 
+    // 拟合查表序列号:A5映射为原SOC950枚举序值(4),保持拟合表键兼容;非A5为档位枚举序值
+    int32_t GetFittingSeriesCode() const
+    {
+        return npuArch_ == Ops::Base::DAV_3510 ? NPUARCH_3510_FITTING_CODE : static_cast<int32_t>(mmShapeInfo_.socType);
+    }
+
     std::string GetCalcTypeString()
     {
-        return std::to_string(static_cast<int>(mmShapeInfo_.socType)) + "_" +
+        return std::to_string(GetFittingSeriesCode()) + "_" +
                std::to_string(static_cast<int>(calcType_)) + "_" + std::to_string(mmShapeInfo_.inMatrixADtypeSize) +
                "_" + std::to_string(mmShapeInfo_.inMatrixBDtypeSize) + "_" +
                std::to_string(mmShapeInfo_.outMatrixCDtypeSize);

@@ -288,7 +288,8 @@ void MatmulAllReduceTilingBase::SetMCutSocVersion(SocVersion &inputSocVersion)
     }
     // __NPU_ARCH__ == 3510
     if (npuArch_ == Ops::Base::DAV_3510) {
-        inputSocVersion = SocVersion::SOC950;
+        // A5:档位key不再承载950(枚举已删),保持调用方初始化的占位值;
+        // 模型内由arch(调用点传入的npuArch_)直接走3510分支
         OP_LOGD(opName_, "TileCnt enter 3510 branch.");
         return;
     }
@@ -308,7 +309,8 @@ CutResult MatmulAllReduceTilingBase::GetTilingResult()
 {
     SocVersion inputSocVersion = SocVersion::SOC910_B;
     SetMCutSocVersion(inputSocVersion); // 判断是否是310P或者910B4
-    MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_);
+    MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_,
+                                        npuArch_);
     allReduceTilingHccl.GetTiling();
     CutResult mCutAllreduce = allReduceTilingHccl.tilingM_.cutRes;
     const gert::StorageShape *commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;

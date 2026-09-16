@@ -119,13 +119,16 @@ public:
     double ratioCalcComm_ = 1.0;
     bool noCutFlag_ = false;
     bool inferFlag_ = false; // 部分逻辑只适配了推理或者训练算子，进行区分
+    NpuArch npuArch_ = Ops::Base::DAV_2201; // 目标平台arch:由调用点经框架GetCurNpuArch取后传入
 
     // Constructor
     explicit OneCalcOneCommBase(const mc2tiling::TilingArgs &args, uint32_t inputRankDim, KernelType inputKernelType,
-                                SocVersion inputSocVersion = SocVersion::SOC910_B)
-        : matmulPerf_(args, inputSocVersion),
-          commPerf_(inputRankDim, inputKernelType, inputSocVersion),
-          tilingM_(args)
+                                SocVersion inputSocVersion = SocVersion::SOC910_B,
+                                NpuArch npuArch = Ops::Base::DAV_2201)
+        : matmulPerf_(args, inputSocVersion, npuArch),
+          commPerf_(inputRankDim, inputKernelType, inputSocVersion, npuArch),
+          tilingM_(args),
+          npuArch_(npuArch)
     {
         rankDim_ = inputRankDim;
         clusterInfo_ = matmulPerf_.mmShapeInfo_;

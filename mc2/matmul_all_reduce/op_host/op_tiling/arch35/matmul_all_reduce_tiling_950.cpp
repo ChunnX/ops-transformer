@@ -397,7 +397,8 @@ CutResult MatmulAllReduceTilingA5::GetTilingResult()
         MMAllReduceFitBalanceTiling allReduceTilingHccl(args_, KernelType::ALL_REDUCE_VIA_TWO_SHOT, TopoType::EIGHT_P);
         mCutAllreduce = allReduceTilingHccl.GetTiling();
     } else {
-        MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_);
+        MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_,
+                                            npuArch_);
         allReduceTilingHccl.GetTiling();
         mCutAllreduce = allReduceTilingHccl.tilingM_.cutRes;
     }

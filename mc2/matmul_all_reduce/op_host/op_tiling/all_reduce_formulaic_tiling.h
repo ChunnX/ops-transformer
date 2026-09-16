@@ -32,8 +32,9 @@ class MMPlusAllReduce : public OneCalcOneCommBase {
 public:
     // Constructor
     explicit MMPlusAllReduce(const mc2tiling::TilingArgs &args, uint32_t inputRankDim, KernelType inputKernelType,
-                             SocVersion inputSocVersion = SocVersion::SOC910_B, bool isPerBlock = false)
-        : OneCalcOneCommBase(args, inputRankDim, inputKernelType, inputSocVersion)
+                             SocVersion inputSocVersion = SocVersion::SOC910_B, bool isPerBlock = false,
+                             NpuArch npuArch = Ops::Base::DAV_2201)
+        : OneCalcOneCommBase(args, inputRankDim, inputKernelType, inputSocVersion, npuArch)
     {
         isPerBlock_ = isPerBlock;
         inferFlag_ = true;
