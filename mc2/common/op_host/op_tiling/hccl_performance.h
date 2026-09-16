@@ -54,37 +54,36 @@ public:
     }
 
     // arch粗分入口:3510→A5;2002→310P;2201→系列细分(910B/910_93/B4)
-    void SetCommParametersBaseArchType(SocVersion_2201 socVersion_2201)
+    void SetCommParametersBaseArchType()
     {
         if (npuArch_ == Ops::Base::DAV_3510) { // __NPU_ARCH__ == 3510
             InitParametersForFullMesh();
         } else if (npuArch_ == Ops::Base::DAV_2002) { // 310系:310P只支持MatmulAllreduce算子
             SetCommMethodVersion310P();
         } else if (npuArch_ == Ops::Base::DAV_2201) { // A2/A3系:910B/910_93/B4
-            SetCommParametersBySocType(socVersion_2201);
+            SetCommParametersBySocType();
         }
     }
 
     // 系列细分:仅DAV_2201系(910B/910_93/B4)到达,内部不再含arch判定
-    void SetCommParametersBySocType(SocVersion_2201 socVersion_2201)
+    void SetCommParametersBySocType()
     {
         if (socVersion_2201 == SocVersion_2201::SOC910_93) {
             InitSOC91093();
-            socVersion_2201 = SocVersion_2201::SOC910_93;
         } else { // SOC910_B/SOC910_B4等
             InitParametersForFullMesh();
         }
     }
     // Constructor
     explicit HCCLPerformanceModel(uint32_t inputRankDim, KernelType inputKernelType,
-                                  SocVersion_2201 socVersion_2201 = SocVersion_2201::SOC910_B,
+                                  SocVersion_2201 inputSeries = SocVersion_2201::SOC910_B,
                                   NpuArch npuArch = Ops::Base::DAV_2201)
-        : npuArch_(npuArch)
+        : socVersion_2201(inputSeries), npuArch_(npuArch)
     {
         commTypeInfo_.kernelType = inputKernelType; // 区分哪个MC2算子
         commTypeInfo_.rankDim = std::max(static_cast<uint64_t>(inputRankDim), MIN_COMM_RANKDIM); // 并行维度最小为2
         commTypeInfo_.commDtypeSizeExpansionFraction = 1;
-        SetCommParametersBaseArchType(socVersion_2201);
+        SetCommParametersBaseArchType();
         SetMaxStepSize();
         keyToFittingMap_ = GetCommMethodString();
         GetCommEstimateParameters();
