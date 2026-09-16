@@ -345,17 +345,20 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
     // the following tile would be addressed past the compact yScale row.
     constexpr uint64_t scaleGroupSize = MXFP_DIVISOR_SIZE / MXFP_MULTI_BASE_SIZE;
     auto validScaleN = CeilDiv(static_cast<uint64_t>(singleN_), scaleGroupSize);
+    // quantScaleBlockOutput_ uses a 32-byte UB row for every logical M row,
+    // whereas yScale is compact (validScaleN bytes per row).  A multi-row
+    // DataCopyPad with a sub-32-byte blockLen expresses its source stride in
+    // hardware blocks, so it cannot represent this 32-byte-to-compact-row
+    // conversion without rounding ambiguity.  Copy each row from its explicit
+    // 32-byte UB address instead.  This keeps the public yScale rows compact
+    // for all N tiles, including the common N=64 output tile.
     AscendC::DataCopyExtParams params{1, 0, 0, 0, 0};
-    params.blockCount = blockCount;
+    params.blockCount = 1;
     params.blockLen = static_cast<uint32_t>(validScaleN * sizeof(AscendC::fp8_e8m0_t));
-    // quantScaleBlockOutput_ is laid out with one 32-byte UB row per logical
-    // M row.  Skip the padding at the end of each compact scale row in UB.
-    params.srcStride = static_cast<uint32_t>(
-        CeilDiv((AscendC::ONE_BLK_SIZE - validScaleN) * sizeof(AscendC::fp8_e8m0_t),
-               static_cast<uint64_t>(AscendC::ONE_BLK_SIZE)));
-    params.dstStride = static_cast<uint32_t>((static_cast<uint64_t>(scaleN_) - validScaleN) *
-                                              sizeof(AscendC::fp8_e8m0_t));
-    AscendC::DataCopyPad(quantScaleGlobal_[offset], src, params);
+    for (uint64_t row = 0; row < blockCount; ++row) {
+        AscendC::DataCopyPad(quantScaleGlobal_[offset + row * scaleN_],
+                             src[row * AscendC::ONE_BLK_SIZE], params);
+    }
 }
 
 QMM_BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
