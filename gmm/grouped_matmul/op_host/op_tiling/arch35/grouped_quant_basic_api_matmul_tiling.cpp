@@ -13,6 +13,8 @@
  * \brief
  */
 #include <algorithm>
+#include <limits>
+#include "acl/acl_rt.h"
 #include "err/ops_err.h"
 #include "grouped_quant_basic_api_matmul_tiling.h"
 #include "../../grouped_matmul_host_util.h"
@@ -32,8 +34,124 @@ GroupedQmmBasicApiTiling::GroupedQmmBasicApiTiling(gert::TilingContext *context)
     Reset();
 }
 
+bool GroupedQmmBasicApiTiling::IsCubeBasicApi() const
+{
+    const bool isInt8 = inputParams_.aDtype == ge::DT_INT8 && inputParams_.bDtype == ge::DT_INT8;
+    // Match KernelGroupedMmadFixpipeQuant's input type assertions.
+    const bool isHiFloat8 = inputParams_.aDtype == ge::DT_HIFLOAT8 && inputParams_.bDtype == ge::DT_HIFLOAT8;
+    const auto isFp8 = [](ge::DataType dtype) { return dtype == ge::DT_FLOAT8_E4M3FN || dtype == ge::DT_FLOAT8_E5M2; };
+    const bool outputSupported = inputParams_.cDtype == ge::DT_FLOAT16 || inputParams_.cDtype == ge::DT_BF16 ||
+                                 (isInt8 ? (inputParams_.cDtype == ge::DT_INT8 || inputParams_.cDtype == ge::DT_INT32) :
+                                           inputParams_.cDtype == ge::DT_FLOAT);
+    const bool scaleSupported = inputParams_.cDtype == ge::DT_INT32 || inputParams_.scaleDtype == ge::DT_UINT64 ||
+                                inputParams_.scaleDtype == ge::DT_INT64 || inputParams_.scaleDtype == ge::DT_BF16 ||
+                                inputParams_.scaleDtype == ge::DT_FLOAT;
+    const bool biasSupported =
+        !inputParams_.hasBias || inputParams_.biasDtype == (isInt8 ? ge::DT_INT32 : ge::DT_FLOAT);
+    const bool supportedInput = !IsMicroScaling() && !inputParams_.transA &&
+                                inputParams_.kernelType == GMM_DEQUANT_FIXP &&
+                                (isInt8 || isHiFloat8 || (isFp8(inputParams_.aDtype) && isFp8(inputParams_.bDtype))) &&
+                                biasSupported && outputSupported && scaleSupported;
+    if (!supportedInput) {
+        return false;
+    }
+    char packageName[] = "asc-devkit";
+    int32_t version = 0;
+    if (aclsysGetVersionNum(packageName, &version) != ACL_SUCCESS || version <= 0) {
+        return false;
+    }
+    // Version encoding: major * 10000000 + minor * 100000 + patch * 1000 + suffix.
+    // Match the existing kernel IS_BLAZE predicate, including the 10.0 exclusion.
+    constexpr int32_t majorUnit = 10000000;
+    constexpr int32_t minorUnit = 100000;
+    const int32_t major = version / majorUnit;
+    const int32_t minor = version % majorUnit / minorUnit;
+    return major >= 9 && minor > 0;
+}
+
+ge::graphStatus GroupedQmmBasicApiTiling::CalCubeL1Tiling()
+{
+    // Validate before divisions and narrowing to the uint32_t wire format.
+    constexpr uint64_t maxDim = std::numeric_limits<uint32_t>::max();
+    OP_CHECK_IF(inputParams_.mSize == 0 || inputParams_.nSize == 0 || inputParams_.kSize == 0 ||
+                    inputParams_.mSize > maxDim || inputParams_.nSize > maxDim || inputParams_.kSize > maxDim,
+                OP_LOGE(inputParams_.opName, "Cube basic API requires positive uint32 dimensions."),
+                return ge::GRAPH_FAILED);
+    CalBasicBlock();
+    InitCommonL1TilingFields();
+    // Match BlockMmad::GetAL1Bytes/GetBL1Bytes for the supported 8-bit input types.
+    const uint64_t aBytes = ge::GetSizeByDataType(inputParams_.aDtype);
+    const uint64_t bBytes = ge::GetSizeByDataType(inputParams_.bDtype);
+    const uint64_t c0 = GetShapeWithDataType(CUBE_REDUCE_BLOCK, inputParams_.aDtype);
+    const auto aSize = [&](uint64_t k) {
+        return CeilAlign(basicTiling_.baseM, CUBE_BLOCK) * CeilAlign(k, c0) * aBytes;
+    };
+    const auto bSize = [&](uint64_t k) {
+        return inputParams_.transB ? CeilAlign(k, c0) * CeilAlign(basicTiling_.baseN, CUBE_BLOCK) * bBytes :
+                                     CeilAlign(k, CUBE_BLOCK) * CeilAlign(basicTiling_.baseN, c0) * bBytes;
+    };
+    // BlockMmad alternates L0A/L0B at half-L0A offsets.
+    const uint64_t halfL0 = aicoreParams_.l0aSize / DB_SIZE;
+    OP_CHECK_IF(aicoreParams_.l0bSize < aicoreParams_.l0aSize,
+                OP_LOGE(inputParams_.opName, "Cube requires L0B to accommodate both L0A-sized stages."),
+                return ge::GRAPH_FAILED);
+    while ((aSize(basicTiling_.baseK) > halfL0 || bSize(basicTiling_.baseK) > halfL0) && basicTiling_.baseK > c0) {
+        basicTiling_.baseK = CeilAlign(CeilDiv(basicTiling_.baseK, POWER_OF_TWO), c0);
+    }
+    const uint64_t cSize = basicTiling_.baseM * basicTiling_.baseN * DATA_SIZE_L0C;
+    OP_CHECK_IF(
+        aSize(basicTiling_.baseK) > halfL0 || bSize(basicTiling_.baseK) > halfL0 || cSize > aicoreParams_.l0cSize,
+        OP_LOGE(inputParams_.opName, "Cube basic block exceeds L0 capacity."), return ge::GRAPH_FAILED);
+    // The grouped fixpipe block reserves scale and bias separately in EACH half of L1.
+    const uint64_t scaleBytes =
+        inputParams_.bQuantMode == QuantMode::PERCHANNEL_MODE || inputParams_.bQuantMode == QuantMode::PERGROUP_MODE ?
+            CeilAlign(basicTiling_.baseN * sizeof(uint64_t), L1_ALIGN_SIZE) :
+            0UL;
+    const uint64_t biasBytes =
+        inputParams_.hasBias ? CeilAlign(basicTiling_.baseN * sizeof(uint32_t), L1_ALIGN_SIZE) : 0UL;
+    const uint64_t halfL1 = aicoreParams_.l1Size / DB_SIZE;
+    OP_CHECK_IF(aSize(basicTiling_.baseK) + bSize(basicTiling_.baseK) + scaleBytes + biasBytes > halfL1,
+                OP_LOGE(inputParams_.opName, "Minimum Cube stage exceeds half of L1."), return ge::GRAPH_FAILED);
+    basicTiling_.depthA1 = GetDepthWithHighBW(std::min(inputParams_.mSize, basicTiling_.baseM));
+    basicTiling_.depthB1 = GetDepthWithHighBW(std::min(inputParams_.nSize, basicTiling_.baseN));
+    while (true) {
+        CalStepKs();
+        const uint64_t aStage = aSize(basicTiling_.stepKa * basicTiling_.baseK);
+        const uint64_t bStage = bSize(basicTiling_.stepKb * basicTiling_.baseK);
+        if (aStage + bStage + scaleBytes + biasBytes <= halfL1) {
+            break;
+        }
+        if (basicTiling_.stepKa > 1 && (aStage >= bStage || basicTiling_.stepKb == 1)) {
+            basicTiling_.depthA1 = std::max(1UL, basicTiling_.stepKa / POWER_OF_TWO) * DB_SIZE;
+        } else {
+            basicTiling_.depthB1 = std::max(1UL, basicTiling_.stepKb / POWER_OF_TWO) * DB_SIZE;
+        }
+    }
+    const uint64_t kAL1 = basicTiling_.stepKa * basicTiling_.baseK;
+    const uint64_t kBL1 = basicTiling_.stepKb * basicTiling_.baseK;
+    OP_CHECK_IF(kAL1 > maxDim || kBL1 > maxDim, OP_LOGE(inputParams_.opName, "Cube L1 K exceeds uint32 tiling range."),
+                return ge::GRAPH_FAILED);
+    auto &mm = cubeTilingData_.mmTilingData;
+    mm.m = static_cast<uint32_t>(inputParams_.mSize);
+    mm.n = static_cast<uint32_t>(inputParams_.nSize);
+    mm.k = static_cast<uint32_t>(inputParams_.kSize);
+    mm.baseM = static_cast<uint32_t>(basicTiling_.baseM);
+    mm.baseN = static_cast<uint32_t>(basicTiling_.baseN);
+    mm.baseK = static_cast<uint32_t>(basicTiling_.baseK);
+    mm.kAL1 = static_cast<uint32_t>(kAL1);
+    mm.kBL1 = static_cast<uint32_t>(kBL1);
+    mm.isBias = static_cast<uint8_t>(inputParams_.hasBias);
+    mm.dbL0C = static_cast<uint8_t>(basicTiling_.dbL0c);
+    mm.l1BufferStage = DB_SIZE;
+    return ge::GRAPH_SUCCESS;
+}
+
 bool GroupedQmmBasicApiTiling::IsCapable()
 {
+    useCubeBasicApi_ = IsCubeBasicApi();
+    if (useCubeBasicApi_) {
+        return true;
+    }
     // MX 量化：scale 为 FLOAT8_E8M0（IsMicroScaling）；支持 mxfp8 与 mxfp4
     if (!IsMicroScaling()) {
         return false;
@@ -45,7 +163,9 @@ bool GroupedQmmBasicApiTiling::IsCapable()
 
 void GroupedQmmBasicApiTiling::Reset()
 {
+    useCubeBasicApi_ = false;
     tilingData_ = GMMQuantBasicApiTilingData();
+    cubeTilingData_ = GroupedMatmulTilingData::GMMQuantCubeBasicApiTilingData();
 }
 
 ge::graphStatus GroupedQmmBasicApiTiling::GetShapeAttrsInfo()
@@ -66,12 +186,19 @@ ge::graphStatus GroupedQmmBasicApiTiling::DoOpTiling()
     tilingData_.gmmQuantParams.groupType = static_cast<int8_t>(inputParams_.groupType);
     tilingData_.gmmQuantParams.groupListType = static_cast<uint8_t>(inputParams_.groupListType);
     tilingData_.gmmQuantParams.hasBias = static_cast<uint8_t>(inputParams_.hasBias);
+    if (useCubeBasicApi_) {
+        cubeTilingData_.gmmQuantParams = tilingData_.gmmQuantParams;
+        return FillGmmArray(cubeTilingData_.gmmArray);
+    }
     OP_LOGD(inputParams_.opName, "%ld", LogQuantParams(tilingData_.gmmQuantParams));
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus GroupedQmmBasicApiTiling::DoLibApiTiling()
 {
+    if (useCubeBasicApi_) {
+        return CalCubeL1Tiling();
+    }
     GroupedQmmTiling::CalBasicBlock();
     OP_CHECK_IF(CalL1Tiling() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed"),
                 return ge::GRAPH_FAILED);
@@ -129,6 +256,9 @@ bool GroupedQmmBasicApiTiling::CanEnableThreeL1Buffer() const
 
 ge::graphStatus GroupedQmmBasicApiTiling::PostTiling()
 {
+    if (useCubeBasicApi_) {
+        return SaveTilingDataToContext(cubeTilingData_);
+    }
     return SaveTilingDataToContext(tilingData_);
 }
 
