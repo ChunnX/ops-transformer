@@ -179,9 +179,6 @@ __aicore__ inline void MoeindexCopySpiltDOp<T, probsT, ifNumOutTokens>::CopyOutP
         return;
     }
     probsTmpLocal = probsTmpBuffer.AllocTensor<probsT>();
-    // probsLocal/indicesLocal 布局为 [tokenNum][topK]，逐 token 处理时起始偏移为 progress * topK
-    // （与 CopyInAndOut 中 indicesOffset = progress * topK 一致；原 offset = progress 遍历区间错位，
-    // 每核 chunk 尾部 (chunkTokens-1)*(topK-1) 个槽位漏写，chunkTokens>=2 且 topK>1 时必现）
     int64_t offset = progress * topK;
     for (int64_t topKId = 0; topKId < topK; topKId++) {
         auto indicesValue = indicesLocal.GetValue(offset);

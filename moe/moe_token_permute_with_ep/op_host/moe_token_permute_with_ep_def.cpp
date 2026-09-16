@@ -60,17 +60,6 @@ public:
             .UnknownShapeFormat(
                 {ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
         this->Attr("range").AttrType(OPTIONAL).ListInt({0, 0});
-        // 已知实现缺陷（950 适配实测，全平台一致）: aclnn 文档承诺"numOutTokens 在 rangeOptional
-        // 为空时生效（0=全量/>0=切片/<0=负切片）"，但真实链路中"未传 range"会按本默认值以
-        // ListInt({0,0}) 填充到达 tiling（tiling 探针实测：aclnn 直调 rangeOptional=nullptr 与
-        // GE 图模式不设置该属性，到达形态均为 size=2 的 [0,0]，非空指针），tiling 恒走 range 分支，
-        // else 回退分支（end=*numOutTokensPtr）不可达——num_out_tokens 实际永远不生效。
-        // "不传 range + num_out_tokens!=0" 组合的输出为全量（[0,0] 环绕公式），与文档语义不符；
-        // 950 适配实测该场景与 910 行为一致（R1a/R1b 双向实验），修复会使 910 存量 workaround
-        // 调用（全量分配）从成功变报错，为保持 A2 兼容暂不修复，待上游决策：
-        //   方案 a) tiling 对 [0,0] 回退 num_out_tokens（对齐文档，改变 910 行为）
-        //   方案 b) 移除本默认值让 nullptr 到达（上游级修改，影响所有未设置该属性的存量构图）
-        //   方案 c) 修订 aclnn 文档（删去 num_out_tokens 的生效承诺）
         this->Attr("num_out_tokens").AttrType(OPTIONAL).Int(0);
         this->Attr("padded_mode").AttrType(OPTIONAL).Bool(false);
 
