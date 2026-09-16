@@ -359,10 +359,13 @@ private:
                                      const MxConstInfo &constInfo, uint32_t s2CalcSize)
     {
         static_assert(SUB_LOOP < 2U, "MX V1 only supports subLoop 0/1");
+        const int64_t originalOverflowMode = AscendC::GetCtrlSpr<60, 60>();
+        AscendC::SetCtrlSpr<60, 60>(0);
         FaVectorApi::ProcessVec1VfDnMxfp8<MM_T, INPUT_T, IS_UPDATE, VF_HAS_ATTEN, S2_SPLIT, SUB_LOOP>(
             stage1CastTensor, sumUb, maxUb, mmRes, expUb, vselrIndexesBuf_, attenMaskUb, pScaleSubLoopTensor,
             s2CalcSize, static_cast<MM_T>(constInfo.scaleValue), pScaleValue_, negativeFloatScalar_, preLoopMaxUb,
             preLoopSumUb, firstLoopSumUb);
+        AscendC::SetCtrlSpr<60, 60>(originalOverflowMode);
     }
 
     template <bool VF_HAS_ATTEN, uint32_t SUB_LOOP>
