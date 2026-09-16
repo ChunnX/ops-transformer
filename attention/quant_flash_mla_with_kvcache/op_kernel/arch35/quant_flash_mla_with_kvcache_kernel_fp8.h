@@ -419,6 +419,19 @@ public:
                 runInfoNegN.isValid = false;
             }
         }
+
+        if ASCEND_IS_AIC {
+            // AIC: Mm2已释放KV L1 buffer, 预取2个任务之后的K, 使MTE2搬运与cube计算重叠
+            PrefetchKeyTask(taskRunInfo, loop + 2);
+        }
+    }
+
+    __aicore__ inline void PrefetchKeyTask(RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE], uint64_t loop)
+    {
+        RunInfoX &runInfo = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];
+        if (runInfo.isValid && !runInfo.keyPrefetched) {
+            cubeBlock_.PrefetchKey(runInfo);
+        }
     }
 
     __aicore__ inline void ComputeMm1(RunInfoX &runInfo)
@@ -447,6 +460,7 @@ public:
         RunInfoX &runInfo = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];
         CalcParams(loop, bN2Cur, gS1Cur, s2Cur, runInfo);
         runInfo.isValid = true;
+        runInfo.keyPrefetched = false; // slot复用, 清除上一个任务残留的预取标记
     }
 
     __aicore__ inline void CalcParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur, RunInfoX &info)

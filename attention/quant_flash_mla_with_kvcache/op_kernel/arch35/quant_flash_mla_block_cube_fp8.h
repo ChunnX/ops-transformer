@@ -172,7 +172,6 @@ public:
 
     // Buffer ID trackers
     uint32_t qL1BufId_ = 0U;
-    uint32_t kvL1BufId_ = 0U;
     uint32_t l0cBufId_ = 0U;
     uint32_t mmResUbBufId_ = 0U; // bmm1 result UB slot
 
@@ -342,6 +341,22 @@ public:
 
     // MLA中V = K_nope, bmm2复用K的L1 buffer, 无需独立搬运V
 
+    // K预取: 提前2个任务将K从GM加载到L1, 使MTE2搬运与cube计算重叠, 避免bmm1等待MTE2断流
+    // buffer轮转取task.loop % L1_KV_BUFCNT, 与原自增计数严格等价(每任务恰好一次Mm1)
+    __aicore__ inline void PrefetchKey(RunInfoX &runInfo)
+    {
+        if (!runInfo.isValid || runInfo.keyPrefetched) {
+            return;
+        }
+        uint32_t kvBufId = runInfo.loop % L1_KV_BUFCNT;
+        runInfo.kvL1BufId = kvBufId;
+        LocalTensor<KV_T> kL1Tensor = l1KvBuffers_[kvBufId * L1_KV_BUF_BYTES].template ReinterpretCast<KV_T>();
+        Mutex::Lock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvBufId);
+        CopyKeyTile(kL1Tensor, runInfo, runInfo.actSingleLoopS2Size);
+        Mutex::Unlock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvBufId);
+        runInfo.keyPrefetched = true;
+    }
+
     __aicore__ inline void IterateBmm1(RunInfoX &runInfo)
     {
         uint32_t mmResUbBufId = mmResUbBufId_;
@@ -373,14 +388,17 @@ public:
             Mutex::Lock<PIPE_MTE1>(Q_L1_BUFFER_ID0 + qL1BufId_);
         }
 
-        // 加载当前轮的K(含rope)到L1
-        LocalTensor<KV_T> kL1Tensor = l1KvBuffers_[kvL1BufId_ * L1_KV_BUF_BYTES].template ReinterpretCast<KV_T>();
-        runInfo.kvL1BufId = kvL1BufId_;
-        Mutex::Lock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvL1BufId_);
+        // 加载当前轮的K(含rope)到L1: 已由PrefetchKey预取则直接锁MTE1使用, 否则现场加载
+        uint32_t kvBufId = runInfo.loop % L1_KV_BUFCNT;
+        runInfo.kvL1BufId = kvBufId;
         uint32_t s2CurSize = runInfo.actSingleLoopS2Size;
-        CopyKeyTile(kL1Tensor, runInfo, s2CurSize);
-        Mutex::Unlock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvL1BufId_);
-        Mutex::Lock<PIPE_MTE1>(KV_L1_BUFFER_ID0 + kvL1BufId_);
+        LocalTensor<KV_T> kL1Tensor = l1KvBuffers_[kvBufId * L1_KV_BUF_BYTES].template ReinterpretCast<KV_T>();
+        if (!runInfo.keyPrefetched) {
+            Mutex::Lock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvBufId);
+            CopyKeyTile(kL1Tensor, runInfo, s2CurSize);
+            Mutex::Unlock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvBufId);
+        }
+        Mutex::Lock<PIPE_MTE1>(KV_L1_BUFFER_ID0 + kvBufId);
         {
             // MatMul: Q[64,576] @ K[576,128], K维含rope(方案A单次matmul)
             Mutex::Lock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
@@ -399,8 +417,7 @@ public:
             l0cBufId_ = (l0cBufId_ + 1) % L0C_BUFCNT;
         }
         // 释放K的MTE1锁, 允许bmm2复用读取
-        Mutex::Unlock<PIPE_MTE1>(KV_L1_BUFFER_ID0 + kvL1BufId_);
-        kvL1BufId_ = (kvL1BufId_ + 1) % L1_KV_BUFCNT;
+        Mutex::Unlock<PIPE_MTE1>(KV_L1_BUFFER_ID0 + kvBufId);
 
         if (unlikely(runInfo.isLastS2Loop)) {
             Mutex::Unlock<PIPE_MTE1>(Q_L1_BUFFER_ID0 + qL1BufId_);
@@ -442,8 +459,7 @@ public:
         }
 
         // c. K复用: MLA中V = K_nope, bmm2复用bmm1加载的K buffer
-        //    直接使用bmm1加载时记录的buffer id(任务数少于流水深度时,
-        //    bmm2执行时kvL1BufId_的推进次数与任务序号不再匹配, 状态推算会错位)
+        //    直接使用bmm1加载/预取时记录的buffer id, 不做轮转推算
         uint32_t kvReuseBufId = runInfo.kvL1BufId;
         LocalTensor<KV_T> vL1Tensor = l1KvBuffers_[kvReuseBufId * L1_KV_BUF_BYTES].template ReinterpretCast<KV_T>();
         Mutex::Lock<PIPE_MTE1>(KV_L1_BUFFER_ID0 + kvReuseBufId);
