@@ -94,11 +94,6 @@ public:
         return actualLenDims;
     }
 
-    __aicore__ inline uint64_t GetFullActualSeqLength(uint32_t bIdx) const
-    {
-        return GetActualSeqLength(bIdx);
-    }
-
 private:
     GlobalTensor<ACTLEN_T> actualSeqLengthsGm;
     uint32_t actualLenDims;
@@ -109,6 +104,11 @@ class ActualSeqLensParser<ActualSeqLensMode::ACCUM, ACTLEN_T, true> {
 public:
     __aicore__ inline ActualSeqLensParser() = default;
 
+    // actualSeqLengthsGm:[0, 3, 6, 8], 长度是batch_size+1, batch_size=3
+    // actualLenDims表示actualSeqLengthsGm的长度, 上面的例子中actualLenDims=4
+    // TBase(bIdx) = actualSeqLengthsGm[bIdx]
+    // ActualSeqLength(bIdx) = actualSeqLengthsGm[bIdx + 1] - actualSeqLengthsGm[bIdx]
+    // TSize = actualSeqLengthsGm[actualLenDims - 1]
     __aicore__ inline void Init(GlobalTensor<ACTLEN_T> cuSeqLensGm, uint32_t actualLenDims, uint64_t defaultVal = 0)
     {
         this->cuSeqLensGm = cuSeqLensGm;
