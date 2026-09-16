@@ -1668,6 +1668,10 @@ __aicore__ inline void EngramFetchGradArch35::Process()
             tpipe_->InitBuffer(gradBuf_, Mc2Kernel::GRAD_BUF_BYTES);
             if (castBufBytes_ > 0U) {
                 tpipe_->InitBuffer(castFp32Buf_, castBufBytes_);
+            } else {
+                // fp32 输入无需 cast, 但 V2 入口无条件 Get(castBuf_): 必须注册合法最小缓冲,
+                // 否则未初始化 TBuf 的 Get 访问非法 buffer descriptor → aivec 271 scalar 越界
+                tpipe_->InitBuffer(castFp32Buf_, Mc2Kernel::UB_ALIGN);
             }
             tpipe_->InitBuffer(accumBuf_, accumBufBytes_);
             uniqueScatter_.SetCastBuf(castFp32Buf_);
