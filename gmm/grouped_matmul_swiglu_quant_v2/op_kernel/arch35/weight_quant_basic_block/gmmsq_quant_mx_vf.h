@@ -63,8 +63,8 @@ __simd_vf__ inline void GmmSituVf(__ubuf__ DataTypeIn *firstSrc, __ubuf__ DataTy
 {
     const float scalarOne = 1.0;
     const float scalarTwo = 2.0;
-    const float situAlpha = 1.0;
-    const float situBeta = 1.0;
+    const float situAlpha = 25.0; // linear_beta for the up branch.
+    const float situBeta = 4.0;   // situ_beta for the gate branch.
     const float neg2OverBeta = -scalarTwo / situBeta;
     const float negBeta = -situBeta;
     const float neg2OverAlpha = -scalarTwo / situAlpha;
