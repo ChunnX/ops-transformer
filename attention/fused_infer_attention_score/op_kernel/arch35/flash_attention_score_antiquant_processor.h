@@ -38,15 +38,27 @@ enum class KvCacheLayout : uint32_t {
 
 namespace BaseApi {
 
-__aicore__ constexpr uint16_t GetRealDealSize(uint16_t realSize)
+__aicore__ constexpr uint16_t GetRealDealSizeWrapper(uint16_t realSize)
 {
     uint16_t dealSize = ((realSize >> 1) + 31) >> 5 << 5; // 31 & 5 is Alighup 32
     return (dealSize > realSize) ? realSize : dealSize;
 }
 
-__aicore__ constexpr uint64_t AlignUp32(uint64_t size)
+__aicore__ constexpr uint64_t AlignUp32Wrapper(uint64_t size)
 {
     return (size + 31) >> 5 << 5; // 31 & 5 is Alignup 32
+}
+
+template <typename T = void>
+__aicore__ uint16_t GetRealDealSize(uint16_t realSize)
+{
+    return GetRealDealSizeWrapper(realSize);
+}
+
+template <typename T = void>
+__aicore__ uint64_t AlignUp32(uint64_t size)
+{
+    return AlignUp32Wrapper(size);
 }
 
 struct AntiquantTaskParamBaseAPI {
