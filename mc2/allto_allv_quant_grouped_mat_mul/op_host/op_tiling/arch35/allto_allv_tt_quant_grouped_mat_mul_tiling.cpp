@@ -194,6 +194,8 @@ ge::graphStatus AlltoAllvTTQuantGmmTiling::CheckQuantMode() const
                     return ge::GRAPH_FAILED);
     if (hasSharedExpertFlag_) {
         // mmXQuantMode(same as gmmXQuantMode)
+        OP_TILING_CHECK(mmXQuantModePtr_ == nullptr,
+                        OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "mmXQuantMode"), return ge::GRAPH_FAILED);
         int64_t mmXQuantMode = *mmXQuantModePtr_;
         OP_TILING_CHECK(mmXQuantMode != gmmXQuantMode,
                         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
@@ -201,13 +203,15 @@ ge::graphStatus AlltoAllvTTQuantGmmTiling::CheckQuantMode() const
                             "The value of mmXQuantMode must be the same as that of gmmXQuantMode(1)."),
                         return ge::GRAPH_FAILED);
         // mmWeightQuantMode
+        OP_TILING_CHECK(mmWeightQuantModePtr_ == nullptr,
+                        OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "mmWeightQuantMode"),
+                        return ge::GRAPH_FAILED);
         int64_t mmWeightQuantMode = *mmWeightQuantModePtr_;
         OP_TILING_CHECK(mmWeightQuantMode != gmmWeightQuantMode,
                         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                             context_->GetNodeName(), "mmWeightQuantMode", std::to_string(mmWeightQuantMode).c_str(),
                             "The value of mmWeightQuantMode must be the same as that of gmmWeightQuantMode(1)."),
                         return ge::GRAPH_FAILED);
-        return ge::GRAPH_SUCCESS;
     }
     // check group size
     auto groupSizePtr = context_->GetAttrs()->GetAttrPointer<int64_t>(ATTR_GROUP_SIZE_INDEX);
