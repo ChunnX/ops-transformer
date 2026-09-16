@@ -38,6 +38,10 @@ private:
     ge::graphStatus CheckQuantPara(const QmlaTilingInfo &qmlaInfo);
     ge::graphStatus CheckLayoutPara(const QmlaTilingInfo &qmlaInfo);
     ge::graphStatus CheckSoftmaxLsePara(const QmlaTilingInfo &qmlaInfo);
+    ge::graphStatus CheckNonContiguousSupport(const QmlaTilingInfo &qmlaInfo);
+    // 从最后一维向前推算连续期望stride, 返回第一个不连续维的下标
+    ge::graphStatus CheckTensorContiguous(const gert::Shape &inputShape, const gert::Stride *strides,
+                                          int32_t &index) const;
 };
 
 } // namespace quant_flash_mla_with_kvcache

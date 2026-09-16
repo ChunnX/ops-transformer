@@ -60,6 +60,12 @@ enum QmlaOutLayout : uint32_t {
     QMLA_LAYOUT_NTD = 3,
 };
 
+// KV cache 非连续stride: 0表示未提供, kernel侧按shape推连续stride
+struct QuantFlashMlaWithKvcacheStridesParams {
+    uint64_t bnStride = 0; // PA块间(batch维)步长
+    uint64_t n2Stride = 0; // head间步长
+};
+
 struct QuantFlashMlaWithKvcacheBaseParams {
     uint32_t bSize = 0;
     uint32_t t1Size = 0;     // Q_T, layout_q为TND时有效
@@ -79,6 +85,7 @@ struct QuantFlashMlaWithKvcacheBaseParams {
     uint8_t l2CacheOffFlag = 0;
     uint32_t coreNum = 0;
     uint32_t outputLayout = QMLA_LAYOUT_BSND;
+    QuantFlashMlaWithKvcacheStridesParams keyStrides; // k_cache非连续stride, V=K_nope复用
 };
 
 struct QuantFlashMlaWithKvcacheAttenMaskParams {

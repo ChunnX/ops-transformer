@@ -97,7 +97,7 @@ GOLDEN_MODE = True
 BLOCK_SIZE = 128
 MASK_MODE = 0
 SCALE_VALUE = None
-IS_CONTIGUOUS = True
+IS_CONTIGUOUS = False
 
 # Q scale layout 由 INPUT_LAYOUT 自动推导, 不再暴露独立的 Q_SCALE_LAYOUT 字段
 _Q_SCALE_LAYOUT_MAP = {
@@ -929,7 +929,8 @@ def call_npu_fa_op(
 
     # ---- 1) q / k_cache 已是 nope+rope 合并后的 576 维 fp8, 直接使用 ----
     q_576 = q.to(FP8_DTYPE).contiguous()
-    k_cache_576 = k.to(FP8_DTYPE).contiguous()
+    # k_cache 保持原 stride (非连续 view 不做 contiguous 拷贝), 由算子按 tiling stride 寻址
+    k_cache_576 = k if k.dtype == FP8_DTYPE else k.to(FP8_DTYPE)
 
     # ---- 2) per-token-head Q descale（TND -> (T, N_q)）；KV per-tensor deq_k（标量）----
     deq_q_flat = dequant_scale_q.float().contiguous()
@@ -1313,15 +1314,14 @@ def npu_fp8_full_quant_mla(
         deq_k_npu = dequant_scale_k.float().contiguous()
 
         if not IS_CONTIGUOUS:
-            kv_cache = torch.stack([k_pa, v_pa], dim=1)
+            kv_cache = torch.stack([k_pa, k_pa], dim=1)
             kv_cache = kv_cache.npu()
             k_pa = kv_cache[:, 0]
-            v_pa = kv_cache[:, 1]
             logger.info(
-                f"[NPU] k_pa is_contiguous={k_pa.is_contiguous()}, v_pa is_contiguous={v_pa.is_contiguous()}"
+                f"[NPU] k_pa is_contiguous={k_pa.is_contiguous()}"
             )
             logger.info(
-                f"[NPU] k_pa strides={k_pa.stride()}, v_pa strides={v_pa.stride()}"
+                f"[NPU] k_pa strides={k_pa.stride()}"
             )
 
         output = fa_run_npu(
