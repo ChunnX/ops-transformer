@@ -14,7 +14,10 @@
 #include "kernel_operator.h"
 #include "../common/mega_moe_constants.h"
 #include "../common/mega_moe_utils.h"
+// 实验性 SIMT 实现按需编译，默认 SIMD 路径不引入 SIMT API 依赖。
+#if defined(MEGA_MOE_ENABLE_COUNT_SIMT)
 #include "simt_api/asc_simt.h"
+#endif
 
 namespace MegaMoeImpl {
 
@@ -85,6 +88,7 @@ __aicore__ inline void WaitForCountTable(const AscendC::GlobalTensor<int32_t> &c
     }
 }
 
+#if defined(MEGA_MOE_ENABLE_COUNT_SIMT)
 // 按线程编号步进处理 count；当前项就绪后写入 UB，再处理下一项。
 template <uint32_t ThreadCount>
 __simt_vf__ __launch_bounds__(ThreadCount) inline void WaitForCountTableSimtVF(__gm__ int32_t *countGm,
@@ -119,6 +123,7 @@ __aicore__ inline void WaitForCountTableSimt(__gm__ int32_t *countGm, __ubuf__ i
     asc_vf_call<WaitForCountTableSimtVF<ThreadCount>>(dim3(threadCount), countGm, counts, elementCount,
                                                       expectedSyncRoundTag);
 }
+#endif
 
 /*
  * MegaMoe count 表的融合版本：先复用 int32 prefix-scan，再在同一次 VF 中提取每个专家的累计尾值
