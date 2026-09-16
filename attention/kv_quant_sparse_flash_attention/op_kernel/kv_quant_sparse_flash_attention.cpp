@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file kv_quant_sparse_flash_attention.cpp
@@ -72,8 +72,7 @@ using namespace AscendC;
 #endif
 
 #if (__CCE_AICORE__ == 310)
-template <int FLASH_DECODE, int PAGE_ATTENTION, int LAYOUT_T, int KV_LAYOUT_T, int TEMPLATE_MODE, int IS_SPLIT_G,
-          int IS_VEC_S2PHYADDR>
+template <int FLASH_DECODE, int PAGE_ATTENTION, int LAYOUT_T, int KV_LAYOUT_T, int TEMPLATE_MODE, int IS_SPLIT_G>
 __aicore__ inline void DispatchKernelDtype310(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                               __gm__ uint8_t *sparseIndices, __gm__ uint8_t *keyScale,
                                               __gm__ uint8_t *valueScale, __gm__ uint8_t *blocktable,
@@ -85,44 +84,37 @@ __aicore__ inline void DispatchKernelDtype310(__gm__ uint8_t *query, __gm__ uint
                   ORIG_DTYPE_ATTENTION_OUT == DT_BF16) {
         QSFA_OP_IMPL(BaseApi::KvQuantSparseFlashAttentionMla, KvQuantSparseFlashAttentionTilingDataMla, bfloat16_t,
                      fp8_e4m3fn_t, float, bfloat16_t, FLASH_DECODE, PAGE_ATTENTION, static_cast<QSFA_LAYOUT>(LAYOUT_T),
-                     static_cast<QSFA_LAYOUT>(KV_LAYOUT_T), static_cast<QSFATemplateMode>(TEMPLATE_MODE), IS_SPLIT_G,
-                     IS_VEC_S2PHYADDR);
+                     static_cast<QSFA_LAYOUT>(KV_LAYOUT_T), static_cast<QSFATemplateMode>(TEMPLATE_MODE), IS_SPLIT_G);
     } else if constexpr (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_HIFLOAT8 &&
                          ORIG_DTYPE_ATTENTION_OUT == DT_BF16) {
         QSFA_OP_IMPL(BaseApi::KvQuantSparseFlashAttentionMla, KvQuantSparseFlashAttentionTilingDataMla, bfloat16_t,
                      hifloat8_t, float, bfloat16_t, FLASH_DECODE, PAGE_ATTENTION, static_cast<QSFA_LAYOUT>(LAYOUT_T),
-                     static_cast<QSFA_LAYOUT>(KV_LAYOUT_T), static_cast<QSFATemplateMode>(TEMPLATE_MODE), IS_SPLIT_G,
-                     IS_VEC_S2PHYADDR);
+                     static_cast<QSFA_LAYOUT>(KV_LAYOUT_T), static_cast<QSFATemplateMode>(TEMPLATE_MODE), IS_SPLIT_G);
     } else if constexpr (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_INT8 &&
                          ORIG_DTYPE_ATTENTION_OUT == DT_BF16) {
         QSFA_OP_IMPL(BaseApi::KvQuantSparseFlashAttentionMla, KvQuantSparseFlashAttentionTilingDataMla, bfloat16_t,
                      int8_t, float, bfloat16_t, FLASH_DECODE, PAGE_ATTENTION, static_cast<QSFA_LAYOUT>(LAYOUT_T),
-                     static_cast<QSFA_LAYOUT>(KV_LAYOUT_T), static_cast<QSFATemplateMode>(TEMPLATE_MODE), IS_SPLIT_G,
-                     IS_VEC_S2PHYADDR);
+                     static_cast<QSFA_LAYOUT>(KV_LAYOUT_T), static_cast<QSFATemplateMode>(TEMPLATE_MODE), IS_SPLIT_G);
     } else if constexpr (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_FLOAT8_E4M3FN &&
                          ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16) {
         QSFA_OP_IMPL(BaseApi::KvQuantSparseFlashAttentionMla, KvQuantSparseFlashAttentionTilingDataMla, half,
                      fp8_e4m3fn_t, float, half, FLASH_DECODE, PAGE_ATTENTION, static_cast<QSFA_LAYOUT>(LAYOUT_T),
-                     static_cast<QSFA_LAYOUT>(KV_LAYOUT_T), static_cast<QSFATemplateMode>(TEMPLATE_MODE), IS_SPLIT_G,
-                     IS_VEC_S2PHYADDR);
+                     static_cast<QSFA_LAYOUT>(KV_LAYOUT_T), static_cast<QSFATemplateMode>(TEMPLATE_MODE), IS_SPLIT_G);
     } else if constexpr (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_HIFLOAT8 &&
                          ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16) {
         QSFA_OP_IMPL(BaseApi::KvQuantSparseFlashAttentionMla, KvQuantSparseFlashAttentionTilingDataMla, half,
                      hifloat8_t, float, half, FLASH_DECODE, PAGE_ATTENTION, static_cast<QSFA_LAYOUT>(LAYOUT_T),
-                     static_cast<QSFA_LAYOUT>(KV_LAYOUT_T), static_cast<QSFATemplateMode>(TEMPLATE_MODE), IS_SPLIT_G,
-                     IS_VEC_S2PHYADDR);
+                     static_cast<QSFA_LAYOUT>(KV_LAYOUT_T), static_cast<QSFATemplateMode>(TEMPLATE_MODE), IS_SPLIT_G);
     } else if constexpr (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_INT8 &&
                          ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16) {
         QSFA_OP_IMPL(BaseApi::KvQuantSparseFlashAttentionMla, KvQuantSparseFlashAttentionTilingDataMla, half, int8_t,
                      float, half, FLASH_DECODE, PAGE_ATTENTION, static_cast<QSFA_LAYOUT>(LAYOUT_T),
-                     static_cast<QSFA_LAYOUT>(KV_LAYOUT_T), static_cast<QSFATemplateMode>(TEMPLATE_MODE), IS_SPLIT_G,
-                     IS_VEC_S2PHYADDR);
+                     static_cast<QSFA_LAYOUT>(KV_LAYOUT_T), static_cast<QSFATemplateMode>(TEMPLATE_MODE), IS_SPLIT_G);
     }
 }
 #endif
 
-template <int FLASH_DECODE, int PAGE_ATTENTION, int LAYOUT_T, int KV_LAYOUT_T, int TEMPLATE_MODE, int IS_SPLIT_G,
-          int IS_VEC_S2PHYADDR>
+template <int FLASH_DECODE, int PAGE_ATTENTION, int LAYOUT_T, int KV_LAYOUT_T, int TEMPLATE_MODE, int IS_SPLIT_G>
 __global__ __aicore__ void kv_quant_sparse_flash_attention(
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *sparseIndices,
     __gm__ uint8_t *keyScale, __gm__ uint8_t *valueScale, __gm__ uint8_t *blocktable,
@@ -134,10 +126,9 @@ __global__ __aicore__ void kv_quant_sparse_flash_attention(
     TPipe tPipe;
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
 #if (__CCE_AICORE__ == 310)
-    DispatchKernelDtype310<FLASH_DECODE, PAGE_ATTENTION, LAYOUT_T, KV_LAYOUT_T, TEMPLATE_MODE, IS_SPLIT_G,
-                           IS_VEC_S2PHYADDR>(query, key, value, sparseIndices, keyScale, valueScale, blocktable,
-                                             actualSeqLengthsQuery, actualSeqLengthsKV, attentionOut, user, tiling,
-                                             tPipe);
+    DispatchKernelDtype310<FLASH_DECODE, PAGE_ATTENTION, LAYOUT_T, KV_LAYOUT_T, TEMPLATE_MODE, IS_SPLIT_G>(
+        query, key, value, sparseIndices, keyScale, valueScale, blocktable, actualSeqLengthsQuery, actualSeqLengthsKV,
+        attentionOut, user, tiling, tPipe);
 #else
     if constexpr (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_INT8 &&
                   ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16) {

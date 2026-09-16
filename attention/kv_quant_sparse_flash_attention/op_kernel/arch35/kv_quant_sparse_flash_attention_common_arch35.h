@@ -72,10 +72,9 @@ __aicore__ constexpr uint64_t Align64Func(uint64_t data)
 
 #define TEMPLATE_INTF \
     template <typename Q_T, typename KV_T, typename T, typename OUTPUT_T, bool isFd, bool isPa, QSFA_LAYOUT LAYOUT_T, \
-              QSFA_LAYOUT KV_LAYOUT_T, QSFATemplateMode TEMPLATE_MODE, bool IS_SPLIT_G, bool IS_VEC_S2PHYADDR>
+              QSFA_LAYOUT KV_LAYOUT_T, QSFATemplateMode TEMPLATE_MODE, bool IS_SPLIT_G>
 
-#define TEMPLATE_INTF_ARGS \
-    Q_T, KV_T, T, OUTPUT_T, isFd, isPa, LAYOUT_T, KV_LAYOUT_T, TEMPLATE_MODE, IS_SPLIT_G, IS_VEC_S2PHYADDR
+#define TEMPLATE_INTF_ARGS Q_T, KV_T, T, OUTPUT_T, isFd, isPa, LAYOUT_T, KV_LAYOUT_T, TEMPLATE_MODE, IS_SPLIT_G
 
 #define QSFA_CUBE_BLOCK_TRAITS_TYPE_FIELDS(X) \
     X(Q_T) \
@@ -89,8 +88,7 @@ __aicore__ constexpr uint64_t Align64Func(uint64_t data)
     X(LAYOUT_T, QSFA_LAYOUT, QSFA_LAYOUT::BSND) \
     X(KV_LAYOUT_T, QSFA_LAYOUT, QSFA_LAYOUT::PA_BSND) \
     X(TEMPLATE_MODE, QSFATemplateMode, QSFATemplateMode::SCFA_TEMPLATE_MODE) \
-    X(IS_SPLIT_G, bool, false) \
-    X(IS_VEC_S2PHYADDR, bool, false)
+    X(IS_SPLIT_G, bool, false)
 
 /* 1. 生成带默认值的模版Template */
 #define GEN_TYPE_PARAM(name) typename name,
