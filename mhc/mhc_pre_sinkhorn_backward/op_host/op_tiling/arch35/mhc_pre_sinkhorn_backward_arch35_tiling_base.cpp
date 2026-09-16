@@ -127,11 +127,11 @@ ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::GetPlatformInfo()
     OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(opName, "fail to get platform info"), return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     auto coreNumAiv = ascendcPlatform.GetCoreNumAiv();
-    OP_CHECK_IF((coreNumAiv <= 0), OP_LOGE(opName, "ScatterNdUpdateTiling fail to get coreNumAiv."),
+    OP_CHECK_IF((coreNumAiv <= 0), OP_LOGE(opName, "ScatterNdUpdateTiling fails to get coreNumAiv."),
                 return ge::GRAPH_FAILED);
     coreNumAiv_ = coreNumAiv;
     auto coreNumAic = ascendcPlatform.GetCoreNumAic();
-    OP_CHECK_IF((coreNumAic <= 0), OP_LOGE(opName, "ScatterNdUpdateTiling fail to get coreNumAic."),
+    OP_CHECK_IF((coreNumAic <= 0), OP_LOGE(opName, "ScatterNdUpdateTiling fails to get coreNumAic."),
                 return ge::GRAPH_FAILED);
     coreNumAic_ = coreNumAic;
     uint64_t ubSizePlatForm;
