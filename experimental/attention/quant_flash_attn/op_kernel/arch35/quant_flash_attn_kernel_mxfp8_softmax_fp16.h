@@ -121,7 +121,8 @@ public:
         softmaxLsePtr_ = softmaxLse;
         workspacePtr_ = workspace;
 
-        cubeBlock_.InitInput(query, key, value, dequantScaleQuery, dequantScaleKey, dequantScaleValue);
+        cubeBlock_.InitInput(query, key, value, dequantScaleQuery, dequantScaleKey, dequantScaleValue,
+                             qSeqUsedParser_, kvSeqUsedParser_);
 
         // metadata 头（AICPU 生成）
         constInfo_.needInitOutput = ((__gm__ uint32_t *)metadata)[QFA_HEAD_NEED_INIT_OUTPUT_INDEX] != 0;
@@ -409,14 +410,17 @@ public:
         // V1 softmax 在线状态槽位（accMax ring，mloop % 3）
         info.softmaxStateSlot = mloop_ % PRELOAD_TASK_CACHE_SIZE;
 
+        // P L1 ring 槽位（loop % 3，同 [bN2,gS1] 不同 S2 块用不同槽，防覆盖）
+        info.pSlot = loop % PRELOAD_TASK_CACHE_SIZE;
+
 #if QFA_SF16_DEBUG_PRINTF
         AscendC::printf("[Task] loop=%llu b=%u n2=%u gS1=%u s2=%u actS1=%u actS2=%u actM=%u s2Loop=%u "
-                        "vecS1Base=%u actVecS1=%u first=%d last=%d slot=%u\n",
+                        "vecS1Base=%u actVecS1=%u first=%d last=%d slot=%u pSlot=%u\n",
                         static_cast<unsigned long long>(loop), info.bIdx, info.n2Idx, info.gS1Idx, info.s2Idx,
                         static_cast<uint32_t>(info.actS1Size), static_cast<uint32_t>(info.actS2Size), info.actMSize,
                         info.actSingleLoopS2Size, info.vecS1BaseIdx, info.actVecS1Size,
                         static_cast<int32_t>(info.isFirstS2Loop), static_cast<int32_t>(info.isLastS2Loop),
-                        info.softmaxStateSlot);
+                        info.softmaxStateSlot, info.pSlot);
 #endif
     }
 
@@ -462,7 +466,7 @@ public:
                     CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_V1_P_READY + vCore * 16);
                     CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_C2_V2 + vCore * 16);
                     ComputeMm2(runInfo2, vCore);   // V_ext[144,128]×P[128,128] → L0C[144,128]
-                    FixpipeMm2(runInfo2, vCore);   // 裁 [129,128] 单目标搬给 V(vCore)
+                    FixpipeMm2(runInfo2);   // 裁 [129,128] 单目标搬给 V(vCore)
                     CrossCoreSetFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_C2_V2 + vCore * 16);
                 } else {
                     if (vCore == constInfo_.subBlockIdx) {
@@ -504,9 +508,9 @@ public:
         cubeBlock_.ComputeMm2(runInfo, vCore);
     }
 
-    __aicore__ inline void FixpipeMm2(RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t vCore)
+    __aicore__ inline void FixpipeMm2(RunInfoMxfp8SoftmaxFp16 &runInfo)
     {
-        cubeBlock_.FixpipeMm2(runInfo, vCore);
+        cubeBlock_.FixpipeMm2(runInfo);
     }
 
     __aicore__ inline void ComputeVec2(RunInfoMxfp8SoftmaxFp16 &runInfo)

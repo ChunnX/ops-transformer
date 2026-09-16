@@ -148,6 +148,11 @@ struct RunInfoMxfp8SoftmaxFp16 {
     // V1 维护 accMax 的 ring 槽位（跨 subLoop 与跨 S2 分块在线累积），索引 = mloop % (PRELOAD_N+1)
     // softmaxExpUB 独立按 loop % 3 索引，V1 每任务替换写入
     uint32_t softmaxStateSlot = 0;
+
+    // ==================== P L1 ring 槽位（CubeBlock C2 读取 / VectorBlock V1 写入） ====================
+
+    // P 按 S2 分块写入（同 [bN2,gS1] 行的不同 S2 块用不同槽，避免覆盖），索引 = loop % (PRELOAD_N+1)
+    uint32_t pSlot = 0;
 };
 
 // ===== L1 共享布局（AIC/AIV 同偏移，block cube/vector 共同引用）=====
