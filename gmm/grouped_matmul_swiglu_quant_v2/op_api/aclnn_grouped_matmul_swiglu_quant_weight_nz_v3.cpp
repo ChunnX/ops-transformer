@@ -548,7 +548,16 @@ aclnnStatus PrepareContiguousTensorList(const aclTensorList *tensorList, const a
         const aclTensor *tensor = (*tensorList)[index];
         const aclTensor *contiguousTensor = l0op::Contiguous(tensor, executor);
         CHECK_RET(contiguousTensor != nullptr, ACLNN_ERR_INNER_NULLPTR);
-        tensors.emplace_back(contiguousTensor);
+        // Contiguous may materialize an ND scale as a default-format view.
+        // Restore the ND descriptor while retaining the contiguous buffer.
+        aclTensor *ndTensor = executor->CreateView(contiguousTensor, contiguousTensor->GetViewShape(),
+                                                    contiguousTensor->GetViewOffset());
+        CHECK_RET(ndTensor != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        ndTensor->SetViewFormat(op::Format::FORMAT_ND);
+        ndTensor->SetOriginalFormat(op::Format::FORMAT_ND);
+        ndTensor->SetStorageFormat(op::Format::FORMAT_ND);
+        ndTensor->SetStorageShape(contiguousTensor->GetStorageShape());
+        tensors.emplace_back(ndTensor);
     }
     newTensorList = executor->AllocTensorList(tensors.data(), tensors.size());
     CHECK_RET(newTensorList != nullptr, ACLNN_ERR_INNER_NULLPTR);
