@@ -114,6 +114,7 @@ ge::AscendString ToString(SocVersion socVersion)
         {SocVersion::ASCEND610LITE, "Ascend610LITE"},
         {SocVersion::KIRINX90, "KirinX90"},
         {SocVersion::KIRIN9030, "Kirin9030"},
+        {SocVersion::ASCEND5162A, "Ascend5162A"},
         {SocVersion::RESERVED_VERSION, "UnknowSocVersion"},
     };
     static const std::string reserved("UnknowSocVersion");
