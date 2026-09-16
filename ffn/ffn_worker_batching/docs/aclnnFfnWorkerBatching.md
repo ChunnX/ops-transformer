@@ -139,7 +139,7 @@ aclnnStatus aclnnFfnWorkerBatching(
       <td>maxOutShape</td>
       <td>输入</td>
       <td>输出shape上限，格式为 {A, BS, topK+1, H}。用于推导y输出的shape上限 Y = A × BS × (topK+1)，以及H值。</td>
-      <td>数组长度必须为4。其中A取值范围为(0, 1024]，BS大于0，topK+1取值范围为(0, 64]，H大于0。</td>
+      <td>数组长度必须为4。其中A取值范围为(0, 1024]，BS大于0，topK+1取值范围为(0, 64]，H大于0。tokenDtype=5时H须为偶数。</td>
       <td>LIST_INT64</td>
       <td>-</td>
       <td>-</td>
@@ -148,8 +148,8 @@ aclnnStatus aclnnFfnWorkerBatching(
     <tr>
       <td>tokenDtype</td>
       <td>输入</td>
-      <td>输入token的数据类型。0表示FP16；1表示BF16；2表示INT8动态量化（INT8数据与FP32 dynamic scale连续排布）。取值为2时需输出dynamic_scale。</td>
-      <td>取值为0、1或2。</td>
+      <td>输入token的数据类型：0为FP16；1为BF16；2为INT8动态量化，每行一个FP32 scale；3为FLOAT8_E5M2；4为FLOAT8_E4M3FN（float8_e4m3）；5为FLOAT4_E2M1。3、4、5每32个逻辑hidden state元素对应一个FLOAT8_E8M0 scale，全部scale紧跟整行token数据。</td>
+      <td>取值为0～5</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -179,8 +179,8 @@ aclnnStatus aclnnFfnWorkerBatching(
       <td>y</td>
       <td>输出</td>
       <td>重排后的token hidden states，按专家ID排序后连续存放。</td>
-      <td>-</td>
-      <td>FP16、BF16、INT8</td>
+      <td>数据类型由tokenDtype决定；FP4的逻辑shape仍为(Y, H)，两个元素打包为一个字节。</td>
+      <td>FP16、BF16、INT8、支持FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1</td>
       <td>ND</td>
       <td>2维，(Y, H)，其中Y = A × BS × (topK+1)</td>
       <td>×</td>
@@ -238,11 +238,11 @@ aclnnStatus aclnnFfnWorkerBatching(
     <tr>
       <td>dynamicScale</td>
       <td>输出</td>
-      <td>动态量化的scale值，仅在tokenDtype=2时有效。tokenDtype为0或1时为空tensor。</td>
-      <td>-</td>
-      <td>FP32</td>
+      <td>随token重排的scale值。tokenDtype=2时每行一个FP32 scale；tokenDtype=3、4、5时每32个逻辑元素一个FLOAT8_E8M0 scale。</td>
+      <td>tokenDtype=0、1时该输出无有效数据。tokenDtype=3、4、5时尾部不足32个元素的分组仍占一个E8M0 scale。</td>
+      <td>FP32，FLOAT8_E8M0</td>
       <td>ND</td>
-      <td>1维，(Y)</td>
+      <td>tokenDtype=2时shape为(Y)；tokenDtype=3、4、5时shape为(Y, ceil(H/32))</td>
       <td>×</td>
     </tr>
     <tr>
@@ -353,11 +353,19 @@ aclnnStatus aclnnFfnWorkerBatching(
 
 ## 约束说明
 
+- 调度上下文中的缓冲区地址必须是有效Device地址，相关内存在算子执行完成前不得释放或被生产者覆盖；源行字节步长`attn_to_ffn_token_size`必须容纳完整token及scale数据。
 - 参数A（Attention worker数量）支持 ≤ 1024。
 - 参数M（micro batch数量）支持 ≤ 64。
 - 参数K+1（topK加共享专家数）支持 ≤ 64。
 - 参数BS（micro batch size）和Y支持泛化，无硬上限（受内存限制）。
-- 参数H（hidden size）支持泛化。
+- `y`、索引输出及有效的`dynamicScale`仅保证前`actualTokenNum`行有效；算子只做原始位模式搬运，不进行量化或反量化。
+<!-- npu="950" id7 -->
+- <term>Ascend 950PR/Ascend 950DT</term>有如下约束：
+  - 参数H（hidden size）大于0；`tokenDtype=5`时H须为偶数。
+  - 额外支持`tokenDtype=3、4、5`。
+  - 令`S=ceil(H/32)`，tokenDtype=3、4、5时的`dynamicScale`为FLOAT8_E8M0，shape为`(Y,S)`。所有scale紧跟整行token数据，以字节计，可包含行尾padding
+<!-- end id7 -->
+<!-- npu="950" id7 -->
 - 确定性计算：
   - aclnnFfnWorkerBatching默认确定性实现。
 
