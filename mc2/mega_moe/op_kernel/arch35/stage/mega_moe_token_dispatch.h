@@ -447,7 +447,8 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
     // expertTokenNumsOutTensor 尚未保存输出，首项暂存整表检查结果，不增加 UB 分配。
     WaitForCountTable(expertCountGlobal, scratch.cumsumInfoTensor, scratch.expertTokenNumsOutTensor,
                       rawCountElementCount, expectedSyncRoundTag);
-    // 测试 SIMT 时替换上面的 SIMD 调用；启用前需核对 SIMT Data Cache 的 UB 预留。
+    // 测试 SIMT 时先定义 MEGA_MOE_ENABLE_COUNT_SIMT，再替换上面的 SIMD 调用。
+    // 启用前需核对 SIMT Data Cache 的 UB 预留及工具链兼容性。
     // WaitForCountTableSimt<>(expertCountGlobal.GetPhyAddr(),
     //     reinterpret_cast<__ubuf__ int32_t *>(scratch.cumsumInfoTensor.GetPhyAddr()),
     //     rawCountElementCount, expectedSyncRoundTag);
