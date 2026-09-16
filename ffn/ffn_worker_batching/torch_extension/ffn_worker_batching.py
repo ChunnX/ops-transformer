@@ -52,7 +52,7 @@ def _validate(
     token_dtype: int,
     need_schedule: int,
     layer_num: int,
-    sync_flag: int,
+    sync_flag: bool,
 ) -> None:
     # Inspect tensor metadata only: reading pointer-bearing context on CPU would
     # synchronize the stream and is invalid for Meta/FakeTensor execution.
@@ -97,13 +97,14 @@ def _validate(
         lambda: f"need_schedule must be 0 or 1, got {need_schedule}",
     )
     torch._check(
-        sync_flag in (0, 1), lambda: f"sync_flag must be 0 or 1, got {sync_flag}"
+        isinstance(sync_flag, bool),
+        lambda: f"sync_flag must be bool, got {type(sync_flag).__name__}",
     )
     torch._check(
         0 <= layer_num <= expert_num,
         lambda: f"layer_num must be in [0, expert_num], got {layer_num}",
     )
-    if need_schedule == 1 and sync_flag == 1:
+    if need_schedule == 1 and sync_flag:
         torch._check(layer_num > 0, lambda: "async RECV requires layer_num > 0")
         torch._check(
             expert_num % layer_num == 0,
@@ -159,7 +160,7 @@ class _FfnWorkerBatchingOpBuilder(OpBuilder):
         # even though the eight returned tensors are newly allocated.
         return (
             "ffn_worker_batching(Tensor(a!) schedule_context, int expert_num, int[] max_out_shape, "
-            "*, int token_dtype=0, int need_schedule=0, int layer_num=0, int sync_flag=0, bool mx_output_uint8=False) "
+            "*, int token_dtype=0, int need_schedule=0, int layer_num=0, bool sync_flag=False, bool mx_output_uint8=False) "
             "-> (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)"
         )
 
@@ -173,7 +174,7 @@ class _FfnWorkerBatchingOpBuilder(OpBuilder):
             token_dtype=0,
             need_schedule=0,
             layer_num=0,
-            sync_flag=0,
+            sync_flag: bool = False,
             mx_output_uint8=False,
         ):
             _validate(
@@ -210,7 +211,7 @@ def _ffn_worker_batching(
     token_dtype=0,
     need_schedule=0,
     layer_num=0,
-    sync_flag=0,
+    sync_flag: bool = False,
     mx_output_uint8=False,
 ):
     _validate(
@@ -242,7 +243,7 @@ def ffn_worker_batching(
     token_dtype: int = 0,
     need_schedule: int = 0,
     layer_num: int = 0,
-    sync_flag: int = 0,
+    sync_flag: bool = False,
     mx_output_uint8: bool = False,
 ) -> _Outputs:
     """在 Ascend950 上按专家重排 token，桥接 aclnnFfnWorkerBatchingV2。
@@ -257,7 +258,7 @@ def ffn_worker_batching(
             FP4 要求 H 为偶数，返回 torch.float4_e2m1fn_x2 打包张量。
         need_schedule: 0 直接 batching，1 接收并 batching，默认 0。
         layer_num: 层数，0..expert_num，默认 0；异步RECV要求大于0且整除expert_num。
-        sync_flag: 默认 0 等待全部 session；1 消费首个非空快照，仅 need_schedule=1 生效。
+        sync_flag: 默认 False 等待全部 session；True 消费首个非空快照，仅 need_schedule=1 生效。
             异步按layer_id * (expert_num // layer_num) + 层内expert_id重排及统计。
         mx_output_uint8: 默认 False；MX 图模式设为 True，以 uint8 返回 FP4 y 和 E8M0
             scale 的原始字节，不做数值转换；FP8 y 保留原生 dtype。

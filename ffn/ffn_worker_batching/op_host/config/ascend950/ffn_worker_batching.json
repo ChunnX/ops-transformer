@@ -134,7 +134,7 @@
                 },
                 {
                     "name": "sync_flag",
-                    "dtype": "int",
+                    "dtype": "bool",
                     "value": null
                 }
             ]
@@ -272,7 +272,7 @@
                 },
                 {
                     "name": "sync_flag",
-                    "dtype": "int",
+                    "dtype": "bool",
                     "value": null
                 }
             ]
@@ -410,7 +410,7 @@
                 },
                 {
                     "name": "sync_flag",
-                    "dtype": "int",
+                    "dtype": "bool",
                     "value": null
                 }
             ]
@@ -548,7 +548,7 @@
                 },
                 {
                     "name": "sync_flag",
-                    "dtype": "int",
+                    "dtype": "bool",
                     "value": null
                 }
             ]
@@ -686,7 +686,7 @@
                 },
                 {
                     "name": "sync_flag",
-                    "dtype": "int",
+                    "dtype": "bool",
                     "value": null
                 }
             ]
@@ -824,7 +824,7 @@
                 },
                 {
                     "name": "sync_flag",
-                    "dtype": "int",
+                    "dtype": "bool",
                     "value": null
                 }
             ]

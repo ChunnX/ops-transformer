@@ -20,12 +20,12 @@ extern "C" {
 
 /**
  * @brief 获取FfnWorkerBatching的workspace大小及执行器。
- * syncFlag取值0或1；仅Ascend 950接收模式生效。
+ * syncFlag为bool类型：false等待全部session，true消费ready快照；仅Ascend 950接收模式生效。
  * @domain aclnn_ops_infer
  */
 ACLNN_API aclnnStatus aclnnFfnWorkerBatchingV2GetWorkspaceSize(
     const aclTensor *scheduleContext, int64_t expertNum, const aclIntArray *maxOutShape, int64_t tokenDtype,
-    int64_t needSchedule, int64_t layerNum, int64_t syncFlag, const aclTensor *y, const aclTensor *groupList,
+    int64_t needSchedule, int64_t layerNum, bool syncFlag, const aclTensor *y, const aclTensor *groupList,
     const aclTensor *sessionIds, const aclTensor *microBatchIds, const aclTensor *tokenIds,
     const aclTensor *expertOffsets, const aclTensor *dynamicScale, const aclTensor *actualTokenNum,
     uint64_t *workspaceSize, aclOpExecutor **executor);

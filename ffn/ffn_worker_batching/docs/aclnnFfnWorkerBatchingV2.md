@@ -37,6 +37,16 @@
 
   其中 $Y = A \times BS \times (K+1)$，$A$ 为Attention worker数量，$BS$ 为micro batch size，$K+1$ 为topK加共享专家数。
 
+- `syncFlag` 为布尔类型，控制接收阶段的就绪条件，行为差异如下：
+
+  | needSchedule | syncFlag | 接收行为 |
+  | --- | --- | --- |
+  | 0（NORM） | false / true | 不轮询session就绪状态，按已有token信息执行batching；syncFlag不影响执行。 |
+  | 1（RECV） | false | 同步接收：等待当前micro batch的全部session就绪后统一处理，保持V1接口的接收语义。 |
+  | 1（RECV） | true | 异步接收：循环扫描micro batch，首次发现非空ready session快照后，仅处理该快照选中的session，不等待其余session；若没有数据就绪，则继续等待。 |
+
+  异步接收允许同一micro batch的已就绪session来自不同层，要求`layerNum > 0`且`expertNum`能被`layerNum`整除，并按`layer_id * (expertNum / layerNum) + expert_id`生成跨层专家号进行排序、重排和`groupList`统计。同步接收与NORM使用原专家号。
+
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnFfnWorkerBatchingV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFfnWorkerBatchingV2”接口执行计算。
@@ -49,7 +59,7 @@ aclnnStatus aclnnFfnWorkerBatchingV2GetWorkspaceSize(
     int64_t            tokenDtype,
     int64_t            needSchedule,
     int64_t            layerNum,
-    int64_t            syncFlag,
+    bool               syncFlag,
     const aclTensor   *y,
     const aclTensor   *groupList,
     const aclTensor   *sessionIds,
@@ -150,7 +160,7 @@ aclnnStatus aclnnFfnWorkerBatchingV2(
       <td>layerNum</td>
       <td>输入</td>
       <td>层数，每层专家独立索引。</td>
-      <td>取值范围为[0, expertNum]；needSchedule=1且syncFlag=1时，必须大于0且整除expertNum。</td>
+      <td>取值范围为[0, expertNum]；needSchedule=1且syncFlag=true时，必须大于0且整除expertNum。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -159,9 +169,9 @@ aclnnStatus aclnnFfnWorkerBatchingV2(
     <tr>
       <td>syncFlag</td>
       <td>输入</td>
-      <td>接收同步方式。0：等待当前micro batch的全部session就绪；1：循环扫描micro batch，处理首次发现的非空ready session快照，无数据时等待。</td>
-      <td>取值为0或1，仅needSchedule=1时syncFlag=1才生效。</td>
-      <td>INT64</td>
+      <td>接收同步方式。false：等待当前micro batch的全部session就绪；true：循环扫描micro batch，处理首次发现的非空ready session快照，无数据时等待。</td>
+      <td>取值为false或true，仅needSchedule=1时解释该属性；needSchedule=0时不影响执行。</td>
+      <td>BOOL</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -355,9 +365,9 @@ aclnnStatus aclnnFfnWorkerBatchingV2(
 - <term>Ascend 950PR/Ascend 950DT</term>有如下约束：
   - 参数H（hidden size）大于0；`tokenDtype=5`时H须为偶数。
   - 额外支持`tokenDtype=3、4、5`。
-  - 额外支持`syncFlag=1`。
+  - 额外支持`syncFlag=true`。
   - 令`S=ceil(H/32)`，tokenDtype=3、4、5时的`dynamicScale`为FLOAT8_E8M0，shape为`(Y,S)`。所有scale紧跟整行token数据，以字节计，可包含行尾padding。
-  - 异步接收（`need_schedule=1、sync_flag=1`）场景，要求`layer_num>0`且整除`expert_num`，按`layer_id * (expert_num / layer_num) + expert_id`生成跨层专家号进行排序、token重排和`group_list`统计。同步接收与NORM仍使用原专家号。
+  - 异步接收（`need_schedule=1、sync_flag=true`）场景，要求`layer_num>0`且整除`expert_num`，按`layer_id * (expert_num / layer_num) + expert_id`生成跨层专家号进行排序、token重排和`group_list`统计。同步接收与NORM仍使用原专家号。
 <!-- end id7 -->
 <!-- npu="950" id7 -->
 - 确定性计算：
@@ -365,7 +375,7 @@ aclnnStatus aclnnFfnWorkerBatchingV2(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
+完整示例：[test_aclnn_ffn_worker_batching_v2.cpp](../examples/test_aclnn_ffn_worker_batching_v2.cpp)。示例代码如下，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include <iostream>
@@ -540,6 +550,8 @@ int main()
     scheduleContext.common.micro_batch_size = 8;
     scheduleContext.common.selected_expert_num = 9; // topK + 1
     scheduleContext.common.expert_num = 8;
+    scheduleContext.common.attn_to_ffn_token_size = 512;
+    scheduleContext.common.ffn_to_attn_token_size = 512;
     scheduleContext.common.schedule_mode = 0; // Ffn only
     scheduleContext.control.run_flag = 1;     // running
     scheduleContext.ffn.polling_index = 0;
@@ -550,9 +562,9 @@ int main()
     int64_t BS = scheduleContext.common.micro_batch_size;   // micro batch size
     int64_t K = scheduleContext.common.selected_expert_num; // topK + 1
     int64_t H = 4096;                                       // hidden size
-    // 本例为FP16，源行步长必须覆盖H个元素；不能用固定512字节代替载荷长度。
-    scheduleContext.common.attn_to_ffn_token_size = static_cast<uint32_t>(H * sizeof(int16_t));
-    scheduleContext.common.ffn_to_attn_token_size = scheduleContext.common.attn_to_ffn_token_size;
+    scheduleContext.common.attn_to_ffn_token_size = H * sizeof(int16_t);
+    scheduleContext.common.ffn_to_attn_token_size = H * sizeof(int16_t);
+    scheduleContext.ffn.out_num = A;
     int64_t Y = A * BS * K;
     std::vector<int64_t> maxOutShapeValue = {A, BS, K, H};
     int64_t tokenDtype = 0;   // FP16
@@ -642,8 +654,6 @@ int main()
     scheduleContext.ffn.micro_batch_ids_buf_size = idsBufSize;
     scheduleContext.ffn.layer_ids_buf = reinterpret_cast<uint64_t>(layerIdsBuf);
     scheduleContext.ffn.layer_ids_buf_size = idsBufSize;
-    // NORM只消费前out_num个session；本例全部A个session有效。
-    scheduleContext.ffn.out_num = static_cast<uint32_t>(A);
 
     std::vector<int8_t> hostCtxData(1024, 0);
     std::memcpy(hostCtxData.data(), &scheduleContext, sizeof(ScheduleContext));
@@ -703,9 +713,9 @@ int main()
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     ret = aclnnFfnWorkerBatchingV2GetWorkspaceSize(scheduleContextRef, expertNum, maxOutShapeArray, tokenDtype,
-                                                 needSchedule, layerNum, 0 /* syncFlag */, yRef, groupListRef, sessionIdsRef,
-                                                 microBatchIdsRef, tokenIdsRef, expertOffsetsRef, dynamicScaleRef,
-                                                 actualTokenNumRef, &workspaceSize, &executor);
+                                                   needSchedule, layerNum, false, yRef, groupListRef, sessionIdsRef,
+                                                   microBatchIdsRef, tokenIdsRef, expertOffsetsRef, dynamicScaleRef,
+                                                   actualTokenNumRef, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFfnWorkerBatchingV2GetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);
 
@@ -736,6 +746,18 @@ int main()
         LOG_PRINT("group_list[%ld] = [expert_id=%ld, token_num=%ld]\n", i, groupListHost[i * 2],
                   groupListHost[i * 2 + 1]);
     }
+
+    CHECK_RET(actualTokenNum == Y, LOG_PRINT("unexpected token count\n"); return 1);
+    for (int64_t i = 0; i < expertNum; ++i) {
+        CHECK_RET(groupListHost[i * 2] == i && groupListHost[i * 2 + 1] == Y / expertNum,
+                  LOG_PRINT("unexpected expert group\n");
+                  return 1);
+    }
+    std::vector<int16_t> yHost(Y * H);
+    ret = aclrtMemcpy(yHost.data(), tokenDataSize, yDeviceAddr, tokenDataSize, ACL_MEMCPY_DEVICE_TO_HOST);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    CHECK_RET(yHost == hostTokenData, LOG_PRINT("unexpected token data\n"); return 1);
+    LOG_PRINT("PASS: token count, expert groups and token data\n");
 
     // 6. 释放aclTensor与aclIntArray
     aclDestroyTensor(scheduleContextRef);

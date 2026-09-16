@@ -20,7 +20,7 @@ ACLNN_API aclnnStatus aclnnFfnWorkerBatchingGetWorkspaceSize(
 {
     // 公共V1符号必须保留旧参数布局。不能将syncFlag插入该签名，否则旧二进制的
     // y指针会被解释为属性，后续输出参数全部错位。仅在转发到内部接口时补默认值。
-    constexpr int64_t SYNC_FLAG_WAIT_ALL = 0;
+    constexpr bool SYNC_FLAG_WAIT_ALL = false;
     return aclnnInnerFfnWorkerBatchingGetWorkspaceSize(
         scheduleContext, expertNum, maxOutShape, tokenDtype, needSchedule, layerNum, SYNC_FLAG_WAIT_ALL, y, groupList,
         sessionIds, microBatchIds, tokenIds, expertOffsets, dynamicScale, actualTokenNum, workspaceSize, executor);

@@ -573,7 +573,7 @@ class AclnnFfnWorkerBatchingTestSpec:
         tokenDtype,
         needSchedule,
         layerNum,
-        syncFlag,
+        syncFlag: bool,
         y,
         groupList,
         sessionIds,
@@ -645,7 +645,7 @@ class AclnnFfnWorkerBatchingTestSpec:
         else:
             token_info = _build_token_info_buf(expert_ids, A, M, BS, K)
             layer_ids = np.zeros((A, M), dtype=np.int32)
-            if syncFlag == 1 and "async_layers" in testcase_name:
+            if syncFlag and "async_layers" in testcase_name:
                 per_layer = expertNum // layerNum
                 valid = (expert_ids >= 0) & (expert_ids < _MASK_VALUE)
                 expert_ids[valid] %= per_layer
@@ -656,7 +656,7 @@ class AclnnFfnWorkerBatchingTestSpec:
             # 独立构造“已发布描述符”的集合，不把未就绪行的 expert_ids 预先 mask。
             # 这样错误读取未就绪行的 kernel 会产生额外 token，能够被 golden 检出。
             ready = np.ones((A, M), dtype=bool)
-            if syncFlag == 1 and "sync_" in testcase_name:
+            if syncFlag and "sync_" in testcase_name:
                 if "sync_partial" in testcase_name:
                     ready[1::2, :] = False
                 elif "sync_last" in testcase_name or "sync_skip_mb" in testcase_name:
@@ -736,7 +736,7 @@ class AclnnFfnWorkerBatchingTestSpec:
         tokenDtype,
         needSchedule,
         layerNum,
-        syncFlag,
+        syncFlag: bool,
         y,
         groupList,
         sessionIds,
@@ -808,7 +808,7 @@ class AclnnFfnWorkerBatchingTestSpec:
             cur_mb = data.get("cur_micro_batch_id", 0)
             # 只在 CPU 参考副本上屏蔽未选中 session；设备输入仍保留它们的合法 ids。
             ids = expert_ids[:, cur_mb].copy()
-            if syncFlag == 1:
+            if syncFlag:
                 per_layer = expertNum // layerNum
                 layer_ids = data.get("layer_ids", np.zeros((A, M), np.int32))[:, cur_mb]
                 valid = (
@@ -987,7 +987,7 @@ class TorchFfnWorkerBatchingTestSpec:
         token_dtype=0,
         need_schedule=0,
         layer_num=0,
-        sync_flag=0,
+        sync_flag: bool = False,
         mx_output_uint8=False,
         **kwargs,
     ):
@@ -1030,7 +1030,7 @@ class TorchFfnWorkerBatchingTestSpec:
         token_dtype=0,
         need_schedule=0,
         layer_num=0,
-        sync_flag=0,
+        sync_flag: bool = False,
         mx_output_uint8=False,
         **kwargs,
     ):
@@ -1077,7 +1077,7 @@ class TorchFfnWorkerBatchingTestSpec:
         token_dtype=0,
         need_schedule=0,
         layer_num=0,
-        sync_flag=0,
+        sync_flag: bool = False,
         mx_output_uint8=False,
         **kwargs,
     ):
@@ -1113,7 +1113,7 @@ class FfnWorkerBatchingKernelTestSpec:
         token_dtype=0,
         need_schedule=0,
         layer_num=0,
-        sync_flag=0,
+        sync_flag: bool = False,
         **kwargs,
     ):
         tensor = torch.from_numpy(schedule_context.copy())
@@ -1141,7 +1141,7 @@ class FfnWorkerBatchingKernelTestSpec:
         token_dtype=0,
         need_schedule=0,
         layer_num=0,
-        sync_flag=0,
+        sync_flag: bool = False,
         **kwargs,
     ):
         from ttk.utilities.dtypes import torch_to_numpy_tensor
@@ -1195,7 +1195,7 @@ class AclnnFfnWorkerBatchingLegacyTestSpec(AclnnFfnWorkerBatchingTestSpec):
             tokenDtype,
             needSchedule,
             layerNum,
-            0,
+            False,
             y,
             groupList,
             sessionIds,
@@ -1234,7 +1234,7 @@ class AclnnFfnWorkerBatchingLegacyTestSpec(AclnnFfnWorkerBatchingTestSpec):
             tokenDtype,
             needSchedule,
             layerNum,
-            0,
+            False,
             y,
             groupList,
             sessionIds,

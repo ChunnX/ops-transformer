@@ -37,7 +37,7 @@ using Outputs =
 
 Outputs ffn_worker_batching(const at::Tensor &schedule_context, int64_t expert_num,
                             const std::vector<int64_t> &max_out_shape, int64_t token_dtype, int64_t need_schedule,
-                            int64_t layer_num, int64_t sync_flag, bool mx_output_uint8)
+                            int64_t layer_num, bool sync_flag, bool mx_output_uint8)
 {
     // Inspect metadata only. Copying a noncontiguous context to a temporary
     // would change the object whose polling_index is updated by RECV.
@@ -54,8 +54,7 @@ Outputs ffn_worker_batching(const at::Tensor &schedule_context, int64_t expert_n
     TORCH_CHECK(token_dtype >= FP16 && token_dtype <= FP4_E2M1, "invalid token_dtype: ", token_dtype);
     TORCH_CHECK(token_dtype != FP4_E2M1 || h % FP4_ELEMENTS_PER_BYTE == 0, "FP4 requires even H, got ", h);
     TORCH_CHECK(need_schedule == 0 || need_schedule == 1, "invalid need_schedule: ", need_schedule);
-    TORCH_CHECK(sync_flag == 0 || sync_flag == 1, "invalid sync_flag: ", sync_flag);
-    if (need_schedule == 1 && sync_flag == 1) {
+    if (need_schedule == 1 && sync_flag) {
         TORCH_CHECK(layer_num > 0 && expert_num % layer_num == 0,
                     "async RECV requires layer_num > 0 and expert_num divisible by layer_num");
     }

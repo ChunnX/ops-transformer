@@ -50,7 +50,7 @@ if _TORCHAIR_AVAILABLE:
         token_dtype: int = 0,
         need_schedule: int = 0,
         layer_num: int = 0,
-        sync_flag: int = 0,
+        sync_flag: bool = False,
         dependencies=None,
         node_name=None,
     ):
@@ -70,10 +70,10 @@ if _TORCHAIR_AVAILABLE:
         .ATTR(token_dtype, Int, 0)
         .ATTR(need_schedule, Int, 0)
         .ATTR(layer_num, Int, 0)
-        .ATTR(sync_flag, Int, 0)
+        .ATTR(sync_flag, Bool, false)
         """
         # ge_op normally checks only non-default optional attributes. Even when
-        # sync_flag == 0, require the UPDATED prototype: an older registration
+        # sync_flag is False, require the UPDATED prototype: an older registration
         # has a shorter attribute array than the current tiling implementation.
         # Silently omitting the default would hide this ABI mismatch until launch.
         error = is_cann_compat(
@@ -84,7 +84,7 @@ if _TORCHAIR_AVAILABLE:
         if error:
             raise RuntimeError(
                 "FfnWorkerBatching GE requires the updated CANN/OPP prototype "
-                "containing sync_flag, including when sync_flag=0. " + error
+                "containing sync_flag, including when sync_flag=False. " + error
             )
 
         return ge_op(
@@ -96,7 +96,7 @@ if _TORCHAIR_AVAILABLE:
                 "token_dtype": attr.Int(token_dtype),
                 "need_schedule": attr.Int(need_schedule),
                 "layer_num": attr.Int(layer_num),
-                "sync_flag": attr.Int(sync_flag),
+                "sync_flag": attr.Bool(sync_flag),
             },
             outputs=list(_OUTPUT_NAMES),
             dependencies=[] if dependencies is None else dependencies,
@@ -108,7 +108,7 @@ if _TORCHAIR_AVAILABLE:
             .attr("token_dtype", attr.Int(0))
             .attr("need_schedule", attr.Int(0))
             .attr("layer_num", attr.Int(0))
-            .attr("sync_flag", attr.Int(0))
+            .attr("sync_flag", attr.Bool(False))
             .output(
                 "y",
                 "DT_FLOAT16, DT_BF16, DT_INT8, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT4_E2M1",
@@ -133,7 +133,7 @@ if _TORCHAIR_AVAILABLE:
         token_dtype: int = 0,
         need_schedule: int = 0,
         layer_num: int = 0,
-        sync_flag: int = 0,
+        sync_flag: bool = False,
         mx_output_uint8: bool = False,
         meta_outputs: Optional[List[TensorSpec]] = None,
     ):

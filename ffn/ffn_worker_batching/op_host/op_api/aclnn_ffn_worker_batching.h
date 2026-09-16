@@ -20,7 +20,7 @@ extern "C" {
 
 /**
  * @brief 获取FfnWorkerBatching的workspace大小及执行器。
- * 保留原有ABI，不接收syncFlag；内部固定为0，保持同步接收语义。
+ * 保留原有ABI，不接收syncFlag；内部固定为false，保持同步接收语义。
  * @domain aclnn_ops_infer
  */
 ACLNN_API aclnnStatus aclnnFfnWorkerBatchingGetWorkspaceSize(

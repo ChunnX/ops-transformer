@@ -133,7 +133,7 @@ void CheckArch35(int64_t dtype, int64_t mode, int64_t a, int64_t bs, int64_t k, 
     EXPECT_EQ(d.Y, a * bs * k);
     EXPECT_EQ(d.H, 4096);
     EXPECT_EQ(d.tokenDtype, dtype);
-    EXPECT_EQ(d.syncFlag, 0);
+    EXPECT_FALSE(d.syncFlag);
     EXPECT_EQ(d.expertNum, experts);
     EXPECT_EQ(d.ubSize, ub - 32768);
     EXPECT_EQ(d.sortSegNum, expectedSegments);
@@ -450,23 +450,19 @@ TEST_F(FfnWorkerBatchingTilingTest, ffn_wb_tiling_mx_rejected_on_legacy_soc)
     }
 }
 
-// 两种调度路径都校验属性域；合法值保持 key=100/101，不把 syncFlag 编入 key。
+// 两种调度路径都覆盖布尔属性；保持 key=100/101，不把 syncFlag 编入 key。
 // 对异步 RECV 再验证快照与 gather workspace 不重叠、按块对齐且总空间覆盖 A+1 个块。
 TEST_F(FfnWorkerBatchingTilingTest, ffn_wb_tiling_arch35_sync_flag)
 {
     gert::StorageShape scShape = {{1024}, {1024}};
     FfnWorkerBatchingCompileInfo compileInfo = {};
     for (int64_t mode : {0, 1}) {
-        for (int64_t syncFlag : {-1, 0, 1, 2}) {
+        for (bool syncFlag : {false, true}) {
             auto attrs = MakeArch35Attrs(0, mode, 4, 3, 3, 66);
-            attrs.push_back({"sync_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(syncFlag)});
+            attrs.push_back({"sync_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(syncFlag)});
             gert::TilingContextPara para("FfnWorkerBatching", {{scShape, ge::DT_INT8, ge::FORMAT_ND}},
                                          MakeA5OutputDesc(), attrs, &compileInfo, "Ascend950", kAivNum64,
                                          kArch35Ub248K);
-            if (syncFlag < 0 || syncFlag > 1) {
-                ExecuteTestCase(para, ge::GRAPH_FAILED);
-                continue;
-            }
             TilingInfo info;
             ASSERT_TRUE(ExecuteTiling(para, info));
             const auto &d = *reinterpret_cast<const FfnWorkerBatchingArch35TilingData *>(info.tilingData.get());
@@ -474,7 +470,7 @@ TEST_F(FfnWorkerBatchingTilingTest, ffn_wb_tiling_arch35_sync_flag)
             EXPECT_EQ(info.tilingKey, 100 + mode);
             EXPECT_GE(d.wsReady, d.wsGatherIdx + d.Y);
             EXPECT_EQ(d.wsReady % 8, 0);
-            if (mode == 1 && syncFlag == 1) {
+            if (mode == 1 && syncFlag) {
                 EXPECT_GE(info.workspaceSizes[0], (d.wsReady + 5 * 8) * sizeof(int32_t));
             }
         }
@@ -579,22 +575,22 @@ TEST_F(FfnWorkerBatchingTilingTest, ffn_wb_tiling_arch35_async_layer_contract)
     gert::StorageShape shape = {{1024}, {1024}};
     FfnWorkerBatchingCompileInfo compileInfo = {};
     for (int64_t mode : {0, 1}) {
-        for (int64_t sync : {0, 1}) {
+        for (bool sync : {false, true}) {
             for (int64_t layers : {0, 1, 2, 3, 8}) {
                 auto attrs = MakeArch35Attrs(0, mode, 3, 7, 1, 32);
                 attrs.back() = {"layer_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(layers)};
-                attrs.push_back({"sync_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(sync)});
+                attrs.push_back({"sync_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(sync)});
                 gert::TilingContextPara para("FfnWorkerBatching", {{shape, ge::DT_INT8, ge::FORMAT_ND}},
                                              MakeA5OutputDesc(), attrs, &compileInfo, "Ascend950", kAivNum64,
                                              kArch35Ub248K);
-                if (mode == 1 && sync == 1 && (layers == 0 || 8 % layers != 0)) {
+                if (mode == 1 && sync && (layers == 0 || 8 % layers != 0)) {
                     ExecuteTestCase(para, ge::GRAPH_FAILED);
                 } else {
                     TilingInfo info;
                     ASSERT_TRUE(ExecuteTiling(para, info));
                     const auto &data =
                         *reinterpret_cast<const FfnWorkerBatchingArch35TilingData *>(info.tilingData.get());
-                    EXPECT_EQ(data.layerNum, mode == 1 && sync == 1 ? layers : 0);
+                    EXPECT_EQ(data.layerNum, mode == 1 && sync ? layers : 0);
                 }
             }
         }

@@ -76,7 +76,7 @@ struct ScheduleContextInfo {
     uint32_t expertNum = 0;
     uint32_t layerNum = 0;
     uint32_t expertsPerLayer = 0;
-    bool asyncRecv = false; // 本次是否启用快照接收；只有 RECV 且 syncFlag=1 才为 true
+    bool asyncRecv = false; // 本次是否启用快照接收；只有 RECV 且 syncFlag=true 才为 true
     int64_t coreNum = 0;
     int64_t ubSize = 0;
     int64_t validGatherIdxLength = 0; // 排序后剔除无效值的有效长度,≤ A*BS*K
@@ -184,8 +184,8 @@ __aicore__ inline void ScheduleContextParse(GM_ADDR schedule_context, const Tili
     ctx.Y = tilingData->Y;
     ctx.tokenDtype = tilingData->tokenDtype;
     ctx.expertNum = tilingData->expertNum;
-    // 属性值与执行路径共同决定开关，确保 NORM 即使传 sync_flag=1 也不进入 flag 轮询。
-    ctx.asyncRecv = isRecv && tilingData->syncFlag == 1;
+    // 属性值与执行路径共同决定开关，确保 NORM 即使传 sync_flag=true 也不进入 flag 轮询。
+    ctx.asyncRecv = isRecv && tilingData->syncFlag;
     if (ctx.asyncRecv) {
         // Host has validated nonzero layer count and exact divisibility.
         ctx.layerNum = static_cast<uint32_t>(tilingData->layerNum);

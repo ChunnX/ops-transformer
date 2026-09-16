@@ -41,15 +41,15 @@
 namespace FfnWbBatchingArch35 {
 using namespace AscendC;
 
-constexpr int64_t ONE_REPEAT_COMPARE_NUM = Arch35Config::COMPARE_FP32_ELEMENTS; // CompareScalar 的 repeat 粒度(ISA)
-constexpr int64_t ONE_REPEAT_BLOCKS = Arch35Config::VECTOR_REPEAT_BLOCKS; // 一个 repeat 覆盖 8 个 32B 块(ISA)
-constexpr int64_t ONE_BYTE_BITS = Arch35Config::BITS_PER_BYTE;
+constexpr int64_t ONE_REPEAT_COMPARE_NUM = 64; // CompareScalar 的 repeat 粒度(ISA)
+constexpr int64_t ONE_REPEAT_BLOCKS = 8;       // 一个 repeat 覆盖 8 个 32B 块(ISA)
+constexpr int64_t ONE_BYTE_BITS = 8;
 constexpr int32_t SENTINEL_ID = -1; // 哨兵:有效 expert_id 恒 >= 0,故它与谁都不等
 
 // 单元素在 UB 上的占用:cur/prev/next/idx/diff/diffF/outStart/outEnd/outId/cnt 十路 int32,
 // 外加首尾两张比较掩码(各 1 bit/元素)。分块大小由 UB 除以它得到,不是拍出来的常数。
-constexpr int64_t CHUNK_VEC_NUM = Arch35Config::GROUP_VECTOR_BUFFERS;
-constexpr int64_t CHUNK_MASK_NUM = Arch35Config::GROUP_MASK_BUFFERS;
+constexpr int64_t CHUNK_VEC_NUM = 10;
+constexpr int64_t CHUNK_MASK_NUM = 2;
 constexpr int64_t CHUNK_BUF_NUM = CHUNK_VEC_NUM + CHUNK_MASK_NUM + 1; // +1:行拼装区
 
 struct A5GroupListParam {

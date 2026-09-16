@@ -86,8 +86,8 @@
     <tr>
       <td>sync_flag</td>
       <td>属性</td>
-      <td>默认0，取值0/1。仅<term>Ascend 950PR/Ascend 950DT</term>的need_schedule=1时sync_flag=1生效：0等待当前micro batch的全部session就绪；1循环扫描micro batch，首次发现ready session即处理该micro batch。</td>
-      <td>INT64</td>
+      <td>默认false，取值false/true。仅<term>Ascend 950PR/Ascend 950DT</term>的need_schedule=1时解释该属性：false等待当前micro batch的全部session就绪；true循环扫描micro batch，首次发现ready session即处理该micro batch。</td>
+      <td>BOOL</td>
       <td>-</td>
     </tr>
     <tr>
@@ -160,7 +160,7 @@
 - `y`、索引输出及有效的`dynamic_scale`仅保证前`actual_token_num`行有效，剩余容量不参与结果比较。
 - <term>Ascend 950PR/Ascend 950DT</term>上的`token_dtype=3、4、5`均支持`need_schedule=0、1`。每32个逻辑hidden state元素对应一个E8M0 scale，尾部不足32个元素时仍占一个scale；全部scale紧跟整行token数据。
 - <term>Ascend 950PR/Ascend 950DT</term>上令`S=ceil(H/32)`，FP8行的有效数据为`H`字节token加`S`字节scale，FP4行为`H/2`字节token加`S`字节scale。FP4要求H为偶数，每字节低半字节存放前一个元素，高半字节存放后一个元素。`attn_to_ffn_token_size`记录源行的字节步长，可包含行尾padding。
-- <term>Ascend 950PR/Ascend 950DT</term>异步接收（`need_schedule=1、sync_flag=1`）要求`layer_num>0`且整除`expert_num`，按`layer_id * (expert_num / layer_num) + expert_id`生成跨层专家号进行排序、token重排和`group_list`统计。同步接收与NORM仍使用原专家号。
+- <term>Ascend 950PR/Ascend 950DT</term>异步接收（`need_schedule=1、sync_flag=true`）要求`layer_num>0`且整除`expert_num`，按`layer_id * (expert_num / layer_num) + expert_id`生成跨层专家号进行排序、token重排和`group_list`统计。同步接收与NORM仍使用原专家号。
 
 ## 调用说明
 

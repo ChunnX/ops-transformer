@@ -8,7 +8,7 @@
 
 根据调度上下文中的专家号排序，重排 token、scale 和来源索引，并统计各专家的 token 数。算子只搬运数据，不执行 FFN 矩阵计算或量化计算。
 
-异步接收（`need_schedule=1、sync_flag=1`）允许同一 micro batch 中已就绪的不同 session 属于不同层，使用跨层专家号：
+异步接收（`need_schedule=1、sync_flag=True`）允许同一 micro batch 中已就绪的不同 session 属于不同层，使用跨层专家号：
 
 ```text
 experts_per_layer = expert_num / layer_num
@@ -28,7 +28,7 @@ cann_ops_transformer.ffn_worker_batching(
     token_dtype: int = 0,
     need_schedule: int = 0,
     layer_num: int = 0,
-    sync_flag: int = 0,
+    sync_flag: bool = False,
     mx_output_uint8: bool = False,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor,
            torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]
@@ -44,7 +44,7 @@ cann_ops_transformer.ffn_worker_batching(
 | token_dtype | int | 可选 | 0：FP16；1：BF16；2：INT8；3：FP8 E5M2；4：FP8 E4M3FN；5：FP4 E2M1。示例使用0。 |
 | need_schedule | int | 可选 | 0：NORM；1：RECV。示例使用1，直接消费接收描述符。 |
 | layer_num | int | 可选 | 参与层数。异步RECV必须大于0且整除`expert_num`；示例使用2。 |
-| sync_flag | int | 可选 | 0：同步接收，等待全部session；1：异步接收，处理ready快照选中的session。仅RECV解释该属性。 |
+| sync_flag | bool | 可选 | False：同步接收，等待全部session；True：异步接收，处理ready快照选中的session。仅RECV解释该属性。 |
 | mx_output_uint8 | bool | 可选 | 默认False。True时MX scale以uint8返回，FP4 y也以uint8返回，保持原始编码；FP16示例无需设置。 |
 
 ## 返回值说明
@@ -87,7 +87,7 @@ cann_ops_transformer.ffn_worker_batching(
 y, group_list, session_ids, micro_batch_ids, token_ids, expert_offsets, dynamic_scale, actual_token_num = (
     ffn_worker_batching(
         schedule_context, 8, [3, 2, 2, 256],
-        token_dtype=0, need_schedule=1, layer_num=2, sync_flag=1,
+        token_dtype=0, need_schedule=1, layer_num=2, sync_flag=True,
     )
 )
 ```
@@ -236,7 +236,7 @@ def main():
     op = importlib.import_module(
         f"cann_ops_transformer.ops.ffn.ffn_worker_batching"
     ).ffn_worker_batching
-    case = AsyncLayerExample(f"npu:0")
+    case = AsyncLayerExample("npu:0")
 
     def call(context):
         return op(
@@ -246,11 +246,11 @@ def main():
             token_dtype=0,
             need_schedule=1,
             layer_num=case.layers,
-            sync_flag=1,
+            sync_flag=True,
         )
+
     with torch.inference_mode():
-        # The second graph call exercises replay. Never replay consumed input
-        # without publishing descriptors again: the receiver would keep polling.
+        # Publish fresh descriptors before the consuming call.
         case.publish()
         outputs = call(case.context)
         torch.npu.synchronize()
@@ -262,6 +262,8 @@ if __name__ == "__main__":
 ```
 
 ### TorchAir GE调用方式
+
+完整脚本：[torch_ffn_worker_batching_async_ge.py](../examples/torch_ffn_worker_batching_async_ge.py)。
 
 ```python
 import importlib
@@ -397,7 +399,7 @@ def main():
     op = importlib.import_module(
         f"cann_ops_transformer.ops.ffn.ffn_worker_batching"
     ).ffn_worker_batching
-    case = AsyncLayerExample(f"npu:0")
+    case = AsyncLayerExample("npu:0")
 
     def call(context):
         return op(
@@ -407,7 +409,7 @@ def main():
             token_dtype=0,
             need_schedule=1,
             layer_num=case.layers,
-            sync_flag=1,
+            sync_flag=True,
         )
 
     import torchair
