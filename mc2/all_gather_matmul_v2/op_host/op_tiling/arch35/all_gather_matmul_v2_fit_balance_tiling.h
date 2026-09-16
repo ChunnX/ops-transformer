@@ -94,27 +94,29 @@ struct AgMmV2Hooks {
     {
         // Estimate 骨干(4/5 算子一致的公共片段): 模型刷新 + 总量 + 通算比
         // AG 语义: 通信聚合 rankDim 份后 mm 按 rankDim 倍计(与老代码 MatmulTime(m, rankDim_) 一致)
-        const auto est = mc2tiling::fit_balance::EstimateTotalTimes(ctx, /*mmRankMul=*/ctx.rankDim);
+        const auto est = mc2tiling::fit_balance::EstimateTotalTimes(ctx, /*mmRankMul=*/ctx.commPerf.rankDim());
         const double totalMatmulTime = est.totalMatmulTime;
         const double totalTpTime = est.totalTpTime;
-        double frontUtil = ctx.matmulPerf.FindCubeUtilByL2Usage(ctx.mmInfo.mValue, 1);
+        double frontUtil = ctx.matmulPerf.FindCubeUtilByL2Usage(ctx.matmulPerf.mmShapeInfo_.mValue, 1);
         if (std::abs(frontUtil) > 1e-10) {
-            frontMMTime = ctx.matmulPerf.MatmulTime(ctx.mmInfo.mValue, 1) / frontUtil;
+            frontMMTime = ctx.matmulPerf.MatmulTime(ctx.matmulPerf.mmShapeInfo_.mValue, 1) / frontUtil;
         } else {
-            frontMMTime = ctx.matmulPerf.MatmulTime(ctx.mmInfo.mValue, 1);
+            frontMMTime = ctx.matmulPerf.MatmulTime(ctx.matmulPerf.mmShapeInfo_.mValue, 1);
         }
         ctx.tilingM.cutRes.shortTileAtBack = true; // AG 特有: 恒后置(其余算子按 bound 判定)
         // ratioCalcComm 已由 EstimateTotalTimes 设置
 
-        uint64_t sizeOfComm = ctx.mmInfo.mValue * ctx.mmInfo.kValue * (ctx.rankDim - 1) /
-                              mc2tiling::fit_balance::ONE_MBYTE * ctx.commPerf.GetCommDTypeSize();
+        uint64_t sizeOfComm = ctx.matmulPerf.mmShapeInfo_.mValue * ctx.matmulPerf.mmShapeInfo_.kValue *
+                              (ctx.commPerf.rankDim() - 1) / mc2tiling::fit_balance::ONE_MBYTE *
+                              ctx.commPerf.GetCommDTypeSize();
         OPS_LOG_D("AllGatherMatmul",
                   "Input shape {M, N, K} = {%lu, %lu, %lu}, cubeUtil_ %f, sizeOfComm %lu, "
                   "totalMatmulTime %f, totalCommTime %f, minTileSize %lu, mAlignLen %lu, commTimeFactor_ %f, "
                   "rankDim_ %lu, rankTile %lu",
-                  ctx.mmInfo.mValue, ctx.mmInfo.nValue, ctx.mmInfo.kValue, ctx.matmulPerf.cubeUtil_, sizeOfComm,
-                  totalMatmulTime, totalTpTime, ctx.tilingM.GetMinLen(), ctx.tilingM.GetAlignLength(),
-                  ctx.commPerf.commTimeFactor_, ctx.rankDim, ctx.rankTileNum);
+                  ctx.matmulPerf.mmShapeInfo_.mValue, ctx.matmulPerf.mmShapeInfo_.nValue,
+                  ctx.matmulPerf.mmShapeInfo_.kValue, ctx.matmulPerf.cubeUtil_, sizeOfComm, totalMatmulTime,
+                  totalTpTime, ctx.tilingM.GetMinLen(), ctx.tilingM.GetAlignLength(), ctx.commPerf.commTimeFactor_,
+                  ctx.commPerf.rankDim(), ctx.rankTileNum);
     }
 
     void SetLongTileLen(mc2tiling::fit_balance::FitBasedBalanceCtx &ctx)
@@ -128,7 +130,7 @@ struct AgMmV2Hooks {
         // Encourage split more if the comm and calc is balanced and the cost of cutLen is sufficiently high
         bool isCalcCommBalance = ctx.ratioCalcComm < mc2tiling::fit_balance::CALC_COMM_RATIO;
         uint64_t cutLen = ctx.tilingM.GetAlignLength() / mc2tiling::fit_balance::TWO;
-        double mmCost = ctx.matmulPerf.MatmulTime(cutLen, ctx.rankDim);
+        double mmCost = ctx.matmulPerf.MatmulTime(cutLen, ctx.commPerf.rankDim());
         double commCost = ctx.commPerf.CommTime(cutLen);
         if (isCalcCommBalance && (mmCost > MM_EXPANSION_TIME) && (commCost > COMM_EXPANSION_TIME)) {
             ctx.tilingM.SetAlignLength(cutLen);
@@ -211,7 +213,7 @@ inline CutResult ScheduleFitBalance(const mc2tiling::TilingArgs &args, fb::CommE
     fb::TilingArgs engineArgs = ToEngineTilingArgs(args);
     auto ctx =
         fb::InitCtx(engineArgs, fb::KernelType::ALL_GATHER, commEngine, CALIBRATION, fb::TopoType::STANDARD_CARD);
-    ctx.commPerf.SetCommShapeLen(ctx.mmInfo.kValue);
+    ctx.commPerf.SetCommShapeLen(ctx.matmulPerf.mmShapeInfo_.kValue);
     // fp4(DT_FLOAT4_E2M1) 通信侧建模: 每元素 0.5 字节, 按"1 字节打包 2 个 fp4"建模
     // (SetCommDTypeSize(1) + ExpansionFraction(2), 复用 HCCL 子字节机制);
     // matmul 侧 fp4 路由已由引擎正确处理(SetCalcType 经 geAType 识别, 查 CALIBRATION 的
@@ -221,10 +223,10 @@ inline CutResult ScheduleFitBalance(const mc2tiling::TilingArgs &args, fb::CommE
         ctx.commPerf.SetCommDtypeSizeExpansionFraction(FP4_EXPANSION_RATIO);
         ctx.matmulPerf.mmShapeInfo_.inMatrixADtypeSize = 1;
         ctx.matmulPerf.mmShapeInfo_.inMatrixBDtypeSize = 1;
-        ctx.mmInfo.inMatrixADtypeSize = 1;
-        ctx.mmInfo.inMatrixBDtypeSize = 1;
+        ctx.matmulPerf.mmShapeInfo_.inMatrixADtypeSize = 1;
+        ctx.matmulPerf.mmShapeInfo_.inMatrixBDtypeSize = 1;
     } else {
-        ctx.commPerf.SetCommDTypeSize(ctx.mmInfo.inMatrixADtypeSize);
+        ctx.commPerf.SetCommDTypeSize(ctx.matmulPerf.mmShapeInfo_.inMatrixADtypeSize);
     }
     ctx.tilingM.SetMinLenByMax(ctx.matmulPerf.GetBaseM());
     ctx.tilingM.SetAlignLength(ctx.matmulPerf.GetBaseM());

@@ -344,6 +344,10 @@ public:
     {
         return commTypeInfo_.commDtypeSize;
     }
+    uint64_t rankDim() const
+    {
+        return commTypeInfo_.rankDim;
+    }
     void ChangeCommTimeFactorByDivision(double factor)
     {
         if (factor > 0) {
@@ -985,18 +989,17 @@ inline CutResult CutResultFromCommTiling(const CommTilingData &tiling)
 // ============================================================================
 
 // 调度上下文: 与旧 Mc2FitBasedBalanceTiling 基类的公开成员逐一对应
+// 运行时上下文: 引擎三件套 + 派生/过程量。
+// 刻意不含静态标定数据(在 FitBalanceCalibration)与冗余镜像字段:
+//   mmInfo(14 字段仅 5 个被钩子消费)→钩子直接用 ctx.matmulPerf.mmShapeInfo_(同一份数据);
+//   coreNum→mmShapeInfo_.coreNum; rankDim→ctx.commPerf.rankDim()。
 struct FitBasedBalanceCtx {
     MatmulPerfModel matmulPerf;
     HCCLCommModel commPerf;
     FormPartition tilingM;
-    MatmulParameters mmInfo;
-    uint64_t rankDim = 2;
-    uint64_t rankTileNum = 1;
-    uint64_t coreNum = 32;
-    double ratioCalcComm = 1.0;
+    uint64_t rankTileNum = 1;   // 派生: commPerf.GetRankTileNum()(通信模型内的 rank 份数)
+    double ratioCalcComm = 1.0; // 过程量: Estimate 骨干设置的通算比(钩子消费)
 };
-
-// 上下文构造 = 旧基类构造函数逐行对应
 // ============================================================================
 // 客户标定数据总集（算子侧唯一需要接触的标定类型, 2026-09-15 评审裁定:
 // 单一大结构体替代"引擎侧一堆小结构体 + 算子侧一堆具名 constexpr"）
@@ -1107,15 +1110,8 @@ inline FitBasedBalanceCtx InitCtx(const TilingArgs &args, KernelType kernelType,
         mmTable.l2Count = i + 1;
     }
     mmTable.bestBaseBlock = calib.matmul.baseBlock;
-    FitBasedBalanceCtx ctx{MatmulPerfModel(args, mmTable),
-                           HCCLCommModel(args.rankDim, kernelType, commTable, topoType),
-                           FormPartition(args),
-                           MatmulParameters{},
-                           args.rankDim,
-                           1,
-                           args.aicCoreNum,
-                           1.0};
-    ctx.mmInfo = ctx.matmulPerf.mmShapeInfo_;
+    FitBasedBalanceCtx ctx{MatmulPerfModel(args, mmTable), HCCLCommModel(args.rankDim, kernelType, commTable, topoType),
+                           FormPartition(args), 1, 1.0};
     ctx.tilingM.SetMaxTileCnt(MAX_TILE_CNT); // Due to the limited FFTS queue size, a maximum of 16 rounds can be cut.
     ctx.rankTileNum = ctx.commPerf.GetRankTileNum();
     return ctx;
@@ -1199,8 +1195,8 @@ inline EstimateTimesResult EstimateTotalTimes(FitBasedBalanceCtx &ctx, uint64_t 
     ctx.matmulPerf.FindCubeUtil(ctx.rankTileNum);
     ctx.matmulPerf.GetMatmulGradient();
     EstimateTimesResult r;
-    r.totalMatmulTime = ctx.matmulPerf.MatmulTime(ctx.mmInfo.mValue, mmRankMul) * mmTimeScale;
-    r.totalTpTime = ctx.commPerf.CommTime(ctx.mmInfo.mValue);
+    r.totalMatmulTime = ctx.matmulPerf.MatmulTime(ctx.matmulPerf.mmShapeInfo_.mValue, mmRankMul) * mmTimeScale;
+    r.totalTpTime = ctx.commPerf.CommTime(ctx.matmulPerf.mmShapeInfo_.mValue);
     ctx.ratioCalcComm = (std::max(r.totalTpTime, r.totalMatmulTime) / std::min(r.totalTpTime, r.totalMatmulTime));
     return r;
 }
@@ -1229,9 +1225,9 @@ inline void ApplyL2MinLenBoost(FormPartition &tilingM, const MatmulParameters &m
 // 判据 m×n ≤ 2×coreNum×baseM×baseN; GetBaseM/N 为非 const 成员故 ctx 取非常量引用）
 inline void ApplySmallShapeMinLen(FormPartition &tilingM, FitBasedBalanceCtx &ctx)
 {
-    if (ctx.mmInfo.mValue * ctx.mmInfo.nValue <=
-        ctx.coreNum * ctx.matmulPerf.GetBaseM() * ctx.matmulPerf.GetBaseN() * TWO) {
-        tilingM.SetMinLenByMax(ctx.mmInfo.mValue);
+    if (ctx.matmulPerf.mmShapeInfo_.mValue * ctx.matmulPerf.mmShapeInfo_.nValue <=
+        ctx.matmulPerf.mmShapeInfo_.coreNum * ctx.matmulPerf.GetBaseM() * ctx.matmulPerf.GetBaseN() * TWO) {
+        tilingM.SetMinLenByMax(ctx.matmulPerf.mmShapeInfo_.mValue);
     }
 }
 
