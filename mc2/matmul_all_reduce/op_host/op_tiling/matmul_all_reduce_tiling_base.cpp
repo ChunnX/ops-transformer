@@ -279,7 +279,7 @@ void MatmulAllReduceTilingBase::DoRCSTiling()
     SetCommQuantScale();
 }
 
-void MatmulAllReduceTilingBase::SetMCutSocVersion(SocVersion_2201 &inputSocVersion)
+void MatmulAllReduceTilingBase::SetMCutSocVersion(SocVersion_2201 &series)
 {
     if (npuArch_ == Ops::Base::DAV_2002) {
         // 310P:档位key已迁出枚举(与DAV_2002一一对应),保持调用方初始化的占位值;
@@ -299,9 +299,9 @@ void MatmulAllReduceTilingBase::SetMCutSocVersion(SocVersion_2201 &inputSocVersi
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     uint64_t socMemSize = L2_CACHE_SIZE_910_B4;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, socMemSize);
-    inputSocVersion = (socMemSize == L2_CACHE_SIZE_910_B4) ? SocVersion_2201::SOC910_B4 : inputSocVersion;
+    series = (socMemSize == L2_CACHE_SIZE_910_B4) ? SocVersion_2201::SOC910_B4 : series;
     if (socMemSize == L2_CACHE_SIZE_910_B4) {
-        inputSocVersion = SocVersion_2201::SOC910_B4;
+        series = SocVersion_2201::SOC910_B4;
         OP_LOGD(opName_, "TileCnt enter 910B4 branch.");
     }
 }

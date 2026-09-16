@@ -185,7 +185,7 @@ protected:
     void DoAllReduceTiling(bool useHcclApi = false);
     void CalcAllReduceSendRecvParams();
     void DoRCSTiling();
-    void SetMCutSocVersion(SocVersion_2201 &inputSocVersion);
+    void SetMCutSocVersion(SocVersion_2201 &series);
     void DoSplitMTiling();
     virtual CutResult GetTilingResult();
     ge::graphStatus DoMatmulTiling(matmul_tiling::MultiCoreMatmulTiling &mm1, AscendC::tiling::TCubeTiling &cubeTiling);
