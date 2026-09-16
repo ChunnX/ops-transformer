@@ -143,8 +143,8 @@ def flash_attn_grad_preload3(
     # metadata blockOuter），cube/vector 两侧同一口径，set/wait 才能配对。
     coreNum = pl.get_block_num()
     # swizzle 来自 tilingkey，是编译期常量 —— 每种分核各生成一份二进制，
-    # `if constInfo.enableSwizzle` 的两路在编译期折叠，运行期没有判断开销。
-    constInfo = set_const_info(tiling, coreNum, swizzle)
+    # `if swizzle` 的两路在编译期折叠，运行期没有判断开销。
+    constInfo = set_const_info(tiling, coreNum)
 
     # ---- workspace 分区 ----
     # host(GetWorkspaceSizes) 给的是单块连续内存，这里按 fp32 元素切成
@@ -717,7 +717,7 @@ def flash_attn_grad_preload2(
     """
     coreNum = pl.get_block_num()
     # swizzle 来自 tilingkey。BN2 is_valid 保证为 0，与原先写死 0 等价。
-    constInfo = set_const_info(tiling, coreNum, swizzle)
+    constInfo = set_const_info(tiling, coreNum)
 
     dQ = constInfo.dSize
     viewD2Q = constInfo.viewD2Q
@@ -875,7 +875,7 @@ def flash_attn_grad_preload2(
     blockEnd = pl.astype(
         pl.getval(meta, fagOff + META_FAG_BLOCK_ENDS_OFFSET + cBlockIdx), pl.DT_INT64
     )
-    # enableSwizzle==0（含 BN2）时就是 max(end-start, 0)。
+    # swizzle==0（含 BN2）时就是 max(end-start, 0)。
     numBlocks = block_range_of(constInfo, cBlockIdx, coreNum, blockStart, blockEnd)
 
     mm1_res = make_mm1_res()

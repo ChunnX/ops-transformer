@@ -121,14 +121,15 @@ PRELOAD_TIMES = 3
 # ==================================================================
 #  SetConstInfo
 # ==================================================================
-def set_const_info(tiling, coreNum, enableSwizzle):
+def set_const_info(tiling, coreNum):
     """由 tiling + 运行期核数推导常量。
 
     coreNum 不在 tiling 里(TilingData 没有该字段)，改由调用方从
     pl.get_block_num() 取：这是 host SetBlockDim 启动的 cube 数，dense 下
     等于 metadata blockOuter。cube/vector 两侧同一口径，set/wait 才能配对。
 
-    enableSwizzle 同理由 host 判据算好后经 tilingkey/常量传入。
+    分核开关用 tilingkey 裸名 ``swizzle``，不要再写进本结构体：字段会
+    被当成运行期值，``if constInfo.enableSwizzle`` 两路都编进同一份二进制。
     """
     s1Outer = (tiling.s1 + CUBE_BASEM - 1) // CUBE_BASEM
     s2Outer = (tiling.s2 + CUBE_BASEN - 1) // CUBE_BASEN
@@ -165,7 +166,6 @@ def set_const_info(tiling, coreNum, enableSwizzle):
         totalBlockNum=tiling.b * tiling.n2 * tiling.gSize * s1Outer * s2Outer,
         gSize=tiling.gSize,
         coreNum=coreNum,
-        enableSwizzle=enableSwizzle,
         # 布局视图参数(BSND/BNSD 统一四维视图)，见 FlashAttnGradTilingData 注释。
         # Q 侧 n1=n2*G 个 head，KV 侧 n2 个，故两套。
         viewD0Q=tiling.viewD0Q,
