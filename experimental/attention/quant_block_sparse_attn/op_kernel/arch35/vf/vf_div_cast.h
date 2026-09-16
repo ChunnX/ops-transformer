@@ -15,6 +15,7 @@
 #define VF_DIV_CAST_INTERFACE_H
 
 #include "kernel_tensor.h"
+#include "vf_basic_block_utils.h"
 
 namespace FaVectorApi {
 template <typename T, typename OUTPUT_T, uint16_t srcD>
@@ -47,11 +48,11 @@ __simd_vf__ inline void DivCastImpl64VF(__ubuf__ OUTPUT_T *dstUb, __ubuf__ float
             StoreAlign<OUTPUT_T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ OUTPUT_T *&)dstUb + i * srcD, vreg_div,
                                                                 preg_all);
         } else if constexpr (IsSameType<OUTPUT_T, bfloat16_t>::value) {
-            Cast<OUTPUT_T, T, castTraitZero>(vreg_div_bf16, vreg_div, preg_all_b16);
+            Cast<OUTPUT_T, T, castTraitNoSatZero>(vreg_div_bf16, vreg_div, preg_all_b16);
             StoreAlign<OUTPUT_T, Reg::StoreDist::DIST_PACK_B32>((__ubuf__ OUTPUT_T *&)dstUb + i * srcD, vreg_div_bf16,
                                                                 preg_all);
         } else {
-            Cast<OUTPUT_T, T, castTraitZero>(vreg_div_f16, vreg_div, preg_all_b16);
+            Cast<OUTPUT_T, T, castTraitNoSatZero>(vreg_div_f16, vreg_div, preg_all_b16);
             StoreAlign<OUTPUT_T, Reg::StoreDist::DIST_PACK_B32>((__ubuf__ OUTPUT_T *&)dstUb + i * srcD, vreg_div_f16,
                                                                 preg_all);
         }
@@ -105,15 +106,15 @@ __simd_vf__ inline void DivCastImpl128VF(__ubuf__ OUTPUT_T *dstUb, __ubuf__ floa
             StoreAlign<OUTPUT_T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ OUTPUT_T *&)dstUb + i * srcD + (srcD >> 1),
                                                                 vreg_div_odd, preg_all);
         } else if constexpr (IsSameType<OUTPUT_T, bfloat16_t>::value) {
-            Cast<OUTPUT_T, T, castTraitZero>(vreg_div_even_bf16, vreg_div_even, preg_all);
-            Cast<OUTPUT_T, T, castTraitOne>(vreg_div_odd_bf16, vreg_div_odd, preg_all);
+            Cast<OUTPUT_T, T, castTraitNoSatZero>(vreg_div_even_bf16, vreg_div_even, preg_all);
+            Cast<OUTPUT_T, T, castTraitNoSatOne>(vreg_div_odd_bf16, vreg_div_odd, preg_all);
             Or((RegTensor<uint16_t> &)vreg_cast_bf16, (RegTensor<uint16_t> &)vreg_div_even_bf16,
                (RegTensor<uint16_t> &)vreg_div_odd_bf16, preg_all_b16);
             StoreAlign<OUTPUT_T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ OUTPUT_T *&)dstUb + i * srcD, vreg_cast_bf16,
                                                                 preg_all_b16);
         } else {
-            Cast<OUTPUT_T, T, castTraitZero>(vreg_div_even_f16, vreg_div_even, preg_all);
-            Cast<OUTPUT_T, T, castTraitOne>(vreg_div_odd_f16, vreg_div_odd, preg_all);
+            Cast<OUTPUT_T, T, castTraitNoSatZero>(vreg_div_even_f16, vreg_div_even, preg_all);
+            Cast<OUTPUT_T, T, castTraitNoSatOne>(vreg_div_odd_f16, vreg_div_odd, preg_all);
             Or((RegTensor<uint16_t> &)vreg_cast_f16, (RegTensor<uint16_t> &)vreg_div_even_f16,
                (RegTensor<uint16_t> &)vreg_div_odd_f16, preg_all_b16);
             StoreAlign<OUTPUT_T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ OUTPUT_T *&)dstUb + i * srcD, vreg_cast_f16,
@@ -164,11 +165,11 @@ __simd_vf__ inline void DivCastImplGeneralVF(__ubuf__ OUTPUT_T *dstUb, __ubuf__ 
                 StoreAlign<OUTPUT_T, Reg::StoreDist::DIST_NORM_B32>(
                     (__ubuf__ OUTPUT_T *&)dstUb + i * srcD + j * floatRepSize, vreg_div, preg_all);
             } else if constexpr (IsSameType<OUTPUT_T, bfloat16_t>::value) {
-                Cast<OUTPUT_T, T, castTraitZero>(vreg_div_bf16, vreg_div, preg_all_b16);
+                Cast<OUTPUT_T, T, castTraitNoSatZero>(vreg_div_bf16, vreg_div, preg_all_b16);
                 StoreAlign<OUTPUT_T, Reg::StoreDist::DIST_PACK_B32>(
                     (__ubuf__ OUTPUT_T *&)dstUb + i * srcD + j * floatRepSize, vreg_div_bf16, preg_all);
             } else {
-                Cast<OUTPUT_T, T, castTraitZero>(vreg_div_f16, vreg_div, preg_all_b16);
+                Cast<OUTPUT_T, T, castTraitNoSatZero>(vreg_div_f16, vreg_div, preg_all_b16);
                 StoreAlign<OUTPUT_T, Reg::StoreDist::DIST_PACK_B32>(
                     (__ubuf__ OUTPUT_T *&)dstUb + i * srcD + j * floatRepSize, vreg_div_f16, preg_all);
             }
@@ -201,6 +202,8 @@ template <typename T, typename OUTPUT_T, uint16_t srcD>
 __aicore__ inline void DivCast(const LocalTensor<OUTPUT_T> &dstTensor, const LocalTensor<T> &srcTensor,
                                const LocalTensor<T> &expSumTensor, const uint16_t m)
 {
+    const int64_t originalCastMode = AscendC::GetCtrlSpr<CAST_SAT_MODE_CTRL_BIT, CAST_SAT_MODE_CTRL_BIT>();
+    AscendC::SetCtrlSpr<CAST_SAT_MODE_CTRL_BIT, CAST_SAT_MODE_CTRL_BIT>(CAST_USE_INSTRUCTION_SAT_MODE);
     if constexpr (srcD == 64) {
         DivCastImpl64<T, OUTPUT_T, srcD>(dstTensor, srcTensor, expSumTensor, m);
     } else if constexpr (srcD == 128) {
@@ -208,6 +211,7 @@ __aicore__ inline void DivCast(const LocalTensor<OUTPUT_T> &dstTensor, const Loc
     } else {
         DivCastImplGeneral<T, OUTPUT_T, srcD>(dstTensor, srcTensor, expSumTensor, m);
     }
+    AscendC::SetCtrlSpr<CAST_SAT_MODE_CTRL_BIT, CAST_SAT_MODE_CTRL_BIT>(originalCastMode);
 }
 } // namespace FaVectorApi
 
