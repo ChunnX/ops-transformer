@@ -1316,8 +1316,9 @@ def cal_dense_swizzle_deter_index(
     found_b = -1
     delta = 0
     prefix_lo = 0
+    prefix_lo = pl.astype(prefix_lo, pl.DT_INT64)
     for b_idx in pl.range(0, b_size, 1):
-        prefix_hi = pl.getval(tensor_metadata, prefix_base + b_idx + 1)
+        prefix_hi = pl.astype(pl.getval(tensor_metadata, prefix_base + b_idx + 1), pl.DT_INT64)
         if found_b < 0 and round_id < prefix_hi:
             found_b = b_idx
             delta = round_id - prefix_lo
