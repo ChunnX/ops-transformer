@@ -19,10 +19,16 @@ constexpr uint32_t RANK_SYNC_COUNTER_OFFSET_BYTES = 48U * 1024U;
 constexpr uint32_t RANK_SYNC_COUNTER_SLOT_BYTES = 64U;
 // 本卡本次 kernel 的同类核全核同步：AIC 调用时同步全部 AIC，AIV 调用时同步全部 AIV。
 constexpr uint8_t ALL_AICORE_SYNC_MODE = 0;
+// 同一 AI Core 内 AIC 与两个 AIV 的汇合及广播。
+constexpr uint8_t AIC_ALL_AIV_SYNC_MODE = 2;
 // 同一 AI Core 内 AIC 与单个 AIV 的同步，支持双向通知。
 constexpr uint8_t AIC_SINGLE_AIV_SYNC_MODE = 4;
-// 量化完成事件；与 GMM mode 4 独立，避开 SyncAll 的 11--14。
+// reset、MoE 及共享量化写回完成事件；与 GMM mode 4 独立，避开 SyncAll 的 11--14。
 constexpr uint16_t MTE_QUANT_READY_FLAG = 8;
+// mode 2：AIV 等待全卡 reset 和量化完成后，通知配对 AIC 读取输入。
+constexpr uint16_t INPUT_READY_FLAG = 2;
+// mode 4：AIV0 释放输入准备 UB -> 配对 AIC 的首次 FIX 覆盖。
+constexpr uint16_t INPUT_UB_FREE_FLAG = 15;
 
 constexpr int64_t MAX_INT16_TOPK_INDEX_COUNT = 1LL << 15;
 
