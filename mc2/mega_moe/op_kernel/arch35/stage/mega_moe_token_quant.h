@@ -114,16 +114,13 @@ __aicore__ inline void QuantizeTokenInUb(const LocalTensor<bfloat16_t> &xInTenso
     }
 }
 
-// 量化一个逻辑 AIV 任务负责的本卡 token，并按逐 token 交织布局写入量化数据与 scale。
+// 仅由 AIV 调用。量化一个逻辑 AIV 任务负责的本卡 token，并按逐 token 交织布局写入量化数据与 scale。
 template <int32_t QuantMode, typename QuantOutType, typename ActivationType, typename TopkWeightsType,
           bool TopkWeightsPrefetch>
 __aicore__ inline void QuantizeLocalTokens(const AivJobContext &job, const MoeStageCommonConfig &common,
                                            const Params &params, const QuantProcessConfig &config, GM_ADDR outputAddr,
                                            QuantProcessScratch<ActivationType> &scratch)
 {
-    if constexpr (g_coreType == AIC) {
-        return;
-    }
     WorkRange tokenRange = TilingByJobContext(common.tokenNum, job.jobIndex, job.totalJobs, 1U);
     if (tokenRange.count == 0U) {
         return;
