@@ -1939,6 +1939,7 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext *context, const GMMCom
     constexpr int64_t TUNINGCONFIG_WORKSPACE_UNLIMIT = -1;
     constexpr uint32_t WS_ALIGN_8 = 8;
     constexpr size_t kNZInt4Alignment = 64;
+    constexpr uint32_t quantGroupSizeWithOffsetUnit = 64; // matmul API limit.
 
     uint32_t singleN = 256;
     uint32_t singleM = 128;
@@ -2107,6 +2108,13 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext *context, const GMMCom
         const uint32_t m = context->GetDynamicInputTensor(X_INDEX, 0)->GetStorageShape().GetDim(0);
         std::array<int64_t, FIVE> mKNList = {groupNum, m, k, n, wNZ}; // 5: input shape info size
 
+        if (quantGroupNum == 0U || k % quantGroupNum != 0U) {
+            OP_LOGE(context->GetNodeName(),
+                    "GMM_tiling: k should be divisible by quantGroupNum, but now k=%u and quantGroupNum=%u", k,
+                    quantGroupNum);
+            return ge::GRAPH_FAILED;
+        }
+
         auto offset = context->GetDynamicInputTensor(OFFSET_INDEX, 0);
         uint32_t withOffset = 0;
         if (offset != nullptr) {
@@ -2116,21 +2124,23 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext *context, const GMMCom
                 auto offsetDim0 = offsetShape.GetDim(DIM_NUM_0);
                 auto offsetDim1 = offsetShape.GetDim(DIM_NUM_1);
                 auto offsetDim2 = offsetShape.GetDim(DIM_NUM_2);
-                if (offsetDimNum == OFFSET_DIM_A8W4 && offsetDim0 == groupNum && offsetDim1 == 1 && offsetDim2 == n) {
+                // support offset shape [E, G, N], G = 1 is special.
+                if (offsetDimNum == OFFSET_DIM_A8W4 && offsetDim0 == groupNum && offsetDim1 == quantGroupNum &&
+                    k % offsetDim1 == 0 && (k / offsetDim1) % quantGroupSizeWithOffsetUnit == 0 && offsetDim2 == n) {
                     withOffset = 1U;
                     OP_LOGD(context->GetNodeName(), "GMM A8W4: offset is enable .");
                 } else {
                     OP_LOGW(context->GetNodeName(),
                             "GMM A8W4: offset's shape is invalid, "
-                            "If you want to enable offset, the expected shape is (%u,1,%u), and the current shape is "
+                            "If you want to enable offset, the expected shape is (%u,%u,%u), and the current shape is "
                             "(%ld,%ld,%ld).",
-                            groupNum, n, offsetDim0, offsetDim1, offsetDim2);
+                            groupNum, quantGroupNum, n, offsetDim0, offsetDim1, offsetDim2);
                 }
             } else {
                 auto offsetDim0 = offsetShape.GetDim(DIM_NUM_0);
-                auto offsetDim1 = offsetShape.GetDim(DIM_NUM_1);
-                if ((offsetDimNum == TWO && offsetDim0 == 1 && offsetDim1 == n) ||
-                    (offsetDimNum == 1 && offsetDim0 == n)) {
+                auto offsetDim1 = offsetDimNum == TWO ? offsetShape.GetDim(DIM_NUM_1) : 0;
+                if ((offsetDimNum == TWO && offsetDim0 == quantGroupNum && offsetDim1 == n) ||
+                    (quantGroupNum == 1U && offsetDimNum == 1 && offsetDim0 == n)) {
                     withOffset = 1U;
                     OP_LOGD(context->GetNodeName(), "GMM A8W4: offset is enable (multi-tensor) .");
                 }
@@ -2167,13 +2177,6 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext *context, const GMMCom
         tilingDataA8W4.gmmBaseParams.set_isSingleTensor(isSingleTensor);
         context->SetBlockDim(aicNum);
 
-        if (quantGroupNum == 0U || k % quantGroupNum != 0U) {
-            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
-                context->GetNodeName(), "K, quantGroupNum",
-                Ops::Transformer::Gmm::FormatString("%u, %u", k, quantGroupNum).c_str(),
-                "GMM_tiling: K should be divisible by quantGroupNum");
-            return ge::GRAPH_FAILED;
-        }
         const uint32_t K_UNIT = 64; // 64: int4 in 32B
         if (k % K_UNIT != 0) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "K",
@@ -2347,6 +2350,10 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext *context, const GMMCom
             } else {
                 workspaces[0] += static_cast<size_t>(
                     (cvParallNum * aicNum * singleN * singleM * static_cast<uint32_t>(sizeof(int32_t)) * EIGHT));
+            }
+            if (withOffset == 1U) {
+                workspaces[0] +=
+                    static_cast<size_t>(m) * static_cast<size_t>(quantGroupNum) * static_cast<size_t>(sizeof(float));
             }
 
             // --------------nz前处理优化------------
