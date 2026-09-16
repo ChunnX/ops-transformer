@@ -1,9 +1,5 @@
 # SparseFlashMla
 
-开发者学习入口：[算子设计与开发指南](./docs/design.md)，包含 tiling、Metadata 分核、内存分配、计算流水、架构差异与验证建议。
-
-倍率扩展：[A2/A3 cmp_ratio=2 适配说明](./docs/ratio2_a2a3.md)。
-
 ## 产品支持情况
 
 | 产品                                                          | 是否支持 |
