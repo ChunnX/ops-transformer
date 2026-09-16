@@ -65,7 +65,6 @@ static constexpr AscendC::UrmaWqeEntry REMOTE_ORDERED_FLAG_CQE_WQE_CONFIG = {
 using namespace AscendC;
 
 using HcommChannelHandle = AscendC::ChannelHandle;
-using HcommBatchHandle = AscendC::BatchHandle<HcommChannelHandle>;
 
 struct RemoteAddressEntry {
     uint64_t tokenSlot;
@@ -90,15 +89,18 @@ private:
     __aicore__ inline void InitLocalFlag();
     __aicore__ inline void SendToLocal(GM_ADDR remoteDataAddr, GM_ADDR remoteFlagAddr, uint64_t yOffset,
                                        const DataCopyExtParams &xCopyParams);
-    __aicore__ inline void AppendRemoteDataWrite(HcommBatchHandle &batchHandle, GM_ADDR remoteWindowAddr,
+    template <typename BatchHandleType>
+    __aicore__ inline void AppendRemoteDataWrite(BatchHandleType &batchHandle, GM_ADDR remoteWindowAddr,
                                                  const RemoteAddressEntry &addressEntry, bool enableCqe);
-    __aicore__ inline void AppendRemoteFlagWrite(HcommBatchHandle &batchHandle, GM_ADDR remoteWindowAddr,
+    template <typename BatchHandleType>
+    __aicore__ inline void AppendRemoteFlagWrite(BatchHandleType &batchHandle, GM_ADDR remoteWindowAddr,
                                                  const RemoteAddressEntry &addressEntry, bool firstFlag,
                                                  bool enableCqe);
     __aicore__ inline void BuildAddressTable();
     __aicore__ inline uint32_t GetAddressTableCount(uint32_t targetRank);
     __aicore__ inline void SendAddressTable(uint32_t targetRank, uint32_t entryCount);
-    __aicore__ inline void CommitAndDrainChannel(HcommBatchHandle &batchHandle, HcommChannelHandle channel,
+    template <typename BatchHandleType>
+    __aicore__ inline void CommitAndDrainChannel(BatchHandleType &batchHandle, HcommChannelHandle channel,
                                                  uint32_t &preparedWqeCount, uint32_t &sqWriteCount);
     __aicore__ inline GM_ADDR GetRankAddressTableAddr(uint32_t targetRank)
     {
@@ -352,8 +354,9 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
+template <typename BatchHandleType>
 __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::AppendRemoteDataWrite(
-    HcommBatchHandle &batchHandle, GM_ADDR remoteWindowAddr, const RemoteAddressEntry &addressEntry, bool enableCqe)
+    BatchHandleType &batchHandle, GM_ADDR remoteWindowAddr, const RemoteAddressEntry &addressEntry, bool enableCqe)
 {
     uint64_t remoteDataOffset =
         winTokenInfoTableSize_ + addressEntry.tokenSlot * static_cast<uint64_t>(axisHS_) * sizeof(xType);
@@ -368,8 +371,9 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::A
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
+template <typename BatchHandleType>
 __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::AppendRemoteFlagWrite(
-    HcommBatchHandle &batchHandle, GM_ADDR remoteWindowAddr, const RemoteAddressEntry &addressEntry, bool firstFlag,
+    BatchHandleType &batchHandle, GM_ADDR remoteWindowAddr, const RemoteAddressEntry &addressEntry, bool firstFlag,
     bool enableCqe)
 {
     uint64_t remoteFlagOffset = addressEntry.tokenSlot * sizeof(int32_t);
@@ -549,8 +553,9 @@ __aicore__ inline uint32_t FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
+template <typename BatchHandleType>
 __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::CommitAndDrainChannel(
-    HcommBatchHandle &batchHandle, HcommChannelHandle channel, uint32_t &preparedWqeCount, uint32_t &sqWriteCount)
+    BatchHandleType &batchHandle, HcommChannelHandle channel, uint32_t &preparedWqeCount, uint32_t &sqWriteCount)
 {
     if (preparedWqeCount != 0U) {
         (void)hcomm_.BatchCommit(batchHandle);
@@ -571,8 +576,7 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
 
     GM_ADDR remoteWindowAddr = GetWindowAddr(targetRank);
     HcommChannelHandle channel = GetUrmaCommHandle(targetRank);
-    HcommBatchHandle batchHandle =
-        hcomm_.MakeBatchHandle(channel, hcommBatchTensor_, URMA_BATCH_BUFFER_SIZE, remoteWindowAddr);
+    auto batchHandle = hcomm_.MakeBatchHandle(channel, hcommBatchTensor_, URMA_BATCH_BUFFER_SIZE, remoteWindowAddr);
     GlobalTensor<uint64_t> rankAddressTable;
     rankAddressTable.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(GetRankAddressTableAddr(targetRank)));
     LocalTensor<uint64_t> entriesLocal = metadataBuf_.Get<uint64_t>();
