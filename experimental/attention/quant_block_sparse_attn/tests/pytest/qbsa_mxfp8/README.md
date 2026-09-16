@@ -22,11 +22,11 @@ E4M3FN payload 中，并使用该组的合法有限 descale（全 NaN 组使用 
 
 - `qbsa_mxfp8_golden.py`：执行入口，负责生成输入、CPU golden、NPU 调用和精度对比。
 - `qbsa_mxfp8_test_cases.py`：默认 testcase 文件，保留少量典型 case，便于日常快速回归。
-- `qbsa_mxfp8_test_cases.csv`：批量 testcase 文件，每行对应一个 case。
-- `qbsa_mxfp8_test_cases_full.csv`：单 batch 全量因子组合表。
-- `qbsa_mxfp8_test_cases_batch_large.csv`：多 batch、ragged 和规模压力典型组合表。
-- `golden_cache.py`：输入、CPU 输出、NPU 输出缓存工具。
-- `result_compare_method.py`：精度比较工具。
+- `csv/qbsa_mxfp8_stc.csv`：`--csv` 的默认批量 testcase 文件。
+- `csv/qbsa_mxfp8_stc_perf.csv`：性能 testcase 文件。
+- `csv/qbsa_mxfp8_redline.csv`：红线 testcase 文件。
+- `utils/golden_cache.py`：输入、CPU 输出、NPU 输出缓存工具。
+- `utils/result_compare_method.py`：精度比较工具。
 
 ## 前置条件
 
@@ -42,7 +42,7 @@ bash build_and_install.sh
 从仓库根目录执行：
 
 ```bash
-python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
+python experimental/attention/quant_block_sparse_attn/tests/pytest/qbsa_mxfp8/qbsa_mxfp8_golden.py \
   --list_cases
 ```
 
@@ -53,7 +53,7 @@ python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant
 不指定数据源和 case 名称时，脚本默认执行 `qbsa_mxfp8_test_cases.py` 中所有 `enable=True` 的 case。
 
 ```bash
-python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py
+python experimental/attention/quant_block_sparse_attn/tests/pytest/qbsa_mxfp8/qbsa_mxfp8_golden.py
 ```
 
 默认 `--mode all`，等价于依次执行：
@@ -85,7 +85,7 @@ python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant
 通过 `--case_name` 指定 case 名称：
 
 ```bash
-python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
+python experimental/attention/quant_block_sparse_attn/tests/pytest/qbsa_mxfp8/qbsa_mxfp8_golden.py \
   --case_name STC_B1_BS128_MIN_PAGE_EQ_MASK3
 ```
 
@@ -94,39 +94,39 @@ python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant
 也支持用逗号一次指定多个 case：
 
 ```bash
-python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
+python experimental/attention/quant_block_sparse_attn/tests/pytest/qbsa_mxfp8/qbsa_mxfp8_golden.py \
   --case_name STC_B1_BS128_MIN_PAGE_EQ_MASK3,STC_B1_NOMASK_BS128_EQ_TAIL
 ```
 
 ## 使用 Case CSV
 
 使用 CSV 数据源时必须增加 `--csv`。此时未指定 `--case_files` 会读取同目录下的
-`qbsa_mxfp8_test_cases.csv`。CSV 使用 Python 标准库读取，不依赖 `pandas` 或 `openpyxl`。
+`csv/qbsa_mxfp8_stc.csv`。CSV 使用 Python 标准库读取，不依赖 `pandas` 或 `openpyxl`。
 
 ```bash
-python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
+python experimental/attention/quant_block_sparse_attn/tests/pytest/qbsa_mxfp8/qbsa_mxfp8_golden.py \
   --csv
 ```
 
 此时不指定 `--case_name`，会运行 CSV 中所有 `enable=true` 的 case；指定单个 case 的方式为：
 
 ```bash
-python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
+python experimental/attention/quant_block_sparse_attn/tests/pytest/qbsa_mxfp8/qbsa_mxfp8_golden.py \
   --csv --case_name F_BS64_R5_N3_GT_AA
 ```
 
 指定其他 CSV 或一次加载多个 CSV：
 
 ```bash
-python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
+python experimental/attention/quant_block_sparse_attn/tests/pytest/qbsa_mxfp8/qbsa_mxfp8_golden.py \
   --csv --case_files /path/to/cases_a.csv,/path/to/cases_b.csv
 ```
 
-执行 300 条多 batch 与规模压力用例：
+指定性能 CSV：
 
 ```bash
-python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
-  --csv --case_files qbsa_mxfp8_test_cases_batch_large.csv
+python experimental/attention/quant_block_sparse_attn/tests/pytest/qbsa_mxfp8/qbsa_mxfp8_golden.py \
+  --csv --case_files csv/qbsa_mxfp8_stc_perf.csv
 ```
 
 ## 复用 CPU Golden
@@ -136,7 +136,7 @@ python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant
 调用和精度对比不受影响。
 
 ```bash
-python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
+python experimental/attention/quant_block_sparse_attn/tests/pytest/qbsa_mxfp8/qbsa_mxfp8_golden.py \
   --csv --rdv
 ```
 
@@ -147,13 +147,13 @@ Debug 模式包含 `gen` 阶段时，新生成的 PT 仍写入 `debug/<case_name
 不带 `--csv` 时，`--case_files` 按 Python testcase 文件解析：
 
 ```bash
-python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
+python experimental/attention/quant_block_sparse_attn/tests/pytest/qbsa_mxfp8/qbsa_mxfp8_golden.py \
   --case_files /path/to/custom_test_cases.py
 ```
 
 ## 批量用例设计
 
-`qbsa_mxfp8_test_cases.csv` 包含 212 条用例，其中 188 条默认启用，覆盖 `block_size=64/128`、重点和非重点
+`csv/qbsa_mxfp8_stc.csv` 覆盖 `block_size=64/128`、重点和非重点
 head 组合、11 组可实现的 S1/S2 大小关系与对齐状态、`mask_mode=0/3`、不同稀疏模式、block-table
 顺序以及空 Tensor 场景。
 
@@ -183,19 +183,8 @@ pytest 未使用的字段，也可以继续加载；实际运行字段仍需提�
 S1/S2 相等时，“S1 不对齐 128、S2 对齐 512”在数学上不可实现：一个数只要对齐 512，就必然对齐
 128。因此三个关系与四种对齐状态共有 11 个有效组合，而不是 12 个。
 
-`qbsa_mxfp8_test_cases_full.csv` 包含 2948 条单 batch 用例，补齐 `mask_mode=0/3` 与
-`return_softmax_lse=true/false` 的排列组合；物理页数统一由实际 KV 序列自动推导。
-
-`qbsa_mxfp8_test_cases_batch_large.csv` 包含 300 条全部启用的多 batch 典型与大规模用例：
-
-- 48 条等长主路径，交叉 `B=2/4/8`、两种 block size、mask、LSE 和重点 head；
-- 24 条 ragged batch，覆盖递减、交替、一长多短和 Q/KV 长度反向变化；
-- 16 条规模压力用例，最大 `S1=16384`、`S2=32768`，并以低头数限制内存；
-- 8 条 sparse/block-table 顺序、反序、随机、尾块和部分稀疏用例；
-- 4 条 `B=16`、缩放参数、部分零长度 batch 和空 `actualSeqLengths` 边界用例；
-- 80 条扩展典型用例，补齐多 batch 下的 `N2=2/5/6/7`；
-- 80 条 `B=3/12` 中大型等长和一长多短用例；
-- 40 条扩展 ragged/部分空 batch/部分 sparse 用例，将 batch 覆盖扩展到 `B=32`。
+`csv/qbsa_mxfp8_stc_perf.csv` 保存性能场景，`csv/qbsa_mxfp8_redline.csv` 保存红线场景；通过
+`--case_files` 显式选择，避免默认精度回归混入性能或红线用例。
 
 默认 Python testcase 文件当前保留 6 条 BASE/MIX case，并包含 37 条默认启用的 STC，覆盖单 batch、
 多 batch、ragged、稀疏拼接、scale、mask、LSE、空输入和不同 block-table 顺序。
@@ -206,14 +195,14 @@ S1/S2 相等时，“S1 不对齐 128、S2 对齐 512”在数学上不可实现
 `--mode all`）执行完整的 `gen/cpu/npu/compare` 流程：
 
 ```bash
-python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
+python experimental/attention/quant_block_sparse_attn/tests/pytest/qbsa_mxfp8/qbsa_mxfp8_golden.py \
   --debug --case_name BASE_01
 ```
 
 CSV case 同样支持 debug：
 
 ```bash
-python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
+python experimental/attention/quant_block_sparse_attn/tests/pytest/qbsa_mxfp8/qbsa_mxfp8_golden.py \
   --csv --debug --case_name F_BS64_R5_N3_GT_AA
 ```
 
@@ -221,7 +210,7 @@ python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant
 CPU golden：
 
 ```bash
-python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
+python experimental/attention/quant_block_sparse_attn/tests/pytest/qbsa_mxfp8/qbsa_mxfp8_golden.py \
   --debug --case_name F_BS64_R5_N3_GT_AA --csv --mode="npu,compare"
 ```
 
@@ -262,11 +251,11 @@ Debug 模式的数据读写位置取决于 `--mode` 是否包含 `gen`：
 
 ```bash
 # 只生成输入
-python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
+python experimental/attention/quant_block_sparse_attn/tests/pytest/qbsa_mxfp8/qbsa_mxfp8_golden.py \
   --mode gen
 
 # 使用已有缓存，只跑 NPU 并比较
-python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
+python experimental/attention/quant_block_sparse_attn/tests/pytest/qbsa_mxfp8/qbsa_mxfp8_golden.py \
   --mode npu,compare
 ```
 
@@ -275,21 +264,21 @@ python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant
 默认缓存目录为本目录下的 `golden_cache/`。可以通过 `--cache-dir` 指定：
 
 ```bash
-python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
+python experimental/attention/quant_block_sparse_attn/tests/pytest/qbsa_mxfp8/qbsa_mxfp8_golden.py \
   --cache-dir /tmp/qbsa_mxfp8_cache
 ```
 
 缓存文件名前缀默认使用 case 名称。需要自定义时使用：
 
 ```bash
-python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
+python experimental/attention/quant_block_sparse_attn/tests/pytest/qbsa_mxfp8/qbsa_mxfp8_golden.py \
   --cache_case_name my_case
 ```
 
 ## 新增 Case
 
 默认方式是在 `qbsa_mxfp8_test_cases.py` 的 `TestCases` 中新增 dict。也可以在
-`qbsa_mxfp8_test_cases.csv` 中新增一行，并通过 `--csv` 执行。两种方式都要求
+`csv/qbsa_mxfp8_stc.csv` 中新增一行，并通过 `--csv` 执行。两种方式都要求
 `name` 唯一；`enable=True` 表示默认运行，关闭的 case 仍可通过 `--case_name` 单独执行。
 
 字段格式：

@@ -15,25 +15,27 @@ from pathlib import Path
 
 import pytest
 
-import quant_block_sparse_attn_golden
-import check_valid_param
-import result_compare_method
-import utils
-from batch import quant_block_sparse_attn_process
-from quant_block_sparse_attn_paramset import ENABLED_PARAMS
+from qbsa_fp8 import quant_block_sparse_attn_golden
+from qbsa_fp8.quant_block_sparse_attn_paramset import ENABLED_PARAMS
+from qbsa_fp8.utils import check_valid_param, quant_block_sparse_attn_process
+from qbsa_fp8.utils import result_compare_method, result_utils
 
 
-PT_SAVE_PATH = "bsa_testcase"
+BASE_DIR = Path(__file__).resolve().parent
+PT_SAVE_PATH = BASE_DIR / "bsa_testcase"
 DEVICE_ID = 0
 SAVE_PT = False
-RESULT_PATH = Path("result.xlsx")
+RESULT_PATH = BASE_DIR / "result.xlsx"
 
 
 def _build_param_combinations(enabled_params):
     combinations = []
     for params in enabled_params:
         param_names = list(params.keys())
-        param_values = [value if isinstance(value, (list, tuple)) else [value] for value in params.values()]
+        param_values = [
+            value if isinstance(value, (list, tuple)) else [value]
+            for value in params.values()
+        ]
         for combo in itertools.product(*param_values):
             combinations.append(dict(zip(param_names, combo)))
     return combinations
@@ -62,29 +64,43 @@ def bsa(param_combinations, case_id):
         pytest.skip(f"input param check failed: {error}")
 
     test_data = quant_block_sparse_attn_golden.generate_and_save_testdata(
-        params, save_pt=SAVE_PT, save_path=PT_SAVE_PATH)
+        params, save_pt=SAVE_PT, save_path=PT_SAVE_PATH
+    )
 
     try:
-        npu_result, cpu_result = quant_block_sparse_attn_process.test_quant_block_sparse_attn_process_ci(
-            test_data, device_id=DEVICE_ID)
+        npu_result, cpu_result = (
+            quant_block_sparse_attn_process.test_quant_block_sparse_attn_process_ci(
+                test_data, device_id=DEVICE_ID
+            )
+        )
         print("PRECISION COMPARE START")
-        result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result)
-        print(f"PRECISION COMPARE RESULT: result={result}, fulfill_percent={fulfill_percent:.6f}%")
+        result, fulfill_percent = result_compare_method.check_result(
+            cpu_result, npu_result
+        )
+        print(
+            f"PRECISION COMPARE RESULT: result={result}, fulfill_percent={fulfill_percent:.6f}%"
+        )
     except pytest.skip.Exception:
         raise
     except Exception as error:
         print("NPU ERROR:", error)
-        print("PRECISION COMPARE SKIPPED: NPU execution failed before result_compare_method.check_result.")
+        print(
+            "PRECISION COMPARE SKIPPED: NPU execution failed before result_compare_method.check_result."
+        )
         result = "NPU ERROR"
         fulfill_percent = 0
 
-    utils.save_result(test_data["params"], result, fulfill_percent, RESULT_PATH)
+    result_utils.save_result(test_data["params"], result, fulfill_percent, RESULT_PATH)
 
     if result != "Pass":
-        pytest.fail(f"case failed: {test_data['Testcase_Name']}, result={result}, fulfill_percent={fulfill_percent}")
+        pytest.fail(
+            f"case failed: {test_data['Testcase_Name']}, result={result}, fulfill_percent={fulfill_percent}"
+        )
 
 
 @pytest.mark.ci
-@pytest.mark.parametrize("case_id,param_combinations", list(enumerate(PARAM_COMBINATIONS)))
+@pytest.mark.parametrize(
+    "case_id,param_combinations", list(enumerate(PARAM_COMBINATIONS))
+)
 def test_quant_block_sparse_attn(case_id, param_combinations):
     bsa(param_combinations, case_id)

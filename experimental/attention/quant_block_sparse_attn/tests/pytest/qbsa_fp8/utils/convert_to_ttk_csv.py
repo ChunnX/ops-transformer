@@ -605,15 +605,15 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=Path(__file__).resolve().parent,
-        help="directory for generated TTK CSVs (default: this script's directory)",
+        default=Path(__file__).resolve().parents[1] / "csv",
+        help="directory for generated TTK CSVs (default: the FP8 csv directory)",
     )
     return parser.parse_args(argv)
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = _parse_args(argv)
-    source_dir = Path(__file__).resolve().parent
+    source_dir = Path(__file__).resolve().parents[1] / "csv"
     converted = []
     for source_name, output_name in SOURCE_OUTPUT_PAIRS:
         source = source_dir / source_name

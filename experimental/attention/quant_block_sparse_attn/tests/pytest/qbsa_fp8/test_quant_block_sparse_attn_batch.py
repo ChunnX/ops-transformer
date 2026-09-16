@@ -16,14 +16,17 @@ from pathlib import Path
 import pytest
 import torch
 
-import result_compare_method
-import utils
-from batch import quant_block_sparse_attn_process
-from batch.quant_block_sparse_attn_paramset_batch import load_cases_from_csv
+from qbsa_fp8.utils import (
+    quant_block_sparse_attn_process,
+    result_compare_method,
+    result_utils,
+)
+from qbsa_fp8.utils.quant_block_sparse_attn_paramset_batch import load_cases_from_csv
 
 
-TESTCASE_PATH = "bsa_testcase"
-RESULT_PATH = Path("result.xlsx")
+BASE_DIR = Path(__file__).resolve().parent
+TESTCASE_PATH = BASE_DIR / "bsa_testcase"
+RESULT_PATH = BASE_DIR / "result.xlsx"
 DEVICE_ID = 0
 
 
@@ -34,8 +37,8 @@ def _testcase_files():
         return []
     files = []
     for case_name in cases:
-        pt_filepath = os.path.join(TESTCASE_PATH, f"bsa_case_{case_name}.pt")
-        if os.path.isfile(pt_filepath):
+        pt_filepath = TESTCASE_PATH / f"bsa_case_{case_name}.pt"
+        if pt_filepath.is_file():
             files.append(pt_filepath)
         else:
             print(f"warning: pt file not found for case: {case_name}, skipped")
@@ -47,9 +50,14 @@ def _testcase_files():
 def bsa(testcase_file):
     test_data = torch.load(testcase_file, map_location="cpu")
     try:
-        npu_result, cpu_result = quant_block_sparse_attn_process.test_quant_block_sparse_attn_process_ci(
-            test_data, device_id=DEVICE_ID)
-        result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result)
+        npu_result, cpu_result = (
+            quant_block_sparse_attn_process.test_quant_block_sparse_attn_process_ci(
+                test_data, device_id=DEVICE_ID
+            )
+        )
+        result, fulfill_percent = result_compare_method.check_result(
+            cpu_result, npu_result
+        )
     except pytest.skip.Exception:
         raise
     except Exception as error:
@@ -57,7 +65,7 @@ def bsa(testcase_file):
         result = "NPU ERROR"
         fulfill_percent = 0
 
-    utils.save_result(test_data["params"], result, fulfill_percent, RESULT_PATH)
+    result_utils.save_result(test_data["params"], result, fulfill_percent, RESULT_PATH)
 
     if result != "Pass":
         pytest.fail(f"case failed: {test_data['Testcase_Name']}")

@@ -35,7 +35,7 @@ def _ensure_cann_ops():
         pytest_dir = str(Path(__file__).resolve().parents[1] / "pytest")
         if pytest_dir not in sys.path:
             sys.path.insert(0, pytest_dir)
-        import custom_ops  # noqa: F401 - loads .so + registers torch.ops.custom namespace
+        from common_utils import custom_ops  # noqa: F401 - loads .so + registers torch.ops.custom namespace
 
         _CUSTOM_OPS_LOADED = True
 

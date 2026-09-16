@@ -37,11 +37,12 @@ import torch_npu
 import torchair
 from torchair.configs.compiler_config import CompilerConfig
 
-try:
-    from . import result_compare_method
-except ImportError:
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    import result_compare_method
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+PYTEST_ROOT = os.path.dirname(CURRENT_DIR)
+if PYTEST_ROOT not in sys.path:
+    sys.path.insert(0, PYTEST_ROOT)
+
+from qbsa_mxfp8.utils import result_compare_method
 
 if not logging.getLogger().handlers:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -66,12 +67,11 @@ if __name__ == "_qbsa_mxfp8_pytest_golden" and logging.getLogger().handlers:
     logger.addHandler(primary_handler)
     logger.propagate = False
 
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 QBSA_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "../../.."))
 TORCH_OPS_EXTENSION_DIR = os.path.join(QBSA_ROOT, "torch_ops_extension")
 _CUSTOM_OPS_IMPORTED = False
 _DEFAULT_CASE_FILE = "qbsa_mxfp8_test_cases"
-_DEFAULT_CASE_CSV = "qbsa_mxfp8_test_cases.csv"
+_DEFAULT_CASE_CSV = os.path.join("csv", "qbsa_mxfp8_stc.csv")
 _CASE_LOG_WIDTH = 100
 
 _DTYPE_MAP = {
@@ -156,9 +156,8 @@ def _ensure_custom_ops_registered():
         return
 
     try:
-        import custom_ops  # noqa: F401
-    except ImportError as install_import_error:
-        sys.modules.pop("custom_ops", None)
+        from common_utils import custom_ops  # noqa: F401
+    except ImportError as common_import_error:
         if TORCH_OPS_EXTENSION_DIR not in sys.path:
             sys.path.insert(0, TORCH_OPS_EXTENSION_DIR)
         try:
@@ -167,7 +166,7 @@ def _ensure_custom_ops_registered():
             raise RuntimeError(
                 "import custom_ops failed. Please build/install QBSA PTA extension first, for example: "
                 "`cd experimental/attention/quant_block_sparse_attn/torch_ops_extension && bash build_and_install.sh`. "
-                f"Installed-package import error: {install_import_error}. "
+                f"Shared pytest loader import error: {common_import_error}. "
                 f"Source-tree import error: {source_import_error}."
             ) from source_import_error
 
@@ -3040,10 +3039,8 @@ def npu_mxfp8_fa(
 
 
 def _load_golden_cache():
-    try:
-        from . import golden_cache
-    except ImportError:
-        import golden_cache
+    from qbsa_mxfp8.utils import golden_cache
+
     return golden_cache
 
 
@@ -3478,7 +3475,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--csv",
         action="store_true",
-        help="按 CSV 格式加载 case；不指定 --case_files 时读取 qbsa_mxfp8_test_cases.csv",
+        help="按 CSV 格式加载 case；不指定 --case_files 时读取 csv/qbsa_mxfp8_stc.csv",
     )
     parser.add_argument(
         "--mode",
