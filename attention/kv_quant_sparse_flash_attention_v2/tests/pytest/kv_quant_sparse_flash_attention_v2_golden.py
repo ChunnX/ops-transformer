@@ -952,7 +952,10 @@ def _t_increattention_bnsd(fa_param):
     sparse_mode = fa_param["sparse_mode"]
     g = numheads // numKeyValueHeads
     sinks_tensor = fa_param.get("sinks_tensor")
-    if sinks_tensor is not None:
+    if sinks_tensor is None:
+        # 对齐torch层语义: sinks未提供时csrc会补零下发, NPU按sinks=0参与softmax(max下限0, sum含sinks项)
+        sinks_tensor = torch.zeros(numheads, dtype=torch.float32)
+    else:
         sinks_tensor = sinks_tensor.cpu().float()
 
     q_bnsd_tensor = fa_param["q_bnsd_tensor"]
@@ -1023,7 +1026,10 @@ def _t_increattention_bnsd(fa_param):
                     cur_sinks = sinks_tensor[n2Idx * g : (n2Idx + 1) * g]
                 if emptyFlag:
                     continue
-                bmm1Res = torch.matmul(q_curr.float(), k_sparse.float().T)
+                # 对齐NPU数值链: 边界值输入下CPU fp32累加可能溢出/精度不足, 先升fp64精确累加再回fp32
+                bmm1Res = torch.matmul(
+                    q_curr.to(torch.float64), k_sparse.to(torch.float64).T
+                ).float()
                 scaleRes = bmm1Res * scaleValue
                 softmax_res, x_max, x_sum = softmax(scaleRes, cur_sinks)
                 exp_unnorm = torch.exp(scaleRes - x_max)
@@ -1033,7 +1039,12 @@ def _t_increattention_bnsd(fa_param):
                     exp_quantized = exp_unnorm.to(torch.bfloat16).float()
                 else:
                     exp_quantized = exp_unnorm
-                bmm2Res = torch.matmul(exp_quantized, v_sparse.float()) / x_sum
+                bmm2Res = (
+                    torch.matmul(
+                        exp_quantized.to(torch.float64), v_sparse.to(torch.float64)
+                    ).float()
+                    / x_sum
+                )
                 y[batch, n2Idx * g : (n2Idx + 1) * g, s1Idx, :] = bmm2Res
 
                 if layout_query == "BSND":
