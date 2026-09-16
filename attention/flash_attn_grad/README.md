@@ -136,7 +136,6 @@ from cann_ops_transformer.ops import flash_attn_grad
 | `op_host/config/ascend950/flash_attn_grad_binary.json` | 二进制算子配置 |
 | `torch_extension/flash_attn_grad.py` | PyTorch 算子 schema 与 python 绑定 |
 | `torch_extension/csrc/flash_attn_grad.cpp` | PyTorch C++ 扩展（aclnn 调用层） |
-| [`docs/D256设计.md`](docs/D256设计.md) | D∈(192, 256]：GS1S2 分核 + 1-ahead 主循环；与 AscendC 的差异 |
 
 ## aclnn 接口说明
 
