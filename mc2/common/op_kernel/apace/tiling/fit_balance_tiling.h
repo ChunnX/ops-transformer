@@ -1186,19 +1186,20 @@ inline void BalanceLongTileLen(FitBasedBalanceCtx &ctx, uint64_t rankTileNum)
 // Estimate 骨干（4/5: agmm/rs_v2/all_reduce/matmul_allto_all 一致）:
 // FindCubeUtil + GetMatmulGradient + 总量估计 + 通算比; shortTileAtBack 判定不在此
 // (各算子语义相反: rs_v2 系 mm>=comm→后置, allto_all_matmul 是 comm>mm→后置, agmm 恒后置)。
-// mmRankTileMul: agmm/rs_v2 传 rankDim, all_reduce/matmul_allto_all 传 1;
+// mmRankMul: matmul 总量的 rank 倍数——由算子通信语义决定(AG/RS 算子=rankDim,
+//   即聚合 rankDim 份后 mm 按 rankDim 倍计; AR 类=1, reduce 已含在语义中), 是语义参数;
 // mmTimeScale: matmul_allto_all 的 KC_QUANT 模式传 1.43(其余 1.0);
 // allto_all_matmul 自有拟合模型不适用本片段。
 struct EstimateTimesResult {
     double totalMatmulTime = 0.0;
     double totalTpTime = 0.0;
 };
-inline EstimateTimesResult EstimateTotalTimes(FitBasedBalanceCtx &ctx, uint64_t mmRankTileMul, double mmTimeScale = 1.0)
+inline EstimateTimesResult EstimateTotalTimes(FitBasedBalanceCtx &ctx, uint64_t mmRankMul, double mmTimeScale = 1.0)
 {
     ctx.matmulPerf.FindCubeUtil(ctx.rankTileNum);
     ctx.matmulPerf.GetMatmulGradient();
     EstimateTimesResult r;
-    r.totalMatmulTime = ctx.matmulPerf.MatmulTime(ctx.mmInfo.mValue, mmRankTileMul) * mmTimeScale;
+    r.totalMatmulTime = ctx.matmulPerf.MatmulTime(ctx.mmInfo.mValue, mmRankMul) * mmTimeScale;
     r.totalTpTime = ctx.commPerf.CommTime(ctx.mmInfo.mValue);
     ctx.ratioCalcComm = (std::max(r.totalTpTime, r.totalMatmulTime) / std::min(r.totalTpTime, r.totalMatmulTime));
     return r;

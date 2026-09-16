@@ -93,7 +93,8 @@ struct AgMmV2Hooks {
     void EstimateMMCommTime(mc2tiling::fit_balance::FitBasedBalanceCtx &ctx)
     {
         // Estimate 骨干(4/5 算子一致的公共片段): 模型刷新 + 总量 + 通算比
-        const auto est = mc2tiling::fit_balance::EstimateTotalTimes(ctx, ctx.rankDim);
+        // AG 语义: 通信聚合 rankDim 份后 mm 按 rankDim 倍计(与老代码 MatmulTime(m, rankDim_) 一致)
+        const auto est = mc2tiling::fit_balance::EstimateTotalTimes(ctx, /*mmRankMul=*/ctx.rankDim);
         const double totalMatmulTime = est.totalMatmulTime;
         const double totalTpTime = est.totalTpTime;
         double frontUtil = ctx.matmulPerf.FindCubeUtilByL2Usage(ctx.mmInfo.mValue, 1);
