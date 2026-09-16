@@ -12,7 +12,10 @@ OP=${OP:-bsa}
 if [[ "$OP" == "qfa" ]]; then
     CUSTOM=${CUSTOM:-/home/liwenguihw/work/custom_install/qfa_hif8_perf}
 else
-    CUSTOM=${CUSTOM:-/home/liwenguihw/work/custom_install/in_0824}
+    # in_0916 = 方案 A (L0 共享槽位 256x128) 的包, 2026-09-16 11:30 装。
+    # 旧的 in_0824 是改动前的内核, 直接用默认值跑会得到"看起来正常"的旧数据,
+    # 所以这里指向新包; 要对比旧内核时显式传 CUSTOM=.../in_0824。
+    CUSTOM=${CUSTOM:-/home/liwenguihw/work/custom_install/in_0916}
 fi
 PYTHON_BIN=${PYTHON_BIN:-/home/liwenguihw/.conda/envs/lwg/bin}
 DEVICE=${DEVICE:-0}

@@ -348,6 +348,10 @@ public:
             auto gmVLayoutTla = tla::MakeLayout<ElementV, LayoutV>(vShapeRow, vShapeCol);
             auto gmVTensorTla = tla::MakeTensor(gV[gmOffsetV], gmVLayoutTla, Arch::PositionGM{});
 
+            // MM1 and MM2 share two physical L0A/L0B/L0C slots. Advance this
+            // counter in real call order and select the slot with stage % 2.
+            uint64_t l0Stage = 0;
+
 #endif
 #ifdef __DAV_VEC__
             uint32_t oShapeCol = 0;
@@ -394,13 +398,9 @@ public:
                     uint32_t Mm1ToSmFlagId = ubSBufId;
                     Arch::CrossCoreFlag mm1ToSmFlag(Mm1ToSmFlagId);
 #ifdef __DAV_CUBE__
-                    uint64_t prefixSumL0AStages = CalcCrossMm1Mm2PrefixSumL0ABStages(
-                        gatheredKvSTileIdx, mm1L0ATotalStages_, mm2L0ATotalStages_, kvSLoopNum, true);
-                    uint64_t prefixSumL0BStages = CalcCrossMm1Mm2PrefixSumL0ABStages(
-                        gatheredKvSTileIdx, mm1L0BTotalStages_, mm2L0BTotalStages_, kvSLoopNum, true);
                     blockMmadQK(gmKTensorTla, ubSTensorTla, gSparseIdx[gmOffsetSparseIdx], actualBlockShapeQK,
                                 gatheredKvSTileIdx, kvSeqlen, kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
-                                prefixSumL0AStages, prefixSumL0BStages, mm1ToSmFlag, mm1DeqScalar_);
+                                l0Stage, mm1ToSmFlag, mm1DeqScalar_);
                     if (gatheredKvSTileIdx == kvSLoopNum - 1) {
                         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID0);
                     }
@@ -444,13 +444,9 @@ public:
 
                     Arch::CrossCoreFlag smToMm2Flag(smToMm2FlagId);
                     Arch::CrossCoreFlag mm2ToReFlag(Mm2ToReFlagId);
-                    uint64_t prefixSumL0AStages = CalcCrossMm1Mm2PrefixSumL0ABStages(
-                        gatheredKvSTileIdxDe, mm1L0ATotalStages_, mm2L0ATotalStages_, kvSLoopNum, false);
-                    uint64_t prefixSumL0BStages = CalcCrossMm1Mm2PrefixSumL0ABStages(
-                        gatheredKvSTileIdxDe, mm1L0BTotalStages_, mm2L0BTotalStages_, kvSLoopNum, false);
                     blockMmadPV(gmVTensorTla, ubOTmpTensorTla, gSparseIdx[gmOffsetSparseIdx], cubeBlockShapePV,
                                 gatheredKvSTileIdxDe, kvSeqlen, kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
-                                prefixSumL0AStages, prefixSumL0BStages, smToMm2Flag, mm2ToReFlag, vDeqScalar_);
+                                l0Stage, smToMm2Flag, mm2ToReFlag, vDeqScalar_);
 #endif
 #ifdef __DAV_VEC__
                     // rescale O
@@ -516,19 +512,6 @@ public:
         mm2L1TileHelper_ = mm2L1TileHelper;
         mm2L1AddrStart_ = mm1L1TileM_ * mm1L1TileKLeft_ * qL1BufNum_ * sizeof(ElementQ) +
                           mm1L1TileKRight_ * mm1L1TileN_ * kL1BufNum_ * sizeof(ElementK);
-        if constexpr (transposedMm1) {
-            mm1L0ATotalStages_ =
-                (kvBaseTile_ / BlockMmadQK::L0_TILE_M) * CeilDiv(embed_, BlockMmadQK::L0_TILE_K);
-            mm1L0BTotalStages_ =
-                (qBaseTile_ / BlockMmadQK::L0_TILE_N) * CeilDiv(embed_, BlockMmadQK::L0_TILE_K);
-        } else {
-            mm1L0ATotalStages_ =
-                (qBaseTile_ / BlockMmadQK::L0_TILE_M) * CeilDiv(embed_, BlockMmadQK::L0_TILE_K);
-            mm1L0BTotalStages_ =
-                (kvBaseTile_ / BlockMmadQK::L0_TILE_N) * CeilDiv(embed_, BlockMmadQK::L0_TILE_K);
-        }
-        mm2L0ATotalStages_ = (qBaseTile_ / BlockMmadPV::L0_TILE_M) * (kvBaseTile_ / BlockMmadPV::L0_TILE_K);
-        mm2L0BTotalStages_ = (kvBaseTile_ / BlockMmadPV::L0_TILE_K) * CeilDiv(embed_, BlockMmadPV::L0_TILE_N);
     }
 
     __aicore__ inline void CalcUBufTileInfo()
@@ -561,27 +544,6 @@ public:
                                                        lmStartOffset, gmStartOffset, dmStartOffset, llStartOffset,
                                                        glStartOffset, lseStartOffset, maskStartOffset);
         uBufTileHelper_ = uBufTileHelper;
-    }
-
-    __aicore__ inline uint64_t CalcCrossMm1Mm2PrefixSumL0ABStages(uint32_t gatheredKvSTileIdx,
-                                                                  uint32_t singleMm1L0Stages,
-                                                                  uint32_t singleMm2L0Stages, uint32_t kvSLoopNum,
-                                                                  bool isCurPhaseMm1)
-    {
-        // Count the MM1/MM2 phases issued before this phase on the shared L0 stream.
-        uint64_t precedingMm1Num;
-        uint64_t precedingMm2Num;
-        if (isCurPhaseMm1) {
-            precedingMm1Num = gatheredKvSTileIdx;
-            precedingMm2Num =
-                (gatheredKvSTileIdx > PRE_LAUNCH) ? gatheredKvSTileIdx - PRE_LAUNCH : 0;
-        } else {
-            // Capping the MM1 count also handles kvSLoopNum < PRE_LAUNCH without unsigned subtraction.
-            uint64_t launchedMm1Num = static_cast<uint64_t>(gatheredKvSTileIdx) + 1 + PRE_LAUNCH;
-            precedingMm1Num = (launchedMm1Num < kvSLoopNum) ? launchedMm1Num : kvSLoopNum;
-            precedingMm2Num = gatheredKvSTileIdx;
-        }
-        return precedingMm1Num * singleMm1L0Stages + precedingMm2Num * singleMm2L0Stages;
     }
 
     __aicore__ inline void InitCrossCoreDstBuf(AscendC::LocalTensor<ElementP> (&l1PTensor)[MAX_CROSS_CORE_BUF_STAGES],
@@ -626,8 +588,6 @@ public:
         // L0C
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID0);
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID1);
-        AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID2);
-        AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID3);
         // cross core sync
         if constexpr (SM_MM2_MODE == Arch::CROSS_CORE_SYNC_MODE_4) {
             AscendC::CrossCoreSetFlag<SM_MM2_MODE, PIPE_MTE1>(Arch::FLAG_ID2);
@@ -679,8 +639,6 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID3);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID1);
-        AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID2);
-        AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID3);
         if constexpr (MM1_SM_MODE == Arch::CROSS_CORE_SYNC_MODE_4) {
             AscendC::CrossCoreWaitFlag<MM1_SM_MODE, PIPE_FIX>(Arch::FLAG_ID0);
             AscendC::CrossCoreWaitFlag<MM1_SM_MODE, PIPE_FIX>(Arch::FLAG_ID1);
@@ -762,10 +720,6 @@ private:
     uint32_t kL1BufNum_;
     uint32_t vL1BufNum_;
     uint32_t pL1BufNum_;
-    uint32_t mm1L0ATotalStages_;
-    uint32_t mm1L0BTotalStages_;
-    uint32_t mm2L0ATotalStages_;
-    uint32_t mm2L0BTotalStages_;
     uint32_t mm2L1AddrStart_ = 0;
     Gemm::Block::Mm1L1TileHelper mm1L1TileHelper_;
     Gemm::Block::Mm2L1TileHelper mm2L1TileHelper_;
