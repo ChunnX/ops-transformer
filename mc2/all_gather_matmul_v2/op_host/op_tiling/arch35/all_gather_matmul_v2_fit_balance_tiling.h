@@ -152,57 +152,6 @@ struct AgMmV2Hooks {
 // 三、边界转换 + 组装与新旧切换
 // ============================================================================
 
-inline mc2tiling::fit_balance::TilingArgs ToEngineTilingArgs(const mc2tiling::TilingArgs &args)
-{
-    mc2tiling::fit_balance::TilingArgs out{};
-    out.cmdType = static_cast<mc2tiling::fit_balance::AicpuComType>(args.cmdType);
-    out.rankDim = args.rankDim;
-    out.usedCoreNum = args.usedCoreNum;
-    out.orgMValue = args.orgMValue;
-    out.orgNValue = args.orgNValue;
-    out.orgKValue = args.orgKValue;
-    out.batchValue = args.batchValue;
-    out.mValue = args.mValue;
-    out.kValue = args.kValue;
-    out.nValue = args.nValue;
-    out.baseMLimit = args.baseMLimit;
-    out.inputDtypeSize = args.inputDtypeSize;
-    out.outputDtypeSize = args.outputDtypeSize;
-    out.aicCoreNum = args.aicCoreNum;
-    out.commTurn = args.commTurn;
-    out.rankTileNum = args.rankTileNum;
-    out.commAlg = args.commAlg;
-    out.isATrans = args.isATrans;
-    out.isBTrans = args.isBTrans;
-    out.enablePad = args.enablePad;
-    out.enableSplitK = args.enableSplitK;
-    out.isBias = args.isBias;
-    out.isStorageGather = args.isStorageGather;
-    out.isLocal = args.isLocal;
-    out.geAType = args.geAType;
-    out.geBType = args.geBType;
-    out.geCType = args.geCType;
-    out.geBiasType = args.geBiasType;
-    out.antiquantscaleDType = args.antiquantscaleDType;
-    out.aType = args.aType;
-    out.bType = args.bType;
-    out.cType = args.cType;
-    out.biasType = args.biasType;
-    return out;
-}
-
-inline CutResult ToLegacyCut(const mc2tiling::fit_balance::CutResult &cut)
-{
-    CutResult out{};
-    out.shortTileAtBack = cut.shortTileAtBack;
-    out.totalTileCnt = cut.totalTileCnt;
-    out.numLongTile = cut.numLongTile;
-    out.numShortTile = cut.numShortTile;
-    out.longTileLen = cut.longTileLen;
-    out.shortTileLen = cut.shortTileLen;
-    return out;
-}
-
 // 统一引擎路径: 上下文构造 + 算子后置初始化(= 老类构造函数体逐行对应) + 统一调度
 // baseMOut(可空): 回传 matmul 基本块(调用点 AdjustCutResultForAICPU 需要)
 inline CutResult ScheduleFitBalance(const mc2tiling::TilingArgs &args, fb::CommEngine commEngine,
@@ -210,15 +159,13 @@ inline CutResult ScheduleFitBalance(const mc2tiling::TilingArgs &args, fb::CommE
 {
     // 引擎分路在 InitCtx 内完成(按 CommEngine 选 CALIBRATION 的 aicpu/ccu 分区);
     // 本算子 kernel 仅 HCCL 两引擎, AIV_URMA 不可达(枚举值保留供三引擎分派框架)
-    fb::TilingArgs engineArgs = ToEngineTilingArgs(args);
-    auto ctx =
-        fb::InitCtx(engineArgs, fb::KernelType::ALL_GATHER, commEngine, CALIBRATION, fb::TopoType::STANDARD_CARD);
+    auto ctx = fb::InitCtx(args, fb::KernelType::ALL_GATHER, commEngine, CALIBRATION, fb::TopoType::STANDARD_CARD);
     ctx.commPerf.SetCommShapeLen(ctx.matmulPerf.mmShapeInfo_.kValue);
     // fp4(DT_FLOAT4_E2M1) 通信侧建模: 每元素 0.5 字节, 按"1 字节打包 2 个 fp4"建模
     // (SetCommDTypeSize(1) + ExpansionFraction(2), 复用 HCCL 子字节机制);
     // matmul 侧 fp4 路由已由引擎正确处理(SetCalcType 经 geAType 识别, 查 CALIBRATION 的
     // fp4 行取算力), 无需手动覆盖。inMatrixADtypeSize 置 1(L2 占用按 2x 高估, 避免 0 退化)。
-    if (engineArgs.geAType == ge::DataType::DT_FLOAT4_E2M1) {
+    if (args.geAType == ge::DataType::DT_FLOAT4_E2M1) {
         ctx.commPerf.SetCommDTypeSize(1);
         ctx.commPerf.SetCommDtypeSizeExpansionFraction(FP4_EXPANSION_RATIO);
         ctx.matmulPerf.mmShapeInfo_.inMatrixADtypeSize = 1;
@@ -232,7 +179,7 @@ inline CutResult ScheduleFitBalance(const mc2tiling::TilingArgs &args, fb::CommE
     ctx.tilingM.SetAlignLength(ctx.matmulPerf.GetBaseM());
 
     AgMmV2Hooks hooks;
-    CutResult cut = ToLegacyCut(fb::Schedule(ctx, hooks));
+    CutResult cut = fb::Schedule(ctx, hooks);
     if (baseMOut != nullptr) {
         *baseMOut = ctx.matmulPerf.GetBaseM();
     }

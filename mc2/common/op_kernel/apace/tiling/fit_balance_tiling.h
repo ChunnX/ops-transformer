@@ -48,6 +48,8 @@
 // (不直接 include graph 头: 部分 TU 的 ge 链路来自不同 toolkit 路径, 直接引入会双重定义)
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
+#include "op_host/op_tiling/formulaic_tiling_datatype.h" // 全局 CutResult(引擎与算子侧共用, 勿在引擎内再定义副本)
+#include "op_host/op_tiling/matmul_formulaic_tiling.h" // mc2tiling::TilingArgs(同上)
 #include "tiling_data_struct_define.h"
 
 namespace mc2tiling {
@@ -159,14 +161,7 @@ struct HCCLFittingParameters {
     double timeToSizeParabolicPar3; // c'
 };
 
-struct CutResult {
-    bool shortTileAtBack;
-    uint64_t totalTileCnt;
-    uint64_t numLongTile;
-    uint64_t numShortTile;
-    uint64_t longTileLen;
-    uint64_t shortTileLen;
-};
+using CutResult = ::CutResult; // 复用全局类型(字段完全一致, 2026-09-16 评审修正)
 
 struct TileArguments {
     uint64_t mAlignLen;
@@ -208,42 +203,8 @@ enum class AicpuComType {
     HCCL_CMD_MAX
 };
 
-// 调度入参上下文（与旧 mc2tiling::TilingArgs 字段逐一对应, 算子侧边界转换）
-struct TilingArgs {
-    AicpuComType cmdType;
-    uint32_t rankDim;
-    uint32_t usedCoreNum;
-    uint64_t orgMValue;
-    uint64_t orgNValue;
-    uint64_t orgKValue;
-    uint64_t batchValue;
-    uint64_t mValue;
-    uint64_t kValue;
-    uint64_t nValue;
-    uint64_t baseMLimit;
-    uint64_t inputDtypeSize;
-    uint64_t outputDtypeSize;
-    uint64_t aicCoreNum;
-    uint64_t commTurn;
-    uint64_t rankTileNum;
-    uint8_t commAlg;
-    bool isATrans;
-    bool isBTrans;
-    bool enablePad;
-    bool enableSplitK;
-    bool isBias;
-    bool isStorageGather;
-    bool isLocal = false;
-    ge::DataType geAType;
-    ge::DataType geBType;
-    ge::DataType geCType;
-    ge::DataType geBiasType;
-    ge::DataType antiquantscaleDType;
-    matmul_tiling::DataType aType;
-    matmul_tiling::DataType bType;
-    matmul_tiling::DataType cType;
-    matmul_tiling::DataType biasType;
-};
+// 调度入参: 复用全局 mc2tiling::TilingArgs(字段完全一致)
+using TilingArgs = ::mc2tiling::TilingArgs;
 
 // ====== 通信引擎枚举与解析（三引擎统一分派的公共词汇）======
 enum class CommEngine {
