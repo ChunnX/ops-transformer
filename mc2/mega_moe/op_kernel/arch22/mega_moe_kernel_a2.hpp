@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef MEGA_MOE_KERNEL_A2_INT8_HPP
-#define MEGA_MOE_KERNEL_A2_INT8_HPP
+#ifndef MEGA_MOE_KERNEL_A2_HPP
+#define MEGA_MOE_KERNEL_A2_HPP
 #include <limits>
 #include "kernel_operator.h"
 
@@ -42,10 +42,15 @@ namespace Catlass::Gemm::Kernel {
 using namespace AscendC;
 using namespace Mc2Tiling;
 
+// A2 device kernel shared by the A16W16 (bf16/fp16) and A8W8-INT / A8W4-INT (int8 / w4a8) paths.
+// All dtype and platform selection is compile-time via the trailing bool template parameters; the
+// differing regions are guarded by if constexpr so each instantiation emits only its own code.
 template <class BlockMmad_, class BlockScheduler_, class ElementGroupList_, class BlockEpilogue1_,
-          class BlockEpilogue2_>
-class MegaMoeKernelA2Int8 {
+          class BlockEpilogue2_, bool IsInt8_, bool IsW4A8_ = false>
+class MegaMoeKernelA2 {
 public:
+    static constexpr bool IS_INT8 = IsInt8_;
+    static constexpr bool IS_W4A8 = IsW4A8_;
     using BlockMmad = BlockMmad_;
     using ArchTag = typename BlockMmad::ArchTag;
     using L1TileShape = typename BlockMmad::L1TileShape;
@@ -67,7 +72,7 @@ public:
     using LayoutD1 = typename BlockEpilogue1::LayoutD;
     using ElementD2 = typename BlockEpilogue2::ElementD;
     using LayoutD2 = typename BlockEpilogue2::LayoutD;
-    using ElementABefore = int8_t;
+    using ElementABefore = std::conditional_t<IsInt8_, int8_t, ElementA>;
 
     static constexpr int32_t UB_MOVE_NUM = 16 * 1024;
 
@@ -177,7 +182,7 @@ public:
     };
 
     CATLASS_DEVICE
-    MegaMoeKernelA2Int8(Params const &params)
+    MegaMoeKernelA2(Params const &params)
     {
         if ASCEND_IS_AIC {
             coreIdx = AscendC::GetBlockIdx();
@@ -192,7 +197,7 @@ public:
     }
 
     CATLASS_DEVICE
-    ~MegaMoeKernelA2Int8() {}
+    ~MegaMoeKernelA2() {}
 
     template <int32_t CORE_TYPE = g_coreType>
     CATLASS_DEVICE void operator()(Params const &params);

@@ -49,7 +49,7 @@ using namespace AscendC;
 #include "utils/block_epilogue_pertoken_swiglu.hpp"
 #include "utils/block_epilogue_pertoken_v2.hpp"
 // A2 kernel
-#include "mega_moe_kernel_a2_int8.hpp"
+#include "mega_moe_kernel_a2.hpp"
 #include "mega_moe_kernel_a2_bf16.hpp"
 #include "mega_moe_kernel_a2_bf16_w4a8.hpp"
 
@@ -361,8 +361,8 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
         epilogueCoreNum = aivNum_ / 2; // INT8 场景仅使用一半 AIV 参与 epilogue
         epilogueGranularity = (expertPerRank_ > 1) ? static_cast<uint32_t>(expertPerRank_ - 1) : 1u;
 
-        using MatmulKernel = Gemm::Kernel::MegaMoeKernelA2Int8<BlockMmad, BlockScheduler, ElementGroupList,
-                                                               BlockEpilogue1, BlockEpilogue2>;
+        using MatmulKernel = Gemm::Kernel::MegaMoeKernelA2<BlockMmad, BlockScheduler, ElementGroupList,
+                                                           BlockEpilogue1, BlockEpilogue2, true>;
         typename MatmulKernel::Params params{problemShape,
                                              static_cast<uint32_t>(epWorldSize_),
                                              static_cast<uint32_t>(listLen_),
