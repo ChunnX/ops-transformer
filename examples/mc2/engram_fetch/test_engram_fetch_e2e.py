@@ -137,9 +137,8 @@ def rank_storage(full_table, rank, world_size, fetch_mode):
 
 def run_infer_phase(args, group, rank, world_size, device, checker, full_table):
     fetch_mode = fetch_mode_value(args.fetch_mode)
-    rows = full_table.size(0) if fetch_mode == ElasticBuffer.FETCH_MODE_LOCAL else full_table.size(0) // world_size
     storage = rank_storage(full_table, rank, world_size, fetch_mode).contiguous()
-    num_cpu_bytes = ElasticBuffer.get_engram_storage_size_hint(rows, args.hidden, full_table.dtype)
+    num_cpu_bytes = ElasticBuffer.get_engram_storage_size_hint(storage.size(0), args.hidden, full_table.dtype)
 
     buf = ElasticBuffer(group, num_cpu_bytes=num_cpu_bytes, explicitly_destroy=True, fetch_mode=fetch_mode)
     buf.engram_write(storage)
@@ -187,13 +186,12 @@ def run_train_phase(args, group, rank, world_size, device, checker, full_table):
     fetch_mode = fetch_mode_value(args.fetch_mode)
     mode_name = args.fetch_mode
     rows_per_rank = full_table.size(0) // world_size
-    rows = full_table.size(0) if fetch_mode == ElasticBuffer.FETCH_MODE_LOCAL else rows_per_rank
 
     shard = rank_storage(full_table, rank, world_size, fetch_mode)
-    storage = torch.empty(rows, args.hidden, dtype=full_table.dtype, pin_memory=True)
+    storage = torch.empty_like(shard, pin_memory=True)
     storage.copy_(shard)
 
-    num_cpu_bytes = ElasticBuffer.get_engram_storage_size_hint(rows, args.hidden, full_table.dtype)
+    num_cpu_bytes = ElasticBuffer.get_engram_storage_size_hint(storage.size(0), args.hidden, full_table.dtype)
     buf = ElasticBuffer(group, num_cpu_bytes=num_cpu_bytes, with_grad=True,
                         num_max_tokens_per_rank=args.num_tokens,
                         explicitly_destroy=True, fetch_mode=fetch_mode)
