@@ -462,7 +462,13 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Pro
                 if constexpr (IS_BATCH_CONSISTENCY) {
                     int64_t safeBaseBlockNum =
                         runParam.baseBlockNumPerReductionBlock > 0 ? runParam.baseBlockNumPerReductionBlock : 1LL;
-                    if (runParam.isCrossCoreSplit && s2LoopCount % safeBaseBlockNum == 0) {
+                    // HCA 也使用此内核，进入 CMP 时必须开始新的规约块。
+                    int64_t reductionLoopCount = s2LoopCount;
+                    if (s2LoopCount >= runParam.oriKvLoopEndIdx) {
+                        reductionLoopCount +=
+                            (safeBaseBlockNum - runParam.oriKvLoopEndIdx % safeBaseBlockNum) % safeBaseBlockNum;
+                    }
+                    if (runParam.isCrossCoreSplit && reductionLoopCount % safeBaseBlockNum == 0) {
                         runParam.s2SplitIdx = s2SplitIdxCounter++;
                     }
                 }

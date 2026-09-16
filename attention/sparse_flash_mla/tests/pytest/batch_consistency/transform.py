@@ -266,8 +266,18 @@ class ActualInputSemanticOracle:
         ):
             raise InvalidTransformError("sinks changed during transform")
 
+        # Inputs are read-only during this synchronous validation. Keep only the
+        # current batch pair: PA materialization is independent of the Q token,
+        # and retaining every visited batch would grow with the whole mapping.
+        cached_pair = None
+        logical_kv_cache = {}
         checked = []
         for old_batch, old_token, new_batch, new_token in mapping:
+            pair = (old_batch, new_batch)
+            if pair != cached_pair:
+                logical_kv_cache.clear()
+                old_kv = new_kv = None
+                cached_pair = pair
             if not cls._tensor_bits_equal(
                 cls._q_token(baseline, old_batch, old_token),
                 cls._q_token(derived, new_batch, new_token),
@@ -286,8 +296,12 @@ class ActualInputSemanticOracle:
 
             for prefix in ("ori", "cmp"):
                 start, end = old_windows[prefix]
-                old_kv = cls._logical_kv(baseline, prefix, old_batch)
-                new_kv = cls._logical_kv(derived, prefix, new_batch)
+                if prefix not in logical_kv_cache:
+                    logical_kv_cache[prefix] = (
+                        cls._logical_kv(baseline, prefix, old_batch),
+                        cls._logical_kv(derived, prefix, new_batch),
+                    )
+                old_kv, new_kv = logical_kv_cache[prefix]
                 if old_kv is None and new_kv is None:
                     continue
                 if (
@@ -816,6 +830,10 @@ class BatchCaseTransformer:
                 kv, 1, max(target, int(kv.shape[1]))
             )
         elif layout == "TND":
+            if sum(lengths) == 0:
+                raise InvalidTransformError(
+                    f"TND {kv_name} transform would create a zero physical token dimension"
+                )
             cu_name = f"cu_seqlens_{prefix}_kv"
             cu = tensors.get(cu_name)
             if cu is None:

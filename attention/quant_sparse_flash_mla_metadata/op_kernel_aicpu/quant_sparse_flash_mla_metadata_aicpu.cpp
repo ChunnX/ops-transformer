@@ -1003,8 +1003,8 @@ void QuantSparseFlashMlaMetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx, const S
     if (isBatchConsistency_) {
         // 计算规约级切分大小
         uint64_t actTotalS2Size = s1GCache.actOriS2Size + s1GCache.actCmpS2Size;
-        uint64_t rawReductionBlockSize =
-            (actTotalS2Size + BATCH_CONSISTENCY_MAX_REDUCTION_PARTS - 1U) / BATCH_CONSISTENCY_MAX_REDUCTION_PARTS;
+        // 与计算内核及 SMLA/MQSMLA 保持一致：先整除 32，再向上对齐基础块，避免分区及同步次数失配。
+        uint64_t rawReductionBlockSize = actTotalS2Size / BATCH_CONSISTENCY_MAX_REDUCTION_PARTS;
         s1GCache.reductionBlockSize = (rawReductionBlockSize + s2BaseSize_ - 1U) / s2BaseSize_ * s2BaseSize_;
         s1GCache.reductionBlockSize = s1GCache.reductionBlockSize == 0U ? s2BaseSize_ : s1GCache.reductionBlockSize;
         // 使用规约级切分大小对基本块进行重新划分
