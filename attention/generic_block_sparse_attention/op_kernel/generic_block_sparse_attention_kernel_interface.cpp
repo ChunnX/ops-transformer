@@ -125,8 +125,11 @@ __global__ __aicore__ void GbsaInferIntfRegular(GM_ADDR q, GM_ADDR k, GM_ADDR v,
     using L1TileShapeQK = Shape<Int<128>, Int<128>, Int<128>>;
     using L0TileShapeQK = Shape<Int<128>, Int<128>, Int<128>>;
     using DispatchPolicyQK = Gemm::MmadAtlasA5BsaQK;
+    static constexpr auto MM1_COPY_MODE = AscendC::IsSameType<ElementS, float>::value ?
+                                              Gemm::Tile::CopyL0CToUBMode::SPLIT_M :
+                                              Gemm::Tile::CopyL0CToUBMode::NO_SPLIT;
     using TileCopyQK = Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementQ, LayoutQ, ElementK, LayoutK, ElementS,
-                                                         LayoutS, void, Gemm::Tile::CopyL0CToUBMode::NO_SPLIT>;
+                                                         LayoutS, void, MM1_COPY_MODE>;
     using BlockMmadQK = Gemm::Block::BlockMmadTla<DispatchPolicyQK, L1TileShapeQK, L0TileShapeQK, ElementQ, ElementK,
                                                   ElementS, void, TileCopyQK>;
 
