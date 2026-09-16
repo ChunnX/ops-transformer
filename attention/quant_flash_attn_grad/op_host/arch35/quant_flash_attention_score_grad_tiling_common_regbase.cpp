@@ -668,12 +668,20 @@ void CalcleActualToken(FuzzyBaseInfoParamsRegbase &fBaseParams, int64_t batchIdx
 
 ge::graphStatus ProcessOptionalInput(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase &fBaseParams)
 {
-    fBaseParams.qSize =
-        static_cast<uint64_t>(fBaseParams.b) * fBaseParams.n2 * fBaseParams.g * fBaseParams.s1 * fBaseParams.d;
-    fBaseParams.kSize = static_cast<uint64_t>(fBaseParams.b) * fBaseParams.n2 * 1 * fBaseParams.s2 * fBaseParams.d;
-    fBaseParams.vSize = static_cast<uint64_t>(fBaseParams.b) * fBaseParams.n2 * 1 * fBaseParams.s2 * fBaseParams.d1;
-    fBaseParams.dropMaskSize =
-        static_cast<uint64_t>(fBaseParams.b) * fBaseParams.n2 * fBaseParams.g * fBaseParams.s2 * fBaseParams.s1;
+    if (fBaseParams.layoutType == INPUT_FORMAT_TND) {
+        // TND：packed，按 TotalQ × N × d / TotalKV × N2 × d
+        fBaseParams.qSize = static_cast<uint64_t>(fBaseParams.t1) * fBaseParams.n2 * fBaseParams.g * fBaseParams.d;
+        fBaseParams.kSize = static_cast<uint64_t>(fBaseParams.t2) * fBaseParams.n2 * 1 * fBaseParams.d;
+        fBaseParams.vSize = static_cast<uint64_t>(fBaseParams.t2) * fBaseParams.n2 * 1 * fBaseParams.d1;
+        fBaseParams.dropMaskSize = 0;
+    } else {
+        fBaseParams.qSize =
+            static_cast<uint64_t>(fBaseParams.b) * fBaseParams.n2 * fBaseParams.g * fBaseParams.s1 * fBaseParams.d;
+        fBaseParams.kSize = static_cast<uint64_t>(fBaseParams.b) * fBaseParams.n2 * 1 * fBaseParams.s2 * fBaseParams.d;
+        fBaseParams.vSize = static_cast<uint64_t>(fBaseParams.b) * fBaseParams.n2 * 1 * fBaseParams.s2 * fBaseParams.d1;
+        fBaseParams.dropMaskSize =
+            static_cast<uint64_t>(fBaseParams.b) * fBaseParams.n2 * fBaseParams.g * fBaseParams.s2 * fBaseParams.s1;
+    }
 
     // mBaseParams is used for matmal tiling module
     auto queryType = context_->GetInputDesc(0)->GetDataType();

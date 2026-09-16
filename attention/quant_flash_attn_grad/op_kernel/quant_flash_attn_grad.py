@@ -172,7 +172,13 @@ class QuantFlashAttnGradTilingKey:
     d_template_num = TilingKeyField(bits=1, values=[128])
     is_n_equal = TilingKeyField(bits=1, values=[1])
     # 0: BSND 1: BNSD 2: TND
-    layout = TilingKeyField(bits=2, values=[0, 1])
+    # TND per-batch cu_seqlens flow (对标 C++ arch35). 输入 packed:
+    #   Q/dout/attn_out [total_q, n1, d], K/V [total_kv, n2, d], lse/workspace [n1, total_q].
+    # blk 排布仍为矩形 b*n2*g*s1Outer*s2Outer（s1Outer/s2Outer 按 max 每 batch 的 S 切块），
+    # 各 batch 实际有效长度由 cu_seqlens[b+1]-cu_seqlens[b] 在 set_run_info 求得，
+    # 数据访问用 cu_seqlens[b] 作为该 batch 的 packed base 偏移（逐 batch 对齐 Q/KV）。
+    # host 配置: s1=total_q, s2=total_kv, b=真实batch数, normal_axis_size=total_q*n1。
+    layout = TilingKeyField(bits=2, values=[0, 1, 2])
 
 
 def l1_ds(i, j, task_mod2):
@@ -193,6 +199,16 @@ def cal_deter_max_loop_num(const_info):
 
 
 def init_index(sfmg_output_offset, const_info):
+    if layout == 2:
+        # TND: packed workspace lies in a [n1, total_q] grid whose flat (dense, q-fast)
+        # index equals sfmg_output_offset, mirroring the C++ TND flush where consecutive
+        # burst rows are consecutive tokens (fixed head). sfmg_output_offset is expressed
+        # in token-head units (not d-units), so:
+        #   q_pos = offset % total_q ; n_idx = offset // total_q ; b_idx = 0 (packed)
+        total_q = const_info.s1_size
+        q_pos = sfmg_output_offset % total_q
+        n_idx = sfmg_output_offset // total_q
+        return 0, n_idx, q_pos
     start_idx = sfmg_output_offset * const_info.d_size
     b_idx = start_idx // (const_info.n1_size * const_info.s1_size * const_info.d_size)
     b_tail = start_idx % (const_info.n1_size * const_info.s1_size * const_info.d_size)
@@ -200,6 +216,30 @@ def init_index(sfmg_output_offset, const_info):
     n_tail = b_tail % (const_info.s1_size * const_info.d_size)
     s1_idx = n_tail // const_info.d_size
     return b_idx, n_idx, s1_idx
+
+
+def cu_q_base(tensor_info, batch_id):
+    """TND: packed token base offset of a batch = cu_seqlens_q[batch_id] (tokens before it)."""
+    return pl.getval(tensor_info.tensor_cu_seqlens_q, batch_id)
+
+
+def cu_kv_base(tensor_info, batch_id):
+    """TND: packed kv-token base offset of a batch = cu_seqlens_kv[batch_id]."""
+    return pl.getval(tensor_info.tensor_cu_seqlens_kv, batch_id)
+
+
+def cu_q_len(tensor_info, batch_id):
+    """TND: actual per-batch query length = cu_seqlens_q[b+1] - cu_seqlens_q[b]."""
+    return pl.getval(tensor_info.tensor_cu_seqlens_q, batch_id + 1) - pl.getval(
+        tensor_info.tensor_cu_seqlens_q, batch_id
+    )
+
+
+def cu_kv_len(tensor_info, batch_id):
+    """TND: actual per-batch kv length = cu_seqlens_kv[b+1] - cu_seqlens_kv[b]."""
+    return pl.getval(tensor_info.tensor_cu_seqlens_kv, batch_id + 1) - pl.getval(
+        tensor_info.tensor_cu_seqlens_kv, batch_id
+    )
 
 
 @pl.vector_function
@@ -341,17 +381,40 @@ def presfmg_quant_inner_hif8(const_info, tensor_info):
                     [b_idx, n_idx, s1_idx, 0],
                     order=[2, 3],
                 )
+            if layout == 2:  # TND
+                # packed tensors shaped [total_q, n1, d]; consecutive burst rows are
+                # consecutive tokens (fixed head), so order=[0,2] strides by n1*d
+                pl.load(
+                    y_vec,
+                    tensor_info.tensor_attn_out,
+                    [s1_idx, n_idx, 0],
+                    order=[0, 2],
+                )
+                pl.load(
+                    dx_vec,
+                    tensor_info.tensor_do,
+                    [s1_idx, n_idx, 0],
+                    order=[0, 2],
+                )
 
             anti_quant_softmax_grad_front_cast_hif8_vf(
                 cur_n_burst, deq_scale_do_value, y_vec, dx_vec, out_vec
             )
             pl.set_validshape(out_vec, [1, cur_n_burst])
-            pl.store(
-                tensor_info.tensor_workspace_sfmg,
-                out_vec,
-                [b_idx, n_idx, s1_idx],
-                order=[1, 2],
-            )
+            if layout == 2:  # TND: store packed [n1, total_q] (dense q-fast)
+                pl.store(
+                    tensor_info.tensor_workspace_sfmg,
+                    out_vec,
+                    [n_idx, s1_idx],
+                    order=[1],
+                )
+            else:
+                pl.store(
+                    tensor_info.tensor_workspace_sfmg,
+                    out_vec,
+                    [b_idx, n_idx, s1_idx],
+                    order=[1, 2],
+                )
 
 
 def init_coordinate_info(const_info, m_offset, n_offset, coordinate_info):
@@ -614,16 +677,25 @@ def set_run_info(
 
     run_info.task_id = task_id
     run_info.task_id_mod2 = task_id % 2
-    run_info.s1_real_size = (
-        const_info.s1_tail
-        if run_info.s1o_idx == const_info.s1_outer - 1
-        else CUBE_BASEM
-    )
-    run_info.s2_real_size = (
-        const_info.s2_tail
-        if run_info.s2o_idx == const_info.s2_outer - 1
-        else CUBE_BASEN
-    )
+    if layout == 2:  # TND: per-batch valid lengths from cu_seqlens
+        with pl.section_vector():
+            batch_s1 = cu_q_len(tensor_info, run_info.batch_id)
+            batch_s2 = cu_kv_len(tensor_info, run_info.batch_id)
+            s1_start = run_info.s1o_idx * CUBE_BASEM
+            s2_start = run_info.s2o_idx * CUBE_BASEN
+            run_info.s1_real_size = pl.min(pl.max(batch_s1 - s1_start, 0), CUBE_BASEM)
+            run_info.s2_real_size = pl.min(pl.max(batch_s2 - s2_start, 0), CUBE_BASEN)
+    else:
+        run_info.s1_real_size = (
+            const_info.s1_tail
+            if run_info.s1o_idx == const_info.s1_outer - 1
+            else CUBE_BASEM
+        )
+        run_info.s2_real_size = (
+            const_info.s2_tail
+            if run_info.s2o_idx == const_info.s2_outer - 1
+            else CUBE_BASEN
+        )
 
     run_info.inner_s1_loop_num = ceil(run_info.s1_real_size, 128)
     run_info.inner_s2_loop_num = ceil(run_info.s2_real_size, 128)
@@ -741,6 +813,28 @@ def iterate_mm_ds_p(mm1_res, mm2_res, const_info, run_info, tensor_info):
             ],
             order=[3, 2],
         )
+    elif layout == 2:  # TND: packed [total_q, n1, d]
+        q_base = cu_q_base(tensor_info, run_info.batch_id)
+        pl.load(
+            q_l1,
+            tensor_info.tensor_q,
+            [
+                q_base + run_info.s1o_idx * CUBE_BASEM + run_info.s1_idx * TS,
+                run_info.n1o_idx,
+                0,
+            ],
+            order=[2, 0],
+        )
+        pl.load(
+            do_l1,
+            tensor_info.tensor_do,
+            [
+                q_base + run_info.s1o_idx * CUBE_BASEM + run_info.s1_idx * TS,
+                run_info.n1o_idx,
+                0,
+            ],
+            order=[2, 0],
+        )
     if not run_info.is_value_reuse and run_info.s1_idx == 0:
         pl.set_validshape(k_l1, [real_m, TD])
         pl.set_validshape(v_l1, [real_m, TD])
@@ -789,6 +883,28 @@ def iterate_mm_ds_p(mm1_res, mm2_res, const_info, run_info, tensor_info):
                     0,
                 ],
                 order=[2, 3],
+            )
+        elif layout == 2:  # TND: packed [total_kv, n2, d]
+            kv_base = cu_kv_base(tensor_info, run_info.batch_id)
+            pl.load(
+                k_l1,
+                tensor_info.tensor_k,
+                [
+                    kv_base + run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS,
+                    run_info.n2o_idx,
+                    0,
+                ],
+                order=[0, 2],
+            )
+            pl.load(
+                v_l1,
+                tensor_info.tensor_v,
+                [
+                    kv_base + run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS,
+                    run_info.n2o_idx,
+                    0,
+                ],
+                order=[0, 2],
             )
 
     pl.set_validshape(left_first, [real_m, TD])
@@ -1216,6 +1332,32 @@ def iterate_p_ds(p_l1_bit8, ds_l1_bit8, sdp_id, const_info, run_info, tensor_inf
             ],
             order=[1, 2],
         )
+    elif layout == 2:  # TND: packed [n1, total_q] (dense q-fast)
+        q_base = cu_q_base(tensor_info, run_info.batch_id)
+        pl.load(
+            lse_vec,
+            tensor_info.tensor_softmax_lse,
+            [
+                run_info.n1o_idx,
+                q_base
+                + run_info.s1o_idx * CUBE_BASEM
+                + run_info.s1_idx * TS
+                + const_info.sub_id * first_half_s1,
+            ],
+            order=[0, 1],
+        )
+        pl.load(
+            d_vec,
+            tensor_info.tensor_workspace_sfmg,
+            [
+                run_info.n1o_idx,
+                q_base
+                + run_info.s1o_idx * CUBE_BASEM
+                + run_info.s1_idx * TS
+                + const_info.sub_id * first_half_s1,
+            ],
+            order=[0, 1],
+        )
 
     sp_vec = tensor_info.sp_vec[sdp_id]
     sp_vec_bit8 = tensor_info.sp_vec_bit8[sdp_id]
@@ -1335,6 +1477,28 @@ def iterate_mm_ds_k(
                 ],
                 order=[2, 3],
             )
+        elif layout == 2:  # TND: packed [total_kv, n2, d]
+            kv_base = cu_kv_base(tensor_info, run_info.batch_id)
+            pl.load(
+                k_l1_first,
+                tensor_info.tensor_k,
+                [
+                    kv_base + run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS,
+                    run_info.n2o_idx,
+                    0,
+                ],
+                order=[0, 2],
+            )
+            pl.load(
+                k_l1_second,
+                tensor_info.tensor_k,
+                [
+                    kv_base + run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS + TS,
+                    run_info.n2o_idx,
+                    0,
+                ],
+                order=[0, 2],
+            )
     pl.set_validshape(right_first, [k_size_first, D_SIZE])
     pl.set_validshape(right_second, [k_size_second, D_SIZE])
     pl.move(right_first, k_l1_first, [0, 0])
@@ -1397,6 +1561,18 @@ def iterate_mm_p_dy(
                 0,
             ],
             order=[2, 3],
+        )
+    elif layout == 2:  # TND: packed [total_q, n1, d]
+        q_base = cu_q_base(tensor_info, run_info.batch_id)
+        pl.load(
+            do_l1,
+            tensor_info.tensor_do_p_dy,
+            [
+                q_base + run_info.s1o_idx * CUBE_BASEM + run_info.s1_idx * TS,
+                run_info.n1o_idx,
+                0,
+            ],
+            order=[0, 2],
         )
 
     pl.set_validshape(right, [real_k, D_SIZE])
@@ -1461,6 +1637,18 @@ def iterate_mm_ds_q(
                 0,
             ],
             order=[2, 3],
+        )
+    elif layout == 2:  # TND: packed [total_q, n1, d]
+        q_base = cu_q_base(tensor_info, run_info.batch_id)
+        pl.load(
+            q_l1,
+            tensor_info.tensor_q_ds,
+            [
+                q_base + run_info.s1o_idx * CUBE_BASEM + run_info.s1_idx * TS,
+                run_info.n1o_idx,
+                0,
+            ],
+            order=[0, 2],
         )
 
     pl.set_validshape(right, [real_k, D_SIZE])
@@ -1599,6 +1787,38 @@ def copy_dqkv2gm(is_kv, run_info, const_info, tensor_info):
                     ],
                     order=[2, 3],
                 )
+        if layout == 2:  # TND: packed [total_kv, n2, d]
+            kv_pos = cu_kv_base(
+                tensor_info, run_info.batch_id
+            ) + run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS
+            if run_info.kv_need_atomic:
+                pl.store(
+                    workspace_dk,
+                    dk_vec,
+                    [kv_pos, run_info.n2o_idx, const_info.sub_id * HALF_D_SIZE],
+                    order=[0, 2],
+                    atomic=pl.AtomicType.AtomicAdd,
+                )
+                pl.store(
+                    workspace_dv,
+                    dv_vec,
+                    [kv_pos, run_info.n2o_idx, const_info.sub_id * HALF_D_SIZE],
+                    order=[0, 2],
+                    atomic=pl.AtomicType.AtomicAdd,
+                )
+            else:
+                pl.store(
+                    workspace_dk,
+                    dk_vec,
+                    [kv_pos, run_info.n2o_idx, const_info.sub_id * HALF_D_SIZE],
+                    order=[0, 2],
+                )
+                pl.store(
+                    workspace_dv,
+                    dv_vec,
+                    [kv_pos, run_info.n2o_idx, const_info.sub_id * HALF_D_SIZE],
+                    order=[0, 2],
+                )
     else:
         block_count = run_info.inner_s1_real_size[run_info.s1_idx]
         workspace_dq = tensor_info.tensor_workspace_dq
@@ -1657,6 +1877,25 @@ def copy_dqkv2gm(is_kv, run_info, const_info, tensor_info):
                         const_info.sub_id * HALF_D_SIZE,
                     ],
                     order=[2, 3],
+                )
+        if layout == 2:  # TND: packed [total_q, n1, d]
+            q_pos = cu_q_base(
+                tensor_info, run_info.batch_id
+            ) + run_info.s1o_idx * CUBE_BASEM + run_info.s1_idx * TS
+            if const_info.s2_outer != 1:
+                pl.store(
+                    workspace_dq,
+                    dq_vec,
+                    [q_pos, run_info.n1o_idx, const_info.sub_id * HALF_D_SIZE],
+                    order=[0, 2],
+                    atomic=pl.AtomicType.AtomicAdd,
+                )
+            else:
+                pl.store(
+                    workspace_dq,
+                    dq_vec,
+                    [q_pos, run_info.n1o_idx, const_info.sub_id * HALF_D_SIZE],
+                    order=[0, 2],
                 )
 
 
@@ -2216,6 +2455,27 @@ def quant_flash_attn_grad(
         [tiling.n1 * tiling.s1, tiling.s1, 1],
         dtype=pl.DT_FP32,
     )
+    tensor_cu_seqlens_q = None
+    tensor_cu_seqlens_kv = None
+    if layout == 2:  # TND: sfmg workspace is packed as [n1, total_q] (dense q-fast)
+        tensor_workspace_sfmg = pl.make_tensor(
+            workspace + tiling.sfmg_work_space_offset,
+            [tiling.n1, tiling.s1],
+            [tiling.s1, 1],
+            dtype=pl.DT_FP32,
+        )
+        tensor_cu_seqlens_q = pl.make_tensor(
+            cu_seqlens_q,
+            [tiling.b + 1, 1],
+            [1, 1],
+            dtype=pl.DT_INT32,
+        )
+        tensor_cu_seqlens_kv = pl.make_tensor(
+            cu_seqlens_kv,
+            [tiling.b + 1, 1],
+            [1, 1],
+            dtype=pl.DT_INT32,
+        )
     if has_sink == 1:
         tensor_sinks = pl.make_tensor(
             sinks,
@@ -2464,6 +2724,127 @@ def quant_flash_attn_grad(
             dv,
             [1, tiling.b * tiling.n2 * tiling.s2 * tiling.d],
             [tiling.b * tiling.n2 * tiling.s2 * tiling.d, 1],
+            dtype=output_dtype,
+        )
+    elif layout == 2:  # TND: packed, no per-batch S dimension (s1/s2 = total q/kv length)
+        tensor_q = pl.make_tensor(
+            q,
+            [tiling.s1, tiling.n1, tiling.d],
+            [tiling.n1 * tiling.d, tiling.d, 1],
+            dtype=input_dtype,
+        )
+        tensor_q_ds = pl.make_tensor(
+            q,
+            [tiling.s1, tiling.n1, tiling.d],
+            [tiling.n1 * tiling.d, tiling.d, 1],
+            dtype=input_dtype,
+        )
+        tensor_k = pl.make_tensor(
+            k,
+            [tiling.s2, tiling.n2, tiling.d],
+            [tiling.n2 * tiling.d, tiling.d, 1],
+            dtype=input_dtype,
+        )
+        tensor_v = pl.make_tensor(
+            v,
+            [tiling.s2, tiling.n2, tiling.d],
+            [tiling.n2 * tiling.d, tiling.d, 1],
+            dtype=input_dtype,
+        )
+        tensor_do = pl.make_tensor(
+            dout,
+            [tiling.s1, tiling.n1, tiling.d],
+            [tiling.n1 * tiling.d, tiling.d, 1],
+            dtype=input_dtype,
+        )
+        tensor_do_p_dy = pl.make_tensor(
+            dout,
+            [tiling.s1, tiling.n1, tiling.d],
+            [tiling.n1 * tiling.d, tiling.d, 1],
+            dtype=input_dtype,
+        )
+        tensor_attn_out = pl.make_tensor(
+            attn_out,
+            [tiling.s1, tiling.n1, tiling.d],
+            [tiling.n1 * tiling.d, tiling.d, 1],
+            dtype=output_dtype,
+        )
+        tensor_softmax_lse = pl.make_tensor(
+            softmax_lse,
+            [tiling.n1, tiling.s1],
+            [tiling.s1, 1],
+            dtype=pl.DT_FP32,
+        )
+        tensor_workspace_dq = pl.make_tensor(
+            workspace + tiling.dq_work_space_offset,
+            [tiling.s1, tiling.n1, tiling.d],
+            [tiling.n1 * tiling.d, tiling.d, 1],
+            dtype=pl.DT_FP32,
+        )
+        tensor_workspace_dk = pl.make_tensor(
+            workspace + tiling.dk_work_space_offset,
+            [tiling.s2, tiling.n2, tiling.d],
+            [tiling.n2 * tiling.d, tiling.d, 1],
+            dtype=pl.DT_FP32,
+        )
+        tensor_workspace_dv = pl.make_tensor(
+            workspace + tiling.dv_work_space_offset,
+            [tiling.s2, tiling.n2, tiling.d],
+            [tiling.n2 * tiling.d, tiling.d, 1],
+            dtype=pl.DT_FP32,
+        )
+        tensor_dq_out = pl.make_tensor(
+            dq,
+            [tiling.s1, tiling.n1, tiling.d],
+            [tiling.n1 * tiling.d, tiling.d, 1],
+            dtype=output_dtype,
+        )
+        tensor_dk_out = pl.make_tensor(
+            dk,
+            [tiling.s2, tiling.n2, tiling.d],
+            [tiling.n2 * tiling.d, tiling.d, 1],
+            dtype=output_dtype,
+        )
+        tensor_dv_out = pl.make_tensor(
+            dv,
+            [tiling.s2, tiling.n2, tiling.d],
+            [tiling.n2 * tiling.d, tiling.d, 1],
+            dtype=output_dtype,
+        )
+        tensor_workspace_dq_flat = pl.make_tensor(
+            workspace + tiling.dq_work_space_offset,
+            [1, tiling.s1 * tiling.n1 * tiling.d],
+            [tiling.s1 * tiling.n1 * tiling.d, 1],
+            dtype=pl.DT_FP32,
+        )
+        tensor_workspace_dk_flat = pl.make_tensor(
+            workspace + tiling.dk_work_space_offset,
+            [1, tiling.s2 * tiling.n2 * tiling.d],
+            [tiling.s2 * tiling.n2 * tiling.d, 1],
+            dtype=pl.DT_FP32,
+        )
+        tensor_workspace_dv_flat = pl.make_tensor(
+            workspace + tiling.dv_work_space_offset,
+            [1, tiling.s2 * tiling.n2 * tiling.d],
+            [tiling.s2 * tiling.n2 * tiling.d, 1],
+            dtype=pl.DT_FP32,
+        )
+        tensor_dq_out_flat = pl.make_tensor(
+            dq,
+            [1, tiling.s1 * tiling.n1 * tiling.d],
+            [tiling.s1 * tiling.n1 * tiling.d, 1],
+            dtype=output_dtype,
+        )
+        tensor_dk_out_flat = pl.make_tensor(
+            dk,
+            [1, tiling.s2 * tiling.n2 * tiling.d],
+            [tiling.s2 * tiling.n2 * tiling.d, 1],
+            dtype=output_dtype,
+        )
+        tensor_dv_out_flat = pl.make_tensor(
+            dv,
+            [1, tiling.s2 * tiling.n2 * tiling.d],
+            [tiling.s2 * tiling.n2 * tiling.d, 1],
             dtype=output_dtype,
         )
     core_id_cube = pl.get_block_idx() // pl.get_subblock_num()
@@ -2829,6 +3210,8 @@ def quant_flash_attn_grad(
         tensor_workspace_dk_flat=tensor_workspace_dk_flat,
         tensor_workspace_dv_flat=tensor_workspace_dv_flat,
         tensor_workspace_sfmg=tensor_workspace_sfmg,
+        tensor_cu_seqlens_q=tensor_cu_seqlens_q,
+        tensor_cu_seqlens_kv=tensor_cu_seqlens_kv,
         tensor_dq_out=tensor_dq_out,
         tensor_dk_out=tensor_dk_out,
         tensor_dv_out=tensor_dv_out,

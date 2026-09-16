@@ -46,8 +46,11 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsIn
     } else if (strcmp(inputLayoutQ, "BNSD") == 0) {
         // q shape = [B, N, S, D]
         headNum = queryShape->GetStorageShape().GetDim(1);
+    } else if (strcmp(inputLayoutQ, "TND") == 0) {
+        // q shape = [TotalQ, N, D]
+        headNum = queryShape->GetStorageShape().GetDim(1);
     } else {
-        OP_LOGE(context_, "Invalid layout_q: %s, only BSND/BNSD supported", inputLayoutQ);
+        OP_LOGE(context_, "Invalid layout_q: %s, only BSND/BNSD/TND supported", inputLayoutQ);
         return ge::GRAPH_FAILED;
     }
 
@@ -65,7 +68,7 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsIn
         OP_LOGD(context_, "inputLayout == BNSD queryShape", "%ld, %ld, %ld, %ld,",
                 queryShape->GetStorageShape().GetDim(INPUT_DIM_0), queryShape->GetStorageShape().GetDim(INPUT_DIM_1),
                 queryShape->GetStorageShape().GetDim(INPUT_DIM_2), queryShape->GetStorageShape().GetDim(INPUT_DIM_3));
-    } else {
+    } else if (strcmp(inputLayoutQ, "BSND") == 0) {
         OP_LOGD(context_, "inputLayout == BSND queryShape");
         // inputLayout = "BSND"
         fBaseParams.layoutType = INPUT_FORMAT_BS2N2GD;
@@ -77,6 +80,55 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsIn
         fBaseParams.d = queryShape->GetStorageShape().GetDim(INPUT_DIM_3);
         fBaseParams.d1 = valueShape->GetStorageShape().GetDim(INPUT_DIM_3);
         fBaseParams.s2 = keyShape->GetStorageShape().GetDim(INPUT_DIM_1);
+    } else {
+        OP_LOGD(context_, "inputLayout == TND queryShape");
+        // inputLayout = "TND": query [TotalQ, N, D], key [TotalKV, N2, D] (变长 packed)
+        fBaseParams.layoutType = INPUT_FORMAT_TND;
+        fBaseParams.n2 = keyShape->GetStorageShape().GetDim(INPUT_DIM_1);
+        fBaseParams.g =
+            queryShape->GetStorageShape().GetDim(INPUT_DIM_1) / keyShape->GetStorageShape().GetDim(INPUT_DIM_1);
+        fBaseParams.d = queryShape->GetStorageShape().GetDim(INPUT_DIM_2);
+        fBaseParams.d1 = valueShape->GetStorageShape().GetDim(INPUT_DIM_2);
+        fBaseParams.t1 = queryShape->GetStorageShape().GetDim(INPUT_DIM_0);
+        fBaseParams.t2 = keyShape->GetStorageShape().GetDim(INPUT_DIM_0);
+
+        // 读取 cu_seqlens 并解出每 batch 的 Q/KV 实际长度（差分），对标 FAG arch35 TND
+        auto actualSeqQlenTensor =
+            context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::ACTUAL_SEQ_Q_LEN));
+        auto actualSeqKvlenTensor =
+            context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::ACTUAL_SEQ_KV_LEN));
+        OP_CHECK_IF(actualSeqQlenTensor == nullptr || actualSeqKvlenTensor == nullptr,
+                    OP_LOGE(context_, "TND requires actualSeqQLen/actualSeqKvLen inputs."),
+                    return ge::GRAPH_FAILED);
+        const size_t seqQShapeSize = actualSeqQlenTensor->GetShapeSize();
+        const size_t kvSeqShapeSize = actualSeqKvlenTensor->GetShapeSize();
+        OP_CHECK_IF(seqQShapeSize != kvSeqShapeSize,
+                    OP_LOGE(context_, "actualSeqQLen/actualSeqKvLen shape size mismatch."),
+                    return ge::GRAPH_FAILED);
+        const int64_t *qValue = actualSeqQlenTensor->GetData<int64_t>();
+        const int64_t *kvValue = actualSeqKvlenTensor->GetData<int64_t>();
+        int64_t maxQ = 0;
+        int64_t maxK = 0;
+        for (size_t i = 0; i < seqQShapeSize; i++) {
+            int64_t qLen = 0;
+            int64_t kvLen = 0;
+            if (i == 0) {
+                qLen = qValue[i];
+                kvLen = kvValue[i];
+            } else {
+                qLen = qValue[i] - qValue[i - 1];
+                kvLen = kvValue[i] - kvValue[i - 1];
+            }
+            qLen = qLen < 0 ? 0 : qLen;
+            kvLen = kvLen < 0 ? 0 : kvLen;
+            fBaseParams.actualSeqQlen.push_back(qLen);
+            fBaseParams.actualSeqKvlen.push_back(kvLen);
+            maxQ = qLen > maxQ ? qLen : maxQ;
+            maxK = kvLen > maxK ? kvLen : maxK;
+        }
+        fBaseParams.s1 = maxQ;
+        fBaseParams.s2 = maxK;
+        fBaseParams.b = static_cast<int64_t>(seqQShapeSize);
     }
 
     fBaseParams.n1 = fBaseParams.n2 * fBaseParams.g;
@@ -431,7 +483,12 @@ uint64_t QuantFlashAttentionScoreGradTilingNormalRegbase::DoPreSfmgTiling()
     uint32_t valueDAlign = fBaseParams.sfmgdInner;
 
     int64_t normalAxisSize = 0;
-    normalAxisSize = fBaseParams.b * fBaseParams.n2 * fBaseParams.g * fBaseParams.s1;
+    if (fBaseParams.layoutType == INPUT_FORMAT_TND) {
+        // TND：packed，只处理所有真实 token（TotalQ * N*G）
+        normalAxisSize = fBaseParams.t1 * fBaseParams.n2 * fBaseParams.g;
+    } else {
+        normalAxisSize = fBaseParams.b * fBaseParams.n2 * fBaseParams.g * fBaseParams.s1;
+    }
 
     int32_t inputSize = FP16_BYTES;
     int32_t outDtypeSize = FP16_BYTES;
@@ -605,12 +662,22 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::GetWorkspaceSiz
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     size_t workspaceSize = 0;
     workspaceSize = RESERVED_WORKSPACE_SIZE;
-    int64_t qSize =
-        ((fBaseParams.b * fBaseParams.n1 - 1) * fBaseParams.s1 + AlignTo(fBaseParams.s1, ALIGN128)) * fBaseParams.d;
-    int64_t kSize =
-        ((fBaseParams.b * fBaseParams.n2 - 1) * fBaseParams.s2 + AlignTo(fBaseParams.s2, ALIGN128)) * fBaseParams.d;
-    int64_t vSize =
-        ((fBaseParams.b * fBaseParams.n2 - 1) * fBaseParams.s2 + AlignTo(fBaseParams.s2, ALIGN128)) * fBaseParams.d1;
+    int64_t qSize = 0;
+    int64_t kSize = 0;
+    int64_t vSize = 0;
+    if (fBaseParams.layoutType == INPUT_FORMAT_TND) {
+        // TND：packed，按 TotalQ × N × d / TotalKV × N2 × d
+        qSize = AlignTo(fBaseParams.t1 * fBaseParams.n1, ALIGN128) * fBaseParams.d;
+        kSize = AlignTo(fBaseParams.t2 * fBaseParams.n2, ALIGN128) * fBaseParams.d;
+        vSize = AlignTo(fBaseParams.t2 * fBaseParams.n2, ALIGN128) * fBaseParams.d1;
+    } else {
+        qSize =
+            ((fBaseParams.b * fBaseParams.n1 - 1) * fBaseParams.s1 + AlignTo(fBaseParams.s1, ALIGN128)) * fBaseParams.d;
+        kSize =
+            ((fBaseParams.b * fBaseParams.n2 - 1) * fBaseParams.s2 + AlignTo(fBaseParams.s2, ALIGN128)) * fBaseParams.d;
+        vSize =
+            ((fBaseParams.b * fBaseParams.n2 - 1) * fBaseParams.s2 + AlignTo(fBaseParams.s2, ALIGN128)) * fBaseParams.d1;
+    }
     if (fBaseParams.queryType != ge::DT_FLOAT) {
         quantFagTilingData_->dq_work_space_offset = workspaceSize;
         // matmal3 q
@@ -637,9 +704,15 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::GetWorkspaceSiz
     if (fBaseParams.enablePreSfmg) {
         // softmax grad workspace size
         quantFagTilingData_->sfmg_work_space_offset = workspaceSize;
-        uint64_t sfmgSize = ((fBaseParams.b * fBaseParams.n2 * fBaseParams.g - 1) * fBaseParams.s1 +
-                             AlignTo(fBaseParams.s1, ALIGN128)) *
-                            BIT_NUMS;
+        uint64_t sfmgSize = 0;
+        if (fBaseParams.layoutType == INPUT_FORMAT_TND) {
+            // TND：packed [n1, TotalQ]，即 TotalQ * n2 * g 个 FP32
+            sfmgSize = AlignTo(fBaseParams.t1 * fBaseParams.n2 * fBaseParams.g, ALIGN128) * BIT_NUMS;
+        } else {
+            sfmgSize = ((fBaseParams.b * fBaseParams.n2 * fBaseParams.g - 1) * fBaseParams.s1 +
+                        AlignTo(fBaseParams.s1, ALIGN128)) *
+                       BIT_NUMS;
+        }
         workspaceSize = (workspaceSize + static_cast<size_t>(sfmgSize) * FP32_BYTES + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
     }
 
@@ -886,9 +959,15 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::SaveToTilingDat
     quantFagTilingData_->b = fBaseParams.b - fBaseParams.tailZeroCount;
     quantFagTilingData_->n2 = fBaseParams.n2;
     quantFagTilingData_->g = fBaseParams.g;
-    quantFagTilingData_->s1 = fBaseParams.s1;
+    if (fBaseParams.layoutType == INPUT_FORMAT_TND) {
+        // TND：kernel 测的 s1/s2 为 packed TotalQ/TotalKV（张量与 presfmg 维度用）
+        quantFagTilingData_->s1 = fBaseParams.t1;
+        quantFagTilingData_->s2 = fBaseParams.t2;
+    } else {
+        quantFagTilingData_->s1 = fBaseParams.s1;
+        quantFagTilingData_->s2 = fBaseParams.s2;
+    }
     quantFagTilingData_->d = fBaseParams.d;
-    quantFagTilingData_->s2 = fBaseParams.s2;
     quantFagTilingData_->n1 = fBaseParams.n1;
     quantFagTilingData_->t1 = fBaseParams.t1;
     quantFagTilingData_->t2 = fBaseParams.t2;
