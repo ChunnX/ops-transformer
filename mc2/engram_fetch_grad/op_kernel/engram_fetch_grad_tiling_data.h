@@ -37,6 +37,21 @@ constexpr uint32_t ENTRY_BUF_INT32_SLOTS = 5U; // entryBuf 头部被 int32 槽�
 constexpr uint32_t ACCUM_BUF_COPIES = 2U;      // fp32 累加行双缓冲份数（AccumBufBytes）
 constexpr uint32_t FLUSH_CAST_HEAD_BYTES =
     static_cast<uint32_t>(ENTRY_BUF_INT32_SLOTS * ENTRY_BATCH_CAP * sizeof(int32_t));
+// ── hidden 维分块（chunk 模式）──
+// 整行放不下 UB 时按 hidden 维切 chunk：gather/累加/直拷/flush 全部按 chunk 列片处理，
+// UB 占用与 hiddenDim 无关。2048 元素（fp16/bf16 4KB, fp32 8KB），天然 32B 对齐。
+constexpr uint32_t HIDDEN_CHUNK_ELEMS = 2048U;
+// ── a2a×sort 交错: 档1.5 预留 ──
+// 拷贝 ping-pong 半缓冲(RebuildA2aHookBuffers 在排序档内重建 a2a 工作缓冲用)
+constexpr uint32_t A2A_COPY_HALF_BYTES = 32U * 1024U;
+// 交错模式排序档内 a2a 工作缓冲总预留 = hcomm 工作区 + status 暂存 + 拷贝 ping-pong。
+// kernel 侧 RebuildA2aHookBuffers 的分配量与此【逐项一致】, host 侧 SortLib 预算
+// 按此扣减 —— 两侧公式必须镜像(单侧改动 = UB 越界或预算虚耗)
+constexpr uint64_t A2aHookUbReserve(uint32_t numRanks)
+{
+    return HCOMM_INIT_SIZE + (numRanks * STATE_OFFSET + UB_ALIGN - 1U) / UB_ALIGN * UB_ALIGN +
+           2U * A2A_COPY_HALF_BYTES;
+}
 } // namespace Mc2Kernel
 
 struct EngramFetchGradTilingData {
@@ -52,5 +67,9 @@ struct EngramFetchGradTilingData {
     int32_t inputDtype;        // gradFetched 的 dtype（ge::DataType）
     int32_t outputDtype;       // gradUniqueOut 的 dtype（ge::DataType）
     uint32_t gradSubBatch;     // unique 阶段每批处理的 grad 数量
+    uint32_t sortNumTileData;  // SortLib: 每 tile 元素数
+    uint32_t sortTileCount;    // SortLib: tile 数
+    uint32_t sortTmpUbSize;    // SortLib: AscendC::Sort 临时 UB 字节
+    uint32_t chunkElems;       // hidden 维分块元素数（0=整行模式，>0=chunk 模式）
 };
 #endif

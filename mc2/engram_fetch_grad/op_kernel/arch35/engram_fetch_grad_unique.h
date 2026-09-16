@@ -12,11 +12,11 @@
 #define ENGRAM_FETCH_GRAD_UNIQUE_H
 
 #include "kernel_operator.h"
+#include "adv_api/reduce/reduce.h"
 #include "../engram_fetch_grad_utils.h"
 
 namespace EngramFetchGradUnique {
 
-constexpr uint32_t RECV_INDEX_UB_OFFSET = 2U;
 constexpr uint32_t COMPACT_INDEX_UB_OFFSET = 3U;
 constexpr uint32_t DIRECT_FLAG_UB_OFFSET = 4U;
 
@@ -75,6 +75,26 @@ public:
     {
         entryBufBytes_ = bytes;
     }
+    // hidden 维分块（chunk 模式）：tiling 判定整行放不下 UB 时下发 chunkElems>0，
+    // scatter 数据面(gather/cast/accum/direct/flush)全部按 chunk 列片处理
+    __aicore__ inline void SetChunkElems(uint32_t elems)
+    {
+        chunkElems_ = elems;
+        if (chunkElems_ > 0U) {
+            uint32_t inSize = GetDtypeSize(inputDtype_);
+            uint32_t outSize = GetDtypeSize(outputDtype_);
+            chunkInStride_ = (chunkElems_ * inSize + Mc2Kernel::UB_ALIGN - 1U) / Mc2Kernel::UB_ALIGN *
+                             Mc2Kernel::UB_ALIGN;
+            chunkOutStride_ = (chunkElems_ * outSize + Mc2Kernel::UB_ALIGN - 1U) / Mc2Kernel::UB_ALIGN *
+                              Mc2Kernel::UB_ALIGN;
+            chunkFp32Stride_ = (chunkElems_ * sizeof(float) + Mc2Kernel::UB_ALIGN - 1U) / Mc2Kernel::UB_ALIGN *
+                               Mc2Kernel::UB_ALIGN;
+            numChunks_ = (static_cast<uint32_t>(hiddenDim_) + chunkElems_ - 1U) / chunkElems_;
+            accumFloats_ = chunkFp32Stride_ / sizeof(float); // accum 双缓冲索引按 chunk 粒度
+        } else {
+            numChunks_ = 0U;
+        }
+    }
 
     // entryBuf_ int32 slot layout: one ENTRY_BATCH_CAP-sized slot per array.
     __aicore__ inline AscendC::LocalTensor<int32_t> CompUb()
@@ -85,10 +105,6 @@ public:
     {
         return entryBuf_->Get<int32_t>()[Mc2Kernel::ENTRY_BATCH_CAP];
     }
-    __aicore__ inline AscendC::LocalTensor<int32_t> RecvIdxUb()
-    {
-        return entryBuf_->Get<int32_t>()[RECV_INDEX_UB_OFFSET * Mc2Kernel::ENTRY_BATCH_CAP];
-    }
     __aicore__ inline AscendC::LocalTensor<int32_t> CompactIdxUb()
     {
         return entryBuf_->Get<int32_t>()[COMPACT_INDEX_UB_OFFSET * Mc2Kernel::ENTRY_BATCH_CAP];
@@ -96,6 +112,18 @@ public:
     __aicore__ inline AscendC::LocalTensor<int32_t> DirectFlagUb()
     {
         return entryBuf_->Get<int32_t>()[DIRECT_FLAG_UB_OFFSET * Mc2Kernel::ENTRY_BATCH_CAP];
+    }
+    __aicore__ inline AscendC::LocalTensor<int32_t> RunStartUb()
+    {
+        return entryBuf_->Get<int32_t>()[2 * Mc2Kernel::ENTRY_BATCH_CAP];
+    }
+    __aicore__ inline AscendC::LocalTensor<int32_t> RunLenUb()
+    {
+        return entryBuf_->Get<int32_t>()[2 * Mc2Kernel::ENTRY_BATCH_CAP + Mc2Kernel::ENTRY_BATCH_CAP / 2U];
+    }
+    __aicore__ inline AscendC::LocalTensor<int32_t> AccumListUb()
+    {
+        return entryBuf_->Get<int32_t>()[4 * Mc2Kernel::ENTRY_BATCH_CAP];
     }
 
 private:
@@ -111,9 +139,25 @@ private:
                                                    bool &isFirstElement, GM_ADDR recvLocalEntryOutGM,
                                                    GM_ADDR uniqueLocalEntryOutGM, GM_ADDR gradUniqueOutGM,
                                                    GM_ADDR recvGradGM, GM_ADDR sortCompanionGM);
+    // ── chunk 模式数据面（hidden 维分块）──
+    __aicore__ inline void ChunkedScatterRange(uint32_t start, uint32_t end, int32_t preCoreOffset,
+                                               GM_ADDR recvLocalEntryOutGM, GM_ADDR uniqueLocalEntryOutGM,
+                                               GM_ADDR gradUniqueOutGM, GM_ADDR recvGradGM,
+                                               GM_ADDR sortCompanionGM);
+    __aicore__ inline void ChunkColumnPass(uint32_t chunkIdx, uint32_t start, uint32_t end, int32_t preCoreOffset,
+                                           GM_ADDR recvLocalEntryOutGM, GM_ADDR uniqueLocalEntryOutGM,
+                                           GM_ADDR recvGradGM, GM_ADDR sortCompanionGM, GM_ADDR gradUniqueOutGM);
+    __aicore__ inline void ProcessChunkTile(uint32_t subStart, uint32_t subLen, uint32_t chunkIdx,
+                                            uint32_t chunkSrcElems, AscendC::LocalTensor<uint8_t> &gradRaw,
+                                            uint32_t &accumCursor, GM_ADDR gradUniqueOutGM);
+    __aicore__ inline void ProcessAccumRowChunk(int32_t pos, uint32_t subStart, uint32_t chunkIdx,
+                                                uint32_t chunkSrcElems, AscendC::LocalTensor<uint8_t> &gradRaw,
+                                                AscendC::LocalTensor<float> &castChunk, GM_ADDR gradUniqueOutGM);
+    __aicore__ inline void FlushAccumChunk(uint32_t chunkIdx, GM_ADDR gradUniqueOutGM);
     __aicore__ inline uint32_t ProcessBatchUnique(uint32_t cur, uint32_t batchLen, int32_t runningOffset,
                                                   int32_t &prevEntry, bool &isFirstElement, int32_t &inclusiveSum,
-                                                  GM_ADDR recvLocalEntryOutGM, GM_ADDR sortCompanionGM);
+                                                  GM_ADDR recvLocalEntryOutGM, GM_ADDR sortCompanionGM,
+                                                  bool emitLists);
     __aicore__ inline void WriteBatchUnique(uint32_t tileUniqueCnt, int32_t &runningUniqueOffset,
                                             GM_ADDR uniqueLocalEntryOutGM);
 
@@ -122,6 +166,25 @@ private:
                                        GM_ADDR gradUniqueOutGM);
     __aicore__ inline void AccumulateSubBatch(AscendC::LocalTensor<float> &gradFp32, uint32_t rowStrideFloats,
                                               uint32_t subStart, uint32_t subLen, GM_ADDR gradUniqueOutGM);
+    __aicore__ inline void AccumulateDirectSubBatch(AscendC::LocalTensor<uint8_t> &gradRaw, uint32_t subStart,
+                                                    uint32_t subLen, AscendC::LocalTensor<float> &castRow,
+                                                    GM_ADDR gradUniqueOutGM);
+    __aicore__ inline void ProcessDirectSubBatchLoop(uint32_t batchLen, uint32_t maxGradPerBatch,
+                                                     AscendC::LocalTensor<uint8_t> &gradBase, GM_ADDR recvGradGM,
+                                                     GM_ADDR gradUniqueOutGM);
+    __aicore__ inline void ProcessNonDirectRow(int32_t pos, uint32_t subStart,
+                                               AscendC::LocalTensor<uint8_t> &gradRaw,
+                                               AscendC::LocalTensor<float> &castRow, GM_ADDR gradUniqueOutGM);
+    __aicore__ inline void AccumulateDupListWalk(uint32_t subStart, uint32_t subLen, uint32_t &cursor,
+                                                 AscendC::LocalTensor<uint8_t> &gradRaw,
+                                                 AscendC::LocalTensor<float> &castRow, GM_ADDR gradUniqueOutGM);
+    __aicore__ inline void EmitRunsFromDupList(uint32_t subStart, uint32_t subLen, uint32_t &cursor,
+                                               AscendC::LocalTensor<uint8_t> &gradRaw, GM_ADDR gradUniqueOutGM);
+    __aicore__ inline void ProcessDirectSubBatchLoopV2(uint32_t batchLen, uint32_t maxGradPerBatch,
+                                                       AscendC::LocalTensor<uint8_t> &gradBase, GM_ADDR recvGradGM,
+                                                       GM_ADDR gradUniqueOutGM);
+    __aicore__ inline void FlushDirectRun(AscendC::LocalTensor<uint8_t> &gradRaw, uint32_t runStart,
+                                          uint32_t runLen, int32_t compactFirst, GM_ADDR gradUniqueOutGM);
     __aicore__ inline void CastToFP32(AscendC::LocalTensor<float> outT, AscendC::LocalTensor<uint8_t> gradRaw,
                                       uint32_t count);
 
@@ -134,6 +197,12 @@ private:
     int64_t hiddenBytes_{0};
     uint32_t inRowStride_{0};   // GM 行字节数向 32B 上取整（UB 内行排布 stride）
     uint32_t fp32RowStride_{0}; // fp32 行字节数向 32B 上取整
+    // ── chunk 模式派生量（chunkElems_>0 时有效）──
+    uint32_t chunkElems_{0};
+    uint32_t chunkInStride_{0};   // UB 内 chunk 列片 stride（输入 dtype 字节，32B 对齐）
+    uint32_t chunkOutStride_{0};  // 输出 dtype chunk 字节（32B 对齐）
+    uint32_t chunkFp32Stride_{0}; // fp32 chunk 字节（32B 对齐）
+    uint32_t numChunks_{0};
     uint32_t numRecv_{0};
     int32_t inputDtype_{0};
     int32_t outputDtype_{0};
@@ -158,6 +227,9 @@ private:
     bool flushPending_[2]{false, false};
     int32_t flushEvtVMte3Arr_[2]{0, 0};
     int32_t flushEvtMte3VArr_[2]{0, 0};
+    uint32_t runCnt_{0};      // 本批 direct-run 数
+    uint32_t accumCnt_{0};    // 本批 accum 行数(≤ENTRY_BATCH_CAP)
+    uint32_t accumRowCnt_{0}; // 当前 accum 组已累加行数
 };
 
 __aicore__ inline void EngramFetchGradUnique::Init(uint32_t aivId, uint32_t totalBlocks, uint32_t rankId,
@@ -324,36 +396,45 @@ __aicore__ inline void EngramFetchGradUnique::CountUniquesParallel(uint32_t numR
 
     uint32_t localUniqueCount = 0;
     if (start < rawEnd) {
-        AscendC::LocalTensor<int32_t> entryUb = tempBuf_->Get<int32_t>();
-        int32_t prevEntry = 0;
-        bool isFirstElement = (start == 0);
-        if (!isFirstElement) {
-            prevEntry = boundaryEntry;
-        }
-
+        // 预留足够的空间给向量运算
+        AscendC::LocalTensor<int32_t> xUb = gradBuf_->Get<int32_t>();
+        AscendC::LocalTensor<int32_t> yUb = xUb[Mc2Kernel::ENTRY_BATCH_CAP];
+        AscendC::LocalTensor<int32_t> fUb = xUb[2 * Mc2Kernel::ENTRY_BATCH_CAP];
+        AscendC::DataCopyPadExtParams<int32_t> cpPad{false, 0, 0, 0};
         uint32_t cur = start;
         while (cur < rawEnd) {
-            uint32_t batchLen = rawEnd - cur;
+            uint32_t batchLen = rawEnd - cur;           // 每次最多搬1024个entry
             if (batchLen > Mc2Kernel::ENTRY_BATCH_CAP) {
                 batchLen = Mc2Kernel::ENTRY_BATCH_CAP;
             }
-            AscendC::DataCopyExtParams cpParams{1U, static_cast<uint32_t>(batchLen * sizeof(int32_t)), 0U, 0U, 0U};
-            AscendC::DataCopyPadExtParams<int32_t> cpPad{false, 0, 0, 0};
-            AscendC::DataCopyPad(entryUb, sortedEntryGM[cur], cpParams, cpPad);
-            SyncFunc<AscendC::HardEvent::MTE2_S>(*pipe_);
-            for (uint32_t i = 0; i < batchLen; i++) {
-                int32_t entry = entryUb.GetValue(i);
-                bool isNewUnique;
-                if (isFirstElement) {
-                    isNewUnique = true;
-                    isFirstElement = false;
+            AscendC::DataCopyExtParams yParams{1U, static_cast<uint32_t>(batchLen * sizeof(int32_t)), 0U, 0U, 0U};
+            AscendC::DataCopyPad(yUb, sortedEntryGM[cur], yParams, cpPad);
+            bool isFirstBatch = (cur == 0U);
+            uint32_t xBase = isFirstBatch ? (cur + 1U) : (cur - 1U);    // fisrtbatch无法前移，用后移动方式，这样计算出的1一定少一个unique，最后会补上
+            AscendC::DataCopyExtParams cpX{1U, static_cast<uint32_t>(batchLen * sizeof(int32_t)), 0U, 0U, 0U};
+            AscendC::DataCopyPad(xUb, sortedEntryGM[xBase], cpX, cpPad);    // x前移动一格，x[i]就是Y[i]的前一个元素
+            SyncFunc<AscendC::HardEvent::MTE2_V>(*pipe_);
+
+            uint32_t cntLen = isFirstBatch ? (batchLen - 1U) : batchLen;
+            if (cntLen > 0U) {
+                if (isFirstBatch) {
+                    AscendC::Sub<int32_t>(fUb, xUb, yUb, static_cast<int32_t>(cntLen));
                 } else {
-                    isNewUnique = (entry != prevEntry);
+                    AscendC::Sub<int32_t>(fUb, yUb, xUb, static_cast<int32_t>(cntLen));
                 }
-                if (isNewUnique) {
-                    localUniqueCount++;
-                }
-                prevEntry = entry;
+                // 向量化操作替代原来的scalar操作
+                AscendC::PipeBarrier<PIPE_V>();
+                AscendC::Mins<int32_t>(fUb, fUb, 1, static_cast<int32_t>(cntLen));      // 逐元素和常数1取小，筛成只有0 1
+                AscendC::PipeBarrier<PIPE_V>();
+
+                const uint32_t rshape[] = {1U, cntLen};
+                AscendC::LocalTensor<uint8_t> rsTmp = tempBuf_->Get<uint8_t>();
+                AscendC::ReduceSum<int32_t, AscendC::Pattern::Reduce::AR>(xUb, fUb, rsTmp, rshape, false);  // 1累积为unique数目
+                SyncFunc<AscendC::HardEvent::V_S>(*pipe_);
+                localUniqueCount += static_cast<uint32_t>(xUb.GetValue(0));
+            }
+            if (isFirstBatch) {
+                localUniqueCount += 1U;  // 首元素必为 unique，故+1
             }
             cur += batchLen;
         }
@@ -372,6 +453,307 @@ __aicore__ inline void EngramFetchGradUnique::CountUniquesParallel(uint32_t numR
     AscendC::DataCopyPad(coreStartGMT[aivId_], cntUb, cntParams);
     AscendC::DataCopyPad(segCountGMT[aivId_], cntUb[Mc2Kernel::STATE_OFFSET / sizeof(int32_t)], cntParams);
     SyncFunc<AscendC::HardEvent::MTE3_S>(*pipe_);
+}
+
+// ═══════════ chunk 模式数据面（hidden 维分块）═══════════
+// 整行放不下 UB 时启用：元数据逐批复算（每列重走一遍，幂等），数据面按 chunk 列片
+// 处理 —— gather 每行搬 chunk 列片、accum/cast/direct/flush 全部 chunk 粒度，
+// UB 占用与 hiddenDim 无关。列循环为外层：组状态在列内跨批持续（组可跨批），
+// 每列独立走完全部批后在列末 flush 尾组。
+
+__aicore__ inline void EngramFetchGradUnique::ChunkedScatterRange(uint32_t start, uint32_t end,
+                                                                   int32_t preCoreOffset, GM_ADDR recvLocalEntryOutGM,
+                                                                   GM_ADDR uniqueLocalEntryOutGM,
+                                                                   GM_ADDR gradUniqueOutGM, GM_ADDR recvGradGM,
+                                                                   GM_ADDR sortCompanionGM)
+{
+    for (uint32_t c = 0U; c < numChunks_; c++) {
+        // 每 chunk 列独立组状态机（组状态在列内跨批持续）；列末 flush 尾组
+        accumCompactIdx_ = -1;
+        accumDirty_ = false;
+        accumRowCnt_ = 0U;
+        ChunkColumnPass(c, start, end, preCoreOffset, recvLocalEntryOutGM, uniqueLocalEntryOutGM, recvGradGM,
+                        sortCompanionGM, gradUniqueOutGM);
+        if (accumDirty_) {
+            FlushAccumChunk(c, gradUniqueOutGM);
+            accumDirty_ = false;
+        }
+    }
+}
+
+__aicore__ inline void EngramFetchGradUnique::ChunkColumnPass(uint32_t chunkIdx, uint32_t start, uint32_t end,
+                                                              int32_t preCoreOffset, GM_ADDR recvLocalEntryOutGM,
+                                                              GM_ADDR uniqueLocalEntryOutGM, GM_ADDR recvGradGM,
+                                                              GM_ADDR sortCompanionGM, GM_ADDR gradUniqueOutGM)
+{
+    uint32_t inDtypeSize = GetDtypeSize(inputDtype_);
+    uint32_t chunkSrcElems =
+        (chunkIdx + 1U == numChunks_) ? (static_cast<uint32_t>(hiddenDim_) - chunkIdx * chunkElems_) : chunkElems_;
+    uint32_t chunkSrcBytes = chunkSrcElems * inDtypeSize;
+    uint64_t srcByteOff = static_cast<uint64_t>(chunkIdx) * chunkElems_ * inDtypeSize;
+
+    constexpr uint32_t kBufs = 4U;
+    event_t evtMte2V[kBufs];
+    event_t evtVMte2[kBufs];
+    event_t evtMte2Mte3[kBufs];
+    event_t evtMte3Mte2[kBufs];
+    for (uint32_t b = 0U; b < kBufs; b++) {
+        evtMte2V[b] = static_cast<event_t>(pipe_->AllocEventID<AscendC::HardEvent::MTE2_V>());
+        evtVMte2[b] = static_cast<event_t>(pipe_->AllocEventID<AscendC::HardEvent::V_MTE2>());
+        evtMte2Mte3[b] = static_cast<event_t>(pipe_->AllocEventID<AscendC::HardEvent::MTE2_MTE3>());
+        evtMte3Mte2[b] = static_cast<event_t>(pipe_->AllocEventID<AscendC::HardEvent::MTE3_MTE2>());
+    }
+    AscendC::LocalTensor<uint8_t> gradBase = gradBuf_->Get<uint8_t>();
+    constexpr uint32_t kBufBytes = Mc2Kernel::GRAD_PING_BYTES / 2U; // 16K
+    uint32_t bufRows = kBufBytes / chunkInStride_;
+    if (bufRows < 1U) {
+        bufRows = 1U;
+    }
+    // 每 tile 行数 = 单个 16K 缓冲能装的 chunk 列片行数(4 缓冲轮转, 与 V2 的
+    // maxGradPerBatch=bufRows 同口径); gradSubBatch(=4 缓冲环量)只作上界防御
+    uint32_t maxRows = bufRows;
+    if (maxRows > gradSubBatch_) {
+        maxRows = gradSubBatch_;
+    }
+    if (maxRows < 1U) {
+        maxRows = 1U;
+    }
+    AscendC::DataCopyPadExtParams<uint8_t> gradPad{false, 0, 0, 0};
+
+    // 元数据状态（每列从头重走，结果幂等）；首列顺带写 unique 表
+    int32_t runningOffset = preCoreOffset;
+    int32_t runningUniqueOffset = preCoreOffset;
+    int32_t prevEntry = 0;
+    bool isFirstElement = true;
+    uint32_t tileIdx = 0U;
+    uint32_t cur = start;
+    while (cur < end) {
+        uint32_t batchLen = end - cur;
+        if (batchLen > Mc2Kernel::ENTRY_BATCH_CAP) {
+            batchLen = Mc2Kernel::ENTRY_BATCH_CAP;
+        }
+        int32_t inclusiveSum = 0;
+        uint32_t tileUniqueCnt = ProcessBatchUnique(cur, batchLen, runningOffset, prevEntry, isFirstElement, inclusiveSum,
+                                                    recvLocalEntryOutGM, sortCompanionGM, true);
+        if (chunkIdx == 0U && tileUniqueCnt > 0) {
+            int32_t uniqOff = runningUniqueOffset;
+            WriteBatchUnique(tileUniqueCnt, uniqOff, uniqueLocalEntryOutGM);
+            runningUniqueOffset = uniqOff;
+        }
+        runningOffset += inclusiveSum;
+
+        // 本批 tile 流水（accumCursor 每批重置：accumList 是批内位置）
+        uint32_t accumCursor = 0U;
+        for (uint32_t subStart = 0U; subStart < batchLen; subStart += maxRows) {
+            uint32_t subLen = batchLen - subStart;
+            if (subLen > maxRows) {
+                subLen = maxRows;
+            }
+            uint32_t b = tileIdx % kBufs;
+            AscendC::LocalTensor<uint8_t> gradRaw = gradBase[b * kBufBytes];
+
+            if (tileIdx >= kBufs) {
+                AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(evtVMte2[b]);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(evtMte3Mte2[b]);
+            }
+
+            // gather: 每行一笔 chunk 列片 MTE2（companion 行号散落读）
+            for (uint32_t j = 0U; j < subLen; j++) {
+                int32_t recvIdx = CompUb().GetValue(subStart + j);
+                if (recvIdx < 0 || static_cast<uint32_t>(recvIdx) >= numRecv_) {
+                    recvIdx = 0;
+                }
+                GM_ADDR gradAddr = recvGradGM + static_cast<uint64_t>(recvIdx) * hiddenBytes_ + srcByteOff;
+                AscendC::GlobalTensor<uint8_t> gradSrcGM;
+                gradSrcGM.SetGlobalBuffer((__gm__ uint8_t *)gradAddr);
+                AscendC::DataCopyExtParams gradParams{1U, chunkSrcBytes, 0U, 0U, 0U};
+                AscendC::DataCopyPad(gradRaw[static_cast<uint64_t>(j) * chunkInStride_], gradSrcGM, gradParams,
+                                     gradPad);
+            }
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(evtMte2V[b]);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(evtMte2Mte3[b]);
+
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(evtMte2V[b]);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(evtMte2Mte3[b]);
+            ProcessChunkTile(subStart, subLen, chunkIdx, chunkSrcElems, gradRaw, accumCursor, gradUniqueOutGM);
+
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(evtMte3Mte2[b]);
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(evtVMte2[b]);
+            tileIdx++;
+        }
+        cur += batchLen;
+    }
+
+    // 排空最后 min(kBufs, tileIdx) 个缓冲后释放事件
+    uint32_t drainFrom = (tileIdx > kBufs) ? (tileIdx - kBufs) : 0U;
+    for (uint32_t t = drainFrom; t < tileIdx; t++) {
+        uint32_t b = t % kBufs;
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(evtVMte2[b]);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(evtMte3Mte2[b]);
+    }
+    for (uint32_t b = 0U; b < kBufs; b++) {
+        pipe_->ReleaseEventID<AscendC::HardEvent::MTE2_V>(evtMte2V[b]);
+        pipe_->ReleaseEventID<AscendC::HardEvent::V_MTE2>(evtVMte2[b]);
+        pipe_->ReleaseEventID<AscendC::HardEvent::MTE2_MTE3>(evtMte2Mte3[b]);
+        pipe_->ReleaseEventID<AscendC::HardEvent::MTE3_MTE2>(evtMte3Mte2[b]);
+    }
+}
+
+// 单个 gather tile 的处理：行分类（accumList/直接透传）+ accum 组状态机 + direct chunk 段 MTE3
+__aicore__ inline void EngramFetchGradUnique::ProcessChunkTile(uint32_t subStart, uint32_t subLen, uint32_t chunkIdx,
+                                                                uint32_t chunkSrcElems,
+                                                                AscendC::LocalTensor<uint8_t> &gradRaw,
+                                                                uint32_t &accumCursor, GM_ADDR gradUniqueOutGM)
+{
+    bool directAllowed = (inputDtype_ == outputDtype_);
+    uint32_t outDtypeSize = GetDtypeSize(outputDtype_);
+    uint32_t inDtypeSize = GetDtypeSize(inputDtype_);
+    uint32_t chunkSrcBytes = chunkSrcElems * inDtypeSize; // direct 时 in==out
+    uint64_t outByteOff = static_cast<uint64_t>(chunkIdx) * chunkElems_ * outDtypeSize;
+    AscendC::LocalTensor<float> castChunk = castBuf_->Get<float>();
+
+    for (uint32_t j = 0U; j < subLen; j++) {
+        uint32_t pos = subStart + j;
+        bool isAccum;
+        if (!directAllowed) {
+            // 入出 dtype 不同：单元素组也无法直拷，全部走 cast+accum
+            isAccum = true;
+        } else {
+            while (accumCursor < accumCnt_ && static_cast<uint32_t>(AccumListUb().GetValue(accumCursor)) < pos) {
+                accumCursor++;
+            }
+            isAccum = (accumCursor < accumCnt_ &&
+                       static_cast<uint32_t>(AccumListUb().GetValue(accumCursor)) == pos);
+        }
+        if (isAccum) {
+            ProcessAccumRowChunk(static_cast<int32_t>(pos), subStart, chunkIdx, chunkSrcElems, gradRaw, castChunk,
+                                 gradUniqueOutGM);
+        } else {
+            int32_t compactIdx = CompactIdxUb().GetValue(pos);
+            if (compactIdx < 0 || compactIdx >= numEntriesPerRank_) {
+                continue;
+            }
+            uint64_t gmByteOffset =
+                static_cast<uint64_t>(compactIdx) * static_cast<uint64_t>(hiddenDim_) * outDtypeSize + outByteOff;
+            AscendC::GlobalTensor<uint8_t> dstGM;
+            dstGM.SetGlobalBuffer((__gm__ uint8_t *)(gradUniqueOutGM + gmByteOffset));
+            AscendC::DataCopyParams params{1U, static_cast<uint16_t>(chunkSrcBytes), 0U, 0U};
+            AscendC::DataCopyPad(dstGM, gradRaw[j * chunkInStride_], params);
+        }
+    }
+}
+
+// chunk 模式的单行累加：组状态机与 ProcessNonDirectRow 同构，粒度换成 chunk 列片
+__aicore__ inline void EngramFetchGradUnique::ProcessAccumRowChunk(int32_t pos, uint32_t subStart, uint32_t chunkIdx,
+                                                                   uint32_t chunkSrcElems,
+                                                                   AscendC::LocalTensor<uint8_t> &gradRaw,
+                                                                   AscendC::LocalTensor<float> &castChunk,
+                                                                   GM_ADDR gradUniqueOutGM)
+{
+    AscendC::LocalTensor<float> accumBase = accumBuf_->Get<float>();
+
+    int32_t compactIdx = CompactIdxUb().GetValue(pos);
+    if (compactIdx < 0 || compactIdx >= numEntriesPerRank_) {
+        return;
+    }
+    if (compactIdx != accumCompactIdx_) {
+        if (accumDirty_) {
+            FlushAccumChunk(chunkIdx, gradUniqueOutGM);
+            accumIdx_ ^= 1U;
+            if (flushPending_[accumIdx_]) {
+                AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(flushEvtMte3VArr_[accumIdx_]);
+                flushPending_[accumIdx_] = false;
+            }
+        }
+        accumCompactIdx_ = compactIdx;
+        accumRowCnt_ = 0;
+    }
+    AscendC::LocalTensor<float> accum = accumBase[accumIdx_ * accumFloats_];
+    uint32_t rowOff = static_cast<uint32_t>(pos - static_cast<int32_t>(subStart)) * chunkInStride_;
+    (void)accum; (void)rowOff; (void)castChunk; (void)gradRaw; (void)chunkSrcElems; // ABLATION: 消融 cast/sum
+    if (accumRowCnt_ == 0U) {
+        // ABLATION: 注释 vector 计算（测 scatter 搬运耗时）
+        // if (inputDtype_ != Mc2Kernel::ENGRAM_DT_FLOAT) {
+        //     CastToFP32(accum, gradRaw[rowOff], chunkSrcElems);
+        //     AscendC::PipeBarrier<PIPE_V>();
+        // } else {
+        //     AscendC::LocalTensor<float> gradFp32 = gradRaw[rowOff].ReinterpretCast<float>();
+        //     AscendC::Adds<float>(accum, gradFp32, 0.0f, chunkSrcElems);
+        //     AscendC::PipeBarrier<PIPE_V>();
+        // }
+        // } else if (inputDtype_ != Mc2Kernel::ENGRAM_DT_FLOAT) {
+        //     CastToFP32(castChunk, gradRaw[rowOff], chunkSrcElems);
+        //     AscendC::PipeBarrier<PIPE_V>();
+        //     AscendC::Add<float>(accum, accum, castChunk, chunkSrcElems);
+        //     AscendC::PipeBarrier<PIPE_V>();
+        // } else {
+        //     AscendC::LocalTensor<float> gradFp32 = gradRaw[rowOff].ReinterpretCast<float>();
+        //     AscendC::Add<float>(accum, accum, gradFp32, chunkSrcElems);
+        //     AscendC::PipeBarrier<PIPE_V>();
+        // }
+    }
+    accumRowCnt_++;
+    accumDirty_ = true;
+}
+
+// chunk 模式的组 flush：accum chunk 列 → (cast) → 输出行的 chunk 段。
+// staging 借用 entryBuf 尾部（chunk 粒度双缓冲，与 accumIdx_ 配对），事件机制与 FlushAccum 同构
+__aicore__ inline void EngramFetchGradUnique::FlushAccumChunk(uint32_t chunkIdx, GM_ADDR gradUniqueOutGM)
+{
+    uint32_t bufIdx = accumIdx_;
+    AscendC::LocalTensor<float> accumBase = accumBuf_->Get<float>();
+    AscendC::LocalTensor<float> accum = accumBase[bufIdx * accumFloats_];
+    uint32_t outDtypeSize = GetDtypeSize(outputDtype_);
+    uint32_t chunkSrcElems =
+        (chunkIdx + 1U == numChunks_) ? (static_cast<uint32_t>(hiddenDim_) - chunkIdx * chunkElems_) : chunkElems_;
+    uint32_t chunkOutBytes = chunkSrcElems * outDtypeSize;
+    if (accumCompactIdx_ < 0 || accumCompactIdx_ >= numEntriesPerRank_) {
+        return;
+    }
+    uint64_t gmByteOffset = static_cast<uint64_t>(accumCompactIdx_) * static_cast<uint64_t>(hiddenDim_) * outDtypeSize +
+                            static_cast<uint64_t>(chunkIdx) * chunkElems_ * outDtypeSize;
+
+    if (outputDtype_ == Mc2Kernel::ENGRAM_DT_FLOAT) {
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(flushEvtVMte3Arr_[bufIdx]);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(flushEvtVMte3Arr_[bufIdx]);
+        AscendC::GlobalTensor<float> dstGM;
+        dstGM.SetGlobalBuffer((__gm__ float *)(gradUniqueOutGM + gmByteOffset));
+        AscendC::DataCopyParams params{1U, static_cast<uint16_t>(chunkOutBytes), 0U, 0U};
+        AscendC::DataCopyPad(dstGM, accum, params);
+        // 事件令牌必须配对消费: SetFlag(MTE3_V) 后立即 WaitFlag, 否则通知悬挂,
+        // 后续依赖 MTE3 队列 drain 的等待(如下一列元数据复算的 SyncFunc<MTE2_S>)死等
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(flushEvtMte3VArr_[bufIdx]);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(flushEvtMte3VArr_[bufIdx]);
+    } else {
+        // staging 双缓冲在 entryBuf 尾部，chunk 粒度
+        AscendC::LocalTensor<uint8_t> entryRaw = entryBuf_->Get<uint8_t>();
+        uint32_t flushCastOffset = Mc2Kernel::FLUSH_CAST_HEAD_BYTES;
+        uint32_t castTailBytes = flushCastOffset + 2U * chunkOutStride_;
+        ascendc_assert(castTailBytes <= entryBufBytes_,
+                       "FlushAccumChunk staging overflow: need %u bytes, entryBuf=%u bytes", castTailBytes,
+                       entryBufBytes_);
+        AscendC::LocalTensor<uint8_t> flushCastBuf = entryRaw[flushCastOffset + bufIdx * chunkOutStride_];
+        (void)flushCastBuf; (void)accum; // ABLATION: 消融输出侧 cast
+        // ABLATION: 注释 vector 计算（测 scatter 搬运耗时）
+        // if (outputDtype_ == Mc2Kernel::ENGRAM_DT_BFLOAT16) {
+        //     AscendC::LocalTensor<bfloat16_t> outT = flushCastBuf.ReinterpretCast<bfloat16_t>();
+        //     AscendC::Cast(outT, accum, AscendC::RoundMode::CAST_RINT, chunkSrcElems);
+        // } else {
+        //     AscendC::LocalTensor<half> outT = flushCastBuf.ReinterpretCast<half>();
+        //     AscendC::Cast(outT, accum, AscendC::RoundMode::CAST_RINT, chunkSrcElems);
+        // }
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(flushEvtVMte3Arr_[bufIdx]);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(flushEvtVMte3Arr_[bufIdx]);
+        AscendC::GlobalTensor<uint8_t> dstGM;
+        dstGM.SetGlobalBuffer((__gm__ uint8_t *)(gradUniqueOutGM + gmByteOffset));
+        AscendC::DataCopyParams params{1U, static_cast<uint16_t>(chunkOutBytes), 0U, 0U};
+        AscendC::DataCopyPad(dstGM, flushCastBuf, params);
+        // 事件令牌必须配对消费(同 fp32 分支): 悬挂的 MTE3_V 通知会让事件状态机失效
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(flushEvtMte3VArr_[bufIdx]);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(flushEvtMte3VArr_[bufIdx]);
+    }
+    // flush 已同步化(Set 后立即 Wait), staging 复用保护天然成立, pending 机制退役
+    flushPending_[bufIdx] = false;
 }
 
 __aicore__ inline void EngramFetchGradUnique::LoadCoreRange(uint32_t numRecv, GM_ADDR coreStartGM, GM_ADDR segCountGM,
@@ -477,15 +859,15 @@ __aicore__ inline void EngramFetchGradUnique::FlushAccum(GM_ADDR gradUniqueOutGM
                        "FlushAccum cast staging overflow: need %u bytes, entryBuf=%u bytes, hiddenDim=%u",
                        castTailBytes, entryBufBytes_, static_cast<uint32_t>(hiddenDim_));
         AscendC::LocalTensor<uint8_t> flushCastBuf = entryRaw[flushCastOffset + bufIdx * castHalfBytes];
-        uint32_t castCount = static_cast<uint32_t>(hiddenDim_);
-
-        if (outputDtype_ == Mc2Kernel::ENGRAM_DT_BFLOAT16) {
-            AscendC::LocalTensor<bfloat16_t> outT = flushCastBuf.ReinterpretCast<bfloat16_t>();
-            AscendC::Cast(outT, accum, AscendC::RoundMode::CAST_RINT, castCount);
-        } else {
-            AscendC::LocalTensor<half> outT = flushCastBuf.ReinterpretCast<half>();
-            AscendC::Cast(outT, accum, AscendC::RoundMode::CAST_RINT, castCount);
-        }
+        (void)flushCastBuf; (void)accum; // ABLATION: 消融输出侧 cast
+        // ABLATION: 注释 vector 计算（测 scatter 搬运耗时）
+        // if (outputDtype_ == Mc2Kernel::ENGRAM_DT_BFLOAT16) {
+        //     AscendC::LocalTensor<bfloat16_t> outT = flushCastBuf.ReinterpretCast<bfloat16_t>();
+        //     AscendC::Cast(outT, accum, AscendC::RoundMode::CAST_RINT, castCount);
+        // } else {
+        //     AscendC::LocalTensor<half> outT = flushCastBuf.ReinterpretCast<half>();
+        //     AscendC::Cast(outT, accum, AscendC::RoundMode::CAST_RINT, castCount);
+        // }
 
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(flushEvtVMte3Arr_[bufIdx]);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(flushEvtVMte3Arr_[bufIdx]);
@@ -597,12 +979,200 @@ __aicore__ inline void EngramFetchGradUnique::AccumulateSubBatch(AscendC::LocalT
     }
 }
 
+__aicore__ inline void EngramFetchGradUnique::AccumulateDirectSubBatch(AscendC::LocalTensor<uint8_t> &gradRaw,
+                                                                        uint32_t subStart, uint32_t subLen,
+                                                                        AscendC::LocalTensor<float> &castRow,
+                                                                        GM_ADDR gradUniqueOutGM)
+{
+    AscendC::LocalTensor<float> accumBase = accumBuf_->Get<float>();
+    uint32_t hiddenDim = static_cast<uint32_t>(hiddenDim_);
+
+    for (uint32_t j = 0; j < subLen; j++) {
+        // 在processBatchUnique中，DirectFlagUb[i]最终语意为，第i行是新unique开头，且第i+1行也是新unique开头
+        // 35 55 55 55 72 90 90 12 12 12其中35和72就为1，其他为0
+        if (DirectFlagUb().GetValue(subStart + j) != 0) {   // 批内第i行是不是一个只出现一次的entry
+            continue; // direct 行由 MTE2->MTE3 直拷, 不做 cast/累加
+        }
+        int32_t compactIdx = CompactIdxUb().GetValue(subStart + j);
+        if (compactIdx < 0 || compactIdx >= numEntriesPerRank_) {
+            continue;
+        }
+        if (compactIdx != accumCompactIdx_) {
+            // 到另一个累加组段了
+            if (accumDirty_) {
+                FlushAccum(gradUniqueOutGM);    // 把之前的accum cast回输出dtype并写会GM
+                accumIdx_ ^= 1U;    // 切到accumBuf的另一半
+                if (flushPending_[accumIdx_]) {
+                    AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(flushEvtMte3VArr_[accumIdx_]);
+                    flushPending_[accumIdx_] = false;
+                }
+            }
+            // 清零accum区为accum做准备
+            AscendC::LocalTensor<float> accum = accumBase[accumIdx_ * accumFloats_];
+            AscendC::Duplicate<float>(accum, 0.0f, hiddenDim);
+            AscendC::PipeBarrier<PIPE_V>();
+            accumCompactIdx_ = compactIdx;
+        }
+        // accum累加
+        AscendC::LocalTensor<float> accum = accumBase[accumIdx_ * accumFloats_];
+        CastToFP32(castRow, gradRaw[j * inRowStride_], hiddenDim);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Add<float>(accum, accum, castRow, hiddenDim);
+        AscendC::PipeBarrier<PIPE_V>();
+        accumDirty_ = true;
+    }
+}
+
+// PERF-OPT v7: 连续 direct 行单笔落盘 —— run 内 compactIdx 严格连续(flag=1 ⟺ 本行唯一且
+// 下一行也唯一 ⟺ compact+1, 链式传递), 目的 GM 行连续; 源 UB 行按 inRowStride 打包连续,
+// 单笔 DataCopyPad(≤ 半缓冲 32KB ≤ MTE 64KB 块上限)
+__aicore__ inline void EngramFetchGradUnique::FlushDirectRun(AscendC::LocalTensor<uint8_t> &gradRaw,
+                                                             uint32_t runStart, uint32_t runLen,
+                                                             int32_t compactFirst, GM_ADDR gradUniqueOutGM)
+{
+    uint32_t outDtypeSize = GetDtypeSize(outputDtype_);
+    uint64_t gmByteOffset =
+        static_cast<uint64_t>(compactFirst) * static_cast<uint64_t>(hiddenDim_) * outDtypeSize;
+    AscendC::GlobalTensor<uint8_t> dstGM;
+    dstGM.SetGlobalBuffer((__gm__ uint8_t *)(gradUniqueOutGM + gmByteOffset));
+    uint32_t totalBytes = runLen * static_cast<uint32_t>(hiddenBytes_);
+    AscendC::DataCopyParams params{1U, static_cast<uint16_t>(totalBytes), 0U, 0U};
+    AscendC::DataCopyPad(dstGM, gradRaw[runStart * inRowStride_], params);
+}
+
+// PERF-OPT v7: direct 模式专属子批流水 —— 4x16K 四缓冲(load k+2 ∥ store k) + run 合并 store。
+// 旧 2 缓冲结构中 load k+1 必须等 store k-1 完成(缓冲复用), 散落 load/store 完全串行。
+__aicore__ inline void EngramFetchGradUnique::ProcessDirectSubBatchLoop(uint32_t batchLen,
+                                                                        uint32_t maxGradPerBatch,
+                                                                        AscendC::LocalTensor<uint8_t> &gradBase,
+                                                                        GM_ADDR recvGradGM,
+                                                                        GM_ADDR gradUniqueOutGM)
+{
+    // 4x16K 四缓冲流水 + run 合并 store
+    constexpr uint32_t kBufs = 4U;
+    event_t evtMte2V[kBufs];
+    event_t evtVMte2[kBufs];
+    event_t evtMte2Mte3[kBufs];
+    event_t evtMte3Mte2[kBufs];
+    for (uint32_t b = 0; b < kBufs; b++) {
+        // 4缓冲*4事件=16ID
+        evtMte2V[b] = static_cast<event_t>(pipe_->AllocEventID<AscendC::HardEvent::MTE2_V>());
+        evtVMte2[b] = static_cast<event_t>(pipe_->AllocEventID<AscendC::HardEvent::V_MTE2>());
+        evtMte2Mte3[b] = static_cast<event_t>(pipe_->AllocEventID<AscendC::HardEvent::MTE2_MTE3>());
+        evtMte3Mte2[b] = static_cast<event_t>(pipe_->AllocEventID<AscendC::HardEvent::MTE3_MTE2>());
+    }
+    bool needCast = (inputDtype_ != Mc2Kernel::ENGRAM_DT_FLOAT);
+    // 若这两者相等则代表原本就是32B对齐
+    // todo: 似乎这里datacopy理解有问题，即便不32对齐，可以用stride的方式一次datacopy多条拷贝
+    bool packed = (inRowStride_ == static_cast<uint32_t>(hiddenBytes_));    // 决定后面run合并是否可用
+    constexpr uint32_t kBufBytes = Mc2Kernel::GRAD_PING_BYTES / 2U; // 16K
+    uint32_t bufRows = kBufBytes / inRowStride_;    // 每个16k能装几行
+    if (bufRows < 1U) {
+        bufRows = 1U;
+    }
+    if (bufRows < maxGradPerBatch) {
+        maxGradPerBatch = bufRows; // 四缓冲粒度下的子批行数
+    }
+    AscendC::LocalTensor<float> castRow = castBuf_->Get<float>();
+    AscendC::DataCopyPadExtParams<uint8_t> gradPad{false, 0, 0, 0};
+
+    uint32_t tileIdx = 0;
+    for (uint32_t subStart = 0; subStart < batchLen; subStart += maxGradPerBatch) {
+        uint32_t subLen = batchLen - subStart;
+        if (subLen > maxGradPerBatch) {
+            subLen = maxGradPerBatch;
+        }
+        uint32_t b = tileIdx % kBufs;   // 轮转取缓冲 0->1->2->3->0...
+        AscendC::LocalTensor<uint8_t> gradRaw = gradBase[b * kBufBytes];
+
+        if (tileIdx >= kBufs) { // 第5轮开始开始复用缓冲
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(evtVMte2[b]);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(evtMte3Mte2[b]);
+        }
+
+        // 散落 gather load(按 companion 索引, 每行一笔)
+        for (uint32_t j = 0; j < subLen; j++) {
+            int32_t recvIdx = CompUb().GetValue(subStart + j);  // 查companion，这行梯度在recvGrad的哪里
+            if (recvIdx < 0 || static_cast<uint32_t>(recvIdx) >= numRecv_) {
+                recvIdx = 0;
+            }
+            GM_ADDR gradAddr = recvGradGM + static_cast<uint64_t>(recvIdx) * hiddenBytes_;
+            AscendC::DataCopyExtParams gradParams{1U, static_cast<uint32_t>(hiddenBytes_), 0U, 0U, 0U};
+            AscendC::GlobalTensor<uint8_t> gradSrcGM;
+            gradSrcGM.SetGlobalBuffer((__gm__ uint8_t *)gradAddr);
+            AscendC::DataCopyPad(gradRaw[static_cast<uint64_t>(j) * inRowStride_], gradSrcGM, gradParams, gradPad);
+        }
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(evtMte2V[b]);
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(evtMte2Mte3[b]);
+
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(evtMte2V[b]);
+        if (needCast) {
+            AccumulateDirectSubBatch(gradRaw, subStart, subLen, castRow, gradUniqueOutGM);
+        } else {
+            AscendC::LocalTensor<float> gradFp32 = gradRaw.ReinterpretCast<float>();
+            AccumulateSubBatch(gradFp32, inRowStride_ / sizeof(float), subStart, subLen, gradUniqueOutGM);
+        }
+
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(evtMte2Mte3[b]);
+        if (packed) {
+            // 单笔连续写
+            uint32_t j = 0;
+            while (j < subLen) {
+                if (DirectFlagUb().GetValue(subStart + j) != 0) {
+                    uint32_t runStart = j;
+                    j++;
+                    while (j < subLen && DirectFlagUb().GetValue(subStart + j) != 0) {
+                        j++;
+                    }
+                    int32_t compactFirst = CompactIdxUb().GetValue(subStart + runStart);
+                    if (compactFirst >= 0 && compactFirst < numEntriesPerRank_) {
+                        FlushDirectRun(gradRaw, runStart, j - runStart, compactFirst, gradUniqueOutGM);
+                    }
+                } else {
+                    j++;
+                }
+            }
+        } else {
+            for (uint32_t j = 0; j < subLen; j++) {
+                if (DirectFlagUb().GetValue(subStart + j) != 0) {
+                    int32_t compactIdx = CompactIdxUb().GetValue(subStart + j);
+                    if (compactIdx < 0 || compactIdx >= numEntriesPerRank_) {
+                        continue;
+                    }
+                    FlushDirect(gradRaw, j, compactIdx, gradUniqueOutGM);
+                }
+            }
+        }
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(evtMte3Mte2[b]);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(evtVMte2[b]);
+        tileIdx++;
+    }
+
+    // 排空最后 min(kBufs, tileIdx) 个缓冲
+    uint32_t drainFrom = (tileIdx > kBufs) ? (tileIdx - kBufs) : 0U;
+    for (uint32_t t = drainFrom; t < tileIdx; t++) {
+        uint32_t b = t % kBufs;
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(evtVMte2[b]);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(evtMte3Mte2[b]);
+    }
+    for (uint32_t b = 0; b < kBufs; b++) {
+        pipe_->ReleaseEventID<AscendC::HardEvent::MTE2_V>(evtMte2V[b]);
+        pipe_->ReleaseEventID<AscendC::HardEvent::V_MTE2>(evtVMte2[b]);
+        pipe_->ReleaseEventID<AscendC::HardEvent::MTE2_MTE3>(evtMte2Mte3[b]);
+        pipe_->ReleaseEventID<AscendC::HardEvent::MTE3_MTE2>(evtMte3Mte2[b]);
+    }
+}
+
 __aicore__ inline uint32_t EngramFetchGradUnique::ProcessBatchUnique(uint32_t cur, uint32_t batchLen,
-                                                                     int32_t runningOffset, int32_t &prevEntry,
+                                                                      int32_t runningOffset, int32_t &prevEntry,
                                                                      bool &isFirstElement, int32_t &inclusiveSum,
                                                                      GM_ADDR recvLocalEntryOutGM,
-                                                                     GM_ADDR sortCompanionGM)
+                                                                     GM_ADDR sortCompanionGM, bool emitLists)
 {
+    // ── 输出：3 张元数据表（均复用 entryBuf_ 的不同段）──
+    // UniqueUb[i]       = 本批第 i 个新 unique 的 entry 值（减去 rank 偏移的全局 id）
+    // CompactIdxUb[j]   = 第 j 行属于第几个 unique（全局紧凑索引，范围 [runningOffset, runningOffset+inclusiveSum)）
+    // DirectFlagUb[j]   = 第 j 行是否组头（非末行且是新 unique；末行恒 0，跨批边界由调用方维护）
     AscendC::LocalTensor<int32_t> entryUb = indicesBuf_->Get<int32_t>();
 
     AscendC::GlobalTensor<int32_t> sortedEntryGM;
@@ -623,6 +1193,67 @@ __aicore__ inline uint32_t EngramFetchGradUnique::ProcessBatchUnique(uint32_t cu
 
     inclusiveSum = 0;
     uint32_t tileUniqueCnt = 0;
+    if (emitLists) {
+        AscendC::LocalTensor<int32_t> uniqueT = UniqueUb();
+        AscendC::LocalTensor<int32_t> compactT = CompactIdxUb();
+        AscendC::LocalTensor<int32_t> runStartT = RunStartUb();
+        AscendC::LocalTensor<int32_t> runLenT = RunLenUb();
+        AscendC::LocalTensor<int32_t> accumT = AccumListUb();
+        int32_t rankBase = static_cast<int32_t>(static_cast<int64_t>(rankId_) * numEntriesPerRank_);
+        bool prevIsNewUnique = false;
+        int32_t prevCompact = 0;
+        uint32_t runCnt = 0;
+        uint32_t accumCnt = 0;
+        bool inRun = false;
+        uint32_t runStartPos = 0;
+        for (uint32_t i = 0; i < batchLen; i++) {
+            int32_t entry = entryUb.GetValue(i);
+            bool isNewUnique = isFirstElement || (entry != prevEntry);
+            isFirstElement = false;
+            prevEntry = entry;
+            if (isNewUnique) {
+                inclusiveSum++;
+                uniqueT.SetValue(tileUniqueCnt, entry - rankBase);
+                tileUniqueCnt++;
+            }
+            int32_t compactIdx = runningOffset + inclusiveSum - 1;
+            compactT.SetValue(i, compactIdx);
+            // 延迟一拍: 第 i 轮确定行 i-1 的最终 flag
+            if (i > 0) {
+                bool dPrev = prevIsNewUnique && prevCompact != compactIdx; // canDirectCopy 已由 useListPath 路径条件保证
+                if (dPrev) {
+                    if (!inRun) {
+                        inRun = true;
+                        runStartPos = i - 1U;
+                    }
+                } else {
+                    if (inRun) {
+                        runStartT.SetValue(runCnt, static_cast<int32_t>(runStartPos));
+                        runLenT.SetValue(runCnt, static_cast<int32_t>(i - 1U - runStartPos));
+                        runCnt++;
+                        inRun = false;
+                    }
+                    accumT.SetValue(accumCnt, static_cast<int32_t>(i - 1U));
+                    accumCnt++;
+                }
+            }
+            prevIsNewUnique = isNewUnique;
+            prevCompact = compactIdx;
+        }
+        if (batchLen > 0) {
+            if (inRun) {
+                runStartT.SetValue(runCnt, static_cast<int32_t>(runStartPos));
+                runLenT.SetValue(runCnt, static_cast<int32_t>(batchLen - 1U - runStartPos));
+                runCnt++;
+                inRun = false;
+            }
+            accumT.SetValue(accumCnt, static_cast<int32_t>(batchLen - 1U));
+            accumCnt++;
+        }
+        runCnt_ = runCnt;
+        accumCnt_ = accumCnt;
+        return tileUniqueCnt;
+    }
     bool canDirectCopy = (inputDtype_ == outputDtype_);
     // flag[i] = isNewUnique[i] && i+1<batchLen && compact[i]!=compact[i+1]；compact 仅在 isNewUnique 时
     // 递增，故 compact[i]!=compact[i+1] ⟺ isNewUnique[i+1]。延迟一拍在主循环内直接生成最终 flag，
@@ -643,7 +1274,6 @@ __aicore__ inline uint32_t EngramFetchGradUnique::ProcessBatchUnique(uint32_t cu
         }
         int32_t compactIdx = runningOffset + inclusiveSum - 1;
         CompactIdxUb().SetValue(i, compactIdx);
-        RecvIdxUb().SetValue(i, CompUb().GetValue(i));
         DirectFlagUb().SetValue(i, isNewUnique ? 1 : 0);
         if (i > 0) {
             DirectFlagUb().SetValue(i - 1, (canDirectCopy && prevIsNewUnique && prevCompact != compactIdx) ? 1 : 0);
@@ -669,6 +1299,203 @@ __aicore__ inline void EngramFetchGradUnique::WriteBatchUnique(uint32_t tileUniq
     runningUniqueOffset += static_cast<int32_t>(tileUniqueCnt);
 }
 
+__aicore__ inline void EngramFetchGradUnique::ProcessNonDirectRow(int32_t pos, uint32_t subStart,
+                                                                  AscendC::LocalTensor<uint8_t> &gradRaw,
+                                                                  AscendC::LocalTensor<float> &castRow,
+                                                                  GM_ADDR gradUniqueOutGM)
+{
+    AscendC::LocalTensor<float> accumBase = accumBuf_->Get<float>();
+    uint32_t hiddenDim = static_cast<uint32_t>(hiddenDim_);
+
+    int32_t compactIdx = CompactIdxUb().GetValue(pos);
+    if (compactIdx < 0 || compactIdx >= numEntriesPerRank_) {
+        return;
+    }
+    if (compactIdx != accumCompactIdx_) {
+        if (accumDirty_) {
+            FlushAccum(gradUniqueOutGM);
+            accumIdx_ ^= 1U;
+            if (flushPending_[accumIdx_]) {
+                AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(flushEvtMte3VArr_[accumIdx_]);
+                flushPending_[accumIdx_] = false;
+            }
+        }
+        accumCompactIdx_ = compactIdx;
+        accumRowCnt_ = 0;
+    }
+    AscendC::LocalTensor<float> accum = accumBase[accumIdx_ * accumFloats_];
+    uint32_t rowOff = static_cast<uint32_t>(pos - static_cast<int32_t>(subStart)) * inRowStride_;
+    (void)accum; (void)rowOff; (void)castRow; (void)gradRaw; // ABLATION: 消融 cast/sum
+    if (accumRowCnt_ == 0U) {
+        // ABLATION: 注释 vector 计算（测 scatter 搬运耗时）
+        // if (inputDtype_ != Mc2Kernel::ENGRAM_DT_FLOAT) {
+        //     CastToFP32(accum, gradRaw[rowOff], hiddenDim);
+        //     AscendC::PipeBarrier<PIPE_V>();
+        // } else {
+        //     AscendC::LocalTensor<float> gradFp32 = gradRaw[rowOff].ReinterpretCast<float>();
+        //     AscendC::Adds<float>(accum, gradFp32, 0.0f, hiddenDim);
+        //     AscendC::PipeBarrier<PIPE_V>();
+        // }
+        // } else if (inputDtype_ != Mc2Kernel::ENGRAM_DT_FLOAT) {
+        //     CastToFP32(castRow, gradRaw[rowOff], hiddenDim);
+        //     AscendC::PipeBarrier<PIPE_V>();
+        //     AscendC::Add<float>(accum, accum, castRow, hiddenDim);
+        //     AscendC::PipeBarrier<PIPE_V>();
+        // } else {
+        //     AscendC::LocalTensor<float> gradFp32 = gradRaw[rowOff].ReinterpretCast<float>();
+        //     AscendC::Add<float>(accum, accum, gradFp32, hiddenDim);
+        //     AscendC::PipeBarrier<PIPE_V>();
+        // }
+    }
+    accumRowCnt_++;
+    accumDirty_ = true;
+}
+
+__aicore__ inline void EngramFetchGradUnique::AccumulateDupListWalk(uint32_t subStart, uint32_t subLen,
+                                                                    uint32_t &cursor,
+                                                                    AscendC::LocalTensor<uint8_t> &gradRaw,
+                                                                    AscendC::LocalTensor<float> &castRow,
+                                                                    GM_ADDR gradUniqueOutGM)
+{
+    uint32_t subEnd = subStart + subLen;
+    while (cursor < accumCnt_) {
+        int32_t p = AccumListUb().GetValue(cursor);
+        if (p < 0 || static_cast<uint32_t>(p) >= subEnd) {
+            break;
+        }
+        if (static_cast<uint32_t>(p) >= subStart) {
+            ProcessNonDirectRow(p, subStart, gradRaw, castRow, gradUniqueOutGM);
+        }
+        cursor++;
+    }
+}
+
+// store: 发射 runList 与子批相交的 run 段(跨子批 run 按交集切分, compact 连续性保持)
+__aicore__ inline void EngramFetchGradUnique::EmitRunsFromDupList(uint32_t subStart, uint32_t subLen,
+                                                                  uint32_t &cursor,
+                                                                  AscendC::LocalTensor<uint8_t> &gradRaw,
+                                                                  GM_ADDR gradUniqueOutGM)
+{
+    uint32_t subEnd = subStart + subLen;
+    // 跳过已整体结束的 run(列表按 start 升序)
+    while (cursor < runCnt_) {
+        int32_t a = RunStartUb().GetValue(cursor);
+        int32_t l = RunLenUb().GetValue(cursor);
+        if (a < 0 || l <= 0) {
+            cursor++;
+            continue;
+        }
+        if (static_cast<uint32_t>(a) + static_cast<uint32_t>(l) > subStart) {
+            break;
+        }
+        cursor++;
+    }
+    for (uint32_t r = cursor; r < runCnt_; r++) {
+        int32_t a = RunStartUb().GetValue(r);
+        int32_t l = RunLenUb().GetValue(r);
+        if (a < 0 || l <= 0) {
+            continue;
+        }
+        uint32_t b = static_cast<uint32_t>(a) + static_cast<uint32_t>(l); // run = [a, b)
+        uint32_t lo = (static_cast<uint32_t>(a) > subStart) ? static_cast<uint32_t>(a) : subStart;
+        uint32_t hi = (b < subEnd) ? b : subEnd;
+        if (lo >= hi) {
+            continue;
+        }
+        int32_t compactFirst = CompactIdxUb().GetValue(static_cast<int32_t>(lo));
+        if (compactFirst < 0 || compactFirst >= numEntriesPerRank_) {
+            continue;
+        }
+        FlushDirectRun(gradRaw, lo - subStart, hi - lo, compactFirst, gradUniqueOutGM);
+    }
+}
+
+__aicore__ inline void EngramFetchGradUnique::ProcessDirectSubBatchLoopV2(uint32_t batchLen,
+                                                                          uint32_t maxGradPerBatch,
+                                                                          AscendC::LocalTensor<uint8_t> &gradBase,
+                                                                          GM_ADDR recvGradGM,
+                                                                          GM_ADDR gradUniqueOutGM)
+{
+    constexpr uint32_t kBufs = 4U;
+    event_t evtMte2V[kBufs];
+    event_t evtVMte2[kBufs];
+    event_t evtMte2Mte3[kBufs];
+    event_t evtMte3Mte2[kBufs];
+    for (uint32_t b = 0; b < kBufs; b++) {
+        evtMte2V[b] = static_cast<event_t>(pipe_->AllocEventID<AscendC::HardEvent::MTE2_V>());
+        evtVMte2[b] = static_cast<event_t>(pipe_->AllocEventID<AscendC::HardEvent::V_MTE2>());
+        evtMte2Mte3[b] = static_cast<event_t>(pipe_->AllocEventID<AscendC::HardEvent::MTE2_MTE3>());
+        evtMte3Mte2[b] = static_cast<event_t>(pipe_->AllocEventID<AscendC::HardEvent::MTE3_MTE2>());
+    }
+    AscendC::LocalTensor<float> castRow = castBuf_->Get<float>();
+    AscendC::DataCopyPadExtParams<uint8_t> gradPad{false, 0, 0, 0};
+    constexpr uint32_t kBufBytes = Mc2Kernel::GRAD_PING_BYTES / 2U; // 16K
+    uint32_t bufRows = kBufBytes / inRowStride_;
+    if (bufRows < 1U) {
+        bufRows = 1U;
+    }
+    if (bufRows < maxGradPerBatch) {
+        maxGradPerBatch = bufRows;
+    }
+
+    uint32_t accumCursor = 0;
+    uint32_t runCursor = 0;
+    uint32_t tileIdx = 0;
+    for (uint32_t subStart = 0; subStart < batchLen; subStart += maxGradPerBatch) {
+        uint32_t subLen = batchLen - subStart;
+        if (subLen > maxGradPerBatch) {
+            subLen = maxGradPerBatch;
+        }
+        uint32_t b = tileIdx % kBufs;
+        AscendC::LocalTensor<uint8_t> gradRaw = gradBase[b * kBufBytes];
+
+        if (tileIdx >= kBufs) {
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(evtVMte2[b]);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(evtMte3Mte2[b]);
+        }
+
+        for (uint32_t j = 0; j < subLen; j++) {
+            int32_t recvIdx = CompUb().GetValue(subStart + j);
+            if (recvIdx < 0 || static_cast<uint32_t>(recvIdx) >= numRecv_) {
+                recvIdx = 0;
+            }
+            GM_ADDR gradAddr = recvGradGM + static_cast<uint64_t>(recvIdx) * hiddenBytes_;
+            AscendC::DataCopyExtParams gradParams{1U, static_cast<uint32_t>(hiddenBytes_), 0U, 0U, 0U};
+            AscendC::GlobalTensor<uint8_t> gradSrcGM;
+            gradSrcGM.SetGlobalBuffer((__gm__ uint8_t *)gradAddr);
+            AscendC::DataCopyPad(gradRaw[static_cast<uint64_t>(j) * inRowStride_], gradSrcGM, gradParams, gradPad);
+        }
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(evtMte2V[b]);
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(evtMte2Mte3[b]);
+
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(evtMte2V[b]);
+
+        // vPhase: accumList 驱动(替代 AccumulateDirectSubBatch 的 次逐行 flag 读)
+        AccumulateDupListWalk(subStart, subLen, accumCursor, gradRaw, castRow, gradUniqueOutGM);
+
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(evtMte2Mte3[b]);
+        // store: runList 驱动(替代逐行 flag 扫描 + run 检测)
+        EmitRunsFromDupList(subStart, subLen, runCursor, gradRaw, gradUniqueOutGM);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(evtMte3Mte2[b]);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(evtVMte2[b]);
+        tileIdx++;
+    }
+
+    // 收尾: 排空最后 min(kBufs, tileIdx) 个缓冲
+    uint32_t drainFrom = (tileIdx > kBufs) ? (tileIdx - kBufs) : 0U;
+    for (uint32_t t = drainFrom; t < tileIdx; t++) {
+        uint32_t b = t % kBufs;
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(evtVMte2[b]);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(evtMte3Mte2[b]);
+    }
+    for (uint32_t b = 0; b < kBufs; b++) {
+        pipe_->ReleaseEventID<AscendC::HardEvent::MTE2_V>(evtMte2V[b]);
+        pipe_->ReleaseEventID<AscendC::HardEvent::V_MTE2>(evtVMte2[b]);
+        pipe_->ReleaseEventID<AscendC::HardEvent::MTE2_MTE3>(evtMte2Mte3[b]);
+        pipe_->ReleaseEventID<AscendC::HardEvent::MTE3_MTE2>(evtMte3Mte2[b]);
+    }
+}
+
 __aicore__ inline uint32_t EngramFetchGradUnique::ProcessScatterBatch(
     uint32_t cur, uint32_t end, int32_t &runningOffset, int32_t &runningUniqueOffset, int32_t &prevEntry,
     bool &isFirstElement, GM_ADDR recvLocalEntryOutGM, GM_ADDR uniqueLocalEntryOutGM, GM_ADDR gradUniqueOutGM,
@@ -680,8 +1507,13 @@ __aicore__ inline uint32_t EngramFetchGradUnique::ProcessScatterBatch(
     }
 
     int32_t inclusiveSum = 0;
+    bool singleRowMode = inRowStride_ > Mc2Kernel::GRAD_PING_BYTES;
+    bool canDirectCopy = (inputDtype_ == outputDtype_);
+    bool packedRows = (inRowStride_ == static_cast<uint32_t>(hiddenBytes_));
+    bool useListPath = canDirectCopy && !singleRowMode && packedRows &&
+                 inRowStride_ <= Mc2Kernel::GRAD_PING_BYTES / 2U;
     uint32_t tileUniqueCnt = ProcessBatchUnique(cur, batchLen, runningOffset, prevEntry, isFirstElement, inclusiveSum,
-                                                recvLocalEntryOutGM, sortCompanionGM);
+                                                recvLocalEntryOutGM, sortCompanionGM, useListPath);
 
     uint32_t maxGradPerBatch = Mc2Kernel::GRAD_PING_BYTES / inRowStride_;
     if (maxGradPerBatch < 1U) {
@@ -689,8 +1521,8 @@ __aicore__ inline uint32_t EngramFetchGradUnique::ProcessScatterBatch(
     }
     // 行宽超过 32KB 半缓冲时禁用 ping/pong 拆分：整缓冲单行、跨 tile 用 evt_0 串行，
     // 否则 tileIdx=1 写 gradPing[32K] 处的单行会越过 gradBuf_ 污染池内相邻缓冲
-    bool singleRowMode = inRowStride_ > Mc2Kernel::GRAD_PING_BYTES;
-    if (maxGradPerBatch > gradSubBatch_) {
+    bool canDirectCopyEarly = canDirectCopy;
+    if (!canDirectCopyEarly && maxGradPerBatch > gradSubBatch_) {
         maxGradPerBatch = gradSubBatch_;
     }
     uint32_t gradBufHalf = Mc2Kernel::GRAD_PING_BYTES;
@@ -701,7 +1533,6 @@ __aicore__ inline uint32_t EngramFetchGradUnique::ProcessScatterBatch(
     AscendC::DataCopyPadExtParams<uint8_t> gradPad{false, 0, 0, 0};
 
     bool needCast = (inputDtype_ != Mc2Kernel::ENGRAM_DT_FLOAT);
-    bool canDirectCopy = (inputDtype_ == outputDtype_);
     uint32_t castHalfFloats = 0;
     uint32_t fp32StrideFloats = fp32RowStride_ / sizeof(float);
     if (needCast) {
@@ -710,113 +1541,129 @@ __aicore__ inline uint32_t EngramFetchGradUnique::ProcessScatterBatch(
         castHalfFloats = castHalfBytes / sizeof(float);
     }
 
-    event_t evtMte2V_0 = static_cast<event_t>(pipe_->FetchEventID(AscendC::HardEvent::MTE2_V));
-    event_t evtMte2V_1 = static_cast<event_t>(pipe_->FetchEventID(AscendC::HardEvent::MTE2_V));
-    event_t evtVMte2_0 = static_cast<event_t>(pipe_->FetchEventID(AscendC::HardEvent::V_MTE2));
-    event_t evtVMte2_1 = static_cast<event_t>(pipe_->FetchEventID(AscendC::HardEvent::V_MTE2));
+    event_t evtMte2V_0 = static_cast<event_t>(0);
+    event_t evtMte2V_1 = static_cast<event_t>(0);
+    event_t evtVMte2_0 = static_cast<event_t>(0);
+    event_t evtVMte2_1 = static_cast<event_t>(0);
     event_t evtMte2Mte3_0 = static_cast<event_t>(0);
     event_t evtMte2Mte3_1 = static_cast<event_t>(0);
     event_t evtMte3Mte2_0 = static_cast<event_t>(0);
     event_t evtMte3Mte2_1 = static_cast<event_t>(0);
-    if (canDirectCopy) {
-        evtMte2Mte3_0 = static_cast<event_t>(pipe_->FetchEventID(AscendC::HardEvent::MTE2_MTE3));
-        evtMte2Mte3_1 = static_cast<event_t>(pipe_->FetchEventID(AscendC::HardEvent::MTE2_MTE3));
-        evtMte3Mte2_0 = static_cast<event_t>(pipe_->FetchEventID(AscendC::HardEvent::MTE3_MTE2));
-        evtMte3Mte2_1 = static_cast<event_t>(pipe_->FetchEventID(AscendC::HardEvent::MTE3_MTE2));
-    }
 
-    uint32_t tileIdx = 0;
-    for (uint32_t subStart = 0; subStart < batchLen; subStart += maxGradPerBatch) {
-        uint32_t subLen = batchLen - subStart;
-        if (subLen > maxGradPerBatch) {
-            subLen = maxGradPerBatch;
-        }
-        uint32_t bufIdx = tileIdx % 2U;
-        AscendC::LocalTensor<uint8_t> gradRaw = (bufIdx == 0U || singleRowMode) ? gradPing : gradPong;
-        bool useEvt0 = singleRowMode || bufIdx == 0U;
-
-        if (tileIdx >= (singleRowMode ? 1U : 2U)) {
-            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(useEvt0 ? evtVMte2_0 : evtVMte2_1);
-            if (canDirectCopy) {
-                AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(useEvt0 ? evtMte3Mte2_0 : evtMte3Mte2_1);
-            }
-        }
-
-        for (uint32_t j = 0; j < subLen; j++) {
-            int32_t recvIdx = RecvIdxUb().GetValue(subStart + j);
-            if (recvIdx < 0 || static_cast<uint32_t>(recvIdx) >= numRecv_) {
-                recvIdx = 0;
-            }
-            GM_ADDR gradAddr = recvGradGM + static_cast<uint64_t>(recvIdx) * hiddenBytes_;
-            AscendC::DataCopyExtParams gradParams{1U, static_cast<uint32_t>(hiddenBytes_), 0U, 0U, 0U};
-            AscendC::GlobalTensor<uint8_t> gradSrcGM;
-            gradSrcGM.SetGlobalBuffer((__gm__ uint8_t *)gradAddr);
-            AscendC::DataCopyPad(gradRaw[static_cast<uint64_t>(j) * inRowStride_], gradSrcGM, gradParams, gradPad);
-        }
-
-        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(useEvt0 ? evtMte2V_0 : evtMte2V_1);
+    if (useListPath) {
+        ProcessDirectSubBatchLoopV2(batchLen, maxGradPerBatch, gradPing, recvGradGM, gradUniqueOutGM);
+    } else if (canDirectCopy && !singleRowMode && inRowStride_ <= Mc2Kernel::GRAD_PING_BYTES / 2U) {
+        ProcessDirectSubBatchLoop(batchLen, maxGradPerBatch, gradPing, recvGradGM, gradUniqueOutGM);
+    } else {
+        evtMte2V_0 = static_cast<event_t>(pipe_->FetchEventID(AscendC::HardEvent::MTE2_V));
+        evtMte2V_1 = static_cast<event_t>(pipe_->FetchEventID(AscendC::HardEvent::MTE2_V));
+        evtVMte2_0 = static_cast<event_t>(pipe_->FetchEventID(AscendC::HardEvent::V_MTE2));
+        evtVMte2_1 = static_cast<event_t>(pipe_->FetchEventID(AscendC::HardEvent::V_MTE2));
         if (canDirectCopy) {
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(useEvt0 ? evtMte2Mte3_0 : evtMte2Mte3_1);
+            evtMte2Mte3_0 = static_cast<event_t>(pipe_->FetchEventID(AscendC::HardEvent::MTE2_MTE3));
+            evtMte2Mte3_1 = static_cast<event_t>(pipe_->FetchEventID(AscendC::HardEvent::MTE2_MTE3));
+            evtMte3Mte2_0 = static_cast<event_t>(pipe_->FetchEventID(AscendC::HardEvent::MTE3_MTE2));
+            evtMte3Mte2_1 = static_cast<event_t>(pipe_->FetchEventID(AscendC::HardEvent::MTE3_MTE2));
         }
 
-        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(useEvt0 ? evtMte2V_0 : evtMte2V_1);
-
-        if (needCast) {
-            AscendC::LocalTensor<float> castPingF = castBuf_->Get<float>();
-            AscendC::LocalTensor<float> castPongF = castPingF[castHalfFloats];
-            AscendC::LocalTensor<float> gradFp32 = (bufIdx == 0U) ? castPingF : castPongF;
-            // gradRaw 行带 32B 对齐 stride，cast 必须逐行进行（行间存在 padding 字节）
-            for (uint32_t j = 0; j < subLen; j++) {
-                CastToFP32(gradFp32[j * fp32StrideFloats], gradRaw[j * inRowStride_],
-                           static_cast<uint32_t>(hiddenDim_));
+        uint32_t tileIdx = 0;
+        for (uint32_t subStart = 0; subStart < batchLen; subStart += maxGradPerBatch) {
+            uint32_t subLen = batchLen - subStart;
+            if (subLen > maxGradPerBatch) {
+                subLen = maxGradPerBatch;
             }
-            AscendC::PipeBarrier<PIPE_V>();
-            AccumulateSubBatch(gradFp32, fp32StrideFloats, subStart, subLen, gradUniqueOutGM);
-        } else {
-            AscendC::LocalTensor<float> gradFp32 = gradRaw.ReinterpretCast<float>();
-            AccumulateSubBatch(gradFp32, inRowStride_ / sizeof(float), subStart, subLen, gradUniqueOutGM);
-        }
+            uint32_t bufIdx = tileIdx % 2U;
+            AscendC::LocalTensor<uint8_t> gradRaw = (bufIdx == 0U || singleRowMode) ? gradPing : gradPong;
+            bool useEvt0 = singleRowMode || bufIdx == 0U;
 
-        if (canDirectCopy) {
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(useEvt0 ? evtMte2Mte3_0 : evtMte2Mte3_1);
-            for (uint32_t j = 0; j < subLen; j++) {
-                if (DirectFlagUb().GetValue(subStart + j) != 0) {
-                    int32_t compactIdx = CompactIdxUb().GetValue(subStart + j);
-                    if (compactIdx < 0 || compactIdx >= numEntriesPerRank_) {
-                        continue;
-                    }
-                    FlushDirect(gradRaw, j, compactIdx, gradUniqueOutGM);
+            if (tileIdx >= (singleRowMode ? 1U : 2U)) {
+                AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(useEvt0 ? evtVMte2_0 : evtVMte2_1);
+                if (canDirectCopy) {
+                    AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(useEvt0 ? evtMte3Mte2_0 : evtMte3Mte2_1);
                 }
             }
-            AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(useEvt0 ? evtMte3Mte2_0 : evtMte3Mte2_1);
+
+            for (uint32_t j = 0; j < subLen; j++) {
+                int32_t recvIdx = CompUb().GetValue(subStart + j);
+                if (recvIdx < 0 || static_cast<uint32_t>(recvIdx) >= numRecv_) {
+                    recvIdx = 0;
+                }
+                GM_ADDR gradAddr = recvGradGM + static_cast<uint64_t>(recvIdx) * hiddenBytes_;
+                AscendC::DataCopyExtParams gradParams{1U, static_cast<uint32_t>(hiddenBytes_), 0U, 0U, 0U};
+                AscendC::GlobalTensor<uint8_t> gradSrcGM;
+                gradSrcGM.SetGlobalBuffer((__gm__ uint8_t *)gradAddr);
+                AscendC::DataCopyPad(gradRaw[static_cast<uint64_t>(j) * inRowStride_], gradSrcGM, gradParams, gradPad);
+            }
+
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(useEvt0 ? evtMte2V_0 : evtMte2V_1);
+            if (canDirectCopy) {
+                AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(useEvt0 ? evtMte2Mte3_0 : evtMte2Mte3_1);
+            }
+
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(useEvt0 ? evtMte2V_0 : evtMte2V_1);
+
+            if (canDirectCopy && needCast) {
+                // 重复行单行 cast 后累加(cast buffer 只用第 0 行)
+                AscendC::LocalTensor<float> castRow = castBuf_->Get<float>();
+                // 全量cast则最好cast完统一累加，批量流水，但是单行cast场景就没必要批量cast了，相当于退化为cast-add-cast-add，则没必要分配这么多castbuf
+                AccumulateDirectSubBatch(gradRaw, subStart, subLen, castRow, gradUniqueOutGM);
+            } else if (needCast) {
+                AscendC::LocalTensor<float> castPingF = castBuf_->Get<float>();
+                AscendC::LocalTensor<float> castPongF = castPingF[castHalfFloats];
+                AscendC::LocalTensor<float> gradFp32 = (bufIdx == 0U) ? castPingF : castPongF;
+                // gradRaw 行带 32B 对齐 stride，cast 必须逐行进行（行间存在 padding 字节）
+                for (uint32_t j = 0; j < subLen; j++) {
+                    CastToFP32(gradFp32[j * fp32StrideFloats], gradRaw[j * inRowStride_],
+                            static_cast<uint32_t>(hiddenDim_));
+                }
+                AscendC::PipeBarrier<PIPE_V>();
+                AccumulateSubBatch(gradFp32, fp32StrideFloats, subStart, subLen, gradUniqueOutGM);
+            } else {
+                AscendC::LocalTensor<float> gradFp32 = gradRaw.ReinterpretCast<float>();
+                AccumulateSubBatch(gradFp32, inRowStride_ / sizeof(float), subStart, subLen, gradUniqueOutGM);
+            }
+
+            if (canDirectCopy) {
+                AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(useEvt0 ? evtMte2Mte3_0 : evtMte2Mte3_1);
+                for (uint32_t j = 0; j < subLen; j++) {
+                    if (DirectFlagUb().GetValue(subStart + j) != 0) {
+                        int32_t compactIdx = CompactIdxUb().GetValue(subStart + j);
+                        if (compactIdx < 0 || compactIdx >= numEntriesPerRank_) {
+                            continue;
+                        }
+                        FlushDirect(gradRaw, j, compactIdx, gradUniqueOutGM);
+                    }
+                }
+                AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(useEvt0 ? evtMte3Mte2_0 : evtMte3Mte2_1);
+            }
+
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(useEvt0 ? evtVMte2_0 : evtVMte2_1);
+            tileIdx++;
         }
 
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(useEvt0 ? evtVMte2_0 : evtVMte2_1);
-        tileIdx++;
-    }
-
-    if (tileIdx >= 1U) {
-        uint32_t lastEvt = singleRowMode ? 0U : ((tileIdx - 1U) % 2U);
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(lastEvt == 0U ? evtVMte2_0 : evtVMte2_1);
-        if (canDirectCopy) {
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(lastEvt == 0U ? evtMte3Mte2_0 : evtMte3Mte2_1);
+        if (tileIdx >= 1U) {
+            uint32_t lastEvt = singleRowMode ? 0U : ((tileIdx - 1U) % 2U);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(lastEvt == 0U ? evtVMte2_0 : evtVMte2_1);
+            if (canDirectCopy) {
+                AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(lastEvt == 0U ? evtMte3Mte2_0 : evtMte3Mte2_1);
+            }
         }
-    }
-    if (!singleRowMode && tileIdx >= 2U) {
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(tileIdx % 2U == 0U ? evtVMte2_0 : evtVMte2_1);
-        if (canDirectCopy) {
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(tileIdx % 2U == 0U ? evtMte3Mte2_0 : evtMte3Mte2_1);
+        if (!singleRowMode && tileIdx >= 2U) {
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(tileIdx % 2U == 0U ? evtVMte2_0 : evtVMte2_1);
+            if (canDirectCopy) {
+                AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(tileIdx % 2U == 0U ? evtMte3Mte2_0 : evtMte3Mte2_1);
+            }
         }
-    }
-    pipe_->ReleaseEventID<AscendC::HardEvent::MTE2_V>(evtMte2V_0);
-    pipe_->ReleaseEventID<AscendC::HardEvent::MTE2_V>(evtMte2V_1);
-    pipe_->ReleaseEventID<AscendC::HardEvent::V_MTE2>(evtVMte2_0);
-    pipe_->ReleaseEventID<AscendC::HardEvent::V_MTE2>(evtVMte2_1);
-    if (canDirectCopy) {
-        pipe_->ReleaseEventID<AscendC::HardEvent::MTE2_MTE3>(evtMte2Mte3_0);
-        pipe_->ReleaseEventID<AscendC::HardEvent::MTE2_MTE3>(evtMte2Mte3_1);
-        pipe_->ReleaseEventID<AscendC::HardEvent::MTE3_MTE2>(evtMte3Mte2_0);
-        pipe_->ReleaseEventID<AscendC::HardEvent::MTE3_MTE2>(evtMte3Mte2_1);
+        pipe_->ReleaseEventID<AscendC::HardEvent::MTE2_V>(evtMte2V_0);
+        pipe_->ReleaseEventID<AscendC::HardEvent::MTE2_V>(evtMte2V_1);
+        pipe_->ReleaseEventID<AscendC::HardEvent::V_MTE2>(evtVMte2_0);
+        pipe_->ReleaseEventID<AscendC::HardEvent::V_MTE2>(evtVMte2_1);
+        if (canDirectCopy) {
+            pipe_->ReleaseEventID<AscendC::HardEvent::MTE2_MTE3>(evtMte2Mte3_0);
+            pipe_->ReleaseEventID<AscendC::HardEvent::MTE2_MTE3>(evtMte2Mte3_1);
+            pipe_->ReleaseEventID<AscendC::HardEvent::MTE3_MTE2>(evtMte3Mte2_0);
+            pipe_->ReleaseEventID<AscendC::HardEvent::MTE3_MTE2>(evtMte3Mte2_1);
+        }
     }
 
     if (tileUniqueCnt > 0) {
@@ -839,15 +1686,25 @@ __aicore__ inline void EngramFetchGradUnique::ScatterAccumulateParallel(uint32_t
     if (start >= end) {
         return;
     }
+
+    accumCompactIdx_ = -1;
+    accumDirty_ = false;
+
+    if (chunkElems_ > 0U) {
+        ChunkedScatterRange(start, end, preCoreOffset, recvLocalEntryOutGM, uniqueLocalEntryOutGM, gradUniqueOutGM,
+                            recvGradGM, sortCompanionGM);
+        return;
+    }
+
     int32_t runningOffset = preCoreOffset;
     int32_t runningUniqueOffset = preCoreOffset;
     int32_t prevEntry = 0;
     bool isFirstElement = true;
 
-    accumCompactIdx_ = -1;
-    accumDirty_ = false;
-
     uint32_t cur = start;
+    // 循环调 ProcessScatterBatch 分批处理 [start, end)：
+    // ProcessBatchUnique 产 3 表（Unique/CompactIdx/DirectFlag；梯度行号直接读 CompUb 不复制）；
+    // run 可跨批 —— accum 状态跨批保持，直到 entry 变化才 flush 上一组
     while (cur < end) {
         cur = ProcessScatterBatch(cur, end, runningOffset, runningUniqueOffset, prevEntry, isFirstElement,
                                   recvLocalEntryOutGM, uniqueLocalEntryOutGM, gradUniqueOutGM, recvGradGM,
