@@ -66,7 +66,7 @@ enum class MatmulCalcType {
 };
 
 struct MatmulParameters {
-    SocVersion_2201 socType;
+    SocVersion_2201 socVersion_2201;
     uint64_t coreNum;
     uint64_t inMatrixADtypeSize;
     uint64_t inMatrixBDtypeSize;

@@ -79,9 +79,9 @@ CutResult MatmulAllToAllTilingBase::GetTilingResult()
 {
     const NpuArch npuArch = mc2tiling::GetNpuArch(context_);
     const std::string socVersionStr = mc2tiling::GetSocVersion(context_);
-    SocVersion_2201 nowSocVersion =
+    SocVersion_2201 socVersion_2201 =
         (socVersionStr == "Ascend910_93") ? SocVersion_2201::SOC910_93 : SocVersion_2201::SOC910_B;
-    AlltoAllMM formulaicTiling(contextInfo.args_, contextInfo.args_.rankDim, KernelType::ALL_TO_ALL, nowSocVersion,
+    AlltoAllMM formulaicTiling(contextInfo.args_, contextInfo.args_.rankDim, KernelType::ALL_TO_ALL, socVersion_2201,
                                false, npuArch);
     formulaicTiling.GetTiling();
     return formulaicTiling.tilingM_.cutRes;

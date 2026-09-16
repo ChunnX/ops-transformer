@@ -279,7 +279,7 @@ void MatmulAllReduceTilingBase::DoRCSTiling()
     SetCommQuantScale();
 }
 
-void MatmulAllReduceTilingBase::SetMCutSocVersion(SocVersion_2201 &series)
+void MatmulAllReduceTilingBase::SetMCutSocVersion(SocVersion_2201 &socVersion_2201)
 {
     if (npuArch_ == Ops::Base::DAV_2002) {
         // 310P:档位key已迁出枚举(与DAV_2002一一对应),保持调用方初始化的占位值;
@@ -299,18 +299,18 @@ void MatmulAllReduceTilingBase::SetMCutSocVersion(SocVersion_2201 &series)
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     uint64_t socMemSize = L2_CACHE_SIZE_910_B4;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, socMemSize);
-    series = (socMemSize == L2_CACHE_SIZE_910_B4) ? SocVersion_2201::SOC910_B4 : series;
+    socVersion_2201 = (socMemSize == L2_CACHE_SIZE_910_B4) ? SocVersion_2201::SOC910_B4 : socVersion_2201;
     if (socMemSize == L2_CACHE_SIZE_910_B4) {
-        series = SocVersion_2201::SOC910_B4;
+        socVersion_2201 = SocVersion_2201::SOC910_B4;
         OP_LOGD(opName_, "TileCnt enter 910B4 branch.");
     }
 }
 
 CutResult MatmulAllReduceTilingBase::GetTilingResult()
 {
-    SocVersion_2201 inputSocVersion = SocVersion_2201::SOC910_B;
-    SetMCutSocVersion(inputSocVersion); // 判断是否是310P或者910B4
-    MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_,
+    SocVersion_2201 socVersion_2201 = SocVersion_2201::SOC910_B;
+    SetMCutSocVersion(socVersion_2201); // 判断是否是310P或者910B4
+    MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, socVersion_2201, isPerBlock_,
                                         npuArch_);
     allReduceTilingHccl.GetTiling();
     CutResult mCutAllreduce = allReduceTilingHccl.tilingM_.cutRes;
@@ -318,7 +318,7 @@ CutResult MatmulAllReduceTilingBase::GetTilingResult()
     const gert::StorageShape *commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
     if ((commQuantScaleShape1 != nullptr) && (commQuantScaleShape2 != nullptr)) { // 低bit通信
         OP_LOGD(opName_, "TileCnt enter comm quant.");
-        MMPlusQuantAllReduce quantAllReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion);
+        MMPlusQuantAllReduce quantAllReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, socVersion_2201);
         quantAllReduceTilingHccl.GetTiling();
         mCutAllreduce = quantAllReduceTilingHccl.tilingM_.cutRes;
     }

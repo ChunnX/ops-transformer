@@ -987,8 +987,8 @@ void QuantTilingTransferHelperA5::PrintTilingInputParam(Mc2QuantBatchMatmulInfo 
 CutResult QuantMatmulAllReduceTilingA5::GetTilingResult()
 {
     CutResult mCutAllreduce;
-    SocVersion_2201 inputSocVersion = SocVersion_2201::SOC910_B;
-    SetMCutSocVersion(inputSocVersion);
+    SocVersion_2201 socVersion_2201 = SocVersion_2201::SOC910_B;
+    SetMCutSocVersion(socVersion_2201);
     const gert::StorageShape *commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
     const gert::StorageShape *commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
     auto &&param = MutableRCSTilingData();
@@ -1013,7 +1013,7 @@ CutResult QuantMatmulAllReduceTilingA5::GetTilingResult()
         allReduceTilingHccl.SetIsAlign(isAlign);
         mCutAllreduce = allReduceTilingHccl.GetTiling();
     } else {
-        MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_,
+        MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, socVersion_2201, isPerBlock_,
                                             npuArch_);
         allReduceTilingHccl.GetTiling();
         mCutAllreduce = allReduceTilingHccl.tilingM_.cutRes;

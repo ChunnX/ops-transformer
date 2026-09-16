@@ -167,7 +167,7 @@ double MatmulPerformanceModel::FindCubeUtilVersion310P() const
 void MatmulPerformanceModel::ChangeCubeUtilByKAlign()
 {
     uint64_t kLength = mmShapeInfo_.kValue * mmShapeInfo_.inMatrixADtypeSize;
-    if (mmShapeInfo_.socType == SocVersion_2201::SOC910_B4) {
+    if (mmShapeInfo_.socVersion_2201 == SocVersion_2201::SOC910_B4) {
         if (kLength % MatmulPerformance::HALF_CACHE_LINE_LEN != 0) {
             cubeUtil_ *= MatmulPerformance::K_UNALIGN_UTIL_RATIO_910_B4;
         }

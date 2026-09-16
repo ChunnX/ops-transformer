@@ -123,10 +123,10 @@ public:
 
     // Constructor
     explicit OneCalcOneCommBase(const mc2tiling::TilingArgs &args, uint32_t inputRankDim, KernelType inputKernelType,
-                                SocVersion_2201 series = SocVersion_2201::SOC910_B,
+                                SocVersion_2201 socVersion_2201 = SocVersion_2201::SOC910_B,
                                 NpuArch npuArch = Ops::Base::DAV_2201)
-        : matmulPerf_(args, series, npuArch),
-          commPerf_(inputRankDim, inputKernelType, series, npuArch),
+        : matmulPerf_(args, socVersion_2201, npuArch),
+          commPerf_(inputRankDim, inputKernelType, socVersion_2201, npuArch),
           tilingM_(args),
           npuArch_(npuArch)
     {

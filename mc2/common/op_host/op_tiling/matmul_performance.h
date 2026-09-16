@@ -86,7 +86,7 @@ public:
                                                   (args.aType == matmul_tiling::DataType::DT_FLOAT4_E1M2))) {
             calcType_ = MatmulCalcType::QUANT;
         } else if ((args.aType == matmul_tiling::DataType::DT_INT8) &&
-                   (mmShapeInfo_.socType != SocVersion_2201::SOC910_B)) { // A8W8
+                   (mmShapeInfo_.socVersion_2201 != SocVersion_2201::SOC910_B)) { // A8W8
             calcType_ = MatmulCalcType::QUANT;
         } else if ((npuArch_ == Ops::Base::DAV_2002) && (args.bType == matmul_tiling::DataType::DT_INT8)) { // A16W8
             mmShapeInfo_.inMatrixBDtypeSize = MatmulPerformance::INT8_DTYPE_SIZE;
@@ -95,12 +95,12 @@ public:
     }
     // Constructor
     explicit MatmulPerformanceModel(const mc2tiling::TilingArgs &args,
-                                    SocVersion_2201 inputSocVersion = SocVersion_2201::SOC910_B,
+                                    SocVersion_2201 socVersion_2201 = SocVersion_2201::SOC910_B,
                                     NpuArch npuArch = Ops::Base::DAV_2201)
         : calcType_(MatmulCalcType::FP16),
           npuArch_(npuArch)
     {
-        mmShapeInfo_.socType = inputSocVersion;
+        mmShapeInfo_.socVersion_2201 = socVersion_2201;
         mmShapeInfo_.coreNum = args.aicCoreNum; // 每die核数
         mmShapeInfo_.inMatrixADtypeSize = args.inputDtypeSize;
         mmShapeInfo_.inMatrixBDtypeSize = mmShapeInfo_.inMatrixADtypeSize;
@@ -128,9 +128,9 @@ public:
             return NPUARCH_2002_FITTING_CODE;
         }
         if (npuArch_ == Ops::Base::DAV_2201) { // A2/A3系(910B/910_93/B4):档位显式序值
-            return static_cast<uint32_t>(mmShapeInfo_.socType);
+            return static_cast<uint32_t>(mmShapeInfo_.socVersion_2201);
         }
-        return static_cast<uint32_t>(mmShapeInfo_.socType); // 未识别arch兜底,语义同原catch-all
+        return static_cast<uint32_t>(mmShapeInfo_.socVersion_2201); // 未识别arch兜底,语义同原catch-all
     }
 
     std::string GetCalcTypeString()

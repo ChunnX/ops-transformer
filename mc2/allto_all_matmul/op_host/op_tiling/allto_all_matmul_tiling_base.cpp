@@ -122,10 +122,10 @@ CutResult AllToAllMatmulTilingBase::GetCutResOfCommAndCompute()
     OP_LOGD(opName_, "Current SocVersion_2201 is : %s", socVersionStr.c_str());
 
     const NpuArch npuArch = mc2tiling::GetNpuArch(context_);
-    SocVersion_2201 nowSocVersion =
+    SocVersion_2201 socVersion_2201 =
         (socVersionStr == "Ascend910_93") ? SocVersion_2201::SOC910_93 : SocVersion_2201::SOC910_B;
     AlltoAllMM alltoallMatmulTileFormulate(contextInfo_.args_, contextInfo_.args_.rankDim, KernelType::ALL_TO_ALL,
-                                           nowSocVersion, true, npuArch);
+                                           socVersion_2201, true, npuArch);
     alltoallMatmulTileFormulate.GetTiling();
     return alltoallMatmulTileFormulate.tilingM_.cutRes;
 }
