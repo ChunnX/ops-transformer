@@ -39,7 +39,7 @@ __global__ __aicore__ void moe_distribute_dispatch_v2(GM_ADDR x, GM_ADDR expertI
     REGISTER_TILING_DEFAULT(MoeDistributeDispatchV2TilingData);
     __gm__ MoeDistributeDispatchV2TilingData *tilingDataGm = nullptr;
     if constexpr ((ArchTag == TILINGKEY_TPL_A5) && (CommMode == TILINGKEY_TPL_MTE) &&
-                (FullMesh == TILINGKEY_ENABLE_FULLMESH)) {
+                  (FullMesh == TILINGKEY_ENABLE_FULLMESH)) {
         tilingDataGm = reinterpret_cast<__gm__ MoeDistributeDispatchV2TilingData *>(tilingGM);
     }
     TPipe pipe;

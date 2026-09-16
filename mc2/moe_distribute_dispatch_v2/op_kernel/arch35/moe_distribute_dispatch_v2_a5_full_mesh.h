@@ -438,8 +438,7 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     DataCopy(tilingUbTensor, tilingGmTensor, copyParams);
     AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
     AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
-    __ubuf__ TilingInfoType *tilingInfoLocal =
-        reinterpret_cast<__ubuf__ TilingInfoType *>(tilingUbTensor.GetPhyAddr());
+    __ubuf__ TilingInfoType *tilingInfoLocal = reinterpret_cast<__ubuf__ TilingInfoType *>(tilingUbTensor.GetPhyAddr());
     totalWinSize_ = static_cast<uint64_t>(tilingInfoLocal->totalWinSizeEp);
     ctx_.InitAndCheck(mc2Context, tilingInfoLocal->epWorldSize, totalWinSize_, tpipe_, expandXOut);
     xGMTensor_.SetGlobalBuffer((__gm__ XInType *)x);
