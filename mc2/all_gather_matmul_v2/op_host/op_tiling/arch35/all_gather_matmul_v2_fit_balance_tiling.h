@@ -173,8 +173,6 @@ inline CutResult ScheduleFitBalance(const mc2tiling::TilingArgs &args, fb::CommE
         ctx.commPerf.SetCommDtypeSizeExpansionFraction(FP4_EXPANSION_RATIO);
         ctx.matmulPerf.mmShapeInfo_.inMatrixADtypeSize = 1;
         ctx.matmulPerf.mmShapeInfo_.inMatrixBDtypeSize = 1;
-        ctx.matmulPerf.mmShapeInfo_.inMatrixADtypeSize = 1;
-        ctx.matmulPerf.mmShapeInfo_.inMatrixBDtypeSize = 1;
     } else {
         ctx.commPerf.SetCommDTypeSize(ctx.matmulPerf.mmShapeInfo_.inMatrixADtypeSize);
     }
