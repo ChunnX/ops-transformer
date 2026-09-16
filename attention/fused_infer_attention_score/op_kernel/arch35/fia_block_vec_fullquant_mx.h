@@ -452,14 +452,14 @@ public:
 
     __aicore__ inline void UpdateMinCheckValue()
     {
-        LocalTensor<float> minValueUb = commonTBuf_.template Get<float>();
+        LocalTensor<float> minValueUb = commonTBuf.template Get<float>();
         TEventID minCheckEventId = GetTPipePtr()->FetchEventID(HardEvent::V_S);
-        UpdateMinCheckValueVF<USE_DN>((__ubuf__ float *)minValueUb.GetPhyAddr(), *((float *)&minValue_),
-                                      constInfo_.scaleValue, pScaleValue_);
+        UpdateMinCheckValueVF<USE_DN>((__ubuf__ float *)minValueUb.GetPhyAddr(), *((float *)&minValue),
+                                      constInfo.scaleValue, pScaleValue);
         SetFlag<HardEvent::V_S>(minCheckEventId);
         WaitFlag<HardEvent::V_S>(minCheckEventId);
         float min = minValueUb.GetValue(0);
-        minValue_ = static_cast<uint32_t>(*reinterpret_cast<int32_t *>(&min));
+        minValue = static_cast<uint32_t>(*reinterpret_cast<int32_t *>(&min));
     }
 
     __aicore__ inline void SoftmaxLseCopyOut(LocalTensor<float> &softmaxSumTmp, LocalTensor<float> &softmaxMaxTmp,
