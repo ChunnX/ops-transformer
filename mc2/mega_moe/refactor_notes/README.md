@@ -22,7 +22,7 @@ commit, so that a regression can be attributed to a single step and bisected.
 | Step | Commit subject (prefix) | Scope | Status |
 |------|-------------------------|-------|--------|
 | —    | `docs(mega_moe): correct CLAUDE.md` | CLAUDE.md correction + this notes scaffold | done |
-| B1   | `refactor(mega_moe): merge A2/A3 BlockMmad` | `utilsA2/block_mmad_preload_async_fixpipe_quant_a2.hpp` → `utils/block_mmad_preload_async_fixpipe_quant.hpp` | planned |
+| B1   | `refactor(mega_moe): merge A2/A3 BlockMmad` | `utilsA2/block_mmad_preload_async_fixpipe_quant_a2.hpp` → `utils/block_mmad_preload_async_fixpipe_quant.hpp` | done — A2+A3 green |
 | B2   | `refactor(mega_moe): merge SwiGLU epilogues` | `utilsA2/block_epilogue_pertoken_swiglu_a2_{bf16,int8}.hpp` + `utils/block_epilogue_w4a8post_pertoken_swiglu.hpp` → `utils/block_epilogue_pertoken_swiglu.hpp` | planned |
 | B3   | `refactor(mega_moe): merge per-token V2 epilogues` | `utilsA2/block_epilogue_pertoken_v2_{bf16,int8}_a2.hpp` + `utils/block_epilogue_w4a8post_pertoken_v2.hpp` → `utils/block_epilogue_pertoken_v2.hpp` | planned |
 | B4   | `chore(mega_moe): drop dead A2 epilogue headers` | remove the unreferenced `utilsA2/block_epilogue_pertoken_row_a2_*.hpp` | planned |

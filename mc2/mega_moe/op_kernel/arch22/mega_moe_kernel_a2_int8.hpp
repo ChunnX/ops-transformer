@@ -24,7 +24,7 @@
 #include "catlass/matrix_coord.hpp"
 #include "catlass/epilogue/tile/tile_copy.hpp"
 
-#include "utilsA2/block_mmad_preload_async_fixpipe_quant_a2.hpp"
+#include "utils/block_mmad_preload_async_fixpipe_quant.hpp"
 #include "utils/copy_gm_to_l1_custom.hpp"
 #include "utilsA2/block_epilogue_pertoken_swiglu_a2_int8.hpp"
 #include "utilsA2/block_epilogue_pertoken_v2_int8_a2.hpp"
