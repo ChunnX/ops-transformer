@@ -54,7 +54,6 @@ __aicore__ inline void DequantSplitNQc(const GlobalTensor<O> &outputGm, const Gl
     DataCopyParams inputCopyParams{
         static_cast<uint16_t>(1), static_cast<uint16_t>(count * sizeof(T) / 32U),
         static_cast<uint16_t>((dequantRowColStrideParams.stride - dequantRowColStrideParams.col) * sizeof(T) / 32U), 0};
-
     DataCopyParams outputCopyParams{static_cast<uint16_t>(1), static_cast<uint16_t>(count * sizeof(O) / 32U), 0,
                                     static_cast<uint16_t>(dstStride * sizeof(O) / 32U)};
 
@@ -154,9 +153,9 @@ __aicore__ inline void DequantPerTokenQc(const GlobalTensor<O> &outputGm, const 
  * @param inputGm 输入tensor
  * @param shareTmpUb 临时buffer
  * @param castRowColStrideParams 描述待处理数据的排布，包括
-          row 行数
-          col 列数
-          stride 一行的真实长度
+                                 row 行数
+                                 col 列数
+                                 stride 一行的真实长度
  * @param oriRow 一共有多少行
 */
 template <typename T, typename O>

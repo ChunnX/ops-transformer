@@ -92,7 +92,10 @@ public:
         return true;
     }
 
-    bool IsTensorNotNull() const { return inner_ == nullptr; }
+    bool IsTensorNotNull() const
+    {
+        return inner_ == nullptr;
+    }
 
 private:
     const aclTensor *inner_;
@@ -208,10 +211,12 @@ aclnnStatus aclnnMlaPrologV3WeightNzGetWorkspaceSize(
     const int WEIGHT_QUANT_MODE_MXFP8_FULL_QUANT = 3;
     const int WEIGHT_QUANT_MODE_FULL_QUANT_FP8 = 4;
     const int WEIGHT_QUANT_MODE_FULL_QUANT_HIF8 = 5;
+
     const int KV_CACHE_QUANT_MODE_NO_QUANT = 0;
     const int KV_CACHE_QUANT_MODE_PER_TENSOR = 1;
     const int KV_CACHE_QUANT_MODE_PER_CHANNEL = 2;
     const int KV_CACHE_QUANT_MODE_PER_TILE = 3;
+
     if (!CheckWeightQuantModeValidity(weightQuantMode)) {
         return ge::GRAPH_FAILED;
     };
@@ -248,9 +253,9 @@ aclnnStatus aclnnMlaPrologV3WeightNzGetWorkspaceSize(
         OP_LOGE_WITH_INVALID_INPUT("MlaPrologV3", "dequantScaleQNormOut");
         return ge::GRAPH_FAILED;
     }
-    // weightQuantMode == 2,4,5:全量化场景(int8,fp8,hif8)
-    // weightQuantMode == 3:mxfp8全量化场景
-    // kvCacheQuantMode == 1:KV_PER_TENSOR量化场景
+    // weightQuantMode == 2, 4, 5:全量化场景(int8, fp8, hif8)
+    // weightQuantMode == 3: mxfp8全量化场景
+    // kvCacheQuantMode == 1: KV_PER_TENSOR量化场景
     if (!dequantScaleQNopeHolder.CheckTensorConditionalNotNull((weightQuantMode == WEIGHT_QUANT_MODE_FULL_QUANT ||
                                                                 weightQuantMode == WEIGHT_QUANT_MODE_MXFP8_FULL_QUANT ||
                                                                 weightQuantMode == WEIGHT_QUANT_MODE_FULL_QUANT_FP8 ||

@@ -205,7 +205,6 @@ __aicore__ inline void RowMax(LocalTensor<float> &dstUb, LocalTensor<float> &src
         }
         PipeBarrier<PIPE_V>();
     }
-
     WholeReduceMax(dstUb, srcUb, (rectangleParams.col < dtypeMask) ? rectangleParams.col : dtypeMask,
                    rectangleParams.row, 1, 1, rectangleParams.stride / FP32_BLOCK_ELEMENT_NUM,
                    ReduceOrder::ORDER_ONLY_VALUE);
@@ -213,15 +212,15 @@ __aicore__ inline void RowMax(LocalTensor<float> &dstUb, LocalTensor<float> &src
 
 /**
  * @brief Dequant 对[row * col]的tensor进行反量化。需要输入一个行向量和列向量，共同构成反量化的矩阵。
-          outputLocal [i,j] = inputLocal[i,j] * scaleLocal[j] * scale2Local [i]
- * @param outputLocal 输出tensor [row , col]
- * @param inputLocal 输入tensor [row , col]
- * @param scaleLocal [1,col] 量化系数；行向量
- * @param scale2Local [row,8] 量化系数；列向量，8为float扩充为32Bytes
+          outputLocal [i, j] = inputLocal[i, j] * scaleLocal[j] * scale2Local [i]
+ * @param outputLocal 输出tensor [row, col]
+ * @param inputLocal 输入tensor [row, col]
+ * @param scaleLocal [1, col] 量化系数；行向量
+ * @param scale2Local [row, 8] 量化系数；列向量，8为float扩充为32Bytes
  * @param rectangleParams 描述待处理数据的排布，包括
-          row 行数
-          col 列数
-          stride 一行的真实长度
+                          row 行数
+                          col 列数
+                          stride 一行的真实长度
  */
 template <typename T>
 __aicore__ inline void Dequant(const LocalTensor<float> &outputLocal, const LocalTensor<T> &inputLocal,

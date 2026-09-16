@@ -82,6 +82,11 @@ public:
 
 private:
     __aicore__ inline void CopyGlobalParams();
+    __aicore__ inline void InputInit(__gm__ uint8_t *tokenX, __gm__ uint8_t *weightDq, __gm__ uint8_t *weightUqQr,
+                                     __gm__ uint8_t *weightUk, __gm__ uint8_t *weightDkvKr,
+                                     __gm__ uint8_t *rmsnormGammaCq, __gm__ uint8_t *rmsnormGammaCkv,
+                                     __gm__ uint8_t *ropeSin, __gm__ uint8_t *ropeCos, __gm__ uint8_t *cacheIndex,
+                                     __gm__ uint8_t *kvCache, __gm__ uint8_t *krCache, __gm__ uint8_t *actualSeqLen);
     __aicore__ inline void OutputInit(__gm__ uint8_t *queryOut, __gm__ uint8_t *queryRopeOut,
                                       __gm__ uint8_t *dequantScaleQNopeOut, __gm__ uint8_t *queryNormOut,
                                       __gm__ uint8_t *dequantScaleQNormOut);
@@ -323,6 +328,28 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::Init(
     }
     curVecTokenMax_ = (curVectorBlockNum_ + vectorCoreNum_ - 1) / vectorCoreNum_;
     enableSmoothScalesCq_ = smoothScaleCq == nullptr ? false : true;
+    InputInit(tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos,
+              cacheIndex, kvCache, krCache, actualSeqLen);
+
+    OutputInit(queryOut, queryRopeOut, dequantScaleQNopeOut, queryNormOut, dequantScaleQNormOut);
+    ScaleInit(dequantScaleX, dequantScaleWDq, deqScaleQcQrW, dequantScaleWDkvkr, quantScaleCkv, quantScaleCkr,
+              smoothScaleCq, kNopeClipAlpha);
+    MmParamInit();
+    WorkspaceInit(workspace);
+    if ASCEND_IS_AIV {
+        VectorBufferInit();
+    } else {
+        CubeBufferInit();
+    }
+}
+
+template <typename MLAPT>
+__aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::InputInit(
+    __gm__ uint8_t *tokenX, __gm__ uint8_t *weightDq, __gm__ uint8_t *weightUqQr, __gm__ uint8_t *weightUk,
+    __gm__ uint8_t *weightDkvKr, __gm__ uint8_t *rmsnormGammaCq, __gm__ uint8_t *rmsnormGammaCkv,
+    __gm__ uint8_t *ropeSin, __gm__ uint8_t *ropeCos, __gm__ uint8_t *cacheIndex, __gm__ uint8_t *kvCache,
+    __gm__ uint8_t *krCache, __gm__ uint8_t *actualSeqLen)
+{
     // GM
     tokenXGm_.SetGlobalBuffer((__gm__ mmInputType *)tokenX);
     weightDqGm_.SetGlobalBuffer((__gm__ mmInputType *)weightDq);         // NZ
@@ -340,17 +367,6 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::Init(
     krCacheGm_.SetGlobalBuffer((__gm__ krCacheType *)krCache);
     if constexpr (MLAPT::actualSeqMode == ACTUAL_SEQ_MODE::EN_Q_LEN) {
         actualSeqLenGm_.SetGlobalBuffer((__gm__ int32_t *)actualSeqLen);
-    }
-
-    OutputInit(queryOut, queryRopeOut, dequantScaleQNopeOut, queryNormOut, dequantScaleQNormOut);
-    ScaleInit(dequantScaleX, dequantScaleWDq, deqScaleQcQrW, dequantScaleWDkvkr, quantScaleCkv, quantScaleCkr,
-              smoothScaleCq, kNopeClipAlpha);
-    MmParamInit();
-    WorkspaceInit(workspace);
-    if ASCEND_IS_AIV {
-        VectorBufferInit();
-    } else {
-        CubeBufferInit();
     }
 }
 
@@ -823,6 +839,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::Process()
         } else {
             curStepBatchSize = static_cast<int64_t>(baseParams_->stepBatchSize);
         }
+
         if ASCEND_IS_AIC {
             AicProcess<needQnDynamicQuant>(aicOffset, batchOffset, mmQnLoops);
         }
@@ -1091,6 +1108,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MatmulAndSyncQcQr(AicOffset &
             mmQcQrResGm_[aicOffset.qCResOffset], rmsNormCqResGm_[aicOffset.rmsNormCqResOffset],
             weightUqQrGm_[aicOffset.weightUqOffset], mmQcQrParam_, UsedBlockParams{0, QC_CORE_NUM});
         CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_FIX>(FINISH_MM_QC);
+
         // MatmulQr
         MatmulSplitN<rmsNormCqOutputType, mmQcQrOutputType, dequantScaleType, false, true, false>(
             mmQcQrResGm_[aicOffset.qRResOffset], rmsNormCqResGm_[aicOffset.rmsNormCqResOffset],
@@ -1536,9 +1554,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::ComputeBlkScatterOffsets(Glob
 
     int64_t indexOffset = batchIndexOffset + batchTokenIndex / baseParams_->blockSize;
     int64_t paBlkId = indexGm(indexOffset); // 取cacheIdx
-
     int64_t tokenOffsetInPage = batchTokenIndex % baseParams_->blockSize;
-
     int64_t leftRowsInPage = baseParams_->blockSize - tokenOffsetInPage;
     if (leftRowsInPage >= rows) {
         rowsThisStep = rows;

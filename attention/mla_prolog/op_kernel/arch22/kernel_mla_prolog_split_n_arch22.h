@@ -18,11 +18,11 @@
 
 #include "mla_prolog_comm_arch22.h"
 #include "mla_prolog_vector_comm_arch22.h"
-#include "service_matmul_arch22.h"
-#include "service_rms_norm_arch22.h"
 #include "service_dequant_arch22.h"
 #include "service_dynamic_quant_qn_mul_qr_arch22.h"
 #include "service_gather_sin_cos_arch22.h"
+#include "service_matmul_arch22.h"
+#include "service_rms_norm_arch22.h"
 #include "service_rotary_position_embedding_arch22.h"
 #include "service_scatter_cache_arch22.h"
 #include "../mla_prolog_tiling_data.h"
@@ -195,7 +195,7 @@ private:
     uint32_t curStepVecFrontToken_;
     uint64_t dequantScaleCqSize_ = 1;
     bool enableSmoothScalesCq_;
-    static constexpr uint32_t cvMode = MLAPT::cvRatio; // 编译态，默认cv1:2
+    static constexpr uint32_t cvMode = MLAPT::cvRatio; // 编译态，默认cv 1:2
     uint32_t cvRatio_ = 2U;                            // 默认cv 1:2
 
     struct DequantTool {
@@ -262,9 +262,9 @@ private:
     LocalTensor<dequantScaleType> dequantScaleWDkvKrLocal_;
     LocalTensor<rmsNormGammaType> rmsnormGammaCkvLocal_;
     LocalTensor<rmsNormGammaType> rmsnormGammaCqLocal_;
-    LocalTensor<float> smoothScaleCqLocal_;
-    LocalTensor<float> quantScaleCkrLocal_;
     LocalTensor<float> quantScaleCkvLocal_;
+    LocalTensor<float> quantScaleCkrLocal_;
+    LocalTensor<float> smoothScaleCqLocal_;
     LocalTensor<int64_t> stepActualSeqLocal_;
 
     struct ActSeqState {
@@ -1017,9 +1017,8 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::ComputeAivOffset(AivOffset &a
                                  aivOffset.curBlockTokenOffset *
                                      static_cast<int64_t>(baseParams_->dimHeadRope + baseParams_->dimHeadSizeQc) *
                                      static_cast<int64_t>(baseParams_->numHeadSize); // 128 + 32 * (128 + 64) * idx
-        aivOffset.ropeQrResOffset =
-            static_cast<int64_t>(baseParams_->headSizeQr) *
-            (aivOffset.curBlockTokenOffset + batchOffset); // 32 * 64 * idx;    // 按BS合轴切分step
+        aivOffset.ropeQrResOffset = static_cast<int64_t>(baseParams_->headSizeQr) *
+                                    (aivOffset.curBlockTokenOffset + batchOffset); // 32 * 64 * idx; 按BS合轴切分step
     }
 
     // 以下的Offset均是与batchOffset无关的，仅初始化一次即可。

@@ -28,19 +28,6 @@ __aicore__ inline int64_t CeilDiv64(int64_t x, int64_t y)
     return (x + y - 1) / y;
 };
 
-/**
- * @brief PA场景，将inputLocal中的数据scatter到cacheGm，支持ND和Nz cache
- * @param cacheGm 输出tensor
- *     ND [blockNum, blockSize, col]
- *     Nz [blockNum, ceil(col/col0), blockSize, col0]
- * @param inputLocal 输入tensor，[row, col]，一行对应一个token，只支持单行数据处理，row为1
- * @param scatterCacheParams 所需相关参数，包括
-          blockSize KV blocks的大小
-          paTokenIndex 待处理token在cache中的全局index，取值[0, blockNum*blockSize)
-          row 待处理的行数
-          col 待处理的列数，需满足32 bytes对齐
- */
-
 struct ScatterCacheParams {
     int64_t blockSize;
     int64_t paTokenIndex;
@@ -63,6 +50,18 @@ __aicore__ inline int64_t GetCacheOffset(int64_t paTokenIndex, int64_t blockSize
     return blockIndex * cacheStride0 + tokenIndexInBlock * tokenStride;
 }
 
+/**
+ * @brief PA场景，将inputLocal中的数据scatter到cacheGm，支持ND和Nz cache
+ * @param cacheGm 输出tensor
+ *     ND [blockNum, blockSize, col]
+ *     Nz [blockNum, ceil(col/col0), blockSize, col0]
+ * @param inputLocal 输入tensor，[row, col]，一行对应一个token，只支持单行数据处理，row为1
+ * @param scatterCacheParams 所需相关参数，包括
+          blockSize KV blocks的大小
+          paTokenIndex 待处理token在cache中的全局index，取值[0, blockNum*blockSize)
+          row 待处理的行数
+          col 待处理的列数，需满足32 bytes对齐
+ */
 template <typename T, bool IS_NZ>
 __aicore__ inline void ScatterCache(const GlobalTensor<T> &cacheGm, const LocalTensor<T> &inputLocal,
                                     const ScatterCacheParams &scatterCacheParams)
@@ -109,7 +108,6 @@ __aicore__ inline void ScatterCacheMultiRows(GlobalTensor<T> &cacheGm, const Loc
         return;
     }
     int64_t copyCnt = scatterCacheParams.col * rowsInCurBatch;
-
     if constexpr (!IS_NZ) {
         DataCopy(cacheGm[cacheOffset], inputLocal, copyCnt);
         if (rowsInCurBatch != scatterCacheParams.row) {
@@ -136,11 +134,14 @@ __aicore__ inline void MaterializeOffsetsWithHeadSize(int64_t pageId, int64_t to
 {
     ckvkrParams.rowsInCurBatch = rowsThisStep;
     if constexpr (IS_NZ) {
+        // Nz cache布局为[blockNum, ceil(col/col0), blockSize, col0]，页内行偏移以col0（32B对齐块）为单位
         constexpr uint8_t col0 = ALIGN_BLOCK_SIZE / sizeof(T);
         ckvkrParams.cacheOffset = pageId * cacheStride0 + tokenOffsetInPage * col0;
     } else {
+        // ND cache布局为[blockNum, blockSize, col]，页内行偏移以单行元素个数headSize为单位
         ckvkrParams.cacheOffset = pageId * cacheStride0 + tokenOffsetInPage * headSize;
     }
+    // 跨页时剩余行从下一页起始位置继续写入
     ckvkrParams.nextBatchOffset = (spill && nextPageId >= 0) ? nextPageId * cacheStride0 : 0;
 }
 

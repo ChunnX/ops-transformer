@@ -43,8 +43,8 @@ __aicore__ inline int64_t GetCacheOffset(int64_t paTokenIndex, int64_t blockSize
 /**
  * @brief PA场景，将inputLocal中的数据scatter到cacheGm，支持ND和Nz cache
  * @param cacheGm 输出tensor
- *     ND [blockNum, blockSize, col]
- *     Nz [blockNum, ceil(col/col0), blockSize, col0]
+ *        ND [blockNum, blockSize, col]
+ *        Nz [blockNum, ceil(col/col0), blockSize, col0]
  * @param inputLocal 输入tensor，[row, col]，一行对应一个token，只支持单行数据处理，row为1
  * @param scatterCacheParams 所需相关参数，包括
           blockSize KV blocks的大小
@@ -52,7 +52,6 @@ __aicore__ inline int64_t GetCacheOffset(int64_t paTokenIndex, int64_t blockSize
           row 待处理的行数
           col 待处理的列数，需满足32 bytes对齐
  */
-
 template <typename T, bool IS_NZ>
 __aicore__ inline void ScatterCacheUnAligned(const GlobalTensor<T> &cacheGm, const LocalTensor<T> &inputLocal,
                                              const ScatterCacheParams &scatterCacheParams)
@@ -60,6 +59,7 @@ __aicore__ inline void ScatterCacheUnAligned(const GlobalTensor<T> &cacheGm, con
     if (scatterCacheParams.paTokenIndex < 0) {
         return;
     }
+
     if constexpr (!IS_NZ) {
         int64_t cacheOffset = GetCacheOffset(scatterCacheParams.paTokenIndex, scatterCacheParams.blockSize,
                                              scatterCacheParams.stride, scatterCacheParams.cacheStride0);
