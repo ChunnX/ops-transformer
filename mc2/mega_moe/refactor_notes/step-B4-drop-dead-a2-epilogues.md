@@ -46,6 +46,17 @@ history *and* fixed.
 **None.** Nothing that was reachable changes. The only generated-code difference is that the
 unused policy types no longer exist.
 
+## Codegen impact
+
+| | |
+|---|---|
+| B4 relative to B3 | **0 / 15 kernels changed — byte-identical** |
+
+All fifteen kernel objects are bit-identical to B3. Nothing reachable changed, so
+nothing was re-emitted. This is the cleanest available confirmation that the
+fingerprint method is sound and that removing dead code is free. (Method: see
+`step-B5-unify-a2-kernels.md`.)
+
 ## Verification
 
 - `bash build.sh --pkg --soc=ascend910b --ops=mega_moe` — green, 76 targets, 0 errors.

@@ -90,6 +90,23 @@ could observe stale values), and it is upstream's, not this refactor's.
 platform differences were already `if constexpr`/type-level. No runtime branch, argument or
 indirection was added.
 
+## Codegen impact
+
+| | |
+|---|---|
+| B2 relative to B1 | **15 / 15 kernels changed** |
+
+All fifteen, w4a8 included — SwiGLU is on every path, so nothing is insulated this
+time.
+
+This is the step where the "rewrite both sides into one shared body with gates"
+approach was first tried and rejected. The rewrites were semantically equivalent
+(hoisting locals, inlining constructions, adjusting scope) but moved 6 of 15
+kernels' bytes, and no single edit could be credited with the shift. That result
+is what established the **verbatim-branch rule**: keep the divergent regions'
+text on both sides rather than merging them into one body. B5's steps 1–2b later
+vindicate the rule by landing 0-of-15 three times in a row.
+
 ## Verification
 
 - `bash build.sh --pkg --soc=ascend910b --ops=mega_moe` — green, 76 targets, 0 errors.

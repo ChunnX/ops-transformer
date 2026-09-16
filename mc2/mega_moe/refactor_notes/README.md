@@ -16,6 +16,12 @@ commit, so that a regression can be attributed to a single step and bisected.
 - **Upstream first.** Where a step merges two implementations, any behaviour that upstream
   added to either side must survive. When the two sides disagree semantically, stop and ask
   rather than picking one.
+- **"No runtime cost" is not "no codegen change".** Merging two template bodies re-emits
+  them, and the compiler's register allocation and scheduling move as a result — see the
+  table below. Every step must therefore state its *measured* codegen impact, and no step
+  may claim byte-equivalence it has not actually measured. Byte-equivalence, where it is
+  achieved (B3→B4 and B5 steps 1–2b), is a bonus that makes a step provable; its absence is
+  not by itself a defect, but it does move the burden onto golden comparison.
 
 ## Step index
 
@@ -26,9 +32,41 @@ commit, so that a regression can be attributed to a single step and bisected.
 | B2   | `refactor(mega_moe): merge SwiGLU epilogues` | `utilsA2/block_epilogue_pertoken_swiglu_a2_{bf16,int8}.hpp` + `utils/block_epilogue_w4a8post_pertoken_swiglu.hpp` → `utils/block_epilogue_pertoken_swiglu.hpp` (4 specialisations → 2) | done — A2+A3 green |
 | B3   | `refactor(mega_moe): merge V2 epilogues and unify epilogue numbering` | `utilsA2/block_epilogue_pertoken_v2_{bf16,int8}_a2.hpp` + `utils/block_epilogue_w4a8post_pertoken_v2.hpp` → `utils/block_epilogue_pertoken_v2.hpp` (4 specialisations → 2); also swaps the A3 epilogue numbering so BlockEpilogue2 = V2 on both platforms | done — A2+A3 green |
 | B4   | `chore(mega_moe): drop dead A2-only epilogue variants` | remove the unreferenced `utilsA2/block_epilogue_pertoken_row_a2_*.hpp` and the six A2-only policy declarations orphaned by B1–B3 | done — A2+A3 green |
-| B5   | `refactor(mega_moe): unify the three A2 device kernels` | `mega_moe_kernel_a2_{int8,bf16,bf16_w4a8}.hpp` → `mega_moe_kernel_a2.hpp`, `template<..., bool IsInt8, bool IsW4A8>` | planned |
+| B5   | `refactor(mega_moe): unify the three A2 device kernels` | `mega_moe_kernel_a2_{int8,bf16,bf16_w4a8}.hpp` → `mega_moe_kernel_a2.hpp`, `template<..., bool IsInt8, bool IsW4A8>`; five commits, see `step-B5-unify-a2-kernels.md` | done — A2 green, codegen measured |
 | B6   | `refactor(mega_moe): merge MegaMoeA2 into MegaMoe` | `mega_moe_a2.h` folded into `mega_moe_arch22.h` as `MegaMoe<..., IS_A2_>`; single entry in `mega_moe.cpp` | planned |
 | B7   | `docs(mega_moe): no-loss audit and review` | audit table + final review doc | planned |
+
+## Codegen impact of the whole series
+
+Every step was rebuilt from a clean `build/` for `ascend910b` and its 15 kernel
+objects fingerprinted (`.text` + `.rodata` bytes hashed; method and caveats in
+`step-B5-unify-a2-kernels.md`). Per step, relative to the step before it:
+
+| Step | Kernels whose codegen changed |
+|------|-------------------------------|
+| baseline → B1 (BlockMmad) | 12 / 15 |
+| B1 → B2 (SwiGLU epilogues) | 15 / 15 |
+| B2 → B3 (V2 epilogues + numbering) | 15 / 15 |
+| B3 → B4 (drop dead epilogues) | **0 / 15** |
+| B4 → B5 step 1 / 2a / 2b | **0 / 15** each |
+| B5 step 3 (rank cache, SendTokensV3 path A) | 6 / 15 |
+| B5 step 4 (bf16 routed to unified kernel) | 12 / 15 |
+| **baseline → HEAD, cumulative** | **15 / 15** |
+
+**No kernel is byte-identical after the full series.** The refactor is not
+codegen-neutral and must not be described as such. What the ELF layout does
+support (baseline → HEAD, aggregated over all 15 objects):
+
+- `.text` 13 309 920 → 13 245 852 B: **−64 068 B (−0.48%)**, and **no kernel grew**
+- `.rela.text` unchanged to the byte — the code's reference structure is identical
+- `.ascend.stack.size.record` unchanged — no instantiation needs more stack
+- `.data` and `.rodata` unchanged — no constant or table was rewritten
+
+That is the signature of removed instructions, not added work. It is
+**corroborating evidence, not proof**: correctness has to come from golden
+comparison of `yOut` + `expertTokenNumsOut` per dtype/arch, which has **not** been
+run. Green compilation and passing UT prove nothing here — the UT suites do not
+execute kernels.
 
 ## Baseline
 
