@@ -104,6 +104,28 @@ static ge::graphStatus InferExpertIdsShape(gert::InferShapeContext *context, int
     return ge::GRAPH_SUCCESS;
 }
 
+static void SetExpandedOutputShapes(gert::InferShapeContext *context, gert::Shape *expandXShape,
+                                    gert::Shape *dynamicScalesShape, gert::Shape *expandScalesShape,
+                                    const gert::Shape *expertScalesShape, int64_t a, int64_t h)
+{
+    auto realA = a;
+    expandXShape->SetDimNum(DIM_TWO);
+    expandXShape->SetDim(0U, realA);
+    expandXShape->SetDim(1U, h);
+    OP_LOGD(context->GetNodeName(), "expandXShape is:%s after infershape.", Ops::Base::ToString(*expandXShape).c_str());
+    dynamicScalesShape->SetDimNum(DIM_ONE);
+    dynamicScalesShape->SetDim(0U, realA);
+    OP_LOGD(context->GetNodeName(), "dynamicScalesShape shape is:%s after infershape.",
+            Ops::Base::ToString(*dynamicScalesShape).c_str());
+    expandScalesShape->SetDimNum(DIM_ONE);
+    expandScalesShape->SetDim(0U, 0);
+    if (expertScalesShape != nullptr) {
+        expandScalesShape->SetDim(0U, a);
+    }
+    OP_LOGD(context->GetNodeName(), "expandScalesShape shape is:%s after infershape.",
+            Ops::Base::ToString(*expandScalesShape).c_str());
+}
+
 static ge::graphStatus InferExpandXAndScalesShape(gert::InferShapeContext *context, int64_t k, int64_t h,
                                                   int64_t &localExpertNum, int64_t globalBsReal, int64_t epWorldSize)
 {
@@ -143,22 +165,7 @@ static ge::graphStatus InferExpandXAndScalesShape(gert::InferShapeContext *conte
                                                     (*epRankId >= (epWorldSize - *sharedExpertRankNum));
     localExpertNum = isSharedExpert ? 1 : localMoeExpertNum;
     int64_t a = isSharedExpert ? (globalBsReal / *sharedExpertRankNum) : (globalBsReal * std::min(localExpertNum, k));
-    auto realA = a;
-    expandXShape->SetDimNum(DIM_TWO);
-    expandXShape->SetDim(0U, realA);
-    expandXShape->SetDim(1U, h);
-    OP_LOGD(context->GetNodeName(), "expandXShape is:%s after infershape.", Ops::Base::ToString(*expandXShape).c_str());
-    dynamicScalesShape->SetDimNum(DIM_ONE);
-    dynamicScalesShape->SetDim(0U, realA);
-    OP_LOGD(context->GetNodeName(), "dynamicScalesShape shape is:%s after infershape.",
-            Ops::Base::ToString(*dynamicScalesShape).c_str());
-    expandScalesShape->SetDimNum(DIM_ONE);
-    expandScalesShape->SetDim(0U, 0);
-    if (expertScalesShape != nullptr) {
-        expandScalesShape->SetDim(0U, a);
-    }
-    OP_LOGD(context->GetNodeName(), "expandScalesShape shape is:%s after infershape.",
-            Ops::Base::ToString(*expandScalesShape).c_str());
+    SetExpandedOutputShapes(context, expandXShape, dynamicScalesShape, expandScalesShape, expertScalesShape, a, h);
     return ge::GRAPH_SUCCESS;
 }
 

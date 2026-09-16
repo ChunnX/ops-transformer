@@ -470,8 +470,7 @@ bool MoeDistributeDispatchTilingHelper::CheckTensorDataTypeA5(gert::TilingContex
     return true;
 }
 
-bool MoeDistributeDispatchTilingHelper::CheckTensorFormat(const gert::TilingContext *context, const char *nodeName,
-                                                          const bool isScales, const uint32_t quantMode)
+static bool CheckDispatchInputFormats(const gert::TilingContext *context, const char *nodeName, bool isScales)
 {
     auto xDesc = context->GetInputDesc(X_INDEX);
     OP_TILING_CHECK(xDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "xDesc"), return false);
@@ -508,6 +507,12 @@ bool MoeDistributeDispatchTilingHelper::CheckTensorFormat(const gert::TilingCont
         }
     }
 
+    return true;
+}
+
+static bool CheckDispatchExpandedOutputFormats(const gert::TilingContext *context, const char *nodeName,
+                                               uint32_t quantMode)
+{
     auto expandXDesc = context->GetOutputDesc(OUTPUT_EXPAND_X_INDEX);
     if (expandXDesc == nullptr) {
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "expandXDesc");
@@ -536,6 +541,11 @@ bool MoeDistributeDispatchTilingHelper::CheckTensorFormat(const gert::TilingCont
         }
     }
 
+    return true;
+}
+
+static bool CheckDispatchMetadataFormats(const gert::TilingContext *context, const char *nodeName)
+{
     auto expandIdxDesc = context->GetOutputDesc(OUTPUT_EXPAND_IDX_INDEX);
     if (expandIdxDesc == nullptr) {
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "expandIdxDesc");
@@ -570,6 +580,21 @@ bool MoeDistributeDispatchTilingHelper::CheckTensorFormat(const gert::TilingCont
     if (epRecvCountsDescFormat == ge::FORMAT_FRACTAL_NZ) {
         std::string fmtStr = Ops::Base::ToString(epRecvCountsDescFormat);
         OP_LOGE_FOR_INVALID_FORMAT(nodeName, "epRecvCounts", fmtStr.c_str(), "ND");
+        return false;
+    }
+    return true;
+}
+
+bool MoeDistributeDispatchTilingHelper::CheckTensorFormat(const gert::TilingContext *context, const char *nodeName,
+                                                          const bool isScales, const uint32_t quantMode)
+{
+    if (!CheckDispatchInputFormats(context, nodeName, isScales)) {
+        return false;
+    }
+    if (!CheckDispatchExpandedOutputFormats(context, nodeName, quantMode)) {
+        return false;
+    }
+    if (!CheckDispatchMetadataFormats(context, nodeName)) {
         return false;
     }
     return true;

@@ -688,6 +688,36 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::MC2SetWorkspaceReduceScatter(
     return ge::GRAPH_SUCCESS;
 }
 
+static ge::graphStatus FillReduceScatterSocParams(gert::TilingContext *context,
+                                                  MatmulReduceScatterTilingData *tilingData, const char *group,
+                                                  uint32_t rankSize, const bool *is_trans_a, const bool *is_trans_b)
+{
+    tilingData->param.rankDim = rankSize;
+    tilingData->param.isTransposeA = is_trans_a ? *is_trans_a : 0;
+    tilingData->param.isTransposeB = is_trans_b ? *is_trans_b : 0;
+    auto commSets = mc2tiling::Mc2TilingUtils::GetCommSets(group);
+    tilingData->socParam.isA3 = (commSets == COMM_MESH) ? 0 : 1;
+    tilingData->socParam.isStep = 0U;
+    tilingData->socParam.isND2NZ = 1U;
+    OP_TILING_CHECK(SetCommAlg(*tilingData) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(context->GetNodeName(), " Set comm algorithm failed."), return ge::GRAPH_FAILED);
+    OP_LOGI(context->GetNodeName(), " Communication algorithm is %u.", tilingData->socParam.commAlg);
+    OP_LOGI(context->GetNodeName(), " Step comm flag is %u. ND2NZ flag is: %u", tilingData->socParam.isStep,
+            tilingData->socParam.isND2NZ);
+    return ge::GRAPH_SUCCESS;
+}
+
+static void SetReduceScatterReductionType(MatmulReduceScatterTilingData *tilingData, const char *reduce_op)
+{
+    if (strncmp(reduce_op, "sum", 3) == 0) { // 3 is index
+        OP_LOGD("MatmulReduceScatter", "strncmp(reduce_op, sum, 3) == 0");
+        tilingData->param.subtype = static_cast<uint8_t>(mc2tiling::HcclReduceOp::HCCL_REDUCE_SUM);
+    } else {
+        OP_LOGD("MatmulReduceScatter", "strncmp(reduce_op, sum, 3) != 0");
+        tilingData->param.subtype = static_cast<uint8_t>(mc2tiling::HcclReduceOp::HCCL_REDUCE_RESERVED);
+    }
+}
+
 ge::graphStatus MatmulReduceScatterTilingFuncBase::MatmulReduceScatterTilingFunc(gert::TilingContext *context)
 {
     MatmulReduceScatterTilingData *tilingData = context->GetTilingData<MatmulReduceScatterTilingData>();
@@ -717,18 +747,9 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::MatmulReduceScatterTilingFunc
             "comm_turn is %ld.",
             group, rankSize, reduce_op, *is_trans_a, *is_trans_b, comm_turn);
 
-    tilingData->param.rankDim = rankSize;
-    tilingData->param.isTransposeA = is_trans_a ? *is_trans_a : 0;
-    tilingData->param.isTransposeB = is_trans_b ? *is_trans_b : 0;
-    auto commSets = mc2tiling::Mc2TilingUtils::GetCommSets(group);
-    tilingData->socParam.isA3 = (commSets == COMM_MESH) ? 0 : 1;
-    tilingData->socParam.isStep = 0U;
-    tilingData->socParam.isND2NZ = 1U;
-    OP_TILING_CHECK(SetCommAlg(*tilingData) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(context->GetNodeName(), " Set comm algorithm failed."), return ge::GRAPH_FAILED);
-    OP_LOGI(context->GetNodeName(), " Communication algorithm is %u.", tilingData->socParam.commAlg);
-    OP_LOGI(context->GetNodeName(), " Step comm flag is %u. ND2NZ flag is: %u", tilingData->socParam.isStep,
-            tilingData->socParam.isND2NZ);
+    if (FillReduceScatterSocParams(context, tilingData, group, rankSize, is_trans_a, is_trans_b) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     if (CheckValidRank(VALID_RANK, tilingData, context, rankSize) == ge::GRAPH_FAILED) {
         return ge::GRAPH_FAILED;
     }
@@ -745,13 +766,7 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::MatmulReduceScatterTilingFunc
     tilingData->param.isTransposeB = args.isBTrans ? 1 : 0;
     tilingData->param.commtype = static_cast<uint32_t>(args.cmdType);
 
-    if (strncmp(reduce_op, "sum", 3) == 0) { // 3 is index
-        OP_LOGD("MatmulReduceScatter", "strncmp(reduce_op, sum, 3) == 0");
-        tilingData->param.subtype = static_cast<uint8_t>(mc2tiling::HcclReduceOp::HCCL_REDUCE_SUM);
-    } else {
-        OP_LOGD("MatmulReduceScatter", "strncmp(reduce_op, sum, 3) != 0");
-        tilingData->param.subtype = static_cast<uint8_t>(mc2tiling::HcclReduceOp::HCCL_REDUCE_RESERVED);
-    }
+    SetReduceScatterReductionType(tilingData, reduce_op);
 
     OP_TILING_CHECK(SetMatmulTilingMatmulReduceScatter(context, *tilingData, args) != ge::GRAPH_SUCCESS,
                     OP_LOGE(context->GetNodeName(), "SetMatmulTilingMatmulReduceScatter failed"),

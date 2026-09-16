@@ -31,6 +31,13 @@ public:
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
         DefineAttributes();
 
+        DefineAICoreConfigs();
+        this->MC2().HcclGroup({"group_ep", "group_tp"});
+    }
+
+private:
+    void DefineAICoreConfigs()
+    {
         // A2 (arch22): _a2 entry (opFile -> arch22/..._a2.cpp).
         OpAICoreConfig aicore_config_a2;
         aicore_config_a2.DynamicCompileStaticFlag(true)
@@ -76,10 +83,8 @@ public:
         this->AICore().AddConfig("ascend910b", aicore_config_a2);
         this->AICore().AddConfig("ascend910_93", aicore_config_a3);
         this->AICore().AddConfig("ascend950", aicore_config_apt);
-        this->MC2().HcclGroup({"group_ep", "group_tp"});
     }
 
-private:
     void DefineRequiredInputs()
     {
         this->Input("expand_x")

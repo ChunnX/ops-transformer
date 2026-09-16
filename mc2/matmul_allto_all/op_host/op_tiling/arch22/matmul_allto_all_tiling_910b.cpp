@@ -447,6 +447,49 @@ ge::graphStatus MatmulAlltoAllTiling910B::CheckAndSetAttrsInfo(MatmulAlltoAllInf
  * @brief 非量化场景校验参数的DType
  * @return ge::graphStatus
  */
+ge::graphStatus MatmulAlltoAllTiling910B::CheckBiasedTensorDataTypes(ge::DataType x1Dtype, ge::DataType x2Dtype,
+                                                                     ge::DataType biasDtype, ge::DataType yDtype)
+{
+    if (biasDtype == ge::DT_FLOAT16) {
+        quantBiasType = TILINGKEY_TPL_FP16;
+    } else if (biasDtype == ge::DT_FLOAT) {
+        quantBiasType = TILINGKEY_TPL_FP32;
+    } else if (biasDtype == ge::DT_BF16) {
+        quantBiasType = TILINGKEY_TPL_BF16;
+    }
+    vector<uint32_t> paramsType = {x1Dtype, x2Dtype, biasDtype, yDtype};
+
+    for (uint32_t kindsId = 0; kindsId < SUPPORTED_TYPES_WITH_BIAS.size(); kindsId++) {
+        if (IsArrayEqual(paramsType, SUPPORTED_TYPES_WITH_BIAS[kindsId], COUNT_PARAMS_WITH_BIAS)) {
+            return ge::GRAPH_SUCCESS;
+        }
+    }
+    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+        opName_, "x1,x2,bias,y",
+        (Ops::Base::ToString(x1Dtype) + "," + Ops::Base::ToString(x2Dtype) + "," + Ops::Base::ToString(biasDtype) +
+         "," + Ops::Base::ToString(yDtype))
+            .c_str(),
+        "The dtypes of x1, x2, bias and y must be one of the supported combinations.");
+    return ge::GRAPH_FAILED;
+}
+
+ge::graphStatus MatmulAlltoAllTiling910B::CheckUnbiasedTensorDataTypes(ge::DataType x1Dtype, ge::DataType x2Dtype,
+                                                                       ge::DataType yDtype)
+{
+    vector<uint32_t> paramsType = {x1Dtype, x2Dtype, yDtype};
+
+    for (uint32_t kindsId = 0; kindsId < SUPPORTED_TYPES_WITHOUT_BIAS.size(); kindsId++) {
+        if (IsArrayEqual(paramsType, SUPPORTED_TYPES_WITHOUT_BIAS[kindsId], COUNT_PARAMS_WITHOUT_BIAS)) {
+            return ge::GRAPH_SUCCESS;
+        }
+    }
+    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+        opName_, "x1,x2,y",
+        (Ops::Base::ToString(x1Dtype) + "," + Ops::Base::ToString(x2Dtype) + "," + Ops::Base::ToString(yDtype)).c_str(),
+        "The dtypes of x1, x2 and y must be one of the supported combinations.");
+    return ge::GRAPH_FAILED;
+}
+
 ge::graphStatus MatmulAlltoAllTiling910B::CheckTensorDataType(MatmulAlltoAllInfo &info)
 {
     // 获取并校验输入张量描述符
@@ -491,41 +534,9 @@ ge::graphStatus MatmulAlltoAllTiling910B::CheckTensorDataType(MatmulAlltoAllInfo
     if (biasTensorDesc != nullptr) {
         hasBias = true;
         ge::DataType biasDtype = biasTensorDesc->GetDataType();
-        if (biasDtype == ge::DT_FLOAT16) {
-            quantBiasType = TILINGKEY_TPL_FP16;
-        } else if (biasDtype == ge::DT_FLOAT) {
-            quantBiasType = TILINGKEY_TPL_FP32;
-        } else if (biasDtype == ge::DT_BF16) {
-            quantBiasType = TILINGKEY_TPL_BF16;
-        }
-        vector<uint32_t> paramsType = {x1Dtype, x2Dtype, biasDtype, yDtype};
-
-        for (uint32_t kindsId = 0; kindsId < SUPPORTED_TYPES_WITH_BIAS.size(); kindsId++) {
-            if (IsArrayEqual(paramsType, SUPPORTED_TYPES_WITH_BIAS[kindsId], COUNT_PARAMS_WITH_BIAS)) {
-                return ge::GRAPH_SUCCESS;
-            }
-        }
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-            opName_, "x1,x2,bias,y",
-            (Ops::Base::ToString(x1Dtype) + "," + Ops::Base::ToString(x2Dtype) + "," + Ops::Base::ToString(biasDtype) +
-             "," + Ops::Base::ToString(yDtype))
-                .c_str(),
-            "The dtypes of x1, x2, bias and y must be one of the supported combinations.");
-        return ge::GRAPH_FAILED;
+        return CheckBiasedTensorDataTypes(x1Dtype, x2Dtype, biasDtype, yDtype);
     } else {
-        vector<uint32_t> paramsType = {x1Dtype, x2Dtype, yDtype};
-
-        for (uint32_t kindsId = 0; kindsId < SUPPORTED_TYPES_WITHOUT_BIAS.size(); kindsId++) {
-            if (IsArrayEqual(paramsType, SUPPORTED_TYPES_WITHOUT_BIAS[kindsId], COUNT_PARAMS_WITHOUT_BIAS)) {
-                return ge::GRAPH_SUCCESS;
-            }
-        }
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-            opName_, "x1,x2,y",
-            (Ops::Base::ToString(x1Dtype) + "," + Ops::Base::ToString(x2Dtype) + "," + Ops::Base::ToString(yDtype))
-                .c_str(),
-            "The dtypes of x1, x2 and y must be one of the supported combinations.");
-        return ge::GRAPH_FAILED;
+        return CheckUnbiasedTensorDataTypes(x1Dtype, x2Dtype, yDtype);
     }
 
     return ge::GRAPH_SUCCESS;
@@ -588,6 +599,72 @@ static ge::graphStatus CheckMatrixMulShapes(const gert::TilingContext *context, 
  * @brief 校验tiling输入的shape信息
  * @return ge::graphStatus
  */
+ge::graphStatus MatmulAlltoAllTiling910B::CheckScaleShapeInfo(const MatmulAlltoAllInfo &info, ge::DataType x1Dtype)
+{
+    if (x1Dtype == ge::DT_INT8) {
+        const gert::StorageShape *x1ScaleShape = context_->GetOptionalInputShape(INPUT_X1_SCALE_INDEX);
+        const gert::StorageShape *x2ScaleShape = context_->GetOptionalInputShape(INPUT_X2_SCALE_INDEX);
+        uint64_t x1ScaleShapeDimNum = x1ScaleShape->GetStorageShape().GetDimNum();
+        uint64_t x2ScaleShapeDimNum = x2ScaleShape->GetStorageShape().GetDimNum();
+        OP_TILING_CHECK(
+            (x1ScaleShapeDimNum != 1 || x2ScaleShapeDimNum != 1),
+            OP_LOGE_FOR_INVALID_SHAPEDIM(
+                opName_, "x1Scale/x2Scale",
+                (std::to_string(x1ScaleShapeDimNum) + "D/" + std::to_string(x2ScaleShapeDimNum) + "D").c_str(), "1D"),
+            return ge::GRAPH_FAILED);
+        uint64_t x1ScaleDim0 = x1ScaleShape->GetStorageShape().GetDim(0);
+        uint64_t x2ScaleDim0 = x2ScaleShape->GetStorageShape().GetDim(0);
+        OP_TILING_CHECK((x1ScaleDim0 != info.M),
+                        OP_LOGE_FOR_INVALID_VALUE(opName_, "x1Scale", std::to_string(x1ScaleDim0).c_str(),
+                                                  std::to_string(info.M).c_str()),
+                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK((x2ScaleDim0 != info.N),
+                        OP_LOGE_FOR_INVALID_VALUE(opName_, "x2Scale", std::to_string(x2ScaleDim0).c_str(),
+                                                  std::to_string(info.N).c_str()),
+                        return ge::GRAPH_FAILED);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MatmulAlltoAllTiling910B::CheckBiasAndMatrixDimensions(const MatmulAlltoAllInfo &info)
+{
+    const gert::StorageShape *biasShape = context_->GetOptionalInputShape(INPUT_BIAS_INDEX);
+    if (biasShape != nullptr) {
+        uint64_t biasShapeDimNum = biasShape->GetStorageShape().GetDimNum();
+        OP_TILING_CHECK(
+            (biasShapeDimNum != 1),
+            OP_LOGE_FOR_INVALID_SHAPEDIM(opName_, "bias", (std::to_string(biasShapeDimNum) + "D").c_str(), "1D"),
+            return ge::GRAPH_FAILED);
+        uint64_t biasDim0 = biasShape->GetStorageShape().GetDim(0);
+        OP_TILING_CHECK((biasDim0 != info.N),
+                        OP_LOGE_FOR_INVALID_VALUE(opName_, "bias", std::to_string(biasDim0).c_str(),
+                                                  std::to_string(info.N).c_str()),
+                        return ge::GRAPH_FAILED);
+    }
+
+    OP_TILING_CHECK(info.M == 0,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1", std::to_string(info.M).c_str(),
+                                                          "The value of dim 0 (m) of x1 cannot be 0"),
+                    return ge::GRAPH_FAILED);
+    // 校验K,K的范围应该在[1, 65535]
+    OP_TILING_CHECK(info.K > K_MAX_VALUE,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1", std::to_string(info.K).c_str(),
+                                                          "The value of k dim of x1 must not exceed 65535"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(info.N == 0,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x2", std::to_string(info.N).c_str(),
+                                                          "The value of N of x2 cannot be 0"),
+                    return ge::GRAPH_FAILED);
+    // CCL buffer数据区: m0 * pValue * N * sizeof(element) 必须小于 180MB / MAX_BLOCK_COUNT
+    int32_t maxN = (MAX_BUFF_BYTES - FLAG_BUFF_BYTES) / MAX_BLOCK_COUNT / ELEMENT_SIZE / DEFAULT_ROW;
+    OP_TILING_CHECK(info.N > maxN,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x2", std::to_string(info.N),
+                                                          "The value of N must not exceed " + std::to_string(maxN)),
+                    return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus MatmulAlltoAllTiling910B::CheckShapeInfo(MatmulAlltoAllInfo &info)
 {
     ge::graphStatus status;
@@ -628,62 +705,12 @@ ge::graphStatus MatmulAlltoAllTiling910B::CheckShapeInfo(MatmulAlltoAllInfo &inf
     uint64_t x2Dim0 = x2Shape->GetStorageShape().GetDim(0);
     uint64_t x2Dim1 = x2Shape->GetStorageShape().GetDim(1);
     info.N = (info.K == x2Dim0) ? x2Dim1 : x2Dim0;
-    if (x1Dtype == ge::DT_INT8) {
-        const gert::StorageShape *x1ScaleShape = context_->GetOptionalInputShape(INPUT_X1_SCALE_INDEX);
-        const gert::StorageShape *x2ScaleShape = context_->GetOptionalInputShape(INPUT_X2_SCALE_INDEX);
-        uint64_t x1ScaleShapeDimNum = x1ScaleShape->GetStorageShape().GetDimNum();
-        uint64_t x2ScaleShapeDimNum = x2ScaleShape->GetStorageShape().GetDimNum();
-        OP_TILING_CHECK(
-            (x1ScaleShapeDimNum != 1 || x2ScaleShapeDimNum != 1),
-            OP_LOGE_FOR_INVALID_SHAPEDIM(
-                opName_, "x1Scale/x2Scale",
-                (std::to_string(x1ScaleShapeDimNum) + "D/" + std::to_string(x2ScaleShapeDimNum) + "D").c_str(), "1D"),
-            return ge::GRAPH_FAILED);
-        uint64_t x1ScaleDim0 = x1ScaleShape->GetStorageShape().GetDim(0);
-        uint64_t x2ScaleDim0 = x2ScaleShape->GetStorageShape().GetDim(0);
-        OP_TILING_CHECK((x1ScaleDim0 != info.M),
-                        OP_LOGE_FOR_INVALID_VALUE(opName_, "x1Scale", std::to_string(x1ScaleDim0).c_str(),
-                                                  std::to_string(info.M).c_str()),
-                        return ge::GRAPH_FAILED);
-        OP_TILING_CHECK((x2ScaleDim0 != info.N),
-                        OP_LOGE_FOR_INVALID_VALUE(opName_, "x2Scale", std::to_string(x2ScaleDim0).c_str(),
-                                                  std::to_string(info.N).c_str()),
-                        return ge::GRAPH_FAILED);
+    if (CheckScaleShapeInfo(info, x1Dtype) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
     }
-    const gert::StorageShape *biasShape = context_->GetOptionalInputShape(INPUT_BIAS_INDEX);
-    if (biasShape != nullptr) {
-        uint64_t biasShapeDimNum = biasShape->GetStorageShape().GetDimNum();
-        OP_TILING_CHECK(
-            (biasShapeDimNum != 1),
-            OP_LOGE_FOR_INVALID_SHAPEDIM(opName_, "bias", (std::to_string(biasShapeDimNum) + "D").c_str(), "1D"),
-            return ge::GRAPH_FAILED);
-        uint64_t biasDim0 = biasShape->GetStorageShape().GetDim(0);
-        OP_TILING_CHECK((biasDim0 != info.N),
-                        OP_LOGE_FOR_INVALID_VALUE(opName_, "bias", std::to_string(biasDim0).c_str(),
-                                                  std::to_string(info.N).c_str()),
-                        return ge::GRAPH_FAILED);
+    if (CheckBiasAndMatrixDimensions(info) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
     }
-
-    OP_TILING_CHECK(info.M == 0,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1", std::to_string(info.M).c_str(),
-                                                          "The value of dim 0 (m) of x1 cannot be 0"),
-                    return ge::GRAPH_FAILED);
-    // 校验K,K的范围应该在[1, 65535]
-    OP_TILING_CHECK(info.K > K_MAX_VALUE,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1", std::to_string(info.K).c_str(),
-                                                          "The value of k dim of x1 must not exceed 65535"),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(info.N == 0,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x2", std::to_string(info.N).c_str(),
-                                                          "The value of N of x2 cannot be 0"),
-                    return ge::GRAPH_FAILED);
-    // CCL buffer数据区: m0 * pValue * N * sizeof(element) 必须小于 180MB / MAX_BLOCK_COUNT
-    int32_t maxN = (MAX_BUFF_BYTES - FLAG_BUFF_BYTES) / MAX_BLOCK_COUNT / ELEMENT_SIZE / DEFAULT_ROW;
-    OP_TILING_CHECK(info.N > maxN,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x2", std::to_string(info.N),
-                                                          "The value of N must not exceed " + std::to_string(maxN)),
-                    return ge::GRAPH_FAILED);
-
     return ge::GRAPH_SUCCESS;
 }
 
