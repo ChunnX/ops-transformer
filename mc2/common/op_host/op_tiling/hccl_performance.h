@@ -78,7 +78,8 @@ public:
     explicit HCCLPerformanceModel(uint32_t inputRankDim, KernelType inputKernelType,
                                   SocVersion_2201 inputSeries = SocVersion_2201::SOC910_B,
                                   NpuArch npuArch = Ops::Base::DAV_2201)
-        : socVersion_2201(inputSeries), npuArch_(npuArch)
+        : socVersion_2201(inputSeries),
+          npuArch_(npuArch)
     {
         commTypeInfo_.kernelType = inputKernelType; // 区分哪个MC2算子
         commTypeInfo_.rankDim = std::max(static_cast<uint64_t>(inputRankDim), MIN_COMM_RANKDIM); // 并行维度最小为2
