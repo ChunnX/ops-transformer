@@ -28,12 +28,12 @@
 #include <unordered_set>
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
-#include "op_host/data_copy_transpose_tiling.h"
 #include "exe_graph/runtime/tiling_context.h"
 #include "register/op_def_registry.h"
 #include "../op_kernel/mla_prolog_template_tiling_key.h"
 #include "../op_kernel/mla_prolog_tiling_data.h"
 #include "platform/soc_spec.h"
+
 
 #ifdef ASCENDC_OP_TEST
 #define MLA_EXTERN_C extern "C"

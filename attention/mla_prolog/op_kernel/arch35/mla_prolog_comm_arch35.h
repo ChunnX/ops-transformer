@@ -16,6 +16,8 @@
 #ifndef MLA_PROLOG_COMM_ARCH35_H
 #define MLA_PROLOG_COMM_ARCH35_H
 
+
+
 #include "kernel_operator.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
@@ -120,7 +122,11 @@ constexpr uint32_t ROUND_UP_UNIT = 15;       // for round up
 constexpr uint32_t MAX_SYNC_FLAG_COUNT = 15; // 同一个flagId的计数器最多设置15次
 
 constexpr int SYNC_MODE_ALL_CUBE = 0x0;
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
+constexpr int SYNC_MODE_CUBE_VEC = 0x4;
+#else
 constexpr int SYNC_MODE_CUBE_VEC = 0x2;
+#endif
 constexpr int SYNC_MODE_ALL_VEC = 0x0;
 
 constexpr int FINISH_MM_CQ = 0x6;
