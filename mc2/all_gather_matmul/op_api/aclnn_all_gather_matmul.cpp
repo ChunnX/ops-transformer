@@ -217,7 +217,7 @@ aclnnStatus aclnnAllGatherMatmulGetWorkspaceSize(const aclTensor *x1, const aclT
     bool transposeX2 = IsTransposeLastTwoDims(x2);
     CHECK_RET(CheckShape(x1, x2, output, gatherOut, transposeX1), ACLNN_ERR_PARAM_INVALID);
     // 【A2】校验非连续入参合法性
-    if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion2201::ASCEND910B) {
+    if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion_2201::ASCEND910B) {
         OP_API_CHECK(!transposeX2 && !MC2Aclnn::IsTensorContiguous(x2), {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAllGatherMatmulGetWorkspaceSize", "x2", "non-contiguous",
                                                   "The value of x2 must be contiguous when not transposed.");

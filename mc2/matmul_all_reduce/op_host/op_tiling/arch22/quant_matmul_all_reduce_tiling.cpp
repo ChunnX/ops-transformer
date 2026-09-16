@@ -375,7 +375,7 @@ QuantTilingTransferHelper::QuantTilingTransferHelper(QuantMatmulAllReduceTiling 
 CutResult QuantMatmulAllReduceTiling::GetTilingResult()
 {
     CutResult mCutAllreduceRes;
-    SocVersion2201 socVersion = SocVersion2201::SOC910_B;
+    SocVersion_2201 socVersion = SocVersion_2201::SOC910_B;
     SetMCutSocVersion(socVersion);
     const gert::StorageShape *commQuantScaleA = mmrCtxInfo_.comm_quant_scale_1_shape;
     const gert::StorageShape *commQuantScaleB = mmrCtxInfo_.comm_quant_scale_2_shape;

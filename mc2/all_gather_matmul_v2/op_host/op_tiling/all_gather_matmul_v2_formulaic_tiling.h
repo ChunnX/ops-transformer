@@ -34,7 +34,7 @@ public:
 
     // Constructor
     explicit AllGatherPlusMMV2(const mc2tiling::TilingArgs &args, uint32_t inputRankDim, KernelType inputKernelType,
-                               SocVersion2201 inputSocVersion = SocVersion2201::SOC910_B,
+                               SocVersion_2201 inputSocVersion = SocVersion_2201::SOC910_B,
                                NpuArch npuArch = Ops::Base::DAV_2201)
         : OneCalcOneCommBase(args, inputRankDim, inputKernelType, inputSocVersion, npuArch)
     {
@@ -43,7 +43,7 @@ public:
         rankTileNum_ = commPerf_.GetRankTileNum();
         tilingM_.SetMinLenByMax(commPerf_.GetLinearThresholdLen());
 
-        if (clusterInfo_.socType == SocVersion2201::SOC910_B) {
+        if (clusterInfo_.socType == SocVersion_2201::SOC910_B) {
             tilingM_.SetMinLenByMax(matmulPerf_.GetLinearThresholdLen(rankDim_));
         } else {
             tilingM_.SetMinLenByMax(matmulPerf_.GetLinearThresholdLen(rankTileNum_));

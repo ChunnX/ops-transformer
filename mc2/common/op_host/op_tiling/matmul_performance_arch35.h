@@ -25,7 +25,7 @@ public:
     static constexpr uint64_t A5_BASE_BLOCK_K = 128;
 
     explicit MatmulPerformanceArch35(const mc2tiling::TilingArgs &args)
-        : MatmulPerformanceModel(args, SocVersion2201::SOC910_B, Ops::Base::DAV_3510)
+        : MatmulPerformanceModel(args, SocVersion_2201::SOC910_B, Ops::Base::DAV_3510)
     {
         mmShapeInfo_.baseM = A5_BASE_BLOCK_M;
         mmShapeInfo_.baseN = A5_BASE_BLOCK_N;

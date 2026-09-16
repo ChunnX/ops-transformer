@@ -138,7 +138,7 @@ ge::graphStatus QuantMatmulAllReduceTiling310General::DoQuantTiling()
 CutResult QuantMatmulAllReduceTiling310General::GetTilingResult()
 {
     CutResult mCutAllreduceResult;
-    SocVersion2201 inputSocVer = SocVersion2201::SOC910_B;
+    SocVersion_2201 inputSocVer = SocVersion_2201::SOC910_B;
     SetMCutSocVersion(inputSocVer);
     const gert::StorageShape *commQuantScaleShapeOne = mmrCtxInfo_.comm_quant_scale_1_shape;
     const gert::StorageShape *commQuantScaleShapeTwo = mmrCtxInfo_.comm_quant_scale_2_shape;

@@ -48,7 +48,7 @@ constexpr int32_t NPUARCH_2002_FITTING_CODE = 1;
 // DAV_2201系(A2/A3)拟合档位枚举:310P(1:1对应DAV_2002)与950系(1:1对应DAV_3510)
 // 均已迁出,剩余档位均属DAV_2201,故名。序值显式钉住历史值——拟合表键("2_1"、"3_..."等)
 // 内嵌枚举序值,漂移会破坏查表。
-enum class SocVersion2201 {
+enum class SocVersion_2201 {
     SOC910_B = 0,
     SOC910_93 = 2, // 显式2:历史序值(原SOC310_P占1),拟合表键"2_..."依赖
     SOC910_B4 = 3, // 显式3:拟合表键"3_..."依赖
@@ -70,7 +70,7 @@ enum class MatmulCalcType {
 };
 
 struct MatmulParameters {
-    SocVersion2201 socType;
+    SocVersion_2201 socType;
     uint64_t coreNum;
     uint64_t inMatrixADtypeSize;
     uint64_t inMatrixBDtypeSize;

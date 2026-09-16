@@ -1070,7 +1070,7 @@ CutResult QuantBmmReduceScatterTiling::GetTilingResult()
         return quantBmmScatterTiling.GetTiling();
     } else {
         MMPlusReduceScatter quantBmmScatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER,
-                                                  SocVersion2201::SOC910_B, false, (commMode_ == TPL_AICPU_COMM_MODE),
+                                                  SocVersion_2201::SOC910_B, false, (commMode_ == TPL_AICPU_COMM_MODE),
                                                   npuArch_);
         quantBmmScatterTiling.GetTiling();
         return quantBmmScatterTiling.tilingM_.cutRes;

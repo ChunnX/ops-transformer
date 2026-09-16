@@ -326,7 +326,7 @@ static aclnnStatus CheckParams(const aclTensor *x1, const aclTensor *x2, const a
               ACLNN_ERR_PARAM_INVALID);
 
     // 5.【A2】检查x2、antiquantScale、antiquantOffset矩阵在非转置的情况下是否连续
-    if (op::GetCurrentPlatformInfo().GetSocVersion() == SocVersion2201::ASCEND910B &&
+    if (op::GetCurrentPlatformInfo().GetSocVersion() == SocVersion_2201::ASCEND910B &&
         !MatmulAllReduceCheckValidEmptyTensor(x1, x2)) {
         CHECK_RET(MatmulAllReduceCheckValidContiguous(x2, "x2"), ACLNN_ERR_PARAM_INVALID);
         CHECK_RET(MatmulAllReduceCheckValidContiguous(antiquantScale, "antiquantScale"), ACLNN_ERR_PARAM_INVALID);

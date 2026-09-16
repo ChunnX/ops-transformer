@@ -28,9 +28,9 @@ namespace optiling {
 CutResult MatmulReduceScatterTilingFuncA2A3::GetCutResult(MatmulReduceScatterTilingData &tilingData,
                                                           mc2tiling::TilingArgs &args)
 {
-    SocVersion2201 inputSocVersion =
-        (tilingData.socParam.isA3 == 0) ? SocVersion2201::SOC910_B : SocVersion2201::SOC910_93;
-    bool commDeterministic = (inputSocVersion == SocVersion2201::SOC910_B) ? IsDeterministic() : false;
+    SocVersion_2201 inputSocVersion =
+        (tilingData.socParam.isA3 == 0) ? SocVersion_2201::SOC910_B : SocVersion_2201::SOC910_93;
+    bool commDeterministic = (inputSocVersion == SocVersion_2201::SOC910_B) ? IsDeterministic() : false;
     MMPlusReduceScatter scatterTilingHccl(args, args.rankDim, KernelType::REDUCE_SCATTER, inputSocVersion,
                                           commDeterministic);
     scatterTilingHccl.GetTiling();

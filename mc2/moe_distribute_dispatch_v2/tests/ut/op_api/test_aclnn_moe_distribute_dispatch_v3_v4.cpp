@@ -30,13 +30,13 @@ class L2AclnnMoeDistributeDispatchV3V4Test : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
-        SetPlatformSocVersion(SocVersion2201::ASCEND910B);
+        SetPlatformSocVersion(SocVersion_2201::ASCEND910B);
         std::cout << "L2AclnnMoeDistributeDispatchV3V4Test SetUp" << std::endl;
     }
 
     static void TearDownTestCase()
     {
-        SetPlatformSocVersion(SocVersion2201::ASCEND910B);
+        SetPlatformSocVersion(SocVersion_2201::ASCEND910B);
         std::cout << "L2AclnnMoeDistributeDispatchV3V4Test TearDown" << std::endl;
     }
 };

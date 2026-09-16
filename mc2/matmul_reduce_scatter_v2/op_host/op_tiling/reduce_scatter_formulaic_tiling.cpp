@@ -39,7 +39,7 @@ void MMPlusReduceScatter::SetCommTimeFactorForOther()
         commPerf_.ChangeCommTimeFactorByDivision(scatterLargerNKCommGrowRatio2);
     }
     commPerf_.ChangeCommTimeFactorByDivision(commGrowRatio); // 1.15x time of factor
-    if (clusterInfo_.socType == SocVersion2201::SOC910_93) {
+    if (clusterInfo_.socType == SocVersion_2201::SOC910_93) {
         commPerf_.ChangeCommTimeFactorByDivision(0.6); // 0.6x time of factor
     }
     return;
