@@ -27,7 +27,7 @@
 #include "utils/block_mmad_w4a4.hpp"
 #include "utils/copy_gm_to_l1_custom.hpp"
 #include "utils/block_epilogue_w4a8post_pertoken_v2.hpp"
-#include "utils/block_epilogue_w4a8post_pertoken_swiglu.hpp"
+#include "utils/block_epilogue_pertoken_swiglu.hpp"
 #include "utils/hccl_shmem.hpp"
 #include "utils/const_args.hpp"
 #include "utils/layout3d.hpp"

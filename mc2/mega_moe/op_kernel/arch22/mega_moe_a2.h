@@ -48,10 +48,9 @@ using namespace AscendC;
 // A2 epilogue utils (V2 variants for CombineV2, SwiGLU variants for GMM1 epilogue)
 #include "utilsA2/block_epilogue_pertoken_v2_int8_a2.hpp"
 #include "utilsA2/block_epilogue_pertoken_v2_bf16_a2.hpp"
-#include "utilsA2/block_epilogue_pertoken_swiglu_a2_int8.hpp"
-#include "utilsA2/block_epilogue_pertoken_swiglu_a2_bf16.hpp"
 #include "utils/block_epilogue_w4a8post_pertoken_v2.hpp"
 
+#include "utils/block_epilogue_pertoken_swiglu.hpp"
 #include "utils/block_epilogue_pertoken_v2.hpp"
 // A2 kernel
 #include "mega_moe_kernel_a2_int8.hpp"
@@ -265,10 +264,13 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
 
     constexpr uint32_t ubStages = 2;
 
+    // A2 and A3 share the SwiGLU epilogue: the int8/bf16 A2-only variants were duplicates of the
+    // quantised and non-quantised overloads of EpilogueAtlasA2PerTokenDequantSwigluQuant
+    // (identical subblock task partitioning, identical activation, only the per-token-scale
+    // application differed, which the applyPerTokenScale argument now carries).
     using EpilogueDispatchPolicy1 =
         std::conditional_t<isW4A8, Epilogue::EpilogueAtlasA2W4A8PostPerTokenDequantSwigluQuant<ubStages>,
-                           std::conditional_t<isInt8, Epilogue::EpilogueAtlasA2PerTokenDequantSwigluQuantInt8<ubStages>,
-                                              Epilogue::EpilogueAtlasA2PerTokenDequantSwigluQuantBF16<ubStages>>>;
+                           Epilogue::EpilogueAtlasA2PerTokenDequantSwigluQuant<ubStages>>;
 
     using EpilogueDispatchPolicy2 =
         std::conditional_t<isW4A8, Epilogue::EpilogueAtlasA2W4A8PostPerTokenDequantV2<ubStages>,

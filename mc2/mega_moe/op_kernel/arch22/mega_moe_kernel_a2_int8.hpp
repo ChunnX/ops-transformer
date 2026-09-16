@@ -26,7 +26,7 @@
 
 #include "utils/block_mmad_preload_async_fixpipe_quant.hpp"
 #include "utils/copy_gm_to_l1_custom.hpp"
-#include "utilsA2/block_epilogue_pertoken_swiglu_a2_int8.hpp"
+#include "utils/block_epilogue_pertoken_swiglu.hpp"
 #include "utilsA2/block_epilogue_pertoken_v2_int8_a2.hpp"
 #include "utils/hccl_shmem.hpp"
 #include "utils/const_args.hpp"
@@ -1320,7 +1320,7 @@ private:
                 int64_t gmOffsetC = layoutC.GetOffset(offsetC);
                 int64_t gmOffsetD = params.layoutD1.GetOffset(offsetC);
                 blockEpilogue1(gmC[gmOffsetC], shapeC, gmPerTokenScale1[rowStartThisCore], gmPermutedToken[gmOffsetD],
-                               gmPerTokenScale2[rowStartThisCore], params.epilogueCoreNum, params.swigluLimit,
+                               gmPerTokenScale2[rowStartThisCore], resource, params.epilogueCoreNum, params.swigluLimit,
                                params.activationCode, params.activationParams1, params.activationParams2,
                                params.gmmOutPreRowStride);
             }
@@ -1341,7 +1341,7 @@ private:
                     int64_t gmOffsetC = layoutC.GetOffset(offsetC);
                     int64_t gmOffsetD = params.layoutD1.GetOffset(offsetC);
                     blockEpilogue1(gmC[gmOffsetC], shapeC, gmPerTokenScale1[rowStartThisCore],
-                                   gmPermutedToken[gmOffsetD], gmPerTokenScale2[rowStartThisCore], coreNum,
+                                   gmPermutedToken[gmOffsetD], gmPerTokenScale2[rowStartThisCore], resource, coreNum,
                                    params.swigluLimit, params.activationCode, params.activationParams1,
                                    params.activationParams2, params.gmmOutPreRowStride);
                 }
