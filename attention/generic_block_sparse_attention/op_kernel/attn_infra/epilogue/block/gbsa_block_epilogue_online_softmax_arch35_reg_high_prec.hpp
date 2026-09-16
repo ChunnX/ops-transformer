@@ -104,6 +104,7 @@ public:
                                       uint32_t ubSBufId, uint32_t l1PBufId, Arch::CrossCoreFlag mm1ToSmFlag,
                                       Arch::CrossCoreFlag smToMm2Flag)
     {
+        AscendC::printf("tkd fp32 online-softmax\n");
         uint32_t mCopyOffset = RoundUp(actualBlockShape.m(), 8) / 2;
         uint32_t m = actualBlockShape.m() < mCopyOffset ? actualBlockShape.m() : mCopyOffset;
         m = subBlockIdx_ == 0 ? m : actualBlockShape.m() - m;
@@ -138,8 +139,18 @@ public:
             ComputeScaleAndMax<KvBaseTileRegSplitStagesHighPrec::TWO>(sAddr, nowMaxAddr, m, tailN, scaleValue,
                                                                       nRound);
         }
+
+        AscendC::printf("tkd S after ComputeScaleAndMax\n");
+        AscendC::DumpTensor(lsUbTensor[ubSBufId], 0, 16);
+
+        AscendC::printf("tkd LocalMax after ComputeScaleAndMax\n");
+        AscendC::DumpTensor(lmUbTensor, 0, 16);
+
+
         if (!isFirstKvSTile) {
             UpdateMax(nowMaxAddr, lastMaxAddr, m);
+            AscendC::printf("tkd LocalMax after UpdateMax\n");
+            AscendC::DumpTensor(lmUbTensor, 0, 16);    
         }
 
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2);
@@ -154,6 +165,12 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(ubSBufId);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(ubSBufId);
         SetCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
+
+        AscendC::printf("tkd P after ComputeExpSubSum\n");
+        AscendC::DumpTensor(lpUbTensor[ubSBufId], 0, 16);
+
+        AscendC::printf("tkd LocalSum after ComputeExpSubSum\n");
+        AscendC::DumpTensor(llUbTensor, 0, 16);    
 
         auto ubPLayoutTla = tla::MakeLayout<ElementOutput, LayoutOutput>(mRound, nRound);
         auto ubPTensorTla = tla::MakeTensor(lpUbTensor[ubSBufId], ubPLayoutTla, Arch::PositionUB{});
