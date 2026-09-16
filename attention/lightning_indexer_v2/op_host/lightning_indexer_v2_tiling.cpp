@@ -179,7 +179,6 @@ ge::graphStatus LIV2InfoParser::GetNpuInfo()
 
     socVersion_ = ascendcPlatform.GetSocVersion();
     npuArch_ = ascendcPlatform.GetCurNpuArch();
-    // TODO: 待确认A6的NpuArch枚举值后取消注释
     if ((npuArch_ != NpuArch::DAV_2201) && (npuArch_ != NpuArch::DAV_3510) && (npuArch_ != NpuArch::DAV_9201)) {
         OP_LOGE(opName_, "NpuArch[%d] is not support.", static_cast<int32_t>(npuArch_));
         return GRAPH_FAILED;
@@ -1101,8 +1100,8 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatch()
                     return ge::GRAPH_FAILED);
     }
     // -----------------------check metadata-------------------
-    // 960(DAV_9201): metadata大小为2048; 950(DAV_3510): metadata大小为1024
-    uint32_t metadataLimit = (npuArch_ == NpuArch::DAV_9201) ? 2048 : METADATA_LIMIT;
+    // 950(DAV_3510): metadata大小为1024; 960(DAV_9201): 因核数增多metadata数组大小不够，调整为2048
+    uint32_t metadataLimit = (npuArch_ == NpuArch::DAV_9201) ? METADATA_LIMIT_BIG : METADATA_LIMIT;
     OP_CHECK_IF(
         ((opParamInfo_.metadata.tensor != nullptr) && (opParamInfo_.metadata.tensor->GetShapeSize() != metadataLimit)),
         OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(opName_, "metadata",
@@ -1145,7 +1144,7 @@ void LIV2InfoParser::GenerateInfo(LIV2TilingInfo &liInfo)
     if (!keyStridesVec_.empty()) {
         liInfo.keyStride0 = static_cast<uint32_t>(keyStridesVec_[0]);
     } else if (liInfo.pageAttentionFlag) {
-        liInfo.keyStride0 = blockSize_ * n2Size_ * headDim_; // PA场景: A6目前不支持传入stride，此分支为临时适配
+        liInfo.keyStride0 = blockSize_ * n2Size_ * headDim_; // PA场景: 960目前不支持传入stride，此分支为临时适配
     } else {
         liInfo.keyStride0 = 0; // 非PA无需使用stride
     }
