@@ -37,6 +37,10 @@ constexpr uint32_t ENTRY_BUF_INT32_SLOTS = 5U; // entryBuf 头部被 int32 槽�
 constexpr uint32_t ACCUM_BUF_COPIES = 2U;      // fp32 累加行双缓冲份数（AccumBufBytes）
 constexpr uint32_t FLUSH_CAST_HEAD_BYTES =
     static_cast<uint32_t>(ENTRY_BUF_INT32_SLOTS * ENTRY_BATCH_CAP * sizeof(int32_t));
+// ── hidden 维分块（chunk 模式）──
+// 整行放不下 UB 时按 hidden 维切 chunk：gather/累加/直拷/flush 全部按 chunk 列片处理，
+// UB 占用与 hiddenDim 无关。2048 元素（fp16/bf16 4KB, fp32 8KB），天然 32B 对齐。
+constexpr uint32_t HIDDEN_CHUNK_ELEMS = 2048U;
 // ── a2a×sort 交错: 档1.5 预留 ──
 // 拷贝 ping-pong 半缓冲(RebuildA2aHookBuffers 在排序档内重建 a2a 工作缓冲用)
 constexpr uint32_t A2A_COPY_HALF_BYTES = 32U * 1024U;
@@ -66,5 +70,6 @@ struct EngramFetchGradTilingData {
     uint32_t sortNumTileData;  // SortLib: 每 tile 元素数
     uint32_t sortTileCount;    // SortLib: tile 数
     uint32_t sortTmpUbSize;    // SortLib: AscendC::Sort 临时 UB 字节
+    uint32_t chunkElems;       // hidden 维分块元素数（0=整行模式，>0=chunk 模式）
 };
 #endif
