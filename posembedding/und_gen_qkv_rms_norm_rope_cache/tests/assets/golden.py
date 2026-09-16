@@ -69,6 +69,7 @@ __all__ = [
     "UndGenQkvRmsNormRopeCacheTestSpec",
     "AclnnUndGenQkvRmsNormRopeCacheTestSpec",
     "TorchUndGenQkvRmsNormRopeCacheTestSpec",
+    "UndGenQkvRmsNormRopeCacheXpuRef",
 ]
 
 # 本期支持范围
@@ -147,14 +148,50 @@ def _rmsnorm(x, weight, eps):
     return x * inv * weight.unsqueeze(1)
 
 
+def _fma_f32(a, b, c):
+    """模拟 FP32 round-to-nearest-even 的 a*b+c，仅在最后舍入一次。
+
+    FP32 乘积可由 FP64 精确表示。TwoSum 提取加法舍入残差，再将非精确
+    FP64 和 round-to-odd，避免直接 double().float() 在 FP32 中点处二次舍入。
+    Inf/NaN 保持 IEEE 运算结果，不做饱和或比较豁免。
+    """
+    a, b, c = torch.broadcast_tensors(a, b, c)
+    shape = a.shape
+    a, b, c = (v.reshape(-1) for v in (a, b, c))
+    result = torch.empty_like(a, dtype=torch.float32)
+    # 限制 FP64 中间张量的峰值内存，避免大 T 的 golden 占用随中间量倍增。
+    for start in range(0, a.numel(), 65536):
+        sl = slice(start, start + 65536)
+        product = a[sl].double() * b[sl].double()
+        addend = c[sl].double()
+        summed = product + addend
+        recovered = summed - product
+        residual = (product - (summed - recovered)) + (addend - recovered)
+        correct = (
+            torch.isfinite(summed)
+            & (residual != 0)
+            & ((summed.view(torch.int64) & 1) == 0)
+        )
+        direction = torch.where(residual > 0, float("inf"), -float("inf"))
+        rounded_odd = torch.where(
+            correct, torch.nextafter(summed, direction.double()), summed
+        )
+        result[sl] = rounded_odd.float()
+    return result.reshape(shape)
+
+
 def _rope(x, cos, sin):
-    """x: [T, H, D] float32；cos/sin: [T, half] float32（已按 mask 合并三轴）。"""
+    """RoPE 按 Mul + FMA 计算，匹配 Reg::MulAddDst 的中间舍入语义。
+
+    x: [T, H, D] float32；cos/sin: [T, half] float32。
+    极值下不能写成两个独立乘积再加减：第二个乘积提前溢出会误报 Inf/NaN。
+    """
     half = x.shape[-1] // 2
     x1 = x[..., :half]
     x2 = x[..., half:]
     c = cos.unsqueeze(1)
     s = sin.unsqueeze(1)
-    return torch.cat([x1 * c - x2 * s, x2 * c + x1 * s], dim=-1)
+    return torch.cat([_fma_f32(x2, -s, x1 * c), _fma_f32(x1, s, x2 * c)], dim=-1)
 
 
 # 稠密段：split + index + rmsnorm + mrope（不含 cache 写入）
@@ -811,12 +848,74 @@ class AclnnUndGenQkvRmsNormRopeCacheTestSpec(_SpecBase):
         )
 
 
+class UndGenQkvRmsNormRopeCacheXpuRef:
+    """XPU（GPU）端 third_party 参考实现。
+
+    xpu-server 以 spec 模式解析 third_party 时直接实例化本类并调用
+    ``__call__``，因此签名照抄 torch schema：12 个张量按位置，5 个属性
+    keyword-only（与 TorchUndGenQkvRmsNormRopeCacheTestSpec 对齐）。
+
+    入参是已下发到目标设备（GPU）的 torch.Tensor；本算子在 GPU 上无对应
+    API，故用 golden 主入口实现顶替，其内部算子与 device 无关，可直接执行。
+    """
+
+    def __call__(
+        self,
+        und_qkv,
+        und_weights_q,
+        und_weights_k,
+        cos_sin_cache,
+        k_cache,
+        v_cache,
+        slot_mapping,
+        positions,
+        gen_qkv=None,
+        gen_weights_q=None,
+        gen_weights_k=None,
+        cat_indices=None,
+        *,
+        num_heads_q=8,
+        num_heads_k=1,
+        num_heads_v=1,
+        norm_eps=1e-6,
+        mrope_section=None,
+        **kwargs,
+    ):
+        return golden_und_gen_qkv_rms_norm_rope_cache(
+            und_qkv,
+            und_weights_q,
+            und_weights_k,
+            cos_sin_cache,
+            k_cache,
+            v_cache,
+            slot_mapping,
+            positions,
+            gen_qkv=gen_qkv,
+            gen_weights_q=gen_weights_q,
+            gen_weights_k=gen_weights_k,
+            cat_indices=cat_indices,
+            num_heads_q=int(num_heads_q),
+            num_heads_k=int(num_heads_k),
+            num_heads_v=int(num_heads_v),
+            norm_eps=float(norm_eps),
+            mrope_section=(list(mrope_section) if mrope_section is not None else None),
+            inplace=False,
+        )
+
+
 class TorchUndGenQkvRmsNormRopeCacheTestSpec(_SpecBase):
     """E2E（torch）通路测试规范，入参是设备上的 torch.Tensor。
 
     签名照抄 torch schema：12 个张量按位置，5 个属性在 `*` 之后是 keyword-only。
     输出序 (q, k_cache, v_cache) 由 CSV 的 inplace_input_indexes=(4,5) 保证。
+
+    third_party：本算子是昇腾专有 op（torch.ops.cann_ops_transformer.*），GPU 端
+    无对应 API。--xpu-perf / cross_check 走远程 xpu-server 时，用
+    UndGenQkvRmsNormRopeCacheXpuRef 作为指定 provider 的参考实现，由服务端
+    实例化执行，避免解析不存在的 NPU-only API 路径。
     """
+
+    third_party = {"torch": UndGenQkvRmsNormRopeCacheXpuRef}
 
     def customize_inputs(
         und_qkv,

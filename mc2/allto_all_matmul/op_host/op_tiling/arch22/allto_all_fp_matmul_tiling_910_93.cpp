@@ -68,39 +68,17 @@ static bool IsContains(const std::vector<uint32_t> &list, uint32_t value)
  * @param opName  算子名称
  * @return ge::graphStatus
  */
-ge::graphStatus AllToAllFpMatmulTilingBaseA3::CheckA3NonQuantTensorDataType(const gert::TilingContext *context,
-                                                                            const char *opName)
+static ge::graphStatus CheckNonQuantBiasDataType(const gert::CompileTimeTensorDesc *biasTensorDesc,
+                                                 ge::DataType x1Dtype, const char *opName)
 {
-    // 获取并校验输入张量描述符
-    auto x1TensorDesc = context->GetInputDesc(INPUT_X1_INDEX);
-    OP_TILING_CHECK((x1TensorDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName, "x1"), return ge::GRAPH_FAILED);
-    auto x2TensorDesc = context->GetInputDesc(INPUT_X2_INDEX);
-    OP_TILING_CHECK((x2TensorDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName, "x2"), return ge::GRAPH_FAILED);
-    // 获取数据类型并校验一致性与范围
-    ge::DataType x1Dtype = x1TensorDesc->GetDataType();
-    ge::DataType x2Dtype = x2TensorDesc->GetDataType();
-    OP_TILING_CHECK((x1Dtype != x2Dtype),
-                    OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
-                        opName, "x1 and x2",
-                        (Ops::Base::ToString(x1Dtype) + " and " + Ops::Base::ToString(x2Dtype)).c_str(),
-                        "The dtypes of x1 and x2 must be the same"),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(
-        !IsContains(NON_QUANT_X_DTYPE_LIST, x1Dtype),
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "x1 and x2", Ops::Base::ToString(x1Dtype).c_str(),
-                                              "The dtype of x1 and x2 must be float16 or bf16 in non-quant range"),
-        return ge::GRAPH_FAILED);
-
-    // 校验 bias 数据类型（如果存在）
-    auto biasTensorDesc = context->GetOptionalInputDesc(INPUT_BIAS_INDEX);
     if (biasTensorDesc != nullptr) {
         ge::DataType biasDtype = biasTensorDesc->GetDataType();
         if (x1Dtype == ge::DT_BF16) {
-            OP_TILING_CHECK((biasDtype != ge::DT_FLOAT),
-                            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "bias",
-                                                                  Ops::Base::ToString(biasDtype).c_str(),
-                                                                  "When x1 is BF16, bias dtype must be FLOAT32"),
-                            return ge::GRAPH_FAILED);
+            OP_TILING_CHECK(
+                (biasDtype != ge::DT_FLOAT),
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "bias", Ops::Base::ToString(biasDtype).c_str(),
+                                                      "When x1 is BF16, bias dtype must be FLOAT32"),
+                return ge::GRAPH_FAILED);
         } else if (x1Dtype == ge::DT_FLOAT16) {
             OP_TILING_CHECK(
                 (x1Dtype != biasDtype),
@@ -114,6 +92,37 @@ ge::graphStatus AllToAllFpMatmulTilingBaseA3::CheckA3NonQuantTensorDataType(cons
         }
     }
 
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus AllToAllFpMatmulTilingBaseA3::CheckA3NonQuantTensorDataType(const gert::TilingContext *context,
+                                                                            const char *opName)
+{
+    // 获取并校验输入张量描述符
+    auto x1TensorDesc = context->GetInputDesc(INPUT_X1_INDEX);
+    OP_TILING_CHECK((x1TensorDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName, "x1"), return ge::GRAPH_FAILED);
+    auto x2TensorDesc = context->GetInputDesc(INPUT_X2_INDEX);
+    OP_TILING_CHECK((x2TensorDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName, "x2"), return ge::GRAPH_FAILED);
+    // 获取数据类型并校验一致性与范围
+    ge::DataType x1Dtype = x1TensorDesc->GetDataType();
+    ge::DataType x2Dtype = x2TensorDesc->GetDataType();
+    OP_TILING_CHECK(
+        (x1Dtype != x2Dtype),
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+            opName, "x1 and x2", (Ops::Base::ToString(x1Dtype) + " and " + Ops::Base::ToString(x2Dtype)).c_str(),
+            "The dtypes of x1 and x2 must be the same"),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        !IsContains(NON_QUANT_X_DTYPE_LIST, x1Dtype),
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "x1 and x2", Ops::Base::ToString(x1Dtype).c_str(),
+                                              "The dtype of x1 and x2 must be float16 or bf16 in non-quant range"),
+        return ge::GRAPH_FAILED);
+
+    // 校验 bias 数据类型（如果存在）
+    auto biasTensorDesc = context->GetOptionalInputDesc(INPUT_BIAS_INDEX);
+    if (CheckNonQuantBiasDataType(biasTensorDesc, x1Dtype, opName) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     // 校验 scale 张量为空（非量化场景）
     auto x1ScaleTensorDesc = context->GetOptionalInputDesc(INPUT_X1_SCALE_INDEX);
     auto x2ScaleTensorDesc = context->GetOptionalInputDesc(INPUT_X2_SCALE_INDEX);
@@ -141,16 +150,16 @@ ge::graphStatus AllToAllFpMatmulTilingBaseA3::CheckA3NonQuantTensorDataType(cons
  */
 ge::graphStatus AllToAllFpMatmulTilingBaseA3::CheckOpInputInfo()
 {
-    OP_TILING_CHECK(MatmulAlltoAllTilingUtil::CheckAttrsInfo(context_, opName_, ALLTOALL_MATMUL_INDEX_SCHEMA) !=
-                        ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName_, "Tiling check Attrs failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        MatmulAlltoAllTilingUtil::CheckAttrsInfo(context_, opName_, ALLTOALL_MATMUL_INDEX_SCHEMA) != ge::GRAPH_SUCCESS,
+        OP_LOGE(opName_, "Tiling check Attrs failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(MatmulAlltoAllTilingUtil::CheckTensorFormat(context_, opName_) != ge::GRAPH_SUCCESS,
                     OP_LOGE(opName_, "Tiling check format failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckA3NonQuantTensorDataType(context_, opName_) != ge::GRAPH_SUCCESS,
                     OP_LOGE(opName_, "Tiling check Dtype failed."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(MatmulAlltoAllTilingUtil::CheckShapeInfo(context_, opName_, ALLTOALL_MATMUL_INDEX_SCHEMA) !=
-                        ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName_, "Tiling check shape failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        MatmulAlltoAllTilingUtil::CheckShapeInfo(context_, opName_, ALLTOALL_MATMUL_INDEX_SCHEMA) != ge::GRAPH_SUCCESS,
+        OP_LOGE(opName_, "Tiling check shape failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckMatrixMulShapes(context_, opName_) != ge::GRAPH_SUCCESS,
                     OP_LOGE(opName_, "Tiling check shape input and output shape failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckAlltoAllOut(context_, opName_) != ge::GRAPH_SUCCESS,
@@ -394,8 +403,7 @@ void AllToAllFpMatmulTilingBaseA3::PrintMMV3TilingData(const std::string &opName
 
 AllToAllFpMatmulTilingBaseA3::AllToAllFpMatmulTilingBaseA3(gert::TilingContext *context)
     : AllToAllMatmulTilingBase(context)
-{
-}
+{}
 
 ge::graphStatus AllToAllFpMatmulHelper::GetShapeAttrsInfo()
 {
@@ -424,8 +432,7 @@ AllToAllFpMatmulHelper::AllToAllFpMatmulHelper(AllToAllFpMatmulTilingBaseA3 &all
                                                Mc2MatmulV3TilingData &data)
     : Mc2MatmulV3BaseTiling(alltoAllMatmulTilingA3.context_, &data),
       tilingProcesser_(alltoAllMatmulTilingA3)
-{
-}
+{}
 
 // 注册tiling类
 REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(AlltoAllMatmul, AllToAllFpMatmulTilingBaseA3,

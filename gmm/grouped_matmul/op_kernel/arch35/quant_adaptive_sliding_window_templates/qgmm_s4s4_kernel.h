@@ -19,7 +19,7 @@
 #include "../grouped_matmul_tiling_data_apt.h"
 #include "tensor_api/tensor.h"
 
-#include "blaze/gemm/kernel/kernel_gmm_fixpipe_quant.h"
+#include "blaze/gemm/kernel/kernel_qgmm_mix_fixpipe_quant.h"
 #include "../int4_tensor_to_int8_preprocess.h"
 #include "../int4_weight_to_int8_preprocess.h"
 #include "../../grouped_matmul_utils.h"
@@ -40,7 +40,7 @@ __aicore__ inline void GmmS4S4Kernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM
     using LayoutA = xLayout;
     using LayoutB = wLayout;
     using LayoutC = yLayout;
-    using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
+    using ProblemShape = asc::te::shape<int64_t, int64_t, int64_t, int64_t>;
 
     using BTypeTuple = AscendC::Std::tuple<int8_t, uint64_t>;
     using DispatchPolicy =

@@ -445,6 +445,9 @@ if (base_aclnn_srcs)
             get_filename_component(name_without_ext ${_src} NAME_WE)
 
             string(REGEX REPLACE "_def$" "" _op_name ${name_without_ext})
+            if (${_op_name} STREQUAL ${name_without_ext})
+                continue()
+            endif()
             list(APPEND generate_aclnn_srcs ${base_aclnn_binary_dir}/aclnn_${_op_name}.cpp)
             list(APPEND generate_aclnn_headers ${base_aclnn_binary_dir}/aclnn_${_op_name}.h)
 
@@ -475,6 +478,9 @@ if (base_aclnn_inner_srcs)
         if (is_match)
             get_filename_component(name_without_ext ${_src} NAME_WE)
             string(REGEX REPLACE "_def$" "" _op_name ${name_without_ext})
+            if (${_op_name} STREQUAL ${name_without_ext})
+                continue()
+            endif()
             list(APPEND generate_aclnn_inner_srcs ${base_aclnn_binary_dir}/inner/aclnnInner_${_op_name}.cpp)
 
             set(filtered_list)
@@ -504,6 +510,9 @@ if (base_aclnn_exclude_srcs)
         if (is_match)
             get_filename_component(name_without_ext ${_src} NAME_WE)
             string(REGEX REPLACE "_def$" "" _op_name ${name_without_ext})
+            if (${_op_name} STREQUAL ${name_without_ext})
+                continue()
+            endif()
             list(APPEND generate_exclude_proto_srcs    ${generate_proto_dir}/exc/${_op_name}_proto.cpp)
             list(APPEND generate_proto_srcs            ${generate_proto_dir}/exc/${_op_name}_proto.cpp)
             list(APPEND generate_proto_headers         ${generate_proto_dir}/exc/${_op_name}_proto.h)
@@ -984,7 +993,7 @@ if (NOT ENABLE_AICPU_KERNEL)
     # Whitelist: *_depends paths (e.g. mc2/common) whose op_kernel is installed in one place below.
     # Skipped in the per-operator depends loop to avoid duplicate CMake install rules. Add new deps here
     # and add matching install(DIRECTORY ...) if they need the same dedup treatment.
-    set(OPS_TRANSFORMER_SHARED_KERNEL_INSTALL_DEPS mc2/common)
+    set(OPS_TRANSFORMER_SHARED_KERNEL_INSTALL_DEPS mc2/common mc2/3rd)
 
     # pypto-pro ops (marked by enable_pypto_kernel, global property PYPTO_ENABLED_OPS keyed by op_file):
     # forward so ascendc_impl_build.py emits the pypto wrapper variant (calls pypto_compile_op).
@@ -1043,7 +1052,7 @@ if (NOT ENABLE_AICPU_KERNEL)
     install(DIRECTORY ${OPS_ADV_DIR}/gmm/common/cgmct
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
     )
-    install(DIRECTORY ${CATLASS_DIR}/include
+    install(DIRECTORY ${CATLASS_DIR}/include/
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common/catlass/include
     )
     install(DIRECTORY ${BLAZE}
@@ -1072,7 +1081,7 @@ foreach(_3rd_op_dir ${_3rd_op_dirs})
         if(EXISTS "${_3rd_op_dir}/op_kernel" AND IS_DIRECTORY "${_3rd_op_dir}/op_kernel")
             get_filename_component(_3rd_op_name "${_3rd_op_dir}" NAME)
             install(DIRECTORY ${_3rd_op_dir}/op_kernel/
-                        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/3rd/${_3rd_op_name}
+                        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/3rd/${_3rd_op_name}/op_kernel
             )
         endif()
     endif()
