@@ -87,6 +87,9 @@ constexpr double MM_EXPANSION_TIME = 40;    // 短块减半仅当半块计算耗
 constexpr double COMM_EXPANSION_TIME = 40;  // 且半块通信耗时 > 此值(us)
 constexpr uint64_t FP4_EXPANSION_RATIO = 2; // fp4 通信按"1字节打包2元素"建模的分母
 
+// 算子钩子: 由引擎 fb::Schedule(ctx, hooks) 按下述顺序回调(引擎持有调度流, 算子只写差异):
+//   ① EstimateMMCommTime → ② SetShortTileLen → [NoCut 判断] → ③ SetLongTileLen → ④ AdjustLongShortTileLen
+// (调度流修改只改引擎一处, 5 个算子同步生效; IDE 静态分析看不到模板分派的调用点属预期)
 struct AgMmV2Hooks {
     double frontMMTime = 0;
 
