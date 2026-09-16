@@ -313,7 +313,8 @@ private:
         UnalignReg expSumUreg;
         MaskReg pregFull = CreateMask<float, MaskPattern::ALL>();
         MaskReg pregTail = UpdateMask<float>(tailN);
-        MaskReg pregOutput = UpdateMask<ElementOutput>(FLOAT_VECTOR_SIZE + tailN);
+        uint32_t outputN = FLOAT_VECTOR_SIZE + tailN;
+        MaskReg pregOutput = UpdateMask<ElementOutput>(outputN);
 
         for (uint16_t i = 0; i < m; ++i) {
             LoadAlign<float, LoadDist::DIST_BRC_B32>(maxVreg, nowMaxUb + i);
