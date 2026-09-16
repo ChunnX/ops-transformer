@@ -670,25 +670,27 @@ __aicore__ inline void EngramFetchGradUnique::ProcessAccumRowChunk(int32_t pos, 
     }
     AscendC::LocalTensor<float> accum = accumBase[accumIdx_ * accumFloats_];
     uint32_t rowOff = static_cast<uint32_t>(pos - static_cast<int32_t>(subStart)) * chunkInStride_;
+    (void)accum; (void)rowOff; (void)castChunk; (void)gradRaw; (void)chunkSrcElems; // ABLATION: 消融 cast/sum
     if (accumRowCnt_ == 0U) {
-        // 组首行: Cast/Adds 全量覆写 accum(等价 Duplicate(0)+Add(row))
-        if (inputDtype_ != Mc2Kernel::ENGRAM_DT_FLOAT) {
-            CastToFP32(accum, gradRaw[rowOff], chunkSrcElems);
-            AscendC::PipeBarrier<PIPE_V>();
-        } else {
-            AscendC::LocalTensor<float> gradFp32 = gradRaw[rowOff].ReinterpretCast<float>();
-            AscendC::Adds<float>(accum, gradFp32, 0.0f, chunkSrcElems);
-            AscendC::PipeBarrier<PIPE_V>();
-        }
-    } else if (inputDtype_ != Mc2Kernel::ENGRAM_DT_FLOAT) {
-        CastToFP32(castChunk, gradRaw[rowOff], chunkSrcElems);
-        AscendC::PipeBarrier<PIPE_V>();
-        AscendC::Add<float>(accum, accum, castChunk, chunkSrcElems);
-        AscendC::PipeBarrier<PIPE_V>();
-    } else {
-        AscendC::LocalTensor<float> gradFp32 = gradRaw[rowOff].ReinterpretCast<float>();
-        AscendC::Add<float>(accum, accum, gradFp32, chunkSrcElems);
-        AscendC::PipeBarrier<PIPE_V>();
+        // ABLATION: 注释 vector 计算（测 scatter 搬运耗时）
+        // if (inputDtype_ != Mc2Kernel::ENGRAM_DT_FLOAT) {
+        //     CastToFP32(accum, gradRaw[rowOff], chunkSrcElems);
+        //     AscendC::PipeBarrier<PIPE_V>();
+        // } else {
+        //     AscendC::LocalTensor<float> gradFp32 = gradRaw[rowOff].ReinterpretCast<float>();
+        //     AscendC::Adds<float>(accum, gradFp32, 0.0f, chunkSrcElems);
+        //     AscendC::PipeBarrier<PIPE_V>();
+        // }
+        // } else if (inputDtype_ != Mc2Kernel::ENGRAM_DT_FLOAT) {
+        //     CastToFP32(castChunk, gradRaw[rowOff], chunkSrcElems);
+        //     AscendC::PipeBarrier<PIPE_V>();
+        //     AscendC::Add<float>(accum, accum, castChunk, chunkSrcElems);
+        //     AscendC::PipeBarrier<PIPE_V>();
+        // } else {
+        //     AscendC::LocalTensor<float> gradFp32 = gradRaw[rowOff].ReinterpretCast<float>();
+        //     AscendC::Add<float>(accum, accum, gradFp32, chunkSrcElems);
+        //     AscendC::PipeBarrier<PIPE_V>();
+        // }
     }
     accumRowCnt_++;
     accumDirty_ = true;
@@ -731,13 +733,15 @@ __aicore__ inline void EngramFetchGradUnique::FlushAccumChunk(uint32_t chunkIdx,
                        "FlushAccumChunk staging overflow: need %u bytes, entryBuf=%u bytes", castTailBytes,
                        entryBufBytes_);
         AscendC::LocalTensor<uint8_t> flushCastBuf = entryRaw[flushCastOffset + bufIdx * chunkOutStride_];
-        if (outputDtype_ == Mc2Kernel::ENGRAM_DT_BFLOAT16) {
-            AscendC::LocalTensor<bfloat16_t> outT = flushCastBuf.ReinterpretCast<bfloat16_t>();
-            AscendC::Cast(outT, accum, AscendC::RoundMode::CAST_RINT, chunkSrcElems);
-        } else {
-            AscendC::LocalTensor<half> outT = flushCastBuf.ReinterpretCast<half>();
-            AscendC::Cast(outT, accum, AscendC::RoundMode::CAST_RINT, chunkSrcElems);
-        }
+        (void)flushCastBuf; (void)accum; // ABLATION: 消融输出侧 cast
+        // ABLATION: 注释 vector 计算（测 scatter 搬运耗时）
+        // if (outputDtype_ == Mc2Kernel::ENGRAM_DT_BFLOAT16) {
+        //     AscendC::LocalTensor<bfloat16_t> outT = flushCastBuf.ReinterpretCast<bfloat16_t>();
+        //     AscendC::Cast(outT, accum, AscendC::RoundMode::CAST_RINT, chunkSrcElems);
+        // } else {
+        //     AscendC::LocalTensor<half> outT = flushCastBuf.ReinterpretCast<half>();
+        //     AscendC::Cast(outT, accum, AscendC::RoundMode::CAST_RINT, chunkSrcElems);
+        // }
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(flushEvtVMte3Arr_[bufIdx]);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(flushEvtVMte3Arr_[bufIdx]);
         AscendC::GlobalTensor<uint8_t> dstGM;
@@ -855,15 +859,15 @@ __aicore__ inline void EngramFetchGradUnique::FlushAccum(GM_ADDR gradUniqueOutGM
                        "FlushAccum cast staging overflow: need %u bytes, entryBuf=%u bytes, hiddenDim=%u",
                        castTailBytes, entryBufBytes_, static_cast<uint32_t>(hiddenDim_));
         AscendC::LocalTensor<uint8_t> flushCastBuf = entryRaw[flushCastOffset + bufIdx * castHalfBytes];
-        uint32_t castCount = static_cast<uint32_t>(hiddenDim_);
-
-        if (outputDtype_ == Mc2Kernel::ENGRAM_DT_BFLOAT16) {
-            AscendC::LocalTensor<bfloat16_t> outT = flushCastBuf.ReinterpretCast<bfloat16_t>();
-            AscendC::Cast(outT, accum, AscendC::RoundMode::CAST_RINT, castCount);
-        } else {
-            AscendC::LocalTensor<half> outT = flushCastBuf.ReinterpretCast<half>();
-            AscendC::Cast(outT, accum, AscendC::RoundMode::CAST_RINT, castCount);
-        }
+        (void)flushCastBuf; (void)accum; // ABLATION: 消融输出侧 cast
+        // ABLATION: 注释 vector 计算（测 scatter 搬运耗时）
+        // if (outputDtype_ == Mc2Kernel::ENGRAM_DT_BFLOAT16) {
+        //     AscendC::LocalTensor<bfloat16_t> outT = flushCastBuf.ReinterpretCast<bfloat16_t>();
+        //     AscendC::Cast(outT, accum, AscendC::RoundMode::CAST_RINT, castCount);
+        // } else {
+        //     AscendC::LocalTensor<half> outT = flushCastBuf.ReinterpretCast<half>();
+        //     AscendC::Cast(outT, accum, AscendC::RoundMode::CAST_RINT, castCount);
+        // }
 
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(flushEvtVMte3Arr_[bufIdx]);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(flushEvtVMte3Arr_[bufIdx]);
@@ -1321,25 +1325,27 @@ __aicore__ inline void EngramFetchGradUnique::ProcessNonDirectRow(int32_t pos, u
     }
     AscendC::LocalTensor<float> accum = accumBase[accumIdx_ * accumFloats_];
     uint32_t rowOff = static_cast<uint32_t>(pos - static_cast<int32_t>(subStart)) * inRowStride_;
+    (void)accum; (void)rowOff; (void)castRow; (void)gradRaw; // ABLATION: 消融 cast/sum
     if (accumRowCnt_ == 0U) {
-        // Cast 全行覆写 accum(等价 Duplicate(0)+Add(row))
-        if (inputDtype_ != Mc2Kernel::ENGRAM_DT_FLOAT) {
-            CastToFP32(accum, gradRaw[rowOff], hiddenDim);
-            AscendC::PipeBarrier<PIPE_V>();
-        } else {
-            AscendC::LocalTensor<float> gradFp32 = gradRaw[rowOff].ReinterpretCast<float>();
-            AscendC::Adds<float>(accum, gradFp32, 0.0f, hiddenDim);
-            AscendC::PipeBarrier<PIPE_V>();
-        }
-    } else if (inputDtype_ != Mc2Kernel::ENGRAM_DT_FLOAT) {
-        CastToFP32(castRow, gradRaw[rowOff], hiddenDim);
-        AscendC::PipeBarrier<PIPE_V>();
-        AscendC::Add<float>(accum, accum, castRow, hiddenDim);
-        AscendC::PipeBarrier<PIPE_V>();
-    } else {
-        AscendC::LocalTensor<float> gradFp32 = gradRaw[rowOff].ReinterpretCast<float>();
-        AscendC::Add<float>(accum, accum, gradFp32, hiddenDim);
-        AscendC::PipeBarrier<PIPE_V>();
+        // ABLATION: 注释 vector 计算（测 scatter 搬运耗时）
+        // if (inputDtype_ != Mc2Kernel::ENGRAM_DT_FLOAT) {
+        //     CastToFP32(accum, gradRaw[rowOff], hiddenDim);
+        //     AscendC::PipeBarrier<PIPE_V>();
+        // } else {
+        //     AscendC::LocalTensor<float> gradFp32 = gradRaw[rowOff].ReinterpretCast<float>();
+        //     AscendC::Adds<float>(accum, gradFp32, 0.0f, hiddenDim);
+        //     AscendC::PipeBarrier<PIPE_V>();
+        // }
+        // } else if (inputDtype_ != Mc2Kernel::ENGRAM_DT_FLOAT) {
+        //     CastToFP32(castRow, gradRaw[rowOff], hiddenDim);
+        //     AscendC::PipeBarrier<PIPE_V>();
+        //     AscendC::Add<float>(accum, accum, castRow, hiddenDim);
+        //     AscendC::PipeBarrier<PIPE_V>();
+        // } else {
+        //     AscendC::LocalTensor<float> gradFp32 = gradRaw[rowOff].ReinterpretCast<float>();
+        //     AscendC::Add<float>(accum, accum, gradFp32, hiddenDim);
+        //     AscendC::PipeBarrier<PIPE_V>();
+        // }
     }
     accumRowCnt_++;
     accumDirty_ = true;
