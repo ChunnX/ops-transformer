@@ -135,7 +135,8 @@ void QuantFlashAttnTilingImpl::InitImplParam()
             !((seqUsedKvDims == 0) || (seqUsedKv == nullptr) || (seqUsedKv->GetData<int32_t>() == nullptr));
     }
 
-    decodeS1GMerge_ = (qfaInfo_->layoutQDescale == QfaLayout::N2TGD);
+    // N2TGD(TND decode) / BN2S1GD(BSND decode) 均对应 DECODE 模板
+    decodeS1GMerge_ = (qfaInfo_->layoutQDescale == QfaLayout::N2TGD || qfaInfo_->layoutQDescale == QfaLayout::BN2S1GD);
 }
 
 void QuantFlashAttnTilingImpl::SplitPolicy()

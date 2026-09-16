@@ -534,7 +534,7 @@ public:
     __aicore__ inline void operator()(FaL1Tensor<Q_SCALE_T, L1_FORMAT> &dstTensor, FaGmTensorType &srcTensor,
                                       GmCoordGs1Merge &gmCoord)
     {
-        if constexpr (GM_FORMAT == GmFormat::NTGD) {
+        if constexpr (GM_FORMAT == GmFormat::NTGD || GM_FORMAT == GmFormat::BNSGD) {
             ProcessS1G(dstTensor, srcTensor, gmCoord);
         } else if constexpr (GM_FORMAT == GmFormat::BNGSD) {
             auto &offsetCalculator = srcTensor.offsetCalculator;
@@ -560,20 +560,6 @@ private:
 
         CopySingleMXScaleDNToNZ(dstTensor.tensor, srcTensor.gmTensor[queryScaleGmbaseOffset], gmCoord.dDealSize,
                                 gmCoord.gS1DealSize, gmCoord.dDealSize, gmCoord.dDealSize);
-    }
-
-    template <typename FaGmTensorType>
-    __aicore__ inline void ProcessS1(FaL1Tensor<Q_SCALE_T, L1_FORMAT> &dstTensor, FaGmTensorType &srcTensor,
-                                     GmCoordGs1Merge &gmCoord)
-    {
-        auto &offsetCalculator = srcTensor.offsetCalculator;
-        uint32_t s1IdxStart = gmCoord.gS1Idx / offsetCalculator.GetDimG();
-        uint64_t queryScaleGmbaseOffset =
-            offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, 0, s1IdxStart, gmCoord.dIdx);
-
-        CopySingleMXScaleDNToNZ(dstTensor.tensor, srcTensor.gmTensor[queryScaleGmbaseOffset], gmCoord.dDealSize,
-                                gmCoord.gS1DealSize, gmCoord.dDealSize * offsetCalculator.GetDimN2(),
-                                gmCoord.dDealSize);
     }
 
     template <typename FaGmTensorType>

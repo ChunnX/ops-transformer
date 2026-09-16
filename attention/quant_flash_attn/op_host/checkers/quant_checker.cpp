@@ -70,11 +70,11 @@ ge::graphStatus QuantChecker::CheckQDescaleDimMxFp8(const QfaTilingInfo& qfaInfo
     }
     const gert::StorageShape* shape = qfaInfo.opParamInfo.qDescale.shape;
     uint32_t dimNum = shape->GetStorageShape().GetDimNum();
-    const std::vector<uint32_t> supportedDims = {DIM_NUM_4, DIM_NUM_5};
+    const std::vector<uint32_t> supportedDims = {DIM_NUM_4, DIM_NUM_5, DIM_NUM_6};
     OP_CHECK_IF(std::find(supportedDims.begin(), supportedDims.end(), dimNum) == supportedDims.end(),
                 OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
                     qfaInfo.opName, Q_DESCALE_NAME.c_str(), (std::to_string(dimNum) + "D").c_str(),
-                    "In MxFP8 scenario, the shape dim of q_descale must be 4D or 5D"),
+                    "In MxFP8 scenario, the shape dim of q_descale must be 4D or 5D or 6D"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -408,16 +408,18 @@ ge::graphStatus QuantChecker::CheckQDescaleShapeMxFp8(const QfaTilingInfo& qfaIn
     //     4D: (Q_T, Q_N, D/64, 2)              prefill场景，layout_q_descale=TND
     //     5D: (KV_N, Q_T, G, D/64, 2)          decode场景，layout_q_descale=N2TGD
     //     其中 G = Q_N / KV_N
-    //   layout_q=BNSD/BSND: 5D: (B, Q_N, S1, D/64, 2)   layout_q_descale 统一为 BNSD
+    //   layout_q=BNSD: 5D: (B, Q_N, S1, D/64, 2)       layout_q_descale=BNSD (prefill/decode 统一)
+    //   layout_q=BSND:
+    //     prefill场景: 5D: (B, S1, Q_N, D/64, 2)       layout_q_descale=BSND
+    //     decode场景: 6D: (B, KV_N, S1, G, D/64, 2)    layout_q_descale=BN2S1GD, G = Q_N / KV_N
     const gert::StorageShape *shape = qfaInfo.opParamInfo.qDescale.shape;
     int64_t D = qfaInfo.qkHeadDim;
     int64_t dPerGroup = (D + 63) / 64; // MxFP8 block size = 64
     uint32_t dimNum = shape->GetStorageShape().GetDimNum();
 
-    bool isBnsdOrBsnd = (qfaInfo.qLayout == QfaLayout::BNSD || qfaInfo.qLayout == QfaLayout::BSND);
     std::vector<int64_t> expected;
-    if (isBnsdOrBsnd) {
-        // BNSD/BSND: q_descale 统一按 BNSD 排布, 5D
+    if (qfaInfo.qLayout == QfaLayout::BNSD) {
+        // BNSD: q_descale 按 BNSD 排布, 5D (B, Q_N, S1, D/64, 2)
         OP_CHECK_IF(dimNum != DIM_NUM_5,
                     OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
                         qfaInfo.opName, Q_DESCALE_NAME.c_str(), (std::to_string(dimNum) + "D").c_str(),
@@ -425,15 +427,45 @@ ge::graphStatus QuantChecker::CheckQDescaleShapeMxFp8(const QfaTilingInfo& qfaIn
                          QfaLayoutToSerialString(qfaInfo.qLayout))
                             .c_str()),
                     return ge::GRAPH_FAILED);
-        // 约束: BNSD/BSND 场景下 layout_q_descale 统一为 BNSD
-        OP_CHECK_IF(qfaInfo.layoutQDescale != QfaLayout::BNSD,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "layout_q_descale",
-                                                          QfaLayoutToSerialString(qfaInfo.layoutQDescale).c_str(),
-                                                          ("When layout_q is " + QfaLayoutToSerialString(qfaInfo.qLayout) +
-                                                           ", layout_q_descale must be BNSD")
-                                                              .c_str()),
-                    return ge::GRAPH_FAILED);
+        // 约束: BNSD 场景下 layout_q_descale 统一为 BNSD
+        OP_CHECK_IF(
+            qfaInfo.layoutQDescale != QfaLayout::BNSD,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                qfaInfo.opName, "layout_q_descale", QfaLayoutToSerialString(qfaInfo.layoutQDescale).c_str(),
+                ("When layout_q is " + QfaLayoutToSerialString(qfaInfo.qLayout) + ", layout_q_descale must be BNSD")
+                    .c_str()),
+            return ge::GRAPH_FAILED);
         expected = {qfaInfo.bSize, qfaInfo.n1Size, qfaInfo.s1Size, dPerGroup, 2};
+        return CheckShapeEqual(*shape, expected, Q_DESCALE_NAME, qfaInfo.opName);
+    }
+
+    if (qfaInfo.qLayout == QfaLayout::BSND) {
+        // BSND: prefill 为 5D (B, S1, Q_N, D/64, 2) layout_q_descale=BSND;
+        //       decode 为 6D (B, KV_N, S1, G, D/64, 2) layout_q_descale=BN2S1GD
+        OP_CHECK_IF(qfaInfo.layoutQDescale != QfaLayout::BSND && qfaInfo.layoutQDescale != QfaLayout::BN2S1GD,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        qfaInfo.opName, "layout_q_descale", QfaLayoutToSerialString(qfaInfo.layoutQDescale).c_str(),
+                        ("When layout_q is BSND, layout_q_descale must be BSND(prefill) or BN2S1GD(decode), "
+                         "but got " +
+                         QfaLayoutToSerialString(qfaInfo.layoutQDescale))
+                            .c_str()),
+                    return ge::GRAPH_FAILED);
+        bool isDecode = (qfaInfo.layoutQDescale == QfaLayout::BN2S1GD);
+        if (!isDecode) {
+            OP_CHECK_IF(dimNum != DIM_NUM_5,
+                        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                            qfaInfo.opName, Q_DESCALE_NAME.c_str(), (std::to_string(dimNum) + "D").c_str(),
+                            "In MxFP8 prefill scenario, the shape dim of q_descale must be 5D when layout_q is BSND"),
+                        return ge::GRAPH_FAILED);
+            expected = {qfaInfo.bSize, qfaInfo.s1Size, qfaInfo.n1Size, dPerGroup, 2};
+        } else {
+            OP_CHECK_IF(dimNum != DIM_NUM_6,
+                        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                            qfaInfo.opName, Q_DESCALE_NAME.c_str(), (std::to_string(dimNum) + "D").c_str(),
+                            "In MxFP8 decode scenario, the shape dim of q_descale must be 6D when layout_q is BSND"),
+                        return ge::GRAPH_FAILED);
+            expected = {qfaInfo.bSize, qfaInfo.n2Size, qfaInfo.s1Size, qfaInfo.gSize, dPerGroup, 2};
+        }
         return CheckShapeEqual(*shape, expected, Q_DESCALE_NAME, qfaInfo.opName);
     }
 
@@ -753,7 +785,8 @@ ge::graphStatus QuantChecker::CheckDescaleDtype(const QfaTilingInfo& qfaInfo) co
 // ============================================================================
 // Feature — Layout 匹配关系校验 (文档: layout匹配关系表)
 // MxFP8: layout_q∈{TND,BNSD,BSND}, layout_kv∈{TND,BNSD,BSND,PA_BBND,PA_BNBD,PA_NZ},
-//        layout_out 与 layout_q 一致, layout_q_descale∈{TND,N2TGD,BNSD}
+//        layout_out 与 layout_q 一致, layout_q_descale∈{TND,N2TGD,BNSD,BSND,BN2S1GD}
+//        (BSND prefill 为 BSND, decode 为 BN2S1GD)
 // ============================================================================
 
 namespace {
@@ -770,7 +803,7 @@ const std::map<QfaQuantMode, QfaLayoutConstraintConfig> QFA_LAYOUT_CONSTRAINT_TA
      {{QfaLayout::TND, QfaLayout::BSND, QfaLayout::BNSD},
       {QfaLayout::TND, QfaLayout::BSND, QfaLayout::BNSD, QfaLayout::PA_BBND, QfaLayout::PA_BNBD, QfaLayout::PA_NZ},
       {QfaLayout::TND, QfaLayout::BSND, QfaLayout::BNSD},
-      {QfaLayout::TND, QfaLayout::N2TGD, QfaLayout::BNSD},
+      {QfaLayout::TND, QfaLayout::N2TGD, QfaLayout::BNSD, QfaLayout::BSND, QfaLayout::BN2S1GD},
       false}},
     {QfaQuantMode::A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32,
      {{QfaLayout::NTD}, {QfaLayout::PA_BNBD}, {QfaLayout::TND}, {QfaLayout::NT}, false}},

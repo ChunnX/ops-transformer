@@ -277,8 +277,7 @@ bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
     }
     baseInfo.batchSize = batchSize_;
     baseInfo.queryHeadNum = numHeadsQ_;
-    bool isDecode = (layoutQDescale_ == "N2TGD");
-    baseInfo.kvHeadNum = isDecode ? numHeadsKv_ : numHeadsQ_;
+    baseInfo.kvHeadNum = numHeadsKv_;
     baseInfo.headDimQk = headDim_;
     baseInfo.headDimV = headDim_;
     baseInfo.attenMaskFlag = (maskMode_ != 0);
@@ -324,7 +323,9 @@ bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
         param.fdTolerance = 300;
         param.fdOn = false;
     }
-    param.outputLayout = load_balance::OutputLayout::BN2_S1G;
+    // N2TGD(TND decode) / BN2S1GD(BSND decode) 均对应 DECODE 模板
+    bool isDecode = (layoutQDescale_ == "N2TGD" || layoutQDescale_ == "BN2S1GD");
+    param.outputLayout = isDecode ? load_balance::OutputLayout::BN2_S1G : load_balance::OutputLayout::BN1_S1;
 
     if (isGradEnabled_) {
         // 等长场景的 deterMaxRound, 由 GenMetaData 在 Clear 之后写入第二行槽位 0。

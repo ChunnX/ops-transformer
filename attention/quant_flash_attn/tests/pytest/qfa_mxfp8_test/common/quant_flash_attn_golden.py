@@ -393,16 +393,20 @@ def fp32_to_e8m0fnu_safe(scale, name="scale"):
 def canonical_q_scale_layout(layout):
     layout = (layout or "TND").upper()
     # BNSD/BSND: q_descale 与 query 同排布 (5D, D//64 组内偶奇打包)
-    if layout not in ("TND", "N2TGD", "BNSD", "BSND"):
+    # BN2S1GD: BSND decode 场景 (6D, B-N2-S1-G-D)
+    if layout not in ("TND", "N2TGD", "BNSD", "BSND", "BN2S1GD"):
         raise ValueError(f"Unsupported Q scale layout: {layout}")
     return layout
 
 
 def resolve_q_scale_layout(layout=None):
     effective = layout or Q_SCALE_LAYOUT
-    # BNSD/BSND 非 PA 场景: 算子约束 layout_q_descale 统一为 BNSD
-    if not ENABLE_PA and INPUT_LAYOUT in ("BNSD", "BSND"):
-        effective = "BNSD"
+    # BNSD/BSND 非 PA 场景: 算子约束 layout_q_descale 与模板绑定
+    if INPUT_LAYOUT in ("BNSD", "BSND"):
+        if INPUT_LAYOUT == "BNSD":
+            effective = "BNSD"  # BNSD: prefill/decode 统一 BNSD
+        else:  # BSND: prefill -> BSND, decode -> BN2S1GD
+            effective = "BN2S1GD" if effective in ("N2TGD", "BN2S1GD") else "BSND"
     resolved = canonical_q_scale_layout(effective)
     if N_kv <= 0 or N_q % N_kv != 0:
         raise ValueError(f"N_q must be divisible by N_kv, got N_q={N_q}, N_kv={N_kv}")
@@ -513,6 +517,15 @@ def convert_q_scale_bnsd_to_layout(scale_bnsd, seq_lens, layout, cu_seqlens=None
             scale_bnsd, seq_lens, cu_seqlens=cu_seqlens
         )
         return convert_q_scale_tnd_to_n2tgd_layout(tnd_result, N_kv)
+    elif layout == "BN2S1GD":
+        # BSND decode: (B, N_q, S1, Dg) -> (B, N2, S1, G, Dg//2, 2), 内存序 B-N2-S1-G-D
+        g = N // N_kv
+        return (
+            scale_bnsd[:, :, :max_org_s, :]
+            .reshape(B, N_kv, g, max_org_s, Dg_half, 2)
+            .permute(0, 1, 3, 2, 4, 5)
+            .contiguous()
+        )
     else:
         raise ValueError(f"Unsupported layout: {layout}")
 
