@@ -1541,7 +1541,7 @@ if constexpr (IS_INT8) {
     }
 
 private:
-    struct WorkspaceInfo {
+    struct WorkspaceInfoInt8 {
         GM_ADDR ptrPermuteCounts;
         GM_ADDR ptrA;
         GM_ADDR ptrPerTokenScale;
@@ -1556,10 +1556,10 @@ private:
         __gm__ float *ptrSoftFlagBase;
 
         CATLASS_DEVICE
-        WorkspaceInfo() {}
+        WorkspaceInfoInt8() {}
 
         CATLASS_DEVICE
-        WorkspaceInfo(const Params &params)
+        WorkspaceInfoInt8(const Params &params)
         {
             uint32_t k2 = params.problemShape.n() / 2;
             uint32_t n2 = params.problemShape.k();
@@ -1609,8 +1609,72 @@ private:
             ptrSoftFlagBase = reinterpret_cast<__gm__ float *>(params.ptrWorkspace + workspaceOffset);
         }
     };
+    struct WorkspaceInfoBf16 {
+        GM_ADDR ptrPermuteCounts;
+        GM_ADDR ptrA;
+        GM_ADDR ptrcumsumMM;
+        GM_ADDR ptrC;
+        GM_ADDR ptrC2;
+        GM_ADDR ptrPermutedToken;
+        GM_ADDR expandedRowIdx;
+        GM_ADDR ptrSumBeforeRankForDispatch;
+        GM_ADDR ptrSumBeforeRankForCombine;
+        __gm__ float *ptrSoftFlagBase;
 
-    struct PeermemInfo {
+        CATLASS_DEVICE
+        WorkspaceInfoBf16() {}
+
+        CATLASS_DEVICE
+        WorkspaceInfoBf16(const Params &params)
+        {
+            uint32_t k2 = params.problemShape.n() / 2;
+            uint32_t n2 = params.problemShape.k();
+            uint64_t workspaceOffset = 0;
+            // prologue 每核计数区（每核槽位 coreIdx*alignedE，全部核 allgather 读取；
+            // 尺寸与 host 侧 128 * alignedE * 4 一致，PERMUTE_MAX_CORES = 128）
+            ptrPermuteCounts = params.ptrWorkspace;
+            const int64_t alignedE = AlignUp(static_cast<int64_t>(params.expertPerRank) * params.EP, 8);
+            workspaceOffset +=
+                static_cast<uint64_t>(PERMUTE_MAX_CORES) * static_cast<uint64_t>(alignedE) * sizeof(int32_t);
+
+            // expandedRowIdx 按单 chunk 尺寸分配（逐 chunk 复用）
+            expandedRowIdx = params.ptrWorkspace + workspaceOffset;
+            const int64_t chunkTokens = params.problemShape.m() < static_cast<int64_t>(PERMUTE_CHUNK) ?
+                                            params.problemShape.m() :
+                                            static_cast<int64_t>(PERMUTE_CHUNK);
+            workspaceOffset += AlignUp(chunkTokens, 256) * params.topK * sizeof(int32_t);
+
+            // cumsum 按 chunk 数分配多份（不复用），规避 AIC/AIV 跨 chunk 读取旧 cumsumMM 的
+            // cache 陈旧问题。
+            // 每份尺寸 = paddedExpertNumAligned * EP int32；host 侧 workspace 分配必须同步放大。
+            ptrcumsumMM = params.ptrWorkspace + workspaceOffset;
+            const int64_t numChunks = (params.problemShape.m() + PERMUTE_CHUNK - 1) / PERMUTE_CHUNK;
+            uint64_t paddedExpertNumAligned = AlignUp(params.EP * params.expertPerRank + 1, ALIGN_128);
+            workspaceOffset += static_cast<uint64_t>(numChunks) * paddedExpertNumAligned * params.EP * sizeof(int32_t);
+
+            ptrC = params.ptrWorkspace + workspaceOffset;  // 7
+            ptrC2 = params.ptrWorkspace + workspaceOffset; // 8
+            workspaceOffset += params.maxOutputSize * params.gmmOutPreRowStride * sizeof(ElementC);
+
+            ptrA = params.ptrWorkspace + workspaceOffset;             // 9
+            ptrPermutedToken = params.ptrWorkspace + workspaceOffset; // 10
+            workspaceOffset +=
+                params.maxOutputSize * (params.problemShape.k() > k2 ? params.problemShape.k() : k2) * sizeof(ElementA);
+
+            ptrSumBeforeRankForDispatch = params.ptrWorkspace + workspaceOffset;
+            workspaceOffset += paddedExpertNumAligned * sizeof(int32_t);
+            ptrSumBeforeRankForCombine = params.ptrWorkspace + workspaceOffset;
+            workspaceOffset += params.EP * sizeof(int32_t) * params.expertPerRank;
+
+            ptrSoftFlagBase = reinterpret_cast<__gm__ float *>(params.ptrWorkspace + workspaceOffset);
+        }
+    };
+
+    // A2 int8 与 bf16/fp16 的 peermem/workspace 布局不同（int8 多出 per-token scale 区，
+    // 偏移算术也不同），故两侧各自保留原始定义，按 dtype 选择，不做合并。
+    using WorkspaceInfo = std::conditional_t<IS_INT8, WorkspaceInfoInt8, WorkspaceInfoBf16>;
+
+    struct PeermemInfoInt8 {
         int64_t offsetA;
         int64_t offsetPeerPerTokenScale;
         int64_t offsetPeerTokenPerExpert;
@@ -1629,10 +1693,10 @@ private:
         int64_t offsetWinOutPeerTokenPerExpert; // TPE 区 in winOut
 
         CATLASS_DEVICE
-        PeermemInfo() {}
+        PeermemInfoInt8() {}
 
         CATLASS_DEVICE
-        PeermemInfo(const Params &params, const HcclShmem<true> &shmem)
+        PeermemInfoInt8(const Params &params, const HcclShmem<true> &shmem)
         {
             const int64_t EP = params.EP;
             const int64_t E = params.expertPerRank;
@@ -1677,6 +1741,75 @@ private:
             offsetWinOutD = offsetWinOutPeerPerTokenScale + offsetPerTokenScaleSize;
         }
     };
+    struct PeermemInfoBf16 {
+        int64_t offsetA;
+        int64_t offsetPeerTokenPerExpert;
+        int64_t offsetD;
+        // Dispatch Flag 区（SendTokensV3 / RecvTokensV3 用）：固定 1 MB
+        //   slotIdx = sender_rank * expertPerRank + groupIdx
+        //   每槽独占 64B cache line（kFlagSlotI32 = 16 个 int32），避免 false sharing 与 gm_dcci 误清
+        int64_t offsetFlag;
+        // Allgather Flag 区（V2 allgather 用）：固定 1 MB
+        //   slotIdx = srcRank
+        //   每槽独占 64B cache line
+        int64_t offsetAllgatherFlag;
+        int64_t offsetWinOutA; // A tensor in winOut (dispatch, outgoing tokens)
+        int64_t offsetWinOutD; // D tensor in winOut (combine, outgoing FFN results)
+
+        // 每个 flag 槽占 16 个 int32（= 64B = 1 个 cache line），与 CrossRankSync 一致
+        static constexpr int64_t kFlagSlotI32 = 16;
+        // 跨 server RDMA 时一次写入的 payload 大小：8 个 int32 = 32B，首 4B 为 magic，其余为 padding
+        static constexpr int64_t kFlagPayloadI32 = 8;
+
+        CATLASS_DEVICE
+        PeermemInfoBf16() {}
+
+        CATLASS_DEVICE
+        PeermemInfoBf16(const Params &params, const HcclShmem<true> &shmem)
+        {
+            const int64_t EP = params.EP;
+            const int64_t E = params.expertPerRank;
+            const int64_t M = params.maxOutputSize;
+            const int64_t h = params.problemShape.k();
+            const int64_t bs = params.problemShape.m();
+            const int64_t topK = params.topK;
+
+            // Dispatch Flag: EP×MAX_EXPERTS_PER_RANK(128)×64B
+            // E 取最大值 128，使 flag 区域位置固定，与实际 expertPerRank 无关
+            int64_t flagSize = EP * MAX_EXPERTS_PER_RANK * 64;
+            // Allgather Flag: EP×64B
+            int64_t allgatherFlagSize = EP * 64;
+
+            // AAfterDispatchSize: dispatch 接收数据区（BF16，无 perTokenScale），原始token
+            int64_t AAfterDispatchSize = M * h * sizeof(int16_t);
+
+            // 布局：RESERVED → A → D → (空闲) → TPE → allgatherFlag → flag → [CrossRankSync tail]
+            int64_t usableEnd =
+                static_cast<int64_t>(shmem.SegmentSize()) - static_cast<int64_t>(shmem.TailReservedSize());
+            // TPE size: EP × paddedExpertNumAligned × sizeof(int32_t)
+            // （与 ResetTokenPerExpert 中 num 一致）
+            int64_t tpeSize =
+                EP * AlignUp(EP * MAX_EXPERTS_PER_RANK + 1, ALIGN_128) * static_cast<int64_t>(sizeof(int32_t));
+
+            // winIn == winOut：A/D 从前向后；flag/allgatherFlag/TPE 从后往前
+            offsetA = RESERVED_SPACE_SIZE;
+            offsetD = offsetA + AAfterDispatchSize;
+            offsetFlag = usableEnd - flagSize;
+            offsetAllgatherFlag = offsetFlag - allgatherFlagSize;
+            offsetPeerTokenPerExpert = offsetAllgatherFlag - tpeSize;
+
+            // WinOut: A/D 从前向后布局（winIn == winOut，flag/TPE offset 复用 winIn）
+            // ABeforeDispatchSize: dispatch 发送数据区（BF16，无 perTokenScale），原始token
+            // 按单 chunk（不超过 bs）分配，逐 chunk 复用，与 host winOut A 区下限公式一致
+            int64_t ABeforeDispatchSize = (bs < PERMUTE_CHUNK ? bs : PERMUTE_CHUNK) * topK * h * sizeof(int16_t);
+            offsetWinOutA = RESERVED_SPACE_SIZE;
+            offsetWinOutD = offsetWinOutA + ABeforeDispatchSize;
+        }
+    };
+
+    // A2 int8 与 bf16/fp16 的 peermem/workspace 布局不同（int8 多出 per-token scale 区，
+    // 偏移算术也不同），故两侧各自保留原始定义，按 dtype 选择，不做合并。
+    using PeermemInfo = std::conditional_t<IS_INT8, PeermemInfoInt8, PeermemInfoBf16>;
 
     Arch::Resource<ArchTag> resource;
 
