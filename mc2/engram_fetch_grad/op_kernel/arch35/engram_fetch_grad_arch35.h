@@ -1108,6 +1108,11 @@ __aicore__ inline bool EngramFetchGradArch35::A2aChunkSendStep()
                 } else {
                     continue; // scratch 被其他单元的 credit 读占用, 本轮让出
                 }
+                // credit 已刷新: 用新鲜值复检窗口, 仍满则让出 —— 否则按过期判断落笔
+                // 会覆写对端尚未读走的 slot(8p 随机 rank gu 错行根因)
+                if (s.localWriteCnt - static_cast<uint32_t>(s.remoteReadCnt) >= slotsPerSender) {
+                    continue;
+                }
             }
         }
 
