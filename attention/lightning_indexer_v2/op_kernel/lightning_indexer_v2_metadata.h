@@ -21,9 +21,15 @@
 namespace optiling {
 
 // Constants
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
 constexpr uint32_t AIC_CORE_MAX_NUM = 80;
 constexpr uint32_t AIV_CORE_MAX_NUM = 80;
 constexpr uint32_t LI_V2_METADATA_TOTAL_SIZE = 2048;
+#else
+constexpr uint32_t AIC_CORE_MAX_NUM = 36;
+constexpr uint32_t AIV_CORE_MAX_NUM = 72;
+constexpr uint32_t LI_V2_METADATA_TOTAL_SIZE = 1024;
+#endif
 using LI_V2_METADATA_T = int32_t;
 
 inline constexpr uint32_t LI_V2_METADATA_SIZE = 8;
