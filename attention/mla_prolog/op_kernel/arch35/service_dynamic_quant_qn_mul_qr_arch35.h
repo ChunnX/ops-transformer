@@ -114,6 +114,10 @@ __aicore__ inline void MulQr(const GlobalTensor<T> &outputGmRope, const GlobalTe
 
         Cast(qrFp32Local, qrInputLocal[inputLocalRopeOffset], RoundMode::CAST_NONE, computeSizeRope);
         PipeBarrier<PIPE_V>();
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
+        MulQrVF(qrFp32Local, qrFp32Local, dequantScaleBrcbLocal[dequantScaleOffset], quantScaleCkvRope, computeSizeRope,
+                computeBlockAlign);
+#else
         MulQrVF(qrFp32Local, qrFp32Local, dequantScaleBrcbLocal, quantScaleCkvRope, computeSizeRope, computeBlockAlign);
         PipeBarrier<PIPE_V>();
         Cast(outputLocalRope, qrFp32Local, RoundMode::CAST_RINT, computeSizeRope);
