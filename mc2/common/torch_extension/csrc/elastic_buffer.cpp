@@ -878,8 +878,6 @@ private:
         LayerRanks layer = GetLayerRanks(commHandle, layerId);
         for (uint32_t peer = 0; peer < rankSize; ++peer) {
             if (std::find(layer.ranks.begin(), layer.ranks.end(), peer) == layer.ranks.end()) {
-                ASCEND_LOGI("[MixLayer] rank %u rejects layer %u: missing peer %u, layer ranks %zu, expected %u",
-                            srcRankId, layerId, peer, layer.ranks.size(), rankSize);
                 return false;
             }
         }
@@ -894,8 +892,6 @@ private:
                         ", srcRank: ", srcRankId, ", peer: ", peer, ", ret: ", ret);
             TORCH_CHECK(linkNum == 0 || links != nullptr, "Null mixed-layer links, layer: ", layerId);
             if (!HasLinkWithProtocol(links, linkNum, CommProtocol::COMM_PROTOCOL_UB_CTP)) {
-                ASCEND_LOGI("[MixLayer] rank %u rejects layer %u: no UB_CTP link to peer %u, link count %u",
-                            srcRankId, layerId, peer, linkNum);
                 return false;
             }
         }
@@ -908,19 +904,13 @@ private:
         uint32_t srcRankId = 0;
         uint32_t rankSize = 0;
         GetRankInfo(commHandle, srcRankId, rankSize);
-        ASCEND_LOGI("[MixLayer] start detection: rank %u, rank size %u, ranks per server %u",
-                    srcRankId, rankSize, rankNumPerServer_);
         if (rankNumPerServer_ != MIX_LAYERED_RANK_SIZE || rankSize != rankNumPerServer_) {
-            ASCEND_LOGI("[MixLayer] rank %u skips detection: requires a single %u-rank domain",
-                        srcRankId, MIX_LAYERED_RANK_SIZE);
             return;
         }
         uint32_t layerNum = 0;
         uint32_t *layerList = nullptr;
         GetNetLayers(commHandle, layerList, layerNum);
-        ASCEND_LOGI("[MixLayer] rank %u: layer count %u", srcRankId, layerNum);
         if (layerNum < MIX_LAYERED) {
-            ASCEND_LOGI("[MixLayer] rank %u skips detection: requires at least %u layers", srcRankId, MIX_LAYERED);
             return;
         }
         TORCH_CHECK(layerList != nullptr, "HCCL returned a null layer list");
@@ -931,35 +921,23 @@ private:
             CommTopo topoType = COMM_TOPO_RESERVED;
             auto ret = HcclRankGraphGetTopoTypeByLayerFunc(commHandle, layerId, &topoType);
             TORCH_CHECK(ret == HCCL_SUCCESS, "Get HCCL topology type failed, layer: ", layerId, ", ret: ", ret);
-            ASCEND_LOGI("[MixLayer] rank %u: layer %u, topology %d", srcRankId, layerId, static_cast<int>(topoType));
             if (topoType != COMM_TOPO_CLOS && topoType != COMM_TOPO_1DMESH) {
-                ASCEND_LOGI("[MixLayer] rank %u skips layer %u: topology is neither Clos nor 1DMESH", srcRankId, layerId);
                 continue;
             }
             const uint32_t slot = topoType == COMM_TOPO_CLOS ? 0U : 1U;
-            if (found[slot]) {
-                ASCEND_LOGI("[MixLayer] rank %u skips layer %u: topology %d already selected at layer %u",
-                            srcRankId, layerId, static_cast<int>(topoType), mixLayeredInfo_.layerIds[slot]);
-                continue;
-            }
-            if (!SupportsMixLayer(commHandle, layerId, srcRankId, rankSize)) {
-                ASCEND_LOGI("[MixLayer] rank %u skips %s layer %u: rank coverage or UB_CTP support check failed",
-                            srcRankId, topoType == COMM_TOPO_CLOS ? "Clos" : "1DMESH", layerId);
+            if (found[slot] || !SupportsMixLayer(commHandle, layerId, srcRankId, rankSize)) {
                 continue;
             }
             mixLayeredInfo_.layerIds[slot] = layerId;
             found[slot] = true;
-            ASCEND_LOGI("[MixLayer] rank %u accepts %s layer %u: all %u ranks covered and remote peers support UB_CTP",
-                        srcRankId, topoType == COMM_TOPO_CLOS ? "Clos" : "1DMESH", layerId, rankSize);
             if (found[0] && found[1]) {
                 mixLayeredInfo_.isUseMixLayered = true;
-                ASCEND_LOGI("[MixLayer] rank %u enables mixed CTP channels, Clos layer %u, direct layer %u", srcRankId,
+                ASCEND_LOGI("Rank %u enables mixed CTP channels, Clos layer %u, direct layer %u", srcRankId,
                             mixLayeredInfo_.layerIds[0], mixLayeredInfo_.layerIds[1]);
                 return;
             }
         }
-        ASCEND_LOGI("[MixLayer] rank %u uses existing topology: qualified Clos found %u, qualified 1DMESH found %u",
-                    srcRankId, static_cast<uint32_t>(found[0]), static_cast<uint32_t>(found[1]));
+        ASCEND_LOGI("Rank %u has no mesh/Clos pair covering all ranks with UB_CTP, use existing topology", srcRankId);
     }
 
     void BuildContext(const HcclComm &commHandle, const std::string &groupName, const std::string &opName,
