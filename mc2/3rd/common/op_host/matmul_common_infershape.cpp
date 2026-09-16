@@ -391,6 +391,47 @@ ge::graphStatus UpdateX2NewShape(const gert::InferShapeContext *context, Shape &
     return ge::GRAPH_SUCCESS;
 }
 
+static ge::graphStatus InferKnownBatchMatMulShapes(gert::InferShapeContext *context, const Shape *shape_x1,
+                                                   const Shape *shape_x2, Shape *shape_out, const bool *adj_x1,
+                                                   const bool *adj_x2, size_t input_bias_index, bool is_x2_packed,
+                                                   const char *op_name)
+{
+    // 补充bmmv3单轴逻辑，输入的单轴代表的都是k轴
+    Shape shape_x2_new(*shape_x2);
+    bool shape_x2_reshape_flag = false;
+    if (UpdateX2NewShape(context, shape_x2_new, shape_x2_reshape_flag, *adj_x1, *adj_x2, is_x2_packed) !=
+        ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    Shape shape_x1_new(*shape_x1);
+    bool shape_x1_reshape_flag = false;
+    if (shape_x1_new.GetDimNum() == 1 && shape_x1_new.GetDim(0) > UNKNOWN_DIM_NUM) {
+        shape_x1_reshape_flag = true;
+        int64_t ori_dim = shape_x1_new.GetDim(0);
+        shape_x1_new.SetDimNum(BATCH_MATMUL_MIN_SHAPE_SIZE);
+        shape_x1_new.SetDim(0, 1);
+        shape_x1_new.SetDim(1, ori_dim);
+    }
+
+    InferShapeBatchTensor InferShapeBatchTensor = {shape_x1_new, shape_x2_new, *adj_x1 && !shape_x1_reshape_flag,
+                                                   *adj_x2 && !shape_x2_reshape_flag};
+    InferShapeBatchMatMul batchMatMulInfer(context, InferShapeBatchTensor, input_bias_index);
+    OP_CHECK_IF(
+        !batchMatMulInfer.InferShape(),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            op_name, "x1 and x2",
+            (std::to_string(shape_x1_new.GetDimNum()) + "D and " + std::to_string(shape_x2_new.GetDimNum()) + "D")
+                .c_str(),
+            "The shapes of x1 and x2 must be compatible for inferring output shape"),
+        return ge::GRAPH_FAILED);
+
+    InferComplementedOutput(shape_x1_reshape_flag, shape_x2_reshape_flag, *shape_out);
+    OP_LOGD(context->GetNodeName(), "output shape: %s", Ops::Base::ToString(*(context->GetOutputShape(0))).c_str());
+    // no need to SetDataType in runtime
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus InferShapeForBatchMatMul(gert::InferShapeContext *context, const int32_t attr_adj_idx,
                                          const size_t input_bias_index, const bool is_x2_packed)
 {
@@ -426,40 +467,8 @@ ge::graphStatus InferShapeForBatchMatMul(gert::InferShapeContext *context, const
         return ge::GRAPH_FAILED;
     }
 
-    // 补充bmmv3单轴逻辑，输入的单轴代表的都是k轴
-    Shape shape_x2_new(*shape_x2);
-    bool shape_x2_reshape_flag = false;
-    if (UpdateX2NewShape(context, shape_x2_new, shape_x2_reshape_flag, *adj_x1, *adj_x2, is_x2_packed) !=
-        ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
-
-    Shape shape_x1_new(*shape_x1);
-    bool shape_x1_reshape_flag = false;
-    if (shape_x1_new.GetDimNum() == 1 && shape_x1_new.GetDim(0) > UNKNOWN_DIM_NUM) {
-        shape_x1_reshape_flag = true;
-        int64_t ori_dim = shape_x1_new.GetDim(0);
-        shape_x1_new.SetDimNum(BATCH_MATMUL_MIN_SHAPE_SIZE);
-        shape_x1_new.SetDim(0, 1);
-        shape_x1_new.SetDim(1, ori_dim);
-    }
-
-    InferShapeBatchTensor InferShapeBatchTensor = {shape_x1_new, shape_x2_new, *adj_x1 && !shape_x1_reshape_flag,
-                                                   *adj_x2 && !shape_x2_reshape_flag};
-    InferShapeBatchMatMul batchMatMulInfer(context, InferShapeBatchTensor, input_bias_index);
-    OP_CHECK_IF(
-        !batchMatMulInfer.InferShape(),
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-            op_name, "x1 and x2",
-            (std::to_string(shape_x1_new.GetDimNum()) + "D and " + std::to_string(shape_x2_new.GetDimNum()) + "D")
-                .c_str(),
-            "The shapes of x1 and x2 must be compatible for inferring output shape"),
-        return ge::GRAPH_FAILED);
-
-    InferComplementedOutput(shape_x1_reshape_flag, shape_x2_reshape_flag, *shape_out);
-    OP_LOGD(context->GetNodeName(), "output shape: %s", Ops::Base::ToString(*(context->GetOutputShape(0))).c_str());
-    // no need to SetDataType in runtime
-    return ge::GRAPH_SUCCESS;
+    return InferKnownBatchMatMulShapes(context, shape_x1, shape_x2, shape_out, adj_x1, adj_x2, input_bias_index,
+                                       is_x2_packed, op_name);
 }
 
 // range相关逻辑

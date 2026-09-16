@@ -137,6 +137,22 @@ static ge::graphStatus MoeDistributeCombineA2CheckShapeAndSetTiling(gert::Tiling
     return ge::GRAPH_SUCCESS;
 }
 
+static ge::graphStatus CheckCombineA2RankAttributes(const int64_t *epWorldSizePtr, const int64_t *epRankIdPtr,
+                                                    const int64_t *moeExpertNumPtr)
+{
+    OP_TILING_CHECK(epWorldSizePtr == nullptr || *epWorldSizePtr <= 0 || *epWorldSizePtr > MAX_EP_WORLD_SIZE_A2 ||
+                        *epWorldSizePtr % RANK_NUM_PER_NODE_A2 != 0,
+                    OP_LOGE_FOR_INVALID_VALUE(K_OP_NAME, "epWorldSize", "invalid", "valid epWorldSize"),
+                    return GRAPH_FAILED);
+    OP_TILING_CHECK(epRankIdPtr == nullptr || *epRankIdPtr < 0 || *epRankIdPtr >= *epWorldSizePtr,
+                    OP_LOGE_FOR_INVALID_VALUE(K_OP_NAME, "epRankId", "invalid", "valid epRankId"), return GRAPH_FAILED);
+    OP_TILING_CHECK(moeExpertNumPtr == nullptr || *moeExpertNumPtr <= 0 || *moeExpertNumPtr > MAX_MOE_EXPERT_NUMS_A2 ||
+                        *moeExpertNumPtr % *epWorldSizePtr != 0,
+                    OP_LOGE_FOR_INVALID_VALUE(K_OP_NAME, "moeExpertNum", "invalid", "valid moeExpertNum"),
+                    return GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 static ge::graphStatus MoeDistributeCombineA2CheckAttrAndSetTiling(gert::TilingContext *context,
                                                                    MoeDistributeCombineA2Info &info,
                                                                    int32_t &commQuantMode, const bool isLayered)
@@ -150,16 +166,9 @@ static ge::graphStatus MoeDistributeCombineA2CheckAttrAndSetTiling(gert::TilingC
     auto sharedExpertRankNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_SHARED_EXPERT_RANK_NUM_INDEX);
     auto globalBsPtr = attrs->GetAttrPointer<int64_t>(ATTR_GLOBAL_BS_INDEX);
     auto commQuantModePtr = attrs->GetAttrPointer<int64_t>(ATTR_COMM_QUANT_MODE_INDEX);
-    OP_TILING_CHECK(epWorldSizePtr == nullptr || *epWorldSizePtr <= 0 || *epWorldSizePtr > MAX_EP_WORLD_SIZE_A2 ||
-                        *epWorldSizePtr % RANK_NUM_PER_NODE_A2 != 0,
-                    OP_LOGE_FOR_INVALID_VALUE(K_OP_NAME, "epWorldSize", "invalid", "valid epWorldSize"),
-                    return GRAPH_FAILED);
-    OP_TILING_CHECK(epRankIdPtr == nullptr || *epRankIdPtr < 0 || *epRankIdPtr >= *epWorldSizePtr,
-                    OP_LOGE_FOR_INVALID_VALUE(K_OP_NAME, "epRankId", "invalid", "valid epRankId"), return GRAPH_FAILED);
-    OP_TILING_CHECK(moeExpertNumPtr == nullptr || *moeExpertNumPtr <= 0 || *moeExpertNumPtr > MAX_MOE_EXPERT_NUMS_A2 ||
-                        *moeExpertNumPtr % *epWorldSizePtr != 0,
-                    OP_LOGE_FOR_INVALID_VALUE(K_OP_NAME, "moeExpertNum", "invalid", "valid moeExpertNum"),
-                    return GRAPH_FAILED);
+    if (CheckCombineA2RankAttributes(epWorldSizePtr, epRankIdPtr, moeExpertNumPtr) != ge::GRAPH_SUCCESS) {
+        return GRAPH_FAILED;
+    }
     OP_TILING_CHECK(expertSharedTypePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(K_OP_NAME, "expertSharedType"),
                     return GRAPH_FAILED);
     OP_TILING_CHECK(sharedExpertRankNumPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(K_OP_NAME, "sharedExpertRankNum"),
@@ -262,20 +271,9 @@ static ge::graphStatus MoeDistributeCombineA2CheckWinSize(const gert::TilingCont
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus MoeDistributeCombineA2TilingFuncImpl(gert::TilingContext *context)
+static ge::graphStatus CheckCombineA2TilingInputs(gert::TilingContext *context, MoeDistributeCombineA2Info &info,
+                                                  int32_t &commQuantMode, bool isLayered, const char *nodeName)
 {
-    const char *nodeName = context->GetNodeName();
-    OP_LOGI(nodeName, "Enter MoeDistributeCombineA2 tiling func.");
-    uint32_t batch_mode = 1U;
-    auto ret = context->SetScheduleMode(batch_mode);
-    MC2_CHECK_LOG_RET(nodeName, ret);
-    MoeDistributeCombineA2TilingData *tilingData = context->GetTilingData<MoeDistributeCombineA2TilingData>();
-    OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITHOUT_REPORT(nodeName, "tilingData is nullptr."),
-                    return ge::GRAPH_FAILED);
-    OP_LOGI(nodeName, "MoeDistributeCombineA2 get tilingData.");
-    MoeDistributeCombineA2Info &info = tilingData->moeDistributeCombineInfo;
-    bool isLayered = MoeDistributeCombineA2IsLayered();
-    int32_t commQuantMode = 0;
     OP_TILING_CHECK(
         MoeDistributeCombineA2CheckShapeAndSetTiling(context, info) != ge::GRAPH_SUCCESS,
         OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "MoeDistributeCombineA2 CheckShapeAndSetTiling Failed"),
@@ -291,6 +289,26 @@ static ge::graphStatus MoeDistributeCombineA2TilingFuncImpl(gert::TilingContext 
     OP_TILING_CHECK(MoeDistributeCombineA2CheckWinSize(context, nodeName, info, isLayered) != ge::GRAPH_SUCCESS,
                     OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "MoeDistributeCombineA2 CheckWinSize Failed"),
                     return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus MoeDistributeCombineA2TilingFuncImpl(gert::TilingContext *context)
+{
+    const char *nodeName = context->GetNodeName();
+    OP_LOGI(nodeName, "Enter MoeDistributeCombineA2 tiling func.");
+    uint32_t batch_mode = 1U;
+    auto ret = context->SetScheduleMode(batch_mode);
+    MC2_CHECK_LOG_RET(nodeName, ret);
+    MoeDistributeCombineA2TilingData *tilingData = context->GetTilingData<MoeDistributeCombineA2TilingData>();
+    OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITHOUT_REPORT(nodeName, "tilingData is nullptr."),
+                    return ge::GRAPH_FAILED);
+    OP_LOGI(nodeName, "MoeDistributeCombineA2 get tilingData.");
+    MoeDistributeCombineA2Info &info = tilingData->moeDistributeCombineInfo;
+    bool isLayered = MoeDistributeCombineA2IsLayered();
+    int32_t commQuantMode = 0;
+    if (CheckCombineA2TilingInputs(context, info, commQuantMode, isLayered, nodeName) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint32_t numBlocks = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);

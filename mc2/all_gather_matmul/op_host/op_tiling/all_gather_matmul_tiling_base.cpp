@@ -561,6 +561,24 @@ ge::graphStatus AllGatherMatmulTilingBase::InitHcclParam(const gert::TilingConte
     return ge::GRAPH_SUCCESS;
 }
 
+static void FillAllGatherRuntimeParams(Mc2Tiling::AllGatherMatmulTilingData *tilingData, const char *group,
+                                       uint32_t rankSize, const bool *isTransA, const bool *isTransB,
+                                       const int64_t *gatherIndex, int64_t commTurn)
+{
+    OP_LOGD("AllGatherMatmul",
+            " group is %s, rankSize is %u, isTransA is %d, isTransB is %d, gatherIndex is %d,"
+            "commTurn is %ld.",
+            group, rankSize, isTransA ? *isTransA : 0, isTransB ? *isTransB : 0, gatherIndex ? *gatherIndex : 0,
+            commTurn);
+    tilingData->param.rankDim = rankSize;
+    tilingData->param.isTransposeA = isTransA ? *isTransA : 0;
+    tilingData->param.isTransposeB = isTransB ? *isTransB : 0;
+    tilingData->param.gatherIndex = gatherIndex ? *gatherIndex : 0;
+    tilingData->param.commtype = static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_ALLGATHER);
+    tilingData->param.subtype = 0;
+    tilingData->param.storageGather = 0;
+}
+
 ge::graphStatus AllGatherMatmulTilingBase::AllGatherMatmulTilingFunc(gert::TilingContext *context)
 {
     // 对参数进行校验
@@ -589,18 +607,7 @@ ge::graphStatus AllGatherMatmulTilingBase::AllGatherMatmulTilingFunc(gert::Tilin
         OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "commTurn", std::to_string(commTurn).c_str(), "0"),
         return ge::GRAPH_FAILED);
 
-    OP_LOGD("AllGatherMatmul",
-            " group is %s, rankSize is %u, isTransA is %d, isTransB is %d, gatherIndex is %d,"
-            "commTurn is %ld.",
-            group_, rankSize, isTransA ? *isTransA : 0, isTransB ? *isTransB : 0, gatherIndex ? *gatherIndex : 0,
-            commTurn);
-    tilingData->param.rankDim = rankSize;
-    tilingData->param.isTransposeA = isTransA ? *isTransA : 0;
-    tilingData->param.isTransposeB = isTransB ? *isTransB : 0;
-    tilingData->param.gatherIndex = gatherIndex ? *gatherIndex : 0;
-    tilingData->param.commtype = static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_ALLGATHER);
-    tilingData->param.subtype = 0;
-    tilingData->param.storageGather = 0;
+    FillAllGatherRuntimeParams(tilingData, group_, rankSize, isTransA, isTransB, gatherIndex, commTurn);
 
     SetSocParam(tilingData, group_);
 

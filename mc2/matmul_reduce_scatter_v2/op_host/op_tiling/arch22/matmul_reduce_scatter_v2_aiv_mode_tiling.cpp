@@ -930,8 +930,7 @@ void SetTilingData_SmallM(CoCTiling &cocTilingData, MatmulReduceScatterV2AivMode
     cocTilingData.commDataSplit = Tiling_Small_M::DEFAULT_COMMDATASPLIT;
 }
 
-inline ge::graphStatus checkAndResetTilingData_SmallM(CoCTiling &cocTilingData, MatmulReduceScatterV2AivModeInfo &info,
-                                                      gert::TilingContext *context, int64_t rankSize)
+static ge::graphStatus CheckSmallMTilingParameterRanges(const CoCTiling &cocTilingData, gert::TilingContext *context)
 {
     OP_TILING_CHECK(
         cocTilingData.m0 != 128 && cocTilingData.m0 != 256,
@@ -967,6 +966,16 @@ inline ge::graphStatus checkAndResetTilingData_SmallM(CoCTiling &cocTilingData, 
                     OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "commDataSplit",
                                               std::to_string(cocTilingData.commDataSplit).c_str(), "8 or 16"),
                     return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
+inline ge::graphStatus checkAndResetTilingData_SmallM(CoCTiling &cocTilingData, MatmulReduceScatterV2AivModeInfo &info,
+                                                      gert::TilingContext *context, int64_t rankSize)
+{
+    if (CheckSmallMTilingParameterRanges(cocTilingData, context) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
 
     int32_t m_loop = (info.M + cocTilingData.m0 - 1) / (cocTilingData.m0);
     if ((cocTilingData.swizzlDirect == 0 && m_loop > cocTilingData.swizzlCount)) {
