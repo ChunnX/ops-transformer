@@ -133,6 +133,10 @@ private:
     QmlaOutLayout layoutOut_ = QmlaOutLayout::BSND;
     QmlaKvLayout layoutKv_ = QmlaKvLayout::PA_BNBD;
 
+    // strides (for non-contiguous k_cache check)
+    const gert::Stride *keyStrides_ = nullptr;
+    bool hasStride_ = false;
+
     // 特性
     bool returnSoftmaxLse_ = false;
     bool metadataFlag_ = false;

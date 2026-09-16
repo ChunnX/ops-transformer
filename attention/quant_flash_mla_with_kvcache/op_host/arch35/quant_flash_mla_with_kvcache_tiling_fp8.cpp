@@ -278,6 +278,12 @@ void QuantFlashMlaWithKvcacheTilingFp8Impl::SetQmlaTilingData()
     tilingData_.baseParams.coreNum = numBlocks_;
     tilingData_.baseParams.outputLayout = static_cast<uint32_t>(qmlaInfo_->layoutOut);
 
+    // k_cache非连续stride: 0表示按shape推连续stride; V=K_nope复用, kernel侧valueStrides取keyStrides
+    tilingData_.baseParams.keyStrides.bnStride =
+        qmlaInfo_->hasStride ? static_cast<uint64_t>(qmlaInfo_->keyStrides->GetStride(0)) : 0ULL;
+    tilingData_.baseParams.keyStrides.n2Stride =
+        qmlaInfo_->hasStride ? static_cast<uint64_t>(qmlaInfo_->keyStrides->GetStride(1)) : 0ULL;
+
     tilingData_.pageAttentionParams.blockSize = static_cast<uint32_t>(qmlaInfo_->blockSize);
     tilingData_.pageAttentionParams.maxBlockNumPerBatch = static_cast<uint32_t>(qmlaInfo_->maxBlockNumPerBatch);
 

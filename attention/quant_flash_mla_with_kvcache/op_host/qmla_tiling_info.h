@@ -134,6 +134,10 @@ struct QmlaTilingInfo : public TilingInfo {
     QmlaOutLayout layoutOut = QmlaOutLayout::BSND;
     QmlaKvLayout layoutKv = QmlaKvLayout::PA_BNBD;
 
+    // Strides (for non-contiguous k_cache check)
+    const gert::Stride *keyStrides = nullptr;
+    bool hasStride = false;
+
     // SoftmaxLse
     bool returnSoftmaxLse = false;
 
