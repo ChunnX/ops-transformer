@@ -62,16 +62,16 @@ static const fb::FitBalanceCalibration CALIBRATION = {
     },
     /* matmul */
     {
-        /* cubeCalc: {计算类型, A/B/C 字节数, 有效算力(MACs/cycle)} */
+        /* cubeCalc: {计算类型, isFp4, A/B/C 字节数, 有效算力(MACs/cycle)} */
         {
-            {fb::MatmulCalcType::QUANT, 1, 1, 2, 8192}, // 量化路径(fp8/fp4, 1B/1B/2B)
+            {fb::MatmulCalcType::QUANT, false, 1, 1, 2, 8192}, // fp8 量化(1B/1B/2B)
+            {fb::MatmulCalcType::QUANT, true, 1, 1, 2, 16384}, // fp4 量化(打包 1B/1B/2B, 算力约为 fp8 的 2×)
         },
-
-        /* defaultComputesPerCycle = 4096(公共层默认, key 未命中回退) */
-        /* l2Param: {计算类型, A/B/C 字节数, L2 档位参数} */
+        /* l2Param: {计算类型, isFp4, A/B/C 字节数, L2 档位参数} */
         {
-            {fb::MatmulCalcType::FP16, 2, 2, 2, {80, 128, 0.95, 0.85, 0.75}},  // 半精度(2B/2B/2B)
-            {fb::MatmulCalcType::QUANT, 1, 1, 2, {80, 128, 0.95, 0.85, 0.75}}, // 量化
+            {fb::MatmulCalcType::FP16, false, 2, 2, 2, {80, 128, 0.95, 0.85, 0.75}},  // 半精度
+            {fb::MatmulCalcType::QUANT, false, 1, 1, 2, {80, 128, 0.95, 0.85, 0.75}}, // fp8 量化
+            {fb::MatmulCalcType::QUANT, true, 1, 1, 2, {80, 128, 0.95, 0.85, 0.75}},  // fp4 量化(共用 fp8 档位)
         },
         /* defaultL2Param = {128,192,0.85,0.75,0.65}(公共层默认) */
         /* baseBlock: soc 最优基本块 */
@@ -90,7 +90,6 @@ static const fb::FitBalanceCalibration CALIBRATION = {
 constexpr double MM_EXPANSION_TIME = 40;    // 短块减半仅当半块计算耗时 > 此值(us)
 constexpr double COMM_EXPANSION_TIME = 40;  // 且半块通信耗时 > 此值(us)
 constexpr uint64_t FP4_EXPANSION_RATIO = 2; // fp4 通信按"1字节打包2元素"建模的分母
-constexpr double FP4_MACS_RATIO = 4;        // fp4 有效算力 = 此倍数 × 基础算力(4096)
 
 struct AgMmV2Hooks {
     double frontMMTime = 0;
@@ -216,10 +215,10 @@ inline CutResult ScheduleFitBalance(const mc2tiling::TilingArgs &args, fb::CommE
     auto ctx =
         fb::InitCtx(engineArgs, fb::KernelType::ALL_GATHER, commEngine, CALIBRATION, fb::TopoType::STANDARD_CARD);
     ctx.commPerf.SetCommShapeLen(ctx.mmInfo.kValue);
-    // mxfp4(DT_FLOAT4_E2M1)每元素占0.5字节，uint64_t无法表达0.5
-    // 此处按"1字节打包2个fp4元素"建模：通信侧用SetCommDTypeSize(1)+ExpansionFraction(2)表达0.5字节/元素
-    // (复用HCCL现成子字节机制，CommTime/InverseCommTime/GetLinearThresholdLen均经GetRealDtypeSizes()取0.5)；
-    // matmul侧inMatrixADtypeSize置1(L2占用按2x高估，避免0导致memUsage/kLength退化为0)。
+    // fp4(DT_FLOAT4_E2M1) 通信侧建模: 每元素 0.5 字节, 按"1 字节打包 2 个 fp4"建模
+    // (SetCommDTypeSize(1) + ExpansionFraction(2), 复用 HCCL 子字节机制);
+    // matmul 侧 fp4 路由已由引擎正确处理(SetCalcType 经 geAType 识别, 查 CALIBRATION 的
+    // fp4 行取算力), 无需手动覆盖。inMatrixADtypeSize 置 1(L2 占用按 2x 高估, 避免 0 退化)。
     if (engineArgs.geAType == ge::DataType::DT_FLOAT4_E2M1) {
         ctx.commPerf.SetCommDTypeSize(1);
         ctx.commPerf.SetCommDtypeSizeExpansionFraction(FP4_EXPANSION_RATIO);
@@ -227,13 +226,6 @@ inline CutResult ScheduleFitBalance(const mc2tiling::TilingArgs &args, fb::CommE
         ctx.matmulPerf.mmShapeInfo_.inMatrixBDtypeSize = 1;
         ctx.mmInfo.inMatrixADtypeSize = 1;
         ctx.mmInfo.inMatrixBDtypeSize = 1;
-        // fp4属量化dtype, 但公共层 SetCalcType 不识别fp4(ConvertGeTypeToMmType无fp4映射→DT_MAX),
-        // 致 calcType_=FP16、查表落空→computesPerCycle 退回默认
-        // (fp8 拿到 8192), totalMatmulTime 被高估4x。此处把fp4归类为QUANT并覆盖 computesPerCycle
-        // = 4×基础算力(=16384)。GetMachineParameters 已在 InitCtx 按FP16跑过, 此处覆盖。
-        ctx.matmulPerf.calcType_ = fb::MatmulCalcType::QUANT;
-        ctx.matmulPerf.mmShapeInfo_.computesPerCycle = FP4_MACS_RATIO * fb::MatmulPerformance::COMPUTES_PER_CYCLE;
-        ctx.mmInfo.computesPerCycle = ctx.matmulPerf.mmShapeInfo_.computesPerCycle;
     } else {
         ctx.commPerf.SetCommDTypeSize(ctx.mmInfo.inMatrixADtypeSize);
     }

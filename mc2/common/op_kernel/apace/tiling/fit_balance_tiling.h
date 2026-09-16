@@ -476,6 +476,7 @@ constexpr double AVERAGE_CUBE_UTIL = 0.75;
 //      此处类型由 InitCtx 内部适配构造并按值持有, 勿在算子侧直接引用）======
 struct CubeCalcRow {
     MatmulCalcType calcType;
+    bool isFp4;
     uint64_t aBytes;
     uint64_t bBytes;
     uint64_t cBytes;
@@ -484,6 +485,7 @@ struct CubeCalcRow {
 
 struct L2ParamRow {
     MatmulCalcType calcType;
+    bool isFp4;
     uint64_t aBytes;
     uint64_t bBytes;
     uint64_t cBytes;
@@ -514,6 +516,7 @@ class MatmulPerformanceArch35 {
 public:
     MatmulParameters mmShapeInfo_;
     MatmulCalcType calcType_; // Distinguish the non-quantization, full-quantization and fake-quantization
+    bool isFp4_ = false;      // fp4 输入(geAType==DT_FLOAT4_E2M1), 影响 CubeCalc/L2 查表匹配
     double cubeUtil_ = 0.8;
     double matmulGradient_ = 1.0;
 
@@ -534,6 +537,7 @@ public:
         mmShapeInfo_.baseN = BASE_BLOCK_N;
         mmShapeInfo_.baseK = BASE_BLOCK_K;
         mmShapeInfo_.batchSize = 1UL; // 初始值
+        isFp4_ = (args.geAType == ge::DataType::DT_FLOAT4_E2M1);
         SetCalcType(args);
         mmShapeInfo_.cyclePerMicroSec = MatmulPerformance::CYCLE_PER_MICRO_SEC_NPUARCH_3510;
         GetMachineParameters();
@@ -543,14 +547,15 @@ public:
         mmShapeInfo_.baseK = bestBaseBlock.baseK;
     };
 
-    // 950 量化语义: fp8/HIF8 或 A8W8 量化, 其余按 FP16 建模
+    // 950 量化语义: fp4/fp8/HIF8 或 A8W8 量化, 其余按 FP16 建模
+    // fp4 经 geAType 识别(matmul_tiling::DataType 无 fp4 枚举, aType 对 fp4 为 DT_MAX)
     // （旧实现的 310P A16W8 与 910_B INT8 排除分支随旧芯片逻辑剥离）
     void SetCalcType(const TilingArgs &args)
     {
         if ((args.aType == matmul_tiling::DataType::DT_HIFLOAT8) ||
             (args.aType == matmul_tiling::DataType::DT_FLOAT8_E4M3FN) ||
             (args.aType == matmul_tiling::DataType::DT_FLOAT8_E5M2) ||
-            (args.aType == matmul_tiling::DataType::DT_INT8)) {
+            (args.aType == matmul_tiling::DataType::DT_INT8) || (args.geAType == ge::DataType::DT_FLOAT4_E2M1)) {
             calcType_ = MatmulCalcType::QUANT;
         }
     }
@@ -559,8 +564,9 @@ public:
     template <typename RowT>
     bool MatchesDtype(const RowT &row) const
     {
-        return (row.calcType == calcType_) && (row.aBytes == mmShapeInfo_.inMatrixADtypeSize) &&
-               (row.bBytes == mmShapeInfo_.inMatrixBDtypeSize) && (row.cBytes == mmShapeInfo_.outMatrixCDtypeSize);
+        return (row.calcType == calcType_) && (row.isFp4 == isFp4_) &&
+               (row.aBytes == mmShapeInfo_.inMatrixADtypeSize) && (row.bBytes == mmShapeInfo_.inMatrixBDtypeSize) &&
+               (row.cBytes == mmShapeInfo_.outMatrixCDtypeSize);
     }
     void GetMachineParameters()
     {
@@ -1052,7 +1058,8 @@ struct FitBalanceCalibration {
     //    省略的尾部字段自动取 NSDMI 默认值）——
     struct Matmul {
         struct CubeCalc {
-            MatmulCalcType calcType; // FP16 / QUANT / ANTI_QUANT
+            MatmulCalcType calcType;
+            bool isFp4;              // FP16 / QUANT / ANTI_QUANT
             uint64_t aBytes;         // 输入 A 每元素字节数
             uint64_t bBytes;         // 输入 B 每元素字节数
             uint64_t cBytes;         // 输出 C 每元素字节数
@@ -1060,6 +1067,7 @@ struct FitBalanceCalibration {
         };
         struct L2Param {
             MatmulCalcType calcType;
+            bool isFp4;
             uint64_t aBytes;
             uint64_t bBytes;
             uint64_t cBytes;
@@ -1105,9 +1113,9 @@ inline FitBasedBalanceCtx InitCtx(const TilingArgs &args, KernelType kernelType,
         if (calib.matmul.cubeCalc[i].aBytes == 0) {
             break;
         }
-        mmTable.cubeCalcRows[i] = {calib.matmul.cubeCalc[i].calcType, calib.matmul.cubeCalc[i].aBytes,
-                                   calib.matmul.cubeCalc[i].bBytes, calib.matmul.cubeCalc[i].cBytes,
-                                   calib.matmul.cubeCalc[i].computesPerCycle};
+        mmTable.cubeCalcRows[i] = {calib.matmul.cubeCalc[i].calcType, calib.matmul.cubeCalc[i].isFp4,
+                                   calib.matmul.cubeCalc[i].aBytes,   calib.matmul.cubeCalc[i].bBytes,
+                                   calib.matmul.cubeCalc[i].cBytes,   calib.matmul.cubeCalc[i].computesPerCycle};
         mmTable.cubeCalcCount = i + 1;
     }
     mmTable.l2Count = 0;
@@ -1115,9 +1123,9 @@ inline FitBasedBalanceCtx InitCtx(const TilingArgs &args, KernelType kernelType,
         if (calib.matmul.l2Param[i].aBytes == 0) {
             break;
         }
-        mmTable.l2Rows[i] = {calib.matmul.l2Param[i].calcType, calib.matmul.l2Param[i].aBytes,
-                             calib.matmul.l2Param[i].bBytes, calib.matmul.l2Param[i].cBytes,
-                             calib.matmul.l2Param[i].params};
+        mmTable.l2Rows[i] = {calib.matmul.l2Param[i].calcType, calib.matmul.l2Param[i].isFp4,
+                             calib.matmul.l2Param[i].aBytes,   calib.matmul.l2Param[i].bBytes,
+                             calib.matmul.l2Param[i].cBytes,   calib.matmul.l2Param[i].params};
         mmTable.l2Count = i + 1;
     }
     while ((mmTable.bestBaseCount < FitBalanceCalibration::MAX_BASE_BLOCK_ROWS) &&
