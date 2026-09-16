@@ -20,7 +20,6 @@
 #include "apace/kernel/fusions/all_to_all_quant_matmul/all_to_all_matmul_tiling_data.h"
 #include "apace/tiling/matmul_tiling/quant_matmul_tiling.h"
 #include "apace/tiling/core_occupancy_first_tiling.h"
-#include "allto_all_matmul_v2_fit_balance_tiling.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "op_host/tiling_base.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
@@ -704,52 +703,16 @@ protected:
             return ge::GRAPH_FAILED;
         }
 
-        // fit-balance 通信切分: 环境开关 + 标定数据就绪时启用, 否则走现有 CoreOccupancyFirstTiling 路径。
-        // 逻辑与拟合数据来源见 allto_all_matmul_v2_fit_balance_tiling.h。
-        bool fitBalanceUsed = false;
-        if (fit_balance::IsEnabled()) {
-            fit_balance::AllToAllFitBalanceInput fbInput;
-            if (fit_balance::BuildScheduleInput(m_, n_, ka, static_cast<uint32_t>(worldSize_),
-                                                x1Dtype == ge::DT_FLOAT4_E2M1, precisionMode_, mm.baseM, mm.baseN,
-                                                mm.usedCoreNum, fbInput)) {
-                const fit_balance::AllToAllFitBalanceResult fbRes = fit_balance::Schedule(fbInput);
-                // 切分不变量守卫: 总行数必须等于 m, 违反说明决策层产出非法切分
-                // (如尾轮合并字段组装错误), 拦截后回退现状路径而非上板劣化。
-                const uint64_t cutTotalRows =
-                    fbRes.cut.headCnt * fbRes.cut.headSize + fbRes.cut.tailCnt * fbRes.cut.tailSize;
-                if (cutTotalRows != m_) {
-                    OP_LOGE(opName,
-                            "fit-balance produced an invalid cut: head=%lu x%lu + tail=%lu x%lu = %lu != m=%lu, "
-                            "fallback to CoreOccupancyFirstTiling",
-                            fbRes.cut.headSize, fbRes.cut.headCnt, fbRes.cut.tailSize, fbRes.cut.tailCnt, cutTotalRows,
-                            m_);
-                } else {
-                    fit_balance::FillCommTilingData(fbRes, td->commTilingData, td->scaleCommTilingData);
-                    fitBalanceUsed = true;
-                    OP_LOGI(opName,
-                            "fit-balance comm tiling: k=%lu, rounds=%lu, head=%lu x%lu, tail=%lu x%lu, merged=%d, "
-                            "ratio=%.3f, est=%.1fus (k=1 est=%.1fus), noCut=%d",
-                            fbRes.cut.chosenK, fbRes.cut.rounds, fbRes.cut.headSize, fbRes.cut.headCnt,
-                            fbRes.cut.tailSize, fbRes.cut.tailCnt, static_cast<int32_t>(fbRes.cut.mergedTail),
-                            fbRes.cut.ratioCalcComm, fbRes.cut.estTimeUs, fbRes.cut.estTimeUsK1,
-                            static_cast<int32_t>(fbRes.cut.noCut));
-                }
-            } else {
-                OP_LOGI(opName,
-                        "fit-balance tiling: calibrated data missing (rankDim=%lu, fp4=%d, mode=%u), "
-                        "fallback to CoreOccupancyFirstTiling",
-                        worldSize_, static_cast<int32_t>(x1Dtype == ge::DT_FLOAT4_E2M1), precisionMode_);
-            }
-        }
-        if (!fitBalanceUsed) {
-            mc2tiling::CoreOccupancyFirstTiling::GetCommTilingData(m_, n_, ka, mm, td->commTilingData,
-                                                                   td->scaleCommTilingData);
+        // 通信切分: 核利用率优先(CoreOccupancyFirstTiling)。
+        // 历史: aiv_urma 路径的 fit-balance tiling 已废弃(2026-09-15 评审裁定: 与核利用率优先
+        // 切分结果大部分相同, 少量差异定位为核利用率优先的实现问题, 修复走独立事项)。
+        mc2tiling::CoreOccupancyFirstTiling::GetCommTilingData(m_, n_, ka, mm, td->commTilingData,
+                                                               td->scaleCommTilingData);
 
-            // MXFP4 打包存储(2 个 fp4 占 1 字节)，数据通信的 K 轴字节数需减半；
-            // scale 仍是 e8m0(每 32 元素 1 字节)，不受 fp4 影响。
-            if (x1Dtype == ge::DT_FLOAT4_E2M1) {
-                td->commTilingData.nonSplitAxisSize = ka / 2;
-            }
+        // MXFP4 打包存储(2 个 fp4 占 1 字节)，数据通信的 K 轴字节数需减半；
+        // scale 仍是 e8m0(每 32 元素 1 字节)，不受 fp4 影响。
+        if (x1Dtype == ge::DT_FLOAT4_E2M1) {
+            td->commTilingData.nonSplitAxisSize = ka / 2;
         }
 
         OP_LOGI(opName, "comm tiling: tileSize=%lu, tileCnt=%lu, tailSize=%lu, tailCnt=%lu, nonSplitSize=%lu",
