@@ -37,7 +37,6 @@ $$
 
 在Stage 2，KdaInputProj算子分别利用AIC和AIV并行执行 `QuantMatmul (qkv)` 和 `Sigmoid` 两个计算任务。其中 `QuantMatmul` 的激活为Stage 1中的 `DynamicMxQuant` 任务的输出，`qkv_weight` 为离线量化好的权重。
 
-
 ## 接口说明
 
 该算子通过`cann_ops_transformer`注册为`torch.ops.cann_ops_transformer.kda_input_proj`。
@@ -99,7 +98,3 @@ qkv, beta, gate, g = cann_ops_transformer.kda_input_proj(
     x, weight_qkv, weight_beta, weight_gate, weight_g, weight_qkv_scale=weight_qkv_scale
 )
 ```
-
-## 相关接口
-
-更多测试与调用示例见[pytest说明](../tests/pytest/README.md)。
