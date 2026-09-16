@@ -13,7 +13,69 @@
 import pytest
 import torch
 
-from .transform import ActualInputSemanticOracle, InvalidTransformError
+from .transform import (
+    ActualInputSemanticOracle,
+    BatchCaseTransformer,
+    InvalidTransformError,
+)
+
+
+def make_kv_resize_case(layout, batch_size=1, prefix="ori"):
+    shapes = {
+        "TND": (batch_size * 4, 1, 2),
+        "BSND": (batch_size, 4, 1, 2),
+        "PA_BBND": (batch_size, 4, 1, 2),
+    }
+    return {
+        "params": {},
+        "metadata_input": {"batch_size": batch_size},
+        "op_input": {
+            "layout_kv": layout,
+            f"{prefix}_kv": torch.arange(batch_size * 8).reshape(shapes[layout]),
+            f"cu_seqlens_{prefix}_kv": torch.arange(batch_size + 1, dtype=torch.int32)
+            * 4,
+            f"seqused_{prefix}_kv": torch.full((batch_size,), 4, dtype=torch.int32),
+            f"{prefix}_block_table": torch.arange(
+                batch_size, dtype=torch.int32
+            ).reshape(batch_size, 1),
+        },
+    }
+
+
+@pytest.mark.parametrize("prefix", ["ori", "cmp"])
+def test_tnd_resize_rejects_zero_physical_kv_without_mutation(prefix):
+    data = make_kv_resize_case("TND", prefix=prefix)
+    before = dict(data["op_input"])
+    transformer = object.__new__(BatchCaseTransformer)
+    with pytest.raises(InvalidTransformError, match="zero physical token dimension"):
+        transformer._set_kv_lengths(data, prefix, [0])
+    assert all(data["op_input"][key] is value for key, value in before.items())
+
+
+def test_tnd_resize_keeps_mixed_zero_and_nonzero_lengths():
+    data = make_kv_resize_case("TND", batch_size=2)
+    original = data["op_input"]["ori_kv"].clone()
+    object.__new__(BatchCaseTransformer)._set_kv_lengths(data, "ori", [0, 3])
+    tensors = data["op_input"]
+    assert torch.equal(tensors["ori_kv"], original[4:7])
+    assert tensors["cu_seqlens_ori_kv"].tolist() == [0, 0, 3]
+    assert tensors["seqused_ori_kv"].tolist() == [0, 3]
+
+
+@pytest.mark.parametrize("layout", ["BSND", "PA_BBND"])
+def test_zero_logical_kv_preserves_nonzero_physical_storage(layout):
+    data = make_kv_resize_case(layout)
+    original = data["op_input"]["ori_kv"].clone()
+    object.__new__(BatchCaseTransformer)._set_kv_lengths(data, "ori", [0])
+    assert torch.equal(data["op_input"]["ori_kv"], original)
+    assert data["op_input"]["seqused_ori_kv"].tolist() == [0]
+
+
+def test_absent_optional_cmp_remains_none():
+    data = make_kv_resize_case("TND", prefix="cmp")
+    data["op_input"]["cmp_kv"] = None
+    object.__new__(BatchCaseTransformer)._set_kv_lengths(data, "cmp", [0])
+    assert data["op_input"]["cmp_kv"] is None
 
 
 def make_unbounded_swa_case(q_length, ori_length):

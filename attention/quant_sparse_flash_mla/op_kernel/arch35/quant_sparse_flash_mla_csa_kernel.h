@@ -647,7 +647,12 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Proc
                 if constexpr (IS_BATCH_CONSISTENCY) {
                     int64_t safeBaseBlockNum =
                         runParam.baseBlockNumPerReductionBlock > 0 ? runParam.baseBlockNumPerReductionBlock : 1LL;
-                    if (runParam.isCrossCoreSplit && (s2LoopCount % safeBaseBlockNum == 0)) {
+                    int64_t reductionLoopCount = s2LoopCount;
+                    if (s2LoopCount >= runParam.oriKvLoopEndIdx) {
+                        reductionLoopCount +=
+                            (safeBaseBlockNum - runParam.oriKvLoopEndIdx % safeBaseBlockNum) % safeBaseBlockNum;
+                    }
+                    if (runParam.isCrossCoreSplit && (reductionLoopCount % safeBaseBlockNum == 0)) {
                         runParam.s2SplitIdx = s2SplitIdxCounter++;
                     }
                 }
@@ -855,12 +860,20 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::SetR
     runInfo.isCrossCoreSplit = runParam.isCrossCoreSplit;
     runInfo.s2SplitIdx = runParam.s2SplitIdx;
     runInfo.isFirstS2SplitCore = runParam.isFirstS2SplitCore;
-    int64_t baseBlockIdInReduceBlock = s2LoopCount % runParam.baseBlockNumPerReductionBlock;
-    runInfo.reduceBlockId = s2LoopCount / runParam.baseBlockNumPerReductionBlock;
+    int64_t reductionLoopCount = s2LoopCount;
+    if constexpr (IS_BATCH_CONSISTENCY) {
+        if (s2LoopCount >= runParam.oriKvLoopEndIdx) {
+            int64_t block = runParam.baseBlockNumPerReductionBlock;
+            reductionLoopCount += (block - runParam.oriKvLoopEndIdx % block) % block;
+        }
+    }
+    int64_t baseBlockIdInReduceBlock = reductionLoopCount % runParam.baseBlockNumPerReductionBlock;
+    runInfo.reduceBlockId = reductionLoopCount / runParam.baseBlockNumPerReductionBlock;
     runInfo.isFirstBase = baseBlockIdInReduceBlock == 0;
     runInfo.isLastBase =
         runParam.baseBlockNumPerReductionBlock - baseBlockIdInReduceBlock == 1LL || s2LoopCount == s2LoopLimit;
     if constexpr (IS_BATCH_CONSISTENCY) {
+        runInfo.isLastBase = runInfo.isLastBase || s2LoopCount + 1 == runParam.oriKvLoopEndIdx;
         runInfo.isFirstReduce = baseBlockIdInReduceBlock == 1;
     } else {
         runInfo.isFirstReduce = runInfo.s2LoopCount == 1;

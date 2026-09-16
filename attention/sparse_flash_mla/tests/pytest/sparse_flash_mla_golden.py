@@ -756,6 +756,9 @@ class GeneralizedSFA:
         s2_sparse = list()
         if cur_cmp_act_kv is None:
             cur_cmp_act_kv = math.floor(restored_cmp_act_kv / cmp_ratio)
+        # Actual lengths arrive as scalar tensors; read this integer once so
+        # the per-index bounds check does not launch a tensor comparison.
+        cur_cmp_act_kv = int(cur_cmp_act_kv)
         threshold = 0
         if mask_mode == 3:
             threshold = math.floor(
@@ -769,8 +772,10 @@ class GeneralizedSFA:
         if topk_length_bnsd != None:
             valid_count = min(topk_length_bnsd[i_B, 0, i_S1, 0], valid_count)
 
+        # Read integer indices once; preserve order and the first -1 terminator.
+        topk_values = topk_id.tolist()
         for i_valid in range(valid_count):
-            cur_topk_id = topk_id[i_valid]
+            cur_topk_id = topk_values[i_valid]
 
             if cur_topk_id == -1:
                 break
