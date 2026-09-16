@@ -44,6 +44,24 @@ bool QuantFlashAttnMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     cuSeqlensKv_ = ctx.Input(static_cast<uint32_t>(ParamId::cuSeqlensKv));
     sequsedQ_ = ctx.Input(static_cast<uint32_t>(ParamId::sequsedQ));
     sequsedKv_ = ctx.Input(static_cast<uint32_t>(ParamId::sequsedKv));
+    // Optional placeholders can have a non-null address but zero-sized shape.
+    // Normalize every invocation so all later presence checks agree.
+    for (Tensor **slot : {&sequsedQ_, &sequsedKv_}) {
+        Tensor *tensor = *slot;
+        if (tensor == nullptr) {
+            continue;
+        }
+        auto shape = tensor->GetTensorShape();
+        bool empty = tensor->GetData() == nullptr;
+        if (shape != nullptr) {
+            for (int32_t axis = 0; axis < shape->GetDims(); ++axis) {
+                empty = empty || shape->GetDimSize(axis) == 0;
+            }
+        }
+        if (empty) {
+            *slot = nullptr;
+        }
+    }
     metaData_ = ctx.Output(static_cast<uint32_t>(ParamId::metaData));
 
     bool requiredAttrs =
@@ -138,11 +156,31 @@ bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
             KERNEL_LOG_ERROR("QuantFAG TND requires both cumulative sequence tensors");
             return false;
         }
+        if (cuSeqlensQ_->GetDataType() != DT_INT32 || cuSeqlensKv_->GetDataType() != DT_INT32 ||
+            cuSeqlensQ_->GetTensorShape() == nullptr || cuSeqlensKv_->GetTensorShape() == nullptr ||
+            cuSeqlensQ_->GetTensorShape()->GetDims() != 1 || cuSeqlensKv_->GetTensorShape()->GetDims() != 1) {
+            KERNEL_LOG_ERROR("QuantFAG TND cu_seqlens must be rank 1 int32 tensors");
+            return false;
+        }
         const int64_t count = cuSeqlensQ_->GetTensorShape()->GetDimSize(0);
         if (count < 2 || cuSeqlensKv_->GetTensorShape()->GetDimSize(0) != count ||
             (batchSize_ > 0 && batchSize_ != count - 1)) {
             KERNEL_LOG_ERROR("QuantFAG TND cumulative sequence shape/batch mismatch");
             return false;
+        }
+        // Missing optional inputs may be represented by Tensor objects with null data.
+        for (auto used : {sequsedQ_, sequsedKv_}) {
+            if (used != nullptr && used->GetData() != nullptr && (used->GetDataType() != DT_INT32 ||
+                used->GetTensorShape() == nullptr || used->GetTensorShape()->GetDims() != 1 ||
+                used->GetTensorShape()->GetDimSize(0) != count - 1)) {
+                auto shape = used->GetTensorShape();
+                KERNEL_LOG_ERROR("QuantFAG TND seqused_%s invalid: dtype=%d rank=%ld dim0=%ld expected_B=%ld data_present=%d",
+                                 used == sequsedQ_ ? "q" : "kv", static_cast<int>(used->GetDataType()),
+                                 shape == nullptr ? -1L : static_cast<int64_t>(shape->GetDims()),
+                                 shape == nullptr || shape->GetDims() == 0 ? -1L : shape->GetDimSize(0),
+                                 count - 1, used->GetData() != nullptr ? 1 : 0);
+                return false;
+            }
         }
         auto qSeq = GetTensorDataAsInt64(cuSeqlensQ_, count);
         auto kvSeq = GetTensorDataAsInt64(cuSeqlensKv_, count);
@@ -153,6 +191,17 @@ bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
         for (int64_t i = 1; i < count; ++i) {
             if (qSeq[i] <= qSeq[i - 1] || kvSeq[i] <= kvSeq[i - 1]) {
                 KERNEL_LOG_ERROR("QuantFAG TND requires positive sequence lengths");
+                return false;
+            }
+        }
+        for (int64_t i = 0; i < count - 1; ++i) {
+            const int64_t qUsed = sequsedQ_ == nullptr || sequsedQ_->GetData() == nullptr ? qSeq[i + 1] - qSeq[i] :
+                static_cast<const int32_t *>(sequsedQ_->GetData())[i];
+            const int64_t kvUsed = sequsedKv_ == nullptr || sequsedKv_->GetData() == nullptr ? kvSeq[i + 1] - kvSeq[i] :
+                static_cast<const int32_t *>(sequsedKv_->GetData())[i];
+            if (qUsed <= 0 || qUsed > qSeq[i + 1] - qSeq[i] ||
+                kvUsed <= 0 || kvUsed > kvSeq[i + 1] - kvSeq[i]) {
+                KERNEL_LOG_ERROR("QuantFAG TND seqused must be positive and within each cu_seqlens segment");
                 return false;
             }
         }

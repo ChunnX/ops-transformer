@@ -256,14 +256,16 @@ cann_ops_transformer.quant_flash_attn_grad(
 
 ### TND 与 mask 0/3/4
 
-- 支持 TND、N1 = N2、D = Dv = 128、quant_mode = 0 的确定性 swizzle；out 和梯度为 BF16，不叠加 seqused、sinks 等可选功能。
+- 支持 TND、N1 = N2、D = Dv = 128、quant_mode = 0 的确定性 swizzle；out 和梯度为 BF16，可叠加单侧或双侧 seqused，不叠加 sinks 等其他可选功能。
 - Q/dO/out/dQ 为 `[Tq, N, D]`，K/V/dK/dV 为 `[Tkv, N, D]`，LSE 为 `[N, Tq]`。两侧 cu_seqlens 必须为 int32 `[B + 1]` Tensor，前导 0，严格递增，末项等于对应总 token 数；不支持零长度。
 - mask 0 不传 attn_mask；mask 3/4 传标准 `[2048, 2048]` int8 压缩上三角 mask。右下对齐使用各 batch 局部长度：mask 3 保留 `j <= i + Lkv - Lq`；mask 4 保留中心 `i + Lkv - Lq` 两侧窗口内的位置，某侧窗口为 `-1` 表示不限窗。mask 0/3 两侧窗口必须为 `-1`。
-- metadata 使用相同 cu_seqlens、布局、head 数、mask 和窗口，设置 `is_grad_enabled=True`；反向行最小容量为 `17 + 9 * B`，使用 ABI v2，核数与主 kernel 一致。
+- metadata 使用相同 cu_seqlens、seqused_q/kv（包括未传侧）、布局、head 数、mask 和窗口，设置 `is_grad_enabled=True`；反向行最小容量为 `17 + 9 * B`，使用 ABI v2，核数与主 kernel 一致。
+
+- TND 的 `seqused_q/kv` 为可选 int32 `[B]` Tensor，每项满足 `0 < used[b] <= cu[b+1] - cu[b]`。cu 保持物理分段和地址起点，used 仅限定该段有效前缀；未传的一侧使用物理段长度。mask 3/4 按两侧有效长度对齐，输出仍保持物理 Tq/Tkv 形状，无效后缀梯度为 0。
 
 ### seqused 与 mask 3/4
 
-- 本轮适配范围为 BSND/BNSD、Q_N = KV_N（N1 = N2）的确定性计算。输入仍按 padded 形状存储；TND 不支持叠加 seqused，使用本节接口时 `cu_seqlens_q` 和 `cu_seqlens_kv` 必须为 `None`。
+- 本轮适配范围为 BSND/BNSD、Q_N = KV_N（N1 = N2）的确定性计算。输入仍按 padded 形状存储；本节描述 padded 接口，使用本节接口时 `cu_seqlens_q` 和 `cu_seqlens_kv` 必须为 `None`。
 - `seqused_q` 和 `seqused_kv` 是连续的 int32 Tensor，形状为 `[B]`。每项满足 `0 < seqused_q[b] <= Q_S`、`0 < seqused_kv[b] <= KV_S`；零长度暂不支持。可以只传一侧，未传一侧使用该侧 padded 序列长度。
 - 记当前 batch 的有效长度为 `Lq`、`Lkv`，Q/KV 索引为 `i`、`j`。mask 3 保留 `j <= i + Lkv - Lq`；mask 4 保留 `i + Lkv - Lq - win_left <= j <= i + Lkv - Lq + win_right`，并裁剪到有效长度范围。mask 4 的某侧窗口为 `-1` 表示该侧不限窗；mask 0/3 的两侧窗口必须为 `-1`。
 - 每次调用前，用相同的 seqused、batch、头数、layout、`mask_mode` 和窗口生成 metadata，并设置 `is_grad_enabled=True`。metadata 接口的 `max_seqlen_q/kv` 传 padded 长度；反向主接口的同名参数保持 `-1`。

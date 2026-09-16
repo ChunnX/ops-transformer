@@ -235,19 +235,21 @@ def meta_get(const_info, tensor_metadata, idx):
 
 def get_actual_s1_len(const_info, tensor_seq_q, b_idx):
     """batch b_idx 的实际 Q 长度; 非 seqused 场景即定长 s1。"""
-    if layout == 2:
-        return pl.getval(tensor_seq_q, b_idx + 1) - pl.getval(tensor_seq_q, b_idx)
+    # tensor_seq carries used lengths when present; otherwise TND cu offsets.
     if has_seq_used_q == 1:
         return pl.getval(tensor_seq_q, b_idx)
+    if layout == 2:
+        return pl.getval(tensor_seq_q, b_idx + 1) - pl.getval(tensor_seq_q, b_idx)
     return const_info.s1_size
 
 
 def get_actual_s2_len(const_info, tensor_seq_kv, b_idx):
     """batch b_idx 的实际 KV 长度; 非 seqused 场景即定长 s2。"""
-    if layout == 2:
-        return pl.getval(tensor_seq_kv, b_idx + 1) - pl.getval(tensor_seq_kv, b_idx)
+    # tensor_seq carries used lengths when present; otherwise TND cu offsets.
     if has_seq_used_kv == 1:
         return pl.getval(tensor_seq_kv, b_idx)
+    if layout == 2:
+        return pl.getval(tensor_seq_kv, b_idx + 1) - pl.getval(tensor_seq_kv, b_idx)
     return const_info.s2_size
 
 
@@ -407,7 +409,63 @@ def init_sfmg_workspace(const_info, tensor_info):
                     )
 
 
+def presfmg_quant_tnd_used_hif8(const_info, tensor_info):
+    """Compute SFMG only within each packed batch's effective Q prefix."""
+    with pl.section_vector():
+        init_dq_workspace(const_info, tensor_info)
+        # Enumerate batch-local chunks using a tiling-derived bound. A chunk
+        # never spans a cu boundary or reads the unused suffix of a batch.
+        # Cache individual fields before the loop to avoid carrying TupleType.
+        chunks_per_head = ceil(const_info.s1_size, TS)
+        head_count = const_info.n1_size
+        task_count = const_info.b_size * head_count * chunks_per_head
+        core_id = const_info.core_id_vec
+        core_count = const_info.sfmg_used_core_num
+        cu_q = tensor_info.tensor_cu_q
+        used_q = tensor_info.tensor_seq_q
+        attn_out = tensor_info.tensor_attn_out
+        dy = tensor_info.tensor_do
+        sfmg = tensor_info.tensor_workspace_sfmg
+        deq_scale_do_value = pl.getval(tensor_info.tensor_do_descale, 0)
+        y_tile = pl.make_tile_group(
+            type=pl.TileType(shape=[TS, D_SIZE], dtype=pl.DT_BF16,
+                             target_memory=pl.MemorySpace.Vec),
+            addrs=VA0_PRE, mutex_ids=[0, 1])
+        dx_tile = pl.make_tile_group(
+            type=pl.TileType(shape=[TS, D_SIZE], dtype=pl.DT_HF8,
+                             target_memory=pl.MemorySpace.Vec),
+            addrs=VA1_PRE, mutex_ids=[2, 3])
+        out_tile = pl.make_tile_group(
+            type=pl.TileType(shape=[1, TS], dtype=pl.DT_FP32,
+                             target_memory=pl.MemorySpace.Vec),
+            addrs=VA2_PRE, mutex_ids=[4, 5])
+        if core_id < core_count:
+            for task in pl.range(core_id, task_count, core_count):
+                local_q = (task % chunks_per_head) * TS
+                batch_head = task // chunks_per_head
+                batch_id = batch_head // head_count
+                head_id = batch_head % head_count
+                effective_q = pl.getval(used_q, batch_id)
+                if local_q < effective_q:
+                    rows = min(TS, effective_q - local_q)
+                    global_q = pl.getval(cu_q, batch_id) + local_q
+                    y_vec = y_tile.next()
+                    dx_vec = dx_tile.next()
+                    out_vec = out_tile.next()
+                    pl.set_validshape(y_vec, [rows, D_SIZE])
+                    pl.set_validshape(dx_vec, [rows, D_SIZE])
+                    pl.load(y_vec, attn_out, [0, global_q, head_id, 0], order=[1, 3])
+                    pl.load(dx_vec, dy, [0, global_q, head_id, 0], order=[1, 3])
+                    anti_quant_softmax_grad_front_cast_hif8_vf(
+                        rows, deq_scale_do_value, y_vec, dx_vec, out_vec)
+                    pl.set_validshape(out_vec, [1, rows])
+                    pl.store(sfmg, out_vec, [0, head_id, global_q], order=[1, 2])
+
+
 def presfmg_quant_inner_hif8(const_info, tensor_info):
+    if layout == 2 and has_seq_used_q == 1:
+        presfmg_quant_tnd_used_hif8(const_info, tensor_info)
+        return
     with pl.section_vector():
         init_dq_workspace(const_info, tensor_info)
         n_burst = const_info.single_loop_nburst_num
@@ -1554,8 +1612,8 @@ def set_run_info(
     run_info.kv_start = 0
     if layout == 2:
         run_info.gm_batch_id = 0
-        run_info.q_start = pl.getval(tensor_info.tensor_seq_q, run_info.batch_id)
-        run_info.kv_start = pl.getval(tensor_info.tensor_seq_kv, run_info.batch_id)
+        run_info.q_start = pl.getval(tensor_info.tensor_cu_q, run_info.batch_id)
+        run_info.kv_start = pl.getval(tensor_info.tensor_cu_kv, run_info.batch_id)
 
     run_info.task_id = task_id
     run_info.task_id_mod2 = task_id % 2
@@ -3452,26 +3510,30 @@ def quant_flash_attn_grad(
         if sparse_type != 0 or layout == 2:
             pl.pto_assert(pl.getval(tensor_metadata, tiling.metadata_len + META_SCHEDULE_VERSION_IDX) == 2,
                           "QuantFAG: sparse seqused requires metadata ABI v2")
-    # seqused 未使用时不能对空指针建 tensor, 这里退化成指向 metadata, 取值路径已由
-    # 编译期 has_seq_used_* 分支消掉。
+    # Physical packed starts and effective lengths have separate tensor views.
+    # Missing inputs use metadata as an unused, non-null placeholder.
     if layout == 2:
-        tensor_seq_q = pl.make_tensor(cu_seqlens_q, [tiling.b + 1], [1], dtype=pl.DT_INT32)
-    elif has_seq_used_q == 1:
+        tensor_cu_q = pl.make_tensor(cu_seqlens_q, [tiling.b + 1], [1], dtype=pl.DT_INT32)
+        tensor_cu_kv = pl.make_tensor(cu_seqlens_kv, [tiling.b + 1], [1], dtype=pl.DT_INT32)
+    else:
+        tensor_cu_q = tensor_metadata
+        tensor_cu_kv = tensor_metadata
+    if has_seq_used_q == 1:
         tensor_seq_q = pl.make_tensor(seqused_q, [tiling.b], [1], dtype=pl.DT_INT32)
+    elif layout == 2:
+        tensor_seq_q = tensor_cu_q
     else:
         tensor_seq_q = tensor_metadata
-    if layout == 2:
-        tensor_seq_kv = pl.make_tensor(cu_seqlens_kv, [tiling.b + 1], [1], dtype=pl.DT_INT32)
-    elif has_seq_used_kv == 1:
-        tensor_seq_kv = pl.make_tensor(
-            seqused_kv, [tiling.b], [1], dtype=pl.DT_INT32
-        )
+    if has_seq_used_kv == 1:
+        tensor_seq_kv = pl.make_tensor(seqused_kv, [tiling.b], [1], dtype=pl.DT_INT32)
+    elif layout == 2:
+        tensor_seq_kv = tensor_cu_kv
     else:
         tensor_seq_kv = tensor_metadata
     if layout == 2:
-        pl.pto_assert(pl.getval(tensor_seq_q, tiling.b) == tiling.t1,
+        pl.pto_assert(pl.getval(tensor_cu_q, tiling.b) == tiling.t1,
                       "QuantFAG: TND query cumulative end does not match Tq")
-        pl.pto_assert(pl.getval(tensor_seq_kv, tiling.b) == tiling.t2,
+        pl.pto_assert(pl.getval(tensor_cu_kv, tiling.b) == tiling.t2,
                       "QuantFAG: TND KV cumulative end does not match Tkv")
     tensor_attn_mask = pl.make_tensor(
         attn_mask,
@@ -4115,6 +4177,8 @@ def quant_flash_attn_grad(
         mutex_ids=[2, 3],
     )
     tensor_info = pl.make_tuple(
+        tensor_cu_q=tensor_cu_q,
+        tensor_cu_kv=tensor_cu_kv,
         tensor_seq_q=tensor_seq_q,
         tensor_seq_kv=tensor_seq_kv,
         tensor_workspace_sfmg_flat=tensor_workspace_sfmg_flat,

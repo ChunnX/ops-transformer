@@ -105,9 +105,6 @@ static ge::graphStatus ValidateTnd(gert::TilingContext *context, const string &o
     OP_CHECK_IF(lse == nullptr || lse->GetStorageShape().GetDimNum() != 2 ||
                     lse->GetStorageShape().GetDim(0) != dims[0][1] || lse->GetStorageShape().GetDim(1) != dims[0][0],
                 OP_LOGE(opName, "TND LSE must have shape [N,Tq]."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context->GetOptionalInputDesc(SEQUSED_Q) != nullptr ||
-                    context->GetOptionalInputDesc(SEQUSED_KV) != nullptr,
-                OP_LOGE(opName, "TND does not support seqused."), return ge::GRAPH_FAILED);
     auto mode = context->GetAttrs()->GetAttrPointer<int64_t>(MASK_MODE);
     auto quant = context->GetAttrs()->GetAttrPointer<int64_t>(QUANT_MODE_IDX);
     OP_CHECK_IF((mode != nullptr && *mode != 0 && *mode != 3 && *mode != 4) || (quant != nullptr && *quant != 0),
@@ -212,13 +209,18 @@ static ge::graphStatus ValidateRequiredInputs(gert::TilingContext *context, cons
     OP_CHECK_IF(softmaxLseDesc == nullptr, OP_LOGE(opName, "softmaxLse must be provided."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(!IsTnd(context) && cuSeqlensQDesc != nullptr, OP_LOGE(opName, "cuSeqlensQ not support."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(!IsTnd(context) && cuSeqlensKVDesc != nullptr, OP_LOGE(opName, "cuSeqlensKV not support."), return ge::GRAPH_FAILED);
-    // sequsedQ/sequsedKV 表示每 batch 实际使用的序列长度, layout 仍为定长 padded BSND/BNSD。
+    if (IsTnd(context) && ValidateTnd(context, opName) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    // sequsedQ/sequsedKV describe the effective prefix of each padded or packed batch segment.
     // 具体的 varlen 分核由 quant_flash_attn_metadata 算子在 device 侧计算后经 metadata 下发。
     if (sequsedQDesc != nullptr || sequsedKVDesc != nullptr) {
         auto queryShape = context->GetInputShape(QUERY_IDX);
-        OP_CHECK_IF(queryShape == nullptr || queryShape->GetStorageShape().GetDimNum() != 4,
-                    OP_LOGE(opName, "seqused requires a rank 4 padded BSND/BNSD query."), return ge::GRAPH_FAILED);
-        const int64_t batchSize = queryShape->GetStorageShape().GetDim(0);
+        OP_CHECK_IF(queryShape == nullptr || queryShape->GetStorageShape().GetDimNum() != (IsTnd(context) ? 3 : 4),
+                    OP_LOGE(opName, "seqused requires query rank matching TND or padded layout."), return ge::GRAPH_FAILED);
+        const int64_t batchSize = IsTnd(context) ?
+            context->GetOptionalInputShape(CU_SEQLENS_Q)->GetStorageShape().GetDim(0) - 1 :
+            queryShape->GetStorageShape().GetDim(0);
         if (ValidateSequsedInput(context, opName, SEQUSED_Q, batchSize) != ge::GRAPH_SUCCESS ||
             ValidateSequsedInput(context, opName, SEQUSED_KV, batchSize) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
@@ -232,12 +234,9 @@ static ge::graphStatus ValidateRequiredInputs(gert::TilingContext *context, cons
                 OP_LOGE(opName, "metadata must have int32 dtype."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(metadataShape->GetStorageShape().GetDimNum() != 2,
                 OP_LOGE(opName, "metadata must have rank 2."), return ge::GRAPH_FAILED);
-    if (IsTnd(context) && ValidateTnd(context, opName) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
     int64_t requiredMetadataRowSize = IsTnd(context) ?
         17 + 9 * (context->GetOptionalInputShape(CU_SEQLENS_Q)->GetStorageShape().GetDim(0) - 1) : 16;
-    if (sequsedQDesc != nullptr || sequsedKVDesc != nullptr) {
+    if (!IsTnd(context) && (sequsedQDesc != nullptr || sequsedKVDesc != nullptr)) {
         const int64_t batchSize = context->GetInputShape(QUERY_IDX)->GetStorageShape().GetDim(0);
         const auto maskMode = context->GetAttrs()->GetAttrPointer<int64_t>(MASK_MODE);
         const bool isSparse = maskMode != nullptr && (*maskMode == 3 || *maskMode == 4);
