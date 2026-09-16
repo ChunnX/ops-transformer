@@ -241,7 +241,7 @@ def execute_test(params, mode, cdir=None):
             lse_cmp = (
                 golden.convert_q_bnsd_to_layout(cpu_lse, act_seqused_q, "BNSD")
                 .squeeze(-1)
-                .contiguous()
+                .contiguous())
         return lse_cmp
 
     if golden.USE_FP64_GOLDEN:
