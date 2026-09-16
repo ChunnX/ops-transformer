@@ -91,20 +91,16 @@ def _float32_mul(lhs, rhs) -> float:
     return _float32(_float32(lhs) * _float32(rhs))
 
 
-def fp32_to_my19bit(value) -> torch.Tensor:
-    """Torch equivalent of fp_test_bsa.py's scalar FixPipe-scale model."""
-    tensor = torch.as_tensor(value, dtype=torch.float32).reshape(())
-    bits = tensor.view(torch.int32)
-    # int32 -8192 has the same bit pattern as uint32 0xFFFFE000.
-    mask = torch.tensor(-8192, dtype=torch.int32, device=tensor.device)
-    return torch.bitwise_and(bits, mask).view(torch.float32)
+def make_mm1_dequant_scale(q_scale, k_scale, attention_scale) -> float:
+    """Match ``float q * float k * float attentionScale``.
 
-
-def make_mm1_fixpipe_scale(q_scale, k_scale, attention_scale) -> float:
-    """Match ``float q * float k * float attentionScale`` then FixPipe."""
+    The MM1 FixPipe runs with NO_QUANT so that it can use the hardware
+    dual-destination mode, and the online-softmax epilogue applies this scale on
+    the vector side.  There is therefore no 19-bit scalar truncation any more:
+    the full FP32 product is used.
+    """
     combined = _float32_mul(q_scale, k_scale)
-    combined = _float32_mul(combined, attention_scale)
-    return fp32_to_my19bit(combined).item()
+    return _float32_mul(combined, attention_scale)
 
 
 def quantize_hif8_per_tensor(src: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -471,14 +467,12 @@ def ref_flash_block_sparse_attention_hif8(
     and ``value`` are the selected Y blocks compacted in sparse-index order.
     The inner loops follow the HIF8 kernel base tiles: Q=128 and KV=256.
     """
-    mm1_scale = make_mm1_fixpipe_scale(
+    mm1_scale = make_mm1_dequant_scale(
         q_dequant_scale.reshape(-1)[0],
         k_dequant_scale.reshape(-1)[0],
         attention_scale,
     )
-    mm2_scale = fp32_to_my19bit(
-        _float32(v_dequant_scale.reshape(-1)[0])
-    ).item()
+    mm2_scale = _float32(v_dequant_scale.reshape(-1)[0])
     if use_npu_mmad and (query_hif8 is None or key_hif8 is None):
         raise ValueError("use_npu_mmad requires uint8 query_hif8 and key_hif8 tiles")
     p_scale = _float32(p_quant_scale.reshape(-1)[0])
@@ -525,9 +519,10 @@ def ref_flash_block_sparse_attention_hif8(
                 use_npu_exp=use_npu_exp,
             )
 
-            # BSA FP8 benchmark: 128-wide MM2 accumulation, then V FixPipe.
-            tile_out_raw = _mm2_raw_tiled(p_hif8, v_tile)
-            tile_out = (tile_out_raw * mm2_scale).to(torch.float32)
+            # BSA FP8 benchmark: 128-wide MM2 accumulation. The MM2 FixPipe runs with
+            # NO_QUANT, so UB holds the raw P @ V; the V dequantization is applied by
+            # the rescale-O epilogue on the normalized output (see below).
+            tile_out = _mm2_raw_tiled(p_hif8, v_tile).to(torch.float32)
 
             if debug_stages:
                 print(
@@ -549,7 +544,11 @@ def ref_flash_block_sparse_attention_hif8(
             running_sum = new_sum
             running_max = new_max
 
-        block_out[q_begin:q_end] = running_out / running_sum[:, None]
+        # The device divides the raw running sum by gl and then applies the V dequant
+        # scale as a single vector multiply on the output.
+        block_out[q_begin:q_end] = (
+            running_out / running_sum[:, None] * mm2_scale
+        ).to(torch.float32)
         block_lse[q_begin:q_end] = (
             running_max + torch.log(running_sum) - ln_p_scale
         ).to(torch.float32)
@@ -786,8 +785,8 @@ def run_bsa_hif8_case(
     print(
         "[BSA HIF8 scales] "
         f"q={q_scale.item():.10g} k={k_scale.item():.10g} v={v_scale.item():.10g} "
-        f"mm1Fix={make_mm1_fixpipe_scale(q_scale[0], k_scale[0], attention_scale):.10g} "
-        f"vFix={fp32_to_my19bit(_float32(v_scale[0])).item():.10g}"
+        f"mm1Deq={make_mm1_dequant_scale(q_scale[0], k_scale[0], attention_scale):.10g} "
+        f"vDeq={_float32(v_scale[0]):.10g}"
     )
 
     # The golden uses the same physical AIV Exp implementation as vexpdif;

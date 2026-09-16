@@ -195,8 +195,7 @@ public:
                                       uint32_t gatheredKvSTileIdx, uint32_t kvSeqlen, uint32_t kvSBaseTile,
                                       uint32_t blockShapeY, uint32_t yBlockNumAval, uint32_t yBlockNumRsvd,
                                       uint64_t &l0Stage,
-                                      Arch::CrossCoreFlag smToMm2Flag, Arch::CrossCoreFlag mm2ToReFlag,
-                                      uint64_t deqScalar = 0)
+                                      Arch::CrossCoreFlag smToMm2Flag, Arch::CrossCoreFlag mm2ToReFlag)
     {
         using CopyL0CToDst = typename TileCopy_::template CopyL0CToDst<TensorC>;
 
@@ -307,24 +306,15 @@ public:
                 mFixPAligned = RoundUp(rowNum, 8);
             }
             uint32_t nFixPAligned8 = RoundUp(l0TileNAct, 8);
-            if constexpr (FULL_QUANT_FP8 || FULL_QUANT_HIF8) {
-                CopyL0CToDst copyL0CToDstSub0;
-                CopyL0CToDst copyL0CToDstSub1;
-                uint32_t mPerSubCore = mFixPAligned / 2;
-                auto ubCTensorTlaTile = GetTile(ubCTensor, tla::MakeCoord(0, nL0Itr * L0_TILE_N),
-                                                tla::MakeShape(mPerSubCore, nFixPAligned8));
-                auto l0CTensorTlaTileSub0 =
-                    GetTile(l0CTensorTla, tla::MakeCoord(0, 0), tla::MakeShape(mPerSubCore, l0TileNAct));
-                auto l0CTensorTlaTileSub1 =
-                    GetTile(l0CTensorTla, tla::MakeCoord(mPerSubCore, 0), tla::MakeShape(mPerSubCore, l0TileNAct));
-                copyL0CToDstSub0(ubCTensorTlaTile, l0CTensorTlaTileSub0, deqScalar, false);
-                copyL0CToDstSub1(ubCTensorTlaTile, l0CTensorTlaTileSub1, deqScalar, true);
-            } else {
-                CopyL0CToDst copyL0CToDst;
-                auto ubCTensorTlaTile = GetTile(ubCTensor, tla::MakeCoord(0, nL0Itr * L0_TILE_N),
-                                                tla::MakeShape(mFixPAligned, nFixPAligned8));
-                copyL0CToDst(ubCTensorTlaTile, l0CTensorTla);
-            }
+            // SPLIT_M + NO_QUANT: one dual-destination Fixpipe serves both AIVs, the hardware
+            // writing rows 0..m/2-1 into AIV0 and m/2..m-1 into AIV1 at the same UB offsets
+            // given by ubCTensor's per-AIV stride. The dst shape therefore carries the full M
+            // (it becomes mSize) and the full N of the chunk; the dequantization is done by the
+            // rescale-O epilogue instead of by the Fixpipe.
+            CopyL0CToDst copyL0CToDst;
+            auto ubCTensorTlaTile = GetTile(ubCTensor, tla::MakeCoord(0, nL0Itr * L0_TILE_N),
+                                            tla::MakeShape(mFixPAligned, nFixPAligned8));
+            copyL0CToDst(ubCTensorTlaTile, l0CTensorTla);
             AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
         }
         // crossCoreSync after all fixPipe move

@@ -59,9 +59,10 @@ public:
     static constexpr bool FULL_QUANT_FP8 = AscendC::IsSameType<ElementKV, fp8_e4m3fn_t>::value;
 
     __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource, UBufTileHelper &uBufTileHelper,
-                                    float pScaleValue_ = 1.0f)
+                                    float pScaleValue_ = 1.0f, float vScaleValue_ = 1.0f)
     {
         pScaleValue = pScaleValue_;
+        vScaleValue = vScaleValue_;
         for (uint32_t i = 0; i < UB_OTMP_BUF_STAGES; i++) {
             loUbTensor[i] = resource.ubBuf.template GetBufferByByte<ElementOTmp>(
                 uBufTileHelper.loStartOffset +
@@ -286,6 +287,9 @@ public:
             if constexpr (FULL_QUANT_FP8 && !zNOnlineSoftmax_) {
                 Muls(divVreg, divVreg, MAX_VALUE_RECIPROCAL_FP8, pregTail);
             }
+            if constexpr (FULL_QUANT_HIF8) {
+                Muls(divVreg, divVreg, vScaleValue, pregTail);
+            }
             StoreAlign<ElementOTmp, StoreDist::DIST_NORM_B32>(goUb + i * colStride, divVreg, pregTail);
         }
     }
@@ -327,6 +331,10 @@ public:
                 Muls(divVreg0, divVreg0, MAX_VALUE_RECIPROCAL_FP8, pregFull);
                 Muls(divVreg1, divVreg1, MAX_VALUE_RECIPROCAL_FP8, pregTail);
             }
+            if constexpr (FULL_QUANT_HIF8) {
+                Muls(divVreg0, divVreg0, vScaleValue, pregFull);
+                Muls(divVreg1, divVreg1, vScaleValue, pregTail);
+            }
             StoreAlign<ElementOTmp, StoreDist::DIST_NORM_B32>(goUb + i * colStride, divVreg0, pregFull);
             StoreAlign<ElementOTmp, StoreDist::DIST_NORM_B32>(goUb + i * colStride + vlElemNum, divVreg1, pregTail);
         }
@@ -357,6 +365,9 @@ public:
             if constexpr (FULL_QUANT_FP8 && !zNOnlineSoftmax_) {
                 Muls(divVreg, divVreg, MAX_VALUE_RECIPROCAL_FP8, pregTail);
             }
+            if constexpr (FULL_QUANT_HIF8) {
+                Muls(divVreg, divVreg, vScaleValue, pregTail);
+            }
             StoreAlign<ElementOTmp, StoreDist::DIST_NORM_B32>(goUb + i * colStride, divVreg, pregTail);
         }
     }
@@ -385,6 +396,10 @@ public:
             if constexpr (FULL_QUANT_FP8 && !zNOnlineSoftmax_) {
                 Muls(divVreg0, divVreg0, MAX_VALUE_RECIPROCAL_FP8, pregFull);
                 Muls(divVreg1, divVreg1, MAX_VALUE_RECIPROCAL_FP8, pregTail);
+            }
+            if constexpr (FULL_QUANT_HIF8) {
+                Muls(divVreg0, divVreg0, vScaleValue, pregFull);
+                Muls(divVreg1, divVreg1, vScaleValue, pregTail);
             }
             StoreAlign<ElementOTmp, StoreDist::DIST_NORM_B32>(goUb + i * colStride, divVreg0, pregFull);
             StoreAlign<ElementOTmp, StoreDist::DIST_NORM_B32>(goUb + i * colStride + vlElemNum, divVreg1, pregTail);
@@ -509,6 +524,9 @@ public:
 
 private:
     float pScaleValue{1.0f};
+    // Per-tensor V dequantization scale. Only used for the full-quant HIF8 path, where the MM2
+    // Fixpipe no longer applies it; applied on the normalized output below.
+    float vScaleValue{1.0f};
     AscendC::LocalTensor<ElementOTmp> loUbTensor[UB_OTMP_BUF_STAGES];
     AscendC::LocalTensor<float> gmUbTensor32;
     AscendC::LocalTensor<float> dmUbTensor32[UB_DM_BUF_MAX_STAGES];
