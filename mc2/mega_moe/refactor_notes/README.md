@@ -24,7 +24,7 @@ commit, so that a regression can be attributed to a single step and bisected.
 | —    | `docs(mega_moe): correct CLAUDE.md` | CLAUDE.md correction + this notes scaffold | done |
 | B1   | `refactor(mega_moe): merge A2/A3 BlockMmad` | `utilsA2/block_mmad_preload_async_fixpipe_quant_a2.hpp` → `utils/block_mmad_preload_async_fixpipe_quant.hpp` | done — A2+A3 green |
 | B2   | `refactor(mega_moe): merge SwiGLU epilogues` | `utilsA2/block_epilogue_pertoken_swiglu_a2_{bf16,int8}.hpp` + `utils/block_epilogue_w4a8post_pertoken_swiglu.hpp` → `utils/block_epilogue_pertoken_swiglu.hpp` (4 specialisations → 2) | done — A2+A3 green |
-| B3   | `refactor(mega_moe): merge per-token V2 epilogues` | `utilsA2/block_epilogue_pertoken_v2_{bf16,int8}_a2.hpp` + `utils/block_epilogue_w4a8post_pertoken_v2.hpp` → `utils/block_epilogue_pertoken_v2.hpp` | planned |
+| B3   | `refactor(mega_moe): merge V2 epilogues and unify epilogue numbering` | `utilsA2/block_epilogue_pertoken_v2_{bf16,int8}_a2.hpp` + `utils/block_epilogue_w4a8post_pertoken_v2.hpp` → `utils/block_epilogue_pertoken_v2.hpp` (4 specialisations → 2); also swaps the A3 epilogue numbering so BlockEpilogue2 = V2 on both platforms | done — A2+A3 green |
 | B4   | `chore(mega_moe): drop dead A2 epilogue headers` | remove the unreferenced `utilsA2/block_epilogue_pertoken_row_a2_*.hpp` | planned |
 | B5   | `refactor(mega_moe): unify the three A2 device kernels` | `mega_moe_kernel_a2_{int8,bf16,bf16_w4a8}.hpp` → `mega_moe_kernel_a2.hpp`, `template<..., bool IsInt8, bool IsW4A8>` | planned |
 | B6   | `refactor(mega_moe): merge MegaMoeA2 into MegaMoe` | `mega_moe_a2.h` folded into `mega_moe_arch22.h` as `MegaMoe<..., IS_A2_>`; single entry in `mega_moe.cpp` | planned |

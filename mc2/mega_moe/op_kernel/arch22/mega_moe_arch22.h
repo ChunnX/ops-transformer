@@ -254,10 +254,13 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
     using EpilogueDispatchPolicy1 =
         std::conditional_t<isW4A8, Epilogue::EpilogueAtlasA2W4A8PostPerTokenDequantSwigluQuant<ubStages>,
                            Epilogue::EpilogueAtlasA2PerTokenDequantSwigluQuant<ubStages>>;
-    using EpilogueDispatchPolicy2 = Epilogue::EpilogueAtlasA2PerTokenDequant<ubStages>;
-    using EpilogueDispatchPolicy3 =
+    // BlockEpilogue2 is the V2 (per-token dequant) epilogue on both A2 and A3; BlockEpilogue3 is the
+    // A3-only V1 row combine path. This matches mega_moe_a2.h's numbering, so CombineV1/CombineV2 and
+    // the route-cache wiring in mega_moe_kernel_a3.hpp address the same epilogue on both platforms.
+    using EpilogueDispatchPolicy2 =
         std::conditional_t<isW4A8, Epilogue::EpilogueAtlasA2W4A8PostPerTokenDequantV2<ubStages>,
                            Epilogue::EpilogueAtlasA2PerTokenDequantV2<ubStages>>;
+    using EpilogueDispatchPolicy3 = Epilogue::EpilogueAtlasA2PerTokenDequant<ubStages>;
 
     using ScaleType = Gemm::GemmType<uint64_t, layout::VectorLayout>;
     using PerTokenScaleType = Gemm::GemmType<float, layout::VectorLayout>;
@@ -270,12 +273,18 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
 
     using TileCopy2 = Epilogue::Tile::TileCopy<ArchTag, CType, ScaleType, PerTokenScaleType, D2Type>;
     using IS_A2 = Epilogue::Block::IS_A2_T<IS_A2_>;
-    using BlockEpilogue2 =
-        Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy2, CType, PerTokenScaleType, D2Type, TileCopy2>;
-    using BlockEpilogue3 = std::conditional_t<
+    // W4A8 uses the pre-existing platform tag (no per-token dequant); the standard V2 path is tagged
+    // with PerTokenV2Tag<IS_A2, isInt8>, which selects the dequant/non-dequant overload set.
+    using PlatformTag = Epilogue::Block::IS_A2_T<IS_A2_>;
+    using PerTokenV2Tag = Epilogue::Block::PerTokenV2Tag<IS_A2_, isInt8>;
+    using BlockEpilogue2 = std::conditional_t<
         isW4A8,
-        Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy3, CType, PerTokenScaleType, D2Type, TileCopy2, IS_A2>,
-        Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy3, CType, PerTokenScaleType, D2Type, TileCopy2, IS_A2>>;
+        Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy2, CType, PerTokenScaleType, D2Type, TileCopy2,
+                                       PlatformTag>,
+        Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy2, CType, PerTokenScaleType, D2Type, TileCopy2,
+                                       PerTokenV2Tag>>;
+    using BlockEpilogue3 =
+        Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy3, CType, PerTokenScaleType, D2Type, TileCopy2>;
 
     using BlockScheduler = typename Gemm::Block::GemmIdentityBlockSwizzle<9, 1>;
     using ElementGroupList = int64_t;

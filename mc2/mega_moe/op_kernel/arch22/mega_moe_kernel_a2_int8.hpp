@@ -27,7 +27,7 @@
 #include "utils/block_mmad_preload_async_fixpipe_quant.hpp"
 #include "utils/copy_gm_to_l1_custom.hpp"
 #include "utils/block_epilogue_pertoken_swiglu.hpp"
-#include "utilsA2/block_epilogue_pertoken_v2_int8_a2.hpp"
+#include "utils/block_epilogue_pertoken_v2.hpp"
 #include "utils/hccl_shmem.hpp"
 #include "utils/const_args.hpp"
 #include "utils/layout3d.hpp"

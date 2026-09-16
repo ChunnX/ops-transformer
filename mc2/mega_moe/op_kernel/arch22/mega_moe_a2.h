@@ -45,11 +45,7 @@ using namespace AscendC;
 #include "utils/dispatch_policy_custom.hpp"
 #include "mc2_moe_context.h"
 
-// A2 epilogue utils (V2 variants for CombineV2, SwiGLU variants for GMM1 epilogue)
-#include "utilsA2/block_epilogue_pertoken_v2_int8_a2.hpp"
-#include "utilsA2/block_epilogue_pertoken_v2_bf16_a2.hpp"
-#include "utils/block_epilogue_w4a8post_pertoken_v2.hpp"
-
+// A2 epilogue utils (V2 for CombineV2, SwiGLU for the GMM1 epilogue). A2 and A3 now share both.
 #include "utils/block_epilogue_pertoken_swiglu.hpp"
 #include "utils/block_epilogue_pertoken_v2.hpp"
 // A2 kernel
@@ -272,10 +268,11 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
         std::conditional_t<isW4A8, Epilogue::EpilogueAtlasA2W4A8PostPerTokenDequantSwigluQuant<ubStages>,
                            Epilogue::EpilogueAtlasA2PerTokenDequantSwigluQuant<ubStages>>;
 
+    // As with the SwiGLU epilogue, the A2-only V2Int8/V2BF16 variants were duplicates of the two
+    // overload sets of EpilogueAtlasA2PerTokenDequantV2, selected by PerTokenV2Tag<IS_A2, isInt8>.
     using EpilogueDispatchPolicy2 =
         std::conditional_t<isW4A8, Epilogue::EpilogueAtlasA2W4A8PostPerTokenDequantV2<ubStages>,
-                           std::conditional_t<isInt8, Epilogue::EpilogueAtlasA2PerTokenDequantV2Int8<ubStages>,
-                                              Epilogue::EpilogueAtlasA2PerTokenDequantV2BF16<ubStages>>>;
+                           Epilogue::EpilogueAtlasA2PerTokenDequantV2<ubStages>>;
 
     using ScaleType = Gemm::GemmType<uint64_t, layout::VectorLayout>;
     using PerTokenScaleType = Gemm::GemmType<float, layout::VectorLayout>;
@@ -288,10 +285,14 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
 
     using TileCopy2 = Epilogue::Tile::TileCopy<ArchTag, CType, ScaleType, PerTokenScaleType, D2Type>;
     using IS_A2 = Epilogue::Block::IS_A2_T<IS_A2_>;
+    using PlatformTag = Epilogue::Block::IS_A2_T<IS_A2_>;
+    using PerTokenV2Tag = Epilogue::Block::PerTokenV2Tag<IS_A2_, isInt8>;
     using BlockEpilogue2 = std::conditional_t<
         isW4A8,
-        Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy2, CType, PerTokenScaleType, D2Type, TileCopy2, IS_A2>,
-        Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy2, CType, PerTokenScaleType, D2Type, TileCopy2>>;
+        Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy2, CType, PerTokenScaleType, D2Type, TileCopy2,
+                                       PlatformTag>,
+        Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy2, CType, PerTokenScaleType, D2Type, TileCopy2,
+                                       PerTokenV2Tag>>;
 
     using BlockScheduler = typename Gemm::Block::GemmIdentityBlockSwizzle<9, 1>;
     using ElementGroupList = int64_t;
