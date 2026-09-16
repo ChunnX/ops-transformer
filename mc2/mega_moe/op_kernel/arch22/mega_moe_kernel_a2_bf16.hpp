@@ -26,7 +26,7 @@
 
 #include "utils/block_mmad_preload_async_fixpipe_quant.hpp"
 #include "utils/copy_gm_to_l1_custom.hpp"
-#include "utilsA2/block_epilogue_pertoken_swiglu_a2_bf16.hpp"
+#include "utils/block_epilogue_pertoken_swiglu.hpp"
 #include "utilsA2/block_epilogue_pertoken_v2_bf16_a2.hpp"
 #include "utils/hccl_shmem.hpp"
 #include "utils/const_args.hpp"
@@ -1302,7 +1302,7 @@ private:
                 LayoutC layoutC{dequantSum1, params.gmmOutPreRowStride};
                 int64_t gmOffsetC = layoutC.GetOffset(offsetC);
                 int64_t gmOffsetD = params.layoutD1.GetOffset(offsetC);
-                blockEpilogue1(gmC[gmOffsetC], shapeC, gmPermutedToken[gmOffsetD], params.epilogueCoreNum,
+                blockEpilogue1(gmC[gmOffsetC], shapeC, gmPermutedToken[gmOffsetD], resource, params.epilogueCoreNum,
                                params.swigluLimit, params.activationCode, params.activationParams1,
                                params.activationParams2, params.gmmOutPreRowStride);
             }
@@ -1323,9 +1323,9 @@ private:
                     LayoutC layoutC{dequantLen, params.gmmOutPreRowStride};
                     int64_t gmOffsetC = layoutC.GetOffset(offsetC);
                     int64_t gmOffsetD = params.layoutD1.GetOffset(offsetC);
-                    blockEpilogue1(gmC[gmOffsetC], shapeC, gmPermutedToken[gmOffsetD], coreNum, params.swigluLimit,
-                                   params.activationCode, params.activationParams1, params.activationParams2,
-                                   params.gmmOutPreRowStride);
+                    blockEpilogue1(gmC[gmOffsetC], shapeC, gmPermutedToken[gmOffsetD], resource, coreNum,
+                                   params.swigluLimit, params.activationCode, params.activationParams1,
+                                   params.activationParams2, params.gmmOutPreRowStride);
                 }
                 AscendC::SyncAll<true>();
                 // Synchronization signal: SwiGLU notifies GMM2 [2]
