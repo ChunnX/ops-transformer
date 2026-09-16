@@ -30,23 +30,32 @@ using namespace AscendC;
 
 constexpr uint32_t UINT64_BYTE_OFFSET_SHIFT = 3U;
 
-__aicore__ inline __gm__ int32_t *GetMteSyncCountAddress(GM_ADDR rankSyncBase, uint32_t physicalAivIndex)
+__aicore__ inline __gm__ int32_t *GetSyncCountAddress(GM_ADDR rankSyncBase, uint32_t aivCoreIdx)
 {
     return reinterpret_cast<__gm__ int32_t *>(rankSyncBase + RANK_SYNC_COUNTER_OFFSET_BYTES +
-                                              static_cast<uint64_t>(physicalAivIndex) * RANK_SYNC_COUNTER_SLOT_BYTES);
+                                              static_cast<uint64_t>(aivCoreIdx) * RANK_SYNC_COUNTER_SLOT_BYTES);
+}
+
+// 绕过 DCache 读取指定 AIV 的当前同步计数。
+__aicore__ inline int32_t GetSyncCount(GM_ADDR rankSyncBase, uint32_t aivCoreIdx)
+{
+    return ReadGmBypassDCache(GetSyncCountAddress(rankSyncBase, aivCoreIdx));
 }
 
 // 推进指定物理 AIV 的同步轮次，仅负责计数，不表示量化数据已写回。
-__aicore__ inline void AdvanceMteSyncSequence(GM_ADDR rankSyncBase, uint32_t physicalAivIndex)
+__aicore__ inline void IncrementSyncCount(GM_ADDR rankSyncBase, uint32_t aivCoreIdx)
 {
-    auto *sequenceAddr = GetMteSyncCountAddress(rankSyncBase, physicalAivIndex);
-    uint32_t nextSequence = static_cast<uint32_t>(ReadGmBypassDCache(sequenceAddr)) + 1U;
+    auto *sequenceAddr = GetSyncCountAddress(rankSyncBase, aivCoreIdx);
+    uint32_t nextSequence = static_cast<uint32_t>(GetSyncCount(rankSyncBase, aivCoreIdx)) + 1U;
     WriteGmBypassDCache(sequenceAddr, static_cast<int32_t>(nextSequence));
 }
 
-__aicore__ inline uint32_t GetMteCountEpoch(int32_t sequence)
+__aicore__ inline uint32_t GetSyncRoundTag(int32_t syncCount)
 {
-    return (static_cast<uint32_t>(sequence) & 0x7FU) | 0x80U;
+    // & 0x7F：保留同步计数的低 7 位，用于区分轮次；计数相差 128 时标签相同。
+    // | 0x80：将标签的最高位设为 1，使其落在 [0x80, 0xFF]，避开接收区的零初值。
+    // << 24：将标签放入 count 的高 8 位，低 24 位留给数量；接收时掩出高 8 位直接比较。
+    return ((static_cast<uint32_t>(syncCount) & 0x7FU) | 0x80U) << 24U;
 }
 
 struct WorkRange {
@@ -101,78 +110,6 @@ __simd_callee__ inline void InclusivePrefixSumInt32(__ubuf__ int32_t *values, ui
         AscendC::Reg::Gather(carryReg, prefixReg,
                              reinterpret_cast<AscendC::Reg::RegTensor<uint32_t> &>(shiftedIndexReg));
     }
-}
-
-/*
- * MegaMoe count 表的融合版本：先复用 int32 prefix-scan，再在同一次 VF 中提取每个专家的累计尾值
- * 并作差。相比先调用通用前缀和、再启动第二个 VF，融合实现省去一次 asc_vf_call 和外部流水同步。
- */
-__simd_vf__ inline void ComputeExpertCountTablesVF(__ubuf__ int32_t *count, __ubuf__ int32_t *expertCounts,
-                                                   uint32_t elementCount, uint32_t expertCount, uint32_t worldSize,
-                                                   uint32_t maxOutputSize)
-{
-    InclusivePrefixSumInt32(count, elementCount);
-
-    // prefix 已写回 UB；后续从同一区域 Gather 前建立 VEC_STORE -> VEC_LOAD 可见性。
-    AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
-
-    constexpr uint32_t ELEMENTS_PER_VECTOR = GetVecLen() / sizeof(int32_t);
-    AscendC::Reg::RegTensor<int32_t> expertEndPrefixReg;
-    AscendC::Reg::RegTensor<int32_t> previousEndPrefixReg;
-    AscendC::Reg::RegTensor<int32_t> expertCountReg;
-    AscendC::Reg::RegTensor<int32_t> previousVectorEndReg;
-    AscendC::Reg::RegTensor<int32_t> maxOutputSizeReg;
-    AscendC::Reg::RegTensor<int32_t> laneIndexReg;
-    AscendC::Reg::RegTensor<int32_t> gatherIndexReg;
-    AscendC::Reg::RegTensor<int32_t> previousLaneIndexReg;
-    AscendC::Reg::MaskReg fullMask = AscendC::Reg::CreateMask<int32_t, AscendC::Reg::MaskPattern::ALL>();
-    AscendC::Reg::MaskReg firstLaneMask = AscendC::Reg::CreateMask<int32_t, AscendC::Reg::MaskPattern::VL1>();
-
-    int32_t maxOutputSizeInt32 = static_cast<int32_t>(maxOutputSize);
-    AscendC::Reg::Arange(laneIndexReg, 0);
-    AscendC::Reg::Duplicate(previousVectorEndReg, 0, fullMask);
-    AscendC::Reg::Duplicate(maxOutputSizeReg, maxOutputSizeInt32, fullMask);
-    for (uint32_t expertOffset = 0U; expertOffset < expertCount; expertOffset += ELEMENTS_PER_VECTOR) {
-        uint32_t validCount = expertCount - expertOffset;
-        validCount = validCount < ELEMENTS_PER_VECTOR ? validCount : ELEMENTS_PER_VECTOR;
-        uint32_t maskCount = validCount;
-        AscendC::Reg::MaskReg activeMask = AscendC::Reg::UpdateMask<int32_t>(maskCount);
-
-        AscendC::Reg::Adds(gatherIndexReg, laneIndexReg, static_cast<int32_t>(expertOffset), fullMask);
-        AscendC::Reg::Muls(gatherIndexReg, gatherIndexReg, static_cast<int32_t>(worldSize), fullMask);
-        AscendC::Reg::Adds(gatherIndexReg, gatherIndexReg, static_cast<int32_t>(worldSize - 1U), fullMask);
-        AscendC::Reg::Gather(expertEndPrefixReg, count,
-                             reinterpret_cast<AscendC::Reg::RegTensor<uint32_t> &>(gatherIndexReg), activeMask);
-
-        AscendC::Reg::Adds(previousLaneIndexReg, laneIndexReg, -1, fullMask);
-        AscendC::Reg::Maxs(previousLaneIndexReg, previousLaneIndexReg, 0, fullMask);
-        AscendC::Reg::Gather(previousEndPrefixReg, expertEndPrefixReg,
-                             reinterpret_cast<AscendC::Reg::RegTensor<uint32_t> &>(previousLaneIndexReg));
-        AscendC::Reg::Select(previousEndPrefixReg, previousVectorEndReg, previousEndPrefixReg, firstLaneMask);
-        AscendC::Reg::MaskReg overflowMask;
-        AscendC::Reg::Compares<int32_t, AscendC::CMPMODE::GE>(overflowMask, expertEndPrefixReg, maxOutputSizeInt32,
-                                                              activeMask);
-        AscendC::Reg::Select(expertCountReg, maxOutputSizeReg, expertEndPrefixReg, overflowMask);
-        AscendC::Reg::Compares<int32_t, AscendC::CMPMODE::GE>(overflowMask, previousEndPrefixReg, maxOutputSizeInt32,
-                                                              activeMask);
-        AscendC::Reg::Select(previousEndPrefixReg, maxOutputSizeReg, previousEndPrefixReg, overflowMask);
-        AscendC::Reg::Sub(expertCountReg, expertCountReg, previousEndPrefixReg, activeMask);
-        AscendC::Reg::StoreAlign(expertCounts + expertOffset, expertCountReg, activeMask);
-
-        AscendC::Reg::Duplicate(previousLaneIndexReg, static_cast<int32_t>(validCount - 1U), fullMask);
-        AscendC::Reg::Gather(previousVectorEndReg, expertEndPrefixReg,
-                             reinterpret_cast<AscendC::Reg::RegTensor<uint32_t> &>(previousLaneIndexReg));
-    }
-}
-
-__aicore__ inline void ComputeExpertCountTables(LocalTensor<int32_t> countTensor,
-                                                LocalTensor<int32_t> expertCountTensor, uint32_t expertCount,
-                                                uint32_t worldSize, uint32_t maxOutputSize)
-{
-    __ubuf__ int32_t *count = reinterpret_cast<__ubuf__ int32_t *>(countTensor.GetPhyAddr());
-    __ubuf__ int32_t *expertCounts = reinterpret_cast<__ubuf__ int32_t *>(expertCountTensor.GetPhyAddr());
-    asc_vf_call<ComputeExpertCountTablesVF>(count, expertCounts, expertCount * worldSize, expertCount, worldSize,
-                                            maxOutputSize);
 }
 
 __aicore__ inline WorkRange TilingByJobContext(uint32_t totalLen, uint32_t jobIndex, uint32_t totalJobs,
@@ -504,7 +441,7 @@ __aicore__ inline int32_t CrossRankHandshakeInWorldSize(GM_ADDR rankSyncInWorldP
 __aicore__ inline void CrossRankSyncInWorldSize(GM_ADDR rankSyncInWorldPtr, uint32_t rankId, uint32_t worldSize,
                                                 const AivJobContext &aivJob)
 {
-    auto *syncCount = GetMteSyncCountAddress(rankSyncInWorldPtr, aivJob.jobIndex);
+    auto *syncCount = GetSyncCountAddress(rankSyncInWorldPtr, aivJob.jobIndex);
     CrossRankHandshakeInWorldSize(rankSyncInWorldPtr, rankId, worldSize, aivJob, syncCount);
     PipeBarrier<PIPE_ALL>();
     SyncAll<true>();
