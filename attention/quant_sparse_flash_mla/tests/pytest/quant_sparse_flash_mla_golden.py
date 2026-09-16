@@ -125,8 +125,9 @@ class GeneralizedSFAQuant:
     def _get_batch_consistency_reduce_size(ori_s2_size, cmp_s2_size):
         """Return the S2 reduction-block size used by batch-consistency metadata."""
         total_s2_size = ori_s2_size + cmp_s2_size
-        raw_reduce_size = math.ceil(total_s2_size / 32)
-        return max(math.ceil(raw_reduce_size / 128) * 128, 128)
+        # 与 metadata、计算内核和 SMLA/MQSMLA 对齐：先整除 32，再向上对齐到 128。
+        raw_reduce_size = total_s2_size // 32
+        return max(((raw_reduce_size + 127) // 128) * 128, 128)
 
     @staticmethod
     def _update_s2_tile(
@@ -614,8 +615,10 @@ class GeneralizedSFAQuant:
             )
         else:
             valid_count = min(self.K, math.ceil(threshold / sparse_block_size))
+        # Read integer indices once; preserve order and the first -1 terminator.
+        topk_values = topk_id.tolist()
         for i_valid in range(valid_count):
-            cur_topk_id = topk_id[i_valid]
+            cur_topk_id = topk_values[i_valid]
 
             if cur_topk_id == -1:
                 break

@@ -622,7 +622,13 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
                 if constexpr (IS_BATCH_CONSISTENCY) {
                     int64_t safeBaseBlockNum =
                         runParam.baseBlockNumPerReductionBlock > 0 ? runParam.baseBlockNumPerReductionBlock : 1LL;
-                    if (runParam.isCrossCoreSplit && (s2LoopCount % safeBaseBlockNum == 0)) {
+                    // metadata 按 ORI 和 CMP 分别划分规约块。
+                    int64_t reductionLoopCount = s2LoopCount;
+                    if (s2LoopCount >= runParam.oriKvLoopEndIdx) {
+                        reductionLoopCount +=
+                            (safeBaseBlockNum - runParam.oriKvLoopEndIdx % safeBaseBlockNum) % safeBaseBlockNum;
+                    }
+                    if (runParam.isCrossCoreSplit && (reductionLoopCount % safeBaseBlockNum == 0)) {
                         runParam.s2SplitIdx = s2SplitIdxCounter++;
                     }
                 }
@@ -839,10 +845,20 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
     runInfo.isFirstS2SplitCore = runParam.isFirstS2SplitCore;
     int64_t safeBaseBlockNum =
         runParam.baseBlockNumPerReductionBlock > 0 ? runParam.baseBlockNumPerReductionBlock : 1LL;
-    int64_t baseBlockIdInReduceBlock = s2LoopCount % safeBaseBlockNum;
-    runInfo.reduceBlockId = s2LoopCount / safeBaseBlockNum;
+    int64_t reductionLoopCount = s2LoopCount;
+    if constexpr (IS_BATCH_CONSISTENCY) {
+        // 仅补齐规约计数，不增加实际 token 计算。
+        if (s2LoopCount >= runParam.oriKvLoopEndIdx) {
+            reductionLoopCount += (safeBaseBlockNum - runParam.oriKvLoopEndIdx % safeBaseBlockNum) % safeBaseBlockNum;
+        }
+    }
+    int64_t baseBlockIdInReduceBlock = reductionLoopCount % safeBaseBlockNum;
+    runInfo.reduceBlockId = reductionLoopCount / safeBaseBlockNum;
     runInfo.isFirstBase = baseBlockIdInReduceBlock == 0;
     runInfo.isLastBase = ((safeBaseBlockNum - baseBlockIdInReduceBlock) == 1LL) || (s2LoopCount == s2LoopLimit);
+    if constexpr (IS_BATCH_CONSISTENCY) {
+        runInfo.isLastBase = runInfo.isLastBase || s2LoopCount + 1 == runParam.oriKvLoopEndIdx;
+    }
     runInfo.needReduce = runInfo.reduceBlockId > 0;
     this->ComputeBmm1Tail(runInfo, runParam);
     InitUniqueRunInfo(runParam, runInfo);
