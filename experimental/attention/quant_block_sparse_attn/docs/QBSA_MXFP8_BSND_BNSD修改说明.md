@@ -1,12 +1,11 @@
 # QBSA-MXFP8 新增 BSND / BNSD 修改说明
 
-> 本文记录 PR #11704 原始实现。本轮复核发现并修复了 metadata 接口校验、None 透传、
-> metadata 终点越过实际 Sq 等遗漏，详见 [layout 与 metadata 复核说明](QBSA_LAYOUT_METADATA_REVIEW.md)。
-> 本文末尾的历史验证记录不代表本轮环境已执行过相同测试。
+本文说明 MXFP8 支持 BSND/BNSD 布局的完整设计，涵盖 Host、Kernel、metadata、
+Torch/GE 接入和测试。接口检查、调度边界与验收步骤见
+[layout 与 metadata 设计和验证说明](QBSA_LAYOUT_METADATA_REVIEW.md)。
 
-## 基线与范围
+## 特性范围
 
-基于本地 `master` 提交 `125200e0a`，目标分支为 `layout`。
 修改对象为 `experimental/attention/quant_block_sparse_attn`，仅扩展 `quant_mode=2` 的 Q、Q scale 和输出布局。
 K/V 继续使用分段 PA_BNBD；现有 FP8 的 TND/NTD 路径保留。
 
@@ -54,16 +53,18 @@ TND 仍要求 int32 [B+1] 的累积 Q 长度。
 6. **Vector 写回**：`quant_block_sparse_attn_mx_block_vec.h` 同步修改正常输出与 ClearEmptyQBlock；
    两种新布局的 LSE 地址均为 `(b*Nq+n)*Sq+s`，目标行间空隙为 0。
 7. **Torch extension**：`torch_ops_extension/custom_ops/csrc/npu_quant_block_sparse_attn.cpp` 同步 NPU/Meta 的输出分配，
-   新布局四维 attention_out、三维 BNS LSE，检查连续 Q/QScale 以及两个 Q 长度参数必须为 None；converter 原本透传布局属性，可直接复用。
+   新布局四维 attention_out、三维 BNS LSE；NPU/Meta 共用 Q/QScale shape、连续性和 Q 长度参数的检查。
+   metadata 的 Torch 接口保留 optional 空值，GE converter 在构图前检查新布局的量化模式和 Q 长度参数。
 8. **Golden**：`tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py` 放开布局检查，
    在调用边界将 packed CPU 数据打包为 BSND/BNSD，QScale 同步转换；将有效输出恢复 TND/TN 与 CPU golden 比较。
    eager 和 graph 路径共用该适配，两个 Q 长度参数传 None。CPU 参考内部按 Sq 生成累积索引，不传给算子。
-   额外提供 `QBSA_CHECK_PADDED_LAYOUTS=1` 的 TND 等价回归入口，仅比较各 batch Q 等长且非零的用例。
+   提供 `QBSA_CHECK_PADDED_LAYOUTS=1` 的 TND 等价回归入口，为每种布局分别生成 metadata，
+   仅比较各 batch Q 等长且非零的用例。
 9. **TTK**：`tests/assets/bsa_ttk_ops.py` 修正 BNSD 的 batch/head/sequence 识别；
    `tests/assets/impl/inputs.py` 生成对应公共 Q/QScale 布局，`impl/golden.py` 返回对应 output 和 BNS LSE。
 10. **Metadata**：独立 metadata 算子按 sparse_seq_len 的 batch/head/query-row 调度，
-    不使用 Q 的物理地址，因此不需要改变 metadata 格式。但原 PR 的接口校验及 Torch None 透传未适配完整，
-    已在本轮补齐；主 kernel 同时截断 metadata 的 Q 行终点，避免超额稀疏行越过实际 Sq。
+    不使用 Q 的物理地址，因此保持 metadata 格式。ACLNN/AICPU 检查布局、量化模式和输入契约；
+    AICPU 在写入前检查 metadata 输出容量。主 kernel 截断 metadata 的 Q 行终点，避免超额稀疏行越过实际 Sq。
     修改稀疏行后需重新生成 metadata。
 
 ## STC 与单元测试
@@ -75,6 +76,8 @@ TND 仍要求 int32 [B+1] 的累积 Q 长度。
 - InferShape CSV 新增 8 条：两种布局的 LSE 开/关、输出布局不匹配、FP8 拒绝新布局。
 - Host tiling CSV 新增 10 条：两种布局的空 Q 长度正确输入、QScale/LSE shape 错误，以及分别拒绝非空 cu_seqlens_q/seqused_q。
 - `test_quant_block_sparse_attn_shape_infershape.cpp`：直接测试生产 C++ 地址函数，覆盖多个 batch/head、129-token 尾块及超 32 位偏移。
+- `quant_block_sparse_attn_metadata/tests/standalone/`：编译生产参数检查、调度和地址辅助函数，验证布局契约、超额稀疏行和整数边界。
+- `test_layout_metadata.py`：提供真实 Meta、NPU、GE 回归，覆盖各布局独立生成 metadata 和完整 output/LSE 对照；需要在设备上执行。
 - `qbsa_mxfp8_golden.py --check_layout_helpers`：合并后的 CPU 打包/还原自检，覆盖数据、scale、LSE、空 batch、容量错误及固定长度布局的空参数契约；使用现有 golden 依赖环境，不调用 NPU 算子。
 
 测试文件均位于当前算子目录。运行单个新增 STC 的示例：
@@ -87,10 +90,9 @@ python qbsa_mxfp8_golden.py --check_layout_helpers
 
 ## 验证状态与部署注意事项
 
-- 已在本机 MSVC 编译并运行生产 C++ 地址函数测试（使用轻量断言适配替代本机缺失的 gtest）。
-- 已通过修改 Python 文件的语法检查、CSV 列数/用例名唯一性检查及 git diff --check。
-- 使用 NumPy 字节视图适配器执行生产 golden 打包/还原函数，54 组场景通过；该检查不等同于真实 Torch/NPU 执行。
-- 空参数修订：通过 NumPy 适配执行生产长度解析函数，检查 124 条 pytest 用例及 36 个非法参数组合；模拟 metadata 调用验证 None 透传，检查 124 条 TTK 及 tiling 正反例 CSV 结构。
+- 已通过本地 C++ 回归：1,440 组 padded 调度/覆盖、3 组多 section、参数契约、地址与 32 位边界。框架容器使用替身，调度和辅助函数使用生产代码。
+- 已通过 2 项 Python converter/golden 调用边界测试，验证 None/layout 透传和每种布局独立生成 metadata；后端使用记录型替身。
+- 已通过 5 个 Python 文件语法检查、CSV 列数/用例名唯一性检查及 git diff --check。
 - CANN Host/Kernel 全量编译、Host UT、CPU Torch 单测、NPU STC 精度与性能尚未执行；本机无 CANN/NPU/Torch 环境。
 - MX tiling data 的结构发生变化，必须同时重新编译安装 host 与 kernel，不能混用旧二进制。
 - NPU 回归须包含旧 TND 用例，性能对比建议使用相同硬件、数据和测量配置。

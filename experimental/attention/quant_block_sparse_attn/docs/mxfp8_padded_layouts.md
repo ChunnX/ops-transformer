@@ -61,5 +61,5 @@ The graph path uses the same public-layout packing and valid-token comparison.
 The CPU reference stays in packed TND/TN; the test adapters convert only at the
 operator boundary. Existing STC cases are retained.
 
-See [layout/metadata review](QBSA_LAYOUT_METADATA_REVIEW.md) for the follow-up
-fixes, portable CPU regression commands and device validation still required.
+See [layout/metadata design and validation](QBSA_LAYOUT_METADATA_REVIEW.md) for
+interface checks, query bounds, portable CPU regressions and required device validation.

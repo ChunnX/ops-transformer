@@ -74,7 +74,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
 ## BSND / BNSD 布局与 metadata
 
 `quant_mode=2` 的完整布局约定见 [padded layout 说明](mxfp8_padded_layouts.md)，
-本轮核查、补齐内容与验证状态见 [layout 与 metadata 复核说明](QBSA_LAYOUT_METADATA_REVIEW.md)。
+接口检查、调度边界与验证状态见 [layout 与 metadata 设计和验证说明](QBSA_LAYOUT_METADATA_REVIEW.md)。
 metadata 与主算子必须使用相同的 `layout_q` 和稀疏输入；新布局的两处调用均传
 `cu_seqlens_q=None`、`seqused_q=None`。metadata 调度格式仍为逻辑 `(B,Nq,Qb)` 分核范围。
 
