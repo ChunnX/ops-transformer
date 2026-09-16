@@ -41,7 +41,8 @@ struct SASTilingOptionalParaInfo {
 enum class SASLayout : uint32_t {
     BSND = 0,
     TND = 1,
-    PA_ND = 2
+    PA_BSND = 2,
+    PA_BNSD = 3
 };
 
 enum class SASAxis : uint32_t {
@@ -77,12 +78,19 @@ constexpr uint32_t CMP_SPARSE_INDICES_INDEX = 4;
 constexpr uint32_t ORI_BLOCK_TABLE_INDEX = 5;
 constexpr uint32_t CMP_BLOCK_TABLE_INDEX = 6;
 constexpr uint32_t CU_SEQLENS_Q_INDEX = 7;
-constexpr uint32_t CU_SEQLENS_KV_INDEX = 8;
+constexpr uint32_t CU_SEQLENS_ORI_KV_INDEX = 8;
 constexpr uint32_t CU_SEQLENS_CMP_KV_INDEX = 9;
 constexpr uint32_t SEQUSED_Q_INDEX = 10;
-constexpr uint32_t SEQUSED_KV_INDEX = 11;
-constexpr uint32_t SINKS_INDEX = 12;
-constexpr uint32_t METADATA_INDEX = 13;
+constexpr uint32_t SEQUSED_ORI_KV_INDEX = 11;
+constexpr uint32_t SEQUSED_CMP_KV_INDEX = 12;
+constexpr uint32_t CMP_RESIDUAL_KV_INDEX = 13;
+constexpr uint32_t ORI_TOPK_LENGTH_INDEX = 14;
+constexpr uint32_t CMP_TOPK_LENGTH_INDEX = 15;
+constexpr uint32_t SINKS_INDEX = 16;
+constexpr uint32_t METADATA_INDEX = 17;
+// Internal aliases retained for the original TQ kernel naming.
+constexpr uint32_t CU_SEQLENS_KV_INDEX = CU_SEQLENS_ORI_KV_INDEX;
+constexpr uint32_t SEQUSED_KV_INDEX = SEQUSED_ORI_KV_INDEX;
 // Outputs Index
 constexpr uint32_t ATTN_OUT_INDEX = 0;
 
@@ -91,14 +99,16 @@ constexpr uint32_t ATTR_SOFTMAX_SCALE_INDEX = 0;
 constexpr uint32_t ATTR_CMP_RATIO_INDEX = 1;
 constexpr uint32_t ATTR_ORI_MASK_MODE_INDEX = 2;
 constexpr uint32_t ATTR_CMP_MASK_MODE_INDEX = 3;
-constexpr uint32_t ATTR_ORI_KV_STRIDE_INDEX = 4;
-constexpr uint32_t ATTR_CMP_KV_STRIDE_INDEX = 5;
-constexpr uint32_t ATTR_ORI_WIN_LEFT_INDEX = 6;
-constexpr uint32_t ATTR_ORI_WIN_RIGHT_INDEX = 7;
-constexpr uint32_t ATTR_LAYOUT_Q_INDEX = 8;
-constexpr uint32_t ATTR_LAYOUT_KV_INDEX = 9;
-constexpr uint32_t ATTR_RETURN_SOFTMAX_LSE = 10;
-constexpr uint32_t ATTR_KV_QUANT_MODE_INDEX = 11;
+constexpr uint32_t ATTR_ORI_WIN_LEFT_INDEX = 4;
+constexpr uint32_t ATTR_ORI_WIN_RIGHT_INDEX = 5;
+constexpr uint32_t ATTR_LAYOUT_Q_INDEX = 6;
+constexpr uint32_t ATTR_LAYOUT_KV_INDEX = 7;
+constexpr uint32_t ATTR_TOPK_VALUE_MODE_INDEX = 8;
+constexpr uint32_t ATTR_RETURN_SOFTMAX_LSE = 9;
+// TQ-specific attributes are appended after the formal SparseFlashMla attrs.
+constexpr uint32_t ATTR_ORI_KV_STRIDE_INDEX = 10;
+constexpr uint32_t ATTR_CMP_KV_STRIDE_INDEX = 11;
+constexpr uint32_t ATTR_KV_QUANT_MODE_INDEX = 12;
 constexpr uint32_t TQ4_SLOT_SIZE = 258;
 
 // Dim Index
@@ -193,6 +203,10 @@ struct SASParaInfo {
     SASTilingOptionalParaInfo cuSeqLensKv = {nullptr, nullptr};
     SASTilingOptionalParaInfo cuSeqLensCmpKv = {nullptr, nullptr};
     SASTilingOptionalParaInfo sequsedKv = {nullptr, nullptr};
+    SASTilingOptionalParaInfo sequsedCmpKv = {nullptr, nullptr};
+    SASTilingOptionalParaInfo cmpResidualKv = {nullptr, nullptr};
+    SASTilingOptionalParaInfo oriTopkLength = {nullptr, nullptr};
+    SASTilingOptionalParaInfo cmpTopkLength = {nullptr, nullptr};
     SASTilingOptionalParaInfo sinks = {nullptr, nullptr};
     SASTilingOptionalParaInfo metadata = {nullptr, nullptr};
     SASTilingRequiredParaInfo attnOut = {nullptr, nullptr};
@@ -207,6 +221,7 @@ struct SASParaInfo {
     const int64_t *oriWinRight = nullptr;
     const char *layoutQ = nullptr;
     const char *layoutKv = nullptr;
+    const uint32_t *topkValueMode = nullptr;
     const bool *returnSoftmaxLse = nullptr;
     const int64_t *kvQuantMode = nullptr;
 };
@@ -277,7 +292,7 @@ public:
     SASLayout qLayout = SASLayout::TND;
     SASLayout cmpSparseIndicesLayout = SASLayout::TND;
     SASLayout oriSparseIndicesLayout = SASLayout::TND;
-    SASLayout kvLayout = SASLayout::PA_ND;
+    SASLayout kvLayout = SASLayout::PA_BSND;
     SASLayout outLayout = SASLayout::BSND;
 
     // template mode
@@ -388,7 +403,7 @@ private:
     SASLayout cmpSparseIndicesLayout_ = SASLayout::TND;
     SASLayout oriSparseIndicesLayout_ = SASLayout::TND;
     SASLayout outLayout_ = SASLayout::TND;
-    SASLayout kvLayout_ = SASLayout::PA_ND;
+    SASLayout kvLayout_ = SASLayout::PA_BSND;
 
     uint32_t oriMaxBlockNumPerBatch_ = 0;
     uint32_t cmpMaxBlockNumPerBatch_ = 0;
@@ -503,7 +518,7 @@ public:
     SASLayout cmpSparseIndicesLayout_ = SASLayout::TND;
     SASLayout oriSparseIndicesLayout_ = SASLayout::TND;
     SASLayout outLayout_ = SASLayout::BSND;
-    SASLayout kvLayout_ = SASLayout::PA_ND;
+    SASLayout kvLayout_ = SASLayout::PA_BSND;
     // PageAttention
     uint32_t oriMaxBlockNumPerBatch_ = 0;
     uint32_t cmpMaxBlockNumPerBatch_ = 0;
