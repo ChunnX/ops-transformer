@@ -101,6 +101,20 @@ public:
         if (constInfo.aicIdx >= constInfo.coreNum || constInfo.aicIdx >= QBSA_FA_AIC_CORE_NUM) {
             return;
         }
+        int64_t originalCastMode = 0;
+        int64_t originalGlobalSatMode = 0;
+        if ASCEND_IS_AIV {
+            // Reg Casts select SAT/NO_SAT from their CastTrait. Keep global NO_SAT ready for Tensor Casts without a
+            // trait.
+            originalCastMode =
+                AscendC::GetCtrlSpr<FaVectorApi::CAST_SAT_MODE_CTRL_BIT, FaVectorApi::CAST_SAT_MODE_CTRL_BIT>();
+            originalGlobalSatMode = AscendC::GetCtrlSpr<FaVectorApi::CAST_GLOBAL_SAT_MODE_CTRL_BIT,
+                                                        FaVectorApi::CAST_GLOBAL_SAT_MODE_CTRL_BIT>();
+            AscendC::SetCtrlSpr<FaVectorApi::CAST_GLOBAL_SAT_MODE_CTRL_BIT, FaVectorApi::CAST_GLOBAL_SAT_MODE_CTRL_BIT>(
+                FaVectorApi::CAST_GLOBAL_NO_SAT_MODE);
+            AscendC::SetCtrlSpr<FaVectorApi::CAST_SAT_MODE_CTRL_BIT, FaVectorApi::CAST_SAT_MODE_CTRL_BIT>(
+                FaVectorApi::CAST_USE_INSTRUCTION_SAT_MODE);
+        }
         CrossCoreBufferInit();
         if ASCEND_IS_AIC {
             cubeBlock.InitBuffers();
@@ -109,6 +123,13 @@ public:
         }
         ProcessMainLoop();
         CrossCoreBufferUninit();
+        if ASCEND_IS_AIV {
+            // Restore once at kernel exit so this operator does not leak CTRL state to subsequent work.
+            AscendC::SetCtrlSpr<FaVectorApi::CAST_GLOBAL_SAT_MODE_CTRL_BIT, FaVectorApi::CAST_GLOBAL_SAT_MODE_CTRL_BIT>(
+                originalGlobalSatMode);
+            AscendC::SetCtrlSpr<FaVectorApi::CAST_SAT_MODE_CTRL_BIT, FaVectorApi::CAST_SAT_MODE_CTRL_BIT>(
+                originalCastMode);
+        }
     }
 
 private:

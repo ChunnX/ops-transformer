@@ -202,8 +202,6 @@ template <typename T, typename OUTPUT_T, uint16_t srcD>
 __aicore__ inline void DivCast(const LocalTensor<OUTPUT_T> &dstTensor, const LocalTensor<T> &srcTensor,
                                const LocalTensor<T> &expSumTensor, const uint16_t m)
 {
-    const int64_t originalCastMode = AscendC::GetCtrlSpr<CAST_SAT_MODE_CTRL_BIT, CAST_SAT_MODE_CTRL_BIT>();
-    AscendC::SetCtrlSpr<CAST_SAT_MODE_CTRL_BIT, CAST_SAT_MODE_CTRL_BIT>(CAST_USE_INSTRUCTION_SAT_MODE);
     if constexpr (srcD == 64) {
         DivCastImpl64<T, OUTPUT_T, srcD>(dstTensor, srcTensor, expSumTensor, m);
     } else if constexpr (srcD == 128) {
@@ -211,7 +209,6 @@ __aicore__ inline void DivCast(const LocalTensor<OUTPUT_T> &dstTensor, const Loc
     } else {
         DivCastImplGeneral<T, OUTPUT_T, srcD>(dstTensor, srcTensor, expSumTensor, m);
     }
-    AscendC::SetCtrlSpr<CAST_SAT_MODE_CTRL_BIT, CAST_SAT_MODE_CTRL_BIT>(originalCastMode);
 }
 } // namespace FaVectorApi
 

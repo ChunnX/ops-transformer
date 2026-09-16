@@ -1165,8 +1165,6 @@ __aicore__ inline void ProcessVec1VfDn(const LocalTensor<T2> &dstTensor, const L
                                        const uint32_t originN, const T scale, const T minValue, bool needAtten,
                                        const float pScale = 1.0f)
 {
-    const int64_t originalCastMode = AscendC::GetCtrlSpr<CAST_SAT_MODE_CTRL_BIT, CAST_SAT_MODE_CTRL_BIT>();
-    AscendC::SetCtrlSpr<CAST_SAT_MODE_CTRL_BIT, CAST_SAT_MODE_CTRL_BIT>(CAST_USE_INSTRUCTION_SAT_MODE);
     __ubuf__ uint32_t *qGatherIdxUb =
         (__ubuf__ uint32_t *)(vselrIndexesBuf[static_cast<int>(VselrIndexEnum::QSCALE_GATHER_INDEX)]
                                   .template Get<uint32_t>()
@@ -1184,7 +1182,6 @@ __aicore__ inline void ProcessVec1VfDn(const LocalTensor<T2> &dstTensor, const L
                                                   indexesTensor, maskTensor, qScaleTensor, kScaleTensor, m, n, originN,
                                                   scale, minValue, needAtten, pScale, qGatherIdxUb);
     }
-    AscendC::SetCtrlSpr<CAST_SAT_MODE_CTRL_BIT, CAST_SAT_MODE_CTRL_BIT>(originalCastMode);
 }
 
 template <typename T, typename T2, bool hasAtten = false, bool needAtten = false, uint32_t ubN = 128>
@@ -2246,8 +2243,6 @@ __aicore__ inline void ProcessVec1VfDnPerTokenHead(const LocalTensor<T2> &dstTen
                                                    const uint32_t n, const uint32_t originN, const T scale,
                                                    const T minValue, bool needAtten, const float pScale = 1.0f)
 {
-    const int64_t originalCastMode = AscendC::GetCtrlSpr<CAST_SAT_MODE_CTRL_BIT, CAST_SAT_MODE_CTRL_BIT>();
-    AscendC::SetCtrlSpr<CAST_SAT_MODE_CTRL_BIT, CAST_SAT_MODE_CTRL_BIT>(CAST_USE_INSTRUCTION_SAT_MODE);
     if constexpr (!isUpdate) {
         LocalTensor<uint8_t> indexesTensor;
         indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::DN_INDEX)].template Get<uint8_t>();
@@ -2261,7 +2256,6 @@ __aicore__ inline void ProcessVec1VfDnPerTokenHead(const LocalTensor<T2> &dstTen
             dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, indexesTensor, maskTensor, qScaleTensor,
             kScaleTensor, m, n, originN, scale, minValue, needAtten, pScale);
     }
-    AscendC::SetCtrlSpr<CAST_SAT_MODE_CTRL_BIT, CAST_SAT_MODE_CTRL_BIT>(originalCastMode);
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128, uint32_t SUB_LOOP = 0U>
@@ -2919,8 +2913,6 @@ __aicore__ inline void ProcessVec1VfDnMxfp8(
     const LocalTensor<T> &preLoopSumTensor, const LocalTensor<T> &firstLoopSumTensor)
 {
     // 将 256-column C1 转为 P(e4m3)/PScale(e8m0)；isUpdate 控制 online-softmax 更新。
-    const int64_t originalCastMode = AscendC::GetCtrlSpr<CAST_SAT_MODE_CTRL_BIT, CAST_SAT_MODE_CTRL_BIT>();
-    AscendC::SetCtrlSpr<CAST_SAT_MODE_CTRL_BIT, CAST_SAT_MODE_CTRL_BIT>(CAST_USE_INSTRUCTION_SAT_MODE);
     LocalTensor<uint8_t> indexesTensor;
     indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::DN_INDEX)].template Get<uint8_t>();
     if constexpr (!isUpdate) {
@@ -2932,7 +2924,6 @@ __aicore__ inline void ProcessVec1VfDnMxfp8(
             dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, indexesTensor, maskTensor, originN, dScale,
             pScale, minValue, preLoopMaxTensor, preLoopSumTensor, firstLoopSumTensor, pScaleSubLoop0Tensor);
     }
-    AscendC::SetCtrlSpr<CAST_SAT_MODE_CTRL_BIT, CAST_SAT_MODE_CTRL_BIT>(originalCastMode);
 }
 
 template <typename T>

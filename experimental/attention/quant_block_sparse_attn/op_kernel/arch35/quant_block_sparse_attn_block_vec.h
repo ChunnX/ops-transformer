@@ -445,20 +445,14 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::Bmm2DataCopyOut(RunInfo &run
     }
     if constexpr (!IsSameType<INPUT_T, VEC2_RES_T>::value) {
         attenOut.SetAddr(vec2ResUb.address_);
-        const int64_t originalCastMode =
-            AscendC::GetCtrlSpr<FaVectorApi::CAST_SAT_MODE_CTRL_BIT, FaVectorApi::CAST_SAT_MODE_CTRL_BIT>();
-        const int64_t originalGlobalSatMode = AscendC::GetCtrlSpr<FaVectorApi::CAST_GLOBAL_SAT_MODE_CTRL_BIT,
-                                                                  FaVectorApi::CAST_GLOBAL_SAT_MODE_CTRL_BIT>();
-        AscendC::SetCtrlSpr<FaVectorApi::CAST_GLOBAL_SAT_MODE_CTRL_BIT, FaVectorApi::CAST_GLOBAL_SAT_MODE_CTRL_BIT>(
-            FaVectorApi::CAST_GLOBAL_NO_SAT_MODE);
+        // Tensor Cast has no per-instruction SatMode, so temporarily use the global NO_SAT mode prepared by Process().
         AscendC::SetCtrlSpr<FaVectorApi::CAST_SAT_MODE_CTRL_BIT, FaVectorApi::CAST_SAT_MODE_CTRL_BIT>(
             FaVectorApi::CAST_USE_GLOBAL_SAT_MODE);
         Cast(attenOut, vec2ResUb, RoundMode::CAST_ROUND, vec2CalcSize);
         SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
         WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
-        AscendC::SetCtrlSpr<FaVectorApi::CAST_SAT_MODE_CTRL_BIT, FaVectorApi::CAST_SAT_MODE_CTRL_BIT>(originalCastMode);
-        AscendC::SetCtrlSpr<FaVectorApi::CAST_GLOBAL_SAT_MODE_CTRL_BIT, FaVectorApi::CAST_GLOBAL_SAT_MODE_CTRL_BIT>(
-            originalGlobalSatMode);
+        AscendC::SetCtrlSpr<FaVectorApi::CAST_SAT_MODE_CTRL_BIT, FaVectorApi::CAST_SAT_MODE_CTRL_BIT>(
+            FaVectorApi::CAST_USE_INSTRUCTION_SAT_MODE);
     } else {
         SetFlag<HardEvent::V_MTE3>(vToMte3Id[runInfo.taskIdMod2]);
         WaitFlag<HardEvent::V_MTE3>(vToMte3Id[runInfo.taskIdMod2]);
