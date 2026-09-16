@@ -570,6 +570,12 @@ uint64_t GroupedMatmulFinalizeRoutingQuantTiling::GetTilingKey() const
 ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::DoLibApiTiling()
 {
     CalBasicBlock();
+    if (IsMicroScaling() && (IsFp4Dtype(inputParams_.aDtype) || IsFp8Dtype(inputParams_.aDtype))) {
+        // Two FP32 input slots, split across AIVs, plus logit need at most 226 KiB per AIV.
+        // FR writes its output in place, so no additional output UB is required.
+        constexpr uint64_t L0C_UB_DB_MAX_BASE_M = 224;
+        basicTiling_.baseM = std::min(basicTiling_.baseM, L0C_UB_DB_MAX_BASE_M);
+    }
     OP_CHECK_IF(CalL1Tiling() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed"),
                 return ge::GRAPH_FAILED);
     tilingData_.matmulTiling.M = inputParams_.mSize;

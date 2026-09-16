@@ -133,7 +133,8 @@ public:
     BlockPrologue prologueOp_;
     BlockEpilogue epilogueOp_;
     AscendC::LocalTensor<CType> l0cOutUb_;
-    bool isVecSetSyncCom_ = false;
+    // Advance only for assigned tiles, and keep the same sequence across expert boundaries.
+    uint16_t l0cOutUbBufferId_ = 0;
 
     struct GMMTiling {
         uint32_t groupNum;
@@ -173,30 +174,31 @@ public:
         Params() = default;
     };
 
-    __aicore__ inline void NotifyCube()
+    __aicore__ inline void NotifyCube(uint16_t bufferId)
     {
-        AscendC::CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_V>(AIV_SYNC_AIC_FLAG);
+        AscendC::CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_V>(AIV_SYNC_AIC_FLAG + bufferId);
     }
-    __aicore__ inline void WaitForVector()
+    __aicore__ inline void WaitForVector(uint16_t bufferId)
     {
-        AscendC::CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIV_SYNC_AIC_FLAG);
-        AscendC::CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIV_SYNC_AIC_FLAG + FLAG_ID_MAX);
+        AscendC::CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIV_SYNC_AIC_FLAG + bufferId);
+        AscendC::CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIV_SYNC_AIC_FLAG + bufferId + FLAG_ID_MAX);
     }
-    __aicore__ inline void NotifyVector()
+    __aicore__ inline void NotifyVector(uint16_t bufferId)
     {
-        AscendC::CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIC_SYNC_AIV_FLAG);
-        AscendC::CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIC_SYNC_AIV_FLAG + FLAG_ID_MAX);
+        AscendC::CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIC_SYNC_AIV_FLAG + bufferId);
+        AscendC::CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIC_SYNC_AIV_FLAG + bufferId + FLAG_ID_MAX);
     }
-    __aicore__ inline void WaitForCube()
+    __aicore__ inline void WaitForCube(uint16_t bufferId)
     {
-        AscendC::CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_V>(AIC_SYNC_AIV_FLAG);
+        AscendC::CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_V>(AIC_SYNC_AIV_FLAG + bufferId);
     }
 
     __aicore__ inline void End()
     {
         if ASCEND_IS_AIC {
-            if (isVecSetSyncCom_) {
-                WaitForVector();
+            // Consume the final release (or the unused initial credit) for each slot on both AIVs.
+            for (uint16_t bufferId = 0; bufferId < BlockEpilogue::INPUT_BUFFER_NUM; ++bufferId) {
+                WaitForVector(bufferId);
             }
         }
     }
@@ -311,9 +313,8 @@ public:
                 Get<IDX_M_TILEIDX>(tileIdx), Get<IDX_N_TILEIDX>(tileIdx), Get<IDX_M_TAIL_SPLIT_TILEIDX>(singleShape),
                 Get<IDX_N_TAIL_SPLIT_TILEIDX>(singleShape));
             if ASCEND_IS_AIC {
-                if (isVecSetSyncCom_) {
-                    WaitForVector();
-                }
+                WaitForVector(l0cOutUbBufferId_);
+                l0cOutUb_ = epilogueOp_.GetL0c2UbTensor(l0cOutUbBufferId_);
                 AscendC::Std::tuple<int32_t, int32_t, int32_t> mmSingleShape{Get<MNK_M>(singleShape),
                                                                              Get<MNK_N>(singleShape), k};
                 if (params.gmmParams.hasBias == 1) {
@@ -327,9 +328,8 @@ public:
                             x2ScaleGlobal_[Get<IDX_X2SCALE_OFFSET>(blockOffset_)], l0cOutUb_, mmSingleShape, transA,
                             transB);
                 }
-                NotifyVector();
+                NotifyVector(l0cOutUbBufferId_);
             }
-            isVecSetSyncCom_ = true;
             if ASCEND_IS_AIV {
                 AscendC::Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{Get<MNK_M>(singleShape),
                                                                                       Get<MNK_N>(singleShape), 0, 0};
@@ -338,10 +338,12 @@ public:
                 int64_t nOffset = y - mOffset * n;
                 AscendC::Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> epilogueOffset{
                     nOffset, 0, 0, 0, mOffset, mOffset};
-                WaitForCube();
+                epilogueOp_.SetL0cOutUbBufferId(l0cOutUbBufferId_);
+                WaitForCube(l0cOutUbBufferId_);
                 epilogueOp_(epilogueShape, epilogueOffset);
-                NotifyCube();
+                NotifyCube(l0cOutUbBufferId_);
             }
+            l0cOutUbBufferId_ = (l0cOutUbBufferId_ + 1) % BlockEpilogue::INPUT_BUFFER_NUM;
         }
     }
 
@@ -353,19 +355,17 @@ public:
         }
         if ASCEND_IS_AIC {
             mmadOp_.Init(const_cast<TCubeTiling *__restrict>(params.gmmParams.matmulTiling), GetTPipePtr());
-            l0cOutUb_ = epilogueOp_.GetL0c2UbTensor();
         }
+        // Initialize identical UB slot addresses on the producer and both consumers.
+        epilogueOp_.Init(params.epilogueParams);
         InitParamsAndTensor(params);
         BlockSchedulerOp bs(params.gmmParams.baseM, params.gmmParams.baseN, params.gmmParams.baseK);
         SyncAll();
         if ASCEND_IS_AIV {
-            AscendC::CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_MTE3>(AIV_SYNC_AIC_FLAG);
-        }
-        if ASCEND_IS_AIC {
-            WaitForVector();
-        }
-        if ASCEND_IS_AIV {
-            epilogueOp_.Init(params.epilogueParams);
+            // Both slots start free, after the prologue's GM writes have completed.
+            for (uint16_t bufferId = 0; bufferId < BlockEpilogue::INPUT_BUFFER_NUM; ++bufferId) {
+                AscendC::CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_MTE3>(AIV_SYNC_AIC_FLAG + bufferId);
+            }
         }
         uint32_t groupNum = params.gmmParams.groupNum;
         for (uint32_t groupIdx = 0; groupIdx < groupNum; groupIdx++) {
