@@ -24,6 +24,10 @@
 using namespace AscendC;
 using namespace optiling;
 
+namespace {
+constexpr uint32_t QBSA_FLOAT_OVERFLOW_MODE_CTRL = 60U;
+}
+
 // 仿 kv_quant_sparse_attn_sharedkv.cpp 的 kernel 侧调用写法：
 //   - 按 g_coreType 选择实/Dummy 的 Cube/Vec block（AIC 跑真 Cube + Dummy Vec，AIV 跑 Dummy Cube + 真 Vec）
 //   - 实例化 QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>
@@ -93,17 +97,29 @@ __global__ __aicore__ void quant_block_sparse_attn(
     constexpr bool bsaUseDn = BaseApi::IsDn();
     constexpr bool HAS_ATTENTION = (MASK_MODE == 3);
     if constexpr (QUANT_MODE == MXFullQuantMode) {
+        int64_t originalOverflowMode = 0;
+        if ASCEND_IS_AIV {
+            // CTRL[60] == 0 makes vector Cast use the saturation mode encoded
+            // by CastTrait. Restore the incoming mode after all vector work is
+            // complete so this kernel does not leak control state.
+            originalOverflowMode = AscendC::GetCtrlSpr<QBSA_FLOAT_OVERFLOW_MODE_CTRL, QBSA_FLOAT_OVERFLOW_MODE_CTRL>();
+            AscendC::SetCtrlSpr<QBSA_FLOAT_OVERFLOW_MODE_CTRL, QBSA_FLOAT_OVERFLOW_MODE_CTRL>(0);
+        }
         // MX 当前支持 TND + PA BNBD，S2 logical tile 为 512。
         static_assert(Config == Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128,
                       "MXFullQuantMode must use S1=128, S2=512, D=128, DV=128 config");
         QBSA_MX_OP_IMPL(fp8_e4m3fn_t, float, bfloat16_t, layout, kvLayout, S1TemplateType::Aligned128,
-                       S2TemplateType::Aligned512, DTemplateType::Aligned128, DTemplateType::Aligned128, HAS_ATTENTION,
-                       RETURN_SOFTMAX_LSE, bsaIsPa, bsaUseDn);
+                        S2TemplateType::Aligned512, DTemplateType::Aligned128, DTemplateType::Aligned128, HAS_ATTENTION,
+                        RETURN_SOFTMAX_LSE, bsaIsPa, bsaUseDn);
+        if ASCEND_IS_AIV {
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::SetCtrlSpr<QBSA_FLOAT_OVERFLOW_MODE_CTRL, QBSA_FLOAT_OVERFLOW_MODE_CTRL>(originalOverflowMode);
+        }
     } else {
         static_assert(Config == Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128,
                       "FP8QuantMode must use S1=128, S2=256, D=128, DV=128 config");
         QBSA_OP_IMPL(fp8_e4m3fn_t, float, bfloat16_t, layout, kvLayout, S1TemplateType::Aligned128,
-                    S2TemplateType::Aligned256, DTemplateType::Aligned128, DTemplateType::Aligned128, HAS_ATTENTION,
-                    RETURN_SOFTMAX_LSE, bsaIsPa, bsaUseDn);
+                     S2TemplateType::Aligned256, DTemplateType::Aligned128, DTemplateType::Aligned128, HAS_ATTENTION,
+                     RETURN_SOFTMAX_LSE, bsaIsPa, bsaUseDn);
     }
 }
