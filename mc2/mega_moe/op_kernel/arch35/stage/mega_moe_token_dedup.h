@@ -34,10 +34,7 @@ using namespace AscendC;
  * （prepass 先于任何 dispatch；dispatch 批内暂存为调用内瞬态、每批重新装载）。
  */
 // prepass 布局（相对 dedupUbBaseAddr 的偏移）：route 装载 + 逐 token 计数 + desc 拼装 + 成员表。
-constexpr uint32_t DEDUP_ROUTE_LOAD_UB_BYTES = 4U * 1024U;
-constexpr uint32_t DEDUP_COUNT_UB_BYTES = 4U * 1024U;
 constexpr uint32_t DEDUP_DESC_ASM_UB_BYTES = 2U * 1024U;
-constexpr uint32_t DEDUP_MEMBER_UB_BYTES = 54U * 1024U;
 // dispatch 去重批内布局（相对 dedupUbBaseAddr）：desc 装载区 + 扇出 meta 拼装区 + 活跃条目索引区。
 constexpr uint32_t DEDUP_DESC_BATCH_UB_BYTES = 48U * 1024U;
 constexpr uint32_t DEDUP_FAN_META_UB_BYTES = 8U * 1024U; // bufferCount(≤6) × topK(≤32) × 32B 上界

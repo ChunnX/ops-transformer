@@ -2468,6 +2468,22 @@ static void SetDedupModeParams(const gert::TilingContext *context, const MegaMoe
     // 权重经记录尾段下发（布局判定统一走 MegaMoeRecordHasTopkWeights，prefetch 位保持 attr
     // 原值不强拉——强拉会偏离 tkw=0 golden 的乘权位置语义，历史实翻）。
     tilingData->dedupMode = static_cast<int32_t>(GetDedupModeByCommAlg(context, config));
+    // prepass chunk 可行性护栏：floorChunk（保 chunkCount≤DEDUP_PREPASS_MAX_CHUNKS）不得冲破
+    // UB 容量上限，否则 prepass member 区越界写（如 k32 且 numMaxTokensPerRank>18432）。
+    // 公式与 kernel CalcDedupPrepassChunkTokens 逐项同源（常量单一真源 mega_moe_constants.h）。
+    if (tilingData->dedupMode != 0) {
+        uint32_t chunkUbCap = DEDUP_MEMBER_UB_BYTES / (tilingData->topK * 3U * static_cast<uint32_t>(sizeof(int32_t)));
+        chunkUbCap = std::min(chunkUbCap, 512U);
+        chunkUbCap = std::min(chunkUbCap, DEDUP_COUNT_UB_BYTES / static_cast<uint32_t>(sizeof(int32_t)));
+        chunkUbCap = std::min(chunkUbCap, DEDUP_ROUTE_LOAD_UB_BYTES / static_cast<uint32_t>(sizeof(int32_t)));
+        const uint32_t floorChunk =
+            (tilingData->numMaxTokensPerRank + DEDUP_PREPASS_MAX_CHUNKS - 1U) / DEDUP_PREPASS_MAX_CHUNKS;
+        if (floorChunk > chunkUbCap) {
+            OP_LOGI(nodeName, "dedup gate: prepass floorChunk %u exceeds UB chunk cap %u (topK=%u, numMax=%u), disable dedup",
+                    floorChunk, chunkUbCap, tilingData->topK, tilingData->numMaxTokensPerRank);
+            tilingData->dedupMode = 0;
+        }
+    }
     // 去重收益自适应门（纯性能决策，先例 GMM2_LAG_MIN_TOKEN_NUM；dispatch 去重 bit 级等价，
     // 关闭不改变任何数值结果）：每卡预期节省字节 = bs*topK*重复率*h，重复率由 4P 均匀路由模型
     // E[distinct ranks] = world*(1-(1-1/world)^topK) 推得。实测盈亏平衡在 4~6MB（S4=3.5MB 微亏
@@ -2477,8 +2493,11 @@ static void SetDedupModeParams(const gert::TilingContext *context, const MegaMoe
         double topKf = static_cast<double>(tilingData->topK);
         double distinctRanks = world * (1.0 - std::pow(1.0 - 1.0 / world, topKf));
         double dupRatio = 1.0 - distinctRanks / topKf;
+        // a4 家族(fp4, 2 元素/字节)每行实际发送字节≈h/2：savedBytes 按激活打包口径折算，
+        // 否则高估 2 倍导致小形状误开（与 peermem elemsPerByte 同判据 IsA4W4GmmMode）。
+        const double actBytesPerElem = IsA4W4GmmMode(tilingData->moeGmmMode) ? 0.5 : 1.0;
         double savedBytes = static_cast<double>(tilingData->bs) * topKf * dupRatio *
-                            static_cast<double>(tilingData->h);
+                            static_cast<double>(tilingData->h) * actBytesPerElem;
         constexpr double DEDUP_MIN_SAVED_BYTES = 6.0 * 1024.0 * 1024.0;
         // 中档 bs 口袋（实测 2026-09-09）：bs2048 时 savedBytes=40MB 仍复现 +1.0~1.2% 微亏——此档
         // GMM 计算已能完全遮住 dispatch 通信，省下的字节不在关键路径上，只剩建表成本；bs≥4096
