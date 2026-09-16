@@ -101,6 +101,7 @@ constexpr uint32_t NUM3 = 3;
 constexpr uint32_t SOC_VER_910B_CODE = 1;
 constexpr uint32_t SOC_VER_910_93_CODE = 2;
 constexpr uint32_t SOC_VER_950_CODE = 4;
+constexpr int64_t A2A3_EFF_ROWS_BLOCK_ALIGN = 64;
 constexpr uint32_t INF_WINDOW_SIZE_PRE_NEXT = 2147483647;
 
 constexpr uint32_t TILE_SIZE_16 = 16;
@@ -737,7 +738,11 @@ ge::graphStatus BSATiling::ParseSparsePattern(gert::TilingContext *bsaContext)
             blockShapeY_ = blockShapeList[1];
         }
     }
-    const int64_t defaultShape = (socVer_ == SOC_VER_950_CODE) ? MIN_BLOCK_ALIGN : DEFAULT_BLOCK_SHAPE;
+    const bool isA5 = (socVer_ == SOC_VER_950_CODE);
+    const bool isA2OrA3 = (socVer_ == SOC_VER_910B_CODE) || (socVer_ == SOC_VER_910_93_CODE);
+    const bool hasEffRowsMask = bsaContext->GetOptionalInputTensor(ATTEN_MASK_INDEX) != nullptr;
+    const int64_t defaultShape =
+        isA5 ? MIN_BLOCK_ALIGN : (isA2OrA3 && hasEffRowsMask ? A2A3_EFF_ROWS_BLOCK_ALIGN : DEFAULT_BLOCK_SHAPE);
     if (CheckSparsePattern(bsaContext, defaultShape) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
@@ -850,9 +855,8 @@ ge::graphStatus BSATiling::ParseAttenMask(gert::TilingContext *bsaContext)
     if (attenMaskTensor == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
-    const bool isAtlasA5 = (socVer_ == SOC_VER_950_CODE);
-    const bool isAtlasA2 = (socVer_ == SOC_VER_910B_CODE);
-    const bool isAtlasA3 = (socVer_ == SOC_VER_910_93_CODE);
+    const bool isA5 = (socVer_ == SOC_VER_950_CODE);
+    const bool isA2OrA3 = (socVer_ == SOC_VER_910B_CODE) || (socVer_ == SOC_VER_910_93_CODE);
     auto attenMaskDtype = attenMaskTensor->GetDataType();
     if (attenMaskDtype != ge::DT_INT32) {
         OP_LOGE(bsaContext->GetNodeName(), "attenMask (blockEffRows) must be INT32, but got %s.",
@@ -860,11 +864,11 @@ ge::graphStatus BSATiling::ParseAttenMask(gert::TilingContext *bsaContext)
         return ge::GRAPH_FAILED;
     }
     uint32_t attenMaskMaxBlockNum = 0;
-    if (isAtlasA5) {
+    if (isA5) {
         if (ParseA5AttenMask(bsaContext, attenMaskTensor, attenMaskMaxBlockNum) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
-    } else if (isAtlasA2 || isAtlasA3) {
+    } else if (isA2OrA3) {
         if (ParseA2A3AttenMask(bsaContext, attenMaskTensor, attenMaskMaxBlockNum) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
