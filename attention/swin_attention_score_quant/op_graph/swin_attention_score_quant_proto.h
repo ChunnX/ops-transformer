@@ -70,7 +70,6 @@ REG_OP(SwinAttentionScoreQuant)
     .ATTR(value_transpose, Bool, false)
     .ATTR(softmax_axes, Int, -1)
     .OP_END_FACTORY_REG(SwinAttentionScoreQuant)
-}  // namespace ge
+} // namespace ge
 
-#endif  // OPS_QUANT_SWIN_ATTENTION_SCORE_QUANT_PROTO_H_
-
+#endif // OPS_QUANT_SWIN_ATTENTION_SCORE_QUANT_PROTO_H_
