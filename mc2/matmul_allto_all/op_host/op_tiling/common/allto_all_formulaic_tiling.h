@@ -29,9 +29,10 @@ class AlltoAllMM : public OneCalcOneCommBase {
 public:
     // Constructor
     explicit AlltoAllMM(const mc2tiling::TilingArgs &args, uint32_t inputRankDim, KernelType inputKernelType,
-                        SocVersion inputSocVersion = SocVersion::SOC950, bool isCommunicationBefore = false)
-        : OneCalcOneCommBase(args, inputRankDim, inputKernelType, inputSocVersion),
-          socVersion_(inputSocVersion)
+                        SocVersion_2201 socVersion_2201 = SocVersion_2201::SOC910_B, bool isCommunicationBefore = false,
+                        NpuArch npuArch = Ops::Base::DAV_2201)
+        : OneCalcOneCommBase(args, inputRankDim, inputKernelType, socVersion_2201, npuArch),
+          socVersion_2201(socVersion_2201)
     {
         if (isCommunicationBefore) {
             // 如果是AllToAllMatmul，设置CommShapeLen为k轴的长度
@@ -54,7 +55,7 @@ public:
     void SelectTilingMethod() override;
 
 private:
-    SocVersion socVersion_;
+    SocVersion_2201 socVersion_2201;
     void SetCommTimeFactor();
     void PrintEstimateKernelTimeResult(double totalMatmulTime, double totalTpTime);
 };

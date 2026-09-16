@@ -227,7 +227,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling310P::DoWeightQuantTiling()
 CutResult WeightQuantMatmulAllReduceTiling310P::GetTilingResult()
 {
     CutResult mCutAllreduceOut;
-    SocVersion socVersionInput = SocVersion::SOC910_B;
+    SocVersion_2201 socVersionInput = SocVersion_2201::SOC910_B;
     SetMCutSocVersion(socVersionInput);
     const gert::StorageShape *commQuantScaleFirst = mmrCtxInfo_.comm_quant_scale_1_shape;
     const gert::StorageShape *commQuantScaleSecond = mmrCtxInfo_.comm_quant_scale_2_shape;
