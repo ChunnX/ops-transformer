@@ -24,7 +24,7 @@
 #include "quant_lightning_indexer_v2_common_arch22.h"
 #include "quant_lightning_indexer_v2_service_vector_arch22.h"
 #include "quant_lightning_indexer_v2_service_cube_arch22.h"
-#include "../quant_lightning_indexer_v2_metadata.h"
+#include "quant_lightning_indexer_v2_metadata_arch22.h"
 
 namespace QLIV2Kernel {
 using namespace QLIV2Common;
