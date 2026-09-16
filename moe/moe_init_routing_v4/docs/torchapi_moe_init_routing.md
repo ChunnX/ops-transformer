@@ -257,7 +257,7 @@ cann_ops_transformer.moe_init_routing(
 - `drop_pad_mode=1`时，`row_idx_type`仅支持取值为0（gather索引），`quant_mode`仅支持-1（非量化），且`x`数据类型仅支持`float16`、`bfloat16`、`float32`、`int8`、`hifloat8`。
 - `expert_tokens_num_flag`仅支持取值为true。
 - `active_num`仅支持值等于NUM_ROWS*K。
-- quantMode为9或13的MXFP4/INT4动态量化场景，`x`的最后一维H要求为偶数。quantMode为13的INT4动态量化场景还需满足：`x`数据类型为`float32`或`bfloat16`，`drop_pad_mode`为0，不支持输入`offset`。
+- quantMode为9或13的MXFP4/INT4动态量化场景，以及quantMode为-1且`x`数据类型为`float4_e2m1`（通过`x_dtype`指定）的非量化透传场景，`x`的最后一维H要求为偶数。quantMode为13的INT4动态量化场景还需满足：`x`数据类型为`float32`或`bfloat16`，`drop_pad_mode`为0，不支持输入`offset`。
 - 空tensor处理：NUM_ROWS=0或K=0时没有路由元素，进入空Tensor处理路径，专家计数为0；输出shape仍需满足相应模式的约束。NUM_ROWS*K>0且H=0时仍走正常路由流程，生成`expanded_row_idx`和`expert_token_cumsum_or_count`。
 - **自动反向（autograd）约束**：自动反向仅在正向退化为aclnnMoeInitRoutingV2场景时支持，即不使用aclnnMoeInitRoutingV4特有特性。具体要求：`scale`不传入、`offset`不传入、`topk_weight`不传入、`quant_mode=-1`（非量化）、`row_idx_type=0`（gather索引）、`x_dtype`为None、`drop_pad_mode`为0或1。当使用了aclnnMoeInitRoutingV4特有特性（量化、`scale`、`offset`、`topk_weight`、`x_dtype`、`row_idx_type`非0等）时，调用自动反向会抛出`NotImplementedError`。`active_expert_range`不影响反向，不视为aclnnMoeInitRoutingV4特有特性。
 - 自动反向仅对`x`求梯度，`expert_idx`为整数索引张量无梯度，`expanded_row_idx`及其他整数/统计输出无梯度。

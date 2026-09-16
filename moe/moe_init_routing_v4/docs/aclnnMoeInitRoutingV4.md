@@ -608,7 +608,7 @@ aclnnStatus aclnnMoeInitRoutingV4(
   - rowIdxType仅支持0（gather索引）。
   - activeExpertRangeOptional必须为[0, expertNum]。
 
-- quantMode为9或13的MXFP4/INT4动态量化场景，H要求为偶数。quantMode为13的INT4动态量化场景还需满足：x数据类型为FLOAT32或BFLOAT16，dropPadMode为0，offsetOptional不输入。
+- quantMode为9或13的MXFP4/INT4动态量化场景，以及quantMode为-1且x数据类型为FLOAT4_E2M1的非量化透传场景，H要求为偶数。quantMode为13的INT4动态量化场景还需满足：x数据类型为FLOAT32或BFLOAT16，dropPadMode为0，offsetOptional不输入。
 
 - 空tensor处理：
   - <term>Ascend 950PR/Ascend 950DT</term>：NUM_ROWS=0或K=0时没有路由元素，进入空Tensor处理路径，专家计数为0；输出shape仍需满足相应模式的约束。
