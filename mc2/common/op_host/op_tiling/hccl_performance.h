@@ -54,7 +54,7 @@ public:
         } else if (npuArch_ == Ops::Base::DAV_2002) { // 310系:310P只支持MatmulAllreduce算子
             SetCommMethodVersion310P();
             socVersion_ = SocVersion::SOC310_P;
-        } else { // DAV_2201系:910B/910_93/B4
+        } else if (npuArch_ == Ops::Base::DAV_2201) { // A2/A3系:910B/910_93/B4
             SetCommParametersBySocType(series);
         }
     }
