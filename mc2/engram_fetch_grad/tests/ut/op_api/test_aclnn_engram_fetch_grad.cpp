@@ -35,7 +35,7 @@ aclnnStatus aclnnEngramFetchGradGetWorkspaceSize(const aclTensor *commContext, c
                                                  const aclTensor *recvCounts, const aclTensor *recvLocalEntry,
                                                  const aclTensor *numRecv, aclTensor *gradUniqueOut,
                                                  aclTensor *uniqueLocalEntryOut, aclTensor *numUniqueOut,
-                                                 int64_t numEntriesPerRank, int64_t commBufferSize,
+                                                 int64_t numEntriesPerRank, int64_t commBufferSize, int64_t fetchMode,
                                                  uint64_t *workspaceSize, aclOpExecutor **executor);
 
 aclnnStatus aclnnEngramFetchGrad(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
@@ -74,11 +74,13 @@ TEST_F(AclnnEngramFetchGradTest, ascend950_success)
 
     int64_t numEntriesPerRank = 4;
     int64_t commBufferSize = 4194304;
+    int64_t fetchModeSliced = 0;
 
     auto ut = OP_API_UT(
         aclnnEngramFetchGrad,
         INPUT(commContext_desc, gradFetched_desc, perm_desc, sendCounts_desc, recvCounts_desc, recvLocalEntry_desc,
-              numRecv_desc, gradUnique_desc, uniqueLocalEntry_desc, numUnique_desc, numEntriesPerRank, commBufferSize),
+              numRecv_desc, gradUnique_desc, uniqueLocalEntry_desc, numUnique_desc, numEntriesPerRank, commBufferSize,
+              fetchModeSliced),
         OUTPUT());
 
     uint64_t workspace_size = 0;
@@ -102,11 +104,12 @@ TEST_F(AclnnEngramFetchGradTest, ascend950_nullptr_commContext)
 
     int64_t numEntriesPerRank = 4;
     int64_t commBufferSize = 4194304;
+    int64_t zero = 0;
 
     auto ut = OP_API_UT(
         aclnnEngramFetchGrad,
         INPUT(nullptr, gradFetched_desc, perm_desc, sendCounts_desc, recvCounts_desc, recvLocalEntry_desc, numRecv_desc,
-              gradUnique_desc, uniqueLocalEntry_desc, numUnique_desc, numEntriesPerRank, commBufferSize),
+              gradUnique_desc, uniqueLocalEntry_desc, numUnique_desc, numEntriesPerRank, commBufferSize, zero),
         OUTPUT());
 
     uint64_t workspace_size = 0;
@@ -129,11 +132,12 @@ TEST_F(AclnnEngramFetchGradTest, ascend950_nullptr_gradFetched)
 
     int64_t numEntriesPerRank = 4;
     int64_t commBufferSize = 4194304;
+    int64_t zero = 0;
 
     auto ut = OP_API_UT(
         aclnnEngramFetchGrad,
         INPUT(commContext_desc, nullptr, perm_desc, sendCounts_desc, recvCounts_desc, recvLocalEntry_desc, numRecv_desc,
-              gradUnique_desc, uniqueLocalEntry_desc, numUnique_desc, numEntriesPerRank, commBufferSize),
+              gradUnique_desc, uniqueLocalEntry_desc, numUnique_desc, numEntriesPerRank, commBufferSize, zero),
         OUTPUT());
 
     uint64_t workspace_size = 0;
@@ -156,17 +160,50 @@ TEST_F(AclnnEngramFetchGradTest, ascend950_nullptr_gradUniqueOut)
 
     int64_t numEntriesPerRank = 4;
     int64_t commBufferSize = 4194304;
+    int64_t zero = 0;
 
     auto ut = OP_API_UT(
         aclnnEngramFetchGrad,
         INPUT(commContext_desc, gradFetched_desc, perm_desc, sendCounts_desc, recvCounts_desc, recvLocalEntry_desc,
-              numRecv_desc, nullptr, uniqueLocalEntry_desc, numUnique_desc, numEntriesPerRank, commBufferSize),
+              numRecv_desc, nullptr, uniqueLocalEntry_desc, numUnique_desc, numEntriesPerRank, commBufferSize, zero),
         OUTPUT());
 
     uint64_t workspace_size = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
+}
+
+TEST_F(AclnnEngramFetchGradTest, ascend950_local_mode_success)
+{
+    auto commContext_desc = TensorDesc({6146}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto gradFetched_desc = TensorDesc({8, 512}, ACL_BF16, ACL_FORMAT_ND);
+    auto perm_desc = TensorDesc({8}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 7);
+    auto sendCounts_desc = TensorDesc({16}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 8);
+    auto recvCounts_desc = TensorDesc({2}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 16);
+    auto recvLocalEntry_desc = TensorDesc({16}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 31);
+    auto numRecv_desc = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
+    auto gradUnique_desc = TensorDesc({16, 512}, ACL_BF16, ACL_FORMAT_ND);
+    auto uniqueLocalEntry_desc = TensorDesc({16}, ACL_INT32, ACL_FORMAT_ND);
+    auto numUnique_desc = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
+
+    // local 模式: num_entries_per_rank 即全局全量表行数, fetch_mode=1
+    int64_t numEntriesFull = 32;
+    int64_t commBufferSize = 4194304;
+    int64_t fetchModeLocal = 1;
+
+    auto ut = OP_API_UT(
+        aclnnEngramFetchGrad,
+        INPUT(commContext_desc, gradFetched_desc, perm_desc, sendCounts_desc, recvCounts_desc, recvLocalEntry_desc,
+              numRecv_desc, gradUnique_desc, uniqueLocalEntry_desc, numUnique_desc, numEntriesFull, commBufferSize,
+              fetchModeLocal),
+        OUTPUT());
+
+    uint64_t workspace_size = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_NULLPTR);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 TEST_F(AclnnEngramFetchGradTest, ascend950_execute_entry)
