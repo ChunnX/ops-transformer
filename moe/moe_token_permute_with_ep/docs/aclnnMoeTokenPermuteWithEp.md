@@ -43,8 +43,6 @@
     permuteTokensOut[sortedIndicesOut[i] - rangeOptional[0]]=tokens[i//topK]
     $$
 
-    $$
-
     permuteProbsOut[sortedIndicesOut[i] - rangeOptional[0]]=probsOptional[i]
     $$
 
