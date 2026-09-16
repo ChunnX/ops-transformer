@@ -10,42 +10,19 @@
 
 """MoeTokenPermuteWithEp golden（精度标杆）。
 
-计算语义（paddedMode=false 唯一支持模式，与 SE 第 7 章 golden 及 kernel CopyOut
-分支逐行一致，纯搬运 + 稳定排序，无任何浮点算术）：
-  1) topK 与 totalLength：indices 1 维视作 topK=1，2 维 topK=dim(1)；
-     totalLength = N * topK
-  2) 两次稳定 argsort：
-     - order          = argsort_stable(flatten(indices))  按专家索引升序，
-       相同值保持原相对顺序（与 kernel 归并排序稳定语义对齐）
-     - sorted_indices = argsort_stable(order)             = 各原位置的秩 rank，
-       固定 INT32 输出（order 为无重复排列，结果稳定唯一）
-  3) 窗口语义（与 kernel CopyOut 分支一致）：
-     - range 提供时 [start, end) = (range[0], range[1])；为空时 start=0、
-       end=num_out_tokens（语义回退 aclnnMoeTokenPermute）
-     - numOutTokens = end - start；<=0 时环绕 +totalLength；clamp 到
-       [0, totalLength]
-     - 全量分支（numOutTokens == totalLength，含 num_out_tokens=0 与 range 窗口
-       恰为全长如 range=[2, total+2]）：窗口 [0, totalLength)，输出无偏移全量
-       permute（kernel ifNumOutTokens=false 路径，注意与"窗口切片"直觉不同）
-     - 切片分支（numOutTokens != totalLength，含 num_out_tokens 负切片）：
-       窗口 [start, min(start + numOutTokens, totalLength))，输出行 r 对应排序后
-       第 start + r 位
-  4) 纯搬运：permute_tokens[r] = tokens[order[start + r] // topK]，
-     permute_probs[r] = probs.flatten()[order[start + r]]
-  5) probs 缺省（None / 空 tensor）：permute_probs 返回 None（比对引擎按
-     SUPPRESSED 跳过该输出）
-  6) 环绕场景（range[0] >= range[1]，如 range=[4,1]，SE 5.4 口径）：kernel 实际
-     输出 shape 的 dim(0) 为 numOutTokens（含环绕补足部分），但仅有效窗口
-     [start, min(start + numOutTokens, totalLength)) 内的位置被写入，超出部分为
-     未初始化内存；本 golden 返回有效窗口内的填充结果（元素个数 = 有效窗口长度）。
-     精度验收用例应避开环绕场景（A2 ST 用例全部为 start < end），环绕场景因含
-     未定义内容不作为 binary 比对对象
+纯搬运 + 稳定排序实现（paddedMode=false 唯一支持模式，无浮点算术）：
+  - topK：indices 1 维视作 topK=1，2 维为 dim(1)；totalLength = N * topK
+  - 两次稳定 argsort：order = argsort_stable(flatten(indices))；
+    sorted_indices = argsort_stable(order)（= rank，固定 INT32 输出）
+  - 窗口：range 提供时 [start,end)=(range[0],range[1])，为空时 end=num_out_tokens；
+    numOutTokens = end-start，<=0 时环绕 +totalLength，clamp [0,totalLength]；
+    numOutTokens == totalLength 时窗口为全量 [0,totalLength)
+  - 搬运：permute_tokens[r] = tokens[order[start+r] // topK]；
+    permute_probs[r] = probs.flatten()[order[start+r]]
+  - probs 缺省时 permute_probs 返回 None（比对按 SUPPRESSED 跳过）
 
-精度标准：纯搬运 + 稳定排序类算子，无浮点计算误差，全输出 binary 精确比对
-（rtol=0 / atol=0，bit-exact）；sorted_indices 为整数秩精确比对；bfloat16 经
-float32 无损桥接（bf16 是 fp32 的截断，往返 bit-exact）。
-
-sorted_indices 数学定义自检：rank[order[j]] = j 对任意 j 成立。
+精度标准：纯搬运无浮点算术，全输出 binary 精确比对（rtol=0/atol=0）；
+bfloat16 经 float32 无损桥接。
 """
 
 import tensorflow as tf
@@ -102,10 +79,7 @@ def _tf_to_numpy(tensor):
 
 
 def _to_tf(t):
-    """框架 Tensor / numpy -> tf.Tensor（duck typing，保留原始 dtype）。
-
-    兼容 torch.Tensor / tf.Tensor / numpy（含 ml_dtypes.bfloat16）。
-    """
+    """框架 Tensor / numpy -> tf.Tensor（兼容 torch.Tensor / tf.Tensor / numpy）。"""
     if t is None:
         return None
     if hasattr(t, "detach"):  # torch.Tensor：保留原始 dtype 到 tf
@@ -161,7 +135,7 @@ def _optional_probs(probs):
 
 
 class _Prepared:
-    """_prepare_inputs 的产物：可直接参与计算的预备数据（dtype 已就位、窗口端点已预计算）。"""
+    """_prepare_inputs 的产物：dtype 已就位、窗口端点已预计算的计算输入。"""
 
     __slots__ = ("tokens", "indices", "probs", "start", "end")
 
@@ -181,10 +155,8 @@ def _prepare_inputs(
     range_value,
     padded_mode=False,
 ):
-    """输入预处理：入参校验 + 窗口端点预计算（dtype 转换已由调用方前置完成）。
+    """输入预处理：窗口端点预计算（dtype 转换已由调用方前置完成）。
 
-    所有 dtype 转换集中于此之前（golden 流在 golden 入口调用、third_party 流在
-    __init__ 调用），保证 _compute_core 调用链内零转换。
     返回 _Prepared；probs 输入为 None 时 permute_probs 亦为 None。
     """
     if padded_mode:
@@ -200,24 +172,12 @@ def _prepare_inputs(
 
 
 def _compute_core(prepared):
-    """纯计算骨架（零 cast/载体转换）：reshape → 两次稳定 argsort → host 窗口计算 → gather 搬运。
+    """纯计算骨架：两次稳定 argsort + 窗口选择 + gather 搬运（零 dtype 载体转换）。
 
-    与 SE 第 7 章 golden_moe_token_permute_with_ep 及 TTK golden 计算核心逐行一致：
-      - 稳定排序：tf.argsort(..., stable=True) 对齐 kernel 归并排序稳定语义，
-        相同专家索引保持原相对顺序
-      - 第二次 argsort 输入为无重复排列，结果稳定唯一（= rank）
-      - 搬运窗口为 host 标量分支 + gather（纯搬运，无浮点算术）
-
-    数学等价性论证（indices 原生 int32/int64 直接参与排序，不做 int64 载体提升）：
-      稳定排序的输出顺序只取决于元素间的比较结果；int32→int64 是严格单调映射，
-      比较结果不变，故 order/rank 逐位一致（实测 50 组随机 trial 双向一致）；
-      tf.gather 对 int32/int64 索引结果一致，int32 // 标量整除原生合法；
-      rank 的算子输出规格（固定 INT32，SE 6.5/def.cpp）在 return 处统一落点：
-      tf.argsort 输出恒为 int32（TF 契约，实测 50 组随机 trial 验证），return 处的
-      cast 为规格意图的显式声明（no-op 兜底），出口无需再处理。
+    稳定排序顺序只取决于元素比较结果（int32→int64 单调映射，order/rank 逐位一致）；
+    tf.argsort 输出恒为 int32，满足 sorted_indices 固定 INT32 规格（SE 6.5）。
     返回 (permute_tokens, rank, permute_probs)；probs 缺省时第三项为 None。
     """
-    # topK 与 totalLength（indices 1 维时 topK=1，2 维时 topK=dim(1)，SE 1.2）
     indices_shape = prepared.indices.shape
     if len(indices_shape) == 1:
         total_length = int(indices_shape[0])
@@ -226,45 +186,35 @@ def _compute_core(prepared):
         total_length = int(indices_shape[0]) * int(indices_shape[1])
         top_k = int(indices_shape[1])
 
-    # 第一次稳定 argsort：按专家索引值升序，相同值保持原相对顺序（sortedIndicesFirst）
     flat_idx = tf.reshape(prepared.indices, [-1])
     order = tf.argsort(flat_idx, axis=-1, direction="ASCENDING", stable=True)
 
-    # 第二次 argsort：得到每个原位置的秩 rank（order 为无重复排列，结果稳定唯一）
     rank = tf.argsort(order, axis=-1, direction="ASCENDING", stable=True)
 
-    # numOutTokens（与 tiling/infershape 语义一致）：end-start，<=0 时环绕
-    # +totalLength，clamp 到 [0, totalLength]
+    # numOutTokens：end-start，<=0 时环绕 +totalLength，clamp 到 [0, totalLength]
     num_out = prepared.end - prepared.start
     if num_out <= 0:
         num_out += total_length
     num_out = max(0, min(num_out, total_length))
 
-    # 搬运窗口（与 kernel CopyOut 分支语义一致，SE 5.2/第 7 章）：
-    #   全量分支 ifNumOutTokens=false（num_out == total_length）：dst[rank[i]] 无偏移
-    #   切片分支 ifNumOutTokens=true（num_out != total_length）：
-    #       rank ∈ [start, min(start + num_out, total_length))
+    # 窗口：全量分支（num_out == total_length）取 [0, totalLength)；切片分支取
+    # [start, min(start + num_out, totalLength))
     if num_out == total_length:
         lo, hi = 0, total_length
     else:
         lo, hi = prepared.start, min(prepared.start + num_out, total_length)
-    sel = order[lo:hi]  # 排序后第 j 位（j ∈ [lo, hi)）对应的原索引（argsort 原生 dtype）
+    sel = order[lo:hi]
 
-    # 纯搬运：permute_tokens[r] = tokens[order[j] // topK]，permute_probs[r] = probs[order[j]]
     permute_tokens = tf.gather(prepared.tokens, sel // top_k, axis=0)
     permute_probs = None
     if prepared.probs is not None:
         permute_probs = tf.gather(tf.reshape(prepared.probs, [-1]), sel, axis=0)
-    # sorted_indices 输出规格（固定 INT32，SE 6.5/def.cpp）在此落点统一：
-    # tf.argsort 输出恒为 int32（TF 契约，实测 50 组验证），cast 为规格意图的显式声明（no-op 兜底）
+    # sorted_indices 输出规格固定 INT32（SE 6.5）；tf.argsort 输出恒为 int32，cast 为规格兜底
     return permute_tokens, tf.cast(rank, tf.int32), permute_probs
 
 
 def _run_numpy_flow(tokens, indices, probs, num_out_tokens, range_, padded_mode):
-    """golden 流完整管线：numpy 入 -> [numpy, numpy, numpy|None] 出。
-
-    `_tf_to_numpy` 对 None 直接透传（probs 缺省时第三个元素保持 None）。
-    """
+    """golden 流：numpy 入 -> [numpy, numpy, numpy|None] 出。"""
     prepared = _prepare_inputs(
         _numpy_to_tf(tokens), _numpy_to_tf(indices), _optional_probs(_numpy_to_tf(probs)),
         num_out_tokens, _normalize_range(range_), padded_mode,
@@ -274,7 +224,7 @@ def _run_numpy_flow(tokens, indices, probs, num_out_tokens, range_, padded_mode)
 
 
 def _prepare_framework_inputs(tokens, indices, probs, num_out_tokens, range_, padded_mode):
-    """third_party 流前置转换（TTK 绑定约定：转换在 __init__ 完成）：框架 Tensor/numpy 入 -> _Prepared。"""
+    """third_party 流前置转换：框架 Tensor/numpy 入 -> _Prepared（TTK 绑定约定在 __init__ 完成）。"""
     return _prepare_inputs(
         _to_tf(tokens), _to_tf(indices), _optional_probs(_to_tf(probs)),
         num_out_tokens, _normalize_range(range_), padded_mode,
@@ -282,7 +232,7 @@ def _prepare_framework_inputs(tokens, indices, probs, num_out_tokens, range_, pa
 
 
 def _run_framework_flow(tokens, indices, probs, num_out_tokens, range_, padded_mode):
-    """third_party 流完整管线：框架 Tensor/numpy 入 -> [tf, tf, tf|None] 出。"""
+    """third_party 流：框架 Tensor 入 -> [tf, tf, tf|None] 出。"""
     prepared = _prepare_framework_inputs(tokens, indices, probs, num_out_tokens, range_, padded_mode)
     return list(_compute_core(prepared))
 
