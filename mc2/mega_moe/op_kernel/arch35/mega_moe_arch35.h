@@ -502,6 +502,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
     uint32_t routeRingBytes = static_cast<uint32_t>(bufferConfig.bufferCount) * bufferConfig.bufferBytes;
     sendMaskScratch_.routeRingTensor = LocalTensor<uint8_t>(TPosition::VECCALC, routeRingAddr, routeRingBytes);
     uint32_t sendCntAccAddr = routeRingAddr + routeRingBytes;
+    // count 发送阶段，量化、reset 和下标发送已完成，可复用累计 count 之前的工作区。
+    // 仅双 xIn 就至少占 4096B，足以容纳一张卡最多 1024 个专家的 count。
+    sendMaskScratch_.countSendScratchTensor =
+        LocalTensor<int32_t>(TPosition::VECCALC, 0, sendCntAccAddr / sizeof(int32_t));
     sendMaskScratch_.sendCntAccTensor =
         LocalTensor<int32_t>(TPosition::VECCALC, sendCntAccAddr, sendCntAccSize / sizeof(int32_t));
 }
@@ -707,6 +711,16 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendTopkIdsIndexAndCoun
         const int32_t syncCount = GetSyncCount(params_.peermemInfo.rankSyncInWorldPtr, aivCoreIdx_);
         SendTopkIdsCountForExperts(ownedExpertRange, commonConfig_, syncCount, g_winRankAddr_, sendMaskConfig_,
                                    sendMaskScratch_);
+        if (sharedExpertNum_ > 0U || GetSubBlockIdx() == 1U) {
+            // 有共享时仅 AIV1 发送；后续共享激活或 Dispatch 都先通过 MTE2 复用源 UB。
+            SyncFuncStatic<HardEvent::MTE3_MTE2, SYNC_EVENT_ID3>();
+        } else if constexpr (MoeQuantConfig::AXW_MODE == AxWMode::A8W4 || TopkWeightsPrefetch) {
+            // 无共享 AIV0：权重转换或 GM 激活路径先通过 MTE2 搬入数据。
+            SyncFuncStatic<HardEvent::MTE3_MTE2, SYNC_EVENT_ID3>();
+        } else {
+            // 无共享 AIV0：直接 UB 激活路径由 Vector 复用工作区。
+            SyncFuncStatic<HardEvent::MTE3_V, SYNC_EVENT_ID3>();
+        }
     }
 }
 

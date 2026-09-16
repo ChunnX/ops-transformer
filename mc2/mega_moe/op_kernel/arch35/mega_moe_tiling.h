@@ -99,30 +99,25 @@ constexpr int32_t BASE_RECV_ROUTE_ITEMS_PER_BATCH = 12288;
  *
  * Send route batch 基准用于先选择 mask buffer 数量，再固定 buffer 数反推最终 batch。
  * Bsend 表示基准 batch 的 route item 数，N 表示 mask buffer 数：
- *   sendVariableBytes(Bsend, N) = 2 * Bsend * sizeof(int32_t) + N * (Bsend / 8 + 32)；
+ *   sendVariableBytes(Bsend, N) = 2 * Bsend * sizeof(int32_t) + N * CalcTopkValidIndexRingSlotBytes(Bsend, topK)；
  *   sendFixedBytes = resetTensorBytes + 2048 + 2 * xOutTensorBytes + 2 * xInTensorBytes
  *                    + sendCntAccBytes；
  *   sendFixedBytes + sendVariableBytes(Bsend, N) <= availableUbBytes。
  *
- * 12288 的成立前提按最坏合法规格 k=8192、moeExpertNum=2048、N=6 保守验证：
- *   resetTensor                 <= 8KB；
- *   mxTempTensor                = 2KB；
- *   2 个 xOutTensor             <= 2 * (8192B token + 256B scale + 128B weight) = 17152B；
- *   2 个 xInTensor              = 2 * 8192 * sizeof(bfloat16_t) = 32KB；
- *   sendCntAccTensor            <= Align32(2048 * sizeof(int32_t)) = 8KB；
- *   2 个 route int32 tensor     = 2 * 12288 * sizeof(int32_t) = 96KB；
- *   6 个 mask buffer            = 6 * (12288 / 8 + 32) = 9408B；
- *   合计 176064B，约 172KB；当前支持平台动态获取的 UB 预算可容纳该布局。
- * 因此基准 batch 在所有合法规格下至少支持双 buffer，且最坏规格也能支持当前上限 6 个 buffer。
- * 若修改 MAX_H、MAX_MOE_EXPERT_NUM、DISPATCH_RESET_BATCH、Quant buffer 布局或 mask buffer 数量上限，
- * 必须重新验证该前提。
+ * count 固定占用 = Align32(CeilDiv(总专家数, 发送核数) * 4B)，专家数量紧凑存储。
+ * 发送时仅对非对齐段使用已结束的前序工作区，不新增 UB；有共享时发送核数为 AIC 数，否则为 AIV 数。
+ * 基准 batch 为 10240，保留既有 ring 深度选择和 batch 扩大策略。
+ * ring 槽含 mask 和筛选下标：Bsend / 8 + Align32(CeilDiv(Bsend + topK - 1, topK) * 4)。
+ * 以 h=8192、2048 专家、24 个发送核、topK=1、weight 预取和 reset 上限 8KiB 为例：
+ *   固定区 60320B + 两个 route tensor 81920B + 双 ring 84480B = 226720B；
+ *   相对 248KiB 预算余 27232B。完整预算仍需结合平台实际发送核数和 UB 大小。
  *
  * CalcTopkValidIndexBufferConfig 固定选中的 buffer 数后，用剩余 UB 扩大 batch，并向下对齐到 ALIGN_256。
  * SendMaskCal 使用 MTE3_V 的 EVENT_ID0~EVENT_ID5 管理 mask push ring。最低保留双 buffer，最多 6 个。
  */
 constexpr int32_t MIN_SEND_MASK_BUFFER_COUNT = 2;
 constexpr int32_t MAX_SEND_MASK_BUFFER_COUNT = 6;
-constexpr int32_t BASE_SEND_ROUTE_ITEMS_PER_BATCH = 12288;
+constexpr int32_t BASE_SEND_ROUTE_ITEMS_PER_BATCH = 10240;
 
 /*
  * Reset buffer policy
