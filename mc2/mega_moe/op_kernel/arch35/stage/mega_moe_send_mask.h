@@ -66,8 +66,10 @@ __aicore__ inline void PrepareTopkIdsForCurrentBatch(SendMaskScratch &scratch, i
     CreateVecIndex(scratch.topkIdsIndexTensor, batchStart, validLen);
 }
 
-// 筛选当前批次中匹配专家号的 topkIds 下标，写入当前 ring 槽并返回命中数量。
-// 调用方须先等待该槽上次搬出完成；返回前完成 V_S，调用方可读取命中数量。
+/**
+ * 筛选当前批次中匹配专家号的 topkIds 下标，写入当前 ring 槽并返回命中数量。
+ * 调用方须先等待该槽上次搬出完成；返回前完成 V_S，调用方可读取命中数量。
+ */
 __aicore__ inline uint64_t SelectTopkIdsIndexByExpert(const SendMaskConfig &config, SendMaskScratch &scratch,
                                                       const ExpertRouteInfo &routeInfo, int32_t validLen,
                                                       LocalTensor<int32_t> &selectedTopkIdsIndexTensor)
