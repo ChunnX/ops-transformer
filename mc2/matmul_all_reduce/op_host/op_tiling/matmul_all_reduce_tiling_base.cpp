@@ -319,7 +319,7 @@ CutResult MatmulAllReduceTilingBase::GetTilingResult()
     if ((commQuantScaleShape1 != nullptr) && (commQuantScaleShape2 != nullptr)) { // 低bit通信
         OP_LOGD(opName_, "TileCnt enter comm quant.");
         MMPlusQuantAllReduce quantAllReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, socVersion_2201,
-                                                          npuArch_);
+                                                      npuArch_);
         quantAllReduceTilingHccl.GetTiling();
         mCutAllreduce = quantAllReduceTilingHccl.tilingM_.cutRes;
     }

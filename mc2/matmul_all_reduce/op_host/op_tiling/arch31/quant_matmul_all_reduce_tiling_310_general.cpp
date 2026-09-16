@@ -145,7 +145,7 @@ CutResult QuantMatmulAllReduceTiling310General::GetTilingResult()
     if ((commQuantScaleShapeOne != nullptr) && (commQuantScaleShapeTwo != nullptr)) { // low-bit comm
         OP_LOGD(opName_, "TileCnt enter comm quant.");
         MMPlusQuantAllReduce quantAllReduceTilingHcclObj(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVer,
-                                                                     npuArch_);
+                                                         npuArch_);
         quantAllReduceTilingHcclObj.GetTiling();
         mCutAllreduceResult = quantAllReduceTilingHcclObj.tilingM_.cutRes;
     } else {
