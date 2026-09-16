@@ -9,7 +9,7 @@
  */
 
 #include "aclnn_chunk_gated_delta_rule_compute_wy.h"
-#include "chunk_gated_delta_rule_compute_wy_l0.h"
+#include "chunk_gated_delta_rule_compute_wy.h"
 
 #include "acl/acl.h"
 #include "aclnn/aclnn_base.h"
@@ -57,10 +57,92 @@ static aclnnStatus CheckNotNull(const ChunkGatedDeltaRuleComputeWyParams &p)
     return ACLNN_SUCCESS;
 }
 
+// Every bound below mirrors Tiling4ChunkGatedDeltaRuleComputeWy in
+// op_host/chunk_gated_delta_rule_compute_wy_tiling.cpp, which is the source of truth.
+// Keep the two in step: without these checks an illegal shape reaches the kernel and
+// is turned into an out-of-range GM offset instead of being rejected on the host.
+static constexpr int64_t FIXED_CHUNK = 64;
+static constexpr int64_t HEAD_DIM_ALIGN = 16;
+static constexpr int64_t MAX_HEAD_DIM = 128;
+static constexpr int64_t MAX_BATCH = 32;
+static constexpr int64_t MAX_VALUE_HEADS = 64;
+static constexpr size_t QKV_RANK = 4;
+static constexpr size_t GATE_RANK = 3;
+
+static aclnnStatus CheckDtype(const ChunkGatedDeltaRuleComputeWyParams &p)
+{
+    CHECK_COND(p.q->GetDataType() == op::DataType::DT_FLOAT16 && p.k->GetDataType() == op::DataType::DT_FLOAT16 &&
+                   p.v->GetDataType() == op::DataType::DT_FLOAT16 && p.beta->GetDataType() == op::DataType::DT_FLOAT16,
+               ACLNN_ERR_PARAM_INVALID, "q/k/v/beta must be FLOAT16.");
+    CHECK_COND(p.g->GetDataType() == op::DataType::DT_FLOAT, ACLNN_ERR_PARAM_INVALID, "g must be FLOAT32.");
+    return ACLNN_SUCCESS;
+}
+
+static aclnnStatus CheckShape(const ChunkGatedDeltaRuleComputeWyParams &p)
+{
+    const auto &qShape = p.q->GetViewShape();
+    const auto &kShape = p.k->GetViewShape();
+    const auto &vShape = p.v->GetViewShape();
+    const auto &gShape = p.g->GetViewShape();
+    const auto &betaShape = p.beta->GetViewShape();
+
+    CHECK_COND(qShape.GetDimNum() == QKV_RANK && vShape.GetDimNum() == QKV_RANK, ACLNN_ERR_PARAM_INVALID,
+               "q must be [B, T, Hk, K] and v must be [B, T, Hv, V].");
+    CHECK_COND(gShape.GetDimNum() == GATE_RANK, ACLNN_ERR_PARAM_INVALID, "g must be [B, T, Hv].");
+    CHECK_COND(kShape == qShape, ACLNN_ERR_PARAM_INVALID, "k must have the same shape as q.");
+    CHECK_COND(betaShape == gShape, ACLNN_ERR_PARAM_INVALID, "beta must have the same shape as g.");
+
+    const int64_t b = qShape.GetDim(0);
+    const int64_t t = qShape.GetDim(1);
+    const int64_t hk = qShape.GetDim(2);
+    const int64_t kDim = qShape.GetDim(3);
+    const int64_t hv = vShape.GetDim(2);
+    const int64_t vDim = vShape.GetDim(3);
+
+    CHECK_COND(b > 0 && t > 0 && hk > 0 && kDim > 0 && hv > 0 && vDim > 0, ACLNN_ERR_PARAM_INVALID,
+               "all q/v dimensions must be positive.");
+    CHECK_COND(vShape.GetDim(0) == b && vShape.GetDim(1) == t, ACLNN_ERR_PARAM_INVALID, "v must share B/T with q.");
+    CHECK_COND(gShape.GetDim(0) == b && gShape.GetDim(1) == t && gShape.GetDim(2) == hv, ACLNN_ERR_PARAM_INVALID,
+               "g must be [B, T, Hv] matching q's B/T and v's Hv.");
+    CHECK_COND(hv % hk == 0, ACLNN_ERR_PARAM_INVALID, "Hv must be divisible by Hk.");
+    CHECK_COND(t % FIXED_CHUNK == 0, ACLNN_ERR_PARAM_INVALID, "T must be a multiple of 64.");
+    CHECK_COND(kDim % HEAD_DIM_ALIGN == 0 && vDim % HEAD_DIM_ALIGN == 0, ACLNN_ERR_PARAM_INVALID,
+               "K and V must be multiples of 16.");
+    CHECK_COND(kDim <= MAX_HEAD_DIM && vDim <= MAX_HEAD_DIM, ACLNN_ERR_PARAM_INVALID, "K and V must be <= 128.");
+    CHECK_COND(b <= MAX_BATCH, ACLNN_ERR_PARAM_INVALID, "B must be <= 32.");
+    CHECK_COND(hv <= MAX_VALUE_HEADS, ACLNN_ERR_PARAM_INVALID, "Hv must be <= 64.");
+
+    // Outputs are caller-allocated and written by ViewCopy, so a mismatch here is an
+    // overflow of the user's buffer, not just a wrong result.
+    const auto &qKernelShape = p.qKernelOut->GetViewShape();
+    const auto &kKernelShape = p.kKernelOut->GetViewShape();
+    const auto &wKernelShape = p.wKernelOut->GetViewShape();
+    const auto &uKernelShape = p.uKernelOut->GetViewShape();
+    const auto &gKernelShape = p.gKernelOut->GetViewShape();
+    CHECK_COND(qKernelShape.GetDimNum() == QKV_RANK && kKernelShape.GetDimNum() == QKV_RANK &&
+                   wKernelShape.GetDimNum() == QKV_RANK && uKernelShape.GetDimNum() == QKV_RANK &&
+                   gKernelShape.GetDimNum() == GATE_RANK,
+               ACLNN_ERR_PARAM_INVALID, "output rank is invalid.");
+    const bool qkOk = qKernelShape.GetDim(0) == b && qKernelShape.GetDim(1) == hk && qKernelShape.GetDim(2) == t &&
+                      qKernelShape.GetDim(3) == kDim && kKernelShape == qKernelShape;
+    CHECK_COND(qkOk, ACLNN_ERR_PARAM_INVALID, "q_kernel/k_kernel must be [B, Hk, T, K].");
+    CHECK_COND(wKernelShape.GetDim(0) == b && wKernelShape.GetDim(1) == hv && wKernelShape.GetDim(2) == t &&
+                   wKernelShape.GetDim(3) == kDim,
+               ACLNN_ERR_PARAM_INVALID, "w_kernel must be [B, Hv, T, K].");
+    CHECK_COND(uKernelShape.GetDim(0) == b && uKernelShape.GetDim(1) == hv && uKernelShape.GetDim(2) == t &&
+                   uKernelShape.GetDim(3) == vDim,
+               ACLNN_ERR_PARAM_INVALID, "u_kernel must be [B, Hv, T, V].");
+    CHECK_COND(gKernelShape.GetDim(0) == b && gKernelShape.GetDim(1) == hv && gKernelShape.GetDim(2) == t,
+               ACLNN_ERR_PARAM_INVALID, "g_kernel must be [B, Hv, T].");
+    return ACLNN_SUCCESS;
+}
+
 static aclnnStatus CheckParams(const ChunkGatedDeltaRuleComputeWyParams &p)
 {
     CHECK_RET(CheckNotNull(p) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
-    CHECK_COND(p.chunkSize == 64, ACLNN_ERR_PARAM_INVALID, "chunk_size must be 64.");
+    CHECK_COND(p.chunkSize == FIXED_CHUNK, ACLNN_ERR_PARAM_INVALID, "chunk_size must be 64.");
+    CHECK_RET(CheckDtype(p) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckShape(p) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     return ACLNN_SUCCESS;
 }
 

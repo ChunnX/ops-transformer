@@ -12,7 +12,7 @@
 #include "opdev/op_log.h"
 #include "opdev/make_op_executor.h"
 
-#include "chunk_gated_delta_rule_compute_wy_l0.h"
+#include "chunk_gated_delta_rule_compute_wy.h"
 
 using namespace op;
 

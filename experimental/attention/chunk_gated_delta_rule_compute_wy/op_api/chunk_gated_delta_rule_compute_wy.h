@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CHUNK_GATED_DELTA_RULE_COMPUTE_WY_L0_OP_API_H
-#define CHUNK_GATED_DELTA_RULE_COMPUTE_WY_L0_OP_API_H
+#ifndef CHUNK_GATED_DELTA_RULE_COMPUTE_WY_OP_API_H
+#define CHUNK_GATED_DELTA_RULE_COMPUTE_WY_OP_API_H
 
 #include "opdev/op_executor.h"
 
