@@ -49,7 +49,10 @@ public:
         if (npuArch_ == Ops::Base::DAV_2002) {
             return NPUARCH_2002_FITTING_CODE;
         }
-        return static_cast<int32_t>(socVersion_);
+        if (npuArch_ == Ops::Base::DAV_2201) { // A2/A3系(910B/910_93/B4):档位显式序值
+            return static_cast<int32_t>(socVersion_);
+        }
+        return static_cast<int32_t>(socVersion_); // 未识别arch兜底,语义同原catch-all
     }
 
     // arch粗分入口:3510→A5;2002→310P;2201→系列细分(910B/910_93/B4)

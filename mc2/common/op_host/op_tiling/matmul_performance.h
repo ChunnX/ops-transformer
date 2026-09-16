@@ -127,7 +127,10 @@ public:
         if (npuArch_ == Ops::Base::DAV_2002) {
             return NPUARCH_2002_FITTING_CODE;
         }
-        return static_cast<int32_t>(mmShapeInfo_.socType);
+        if (npuArch_ == Ops::Base::DAV_2201) { // A2/A3系(910B/910_93/B4):档位显式序值
+            return static_cast<int32_t>(mmShapeInfo_.socType);
+        }
+        return static_cast<int32_t>(mmShapeInfo_.socType); // 未识别arch兜底,语义同原catch-all
     }
 
     std::string GetCalcTypeString()
