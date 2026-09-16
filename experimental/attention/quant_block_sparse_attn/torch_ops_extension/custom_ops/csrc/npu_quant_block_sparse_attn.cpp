@@ -26,6 +26,25 @@ const int64_t QBSA_MXFP8_FULL_QUANT_MODE = 2;
 const int64_t QBSA_MXFP8_SCALE_GROUP_SIZE = 64;
 const int64_t QBSA_MXFP8_SCALE_LAST_DIM = 2;
 
+void CheckPaddedQueryInputs(const at::Tensor &query, const at::Tensor &qDescale,
+                            const c10::optional<at::Tensor> &cuSeqlensQ,
+                            const c10::optional<at::Tensor> &sequsedQ, c10::string_view layoutQ)
+{
+    if (layoutQ != "BSND" && layoutQ != "BNSD") {
+        return;
+    }
+    TORCH_CHECK(!cuSeqlensQ.has_value(), "BSND/BNSD requires cu_seqlens_q=None; Q length comes from shape S.");
+    TORCH_CHECK(!sequsedQ.has_value(), "BSND/BNSD requires seqused_q=None.");
+    TORCH_CHECK(query.dim() == DIM_FOUR && query.numel() > 0, "BSND/BNSD query must be nonempty and 4D");
+    TORCH_CHECK(qDescale.dim() == DIM_FIVE, "BSND/BNSD q_descale must be 5D");
+    TORCH_CHECK(query.is_contiguous() && qDescale.is_contiguous(), "BSND/BNSD Q and q_descale must be contiguous");
+    TORCH_CHECK(qDescale.size(0) == query.size(0) && qDescale.size(1) == query.size(1) &&
+                qDescale.size(2) == query.size(2) &&
+                qDescale.size(3) == (query.size(3) + QBSA_MXFP8_SCALE_GROUP_SIZE - 1) / QBSA_MXFP8_SCALE_GROUP_SIZE &&
+                qDescale.size(4) == QBSA_MXFP8_SCALE_LAST_DIM,
+                "BSND/BNSD q_descale must match Q batch/sequence/head axes and [ceil(D/64),2]");
+}
+
 // 工具函数，推导输出 attention_out / softmax_lse 的 shape 与 dtype
 //   - attention_out: BF16，TND 保持原布局，NTD 转为 TND
 //   - softmax_lse: FLOAT32，FP8 为 (N1,T)，MXFP8 TND 为 (T,N1)，BSND/BNSD 为 (B,N1,S)
@@ -94,10 +113,7 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_npu(
     c10::string_view layout_q, c10::string_view layout_sparse_indices, c10::string_view layout_out, int64_t quant_mode,
     int64_t mask_mode, bool return_softmax_lse)
 {
-    if (layout_q == "BSND" || layout_q == "BNSD") {
-        TORCH_CHECK(!cu_seqlens_q.has_value(), "BSND/BNSD requires cu_seqlens_q=None; Q length comes from shape S.");
-        TORCH_CHECK(!seqused_q.has_value(), "BSND/BNSD requires seqused_q=None.");
-    }
+    CheckPaddedQueryInputs(query, q_descale, cu_seqlens_q, seqused_q, layout_q);
     TORCH_CHECK(query.numel() > 0, "Tensor query is empty.");
     TORCH_CHECK(key.dim() == DIM_FOUR && value.dim() == DIM_FOUR,
                 "key/value should be 4D PA_BNBD [blockNum, Nkv, blockSize, headDim], but got dims ", key.dim(), "/",
@@ -184,9 +200,6 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_npu(
         construct_bsa_output_tensors(query, value, layout_q, layout_out, quant_mode, return_softmax_lse);
     at::Tensor attention_out = std::get<0>(outputs);
     at::Tensor softmax_lse = std::get<1>(outputs);
-    if (layout_q == "BSND" || layout_q == "BNSD") {
-        TORCH_CHECK(q_descale.is_contiguous(), "BSND/BNSD q_descale must be contiguous");
-    }
 
     // convert str
     std::string layout_kv_str = std::string(layout_kv);
@@ -233,10 +246,7 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_meta(
     c10::string_view layout_q, c10::string_view layout_sparse_indices, c10::string_view layout_out, int64_t quant_mode,
     int64_t mask_mode, bool return_softmax_lse)
 {
-    if (layout_q == "BSND" || layout_q == "BNSD") {
-        TORCH_CHECK(!cu_seqlens_q.has_value(), "BSND/BNSD requires cu_seqlens_q=None; Q length comes from shape S.");
-        TORCH_CHECK(!seqused_q.has_value(), "BSND/BNSD requires seqused_q=None.");
-    }
+    CheckPaddedQueryInputs(query, q_descale, cu_seqlens_q, seqused_q, layout_q);
     return construct_bsa_output_tensors(query, value, layout_q, layout_out, quant_mode, return_softmax_lse);
 }
 } // namespace custom

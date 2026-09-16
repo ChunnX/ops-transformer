@@ -20,6 +20,7 @@
 #ifndef __CCE_AICORE__
 #include <cassert>
 #include <cstddef>
+#include <cstring>
 #endif
 
 namespace optiling {
@@ -47,6 +48,21 @@ constexpr uint32_t QBSA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX = 7U; // 当前AIC核�
 
 #ifndef __CCE_AICORE__
 namespace detail {
+inline bool IsPaddedQueryLayout(const char *layout)
+{
+    return layout != nullptr && (std::strcmp(layout, "BSND") == 0 || std::strcmp(layout, "BNSD") == 0);
+}
+
+inline bool IsSupportedQueryLayout(const char *layout, int64_t quantMode)
+{
+    if (layout == nullptr) {
+        return false;
+    }
+    const bool tnd = std::strcmp(layout, "TND") == 0;
+    return (quantMode == 1 && (tnd || std::strcmp(layout, "NTD") == 0)) ||
+           (quantMode == 2 && (tnd || IsPaddedQueryLayout(layout)));
+}
+
 struct qbsaMetaData {
     uint32_t sectionNum { 0U };
     QBSA_METADATA_T *headMetadata; // [QBSA_HEAD_METADATA_SIZE];

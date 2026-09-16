@@ -134,6 +134,16 @@ TEST(QbsaMxQueryLayout, PackedTndAndWideOffsets)
     EXPECT_EQ(regbasemx::MxLseSlot<QBSALayout::TND>(base, 7, 3, 8, 0), (base + 7) * 8 + 3);
     EXPECT_EQ(regbasemx::MxQuerySlot<QBSALayout::BNSD>(base, 7, 3, 8, 129), base * 8 + 3 * 129 + 7);
 }
+
+TEST(QbsaMxQueryLayout, MetadataEndsAreClippedToPhysicalQuery)
+{
+    EXPECT_EQ(regbasemx::MxS1LoopEnd(129, 64, 0), 3U);
+    EXPECT_EQ(regbasemx::MxS1LoopEnd(129, 64, 2), 2U);
+    EXPECT_EQ(regbasemx::MxS1LoopEnd(129, 64, 7), 3U);
+    EXPECT_EQ(regbasemx::MxS1LoopEnd(129, 128, 7), 2U);
+    EXPECT_EQ(regbasemx::MxS1LoopEnd(0, 128, 7), 0U);
+    EXPECT_EQ(regbasemx::MxS1LoopEnd(UINT32_MAX, 128, 0), 33554432U);
+}
 } // namespace
 
 } // namespace QuantBlockSparseAttnUT

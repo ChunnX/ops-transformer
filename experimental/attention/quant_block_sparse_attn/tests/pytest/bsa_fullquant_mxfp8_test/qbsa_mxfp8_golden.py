@@ -2602,7 +2602,16 @@ def _call_npu_fa_op(
         sparse_seq_len,
     )
 
+    metadata_by_layout = {layout_q: metadata}
+
     def invoke(query, q_scale, q_layout, out_layout):
+        # Exercise each layout's metadata entry point as well as its main kernel.
+        # Reusing the TND metadata here would hide BSND/BNSD interface regressions.
+        if q_layout not in metadata_by_layout:
+            metadata_by_layout[q_layout] = _prepare_npu_metadata(
+                cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, block_table,
+                q_n, kv_n, q_layout, layout_kv, sparse_indices, sparse_seq_len,
+            )[-1]
         return torch.ops.custom.npu_quant_block_sparse_attn(
             query,
             k,
@@ -2622,7 +2631,7 @@ def _call_npu_fa_op(
             seqused_q=seqused_q,
             seqused_kv=seqused_kv,
             block_table=block_table,
-            metadata=metadata,
+            metadata=metadata_by_layout[q_layout],
             layout_kv=layout_kv,
             layout_q=q_layout,
             layout_sparse_indices=SPARSE_INDICES_LAYOUT,
