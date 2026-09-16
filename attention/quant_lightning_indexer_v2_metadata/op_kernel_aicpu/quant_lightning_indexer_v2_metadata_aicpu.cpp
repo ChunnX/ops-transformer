@@ -326,7 +326,8 @@ void QuantLightningIndexerV2MetadataCpuKernel::CalcSplitInfo(SplitContext &split
         }
     }
     ValidSocVersion validSocVersion = ProcessSocVersion();
-    if (validSocVersion == ValidSocVersion::ASCEND950) {
+    // 910B系列(A2/A3)与950使用相同的supportFd判断: 打开行内s2块级切分 + LD归约
+    if (validSocVersion == ValidSocVersion::ASCEND950 || validSocVersion == ValidSocVersion::ASCEND910B) {
         if (maxS2Size_ < static_cast<uint32_t>(topk_)) {
             supportFd_ = false;
             return;
