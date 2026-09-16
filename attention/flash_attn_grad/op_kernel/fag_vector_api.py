@@ -144,6 +144,141 @@ def softmax_grad_front_row192_vf(
     vf.store_unalign_post(sfmg_ub, aregSfmg, 0, post_update=True)
 
 
+@pl.vector_function
+def softmax_grad_front_row256_vf(
+    sfmg_ub,
+    y_ub,
+    dy_ub,
+    srcM: pl.DT_INT64,
+    rowShift: pl.DT_INT64,
+    rowStride: pl.DT_INT64,
+    evenSize: pl.DT_INT64,
+    oddSize: pl.DT_INT64,
+    evenSize2: pl.DT_INT64,
+    oddSize2: pl.DT_INT64,
+):
+    """sfmg：Dv=256 档。先收前 128 列，再 colOff=128 收剩余，两趟 reduce 相加。
+
+    独立档位函数，不把 128/192/256 写进同一个 VF。
+    """
+    pregFullExe = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
+    pregFullExeB16 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP16)
+    pregEven = vf.update_mask(evenSize, dtype=pl.DT_FP32)
+    pregOdd = vf.update_mask(oddSize, dtype=pl.DT_FP32)
+    pregEven2 = vf.update_mask(evenSize2, dtype=pl.DT_FP32)
+    pregOdd2 = vf.update_mask(oddSize2, dtype=pl.DT_FP32)
+    aregSfmg = vf.unalign_reg_for_store()
+    for m in pl.range(0, srcM):
+        vregYHalf = vf.load_align(y_ub, (m + rowShift) * rowStride)
+        vregDyHalf = vf.load_align(dy_ub, (m + rowShift) * rowStride)
+        vregY = vf.astype(
+            vregYHalf, pregFullExeB16, dtype=pl.DT_FP32, layout=pl.CastLayout.ZERO
+        )
+        vregY1 = vf.astype(
+            vregYHalf, pregFullExeB16, dtype=pl.DT_FP32, layout=pl.CastLayout.ONE
+        )
+        vregDy = vf.astype(
+            vregDyHalf, pregFullExeB16, dtype=pl.DT_FP32, layout=pl.CastLayout.ZERO
+        )
+        vregDy1 = vf.astype(
+            vregDyHalf, pregFullExeB16, dtype=pl.DT_FP32, layout=pl.CastLayout.ONE
+        )
+        vregMul = vf.mul(vregDy, vregY, pregEven)
+        vregMul2 = vf.mul(vregDy1, vregY1, pregOdd)
+        vregRed = vf.reduce_sum(vregMul, pregEven)
+        vregRed2 = vf.reduce_sum(vregMul2, pregOdd)
+        vregSum = vf.add(vregRed, vregRed2, pregFullExe)
+        vregYHalf = vf.load_align(y_ub, (m + rowShift) * rowStride + 128)
+        vregDyHalf = vf.load_align(dy_ub, (m + rowShift) * rowStride + 128)
+        vregY = vf.astype(
+            vregYHalf, pregFullExeB16, dtype=pl.DT_FP32, layout=pl.CastLayout.ZERO
+        )
+        vregY1 = vf.astype(
+            vregYHalf, pregFullExeB16, dtype=pl.DT_FP32, layout=pl.CastLayout.ONE
+        )
+        vregDy = vf.astype(
+            vregDyHalf, pregFullExeB16, dtype=pl.DT_FP32, layout=pl.CastLayout.ZERO
+        )
+        vregDy1 = vf.astype(
+            vregDyHalf, pregFullExeB16, dtype=pl.DT_FP32, layout=pl.CastLayout.ONE
+        )
+        vregMul = vf.mul(vregDy, vregY, pregEven2)
+        vregMul2 = vf.mul(vregDy1, vregY1, pregOdd2)
+        vregRed = vf.reduce_sum(vregMul, pregEven2)
+        vregRed2 = vf.reduce_sum(vregMul2, pregOdd2)
+        vregSum2 = vf.add(vregRed, vregRed2, pregFullExe)
+        vregSum = vf.add(vregSum, vregSum2, pregFullExe)
+        vf.store_unalign(sfmg_ub, vregSum, aregSfmg, 1, post_update=True)
+    vf.store_unalign_post(sfmg_ub, aregSfmg, 0, post_update=True)
+
+
+@pl.vector_function
+def softmax_grad_front_row256_acc_vf(
+    sfmg_ub,
+    y_ub,
+    dy_ub,
+    srcM: pl.DT_INT64,
+    rowShift: pl.DT_INT64,
+    rowStride: pl.DT_INT64,
+    evenSize: pl.DT_INT64,
+    oddSize: pl.DT_INT64,
+    evenSize2: pl.DT_INT64,
+    oddSize2: pl.DT_INT64,
+):
+    """768 档后续窗：与 VF256 相同，但把本窗 reduce 累加进已有 sfmg。"""
+    pregFullExe = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
+    pregFullExeB16 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP16)
+    pregEven = vf.update_mask(evenSize, dtype=pl.DT_FP32)
+    pregOdd = vf.update_mask(oddSize, dtype=pl.DT_FP32)
+    pregEven2 = vf.update_mask(evenSize2, dtype=pl.DT_FP32)
+    pregOdd2 = vf.update_mask(oddSize2, dtype=pl.DT_FP32)
+    aregSfmg = vf.unalign_reg_for_store()
+    for m in pl.range(0, srcM):
+        vregYHalf = vf.load_align(y_ub, (m + rowShift) * rowStride)
+        vregDyHalf = vf.load_align(dy_ub, (m + rowShift) * rowStride)
+        vregY = vf.astype(
+            vregYHalf, pregFullExeB16, dtype=pl.DT_FP32, layout=pl.CastLayout.ZERO
+        )
+        vregY1 = vf.astype(
+            vregYHalf, pregFullExeB16, dtype=pl.DT_FP32, layout=pl.CastLayout.ONE
+        )
+        vregDy = vf.astype(
+            vregDyHalf, pregFullExeB16, dtype=pl.DT_FP32, layout=pl.CastLayout.ZERO
+        )
+        vregDy1 = vf.astype(
+            vregDyHalf, pregFullExeB16, dtype=pl.DT_FP32, layout=pl.CastLayout.ONE
+        )
+        vregMul = vf.mul(vregDy, vregY, pregEven)
+        vregMul2 = vf.mul(vregDy1, vregY1, pregOdd)
+        vregRed = vf.reduce_sum(vregMul, pregEven)
+        vregRed2 = vf.reduce_sum(vregMul2, pregOdd)
+        vregSum = vf.add(vregRed, vregRed2, pregFullExe)
+        vregYHalf = vf.load_align(y_ub, (m + rowShift) * rowStride + 128)
+        vregDyHalf = vf.load_align(dy_ub, (m + rowShift) * rowStride + 128)
+        vregY = vf.astype(
+            vregYHalf, pregFullExeB16, dtype=pl.DT_FP32, layout=pl.CastLayout.ZERO
+        )
+        vregY1 = vf.astype(
+            vregYHalf, pregFullExeB16, dtype=pl.DT_FP32, layout=pl.CastLayout.ONE
+        )
+        vregDy = vf.astype(
+            vregDyHalf, pregFullExeB16, dtype=pl.DT_FP32, layout=pl.CastLayout.ZERO
+        )
+        vregDy1 = vf.astype(
+            vregDyHalf, pregFullExeB16, dtype=pl.DT_FP32, layout=pl.CastLayout.ONE
+        )
+        vregMul = vf.mul(vregDy, vregY, pregEven2)
+        vregMul2 = vf.mul(vregDy1, vregY1, pregOdd2)
+        vregRed = vf.reduce_sum(vregMul, pregEven2)
+        vregRed2 = vf.reduce_sum(vregMul2, pregOdd2)
+        vregSum2 = vf.add(vregRed, vregRed2, pregFullExe)
+        vregSum = vf.add(vregSum, vregSum2, pregFullExe)
+        vregOld = vf.load_align(sfmg_ub, m, dist=pl.LoadDist.BRC_B32)
+        vregSum = vf.add(vregSum, vregOld, pregFullExe)
+        vf.store_unalign(sfmg_ub, vregSum, aregSfmg, 1, post_update=True)
+    vf.store_unalign_post(sfmg_ub, aregSfmg, 0, post_update=True)
+
+
 # ---- V3: dS = (dP - sfmg) * P，随后 cast + ND2NZ ----
 
 

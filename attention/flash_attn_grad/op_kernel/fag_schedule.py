@@ -202,34 +202,35 @@ def block_range_of(constInfo, cBlockIdx, coreNum, blockStart, blockEnd):
     """本核负责的块数。线性支读 metadata；swizzle 仍走列跨核公式。
 
     mask+swizzle 按 packed 有效块跨核发，不再用整矩形列跨核。
+    分核开关用 tilingkey 裸名 ``swizzle``，与 ``next_work_gidx`` 一样先判
+    ``swizzle == 0``，死支公式不进线性核。
     """
-    numColTasks = (
-        constInfo.bSize * constInfo.n2Size * constInfo.gSize * constInfo.s2Outer
-    )
-    rem = pl.max(numColTasks - cBlockIdx, 0)
-    swzDense = ((rem + coreNum - 1) // coreNum) * constInfo.s1Outer
+    if swizzle == 0:
+        return pl.astype(pl.max(blockEnd - blockStart, 0), pl.DT_INT64)
+    if mask_mode == 0:
+        numColTasks = (
+            constInfo.bSize * constInfo.n2Size * constInfo.gSize * constInfo.s2Outer
+        )
+        rem = pl.max(numColTasks - cBlockIdx, 0)
+        return pl.astype(
+            ((rem + coreNum - 1) // coreNum) * constInfo.s1Outer, pl.DT_INT64
+        )
     fused = constInfo.bSize * constInfo.n2Size * constInfo.gSize
-    tot = fused * constInfo.totalPerBatchNum
-    remP = pl.max(tot - cBlockIdx, 0)
-    swzPacked = (remP + coreNum - 1) // coreNum
-    lin = pl.max(blockEnd - blockStart, 0)
-    if constInfo.enableSwizzle:
-        if mask_mode == 0:
-            return pl.astype(swzDense, pl.DT_INT64)
-        return pl.astype(swzPacked, pl.DT_INT64)
-    return lin
+    remP = pl.max(fused * constInfo.totalPerBatchNum - cBlockIdx, 0)
+    return pl.astype((remP + coreNum - 1) // coreNum, pl.DT_INT64)
 
 
 def block_idx_of(constInfo, cBlockIdx, coreNum, blockStart, localIdx):
     """局部块序号 -> 全局块下标。线性支起点取自 metadata。"""
-    swzDense = swizzle_idx(constInfo, cBlockIdx, coreNum, localIdx)
-    swzPacked = packed_to_dense_idx(constInfo, cBlockIdx + localIdx * coreNum)
-    lin = blockStart + localIdx
-    if constInfo.enableSwizzle:
-        if mask_mode == 0:
-            return pl.astype(swzDense, pl.DT_INT64)
-        return pl.astype(swzPacked, pl.DT_INT64)
-    return lin
+    if swizzle == 0:
+        return pl.astype(blockStart + localIdx, pl.DT_INT64)
+    if mask_mode == 0:
+        return pl.astype(
+            swizzle_idx(constInfo, cBlockIdx, coreNum, localIdx), pl.DT_INT64
+        )
+    return pl.astype(
+        packed_to_dense_idx(constInfo, cBlockIdx + localIdx * coreNum), pl.DT_INT64
+    )
 
 
 # ==================================================================
@@ -255,23 +256,25 @@ def need_load_kv(constInfo, gIdx, localIdx):
     不必再算一遍。
     8192 场景 s1Outer=64，K/V 的 GM 读次数降到 1/64。
     """
-    swz = 1 - pl.min(localIdx % constInfo.s1Outer, 1)
-    isFirst = 1 - pl.min(localIdx, 1)
-    gCur = s2_group_of(constInfo, gIdx)
-    gPrev = s2_group_of(constInfo, pl.max(gIdx - 1, 0))
-    lin = pl.max(isFirst, pl.min(gCur - gPrev, 1))
-    if constInfo.enableSwizzle:
-        return pl.astype(swz, pl.DT_INT32)
-    return pl.astype(lin, pl.DT_INT32)
+    if swizzle == 0:
+        isFirst = 1 - pl.min(localIdx, 1)
+        gCur = s2_group_of(constInfo, gIdx)
+        gPrev = s2_group_of(constInfo, pl.max(gIdx - 1, 0))
+        return pl.astype(pl.max(isFirst, pl.min(gCur - gPrev, 1)), pl.DT_INT32)
+    return pl.astype(1 - pl.min(localIdx % constInfo.s1Outer, 1), pl.DT_INT32)
 
 
 def next_s2_same(constInfo, gIdx, localIdx):
     """下一块是否仍落在同一个 s2 块内(1=是，0=否)。"""
-    swz = pl.min((localIdx + 1) % constInfo.s1Outer, 1)
-    lin = 1 - pl.min(s2_group_of(constInfo, gIdx + 1) - s2_group_of(constInfo, gIdx), 1)
-    if constInfo.enableSwizzle:
-        return pl.astype(swz, pl.DT_INT32)
-    return pl.astype(lin, pl.DT_INT32)
+    if swizzle == 0:
+        return pl.astype(
+            1
+            - pl.min(
+                s2_group_of(constInfo, gIdx + 1) - s2_group_of(constInfo, gIdx), 1
+            ),
+            pl.DT_INT32,
+        )
+    return pl.astype(pl.min((localIdx + 1) % constInfo.s1Outer, 1), pl.DT_INT32)
 
 
 # ==================================================================
