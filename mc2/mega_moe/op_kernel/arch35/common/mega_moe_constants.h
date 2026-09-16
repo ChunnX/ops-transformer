@@ -108,7 +108,11 @@ constexpr int32_t DEDUP_MODE_DISPATCH = 0x1; // dispatch 拉取去重（同一�
 constexpr int32_t DEDUP_MODE_COMBINE = 0x2;
 // prepass 工作项 chunk 数上限：flag 区按 worldSize*MAX_CHUNKS 上界分配；
 // CalcDedupPrepassChunkTokens 的 floor-clamp 保证实际 chunkCount 不超此值。
-constexpr uint32_t DEDUP_PREPASS_MAX_CHUNKS = 128U;  // combine 生产卡预加权合并后单发（可选能力，强制 prefetch 语义）
+constexpr uint32_t DEDUP_PREPASS_MAX_CHUNKS = 128U;
+// prepass UB 三区容量（kernel CalcDedupPrepassChunkTokens 与 host 门 floorChunk 护栏共用，单一真源）。
+constexpr uint32_t DEDUP_ROUTE_LOAD_UB_BYTES = 4U * 1024U;
+constexpr uint32_t DEDUP_COUNT_UB_BYTES = 4U * 1024U;
+constexpr uint32_t DEDUP_MEMBER_UB_BYTES = 54U * 1024U;  // combine 生产卡预加权合并后单发（可选能力，强制 prefetch 语义）
 /*
  * rowDesc：去重 prepass 为每个接收行生成的定长描述符（布局尺寸见 peermem.h CalcDedupRowDescStrideInt32）。
  * [0] flags | memberCount：0 表示该 (srcRank, token) 在本卡只出现一次，走原路径；
