@@ -68,6 +68,8 @@ constexpr int64_t SEND_COUNTS_ALIGN_FACTOR = 8;
 constexpr int64_t MOE_EP_METADATA_FIELDS = 5;
 constexpr int64_t MOE_EP_METADATA_ALIGN_BYTES = 512;
 constexpr uint32_t MIX_LAYERED = 2U;
+constexpr uint32_t MIX_CLOS_SLOT = 0U;
+constexpr uint32_t MIX_MESH_SLOT = 1U;
 constexpr uint32_t MIX_LAYERED_RANK_SIZE = 8U;
 
 // RAII guard for multi-step host buffer allocation
@@ -172,6 +174,7 @@ struct LayerRanks {
 struct MixLayeredInfo {
     // Channel 0 uses Clos; channel 1 uses the direct mesh.
     std::array<uint32_t, MIX_LAYERED> layerIds = {};
+    std::array<std::vector<CommLink>, MIX_LAYERED> linksByRank;
     bool isUseMixLayered = false;
 };
 
@@ -873,14 +876,44 @@ private:
         memHandle_ = nullptr;
     }
 
-    bool SupportsMixLayer(const HcclComm &commHandle, uint32_t layerId, uint32_t srcRankId, uint32_t rankSize)
+    static bool CoversAllRanks(const std::vector<uint32_t> &ranks, uint32_t rankSize)
     {
-        LayerRanks layer = GetLayerRanks(commHandle, layerId);
         for (uint32_t peer = 0; peer < rankSize; ++peer) {
-            if (std::find(layer.ranks.begin(), layer.ranks.end(), peer) == layer.ranks.end()) {
+            if (std::find(ranks.begin(), ranks.end(), peer) == ranks.end()) {
                 return false;
             }
         }
+        return true;
+    }
+
+    static bool MatchesInstanceEndpoint(const EndpointDesc &linkEndpoint, const EndpointDesc &instanceEndpoint)
+    {
+        if (linkEndpoint.protocol != instanceEndpoint.protocol ||
+            linkEndpoint.loc.locType != instanceEndpoint.loc.locType ||
+            linkEndpoint.commAddr.type != instanceEndpoint.commAddr.type) {
+            return false;
+        }
+        // Instance queries do not populate device location IDs; compare the active address field only.
+        const auto &lhs = linkEndpoint.commAddr;
+        const auto &rhs = instanceEndpoint.commAddr;
+        switch (lhs.type) {
+            case COMM_ADDR_TYPE_EID:
+                return std::memcmp(lhs.eid, rhs.eid, sizeof(lhs.eid)) == 0;
+            case COMM_ADDR_TYPE_IP_V4:
+                return std::memcmp(&lhs.addr, &rhs.addr, sizeof(lhs.addr)) == 0;
+            case COMM_ADDR_TYPE_IP_V6:
+                return std::memcmp(&lhs.addr6, &rhs.addr6, sizeof(lhs.addr6)) == 0;
+            case COMM_ADDR_TYPE_ID:
+                return lhs.id == rhs.id;
+            default:
+                return false;
+        }
+    }
+
+    bool CollectMixLinks(const HcclComm &commHandle, uint32_t layerId, uint32_t srcRankId, uint32_t rankSize,
+                         const std::vector<EndpointDesc> *instanceEndpoints, std::vector<CommLink> &selectedLinks)
+    {
+        selectedLinks.resize(rankSize);
         for (uint32_t peer = 0; peer < rankSize; ++peer) {
             if (peer == srcRankId) {
                 continue;
@@ -891,11 +924,176 @@ private:
             TORCH_CHECK(ret == HCCL_SUCCESS, "Get mixed-layer links failed, layer: ", layerId,
                         ", srcRank: ", srcRankId, ", peer: ", peer, ", ret: ", ret);
             TORCH_CHECK(linkNum == 0 || links != nullptr, "Null mixed-layer links, layer: ", layerId);
-            if (!HasLinkWithProtocol(links, linkNum, CommProtocol::COMM_PROTOCOL_UB_CTP)) {
+            bool found = false;
+            for (uint32_t i = 0; i < linkNum; ++i) {
+                if (links[i].linkAttr.linkProtocol != CommProtocol::COMM_PROTOCOL_UB_CTP) {
+                    continue;
+                }
+                if (instanceEndpoints != nullptr &&
+                    std::none_of(instanceEndpoints->begin(), instanceEndpoints->end(), [&](const EndpointDesc &ep) {
+                        return MatchesInstanceEndpoint(links[i].srcEndpointDesc, ep);
+                    })) {
+                    continue;
+                }
+                // HCCL owns the returned list. Keep the exact validated link for channel construction.
+                selectedLinks[peer] = links[i];
+                found = true;
+                break;
+            }
+            if (!found) {
+                ASCEND_LOGI("[MixLayer] rank %u layer %u: no matching UB_CTP link to peer %u", srcRankId, layerId, peer);
                 return false;
             }
         }
         return true;
+    }
+
+    std::vector<uint32_t> GetTopologyInstanceIds(const HcclComm &commHandle, uint32_t layerId)
+    {
+        uint32_t *instanceList = nullptr;
+        uint32_t instanceCount = 0;
+        auto ret = HcclRankGraphGetTopoInstsByLayerFunc(commHandle, layerId, &instanceList, &instanceCount);
+        TORCH_CHECK(ret == HCCL_SUCCESS, "Get topology instances failed, layer: ", layerId, ", ret: ", ret);
+        TORCH_CHECK(instanceCount == 0 || instanceList != nullptr, "Null topology instance list, layer: ", layerId);
+        if (instanceCount == 0) {
+            return {};
+        }
+        return {instanceList, instanceList + instanceCount};
+    }
+
+    bool InstanceCoversAllRanks(const HcclComm &commHandle, uint32_t layerId, uint32_t instanceId, uint32_t rankSize)
+    {
+        uint32_t *rankList = nullptr;
+        uint32_t rankCount = 0;
+        auto ret = HcclRankGraphGetRanksByTopoInstFunc(commHandle, layerId, instanceId, &rankList, &rankCount);
+        TORCH_CHECK(ret == HCCL_SUCCESS, "Get instance ranks failed, layer: ", layerId,
+                    ", instance: ", instanceId, ", ret: ", ret);
+        TORCH_CHECK(rankCount == 0 || rankList != nullptr, "Null instance ranks, layer: ", layerId);
+        return rankCount != 0 && CoversAllRanks(std::vector<uint32_t>(rankList, rankList + rankCount), rankSize);
+    }
+
+    std::vector<EndpointDesc> GetInstanceEndpoints(const HcclComm &commHandle, uint32_t layerId, uint32_t instanceId)
+    {
+        uint32_t endpointCapacity = 0;
+        auto ret = HcclRankGraphGetEndpointNumFunc(commHandle, layerId, instanceId, &endpointCapacity);
+        TORCH_CHECK(ret == HCCL_SUCCESS, "Get instance endpoint count failed, layer: ", layerId,
+                    ", instance: ", instanceId, ", ret: ", ret);
+        if (endpointCapacity == 0) {
+            return {};
+        }
+        std::vector<EndpointDesc> endpoints(endpointCapacity);
+        uint32_t actualEndpointCount = endpointCapacity;
+        ret = HcclRankGraphGetEndpointDescFunc(commHandle, layerId, instanceId, &actualEndpointCount, endpoints.data());
+        TORCH_CHECK(ret == HCCL_SUCCESS && actualEndpointCount <= endpointCapacity,
+                    "Get instance endpoints failed, layer: ", layerId, ", instance: ", instanceId, ", ret: ", ret);
+        endpoints.resize(actualEndpointCount);
+        return endpoints;
+    }
+
+    bool CollectInstanceMixLinks(const HcclComm &commHandle, uint32_t layerId, uint32_t instanceId,
+                                 uint32_t srcRankId, uint32_t rankSize, std::vector<CommLink> &selectedLinks)
+    {
+        if (!InstanceCoversAllRanks(commHandle, layerId, instanceId, rankSize)) {
+            ASCEND_LOGI("[MixLayer] rank %u skips layer %u instance %u: incomplete rank coverage",
+                        srcRankId, layerId, instanceId);
+            return false;
+        }
+        const auto endpoints = GetInstanceEndpoints(commHandle, layerId, instanceId);
+        if (endpoints.empty()) {
+            ASCEND_LOGI("[MixLayer] rank %u skips layer %u instance %u: no local endpoints",
+                        srcRankId, layerId, instanceId);
+            return false;
+        }
+        if (!CollectMixLinks(commHandle, layerId, srcRankId, rankSize, &endpoints, selectedLinks)) {
+            ASCEND_LOGI("[MixLayer] rank %u skips layer %u instance %u: incomplete instance CTP links",
+                        srcRankId, layerId, instanceId);
+            return false;
+        }
+        return true;
+    }
+
+    bool FindCustomMixInstance(const HcclComm &commHandle, uint32_t layerId, CommTopo targetType,
+                               uint32_t srcRankId, uint32_t rankSize, std::vector<CommLink> &selectedLinks)
+    {
+        const auto instanceIds = GetTopologyInstanceIds(commHandle, layerId);
+        for (uint32_t instanceId : instanceIds) {
+            CommTopo instanceType = COMM_TOPO_RESERVED;
+            auto ret = HcclRankGraphGetTopoTypeFunc(commHandle, layerId, instanceId, &instanceType);
+            TORCH_CHECK(ret == HCCL_SUCCESS, "Get instance type failed, layer: ", layerId,
+                        ", instance: ", instanceId, ", ret: ", ret);
+            if (instanceType != targetType) {
+                ASCEND_LOGD("[MixLayer] rank %u layer %u instance %u: type %d, looking for %d", srcRankId,
+                            layerId, instanceId, static_cast<int>(instanceType), static_cast<int>(targetType));
+                continue;
+            }
+            if (!CollectInstanceMixLinks(commHandle, layerId, instanceId, srcRankId, rankSize, selectedLinks)) {
+                continue;
+            }
+            ASCEND_LOGI("[MixLayer] rank %u selects CUSTOM layer %u instance %u as %s", srcRankId, layerId,
+                        instanceId, targetType == COMM_TOPO_CLOS ? "Clos" : "fullmesh");
+            return true;
+        }
+        ASCEND_LOGI("[MixLayer] rank %u CUSTOM layer %u: no qualified %s instance among %zu instances",
+                    srcRankId, layerId, targetType == COMM_TOPO_CLOS ? "Clos" : "fullmesh", instanceIds.size());
+        return false;
+    }
+
+    void SelectExplicitMixLayers(const HcclComm &commHandle, const std::vector<uint32_t> &layerIds,
+                                 uint32_t srcRankId, uint32_t rankSize, std::vector<uint32_t> &customLayers,
+                                 std::array<bool, MIX_LAYERED> &found)
+    {
+        for (uint32_t layerId : layerIds) {
+            CommTopo topoType = COMM_TOPO_RESERVED;
+            auto ret = HcclRankGraphGetTopoTypeByLayerFunc(commHandle, layerId, &topoType);
+            TORCH_CHECK(ret == HCCL_SUCCESS, "Get HCCL topology type failed, layer: ", layerId, ", ret: ", ret);
+            ASCEND_LOGI("[MixLayer] rank %u layer %u: topology %d", srcRankId, layerId, static_cast<int>(topoType));
+            if (topoType == COMM_TOPO_CUSTOM) {
+                customLayers.push_back(layerId);
+                continue;
+            }
+            if (topoType != COMM_TOPO_CLOS && topoType != COMM_TOPO_1DMESH) {
+                continue;
+            }
+            const uint32_t slot = topoType == COMM_TOPO_CLOS ? MIX_CLOS_SLOT : MIX_MESH_SLOT;
+            if (found[slot]) {
+                continue;
+            }
+            if (!CoversAllRanks(GetLayerRanks(commHandle, layerId).ranks, rankSize)) {
+                ASCEND_LOGI("[MixLayer] rank %u skips layer %u: incomplete rank coverage", srcRankId, layerId);
+                continue;
+            }
+            if (CollectMixLinks(commHandle, layerId, srcRankId, rankSize, nullptr, mixLayeredInfo_.linksByRank[slot])) {
+                mixLayeredInfo_.layerIds[slot] = layerId;
+                found[slot] = true;
+                if (found[MIX_CLOS_SLOT] && found[MIX_MESH_SLOT]) {
+                    break;
+                }
+            }
+        }
+    }
+
+    void SelectCustomMixLayers(const HcclComm &commHandle, const std::vector<uint32_t> &customLayers,
+                               uint32_t srcRankId, uint32_t rankSize, std::array<bool, MIX_LAYERED> &found)
+    {
+        // When both roles are missing, prefer fullmesh first, then Clos on a different layer.
+        for (uint32_t slot : {MIX_MESH_SLOT, MIX_CLOS_SLOT}) {
+            if (found[slot]) {
+                continue;
+            }
+            const uint32_t otherSlot = slot == MIX_MESH_SLOT ? MIX_CLOS_SLOT : MIX_MESH_SLOT;
+            const CommTopo targetType = slot == MIX_MESH_SLOT ? COMM_TOPO_1DMESH : COMM_TOPO_CLOS;
+            for (uint32_t layerId : customLayers) {
+                if (found[otherSlot] && layerId == mixLayeredInfo_.layerIds[otherSlot]) {
+                    continue;
+                }
+                if (FindCustomMixInstance(commHandle, layerId, targetType, srcRankId, rankSize,
+                                          mixLayeredInfo_.linksByRank[slot])) {
+                    mixLayeredInfo_.layerIds[slot] = layerId;
+                    found[slot] = true;
+                    break;
+                }
+            }
+        }
     }
 
     void CheckIsMixLayered(const HcclComm &commHandle)
@@ -914,30 +1112,20 @@ private:
             return;
         }
         TORCH_CHECK(layerList != nullptr, "HCCL returned a null layer list");
-        // HCCL owns the list; retain the IDs while querying individual layers.
-        const std::vector<uint32_t> layerIds(layerList, layerList + layerNum);
+        std::vector<uint32_t> layerIds(layerList, layerList + layerNum);
+        std::vector<uint32_t> customLayers;
         std::array<bool, MIX_LAYERED> found = {};
-        for (uint32_t layerId : layerIds) {
-            CommTopo topoType = COMM_TOPO_RESERVED;
-            auto ret = HcclRankGraphGetTopoTypeByLayerFunc(commHandle, layerId, &topoType);
-            TORCH_CHECK(ret == HCCL_SUCCESS, "Get HCCL topology type failed, layer: ", layerId, ", ret: ", ret);
-            if (topoType != COMM_TOPO_CLOS && topoType != COMM_TOPO_1DMESH) {
-                continue;
-            }
-            const uint32_t slot = topoType == COMM_TOPO_CLOS ? 0U : 1U;
-            if (found[slot] || !SupportsMixLayer(commHandle, layerId, srcRankId, rankSize)) {
-                continue;
-            }
-            mixLayeredInfo_.layerIds[slot] = layerId;
-            found[slot] = true;
-            if (found[0] && found[1]) {
-                mixLayeredInfo_.isUseMixLayered = true;
-                ASCEND_LOGI("Rank %u enables mixed CTP channels, Clos layer %u, direct layer %u", srcRankId,
-                            mixLayeredInfo_.layerIds[0], mixLayeredInfo_.layerIds[1]);
-                return;
-            }
+        // Preserve HCCL order and prefer explicit types before filling missing roles from CUSTOM layers.
+        SelectExplicitMixLayers(commHandle, layerIds, srcRankId, rankSize, customLayers, found);
+        SelectCustomMixLayers(commHandle, customLayers, srcRankId, rankSize, found);
+        mixLayeredInfo_.isUseMixLayered = found[MIX_CLOS_SLOT] && found[MIX_MESH_SLOT];
+        if (mixLayeredInfo_.isUseMixLayered) {
+            ASCEND_LOGI("[MixLayer] rank %u enables mixed CTP channels: Clos layer %u, fullmesh layer %u", srcRankId,
+                        mixLayeredInfo_.layerIds[MIX_CLOS_SLOT], mixLayeredInfo_.layerIds[MIX_MESH_SLOT]);
+        } else {
+            ASCEND_LOGI("[MixLayer] rank %u uses default topology: Clos found %u, fullmesh found %u", srcRankId,
+                        static_cast<uint32_t>(found[MIX_CLOS_SLOT]), static_cast<uint32_t>(found[MIX_MESH_SLOT]));
         }
-        ASCEND_LOGI("Rank %u has no mesh/Clos pair covering all ranks with UB_CTP, use existing topology", srcRankId);
     }
 
     void BuildContext(const HcclComm &commHandle, const std::string &groupName, const std::string &opName,
@@ -1050,8 +1238,7 @@ private:
             for (uint32_t channel = 0; channel < channelsPerRank; ++channel) {
                 // Handles are compact by remote rank because the local rank does not need an HCOMM channel.
                 if (mixLayeredInfo_.isUseMixLayered) {
-                    GetHcclCommLink(commHandle, mixLayeredInfo_.layerIds[channel % MIX_LAYERED], srcRankId, peer,
-                                    CommProtocol::COMM_PROTOCOL_UB_CTP, links);
+                    links = &mixLayeredInfo_.linksByRank[channel % MIX_LAYERED][peer];
                 }
                 uint32_t channelId = peerIndex * channelsPerRank + channel;
                 channelDesc[channelId].channelProtocol = mixLayeredInfo_.isUseMixLayered ?
