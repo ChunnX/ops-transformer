@@ -2,7 +2,7 @@
 
 # Change these two paths when moving to another server.
 CANN=/usr/local/Ascend/cann
-CUSTOM=/home/liwenguihw/work/custom_install/in_0824
+CUSTOM=/home/liwenguihw/work/custom_install/in_0916
 
 source "$CANN/set_env.sh"
 source "$CUSTOM/vendors/custom_transformer/bin/set_env.bash"

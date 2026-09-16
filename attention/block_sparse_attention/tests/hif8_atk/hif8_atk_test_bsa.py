@@ -48,15 +48,14 @@ def _f32_mul(lhs, rhs) -> float:
     return _f32(_f32(lhs) * _f32(rhs))
 
 
-def fp32_to_my19bit(value) -> float:
-    """Model scalar FixPipe scale truncation: clear FP32 low 13 bits."""
-    value = torch.as_tensor(value, dtype=torch.float32).reshape(())
-    mask = torch.tensor(-8192, dtype=torch.int32)
-    return torch.bitwise_and(value.view(torch.int32), mask).view(torch.float32).item()
+def mm1_dequant_scale(q_scale, k_scale, attention_scale) -> float:
+    """Match ``float q * float k * float attentionScale``.
 
-
-def mm1_fixpipe_scale(q_scale, k_scale, attention_scale) -> float:
-    return fp32_to_my19bit(_f32_mul(_f32_mul(q_scale, k_scale), attention_scale))
+    The MM1 FixPipe runs with NO_QUANT (hardware dual-destination mode) and the
+    online-softmax epilogue applies this scale instead, so the 19-bit scalar
+    truncation no longer exists.
+    """
+    return _f32_mul(_f32_mul(q_scale, k_scale), attention_scale)
 
 
 def quantize_hif8(src: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -201,8 +200,8 @@ def _mm2_tiled(p: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
 
 def hif8_attention_block(q_raw, k_raw, v_raw, q_scale, k_scale, v_scale,
                          p_scale, attention_scale):
-    mm1_scale = mm1_fixpipe_scale(q_scale, k_scale, attention_scale)
-    mm2_scale = fp32_to_my19bit(v_scale)
+    mm1_scale = mm1_dequant_scale(q_scale, k_scale, attention_scale)
+    mm2_scale = _f32(v_scale)
     ln_p_scale = torch.log(torch.tensor(_f32(p_scale), dtype=torch.float32))
     out = torch.zeros((q_raw.shape[0], v_raw.shape[1]), dtype=torch.float32)
     lse = torch.full((q_raw.shape[0],), float("inf"), dtype=torch.float32)
@@ -222,10 +221,12 @@ def hif8_attention_block(q_raw, k_raw, v_raw, q_scale, k_scale, v_scale,
             p_fp32 = torch.exp(scores - (new_max - ln_p_scale)[:, None]).to(torch.float32)
             new_sum = (exp_max * running_sum + p_fp32.sum(dim=-1)).to(torch.float32)
             p_hif8 = cast_hif8(p_fp32)
-            tile_out = (_mm2_tiled(p_hif8, v_raw[k0:k1]) * mm2_scale).to(torch.float32)
+            # MM2 FixPipe runs with NO_QUANT: UB holds the raw P @ V, and the V dequant
+            # scale is applied by the rescale-O epilogue on the normalized output.
+            tile_out = _mm2_tiled(p_hif8, v_raw[k0:k1]).to(torch.float32)
             running_out = (exp_max[:, None] * running_out + tile_out).to(torch.float32)
             running_max, running_sum = new_max, new_sum
-        out[q0:q1] = running_out / running_sum[:, None]
+        out[q0:q1] = (running_out / running_sum[:, None] * mm2_scale).to(torch.float32)
         lse[q0:q1] = running_max + torch.log(running_sum) - ln_p_scale
     return out, lse
 
