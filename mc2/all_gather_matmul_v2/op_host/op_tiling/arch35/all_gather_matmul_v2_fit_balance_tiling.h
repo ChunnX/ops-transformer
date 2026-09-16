@@ -73,12 +73,8 @@ static const fb::FitBalanceCalibration CALIBRATION = {
             {fb::MatmulCalcType::QUANT, false, 1, 1, 2, {80, 128, 0.95, 0.85, 0.75}}, // fp8 量化
             {fb::MatmulCalcType::QUANT, true, 1, 1, 2, {80, 128, 0.95, 0.85, 0.75}},  // fp4 量化(共用 fp8 档位)
         },
-        /* defaultL2Param = {128,192,0.85,0.75,0.65}(公共层默认) */
-        /* baseBlock: soc 最优基本块 */
-        {
-            {fb::SocVersion::SOC950, {256, 256, 128}},
-        },
-        /* defaultBaseBlock = {128,256,64}(公共层默认) */
+        /* baseBlock: matmul 最优基本块(单值; 未填用默认 {128,256,64}) */
+        {256, 256, 128},
     },
 };
 

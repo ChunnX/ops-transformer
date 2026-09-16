@@ -13,7 +13,7 @@
  * \brief fit-balance tiling 家族唯一公共文件（三层结构, 两分支共居, 迁移方案 §2.2/§4.9）
  *
  * 当前仅含自由长度分支: HCCL AICPU/CCU 引擎, 每轮开销大 → 反解最优轮长压轮数。
- * 消费者为旧通算融合算子的 fit-balance 路径（arch35 4P/8P）。
+ * 消费者为旧通算融合算子的 fit-balance 路径（950 标卡 4P/8P; 引擎仅支持 950, 后续芯片扩展时更新此注释）。
  *
  * 历史存档: URMA wave-packing 拓展分支（v2 aiv_urma 的 estTime k 搜索方案）曾在此文件,
  * 2026-09-15 评审裁定废弃——与核利用率优先切分大部分结果相同, 少量差异定位为
@@ -78,7 +78,7 @@ constexpr uint64_t MIN_COMM_RANKDIM = 2;
 
 enum class SocVersion {
     SOC950 = 4, // 值 4 为键约定: 查表 key 前缀 "{soc}_" 的 soc 段沿用旧枚举序(950=4), 勿改;
-                // 引擎仅支持 arch35/950(旧芯片枚举值随旧芯片逻辑剥离, B 家族原位副本保留完整值域)
+                // 引擎仅支持 950(旧芯片枚举值随旧芯片逻辑剥离, B 家族原位副本保留完整值域; 后续芯片在此扩展)
 };
 
 enum class KernelType {
@@ -270,10 +270,10 @@ inline CommEngine ParseCommEngine(const char *commMode)
 // ============================================================================
 // 一、模型层
 // ============================================================================
-// ---- 1.1 HCCL 通信模型与拟合表（自由长度分支, arch35/950 专用）----
-// 由旧 HCCLPerformanceModel + HCCLPerformanceArch35 合并精简(2026-09-15):
-// 本引擎按设计仅在 arch35(SOC950) 标卡 4P/8P 生效, 旧芯片分支(310P 环网/910_93
-// 双环/基表两段式查表——其结果恒被 arch35 四段式查表覆盖)经 grep 证实 5 个消费
+// ---- 1.1 HCCL 通信模型与拟合表（自由长度分支, 950 专用）----
+// 由旧 HCCLPerformanceModel + HCCLPerformanceArch35 合并精简(2026-09-15, 类名已去 arch35):
+// 本引擎按设计仅在 950 标卡 4P/8P 生效, 旧芯片分支(310P 环网/910_93
+// 双环/基表两段式查表——其结果恒被 950 查表覆盖)经 grep 证实 5 个消费
 // 算子零调用后剥离; 老芯片的真实需求由原位保留的 B 家族(mc2/common/op_host/
 // op_tiling)满足。活跃 API 面(5 算子钩子实测): CommTime/InverseCommTime/
 // SetCommShapeLen/SetCommDTypeSize/GetCommDTypeSize/SetCommDtypeSizeExpansionFraction/
@@ -302,16 +302,16 @@ inline HCCLFittingParameters MakeLinearCommFit(double slopeUsPerMb, double inter
     return {0, 0, slopeUsPerMb, interceptUs, 0, 0, 0, 0, 0, 0, 0, 0};
 }
 
-class HCCLPerformanceArch35 {
+class HCCLCommModel {
 public:
     HCCLFittingParameters commEstimatePar_;
     HCCLInfo commTypeInfo_;
     double commTimeFactor_ = 1.0; // allreduce time is 2.0x allgather or reducescatter
     uint64_t lookUpTileNum_ = 1;  // 数据拟合查表参数
 
-    // Constructor（= 旧 基类构造 + Arch35 构造的净状态; soc 恒 SOC950, key soc 段恒为 4）
-    HCCLPerformanceArch35(uint32_t inputRankDim, KernelType inputKernelType, const CommFitTable &fitTable,
-                          TopoType topoType = TopoType::STANDARD_CARD)
+    // Constructor（soc 恒 950）
+    HCCLCommModel(uint32_t inputRankDim, KernelType inputKernelType, const CommFitTable &fitTable,
+                  TopoType topoType = TopoType::STANDARD_CARD)
         : fitTable_(fitTable)
     {
         commTypeInfo_.kernelType = inputKernelType; // 区分哪个MC2算子
@@ -319,9 +319,9 @@ public:
         commTypeInfo_.commDtypeSizeExpansionFraction = 1;
         InitParametersForFullMesh();
         commTypeInfo_.maxStepSize = 1;
-        InitArch35Parameters();
+        InitCommParameters();
         commTypeInfo_.topoType = topoType;
-        GetCommArch35Parameters();
+        GetCommParameters();
     };
 
     void SetCommShapeLen(uint64_t len)
@@ -379,7 +379,7 @@ public:
         }
         return 1;
     }
-    void InitArch35Parameters()
+    void InitCommParameters()
     {
         if ((commTypeInfo_.kernelType == KernelType::ALL_GATHER) ||
             (commTypeInfo_.kernelType == KernelType::REDUCE_SCATTER_VIA_ALL_TO_ALL)) {
@@ -388,7 +388,7 @@ public:
         }
     }
     // 按 rankDim 匹配标定行(soc/kernelType 对算子实例为常量, 已在构造参数中区分)
-    void GetCommArch35Parameters()
+    void GetCommParameters()
     {
         const HCCLFittingParameters *hit = nullptr;
         for (size_t i = 0; i < fitTable_.rowCount; ++i) {
@@ -453,15 +453,15 @@ protected:
     CommFitTable fitTable_; // 拟合表按值持有(自包含, 由 InitCtx 从大结构体适配)
 };
 
-// ---- 1.2 matmul 模型（HCCL 算力/梯度模型, 自由长度分支专用）----
-// 由旧 MatmulPerformanceModel + MatmulPerformanceArch35 合并精简(2026-09-15),
+// ---- 1.2 matmul 模型（HCCL 算力/梯度模型, 自由长度分支专用, 950）----
+// 由旧 MatmulPerformanceModel + MatmulPerformanceArch35 合并精简(2026-09-15, 类名已去 arch35),
 // 剥离 310P/910_B4 分支与 4 参 FindCubeUtil(含其独占的 K 对齐修正链)——
 // 5 个消费算子钩子经 grep 证实仅用 1 参 FindCubeUtil/FindCubeUtilByL2Usage。
 
 namespace MatmulPerformance {
 constexpr double COMPUTES_PER_CYCLE = 4096; // 基础算力(查表未命中回退, 标定头回填同值)
-// start: cycle per micro second (SOC950)
-constexpr double CYCLE_PER_MICRO_SEC_NPUARCH_3510 = 1.65 * ONE_KBYTE;
+// cycle per micro second (950)
+constexpr double CYCLE_PER_MICRO_SEC = 1.65 * ONE_KBYTE;
 // end: cycle per micro second
 constexpr double MAX_PARTICAL_ENHANCEMENT_FACTOR_CUBE_UTIL = 1.4;
 constexpr double MNVALUE_THRESHOLD = 820;
@@ -492,11 +492,6 @@ struct L2ParamRow {
     L2CacheEstimateParameters params;
 };
 
-struct BestBaseRow {
-    SocVersion soc;
-    TilingBestBaseBlock block;
-};
-
 struct MatmulPerfTable {
     static constexpr size_t MAX_CUBE_ROWS = 4;
     static constexpr size_t MAX_L2_ROWS = 4;
@@ -507,12 +502,10 @@ struct MatmulPerfTable {
     L2ParamRow l2Rows[MAX_L2_ROWS] = {};
     size_t l2Count = 0;
     L2CacheEstimateParameters defaultL2Params = {128, 192, 0.85, 0.75, 0.65};
-    BestBaseRow bestBaseRows[MAX_BASE_ROWS] = {};
-    size_t bestBaseCount = 0;
-    TilingBestBaseBlock defaultBaseBlock = {128, 256, 64};
+    TilingBestBaseBlock bestBaseBlock = {128, 256, 64}; // matmul 最优基本块(单值)
 };
 
-class MatmulPerformanceArch35 {
+class MatmulPerfModel {
 public:
     MatmulParameters mmShapeInfo_;
     MatmulCalcType calcType_; // Distinguish the non-quantization, full-quantization and fake-quantization
@@ -520,8 +513,8 @@ public:
     double cubeUtil_ = 0.8;
     double matmulGradient_ = 1.0;
 
-    // Constructor（= 旧 基类构造 + Arch35 构造的净状态; soc 恒 SOC950, 频率恒 1689.6）
-    MatmulPerformanceArch35(const TilingArgs &args, const MatmulPerfTable &perfTable)
+    // Constructor（soc 恒 950, 频率 1689.6 cycle/us）
+    MatmulPerfModel(const TilingArgs &args, const MatmulPerfTable &perfTable)
         : perfTable_(perfTable)
     {
         mmShapeInfo_.socType = SocVersion::SOC950;
@@ -532,19 +525,18 @@ public:
         mmShapeInfo_.mValue = args.mValue;
         mmShapeInfo_.nValue = args.nValue;
         mmShapeInfo_.kValue = args.kValue;
-        // 获取后续计算用的基本块(先默认, 再按 arch35 最优基本块覆盖)
+        // 获取后续计算用的基本块(先默认, 再按标定数据 baseBlock 覆盖)
         mmShapeInfo_.baseM = BASE_BLOCK_M;
         mmShapeInfo_.baseN = BASE_BLOCK_N;
         mmShapeInfo_.baseK = BASE_BLOCK_K;
         mmShapeInfo_.batchSize = 1UL; // 初始值
         isFp4_ = (args.geAType == ge::DataType::DT_FLOAT4_E2M1);
         SetCalcType(args);
-        mmShapeInfo_.cyclePerMicroSec = MatmulPerformance::CYCLE_PER_MICRO_SEC_NPUARCH_3510;
+        mmShapeInfo_.cyclePerMicroSec = MatmulPerformance::CYCLE_PER_MICRO_SEC;
         GetMachineParameters();
-        TilingBestBaseBlock bestBaseBlock = GetBestBaseBlock();
-        mmShapeInfo_.baseM = bestBaseBlock.baseM;
-        mmShapeInfo_.baseN = bestBaseBlock.baseN;
-        mmShapeInfo_.baseK = bestBaseBlock.baseK;
+        mmShapeInfo_.baseM = perfTable_.bestBaseBlock.baseM;
+        mmShapeInfo_.baseN = perfTable_.bestBaseBlock.baseN;
+        mmShapeInfo_.baseK = perfTable_.bestBaseBlock.baseK;
     };
 
     // 950 量化语义: fp4/fp8/HIF8 或 A8W8 量化, 其余按 FP16 建模
@@ -635,7 +627,7 @@ public:
         }
         return tmpUtil;
     }
-    // arch35 单参版本(消费算子钩子唯一使用的入口)
+    // 单参版本(消费算子钩子唯一使用的入口)
     void FindCubeUtil(uint64_t rankTileNum)
     {
         double mnharmonicMean = static_cast<double>(mmShapeInfo_.mValue * rankTileNum * mmShapeInfo_.nValue) /
@@ -650,15 +642,6 @@ public:
                 std::pow(MatmulPerformance::MNVALUE_THRESHOLD, MatmulPerformance::CUBE_UTIL_EXPONENT_COEFFICIENT));
         double result = MatmulPerformance::AVERAGE_CUBE_UTIL * kExponentiated * mnExponentiated;
         cubeUtil_ = std::min(MatmulPerformance::MAX_CUBE_UTIL, result);
-    }
-    TilingBestBaseBlock GetBestBaseBlock()
-    {
-        for (size_t i = 0; i < perfTable_.bestBaseCount; ++i) {
-            if (perfTable_.bestBaseRows[i].soc == mmShapeInfo_.socType) {
-                return perfTable_.bestBaseRows[i].block;
-            }
-        }
-        return perfTable_.defaultBaseBlock;
     }
     void GetMatmulGradient()
     {
@@ -1003,8 +986,8 @@ inline CutResult CutResultFromCommTiling(const CommTilingData &tiling)
 
 // 调度上下文: 与旧 Mc2FitBasedBalanceTiling 基类的公开成员逐一对应
 struct FitBasedBalanceCtx {
-    MatmulPerformanceArch35 matmulPerf;
-    HCCLPerformanceArch35 commPerf;
+    MatmulPerfModel matmulPerf;
+    HCCLCommModel commPerf;
     FormPartition tilingM;
     MatmulParameters mmInfo;
     uint64_t rankDim = 2;
@@ -1073,21 +1056,16 @@ struct FitBalanceCalibration {
             uint64_t cBytes;
             L2CacheEstimateParameters params;
         };
-        struct BaseBlock {
-            SocVersion soc; // 基本块适用的 soc(当前仅 SOC950)
-            TilingBestBaseBlock block;
-        };
         CubeCalc cubeCalc[MAX_CUBE_CALC_ROWS] = {};
         L2Param l2Param[MAX_L2_PARAM_ROWS] = {};
-        BaseBlock baseBlock[MAX_BASE_BLOCK_ROWS] = {};
+        TilingBestBaseBlock baseBlock = {128, 256, 64};                          // matmul 最优基本块(单值)
         double defaultComputesPerCycle = 4096.0;                                 // 算力档回退(通常勿动)
         L2CacheEstimateParameters defaultL2Param = {128, 192, 0.85, 0.75, 0.65}; // L2 档回退(通常勿动)
-        TilingBestBaseBlock defaultBaseBlock = {128, 256, 64};                   // 基本块回退(通常勿动)
     };
     Matmul matmul;
 };
 
-// 统一入口: 算子侧只传大结构体标定数据 + 通信引擎枚举(soc 恒 SOC950, 引擎仅支持 arch35)
+// 统一入口: 算子侧只传大结构体标定数据 + 通信引擎枚举(soc 恒 950)
 inline FitBasedBalanceCtx InitCtx(const TilingArgs &args, KernelType kernelType, CommEngine commEngine,
                                   const FitBalanceCalibration &calib, TopoType topoType = TopoType::STANDARD_CARD)
 {
@@ -1107,7 +1085,7 @@ inline FitBasedBalanceCtx InitCtx(const TilingArgs &args, KernelType kernelType,
     MatmulPerfTable mmTable;
     mmTable.defaultComputesPerCycle = calib.matmul.defaultComputesPerCycle;
     mmTable.defaultL2Params = calib.matmul.defaultL2Param;
-    mmTable.defaultBaseBlock = calib.matmul.defaultBaseBlock;
+    mmTable.bestBaseBlock = calib.matmul.baseBlock;
     mmTable.cubeCalcCount = 0;
     for (size_t i = 0; i < FitBalanceCalibration::MAX_CUBE_CALC_ROWS; ++i) {
         if (calib.matmul.cubeCalc[i].aBytes == 0) {
@@ -1128,15 +1106,9 @@ inline FitBasedBalanceCtx InitCtx(const TilingArgs &args, KernelType kernelType,
                              calib.matmul.l2Param[i].cBytes,   calib.matmul.l2Param[i].params};
         mmTable.l2Count = i + 1;
     }
-    while ((mmTable.bestBaseCount < FitBalanceCalibration::MAX_BASE_BLOCK_ROWS) &&
-           (calib.matmul.baseBlock[mmTable.bestBaseCount].soc == SocVersion::SOC950)) {
-        ++mmTable.bestBaseCount;
-    }
-    for (size_t i = 0; i < mmTable.bestBaseCount; ++i) {
-        mmTable.bestBaseRows[i] = {calib.matmul.baseBlock[i].soc, calib.matmul.baseBlock[i].block};
-    }
-    FitBasedBalanceCtx ctx{MatmulPerformanceArch35(args, mmTable),
-                           HCCLPerformanceArch35(args.rankDim, kernelType, commTable, topoType),
+    mmTable.bestBaseBlock = calib.matmul.baseBlock;
+    FitBasedBalanceCtx ctx{MatmulPerfModel(args, mmTable),
+                           HCCLCommModel(args.rankDim, kernelType, commTable, topoType),
                            FormPartition(args),
                            MatmulParameters{},
                            args.rankDim,
