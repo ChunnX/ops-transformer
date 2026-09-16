@@ -30,9 +30,15 @@ ge::graphStatus MoeFinalizeRoutingTilingV2::GetPlatformInfo()
     return DoGetPlatformInfo();
 }
 
-ge::graphStatus MoeFinalizeRoutingTilingV2::GetShapeAttrsInfo() { return DoGetShapeAttrsInfo(); }
+ge::graphStatus MoeFinalizeRoutingTilingV2::GetShapeAttrsInfo()
+{
+    return DoGetShapeAttrsInfo();
+}
 
-uint64_t MoeFinalizeRoutingTilingV2::GetTilingKey() const { return tilingKey_; }
+uint64_t MoeFinalizeRoutingTilingV2::GetTilingKey() const
+{
+    return tilingKey_;
+}
 
 ge::graphStatus MoeFinalizeRoutingTilingV2::GetWorkspaceSize()
 {
@@ -68,7 +74,10 @@ ge::graphStatus MoeFinalizeRoutingTilingV2::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeFinalizeRoutingTilingV2::DoLibApiTiling() { return ge::GRAPH_SUCCESS; }
+ge::graphStatus MoeFinalizeRoutingTilingV2::DoLibApiTiling()
+{
+    return ge::GRAPH_SUCCESS;
+}
 
 ge::graphStatus TilingForMoeFinalizeRoutingV2(gert::TilingContext *context)
 {
@@ -88,7 +97,7 @@ ge::graphStatus TilingPrepareForMoeFinalizeRoutingV2(gert::TilingParseContext *c
     OP_CHECK_IF((compileInfo->aivNum <= 0),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("MoeFinalizeRoutingV2", "compileInfo->aivNum",
                                                       std::to_string(compileInfo->aivNum).c_str(),
-                                                      "TilingPrepareForMoeFinalizeRoutingV2 fail to get core num."),
+                                                      "TilingPrepareForMoeFinalizeRoutingV2 fails to get core num."),
                 return ge::GRAPH_FAILED);
 
     uint64_t ubSize;
@@ -97,7 +106,7 @@ ge::graphStatus TilingPrepareForMoeFinalizeRoutingV2(gert::TilingParseContext *c
     OP_CHECK_IF((compileInfo->ubSize <= 0),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("MoeFinalizeRoutingV2", "compileInfo->ubSize",
                                                       std::to_string(compileInfo->ubSize).c_str(),
-                                                      "TilingPrepareForMoeFinalizeRoutingV2 fail to get ub size."),
+                                                      "TilingPrepareForMoeFinalizeRoutingV2 fails to get ub size."),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

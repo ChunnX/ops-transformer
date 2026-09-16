@@ -590,7 +590,10 @@ void MoeFinalizeRoutingV2GradTiling::CalcBaseInfo()
     }
 }
 
-uint64_t MoeFinalizeRoutingV2GradTiling::GetTilingKey() const { return tilingKey_; }
+uint64_t MoeFinalizeRoutingV2GradTiling::GetTilingKey() const
+{
+    return tilingKey_;
+}
 
 ge::graphStatus MoeFinalizeRoutingV2GradTiling::PostTiling()
 {
@@ -645,7 +648,10 @@ ge::graphStatus MoeFinalizeRoutingV2GradTiling::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeFinalizeRoutingV2GradTiling::DoLibApiTiling() { return ge::GRAPH_SUCCESS; }
+ge::graphStatus MoeFinalizeRoutingV2GradTiling::DoLibApiTiling()
+{
+    return ge::GRAPH_SUCCESS;
+}
 
 ge::graphStatus MoeFinalizeRoutingV2GradTiling::GetWorkspaceSize()
 {
@@ -673,7 +679,7 @@ static ge::graphStatus TilingPrepare4MoeFinalizeRoutingV2Grad(gert::TilingParseC
     OP_CHECK_IF((compileInfo->aivNum <= 0),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("MoeFinalizeRoutingV2Grad", "aiv_core_num",
                                                       std::to_string(compileInfo->aivNum).c_str(),
-                                                      "TilingPrepareForMoeFinalizeRoutingV2Grad fail to get core num"),
+                                                      "TilingPrepareForMoeFinalizeRoutingV2Grad fails to get core num"),
                 return ge::GRAPH_FAILED);
 
     uint64_t ubSize;
@@ -682,7 +688,7 @@ static ge::graphStatus TilingPrepare4MoeFinalizeRoutingV2Grad(gert::TilingParseC
     OP_CHECK_IF((compileInfo->ubSize <= 0),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("MoeFinalizeRoutingV2Grad", "ub_size",
                                                       std::to_string(compileInfo->ubSize).c_str(),
-                                                      "TilingPrepareForMoeFinalizeRoutingV2Grad fail to get ub size"),
+                                                      "TilingPrepareForMoeFinalizeRoutingV2Grad fails to get ub size"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

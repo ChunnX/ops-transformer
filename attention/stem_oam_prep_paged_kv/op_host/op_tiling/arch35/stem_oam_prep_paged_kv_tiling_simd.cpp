@@ -204,7 +204,10 @@ ge::graphStatus StemOamPrepPagedKvTilingSimd::CheckParams()
     return ge::GRAPH_SUCCESS;
 }
 
-bool StemOamPrepPagedKvTilingSimd::IsCapable() { return true; }
+bool StemOamPrepPagedKvTilingSimd::IsCapable()
+{
+    return true;
+}
 
 ge::graphStatus StemOamPrepPagedKvTilingSimd::ContinuousStridesCompute(gert::Shape &shape, gert::Stride &stride,
                                                                        size_t idx)
@@ -254,7 +257,7 @@ ge::graphStatus StemOamPrepPagedKvTilingSimd::GetPlatformInfo()
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     auto coreNumAiv = ascendcPlatform.GetCoreNumAiv();
     OP_CHECK_IF((coreNumAiv <= 0),
-                OP_LOGE("StemOamPrepPagedKv", "StemOamPrepPagedKvSimdTiling fail to get coreNumAiv."),
+                OP_LOGE("StemOamPrepPagedKv", "StemOamPrepPagedKvSimdTiling fails to get coreNumAiv."),
                 return ge::GRAPH_FAILED);
     totalCoreNum_ = coreNumAiv;
     return ge::GRAPH_SUCCESS;
@@ -367,9 +370,15 @@ ge::graphStatus StemOamPrepPagedKvTilingSimd::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus StemOamPrepPagedKvTilingSimd::DoLibApiTiling() { return ge::GRAPH_SUCCESS; }
+ge::graphStatus StemOamPrepPagedKvTilingSimd::DoLibApiTiling()
+{
+    return ge::GRAPH_SUCCESS;
+}
 
-uint64_t StemOamPrepPagedKvTilingSimd::GetTilingKey() const { return GET_TPL_TILING_KEY(true); }
+uint64_t StemOamPrepPagedKvTilingSimd::GetTilingKey() const
+{
+    return GET_TPL_TILING_KEY(true);
+}
 
 ge::graphStatus StemOamPrepPagedKvTilingSimd::GetWorkspaceSize()
 {
