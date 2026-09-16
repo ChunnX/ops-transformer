@@ -462,8 +462,12 @@ public:
     __aicore__ inline void UpdateMinCheckValue()
     {
         LocalTensor<float> minValueUb = commonTBuf_.template Get<float>();
+        TEventID minCheckEventId = GetTPipePtr()->AllocEventID<HardEvent::V_S>();
         UpdateMinCheckValueVF<USE_DN>((__ubuf__ float *)minValueUb.GetPhyAddr(), *((float *)&minValue_),
                                       constInfo_.scaleValue, pScaleValue_);
+        SetFlag<HardEvent::V_S>(minCheckEventId);
+        WaitFlag<HardEvent::V_S>(minCheckEventId);
+        GetTPipePtr()->ReleaseEventID<HardEvent::V_S>(minCheckEventId);
         float min = minValueUb.GetValue(0);
         minValue_ = static_cast<uint32_t>(*reinterpret_cast<int32_t *>(&min));
     }
