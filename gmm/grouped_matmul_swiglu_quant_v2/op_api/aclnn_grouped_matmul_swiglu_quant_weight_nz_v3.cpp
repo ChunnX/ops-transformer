@@ -125,12 +125,12 @@ aclnnStatus CheckRequiredPointer(const void *pointer, const char *parameterName)
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus CheckRequiredTensorList(const aclTensorList *tensorList, const char *parameterName)
+aclnnStatus CheckRequiredSingleTensorList(const aclTensorList *tensorList, const char *parameterName)
 {
     CHECK_RET(CheckRequiredPointer(tensorList, parameterName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
     GMM_SWIGLU_V3_CHECK_WITH_LOG(
-        tensorList->Size() != 0, ACLNN_ERR_PARAM_INVALID,
-        OP_LOGE_FOR_INVALID_TENSORNUM(API_NAME, parameterName, tensorList->Size(), "at least 1"));
+        tensorList->Size() == gmm_swiglu_quant_v3::SINGLE_TENSOR_SIZE, ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_TENSORNUM(API_NAME, parameterName, tensorList->Size(), "exactly 1"));
     for (size_t index = 0; index < tensorList->Size(); ++index) {
         const std::string indexedName = std::string(parameterName) + "[" + std::to_string(index) + "]";
         GMM_SWIGLU_V3_CHECK_WITH_LOG((*tensorList)[index] != nullptr, ACLNN_ERR_PARAM_NULLPTR,
@@ -148,11 +148,11 @@ aclnnStatus CheckRequiredInputs(const aclTensor *x, const aclTensorList *weight,
     if (status != ACLNN_SUCCESS) {
         return status;
     }
-    status = CheckRequiredTensorList(weight, "weight");
+    status = CheckRequiredSingleTensorList(weight, "weight");
     if (status != ACLNN_SUCCESS) {
         return status;
     }
-    status = CheckRequiredTensorList(weightScale, "weightScale");
+    status = CheckRequiredSingleTensorList(weightScale, "weightScale");
     if (status != ACLNN_SUCCESS) {
         return status;
     }
@@ -394,9 +394,10 @@ aclnnStatus CheckShape(const aclTensor *x, const aclTensorList *weight, const ac
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "groupList dim 0", std::to_string(e),
                                               "must be in range [1, 1024]"));
     GMM_SWIGLU_V3_CHECK_WITH_LOG(
-        k >= 0 && (m == 0 || k > 0), ACLNN_ERR_PARAM_INVALID,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "K", std::to_string(k),
-                                              "K must be greater than 0 unless M is 0"));
+        m > 0 && k > 0, ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(API_NAME, "M, K",
+                                               ("{" + std::to_string(m) + ", " + std::to_string(k) + "}"),
+                                               "M and K must both be greater than 0"));
     GMM_SWIGLU_V3_CHECK_WITH_LOG(
         n > 0 && n % gmm_swiglu_quant_v3::MXFP8_N_ALIGN == 0 && n % gmm_swiglu_quant_v3::SWIGLU_SPLIT_FACTOR == 0,
         ACLNN_ERR_PARAM_INVALID,

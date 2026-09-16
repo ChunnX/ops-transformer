@@ -184,12 +184,13 @@ bool GroupedMatmulSwigluQuantV3Tiling950::AnalyzeDtype()
 {
     auto xDesc = context_->GetInputDesc(X_INDEX);
     auto xScaleDesc = context_->GetInputDesc(X_SCALE_INDEX);
+    auto groupListDesc = context_->GetInputDesc(GROUPLIST_INDEX);
     auto weightDesc = context_->GetDynamicInputDesc(WEIGHT_INDEX, 0);
     auto weightScaleDesc = context_->GetDynamicInputDesc(WEIGHT_SCALE_INDEX, 0);
     auto yDesc = context_->GetOutputDesc(Y_INDEX);
     auto yScaleDesc = context_->GetOutputDesc(Y_SCALE_INDEX);
-    OP_CHECK_IF(xDesc == nullptr || xScaleDesc == nullptr || weightDesc == nullptr || weightScaleDesc == nullptr ||
-                    yDesc == nullptr || yScaleDesc == nullptr,
+    OP_CHECK_IF(xDesc == nullptr || xScaleDesc == nullptr || groupListDesc == nullptr || weightDesc == nullptr ||
+                    weightScaleDesc == nullptr || yDesc == nullptr || yScaleDesc == nullptr,
                 OP_LOGE(context_->GetNodeName(), "required descriptor is nullptr"), return false);
 
     inputParams_.aDtype = xDesc->GetDataType();
@@ -216,12 +217,16 @@ bool GroupedMatmulSwigluQuantV3Tiling950::AnalyzeDtype()
                 OP_LOGE(context_->GetNodeName(), "x and weight must be FLOAT8_E4M3FN"), return false);
     OP_CHECK_IF(inputParams_.scaleDtype != ge::DT_FLOAT8_E8M0 || inputParams_.perTokenScaleDtype != ge::DT_FLOAT8_E8M0,
                 OP_LOGE(context_->GetNodeName(), "x_scale and weight_scale must be FLOAT8_E8M0"), return false);
+    OP_CHECK_IF(groupListDesc->GetDataType() != ge::DT_INT64,
+                OP_LOGE(context_->GetNodeName(), "group_list must be INT64"), return false);
     OP_CHECK_IF(inputParams_.outDataDtype != ge::DT_FLOAT8_E4M3FN ||
                     inputParams_.outScaleDtype != ge::DT_FLOAT8_E8M0,
                 OP_LOGE(context_->GetNodeName(), "V3 output must be FLOAT8_E4M3FN with FLOAT8_E8M0 scale"),
                 return false);
     OP_CHECK_IF(inputParams_.aFormat != ge::FORMAT_ND || inputParams_.bFormat != ge::FORMAT_FRACTAL_NZ ||
                     inputParams_.scaleFormat != ge::FORMAT_ND || inputParams_.cFormat != ge::FORMAT_ND ||
+                    static_cast<ge::Format>(ge::GetPrimaryFormat(groupListDesc->GetFormat().GetStorageFormat())) !=
+                        ge::FORMAT_ND ||
                     !IsDenseFormat(static_cast<ge::Format>(ge::GetPrimaryFormat(xScaleDesc->GetFormat().GetStorageFormat()))) ||
                     !IsDenseFormat(static_cast<ge::Format>(ge::GetPrimaryFormat(yScaleDesc->GetFormat().GetStorageFormat()))),
                 OP_LOGE(context_->GetNodeName(), "V3 requires x/scale/output ND and weight FRACTAL_NZ"), return false);
