@@ -179,3 +179,67 @@
   | 调用方式  | 样例代码                                                     | 说明                                                         |
   | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
   | aclnn接口 | [test_aclnn_FusedInferAttentionScoreV5](./examples/arch35/test_aclnn_fused_infer_attention_score_v5.cpp) | 通过[aclnnFusedInferAttentionScoreV5](./docs/aclnnFusedInferAttentionScoreV5.md)调用FusedInferAttentionScore算子 |
+
+
+
+---------------第一部分：FA算子基础---------------
+
+第一章、昇腾开发基础（2学时）
+1、昇腾架构基础
+1.1 910架构介绍、芯片参数介绍
+1.2 950架构介绍、芯片参数介绍
+2、AscendC开发基础
+2.0 算子数据流
+2.1 内存结构
+2.2 搬运指令(MTE2 MTE1 MTE3、FIXPIPE)
+2.3 Cube计算指令
+2.4 Vector计算指令
+2.5 同步指令
+第二章 FlashAttention原理
+1、transformer简介
+2、Attention原理
+3、标准Attention瓶颈
+4、FlashAttention原理
+4.1 softmax推导
+4.2 FlashAttentionV1
+4.3 FlashAttentionV2
+5、FA的演进
+MLA、GQA、SFA等
+第三章 FA算子代码架构
+1、算子调用通路
+2、tiling
+3、kernel
+---------------第二部分：FA算子开发实战---------------
+第四章 FA算子运行
+1、环境搭建
+2、FA算子工程介绍
+3、FA算子接口介绍
+4、FA算子运行
+第五章 非量化FA开发
+5.1、基础极简FA
+5.2、BN1简单分核
+5.3、buffer复用(开pingpong)
+5.4、preload流水
+5.5、mask
+5.6、QS和KVS带尾块
+5.7、负载均衡
+第六章 全量化FA开发
+6.1、数据格式
+6.2、量化原理和量化方式
+6.3、硬件形态对MXFP8格式支持
+6.4、FA支持MXFP8方案
+6.5、FA支持HiP8方案
+---------------第三部分 FA算子性能优化实战---------------
+第七章 性能优化基础
+1、性能建模、roofline模型
+2、访存性能
+第八章 性能优化进阶
+1、cube性能(k切分、不同切分对带宽影响，拿到一个shape如何确定最优K切分)
+2、vec性能(VF的优化、DN、VF建模、)
+3、scalar优化
+第九章 性能优化高阶
+1、负载均衡：带section+GS1不合轴+切S2负载均衡
+2、负载均衡：带section+GS1合轴+切S2负载均衡
+或者：
+1、GQA MxFP8负载均衡
+2、MLA FP8负载均衡
