@@ -55,9 +55,6 @@ extern "C" __global__ __aicore__ void moe_token_permute_with_ep(
     }
 
     GET_TILING_DATA(tilingData, tiling);
-    if (tilingData.n * tilingData.topK == 0) {
-        return;
-    }
     if (workspace == nullptr) {
         return;
     }

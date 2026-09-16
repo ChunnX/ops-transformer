@@ -179,7 +179,7 @@ __aicore__ inline void MoeindexCopySpiltDOp<T, probsT, ifNumOutTokens>::CopyOutP
         return;
     }
     probsTmpLocal = probsTmpBuffer.AllocTensor<probsT>();
-    int64_t offset = progress * topK;
+    int64_t offset = progress;
     for (int64_t topKId = 0; topKId < topK; topKId++) {
         auto indicesValue = indicesLocal.GetValue(offset);
         if constexpr (ifNumOutTokens == true) {
