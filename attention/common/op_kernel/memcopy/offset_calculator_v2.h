@@ -55,6 +55,11 @@ struct GmLayoutParams<GmFormat::BNGSD> {
 };
 
 template <>
+struct GmLayoutParams<GmFormat::BN2S1GD> {
+    static constexpr FormatCategory CATEGORY = FormatCategory::GM_Q_OUT_BNGSD;
+};
+
+template <>
 struct GmLayoutParams<GmFormat::NGBSD> {
     static constexpr FormatCategory CATEGORY = FormatCategory::GM_Q_OUT_BNGSD;
 };
