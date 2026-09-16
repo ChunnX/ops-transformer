@@ -22,14 +22,11 @@
 
 #include <exe_graph/runtime/tiling_context.h>
 #include <register/op_impl_registry.h>
-#include "register/tilingdata_base.h"
 #include "../op_kernel/quant_block_sparse_attn_const.h"
-#include "../op_kernel/quant_block_sparse_attn_mx_tiling_data.h"
+#include "../op_kernel/arch35/quant_block_sparse_attn_tiling_data.h"
 #include "quant_block_sparse_attn_info_parser.h"
 
 namespace optiling {
-constexpr uint32_t QBSA_MAX_CORE_NUM = 36U;
-constexpr uint32_t QBSA_CORE_SPLIT_NUM = QBSA_MAX_CORE_NUM + 1U;
 constexpr uint32_t QBSA_BLOCK_SIZE = 128U;
 constexpr uint32_t QBSA_D_SIZE = 128U;
 constexpr uint32_t QBSA_QUANT_MODE_FP8 = 1U;
@@ -109,81 +106,6 @@ inline std::string QBSAGetStringAttr(const gert::RuntimeAttrs *attrs, uint32_t i
     return attrPtr == nullptr ? std::string(defaultValue) : std::string(attrPtr);
 }
 
-BEGIN_TILING_DATA_DEF(QuantBlockSparseAttnAttrParams)
-TILING_DATA_FIELD_DEF(uint32_t, layoutQ)
-TILING_DATA_FIELD_DEF(uint32_t, layoutKv)
-TILING_DATA_FIELD_DEF(uint32_t, layoutSparseIndices)
-TILING_DATA_FIELD_DEF(uint32_t, quantMode)
-TILING_DATA_FIELD_DEF(uint32_t, maskMode)
-TILING_DATA_FIELD_DEF(uint32_t, returnSoftmaxLse)
-END_TILING_DATA_DEF
-REGISTER_TILING_DATA_CLASS(QuantBlockSparseAttnAttrParamsOp, QuantBlockSparseAttnAttrParams)
-
-BEGIN_TILING_DATA_DEF(QuantBlockSparseAttnPaParams)
-TILING_DATA_FIELD_DEF(uint32_t, blockTableDim2)
-TILING_DATA_FIELD_DEF(uint32_t, paBlockNumSum)
-TILING_DATA_FIELD_DEF(uint32_t, paLayoutType)
-TILING_DATA_FIELD_DEF(uint32_t, kvBlockSize)
-TILING_DATA_FIELD_DEF(uint32_t, qBlockSize)
-TILING_DATA_FIELD_DEF(uint32_t, paBlockStride)
-TILING_DATA_FIELD_DEF(uint8_t, isRowInvalid)
-END_TILING_DATA_DEF
-REGISTER_TILING_DATA_CLASS(QuantBlockSparseAttnPaParamsOp, QuantBlockSparseAttnPaParams)
-
-BEGIN_TILING_DATA_DEF(QuantBlockSparseAttnSparseParams)
-TILING_DATA_FIELD_DEF(uint32_t, sparseSeqLenStride)
-TILING_DATA_FIELD_DEF(uint32_t, sparseIndicesStride)
-END_TILING_DATA_DEF
-REGISTER_TILING_DATA_CLASS(QuantBlockSparseAttnSparseParamsOp, QuantBlockSparseAttnSparseParams)
-
-BEGIN_TILING_DATA_DEF(QuantBlockSparseAttnInputParamsRegbase)
-TILING_DATA_FIELD_DEF(int64_t, bSize)
-TILING_DATA_FIELD_DEF(int64_t, t1Size)
-TILING_DATA_FIELD_DEF(int64_t, n2Size)
-TILING_DATA_FIELD_DEF(int64_t, gSize)
-TILING_DATA_FIELD_DEF(int64_t, dSize)
-TILING_DATA_FIELD_DEF(int64_t, dSizeV)
-TILING_DATA_FIELD_DEF(float, scaleValue)
-TILING_DATA_FIELD_DEF(int64_t, preTokens)
-TILING_DATA_FIELD_DEF(int64_t, nextTokens)
-TILING_DATA_FIELD_DEF(uint32_t, bandIndex)
-TILING_DATA_FIELD_DEF(uint8_t, layoutType)
-TILING_DATA_FIELD_DEF(uint8_t, attenMaskCompressMode)
-TILING_DATA_FIELD_DEF(uint32_t, attenMaskS2Size)
-TILING_DATA_FIELD_DEF(uint32_t, seqUsedQlenSize)
-TILING_DATA_FIELD_DEF(uint32_t, seqUsedKvlenSize)
-TILING_DATA_FIELD_DEF(uint8_t, isKvContinuous)
-TILING_DATA_FIELD_DEF(uint8_t, fromFused)
-TILING_DATA_FIELD_DEF(uint8_t, isGqa)
-TILING_DATA_FIELD_DEF(uint8_t, isSoftMaxLseEnable)
-TILING_DATA_FIELD_DEF(uint32_t, pScaleShapeSize)
-END_TILING_DATA_DEF
-REGISTER_TILING_DATA_CLASS(QuantBlockSparseAttnInputParamsRegbaseOp, QuantBlockSparseAttnInputParamsRegbase)
-
-BEGIN_TILING_DATA_DEF(QuantBlockSparseAttnMultiCoreParams)
-TILING_DATA_FIELD_DEF(int32_t, coreNum)
-TILING_DATA_FIELD_DEF(int64_t, s1OuterSize)
-TILING_DATA_FIELD_DEF_ARR(uint32_t, QBSA_CORE_SPLIT_NUM, bnStartIdx)
-END_TILING_DATA_DEF
-REGISTER_TILING_DATA_CLASS(QuantBlockSparseAttnMultiCoreParamsOp, QuantBlockSparseAttnMultiCoreParams)
-
-BEGIN_TILING_DATA_DEF(QuantBlockSparseAttnInitOutputParams)
-TILING_DATA_FIELD_DEF(uint32_t, singleCoreSize)
-TILING_DATA_FIELD_DEF(uint8_t, needInit)
-TILING_DATA_FIELD_DEF(int64_t, totalOutputSize)
-TILING_DATA_FIELD_DEF(int64_t, totalSoftMaxLseOutputSize)
-END_TILING_DATA_DEF
-REGISTER_TILING_DATA_CLASS(QuantBlockSparseAttnInitOutputParamsOp, QuantBlockSparseAttnInitOutputParams)
-
-BEGIN_TILING_DATA_DEF(QuantBlockSparseAttnTilingData)
-TILING_DATA_FIELD_DEF_STRUCT(QuantBlockSparseAttnPaParams, paParams)
-TILING_DATA_FIELD_DEF_STRUCT(QuantBlockSparseAttnSparseParams, sparseParams)
-TILING_DATA_FIELD_DEF_STRUCT(QuantBlockSparseAttnInputParamsRegbase, inputParamsRegbase)
-TILING_DATA_FIELD_DEF_STRUCT(QuantBlockSparseAttnMultiCoreParams, multiCoreParamsRegbase)
-TILING_DATA_FIELD_DEF_STRUCT(QuantBlockSparseAttnInitOutputParams, initOutputParams)
-END_TILING_DATA_DEF
-REGISTER_TILING_DATA_CLASS(QuantBlockSparseAttn, QuantBlockSparseAttnTilingData)
-
 ge::graphStatus TilingQuantBlockSparseAttn(gert::TilingContext *context);
 
 class QuantBlockSparseAttnTiling {
@@ -194,22 +116,16 @@ public:
     ge::graphStatus DoOpTiling(QuantBlockSparseAttnTilingInfo *tilingInfo);
 
 private:
-    void FillPaParams();
-    void FillSparseParams();
-    void FillInputParams();
-    void FillMultiCoreParams();
-    void FillInitOutputParams();
-    void FillMxTilingData();
-    void CalcTilingKey();
-    void CalcWorkspaceSize();
-    void PrintAllTilingData();
-    void PrintMxTilingData();
+    void FillCommonParams();
+    void FillFp8Params();
+    void FillMxParams();
+    ge::graphStatus SelectFeature();
+    void PrintTilingData();
     ge::graphStatus SaveTilingData();
 
     gert::TilingContext *context_ = nullptr;
     QuantBlockSparseAttnTilingInfo *tilingInfo_ = nullptr;
     QuantBlockSparseAttnTilingData tilingData_;
-    QuantBlockSparseAttnMxTilingData mxTilingData_;
     uint32_t usedCoreNum_ = 0;
     uint64_t totalTaskNum_ = 0;
     uint64_t tilingKey_ = 0;

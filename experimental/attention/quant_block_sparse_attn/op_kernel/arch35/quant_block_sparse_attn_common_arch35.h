@@ -26,6 +26,7 @@
 #include "../common/util_regbase_QBSA.h"
 #include "../quant_block_sparse_attn_common.h"
 #include "quant_block_sparse_attn_metadata.h"
+#include "quant_block_sparse_attn_tiling_data.h"
 
 using matmul::MatmulType;
 using namespace AscendC;

@@ -146,11 +146,12 @@ public:
     ge::graphStatus Parse(QuantBlockSparseAttnTilingInfo &tilingInfo);
 
 private:
+    ge::graphStatus ParsePaFeature(QuantBlockSparseAttnTilingInfo &tilingInfo);
+    ge::graphStatus ParsePaBlockTable(QuantBlockSparseAttnTilingInfo &tilingInfo);
     ge::graphStatus ParseQuery(QuantBlockSparseAttnTilingInfo &tilingInfo, const gert::Shape &queryShape,
                                const gert::Shape &sparseIndicesShape);
     ge::graphStatus ParseKeyValue(QuantBlockSparseAttnTilingInfo &tilingInfo, const gert::Shape &keyShape,
-                                  const gert::Shape &valueShape, const gert::Shape &kDescaleShape,
-                                  const gert::Stride *keyStride);
+                                  const gert::Shape &valueShape, const gert::Stride *keyStride);
     ge::graphStatus ParseSparseIndices(QuantBlockSparseAttnTilingInfo &tilingInfo,
                                        const gert::Shape &sparseIndicesShape);
     ge::graphStatus ParseOptionalInputs(QuantBlockSparseAttnTilingInfo &tilingInfo);

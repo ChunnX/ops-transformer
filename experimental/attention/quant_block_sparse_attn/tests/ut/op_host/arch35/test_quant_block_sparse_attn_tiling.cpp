@@ -10,6 +10,7 @@
 
 #include <gtest/gtest.h>
 #include <cstdint>
+#include <cstring>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -17,6 +18,8 @@
 #include "../quant_block_sparse_attn_host_ut_param.h"
 #include "tiling_case_executor.h"
 #include "tiling_context_faker.h"
+#include "../../../../op_kernel/arch35/quant_block_sparse_attn_tiling_data.h"
+#include "../../../../op_host/quant_block_sparse_attn_check.h"
 
 namespace QuantBlockSparseAttnUT {
 
@@ -154,9 +157,15 @@ static bool ExecuteCase(QuantBlockSparseAttnTilingUtParam param, TilingInfo &til
 
 class QuantBlockSparseAttnTilingArch35Test : public testing::TestWithParam<QuantBlockSparseAttnTilingUtParam> {
 protected:
-    static void SetUpTestCase() { std::cout << "QuantBlockSparseAttnTilingArch35Test SetUp" << std::endl; }
+    static void SetUpTestCase()
+    {
+        std::cout << "QuantBlockSparseAttnTilingArch35Test SetUp" << std::endl;
+    }
 
-    static void TearDownTestCase() { std::cout << "QuantBlockSparseAttnTilingArch35Test TearDown" << std::endl; }
+    static void TearDownTestCase()
+    {
+        std::cout << "QuantBlockSparseAttnTilingArch35Test TearDown" << std::endl;
+    }
 };
 
 TEST_P(QuantBlockSparseAttnTilingArch35Test, param)
@@ -170,6 +179,25 @@ TEST_P(QuantBlockSparseAttnTilingArch35Test, param)
         EXPECT_EQ(ok, true);
         EXPECT_GT(tilingInfo.blockNum, 0U);
         EXPECT_GT(tilingInfo.tilingDataSize, 0U);
+        ASSERT_EQ(tilingInfo.tilingDataSize, sizeof(optiling::QuantBlockSparseAttnTilingData));
+        optiling::QuantBlockSparseAttnTilingData data{};
+        std::memcpy(&data, tilingInfo.tilingData.get(), sizeof(data));
+        const auto &common = data.commonParams;
+        EXPECT_EQ(common.baseParams.coreNum, tilingInfo.blockNum);
+        EXPECT_EQ(common.baseParams.scaleValue, param.softmax_scale);
+        EXPECT_EQ(common.paParams.qBlockSize, param.sparse_q_block_size);
+        EXPECT_EQ(common.paParams.kvBlockSize, param.sparse_kv_block_size);
+        EXPECT_EQ(common.sparseParams.sparseSeqLenStride, param.sparseIndices.shape_.GetStorageShape().GetDim(2));
+        EXPECT_EQ(common.sparseParams.sparseIndicesStride, param.sparseIndices.shape_.GetStorageShape().GetDim(3));
+        EXPECT_EQ(common.outputParams.totalOutputSize, param.attentionOut.shape_.GetStorageShape().GetShapeSize());
+        if (param.quant_mode == 1) {
+            EXPECT_EQ(data.fp8Params.needInit, 1U);
+            EXPECT_EQ(data.mxParams.scaleGroupSize, 0U);
+        } else if (param.quant_mode == 2) {
+            EXPECT_EQ(data.mxParams.scaleGroupSize, 64U);
+            EXPECT_EQ(data.mxParams.scaleLastDim, 2U);
+            EXPECT_EQ(data.fp8Params.needInit, 0U);
+        }
     } else {
         EXPECT_EQ(ok, false);
     }
@@ -179,5 +207,17 @@ INSTANTIATE_TEST_SUITE_P(
     QuantBlockSparseAttnTiling, QuantBlockSparseAttnTilingArch35Test,
     testing::ValuesIn(GetCasesFromCsv<QuantBlockSparseAttnTilingUtParam>(ReplaceFileExtension2Csv(__FILE__))),
     PrintCaseInfoString<QuantBlockSparseAttnTilingUtParam>);
+
+TEST(QuantBlockSparseAttnFeatureDispatch, UnsupportedModeDoesNotFallBackToFp8)
+{
+    // No feature-specific inputs are supplied: dispatch must reject these modes
+    // before invoking any FP8/MXFP8 tensor checks.
+    for (uint32_t mode : {0U, 3U, 4U, UINT32_MAX}) {
+        optiling::QuantBlockSparseAttnTilingInfo info;
+        info.quantModeVal = mode;
+        optiling::QuantBlockSparseAttnCheck checker(info);
+        EXPECT_EQ(checker.Process(), ge::GRAPH_FAILED);
+    }
+}
 
 } // namespace QuantBlockSparseAttnUT

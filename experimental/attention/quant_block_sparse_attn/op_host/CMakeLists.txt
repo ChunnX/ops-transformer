@@ -31,4 +31,6 @@ target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
     quant_block_sparse_attn_tiling.cpp
     quant_block_sparse_attn_info_parser.cpp
     quant_block_sparse_attn_check.cpp
+    quant_block_sparse_attn_check_fp8.cpp
+    quant_block_sparse_attn_check_mxfp8.cpp
 )

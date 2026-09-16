@@ -16,7 +16,7 @@
 #define QUANT_BLOCK_SPARSE_ATTN_MX_KERNEL_H_
 
 #include "kernel_operator.h"
-#include "../quant_block_sparse_attn_mx_tiling_data.h"
+#include "quant_block_sparse_attn_tiling_data.h"
 #include "quant_block_sparse_attn_common_arch35.h"
 #include "quant_block_sparse_attn_attenmask.h"
 #include "quant_block_sparse_attn_kvcache.h"
@@ -68,8 +68,7 @@ public:
                                 __gm__ uint8_t *, __gm__ uint8_t *seqUsedKv, __gm__ uint8_t *blockTable,
                                 __gm__ uint8_t *qScale, __gm__ uint8_t *kScale, __gm__ uint8_t *vScale,
                                 __gm__ uint8_t *pScale, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
-                                __gm__ uint8_t *, const QuantBlockSparseAttnMxTilingData *__restrict tiling,
-                                TPipe *tPipe)
+                                __gm__ uint8_t *, const QuantBlockSparseAttnTilingData *__restrict tiling, TPipe *tPipe)
     {
         // 跨核 Buffer ID 由核内状态生成，ACL 图重放会复用该状态；每次启动时需重置计数器，
         // 保证 AIC 与 AIV 使用相同的事件 ID 序列。
@@ -91,9 +90,9 @@ public:
         InitConstInfo();
         InitMMResBuf();
         cubeBlock.Init(pipe, &l1BufferManager, queryPtr, keyPtr, valuePtr, blockTable, qScale, kScale, vScale);
-        __gm__ uint8_t *pScalePtr = (tilingData->scaleParams.pScaleShapeSize == 0U) ? nullptr : pScale;
-        vecBlock.Init(pipe, pScalePtr, softmaxLse, attentionOut, attenMask, tilingData->attenMaskParams.attenMaskS2Size,
-                      tilingData->scaleParams.pScaleDtype);
+        __gm__ uint8_t *pScalePtr = (tilingData->commonParams.baseParams.pScaleShapeSize == 0U) ? nullptr : pScale;
+        vecBlock.Init(pipe, pScalePtr, softmaxLse, attentionOut, attenMask,
+                      tilingData->commonParams.maskParams.attenMaskS2Size, tilingData->mxParams.pScaleDtype);
     }
 
     __aicore__ inline void Process()
@@ -122,10 +121,10 @@ private:
             constInfo.subBlockIdx = GetSubBlockIdx();
         }
 
-        const auto &baseParams = tilingData->baseParams;
-        const auto &pageAttentionParams = tilingData->pageAttentionParams;
-        const auto &sparseParams = tilingData->sparseParams;
-        const auto &scaleParams = tilingData->scaleParams;
+        const auto &baseParams = tilingData->commonParams.baseParams;
+        const auto &pageAttentionParams = tilingData->commonParams.paParams;
+        const auto &sparseParams = tilingData->commonParams.sparseParams;
+        const auto &scaleParams = tilingData->mxParams;
 
         constInfo.n2Size = baseParams.n2Size;
         constInfo.gSize = baseParams.gSize;
@@ -138,14 +137,14 @@ private:
         constInfo.attentionOutStride = (constInfo.realN2Size - 1U) * constInfo.dSizeV * sizeof(OUTPUT_T);
         constInfo.softmaxLseStride = (constInfo.realN2Size - 1U) * sizeof(float);
 
-        constInfo.maxBlockNumPerBatch = pageAttentionParams.maxBlockNumPerBatch;
+        constInfo.maxBlockNumPerBatch = pageAttentionParams.blockTableDim2;
         constInfo.paBlockStride = pageAttentionParams.paBlockStride;
         constInfo.qSparseBlockSize = pageAttentionParams.qBlockSize;
         constInfo.kvSparseBlockSize = pageAttentionParams.kvBlockSize;
         constInfo.paBlockSize = pageAttentionParams.blockSize;
 
-        constInfo.maxQb = sparseParams.maxQb;
-        constInfo.maxKb = sparseParams.maxKb;
+        constInfo.maxQb = sparseParams.sparseSeqLenStride;
+        constInfo.maxKb = sparseParams.sparseIndicesStride;
 
         // QScale 为 [T,N,D/64,2]；K/V scale 在 PA 场景按 BNBD 映射。
         constInfo.scaleLastDim = scaleParams.scaleLastDim;
@@ -153,8 +152,8 @@ private:
         constInfo.keyScaleDSize = scaleParams.keyScaleDSize;
         constInfo.valueScaleDSize = scaleParams.valueScaleDSize;
         constInfo.qScaleN1D = constInfo.realN2Size * constInfo.queryScaleDSize * constInfo.scaleLastDim;
-        constInfo.kScaleN2D = static_cast<uint32_t>(baseParams.kScaleStrides.n2Stride);
-        constInfo.valueScaleN2D = static_cast<uint32_t>(baseParams.vScaleStrides.n2Stride);
+        constInfo.kScaleN2D = static_cast<uint32_t>(scaleParams.kScaleStrides.n2Stride);
+        constInfo.valueScaleN2D = static_cast<uint32_t>(scaleParams.vScaleStrides.n2Stride);
     }
 
     __aicore__ inline void InitMMResBuf()
@@ -462,7 +461,7 @@ private:
     }
 
     TPipe *pipe = nullptr;
-    const QuantBlockSparseAttnMxTilingData *__restrict tilingData = nullptr;
+    const QuantBlockSparseAttnTilingData *__restrict tilingData = nullptr;
     regbasemx::MxConstInfo constInfo;
     __gm__ uint8_t *queryPtr = nullptr;
     __gm__ uint8_t *keyPtr = nullptr;

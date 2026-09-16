@@ -37,7 +37,7 @@
 
 // Config 数值是 tiling-key 枚举值，不是运行期 block size。
 // FP8 保持原有 S2=256 模板；MXFullQuantMode 选择独立 S2=512 模板，
-// 使 dispatch 能进入隔离后的 MX kernel 与 MX tiling-data 路径。
+// 使 dispatch 进入 MX kernel，读取公共 tiling 参数和 MX 专属参数。
 #define Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128 0
 #define Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128 1
 

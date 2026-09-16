@@ -21,6 +21,15 @@
 
 namespace optiling {
 
+struct QbsaShapeLimits {
+    uint32_t maxBatchSize;
+    uint32_t maxQueryHeads;
+    uint32_t maxKvHeads;
+    uint32_t maxGroupSize;
+    uint32_t headDim;
+    uint32_t valueHeadDim;
+};
+
 class QuantBlockSparseAttnCheck {
 public:
     explicit QuantBlockSparseAttnCheck(const QuantBlockSparseAttnTilingInfo &tilingInfo);
@@ -29,19 +38,32 @@ public:
     ge::graphStatus Process();
 
 private:
-    ge::graphStatus CheckAttrs() const;
-    ge::graphStatus CheckSoftmaxScale() const;
-    ge::graphStatus CheckDtype() const;
-    ge::graphStatus CheckFormat() const;
-    ge::graphStatus CheckScaleDtype() const;
-    ge::graphStatus CheckBlockSize() const;
-    ge::graphStatus CheckExistence() const;
-    ge::graphStatus CheckShapeConsistency() const;
-    ge::graphStatus CheckKeyValueShape() const;
-    ge::graphStatus CheckQuantShape() const;
+    // Reusable validation blocks; each mode explicitly selects the applicable checks.
+    ge::graphStatus CheckLayouts(const char *kvLayout, const char *sparseLayout) const;
+    ge::graphStatus CheckSoftmaxScale(float minExclusive, float maxInclusive) const;
+    ge::graphStatus CheckDtype(ge::DataType qkvDtype, ge::DataType outputDtype) const;
+    ge::graphStatus CheckFormat(ge::Format expectedFormat) const;
     ge::graphStatus CheckActualSeqLen() const;
-    ge::graphStatus CheckAttenMask() const;
+    ge::graphStatus CheckMetadata() const;
+    ge::graphStatus CheckPaInputs() const;
+    ge::graphStatus CheckReservedInputs() const;
+    ge::graphStatus CheckShapeConsistency() const;
+    ge::graphStatus CheckShapeLimits(const QbsaShapeLimits &limits) const;
+    ge::graphStatus CheckKeyValueShape(uint32_t expectedBlockSize) const;
+    ge::graphStatus CheckNoneOrCausalMask() const;
+    // Mode-specific policies and their validation entry points.
+    ge::graphStatus CheckFp8Attrs() const;
+    ge::graphStatus CheckMxAttrs() const;
+    ge::graphStatus CheckFp8Inputs() const;
+    ge::graphStatus CheckFp8PaStride() const;
+    ge::graphStatus CheckFp8ScaleDtype() const;
+    ge::graphStatus CheckMxScaleDtype() const;
+    ge::graphStatus CheckFp8BlockSize() const;
+    ge::graphStatus CheckMxBlockSize() const;
+    ge::graphStatus CheckFp8QuantShape() const;
     ge::graphStatus CheckMXFP8FullQuantShape() const;
+    ge::graphStatus CheckFp8Feature() const;
+    ge::graphStatus CheckMxFeature() const;
 
     const QuantBlockSparseAttnTilingInfo &tilingInfo_;
 };

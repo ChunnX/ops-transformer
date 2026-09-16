@@ -68,7 +68,7 @@ public:
     static constexpr uint64_t SYNC_MODE = 4;
 
     __aicore__ inline QBSABlockVec(){};
-    __aicore__ inline void InitVecBlock(TPipe *pipe, const QuantBlockSparseAttnTilingData *__restrict tiling,
+    __aicore__ inline void InitVecBlock(TPipe *pipe, const optiling::QuantBlockSparseAttnTilingData *__restrict tiling,
                                         QbsaCVSharedParams<isPa> &sharedParams, int32_t aicIdx, uint8_t subBlockIdx,
                                         AttenMaskInfo &attenMaskInfo)
     {
@@ -117,7 +117,7 @@ public:
                                                int64_t vec2CalcSize);
 
     TPipe *tPipe;
-    const QuantBlockSparseAttnTilingData *__restrict tilingData;
+    const optiling::QuantBlockSparseAttnTilingData *__restrict tilingData;
     GlobalTensor<OUTPUT_T> attentionOutGm;
     GlobalTensor<half> attentionOut_initGm;
 
@@ -205,7 +205,7 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::InitCommonGlobalBuffer(
             attenMaskGmInt.SetGlobalBuffer((__gm__ uint8_t *)attenMask);
         }
         if constexpr (!bmm2Write2Ub) {
-            int64_t bmm2ResBlock = tilingData->inputParamsRegbase.dSizeV;
+            int64_t bmm2ResBlock = this->tilingData->commonParams.baseParams.dSizeV;
             if constexpr (splitD) {
                 bmm2ResBlock = (int64_t)dVTemplateType;
             }
@@ -591,19 +591,19 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::InitCubeVecSharedParams(QbsaCVSharedParams<isPa> &sharedParams,
                                                                             int32_t aicIdx, uint8_t subBlockIdx)
 {
-    auto &inputParamsRegbase = this->tilingData->inputParamsRegbase;
-    sharedParams.bSize = inputParamsRegbase.bSize;
-    sharedParams.t1Size = inputParamsRegbase.t1Size;
-    sharedParams.n2Size = inputParamsRegbase.n2Size;
-    sharedParams.gSize = inputParamsRegbase.gSize;
-    sharedParams.dSize = inputParamsRegbase.dSize;
-    sharedParams.dSizeV = inputParamsRegbase.dSizeV;
-    sharedParams.preTokens = inputParamsRegbase.preTokens;
-    sharedParams.nextTokens = inputParamsRegbase.nextTokens;
+    auto &inputParamsRegbase = this->tilingData->fp8Params;
+    sharedParams.bSize = this->tilingData->commonParams.baseParams.bSize;
+    sharedParams.t1Size = this->tilingData->commonParams.baseParams.t1Size;
+    sharedParams.n2Size = this->tilingData->commonParams.baseParams.n2Size;
+    sharedParams.gSize = this->tilingData->commonParams.baseParams.gSize;
+    sharedParams.dSize = this->tilingData->commonParams.baseParams.dSize;
+    sharedParams.dSizeV = this->tilingData->commonParams.baseParams.dSizeV;
+    sharedParams.preTokens = this->tilingData->commonParams.maskParams.preTokens;
+    sharedParams.nextTokens = this->tilingData->commonParams.maskParams.nextTokens;
     sharedParams.bandIndex = inputParamsRegbase.bandIndex;
     sharedParams.layoutType = inputParamsRegbase.layoutType;
-    sharedParams.compressMode = inputParamsRegbase.attenMaskCompressMode;
-    sharedParams.attenMaskS2Size = inputParamsRegbase.attenMaskS2Size;
+    sharedParams.compressMode = this->tilingData->commonParams.maskParams.attenMaskCompressMode;
+    sharedParams.attenMaskS2Size = this->tilingData->commonParams.maskParams.attenMaskS2Size;
 
     sharedParams.fromFused = inputParamsRegbase.fromFused;
     sharedParams.isGqa = inputParamsRegbase.isGqa;
@@ -611,7 +611,7 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::InitCubeVecSharedParams(Qbsa
     sharedParams.seqUsedQlenSize = inputParamsRegbase.seqUsedQlenSize;
     sharedParams.seqUsedKvlenSize = inputParamsRegbase.seqUsedKvlenSize;
     if constexpr (isPa) {
-        auto &paParams = this->tilingData->paParams;
+        auto &paParams = this->tilingData->commonParams.paParams;
         sharedParams.blockTableDim2 = paParams.blockTableDim2;
         sharedParams.kvSparseBlockSize = paParams.kvBlockSize;
         sharedParams.qSparseBlockSize = paParams.qBlockSize;
@@ -621,12 +621,12 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::InitCubeVecSharedParams(Qbsa
         sharedParams.isRowInvalid = paParams.isRowInvalid;
     }
 
-    auto &multiCoreParamsRegbase = this->tilingData->multiCoreParamsRegbase;
+    auto &multiCoreParamsRegbase = this->tilingData->fp8Params;
     sharedParams.s1OuterSize = multiCoreParamsRegbase.s1OuterSize;
-    sharedParams.coreNum = multiCoreParamsRegbase.coreNum;
+    sharedParams.coreNum = this->tilingData->commonParams.baseParams.coreNum;
     sharedParams.bnStartIdx = multiCoreParamsRegbase.bnStartIdx[aicIdx];
     sharedParams.bnEndIdx = multiCoreParamsRegbase.bnStartIdx[aicIdx + 1];
-    sharedParams.needInit = this->tilingData->initOutputParams.needInit;
+    sharedParams.needInit = this->tilingData->fp8Params.needInit;
 
     if ASCEND_IS_AIV {
         if (subBlockIdx == 0) {
@@ -651,7 +651,7 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::CleanOutput(__gm__ uint8_t *
         if constexpr (hasLse) {
             softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
         }
-        if (this->tilingData->initOutputParams.needInit == 1) {
+        if (this->tilingData->fp8Params.needInit == 1) {
             InitOutputSingleCore(constInfo);
             if constexpr (hasLse) {
                 SyncAll();
@@ -730,9 +730,11 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::SoftmaxLseCopyOut(LocalTenso
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::InitOutputSingleCore(QbsaConstInfo &constInfo)
 {
-    auto &initParams = this->tilingData->initOutputParams;
-    uint32_t tailSize = (initParams.totalOutputSize - constInfo.aivIdx * initParams.singleCoreSize) > 0 ?
-                            (initParams.totalOutputSize - constInfo.aivIdx * initParams.singleCoreSize) :
+    auto &initParams = this->tilingData->fp8Params;
+    uint32_t tailSize = (this->tilingData->commonParams.outputParams.totalOutputSize -
+                         constInfo.aivIdx * initParams.singleCoreSize) > 0 ?
+                            (this->tilingData->commonParams.outputParams.totalOutputSize -
+                             constInfo.aivIdx * initParams.singleCoreSize) :
                             0;
     uint32_t singleInitOutputSize = tailSize < initParams.singleCoreSize ? tailSize : initParams.singleCoreSize;
     InitOutput<OUTPUT_T>(this->attentionOutGm[constInfo.aivIdx * initParams.singleCoreSize], singleInitOutputSize, 0.0);
@@ -742,14 +744,15 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::InitLseOutputSingleCore(QbsaConstInfo &constInfo)
 {
     int64_t coreNum = GetBlockNum() * GetTaskRation();
-    auto &initParams = this->tilingData->initOutputParams;
     if (coreNum != 0 && constInfo.aivIdx < coreNum) {
-        int64_t singleCoreLseSize = initParams.totalSoftMaxLseOutputSize / coreNum;
+        int64_t singleCoreLseSize = this->tilingData->commonParams.outputParams.totalSoftMaxLseOutputSize / coreNum;
         if (constInfo.aivIdx == coreNum - 1) {
-            singleCoreLseSize += initParams.totalSoftMaxLseOutputSize % coreNum;
+            singleCoreLseSize += this->tilingData->commonParams.outputParams.totalSoftMaxLseOutputSize % coreNum;
         }
-        InitOutput<float>(softmaxLseGm[constInfo.aivIdx * (initParams.totalSoftMaxLseOutputSize / coreNum)],
-                          singleCoreLseSize, FP8_EMPTY_LSE_VALUE);
+        InitOutput<float>(
+            softmaxLseGm[constInfo.aivIdx *
+                         (this->tilingData->commonParams.outputParams.totalSoftMaxLseOutputSize / coreNum)],
+            singleCoreLseSize, FP8_EMPTY_LSE_VALUE);
     }
 }
 
@@ -764,7 +767,7 @@ public:
     __aicore__ inline void CleanOutput(__gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
                                        QbsaConstInfo &constInfo)
     {}
-    __aicore__ inline void InitVecBlock(TPipe *pipe, const QuantBlockSparseAttnTilingData *__restrict tiling,
+    __aicore__ inline void InitVecBlock(TPipe *pipe, const optiling::QuantBlockSparseAttnTilingData *__restrict tiling,
                                         QbsaCVSharedParams<isPa> &sharedParams, int32_t aicIdx, uint8_t subBlockIdx,
                                         AttenMaskInfo &attenMaskInfo) {};
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK,
