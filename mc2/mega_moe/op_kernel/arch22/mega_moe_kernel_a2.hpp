@@ -385,50 +385,36 @@ private:
         // 路径 A：self-rank
         // windowsOut → UB → 本地 peer mem（只写 hiddenSize 有效数据）
         // scale inline 分离写入 gmScale，无需 epoch flag
-if constexpr (IS_INT8) {
-            if (static_cast<int32_t>(RuntimeRank(params)) == dstEpIdx) {
-                AscendC::GlobalTensor<ElementPerTokenScale> gmScale;
+        // 路径 A：self-rank
+        // windowsOut → UB → 本地 peer mem（只写 hiddenSize 有效数据），无需 epoch flag
+        // int8 额外把行尾的 per-token scale 分离写入独立的 gmScale 区
+        if (rank == dstEpIdx) {
+            AscendC::GlobalTensor<ElementPerTokenScale> gmScale;
+            if constexpr (IS_INT8) {
                 gmScale.SetGlobalBuffer(
                     reinterpret_cast<__gm__ ElementPerTokenScale *>(shmem() + peermemInfo.offsetPeerPerTokenScale));
+            }
 
-                AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
-                for (int32_t i = 0; i < rows; ++i) {
-                    auto offset = i * copyInNum;
-                    // windowsOut → UB (MTE2)
-                    AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
-                    copyGmToUb(bufT, src[offset], layout::RowMajor{1, copyInNum}, layout::RowMajor{1, copyInNum});
-                    AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID0);
-                    AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID0);
-                    // UB → 本地 peer mem（只写 hiddenSize 有效数据）
-                    copyUbToGm(dst[offset], bufT, layout::RowMajor{1, hiddenSize}, layout::RowMajor{1, hiddenSize});
-                    // scale 分离写入独立 gmScale 区
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+            for (int32_t i = 0; i < rows; ++i) {
+                auto offset = i * copyInNum;
+                // windowsOut → UB (MTE2)
+                AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+                copyGmToUb(bufT, src[offset], layout::RowMajor{1, copyInNum}, layout::RowMajor{1, copyInNum});
+                AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID0);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID0);
+                // UB → 本地 peer mem（只写 hiddenSize 有效数据）
+                copyUbToGm(dst[offset], bufT, layout::RowMajor{1, hiddenSize}, layout::RowMajor{1, hiddenSize});
+                // scale 分离写入独立 gmScale 区（仅 int8 行尾携带）
+                if constexpr (IS_INT8) {
                     AscendC::DataCopyPad(gmScale[rowStart + i], bufScale, {1, 4, 0, 0, 0});
-                    AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
                 }
-                AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
-                // 自身 rank 无需写 flag，RecvTokensV3 中 srcEpIdx == rank 时直接 return
-                return;
-            }
-} else {
-            if (rank == dstEpIdx) {
                 AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
-                for (int32_t i = 0; i < rows; ++i) {
-                    auto offset = i * copyInNum;
-                    // windowsOut → UB (MTE2)
-                    AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
-                    copyGmToUb(bufT, src[offset], layout::RowMajor{1, copyInNum}, layout::RowMajor{1, copyInNum});
-                    AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID0);
-                    AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID0);
-                    // UB → 本地 peer mem（只写 hiddenSize 有效数据）
-                    copyUbToGm(dst[offset], bufT, layout::RowMajor{1, hiddenSize}, layout::RowMajor{1, hiddenSize});
-                    // scale 分离写入独立 gmScale 区
-                    AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
-                }
-                AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
-                // 自身 rank 无需写 flag，RecvTokensV3 中 srcEpIdx == rank 时直接 return
-                return;
             }
-}
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+            // 自身 rank 无需写 flag，RecvTokensV3 中 srcEpIdx == rank 时直接 return
+            return;
+        }
 
 
         // 路径 B：同 server（IPC 直写远端 peer mem + IPC DataCopyPad flag）
@@ -454,7 +440,7 @@ if constexpr (IS_INT8) {
             // 每槽 64B 独占 cache line（kFlagSlotI32 = 16 个 int32），避免 false sharing。
             __gm__ int32_t *remoteFlag =
                 reinterpret_cast<__gm__ int32_t *>(shmem(0, dstEpIdx) + peermemInfo.offsetFlag) +
-                (RuntimeRank(params) * params.expertPerRank + groupIdx) * PeermemInfo::kFlagSlotI32;
+                (rank * params.expertPerRank + groupIdx) * PeermemInfo::kFlagSlotI32;
 
             AscendC::PipeBarrier<PIPE_ALL>();
             gm_store(remoteFlag, FLAG_VALUE_MAGIC);
@@ -485,14 +471,14 @@ if constexpr (IS_INT8) {
             AscendC::GlobalTensor<int32_t> localFlagGm;
             localFlagGm.SetGlobalBuffer(
                 reinterpret_cast<__gm__ int32_t *>(shmem.windowsOutAddr() + peermemInfo.offsetFlag) +
-                (RuntimeRank(params) * params.expertPerRank + groupIdx) * PeermemInfo::kFlagSlotI32);
+                (rank * params.expertPerRank + groupIdx) * PeermemInfo::kFlagSlotI32);
             AscendC::DataCopy(localFlagGm, flagUb, PeermemInfo::kFlagPayloadI32);
             AscendC::PipeBarrier<PIPE_ALL>();
 
             // 4. RDMA 32B 到对端同槽（同 QP 顺序保证 flag 在数据之后到达接收侧）
             GM_ADDR remoteFlagAddr = reinterpret_cast<GM_ADDR>(
                 reinterpret_cast<uintptr_t>(shmem(0, dstEpIdx)) + static_cast<uintptr_t>(peermemInfo.offsetFlag) +
-                static_cast<uintptr_t>(RuntimeRank(params) * params.expertPerRank + groupIdx) *
+                static_cast<uintptr_t>(rank * params.expertPerRank + groupIdx) *
                     static_cast<uintptr_t>(PeermemInfo::kFlagSlotI32 * sizeof(int32_t)));
             AIVRDMAPostSend((GM_ADDR)localFlagGm.GetPhyAddr(), remoteFlagAddr, static_cast<uint64_t>(dstEpIdx),
                             PeermemInfo::kFlagPayloadI32 * sizeof(int32_t), // 32B
@@ -517,15 +503,14 @@ if constexpr (IS_INT8) {
                                      int32_t groupIdx, // 当前专家组轮次（用于 epoch flag 判定）
                                      const Params &params)
     {
+        const int32_t rank = RuntimeRank(params);
         // 自身 rank 已在 SendTokensV3 路径 A 中完成搬运（含 scale 分离），跳过
-        if (srcEpIdx == static_cast<int32_t>(RuntimeRank(params)))
+        if (srcEpIdx == rank)
             return;
         // 无 token 时跳过，避免等待永远不会到达的 flag
         if (rows2 == 0)
             return;
 
-        // bf16/fp16 侧缓存本 rank；int8 侧沿用自己的 RuntimeRank 内联形式
-        const int32_t rank = RuntimeRank(params);
         uint32_t copyInNum = hiddenSize + (IS_INT8 ? ALIGN_512 : 0);
 
         AscendC::LocalTensor<T> bufT = resource.ubBuf.template GetBufferByByte<T>(0);
@@ -634,6 +619,7 @@ if constexpr (IS_INT8) {
     CATLASS_DEVICE
     void GMM1(Params const &params)
     {
+        const int32_t rank = RuntimeRank(params);
         icache_preload(ICACHE_PRELOAD_LINES);
         BlockScheduler blockScheduler;
         BlockMmad blockMmad(resource);
@@ -654,7 +640,7 @@ if constexpr (IS_INT8) {
         AscendC::PipeBarrier<PIPE_ALL>();
 
         for (uint32_t groupIdx = 0; groupIdx < params.expertPerRank; ++groupIdx) {
-            uint32_t currentM = cumsumMM(tokenPerExpertLayout(params.EP - 1, RuntimeRank(params), groupIdx));
+            uint32_t currentM = cumsumMM(tokenPerExpertLayout(params.EP - 1, rank, groupIdx));
             if (preCurrentmSum >= params.maxOutputSize) {
                 currentM = 0;
             } else if (preCurrentmSum + currentM >= params.maxOutputSize) {
@@ -741,6 +727,7 @@ if constexpr (IS_INT8) {
     CATLASS_DEVICE
     void GMM2(Params const &params)
     {
+        const int32_t rank = RuntimeRank(params);
         icache_preload(ICACHE_PRELOAD_LINES);
         BlockScheduler blockScheduler;
         BlockMmad blockMmad(resource);
@@ -767,7 +754,7 @@ if constexpr (IS_INT8) {
         AscendC::PipeBarrier<PIPE_ALL>();
 
         for (uint32_t groupIdx = 0; groupIdx < params.expertPerRank; ++groupIdx) {
-            uint32_t currentM = cumsumMM(tokenPerExpertLayout(params.EP - 1, RuntimeRank(params), groupIdx));
+            uint32_t currentM = cumsumMM(tokenPerExpertLayout(params.EP - 1, rank, groupIdx));
             if (preCurrentmSum >= params.maxOutputSize) {
                 currentM = 0;
             } else if (preCurrentmSum + currentM > params.maxOutputSize) {
@@ -843,6 +830,7 @@ if constexpr (IS_INT8) {
     void CrossRankSyncAndlocalTokenPerExpertAllGatherAndGetSumPreRankV2(Params const &params,
                                                                         int64_t localTokenPerExpertOffset)
     {
+        const int32_t rank = RuntimeRank(params);
         uint32_t numPerCore = paddedExpertNumAligned;
         AscendC::LocalTensor<int32_t> tmpBuffer = resource.ubBuf.template GetBufferByByte<int32_t>(0);
         AscendC::LocalTensor<int32_t> prevSumBuf = tmpBuffer[numPerCore];
@@ -858,7 +846,7 @@ if constexpr (IS_INT8) {
             dstServerId = dstEpIdx / SERVER_RANK_SIZE_A2;
             AscendC::GlobalTensor<int32_t> srcAddress;
             int64_t localTokenPerExpertWinOutOffset = peermemInfo.offsetWinOutPeerTokenPerExpert +
-                                                      tokenPerExpertLayout(RuntimeRank(params), 0, 0) * sizeof(int32_t);
+                                                      tokenPerExpertLayout(rank, 0, 0) * sizeof(int32_t);
             srcAddress.SetGlobalBuffer(
                 reinterpret_cast<__gm__ int32_t *>(shmem.windowsOutAddr() + localTokenPerExpertWinOutOffset));
             AscendC::GlobalTensor<int32_t> dstAddress;
@@ -882,7 +870,7 @@ if constexpr (IS_INT8) {
             copyGmToUb(tmpBuffer, srcAddress[0], layout::RowMajor{1, numPerCore}, layout::RowMajor{1, numPerCore});
             AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID0);
-            if (dstEpIdx == static_cast<int32_t>(RuntimeRank(params))) {
+            if (dstEpIdx == static_cast<int32_t>(rank)) {
                 // 路径 A：self-rank，本地搬运，无 flag
                 copyUbToGm(dstAddress, tmpBuffer, layout::RowMajor{1, numPerCore}, layout::RowMajor{1, numPerCore});
                 AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
@@ -894,7 +882,7 @@ if constexpr (IS_INT8) {
 
                 __gm__ int32_t *remoteAgFlag =
                     reinterpret_cast<__gm__ int32_t *>(shmem(0, dstEpIdx) + peermemInfo.offsetAllgatherFlag) +
-                    RuntimeRank(params) * PeermemInfo::kFlagSlotI32;
+                    rank * PeermemInfo::kFlagSlotI32;
                 gm_store(remoteAgFlag, FLAG_VALUE_MAGIC);
                 gm_dcci((__gm__ uint8_t *)remoteAgFlag);
             } else {
@@ -918,7 +906,7 @@ if constexpr (IS_INT8) {
                 AscendC::GlobalTensor<int32_t> localAgFlagGm;
                 localAgFlagGm.SetGlobalBuffer(
                     reinterpret_cast<__gm__ int32_t *>(shmem.windowsOutAddr() + peermemInfo.offsetAllgatherFlag) +
-                    RuntimeRank(params) * PeermemInfo::kFlagSlotI32);
+                    rank * PeermemInfo::kFlagSlotI32);
                 AscendC::DataCopy(localAgFlagGm, flagUb, PeermemInfo::kFlagPayloadI32);
                 AscendC::PipeBarrier<PIPE_ALL>();
 
@@ -926,7 +914,7 @@ if constexpr (IS_INT8) {
                 GM_ADDR remoteAgFlagAddr =
                     reinterpret_cast<GM_ADDR>(reinterpret_cast<uintptr_t>(shmem(0, dstEpIdx)) +
                                               static_cast<uintptr_t>(peermemInfo.offsetAllgatherFlag) +
-                                              static_cast<uintptr_t>(RuntimeRank(params)) *
+                                              static_cast<uintptr_t>(rank) *
                                                   static_cast<uintptr_t>(PeermemInfo::kFlagSlotI32 * sizeof(int32_t)));
                 AIVRDMAPostSend((GM_ADDR)localAgFlagGm.GetPhyAddr(), remoteAgFlagAddr, static_cast<uint64_t>(dstEpIdx),
                                 PeermemInfo::kFlagPayloadI32 * sizeof(int32_t), // 32B
@@ -937,7 +925,7 @@ if constexpr (IS_INT8) {
         // Stage 2：等 flag + 读 tokenPerExpert + 算 preSumBeforeRank
         for (int32_t dstEpIdx = coreIdx; dstEpIdx < params.EP; dstEpIdx += coreNum) {
             // self-rank 已在 Stage 1 本地搬运完毕，无 flag；其它 rank 等 allgather flag
-            if (dstEpIdx != static_cast<int32_t>(RuntimeRank(params))) {
+            if (dstEpIdx != static_cast<int32_t>(rank)) {
                 __gm__ int32_t *flagAddr =
                     reinterpret_cast<__gm__ int32_t *>(shmem() + peermemInfo.offsetAllgatherFlag) +
                     dstEpIdx * PeermemInfo::kFlagSlotI32;
@@ -954,9 +942,9 @@ if constexpr (IS_INT8) {
             AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
 
-            // 只有 dstEpIdx == RuntimeRank(params) 的 core 才拥有本 rank 自身的 token 分布，
+            // 只有 dstEpIdx == rank 的 core 才拥有本 rank 自身的 token 分布，
             // 只允许该 core 写 preSumBeforeRankForDispatch（避免写竞争）
-            if (static_cast<uint32_t>(dstEpIdx) == RuntimeRank(params)) {
+            if (static_cast<uint32_t>(dstEpIdx) == rank) {
                 uint32_t realExpertNum = params.EP * params.expertPerRank;
                 for (uint32_t i = 0, currentSum = 0; i < realExpertNum; i++) {
                     prevSumBuf(i) = currentSum;
@@ -968,8 +956,8 @@ if constexpr (IS_INT8) {
                     preSumBeforeRankForDispatch, prevSumBuf,
                     AscendC::DataCopyParams{1, static_cast<uint16_t>(realExpertNum * sizeof(int32_t)), 0, 0});
             }
-            for (int32_t i = 0, j = 0, prevSum = 0; i < (RuntimeRank(params) + 1) * params.expertPerRank; i++) {
-                if (i >= RuntimeRank(params) * params.expertPerRank) {
+            for (int32_t i = 0, j = 0, prevSum = 0; i < (rank + 1) * params.expertPerRank; i++) {
+                if (i >= rank * params.expertPerRank) {
                     prevSumBuf(j) = prevSum;
                     j++;
                 }
@@ -1433,6 +1421,7 @@ if constexpr (IS_INT8) {
     CATLASS_DEVICE
     void CombineV2(Params const &params, BlockEpilogue2 &blockEpilogue)
     {
+        const int32_t rank = RuntimeRank(params);
         BlockScheduler blockScheduler;
         int32_t syncLoopIdx = 0;
         uint32_t startCoreIdx = 0;
@@ -1451,7 +1440,7 @@ if constexpr (IS_INT8) {
             reinterpret_cast<__gm__ ElementD2 *>(shmem.windowsOutAddr() + peermemInfo.offsetWinOutD));
         icache_preload(ICACHE_PRELOAD_LINES);
         for (uint32_t groupIdx = 0; groupIdx < params.expertPerRank; ++groupIdx) {
-            uint32_t currentExpertM = cumsumMM(tokenPerExpertLayout(params.EP - 1, RuntimeRank(params), groupIdx));
+            uint32_t currentExpertM = cumsumMM(tokenPerExpertLayout(params.EP - 1, rank, groupIdx));
             if (preSrcExpertSum >= params.maxOutputSize) {
                 currentExpertM = 0;
             } else if (preSrcExpertSum + currentExpertM > params.maxOutputSize) {
