@@ -51,14 +51,12 @@ public:
     {
         if (npuArch_ == Ops::Base::DAV_3510) { // __NPU_ARCH__ == 3510
             InitParametersForFullMesh();
-            return;
-        }
-        if (npuArch_ == Ops::Base::DAV_2002) { // 310系:310P只支持MatmulAllreduce算子
+        } else if (npuArch_ == Ops::Base::DAV_2002) { // 310系:310P只支持MatmulAllreduce算子
             SetCommMethodVersion310P();
             socVersion_ = SocVersion::SOC310_P;
-            return;
+        } else { // DAV_2201系:910B/910_93/B4
+            SetCommParametersBySocType(series);
         }
-        SetCommParametersBySocType(series);
     }
 
     // 系列细分:仅DAV_2201系(910B/910_93/B4)到达,内部不再含arch判定
