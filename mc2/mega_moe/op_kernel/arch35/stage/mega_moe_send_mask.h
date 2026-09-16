@@ -158,13 +158,13 @@ __aicore__ inline void SendTopkIdsCountToRank(const WorkRange &sourceCountRange,
 // 发送各专家的 topkIds 下标数量及本轮 epoch，目标布局为 [localExpert][sourceRank]。
 // 仅由 AIV 调用，专家范围非空；紧接同一范围的下标发送调用，期间不能覆盖 scratch 中的累计数量。
 __aicore__ inline void SendTopkIdsCountForExperts(const WorkRange &ownedExpertRange, const MoeStageCommonConfig &common,
-                                                  __gm__ int32_t *launchCountSlot, GM_ADDR *winRankAddr,
-                                                  const SendMaskConfig &config, const SendMaskScratch &scratch)
+                                                  int32_t syncCount, GM_ADDR *winRankAddr, const SendMaskConfig &config,
+                                                  const SendMaskScratch &scratch)
 {
     int32_t ownedExpertBegin = static_cast<int32_t>(ownedExpertRange.start);
     int32_t ownedExpertNum = static_cast<int32_t>(ownedExpertRange.count);
     // MoE 量化完成后已推进入口 sequence，直接使用本轮计数槽生成 epoch。
-    int32_t arrivalEpoch = static_cast<int32_t>(GetMteCountEpoch(ReadGmBypassDCache(launchCountSlot)));
+    const uint32_t syncRoundTag = GetSyncRoundTag(syncCount);
     /*
      * 到达标记内嵌：调用方已在 MTE3 上等待全部 MoE 量化生产者，并收口本核 index 写回。
      * count 的本轮 epoch 承担远端输入就绪通知，零 count 也必须发布。
@@ -172,12 +172,10 @@ __aicore__ inline void SendTopkIdsCountForExperts(const WorkRange &ownedExpertRa
      * 避开窗口零初值)，低 24 位为真实 count(上限 maxOutputSize 远小于 2^24)。
      * 接收端逐槽校验 epoch 后取低 24 位(见 token_dispatch.h PrepareMoeExpertTokenCountTable)。
      */
-    constexpr uint32_t EXPERT_COUNT_EPOCH_SHIFT = 24U; // Low 24 bits store the count; high 8 bits store the epoch.
     for (int32_t ownedIdx = 0; ownedIdx < ownedExpertNum; ++ownedIdx) {
         int32_t rawCount = scratch.sendCntAccTensor.GetValue(ownedIdx);
-        scratch.sendCntAccTensor.SetValue(
-            ownedIdx, static_cast<int32_t>((static_cast<uint32_t>(arrivalEpoch) << EXPERT_COUNT_EPOCH_SHIFT) |
-                                           static_cast<uint32_t>(rawCount)));
+        scratch.sendCntAccTensor.SetValue(ownedIdx,
+                                          static_cast<int32_t>(syncRoundTag | static_cast<uint32_t>(rawCount)));
     }
 
     const int32_t expertPerRank = static_cast<int32_t>(common.moeExpertPerRank);
