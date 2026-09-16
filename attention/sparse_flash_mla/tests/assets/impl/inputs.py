@@ -427,7 +427,7 @@ def generate_sparse_flash_mla_inputs(
     sinks=None,
     metadata=None,
     softmax_scale=1.0,
-    cmp_ratio=0,
+    cmp_ratio=None,
     ori_mask_mode=4,
     cmp_mask_mode=3,
     ori_win_left=127,
@@ -442,6 +442,8 @@ def generate_sparse_flash_mla_inputs(
     if is_negative_case(kwargs):
         return None
 
+    if cmp_ratio is None:
+        cmp_ratio = 1 if cmp_kv is not None else 0
     params = dict(kwargs)
     params.update(
         {
