@@ -91,7 +91,7 @@ static bool IsMxQuantMode(uint32_t quantMode)
            quantMode == USER_QUANT_MODE_MX_CLIP_E4M3;
 }
 
-static void PrintTilingDataInfo(const char *nodeName, AttentionToFFNTilingData &tilingData)
+static void PrintTilingDataInfo(AttentionToFFNTilingData &tilingData)
 {
     OP_LOGD(ATTN_FFN_INNER_DEBUG, "X is %u.", tilingData.attentionToFFNInfo.X);
     OP_LOGD(ATTN_FFN_INNER_DEBUG, "BS is %u.", tilingData.attentionToFFNInfo.BS);
@@ -706,21 +706,28 @@ static bool CheckXAndExpertIdShapes(const char *nodeName, const int32_t xDim0, c
                                               (std::string("(0, min(") + std::to_string(K_MAX) +
                                                ", moe_expert_num=" + std::to_string(moeExpertNum) + ")]")
                                                   .c_str()),
-                    return false);
-    if(config.allowMultiLayer) {
+                     return false);
+    return true;
+}
+
+static bool CheckExpertRankTableShape(const char *nodeName, const int32_t expertRankTableDim0,
+                                      const int32_t expertRankTableDim1, const int64_t moeExpertNum,
+                                      const AttentionToFFNTilingConfig &config)
+{
+    if (config.allowMultiLayer) {
         OP_TILING_CHECK(
             expertRankTableDim0 < 1,
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "expert_rank_table",
-                                                    (std::string("[") + std::to_string(expertRankTableDim0) + "]").c_str(),
-                                                    "Dim0 of expert_rank_table must greater than 0"),
-        return false);
+                                                  (std::string("[") + std::to_string(expertRankTableDim0) + "]").c_str(),
+                                                  "Dim0 of expert_rank_table must greater than 0"),
+            return false);
     } else {
         OP_TILING_CHECK(
             expertRankTableDim0 != 1,
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "expert_rank_table",
-                                                (std::string("[") + std::to_string(expertRankTableDim0) + "]").c_str(),
-                                                "Dim0 of expert_rank_table must be 1"),
-        return false);
+                                                  (std::string("[") + std::to_string(expertRankTableDim0) + "]").c_str(),
+                                                  "Dim0 of expert_rank_table must be 1"),
+            return false);
     }
     OP_TILING_CHECK(
         (expertRankTableDim1 < moeExpertNum) || (expertRankTableDim1 > moeExpertNum + SHARED_EXPERT_MAX_NUM),
@@ -760,7 +767,8 @@ static bool CheckTensorShapeAndSetTinglingData(gert::TilingContext *context, con
     OP_TILING_CHECK(!CheckXAndExpertIdShapes(nodeName, xDim0, xDim1, xDim2, sessionIdDim0, microBatchIdDim0,
                                              layerIdDim0, expertIdsDim0, expertIdsDim1, expertIdsDim2, moeExpertNum),
                     return false, return false);
-    OP_TILING_CHECK(!CheckExpertRankTableShape(nodeName, expertRankTableDim0, expertRankTableDim1, moeExpertNum),
+    OP_TILING_CHECK(!CheckExpertRankTableShape(nodeName, expertRankTableDim0, expertRankTableDim1, moeExpertNum,
+                                               config),
                     return false, return false);
 
     if (isScales) {
@@ -1058,7 +1066,7 @@ ge::graphStatus AttentionToFFNTilingFuncBase(gert::TilingContext *context, const
     // Set numBlocks
     SetAttentionPlatformTilingData(context, nodeName, *tilingData);
 
-    PrintTilingDataInfo(nodeName, *tilingData);
+    PrintTilingDataInfo(*tilingData);
     OP_LOGD("AttentionToFFN", "tiling process finished successfully!!!");
     return ge::GRAPH_SUCCESS;
 }
