@@ -141,7 +141,7 @@ __aicore__ inline void MaterializeOffsetsWithHeadSize(int64_t pageId, int64_t to
         // ND cache布局为[blockNum, blockSize, col]，页内行偏移以单行元素个数headSize为单位
         ckvkrParams.cacheOffset = pageId * cacheStride0 + tokenOffsetInPage * headSize;
     }
-    // 跨页时剩余行从下一页起始位置继续写入；无有效下一页时置0，ScatterCacheMultiRows不再二次搬移
+    // 跨页时剩余行从下一页起始位置继续写入
     ckvkrParams.nextBatchOffset = (spill && nextPageId >= 0) ? nextPageId * cacheStride0 : 0;
 }
 
