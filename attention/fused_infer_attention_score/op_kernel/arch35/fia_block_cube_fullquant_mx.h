@@ -84,6 +84,7 @@ public:
     static constexpr GmFormat Q_SCALE_FORMAT = GetQueryScaleGmFormat<layout, USE_DN>();
     static constexpr GmFormat K_SCALE_FORMAT = GetKeyScaleGmFormat<layout, KvLayoutType, PAGE_ATTENTION>();
     static constexpr GmFormat V_SCALE_FORMAT = GetValueScaleGmFormat<layout, KvLayoutType, PAGE_ATTENTION>();
+    static constexpr InnerMLayout Q_M_LAYOUT = USE_DN ? InnerMLayout::S1_ONLY_LAYOUT : InnerMLayout::GS1_MERGE_LAYOUT;
 
     using ROPE_T = bfloat16_t;
     using Q_T = INPUT_T;
@@ -139,7 +140,7 @@ public:
 
     CopyQueryGmToL1<Q_T, Q_FORMAT> copyQueryGmToL1;
     CopyKvGmToL1<KV_T, KV_FORMAT> copyKvGmToL1;
-    CopyQueryScaleGmToL1<SCALE_T, Q_SCALE_FORMAT> copyQueryScaleGmToL1;
+    CopyQueryScaleGmToL1<SCALE_T, Q_SCALE_FORMAT, L1Format::NZ, Q_M_LAYOUT> copyQueryScaleGmToL1;
     KeyScaleGmToL1Type copyKeyScaleGmToL1;
     ValueScaleGmToL1Type copyValueScaleGmToL1;
     CopyQueryGmToL1<ROPE_T, Q_FORMAT> copyQueryRopeGmToL1;
