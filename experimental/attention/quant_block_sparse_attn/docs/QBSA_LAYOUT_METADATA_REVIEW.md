@@ -1,16 +1,16 @@
-# PR #11704：BSND / BNSD 与 metadata 复核及补齐说明
+# MXFP8 BSND / BNSD 布局与 metadata 设计和验证
 
 ## 结论与范围
 
-基线为 `ee2a4c58086472d1297ae2f4a7174c9561b7bfe8`，工作分支为 `codex/pr-11704-layout`。
+本特性将 QuantBlockSparseAttn 的 MXFP8 路径扩展为直接支持 BSND/BNSD Query 布局。
+Host 从 shape 获取固定 Sq，Kernel 按布局计算地址与搬运步长，复用矩阵乘法、softmax 和计算流水。
 
-原 PR 的主计算地址路径已经适配 BSND/BNSD，但不能据此判断整条调用链完全适配。
-本轮确认并修复了 metadata 参数契约、Torch 空参数透传、主 kernel 的 metadata 边界，以及
-Meta 推导与真实入口的 QScale 校验不一致等问题。
+主算子、metadata、Torch 和 GE 统一遵守布局与长度参数契约；
+主 Kernel 将 metadata 调度范围限制在物理 Query 行数内，Meta 和真实入口共用 QScale 检查。
 
-范围沿用 PR：`quant_mode=2`，Q / QScale / attention_out 扩展到 BSND、BNSD；
+支持范围：`quant_mode=2`，Q / QScale / attention_out 扩展到 BSND、BNSD；
 K/V 仍为 PA_BNBD，`D=Dv=128`，Q/KV sparse block 均为 64 或均为 128。
-`quant_mode=1` 保留 TND/NTD，不新增其 BSND/BNSD 支持；连续 KV 布局也不在此 PR 范围。
+`quant_mode=1` 保留 TND/NTD，不新增其 BSND/BNSD 支持；连续 KV 布局也不在此特性范围。
 
 **验证状态：本地 C++ 与 Python 调用边界回归已通过；CANN 构建、真实 Torch 扩展加载、
 GE 执行、NPU 精度和性能尚未验证。当前不能宣称已完成上板验收。**
@@ -43,12 +43,12 @@ metadata 接口没有 Query Tensor 或 Sq 属性，不能从 `Qb * block_size` �
 因此保留 metadata 的二进制格式和 API 签名，由已持有准确 Sq 的主 kernel 截断有效范围。
 这也保留了 Qb 超额分配的接口能力。
 
-## 3. 发现的问题与修改
+## 3. 接口检查与边界处理
 
-### 3.1 metadata 接收 layout 属性但未校验
+### 3.1 metadata 布局与量化模式检查
 
-原 ACLNN 检查没有使用 `layoutQOptional/layoutKvOptional`；AICPU 虽读取属性，
-也没有验证其取值。BSND/BNSD 搭配 FP8、错误的 KV 布局或非空 Q 长度参数都可能通过。
+metadata 与主算子执行相同的布局约束，拒绝 BSND/BNSD 搭配 FP8、错误的 KV 布局或非空 Q 长度参数。
+ACLNN 和 GE 直达 AICPU 的路径均执行检查，避免不同调用入口接受不同的参数组合。
 
 修改文件：
 
@@ -59,64 +59,61 @@ metadata 接口没有 Query Tensor 或 Sq 属性，不能从 `Qb * block_size` �
   新布局要求两个 Q 长度指针为空，稀疏长度为 `[B,Nq,Qb]`，batch/head 与属性一致。
   旧 packed 布局保留 metadata 的 legacy 2D 稀疏长度兼容性。
 - `quant_block_sparse_attn_metadata/op_kernel_aicpu/quant_block_sparse_attn_metadata_aicpu.cpp`：
-  补上布局校验，使 GE 直接执行也受到约束；额外检查 sparse dtype、metadata 输出 rank、
+  执行布局校验，使 GE 直接执行也受到约束；检查 sparse dtype、metadata 输出 rank、
   dtype、容量以及固定格式支持的 AIC 核数，避免绕过 ACLNN 后直接写越界。
   GE 的缺省 optional 输入可能表示成零元素占位，因此 AICPU 接受这种内部表示，拒绝有元素的 Q 长度。
 
-### 3.2 Torch metadata 把 None 转成空 Tensor
+### 3.2 Torch metadata 的 optional 空值传递
 
-原 `get_qbsa_valid_tensor()` 为所有缺省长度参数创建 INT32 `[0]` Tensor，
-使 Python 的 None 到达 ACLNN 时变成非空指针。它与新布局的公共入口约定不一致。
+Python 的 None 需要以空指针传递到 ACLNN；显式零元素 Tensor 仍然是已提供的参数，
+不能替代公共入口的 None 契约。
 
-`npu_quant_block_sparse_attn_metadata.cpp` 删除了这层转换，直接传 optional 参数。
+`npu_quant_block_sparse_attn_metadata.cpp` 直接传 optional 参数。
 现有 `ops_common.h::ConvertType(optional<Tensor>)` 已支持将 None 转成 `nullptr`。
 同时让 NPU 和 Meta 两个入口共用布局/长度/稀疏 shape 检查，防止图追踪阶段接受错误参数。
 metadata 的 GE converter 也在构图前拒绝 BSND/BNSD 非法模式或非空 Q 长度。
 
-### 3.3 metadata 的 Q 行终点可能超过物理 Sq
+### 3.3 将 metadata 的 Q 行终点限制在物理 Sq 内
 
-原 `GetS1LoopEnd()` 在 metadata 给出非零分核终点时直接返回该值，
-没有与 `ceil(actualS1Size/q_block_size)` 取较小值。
+稀疏表可以分配超过物理 Query 所需的行数，分核终点必须与
+`ceil(actualS1Size/q_block_size)` 取较小值。
 
 示例：Sq=129、block=128，但稀疏表分配了更多 Q 行。若分核终点为 3，
-原循环会访问 row=2，其 token 起点为 256，随后 `129-256` 的无符号尾块长度发生下溢。
+若不截断，循环会访问 row=2，其 token 起点为 256，随后 `129-256` 的无符号尾块长度发生下溢。
 这种情况既影响正常计算，也影响空行清零路径。
 
 在 `arch35/common/util_regbase_mx.h` 增加生产函数 `MxS1LoopEnd()`，
 `quant_block_sparse_attn_mx_kernel.h` 使用它把分核终点截断到实际 Q 行数。
 行数计算使用除法和余数，避免 `length + block - 1` 的 32 位溢出。
-修复同时保护 MXFP8 的 TND 和新布局，不增加 metadata 格式字段。
+该边界处理同时用于 MXFP8 的 TND 和新布局，不增加 metadata 格式字段。
 
-### 3.4 主算子 NPU / Meta 的 QScale 校验不一致
+### 3.4 主算子 NPU / Meta 共用 QScale 检查
 
-原 NPU 入口只补了 QScale 连续性检查，Meta 入口没有对应检查。
-现在 `npu_quant_block_sparse_attn.cpp` 的两个入口共用 `CheckPaddedQueryInputs()`：
+`npu_quant_block_sparse_attn.cpp` 的两个入口共用 `CheckPaddedQueryInputs()`：
 校验非空四维 Q、连续 Q/QScale、五维 QScale、前三轴与 Q 一致、末两维为 `[ceil(D/64),2]`，
 并统一两个 Q 长度参数必须为 None 的约束。
 
-### 3.5 回归入口未覆盖 metadata 的新布局调用
+### 3.5 每种布局独立生成 metadata
 
-原 `QBSA_CHECK_PADDED_LAYOUTS=1` 自检复用 TND 的 metadata，
-只能验证主计算布局切换，无法发现 BSND/BNSD metadata 入口的问题。
-现在 golden 为每种被比较的布局分别生成 metadata，再运行主算子比较输出和 LSE。
+`QBSA_CHECK_PADDED_LAYOUTS=1` 自检为每种被比较的布局分别生成 metadata，
+再运行主算子比较输出和 LSE，同时覆盖布局对应的 metadata 入口和主计算路径。
 
-公开说明 `QuantBlockSparseAttnMx.md` 原来仍写“仅支持 TND”，
-本轮同步修正 Q/QScale/output/LSE shape、长度参数和 layout 约束。
+公开说明 `QuantBlockSparseAttnMx.md` 统一记录 Q/QScale/output/LSE shape、长度参数和 layout 约束。
 
 ## 4. 完整链路检查记录
 
 | 层次                   | 复核结果                                                  |
 | -------------------- | ----------------------------------------------------- |
-| Query parser         | 原 PR 已识别四维 BSND/BNSD，解析 B、Sq、Nq，使用 B*Sq 容量            |
-| Host shape/check     | 原 PR 已校验四维 Q/output、五维 QScale、BNS LSE、Qb 容量与量化模式      |
-| InferShape / tiling  | 原 PR 已推导四维输出、BNS LSE，并传递 qSeqSize 与布局 tiling key      |
-| Cube Q/QScale 搬运     | 原 PR 已通过布局槽位和行步长区分 BSND/BNSD                          |
-| Vector output/LSE    | 原 PR 已覆盖正常写回与 ClearEmptyQBlock，LSE 固定 BNS             |
-| 主 kernel 长度          | 原 PR 新布局不读取/预取 cu_seqlens_q；本轮补上 metadata 行终点截断       |
-| metadata ACLNN/AICPU | 本轮补上布局/长度/shape 契约及 AICPU 输出检查                        |
+| Query parser         | 识别四维 BSND/BNSD，解析 B、Sq、Nq，使用 B*Sq 容量            |
+| Host shape/check     | 校验四维 Q/output、五维 QScale、BNS LSE、Qb 容量与量化模式      |
+| InferShape / tiling  | 推导四维输出、BNS LSE，并传递 qSeqSize 与布局 tiling key      |
+| Cube Q/QScale 搬运     | 通过布局槽位和行步长区分 BSND/BNSD                          |
+| Vector output/LSE    | 正常写回与 ClearEmptyQBlock 共用地址规则，LSE 固定 BNS             |
+| 主 kernel 长度          | 新布局不读取/预取 cu_seqlens_q；metadata 行终点按物理长度截断       |
+| metadata ACLNN/AICPU | 校验布局/长度/shape 契约及 AICPU 输出容量                        |
 | Torch NPU/Meta       | metadata 保留 None；主算子统一 QScale 检查                      |
-| GE converter         | 原本透传布局；本轮增加 metadata 构图前契约检查                          |
-| Golden / TTK         | 原 PR 已转换公共布局，TTK 已按布局提取 B/N；本轮改进 golden 独立生成 metadata |
+| GE converter         | 透传布局并执行 metadata 构图前契约检查                          |
+| Golden / TTK         | 转换公共布局，按布局提取 B/N；golden 为每种布局独立生成 metadata |
 
 ## 5. 已完成的本地验证
 
@@ -170,7 +167,7 @@ python experimental/attention/quant_block_sparse_attn_metadata/tests/standalone/
 
 1. 在支持 MXFP8 的 Ascend 950 环境，按仓库构建流程重新编译安装主算子的 host/kernel、
    metadata host/AICPU 库及当前 `torch_ops_extension`。不能只替换 Python 文件。
-   本轮没有再改 tiling-data 结构，但 PR 原有 qSeqSize 字段仍要求 host/kernel 同版本。
+   MX tiling-data 新增 qSeqSize 字段，host/kernel 必须同版本部署。
 
    在仓库根目录、激活 CANN 环境后构建两个算子（参数已对照当前 `build.sh`）：
 
@@ -187,7 +184,7 @@ python experimental/attention/quant_block_sparse_attn_metadata/tests/standalone/
 
    注意需要保留完整仓库目录关系：Torch metadata 入口复用了相邻 metadata 算子的布局检查头。
 
-2. 运行原有 Host UT（包括本轮新增的 `MetadataEndsAreClippedToPhysicalQuery`）。
+2. 运行 Host UT（包括 `MetadataEndsAreClippedToPhysicalQuery`）。
 
    ```bash
    bash build.sh --experimental --soc=ascend950 --ops=quant_block_sparse_attn --ophost_test
@@ -208,7 +205,7 @@ BSND/BNSD 分别生成 metadata，超额 Q 行故意设为非零，比较完整 
 它使用默认 GE 编译配置；原 golden 的 `--aclgraph` 仅捕获主算子、在图外生成 metadata，
 不能替代这个 converter/AICPU 图执行用例。该新增 GE 测试目前仅通过语法检查，尚未在设备执行。
 
-4. 执行原 PR 新增的 12 条 BSND/BNSD STC，以及旧 TND 回归；
+4. 执行新增的 12 条 BSND/BNSD STC，以及 TND 回归；
    eager/graph 都要覆盖。可用已有 golden 的入口，例如：
 
 ```bash
