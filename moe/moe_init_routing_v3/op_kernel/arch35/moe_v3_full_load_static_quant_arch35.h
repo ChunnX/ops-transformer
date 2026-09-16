@@ -87,7 +87,9 @@ __aicore__ inline void MoeV3FullLoadStaticQuant<T>::Init(GM_ADDR x, GM_ADDR expe
     scale_ = scaleGm_.GetValue(0);
     offset_ = offsetGm_.GetValue(0);
 
-    int64_t rowLength = this->endXRow_ - this->startXRow_ + 1;
+    // The EP full-load path scatters one routed row at a time. Allocating buffers for every source row covered by
+    // the core can exceed UB even though ScatterOutXStaticQuant only ever calls Compute(1).
+    int64_t rowLength = this->epFullload_ ? 1 : this->endXRow_ - this->startXRow_ + 1;
 
     int64_t colsAlignBytes = AlignBytes(this->cols_ * rowLength, sizeof(T));
     colsAlignBytes = static_cast<int64_t>(colsAlignBytes * sizeof(float) / sizeof(T));
