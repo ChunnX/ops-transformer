@@ -409,9 +409,6 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::SinkhornGrad(
         SKInQueue.DeQue();
         PipeBarrier<PIPE_V>();
 
-        Adds(skColSumLocal_, skColSumLocal_, eps_, tileTaskCount * ELEMENTS_SIZE_PER_BLOCK);
-        PipeBarrier<PIPE_V>();
-
         for (int32_t loopIdN = 0; loopIdN < n_; loopIdN += 1) {
             Div(gradHResTempLocal_[loopIdN * ELEMENTS_SIZE_PER_BLOCK],
                 gradHResLocal_[loopIdN * ELEMENTS_SIZE_PER_BLOCK], skColSumLocal_, ELEMENTS_SIZE_PER_REPEAT,
@@ -424,7 +421,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::SinkhornGrad(
         // xg * normed
         Mul(gradHResTempLocal2_, gradHResLocal_, skRowNormLocal_, tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
         PipeBarrier<PIPE_V>();
-        // (sum + eps) ** 2
+        // sum ** 2
         Mul(skColSumLocal_, skColSumLocal_, skColSumLocal_, tileTaskCount * ELEMENTS_SIZE_PER_BLOCK);
         // bs * n *8 reduce bs * 1 *8 out : value other other other value other other other
         // sum(xg * normed )
@@ -437,7 +434,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::SinkhornGrad(
             PipeBarrier<PIPE_V>();
         }
         PipeBarrier<PIPE_V>();
-        // sum(xg * normed )/ (sum + eps) ** 2
+        // sum(xg * normed )/ sum ** 2
         Div(gradHResTempLocal2_, gradHResTempLocal2_, skColSumLocal_, ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,
             {static_cast<uint8_t>(n_), static_cast<uint8_t>(n_), 1, static_cast<uint8_t>(n_ * 8),
              static_cast<uint8_t>(n_ * 8), 8});
@@ -450,9 +447,6 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::SinkhornGrad(
                 {static_cast<uint8_t>(n_), static_cast<uint8_t>(n_), static_cast<uint8_t>(n_),
                  static_cast<uint8_t>(n_ * 8), static_cast<uint8_t>(n_ * 8), static_cast<uint8_t>(n_ * 8)});
         }
-        PipeBarrier<PIPE_V>();
-
-        Adds(skRowSumLocal_, skRowSumLocal_, eps_, tileTaskCount * n_);
         PipeBarrier<PIPE_V>();
 
         Brcb(gradHResTempLocal2_, skRowSumLocal_, brcbAlign, {1, 8});
@@ -491,6 +485,9 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::SinkhornGrad(
     SKInQueue.EnQue(skRowNormLocal_);
 
     SKInQueue.DeQue();
+
+    // sum_out[1] 为 raw 落盘（前向 CopyOut 在 Adds(+eps) 之前），此处 +eps 还原前向 step1 的
+    // 真实除数 colsum(p+eps)+eps；step1 的 Σ(g·norm) 项乘数用 norm_out[0] 本值 p+eps，不做还原。
     Adds(skColSumLocal_, skColSumLocal_, eps_, tileTaskCount * ELEMENTS_SIZE_PER_BLOCK);
     PipeBarrier<PIPE_V>();
 
@@ -505,7 +502,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::SinkhornGrad(
     // xg * normed
     Mul(gradHResTempLocal2_, gradHResLocal_, skRowNormLocal_, tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
     PipeBarrier<PIPE_V>();
-    // (sum + eps) ** 2
+    // sum ** 2
     Mul(skColSumLocal_, skColSumLocal_, skColSumLocal_, tileTaskCount * ELEMENTS_SIZE_PER_BLOCK);
     // bs * n *8 reduce bs * 1 *8 out : value other other other value other other other
     // sum(xg * normed )
@@ -518,7 +515,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::SinkhornGrad(
     }
 
     PipeBarrier<PIPE_V>();
-    // sum(xg * normed )/ (sum + eps) ** 2
+    // sum(xg * normed )/ sum ** 2
     Div(gradHResTempLocal2_, gradHResTempLocal2_, skColSumLocal_, ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,
         {static_cast<uint8_t>(n_), static_cast<uint8_t>(n_), 1, static_cast<uint8_t>(n_ * 8),
          static_cast<uint8_t>(n_ * 8), 8});
@@ -530,6 +527,11 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::SinkhornGrad(
             {static_cast<uint8_t>(n_), static_cast<uint8_t>(n_), static_cast<uint8_t>(n_), static_cast<uint8_t>(n_ * 8),
              static_cast<uint8_t>(n_ * 8), static_cast<uint8_t>(n_ * 8)});
     }
+
+    // norm_out[0] 落盘值为 p + eps，减 eps 还原真实 softmax 概率（softmax 乘数）。
+    // 上方 step1 的 Σ(g·norm) 项已按 p+eps 本值消费完毕，此后 skRowNormLocal_ 仅被下方 softmax 使用。
+    // 全块连续 Adds：pad 槽会变为 -eps，但消费点均为与 gradHResLocal_ 的 Mul，pad 乘积不进入有效数据。
+    Adds(skRowNormLocal_, skRowNormLocal_, -eps_, tileTaskCount * static_cast<int32_t>(n_) * ELEMENTS_SIZE_PER_BLOCK);
     // SOFTMAX
     PipeBarrier<PIPE_V>();
     Mul(gradHResTempLocal_, gradHResLocal_, skRowNormLocal_, tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
@@ -1113,10 +1115,12 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::ProcessMatmul
 
     mm1_.SetTensorA(gradH2Global_[taskOffset * mm1K_]);
     mm1_.SetTensorB(weightGlobal_);
-    mm1_.SetHF32(true, 1);
+    mm1_.SetHF32(false, 1);
     mm1_.SetOrgShape(mm1M, mm1N_, mm1K_);
     mm1_.SetSingleShape(mm1M, mm1N_, mm1K_);
-    mm1_.template IterateAll<false>(gradXCubeGlobal_[taskOffset * (n_ * c_)]);
+    // IterateAll<false> 为异步模式且未传 waitIterateAll, mm1 End 后紧接 mm2 的搬运会踩踏
+    // mm1 尚在飞行中的 L1 数据(B 矩阵被污染 -> 输出行内不等乱值)。改为同步模式。
+    mm1_.template IterateAll<true>(gradXCubeGlobal_[taskOffset * (n_ * c_)]);
     mm1_.End();
 }
 
@@ -1129,7 +1133,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::ProcessMatmul
 
     mm2_.SetTensorA(gradH2Global_[taskOffset * mm2M_], true);
     mm2_.SetTensorB(xWorkspaceGlobal_[taskOffset * mm2N_]);
-    mm2_.SetHF32(true, 1);
+    mm2_.SetHF32(false, 1);
     mm2_.SetOrgShape(mm2M_, mm2N_, mm2K);
     mm2_.SetSingleShape(mm2M_, mm2N_, mm2K);
     if constexpr (DETERMINISTIC == true) {
