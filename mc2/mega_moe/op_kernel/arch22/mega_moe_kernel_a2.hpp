@@ -252,10 +252,13 @@ private:
         gmC.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC *>(workspaceInfo.ptrC));
         gmPermutedToken.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD1 *>(workspaceInfo.ptrPermutedToken));
         gmC2.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC *>(workspaceInfo.ptrC2));
-        gmPerTokenScale1.SetGlobalBuffer(
-            reinterpret_cast<__gm__ ElementPerTokenScale *>(shmem() + peermemInfo.offsetPeerPerTokenScale));
-        gmPerTokenScale2.SetGlobalBuffer(
-            reinterpret_cast<__gm__ ElementPerTokenScale *>(workspaceInfo.ptrPerTokenScale2));
+        // per-token scale 的 GM 视图仅 int8 使用；bf16/fp16 的 peermem/workspace 布局里没有该区
+        if constexpr (IS_INT8) {
+            gmPerTokenScale1.SetGlobalBuffer(
+                reinterpret_cast<__gm__ ElementPerTokenScale *>(shmem() + peermemInfo.offsetPeerPerTokenScale));
+            gmPerTokenScale2.SetGlobalBuffer(
+                reinterpret_cast<__gm__ ElementPerTokenScale *>(workspaceInfo.ptrPerTokenScale2));
+        }
         tokenPerExpert.SetGlobalBuffer(
             reinterpret_cast<__gm__ int32_t *>(shmem() + peermemInfo.offsetPeerTokenPerExpert));
         paddedExpertNumAligned = AlignUp(params.EP * params.expertPerRank + 1, ALIGN_128);
@@ -659,8 +662,11 @@ if constexpr (IS_INT8) {
                 gmB1.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
             }
             GemmCoord inGroupProblemShape{currentM, params.problemShape.n(), params.problemShape.k()};
-            // LayoutA layoutA = params.layoutA.GetTileLayout(inGroupProblemShape.GetCoordMK());
-            LayoutA layoutA{inGroupProblemShape.m(), static_cast<uint32_t>(inGroupProblemShape.k() + ALIGN_512)};
+            // int8 的 A 行尾带 ALIGN_512 的 scale 区，bf16/fp16 为密排行
+            LayoutA layoutA = IS_INT8
+                                  ? LayoutA{inGroupProblemShape.m(),
+                                            static_cast<uint32_t>(inGroupProblemShape.k() + ALIGN_512)}
+                                  : params.layoutA.GetTileLayout(inGroupProblemShape.GetCoordMK());
             LayoutB layoutB1 = params.layoutB1;
             LayoutScale layoutScale = params.layoutScale1;
             LayoutC layoutC(inGroupProblemShape.m(), inGroupProblemShape.n(), params.gmmOutPreRowStride);
@@ -686,8 +692,11 @@ if constexpr (IS_INT8) {
                 int64_t gmOffsetA = layoutA.GetOffset(offsetA);
                 int64_t gmOffsetB = layoutB1.GetOffset(offsetB);
                 int64_t gmOffsetC = layoutC.GetOffset(offsetC);
+                // int8 每个 expert 一组 scale；bf16/fp16 无 scale 偏移（等价于 gmS 本身）
                 int64_t gmOffsetS =
-                    blockCoord.n() * L1TileShape::N + (params.listLen == 1 ? groupIdx * params.problemShape.n() : 0);
+                    IS_INT8 ? (blockCoord.n() * L1TileShape::N +
+                               (params.listLen == 1 ? groupIdx * params.problemShape.n() : 0))
+                            : 0;
                 if (currentM > 0) {
                     blockMmad(gmA[gmGroupOffsetA + gmOffsetA], layoutA, gmB1[gmGroupOffsetB + gmOffsetB], layoutB1,
                               gmC[gmGroupOffsetC + gmOffsetC], layoutC, gmS[gmOffsetS], layoutScale, actualBlockShape);
@@ -704,7 +713,7 @@ if constexpr (IS_INT8) {
             }
 
             preCurrentmSum += currentM;
-            gmGroupOffsetA += inGroupProblemShape.m() * (inGroupProblemShape.k() + ALIGN_512);
+            gmGroupOffsetA += inGroupProblemShape.m() * (inGroupProblemShape.k() + (IS_INT8 ? ALIGN_512 : 0));
             if (params.listLen == 1) {
                 gmGroupOffsetB += inGroupProblemShape.k() * inGroupProblemShape.n();
             }
@@ -805,8 +814,9 @@ if constexpr (IS_INT8) {
                 int64_t gmOffsetA = layoutA.GetOffset(offsetA);
                 int64_t gmOffsetB = layoutB2.GetOffset(offsetB);
                 int64_t gmOffsetC = layoutC.GetOffset(offsetC);
-                int64_t gmOffsetS = blockCoord.n() * L1TileShape::N +
-                                    (params.listLen == 1 ? groupIdx * n2 : 0); // One scale group per expert
+                // int8 每个 expert 一组 scale；bf16/fp16 无 scale 偏移（等价于 gmS2 本身）
+                int64_t gmOffsetS =
+                    IS_INT8 ? (blockCoord.n() * L1TileShape::N + (params.listLen == 1 ? groupIdx * n2 : 0)) : 0;
                 if (currentM > 0) {
                     blockMmad(gmPermutedToken[gmGroupOffsetA + gmOffsetA], layoutA, gmB2[gmGroupOffsetB + gmOffsetB],
                               layoutB2, gmC2[gmGroupOffsetC + gmOffsetC], layoutC, gmS2[gmOffsetS], layoutScale,
@@ -845,16 +855,14 @@ if constexpr (IS_INT8) {
         for (int32_t dstEpIdx = coreIdx, dstServerId = 0; dstEpIdx < params.EP; dstEpIdx += coreNum) {
             dstServerId = dstEpIdx / SERVER_RANK_SIZE_A2;
             AscendC::GlobalTensor<int32_t> srcAddress;
-            int64_t localTokenPerExpertWinOutOffset = peermemInfo.offsetWinOutPeerTokenPerExpert +
-                                                      tokenPerExpertLayout(rank, 0, 0) * sizeof(int32_t);
             srcAddress.SetGlobalBuffer(
-                reinterpret_cast<__gm__ int32_t *>(shmem.windowsOutAddr() + localTokenPerExpertWinOutOffset));
+                reinterpret_cast<__gm__ int32_t *>(shmem.windowsOutAddr() + localTokenPerExpertOffset));
             AscendC::GlobalTensor<int32_t> dstAddress;
             __gm__ void *dstPeermemPtr = shmem(localTokenPerExpertOffset, dstEpIdx);
 
             dstAddress.SetGlobalBuffer((__gm__ int32_t *)dstPeermemPtr);
             AscendC::GlobalTensor<int32_t> localDstAddress;
-            GM_ADDR localDstPeermemPtr = shmem.windowsOutAddr() + peermemInfo.offsetWinOutPeerTokenPerExpert +
+            GM_ADDR localDstPeermemPtr = shmem.windowsOutAddr() + peermemInfo.offsetPeerTokenPerExpert +
                                          tokenPerExpertLayout(dstEpIdx, 0, 0) * sizeof(int32_t);
             localDstAddress.SetGlobalBuffer((__gm__ int32_t *)localDstPeermemPtr);
 
@@ -1010,7 +1018,7 @@ if constexpr (IS_INT8) {
         // 2) tokenPerExpert winOut
         AscendC::GlobalTensor<int32_t> tokenPerExpertWinOut;
         tokenPerExpertWinOut.SetGlobalBuffer(
-            reinterpret_cast<__gm__ int32_t *>(shmem.windowsOutAddr() + peermemInfo.offsetWinOutPeerTokenPerExpert));
+            reinterpret_cast<__gm__ int32_t *>(shmem.windowsOutAddr() + peermemInfo.offsetPeerTokenPerExpert));
         ResetGmBuffer(tokenPerExpertWinOut, tmp, num);
 
         // 3) Dispatch Flag winIn（按 64B 槽布局 = EP × expertPerRank × kFlagSlotI32 个 int32）
@@ -1022,7 +1030,7 @@ if constexpr (IS_INT8) {
         // 4) Dispatch Flag winOut
         AscendC::GlobalTensor<int32_t> flagWinOut;
         flagWinOut.SetGlobalBuffer(
-            reinterpret_cast<__gm__ int32_t *>(shmem.windowsOutAddr() + peermemInfo.offsetWinOutFlag));
+            reinterpret_cast<__gm__ int32_t *>(shmem.windowsOutAddr() + peermemInfo.offsetFlag));
         ResetGmBuffer(flagWinOut, tmp, dispatchFlagInts);
 
         // 5) Allgather Flag winIn（EP × kFlagSlotI32 个 int32）
@@ -1100,9 +1108,7 @@ if constexpr (IS_INT8) {
         shmem.DumpSyncRegions(exceptionDump_);
         int64_t localTokenPerExpertOffset =
             peermemInfo.offsetPeerTokenPerExpert + tokenPerExpertLayout(rank, 0, 0) * sizeof(int32_t);
-        int64_t localTokenPerExpertWinOutOffset =
-            peermemInfo.offsetWinOutPeerTokenPerExpert + tokenPerExpertLayout(rank, 0, 0) * sizeof(int32_t);
-        GM_ADDR localTokenPerExpert = shmem.windowsOutAddr() + localTokenPerExpertWinOutOffset;
+        GM_ADDR localTokenPerExpert = shmem.windowsOutAddr() + localTokenPerExpertOffset;
 
         const int64_t bs = params.problemShape.m();
         const int64_t hidden = params.problemShape.k();
@@ -1348,10 +1354,17 @@ if constexpr (IS_INT8) {
                 LayoutC layoutC{dequantSum1, params.gmmOutPreRowStride};
                 int64_t gmOffsetC = layoutC.GetOffset(offsetC);
                 int64_t gmOffsetD = params.layoutD1.GetOffset(offsetC);
-                blockEpilogue1(gmC[gmOffsetC], shapeC, gmPerTokenScale1[rowStartThisCore], gmPermutedToken[gmOffsetD],
-                               gmPerTokenScale2[rowStartThisCore], resource, params.epilogueCoreNum, params.swigluLimit,
-                               params.activationCode, params.activationParams1, params.activationParams2,
-                               params.gmmOutPreRowStride);
+                if constexpr (IS_INT8) {
+                    // int8 走 dequant 重载，需要两个 per-token scale
+                    blockEpilogue1(gmC[gmOffsetC], shapeC, gmPerTokenScale1[rowStartThisCore],
+                                   gmPermutedToken[gmOffsetD], gmPerTokenScale2[rowStartThisCore], resource,
+                                   params.epilogueCoreNum, params.swigluLimit, params.activationCode,
+                                   params.activationParams1, params.activationParams2, params.gmmOutPreRowStride);
+                } else {
+                    blockEpilogue1(gmC[gmOffsetC], shapeC, gmPermutedToken[gmOffsetD], resource,
+                                   params.epilogueCoreNum, params.swigluLimit, params.activationCode,
+                                   params.activationParams1, params.activationParams2, params.gmmOutPreRowStride);
+                }
             }
             AscendC::SyncAll<true>();
             // Synchronization signal: SwiGLU notifies GMM2 [1]
@@ -1369,10 +1382,16 @@ if constexpr (IS_INT8) {
                     LayoutC layoutC{dequantLen, params.gmmOutPreRowStride};
                     int64_t gmOffsetC = layoutC.GetOffset(offsetC);
                     int64_t gmOffsetD = params.layoutD1.GetOffset(offsetC);
-                    blockEpilogue1(gmC[gmOffsetC], shapeC, gmPerTokenScale1[rowStartThisCore],
-                                   gmPermutedToken[gmOffsetD], gmPerTokenScale2[rowStartThisCore], resource, coreNum,
-                                   params.swigluLimit, params.activationCode, params.activationParams1,
-                                   params.activationParams2, params.gmmOutPreRowStride);
+                    if constexpr (IS_INT8) {
+                        blockEpilogue1(gmC[gmOffsetC], shapeC, gmPerTokenScale1[rowStartThisCore],
+                                       gmPermutedToken[gmOffsetD], gmPerTokenScale2[rowStartThisCore], resource, coreNum,
+                                       params.swigluLimit, params.activationCode, params.activationParams1,
+                                       params.activationParams2, params.gmmOutPreRowStride);
+                    } else {
+                        blockEpilogue1(gmC[gmOffsetC], shapeC, gmPermutedToken[gmOffsetD], resource, coreNum,
+                                       params.swigluLimit, params.activationCode, params.activationParams1,
+                                       params.activationParams2, params.gmmOutPreRowStride);
+                    }
                 }
                 AscendC::SyncAll<true>();
                 // Synchronization signal: SwiGLU notifies GMM2 [2]
@@ -1409,7 +1428,7 @@ if constexpr (IS_INT8) {
                 kernelMoeTokenUnpermuteOp.Init(
                     shmem() + peermemInfo.offsetD, workspaceInfo.expandedRowIdx,
                     reinterpret_cast<GM_ADDR>(reinterpret_cast<__gm__ float *>(params.probs) + tokenBase * topK),
-                    reinterpret_cast<GM_ADDR>(params.ptrOutput + tokenBase * n2), &tilingData);
+                    reinterpret_cast<GM_ADDR>(params.ptrOutput + tokenBase * hidden), &tilingData);
                 kernelMoeTokenUnpermuteOp.Process();
             }
 
@@ -1455,8 +1474,8 @@ if constexpr (IS_INT8) {
             for (uint32_t loopIdx = startLoopIdx; loopIdx < coreLoops; loopIdx += aicCoreNum) {
                 GemmCoord blockCoord = blockScheduler.GetBlockCoord(loopIdx);
                 GemmCoord actualBlockShape = blockScheduler.GetActualBlockShape(blockCoord);
-                int32_t m0 = 16;
-                //  Block count, the shape of each block is (m0, actualBlockShape.n())
+                // 每 block 的行数，int8 与 bf16 取值不同（既有行为，按 dtype 保留）
+                int32_t m0 = IS_INT8 ? 16 : 32;
                 int32_t m_rows = (actualBlockShape.m() + m0 - 1) / m0;
                 int32_t aiv_m_rows = m_rows / SUBBLOCK_NUM_PER_AIC;
                 if (aivSubCoreIdx == 1 && aiv_m_rows * SUBBLOCK_NUM_PER_AIC < m_rows) {
@@ -1479,8 +1498,13 @@ if constexpr (IS_INT8) {
                         actualm = actualBlockShape.m() - (m_rows / SUBBLOCK_NUM_PER_AIC) * m0 - cur_row * m0;
                     }
                     GemmCoord realTileShape{actualm, actualBlockShape.n(), 1};
-                    blockEpilogue(gmC2, gmPerTokenScale2, realTileCoord, realTileShape, groupIdx, preSrcExpertSum,
-                                  preSumBeforeRankForCombine);
+                    if constexpr (IS_INT8) {
+                        blockEpilogue(gmC2, gmPerTokenScale2, realTileCoord, realTileShape, groupIdx, preSrcExpertSum,
+                                      preSumBeforeRankForCombine);
+                    } else {
+                        blockEpilogue(gmC2, realTileCoord, realTileShape, groupIdx, preSrcExpertSum,
+                                      preSumBeforeRankForCombine);
+                    }
                     m_offset += m0;
                 }
             }
@@ -1677,9 +1701,7 @@ private:
         int64_t offsetWinOutA; // A tensor in winOut (dispatch, outgoing tokens)
         int64_t offsetWinOutD; // D tensor in winOut (combine, outgoing FFN results)
         int64_t offsetAllgatherFlag;
-        int64_t offsetWinOutPeerPerTokenScale;  // per-token scale in winOut
-        int64_t offsetWinOutFlag;               // Dispatch Flag 区 in winOut
-        int64_t offsetWinOutPeerTokenPerExpert; // TPE 区 in winOut
+        int64_t offsetWinOutPeerPerTokenScale; // per-token scale in winOut
 
         CATLASS_DEVICE
         PeermemInfoInt8() {}
@@ -1716,10 +1738,9 @@ private:
             offsetPeerPerTokenScale = offsetA + AAfterDispatchSize;
             offsetD = offsetPeerPerTokenScale + offsetPerTokenScaleSize;
             offsetFlag = usableEnd - flagSize;
-            offsetWinOutFlag = offsetFlag; // FLAG 共享：winIn 与 winOut 同一区域
             offsetAllgatherFlag = offsetFlag - allgatherFlagSize;
-            offsetWinOutPeerTokenPerExpert = offsetAllgatherFlag - tpeSize; // winOut TPE
-            offsetPeerTokenPerExpert = offsetWinOutPeerTokenPerExpert;      // winIn TPE
+            // winIn 与 winOut 共享同一 TPE 区域
+            offsetPeerTokenPerExpert = offsetAllgatherFlag - tpeSize;
 
             // WinOut: A/scale/D 从前向后布局
             // ABeforeDispatchSize: dispatch 发送数据区INT8，单 chunk（不超过 bs）× topK × (h + ALIGN_512)，
