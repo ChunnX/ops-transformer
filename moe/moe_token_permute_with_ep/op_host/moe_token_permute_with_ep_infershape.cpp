@@ -72,17 +72,21 @@ static ge::graphStatus InferShape4MoeTokenPermuteWithEp(gert::InferShapeContext 
         sortedIndices->SetDim(0U, sortedIndicesLen);
     }
 
-    // 与 tiling 侧语义对齐: range 未提供（nullptr / 空 list / size != 2）时回退 num_out_tokens
-    // （兼容性修复）; [0,0] 默认值形态按原版语义走 range 分支（环绕公式得全量），保持 A2 兼容
-    bool rangeValid = (rangePtr != nullptr) && (rangePtr->GetSize() == DIM_TWO);
-    int64_t start = 0;
-    int64_t end = 0;
-    if (rangeValid) {
+    // 与 tiling 侧 CheckAndGetAttrsInfo 同构的防呆校验: 空 list / size != 2 时稳定报错拒绝。
+    // 原版无校验直接 GetData() 解引用 RangeList[0]/[1] 为越界读（实验 17 ASAN 实锤:
+    // ContinuousVector capacity=0 分配 64 字节, RangeList[1] 越界读 heap-buffer-overflow,
+    // 读值随相邻堆内容漂移），此处校验前置消除 UB；[0,0] 默认值形态按原版语义正常读取。
+    int64_t start;
+    int64_t end;
+    if (rangePtr != nullptr) {
+        if (rangePtr->GetSize() != DIM_TWO) {
+            OP_LOGE(context->GetNodeName(), "the size of range only support 2");
+            return ge::GRAPH_FAILED;
+        }
         const int64_t *RangeList = reinterpret_cast<const int64_t *>(rangePtr->GetData());
         start = RangeList[0];
         end = RangeList[1];
-    }
-    if (!rangeValid) {
+    } else {
         start = 0;
         end = *numOutTokensPtr;
     }
