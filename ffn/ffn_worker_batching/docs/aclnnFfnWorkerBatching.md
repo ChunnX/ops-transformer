@@ -371,7 +371,7 @@ aclnnStatus aclnnFfnWorkerBatching(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
+完整示例：[test_aclnn_ffn_worker_batching.cpp](../examples/test_aclnn_ffn_worker_batching.cpp)。示例代码如下，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include <iostream>
@@ -558,6 +558,9 @@ int main()
     int64_t BS = scheduleContext.common.micro_batch_size;   // micro batch size
     int64_t K = scheduleContext.common.selected_expert_num; // topK + 1
     int64_t H = 4096;                                       // hidden size
+    scheduleContext.common.attn_to_ffn_token_size = H * sizeof(int16_t);
+    scheduleContext.common.ffn_to_attn_token_size = H * sizeof(int16_t);
+    scheduleContext.ffn.out_num = A;
     int64_t Y = A * BS * K;
     std::vector<int64_t> maxOutShapeValue = {A, BS, K, H};
     int64_t tokenDtype = 0;   // FP16
@@ -739,6 +742,17 @@ int main()
         LOG_PRINT("group_list[%ld] = [expert_id=%ld, token_num=%ld]\n", i, groupListHost[i * 2],
                   groupListHost[i * 2 + 1]);
     }
+
+    CHECK_RET(actualTokenNum == Y, LOG_PRINT("unexpected token count\n"); return 1);
+    for (int64_t i = 0; i < expertNum; ++i) {
+        CHECK_RET(groupListHost[i * 2] == i && groupListHost[i * 2 + 1] == Y / expertNum,
+                  LOG_PRINT("unexpected expert group\n"); return 1);
+    }
+    std::vector<int16_t> yHost(Y * H);
+    ret = aclrtMemcpy(yHost.data(), tokenDataSize, yDeviceAddr, tokenDataSize, ACL_MEMCPY_DEVICE_TO_HOST);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    CHECK_RET(yHost == hostTokenData, LOG_PRINT("unexpected token data\n"); return 1);
+    LOG_PRINT("PASS: token count, expert groups and token data\n");
 
     // 6. 释放aclTensor与aclIntArray
     aclDestroyTensor(scheduleContextRef);

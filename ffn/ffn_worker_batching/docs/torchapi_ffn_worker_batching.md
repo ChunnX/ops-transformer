@@ -249,8 +249,7 @@ def main():
             sync_flag=1,
         )
     with torch.inference_mode():
-        # The second graph call exercises replay. Never replay consumed input
-        # without publishing descriptors again: the receiver would keep polling.
+        # Publish fresh descriptors before the consuming call.
         case.publish()
         outputs = call(case.context)
         torch.npu.synchronize()
@@ -262,6 +261,8 @@ if __name__ == "__main__":
 ```
 
 ### TorchAir GE调用方式
+
+完整脚本：[torch_ffn_worker_batching_async_ge.py](../examples/torch_ffn_worker_batching_async_ge.py)。
 
 ```python
 import importlib

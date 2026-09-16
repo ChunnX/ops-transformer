@@ -24,11 +24,46 @@
 #include "log/log.h"
 #include "../../../common/include/op_kernel/attention_ffn_schedule.h"
 #include <limits>
-#include "../op_kernel/arch35/ffn_wb_arch35_constants.h"
 #include "../op_kernel/arch35/ffn_worker_batching_arch35_tiling_def.h"
 
 namespace optiling {
-namespace Arch35Config = FfnWbArch35Config;
+// arch35 布局契约常量:host 的 UB 预算必须覆盖 kernel 侧固定队列,故与
+// op_kernel/arch35 各 a5 头文件中的本地常量按值对齐;不新增 tiling ABI 字段。
+namespace Arch35Config {
+constexpr int64_t COMPARE_FP32_ELEMENTS = 256 / static_cast<int64_t>(sizeof(float)); // 一个向量 repeat 的 fp32 元素数
+constexpr int64_t TOKEN_STRIDE_ALIGNMENT = 512;
+constexpr int64_t MX_SCALE_BLOCK_ELEMENTS = 32;
+constexpr int64_t FP4_VALUES_PER_BYTE = 2;
+constexpr int64_t EXTRACT_MAX_REPEATS = 255; // Extract API 的 repeatTime 上限
+
+// token_dtype 公开属性取值。
+constexpr int64_t TOKEN_FP16 = 0;
+constexpr int64_t TOKEN_BF16 = 1;
+constexpr int64_t TOKEN_INT8 = 2;
+constexpr int64_t TOKEN_FP8_E5M2 = 3;
+constexpr int64_t TOKEN_FP8_E4M3 = 4;
+constexpr int64_t TOKEN_FP4_E2M1 = 5;
+
+// Gather:两个队列,每轮各处理至多 128 个输出行。
+constexpr int64_t GATHER_QUEUE_DEPTH = 2;
+constexpr int64_t GATHER_ROWS_PER_LOOP = 128;
+constexpr int64_t GATHER_OUTPUT_LANES = 5;      // 四路索引 + dynamic scale
+constexpr int64_t GATHER_FLOAT_INDEX_LANES = 7; // src, qa, a, remainder, qb, b, k
+constexpr int64_t GATHER_INT_INDEX_LANES = 3;   // a, b, k
+
+constexpr int64_t GROUP_VECTOR_BUFFERS = 10; // cur/prev/next/idx/diff/diffF 与四路紧凑数组
+constexpr int64_t GROUP_MASK_BUFFERS = 2;    // run 起止
+constexpr int64_t GROUP_ROW_FIELDS = 2;      // expert ID 与 token 数(int64)
+constexpr int64_t GROUP_MIN_ROWS = 2;
+constexpr int64_t BITS_PER_BYTE = 8;
+constexpr int64_t RECV_WAITER_FLAG_BUFFERS = 2; // int32 flag 与 FP32 归约暂存
+
+// InitBuffer 在元素存储之外的额外块数。
+constexpr int64_t SORT_BUFFER_COUNT = 5;            // 输入、concat、临时、排序结果、掩码
+constexpr int64_t MERGE_BUFFER_COUNT = 3;           // 输入、输出、计数缓存
+constexpr int64_t EXTRACT_BUFFER_COUNT = 3;         // proposal、expert ID、源下标
+constexpr int64_t MERGE_COUNT_CACHE_SEGMENTS = 128; // 有界缓存策略,非硬件上限
+} // namespace Arch35Config
 namespace {
 constexpr uint32_t EXPERT_NUM_ATTR = 0;
 constexpr uint32_t MAX_OUT_SHAPE_ATTR = 1;
