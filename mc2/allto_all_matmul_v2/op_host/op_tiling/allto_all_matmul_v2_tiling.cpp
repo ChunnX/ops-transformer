@@ -23,7 +23,7 @@
 #include "graph/types.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "mc2_exception_dump.h"
-#include "mc2_hcomm_dfx_dump.h"
+#include "adv_api/hcomm/dfx/hcomm_channel_dump.h"
 
 using namespace ge;
 
@@ -76,11 +76,15 @@ inline void AlltoAllMatmulV2ExceptionImplWrapper(aclrtExceptionInfo *args, void 
                                      9U,
                                      &channelHandles); // tilingGmArgIdx
     if (!channelHandles.empty()) {
-        Mc2Hcomm::TriggerDeferredDump(channelHandles, static_cast<int32_t>(aclrtGetDeviceIdFromExceptionInfo(args)),
-                                      "AlltoAllMatmulV2");
+       int32_t dumpRet = 0;
+       for( uint64_t channelHandle : channelHandles) {
+            dumpRet = AscendC::HcommChannelInfoDump(channelHandle);
+            OP_LOGE("AllGatherMatmulV3", "HcommChannelInfoDump ret=%d, channelHandle=0x%lx", dumpRet, channelHandle);
+       }
     } else {
-        OP_LOGE("AlltoAllMatmulV2", "No valid channel handle, skip hcomm dump.");
+        OP_LOGE("AllGatherMatmulV3", "No valid channel handle, skip hcomm dump.");
     }
+    sleep(120);
 }
 
 __attribute__((constructor)) void RegisterAlltoAllMatmulV2ExceptionFunc()

@@ -17,6 +17,7 @@
 #include <cstdint>
 #include <cstring>
 #include <string>
+#include <unistd.h>
 #include "mc2_log.h"
 #include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
@@ -30,7 +31,7 @@
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "../../op_kernel/arch35/all_gather_matmul_v3_tiling_key.h"
 #include "mc2_exception_dump.h"
-#include "mc2_hcomm_dfx_dump.h"
+#include "adv_api/hcomm/dfx/hcomm_channel_dump.h"
 
 using namespace AscendC;
 using namespace ge;
@@ -903,11 +904,15 @@ inline void AllGatherMatmulV3ExceptionImplWrapper(aclrtExceptionInfo *args, void
                                      10U,
                                      &channelHandles); // tilingGmArgIdx
     if (!channelHandles.empty()) {
-        Mc2Hcomm::TriggerDeferredDump(channelHandles, static_cast<int32_t>(aclrtGetDeviceIdFromExceptionInfo(args)),
-                                      "AllGatherMatmulV3");
+       int32_t dumpRet = 0;
+       for( uint64_t channelHandle : channelHandles) {
+            dumpRet = AscendC::HcommChannelInfoDump(channelHandle);
+            OP_LOGE("AllGatherMatmulV3", "HcommChannelInfoDump ret=%d, channelHandle=0x%lx", dumpRet, channelHandle);
+       }
     } else {
         OP_LOGE("AllGatherMatmulV3", "No valid channel handle, skip hcomm dump.");
     }
+    sleep(120);
 }
 
 __attribute__((constructor)) void RegisterAllGatherMatmulV3ExceptionFunc()
