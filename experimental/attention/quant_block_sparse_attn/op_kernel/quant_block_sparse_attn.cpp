@@ -94,17 +94,12 @@ __global__ __aicore__ void quant_block_sparse_attn(
     constexpr bool HAS_ATTENTION = (MASK_MODE == 3);
     if constexpr (QUANT_MODE == MXFullQuantMode) {
         int64_t originalCastMode = 0;
-        int64_t originalGlobalSatMode = 0;
         if ASCEND_IS_AIV {
-            // MX runs in global NO_SAT by default; V1 temporarily switches to per-instruction CastTrait mode.
-            originalCastMode =
-                AscendC::GetCtrlSpr<FaVectorApi::CAST_SAT_MODE_CTRL_BIT, FaVectorApi::CAST_SAT_MODE_CTRL_BIT>();
-            originalGlobalSatMode = AscendC::GetCtrlSpr<FaVectorApi::CAST_GLOBAL_SAT_MODE_CTRL_BIT,
-                                                        FaVectorApi::CAST_GLOBAL_SAT_MODE_CTRL_BIT>();
-            AscendC::SetCtrlSpr<FaVectorApi::CAST_GLOBAL_SAT_MODE_CTRL_BIT, FaVectorApi::CAST_GLOBAL_SAT_MODE_CTRL_BIT>(
-                FaVectorApi::CAST_GLOBAL_NO_SAT_MODE);
-            AscendC::SetCtrlSpr<FaVectorApi::CAST_SAT_MODE_CTRL_BIT, FaVectorApi::CAST_SAT_MODE_CTRL_BIT>(
-                FaVectorApi::CAST_USE_GLOBAL_SAT_MODE);
+            // MX Reg Casts explicitly select SAT or NO_SAT through CastTrait; disable global override once.
+            originalCastMode = AscendC::GetCtrlSpr<FaVectorApi::CAST_GLOBAL_MODE_ENABLE_BIT,
+                                                   FaVectorApi::CAST_GLOBAL_MODE_ENABLE_BIT>();
+            AscendC::SetCtrlSpr<FaVectorApi::CAST_GLOBAL_MODE_ENABLE_BIT, FaVectorApi::CAST_GLOBAL_MODE_ENABLE_BIT>(
+                FaVectorApi::CAST_USE_INSTRUCTION_SAT_MODE);
         }
         // MX 当前支持 TND + PA BNBD，S2 logical tile 为 512。
         static_assert(Config == Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128,
@@ -114,9 +109,7 @@ __global__ __aicore__ void quant_block_sparse_attn(
                         RETURN_SOFTMAX_LSE, bsaIsPa, bsaUseDn);
         if ASCEND_IS_AIV {
             // Restore once at the MX kernel exit so the operator cannot leak CTRL state to subsequent work.
-            AscendC::SetCtrlSpr<FaVectorApi::CAST_GLOBAL_SAT_MODE_CTRL_BIT, FaVectorApi::CAST_GLOBAL_SAT_MODE_CTRL_BIT>(
-                originalGlobalSatMode);
-            AscendC::SetCtrlSpr<FaVectorApi::CAST_SAT_MODE_CTRL_BIT, FaVectorApi::CAST_SAT_MODE_CTRL_BIT>(
+            AscendC::SetCtrlSpr<FaVectorApi::CAST_GLOBAL_MODE_ENABLE_BIT, FaVectorApi::CAST_GLOBAL_MODE_ENABLE_BIT>(
                 originalCastMode);
         }
     } else {

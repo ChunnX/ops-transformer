@@ -24,6 +24,7 @@
 #include "common/util_regbase_mx.h"
 #include "vf/vf_div_cast.h"
 #include "vf/vf_flashupdate_new.h"
+#include "vf/vf_mx_finalize_output.h"
 #include "vf/vf_mul_sel_softmaxflashv2_cast_nz_dn.h"
 
 using namespace AscendC;
@@ -540,23 +541,14 @@ private:
     __aicore__ inline void CopyOutAttentionOut(MxRunInfo &runInfo, const MxConstInfo &constInfo,
                                                LocalTensor<MM_T> &vec2ResUb)
     {
-        if constexpr (HAS_ATTEN) {
-            // 使用所有 S2 loop 累计后的 max 判断整行是否始终无有效 key。
-            LocalTensor<float> maxUb = softmaxMaxBuf_[runInfo.mLoop % SOFTMAX_BUFFER_NUM].template Get<float>();
-            FaVectorApi::RowInvalidUpdateVF<MM_T>(vec2ResUb, maxUb, runInfo.actVecMSize, constInfo.dSizeV,
-                                                  static_cast<int64_t>(dTemplateAlign64));
-        }
-        // 按 TND token/head stride 写回。
+        // Fuse invalid-row zeroing and non-saturating FP32-to-BF16 conversion into one VF pass.
+        LocalTensor<float> maxUb = softmaxMaxBuf_[runInfo.mLoop % SOFTMAX_BUFFER_NUM].template Get<float>();
         LocalTensor<OUTPUT_T> attenOut;
         attenOut.SetAddr(vec2ResUb.address_);
-        // Tensor Cast has no per-instruction SatMode, so use the global NO_SAT prepared by the MX kernel entry.
-        AscendC::SetCtrlSpr<FaVectorApi::CAST_SAT_MODE_CTRL_BIT, FaVectorApi::CAST_SAT_MODE_CTRL_BIT>(
-            FaVectorApi::CAST_USE_GLOBAL_SAT_MODE);
-        Cast(attenOut, vec2ResUb, RoundMode::CAST_ROUND, static_cast<int64_t>(runInfo.actVecMSize) * dTemplateAlign64);
+        FaVectorApi::MxFinalizeOutput<OUTPUT_T, dTemplateAlign64, HAS_ATTEN>(attenOut, vec2ResUb, maxUb,
+                                                                             runInfo.actVecMSize);
         SetFlag<HardEvent::V_MTE3>(vToMte3Id_[0]);
         WaitFlag<HardEvent::V_MTE3>(vToMte3Id_[0]);
-        AscendC::SetCtrlSpr<FaVectorApi::CAST_SAT_MODE_CTRL_BIT, FaVectorApi::CAST_SAT_MODE_CTRL_BIT>(
-            FaVectorApi::CAST_USE_INSTRUCTION_SAT_MODE);
 
         DataCopyExtParams dataCopyParams;
         dataCopyParams.blockLen = constInfo.dSizeV * sizeof(OUTPUT_T);
