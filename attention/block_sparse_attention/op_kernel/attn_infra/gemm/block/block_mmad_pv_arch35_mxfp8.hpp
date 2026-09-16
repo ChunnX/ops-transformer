@@ -412,7 +412,8 @@ public:
         }
     }
 
-    __aicore__ inline void PadVS2NotAlign64(uint32_t s2Align64, uint32_t curBaseTileSize, uint32_t embedReal)
+    __aicore__ inline void PadVS2NotAlign64(uint32_t s2Align64, uint32_t curBaseTileSize, uint32_t embedReal,
+                                            uint32_t vSlot)
     {
         // mxfp4：halfEmbed = ROW_SUM_NUM/2，始终按 D=128 两面清尾。
         // fp8 C0=32 → 4 面覆盖 D=128；D=64 的 GM 只占前 2 面，后 2 面写在 32KB KV 槽余量上
@@ -424,98 +425,102 @@ public:
         constexpr uint32_t planeCnt = MXFP8::CONST_128 / MXFP8::FP8_C0_ELEMS;
         uint32_t validElems = curBaseTileSize * MXFP8::FP8_C0_ELEMS;
         for (uint32_t p = 0; p < planeCnt; ++p) {
-            AscendC::Fill(l1ATensor[l1ABufId][p * planeElems + validElems].template ReinterpretCast<uint16_t>(),
+            AscendC::Fill(l1ATensor[vSlot][p * planeElems + validElems].template ReinterpretCast<uint16_t>(),
                           kvL1InitParams);
         }
     }
 
-    template <class TensorV, class TensorC, class TaskInfoT, class TileInfoT>
-    __aicore__ inline void operator()(TensorV &gV, AscendC::GlobalTensor<uint8_t> gVDequantScale,
-                                      AscendC::GlobalTensor<int32_t> gSparseIdx, TensorC &ubOTmpTensor,
-                                      GemmCoord actualBlockShapePV, TileInfoT &delay12TileInfo,
-                                      TaskInfoT &delay12TaskInfo, uint32_t kvSBaseTile, uint32_t blockShapeY,
-                                      uint32_t kvHeadMul)
+    // P5：只发 GM→L1（even 256 / 尾块 128），不 Wait MTE2、不占 L0。odd 直接 return。
+    // kernel 在 Wait(V2_C2)/pscale 之前调用，让 V 的 MTE2 和 AIV rescale 重叠。
+    template <class TensorV, class TaskInfoT, class TileInfoT>
+    __aicore__ inline void PrefetchV(TensorV &gV, AscendC::GlobalTensor<uint8_t> gVDequantScale,
+                                     AscendC::GlobalTensor<int32_t> gSparseIdx, TileInfoT &delay12TileInfo,
+                                     TaskInfoT &delay12TaskInfo, uint32_t kvSBaseTile, uint32_t blockShapeY,
+                                     uint32_t kvHeadMul, GemmCoord actualBlockShapePV)
     {
-        uint32_t rowNum = actualBlockShapePV[0];
-        uint32_t embed = actualBlockShapePV[1];
+        uint32_t embedReal = actualBlockShapePV[1];
         uint32_t curBaseTileSize = actualBlockShapePV[2];
+        uint32_t gatheredKvSTileIdx = delay12TileInfo.pvGatheredKvSTileIdx;
 
-        uint32_t embedReal = embed;
+#if BSA_MXFP8_K_PAIR256
+        const bool pairOdd = (gatheredKvSTileIdx & 1u) != 0u;
+        if (pairOdd) {
+            return;
+        }
+        const bool pairEven = !delay12TileInfo.isLastKvsTile;
+        uint32_t pairRows = curBaseTileSize;
+        if (pairEven) {
+            pairRows += MXFP8::Mxfp8NextKvsTileRows(gatheredKvSTileIdx, kvSBaseTile, delay12TaskInfo.gatheredKvSeqlen);
+        }
+        uint32_t pairAlign64 = MXFP8::Mxfp8Align64(pairRows);
+        uint32_t vSlot = l1ABufId;
+#else
+        uint32_t pairRows = curBaseTileSize;
+        uint32_t pairAlign64 = delay12TileInfo.kvsActBaseTileAlign64;
+        uint32_t vSlot = l1ABufId;
+#endif
+        uint32_t scaleRows = pairRows;
+        uint32_t vScaleAlign64 = pairAlign64;
+
         AscendC::GlobalTensor<uint8_t> gVScale = gVDequantScale[delay12TaskInfo.gmOffsetVScale];
         AscendC::GlobalTensor<int32_t> gSparseBlockIdx = gSparseIdx[delay12TaskInfo.gmOffsetSparseIdx];
-        int64_t kvSeqlen = delay12TaskInfo.kvSeqlen;
-        uint32_t yBlockNumAval = delay12TaskInfo.yBlockNumAval;
-        uint32_t yBlockNumRsvd = delay12TaskInfo.yBlockNumRsvd;
+        uint32_t firstYBlockIdx = (gatheredKvSTileIdx * kvSBaseTile) / blockShapeY;
+        uint32_t firstOriYBlockIdx = static_cast<uint32_t>(gSparseBlockIdx.GetValue(firstYBlockIdx));
+
+        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(KV_EVENT0 + vSlot);
+        if (pairRows != pairAlign64) {
+            PadVS2NotAlign64(pairAlign64, pairRows, embedReal, vSlot);
+        }
+
+        auto l1ATensorTla = tla::MakeTensor(
+            l1ATensor[vSlot], tla::MakeLayout<ElementA, layout::nZ>(embedReal, pairAlign64), Arch::PositionL1{});
+        auto gVScaleTensorTla = tla::MakeTensor(gVScale.ReinterpretCast<AscendC::fp8_e8m0_t>(),
+                                                tla::MakeMxScaleLayout<AscendC::fp8_e8m0_t, layout::ColumnMajor, false>(
+                                                    kvHeadMul * embedReal, vScaleAlign64 / MX_SCALE_GROUP_NUM),
+                                                Arch::PositionGM{});
+        auto l1AScaleTensorTla = tla::MakeTensor(l1AScaleTensor[vSlot].ReinterpretCast<AscendC::fp8_e8m0_t>(),
+                                                 tla::MakeMxScaleLayout<AscendC::fp8_e8m0_t, layout::zZ, false>(
+                                                     embedReal, vScaleAlign64 / MX_SCALE_GROUP_NUM),
+                                                 Arch::PositionL1{});
+
+        SparseVFusedBaseTileL1FullLoad(gV, l1ATensorTla, gVScaleTensorTla, l1AScaleTensorTla, gSparseBlockIdx,
+                                       gatheredKvSTileIdx, delay12TaskInfo.kvSeqlen, kvSBaseTile, blockShapeY,
+                                       delay12TaskInfo.yBlockNumAval, delay12TaskInfo.yBlockNumRsvd, pairRows,
+                                       scaleRows, embedReal, firstYBlockIdx, firstOriYBlockIdx);
+
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(KV_EVENT0 + vSlot);
+        pairVSlot_ = vSlot;
+        pairVL1Align64_ = pairAlign64;
+        l1ABufId = (l1ABufId + 1) % MXFP8::L1_KV_BUF_CNT;
+    }
+
+    // P5：等本拍 V 的 MTE2 完成后 LoadV/mmad。P pad 每 128-tile 一次。odd 复用 even 的 L1。
+    template <class TensorC, class TaskInfoT, class TileInfoT>
+    __aicore__ inline void ComputePV(TensorC &ubOTmpTensor, GemmCoord actualBlockShapePV, TileInfoT &delay12TileInfo,
+                                     TaskInfoT &delay12TaskInfo)
+    {
+        uint32_t embedReal = actualBlockShapePV[1];
         uint32_t gatheredKvSTileIdx = delay12TileInfo.pvGatheredKvSTileIdx;
         uint32_t pSlot = delay12TileInfo.loop % MXFP8::L1_P_BUF_CNT;
 
 #if BSA_MXFP8_K_PAIR256
         const bool pairOdd = (gatheredKvSTileIdx & 1u) != 0u;
         const bool pairEven = ((gatheredKvSTileIdx & 1u) == 0u) && !delay12TileInfo.isLastKvsTile;
-        uint32_t pairRows = curBaseTileSize;
-        if (pairEven) {
-            pairRows += MXFP8::Mxfp8NextKvsTileRows(gatheredKvSTileIdx, kvSBaseTile, delay12TaskInfo.gatheredKvSeqlen);
-        }
-        uint32_t pairAlign64 = pairOdd ? pairVL1Align64_ : MXFP8::Mxfp8Align64(pairRows);
-        uint32_t vSlot = pairOdd ? pairVSlot_ : l1ABufId;
 #else
         const bool pairOdd = false;
         const bool pairEven = false;
-        uint32_t pairRows = curBaseTileSize;
-        uint32_t pairAlign64 = delay12TileInfo.kvsActBaseTileAlign64;
-        uint32_t vSlot = l1ABufId;
 #endif
-        uint32_t scaleRows = pairOdd ? 0 : pairRows;
-        uint32_t vScaleAlign64 = pairAlign64;
-
-        uint32_t firstYBlockIdx = (gatheredKvSTileIdx * kvSBaseTile) / blockShapeY;
-        uint32_t firstOriYBlockIdx = 0;
-        if (!pairOdd) {
-            firstOriYBlockIdx = static_cast<uint32_t>(gSparseBlockIdx.GetValue(firstYBlockIdx));
-        }
-
+        uint32_t vSlot = pairVSlot_;
+        uint32_t pairAlign64 = pairVL1Align64_;
         uint32_t mMmad = MXFP8::PV_MMAD_M_DIM;
-
-        // 先等 MTE1 释放 L1A 再 Pad：与 mxfp4/QFA 同序，避免 Pad(MTE2 Fill) 与上一轮
-        // MTE1 LoadData(L1A->L0A) 竞争 l1ATensor[l1ABufId]（仅尾部 kvs 不齐 64 时触发）。
-        if (!pairOdd) {
-            AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(KV_EVENT0 + vSlot);
-        }
 
         if (delay12TileInfo.kvsActBaseTileAlign32 != delay12TileInfo.kvsActBaseTileAlign64) {
             PadPS2NotAlign64(delay12TileInfo.kvsActBaseTileAlign64, delay12TileInfo.kvsActBaseTileAlign32, embedReal,
                              pSlot);
         }
 
-        if (!pairOdd && pairRows != pairAlign64) {
-            PadVS2NotAlign64(pairAlign64, pairRows, embedReal);
-        }
-
         if (!pairOdd) {
-            auto l1ATensorTla = tla::MakeTensor(
-                l1ATensor[vSlot], tla::MakeLayout<ElementA, layout::nZ>(embedReal, pairAlign64), Arch::PositionL1{});
-
-            auto gVScaleTensorTla =
-                tla::MakeTensor(gVScale.ReinterpretCast<AscendC::fp8_e8m0_t>(),
-                                tla::MakeMxScaleLayout<AscendC::fp8_e8m0_t, layout::ColumnMajor, false>(
-                                    kvHeadMul * embedReal, vScaleAlign64 / MX_SCALE_GROUP_NUM),
-                                Arch::PositionGM{});
-            auto l1AScaleTensorTla = tla::MakeTensor(l1AScaleTensor[vSlot].ReinterpretCast<AscendC::fp8_e8m0_t>(),
-                                                     tla::MakeMxScaleLayout<AscendC::fp8_e8m0_t, layout::zZ, false>(
-                                                         embedReal, vScaleAlign64 / MX_SCALE_GROUP_NUM),
-                                                     Arch::PositionL1{});
-
-            SparseVFusedBaseTileL1FullLoad(gV, l1ATensorTla, gVScaleTensorTla, l1AScaleTensorTla, gSparseBlockIdx,
-                                           gatheredKvSTileIdx, kvSeqlen, kvSBaseTile, blockShapeY, yBlockNumAval,
-                                           yBlockNumRsvd, pairRows, scaleRows, embedReal, firstYBlockIdx,
-                                           firstOriYBlockIdx);
-
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(KV_EVENT0 + vSlot);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(KV_EVENT0 + vSlot);
-#if BSA_MXFP8_K_PAIR256
-            pairVSlot_ = vSlot;
-            pairVL1Align64_ = pairAlign64;
-#endif
         }
 
         uint32_t l0CEventId = PV_L0C_EVENT0;
@@ -529,9 +534,6 @@ public:
 
         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0ABEventId);
 
-        // 基块 S2=128：一次 PV mmad（不切 S2）。P1 奇 tile 从 L1 行 128 起取本拍 128 行。
-        // 组窗口 TILE_GROUP_N=16 已累加 16 拍再 Fixpipe 129；奇拍 isTileGoupFirstTile=false。
-        // 步 1b 曾写 initC && !pairOdd，板上 keep=1 +0.74 ms（scalar 气泡），已撤回。
         uint32_t s2Full = delay12TileInfo.kvsActBaseTileAlign64;
         uint32_t s2Start = pairOdd ? MXFP8::QK_HALF_KVS : 0;
         bool initC = delay12TileInfo.isTileGoupFirstTile;
@@ -559,13 +561,22 @@ public:
         if (!pairEven) {
             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(KV_EVENT0 + vSlot);
         }
-        if (!pairOdd) {
-            l1ABufId = (l1ABufId + 1) % MXFP8::L1_KV_BUF_CNT;
-        }
 
         if (delay12TileInfo.isLastSecondKvsTile) {
             InitL0BufferForReduceSum();
         }
+    }
+
+    template <class TensorV, class TensorC, class TaskInfoT, class TileInfoT>
+    __aicore__ inline void operator()(TensorV &gV, AscendC::GlobalTensor<uint8_t> gVDequantScale,
+                                      AscendC::GlobalTensor<int32_t> gSparseIdx, TensorC &ubOTmpTensor,
+                                      GemmCoord actualBlockShapePV, TileInfoT &delay12TileInfo,
+                                      TaskInfoT &delay12TaskInfo, uint32_t kvSBaseTile, uint32_t blockShapeY,
+                                      uint32_t kvHeadMul)
+    {
+        PrefetchV(gV, gVDequantScale, gSparseIdx, delay12TileInfo, delay12TaskInfo, kvSBaseTile, blockShapeY, kvHeadMul,
+                  actualBlockShapePV);
+        ComputePV(ubOTmpTensor, actualBlockShapePV, delay12TileInfo, delay12TaskInfo);
     }
 
 protected:

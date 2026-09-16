@@ -101,6 +101,7 @@ constexpr uint32_t SOC_VER_950_CODE = 4;
 constexpr uint32_t INF_WINDOW_SIZE_PRE_NEXT = 2147483647;
 
 constexpr uint32_t TILE_SIZE_16 = 16;
+constexpr uint32_t TILE_SIZE_64 = 64;
 constexpr uint32_t TILE_SIZE_128 = 128;
 constexpr uint32_t TILE_SIZE_256 = 256;
 constexpr uint32_t D_SIZE_128 = 128;
@@ -957,9 +958,9 @@ ge::graphStatus BSATiling::CheckBlockShapeQuantConstraint(gert::TilingContext *b
     if (dataType_ == ge::DT_FLOAT8_E4M3FN) {
         constexpr int64_t SUPPORTED_BLOCK_SHAPE_X = 128;
         constexpr int64_t SUPPORTED_BLOCK_SHAPE_X_QS64 = 64;
-        // MXFP8 kvs128：blockShapeY 按 128 对齐；其它 float8 全量化路径仍要求 256 倍数
+        // MXFP8：现网 Y∈{64,128}，之后仅 64 倍数。其它 float8 全量化仍要求 256 倍数。
         const int64_t supportedMultipleOfBlockShapeY =
-            (quantMode_ == MXFP8_OCP_QUANT) ? static_cast<int64_t>(TILE_SIZE_128) : static_cast<int64_t>(TILE_SIZE_256);
+            (quantMode_ == MXFP8_OCP_QUANT) ? static_cast<int64_t>(TILE_SIZE_64) : static_cast<int64_t>(TILE_SIZE_256);
         const bool mxfp8QsOk = (quantMode_ == MXFP8_OCP_QUANT) && (blockShapeX_ == SUPPORTED_BLOCK_SHAPE_X ||
                                                                    blockShapeX_ == SUPPORTED_BLOCK_SHAPE_X_QS64);
         if (!mxfp8QsOk && blockShapeX_ != SUPPORTED_BLOCK_SHAPE_X) {

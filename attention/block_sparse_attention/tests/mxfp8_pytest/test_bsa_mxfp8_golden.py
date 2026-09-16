@@ -17,8 +17,8 @@ TND varlen(s1_list/s2_list) / act_s pad / gap_sparse / ocp_scale_stride_trap 已
 
 
 golden: Q/K/V mxfp8 qdq(fp32)；P 走 kernel 同构 snap_local(m_snap=(K-8)*ln2) 再 e4m3。
-Kernel tile 固定 kvs128；blockShapeY 可为 128 的倍数（含 256）。Y>128 时一 Y 块拆成
-多个 kernel tile 再按 TILE_GROUP_N=16 组尾 pscale / rescale O。
+Kernel tile 固定 kvs128；blockShapeY 现网仅 64 或 128（之后仅 64 倍数）。
+Y=64 时每 Y 块对应 2 个 kvs128 tile；Y=128 时一块一 tile。按 TILE_GROUP_N=16 组尾 pscale / rescale O。
 判据: 与 MXFP4 同构 (np.isclose rtol=1/128 atol=1e-4, 满足率≥99.5% 且 maxRE<10)。
 QK scale 在 CopyL0CToUB PRE 打进 S：golden 为 (S_fp32 * scale_s).to(fp16)。
 """
@@ -249,7 +249,7 @@ KV_BASE_TILE = 128
 
 
 def _yblocks_to_kernel_tiles(sel_j, block_y, s2, kv_tile=KV_BASE_TILE):
-    """稀疏选中的 Y 块按 kvBaseTile=128 切成 kernel tile（Y=128 时恒等；Y=256 时一块变两 tile）。"""
+    """稀疏选中的 Y 块按 kvBaseTile=128 切成 kernel tile（Y=128 恒等；Y=64 时一块变两 tile）。"""
     tiles = []
     for j in sel_j:
         st = j * block_y
@@ -724,8 +724,8 @@ def run_bsa_mxfp8_eager(
     )
     assert n1 == n2 * g
     assert block_shape[0] in (64, 128)
-    assert block_shape[1] % 128 == 0, (
-        f"0817 blockShapeY 须为 128 倍数, 当前 {block_shape[1]}"
+    assert block_shape[1] % 64 == 0 and block_shape[1] in (64, 128), (
+        f"MXFP8 blockShapeY 现网仅 64 或 128, 当前 {block_shape[1]}"
     )
     assert qk_d in (64, 128)
     assert quant_mode == QUANT_MODE_MXFP8_OCP
@@ -1192,6 +1192,20 @@ class TestBSAMxfp8Golden(TestCase):
             mask_kind="sparse",
         )
 
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp8_bnsd_mha_sparse_qs128_kvs256_blk128x64(self, device="npu"):
+        """Y=64 × sparse：nY=4 gather，ori 非连续走 ndNum=2 / 分段。"""
+        self._run(
+            b=1,
+            n1=2,
+            n2=2,
+            s1=128,
+            s2=256,
+            qk_d=128,
+            block_shape=[128, 64],
+            mask_kind="sparse",
+        )
+
     # --- 跨 TILE_GROUP(G=16, s2>2048)：CopyPScale L1 按 loop%20 映射 ---
     @SkipIfNotGteCANNVersion("9.0.0")
     def test_bsa_mxfp8_bnsd_mha_dense_qs64_kvs1152(self, device="npu"):
@@ -1379,7 +1393,7 @@ class TestBSAMxfp8Golden(TestCase):
 
     # ==================== 从 mxfp4 BNSD OCP 移植 ====================
     # runner 已支持 uniform BSND/TND、TND varlen、act_s pad、gap_sparse、scale-stride-trap。
-    # CX / dst_type_max 仍不移植。Y=256 已允许（kvBaseTile 仍 128）。
+    # CX / dst_type_max 仍不移植。Y 现网仅 64/128（kvBaseTile 仍 128）。
 
     @SkipIfNotGteCANNVersion("9.0.0")
     def test_bsa_mxfp8_bnsd_mha_dense_b1_qn1_kvn1_g1_qs128_kvs128_d128(
@@ -2191,7 +2205,7 @@ class TestBSAMxfp8Golden(TestCase):
     # 2: BSND/TND × D=64 / sparse / 非对齐
     # 3: gap_sparse + ocp_scale_stride_trap
     # 合入前必跑: MXFP8_OCP_REG_K / ./run.sh --reg
-    # 全量 OCP（含 Y=256）已从 mxfp4 补齐；CX 仍不拷。
+    # 全量 OCP（含 Y=64/128）已从 mxfp4 补齐；CX 仍不拷。
 
     @SkipIfNotGteCANNVersion("9.0.0")
     def test_bsa_mxfp8_tnd_varlen_mha_dense_b2_qn2_kvn2_g1_s1_128_256_s2_256_128_d128(
@@ -2801,7 +2815,7 @@ class TestBSAMxfp8Golden(TestCase):
 
     # ==================== 从 MXFP4 OCP 补全（非 CX）====================
     # 源: ops-transformer_0703/tests/mxfp4_pytest/test_bsa_mxfp4_golden.py
-    # 已改名 mxfp8；去掉 quant_mode=2（默认 4）。含 Y=256（host kvBaseTile 仍 128）。
+    # 已改名 mxfp8；去掉 quant_mode=2（默认 4）。Y 现网仅 64/128（host kvBaseTile 仍 128）。
     # 不含 CX / dst_type_max。
 
     @SkipIfNotGteCANNVersion("9.0.0")
@@ -3176,10 +3190,10 @@ class TestBSAMxfp8Golden(TestCase):
         )
 
     @SkipIfNotGteCANNVersion("9.0.0")
-    def test_bsa_mxfp8_bsnd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs256_d128_blk128x256(
+    def test_bsa_mxfp8_bsnd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs256_d128_blk128x64(
         self, device="npu"
     ):
-        """⑧ BSND block=[128,256] D=128: blockShapeY=256(KV tile 256 行, ceil_kv=1), 验证大 KV-block tiling。"""
+        """⑧ BSND block=[128,64] D=128: Y=64 时 s2=256 恰 4 个满块，钉 PAIR256 nY=4 连续 copy。"""
         self._run(
             b=1,
             n1=2,
@@ -3188,7 +3202,7 @@ class TestBSAMxfp8Golden(TestCase):
             s1=128,
             s2=256,
             qk_d=128,
-            block_shape=[128, 256],
+            block_shape=[128, 64],
             mask_kind="dense",
             input_layout="BSND",
         )
@@ -4310,7 +4324,7 @@ class TestBSAMxfp8Golden(TestCase):
     # =====================================================================
     # 覆盖缺口补充: 全量盘点后此前未覆盖的组合——
     #   gap_sparse 仅测过 BSND(缺 BNSD/TND); 非默认 block_shape 仅 BSND×dense
-    #   (缺 BNSD/TND 布局、sparse、[128,256] 跨多 kv 块); uniform s2=1(单 kv token)
+    #   (缺 BNSD/TND 布局、sparse、[128,64] 跨多 kv 块); uniform s2=1(单 kv token)
     #   仅 varlen 测过; BSND/TND 的 N=1 头退化零覆盖(非 BNSD case 全 n>=2);
     #   BSND padded×sparse; varlen/BSND-uniform 的 GQA×sparse; 大 batch varlen(此前 b<=3)。
     # 不补的项: s_dtype/p_quant/inner_precise(golden 诊断旋钮非场景)、fp16 输出
@@ -4319,11 +4333,10 @@ class TestBSAMxfp8Golden(TestCase):
     # --- gap_sparse × BNSD/TND 布局 ---
 
     @SkipIfNotGteCANNVersion("9.0.0")
-    def test_bsa_mxfp8_tnd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs512_d128_blk128x256(
+    def test_bsa_mxfp8_tnd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs512_d128_blk128x64(
         self, device="npu"
     ):
-        """补 TND block=[128,256]: 此前 block 变体从未上 TND——KV tile 256 行 × TND
-        行步长, s2=512 恰 2 个大 kv 块(1 chunk 512 行)。"""
+        """补 TND block=[128,64]: Y=64 × TND 行步长, s2=512 恰 8 个满块。"""
         self._run(
             b=1,
             n1=2,
@@ -4332,17 +4345,16 @@ class TestBSAMxfp8Golden(TestCase):
             s1=128,
             s2=512,
             qk_d=128,
-            block_shape=[128, 256],
+            block_shape=[128, 64],
             mask_kind="dense",
             input_layout="TND",
         )
 
     @SkipIfNotGteCANNVersion("9.0.0")
-    def test_bsa_mxfp8_bsnd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs400_d128_blk128x256(
+    def test_bsa_mxfp8_bsnd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs400_d128_blk128x64(
         self, device="npu"
     ):
-        """补 block=[128,256] 跨多 kv 块 + 非对齐: s2=400 -> ceil_kv=2(末块 144 行不满),
-        现有 blk128x256 case s2=256 恰 1 块, 大 kv 块的尾块裁剪零覆盖。"""
+        """补 block=[128,64] 跨多 kv 块 + 非对齐: s2=400 -> 6×64+16 短末块。"""
         self._run(
             b=1,
             n1=2,
@@ -4351,7 +4363,7 @@ class TestBSAMxfp8Golden(TestCase):
             s1=128,
             s2=400,
             qk_d=128,
-            block_shape=[128, 256],
+            block_shape=[128, 64],
             mask_kind="dense",
             input_layout="BSND",
         )
@@ -4757,7 +4769,7 @@ class TestBSAMxfp8Golden(TestCase):
     def test_bsa_mxfp8_tnd_mha_sparse_b1_qn2_kvn2_g1_qs256_kvs512_d128_blk64x128(
         self, device="npu"
     ):
-        """补 TND × [64,128](TND block 变体此前仅 [128,256]): 小 Q-block(ceil_q=4)
+        """补 TND × [64,128](TND block 变体此前仅 [128,64]): 小 Q-block(ceil_q=4)
         × TND flatten × 稀疏 gather。"""
         self._run(
             b=1,
@@ -4773,11 +4785,10 @@ class TestBSAMxfp8Golden(TestCase):
         )
 
     @SkipIfNotGteCANNVersion("9.0.0")
-    def test_bsa_mxfp8_bsnd_mha_sparse_b1_qn2_kvn2_g1_qs128_kvs400_d64_blk128x256(
+    def test_bsa_mxfp8_bsnd_mha_sparse_b1_qn2_kvn2_g1_qs128_kvs400_d64_blk128x64(
         self, device="npu"
     ):
-        """补 d64 × [128,256](d64 block 变体此前仅 [64,128]): 大 KV-block 尾块 144 行
-        (400%256) × D=64 窄行 × 稀疏选择。"""
+        """补 d64 × [128,64]: Y=64 短末块 16 行(400%64) × D=64 窄行 × 稀疏选择。"""
         self._run(
             b=1,
             n1=2,
@@ -4786,7 +4797,7 @@ class TestBSAMxfp8Golden(TestCase):
             s1=128,
             s2=400,
             qk_d=64,
-            block_shape=[128, 256],
+            block_shape=[128, 64],
             mask_kind="sparse",
             input_layout="BSND",
         )

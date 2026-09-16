@@ -178,140 +178,168 @@ public:
         copyGmToL1MxScaleDn2Nz(l1BScaleTensor[qBufId], gQDequantScale, qsActBaseTile, scaleK, 0, 0, qHeadMul);
     }
 
-    // K 数据 + K-scale 融合稀疏 gather：按 gSparseBlockIdx 逐段搬 GM → L1。
-    // 两者的分段边界必然一致，故只遍历一遍 index，每段发 K(Nd2Nz) / K-scale(Dn2Nz) 两条 copy。
-    // ori 连续递增即代表 GM 上物理相邻，向前偷看合并成单条 copy。
-    // 段推进天然落在 y-block 边界上（仅首段 innerStart 可能非 0），故循环内无除法/取模。
-    // firstYBlockIdx / firstOriYBlockIdx 由调用方提前预取，避免首个 index 的阻塞访存落在此处。
+    // 中间 y-block 恒满 blockShapeY；只有 ori==aval-1 可能短。
+    __aicore__ inline uint32_t YBlockRows(uint32_t ori, uint32_t blockShapeY, uint32_t yBlockNumAval,
+                                          uint32_t kvSeqlenU)
+    {
+        if (ori == yBlockNumAval - 1u) {
+            return kvSeqlenU - ori * blockShapeY;
+        }
+        return blockShapeY;
+    }
+
+    // 一段连续 GM：一条 Nd2Nz + 一条 scale。中间无 GetValue。
+    template <class TensorK, class TensorL1K>
+    __aicore__ inline void CopyKDataAndScale(TensorK gKTensorTla, TensorL1K l1KTensorTla,
+                                             AscendC::GlobalTensor<uint8_t> gKScale, uint32_t oriStart, uint32_t nRows,
+                                             uint32_t l1RowOff, uint32_t embed, uint32_t scaleK, uint32_t scaleBufId,
+                                             uint32_t kvHeadMul)
+    {
+        using CopyGmToL1K = Tile::TileCopyTla<ArchTag, decltype(gKTensorTla), decltype(l1KTensorTla)>;
+        CopyGmToL1K copyGmToL1K;
+        auto gKTile = GetTile(gKTensorTla, tla::MakeCoord(oriStart, 0), tla::MakeShape(nRows, embed));
+        auto l1KTile = GetTile(l1KTensorTla, tla::MakeCoord(l1RowOff, 0), tla::MakeShape(nRows, embed));
+        copyGmToL1K(l1KTile, gKTile);
+        uint32_t scaleRowHalf = scaleK / 2;
+        copyGmToL1MxScaleDn2Nz(l1AScaleTensor[scaleBufId], gKScale, nRows, scaleK, oriStart * kvHeadMul * scaleRowHalf,
+                               l1RowOff * scaleRowHalf, kvHeadMul);
+    }
+
+    // 等长非连续两段：数据 ndNum=2；scale 仍两段 Dn2Nz。stride 非法则退回两条 copy。
+    template <class TensorK, class TensorL1K>
+    __aicore__ inline void CopyKDataNdNum2(TensorK gKTensorTla, TensorL1K l1KTensorTla,
+                                           AscendC::GlobalTensor<uint8_t> gKScale, uint32_t oriStart0,
+                                           uint32_t oriStart1, uint32_t nRowsEach, uint32_t l1RowOff, uint32_t embed,
+                                           uint32_t scaleK, uint32_t scaleBufId, uint32_t kvHeadMul)
+    {
+        using CopyGmToL1K = Tile::TileCopyTla<ArchTag, decltype(gKTensorTla), decltype(l1KTensorTla)>;
+        CopyGmToL1K copyGmToL1K;
+        auto gKTile0 = GetTile(gKTensorTla, tla::MakeCoord(oriStart0, 0), tla::MakeShape(nRowsEach, embed));
+        auto l1KTile0 = GetTile(l1KTensorTla, tla::MakeCoord(l1RowOff, 0), tla::MakeShape(nRowsEach, embed));
+        auto gKTile1 = GetTile(gKTensorTla, tla::MakeCoord(oriStart1, 0), tla::MakeShape(nRowsEach, embed));
+        auto l1KTile1 =
+            GetTile(l1KTensorTla, tla::MakeCoord(l1RowOff + nRowsEach, 0), tla::MakeShape(nRowsEach, embed));
+        uint32_t srcNdStride = 0;
+        uint32_t dstNzStride = 0;
+        bool fusedNd2 = MXFP8::Mxfp8U32Delta(static_cast<int64_t>(gKTile1.layout()(gKTile1.coord())) -
+                                                 static_cast<int64_t>(gKTile0.layout()(gKTile0.coord())),
+                                             srcNdStride) &&
+                        MXFP8::Mxfp8U32Delta(static_cast<int64_t>(l1KTile1.layout()(l1KTile1.coord())) -
+                                                 static_cast<int64_t>(l1KTile0.layout()(l1KTile0.coord())),
+                                             dstNzStride);
+        if (fusedNd2) {
+            copyGmToL1K(l1KTile0, gKTile0, 2, srcNdStride, dstNzStride);
+        } else {
+            copyGmToL1K(l1KTile0, gKTile0);
+            copyGmToL1K(l1KTile1, gKTile1);
+        }
+        uint32_t scaleRowHalf = scaleK / 2;
+        copyGmToL1MxScaleDn2Nz(l1AScaleTensor[scaleBufId], gKScale, nRowsEach, scaleK,
+                               oriStart0 * kvHeadMul * scaleRowHalf, l1RowOff * scaleRowHalf, kvHeadMul);
+        copyGmToL1MxScaleDn2Nz(l1AScaleTensor[scaleBufId], gKScale, nRowsEach, scaleK,
+                               oriStart1 * kvHeadMul * scaleRowHalf, (l1RowOff + nRowsEach) * scaleRowHalf, kvHeadMul);
+    }
+
+    // K+K-scale gather。blockShapeY∈{64,128} 且 kvBaseTile=128 ⇒ innerStart=0。
+    // PAIR256 满对 nRows=256：Y=64 → 4 块，Y=128 → 2 块。先读齐 ori，连续则一条 copy；
+    // 高稀疏 gap 等长满块走 ndNum=2。nY≤4，无无界 while / peek。
     template <class TensorK, class TensorL1K>
     __aicore__ inline void SparseKFusedBaseTileL1FullLoad(
         TensorK gKTensorTla, TensorL1K l1KTensorTla, AscendC::GlobalTensor<uint8_t> gKScale,
         AscendC::GlobalTensor<int32_t> gSparseBlockIdx, uint32_t gatheredKvSTileIdx, int64_t kvSeqlen,
-        uint32_t kvSBaseTile, uint32_t blockShapeY, uint32_t yBlockNumAval, uint32_t yBlockNumRsvd, uint32_t dataRows,
-        uint32_t scaleRows, uint32_t embed, uint32_t kBufId, uint32_t scaleBufId, uint32_t kvHeadMul,
-        uint32_t firstYBlockIdx, uint32_t firstOriYBlockIdx)
+        uint32_t kvSBaseTile, uint32_t blockShapeY, uint32_t yBlockNumAval, uint32_t yBlockNumRsvd, uint32_t nRows,
+        uint32_t embed, uint32_t scaleBufId, uint32_t kvHeadMul, uint32_t firstYBlockIdx, uint32_t firstOriYBlockIdx,
+        uint32_t scaleK)
     {
-        using CopyGmToL1K = Tile::TileCopyTla<ArchTag, decltype(gKTensorTla), decltype(l1KTensorTla)>;
-        CopyGmToL1K copyGmToL1K;
-        (void)kBufId;
-
-        uint32_t scaleK = CeilDivision(embed, MXFP8::MX_GROUP_ELEMS);
-        uint32_t scaleRowHalf = scaleK / 2;
-        uint32_t walkRows = (scaleRows > dataRows) ? scaleRows : dataRows;
-
+        (void)gatheredKvSTileIdx;
+        (void)kvSBaseTile;
+        if (nRows == 0) {
+            return;
+        }
         const uint32_t kvSeqlenU = static_cast<uint32_t>(kvSeqlen);
-        uint32_t gatheredYBlockIdx = firstYBlockIdx;
-        uint32_t yBlockInnerStart = gatheredKvSTileIdx * kvSBaseTile - firstYBlockIdx * blockShapeY;
-        uint32_t oriYBlockIdx = firstOriYBlockIdx;
-        uint32_t dealtLenAccum = 0;
-
-        while (dealtLenAccum < walkRows && gatheredYBlockIdx < yBlockNumRsvd && oriYBlockIdx < yBlockNumAval) {
-            uint32_t oriStartOffset = oriYBlockIdx * blockShapeY + yBlockInnerStart;
-            if (oriStartOffset >= kvSeqlenU) {
+        constexpr uint32_t MAX_NY = 4;
+        uint32_t nY = (nRows + blockShapeY - 1u) / blockShapeY;
+        if (nY > MAX_NY) {
+            nY = MAX_NY;
+        }
+        uint32_t ori[MAX_NY];
+        ori[0] = firstOriYBlockIdx;
+        if (ori[0] >= yBlockNumAval) {
+            return;
+        }
+        for (uint32_t i = 1; i < nY; ++i) {
+            uint32_t yi = firstYBlockIdx + i;
+            if (yi >= yBlockNumRsvd) {
+                nY = i;
                 break;
             }
-
-            uint32_t curYBlockSize =
-                (oriYBlockIdx == yBlockNumAval - 1) ? (kvSeqlenU - oriYBlockIdx * blockShapeY) : blockShapeY;
-            if (curYBlockSize <= yBlockInnerStart) {
+            uint32_t o = static_cast<uint32_t>(gSparseBlockIdx.GetValue(yi));
+            if (o >= yBlockNumAval) {
+                nY = i;
                 break;
             }
-            uint32_t availLen = curYBlockSize - yBlockInnerStart;
-            // 尾部不满块之后 gather 流即终止（与原实现的 curDealtLen==0 退出等价）
-            bool runEndsShort = (curYBlockSize < blockShapeY);
+            ori[i] = o;
+        }
 
-            // 向前偷看：ori 连续则 GM 地址连续，拼进同一条 copy
-            uint32_t peekYBlockIdx = gatheredYBlockIdx + 1;
-            uint32_t peekOriIdx = oriYBlockIdx + 1;
-            while (!runEndsShort && dealtLenAccum + availLen < walkRows && peekYBlockIdx < yBlockNumRsvd &&
-                   peekOriIdx < yBlockNumAval &&
-                   static_cast<uint32_t>(gSparseBlockIdx.GetValue(peekYBlockIdx)) == peekOriIdx) {
-                uint32_t peekBlockSize =
-                    (peekOriIdx == yBlockNumAval - 1) ? (kvSeqlenU - peekOriIdx * blockShapeY) : blockShapeY;
-                availLen += peekBlockSize;
-                runEndsShort = (peekBlockSize < blockShapeY);
-                ++peekYBlockIdx;
-                ++peekOriIdx;
+        bool consecutive = true;
+        uint32_t avail = 0;
+        for (uint32_t i = 0; i < nY; ++i) {
+            if (i > 0 && ori[i] != ori[i - 1] + 1u) {
+                consecutive = false;
             }
+            uint32_t br = YBlockRows(ori[i], blockShapeY, yBlockNumAval, kvSeqlenU);
+            avail += br;
+            if (br < blockShapeY) {
+                nY = i + 1u;
+                break;
+            }
+        }
+        uint32_t copyRows = MinU32(nRows, avail);
+        if (consecutive && copyRows > 0) {
+            CopyKDataAndScale(gKTensorTla, l1KTensorTla, gKScale, ori[0] * blockShapeY, copyRows, 0, embed, scaleK,
+                              scaleBufId, kvHeadMul);
+            return;
+        }
 
-            uint32_t curDealtLen = MinU32(availLen, walkRows - dealtLenAccum);
-            uint32_t dataLen = 0;
-            if (dealtLenAccum < dataRows) {
-                dataLen = MinU32(curDealtLen, dataRows - dealtLenAccum);
+        uint32_t l1Off = 0;
+        uint32_t remain = nRows;
+        uint32_t i = 0;
+        while (i < nY && remain > 0) {
+            uint32_t b0 = YBlockRows(ori[i], blockShapeY, yBlockNumAval, kvSeqlenU);
+            uint32_t runLen = MinU32(b0, remain);
+            bool hitShort = b0 < blockShapeY;
+            uint32_t j = i + 1u;
+            while (!hitShort && j < nY && remain > runLen && ori[j] == ori[j - 1] + 1u) {
+                uint32_t bj = YBlockRows(ori[j], blockShapeY, yBlockNumAval, kvSeqlenU);
+                runLen += MinU32(bj, remain - runLen);
+                hitShort = bj < blockShapeY;
+                ++j;
             }
-            uint32_t scaleLen = 0;
-            if (dealtLenAccum < scaleRows) {
-                scaleLen = MinU32(curDealtLen, scaleRows - dealtLenAccum);
-            }
-
-            uint32_t pairLen = 0;
-            uint32_t pairOriStart = 0;
-            bool pairEndsShort = false;
-            uint32_t pairPeekEnd = peekYBlockIdx;
+            uint32_t oriStart0 = ori[i] * blockShapeY;
 #if BSA_MXFP8_NDNUM2
-            if (!runEndsShort && dataLen > 0 && dataLen == curDealtLen && dataLen == scaleLen &&
-                dealtLenAccum + curDealtLen < walkRows && peekYBlockIdx < yBlockNumRsvd) {
-                uint32_t nextOri = static_cast<uint32_t>(gSparseBlockIdx.GetValue(peekYBlockIdx));
-                if (nextOri < yBlockNumAval) {
-                    uint32_t nextStart = nextOri * blockShapeY;
-                    uint32_t nextSize =
-                        (nextOri == yBlockNumAval - 1) ? (kvSeqlenU - nextOri * blockShapeY) : blockShapeY;
-                    uint32_t remain = walkRows - dealtLenAccum - curDealtLen;
-                    uint32_t nextDealt = MinU32(nextSize, remain);
-                    if (nextDealt == dataLen && nextStart > oriStartOffset) {
-                        pairLen = nextDealt;
-                        pairOriStart = nextStart;
-                        pairEndsShort = (nextSize < blockShapeY);
-                        pairPeekEnd = peekYBlockIdx + 1;
+            if (!hitShort && j < nY && remain >= (runLen << 1) && ori[j] != ori[j - 1] + 1u) {
+                uint32_t b1 = YBlockRows(ori[j], blockShapeY, yBlockNumAval, kvSeqlenU);
+                uint32_t oriStart1 = ori[j] * blockShapeY;
+                if (b1 == runLen && oriStart1 > oriStart0) {
+                    CopyKDataNdNum2(gKTensorTla, l1KTensorTla, gKScale, oriStart0, oriStart1, runLen, l1Off, embed,
+                                    scaleK, scaleBufId, kvHeadMul);
+                    l1Off += runLen << 1;
+                    remain -= runLen << 1;
+                    i = j + 1u;
+                    if (b1 < blockShapeY) {
+                        break;
                     }
+                    continue;
                 }
             }
 #endif
-            uint32_t srcNdStride = 0;
-            uint32_t dstNzStride = 0;
-            bool fusedNd2 = false;
-            if (pairLen > 0) {
-                auto gKTile0 = GetTile(gKTensorTla, tla::MakeCoord(oriStartOffset, 0), tla::MakeShape(dataLen, embed));
-                auto l1KTile0 = GetTile(l1KTensorTla, tla::MakeCoord(dealtLenAccum, 0), tla::MakeShape(dataLen, embed));
-                auto gKTile1 = GetTile(gKTensorTla, tla::MakeCoord(pairOriStart, 0), tla::MakeShape(dataLen, embed));
-                auto l1KTile1 =
-                    GetTile(l1KTensorTla, tla::MakeCoord(dealtLenAccum + dataLen, 0), tla::MakeShape(dataLen, embed));
-                fusedNd2 = MXFP8::Mxfp8U32Delta(static_cast<int64_t>(gKTile1.layout()(gKTile1.coord())) -
-                                                    static_cast<int64_t>(gKTile0.layout()(gKTile0.coord())),
-                                                srcNdStride) &&
-                           MXFP8::Mxfp8U32Delta(static_cast<int64_t>(l1KTile1.layout()(l1KTile1.coord())) -
-                                                    static_cast<int64_t>(l1KTile0.layout()(l1KTile0.coord())),
-                                                dstNzStride);
-                if (fusedNd2) {
-                    copyGmToL1K(l1KTile0, gKTile0, 2, srcNdStride, dstNzStride);
-                }
-            }
-            if (!fusedNd2 && dataLen > 0) {
-                auto gKTile = GetTile(gKTensorTla, tla::MakeCoord(oriStartOffset, 0), tla::MakeShape(dataLen, embed));
-                auto l1KTile = GetTile(l1KTensorTla, tla::MakeCoord(dealtLenAccum, 0), tla::MakeShape(dataLen, embed));
-                copyGmToL1K(l1KTile, gKTile);
-            }
-            if (scaleLen > 0) {
-                uint32_t srcB16Off = oriStartOffset * kvHeadMul * scaleRowHalf;
-                uint32_t dstB16Off = dealtLenAccum * scaleRowHalf;
-                copyGmToL1MxScaleDn2Nz(l1AScaleTensor[scaleBufId], gKScale, scaleLen, scaleK, srcB16Off, dstB16Off,
-                                       kvHeadMul);
-                if (fusedNd2) {
-                    uint32_t srcB16Off2 = pairOriStart * kvHeadMul * scaleRowHalf;
-                    uint32_t dstB16Off2 = (dealtLenAccum + dataLen) * scaleRowHalf;
-                    copyGmToL1MxScaleDn2Nz(l1AScaleTensor[scaleBufId], gKScale, pairLen, scaleK, srcB16Off2, dstB16Off2,
-                                           kvHeadMul);
-                }
-            }
-
-            dealtLenAccum += curDealtLen + (fusedNd2 ? pairLen : 0);
-            if (runEndsShort || (fusedNd2 && pairEndsShort)) {
+            CopyKDataAndScale(gKTensorTla, l1KTensorTla, gKScale, oriStart0, runLen, l1Off, embed, scaleK, scaleBufId,
+                              kvHeadMul);
+            l1Off += runLen;
+            remain -= runLen;
+            i = j;
+            if (hitShort) {
                 break;
-            }
-            gatheredYBlockIdx = fusedNd2 ? pairPeekEnd : peekYBlockIdx;
-            yBlockInnerStart = 0;
-            if (dealtLenAccum < walkRows) {
-                oriYBlockIdx = gSparseBlockIdx.GetValue(gatheredYBlockIdx);
             }
         }
     }
@@ -437,13 +465,12 @@ public:
         pairKSlot_ = kBufId;
         pairKL1Align16_ = curTileInfo.kvsActBaseTileAlign16;
 #endif
-        uint32_t scaleRows = gatherRows;
         uint32_t l1KEventId = MXFP8::KV_EVENT0 + pairKSlot_;
 
         uint32_t firstYBlockIdx = (gatheredKvSTileIdx * kvSBaseTile) / blockShapeY;
         uint32_t firstOriYBlockIdx = static_cast<uint32_t>(gSparseBlockIdx.GetValue(firstYBlockIdx));
 
-        // Q 仍只在 task 首 KV tile 搬；一次 ~16KB，保持 copy 后立刻 Wait，不改 Q 双槽。
+        // Q 只在 task 首 KV tile 搬。P4：copy 后只 SetFlag；K 发出后再 Wait Q，与 K 的 MTE2 重叠。
         if (isFirstKvsTile) {
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(l1QEventId);
             if (qsActBaseTile < Q_M_PAD) {
@@ -454,7 +481,6 @@ public:
             CopyQGmToL1(qsActBaseTile, embed, gQTensorTla, l1QTensorTla);
             CopyQScaleGmToL1(qsActBaseTile, scaleK, gQDequantScale, qBufId, qHeadMul);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(l1QEventId);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(l1QEventId);
         }
 
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(l1KEventId);
@@ -462,9 +488,11 @@ public:
         auto l1KTensorTla = tla::MakeTensor(l1ATensor[pairKSlot_], l1KLayout, Arch::PositionL1{});
         SparseKFusedBaseTileL1FullLoad(gKTensorTla, l1KTensorTla, gKDequantScale, gSparseBlockIdx, gatheredKvSTileIdx,
                                        kvSeqlen, kvSBaseTile, blockShapeY, yBlockNumAval, yBlockNumRsvd, gatherRows,
-                                       scaleRows, embed, pairKSlot_, pairKSlot_, kvHeadMul, firstYBlockIdx,
-                                       firstOriYBlockIdx);
+                                       embed, pairKSlot_, kvHeadMul, firstYBlockIdx, firstOriYBlockIdx, scaleK);
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(l1KEventId);
+        if (isFirstKvsTile) {
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(l1QEventId);
+        }
 #if BSA_MXFP8_K_PAIR256
         // 槽已占用到奇 tile LoadK 结束；立刻推进 kvBufId，让随后的 PV 用下一槽，避免和跨 softmax 的 K 对撞。
         kBufId = (kBufId + 1) % MXFP8::L1_KV_BUF_CNT;
@@ -562,11 +590,14 @@ public:
             }
             return;
         }
+#if !BSA_MXFP8_L0C_PRELOAD
+        // L0C_PRELOAD=1 时 even 走 kernel 的 Mmad256Even+EmitFixpipe，不再进 ComputeQK。
         if (pairEven) {
             ComputeQKMmad256Even(curTaskInfo, curTileInfo, embed);
             EmitFixpipeQK256Even(ubSTensorTla, curTaskInfo, curTileInfo, subBlockIdx);
             return;
         }
+#endif
 #endif
 
         if (!pairOdd) {
