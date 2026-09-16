@@ -72,8 +72,8 @@ uint32_t MatmulReduceScatterTilingBase::ReduceScatterSpliteM(mc2tiling::TilingAr
 
 CutResult MatmulReduceScatterTilingBase::GetTilingResult()
 {
-    MMPlusReduceScatter scatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER, SocVersion_2201::SOC910_B, false,
-                                      false, npuArch_);
+    MMPlusReduceScatter scatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER, SocVersion_2201::SOC910_B,
+                                      false, false, npuArch_);
     scatterTiling.GetTiling();
     return scatterTiling.tilingM_.cutRes;
 }
