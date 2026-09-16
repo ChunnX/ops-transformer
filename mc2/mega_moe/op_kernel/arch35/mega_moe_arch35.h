@@ -716,8 +716,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendTopkIdsIndexAndCoun
     CrossCoreWaitFlag<ALL_AICORE_SYNC_MODE, PIPE_MTE3>(MTE_QUANT_READY_FLAG);
     if (ownedExpertRange.count > 0U) {
         PipeBarrier<PIPE_MTE3>();
-        auto *launchCountSlot = GetMteSyncCountAddress(params_.peermemInfo.rankSyncInWorldPtr, GetBlockIdx());
-        SendTopkIdsCountForExperts(ownedExpertRange, commonConfig_, launchCountSlot, g_winRankAddr_, sendMaskConfig_,
+        const int32_t syncCount = GetSyncCount(params_.peermemInfo.rankSyncInWorldPtr, aivCoreIdx_);
+        SendTopkIdsCountForExperts(ownedExpertRange, commonConfig_, syncCount, g_winRankAddr_, sendMaskConfig_,
                                    sendMaskScratch_);
     }
 }
@@ -730,7 +730,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessInputPreparation
         aivJob_, commonConfig_, params_, quantProcessConfig_, params_.peermemInfo.quantTokenScalePtr, quantScratch_);
     if constexpr (g_coreType == AIV) {
         // 每个物理 AIV 推进入口轮次一次，空 token 核也参与。
-        AdvanceMteSyncSequence(params_.peermemInfo.rankSyncInWorldPtr, aivCoreIdx_);
+        IncrementSyncCount(params_.peermemInfo.rankSyncInWorldPtr, aivCoreIdx_);
         // 本核 MoE 量化写回完成后，向本卡全 AIV 汇合事件报到。
         CrossCoreSetFlag<ALL_AICORE_SYNC_MODE, PIPE_MTE3>(MTE_QUANT_READY_FLAG);
     }

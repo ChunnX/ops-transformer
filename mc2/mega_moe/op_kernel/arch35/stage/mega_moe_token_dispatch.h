@@ -11,6 +11,7 @@
 #ifndef MEGA_MOE_TOKEN_DISPATCH_H
 #define MEGA_MOE_TOKEN_DISPATCH_H
 
+#include "mega_moe_expert_count.h"
 #include "../common/mega_moe_utils.h"
 #include "mega_moe_token_quant.h"
 
@@ -432,32 +433,24 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
     }
 
     uint32_t rawCountElementCount = common.worldSize * common.moeExpertPerRank;
-    GlobalTensor<int32_t> expertCountGlobal;
-    expertCountGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.peermemInfo.expertCountRecvPtr));
-    DataCopyPad(scratch.cumsumInfoTensor, expertCountGlobal,
-                {1U, rawCountElementCount * static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U}, {true, 0U, 0U, 0U});
-    SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();
 
     /*
      * count 的本轮 epoch 代替入口跨卡握手：发送前已等待全部 MoE 量化和对应 index 写回。
-     * 保留的输入 SyncAll 确保所有物理 AIV 已完成入口记账，MoE 尾部 SyncAll 防止 slot 0
-     * 在接收者读取之前被出口更新。逐项检查包括零 count，整表就绪后才计算 cumsum。
+     * 本核已在输入准备阶段更新同步计数，直接读取本核计数生成预期标签。
+     * 整表搬入 UB 后批量检查本轮标签，包括零 count；失败退避重试，成功快照直接用于 cumsum。
      */
-    auto *launchCountSlot0 = GetMteSyncCountAddress(params.peermemInfo.rankSyncInWorldPtr, 0U);
-    int32_t expectEpoch = static_cast<int32_t>(GetMteCountEpoch(ReadGmBypassDCache(launchCountSlot0)));
-    __gm__ int32_t *rawCountGm = reinterpret_cast<__gm__ int32_t *>(params.peermemInfo.expertCountRecvPtr);
-    for (uint32_t slotIdx = 0U; slotIdx < rawCountElementCount; ++slotIdx) {
-        int32_t slotValue = scratch.cumsumInfoTensor.GetValue(slotIdx);
-        while (((slotValue >> 24) & 0xFF) != expectEpoch) {
-            int64_t startCycle = AscendC::GetSystemCycle();
-            while (AscendC::GetSystemCycle() - startCycle < GM_FLAG_POLL_BACKOFF_CYCLES) {
-            }
-            slotValue = AscendC::ReadGmBypassDCache(rawCountGm + slotIdx);
-        }
-        scratch.cumsumInfoTensor.SetValue(slotIdx, slotValue & 0x00FFFFFF);
-    }
-    SyncFuncStatic<AscendC::HardEvent::S_V, SYNC_EVENT_ID2>();
-
+    const int32_t syncCount = GetSyncCount(params.peermemInfo.rankSyncInWorldPtr, GetBlockIdx());
+    const uint32_t expectedSyncRoundTag = GetSyncRoundTag(syncCount);
+    GlobalTensor<int32_t> expertCountGlobal;
+    expertCountGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.peermemInfo.expertCountRecvPtr));
+    // 共享计算之后已有 MTE3_MTE2，保护此处 MTE2 对同一 UB 的复用。
+    // expertTokenNumsOutTensor 尚未保存输出，首项暂存整表检查结果，不增加 UB 分配。
+    WaitForCountTable(expertCountGlobal, scratch.cumsumInfoTensor, scratch.expertTokenNumsOutTensor,
+                      rawCountElementCount, expectedSyncRoundTag);
+    // 测试 SIMT 时替换上面的 SIMD 调用；启用前需核对 SIMT Data Cache 的 UB 预留。
+    // WaitForCountTableSimt<>(expertCountGlobal.GetPhyAddr(),
+    //     reinterpret_cast<__ubuf__ int32_t *>(scratch.cumsumInfoTensor.GetPhyAddr()),
+    //     rawCountElementCount, expectedSyncRoundTag);
     ComputeExpertCountTables(scratch.cumsumInfoTensor, scratch.expertTokenNumsOutTensor, common.moeExpertPerRank,
                              common.worldSize, params.tilingData->maxOutputSize);
     SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();
