@@ -102,7 +102,7 @@ private:
 bool CheckWeightQuantModeValidity(int64_t weightQuantMode)
 {
     std::set<int64_t> supportedWeightQuantMode;
-    if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+    if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 || op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_9201) {
         supportedWeightQuantMode = {0LL, 1LL, 2LL, 3LL, 4LL, 5LL};
     } else {
         supportedWeightQuantMode = {0LL, 1LL, 2LL};
