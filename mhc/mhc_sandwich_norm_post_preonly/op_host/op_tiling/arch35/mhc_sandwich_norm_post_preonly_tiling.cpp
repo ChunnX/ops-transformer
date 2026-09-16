@@ -13,7 +13,6 @@
 #include "register/op_impl_registry.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "log/log.h"
-#include "error/ops_error.h"
 
 namespace optiling {
 
@@ -47,7 +46,7 @@ static ge::graphStatus TilingMhcSandwichNormPostPreonly(gert::TilingContext *con
     auto phi_shape = context->GetInputShape(4);     // [N, N*D]
     if (h_out_shape == nullptr || res_shape == nullptr || h_post_shape == nullptr ||
         h_res_shape == nullptr || phi_shape == nullptr) {
-        OPS_LOG_E("MhcSandwichNormPostPreonly",
+        OP_LOGE("MhcSandwichNormPostPreonly",
                   "GetInputShape is return nullptr");
         return ge::GRAPH_FAILED;
     }
@@ -62,12 +61,12 @@ static ge::graphStatus TilingMhcSandwichNormPostPreonly(gert::TilingContext *con
     size_t hDimNum = hs.GetDimNum();
     size_t rDimNum = rs.GetDimNum();
     if (hDimNum != 2U && hDimNum != 3U) {
-        OPS_LOG_E("MhcSandwichNormPostPreonly",
+        OP_LOGE("MhcSandwichNormPostPreonly",
                   "h_out must be 2D [T,D] or 3D [B,S,D], got %zuD", hDimNum);
         return ge::GRAPH_FAILED;
     }
     if (rDimNum != hDimNum + 1U) {
-        OPS_LOG_E("MhcSandwichNormPostPreonly",
+        OP_LOGE("MhcSandwichNormPostPreonly",
                   "residual.ndim (%zu) must be h_out.ndim (%zu) + 1", rDimNum, hDimNum);
         return ge::GRAPH_FAILED;
     }
@@ -75,12 +74,12 @@ static ge::graphStatus TilingMhcSandwichNormPostPreonly(gert::TilingContext *con
     size_t hpDimNum = hps.GetDimNum();
     size_t hrDimNum = hrs.GetDimNum();
     if (hpDimNum != 2U && hpDimNum != 3U) {
-        OPS_LOG_E("MhcSandwichNormPostPreonly",
+        OP_LOGE("MhcSandwichNormPostPreonly",
                   "h_post must be 2D [T,N] or 3D [B,S,N], got %zuD", hpDimNum);
         return ge::GRAPH_FAILED;
     }
     if (hrDimNum != 3U && hrDimNum != 4U) {
-        OPS_LOG_E("MhcSandwichNormPostPreonly",
+        OP_LOGE("MhcSandwichNormPostPreonly",
                   "h_res must be 3D [T,N,N] or 4D [B,S,N,N], got %zuD", hrDimNum);
         return ge::GRAPH_FAILED;
     }
@@ -103,7 +102,7 @@ static ge::graphStatus TilingMhcSandwichNormPostPreonly(gert::TilingContext *con
     }
 
     if (ps.GetDimNum() != 2U) {
-        OPS_LOG_E("MhcSandwichNormPostPreonly",
+        OP_LOGE("MhcSandwichNormPostPreonly",
                   "phi must be 2D [N, N*D], got %zuD", ps.GetDimNum());
         return ge::GRAPH_FAILED;
     }
@@ -113,22 +112,22 @@ static ge::graphStatus TilingMhcSandwichNormPostPreonly(gert::TilingContext *con
 
     // --- Parameter validation ---
     if (totalTokens == 0 || totalTokens > HOST_MAX_TOKENS) {
-        OPS_LOG_E("MhcSandwichNormPostPreonly",
+        OP_LOGE("MhcSandwichNormPostPreonly",
                   "totalTokens (B*S) must be in [1, %u], got %u", HOST_MAX_TOKENS, totalTokens);
         return ge::GRAPH_FAILED;
     }
     if (N != HOST_N_MAX) {
-        OPS_LOG_E("MhcSandwichNormPostPreonly",
+        OP_LOGE("MhcSandwichNormPostPreonly",
                   "headCount (N) must be %u, got %u", HOST_N_MAX, N);
         return ge::GRAPH_FAILED;
     }
     if (D != HOST_D_TILE_MAX && D != HOST_D_MAX) {
-        OPS_LOG_E("MhcSandwichNormPostPreonly",
+        OP_LOGE("MhcSandwichNormPostPreonly",
                   "embedDim (D) must be %u or %u, got %u", HOST_D_TILE_MAX, HOST_D_MAX, D);
         return ge::GRAPH_FAILED;
     }
     if (phiRows != N || phiCols != N * D) {
-        OPS_LOG_E("MhcSandwichNormPostPreonly",
+        OP_LOGE("MhcSandwichNormPostPreonly",
                   "phi shape invalid: expected [%u, %u], got [%u, %u]",
                   N, N * D, phiRows, phiCols);
         return ge::GRAPH_FAILED;
@@ -164,15 +163,15 @@ static ge::graphStatus TilingMhcSandwichNormPostPreonly(gert::TilingContext *con
 
     // --- Validate eps ---
     if (normEps < 0.0F) {
-        OPS_LOG_E("MhcSandwichNormPostPreonly", "norm_eps must be >= 0, got %e", normEps);
+        OP_LOGE("MhcSandwichNormPostPreonly", "norm_eps must be >= 0, got %e", normEps);
         return ge::GRAPH_FAILED;
     }
     if (hcEps < 0.0F) {
-        OPS_LOG_E("MhcSandwichNormPostPreonly", "hc_eps must be >= 0, got %e", hcEps);
+        OP_LOGE("MhcSandwichNormPostPreonly", "hc_eps must be >= 0, got %e", hcEps);
         return ge::GRAPH_FAILED;
     }
     if (mhcPreNormEps < 0.0F) {
-        OPS_LOG_E("MhcSandwichNormPostPreonly", "mhc_pre_norm_eps must be >= 0, got %e", mhcPreNormEps);
+        OP_LOGE("MhcSandwichNormPostPreonly", "mhc_pre_norm_eps must be >= 0, got %e", mhcPreNormEps);
         return ge::GRAPH_FAILED;
     }
 
@@ -263,7 +262,7 @@ static ge::graphStatus TilingMhcSandwichNormPostPreonly(gert::TilingContext *con
     }
     size_t *currentWorkspace = context->GetWorkspaceSizes(1);
     if (currentWorkspace == nullptr) {
-        OPS_LOG_E("MhcSandwichNormPostPreonly",
+        OP_LOGE("MhcSandwichNormPostPreonly",
                   "GetWorkspaceSizes is nullptr");
         return ge::GRAPH_FAILED;
     }
