@@ -708,10 +708,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessInputPreparation
         aivJob_, commonConfig_, params_, quantProcessConfig_, params_.peermemInfo.quantTokenScalePtr, quantScratch_);
     if constexpr (!SHARED_INPUT_REUSES_MOE_QUANT) {
         if (sharedExpertNum_ > 0U) {
-            PrepareLocalTokens<XType, SharedQuantMode, typename SharedQuantConfig::QuantOutType,
-                               SharedActivationType, TopkWeightsType, false>(
-                aivJob_, commonConfig_, params_, sharedQuantProcessConfig_, params_.workspaceInfo.sharedExpertInputPtr,
-                sharedQuantScratch_);
+            PrepareLocalTokens<XType, SharedQuantMode, typename SharedQuantConfig::QuantOutType, SharedActivationType,
+                               TopkWeightsType, false>(aivJob_, commonConfig_, params_, sharedQuantProcessConfig_,
+                                                       params_.workspaceInfo.sharedExpertInputPtr, sharedQuantScratch_);
         }
     }
     if (sharedExpertNum_ == 0U) {

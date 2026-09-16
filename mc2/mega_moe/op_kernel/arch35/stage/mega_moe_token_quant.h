@@ -40,9 +40,9 @@ __aicore__ inline QuantProcessConfig CreateQuantProcessConfig(uint32_t tokenHidd
     uint32_t quantScaleValidCountPerToken = Ops::Base::CeilDiv(tokenHiddenDim, static_cast<uint32_t>(ALIGN_32));
     uint32_t quantTokenAlignBytes =
         Ops::Base::CeilAlign(tokenHiddenDim / AElemsPerByte, static_cast<uint32_t>(ALIGN_256)) * sizeof(ActivationType);
-    uint32_t quantScaleAlignBytes = Ops::Base::CeilAlign(
-        quantScaleValidCountPerToken * static_cast<uint32_t>(sizeof(QuantScaleOutType)),
-        static_cast<uint32_t>(ALIGN_32));
+    uint32_t quantScaleAlignBytes =
+        Ops::Base::CeilAlign(quantScaleValidCountPerToken * static_cast<uint32_t>(sizeof(QuantScaleOutType)),
+                             static_cast<uint32_t>(ALIGN_32));
     uint32_t quantTokenScaleAlignBytes = quantTokenAlignBytes + quantScaleAlignBytes;
     if constexpr (TopkWeightsPrefetch) {
         uint32_t weightAlignBytes = Ops::Base::CeilAlign(static_cast<uint32_t>(params.tilingData->topK * sizeof(float)),
@@ -195,8 +195,7 @@ __aicore__ inline void PackPreQuantizedTokenRange(const WorkRange &tokenRange, c
     for (uint32_t index = 0U; index < tokenRange.count; ++index) {
         bool useFirstBuffer = index % DOUBLE_BUFFER == 0U;
         TEventID event = useFirstBuffer ? EVENT_ID0 : EVENT_ID1;
-        LocalTensor<ActivationType> tokenScaleTensor =
-            useFirstBuffer ? scratch.xOutTensor0 : scratch.xOutTensor1;
+        LocalTensor<ActivationType> tokenScaleTensor = useFirstBuffer ? scratch.xOutTensor0 : scratch.xOutTensor1;
         LocalTensor<uint8_t> tokenScaleBytesTensor = tokenScaleTensor.template ReinterpretCast<uint8_t>();
         uint64_t dataOffset = static_cast<uint64_t>(index) * static_cast<uint64_t>(copyContext.dataValidBytes);
         uint64_t scaleOffset = static_cast<uint64_t>(index) * static_cast<uint64_t>(copyContext.scaleValidBytes);
@@ -238,8 +237,7 @@ __aicore__ inline void PackPreQuantizedTokenRange(const WorkRange &tokenRange, c
 template <typename XType, typename ActivationType, typename TopkWeightsType, bool TopkWeightsPrefetch>
 __aicore__ inline void PackPreQuantizedLocalTokens(const AivJobContext &job, const MoeStageCommonConfig &common,
                                                    const Params &params, const QuantProcessConfig &config,
-                                                   GM_ADDR outputAddr,
-                                                   QuantProcessScratch<ActivationType> &scratch)
+                                                   GM_ADDR outputAddr, QuantProcessScratch<ActivationType> &scratch)
 {
     if constexpr (g_coreType == AIC) {
         return;
@@ -252,27 +250,26 @@ __aicore__ inline void PackPreQuantizedLocalTokens(const AivJobContext &job, con
     constexpr uint32_t X_ELEMS_PER_BYTE = PackedElementTraits<XType>::ELEMENTS_PER_BYTE;
     PreQuantizedCopyContext copyContext;
     copyContext.dataValidBytes = common.tokenHiddenDim / X_ELEMS_PER_BYTE;
-    copyContext.scaleValidBytes =
-        config.quantScaleValidCountPerToken * static_cast<uint32_t>(sizeof(fp8_e8m0_t));
+    copyContext.scaleValidBytes = config.quantScaleValidCountPerToken * static_cast<uint32_t>(sizeof(fp8_e8m0_t));
     uint64_t dataRangeOffset =
         static_cast<uint64_t>(tokenRange.start) * static_cast<uint64_t>(copyContext.dataValidBytes);
     uint64_t scaleRangeOffset =
         static_cast<uint64_t>(tokenRange.start) * static_cast<uint64_t>(copyContext.scaleValidBytes);
     uint64_t tokenScaleRangeOffset =
         static_cast<uint64_t>(tokenRange.start) * static_cast<uint64_t>(config.quantTokenScaleAlignBytes);
-    copyContext.dataSrcGlobalTensor.SetGlobalBuffer(
-        reinterpret_cast<__gm__ uint8_t *>(params.aGmAddr) + dataRangeOffset);
-    copyContext.scaleSrcGlobalTensor.SetGlobalBuffer(
-        reinterpret_cast<__gm__ uint8_t *>(params.xScaleGmAddr) + scaleRangeOffset);
-    copyContext.tokenScaleDstGlobalTensor.SetGlobalBuffer(
-        reinterpret_cast<__gm__ uint8_t *>(outputAddr) + tokenScaleRangeOffset);
+    copyContext.dataSrcGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(params.aGmAddr) +
+                                                    dataRangeOffset);
+    copyContext.scaleSrcGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(params.xScaleGmAddr) +
+                                                     scaleRangeOffset);
+    copyContext.tokenScaleDstGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(outputAddr) +
+                                                          tokenScaleRangeOffset);
 
     copyContext.dataCopyInParams = {1U, copyContext.dataValidBytes, 0U, 0U, 0U};
     copyContext.scaleCopyInParams = {1U, copyContext.scaleValidBytes, 0U, 0U, 0U};
     copyContext.copyInPadParams = {true, 0U, 0U, 0U};
     copyContext.tokenScaleCopyOutParams = {1U, config.quantTokenScaleAlignBytes, 0U, 0U, 0U};
-    PackPreQuantizedTokenRange<ActivationType, TopkWeightsType, TopkWeightsPrefetch>(
-        tokenRange, common, params, config, copyContext, scratch);
+    PackPreQuantizedTokenRange<ActivationType, TopkWeightsType, TopkWeightsPrefetch>(tokenRange, common, params, config,
+                                                                                     copyContext, scratch);
 }
 
 // 编译期根据 x 类型选择本卡 token/scale 数据准备方式：BF16 沿用动态量化，
@@ -280,8 +277,7 @@ __aicore__ inline void PackPreQuantizedLocalTokens(const AivJobContext &job, con
 template <typename XType, int32_t QuantMode, typename QuantOutType, typename ActivationType, typename TopkWeightsType,
           bool TopkWeightsPrefetch>
 __aicore__ inline void PrepareLocalTokens(const AivJobContext &job, const MoeStageCommonConfig &common,
-                                          const Params &params, const QuantProcessConfig &config,
-                                          GM_ADDR outputAddr,
+                                          const Params &params, const QuantProcessConfig &config, GM_ADDR outputAddr,
                                           QuantProcessScratch<ActivationType> &scratch)
 {
     if constexpr (Std::IsSame<XType, bfloat16_t>::value) {

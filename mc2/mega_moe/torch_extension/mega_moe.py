@@ -170,9 +170,7 @@ class _MegaMoeOpBuilder(OpBuilder):
                 ep_world_size != 0,
                 lambda: (f"ep_world_size should not be 0, {ops_error(ErrCode.VALUE)}."),
             )
-            h = _logical_hidden_size(
-                x, dispatch_quant_mode, dispatch_quant_out_dtype
-            )
+            h = _logical_hidden_size(x, dispatch_quant_mode, dispatch_quant_out_dtype)
             bs = x.size(0)
             local_moe_expert_num = moe_expert_num // ep_world_size
             y = x.new_empty((bs, h), dtype=torch.bfloat16)

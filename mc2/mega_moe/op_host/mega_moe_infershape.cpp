@@ -80,8 +80,8 @@ static ge::graphStatus InferDataTypeMegaMoe(gert::InferDataTypeContext *context)
     OP_LOGD(context->GetNodeName(), "Begin to do InferDataTypeMegaMoe.");
 
     auto xDtype = context->GetInputDataType(MEGA_MOE_INPUT_X_INDEX);
-    const bool isPreQuantizedX = xDtype == ge::DT_FLOAT8_E5M2 || xDtype == ge::DT_FLOAT8_E4M3FN ||
-                                 xDtype == ge::DT_FLOAT4_E2M1;
+    const bool isPreQuantizedX =
+        xDtype == ge::DT_FLOAT8_E5M2 || xDtype == ge::DT_FLOAT8_E4M3FN || xDtype == ge::DT_FLOAT4_E2M1;
     // 950 预量化 token 输入由 MX GMM 消费，公共输出仍保持 BF16。
     // 对 FP16/BF16 输入保留历史 Arch22 行为。
     context->SetOutputDataType(MEGA_MOE_OUTPUT_Y_INDEX, isPreQuantizedX ? ge::DT_BF16 : xDtype);

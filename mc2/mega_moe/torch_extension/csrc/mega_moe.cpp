@@ -206,8 +206,7 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
     int64_t epWorldSize, int64_t cclBufferSize, const c10::optional<std::vector<at::Tensor>> &weightScales1,
     const c10::optional<std::vector<at::Tensor>> &weightScales2, const c10::optional<std::vector<at::Tensor>> &bias1,
     const c10::optional<std::vector<at::Tensor>> &bias2, const c10::optional<at::Tensor> &xActiveMask,
-    const c10::optional<at::Tensor> &scales,
-    const c10::optional<std::vector<at::Tensor>> &sharedWeight1,
+    const c10::optional<at::Tensor> &scales, const c10::optional<std::vector<at::Tensor>> &sharedWeight1,
     const c10::optional<std::vector<at::Tensor>> &sharedWeight2,
     const c10::optional<std::vector<at::Tensor>> &sharedWeightScales1,
     const c10::optional<std::vector<at::Tensor>> &sharedWeightScales2,
@@ -252,9 +251,8 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
     const auto xScalarType = x.scalar_type();
     const bool hasDispatchQuantOutDtype =
         dispatchQuantOutDtype.has_value() && dispatchQuantOutDtype.value() != GE_DTYPE_UNDEFINED;
-    aclDataType dispatchQuantAclDtype = hasDispatchQuantOutDtype ?
-                                            GetAclDataType(dispatchQuantOutDtype.value()) :
-                                            ACL_DT_UNDEFINED;
+    aclDataType dispatchQuantAclDtype =
+        hasDispatchQuantOutDtype ? GetAclDataType(dispatchQuantOutDtype.value()) : ACL_DT_UNDEFINED;
     // 当前 Torch C++ ScalarType 未统一提供 FP4 枚举；只有协议明确声明 FP4 时，uint8 才承载两个 E2M1 元素。
     const bool isPackedFp4X = dispatchQuantMode == 0 && dispatchQuantAclDtype == ACL_FLOAT4_E2M1;
     if (isPackedFp4X) {
