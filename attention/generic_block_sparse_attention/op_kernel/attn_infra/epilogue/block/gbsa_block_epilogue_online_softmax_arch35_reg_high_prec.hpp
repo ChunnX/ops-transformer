@@ -187,7 +187,7 @@ public:
 
             AscendC::printf("tkd Global Max after SaveFirstTileStats\n");
             AscendC::DumpTensor(gmUbTensor, 0, 16);
-            AscendC::printf("tkd Global Maxsum after SaveFirstTileStats\n");
+            AscendC::printf("tkd Global Sum after SaveFirstTileStats\n");
             AscendC::DumpTensor(glUbTensor, 0, 16);
         } else {
             UpdateStats(lastSumAddr, expMaxAddr, lastMaxAddr, nowSumAddr, nowMaxAddr, m);
