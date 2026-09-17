@@ -53,7 +53,8 @@ private:
     ge::graphStatus CheckMmScaleShape() const;
     bool CheckApaceImplCapable() const;
     ge::graphStatus BuildApaceTiling();
-    static void SetApaceMatmulTiling(TCubeTiling &src, Apace::A2avGmmMxTiling &dst);
+    static void SetApaceMatmulTiling(const AscendC::tiling::TCubeTiling &src,
+                                     Apace::A2avGmmMxTiling &dst);
 
     bool usingApaceImpl_{false};
     Apace::hcommA2avQuantGmmTilingData apaceTilingData_{};
