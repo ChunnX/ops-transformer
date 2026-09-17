@@ -100,16 +100,14 @@ __aicore__ inline void grouped_matmul_finalize_routing_mx(GM_ADDR x, GM_ADDR w, 
                         scaleKL1,
                         static_cast<uint8_t>(gmmParamsIn.hasBias),
                         static_cast<uint8_t>(matmulTiling.dbL0C),
-                        static_cast<uint8_t>(gmmParamsIn.groupListType),
-                        static_cast<uint8_t>(gmmParamsIn.l0cOutUbBufferNum)};
+                        static_cast<uint8_t>(gmmParamsIn.groupListType)};
     BlockMmadParams blockMmadParams{x, w, y, bias, xScale, wScale};
     Params params = {{static_cast<int64_t>(matmulTiling.M), static_cast<int64_t>(matmulTiling.N),
                       static_cast<int64_t>(matmulTiling.Ka), static_cast<int64_t>(1)},
                      blockMmadParams,
                      {shareInput, y, gmmParamsIn.sharedInputOffset, gmmParamsIn.sharedInputLen, matmulTiling.N,
                       gmmParamsIn.batch, gmmParamsIn.residualScale},
-                     {y, wScale, xScale, bias, logit, rowIndex, matmulTiling.baseM, matmulTiling.baseN,
-                      static_cast<uint8_t>(gmmParamsIn.l0cOutUbBufferNum)},
+                     {y, wScale, xScale, bias, logit, rowIndex, matmulTiling.baseM, matmulTiling.baseN},
                      groupList,
                      gmmParams};
     GmmKernel gmm;

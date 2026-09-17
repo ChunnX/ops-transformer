@@ -251,27 +251,6 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::IsBf16MxTensorApiTarget() const
            rowIndexType_ == 1;
 }
 
-uint32_t GroupedMatmulFinalizeRoutingQuantTiling::SelectL0cOutUbBufferNum() const
-{
-    if (!IsBf16MxTensorApiTarget() || basicTiling_.baseM == 0 || basicTiling_.baseN == 0) {
-        return SINGLE_BUFFER_NUM;
-    }
-
-    const uint64_t mBlockNum =
-        (inputParams_.mSize + static_cast<uint64_t>(basicTiling_.baseM) - 1UL) / basicTiling_.baseM;
-    const uint64_t nBlockNum =
-        (inputParams_.nSize + static_cast<uint64_t>(basicTiling_.baseN) - 1UL) / basicTiling_.baseN;
-    if (mBlockNum * nBlockNum <= 1UL) {
-        return SINGLE_BUFFER_NUM;
-    }
-
-    const uint64_t l0cOutUbBytes = L0C_OUT_UB_MAX_M * L0C_OUT_UB_MAX_N * BF16_BYTES * DOUBLE_BUFFER_NUM;
-    const uint64_t outputUbBytes = OUTPUT_UB_TOTAL_M * L0C_OUT_UB_MAX_N * BF16_BYTES;
-    const uint64_t logitUbBytes = LOGIT_UB_BUFFER_NUM * LOGIT_UB_BLOCK_ELEMENTS * FP32_BYTES;
-    const uint64_t requiredUbBytes = l0cOutUbBytes + outputUbBytes + logitUbBytes + RESERVED_UB_BYTES;
-    return requiredUbBytes <= aicoreParams_.ubSize ? DOUBLE_BUFFER_NUM : SINGLE_BUFFER_NUM;
-}
-
 bool GroupedMatmulFinalizeRoutingQuantTiling::IsFp4Dtype(ge::DataType dtype) const
 {
     return dtype == ge::DT_FLOAT4_E2M1;
@@ -652,7 +631,7 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::DoLibApiTiling()
     tilingData_.matmulTiling.dbL0A = 2; // db switch, 1: off, 2: on
     tilingData_.matmulTiling.dbL0B = 2; // db switch, 1: off, 2: on
     tilingData_.matmulTiling.dbL0C = basicTiling_.dbL0c;
-    tilingData_.gmmFinalizeRoutingDataParams.l0cOutUbBufferNum = SelectL0cOutUbBufferNum();
+    tilingData_.gmmFinalizeRoutingDataParams.l0cOutUbBufferNum = 1;
     if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE) {
         if (basicTiling_.scaleFactorA >= SCALER_FACTOR_MIN && basicTiling_.scaleFactorA <= SCALER_FACTOR_MAX &&
             basicTiling_.scaleFactorB >= SCALER_FACTOR_MIN && basicTiling_.scaleFactorB <= SCALER_FACTOR_MAX) {
