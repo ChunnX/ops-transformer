@@ -39,6 +39,7 @@ struct QuantMatmulArgs {
     uint64_t m = 0UL;
     uint64_t k = 0UL;
     uint64_t n = 0UL;
+    uint64_t batch = 1UL;
     bool transA = false;
     bool transB = true;
 };
@@ -64,6 +65,9 @@ struct QuantMatmulRunInfo {
     uint64_t mL1{0UL};
     uint64_t nL1{0UL};
     uint64_t kL1{0UL};
+
+    // L1 bytes reserved for the kernel-side bias ping-pong buffers.
+    uint64_t biasL1Size{0UL};
 
     // Reserved fields for future tail-count and buffer bookkeeping.
     uint64_t mTailCnt{0UL};

@@ -17,10 +17,12 @@
 
 #include "../utils/flash_attn_type.h"
 #include "../../../common/op_kernel/matmul.h"
+#include "../../../common/op_kernel/arch_info.h"
 
 using namespace fa_base_matmul;
 
 namespace FlashAttnKernel {
+using ArchInfo::CV_RATIO;
 
 template <typename FA_T>
 class FANoQuantGqaBlockCubeDn {
@@ -230,12 +232,12 @@ public:
         uint32_t dstStride = (runInfo.actMSize + 15) >> 4 << 4;
         FaL1Tensor<Q_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
-        GmCoord gmCoord{.bIdx = runInfo.bIdx,
-                        .n2Idx = runInfo.n2Idx,
-                        .gS1Idx = runInfo.gS1Idx,
-                        .dIdx = dOffset,
-                        .gS1DealSize = runInfo.actMSize,
-                        .dDealSize = dRealSize};
+        GmCoordGs1Merge gmCoord{.bIdx = runInfo.bIdx,
+                                .n2Idx = runInfo.n2Idx,
+                                .gS1Idx = runInfo.gS1Idx,
+                                .dIdx = dOffset,
+                                .gS1DealSize = runInfo.actMSize,
+                                .dDealSize = dRealSize};
         copyQueryGmToL1_(l1Tensor, queryGm_, gmCoord);
     }
 
@@ -373,7 +375,7 @@ public:
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
         fixpipeParams.nSize = (realN + 7) >> 3 << 3;
         fixpipeParams.mSize = mBaseSize;
-        fixpipeParams.srcStride = ((mBaseSize + 15) / 16) * 16;
+        fixpipeParams.srcStride = (mBaseSize + 15) >> 4 << 4;
         fixpipeParams.dstStride = (dVBaseSize + 15) >> 4 << 4;
         fixpipeParams.dualDstCtl = 1;
         fixpipeParams.params.ndNum = 1;

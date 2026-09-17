@@ -16,30 +16,30 @@
 #define ATTN_RES_FWD_REGBASE_COMMON_H
 
 #include "kernel_operator.h"
-#include "reduce_common.h"
+#include "reduce_common_arch35.h"
 
 namespace BlockAttentionResiduals {
 namespace RegBase {
 
 using namespace AscendC;
-using namespace AscendC::MicroAPI;
+using namespace AscendC::Reg;
 
 // Dump/PRINTF 插桩：默认关。需要时改为 1 并重编。
 #ifndef ATTN_SOFTMAX_DUMP
 #define ATTN_SOFTMAX_DUMP 0
 #endif
 
-constexpr AscendC::MicroAPI::CastTrait kCastB16ToB32 = {
-    AscendC::MicroAPI::RegLayout::ZERO,
-    AscendC::MicroAPI::SatMode::UNKNOWN,
-    AscendC::MicroAPI::MaskMergeMode::ZEROING,
+constexpr AscendC::Reg::CastTrait kCastB16ToB32 = {
+    AscendC::Reg::RegLayout::ZERO,
+    AscendC::Reg::SatMode::UNKNOWN,
+    AscendC::Reg::MaskMergeMode::ZEROING,
     AscendC::RoundMode::UNKNOWN,
 };
 
-constexpr AscendC::MicroAPI::CastTrait kCastB32ToB16Rint = {
-    AscendC::MicroAPI::RegLayout::ZERO,
-    AscendC::MicroAPI::SatMode::NO_SAT,
-    AscendC::MicroAPI::MaskMergeMode::ZEROING,
+constexpr AscendC::Reg::CastTrait kCastB32ToB16Rint = {
+    AscendC::Reg::RegLayout::ZERO,
+    AscendC::Reg::SatMode::NO_SAT,
+    AscendC::Reg::MaskMergeMode::ZEROING,
     AscendC::RoundMode::CAST_RINT,
 };
 

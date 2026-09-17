@@ -12,13 +12,13 @@
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：x
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：x
+- <term>Atlas 推理系列产品</term>：不支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：x
+- <term>Atlas 训练系列产品</term>：不支持
 <!-- end id6 -->
 
 ## 功能说明
@@ -266,7 +266,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
                 <td>metadataOptional</td>
                 <td>输入</td>
                 <td>由aclnnSparseLightningIndexerKLLossGradMetadata生成的分核信息。</td>
-                <td>必须传入。传入后kernel将使用metadata中的分核切分。</td>
+                <td>可选输入。传入后kernel将使用metadata中的分核切分。</td>
                 <td>INT32</td>
                 <td>ND</td>
                 <td>(x,)</td>
@@ -463,6 +463,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
 - 确定性计算：
   - aclnnSparseLightningIndexerKLLossGrad默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
 - 公共约束：
+  - 本接口不支持非连续输出。
   - 参数q、k、dq、dk的数据类型应保持一致，支持FLOAT16和BFLOAT16。
   - 参数w、dw、attnSoftmaxL1Norm、softmaxOut的数据类型应为FLOAT32。
   - 参数sparseIndices、cuSeqLensQOptional、cuSeqLensKOptional、seqUsedQOptional、seqUsedKOptional、cmpResidualKOptional、metadataOptional的数据类型应为INT32。
@@ -579,7 +580,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
   - 参数S1、S2的支持情况:
 
     <!-- npu="A3,910b" id12 -->
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：S1支持1~8K，S2支持1~512K。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：S1支持1~8k，S2支持1~512k。
     <!-- end id12 -->
     <!-- npu="950" id13 -->
     - <term>Ascend 950PR/Ascend 950DT</term>：S1>0，S2>0。
@@ -597,7 +598,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
   - 参数K的支持情况:
 
     <!-- npu="A3,910b" id16 -->
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：K支持512、1024、2048、4096、8192。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：K支持1~8192。
     <!-- end id16 -->
     <!-- npu="950" id17 -->
     - <term>Ascend 950PR/Ascend 950DT</term>：K支持1~2048。
