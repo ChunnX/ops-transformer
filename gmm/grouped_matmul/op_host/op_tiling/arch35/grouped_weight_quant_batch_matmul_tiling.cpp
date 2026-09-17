@@ -699,16 +699,14 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckGroupList(const gert::TilingConte
         if (groupListType_ == GroupedMatmul::GROUPLIST_TYPE_SPARSE_M) {
             const auto &groupListShape = groupListPtr->GetOriginShape();
             OP_CHECK_IF(groupListShape.GetDimNum() != GmmConstant::GROUP_LIST_SPARSE_DIMS,
-                        OP_LOGE(context->GetNodeName(),
-                                "When groupListType is [%ld], the groupList dim num should be [%lu], "
-                                "but the actual dim num is [%zu].",
-                                groupListType_, GmmConstant::GROUP_LIST_SPARSE_DIMS, groupListShape.GetDimNum()),
+                        OP_LOGE_FOR_INVALID_SHAPEDIM(
+                            OP_NAME, "groupList", std::to_string(groupListShape.GetDimNum()),
+                            std::to_string(GmmConstant::GROUP_LIST_SPARSE_DIMS)),
                         return false);
             OP_CHECK_IF(groupListShape.GetDim(1) != GmmConstant::GROUP_LIST_SPARSE_DIMS,
-                        OP_LOGE(context->GetNodeName(),
-                                "When groupListType is [%ld], the 2nd dim of groupList should be [%lu], "
-                                "but the actual value is [%ld].",
-                                groupListType_, GmmConstant::GROUP_LIST_SPARSE_DIMS, groupListShape.GetDim(1)),
+                        OP_LOGE_FOR_INVALID_SHAPESIZE(
+                            OP_NAME, "groupList", std::to_string(groupListShape.GetDim(1)),
+                            std::to_string(GmmConstant::GROUP_LIST_SPARSE_DIMS)),
                         return false);
         }
         int32_t groupListSize = static_cast<int32_t>(groupListPtr->GetOriginShape().GetDim(0));
