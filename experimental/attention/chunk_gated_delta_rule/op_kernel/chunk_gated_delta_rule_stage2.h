@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
-  */
+ */
 
 /*!
  * \file chunk_gated_delta_rule_stage2.h
@@ -62,7 +62,7 @@ public:
         pipe_ = sTP_->pipe;
         chunkSize_ = sTP_->cg->chunkSize;
         seqLength_ = sTP_->cg->length;
-        Sp_ = (seqLength_ + chunkSize_ - 1) / chunkSize_  * chunkSize_;
+        Sp_ = (seqLength_ + chunkSize_ - 1) / chunkSize_ * chunkSize_;
         chunkNum_ = Sp_ / chunkSize_;
         coreNum_ = coreNum;
         Nv_ = sTP_->Nv;

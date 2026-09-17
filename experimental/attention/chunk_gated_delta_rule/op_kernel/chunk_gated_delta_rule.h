@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
-  */
+ */
 
 /*!
  * \file chunk_gated_delta_rule.h
@@ -45,11 +45,11 @@ struct CGDRInitParams {
 
 template <typename srcType, typename dstType>
 __aicore__ inline void CopyCast(
-    const GlobalTensor<srcType>& src,
-    const GlobalTensor<dstType>& dst,
-    TPipe* pipe,
+    const GlobalTensor<srcType> &src,
+    const GlobalTensor<dstType> &dst,
+    TPipe *pipe,
     const int64_t totalDataCount,
-    const RoundMode& roundMode)
+    const RoundMode &roundMode)
 {
     if ASCEND_IS_AIV {
         int64_t blkNum = GetBlockNum();
@@ -65,8 +65,8 @@ __aicore__ inline void CopyCast(
         }
         TQue<QuePosition::VECIN, TQUE_DEPTH_TWO> inQueue;
         TQue<QuePosition::VECOUT, TQUE_DEPTH_TWO> outQueue;
-        pipe->InitBuffer(inQueue, BUFFER_NUM_TWO, TILE_LEN * sizeof(srcType));   // use 2 buffer
-        pipe->InitBuffer(outQueue, BUFFER_NUM_TWO, TILE_LEN * sizeof(dstType));  // use 2 buffer
+        pipe->InitBuffer(inQueue, BUFFER_NUM_TWO, TILE_LEN * sizeof(srcType));  // use 2 buffer
+        pipe->InitBuffer(outQueue, BUFFER_NUM_TWO, TILE_LEN * sizeof(dstType)); // use 2 buffer
         for (int64_t i = startPos; i < endPos; i += TILE_LEN) {
             uint32_t blockLen = i + TILE_LEN > endPos ? endPos - i : TILE_LEN;
             // copy in
@@ -90,7 +90,6 @@ __aicore__ inline void CopyCast(
         PipeBarrier<PIPE_V>();
     }
 }
-
 
 template <typename lowType, typename highType, bool hasG>
 class CGDR {
@@ -239,8 +238,8 @@ public:
                 }
                 // float 路径：state 为 highType(float)
                 auto curState = (pos == seqStart) ?
-                                initStateFloat_[bid * tiling_->nv * tiling_->dv * tiling_->dk] :
-                                finalStateFloat_[bid * tiling_->nv * tiling_->dv * tiling_->dk];
+                                    initStateFloat_[bid * tiling_->nv * tiling_->dv * tiling_->dk] :
+                                    finalStateFloat_[bid * tiling_->nv * tiling_->dv * tiling_->dk];
                 RunStage1(cg);
                 SyncAll<false>();
 
@@ -255,17 +254,17 @@ public:
     }
 
 private:
-    __aicore__ inline void RunStage1(const ChunkGroup& cg)
+    __aicore__ inline void RunStage1(const ChunkGroup &cg)
     {
-        GDRStageOneInitParams<lowType, highType> initStageOneParams {query_, key_, value_, beta_, g_,
-                                                gCum_, kCumDecay_, vInnerFloat_, qPrime_, kg_, qkt_,
-                                                stageWsAddr_, stageOneMask_, cg};
+        GDRStageOneInitParams<lowType, highType> initStageOneParams{query_, key_, value_, beta_, g_,
+                                                                    gCum_, kCumDecay_, vInnerFloat_, qPrime_, kg_, qkt_,
+                                                                    stageWsAddr_, stageOneMask_, cg};
         stageOneOp_.Init(initStageOneParams, pipe_, tiling_);
         stageOneOp_.Process();
         pipe_->Reset();
     }
 
-    __aicore__ inline void RunStage2(ChunkGroup& cg, GlobalTensor<highType> stateIn,
+    __aicore__ inline void RunStage2(ChunkGroup &cg, GlobalTensor<highType> stateIn,
                                      GlobalTensor<highType> stateOut)
     {
         Stage2<lowType, highType, hasG> stageTwoOp;
@@ -278,7 +277,7 @@ private:
         pipe_->Reset();
     }
 
-    __aicore__ inline void RunStage3(ChunkGroup& cg)
+    __aicore__ inline void RunStage3(ChunkGroup &cg)
     {
         Stage3<hasG> stageThreeOp;
         StageThreeParams initStageThreeParams{
@@ -304,8 +303,8 @@ private:
     GlobalTensor<highType> g_;
     GlobalTensor<lowType> out_;
     float scale_;
-    GlobalTensor<highType> finalStateFloat_;   // float 路径：state I/O 为 highType(float)
-    GlobalTensor<highType> initStateFloat_;    // float 路径：state I/O 为 highType(float)
+    GlobalTensor<highType> finalStateFloat_; // float 路径：state I/O 为 highType(float)
+    GlobalTensor<highType> initStateFloat_;  // float 路径：state I/O 为 highType(float)
     GlobalTensor<int32_t> actualSeqLens_;
 
     GlobalTensor<highType> gCum_;        // (Nv, maxGroupLength)
@@ -313,20 +312,20 @@ private:
     GlobalTensor<lowType> vInner_;       // (Nv, maxGroupLength, Dv) bf16 视图(stage3)
     GlobalTensor<highType> vInnerFloat_; // (Nv, maxGroupLength, Dv) float 视图(stage1 输出 / stage2 输入)
     GlobalTensor<lowType> qPrime_;       // (Nv, maxGroupLength, Dk)
-    GlobalTensor<highType> attnInter_;    // (maxGroupLength, Nv, Dv) bf16 影子（stage3 用）
+    GlobalTensor<highType> attnInter_;   // (maxGroupLength, Nv, Dv) bf16 影子（stage3 用）
     // GlobalTensor<highType> attnInterFloat_; // (maxGroupLength, Nv, Dv) float 视图（stage2 写入目标）
-    GlobalTensor<lowType> kg_;           // (Nv, maxGroupLength, Dk)
-    GlobalTensor<highType> qkt_;          // (Nv, maxGroupLength, C) bf16 视图(stage3)
+    GlobalTensor<lowType> kg_;   // (Nv, maxGroupLength, Dk)
+    GlobalTensor<highType> qkt_; // (Nv, maxGroupLength, C) bf16 视图(stage3)
     // GlobalTensor<highType> qktHigh_;     // (Nv, maxGroupLength, C) float32 视图(stage1 输出)
     GlobalTensor<highType> highState_;
-    GlobalTensor<lowType> bf16State_;    // float 路径：state 的 bf16 影子（matmul B 输入）
-    GlobalTensor<lowType> bf16VNew_;     // float 路径：v_new 的 bf16 影子（matmul A 输入）
+    GlobalTensor<lowType> bf16State_; // float 路径：state 的 bf16 影子（matmul B 输入）
+    GlobalTensor<lowType> bf16VNew_;  // float 路径：v_new 的 bf16 影子（matmul A 输入）
     // mask矩阵
-    GlobalTensor<highType> stageOneMask_;          // (Nv, maxGroupLength, C)
-    GlobalTensor<highType> stageThreeMask_;          // (Nv, maxGroupLength, C)
-    GM_ADDR stageWsAddr_;                 // temporary space addr for stages
+    GlobalTensor<highType> stageOneMask_;   // (Nv, maxGroupLength, C)
+    GlobalTensor<highType> stageThreeMask_; // (Nv, maxGroupLength, C)
+    GM_ADDR stageWsAddr_;                   // temporary space addr for stages
 
-    TBuf<TPosition::VECCALC> tmpBuff_;  // 构造mask矩阵
+    TBuf<TPosition::VECCALC> tmpBuff_; // 构造mask矩阵
 
     // Matmul objects
     StageOneMm<lowType, lowType, highType> s1MmBf16ToFp32_;
@@ -340,4 +339,4 @@ private:
 };
 
 } // namespace ChunkGatedDeltaRule
-#endif  // CHUNK_GATED_DELTA_RULE_H
+#endif // CHUNK_GATED_DELTA_RULE_H

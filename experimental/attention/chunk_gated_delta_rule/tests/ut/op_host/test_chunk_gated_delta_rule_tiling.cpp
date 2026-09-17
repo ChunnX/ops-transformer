@@ -33,7 +33,6 @@
  *   - bs（batch size）最大为 8
  */
 
-
 #include <iostream>
 #include <vector>
 #include <string>

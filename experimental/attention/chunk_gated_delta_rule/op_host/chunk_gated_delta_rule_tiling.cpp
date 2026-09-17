@@ -135,8 +135,8 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoOpTiling()
     tilingData_.interWorkspaceSz += sizeHigh * nv * s * dk;                              // kg
     tilingData_.interWorkspaceSz += sizeHigh * nv * s * c;                               // qkt
     tilingData_.interWorkspaceSz += sizeHigh * b * nv * dv * dk;                         // highState
-    tilingData_.interWorkspaceSz += sizeHigh * nv * dv * dk;                            // bf16State (float 路径 state 的 bf16 影子)
-    tilingData_.interWorkspaceSz += sizeHigh * nv * s * dv;                             // bf16VNew (float 路径 v_new 的 bf16 影子)
+    tilingData_.interWorkspaceSz += sizeHigh * nv * dv * dk;                             // bf16State (float 路径 state 的 bf16 影子)
+    tilingData_.interWorkspaceSz += sizeHigh * nv * s * dv;                              // bf16VNew (float 路径 v_new 的 bf16 影子)
     tilingData_.interWorkspaceSz += sizeHigh * c * c * tilingData_.aiCoreNum * MASK_NUM; // mask
 
     // stage1 workspace for intermediate variables
@@ -392,7 +392,6 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::AnalyzeDtype()
     return ge::GRAPH_SUCCESS;
 }
 
-
 // 校验 shape 的维度数是否符合预期
 bool ChunkGatedDeltaRuleTiling::CheckDim(const gert::Shape &shape, const size_t dim, const std::string &dimDesc)
 {
@@ -573,7 +572,6 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::GetOptionalInput()
     tilingData_.hasGamma = (gDesc != nullptr && gTensor != nullptr && gShape != nullptr) ? 1 : 0;
     return ge::GRAPH_SUCCESS;
 }
-
 
 void ChunkGatedDeltaRuleTiling::PrintTilingData()
 {

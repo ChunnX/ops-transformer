@@ -29,17 +29,17 @@ using cT3 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
 using StageThreeMT = matmul::MatmulImpl<aT3, bT3, cT3>;
 
 struct StageThreeParams {
-    GlobalTensor<float> qkt;               // (Nv, Sp, C) fp32 输入
-    GlobalTensor<float> gCumExp;           // (Nv, Sp)
-    GlobalTensor<bfloat16_t> vInner;       // (Nv, Sp, Dv) v_new bf16
+    GlobalTensor<float> qkt;         // (Nv, Sp, C) fp32 输入
+    GlobalTensor<float> gCumExp;     // (Nv, Sp)
+    GlobalTensor<bfloat16_t> vInner; // (Nv, Sp, Dv) v_new bf16
     GlobalTensor<float> maskTensor;
     GM_ADDR ws;
-    GlobalTensor<float> attnInter;         // (Sp, Nv, Dv) fp32 中间 buffer
-                                           // 调用前已由 stage2 写入 q_state(fp32);
-                                           // stage3 cube 用 atomic add 把 cube_out(fp32) 累加上去,
-                                           // 累加结果 = q_state + cube_out 仍为 fp32
-    GlobalTensor<bfloat16_t> out;          // (Nv, Sp, Dv) 最终 bf16 输出
-                                           // stage3 AIV 把 attnInter 累加结果 cast 成 bf16 后覆盖写回
+    GlobalTensor<float> attnInter; // (Sp, Nv, Dv) fp32 中间 buffer
+                                   // 调用前已由 stage2 写入 q_state(fp32);
+                                   // stage3 cube 用 atomic add 把 cube_out(fp32) 累加上去,
+                                   // 累加结果 = q_state + cube_out 仍为 fp32
+    GlobalTensor<bfloat16_t> out;  // (Nv, Sp, Dv) 最终 bf16 输出
+                                   // stage3 AIV 把 attnInter 累加结果 cast 成 bf16 后覆盖写回
     StageThreeMT *mm3;
     TPipe *pipe;
     ChunkGroup *cg;
@@ -60,8 +60,8 @@ public:
         pipe_ = sTP_->pipe;
         chunkSize_ = sTP_->cg->chunkSize;
         seqLength_ = sTP_->cg->length;
-        Sp_ = (seqLength_ + chunkSize_ - 1) / chunkSize_  * chunkSize_;
-        chunkNum_ = (seqLength_ + chunkSize_ - 1) / chunkSize_ ;
+        Sp_ = (seqLength_ + chunkSize_ - 1) / chunkSize_ * chunkSize_;
+        chunkNum_ = (seqLength_ + chunkSize_ - 1) / chunkSize_;
         coreNum_ = coreNum;
         Nv_ = sTP_->Nv;
         Nk_ = sTP_->Nk;
@@ -70,8 +70,8 @@ public:
         paddedDv_ = Ceil(Dv_, BLOCK_SIZE / sizeof(bfloat16_t)) * (BLOCK_SIZE / sizeof(bfloat16_t));
         uint64_t workSpaceOffset = 0;
         tmpGM_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(
-                               initParams->ws + workSpaceOffset +
-                               coreNum_ * chunkSize_ * chunkSize_ * sizeof(float)));
+            initParams->ws + workSpaceOffset +
+            coreNum_ * chunkSize_ * chunkSize_ * sizeof(float)));
         if ASCEND_IS_AIC {
             return;
         }
@@ -108,15 +108,15 @@ public:
 
     __aicore__ inline void Process()
     {
-        int64_t totalChunks = Nv_ * chunkNum_;  // Nv Nc 融合
-        int64_t chunksPerCore = (totalChunks + coreNum_ -1) / coreNum_;
+        int64_t totalChunks = Nv_ * chunkNum_; // Nv Nc 融合
+        int64_t chunksPerCore = (totalChunks + coreNum_ - 1) / coreNum_;
         int64_t lastChunkSize = seqLength_ % chunkSize_ == 0 ? chunkSize_ : seqLength_ % chunkSize_;
         int64_t startChunk = coreId_ * chunksPerCore;
         int64_t endChunk = startChunk + chunksPerCore > totalChunks ? totalChunks : startChunk + chunksPerCore;
         for (int64_t idx = startChunk; idx < endChunk; idx++) {
             int64_t nvId = idx / chunkNum_;
             int64_t chunkId = idx % chunkNum_;
-            int64_t chunkPos = chunkId * chunkSize_;    // 当前chunk起始位置
+            int64_t chunkPos = chunkId * chunkSize_;                                 // 当前chunk起始位置
             curChunkSize_ = (chunkId == chunkNum_ - 1) ? lastChunkSize : chunkSize_; // 尾块
             if ASCEND_IS_AIV {
                 if (GetSubBlockIdx() == 0) {
@@ -151,7 +151,7 @@ public:
     {
         // chunkSize 大小进行自动补齐
         if constexpr (hasG) {
-            AlignedCopyIn(sTP_->gCumExp[nvId * Sp_ + chunkPos], 1, curChunkSize_);  // 自动补齐
+            AlignedCopyIn(sTP_->gCumExp[nvId * Sp_ + chunkPos], 1, curChunkSize_); // 自动补齐
             auto g_cum = inQueue_.DeQue<float>();
             const uint32_t srcShape1[] = {static_cast<uint32_t>(chunkSize_), static_cast<uint32_t>(1)};
             const uint32_t srcShape2[] = {static_cast<uint32_t>(1), static_cast<uint32_t>(chunkSize_)};
@@ -192,8 +192,8 @@ public:
     {
         // masked_qkt @ v_new, 结果以 fp32 atomic add 累加到 attnInter
         // attnInter 中调用前已由 stage2 写入 q_state(fp32), 累加后 = q_state + cube_out (fp32 cube 累加)
-        sTP_->mm3->SetOrgShape(curChunkSize_, Dv_, curChunkSize_, curChunkSize_, Nv_ * Dv_);    // MNK
-        sTP_->mm3->SetSingleShape(curChunkSize_, Dv_, curChunkSize_); // SingleCoreMNK
+        sTP_->mm3->SetOrgShape(curChunkSize_, Dv_, curChunkSize_, curChunkSize_, Nv_ * Dv_); // MNK
+        sTP_->mm3->SetSingleShape(curChunkSize_, Dv_, curChunkSize_);                        // SingleCoreMNK
         sTP_->mm3->SetTensorA(tmpGM);
         sTP_->mm3->SetTensorB(vInner);
         sTP_->mm3->IterateAll(attnInter, 1);

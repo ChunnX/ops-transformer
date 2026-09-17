@@ -1,3 +1,12 @@
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
 import torch
 import torch.nn.functional as F
 from torch_npu.testing.testcase import TestCase, run_tests
@@ -10,8 +19,8 @@ torch.npu.set_compile_mode(jit_compile=False)
 
 def get_chunk(
     input,  # tensor of shape (S, ...)
-    C,      # chunk size
-    start   # chunk start position
+    C,  # chunk size
+    start,  # chunk start position
 ):
     S = input.shape[0]
     end = start + C
@@ -28,14 +37,14 @@ def get_chunk(
 
 def stage1_chunk(
     query,  # (C, Dk)
-    key,    # (C, Dk)
+    key,  # (C, Dk)
     value,  # (C, Dv)
-    g,      # (C,)
-    beta,   # (C,)
-    scale
+    g,  # (C,)
+    beta,  # (C,)
+    scale,
 ):
     """Stage1: chunk 内预处理，计算逆矩阵并准备 stage2/stage3 所需的中间量。
-    
+
     Gated Delta Rule 的 chunk 内递推:
         S_i = exp(g_i)*S_{i-1} + beta_i*(v_i - k_i @ exp(g_i)*S_{i-1}) ⊗ k_i
     等价于求解线性系统 (I + L) @ v_new = v_beta, 其中:
@@ -47,10 +56,10 @@ def stage1_chunk(
 
     # kkt[i,j] = k_i @ k_j^T, 再按行乘 beta_i -> L 矩阵的 key 内积部分
     kkt = key.float() @ key.transpose(-1, -2).float()
-    kkt = kkt * beta.float().unsqueeze(-1)    # (C, C)
+    kkt = kkt * beta.float().unsqueeze(-1)  # (C, C)
 
     # 原始 Q@K^T 注意力分数，供 stage3 使用
-    qkt = query.float() @ key.transpose(-1, -2).float()    # (C, C)
+    qkt = query.float() @ key.transpose(-1, -2).float()  # (C, C)
 
     # 累积 gating: g_cum[i] = g_0 + g_1 + ... + g_i
     g_cum = g.cumsum(dim=-1)  # (C,)
@@ -58,12 +67,12 @@ def stage1_chunk(
 
     # 衰减矩阵: attn[i,j] = exp(g_cum_i - g_cum_j), 仅 j < i（严格下三角）
     lower = torch.tril(torch.ones(C, C, dtype=torch.bool, device=device), diagonal=-1)
-    attn = ((g_cum[:, None] - g_cum[None, :]) * lower).exp() * lower   # (C, C)
+    attn = ((g_cum[:, None] - g_cum[None, :]) * lower).exp() * lower  # (C, C)
 
     # 构造 -L 并通过逐行迭代求 (I + L)^{-1} 的下三角部分
     # 原理: 对严格下三角 L, (I+L)^{-1} 可逐行递推:
     #   A[i,j] = -sum_{k=0}^{i-1} L[i,k]*A[k,j], 其中 A[k,k]=1
-    attn_1 = kkt * attn   # (C, C)
+    attn_1 = kkt * attn  # (C, C)
     attn_1 *= -1.0
     for i in range(1, C):
         row = attn_1[i, :i].clone()
@@ -74,39 +83,39 @@ def stage1_chunk(
     # kg[i] = key_i * exp(g_cum_last - g_cum_i): key 衰减到 chunk 末尾，用于 stage2 state 更新
     kg = key.float() * (g_cum[-1, None] - g_cum).exp()[..., None]  # (C, Dk)
     # k_cumdecay[i] = -beta_i * exp(g_cum_i) * key_i: key 与 state 交互的系数
-    k_cumdecay = (beta.unsqueeze(-1).float() * g_cum_exp[:, None]) * (-1) * key.float()      # (C, Dk)
+    k_cumdecay = (beta.unsqueeze(-1).float() * g_cum_exp[:, None]) * (-1) * key.float()  # (C, Dk)
 
     # v_beta = beta * value: delta rule 中的新值权重
     v_beta = value.float() * beta.unsqueeze(-1).float()  # (C, Dv)
     # q_prime = scale * query * exp(g_cum): 吸收 scale 和衰减后的 query，用于 stage2 inter-chunk attention
-    q_prime = query.float() * scale * g_cum_exp[:, None]       # (C, Dk)
+    q_prime = query.float() * scale * g_cum_exp[:, None]  # (C, Dk)
 
     # 应用逆矩阵: v_inner = (I+L)^{-1} @ v_beta, k_cumdecay = (I+L)^{-1} @ k_cumdecay
-    v_inner = attn_1 @ v_beta    # (C, Dv)
-    k_cumdecay = attn_1 @ k_cumdecay        # (C, Dk)
+    v_inner = attn_1 @ v_beta  # (C, Dv)
+    k_cumdecay = attn_1 @ k_cumdecay  # (C, Dk)
 
     return g_cum, k_cumdecay.to(torch.bfloat16), v_inner, q_prime.to(torch.bfloat16), kg.to(torch.bfloat16), qkt
 
 
 def stage1(
     query,  # (S, Nk, Dk)
-    key,    # (S, Nk, Dk)
+    key,  # (S, Nk, Dk)
     value,  # (S, Nv, Dv)
-    g,      # (S, Nv)
-    beta,   # (S, Nv)
+    g,  # (S, Nv)
+    beta,  # (S, Nv)
     scale,
-    C       # chunk size
+    C,  # chunk size
 ):
     """Stage1 外层循环: 按 head 和 chunk 拆分序列，并行调用 stage1_chunk。"""
     S, Nk, Dk = query.shape
     _, Nv, Dv = value.shape
-    device=query.device
+    device = query.device
 
     # GQA: 当 value head 数 > key head 数时，复制 q/k 以对齐
     if Nv // Nk > 1:
         query = query.repeat_interleave(Nv // Nk, dim=1)
         key = key.repeat_interleave(Nv // Nk, dim=1)
-    
+
     # 序列长度向上对齐到 chunk size 的整数倍
     padded_seq_len = (S + C - 1) // C * C
 
@@ -116,10 +125,10 @@ def stage1(
     q_prime = torch.zeros((Nv, padded_seq_len, Dk), dtype=torch.bfloat16, device=device)
     kg = torch.zeros((Nv, padded_seq_len, Dk), dtype=torch.bfloat16, device=device)
     qkt = torch.zeros((Nv, padded_seq_len, C), dtype=torch.float32, device=device)
-    
+
     loop_range = range(0, padded_seq_len, C)
     for nid in range(Nv):
-        for idx in reversed(loop_range):     # use reverse loop to simulate parallel
+        for idx in reversed(loop_range):  # use reverse loop to simulate parallel
             q_chunk = get_chunk(query[:, nid, :], C, idx)
             k_chunk = get_chunk(key[:, nid, :], C, idx)
             v_chunk = get_chunk(value[:, nid, :], C, idx)
@@ -127,8 +136,9 @@ def stage1(
             beta_chunk = get_chunk(beta[:, nid], C, idx)
 
             g_cum_chunk, k_cumdecay_chunk, v_inner_chunk, qg_chunk, kg_chunk, qkt_chunk = stage1_chunk(
-                q_chunk, k_chunk, v_chunk, g_chunk, beta_chunk, scale)
-                    
+                q_chunk, k_chunk, v_chunk, g_chunk, beta_chunk, scale
+            )
+
             g_cum[nid, idx:idx + C] = g_cum_chunk
             k_cumdecay[nid, idx:idx + C, :] = k_cumdecay_chunk
             v_inner[nid, idx:idx + C, :] = v_inner_chunk
@@ -138,16 +148,17 @@ def stage1(
 
     return g_cum, k_cumdecay, v_inner, q_prime, kg, qkt
 
+
 def stage2_chunk(
-    q_prime,    # (C, Dk)
-    v_inner,    # (C, Dv)
+    q_prime,  # (C, Dk)
+    v_inner,  # (C, Dv)
     g_cum,  # (C)
-    k_cumdecay, # (C, Dk)
-    state,      # (Dv, Dk)
-    kg,         # (C, Dk)
+    k_cumdecay,  # (C, Dk)
+    state,  # (Dv, Dk)
+    kg,  # (C, Dk)
 ):
     """Stage2: 串行处理 chunk 间的 state 传递。
-    
+
     对每个 chunk:
     1. 计算 inter-chunk attention: q_prime @ state^T (query 对历史 state 的注意力)
     2. 修正 value: v_new = v_inner + k_cumdecay @ state^T (加入 state 贡献)
@@ -156,31 +167,31 @@ def stage2_chunk(
     bf16_state = state.to(torch.bfloat16)
 
     # inter-chunk attention: q_prime_i @ S^T = scale*q_i*exp(g_cum_i) 对 chunk 起始 state 的注意力
-    attn_inter = q_prime.float() @ bf16_state.float().transpose(0, 1)         # (C, Dv)
+    attn_inter = q_prime.float() @ bf16_state.float().transpose(0, 1)  # (C, Dv)
 
     # state 对 value 的修正: k_cumdecay_i = -beta_i*exp(g_cum_i)*k_i 经逆矩阵处理后与 state 交互
-    v_prime = k_cumdecay.float() @ bf16_state.float().transpose(0, 1)           # (C, Dv)
+    v_prime = k_cumdecay.float() @ bf16_state.float().transpose(0, 1)  # (C, Dv)
     # 最终 corrected value = chunk 内 (I+L)^{-1} 处理的值 + state 修正
-    v_new = v_inner + v_prime                                # (C, Dv)
+    v_new = v_inner + v_prime  # (C, Dv)
 
     # state 贡献: sum_i v_new_i ⊗ (key_i * exp(g_cum_last - g_cum_i))
     state_out = v_new.transpose(0, 1).to(torch.bfloat16).float() @ kg.float()  # (Dv, Dk)
 
     # state 更新: 旧 state 按 chunk 总衰减衰减 + 本 chunk 贡献
     state_old = state.float() * g_cum.exp()[-1]
-    state_old = state_old + state_out                        # (Dv, Dk)
+    state_old = state_old + state_out  # (Dv, Dk)
 
     return state_old, attn_inter, v_new.to(torch.bfloat16)
 
 
 def stage2(
-    q_prime,    # (Nv, Sp, Dk)
-    v_inner,    # (Nv, Sp, Dv)
+    q_prime,  # (Nv, Sp, Dk)
+    v_inner,  # (Nv, Sp, Dv)
     g_cum,  # (Nv, Sp)
-    k_cumdecay, # (Nv, Sp, Dk)
-    state,      # (Nv, Dv, Dk)
-    kg,         # (Nv, Sp, Dk)
-    C,           # chunk size
+    k_cumdecay,  # (Nv, Sp, Dk)
+    state,  # (Nv, Dv, Dk)
+    kg,  # (Nv, Sp, Dk)
+    C,  # chunk size
 ):
     """Stage2 外层循环: 按 head 串行遍历 chunk，逐步更新 state（不可并行）。"""
     Nv, Sp, Dv = v_inner.shape
@@ -198,23 +209,25 @@ def stage2(
             k_cumdecay_chunk = k_cumdecay[nid, idx:idx + C, :]
             kg_chunk = kg[nid, idx:idx + C, :]
             cur_state, attn_inter_chunk, v_new_chunk = stage2_chunk(
-                qg_chunk, v_inner_chunk, g_cum_chunk, k_cumdecay_chunk, cur_state, kg_chunk)
-                
+                qg_chunk, v_inner_chunk, g_cum_chunk, k_cumdecay_chunk, cur_state, kg_chunk
+            )
+
             attn_inter[nid, idx:idx + C, :] = attn_inter_chunk
             v_new[nid, idx:idx + C, :] = v_new_chunk
         final_state[nid, ...] = cur_state
     return final_state, attn_inter, v_new
 
+
 def stage3_chunk(
-    qkt,       # (C, C)
-    value,       # (C, Dv)
-    scale,       # float
-    g_cum,   # (C,)
+    qkt,  # (C, C)
+    value,  # (C, Dv)
+    scale,  # float
+    g_cum,  # (C,)
     attn_inter,  # (C, Dv)
-    v_new        # (C, Dv)
+    v_new,  # (C, Dv)
 ):
     """Stage3: 合并 inter-chunk 和 intra-chunk 注意力，得到最终输出。
-    
+
     o_i = attn_inter_i + sum_{j<=i} scale*(q_i@k_j^T)*exp(g_cum_i - g_cum_j) * v_new_j
     """
     device = value.device
@@ -225,27 +238,27 @@ def stage3_chunk(
     # masked_qkt[i,j] = (q_i @ k_j^T) * scale * exp(g_cum_i - g_cum_j), 仅 j <= i
     masked_qkt = qkt.float() * scale * ((g_cum[:, None] - g_cum[None, :]) * lower).exp() * lower.float()
     # 模拟 NPU bf16 输入 fp32 累加：先截断到 bf16 再转 float 做矩阵乘
-    attn_inner = masked_qkt.to(torch.bfloat16).float() @ v_new.to(torch.bfloat16).float()           # (C, Dv)
+    attn_inner = masked_qkt.to(torch.bfloat16).float() @ v_new.to(torch.bfloat16).float()  # (C, Dv)
     # 最终输出 = inter-chunk（来自 state）+ intra-chunk（来自 chunk 内部注意力）
-    core_attn_out = (attn_inter + attn_inner).to(torch.bfloat16)   # (C, Dv)
+    core_attn_out = (attn_inter + attn_inner).to(torch.bfloat16)  # (C, Dv)
 
     return core_attn_out
 
 
 def stage3(
-    qkt,         # (Nv, Sp, C)
-    value,       # (S, Nv, Dv)
-    scale,       # float
-    g_cum,   # (Nv, Sp)
+    qkt,  # (Nv, Sp, C)
+    value,  # (S, Nv, Dv)
+    scale,  # float
+    g_cum,  # (Nv, Sp)
     attn_inter,  # (Nv, Sp, Dv)
-    v_new,       # (Nv, Sp, Dv)
-    C,            # chunk size
+    v_new,  # (Nv, Sp, Dv)
+    C,  # chunk size
 ):
     Nv, Sp, Dv = attn_inter.shape
     S, _, _ = value.shape
     assert Sp == (S + C - 1) // C * C
-    
-    attn_out = torch.empty((Sp, Nv, Dv), dtype=torch.bfloat16, device=value.device)   # (Sp, Nv, Dv)
+
+    attn_out = torch.empty((Sp, Nv, Dv), dtype=torch.bfloat16, device=value.device)  # (Sp, Nv, Dv)
 
     for nid in range(Nv):
         for idx in range(0, Sp, C):
@@ -255,24 +268,24 @@ def stage3(
             v_new_chunk = v_new[nid, idx:idx + C, :]
             qkt_chunk = qkt[nid, idx:idx + C, :]
             attn_out_chunk = stage3_chunk(qkt_chunk, v_chunk, scale, g_cum_chunk, attn_inter_chunk, v_new_chunk)
-            
+
             attn_out[idx:idx + C, nid, ...] = attn_out_chunk
-    
 
     return attn_out
 
+
 def chunk_gdn_benchmark(
-    query,              # (T, Nk, Dk)
-    key,                # (T, Nk, Dk)
-    value,              # (T, Nv, Dv)
-    beta,               # (T, Nv)
-    scale,              # float
-    initial_state,      # (B, Nv, Dv, Dk)
-    actual_seq_lengths, # (B,)
-    g = None            # (T, Nv)
+    query,  # (T, Nk, Dk)
+    key,  # (T, Nk, Dk)
+    value,  # (T, Nv, Dv)
+    beta,  # (T, Nv)
+    scale,  # float
+    initial_state,  # (B, Nv, Dv, Dk)
+    actual_seq_lengths,  # (B,)
+    g=None,  # (T, Nv)
 ):
     """Chunked Gated Delta Rule 完整 golden 实现。
-    
+
     整体流程 (per batch):
       Stage1: 各 chunk 并行 —— 计算逆矩阵 (I+L)^{-1}，产出 q_prime, v_inner, k_cumdecay, kg, qkt
       Stage2: chunk 间串行 —— 用 state 修正 value，更新 state，计算 inter-chunk attention
@@ -280,7 +293,7 @@ def chunk_gdn_benchmark(
     """
     T, Nk, Dk = query.shape
     B, Nv, Dv, _ = initial_state.shape
-    device=query.device
+    device = query.device
 
     if g is None:
         g = torch.zeros((T, Nv), dtype=torch.float32, device=device)
@@ -297,17 +310,16 @@ def chunk_gdn_benchmark(
 
         # Stage1: chunk 内预处理（可并行），计算逆矩阵相关中间量
         g_cum, k_cum_decay, v_inner, q_prime, kg, qkt = stage1(
-            query[start:end], key[start:end], value[start:end], g[start:end], beta[start:end], scale, C)
+            query[start:end], key[start:end], value[start:end], g[start:end], beta[start:end], scale, C
+        )
 
         # Stage2: chunk 间串行，state 传递与 inter-chunk attention
-        cur_state, attn_inter, v_new = stage2(
-            q_prime, v_inner, g_cum, k_cum_decay, cur_state, kg, C)
+        cur_state, attn_inter, v_new = stage2(q_prime, v_inner, g_cum, k_cum_decay, cur_state, kg, C)
         final_state[bid] = cur_state
 
         # Stage3: chunk 内合并 attention（可并行），得到最终输出
-        attn_out_paddend = stage3(
-            qkt, value[start:end], scale, g_cum, attn_inter, v_new, C)
-        
+        attn_out_paddend = stage3(qkt, value[start:end], scale, g_cum, attn_inter, v_new, C)
+
         attn_out[start:end, ...] = attn_out_paddend[:S]
         start = end
 
@@ -371,7 +383,6 @@ def generate_test_cases(num_cases=200):
 
 
 class TestChunkGatedDeltaRuleBenchmark(TestCase):
-
     @staticmethod
     def benchmark_golden(q, k, v, g, beta, scale, initial_state, actual_seq_lengths, dtype):
         if g is None:
@@ -400,21 +411,30 @@ class TestChunkGatedDeltaRuleBenchmark(TestCase):
         beta = torch.rand((T, nv), dtype=dtype, device=device)
         q = F.normalize(q, p=2, dim=-1)
         k = F.normalize(k, p=2, dim=-1)
-        scale = 1 / (dk ** 0.5)
+        scale = 1 / (dk**0.5)
         initial_state = torch.rand((batch_size, nv, dv, dk), dtype=torch.float32, device=device)
         actual_seq_lengths = torch.tensor([seqlen] * batch_size, dtype=torch.int32, device=device)
         # ======================== gen input data finish =============================
 
         # calculate on npu
         o_npu, state_npu = cann_ops_transformer.chunk_gated_delta_rule(
-            q, k, v, beta, initial_state, actual_seq_lengths, scale_value=scale, g=g)
+            q, k, v, beta, initial_state, actual_seq_lengths, scale_value=scale, g=g
+        )
         o_npu = o_npu.cpu().to(torch.float32)
         state_npu = state_npu.cpu().to(torch.float32)
 
         # calculate golden on cpu
         o_bench, state_bench = self.benchmark_golden(
-            q.cpu(), k.cpu(), v.cpu(), g.cpu(), beta.cpu(), scale,
-            initial_state.cpu(), actual_seq_lengths.cpu(), dtype)
+            q.cpu(),
+            k.cpu(),
+            v.cpu(),
+            g.cpu(),
+            beta.cpu(),
+            scale,
+            initial_state.cpu(),
+            actual_seq_lengths.cpu(),
+            dtype,
+        )
 
         self.assertRtolEqual(o_npu, o_bench, 0.001)
         self.assertRtolEqual(state_npu, state_bench, 0.001)
