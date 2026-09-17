@@ -43,6 +43,13 @@ graphStatus InferShape4AttentionWorkerCombine(gert::InferShapeContext *context)
     OP_CHECK_NULL_WITH_CONTEXT(context, scheduleContextInputShape);
     OP_CHECK_NULL_WITH_CONTEXT(context, expertScalesInputShape);
     OP_CHECK_NULL_WITH_CONTEXT(context, layerIdInputShape);
+    if (scheduleContextInputShape->GetDimNum() != 1 || expertScalesInputShape->GetDimNum() != 2 ||
+        layerIdInputShape->GetDimNum() != 1) {
+        OP_LOGE(context->GetNodeName(), "input ranks must be 1, 2, 1, got %zu, %zu, %zu",
+                scheduleContextInputShape->GetDimNum(), expertScalesInputShape->GetDimNum(),
+                layerIdInputShape->GetDimNum());
+        return GRAPH_FAILED;
+    }
 
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
