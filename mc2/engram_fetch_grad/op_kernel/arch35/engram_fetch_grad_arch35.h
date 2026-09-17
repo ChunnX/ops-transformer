@@ -686,7 +686,16 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     indicesBufElements_ = indicesBufSize / sizeof(int32_t);
 
     uint32_t maxByPong = MaxGradRowsPerPing(static_cast<uint32_t>(hiddenBytes_), gradSubBatch_);
-    castBufBytes_ = (inputDtype_ != Mc2Kernel::ENGRAM_DT_FLOAT) ? CastBufBytes(hiddenDim_, maxByPong) : 0U;
+    if (inputDtype_ != Mc2Kernel::ENGRAM_DT_FLOAT) {
+        if (inputDtype_ == outputDtype_) {
+            castBufBytes_ = (static_cast<uint32_t>(hiddenDim_) * sizeof(float) + Mc2Kernel::UB_ALIGN - 1U) /
+                            Mc2Kernel::UB_ALIGN * Mc2Kernel::UB_ALIGN;
+        } else {
+            castBufBytes_ = CastBufBytes(hiddenDim_, maxByPong);
+        }
+    } else {
+        castBufBytes_ = 0U;
+    }
     accumBufBytes_ = AccumBufBytes(hiddenDim_);
     uniqueEntryBytes_ = UniqueEntryBytes(hiddenDim_, outputDtype_);
     uint32_t scatterPeak = Mc2Kernel::GRAD_BUF_BYTES + uniqueEntryBytes_ + castBufBytes_ + accumBufBytes_;
