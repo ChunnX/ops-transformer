@@ -113,7 +113,7 @@ else
     echo "api-check=continue" >> "${ATOMGIT_OUTPUT}"
 fi
 if [ "${task_name}" == "Pre_Compile" ]; then
-    LOG_DO bash build.sh --opkernel ./pr_filelist.txt -j32 --cann_3rd_lib_path=${ASCEND_3RD_LIB_PATH}
+    LOG_DO bash build.sh --opkernel -f ./pr_filelist.txt -j32 --cann_3rd_lib_path=${ASCEND_3RD_LIB_PATH}
     ret=$?
     if [ $ret -eq 200 ]; then
         LOG_HEAD "NOTE: changed files are not supported in pre_smoke"
