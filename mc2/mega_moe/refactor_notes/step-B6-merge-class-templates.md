@@ -54,8 +54,13 @@ Each step is its own commit and its own build.
 |---|---|---|---|
 | 1 | *unify the dtype predicates* | D2 + D3 | **0/15 — byte-identical** |
 | 2 | *share Init and the member set* | D1, extract `LoadCommonTiling` | **0/15 — byte-identical** |
-| 3 | *share the Process() type aliases* | the 208 duplicated lines | TBD |
-| 4 | *one class, one entry point* | D4, D5, D6; delete `mega_moe_a2.h`; collapse `mega_moe.cpp` | TBD |
+| 3 | *one class, one entry point* | D4, D5, D6; delete `mega_moe_a2.h`; collapse `mega_moe.cpp` | **0/15 — byte-identical** |
+
+The original plan had a separate step for the `Process()` type aliases. It was
+dropped: those ~208 lines are *already* byte-identical between the two files, so
+there was nothing to reconcile — the only way to stop carrying two copies is to
+merge the classes, which is step 3. Splitting it out would have produced a commit
+that changed nothing.
 
 ## Step 1 — unify the dtype predicates
 
@@ -155,3 +160,61 @@ members are all free: the compiler was already emitting nothing for the dead
 members, and the new call has a single call site and inlines. This is the third
 consecutive byte-identical step in B6's opening moves, so every structural
 alignment performed so far is provably neutral rather than argued to be.
+
+## Step 3 — one class, one entry point
+
+`MegaMoeA2Impl::MegaMoeA2` is gone. `mega_moe_arch22.h` carries a single
+`MegaMoe<..., IS_A2_>`; `mega_moe_a2.h` is deleted; `mega_moe.cpp` has one branch
+per quant mode instead of one per platform per quant mode.
+
+### What the merge is, concretely
+
+`Process()` keeps everything the two platforms genuinely share at function scope
+— the whole `Element`/`Layout`/`Tile`/`BlockEpilogue` alias block, the tile
+shapes, the dispatch policy, `BlockMmad`, both epilogues, the layouts and the
+`problemShape` — and then diverges exactly three times:
+
+- **D5**, one expression: `layoutA1RowStride`. `RowMajor(rows, cols)` is defined
+  as `RowMajor(rows, cols, cols)`, so writing the stride explicitly is a no-op on
+  A3; A2 uses it for the W4A8 padding.
+- **D4**, inside the `isInt8` arm: two `if constexpr (IS_A2_)` bodies kept
+  verbatim, because getting `epilogueCoreNum` wrong mis-partitions the epilogue
+  silently.
+- **D6**, the tail: `if constexpr (IS_A2_)` picks the device kernel and builds its
+  `Params`. A2's `Params` is byte-for-byte the struct it built before; the merged
+  class adds nothing to it.
+
+`Init` needed no change at all — step 2 had already aligned it, and A3's `Init`
+already took `maskBufferGM`. A2 now receives that kernel argument too and stores
+it, but its kernel has no such `Params` field, so nothing downstream sees it.
+
+Two things this had to get right, both found by building rather than by reading:
+
+- `mega_moe_arch22.h` had to gain A2's kernel headers. They used to arrive via
+  `mega_moe_a2.h`; without them the build fails with *no member named
+  `MegaMoeKernelA2Bf16W4A8` in namespace `Catlass::Gemm::Kernel`*.
+- The `#if (ORIG_DTYPE_WEIGHT1 != DT_INT32)` guard stays where it was, wrapping
+  A2's instantiation. It cannot be replaced by `if constexpr` — a preprocessor
+  guard is what keeps `MegaMoe<..., int32_t, ...>` from being instantiated at
+  all, and `if constexpr (isA2) { return; }` would still instantiate it. So
+  `mega_moe.cpp` keeps two quant-mode branches per platform rather than
+  collapsing to two overall.
+
+### Codegen result
+
+| | |
+|---|---|
+| B6 step 2 → step 3 | **0 / 15 kernels changed — byte-identical** |
+
+Byte-identical on both platforms, and that claim is stronger than it looks:
+`ASCENDC_TPL_SEL` does not vary with the build's SoC, so **each kernel object
+contains both the A2 and the A3 instantiation** — `readelf` shows 20
+`.ascend.meta.*` sections per object, 5 of them with the arch bit set
+(`_1092_` = `_68_ | 1024`, `TPL_ARCH` = 1). The same 15 objects are produced by
+`--soc=ascend910b` and `--soc=ascend910_93`, verified by md5. So one fingerprint
+run covers both platforms, and "0/15" means A2 *and* A3 codegen are unchanged.
+
+That is the best possible outcome for a class-template merge, and it is not what
+was expected: D5 rewrites a layout construction and D6 relocates the entire
+kernel dispatch, yet the compiler folds both back to what it emitted before. The
+merge is provably neutral rather than argued to be.

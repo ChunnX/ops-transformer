@@ -23,12 +23,10 @@
 #include "lib/matmul_intf.h"
 #include "mega_moe_tiling_a2a3.h"
 #include "mega_moe_tiling_key.h"
-#include "mega_moe_a2.h"
 #include "mega_moe_arch22.h"
 
 using namespace AscendC;
 using namespace MegaMoeImpl;
-using namespace MegaMoeA2Impl;
 
 template <bool TPL_IS_TRANSPOSE_W1, bool TPL_IS_TRANSPOSE_W2, int TPL_QUANT_MODE, int TPL_QUANT_OUT_TYPE, int TPL_ARCH>
 __global__ __aicore__ void mega_moe(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights, GM_ADDR weight1,
@@ -49,16 +47,16 @@ __global__ __aicore__ void mega_moe(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds,
         if constexpr (TPL_QUANT_MODE == MEGA_MOE_QUANT_MODE_PER_TOKEN) {
             GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingDataQuant, tilingData, tilingGM);
 
-            MegaMoeA2<DTYPE_X, DTYPE_WEIGHT1, DTYPE_Y, TPL_IS_TRANSPOSE_W1, TPL_IS_TRANSPOSE_W2, isNz, true> op;
+            MegaMoe<DTYPE_X, DTYPE_WEIGHT1, DTYPE_Y, TPL_IS_TRANSPOSE_W1, TPL_IS_TRANSPOSE_W2, isNz, true> op;
             op.Init(context, x, topkIds, topkWeights, weight1, weight2, weightScales1, weightScales2, bias1, bias2,
-                    xActiveMask, scales, yOut, expertTokenNumsOut, workspaceGM, tilingGM);
+                    xActiveMask, scales, maskBuffer, yOut, expertTokenNumsOut, workspaceGM, tilingGM);
             op.Process();
         } else if constexpr (TPL_QUANT_MODE == MEGA_MOE_QUANT_MODE_NO_QUANT) {
             GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingDataNonQuant, tilingData, tilingGM);
 
-            MegaMoeA2<DTYPE_X, DTYPE_WEIGHT1, DTYPE_Y, TPL_IS_TRANSPOSE_W1, TPL_IS_TRANSPOSE_W2, isNz, true> op;
+            MegaMoe<DTYPE_X, DTYPE_WEIGHT1, DTYPE_Y, TPL_IS_TRANSPOSE_W1, TPL_IS_TRANSPOSE_W2, isNz, true> op;
             op.Init(context, x, topkIds, topkWeights, weight1, weight2, weightScales1, weightScales2, bias1, bias2,
-                    xActiveMask, scales, yOut, expertTokenNumsOut, workspaceGM, tilingGM);
+                    xActiveMask, scales, maskBuffer, yOut, expertTokenNumsOut, workspaceGM, tilingGM);
             op.Process();
         }
 #endif
