@@ -113,6 +113,7 @@ private:
 
     GM_ADDR inputDataAddr_{nullptr};
     GM_ADDR localFlagAddr_{nullptr};
+    GM_ADDR workspaceGMAddr_{nullptr};
     GM_ADDR addressTableWorkspaceAddr_{nullptr};
     GM_ADDR totalRankCountWorkspaceAddr_{nullptr};
     GM_ADDR perCoreRankCountWorkspaceAddr_{nullptr};
@@ -154,6 +155,7 @@ private:
     uint64_t hSize_{0};
     uint64_t winTokenInfoTableSize_{0};
     uint64_t addressTableStridePerRank_{0};
+    uint64_t addressTableWorkspaceOffset_{0};
     uint64_t addressTableWorkspaceBytes_{0};
     uint64_t perCoreRankCountStride_{0};
     uint32_t rankCountElements_{0};
@@ -208,7 +210,9 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::I
     // and the per-core count matrix. Every core publishes only its own count row.
     addressTableStridePerRank_ =
         Ceil(maxTokenNum_ * REMOTE_ADDRESS_ENTRY_SIZE, URMA_WIN_ADDR_ALIGN) * URMA_WIN_ADDR_ALIGN;
-    addressTableWorkspaceAddr_ = workspaceGM + tilingData->ffnToAttentionV2Info.addressTableWorkspaceOffset;
+    workspaceGMAddr_ = workspaceGM;
+    addressTableWorkspaceOffset_ = tilingData->ffnToAttentionV2Info.addressTableWorkspaceOffset;
+    addressTableWorkspaceAddr_ = workspaceGMAddr_ + addressTableWorkspaceOffset_;
     addressTableWorkspaceBytes_ = tilingData->ffnToAttentionV2Info.addressTableWorkspaceBytes;
     uint64_t addressTableWorkspaceBytes = static_cast<uint64_t>(worldSize_) * addressTableStridePerRank_;
     rankCountElements_ = static_cast<uint32_t>(
@@ -444,10 +448,12 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::B
     const bool srcInBounds = rankCountElements_ <= rankCounts.GetSize();
     PRINTF("[F2A DataCopy args] core=%u rank=%u dstGM=0x%lx srcUB=0x%lx count=%u elemBytes=%u copyBytes=%lu\n", aivId_,
            rankId_, dstAddr, srcUbAddr, rankCountElements_, static_cast<uint32_t>(sizeof(int32_t)), copyBytes);
-    PRINTF("[F2A DataCopy bounds] core=%u tableBase=0x%lx tableEnd=0x%lx dstEnd=0x%lx dstOffset=%lu stride=%lu "
-           "dstInBounds=%u srcCapacity=%u srcInBounds=%u\n",
-           aivId_, tableBase, tableEnd, dstAddr + copyBytes, dstAddr - tableBase, perCoreRankCountStride_,
-           static_cast<uint32_t>(dstInBounds), rankCounts.GetSize(), static_cast<uint32_t>(srcInBounds));
+    PRINTF("[F2A DataCopy bounds] core=%u workspaceGM=0x%lx tableOffset=%lu tableBytes=%lu tableBase=0x%lx "
+           "tableEnd=0x%lx dstEnd=0x%lx dstOffset=%lu stride=%lu dstInBounds=%u srcCapacity=%u srcInBounds=%u\n",
+           aivId_, reinterpret_cast<uint64_t>(workspaceGMAddr_), addressTableWorkspaceOffset_,
+           addressTableWorkspaceBytes_, tableBase, tableEnd, dstAddr + copyBytes, dstAddr - tableBase,
+           perCoreRankCountStride_, static_cast<uint32_t>(dstInBounds), rankCounts.GetSize(),
+           static_cast<uint32_t>(srcInBounds));
     for (uint32_t debugRank = 0U; debugRank < worldSize_; ++debugRank) {
         int32_t debugCount = rankCounts.GetValue(debugRank);
         if (debugCount != 0) {
