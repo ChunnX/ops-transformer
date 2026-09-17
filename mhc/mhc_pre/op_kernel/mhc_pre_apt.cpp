@@ -22,7 +22,12 @@
 using namespace AscendC;
 using namespace MhcPre;
 
-template <int8_t TILING_MODE, int8_t RESI_MODE>
+// CV_MODE is the AIV:AIC core ratio the host picked from the device core counts, expressed with
+// the same macro values the tiling key carries: ASCENDC_TPL_MIX_AIC_1_2 pairs two AIVs with each
+// AIC and splits the M tile between them, ASCENDC_TPL_MIX_AIC_1_1 gives each AIC a single AIV that
+// owns the whole tile. It must stay the last template parameter so it lines up with the trailing
+// KERNEL_TYPE_DECL field of the tiling key.
+template <int8_t TILING_MODE, int8_t RESI_MODE, uint8_t CV_MODE>
 __global__ __aicore__ void mhc_pre(GM_ADDR x, GM_ADDR phi, GM_ADDR alpha, GM_ADDR bias, GM_ADDR gamma, GM_ADDR hin,
                                    GM_ADDR h_post, GM_ADDR h_res, GM_ADDR inv_rms, GM_ADDR h_mix, GM_ADDR h_pre,
                                    GM_ADDR workspaceGM, GM_ADDR tilingGM)
@@ -30,7 +35,11 @@ __global__ __aicore__ void mhc_pre(GM_ADDR x, GM_ADDR phi, GM_ADDR alpha, GM_ADD
     GET_TILING_DATA(tilingData, tilingGM);
     __gm__ uint8_t *user = GetUserWorkspace(workspaceGM);
 
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+    // The task type is a compile-time attribute of the kernel binary, so the ratio has to be part
+    // of the template arguments rather than a runtime decision: the host stamps CV_MODE into the
+    // tiling key and the matching instantiation is the one that gets launched.
+    KERNEL_TASK_TYPE_DEFAULT(CV_MODE == ASCENDC_TPL_MIX_AIC_1_1 ? KERNEL_TYPE_MIX_AIC_1_1 :
+                                                                  KERNEL_TYPE_MIX_AIC_1_2);
     TPipe pipe;
     if constexpr (TILING_MODE == MHC_PRE_SPLIT_BS) {
         InitParams initParams{x, phi, alpha, bias, gamma, hin, h_post,

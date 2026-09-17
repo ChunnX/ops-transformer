@@ -24,10 +24,6 @@ namespace MhcPre {
 constexpr uint32_t FINAL_ACCUMULATION = 3U;
 constexpr uint32_t NON_FINAL_ACCUMULATION = 2U;
 
-// Fixpipe row-split policy.
-constexpr bool MHC_PRE_BASIC_API_SPLIT_M = true;
-constexpr uint64_t MHC_PRE_BASIC_API_SPLIT_M_ALIGN = 2U;
-
 class MhcPreCubeCompute {
 public:
     uint64_t m_{0};
@@ -38,6 +34,7 @@ public:
     uint64_t baseK_{0};
     uint64_t kL1_{0};
     uint32_t implMode_{MHC_PRE_IMPL_MODE_FP32};
+    uint32_t aivPerAic_{2U};
     uint8_t bL1BufferID_{0};
     uint8_t l0PingPongID_{0};
     uint8_t cl0PingPongID_{0};
@@ -80,9 +77,12 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(2);
     }
 
-    __aicore__ inline void Init(uint32_t implMode)
+    __aicore__ inline void Init(uint32_t implMode, uint32_t aivPerAic = 2U)
     {
         implMode_ = implMode;
+        // Number of AIV subblocks feeding each AIC tile. Both subblocks must hand over their
+        // X tile before the staged slot is read, so the handshake count follows this ratio.
+        aivPerAic_ = aivPerAic;
         uint32_t aL0OneBuffer = 256 * 32;
         uint32_t bL0OneBuffer = 256 * 32;
         uint32_t cL0OneBuffer = 256 * 128;
@@ -181,14 +181,20 @@ public:
 
             if (useGmStage) {
                 AscendC::CrossCoreWaitFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE2>(MHC_PRE_X_READY_FLAG);
-                AscendC::CrossCoreWaitFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE2>(MHC_PRE_X_READY_FLAG +
-                                                                                    MHC_PRE_SUBBLOCK_FLAG_OFFSET);
+                if (aivPerAic_ > 1U) {
+                    // The paired AIV subblocks each publish their own X tile, so both tokens
+                    // must be drained before the staged slot is safe to read.
+                    AscendC::CrossCoreWaitFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE2>(
+                        MHC_PRE_X_READY_FLAG + MHC_PRE_SUBBLOCK_FLAG_OFFSET);
+                }
                 uint64_t stageOffset = stageCoreOffset + aL1BufferId * stageSlotElements;
                 CopyInA1Nd2Nz(m, currentK, kL1Size, xStageGlobal[stageOffset], currentAL1);
             } else {
                 AscendC::CrossCoreWaitFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE1>(MHC_PRE_X_READY_FLAG);
-                AscendC::CrossCoreWaitFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE1>(MHC_PRE_X_READY_FLAG +
-                                                                                    MHC_PRE_SUBBLOCK_FLAG_OFFSET);
+                if (aivPerAic_ > 1U) {
+                    AscendC::CrossCoreWaitFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE1>(
+                        MHC_PRE_X_READY_FLAG + MHC_PRE_SUBBLOCK_FLAG_OFFSET);
+                }
             }
 
             bool isFirstKL1 = useSequentialPartials ? kOffset % partialK == 0U : kOffset == kStart;
@@ -201,8 +207,11 @@ public:
                 CopyOut(dstGlobal[partialIndex * dstGroupStride], n);
             }
             AscendC::CrossCoreSetFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE1>(MHC_PRE_X_CONSUMED_FLAG);
-            AscendC::CrossCoreSetFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE1>(MHC_PRE_X_CONSUMED_FLAG +
-                                                                               MHC_PRE_SUBBLOCK_FLAG_OFFSET);
+            if (aivPerAic_ > 1U) {
+                // Hand both subblock slots back so neither paired AIV stalls on its next tile.
+                AscendC::CrossCoreSetFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE1>(
+                    MHC_PRE_X_CONSUMED_FLAG + MHC_PRE_SUBBLOCK_FLAG_OFFSET);
+            }
             aL1BufferId ^= 1U;
         }
     }
@@ -273,13 +282,11 @@ public:
         AscendC::FixpipeParamsC310<AscendC::CO2Layout::ROW_MAJOR> fixpipeParams;
         uint64_t c0 = AscendC::AuxGetC0Size<float>();
         fixpipeParams.nSize = BasicApiAlign(baseN_, c0);
-        fixpipeParams.mSize =
-            MHC_PRE_BASIC_API_SPLIT_M ? BasicApiAlign(baseM_, MHC_PRE_BASIC_API_SPLIT_M_ALIGN) : baseM_;
+        fixpipeParams.mSize = baseM_;
         fixpipeParams.dstStride = fixpipeParams.nSize;
         fixpipeParams.srcStride = BasicApiAlign(baseM_, AscendC::BLOCK_CUBE);
         fixpipeParams.quantPre = QuantMode_t::NoQuant;
-        fixpipeParams.dualDstCtl =
-            MHC_PRE_BASIC_API_SPLIT_M ? static_cast<uint8_t>(AscendC::McgShfMode::DUAL_DST_SPLIT_M) : 0;
+        fixpipeParams.dualDstCtl = 0U;
         fixpipeParams.unitFlag = FINAL_ACCUMULATION;
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 1;

@@ -150,7 +150,7 @@ __aicore__ inline void MhcPreSplitND<T, P, RESI_MODE>::Init(InitParams initParam
         vector_.pipe_->InitBuffer(l1Buffer_, MHC_PRE_BASIC_API_L1_ALLOC_SIZE);
         aL1_ = l1Buffer_.Get<P>();
         bL1_ = aL1_[MHC_PRE_BASIC_API_L1_BUF_NUM * MHC_PRE_BASIC_API_L1_BUF_OFFSET];
-        mmService_.Init(this->vector_.implMode_);
+        mmService_.Init(this->vector_.implMode_, this->vector_.aivPerAic_);
     }
 
     SyncAll<false>();
@@ -161,8 +161,12 @@ __aicore__ inline void MhcPreSplitND<T, P, RESI_MODE>::InitLocalBuffers()
 {
     vector_.pipe_->InitBuffer(vector_.xInQueue_, vector_.kDoubleBufferCount, kXInQueueBufferBytes);
     vector_.pipe_->InitBuffer(vector_.outQueue_, vector_.kDoubleBufferCount, kOutQueueBufferBytes);
-    vector_.pipe_->InitBuffer(vector_.invRmsOutQueue_, vector_.kSingleBufferCount,
-                              Ceil(curSingleM_, vector_.kDoubleBufferCount) * sizeof(P));
+    // Each AIV stages invRms for the rows it owns: half the chunk on a 1:2 device,
+    // the whole chunk on a 1:1 device.
+    uint32_t invRmsRows =
+        vector_.aivPerAic_ > 1U ? static_cast<uint32_t>(Ceil(curSingleM_, vector_.kDoubleBufferCount)) :
+                                  static_cast<uint32_t>(curSingleM_);
+    vector_.pipe_->InitBuffer(vector_.invRmsOutQueue_, vector_.kSingleBufferCount, invRmsRows * sizeof(P));
 
     if (vector_.hasGamma_) {
         vector_.pipe_->InitBuffer(vector_.gammaInQueue_, vector_.kSingleBufferCount, ND_LENGTH * sizeof(P));
@@ -186,7 +190,10 @@ template <class T, class P, int8_t RESI_MODE>
 __aicore__ inline void MhcPreSplitND<T, P, RESI_MODE>::Process()
 {
     if ASCEND_IS_AIV {
-        vector_.coreIdx_ = GetBlockIdx() / vector_.kDoubleBufferCount;
+        // On a 1:2 device the two AIVs of a pair share one chunk index, so the block index is
+        // folded back onto the AIC it belongs to; on a 1:1 device it already is that index.
+        vector_.coreIdx_ =
+            vector_.aivPerAic_ > 1U ? GetBlockIdx() / vector_.kDoubleBufferCount : GetBlockIdx();
         this->AIVPreLoad();
 
         uint32_t tBlockNum = Ceil(vector_.totalLength_, vector_.chunkTSize_);
@@ -277,6 +284,14 @@ __aicore__ inline void MhcPreSplitND<T, P, RESI_MODE>::AICProcess()
 template <class T, class P, int8_t RESI_MODE>
 __aicore__ inline void MhcPreSplitND<T, P, RESI_MODE>::VectorComputeOffset()
 {
+    if (vector_.aivPerAic_ <= 1U) {
+        // One AIV per AIC: this core covers every row of the chunk.
+        vector_.vectorOffset_.singleCoreM = curSingleM_;
+        vector_.vectorOffset_.offsetMStart = 0;
+        vector_.vectorOffset_.offsetMEnd = curSingleM_;
+        return;
+    }
+    // Two AIVs per AIC: split the chunk into an aligned first half and the remainder.
     uint64_t alignSingleM = Ceil(curSingleM_, 2);
     vector_.vectorOffset_.singleCoreM = alignSingleM < curSingleM_ ? alignSingleM : curSingleM_;
     if (vector_.subBlockIdx_ == 0) {

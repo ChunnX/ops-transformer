@@ -57,6 +57,9 @@ TILING_DATA_FIELD_DEF(uint32_t, mkUseGmStage);
 TILING_DATA_FIELD_DEF(uint32_t, stage2UsedAivNum);
 TILING_DATA_FIELD_DEF(uint32_t, stage2RowsPerCore);
 TILING_DATA_FIELD_DEF(uint32_t, implMode);
+// AIVs paired with each AIC: 1 on a 1:1 device, 2 on a 1:2 device. The kernel
+// splits every M tile across this many AIV subblocks.
+TILING_DATA_FIELD_DEF(uint32_t, aivPerAic);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(MhcPre, MhcPreTilingData);
@@ -141,6 +144,7 @@ private:
     MhcPreTilingData tilingData_;
     uint32_t blockDim_ = 32; // AIC
     uint32_t aivBlockDim_ = 64;
+    uint32_t aivPerAic_ = 2; // AIVs paired with each AIC, from the device core counts
     uint64_t totalLength_ = 0;
     uint64_t m_ = 0;
     uint64_t ubSize_ = 0;

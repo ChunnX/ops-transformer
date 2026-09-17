@@ -66,7 +66,11 @@ const constexpr size_t SYSTEM_WORKSPACE = 20 * 1024 * 1024;
 
 // Runtime scheduling configuration.
 const constexpr uint32_t SCHEDULE_MODE = 1;
-const constexpr uint32_t AIV_AIC_RATIO = 2U;
+// Supported AIV:AIC core ratios. On a 1:2 device each AIC is paired with two AIVs
+// and every M tile is split across the two AIV subblocks; on a 1:1 device one AIV
+// owns the whole M tile. Both layouts are tiled and dispatched at run time.
+const constexpr uint32_t AIV_AIC_RATIO_1_TO_1 = 1U;
+const constexpr uint32_t AIV_AIC_RATIO_1_TO_2 = 2U;
 
 // Attributes and their accepted values.
 const constexpr float DEFAULT_NORM_EPS = 1e-6f;
@@ -572,11 +576,14 @@ ge::graphStatus MhcPreBaseTiling::InitPlatformMemory()
     blockDim_ = static_cast<uint32_t>(ascendcPlatform.GetCoreNumAic());
     aivBlockDim_ = static_cast<uint32_t>(ascendcPlatform.GetCoreNumAiv());
 
+    // Accept both device layouts and remember which one is live so the tiling and
+    // the kernel agree on how many AIVs share an AIC.
     OP_CHECK_IF(
-        aivBlockDim_ != blockDim_ * AIV_AIC_RATIO,
+        aivBlockDim_ != blockDim_ * AIV_AIC_RATIO_1_TO_1 && aivBlockDim_ != blockDim_ * AIV_AIC_RATIO_1_TO_2,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "aivNum", std::to_string(aivBlockDim_).c_str(),
-                                              "MhcPre only support aivNum == aicNum * 2"),
+                                              "MhcPre only support aivNum == aicNum or aivNum == aicNum * 2"),
         return ge::GRAPH_FAILED);
+    aivPerAic_ = aivBlockDim_ / blockDim_;
 
     ubSize_ = ubSize; // Save UB size for later validation
 
@@ -641,7 +648,9 @@ ge::graphStatus MhcPreBaseTiling::ParseEpsAttributes()
 bool MhcPreBaseTiling::CanUseMk() const
 {
     bool supportedN = N_ == N_VALID_VALUES[0] || N_ == N_VALID_VALUES[1] || N_ == N_VALID_VALUES[2];
-    uint64_t activeCoreNum = std::min<uint64_t>(blockDim_, aivBlockDim_ / 2U);
+    // The M-K path sizes its active AIC set by the concurrency of the paired AIVs,
+    // which is aivBlockDim_ / aivPerAic_ on both the 1:1 and the 1:2 layout.
+    uint64_t activeCoreNum = std::min<uint64_t>(blockDim_, aivBlockDim_ / aivPerAic_);
     // Each M-K AIC owns one M tile; reject shapes that cannot be covered by all active AICs.
     uint64_t maxCoveredM = activeCoreNum * M_K_M_L1_MAX_SIZE;
     return supportedN && totalLength_ <= M_K_MAX_VALIDATED_TOTAL_LENGTH && totalLength_ <= maxCoveredM &&
@@ -691,7 +700,8 @@ ge::graphStatus MhcPreBaseTiling::CalculateMkTiling()
     auto ceilDiv = [](uint64_t value, uint64_t divisor) -> uint64_t { return (value + divisor - 1U) / divisor; };
     auto roundUp = [&ceilDiv](uint64_t value, uint64_t align) -> uint64_t { return ceilDiv(value, align) * align; };
 
-    uint64_t activeCoreNum = std::min<uint64_t>(blockDim_, aivBlockDim_ / 2U);
+    // Active AIC count, bounded by the AIV concurrency available per AIC.
+    uint64_t activeCoreNum = std::min<uint64_t>(blockDim_, aivBlockDim_ / aivPerAic_);
     usedCoreNum_ = static_cast<uint32_t>(activeCoreNum);
     scaleMean_ = 1.0f / static_cast<float>(matK_);
     uint64_t minMDim = std::min<uint64_t>(activeCoreNum, ceilDiv(totalLength_, M_K_M_L1_MAX_SIZE));
@@ -804,6 +814,7 @@ void MhcPreBaseTiling::FillTilingData()
     tilingData_.set_hasGamma(hasGamma_);
     tilingData_.set_hasResi(hasResi_);
     tilingData_.set_implMode(implMode_);
+    tilingData_.set_aivPerAic(aivPerAic_);
 
     tilingData_.set_scaleMean(scaleMean_);
 }
@@ -848,9 +859,13 @@ ge::graphStatus MhcPreBaseTiling::CheckUbBufferSize()
     dynamicBufferSize = static_cast<size_t>(matN_) * floatSize * 2;
 
     if (outFlag_) {
-        size_t invRmsSize =
-            (tilingMode_ == TilingMode::SPLIT_ND) ? ((chunkTSize_ + 1) / 2) * floatSize : (chunkTSize_ / 2) * floatSize;
-        dynamicBufferSize += invRmsSize;
+        // Each AIV stages invRms for the rows it owns; on a 1:2 device that is one
+        // subblock of the M tile, on a 1:1 device the whole tile.
+        size_t invRmsRows = static_cast<size_t>(chunkTSize_ + aivPerAic_ - 1U) / aivPerAic_;
+        if (tilingMode_ == TilingMode::SPLIT_ND) {
+            invRmsRows = (invRmsRows + 1U) / 2U * 2U;
+        }
+        dynamicBufferSize += invRmsRows * floatSize;
     }
 
     if (hasGamma_) {
@@ -913,7 +928,11 @@ void MhcPreBaseTiling::PrintTilingData()
 
 uint64_t MhcPreBaseTiling::GetTilingKey() const
 {
-    return GET_TPL_TILING_KEY(static_cast<uint64_t>(tilingMode_), static_cast<uint64_t>(hasResi_ ? 0 : 1));
+    // The kernel type is part of the tiling key: it is the only way to pick the 1:1 or the
+    // 1:2 AIV:AIC variant at run time, since KERNEL_TASK_TYPE_DEFAULT is fixed at compile time.
+    const uint8_t cvMode = aivPerAic_ > AIV_AIC_RATIO_1_TO_1 ? ASCENDC_TPL_MIX_AIC_1_2 : ASCENDC_TPL_MIX_AIC_1_1;
+    return GET_TPL_TILING_KEY(static_cast<uint64_t>(tilingMode_), static_cast<uint64_t>(hasResi_ ? 0 : 1),
+                              static_cast<uint64_t>(cvMode));
 }
 
 ge::graphStatus MhcPreBaseTiling::PostTiling()

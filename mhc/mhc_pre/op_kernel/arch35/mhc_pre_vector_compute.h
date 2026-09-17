@@ -222,6 +222,7 @@ public:
         hasGamma_ = (tiling_->hasGamma != 0);
         hasResi_ = (tiling_->hasResi != 0);
         implMode_ = tiling_->implMode;
+        aivPerAic_ = tiling_->aivPerAic;
         eleNumPerVf_ = MhcPreGetVRegSize() / sizeof(P);
     }
 
@@ -250,7 +251,7 @@ public:
         }
     }
 
-    __aicore__ inline void InitUbBuffers(bool splitAcrossSubBlocks = true, uint32_t v1BufferRows = V1_BASE_T)
+    __aicore__ inline void InitUbBuffers(bool splitAcrossSubBlocks = false, uint32_t v1BufferRows = V1_BASE_T)
     {
         if ASCEND_IS_NOT_AIV {
             return;
@@ -259,8 +260,9 @@ public:
         // Double-buffer X and general output queues to overlap MTE2, Vector, and MTE3.
         pipe_->InitBuffer(xInQueue_, kDoubleBufferCount, kXInQueueBufferBytes);
         pipe_->InitBuffer(outQueue_, kDoubleBufferCount, kOutQueueBufferBytes);
-        uint32_t invRmsRows =
-            splitAcrossSubBlocks ? (curSingleT_ + kHalfSplitDivisor - 1U) / kHalfSplitDivisor : curSingleT_;
+        // At an AIC:AIV ratio of 1:1 the paired AIV owns every row it staged, so invRms
+        // covers the whole T chunk instead of a subblock half.
+        uint32_t invRmsRows = splitAcrossSubBlocks ? (curSingleT_ + kHalfSplitDivisor - 1U) / kHalfSplitDivisor : curSingleT_;
         uint32_t invRmsBytes = MhcPreAlign(invRmsRows, kAlignmentBytes / sizeof(P)) * sizeof(P);
         pipe_->InitBuffer(invRmsOutQueue_, kSingleBufferCount, invRmsBytes);
 
@@ -354,6 +356,14 @@ public:
 
     __aicore__ inline void VectorComputeOffset()
     {
+        if (aivPerAic_ <= 1U) {
+            // One AIV per AIC: this core covers every row of the chunk.
+            vectorOffset_.singleCoreM = curSingleT_;
+            vectorOffset_.offsetMStart = 0;
+            vectorOffset_.offsetMEnd = curSingleT_;
+            return;
+        }
+        // Two AIVs per AIC: split the chunk into an aligned first half and the remainder.
         uint64_t alignSingleM = Ceil(curSingleT_ / 2, 8) * 8;
         vectorOffset_.singleCoreM = alignSingleM < curSingleT_ ? alignSingleM : curSingleT_;
         if (subBlockIdx_ == 0) {
@@ -903,6 +913,7 @@ private:
     uint32_t curSingleT_ = 64;
     uint32_t coreIdx_ = 0;
     uint32_t subBlockIdx_ = 0;
+    uint32_t aivPerAic_ = 2; // AIVs paired with each AIC, taken from the tiling data
     float scaleMean_ = 0.0f;
     uint64_t globalOffsetM_ = 0;
     uint32_t vectorCount_ = 0;

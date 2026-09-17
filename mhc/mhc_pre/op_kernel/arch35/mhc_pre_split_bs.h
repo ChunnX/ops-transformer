@@ -40,14 +40,14 @@ public:
         SyncAll<false>();
 
         if ASCEND_IS_AIV {
-            vector_.coreIdx_ = GetBlockIdx() / vector_.kDoubleBufferCount;
+            vector_.coreIdx_ = vector_.aivPerAic_ > 1U ? GetBlockIdx() / vector_.kDoubleBufferCount : GetBlockIdx();
             vector_.AIVPreLoad();
         }
         if ASCEND_IS_AIC {
             vector_.pipe_->InitBuffer(l1Buffer_, MHC_PRE_BASIC_API_L1_ALLOC_SIZE);
             aL1_ = l1Buffer_.Get<float>();
             bL1_ = aL1_[MHC_PRE_BASIC_API_L1_BUF_NUM * MHC_PRE_BASIC_API_L1_BUF_OFFSET];
-            mmService_.Init(vector_.implMode_);
+            mmService_.Init(vector_.implMode_, vector_.aivPerAic_);
         }
     }
 
@@ -80,12 +80,8 @@ public:
 
                 if ASCEND_IS_AIC {
                     AscendC::CrossCoreWaitFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE2>(MHC_PRE_X_READY_FLAG);
-                    AscendC::CrossCoreWaitFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE2>(MHC_PRE_X_READY_FLAG +
-                                                                                        MHC_PRE_SUBBLOCK_FLAG_OFFSET);
                     AICProcessBasicApi(offsetNd, partialIndex);
                     CrossCoreSetFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE2>(MHC_PRE_X_CONSUMED_FLAG);
-                    CrossCoreSetFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE2>(MHC_PRE_X_CONSUMED_FLAG +
-                                                                              MHC_PRE_SUBBLOCK_FLAG_OFFSET);
                 }
                 if (isPartialEnd) {
                     partialIndex++;
@@ -94,8 +90,6 @@ public:
             vector_.mmCount_++;
             if ASCEND_IS_AIC {
                 CrossCoreSetFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_FIX>(MHC_PRE_MM_READY_FLAG);
-                CrossCoreSetFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_FIX>(MHC_PRE_MM_READY_FLAG +
-                                                                         MHC_PRE_SUBBLOCK_FLAG_OFFSET);
             }
 
             if ASCEND_IS_AIV {
@@ -124,7 +118,11 @@ private:
         vector_.pipe_->InitBuffer(vector_.xInQueue_, vector_.kDoubleBufferCount, vector_.kXInQueueBufferBytes);
         vector_.pipe_->InitBuffer(vector_.outQueue_, vector_.kDoubleBufferCount, vector_.kOutQueueBufferBytes);
 
-        uint32_t invRmsRows = (vector_.curSingleT_ + vector_.kHalfSplitDivisor - 1U) / vector_.kHalfSplitDivisor;
+        // The AIV stages invRms for the rows it owns: half the chunk on a 1:2 device,
+        // the whole chunk on a 1:1 device.
+        uint32_t invRmsRows = vector_.aivPerAic_ > 1U ?
+                                  (vector_.curSingleT_ + vector_.kHalfSplitDivisor - 1U) / vector_.kHalfSplitDivisor :
+                                  vector_.curSingleT_;
         uint32_t invRmsBytes = MhcPreAlign(invRmsRows, vector_.kAlignmentBytes / sizeof(P)) * sizeof(P);
         vector_.pipe_->InitBuffer(vector_.invRmsOutQueue_, vector_.kSingleBufferCount, invRmsBytes);
 
@@ -150,6 +148,14 @@ private:
         if ASCEND_IS_NOT_AIV {
             return;
         }
+        if (vector_.aivPerAic_ <= 1U) {
+            // One AIV per AIC covers the whole M chunk of its paired AIC.
+            vector_.vectorOffset_.singleCoreM = vector_.curSingleT_;
+            vector_.vectorOffset_.offsetMStart = 0;
+            vector_.vectorOffset_.offsetMEnd = vector_.curSingleT_;
+            return;
+        }
+        // Two AIVs per AIC split the chunk into an aligned first half and the remainder.
         uint64_t firstRows = (vector_.curSingleT_ + 1U) / 2U;
         if (vector_.subBlockIdx_ == 0) {
             vector_.vectorOffset_.singleCoreM = firstRows;

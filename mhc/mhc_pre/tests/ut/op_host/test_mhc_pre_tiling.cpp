@@ -57,7 +57,8 @@ static string MakeAscend950SocInfo(uint32_t cubeCoreCnt, uint32_t vectorCoreCnt)
 
 static string MakeAscend950SocInfo(uint32_t cubeCoreCnt)
 {
-    return MakeAscend950SocInfo(cubeCoreCnt, cubeCoreCnt * 2);
+    // MhcPre runs at an AIC:AIV ratio of 1:1, so both core counts are equal.
+    return MakeAscend950SocInfo(cubeCoreCnt, cubeCoreCnt);
 }
 
 /*
@@ -1863,11 +1864,11 @@ TEST_F(MhcPreTiling, Ut_Check_BatchConsistency_ForceSplitBs)
 }
 
 /*
- * 控核约束：Ascend950要求aicNum:aivNum=1:2，不满足核数比的tiling必须失败。
- * 以下用例使用在1:2比例下能够tiling成功的形状(B=2,S=4096,n=4,d=1536)，
- * 仅改变cube/vector核数比，验证不满足1:2时返回GRAPH_FAILED。
+ * 控核约束：MhcPre同时支持aicNum:aivNum=1:1和1:2两种核数比，其余比例必须失败。
+ * 以下用例使用在两种比例下都能tiling成功的形状(B=2,S=4096,n=4,d=1536)，
+ * 仅改变cube/vector核数比，验证1:1与1:2通过、其余比例返回GRAPH_FAILED。
  */
-static void CheckCoreRatioFailure(uint32_t cubeCoreCnt, uint32_t vectorCoreCnt)
+static gert::TilingContextPara MakeCoreRatioCtx(uint32_t cubeCoreCnt, uint32_t vectorCoreCnt)
 {
     constexpr uint32_t B = 2;
     constexpr uint32_t S = 4096;
@@ -1880,49 +1881,78 @@ static void CheckCoreRatioFailure(uint32_t cubeCoreCnt, uint32_t vectorCoreCnt)
     constexpr float hcEps = 0.000001f;
     constexpr uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = {};
+    // Static: TilingContextPara only keeps the pointer, and the context outlives this call.
+    static optiling::MhcPreCompileInfo compileInfo = {};
 
-    gert::TilingContextPara tilingContextPara("MhcPre",
-                                              {{{{B, S, n, d}, {B, S, n, d}}, ge::DT_BF16, ge::FORMAT_ND},
-                                               {{{phiDim0, phiDim1}, {phiDim0, phiDim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
-                                               {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},
-                                               {{{biasDim}, {biasDim}}, ge::DT_FLOAT, ge::FORMAT_ND},
-                                               {{{phiDim1}, {phiDim1}}, ge::DT_FLOAT, ge::FORMAT_ND}},
-                                              {{{{B, S, d}, {B, S, d}}, ge::DT_BF16, ge::FORMAT_ND},
-                                               {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
-                                               {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
-                                               {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},
-                                               {{{B, S, phiDim0}, {B, S, phiDim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
-                                               {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND}},
-                                              {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
-                                               {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
-                                               {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-                                              &compileInfo, "Ascend950", cubeCoreCnt, 262144, 4096,
-                                              MakeAscend950SocInfo(cubeCoreCnt, vectorCoreCnt));
-
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+    return gert::TilingContextPara("MhcPre",
+                                   {{{{B, S, n, d}, {B, S, n, d}}, ge::DT_BF16, ge::FORMAT_ND},
+                                    {{{phiDim0, phiDim1}, {phiDim0, phiDim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                    {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                    {{{biasDim}, {biasDim}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                    {{{phiDim1}, {phiDim1}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+                                   {{{{B, S, d}, {B, S, d}}, ge::DT_BF16, ge::FORMAT_ND},
+                                    {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                    {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                    {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                    {{{B, S, phiDim0}, {B, S, phiDim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                    {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+                                   {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
+                                    {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
+                                    {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
+                                   &compileInfo, "Ascend950", cubeCoreCnt, 262144, 4096,
+                                   MakeAscend950SocInfo(cubeCoreCnt, vectorCoreCnt));
 }
 
-// aicNum:aivNum = 1:1，不满足1:2，预期失败
-TEST_F(MhcPreTiling, Ut_Check_CoreRatio_1to1_Fail)
+static void CheckCoreRatio(uint32_t cubeCoreCnt, uint32_t vectorCoreCnt, ge::graphStatus expectStatus)
 {
-    CheckCoreRatioFailure(32, 32);
+    ExecuteTestCase(MakeCoreRatioCtx(cubeCoreCnt, vectorCoreCnt), expectStatus);
 }
 
-// aicNum:aivNum = 1:3，不满足1:2，预期失败
+// aicNum:aivNum = 1:1，走1:1分支，预期成功
+TEST_F(MhcPreTiling, Ut_Check_CoreRatio_1to1_Success)
+{
+    CheckCoreRatio(32, 32, ge::GRAPH_SUCCESS);
+}
+
+// aicNum:aivNum = 1:2，走1:2分支，预期成功
+TEST_F(MhcPreTiling, Ut_Check_CoreRatio_1to2_Success)
+{
+    CheckCoreRatio(32, 64, ge::GRAPH_SUCCESS);
+}
+
+/*
+ * 核数比必须体现在tiling key上：KERNEL_TASK_TYPE在编译期固定，host只能靠tiling key选到
+ * 对应比例的kernel实例。1:1与1:2的CV_MODE字段相差1，该字段位于低位2bit之后，故差值应为1<<2。
+ */
+TEST_F(MhcPreTiling, Ut_Check_CoreRatio_InTilingKey)
+{
+    constexpr uint64_t KEY_DELTA_CV_MODE = 1ULL << 2;
+
+    TilingInfo info1to1 = {};
+    ASSERT_TRUE(ExecuteTiling(MakeCoreRatioCtx(32, 32), info1to1));
+    TilingInfo info1to2 = {};
+    ASSERT_TRUE(ExecuteTiling(MakeCoreRatioCtx(32, 64), info1to2));
+
+    EXPECT_EQ(info1to2.tilingKey - info1to1.tilingKey, KEY_DELTA_CV_MODE);
+    // 两种比例都由host按aic核数下发blockDim，AIC数量不随AIV数量变化。
+    EXPECT_EQ(info1to1.blockNum, 32U);
+    EXPECT_EQ(info1to2.blockNum, 32U);
+}
+
+// aicNum:aivNum = 1:3，既不是1:1也不是1:2，预期失败
 TEST_F(MhcPreTiling, Ut_Check_CoreRatio_1to3_Fail)
 {
-    CheckCoreRatioFailure(16, 48);
+    CheckCoreRatio(16, 48, ge::GRAPH_FAILED);
 }
 
-// aicNum:aivNum = 1:4，不满足1:2，预期失败
+// aicNum:aivNum = 1:4，既不是1:1也不是1:2，预期失败
 TEST_F(MhcPreTiling, Ut_Check_CoreRatio_1to4_Fail)
 {
-    CheckCoreRatioFailure(32, 128);
+    CheckCoreRatio(32, 128, ge::GRAPH_FAILED);
 }
 
 // aicNum:aivNum = 2:1，vector核数不足，预期失败
 TEST_F(MhcPreTiling, Ut_Check_CoreRatio_2to1_Fail)
 {
-    CheckCoreRatioFailure(64, 32);
+    CheckCoreRatio(64, 32, ge::GRAPH_FAILED);
 }
