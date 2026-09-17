@@ -134,6 +134,8 @@ void FlashAttnTilingImpl::SplitPolicy()
     uint32_t maxUsedAicCores = fa_tiling_util::GetMaxUsedAicCores(platformInfo_.aicNum, faInfo_->bSize, faInfo_->n2Size,
                                                                   faInfo_->gSize, faInfo_->maxSeqQ, faInfo_->maxSeqKv,
                                                                   sOuterFactor_ * platformInfo_.cvRatio, sInnerFactor_);
+    // 模板判定需在 CalcWorkspaceSize 之前完成(dnFlag_ 影响 workspace 分配), 逻辑仅依赖 D/DV 维度
+    UpdateTilingKeyTemplateId();
     CalcNumBlocks(maxUsedAicCores);
     flashDecodeFlag_ = true;
 }
@@ -194,12 +196,12 @@ void FlashAttnTilingImpl::UpdateTilingKeyKvLayout()
 
 void FlashAttnTilingImpl::UpdateTilingKeyTemplateId()
 {
-    // templateId: 0=ND模板, 1=DN模板
-    // DN模板仅支持无attenMask且config=0/2/6（sOuter=64, D=64/128, QK
-    // D=192/DV=128）场景，与kernel侧模板实例化范围保持一致
-    dnFlag_ = (!tilingKeyInfo_.hasAttenMask) &&
-              ((tilingKeyInfo_.config == 0) || (tilingKeyInfo_.config == 2) || (tilingKeyInfo_.config == 6));
-    tilingKeyInfo_.templateId = dnFlag_ ? 1 : 0;
+    // templateId: 0=ND模板, 1=DN模板(不合轴 BN1_S1 分核)
+    // 判定与 flash_attn_metadata 的 outputLayout 选择共享 fa_tiling_util::GetFlashAttnTemplateId, 两侧严格一致;
+    // 全量路由: 所有 case 均走 DN, 注册表仅作未注册维度的防御性回退
+    tilingKeyInfo_.templateId = fa_tiling_util::GetFlashAttnTemplateId(static_cast<uint32_t>(faInfo_->qkHeadDim),
+                                                                       static_cast<uint32_t>(faInfo_->vHeadDim));
+    dnFlag_ = tilingKeyInfo_.templateId == fa_tiling_util::FA_TEMPLATE_DN;
 }
 
 void FlashAttnTilingImpl::UpdateTilingKeyInfo()
@@ -208,7 +210,6 @@ void FlashAttnTilingImpl::UpdateTilingKeyInfo()
     UpdateTilingKeyConfig();
     UpdateTilingKeyKvLayout();
     tilingKeyInfo_.hasAttenMask = (faInfo_->maskMode == static_cast<int64_t>(MaskMode::NO_MASK)) ? 0 : 1;
-    UpdateTilingKeyTemplateId();
 }
 
 void FlashAttnTilingImpl::GenTilingKey()
@@ -324,6 +325,7 @@ void FlashAttnTilingImpl::SetFATilingData()
     tilingData_.baseTiling.flashAttnBaseParams.bSize = faInfo_->bSize;
     tilingData_.baseTiling.flashAttnBaseParams.t1Size = faInfo_->qTSize;
     tilingData_.baseTiling.flashAttnBaseParams.t2Size = faInfo_->kTSize;
+    tilingData_.baseTiling.flashAttnBaseParams.n1Size = faInfo_->n1Size;
     tilingData_.baseTiling.flashAttnBaseParams.n2Size = faInfo_->n2Size;
     tilingData_.baseTiling.flashAttnBaseParams.gSize = faInfo_->gSize;
     tilingData_.baseTiling.flashAttnBaseParams.s1Size = faInfo_->s1Size;

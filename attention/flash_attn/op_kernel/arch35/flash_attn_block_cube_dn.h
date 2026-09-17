@@ -57,7 +57,7 @@ public:
     FaGmTensorQ queryGm_;
     FaGmTensorKV keyGm_;
     FaGmTensorKV valueGm_;
-    CopyQueryGmToL1<Q_T, Q_FORMAT> copyQueryGmToL1_;
+    CopyQueryGmToL1<Q_T, Q_FORMAT, L1Format::NZ, InnerMLayout::S1_ONLY_LAYOUT> copyQueryGmToL1_;
     CopyKvGmToL1<KV_T, KV_FORMAT> copyKvGmToL1_;
     GlobalTensor<int32_t> blockTableGm_;
 
@@ -97,8 +97,12 @@ public:
     static constexpr uint32_t L1_P_BUF_BYTES = mBaseSize * s2BaseSize * sizeof(INPUT_T);
     static constexpr uint32_t L1_Q_BUFCNT = 2U;
     static constexpr uint32_t L1_Q_BUF_BYTES = mBaseSize * dBaseSize * sizeof(Q_T);
-    static constexpr uint32_t L1_KV_BUFCNT = 4U;
-    static constexpr uint32_t L1_KV_BUF_BYTES = 64U * 1024U;
+    static constexpr uint32_t L1_KV_BUFCNT = (s2BaseSize == 256 && dBaseSize > 128) ? 2U : 4U;
+    static constexpr uint32_t L1_KV_BUF_BYTES =
+        (s2BaseSize == 256 && dBaseSize > 128) ? s2BaseSize * dBaseSize * sizeof(KV_T) : 64U * 1024U;
+    static_assert(L1_P_BUFCNT * L1_P_BUF_BYTES + L1_Q_BUFCNT * L1_Q_BUF_BYTES + L1_KV_BUFCNT * L1_KV_BUF_BYTES <=
+                      512U * 1024U,
+                  "DN L1 buffers exceed device capacity");
     // buffer位置+用途+Buffers, 例如l1PBuffers; 使用时命名: 用途+buffer位置+Tensor, 例如pL1Tensor
     LocalTensor<uint8_t> l1PBuffers_;
     LocalTensor<uint8_t> l1QBuffers_;
@@ -232,12 +236,14 @@ public:
         uint32_t dstStride = (runInfo.actMSize + 15) >> 4 << 4;
         FaL1Tensor<Q_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
-        GmCoordGs1Merge gmCoord{.bIdx = runInfo.bIdx,
-                                .n2Idx = runInfo.n2Idx,
-                                .gS1Idx = runInfo.gS1Idx,
-                                .dIdx = dOffset,
-                                .gS1DealSize = runInfo.actMSize,
-                                .dDealSize = dRealSize};
+        // 不合轴: 任务为单 query 头(n1)的纯 s1 块, 按 (b, n1) 直接寻址(n1 = n2*g + g)
+        GmCoordS1Only gmCoord{.bIdx = runInfo.bIdx,
+                              .n2Idx = runInfo.n2Idx,
+                              .gIdx = runInfo.gIdx,
+                              .s1Idx = runInfo.s1Idx,
+                              .dIdx = dOffset,
+                              .s1DealSize = runInfo.actMSize,
+                              .dDealSize = dRealSize};
         copyQueryGmToL1_(l1Tensor, queryGm_, gmCoord);
     }
 
@@ -323,7 +329,11 @@ public:
             uint32_t ldK = ((constInfo_.dSize + 15) >> 4) << 4;
             MMParam param = MakeMMParam((uint32_t)runInfo.actSingleLoopS2Size, (uint32_t)runInfo.actMSize,
                                         constInfo_.dSize, false, true, true, true, 0, 0, ldK, 0);
-            if constexpr (dBaseSize > 128) {
+            if constexpr (s2BaseSize == 256) {
+                // L0A 双缓冲单槽 32KiB: 256 行 S2 时 K 分块收缩到 64, 保证单分形不越槽
+                MatmulK<KV_T, Q_T, MM_T, 256, 64, 64, ABLayout::MK, ABLayout::KN>(kL1Tensor, qL1Tensor, mmL0APolicy_,
+                                                                                  mmL0BPolicy_, l0CSubTensor, param);
+            } else if constexpr (dBaseSize > 128) {
                 MatmulK<KV_T, Q_T, MM_T, 128, 128, 128, ABLayout::MK, ABLayout::KN>(kL1Tensor, qL1Tensor, mmL0APolicy_,
                                                                                     mmL0BPolicy_, l0CSubTensor, param);
             } else {
@@ -421,8 +431,15 @@ public:
                 LocalTensor<KV_T> vL1TileTensor = vL1Tensor[vL1Offset];
 
                 if constexpr (dVBaseSize > 128) {
-                    MatmulFull<Q_T, KV_T, MM_T, 128, 128, s2BaseSize, ABLayout::MK, ABLayout::KN>(
-                        pL1Tensor, vL1TileTensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, param);
+                    if constexpr (s2BaseSize == 256) {
+                        // s2Base=256 时 MatmulFull 全载单次 L0A 装载 32KB 整槽, 小 M(S1<=16)下会触发
+                        // aicore 异常; 改用切K版分两次装载(每片16KB), 大小 M 行为一致且已全量验证
+                        MatmulBase<Q_T, KV_T, MM_T, 128, 128, 128, ABLayout::MK, ABLayout::KN>(
+                            pL1Tensor, vL1TileTensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, param);
+                    } else {
+                        MatmulFull<Q_T, KV_T, MM_T, 128, 128, s2BaseSize, ABLayout::MK, ABLayout::KN>(
+                            pL1Tensor, vL1TileTensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, param);
+                    }
                 } else {
                     if constexpr (s2BaseSize == 128) {
                         MatmulFull<Q_T, KV_T, MM_T, 128, dVBaseSize, 128, ABLayout::MK, ABLayout::KN>(
