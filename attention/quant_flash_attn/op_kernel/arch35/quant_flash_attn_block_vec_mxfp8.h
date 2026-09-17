@@ -57,45 +57,6 @@ struct Bmm2ResBuffSel {
 
 namespace BaseApi {
 
-// [v_tail高精窗口] bisheng不支持float->bf16标量cast(旧cast路线同坑), 位级RNE
-__aicore__ inline uint16_t VtailF32ToBf16Bits(float value)
-{
-    union VtFb {
-        __aicore__ VtFb() {}
-        float f;
-        uint32_t u;
-    } fb;
-    fb.f = value;
-    uint32_t bias = 0x7FFFu + ((fb.u >> 16) & 1u);
-    return static_cast<uint16_t>((fb.u + bias) >> 16);
-}
-
-// [v_tail高精窗口] 精确标量exp(y<=0): 2^n×2^f位级组装 — P尾列标量重建用
-__aicore__ inline float VtailSwExp(float y)
-{
-    constexpr float VT_LN2E = 1.4426950408889634f;
-    float t = y * VT_LN2E;
-    int n = static_cast<int>(t);
-    float f = t - static_cast<float>(n);
-    if (f < 0.0f) {
-        f += 1.0f;
-        n -= 1;
-    }
-    float p = 0.001344f;
-    p = p * f + 0.009618f;
-    p = p * f + 0.055504f;
-    p = p * f + 0.240227f;
-    p = p * f + 0.693147f;
-    p = p * f + 1.0f;
-    union VtExpBits {
-        __aicore__ VtExpBits() {}
-        uint32_t u;
-        float f;
-    } r;
-    r.u = static_cast<uint32_t>((n + 127) << 23);
-    return r.f * p;
-}
-
 template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
           LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
           S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
