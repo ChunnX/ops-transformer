@@ -597,14 +597,13 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::GetBaseShapeInfo()
 
     if (tmpData.mode == SMLAG_SWA_MODE) {
         if (!(cmpRatio >= 0 && cmpRatio <= 128)) {
-            OP_LOGE(context_,
-                    "SparseFlashMlaGrad SWA only support cmpRatio >= 0 and <=128, but got cmpRatio=%ld.", cmpRatio);
+            OP_LOGE(context_, "SparseFlashMlaGrad SWA only support cmpRatio >= 0 and <=128, but got cmpRatio=%ld.",
+                    cmpRatio);
             return ge::GRAPH_FAILED;
         }
     } else {
         if (!(cmpRatio >= 1 && cmpRatio <= 128)) {
-            OP_LOGE(context_,
-                    "SparseFlashMlaGrad CFA/SCFA only support cmpRatio >= 1 and <=128, but got cmpRatio=%ld.",
+            OP_LOGE(context_, "SparseFlashMlaGrad CFA/SCFA only support cmpRatio >= 1 and <=128, but got cmpRatio=%ld.",
                     cmpRatio);
             return ge::GRAPH_FAILED;
         }

@@ -27,7 +27,7 @@
 
 - **计算公式**：
 
-    阶段一：根据cmp_kv与cmp_sparse_indices是否传入选择计算场景，并对输入ori_kv与cmp_kv进行选择。cmp_ratio表示压缩倍率，不用于选择场景。
+    阶段一：根据cmp_kv与cmp_sparse_indices是否传入选择计算场景，并对输入ori_kv与cmp_kv进行选择。
 
     * SWA（cmp_kv为空）：
 
