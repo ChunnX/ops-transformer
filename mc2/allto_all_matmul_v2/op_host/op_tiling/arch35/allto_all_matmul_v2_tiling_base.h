@@ -653,8 +653,6 @@ protected:
 
         auto *td = reinterpret_cast<allToAllMatmulTilingData *>(rt->GetData());
 
-        // MXFP4 使用打包存储(2 个 fp4 占 1 字节)，tiling 引擎需要按 fp4 数据类型
-        // 推导 baseK 块大小(256 vs 128)与 L1 布局，其余 dtype 均按 fp8 处理。
         auto *x1DescTiling = context_->GetInputDesc(IDX_INPUT_X1);
         if (x1DescTiling == nullptr) {
             OP_LOGE_WITH_INVALID_INPUT(opName, "x1 desc");
@@ -662,58 +660,15 @@ protected:
         }
         auto x1Dtype = x1DescTiling->GetDataType();
         bool hasBias = context_->GetOptionalInputShape(IDX_INPUT_BIAS) != nullptr;
-        if (x1Dtype == ge::DT_FLOAT4_E2M1) {
-            QuantMatmulTilingSwat<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1,
-                                  mm::BiasDataType::DT_FLOAT>
-                tilingEngine;
-            tilingEngine.SetPlatformInfoPtr(context_->GetPlatformInfo());
-            tilingEngine.SetBiasInfo(hasBias);
-            tilingEngine.EnableBaseMHalving(true);
-            tilingEngine.SetBiasInfo(hasBias);
-            tilingEngine.GetTilingData(m_, n_, k_, false, true, td->tileQbmmTilingData);
-        } else {
-            QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN,
-                                  mm::BiasDataType::DT_FLOAT>
-                tilingEngine;
-            tilingEngine.SetPlatformInfoPtr(context_->GetPlatformInfo());
-            tilingEngine.SetBiasInfo(hasBias);
-            tilingEngine.EnableBaseMHalving(true);
-            tilingEngine.SetBiasInfo(hasBias);
-            tilingEngine.GetTilingData(m_, n_, k_, false, true, td->tileQbmmTilingData);
-        }
-
-        auto &mm = td->tileQbmmTilingData;
-        usedCoreNum_ = mm.usedCoreNum;
-
-        // matmul 实际分配核数必须 >= rankSize（kernel 侧通信切分依赖每 rank 至少一个核，
-        // 见 RunAllToAll: if (GetBlockIdx() < rankSize)），否则部分 rank 无核参与 alltoall 导致死锁。
-        if (static_cast<uint64_t>(usedCoreNum_) < worldSize_) {
-            OP_LOGE_WITHOUT_REPORT(opName,
-                                   "[coreNum] usedCoreNum(%u) is less than rankSize(%lu), "
-                                   "matmul tiling 分配核数不足以覆盖所有 rank",
-                                   usedCoreNum_, worldSize_);
+        // 通算切分统一入口(§4.21 调用下沉, 2026-09-17): SWAT matmul tiling → 核数守卫 →
+        // 核利用率优先通信切分 → MXFP4 K 轴字节数修正, 序列整体下沉于
+        // apace/tiling/core_occupancy_first_tiling.h (含每 rank 至少一核的 kernel 死锁守卫)
+        if (!mc2tiling::GetCoreOccupanceFirstTiling(
+                context_->GetPlatformInfo(), m_, n_, ka, x1Dtype == ge::DT_FLOAT4_E2M1, hasBias, worldSize_,
+                quantPlatformInfo_, opName, td->tileQbmmTilingData, td->commTilingData, td->scaleCommTilingData)) {
             return ge::GRAPH_FAILED;
         }
-
-        // 可用核数 = min(aicNum, aivNum)，必须 >= rankSize（通信切分依赖每 rank 至少一个核）
-        uint64_t availCoreNum = std::min(quantPlatformInfo_.aicNum, quantPlatformInfo_.aivNum);
-        if (availCoreNum < worldSize_) {
-            OP_LOGE_WITHOUT_REPORT(opName, "[coreNum] availCoreNum(%lu) is less than rankSize(%lu)", availCoreNum,
-                                   worldSize_);
-            return ge::GRAPH_FAILED;
-        }
-
-        // 通信切分: 核利用率优先(CoreOccupancyFirstTiling)。
-        // 历史: aiv_urma 路径的 fit-balance tiling 已废弃(2026-09-15 评审裁定: 与核利用率优先
-        // 切分结果大部分相同, 少量差异定位为核利用率优先的实现问题, 修复走独立事项)。
-        mc2tiling::CoreOccupancyFirstTiling::GetCommTilingData(m_, n_, ka, mm, td->commTilingData,
-                                                               td->scaleCommTilingData);
-
-        // MXFP4 打包存储(2 个 fp4 占 1 字节)，数据通信的 K 轴字节数需减半；
-        // scale 仍是 e8m0(每 32 元素 1 字节)，不受 fp4 影响。
-        if (x1Dtype == ge::DT_FLOAT4_E2M1) {
-            td->commTilingData.nonSplitAxisSize = ka / 2;
-        }
+        usedCoreNum_ = td->tileQbmmTilingData.usedCoreNum;
 
         OP_LOGI(opName, "comm tiling: tileSize=%lu, tileCnt=%lu, tailSize=%lu, tailCnt=%lu, nonSplitSize=%lu",
                 td->commTilingData.splitAxisTileSize, td->commTilingData.splitAxisTileCnt,
