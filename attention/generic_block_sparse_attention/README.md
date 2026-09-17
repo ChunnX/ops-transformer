@@ -134,13 +134,6 @@
       <td>-</td>
     </tr>
     <tr>
-      <td>layoutSparsePattern</td>
-      <td>属性</td>
-      <td>稀疏pattern排布。默认4，表示"KVN_TotalQB_KB"（KV头 × 全局Q块 × topK）；当前仅支持该值。</td>
-      <td>INT64</td>
-      <td>-</td>
-    </tr>
-    <tr>
       <td>layoutQ</td>
       <td>属性</td>
       <td>query数据排布格式，当前仅支持"TND"。</td>
@@ -152,6 +145,13 @@
       <td>属性</td>
       <td>key/value数据排布格式，当前仅支持"PA_BBND"。</td>
       <td>STRING</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>layoutSparsePattern</td>
+      <td>属性</td>
+      <td>稀疏pattern排布。默认4，表示"KVN_TotalQB_KB"（KV头 × 全局Q块 × topK）；当前仅支持该值。</td>
+      <td>INT64</td>
       <td>-</td>
     </tr>
     <tr>
