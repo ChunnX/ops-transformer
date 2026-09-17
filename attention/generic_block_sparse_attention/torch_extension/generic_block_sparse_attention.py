@@ -70,7 +70,7 @@ class GenericBlockSparseAttentionOpBuilder(OpBuilder):
             "Tensor? seqused_q=None, "
             "Tensor? seqused_kv=None, "
             "Tensor? block_table=None, "
-            "bool is_packed_gqa=True, "
+            "int layout_sparse_pattern=4, "
             'str layout_q="TND", '
             'str layout_kv="PA_BBND", '
             "float softmax_scale=0.0, "
@@ -81,6 +81,8 @@ class GenericBlockSparseAttentionOpBuilder(OpBuilder):
             "int win_left=-1, "
             "int win_right=-1, "
             "bool return_softmax_lse=False, "
+            "int residual_block_mode=1, "
+            "bool is_consistent_topk=False, "
             "ScalarType? attention_out_dtype=None"
             ") -> (Tensor, Tensor)",
         ]
@@ -132,7 +134,7 @@ class GenericBlockSparseAttentionOpBuilder(OpBuilder):
             seqused_q: Optional[torch.Tensor] = None,
             seqused_kv: Optional[torch.Tensor] = None,
             block_table: Optional[torch.Tensor] = None,
-            is_packed_gqa: Optional[bool] = True,
+            layout_sparse_pattern: Optional[int] = 4,
             layout_q: Optional[str] = "TND",
             layout_kv: Optional[str] = "PA_BBND",
             softmax_scale: Optional[float] = 0.0,
@@ -143,6 +145,8 @@ class GenericBlockSparseAttentionOpBuilder(OpBuilder):
             win_left: Optional[int] = -1,
             win_right: Optional[int] = -1,
             return_softmax_lse: Optional[bool] = False,
+            residual_block_mode: Optional[int] = 1,
+            is_consistent_topk: Optional[bool] = False,
             attention_out_dtype: Optional[torch.dtype] = None,
         ):
             # 与 C++ 实现保持一致：quant_mode != NO_QUANT 时 attention_out_dtype 必填
@@ -311,7 +315,7 @@ def generic_block_sparse_attention(
     seqused_q: Optional[torch.Tensor] = None,
     seqused_kv: Optional[torch.Tensor] = None,
     block_table: Optional[torch.Tensor] = None,
-    is_packed_gqa: Optional[bool] = True,
+    layout_sparse_pattern: Optional[int] = 4,
     layout_q: Optional[str] = "TND",
     layout_kv: Optional[str] = "PA_BBND",
     softmax_scale: Optional[float] = 0.0,
@@ -322,6 +326,8 @@ def generic_block_sparse_attention(
     win_left: Optional[int] = -1,
     win_right: Optional[int] = -1,
     return_softmax_lse: Optional[bool] = False,
+    residual_block_mode: Optional[int] = 1,
+    is_consistent_topk: Optional[bool] = False,
     attention_out_dtype: Optional[torch.dtype] = None,
 ):
     op_module = generic_block_sparse_attention_op_builder.load()
@@ -343,7 +349,7 @@ def generic_block_sparse_attention(
         seqused_q,
         seqused_kv,
         block_table,
-        is_packed_gqa,
+        layout_sparse_pattern,
         layout_q,
         layout_kv,
         softmax_scale,
@@ -354,6 +360,8 @@ def generic_block_sparse_attention(
         win_left,
         win_right,
         return_softmax_lse,
+        residual_block_mode,
+        is_consistent_topk,
         attention_out_dtype,
     )
 

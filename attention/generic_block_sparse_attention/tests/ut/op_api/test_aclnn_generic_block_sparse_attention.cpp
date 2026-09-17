@@ -49,6 +49,7 @@ constexpr int64_t kT = kBatch * kS1;
 constexpr int64_t kMaxBlocks = (kS2 + kBlockSize - 1) / kBlockSize;
 constexpr int64_t kTotalQBlocks = kT;
 constexpr double kScale = 1.0 / sqrt(static_cast<double>(kD));
+char kLayoutSparse[] = "KVN_TotalQB_KB";
 } // namespace
 
 // ============================================================================
@@ -88,7 +89,7 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, normal)
                               sequsedKv,        // sequsedKvOptional
                               blockTable,       // blockTableOptional
                               blockShape,       // blockShape
-                              1,                // isPackedGQA
+                              kLayoutSparse,    // layoutSparsePattern
                               layoutQ,          // layoutQ
                               layoutKv,         // layoutKv
                               kScale,           // scaleValue
@@ -98,7 +99,9 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, normal)
                               0,                // softmaxPrecision
                               -1,               // winLeft
                               -1,               // winRight
-                              0                 // returnSoftmaxlse
+                              0,                // returnSoftmaxlse
+                              0,                // residualBlockMode
+                              0                 // isConsistentTopk
                               ),
                         OUTPUT(attentionOut, nullptr));
 
@@ -141,7 +144,7 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, null_query)
                               nullptr,          // sequsedKvOptional
                               blockTable,       // blockTableOptional
                               blockShape,       // blockShape
-                              1,                // isPackedGQA
+                              kLayoutSparse,    // layoutSparsePattern
                               layoutQ,          // layoutQ
                               layoutKv,         // layoutKv
                               kScale,           // scaleValue
@@ -151,7 +154,9 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, null_query)
                               0,                // softmaxPrecision
                               -1,               // winLeft
                               -1,               // winRight
-                              0                 // returnSoftmaxlse
+                              0,                // returnSoftmaxlse
+                              0,                // residualBlockMode
+                              0                 // isConsistentTopk
                               ),
                         OUTPUT(attentionOut, nullptr));
 
@@ -194,7 +199,7 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, null_metadata)
                               nullptr,          // sequsedKvOptional
                               blockTable,       // blockTableOptional
                               blockShape,       // blockShape
-                              1,                // isPackedGQA
+                              kLayoutSparse,    // layoutSparsePattern
                               layoutQ,          // layoutQ
                               layoutKv,         // layoutKv
                               kScale,           // scaleValue
@@ -204,7 +209,9 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, null_metadata)
                               0,                // softmaxPrecision
                               -1,               // winLeft
                               -1,               // winRight
-                              0                 // returnSoftmaxlse
+                              0,                // returnSoftmaxlse
+                              0,                // residualBlockMode
+                              0                 // isConsistentTopk
                               ),
                         OUTPUT(attentionOut, nullptr));
 
@@ -247,7 +254,7 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, null_key)
                               nullptr,          // sequsedKvOptional
                               blockTable,       // blockTableOptional
                               blockShape,       // blockShape
-                              1,                // isPackedGQA
+                              kLayoutSparse,    // layoutSparsePattern
                               layoutQ,          // layoutQ
                               layoutKv,         // layoutKv
                               kScale,           // scaleValue
@@ -257,7 +264,9 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, null_key)
                               0,                // softmaxPrecision
                               -1,               // winLeft
                               -1,               // winRight
-                              0                 // returnSoftmaxlse
+                              0,                // returnSoftmaxlse
+                              0,                // residualBlockMode
+                              0                 // isConsistentTopk
                               ),
                         OUTPUT(attentionOut, nullptr));
 
@@ -300,7 +309,7 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, null_attention_out)
                               nullptr,          // sequsedKvOptional
                               blockTable,       // blockTableOptional
                               blockShape,       // blockShape
-                              1,                // isPackedGQA
+                              kLayoutSparse,    // layoutSparsePattern
                               layoutQ,          // layoutQ
                               layoutKv,         // layoutKv
                               kScale,           // scaleValue
@@ -310,7 +319,9 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, null_attention_out)
                               0,                // softmaxPrecision
                               -1,               // winLeft
                               -1,               // winRight
-                              0                 // returnSoftmaxlse
+                              0,                // returnSoftmaxlse
+                              0,                // residualBlockMode
+                              0                 // isConsistentTopk
                               ),
                         OUTPUT(nullptr, nullptr));
 
@@ -357,7 +368,7 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, normal_with_lse)
                               sequsedKv,        // sequsedKvOptional
                               blockTable,       // blockTableOptional
                               blockShape,       // blockShape
-                              1,                // isPackedGQA
+                              kLayoutSparse,    // layoutSparsePattern
                               layoutQ,          // layoutQ
                               layoutKv,         // layoutKv
                               kScale,           // scaleValue
@@ -367,7 +378,9 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, normal_with_lse)
                               0,                // softmaxPrecision
                               -1,               // winLeft
                               -1,               // winRight
-                              1                 // returnSoftmaxlse
+                              1,                // returnSoftmaxlse
+                              0,                // residualBlockMode
+                              0                 // isConsistentTopk
                               ),
                         OUTPUT(attentionOut, softmaxLse));
 
@@ -395,8 +408,8 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, invalid_layout_q)
 
     auto ut = OP_API_UT(aclnnGenericBlockSparseAttention,
                         INPUT(query, key, value, sparseBlockIdx, sparseBlockCount, metadata, nullptr, nullptr, nullptr,
-                              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, blockTable, blockShape, 1, layoutQ,
-                              layoutKv, kScale, 1, 0, 0.0, 0, -1, -1, 0),
+                              nullptr,                               nullptr, nullptr, nullptr, nullptr, nullptr, blockTable, blockShape, kLayoutSparse,
+                              layoutQ, layoutKv, kScale, 1, 0, 0.0, 0, -1, -1, 0, 0, 0),
                         OUTPUT(attentionOut, nullptr));
 
     uint64_t workspaceSize = 0;
@@ -422,8 +435,8 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, null_block_shape)
 
     auto ut = OP_API_UT(aclnnGenericBlockSparseAttention,
                         INPUT(query, key, value, sparseBlockIdx, sparseBlockCount, metadata, nullptr, nullptr, nullptr,
-                              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, blockTable, nullptr, 1, layoutQ,
-                              layoutKv, kScale, 1, 0, 0.0, 0, -1, -1, 0),
+                              nullptr,                               nullptr, nullptr, nullptr, nullptr, nullptr, blockTable, nullptr, kLayoutSparse, layoutQ,
+                              layoutKv, kScale, 1, 0, 0.0, 0, -1, -1, 0, 0, 0),
                         OUTPUT(attentionOut, nullptr));
 
     uint64_t workspaceSize = 0;
@@ -450,8 +463,8 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, invalid_block_shape_size)
 
     auto ut = OP_API_UT(aclnnGenericBlockSparseAttention,
                         INPUT(query, key, value, sparseBlockIdx, sparseBlockCount, metadata, nullptr, nullptr, nullptr,
-                              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, blockTable, blockShape, 1, layoutQ,
-                              layoutKv, kScale, 1, 0, 0.0, 0, -1, -1, 0),
+                              nullptr,                               nullptr, nullptr, nullptr, nullptr, nullptr, blockTable, blockShape, kLayoutSparse,
+                              layoutQ, layoutKv, kScale, 1, 0, 0.0, 0, -1, -1, 0, 0, 0),
                         OUTPUT(attentionOut, nullptr));
 
     uint64_t workspaceSize = 0;
@@ -478,8 +491,8 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, dtype_mismatch)
 
     auto ut = OP_API_UT(aclnnGenericBlockSparseAttention,
                         INPUT(query, key, value, sparseBlockIdx, sparseBlockCount, metadata, nullptr, nullptr, nullptr,
-                              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, blockTable, blockShape, 1, layoutQ,
-                              layoutKv, kScale, 1, 0, 0.0, 0, -1, -1, 0),
+                              nullptr,                               nullptr, nullptr, nullptr, nullptr, nullptr, blockTable, blockShape, kLayoutSparse,
+                              layoutQ, layoutKv, kScale, 1, 0, 0.0, 0, -1, -1, 0, 0, 0),
                         OUTPUT(attentionOut, nullptr));
 
     uint64_t workspaceSize = 0;
@@ -506,8 +519,8 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, invalid_softmax_precision)
 
     auto ut = OP_API_UT(aclnnGenericBlockSparseAttention,
                         INPUT(query, key, value, sparseBlockIdx, sparseBlockCount, metadata, nullptr, nullptr, nullptr,
-                              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, blockTable, blockShape, 1, layoutQ,
-                              layoutKv, kScale, 1, 0, 0.0, 2, -1, -1, 0),
+                              nullptr,                               nullptr, nullptr, nullptr, nullptr, nullptr, blockTable, blockShape, kLayoutSparse,
+                              layoutQ, layoutKv, kScale, 1, 0, 0.0, 2, -1, -1, 0, 0, 0),
                         OUTPUT(attentionOut, nullptr));
 
     uint64_t workspaceSize = 0;

@@ -98,15 +98,17 @@ std::vector<gert::TilingContextPara::TensorDescription> MakeOutputs(ge::DataType
 
 std::vector<gert::TilingContextPara::OpAttr> MakeAttrs(int64_t maskType, int64_t quantType, int64_t softmaxPrec,
                                                        int64_t returnLse, float dstTypeMax = 0.0f, int64_t winLeft = -1,
-                                                       int64_t winRight = -1, int64_t isPackedGqa = 1,
+                                                       int64_t winRight = -1,
+                                                       const std::string &layoutSparsePattern = "KVN_TotalQB_KB",
                                                        const std::string &layoutQ = "TND",
                                                        const std::string &layoutKv = "PA_BBND",
+                                                       int64_t residualBlockMode = 0, int64_t isConsistentTopk = 0,
                                                        const std::vector<int64_t> &blockShape = kBlockShape,
                                                        float scaleValue = kScale)
 {
     return {
         {"block_shape", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(blockShape)},
-        {"is_packed_gqa", Ops::Transformer::AnyValue::CreateFrom<int64_t>(isPackedGqa)},
+        {"layout_sparse_pattern", Ops::Transformer::AnyValue::CreateFrom<std::string>(layoutSparsePattern)},
         {"layout_q", Ops::Transformer::AnyValue::CreateFrom<std::string>(layoutQ)},
         {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>(layoutKv)},
         {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(scaleValue)},
@@ -117,6 +119,8 @@ std::vector<gert::TilingContextPara::OpAttr> MakeAttrs(int64_t maskType, int64_t
         {"win_left", Ops::Transformer::AnyValue::CreateFrom<int64_t>(winLeft)},
         {"win_right", Ops::Transformer::AnyValue::CreateFrom<int64_t>(winRight)},
         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<int64_t>(returnLse)},
+        {"residual_block_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(residualBlockMode)},
+        {"is_consistent_topk", Ops::Transformer::AnyValue::CreateFrom<int64_t>(isConsistentTopk)},
     };
 }
 } // namespace
@@ -198,16 +202,16 @@ TEST_F(generic_block_sparse_attention_tiling_ut, unsupported_layout)
     GenericBlockSparseAttentionCompileInfo compileInfo;
     gert::TilingContextPara tilingContextPara(
         "GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT16), MakeOutputs(ge::DT_FLOAT16, false),
-        MakeAttrs(1, 0, 0, 0, 0.0f, -1, -1, 1, "TND", "TND"), &compileInfo, "Ascend910B", 40, 196608);
+        MakeAttrs(1, 0, 0, 0, 0.0f, -1, -1, "KVN_TotalQB_KB", "TND", "TND"), &compileInfo, "Ascend910B", 40, 196608);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-TEST_F(generic_block_sparse_attention_tiling_ut, unsupported_is_packed_gqa)
+TEST_F(generic_block_sparse_attention_tiling_ut, unsupported_layout_sparse_pattern)
 {
     GenericBlockSparseAttentionCompileInfo compileInfo;
     gert::TilingContextPara tilingContextPara(
         "GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT16), MakeOutputs(ge::DT_FLOAT16, false),
-        MakeAttrs(1, 0, 0, 0, 0.0f, -1, -1, 0), &compileInfo, "Ascend910B", 40, 196608);
+        MakeAttrs(1, 0, 0, 0, 0.0f, -1, -1, "B_KN_KB_QB"), &compileInfo, "Ascend910B", 40, 196608);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 

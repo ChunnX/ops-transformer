@@ -80,14 +80,14 @@
     <tr>
       <td>sparseBlockIdx</td>
       <td>输入</td>
-      <td>稀疏块索引。TND + isPackedGQA=1时，shape为[N, totalQBlocks, topK]，N为kv的headNum（N2）。</td>
+      <td>稀疏块索引。layout_sparse_pattern=KVN_TotalQB_KB时，shape为[N, totalQBlocks, topK]，N为kv的headNum（N2）。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>sparseBlockCount</td>
       <td>输入</td>
-      <td>每个Q块实际选择的KV块数量。TND + isPackedGQA=1时，shape为[N, totalQBlocks]，N为kv的headNum（N2）。</td>
+      <td>每个Q块实际选择的KV块数量。layout_sparse_pattern=KVN_TotalQB_KB且is_consistent_topk=0时，shape为[N, totalQBlocks]，N为kv的headNum（N2）。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
@@ -134,10 +134,10 @@
       <td>-</td>
     </tr>
     <tr>
-      <td>isPackedGQA</td>
+      <td>layoutSparsePattern</td>
       <td>属性</td>
-      <td>同group内qHead是否共享稀疏pattern，当前仅支持1。</td>
-      <td>INT64</td>
+      <td>稀疏pattern排布。默认"KVN_TotalQB_KB"（KV头 × 全局Q块 × topK）；当前仅支持该值。</td>
+      <td>STRING</td>
       <td>-</td>
     </tr>
     <tr>
@@ -190,6 +190,20 @@
       <td>-</td>
     </tr>
     <tr>
+      <td>residualBlockMode</td>
+      <td>属性</td>
+      <td>尾块策略：0不强制选尾块，1强制把不满一块的KV尾块纳入计算。当前默认0。</td>
+      <td>INT64</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>isConsistentTopk</td>
+      <td>属性</td>
+      <td>各Q块topK是否相同：0按sparseBlockCount逐块读取，1所有Q块使用相同topK。当前默认0。</td>
+      <td>INT64</td>
+      <td>-</td>
+    </tr>
+    <tr>
       <td>attentionOut</td>
       <td>输出</td>
       <td>公式中的attentionOut，数据类型和shape与query保持一致。</td>
@@ -210,7 +224,7 @@
 
 - 调用前须先执行`aclnnGenericBlockSparseAttentionMetadata`生成`metadataOptional`，再调用本接口；metadata须与当前输入/属性配套，每次调用须重新生成。
 - query/key/value的headDim(D)当前仅支持128；KV页blockSize当前仅支持128，且须等于blockShapeY。
-- TND + isPackedGQA=1时：totalQBlocks按cuSeqLengthsQ差分得到的存储长度分块；sparse分块与QKV寻址均按该存储长度，不以seqused重切分；topK须≥`sparseBlockCount`中所有元素的最大值，当前上限为256。
+- layout_sparse_pattern=KVN_TotalQB_KB时：totalQBlocks按cuSeqLengthsQ差分得到的存储长度分块；sparse分块与QKV寻址均按该存储长度，不以seqused重切分；topK须≥`sparseBlockCount`中所有元素的最大值，当前上限为256。
 - seqused与对应cu前缀和同时传入时（Q侧，及layoutKv为TND时的KV侧）：分核/任务空间按各batch实际有效长度（seqused）累加；各batch的seqused元素须≤对应cu存储长度，且须与Metadata侧完全一致。
 - layoutKv为"PA_BBND"时须传`sequsedKvOptional`，不传`cuSeqLengthsKvOptional`。
 - 输入query、key、value的数据类型必须一致。

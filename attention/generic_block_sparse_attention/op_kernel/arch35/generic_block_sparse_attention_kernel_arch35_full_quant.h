@@ -251,7 +251,7 @@ public:
                 continue;
             }
 
-            // TND + isPackedGQA=1: sparseBlockIdx 3D [N_kv, totalQBlocks, topK]
+            // layout_sparse_pattern=KVN_TotalQB_KB: sparseBlockIdx 3D [N_kv, totalQBlocks, topK]
             // totalQBlocks spans storage (cu) blocks; align with metadata qStorageBlockStarts.
             uint32_t globalQBlock = 0;
             for (uint32_t b = 0; b < batchIdx; ++b) {
@@ -263,7 +263,7 @@ public:
             int64_t sparseIdxBase =
                 static_cast<int64_t>(kvHeadIdx) * qBlockNum_ * topK_ + static_cast<int64_t>(globalQBlock) * topK_;
             uint32_t validTopK = topK_;
-            if (params.sparseBlockCount != nullptr) {
+            if (isConsistentTopk_ == 0U && params.sparseBlockCount != nullptr) {
                 int64_t countOffset = static_cast<int64_t>(kvHeadIdx) * qBlockNum_ + static_cast<int64_t>(globalQBlock);
                 validTopK = static_cast<uint32_t>(gSparseBlockCount.GetValue(countOffset));
             }
@@ -282,16 +282,29 @@ public:
             uint32_t validTileSize[GbsaMetadata::MAX_SPARSE_BLOCK_CAPACITY];
             uint32_t lastLogicalBlockId = (historyLen + qTokenInBatch) / blockShapeY_;
             uint32_t actualLoopNum = 0;
+            bool hasResidualBlock = false;
             for (uint32_t i = rawBegin; i < rawEnd && i < topK_; i++) {
                 int32_t logicalId = gSparseBlockIdx.GetValue(sparseIdxBase + i);
                 if (logicalId < 0 || static_cast<uint32_t>(logicalId) >= maxBlocksPerBatch_ ||
                     static_cast<uint32_t>(logicalId) > lastLogicalBlockId)
                     continue;
+                if (static_cast<uint32_t>(logicalId) == lastLogicalBlockId) {
+                    hasResidualBlock = true;
+                }
                 int64_t btOffset = static_cast<int64_t>(batchIdx) * maxBlocksPerBatch_ + logicalId;
                 int32_t physicalId = gBlockTable.GetValue(btOffset);
                 validPhysicalIds[actualLoopNum] = physicalId;
                 validTileSize[actualLoopNum] =
                     (static_cast<uint32_t>(logicalId) == lastLogicalBlockId) ? lastBlockTileSize : blockShapeY_;
+                actualLoopNum++;
+            }
+            if (residualBlockMode_ == 1U && !hasResidualBlock &&
+                actualLoopNum < GbsaMetadata::MAX_SPARSE_BLOCK_CAPACITY &&
+                lastLogicalBlockId < maxBlocksPerBatch_) {
+                int64_t btOffset =
+                    static_cast<int64_t>(batchIdx) * maxBlocksPerBatch_ + static_cast<int64_t>(lastLogicalBlockId);
+                validPhysicalIds[actualLoopNum] = gBlockTable.GetValue(btOffset);
+                validTileSize[actualLoopNum] = lastBlockTileSize;
                 actualLoopNum++;
             }
             kvSLoopNum = actualLoopNum;
@@ -443,6 +456,8 @@ private:
         kvBaseTile_ = tilingData->kvBaseTile;
         kStride0_ = tilingData->kStride0;
         vStride0_ = tilingData->vStride0;
+        residualBlockMode_ = tilingData->residualBlockMode;
+        isConsistentTopk_ = tilingData->isConsistentTopk;
     }
 
     __aicore__ inline void CalcOnChipBufTileInfo(
@@ -630,6 +645,8 @@ private:
     // PA_BBND page base strides (elements); may exceed blockSize*Nkv*D when dim0 is strided.
     uint64_t kStride0_;
     uint64_t vStride0_;
+    uint32_t residualBlockMode_;
+    uint32_t isConsistentTopk_;
     // base tile info
     uint32_t qBaseTile_;
     uint32_t kvBaseTile_;

@@ -75,7 +75,7 @@ std::vector<gert::InfershapeContextPara::OpAttr> MakeAttrs(int64_t returnLse, co
 {
     return {
         {"block_shape", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(kBlockShape)},
-        {"is_packed_gqa", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+        {"layout_sparse_pattern", Ops::Transformer::AnyValue::CreateFrom<std::string>(std::string("KVN_TotalQB_KB"))},
         {"layout_q", Ops::Transformer::AnyValue::CreateFrom<std::string>(layoutQ)},
         {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>(layoutKv)},
         {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(kScale)},
@@ -86,6 +86,8 @@ std::vector<gert::InfershapeContextPara::OpAttr> MakeAttrs(int64_t returnLse, co
         {"win_left", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
         {"win_right", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<int64_t>(returnLse)},
+        {"residual_block_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        {"is_consistent_topk", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
     };
 }
 } // namespace

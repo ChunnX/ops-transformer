@@ -291,10 +291,11 @@ __attribute__((visibility("default"))) aclnnStatus aclnnGenericBlockSparseAttent
     const aclTensor *qDequantScaleOptional, const aclTensor *kDequantScaleOptional,
     const aclTensor *vDequantScaleOptional, const aclTensor *pQuantScaleOptional,
     const aclTensor *cuSeqLengthsQOptional, const aclTensor *cuSeqLengthsKvOptional, const aclTensor *sequsedQOptional,
-    const aclTensor *sequsedKvOptional, const aclTensor *blockTableOptional, const aclIntArray *blockShape,
-    int64_t isPackedGQA, char *layoutQ, char *layoutKv, double scaleValue, int64_t maskType, int64_t quantType,
+    const aclTensor *sequsedKvOptional, const aclTensor *blockTableOptional,     const aclIntArray *blockShape,
+    int64_t layoutSparsePattern, char *layoutQ, char *layoutKv, double scaleValue, int64_t maskType, int64_t quantType,
     double dstTypeMax, int64_t softmaxPrecision, int64_t winLeft, int64_t winRight, int64_t returnSoftmaxlse,
-    aclTensor *attentionOut, aclTensor *softmaxLseOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
+    int64_t residualBlockMode, bool isConsistentTopk, aclTensor *attentionOut, aclTensor *softmaxLseOptional,
+    uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     aclnnStatus ret =
         ValidateParams(query, key, value, sparseBlockIdx, sparseBlockCount, blockShape, layoutQ, layoutKv);
@@ -311,8 +312,9 @@ __attribute__((visibility("default"))) aclnnStatus aclnnGenericBlockSparseAttent
                    DFX_IN(query, key, value, sparseBlockIdx, sparseBlockCount, metadataOptional, attenMaskOptional,
                           qDequantScaleOptional, kDequantScaleOptional, vDequantScaleOptional, pQuantScaleOptional,
                           cuSeqLengthsQOptional, cuSeqLengthsKvOptional, sequsedQOptional, sequsedKvOptional,
-                          blockTableOptional, blockShape, isPackedGQA, layoutQ, layoutKv, scaleValue, maskType,
-                          quantType, dstTypeMax, softmaxPrecision, winLeft, winRight, returnSoftmaxlse),
+                          blockTableOptional, blockShape, layoutSparsePattern, layoutQ, layoutKv, scaleValue, maskType,
+                          quantType, dstTypeMax, softmaxPrecision, winLeft, winRight, returnSoftmaxlse,
+                          residualBlockMode, isConsistentTopk),
                    DFX_OUT(attentionOut, softmaxLseOptional));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -338,9 +340,10 @@ __attribute__((visibility("default"))) aclnnStatus aclnnGenericBlockSparseAttent
     auto outputs = l0op::GenericBlockSparseAttention(
         query, keyFinal, valueFinal, sparseBlockIdx, sparseBlockCount, metadataOptional, attenMaskOptional,
         qDequantScaleOptional, kDequantScaleOptional, vDequantScaleOptional, pQuantScaleOptional, cuSeqLengthsQOptional,
-        cuSeqLengthsKvOptional, sequsedQOptional, sequsedKvOptional, blockTableOptional, blockShape, isPackedGQA,
-        layoutQStr.c_str(), layoutKvStr.c_str(), scaleValue, maskType, quantType, dstTypeMax, softmaxPrecision, winLeft,
-        winRight, returnSoftmaxlse, attentionOut, executorImpl);
+        cuSeqLengthsKvOptional, sequsedQOptional, sequsedKvOptional, blockTableOptional, blockShape,
+        layoutSparsePattern, layoutQStr.c_str(), layoutKvStr.c_str(), scaleValue, maskType, quantType, dstTypeMax,
+        softmaxPrecision, winLeft, winRight, returnSoftmaxlse, residualBlockMode, isConsistentTopk, attentionOut,
+        executorImpl);
 
     if (outputs[0] == nullptr) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "GenericBlockSparseAttention returned nullptr output.");

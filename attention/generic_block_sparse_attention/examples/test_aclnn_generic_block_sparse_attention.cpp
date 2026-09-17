@@ -262,6 +262,7 @@ int main()
 
     char layoutQ[] = "TND";
     char layoutKv[] = "PA_BBND";
+    char layoutSparse[] = "KVN_TotalQB_KB";
 
     // 3. 先调用 Metadata，再调用主算子
     uint64_t metadataWorkspaceSize = 0;
@@ -293,8 +294,8 @@ int main()
     aclOpExecutor *executor = nullptr;
     ret = aclnnGenericBlockSparseAttentionGetWorkspaceSize(
         q, k, v, sparseIdx, sparseCount, metadata, nullptr, nullptr, nullptr, nullptr, nullptr, cuSeqQ, nullptr,
-        nullptr, sequsedKv, blockTable, blockShape, 1, layoutQ, layoutKv, scaleValue, 1, 0, 0.0, 1, -1, -1, 0, attnOut,
-        nullptr, &workspaceSize, &executor);
+        nullptr, sequsedKv, blockTable, blockShape, layoutSparse, layoutQ, layoutKv, scaleValue, 1, 0, 0.0, 1, -1, -1,
+        0, 0, 0, attnOut, nullptr, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS,
               LOG_PRINT("aclnnGenericBlockSparseAttentionGetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);
