@@ -111,3 +111,40 @@ def test_unbounded_mode4_rejects_token_split_that_shortens_kv():
         ActualInputSemanticOracle.validate_mapped_tokens(
             baseline, derived, [(0, 0, 0, 0)]
         )
+
+
+@pytest.mark.parametrize("layout", ["TND", "BSND"])
+@pytest.mark.parametrize("with_lengths", [False, True])
+@pytest.mark.parametrize("prefix", ["ori", "cmp"])
+def test_shape_resize_copies_valid_sparse_rows(layout, with_lengths, prefix):
+    data = make_unbounded_swa_case(2, 4)
+    tensors = data["op_input"]
+    tensors["layout_q"] = layout
+    tensors["layout_kv"] = "BSND"
+    tensors["ori_kv"] = torch.zeros((1, 4, 1, 1))
+    tensors[f"{prefix}_kv"] = torch.zeros((1, 4, 1, 1))
+    tensors[f"seqused_{prefix}_kv"] = torch.tensor([4], dtype=torch.int32)
+    tensors[f"{prefix}_mask_mode"] = 0
+    rows = [[0, 1, 2], [1, 2, -1 if with_lengths else 3]]
+    tensors[f"{prefix}_sparse_indices"] = torch.tensor(rows).reshape(2, 1, 3)
+    if with_lengths:
+        tensors[f"{prefix}_topk_length"] = torch.tensor([[3], [2]])
+    if layout == "BSND":
+        tensors["q"] = tensors["q"].unsqueeze(0)
+        for name in (f"{prefix}_sparse_indices", f"{prefix}_topk_length"):
+            if name in tensors:
+                tensors[name] = tensors[name].unsqueeze(0)
+    original = tensors[f"{prefix}_sparse_indices"].clone()
+    transformer = object.__new__(BatchCaseTransformer)
+    transformer.layout_q = layout
+    transformer.tensors = dict(tensors)
+    transformer._resize_query_prefix(data, 4)
+    axis = 1 if layout == "BSND" else 0
+    resized = tensors[f"{prefix}_sparse_indices"]
+    assert torch.equal(resized.narrow(axis, 0, 2), original)
+    assert torch.equal(resized.select(axis, 2), original.select(axis, 1))
+    assert torch.equal(resized.select(axis, 3), original.select(axis, 1))
+    transformer._validate_shape_change_sparse_indices(data)
+    resized.select(axis, 3)[..., 0] = -1
+    with pytest.raises(InvalidTransformError, match="effective top-k range"):
+        transformer._validate_shape_change_sparse_indices(data)
