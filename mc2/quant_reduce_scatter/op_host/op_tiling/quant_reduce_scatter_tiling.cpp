@@ -52,14 +52,19 @@ static void SetTilingData(gert::TilingContext *context, QuantReduceScatterTiling
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     context->SetBlockDim(ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum));
     tilingData.quantReduceScatterTilingInfo.aivNum = aivNum;
-    uint64_t xValueBS = context->GetInputShape(X_INDEX)->GetStorageShape().GetDim(DIM_ZERO);
-    uint64_t xValueH = context->GetInputShape(X_INDEX)->GetStorageShape().GetDim(DIM_ONE);
-    uint64_t scalesValueH = context->GetInputShape(SCALES_INDEX)->GetStorageShape().GetDim(DIM_ONE);
+    size_t xDimNum = context->GetInputShape(X_INDEX)->GetStorageShape().GetDimNum();
+    size_t scalesDimNum = context->GetInputShape(SCALES_INDEX)->GetStorageShape().GetDimNum();
+    uint64_t xValueBS = 1UL;
+    uint64_t scalesValueH = 0UL;
     // 3d场景，context->GetInputShape在函数CheckInputTensorDim中已经校验
-    if (context->GetInputShape(X_INDEX)->GetStorageShape().GetDimNum() == THREE_DIMS) {
-        xValueBS = xValueBS * context->GetInputShape(X_INDEX)->GetStorageShape().GetDim(DIM_ONE);
-        xValueH = context->GetInputShape(X_INDEX)->GetStorageShape().GetDim(DIM_TWO);
-        scalesValueH = context->GetInputShape(SCALES_INDEX)->GetStorageShape().GetDim(DIM_TWO);
+    for (size_t i = 0; i < xDimNum - 1; ++i) {
+        xValueBS *= context->GetInputShape(X_INDEX)->GetStorageShape().GetDim(i);
+    }
+    uint64_t xValueH = context->GetInputShape(X_INDEX)->GetStorageShape().GetDim(xDimNum - 1);
+    if (tilingData.quantReduceScatterTilingInfo.quantMode == PT_QUANT_MOD) {
+        scalesValueH = 1UL;
+    } else {
+        scalesValueH = context->GetInputShape(SCALES_INDEX)->GetStorageShape().GetDim(xDimNum - 1);
     }
     tilingData.quantReduceScatterTilingInfo.bs = xValueBS;
     tilingData.quantReduceScatterTilingInfo.hiddenSize = xValueH;
@@ -126,6 +131,7 @@ static ge::graphStatus QuantReduceScatterTilingFunc(gert::TilingContext *context
 
     SetTilingData(context, *tilingData);
     tilingData->quantReduceScatterTilingInfo.hcclBufferSize = runInfo.hcclBufferSize;
+    tilingData->quantReduceScatterTilingInfo.quantMode = runInfo.quantMode;
     SetXPerBlock(*tilingData, runInfo);
     SetTilingKey(context);
     PrintTilingDataInfo(context, *tilingData);

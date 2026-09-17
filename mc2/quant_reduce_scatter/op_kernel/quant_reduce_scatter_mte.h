@@ -68,6 +68,7 @@ private:
 
     uint64_t xSize_{0};
     uint64_t totalWinSize_{0};
+    uint32_t quantMode_{0};
     // reduceScater进行all2all过程，数据要按卡数进行均分，以下为计算切分相关的参数
     uint64_t scaleSize_{0};
     uint64_t xSliceSizeNums_{0}; // 按卡均分后每片x数据的个数
@@ -106,14 +107,20 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::ParseTilingInfo(
 {
     auto &&info = tilingData->quantReduceScatterTilingInfo;
     totalWinSize_ = info.totalWinSize;
+    quantMode_ = info.quantMode;
     xSize_ = info.bs * info.hiddenSize * sizeof(XType);
-    scaleSize_ = info.bs * info.scaleHiddenSize * sizeof(ScalesType);
-    if constexpr (AscendC::IsSameType<ScalesType, fp8_e8m0_t>::value) {
-        scaleSize_ *= MX_SCALES_LAST_DIM;
+    if (quantMode_ == PT_QUANT_MOD) {
+        scaleSliceNums_ = 0;
+        scaleSize_ = sizeof(ScalesType);
+    } else if (quantMode_ == TG_QUANT_MOD){
+        scaleSliceNums_ = info.bs * info.scaleHiddenSize / mteComm_.rankDimHccl_;
+        scaleSize_ = info.bs * info.scaleHiddenSize * sizeof(ScalesType);
+    } else if (quantMode_ == MX_QUANT_MOD) {
+        scaleSliceNums_ = info.bs * info.scaleHiddenSize * MX_SCALES_LAST_DIM / mteComm_.rankDimHccl_;
+        scaleSize_ = info.bs * info.scaleHiddenSize * sizeof(ScalesType)* MX_SCALES_LAST_DIM;
     }
-    uint64_t xSliceSize = xSize_ / (mteComm_.rankDimHccl_);
+    uint64_t xSliceSize = xSize_ / mteComm_.rankDimHccl_;
     xSliceSizeNums_ = xSliceSize / sizeof(XType);
-    scaleSliceNums_ = scaleSize_ / (mteComm_.rankDimHccl_ * sizeof(ScalesType));
 }
 
 template <TemplateTypeClass>
@@ -141,8 +148,9 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::ComputeXPerBlock(
 
     uint64_t remainingSpace = TOTAL_UB_SIZE - mteCommFixedSpace;
     uint64_t maxXPerBlock;
-    // scale buffer 的开销以 FracDiv 精确计入 UB 预算（避免 < 1 B per X 被整数截断）
-    if constexpr (AscendC::IsSameType<ScalesType, fp8_e8m0_t>::value) {
+    if (quantMode_ == PT_QUANT_MOD) {
+        maxXPerBlock = remainingSpace / baseDynamic;
+    } else if (quantMode_ == MX_QUANT_MOD) {
         maxXPerBlock = FracDiv(remainingSpace, baseDynamic, 4U, 1U); // + 1/4 B per X
     } else {
         maxXPerBlock = FracDiv(remainingSpace, baseDynamic, 32U, 3U); // + 3/32 B per X
@@ -165,9 +173,11 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::ComputeXPerBlock(
     }
 
     // 每块 scale 数量（real 值，GM 偏移用；UB 分配按 32B 对齐）
-    if constexpr (AscendC::IsSameType<ScalesType, fp8_e8m0_t>::value) {
+    if (quantMode_ == PT_QUANT_MOD) {
+        scaleNumsPerBlock_ = 1;
+    } else if (quantMode_ == MX_QUANT_MOD) {
         scaleNumsPerBlock_ = xPerBlock_ / MX_SIZE;
-    } else {
+    } else if (quantMode_ == TG_QUANT_MOD) {
         scaleNumsPerBlock_ = xPerBlock_ / PER_GROUP_SIZE;
     }
 
@@ -194,7 +204,8 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::ComputeBlockDistribu
 
     uint64_t blockIdx = aivId * round_ + (aivId < tailBlockNums_ ? aivId : tailBlockNums_);
     xOffset_ = blockIdx * xPerBlock_;
-    scaleOffset_ = blockIdx * scaleNumsPerBlock_;
+    // PT量化下每块都使用同一个scale，scaleOffset恒为0
+    scaleOffset_ = (quantMode_ == PT_QUANT_MOD) ? 0 : blockIdx * scaleNumsPerBlock_;
     tailXNums_ = BlockAlignMod(xSliceSizeNums_, xPerBlock_);
 }
 
@@ -205,10 +216,12 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::InitSubModules(GM_AD
 {
     vecComp_.SetBlockSize(xPerBlock_);
     vecComp_.SetScaleNums(scaleNumsPerBlock_);
+    vecComp_.SetQuantMode(quantMode_);
     mteComm_.round_ = round_;
     mteComm_.tailBlockNums_ = tailBlockNums_;
     mteComm_.ComputeTailAivId(aivNum);
     mteComm_.SetBlockSize(xPerBlock_, aivNum, tailXNums_, scaleNumsPerBlock_);
+    mteComm_.SetQuantMode(quantMode_);
     mteComm_.InitParams();
     mteComm_.InitBuffer(tPipe);
     vecComp_.InitBuffer(tPipe);
@@ -258,7 +271,10 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::ExecuteReduceScatter
     // 遍历需要处理的数据块（基于动态xPerBlock_分块）
     for (uint64_t curBlock = 0; curBlock < assignedBlockNums_; ++curBlock) {
         uint64_t curXOffset = xOffset_ + curBlock * xPerBlock_;
-        uint64_t curScaleOffset = scaleOffset_ + curBlock * scaleNumsPerBlock_;
+        uint64_t curScaleOffset = scaleOffset_;
+        if (quantMode_ != PT_QUANT_MOD) {
+            curScaleOffset += curBlock * scaleNumsPerBlock_;
+        }
 
         // 计算当前块的x数量（尾块处理）
         uint32_t curXNum = xPerBlock_;
@@ -266,9 +282,9 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::ExecuteReduceScatter
         if ((aivId == lastAivId_) && (curBlock == assignedBlockNums_ - 1)) {
             curXNum = tailXNums_;
             // 尾块的scale数量：real 值（DataCopyPad 处理 sub-32B 拷贝，不再需要硬对齐）
-            if constexpr (AscendC::IsSameType<ScalesType, fp8_e8m0_t>::value) {
+            if (quantMode_ == MX_QUANT_MOD) {
                 curScaleNum = CeilDivU32(curXNum, MX_SIZE);
-            } else {
+            } else if (quantMode_ == TG_QUANT_MOD) {
                 curScaleNum = CeilDivU32(curXNum, PER_GROUP_SIZE);
             }
         }

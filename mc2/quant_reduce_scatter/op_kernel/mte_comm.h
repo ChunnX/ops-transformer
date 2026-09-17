@@ -20,6 +20,7 @@
 #include "adv_api/reduce/sum.h"
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "quant_reduce_scatter_context.h"
+#include "quant_reduce_scatter_tiling_data.h"
 
 namespace QuantMTECommImpl {
 
@@ -50,6 +51,7 @@ public:
     __aicore__ inline void InitBuffer(TPipe *tPipe);
     __aicore__ inline void SetBlockSize(uint32_t elementsPerBlock, uint64_t aivNum, uint64_t lastBlockNum,
                                         uint64_t scaleNumsPerBlock = 0);
+    __aicore__ inline void SetQuantMode(uint32_t quantMode);
     template <bool isReduceScatter = false>
     __aicore__ inline void CopyDataToWin(uint64_t xSliceSizeNums = 0, uint64_t scaleSliceNums = 0);
     __aicore__ inline void WriteStatusToWin();
@@ -81,6 +83,7 @@ public:
 private:
     uint32_t xNumPerBlock_{0};
     uint64_t tailXNums_{0};
+    uint32_t quantMode_{0};
 
     __aicore__ inline void CopyDataBlock(uint64_t curXOffset, uint64_t curScaleOffset, uint32_t count);
 
@@ -126,7 +129,7 @@ __aicore__ inline void MTECommunication<TemplateType>::InitParams()
     uint64_t blockIdx =
         aivId_ * round_ + (aivId_ < tailBlockNums_ ? aivId_ : tailBlockNums_); // 计算当前核分派到的首个数据块序列号
     xOffset_ = blockIdx * xNumPerBlock_;          // 块数 * 一块有多少数据，得到要搬第几个x数据
-    scaleOffset_ = blockIdx * scaleNumsPerBlock_; // 计算要搬第几个 scale
+    scaleOffset_ = (quantMode_ == PT_QUANT_MOD) ? 0 : blockIdx * scaleNumsPerBlock_; // 计算要搬第几个 scale
 }
 
 template <TemplateTypeClass>
@@ -202,6 +205,12 @@ __aicore__ inline void MTECommunication<TemplateType>::SetBlockSize(uint32_t ele
     tailXNums_ = lastBlockNum;
     // scaleNumsPerBlock 为 0 时按默认逻辑（SCALE_BLCOK_BYTES/sizeof(ScalesType)）计算，与旧接口兼容
     scaleNumsPerBlock_ = (scaleNumsPerBlock != 0) ? scaleNumsPerBlock : (SCALE_BLCOK_BYTES / sizeof(ScalesType));
+}
+
+template <TemplateTypeClass>
+__aicore__ inline void MTECommunication<TemplateType>::SetQuantMode(uint32_t quantMode)
+{
+    quantMode_ = quantMode;
 }
 
 /**
@@ -282,8 +291,11 @@ __aicore__ inline void MTECommunication<TemplateType>::CopyDataToWin(uint64_t xS
 {
     // 遍历每个核需要搬运的数据块
     for (uint64_t curBlock = 0; curBlock < assignedBlockNums_; ++curBlock) {
-        uint64_t curXOffset = xOffset_ + curBlock * xNumPerBlock_;              // 计算现在搬第几个x
-        uint64_t curScaleOffset = scaleOffset_ + curBlock * scaleNumsPerBlock_; // 计算现在搬第几个scale
+        uint64_t curXOffset = xOffset_ + curBlock * xNumPerBlock_;
+        uint64_t curScaleOffset = scaleOffset_;
+        if (quantMode_ != PT_QUANT_MOD) {
+            curScaleOffset += curBlock * scaleNumsPerBlock_;
+        }
         uint32_t copyBlockNum = xNumPerBlock_;
         if ((aivId_ == lastAivId_) && (curBlock == assignedBlockNums_ - 1)) {
             copyBlockNum = tailXNums_; // 检测是否为最后的尾块搬运

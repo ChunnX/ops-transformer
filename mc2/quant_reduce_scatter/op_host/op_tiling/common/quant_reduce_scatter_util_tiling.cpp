@@ -111,9 +111,14 @@ static bool SetQuantMode(const gert::TilingContext *context, TilingRunInfo &runI
     // context->GetInputDesc在函数CheckTensorDataType中已经校验
     ge::DataType xDtype = context->GetInputDesc(X_INDEX)->GetDataType();
     ge::DataType scalesDtype = context->GetInputDesc(SCALES_INDEX)->GetDataType();
-    // 0: 无量化模式; 1: TG量化; 2: MX量化
+    // 0: 无量化模式; 1: TG量化; 2: MX量化; 3: PT(per-tensor)量化
     uint32_t quantMode = 0;
-    if (IsContains(X_DTYPE_LIST, xDtype) && scalesDtype == ge::DT_FLOAT) {
+    // PT: scales shape 为 1D (size 1)，dtype float32（GetInputShape在函数CheckTensorDataType中已校验）
+    const gert::StorageShape *scalesStorage = context->GetInputShape(SCALES_INDEX);
+    if (scalesStorage->GetStorageShape().GetDimNum() == 1 && scalesStorage->GetStorageShape().GetDim(0) == 1 &&
+        scalesDtype == ge::DT_FLOAT) {
+        quantMode = PT_QUANT_MOD;
+    } else if (IsContains(X_DTYPE_LIST, xDtype) && scalesDtype == ge::DT_FLOAT) {
         quantMode = TG_QUANT_MOD;
     } else if ((xDtype == ge::DT_FLOAT8_E4M3FN || xDtype == ge::DT_FLOAT8_E5M2) && scalesDtype == ge::DT_FLOAT8_E8M0) {
         quantMode = MX_QUANT_MOD;
@@ -124,7 +129,7 @@ static bool SetQuantMode(const gert::TilingContext *context, TilingRunInfo &runI
                                               ("x=" + std::string(Ops::Base::ToString(xDtype).c_str()) +
                                                ", scales=" + std::string(Ops::Base::ToString(scalesDtype).c_str()))
                                                   .c_str(),
-                                              "The value of quantMode must match a known quantization mode (TG or MX)"),
+                                              "The value of quantMode must match a known quantization mode (TG/MX/PT)"),
         return false);
     // 设置quantMode
     runInfo.quantMode = quantMode;
@@ -156,6 +161,9 @@ static bool CheckTensorDataType(const gert::TilingContext *context, TilingRunInf
         !IsContains(SCALES_DTYPE_LIST, scalesDtype),
         OP_LOGE_FOR_INVALID_DTYPE(nodeName, "scales", Ops::Base::ToString(scalesDtype).c_str(), "float/float8_e8m0"),
         return false);
+    // 校验scales的shape（SetQuantMode需要根据shape判断量化模式，必须在此前置判空）
+    const gert::StorageShape *scalesStorage = context->GetInputShape(SCALES_INDEX);
+    OP_TILING_CHECK(scalesStorage == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "scales"), return false);
     // 校验output的dtype
     auto outputDesc = context->GetOutputDesc(OUTPUT_INDEX);
     OP_TILING_CHECK(outputDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "output"), return false);
@@ -266,7 +274,10 @@ static std::vector<uint64_t> CalculateExpectedScalesShape(const gert::TilingCont
         uint64_t bs = xShape->GetStorageShape().GetDim(DIM_ZERO);
         uint64_t h = xShape->GetStorageShape().GetDim(DIM_ONE);
 
-        if (runInfo.quantMode == TG_QUANT_MOD) {
+        if (runInfo.quantMode == PT_QUANT_MOD) {
+            // PT量化: scales.shape(1)
+            expectedScalesDims.push_back(1);
+        } else if (runInfo.quantMode == TG_QUANT_MOD) {
             // TG量化: scales.shape(BS, H/128)
             expectedScalesDims.push_back(bs);
             expectedScalesDims.push_back(ops::CeilDiv(h, TG_QUANT_NUMBER));
@@ -282,7 +293,10 @@ static std::vector<uint64_t> CalculateExpectedScalesShape(const gert::TilingCont
         uint64_t s = xShape->GetStorageShape().GetDim(DIM_ONE);
         uint64_t h = xShape->GetStorageShape().GetDim(DIM_TWO);
 
-        if (runInfo.quantMode == TG_QUANT_MOD) {
+        if (runInfo.quantMode == PT_QUANT_MOD) {
+            // PT量化: scales.shape(1)
+            expectedScalesDims.push_back(1);
+        } else if (runInfo.quantMode == TG_QUANT_MOD) {
             // TG量化: scales.shape(B, S, H/128)
             expectedScalesDims.push_back(b);
             expectedScalesDims.push_back(s);
@@ -332,6 +346,8 @@ static bool CheckScalesValid(const gert::TilingContext *context, const std::vect
         quantModeStr = "TG";
     } else if (runInfo.quantMode == MX_QUANT_MOD) {
         quantModeStr = "MX";
+    } else if (runInfo.quantMode == PT_QUANT_MOD) {
+        quantModeStr = "PT";
     }
 
     // 检查维度数量是否一致
@@ -617,37 +633,33 @@ static bool CheckTensorFormat(const gert::TilingContext *context)
 static bool CheckWindowSize(const gert::TilingContext *context, const TilingRunInfo &runInfo)
 {
     const char *nodeName = context->GetNodeName();
-    // 获取量化模式，数据类型
-    uint64_t xValueOne = context->GetInputShape(X_INDEX)->GetStorageShape().GetDim(DIM_ZERO);
-    uint64_t xValueTwo = context->GetInputShape(X_INDEX)->GetStorageShape().GetDim(DIM_ONE);
-    uint64_t scalesValueOne = context->GetInputShape(SCALES_INDEX)->GetStorageShape().GetDim(DIM_ZERO);
-    uint64_t scalesValueTwo = context->GetInputShape(SCALES_INDEX)->GetStorageShape().GetDim(DIM_ONE);
 
     // 计算xDataSize
-    uint64_t xValue = xValueOne * xValueTwo;
-    uint64_t scalesValue = scalesValueOne * scalesValueTwo;
-    uint32_t scalesLastDim = DIM_TWO;
-    size_t xDimNum = context->GetInputShape(X_INDEX)->GetStorageShape().GetDimNum();
-    if (xDimNum == THREE_DIMS) {
-        uint64_t xValueThree = context->GetInputShape(X_INDEX)->GetStorageShape().GetDim(DIM_TWO);
-        xValue = xValue * xValueThree;
-        uint64_t scalesValueThree = context->GetInputShape(SCALES_INDEX)->GetStorageShape().GetDim(DIM_TWO);
-        scalesValue = scalesValue * scalesValueThree;
-        scalesLastDim = DIM_THREE;
+    const gert::StorageShape *xShape = context->GetInputShape(X_INDEX);
+    size_t xDimNum = xShape->GetStorageShape().GetDimNum();
+    uint64_t xValue = xDimNum > 0 ? 1UL : 0UL;
+    for (size_t i = 0; i < xDimNum; ++i) {
+        xValue *= xShape->GetStorageShape().GetDim(i);
     }
-    uint64_t xDataSize = ((xValue * X_DTYPE_SIZE_ONE + WIN_ADDR_ALIGN - 1UL) / WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
+    uint64_t xDataSize = ops::CeilAlign(xValue * X_DTYPE_SIZE_ONE, WIN_ADDR_ALIGN);
     OP_LOGD(nodeName, "current xDataSize is: [%lu]MB.", ops::CeilDiv(xDataSize, MB_SIZE));
 
     // 计算scalesDataSize
     uint64_t scalesSize = 0UL;
-    if (runInfo.quantMode == TG_QUANT_MOD) {
+    const gert::StorageShape *scalesShape = context->GetInputShape(SCALES_INDEX);
+    size_t scalesDimNum = scalesShape->GetStorageShape().GetDimNum();
+    uint64_t scalesValue = scalesDimNum > 0 ? 1UL : 0UL;
+    for (size_t i = 0; i < scalesDimNum; ++i) {
+        scalesValue *= scalesShape->GetStorageShape().GetDim(i);
+    }
+    if (runInfo.quantMode == PT_QUANT_MOD) {
+        scalesSize = scalesValue * SCALE_DTYPE_SIZE_FOUR;
+    } else if (runInfo.quantMode == TG_QUANT_MOD) {
         scalesSize = scalesValue * SCALE_DTYPE_SIZE_FOUR;
     } else if (runInfo.quantMode == MX_QUANT_MOD) {
-        // scales的最后一维一定为2
-        uint64_t scalesValueLast = context->GetInputShape(SCALES_INDEX)->GetStorageShape().GetDim(scalesLastDim);
-        scalesSize = scalesValue * scalesValueLast * SCALE_DTYPE_SIZE_ONE;
+        scalesSize = scalesValue * SCALE_DTYPE_SIZE_ONE;
     }
-    uint64_t scalesDataSize = ((scalesSize + WIN_ADDR_ALIGN - 1UL) / WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
+    uint64_t scalesDataSize = ops::CeilAlign(scalesSize, WIN_ADDR_ALIGN);
     OP_LOGD(nodeName, "current scalesDataSize is: [%lu]MB.", ops::CeilDiv(scalesDataSize, MB_SIZE));
 
     // 实际的windowSize = 数据区（x和scales）+ 状态区（1Mb）

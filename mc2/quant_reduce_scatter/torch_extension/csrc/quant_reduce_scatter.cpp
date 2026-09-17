@@ -29,6 +29,7 @@ static const int H_LOWER_LIMIT = 1024;
 static const int H_UPPER_LIMIT = 8192;
 static const int NUM_64 = 64;
 static const int NUM_128 = 128;
+static const int DIM_ONE = 1;
 static const int DIM_TWO = 2;
 static const int DIM_THREE = 3;
 static const int DIM_FOUR = 4;
@@ -53,7 +54,7 @@ at::Tensor NpuQuantReduceScatter(const at::Tensor &context, const at::Tensor &x,
     if (x.dim() == DIM_TWO) {
         TORCH_CHECK(x.size(0) != 0 && x.size(1) != 0, "The input 2 dim tensor x can not be empty tensor");
     } else if (x.dim() == DIM_THREE) {
-        TORCH_CHECK(x.size(0) != 0 && x.size(1) != 0 && x.size(DIM_TWO) != 0,
+        TORCH_CHECK(x.size(0) != 0 && x.size(1) != 0 && x.size(2) != 0,
                     "The input 3 dim tensor x can not be empty tensor");
     }
     // 校验x的dtype
@@ -80,21 +81,26 @@ at::Tensor NpuQuantReduceScatter(const at::Tensor &context, const at::Tensor &x,
     TORCH_CHECK(axisBs % worldSize == 0, "The x BS-axis should be divisible by worldSize");
 
     // 校验scales的shape
-    TORCH_CHECK(scales.dim() == DIM_TWO || scales.dim() == DIM_THREE || scales.dim() == DIM_FOUR,
-                "The input scales tensor shape is required to be equal to x in TG QuantMode, "
-                "or be equal to x plus 1 in MX QuantMode, but the actual input scales shape is ",
-                scales.dim());
+    TORCH_CHECK(
+        scales.dim() == DIM_ONE || scales.dim() == DIM_TWO || scales.dim() == DIM_THREE || scales.dim() == DIM_FOUR,
+        "The input scales tensor shape is required to be equal to x in TG QuantMode, "
+        "or be equal to x plus 1 in MX QuantMode, or be 1D (1) in PT QuantMode, "
+        "but the actual input scales shape is ",
+        scales.dim());
 
     // 校验scales是否为空tensor
-    if (scales.dim() == DIM_TWO) {
+    if (scales.dim() == DIM_ONE) {
+        TORCH_CHECK(scales.size(0) != 0, "The input 1 dim tensor scales can not be empty tensor");
+        TORCH_CHECK(scales.size(0) == 1, "The input 1 dim tensor scales must be 1D (1)");
+    } else if (scales.dim() == DIM_TWO) {
         TORCH_CHECK(scales.size(0) != 0 && scales.size(1) != 0,
                     "The input 2 dim tensor scales can not be empty tensor");
     } else if (scales.dim() == DIM_THREE) {
-        TORCH_CHECK(scales.size(0) != 0 && scales.size(1) != 0 && scales.size(DIM_TWO) != 0,
+        TORCH_CHECK(scales.size(0) != 0 && scales.size(1) != 0 && scales.size(2) != 0,
                     "The input 3 dim tensor scales can not be empty tensor");
     } else if (scales.dim() == DIM_FOUR) {
         TORCH_CHECK(
-            scales.size(0) != 0 && scales.size(1) != 0 && scales.size(DIM_TWO) != 0 && scales.size(DIM_THREE) != 0,
+            scales.size(0) != 0 && scales.size(1) != 0 && scales.size(2) != 0 && scales.size(3) != 0,
             "The input 4 dim tensor scales can not be empty tensor");
     }
     // 校验scales的dtype: float/float8_e8m0
