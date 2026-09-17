@@ -40,7 +40,7 @@ class _AllToAllQuantMatmulOpBuilder(OpBuilder):
             "int[] group_sizes=[], "
             "int? x1_dtype=None, int? x2_dtype=None, "
             "int? x1_scale_dtype=None, int? x2_scale_dtype=None, "
-            "int? y_dtype=None, str? comm_mode=None, int? precision_mode=None"
+            'int? y_dtype=None, str comm_mode="aiv_urma", int? precision_mode=None'
             ") -> (Tensor, Tensor)"
         )
 
@@ -64,7 +64,7 @@ class _AllToAllQuantMatmulOpBuilder(OpBuilder):
             x1_scale_dtype=None,
             x2_scale_dtype=None,
             y_dtype=None,
-            comm_mode=None,
+            comm_mode="aiv_urma",
             precision_mode=None,
         ):
             torch._check(
@@ -116,7 +116,7 @@ def _npu_all_to_all_quant_matmul(
     x1_scale_dtype=None,
     x2_scale_dtype=None,
     y_dtype=None,
-    comm_mode=None,
+    comm_mode="aiv_urma",
     precision_mode=None,
 ):
     op_module = _all_to_all_quant_matmul_op_builder.load()
@@ -175,7 +175,7 @@ def all_to_all_quant_matmul(
     y_dtype: Optional[
         int
     ] = None,  # fp32，未显式指定 BF16(15)/FP16(5) 时算子侧会校验失败
-    comm_mode: Optional[str] = None,
+    comm_mode: Optional[str] = "aiv_urma",
     precision_mode: Optional[int] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """AlltoAll + Matmul fused computation.
@@ -204,8 +204,8 @@ def all_to_all_quant_matmul(
         x2_scale_dtype (int): x2_scale dtype enum, -1 means use tensor dtype.
         y_dtype (int): Output dtype enum, must be 5 (FP16) or 15 (BF16); the default
             fp32 is rejected by the operator.
-        comm_mode (str): Communication engine, only ``"aiv_urma"`` is supported; must be
-            passed explicitly.
+        comm_mode (str, optional): Communication engine. Only ``"aiv_urma"`` is supported;
+            defaults to ``"aiv_urma"``.
         precision_mode (int): Precision mode, 0 means default.
 
     Returns:
