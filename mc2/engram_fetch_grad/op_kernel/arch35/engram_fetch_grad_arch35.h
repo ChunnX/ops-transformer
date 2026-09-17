@@ -1545,6 +1545,8 @@ __aicore__ inline void EngramFetchGradArch35::Process()
             tpipe_->InitBuffer(gradBuf_, Mc2Kernel::GRAD_BUF_BYTES);
             if (castBufBytes_ > 0U) {
                 tpipe_->InitBuffer(castFp32Buf_, castBufBytes_);
+            } else {
+                tpipe_->InitBuffer(castFp32Buf_, Mc2Kernel::UB_ALIGN);
             }
             tpipe_->InitBuffer(accumBuf_, accumBufBytes_);
             uniqueScatter_.SetCastBuf(castFp32Buf_);
