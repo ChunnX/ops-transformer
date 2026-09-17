@@ -22,6 +22,7 @@ operator_group_1:
   - mhc_pre
   - mhc_pre_backward
   - mhc_sinkhorn_backward
+  - block_attention_residuals_grad
 operator_group_2:
   - grouped_matmul
   - grouped_matmul_add
@@ -48,6 +49,7 @@ operator_group_4:
   - moe_token_permute_with_routing_map_grad
   - moe_token_unpermute_with_routing_map
   - moe_token_unpermute_with_ep
+  - moe_token_permute_with_ep_grad
   - rope_with_sin_cos_cache
   - moe_re_routing
   - moe_compute_expert_tokens
@@ -69,6 +71,7 @@ operator_group_6:
   - quant_lightning_indexer
   - block_sparse_attention
   - generic_block_sparse_attention
+  - generic_block_sparse_attention_grad
 operator_group_7:
   - attention_pioneer
   - fused_infer_attention_score,10-0

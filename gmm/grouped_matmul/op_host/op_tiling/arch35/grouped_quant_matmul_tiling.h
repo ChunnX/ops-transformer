@@ -15,7 +15,7 @@
 #ifndef GROUPED_QUANT_MATMUL_TILING_H
 #define GROUPED_QUANT_MATMUL_TILING_H
 
-#include <initializer_list>
+#include <vector>
 #include <sstream>
 #include <string>
 
@@ -128,7 +128,7 @@ std::string BuildErrorMsgStr(const Args &...args)
     return oss.str();
 }
 
-inline std::string ShapesToString(std::initializer_list<std::string> shapes)
+inline std::string ShapesToString(const std::vector<std::string> &shapes)
 {
     std::ostringstream oss;
     bool isFirst = true;
@@ -263,7 +263,7 @@ protected:
     bool IsMxfp4() const;
     bool IsMultiTensorWeight() const;
     bool IsWeightNzMultiTensorLayout() const;
-    uint16_t GetTensorListSize(uint32_t index) const;
+    uint16_t GetTensorListSize(uint32_t index, uint16_t maxCount = GroupedMatmul::MAX_TENSOR_CONT) const;
     bool CheckWeightTensorListForWeightNz() const;
     uint64_t GetWeightLogicalNSize(const gert::Shape &wShape) const;
     bool CheckMultiWeightNzInputs(const gert::StorageShape *xScaleStorageShape) const;

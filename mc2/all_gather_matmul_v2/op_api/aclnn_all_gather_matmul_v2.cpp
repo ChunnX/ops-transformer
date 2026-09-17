@@ -1,12 +1,12 @@
-/* *
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
-  */
+/**
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include "aclnn_all_gather_matmul_v2.h"
 #include "securec.h"
@@ -21,6 +21,7 @@
 #include "opdev/op_log.h"
 #include "mc2_log_compat.h"
 #include "opdev/platform.h"
+#include "op_host/util/op_const_def.h"
 #include "common/op_host/op_api/mc2_3rd_matmul_util.h"
 #include "common/utils/hccl_util.h"
 #include "common/op_api/mc2_aclnn_util.h"
@@ -173,7 +174,7 @@ static bool CheckAttr(int64_t streamMode)
 }
 
 static bool CheckFormat(const aclTensor *x1, const aclTensor *x2, const aclTensor *output, const aclTensor *bias,
-                        aclTensor *gatherOut, aclTensor *amaxOut)
+                        const aclTensor *gatherOut, const aclTensor *amaxOut)
 {
     if (x1->GetStorageFormat() != op::Format::FORMAT_ND) {
         OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON("aclnnAllGatherMatmulV2", "x1",
@@ -225,8 +226,7 @@ static bool IsGatherOut(const aclTensor *gatherOut)
     return true;
 }
 
-static bool CheckShape(const aclTensor *x1, const aclTensor *x2, const aclTensor *output, const aclTensor *gatherOut,
-                       bool isTransA)
+static bool CheckShape(const aclTensor *x1, const aclTensor *x2, const aclTensor *output, bool isTransA)
 {
     if (x1->GetViewShape().GetDimNum() != TWO_DIMS) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnAllGatherMatmulV2", "x1",
@@ -276,7 +276,7 @@ static bool CheckShape(const aclTensor *x1, const aclTensor *x2, const aclTensor
 
 // 分别对输入类型为fp8/hif8和fp16/bf16数据类型进行分别校验
 static aclnnStatus CheckParams(const aclTensor *x1, const aclTensor *x2, const aclTensor *bias, int64_t streamMode,
-                               const aclTensor *output, aclTensor *gatherOut, aclTensor *amaxOut)
+                               const aclTensor *output, const aclTensor *gatherOut, const aclTensor *amaxOut)
 {
     CHECK_RET(CheckNotNull(x1, x2, output), ACLNN_ERR_PARAM_NULLPTR);
 
@@ -301,9 +301,8 @@ static aclnnStatus CheckParamsForAIVMode(const aclTensor *x1, const aclTensor *x
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus CheckShapeForAIVMode(const aclTensor *x1, const aclTensor *x2, const aclTensor *bias,
-                                        const aclTensor *output, const aclTensor *gatherOut, bool isTransA,
-                                        bool isViewTransB)
+static aclnnStatus CheckShapeForAIVMode(const aclTensor *x1, const aclTensor *x2, const aclTensor *output,
+                                        const aclTensor *gatherOut, bool isTransA, bool isViewTransB)
 {
     if (x1->GetViewShape().GetDimNum() != TWO_DIMS) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnAllGatherMatmulV2", "x1",
@@ -499,7 +498,7 @@ static const aclTensor *TransX2Tensor(const aclTensor *x2)
                            storageDimsNum, x2->GetTensor()->GetAddr());
 }
 
-static bool checkX1InputEmptyTensor(const aclTensor *x1, const aclTensor *x2)
+static bool CheckX1InputEmptyTensor(const aclTensor *x1)
 {
     const auto kValX1 = x1->GetViewShape().GetDim(1);
     if (kValX1 != 0) {
@@ -514,7 +513,7 @@ static bool checkX1InputEmptyTensor(const aclTensor *x1, const aclTensor *x2)
     return false;
 }
 
-static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commMode, uint8_t &commModeEnum)
+static aclnnStatus CheckAndHandleCommMode(const char *commMode, uint8_t &commModeEnum)
 {
     // 获取通信引擎参数
     if (std::strncmp(commMode, "ai_cpu", CMP_MAX_LEN) == 0) {
@@ -540,8 +539,8 @@ aclnnStatus allGatherMatmulV2GetWorkspaceSizeCCUMode(const aclTensor *x1, const 
     uint64_t timeStamp = NnopbaseMsprofSysTime();
     auto retParam = CheckParams(x1, x2, bias, streamMode, output, gatherOut, amaxOut);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
-    // 处理空tensor 如果x1不为空 x2为空 需要进行gatherOut
-    if (checkX1InputEmptyTensor(x1, x2)) {
+    // 处理空tensor：x1为空(k轴非0)时直接走空tensor流程
+    if (CheckX1InputEmptyTensor(x1)) {
         return DealWithX1Empty(workspaceSize, executor);
     }
 
@@ -557,7 +556,7 @@ aclnnStatus allGatherMatmulV2GetWorkspaceSizeCCUMode(const aclTensor *x1, const 
     bool transposeX1 = IsTransposeLastTwoDims(x1);
     bool transposeX2 = IsTransposeLastTwoDims(x2);
 
-    CHECK_RET(CheckShape(x1, x2, output, gatherOut, transposeX1), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckShape(x1, x2, output, transposeX1), ACLNN_ERR_PARAM_INVALID);
     bool isGatherOut = IsGatherOut(gatherOut);
     bool isAMaxOut = IsAMaxOut(amaxOut);
     // 如果为bf16/fp16的,不能输入amaxout, 如果为低精度，amaxout 数据类型只能为float类型且维度为1维
@@ -580,7 +579,7 @@ aclnnStatus allGatherMatmulV2GetWorkspaceSizeCCUMode(const aclTensor *x1, const 
     }
 
     uint8_t commModeEnum = 0;
-    aclnnStatus checkCommModeRet = CheckAndHandleCommMode(group, commMode, commModeEnum);
+    aclnnStatus checkCommModeRet = CheckAndHandleCommMode(commMode, commModeEnum);
     CHECK_RET(checkCommModeRet == ACLNN_SUCCESS, checkCommModeRet);
 
     aclnnStatus ret = aclnnInnerAllGatherMatmulV2GetWorkspaceSize(
@@ -629,10 +628,10 @@ aclnnStatus allGatherMatmulV2GetWorkspaceSizeAIVMode(const aclTensor *x1, const 
     bool isAmaxOut = false;
     bool isGatherOut = IsGatherOut(gatherOut);
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
-    retParam = CheckShapeForAIVMode(x1, x2, bias, output, gatherOut, transposeX1, viewTransposeX2);
+    retParam = CheckShapeForAIVMode(x1, x2, output, gatherOut, transposeX1, viewTransposeX2);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     // 【A2、A3】校验非连续入参合法性
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_2201) {
         if (!transposeX2 && !MC2Aclnn::IsTensorContiguous(x2)) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAllGatherMatmulV2", "x2", "non-contiguous",
                                                   "The value of x2 must be contiguous when not transposed");
@@ -660,11 +659,11 @@ aclnnStatus aclnnAllGatherMatmulV2GetWorkspaceSize(const aclTensor *x1, const ac
         OP_LOGE_LIBOPAPI_REPORT("aclnnAllGatherMatmulV2", "CommMode is null.");
         return ACLNN_ERR_INNER_NULLPTR;
     }
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
         ret = allGatherMatmulV2GetWorkspaceSizeCCUMode(x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, group,
                                                        gatherIndex, commTurn, streamMode, groupSize, commMode, output,
                                                        gatherOut, amaxOut, workspaceSize, executor);
-    } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
+    } else if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_2201) {
         ret = allGatherMatmulV2GetWorkspaceSizeAIVMode(x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, group,
                                                        gatherIndex, commTurn, streamMode, groupSize, commMode, output,
                                                        gatherOut, amaxOut, workspaceSize, executor);
@@ -690,7 +689,7 @@ aclnnStatus aclnnAllGatherMatmulV2(void *workspace, uint64_t workspaceSize, aclO
         return ACLNN_ERR_INNER_NULLPTR;
     }
     if (NnopbaseSetHcclServerType) {
-        if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
             void *arg = NnopbaseGetUserHandle(executor);
             uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
             uint8_t commMode = static_cast<uint8_t>(handleVal);
@@ -701,7 +700,7 @@ aclnnStatus aclnnAllGatherMatmulV2(void *workspace, uint64_t workspaceSize, aclO
                 OP_LOGD("aclnnAllGatherMatmulV2: NnopbaseHcclServerType, use CCU mode");
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
             }
-        } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
+        } else if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_2201) {
             NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
         }
     }

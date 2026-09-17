@@ -23,17 +23,22 @@
 #include "../../../3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmm_cube_on_the_fly.h"
 #include "../../../common/op_kernel/mc2_quant_batch_matmul.h"
 #include "../../../common/op_kernel/qbmm_mix_perblock_noncontiguous.h"
+#include "../../../common/op_kernel/apace/utils/op_state_dump.h"
 #include "../matmul_reduce_scatter_v2_c_tiling.h"
 
-#define TEMPLATE_CLASS_PARAMS \
+#define QUANT_RS_TEMPLATE_CLASS_PARAMS \
     template <typename AType, typename BType, typename CType, typename ScaleType, class MMClass, bool IsPerBlock, \
-              bool ATrans, bool BTrans, int TPL_COMM_MODE>
-#define TEMPLATE_FUNC_PARAMS AType, BType, CType, ScaleType, MMClass, IsPerBlock, ATrans, BTrans, TPL_COMM_MODE
+              bool ATrans, bool BTrans, int TPL_COMM_MODE, bool PeerOnly = false>
+#define QUANT_RS_TEMPLATE_IMPL_PARAMS \
+    template <typename AType, typename BType, typename CType, typename ScaleType, class MMClass, bool IsPerBlock, \
+              bool ATrans, bool BTrans, int TPL_COMM_MODE, bool PeerOnly>
+#define QUANT_RS_TEMPLATE_FUNC_PARAMS \
+    AType, BType, CType, ScaleType, MMClass, IsPerBlock, ATrans, BTrans, TPL_COMM_MODE, PeerOnly
 
 namespace MatmulReduceScatterV2Impl {
 using namespace AscendC;
 
-TEMPLATE_CLASS_PARAMS
+QUANT_RS_TEMPLATE_CLASS_PARAMS
 class QuantBMMReduceScatter {
 public:
     __aicore__ inline QuantBMMReduceScatter() {}
@@ -67,7 +72,6 @@ private:
     GM_ADDR x2ScaleGM_{nullptr};
     GM_ADDR workspaceGM_{nullptr};
     GM_ADDR gmToFloat_{nullptr};
-    __gm__ HcclCombinOpParam *context_{nullptr};
     uint32_t rankId_{0};
     AscendC::HcclDataType dataType_{HCCL_DATA_TYPE_INT8};
     uint8_t debugMode_{0};
@@ -75,10 +79,22 @@ private:
     AscendC::HcclHandle handles_[MAX_HANDLE]; // 最大支持64个handleId
     uint64_t preCoreNum_ = 0;
     uint32_t batchWeight_[MAX_HANDLE] = {0};
+    // MX量化场景(E8M0 scale)启用runtime info打点，覆盖MXFP8与MXFP4(两者ScaleType均为fp8_e8m0_t)
+    static constexpr bool IS_MX_DFX = AscendC::IsSameType<ScaleType, fp8_e8m0_t>::value;
+    // position 枚举(编号对齐alltoallmm实现)
+    static constexpr uint8_t POS_COMM_BEFORE = 0U;             // ReduceScatter提交/hccl.Wait 前
+    static constexpr uint8_t POS_COMP_CUBE_MATMUL_BEFORE = 2U; // C核 matmul 前
+    // 状态打点，崩溃dump时用于定位卡死的tile轮次与通信阶段
+    Mc2Kernel::OpStateDump opStateDump_;
 };
 
-TEMPLATE_CLASS_PARAMS
-__aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::Init(
+template <typename AType, typename BType, typename CType, typename ScaleType, class MMClass, bool IsPerBlock,
+          bool ATrans, bool BTrans, int TPL_COMM_MODE>
+using QuantBMMReduceScatterPeerOnly =
+    QuantBMMReduceScatter<AType, BType, CType, ScaleType, MMClass, IsPerBlock, ATrans, BTrans, TPL_COMM_MODE, true>;
+
+QUANT_RS_TEMPLATE_IMPL_PARAMS
+__aicore__ inline void QuantBMMReduceScatter<QUANT_RS_TEMPLATE_FUNC_PARAMS>::Init(
     GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR x1ScaleGM, GM_ADDR x2ScaleGM, GM_ADDR cGM, GM_ADDR contextGM,
     GM_ADDR workspaceGM, Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData *tilingData, TPipe *tPipe)
 {
@@ -87,7 +103,6 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::Init(
     uint64_t hcclCcTilingOffset = offsetof(Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData, mc2CcTiling);
     hccl_.InitV2(contextGM, hcclInitTilingV2);
     hccl_.SetCcTilingV2(hcclCcTilingOffset);
-    context_ = (__gm__ HcclCombinOpParam *)(contextGM);
     tPipe_ = tPipe;
     debugMode_ = tilingData_->debugMode;
     dataType_ = static_cast<AscendC::HcclDataType>(tilingData_->dataType);
@@ -97,8 +112,14 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::Init(
     biasGM_ = biasGM;
     x1ScaleGM_ = x1ScaleGM;
     x2ScaleGM_ = x2ScaleGM;
-    rankId_ = context_->rankId;
+    rankId_ = hccl_.GetRankId();
     auto &&cfg = tilingData_->param;
+    if constexpr (IS_MX_DFX) {
+        // 初始化状态打点(写入magicNum+COMM_INIT阶段)，HCCL初始化期间崩溃dump显示INIT
+#if MC2_DFX_ENABLE
+        opStateDump_.Init(workspaceGM, &tilingData->dumpInfo.workspaceLayout, cfg.aicCoreNum);
+#endif
+    }
     for (uint32_t j = 0; j < cfg.rankDim; j++) {
         batchWeight_[j] = j;
     }
@@ -107,30 +128,33 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::Init(
     workspaceGM_ = gmToFloat_ + cfg.cToFloatLen;
 }
 
-TEMPLATE_CLASS_PARAMS
-__aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::PostProcess()
+QUANT_RS_TEMPLATE_IMPL_PARAMS
+__aicore__ inline void QuantBMMReduceScatter<QUANT_RS_TEMPLATE_FUNC_PARAMS>::PostProcess()
 {
     auto &&cfg = tilingData_->param;
     // 等待reducescatter执行完成
     if ((GetBlockIdx() == 0) && (g_coreType == AIC)) {
         for (uint32_t i = 0; i < cfg.tileCnt + cfg.tailCnt; i++) {
             hccl_.Wait(handles_[i]);
+            opStateDump_.DoDump(DUMP_FIELD_WAIT);
         }
         // 终止hcclserver
+        // 仅切commPhase，到达finalize即表示通信全流程成功结束
         hccl_.Finalize();
+        opStateDump_.DoDump(DUMP_FIELD_PHASE, 0, static_cast<uint8_t>(Utils::RT_PHASE_COMM_FINALIZE));
     }
 }
 
-TEMPLATE_CLASS_PARAMS
-__aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::Process()
+QUANT_RS_TEMPLATE_IMPL_PARAMS
+__aicore__ inline void QuantBMMReduceScatter<QUANT_RS_TEMPLATE_FUNC_PARAMS>::Process()
 {
     InnerProcess();
     PostProcess();
 }
 
 // perblock量化场景当rankM不满足128*ranksize，走计算通信串行
-TEMPLATE_CLASS_PARAMS
-__aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::MatMulReduceScatterSerial()
+QUANT_RS_TEMPLATE_IMPL_PARAMS
+__aicore__ inline void QuantBMMReduceScatter<QUANT_RS_TEMPLATE_FUNC_PARAMS>::MatMulReduceScatterSerial()
 {
     auto &&qBMmtiling = tilingData_->quantBmmV3TileTiling;
     auto &&tiling = qBMmtiling.matmulTiling;
@@ -156,8 +180,8 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::MatMulReduce
     }
 }
 
-TEMPLATE_CLASS_PARAMS
-__aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::InnerProcess()
+QUANT_RS_TEMPLATE_IMPL_PARAMS
+__aicore__ inline void QuantBMMReduceScatter<QUANT_RS_TEMPLATE_FUNC_PARAMS>::InnerProcess()
 {
     auto &&tiling = tilingData_->quantBmmV3TileTiling.matmulTiling;
     auto &&cfg = tilingData_->param;
@@ -201,8 +225,8 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::InnerProcess
     }
 }
 
-TEMPLATE_CLASS_PARAMS
-__aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::MatMulComputReduceScatterPertensor(
+QUANT_RS_TEMPLATE_IMPL_PARAMS
+__aicore__ inline void QuantBMMReduceScatter<QUANT_RS_TEMPLATE_FUNC_PARAMS>::MatMulComputReduceScatterPertensor(
     GM_ADDR aGM, GM_ADDR cGM, DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &qBMmtiling, uint32_t tileCnt,
     GM_ADDR gmToFloat, bool isLast, bool isTail)
 {
@@ -238,25 +262,29 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::MatMulComput
     Mc2MatmulV3::Mc2QuantBatchMatmulASWKernel<AType, BType, ScaleType, float, CType, CubeFormat::ND, CubeFormat::ND,
                                               CubeFormat::ND, ATrans, BTrans>
         mmv3;
+    cfg.rankID = rankId_;
     auto tempGM = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? cGM : gmToFloat_;
     mmv3.Init(aGM_, bGM_, biasGM_, x2ScaleGM_, x1ScaleGM_, tempGM, workspaceGM_, &qBMmtiling, GetTPipePtr(), cfg,
-              isTail, false, preCoreNum_);
+              isTail, false, preCoreNum_, PeerOnly ? cGM_ : nullptr);
     for (uint32_t i = 0; i < tileCnt; i++) {
+        // turn与handle序号对齐: 主块1..tileCnt, 尾块tileCnt+1..tileCnt+tailCnt
         mmv3.UpdateSlice(i, isTail);
+        opStateDump_.DoDump(DUMP_FIELD_TURN_INC | DUMP_FIELD_POSITION, POS_COMP_CUBE_MATMUL_BEFORE);
         mmv3.Process(isLast && (i == (tileCnt - 1)));
         AscendC::CrossCoreSetFlag<0, PIPE_FIX>(3);
         AscendC::CrossCoreWaitFlag(3);
         recvCount = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? 1 : recvCount;
         handles_[i + shift] = hccl_.template ReduceScatter<true>(cWork, recvBuffer, recvCount, dataType_,
                                                                  HcclReduceOp::HCCL_REDUCE_SUM, stride, repeat);
+        opStateDump_.DoDump(DUMP_FIELD_COMMIT | DUMP_FIELD_POSITION, POS_COMM_BEFORE, 0, 0, recvCount);
         cWork += cOffset;
         recvBuffer += cOffset;
     }
     preCoreNum_ = mmv3.GetPreCoreNum();
 }
 
-TEMPLATE_CLASS_PARAMS
-__aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::MatMulComputReduceScatterPerblock(
+QUANT_RS_TEMPLATE_IMPL_PARAMS
+__aicore__ inline void QuantBMMReduceScatter<QUANT_RS_TEMPLATE_FUNC_PARAMS>::MatMulComputReduceScatterPerblock(
     GM_ADDR aGM, GM_ADDR cGM, GM_ADDR x1ScaleGM, DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &qBMmtiling,
     uint32_t tileCnt, GM_ADDR gmToFloat, bool isTail)
 {
@@ -301,8 +329,8 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::MatMulComput
     }
 }
 
-TEMPLATE_CLASS_PARAMS
-__aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::MatMulComputReduceScatter(
+QUANT_RS_TEMPLATE_IMPL_PARAMS
+__aicore__ inline void QuantBMMReduceScatter<QUANT_RS_TEMPLATE_FUNC_PARAMS>::MatMulComputReduceScatter(
     GM_ADDR aGM, GM_ADDR cGM, GM_ADDR x1ScaleGM, DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &qBMmtiling,
     uint32_t tileCnt, GM_ADDR gmToFloat, bool isLast, bool isTail)
 {
