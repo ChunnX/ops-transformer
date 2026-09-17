@@ -43,6 +43,8 @@ dist/
 third_party/
 !cmake/third_party/
 !cmake/third_party/ops-tensor.cmake
+/3rdparty/catccos/
+/3rdparty/shmem/
 
 # ai
 .agents/
