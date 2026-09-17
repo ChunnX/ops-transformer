@@ -587,8 +587,17 @@ public:
 
     __aicore__ inline void IterateBmm1(MM1_DBUF_T &outputBuf, RunInfoX &runInfo, uint32_t subLoop)
     {
+        if constexpr (HAS_V_TAIL) {
+            if (unlikely(runInfo.isVtailTask)) {
+                if constexpr (USE_DN) {
+                    IterateBmm1DnTail(outputBuf, runInfo, subLoop);
+                } else {
+                    IterateBmm1NdTail(outputBuf, runInfo, subLoop);
+                }
+                return;
+            }
+        }
         if constexpr (USE_DN) {
-            // [二期暂缓] 尾task强制ND范式的分派已回退(框架级死锁, 见tiling key注释)
             IterateBmm1Dn(outputBuf, runInfo, subLoop);
         } else {
             IterateBmm1Nd(outputBuf, runInfo, subLoop);
@@ -608,25 +617,7 @@ public:
         }
         Buffer<BufferType::L1> mm1A;
         uint32_t qScaleOffset = ((runInfo.actMSize + 31) >> 5 << 5) * dBaseSize;
-        // [二期PREFILL] USE_DN实例的尾task从DN切换到ND范式: Q在l1Q slot中是DN的B侧KN布局,
-        // ND的Mmad0需A侧MK布局, 必须重装载; slot用GetPre复用DN的Q slot(主体task已按
-        // isLastDnTask释放, Wait可过; Get()会拿到从未初始化的pong slot, Wait死等→超时实测)。
-        // decode(非USE_DN)尾task不重装(Q常驻MK格式), 走原else分支避免破坏已验证路径。
-        const bool needQReloadForVtail = USE_DN && runInfo.isVtailTask && !runInfo.isFirstS2Loop;
-        if (unlikely(needQReloadForVtail)) {
-            mm1A = l1QBuffers_.GetPre(); // 复用DN已释放的Q slot, 覆盖装MK格式
-            mm1A.Wait<HardEvent::MTE1_MTE2>();
-            LocalTensor<Q_T> mm1ATensor = mm1A.GetTensor<Q_T>();
-            if constexpr (!isDAligned) {
-                InitValueL1BufferNAxis(mm1ATensor, mBaseSize, dBaseSize);
-                AscendC::PipeBarrier<PIPE_MTE2>();
-            }
-            CopyQueryTile(mm1ATensor, runInfo);
-
-            LocalTensor<SCALE_T> mm1AScaleTensor = mm1A.GetTensor<SCALE_T>(qScaleOffset);
-            CopyQueryScaleTile(mm1AScaleTensor, runInfo);
-            mm1A.Set<HardEvent::MTE2_MTE1>();
-        } else if (unlikely(runInfo.isFirstS2Loop && subLoop == 0)) {
+        if (unlikely(runInfo.isFirstS2Loop && subLoop == 0)) {
             mm1A = l1QBuffers_.Get();
             mm1A.Wait<HardEvent::MTE1_MTE2>();
             LocalTensor<Q_T> mm1ATensor = mm1A.GetTensor<Q_T>();
@@ -644,14 +635,8 @@ public:
             mm1A.Set<HardEvent::MTE2_MTE1>();
         }
 
-        // [二期PREFILL] USE_DN实例的尾task: K复用主体Bmm2刚释放的KV slot
-        // (l1KV为4buff环形轮转(head/tail游标), GetFree取tail侧已释放slot并推进)
         Buffer<BufferType::L1> mm1B;
-        if (unlikely(needQReloadForVtail)) {
-            mm1B = l1KVBuffers_.GetFree();
-        } else {
-            mm1B = l1KVBuffers_.Get();
-        }
+        mm1B = l1KVBuffers_.Get();
         mm1B.Wait<HardEvent::MTE1_MTE2>();
         LocalTensor<KV_T> mm1BTensor = mm1B.GetTensor<KV_T>();
         if constexpr (!isDAligned) {
@@ -707,20 +692,27 @@ public:
         // 源NZ矩阵中相邻Z排布的起始地址偏移
         fixpipeParams.srcStride = ((runInfo.actMSize + 15) / 16) * 16;
         fixpipeParams.dstStride = s2SplitSize; // mmResUb上两行之间的间隔，单位：element
-        if constexpr (HAS_V_TAIL) {
-            // [VTAIL] 纯尾task(序列末task且主体列数0): mmRes行距改为s2SplitSize/2(=128),
-            // 与vec侧纯尾分支 ProcessVec1VfMxfp8<T, bfloat16_t, ..., 128> 的输入行距
-            // (impl内 LoadAlign srcUb + i*s2BaseSize)一致 — 对齐flash_attn ND config2(D=128)
-            // 的mmRes布局语义: 尾task自成一个128基小task, P尾列VF直出bf16。
-            // 守卫s2SplitSize==256与vec侧(s2BaseSizeCur==256)严格一致, 其余config维持原布局走cast路径。
-            if constexpr (s2SplitSize == 256) {
-                if ((runInfo.kvTailLen > 0) && (runInfo.s2Idx + runInfo.actSingleLoopS2Size >= runInfo.actS2Size) &&
-                    (runInfo.actSingleLoopS2Size == runInfo.kvTailLen)) {
-                    fixpipeParams.dstStride = s2SplitSize >> 1;
-                }
-            }
-        }
         fixpipeParams.dualDstCtl = 1; // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
+        fixpipeParams.params.ndNum = 1;
+        fixpipeParams.params.srcNdStride = 0;
+        fixpipeParams.params.dstNdStride = 0;
+
+        Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(dstTensor, l0C, fixpipeParams);
+    }
+
+    // [VTAIL] decode(ND)尾task专用C1 fixpipe: mmRes行距s2SplitSize/2(=128), 与vec侧纯尾分支
+    // ProcessVec1VfMxfp8<T, bfloat16_t, ..., 128>的输入行距(impl内 LoadAlign srcUb+i*s2BaseSize)一致
+    // — 对齐flash_attn ND config2(D=128)的mmRes布局语义: 尾task自成一个128基小task, P尾列VF直出bf16。
+    // 守卫s2SplitSize==256与vec侧(s2BaseSizeCur==256)严格一致, 其余config维持原布局走cast路径。
+    __aicore__ inline void FixpipeMm1Tail(const LocalTensor<T> &dstTensor, const LocalTensor<T> &l0C, RunInfoX &runInfo,
+                                          uint32_t s2RealSize)
+    {
+        FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
+        fixpipeParams.nSize = (s2RealSize + 7) >> 3 << 3;
+        fixpipeParams.mSize = (runInfo.actMSize + 31) >> 5 << 5;
+        fixpipeParams.srcStride = ((runInfo.actMSize + 15) / 16) * 16;
+        fixpipeParams.dstStride = (s2SplitSize == 256) ? (s2SplitSize >> 1) : s2SplitSize;
+        fixpipeParams.dualDstCtl = 1;
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
@@ -739,15 +731,27 @@ public:
         // L0C上matmul结果相邻连续数据片断间隔（前面一个数据块的头与后面数据块的头的间隔），单位为16 *sizeof(T)
         // 源NZ矩阵中相邻Z排布的起始地址偏移
         fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16;
-        // [二期PREFILL] 尾task的mmRes行距改flash同款动态值(=nSize/2=有效M列):
-        // 尾V1全链(包装VF/A直搬)按非量化BF16几何实现, 行距64+有效16会每行混入48列垃圾。
-        // 主task保持64写死(主VF的m=64/Load几何按行距64配套设计, 改动即回归)
-        if (unlikely(runInfo.isVtailTask)) {
-            fixpipeParams.dstStride = fixpipeParams.nSize / 2;
-        } else {
-            fixpipeParams.dstStride = 64; // mmResUb上两行之间的间隔，单位：element
-        }
+        fixpipeParams.dstStride = 64; // mmResUb上两行之间的间隔，单位：element
         fixpipeParams.dualDstCtl = 2; // 双目标模式，按M维度拆分， M * N / 2写入每个UB，M必须为2的倍数
+        fixpipeParams.params.ndNum = 1;
+        fixpipeParams.params.srcNdStride = 0;
+        fixpipeParams.params.dstNdStride = 0;
+
+        Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(dstTensor, l0C, fixpipeParams);
+    }
+
+    // [VTAIL] prefill(DN)尾task专用C1 fixpipe: mmRes行距=flash同款动态值(nSize/2=有效M列)。
+    // 尾V1全链(包装VF/A直搬)按非量化BF16几何实现, 行距64+有效16会每行混入48列垃圾;
+    // 主task行距64写死(主VF的m=64/Load几何按行距64配套, 见FixpipeMm1Dn)。
+    __aicore__ inline void FixpipeMm1DnTail(const LocalTensor<T> &dstTensor, const LocalTensor<T> &l0C,
+                                            RunInfoX &runInfo, uint32_t s2RealSize)
+    {
+        FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
+        fixpipeParams.nSize = (runInfo.actMSize + 31) >> 5 << 5;
+        fixpipeParams.mSize = (s2RealSize + 7) >> 3 << 3;
+        fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16;
+        fixpipeParams.dstStride = fixpipeParams.nSize / 2;
+        fixpipeParams.dualDstCtl = 2;
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
@@ -823,6 +827,141 @@ public:
         outputBuf.WaitCrossCore();
 
         FixpipeMm1Dn(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(), runInfo, s2CalcSize);
+
+        mm1ResL0C.Set<HardEvent::FIX_M>();
+        outputBuf.SetCrossCore();
+    }
+
+    // [VTAIL] prefill(DN)尾task专用C1: Q×K^T(尾窗s2行, fp8 MX主cache的K) —
+    // 与IterateBmm1Dn同构(Q槽Get/GetPre双分支保留: 纯尾单块task是链首需新装Q,
+    // 拆分尾task则GetPre复用主体已释放槽), fixpipe走FixpipeMm1DnTail(行距nSize/2)。
+    // isLastDnTask释放条件原样保留: 纯尾单块task(无拆分, tailSplitStep==0)是链尾须释放Q槽。
+    __aicore__ inline void IterateBmm1DnTail(MM1_DBUF_T &outputBuf, RunInfoX &runInfo, uint32_t subLoop)
+    {
+        uint32_t s2CalcSize = runInfo.actSingleLoopS2Size; // == kvTailLen(纯尾task判定)
+        Buffer<BufferType::L1> mm1B;
+        uint32_t qScaleOffset = ((runInfo.actMSize + 31) >> 5 << 5) * dBaseSize;
+        if (unlikely(runInfo.isFirstS2Loop && subLoop == 0)) {
+            mm1B = l1QBuffers_.Get();
+            mm1B.Wait<HardEvent::MTE1_MTE2>(); // B矩阵常驻，两次Sub中，只有第一次搬B
+            LocalTensor<Q_T> mm1BTensor = mm1B.GetTensor<Q_T>();
+            if constexpr (!isDAligned) {
+                InitValueL1BufferNAxis(mm1BTensor, mBaseSize, dBaseSize);
+                AscendC::PipeBarrier<PIPE_MTE2>();
+            }
+            CopyQueryTile(mm1BTensor, runInfo);
+
+            LocalTensor<SCALE_T> mm1BScaleTensor = mm1B.GetTensor<SCALE_T>(qScaleOffset);
+            CopyQueryScaleTile(mm1BScaleTensor, runInfo);
+            mm1B.Set<HardEvent::MTE2_MTE1>();
+        } else {
+            mm1B = l1QBuffers_.GetPre();
+            mm1B.Set<HardEvent::MTE2_MTE1>();
+        }
+
+        Buffer<BufferType::L1> mm1A = l1KVBuffers_.Get();
+        mm1A.Wait<HardEvent::MTE1_MTE2>();
+        LocalTensor<KV_T> mm1ATensor = mm1A.GetTensor<KV_T>();
+        if constexpr (!isDAligned) {
+            InitValueL1BufferNAxis(mm1ATensor, s2SplitSize, dBaseSize);
+            AscendC::PipeBarrier<PIPE_MTE2>();
+        }
+        CopyKeyTile(mm1ATensor, runInfo, s2CalcSize, subLoop);
+
+        uint32_t kScaleOffset = ((s2CalcSize + 31) >> 5 << 5) * dBaseSize;
+        LocalTensor<SCALE_T> mm1AScaleTensor = mm1A.GetTensor<SCALE_T>(kScaleOffset);
+        CopyKeyScaleTile(mm1AScaleTensor, runInfo, s2CalcSize, subLoop);
+        mm1A.Set<HardEvent::MTE2_MTE1>();
+        mm1A.Wait<HardEvent::MTE2_MTE1>();
+        mm1B.Wait<HardEvent::MTE2_MTE1>();
+        Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers_.Get();
+        mm1ResL0C.Wait<HardEvent::FIX_M>();
+        MMParam param = MakeMMParam((uint32_t)s2CalcSize, (uint32_t)runInfo.actMSize, dBaseSize, false, true);
+        MatmulFullMX<Q_T, KV_T, T, (s2BaseSize >> 1), 128, dBaseSize, ABLayout::MK, ABLayout::KN, L0AType, L0BType,
+                     SCALE_T, SCALE_T, mx_fp8_e4m3_t, mx_fp8_e4m3_t>(
+            mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(), mmL0ABuffers_, mmL0BBuffers_,
+            mm1ResL0C.GetTensor<T>(), param, mm1A.GetTensor<SCALE_T>(kScaleOffset),
+            mm1B.GetTensor<SCALE_T>(qScaleOffset));
+
+        if (unlikely(runInfo.isLastDnTask && (((runInfo.actSingleLoopS2Size > s2SplitSize) && (subLoop % 2 == 1)) ||
+                                              (runInfo.actSingleLoopS2Size <= s2SplitSize)))) {
+            mm1B.Set<HardEvent::MTE1_MTE2>();
+        }
+        mm1A.Set<HardEvent::MTE1_MTE2>();   // 释放L1B
+        mm1ResL0C.Set<HardEvent::M_FIX>();  // 通知
+        mm1ResL0C.Wait<HardEvent::M_FIX>(); // 等待L0C
+
+        outputBuf.WaitCrossCore();
+
+        FixpipeMm1DnTail(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(), runInfo, s2CalcSize);
+
+        mm1ResL0C.Set<HardEvent::FIX_M>();
+        outputBuf.SetCrossCore();
+    }
+
+    // [VTAIL] decode(ND)尾task专用C1: 与IterateBmm1Nd同构(Q常驻MK格式单分支),
+    // fixpipe走FixpipeMm1Tail(行距128)。
+    __aicore__ inline void IterateBmm1NdTail(MM1_DBUF_T &outputBuf, RunInfoX &runInfo, uint32_t subLoop)
+    {
+        uint32_t s2CurSize = runInfo.actSingleLoopS2Size; // == kvTailLen(纯尾task判定)
+        Buffer<BufferType::L1> mm1A;
+        uint32_t qScaleOffset = ((runInfo.actMSize + 31) >> 5 << 5) * dBaseSize;
+        if (unlikely(runInfo.isFirstS2Loop && subLoop == 0)) {
+            mm1A = l1QBuffers_.Get();
+            mm1A.Wait<HardEvent::MTE1_MTE2>();
+            LocalTensor<Q_T> mm1ATensor = mm1A.GetTensor<Q_T>();
+            if constexpr (!isDAligned) {
+                InitValueL1BufferNAxis(mm1ATensor, mBaseSize, dBaseSize);
+                AscendC::PipeBarrier<PIPE_MTE2>();
+            }
+            CopyQueryTile(mm1ATensor, runInfo);
+
+            LocalTensor<SCALE_T> mm1AScaleTensor = mm1A.GetTensor<SCALE_T>(qScaleOffset);
+            CopyQueryScaleTile(mm1AScaleTensor, runInfo);
+            mm1A.Set<HardEvent::MTE2_MTE1>();
+        } else {
+            mm1A = l1QBuffers_.GetPre();
+            mm1A.Set<HardEvent::MTE2_MTE1>();
+        }
+
+        Buffer<BufferType::L1> mm1B;
+        mm1B = l1KVBuffers_.Get();
+        mm1B.Wait<HardEvent::MTE1_MTE2>();
+        LocalTensor<KV_T> mm1BTensor = mm1B.GetTensor<KV_T>();
+        if constexpr (!isDAligned) {
+            InitValueL1BufferNAxis(mm1BTensor, s2SplitSize, dBaseSize);
+            AscendC::PipeBarrier<PIPE_MTE2>();
+        }
+        CopyKeyTile(mm1BTensor, runInfo, s2CurSize, subLoop);
+
+        uint32_t kScaleOffset = ((s2CurSize + 31) >> 5 << 5) * dBaseSize;
+        LocalTensor<SCALE_T> mm1BScaleTensor = mm1B.GetTensor<SCALE_T>(kScaleOffset);
+        CopyKeyScaleTile(mm1BScaleTensor, runInfo, s2CurSize, subLoop);
+        mm1B.Set<HardEvent::MTE2_MTE1>();
+        mm1A.Wait<HardEvent::MTE2_MTE1>();
+        mm1B.Wait<HardEvent::MTE2_MTE1>();
+
+        Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers_.Get();
+        mm1ResL0C.Wait<HardEvent::FIX_M>();
+        MMParam param = MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)s2CurSize, dBaseSize, false, true);
+        MatmulFullMX<Q_T, KV_T, T, 128, (s2BaseSize >> 1), dBaseSize, ABLayout::MK, ABLayout::KN, L0AType, L0BType,
+                     SCALE_T, SCALE_T, mx_fp8_e4m3_t, mx_fp8_e4m3_t>(
+            mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(), mmL0ABuffers_, mmL0BBuffers_,
+            mm1ResL0C.GetTensor<T>(), param, mm1A.GetTensor<SCALE_T>(qScaleOffset),
+            mm1B.GetTensor<SCALE_T>(kScaleOffset));
+
+        if (unlikely(runInfo.isLastDnTask &&
+                     (((runInfo.actSingleLoopS2Size > s2SplitSize) && (subLoop % 2 == 1)) ||
+                      (runInfo.actSingleLoopS2Size <= s2SplitSize)))) {
+            mm1A.Set<HardEvent::MTE1_MTE2>();
+        }
+        mm1B.Set<HardEvent::MTE1_MTE2>();   // 释放L1B
+        mm1ResL0C.Set<HardEvent::M_FIX>();  // 通知
+        mm1ResL0C.Wait<HardEvent::M_FIX>(); // 等待L0C
+
+        outputBuf.WaitCrossCore();
+
+        FixpipeMm1Tail(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(), runInfo, s2CurSize);
 
         mm1ResL0C.Set<HardEvent::FIX_M>();
         outputBuf.SetCrossCore();
