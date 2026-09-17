@@ -93,10 +93,11 @@ __aicore__ inline void MoeV3FullLoadStaticQuant<T>::Init(GM_ADDR x, GM_ADDR expe
 
     // Gather input and quantized output both use the int8-aligned row stride.
     // Reserve and compute the padding too, so subsequent rows keep that stride.
-    int64_t colsAlignBytes = inFactor_ * rowLength * sizeof(float);
+    int64_t colsAlignBytes = AlignBytes(inFactor_ * rowLength, sizeof(T));
+    colsAlignBytes = static_cast<int64_t>(colsAlignBytes * sizeof(float) / sizeof(T));
     this->pipe_->InitBuffer(inputXInQueue_, FULLLOAD_STATIC_QUANT_BUFFER_NUM, colsAlignBytes);
     this->pipe_->InitBuffer(inputXOutQueue_, FULLLOAD_STATIC_QUANT_BUFFER_NUM,
-                            inFactor_ * rowLength * sizeof(int8_t));
+                            AlignBytes(inFactor_ * rowLength, sizeof(int8_t)));
 }
 
 template <typename T>
