@@ -16,7 +16,7 @@ TND varlen(s1_list/s2_list) / act_s pad / gap_sparse / ocp_scale_stride_trap 已
     ./run.sh --reg
 
 
-golden: Q/K/V mxfp8 qdq(fp32)；P 走 kernel 同构 snap_local(m_snap=(K-8)*ln2) 再 e4m3。
+golden: Q/K/V mxfp8 qdq(fp32)；P 走 kernel 同构 snap_local(m_snap=(K-7.8046875)*ln2) 再 e4m3。
 Kernel tile 固定 kvs128；blockShapeY 现网仅 64 或 128（之后仅 64 倍数）。
 Y=64 时每 Y 块对应 2 个 kvs128 tile；Y=128 时一块一 tile。按 TILE_GROUP_N=16 组尾 pscale / rescale O。
 判据: 与 MXFP4 同构 (np.isclose rtol=1/128 atol=1e-4, 满足率≥99.5% 且 maxRE<10)。
@@ -84,6 +84,8 @@ E8M0_BIAS = 127
 QUANT_MODE_MXFP8_OCP = 4
 FP8_E4M3_EMAX = 8
 FP8_E4M3_MAX = 448.0
+# Kernel NEG_EIGHT_VALE：fp16 精确 -7.8046875，P∈[223.59,447.17)。e8m0 仍按 emax=8 编。
+P_SNAP_EMAX = 7.8046875
 MX_GROUP = 32
 
 # 合入前必跑（OCP 1–3 回归）。pytest -k 须整段当一个参数、不要换行。
@@ -293,11 +295,12 @@ def _blockwise_snap_local_raw(S, seqk_dim=0, mx_block_size=32):
     inv_ln2 = torch.tensor(1.0 / ln2, dtype=torch.float16, device=device)
     ln2_fp16 = torch.tensor(ln2, dtype=torch.float16, device=device)
     k_block = torch.floor(m_block_raw_safe * inv_ln2)
-    m_block_snap = (k_block - FP8_E4M3_EMAX) * ln2_fp16
+    snap_emax = torch.tensor(P_SNAP_EMAX, dtype=torch.float16, device=device)
+    m_block_snap = (k_block - snap_emax) * ln2_fp16
     # Kernel FusedExpSub：half 输入、float 指数。fp16 Exp 在 emax=8 时会把
     # 偏离组 max 较远的 P 冲到 0，整行 O 变成 0。
     p_local = torch.exp(s_r.float() - m_block_snap.float().unsqueeze(-1))
-    # emax=8 → P∈[256,512)；e4m3fn 有限最大 448，须先钳再转（与 kernel Mins 同构）
+    # O2：snap 已把 P 折进 <448，钳位是 no-op；保留以免 golden 与 e4m3fn 溢出分叉。
     p_q = (
         p_local.float()
         .clamp(-FP8_E4M3_MAX, FP8_E4M3_MAX)

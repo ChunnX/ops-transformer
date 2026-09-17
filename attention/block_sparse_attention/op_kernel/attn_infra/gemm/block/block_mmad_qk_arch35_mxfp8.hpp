@@ -242,7 +242,8 @@ public:
 
     // K+K-scale gather。blockShapeY∈{64,128} 且 kvBaseTile=128 ⇒ innerStart=0。
     // PAIR256 满对 nRows=256：Y=64 → 4 块，Y=128 → 2 块。先读齐 ori，连续则一条 copy；
-    // 高稀疏 gap 等长满块走 ndNum=2。nY≤4，无无界 while / peek。
+    // nY==2 非连续满块直发 ndNum=2（O5，跳过 consecutive 扫描 + 两层 while）；
+    // 其余高稀疏 gap 等长满块走下方通用 NDNUM2。nY≤4，无无界 while / peek。
     template <class TensorK, class TensorL1K>
     __aicore__ inline void SparseKFusedBaseTileL1FullLoad(
         TensorK gKTensorTla, TensorL1K l1KTensorTla, AscendC::GlobalTensor<uint8_t> gKScale,
@@ -280,6 +281,19 @@ public:
             }
             ori[i] = o;
         }
+
+        // O5：nY==2 非连续满块（现网 Y=128 + PAIR256 的 keep<1 主路径）。
+        // 语义等同于下方 NDNUM2 分支，跳过 consecutive 扫描和两层 while。
+        // 尾块 / Y=64(nY=4) / 非升序 sparseIdx / 含短 y-block 全部回落通用路径。
+#if BSA_MXFP8_NDNUM2
+        if (nY == 2 && nRows == (blockShapeY << 1) && ori[1] != ori[0] + 1u && ori[1] > ori[0] &&
+            YBlockRows(ori[0], blockShapeY, yBlockNumAval, kvSeqlenU) == blockShapeY &&
+            YBlockRows(ori[1], blockShapeY, yBlockNumAval, kvSeqlenU) == blockShapeY) {
+            CopyKDataNdNum2(gKTensorTla, l1KTensorTla, gKScale, ori[0] * blockShapeY, ori[1] * blockShapeY, blockShapeY,
+                            0, embed, scaleK, scaleBufId, kvHeadMul);
+            return;
+        }
+#endif
 
         bool consecutive = true;
         uint32_t avail = 0;

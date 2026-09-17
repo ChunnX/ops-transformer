@@ -89,7 +89,11 @@ public:
     static constexpr uint32_t PV_RE_DELAY_N = 20; // G=16 → Dpv>=19，取 20
     static constexpr uint32_t DELAY_PSCALE_N = 3;
 
-    static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PV_RE_DELAY_N + 1;
+    // 21 不是 2 的幂，% 走 magic-multiply。32 盖住 PV_RE_DELAY_N+1，下标改 & mask。
+    static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = 32;
+    static_assert((PRELOAD_TASK_CACHE_SIZE & (PRELOAD_TASK_CACHE_SIZE - 1u)) == 0u, "power of two");
+    static_assert(PRELOAD_TASK_CACHE_SIZE >= PV_RE_DELAY_N + 1u, "must hold delay window");
+    static constexpr uint32_t PRELOAD_TASK_CACHE_MASK = PRELOAD_TASK_CACHE_SIZE - 1u;
 
     // Methods
     __aicore__ inline BsaMXFP8FullQuantKernelArch35() {}
@@ -224,13 +228,13 @@ public:
             delay12TaskTileIdx = coreTileLoop - PV_RE_DELAY_N - delay12preTaskTileSum;
             delay3TaskTileIdx = coreTileLoop - DELAY_PSCALE_N - delay3preTaskTileSum;
 
-            TaskInfo &curTaskInfo = taskInfos[coreTaskId % PRELOAD_TASK_CACHE_SIZE];
-            TaskInfo &delay12TaskInfo = taskInfos[delay12CoreTaskId % PRELOAD_TASK_CACHE_SIZE];
-            TaskInfo &delay3TaskInfo = taskInfos[delay3CoreTaskId % PRELOAD_TASK_CACHE_SIZE];
+            TaskInfo &curTaskInfo = taskInfos[coreTaskId & PRELOAD_TASK_CACHE_MASK];
+            TaskInfo &delay12TaskInfo = taskInfos[delay12CoreTaskId & PRELOAD_TASK_CACHE_MASK];
+            TaskInfo &delay3TaskInfo = taskInfos[delay3CoreTaskId & PRELOAD_TASK_CACHE_MASK];
 
-            TileInfo &curTileInfo = tileInfos[coreTileLoop % PRELOAD_TASK_CACHE_SIZE];
-            TileInfo &delay12TileInfo = tileInfos[(coreTileLoop - PV_RE_DELAY_N) % PRELOAD_TASK_CACHE_SIZE];
-            TileInfo &delay3TileInfo = tileInfos[(coreTileLoop - DELAY_PSCALE_N) % PRELOAD_TASK_CACHE_SIZE];
+            TileInfo &curTileInfo = tileInfos[coreTileLoop & PRELOAD_TASK_CACHE_MASK];
+            TileInfo &delay12TileInfo = tileInfos[(coreTileLoop - PV_RE_DELAY_N) & PRELOAD_TASK_CACHE_MASK];
+            TileInfo &delay3TileInfo = tileInfos[(coreTileLoop - DELAY_PSCALE_N) & PRELOAD_TASK_CACHE_MASK];
 
             // 创建qs任务
             if (curTaskTileIdx == 0 && coreTaskId < coreTaskNum) {
@@ -321,7 +325,7 @@ public:
                 }
             }
             if (coreTileLoop >= DELAY_PSCALE_N && delay3CoreTaskId < coreTaskNum) {
-                // delay3TileInfo = tileInfos[(coreTileLoop - DELAY_PSCALE_N) % PRELOAD_TASK_CACHE_SIZE];
+                // delay3TileInfo = tileInfos[(coreTileLoop - DELAY_PSCALE_N) & PRELOAD_TASK_CACHE_MASK];
                 if (delay3TileInfo.isUpdatePScale) {
                     if ASCEND_IS_AIC {
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_UB_TO_L1_BUF0 +
@@ -357,8 +361,8 @@ public:
                 CreateTileInfo(curTileInfo, coreTileLoop, static_cast<uint32_t>(curTaskTileIdx),
                                curTaskInfo); // 创建任务
 
-                uint32_t mm1ResBufId = (curTileInfo.loop / 2) % 2;
-                uint32_t subBlockIdx = curTileInfo.loop % 2;
+                uint32_t mm1ResBufId = (curTileInfo.loop >> 1) & 1u;
+                uint32_t subBlockIdx = curTileInfo.loop & 1u;
 
                 if ASCEND_IS_AIC {
                     auto gQLayoutTla = tla::MakeLayout<ElementQ, LayoutQ>(
@@ -425,7 +429,7 @@ public:
 #ifdef __DAV_VEC__
                     if (subBlockIdx == AscendC::GetSubBlockIdx()) {
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId]);
-                        uint32_t l1PBufId = curTileInfo.loop % GmMXFP8::L1_P_BUF_CNT;
+                        uint32_t l1PBufId = curTileInfo.pSlot;
                         auto l1PLayoutTla =
                             tla::MakeLayout<ElementDisguiseP, LayoutPL1>(EpMXFP8::KVS_BASE_SIZE, EpMXFP8::QS_BASE_SIZE);
                         auto l1PTensorTla = tla::MakeTensor(l1PTensor[l1PBufId], l1PLayoutTla, Arch::PositionL1{});
@@ -782,21 +786,29 @@ public:
         info.isUpdatePScale = (info.isLastKvsTile || ((info.curKvsTileLoopIdx + 1) % MXFP8Kernel::TILE_GROUP_N == 0));
         info.isTileGoupFirstTile = (info.curKvsTileLoopIdx % MXFP8Kernel::TILE_GROUP_N == 0);
         if (info.isFirstKvsTile) {
-            kvsFirstTileStartVecCore_ = static_cast<uint32_t>(coreTileLoop % 2);
+            kvsFirstTileStartVecCore_ = static_cast<uint32_t>(coreTileLoop) & 1u;
         }
         info.kvsFirstTileStartVecCore = kvsFirstTileStartVecCore_;
 
         if (info.isTileGoupFirstTile && !info.isFirstKvsTile) { // 非第一个 kvs tileGroup，更新 dm id（同 mxfp4）
-            updateScaleIdx_ = (updateScaleIdx_ + 1) % 4;
+            updateScaleIdx_ = (updateScaleIdx_ + 1u) & 3u;
         }
 
         // task 第一个 tile 或 TileGroup 第一个 tile 时切换 buff (双缓冲 / 四缓冲)
         if (info.isFirstKvsTile || info.isTileGoupFirstTile) {
-            tileLoopIdx_ = (tileLoopIdx_ + 1) % 2;
-            tileMaxIdx_ = (tileMaxIdx_ + 1) % 4;
-            pscaleNum_ = (pscaleNum_ + 1) % 20;
+            tileLoopIdx_ ^= 1u;
+            tileMaxIdx_ = (tileMaxIdx_ + 1u) & 3u;
+            pscaleNum_ = pscaleNum_ + 1u;
+            if (pscaleNum_ == 20u) {
+                pscaleNum_ = 0u;
+            }
         }
-        info.pscaleNum = static_cast<uint16_t>(pscaleNum_ / 10);
+        info.pscaleNum = static_cast<uint16_t>(pscaleNum_ >= 10u);
+        info.pSlot = static_cast<uint16_t>(pSlot_);
+        pSlot_ = pSlot_ + 1u;
+        if (pSlot_ == GmMXFP8::L1_P_BUF_CNT) {
+            pSlot_ = 0u;
+        }
         info.tileBuffIdx = tileLoopIdx_;
         info.tileMaxIdx = tileMaxIdx_;
         info.updateScaleIdx = updateScaleIdx_;
@@ -935,6 +947,7 @@ private:
     uint32_t tileLoopIdx_ = 1;              // 双缓冲索引 (0/1)
     uint32_t tileMaxIdx_ = 3;               // 四缓冲索引 (0~3)
     uint32_t pscaleNum_ = 19;               // 20 缓冲索引 (0~19)，Dpv=20
+    uint32_t pSlot_ = 0;                    // L1 P 环，每 tile +1，热路径读 TileInfo.pSlot
 };
 
 } // namespace BsaKernelArch35

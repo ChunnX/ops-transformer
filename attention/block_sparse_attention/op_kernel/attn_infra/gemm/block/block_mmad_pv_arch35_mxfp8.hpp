@@ -501,7 +501,7 @@ public:
     {
         uint32_t embedReal = actualBlockShapePV[1];
         uint32_t gatheredKvSTileIdx = delay12TileInfo.pvGatheredKvSTileIdx;
-        uint32_t pSlot = delay12TileInfo.loop % MXFP8::L1_P_BUF_CNT;
+        uint32_t pSlot = delay12TileInfo.pSlot;
 
 #if BSA_MXFP8_K_PAIR256
         const bool pairOdd = (gatheredKvSTileIdx & 1u) != 0u;

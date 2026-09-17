@@ -99,6 +99,7 @@ struct TileInfo {
     // ===== PV 稀疏 gather 所需（mxfp4）=====
     uint32_t pvGatheredKvSTileIdx = 0; // 当前 tile 在 task 内的 gather 后 KV base tile 序号，供 PV
     uint16_t pscaleNum = 0;
+    uint16_t pSlot = 0; // L1 P 环 0..L1_P_BUF_CNT-1，CreateTileInfo 滚动写入，热路径不再 % 20
 };
 } // namespace MXFP4Kernel
 
