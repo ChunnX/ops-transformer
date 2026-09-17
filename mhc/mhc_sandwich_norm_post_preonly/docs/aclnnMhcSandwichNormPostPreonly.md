@@ -25,88 +25,86 @@
 
 ## 功能说明
 
-- 接口功能：`aclnnMhcSandwichNormPostPreonly` 将MHC Sandwich结构中相邻的归一化、Post混合和Pre门控计算融合为一个算子，输出下一层输入、MHC_Post中间结果以及可选的FLOAT计算结果。
+- 接口功能：从算法特征上看，MHC_Post 与 MHC_Pre（PreOnly）存在可跨层融合并统一计算的 Pattern。MhcSandwichNormPostPreonly 将以下计算链融合为一个算子，减少中间 Tensor 读写和算子下发开销：
 
-- 计算流程：
+  RMSNorm_0 → MHC_Post → [可选 RMSNorm_mid] → MHC_Pre（PreOnly）→ RMSNorm_1
 
-1. **RMSNorm_0**：沿隐藏维 $D$ 对 `hOut` 做均方根归一化，并乘以 `gamma0Optional`。
-2. **MHC_Post**：使用 `hPost` 和 `hRes`，将归一化后的 `hOut` 与 $N$ 路 `residual` 进行加权混合，得到 `x2Out`。
-3. **RMSNorm_mid（可选）**：当 `gamma2Optional` 非空时，将每个 token 的 `x2Out` 展平为 $N\times D$，在完整的 $N\times D$ 维上做均方根归一化；为空时跳过该阶段。
-4. **MHC_Pre（PreOnly）**：将 `x2Out` 投影到 $N$ 路门控权重，经 Sigmoid 后对各路结果加权求和。`PreOnly` 表示这里只计算提供给下一层的 pre 分支，不生成其他 MHC 分支输出。
-5. **RMSNorm_1**：沿隐藏维 $D$ 对加权求和结果做均方根归一化，得到下一层输入 `hInPrimeOut`。
+- 融合收益与性能优化：通过融合 RMSNorm_0、MHC_Post、可选 RMSNorm_mid、仅 pre 分支的 MHC_Pre 和 RMSNorm_1，减少中间张量搬运和 Kernel 调度开销。算子固定输出 hInPrimeOut 和 x2Out；returnHInF32 为 true 时额外返回 RMSNorm_1 的 FLOAT 计算结果 hInF32OutOptional，为 false 时不返回该可选输出。
 
-算子固定输出 `hInPrimeOut` 和中间结果 `x2Out`。当 `returnHInF32` 为 `true` 时，还通过 `hInF32OutOptional` 返回 RMSNorm_1 的 FLOAT 计算结果；为 `false` 时不返回该可选输出。
+- 算子支持 [B,S,...] 和已将前导维展平的 [T,...] 两种输入形式，其中 T=B×S。定义：
 
-该融合减少了等价小算子组合产生的 Kernel 启动开销和中间 Tensor 读写。
+  - K=N×D，表示 MHC_Pre 的输入投影维度；
+  - B 为 batch 数，S 为序列长度，T 为 token 总数，N 为残差 head 数，D 为每个 head 的 hidden size；b/s/n/d 为对应下标；
+  - FP32 表示转换为 FLOAT，Cast 表示转换为指定输出类型，rsqrt 表示平方根的倒数，sigmoid 表示 Sigmoid 函数。
 
 - 计算公式：
 
-以下公式按保留B、S前导维的`[B,S,...]`形式表示；`[T,...]`形式将`B*S`展平为`T`，后续维度保持不变。
+  以下公式定义输入、中间结果和输出的关系，按保留 B、S 前导维的 [B,S,...] 形式表示；[T,...] 形式将 B×S 展平为 T，后续维度保持不变。
 
-**阶段1：RMSNorm_0**
+  **1 RMSNorm_0**
 
-$$
-\begin{aligned}
-h\_out\_fp32_{b,s,d} &= \operatorname{FP32}(h\_out_{b,s,d}), \\
-inv\_rms\_0_{b,s} &= \operatorname{rsqrt}\left(\frac{1}{D}\sum_{i=0}^{D-1}h\_out\_fp32_{b,s,i}^{2}+norm\_eps\right), \\
-x\_1_{b,s,d} &= \operatorname{Cast}_{dtype(h\_out)}\left(h\_out\_fp32_{b,s,d}\cdot inv\_rms\_0_{b,s}\cdot gamma\_0_d\right).
-\end{aligned}
-$$
+  $$
+  \begin{aligned}
+  h\_out\_fp32_{b,s,d} &= \operatorname{FP32}(h\_out_{b,s,d}), \\
+  inv\_rms\_0_{b,s} &= \operatorname{rsqrt}\left(\frac{1}{D}\sum_{i=0}^{D-1}h\_out\_fp32_{b,s,i}^{2}+norm\_eps\right), \\
+  x\_1_{b,s,d} &= \operatorname{Cast}_{dtype(h\_out)}\left(h\_out\_fp32_{b,s,d}\cdot inv\_rms\_0_{b,s}\cdot gamma\_0_d\right).
+  \end{aligned}
+  $$
 
-**阶段2：MHC_Post**
+  **2 MHC_Post**
 
-$$
-\begin{aligned}
-term1_{b,s,n,d} &= \operatorname{FP32}(h\_post_{b,s,n})\cdot \operatorname{FP32}(x\_1_{b,s,d}), \\
-term2_{b,s,n,d} &= \sum_{j=0}^{N-1}\operatorname{FP32}(h\_res_{b,s,j,n})\cdot \operatorname{FP32}(residual_{b,s,j,d}), \\
-x\_2_{b,s,n,d} &= \operatorname{Cast}_{dtype(h\_out)}\left(term1_{b,s,n,d}+term2_{b,s,n,d}\right).
-\end{aligned}
-$$
+  $$
+  \begin{aligned}
+  term1_{b,s,n,d} &= \operatorname{FP32}(h\_post_{b,s,n})\cdot \operatorname{FP32}(x\_1_{b,s,d}), \\
+  term2_{b,s,n,d} &= \sum_{j=0}^{N-1}\operatorname{FP32}(h\_res_{b,s,j,n})\cdot \operatorname{FP32}(residual_{b,s,j,d}), \\
+  x\_2_{b,s,n,d} &= \operatorname{Cast}_{dtype(h\_out)}\left(term1_{b,s,n,d}+term2_{b,s,n,d}\right).
+  \end{aligned}
+  $$
 
-其中`j`为归约head，`n`为输出head。
+  其中 j 为归约 head，n 为输出 head。
 
-**阶段2.5：RMSNorm_mid（可选）**
+  **3 可选 RMSNorm_mid**
 
-当 `gamma2Optional` 非空时：
+  当 gamma2Optional 非空时：
 
-$$
-\begin{aligned}
-x\_2\_flat &= \operatorname{reshape}(\operatorname{FP32}(x\_2),[B,S,N\cdot D]), \\
-inv\_rms\_mid_{b,s} &= \operatorname{rsqrt}\left(\frac{1}{N D}\sum_{k=0}^{ND-1}x\_2\_flat_{b,s,k}^{2}+norm\_eps\right), \\
-x\_2_{b,s,n,d} &= \operatorname{Cast}_{dtype(h\_out)}\left(\operatorname{reshape}\left(x\_2\_flat\cdot inv\_rms\_mid\cdot gamma\_2,[B,S,N,D]\right)_{b,s,n,d}\right).
-\end{aligned}
-$$
+  $$
+  \begin{aligned}
+  x\_2\_flat &= \operatorname{reshape}(\operatorname{FP32}(x\_2),[B,S,N\cdot D]), \\
+  inv\_rms\_mid_{b,s} &= \operatorname{rsqrt}\left(\frac{1}{N D}\sum_{k=0}^{ND-1}x\_2\_flat_{b,s,k}^{2}+norm\_eps\right), \\
+  x\_2_{b,s,n,d} &= \operatorname{Cast}_{dtype(h\_out)}\left(\operatorname{reshape}\left(x\_2\_flat\cdot inv\_rms\_mid\cdot gamma\_2,[B,S,N,D]\right)_{b,s,n,d}\right).
+  \end{aligned}
+  $$
 
-当 `gamma2Optional` 为空时，跳过本阶段，`x_2` 保持MHC_Post的输出；随后固定保存：
+  当 gamma2Optional 为空时，跳过该可选计算，x_2 保持 MHC_Post 的输出；随后固定保存：
 
-$$
-x\_2\_out=x\_2.
-$$
+  $$
+  x\_2\_out=x\_2.
+  $$
 
-**阶段3：MHC_Pre（PreOnly）**
+  **4 MHC_Pre（PreOnly）**
 
-$$
-\begin{aligned}
-x\_2\_rs &= \operatorname{reshape}(\operatorname{FP32}(x\_2),[B,S,N\cdot D]), \\
-inv\_rms\_pre_{b,s} &= \operatorname{rsqrt}\left(\frac{1}{N D}\sum_{k=0}^{ND-1}x\_2\_rs_{b,s,k}^{2}+mhc\_pre\_norm\_eps\right), \\
-proj\_w &= phi^T, \\
-x\_pre &= (x\_2\_rs\cdot proj\_w)\cdot inv\_rms\_pre, \\
-h\_pre_{b,s,n} &= \operatorname{sigmoid}(alpha\_0\cdot x\_pre_{b,s,n}+bias_n)+hc\_eps, \\
-h\_in_{b,s,d} &= \operatorname{Cast}_{dtype(h\_out)}\left(\sum_{n=0}^{N-1}h\_pre_{b,s,n}\cdot \operatorname{FP32}(x\_2_{b,s,n,d})\right).
-\end{aligned}
-$$
+  $$
+  \begin{aligned}
+  x\_2\_rs &= \operatorname{reshape}(\operatorname{FP32}(x\_2),[B,S,N\cdot D]), \\
+  inv\_rms\_pre_{b,s} &= \operatorname{rsqrt}\left(\frac{1}{N D}\sum_{k=0}^{ND-1}x\_2\_rs_{b,s,k}^{2}+mhc\_pre\_norm\_eps\right), \\
+  proj\_w &= phi^T, \\
+  x\_pre &= (x\_2\_rs\cdot proj\_w)\cdot inv\_rms\_pre, \\
+  h\_pre_{b,s,n} &= \operatorname{sigmoid}(alpha\_0\cdot x\_pre_{b,s,n}+bias_n)+hc\_eps, \\
+  h\_in_{b,s,d} &= \operatorname{Cast}_{dtype(h\_out)}\left(\sum_{n=0}^{N-1}h\_pre_{b,s,n}\cdot \operatorname{FP32}(x\_2_{b,s,n,d})\right).
+  \end{aligned}
+  $$
 
-**阶段4：RMSNorm_1**
+  **5 RMSNorm_1**
 
-$$
-\begin{aligned}
-h\_in\_rms_{b,s} &= \operatorname{rsqrt}\left(\frac{1}{D}\sum_{i=0}^{D-1}\operatorname{FP32}(h\_in_{b,s,i})^{2}+norm\_eps\right), \\
-h\_in\_f32_{b,s,d} &= \operatorname{FP32}(h\_in_{b,s,d})\cdot h\_in\_rms_{b,s}\cdot \operatorname{FP32}(gamma\_1_d), \\
-h\_in\_prime &= \operatorname{Cast}_{dtype(h\_out)}(h\_in\_f32).
-\end{aligned}
-$$
+  $$
+  \begin{aligned}
+  h\_in\_rms_{b,s} &= \operatorname{rsqrt}\left(\frac{1}{D}\sum_{i=0}^{D-1}\operatorname{FP32}(h\_in_{b,s,i})^{2}+norm\_eps\right), \\
+  h\_in\_f32_{b,s,d} &= \operatorname{FP32}(h\_in_{b,s,d})\cdot h\_in\_rms_{b,s}\cdot \operatorname{FP32}(gamma\_1_d), \\
+  h\_in\_prime &= \operatorname{Cast}_{dtype(h\_out)}(h\_in\_f32).
+  \end{aligned}
+  $$
 
-`norm_eps`、`mhc_pre_norm_eps` 和 `hc_eps` 在接口中分别对应 `normEps`、`mhcPreNormEps` 和 `hcEps`。`norm_eps` 用于RMSNorm_0、RMSNorm_mid和RMSNorm_1，`mhc_pre_norm_eps` 仅用于MHC_Pre归一化，`hc_eps` 仅用于pre门控。三者均按FLOAT精度参与计算。
+  norm_eps、mhc_pre_norm_eps 和 hc_eps 在接口中分别对应 normEps、mhcPreNormEps 和 hcEps。norm_eps 用于 RMSNorm_0、RMSNorm_mid 和 RMSNorm_1，mhc_pre_norm_eps 仅用于 MHC_Pre 归一化，hc_eps 仅用于 pre 门控。三者均按 FLOAT 精度参与计算。
 
 ## 函数原型
 
@@ -115,7 +113,7 @@ $$
 ```Cpp
 aclnnStatus aclnnMhcSandwichNormPostPreonlyGetWorkspaceSize(
     const aclTensor *hOut, const aclTensor *residual, const aclTensor *hPost,
-    const aclTensor *hRes, const aclTensor *phi, const aclTensor *alpha0,
+    const aclTensor *hResOptional, const aclTensor *phi, const aclTensor *alpha0,
     const aclTensor *bias, const aclTensor *gamma1,
     const aclTensor *gamma0Optional, const aclTensor *gamma2Optional,
     double normEps, double mhcPreNormEps, double hcEps,
@@ -140,12 +138,12 @@ aclnnStatus aclnnMhcSandwichNormPostPreonly(
   <tr><td>hOut（aclTensor*）</td><td>输入</td><td>MHC_Post的主分支输入，对应公式中的hOut。</td><td><ul><li>不支持空Tensor。</li><li>shape为(T, D)或(B, S, D)。</li></ul></td><td>FLOAT16、BFLOAT16</td><td>ND</td><td>2-3</td><td>√</td></tr>
   <tr><td>residual（aclTensor*）</td><td>输入</td><td>MHC_Post的多路残差输入。</td><td><ul><li>不支持空Tensor。</li><li>shape为(T, N, D)或(B, S, N, D)，数据类型与hOut一致。</li></ul></td><td>FLOAT16、BFLOAT16</td><td>ND</td><td>3-4</td><td>√</td></tr>
   <tr><td>hPost（aclTensor*）</td><td>输入</td><td>MHC_Post的主分支权重。</td><td><ul><li>不支持空Tensor。</li><li>shape为(T, N)或(B, S, N)。</li></ul></td><td>FLOAT32</td><td>ND</td><td>2-3</td><td>√</td></tr>
-  <tr><td>hRes（aclTensor*）</td><td>输入</td><td>MHC_Post的残差混合权重。</td><td><ul><li>不支持空Tensor。</li><li>shape为(T, N, N)或(B, S, N, N)。</li></ul></td><td>FLOAT32</td><td>ND</td><td>3-4</td><td>√</td></tr>
+  <tr><td>hResOptional（aclTensor*）</td><td>可选输入</td><td>mHC的hRes变换矩阵，是做完sinkhorn变换后的双随机矩阵。该参数为接口预留，暂不支持传空指针。</td><td><ul><li>shape为(T, N, N)或(B, S, N, N)。</li></ul></td><td>FLOAT32</td><td>ND</td><td>3-4</td><td>√</td></tr>
   <tr><td>phi（aclTensor*）</td><td>输入</td><td>MHC_Pre的投影参数。</td><td><ul><li>不支持空Tensor。</li><li>shape为(N, N×D)。</li></ul></td><td>FLOAT32</td><td>ND</td><td>2</td><td>√</td></tr>
   <tr><td>alpha0（aclTensor*）</td><td>输入</td><td>MHC_Pre的缩放参数。</td><td><ul><li>不支持空Tensor。</li><li>shape为(1)。</li></ul></td><td>FLOAT32</td><td>ND</td><td>1</td><td>√</td></tr>
   <tr><td>bias（aclTensor*）</td><td>输入</td><td>MHC_Pre的偏置参数。</td><td><ul><li>不支持空Tensor。</li><li>shape为(N)。</li></ul></td><td>FLOAT32</td><td>ND</td><td>1</td><td>√</td></tr>
   <tr><td>gamma1（aclTensor*）</td><td>输入</td><td>RMSNorm_1的缩放因子。</td><td><ul><li>不支持空Tensor。</li><li>shape为(D)。</li></ul></td><td>FLOAT32</td><td>ND</td><td>1</td><td>√</td></tr>
-  <tr><td>gamma0Optional（aclTensor*）</td><td>可选输入</td><td>RMSNorm_0的缩放因子。</td><td><ul><li>shape为(D)。</li></ul></td><td>FLOAT32</td><td>ND</td><td>1</td><td>√</td></tr>
+  <tr><td>gamma0Optional（aclTensor*）</td><td>可选输入</td><td>RMSNorm_0的缩放因子。</td><td><ul><li>暂不支持传空指针。</li><li>shape为(D)。</li></ul></td><td>FLOAT32</td><td>ND</td><td>1</td><td>√</td></tr>
   <tr><td>gamma2Optional（aclTensor*）</td><td>可选输入</td><td>RMSNorm_mid的缩放因子。</td><td><ul><li>可传空指针，表示跳过RMSNorm_mid。</li><li>非空时shape为(N×D)。</li></ul></td><td>FLOAT32</td><td>ND</td><td>1</td><td>√</td></tr>
   <tr><td>normEps（double）</td><td>可选输入</td><td>RMSNorm的防除零参数。</td><td>建议值：1e-6。</td><td>DOUBLE</td><td>-</td><td>-</td><td>-</td></tr>
   <tr><td>mhcPreNormEps（double）</td><td>可选输入</td><td>MHC_Pre内部RMS的防除零参数。</td><td>建议值：1e-6。</td><td>DOUBLE</td><td>-</td><td>-</td><td>-</td></tr>
@@ -181,33 +179,26 @@ aclnnStatus aclnnMhcSandwichNormPostPreonly(
 
 ## 约束说明
 
-- 确定性计算：
-  - aclnnMhcSandwichNormPostPreonly默认确定性实现。
-
-- Batch一致性说明：
-  - 默认非Batch一致性实现，不支持通过aclrtSetSysParamOpt开启Batch一致性。
-
-- 规格约束：
-  <!-- npu="950" id7 -->
-  - <term>Ascend 950PR/Ascend 950DT</term>：
-    - N仅支持4，D仅支持2560或5120，T或B×S范围为[1, 1048576]。
-    - hOut与residual的数据类型必须一致；其余输入Tensor的数据类型为FLOAT32。
-    - [T, ...]与[B, S, ...]两种布局不可混用，仅支持ND格式。
-    - gamma1必选；gamma0Optional和gamma2Optional为可选输入。
-    - normEps、mhcPreNormEps和hcEps必须大于等于0。
-  <!-- end id7 -->
+- 仅支持 N=4。
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
+调用示例与 [test_aclnn_mhc_sandwich_norm_post_preonly.cpp](../examples/test_aclnn_mhc_sandwich_norm_post_preonly.cpp) 保持一致。以下代码中的输入、输出 TensorResource 和 stream 均由该示例完成创建。
 
 ```Cpp
 uint64_t workspaceSize = 0;
 aclOpExecutor *executor = nullptr;
 aclnnStatus ret = aclnnMhcSandwichNormPostPreonlyGetWorkspaceSize(
-    hOut, residual, hPost, hRes, phi, alpha0, bias, gamma1, gamma0Optional,
-    gamma2, 1e-6, 1e-6, 1e-6, true, hInPrime, x2Out, hInF32,
-    &workspaceSize, &executor);
-// 按 workspaceSize 申请设备内存后执行：
+    hOut.tensor, residual.tensor, hPost.tensor, hResOptional.tensor, phi.tensor, alpha0.tensor, bias.tensor, gamma1.tensor,
+    gamma0.tensor, nullptr, 1e-6, 1e-6, 1e-6, false, hInPrimeOut.tensor, x2Out.tensor, nullptr, &workspaceSize,
+    &executor);
+CHECK_RET(ret == ACLNN_SUCCESS, LOG_PRINT("GetWorkspaceSize failed, error: %d\n", ret); return -1);
+
+void *workspace = nullptr;
+if (workspaceSize > 0) {
+    CHECK_RET(aclrtMalloc(&workspace, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST) == ACL_SUCCESS, return -1);
+}
 ret = aclnnMhcSandwichNormPostPreonly(workspace, workspaceSize, executor, stream);
+CHECK_RET(ret == ACLNN_SUCCESS, LOG_PRINT("Execute failed, error: %d\n", ret); return -1);
+CHECK_RET(aclrtSynchronizeStream(stream) == ACL_SUCCESS, return -1);
 ```

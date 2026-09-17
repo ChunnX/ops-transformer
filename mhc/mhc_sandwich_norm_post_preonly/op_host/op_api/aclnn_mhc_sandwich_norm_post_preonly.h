@@ -24,7 +24,8 @@ extern "C" {
  * @param [in] hOut: post 输入，shape为[T,D]或[B,S,D]，数据类型支持：FLOAT16、BFLOAT16。
  * @param [in] residual: residual输入，shape为[T,N,D]或[B,S,N,D]，数据类型与hOut一致。
  * @param [in] hPost: post权重，shape为[T,N]或[B,S,N]，数据类型：FLOAT。
- * @param [in] hRes: residual混合权重，shape为[T,N,N]或[B,S,N,N]，数据类型：FLOAT。
+ * @param [in] hResOptional: 可选的mHC hRes变换矩阵，是做完sinkhorn变换后的双随机矩阵；
+ * 该参数为接口预留，暂不支持传nullptr，shape为[T,N,N]或[B,S,N,N]，数据类型：FLOAT。
  * @param [in] phi: pre投影参数，shape为[N,N*D]，数据类型：FLOAT。
  * @param [in] alpha0: pre缩放系数，shape为[1]，数据类型：FLOAT。
  * @param [in] bias: pre偏置，shape为[N]，数据类型：FLOAT。
@@ -44,7 +45,7 @@ extern "C" {
  * @return aclnnStatus: 返回状态码。
  */
 aclnnStatus aclnnMhcSandwichNormPostPreonlyGetWorkspaceSize(
-    const aclTensor *hOut, const aclTensor *residual, const aclTensor *hPost, const aclTensor *hRes,
+    const aclTensor *hOut, const aclTensor *residual, const aclTensor *hPost, const aclTensor *hResOptional,
     const aclTensor *phi, const aclTensor *alpha0, const aclTensor *bias, const aclTensor *gamma1,
     const aclTensor *gamma0Optional, const aclTensor *gamma2Optional, double normEps, double mhcPreNormEps,
     double hcEps, bool returnHInF32, const aclTensor *hInPrimeOut, const aclTensor *x2Out,

@@ -16,7 +16,7 @@
 namespace MhcSandwichNormPostPreonlyl0op {
 
 bool MhcSandwichNormPostPreonly(const aclTensor *hOut, const aclTensor *residual, const aclTensor *hPost,
-                                const aclTensor *hRes, const aclTensor *phi, const aclTensor *alpha0,
+                                const aclTensor *hResOptional, const aclTensor *phi, const aclTensor *alpha0,
                                 const aclTensor *bias, const aclTensor *gamma0Optional, const aclTensor *gamma1,
                                 const aclTensor *gamma2Optional, double normEps, double mhcPreNormEps, double hcEps,
                                 bool returnHInF32, const aclTensor *hInPrimeOut, const aclTensor *x2Out,

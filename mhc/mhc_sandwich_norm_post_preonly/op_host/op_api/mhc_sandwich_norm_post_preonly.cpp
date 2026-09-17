@@ -23,7 +23,7 @@ namespace MhcSandwichNormPostPreonlyl0op {
 OP_TYPE_REGISTER(MhcSandwichNormPostPreonly);
 
 bool MhcSandwichNormPostPreonly(const aclTensor *hOut, const aclTensor *residual, const aclTensor *hPost,
-                                const aclTensor *hRes, const aclTensor *phi, const aclTensor *alpha0,
+                                const aclTensor *hResOptional, const aclTensor *phi, const aclTensor *alpha0,
                                 const aclTensor *bias, const aclTensor *gamma0Optional, const aclTensor *gamma1,
                                 const aclTensor *gamma2Optional, double normEps, double mhcPreNormEps, double hcEps,
                                 bool returnHInF32, const aclTensor *hInPrimeOut, const aclTensor *x2Out,
@@ -38,11 +38,11 @@ bool MhcSandwichNormPostPreonly(const aclTensor *hOut, const aclTensor *residual
         }
     }
 
-    L0_DFX(MhcSandwichNormPostPreonly, hOut, residual, hPost, hRes, phi, alpha0, bias, gamma0Optional, gamma1,
+    L0_DFX(MhcSandwichNormPostPreonly, hOut, residual, hPost, hResOptional, phi, alpha0, bias, gamma0Optional, gamma1,
            gamma2Optional, hInPrimeOut, x2Out, hInF32OutOptional);
     auto ret = ADD_TO_LAUNCHER_LIST_AICORE(
         MhcSandwichNormPostPreonly,
-        OP_INPUT(hOut, residual, hPost, hRes, phi, alpha0, bias, gamma0Optional, gamma1, gamma2Optional),
+        OP_INPUT(hOut, residual, hPost, hResOptional, phi, alpha0, bias, gamma0Optional, gamma1, gamma2Optional),
         OP_OUTPUT(hInPrimeOut, x2Out, hInF32ForKernel),
         OP_ATTR(static_cast<float>(normEps), static_cast<float>(mhcPreNormEps), static_cast<float>(hcEps),
                 returnHInF32));

@@ -23,11 +23,13 @@
 
 ## 功能说明
 
-- **接口功能**：融合 RMSNorm_0、MHC_Post、可选 RMSNorm_mid、MHC_Pre（仅 pre 分支）和 RMSNorm_1，输出下一层输入 `h_in_prime` 与 MHC_Post 中间结果 `x_2_out`。当 `return_h_in_f32=True` 时，额外返回 RMSNorm_1 的 FP32 结果 `h_in_f32`。
+- **接口功能**：融合 RMSNorm_0、MHC_Post、可选 RMSNorm_mid、MHC_Pre（仅 pre 分支）和 RMSNorm_1，输出下一层输入 h_in_prime 与 MHC_Post 中间结果 x_2_out。当 return_h_in_f32=True 时，额外返回 RMSNorm_1 的 FP32 结果 h_in_f32。
+
+- **支持模式**：该接口支持单算子模式、TorchAir 图模式调用。
 
 - **计算公式**：
 
-    以下公式按保留 B、S 前导维的 `[B,S,...]` 形式表示；`[T,...]` 形式将 `B*S` 展平为 `T`，后续维度保持不变。
+    以下公式按保留 B、S 前导维的 [B,S,...] 形式表示；[T,...] 形式将 B*S 展平为 T，后续维度保持不变。
 
     RMSNorm_0：
 
@@ -49,9 +51,9 @@
     \end{aligned}
     $$
 
-    其中 `j` 为归约 head，`n` 为输出 head。
+    其中 j 为归约 head，n 为输出 head。
 
-    当 `gamma_2` 非空时，在 $N\times D$ 维执行 RMSNorm_mid；为空时跳过：
+    当 gamma_2 非空时，在 $N\times D$ 维执行 RMSNorm_mid；为空时跳过：
 
     $$
     \begin{aligned}
@@ -61,7 +63,7 @@
     \end{aligned}
     $$
 
-    当 `gamma_2` 为空时，跳过本阶段，`x_2` 保持 MHC_Post 的输出；随后固定保存 $x\_2\_out=x\_2$。
+    当 gamma_2 为空时，跳过本阶段，x_2 保持 MHC_Post 的输出；随后固定保存 $x\_2\_out=x\_2$。
 
     MHC_Pre（PreOnly）：
 
@@ -86,7 +88,7 @@
     \end{aligned}
     $$
 
-    `norm_eps` 用于 RMSNorm_0、RMSNorm_mid 和 RMSNorm_1，`mhc_pre_norm_eps` 仅用于 MHC_Pre 归一化，`hc_eps` 仅用于 pre 门控。三者均按 FLOAT 精度参与计算。
+    norm_eps 用于 RMSNorm_0、RMSNorm_mid 和 RMSNorm_1，mhc_pre_norm_eps 仅用于 MHC_Pre 归一化，hc_eps 仅用于 pre 门控。三者均按 FLOAT 精度参与计算。
 
 ## 函数原型
 
@@ -95,7 +97,7 @@ cann_ops_transformer.mhc_sandwich_norm_post_preonly(
     h_out,
     residual,
     h_post,
-    h_res,
+    h_res: Optional[Tensor],
     phi,
     alpha,
     bias,
@@ -115,46 +117,37 @@ cann_ops_transformer.mhc_sandwich_norm_post_preonly(
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 | --- | --- | --- | --- | --- | --- |
 | h_out | Tensor | 必选 | RMSNorm_0 的输入。数据格式为 ND。 | float16、bfloat16 | [T, D] 或 [B, S, D] |
-| residual | Tensor | 必选 | MHC 多路残差输入；dtype 必须与 `h_out` 一致。 | 同 h_out | [T, N, D] 或 [B, S, N, D] |
+| residual | Tensor | 必选 | MHC 多路残差输入；dtype 必须与 h_out 一致。 | 同 h_out | [T, N, D] 或 [B, S, N, D] |
 | h_post | Tensor | 必选 | MHC_Post 主分支权重。 | float32 | [T, N] 或 [B, S, N] |
-| h_res | Tensor | 必选 | MHC_Post 残差混合权重，索引顺序为 $[j,n]$。 | float32 | [T, N, N] 或 [B, S, N, N] |
+| h_res | Tensor | 可选 | mHC 的 hRes 变换矩阵，是做完 Sinkhorn 变换后的双随机矩阵；索引顺序为 $[j,n]$。该参数为接口预留，暂不支持传 None。 | float32 | [T, N, N] 或 [B, S, N, N] |
 | phi | Tensor | 必选 | MHC_Pre 投影矩阵。 | float32 | [N, N*D] |
 | alpha | Tensor | 必选 | Sigmoid 门控缩放系数。 | float32 | [1] |
 | bias | Tensor | 必选 | Sigmoid 门控偏置。 | float32 | [N] |
 | gamma_1 | Tensor | 必选 | RMSNorm_1 缩放权重。 | float32 | [D] |
-| gamma_0 | Tensor | 可选 | RMSNorm_0 缩放权重。默认值为 `None`，该参数位置为接口预留；当前版本必须传入非空 Tensor。 | float32 | [D] |
-| gamma_2 | Tensor | 可选 | RMSNorm_mid 缩放权重。默认值为 `None`；非空时启用 RMSNorm_mid，为空时跳过。 | float32 | [N*D] |
-| norm_eps | float | 可选 | RMSNorm_0、RMSNorm_mid 和 RMSNorm_1 的数值稳定项，默认值为 `1e-6`。 | float | - |
-| mhc_pre_norm_eps | float | 可选 | MHC_Pre 内部 RMS 的数值稳定项，默认值为 `1e-6`。 | float | - |
-| hc_eps | float | 可选 | Sigmoid 门控结果的加性偏移，默认值为 `1e-6`。 | float | - |
-| return_h_in_f32 | bool | 可选 | 是否额外返回 FP32 的 `h_in_f32`，默认值为 `False`。 | bool | - |
+| gamma_0 | Tensor | 可选 | RMSNorm_0 缩放权重。该参数位置为接口预留，暂不支持传 None，当前版本必须传入非空 Tensor。 | float32 | [D] |
+| gamma_2 | Tensor | 可选 | RMSNorm_mid 缩放权重。默认值为 None；非空时启用 RMSNorm_mid，为空时跳过。 | float32 | [N*D] |
+| norm_eps | float | 可选 | RMSNorm_0、RMSNorm_mid 和 RMSNorm_1 的数值稳定项，默认值为 1e-6。 | float | - |
+| mhc_pre_norm_eps | float | 可选 | MHC_Pre 内部 RMS 的数值稳定项，默认值为 1e-6。 | float | - |
+| hc_eps | float | 可选 | Sigmoid 门控结果的加性偏移，默认值为 1e-6。 | float | - |
+| return_h_in_f32 | bool | 可选 | 是否额外返回 FP32 的 h_in_f32，默认值为 False。 | bool | - |
 
 ## 返回值说明
 
-当 `return_h_in_f32=False` 时，返回 `(h_in_prime, x_2_out)`；当其为 `True` 时，返回 `(h_in_prime, x_2_out, h_in_f32)`。
+当 return_h_in_f32=False 时，返回 (h_in_prime, x_2_out)；当其为 True 时，返回 (h_in_prime, x_2_out, h_in_f32)。
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 | --- | --- | --- | --- | --- | --- |
 | h_in_prime | Tensor | 必选 | RMSNorm_1 FP32 结果转换为输入 dtype 后的下一层输入。 | 同 h_out | [T, D] 或 [B, S, D] |
 | x_2_out | Tensor | 必选 | MHC_Post 以及可选 RMSNorm_mid 后的中间结果。 | 同 h_out | [T, N, D] 或 [B, S, N, D] |
-| h_in_f32 | Tensor | 可选 | RMSNorm_1 的 FP32 结果，仅在 `return_h_in_f32=True` 时返回。 | float32 | [T, D] 或 [B, S, D] |
+| h_in_f32 | Tensor | 可选 | RMSNorm_1 的 FP32 结果，仅在 return_h_in_f32=True 时返回。 | float32 | [T, D] 或 [B, S, D] |
 
 ## 约束说明
 
-- 该接口支持单算子模式调用，暂不支持 TorchAir 图模式调用。
-- `h_out` 仅支持二维 TND 格式或三维 BSND 格式；所有格式相关输入必须采用同一种格式。
-- `residual` 的 dtype 必须与 `h_out` 一致；其余 Tensor 输入必须为 float32。
-- 当前版本固定支持 $N=4$、$D\in\{2560,5120\}$，token 总数 $T=B\times S$ 的支持范围为 $[1,256]$。
-- `gamma_0=None` 为预留语义，当前版本不支持；未传入 `gamma_0` 时接口抛出 `ValueError`。
-- `gamma_2=None` 时跳过 RMSNorm_mid；非空时 shape 必须为 $[N\times D]$。
-- `norm_eps`、`mhc_pre_norm_eps` 和 `hc_eps` 必须大于或等于 0。
-- 输入 Tensor 需为连续内存。输入包含 `NaN`、`Inf`，或中间结果超出数据类型范围时，不保证输出有效。
+- 仅支持 N=4。
 
 ## 确定性/Batch一致性
 
-- 确定性说明：在相同硬件、相同输入和相同属性条件下，默认支持确定性计算。
-
-- Batch一致性说明：默认Batch一致性实现。
+默认确定性实现，不支持 Batch 一致性。
 
 ## 调用示例
 
@@ -221,4 +214,4 @@ cann_ops_transformer.mhc_sandwich_norm_post_preonly(
     print("h_in_f32:", h_in_f32.shape, h_in_f32.dtype)
     ```
 
-- TorchAir 图模式调用：暂不支持。
+- TorchAir 图模式调用：支持。

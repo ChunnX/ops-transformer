@@ -27,7 +27,7 @@ extern "C" {
 namespace {
 
 static aclnnStatus MhcSandwichNormPostPreonlyCommonProcess(
-    const aclTensor *hOut, const aclTensor *residual, const aclTensor *hPost, const aclTensor *hRes,
+    const aclTensor *hOut, const aclTensor *residual, const aclTensor *hPost, const aclTensor *hResOptional,
     const aclTensor *phi, const aclTensor *alpha0, const aclTensor *bias, const aclTensor *gamma0Optional,
     const aclTensor *gamma1, const aclTensor *gamma2Optional, double normEps, double mhcPreNormEps, double hcEps,
     bool returnHInF32, const aclTensor *hInPrimeOut, const aclTensor *x2Out, const aclTensor *hInF32OutOptional,
@@ -52,8 +52,10 @@ static aclnnStatus MhcSandwichNormPostPreonlyCommonProcess(
     hPost = l0op::Contiguous(hPost, uniqueExecutor.get());
     CHECK_COND(hPost != nullptr, ACLNN_ERR_INNER_NULLPTR, "Contiguous hPost failed.");
 
-    hRes = l0op::Contiguous(hRes, uniqueExecutor.get());
-    CHECK_COND(hRes != nullptr, ACLNN_ERR_INNER_NULLPTR, "Contiguous hRes failed.");
+    CHECK_COND(hResOptional != nullptr, ACLNN_ERR_PARAM_NULLPTR,
+               "hResOptional is an interface-reserved optional input and must not be nullptr currently.");
+    hResOptional = l0op::Contiguous(hResOptional, uniqueExecutor.get());
+    CHECK_COND(hResOptional != nullptr, ACLNN_ERR_INNER_NULLPTR, "Contiguous hResOptional failed.");
 
     phi = l0op::Contiguous(phi, uniqueExecutor.get());
     CHECK_COND(phi != nullptr, ACLNN_ERR_INNER_NULLPTR, "Contiguous phi failed.");
@@ -76,8 +78,8 @@ static aclnnStatus MhcSandwichNormPostPreonlyCommonProcess(
     }
 
     bool ok = MhcSandwichNormPostPreonlyl0op::MhcSandwichNormPostPreonly(
-        hOut, residual, hPost, hRes, phi, alpha0, bias, gamma0Optional, gamma1, gamma2Optional, normEps, mhcPreNormEps,
-        hcEps, returnHInF32, hInPrimeOut, x2Out, hInF32OutOptional, uniqueExecutor.get());
+        hOut, residual, hPost, hResOptional, phi, alpha0, bias, gamma0Optional, gamma1, gamma2Optional, normEps,
+        mhcPreNormEps, hcEps, returnHInF32, hInPrimeOut, x2Out, hInF32OutOptional, uniqueExecutor.get());
 
     CHECK_RET(ok, ACLNN_ERR_INNER_NULLPTR);
 
@@ -89,18 +91,19 @@ static aclnnStatus MhcSandwichNormPostPreonlyCommonProcess(
 } // namespace
 
 aclnnStatus aclnnMhcSandwichNormPostPreonlyGetWorkspaceSize(
-    const aclTensor *hOut, const aclTensor *residual, const aclTensor *hPost, const aclTensor *hRes,
+    const aclTensor *hOut, const aclTensor *residual, const aclTensor *hPost, const aclTensor *hResOptional,
     const aclTensor *phi, const aclTensor *alpha0, const aclTensor *bias, const aclTensor *gamma1,
     const aclTensor *gamma0Optional, const aclTensor *gamma2Optional, double normEps, double mhcPreNormEps,
     double hcEps, bool returnHInF32, const aclTensor *hInPrimeOut, const aclTensor *x2Out,
     const aclTensor *hInF32OutOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    L2_DFX_PHASE_1(aclnnMhcSandwichNormPostPreonly,
-                   DFX_IN(hOut, residual, hPost, hRes, phi, alpha0, bias, gamma1, gamma0Optional, gamma2Optional),
-                   DFX_OUT(hInPrimeOut, x2Out, hInF32OutOptional));
-    return MhcSandwichNormPostPreonlyCommonProcess(hOut, residual, hPost, hRes, phi, alpha0, bias, gamma0Optional,
-                                                   gamma1, gamma2Optional, normEps, mhcPreNormEps, hcEps, returnHInF32,
-                                                   hInPrimeOut, x2Out, hInF32OutOptional, workspaceSize, executor);
+    L2_DFX_PHASE_1(
+        aclnnMhcSandwichNormPostPreonly,
+        DFX_IN(hOut, residual, hPost, hResOptional, phi, alpha0, bias, gamma1, gamma0Optional, gamma2Optional),
+        DFX_OUT(hInPrimeOut, x2Out, hInF32OutOptional));
+    return MhcSandwichNormPostPreonlyCommonProcess(
+        hOut, residual, hPost, hResOptional, phi, alpha0, bias, gamma0Optional, gamma1, gamma2Optional, normEps,
+        mhcPreNormEps, hcEps, returnHInF32, hInPrimeOut, x2Out, hInF32OutOptional, workspaceSize, executor);
 }
 
 aclnnStatus aclnnMhcSandwichNormPostPreonly(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
