@@ -44,8 +44,8 @@ ge::graphStatus CompressorTiling::ConvertRequiredParams(gert::TilingContext &con
     compressorContext.wgate.shape = context.GetRequiredInputShape(WEIGHT_WGATE_INPUT_INDEX);
     compressorContext.stateCache.desc = context.GetRequiredInputDesc(STATE_CACHE_INPUT_INDEX);
     compressorContext.stateCache.shape = context.GetRequiredInputShape(STATE_CACHE_INPUT_INDEX);
-    compressorContext.ape.desc = context.GetRequiredInputDesc(APE_INPUT_INDEX);
-    compressorContext.ape.shape = context.GetRequiredInputShape(APE_INPUT_INDEX);
+    compressorContext.ape.desc = context.GetOptionalInputDesc(APE_INPUT_INDEX);
+    compressorContext.ape.shape = context.GetOptionalInputShape(APE_INPUT_INDEX);
 
     compressorContext.cmpKv.desc = context.GetOutputDesc(CMP_KV_OUTPUT_INDEX);
     compressorContext.cmpKv.shape = context.GetOutputShape(CMP_KV_OUTPUT_INDEX);
@@ -322,7 +322,7 @@ ge::graphStatus CompressorTiling::CheckEmptyTensor() const
             context_->wkv.shape->GetStorageShape().GetShapeSize() == 0 ||
             context_->wgate.shape->GetStorageShape().GetShapeSize() == 0 ||
             context_->stateCache.shape->GetStorageShape().GetShapeSize() == 0 ||
-            context_->ape.shape->GetStorageShape().GetShapeSize() == 0 ||
+            (context_->ape.shape != nullptr && context_->ape.shape->GetStorageShape().GetShapeSize() == 0) ||
             context_->stateBlockTable.shape->GetStorageShape().GetShapeSize() == 0) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->opName, "x", "0",
                                                   "Only input tensor x dim B or S or T supports to be 0");
@@ -690,6 +690,9 @@ ge::graphStatus CompressorTiling::CheckSingleParaStateCache() const
 
 ge::graphStatus CompressorTiling::CheckSingleParaApe() const
 {
+    if (context_->ape.desc == nullptr && context_->ape.shape == nullptr) {
+        return ge::GRAPH_SUCCESS;
+    }
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->ape.desc, APE_NAME) ||
         ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->ape.shape, APE_NAME)) {
         return ge::GRAPH_FAILED;
@@ -824,12 +827,6 @@ ge::graphStatus CompressorTiling::CheckRequiredInOutExistence() const
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(context_->stateCache.desc == nullptr,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "state_cache", "desc is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context_->ape.shape == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "ape", "shape is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context_->ape.desc == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "ape", "desc is nullptr"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(context_->stateBlockTable.shape == nullptr,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "state_block_table", "shape is nullptr"),

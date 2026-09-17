@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <iostream>
 #include <numeric>
+#include <string>
 #include <vector>
 #include "acl/acl.h"
 #include "aclnnop/aclnn_compressor.h"
@@ -102,8 +103,9 @@ void PrintBf16Result(const std::vector<int64_t> &shape, void **deviceAddr)
 
 } // namespace
 
-int main()
+int main(int argc, char **argv)
 {
+    const bool hasApe = !(argc > 1 && std::string(argv[1]) == "--without-ape");
     // 1. device/stream 初始化
     int32_t deviceId = 0;
     aclrtContext context = nullptr;
@@ -196,8 +198,10 @@ int main()
     ret = CreateAclTensor(stateCacheHostData, stateCacheShape, &stateCacheDeviceAddr, aclDataType::ACL_FLOAT,
                           &stateCacheRef);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(apeHostData, apeShape, &apeDeviceAddr, aclDataType::ACL_FLOAT, &ape);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    if (hasApe) {
+        ret = CreateAclTensor(apeHostData, apeShape, &apeDeviceAddr, aclDataType::ACL_FLOAT, &ape);
+        CHECK_RET(ret == ACL_SUCCESS, return ret);
+    }
     ret = CreateAclTensor(stateBlockTableHostData, stateBlockTableShape, &stateBlockTableDeviceAddr,
                           aclDataType::ACL_INT32, &stateBlockTable);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -220,8 +224,7 @@ int main()
     ret = aclnnCompressorGetWorkspaceSize(x, wkv, wgate, stateCacheRef, ape, stateBlockTable, nullptr, nullptr,
                                           startPos, cmpRatio, coff, cacheMode, stateCacheStrideDim0, gradEnabled,
                                           cmpKvOut, softmaxScoreOut, kvOut, &workspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnCompressorGetWorkspaceSize failed. ERROR: %d\n", ret);
-              return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnCompressorGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 
     // 6. 申请 workspace
     void *workspaceAddr = nullptr;
@@ -247,7 +250,9 @@ int main()
     aclDestroyTensor(wkv);
     aclDestroyTensor(wgate);
     aclDestroyTensor(stateCacheRef);
-    aclDestroyTensor(ape);
+    if (ape != nullptr) {
+        aclDestroyTensor(ape);
+    }
     aclDestroyTensor(stateBlockTable);
     aclDestroyTensor(startPos);
     aclDestroyTensor(cmpKvOut);
@@ -258,7 +263,9 @@ int main()
     aclrtFree(wkvDeviceAddr);
     aclrtFree(wgateDeviceAddr);
     aclrtFree(stateCacheDeviceAddr);
-    aclrtFree(apeDeviceAddr);
+    if (apeDeviceAddr != nullptr) {
+        aclrtFree(apeDeviceAddr);
+    }
     aclrtFree(stateBlockTableDeviceAddr);
     aclrtFree(startPosDeviceAddr);
     aclrtFree(cmpKvDeviceAddr);

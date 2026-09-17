@@ -174,6 +174,7 @@ private:
     GlobalTensor<int32_t> stateBlockTableGm_;
     GlobalTensor<T> stateCacheGm_;
     GlobalTensor<T> apeGm_;
+    bool hasApe_ = false;
     GlobalTensor<X_T> cmpKvOutGm_;
 
     // ================================Local Buffer区====================================
@@ -211,7 +212,10 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::Init(__gm__ uint8_t 
 {
     stateBlockTableGm_.SetGlobalBuffer((__gm__ int32_t *)stateBlockTable);
     stateCacheGm_.SetGlobalBuffer((__gm__ T *)stateCache);
-    apeGm_.SetGlobalBuffer((__gm__ T *)ape);
+    hasApe_ = ape != nullptr;
+    if (hasApe_) {
+        apeGm_.SetGlobalBuffer((__gm__ T *)ape);
+    }
     cmpKvOutGm_.SetGlobalBuffer((__gm__ X_T *)cmpKvOut);
     isExistSeqUsed_ = (seqUsed != nullptr);
     isExistStartPos_ = (startPos != nullptr);
@@ -490,6 +494,9 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::AddApeToScore(const 
                                                                           uint32_t dDealSize, uint32_t dBaseSize,
                                                                           uint32_t dStartIdx, bool isApeFullLoad)
 {
+    if (!hasApe_) {
+        return;
+    }
     uint32_t singleUbRowElemNum = dBaseSize * coff_;
     uint32_t singleApeRowElemNum = isApeFullLoad ? singleUbRowElemNum : constInfo_.headDim * coff_;
     uint64_t scoreOffset = sliceInfo.dealedSeqCnt * singleUbRowElemNum;
@@ -1127,7 +1134,7 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::PrepareForComputeVec
     loopInfo_.isCoreRowLast = loopInfo_.coreRowIdx == vec1SplitInfo_.vec1GroupNum - 1;
     loopInfo_.isCoreRowFirst = loopInfo_.coreRowIdx == 0;
 
-    bool isApeFullLoad = coff_ * cmpRatio_ * vec1SplitInfo_.dBaseSize * sizeof(T) <= BUFFER_SIZE_BYTE_16K;
+    bool isApeFullLoad = hasApe_ && coff_ * cmpRatio_ * vec1SplitInfo_.dBaseSize * sizeof(T) <= BUFFER_SIZE_BYTE_16K;
     if (isApeFullLoad) {
         uint64_t baseOffset = loopInfo_.coreColIdx * vec1SplitInfo_.dBaseSize;
         apeUb = inputQueApe.AllocTensor<T>();
@@ -1153,7 +1160,7 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::ComputeVec1()
     uint32_t cnt = constInfo_.sSize * vec1SplitInfo_.dBaseSize * coff_;
     uint32_t singleLoopBatchNum = BUFFER_SIZE_BYTE_16K / (cnt * sizeof(T));
     uint32_t loopTimes = CeilDivT(vec1SplitInfo_.dealBatchNum, singleLoopBatchNum);
-    bool isApeFullLoad = coff_ * cmpRatio_ * vec1SplitInfo_.dBaseSize * sizeof(T) <= BUFFER_SIZE_BYTE_16K;
+    bool isApeFullLoad = hasApe_ && coff_ * cmpRatio_ * vec1SplitInfo_.dBaseSize * sizeof(T) <= BUFFER_SIZE_BYTE_16K;
     for (uint32_t idx = 0; idx < loopTimes; idx++) {
         uint32_t curLoopBatchNum = min(singleLoopBatchNum, vec1SplitInfo_.dealBatchNum - singleLoopBatchNum * idx);
         scoreUb = inputQue1.AllocTensor<T>();

@@ -225,7 +225,7 @@ struct CompressorContext {
     RequiredParaInfo wkv;
     RequiredParaInfo wgate;
     RequiredParaInfo stateCache;
-    RequiredParaInfo ape;
+    OptionalParaInfo ape;
     OptionalParaInfo stateBlockTable;
     OptionalParaInfo cuSeqlens;
     OptionalParaInfo seqUsed;

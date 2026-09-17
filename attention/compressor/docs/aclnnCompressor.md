@@ -92,7 +92,7 @@ aclnnStatus aclnnCompressorGetWorkspaceSize(
     const aclTensor *wkv,
     const aclTensor *wgate,
     aclTensor       *stateCacheRef,
-    const aclTensor *ape,
+    const aclTensor *apeOptional,
     const aclTensor *stateBlockTableOptional,
     const aclTensor *cuSeqlensOptional,
     const aclTensor *sequsedOptional,
@@ -185,9 +185,9 @@ aclnnStatus aclnnCompressor(
       <td>支持0轴非连续</td>
     </tr>
     <tr>
-      <td>ape（const aclTensor*）</td>
+      <td>apeOptional（const aclTensor*）</td>
       <td>输入</td>
-      <td>公式中的<span class="math-inline">Ape</span>，表示positional biases。</td>
+      <td>公式中的<span class="math-inline">Ape</span>，表示positional biases。A2/arch22支持传入nullptr，此时跳过APE加法；传入Tensor时保持原有计算。</td>
       <td>不支持空Tensor。</td>
       <td>FLOAT</td>
       <td>ND</td>
@@ -367,7 +367,7 @@ aclnnStatus aclnnCompressor(
     <tr>
       <td>ACLNN_ERR_PARAM_NULLPTR</td>
       <td>161001</td>
-      <td>x、wkv、wgate、stateCacheRef、ape、cmpKvOut等必选参数中存在空指针。</td>
+      <td>x、wkv、wgate、stateCacheRef、cmpKvOut等必选参数中存在空指针。</td>
     </tr>
     <tr>
       <td rowspan="4">ACLNN_ERR_PARAM_INVALID</td>

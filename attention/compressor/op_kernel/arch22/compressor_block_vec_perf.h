@@ -166,6 +166,7 @@ private:
     GlobalTensor<int32_t> stateBlockTableGm_;
     GlobalTensor<T> stateCacheGm_;
     GlobalTensor<T> apeGm_;
+    bool hasApe_ = false;
     GlobalTensor<X_T> cmpKvOutGm_;
 
     // ================================Local Buffer区====================================
@@ -203,7 +204,10 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::Init(__gm__ uint8_t *x, 
 {
     stateBlockTableGm_.SetGlobalBuffer((__gm__ int32_t *)stateBlockTable);
     stateCacheGm_.SetGlobalBuffer((__gm__ T *)stateCache);
-    apeGm_.SetGlobalBuffer((__gm__ T *)ape);
+    hasApe_ = ape != nullptr;
+    if (hasApe_) {
+        apeGm_.SetGlobalBuffer((__gm__ T *)ape);
+    }
     cmpKvOutGm_.SetGlobalBuffer((__gm__ X_T *)cmpKvOut);
     isExistSeqUsed = (seqUsed != nullptr);
     isExistStartPos = (startPos != nullptr);
@@ -287,6 +291,9 @@ template <typename COMP>
 __aicore__ inline void CompressorBlockVectorPerf<COMP>::CopyInApe(const LocalTensor<T> &apeUb, uint32_t dStartIdx,
                                                                   uint32_t dDealSize)
 {
+    if (!hasApe_) {
+        return;
+    }
     LocalTensor<T> apeUbTmp = inputQue1.AllocTensor<T>();
 
     uint32_t copyRowCount = coff_ * constInfo_.cmpRatio;
@@ -308,6 +315,9 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::AddApeToScore(const Loca
                                                                       const Vec1SliceInfo &sliceInfo,
                                                                       uint32_t dDealSize)
 {
+    if (!hasApe_) {
+        return;
+    }
     uint32_t singleRowElemNum = dDealSize * coff_;
     uint64_t scoreOffset = sliceInfo.dealedSeqCnt * singleRowElemNum;
 
@@ -345,6 +355,9 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::AddSingleApeToScore(cons
                                                                             const Vec1SliceInfo &sliceInfo,
                                                                             uint32_t dDealSize)
 {
+    if (!hasApe_) {
+        return;
+    }
     uint32_t SingleRowElemNum = dDealSize * coff_;
     uint32_t dealRowCount = min(sliceInfo.sIdx, constInfo_.cmpRatio);
     uint64_t scoreOffset = (constInfo_.cmpRatio - dealRowCount) * SingleRowElemNum;

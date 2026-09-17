@@ -44,7 +44,7 @@ except ImportError:
 if _TORCHAIR_AVAILABLE:
 
     @auto_convert_to_tensor(
-        [False, False, False, False, False, True, True, True, True],
+        [False, False, False, False, True, True, True, True, True],
         [False, False, False, False, False, False, False, False, False],
     )
     def Compressor(
@@ -52,7 +52,7 @@ if _TORCHAIR_AVAILABLE:
         wkv: Tensor,
         wgate: Tensor,
         state_cache: Tensor,
-        ape: Tensor,
+        ape: Optional[Tensor],
         state_block_table: Optional[Tensor],
         cu_seqlens: Optional[Tensor],
         seqused: Optional[Tensor],
@@ -75,7 +75,7 @@ if _TORCHAIR_AVAILABLE:
         wkv: Tensor,
         wgate: Tensor,
         state_cache: Tensor,
-        ape: Tensor,
+        ape: Optional[Tensor] = None,
         state_block_table: Tensor = None,
         cu_seqlens: Tensor = None,
         seqused: Tensor = None,

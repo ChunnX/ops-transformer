@@ -49,7 +49,7 @@ def _compressor_forward(
     wkv: torch.Tensor,
     wgate: torch.Tensor,
     state_cache: torch.Tensor,
-    ape: torch.Tensor,
+    ape: Optional[torch.Tensor] = None,
     state_block_table: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.Tensor] = None,
     seqused: Optional[torch.Tensor] = None,
@@ -83,7 +83,7 @@ def _compressor_forward_fake(
     wkv: torch.Tensor,
     wgate: torch.Tensor,
     state_cache: torch.Tensor,
-    ape: torch.Tensor,
+    ape: Optional[torch.Tensor] = None,
     state_block_table: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.Tensor] = None,
     seqused: Optional[torch.Tensor] = None,
@@ -189,6 +189,7 @@ def setup_context(ctx, inputs, output):
     )
     ctx.cmp_ratio = cmp_ratio
     ctx.coff = coff
+    ctx.has_ape = inputs[4] is not None
 
 
 def backward(ctx, dout, *grads):
@@ -213,7 +214,7 @@ def backward(ctx, dout, *grads):
         cmp_ratio,
         coff,
     )
-    return d_x, d_wkv, d_wgate, None, d_ape, *((None,) * 8)
+    return d_x, d_wkv, d_wgate, None, d_ape if ctx.has_ape else None, *((None,) * 8)
 
 
 _compressor_forward.register_autograd(backward, setup_context=setup_context)
@@ -224,7 +225,7 @@ def compressor(
     wkv: torch.Tensor,
     wgate: torch.Tensor,
     state_cache: torch.Tensor,
-    ape: torch.Tensor,
+    ape: Optional[torch.Tensor] = None,
     cmp_ratio: int = 4,
     *,
     state_block_table: Optional[torch.Tensor] = None,
