@@ -470,8 +470,7 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Local
     GetCumSum(outCountLocal, aivId_);
     uint32_t beginIdx = outCountLocal.GetValue(0); // outcount表示当前专家之前的所有专家接收的token数目总和
     statusTensor_ = waitStatusBuf_.Get<int32_t>();
-    DataCopyPadExtParams<ExpandXOutType> copyPadExtParams{false, 0U, 0U,
-                                                          *reinterpret_cast<ExpandXOutType *>(uint8_t(0))};
+    DataCopyPadExtParams<ExpandXOutType> copyPadExtParams{false, 0U, 0U, static_cast<ExpandXOutType>(0)};
     DataCopyExtParams dataCopyOutParams{1U, static_cast<uint32_t>(sendExpertNum_ * sizeof(int32_t)), 0U, 0U, 0U};
     for (uint32_t index = startExpertId_; index < endExpertId_; index++) {
         uint32_t i = index - startExpertId_;
