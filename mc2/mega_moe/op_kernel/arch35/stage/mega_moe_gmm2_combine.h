@@ -720,6 +720,7 @@ template <typename BlockPrologue, typename Scheduler, typename TensorB, typename
 __aicore__ inline void Gmm2Aiv0PrologueA8W4(BlockPrologue &blockPrologue, Scheduler &scheduler, TensorB &gmB,
                                             const Config &config, uint32_t startLoopIdx, uint32_t tileNum)
 {
+    blockPrologue.SetConcatHalfN(0U);
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
         auto actualShape = scheduler.GetBlockShape(blockCoord);
@@ -830,20 +831,40 @@ __aicore__ inline void Gmm2ExecA8W4(Scheduler &scheduler, const GMMAddrInfo &gmm
     WorkSetType workSet{scheduler, gmA, gmB, gmScaleA, gmScaleB, gmBias, gmC};
 
     if constexpr (g_coreType == AscendC::AIC) {
-        BlockMmad blockMmad{};
-        typename BlockMmad::BlockShape l0TileShape{config.blockMmadTiling.tileM, config.blockMmadTiling.tileN,
-                                                   L0_TILE_K, 0};
-        typename BlockMmad::ProblemShape matmulShape{config.m, config.outputN, config.k, 0};
-        blockMmad.Init(matmulShape, l0TileShape, config.blockMmadTiling.l1Params);
-        Gmm2AicMmadA8W4<IsShared, IsLayered, NotifyCombineTileReady, BlockMmad, decltype(workSet.scheduler),
-                        decltype(workSet.gmA), decltype(workSet.gmScaleA), decltype(workSet.gmScaleB),
-                        std::remove_reference_t<decltype(workSet.gmC)>, Config>(
-            blockMmad, workSet.scheduler, workSet.gmA, workSet.gmScaleA, workSet.gmScaleB, workSet.gmC, gmmAddrInfo,
-            config, startLoopIdx, tileNum, expertTokenCount, rowOffsetInExpert);
+        if (gmmAddrInfo.a8w4PersistentResource != nullptr) {
+            auto &blockMmad = *reinterpret_cast<BlockMmad *>(gmmAddrInfo.a8w4PersistentResource);
+            typename BlockMmad::BlockShape l0TileShape{config.blockMmadTiling.tileM, config.blockMmadTiling.tileN,
+                                                       L0_TILE_K, 0};
+            typename BlockMmad::ProblemShape matmulShape{config.m, config.outputN, config.k, 0};
+            blockMmad.Init(matmulShape, l0TileShape, config.blockMmadTiling.l1Params, false,
+                           gmmAddrInfo.a8w4PersistentResource == nullptr);
+            Gmm2AicMmadA8W4<IsShared, IsLayered, NotifyCombineTileReady, BlockMmad, decltype(workSet.scheduler),
+                            decltype(workSet.gmA), decltype(workSet.gmScaleA), decltype(workSet.gmScaleB),
+                            std::remove_reference_t<decltype(workSet.gmC)>, Config>(
+                blockMmad, workSet.scheduler, workSet.gmA, workSet.gmScaleA, workSet.gmScaleB, workSet.gmC, gmmAddrInfo,
+                config, startLoopIdx, tileNum, expertTokenCount, rowOffsetInExpert);
+        } else {
+            BlockMmad blockMmad{};
+            typename BlockMmad::BlockShape l0TileShape{config.blockMmadTiling.tileM, config.blockMmadTiling.tileN,
+                                                       L0_TILE_K, 0};
+            typename BlockMmad::ProblemShape matmulShape{config.m, config.outputN, config.k, 0};
+            blockMmad.Init(matmulShape, l0TileShape, config.blockMmadTiling.l1Params, false,
+                           gmmAddrInfo.a8w4PersistentResource == nullptr);
+            Gmm2AicMmadA8W4<IsShared, IsLayered, NotifyCombineTileReady, BlockMmad, decltype(workSet.scheduler),
+                            decltype(workSet.gmA), decltype(workSet.gmScaleA), decltype(workSet.gmScaleB),
+                            std::remove_reference_t<decltype(workSet.gmC)>, Config>(
+                blockMmad, workSet.scheduler, workSet.gmA, workSet.gmScaleA, workSet.gmScaleB, workSet.gmC, gmmAddrInfo,
+                config, startLoopIdx, tileNum, expertTokenCount, rowOffsetInExpert);
+        }
     } else {
         if (GetSubBlockIdx() == 0U) {
-            BlockPrologue blockPrologue;
-            Gmm2Aiv0PrologueA8W4(blockPrologue, workSet.scheduler, workSet.gmB, config, startLoopIdx, tileNum);
+            if (gmmAddrInfo.a8w4PersistentResource != nullptr) {
+                auto &blockPrologue = *reinterpret_cast<BlockPrologue *>(gmmAddrInfo.a8w4PersistentResource);
+                Gmm2Aiv0PrologueA8W4(blockPrologue, workSet.scheduler, workSet.gmB, config, startLoopIdx, tileNum);
+            } else {
+                BlockPrologue blockPrologue;
+                Gmm2Aiv0PrologueA8W4(blockPrologue, workSet.scheduler, workSet.gmB, config, startLoopIdx, tileNum);
+            }
         } else if constexpr (NotifyCombineTileReady) {
             using MakeLayoutC = typename KernelConfig::MakeLayoutC;
             CombineTokenRange<ElementC, MakeLayoutC>(workSet.scheduler, workSet.gmC, *params, gmmAddrInfo, config,
