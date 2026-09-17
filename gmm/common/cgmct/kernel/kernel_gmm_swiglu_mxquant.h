@@ -383,12 +383,14 @@ public:
                 }
                 AscendC::Std::tuple<int32_t, int32_t, int32_t> mmSingleShape{Get<M_VALUE>(singleShape),
                                                                              Get<N_VALUE>(singleShape), k};
-                // left block
+                // The CGMCT path always computes the two ordinary N-wide
+                // MMAD results.  The vector epilogue decides whether they
+                // are consumed as split halves or as the two sources of the
+                // mode-1 interleaved layout.
                 mmadOp_(aGlobal_[Get<IDX_A_OFFSET>(blockOffset_)], bGlobal_[Get<IDX_B_OFFSET>(blockOffset_)],
                         x1ScaleGlobal_[Get<IDX_X1SCALE_OFFSET>(blockOffset_)],
                         x2ScaleGlobal_[Get<IDX_X2SCALE_OFFSET>(blockOffset_)], l0cOutUbFirst_, mmSingleShape, transA,
                         transB);
-                // right block
                 int64_t bRightOffset = Get<IDX_B_OFFSET>(blockOffset_) + bRightOffsetStep_;
                 int64_t x2ScaleRightOffset = Get<IDX_X2SCALE_OFFSET>(blockOffset_) + x2ScaleRightOffsetStep_;
                 mmadOp_(aGlobal_[Get<IDX_A_OFFSET>(blockOffset_)], bGlobal_[bRightOffset],
