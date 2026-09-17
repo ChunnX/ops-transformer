@@ -24,7 +24,7 @@ TEST_P(QbsaMxfp8Arch35TilingTest, Tiling)
     ASSERT_EQ(param.quant_mode, optiling::QBSA_QUANT_MODE_MXFP8_FULL_QUANT);
 
     TilingInfo tilingInfo;
-    const bool ok = ExecuteQbsaTilingCase(param, tilingInfo);
+    const bool ok = ExecuteQbsaTilingCase(param, tilingInfo, sizeof(optiling::QuantBlockSparseAttnMxfp8TilingData));
     if (param.expectResult != ge::GRAPH_SUCCESS) {
         EXPECT_FALSE(ok);
         return;
@@ -34,17 +34,21 @@ TEST_P(QbsaMxfp8Arch35TilingTest, Tiling)
     EXPECT_GT(tilingInfo.blockNum, 0U);
     EXPECT_EQ(tilingInfo.tilingKey, static_cast<int64_t>(optiling::BuildQbsaMxfp8TilingKey(
                                         QBSA_LAYOUT_TND, param.mask_mode, param.return_softmax_lse)));
-    ASSERT_EQ(tilingInfo.tilingDataSize, sizeof(optiling::QuantBlockSparseAttnTilingData));
-    const auto data = DecodeQbsaTilingData(tilingInfo);
-    ExpectQbsaCommonTilingData(param, tilingInfo, data);
+    ASSERT_EQ(tilingInfo.tilingDataSize, sizeof(optiling::QuantBlockSparseAttnMxfp8TilingData));
+    const auto data = DecodeQbsaTilingData<optiling::QuantBlockSparseAttnMxfp8TilingData>(tilingInfo);
+    ExpectQbsaCommonTilingData(param, tilingInfo, data.commonParams);
     EXPECT_EQ(data.mxParams.scaleGroupSize, 64U);
     EXPECT_EQ(data.mxParams.scaleLastDim, 2U);
-    // Only the MXFP8 union member is active for quant_mode=2.
     EXPECT_EQ(data.mxParams.queryScaleDSize, 2U);
     EXPECT_EQ(data.mxParams.keyScaleDSize, 2U);
     EXPECT_EQ(data.mxParams.kScaleStrides.n2Stride, static_cast<uint64_t>(data.commonParams.paParams.blockSize) * 4U);
     EXPECT_EQ(data.mxParams.vScaleStrides.n2Stride,
               static_cast<uint64_t>(data.commonParams.paParams.blockSize) / 64U * 128U * 2U);
+
+    // A valid case must fit its own payload exactly and reject an undersized buffer.
+    TilingInfo undersizedTilingInfo;
+    EXPECT_FALSE(
+        ExecuteQbsaTilingCase(param, undersizedTilingInfo, sizeof(optiling::QuantBlockSparseAttnMxfp8TilingData) - 1U));
 }
 
 INSTANTIATE_TEST_SUITE_P(

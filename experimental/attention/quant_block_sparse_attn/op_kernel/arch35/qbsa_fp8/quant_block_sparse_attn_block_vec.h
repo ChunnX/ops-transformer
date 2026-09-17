@@ -17,6 +17,7 @@
 #include "../../common/util_regbase_QBSA.h"
 #include "copy_gm_to_ub.h"
 #include "../common/quant_block_sparse_attn_common_arch35.h"
+#include "qbsa_fp8_tiling_data.h"
 #include "../common/quant_block_sparse_attn_attenmask.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "adv_api/activation/softmax.h"
@@ -68,7 +69,8 @@ public:
     static constexpr uint64_t SYNC_MODE = 4;
 
     __aicore__ inline QBSABlockVec(){};
-    __aicore__ inline void InitVecBlock(TPipe *pipe, const optiling::QuantBlockSparseAttnTilingData *__restrict tiling,
+    __aicore__ inline void InitVecBlock(TPipe *pipe,
+                                        const optiling::QuantBlockSparseAttnFp8TilingData *__restrict tiling,
                                         QbsaCVSharedParams<isPa> &sharedParams, int32_t aicIdx, uint8_t subBlockIdx,
                                         AttenMaskInfo &attenMaskInfo)
     {
@@ -117,7 +119,7 @@ public:
                                                int64_t vec2CalcSize);
 
     TPipe *tPipe;
-    const optiling::QuantBlockSparseAttnTilingData *__restrict tilingData;
+    const optiling::QuantBlockSparseAttnFp8TilingData *__restrict tilingData;
     GlobalTensor<OUTPUT_T> attentionOutGm;
     GlobalTensor<half> attentionOut_initGm;
 
@@ -767,7 +769,8 @@ public:
     __aicore__ inline void CleanOutput(__gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
                                        QbsaConstInfo &constInfo)
     {}
-    __aicore__ inline void InitVecBlock(TPipe *pipe, const optiling::QuantBlockSparseAttnTilingData *__restrict tiling,
+    __aicore__ inline void InitVecBlock(TPipe *pipe,
+                                        const optiling::QuantBlockSparseAttnFp8TilingData *__restrict tiling,
                                         QbsaCVSharedParams<isPa> &sharedParams, int32_t aicIdx, uint8_t subBlockIdx,
                                         AttenMaskInfo &attenMaskInfo) {};
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK,

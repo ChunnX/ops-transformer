@@ -13,6 +13,7 @@
 
 #include "../../tiling_common/qbsa_common_check.h"
 #include "../../tiling_common/qbsa_tiling_strategy.h"
+#include "../../../op_kernel/arch35/qbsa_mxfp8/qbsa_mxfp8_tiling_data.h"
 
 namespace optiling {
 class QbsaMxfp8Arch35Tiling final : public QbsaTilingStrategy {
@@ -26,6 +27,7 @@ private:
     ge::graphStatus ParseShapeFacts(QbsaTilingContextParser &parser) override;
     ge::graphStatus CheckShapeRelations() const override;
     ge::graphStatus BuildTilingData() override;
+    ge::graphStatus SaveTilingData() override;
 
     ge::graphStatus CheckMxAttrs() const;
     ge::graphStatus CheckMxScaleDtype() const;
@@ -34,6 +36,7 @@ private:
     ge::graphStatus CheckMxfp8FullQuantShape() const;
 
     QbsaCommonCheck commonCheck_;
+    QuantBlockSparseAttnMxfp8TilingData tilingData_;
 };
 } // namespace optiling
 

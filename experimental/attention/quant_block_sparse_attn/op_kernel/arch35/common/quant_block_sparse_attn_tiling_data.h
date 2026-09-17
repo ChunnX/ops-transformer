@@ -10,7 +10,7 @@
 
 /*!
  * \file quant_block_sparse_attn_tiling_data.h
- * \brief Shared host/kernel tiling data for FP8 and MXFP8.
+ * \brief Common tiling fields shared by the independent FP8 and MXFP8 payloads.
  */
 
 #ifndef QUANT_BLOCK_SPARSE_ATTN_TILING_DATA_H_
@@ -22,9 +22,6 @@
 
 namespace optiling {
 constexpr uint32_t QBSA_MAX_CORE_NUM = 36U;
-constexpr uint32_t QBSA_CORE_SPLIT_NUM = QBSA_MAX_CORE_NUM + 1U;
-constexpr uint8_t MX_PSCALE_DTYPE_E8M0 = 0U;
-constexpr uint8_t MX_PSCALE_DTYPE_FP32 = 1U;
 
 // Host and Kernel exchange raw bytes. Do not inherit packing from SDK/generated headers.
 #pragma pack(push, 8)
@@ -77,51 +74,6 @@ struct QuantBlockSparseAttnCommonParams {
     QuantBlockSparseAttnOutputParams outputParams;
 };
 
-// FP8 RegBase initialization and task-boundary fields.
-struct QuantBlockSparseAttnFp8Params {
-    uint32_t bandIndex;
-    uint32_t seqUsedQlenSize;
-    uint32_t seqUsedKvlenSize;
-    uint8_t layoutType;
-    uint8_t isKvContinuous;
-    uint8_t fromFused;
-    uint8_t isGqa;
-    int64_t s1OuterSize;
-    uint32_t bnStartIdx[QBSA_CORE_SPLIT_NUM];
-    uint32_t singleCoreSize;
-    uint8_t needInit;
-};
-
-struct QuantBlockSparseAttnMxStrideParams {
-    uint64_t bnStride;
-    uint64_t n2Stride;
-};
-
-// MXFP8 group-scale layout and the independent PA scale strides.
-struct QuantBlockSparseAttnMxParams {
-    QuantBlockSparseAttnMxStrideParams keyStrides;
-    QuantBlockSparseAttnMxStrideParams valueStrides;
-    QuantBlockSparseAttnMxStrideParams kScaleStrides;
-    QuantBlockSparseAttnMxStrideParams vScaleStrides;
-    uint32_t scaleGroupSize;
-    uint32_t scaleLastDim;
-    uint32_t queryScaleDSize;
-    uint32_t keyScaleDSize;
-    uint32_t valueScaleBlockSize;
-    uint32_t valueScaleDSize;
-    uint8_t pScaleDtype;
-};
-
-// One serialization format for both modes. The mode-specific blocks share storage
-// because one invocation can only select one quantization mode and its matching tiling key.
-struct QuantBlockSparseAttnTilingData {
-    QuantBlockSparseAttnCommonParams commonParams;
-    union {
-        QuantBlockSparseAttnFp8Params fp8Params;
-        QuantBlockSparseAttnMxParams mxParams;
-    };
-};
-
 #pragma pack(pop)
 
 // Fixed wire offsets must agree in both compilers; equal total sizes alone are insufficient.
@@ -130,27 +82,10 @@ static_assert(offsetof(QuantBlockSparseAttnCommonParams, paParams) == 36U, "QBSA
 static_assert(offsetof(QuantBlockSparseAttnCommonParams, sparseParams) == 68U, "QBSA sparse tiling offset changed");
 static_assert(offsetof(QuantBlockSparseAttnCommonParams, maskParams) == 80U, "QBSA mask tiling offset changed");
 static_assert(offsetof(QuantBlockSparseAttnCommonParams, outputParams) == 104U, "QBSA output tiling offset changed");
-static_assert(sizeof(QuantBlockSparseAttnFp8Params) == 184U, "QBSA FP8 tiling ABI changed");
-static_assert(sizeof(QuantBlockSparseAttnMxParams) == 96U, "QBSA MXFP8 tiling ABI changed");
-static_assert(offsetof(QuantBlockSparseAttnTilingData, fp8Params) == 120U, "QBSA FP8 tiling offset changed");
-static_assert(offsetof(QuantBlockSparseAttnTilingData, mxParams) == 120U, "QBSA MXFP8 tiling offset changed");
-static_assert(offsetof(QuantBlockSparseAttnMxParams, kScaleStrides) == 32U, "QBSA K scale offset changed");
-static_assert(offsetof(QuantBlockSparseAttnMxParams, vScaleStrides) == 48U, "QBSA V scale offset changed");
-static_assert(offsetof(QuantBlockSparseAttnMxParams, scaleLastDim) == 68U, "QBSA scale last dimension offset changed");
-static_assert(sizeof(QuantBlockSparseAttnTilingData) == 304U, "QBSA tiling wire size changed");
-
-constexpr std::size_t QBSA_MODE_PARAMS_SIZE = sizeof(QuantBlockSparseAttnFp8Params) >
-                                                      sizeof(QuantBlockSparseAttnMxParams) ?
-                                                  sizeof(QuantBlockSparseAttnFp8Params) :
-                                                  sizeof(QuantBlockSparseAttnMxParams);
-static_assert(sizeof(QuantBlockSparseAttnTilingData) ==
-                  sizeof(QuantBlockSparseAttnCommonParams) + QBSA_MODE_PARAMS_SIZE,
-              "QBSA mode-specific tiling data must share one payload");
-static_assert(std::is_standard_layout<QuantBlockSparseAttnTilingData>::value,
-              "QBSA tiling data must have a standard layout");
-static_assert(std::is_trivial<QuantBlockSparseAttnTilingData>::value, "QBSA tiling data must remain a trivial POD");
-static_assert(std::is_trivially_copyable<QuantBlockSparseAttnTilingData>::value,
-              "QBSA tiling data must support byte-wise serialization");
+static_assert(std::is_standard_layout<QuantBlockSparseAttnCommonParams>::value,
+              "QBSA common tiling fields must have a standard layout");
+static_assert(std::is_trivially_copyable<QuantBlockSparseAttnCommonParams>::value,
+              "QBSA common tiling fields must support byte-wise serialization");
 } // namespace optiling
 
 #endif // QUANT_BLOCK_SPARSE_ATTN_TILING_DATA_H_

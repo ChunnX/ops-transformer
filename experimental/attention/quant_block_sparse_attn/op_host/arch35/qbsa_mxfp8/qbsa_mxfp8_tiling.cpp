@@ -36,7 +36,7 @@ QuantBlockSparseAttnMxStrideParams MakePaBnbdStride(uint32_t n2Size, uint32_t bl
 }
 
 void FillMxfp8CommonParams(const QuantBlockSparseAttnTilingInfo &info, uint32_t usedCoreNum,
-                           QuantBlockSparseAttnTilingData &tilingData)
+                           QuantBlockSparseAttnMxfp8TilingData &tilingData)
 {
     auto &common = tilingData.commonParams;
     auto &base = common.baseParams;
@@ -109,5 +109,10 @@ ge::graphStatus QbsaMxfp8Arch35Tiling::BuildTilingData()
     tilingKey_ =
         BuildQbsaMxfp8TilingKey(tilingInfo_.layoutQValue, tilingInfo_.maskModeVal, tilingInfo_.returnSoftmaxLseVal);
     return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QbsaMxfp8Arch35Tiling::SaveTilingData()
+{
+    return PublishTilingData(&tilingData_, sizeof(tilingData_));
 }
 } // namespace optiling

@@ -27,7 +27,7 @@ constexpr uint8_t QBSA_COMPAT_MASK_RIGHT_DOWN_CAUSAL = 2U;
 constexpr uint32_t QBSA_ATTEN_MASK_DEFAULT_S2_SIZE = 2048U;
 
 void FillFp8CommonParams(const QuantBlockSparseAttnTilingInfo &info, uint32_t usedCoreNum,
-                         QuantBlockSparseAttnTilingData &tilingData)
+                         QuantBlockSparseAttnFp8TilingData &tilingData)
 {
     auto &common = tilingData.commonParams;
     auto &base = common.baseParams;
@@ -99,5 +99,10 @@ ge::graphStatus QbsaFp8Arch35Tiling::BuildTilingData()
     tilingKey_ =
         BuildQbsaFp8TilingKey(tilingInfo_.layoutQValue, tilingInfo_.maskModeVal, tilingInfo_.returnSoftmaxLseVal);
     return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QbsaFp8Arch35Tiling::SaveTilingData()
+{
+    return PublishTilingData(&tilingData_, sizeof(tilingData_));
 }
 } // namespace optiling

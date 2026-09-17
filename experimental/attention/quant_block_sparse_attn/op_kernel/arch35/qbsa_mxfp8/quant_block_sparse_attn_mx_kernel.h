@@ -16,7 +16,7 @@
 #define QUANT_BLOCK_SPARSE_ATTN_MX_KERNEL_H_
 
 #include "kernel_operator.h"
-#include "../common/quant_block_sparse_attn_tiling_data.h"
+#include "qbsa_mxfp8_tiling_data.h"
 #include "../common/quant_block_sparse_attn_common_arch35.h"
 #include "../common/quant_block_sparse_attn_attenmask.h"
 #include "../common/quant_block_sparse_attn_kvcache.h"
@@ -68,7 +68,8 @@ public:
                                 __gm__ uint8_t *, __gm__ uint8_t *seqUsedKv, __gm__ uint8_t *blockTable,
                                 __gm__ uint8_t *qScale, __gm__ uint8_t *kScale, __gm__ uint8_t *vScale,
                                 __gm__ uint8_t *pScale, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
-                                __gm__ uint8_t *, const QuantBlockSparseAttnTilingData *__restrict tiling, TPipe *tPipe)
+                                __gm__ uint8_t *, const QuantBlockSparseAttnMxfp8TilingData *__restrict tiling,
+                                TPipe *tPipe)
     {
         // 跨核 Buffer ID 由核内状态生成，ACL 图重放会复用该状态；每次启动时需重置计数器，
         // 保证 AIC 与 AIV 使用相同的事件 ID 序列。
@@ -461,7 +462,7 @@ private:
     }
 
     TPipe *pipe = nullptr;
-    const QuantBlockSparseAttnTilingData *__restrict tilingData = nullptr;
+    const QuantBlockSparseAttnMxfp8TilingData *__restrict tilingData = nullptr;
     regbasemx::MxConstInfo constInfo;
     __gm__ uint8_t *queryPtr = nullptr;
     __gm__ uint8_t *keyPtr = nullptr;

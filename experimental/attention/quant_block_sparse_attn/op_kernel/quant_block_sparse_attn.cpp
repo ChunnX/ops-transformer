@@ -16,7 +16,8 @@
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #include "arch35/common/quant_block_sparse_attn_common.h"
-#include "arch35/common/quant_block_sparse_attn_tiling_data.h"
+#include "arch35/qbsa_fp8/qbsa_fp8_tiling_data.h"
+#include "arch35/qbsa_mxfp8/qbsa_mxfp8_tiling_data.h"
 #include "arch35/common/quant_block_sparse_attn_tiling_key_registry.h"
 #include "arch35/qbsa_fp8/quant_block_sparse_attn_kernel.h"
 #include "arch35/qbsa_mxfp8/quant_block_sparse_attn_mx_kernel.h"
@@ -49,8 +50,8 @@ using namespace optiling;
 
 #define QBSA_OP_IMPL(...) \
     do { \
-        GET_TILING_DATA_WITH_STRUCT(QuantBlockSparseAttnTilingData, tilingDataIn, tiling); \
-        const QuantBlockSparseAttnTilingData *__restrict tilingData = &tilingDataIn; \
+        GET_TILING_DATA_WITH_STRUCT(QuantBlockSparseAttnFp8TilingData, tilingDataIn, tiling); \
+        const QuantBlockSparseAttnFp8TilingData *__restrict tilingData = &tilingDataIn; \
         QBSA_OP_IMPL_WITH_TILING(tilingData, __VA_ARGS__); \
     } while (0)
 
@@ -66,8 +67,8 @@ using namespace optiling;
 
 #define QBSA_MX_OP_IMPL(...) \
     do { \
-        GET_TILING_DATA_WITH_STRUCT(QuantBlockSparseAttnTilingData, tilingDataIn, tiling); \
-        const QuantBlockSparseAttnTilingData *__restrict tilingData = &tilingDataIn; \
+        GET_TILING_DATA_WITH_STRUCT(QuantBlockSparseAttnMxfp8TilingData, tilingDataIn, tiling); \
+        const QuantBlockSparseAttnMxfp8TilingData *__restrict tilingData = &tilingDataIn; \
         QBSA_MX_OP_IMPL_WITH_TILING(tilingData, __VA_ARGS__); \
     } while (0)
 
@@ -80,7 +81,8 @@ __global__ __aicore__ void quant_block_sparse_attn(
     __gm__ uint8_t *blockTable, __gm__ uint8_t *attenMask, __gm__ uint8_t *metadata, __gm__ uint8_t *attentionOut,
     __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
-    REGISTER_TILING_DEFAULT(optiling::QuantBlockSparseAttnTilingData);
+    REGISTER_TILING_DEFAULT(optiling::QuantBlockSparseAttnFp8TilingData);
+    REGISTER_TILING_FOR_TILINGKEY("QUANT_MODE == 2", optiling::QuantBlockSparseAttnMxfp8TilingData);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 
     // mask 模式和 softmaxLse 使能由 tiling key 选择对应的编译期模板。

@@ -18,7 +18,8 @@
 
 #include <gtest/gtest.h>
 #include "../../../../op_host/tiling_common/qbsa_op_contract.h"
-#include "../../../../op_kernel/arch35/common/quant_block_sparse_attn_tiling_data.h"
+#include "../../../../op_kernel/arch35/qbsa_fp8/qbsa_fp8_tiling_data.h"
+#include "../../../../op_kernel/arch35/qbsa_mxfp8/qbsa_mxfp8_tiling_data.h"
 #include "../../../../op_kernel/arch35/common/quant_block_sparse_attn_tiling_key_registry.h"
 #include "qbsa_host_ut_param.h"
 #include "tiling_case_executor.h"
@@ -110,7 +111,8 @@ inline void PrepareQbsaFp8TilingParam(QuantBlockSparseAttnTilingUtParam &param)
     }
 }
 
-inline bool ExecuteQbsaTilingCase(QuantBlockSparseAttnTilingUtParam param, TilingInfo &tilingInfo)
+inline bool ExecuteQbsaTilingCase(QuantBlockSparseAttnTilingUtParam param, TilingInfo &tilingInfo,
+                                  std::size_t tilingDataCapacity = 4096U)
 {
     struct QbsaCompileInfo {};
     static QbsaCompileInfo compileInfo;
@@ -161,27 +163,33 @@ inline bool ExecuteQbsaTilingCase(QuantBlockSparseAttnTilingUtParam param, Tilin
     });
 
     gert::TilingContextPara para("QuantBlockSparseAttn", inputTensorDesc, outputTensorDesc, attrs, &compileInfo,
-                                 "Ascend950", 64, 262144, sizeof(optiling::QuantBlockSparseAttnTilingData));
+                                 "Ascend950", 64, 262144, tilingDataCapacity);
     return ExecuteTiling(para, tilingInfo);
 }
 
-inline bool ExecuteQbsaFp8TilingCase(QuantBlockSparseAttnTilingUtParam param, TilingInfo &tilingInfo)
+inline bool ExecuteQbsaFp8TilingCase(
+    QuantBlockSparseAttnTilingUtParam param, TilingInfo &tilingInfo,
+    std::size_t tilingDataCapacity = sizeof(optiling::QuantBlockSparseAttnFp8TilingData))
 {
     PrepareQbsaFp8TilingParam(param);
-    return ExecuteQbsaTilingCase(param, tilingInfo);
+    return ExecuteQbsaTilingCase(param, tilingInfo, tilingDataCapacity);
 }
 
-inline optiling::QuantBlockSparseAttnTilingData DecodeQbsaTilingData(const TilingInfo &tilingInfo)
+template <typename TilingData>
+inline TilingData DecodeQbsaTilingData(const TilingInfo &tilingInfo)
 {
-    optiling::QuantBlockSparseAttnTilingData data{};
+    TilingData data{};
+    if (tilingInfo.tilingDataSize != sizeof(data) || tilingInfo.tilingData == nullptr) {
+        ADD_FAILURE() << "Serialized tiling data does not match the selected mode's structure";
+        return data;
+    }
     std::memcpy(&data, tilingInfo.tilingData.get(), sizeof(data));
     return data;
 }
 
 inline void ExpectQbsaCommonTilingData(const QuantBlockSparseAttnTilingUtParam &param, const TilingInfo &tilingInfo,
-                                       const optiling::QuantBlockSparseAttnTilingData &data)
+                                       const optiling::QuantBlockSparseAttnCommonParams &common)
 {
-    const auto &common = data.commonParams;
     EXPECT_EQ(common.baseParams.coreNum, tilingInfo.blockNum);
     EXPECT_EQ(common.baseParams.scaleValue, param.softmax_scale);
     EXPECT_EQ(common.paParams.qBlockSize, param.sparse_q_block_size);

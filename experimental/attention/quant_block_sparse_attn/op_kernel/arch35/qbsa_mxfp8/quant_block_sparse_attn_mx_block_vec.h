@@ -16,7 +16,7 @@
 #define QUANT_BLOCK_SPARSE_ATTN_MX_BLOCK_VEC_H_
 
 #include "kernel_operator.h"
-#include "../common/quant_block_sparse_attn_tiling_data.h"
+#include "qbsa_mxfp8_tiling_data.h"
 #include "../common/quant_block_sparse_attn_common_arch35.h"
 #include "../common/quant_block_sparse_attn_attenmask.h"
 #include "../../common/attn_buffer_manager.h"

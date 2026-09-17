@@ -16,15 +16,18 @@
 #include <exe_graph/runtime/tiling_context.h>
 #include <register/op_impl_registry.h>
 #include <register/tilingdata_base.h>
-#include "../op_kernel/arch35/common/quant_block_sparse_attn_tiling_data.h"
+#include "../op_kernel/arch35/qbsa_fp8/qbsa_fp8_tiling_data.h"
+#include "../op_kernel/arch35/qbsa_mxfp8/qbsa_mxfp8_tiling_data.h"
 #include "tiling_common/qbsa_op_contract.h"
 
 namespace optiling {
-// This is reserved buffer capacity, not compatibility with an older tiling layout.
-// Host and Kernel must be rebuilt together from the shared tiling data header.
+// One IR reserves enough buffer capacity for either independently serialized payload.
+// Actual data size and kernel registration are mode-specific. Rebuild Host and Kernel together.
 constexpr std::size_t QBSA_REGISTERED_TILING_DATA_CAPACITY = 344U;
-static_assert(sizeof(QuantBlockSparseAttnTilingData) <= QBSA_REGISTERED_TILING_DATA_CAPACITY,
-              "QBSA tiling data exceeds its registered runtime capacity");
+static_assert(sizeof(QuantBlockSparseAttnFp8TilingData) <= QBSA_REGISTERED_TILING_DATA_CAPACITY,
+              "QBSA FP8 tiling data exceeds its registered runtime capacity");
+static_assert(sizeof(QuantBlockSparseAttnMxfp8TilingData) <= QBSA_REGISTERED_TILING_DATA_CAPACITY,
+              "QBSA MXFP8 tiling data exceeds its registered runtime capacity");
 
 BEGIN_TILING_DATA_DEF(QuantBlockSparseAttnRegisteredTilingData)
 TILING_DATA_FIELD_DEF_ARR(uint8_t, 344, payload);

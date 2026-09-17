@@ -18,6 +18,7 @@
 #include "quant_block_sparse_attn_block_cube.h"
 #include "quant_block_sparse_attn_block_vec.h"
 #include "../common/quant_block_sparse_attn_common_arch35.h"
+#include "qbsa_fp8_tiling_data.h"
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
 #else
@@ -56,17 +57,15 @@ public:
                                        !IsSameType<OUTPUT_T, float>::value;
     __aicore__ inline QuantBlockSparseAttnKernel(){};
 
-    __aicore__ inline void InitBaseAPI(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                                       __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseSeqLen,
-                                       __gm__ uint8_t *attenMask, __gm__ uint8_t *metadata, __gm__ uint8_t *cuSeqQlen,
-                                       __gm__ uint8_t *cuSeqKvlen, __gm__ uint8_t *seqUsedQlen,
-                                       __gm__ uint8_t *seqUsedKvlen, __gm__ uint8_t *blockTable,
-                                       __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
-                                       __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV,
-                                       __gm__ uint8_t *pScale, __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum,
-                                       __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
-                                       __gm__ uint8_t *workspace,
-                                       const optiling::QuantBlockSparseAttnTilingData *__restrict tiling, TPipe *tPipe);
+    __aicore__ inline void InitBaseAPI(
+        __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *sparseIndices,
+        __gm__ uint8_t *sparseSeqLen, __gm__ uint8_t *attenMask, __gm__ uint8_t *metadata, __gm__ uint8_t *cuSeqQlen,
+        __gm__ uint8_t *cuSeqKvlen, __gm__ uint8_t *seqUsedQlen, __gm__ uint8_t *seqUsedKvlen,
+        __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
+        __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale,
+        __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *softmaxLse,
+        __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
+        const optiling::QuantBlockSparseAttnFp8TilingData *__restrict tiling, TPipe *tPipe);
     __aicore__ inline void Process();
     __aicore__ inline void InitGlobalBuffer(
         __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseSeqLen,
@@ -74,7 +73,7 @@ public:
         __gm__ uint8_t *seqUsedQlen, __gm__ uint8_t *seqUsedKvlen, __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK,
         __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale, __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize,
         __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum,
-        __gm__ uint8_t *workspace, const optiling::QuantBlockSparseAttnTilingData *__restrict tiling, TPipe *tPipe);
+        __gm__ uint8_t *workspace, const optiling::QuantBlockSparseAttnFp8TilingData *__restrict tiling, TPipe *tPipe);
     __aicore__ inline void InitLocalBuffer();
     __aicore__ inline void InitMMResBuf();
     __aicore__ inline void ComputeConstexpr();
@@ -91,7 +90,7 @@ public:
 
     TPipe *pipe;
 
-    const optiling::QuantBlockSparseAttnTilingData *__restrict tilingData;
+    const optiling::QuantBlockSparseAttnFp8TilingData *__restrict tilingData;
     static constexpr uint32_t dTemplateAlign64 = Align64Func((uint16_t)dVTemplateType);
     static constexpr uint32_t s1BaseSize = (uint32_t)s1TemplateType;
     static constexpr uint32_t s2BaseSize = (uint32_t)s2TemplateType;
@@ -142,7 +141,7 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
     __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *deqScaleQ,
     __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale, __gm__ uint8_t *softmaxMax,
     __gm__ uint8_t *softmaxSum, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
-    const optiling::QuantBlockSparseAttnTilingData *__restrict tiling, TPipe *tPipe)
+    const optiling::QuantBlockSparseAttnFp8TilingData *__restrict tiling, TPipe *tPipe)
 {
     fa_base_matmul::idCounterNum = 0;
     constInfo.subBlockIdx = GetSubBlockIdx();
@@ -186,7 +185,7 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
     __gm__ uint8_t *seqUsedKvlen, __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV,
     __gm__ uint8_t *pScale, __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
     __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *workspace,
-    const optiling::QuantBlockSparseAttnTilingData *__restrict tiling, TPipe *tPipe)
+    const optiling::QuantBlockSparseAttnFp8TilingData *__restrict tiling, TPipe *tPipe)
 {
     keyGm.SetGlobalBuffer((__gm__ INPUT_T *)(key));
     sparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);

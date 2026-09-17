@@ -11,6 +11,7 @@
 #ifndef QBSA_TILING_STRATEGY_H_
 #define QBSA_TILING_STRATEGY_H_
 
+#include <cstddef>
 #include <cstdint>
 
 #include <exe_graph/runtime/tiling_context.h>
@@ -31,19 +32,20 @@ protected:
     virtual ge::graphStatus ParseShapeFacts(QbsaTilingContextParser &parser) = 0;
     virtual ge::graphStatus CheckShapeRelations() const = 0;
     virtual ge::graphStatus BuildTilingData() = 0;
+    virtual ge::graphStatus SaveTilingData() = 0;
+
+    ge::graphStatus PublishTilingData(const void *data, std::size_t dataSize);
 
     uint32_t GetAicCoreNum() const;
 
     gert::TilingContext *context_ = nullptr;
     QuantBlockSparseAttnTilingInfo tilingInfo_;
-    QuantBlockSparseAttnTilingData tilingData_;
     uint32_t usedCoreNum_ = 0U;
     uint64_t totalTaskNum_ = 0U;
     uint64_t tilingKey_ = 0U;
 
 private:
-    ge::graphStatus PublishTilingData();
-    void PrintTilingData() const;
+    void PrintTilingData(std::size_t dataSize) const;
 };
 } // namespace optiling
 

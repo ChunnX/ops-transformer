@@ -35,10 +35,15 @@ TEST_P(QbsaFp8Arch35TilingTest, Tiling)
     EXPECT_EQ(tilingInfo.tilingKey, static_cast<int64_t>(optiling::BuildQbsaFp8TilingKey(
                                         param.layout_q == "NTD" ? QBSA_LAYOUT_NTD : QBSA_LAYOUT_TND, param.mask_mode,
                                         param.return_softmax_lse)));
-    ASSERT_EQ(tilingInfo.tilingDataSize, sizeof(optiling::QuantBlockSparseAttnTilingData));
-    const auto data = DecodeQbsaTilingData(tilingInfo);
-    ExpectQbsaCommonTilingData(param, tilingInfo, data);
+    ASSERT_EQ(tilingInfo.tilingDataSize, sizeof(optiling::QuantBlockSparseAttnFp8TilingData));
+    const auto data = DecodeQbsaTilingData<optiling::QuantBlockSparseAttnFp8TilingData>(tilingInfo);
+    ExpectQbsaCommonTilingData(param, tilingInfo, data.commonParams);
     EXPECT_EQ(data.fp8Params.needInit, 1U);
+
+    // A valid case must fit its own payload exactly and reject an undersized buffer.
+    TilingInfo undersizedTilingInfo;
+    EXPECT_FALSE(ExecuteQbsaFp8TilingCase(param, undersizedTilingInfo,
+                                          sizeof(optiling::QuantBlockSparseAttnFp8TilingData) - 1U));
 }
 
 INSTANTIATE_TEST_SUITE_P(
