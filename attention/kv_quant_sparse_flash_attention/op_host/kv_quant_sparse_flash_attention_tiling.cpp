@@ -1831,8 +1831,7 @@ ge::graphStatus QSFAInfoParser::GetKVTSize()
     // 获取query的T基准值
     // 1、非TND时, 以key的batch_size维度为基准;
     // 2、TND时, actual_seq_lens_q必须传入, 以actual_seq_lens_q数组的长度为B轴大小
-    kvTSize_ =
-        (kvLayout_ == QSFALayout::TND) ? GetAxisNum(keyShape_, QSFAAxis::T, kvLayout_) : 0;
+    kvTSize_ = (kvLayout_ == QSFALayout::TND) ? GetAxisNum(keyShape_, QSFAAxis::T, kvLayout_) : 0;
     return ge::GRAPH_SUCCESS;
 }
 
