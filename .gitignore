@@ -52,3 +52,6 @@ third_party/
 # pre-commit log
 log/
 oat_reports/
+
+# Local FD progress notes
+/MLA_FD_PROGRESS.md
