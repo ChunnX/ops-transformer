@@ -47,12 +47,22 @@ if(UT_TEST_ALL OR OP_HOST_UT)
     endif()
     target_include_directories(
       ${OP_ONNX_MODULE_NAME}_cases_obj PRIVATE ${JSON_INCLUDE_DIR} ${GTEST_INCLUDE}
-          ${ASCEND_DIR}/include ${ASCEND_DIR}/pkg_inc
+          ${ASCEND_DIR}/include ${ASCEND_DIR}/pkg_inc ${ONNX_PLUGIN_COMMON_INCLUDE}
       )
     target_link_libraries(
       ${OP_ONNX_MODULE_NAME}_cases_obj
       PRIVATE $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17> graph register gtest
       )
+
+    # Common ONNX plugins live outside per-operator directories, so they are not
+    # discovered by add_modules_ut_sources; attach their ut here instead.
+    # Align with per-op filtering: common tests only run on full builds.
+    if("${ASCEND_OP_NAME}" STREQUAL "ALL" OR "${ASCEND_OP_NAME}" STREQUAL "all")
+      file(GLOB COMMON_ONNX_CASES_SRC ${OPS_TRANSFORMER_DIR}/common/tests/ut/framework/test_*_onnx_plugin.cpp)
+      if(COMMON_ONNX_CASES_SRC)
+        target_sources(${OP_ONNX_MODULE_NAME}_cases_obj PRIVATE ${COMMON_ONNX_CASES_SRC})
+      endif()
+    endif()
 
     add_library(${OP_ONNX_MODULE_NAME}_cases STATIC)
     target_link_libraries(

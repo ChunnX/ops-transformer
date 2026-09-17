@@ -1,59 +1,120 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
-#include "onnx_common.h"
+#include <cstdint>
+#include <limits>
+#include <string>
+
+#include "nlohmann/json.hpp"
+#include "graph/operator.h"
+#include "graph/graph.h"
+#include "register/register.h"
+#include "stub_ops.h"
+#include "onnx_plugin_utils.h"
 #include "op_transformer_proto_extend.h"
 
 namespace domi {
-using NodeProto = ge::onnx::NodeProto;
 constexpr int REQUIRED_ATTR = 1;
 constexpr int ONE = 1;
 constexpr int INDEX_TWO = 2;
 constexpr int INDEX_THREE = 3;
 constexpr int ACL_FLOAT16 = 1;
+// ONNX AttributeProto type values used by this plugin.
+constexpr int ATTRIBUTE_TYPE_FLOAT = 1;
+constexpr int ATTRIBUTE_TYPE_INT = 2;
 
-static Status ParseParamsNpuFusedAttentionScore(const Message *op_src, ge::Operator &op_dest)
+static bool GetInt64(const nlohmann::json &value, int64_t &parsed_value)
 {
-    const NodeProto *node = dynamic_cast<const NodeProto *>(op_src);
-    if (node == nullptr) {
-        OP_LOGE(GetOpName(op_dest).c_str(), "Dynamic cast op_src to NodeProto failed.");
-        return FAILED;
+    if (!value.is_number_integer() ||
+        (value.is_number_unsigned() &&
+         value.get<uint64_t>() > static_cast<uint64_t>(std::numeric_limits<int64_t>::max()))) {
+        return false;
     }
+    parsed_value = value.get<int64_t>();
+    return true;
+}
 
-    int input_size = node->input_size();
-    int output_size = node->output_size();
-    op_dest.DynamicInputRegister("x", input_size);
-    op_dest.DynamicOutputRegister("y", output_size);
+static Status ParseParamsNpuFusedAttentionScore(const ge::Operator &op_src, ge::Operator &op_dest)
+{
+    op_dest.DynamicInputRegister("x", static_cast<uint32_t>(op_src.GetInputsSize()));
+    op_dest.DynamicOutputRegister("y", static_cast<uint32_t>(op_src.GetOutputsSize()));
 
     int required_attr_num = 0;
-    float scale = 0;
-    float keep_prob = 1.;
+    float scale = 0.0F;
+    float keep_prob = 1.0F;
     bool query_transpose = false;
     bool key_transpose = false;
     bool bmm_score_transpose_a = false;
     bool bmm_score_transpose_b = false;
-
-    for (const auto &attr : node->attribute()) {
-        if (attr.name() == "scale" && attr.type() == ge::onnx::AttributeProto::FLOAT) {
-            scale = attr.f();
-            required_attr_num++;
-        } else if (attr.name() == "keep_prob" && attr.type() == ge::onnx::AttributeProto::FLOAT) {
-            keep_prob = attr.f();
-        } else if (attr.name() == "query_transpose" && attr.type() == ge::onnx::AttributeProto::INT) {
-            query_transpose = (attr.i() == 1);
-        } else if (attr.name() == "key_transpose" && attr.type() == ge::onnx::AttributeProto::INT) {
-            key_transpose = (attr.i() == 1);
-        } else if (attr.name() == "bmm_score_transpose_a" && attr.type() == ge::onnx::AttributeProto::INT) {
-            bmm_score_transpose_a = (attr.i() == 1);
-        } else if (attr.name() == "bmm_score_transpose_b" && attr.type() == ge::onnx::AttributeProto::INT) {
-            bmm_score_transpose_b = (attr.i() == 1);
+    ge::AscendString attributes;
+    // ONNX repeated AttributeProto messages are exposed as JSON in "attribute".
+    if (op_src.GetAttr("attribute", attributes) == ge::GRAPH_SUCCESS) {
+        if (attributes.GetString() == nullptr) {
+            return FAILED;
+        }
+        try {
+            const auto root = nlohmann::json::parse(attributes.GetString());
+            if (!root.is_object()) {
+                return FAILED;
+            }
+            if (root.contains("attribute")) {
+                const auto &attrs = root.at("attribute");
+                if (!attrs.is_array()) {
+                    return FAILED;
+                }
+                for (const auto &attr : attrs) {
+                    if (!attr.is_object()) {
+                        return FAILED;
+                    }
+                    const std::string name = attr.value("name", "");
+                    const int type = attr.value("type", 0);
+                    // Other types were ignored by the old parser.
+                    if (name == "scale" && type == ATTRIBUTE_TYPE_FLOAT) {
+                        // An omitted protobuf float field has the default value zero.
+                        if (!attr.contains("f")) {
+                            scale = 0.0F;
+                        } else if (!attr.at("f").is_number()) {
+                            return FAILED;
+                        } else {
+                            scale = attr.at("f").get<float>();
+                        }
+                        ++required_attr_num;
+                    } else if (name == "keep_prob" && type == ATTRIBUTE_TYPE_FLOAT) {
+                        if (!attr.contains("f")) {
+                            keep_prob = 0.0F;
+                        } else if (!attr.at("f").is_number()) {
+                            return FAILED;
+                        } else {
+                            keep_prob = attr.at("f").get<float>();
+                        }
+                    } else if (type == ATTRIBUTE_TYPE_INT) {
+                        // An omitted protobuf integer field has the default value zero.
+                        int64_t parsed_value = 0;
+                        if (attr.contains("i") && !GetInt64(attr.at("i"), parsed_value)) {
+                            return FAILED;
+                        }
+                        const bool transpose = (parsed_value == 1);
+                        if (name == "query_transpose") {
+                            query_transpose = transpose;
+                        } else if (name == "key_transpose") {
+                            key_transpose = transpose;
+                        } else if (name == "bmm_score_transpose_a") {
+                            bmm_score_transpose_a = transpose;
+                        } else if (name == "bmm_score_transpose_b") {
+                            bmm_score_transpose_b = transpose;
+                        }
+                    }
+                }
+            }
+        } catch (const nlohmann::json::exception &) {
+            return FAILED;
         }
     }
 
@@ -61,8 +122,11 @@ static Status ParseParamsNpuFusedAttentionScore(const Message *op_src, ge::Opera
         OP_LOGE(GetOpName(op_dest).c_str(), "attr scale is required.");
         return FAILED;
     }
-
-    op_dest.SetAttr("name", node->name());
+    ge::AscendString name;
+    if (op_src.GetName(name) != ge::GRAPH_SUCCESS || name.GetString() == nullptr) {
+        return FAILED;
+    }
+    op_dest.SetAttr("name", name.GetString());
     op_dest.SetAttr("scale", scale);
     op_dest.SetAttr("keep_prob", keep_prob);
     op_dest.SetAttr("query_transpose", query_transpose);
@@ -188,7 +252,7 @@ REGISTER_CUSTOM_OP("PartitionedCall")
                    ge::AscendString("ai.onnx::16::NPUFusedAttentionScore"),
                    ge::AscendString("ai.onnx::17::NPUFusedAttentionScore"),
                    ge::AscendString("ai.onnx::18::NPUFusedAttentionScore")})
-    .ParseParamsFn(ParseParamsNpuFusedAttentionScore)
+    .ParseParamsByOperatorFn(ParseParamsNpuFusedAttentionScore)
     .ParseOpToGraphFn(ParseOpToGraphNpuFusedAttentionScore)
     .ImplyType(ImplyType::TVM);
 } // namespace domi
