@@ -516,7 +516,6 @@ int64_t CalcMteCclBufferSizeA5(int64_t epWorldSize, int64_t moeExpertNum, int64_
 {
     int64_t expertPerRank = moeExpertNum / epWorldSize;
 
-    // All ranks choose one route-index width from the shared max-token capacity.
     constexpr int64_t maxInt16RouteItems = 1LL << 15;
     bool useInt16RouteIndex =
         numTopk > 0 && numMaxTokensPerRank >= 0 && numMaxTokensPerRank * numTopk <= maxInt16RouteItems;
