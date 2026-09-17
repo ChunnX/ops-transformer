@@ -154,6 +154,7 @@ private:
     uint64_t hSize_{0};
     uint64_t winTokenInfoTableSize_{0};
     uint64_t addressTableStridePerRank_{0};
+    uint64_t addressTableWorkspaceBytes_{0};
     uint64_t perCoreRankCountStride_{0};
     uint32_t rankCountElements_{0};
     bool localWritesMayAliasInput_{false};
@@ -208,6 +209,7 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::I
     addressTableStridePerRank_ =
         Ceil(maxTokenNum_ * REMOTE_ADDRESS_ENTRY_SIZE, URMA_WIN_ADDR_ALIGN) * URMA_WIN_ADDR_ALIGN;
     addressTableWorkspaceAddr_ = workspaceGM + tilingData->ffnToAttentionV2Info.addressTableWorkspaceOffset;
+    addressTableWorkspaceBytes_ = tilingData->ffnToAttentionV2Info.addressTableWorkspaceBytes;
     uint64_t addressTableWorkspaceBytes = static_cast<uint64_t>(worldSize_) * addressTableStridePerRank_;
     rankCountElements_ = static_cast<uint32_t>(
         Ceil(static_cast<uint64_t>(worldSize_) * sizeof(int32_t), URMA_UB_ALIGN) * URMA_UB_ALIGN / sizeof(int32_t));
@@ -430,11 +432,35 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::B
     }
 
     GlobalTensor<int32_t> perCoreRankCounts;
-    perCoreRankCounts.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
-        perCoreRankCountWorkspaceAddr_ + static_cast<uint64_t>(aivId_) * perCoreRankCountStride_));
+    GM_ADDR countRowAddr = perCoreRankCountWorkspaceAddr_ + static_cast<uint64_t>(aivId_) * perCoreRankCountStride_;
+    perCoreRankCounts.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(countRowAddr));
     SyncFunc<HardEvent::S_MTE3>();
+    const uint64_t copyBytes = static_cast<uint64_t>(rankCountElements_) * sizeof(int32_t);
+    const uint64_t tableBase = reinterpret_cast<uint64_t>(addressTableWorkspaceAddr_);
+    const uint64_t tableEnd = tableBase + addressTableWorkspaceBytes_;
+    const uint64_t dstAddr = reinterpret_cast<uint64_t>(countRowAddr);
+    const uint64_t srcUbAddr = reinterpret_cast<uint64_t>(rankCounts.GetPhyAddr());
+    const bool dstInBounds = dstAddr >= tableBase && dstAddr <= tableEnd && copyBytes <= tableEnd - dstAddr;
+    const bool srcInBounds = rankCountElements_ <= rankCounts.GetSize();
+    PRINTF("[F2A DataCopy args] core=%u rank=%u dstGM=%p srcUB=%lu count=%u elemBytes=%u copyBytes=%lu\n", aivId_,
+           rankId_, static_cast<void *>(countRowAddr), srcUbAddr, rankCountElements_,
+           static_cast<uint32_t>(sizeof(int32_t)), copyBytes);
+    PRINTF("[F2A DataCopy bounds] core=%u tableBase=%p tableEnd=%p dstEnd=%p dstOffset=%lu stride=%lu "
+           "dstInBounds=%u srcCapacity=%u srcInBounds=%u\n",
+           aivId_, static_cast<void *>(addressTableWorkspaceAddr_),
+           static_cast<void *>(addressTableWorkspaceAddr_ + addressTableWorkspaceBytes_),
+           static_cast<void *>(countRowAddr + copyBytes), dstAddr - tableBase, perCoreRankCountStride_,
+           static_cast<uint32_t>(dstInBounds), rankCounts.GetSize(), static_cast<uint32_t>(srcInBounds));
+    for (uint32_t debugRank = 0U; debugRank < worldSize_; ++debugRank) {
+        int32_t debugCount = rankCounts.GetValue(debugRank);
+        if (debugCount != 0) {
+            PRINTF("[F2A DataCopy payload] core=%u dstRank=%u count=%d\n", aivId_, debugRank, debugCount);
+        }
+    }
     DataCopy(perCoreRankCounts, rankCounts, rankCountElements_);
     SyncFunc<HardEvent::MTE3_S>();
+    PRINTF("[F2A DataCopy after] core=%u rank=%u dst=%p bytes=%lu\n", aivId_, rankId_,
+           static_cast<void *>(countRowAddr), static_cast<uint64_t>(rankCountElements_) * sizeof(int32_t));
     SyncAll<true>();
 
     // Every core independently sums the preceding core rows. Core 0 is not a centralized prefix calculator.
