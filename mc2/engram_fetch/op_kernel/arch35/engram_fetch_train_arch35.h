@@ -55,6 +55,7 @@ constexpr uint32_t ENGRAM_CYCLES_PER_US = 1000U;
 constexpr uint32_t ENGRAM_LOCAL_PIPE_DEPTH = 16U;
 constexpr uint32_t ENGRAM_NOTIFY_INTERVALS = 4U;
 constexpr uint32_t ENGRAM_NOTIFY_SLOT_CNT = 16U;
+constexpr uint32_t ENGRAM_MAX_PENDING_HANDLES = HCCL_MAX_RANK_SIZE;
 
 constexpr uint32_t HCOMM_BATCH_CAPACITY = 128U;
 constexpr uint32_t HCOMM_PLAIN_WRITE_WQE_BYTES = 64U;
@@ -178,6 +179,7 @@ private:
                                                  bool useGroupSize);
     __aicore__ inline int32_t CompleteCreditCounter(uint64_t startTime, int tag);
     __aicore__ inline void RetireCreditCounter();
+    __aicore__ inline void RecordPendingHandle(uint64_t handle);
     __aicore__ inline void LoadSendCountsToUb();
     __aicore__ inline void LoadRecvCountsToUb();
     __aicore__ inline void LoadInt64ArrayToUb(GM_ADDR gmAddr);
@@ -277,6 +279,8 @@ private:
     uint64_t activeBatchChannel_{0};
     uint32_t preparedWriteCount_{0};
     bool creditReadInFlight_{false};
+    uint32_t pendingHandleCount_{0};
+    uint64_t pendingHandles_[ENGRAM_MAX_PENDING_HANDLES]{0};
     uint32_t indicesBatchSize_{0};
     uint32_t compareCntMax_{0};
     uint32_t tileBytes_{TILE_BYTES};
@@ -479,6 +483,7 @@ __aicore__ inline void EngramFetchTrainArch35::InitCoreRoles()
 
 __aicore__ inline void EngramFetchTrainArch35::InitHcommAndPipe()
 {
+    pendingHandleCount_ = 0U;
     tpipe_->InitBuffer(hcommBuf_, HCOMM_INIT_SIZE);
     LocalTensor<uint8_t> hcommTensor = hcommBuf_.Get<uint8_t>();
     hcomm_.Init(hcommTensor, HCOMM_INIT_SIZE);
@@ -675,9 +680,12 @@ __aicore__ inline void EngramFetchTrainArch35::SendCountPhase()
 
 __aicore__ inline void EngramFetchTrainArch35::SendCountToPeers()
 {
+    if (!isSender_) {
+        return;
+    }
     LoadSendCountsToUb();
     LocalTensor<int32_t> sendCountsUb = statusBuf_.Get<int32_t>();
-    for (uint32_t dstRank = aivId_; dstRank < numRanks_; dstRank += totalBlocks_) {
+    for (uint32_t dstRank = aivId_; dstRank < numRanks_; dstRank += numSendCores_) {
         int32_t countVal = sendCountsUb.GetValue(dstRank * UB_ALIGN / sizeof(int32_t));
 
         GM_ADDR remoteSendCountAddr = GetRemoteWinAddr(dstRank, sendCountOffset_) + rankId_ * STATE_OFFSET;
@@ -707,6 +715,7 @@ __aicore__ inline void EngramFetchTrainArch35::SendCountToPeers()
                                                     remoteFlagAddr, 1);
             ascendc_assert(ret == 0, "WriteWithNotifyNbi failed, ret=%d, tag=SendCount, rankId=%u, dstRank=%u", ret,
                            rankId_, dstRank);
+            RecordPendingHandle(handle);
         }
     }
 }
@@ -839,6 +848,23 @@ __aicore__ inline void EngramFetchTrainArch35::RetireCreditCounter()
     (void)CompleteCreditCounter(startTime, RETIRE_CREDIT_COUNTER_TIME_CHECK);
 }
 
+__aicore__ inline void EngramFetchTrainArch35::RecordPendingHandle(uint64_t handle)
+{
+    for (uint32_t i = 0; i < pendingHandleCount_; i++) {
+        if (pendingHandles_[i] == handle) {
+            return;
+        }
+    }
+    ascendc_assert(pendingHandleCount_ < ENGRAM_MAX_PENDING_HANDLES,
+                   "pendingHandles overflow: count=%u, max=%u, rankId=%u, aivId=%u", pendingHandleCount_,
+                   ENGRAM_MAX_PENDING_HANDLES, rankId_, aivId_);
+    if (pendingHandleCount_ >= ENGRAM_MAX_PENDING_HANDLES) {
+        return;
+    }
+    pendingHandles_[pendingHandleCount_] = handle;
+    pendingHandleCount_++;
+}
+
 __aicore__ inline void EngramFetchTrainArch35::LoadSendCountsToUb()
 {
     LocalTensor<int32_t> ub = statusBuf_.Get<int32_t>();
@@ -932,6 +958,15 @@ __aicore__ inline void EngramFetchTrainArch35::SendIndicesRemote(uint32_t dstRan
     uint32_t totalSent = 0;
     uint32_t localWriteCnt = 0;
     int32_t remoteReadCnt = 0;
+    GM_ADDR remoteCounterAddr = GetRemoteWinAddr(dstRank, indicesWriteOffset_) + rankId_ * STATE_OFFSET;
+    GM_ADDR primeSlotAddr = GetRemoteWinAddr(dstRank, indicesDataOffset_ + rankId_ * NUM_SLOTS * indicesSlotSize_);
+    if (sendCount > 0) {
+        RecordPendingHandle(handle);
+        int32_t primeRet = hcomm_.WriteWithNotifyNbi<true, PIPE_S, PIPE_MTE3, URMA_DEFAULT_CFG>(
+            handle, primeSlotAddr, sortedIndicesGM_ + sdispl * sizeof(int32_t), sizeof(int32_t), remoteCounterAddr, 0);
+        ascendc_assert(primeRet == 0, "prime WriteWithNotifyNbi failed, ret=%d, rankId=%u, dstRank=%u", primeRet,
+                       rankId_, dstRank);
+    }
 
     while (totalSent < static_cast<uint32_t>(sendCount)) {
         if (totalBlocks_ > 1U) {
@@ -1524,6 +1559,7 @@ __aicore__ inline void EngramFetchTrainArch35::LocalReadTableAndSendRemote(uint3
         return;
     }
     uint64_t handle = GetCommHandle(dstRank);
+    RecordPendingHandle(handle);
     GM_ADDR remoteCounterAddr =
         GetRemoteWinAddr(dstRank, tokenWriteOffset_) + rankId_ * STATE_OFFSET * groupSize_ + subIdx * STATE_OFFSET;
     GM_ADDR remoteSubIdxBase =
