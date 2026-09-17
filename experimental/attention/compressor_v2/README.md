@@ -1,73 +1,46 @@
-# Compressor
+# CompressorV2
 
 ## 产品支持情况
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
 | <term>Ascend 950PR/Ascend 950DT</term>                       |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |    √     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |    ×     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
 | <term>Atlas 推理系列产品</term>                              |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
 
 ## 功能说明
 
-- 算子功能：Compressor是推理场景下SMLA和QLI的前处理算子，用于将每4或128个token的KV cache压缩成一个，然后每个token与这些压缩的KV cache进行DSA计算。在长序列的情况下，Compressor可以有效地减少计算开销。主要计算过程为：
-    1. 将输入$X$与$W^{KV}$做Matmul运算得到$kv\_state$，将输入$X$与$W^{Gate}$做Matmul运算后再与$Ape$做Add运算得到$score\_state$，$kv\_state$与$score\_state$根据输入的start_pos及cu_seqlens完成更新。
-    2. 在coff为2的情况下对$kv\_state$和$score\_state$进行数据重排。
-    3. 对$score\_state$进行softmax运算将softmax结果与$kv\_state$做Mul计算，后进行ReduceSum运算。
+- 算子功能：CompressorV2是推理场景下SMLA和QLI的前处理算子，用于将每cmp_ratio个token的KV cache压缩成一个，然后每个token与这些压缩的KV cache进行DSA计算。在长序列的情况下，可以有效减少计算开销。主要计算过程为：
+    1. 将输入$X$与$W^{KV}$做Matmul运算得到$kv\_state$，将输入$X$与$W^{Gate}$做Matmul运算得到$score\_state$，$kv\_state$与$score\_state$根据输入的start_pos及cu_seqlens写入state_cache（循环buffer，写本次序列末尾min(seqused, block_size)个token）。
+    2. 对$score\_state$进行softmax运算，将softmax结果与$kv\_state$做Mul计算，后进行ReduceSum运算得到压缩结果。
 
 - 计算公式：
 
     1. 计算矩阵乘法：
 
         $$
-        C4A：\left[kv\_state^a, score\_state^a\right] = X @ \left[W^{aKV}, W^{aGate}\right], \left[kv\_state^b, score\_state^b\right] = X @ \left[W^{bKV}, W^{bGate}\right];
+        \left[kv\_state, score\_state\right] = \left[X @ W^{KV}, X @ W^{Gate}\right]
         $$
 
-        $$
-        C128A：\left[kv\_state, score\_state\right] = X @ \left[W^{KV}, W^{Gate}\right]
-        $$
-
-    2. 计算分组加法：
+    2. 计算分组Softmax：
 
         $$
-        C4A：score\_state_i^\prime = \left[score\_state_{\left[4(i-1)+1:4i,:\right]}^a; score\_state_{\left[4i+1:4(i+1),:\right]}^b\right] + Ape,~i=1,2,\cdots, \frac{s}{4};
+        S_i^\prime = softmax(score\_state_i),~i=1,2,\cdots, \frac{s}{cmp\_ratio}
         $$
 
-        $$
-        C128A：score\_state_i^\prime = score\_state_{\left[128(i-1)+1:128i,:\right]} + Ape,~i=1,2,\cdots, \frac{s}{128};
-        $$
-
-    3. 计算分组Softmax：
+    3. 计算Hadamard乘积：
 
         $$
-        C4A：S_i^\prime = softmax(score\_state_i^\prime),~i=1,2,\cdots, \frac{s}{4};
+        S_H = S_i^\prime \odot kv\_state
         $$
 
-        $$
-        C128A：S_i^\prime = softmax(score\_state_i^\prime),~i=1,2,\cdots, \frac{s}{128};
-        $$
-
-    4. 计算Hadamard乘积：
+    4. 沿着压缩轴分组求和：
 
         $$
-        C4A：(S_H)_i = S_i^\prime \odot \left[kv\_state^a_{\left[4(i-1)+1:4i,:\right]} ;kv\_state^b_{\left[4i+1:4(i+1),:\right]}\right],~i=1,2,\cdots, \frac{s}{4};
-        $$
-
-        $$
-        C128A：S_H = S_i^\prime \odot kv\_state;
-        $$
-
-    5. 沿着压缩轴分组求和：
-
-        $$
-        C4A：C_{i}^{\text{Comp}} = \left[1\right]_{1\times8} @ (S_H)_i, ~i=1,2,\cdots, \frac{s}{4};
-        $$
-
-        $$
-        C128A：C_{i}^{\text{Comp}} = \left[1\right]_{1\times128} @ (S_H)_i, ~i=1,2,\cdots, \frac{s}{128};
+        C_{i}^{\text{Comp}} = \left[1\right]_{1\times cmp\_ratio} @ (S_H)_i, ~i=1,2,\cdots, \frac{s}{cmp\_ratio}
         $$
 
 ## 参数说明
@@ -118,13 +91,6 @@
     <td>ND</td>
   </tr>
   <tr>
-    <td>ape</td>
-    <td>输入</td>
-    <td>公式中的$Ape$，表示positional biases。</td>
-    <td>FLOAT</td>
-    <td>ND</td>
-  </tr>
-  <tr>
     <td>cmp_ratio</td>
     <td>属性</td>
     <td>用于稀疏计算，表示数据压缩率，取值范围为[2, 128]内的整数。</td>
@@ -160,31 +126,10 @@
     <td>ND</td>
   </tr>
   <tr>
-    <td>coff</td>
-    <td>可选属性</td>
-    <td>表示是否进行overlap数据重排。coff=1：无需进行overlap数据重排，coff=2：需要进行overlap数据重排。默认值为1。</td>
-    <td>INT32</td>
-    <td>-</td>
-  </tr>
-  <tr>
-    <td>cache_mode</td>
-    <td>可选属性</td>
-    <td>表示state_cache的存储模式。cache_mode=1：连续buffer，cache_mode=2：循环buffer。默认值为1。</td>
-    <td>INT32</td>
-    <td>-</td>
-  </tr>
-  <tr>
     <td>state_cache_stride_dim0</td>
     <td>可选属性</td>
     <td>表示state_cache的0轴stride。默认值为0。</td>
     <td>INT32</td>
-    <td>-</td>
-  </tr>
-  <tr>
-    <td>grad_enabled</td>
-    <td>可选属性</td>
-    <td>是否导出softmax_score/kv中间结果（供反向CompressorGrad使用）。true时导出，false时不导出。默认值为false。</td>
-    <td>BOOL</td>
     <td>-</td>
   </tr>
   <tr>
@@ -194,45 +139,27 @@
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
   </tr>
-  <tr>
-    <td>softmax_score</td>
-    <td>输出</td>
-    <td>压缩块的softmax权重中间结果。仅在grad_enabled为true时输出有效。</td>
-    <td>FLOAT</td>
-    <td>ND</td>
-  </tr>
-  <tr>
-    <td>kv</td>
-    <td>输出</td>
-    <td>softmax权重与kv_state的Hadamard乘积中间结果。仅在grad_enabled为true时输出有效。</td>
-    <td>FLOAT</td>
-    <td>ND</td>
-  </tr>
 </tbody>
 </table>
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> 、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> ：
-  - cache_mode不支持输入2，且state_cache不支持0轴非连续。
-  - cmp_ratio仅支持2/4/8/16/32/64/128。
 
 ## 约束说明
 
 - x参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、H（Head Size）表示hidden层的大小、D（Head Dim）表示hidden层的最小单元大小、T表示所有Batch输入样本序列长度的累加和。
 - 输入shape限制：
-    - wkv支持输入shape为[coff*D,H]。
-    - wgate支持输入shape为[coff*D,H]。
-    - state_cache支持输入shape为[block_num, block_size, 2*coff*D]，要求block_num>0，cache_mode=2时，需要满足block_size >= coff*cmp_ratio + S - 1。
-    - ape支持输入shape为[cmp_ratio, coff*D]。
+    - wkv支持输入shape为[D,H]。
+    - wgate支持输入shape为[D,H]。
+    - state_cache支持输入shape为[block_num, block_size, 2*D]，要求block_num>0，且需要满足block_size >= cmp_ratio + S - 1。
     - start_pos支持输入shape为[B,]。
     - 若x的维度采用BS合轴，即x的输入shape为[T,H]：
         - cu_seqlens输入shape必须为[B+1,]。该参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值，且第一位必须为0。
         - seqused，支持输入shape为[B,]，要求每个Batch的有效token数要求小于等于对应Sequence Length长度，即seqused[n] <= cu_seqlens[n+1] - cu_seqlens[n]，且不小于0。
-        - cache_mode=1时，state_block_table支持输入shape为[B, ceil(Smax/block_size)]。Smax为每个Batch中最大的Sequence Length，即Smax=max(start_pos)+max(cu_seqlens[n+1] - cu_seqlens[n])。cache_mode=2时，state_block_table支持输入shape为[B]。
+        - state_block_table支持输入shape为[B]。
         - cmp_kv，输出shape为[min(T, T/cmp_ratio+B), D]：compressed_tokens + compressed_tokens + ... + compressed_tokens + pad。
     - 若x的维度不采用BS合轴，即x的输入shape为[B,S,H]：
         - cu_seqlens，参数必须为空。
         - seqused，支持输入shape为[B,]，要求每个Batch的有效token数要求小于等于对应Sequence Length长度，即要求seqused[n] <= S，且不小于0。
-        - cache_mode=1时，state_block_table支持输入shape为[B, ceil(Smax/block_size)]。Smax为每个Batch中最大的Sequence Length，即Smax=max(start_pos)+S。cache_mode=2时，state_block_table支持输入shape为[B]。
+        - state_block_table支持输入shape为[B]。
         - cmp_kv，输出shape为[B, ceil(S/cmp_ratio), D]：(compressed_tokens+pad0) + (compressed_tokens+pad1) + ... + (compressed_tokens+padN)。
 - 输入值域限制：
   - 该接口支持B、S泛化，且存在如下场景限制：
@@ -262,20 +189,17 @@
 - 输入属性限制：
   - 支持D为128/512。
   - 支持H为1K~10K，512对齐。
+  - 支持cmp_ratio为2/4/8/16/32/64/128。
   - 支持block_size为1~1024。
-  - 支持如下三种典型组合场景：
-      - C4A：D=512，coff=2，cmp_ratio=4。
-      - C4Li：D=128，coff=2，cmp_ratio=4。
-      - C128A：D=512，coff=1，cmp_ratio=128。
 - 确定性计算与batch一致性：
   - 默认确定性实现，相同输入多次调用结果一致。
   - <term>Ascend 950PR/Ascend 950DT</term>：batch一致性：通过aclrtSetSysParamOpt()配置ACL_OPT_DETERMINISTIC为3来开启batch一致性，开启后可以满足计算结果和所在批次大小、位置无关。
 
 ## 调用说明
 
-- <term>Ascend 950PR/Ascend 950DT</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> 、 <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+- <term>Ascend 950PR/Ascend 950DT</term>：
 
   | 调用方式   | 样例代码 | 说明                                          |
   | ---------- | -------- | --------------------------------------------- |
-  | aclnn API  | -        | 通过[aclnnCompressor](./docs/aclnnCompressor.md)接口调用Compressor算子。 |
-  | PyTorch API | -        | 通过[compressor](../../torch_extension/cann_ops_transformer/docs/zh/compressor.md)接口调用Compressor算子。 |
+  | aclnn API  | -        | 通过[aclnnCompressorV2](./docs/aclnnCompressor.md)接口调用CompressorV2算子。 |
+  | PyTorch API | -        | 通过[ds41.compressor](../../torch_extension/cann_ops_transformer/docs/zh/compressor.md)接口调用CompressorV2算子。 |

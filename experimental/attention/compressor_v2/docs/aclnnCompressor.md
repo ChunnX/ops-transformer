@@ -1,6 +1,6 @@
-# aclnnCompressor
+# aclnnCompressorV2
 
-[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/compressor)
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/experimental/attention/compressor_v2)
 
 ## 产品支持情况
 
@@ -8,10 +8,10 @@
 - <term>Ascend 950PR/Ascend 950DT</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
 - <term>Atlas 200I/500 A2 推理产品</term>：不支持
@@ -25,99 +25,66 @@
 
 ## 功能说明
 
-- 接口功能：Compressor是推理场景下SMLA和QLI的前处理算子，用于将每4或128个token的KV cache压缩成一个，然后每个token与这些压缩的KV cache进行DSA计算。在长序列的情况下，Compressor可以有效地减少计算开销。主要计算过程为：
-    1. 将输入$X$与$W^{KV}$做Matmul运算得到$kv\_state$，将输入$X$与$W^{Gate}$做Matmul运算后再与$Ape$做Add运算得到$score\_state$，$kv\_state$与$score\_state$根据输入的start_pos及cu_seqlens完成更新。
-    2. 在coff为2的情况下对$kv\_state$和$score\_state$进行数据重排。
-    3. 对$score\_state$进行softmax运算将softmax结果与$kv\_state$做Mul计算，后进行ReduceSum运算。
+- 接口功能：CompressorV2是推理场景下SMLA和QLI的前处理算子，用于将每cmp_ratio个token的KV cache压缩成一个，然后每个token与这些压缩的KV cache进行DSA计算。在长序列的情况下，可以有效减少计算开销。主要计算过程为：
+    1. 将输入$X$与$W^{KV}$做Matmul运算得到$kv\_state$，将输入$X$与$W^{Gate}$做Matmul运算得到$score\_state$，$kv\_state$与$score\_state$根据输入的start_pos及cu_seqlens写入state_cache（循环buffer，写本次序列末尾min(seqused, block_size)个token）。
+    2. 对$score\_state$进行softmax运算，将softmax结果与$kv\_state$做Mul计算，后进行ReduceSum运算得到压缩结果。
 
 - 计算公式：
 
     1. 计算矩阵乘法：
 
         $$
-        C4A：\left[kv\_state^a, score\_state^a\right] = X @ \left[W^{aKV}, W^{aGate}\right], \left[kv\_state^b, score\_state^b\right] = X @ \left[W^{bKV}, W^{bGate}\right];
+        \left[kv\_state, score\_state\right] = \left[X @ W^{KV}, X @ W^{Gate}\right]
         $$
 
-        $$
-        C128A：\left[kv\_state, score\_state\right] = X @ \left[W^{KV}, W^{Gate}\right]
-        $$
-
-    2. 计算分组加法：
+    2. 计算分组Softmax：
 
         $$
-        C4A：score\_state_i^\prime = \left[score\_state_{\left[4(i-1)+1:4i,:\right]}^a; score\_state_{\left[4i+1:4(i+1),:\right]}^b\right] + Ape,~i=1,2,\cdots, \frac{s}{4};
+        S_i^\prime = softmax(score\_state_i),~i=1,2,\cdots, \frac{s}{cmp\_ratio}
         $$
 
-        $$
-        C128A：score\_state_i^\prime = score\_state_{\left[128(i-1)+1:128i,:\right]} + Ape,~i=1,2,\cdots, \frac{s}{128};
-        $$
-
-    3. 计算分组Softmax：
+    3. 计算Hadamard乘积：
 
         $$
-        C4A：S_i^\prime = softmax(score\_state_i^\prime),~i=1,2,\cdots, \frac{s}{4};
+        S_H = S_i^\prime \odot kv\_state
         $$
 
-        $$
-        C128A：S_i^\prime = softmax(score\_state_i^\prime),~i=1,2,\cdots, \frac{s}{128};
-        $$
-
-    4. 计算Hadamard乘积：
+    4. 沿着压缩轴分组求和：
 
         $$
-        C4A：(S_H)_i = S_i^\prime \odot \left[kv\_state^a_{\left[4(i-1)+1:4i,:\right]} ;kv\_state^b_{\left[4i+1:4(i+1),:\right]}\right],~i=1,2,\cdots, \frac{s}{4};
-        $$
-
-        $$
-        C128A：S_H = S_i^\prime \odot kv\_state;
-        $$
-
-    5. 沿着压缩轴分组求和：
-
-        $$
-        C4A：C_{i}^{\text{Comp}} = \left[1\right]_{1\times8} @ (S_H)_i, ~i=1,2,\cdots, \frac{s}{4};
-        $$
-
-        $$
-        C128A：C_{i}^{\text{Comp}} = \left[1\right]_{1\times128} @ (S_H)_i, ~i=1,2,\cdots, \frac{s}{128};
+        C_{i}^{\text{Comp}} = \left[1\right]_{1\times cmp\_ratio} @ (S_H)_i, ~i=1,2,\cdots, \frac{s}{cmp\_ratio}
         $$
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnCompressorGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnCompressor”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnCompressorV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnCompressorV2”接口执行计算。
 
 ```cpp
-aclnnStatus aclnnCompressorGetWorkspaceSize(
+aclnnStatus aclnnCompressorV2GetWorkspaceSize(
     const aclTensor *x,
     const aclTensor *wkv,
     const aclTensor *wgate,
     aclTensor       *stateCacheRef,
-    const aclTensor *ape,
     const aclTensor *stateBlockTableOptional,
     const aclTensor *cuSeqlensOptional,
     const aclTensor *sequsedOptional,
     const aclTensor *startPosOptional,
     int64_t          cmpRatio,
-    int64_t          coff,
-    int64_t          cacheMode,
     int64_t          stateCacheStrideDim0,
-    bool             gradEnabled,
     const aclTensor *cmpKvOut,
-    const aclTensor *softmaxScoreOut,
-    const aclTensor *kvOut,
     uint64_t        *workspaceSize,
     aclOpExecutor   **executor)
 ```
 
 ```cpp
-aclnnStatus aclnnCompressor(
+aclnnStatus aclnnCompressorV2(
     void           *workspace,
     uint64_t        workspaceSize,
     aclOpExecutor  *executor,
     aclrtStream     stream)
 ```
 
-## aclnnCompressorGetWorkspaceSize
+## aclnnCompressorV2GetWorkspaceSize
 
 - **参数说明**
 
@@ -161,7 +128,7 @@ aclnnStatus aclnnCompressor(
       <td>不支持空Tensor。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
-      <td>[coff* D,H]</td>
+      <td>[D,H]</td>
       <td>×</td>
     </tr>
     <tr>
@@ -171,7 +138,7 @@ aclnnStatus aclnnCompressor(
       <td>不支持空Tensor。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
-      <td>[coff* D,H]</td>
+      <td>[D,H]</td>
       <td>×</td>
     </tr>
     <tr>
@@ -181,27 +148,17 @@ aclnnStatus aclnnCompressor(
       <td>不支持空Tensor。</td>
       <td>FLOAT</td>
       <td>ND</td>
-      <td>[block_num,block_size,2* coff* D]，要求block_num>0；cacheMode=2时，需满足block_size >= coff* cmp_ratio + S - 1。</td>
+      <td>[block_num,block_size,2* D]，要求block_num>0；需满足block_size >= cmp_ratio + S - 1。</td>
       <td>支持0轴非连续</td>
-    </tr>
-    <tr>
-      <td>ape（aclTensor*）</td>
-      <td>输入</td>
-      <td>公式中的<span class="math-inline">Ape</span>，表示positional biases。</td>
-      <td>不支持空Tensor。</td>
-      <td>FLOAT</td>
-      <td>ND</td>
-      <td>[cmp_ratio,coff* D]</td>
-      <td>×</td>
     </tr>
     <tr>
       <td>stateBlockTableOptional（aclTensor*）</td>
       <td>可选输入</td>
       <td>表示state_cache存储使用的block映射表。当其中元素的值为0时，表示当前位置无需进行更新state_cache操作。</td>
-      <td><ul><li>支持S=0、T=0的空Tensor。</li><li>cacheMode=1时，shape为[B, ceil(Smax/block_size)]，Smax为每个Batch中最大的Sequence Length。当x的shape为[B,S,H]时，Smax=max(start_pos)+S；当x的shape为[T,H]时，Smax=max(start_pos)+max(cu_seqlens[n+1] - cu_seqlens[n])。</li><li>cacheMode=2时，shape为[B]。</li></ul></td>
+      <td>支持S=0、T=0的空Tensor。</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>cacheMode=1时：[B, ceil(Smax/block_size)]<br>cacheMode=2时：[B]</td>
+      <td>[B]</td>
       <td>×</td>
     </tr>
     <tr>
@@ -245,41 +202,11 @@ aclnnStatus aclnnCompressor(
       <td>-</td>
     </tr>
     <tr>
-      <td>coff（int64_t）</td>
-      <td>输入</td>
-      <td>表示是否进行overlap数据重排。</td>
-      <td>取值范围为{1, 2}。coff=1时，无需进行overlap数据重排；coff=2时，需要进行overlap数据重排。</td>
-      <td>INT64</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>cacheMode（int64_t）</td>
-      <td>输入</td>
-      <td>表示state_cache的存储模式。</td>
-      <td>取值范围为{1, 2}。1表示连续buffer，2表示循环buffer。</td>
-      <td>INT64</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
       <td>stateCacheStrideDim0（int64_t）</td>
       <td>输入</td>
       <td>表示state_cache的0轴stride。</td>
       <td>由框架根据state_cache的实际stride传入。</td>
       <td>INT64</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>gradEnabled（bool）</td>
-      <td>输入</td>
-      <td>表示是否导出softmax_score/kv中间结果。</td>
-      <td>取值范围为true/false，默认false。当值为true时，算子输出softmax_score与kv中间结果（供反向传播使用）；值为false时softmax_score与kv输出内容无效。</td>
-      <td>BOOL</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -292,26 +219,6 @@ aclnnStatus aclnnCompressor(
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>BS合轴：[min(T, T/cmp_ratio+B), D]<br>BS非合轴：[B, ceil(S/cmp_ratio), D]</td>
-      <td>×</td>
-    </tr>
-    <tr>
-      <td>softmaxScoreOut（aclTensor*）</td>
-      <td>输出</td>
-      <td>公式中的<span class="math-inline">S<sup>′</sup></span>，表示分组softmax结果。</td>
-      <td>仅在gradEnabled为true时输出有效；支持B=0、S=0、T=0的空Tensor。</td>
-      <td>FLOAT</td>
-      <td>ND</td>
-      <td>BS合轴：[min(T, T/cmp_ratio+B), coff*cmp_ratio, D]<br>BS非合轴：[B, ceil(S/cmp_ratio), coff*cmp_ratio, D]</td>
-      <td>×</td>
-    </tr>
-    <tr>
-      <td>kvOut（aclTensor*）</td>
-      <td>输出</td>
-      <td>公式中的<span class="math-inline">(S_H)<sub>i</sub></span>，表示softmax结果与kv_state的Hadamard乘积。</td>
-      <td>仅在gradEnabled为true时输出有效；支持B=0、S=0、T=0的空Tensor。</td>
-      <td>FLOAT</td>
-      <td>ND</td>
-      <td>同softmaxScoreOut</td>
       <td>×</td>
     </tr>
     <tr>
@@ -337,14 +244,7 @@ aclnnStatus aclnnCompressor(
   </tbody>
   </table>
 
-  - D（Head Dim）表示hidden层的最小单元大小，D取值由wkv的第一维大小除以coff得到。
-
-<!-- npu="A3,910b" id7 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> ：
-  - cacheMode不支持输入2，且stateCacheRef不支持0轴非连续。
-  - cmpRatio仅支持2/4/8/16/32/64/128。
-  - gradEnabled不支持为true。
-<!-- end id7 -->
+  - D（Head Dim）表示hidden层的最小单元大小，D取值为wkv的第一维大小。
 
 - **返回值**
 
@@ -368,18 +268,18 @@ aclnnStatus aclnnCompressor(
     <tr>
       <td>ACLNN_ERR_PARAM_NULLPTR</td>
       <td>161001</td>
-      <td>x、wkv、wgate、stateCacheRef、ape、cmpKvOut等必选参数中存在空指针。</td>
+      <td>x、wkv、wgate、stateCacheRef、cmpKvOut等必选参数中存在空指针。</td>
     </tr>
     <tr>
       <td rowspan="4">ACLNN_ERR_PARAM_INVALID</td>
       <td rowspan="4">161002</td>
-      <td>x、wkv、wgate、stateCacheRef、ape、cmpKvOut的数据类型不在支持的范围之内。</td>
+      <td>x、wkv、wgate、stateCacheRef、cmpKvOut的数据类型不在支持的范围之内。</td>
     </tr>
     <tr>
-      <td>x、wkv、wgate、stateCacheRef、ape的shape维度不在支持的范围之内。</td>
+      <td>x、wkv、wgate、stateCacheRef的shape维度不在支持的范围之内。</td>
     </tr>
     <tr>
-      <td>cmpRatio、coff、cacheMode的取值不在支持的范围之内。</td>
+      <td>cmpRatio的取值不在支持的范围之内。</td>
     </tr>
     <tr>
       <td>cuSeqlensOptional、sequsedOptional、startPosOptional与x的shape组合不满足约束。</td>
@@ -397,7 +297,7 @@ aclnnStatus aclnnCompressor(
   </tbody>
   </table>
 
-## aclnnCompressor
+## aclnnCompressorV2
 
 - **参数说明**
 
@@ -422,7 +322,7 @@ aclnnStatus aclnnCompressor(
     <tr>
       <td>workspaceSize</td>
       <td>输入</td>
-      <td>在Device侧申请的workspace大小，由第一段接口aclnnCompressorGetWorkspaceSize获取。</td>
+      <td>在Device侧申请的workspace大小，由第一段接口aclnnCompressorV2GetWorkspaceSize获取。</td>
     </tr>
     <tr>
       <td>executor</td>
@@ -444,22 +344,22 @@ aclnnStatus aclnnCompressor(
 ## 约束说明
 
 - 确定性计算：
-  - aclnnCompressor默认确定性实现。
+  - aclnnCompressorV2默认确定性实现。
   <!-- npu="950" id8 -->
   - <term>Ascend 950PR/Ascend 950DT</term>：batch一致性：通过aclrtSetSysParamOpt()配置ACL_OPT_DETERMINISTIC为3来开启batch一致性，开启后可以满足计算结果和所在批次大小、位置无关。
   <!-- end id8 -->
 - x参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、H（Head Size）表示hidden层的大小、D（Head Dim）表示hidden层的最小单元大小、T表示所有Batch输入样本序列长度的累加和。
 - 输入shape限制：
-  - stateCacheRef支持输入shape为[block_num, block_size, 2* coff* D]，要求block_num>0；cacheMode=2时，需满足block_size >= coff*cmp_ratio + S - 1。
+  - stateCacheRef支持输入shape为[block_num, block_size, 2* D]，要求block_num>0；需满足block_size >= cmp_ratio + S - 1。
   - 当x采用BS合轴，即x的输入shape为[T,H]时：
     - cuSeqlensOptional输入shape必须为[B+1,]，且该参数为前缀和数组，后一个元素的值必须大于等于前一个元素的值，第一位必须为0。
     - sequsedOptional支持输入shape为[B,]，要求0 ≤ seqused[n] ≤ cu_seqlens[n+1] - cu_seqlens[n]。
-    - cacheMode=1时，stateBlockTableOptional支持输入shape为[B, ceil(Smax/block_size)]，Smax=max(start_pos)+max(cu_seqlens[n+1] - cu_seqlens[n])；cacheMode=2时，支持输入shape为[B]。
+    - stateBlockTableOptional支持输入shape为[B]。
     - cmpKvOut输出shape为[min(T, T/cmp_ratio+B), D]。
   - 当x不采用BS合轴，即x的输入shape为[B,S,H]时：
     - cuSeqlensOptional必须传入空指针。
     - sequsedOptional支持输入shape为[B,]，要求0 ≤ seqused[n] ≤ S。
-    - cacheMode=1时，stateBlockTableOptional支持输入shape为[B, ceil(Smax/block_size)]，Smax=max(start_pos)+S；cacheMode=2时，支持输入shape为[B]。
+    - stateBlockTableOptional支持输入shape为[B]。
     - cmpKvOut输出shape为[B, ceil(S/cmp_ratio), D]。
 - 输入值域限制：
   - 该接口支持B、S泛化，且存在如下场景限制：
@@ -489,11 +389,8 @@ aclnnStatus aclnnCompressor(
 - 输入属性限制：
   - 支持D为128/512。
   - 支持H为1K~10K，512对齐。
+  - 支持cmpRatio为2/4/8/16/32/64/128。
   - 支持blockSize为1~1024。
-  - 支持如下三种典型组合场景：
-    - C4A：D=512，coff=2，cmp_ratio=4。
-    - C4Li：D=128，coff=2，cmp_ratio=4。
-    - C128A：D=512，coff=1，cmp_ratio=128。
 
 ## 调用示例
 
@@ -506,15 +403,14 @@ aclnnStatus aclnnCompressor(
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
 /*!
- * \file test_aclnn_compressor.cpp
- * \brief Compressor 算子 aclnn 调用示例（A5 / ascend950）
- *        场景：C4A（D=512, coff=2, cmp_ratio=4, cache_mode=1, BSH layout, BF16）
- *        A5 版本，B=1,S=4 时 tokenSize=4 <= 256，会触发 FULL_LOAD 高性能模板。
+ * \file test_aclnn_compressor_v2.cpp
+ * \brief CompressorV2 算子 aclnn 调用示例（A5 / ascend950）
+ *        场景：D=512, cmp_ratio=4, 循环buffer（cache_mode=2）, BSH layout, BF16
  */
 
 #include <algorithm>
@@ -524,7 +420,7 @@ aclnnStatus aclnnCompressor(
 #include <numeric>
 #include <vector>
 #include "acl/acl.h"
-#include "aclnnop/aclnn_compressor.h"
+#include "aclnnop/aclnn_compressor_v2.h"
 #include "opdev/bfloat16.h"
 
 #define CHECK_RET(cond, return_expr) \
@@ -614,81 +510,59 @@ int main()
     auto ret = Init(deviceId, &context, &stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
-    // 场景参数: C4A (D=512, coff=2, cmp_ratio=4, cache_mode=1, BSH layout, BF16)
+    // 场景参数: D=512, cmp_ratio=4, 循环buffer（cache_mode=2）, BSH layout, BF16
     int64_t B = 1;
     int64_t S = 4;
     int64_t hiddenSize = 4096;
     int64_t headDim = 512;
-    int64_t coff = 2;
     int64_t cmpRatio = 4;
-    int64_t cacheMode = 1; // 1: 连续buffer (LINEAR_BUFFER)
     int64_t blockSize = 128;
 
-    int64_t Smax = S;
-    int64_t maxBlockNumPerBatch = (Smax + blockSize - 1) / blockSize;
-    int64_t blockNum = B * maxBlockNumPerBatch;
-    int64_t coffD = coff * headDim;
-    int64_t stateCacheStrideDim0 = blockSize * 2 * coffD; // state_cache 0轴 stride = dim1 * dim2
+    // 固定为循环buffer（cache_mode=2）：每个 batch 使用一个 block，blockSize 需满足 blockSize >= cmpRatio + S - 1
+    int64_t blockNum = B;
+    int64_t stateCacheStrideDim0 = blockSize * 2 * headDim; // state_cache 0轴 stride = dim1 * dim2
 
     // 2. 构造输入与输出 shape
     std::vector<int64_t> xShape = {B, S, hiddenSize};
-    std::vector<int64_t> wkvShape = {coffD, hiddenSize};
-    std::vector<int64_t> wgateShape = {coffD, hiddenSize};
-    std::vector<int64_t> stateCacheShape = {blockNum, blockSize, 2 * coffD};
-    std::vector<int64_t> apeShape = {cmpRatio, coffD};
-    std::vector<int64_t> stateBlockTableShape = {B, maxBlockNumPerBatch};
+    std::vector<int64_t> wkvShape = {headDim, hiddenSize};
+    std::vector<int64_t> wgateShape = {headDim, hiddenSize};
+    std::vector<int64_t> stateCacheShape = {blockNum, blockSize, 2 * headDim};
+    std::vector<int64_t> stateBlockTableShape = {B};
     std::vector<int64_t> startPosShape = {B};
     int64_t Sr = (S + cmpRatio - 1) / cmpRatio;
     std::vector<int64_t> cmpKvShape = {B, Sr, headDim};
-    std::vector<int64_t> softmaxScoreShape = {B, Sr, coff * cmpRatio, headDim};
-    std::vector<int64_t> kvShape = {B, Sr, coff * cmpRatio, headDim};
 
     // 3. 构造 host 数据
     int64_t xSize = GetShapeSize(xShape);
     int64_t wkvSize = GetShapeSize(wkvShape);
     int64_t wgateSize = GetShapeSize(wgateShape);
     int64_t stateCacheSize = GetShapeSize(stateCacheShape);
-    int64_t apeSize = GetShapeSize(apeShape);
     int64_t cmpKvSize = GetShapeSize(cmpKvShape);
 
     std::vector<bfloat16> xHostData(xSize, bfloat16(0.1f));
     std::vector<bfloat16> wkvHostData(wkvSize, bfloat16(0.1f));
     std::vector<bfloat16> wgateHostData(wgateSize, bfloat16(0.1f));
     std::vector<float_t> stateCacheHostData(stateCacheSize, 0.1f);
-    std::vector<float_t> apeHostData(apeSize, 0.1f);
-    std::vector<int32_t> stateBlockTableHostData;
-    for (int64_t i = 0; i < B * maxBlockNumPerBatch; i++) {
-        stateBlockTableHostData.push_back(static_cast<int32_t>(i + 1));
-    }
+    std::vector<int32_t> stateBlockTableHostData(B, 1);
     std::vector<int32_t> startPosHostData(B, 0);
     std::vector<bfloat16> cmpKvHostData(cmpKvSize, bfloat16(0.0f));
-    int64_t softmaxScoreSize = GetShapeSize(softmaxScoreShape);
-    int64_t kvSize = GetShapeSize(kvShape);
-    std::vector<float_t> softmaxScoreHostData(softmaxScoreSize, 0.0f);
-    std::vector<float_t> kvHostData(kvSize, 0.0f);
 
     // 4. 创建 aclTensor
     void *xDeviceAddr = nullptr;
     void *wkvDeviceAddr = nullptr;
     void *wgateDeviceAddr = nullptr;
     void *stateCacheDeviceAddr = nullptr;
-    void *apeDeviceAddr = nullptr;
     void *stateBlockTableDeviceAddr = nullptr;
     void *startPosDeviceAddr = nullptr;
     void *cmpKvDeviceAddr = nullptr;
-    void *softmaxScoreDeviceAddr = nullptr;
-    void *kvDeviceAddr = nullptr;
 
     aclTensor *x = nullptr;
     aclTensor *wkv = nullptr;
     aclTensor *wgate = nullptr;
     aclTensor *stateCacheRef = nullptr;
-    aclTensor *ape = nullptr;
     aclTensor *stateBlockTable = nullptr;
     aclTensor *startPos = nullptr;
     aclTensor *cmpKvOut = nullptr;
-    aclTensor *softmaxScoreOut = nullptr;
-    aclTensor *kvOut = nullptr;
 
     ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_BF16, &x);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -699,8 +573,6 @@ int main()
     ret = CreateAclTensor(stateCacheHostData, stateCacheShape, &stateCacheDeviceAddr, aclDataType::ACL_FLOAT,
                           &stateCacheRef);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(apeHostData, apeShape, &apeDeviceAddr, aclDataType::ACL_FLOAT, &ape);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(stateBlockTableHostData, stateBlockTableShape, &stateBlockTableDeviceAddr,
                           aclDataType::ACL_INT32, &stateBlockTable);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -708,23 +580,14 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(cmpKvHostData, cmpKvShape, &cmpKvDeviceAddr, aclDataType::ACL_BF16, &cmpKvOut);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(softmaxScoreHostData, softmaxScoreShape, &softmaxScoreDeviceAddr, aclDataType::ACL_FLOAT,
-                          &softmaxScoreOut);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(kvHostData, kvShape, &kvDeviceAddr, aclDataType::ACL_FLOAT, &kvOut);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-    // 5. 调用 aclnnCompressorGetWorkspaceSize
+    // 5. 调用 aclnnCompressorV2GetWorkspaceSize
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
 
-    bool gradEnabled = false;
-
-    ret = aclnnCompressorGetWorkspaceSize(x, wkv, wgate, stateCacheRef, ape, stateBlockTable, nullptr, nullptr,
-                                          startPos, cmpRatio, coff, cacheMode, stateCacheStrideDim0, gradEnabled,
-                                          cmpKvOut, softmaxScoreOut, kvOut, &workspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnCompressorGetWorkspaceSize failed. ERROR: %d\n", ret);
-              return ret);
+    ret = aclnnCompressorV2GetWorkspaceSize(x, wkv, wgate, stateCacheRef, stateBlockTable, nullptr, nullptr, startPos,
+                                            cmpRatio, stateCacheStrideDim0, cmpKvOut, &workspaceSize, &executor);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnCompressorV2GetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 
     // 6. 申请 workspace
     void *workspaceAddr = nullptr;
@@ -733,16 +596,16 @@ int main()
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
     }
 
-    // 7. 调用 aclnnCompressor
-    ret = aclnnCompressor(workspaceAddr, workspaceSize, executor, stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnCompressor failed. ERROR: %d\n", ret); return ret);
+    // 7. 调用 aclnnCompressorV2
+    ret = aclnnCompressorV2(workspaceAddr, workspaceSize, executor, stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnCompressorV2 failed. ERROR: %d\n", ret); return ret);
 
     // 8. 同步等待
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
     // 9. 获取输出
-    LOG_PRINT("Compressor execution succeeded.\n");
+    LOG_PRINT("CompressorV2 execution succeeded.\n");
     PrintBf16Result(cmpKvShape, &cmpKvDeviceAddr);
 
     // 10. 释放资源
@@ -750,23 +613,17 @@ int main()
     aclDestroyTensor(wkv);
     aclDestroyTensor(wgate);
     aclDestroyTensor(stateCacheRef);
-    aclDestroyTensor(ape);
     aclDestroyTensor(stateBlockTable);
     aclDestroyTensor(startPos);
     aclDestroyTensor(cmpKvOut);
-    aclDestroyTensor(softmaxScoreOut);
-    aclDestroyTensor(kvOut);
 
     aclrtFree(xDeviceAddr);
     aclrtFree(wkvDeviceAddr);
     aclrtFree(wgateDeviceAddr);
     aclrtFree(stateCacheDeviceAddr);
-    aclrtFree(apeDeviceAddr);
     aclrtFree(stateBlockTableDeviceAddr);
     aclrtFree(startPosDeviceAddr);
     aclrtFree(cmpKvDeviceAddr);
-    aclrtFree(softmaxScoreDeviceAddr);
-    aclrtFree(kvDeviceAddr);
     if (workspaceSize > 0) {
         aclrtFree(workspaceAddr);
     }
