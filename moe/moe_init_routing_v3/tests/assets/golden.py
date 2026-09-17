@@ -814,10 +814,9 @@ def MoeInitRoutingV3(*input_arrays, **kwargs):
 
 
 def _drop_rowidx_tail_len(npu_arr, golden_arr, golden0_arr, min_len):
-    """Return a reduced compare length when a golden output is SCATTER 的 expanded_row_idx.
-
-    SCATTER(row_idx_type=1) 场景下 expanded_row_idx 的 golden 返回完整 n*k 置换
-    """
+    """SCATTER 模式下 expanded_row_idx 的 golden 返回完整 n*k 置换（含尾部无效区），
+    而 NPU 只写出前 actualExpertIdxNum 个有效条目。此函数计算 golden 的有效前缀长度，
+    使 compare 只比对该前缀，避免尾部无效数据导致误报。"""
     if npu_arr is None or golden_arr is None or min_len <= 0:
         return min_len
     golden_flat = numpy.asarray(golden_arr).reshape(-1)
@@ -859,6 +858,8 @@ def _torch_to_numpy(tensor):
 
 
 def _unpack_int4(raw_bytes):
+    """将 packed uint8（每字节存 2 个 int4 nibble）解包为有符号 int8 数组。
+    低 nibble 在前，高 nibble 在后；>=8 的 nibble 减 16 转为负数。"""
     lo = (raw_bytes & 0x0F).astype(numpy.int8)
     hi = ((raw_bytes >> 4) & 0x0F).astype(numpy.int8)
     nibbles = numpy.empty(raw_bytes.size * 2, dtype=numpy.int8)
@@ -869,6 +870,8 @@ def _unpack_int4(raw_bytes):
 
 
 def _quant_ulp_result(npu_vals, golden_vals):
+    """量化输出 ULP 判据：绝对误差 <= 1 视为通过，错误占比超过 ptol(0.1%) 才判 FAIL。
+    用于 int8/int4 量化输出，消除 float16 计算精度导致的 off-by-1 误报。"""
     min_len = min(npu_vals.size, golden_vals.size)
     npu_vals = npu_vals[:min_len]
     golden_vals = golden_vals[:min_len]
@@ -929,6 +932,9 @@ def _numpy_to_torch(arr, template):
         x in arr_dtype_name or x in target_dtype_name for x in custom_keywords
     )
     if is_custom_dtype:
+        # golden 返回 float32 但目标 dtype 为 float8/float4/hifloat8 时，需先 astype 到
+        # 目标 numpy dtype（itemsize=1），再 view(uint8)。若直接对 float32（itemsize=4）
+        # 做 view(uint8)，元素数会放大 4 倍，导致 reshape 失败。
         target_np_dtype_name = target_dtype_name.replace("torch.", "")
         if arr_dtype_name not in target_np_dtype_name and arr_np.dtype.kind == "f":
             from ttk.utilities.dtypes import (
@@ -1056,6 +1062,7 @@ class MoeInitRoutingV3KernelSpec:
                 for x in all_custom_keywords
             )
             if is_custom_dtype:
+                # 自定义 dtype（float4/float8/hifloat8/int4 等）走 raw uint8 字节级比对
 
                 def _to_raw_uint8(arr):
                     if arr.dtype.kind in ("i", "u"):
@@ -1087,6 +1094,7 @@ class MoeInitRoutingV3KernelSpec:
                     or "hif8" in str(npu_arr.dtype).lower()
                 )
                 if is_hifloat8:
+                    # hifloat8: 按 int8 解释，ULP 差 > 1 计为错误，NaN 位置双方一致视为相等
                     npu_i8 = numpy.asarray(npu_raw[:min_len_raw]).astype(numpy.int8)
                     golden_i8 = numpy.asarray(golden_raw[:min_len_raw]).astype(
                         numpy.int8
@@ -1118,6 +1126,7 @@ class MoeInitRoutingV3KernelSpec:
                         "int4" in dtype_name or "int4" in str(npu_arr.dtype).lower()
                     )
                     if is_int4_quant:
+                        # int4: 先解包 packed nibble，再用 ULP 判据（差 > 1 计为错误）
                         npu_nib = _unpack_int4(npu_raw[:min_len_raw])
                         golden_nib = _unpack_int4(golden_raw[:min_len_raw])
                         results.append(_quant_ulp_result(npu_nib, golden_nib))
@@ -1155,6 +1164,7 @@ class MoeInitRoutingV3KernelSpec:
                 ]
             )
             if is_int and not is_float:
+                # int8 量化输出用 ULP 判据（差 > 1 计为错误）；int32/int64 等精确匹配
                 is_quant_output = "int8" in dtype_name
                 if is_quant_output:
                     npu_i = npu_cmp.astype(numpy.int32)
@@ -1347,6 +1357,7 @@ class E2eMoeInitRoutingV3Spec:
                 golden_raw = _to_raw_uint8(numpy.asarray(golden_arr))
                 min_len_raw = min(npu_raw.size, golden_raw.size)
                 if is_hifloat8:
+                    # hifloat8: 按 int8 解释，ULP 差 > 1 计为错误，NaN 位置双方一致视为相等
                     npu_i8 = numpy.asarray(npu_raw[:min_len_raw]).astype(numpy.int8)
                     golden_i8 = numpy.asarray(golden_raw[:min_len_raw]).astype(
                         numpy.int8
@@ -1378,6 +1389,7 @@ class E2eMoeInitRoutingV3Spec:
                         "int4" in dtype_name or "int4" in str(npu_arr.dtype).lower()
                     )
                     if is_int4_quant:
+                        # int4: 先解包 packed nibble，再用 ULP 判据（差 > 1 计为错误）
                         npu_nib = _unpack_int4(npu_raw[:min_len_raw])
                         golden_nib = _unpack_int4(golden_raw[:min_len_raw])
                         results.append(_quant_ulp_result(npu_nib, golden_nib))
@@ -1415,6 +1427,7 @@ class E2eMoeInitRoutingV3Spec:
                 ]
             )
             if is_int and not is_float:
+                # int8 量化输出用 ULP 判据（差 > 1 计为错误）；int32/int64 等精确匹配
                 is_quant_output = "int8" in dtype_name
                 if is_quant_output:
                     npu_i = npu_cmp.astype(numpy.int32)
@@ -1615,6 +1628,7 @@ class AclnnMoeInitRoutingV3Spec:
                 golden_raw = _to_raw_uint8(numpy.asarray(golden_arr))
                 min_len_raw = min(npu_raw.size, golden_raw.size)
                 if is_hifloat8:
+                    # hifloat8: 按 int8 解释，ULP 差 > 1 计为错误，NaN 位置双方一致视为相等
                     npu_i8 = numpy.asarray(npu_raw[:min_len_raw]).astype(numpy.int8)
                     golden_i8 = numpy.asarray(golden_raw[:min_len_raw]).astype(
                         numpy.int8
@@ -1646,6 +1660,7 @@ class AclnnMoeInitRoutingV3Spec:
                         "int4" in dtype_name or "int4" in str(npu_arr.dtype).lower()
                     )
                     if is_int4_quant:
+                        # int4: 先解包 packed nibble，再用 ULP 判据（差 > 1 计为错误）
                         npu_nib = _unpack_int4(npu_raw[:min_len_raw])
                         golden_nib = _unpack_int4(golden_raw[:min_len_raw])
                         results.append(_quant_ulp_result(npu_nib, golden_nib))
@@ -1683,6 +1698,7 @@ class AclnnMoeInitRoutingV3Spec:
                 ]
             )
             if is_int and not is_float:
+                # int8 量化输出用 ULP 判据（差 > 1 计为错误）；int32/int64 等精确匹配
                 is_quant_output = "int8" in dtype_name
                 if is_quant_output:
                     npu_i = npu_cmp.astype(numpy.int32)
