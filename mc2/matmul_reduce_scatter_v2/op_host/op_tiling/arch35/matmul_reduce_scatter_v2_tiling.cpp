@@ -144,8 +144,6 @@ ge::graphStatus MatmulReduceScatterV2Tiling::SetMc2Hcomm()
         std::string algoName = Mc2Hcom::Mc2CommAlgoSelector::SelectAlgoName(
             opName_, group, commEngine, commDataBytes, static_cast<uint32_t>(args_.rankDim), algoEntries, algoCount,
             REDUCE_SCATTER_DEFAULT_ALGO_NAME);
-        // 当前版本暂不生效，仍旧使用原算法
-        algoName = rsConfig;
         OP_LOGI(opName_, "[SetMc2Hcomm] selected algoName=%s, group=%s", algoName.c_str(), group);
         mc2CcTilingConfig.SetAlgConfig(algoName);
     }
