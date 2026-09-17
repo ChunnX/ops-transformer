@@ -14,7 +14,7 @@ if(EXISTS "${PROJECT_SOURCE_DIR}/../ops-tensor")
                          ${PROJECT_SOURCE_DIR}/../ops-tensor REALPATH)
   message(STATUS "Find ops-tensor source dir: ${OPTENSOR_SOURCE_PATH}")
   get_filename_component(TENSOR_API
-                         ${ASCEND_DIR}/${SYSTEM_PREFIX}/asc REALPATH)
+                         ${OPTENSOR_SOURCE_PATH}/include/tensor_api REALPATH)
 elseif(EXISTS "${CANN_3RD_LIB_PATH}/ops-tensor")
   get_filename_component(OPTENSOR_SOURCE_PATH
                          ${CANN_3RD_LIB_PATH}/ops-tensor REALPATH)

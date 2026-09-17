@@ -19,6 +19,7 @@
 #include "log/log.h"
 #include "platform/platform_infos_def.h"
 #include "../../../op_kernel/arch35/grouped_matmul_swiglu_quant_v2_tiling_key.h"
+#include "grouped_matmul_swiglu_quant_tensor_api_tiling_common.h"
 
 namespace optiling {
 namespace {
@@ -28,15 +29,8 @@ constexpr size_t SHAPE_DIM_ONE = 1;
 constexpr size_t SHAPE_DIM_TWO = 2;
 constexpr size_t SHAPE_DIM_THREE = 3;
 constexpr size_t SHAPE_DIM_FOUR = 4;
-constexpr uint64_t TENSOR_API_FP8_N_ALIGN = 128UL;
-constexpr uint64_t TENSOR_API_TRANS_B_M_PER_GROUP_LOWER_LIMIT = 128UL;
-constexpr uint64_t TENSOR_API_NOT_TRANS_B_M_PER_GROUP_LOWER_LIMIT = 512UL;
-constexpr uint64_t TENSOR_API_B_NOTRANS_M_LOWER_LIMIT = 512UL;
-constexpr uint64_t TENSOR_API_LARGE_M_BASE_M = GmmConstant::BASIC_BLOCK_SIZE_256;
-constexpr uint64_t TENSOR_API_LARGE_N_BASE_N = GmmConstant::BASIC_BLOCK_SIZE_128;
 constexpr uint64_t MX_SCALE_K_ALIGN = 64UL;
 constexpr int64_t MX_QUANT_MODE = 2L;
-constexpr uint64_t AIC_AIV_CORE_RATIO = 2UL;
 
 } // namespace
 
@@ -281,21 +275,17 @@ bool GroupedMatmulSwigluQuantV2BasicApiTiling950::IsCapable()
     const bool formatSupported = IsSupportedFormat(inputParams_.aFormat) && IsSupportedFormat(inputParams_.bFormat) &&
                                  IsSupportedFormat(xScaleFormat_) && IsSupportedFormat(weightScaleFormat_) &&
                                  IsSupportedFormat(inputParams_.cFormat) && IsSupportedFormat(yScaleFormat_);
-    const bool coreSupported = aicoreParams_.aicNum > 0 && aivNum_ == AIC_AIV_CORE_RATIO * aicoreParams_.aicNum;
     const bool checkTensorApiShapes = CheckTensorApiShapes();
     const bool checkTensorApiScaleShapes = CheckTensorApiScaleShapes();
     const uint64_t averageMPerGroup = inputParams_.mSize / inputParams_.groupNum;
-    const uint64_t mPerGroupLowerLimit = inputParams_.transB ? TENSOR_API_TRANS_B_M_PER_GROUP_LOWER_LIMIT :
-                                                               TENSOR_API_NOT_TRANS_B_M_PER_GROUP_LOWER_LIMIT;
-    const bool checkMSizeGroupNumRatio = averageMPerGroup > mPerGroupLowerLimit;
-    const bool checkNSizeAlign = inputParams_.nSize % TENSOR_API_FP8_N_ALIGN == 0;
-    const bool checkBNoTransMLimlit =
-        inputParams_.transB ? true : inputParams_.mSize > TENSOR_API_B_NOTRANS_M_LOWER_LIMIT;
-    const bool checkKSize = inputParams_.kSize > 64;
-    const bool checkKSizeAlign = inputParams_.kSize % GmmConstant::BASIC_BLOCK_SIZE_128 == 0;
-    const bool capable = dtypeSupported && quantDtypeSupported && formatSupported && checkMSizeGroupNumRatio &&
-                         checkNSizeAlign && coreSupported && checkTensorApiShapes && checkTensorApiScaleShapes &&
-                         checkBNoTransMLimlit && checkKSize && checkKSizeAlign;
+    const uint64_t mPerGroupLowerLimit = inputParams_.transB ?
+        GroupedMatmulSwigluQuantTensorApiTiling::TRANS_B_M_PER_GROUP_LOWER_LIMIT :
+        GroupedMatmulSwigluQuantTensorApiTiling::NOT_TRANS_B_M_PER_GROUP_LOWER_LIMIT;
+    const bool commonCapable = GroupedMatmulSwigluQuantTensorApiTiling::IsShapeAndPlatformCapable(
+        {inputParams_.mSize, inputParams_.nSize, inputParams_.kSize, inputParams_.groupNum,
+         aicoreParams_.aicNum, aivNum_, inputParams_.transB, platformMemoryReady_});
+    const bool capable = dtypeSupported && quantDtypeSupported && formatSupported &&
+                         checkTensorApiShapes && checkTensorApiScaleShapes && commonCapable;
     OP_LOGD(context_->GetNodeName(),
             "Tensor API capability: dtype=%d, quantDtypeSupported=%d, format=%d, groupNum=%lu, M=%lu, "
             "averageMPerGroup=%lu, mPerGroupLowerLimit=%lu, transB=%d, N=%lu, "
@@ -304,8 +294,12 @@ bool GroupedMatmulSwigluQuantV2BasicApiTiling950::IsCapable()
             "checkTensorApiScaleShapes=%d, checkMSizeGroupNumRatio=%d, checkBNoTransMLimlit=%d, capable=%d.",
             dtypeSupported, quantDtypeSupported, formatSupported, inputParams_.groupNum, inputParams_.mSize,
             averageMPerGroup, mPerGroupLowerLimit, inputParams_.transB, inputParams_.nSize, aicoreParams_.aicNum,
-            aivNum_, checkTensorApiShapes, checkKSize, checkKSizeAlign, checkTensorApiScaleShapes,
-            checkMSizeGroupNumRatio, checkBNoTransMLimlit, capable);
+            aivNum_, checkTensorApiShapes, inputParams_.kSize > 64U,
+            inputParams_.kSize % GroupedMatmulSwigluQuantTensorApiTiling::K_ALIGN == 0U,
+            checkTensorApiScaleShapes, averageMPerGroup > mPerGroupLowerLimit,
+            inputParams_.transB || inputParams_.mSize >
+                GroupedMatmulSwigluQuantTensorApiTiling::NOT_TRANS_B_M_LOWER_LIMIT,
+            capable);
     return capable;
 }
 
@@ -327,15 +321,10 @@ ge::graphStatus GroupedMatmulSwigluQuantV2BasicApiTiling950::DoOpTiling()
 ge::graphStatus GroupedMatmulSwigluQuantV2BasicApiTiling950::DoLibApiTiling()
 {
     GroupedQmmTiling::CalBasicBlock();
+    GroupedMatmulSwigluQuantTensorApiTiling::PrepareBasicBlockForL1(basicTiling_);
     OP_CHECK_IF(GroupedQmmBasicApiTiling::CalL1Tiling() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed."), return ge::GRAPH_FAILED);
-    if (inputParams_.mSize >= GmmConstant::BASIC_BLOCK_SIZE_256) {
-        basicTiling_.baseM = TENSOR_API_LARGE_M_BASE_M;
-    }
-    if (inputParams_.nSize > GmmConstant::BASIC_BLOCK_SIZE_256 &&
-        inputParams_.kSize >= GmmConstant::BASIC_BLOCK_SIZE_128) {
-        basicTiling_.baseN = TENSOR_API_LARGE_N_BASE_N;
-    }
+    GroupedMatmulSwigluQuantTensorApiTiling::RestoreBasicBlockAfterL1(basicTiling_);
 
     auto &mmTiling = tilingData_.mmTilingData;
     mmTiling.m = static_cast<uint32_t>(inputParams_.mSize);
