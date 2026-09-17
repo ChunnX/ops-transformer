@@ -328,7 +328,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>cmpRatio（int64_t）</td>
       <td>输入</td>
       <td>cmpKv相对于压缩前KV长度的压缩倍率，用于恢复cmp侧mask使用的压缩前KV长度。</td>
-      <td>仅传入oriKv时不参与压缩KV计算。Atlas A2/A3的SWA场景传0、CSA场景传1、2或4、HCA场景传128；Ascend 950的SWA场景传1、CSA/HCA场景支持[1, 128]。</td>
+      <td>取值范围为0到128；仅传入oriKv时不参与压缩KV计算。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -691,6 +691,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
   - 参数cmpResidualKvOptional需满足cmpResidualKvOptional[i] < cmpRatio。
 <!-- npu="950" id12 -->
 - Ascend 950PR/Ascend 950DT约束：
+  - cmpRatio在SWA场景传1，CSA/HCA场景支持1到128。
   - hasOriKv为true时，oriTopk大于0认为oriKvOptional部分是稀疏的，oriTopk为0则认为oriKvOptional部分是非稀疏的。
   - hasCmpKv为true时，cmpTopk大于0认为cmpKvOptional部分是稀疏的，cmpTopk为0则认为cmpKvOptional部分是非稀疏的。
   - hasOriKv为true，oriTopk不为0且oriMaskMode为0时，oriTopkLengthOptional必须传入，此时取oriMaskMode规则与oriTopkLengthOptional元素的最小值作为当前q token对应的oriKvOptional的有效seqlen，其他oriKvOptional稀疏场景取oriMaskMode规则与oriTopk的最小值作为当前q token对应的oriKvOptional的有效seqlen。

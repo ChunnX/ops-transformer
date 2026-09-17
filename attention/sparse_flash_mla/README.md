@@ -190,7 +190,7 @@
     <tr>
       <td>cmp_ratio</td>
       <td>可选属性</td>
-      <td>表示cmp_kv相对于压缩前KV长度的压缩倍率，用于恢复cmp侧mask使用的压缩前KV长度；仅传入ori_kv时不参与压缩KV计算。具体取值随产品型号和场景而变化，详见“产品型号约束”。</td>
+      <td>表示cmp_kv相对于压缩前KV长度的压缩倍率，取值范围为0到128，用于恢复cmp侧mask使用的压缩前KV长度；仅传入ori_kv时不参与压缩KV计算。</td>
       <td>INT</td>
       <td>-</td>
     </tr>

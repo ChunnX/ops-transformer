@@ -166,7 +166,7 @@ cann_ops_transformer.sparse_flash_mla(
 | max_seqlen_cmp_kv | int32 | 可选 | `cmp_kv`的最大有效序列长度，默认值为0。 | int32 | - | - |
 | ori_topk | int32 | 可选 | 表示`ori_kv`中筛选出的关键稀疏token的个数。0表示非稀疏场景。默认值为0 。 | int32 | - | - |
 | cmp_topk | int32 | 可选 | 表示`cmp_kv`中筛选出的关键稀疏token的个数。0表示非稀疏场景。默认值为0。 | int32 | - | - |
-| cmp_ratio | int32 | 可选 | `cmp_kv`相对于压缩前kv的压缩倍率，默认值为1。<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>和<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>的SWA取0、CSA取1/2/4、HCA取128；<term>Ascend 950PR/Ascend 950DT</term>配套主接口的SWA取1，CSA/HCA支持1-128。 | int32 | - | - |
+| cmp_ratio | int32 | 可选 | `cmp_kv`相对于压缩前kv的压缩倍率，取值范围为0到128，默认值为1。 | int32 | - | - |
 | ori_mask_mode | int32 | 可选 | `q`与`ori_kv`的mask模式：0（No Mask）、3（RightDownCausal）或4（Band）。 | int32 | - | - |
 | cmp_mask_mode | int32 | 可选 | `q`与`cmp_kv`的mask模式：0（No Mask）或3（RightDownCausal）。 | int32 | - | - |
 | ori_win_left | int32 | 可选 | `ori_kv`滑动窗口左边界，取值为-1或不小于0；-1表示不限制。 | int32 | - | - |
@@ -200,7 +200,7 @@ cann_ops_transformer.sparse_flash_mla(
 | sinks | Tensor | 可选 | 表示各注意力头设置独立可学习虚拟偏移项，用于维持长文本推理时的稳定性。 | float32 | ND | (q_n,) |
 | metadata | Tensor | 必选 | 由`sparse_flash_mla_metadata`生成的分核信息。 | int32 | ND | (1024,) |
 | softmax_scale | float | 可选 | QK矩阵乘后的缩放系数。默认值为1.0。 | float32 | - | - |
-| cmp_ratio | int32 | 可选 | 压缩倍率，默认值为1。<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>和<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>的SWA取0、CSA取1/2/4、HCA取128；<term>Ascend 950PR/Ascend 950DT</term>的SWA取1，CSA/HCA支持1-128。 | int32 | - | - |
+| cmp_ratio | int32 | 可选 | 压缩倍率，取值范围为0到128，默认值为1。 | int32 | - | - |
 | ori_mask_mode | int32 | 可选 | `q`与`ori_kv`的mask模式。0：No mask。3：rightDownCausal模式。4：sliding window模式。默认值为4。 | int32 | - | - |
 | cmp_mask_mode | int32 | 可选 | `q`与`cmp_kv`的mask模式。0：No mask。3：rightDownCausal模式。默认值为3。 | int32 | - | - |
 | ori_win_left | int32 | 可选 | `ori_kv`滑动窗口左边界，表示`q`和`ori_kv`计算中`q`对历史token计算的数量，取值为-1或不小于0。-1表示不限制。默认值为-1。 | int32 | - | - |
@@ -237,6 +237,13 @@ cann_ops_transformer.sparse_flash_mla(
   - 当`ori_mask_mode`、`cmp_mask_mode`为0时，`ori_kv_k`、`cmp_kv_k`需要大于等于`ori_topk_length`、`cmp_topk_length`的最大值。
   - `ori_topk_length`、`cmp_topk_length`表示ori/cmp sparse_indices实际参与计算的长度。其值不能大于sparse_indices的最后一维大小，且当`seqused_q`传入时，topk_length对应有效部分的值需要大于等于0。
   - `cmp_residual_kv`配合`cmp_ratio`使用，可恢复压缩前KV长度。且每个batch的值需要小于`cmp_ratio`，即`cmp_residual_kv[i]` < `cmp_ratio`。仅当`cmp_kv`存在、`cmp_mask_mode=3`且`cmp_ratio!=1`时传入；`cmp_mask_mode=0`或`cmp_ratio=1`时不允许传入。
+  - `cmp_ratio`在主算子和Metadata接口中的取值必须一致，具体取值随产品和计算场景变化：
+    <!-- npu="A3,910b" id5 -->
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：SWA取0，CSA取1、2或4，HCA取128。
+    <!-- end id5 -->
+    <!-- npu="950" id6 -->
+    - <term>Ascend 950PR/Ascend 950DT</term>：SWA取1，CSA/HCA支持1到128。
+    <!-- end id6 -->
   - `attention_out`：tensor类型，公式中的输出，数据类型支持bfloat16和float16。数据格式支持ND。限制：该输出参数的shape与入参q的shape保持一致，dtype与q一致。
   - `return_softmax_lse`为False时返回shape为[1]且值为0的tensor；`return_softmax_lse`为True时返回float32的log-sum-exp结果。
   - `cu_seqlens_q`、`cu_seqlens_ori_kv`、`cu_seqlens_cmp_kv`须满足首元素为0，且序列整体呈非递减排列，即任一元素不小于其前一个元素。
@@ -275,7 +282,7 @@ cann_ops_transformer.sparse_flash_mla(
 | max_seqlen_cmp_kv | int32；必须大于0。 | `cmp_kv`为TND布局时必传。 | 必须等于`cmp_kv`各Batch实际长度的最大值。 | 与`cu_seqlens_cmp_kv`及cmp_kv_t一致。 |
 | ori_topk | int32；当前仅支持0。 | 可选，默认0。 | 必须与`ori_sparse_indices`和`ori_topk_length`的传入状态一致。 | 当前不支持`ori_sparse_indices`非空，因此必须为0。 |
 | cmp_topk | int32；SWA/HCA场景取值为0，CSA场景取值为压缩kv的TopK长度且大于0。 | CSA场景必传且非0；其他场景为0。 | 必须等于`cmp_sparse_indices`最后一维。 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：CSA取大于8192或小于等于0、或SWA/HCA取非0时拦截；<term>Ascend 950PR/Ascend 950DT</term>：CSA取小于等于0、或SWA/HCA取非0时拦截。 |
-| cmp_ratio | int32；取值随产品型号和场景而变化，见本行约束。 | 可选，默认1。 | 必须与主接口、`cmp_residual_kv`和`cmp_kv`压缩关系一致。 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：SWA取0，CSA取1、2或4，HCA取128；<term>Ascend 950PR/Ascend 950DT</term>：配套主接口在无`cmp_kv`时只接受1，CSA/HCA支持1-128。 |
+| cmp_ratio | int32；取值范围为0到128。 | 可选，默认1。 | 必须与主接口、`cmp_residual_kv`和`cmp_kv`压缩关系一致。 | - |
 | ori_mask_mode | int32；接口定义支持0、3、4。 | 可选。 | 无。 | 当传入4时，与`ori_win_left`、`ori_win_right`组合使用。 |
 | cmp_mask_mode | int32；接口定义支持0、3。 | 可选。 | 无。 | SWA为0；CSA/HCA为3。 |
 | ori_win_left | int32；接口定义为-1或非负数。 | 可选。 | 无。 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：取非127时拦截；<term>Ascend 950PR/Ascend 950DT</term>：取值小于-1时拦截。仅作用于`ori_kv`侧。 |
@@ -333,7 +340,7 @@ layout匹配关系表：
 
 | 场景 | 必选输入与属性 | 不允许或固定的输入与属性 |
 | :--- | :--- | :--- |
-| SWA | 仅传入`ori_kv`；<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>和<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>的`cmp_ratio=0`，<term>Ascend 950PR/Ascend 950DT</term>的`cmp_ratio=1`。 | 不传`cmp_kv`、`cmp_sparse_indices`和`cmp_block_table`；`cmp_topk=0`、`cmp_mask_mode=0`。 |
+| SWA | 仅传入`ori_kv`。 | 不传`cmp_kv`、`cmp_sparse_indices`和`cmp_block_table`；`cmp_topk=0`、`cmp_mask_mode=0`。 |
 | CSA | 传入`ori_kv`、`cmp_kv`、`cmp_sparse_indices`；`cmp_mask_mode=3`且`cmp_topk`为非0；`cmp_ratio!=1`时还需传入`cmp_residual_kv`。 | `cmp_mask_mode=0`或`cmp_ratio=1`时不允许传入`cmp_residual_kv`。 |
 | HCA | 传入`ori_kv`、`cmp_kv`；`cmp_mask_mode=3`；`cmp_ratio!=1`时还需传入`cmp_residual_kv`。 | 不传`cmp_sparse_indices`；`cmp_topk=0`；`cmp_mask_mode=0`或`cmp_ratio=1`时不允许传入`cmp_residual_kv`。 |
 
@@ -343,7 +350,7 @@ layout匹配关系表：
 | cmp_sparse_indices | `int32`、ND；`BSND`为(b, q_s, kv_n, cmp_kv_k)，`TND`为(q_t, kv_n, cmp_kv_k)；值必须为-1或有效的cmp token索引。 | 仅CSA必传；SWA/HCA必须不传。 | b/q_t、kv_n必须与`q`一致，cmp_kv_k必须与`cmp_topk`一致。 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：cmp_kv_k取大于8192或小于等于0时拦截；<term>Ascend 950PR/Ascend 950DT</term>：cmp_kv_k取小于等于0时拦截。无效位置填-1，索引具体取值由用户保证。 |
 | ori_topk_length | `int32`、ND、shape为(b, q_s, kv_n)或(q_t, kv_n)。 | `ori_topk_length` 在ori+cmp稀疏时必传。 | 与`ori_sparse_indices=None`和`ori_topk=0`一致。 | CSA/ALL_CSA场景可选，其他场景不能传；传入时，不需要传入`seqused_ori_kv`。 |
 | cmp_topk_length | `int32`、ND、shape为(b, q_s, kv_n)或(q_t, kv_n)。 | `cmp_topk_length` 在ori+cmp稀疏时必传。 | 与`cmp_sparse_indices`和`cmp_topk`的状态一致。 | CSA/ALL_CSA场景可选，其他场景不能传；传入时，不需要传入`seqused_cmp_kv`。 |
-| cmp_ratio | int32；取值随产品型号和场景而变化，见本行约束。 | 可选，默认1。 | 必须同时与`metadata`、`cmp_kv`长度和`cmp_residual_kv`一致。 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：SWA取0，CSA取1、2或4，HCA取128；<term>Ascend 950PR/Ascend 950DT</term>：无`cmp_kv`时只接受1，CSA/HCA支持1-128。 |
+| cmp_ratio | int32；取值范围为0到128。 | 可选，默认1。 | 必须同时与`metadata`、`cmp_kv`长度和`cmp_residual_kv`一致。 | - |
 | topk_value_mode | int32；仅支持1。 | 可选，默认1。 | 必须与`cmp_sparse_indices`的索引取值约定一致。 | 不参与`metadata`生成；取非1值应拦截。 |
 
 #### SeqLengths和Mask参数组

@@ -166,7 +166,7 @@
     <tr>
       <td>cmp_ratio</td>
       <td>可选属性</td>
-      <td>表示`cmp_kv`相对于压缩前KV长度的压缩倍率，用于恢复cmp侧mask使用的压缩前KV长度；仅传入`ori_kv`时不参与压缩KV计算。默认值为1。Atlas A2/A3的SWA取0、CSA取1、2或4、HCA取128；Ascend 950的SWA取1、CSA/HCA支持[1, 128]。</td>
+      <td>表示`cmp_kv`相对于压缩前KV长度的压缩倍率，取值范围为0到128，用于恢复cmp侧mask使用的压缩前KV长度；仅传入`ori_kv`时不参与压缩KV计算。默认值为1。</td>
       <td>INT</td>
       <td>-</td>
     </tr>
@@ -238,6 +238,7 @@
 <ul>
   <li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> ：num_heads_q/num_heads_kv仅支持1、2、4、8、16、32、64、128，不支持seqused_q、cmp_topk_length；SWA稀疏ori_kv场景支持ori_topk_length、ori_topk大于0及ori_mask_mode为0，ori_win_left和ori_win_right支持非负数；其他SWA场景ori_topk为0、ori_mask_mode为4、ori_win_left为127、ori_win_right为0；cmp_topk支持[0, 8192]，cmp_mask_mode仅支持3，cmp_ratio在SWA支持0、CSA支持1、2或4、HCA支持128。</li>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> ：num_heads_q/num_heads_kv仅支持1、2、4、8、16、32、64、128，不支持seqused_q、cmp_topk_length；SWA稀疏ori_kv场景支持ori_topk_length、ori_topk大于0及ori_mask_mode为0，ori_win_left和ori_win_right支持非负数；其他SWA场景ori_topk为0、ori_mask_mode为4、ori_win_left为127、ori_win_right为0；cmp_topk支持[0, 8192]，cmp_mask_mode仅支持3，cmp_ratio在SWA支持0、CSA支持1、2或4、HCA支持128。</li>
+  <li><term>Ascend 950PR/Ascend 950DT</term> ：cmp_ratio在SWA场景传1，CSA/HCA场景支持1到128。</li>
 </ul>
 
 ## 约束说明
