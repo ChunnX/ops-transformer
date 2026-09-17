@@ -77,13 +77,13 @@ uint64_t AlltoAllvMXQuantGmmTiling::GetTilingKey() const
 
 void AlltoAllvMXQuantGmmTiling::SetApaceMatmulTiling(const TCubeTiling &src, Apace::A2avGmmMxTiling &dst)
 {
-    dst.baseM = static_cast<uint32_t>(src.baseM);
-    dst.baseN = static_cast<uint32_t>(src.baseN);
-    dst.baseK = static_cast<uint32_t>(src.baseK);
-    dst.kAL1 = static_cast<uint32_t>(src.stepKa * src.baseK);
-    dst.kBL1 = static_cast<uint32_t>(src.stepKb * src.baseK);
+    dst.baseM = static_cast<uint32_t>(src.get_baseM());
+    dst.baseN = static_cast<uint32_t>(src.get_baseN());
+    dst.baseK = static_cast<uint32_t>(src.get_baseK());
+    dst.kAL1 = static_cast<uint32_t>(src.get_stepKa() * src.get_baseK());
+    dst.kBL1 = static_cast<uint32_t>(src.get_stepKb() * src.get_baseK());
     dst.scaleKAL1 = dst.kAL1;
-    dst.dbL0C = static_cast<uint8_t>(src.dbL0C);
+    dst.dbL0C = static_cast<uint8_t>(src.get_dbL0C());
     dst.l1BufferStage = 2U;
 }
 
