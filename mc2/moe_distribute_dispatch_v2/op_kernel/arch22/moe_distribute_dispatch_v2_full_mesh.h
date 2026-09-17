@@ -34,6 +34,12 @@
 
 #include "../hccl_context_holder.h"
 #include "../mc2_moe_context_holder.h"
+// Bandwidth experiment: observe token arrival without materializing output tensors.
+// Set to 1 and rebuild to skip normal Dispatch/Combine output semantics.
+#ifndef MOE_DISPATCH_FULL_MESH_ARRIVAL_ONLY
+#define MOE_DISPATCH_FULL_MESH_ARRIVAL_ONLY 0
+#endif
+#include "../../../common/op_kernel/moe_full_mesh_timer.hpp"
 namespace Mc2Kernel {
 constexpr uint64_t FLAG_FIELD_OFFSET = 768UL * 1024UL;  // 384 * 2，0/1标识区偏移
 constexpr uint64_t CUMSUM_CAL_OFFSET = 868UL * 1024UL;  // 768 + 100
@@ -149,6 +155,9 @@ private:
     }
 
     TPipe *tpipe_{nullptr};
+#if MOE_DISPATCH_FULL_MESH_TIMER
+    MoeFullMeshCocTimer cocTimer_;
+#endif
     GlobalTensor<XInType> xGMTensor_;
     GlobalTensor<int32_t> expertIdsGMTensor_;
     GlobalTensor<float> scalesGMTensor_;
@@ -446,6 +455,9 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     elasticInfoGMTensor_.SetGlobalBuffer((__gm__ int32_t *)(elasticInfo));
     scalesGMTensor_.SetGlobalBuffer((__gm__ float *)scales);
     SetTilingDataAndCal(tilingData);
+    MOE_FULL_MESH_TIMER(cocTimer_.Init(expandIdxOut, tilingData->a, aivId_, aivNum_, epRankIdOriginal_,
+                                       aivUsedAllToAll_, hCommuSize_, hOutSize_));
+    MOE_FULL_MESH_TIMER(cocTimer_.Tik(MoeFullMeshCocTimer::INIT));
     if (hasExpertScalesFlag_) {
         expertScalesGMTensor_.SetGlobalBuffer((__gm__ float *)expertScales);
         expandScalesOutGM_ = expandScalesOut;
@@ -464,6 +476,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     hCopyParams_ = {1U, static_cast<uint32_t>(copyInAxisH_ * sizeof(XInType)), 0U, 0U};
     dataStateParams_ = {1U, sizeof(uint32_t), 0U, 0U};
     expertIdsSize_ = Ceil(expertIdsCnt_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
+    MOE_FULL_MESH_TIMER(cocTimer_.Tok(MoeFullMeshCocTimer::INIT));
 }
 
 template <TemplateMC2TypeFullmeshClass>
@@ -1019,6 +1032,8 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     // PR6074: 将[startExpertId, endExpertId)内连续专家段按rank边界切段合并发送，
     // 每段一次DataCopy，blockCount为段内专家数，blockLen为32B，目的pitch为epWorldSize_ * 32B。
     // 替代逐专家32B单发；源侧statusTensor_按全局专家索引连续存放
+    // CNT_NOTIFY只覆盖主路径合并发送；弹性回退路径(逐专家计算与发送交织)不打点
+    MOE_FULL_MESH_TIMER(cocTimer_.Tik(MoeFullMeshCocTimer::CNT_NOTIFY));
     GlobalTensor<int32_t> rankGMTensor;
     for (uint32_t expertId = startExpertId; expertId < endExpertId;) {
         bool isSharedExpert = expertId < sharedExpertRankNum_;
@@ -1043,6 +1058,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
         DataCopy<int32_t>(rankGMTensor, statusTensor_[expertId * UB_ALIGN_DATA_COUNT], cntCopyParams);
         expertId += sendExpertNum;
     }
+    MOE_FULL_MESH_TIMER(cocTimer_.Tok(MoeFullMeshCocTimer::CNT_NOTIFY));
 }
 
 template <TemplateMC2TypeFullmeshClass>
@@ -1261,6 +1277,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     DataCopyParams intriParams{static_cast<uint16_t>(recStatusNumPerCore_), 1, 0, 0};
     SyncFunc<AscendC::HardEvent::S_V>();
     uint64_t performanceTimeStart = static_cast<uint64_t>(GetSystemCycle());
+    MOE_FULL_MESH_TIMER(cocTimer_.Tik(MoeFullMeshCocTimer::WAIT_DISPATCH));
     while (sumOfFlag != compareTarget) {
         DataCopy(statusFp32Tensor_, windowInstatusFp32Tensor_[startStatusIndex_ * STATE_OFFSET / sizeof(float)],
                  intriParams);
@@ -1272,6 +1289,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
         SyncFunc<AscendC::HardEvent::V_S>();
         sumOfFlag = statusSumOutTensor.GetValue(0);
     }
+    MOE_FULL_MESH_TIMER(cocTimer_.Tok(MoeFullMeshCocTimer::WAIT_DISPATCH));
     RunPosRecord(RUNPOS_CALCUMSUM); // 维测打点
     if (isPerformanceFlag_) {
         SyncFunc<AscendC::HardEvent::S_MTE3>();
@@ -1402,7 +1420,9 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     }
     workLocalTensor_ = gatherMaskTBuf_.Get<float>();
     statusTensor_ = statusBuf_.Get<int32_t>();
+    MOE_FULL_MESH_TIMER(cocTimer_.Tik(MoeFullMeshCocTimer::EXPID_COPY));
     ExpIdsCopyAndMaskCal();
+    MOE_FULL_MESH_TIMER(cocTimer_.Tok(MoeFullMeshCocTimer::EXPID_COPY));
     if (hasElasticInfoFlag_) {
         CalAndSendCntByExp(); // 弹性回退场景保持逐专家发送（目的rank经elasticInfo重映射）
     } else {
@@ -1416,7 +1436,9 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     SplitToCore(rscvStatusNum_, aivUsedCumSum_, startStatusIndex_, endStatusIndex_, recStatusNumPerCore_, false);
     BufferInit();
     WaitDispatch();
+    MOE_FULL_MESH_TIMER(cocTimer_.Tik(MoeFullMeshCocTimer::CUMSUM_CAL));
     CalRecvAndSetFlag();
+    MOE_FULL_MESH_TIMER(cocTimer_.Tok(MoeFullMeshCocTimer::CUMSUM_CAL));
     // 使用newAivId为0的核进行计算
     if (aivId_ == aivUsedAllToAll_) {
         SetExpertTokenNums();
@@ -1434,6 +1456,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     SumParams sumFlagParams{1, innerSumParams, aivUsedCumSum_ * UB_ALIGN_DATA_COUNT};
     LocalTensor<float> statusSumOutTensor = scalarBuf_.Get<float>();
 
+    MOE_FULL_MESH_TIMER(cocTimer_.Tik(MoeFullMeshCocTimer::RECV_WAIT));
     while (true) {
         DataCopy(statusFp32Tensor_, selfRankWinInGMTensor_[cumSumFlagOffset], aivUsedCumSum_ * UB_ALIGN_DATA_COUNT);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
@@ -1444,6 +1467,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
             break;
         }
     }
+    MOE_FULL_MESH_TIMER(cocTimer_.Tok(MoeFullMeshCocTimer::RECV_WAIT));
     RunPosRecord(RUNPOS_CUMSUMFLAG); // 维测打点
     // Clean flag for next round
     Duplicate<float>(statusCleanFp32Tensor_, static_cast<float>(0), aivUsedCumSum_ * UB_ALIGN_DATA_COUNT);
@@ -1676,6 +1700,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
         srcDataBlockIdx = GetLocalWindowSrcDataBlockIdx(srcExpertId, localExpertNum);
         arriveCount = CheckDataArriveWithFlag(srcDataBlockIdx, expertFinishNumTensor_(index), copyCnt);
         if (arriveCount == copyCnt) {
+#if !MOE_DISPATCH_FULL_MESH_ARRIVAL_ONLY
             dstPosition = srcExpertId != 0 ? sendCntTensor_(srcExpertId - 1) : 0;
             dstPosition += expertFinishNumTensor_(index);
             GM_ADDR wAddr = (__gm__ uint8_t *)(windowGM_) + srcDataBlockIdx * expertPerSizeOnWin_;
@@ -1687,6 +1712,8 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
             CopyInAndOut(xTmpTensor, wAddr, index, dstPosition, arriveCount, dataBufferId,
                          copyBatchId >= LOCAL_COPY_BUFFER_NUM);
             ++copyBatchId;
+#endif
+            // Arrival-only mode advances the same batches without reading token payload.
             // Update progress here; data flags are cleared in batches after all outputs are issued.
             expertFinishNumTensor_(index) += arriveCount;
             expertLeftNumTensor_(index) -= arriveCount;
@@ -1701,10 +1728,13 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
         }
     }
 
+#if !MOE_DISPATCH_FULL_MESH_ARRIVAL_ONLY
     uint32_t usedDataBufferNum = copyBatchId > LOCAL_COPY_BUFFER_NUM ? LOCAL_COPY_BUFFER_NUM : copyBatchId;
     for (uint32_t dataBufferId = 0; dataBufferId < usedDataBufferNum; ++dataBufferId) {
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(dataBufferId);
     }
+    // Only wait for output buffer events when CopyInAndOut actually issued them.
+#endif
     ClearLocalWindowDataFlags(tBuf, validNum, localExpertNum);
 }
 
@@ -2011,15 +2041,32 @@ template <TemplateMC2TypeFullmeshClass>
 __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::Process()
 {
     if ASCEND_IS_AIV { // 全aiv处理
+        MOE_FULL_MESH_TIMER(cocTimer_.Tik(MoeFullMeshCocTimer::STAGE));
         if (aivId_ < aivUsedAllToAll_) {
-            SendCumSum();       // 前面核先发送各专家tokenCnt
+            MOE_FULL_MESH_TIMER(cocTimer_.Tik(MoeFullMeshCocTimer::SEND));
+            MOE_FULL_MESH_TIMER(cocTimer_.Tik(MoeFullMeshCocTimer::COMM_TOTAL));
+            MOE_FULL_MESH_TIMER(cocTimer_.Tik(MoeFullMeshCocTimer::CNT_SEND));
+            SendCumSum(); // 前面核先发送各专家tokenCnt
+            MOE_FULL_MESH_TIMER(cocTimer_.Tok(MoeFullMeshCocTimer::CNT_SEND));
+            MOE_FULL_MESH_TIMER(cocTimer_.Tik(MoeFullMeshCocTimer::PAYLOAD));
             AllToAllDispatch(); // 前面核all2all发送
+            MOE_FULL_MESH_TIMER(cocTimer_.Tok(MoeFullMeshCocTimer::PAYLOAD));
         } else {
+            MOE_FULL_MESH_TIMER(cocTimer_.Tik(MoeFullMeshCocTimer::CNT_CALC));
             CalCumSum(); // 后面核等待并计算cumsum，输出epRecvCnt/exportTokenNums
+            MOE_FULL_MESH_TIMER(cocTimer_.Tok(MoeFullMeshCocTimer::CNT_CALC));
         }
         // localWindowCopy中包含reset操作，需确保前面操作完成
         PipeBarrier<PIPE_ALL>();
+        MOE_FULL_MESH_TIMER(cocTimer_.Tok(MoeFullMeshCocTimer::SEND));
+        MOE_FULL_MESH_TIMER(cocTimer_.Tik(MoeFullMeshCocTimer::RECV_COPY));
         LocalWindowCopy(); // 本卡上专家数据连续化，输出expandX/scales/expandIdx
+        MOE_FULL_MESH_TIMER(cocTimer_.Tok(MoeFullMeshCocTimer::RECV_COPY));
+        MOE_FULL_MESH_TIMER(cocTimer_.Tik(MoeFullMeshCocTimer::TAIL));
+        MOE_FULL_MESH_TIMER(SyncFunc<AscendC::HardEvent::MTE3_S>(); cocTimer_.Tok(MoeFullMeshCocTimer::TAIL));
+        MOE_FULL_MESH_TIMER(cocTimer_.Tok(MoeFullMeshCocTimer::COMM_TOTAL));
+        MOE_FULL_MESH_TIMER(cocTimer_.Tok(MoeFullMeshCocTimer::STAGE));
+        MOE_FULL_MESH_TIMER(cocTimer_.Flush());
     }
 }
 
