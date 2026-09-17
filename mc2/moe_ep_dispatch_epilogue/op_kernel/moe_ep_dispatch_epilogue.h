@@ -309,8 +309,8 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         recvTopkWeightsGm_.SetGlobalBuffer((__gm__ float *)recvTopkWeights);
     }
 
-    rankExpertHitCountGm_.SetGlobalBuffer(
-        reinterpret_cast<__gm__ int32_t *>(workspace + tilingData->rankExpertHitCountOffset));
+    // joint 计数矩阵占本 op 用户 workspace 的最前面一段，所以不需要偏移量，直接绑 workspace 首地址。
+    rankExpertHitCountGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(workspace));
 
     axisKAlign_ = Ceil(axisK_, ELEM_ALIGN) * ELEM_ALIGN;
     metaBytes_ = (META_TOPK_SECTION * axisKAlign_) * (uint32_t)sizeof(int32_t) + UB_ALIGN;
