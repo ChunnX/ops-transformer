@@ -781,9 +781,7 @@ __aicore__ inline uint64_t IncreFlashAttentionAttenPreloadDD<IFAT>::GetQueryOffS
 {
     uint64_t sBase = bIdx * qSeqSize;
     if constexpr (LAYOUT_T == LAYOUT::TND) {
-        if (actualLenQDims != 0) {
-            sBase = bIdx == 0 ? 0 : actualSeqLengthsGmQ.GetValue(bIdx - 1);
-        }
+        sBase = bIdx == 0 ? 0 : actualSeqLengthsGmQ.GetValue(bIdx - 1);
     }
     return (sBase + sIdx) * qHeadNum * headDim + n2Idx * gSize * headDim + gIdx * headDim;
 }
@@ -811,9 +809,7 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::InitAllZeroOutpu
 template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::GetTndActualSeqLenQ(uint32_t bIdx, uint32_t s1Idx)
 {
-    if (actualLenQDims == 0) {
-        curActualSeqLenQ = qSeqSize;
-    } else if (bIdx > 0) {
+    if (bIdx > 0) {
         curActualSeqLenQ = actualSeqLengthsGmQ.GetValue(bIdx) - actualSeqLengthsGmQ.GetValue(bIdx - 1);
     } else if (bIdx == 0) {
         curActualSeqLenQ = actualSeqLengthsGmQ.GetValue(0);
