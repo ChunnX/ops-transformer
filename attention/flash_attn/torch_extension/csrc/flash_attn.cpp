@@ -24,6 +24,25 @@ const int64_t DIM_FOUR = 4;
 const int64_t DIM_FIVE = 5;
 const int64_t MAX_DIM_SIZE = 8;
 
+namespace {
+void CheckLayoutDims(const at::Tensor &tensor, const char *name, const std::string &layout, bool isQuery)
+{
+    int64_t expected = 0;
+    if (layout == "TND") {
+        expected = DIM_THREE;
+    } else if (layout == "BSND" || layout == "BNSD") {
+        expected = DIM_FOUR;
+    } else if (!isQuery && (layout == "PA_BBND" || layout == "PA_BNBD")) {
+        expected = DIM_FOUR;
+    } else if (!isQuery && layout == "PA_NZ") {
+        expected = DIM_FIVE;
+    }
+    TORCH_CHECK(expected != 0, "Unsupported ", name, " layout: ", layout);
+    TORCH_CHECK(tensor.dim() == expected, name, " with layout ", layout, " expects ", expected, " dims, but got ",
+                tensor.dim(), " dims ", tensor.sizes());
+}
+} // namespace
+
 at::Tensor FlashAttnMetadata(const c10::optional<at::Tensor> &cuSeqlensQ, const c10::optional<at::Tensor> &cuSeqlensKv,
                              const c10::optional<at::Tensor> &sequsedQ, const c10::optional<at::Tensor> &sequsedKv,
                              int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim, int64_t headDimV,
@@ -46,6 +65,10 @@ std::tuple<at::Tensor, at::Tensor> FlashAttn(
     int64_t maxSeqlenQ, int64_t maxSeqlenKv, string layoutQ, string layoutKv, string layoutOut,
     int64_t returnSoftmaxLse)
 {
+    CheckLayoutDims(q, "q", layoutQ, true);
+    CheckLayoutDims(k, "k", layoutKv, false);
+    CheckLayoutDims(v, "v", layoutKv, false);
+
     int64_t tSize = 0;
     int64_t nSize = 0;
     int64_t dSize = 0;
@@ -68,8 +91,7 @@ std::tuple<at::Tensor, at::Tensor> FlashAttn(
         sSize = q.size(2);
         dSize = q.size(3);
     }
-    // attention_out 的 D 维取 v 的 head_dim（支持 qk != v）；布局与维度数严格匹配，不匹配回落 qk 维（畸形 shape 由算子
-    // checker 拒绝）
+    // attention_out 的 D 维取 v 的 head_dim（支持 qk != v）。
     int64_t dSizeV = dSize;
     if ((layoutKv == "BSND" || layoutKv == "BNSD") && v.dim() == DIM_FOUR) {
         dSizeV = v.size(DIM_THREE);
