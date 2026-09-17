@@ -227,7 +227,7 @@
     <tr>
         <td>cmpRatio</td>
         <td>属性</td>
-        <td>表示cmpKvOptional相对压缩前KV长度的压缩倍率。</td>
+        <td>表示对oriKvOptional的压缩率。</td>
         <td>INT64</td>
         <td>-</td>
     </tr>
@@ -328,11 +328,6 @@
   - N1：支持1~128。
   - N2：仅支持1。
   - D：仅支持512。
-- 计算场景由cmp_kv、cmp_sparse_indices是否传入决定：
-  - SWA：cmp_kv为空。
-  - CFA：cmp_kv非空且cmp_sparse_indices为空。
-  - SCFA：cmp_kv与cmp_sparse_indices均非空。
-- cmpRatio：CFA/SCFA支持1~128（含1、2）；SWA在A2上支持0~128，在A3上支持1~128。
 
 ## 调用示例
 
