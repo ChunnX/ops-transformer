@@ -696,6 +696,8 @@ ge::graphStatus FFNToAttentionTilingFuncBase(gert::TilingContext *context, const
     uint64_t neededSize = 0;
     uint64_t viableWindowSize = 0;
     CalWinSize(*tilingData, neededSize, viableWindowSize);
+    OP_TILING_CHECK(viableWindowSize == 0, OP_LOGE_FOR_INVALID_VALUE(nodeName, "viableWindowSize", "0", "non-zero"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         neededSize > viableWindowSize,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(

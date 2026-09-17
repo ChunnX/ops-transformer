@@ -15,6 +15,7 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 
 #include "graph/utils/type_utils.h"
 #include "mc2_hcom_topo_info.h"
@@ -396,15 +397,29 @@ mc2tiling::HcclDataType Mc2TilingUtils::GetDataType(ge::DataType type)
 
 uint64_t Mc2TilingUtils::GetMaxWindowSize()
 {
-    uint16_t defaultWindowSize = 200;
-    if (getenv(HCCL_BUFFSIZE) == nullptr) {
+    constexpr uint64_t bytesPerMb = 1024UL * 1024UL;
+    // Callers may double the byte size or convert it to int64_t.
+    constexpr uint64_t maxWindowSizeMb = static_cast<uint64_t>(std::numeric_limits<int64_t>::max()) / bytesPerMb;
+    uint64_t defaultWindowSize = 200;
+    const char *envValue = getenv(HCCL_BUFFSIZE);
+    if (envValue == nullptr) {
         OP_LOGD("", "Env HCCL_BUFFSIZE don't set");
     } else {
         try {
-            std::string envStr(getenv(HCCL_BUFFSIZE));
-            defaultWindowSize = std::stoi(envStr);
+            const std::string envStr(envValue);
+            size_t parsedLength = 0;
+            const int64_t parsedWindowSize = std::stoll(envStr, &parsedLength);
+            if (parsedLength != envStr.size() || parsedWindowSize <= 0 ||
+                static_cast<uint64_t>(parsedWindowSize) > maxWindowSizeMb) {
+                OP_LOGE_FOR_INVALID_VALUE("", HCCL_BUFFSIZE, envValue,
+                                          ("an integer in [1, " + std::to_string(maxWindowSizeMb) + "] MB").c_str());
+                return 0;
+            }
+            defaultWindowSize = static_cast<uint64_t>(parsedWindowSize);
         } catch (...) {
-            OP_LOGE("", "Unknown Exception encountered when parsing env HCCL_BUFFSIZE");
+            OP_LOGE_FOR_INVALID_VALUE("", HCCL_BUFFSIZE, envValue,
+                                      ("an integer in [1, " + std::to_string(maxWindowSizeMb) + "] MB").c_str());
+            return 0;
         }
     }
     const uint64_t maxWindowSize = static_cast<uint64_t>(defaultWindowSize) * 1024UL * 1024UL;

@@ -176,6 +176,7 @@ public:
     static uint32_t GetCommSets(const char *group);
     static ge::graphStatus CommonParamCheck(const gert::TilingContext *context);
     static mc2tiling::HcclDataType GetDataType(ge::DataType type);
+    // Returns the window size in bytes, or 0 if HCCL_BUFFSIZE is invalid.
     static uint64_t GetMaxWindowSize();
     static bool CheckRankSize(NpuArch npuArch, uint32_t rankSize);
     static HcclDataType ConvertGeTypeToHcclType(const std::string &opName, ge::DataType type);
@@ -258,11 +259,16 @@ inline ge::graphStatus GetEpWinSize(const gert::TilingContext *context, const ch
         // A5 暂不支持 Hccl CommGetBufSizeCfg 接口，此处暂作规避
         // A5 实际物理分配为 HCCL_BUFFSIZE 的 2 倍
         hcclBufferSizeEp = mc2tiling::Mc2TilingUtils::GetMaxWindowSize() * 2UL;
+        OP_TILING_CHECK(hcclBufferSizeEp == 0, OP_LOGE_FOR_INVALID_VALUE(nodeName, "hcclBufferSizeEp", "0", "non-zero"),
+                        return ge::GRAPH_FAILED);
         // A5 上前 1MB 作为状态区，剩余空间用作数据区
         maxWindowSizeEp = hcclBufferSizeEp - MTE_STATE_ZONE_SIZE;
     } else {
         if (isLayered) {
             hcclBufferSizeEp = mc2tiling::Mc2TilingUtils::GetMaxWindowSize();
+            OP_TILING_CHECK(hcclBufferSizeEp == 0,
+                            OP_LOGE_FOR_INVALID_VALUE(nodeName, "hcclBufferSizeEp", "0", "non-zero"),
+                            return ge::GRAPH_FAILED);
         } else {
             auto groupEpHccl = attrs->GetAttrPointer<char>(static_cast<int>(attrGroupEpIndex));
             OP_TILING_CHECK(
