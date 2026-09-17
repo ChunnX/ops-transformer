@@ -1,3 +1,12 @@
+#!/usr/bin/env python3
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+
 """TTK TestSpec golden for the ``moe_tutel_combine_x`` operator.
 
 Single source of truth: ``spec/spec.yaml``.  The reference math below is a
@@ -88,7 +97,9 @@ def _moe_tutel_combine_x_fp64(y_grad, gates, indices, locations):
     v3 = l2 < C
     v4 = src >= 0
     v5 = src < EC
-    valid = np.logical_and(np.logical_and(np.logical_and(v1, v2), np.logical_and(v3, v4)), v5)
+    valid = np.logical_and(
+        np.logical_and(np.logical_and(v1, v2), np.logical_and(v3, v4)), v5
+    )
     safe = np.clip(src, 0, EC - 1)
     y2 = y3.reshape(B * EC, H)
     ypad = np.concatenate([y2, np.zeros((1, H), dtype=y2.dtype)], axis=0)
@@ -99,7 +110,9 @@ def _moe_tutel_combine_x_fp64(y_grad, gates, indices, locations):
     # runs in float64; 0 * inf = NaN on a valid row is IEEE-correct, and the
     # np.where else-branch keeps invalid rows at an exact +0.0.
     with np.errstate(invalid="ignore"):
-        x_grad = np.where(valid[:, :, None], g2[:, :, None] * gathered, np.zeros((), dtype=y2.dtype))
+        x_grad = np.where(
+            valid[:, :, None], g2[:, :, None] * gathered, np.zeros((), dtype=y2.dtype)
+        )
     return x_grad.reshape(gates.shape + (H,))
 
 
@@ -160,7 +173,16 @@ class MoeTutelCombineXTorchRef:
     def __init__(self, dim=0, **kwargs):
         self.dim = dim
 
-    def __call__(self, *, y_grad=None, gates=None, indices=None, locations=None, yGrad=None, **kwargs):
+    def __call__(
+        self,
+        *,
+        y_grad=None,
+        gates=None,
+        indices=None,
+        locations=None,
+        yGrad=None,
+        **kwargs,
+    ):
         import torch
 
         y = yGrad if yGrad is not None else y_grad
@@ -177,16 +199,22 @@ class MoeTutelCombineXTorchRef:
         src = i2 * C + l2
         valid = (i2 >= 0) & (l2 >= 0) & (l2 < C) & (src >= 0) & (src < EC)
         # np.clip(src, 0, EC - 1) semantics: minimum(maximum(x, lo), hi).
-        safe = torch.minimum(torch.maximum(src, torch.zeros_like(src)), torch.full_like(src, EC - 1))
+        safe = torch.minimum(
+            torch.maximum(src, torch.zeros_like(src)), torch.full_like(src, EC - 1)
+        )
         y2 = y3.reshape(B * EC, H)
-        ypad = torch.cat((y2, torch.zeros((1, H), dtype=y2.dtype, device=y2.device)), dim=0)
+        ypad = torch.cat(
+            (y2, torch.zeros((1, H), dtype=y2.dtype, device=y2.device)), dim=0
+        )
         flat = torch.arange(B, device=src.device)[:, None] * EC + safe
         # EC == 0 degenerates safe to -1 (lo > hi); route it to the zero pad row
         # so index_select (which rejects negative indices) stays in bounds.
         flat = torch.clamp(flat, min=0)
         gathered = torch.index_select(ypad, self.dim, flat.reshape(-1)).reshape(B, S, H)
         x = g2.unsqueeze(-1) * gathered
-        x = torch.where(valid.unsqueeze(-1), x, torch.zeros((), dtype=y.dtype, device=y.device))
+        x = torch.where(
+            valid.unsqueeze(-1), x, torch.zeros((), dtype=y.dtype, device=y.device)
+        )
         return [x.reshape(tuple(gates.shape) + (H,))]
 
 

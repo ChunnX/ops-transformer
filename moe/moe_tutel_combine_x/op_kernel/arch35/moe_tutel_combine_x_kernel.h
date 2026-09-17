@@ -1,4 +1,14 @@
 /**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/**
  * =============================================================================
  * op_kernel/arch35/moe_tutel_combine_x_kernel.h
  * =============================================================================
@@ -126,8 +136,8 @@ public:
         pipe_.InitBuffer(yBuf_, static_cast<uint32_t>(bufBytes));    // CopyIn y 行段
         pipe_.InitBuffer(xBuf_, static_cast<uint32_t>(bufBytes));    // VF 结果 / CopyOut x 行段
         pipe_.InitBuffer(zeroBuf_, static_cast<uint32_t>(bufBytes)); // 零模板，全 kernel 常驻
-        pipe_.InitBuffer(gateTmp_, 32);                              // 1 元素 T，32B 对齐（16b gate Cast 中转）
-        pipe_.InitBuffer(gateS_, 32);                                // 1 元素 float（16b gate Cast 结果）
+        pipe_.InitBuffer(gateTmp_, 32); // 1 元素 T，32B 对齐（16b gate Cast 中转）
+        pipe_.InitBuffer(gateS_, 32);   // 1 元素 float（16b gate Cast 结果）
         // -- 参数预取（TilingData 字段 -> 寄存器副本）--
         batchSize_ = td->batchSize;
         samples_ = td->samples;
