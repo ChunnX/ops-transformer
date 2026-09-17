@@ -89,7 +89,7 @@ public:
                                       const BasicBlockOffsetParam &offsetParam);
     __aicore__ inline void WeightAntiQuantComputeNzNk(uint64_t kRealSize, const LocalTensor<xType> &weightHighBitL1,
                                                       const BasicBlockOffsetParam &offsetParam);
-    __aicore__ inline void SwiGLU(const LocalTensor<float> &yF32, const BasicBlockOffsetParam &param);
+    __aicore__ inline void Situ(const LocalTensor<float> &yF32, const BasicBlockOffsetParam &param);
     __aicore__ inline void ComputeMaxExp(const LocalTensor<float> &yF32, const BasicBlockOffsetParam &param);
     __aicore__ inline void ComputeScale(const BasicBlockOffsetParam &param);
     __aicore__ inline void ComputeDataForQuantTargetFp8(const LocalTensor<float> &yF32,
@@ -142,7 +142,7 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::Init()
     uint64_t ubOffset = UB_BUFFER_INFO.weightLowbitTotalSize;
 
     weightHighBit_ = LocalTensor<xType>(TPosition::LCM, ubOffset, UB_BUFFER_INFO.weightHighBitTotalSize);
-    // Reuse weightHighBit_ space for SwiGLU + Quant intermediate buffers
+    // Reuse weightHighBit_ space for SiTU + Quant intermediate buffers
     uint64_t reuseOffset = ubOffset;
     gluRes_ = LocalTensor<bfloat16_t>(TPosition::LCM, reuseOffset, UB_BUFFER_INFO.gluResTotalSize);
     reuseOffset += UB_BUFFER_INFO.gluResTotalSize * sizeof(bfloat16_t);
@@ -200,15 +200,15 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::CopyGmToUb(uint64_t ubMte2KSi
         return;
     }
 
-    // swiglu和gate N轴对半切分
-    uint64_t swishNOffset = offsetParam.nOffset * static_cast<uint64_t>(C0_SIZE);
-    uint64_t gateNOffset = (offsetParam.nOffset + offsetParam.nSize / 2) * static_cast<uint64_t>(C0_SIZE);
+    // SiTU splits the N axis into gate and up halves.
+    uint64_t gateNOffset = offsetParam.nOffset * static_cast<uint64_t>(C0_SIZE);
+    uint64_t upNOffset = (offsetParam.nOffset + offsetParam.nSize / 2) * static_cast<uint64_t>(C0_SIZE);
     uint64_t kOffset = (kGmOffset + kL1Offset) * offsetParam.nAlign;
 
     DataCopyPad2D(
         weightLowBit_[(weightMte2LoopIdx_ % vecConfig.ubMte2BufferNum) * UB_BUFFER_INFO.weightLowBitSingleBufferSize]
             .template ReinterpretCast<wType>(),
-        wGlobal_[kOffset + swishNOffset], CeilDivide(ubMte2KSize, static_cast<uint64_t>(C0_SIZE)),
+        wGlobal_[kOffset + gateNOffset], CeilDivide(ubMte2KSize, static_cast<uint64_t>(C0_SIZE)),
         CeilAlign(offsetParam.nL1Size / 2, static_cast<uint64_t>(BLOCK_CUBE)) * C0_SIZE,
         CeilAlign(offsetParam.nL1Size, static_cast<uint64_t>(BLOCK_CUBE)) * C0_SIZE, offsetParam.nAlign * C0_SIZE);
 
@@ -216,7 +216,7 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::CopyGmToUb(uint64_t ubMte2KSi
         weightLowBit_[(weightMte2LoopIdx_ % vecConfig.ubMte2BufferNum) * UB_BUFFER_INFO.weightLowBitSingleBufferSize +
                       (offsetParam.nL1Size / DIVISOR_FACTOR_TWO * C0_SIZE / 2)]
             .template ReinterpretCast<wType>(),
-        wGlobal_[kOffset + gateNOffset], CeilDivide(ubMte2KSize, static_cast<uint64_t>(C0_SIZE)),
+        wGlobal_[kOffset + upNOffset], CeilDivide(ubMte2KSize, static_cast<uint64_t>(C0_SIZE)),
         CeilAlign(offsetParam.nL1Size / 2, static_cast<uint64_t>(BLOCK_CUBE)) * C0_SIZE,
         CeilAlign(offsetParam.nL1Size, static_cast<uint64_t>(BLOCK_CUBE)) * C0_SIZE, offsetParam.nAlign * C0_SIZE);
 
@@ -286,8 +286,8 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::CopyWeightHighBitForAligned(
 }
 
 GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::SwiGLU(const LocalTensor<float> &yF32,
-                                                          const BasicBlockOffsetParam &param)
+__aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::Situ(const LocalTensor<float> &yF32,
+                                                        const BasicBlockOffsetParam &param)
 {
     uint64_t mRealSize = AscendC::GetSubBlockIdx() ? (param.mL1Size - CeilDivide(param.mL1Size, DIVISOR_FACTOR_TWO)) :
                                                      CeilDivide(param.mL1Size, DIVISOR_FACTOR_TWO);
@@ -297,16 +297,16 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::SwiGLU(const LocalTensor<floa
     uint64_t nHalfSize = param.nL1Size / DIVISOR_FACTOR_TWO;
 
     __ubuf__ float *yAddr = (__ubuf__ float *)yF32.GetPhyAddr();
-    __ubuf__ float *gateAddr = yAddr + nHalfSize;
-    __ubuf__ bfloat16_t *gluResAddr = (__ubuf__ bfloat16_t *)gluRes_.GetPhyAddr();
+    __ubuf__ float *upAddr = yAddr + nHalfSize;
+    __ubuf__ bfloat16_t *situResAddr = (__ubuf__ bfloat16_t *)gluRes_.GetPhyAddr();
 
     uint32_t nSrcUbAligned = CeilAlign(static_cast<uint32_t>(param.nL1Size), AscendC::ONE_BLK_SIZE / sizeof(float));
     uint32_t nDstUbAligned = CeilAlign(static_cast<uint32_t>(nHalfSize), AscendC::ONE_BLK_SIZE);
     constexpr uint16_t sizePerRepeat = AscendC::VECTOR_REG_WIDTH / sizeof(float);
     uint16_t oneRowRepeatTimes = CeilDivide(static_cast<uint64_t>(nHalfSize), static_cast<uint64_t>(sizePerRepeat));
 
-    GmmSwigluVf<float>(yAddr, gateAddr, gluResAddr, static_cast<uint16_t>(mRealSize), static_cast<uint16_t>(nHalfSize),
-                       nSrcUbAligned, nDstUbAligned, oneRowRepeatTimes, sizePerRepeat);
+    GmmSituVf<float>(yAddr, upAddr, situResAddr, static_cast<uint16_t>(mRealSize), static_cast<uint16_t>(nHalfSize),
+                     nSrcUbAligned, nDstUbAligned, oneRowRepeatTimes, sizePerRepeat);
 }
 
 GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM

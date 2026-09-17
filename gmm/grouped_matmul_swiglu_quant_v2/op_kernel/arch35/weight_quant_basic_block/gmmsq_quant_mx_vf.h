@@ -10,7 +10,7 @@
 
 /*!
  * \file gmmsq_quant_mx_vf.h
- * \brief SIMD-VF functions for GMM SwiGLU + MX Quantization.
+ * \brief SIMD-VF functions for GMM SiTU + MX Quantization.
  */
 
 #ifndef GMMSQ_QUANT_MX_VF_H
@@ -33,21 +33,23 @@ using AscendC::Reg::AddrReg;
 using AscendC::Reg::MaskReg;
 using AscendC::Reg::RegTensor;
 
-static constexpr AscendC::Reg::DivSpecificMode DIV_MODE = {
-    AscendC::Reg::MaskMergeMode::ZEROING,
-    true,
-};
+static constexpr AscendC::Reg::CastTrait CAST_FP32_TO_BF16 = {AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::SAT,
+                                                              AscendC::Reg::MaskMergeMode::ZEROING,
+                                                              AscendC::RoundMode::CAST_RINT};
 
-static constexpr AscendC::Reg::CastTrait CAST_FP32_TO_BF16 = {
-    AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::NO_SAT, AscendC::Reg::MaskMergeMode::ZEROING,
-    AscendC::RoundMode::CAST_RINT};
+static constexpr AscendC::Reg::CastTrait CAST_BF16_TO_FP32 = {AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::SAT,
+                                                              AscendC::Reg::MaskMergeMode::ZEROING,
+                                                              AscendC::RoundMode::CAST_NONE};
 
 /*!
- * \brief Computes SwiGLU activation using vector instructions.
+ * \brief Computes SiTU activation using vector instructions.
+ * Matches SituAndMulSparse with BF16 input/output and
+ * high_precision=false:
+ * round restored GMM inputs and each activation branch to BF16 before multiplying.
  *
- * \param[in] firstSrc          Swish branch input in UB.
- * \param[in] secondSrc         Gate branch input in UB.
- * \param[in] gluResAddr        Output UB address for SwiGLU result.
+ * \param[in] firstSrc          Gate branch input in UB.
+ * \param[in] secondSrc         Up branch input in UB.
+ * \param[in] situResAddr       Output UB address for SiTU result.
  * \param[in] mSize             M dimension size.
  * \param[in] nSize             N dimension size.
  * \param[in] nSrcUbAligned     Aligned N stride for source UB.
@@ -56,45 +58,74 @@ static constexpr AscendC::Reg::CastTrait CAST_FP32_TO_BF16 = {
  * \param[in] sizePerRepeat     Elements processed per vector repeat.
  */
 template <typename DataTypeIn>
-__simd_vf__ inline void GmmSwigluVf(__ubuf__ DataTypeIn *firstSrc, __ubuf__ DataTypeIn *secondSrc,
-                                    __ubuf__ bfloat16_t *gluResAddr, uint16_t mSize, uint16_t nSize,
-                                    uint32_t nSrcUbAligned, uint32_t nDstUbAligned, uint16_t oneRowRepeatTimes,
-                                    uint16_t sizePerRepeat)
+__simd_vf__ inline void GmmSituVf(__ubuf__ DataTypeIn *firstSrc, __ubuf__ DataTypeIn *secondSrc,
+                                  __ubuf__ bfloat16_t *situResAddr, uint16_t mSize, uint16_t nSize,
+                                  uint32_t nSrcUbAligned, uint32_t nDstUbAligned, uint16_t oneRowRepeatTimes,
+                                  uint16_t sizePerRepeat)
 {
     const float scalarOne = 1.0;
-    const float mulFactor = 64.0; // 64：GMM缩小64倍在此处补齐
+    const float scalarTwo = 2.0;
+    const float situAlpha = 25.0; // linear_beta for the up branch.
+    const float situBeta = 4.0;   // situ_beta for the gate branch.
+    const float neg2OverBeta = -scalarTwo / situBeta;
+    const float negBeta = -situBeta;
+    const float neg2OverAlpha = -scalarTwo / situAlpha;
+    const float negAlpha = -situAlpha;
+    const float mulFactor = 64.0; // GMM output is scaled down by 64 and is restored before activation.
     for (uint16_t mIdx = 0; mIdx < mSize; mIdx++) {
         uint32_t elementNum = nSize;
         for (uint16_t vfBlockIdx = 0; vfBlockIdx < oneRowRepeatTimes; vfBlockIdx++) {
             AscendC::Reg::MaskReg mask = AscendC::Reg::UpdateMask<DataTypeIn>(elementNum);
-            AscendC::Reg::RegTensor<bfloat16_t> verg4;
-            AscendC::Reg::RegTensor<float> swishInput, gateInput;
-            AscendC::Reg::RegTensor<float> verg0, verg1, verg2, verg3, swishOutput;
+            AscendC::Reg::RegTensor<bfloat16_t> situBf16;
+            AscendC::Reg::RegTensor<float> gateInput, upInput;
+            AscendC::Reg::RegTensor<float> tmp, gateBranch, upBranch, situOutput;
 
             uint32_t l0cOutOffset = mIdx * nSrcUbAligned + vfBlockIdx * sizePerRepeat;
 
-            // 1. Load Swish branch
-            AscendC::Reg::LoadAlign(swishInput, firstSrc + l0cOutOffset);
-            Reg::Muls(swishInput, swishInput, mulFactor, mask);
+            AscendC::Reg::LoadAlign(gateInput, firstSrc + l0cOutOffset);
+            AscendC::Reg::Muls(gateInput, gateInput, mulFactor, mask);
+            // Match the standalone operator's BF16 input after restoring the GMM scale.
+            AscendC::Reg::Cast<bfloat16_t, float, CAST_FP32_TO_BF16>(situBf16, gateInput, mask);
+            AscendC::Reg::Cast<float, bfloat16_t, CAST_BF16_TO_FP32>(gateInput, situBf16, mask);
 
-            // 2. Swish: x / (1 + exp(-x))
-            AscendC::Reg::Muls(verg0, swishInput, -(scalarOne), mask);
-            AscendC::Reg::Exp(verg1, verg0, mask);
-            AscendC::Reg::Adds(verg2, verg1, scalarOne, mask);
-            AscendC::Reg::Div<float, &DIV_MODE>(swishOutput, swishInput, verg2, mask);
+            AscendC::Reg::LoadAlign(upInput, secondSrc + l0cOutOffset);
+            AscendC::Reg::Muls(upInput, upInput, mulFactor, mask);
+            AscendC::Reg::Cast<bfloat16_t, float, CAST_FP32_TO_BF16>(situBf16, upInput, mask);
+            AscendC::Reg::Cast<float, bfloat16_t, CAST_BF16_TO_FP32>(upInput, situBf16, mask);
 
-            // 3. Load Gate branch
-            AscendC::Reg::LoadAlign(gateInput, secondSrc + l0cOutOffset);
-            Reg::Muls(gateInput, gateInput, mulFactor, mask);
+            // Use the same default Div mode as SituAndMulSparse.
+            AscendC::Reg::Muls(tmp, gateInput, neg2OverBeta, mask);
+            AscendC::Reg::Exp(tmp, tmp, mask);
+            AscendC::Reg::Adds(tmp, tmp, scalarOne, mask);
+            AscendC::Reg::Duplicate(gateBranch, situBeta, mask);
+            AscendC::Reg::Div(gateBranch, gateBranch, tmp, mask);
+            AscendC::Reg::Muls(gateBranch, gateBranch, scalarTwo, mask);
+            AscendC::Reg::Adds(gateBranch, gateBranch, negBeta, mask);
 
-            // 4. SwiGLU: Swish(x) * gate
-            AscendC::Reg::Mul(verg3, swishOutput, gateInput, mask);
+            AscendC::Reg::Muls(tmp, gateInput, -scalarOne, mask);
+            AscendC::Reg::Exp(tmp, tmp, mask);
+            AscendC::Reg::Adds(tmp, tmp, scalarOne, mask);
+            AscendC::Reg::Div(gateBranch, gateBranch, tmp, mask);
+            // high_precision=false rounds each branch independently before the product.
+            AscendC::Reg::Cast<bfloat16_t, float, CAST_FP32_TO_BF16>(situBf16, gateBranch, mask);
+            AscendC::Reg::Cast<float, bfloat16_t, CAST_BF16_TO_FP32>(gateBranch, situBf16, mask);
 
-            // 5. Cast to BF16 and store
-            AscendC::Reg::Cast<bfloat16_t, float, CAST_FP32_TO_BF16>(verg4, verg3, mask);
+            AscendC::Reg::Muls(tmp, upInput, neg2OverAlpha, mask);
+            AscendC::Reg::Exp(tmp, tmp, mask);
+            AscendC::Reg::Adds(tmp, tmp, scalarOne, mask);
+            AscendC::Reg::Duplicate(upBranch, situAlpha, mask);
+            AscendC::Reg::Div(upBranch, upBranch, tmp, mask);
+            AscendC::Reg::Muls(upBranch, upBranch, scalarTwo, mask);
+            AscendC::Reg::Adds(upBranch, upBranch, negAlpha, mask);
+            AscendC::Reg::Cast<bfloat16_t, float, CAST_FP32_TO_BF16>(situBf16, upBranch, mask);
+            AscendC::Reg::Cast<float, bfloat16_t, CAST_BF16_TO_FP32>(upBranch, situBf16, mask);
+
+            AscendC::Reg::Mul(situOutput, gateBranch, upBranch, mask);
+            AscendC::Reg::Cast<bfloat16_t, float, CAST_FP32_TO_BF16>(situBf16, situOutput, mask);
+
             uint32_t dstUbOffset = mIdx * nDstUbAligned + vfBlockIdx * sizePerRepeat;
-            AscendC::Reg::StoreAlign<bfloat16_t, AscendC::Reg::StoreDist::DIST_PACK_B32>(gluResAddr + dstUbOffset,
-                                                                                         verg4, mask);
+            AscendC::Reg::StoreAlign<bfloat16_t, AscendC::Reg::StoreDist::DIST_PACK_B32>(situResAddr + dstUbOffset,
+                                                                                         situBf16, mask);
         }
     }
 }
