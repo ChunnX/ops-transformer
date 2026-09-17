@@ -399,11 +399,9 @@ ge::graphStatus GroupedMatmulSwigluQuantV3Tiling950::DoLibApiTiling()
     CalBasicBlock();
     basicTiling_.baseM = GroupedMatmul::CeilAlign(std::min(basicTiling_.baseM, static_cast<uint64_t>(128)),
                                                   GmmConstant::CUBE_BLOCK);
-    // CGMCT currently needs one C0 output-half tile for its vector epilogue,
-    // while the Tensor API path is safe with a two-C0 tile.  Keep the limits
-    // independent so a CGMCT workaround does not unnecessarily fragment the
-    // Tensor API path.
-    const uint64_t maxBaseN = useTensorApi_ ? 64U : 32U;
+    // CGMCT reserves two FP32 64x256 input tiles per AIV, allowing a
+    // 256-column output-half tile. Keep the Tensor API's existing UB limit.
+    const uint64_t maxBaseN = useTensorApi_ ? 64U : 256U;
     basicTiling_.baseN = GroupedMatmul::CeilAlign(std::min(basicTiling_.baseN, maxBaseN),
                                                   GmmConstant::CUBE_BLOCK);
     // The common tiler must budget BOTH halves of B/ScaleB and L0C for
@@ -423,13 +421,19 @@ ge::graphStatus GroupedMatmulSwigluQuantV3Tiling950::DoLibApiTiling()
     // the L1 K window, but underestimates the final scale window for cases
     // such as K=160 with a 128-element L1 window.  V3 must also support the
     // CGMCT fallback for these K values, so cover the tail scale groups with
-    // ceil-division before exporting TCubeTiling.
+    // ceil-division before exporting TCubeTiling. For aligned K, retain the
+    // factors selected by CalL1Tiling: expanding them to the full K extent
+    // can exceed the L1 budget, particularly with wider baseN tiles.
     const uint64_t scaleWindowA = static_cast<uint64_t>(basicTiling_.stepKa) * basicTiling_.baseK;
     const uint64_t scaleWindowB = static_cast<uint64_t>(basicTiling_.stepKb) * basicTiling_.baseK;
-    basicTiling_.scaleFactorA = static_cast<uint32_t>(std::max<uint64_t>(1U, GroupedMatmul::CeilDiv(inputParams_.kSize,
-                                                                                                      scaleWindowA)));
-    basicTiling_.scaleFactorB = static_cast<uint32_t>(std::max<uint64_t>(1U, GroupedMatmul::CeilDiv(inputParams_.kSize,
-                                                                                                      scaleWindowB)));
+    if (inputParams_.kSize % scaleWindowA != 0) {
+        basicTiling_.scaleFactorA = static_cast<uint32_t>(
+            std::max<uint64_t>(1U, GroupedMatmul::CeilDiv(inputParams_.kSize, scaleWindowA)));
+    }
+    if (inputParams_.kSize % scaleWindowB != 0) {
+        basicTiling_.scaleFactorB = static_cast<uint32_t>(
+            std::max<uint64_t>(1U, GroupedMatmul::CeilDiv(inputParams_.kSize, scaleWindowB)));
+    }
 
     auto &mm = tilingData_.mmTilingData;
     mm.set_M(inputParams_.mSize);

@@ -644,7 +644,8 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
             AscendC::Reg::Select<uint16_t>(reciprocalValue, special, reciprocalValue, specialMask);
             AscendC::Reg::DataCopy<uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(
                 halfScaleLocalAddr, reciprocalValue, vlForHalfNumber_, mask);
-            remainingScale = remainingScale > vlForHalfNumber_ ? remainingScale - vlForHalfNumber_ : 0;
+            // UpdateMask consumes remainingScale by reference. Subtracting again
+            // would skip scale registers when the tile spans multiple vectors.
         }
     }
 }
