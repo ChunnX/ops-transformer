@@ -18,7 +18,7 @@
  * 当通算耗时不均衡时的进一步配平，见 fit_balance_tiling.h 的 fit-balance 策略。
  *
  * 用法：
- *   统一入口 GetCoreOccupanceFirstTiling()（2026-09-17 §4.21 调用下沉）: op_tiling 只调
+ *   统一入口 GetCoreOccupancyFirstTiling()（2026-09-17 §4.21 调用下沉）: op_tiling 只调
  *   该函数, 内部完成 SWAT matmul tiling → 核数守卫 → 通信切分 → fp4 K 轴修正;
  *   分步接口 GetCommTilingData() 保留供仅需通信切分的调用方使用。
  */
@@ -118,7 +118,7 @@ public:
  * \param[out] scaleTiling  Scale 通道通信切分
  * \return true=成功; false=核数守卫失败(日志已打印具体原因)
  */
-inline bool GetCoreOccupanceFirstTiling(fe::PlatFormInfos *platformInfo, uint64_t m, uint64_t n, uint64_t ka,
+inline bool GetCoreOccupancyFirstTiling(fe::PlatFormInfos *platformInfo, uint64_t m, uint64_t n, uint64_t ka,
                                         bool isFp4, bool hasBias, uint64_t worldSize,
                                         const QuantMatmulPlatformInfo &platform, const char *opName,
                                         QuantMatmulTilingData &mmTiling, CommTilingData &dataTiling,

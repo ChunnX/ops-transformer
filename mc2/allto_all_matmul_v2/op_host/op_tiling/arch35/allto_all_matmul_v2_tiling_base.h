@@ -663,7 +663,7 @@ protected:
         // 通算切分统一入口(§4.21 调用下沉, 2026-09-17): SWAT matmul tiling → 核数守卫 →
         // 核利用率优先通信切分 → MXFP4 K 轴字节数修正, 序列整体下沉于
         // apace/tiling/core_occupancy_first_tiling.h (含每 rank 至少一核的 kernel 死锁守卫)
-        if (!mc2tiling::GetCoreOccupanceFirstTiling(
+        if (!mc2tiling::GetCoreOccupancyFirstTiling(
                 context_->GetPlatformInfo(), m_, n_, ka, x1Dtype == ge::DT_FLOAT4_E2M1, hasBias, worldSize_,
                 quantPlatformInfo_, opName, td->tileQbmmTilingData, td->commTilingData, td->scaleCommTilingData)) {
             return ge::GRAPH_FAILED;
