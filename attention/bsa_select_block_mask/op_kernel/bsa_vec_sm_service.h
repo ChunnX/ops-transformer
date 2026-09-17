@@ -268,11 +268,18 @@ __aicore__ inline void BSAVecSmService<BSAT>::RowMaxCascade(LocalTensor<T> &dstR
 {
     // BlockReduce(vcgmax) 硬件语义：每 repeat 64 元素 → 8 个组内(8:1)结果
     //（对照 PFA FLOAT_VECTOR_SIZE=64 的 Rowsum 级联系数），三级 512→64→8→1
+    // L1 分块：向量指令 repeat 域 8bit(≤255)，rows>16 时 rows*rowStride/64 > 255 溢出——
+    // 按 16 行/段（repeat=128）分块执行，段间 src/dst 区域互斥无依赖、无需 barrier
     constexpr uint32_t VEC = 64;                                        // PFA FLOAT_VECTOR_SIZE
     constexpr uint32_t REDUCE_WIDTH = K_TILE_COLS;                      // 512
+    constexpr uint32_t L1_CHUNK_ROWS = 16;                              // 16*512/64 = 128 ≤ 255
     LocalTensor<T> tmp = tmpBytes.ReinterpretCast<T>();
     const uint32_t l1Elems = rows * (REDUCE_WIDTH / FLOAT_DATA_BLOCK_NUM); // rows×64（L1 输出元素数）
-    AscendC::BlockReduceMax<float, false>(tmp, srcTile, rows * rowStride / VEC, 0, 1, 1, 8);
+    for (uint32_t r = 0; r < rows; r += L1_CHUNK_ROWS) {
+        const uint32_t cnt = BSAMin(L1_CHUNK_ROWS, rows - r);
+        AscendC::BlockReduceMax<float, false>(tmp[r * (REDUCE_WIDTH / FLOAT_DATA_BLOCK_NUM)],
+                                              srcTile[r * rowStride], cnt * rowStride / VEC, 0, 1, 1, 8);
+    }
     AscendC::PipeBarrier<PIPE_V>();
     AscendC::BlockReduceMax<float, false>(tmp[l1Elems], tmp, l1Elems / VEC, 0, 1, 1, 8);
     AscendC::PipeBarrier<PIPE_V>();
@@ -287,9 +294,14 @@ __aicore__ inline void BSAVecSmService<BSAT>::RowSumCascade(LocalTensor<T> &dstR
 {
     constexpr uint32_t VEC = 64;
     constexpr uint32_t REDUCE_WIDTH = K_TILE_COLS; // 512
+    constexpr uint32_t L1_CHUNK_ROWS = 16;         // repeat 域 8bit 限制，同 RowMaxCascade
     LocalTensor<T> tmp = tmpBytes.ReinterpretCast<T>();
     const uint32_t l1Elems = rows * (REDUCE_WIDTH / FLOAT_DATA_BLOCK_NUM); // rows×64
-    AscendC::BlockReduceSum<float, false>(tmp, srcTile, rows * rowStride / VEC, 0, 1, 1, 8);
+    for (uint32_t r = 0; r < rows; r += L1_CHUNK_ROWS) {
+        const uint32_t cnt = BSAMin(L1_CHUNK_ROWS, rows - r);
+        AscendC::BlockReduceSum<float, false>(tmp[r * (REDUCE_WIDTH / FLOAT_DATA_BLOCK_NUM)],
+                                              srcTile[r * rowStride], cnt * rowStride / VEC, 0, 1, 1, 8);
+    }
     AscendC::PipeBarrier<PIPE_V>();
     AscendC::BlockReduceSum<float, false>(tmp[l1Elems], tmp, l1Elems / VEC, 0, 1, 1, 8);
     AscendC::PipeBarrier<PIPE_V>();
@@ -359,9 +371,32 @@ __aicore__ inline uint32_t BSAVecSmService<BSAT>::MergeBands(uint32_t kChunkSize
 
 template <typename BSAT>
 __aicore__ inline void BSAVecSmService<BSAT>::FillPass1Ctx(uint32_t qChunkStart, uint32_t qChunkSize,
-                                                           uint32_t validXBlocks)
+                                                            uint32_t validXBlocks)
 {
-    cachedSliceNum = postPoolOP.GetChunkRowSlices(qChunkStart, qChunkSize, validXBlocks, cachedSlices);
+    PostRowSlice raw[BSA_SM_SLICES_MAX];
+    uint32_t rawNum = postPoolOP.GetChunkRowSlices(qChunkStart, qChunkSize, validXBlocks, raw);
+    // （slice 合并）相邻连续 slice 合并到 ≤MERGED_SLICE_ROWS 行/条：V 链条数减半（每条加宽），
+    // barrier/发射的固定开销减半（元素总量不变、逐行归约语义不变）。finalize 的 unit 循环
+    // （uo += unitRows）天然兼容加宽 slice。片元不连续时保持原样。
+    constexpr uint32_t MERGED_SLICE_ROWS = 32;
+    cachedSliceNum = 0;
+    for (uint32_t i = 0; i < rawNum;) {
+        uint32_t rows = raw[i].rowCount;
+        uint32_t j = i + 1;
+        while (j < rawNum && rows < MERGED_SLICE_ROWS) {
+            const PostRowSlice &a = raw[j - 1];
+            const PostRowSlice &b = raw[j];
+            if (b.chunkRowStart != a.chunkRowStart + a.rowCount ||
+                b.localRowStart != a.localRowStart + a.rowCount || rows + b.rowCount > MERGED_SLICE_ROWS) {
+                break;
+            }
+            rows += b.rowCount;
+            j++;
+        }
+        cachedSlices[cachedSliceNum] = {raw[i].chunkRowStart, raw[i].localRowStart, rows};
+        cachedSliceNum++;
+        i = j;
+    }
     cachedChunkKey = qChunkStart;
     const uint32_t ktiles = (constInfo.yBlocks + K_TILE_COLS - 1) / K_TILE_COLS;
     ctxChunkGlobalTile = (static_cast<uint64_t>(qChunkStart) / Q_CHUNK_SIZE) * ktiles;
@@ -562,7 +597,8 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(uint32
                     // 尾 tile（AR 行归约路径无 L1 输出）：整形 64 列虚宽行布局 + 块配对 Add + BRS 原路径
                     // （行宽 < 128 时虚宽假设跨行错位；整形区 32-63 列残留只流入无效组，无消费方）
                     LocalTensor<T> reshapeDst = groupTmp[0];  // [rows][64]
-                    LocalTensor<T> foldMid = groupTmp[1024];  // [16 行][4 组][8 lane] = 512 float
+                    // 偏移须避开 reshapeDst [rows][64]（rows=32 时占 [0,2048)）
+                    LocalTensor<T> foldMid = groupTmp[2048];  // [16 行][4 组][8 lane] = 512 float
                     AscendC::DataCopy(reshapeDst, tile, {static_cast<uint16_t>(sl.rowCount), 4, 0, 4});
                     AscendC::PipeBarrier<PIPE_ALL>();
                     const uint32_t groupsVirtual = 4; // 64 列虚宽 / 16
