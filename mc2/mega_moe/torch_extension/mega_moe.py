@@ -290,19 +290,21 @@ class _MegaMoeCclBufferSizeParams:
 
     def __call__(self, server_num: int = 0) -> int:
         # Context passes a positive server count only after cross-super topology is confirmed.
+        # comm_alg 已在 SymmBuffer 构造时 resolve（非空直通幂等），此处必须关键字传参：
+        # 位置传参曾把 topk_weights_type 错落到新插入的 combine_comm_mode 位（EZ0024 少算 64B/token）。
         return _get_mega_moe_ccl_buffer_size(
-            self.ep_world_size,
-            self.moe_expert_num,
-            self.num_max_tokens_per_rank,
-            self.num_topk,
-            self.hidden,
-            self.max_recv_token_num,
-            self.dispatch_quant_mode,
-            self.dispatch_quant_out_dtype,
-            self.combine_quant_mode,
-            self.comm_alg,
-            self.topk_weights_type,
-            server_num,
+            ep_world_size=self.ep_world_size,
+            moe_expert_num=self.moe_expert_num,
+            num_max_tokens_per_rank=self.num_max_tokens_per_rank,
+            num_topk=self.num_topk,
+            hidden=self.hidden,
+            max_recv_token_num=self.max_recv_token_num,
+            dispatch_quant_mode=self.dispatch_quant_mode,
+            dispatch_quant_out_dtype=self.dispatch_quant_out_dtype,
+            combine_quant_mode=self.combine_quant_mode,
+            comm_alg=self.comm_alg,
+            topk_weights_type=self.topk_weights_type,
+            server_num=server_num,
         )
 
 
