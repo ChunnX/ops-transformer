@@ -29,7 +29,7 @@ FP8_DATA_RANGE_RIGHT = 5
 
 
 def prepare_fd_params(params, policy="auto"):
-    """Resolve ordinary FD independently of deterministic batch consistency."""
+    """配置普通 FD 模式，与确定性批次一致性模式分别处理。"""
     if policy not in ("auto", "on", "off"):
         raise ValueError("QSMLA_FD must be auto, on or off")
     configured = params.get("fd_mode")
@@ -70,7 +70,7 @@ def _validate_fd_cores(aic_num, aiv_num, heads):
 
 
 class _MetadataRowCosts:
-    """Constant-space prefix costs for the ORI and CMP tile sequences."""
+    """以固定存储空间表示 ORI、CMP 基本块序列的前缀开销。"""
 
     __slots__ = ("ori_blocks", "cmp_blocks", "normal", "ori_discount", "cmp_discount")
 
@@ -98,11 +98,11 @@ class _MetadataRowCosts:
 
 
 def generate_metadata_golden(meta, aic_num=32, aiv_num=None):
-    """Mirror Ascend950 ordinary-FD scheduling in Python; return int32[1024].
+    """用 Python 复现 Ascend950 的普通 FD 调度，返回 int32[1024]。
 
-    Mirrors CalcS1GCache, AssignByBatch/Row/Block, RecordFDInfo and SplitFD.
-    FA/FD storage strides remain 36*9 and 72*8 regardless of requested cores.
-    The first 900 values are defined by the metadata ABI; padding is zeroed.
+    对应 CalcS1GCache、AssignByBatch/Row/Block、RecordFDInfo 和 SplitFD 的调度逻辑。
+    FA/FD 存储区大小固定为 36*9 和 72*8，不随请求核数变化。
+    前 900 个元素由 metadata 接口约定定义，其余填充为零。
     """
     aiv_num = 2 * aic_num if aiv_num is None else aiv_num
     heads = int(meta["num_heads_q"])
@@ -196,7 +196,7 @@ def generate_metadata_golden(meta, aic_num=32, aiv_num=None):
             count = min(count, limit)
         return count
 
-    # Each row stores prefix costs of its ORI tiles followed by CMP tiles.
+    # 每行记录先 ORI 后 CMP 的基本块前缀开销。
     rows, batch_costs, batch_blocks, batch_last = [], [], [], []
     m_cost = 6 * ((heads + 15) // 16)
     for b in range(batch):
@@ -510,8 +510,8 @@ class GeneralizedSFAQuant:
         cmp_s2_size = 0 if cmp_k_fp32 is None else cmp_k_fp32.shape[0]
         reduce_size = self._get_batch_consistency_reduce_size(ori_s2_size, cmp_s2_size)
 
-        # Group branch-local base computations continuously. Each tile retains
-        # its own descale, including the ORI/CMP transition within a block.
+        # 将各分支的基本计算块连续分组；即使同一规约块跨越 ORI/CMP 边界，
+        # 每个基本块仍使用各自的反量化系数。
         tiles = []
         for k_tensor, kv_descale in (
             (ori_k_fp32, self.ori_kv_descale_val),
@@ -2308,7 +2308,7 @@ def generate_cpu_golden(input_data):
 
 
 def prepare_fd_data(data, generate_golden=True):
-    """Rebuild metadata and the numerical reference whenever core counts change."""
+    """核数变化时，重新生成 metadata 和数值参考结果。"""
     params = data["params"]
     if not prepare_fd_params(params):
         raise ValueError("prepare_fd_data requires fd_mode=True")
@@ -2336,7 +2336,7 @@ def prepare_fd_data(data, generate_golden=True):
 
 
 def get_fd_metadata_for_device(data, device):
-    """Feed the same CPU plan used by the FD reference to the compute kernel."""
+    """将 FD 参考计算使用的同一份 CPU 调度方案传给计算内核。"""
     params = data["params"]
     expected = (params["fd_aic_core_num"], params["fd_aiv_core_num"])
     if tuple(data.get("fd_core_config", ())) != expected:

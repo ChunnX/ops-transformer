@@ -182,8 +182,8 @@ class CaseSchema:
                 and bool((lengths < 0).any().item())
             ):
                 raise SchemaError(f"{prefix}_topk_length contains negative values")
-            # Keep overlong values unchanged to exercise the metadata/kernel
-            # truncation to the sparse index width, including after transforms.
+            # 保留超出索引宽度的原始长度，以验证 metadata 和内核的截断行为。
+            # 批次变换后也保留原值。
 
     @staticmethod
     def get_q_lengths(

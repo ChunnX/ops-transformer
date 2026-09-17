@@ -760,8 +760,8 @@ class BatchCaseTransformer:
             )
         old_valid_length = schema.get_q_lengths(input_data, valid_only=True)[0]
         query_axis = 1 if self.layout_q == "BSND" else 0
-        # Added Q rows are valid queries, rather than padding. Reuse a valid
-        # sparse selection together with its top-k length for those rows.
+        # 新增 Q 行都是有效查询，需为其复用已有的有效稀疏索引，
+        # 并同时复制对应的 top-k 长度。
         sparse_templates = {}
         if target_length > old_valid_length:
             for name in (
@@ -982,9 +982,9 @@ class BatchCaseTransformer:
         common_tokens: int,
         derived_extra_tokens: int,
     ) -> ConsistencyCase:
-        """Mode 4: change Q shape while comparing an unchanged common prefix.
+        """模式 4：改变 Q 的形状，并比较保持不变的公共前缀。
 
-        Added valid rows reuse an existing sparse selection, never -1 padding.
+        新增有效行复用已有稀疏索引，不使用 -1 填充。
         """
         valid_lengths = schema.get_q_lengths(self.input_data, valid_only=True)
         if batch_id < 0 or batch_id >= len(valid_lengths):
@@ -1044,7 +1044,7 @@ class BatchCaseTransformer:
 
     @staticmethod
     def _validate_shape_change_sparse_indices(input_data: Dict[str, Any]) -> None:
-        """Reject negative indices in effective sparse selections before NPU calls."""
+        """调用 NPU 前检查有效稀疏索引，拒绝其中的负索引。"""
         adapter = CaseAdapter(input_data)
         axis = 1 if adapter.get_layout_q() == "BSND" else 0
         valid_length = schema.get_q_lengths(input_data, valid_only=True)[0]
