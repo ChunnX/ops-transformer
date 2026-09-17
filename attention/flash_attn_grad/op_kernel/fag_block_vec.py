@@ -289,9 +289,9 @@ def process_sink_partial(
     口径一致），故不需要额外的 GM 搬运。
 
     部分和累加到本 AIV 独占的 UB 累加器 acc[headQ]（dsink_acc_vf，
-    select 精确 lane 定向，V 管道程序序 → 逐位确定）。主循环结束后由
-    调用方把 acc 整行普通 store 到宽输出 dsink 的本 AIV 行，最终求和
-    由 host 侧（torch 扩展）在 kernel 结束后按固定次序完成。
+    select 精确 lane 定向，跨 vreg 段寻址，V 管道程序序 → 逐位确定）。
+    主循环结束后由调用方把 acc 整行普通 store 到槽位区本 AIV 行，
+    post 阶段再由 AIV0 固定次序归约出 dsink。
     rows == 0（尾块里第二个子核无行）时整体跳过，不产生任何写。
     调用方必须保证此时 mm1/mm2 尚未放行给 cube（本块还没被覆写）。
     """
@@ -317,26 +317,6 @@ def process_sink_partial(
         runInfo.rowShift,
     )
     dsink_acc_vf(acc_ub, sink_part_ub, headQ)
-
-
-def process_sink_prime(tensor_slots, tensor_prime, row_ub, aiv_count, n1_size):
-    """dsink 归约前的读侧预热：把每条槽位行读一遍并搬到 scratch。
-
-    实测：SYNCALL 之后 AIV0 第一次读别的 AIV 写下的行可能读到尚未全局
-    可见的值（同一地址第二遍读就是新鲜的）；先做一遍「load + store」的
-    预热再正式归约，可稳定消除该窗口。预热只写 scratch，不回写原槽
-    （避免把 stale 值写回覆盖新鲜数据），语义上无副作用。
-    """
-    nChunks = (n1_size + VECTOR_BASEN - 1) // VECTOR_BASEN
-    for c in pl.range(0, nChunks):
-        w = pl.min(VECTOR_BASEN, n1_size - c * VECTOR_BASEN)
-        for r in pl.range(0, aiv_count):
-            pl.set_validshape(row_ub, [1, w])
-            pl.load(row_ub, tensor_slots, [0, r * n1_size + c * VECTOR_BASEN])
-            pl.system.bar_mte2()
-            pl.set_validshape(row_ub, [1, w])
-            pl.store(tensor_prime, row_ub,
-                     [0, r * n1_size + c * VECTOR_BASEN])
 
 
 def process_sink_reduce(constInfo, tensor_slots, tensor_dsink, acc_ub, row_ub, aiv_count):

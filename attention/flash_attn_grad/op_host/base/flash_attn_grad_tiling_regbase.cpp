@@ -169,16 +169,10 @@ ge::graphStatus FlashAttnGradTilingRegbase::WriteTilingData(const FagParsedInfo 
     tilingData->s2Token = info.s2Token;
     tilingData->totalPerBatchNum = info.totalPerBatchNum;
     // sinks 是否存在只决定 kernel 要不要算 dsink：纯运行期标量分支。
+    // dsink 的槽位区行数 = 实际 AIV 数（workspace 按平台 aivNum 开），与 N1
+    // 无关，故这里不再有行数上限；N1 的上限只在 FagShapeChecker::CheckSinks
+    // 里按 kernel 的 UB 累加器容量校验。
     tilingData->sinkOptional = info.hasSinks ? 1 : 0;
-    // dsink 确定性归约把每个 AIV 的部分和写成宽输出的一行（上限
-    // FAG_DSINK_ROWS=128，与 kernel fag_common.DSINK_ROWS、
-    // torch 扩展 FAG_DSINK_ROWS 一致），host 侧求和。每核 2 个 AIV，
-    // 超上限的平台直接拒绝而不是越界写。
-    OP_CHECK_IF(info.hasSinks && info.aicNum * 2U > 128U,
-                OP_LOGE(context_->GetNodeName(),
-                        "sinks requires 2*aicNum <= 128 (dsink wide-output rows), "
-                        "but aicNum=%u.", info.aicNum),
-                return ge::GRAPH_PARAM_INVALID);
     return ge::GRAPH_SUCCESS;
 }
 

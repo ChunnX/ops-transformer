@@ -82,6 +82,11 @@ constexpr int64_t LAYOUT_NOT_TND = 0;
 constexpr int64_t LAYOUT_TND = 1;
 
 constexpr int64_t MAX_HEAD_DIM = 768;
+// dsink 每 AIV 的 UB 累加器容量（fp32 lane 数）= 支持的 Q head 数上限，
+// 必须与 kernel 的 fag_common.SINK_HEADS_MAX 保持一致。kernel 按 lane 定位
+// head（lane 序号 == head 序号，跨 vreg 段寻址），故 N1 只受这块静态 UB
+// 限制；超限在 host 侧拒绝而不是越界写。
+constexpr int64_t FAG_SINK_HEADS_MAX = 4096;
 
 // ---------------------------------------------------------------------------
 // L2 解析结果。策略层对它只读。
@@ -127,8 +132,9 @@ struct FagParsedInfo {
     bool hasAttenMask = false;
     bool hasSeqused = false;
     // sinks 是否提供。不占 tilingkey：kernel 只在主循环里多一个标量分支，
-    // 命中时按 head 在 UB 里精确累加，行写宽输出由 host 求和
-    // （见 op_kernel/fag_block_vec.py 与 torch_extension/csrc）。
+    // 命中时按 head 在本 AIV 的 UB 累加器里精确累加，循环末尾写成槽位区本
+    // AIV 行，post 阶段由 AIV0 固定次序归约后整行写 dsink
+    // （见 op_kernel/fag_block_vec.py 的 process_sink_partial/reduce）。
     bool hasSinks = false;
 
     // 布局视图参数：把 BSND/BNSD 折叠成同一种四维紧凑视图，使 kernel 只需
@@ -177,8 +183,8 @@ struct FagWorkspacePlan {
     FagWorkspaceSegment dk; // B*S2*N2*D  fp32
     FagWorkspaceSegment dv; // B*S2*N2*Dv fp32
     // dsink 确定性归约的槽位区：aivNum 行 × N1 列 fp32（每 AIV 独占一行
-    // 写部分和），后跟同大的 prime scratch 半边（读侧预热目标，内容是垃圾）。
-    // kernel 用实际 AIV 数索引；放在 dv 段与 128 行对齐垫之后。
+    // 写部分和）。行数 = 实际 AIV 数（launch 的 AIV = usedCube*subblock
+    // ≤ aivNum），与 N1 无关；放在 dv 段与 128 行对齐垫之后。
     FagWorkspaceSegment dsink;
     size_t totalSize = 0;
 };

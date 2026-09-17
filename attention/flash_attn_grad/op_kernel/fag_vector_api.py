@@ -434,20 +434,25 @@ def dsink_acc_vf(acc_ub, sink_part_ub, head_q: pl.DT_INT64):
     无舍入副作用，与「对 GM 的 fp32 atomicAdd」数值完全等价，但完全在
     UB/寄存器内完成（V 管道程序序，逐位确定）。替代原先对 GM 的
     atomicAdd：其落盘与对清零值的可见性都不被 sync_all 保证，实测两类
-    竞态都会丢/错部分和。acc 是本 AIV 独占的 [1, VECTOR_BASEN] fp32，
-    调用方保证 head_q < VECTOR_BASEN（host 校验 N1<=128）。
+    竞态都会丢/错部分和。
+
+    累加器按 vreg 分段寻址：一个 vreg 只有 VF_LANES 个 lane，head_q 落在
+    第 ``head_q // VF_LANES`` 段、段内 lane ``head_q % VF_LANES``。调用方
+    保证 head_q < n1Size，并按 SINK_HEADS_MAX 开累加器、按 ceil(N1/VF_LANES)
+    清零，故 N1 只受 UB 容量限制，没有 64/128 的 lane 上限。
     """
     pregFull = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
     # 广播本 task 的标量部分和（sink_part lane 0）
     vregS = vf.load_align(sink_part_ub, 0, dist=pl.LoadDist.BRC_B32)
-    # one-hot：lane 序号 == head_q
+    # one-hot：段内 lane 序号 == head_q % VF_LANES
     vregLane = vf.arange(0, dtype=pl.DT_FP32)
-    vregH = vf.full(head_q, dtype=pl.DT_FP32)
+    vregH = vf.full(head_q % VF_LANES, dtype=pl.DT_FP32)
     pregHot = vf.eq(vregLane, vregH, pregFull)
-    vregAcc = vf.load_align(acc_ub, 0)
+    segOff = (head_q // VF_LANES) * VF_LANES
+    vregAcc = vf.load_align(acc_ub, segOff)
     vregSum = vf.add(vregAcc, vregS, pregFull)
     vregNew = vf.select(vregSum, vregAcc, pregHot)
-    vf.store_align(acc_ub, vregNew, pregFull)
+    vf.store_align(acc_ub + segOff, vregNew, pregFull)
 
 
 # ---- dsink 归约：AIV0 按固定次序把各 AIV 的部分和行累加 ----

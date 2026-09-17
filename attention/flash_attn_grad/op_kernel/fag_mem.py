@@ -47,6 +47,7 @@ from fag_common import (
     D_PHYS_W,
     HEAD_DIM_ALIGN,
     NZP_ROWS,
+    SINK_HEADS_MAX,
     VECTOR_BASEM,
     VECTOR_BASEN,
 )
@@ -365,12 +366,13 @@ def _build_ub(width, pool):
     nzp = main.buf("nzp", NZP_ROWS * VECTOR_BASEN * 2)
     sfmg = main.buf("sfmg", _UB_ROW_SLOT, align=_UB_ROW_SLOT)
     lse = main.buf("lse", _UB_ROW_SLOT, slots=2)
-    # sink 反向（dsink）专用：本任务的部分和，[1,1] 取 lane 0 后原子加到
-    # 段，随即被 dsink_acc_vf 累加进本 AIV 的 UB 累加器 acc[headQ]。
+    # sink 反向（dsink）专用：本任务的部分和，只写 [1,1] 的 lane 0，随即被
+    # dsink_acc_vf 累加进本 AIV 的 UB 累加器 acc[headQ]。
     sink_part = main.buf("sink_part", _UB_ROW_SLOT, align=_UB_ROW_SLOT)
-    # dsink 的 fp32 UB 累加器，[1, VECTOR_BASEN]（主循环内按 lane 累加）。
+    # dsink 的 fp32 UB 累加器，容量 [SINK_HEADS_MAX]（主循环内按 lane 累加，
+    # head 序号即 lane 序号，跨 vreg 段寻址见 dsink_acc_vf）。
     # 与 sink_part 同在主图，但归约发生在末尾 sync_all 之后，时间上不冲突。
-    sink_red = main.buf("sink_red", _UB_ROW_SLOT, align=_UB_ROW_SLOT)
+    sink_red = main.buf("sink_red", SINK_HEADS_MAX * 4, align=_UB_ROW_SLOT)
     cast = main.buf("cast", VECTOR_BASEM * VECTOR_BASEN * 2)
 
     shared = _Arena("UB mm1/mm2", _UB_BYTES, pool, base=UB_HEAD_RESERVE)
