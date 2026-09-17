@@ -13,16 +13,6 @@ import torch
 from torch.library import impl
 from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
-
-class QuantMode(IntEnum):
-    A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL = 1
-
-
-class CacheMode(IntEnum):
-    LINEAR_BUFFER = 1
-    RING_BUFFER = 2
-
-
 class QuantCompressorOpBuilder(OpBuilder):
     def __init__(self):
         super(QuantCompressorOpBuilder, self).__init__(
@@ -69,7 +59,7 @@ class QuantCompressorOpBuilder(OpBuilder):
             seqused=None,
             start_pos=None,
             coff=1,
-            cache_mode=CacheMode.LINEAR_BUFFER,
+            cache_mode=1,
         ):
             d = wkv.size(0) // coff
             if x.dim() == 3:
@@ -97,7 +87,7 @@ def quant_compressor(
     wgate: torch.Tensor,
     state_cache: torch.Tensor,
     ape: torch.Tensor,
-    quant_mode: QuantMode,
+    quant_mode: int = 1,
     cmp_ratio: int,
     *,
     x_descale: Optional[torch.Tensor] = None,
@@ -108,7 +98,7 @@ def quant_compressor(
     seqused: Optional[torch.Tensor] = None,
     start_pos: Optional[torch.Tensor] = None,
     coff: Optional[int] = 1,
-    cache_mode: CacheMode = CacheMode.LINEAR_BUFFER,
+    cache_mode: Optional[int] = 1,
 ) -> torch.tensor:
     """
     dispatcher implementation for NPU.
@@ -134,6 +124,3 @@ def quant_compressor(
         cache_mode,
     )
 
-
-quant_compressor.QuantMode = QuantMode
-quant_compressor.CacheMode = CacheMode
