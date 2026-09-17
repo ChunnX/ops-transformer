@@ -99,18 +99,14 @@ __aicore__ inline void GMMSwigluQuantPipelineSchedule<mmType>::Process()
          workspaceSplitLoopIdx++) {
         // 更新workspaceSplitConfig
         UpdateWorkSpaceSplitConfig(workspaceSplitConfig, workspaceSplitLoopIdx);
-        if ASCEND_IS_AIV {
-            pipe->Reset();
-        }
 
-        SyncAll<false>();
-        // 2.第n次中处理 && 第n-1次后处理 并行
+        // 循环尾部 SyncAll 确保了 ping-pong 跨核同步，
+        // UpdateWorkSpaceSplitConfig 和 midProcess 不存在跨核依赖
+        // 2. 第 n 次中处理和第 n-1 次后处理并行
         midProcess.Process(workspaceSplitConfig, workspaceSplitLoopIdx);
 
-        if ASCEND_IS_AIV {
-            pipe->Reset();
-            SyncAll<true>();
-        }
+        // midProcess 和 postProcess 无跨核依赖: AIC 写 mmOutGM[n%2], AIV 读 mmOutGM[(n-1)%2], 分属不同 ping-pong buffer,
+        // 且 MM(n-1) 的完成已由上一轮循环尾的 SyncAll<false> 屏障保证
         postProcess.Process(tempWorkspaceSplitConfig, workspaceSplitLoopIdx - 1, pipe);
         // 3.第n-1次后处理需要保留第n次的切分数据
         tempWorkspaceSplitConfig = workspaceSplitConfig;
