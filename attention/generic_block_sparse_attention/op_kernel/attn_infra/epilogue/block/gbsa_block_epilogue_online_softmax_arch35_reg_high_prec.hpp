@@ -305,9 +305,11 @@ private:
         RegTensor<ElementOutput> pVreg;
         RegTensor<ElementOutput> pTmpVreg;
         UnalignReg expSumUreg;
-        MaskReg pregTail = UpdateMask<float>(tailN);
+        uint32_t tailMaskCount = tailN;
+        uint32_t outputMaskCount = tailN;
+        MaskReg pregTail = UpdateMask<float>(tailMaskCount);
         MaskReg pregFloatFull = CreateMask<float, MaskPattern::ALL>();
-        MaskReg pregOutput = UpdateMask<ElementOutput>(tailN);
+        MaskReg pregOutput = UpdateMask<ElementOutput>(outputMaskCount);
 
         for (uint16_t i = 0; i < m; ++i) {
             LoadAlign<float, LoadDist::DIST_BRC_B32>(maxVreg, nowMaxUb + i);
@@ -342,10 +344,11 @@ private:
         RegTensor<ElementOutput> pVreg;
         RegTensor<ElementOutput> pTmpVreg;
         UnalignReg expSumUreg;
+        uint32_t tailMaskCount = tailN;
+        uint32_t outputMaskCount = FLOAT_VECTOR_SIZE + tailN;
         MaskReg pregFull = CreateMask<float, MaskPattern::ALL>();
-        MaskReg pregTail = UpdateMask<float>(tailN);
-        uint32_t outputN = FLOAT_VECTOR_SIZE + tailN;
-        MaskReg pregOutput = UpdateMask<ElementOutput>(outputN);
+        MaskReg pregTail = UpdateMask<float>(tailMaskCount);
+        MaskReg pregOutput = UpdateMask<ElementOutput>(outputMaskCount);
 
         for (uint16_t i = 0; i < m; ++i) {
             LoadAlign<float, LoadDist::DIST_BRC_B32>(maxVreg, nowMaxUb + i);
