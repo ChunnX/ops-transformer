@@ -531,7 +531,7 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckShapeForGrouplist(const ge
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
     const int64_t *groupListTypePtr = attrs->GetAttrPointer<int64_t>(GMM_INDEX_ATTR_GROUP_LIST_TYPE);
     OP_CHECK_NULL_WITH_CONTEXT(context, groupListTypePtr);
-    const size_t expectedDimNum = (*groupListTypePtr == GROUP_LIST_SPARSE) ? GROUP_LIST_SPARSE_DIM_NUM : 1UL;
+    const size_t expectedDimNum = (*groupListTypePtr == GROUP_LIST_SPARSE) ? GROUP_LIST_SPARSE_DIM_NUM : 1;
     OP_CHECK_IF(groupListShape->GetDimNum() != expectedDimNum,
                 OP_LOGE(context->GetNodeName(),
                         "When groupListType is [%ld], the groupList dim num should be [%zu], "
