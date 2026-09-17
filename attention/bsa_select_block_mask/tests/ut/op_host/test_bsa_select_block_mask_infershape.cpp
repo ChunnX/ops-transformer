@@ -1,5 +1,6 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -35,9 +36,9 @@ protected:
 // ============================================================================
 TEST_F(BSASelectBlockMaskInferShapeTest, infershape_bnsd_layout)
 {
-    int64_t b = 2, n = 8, s = 256, s_kv = 128, d = 128;
-    int64_t blockShapeX = 64;
-    int64_t blockShapeY = 128;
+    int64_t b = 2, n = 8, s = 250, s_kv = 129, d = 128;
+    int64_t blockShapeX = 128;
+    int64_t blockShapeY = 64;
     int64_t blockShapeArr[2] = {blockShapeX, blockShapeY};
 
     gert::InfershapeContextPara infershapeContextPara(
@@ -80,17 +81,17 @@ TEST_F(BSASelectBlockMaskInferShapeTest, infershape_bnsd_layout)
 // ============================================================================
 TEST_F(BSASelectBlockMaskInferShapeTest, infershape_tnd_layout)
 {
-    // 2 个 batch：query 长度 [600, 1024]，kv 长度 [2048, 1536]
+    // 2 个 batch：query 长度 [600, 1025]，kv 长度 [2049, 1536]
     int64_t n = 8, d = 128;
     int64_t batch = 2;
-    int64_t maxQSeqlen = 1024;
-    int64_t maxKvSeqlen = 2048;
-    int64_t totalQ = 600 + 1024;   // 1624，若误用 total 会得到 ceil(1624/256)=7
-    int64_t totalKv = 2048 + 1536; // 3584，若误用 total 会得到 ceil(3584/256)=14
-    int64_t blockShapeX = 256, blockShapeY = 256;
+    int64_t maxQSeqlen = 1025;
+    int64_t maxKvSeqlen = 2049;
+    int64_t totalQ = 600 + 1025;
+    int64_t totalKv = 2049 + 1536;
+    int64_t blockShapeX = 128, blockShapeY = 64;
     int64_t blockShapeArr[2] = {blockShapeX, blockShapeY};
-    int64_t seqLensQ[2] = {600, 1024};
-    int64_t seqLensKv[2] = {2048, 1536};
+    int64_t seqLensQ[2] = {600, 1025};
+    int64_t seqLensKv[2] = {2049, 1536};
 
     gert::InfershapeContextPara infershapeContextPara(
         "BSASelectBlockMask",
@@ -129,9 +130,9 @@ TEST_F(BSASelectBlockMaskInferShapeTest, infershape_tnd_layout)
 // ============================================================================
 TEST_F(BSASelectBlockMaskInferShapeTest, infershape_bf16_dtype)
 {
-    int64_t b = 1, n = 4, s = 512, s_kv = 512, d = 128;
-    int64_t blockShapeX = 256;
-    int64_t blockShapeY = 256;
+    int64_t b = 1, n = 4, s = 513, s_kv = 514, d = 128;
+    int64_t blockShapeX = 128;
+    int64_t blockShapeY = 64;
     int64_t blockShapeArr[2] = {blockShapeX, blockShapeY};
 
     gert::InfershapeContextPara infershapeContextPara(
