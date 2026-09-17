@@ -156,6 +156,24 @@ void TestContracts()
     test.ctx.inputs[1] = &empty; // GE's representation of an absent optional input.
     Require(test.Run("BSND") == 0, "AICPU rejected absent-input placeholder");
     test.ctx.inputs[1] = nullptr;
+    // ACLNN preserves an absent optional input as a Tensor with a null data
+    // address and no shape dimensions. NumElements() is 1 for that shape.
+    aicpu::Tensor absentOptional({}, nullptr), explicitScalar({}, values);
+    Require(absentOptional.NumElements() == 1, "absent scalar-shaped placeholder was not exercised");
+    for (const char *layout : {"BSND", "BNSD"}) {
+        for (const uint32_t inputIndex : {1U, 3U}) {
+            test.ctx.inputs[inputIndex] = &absentOptional;
+            Require(test.Run(layout) == 0, "AICPU rejected ACLNN null-data optional placeholder");
+            test.ctx.inputs[inputIndex] = &explicitScalar;
+            Require(test.Run(layout) != 0, "AICPU accepted explicit scalar Q lengths");
+            test.ctx.inputs[inputIndex] = nullptr;
+        }
+        test.ctx.inputs[1] = &absentOptional;
+        test.ctx.inputs[3] = &absentOptional;
+        Require(test.Run(layout) == 0, "AICPU rejected both absent Q length inputs");
+        test.ctx.inputs[1] = nullptr;
+        test.ctx.inputs[3] = nullptr;
+    }
     test.sparse.shape.dims = {2, 3, 3};
     Require(test.Host("BSND") != 0 && test.Run("BSND") != 0, "head mismatch accepted");
     test.sparse.shape.dims = {3, 4, 3};
