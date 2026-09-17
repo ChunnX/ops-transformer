@@ -170,9 +170,13 @@ protected:
     static constexpr uint32_t INPUT_LAYOUT = BSA_TYPE::input_layout;
     using TILING_CLASS = typename BSA_TYPE::tiling_class;
     static constexpr bool DETERMINISTIC_ENABLE = BSA_TYPE::deterministic_enable;
+    // 是否走 host 预生成的 block index workspace 遍历（NonZero 优化路径）
+    static constexpr bool INDEX_ENABLE = BSA_TYPE::index_enable;
     GM_ADDR actualQseqlen_;
     GM_ADDR actualKvseqlen_;
     GM_ADDR blockSparseMask_;
+    GM_ADDR indexWorkspace_;
+    GM_ADDR indexShapeWorkspace_;
     int32_t batch_num_;
     int32_t q_seq_len_;
     int32_t kv_seq_len_;
@@ -209,10 +213,16 @@ protected:
     uint32_t dkv_group_open_{0};
     SingleBlock single_block_;
     ConstInfo const_info_;
+    uint64_t mask64_arr_[2];
+    uint32_t start_one_pos_;
+    uint64_t loop_num_{0};
+    int32_t block_global_idx{0};
+    int32_t block_local_idx{0};
+    uint64_t vaild_block_num{0};
 
 public:
     __aicore__ inline void Init(const TILING_CLASS *tilingData, GM_ADDR actualQseqlen, GM_ADDR actualKvseqlen,
-                                GM_ADDR blockSparseMask)
+                                GM_ADDR blockSparseMask, GM_ADDR workspace)
     {
         this->batch_num_ = tilingData->batchNum;
         this->q_seq_len_ = tilingData->qSeqLen;
@@ -225,12 +235,13 @@ public:
         this->actualQseqlen_ = actualQseqlen;
         this->actualKvseqlen_ = actualKvseqlen;
         this->blockSparseMask_ = blockSparseMask;
+        this->indexWorkspace_ = workspace + tilingData->indexWorkspaceOffset;
+        this->indexShapeWorkspace_ = workspace + tilingData->indexShapeWorkspaceOffset;
         this->block_x_ = tilingData->BlockX;
         this->block_y_ = tilingData->BlockY;
         this->base_m_ = tilingData->baseM;
         this->base_n_ = tilingData->baseN;
         this->single_m_ = tilingData->singleM;
-        single_block_.SetBaseBlock(this->base_m_);
         if constexpr (INPUT_LAYOUT == TND) {
             UpdateSeqLen();
             max_q_seq_len_ = 0;
@@ -265,6 +276,7 @@ public:
         const_info_.head_dim = head_dim_;
         const_info_.q_block_num = q_block_num_;
         const_info_.kv_block_num = kv_block_num_;
+        single_block_.SetBaseBlock(this->base_m_);
         if ASCEND_IS_AIC {
             this->cube_core_idx_ = GetBlockIdx();
         }
@@ -278,10 +290,31 @@ public:
         return deter_max_round_;
     }
 
+    __aicore__ void unravel_index(int32_t flat_index, int32_t &b, int32_t &n, int32_t &x, int32_t &y)
+    {
+        // 计算步长
+        int stride_x = kv_block_num_;
+        int stride_n = kv_block_num_ * q_block_num_;
+        int stride_b = kv_block_num_ * q_block_num_ * q_head_num_;
+
+        // 还原各个维度下标
+        b = flat_index / stride_b;
+        int32_t remaining = flat_index % stride_b;
+
+        n = remaining / stride_n;
+        remaining = remaining % stride_n;
+        x = remaining / stride_x;
+        y = remaining % stride_x;
+    }
+
     __aicore__ inline void GetRunTimeInfo(RunTimeInfo &runTimeInfo)
     {
         if constexpr (DETERMINISTIC_ENABLE) {
             GetRunTimeInfoDeter(runTimeInfo);
+            return;
+        }
+        if constexpr (INDEX_ENABLE) {
+            GetRunTimeInfoByIndex(runTimeInfo);
             return;
         }
         runTimeInfo.need_compute = 0;
@@ -311,6 +344,38 @@ public:
                 break;
             }
         }
+    }
+
+protected:
+    // NonZero 优化路径：按 host 预生成的 block index workspace 顺序取任务
+    __aicore__ inline void GetRunTimeInfoByIndex(RunTimeInfo &runTimeInfo)
+    {
+        runTimeInfo.need_compute = 0;
+        int32_t single_block_num = 16;
+        if (loop_num_ == 0) {
+            this->vaild_block_num = ((__gm__ uint64_t *)indexShapeWorkspace_)[2];
+            block_global_idx = cube_core_idx_;
+            block_local_idx = 0;
+        } else {
+            if (block_local_idx % single_block_num == 0) {
+                block_global_idx += cube_core_num_;
+                block_local_idx = 0;
+            }
+        }
+        int64_t index_worksapce_offset = block_global_idx * single_block_num + block_local_idx;
+
+        if (index_worksapce_offset >= vaild_block_num) {
+            return;
+        }
+        int32_t block_sparse_idx = ((__gm__ int32_t *)indexWorkspace_)[index_worksapce_offset];
+        unravel_index(block_sparse_idx, bIdx_, n1Idx_, s2Idx_, s1Idx_);
+        s1Idx_ *= base_m_;
+        s2Idx_ *= base_n_;
+        int32_t s1_len = GetBlockLen(s1Idx_, cur_q_seq_len_, base_m_);
+        int32_t s2_len = GetBlockLen(s2Idx_, cur_kv_seq_len_, base_n_);
+        RunTimeInfoRecord(runTimeInfo, s1Idx_, s2Idx_, s1_len, s2_len);
+        loop_num_++;
+        block_local_idx++;
     }
 
 protected:
@@ -402,35 +467,24 @@ private:
     __aicore__ inline void RunTimeInfoRecord(RunTimeInfo &runTimeInfo, int32_t vaild_s1_idx, int32_t vaild_s2_idx,
                                              int32_t vaild_s1_len, int32_t vaild_s2_len)
     {
-        if (current_cube_idx_ % cube_core_num_ != cube_core_idx_) {
-            current_cube_idx_++;
-            return;
-        }
-        int32_t base_s1_idx;
-        int32_t base_s1_len;
-        single_block_.Reset(const_info_, blockSparseMask_, bIdx_, n1Idx_, vaild_s1_idx, vaild_s2_idx, vaild_s1_len,
-                            base_s1_idx, base_s1_len);
         int32_t n2Idx = n1Idx_ / q_group_;
-
         runTimeInfo.bIdx = bIdx_;
         runTimeInfo.last_q_seq_sum = last_q_seq_sum_;
-        runTimeInfo.last_kv_seq_sum = last_kv_seq_sum_;
         runTimeInfo.cur_q_seq_len = cur_q_seq_len_;
-        runTimeInfo.cur_kv_seq_len = cur_kv_seq_len_;
-        runTimeInfo.s1Idx = base_s1_idx;
+        runTimeInfo.s1Idx = vaild_s1_idx;
         runTimeInfo.s2Idx = vaild_s2_idx;
         runTimeInfo.n1Idx = n1Idx_;
         runTimeInfo.n2Idx = n2Idx;
-        runTimeInfo.s1Len = base_s1_len;
+        runTimeInfo.s1Len = vaild_s1_len;
         runTimeInfo.s2Len = vaild_s2_len;
-        runTimeInfo.s1LenAlign = RoundUp(base_s1_len, 16);
+        runTimeInfo.s1LenAlign = RoundUp(vaild_s1_len, 16);
         runTimeInfo.s2LenAlign = RoundUp(vaild_s2_len, 16);
         runTimeInfo.queryGmOffset =
             GetQKVGmOffset<INPUT_LAYOUT>(runTimeInfo.last_q_seq_sum, runTimeInfo.cur_q_seq_len, q_head_num_, head_dim_,
                                          runTimeInfo.bIdx, runTimeInfo.s1Idx, runTimeInfo.n1Idx);
         runTimeInfo.keyGmOffset =
-            GetQKVGmOffset<INPUT_LAYOUT>(runTimeInfo.last_kv_seq_sum, runTimeInfo.cur_kv_seq_len, kv_head_num_,
-                                         head_dim_, runTimeInfo.bIdx, runTimeInfo.s2Idx, runTimeInfo.n2Idx);
+            GetQKVGmOffset<INPUT_LAYOUT>(last_kv_seq_sum_, cur_kv_seq_len_, kv_head_num_, head_dim_, runTimeInfo.bIdx,
+                                         runTimeInfo.s2Idx, runTimeInfo.n2Idx);
         runTimeInfo.lseGmOffset =
             GetLseGmOffset<INPUT_LAYOUT>(runTimeInfo.last_q_seq_sum, runTimeInfo.cur_q_seq_len, q_head_num_,
                                          runTimeInfo.bIdx, runTimeInfo.s1Idx, runTimeInfo.n1Idx);
@@ -438,12 +492,6 @@ private:
             GetSftgGmOffset<INPUT_LAYOUT>(runTimeInfo.last_q_seq_sum, runTimeInfo.cur_q_seq_len, q_head_num_,
                                           runTimeInfo.bIdx, runTimeInfo.s1Idx, runTimeInfo.n1Idx);
         runTimeInfo.need_compute = 1;
-        runTimeInfo.need_copy_kv = 1;
-        runTimeInfo.kv_ping_pong_idx = kv_ping_pong_idx_;
-        runTimeInfo.is_singlekv_last = single_block_.IsFinish();
-        single_block_.RecordRunTimeInfo(runTimeInfo);
-        kv_ping_pong_idx_ = 1 - kv_ping_pong_idx_;
-        current_cube_idx_++;
     }
 
     __aicore__ inline uint32_t CalcDeterMaxRound()

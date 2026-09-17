@@ -16,12 +16,15 @@ using namespace AscendC;
 
 namespace BSA_ARC35 {
 
-template <typename INPUT_TYPE, uint32_t INPUT_LAYOUT, class TILING_CLASS, bool DETERMINISTIC_ENABLE>
+template <typename INPUT_TYPE, uint32_t INPUT_LAYOUT, class TILING_CLASS, bool DETERMINISTIC_ENABLE,
+          bool INDEX_ENABLE = false>
 struct BSA_TYPE {
     using input_type = INPUT_TYPE;
     static constexpr uint32_t input_layout = INPUT_LAYOUT;
     using tiling_class = TILING_CLASS;
     static constexpr bool deterministic_enable = DETERMINISTIC_ENABLE;
+    // 是否使用 host 预生成的 block index workspace 遍历（NonZero 优化路径）
+    static constexpr bool index_enable = INDEX_ENABLE;
 };
 
 template <typename BSA_TYPE>
@@ -32,7 +35,6 @@ class BlockSparseAttentionGradArch35 {
     static constexpr bool DETERMINISTIC_ENABLE = BSA_TYPE::deterministic_enable;
 
 private:
-    RunTimeInfo runTimeInfo_[2];
     AddrComputeModule<BSA_TYPE> addr_;
     GlobalTensor<INPUT_TYPE> query_gm_, key_gm_, val_gm_, dout_gm_, attention_out_gm_;
     GlobalTensor<INPUT_TYPE> dq_gm_, dk_gm_, dv_gm_;
@@ -50,6 +52,7 @@ private:
     uint32_t last_ping_pong_idx = 0;
     uint32_t ub_offset_ = 0;
     uint32_t l1_offset_ = 0;
+    uint32_t kv_ping_pong_idx_ = 0;
     static constexpr int32_t UB_SIZE = 247 * 1024;
     static constexpr int32_t L1_SIZE = 512 * 1024;
 
@@ -79,15 +82,15 @@ public:
         dk_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dkWorkspaceOffset));
         dv_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dvWorkspaceOffset));
         sftg_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->sftgWorkspaceOffset));
-        addr_.Init(tilingData, actualQseqlen, actualKvseqlen, blockSparseMask);
+        addr_.Init(tilingData, actualQseqlen, actualKvseqlen, blockSparseMask, workspace);
         tPipe->InitBuffer(ub_buffer_, UB_SIZE);
         tPipe->InitBuffer(l1_buffer_, L1_SIZE);
         // ub_buffer [base_m * base_n * sizeof(float) * 2]
         mm1_res_ub_tensor_ping_ = ub_buffer_.GetWithOffset<float>(vec_base_m * vec_base_n, ub_offset_);
         ub_offset_ += vec_base_m * vec_base_n * sizeof(float);
-        mm1_res_ub_tensor_pong_ = ub_buffer_.GetWithOffset<float>(vec_base_m * vec_base_n, ub_offset_);
-        ub_offset_ += vec_base_m * vec_base_n * sizeof(float);
         mm2_res_ub_tensor_ping_ = ub_buffer_.GetWithOffset<float>(vec_base_m * vec_base_n, ub_offset_);
+        ub_offset_ += vec_base_m * vec_base_n * sizeof(float);
+        mm1_res_ub_tensor_pong_ = ub_buffer_.GetWithOffset<float>(vec_base_m * vec_base_n, ub_offset_);
         ub_offset_ += vec_base_m * vec_base_n * sizeof(float);
         mm2_res_ub_tensor_pong_ = ub_buffer_.GetWithOffset<float>(vec_base_m * vec_base_n, ub_offset_);
         ub_offset_ += vec_base_m * vec_base_n * sizeof(float);
@@ -111,6 +114,30 @@ public:
         }
     }
 
+    __aicore__ inline void kv_reuse_check(RunTimeInfo &lastRunTimeInfo, RunTimeInfo &runTimeInfo,
+                                          RunTimeInfo &nextRunTimeInfo, bool first)
+    {
+        if (nextRunTimeInfo.need_compute == 0) {
+            runTimeInfo.is_kv_end = true;
+        } else {
+            runTimeInfo.is_kv_end = runTimeInfo.keyGmOffset != nextRunTimeInfo.keyGmOffset;
+        }
+
+        if (unlikely(first)) {
+            runTimeInfo.is_kv_change = true;
+            runTimeInfo.kv_ping_pong_idx = kv_ping_pong_idx_;
+            kv_ping_pong_idx_ = (kv_ping_pong_idx_ + 1) % 3;
+        }
+
+        nextRunTimeInfo.is_kv_change = nextRunTimeInfo.keyGmOffset != runTimeInfo.keyGmOffset;
+        if (nextRunTimeInfo.is_kv_change) {
+            nextRunTimeInfo.kv_ping_pong_idx = kv_ping_pong_idx_;
+            kv_ping_pong_idx_ = (kv_ping_pong_idx_ + 1) % 3;
+        } else {
+            nextRunTimeInfo.kv_ping_pong_idx = runTimeInfo.kv_ping_pong_idx;
+        }
+    }
+
     __aicore__ inline void CubeProcess(GM_ADDR dout, GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR attention_out,
                                        GM_ADDR softmaxLse, GM_ADDR blockSparseMask, GM_ADDR blockShape,
                                        GM_ADDR attentionMask, GM_ADDR actualQseqlen, GM_ADDR actualKvseqlen, GM_ADDR dq,
@@ -121,6 +148,8 @@ public:
         cubeOp.Init(tilingData, tPipe, l1_buffer_, l1_offset_);
         CrossCoreWaitFlag(FLAG_CUBE_POST);
         this->SetEventFlag();
+        RunTimeInfo runTimeInfo_[2];
+        RunTimeInfo nextRunTimeInfo_;
 
         while (true) {
             ping_pong_idx = taskId % 2;
@@ -129,23 +158,32 @@ public:
             mm2_res_ub_tensor_ = ping_pong_idx ? mm2_res_ub_tensor_ping_ : mm2_res_ub_tensor_pong_;
             p_l1_tensor_ = last_ping_pong_idx ? p_l1_tensor_ping_ : p_l1_tensor_pong_;
             ds_l1_tensor_ = last_ping_pong_idx ? ds_l1_tensor_ping_ : ds_l1_tensor_pong_;
-            addr_.GetRunTimeInfo(runTimeInfo_[ping_pong_idx]);
+            if (unlikely(taskId == 0)) {
+                addr_.GetRunTimeInfo(runTimeInfo_[ping_pong_idx]);
+            } else {
+                runTimeInfo_[ping_pong_idx] = nextRunTimeInfo_;
+            }
 
             if (runTimeInfo_[ping_pong_idx].need_compute) {
-                cubeOp.SendMatmulQK(query_gm_, key_gm_, mm1_res_ub_tensor_, runTimeInfo_[ping_pong_idx], ping_pong_idx);
+                addr_.GetRunTimeInfo(nextRunTimeInfo_);
+                kv_reuse_check(runTimeInfo_[last_ping_pong_idx], runTimeInfo_[ping_pong_idx], nextRunTimeInfo_,
+                               taskId == 0);
+                // mm12
+                cubeOp.SendMatmulQK(query_gm_, key_gm_, mm1_res_ub_tensor_, runTimeInfo_[ping_pong_idx],
+                                    nextRunTimeInfo_, taskId % 3, taskId == 0);
+                cubeOp.SendMatmulDyV(dout_gm_, val_gm_, mm2_res_ub_tensor_, runTimeInfo_[ping_pong_idx],
+                                     nextRunTimeInfo_, taskId % 3, taskId == 0);
                 CrossCoreSetFlag<2, PIPE_FIX>(FLAG_C1_V1);
-                cubeOp.SendMatmulDyV(dout_gm_, val_gm_, mm2_res_ub_tensor_, runTimeInfo_[ping_pong_idx], ping_pong_idx);
-                CrossCoreSetFlag<2, PIPE_FIX>(FLAG_C2_V2);
+            } else if constexpr (DETERMINISTIC_ENABLE) {
+                // 确定性 latin 轮次遍历必须每轮推进，空闲轮也要取下一轮信息
+                addr_.GetRunTimeInfo(nextRunTimeInfo_);
             }
 
             if (taskId > 0 && runTimeInfo_[last_ping_pong_idx].need_compute) {
                 CrossCoreWaitFlag<2, PIPE_MTE1>(FLAG_V1_C3);
-                cubeOp.SendMatmulDv(p_l1_tensor_, dv_workspace_, runTimeInfo_[last_ping_pong_idx], last_ping_pong_idx);
-                CrossCoreWaitFlag<2, PIPE_MTE1>(FLAG_V2_C45);
-                cubeOp.SendMatmulDq(ds_l1_tensor_, dq_workspace_, runTimeInfo_[last_ping_pong_idx], last_ping_pong_idx);
-                cubeOp.SendMatmulDk(ds_l1_tensor_, dk_workspace_, runTimeInfo_[last_ping_pong_idx], last_ping_pong_idx);
-                SET_FLAG(MTE1, MTE2, EVENT_ID0);
-                WAIT_FLAG(MTE1, MTE2, EVENT_ID0);
+                cubeOp.SendMatmulDq(ds_l1_tensor_, dq_workspace_, runTimeInfo_[last_ping_pong_idx], (taskId - 1) % 3);
+                cubeOp.SendMatmulDk(ds_l1_tensor_, dk_workspace_, runTimeInfo_[last_ping_pong_idx], (taskId - 1) % 3);
+                cubeOp.SendMatmulDv(p_l1_tensor_, dv_workspace_, runTimeInfo_[last_ping_pong_idx], (taskId - 1) % 3);
             }
             if constexpr (DETERMINISTIC_ENABLE) {
                 if (taskId > 0) {
@@ -186,6 +224,8 @@ public:
         SyncAll();
         AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(FLAG_CUBE_POST);
         this->SetEventFlag();
+        RunTimeInfo runTimeInfo_;
+        RunTimeInfo nextRunTimeInfo_;
 
         while (true) {
             ping_pong_idx = taskId % 2;
@@ -194,25 +234,28 @@ public:
             mm2_res_ub_tensor_ = ping_pong_idx ? mm2_res_ub_tensor_ping_ : mm2_res_ub_tensor_pong_;
             p_l1_tensor_ = ping_pong_idx ? p_l1_tensor_ping_ : p_l1_tensor_pong_;
             ds_l1_tensor_ = ping_pong_idx ? ds_l1_tensor_ping_ : ds_l1_tensor_pong_;
-            addr_.GetRunTimeInfo(runTimeInfo_[ping_pong_idx]);
+            if (unlikely(taskId == 0)) {
+                addr_.GetRunTimeInfo(runTimeInfo_);
+            } else {
+                runTimeInfo_ = nextRunTimeInfo_;
+            }
 
-            if (runTimeInfo_[ping_pong_idx].need_compute) {
-                vecOp.SendVecSftPreProcess(runTimeInfo_[ping_pong_idx], ping_pong_idx);
+            if (runTimeInfo_.need_compute) {
+                addr_.GetRunTimeInfo(nextRunTimeInfo_);
+                vecOp.SendVecSftPreProcess(runTimeInfo_, nextRunTimeInfo_, ping_pong_idx, taskId == 0);
                 CrossCoreWaitFlag<2, PIPE_V>(FLAG_C1_V1);
-                vecOp.SendVecSoftmax(p_l1_tensor_, mm1_res_ub_tensor_, runTimeInfo_[ping_pong_idx]);
+                vecOp.SendVecSoftmax(p_l1_tensor_, ds_l1_tensor_, mm1_res_ub_tensor_, mm2_res_ub_tensor_, runTimeInfo_);
                 CrossCoreSetFlag<2, PIPE_MTE3>(FLAG_V1_C3);
-
-                CrossCoreWaitFlag<2, PIPE_V>(FLAG_C2_V2);
-                vecOp.SendVecSoftmaxGrad(ds_l1_tensor_, mm1_res_ub_tensor_, mm2_res_ub_tensor_,
-                                         runTimeInfo_[ping_pong_idx]);
-                CrossCoreSetFlag<2, PIPE_MTE3>(FLAG_V2_C45);
+            } else if constexpr (DETERMINISTIC_ENABLE) {
+                // 确定性 latin 轮次遍历必须每轮推进，空闲轮也要取下一轮信息
+                addr_.GetRunTimeInfo(nextRunTimeInfo_);
             }
 
             if constexpr (DETERMINISTIC_ENABLE) {
                 if (taskId >= addr_.GetDeterMaxRound()) {
                     break;
                 }
-            } else if (runTimeInfo_[ping_pong_idx].need_compute == false) {
+            } else if (runTimeInfo_.need_compute == false) {
                 break;
             }
             taskId++;
