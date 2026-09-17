@@ -718,10 +718,10 @@ ge::graphStatus LIV2InfoParser::GetN1Size()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LIV2InfoParser::GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
+ge::graphStatus LIV2InfoParser::GetActualSeqLenSize(int64_t &size, const gert::Tensor *tensor,
                                                     const std::string &actualSeqLenName) const
 {
-    size = static_cast<uint32_t>(tensor->GetShapeSize() - 1);
+    size = tensor->GetShapeSize() - 1;
     if (size <= 0) {
         OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
             opName_, actualSeqLenName.c_str(), std::to_string(size).c_str(),

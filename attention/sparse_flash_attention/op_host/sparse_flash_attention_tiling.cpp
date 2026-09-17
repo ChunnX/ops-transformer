@@ -999,20 +999,19 @@ ge::graphStatus SFATilingCheck::CheckParaExistence()
     return CheckParaExistenceMla();
 }
 
-static ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor, const std::string &name,
+static ge::graphStatus GetActualSeqLenSize(int64_t &size, const gert::Tensor *tensor, const std::string &name,
                                            const char *opName)
 {
     if (tensor == nullptr) {
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName, name.c_str(), name + " must be provided");
         return ge::GRAPH_FAILED;
     }
-    int64_t sfaShapeSize = tensor->GetShapeSize();
-    if (sfaShapeSize <= 0) {
-        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(opName, name.c_str(), std::to_string(sfaShapeSize).c_str(),
+    size = tensor->GetShapeSize();
+    if (size <= 0) {
+        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(opName, name.c_str(), std::to_string(size).c_str(),
                                                   "The shape size of " + name + " should be greater than 0");
         return ge::GRAPH_FAILED;
     }
-    size = static_cast<uint32_t>(sfaShapeSize);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1805,7 +1804,7 @@ ge::graphStatus SFAInfoParser::CheckRequiredParaExistence() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SFAInfoParser::GetActualSeqLenQSize(uint32_t &size)
+ge::graphStatus SFAInfoParser::GetActualSeqLenQSize(int64_t &size)
 {
     return GetActualSeqLenSize(size, opParamInfo_.actualSeqLengthsQ.tensor, "actual_seq_lengths_query", opName_);
 }
