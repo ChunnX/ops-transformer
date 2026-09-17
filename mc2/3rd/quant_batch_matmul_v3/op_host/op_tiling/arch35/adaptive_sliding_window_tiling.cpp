@@ -344,6 +344,10 @@ bool Mc2AdaptiveSlidingWindowTiling::CalcBasicBlock()
     bool isSmallBlock =
         ops::CeilDiv(inputParams_.mSize, adaptiveWin_.baseM) * ops::CeilDiv(inputParams_.nSize, adaptiveWin_.baseN) <
         aicoreParams_.aicNum;
+    //实验
+    adaptiveWin_.baseK = 128;
+    adaptiveWin_.baseN = 256;
+    isSmallBlock = false;
     if (isSmallBlock && !inputParams_.isPerBlock) {
         AdjustBasicBlock();
         OP_TILING_CHECK(adaptiveWin_.baseM == 0UL || adaptiveWin_.baseN == 0UL || adaptiveWin_.baseK == 0UL,
