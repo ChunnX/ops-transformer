@@ -104,7 +104,6 @@ public:
     VecFaBlockType vecFaBlock_;
     VecFdBlockType vecFdBlock_;
     // [二期] B尾块独立L1 slot(AIV写/AIC读, 与l1P同契约): 分配紧随l1P, 两侧地址一致
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> bTailL1Slot_;
 
     uint32_t createdTaskCount_ = 0U;
 
@@ -207,12 +206,6 @@ public:
                 vecFaBlock_.InitVecBlock(tPipe, sequsedQ, sequsedKv, pScale, attnMask, softmaxLse, attnOut, workspace);
                 vecFaBlock_.SetCuSeqLensParser(qSeqUsedParser_);
             }
-            if constexpr (HAS_V_TAIL) {
-                if (constInfo_.seqUsedKvTailSize > 0) {
-                    vecFaBlock_.SetVTailPtr(vTail, blockTableTail); // B尾块AIV搬运
-                    vecFaBlock_.SetVTailL1Slot(&bTailL1Slot_);      // B尾块独立L1 slot
-                }
-            }
             vecFaBlock_.ClearOutput();
         }
 
@@ -225,9 +218,6 @@ public:
                 cubeBlock_.InitCubeBlock(tPipe, &l1BufferManager_, query, key, value, blockTable, dequantScaleQuery,
                                          dequantScaleKey, dequantScaleValue, qSeqUsedParser_, kvSeqUsedParser_, vTail,
                                          blockTableTail);
-            }
-            if constexpr (HAS_V_TAIL) {
-                cubeBlock_.SetVTailL1Slot(&bTailL1Slot_); // B尾块独立L1 slot(尾片乘B操作数)
             }
         }
         if constexpr (FLASH_DECODE) {
@@ -259,12 +249,6 @@ public:
         uint32_t mm1ResultSize = mBaseSize / CV_RATIO * s2BaseSize * mm1OutDtype / 2;
         constexpr uint32_t mm2ResultSize = mBaseSize / CV_RATIO * dVBaseSize * sizeof(T);
         // [二期] B尾块独立L1 slot(1份, 替代原先挂在l1P每份x3的冗余):
-        // D=256时l1P 3x32KB的B尾区使L1池溢出62KB(LOAD_L1_TO_L0B_MX读越界, errcode82实测),
-        // 挪出后config3 L1总需求586752->518144B(512KB内); D=72按Align64宽度(128)分配,
-        // 修复dVBaseSize/16(4分形8KB)与AIV实际摆数dTemplateAlign64/16(8分形16KB)不一致的越界
-        constexpr uint32_t dVAlign64 = (dVBaseSize + 63U) / 64U * 64U;
-        constexpr uint32_t bTailSlotSize =
-            HAS_V_TAIL ? dVAlign64 / 16U * MXFP8_V_TAIL_BOUNDARY * 32U : 0U; // 每分形64行x16列x32B
         constexpr uint32_t mm2LeftSize = mBaseSize * s2BaseSize * sizeof(INPUT_T) +
                                          mBaseSize * s2BaseSize / 32 +
                                          (HAS_V_TAIL ? mBaseSize * MXFP8_V_TAIL_BOUNDARY * sizeof(bfloat16_t) : 0);
@@ -272,12 +256,6 @@ public:
         // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
         // TODO，共享buffer初始化放到block层
         l1PBuffers_.Init(l1BufferManager_, mm2LeftSize);
-        if constexpr (HAS_V_TAIL) {
-            // B尾块slot必须紧随l1P分配: AIC/AIV两侧执行序一致 => 地址一致(跨核L1共享契约)
-            bTailL1Slot_ = l1BufferManager_.template AllocBuffer<SyncType::CROSS_CORE_SYNC_FORWARD,
-                                                                  SyncMode::SET_WAIT_FLAG>(bTailSlotSize);
-            bTailL1Slot_.template Init<IdSource::INTERNAL>();
-        }
         ubBufferManager_.Init(pipe_, mm1ResultSize * 2 + mm2ResultSize);
         bmm2Buffers_.Init(ubBufferManager_, mm2ResultSize);
         bmm1Buffers_.Init(ubBufferManager_, mm1ResultSize);

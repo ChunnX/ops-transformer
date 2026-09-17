@@ -134,20 +134,6 @@ public:
         this->qActSeqLensParser_ = &qParser;
     }
 
-    // [VTAIL] AIV侧v_tail指针绑定(B尾块由AIV搬运: 尾片上下文的AIC MTE2 GM->L1实测静默失效)
-    __aicore__ inline void SetVTailPtr(__gm__ uint8_t *vTail, __gm__ uint8_t *blockTableTail)
-    {
-        vTailGmVec_ = (__gm__ bfloat16_t *)vTail;
-        vTailBttGm_ = (__gm__ int32_t *)blockTableTail;
-    }
-
-    // [二期] B尾块独立L1 slot(AIV写侧): 替代原先挂在l1P每份x3的B尾区(D=256时L1池溢出)
-    __aicore__ inline void
-    SetVTailL1Slot(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> *slot)
-    {
-        vTailL1Slot_ = slot;
-    }
-
     attenMaskGmType attenMaskGmInt_;
 
     postQuantGmType postQuantScaleGm_;
@@ -163,10 +149,6 @@ public:
     // ub
     TBuf<> commonTBuf_; // common的复用空间
     TBuf<> pScaleBuf_;  // P的组scale暂存: subLoop0 [0,128) + subLoop1 [128,256), 显式所有权重叠越界写
-    TBuf<> vTailStripUb_; // B尾块分形中转(双缓冲): 2 x (64行x16列bf16=2KB)
-    __gm__ bfloat16_t *vTailGmVec_ = nullptr; // AIV侧v_tail裸指针(B尾块AIV搬运)
-    __gm__ int32_t *vTailBttGm_ = nullptr;    // AIV侧block_table_tail裸指针
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> *vTailL1Slot_ = nullptr; // B尾块独立L1 slot
     TQue<QuePosition::VECOUT, 1> stage1OutQue_[2];
     TQue<QuePosition::VECIN, 1> attenMaskInQue_[2];
     TBuf<> stage2OutBuf_;
@@ -439,15 +421,6 @@ public:
                              {(uint16_t)(mBaseSize >> 5), 64U, 1U, 0U});
                 }
             }
-            // [B尾块改AIV搬运] AIC MTE2 GM->L1直搬(copyVTailGmToL1_)在尾片上下文只到达第一个
-            // n分形(四代k/rowCount几何实证: j[0,16)恒对/j[16,64)恒stale, 与decode迁移前同症状) —
-            // 复用decode已验证通路: AIV标量读GM->UB摆NZ->MTE3写vTailL1Slot_全D可靠。
-            // 顺序复刻decode: A尾区拷贝 -> CopyVTailToL1 -> FreeTensor -> SetCrossCore。
-            // [B尾块装载分派] TND: CUBE MTE2直搬(复测实验: 之前"只到首n分形"系m=8 bug误归因),
-            // PA: AIV标量搬运写vTailL1Slot_(decode同款通路, cube侧PA分支读槽)。
-            if constexpr (HAS_V_TAIL && KvLayoutType > 0) {
-                CopyVTailToL1(runInfo);
-            }
             this->stage1OutQue_[stage1Offset].template FreeTensor(stage1CastTensor);
             if (runInfo.actSingleLoopS2Size <= s2SplitSize) {
                 outputBuf.SetCrossCore();
@@ -535,66 +508,7 @@ public:
     }
 
 
-    // [VTAIL] B尾块装载(AIV路径, 纯标量GM直读版): GM标量读(printf已证100%可靠, 绕开MTE2事件竞态)
-    // -> UB摆NZ(u32) -> UB->L1(A侧同款非零dstStride参数, 绕开dstGap=0坑)。
-    // L1布局: 8个16列分形x 2KB(64行距), 每分形前32行=数据(tail有效+pad0), 后32行=0 —
-    // 与Cube侧 MatmulFull k=64 的 LoadDataToL0B srcStride(4*512B)匹配。
-    __aicore__ inline void CopyVTailToL1(RunInfoX &runInfo)
-    {
-        if (constInfo_.subBlockIdx != 0) {
-            return; // 单subblock搬运, 避免双核写L1/UB中转竞争
-        }
-        constexpr uint32_t stripNum = dTemplateAlign64 / 16;
-        constexpr uint32_t dataRows = MXFP8_V_TAIL_BOUNDARY; // 64行全摆(tail≤63, pad行0兜底A侧垃圾列)
-        // [修复回补] 原"dataRows=32分段"只支持tail≤32, tail>32时行[32,tail)的v_tail数据
-        // 丢失(B2用例T61实测崩至3.5%); 64行全摆后r≥tailLen填0已由循环内if保证。
-        // UB中转: 独立vTailStripUb_(4KB)逐分形轮换 — 不可用vTailPCastBuf_:
-        // A尾cast的MTE3 DataCopy读pTailUb与B侧标量写同buffer竞态(实测inf/nan污染)
-        LocalTensor<uint32_t> nzU32 = vTailStripUb_.template Get<uint32_t>();
-        // [二期PREFILL] v_tail寻址按PA/TND分支:
-        //   PA: (Bn,N2,Bs,D)块结构, btt[bIdx*tailMaxBlockNum]定位物理块, 块容量=blockSize;
-        //   TND: (B,N2,64,D)直存(尾窗<64固定容量, batch间无前缀耦合), batch基址直接定位。
-        // 两分支均为BNSD行主序, 摆数循环布局无关
-        __gm__ uint32_t *gmU32 = nullptr;
-        if constexpr (KvLayoutType > 0) {
-            int32_t blkId = vTailBttGm_[runInfo.bIdx * constInfo_.tailMaxBlockNum];
-            uint64_t gmBase =
-                static_cast<uint64_t>(blkId) * constInfo_.n2Size * constInfo_.blockSize * constInfo_.dSizeV +
-                static_cast<uint64_t>(runInfo.n2Idx) * constInfo_.blockSize * constInfo_.dSizeV;
-            gmU32 = (__gm__ uint32_t *)(vTailGmVec_ + gmBase);
-        } else {
-            uint64_t gmBase = static_cast<uint64_t>(runInfo.bIdx) * constInfo_.n2Size *
-                                  MXFP8_V_TAIL_BOUNDARY * constInfo_.dSizeV +
-                              static_cast<uint64_t>(runInfo.n2Idx) * MXFP8_V_TAIL_BOUNDARY * constInfo_.dSizeV;
-            gmU32 = (__gm__ uint32_t *)(vTailGmVec_ + gmBase);
-        }
-        uint32_t rowsU32 = constInfo_.dSizeV / 2; // 每行D列=64 u32
-        uint32_t tailLen = runInfo.kvTailLen;
-        LocalTensor<bfloat16_t> bTailL1 = vTailL1Slot_->GetTensor<bfloat16_t>(); // B尾块独立L1 slot
-        for (uint32_t c = 0; c < stripNum; c++) {
-            // nzU32双分形轮换(c&1, 各2KB): 偶分形用[0,512)u32, 奇分形用[512,1024)u32 —
-            // 防分形c+1标量写覆盖分形c未完成的MTE3读
-            LocalTensor<uint32_t> nzCur = nzU32[(c & 1U) * (MXFP8_V_TAIL_BOUNDARY * 8)];
-            // nzCur布局(每分形2KB=512u32): 64行x8u32, 行r<tailLen读GM其余0
-            // [二期D=72] N轴pad: 有效列仅dSizeV(36u32), 分形c*8+j越界列置0兜底Mmad n方向
-            // (D=64/128/256时rowsU32恰为8的倍数, 本判断恒真, 逻辑等价)
-            for (uint32_t r = 0; r < dataRows; r++) {
-                for (uint32_t j = 0; j < 8; j++) { // 每行16列=8 u32
-                    uint32_t v = 0;
-                    if (r < tailLen && (c * 8U + j) < rowsU32) {
-                        v = gmU32[r * rowsU32 + c * 8 + j]; // GM标量直读(已验证可靠)
-                    }
-                    nzCur.SetValue(r * 8 + j, v);
-                }
-            }
-            AscendC::PipeBarrier<PIPE_V>();
-            // 每分形单次搬运(整块2KB=64行x16列): L1分形c, pad行[r>=tailLen)=0已由摆数循环保证
-            DataCopy(bTailL1[c * MXFP8_V_TAIL_BOUNDARY * 16], nzCur.ReinterpretCast<bfloat16_t>(),
-                     {1, (uint16_t)dataRows, 0, 0});
-        }
-    }
-
-    __aicore__ inline void SoftmaxDataCopyOut(RunInfoX runInfo, LocalTensor<float> &sumUb, LocalTensor<float> &maxUb)
+__aicore__ inline void SoftmaxDataCopyOut(RunInfoX runInfo, LocalTensor<float> &sumUb, LocalTensor<float> &maxUb)
     {        if constexpr (FLASH_DECODE) {
             if (runInfo.isS2SplitCore) {
                 ComputeLogSumExpAndCopyToGm(runInfo, sumUb, maxUb);
@@ -944,8 +858,6 @@ public:
                                   (uint16_t)(vec1Srcstride - (mBaseSize >> 1)), 0});
                     }
                 }
-                // [decode/ND] B尾块装载(AIV搬运, DN尾task已改CUBE直搬不再调用)
-                CopyVTailToL1(runInfo);
             }
         }
         this->stage1OutQue_[stage1Offset].template FreeTensor(stage1CastTensor);
@@ -1281,8 +1193,6 @@ public:
         if constexpr (HAS_V_TAIL) {
             // 尾列P bf16暂存: 双subblock并发各占半区, 2 x (mBaseSize/2)行 x 64列 x 2B
             tPipe_->InitBuffer(vTailPCastBuf_, 2 * (mBaseSize >> 1U) * MXFP8_V_TAIL_BOUNDARY * sizeof(bfloat16_t));
-            // B尾块分形中转(双缓冲防MTE2覆盖未完成的MTE3读): 2 x 2KB
-            tPipe_->InitBuffer(vTailStripUb_, 2 * MXFP8_V_TAIL_BOUNDARY * 16 * sizeof(bfloat16_t));
         }
         if constexpr (HAS_MASK) {
             tPipe_->InitBuffer(attenMaskInQue_[0], 1, attenMaskSize); // 256 * 64

@@ -930,7 +930,21 @@ def generate_data():
         block_table_tail = (
             torch.arange(B, dtype=torch.int32).view(B, 1) if ENABLE_PA else None
         )
-        v_tail_pa = torch.stack(v_tail_bnsd_list, dim=0).to(torch.bfloat16)  # (B,N2,Bs,D) BNSD行主序
+        # [契约] v_tail与主KV cache同布局: BnNBsD=(Bn,N2,Bs,D) / BnBsND=(Bn,Bs,N2,D)
+        # / PA_NZ=(Bn,N2,D/16,Bs,16)(bf16的32B分形内径16) — 复用主cache的布局变换语义
+        v_tail_bnsd = torch.stack(v_tail_bnsd_list, dim=0).to(torch.bfloat16)  # (B,N2,Bs,D)
+        if KV_CACHE_LAYOUT == "BnBsND":
+            v_tail_pa = v_tail_bnsd.transpose(1, 2).contiguous()
+        elif KV_CACHE_LAYOUT == "PA_NZ":
+            Bn, N2c, Bsc, Dc = v_tail_bnsd.shape
+            nz_inner = 16  # bf16
+            v_tail_pa = (
+                v_tail_bnsd.reshape(Bn, N2c, Bsc, Dc // nz_inner, nz_inner)
+                .permute(0, 1, 3, 2, 4)
+                .contiguous()
+            )
+        else:
+            v_tail_pa = v_tail_bnsd
         seqused_kv_tail = torch.tensor(tail_lens, dtype=torch.int32)
         _VTAIL_BUNDLE = {
             # 各batch尾长可能不同(0<tail<64), 用list按batch存放原值, CPU参考逐batch切片替换
