@@ -309,8 +309,6 @@ public:
         const int64_t vec2CalcSize = static_cast<int64_t>(vecMSize) * dTemplateAlign64;
         LocalTensor<MM_T> vec2ResUb = stage2OutBuf_.template Get<MM_T>();
         LocalTensor<MM_T> mmRes = bmm2ResBuf.template GetTensor<MM_T>();
-        LocalTensor<OUTPUT_T> attenOut;
-        attenOut.SetAddr(vec2ResUb.address_);
         WaitFlag<HardEvent::MTE3_V>(mte3ToVId_[0]);
         if (unlikely(isFirstS2Loop)) {
             // 首个 S2 tile 直接作为累计值。
@@ -322,23 +320,22 @@ public:
                 FlashUpdateNew<MM_T, INPUT_T, OUTPUT_T, dTemplateAlign64, false>(
                     vec2ResUb, mmRes, vec2ResUb, expUb, vecMSize, dTemplateAlign64, 1.0f, 1.0f);
             } else {
-                // 最后一个 tile 在同一 VF 内完成 update、归一化、无效行清零与 BF16 写回。
+                // 最后一个 tile 完成 update 与归一化。
                 LocalTensor<float> sumUb = softmaxSumBuf_[mLoopIdx].template Get<float>();
-                LocalTensor<float> maxUb = softmaxMaxBuf_[mLoopIdx].template Get<float>();
-                FaVectorApi::MxFlashUpdateLastCastOutput<INPUT_T, OUTPUT_T, dTemplateAlign64, false, HAS_ATTEN>(
-                    attenOut, mmRes, vec2ResUb, expUb, sumUb, maxUb, vecMSize, 1.0f, 1.0f);
+                // MXFP8 keeps OUT at zero when the accumulated softmax denominator is zero.
+                FlashUpdateLastNew<MM_T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, true>(
+                    vec2ResUb, mmRes, vec2ResUb, expUb, sumUb, vecMSize, dTemplateAlign64, 1.0f, 1.0f);
             }
         }
         bmm2ResBuf.SetCrossCore();
         if (isLastS2Loop) {
             if (unlikely(isFirstS2Loop)) {
-                // 单 tile 场景在同一 VF 内完成归一化、无效行清零与 BF16 写回。
+                // 单 tile 场景单独归一化。
                 LocalTensor<float> sumUb = softmaxSumBuf_[mLoopIdx].template Get<float>();
-                LocalTensor<float> maxUb = softmaxMaxBuf_[mLoopIdx].template Get<float>();
-                FaVectorApi::MxLastDivCastOutput<INPUT_T, OUTPUT_T, dTemplateAlign64, HAS_ATTEN>(
-                    attenOut, vec2ResUb, sumUb, maxUb, vecMSize, 1.0f);
+                LastDivNew<MM_T, INPUT_T, OUTPUT_T, dTemplateAlign64>(vec2ResUb, vec2ResUb, sumUb, vecMSize,
+                                                                      static_cast<uint16_t>(dTemplateAlign64), 1.0f);
             }
-            CopyOutAttentionOut(runInfo, constInfo, attenOut);
+            CopyOutAttentionOut(runInfo, constInfo, vec2ResUb);
         }
         SetFlag<HardEvent::MTE3_V>(mte3ToVId_[0]);
     }
@@ -542,8 +539,14 @@ private:
     }
 
     __aicore__ inline void CopyOutAttentionOut(MxRunInfo &runInfo, const MxConstInfo &constInfo,
-                                               LocalTensor<OUTPUT_T> &attenOut)
+                                               LocalTensor<MM_T> &vec2ResUb)
     {
+        // Fuse invalid-row zeroing and non-saturating FP32-to-BF16 conversion into one VF pass.
+        LocalTensor<float> maxUb = softmaxMaxBuf_[runInfo.mLoop % SOFTMAX_BUFFER_NUM].template Get<float>();
+        LocalTensor<OUTPUT_T> attenOut;
+        attenOut.SetAddr(vec2ResUb.address_);
+        FaVectorApi::MxFinalizeOutput<OUTPUT_T, dTemplateAlign64, HAS_ATTEN>(attenOut, vec2ResUb, maxUb,
+                                                                             runInfo.actVecMSize);
         SetFlag<HardEvent::V_MTE3>(vToMte3Id_[0]);
         WaitFlag<HardEvent::V_MTE3>(vToMte3Id_[0]);
 
