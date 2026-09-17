@@ -52,7 +52,3 @@ third_party/
 # pre-commit log
 log/
 oat_reports/
-
-# perf test outputs (quant_flash_mla_with_kvcache/tests/perf)
-attention/quant_flash_mla_with_kvcache/tests/perf/qmla_smoke/
-attention/quant_flash_mla_with_kvcache/tests/perf/results/

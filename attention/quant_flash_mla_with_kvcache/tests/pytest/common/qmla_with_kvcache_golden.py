@@ -57,7 +57,7 @@ logger = logging.getLogger(__name__)
 # 配置区
 # ==============================================================================
 # GRAPH_PATH: 0=单算子, 3=静态图, 5=动态图, 6=tiling下沉, 7=aclgraph
-GRAPH_PATH = 7
+GRAPH_PATH = 0
 DEVICE_ID = 0
 
 B = 1
