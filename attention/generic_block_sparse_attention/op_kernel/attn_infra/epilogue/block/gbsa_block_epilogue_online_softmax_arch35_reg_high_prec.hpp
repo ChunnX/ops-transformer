@@ -166,8 +166,17 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(ubSBufId);
         SetCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
 
-        AscendC::printf("tkd P after ComputeExpSubSum\n");
-        AscendC::DumpTensor(lpUbTensor[ubSBufId], 0, 16);
+        AscendC::printf("tkd P after ComputeExpSubSum, row 0 by C0 blocks\n");
+        uint32_t pC0BlockNum = CeilDiv(n, ELE_NUM_PER_C0);
+        for (uint32_t c0BlockIdx = 0; c0BlockIdx < pC0BlockNum; ++c0BlockIdx) {
+            uint32_t logicalBegin = c0BlockIdx * ELE_NUM_PER_C0;
+            uint32_t validElemNum = n - logicalBegin;
+            validElemNum = validElemNum < ELE_NUM_PER_C0 ? validElemNum : ELE_NUM_PER_C0;
+            uint32_t physicalOffset = c0BlockIdx * blockStride * ELE_NUM_PER_C0;
+            AscendC::printf("tkd P C0 block %u, logical [%u, %u), physical offset %u\n", c0BlockIdx,
+                            logicalBegin, logicalBegin + validElemNum, physicalOffset);
+            AscendC::DumpTensor(lpUbTensor[ubSBufId][physicalOffset], 100 + c0BlockIdx, validElemNum);
+        }
 
         AscendC::printf("tkd LocalSum after ComputeExpSubSum\n");
         AscendC::DumpTensor(llUbTensor, 0, 16);    
