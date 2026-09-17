@@ -120,7 +120,7 @@
   <tr>
     <td>ape</td>
     <td>输入</td>
-    <td>公式中的<em>Ape</em>，表示positional biases。</td>
+    <td>可选输入，表示positional biases。A2/arch22上，aclnn传nullptr、PyTorch省略ape或传None时跳过APE加法；传入Tensor时保持原有计算。</td>
     <td>FLOAT</td>
     <td>ND</td>
   </tr>
@@ -176,7 +176,7 @@
   <tr>
     <td>state_cache_stride_dim0</td>
     <td>可选属性</td>
-    <td>表示state_cache的0轴stride。默认值为0。</td>
+    <td>表示state_cache的0轴stride，单位为元素。属性声明默认值为0，但非空缓存调用必须传实际stride(0)，0不会自动推导。连续缓存应传block_size * 2 * coff * D，0轴非连续缓存应传实际步长。PyTorch接口自动传入实际值。</td>
     <td>INT32</td>
     <td>-</td>
   </tr>
@@ -220,6 +220,7 @@
 - x参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、H（Head Size）表示hidden层的大小、D（Head Dim）表示hidden层的最小单元大小、T表示所有Batch输入样本序列长度的累加和。
 - 输入shape限制：
     - state_cache支持输入shape为[block_num, block_size, 2\*coff\*D]，要求block_num>0，cache_mode=2时，需要满足block_size >= coff * cmp_ratio + S - 1。
+    - A2/arch22在BSH布局下按x.shape[1]校验上述ring容量约束，即使传入seqused也使用shape中的S。结合block_size <= 1024，要求S <= 1025 - coff * cmp_ratio。TH布局Host不读取cu_seqlens/seqused的值，调用方必须保证每个Batch的实际处理长度满足容量约束。
     - 若x的维度采用BS合轴，即x的输入shape为[T,H]：
         - cu_seqlens输入shape必须为[B+1,]。该参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值，且第一位必须为0。
         - seqused，支持输入shape为[B,]，要求每个Batch的有效token数要求小于等于对应Sequence Length长度，即seqused[n] <= cu_seqlens[n+1] - cu_seqlens[n]，且不小于0。

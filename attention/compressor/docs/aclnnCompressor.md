@@ -268,7 +268,7 @@ aclnnStatus aclnnCompressor(
       <td>stateCacheStrideDim0（int64_t）</td>
       <td>输入</td>
       <td>表示state_cache的0轴stride。</td>
-      <td>由框架根据state_cache的实际stride传入。</td>
+      <td>调用方必须传state_cache实际stride(0)，单位为元素。连续缓存传block_size * 2 * coff * D；0轴非连续缓存传实际步长。0不会自动推导，非空缓存传0会报错。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>

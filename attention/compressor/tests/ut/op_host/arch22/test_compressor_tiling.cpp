@@ -55,6 +55,101 @@ protected:
     }
 };
 
+class CompressorRingApeArch22 : public testing::TestWithParam<int> {};
+
+TEST_P(CompressorRingApeArch22, ValidateRingAndApe)
+{
+    const int scenario = GetParam();
+    const bool isTh = scenario == 10 || scenario == 11;
+    const int64_t blockSize = scenario == 2 || scenario == 10 ? 14 : 15;
+    const int64_t blockNum = scenario == 3 ? 1 : (scenario == 12 ? 2 : 4);
+    const int64_t cacheMode = scenario == 14 ? 3 : ((scenario == 9 || scenario == 16) ? 1 : 2);
+    optiling::CompressorCompileInfo compileInfo = {};
+    gert::TilingContextPara para(
+        "Compressor",
+        {
+            {{{2, 8, 4096}, {2, 8, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{1024, 4096}, {1024, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{1024, 4096}, {1024, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{blockNum, blockSize, 2048}, {blockNum, blockSize, 2048}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{4, 1024}, {4, 1024}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {
+            {{{2, 2, 512}, {2, 2, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{blockNum, blockSize, 2048}, {blockNum, blockSize, 2048}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+            {"coff", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(cacheMode)},
+            {"state_cache_stride_dim0",
+             Ops::Transformer::AnyValue::CreateFrom<int64_t>(blockSize * 2048 - (scenario == 17 ? 1 : 0))},
+            {"grad_enabled", Ops::Transformer::AnyValue::CreateFrom<bool>(scenario == 15)},
+        },
+        &compileInfo, "Ascend910B", Compressor_tiling_A3SocInfo, 4096);
+    para.inputInstanceNum_ = {1, 1, 1, 1, 1, 1, 0, 0, 0};
+    para.outputInstanceNum_ = {1, 1, 0, 0};
+    if (scenario == 16) {
+        para.inputTensorDesc_[5].shape_ = {{2, 1}, {2, 1}};
+    }
+    if (scenario == 1 || scenario == 16) {
+        para.inputInstanceNum_[4] = 0;
+        para.inputTensorDesc_.erase(para.inputTensorDesc_.begin() + 4);
+    } else if (scenario == 4) {
+        para.inputTensorDesc_[5].shape_ = {{2, 1}, {2, 1}};
+    } else if (scenario == 5) {
+        para.inputTensorDesc_[4].shape_ = {{0, 1024}, {0, 1024}};
+    } else if (scenario == 6) {
+        para.inputTensorDesc_[4].dtype_ = ge::DT_FLOAT16;
+    } else if (scenario == 7) {
+        para.inputTensorDesc_[4].shape_ = {{4, 512}, {4, 512}};
+    } else if (scenario == 8) {
+        para.inputTensorDesc_[5].shape_ = {{1}, {1}};
+    } else if (scenario == 13) {
+        para.inputTensorDesc_[5].shape_ = {{2, 1, 1}, {2, 1, 1}};
+    } else if (scenario == 18) {
+        para.inputTensorDesc_[4].shape_ = {{5, 1024}, {5, 1024}};
+    } else if (isTh) {
+        para.inputTensorDesc_[0].shape_ = {{16, 4096}, {16, 4096}};
+        para.inputTensorDesc_.push_back({{{3}, {3}}, ge::DT_INT32, ge::FORMAT_ND});
+        para.inputInstanceNum_[6] = 1;
+        para.outputTensorDesc_[0].shape_ = {{6, 512}, {6, 512}};
+    }
+    if (scenario == 0 || scenario == 1 || scenario == 12 || scenario == 16 || isTh) {
+        TilingInfo info;
+        ASSERT_TRUE(ExecuteTiling(para, info));
+        const uint64_t expectedCacheModeEncoding = cacheMode == 2 ? 1 : 0;
+        EXPECT_EQ((static_cast<uint64_t>(info.tilingKey) >> 7) & 3, expectedCacheModeEncoding);
+    } else {
+        ExecuteTestCase(para, ge::GRAPH_FAILED, std::numeric_limits<uint64_t>::max());
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(RingApe, CompressorRingApeArch22, testing::Range(0, 19),
+                         ([](const testing::TestParamInfo<int> &info) {
+                             const char *names[] = {"MinimumCapacity",
+                                                    "MissingApe",
+                                                    "InsufficientCapacity",
+                                                    "TooFewBlocks",
+                                                    "RingTableRank",
+                                                    "EmptyApe",
+                                                    "ApeDtype",
+                                                    "ApeShape",
+                                                    "TableBatchSize",
+                                                    "LinearTableRank",
+                                                    "ThSkipsCapacityCheck",
+                                                    "ThValidCapacity",
+                                                    "BlocksEqualBatch",
+                                                    "RingTableRankThree",
+                                                    "InvalidCacheMode",
+                                                    "RingGradUnsupported",
+                                                    "LinearMissingApe",
+                                                    "RingStrideTooSmall",
+                                                    "ApeBadRatioDimension"};
+                             return std::string(names[info.param]);
+                         }));
+
 // C4A bf16: B=2, S=8, H=4096, D=512, coff=2, cmp_ratio=4
 TEST_F(CompressorTilingArch22, test1)
 {
@@ -357,8 +452,7 @@ TEST_F(CompressorTilingArch22, test6)
 // Error Cases — expected FAIL
 // ====================================================================
 
-// A3 does not support cache_mode=2 (ring buffer).
-TEST_F(CompressorTilingArch22, test_cache_mode_ring_buffer_unsupported)
+TEST_F(CompressorTilingArch22, test_ring_rejects_two_dimensional_block_table)
 {
     optiling::CompressorCompileInfo compileInfo = {};
     gert::TilingContextPara tilingContextPara(

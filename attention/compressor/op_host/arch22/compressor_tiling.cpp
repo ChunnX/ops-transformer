@@ -655,6 +655,16 @@ ge::graphStatus CompressorTiling::CheckSingleParaStateCache() const
                         std::to_string(contiguousStride0) + ", only axis 0 non-contiguous is supported"),
                 return ge::GRAPH_FAILED);
     if (static_cast<uint8_t>(*context_->cacheMode) == static_cast<uint8_t>(CACHE_MODE::RING_BUFFER)) {
+        if (context_->layout == LayoutType::LAYOUT_BSH) {
+            int64_t seqSize = context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1);
+            int64_t historySize = static_cast<int64_t>(*context_->coff) * *context_->cmpRatio - 1;
+            OP_CHECK_IF(seqSize > static_cast<int64_t>(blockSize) - historySize,
+                        OP_LOGE(context_->opName,
+                                "BSH ring buffer requires block_size >= coff * cmp_ratio + S - 1; "
+                                "block_size=%u, S=%ld, coff=%d, cmp_ratio=%d (S is the x shape dimension).",
+                                blockSize, seqSize, *context_->coff, *context_->cmpRatio),
+                        return ge::GRAPH_FAILED);
+        }
         uint32_t blockNum = context_->stateCache.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0);
         uint32_t batchSize = context_->x.shape->GetStorageShape().GetDimNum() == COMPRESSOR_DIM_NUM_3 ?
                                  context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0) :
@@ -693,6 +703,9 @@ ge::graphStatus CompressorTiling::CheckSingleParaApe() const
     if (context_->ape.desc == nullptr && context_->ape.shape == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
+    OP_CHECK_IF(context_->ape.desc == nullptr || context_->ape.shape == nullptr,
+                OP_LOGE(context_->opName, "ape descriptor and shape must both be present or both be absent."),
+                return ge::GRAPH_FAILED);
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->ape.desc, APE_NAME) ||
         ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->ape.shape, APE_NAME)) {
         return ge::GRAPH_FAILED;

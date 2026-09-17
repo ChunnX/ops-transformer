@@ -544,26 +544,24 @@ def cpu_compressor_fp64(
                 )
 
             save_start_seq_idx = start_seq_idx
-            save_end_seq_idx = end_seq_idx
             if cache_mode == 2:
                 save_start_seq_idx = max(
                     start_seq_idx, compress_seq_id - (coff - 1) * cmp_ratio
                 )
-            save_flag = save_start_seq_idx < save_end_seq_idx
+            save_flag = save_start_seq_idx < end_seq_idx
             compress_flag = True if start_seq_idx < compress_seq_id else False
 
             if save_flag:
                 save_start_offset = start_offset + save_start_seq_idx - start_seq_idx
-                save_end_offset = end_offset - (end_seq_idx - save_end_seq_idx)
-                tmp_kv_state = new_kv_state[save_start_offset:save_end_offset, :]
-                tmp_score_state = new_score_state[save_start_offset:save_end_offset, :]
+                tmp_kv_state = new_kv_state[save_start_offset:end_offset, :]
+                tmp_score_state = new_score_state[save_start_offset:end_offset, :]
                 write_state_page_cache(
                     kv_state,
                     update_kv_position,
                     tmp_kv_state,
                     b_idx,
                     save_start_seq_idx,
-                    save_end_seq_idx,
+                    end_seq_idx,
                     block_table,
                     cache_mode=cache_mode,
                 )
@@ -573,7 +571,7 @@ def cpu_compressor_fp64(
                     tmp_score_state,
                     b_idx,
                     save_start_seq_idx,
-                    save_end_seq_idx,
+                    end_seq_idx,
                     block_table,
                     cache_mode=cache_mode,
                 )
@@ -875,26 +873,24 @@ def cpu_compressor(
             # 1.判断块是否需要存储到state
             # 2.判断块是否需要压缩
             save_start_seq_idx = start_seq_idx
-            save_end_seq_idx = end_seq_idx
             if cache_mode == 2:
                 save_start_seq_idx = max(
                     start_seq_idx, compress_seq_id - (coff - 1) * cmp_ratio
                 )
-            save_flag = save_start_seq_idx < save_end_seq_idx
+            save_flag = save_start_seq_idx < end_seq_idx
             compress_flag = True if start_seq_idx < compress_seq_id else False
 
             if save_flag:
                 save_start_offset = start_offset + save_start_seq_idx - start_seq_idx
-                save_end_offset = end_offset - (end_seq_idx - save_end_seq_idx)
-                tmp_kv_state = new_kv_state[save_start_offset:save_end_offset, :]
-                tmp_score_state = new_score_state[save_start_offset:save_end_offset, :]
+                tmp_kv_state = new_kv_state[save_start_offset:end_offset, :]
+                tmp_score_state = new_score_state[save_start_offset:end_offset, :]
                 write_state_page_cache(
                     kv_state,
                     update_kv_position,
                     tmp_kv_state,
                     b_idx,
                     save_start_seq_idx,
-                    save_end_seq_idx,
+                    end_seq_idx,
                     block_table,
                     cache_mode=cache_mode,
                 )
@@ -904,7 +900,7 @@ def cpu_compressor(
                     tmp_score_state,
                     b_idx,
                     save_start_seq_idx,
-                    save_end_seq_idx,
+                    end_seq_idx,
                     block_table,
                     cache_mode=cache_mode,
                 )
@@ -1125,6 +1121,9 @@ def run_compressor_eager(
     ape_datarange=[-10, 10],
     kv_state_datarange=[-10, 10],
     score_state_datarange=[-10, 10],
+    ring_block_size=None,
+    ring_block_num=None,
+    ring_block_table=None,
 ):
     torch_npu.npu.set_device(int(DEVICE_ID))
     # ======================== set input params finish ========================
@@ -1287,10 +1286,29 @@ def run_compressor_eager(
                 )
             ).to(torch.float32)
     else:
-        block_table = torch.tensor(random.sample(list(range(B)), B), dtype=torch.int32)
-        block_size = min(
-            (2 * cmp_ratio + S - 1) if coff == 2 else (cmp_ratio + S - 1), 1024
-        )  # block_size max is 1024
+        required_block_size = max(1, coff * cmp_ratio + int(S) - 1)
+        block_size = required_block_size if ring_block_size is None else ring_block_size
+        if not required_block_size <= block_size <= 1024:
+            raise ValueError(
+                f"ring block_size must be in [{required_block_size}, 1024], got {block_size}"
+            )
+        block_num = B if ring_block_num is None else ring_block_num
+        if block_num < B:
+            raise ValueError("ring block_num must be at least batch size")
+        mapping = (
+            random.sample(range(block_num), B)
+            if ring_block_table is None
+            else list(ring_block_table)
+        )
+        if (
+            len(mapping) != B
+            or len(set(mapping)) != B
+            or any(block_id < 0 or block_id >= block_num for block_id in mapping)
+        ):
+            raise ValueError(
+                "ring block_table must contain B distinct valid physical block IDs"
+            )
+        block_table = torch.tensor(mapping, dtype=torch.int32)
         if B == 0:
             kv_state = torch.tensor(
                 np.random.uniform(
@@ -1311,14 +1329,14 @@ def run_compressor_eager(
                 np.random.uniform(
                     kv_state_datarange[0],
                     kv_state_datarange[1],
-                    (B, block_size, coff * head_dim),
+                    (block_num, block_size, coff * head_dim),
                 )
             ).to(torch.float32)
             score_state = torch.tensor(
                 np.random.uniform(
                     score_state_datarange[0],
                     score_state_datarange[1],
-                    (B, block_size, coff * head_dim),
+                    (block_num, block_size, coff * head_dim),
                 )
             ).to(torch.float32)
 
