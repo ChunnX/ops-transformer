@@ -307,7 +307,7 @@ void MQSMLAInfoParser::SetQSMLAShape()
 
 ge::graphStatus MQSMLAInfoParser::GetN1Size()
 {
-    n1Size_ = static_cast<uint32_t>(GetAxisNum(qShape_, MQSMLAAxis::N, qLayout_));
+    n1Size_ = GetAxisNum(qShape_, MQSMLAAxis::N, qLayout_);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -371,7 +371,7 @@ ge::graphStatus MQSMLAInfoParser::GetBatchSize()
     if (qLayout_ == MQSMLALayout::TND) {
         return GetActualSeqLenQSize(bSize_);
     } else { // BSND
-        bSize_ = static_cast<uint32_t>(GetAxisNum(qShape_, MQSMLAAxis::B, qLayout_));
+        bSize_ = GetAxisNum(qShape_, MQSMLAAxis::B, qLayout_);
         return ge::GRAPH_SUCCESS;
     }
 }
@@ -381,7 +381,7 @@ ge::graphStatus MQSMLAInfoParser::GetQTSize()
     // 获取query的T基准值
     // 1、非TND时, 以query的batch_size维度为基准;
     // 2、TND时, actual_seq_lens_q必须传入, 以actual_seq_lens_q数组的长度为B轴大小
-    qTSize_ = (qLayout_ == MQSMLALayout::TND) ? static_cast<uint32_t>(GetAxisNum(qShape_, MQSMLAAxis::T, qLayout_)) : 0;
+    qTSize_ = (qLayout_ == MQSMLALayout::TND) ? GetAxisNum(qShape_, MQSMLAAxis::T, qLayout_) : 0;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -391,10 +391,10 @@ ge::graphStatus MQSMLAInfoParser::GetS1Size()
     // 1、非TND时, 以query的S维度为基准;
     // 2、TND时, actual_seq_lens_q必须传入, 以actual_seq_lens_q数组中的最大值为基准
     if (qLayout_ == MQSMLALayout::TND) {
-        s1Size_ = static_cast<uint32_t>(GetAxisNum(qShape_, MQSMLAAxis::T, qLayout_));
+        s1Size_ = GetAxisNum(qShape_, MQSMLAAxis::T, qLayout_);
         return ge::GRAPH_SUCCESS;
     } else { // BSND
-        s1Size_ = static_cast<uint32_t>(GetAxisNum(qShape_, MQSMLAAxis::S, qLayout_));
+        s1Size_ = GetAxisNum(qShape_, MQSMLAAxis::S, qLayout_);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -484,7 +484,7 @@ ge::graphStatus MQSMLAInfoParser::GetQkHeadDim()
 {
     // 获取qkHeadDim基准值
     // 以query的D维度为基准
-    qkHeadDim_ = static_cast<uint32_t>(GetAxisNum(qShape_, MQSMLAAxis::D, qLayout_));
+    qkHeadDim_ = GetAxisNum(qShape_, MQSMLAAxis::D, qLayout_);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -502,19 +502,19 @@ ge::graphStatus MQSMLAInfoParser::GetSparseBlockCount()
 
 ge::graphStatus MQSMLAInfoParser::GetActualseqInfo()
 {
-    maxActualseq_ = static_cast<uint32_t>(s2Size_);
+    maxActualseq_ = s2Size_;
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus MQSMLAInfoParser::GetDSizeQ()
 {
-    dSizeQ_ = static_cast<uint32_t>(GetAxisNum(qShape_, MQSMLAAxis::D, qLayout_));
+    dSizeQ_ = GetAxisNum(qShape_, MQSMLAAxis::D, qLayout_);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus MQSMLAInfoParser::GetDSizeKV()
 {
-    dSizeKV_ = static_cast<uint32_t>(GetAxisNum(oriKvShape_, MQSMLAAxis::D, kvLayout_));
+    dSizeKV_ = GetAxisNum(oriKvShape_, MQSMLAAxis::D, kvLayout_);
     return ge::GRAPH_SUCCESS;
 }
 
