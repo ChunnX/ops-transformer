@@ -77,9 +77,11 @@ bool QuantBlockSparseAttnMetadataCpuKernel::ParamsCheck()
         return false;
     }
     if (optiling::detail::IsPaddedQueryLayout(layoutQ_.c_str())) {
-        // Absent optional GE inputs may arrive as zero-element placeholders.
-        if ((cuSeqlensQ_ != nullptr && cuSeqlensQ_->NumElements() != 0) ||
-            (sequsedQ_ != nullptr && sequsedQ_->NumElements() != 0)) {
+        // ACLNN can encode an absent input as a Tensor with null data and a
+        // scalar shape (NumElements() == 1). GE may use zero-element tensors.
+        // Check the data address before treating either input as supplied.
+        if ((IsTensorExists(cuSeqlensQ_) && cuSeqlensQ_->NumElements() != 0) ||
+            (IsTensorExists(sequsedQ_) && sequsedQ_->NumElements() != 0)) {
             KERNEL_LOG_ERROR("BSND/BNSD metadata does not accept Q sequence lengths");
             return false;
         }
