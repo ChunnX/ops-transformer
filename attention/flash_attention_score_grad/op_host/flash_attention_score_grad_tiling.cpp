@@ -415,17 +415,18 @@ static ge::graphStatus CheckParams(gert::TilingContext *context)
         OP_LOGE(context, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [context is null]"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(CheckAttrs(context) != ge::GRAPH_SUCCESS,
                OP_LOGE(context, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [invalid attrs]"), return ge::GRAPH_FAILED);
-    if ((context->GetOptionalInputShape(QUERY_ROPE_INPUT_INDEX) != nullptr && context->GetOptionalInputShape(KEY_ROPE_INPUT_INDEX) == nullptr) ||
-        (context->GetOptionalInputShape(QUERY_ROPE_INPUT_INDEX) == nullptr && context->GetOptionalInputShape(KEY_ROPE_INPUT_INDEX) != nullptr)) {
-        auto &qRShapePtr = context->GetOptionalInputShape(QUERY_ROPE_INPUT_INDEX)->GetStorageShape();
-        auto &kRShapePtr = context->GetOptionalInputShape(KEY_ROPE_INPUT_INDEX)->GetStorageShape();
-        std::string qRShape = context->GetOptionalInputShape(QUERY_ROPE_INPUT_INDEX) != nullptr ?
-                              Ops::Base::ToString(qRShapePtr) : "null";
-        std::string kRShape = context->GetOptionalInputShape(KEY_ROPE_INPUT_INDEX) != nullptr ?
-                              Ops::Base::ToString(kRShapePtr) : "null";
-        std::string qkRShape = "{" + qRShape + ", " + kRShape + "}";
+    const auto *queryRopeShape = context->GetOptionalInputShape(QUERY_ROPE_INPUT_INDEX);
+    const auto *keyRopeShape = context->GetOptionalInputShape(KEY_ROPE_INPUT_INDEX);
+    const bool hasQueryRope = queryRopeShape != nullptr;
+    const bool hasKeyRope = keyRopeShape != nullptr;
+    if (hasQueryRope != hasKeyRope) {
+        const std::string queryRopeShapeStr =
+            hasQueryRope ? Ops::Base::ToString(queryRopeShape->GetStorageShape()) : "null";
+        const std::string keyRopeShapeStr =
+            hasKeyRope ? Ops::Base::ToString(keyRopeShape->GetStorageShape()) : "null";
+        const std::string ropeShapeStr = "{" + queryRopeShapeStr + ", " + keyRopeShapeStr + "}";
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "queryRopeOptional, keyRopeOptional",
-            qkRShape.c_str(), "If queryRopeOptional is an empty tensor, keyRopeOptional must also be and empty tensor");
+            ropeShapeStr.c_str(), "queryRopeOptional and keyRopeOptional must be provided together");
         return ge::GRAPH_FAILED;
     }
 
