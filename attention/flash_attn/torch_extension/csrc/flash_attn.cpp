@@ -27,6 +27,7 @@ const int64_t MAX_DIM_SIZE = 8;
 namespace {
 void CheckLayoutDims(const at::Tensor &tensor, const char *name, const std::string &layout)
 {
+    // Layout validity is checked by tiling; only check rank here to prevent out-of-range shape access.
     int64_t expected = 0;
     if (layout == "TND") {
         expected = DIM_THREE;
@@ -36,7 +37,6 @@ void CheckLayoutDims(const at::Tensor &tensor, const char *name, const std::stri
         expected = DIM_FIVE;
     }
     if (expected == 0) {
-        // Layout validity is checked by tiling.
         return;
     }
     TORCH_CHECK(tensor.dim() == expected, name, " with layout ", layout, " expects ", expected, " dims, but got ",

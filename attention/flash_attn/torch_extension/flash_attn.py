@@ -28,9 +28,9 @@ _LAYOUT_DIMS = {
 
 
 def _check_layout_dims(tensor, name, layout):
+    # Layout validity is checked by tiling; only check rank here to prevent out-of-range shape access.
     expected = _LAYOUT_DIMS.get(layout)
     if expected is None:
-        # Layout validity is checked by tiling.
         return
     torch._check(
         tensor.dim() == expected,
