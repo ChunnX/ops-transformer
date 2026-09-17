@@ -1286,7 +1286,7 @@ int main()
   aclOpExecutor* executor = nullptr;
   ret = aclnnGenericBlockSparseAttentionGetWorkspaceSize(
       q, k, v, sparseIdx, sparseCount, metadata, nullptr, nullptr, nullptr, nullptr, nullptr, cuSeqQ, nullptr, nullptr,
-      sequsedKv, blockTable, blockShape, layoutQ, layoutKv, layoutSparse, scaleValue, 1, 0, 0.0, 1, -1, -1, 0, 0, false,
+      sequsedKv, blockTable, blockShape, layoutQ, layoutKv, layoutSparse, scaleValue, 1, 0, 0.0, 1, -1, -1, 0, 1, false,
       attnOut, nullptr, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS,
             LOG_PRINT("aclnnGenericBlockSparseAttentionGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);

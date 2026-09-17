@@ -214,6 +214,24 @@ TEST_F(generic_block_sparse_attention_tiling_ut, unsupported_layout_sparse_patte
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
+TEST_F(generic_block_sparse_attention_tiling_ut, unsupported_residual_block_mode)
+{
+    GenericBlockSparseAttentionCompileInfo compileInfo;
+    gert::TilingContextPara tilingContextPara(
+        "GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT16), MakeOutputs(ge::DT_FLOAT16, false),
+        MakeAttrs(1, 0, 0, 0, 0.0f, -1, -1, 4, "TND", "PA_BBND", 2), &compileInfo, "Ascend910B", 40, 196608);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(generic_block_sparse_attention_tiling_ut, residual_none_and_consistent_topk_910b)
+{
+    GenericBlockSparseAttentionCompileInfo compileInfo;
+    gert::TilingContextPara tilingContextPara(
+        "GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT16), MakeOutputs(ge::DT_FLOAT16, false),
+        MakeAttrs(1, 0, 0, 0, 0.0f, -1, -1, 4, "TND", "PA_BBND", 0, true), &compileInfo, "Ascend910B", 40, 196608);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, kFp16Tiling910B);
+}
+
 TEST_F(generic_block_sparse_attention_tiling_ut, unsupported_mask_type)
 {
     GenericBlockSparseAttentionCompileInfo compileInfo;
