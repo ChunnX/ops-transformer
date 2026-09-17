@@ -75,7 +75,7 @@ uint64_t AlltoAllvMXQuantGmmTiling::GetTilingKey() const
     return tilingKey;
 }
 
-void AlltoAllvMXQuantGmmTiling::SetApaceMatmulTiling(const TCubeTiling &src, Apace::A2avGmmMxTiling &dst)
+void AlltoAllvMXQuantGmmTiling::SetApaceMatmulTiling(TCubeTiling &src, Apace::A2avGmmMxTiling &dst)
 {
     dst.baseM = static_cast<uint32_t>(src.get_baseM());
     dst.baseN = static_cast<uint32_t>(src.get_baseN());
