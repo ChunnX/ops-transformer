@@ -455,8 +455,11 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::B
         }
     }
     DataCopy(perCoreRankCounts, rankCounts, rankCountElements_);
+    // DataCopy is asynchronous. This marker separates instruction issue from MTE completion/error reporting.
+    PRINTF("[F2A DataCopy submitted] core=%u rank=%u dst=0x%lx bytes=%lu\n", aivId_, rankId_,
+           reinterpret_cast<uint64_t>(countRowAddr), copyBytes);
     SyncFunc<HardEvent::MTE3_S>();
-    PRINTF("[F2A DataCopy after] core=%u rank=%u dst=0x%lx bytes=%lu\n", aivId_, rankId_,
+    PRINTF("[F2A DataCopy completed] core=%u rank=%u dst=0x%lx bytes=%lu\n", aivId_, rankId_,
            reinterpret_cast<uint64_t>(countRowAddr), static_cast<uint64_t>(rankCountElements_) * sizeof(int32_t));
     SyncAll<true>();
 
