@@ -94,11 +94,24 @@ __global__ __aicore__ void quant_block_sparse_attn(
     constexpr bool bsaUseDn = BaseApi::IsDn();
     constexpr bool HAS_ATTENTION = (MASK_MODE == 3);
     if constexpr (QUANT_MODE == QBSA_MXFP8_QUANT_MODE) {
+        int64_t originalCastMode = 0;
+        if ASCEND_IS_AIV {
+            // MX Reg Casts explicitly select SAT or NO_SAT through CastTrait; disable global override once.
+            originalCastMode = AscendC::GetCtrlSpr<QbsaVectorApi::CAST_GLOBAL_MODE_ENABLE_BIT,
+                                                   QbsaVectorApi::CAST_GLOBAL_MODE_ENABLE_BIT>();
+            AscendC::SetCtrlSpr<QbsaVectorApi::CAST_GLOBAL_MODE_ENABLE_BIT, QbsaVectorApi::CAST_GLOBAL_MODE_ENABLE_BIT>(
+                QbsaVectorApi::CAST_USE_INSTRUCTION_SAT_MODE);
+        }
         // MX 当前支持 TND + PA BNBD，S2 logical tile 为 512。
         static_assert(Config == QBSA_MXFP8_CONFIG, "MXFP8 must use the S1=128, S2=512, D=128 and DV=128 config");
         QBSA_MX_OP_IMPL(fp8_e4m3fn_t, float, bfloat16_t, layout, kvLayout, S1TemplateType::Aligned128,
                         S2TemplateType::Aligned512, DTemplateType::Aligned128, DTemplateType::Aligned128, HAS_ATTENTION,
                         RETURN_SOFTMAX_LSE, bsaIsPa, bsaUseDn);
+        if ASCEND_IS_AIV {
+            // Restore once at the MX kernel exit so the operator cannot leak CTRL state to subsequent work.
+            AscendC::SetCtrlSpr<QbsaVectorApi::CAST_GLOBAL_MODE_ENABLE_BIT, QbsaVectorApi::CAST_GLOBAL_MODE_ENABLE_BIT>(
+                originalCastMode);
+        }
     } else if constexpr (QUANT_MODE == QBSA_FP8_QUANT_MODE) {
         static_assert(Config == QBSA_FP8_CONFIG, "FP8 must use the S1=128, S2=256, D=128 and DV=128 config");
         QBSA_OP_IMPL(fp8_e4m3fn_t, float, bfloat16_t, layout, kvLayout, S1TemplateType::Aligned128,

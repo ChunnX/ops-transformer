@@ -24,6 +24,7 @@
 #include "../../common/util_regbase_QBSA.h"
 #include "../../common/vf/vf_div_cast.h"
 #include "../../common/vf/vf_flashupdate_new_QBSA.h"
+#include "../../common/vf/vf_mx_finalize_output_QBSA.h"
 #include "../../common/vf/vf_mul_sel_softmaxflashv2_cast_nz_dn_QBSA.h"
 
 using namespace AscendC;
@@ -308,6 +309,8 @@ public:
         const int64_t vec2CalcSize = static_cast<int64_t>(vecMSize) * dTemplateAlign64;
         LocalTensor<MM_T> vec2ResUb = stage2OutBuf_.template Get<MM_T>();
         LocalTensor<MM_T> mmRes = bmm2ResBuf.template GetTensor<MM_T>();
+        LocalTensor<OUTPUT_T> attenOut;
+        attenOut.SetAddr(vec2ResUb.address_);
         WaitFlag<HardEvent::MTE3_V>(mte3ToVId_[0]);
         if (unlikely(isFirstS2Loop)) {
             // 首个 S2 tile 直接作为累计值。
@@ -319,22 +322,23 @@ public:
                 QbsaVectorApi::FlashUpdateNew<MM_T, INPUT_T, OUTPUT_T, dTemplateAlign64, false>(
                     vec2ResUb, mmRes, vec2ResUb, expUb, vecMSize, dTemplateAlign64, 1.0f, 1.0f);
             } else {
-                // 最后一个 tile 完成 update 与归一化。
+                // 最后一个 tile 在同一 VF 内完成 update、归一化、无效行清零与 BF16 写回。
                 LocalTensor<float> sumUb = softmaxSumBuf_[mLoopIdx].template Get<float>();
-                // MXFP8 keeps OUT at zero when the accumulated softmax denominator is zero.
-                QbsaVectorApi::FlashUpdateLastNew<MM_T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, true>(
-                    vec2ResUb, mmRes, vec2ResUb, expUb, sumUb, vecMSize, dTemplateAlign64, 1.0f, 1.0f);
+                LocalTensor<float> maxUb = softmaxMaxBuf_[mLoopIdx].template Get<float>();
+                QbsaVectorApi::MxFlashUpdateLastCastOutput<INPUT_T, OUTPUT_T, dTemplateAlign64, false, HAS_ATTEN>(
+                    attenOut, mmRes, vec2ResUb, expUb, sumUb, maxUb, vecMSize, 1.0f, 1.0f);
             }
         }
         bmm2ResBuf.SetCrossCore();
         if (isLastS2Loop) {
             if (unlikely(isFirstS2Loop)) {
-                // 单 tile 场景单独归一化。
+                // 单 tile 场景在同一 VF 内完成归一化、无效行清零与 BF16 写回。
                 LocalTensor<float> sumUb = softmaxSumBuf_[mLoopIdx].template Get<float>();
-                QbsaVectorApi::LastDivNew<MM_T, INPUT_T, OUTPUT_T, dTemplateAlign64>(
-                    vec2ResUb, vec2ResUb, sumUb, vecMSize, static_cast<uint16_t>(dTemplateAlign64), 1.0f);
+                LocalTensor<float> maxUb = softmaxMaxBuf_[mLoopIdx].template Get<float>();
+                QbsaVectorApi::MxLastDivCastOutput<INPUT_T, OUTPUT_T, dTemplateAlign64, HAS_ATTEN>(
+                    attenOut, vec2ResUb, sumUb, maxUb, vecMSize, 1.0f);
             }
-            CopyOutAttentionOut(runInfo, constInfo, vec2ResUb);
+            CopyOutAttentionOut(runInfo, constInfo, attenOut);
         }
         SetFlag<HardEvent::MTE3_V>(mte3ToVId_[0]);
     }
@@ -538,18 +542,8 @@ private:
     }
 
     __aicore__ inline void CopyOutAttentionOut(MxRunInfo &runInfo, const MxConstInfo &constInfo,
-                                               LocalTensor<MM_T> &vec2ResUb)
+                                               LocalTensor<OUTPUT_T> &attenOut)
     {
-        if constexpr (HAS_ATTEN) {
-            // 使用所有 S2 loop 累计后的 max 判断整行是否始终无有效 key。
-            LocalTensor<float> maxUb = softmaxMaxBuf_[runInfo.mLoop % SOFTMAX_BUFFER_NUM].template Get<float>();
-            FaVectorApi::RowInvalidUpdateVF<MM_T>(vec2ResUb, maxUb, runInfo.actVecMSize, constInfo.dSizeV,
-                                                  static_cast<int64_t>(dTemplateAlign64));
-        }
-        // 按 TND token/head stride 写回。
-        LocalTensor<OUTPUT_T> attenOut;
-        attenOut.SetAddr(vec2ResUb.address_);
-        Cast(attenOut, vec2ResUb, RoundMode::CAST_ROUND, static_cast<int64_t>(runInfo.actVecMSize) * dTemplateAlign64);
         SetFlag<HardEvent::V_MTE3>(vToMte3Id_[0]);
         WaitFlag<HardEvent::V_MTE3>(vToMte3Id_[0]);
 
