@@ -328,7 +328,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>cmpRatio（int64_t）</td>
       <td>输入</td>
       <td>cmpKv相对于压缩前KV长度的压缩倍率，用于恢复cmp侧mask使用的压缩前KV长度。</td>
-      <td>支持[1, 128]，仅传入oriKv时不参与压缩KV计算，CSA场景传4，HCA场景传128，建议值为0。</td>
+      <td>仅传入oriKv时不参与压缩KV计算。Atlas A2/A3的SWA场景传0、CSA场景传1、2或4、HCA场景传128；Ascend 950的SWA场景传1、CSA/HCA场景支持[1, 128]。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
