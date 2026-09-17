@@ -1644,17 +1644,6 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaMetadata() const
 
 ge::graphStatus SMLATilingCheck::CheckSingleParaCmpRatio() const
 {
-    if (IsA5Arch(npuArch_)) {
-        if (opParamInfo_.cmpKv.tensor != nullptr) {
-            OP_CHECK_IF(
-                cmpRatio_ < 1 || cmpRatio_ > 128,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "cmp_ratio", std::to_string(cmpRatio_).c_str(),
-                                                      "Cmp_ratio should be in range [1, 128] on " + A5_PLATFORM_LOG),
-                return ge::GRAPH_FAILED);
-        }
-        return ge::GRAPH_SUCCESS;
-    }
-
     const auto checkRatio = [this](bool isSupported, const char *expectedRatios, const char *modeName,
                                    const char *modeReason) {
         OP_CHECK_IF(!isSupported,

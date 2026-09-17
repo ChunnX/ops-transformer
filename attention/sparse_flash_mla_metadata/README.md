@@ -166,7 +166,7 @@
     <tr>
       <td>cmp_ratio</td>
       <td>可选属性</td>
-      <td>表示`cmp_kv`相对于压缩前KV长度的压缩倍率，用于恢复cmp侧mask使用的压缩前KV长度；仅传入`ori_kv`时不参与压缩KV计算。支持[1, 128]，默认值为1。</td>
+      <td>表示`cmp_kv`相对于压缩前KV长度的压缩倍率，用于恢复cmp侧mask使用的压缩前KV长度；仅传入`ori_kv`时不参与压缩KV计算。默认值为1。Atlas A2/A3的SWA取0、CSA取1、2或4、HCA取128；Ascend 950的SWA取1、CSA/HCA支持[1, 128]。</td>
       <td>INT</td>
       <td>-</td>
     </tr>
