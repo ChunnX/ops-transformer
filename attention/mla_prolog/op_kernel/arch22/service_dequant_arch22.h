@@ -46,7 +46,7 @@ __aicore__ inline void DequantSplitNQc(const GlobalTensor<O> &outputGm, const Gl
                                        uint32_t oriCol, uint32_t dstStride, uint32_t subBlockIdx_)
 {
     int64_t a22Count = dequantRowColStrideParams.col * 1;
-    LocalTensor<T> inputLocal = shareTmpUb.ReinterpretCast<T>();                         // a22Count * sizeof(T)
+    LocalTensor<T> inputLocal = shareTmpUb.ReinterpretCast<T>();                            // a22Count * sizeof(T)
     LocalTensor<C> scaleLocal = inputLocal[a22Count + 16].template ReinterpretCast<C>();    // a22Count * sizeof(C)
     LocalTensor<C> computeLocal = scaleLocal[a22Count + 16].template ReinterpretCast<C>();  // a22Count * sizeof(C)
     LocalTensor<O> outputLocal = computeLocal[a22Count + 16].template ReinterpretCast<O>(); // a22Count * sizeof(O)
@@ -59,7 +59,7 @@ __aicore__ inline void DequantSplitNQc(const GlobalTensor<O> &outputGm, const Gl
                                     static_cast<uint16_t>(dstStride * sizeof(O) / 32U)};
 
     Rectangle rectangleParams{
-        (uint32_t)1,     // row
+        (uint32_t)1,        // row
         (uint32_t)a22Count, // col
         (uint32_t)a22Count  // columnStride
     };

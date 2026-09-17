@@ -92,7 +92,8 @@ __aicore__ inline void ScatterCacheMultiRows(GlobalTensor<T> &cacheGm, const Loc
         DataCopy(cacheGm[a22CacheOffset], inputLocal, copyParams);
         if (rowsInCurBatch != scatterCacheParams.row) {
             for (int a22Row = 0; a22Row < scatterCacheParams.row - rowsInCurBatch; ++a22Row) {
-                DataCopy(cacheGm[nextBatchOffset + a22Col0 * a22Row], inputLocal[copyCnt + a22Col0 * a22Row], copyParams);
+                DataCopy(cacheGm[nextBatchOffset + a22Col0 * a22Row], inputLocal[copyCnt + a22Col0 * a22Row],
+                         copyParams);
             }
         }
     }
