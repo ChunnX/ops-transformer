@@ -895,7 +895,7 @@ aclnnStatus aclnnMlaPrologV4WeightNz(
 ## 约束说明
 
 - 确定性计算：
-  - aclnnMlaPrologV4WeightNz默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
+  - aclnnMlaPrologV4WeightNz默认确定性实现。
 
 <details>
   <summary><a id="shapeDesc"></a>shape格式字段含义说明</summary>
