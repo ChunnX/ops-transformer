@@ -18,6 +18,9 @@
 #define SORT_LIB_H
 
 #include "kernel_operator.h"
+struct NoOpHook {
+    __aicore__ inline void operator()() const {}
+};
 #include "sort_lib/sort_lib_core.h"
 #include "sort_lib/sort_lib_one_core.h"
 
@@ -65,9 +68,10 @@ namespace SortLib {
  *            SortLib::SortInvoke<ValT, IdxT, CountT, false>(&pipe, x, outVal, outIdx, ws, p);
  *            pipe.Reset();   // 调用后释放本接口占用的 UB，保证后续接口可用
  */
-template <typename ValT, typename IdxT, typename CountT, bool isDescending>
+template <typename ValT, typename IdxT, typename CountT, bool isDescending, typename HookT = NoOpHook>
 __aicore__ inline void SortInvoke(AscendC::TPipe* pipe, __gm__ ValT* x, __gm__ ValT* sortedValues,
-                                  __gm__ IdxT* sortedIndices, __gm__ char* workspace, const SortParams& p)
+                                  __gm__ IdxT* sortedIndices, __gm__ char* workspace, const SortParams& p,
+                                  HookT hook = HookT())
 {
     if (p.totalElements == 0) {
         return; // 空输入：无元素可排序，跳过排序与 workspace 清零（避免写 0 字节 workspace 越界）
@@ -83,7 +87,7 @@ __aicore__ inline void SortInvoke(AscendC::TPipe* pipe, __gm__ ValT* x, __gm__ V
     detail::SortRadixMoreCore<ValT, IdxT, CountT, isDescending> op;
     op.Init(reinterpret_cast<GM_ADDR>(x), reinterpret_cast<GM_ADDR>(sortedValues),
             reinterpret_cast<GM_ADDR>(sortedIndices), reinterpret_cast<GM_ADDR>(workspace), p, pipe);
-    op.Process();
+    op.Process(hook);
 }
 
 } // namespace SortLib

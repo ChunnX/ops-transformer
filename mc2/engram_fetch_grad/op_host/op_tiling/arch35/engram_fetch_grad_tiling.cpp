@@ -649,14 +649,14 @@ static ge::graphStatus SetTilingData(const gert::TilingContext *context, EngramF
     }
     tilingData.gradSubBatch = gradSubBatch;
 
-    // 固定开销, 21B/elem
-    uint64_t budget = static_cast<uint64_t>(tilingData.ubSize);
-    constexpr uint64_t kSortLibFixedBytes = 5120U; // SortLib 固定开销
-    constexpr uint64_t kMinTileElems = 64U;        // 最小 tile 元素数
-    constexpr uint64_t kBytesPerElem = 21U;        // SortLib 每元素 UB 需求(4B值+4B索引+8B键位+...)
+    uint64_t hookReserve = Mc2Kernel::A2aHookUbReserve(tilingData.rankSize);
+    uint64_t budget = static_cast<uint64_t>(tilingData.ubSize) - hookReserve;
+    constexpr uint64_t kSortLibFixedBytes = 5120U;
+    constexpr uint64_t kMinTileElems = 64U;
+    constexpr uint64_t kBytesPerElem = 21U;
     if (budget < kSortLibFixedBytes + kMinTileElems * kBytesPerElem) {
-        OP_LOGE(nodeName, "SortLib UB budget too small: ubSize=%llu, need>=%llu",
-                (unsigned long long)tilingData.ubSize,
+        OP_LOGE(nodeName, "SortLib UB budget too small: ubSize=%llu, hookReserve=%llu, need>=%llu",
+                (unsigned long long)tilingData.ubSize, (unsigned long long)hookReserve,
                 (unsigned long long)(kSortLibFixedBytes + kMinTileElems * kBytesPerElem));
         return ge::GRAPH_FAILED;
     }
@@ -730,13 +730,12 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const EngramFe
     int64_t wsSegCount = coreArrayAligned;
     int64_t wsCoreStart = coreArrayAligned;
 
-    // ── sort 区 workspace = companion + SortLib 六段 ──
     OP_TILING_CHECK(totalRecv > INT64_MAX / static_cast<int64_t>(sizeof(int32_t)),
                     OP_LOGE(nodeName, "sort companion overflow: totalRecv=%lld", totalRecv), return ge::GRAPH_FAILED);
     int64_t wsSortCompanion =
         (totalRecv * static_cast<int64_t>(sizeof(int32_t)) + Mc2Kernel::UB_ALIGN - 1) / Mc2Kernel::UB_ALIGN *
         Mc2Kernel::UB_ALIGN;
-    constexpr int64_t kRadixRounds = 4; // sizeof(int32_t)
+    constexpr int64_t kRadixRounds = 4;
     int64_t slSeg0 = AlignTo(256LL * kRadixRounds * 4LL, Mc2Kernel::UB_ALIGN);
     int64_t slSeg1 = AlignTo(static_cast<int64_t>(tilingData.sortTileCount) * 256LL * kRadixRounds * 4LL,
                              Mc2Kernel::UB_ALIGN);
@@ -786,11 +785,9 @@ static ge::graphStatus EngramFetchGradTilingFunc(gert::TilingContext *context)
     OP_TILING_CHECK(SetPlatformInfo(context, *tilingData) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "set platform info failed."), return ge::GRAPH_FAILED);
 
-    // SortLib 内部使用核间同步(SyncAll), 需 batchmode 独占核资源, 否则多流并发可能死锁。
     auto schedRet = context->SetScheduleMode(1);
     OP_TILING_CHECK(schedRet != ge::GRAPH_SUCCESS, OP_LOGE(nodeName, "SetScheduleMode(1) failed"),
                     return ge::GRAPH_FAILED);
-
     OP_TILING_CHECK(SetTilingData(context, *tilingData, numTokens, rankSize, totalRecv, hiddenDim) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "set tiling data failed."), return ge::GRAPH_FAILED);
 
