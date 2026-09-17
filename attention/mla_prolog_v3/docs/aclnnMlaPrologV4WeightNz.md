@@ -35,7 +35,7 @@
     - 第五路是输出$q^N$经过DynamicQuant后得到的量化参数。
     - 第六路是queryNormFlag=true时，输入$x$乘以$W^{DQ}$进行下采样和RmsNorm后得到压缩结果$c^Q$，作为queryNormOutOptional输出。
     - 第七路是queryNormFlag=true且量化场景（weightQuantMode≠0）下，对$c^Q$做DynamicQuant，最终得到量化后的queryNormOutOptional和对应量化参数dequantScaleQNormOutOptional。
-    - 权重参数WeightDq、WeightUqQr和WeightDkvKr需要以NZ格式传入
+    - 权重参数WeightDq、WeightUqQr和WeightDkvKr需要以NZ格式传入。
 
 - **计算公式**：
 
