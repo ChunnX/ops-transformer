@@ -184,6 +184,11 @@ public:
 
         if (isFirstKvSTile) {
             SaveFirstTileStats(lastSumAddr, lastMaxAddr, nowSumAddr, nowMaxAddr, m);
+
+            AscendC::printf("tkd Global Max after SaveFirstTileStats\n");
+            AscendC::DumpTensor(gmUbTensor, 0, 16);
+            AscendC::printf("tkd Global Maxsum after SaveFirstTileStats\n");
+            AscendC::DumpTensor(glUbTensor, 0, 16);
         } else {
             UpdateStats(lastSumAddr, expMaxAddr, lastMaxAddr, nowSumAddr, nowMaxAddr, m);
         }
