@@ -155,10 +155,12 @@ struct BSAConstInfo {
 //   layout = [aicIdx][ringIdx(2)][chunkRow][K_TILE_COLS]，每 tile = Q_CHUNK_SIZE * K_TILE_COLS
 //   ringIdx = 全局 tile 序号（跨 qChunk 连续）% 2；2 槽 = 2-tile 背压领先精确满员
 //   （write(t) 守卫 = 本迭代返回的 receipt(t−2)，槽租客恰为 t−2，顺序安全零余量）
+// score scratch 环槽数（kernel 寻址与 host tiling 分配共用；tiling 侧 SCRATCH_RING_TILES 须同步）
+constexpr uint32_t BSA_SCRATCH_RING_TILES = 2;
 __aicore__ inline uint64_t BSAScratchTileOffset(uint32_t aicIdx, uint32_t qChunkStart, uint32_t kChunkStart,
                                                 uint32_t yBlocks)
 {
-    constexpr uint32_t RING_TILES = 2;
+    constexpr uint32_t RING_TILES = BSA_SCRATCH_RING_TILES;
     const uint32_t ktiles = (yBlocks + K_TILE_COLS - 1) / K_TILE_COLS;
     const uint64_t globalTile = (static_cast<uint64_t>(qChunkStart) / Q_CHUNK_SIZE) * ktiles +
                                 kChunkStart / K_TILE_COLS;
