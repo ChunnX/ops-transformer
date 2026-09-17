@@ -14,8 +14,6 @@
 #include "../common/mega_moe_utils.h"
 #include "mega_moe_token_quant.h"
 
-#include "../common/mega_moe_mte_diagnostics.h"
-
 namespace MegaMoeImpl {
 
 using namespace AscendC;
@@ -88,22 +86,19 @@ __aicore__ inline void FetchDispatchTokenAndMetaInfo(const TokenDispatchConfig &
     TEventID eventId = static_cast<TEventID>(bufferIdx);
     LocalTensor<ActivationType> copyTmpTensor = GetDispatchCopyBuffer(context, scratch, bufferIdx);
     int32_t tokenIndex = topkIndex / static_cast<int32_t>(params.tilingData->topK);
-#if MEGA_MOE_MTE_DIAG
-    MteDiagRequire(
-        params,
-        topkIndex >= 0 && static_cast<uint64_t>(topkIndex) <
-                              static_cast<uint64_t>(params.tilingData->numMaxTokensPerRank) * params.tilingData->topK,
-        "dispatch.topk_index", topkIndex,
-        static_cast<uint64_t>(params.tilingData->numMaxTokensPerRank) * params.tilingData->topK);
-#endif
     uint64_t remoteCopyOffset =
         static_cast<uint64_t>(tokenIndex) * static_cast<uint64_t>(context.quantTokenScaleAlignBytes);
-#if MEGA_MOE_MTE_DIAG
-    MteDiagRange(params, "dispatch.token_read", reinterpret_cast<GM_ADDR>(remoteRankGlobalTensor.GetPhyAddr()),
-                 remoteCopyOffset, context.quantTokenScaleAlignBytes,
-                 static_cast<uint64_t>(params.tilingData->numMaxTokensPerRank) * context.quantTokenScaleAlignBytes,
-                 static_cast<uint32_t>(remoteRankIdx));
-#endif
+    if (params.diagPrint && params.diagRecords[0] < 64U) {
+        ++params.diagRecords[0];
+        printf("[MM_DIAG_ADDR] rank=%u core=%u site=dispatch.token_read peer=%u base=%llx offset=%llu bytes=%llu "
+               "limit=%llu\n",
+               params.diagRank, GetBlockIdx(), static_cast<uint32_t>(remoteRankIdx),
+               reinterpret_cast<unsigned long long>(remoteRankGlobalTensor.GetPhyAddr()),
+               static_cast<unsigned long long>(remoteCopyOffset),
+               static_cast<unsigned long long>(context.quantTokenScaleAlignBytes),
+               static_cast<unsigned long long>(static_cast<uint64_t>(params.tilingData->numMaxTokensPerRank) *
+                                               context.quantTokenScaleAlignBytes));
+    }
     if constexpr (IsBufferReuse) {
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
     }
@@ -169,29 +164,36 @@ __aicore__ inline void CopyTokensAndMetaForDispatch(const TokenDispatchConfig &c
     const MegaMoeDispatchBufferConfig &bufferConfig = context.bufferConfig;
     int32_t bufferCount = bufferConfig.bufferCount;
 
-#if MEGA_MOE_MTE_DIAG
-    MteDiagRequire(params, remoteRankIdx >= 0 && remoteRankIdx < params.tilingData->epWorldSize, "dispatch.peer",
-                   remoteRankIdx, params.tilingData->epWorldSize);
-    MteDiagRequire(params,
-                   rowDstOffset >= 0 && copyNum > 0 &&
-                       static_cast<uint64_t>(rowDstOffset) + static_cast<uint64_t>(copyNum) <= context.maxOutputSize,
-                   "dispatch.rows", rowDstOffset, context.maxOutputSize);
-    MteDiagRequire(params, reinterpret_cast<uint64_t>(winRankAddr[remoteRankIdx]) > EXCEPTION_DUMP_REGION_SIZE,
-                   "dispatch.window", reinterpret_cast<int64_t>(winRankAddr[remoteRankIdx]),
-                   EXCEPTION_DUMP_REGION_SIZE);
-    MteDiagRange(params, "dispatch.data_write", params.workspaceInfo.dispatchRevDataPtr,
-                 static_cast<uint64_t>(rowDstOffset) * scratch.revTokenElemCnt,
-                 static_cast<uint64_t>(copyNum) * scratch.revTokenElemCnt,
-                 context.maxOutputSize * scratch.revTokenElemCnt, params.diagRank);
-    MteDiagRange(params, "dispatch.scale_write", params.workspaceInfo.dispatchRevScalePtr,
-                 static_cast<uint64_t>(rowDstOffset) * scratch.revScaleElemCnt,
-                 static_cast<uint64_t>(copyNum) * scratch.revScaleElemCnt,
-                 context.maxOutputSize * scratch.revScaleElemCnt, params.diagRank);
-    MteDiagRange(params, "dispatch.meta_write", params.workspaceInfo.metaInfoPtr,
-                 static_cast<uint64_t>(rowDstOffset) * INT32_PER_256B * sizeof(int32_t),
-                 static_cast<uint64_t>(copyNum) * INT32_PER_256B * sizeof(int32_t),
-                 context.maxOutputSize * INT32_PER_256B * sizeof(int32_t), params.diagRank);
-#endif
+    if (params.diagPrint && params.diagRecords[0] < 64U) {
+        ++params.diagRecords[0];
+        printf("[MM_DIAG_ADDR] rank=%u core=%u site=dispatch.data_write peer=%u base=%llx offset=%llu bytes=%llu "
+               "limit=%llu\n",
+               params.diagRank, GetBlockIdx(), static_cast<uint32_t>(params.diagRank),
+               reinterpret_cast<unsigned long long>(params.workspaceInfo.dispatchRevDataPtr),
+               static_cast<unsigned long long>(static_cast<uint64_t>(rowDstOffset) * scratch.revTokenElemCnt),
+               static_cast<unsigned long long>(static_cast<uint64_t>(copyNum) * scratch.revTokenElemCnt),
+               static_cast<unsigned long long>(context.maxOutputSize * scratch.revTokenElemCnt));
+    }
+    if (params.diagPrint && params.diagRecords[0] < 64U) {
+        ++params.diagRecords[0];
+        printf("[MM_DIAG_ADDR] rank=%u core=%u site=dispatch.scale_write peer=%u base=%llx offset=%llu bytes=%llu "
+               "limit=%llu\n",
+               params.diagRank, GetBlockIdx(), static_cast<uint32_t>(params.diagRank),
+               reinterpret_cast<unsigned long long>(params.workspaceInfo.dispatchRevScalePtr),
+               static_cast<unsigned long long>(static_cast<uint64_t>(rowDstOffset) * scratch.revScaleElemCnt),
+               static_cast<unsigned long long>(static_cast<uint64_t>(copyNum) * scratch.revScaleElemCnt),
+               static_cast<unsigned long long>(context.maxOutputSize * scratch.revScaleElemCnt));
+    }
+    if (params.diagPrint && params.diagRecords[0] < 64U) {
+        ++params.diagRecords[0];
+        printf("[MM_DIAG_ADDR] rank=%u core=%u site=dispatch.meta_write peer=%u base=%llx offset=%llu bytes=%llu "
+               "limit=%llu\n",
+               params.diagRank, GetBlockIdx(), static_cast<uint32_t>(params.diagRank),
+               reinterpret_cast<unsigned long long>(params.workspaceInfo.metaInfoPtr),
+               static_cast<unsigned long long>(static_cast<uint64_t>(rowDstOffset) * INT32_PER_256B * sizeof(int32_t)),
+               static_cast<unsigned long long>(static_cast<uint64_t>(copyNum) * INT32_PER_256B * sizeof(int32_t)),
+               static_cast<unsigned long long>(context.maxOutputSize * INT32_PER_256B * sizeof(int32_t)));
+    }
 
     GlobalTensor<ActivationType> remoteRankGlobalTensor;
     GlobalTensor<ActivationType> tokenRevGlobalTensor;
@@ -293,28 +295,22 @@ __aicore__ inline int32_t DispatchRankTokens(const TokenDispatchConfig &context,
                                             remainingRouteCount :
                                             bufferConfig.routeItemsPerBatch;
         int32_t routeOrdinal = segmentMatchOrdinalBegin + processedRouteCount;
-#if MEGA_MOE_MTE_DIAG
-        MteDiagRequire(params, remoteRankIdx < common.worldSize, "route.peer", remoteRankIdx, common.worldSize);
-        MteDiagRequire(params, localExpertId < common.moeExpertPerRank, "route.expert", localExpertId,
-                       common.moeExpertPerRank);
-        MteDiagRequire(
-            params,
-            routeOrdinal >= 0 && batchDispatchRowCount > 0 &&
-                static_cast<uint64_t>(routeOrdinal) + batchDispatchRowCount <= params.tilingData->numMaxTokensPerRank,
-            "route.ordinal", routeOrdinal, params.tilingData->numMaxTokensPerRank);
-#endif
         // 直接定位当前专家、source rank 的 compact ordinal，不再扫描完整 topK mask。
         uint64_t slotOffset =
             (static_cast<uint64_t>(localExpertId) * common.worldSize + remoteRankIdx) * context.routeIndexAlignSize;
         remoteRouteIndexGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
             params.peermemInfo.maskRecvPtr + slotOffset + static_cast<uint64_t>(routeOrdinal) * sizeof(int32_t)));
-#if MEGA_MOE_MTE_DIAG
-        MteDiagRange(params, "dispatch.route_read", params.peermemInfo.maskRecvPtr,
-                     slotOffset + static_cast<uint64_t>(routeOrdinal) * sizeof(int32_t),
-                     static_cast<uint64_t>(batchDispatchRowCount) * sizeof(int32_t),
-                     static_cast<uint64_t>(common.moeExpertPerRank) * common.worldSize * context.routeIndexAlignSize,
-                     params.diagRank);
-#endif
+        if (params.diagPrint && params.diagRecords[0] < 64U) {
+            ++params.diagRecords[0];
+            printf("[MM_DIAG_ADDR] rank=%u core=%u site=dispatch.route_read peer=%u base=%llx offset=%llu bytes=%llu "
+                   "limit=%llu\n",
+                   params.diagRank, GetBlockIdx(), static_cast<uint32_t>(params.diagRank),
+                   reinterpret_cast<unsigned long long>(params.peermemInfo.maskRecvPtr),
+                   static_cast<unsigned long long>(slotOffset + static_cast<uint64_t>(routeOrdinal) * sizeof(int32_t)),
+                   static_cast<unsigned long long>(static_cast<uint64_t>(batchDispatchRowCount) * sizeof(int32_t)),
+                   static_cast<unsigned long long>(static_cast<uint64_t>(common.moeExpertPerRank) * common.worldSize *
+                                                   context.routeIndexAlignSize));
+        }
         DataCopyExtParams routeCopyParams{1U, static_cast<uint32_t>(batchDispatchRowCount * sizeof(int32_t)), 0U, 0U,
                                           0U};
         DataCopyPadExtParams<int32_t> routeCopyPad{false, 0U, 0U, 0U};
@@ -488,12 +484,19 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
     uint32_t rawCountElementCount = common.worldSize * common.moeExpertPerRank;
     GlobalTensor<int32_t> expertCountGlobal;
     expertCountGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.peermemInfo.expertCountRecvPtr));
-#if MEGA_MOE_MTE_DIAG
-    MteDiagStage(params, "count_read_enter");
-    MteDiagRange(params, "dispatch.count_read", params.peermemInfo.expertCountRecvPtr, 0,
-                 static_cast<uint64_t>(rawCountElementCount) * sizeof(int32_t),
-                 static_cast<uint64_t>(rawCountElementCount) * sizeof(int32_t), params.diagRank);
-#endif
+    if (params.diagPrint) {
+        printf("[MM_DIAG] rank=%u core=%u stage=count_read_enter\n", params.diagRank, GetBlockIdx());
+    }
+    if (params.diagPrint && params.diagRecords[0] < 64U) {
+        ++params.diagRecords[0];
+        printf("[MM_DIAG_ADDR] rank=%u core=%u site=dispatch.count_read peer=%u base=%llx offset=%llu bytes=%llu "
+               "limit=%llu\n",
+               params.diagRank, GetBlockIdx(), static_cast<uint32_t>(params.diagRank),
+               reinterpret_cast<unsigned long long>(params.peermemInfo.expertCountRecvPtr),
+               static_cast<unsigned long long>(0),
+               static_cast<unsigned long long>(static_cast<uint64_t>(rawCountElementCount) * sizeof(int32_t)),
+               static_cast<unsigned long long>(static_cast<uint64_t>(rawCountElementCount) * sizeof(int32_t)));
+    }
     DataCopyPad(scratch.cumsumInfoTensor, expertCountGlobal,
                 {1U, rawCountElementCount * static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U}, {true, 0U, 0U, 0U});
     SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();
@@ -507,18 +510,16 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
         reinterpret_cast<__gm__ int32_t *>(params.peermemInfo.rankSyncInWorldPtr + RANK_SYNC_COUNTER_OFFSET_BYTES);
     int32_t expectEpoch = (ReadGmBypassDCache(launchCountSlot0) & 0x7F) | 0x80;
     __gm__ int32_t *rawCountGm = reinterpret_cast<__gm__ int32_t *>(params.peermemInfo.expertCountRecvPtr);
-#if MEGA_MOE_MTE_DIAG
     uint64_t diagTotalCount = 0;
-    MteDiagStage(params, "count_decode_enter");
-#endif
+    if (params.diagPrint) {
+        printf("[MM_DIAG] rank=%u core=%u stage=count_decode_enter\n", params.diagRank, GetBlockIdx());
+    }
     for (uint32_t slotIdx = 0U; slotIdx < rawCountElementCount; ++slotIdx) {
         int32_t slotValue = scratch.cumsumInfoTensor.GetValue(slotIdx);
-#if MEGA_MOE_MTE_DIAG
-        if (MteDiagSelected(params) && ((slotValue >> 24) & 0xFF) != expectEpoch) {
+        if (params.diagPrint && ((slotValue >> 24) & 0xFF) != expectEpoch) {
             printf("[MM_DIAG_EPOCH_WAIT] rank=%u core=%u slot=%u raw=%x expected=%x\n", params.diagRank, GetBlockIdx(),
                    slotIdx, static_cast<uint32_t>(slotValue), expectEpoch);
         }
-#endif
         while (((slotValue >> 24) & 0xFF) != expectEpoch) {
             int64_t startCycle = AscendC::GetSystemCycle();
             while (AscendC::GetSystemCycle() - startCycle < GM_FLAG_POLL_BACKOFF_CYCLES) {
@@ -526,22 +527,17 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
             slotValue = AscendC::ReadGmBypassDCache(rawCountGm + slotIdx);
         }
         scratch.cumsumInfoTensor.SetValue(slotIdx, slotValue & 0x00FFFFFF);
-#if MEGA_MOE_MTE_DIAG
         uint32_t diagCount = static_cast<uint32_t>(slotValue & 0x00FFFFFF);
         diagTotalCount += diagCount;
-        MteDiagRequire(params, diagCount <= params.tilingData->numMaxTokensPerRank, "count.per_source_expert",
-                       diagCount, params.tilingData->numMaxTokensPerRank);
-        if (MteDiagSelected(params)) {
+        if (params.diagPrint) {
             printf("[MM_DIAG_COUNT] rank=%u core=%u slot=%u raw=%x count=%u epoch=%x\n", params.diagRank, GetBlockIdx(),
                    slotIdx, static_cast<uint32_t>(slotValue), diagCount, expectEpoch);
         }
-#endif
     }
-#if MEGA_MOE_MTE_DIAG
-    MteDiagRequire(params, diagTotalCount <= params.tilingData->maxOutputSize, "count.total_before_clip",
-                   diagTotalCount, params.tilingData->maxOutputSize);
-    MteDiagStage(params, "count_decode_return");
-#endif
+    if (params.diagPrint) {
+        printf("[MM_DIAG] rank=%u core=%u stage=count_decode_return total=%llu max=%u\n", params.diagRank,
+               GetBlockIdx(), static_cast<unsigned long long>(diagTotalCount), params.tilingData->maxOutputSize);
+    }
     SyncFuncStatic<AscendC::HardEvent::S_V, SYNC_EVENT_ID2>();
 
     ComputeExpertCountTables(scratch.cumsumInfoTensor, scratch.expertTokenNumsOutTensor, common.moeExpertPerRank,
