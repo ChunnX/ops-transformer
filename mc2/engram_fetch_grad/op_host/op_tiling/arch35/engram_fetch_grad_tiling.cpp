@@ -642,13 +642,12 @@ static ge::graphStatus SetTilingData(const gert::TilingContext *context, EngramF
         uint32_t chunkInStride =
             static_cast<uint32_t>(AlignTo(static_cast<int64_t>(Mc2Kernel::HIDDEN_CHUNK_ELEMS) * bytesPerElem,
                                           static_cast<int64_t>(Mc2Kernel::UB_ALIGN)));
-        uint32_t chunkFp32Stride = static_cast<uint32_t>(
-            AlignTo(static_cast<int64_t>(Mc2Kernel::HIDDEN_CHUNK_ELEMS) * sizeof(float),
-                    static_cast<int64_t>(Mc2Kernel::UB_ALIGN)));
+        uint32_t chunkFp32Stride =
+            static_cast<uint32_t>(AlignTo(static_cast<int64_t>(Mc2Kernel::HIDDEN_CHUNK_ELEMS) * sizeof(float),
+                                          static_cast<int64_t>(Mc2Kernel::UB_ALIGN)));
         uint32_t chunkOutStride = chunkFp32Stride;
         uint32_t chunkEntryBytes = Mc2Kernel::FLUSH_CAST_HEAD_BYTES + 2U * chunkOutStride;
-        uint32_t chunkMinNeed = Mc2Kernel::GRAD_BUF_BYTES + chunkEntryBytes + chunkFp32Stride +
-                                2U * chunkFp32Stride;
+        uint32_t chunkMinNeed = Mc2Kernel::GRAD_BUF_BYTES + chunkEntryBytes + chunkFp32Stride + 2U * chunkFp32Stride;
         OP_TILING_CHECK(chunkMinNeed > availableForPool,
                         OP_LOGE(nodeName, "chunk-mode UB pool overflow: need %u, availableForPool %u", chunkMinNeed,
                                 availableForPool),
@@ -743,18 +742,16 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const EngramFe
 
     OP_TILING_CHECK(totalRecv > INT64_MAX / static_cast<int64_t>(sizeof(int32_t)),
                     OP_LOGE(nodeName, "sort companion overflow: totalRecv=%lld", totalRecv), return ge::GRAPH_FAILED);
-    int64_t wsSortCompanion =
-        (totalRecv * static_cast<int64_t>(sizeof(int32_t)) + Mc2Kernel::UB_ALIGN - 1) / Mc2Kernel::UB_ALIGN *
-        Mc2Kernel::UB_ALIGN;
+    int64_t wsSortCompanion = (totalRecv * static_cast<int64_t>(sizeof(int32_t)) + Mc2Kernel::UB_ALIGN - 1) /
+                              Mc2Kernel::UB_ALIGN * Mc2Kernel::UB_ALIGN;
     constexpr int64_t kRadixRounds = 4;
     int64_t slSeg0 = AlignTo(256LL * kRadixRounds * 4LL, Mc2Kernel::UB_ALIGN);
-    int64_t slSeg1 = AlignTo(static_cast<int64_t>(tilingData.sortTileCount) * 256LL * kRadixRounds * 4LL,
-                             Mc2Kernel::UB_ALIGN);
+    int64_t slSeg1 =
+        AlignTo(static_cast<int64_t>(tilingData.sortTileCount) * 256LL * kRadixRounds * 4LL, Mc2Kernel::UB_ALIGN);
     int64_t slSeg2 = AlignTo(totalRecv * 4LL, Mc2Kernel::UB_ALIGN);
-    int64_t slSeg3 = 2LL * AlignTo(static_cast<int64_t>(tilingData.sortTileCount) * 256LL * 2LL,
-                                   Mc2Kernel::UB_ALIGN);
-    int64_t slSeg4 = AlignTo(static_cast<int64_t>(tilingData.sortTileCount) * tilingData.sortNumTileData,
-                             Mc2Kernel::UB_ALIGN);
+    int64_t slSeg3 = 2LL * AlignTo(static_cast<int64_t>(tilingData.sortTileCount) * 256LL * 2LL, Mc2Kernel::UB_ALIGN);
+    int64_t slSeg4 =
+        AlignTo(static_cast<int64_t>(tilingData.sortTileCount) * tilingData.sortNumTileData, Mc2Kernel::UB_ALIGN);
     int64_t slSeg5 = AlignTo(totalRecv * 4LL, Mc2Kernel::UB_ALIGN);
     int64_t wsSortTotal = wsSortCompanion + slSeg0 + slSeg1 + slSeg2 + slSeg3 + slSeg4 + slSeg5;
 

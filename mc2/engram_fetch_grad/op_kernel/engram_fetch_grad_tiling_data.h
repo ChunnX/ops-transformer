@@ -41,8 +41,7 @@ constexpr uint32_t HIDDEN_CHUNK_ELEMS = 2048U;
 constexpr uint32_t A2A_COPY_HALF_BYTES = 32U * 1024U;
 constexpr uint64_t A2aHookUbReserve(uint32_t numRanks)
 {
-    return HCOMM_INIT_SIZE + (numRanks * STATE_OFFSET + UB_ALIGN - 1U) / UB_ALIGN * UB_ALIGN +
-           2U * A2A_COPY_HALF_BYTES;
+    return HCOMM_INIT_SIZE + (numRanks * STATE_OFFSET + UB_ALIGN - 1U) / UB_ALIGN * UB_ALIGN + 2U * A2A_COPY_HALF_BYTES;
 }
 } // namespace Mc2Kernel
 

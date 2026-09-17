@@ -63,7 +63,7 @@ enum TimeoutSite {
     TIMEOUT_STATUS_FLAG_WAIT = 2,  // WaitAllStatusFlags 等待跨 rank barrier
     TIMEOUT_SEND_CREDIT_WAIT = 3,  // SendGradRemote 发送端等待对端 credit
     TIMEOUT_RECV_COUNTER_WAIT = 4, // RecvGradFromPeers 接收端等待对端写计数
-    TIMEOUT_A2A_PROGRESS_STALL = 5, 
+    TIMEOUT_A2A_PROGRESS_STALL = 5,
 };
 
 class EngramFetchGradArch35 {
@@ -545,8 +545,8 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     sortTmpUbSize_ = tilingData->sortTmpUbSize;
     chunkElems_ = tilingData->chunkElems;
     if (chunkElems_ > 0U) {
-        uint32_t chunkFp32Stride = (chunkElems_ * sizeof(float) + Mc2Kernel::UB_ALIGN - 1U) / Mc2Kernel::UB_ALIGN *
-                                   Mc2Kernel::UB_ALIGN;
+        uint32_t chunkFp32Stride =
+            (chunkElems_ * sizeof(float) + Mc2Kernel::UB_ALIGN - 1U) / Mc2Kernel::UB_ALIGN * Mc2Kernel::UB_ALIGN;
         uint32_t chunkOutStride = chunkFp32Stride;
         castBufBytes_ = (inputDtype_ != Mc2Kernel::ENGRAM_DT_FLOAT) ? chunkFp32Stride : 0U;
         accumBufBytes_ = 2U * chunkFp32Stride;
@@ -668,7 +668,7 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     wsOffset += sortWorkspaceSize;
 
     uint32_t statusBufSize = Ceil(numRanks_ * STATE_OFFSET, UB_ALIGN) * UB_ALIGN;
-    statusBufBytes_ = statusBufSize; 
+    statusBufBytes_ = statusBufSize;
     tpipe_->InitBuffer(statusBuf_, statusBufSize);
     uint32_t tempBufSize = statusBufSize;
     uint32_t entryBatchBytes = ENTRY_BATCH_CAP * sizeof(int32_t);
@@ -685,7 +685,7 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
         tempBufSize = displsBatchBytes;
     }
     tpipe_->InitBuffer(tempBuf_, tempBufSize);
-    tempBufBytes_ = tempBufSize; 
+    tempBufBytes_ = tempBufSize;
     uint32_t indicesBufSize = Mc2Kernel::IDX_BUF_BYTES;
     if (indicesBufSize < statusBufSize) {
         indicesBufSize = statusBufSize;
@@ -697,7 +697,7 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
         indicesBufSize = stagingBytes;
     }
     tpipe_->InitBuffer(indicesBuf_, indicesBufSize);
-    indicesBufBytes_ = indicesBufSize; 
+    indicesBufBytes_ = indicesBufSize;
     indicesBufElements_ = indicesBufSize / sizeof(int32_t);
 
     uint32_t maxByPong = MaxGradRowsPerPing(static_cast<uint32_t>(hiddenBytes_), gradSubBatch_);
@@ -719,8 +719,8 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     uint32_t uniqueBufSize = (scatterPeak > Mc2Kernel::COMM_BUF_BYTES) ? scatterPeak : Mc2Kernel::COMM_BUF_BYTES;
     uint64_t permanentUsed = Mc2Kernel::HCOMM_INIT_SIZE + statusBufBytes_ + tempBufBytes_ + indicesBufBytes_;
     ascendc_assert(static_cast<uint64_t>(uniqueBufSize) <= ubSize_ - permanentUsed,
-                   "scatter stage buffers overflow: need=%u, permanent=%llu, ubSize=%llu", uniqueBufSize,
-                   permanentUsed, ubSize_);
+                   "scatter stage buffers overflow: need=%u, permanent=%llu, ubSize=%llu", uniqueBufSize, permanentUsed,
+                   ubSize_);
     tpipe_->InitBuffer(entryBuf_, Mc2Kernel::ENTRY_BUF_BYTES);
     tpipe_->InitBuffer(gradBuf_, Mc2Kernel::GRAD_BUF_BYTES);
 
@@ -966,8 +966,8 @@ __aicore__ inline void EngramFetchGradArch35::A2aChunkInit()
             if (mySendCount <= 0) {
                 continue;
             }
-            ascendc_assert(a2aSendUnitCnt_ < MAX_A2A_SEND_UNITS,
-                           "a2a send units overflow: rankId=%u, aivId=%u", rankId_, aivId_);
+            ascendc_assert(a2aSendUnitCnt_ < MAX_A2A_SEND_UNITS, "a2a send units overflow: rankId=%u, aivId=%u",
+                           rankId_, aivId_);
             A2aSendUnit &unit = a2aSendUnits_[a2aSendUnitCnt_];
             if (dstRank == rankId_) {
                 GM_ADDR rDisplSlot = rdisplsGM_ + rankId_ * UB_ALIGN;
@@ -1026,8 +1026,8 @@ __aicore__ inline void EngramFetchGradArch35::A2aChunkInit()
             if (senderRecvCount == 0U) {
                 continue;
             }
-            ascendc_assert(a2aRecvUnitCnt_ < MAX_A2A_RECV_UNITS,
-                           "a2a recv units overflow: rankId=%u, aivId=%u", rankId_, aivId_);
+            ascendc_assert(a2aRecvUnitCnt_ < MAX_A2A_RECV_UNITS, "a2a recv units overflow: rankId=%u, aivId=%u",
+                           rankId_, aivId_);
             A2aRecvUnit &unit = a2aRecvUnits_[a2aRecvUnitCnt_];
             unit.srcRank = srcRank;
             unit.si = si;
@@ -1222,8 +1222,8 @@ __aicore__ inline void EngramFetchGradArch35::A2aRecvEmitSegment(uint32_t u)
         thisTokens = remaining;
     }
     r.pendSegDst = recvGradGM_ + static_cast<uint64_t>(r.senderBase + r.senderReceived + r.pendTokensAccum) * hb;
-    r.pendSegSrc = (GM_ADDR)ctxPtr_->commBuffer[rankId_] + r.pendSlotArea +
-                   static_cast<uint64_t>(slotGlobalIdx) * tokenSlotSize_;
+    r.pendSegSrc =
+        (GM_ADDR)ctxPtr_->commBuffer[rankId_] + r.pendSlotArea + static_cast<uint64_t>(slotGlobalIdx) * tokenSlotSize_;
     r.pendSegRemain = static_cast<uint64_t>(thisTokens) * hb;
     r.pendTokensAccum += thisTokens;
     r.pendSegsDone++;
@@ -1575,7 +1575,7 @@ __aicore__ inline void EngramFetchGradArch35::Process()
             uniqueScatter_.CountUniquesParallel(numRecv, recvLocalEntryOutGM_, coreStartGM_, segCountGM_);
             SyncAll<true>();
             uniqueScatter_.RunScatterCast(numRecv, recvLocalEntryOutGM_, uniqueLocalEntryOutGM_, numUniqueOutGM_,
-                                           gradUniqueOutGM_, recvGradGM_, coreStartGM_, segCountGM_, sortCompanionGM_);
+                                          gradUniqueOutGM_, recvGradGM_, coreStartGM_, segCountGM_, sortCompanionGM_);
         }
     }
 }
