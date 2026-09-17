@@ -191,8 +191,8 @@ std::vector<TensorDescription> MakeMxA8W4SmsInputs(const MxA8W4SmsTilingParam &p
     }
 
     std::vector<int64_t> groupListShape = {static_cast<int64_t>(GetGroupListSize(param))};
-    if (param.groupListType == 2) {
-        groupListShape.push_back(2);
+    if (param.groupListType == static_cast<int64_t>(GroupedMatmul::GROUPLIST_TYPE_SPARSE_M)) {
+        groupListShape.push_back(static_cast<int64_t>(optiling::GmmConstant::GROUP_LIST_SPARSE_DIMS));
     }
     inputs.emplace_back(MakeTensorDesc(groupListShape, ge::DT_INT64, ge::FORMAT_ND));
     std::vector<int64_t> perTokenScaleOriginShape =
@@ -386,7 +386,7 @@ TEST_F(GroupedWeightQuantBatchMatmulTilingTest, test_tiling_mxa8w4_sms_group_lis
 TEST_F(GroupedWeightQuantBatchMatmulTilingTest, test_tiling_mxa8w4_sms_sparse_group_list)
 {
     MxA8W4SmsTilingParam param;
-    param.groupListType = 2;
+    param.groupListType = static_cast<int64_t>(GroupedMatmul::GROUPLIST_TYPE_SPARSE_M);
     ExpectMxA8W4SmsTilingSuccess(param);
 }
 
