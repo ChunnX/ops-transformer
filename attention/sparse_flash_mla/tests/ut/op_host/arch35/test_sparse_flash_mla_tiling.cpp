@@ -743,7 +743,7 @@ SmlaCase Make910bCase()
 }
 } // namespace
 
-TEST_F(SparseFlashMlaTilingArch35, test_tiling_a2a3_compressed_ratio_support)
+TEST_F(SparseFlashMlaTilingArch35, test_tiling_910b_compressed_ratio_support)
 {
     for (const char *soc : {"Ascend910B", "Ascend910_93"}) {
         for (bool sparse : {false, true}) {
@@ -789,7 +789,7 @@ TEST_F(SparseFlashMlaTilingArch35, test_tiling_a2a3_compressed_ratio_support)
     }
 }
 
-TEST_F(SparseFlashMlaTilingArch35, test_tiling_a2a3_csa_ratio1_does_not_require_residual)
+TEST_F(SparseFlashMlaTilingArch35, test_tiling_910b_csa_ratio1_does_not_require_residual)
 {
     SmlaCase c = Make910bCase();
     c.cmpKvShape = {32, 128, 1, 512};
