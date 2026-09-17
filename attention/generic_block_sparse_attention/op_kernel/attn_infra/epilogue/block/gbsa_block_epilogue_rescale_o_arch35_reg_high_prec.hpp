@@ -134,9 +134,6 @@ public:
         WaitCrossCoreSync<4, PIPE_V>(mm2ToReFlag);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
 
-        AscendC::printf("tkd LocalOut after SubCoreCompute\n");
-        AscendC::DumpTensor(loUbTensor[ubOTmpBufId], 0, 16);
-
         if (isFirstKvSTile) {
             if (!isLastKvSTile) {
                 uint32_t totalCopyElems = rowNumCurSubCore * colStrideCurSubCore;
@@ -214,10 +211,6 @@ public:
             }
             AscendC::PipeBarrier<PIPE_V>();
 
-            AscendC::printf("tkd GlobalOut32 before Cast\n");
-            AscendC::DumpTensor(goUbTensor32, 0, 16);
-
-
             if (std::is_same<ElementO, bfloat16_t>::value) {
                 AscendC::Cast(goUbTensor16, goUbTensor32, AscendC::RoundMode::CAST_RINT,
                               rowNumCurSubCore * colStrideCurSubCore);
@@ -227,9 +220,6 @@ public:
             }
             AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-
-            AscendC::printf("tkd GlobalOut16 after Cast\n");
-            AscendC::DumpTensor(goUbTensor16, 0, 16);
 
             auto ubOLayoutTla = tla::MakeLayout(tla::MakeShape(rowNumCurSubCore, colNumCurSubCore),
                                                 tla::MakeStride(colStrideCurSubCore, tla::Int<1>{}));

@@ -313,9 +313,6 @@ public:
                     }
                     tileMmad(l0CTensorTlaTile, l0ATensorTla, l0BTensorTla, l0TileMAligned, l0TileNAct, l0TileKAct,
                              initMmad);
-                    
-                    AscendC::printf("tkd PV result after tileMmad\n");
-                    AscendC::DumpTensor(l0CTensor[l0CBufId], 0, 16);
 
                     AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0AEventId);
                     AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
