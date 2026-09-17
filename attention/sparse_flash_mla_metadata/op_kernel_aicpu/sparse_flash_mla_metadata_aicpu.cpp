@@ -45,8 +45,8 @@ bool SparseFlashMlaMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     cmpResidualKv_ = ctx.Input(static_cast<uint32_t>(ParamId::cmpResidualKv));
     oriTopkLength_ = ctx.Input(static_cast<uint32_t>(ParamId::oriTopkLength));
     cmpTopkLength_ = ctx.Input(static_cast<uint32_t>(ParamId::cmpTopkLength));
-    hasOriTopkLength_ = (oriTopkLength_ != nullptr && oriTopkLength_->GetData() != nullptr &&
-                         oriTopkLength_->NumElements() > 0);
+    hasOriTopkLength_ =
+        (oriTopkLength_ != nullptr && oriTopkLength_->GetData() != nullptr && oriTopkLength_->NumElements() > 0);
     // output
     metadata_ = ctx.Output(static_cast<uint32_t>(ParamId::metaData));
 
@@ -113,10 +113,10 @@ bool SparseFlashMlaMetadataCpuKernel::ParamsCheck()
     // 校验 seqused_q 元素
     if (sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr) {
         const int32_t *sequsedQPtr = static_cast<const int32_t *>(sequsedQ_->GetData());
-        const int32_t *cuSeqlensQPtr = (layoutQ_ == "TND" && cuSeqlensQ_ != nullptr &&
-                                        cuSeqlensQ_->GetData() != nullptr) ?
-                                           static_cast<const int32_t *>(cuSeqlensQ_->GetData()) :
-                                           nullptr;
+        const int32_t *cuSeqlensQPtr =
+            (layoutQ_ == "TND" && cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) ?
+                static_cast<const int32_t *>(cuSeqlensQ_->GetData()) :
+                nullptr;
         for (int i = 0; i < batchSize; i++) {
             // 校验 seqused_q 元素非负
             if (sequsedQPtr[i] < 0) {
@@ -167,10 +167,10 @@ bool SparseFlashMlaMetadataCpuKernel::ParamsCheck()
         // 校验 seqused_ori_kv 元素
         if (sequsedOriKv_ != nullptr && sequsedOriKv_->GetData() != nullptr) {
             const int32_t *sequsedOriKvPtr = static_cast<const int32_t *>(sequsedOriKv_->GetData());
-            const int32_t *cuSeqlensOriKvPtr = (layoutKv_ == "TND" && cuSeqlensOriKv_ != nullptr &&
-                                                cuSeqlensOriKv_->GetData() != nullptr) ?
-                                                   static_cast<const int32_t *>(cuSeqlensOriKv_->GetData()) :
-                                                   nullptr;
+            const int32_t *cuSeqlensOriKvPtr =
+                (layoutKv_ == "TND" && cuSeqlensOriKv_ != nullptr && cuSeqlensOriKv_->GetData() != nullptr) ?
+                    static_cast<const int32_t *>(cuSeqlensOriKv_->GetData()) :
+                    nullptr;
             for (int i = 0; i < batchSize; i++) {
                 // 校验 seqused_ori_kv 元素非负
                 if (sequsedOriKvPtr[i] < 0) {
@@ -248,10 +248,10 @@ bool SparseFlashMlaMetadataCpuKernel::ParamsCheck()
         // 校验 seqused_cmp_kv 元素
         if (sequsedCmpKv_ != nullptr && sequsedCmpKv_->GetData() != nullptr) {
             const int32_t *sequsedCmpKvPtr = static_cast<const int32_t *>(sequsedCmpKv_->GetData());
-            const int32_t *cuSeqlensCmpKvPtr = (layoutKv_ == "TND" && cuSeqlensCmpKv_ != nullptr &&
-                                                cuSeqlensCmpKv_->GetData() != nullptr) ?
-                                                   static_cast<const int32_t *>(cuSeqlensCmpKv_->GetData()) :
-                                                   nullptr;
+            const int32_t *cuSeqlensCmpKvPtr =
+                (layoutKv_ == "TND" && cuSeqlensCmpKv_ != nullptr && cuSeqlensCmpKv_->GetData() != nullptr) ?
+                    static_cast<const int32_t *>(cuSeqlensCmpKv_->GetData()) :
+                    nullptr;
             for (int i = 0; i < batchSize; i++) {
                 // 校验 seqused_cmp_kv 元素非负
                 if (sequsedCmpKvPtr[i] < 0) {
@@ -284,8 +284,7 @@ bool SparseFlashMlaMetadataCpuKernel::ParamsCheck()
                 if (cmpResidualKvPtr[i] < 0 || cmpResidualKvPtr[i] >= cmpRatio_) {
                     KERNEL_LOG_ERROR("The elements in cmp_residual_kv should be in [0, cmpRatio_(%d)), but got "
                                      "cmp_residual_kv[%d] = %d",
-                                     cmpRatio_,
-                                     i, cmpResidualKvPtr[i]);
+                                     cmpRatio_, i, cmpResidualKvPtr[i]);
                     return false;
                 }
             }
@@ -484,8 +483,8 @@ uint32_t SparseFlashMlaMetadataCpuKernel::GetBsStride(uint32_t bIdx, uint32_t s1
 uint32_t SparseFlashMlaMetadataCpuKernel::GetOriTopkLength(uint32_t bsStride)
 {
     // 尝试使用 oriTopkLength_
-    if (oriTopK_ != 0 && oriMaskMode_ == static_cast<int32_t>(SparseMode::DEFAULT_MASK) &&
-        oriTopkLength_ != nullptr && oriTopkLength_->GetData() != nullptr) {
+    if (oriTopK_ != 0 && oriMaskMode_ == static_cast<int32_t>(SparseMode::DEFAULT_MASK) && oriTopkLength_ != nullptr &&
+        oriTopkLength_->GetData() != nullptr) {
         const int32_t *oriTopkPtr = static_cast<const int32_t *>(oriTopkLength_->GetData());
         // 规划 FA/FD 任务时，将有效稀疏长度限制到索引宽度，与内核的计算范围保持一致。
         return std::min(static_cast<uint32_t>(oriTopkPtr[bsStride]), static_cast<uint32_t>(oriTopK_));
@@ -510,9 +509,8 @@ uint32_t SparseFlashMlaMetadataCpuKernel::ReadOriTopkLengthAtRow(uint32_t bIdx, 
         }
         return static_cast<uint32_t>(topkLenPtr[tIdx * static_cast<uint32_t>(numHeadsKv_)]);
     }
-    return static_cast<uint32_t>(
-        topkLenPtr[(static_cast<uint64_t>(bIdx) * static_cast<uint64_t>(maxSeqlenQ_) + s1Idx) *
-                   static_cast<uint64_t>(numHeadsKv_)]);
+    return static_cast<uint32_t>(topkLenPtr[(static_cast<uint64_t>(bIdx) * static_cast<uint64_t>(maxSeqlenQ_) + s1Idx) *
+                                            static_cast<uint64_t>(numHeadsKv_)]);
 }
 
 uint32_t SparseFlashMlaMetadataCpuKernel::GetOriTopkLength(uint32_t s1GIdx, const BatchCache &batchCache) const
@@ -536,8 +534,8 @@ uint32_t SparseFlashMlaMetadataCpuKernel::GetOriTopkLength(uint32_t s1GIdx, cons
 uint32_t SparseFlashMlaMetadataCpuKernel::GetCmpTopkLength(uint32_t bsStride)
 {
     // 尝试使用 cmpTopkLength_
-    if (cmpTopK_ != 0 && cmpMaskMode_ == static_cast<int32_t>(SparseMode::DEFAULT_MASK) &&
-        cmpTopkLength_ != nullptr && cmpTopkLength_->GetData() != nullptr) {
+    if (cmpTopK_ != 0 && cmpMaskMode_ == static_cast<int32_t>(SparseMode::DEFAULT_MASK) && cmpTopkLength_ != nullptr &&
+        cmpTopkLength_->GetData() != nullptr) {
         const int32_t *cmpTopkPtr = static_cast<const int32_t *>(cmpTopkLength_->GetData());
         // 规划 FA/FD 任务时，将有效稀疏长度限制到索引宽度，与内核的计算范围保持一致。
         return std::min(static_cast<uint32_t>(cmpTopkPtr[bsStride]), static_cast<uint32_t>(cmpTopK_));
@@ -721,29 +719,26 @@ int64_t SparseFlashMlaMetadataCpuKernel::CmpCalcCost(uint32_t basicM, uint32_t b
     return static_cast<int64_t>(COST_WEIGHT_M * cmpAlignBasicM + COST_WEIGHT_S2 * cmpAlignBasicS2);
 }
 
-void SparseFlashMlaMetadataCpuKernel::CalcCostTable(uint32_t s1GTailSize, uint32_t reductionBlockSize,
-                                                    uint32_t oriS2TailSize, uint32_t cmpS2TailSize)
+void SparseFlashMlaMetadataCpuKernel::CalcCostTable(uint32_t s1GTailSize, uint32_t oriS2TailSize,
+                                                    uint32_t cmpS2TailSize)
 {
-    uint32_t normalS2Size = isBatchConsistency_ && reductionBlockSize > 0U ? reductionBlockSize : s2BaseSize_;
     // ori 部分 cost
     if (hasOriKv_) {
-        typeCost_[ORI_NORMAL_BLOCK][ORI_NORMAL_BLOCK] = OriCalcCost(mBaseSize_, normalS2Size);
-        typeCost_[ORI_TAIL_BLOCK][ORI_NORMAL_BLOCK] =
-            (s1GTailSize == 0U) ? 0U : OriCalcCost(s1GTailSize, normalS2Size);
-        typeCost_[ORI_NORMAL_BLOCK][ORI_TAIL_BLOCK] = (oriS2TailSize == 0U) ? 0U :
-                                                                              OriCalcCost(mBaseSize_, oriS2TailSize);
-        typeCost_[ORI_TAIL_BLOCK][ORI_TAIL_BLOCK] = (s1GTailSize == 0U || oriS2TailSize == 0U) ? 0U :
-                                                                                                 OriCalcCost(s1GTailSize, oriS2TailSize);
+        typeCost_[ORI_NORMAL_BLOCK][ORI_NORMAL_BLOCK] = OriCalcCost(mBaseSize_, s2BaseSize_);
+        typeCost_[ORI_TAIL_BLOCK][ORI_NORMAL_BLOCK] = (s1GTailSize == 0U) ? 0U : OriCalcCost(s1GTailSize, s2BaseSize_);
+        typeCost_[ORI_NORMAL_BLOCK][ORI_TAIL_BLOCK] =
+            (oriS2TailSize == 0U) ? 0U : OriCalcCost(mBaseSize_, oriS2TailSize);
+        typeCost_[ORI_TAIL_BLOCK][ORI_TAIL_BLOCK] =
+            (s1GTailSize == 0U || oriS2TailSize == 0U) ? 0U : OriCalcCost(s1GTailSize, oriS2TailSize);
     }
     // cmp 部分 cost
     if (hasCmpKv_) {
-        typeCost_[CMP_NORMAL_BLOCK][CMP_NORMAL_BLOCK] = CmpCalcCost(mBaseSize_, normalS2Size);
-        typeCost_[CMP_TAIL_BLOCK][CMP_NORMAL_BLOCK] =
-            (s1GTailSize == 0U) ? 0U : CmpCalcCost(s1GTailSize, normalS2Size);
-        typeCost_[CMP_NORMAL_BLOCK][CMP_TAIL_BLOCK] = (cmpS2TailSize == 0U) ? 0U :
-                                                                              CmpCalcCost(mBaseSize_, cmpS2TailSize);
-        typeCost_[CMP_TAIL_BLOCK][CMP_TAIL_BLOCK] = (s1GTailSize == 0U || cmpS2TailSize == 0U) ? 0U :
-                                                                                                 CmpCalcCost(s1GTailSize, cmpS2TailSize);
+        typeCost_[CMP_NORMAL_BLOCK][CMP_NORMAL_BLOCK] = CmpCalcCost(mBaseSize_, s2BaseSize_);
+        typeCost_[CMP_TAIL_BLOCK][CMP_NORMAL_BLOCK] = (s1GTailSize == 0U) ? 0U : CmpCalcCost(s1GTailSize, s2BaseSize_);
+        typeCost_[CMP_NORMAL_BLOCK][CMP_TAIL_BLOCK] =
+            (cmpS2TailSize == 0U) ? 0U : CmpCalcCost(mBaseSize_, cmpS2TailSize);
+        typeCost_[CMP_TAIL_BLOCK][CMP_TAIL_BLOCK] =
+            (s1GTailSize == 0U || cmpS2TailSize == 0U) ? 0U : CmpCalcCost(s1GTailSize, cmpS2TailSize);
     }
 }
 
@@ -915,15 +910,13 @@ void SparseFlashMlaMetadataCpuKernel::CalcOriBlockRange(const Range<int64_t> &or
         // oriS2LastToken 与 topk 取最小
         uint32_t s1Idx = GetS1Idx(batchCache.s1Size, s1GCache.s1GIdx);
         uint32_t bsStride = GetBsStride(s1GCache.bIdx, s1Idx);
-        uint32_t oriTopkSize = isSparseOriKv_ ?
-                                   GetOriTopkLength(s1GCache.s1GIdx, batchCache) :
-                                   GetOriTopkLength(GetBsStride(s1GCache.bIdx, GetS1Idx(batchCache.s1Size, s1GCache.s1GIdx)));
+        uint32_t oriTopkSize =
+            isSparseOriKv_ ? GetOriTopkLength(s1GCache.s1GIdx, batchCache) :
+                             GetOriTopkLength(GetBsStride(s1GCache.bIdx, GetS1Idx(batchCache.s1Size, s1GCache.s1GIdx)));
         s1GCache.actOriS2Size = isSparseOriKv_ ?
                                     std::min(static_cast<uint32_t>(oriS2LastToken - oriS2FirstToken + 1), oriTopkSize) :
                                     static_cast<uint32_t>(oriS2LastToken - oriS2FirstToken + 1);
-        s1GCache.oriS2End = s1GCache.actOriS2Size == 0 ?
-                                0 :
-                                (s1GCache.actOriS2Size - 1U) / s2BaseSize_ + 1U;
+        s1GCache.oriS2End = s1GCache.actOriS2Size == 0 ? 0 : (s1GCache.actOriS2Size - 1U) / s2BaseSize_ + 1U;
         s1GCache.oriS2TailSize = s1GCache.actOriS2Size % s2BaseSize_;
     }
 }
@@ -982,59 +975,28 @@ void SparseFlashMlaMetadataCpuKernel::GatherOriAndCmpCache(S1GCache &s1GCache)
     s1GCache.s1GCost = s1GCache.oriS1GCost + s1GCache.cmpS1GCost;
 }
 
-int64_t SparseFlashMlaMetadataCpuKernel::CalcBatchConsistencyBlockCost(
-    const S1GCache &s1GCache, uint32_t blockIdx)
+int64_t SparseFlashMlaMetadataCpuKernel::CalcBatchConsistencyBlockCost(const S1GCache &s1GCache, uint32_t blockIdx)
 {
-    // 规约块按基本计算块的顺序分组，ORI 尾块可以与 CMP 首块归入同一规约块。
-    // ORI 和 CMP 各自保留独立的存储地址。
+    // 规约块只对连续基本块分组，负载沿用各基本块缓存的 cost。
     uint64_t basesPerBlock = s1GCache.reductionBlockSize / s2BaseSize_;
     uint64_t firstBase = static_cast<uint64_t>(blockIdx) * basesPerBlock;
-    uint64_t oriBases = (static_cast<uint64_t>(s1GCache.actOriS2Size) + s2BaseSize_ - 1U) / s2BaseSize_;
-    uint64_t cmpBases = (static_cast<uint64_t>(s1GCache.actCmpS2Size) + s2BaseSize_ - 1U) / s2BaseSize_;
-    uint64_t lastBase = std::min(firstBase + basesPerBlock, oriBases + cmpBases);
-    uint64_t oriFirst = std::min(firstBase * s2BaseSize_, static_cast<uint64_t>(s1GCache.actOriS2Size));
-    uint64_t oriLast = std::min(lastBase * s2BaseSize_, static_cast<uint64_t>(s1GCache.actOriS2Size));
-    uint64_t cmpFirstBase = firstBase > oriBases ? firstBase - oriBases : 0U;
-    uint64_t cmpLastBase = lastBase > oriBases ? lastBase - oriBases : 0U;
-    uint64_t cmpFirst = std::min(cmpFirstBase * s2BaseSize_, static_cast<uint64_t>(s1GCache.actCmpS2Size));
-    uint64_t cmpLast = std::min(cmpLastBase * s2BaseSize_, static_cast<uint64_t>(s1GCache.actCmpS2Size));
+    uint64_t lastBase = std::min(firstBase + basesPerBlock, static_cast<uint64_t>(s1GCache.cmpS2End));
+    uint64_t oriLast = std::min(lastBase, static_cast<uint64_t>(s1GCache.oriS2End));
+    uint64_t cmpFirst = std::max(firstBase, static_cast<uint64_t>(s1GCache.cmpS2Start));
     int64_t cost = 0;
-    if (oriLast > oriFirst) {
-        cost += OriCalcCost(s1GCache.reductionMSize, static_cast<uint32_t>(oriLast - oriFirst));
+    if (oriLast > firstBase) {
+        cost += static_cast<int64_t>(oriLast - firstBase) * s1GCache.oriS1GNormalBlockCost;
+        if (oriLast == s1GCache.oriS2End) {
+            cost += s1GCache.oriS1GLastBlockCost - s1GCache.oriS1GNormalBlockCost;
+        }
     }
-    if (cmpLast > cmpFirst) {
-        cost += CmpCalcCost(s1GCache.reductionMSize, static_cast<uint32_t>(cmpLast - cmpFirst));
+    if (lastBase > cmpFirst) {
+        cost += static_cast<int64_t>(lastBase - cmpFirst) * s1GCache.cmpS1GNormalBlockCost;
+        if (lastBase == s1GCache.cmpS2End) {
+            cost += s1GCache.cmpS1GLastBlockCost - s1GCache.cmpS1GNormalBlockCost;
+        }
     }
     return cost;
-}
-
-void SparseFlashMlaMetadataCpuKernel::CalcBatchConsistencyS1GCache(
-    S1GCache &s1GCache, const SplitInfo &splitInfo)
-{
-    uint64_t totalSize = static_cast<uint64_t>(s1GCache.actOriS2Size) + s1GCache.actCmpS2Size;
-    uint64_t rawBlockSize = totalSize / BATCH_CONSISTENCY_MAX_REDUCTION_PARTS;
-    s1GCache.reductionBlockSize = static_cast<uint32_t>(
-        std::max((rawBlockSize + s2BaseSize_ - 1U) / s2BaseSize_, uint64_t{1}) * s2BaseSize_);
-    uint32_t basesPerBlock = s1GCache.reductionBlockSize / s2BaseSize_;
-    s1GCache.s2Loop = static_cast<uint32_t>(
-        (static_cast<uint64_t>(s1GCache.actOriS2Size) + s2BaseSize_ - 1U) / s2BaseSize_ +
-        (static_cast<uint64_t>(s1GCache.actCmpS2Size) + s2BaseSize_ - 1U) / s2BaseSize_);
-    // 分核前按 ORI、CMP 的基本计算块连续划分规约块。
-    // 核之间的任务边界只能落在规约块之间。
-    s1GCache.s2Start = 0U;
-    s1GCache.s2End = (s1GCache.s2Loop + basesPerBlock - 1U) / basesPerBlock;
-    s1GCache.s1GBlock = s1GCache.s2End;
-    s1GCache.reductionMSize = mBaseSize_;
-    if (s1GCache.s1GIdx + 1U == splitInfo.s1GBaseNum[s1GCache.bIdx] &&
-        splitInfo.s1GTailSize[s1GCache.bIdx] != 0U) {
-        s1GCache.reductionMSize = splitInfo.s1GTailSize[s1GCache.bIdx];
-    }
-    s1GCache.s1GCost = 0;
-    s1GCache.s1GLastBlockCost = 0;
-    for (uint32_t blockIdx = 0; blockIdx < s1GCache.s2End; ++blockIdx) {
-        s1GCache.s1GLastBlockCost = CalcBatchConsistencyBlockCost(s1GCache, blockIdx);
-        s1GCache.s1GCost += s1GCache.s1GLastBlockCost;
-    }
 }
 
 void SparseFlashMlaMetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx, const SplitContext &splitContext,
@@ -1085,21 +1047,28 @@ void SparseFlashMlaMetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx, const SplitC
         s1GCache.cmpS2End = s1GCache.cmpS2Start;
         s1GCache.cmpS2TailSize = 0;
     }
-    if (isBatchConsistency_) {
-        CalcBatchConsistencyS1GCache(s1GCache, splitInfo);
-        return;
-    }
     // 计算基本块负载
-    CalcCostTable(splitInfo.s1GTailSize[s1GCache.bIdx], s1GCache.reductionBlockSize, s1GCache.oriS2TailSize,
-                  s1GCache.cmpS2TailSize);
+    CalcCostTable(splitInfo.s1GTailSize[s1GCache.bIdx], s1GCache.oriS2TailSize, s1GCache.cmpS2TailSize);
     // 计算 ori 和 cmp 部分的 cost 和 block 信息
     CalcOriS1GCache(s1GCache, splitInfo);
     CalcCmpS1GCache(s1GCache, splitInfo);
     // 汇总 ori 和 cmp 部分的 cost 和 block 信息
     GatherOriAndCmpCache(s1GCache);
-    s1GCache.s2Loop = static_cast<uint32_t>(
-        (static_cast<uint64_t>(s1GCache.actOriS2Size) + s2BaseSize_ - 1U) / s2BaseSize_ +
-        (static_cast<uint64_t>(s1GCache.actCmpS2Size) + s2BaseSize_ - 1U) / s2BaseSize_);
+    s1GCache.s2Loop =
+        static_cast<uint32_t>((static_cast<uint64_t>(s1GCache.actOriS2Size) + s2BaseSize_ - 1U) / s2BaseSize_ +
+                              (static_cast<uint64_t>(s1GCache.actCmpS2Size) + s2BaseSize_ - 1U) / s2BaseSize_);
+    if (isBatchConsistency_) {
+        uint64_t totalSize = static_cast<uint64_t>(s1GCache.actOriS2Size) + s1GCache.actCmpS2Size;
+        uint64_t rawBlockSize = totalSize / BATCH_CONSISTENCY_MAX_REDUCTION_PARTS;
+        s1GCache.reductionBlockSize =
+            static_cast<uint32_t>(std::max((rawBlockSize + s2BaseSize_ - 1U) / s2BaseSize_, uint64_t{1}) * s2BaseSize_);
+        uint32_t basesPerBlock = s1GCache.reductionBlockSize / s2BaseSize_;
+        // ORI、CMP 基本块连续分组，分核边界只落在规约块之间；整行负载保持不变。
+        s1GCache.s1GBlock = (s1GCache.s2Loop + basesPerBlock - 1U) / basesPerBlock;
+        s1GCache.s2End = s1GCache.s1GBlock;
+        s1GCache.s1GLastBlockCost =
+            s1GCache.s1GBlock == 0U ? 0 : CalcBatchConsistencyBlockCost(s1GCache, s1GCache.s1GBlock - 1U);
+    }
 }
 
 void SparseFlashMlaMetadataCpuKernel::CalcBatchCost(uint32_t bIdx, const SplitContext &splitContext, CostInfo &costInfo)
@@ -1314,10 +1283,10 @@ uint32_t SparseFlashMlaMetadataCpuKernel::CalcCurBlockS2Loop(const AssignContext
     uint32_t basesPerBlock = s1GCache.reductionBlockSize / s2BaseSize_;
     uint64_t firstBase = static_cast<uint64_t>(assignContext.curS2Idx) * basesPerBlock;
     // 任务分配会递减 s2Loop，因此需从原始长度计算整行的基本块总数。
-    uint64_t totalBases =
-        (static_cast<uint64_t>(s1GCache.actOriS2Size) + s2BaseSize_ - 1U) / s2BaseSize_ +
-        (static_cast<uint64_t>(s1GCache.actCmpS2Size) + s2BaseSize_ - 1U) / s2BaseSize_;
-    return firstBase < totalBases ? static_cast<uint32_t>(std::min(uint64_t{basesPerBlock}, totalBases - firstBase)) : 0U;
+    uint64_t totalBases = (static_cast<uint64_t>(s1GCache.actOriS2Size) + s2BaseSize_ - 1U) / s2BaseSize_ +
+                          (static_cast<uint64_t>(s1GCache.actCmpS2Size) + s2BaseSize_ - 1U) / s2BaseSize_;
+    return firstBase < totalBases ? static_cast<uint32_t>(std::min(uint64_t{basesPerBlock}, totalBases - firstBase)) :
+                                    0U;
 }
 
 void SparseFlashMlaMetadataCpuKernel::AssignByBlock(const SplitContext &splitContext, AssignContext &assignContext)
@@ -1342,8 +1311,7 @@ void SparseFlashMlaMetadataCpuKernel::AssignByBlock(const SplitContext &splitCon
         assignContext.s1GCache.s1GCost = assignContext.s1GCache.s1GCost - curCost;
         assignContext.bN2Block--;
         assignContext.s1GCache.s1GBlock--;
-        assignContext.bN2S2Loop =
-            assignContext.bN2S2Loop > curS2Loop ? assignContext.bN2S2Loop - curS2Loop : 0U;
+        assignContext.bN2S2Loop = assignContext.bN2S2Loop > curS2Loop ? assignContext.bN2S2Loop - curS2Loop : 0U;
         assignContext.s1GCache.s2Loop =
             assignContext.s1GCache.s2Loop > curS2Loop ? assignContext.s1GCache.s2Loop - curS2Loop : 0U;
         curCost = CalcCurBlockCost(assignContext);
@@ -1367,8 +1335,7 @@ void SparseFlashMlaMetadataCpuKernel::ForceAssign(const SplitContext &splitConte
     // 当前batch被分配一块出去，更新剩余负载
     assignContext.bN2Cost = assignContext.bN2Cost - curCost;
     assignContext.bN2Block--;
-    assignContext.bN2S2Loop =
-        assignContext.bN2S2Loop > curS2Loop ? assignContext.bN2S2Loop - curS2Loop : 0U;
+    assignContext.bN2S2Loop = assignContext.bN2S2Loop > curS2Loop ? assignContext.bN2S2Loop - curS2Loop : 0U;
     // 当前行被分配一块出去，更新剩余负载
     assignContext.s1GCache.s1GCost = assignContext.s1GCache.s1GCost - curCost;
     assignContext.s1GCache.s1GBlock--;
