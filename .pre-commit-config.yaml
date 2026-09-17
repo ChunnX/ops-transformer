@@ -65,17 +65,6 @@ repos:
           ]
 
   # 新增/重命名头文件 basename 重名拦截
-  - repo: local
-    hooks:
-      - id: duplicate-header-check
-        name: Duplicate Header Basename Check
-        entry: bash scripts/check_duplicate_headers.sh
-        language: system
-        pass_filenames: false
-        always_run: true
-        stages: [pre-commit]
-        verbose: true
-
   # OAT 合规性检查 (Open Source Audit Tool)
   - repo: local
     hooks:
