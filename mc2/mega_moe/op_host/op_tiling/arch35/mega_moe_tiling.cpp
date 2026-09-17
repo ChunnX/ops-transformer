@@ -2758,9 +2758,13 @@ static void SetDedupModeParams(const gert::TilingContext *context, const MegaMoe
         constexpr double DEDUP_MIN_SAVED_BYTES = 60.0 * 1024.0 * 1024.0;
         // 中档 bs 口袋（实测 2026-09-09）：bs2048 时 savedBytes=40MB 仍复现 +1.0~1.2% 微亏——此档
         // GMM 计算已能完全遮住 dispatch 通信，省下的字节不在关键路径上，只剩建表成本；bs≥4096
-        // （savedBytes≥80MB）通信重新成为瓶颈，收益回归（-1.6%/-5.4%）。故 bs>1024 时门槛抬到
-        // 60MB（实测 40MB 亏 / 80MB 赢的区间中插）。两阈值均基于 4P 实测，8 卡矩阵后需重校准。
-        constexpr double DEDUP_MID_BS_MIN_SAVED_BYTES = 150.0 * 1024.0 * 1024.0;
+        // （savedBytes≥80MB）通信重新成为瓶颈，收益回归。故 bs>1024 时门槛取 60MB
+        // （实测 40MB 亏 / 80MB 赢的区间中插）。曾短暂抬到 150MB，其依据"B4096 开而无收益"
+        // 系图编译缓存冻结陈旧 tiling 的污染数据（2026-09-17 新 case 名干净实验翻案：均匀
+        // B4096 saved≈106MB 开态 min +0.57% 属噪声带内平，倾斜同形状实测 -9.26% 真赢，
+        // B8192 -16.7%）；150 档会把倾斜场景 B4096 一并关掉，净丢收益，撤回。
+        // 两阈值均基于 4P 实测，8 卡矩阵后需重校准。
+        constexpr double DEDUP_MID_BS_MIN_SAVED_BYTES = 60.0 * 1024.0 * 1024.0;
         /*
          * combine 去重（专家粒度合并版）的收益边界低于纯 dispatch 去重：小 bs 档实测
          * S4(bs256,h5120,k6,saved=3.56MB) full 组合净赢 -2.8%，而 S1(bs64,saved=1.15MB)
