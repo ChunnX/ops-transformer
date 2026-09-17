@@ -260,7 +260,7 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CT
                        static_cast<uint64_t>(cfg.rankM) * sizeof(X2ScaleType) * static_cast<uint64_t>(cfg.rankDim);
     }
     op.Init(aGM_, bGM_, biasGM_, dequantGM2_, localDequantGM1_, cGM, workspaceGM, &qBMMLocalTiling, tPipe_);
-    op.SetHP32(true); //wzy
+    op.SetHF32(true); //wzy
     op.Process();
 }
 
@@ -315,7 +315,7 @@ AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans, Is
         mmv3.Init(aGM, bGM_, biasGM_, dequantGM2_, dequantGM1_, cGM_, workspaceGM, &qMmv3Tiling, GetTPipePtr(), cfg,
                   isTail, true, preCoreNum_);
     }
-    mmv3.SetHP32(true); //wzy
+    mmv3.SetHF32(true); //wzy
     uint32_t shift = isTail ? cfg.tileCnt : 0;
     for (uint32_t i = 0; i < count; i++) {
         GetTPipePtr()->Destroy();
