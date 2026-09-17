@@ -26,6 +26,24 @@
 
 namespace BaseApi {
 
+// 与 FA 侧 UpdateMinCheckValue 语义一致的 min 判值计算（VF 形式）：
+// DN 路径全 mask 行写入的 max 经过了 scaleValue 乘法 + ln2 量化，
+// 使用与 vec1 相同的硬件 Truncate(CAST_CEIL) 保证判值 bit 级一致；非 DN 路径保持原始 minValue
+template <bool useDn>
+__simd_vf__ inline void CalcMinCheckValueVF(__ubuf__ float *dstUb, const float minValue, const float scaleValue)
+{
+    RegTensor<float> vregMin;
+    MaskReg pregAll = CreateMask<uint16_t, MaskPattern::ALL>();
+    Duplicate(vregMin, minValue);
+    if constexpr (useDn) {
+        Muls(vregMin, vregMin, scaleValue, pregAll);
+        Muls(vregMin, vregMin, INV_LN2, pregAll);
+        Truncate<float, RoundMode::CAST_CEIL>(vregMin, vregMin, pregAll);
+        Muls(vregMin, vregMin, LN2, pregAll);
+    }
+    StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ float *&)dstUb, vregMin, pregAll);
+}
+
 template <LayOutTypeEnum LAYOUT>
 __aicore__ inline constexpr fa_base_vector::UbInputFormat GeInputUbFormat()
 {
@@ -138,6 +156,7 @@ private:
     TBuf<> fdLseMaxUbBuf1_;
     TBuf<> fdLseMaxUbBuf2_;
     TBuf<> fdLseUbBuf_;
+    TBuf<> fdMinCheckBuf_;
 
 public:
     __aicore__ inline QuantFlashAttnBlockVecFlashDecode(ConstInfoX &constInfo)
@@ -193,6 +212,8 @@ public:
             pipe->InitBuffer(fdLseMaxUbBuf2_, BUFFER_SIZE_BYTE_256B);
             // OutQue, SYNC_LSEOUTPUT_BUF_FLAG
             pipe->InitBuffer(fdLseUbBuf_, BUFFER_SIZE_BYTE_256B);
+            // CalcMinCheckValueVF 的结果缓存
+            pipe->InitBuffer(fdMinCheckBuf_, BUFFER_SIZE_BYTE_256B);
         }
     }
     __aicore__ inline void AllocEventID()
@@ -229,7 +250,7 @@ protected:
         copyInPadParams.leftPadding = 0;
         copyInPadParams.rightPadding = (this->dSizeV_Align_ - constInfo_.dSizeV) % BLOCK_ELEMENT_NUM;
         copyInPadParams.paddingValue = 0;
-        uint64_t combineAccumOutOffset = startRow * constInfo_.dSizeV +                 // taskoffset + g轴offset
+        uint64_t combineAccumOutOffset = startRow * constInfo_.dSizeV +                // taskoffset + g轴offset
                                          splitKVIndex * mBaseSize * constInfo_.dSizeV; // 份数offset
 
         DataCopyPad(accumOutLocal, accumOutGm_[combineAccumOutOffset], copyInParams, copyInPadParams);
@@ -251,6 +272,18 @@ protected:
                      dealRowCountAlign);
         }
     }
+    __aicore__ inline float CalcMinCheckValue()
+    {
+        // 与 FA 侧 UpdateMinCheckValue 保持一致：DN 路径全 mask 行写入的 max 经过了
+        // scaleValue 乘法 + ln2 量化；非 DN 路径保持原始 minValue
+        uint32_t minBits = NEGATIVE_MIN_VALUE_FP32_LN2; // NEGATIVE_MIN_VALUE_FP32_LN2
+        float minValue = *((float *)&minBits);
+        LocalTensor<float> minCheckUb = fdMinCheckBuf_.Get<float>();
+        CalcMinCheckValueVF<useDn>((__ubuf__ float *)minCheckUb.GetPhyAddr(), minValue, constInfo_.scaleValue);
+        AscendC::PipeBarrier<PIPE_V>();
+        return minCheckUb.GetValue(0);
+    }
+
     __aicore__ inline void ComputeScaleValue(LocalTensor<T> &lseExp, uint32_t dealRowCount,
                                              uint32_t actualCombineLoopSize, uint32_t cntM, uint32_t startRow)
     {
@@ -261,7 +294,7 @@ protected:
         LocalTensor<T> sinkExpBuf;
         LocalTensor<T> maxLseUb = fdLseUbBuf_.Get<T>();
         ComputeScaleValue_VF_FD(sinkExpBuf, lseMax, lseSum, lseExp, maxLseUb, lseMaxUb, dealRowCount,
-                                actualCombineLoopSize, constInfo_.isSoftmaxLseEnable, false);
+                                actualCombineLoopSize, constInfo_.isSoftmaxLseEnable, false, CalcMinCheckValue());
     }
 
     __aicore__ inline void Bmm2DataCopyOutTrans(LocalTensor<OUTPUT_T> &attenOutUb, uint32_t startRow,
@@ -465,27 +498,28 @@ public:
                 if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
                     // LSE 输出改为 N-major 排布 [N2*G, T]: N 在外, T 在内
                     uint32_t prefixBS1 = qActSeqLensParser_->GetTBase(taskInfo_.bIdx);
-                    uint64_t bN2Offset =
-                        taskInfo_.n2Idx * constInfo_.realGSize * constInfo_.t1Size + prefixBS1;
+                    uint64_t bN2Offset = taskInfo_.n2Idx * constInfo_.realGSize * constInfo_.t1Size + prefixBS1;
                     DataCopySoftmaxLseTNDtoNTArch35NoGS1Merge<T, ConstInfoX>(softmaxLseGm_, maxLseUb, bN2Offset,
                                                                              mOffset, actualGSplitSize, constInfo_);
                 } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
                     uint32_t prefixBS1 = qActSeqLensParser_->GetTBase(taskInfo_.bIdx);
                     uint32_t s1Size = qActSeqLensParser_->GetActualSeqLength(taskInfo_.bIdx);
-                    uint64_t bN2Offset =
-                        prefixBS1 * constInfo_.realGSize * constInfo_.realN2Size + taskInfo_.n2Idx * constInfo_.realGSize;
+                    uint64_t bN2Offset = prefixBS1 * constInfo_.realGSize * constInfo_.realN2Size +
+                                         taskInfo_.n2Idx * constInfo_.realGSize;
                     DataCopySoftmaxLseNTDArch35<T, ConstInfoX>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
                                                                actualGSplitSize, constInfo_, s1Size);
                 } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
-                    uint64_t bN2Offset = taskInfo_.bIdx * constInfo_.realGSize * constInfo_.realN2Size * constInfo_.s1Size +
-                                         taskInfo_.n2Idx * constInfo_.realGSize * constInfo_.s1Size;
+                    uint64_t bN2Offset =
+                        taskInfo_.bIdx * constInfo_.realGSize * constInfo_.realN2Size * constInfo_.s1Size +
+                        taskInfo_.n2Idx * constInfo_.realGSize * constInfo_.s1Size;
                     uint64_t qActSeqLens = qActSeqLensParser_->GetActualSeqLength(taskInfo_.bIdx);
                     uint64_t s1LeftPaddingSize = 0;
                     DataCopySoftmaxLseBSNDArch35<T, ConstInfoX>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
                                                                 actualGSplitSize, constInfo_, s1LeftPaddingSize);
                 } else { // BNSD
-                    uint64_t bN2Offset = taskInfo_.bIdx * constInfo_.realGSize * constInfo_.realN2Size * constInfo_.s1Size +
-                                         taskInfo_.n2Idx * constInfo_.realGSize * constInfo_.s1Size;
+                    uint64_t bN2Offset =
+                        taskInfo_.bIdx * constInfo_.realGSize * constInfo_.realN2Size * constInfo_.s1Size +
+                        taskInfo_.n2Idx * constInfo_.realGSize * constInfo_.s1Size;
                     uint64_t qActSeqLens = qActSeqLensParser_->GetActualSeqLength(taskInfo_.bIdx);
                     uint64_t s1LeftPaddingSize = 0;
                     DataCopySoftmaxLseBNSDArch35<T, ConstInfoX>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
