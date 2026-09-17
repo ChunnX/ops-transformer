@@ -10,6 +10,7 @@
 
 #include <cstdint>
 #include <limits>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -32,14 +33,15 @@ static bool GetInt64(const nlohmann::json &value, int64_t &parsed_value)
 
 static Status ParseParamsTfIdfVectorizer(const ge::Operator &op_src, ge::Operator &op_dest)
 {
-    int64_t max_gram_length = 0, max_skip_count = 0, min_gram_length = 0;
-    std::string mode;
-    std::vector<float> weights;
-    std::vector<int64_t> ngram_counts, ngram_indexes, pool_int64s;
-    std::vector<std::string> pool_strings;
-    bool has_max_gram_length = false, has_max_skip_count = false, has_min_gram_length = false, has_mode = false;
-    bool has_weights = false, has_ngram_counts = false, has_ngram_indexes = false, has_pool_int64s = false;
-    bool has_pool_strings = false;
+    std::optional<int64_t> max_gram_length;
+    std::optional<int64_t> max_skip_count;
+    std::optional<int64_t> min_gram_length;
+    std::optional<std::string> mode;
+    std::optional<std::vector<float>> weights;
+    std::optional<std::vector<int64_t>> ngram_counts;
+    std::optional<std::vector<int64_t>> ngram_indexes;
+    std::optional<std::vector<int64_t>> pool_int64s;
+    std::optional<std::vector<std::string>> pool_strings;
     ge::AscendString attributes;
     // ONNX repeated AttributeProto messages are exposed as JSON in "attribute".
     if (op_src.GetAttr("attribute", attributes) == ge::GRAPH_SUCCESS) {
@@ -62,48 +64,30 @@ static Status ParseParamsTfIdfVectorizer(const ge::Operator &op_src, ge::Operato
                     if (attr.contains("i") && !GetInt64(attr.at("i"), value)) {
                         return FAILED;
                     }
-                    if (name == "max_gram_length") {
-                        max_gram_length = value;
-                        has_max_gram_length = true;
-                    } else if (name == "max_skip_count") {
-                        max_skip_count = value;
-                        has_max_skip_count = true;
-                    } else {
-                        min_gram_length = value;
-                        has_min_gram_length = true;
-                    }
+                    (name == "max_gram_length" ? max_gram_length :
+                     name == "max_skip_count"  ? max_skip_count :
+                                                 min_gram_length) = value;
                 } else if (name == "mode" && type == 3) {
                     if (!attr.contains("s")) {
-                        mode.clear();
-                        has_mode = true;
+                        mode = "";
                     } else if (!attr.at("s").is_string()) {
                         return FAILED;
                     } else {
                         mode = attr.at("s").get<std::string>();
-                        has_mode = true;
                     }
                 } else if (name == "weights" && type == 6) {
                     if (!attr.contains("floats")) {
-                        weights.clear();
-                        has_weights = true;
+                        weights = std::vector<float>{};
                     } else if (!attr.at("floats").is_array()) {
                         return FAILED;
                     } else {
                         weights = attr.at("floats").get<std::vector<float>>();
-                        has_weights = true;
                     }
                 } else if ((name == "ngram_counts" || name == "ngram_indexes" || name == "pool_int64s") && type == 7) {
                     if (!attr.contains("ints")) {
-                        if (name == "ngram_counts") {
-                            ngram_counts.clear();
-                            has_ngram_counts = true;
-                        } else if (name == "ngram_indexes") {
-                            ngram_indexes.clear();
-                            has_ngram_indexes = true;
-                        } else {
-                            pool_int64s.clear();
-                            has_pool_int64s = true;
-                        }
+                        (name == "ngram_counts"  ? ngram_counts :
+                         name == "ngram_indexes" ? ngram_indexes :
+                                                   pool_int64s) = std::vector<int64_t>{};
                     } else if (!attr.at("ints").is_array()) {
                         return FAILED;
                     } else {
@@ -115,26 +99,17 @@ static Status ParseParamsTfIdfVectorizer(const ge::Operator &op_src, ge::Operato
                             }
                             value.push_back(integer);
                         }
-                        if (name == "ngram_counts") {
-                            ngram_counts = value;
-                            has_ngram_counts = true;
-                        } else if (name == "ngram_indexes") {
-                            ngram_indexes = value;
-                            has_ngram_indexes = true;
-                        } else {
-                            pool_int64s = value;
-                            has_pool_int64s = true;
-                        }
+                        (name == "ngram_counts"  ? ngram_counts :
+                         name == "ngram_indexes" ? ngram_indexes :
+                                                   pool_int64s) = value;
                     }
                 } else if (name == "pool_strings" && type == 8) {
                     if (!attr.contains("strings")) {
-                        pool_strings.clear();
-                        has_pool_strings = true;
+                        pool_strings = std::vector<std::string>{};
                     } else if (!attr.at("strings").is_array()) {
                         return FAILED;
                     } else {
                         pool_strings = attr.at("strings").get<std::vector<std::string>>();
-                        has_pool_strings = true;
                     }
                 }
             }
@@ -143,24 +118,24 @@ static Status ParseParamsTfIdfVectorizer(const ge::Operator &op_src, ge::Operato
         }
     }
 
-    if (has_max_gram_length)
-        op_dest.SetAttr("max_gram_length", max_gram_length);
-    if (has_max_skip_count)
-        op_dest.SetAttr("max_skip_count", max_skip_count);
-    if (has_min_gram_length)
-        op_dest.SetAttr("min_gram_length", min_gram_length);
-    if (has_mode)
-        op_dest.SetAttr("mode", mode);
-    if (has_weights)
-        op_dest.SetAttr("weights", weights);
-    if (has_ngram_counts)
-        op_dest.SetAttr("ngram_counts", ngram_counts);
-    if (has_ngram_indexes)
-        op_dest.SetAttr("ngram_indexes", ngram_indexes);
-    if (has_pool_int64s)
-        op_dest.SetAttr("pool_int64s", pool_int64s);
-    if (has_pool_strings)
-        op_dest.SetAttr("pool_strings", pool_strings);
+    if (max_gram_length)
+        op_dest.SetAttr("max_gram_length", *max_gram_length);
+    if (max_skip_count)
+        op_dest.SetAttr("max_skip_count", *max_skip_count);
+    if (min_gram_length)
+        op_dest.SetAttr("min_gram_length", *min_gram_length);
+    if (mode)
+        op_dest.SetAttr("mode", *mode);
+    if (weights)
+        op_dest.SetAttr("weights", *weights);
+    if (ngram_counts)
+        op_dest.SetAttr("ngram_counts", *ngram_counts);
+    if (ngram_indexes)
+        op_dest.SetAttr("ngram_indexes", *ngram_indexes);
+    if (pool_int64s)
+        op_dest.SetAttr("pool_int64s", *pool_int64s);
+    if (pool_strings)
+        op_dest.SetAttr("pool_strings", *pool_strings);
 
     return SUCCESS;
 }
