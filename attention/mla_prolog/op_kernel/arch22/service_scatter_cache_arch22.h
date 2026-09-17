@@ -20,14 +20,14 @@
 
 namespace MlaProlog {
 struct ScatterCacheParams {
+    int64_t blockSize;
+    int64_t paTokenIndex;
+    int64_t row;
     int64_t col;
     int64_t stride;
     int64_t cacheStride0;
     int64_t seqLength;
     int64_t tokenIndex;
-    int64_t blockSize;
-    int64_t paTokenIndex;
-    int64_t row;
 };
 
 __aicore__ inline int64_t GetCacheOffset(int64_t paTokenIndex, int64_t blockSize, int64_t tokenStride,
@@ -36,9 +36,9 @@ __aicore__ inline int64_t GetCacheOffset(int64_t paTokenIndex, int64_t blockSize
     if (blockSize <= 0) {
         return paTokenIndex * cacheStride0;
     }
-    int64_t a22BlockIndex = paTokenIndex / blockSize;
-    int64_t a22TokenIndexInBlock = paTokenIndex % blockSize;
-    return a22BlockIndex * cacheStride0 + a22TokenIndexInBlock * tokenStride;
+    int64_t blockIndex = paTokenIndex / blockSize;
+    int64_t tokenIndexInBlock = paTokenIndex % blockSize;
+    return blockIndex * cacheStride0 + tokenIndexInBlock * tokenStride;
 }
 /**
  * @brief PA场景，将inputLocal中的数据scatter到cacheGm，支持ND和Nz cache
@@ -61,11 +61,11 @@ __aicore__ inline void ScatterCacheUnAligned(const GlobalTensor<T> &cacheGm, con
         return;
     }
     if constexpr (!IS_NZ) {
-        int64_t a22CacheOffset = GetCacheOffset(scatterCacheParams.paTokenIndex, scatterCacheParams.blockSize,
-                                                 scatterCacheParams.stride, scatterCacheParams.cacheStride0);
+        int64_t cacheOffset = GetCacheOffset(scatterCacheParams.paTokenIndex, scatterCacheParams.blockSize,
+                                             scatterCacheParams.stride, scatterCacheParams.cacheStride0);
         // blockCount, blockLen, srcStride, dstStride
-        DataCopyParams a22DataCopyParams{1, static_cast<uint16_t>(scatterCacheParams.col * sizeof(T)), 0, 0};
-        DataCopyPad(cacheGm[a22CacheOffset], inputLocal, a22DataCopyParams);
+        DataCopyParams dataCopyParams{1, static_cast<uint16_t>(scatterCacheParams.col * sizeof(T)), 0, 0};
+        DataCopyPad(cacheGm[cacheOffset], inputLocal, dataCopyParams);
     }
 }
 
@@ -77,22 +77,22 @@ __aicore__ inline void ScatterCacheMultiRows(GlobalTensor<T> &cacheGm, const Loc
     if (cacheOffset < 0) {
         return;
     }
-    int64_t a22CopyCnt = rowsInCurBatch * scatterCacheParams.col;
+    int64_t copyCnt = rowsInCurBatch * scatterCacheParams.col;
 
     if constexpr (!IS_NZ) {
-        DataCopy(cacheGm[cacheOffset], inputLocal, a22CopyCnt);
+        DataCopy(cacheGm[cacheOffset], inputLocal, copyCnt);
         if (rowsInCurBatch != scatterCacheParams.row) {
-            DataCopy(cacheGm[nextBatchOffset], inputLocal[a22CopyCnt],
+            DataCopy(cacheGm[nextBatchOffset], inputLocal[copyCnt],
                      (scatterCacheParams.row - rowsInCurBatch) * scatterCacheParams.col);
         }
     } else {
-        constexpr uint8_t a22Col0 = ALIGN_BLOCK_SIZE / sizeof(T);
-        DataCopyParams a22CopyParams{static_cast<uint16_t>(scatterCacheParams.col / a22Col0), 1, 0,
-                                     static_cast<uint16_t>(scatterCacheParams.blockSize - 1)};
-        DataCopy(cacheGm[cacheOffset], inputLocal, a22CopyParams);
+        constexpr uint8_t col0 = ALIGN_BLOCK_SIZE / sizeof(T);
+        DataCopyParams copyParams{static_cast<uint16_t>(scatterCacheParams.col / col0), 1, 0,
+                                  static_cast<uint16_t>(scatterCacheParams.blockSize - 1)};
+        DataCopy(cacheGm[cacheOffset], inputLocal, copyParams);
         if (rowsInCurBatch != scatterCacheParams.row) {
-            for (int64_t a22Row = 0; a22Row < scatterCacheParams.row - rowsInCurBatch; ++a22Row) {
-                DataCopy(cacheGm[nextBatchOffset + a22Col0 * a22Row], inputLocal[a22CopyCnt + a22Col0 * a22Row], a22CopyParams);
+            for (int row = 0; row < scatterCacheParams.row - rowsInCurBatch; ++row) {
+                DataCopy(cacheGm[nextBatchOffset + col0 * row], inputLocal[copyCnt + col0 * row], copyParams);
             }
         }
     }
@@ -106,16 +106,16 @@ __aicore__ inline void ScatterCache(const GlobalTensor<T> &cacheGm, const LocalT
         return;
     }
     if constexpr (!IS_NZ) {
-        int64_t a22CacheOffset = GetCacheOffset(scatterCacheParams.paTokenIndex, scatterCacheParams.blockSize,
-                                                 scatterCacheParams.stride, scatterCacheParams.cacheStride0);
-        DataCopy(cacheGm[a22CacheOffset], inputLocal, scatterCacheParams.col);
+        int64_t cacheOffset = GetCacheOffset(scatterCacheParams.paTokenIndex, scatterCacheParams.blockSize,
+                                             scatterCacheParams.stride, scatterCacheParams.cacheStride0);
+        DataCopy(cacheGm[cacheOffset], inputLocal, scatterCacheParams.col);
     } else {
-        constexpr uint8_t a22Col0 = ALIGN_BLOCK_SIZE / sizeof(T);
-        int64_t a22CacheOffsetNz = GetCacheOffset(scatterCacheParams.paTokenIndex, scatterCacheParams.blockSize, a22Col0,
-                                                   scatterCacheParams.cacheStride0);
-        DataCopyParams a22CopyParams{static_cast<uint16_t>(scatterCacheParams.col / a22Col0), 1, 0,
-                                     static_cast<uint16_t>(scatterCacheParams.blockSize - 1)};
-        DataCopy(cacheGm[a22CacheOffsetNz], inputLocal, a22CopyParams);
+        constexpr uint8_t col0 = ALIGN_BLOCK_SIZE / sizeof(T);
+        int64_t cacheOffset = GetCacheOffset(scatterCacheParams.paTokenIndex, scatterCacheParams.blockSize, col0,
+                                             scatterCacheParams.cacheStride0);
+        DataCopyParams copyParams{static_cast<uint16_t>(scatterCacheParams.col / col0), 1, 0,
+                                  static_cast<uint16_t>(scatterCacheParams.blockSize - 1)};
+        DataCopy(cacheGm[cacheOffset], inputLocal, copyParams);
     }
 }
 
@@ -126,8 +126,8 @@ __aicore__ inline void MaterializeOffsetsWithHeadSize(int64_t pageId, int64_t to
 {
     ckvkrParams.rowsInCurBatch = rowsThisStep;
     if constexpr (IS_NZ) {
-        constexpr uint8_t a22Col0 = ALIGN_BLOCK_SIZE / sizeof(T);
-        ckvkrParams.cacheOffset = pageId * cacheStride0 + tokenOffsetInPage * a22Col0;
+        constexpr uint8_t col0 = ALIGN_BLOCK_SIZE / sizeof(T);
+        ckvkrParams.cacheOffset = pageId * cacheStride0 + tokenOffsetInPage * col0;
     } else {
         ckvkrParams.cacheOffset = pageId * cacheStride0 + tokenOffsetInPage * headSize;
     }

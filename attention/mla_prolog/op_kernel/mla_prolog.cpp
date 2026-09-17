@@ -56,35 +56,33 @@ __global__ __aicore__ void mla_prolog(__gm__ uint8_t *tokenX, __gm__ uint8_t *we
     if constexpr (static_cast<SCENARIO>(Scenario) == SCENARIO::NO_QUANT) {
         MlaPrologVecS1CubS2<MLAPType<bfloat16_t, bfloat16_t, bfloat16_t, float, cacheMode, EnableDequantOpt,
                                      EnableGroupComputeOpt, emptyMode, actualSeqLenMode, false, cvRatio, EnableRope>>
-            opNoQuant(&pipe, tilingData, tilingDataBaseParams);
-        opNoQuant.Init(tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv,
-                       ropeSin, ropeCos, cacheIndex, kvCacheOut, krCacheOut, dequantScaleX, dequantScaleWDq,
-                       dequantScaleWUqQr, dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr, smoothScalesCq,
-                       nullptr, nullptr, queryOut, queryRopeOut, nullptr, nullptr, nullptr, workspace);
-        opNoQuant.Process();
+            op(&pipe, tilingData, tilingDataBaseParams);
+        op.Init(tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos,
+                cacheIndex, kvCacheOut, krCacheOut, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
+                dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr, smoothScalesCq, nullptr, nullptr, queryOut,
+                queryRopeOut, nullptr, nullptr, nullptr, workspace);
+        op.Process();
 
     } else if constexpr (static_cast<SCENARIO>(Scenario) == SCENARIO::QUANT &&
                          static_cast<QUANT_MODE>(QuantMode) == QUANT_MODE::PARTIAL_QUANT_KV_NO_QUANT) {
         MlaPrologVecS1CubS2<MLAPType<bfloat16_t, int8_t, bfloat16_t, float, cacheMode, EnableDequantOpt,
                                      EnableGroupComputeOpt, emptyMode, actualSeqLenMode, false, cvRatio, EnableRope>>
-            opQuantKvNoQuant(&pipe, tilingData, tilingDataBaseParams);
-        opQuantKvNoQuant.Init(tokenX, weightDq, weightUqQr, weightUk, weightDkvKr,
-                              rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos, cacheIndex, kvCacheOut, krCacheOut,
-                              dequantScaleX, dequantScaleWDq, dequantScaleWUqQr, dequantScaleWDkvKr,
-                              quantScaleCkv, quantScaleCkr, smoothScalesCq, nullptr, nullptr, queryOut,
-                              queryRopeOut, nullptr, nullptr, nullptr, workspace);
-        opQuantKvNoQuant.Process();
+            op(&pipe, tilingData, tilingDataBaseParams);
+        op.Init(tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos,
+                cacheIndex, kvCacheOut, krCacheOut, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
+                dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr, smoothScalesCq, nullptr, nullptr, queryOut,
+                queryRopeOut, nullptr, nullptr, nullptr, workspace);
+        op.Process();
 
     } else if constexpr (static_cast<SCENARIO>(Scenario) == SCENARIO::QUANT &&
                          static_cast<QUANT_MODE>(QuantMode) == QUANT_MODE::PARTIAL_QUANT_KV_QUANT_PER_CHANNEL) {
         MlaPrologVecS1CubS2<MLAPType<bfloat16_t, int8_t, int8_t, float, cacheMode, EnableDequantOpt,
                                      EnableGroupComputeOpt, emptyMode, actualSeqLenMode, false, cvRatio, EnableRope>>
-            opQuantKvPerChannel(&pipe, tilingData, tilingDataBaseParams);
-        opQuantKvPerChannel.Init(tokenX, weightDq, weightUqQr, weightUk, weightDkvKr,
-                                 rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos, cacheIndex,
-                                 kvCacheOut, krCacheOut, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
-                                 dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr, smoothScalesCq,
-                                 nullptr, nullptr, queryOut, queryRopeOut, nullptr, nullptr, nullptr, workspace);
-        opQuantKvPerChannel.Process();
+            op(&pipe, tilingData, tilingDataBaseParams);
+        op.Init(tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos,
+                cacheIndex, kvCacheOut, krCacheOut, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
+                dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr, smoothScalesCq, nullptr, nullptr, queryOut,
+                queryRopeOut, nullptr, nullptr, nullptr, workspace);
+        op.Process();
     }
 }

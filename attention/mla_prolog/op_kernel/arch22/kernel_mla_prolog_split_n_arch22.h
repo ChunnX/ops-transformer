@@ -18,15 +18,15 @@
 
 #include "mla_prolog_comm_arch22.h"
 #include "mla_prolog_vector_comm_arch22.h"
+#include "service_matmul_arch22.h"
+#include "service_rms_norm_arch22.h"
 #include "service_dequant_arch22.h"
 #include "service_dynamic_quant_qn_mul_qr_arch22.h"
 #include "service_gather_sin_cos_arch22.h"
-#include "service_matmul_arch22.h"
-#include "service_rms_norm_arch22.h"
 #include "service_rotary_position_embedding_arch22.h"
 #include "service_scatter_cache_arch22.h"
-#include "../mla_prolog_template_tiling_key.h"
 #include "../mla_prolog_tiling_data.h"
+#include "../mla_prolog_template_tiling_key.h"
 
 namespace MlaProlog {
 template <typename MLAPT>
@@ -34,12 +34,6 @@ class MlaPrologVecS1CubS2 {
 public:
     static constexpr bool isPertile = MLAPT::isPertile;
 
-    using ropeSinCosType = typename MLAPT::ropeSinCosType;
-    using ropeComputType = typename MLAPT::ropeComputType;
-    using ropeOutputType = typename MLAPT::ropeOutputType;
-    using kvCacheType = typename MLAPT::kvCacheType;
-    using krCacheType = typename MLAPT::krCacheType;
-    using queryOutputType = typename std::conditional<isPertile, bfloat16_t, typename MLAPT::kvCacheType>::type;
     using mmInputType = typename MLAPT::mmInputType;
     using mmQnInputType = typename MLAPT::mmQnInputType;
     using mmQcQrInputType = typename MLAPT::mmQcQrInputType;
@@ -47,6 +41,12 @@ public:
     using mmQcQrOutputType = typename MLAPT::mmQcQrOutputType;
     using mmCkvKrOutputType = typename MLAPT::mmCkvKrOutputType;
     using mmCqOutputType = typename MLAPT::mmCqOutputType;
+    using kvCacheType = typename MLAPT::kvCacheType;
+    using krCacheType = typename MLAPT::krCacheType;
+    using queryOutputType = typename std::conditional<isPertile, bfloat16_t, typename MLAPT::kvCacheType>::type;
+    using ropeSinCosType = typename MLAPT::ropeSinCosType;
+    using ropeComputType = typename MLAPT::ropeComputType;
+    using ropeOutputType = typename MLAPT::ropeOutputType;
     using rmsNormGammaType = typename MLAPT::rmsNormGammaType;
     using rmsNormComputType = typename MLAPT::rmsNormComputType;
     using rmsNormCqOutputType = typename MLAPT::rmsNormCqOutputType;
@@ -55,18 +55,19 @@ public:
     using dequantScaleQNormType = typename MLAPT::dequantScaleQNormType;
     using dequantScaleType = typename MLAPT::dequantScaleType;
 
-    MMParams mmCqParam_;
-    MMParams mmCkvKrParam_;
-    MMParams mmQcQrParam_;
     MMParams mmQnParam_;
+    MMParams mmQcQrParam_;
+    MMParams mmCkvKrParam_;
+    MMParams mmCqParam_;
 
     __aicore__ inline MlaPrologVecS1CubS2(TPipe *pipe, const optiling::MlaPrologTilingData *__restrict tilingData,
                                           const optiling::MlaPrologBaseParams *__restrict baseParams)
-        : tilingData_(tilingData),
-          pipe_(pipe),
+        : pipe_(pipe),
+          tilingData_(tilingData),
           baseParams_(baseParams)
     {}
 
+    __aicore__ inline void Process();
     __aicore__ inline void Init(__gm__ uint8_t *tokenX, __gm__ uint8_t *weightDq, __gm__ uint8_t *weightUqQr,
                                 __gm__ uint8_t *weightUk, __gm__ uint8_t *weightDkvKr, __gm__ uint8_t *rmsnormGammaCq,
                                 __gm__ uint8_t *rmsnormGammaCkv, __gm__ uint8_t *ropeSin, __gm__ uint8_t *ropeCos,
@@ -78,7 +79,6 @@ public:
                                 __gm__ uint8_t *kNopeClipAlpha, __gm__ uint8_t *queryOut, __gm__ uint8_t *queryRopeOut,
                                 __gm__ uint8_t *dequantScaleQNopeOut, __gm__ uint8_t *queryNormOut,
                                 __gm__ uint8_t *dequantScaleQNormOut, __gm__ uint8_t *workspace);
-    __aicore__ inline void Process();
 
 private:
     __aicore__ inline void CopyGlobalParams();
@@ -86,17 +86,17 @@ private:
                                      __gm__ uint8_t *deqScaleQcQrW, __gm__ uint8_t *dequantScaleWDkvkr,
                                      __gm__ uint8_t *quantScaleCkv, __gm__ uint8_t *quantScaleCkr,
                                      __gm__ uint8_t *smoothScaleCq, __gm__ uint8_t *kNopeClipAlpha);
-    __aicore__ inline void MmParamInit();
-    __aicore__ inline void MmCqParamInit();
-    __aicore__ inline void MmCkvKrParamInit();
-    __aicore__ inline void MmQcQrParamInit();
-    __aicore__ inline void MmQnParamInit();
     __aicore__ inline void WorkspaceInit(__gm__ uint8_t *workspace);
-    __aicore__ inline void VectorBufferInit();
+    __aicore__ inline void MmParamInit();
+    __aicore__ inline void MmQnParamInit();
+    __aicore__ inline void MmQcQrParamInit();
+    __aicore__ inline void MmCkvKrParamInit();
+    __aicore__ inline void MmCqParamInit();
     __aicore__ inline void CubeBufferInit();
+    __aicore__ inline void VectorBufferInit();
     __aicore__ inline void UpdateStepBatchParams(int64_t curStepBatchSize);
-    __aicore__ inline void ComputeAicOffset(AicOffset &aicOffset, int64_t numHeadOffset);
     __aicore__ inline void ComputeAivOffset(AivOffset &aivOffset, int64_t batchOffset);
+    __aicore__ inline void ComputeAicOffset(AicOffset &aicOffset, int64_t numHeadOffset);
     __aicore__ inline void ComputeBlkScatterOffsets(GlobalTensor<int64_t> indexGm, int64_t tokenIndex, int64_t rows,
                                                     CkvkrParams &rmsNormAndScatterCkvParams,
                                                     CkvkrParams &ropeAndScatterKrParams);
@@ -133,46 +133,46 @@ private:
                                                 LocalTensor<typename MLAPT::ropeComputType> &cosLocalCkvKr,
                                                 LocalTensor<typename MLAPT::ropeComputType> &sinLocalCkvKr,
                                                 CkvkrParams rmsNormAndScatterCkvParams);
-    __aicore__ inline void CastQc(int64_t mmQnPreCastOffset, int64_t mmQnPreCastResOffset, int64_t curVecToken);
-    __aicore__ inline void DequantQc(int64_t mmQnPreDequantOffset, int64_t mmQnPreDequantResOffset, int64_t curVecToken,
-                                     int64_t curBlockTokenOffset);
-    __aicore__ inline void RopeQr(int64_t ropeQrOffset, int64_t ropeQrResOffset, int64_t curVecToken,
-                                  int64_t curBlockTokenOffset);
     __aicore__ inline void RmsNormRopeScatterCkvKr(int64_t tokenIndex, int64_t rmsNormCkvOffset, int64_t ropeKrOffset,
                                                    int64_t curVecToken);
+    __aicore__ inline void RopeQr(int64_t ropeQrOffset, int64_t ropeQrResOffset, int64_t curVecToken,
+                                  int64_t curBlockTokenOffset);
+    __aicore__ inline void DequantQc(int64_t mmQnPreDequantOffset, int64_t mmQnPreDequantResOffset, int64_t curVecToken,
+                                     int64_t curBlockTokenOffset);
+    __aicore__ inline void CastQc(int64_t mmQnPreCastOffset, int64_t mmQnPreCastResOffset, int64_t curVecToken);
     // 低时延算力分组场景
-    __aicore__ inline void RopeQrSplitNGroupCase(int64_t ropeQrOffset, int64_t ropeQrResOffset);
-    __aicore__ inline void DequantQcSplitNGroupCase(int64_t mmQnPreDequantOffset, int64_t mmQnPreDequantResOffset,
-                                                    int64_t qcQrScaleOffset);
     __aicore__ inline void DequantAndRopeSplitNSyncMMQcQr(int64_t mmQnPreDequantOffset, int64_t mmQnPreDequantResOffset,
                                                           int64_t ropeQrOffset, int64_t ropeQrResOffset);
-    __aicore__ inline void RopeQrSplitN(const RopeQrSplitNParams &ropeQrSplitNParams);
-    __aicore__ inline void CastQcQrSplitN(const CastQcQrSplitNParams &castQcQrSplitN);
+    __aicore__ inline void DequantQcSplitNGroupCase(int64_t mmQnPreDequantOffset, int64_t mmQnPreDequantResOffset,
+                                                    int64_t qcQrScaleOffset);
+    __aicore__ inline void RopeQrSplitNGroupCase(int64_t ropeQrOffset, int64_t ropeQrResOffset);
     __aicore__ inline void DequantQcQrSplitN(const DequantQcQrSplitNParams &dequantQcQrSplitN);
+    __aicore__ inline void CastQcQrSplitN(const CastQcQrSplitNParams &castQcQrSplitN);
+    __aicore__ inline void RopeQrSplitN(const RopeQrSplitNParams &ropeQrSplitNParams);
     __aicore__ inline void DynamicQuantQnAndMulQrSyncMMQn(int64_t batchOffset, int64_t curStepBatchSize,
                                                           int64_t numHeadOffset, int64_t mmQnLoops);
 
+    const optiling::MlaPrologBaseParams *__restrict baseParams_;
     const optiling::MlaPrologTilingData *__restrict tilingData_;
     TPipe *pipe_;
-    const optiling::MlaPrologBaseParams *__restrict baseParams_;
-    uint32_t blockIdx_ = 0U;
     uint32_t cubeBlockIdx_ = 0U; // AIV上使用AIC的blockIdx
-    int64_t curVectorBlockNum_;
+    uint32_t blockIdx_ = 0U;
     int64_t vectorCoreNum_;
+    int64_t curVectorBlockNum_;
     int64_t vectorRow_ = 1;
-    uint32_t curStepVecFrontToken_;
-    uint32_t curStepVecFrontListNum_;
-    uint32_t curStepVecBackToken_;
     uint32_t curVecTokenMax_;
+    uint32_t curStepVecBackToken_;
+    uint32_t curStepVecFrontListNum_;
+    uint32_t curStepVecFrontToken_;
     uint64_t dequantScaleCqSize_ = 1;
     bool enableSmoothScalesCq_;
-    uint32_t cvRatio_ = 2U;                            // 默认cv 1:2
     static constexpr uint32_t cvMode = MLAPT::cvRatio; // 编译态，默认cv1:2
+    uint32_t cvRatio_ = 2U;                            // 默认cv 1:2
 
     struct DequantTool {
-        TBuf<TPosition::VECCALC> dequantScaleCqBuffer_; // 用于临时存储每一行的Scale，以及汇总最终每一行的Scale参数
-        GlobalTensor<dequantScaleType> dequantScaleCqGm_;
         LocalTensor<dequantScaleType> dequantScaleCqLocal_;
+        GlobalTensor<dequantScaleType> dequantScaleCqGm_;
+        TBuf<TPosition::VECCALC> dequantScaleCqBuffer_; // 用于临时存储每一行的Scale，以及汇总最终每一行的Scale参数
         __aicore__ inline DequantTool() {}
     };
 
@@ -180,83 +180,83 @@ private:
     DequantTool dequantTool_;
 
     // GM
-    GlobalTensor<mmInputType> weightDkvKrGm_;
-    GlobalTensor<mmInputType> weightDqGm_;
     GlobalTensor<mmInputType> tokenXGm_;
-    GlobalTensor<mmQnInputType> weightUkGm_;
+    GlobalTensor<mmInputType> weightDqGm_;
+    GlobalTensor<mmInputType> weightDkvKrGm_;
     GlobalTensor<mmQcQrInputType> weightUqQrGm_;
-    GlobalTensor<rmsNormGammaType> rmsnormGammaCkvGm_;
+    GlobalTensor<mmQnInputType> weightUkGm_;
     GlobalTensor<rmsNormGammaType> rmsnormGammaCqGm_;
-    GlobalTensor<ropeSinCosType> ropeCosGm_;
+    GlobalTensor<rmsNormGammaType> rmsnormGammaCkvGm_;
     GlobalTensor<ropeSinCosType> ropeSinGm_;
-    GlobalTensor<krCacheType> krCacheGm_;
-    GlobalTensor<kvCacheType> kvCacheGm_;
-    GlobalTensor<ropeOutputType> qrOutGm_;
+    GlobalTensor<ropeSinCosType> ropeCosGm_;
     GlobalTensor<int64_t> cacheIndexGm_;
+    GlobalTensor<ropeOutputType> qrOutGm_;
+    GlobalTensor<kvCacheType> kvCacheGm_;
+    GlobalTensor<krCacheType> krCacheGm_;
 
-    GlobalTensor<float> quantScaleCkrGm_;
-    GlobalTensor<float> quantScaleCkvGm_;
-    GlobalTensor<float> smoothScaleCqGm_;
-    GlobalTensor<dequantScaleType> deqScaleQcQrW_; // per-channel反量化参数
-    GlobalTensor<dequantScaleType> dequantScaleWDkvkrGm_;
-    GlobalTensor<dequantScaleType> dequantScaleWDqGm_;
     GlobalTensor<dequantScaleType> dequantScaleXGm_;
+    GlobalTensor<dequantScaleType> dequantScaleWDqGm_;
+    GlobalTensor<dequantScaleType> dequantScaleWDkvkrGm_;
+    GlobalTensor<dequantScaleType> deqScaleQcQrW_; // per-channel反量化参数
+    GlobalTensor<float> smoothScaleCqGm_;
+    GlobalTensor<float> quantScaleCkvGm_;
+    GlobalTensor<float> quantScaleCkrGm_;
 
-    GlobalTensor<float> kNopeClipAlphaGm_;
     GlobalTensor<int32_t> actualSeqLenGm_;
+    GlobalTensor<float> kNopeClipAlphaGm_;
 
-    GlobalTensor<dequantScaleQNormType> dequantScaleQNormGm_;
-    GlobalTensor<dequantScaleQNopeType> dequantScaleQNopeGm_;
-    GlobalTensor<queryOutputType> queryOutGm_;
-    GlobalTensor<rmsNormCqOutputType> rmsNormCqResGm_;
-    GlobalTensor<mmQnOutputType> mmQnResGm_;
-    GlobalTensor<mmQnInputType> mmQcQrResDequantGm_;
-    GlobalTensor<mmQcQrOutputType> mmQcQrResGm_;
-    GlobalTensor<mmCkvKrOutputType> mmCkvKrResGm_;
     GlobalTensor<mmCqOutputType> mmCqResGm_;
+    GlobalTensor<mmCkvKrOutputType> mmCkvKrResGm_;
+    GlobalTensor<mmQcQrOutputType> mmQcQrResGm_;
+    GlobalTensor<mmQnInputType> mmQcQrResDequantGm_;
+    GlobalTensor<mmQnOutputType> mmQnResGm_;
+    GlobalTensor<rmsNormCqOutputType> rmsNormCqResGm_;
+    GlobalTensor<queryOutputType> queryOutGm_;
+    GlobalTensor<dequantScaleQNopeType> dequantScaleQNopeGm_;
+    GlobalTensor<dequantScaleQNormType> dequantScaleQNormGm_;
 
     // UB
-    TBuf<TPosition::VECCALC> quantScaleCkrBuffer_;
-    TBuf<TPosition::VECCALC> quantScaleCkvBuffer_;
-    TBuf<TPosition::VECCALC> smoothScaleCqBuffer_;
-    TBuf<TPosition::VECCALC> stepActualSeqBuffer_;
-    TBuf<TPosition::VECCALC> rmsnormGammaCkvBuffer_;
-    TBuf<TPosition::VECCALC> rmsnormGammaCqBuffer_;
-    TBuf<TPosition::VECCALC> dequantScaleWDkvKrBuffer_;
-    TBuf<TPosition::VECCALC> dequantScaleWDqBuffer_;
-    TBuf<TPosition::VECCALC> sincosBuffer_;
     TBuf<TPosition::VECCALC> shareBuffer_;
+    TBuf<TPosition::VECCALC> sincosBuffer_;
+    TBuf<TPosition::VECCALC> dequantScaleWDqBuffer_;
+    TBuf<TPosition::VECCALC> dequantScaleWDkvKrBuffer_;
+    TBuf<TPosition::VECCALC> rmsnormGammaCqBuffer_;
+    TBuf<TPosition::VECCALC> rmsnormGammaCkvBuffer_;
+    TBuf<TPosition::VECCALC> smoothScaleCqBuffer_;
+    TBuf<TPosition::VECCALC> quantScaleCkvBuffer_;
+    TBuf<TPosition::VECCALC> quantScaleCkrBuffer_;
+    TBuf<TPosition::VECCALC> stepActualSeqBuffer_;
 
-    LocalTensor<int64_t> stepActualSeqLocal_;
-    LocalTensor<float> quantScaleCkvLocal_;
-    LocalTensor<float> quantScaleCkrLocal_;
-    LocalTensor<float> smoothScaleCqLocal_;
-    LocalTensor<rmsNormGammaType> rmsnormGammaCqLocal_;
-    LocalTensor<rmsNormGammaType> rmsnormGammaCkvLocal_;
-    LocalTensor<dequantScaleType> dequantScaleWDkvKrLocal_;
-    LocalTensor<dequantScaleType> dequantScaleWDqLocal_;
-    LocalTensor<ropeComputType> cosLocal_;
     LocalTensor<ropeComputType> sinLocal_;
+    LocalTensor<ropeComputType> cosLocal_;
+    LocalTensor<dequantScaleType> dequantScaleWDqLocal_;
+    LocalTensor<dequantScaleType> dequantScaleWDkvKrLocal_;
+    LocalTensor<rmsNormGammaType> rmsnormGammaCkvLocal_;
+    LocalTensor<rmsNormGammaType> rmsnormGammaCqLocal_;
+    LocalTensor<float> smoothScaleCqLocal_;
+    LocalTensor<float> quantScaleCkrLocal_;
+    LocalTensor<float> quantScaleCkvLocal_;
+    LocalTensor<int64_t> stepActualSeqLocal_;
 
     struct ActSeqState {
-        int64_t prevIndexOffset = 0; // prefix sum of blocks up to (curBatch - 1)
-        int64_t curIndexOffset = 0;  // prefix sum of blocks up to curBatch
-        int64_t prevPrefix = 0;      // prefix sum of seq lengths up to (curBatch - 1)
-        int64_t curPrefix = 0;       // prefix sum of seq lengths up to curBatch (exclusive high bound)
-        int64_t curBatch = 0;        // current batch index for the running token index
         bool inited = false;         // whether state is initialized for the run
+        int64_t curBatch = 0;        // current batch index for the running token index
+        int64_t curPrefix = 0;       // prefix sum of seq lengths up to curBatch (exclusive high bound)
+        int64_t prevPrefix = 0;      // prefix sum of seq lengths up to (curBatch - 1)
+        int64_t curIndexOffset = 0;  // prefix sum of blocks up to curBatch
+        int64_t prevIndexOffset = 0; // prefix sum of blocks up to (curBatch - 1)
     };
     ActSeqState actSeqState_;
     int64_t blockSpanPerBatch_ = 0; // blockNum * blockSize
 
-    MMBufParams bufParam_;
-    LocalTensor<mmInputType> aL1Tensor_;
-    LocalTensor<mmInputType> bL1Tensor_;
-    TBuf<TPosition::A1> aBufL1_;
     TBuf<TPosition::B1> bBufL1_;
-    TBuf<TPosition::CO1> cBufL0_;
-    TBuf<TPosition::A2> aBufL0_;
+    TBuf<TPosition::A1> aBufL1_;
+    LocalTensor<mmInputType> bL1Tensor_;
+    LocalTensor<mmInputType> aL1Tensor_;
+    MMBufParams bufParam_;
     TBuf<TPosition::B2> bBufL0_;
+    TBuf<TPosition::A2> aBufL0_;
+    TBuf<TPosition::CO1> cBufL0_;
 };
 
 template <typename MLAPT>
@@ -507,17 +507,17 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::VectorBufferInit()
 
     if constexpr (std::is_same<mmQcQrInputType, int8_t>::value) {
         if (enableSmoothScalesCq_) {
-            uint64_t a22SmoothScaleCqSize = baseParams_->headSizeCq * sizeof(float);
-            pipe_->InitBuffer(smoothScaleCqBuffer_, a22SmoothScaleCqSize); // [1, 1536]
-            usedBytes += a22SmoothScaleCqSize;
+            uint64_t smoothScaleCqSize = baseParams_->headSizeCq * sizeof(float);
+            pipe_->InitBuffer(smoothScaleCqBuffer_, smoothScaleCqSize); // [1, 1536]
+            usedBytes += smoothScaleCqSize;
             smoothScaleCqLocal_ = smoothScaleCqBuffer_.Get<float>();
         }
     }
 
     if constexpr (std::is_same<krCacheType, int8_t>::value) {
-        uint64_t a22QuantScaleCkrSize = baseParams_->dimHeadRope * sizeof(float);
+        uint64_t quantScaleCkrSize = baseParams_->dimHeadRope * sizeof(float);
         pipe_->InitBuffer(quantScaleCkrBuffer_, baseParams_->dimHeadRope * sizeof(float)); // [1, 64]
-        usedBytes += a22QuantScaleCkrSize;
+        usedBytes += quantScaleCkrSize;
         quantScaleCkrLocal_ = quantScaleCkrBuffer_.Get<float>();
     }
 
@@ -1047,25 +1047,25 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MatmulSplitN(
     }
     // 用于enableGroupComputeOpt场景
     if constexpr (needCheckAFullLoad) {
-        constexpr uint32_t a22MSize =
+        constexpr uint32_t mSize =
             (sizeof(mmQcQrInputType) == sizeof(int8_t)) ? INT8_AFULLLOAD_MAX_MSIZE : BF16_AFULLLOAD_MAX_MSIZE;
-        bool a22IsAFullLoad = mmQcQrParam_.m <= a22MSize;
-        if (a22IsAFullLoad) {
+        bool isAFullLoad = mmQcQrParam_.m <= mSize;
+        if (isAFullLoad) {
             MatmulGroupComputeAFullLoad<T, O, S, isContinuousCopy>(tensorResGm, tensorAGm, tensorBGm, mmPara,
                                                                    bufParam_);
             return;
         }
     }
-    uint32_t a22NL1SplitSize = mmPara.baseN;
-    uint32_t a22NInput = mmPara.n;
-    uint32_t a22SubNL1SplitSize = a22NL1SplitSize;
-    uint32_t a22NL1loops = CeilDivT(a22NInput, a22NL1SplitSize);
-    for (int64_t a22NL1 = 0; a22NL1 < a22NL1loops; a22NL1++) {
-        if (a22NL1 == a22NL1loops - 1) {
-            a22SubNL1SplitSize = a22NInput - (a22NL1loops - 1) * a22NL1SplitSize;
+    uint32_t nL1SplitSize = mmPara.baseN;
+    uint32_t nInput = mmPara.n;
+    uint32_t subNL1SplitSize = nL1SplitSize;
+    uint32_t nL1loops = CeilDivT(nInput, nL1SplitSize);
+    for (int64_t nL1 = 0; nL1 < nL1loops; nL1++) {
+        if (nL1 == nL1loops - 1) {
+            subNL1SplitSize = nInput - (nL1loops - 1) * nL1SplitSize;
         }
-        MatmulSplitK<T, O, S>(tensorResGm, tensorAGm, tensorBGm, mmPara, bufParam_, a22NL1 * a22NL1SplitSize,
-                              a22SubNL1SplitSize);
+        MatmulSplitK<T, O, S>(tensorResGm, tensorAGm, tensorBGm, mmPara, bufParam_, nL1 * nL1SplitSize,
+                              subNL1SplitSize);
     }
 }
 
@@ -1531,22 +1531,22 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RmsNormAndScatterCkv(
         // 刷新量化scale
         if (baseParams_->quantScaleRepoMode == 1U && isPertile) {
             // BSND:
-            int64_t a22StartColOffset = baseParams_->headSizeCkv;
+            int64_t startColOffset = baseParams_->headSizeCkv;
             if (baseParams_->ckvkrRepoMode == 1U) {
-                a22StartColOffset += baseParams_->headSizeKr * sizeof(krCacheType);
+                startColOffset += baseParams_->headSizeKr * sizeof(krCacheType);
             }
-            int64_t a22StartOffset = 0;
+            int64_t startOffset = 0;
             if constexpr ((MLAPT::cacheMode != CACHE_MODE::PA_NZ)) {
-                a22StartOffset = a22StartColOffset;
+                startOffset = startColOffset;
             }
 
-            LocalTensor<kvCacheType> a22QuantScaleCkvInt8Tensor =
+            LocalTensor<kvCacheType> quantScaleCkvInt8Tensor =
                 outputLocal[vectorRow_ * baseParams_->headSizeCkv].template ReinterpretCast<kvCacheType>();
-            uint32_t a22TileNum = baseParams_->headSizeCkv / baseParams_->tileSize;
+            uint32_t tileNum = baseParams_->headSizeCkv / baseParams_->tileSize;
             ScatterCacheUnAligned<kvCacheType, (MLAPT::cacheMode == CACHE_MODE::PA_NZ)>(
-                kvCacheGm_[a22StartOffset], a22QuantScaleCkvInt8Tensor,
+                kvCacheGm_[startOffset], quantScaleCkvInt8Tensor,
                 ScatterCacheParams{baseParams_->blockSize, paTokenIndex, vectorRow_,
-                                   static_cast<int64_t>(sizeof(float) * a22TileNum), baseParams_->dtileSize,
+                                   static_cast<int64_t>(sizeof(float) * tileNum), baseParams_->dtileSize,
                                    static_cast<int64_t>(baseParams_->kvCacheStride0)});
         }
     } else {
@@ -1626,16 +1626,16 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RopeAndScatterKr(LocalTensor<
             paTokenIndex = ropeAndScatterKrParams.tokenIndex;
         }
         if (baseParams_->ckvkrRepoMode == 1U && isPertile) {
-            int64_t a22KrStartOffset;
+            int64_t startOffset;
             if constexpr ((MLAPT::cacheMode == CACHE_MODE::PA_NZ)) {
-                constexpr uint8_t a22Col0 = ALIGN_BLOCK_SIZE / sizeof(kvCacheType);
-                a22KrStartOffset = baseParams_->blockSize * a22Col0 * CeilDiv(baseParams_->headSizeCkv, a22Col0); // 列方向的偏移
+                constexpr uint8_t col0 = ALIGN_BLOCK_SIZE / sizeof(kvCacheType);
+                startOffset = baseParams_->blockSize * col0 * CeilDiv(baseParams_->headSizeCkv, col0); // 列方向的偏移
             } else {
-                a22KrStartOffset = baseParams_->headSizeCkv;
+                startOffset = baseParams_->headSizeCkv;
             }
-            LocalTensor<kvCacheType> a22OutputKrInt8Tensor = outputKrLocal.template ReinterpretCast<kvCacheType>();
+            LocalTensor<kvCacheType> outputKrInt8Tensor = outputKrLocal.template ReinterpretCast<kvCacheType>();
             ScatterCache<kvCacheType, (MLAPT::cacheMode == CACHE_MODE::PA_NZ)>(
-                kvCacheGm_[a22KrStartOffset], a22OutputKrInt8Tensor,
+                kvCacheGm_[startOffset], outputKrInt8Tensor,
                 ScatterCacheParams{baseParams_->blockSize, paTokenIndex, vectorRow_,
                                    static_cast<int64_t>(sizeof(krCacheType) * baseParams_->dimHeadRope),
                                    baseParams_->dtileSize, static_cast<int64_t>(baseParams_->kvCacheStride0)});
@@ -1731,17 +1731,17 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RopeQr(int64_t ropeQrOffset, 
     LocalTensor<float> channelDeqScaleLocal = shareBuffer_.Get<float>();
 
     if constexpr (std::is_same<mmQcQrInputType, int8_t>::value) {
-        uint64_t a22Col = baseParams_->dimHeadRope;
-        uint64_t a22Row = baseParams_->numHeadSize;
-        DataCopyExtParams a22CopyParams{static_cast<uint16_t>(a22Row), static_cast<uint32_t>(sizeof(float) * a22Col),
-                                        static_cast<uint32_t>(sizeof(float) * (stride - a22Col)), 0, 0};
-        DataCopyPadExtParams<float> a22PadParams{false, 0, 0, 0};
-        DataCopyPad(channelDeqScaleLocal, deqScaleQcQrW_[baseParams_->dimHeadSizeQc], a22CopyParams,
-                    a22PadParams); // 复用内存
+        uint64_t col = baseParams_->dimHeadRope;
+        uint64_t row = baseParams_->numHeadSize;
+        DataCopyExtParams copyParams{static_cast<uint16_t>(row), static_cast<uint32_t>(sizeof(float) * col),
+                                     static_cast<uint32_t>(sizeof(float) * (stride - col)), 0, 0};
+        DataCopyPadExtParams<float> padParams{false, 0, 0, 0};
+        DataCopyPad(channelDeqScaleLocal, deqScaleQcQrW_[baseParams_->dimHeadSizeQc], copyParams,
+                    padParams); // 复用内存
         AscendC::SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
         AscendC::WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
 
-        outputLocal = channelDeqScaleLocal[a22Col * a22Row].template ReinterpretCast<ropeOutputType>();
+        outputLocal = channelDeqScaleLocal[col * row].template ReinterpretCast<ropeOutputType>();
     } else {
         outputLocal = shareBuffer_.Get<ropeOutputType>();
     }
@@ -2101,17 +2101,17 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantQc(int64_t mmQnPreDequ
         return;
     }
 
-    Rectangle a22RectangleParams{
+    Rectangle rectangleParams{
         static_cast<uint32_t>(baseParams_->stepNumHeadDequant),                      // row
         static_cast<uint32_t>(baseParams_->dimHeadSizeQc),                           // col
         static_cast<uint32_t>(baseParams_->dimHeadRope + baseParams_->dimHeadSizeQc) // columnStride
     };
 
-    for (int64_t a22CurVecTokenIdx = 0; a22CurVecTokenIdx < curVecToken; a22CurVecTokenIdx++) {
+    for (int64_t curVecTokenIdx = 0; curVecTokenIdx < curVecToken; curVecTokenIdx++) {
         DequantPerTokenQc(
             mmQcQrResDequantGm_[mmQnPreDequantResOffset], mmQcQrResGm_[mmQnPreDequantOffset], deqScaleQcQrW_,
-            dequantTool_.dequantScaleCqLocal_[(curBlockTokenOffset + a22CurVecTokenIdx) * FP32_BLOCK_ELEMENT_NUM],
-            shareBuffer_.Get<uint8_t>(), a22RectangleParams, baseParams_->numHeadSize);
+            dequantTool_.dequantScaleCqLocal_[(curBlockTokenOffset + curVecTokenIdx) * FP32_BLOCK_ELEMENT_NUM],
+            shareBuffer_.Get<uint8_t>(), rectangleParams, baseParams_->numHeadSize);
         mmQnPreDequantOffset += baseParams_->headSizeQr + baseParams_->headSizeQc;
         mmQnPreDequantResOffset += baseParams_->headSizeQc;
     }
