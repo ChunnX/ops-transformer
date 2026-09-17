@@ -11,10 +11,23 @@ import types
 
 import torch
 
-from .indexer_prologue_qw import indexer_prologue_qw
+from .indexer_prologue_qw import indexer_prologue_qw as _indexer_prologue_qw_impl  # noqa: F401
 
-# Share the ds41 module with the other experimental operators.
-parent_pkg = sys.modules["cann_ops_transformer.ops"].__name__
+# Share the ds41 module with the other experimental operators. The disk
+# folder is indexer_prologue_qw_dsl, so ops discovery will not export the
+# public name unless we attach it here.
+_ops_mod = None
+for _key in ("cann_ops_transformer.ops", "cann_ops_transformer_custom.ops"):
+    _ops_mod = sys.modules.get(_key)
+    if _ops_mod is not None:
+        break
+if _ops_mod is None:
+    raise ImportError(
+        "cann_ops_transformer.ops is not loaded; import it before "
+        "indexer_prologue_qw_dsl"
+    )
+
+parent_pkg = _ops_mod.__name__
 module_name = f"{parent_pkg}.ds41"
 ds41 = sys.modules.get(module_name)
 if ds41 is None:
@@ -22,8 +35,9 @@ if ds41 is None:
     ds41.__package__ = parent_pkg
     sys.modules[module_name] = ds41
 
-ds41.indexer_prologue_qw = (
-    torch.ops.cann_ops_transformer.ds41.indexer_prologue_qw
-)
+indexer_prologue_qw = torch.ops.cann_ops_transformer.ds41.indexer_prologue_qw
+ds41.indexer_prologue_qw = indexer_prologue_qw
+_ops_mod.ds41 = ds41
+_ops_mod.indexer_prologue_qw = indexer_prologue_qw
 
-__all__ = ["ds41"]
+__all__ = ["ds41", "indexer_prologue_qw"]

@@ -25,9 +25,9 @@ if not torch.npu.is_available():  # pragma: no cover - depends on the host
 
 
 def _op():
-    import cann_ops_transformer.ops  # noqa: F401
+    from cann_ops_transformer.ops.ds41 import indexer_prologue_qw
 
-    return torch.ops.cann_ops_transformer.ds41.indexer_prologue_qw
+    return indexer_prologue_qw
 
 
 def _to_nz():

@@ -132,7 +132,9 @@ for cat in sorted(os.listdir(OPS_TRANSFORMER_ROOT)):
         # 2-level: <cat>/<name>/torch_extension  (e.g. attention/flash_attn)
         torch_extension = os.path.join(sub_path, "torch_extension")
         if os.path.isdir(torch_extension):
-            if _selected_ops is not None and name not in _selected_ops:
+            if _selected_ops is not None and name not in _selected_ops and (
+                not name.endswith("_dsl") or name[: -len("_dsl")] not in _selected_ops
+            ):
                 continue
             _collect_op(cat, name, torch_extension)
             continue
@@ -141,7 +143,10 @@ for cat in sorted(os.listdir(OPS_TRANSFORMER_ROOT)):
         if not os.path.isdir(sub_path):
             continue
         for op_name in sorted(os.listdir(sub_path)):
-            if _selected_ops is not None and op_name not in _selected_ops:
+            if _selected_ops is not None and op_name not in _selected_ops and (
+                not op_name.endswith("_dsl")
+                or op_name[: -len("_dsl")] not in _selected_ops
+            ):
                 continue
             torch_extension = os.path.join(sub_path, op_name, "torch_extension")
             if os.path.isdir(torch_extension):

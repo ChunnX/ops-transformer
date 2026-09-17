@@ -82,9 +82,10 @@ python3 -m pip install build_out/*.whl --force-reinstall --no-deps
 ```python
 import torch
 import torch_npu
-import cann_ops_transformer
+import cann_ops_transformer.ops  # 触发 ds41 注册；不要只 import cann_ops_transformer
 from ops.indexer_prologue_qw import to_nz
 from cann_ops_transformer.ops.ds41 import indexer_prologue_qw
+# 等价：from cann_ops_transformer.ops import indexer_prologue_qw
 
 q, descale_q, w = indexer_prologue_qw(
     x, qr, to_nz(wqb), to_nz(ww), descale_qr, descale_wqb, rope_sin, rope_cos,
