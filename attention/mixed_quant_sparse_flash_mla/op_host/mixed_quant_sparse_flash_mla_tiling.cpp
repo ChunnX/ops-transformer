@@ -348,7 +348,7 @@ ge::graphStatus MQSMLAInfoParser::GetActualSeqLenSize(uint32_t &size, const gert
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MQSMLAInfoParser::GetActualSeqLenQSize(uint32_t &size)
+ge::graphStatus MQSMLAInfoParser::GetActualSeqLenQSize(int64_t &size)
 {
     if (opParamInfo_.cuSeqLensQ.tensor != nullptr) {
         int64_t shapeSize = opParamInfo_.cuSeqLensQ.tensor->GetShapeSize();
@@ -358,7 +358,7 @@ ge::graphStatus MQSMLAInfoParser::GetActualSeqLenQSize(uint32_t &size)
                 "The shape size of cu_seqlens_q should be greater than 1");
             return ge::GRAPH_FAILED;
         }
-        size = static_cast<uint32_t>(shapeSize - 1);
+        size = shapeSize - 1;
     }
     return ge::GRAPH_SUCCESS;
 }
