@@ -31,5 +31,6 @@ if (NOT BUILD_OPS_RTY_KERNEL)
         ${CMAKE_CURRENT_SOURCE_DIR}/compressor_tiling_register.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/arch22/compressor_tiling.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/arch35/compressor_tiling.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/arch-920r1/compressor_tiling.cpp
     )
 endif()
