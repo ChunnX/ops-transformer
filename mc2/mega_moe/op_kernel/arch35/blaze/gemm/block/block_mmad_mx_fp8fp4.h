@@ -113,7 +113,7 @@ public:
     };
 
     __aicore__ inline void Init(const ProblemShape &problemShape, const BlockShape &l0TileShape,
-                                const L1Params &l1Params, bool interleave = false);
+                                const L1Params &l1Params, bool interleave = false, bool resetBufferIndices = true);
 
     __aicore__ inline BlockMmad();
     // When copyUbToV1 is true, L0C->UB copies the result to V1 core instead of V0.
@@ -500,7 +500,7 @@ __aicore__ inline BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::~BlockMmad()
 BLOCK_MMAD_MX_FP8FP4_TEMPLATE_PARAMS
 __aicore__ inline void BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::Init(const ProblemShape &problemShape,
                                                                  const BlockShape &l0TileShape,
-                                                                 const L1Params &l1Params, bool interleave)
+                                                                 const L1Params &l1Params, bool interleave, bool resetBufferIndices)
 {
     concatHalfN_ = interleave ? asc::te::get<IDX_N_IDX>(problemShape) / MegaMoeImpl::ACTIVATION_N_HALF : 0U;
     k_ = asc::te::get<IDX_K_IDX>(problemShape);
@@ -511,11 +511,14 @@ __aicore__ inline void BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::Init(const ProblemSh
     baseK_ = asc::te::get<IDX_K_IDX>(l0TileShape);
     CalcDynamicKBlock(baseM_, baseN_, kL1_, kaL1Size_, kbL1Size_);
 
-    aL1BufIdx_ = 0;
-    bL1BufIdx_ = 0;
-    scaleL1BufIdx_ = 0;
-    l0aBufIdx_ = 0;
-    l0bBufIdx_ = 0;
+    // Continuous AIC/AIV0 operation must preserve matching B-slot phase.
+    if (resetBufferIndices) {
+        aL1BufIdx_ = 0;
+        bL1BufIdx_ = 0;
+        scaleL1BufIdx_ = 0;
+        l0aBufIdx_ = 0;
+        l0bBufIdx_ = 0;
+    }
     hasInitConfig_ = true;
 }
 
