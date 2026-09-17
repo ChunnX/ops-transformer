@@ -101,6 +101,7 @@ constexpr uint32_t SOC_VER_950_CODE = 4;
 constexpr uint32_t INF_WINDOW_SIZE_PRE_NEXT = 2147483647;
 
 constexpr uint32_t TILE_SIZE_16 = 16;
+constexpr uint32_t TILE_SIZE_64 = 64;
 constexpr uint32_t TILE_SIZE_128 = 128;
 constexpr uint32_t TILE_SIZE_256 = 256;
 constexpr uint32_t TILE_SIZE_512 = 512;
@@ -118,12 +119,21 @@ enum QuantMode : int64_t {
     FP8_QUANT = 1,
     MXFP4_OCP_QUANT = 2,
     MXFP4_CX_QUANT = 3,
+    MXFP8_OCP_QUANT = 4,
 };
 
 // 判断是否为 mxfp4 量化(OCP 或 CX)
 static bool IsMxfp4Quant(int64_t qm)
 {
     return qm == MXFP4_OCP_QUANT || qm == MXFP4_CX_QUANT;
+}
+static bool IsMxfp8Quant(int64_t qm)
+{
+    return qm == MXFP8_OCP_QUANT;
+}
+static bool IsMxFullQuant(int64_t qm)
+{
+    return IsMxfp4Quant(qm) || IsMxfp8Quant(qm);
 }
 
 static std::string DataTypeToString(ge::DataType dataType)
@@ -505,10 +515,10 @@ ge::graphStatus BSATiling::ParseQKVInBSND(gert::TilingContext *bsaContext)
         OP_LOGE(bsaContext->GetNodeName(), "Check query/key/value dim values failed.");
         return ge::GRAPH_FAILED;
     }
-    if (IsMxfp4Quant(quantMode_) &&
+    if (IsMxFullQuant(quantMode_) &&
         (embeddingSize_ != VALID_EMBEDDING_SIZE_64 && embeddingSize_ != VALID_EMBEDDING_SIZE_128)) {
         OP_LOGE(bsaContext->GetNodeName(),
-                "(quantMode:%d)mxfp4 requires embeddingSize to be multiple of 64 or 128, but got %u.", quantMode_,
+                "(quantMode:%d) mx full-quant requires embeddingSize to be 64 or 128, but got %u.", quantMode_,
                 embeddingSize_);
         return ge::GRAPH_FAILED;
     }
@@ -730,9 +740,9 @@ ge::graphStatus BSATiling::ParseSparsePattern(gert::TilingContext *bsaContext)
     if (CheckSparsePattern(bsaContext, defaultShape) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    // V3 新增:mxfp4 要求 blockShapeX 为 64 的倍数
-    if (IsMxfp4Quant(quantMode_) && blockShapeX_ % 64 != 0) {
-        OP_LOGE(bsaContext->GetNodeName(), "mxfp4 requires blockShapeX to be multiple of 64, but got %u.",
+    // V3 新增:mx 全量化要求 blockShapeX 为 64 的倍数
+    if (IsMxFullQuant(quantMode_) && blockShapeX_ % 64 != 0) {
+        OP_LOGE(bsaContext->GetNodeName(), "mx full-quant requires blockShapeX to be multiple of 64, but got %u.",
                 blockShapeX_);
         return ge::GRAPH_FAILED;
     }
@@ -826,7 +836,7 @@ ge::graphStatus BSATiling::ValidateGenericDequantScale(gert::TilingContext *bsaC
                     NUM_1, dequantScaleBatch, dequantScaleNumHeads, dequantScaleBlockNum, dequantScaleLastDim);
             return ge::GRAPH_FAILED;
         }
-    } else if (IsMxfp4Quant(quantMode_)) {
+    } else if (IsMxFullQuant(quantMode_)) {
         return ValidateMxfp4DequantScale(bsaContext, parameterIndex);
     } else {
         if (dequantScaleTensor != nullptr) {
@@ -847,7 +857,7 @@ ge::graphStatus BSATiling::ValidateMxfp4DequantScale(gert::TilingContext *bsaCon
 {
     const auto *scaleShape = bsaContext->GetOptionalInputShape(parameterIndex);
     if (scaleShape == nullptr) {
-        OP_LOGE(bsaContext->GetNodeName(), "(quantMode =2/3) mxfp4 dequantScale (index=%d) must not be nullptr.",
+        OP_LOGE(bsaContext->GetNodeName(), "(quantMode =2/3/4) mx dequantScale (index=%d) must not be nullptr.",
                 parameterIndex);
         return ge::GRAPH_FAILED;
     }
@@ -862,7 +872,7 @@ ge::graphStatus BSATiling::ValidateMxfp4DequantScale(gert::TilingContext *bsaCon
         uint32_t actual = static_cast<uint32_t>(storageShape.GetDim(idx));
         if (actual != expected) {
             OP_LOGE(bsaContext->GetNodeName(),
-                    "(quantMode =2/3) mxfp4 scale dim[%d] mismatch (layout=%s, index=%d): expected %u, got %u.", idx,
+                    "(quantMode =2/3/4) mx scale dim[%d] mismatch (layout=%s, index=%d): expected %u, got %u.", idx,
                     layoutName, parameterIndex, expected, actual);
             return false;
         }
@@ -874,7 +884,7 @@ ge::graphStatus BSATiling::ValidateMxfp4DequantScale(gert::TilingContext *bsaCon
         //   QScale=[Tq,Nq,D//64,2]  KScale=[Tkv,Nkv,D//64,2]  VScale=[BTkv,Nkv,D,2]
         //   Tq=totalTokensT_, Tkv=totalTokensKv_, BTkv=btKvTokens_(sum_b CeilDiv(S2_b,64), ParseSeqlensInTND 累加)
         if (storageShape.GetDimNum() != DIM_NUM_4) {
-            OP_LOGE(bsaContext->GetNodeName(), "(quantMode =2/3) mxfp4 TND scale must be 4D, got %zuD.",
+            OP_LOGE(bsaContext->GetNodeName(), "(quantMode =2/3/4) mx TND scale must be 4D, got %zuD.",
                     storageShape.GetDimNum());
             return ge::GRAPH_FAILED;
         }
@@ -900,7 +910,7 @@ ge::graphStatus BSATiling::ValidateMxfp4DequantScale(gert::TilingContext *bsaCon
 
     // BNSD/BSND: 5D scale shapes (existing)
     if (storageShape.GetDimNum() != DIM_NUM_5) {
-        OP_LOGE(bsaContext->GetNodeName(), "(quantMode =2/3) mxfp4 scale must be 5D, got %zuD.",
+        OP_LOGE(bsaContext->GetNodeName(), "(quantMode =2/3/4) mx scale must be 5D, got %zuD.",
                 storageShape.GetDimNum());
         return ge::GRAPH_FAILED;
     }
@@ -944,6 +954,33 @@ ge::graphStatus BSATiling::ValidateVDequantScale(gert::TilingContext *bsaContext
     return ValidateGenericDequantScale(bsaContext, V_DEQUANT_SCALE_INDEX);
 }
 
+ge::graphStatus BSATiling::CheckBlockShapeQuantConstraint(gert::TilingContext *bsaContext)
+{
+    if (dataType_ == ge::DT_FLOAT8_E4M3FN) {
+        constexpr int64_t SUPPORTED_BLOCK_SHAPE_X = 128;
+        constexpr int64_t SUPPORTED_BLOCK_SHAPE_X_QS64 = 64;
+        const int64_t supportedMultipleOfBlockShapeY =
+            (quantMode_ == MXFP8_OCP_QUANT) ? static_cast<int64_t>(TILE_SIZE_64) : static_cast<int64_t>(TILE_SIZE_256);
+        const bool mxfp8QsOk = (quantMode_ == MXFP8_OCP_QUANT) && (blockShapeX_ == SUPPORTED_BLOCK_SHAPE_X ||
+                                                                   blockShapeX_ == SUPPORTED_BLOCK_SHAPE_X_QS64);
+        if (!mxfp8QsOk && blockShapeX_ != SUPPORTED_BLOCK_SHAPE_X) {
+            OP_LOGE(bsaContext->GetNodeName(),
+                    "In the float8_e4m3fn full-quant scenario, blockShape element 0 must be 64 or 128 for MXFP8 "
+                    "(quantMode=4), or 128 otherwise, but now it is %ld.",
+                    blockShapeX_);
+            return ge::GRAPH_FAILED;
+        }
+        if (blockShapeY_ % supportedMultipleOfBlockShapeY != 0) {
+            OP_LOGE(bsaContext->GetNodeName(),
+                    "In the float8_e4m3fn full-quant scenario, blockShape element 1 must be a multiple of %ld, but now "
+                    "it is %ld.",
+                    supportedMultipleOfBlockShapeY, blockShapeY_);
+            return ge::GRAPH_FAILED;
+        }
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus BSATiling::ParseOptionalTensors(gert::TilingContext *bsaContext)
 {
     if (ParseSeqlens(bsaContext) != ge::GRAPH_SUCCESS || ParseSparsePattern(bsaContext) != ge::GRAPH_SUCCESS ||
@@ -954,7 +991,8 @@ ge::graphStatus BSATiling::ParseOptionalTensors(gert::TilingContext *bsaContext)
     if (socVer_ == SOC_VER_950_CODE) {
         if (ValidateQDequantScale(bsaContext) != ge::GRAPH_SUCCESS ||
             ValidateKDequantScale(bsaContext) != ge::GRAPH_SUCCESS ||
-            ValidateVDequantScale(bsaContext) != ge::GRAPH_SUCCESS) {
+            ValidateVDequantScale(bsaContext) != ge::GRAPH_SUCCESS ||
+            CheckBlockShapeQuantConstraint(bsaContext) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
     }
@@ -1148,7 +1186,9 @@ void BSATiling::CalcBaseTileTilingParams950()
 {
     qBaseTile_ = (blockShapeX_ > TILE_SIZE_128) ? TILE_SIZE_128 : static_cast<uint32_t>(blockShapeX_);
     const bool isMixedPrecision = (innerPrecise_ == BsaInnerCalcPrec::LOW_HIGH_MIXED && embeddingSize_ <= D_SIZE_128);
-    if (dataType_ == ge::DT_FLOAT8_E4M3FN) {
+    if (quantMode_ == MXFP8_OCP_QUANT) {
+        kvBaseTile_ = TILE_SIZE_128;
+    } else if (dataType_ == ge::DT_FLOAT8_E4M3FN) {
         bool enableKvBaseTile512 = isMixedPrecision && (quantMode_ == FP8_QUANT) && (blockShapeY_ == 512);
         if (enableKvBaseTile512) {
             kvBaseTile_ = TILE_SIZE_512;
@@ -1454,6 +1494,12 @@ uint64_t BSATiling::GenerateTilingKey(gert::TilingContext *bsaContext)
             tilingKey += 41;
         } else {
             tilingKey += 40;
+        }
+    } else if (quantMode_ == MXFP8_OCP_QUANT) {
+        if (attentionOutDataType_ == ge::DT_FLOAT16) {
+            tilingKey += 51;
+        } else {
+            tilingKey += 50;
         }
     } else if (quantMode_ == FP8_QUANT) {
         if (attentionOutDataType_ == ge::DT_FLOAT16) {
