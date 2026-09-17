@@ -85,6 +85,7 @@ protected:
     __aicore__ inline void InitQuantTokenBufferConfig();
     __aicore__ inline UnpermuteBufferConfig InitTokenUnpermuteBuffers();
     __aicore__ inline void SendTopkIdsIndexAndCount(const WorkRange &ownedExpertRange);
+    __aicore__ inline void QuantizeInputTokens();
     __aicore__ inline void ProcessInputPreparationStage();
     __aicore__ inline void RunGmm2CombineForExpert(ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo,
                                                    uint32_t &startBlockIdx, uint32_t tokenStartIndexInExpert,
@@ -384,21 +385,17 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::InitQuantTokenBufferCon
 
 // ======================================================================================
 // InitQuantScratchTensors：量化 scratch（mxTemp、xOut 双 buffer、xIn 双 buffer）的地址排布；
-//   MoE/shared 量化分时复用同一组 buffer；返回量化区之后的空闲地址。
+//   MoE/shared 共用输入和 mxTemp，输出分别分配；返回量化区结束地址。
 // ======================================================================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline uint32_t MegaMoe<TemplateMegaMoeTypeFunc>::InitQuantScratchTensors(uint32_t mxTempTensorAddr)
 {
     uint32_t mxTempTensorSize = 2 * 1024;
-    // 单个 xOutTensor 槽位与 dispatch 的 token-scale-weight 通信记录使用相同布局。
     uint32_t xOutTensorSize = quantProcessConfig_.quantTokenScaleAlignBytes;
-    if constexpr (!SHARED_INPUT_REUSES_MOE_QUANT) {
-        if (sharedExpertNum_ > 0U && xOutTensorSize < sharedQuantProcessConfig_.quantTokenScaleAlignBytes) {
-            xOutTensorSize = sharedQuantProcessConfig_.quantTokenScaleAlignBytes;
-        }
-    }
     uint32_t xInAlignSize = Ops::Base::CeilAlign(k_, static_cast<uint32_t>(ALIGN_128)) * sizeof(bfloat16_t);
 
+    quantScratch_.inputGm.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(params_.aGmAddr));
+    quantScratch_.outputGm.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(params_.peermemInfo.quantTokenScalePtr));
     quantScratch_.mxTempTensor =
         LocalTensor<uint16_t>(TPosition::VECCALC, mxTempTensorAddr, mxTempTensorSize / sizeof(uint16_t));
     uint32_t xOutTensorAddr1 = mxTempTensorAddr + mxTempTensorSize;
@@ -407,46 +404,42 @@ __aicore__ inline uint32_t MegaMoe<TemplateMegaMoeTypeFunc>::InitQuantScratchTen
     uint32_t xOutTensorAddr2 = xOutTensorAddr1 + xOutTensorSize;
     quantScratch_.xOutTensor1 =
         LocalTensor<ActivationType>(TPosition::VECCALC, xOutTensorAddr2, xOutTensorSize / sizeof(ActivationType));
-    if constexpr (!SHARED_INPUT_REUSES_MOE_QUANT) {
-        if (sharedExpertNum_ > 0U) {
-            sharedQuantScratch_.mxTempTensor = quantScratch_.mxTempTensor;
-            sharedQuantScratch_.xOutTensor0 = LocalTensor<SharedActivationType>(
-                TPosition::VECCALC, xOutTensorAddr1, xOutTensorSize / sizeof(SharedActivationType));
-            sharedQuantScratch_.xOutTensor1 = LocalTensor<SharedActivationType>(
-                TPosition::VECCALC, xOutTensorAddr2, xOutTensorSize / sizeof(SharedActivationType));
-        }
-    }
     uint32_t xInAlignAddr1 = xOutTensorAddr2 + xOutTensorSize;
     quantScratch_.xInTensor0 =
         LocalTensor<bfloat16_t>(TPosition::VECCALC, xInAlignAddr1, xInAlignSize / sizeof(bfloat16_t));
     uint32_t xInAlignAddr2 = xInAlignAddr1 + xInAlignSize;
     quantScratch_.xInTensor1 =
         LocalTensor<bfloat16_t>(TPosition::VECCALC, xInAlignAddr2, xInAlignSize / sizeof(bfloat16_t));
+    uint32_t quantEndAddr = xInAlignAddr2 + xInAlignSize;
     if constexpr (!SHARED_INPUT_REUSES_MOE_QUANT) {
         if (sharedExpertNum_ > 0U) {
+            sharedQuantScratch_.outputGm.SetGlobalBuffer(
+                reinterpret_cast<__gm__ uint8_t *>(params_.workspaceInfo.sharedExpertInputPtr));
+            sharedQuantScratch_.inputGm = quantScratch_.inputGm;
             sharedQuantScratch_.xInTensor0 = quantScratch_.xInTensor0;
             sharedQuantScratch_.xInTensor1 = quantScratch_.xInTensor1;
+            sharedQuantScratch_.mxTempTensor = quantScratch_.mxTempTensor;
+            uint32_t sharedOutputBytes = sharedQuantProcessConfig_.quantTokenScaleAlignBytes;
+            sharedQuantScratch_.xOutTensor0 = LocalTensor<SharedActivationType>(
+                TPosition::VECCALC, quantEndAddr, sharedOutputBytes / sizeof(SharedActivationType));
+            quantEndAddr += sharedOutputBytes;
+            sharedQuantScratch_.xOutTensor1 = LocalTensor<SharedActivationType>(
+                TPosition::VECCALC, quantEndAddr, sharedOutputBytes / sizeof(SharedActivationType));
+            quantEndAddr += sharedOutputBytes;
         }
     }
 
-    uint32_t routeRingAddr = xInAlignAddr2 + xInAlignSize;
     /*
-     * h%64==32（scale 组数为奇数）时，量化链路存在三处"计算不覆盖、却进入定长通信记录或参与
-     * 计算"的跨 launch UB 残留：xIn 尾部（进 ComputeMaxExp 尾块 mask 内 lane）、xOut 记录的
-     * scale 偶数补齐槽（ComputeScale 掩码写不到）、mxTemp 的 halfScale 补偶槽（被
-     * ComputeFp8Data 尾块 E2B 广播进乘法，0×NaN 仍为 NaN）。残留呈 NaN/大指数位型时整行
-     * GMM 输出被污染为 NaN，最终 combine 输出成块清零（首轮 UB 干净故仅多轮调用时显形）。
-     * 此处对 [mxTempTensorAddr, routeRingAddr) 连续 span（mxTemp/xOut0/xOut1/xIn0/xIn1 五段
-     * 量化 scratch）一次性清零：span 边界取 routeRingAddr、与本函数的地址推进公式同源，
-     * 中间插入新 buffer 时范围自动跟随；有效区随后每 token 均被完整覆写，残留位恒为良性 0。
-     * h%64==0 时不存在上述缝隙，本清零不改变任何可观测行为。
+     * 输入尾部、临时乘法 scale 尾部和输出 scale 补偶槽必须保持为零，保护 H%64==32 的尾块。
+     * 两种量化共用 mxTemp，有效 scale 数相同；独立输出避免不同格式覆盖彼此的 padding。
+     * 每次 launch 初始化一次，临时 scale 的 padding 在两次量化中均不写入。
      */
     LocalTensor<int16_t> quantScratchSpan(TPosition::VECCALC, mxTempTensorAddr,
-                                          (routeRingAddr - mxTempTensorAddr) / sizeof(int16_t));
-    Duplicate<int16_t>(quantScratchSpan, 0, static_cast<int32_t>((routeRingAddr - mxTempTensorAddr) / sizeof(int16_t)));
-    PipeBarrier<PIPE_V>();
+                                          (quantEndAddr - mxTempTensorAddr) / sizeof(int16_t));
+    Duplicate<int16_t>(quantScratchSpan, 0, static_cast<int32_t>((quantEndAddr - mxTempTensorAddr) / sizeof(int16_t)));
+
     SyncFuncStatic<AscendC::HardEvent::V_MTE2, SYNC_EVENT_ID2>();
-    return routeRingAddr;
+    return quantEndAddr;
 }
 
 template <TemplateMegaMoeTypeClass>
@@ -728,24 +721,39 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendTopkIdsIndexAndCoun
     }
 }
 
+// 只有量化类型不同且启用了共享专家，才传入独立共享量化参数。
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::QuantizeInputTokens()
+{
+    const WorkRange tokenRange = GetBalancedWorkRange(commonConfig_.tokenNum, aivJob_);
+    if (tokenRange.count == 0U) {
+        return;
+    }
+    const TokenQuantParams<MoeQuantMode, QuantOutType, ActivationType> moeQuant{quantProcessConfig_, quantScratch_};
+    auto quantize = [&](const auto &moeQuant, const auto &...sharedQuant) __attribute__((cce_aicore))
+    {
+        QuantizeLocalTokens<TopkWeightsType, TopkWeightsPrefetch>(tokenRange, commonConfig_, params_.probsGmAddr,
+                                                                  moeQuant, sharedQuant...);
+    };
+
+    if (sharedExpertNum_ > 0U && !SHARED_INPUT_REUSES_MOE_QUANT) {
+        const TokenQuantParams<SharedQuantMode, typename SharedQuantConfig::QuantOutType, SharedActivationType>
+            sharedQuant{sharedQuantProcessConfig_, sharedQuantScratch_};
+        quantize(moeQuant, sharedQuant);
+    } else {
+        quantize(moeQuant);
+    }
+}
+
 // 仅由 AIV 调用，AIC 在 ProcessWave 中等待输入就绪。
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessInputPreparationStage()
 {
     SendAndQuantBuffInit();
     ResetSyncStatus<TopkWeightsPrefetch>(aivJob_, params_, resetBatchElementCount_, resetTensor_);
-    QuantizeLocalTokens<MoeQuantMode, QuantOutType, ActivationType, TopkWeightsType, TopkWeightsPrefetch>(
-        aivJob_, commonConfig_, params_, quantProcessConfig_, params_.peermemInfo.quantTokenScalePtr, quantScratch_);
+    QuantizeInputTokens();
     // 每个物理 AIV 推进入口轮次一次，空 token 核也参与。
     IncrementSyncCount(params_.peermemInfo.rankSyncInWorldPtr, aivCoreIdx_);
-    if constexpr (!SHARED_INPUT_REUSES_MOE_QUANT) {
-        if (sharedExpertNum_ > 0U) {
-            QuantizeLocalTokens<SharedQuantMode, typename SharedQuantConfig::QuantOutType, SharedActivationType,
-                                TopkWeightsType, false>(aivJob_, commonConfig_, params_, sharedQuantProcessConfig_,
-                                                        params_.workspaceInfo.sharedExpertInputPtr,
-                                                        sharedQuantScratch_);
-        }
-    }
     // 同一 MTE3 流水先完成 reset、MoE 量化及可选共享量化写回，再发布完成通知。
     // 空 token 核也必须报告，保证全 AIV 事件配对。
     CrossCoreSetFlag<ALL_AICORE_SYNC_MODE, PIPE_MTE3>(MTE_QUANT_READY_FLAG);
