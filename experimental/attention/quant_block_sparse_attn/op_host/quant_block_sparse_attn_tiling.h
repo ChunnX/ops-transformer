@@ -11,10 +11,25 @@
 #ifndef QUANT_BLOCK_SPARSE_ATTN_TILING_H_
 #define QUANT_BLOCK_SPARSE_ATTN_TILING_H_
 
+#include <cstddef>
+
 #include <exe_graph/runtime/tiling_context.h>
+#include <register/op_impl_registry.h>
+#include <register/tilingdata_base.h>
+#include "../op_kernel/arch35/common/quant_block_sparse_attn_tiling_data.h"
 #include "tiling_common/qbsa_op_contract.h"
 
 namespace optiling {
+// Runtime allocates RawTilingData from the registered schema size. The kernel-facing
+// POD remains the serialization contract; this byte payload keeps registration in
+// lockstep whenever that POD grows without duplicating its field definitions.
+constexpr size_t QBSA_TILING_DATA_CAPACITY = sizeof(QuantBlockSparseAttnTilingData);
+
+BEGIN_TILING_DATA_DEF(QuantBlockSparseAttnRegisteredTilingData)
+TILING_DATA_FIELD_DEF_ARR(uint8_t, QBSA_TILING_DATA_CAPACITY, payload);
+END_TILING_DATA_DEF;
+REGISTER_TILING_DATA_CLASS(QuantBlockSparseAttn, QuantBlockSparseAttnRegisteredTilingData)
+
 ge::graphStatus TilingQuantBlockSparseAttn(gert::TilingContext *context);
 } // namespace optiling
 
