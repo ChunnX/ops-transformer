@@ -876,8 +876,8 @@ class QuantLightningIndexerV2InputAdapter:
 INPUT_ADAPTER = QuantLightningIndexerV2InputAdapter()
 
 
-def is_negative_case(kwargs):
-    value = kwargs.get("is_negative_case", False)
+def expect_error(kwargs):
+    value = kwargs.get("expect_error", False)
     if isinstance(value, str):
         return value.strip().lower() in ("1", "true", "yes", "on")
     return bool(value)
@@ -920,7 +920,7 @@ def generate_qli_v2_inputs(
     **kwargs,
 ):
     """Populate pytest-derived inputs; metadata is filled by npu_preprocess."""
-    if is_negative_case(kwargs):
+    if expect_error(kwargs):
         return None
 
     if metadata is None:
