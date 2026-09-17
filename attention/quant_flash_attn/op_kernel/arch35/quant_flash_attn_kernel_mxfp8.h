@@ -156,6 +156,7 @@ public:
 
         InitConstInfo();
         constInfo_.needInitOutput = ((__gm__ uint32_t *)metadata)[QFA_HEAD_NEED_INIT_OUTPUT_INDEX] != 0;
+        constInfo_.enableFlashDecode = static_cast<bool>(((__gm__ uint32_t *)metadata)[1]);
 
         keyPtr_ = key;
         valuePtr_ = value;
@@ -206,22 +207,25 @@ public:
             }
         }
         if constexpr (FLASH_DECODE) {
-            if ASCEND_IS_AIV {
-                fdMetaDataGm_.SetGlobalBuffer(
-                    (__gm__ uint32_t *)(metadata + METADATA_HEADER_OFFSET +
-                                        sectionNum_ * metadataAicNum_ * METADATA_STRIDE * sizeof(uint32_t)),
-                    sectionNum_ * metadataAivNum_ * METADATA_STRIDE);
-                vecFdBlock_.InitParams();
-                vecFdBlock_.InitGlobalTensor(this->vecFaBlock_.softmaxFDMaxGm_, this->vecFaBlock_.softmaxFDSumGm_,
-                                             this->vecFaBlock_.accumOutGm_, this->vecFaBlock_.attentionOutGm_, keyPtr_);
-                if (constInfo_.isSoftmaxLseEnable) {
-                    softmaxLseGm_.SetGlobalBuffer((__gm__ float *)softmaxLse);
-                    vecFdBlock_.InitSoftmaxLseGm(softmaxLseGm_);
-                }
-                if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-                    vecFdBlock_.SetCuSeqLensParsers(qCuSeqLensParser_, kvCuSeqLensParser_);
-                } else {
-                    vecFdBlock_.SetCuSeqLensParsers(qSeqUsedParser_, kvSeqUsedParser_);
+            if (constInfo_.enableFlashDecode) {
+                if ASCEND_IS_AIV {
+                    fdMetaDataGm_.SetGlobalBuffer(
+                        (__gm__ uint32_t *)(metadata + METADATA_HEADER_OFFSET +
+                                            METADATA_STRIDE * metadataAicNum_ * sectionNum_ * sizeof(uint32_t)),
+                        sectionNum_ * metadataAivNum_ * METADATA_STRIDE);
+                    vecFdBlock_.InitParams();
+                    vecFdBlock_.InitGlobalTensor(this->vecFaBlock_.softmaxFDMaxGm_, this->vecFaBlock_.softmaxFDSumGm_,
+                                                 this->vecFaBlock_.accumOutGm_, this->vecFaBlock_.attentionOutGm_,
+                                                 keyPtr_);
+                    if (constInfo_.isSoftmaxLseEnable) {
+                        softmaxLseGm_.SetGlobalBuffer((__gm__ float *)softmaxLse);
+                        vecFdBlock_.InitSoftmaxLseGm(softmaxLseGm_);
+                    }
+                    if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
+                        vecFdBlock_.SetCuSeqLensParsers(qCuSeqLensParser_, kvCuSeqLensParser_);
+                    } else {
+                        vecFdBlock_.SetCuSeqLensParsers(qSeqUsedParser_, kvSeqUsedParser_);
+                    }
                 }
             }
         }
@@ -279,7 +283,6 @@ public:
         constInfo_.seqUsedQSize = qfaBaseParams.seqUsedQSize;
         constInfo_.seqUsedKvSize = qfaBaseParams.seqUsedKvSize;
         constInfo_.scaleValue = static_cast<float>(qfaBaseParams.scaleValue);
-        constInfo_.isKvContinuous = true;
         constInfo_.coreNum = qfaBaseParams.coreNum;
         constInfo_.outputLayout = static_cast<FA_LAYOUT>(qfaBaseParams.outputLayout);
         constInfo_.sparseMode =
@@ -750,10 +753,10 @@ public:
 
     __aicore__ inline void FlashDecode(uint32_t sectionIdx)
     {
-        GetFDSectionInfo(sectionIdx);
-        if (!fdParams_.fdCoreEnable) {
+        if (!constInfo_.enableFlashDecode) {
             return;
         }
+        GetFDSectionInfo(sectionIdx);
         vecFdBlock_.InitBuffers(this->pipe_);
         AscendC::ICachePreLoad(2);
         vecFdBlock_.AllocEventID();
