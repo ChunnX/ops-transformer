@@ -49,6 +49,12 @@ ge::Status AlltoAllvGroupedMatMulCalcParamFunc(gert::ExeResGenerationContext *co
         return status;
     }
     bool isArch35 = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5);
+    // A6(DAV_9201)无CCU引擎，ccu路由仅限DAV_3510；A6显式ccu回退aicpu kfc server
+    const std::set<std::string> npuArch9201Only = {std::to_string(static_cast<uint32_t>(Ops::Base::DAV_9201))};
+    if (IsTargetPlatformNpuArch(context->GetNodeName(), npuArch9201Only) && commMode == "ccu") {
+        OPS_LOG_D(context->GetNodeName(), "A6 has no CCU engine, fallback GenTask commMode 'ccu' to AICPU.");
+        commMode = "ai_cpu";
+    }
     const char *serverType = nullptr;
     const char *streamType = nullptr;
     if ((isArch35 && commMode == "ccu")) {
