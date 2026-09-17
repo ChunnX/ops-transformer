@@ -172,8 +172,7 @@ ge::graphStatus FFNToAttentionV2TilingFunc(gert::TilingContext *context)
     OP_TILING_CHECK(
         workSpaces[0] > std::numeric_limits<size_t>::max() - RESERVED_WORKSPACE_SIZE - (ADDRESS_TABLE_ALIGN - 1U),
         OP_LOGE(context->GetNodeName(), "workspace size overflow"), return ge::GRAPH_FAILED);
-    const size_t tableOffset = (workSpaces[0] + RESERVED_WORKSPACE_SIZE + ADDRESS_TABLE_ALIGN - 1U) /
-                               ADDRESS_TABLE_ALIGN * ADDRESS_TABLE_ALIGN;
+    const size_t tableOffset = (workSpaces[0] + ADDRESS_TABLE_ALIGN - 1U) / ADDRESS_TABLE_ALIGN * ADDRESS_TABLE_ALIGN;
     OP_TILING_CHECK(tableBytes > std::numeric_limits<size_t>::max() - tableOffset,
                     OP_LOGE(context->GetNodeName(), "address table workspace size overflow"), return ge::GRAPH_FAILED);
     tilingData->ffnToAttentionV2Info.cclBufferSize = static_cast<uint64_t>(*cclBufferSize);
