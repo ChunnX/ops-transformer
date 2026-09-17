@@ -62,6 +62,8 @@ public:
         uint8_t nBufferNum = L1_TWO_BUFFER;
         CalcNBufferNum(baseM, baseN, baseK, stepKa, stepKb, initScaleKL1, kL1, scaleKL1, nBufferNum);
 
+        // 兜底：L1 超配在设备上只会表现为 LOAD2D 读越界（aicore error 507015），很难定位，
+        // 这里在 host 侧把它拦成明确的 tiling 失败。
         const L1Estimate finalEst{kL1, scaleKL1, baseM, baseN};
         const uint64_t finalL1 = CalcUsedL1Size(finalEst, nBufferNum);
         if (finalL1 > l1Size_) {
