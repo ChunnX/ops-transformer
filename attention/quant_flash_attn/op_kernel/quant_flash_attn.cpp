@@ -62,7 +62,8 @@ __aicore__ inline void quant_flash_attn_mxfp8(
 
     constexpr bool isFdConst = false;
     constexpr bool useDn = (quantMode == QFA_MXFP8_FP32_PREFILL);
-    static_assert(!(useDn && hasVTail), "v_tail is only supported on decode(ND) path in phase 1");
+    // [二期PREFILL] useDn+hasVTail已支持: 尾task强制ND范式执行(调度层isVtailTask分派,
+    // cube侧IterateBmm1Nd重装载Q/vec侧ProcessVec1Nd的VF bf16直出), 主体task保持DN
 
     using CubeBlock =
         BaseApi::QuantFlashAttnBlockCubeMxfp8<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType,

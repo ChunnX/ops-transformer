@@ -57,53 +57,43 @@ struct Bmm2ResBuffSel {
 
 namespace BaseApi {
 
-// bisheng后端不支持float->bf16标量static_cast, 按位做RNE舍入转换(同chunk_kda_fwd的FloatToType惯例)
-__aicore__ inline uint16_t FloatToBf16Bits(float value)
+// [v_tail高精窗口] bisheng不支持float->bf16标量cast(旧cast路线同坑), 位级RNE
+__aicore__ inline uint16_t VtailF32ToBf16Bits(float value)
 {
-    union FloatBits {
-        __aicore__ FloatBits() {}
+    union VtFb {
+        __aicore__ VtFb() {}
         float f;
         uint32_t u;
-    } floatBits;
-    floatBits.f = value;
-    uint32_t bias = 0x7FFFu + ((floatBits.u >> 16) & 1u);
-    return static_cast<uint16_t>((floatBits.u + bias) >> 16);
+    } fb;
+    fb.f = value;
+    uint32_t bias = 0x7FFFu + ((fb.u >> 16) & 1u);
+    return static_cast<uint16_t>((fb.u + bias) >> 16);
 }
 
-// bisheng同样不支持fp8_e4m3fn->float标量static_cast(实测静默返回0, 尾块P全0的根因), 位级展开:
-// e4m3fn: 1s+4e+3m, bias=7; normal=(1.m)*2^(e-7); subnormal=m*2^-9; e=15&m=7为NaN, e=15&m<=6最大448
-__aicore__ inline float Fp8E4m3ToFloat(uint8_t code)
+// [v_tail高精窗口] 精确标量exp(y<=0): 2^n×2^f位级组装 — P尾列标量重建用
+__aicore__ inline float VtailSwExp(float y)
 {
-    union F8Bits {
-        __aicore__ F8Bits() {}
+    constexpr float VT_LN2E = 1.4426950408889634f;
+    float t = y * VT_LN2E;
+    int n = static_cast<int>(t);
+    float f = t - static_cast<float>(n);
+    if (f < 0.0f) {
+        f += 1.0f;
+        n -= 1;
+    }
+    float p = 0.001344f;
+    p = p * f + 0.009618f;
+    p = p * f + 0.055504f;
+    p = p * f + 0.240227f;
+    p = p * f + 0.693147f;
+    p = p * f + 1.0f;
+    union VtExpBits {
+        __aicore__ VtExpBits() {}
         uint32_t u;
         float f;
     } r;
-    uint32_t s = (static_cast<uint32_t>(code) >> 7) & 1U;
-    uint32_t e = (static_cast<uint32_t>(code) >> 3) & 0xFU;
-    uint32_t m = static_cast<uint32_t>(code) & 0x7U;
-    if (e == 0xFU && m == 0x7U) {
-        r.u = 0x7FC00000U | (s << 31); // NaN
-    } else if (e == 0U && m == 0U) {
-        r.u = s << 31; // +-0
-    } else if (e == 0U) { // subnormal: m*2^-9, 归一化到float
-        uint32_t k = (m >= 4U) ? 2U : ((m >= 2U) ? 1U : 0U);
-        r.u = (s << 31) | ((118U + k) << 23) | ((m - (1U << k)) << (23U - k));
-    } else {
-        r.u = (s << 31) | ((e - 7U + 127U) << 23) | (m << 20);
-    }
-    return r.f;
-}
-
-__aicore__ inline bfloat16_t FloatToBf16Rne(float value)
-{
-    union Bf16Bits {
-        __aicore__ Bf16Bits() {}
-        uint16_t u;
-        bfloat16_t f;
-    } bf16Bits;
-    bf16Bits.u = FloatToBf16Bits(value);
-    return bf16Bits.f;
+    r.u = static_cast<uint32_t>((n + 127) << 23);
+    return r.f * p;
 }
 
 template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
@@ -190,6 +180,13 @@ public:
         vTailBttGm_ = (__gm__ int32_t *)blockTableTail;
     }
 
+    // [二期] B尾块独立L1 slot(AIV写侧): 替代原先挂在l1P每份x3的B尾区(D=256时L1池溢出)
+    __aicore__ inline void
+    SetVTailL1Slot(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> *slot)
+    {
+        vTailL1Slot_ = slot;
+    }
+
     attenMaskGmType attenMaskGmInt_;
 
     postQuantGmType postQuantScaleGm_;
@@ -208,6 +205,7 @@ public:
     TBuf<> vTailStripUb_; // B尾块分形中转(双缓冲): 2 x (64行x16列bf16=2KB)
     __gm__ bfloat16_t *vTailGmVec_ = nullptr; // AIV侧v_tail裸指针(B尾块AIV搬运)
     __gm__ int32_t *vTailBttGm_ = nullptr;    // AIV侧block_table_tail裸指针
+    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> *vTailL1Slot_ = nullptr; // B尾块独立L1 slot
     TQue<QuePosition::VECOUT, 1> stage1OutQue_[2];
     TQue<QuePosition::VECIN, 1> attenMaskInQue_[2];
     TBuf<> stage2OutBuf_;
@@ -382,6 +380,14 @@ public:
 
     // =================================Private Functions=================================
 
+    // [二期PREFILL] DN实例的纯尾task判定: 尾task(size==kvTailLen且覆盖序列末尾)。
+    // 调度层拆分保证kvLen%512>=64时尾独立成task; DN主体与尾task全程DN范式(无ND切换)
+    __aicore__ inline bool isPureTailTaskDn(const RunInfoX &runInfo) const
+    {
+        return HAS_V_TAIL && (runInfo.kvTailLen > 0) && (runInfo.actSingleLoopS2Size == runInfo.kvTailLen) &&
+               (runInfo.s2Idx + runInfo.actSingleLoopS2Size >= runInfo.actS2Size);
+    }
+
     __aicore__ inline void ProcessVec1Dn(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
                                          Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
                                          RunInfoX runInfo, uint32_t subLoop)
@@ -407,7 +413,7 @@ public:
 
         LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
         auto stage1CastTensor = this->stage1OutQue_[stage1Offset].template AllocTensor<INPUT_T>();
-        // 回滚验证: 恢复原stage1CastTensor[16640]越界视图(11:40的TBuf版本疑破坏A尾scale时序, 待排除)
+        // [恢复生产原样] pScaleSubLoop0 = stage1[16640]越界视图(TBuf版曾疑破坏时序, decode实测0.0)
         constexpr int32_t pScaleByteOffset = 16640; // 16640: softmax res UB size
         LocalTensor<fp8_e8m0_t> pScaleSubLoop0Tensor =
             stage1CastTensor.template ReinterpretCast<fp8_e8m0_t>()[pScaleByteOffset];
@@ -417,6 +423,76 @@ public:
         uint32_t s2CalcSize = runInfo.actSingleLoopS2Size;
         if (runInfo.actSingleLoopS2Size > s2SplitSize) {
             s2CalcSize = subLoop == 0 ? s2BaseSizeCur : runInfo.actSingleLoopS2Size - s2BaseSizeCur;
+        }
+
+        // [二期PREFILL] 尾task: 全程DN范式的bf16高精窗口 —
+        // VF用ProcessVec1VfDnMxfp8<T, bfloat16_t, ..., ubN=128>(现成bf16分支, 与非量化DN
+        // 生产路径同款段式: 65块段距), 状态机(sum/max/preLoop三件套)仍为Mxfp8原版;
+        // P尾列免e4m3量化-解包往返获得8位有效数字。
+        // 调用形态对齐flash_attn DN(m=actMAlign32>>1, n=s2TailAlign16, originN=tailLen)
+        if (unlikely(isPureTailTaskDn(runInfo))) {
+            LocalTensor<bfloat16_t> pTailBf16Ub = stage1CastTensor.template ReinterpretCast<bfloat16_t>();
+
+            // [几何对齐] 调用参数与fp8主体完全一致(ubN=s2BaseSizeCur/m=dstStride对齐/n=半量),
+            // 仅T2=bf16直出+dst=bf16视图 — Mxfp8 DN的源几何基准是256, 勿抄flash非量化的128基
+            // [尾块VF] 非量化DN bf16几何(ubN=128) + Mxfp8状态机; m=dstStride半区(64)
+            // [修正] 尾VF改用Mxfp8主路径同款(参数逐字同主路径, 仅T2=bf16直出):
+            // m=align64(actMAlign32/2) n=actSingleLoopS2SizeAlign/2 originN=s2CalcSize —
+            // TND prefill按M拆block(actM=8/block), mmRes有效列=align32(actM)/2=16,
+            // [干净组合] m=行距=dstStride=nSize/2=16; 垃圾列[actM,16)无害(主路径同布局验证:
+            // L0C未写≈0, exp(0-max)≈0不污染) — 无需任何清理
+            uint16_t tailM = (uint16_t)(runInfo.actMSizeAlign32 >> 1);
+            if (unlikely(runInfo.isFirstS2Loop)) {
+                FaVectorApi::ProcessVec1VfDnTailMxfp8<T, bfloat16_t, false>(
+                    pTailBf16Ub, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf_, pScaleSubLoop0Tensor,
+                    preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, tailM, runInfo.kvTailLen,
+                    static_cast<T>(constInfo_.scaleValue), descaleQK, negativeFloatScalar_, 1.0f);
+            } else {
+                FaVectorApi::ProcessVec1VfDnTailMxfp8<T, bfloat16_t, true>(
+                    pTailBf16Ub, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf_, pScaleSubLoop0Tensor,
+                    preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, tailM, runInfo.kvTailLen,
+                    static_cast<T>(constInfo_.scaleValue), descaleQK, negativeFloatScalar_, 1.0f);
+            }
+            bmm1ResBuf.SetCrossCore();
+            this->stage1OutQue_[stage1Offset].template EnQue(stage1CastTensor);
+            this->stage1OutQue_[stage1Offset].template DeQue<INPUT_T>();
+            // [二期PREFILL] A尾区直搬(行主序[mBase][64], flash_attn DN bf16同款段式直搬):
+            // 源=ubN=128模板的65块段距(4段x32M行), dst行距64列(k=64对齐, pad列[tail,64)
+            // 为段内残留 — Mmad k=64全读, pad列由VF originN掩码清零保证)
+            {
+                constexpr uint64_t pTailL1Offset =
+                    (static_cast<uint64_t>(mBaseSize) * s2BaseSize +
+                     mBaseSize * s2BaseSize / MXFP_GROUP_SIZE) / sizeof(bfloat16_t);
+                LocalTensor<bfloat16_t> mm2ATailL1Tensor = outputBuf.GetTensor<bfloat16_t>(pTailL1Offset);
+                // [DN布局] A尾区=[M=mBase行][64列]行主序(flash DN bf16同款, isLeftTranspose装载):
+                // dualDstCtl=2按M半区拆(sub0=M[0,64), sub1=M[64,128)), sub偏移=M半区行*64列;
+                // 直搬源=VF bf16段式(65块段距x4段), dst行距64列(4块, k=64对齐)
+                if (likely(runInfo.actVecMSize != 0)) {
+                    // [decode几何配套] A尾区固定64列(k=MXFP8_V_TAIL_BOUNDARY): 块长64单位(2048B)=
+                    // [16M][64 s2行]恰好一段数据(65行段含1行gap, 不读gap), flash s2Align=64同款{4,64,1,0};
+                    // stage1行[tail,64)=0(VF originN掩码, dump实证) → C2 k=64的pad列贡献0。
+                    // dst偏移=sub*64*64(A尾区[64M半区][64列], 两sub共[128M][64]恰占满预留16384B)
+                    uint64_t tailDstOffset =
+                        static_cast<uint64_t>(constInfo_.subBlockIdx) * (mBaseSize >> 1) * 64U;
+                    DataCopy(mm2ATailL1Tensor[tailDstOffset], pTailBf16Ub,
+                             {(uint16_t)(mBaseSize >> 5), 64U, 1U, 0U});
+                }
+            }
+            // [B尾块改AIV搬运] AIC MTE2 GM->L1直搬(copyVTailGmToL1_)在尾片上下文只到达第一个
+            // n分形(四代k/rowCount几何实证: j[0,16)恒对/j[16,64)恒stale, 与decode迁移前同症状) —
+            // 复用decode已验证通路: AIV标量读GM->UB摆NZ->MTE3写vTailL1Slot_全D可靠。
+            // 顺序复刻decode: A尾区拷贝 -> CopyVTailToL1 -> FreeTensor -> SetCrossCore。
+            if constexpr (HAS_V_TAIL) {
+                CopyVTailToL1(runInfo);
+            }
+            this->stage1OutQue_[stage1Offset].template FreeTensor(stage1CastTensor);
+            if (runInfo.actSingleLoopS2Size <= s2SplitSize) {
+                outputBuf.SetCrossCore();
+            }
+            if (unlikely(runInfo.isLastS2Loop)) {
+                SoftmaxDataCopyOut(runInfo, sumUb, maxUb);
+            }
+            return;
         }
 
         if (unlikely(runInfo.isFirstS2Loop)) {
@@ -495,165 +571,64 @@ public:
         return;
     }
 
-    // 尾列P提升为bf16并写L1 P尾区。布局契约参照非量化模板 flash_attn(bf16) 的 P 写L1铁律:
-    //   - L1 NZ 分形 = 16列(bf16 C0) x 行, 分形间距 = mBaseSize*32B(即dstStride单位块数 = mBaseSize-actVecM)
-    //   - 源 pTailUb 采用分形紧邻布局(每分形 actVecM行 x 16列), srcStride=0
-    __aicore__ inline void CastPTailToBf16AndCopyToL1(
-        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf, LocalTensor<INPUT_T> &pE4m3Ub,
-        LocalTensor<fp8_e8m0_t> &pScaleUb, RunInfoX &runInfo, uint32_t kMainSize, uint32_t actVecMSizeAlign16,
-        uint32_t subLoop)
-    {
-        constexpr uint32_t s2BaseSizeCur = s2BaseSize >> 1;
-        // 双subblock并发执行, 暂存区按subBlockIdx分半区避免竞态
-        constexpr uint32_t pTailUbHalfElems = (mBaseSize >> 1U) * MXFP8_V_TAIL_BOUNDARY;
-        LocalTensor<bfloat16_t> pTailUb =
-            vTailPCastBuf_.template Get<bfloat16_t>()[constInfo_.subBlockIdx * pTailUbHalfElems];
-        // 尾列相对本subLoop起点的列号
-        uint32_t tailStartRel = kMainSize - subLoopColsBase(runInfo, kMainSize);
-        uint32_t tailLen = runInfo.kvTailLen;
-        LocalTensor<uint8_t> pScaleCodeUb = pScaleUb.ReinterpretCast<uint8_t>();
-        // PScale布局: 每次ProcessVec1VfMxfp8调用将当前subLoop的组scale写入 subLoop*128 基址处
-        // (主体搬运代码 subLoop1 时从 pScaleSubLoop0Tensor[128] 读取印证), 故需加subLoop基址
-        constexpr uint32_t scaleSubLoopStride = s2BaseSizeCur / 2; // 128
-        // 逐32列组(quant组): e4m3 -> float -> x组scale -> bf16。
-        // 对齐契约: 编译器可能将逐字节标量访问合并为4B访问, 若地址非4B对齐将触发硬件misaligned异常
-        // (AIV VEC_ERR)。故显式按4B粒度读stage1(4个fp8)/写pTailUb(2个bf16), 且布局保证4B对齐:
-        //   stage1: 列块基址2080(4对齐)+row*32(4对齐)+colStart%32(=0, tailStartRel为64对齐)
-        //   pTailUb: 分形距272(4对齐)+row*16(4对齐)+列内偶偏移
-        LocalTensor<uint32_t> pE4m3U32 = pE4m3Ub.template ReinterpretCast<uint32_t>();
-        LocalTensor<uint32_t> pTailU32 = pTailUb.template ReinterpretCast<uint32_t>();
-        union {
-            uint8_t u8;
-            fp8_e4m3fn_t f8;
-        } f8Cvt;
-        for (uint32_t g = 0; g < (tailLen + MXFP_GROUP_SIZE - 1) / MXFP_GROUP_SIZE; g++) {
-            uint32_t colStart = tailStartRel + g * MXFP_GROUP_SIZE;
-            for (uint32_t row = 0; row < actVecMSizeAlign16; row++) {
-                uint32_t scaleIdx =
-                    subLoop * scaleSubLoopStride + (row / 16) * (s2BaseSizeCur / MXFP_GROUP_SIZE) +
-                    (colStart / MXFP_GROUP_SIZE);
-                uint32_t scaleCode = static_cast<uint32_t>(pScaleCodeUb.GetValue(scaleIdx));
-                uint32_t scaleBits = scaleCode << 23; // e8m0 -> float 指数位
-                float scaleF;
-                *(reinterpret_cast<uint32_t *>(&scaleF)) = scaleBits;
-                // stage1源: 块号*2080 + row*32 + 块内偏移, 按4元素(u32)步进
-                uint32_t srcBase = (colStart / MXFP_GROUP_SIZE) * 2080U + row * MXFP_GROUP_SIZE +
-                                   (colStart % MXFP_GROUP_SIZE);
-                for (uint32_t cw = 0; cw < MXFP_GROUP_SIZE / 4; cw++) {
-                    uint32_t colBase = g * MXFP_GROUP_SIZE + cw * 4; // 尾列内列号(4列一组)
-                    // 无条件读(段内安全), pad列(col>=tailLen)贡献0; 运行时条件避免imm bitcast常量折叠
-                    uint32_t word = pE4m3U32.GetValue(srcBase / 4 + cw);
-                    uint32_t dstBase = (colBase >> 4) * (actVecMSizeAlign16 * 8) + row * 8 + (colBase & 15) / 2; // 分形=16行x8u32连续
-                    uint32_t bits[4] = {0, 0, 0, 0};
-                    if (colBase < tailLen) {
-                        f8Cvt.u8 = word & 0xFF;
-                        bits[0] = FloatToBf16Bits(Fp8E4m3ToFloat(f8Cvt.u8) * scaleF);
-                    }
-                    if (colBase + 1 < tailLen) {
-                        f8Cvt.u8 = (word >> 8) & 0xFF;
-                        bits[1] = FloatToBf16Bits(Fp8E4m3ToFloat(f8Cvt.u8) * scaleF);
-                    }
-                    if (colBase + 2 < tailLen) {
-                        f8Cvt.u8 = (word >> 16) & 0xFF;
-                        bits[2] = FloatToBf16Bits(Fp8E4m3ToFloat(f8Cvt.u8) * scaleF);
-                    }
-                    if (colBase + 3 < tailLen) {
-                        f8Cvt.u8 = (word >> 24) & 0xFF;
-                        bits[3] = FloatToBf16Bits(Fp8E4m3ToFloat(f8Cvt.u8) * scaleF);
-                    }
-                    pTailU32.SetValue(dstBase, bits[0] | (bits[1] << 16));
-                    pTailU32.SetValue(dstBase + 1, bits[2] | (bits[3] << 16));
-                }
-            }
-        }
-        // 写L1尾区(与Cube侧pTailOffset约定一致), 搬运参数参照flash_attn bf16的P写L1:
-        //   blockCount = ceil(tailLen/16)个16列分形, blockLen = actVecM块(每行32B),
-        //   srcStride = 0(源分形紧邻), dstStride = mBaseSize-actVecM(L1分形行距mBaseSize块)
-        constexpr uint64_t pTailOffset = (static_cast<uint64_t>(mBaseSize) * s2BaseSize +
-                                          mBaseSize * s2BaseSize / MXFP_GROUP_SIZE) / sizeof(bfloat16_t);
-        LocalTensor<bfloat16_t> mm2ATailL1Tensor = outputBuf.GetTensor<bfloat16_t>(pTailOffset);
-        uint64_t dstOffset = constInfo_.subBlockIdx * (blockBytes / sizeof(bfloat16_t)) * actVecMSizeAlign16;
-        AscendC::PipeBarrier<PIPE_V>();
-        // 无效subblock半区清零: decode场景actVecMSize=1时sub=1整块无效(L1残留inf/nan会进Mmad k=64累加);
-        // B侧pad行兜底仅覆盖B, A侧垃圾列×B有效行同样污染L0C, 故A尾区未写半区必须显式清0
-        if (runInfo.actVecMSize == 0) {
-            constexpr uint32_t aTailHalfElems = (mBaseSize >> 1) * MXFP8_V_TAIL_BOUNDARY;
-            LocalTensor<uint32_t> zeroSrc = pTailUb.ReinterpretCast<uint32_t>();
-            for (uint32_t i = 0; i < aTailHalfElems / 2; i++) {
-                zeroSrc.SetValue(i, 0);
-            }
-            AscendC::PipeBarrier<PIPE_V>();
-            // 4元组形式写零半区: blockCount=4分形, blockLen=mBase/2块, 全零dstStride
-            DataCopy(mm2ATailL1Tensor[dstOffset], pTailUb,
-                     {(uint16_t)(MXFP8_V_TAIL_BOUNDARY / 16), (uint16_t)(mBaseSize >> 1),
-                      (uint16_t)(vec1Srcstride - (mBaseSize >> 1)), 0});
-        }
-        // 源分形距: 每分形16行x16列=512B=16块(源紧凑无gap) -> srcGap=0;
-        // pTailUb 分形f起点=f*128u32(512B), blockLen=actVecM块(16行x1块) — 布局: 每分形内行距8u32?
-        // 重定义紧凑分形: 分形f = f*(16行*8u32) + row*8 + col/2 (每行8u32=16列, 行间无gap)
-        DataCopy(mm2ATailL1Tensor[dstOffset], pTailUb,
-                 {(uint16_t)(MXFP8_V_TAIL_BOUNDARY / 16), (uint16_t)actVecMSizeAlign16,
-                  0,
-                  (uint16_t)(mBaseSize - actVecMSizeAlign16)});
-    }
 
     // [VTAIL] B尾块装载(AIV路径, 纯标量GM直读版): GM标量读(printf已证100%可靠, 绕开MTE2事件竞态)
     // -> UB摆NZ(u32) -> UB->L1(A侧同款非零dstStride参数, 绕开dstGap=0坑)。
     // L1布局: 8个16列分形x 2KB(64行距), 每分形前32行=数据(tail有效+pad0), 后32行=0 —
     // 与Cube侧 MatmulFull k=64 的 LoadDataToL0B srcStride(4*512B)匹配。
-    __aicore__ inline void CopyVTailToL1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-                                         RunInfoX &runInfo)
+    __aicore__ inline void CopyVTailToL1(RunInfoX &runInfo)
     {
         if (constInfo_.subBlockIdx != 0) {
             return; // 单subblock搬运, 避免双核写L1/UB中转竞争
         }
-        constexpr uint64_t pTailOffset = (static_cast<uint64_t>(mBaseSize) * s2BaseSize +
-                                          mBaseSize * s2BaseSize / MXFP_GROUP_SIZE) / sizeof(bfloat16_t);
-        constexpr uint64_t bTailOffset = pTailOffset + mBaseSize * MXFP8_V_TAIL_BOUNDARY;
         constexpr uint32_t stripNum = dTemplateAlign64 / 16;
-        constexpr uint32_t dataRows = MXFP8_V_TAIL_BOUNDARY / 2; // 32行数据(tailAlign16上限)
+        constexpr uint32_t dataRows = MXFP8_V_TAIL_BOUNDARY; // 64行全摆(tail≤63, pad行0兜底A侧垃圾列)
+        // [修复回补] 原"dataRows=32分段"只支持tail≤32, tail>32时行[32,tail)的v_tail数据
+        // 丢失(B2用例T61实测崩至3.5%); 64行全摆后r≥tailLen填0已由循环内if保证。
         // UB中转: 独立vTailStripUb_(4KB)逐分形轮换 — 不可用vTailPCastBuf_:
         // A尾cast的MTE3 DataCopy读pTailUb与B侧标量写同buffer竞态(实测inf/nan污染)
         LocalTensor<uint32_t> nzU32 = vTailStripUb_.template Get<uint32_t>();
-        // v_tail GM基址(u32视角): 行主序(Bn,N2,Bs,D), btt[bIdx*tailMaxBlockNum]定位物理块
-        int32_t blkId = vTailBttGm_[runInfo.bIdx * constInfo_.tailMaxBlockNum];
-        uint64_t gmBase = static_cast<uint64_t>(blkId) * constInfo_.n2Size * constInfo_.blockSize * constInfo_.dSizeV +
-                          static_cast<uint64_t>(runInfo.n2Idx) * constInfo_.blockSize * constInfo_.dSizeV;
-        __gm__ uint32_t *gmU32 = (__gm__ uint32_t *)(vTailGmVec_ + gmBase);
+        // [二期PREFILL] v_tail寻址按PA/TND分支:
+        //   PA: (Bn,N2,Bs,D)块结构, btt[bIdx*tailMaxBlockNum]定位物理块, 块容量=blockSize;
+        //   TND: (B,N2,64,D)直存(尾窗<64固定容量, batch间无前缀耦合), batch基址直接定位。
+        // 两分支均为BNSD行主序, 摆数循环布局无关
+        __gm__ uint32_t *gmU32 = nullptr;
+        if constexpr (KvLayoutType > 0) {
+            int32_t blkId = vTailBttGm_[runInfo.bIdx * constInfo_.tailMaxBlockNum];
+            uint64_t gmBase =
+                static_cast<uint64_t>(blkId) * constInfo_.n2Size * constInfo_.blockSize * constInfo_.dSizeV +
+                static_cast<uint64_t>(runInfo.n2Idx) * constInfo_.blockSize * constInfo_.dSizeV;
+            gmU32 = (__gm__ uint32_t *)(vTailGmVec_ + gmBase);
+        } else {
+            uint64_t gmBase = static_cast<uint64_t>(runInfo.bIdx) * constInfo_.n2Size *
+                                  MXFP8_V_TAIL_BOUNDARY * constInfo_.dSizeV +
+                              static_cast<uint64_t>(runInfo.n2Idx) * MXFP8_V_TAIL_BOUNDARY * constInfo_.dSizeV;
+            gmU32 = (__gm__ uint32_t *)(vTailGmVec_ + gmBase);
+        }
         uint32_t rowsU32 = constInfo_.dSizeV / 2; // 每行D列=64 u32
         uint32_t tailLen = runInfo.kvTailLen;
-        LocalTensor<bfloat16_t> bTailL1 = outputBuf.GetTensor<bfloat16_t>(bTailOffset);
+        LocalTensor<bfloat16_t> bTailL1 = vTailL1Slot_->GetTensor<bfloat16_t>(); // B尾块独立L1 slot
         for (uint32_t c = 0; c < stripNum; c++) {
             // nzU32双分形轮换(c&1, 各2KB): 偶分形用[0,512)u32, 奇分形用[512,1024)u32 —
             // 防分形c+1标量写覆盖分形c未完成的MTE3读
             LocalTensor<uint32_t> nzCur = nzU32[(c & 1U) * (MXFP8_V_TAIL_BOUNDARY * 8)];
-            // nzCur布局(每分形2KB=512u32): [0,256)=数据32行(行距8u32); [256,512)=零32行
+            // nzCur布局(每分形2KB=512u32): 64行x8u32, 行r<tailLen读GM其余0
+            // [二期D=72] N轴pad: 有效列仅dSizeV(36u32), 分形c*8+j越界列置0兜底Mmad n方向
+            // (D=64/128/256时rowsU32恰为8的倍数, 本判断恒真, 逻辑等价)
             for (uint32_t r = 0; r < dataRows; r++) {
                 for (uint32_t j = 0; j < 8; j++) { // 每行16列=8 u32
                     uint32_t v = 0;
-                    if (r < tailLen) {
+                    if (r < tailLen && (c * 8U + j) < rowsU32) {
                         v = gmU32[r * rowsU32 + c * 8 + j]; // GM标量直读(已验证可靠)
                     }
                     nzCur.SetValue(r * 8 + j, v);
                 }
             }
-            for (uint32_t i = dataRows * 8; i < MXFP8_V_TAIL_BOUNDARY * 8; i++) { // 零段256u32
-                nzCur.SetValue(i, 0);
-            }
             AscendC::PipeBarrier<PIPE_V>();
-            // 每分形2次搬运(单块形式, dstStride无意义置0): L1分形c 2KB=[数据32行][零32行]
+            // 每分形单次搬运(整块2KB=64行x16列): L1分形c, pad行[r>=tailLen)=0已由摆数循环保证
             DataCopy(bTailL1[c * MXFP8_V_TAIL_BOUNDARY * 16], nzCur.ReinterpretCast<bfloat16_t>(),
                      {1, (uint16_t)dataRows, 0, 0});
-            DataCopy(bTailL1[c * MXFP8_V_TAIL_BOUNDARY * 16 + dataRows * 16],
-                     nzCur.ReinterpretCast<bfloat16_t>()[dataRows * 16], {1, (uint16_t)dataRows, 0, 0});
         }
-    }
-
-    __aicore__ inline uint32_t subLoopColsBase(RunInfoX &runInfo, uint32_t kMainSize)
-    {
-        constexpr uint32_t s2BaseSizeCur = s2BaseSize >> 1;
-        (void)runInfo;
-        return (kMainSize / s2BaseSizeCur) * s2BaseSizeCur;
     }
 
     __aicore__ inline void SoftmaxDataCopyOut(RunInfoX runInfo, LocalTensor<float> &sumUb, LocalTensor<float> &maxUb)
@@ -764,10 +739,30 @@ public:
         uint32_t pseStride = 0;
         uint32_t actVecMSizeAlign16 = runInfo.actMSizeAlign32 >> 1;
 
+        // [VTAIL] 纯尾task判定(序列末task且主体列数0, 即kvLen%512<64): 整个task按flash_attn ND
+        // config2(D=128)的128基小task处理 — P尾列由 ProcessVec1VfMxfp8<T, bfloat16_t, ..., 128>
+        // 直出bf16(8位有效数字, 免e4m3量化-解包往返), 状态机(sum/max/preLoop三件套)仍为Mxfp8原版,
+        // 与前序task无缝接力; C2侧 MatmulFull<bf16> 尾片乘仍在同一L0C上累加(ComputeBmm2VTailNd)。
+        // 前提: cube侧纯尾task的FixpipeMm1已将dstStride改为128, mmRes行距与VF模板输入行距一致;
+        // bf16掩码pltSrcN16=128 → 段式写8 chunk/行(chunk0~3=列0~63尾数据, chunk4~7=ZEROING零列),
+        // 全部落在stage1 16640B内 — 无越界无脏数据。守卫s2BaseSizeCur==256(尾task模板=128)
+        // 与cube侧(s2SplitSize==256)严格一致, 其余config走cast路径不变。
+        // 注: 不能改调非量化ProcessVec1Vf — 其update流(裸max/无三件套)与Mxfp8状态机
+        // (ln2格点化max+preLoop三件套)不兼容, 实测NaN。
+        bool isPureTailTask = false;
+        // [二期] 放宽至全部config(D=64/128: s2BaseSizeCur=256; D=256: s2BaseSizeCur=128):
+        // 尾task模板统一为min(s2BaseSizeCur,128)=128 — 输入行距与cube侧FixpipeMm1的尾task
+        // dstStride一致(D=128类经dstStride分支256→128; D=256类原始dstStride=s2SplitSize=128)
+        if constexpr (HAS_V_TAIL && (s2BaseSize >> 1) >= 128) {
+            uint32_t kMainSizeChk = runInfo.actSingleLoopS2Size - runInfo.kvTailLen;
+            bool isSeqLastTaskChk = runInfo.s2Idx + runInfo.actSingleLoopS2Size >= runInfo.actS2Size;
+            isPureTailTask = isSeqLastTaskChk && (runInfo.kvTailLen > 0) && (kMainSizeChk == 0);
+        }
+
         LocalTensor<uint8_t> attenMaskUb;
         if constexpr (HAS_MASK) {
             attenMaskUb = this->attenMaskInQue_[0].template AllocTensor<uint8_t>();
-            AttenMaskCopyIn(attenMaskUb, 0, actVecMSizeAlign16, runInfo, subLoop); // 全量拷贝
+            AttenMaskCopyIn(attenMaskUb, 0, actVecMSizeAlign16, runInfo, subLoop, isPureTailTask); // 全量拷贝
         }
 
         LocalTensor<float> sumUb = this->softmaxSumBuf_[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
@@ -793,7 +788,7 @@ public:
 
         LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
         auto stage1CastTensor = this->stage1OutQue_[stage1Offset].template AllocTensor<INPUT_T>();
-        // 回滚验证: 恢复原stage1CastTensor[16640]越界视图(11:40的TBuf版本疑破坏A尾scale时序, 待排除)
+        // [恢复生产原样] pScaleSubLoop0 = stage1[16640]越界视图(TBuf版曾疑破坏时序, decode实测0.0)
         constexpr int32_t pScaleByteOffset = 16640; // 16640: softmax res UB size
         LocalTensor<fp8_e8m0_t> pScaleSubLoop0Tensor =
             stage1CastTensor.template ReinterpretCast<fp8_e8m0_t>()[pScaleByteOffset];
@@ -803,10 +798,35 @@ public:
         if (runInfo.actSingleLoopS2Size > s2SplitSize) {
             s2CalcSize = subLoop == 0 ? s2BaseSizeCur : runInfo.actSingleLoopS2Size - s2BaseSizeCur;
         }
-        // [VTAIL] 二期预留: 纯尾task可改调 ProcessVec1VfMxfp8<T, bfloat16_t, ...>(T2模板参数直出bf16,
-        // 状态机仍为Mxfp8原版)使P尾列获得8位有效数字; 实验确认ProcessVec1Vf(非量化版)的update流与
-        // Mxfp8状态机(ln2格点化max+preLoop三件套)不兼容会NaN, 勿直接混用, 详见交接文档。
-        if (unlikely(runInfo.isFirstS2Loop)) {
+        // [VTAIL] 纯尾task: P尾列改调 ProcessVec1VfMxfp8<T, bfloat16_t, ..., 128>(T2模板参数直出bf16)。
+        // 模板128 = flash_attn ND config2语义: 输入行距128(cube侧FixpipeMm1纯尾分支dstStride=128),
+        // 输出bf16段式8 chunk/行(chunk距65*32B=2080B, 行距32B), 与fp8主体段式同构
+        // (bf16 16列=32B vs fp8 32列=32B), stage1OutQue 16640B复用无需扩容。
+        // m参数传actVecMSizeAlign16(与主体一致), GQA双subblock的垃圾行(dualDst sub1半区)只污染
+        // 无效输出行; originN=kvTailLen使pad列[tailLen,64)由ExpSub ZEROING清零。
+        LocalTensor<bfloat16_t> pTailBf16Ub = stage1CastTensor.template ReinterpretCast<bfloat16_t>();
+        if (unlikely(isPureTailTask)) {
+            // [二期] 尾task模板=min(s2BaseSizeCur,128): D=128类(256→128)/D=256类(128→128),
+            // 与mmRes行距(dstStride)及mask 128宽布局耦合
+            constexpr int32_t s2TailBaseSize = (s2BaseSizeCur > 128) ? 128 : s2BaseSizeCur;
+            if (unlikely(runInfo.isFirstS2Loop)) {
+                ProcessVec1VfMxfp8<T, bfloat16_t, pseShiftType, false, mBaseSize, s2TailBaseSize, GT_0_AND_LTE_64,
+                                   HAS_MASK, PseTypeEnum::PSE_NONE_TYPE, false, false, false, false, false>(
+                    pTailBf16Ub, this->vselrIndexesBuf_, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
+                    pseUb, dropMaskUb, pScaleSubLoop0Tensor, apiTmpBuffer, pScaleUb, preLoopMaxUb, preLoopSumUb,
+                    firstLoopSumUb, subLoop, actVecMSizeAlign16, runInfo.kvTailLen, pseStride, slopes, posShift,
+                    static_cast<T>(constInfo_.scaleValue), descaleQK, negativeFloatScalar_, 0.0F, queryScaleUb,
+                    deSCaleKValue, pScaleValue_);
+            } else {
+                ProcessVec1VfMxfp8<T, bfloat16_t, pseShiftType, true, mBaseSize, s2TailBaseSize, GT_0_AND_LTE_64,
+                                   HAS_MASK, PseTypeEnum::PSE_NONE_TYPE, false, false, false, false, false>(
+                    pTailBf16Ub, this->vselrIndexesBuf_, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
+                    pseUb, dropMaskUb, pScaleSubLoop0Tensor, apiTmpBuffer, pScaleUb, preLoopMaxUb, preLoopSumUb,
+                    firstLoopSumUb, subLoop, actVecMSizeAlign16, runInfo.kvTailLen, pseStride, slopes, posShift,
+                    static_cast<T>(constInfo_.scaleValue), descaleQK, negativeFloatScalar_, 0.0F, queryScaleUb,
+                    deSCaleKValue, pScaleValue_);
+            }
+        } else if (unlikely(runInfo.isFirstS2Loop)) {
             if (unlikely(s2CalcSize == 128)) {
                 ProcessVec1VfMxfp8<T, INPUT_T, pseShiftType, false, mBaseSize, s2BaseSizeCur, EQ_128, HAS_MASK,
                                    PseTypeEnum::PSE_NONE_TYPE, false, false, false, false, false>(
@@ -928,10 +948,41 @@ public:
             bool isSeqLastTask = runInfo.s2Idx + runInfo.actSingleLoopS2Size >= runInfo.actS2Size;
             if (isSeqLastTask && (runInfo.kvTailLen > 0) && (kMainSize < runInfo.actSingleLoopS2Size) &&
                 (subLoop == tailSubLoop || runInfo.actSingleLoopS2Size <= s2BaseSizeCur)) {
-                CastPTailToBf16AndCopyToL1(outputBuf, stage1CastTensor, pScaleSubLoop0Tensor, runInfo, kMainSize,
-                                           actVecMSizeAlign16, subLoop);
-                // B尾块装载(与A尾区同一outputBuf同步点, SetCrossCore前MTE3排空)
-                CopyVTailToL1(outputBuf, runInfo);
+                if (unlikely(isPureTailTask)) {
+                    // 纯尾task: stage1已是bf16段式(chunk[b]=b*2080B+行i*32B, chunk0~3=尾列0~63,
+                    // pad列[tailLen,64)=ExpSub ZEROING零) — 四元组直搬L1尾区:
+                    // dst参数与cast版一致(4分形 x actVecM块, 分形距mBaseSize块),
+                    // src参数即flash_attn ND四元组的前4个burst(chunk距65块=2080B)。
+                    constexpr uint64_t pTailL1Offset =
+                        (static_cast<uint64_t>(mBaseSize) * s2BaseSize +
+                         mBaseSize * s2BaseSize / MXFP_GROUP_SIZE) / sizeof(bfloat16_t);
+                    LocalTensor<bfloat16_t> mm2ATailL1Tensor = outputBuf.GetTensor<bfloat16_t>(pTailL1Offset);
+                    // [二期] A尾区分形布局=[16列][mBase行]连续行(4分形), sub偏移=分形内行mBase/2偏移
+                    // (=mBase/2*16元素)。原公式256*actVecM按decode几何(actVecM<=16, 且QS1用例sub1恒
+                    // 早退从未执行)写死, actVecM=64(PREFILL大actM)时偏移越界4倍踩B尾区(sub1全废+sub0
+                    // 被踩出1e-3噪声, KVS31实测)。与actVecM无关, 按GS1半区固定几何。
+                    uint64_t dstOffset = static_cast<uint64_t>(constInfo_.subBlockIdx) * (mBaseSize >> 1) * 16U;
+                    if (likely(runInfo.actVecMSize != 0)) {
+                        DataCopy(mm2ATailL1Tensor[dstOffset], pTailBf16Ub,
+                                 {(uint16_t)(MXFP8_V_TAIL_BOUNDARY / 16), (uint16_t)actVecMSizeAlign16,
+                                  (uint16_t)(vec1Srcstride - actVecMSizeAlign16),
+                                  (uint16_t)(mBaseSize - actVecMSizeAlign16)});
+                    } else {
+                        // 无效subblock半区清零(镜像cast版): L1残留inf/nan会进Mmad k=64累加
+                        constexpr uint32_t aTailHalfElems = (mBaseSize >> 1) * MXFP8_V_TAIL_BOUNDARY;
+                        LocalTensor<uint32_t> zeroSrc =
+                            vTailPCastBuf_.template Get<uint32_t>()[constInfo_.subBlockIdx * (aTailHalfElems / 2)];
+                        for (uint32_t i = 0; i < aTailHalfElems / 2; i++) {
+                            zeroSrc.SetValue(i, 0);
+                        }
+                        AscendC::PipeBarrier<PIPE_V>();
+                        DataCopy(mm2ATailL1Tensor[dstOffset], zeroSrc.ReinterpretCast<bfloat16_t>(),
+                                 {(uint16_t)(MXFP8_V_TAIL_BOUNDARY / 16), (uint16_t)(mBaseSize >> 1),
+                                  (uint16_t)(vec1Srcstride - (mBaseSize >> 1)), 0});
+                    }
+                }
+                // [decode/ND] B尾块装载(AIV搬运, DN尾task已改CUBE直搬不再调用)
+                CopyVTailToL1(runInfo);
             }
         }
         this->stage1OutQue_[stage1Offset].template FreeTensor(stage1CastTensor);
@@ -1331,7 +1382,7 @@ public:
     }
 
     __aicore__ inline void AttenMaskCopyIn(LocalTensor<uint8_t> attenMaskUb, uint32_t vecMIdx, uint32_t mDealSize,
-                                           RunInfoX &runInfo, uint32_t subLoop)
+                                           RunInfoX &runInfo, uint32_t subLoop, bool isPureTailTask = false)
     {
         uint32_t s2RealSize = runInfo.actSingleLoopS2Size;
         constexpr uint32_t s2BaseSizeCur = s2BaseSize >> 1;
@@ -1360,6 +1411,25 @@ public:
         maskInfo.s2LeftPaddingSize = runInfo.kvPaddingBeginOffset;
         maskInfo.maskFormat = MASK_LAYOUT;
         maskInfo.attenMaskType = MASK_BOOL; // compatible with int8/uint8
+
+        if (unlikely(isPureTailTask)) {
+            // [VTAIL] 纯尾task: mask按128宽(nBaseSize=s2BaseSizeCur/2)布局拷贝 — 与纯尾分支
+            // ProcessVec1VfMxfp8<..., 128> 的nPadding/掩码读取耦合(模板s2BaseSize==mask nBaseSize
+            // 铁律, flash_attn ND config2同构); s2dealNum=tailLen, s2StartIdx=s2Idx(尾块起点, subLoop=0)
+            // [二期] 尾task模板=min(s2BaseSizeCur,128), 与vec1分派处保持一致
+            constexpr uint32_t s2TailBaseSize = (s2BaseSizeCur > 128) ? 128 : s2BaseSizeCur;
+            maskInfo.s2dealNum = runInfo.kvTailLen;
+            maskInfo.nBaseSize = s2TailBaseSize;
+            maskInfo.attenMaskDstStride = (s2TailBaseSize - AttentionCommon::Align(maskInfo.s2dealNum, 32U)) / 32;
+            bool IsSkipMaskTail = IsSkipAttentionmask(maskInfo);
+            if (unlikely(!IsSkipMaskTail)) {
+                AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2TailBaseSize>(attenMaskUb, attenMaskGmInt_,
+                                                                                maskInfo);
+            } else {
+                Duplicate(attenMaskUb, static_cast<uint8_t>(0U), maskInfo.gs1dealNum * s2TailBaseSize);
+            }
+            return;
+        }
 
         bool IsSkipMask = IsSkipAttentionmask(maskInfo);
         if (unlikely(!IsSkipMask)) {

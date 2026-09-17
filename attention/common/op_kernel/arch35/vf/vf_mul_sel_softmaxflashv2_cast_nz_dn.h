@@ -100,6 +100,11 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ flo
 
     RegTensor<T2> vreg_x_exp_fp8_0, vreg_x_exp_f8_pack_0;
     RegTensor<T2> vreg_x_exp_fp8_1, vreg_x_exp_f8_pack_1;
+    // [v_tail高精窗口] bf16直出寄存器(与非量化DN bf16路径同款: Cast+DeInterleave交错拓宽)
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e0, vreg_x_exp_bf16_o0, vreg_x_exp_bf16_p0, vreg_x_exp_bf16_pa;
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e1, vreg_x_exp_bf16_o1, vreg_x_exp_bf16_p1, vreg_x_exp_bf16_pb;
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e2, vreg_x_exp_bf16_o2, vreg_x_exp_bf16_p2, vreg_x_exp_bf16_pc;
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e3, vreg_x_exp_bf16_o3, vreg_x_exp_bf16_p3, vreg_x_exp_bf16_pd;
 
     __ubuf__ T2 *x_exp_1;
     if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
@@ -395,6 +400,11 @@ __aicore__ inline void ProcessVec1DnNoUpdate(const LocalTensor<T2> &dstTensor, c
         blockStride = ubN >> 2 | 0x1;
         repeatStride = 2;
         indexesUb = (__ubuf__ uint8_t *)vselrIndexesBuf.GetPhyAddr();
+    } else if constexpr (IsSameType<T2, bfloat16_t>::value) {
+        // [v_tail高精窗口] bf16直出: dScale同Mxfp8语义(量化QK反量化), 段式blockStride同非量化DN
+        dScale = scale * deScaleQK;
+        blockStride = ubN >> 1 | 0x1;
+        repeatStride = 1;
     } else {
         dScale = scale;
         blockStride = ubN >> 1 | 0x1;
@@ -485,6 +495,11 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
 
     RegTensor<T2> vreg_x_exp_fp8_0, vreg_x_exp_f8_pack_0;
     RegTensor<T2> vreg_x_exp_fp8_1, vreg_x_exp_f8_pack_1;
+    // [v_tail高精窗口] bf16直出寄存器(与非量化DN bf16路径同款: Cast+DeInterleave交错拓宽)
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e0, vreg_x_exp_bf16_o0, vreg_x_exp_bf16_p0, vreg_x_exp_bf16_pa;
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e1, vreg_x_exp_bf16_o1, vreg_x_exp_bf16_p1, vreg_x_exp_bf16_pb;
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e2, vreg_x_exp_bf16_o2, vreg_x_exp_bf16_p2, vreg_x_exp_bf16_pc;
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e3, vreg_x_exp_bf16_o3, vreg_x_exp_bf16_p3, vreg_x_exp_bf16_pd;
 
     __ubuf__ T2 *x_exp_1;
     if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
@@ -785,6 +800,11 @@ __aicore__ inline void ProcessVec1DnUpdate(const LocalTensor<T2> &dstTensor, con
         blockStride = ubN >> 2 | 0x1;
         repeatStride = 2;
         indexesUb = (__ubuf__ uint8_t *)vselrIndexesBuf.GetPhyAddr();
+    } else if constexpr (IsSameType<T2, bfloat16_t>::value) {
+        // [v_tail高精窗口] bf16直出: dScale同Mxfp8语义(量化QK反量化), 段式blockStride同非量化DN
+        dScale = scale * deScaleQK;
+        blockStride = ubN >> 1 | 0x1;
+        repeatStride = 1;
     } else {
         dScale = scale;
         blockStride = ubN >> 1 | 0x1;
@@ -858,6 +878,11 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
 
     RegTensor<T2> vreg_x_exp_fp8_0, vreg_x_exp_f8_pack_0;
     RegTensor<T2> vreg_x_exp_fp8_1, vreg_x_exp_f8_pack_1;
+    // [v_tail高精窗口] bf16直出寄存器(与非量化DN bf16路径同款: Cast+DeInterleave交错拓宽)
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e0, vreg_x_exp_bf16_o0, vreg_x_exp_bf16_p0, vreg_x_exp_bf16_pa;
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e1, vreg_x_exp_bf16_o1, vreg_x_exp_bf16_p1, vreg_x_exp_bf16_pb;
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e2, vreg_x_exp_bf16_o2, vreg_x_exp_bf16_p2, vreg_x_exp_bf16_pc;
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e3, vreg_x_exp_bf16_o3, vreg_x_exp_bf16_p3, vreg_x_exp_bf16_pd;
 
     RegTensor<float> vreg_chunk0;
     RegTensor<float> vreg_thresh;
@@ -981,6 +1006,26 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
         FusedExpSub(vreg_x_exp_2, vreg_x_f32_2, max0, preg_134);
         FusedExpSub(vreg_x_exp_3, vreg_x_f32_3, max0, preg_134);
 
+        if constexpr (IsSameType<T2, bfloat16_t>::value) {
+            // [v_tail高精窗口] bf16直出(连续布局): 段式(DATA_BLOCK_COPY, ubN=256基的blockStride=129
+            // 会越界16KB buffer)不可用; 改普通连续store, 仅前ubN/32轮(尾窗64 s2列)写出,
+            // 布局=[s2 64][M 64]行主序8KB/sub, 供A尾区直搬; sum全宽照算
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_e0, vreg_x_exp_0, preg_135);
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_o0, vreg_x_exp_1, preg_135);
+            DeInterleave(vreg_x_exp_bf16_p0, vreg_x_exp_bf16_pa, vreg_x_exp_bf16_e0, vreg_x_exp_bf16_o0);
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_e1, vreg_x_exp_2, preg_135);
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_o1, vreg_x_exp_3, preg_135);
+            DeInterleave(vreg_x_exp_bf16_p1, vreg_x_exp_bf16_pb, vreg_x_exp_bf16_e1, vreg_x_exp_bf16_o1);
+            Add(vreg_x_sum_0, vreg_x_exp_0, vreg_x_sum_0, preg_134);
+            Add(vreg_x_sum_1, vreg_x_exp_1, vreg_x_sum_1, preg_134);
+            Add(vreg_x_sum_2, vreg_x_exp_2, vreg_x_sum_2, preg_134);
+            Add(vreg_x_sum_3, vreg_x_exp_3, vreg_x_sum_3, preg_134);
+            if (i0 < (ubN >> 5)) {
+                StoreAlign<T2, MicroAPI::StoreDist::DIST_NORM_B16>(x_exp, vreg_x_exp_bf16_p0, preg_136);
+                StoreAlign<T2, MicroAPI::StoreDist::DIST_NORM_B16>(x_exp + 128, vreg_x_exp_bf16_p1, preg_136);
+                x_exp += 256;
+            }
+        } else {
         Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_0, vreg_x_exp_0, preg_135);
         Add(vreg_x_sum_0, vreg_x_exp_0, vreg_x_sum_0, preg_134);
 
@@ -1002,6 +1047,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
         Gather(vreg_x_exp_f8_pack_0, vreg_x_exp_fp8_0, idx_nd2nz);
         StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
+        }
 
         Muls(vreg_x_f32_4, vreg_x_f32_4, dScale, preg_108);
         Muls(vreg_x_f32_5, vreg_x_f32_5, dScale, preg_108);
@@ -1013,6 +1059,22 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
         FusedExpSub(vreg_x_exp_6, vreg_x_f32_6, max0, preg_134);
         FusedExpSub(vreg_x_exp_7, vreg_x_f32_7, max0, preg_134); // vreg_x_exp_i softmax分子
 
+        if constexpr (IsSameType<T2, bfloat16_t>::value) {
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_e2, vreg_x_exp_4, preg_135);
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_o2, vreg_x_exp_5, preg_135);
+            DeInterleave(vreg_x_exp_bf16_p2, vreg_x_exp_bf16_pc, vreg_x_exp_bf16_e2, vreg_x_exp_bf16_o2);
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_e3, vreg_x_exp_6, preg_135);
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_o3, vreg_x_exp_7, preg_135);
+            DeInterleave(vreg_x_exp_bf16_p3, vreg_x_exp_bf16_pd, vreg_x_exp_bf16_e3, vreg_x_exp_bf16_o3);
+            Add(vreg_x_sum_4, vreg_x_exp_4, vreg_x_sum_4, preg_134);
+            Add(vreg_x_sum_5, vreg_x_exp_5, vreg_x_sum_5, preg_134);
+            Add(vreg_x_sum_6, vreg_x_exp_6, vreg_x_sum_6, preg_134);
+            Add(vreg_x_sum_7, vreg_x_exp_7, vreg_x_sum_7, preg_134);
+            if (i0 < (ubN >> 5)) {
+                StoreAlign<T2, MicroAPI::StoreDist::DIST_NORM_B16>(x_exp + 256, vreg_x_exp_bf16_p2, preg_136);
+                StoreAlign<T2, MicroAPI::StoreDist::DIST_NORM_B16>(x_exp + 384, vreg_x_exp_bf16_p3, preg_136);
+            }
+        } else {
         Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_1, vreg_x_exp_4, preg_135);
         Add(vreg_x_sum_4, vreg_x_exp_4, vreg_x_sum_4, preg_134);
 
@@ -1034,6 +1096,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
         Gather(vreg_x_exp_f8_pack_1, vreg_x_exp_fp8_1, idx_nd2nz);
         StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_f8_pack_1, blockStride, repeatStride, preg_134);
+        }
     }
     Add(vreg_x_sum_0, vreg_x_sum_0, vreg_x_sum_1, preg_134);
     Add(vreg_x_sum_2, vreg_x_sum_2, vreg_x_sum_3, preg_134);
@@ -1091,6 +1154,11 @@ __aicore__ inline void ProcessVec1DnNoUpdateMxfp8(const LocalTensor<T2> &dstTens
         blockStride = ubN >> 2 | 0x1;
         repeatStride = 2;
         indexesUb = (__ubuf__ uint8_t *)vselrIndexesBuf.GetPhyAddr();
+    } else if constexpr (IsSameType<T2, bfloat16_t>::value) {
+        // [v_tail高精窗口] bf16直出: dScale同Mxfp8语义(量化QK反量化), 段式blockStride同非量化DN
+        dScale = scale * deScaleQK;
+        blockStride = ubN >> 1 | 0x1;
+        repeatStride = 1;
     } else {
         dScale = scale;
         blockStride = ubN >> 1 | 0x1;
@@ -1160,6 +1228,11 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(
 
     RegTensor<T2> vreg_x_exp_fp8_0, vreg_x_exp_f8_pack_0;
     RegTensor<T2> vreg_x_exp_fp8_1, vreg_x_exp_f8_pack_1;
+    // [v_tail高精窗口] bf16直出寄存器(与非量化DN bf16路径同款: Cast+DeInterleave交错拓宽)
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e0, vreg_x_exp_bf16_o0, vreg_x_exp_bf16_p0, vreg_x_exp_bf16_pa;
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e1, vreg_x_exp_bf16_o1, vreg_x_exp_bf16_p1, vreg_x_exp_bf16_pb;
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e2, vreg_x_exp_bf16_o2, vreg_x_exp_bf16_p2, vreg_x_exp_bf16_pc;
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e3, vreg_x_exp_bf16_o3, vreg_x_exp_bf16_p3, vreg_x_exp_bf16_pd;
 
     RegTensor<float> vreg_chunk0;
     RegTensor<float> vreg_thresh;
@@ -1290,6 +1363,26 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(
         FusedExpSub(vreg_x_exp_2, vreg_x_f32_2, max0, preg_134);
         FusedExpSub(vreg_x_exp_3, vreg_x_f32_3, max0, preg_134);
 
+        if constexpr (IsSameType<T2, bfloat16_t>::value) {
+            // [v_tail高精窗口] bf16直出(连续布局): 段式(DATA_BLOCK_COPY, ubN=256基的blockStride=129
+            // 会越界16KB buffer)不可用; 改普通连续store, 仅前ubN/32轮(尾窗64 s2列)写出,
+            // 布局=[s2 64][M 64]行主序8KB/sub, 供A尾区直搬; sum全宽照算
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_e0, vreg_x_exp_0, preg_135);
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_o0, vreg_x_exp_1, preg_135);
+            DeInterleave(vreg_x_exp_bf16_p0, vreg_x_exp_bf16_pa, vreg_x_exp_bf16_e0, vreg_x_exp_bf16_o0);
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_e1, vreg_x_exp_2, preg_135);
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_o1, vreg_x_exp_3, preg_135);
+            DeInterleave(vreg_x_exp_bf16_p1, vreg_x_exp_bf16_pb, vreg_x_exp_bf16_e1, vreg_x_exp_bf16_o1);
+            Add(vreg_x_sum_0, vreg_x_exp_0, vreg_x_sum_0, preg_134);
+            Add(vreg_x_sum_1, vreg_x_exp_1, vreg_x_sum_1, preg_134);
+            Add(vreg_x_sum_2, vreg_x_exp_2, vreg_x_sum_2, preg_134);
+            Add(vreg_x_sum_3, vreg_x_exp_3, vreg_x_sum_3, preg_134);
+            if (i0 < (ubN >> 5)) {
+                StoreAlign<T2, MicroAPI::StoreDist::DIST_NORM_B16>(x_exp, vreg_x_exp_bf16_p0, preg_136);
+                StoreAlign<T2, MicroAPI::StoreDist::DIST_NORM_B16>(x_exp + 128, vreg_x_exp_bf16_p1, preg_136);
+                x_exp += 256;
+            }
+        } else {
         Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_0, vreg_x_exp_0, preg_135);
         Add(vreg_x_sum_0, vreg_x_exp_0, vreg_x_sum_0, preg_134);
 
@@ -1311,6 +1404,7 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(
         Gather(vreg_x_exp_f8_pack_0, vreg_x_exp_fp8_0, idx_nd2nz);
         StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
+        }
 
         Muls(vreg_x_f32_4, vreg_x_f32_4, dScale, preg_108);
         Muls(vreg_x_f32_5, vreg_x_f32_5, dScale, preg_108);
@@ -1322,6 +1416,22 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(
         FusedExpSub(vreg_x_exp_6, vreg_x_f32_6, max0, preg_134);
         FusedExpSub(vreg_x_exp_7, vreg_x_f32_7, max0, preg_134); // vreg_x_exp_i softmax分子
 
+        if constexpr (IsSameType<T2, bfloat16_t>::value) {
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_e2, vreg_x_exp_4, preg_135);
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_o2, vreg_x_exp_5, preg_135);
+            DeInterleave(vreg_x_exp_bf16_p2, vreg_x_exp_bf16_pc, vreg_x_exp_bf16_e2, vreg_x_exp_bf16_o2);
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_e3, vreg_x_exp_6, preg_135);
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_o3, vreg_x_exp_7, preg_135);
+            DeInterleave(vreg_x_exp_bf16_p3, vreg_x_exp_bf16_pd, vreg_x_exp_bf16_e3, vreg_x_exp_bf16_o3);
+            Add(vreg_x_sum_4, vreg_x_exp_4, vreg_x_sum_4, preg_134);
+            Add(vreg_x_sum_5, vreg_x_exp_5, vreg_x_sum_5, preg_134);
+            Add(vreg_x_sum_6, vreg_x_exp_6, vreg_x_sum_6, preg_134);
+            Add(vreg_x_sum_7, vreg_x_exp_7, vreg_x_sum_7, preg_134);
+            if (i0 < (ubN >> 5)) {
+                StoreAlign<T2, MicroAPI::StoreDist::DIST_NORM_B16>(x_exp + 256, vreg_x_exp_bf16_p2, preg_136);
+                StoreAlign<T2, MicroAPI::StoreDist::DIST_NORM_B16>(x_exp + 384, vreg_x_exp_bf16_p3, preg_136);
+            }
+        } else {
         Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_1, vreg_x_exp_4, preg_135);
         Add(vreg_x_sum_4, vreg_x_exp_4, vreg_x_sum_4, preg_134);
 
@@ -1343,6 +1453,7 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(
         Gather(vreg_x_exp_f8_pack_1, vreg_x_exp_fp8_1, idx_nd2nz);
         StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_f8_pack_1, blockStride, repeatStride, preg_134);
+        }
     }
     Add(vreg_x_sum_0, vreg_x_sum_0, vreg_x_sum_1, preg_134);
     Add(vreg_x_sum_2, vreg_x_sum_2, vreg_x_sum_3, preg_134);
@@ -1412,6 +1523,11 @@ __aicore__ inline void ProcessVec1DnUpdateMxfp8(
         blockStride = ubN >> 2 | 0x1;
         repeatStride = 2;
         indexesUb = (__ubuf__ uint8_t *)vselrIndexesBuf.GetPhyAddr();
+    } else if constexpr (IsSameType<T2, bfloat16_t>::value) {
+        // [v_tail高精窗口] bf16直出: dScale同Mxfp8语义(量化QK反量化), 段式blockStride同非量化DN
+        dScale = scale * deScaleQK;
+        blockStride = ubN >> 1 | 0x1;
+        repeatStride = 1;
     } else {
         dScale = scale;
         blockStride = ubN >> 1 | 0x1;
@@ -1553,6 +1669,11 @@ __simd_vf__ inline void ProcessVec1DnCausalVF(
 
     RegTensor<T2> vreg_x_exp_fp8_0, vreg_x_exp_f8_pack_0;
     RegTensor<T2> vreg_x_exp_fp8_1, vreg_x_exp_f8_pack_1;
+    // [v_tail高精窗口] bf16直出寄存器(与非量化DN bf16路径同款: Cast+DeInterleave交错拓宽)
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e0, vreg_x_exp_bf16_o0, vreg_x_exp_bf16_p0, vreg_x_exp_bf16_pa;
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e1, vreg_x_exp_bf16_o1, vreg_x_exp_bf16_p1, vreg_x_exp_bf16_pb;
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e2, vreg_x_exp_bf16_o2, vreg_x_exp_bf16_p2, vreg_x_exp_bf16_pc;
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e3, vreg_x_exp_bf16_o3, vreg_x_exp_bf16_p3, vreg_x_exp_bf16_pd;
 
     __ubuf__ T2 *x_exp_1;
     if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
@@ -1889,6 +2010,11 @@ __aicore__ inline void ProcessVec1DnCausal(
         blockStride = ubN >> 2 | 0x1;
         repeatStride = 2;
         indexesUb = (__ubuf__ uint8_t *)vselrIndexesBuf.GetPhyAddr();
+    } else if constexpr (IsSameType<T2, bfloat16_t>::value) {
+        // [v_tail高精窗口] bf16直出: dScale同Mxfp8语义(量化QK反量化), 段式blockStride同非量化DN
+        dScale = scale * deScaleQK;
+        blockStride = ubN >> 1 | 0x1;
+        repeatStride = 1;
     } else {
         dScale = scale;
         blockStride = ubN >> 1 | 0x1;
@@ -1918,7 +2044,336 @@ __aicore__ inline void ProcessVec1DnCausal(
  * @param [in] oriNRange, originN range
  */
 
-template <typename T, typename T2, bool isUpdate = false, bool hasAtten = false, uint16_t ubN = 256,
+// [v_tail高精窗口] DN尾task NoUpdate VF: 非量化bf16几何 + Mxfp8状态机(ln2格点化max)
+template <typename T, typename T2, uint16_t ubN = 128>
+__simd_vf__ inline void ProcessVec1DnTailNoUpdateMxfp8VF(
+    __ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32,
+    __ubuf__ float *new_global_sum, __ubuf__ float *new_global_max, __ubuf__ fp8_e8m0_t *pScaleSubLoop0,
+    const uint32_t m, const uint32_t originN, const T scale, const float deScaleQK, const T minValue,
+    const float pScale)
+{
+    RegTensor<float> vreg_x_sum_0;
+    RegTensor<float> vreg_x_sum_1;
+    RegTensor<float> vreg_x_sum_2;
+    RegTensor<float> vreg_x_sum_3;
+    RegTensor<float> vreg_x_sum0;
+    RegTensor<bfloat16_t> vreg_x_exp_even_bf16;
+    RegTensor<bfloat16_t> vreg_x_exp_odd_bf16;
+    RegTensor<bfloat16_t> vreg_x_exp_even_bf16_1;
+    RegTensor<bfloat16_t> vreg_x_exp_odd_bf16_1;
+    RegTensor<float> vreg_x_exp_0;
+    RegTensor<float> vreg_x_exp_1;
+    RegTensor<float> vreg_x_exp_2;
+    RegTensor<float> vreg_x_exp_3;
+    RegTensor<float> vreg_x_f32_0;
+    RegTensor<float> vreg_x_f32_1;
+    RegTensor<float> vreg_x_f32_2;
+    RegTensor<float> vreg_x_f32_3;
+    RegTensor<float> vreg_p_scale;
+    RegTensor<float> vreg_ln_p_scale;
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_pack;
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_1_pack;
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_packa;
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_1_packa;
+
+    MaskReg preg_108 = CreateMask<uint16_t, MaskPattern::ALL>();
+    MaskReg preg_134 = CreateMask<uint8_t, MaskPattern::ALL>();
+    MaskReg preg_135 = CreateMask<T, MaskPattern::ALL>();
+    uint32_t sreg_92 = (uint32_t)128ULL;
+    MaskReg preg_136 = UpdateMask<uint16_t>(sreg_92);
+    RegTensor<float> src0, src1, src2, src3;
+    RegTensor<float> max0, max1, max2, max3;
+    RegTensor<float> vreg_min;
+
+    // [非量化DN同款] bf16双指针: x_exp_1 = x_exp + ubN*4
+    __ubuf__ T2 *x_exp_1 = x_exp + (ubN * 4);
+    const uint32_t blockStride = ubN >> 1 | 0x1; // 65
+    const uint32_t repeatStride = 1;
+    const float dScale = scale * deScaleQK; // Mxfp8: 量化QK反量化
+
+    __ubuf__ float *src_ub0 = input_x_local_UB;
+    __ubuf__ float *src_ub1 = src_ub0 + m;
+    __ubuf__ float *src_ub2 = src_ub0 + m * 2;
+    __ubuf__ float *src_ub3 = src_ub0 + m * 3;
+
+    Duplicate(max0, minValue);
+    Duplicate(max1, minValue);
+    Duplicate(max2, minValue);
+    Duplicate(max3, minValue);
+    Duplicate(vreg_min, minValue);
+    for (uint16_t i = originN; i < ubN; ++i) {
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_min,
+                                                           preg_135);
+    }
+    mem_bar(VST_VLD);
+
+    // [非量化DN bf16同款] 4路Load: 步进m*4铺满全部s2行{4i+k}(生产参考: 非量化NoUpdate/Mxfp8主路径)
+    for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
+        LoadAlign(src0, src_ub0 + iter_m * m * 4);
+        LoadAlign(src1, src_ub1 + iter_m * m * 4);
+        LoadAlign(src2, src_ub2 + iter_m * m * 4);
+        LoadAlign(src3, src_ub3 + iter_m * m * 4);
+        Max(max0, max0, src0, preg_108);
+        Max(max1, max1, src1, preg_108);
+        Max(max2, max2, src2, preg_108);
+        Max(max3, max3, src3, preg_108);
+    }
+
+    Max(max0, max0, max2, preg_108);
+    Max(max0, max0, max1, preg_108);
+    Max(max0, max0, max3, preg_108);
+    Muls(max0, max0, dScale, preg_108);
+    // [Mxfp8状态机] ln2格点化max(为e8m0 2幂scale折叠)
+    Muls(max0, max0, INV_LN2, preg_108);
+    Truncate<T, RoundMode::CAST_CEIL>(max0, max0, preg_108);
+    Muls(max0, max0, LN2, preg_108);
+
+    Duplicate(vreg_p_scale, pScale);
+    Ln(vreg_ln_p_scale, vreg_p_scale, preg_108);
+    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>((__ubuf__ T *&)new_global_max, max0, preg_108);
+    Sub(max0, max0, vreg_ln_p_scale, preg_108);
+
+    Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vreg_x_sum_0, 0, preg_134);
+    Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vreg_x_sum_1, 0, preg_134);
+    Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vreg_x_sum_2, 0, preg_134);
+    Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vreg_x_sum_3, 0, preg_134);
+    uint16_t loopNum = ubN / 4;
+
+    for (uint16_t i0 = 0; i0 < loopNum; ++i0) {
+        LoadAlign(vreg_x_f32_0, input_x_local_UB + i0 * m);
+        LoadAlign(vreg_x_f32_1, input_x_local_UB + ubN * m / 4 + i0 * m);
+        LoadAlign(vreg_x_f32_2, input_x_local_UB + ubN * m / 2 + i0 * m);
+        LoadAlign(vreg_x_f32_3, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + i0 * m);
+
+        Muls(vreg_x_f32_0, vreg_x_f32_0, dScale, preg_108);
+        Muls(vreg_x_f32_1, vreg_x_f32_1, dScale, preg_108);
+        Muls(vreg_x_f32_2, vreg_x_f32_2, dScale, preg_108);
+        Muls(vreg_x_f32_3, vreg_x_f32_3, dScale, preg_108);
+
+        FusedExpSub(vreg_x_exp_0, vreg_x_f32_0, max0, preg_134);
+        FusedExpSub(vreg_x_exp_1, vreg_x_f32_1, max0, preg_134);
+        FusedExpSub(vreg_x_exp_2, vreg_x_f32_2, max0, preg_134);
+        FusedExpSub(vreg_x_exp_3, vreg_x_f32_3, max0, preg_134);
+
+        // [非量化DN bf16同款] 双pack段式store
+        Cast<T2, T, castTraitZero>(vreg_x_exp_even_bf16, vreg_x_exp_0, preg_135);
+        Cast<T2, T, castTraitZero>(vreg_x_exp_odd_bf16, vreg_x_exp_2, preg_135);
+        DeInterleave(vreg_x_exp_bf16_pack, vreg_x_exp_bf16_packa, vreg_x_exp_even_bf16, vreg_x_exp_odd_bf16);
+
+        Cast<T2, T, castTraitZero>(vreg_x_exp_even_bf16_1, vreg_x_exp_1, preg_135);
+        Cast<T2, T, castTraitZero>(vreg_x_exp_odd_bf16_1, vreg_x_exp_3, preg_135);
+        DeInterleave(vreg_x_exp_bf16_1_pack, vreg_x_exp_bf16_1_packa, vreg_x_exp_even_bf16_1,
+                     vreg_x_exp_odd_bf16_1);
+
+        StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+            ((__ubuf__ T2 *&)x_exp), vreg_x_exp_bf16_pack, blockStride, repeatStride, preg_136);
+        Add(vreg_x_sum_0, vreg_x_exp_0, vreg_x_sum_0, preg_134);
+        Add(vreg_x_sum_2, vreg_x_exp_2, vreg_x_sum_2, preg_134);
+
+        StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+            ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_bf16_1_pack, blockStride, repeatStride, preg_136);
+        Add(vreg_x_sum_1, vreg_x_exp_1, vreg_x_sum_1, preg_134);
+        Add(vreg_x_sum_3, vreg_x_exp_3, vreg_x_sum_3, preg_134);
+    }
+    Add(vreg_x_sum0, vreg_x_sum_2, vreg_x_sum_0, preg_134);
+    Add(vreg_x_sum0, vreg_x_sum0, vreg_x_sum_1, preg_134);
+    Add(vreg_x_sum0, vreg_x_sum0, vreg_x_sum_3, preg_134);
+
+    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)new_global_sum, vreg_x_sum0, preg_134);
+    (void)pScaleSubLoop0; // NoUpdate无pScale更新(与Mxfp8 NoUpdate一致)
+}
+
+// [v_tail高精窗口] DN尾task Update VF: 非量化bf16几何 + Mxfp8状态机(preLoop三件套+e8m0 pScale)
+template <typename T, typename T2, uint16_t ubN = 128>
+__simd_vf__ inline void ProcessVec1DnTailUpdateMxfp8VF(
+    __ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32,
+    __ubuf__ float *new_global_sum, __ubuf__ float *new_global_max, __ubuf__ fp8_e8m0_t *pScaleSubLoop0,
+    __ubuf__ float *pre_loop_max, __ubuf__ float *pre_loop_sum, __ubuf__ float *first_loop_sum, int32_t subLoop,
+    const uint32_t m, const uint32_t originN, const T scale, const float deScaleQK, const T minValue,
+    const float pScale)
+{
+    RegTensor<float> vreg_x_sum_0;
+    RegTensor<float> vreg_x_sum_1;
+    RegTensor<float> vreg_x_sum_2;
+    RegTensor<float> vreg_x_sum_3;
+    RegTensor<float> vreg_x_sum0;
+    RegTensor<float> vreg_l0;
+    RegTensor<float> vreg_l1;
+    RegTensor<float> vreg_subloop_update;
+    RegTensor<float> vreg_x_max_f32_b;
+    RegTensor<bfloat16_t> vreg_x_exp_even_bf16;
+    RegTensor<bfloat16_t> vreg_x_exp_odd_bf16;
+    RegTensor<bfloat16_t> vreg_x_exp_even_bf16_1;
+    RegTensor<bfloat16_t> vreg_x_exp_odd_bf16_1;
+    RegTensor<float> vreg_x_exp_0;
+    RegTensor<float> vreg_x_exp_1;
+    RegTensor<float> vreg_x_exp_2;
+    RegTensor<float> vreg_x_exp_3;
+    RegTensor<float> vreg_x_f32_0;
+    RegTensor<float> vreg_x_f32_1;
+    RegTensor<float> vreg_x_f32_2;
+    RegTensor<float> vreg_x_f32_3;
+    RegTensor<float> vreg_p_scale;
+    RegTensor<float> vreg_ln_p_scale;
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_pack;
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_1_pack;
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_packa;
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_1_packa;
+
+    MaskReg preg_108 = CreateMask<uint16_t, MaskPattern::ALL>();
+    MaskReg preg_134 = CreateMask<uint8_t, MaskPattern::ALL>();
+    MaskReg preg_135 = CreateMask<T, MaskPattern::ALL>();
+    uint32_t sreg_92 = (uint32_t)128ULL;
+    MaskReg preg_136 = UpdateMask<uint16_t>(sreg_92);
+    RegTensor<float> src0, src1, src2, src3;
+    RegTensor<float> max0, max1, max2, max3;
+    RegTensor<float> vreg_min;
+
+    __ubuf__ T2 *x_exp_1 = x_exp + (ubN * 4);
+    const uint32_t blockStride = ubN >> 1 | 0x1;
+    const uint32_t repeatStride = 1;
+    const float dScale = scale * deScaleQK;
+
+    __ubuf__ float *src_ub0 = input_x_local_UB;
+    __ubuf__ float *src_ub1 = src_ub0 + m;
+    __ubuf__ float *src_ub2 = src_ub0 + m * 2;
+    __ubuf__ float *src_ub3 = src_ub0 + m * 3;
+
+    Duplicate(max0, minValue);
+    Duplicate(max1, minValue);
+    Duplicate(max2, minValue);
+    Duplicate(max3, minValue);
+    Duplicate(vreg_min, minValue);
+    for (uint16_t i = originN; i < ubN; ++i) {
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_min,
+                                                           preg_135);
+    }
+    mem_bar(VST_VLD);
+
+    // [修复] 同NoUpdate: 步进m*4铺满全部s2行(原漏*4只读行[0,34])
+    for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
+        LoadAlign(src0, src_ub0 + iter_m * m * 4);
+        LoadAlign(src1, src_ub1 + iter_m * m * 4);
+        LoadAlign(src2, src_ub2 + iter_m * m * 4);
+        LoadAlign(src3, src_ub3 + iter_m * m * 4);
+        Max(max0, max0, src0, preg_108);
+        Max(max1, max1, src1, preg_108);
+        Max(max2, max2, src2, preg_108);
+        Max(max3, max3, src3, preg_108);
+    }
+
+    // [Mxfp8状态机] 跨task max接力 + ln2格点化 + preLoop三件套
+    LoadAlign(vreg_x_max_f32_b, new_global_max);
+    Max(max0, max0, max2, preg_108);
+    Max(max0, max0, max1, preg_108);
+    Max(max0, max0, max3, preg_108);
+    Muls(max0, max0, dScale, preg_108);
+    Muls(max0, max0, INV_LN2, preg_108);
+    Truncate<T, RoundMode::CAST_CEIL>(max0, max0, preg_108);
+    Muls(max0, max0, LN2, preg_108);
+    Max(max0, max0, vreg_x_max_f32_b, preg_108);
+
+    // 尾task恒走subLoop==0分支(task内唯一一段)
+    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>((__ubuf__ T *&)pre_loop_max, vreg_x_max_f32_b, preg_108);
+    FusedExpSub(vreg_x_max_f32_b, vreg_x_max_f32_b, max0, preg_134);
+
+    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>((__ubuf__ T *&)new_global_max, max0, preg_108);
+    Duplicate(vreg_p_scale, pScale);
+    Ln(vreg_ln_p_scale, vreg_p_scale, preg_108);
+    Sub(max0, max0, vreg_ln_p_scale, preg_108);
+    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>((__ubuf__ T *&)exp_max_fp32, vreg_x_max_f32_b, preg_108);
+
+    Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vreg_x_sum_0, 0, preg_134);
+    Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vreg_x_sum_1, 0, preg_134);
+    Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vreg_x_sum_2, 0, preg_134);
+    Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vreg_x_sum_3, 0, preg_134);
+    uint16_t loopNum = ubN / 4;
+
+    for (uint16_t i0 = 0; i0 < loopNum; ++i0) {
+        LoadAlign(vreg_x_f32_0, input_x_local_UB + i0 * m);
+        LoadAlign(vreg_x_f32_1, input_x_local_UB + ubN * m / 4 + i0 * m);
+        LoadAlign(vreg_x_f32_2, input_x_local_UB + ubN * m / 2 + i0 * m);
+        LoadAlign(vreg_x_f32_3, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + i0 * m);
+
+        Muls(vreg_x_f32_0, vreg_x_f32_0, dScale, preg_108);
+        Muls(vreg_x_f32_1, vreg_x_f32_1, dScale, preg_108);
+        Muls(vreg_x_f32_2, vreg_x_f32_2, dScale, preg_108);
+        Muls(vreg_x_f32_3, vreg_x_f32_3, dScale, preg_108);
+
+        FusedExpSub(vreg_x_exp_0, vreg_x_f32_0, max0, preg_134);
+        FusedExpSub(vreg_x_exp_1, vreg_x_f32_1, max0, preg_134);
+        FusedExpSub(vreg_x_exp_2, vreg_x_f32_2, max0, preg_134);
+        FusedExpSub(vreg_x_exp_3, vreg_x_f32_3, max0, preg_134);
+
+        Cast<T2, T, castTraitZero>(vreg_x_exp_even_bf16, vreg_x_exp_0, preg_135);
+        Cast<T2, T, castTraitZero>(vreg_x_exp_odd_bf16, vreg_x_exp_2, preg_135);
+        DeInterleave(vreg_x_exp_bf16_pack, vreg_x_exp_bf16_packa, vreg_x_exp_even_bf16, vreg_x_exp_odd_bf16);
+
+        Cast<T2, T, castTraitZero>(vreg_x_exp_even_bf16_1, vreg_x_exp_1, preg_135);
+        Cast<T2, T, castTraitZero>(vreg_x_exp_odd_bf16_1, vreg_x_exp_3, preg_135);
+        DeInterleave(vreg_x_exp_bf16_1_pack, vreg_x_exp_bf16_1_packa, vreg_x_exp_even_bf16_1,
+                     vreg_x_exp_odd_bf16_1);
+
+        StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+            ((__ubuf__ T2 *&)x_exp), vreg_x_exp_bf16_pack, blockStride, repeatStride, preg_136);
+        Add(vreg_x_sum_0, vreg_x_exp_0, vreg_x_sum_0, preg_134);
+        Add(vreg_x_sum_2, vreg_x_exp_2, vreg_x_sum_2, preg_134);
+
+        StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+            ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_bf16_1_pack, blockStride, repeatStride, preg_136);
+        Add(vreg_x_sum_1, vreg_x_exp_1, vreg_x_sum_1, preg_134);
+        Add(vreg_x_sum_3, vreg_x_exp_3, vreg_x_sum_3, preg_134);
+    }
+    Add(vreg_x_sum0, vreg_x_sum_2, vreg_x_sum_0, preg_134);
+    Add(vreg_x_sum0, vreg_x_sum0, vreg_x_sum_1, preg_134);
+    Add(vreg_x_sum0, vreg_x_sum0, vreg_x_sum_3, preg_134);
+
+    // [Mxfp8状态机] subLoop==0: 折叠preLoop/firstLoop并接力sum
+    LoadAlign(vreg_l0, new_global_sum);
+    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)pre_loop_sum, vreg_l0, preg_134);
+    Mul(vreg_l0, vreg_x_max_f32_b, vreg_l0, preg_134);
+    Add(vreg_l0, vreg_l0, vreg_x_sum0, preg_134);
+    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)new_global_sum, vreg_l0, preg_134);
+    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)first_loop_sum, vreg_x_sum0, preg_134);
+    (void)subLoop;
+    (void)pScaleSubLoop0;
+}
+
+// [v_tail高精窗口] PREFILL DN尾task专用VF: P输出几何照抄非量化DN bf16生产路径
+// (ubN=128基: 4路Load/DeInterleave双pack/DATA_BLOCK_COPY段式blockStride=65 — 与flash_attn
+// DN config2完全同构, L1直搬参数配套), max/sum状态机保留Mxfp8语义(ln2格点化max + preLoop
+// 三件套 + e8m0 pScale), 与前序主体task无缝接力。dScale=scale*deScaleQK(Mxfp8反量化)。
+template <typename T, typename T2, bool isUpdate = false>
+__aicore__ inline void ProcessVec1VfDnTailMxfp8(
+    const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor, const LocalTensor<T> &maxTensor,
+    const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor, TBuf<> *vselrIndexesBuf,
+    const LocalTensor<fp8_e8m0_t> &pScaleSubLoop0Tensor, const LocalTensor<float> &preLoopMaxTensor,
+    const LocalTensor<float> &preLoopSumTensor, const LocalTensor<float> &firstLoopSumTensor, uint32_t subLoop,
+    const uint16_t m, const uint32_t originN, const float scale, const float deScaleQK, const T minValue,
+    const float pScale)
+{
+    __ubuf__ T2 *x_exp = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
+    __ubuf__ float *input_x_local_UB = (__ubuf__ T *)srcTensor.GetPhyAddr();
+    __ubuf__ float *exp_max_fp32 = (__ubuf__ T *)expMaxTensor.GetPhyAddr();
+    __ubuf__ float *new_global_sum = (__ubuf__ T *)expSumTensor.GetPhyAddr();
+    __ubuf__ float *new_global_max = (__ubuf__ T *)maxTensor.GetPhyAddr();
+    __ubuf__ fp8_e8m0_t *pScaleSubLoop0Ub = (__ubuf__ fp8_e8m0_t *)pScaleSubLoop0Tensor.GetPhyAddr();
+    __ubuf__ float *pre_loop_max = (__ubuf__ float *)preLoopMaxTensor.GetPhyAddr();
+    __ubuf__ float *pre_loop_sum = (__ubuf__ float *)preLoopSumTensor.GetPhyAddr();
+    __ubuf__ float *first_loop_sum = (__ubuf__ float *)firstLoopSumTensor.GetPhyAddr();
+    if constexpr (!isUpdate) {
+        ProcessVec1DnTailNoUpdateMxfp8VF<T, T2, 128>(x_exp, input_x_local_UB, exp_max_fp32, new_global_sum,
+                                                      new_global_max, pScaleSubLoop0Ub, m, originN, scale, deScaleQK,
+                                                      minValue, pScale);
+    } else {
+        ProcessVec1DnTailUpdateMxfp8VF<T, T2, 128>(x_exp, input_x_local_UB, exp_max_fp32, new_global_sum,
+                                                    new_global_max, pScaleSubLoop0Ub, pre_loop_max, pre_loop_sum,
+                                                    first_loop_sum, subLoop, m, originN, scale, deScaleQK, minValue,
+                                                    pScale);
+    }
+}
+
+template <typename T, typename T2, bool isUpdate = false, bool hasAtten = false, uint16_t ubN = 128,
           bool hasSink = false>
 __aicore__ inline void ProcessVec1VfDn(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor,
                                        const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
@@ -2029,6 +2484,11 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
 
     RegTensor<T2> vreg_x_exp_fp8_0, vreg_x_exp_f8_pack_0;
     RegTensor<T2> vreg_x_exp_fp8_1, vreg_x_exp_f8_pack_1;
+    // [v_tail高精窗口] bf16直出寄存器(与非量化DN bf16路径同款: Cast+DeInterleave交错拓宽)
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e0, vreg_x_exp_bf16_o0, vreg_x_exp_bf16_p0, vreg_x_exp_bf16_pa;
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e1, vreg_x_exp_bf16_o1, vreg_x_exp_bf16_p1, vreg_x_exp_bf16_pb;
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e2, vreg_x_exp_bf16_o2, vreg_x_exp_bf16_p2, vreg_x_exp_bf16_pc;
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e3, vreg_x_exp_bf16_o3, vreg_x_exp_bf16_p3, vreg_x_exp_bf16_pd;
 
     RegTensor<float> vreg_qscale_vec;
     RegTensor<float> vreg_kscale_val;
@@ -2179,6 +2639,26 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
         FusedExpSub(vreg_x_exp_2, vreg_x_f32_2, vreg_local_max, preg_134);
         FusedExpSub(vreg_x_exp_3, vreg_x_f32_3, vreg_local_max, preg_134);
 
+        if constexpr (IsSameType<T2, bfloat16_t>::value) {
+            // [v_tail高精窗口] bf16直出(连续布局): 段式(DATA_BLOCK_COPY, ubN=256基的blockStride=129
+            // 会越界16KB buffer)不可用; 改普通连续store, 仅前ubN/32轮(尾窗64 s2列)写出,
+            // 布局=[s2 64][M 64]行主序8KB/sub, 供A尾区直搬; sum全宽照算
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_e0, vreg_x_exp_0, preg_135);
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_o0, vreg_x_exp_1, preg_135);
+            DeInterleave(vreg_x_exp_bf16_p0, vreg_x_exp_bf16_pa, vreg_x_exp_bf16_e0, vreg_x_exp_bf16_o0);
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_e1, vreg_x_exp_2, preg_135);
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_o1, vreg_x_exp_3, preg_135);
+            DeInterleave(vreg_x_exp_bf16_p1, vreg_x_exp_bf16_pb, vreg_x_exp_bf16_e1, vreg_x_exp_bf16_o1);
+            Add(vreg_x_sum_0, vreg_x_exp_0, vreg_x_sum_0, preg_134);
+            Add(vreg_x_sum_1, vreg_x_exp_1, vreg_x_sum_1, preg_134);
+            Add(vreg_x_sum_2, vreg_x_exp_2, vreg_x_sum_2, preg_134);
+            Add(vreg_x_sum_3, vreg_x_exp_3, vreg_x_sum_3, preg_134);
+            if (i0 < (ubN >> 5)) {
+                StoreAlign<T2, MicroAPI::StoreDist::DIST_NORM_B16>(x_exp, vreg_x_exp_bf16_p0, preg_136);
+                StoreAlign<T2, MicroAPI::StoreDist::DIST_NORM_B16>(x_exp + 128, vreg_x_exp_bf16_p1, preg_136);
+                x_exp += 256;
+            }
+        } else {
         Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_0, vreg_x_exp_0, preg_135);
         Add(vreg_x_sum_0, vreg_x_exp_0, vreg_x_sum_0, preg_134);
 
@@ -2200,6 +2680,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
         Gather(vreg_x_exp_f8_pack_0, vreg_x_exp_fp8_0, idx_nd2nz);
         StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
+        }
 
         // -----------------------------------------------------------------------------//
         FusedExpSub(vreg_x_exp_4, vreg_x_f32_4, vreg_local_max, preg_134);
@@ -2207,6 +2688,22 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
         FusedExpSub(vreg_x_exp_6, vreg_x_f32_6, vreg_local_max, preg_134);
         FusedExpSub(vreg_x_exp_7, vreg_x_f32_7, vreg_local_max, preg_134);
 
+        if constexpr (IsSameType<T2, bfloat16_t>::value) {
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_e2, vreg_x_exp_4, preg_135);
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_o2, vreg_x_exp_5, preg_135);
+            DeInterleave(vreg_x_exp_bf16_p2, vreg_x_exp_bf16_pc, vreg_x_exp_bf16_e2, vreg_x_exp_bf16_o2);
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_e3, vreg_x_exp_6, preg_135);
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_o3, vreg_x_exp_7, preg_135);
+            DeInterleave(vreg_x_exp_bf16_p3, vreg_x_exp_bf16_pd, vreg_x_exp_bf16_e3, vreg_x_exp_bf16_o3);
+            Add(vreg_x_sum_4, vreg_x_exp_4, vreg_x_sum_4, preg_134);
+            Add(vreg_x_sum_5, vreg_x_exp_5, vreg_x_sum_5, preg_134);
+            Add(vreg_x_sum_6, vreg_x_exp_6, vreg_x_sum_6, preg_134);
+            Add(vreg_x_sum_7, vreg_x_exp_7, vreg_x_sum_7, preg_134);
+            if (i0 < (ubN >> 5)) {
+                StoreAlign<T2, MicroAPI::StoreDist::DIST_NORM_B16>(x_exp + 256, vreg_x_exp_bf16_p2, preg_136);
+                StoreAlign<T2, MicroAPI::StoreDist::DIST_NORM_B16>(x_exp + 384, vreg_x_exp_bf16_p3, preg_136);
+            }
+        } else {
         Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_1, vreg_x_exp_4, preg_135);
         Add(vreg_x_sum_4, vreg_x_exp_4, vreg_x_sum_4, preg_134);
 
@@ -2228,6 +2725,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
         Gather(vreg_x_exp_f8_pack_1, vreg_x_exp_fp8_1, idx_nd2nz);
         StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_f8_pack_1, blockStride, repeatStride, preg_134);
+        }
     }
     Add(vreg_x_sum_0, vreg_x_sum_0, vreg_x_sum_1, preg_134);
     Add(vreg_x_sum_2, vreg_x_sum_2, vreg_x_sum_3, preg_134);
@@ -2298,6 +2796,11 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadTailVF(
 
     RegTensor<T2> vreg_x_exp_fp8_0, vreg_x_exp_f8_pack_0;
     RegTensor<T2> vreg_x_exp_fp8_1, vreg_x_exp_f8_pack_1;
+    // [v_tail高精窗口] bf16直出寄存器(与非量化DN bf16路径同款: Cast+DeInterleave交错拓宽)
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e0, vreg_x_exp_bf16_o0, vreg_x_exp_bf16_p0, vreg_x_exp_bf16_pa;
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e1, vreg_x_exp_bf16_o1, vreg_x_exp_bf16_p1, vreg_x_exp_bf16_pb;
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e2, vreg_x_exp_bf16_o2, vreg_x_exp_bf16_p2, vreg_x_exp_bf16_pc;
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e3, vreg_x_exp_bf16_o3, vreg_x_exp_bf16_p3, vreg_x_exp_bf16_pd;
 
     RegTensor<float> vreg_qscale_vec;
     RegTensor<float> vreg_kscale_val;
@@ -2438,6 +2941,26 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadTailVF(
         FusedExpSub(vreg_x_exp_2, vreg_x_f32_2, vreg_local_max, preg_134);
         FusedExpSub(vreg_x_exp_3, vreg_x_f32_3, vreg_local_max, preg_134);
 
+        if constexpr (IsSameType<T2, bfloat16_t>::value) {
+            // [v_tail高精窗口] bf16直出(连续布局): 段式(DATA_BLOCK_COPY, ubN=256基的blockStride=129
+            // 会越界16KB buffer)不可用; 改普通连续store, 仅前ubN/32轮(尾窗64 s2列)写出,
+            // 布局=[s2 64][M 64]行主序8KB/sub, 供A尾区直搬; sum全宽照算
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_e0, vreg_x_exp_0, preg_135);
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_o0, vreg_x_exp_1, preg_135);
+            DeInterleave(vreg_x_exp_bf16_p0, vreg_x_exp_bf16_pa, vreg_x_exp_bf16_e0, vreg_x_exp_bf16_o0);
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_e1, vreg_x_exp_2, preg_135);
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_o1, vreg_x_exp_3, preg_135);
+            DeInterleave(vreg_x_exp_bf16_p1, vreg_x_exp_bf16_pb, vreg_x_exp_bf16_e1, vreg_x_exp_bf16_o1);
+            Add(vreg_x_sum_0, vreg_x_exp_0, vreg_x_sum_0, preg_134);
+            Add(vreg_x_sum_1, vreg_x_exp_1, vreg_x_sum_1, preg_134);
+            Add(vreg_x_sum_2, vreg_x_exp_2, vreg_x_sum_2, preg_134);
+            Add(vreg_x_sum_3, vreg_x_exp_3, vreg_x_sum_3, preg_134);
+            if (i0 < (ubN >> 5)) {
+                StoreAlign<T2, MicroAPI::StoreDist::DIST_NORM_B16>(x_exp, vreg_x_exp_bf16_p0, preg_136);
+                StoreAlign<T2, MicroAPI::StoreDist::DIST_NORM_B16>(x_exp + 128, vreg_x_exp_bf16_p1, preg_136);
+                x_exp += 256;
+            }
+        } else {
         Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_0, vreg_x_exp_0, preg_135);
         Add(vreg_x_sum_0, vreg_x_exp_0, vreg_x_sum_0, preg_134);
 
@@ -2459,6 +2982,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadTailVF(
         Gather(vreg_x_exp_f8_pack_0, vreg_x_exp_fp8_0, idx_nd2nz);
         StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
+        }
 
         // -----------------------------------------------------------------------------//
         FusedExpSub(vreg_x_exp_4, vreg_x_f32_4, vreg_local_max, preg_134);
@@ -2466,6 +2990,22 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadTailVF(
         FusedExpSub(vreg_x_exp_6, vreg_x_f32_6, vreg_local_max, preg_134);
         FusedExpSub(vreg_x_exp_7, vreg_x_f32_7, vreg_local_max, preg_134);
 
+        if constexpr (IsSameType<T2, bfloat16_t>::value) {
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_e2, vreg_x_exp_4, preg_135);
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_o2, vreg_x_exp_5, preg_135);
+            DeInterleave(vreg_x_exp_bf16_p2, vreg_x_exp_bf16_pc, vreg_x_exp_bf16_e2, vreg_x_exp_bf16_o2);
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_e3, vreg_x_exp_6, preg_135);
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_o3, vreg_x_exp_7, preg_135);
+            DeInterleave(vreg_x_exp_bf16_p3, vreg_x_exp_bf16_pd, vreg_x_exp_bf16_e3, vreg_x_exp_bf16_o3);
+            Add(vreg_x_sum_4, vreg_x_exp_4, vreg_x_sum_4, preg_134);
+            Add(vreg_x_sum_5, vreg_x_exp_5, vreg_x_sum_5, preg_134);
+            Add(vreg_x_sum_6, vreg_x_exp_6, vreg_x_sum_6, preg_134);
+            Add(vreg_x_sum_7, vreg_x_exp_7, vreg_x_sum_7, preg_134);
+            if (i0 < (ubN >> 5)) {
+                StoreAlign<T2, MicroAPI::StoreDist::DIST_NORM_B16>(x_exp + 256, vreg_x_exp_bf16_p2, preg_136);
+                StoreAlign<T2, MicroAPI::StoreDist::DIST_NORM_B16>(x_exp + 384, vreg_x_exp_bf16_p3, preg_136);
+            }
+        } else {
         Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_1, vreg_x_exp_4, preg_135);
         Add(vreg_x_sum_4, vreg_x_exp_4, vreg_x_sum_4, preg_134);
 
@@ -2487,6 +3027,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadTailVF(
         Gather(vreg_x_exp_f8_pack_1, vreg_x_exp_fp8_1, idx_nd2nz);
         StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_f8_pack_1, blockStride, repeatStride, preg_134);
+        }
     }
     Add(vreg_x_sum_0, vreg_x_sum_0, vreg_x_sum_1, preg_134);
     Add(vreg_x_sum_2, vreg_x_sum_2, vreg_x_sum_3, preg_134);
@@ -2560,6 +3101,11 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
 
     RegTensor<T2> vreg_x_exp_fp8_0, vreg_x_exp_f8_pack_0;
     RegTensor<T2> vreg_x_exp_fp8_1, vreg_x_exp_f8_pack_1;
+    // [v_tail高精窗口] bf16直出寄存器(与非量化DN bf16路径同款: Cast+DeInterleave交错拓宽)
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e0, vreg_x_exp_bf16_o0, vreg_x_exp_bf16_p0, vreg_x_exp_bf16_pa;
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e1, vreg_x_exp_bf16_o1, vreg_x_exp_bf16_p1, vreg_x_exp_bf16_pb;
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e2, vreg_x_exp_bf16_o2, vreg_x_exp_bf16_p2, vreg_x_exp_bf16_pc;
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e3, vreg_x_exp_bf16_o3, vreg_x_exp_bf16_p3, vreg_x_exp_bf16_pd;
 
     RegTensor<float> vreg_qscale_vec;
     RegTensor<float> vreg_kscale_val;
@@ -2712,6 +3258,26 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
         FusedExpSub(vreg_x_exp_2, vreg_x_f32_2, vreg_local_max, preg_134);
         FusedExpSub(vreg_x_exp_3, vreg_x_f32_3, vreg_local_max, preg_134);
 
+        if constexpr (IsSameType<T2, bfloat16_t>::value) {
+            // [v_tail高精窗口] bf16直出(连续布局): 段式(DATA_BLOCK_COPY, ubN=256基的blockStride=129
+            // 会越界16KB buffer)不可用; 改普通连续store, 仅前ubN/32轮(尾窗64 s2列)写出,
+            // 布局=[s2 64][M 64]行主序8KB/sub, 供A尾区直搬; sum全宽照算
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_e0, vreg_x_exp_0, preg_135);
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_o0, vreg_x_exp_1, preg_135);
+            DeInterleave(vreg_x_exp_bf16_p0, vreg_x_exp_bf16_pa, vreg_x_exp_bf16_e0, vreg_x_exp_bf16_o0);
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_e1, vreg_x_exp_2, preg_135);
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_o1, vreg_x_exp_3, preg_135);
+            DeInterleave(vreg_x_exp_bf16_p1, vreg_x_exp_bf16_pb, vreg_x_exp_bf16_e1, vreg_x_exp_bf16_o1);
+            Add(vreg_x_sum_0, vreg_x_exp_0, vreg_x_sum_0, preg_134);
+            Add(vreg_x_sum_1, vreg_x_exp_1, vreg_x_sum_1, preg_134);
+            Add(vreg_x_sum_2, vreg_x_exp_2, vreg_x_sum_2, preg_134);
+            Add(vreg_x_sum_3, vreg_x_exp_3, vreg_x_sum_3, preg_134);
+            if (i0 < (ubN >> 5)) {
+                StoreAlign<T2, MicroAPI::StoreDist::DIST_NORM_B16>(x_exp, vreg_x_exp_bf16_p0, preg_136);
+                StoreAlign<T2, MicroAPI::StoreDist::DIST_NORM_B16>(x_exp + 128, vreg_x_exp_bf16_p1, preg_136);
+                x_exp += 256;
+            }
+        } else {
         Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_0, vreg_x_exp_0, preg_135);
         Add(vreg_x_sum_0, vreg_x_exp_0, vreg_x_sum_0, preg_134);
 
@@ -2733,6 +3299,7 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
         Gather(vreg_x_exp_f8_pack_0, vreg_x_exp_fp8_0, idx_nd2nz);
         StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
+        }
 
         // -----------------------------------------------------------------------------//
         FusedExpSub(vreg_x_exp_4, vreg_x_f32_4, vreg_local_max, preg_134);
@@ -2740,6 +3307,22 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
         FusedExpSub(vreg_x_exp_6, vreg_x_f32_6, vreg_local_max, preg_134);
         FusedExpSub(vreg_x_exp_7, vreg_x_f32_7, vreg_local_max, preg_134);
 
+        if constexpr (IsSameType<T2, bfloat16_t>::value) {
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_e2, vreg_x_exp_4, preg_135);
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_o2, vreg_x_exp_5, preg_135);
+            DeInterleave(vreg_x_exp_bf16_p2, vreg_x_exp_bf16_pc, vreg_x_exp_bf16_e2, vreg_x_exp_bf16_o2);
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_e3, vreg_x_exp_6, preg_135);
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_o3, vreg_x_exp_7, preg_135);
+            DeInterleave(vreg_x_exp_bf16_p3, vreg_x_exp_bf16_pd, vreg_x_exp_bf16_e3, vreg_x_exp_bf16_o3);
+            Add(vreg_x_sum_4, vreg_x_exp_4, vreg_x_sum_4, preg_134);
+            Add(vreg_x_sum_5, vreg_x_exp_5, vreg_x_sum_5, preg_134);
+            Add(vreg_x_sum_6, vreg_x_exp_6, vreg_x_sum_6, preg_134);
+            Add(vreg_x_sum_7, vreg_x_exp_7, vreg_x_sum_7, preg_134);
+            if (i0 < (ubN >> 5)) {
+                StoreAlign<T2, MicroAPI::StoreDist::DIST_NORM_B16>(x_exp + 256, vreg_x_exp_bf16_p2, preg_136);
+                StoreAlign<T2, MicroAPI::StoreDist::DIST_NORM_B16>(x_exp + 384, vreg_x_exp_bf16_p3, preg_136);
+            }
+        } else {
         Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_1, vreg_x_exp_4, preg_135);
         Add(vreg_x_sum_4, vreg_x_exp_4, vreg_x_sum_4, preg_134);
 
@@ -2761,6 +3344,7 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
         Gather(vreg_x_exp_f8_pack_1, vreg_x_exp_fp8_1, idx_nd2nz);
         StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_f8_pack_1, blockStride, repeatStride, preg_134);
+        }
     }
     Add(vreg_x_sum_0, vreg_x_sum_0, vreg_x_sum_1, preg_134);
     Add(vreg_x_sum_2, vreg_x_sum_2, vreg_x_sum_3, preg_134);
@@ -2836,6 +3420,11 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadTailVF(
 
     RegTensor<T2> vreg_x_exp_fp8_0, vreg_x_exp_f8_pack_0;
     RegTensor<T2> vreg_x_exp_fp8_1, vreg_x_exp_f8_pack_1;
+    // [v_tail高精窗口] bf16直出寄存器(与非量化DN bf16路径同款: Cast+DeInterleave交错拓宽)
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e0, vreg_x_exp_bf16_o0, vreg_x_exp_bf16_p0, vreg_x_exp_bf16_pa;
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e1, vreg_x_exp_bf16_o1, vreg_x_exp_bf16_p1, vreg_x_exp_bf16_pb;
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e2, vreg_x_exp_bf16_o2, vreg_x_exp_bf16_p2, vreg_x_exp_bf16_pc;
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e3, vreg_x_exp_bf16_o3, vreg_x_exp_bf16_p3, vreg_x_exp_bf16_pd;
 
     RegTensor<float> vreg_qscale_vec;
     RegTensor<float> vreg_kscale_val;
@@ -2980,6 +3569,26 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadTailVF(
         FusedExpSub(vreg_x_exp_2, vreg_x_f32_2, vreg_local_max, preg_134);
         FusedExpSub(vreg_x_exp_3, vreg_x_f32_3, vreg_local_max, preg_134);
 
+        if constexpr (IsSameType<T2, bfloat16_t>::value) {
+            // [v_tail高精窗口] bf16直出(连续布局): 段式(DATA_BLOCK_COPY, ubN=256基的blockStride=129
+            // 会越界16KB buffer)不可用; 改普通连续store, 仅前ubN/32轮(尾窗64 s2列)写出,
+            // 布局=[s2 64][M 64]行主序8KB/sub, 供A尾区直搬; sum全宽照算
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_e0, vreg_x_exp_0, preg_135);
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_o0, vreg_x_exp_1, preg_135);
+            DeInterleave(vreg_x_exp_bf16_p0, vreg_x_exp_bf16_pa, vreg_x_exp_bf16_e0, vreg_x_exp_bf16_o0);
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_e1, vreg_x_exp_2, preg_135);
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_o1, vreg_x_exp_3, preg_135);
+            DeInterleave(vreg_x_exp_bf16_p1, vreg_x_exp_bf16_pb, vreg_x_exp_bf16_e1, vreg_x_exp_bf16_o1);
+            Add(vreg_x_sum_0, vreg_x_exp_0, vreg_x_sum_0, preg_134);
+            Add(vreg_x_sum_1, vreg_x_exp_1, vreg_x_sum_1, preg_134);
+            Add(vreg_x_sum_2, vreg_x_exp_2, vreg_x_sum_2, preg_134);
+            Add(vreg_x_sum_3, vreg_x_exp_3, vreg_x_sum_3, preg_134);
+            if (i0 < (ubN >> 5)) {
+                StoreAlign<T2, MicroAPI::StoreDist::DIST_NORM_B16>(x_exp, vreg_x_exp_bf16_p0, preg_136);
+                StoreAlign<T2, MicroAPI::StoreDist::DIST_NORM_B16>(x_exp + 128, vreg_x_exp_bf16_p1, preg_136);
+                x_exp += 256;
+            }
+        } else {
         Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_0, vreg_x_exp_0, preg_135);
         Add(vreg_x_sum_0, vreg_x_exp_0, vreg_x_sum_0, preg_134);
 
@@ -3001,6 +3610,7 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadTailVF(
         Gather(vreg_x_exp_f8_pack_0, vreg_x_exp_fp8_0, idx_nd2nz);
         StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
+        }
 
         // -----------------------------------------------------------------------------//
         FusedExpSub(vreg_x_exp_4, vreg_x_f32_4, vreg_local_max, preg_134);
@@ -3008,6 +3618,22 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadTailVF(
         FusedExpSub(vreg_x_exp_6, vreg_x_f32_6, vreg_local_max, preg_134);
         FusedExpSub(vreg_x_exp_7, vreg_x_f32_7, vreg_local_max, preg_134);
 
+        if constexpr (IsSameType<T2, bfloat16_t>::value) {
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_e2, vreg_x_exp_4, preg_135);
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_o2, vreg_x_exp_5, preg_135);
+            DeInterleave(vreg_x_exp_bf16_p2, vreg_x_exp_bf16_pc, vreg_x_exp_bf16_e2, vreg_x_exp_bf16_o2);
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_e3, vreg_x_exp_6, preg_135);
+            Cast<T2, T, castTraitZero>(vreg_x_exp_bf16_o3, vreg_x_exp_7, preg_135);
+            DeInterleave(vreg_x_exp_bf16_p3, vreg_x_exp_bf16_pd, vreg_x_exp_bf16_e3, vreg_x_exp_bf16_o3);
+            Add(vreg_x_sum_4, vreg_x_exp_4, vreg_x_sum_4, preg_134);
+            Add(vreg_x_sum_5, vreg_x_exp_5, vreg_x_sum_5, preg_134);
+            Add(vreg_x_sum_6, vreg_x_exp_6, vreg_x_sum_6, preg_134);
+            Add(vreg_x_sum_7, vreg_x_exp_7, vreg_x_sum_7, preg_134);
+            if (i0 < (ubN >> 5)) {
+                StoreAlign<T2, MicroAPI::StoreDist::DIST_NORM_B16>(x_exp + 256, vreg_x_exp_bf16_p2, preg_136);
+                StoreAlign<T2, MicroAPI::StoreDist::DIST_NORM_B16>(x_exp + 384, vreg_x_exp_bf16_p3, preg_136);
+            }
+        } else {
         Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_1, vreg_x_exp_4, preg_135);
         Add(vreg_x_sum_4, vreg_x_exp_4, vreg_x_sum_4, preg_134);
 
@@ -3029,6 +3655,7 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadTailVF(
         Gather(vreg_x_exp_f8_pack_1, vreg_x_exp_fp8_1, idx_nd2nz);
         StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_f8_pack_1, blockStride, repeatStride, preg_134);
+        }
     }
     Add(vreg_x_sum_0, vreg_x_sum_0, vreg_x_sum_1, preg_134);
     Add(vreg_x_sum_2, vreg_x_sum_2, vreg_x_sum_3, preg_134);
@@ -3070,6 +3697,11 @@ __aicore__ inline void ProcessVec1DnNoUpdatePerTokenHead(
         blockStride = ubN >> 2 | 0x1;
         repeatStride = 2;
         indexesUb = (__ubuf__ uint8_t *)vselrIndexesBuf.GetPhyAddr();
+    } else if constexpr (IsSameType<T2, bfloat16_t>::value) {
+        // [v_tail高精窗口] bf16直出: dScale同Mxfp8语义(量化QK反量化), 段式blockStride同非量化DN
+        dScale = scale * deScaleQK;
+        blockStride = ubN >> 1 | 0x1;
+        repeatStride = 1;
     } else {
         dScale = scale;
         blockStride = ubN >> 1 | 0x1;
@@ -3112,6 +3744,11 @@ __aicore__ inline void ProcessVec1DnUpdatePerTokenHead(
         blockStride = ubN >> 2 | 0x1;
         repeatStride = 2;
         indexesUb = (__ubuf__ uint8_t *)vselrIndexesBuf.GetPhyAddr();
+    } else if constexpr (IsSameType<T2, bfloat16_t>::value) {
+        // [v_tail高精窗口] bf16直出: dScale同Mxfp8语义(量化QK反量化), 段式blockStride同非量化DN
+        dScale = scale * deScaleQK;
+        blockStride = ubN >> 1 | 0x1;
+        repeatStride = 1;
     } else {
         dScale = scale;
         blockStride = ubN >> 1 | 0x1;
@@ -3240,6 +3877,11 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateHif8VF(__ubuf__ T2 *x_exp, __ubuf__
 
     RegTensor<T2> vreg_x_exp_fp8_0, vreg_x_exp_f8_pack_0;
     RegTensor<T2> vreg_x_exp_fp8_1, vreg_x_exp_f8_pack_1;
+    // [v_tail高精窗口] bf16直出寄存器(与非量化DN bf16路径同款: Cast+DeInterleave交错拓宽)
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e0, vreg_x_exp_bf16_o0, vreg_x_exp_bf16_p0, vreg_x_exp_bf16_pa;
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e1, vreg_x_exp_bf16_o1, vreg_x_exp_bf16_p1, vreg_x_exp_bf16_pb;
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e2, vreg_x_exp_bf16_o2, vreg_x_exp_bf16_p2, vreg_x_exp_bf16_pc;
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e3, vreg_x_exp_bf16_o3, vreg_x_exp_bf16_p3, vreg_x_exp_bf16_pd;
 
     RegTensor<float> vreg_chunk0;
     RegTensor<float> vreg_thresh;
@@ -3469,6 +4111,11 @@ __simd_vf__ inline void ProcessVec1DnUpdateHif8VF(__ubuf__ T2 *x_exp, __ubuf__ f
 
     RegTensor<T2> vreg_x_exp_fp8_0, vreg_x_exp_f8_pack_0;
     RegTensor<T2> vreg_x_exp_fp8_1, vreg_x_exp_f8_pack_1;
+    // [v_tail高精窗口] bf16直出寄存器(与非量化DN bf16路径同款: Cast+DeInterleave交错拓宽)
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e0, vreg_x_exp_bf16_o0, vreg_x_exp_bf16_p0, vreg_x_exp_bf16_pa;
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e1, vreg_x_exp_bf16_o1, vreg_x_exp_bf16_p1, vreg_x_exp_bf16_pb;
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e2, vreg_x_exp_bf16_o2, vreg_x_exp_bf16_p2, vreg_x_exp_bf16_pc;
+    RegTensor<bfloat16_t> vreg_x_exp_bf16_e3, vreg_x_exp_bf16_o3, vreg_x_exp_bf16_p3, vreg_x_exp_bf16_pd;
 
     RegTensor<float> vreg_chunk0;
     RegTensor<float> vreg_thresh;

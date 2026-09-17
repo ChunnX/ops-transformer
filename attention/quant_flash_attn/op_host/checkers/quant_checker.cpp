@@ -967,19 +967,21 @@ ge::graphStatus QuantChecker::CheckVTailFeature(const QfaTilingInfo &qfaInfo) co
             "v_tail is only supported in MxFP8 scenario (quant_mode=1)");
         return ge::GRAPH_FAILED;
     }
-    // 一期仅支持decode(ND)路径: prefill场景(layout_q_descale=TND) + v_tail 会命中kernel编译期static_assert,
-    // 此处运行期优先拒绝, 给出明确报错
-    OP_CHECK_IF(qfaInfo.layoutQDescale == QfaLayout::TND,
+    // [二期] PREFILL(DN)已支持v_tail: 方案A全程DN范式(VF DnMxfp8 bf16直出+A尾区行主序),
+    // 无范式切换(方案B的ND范式死锁已规避)
+    // v_tail布局契约(二期固化): v_tail恒BNSD行主序, 与kv_layout无关 —
+    //   PA场景: (Bn, N2, Bs=block_size, D)块结构 + block_table_tail必选;
+    //   TND场景: (B, N2, 64, D)直存(尾窗<64固定容量, batch间无前缀耦合), block_table_tail可空。
+    // 依据: 主cache尾段置零(真值只在v_tail), v_tail是写入路径的bf16原值暂存而非cache切片。
+    // 防呆线: BBND同构误传(Bn,Bs,N,D)被dim1(N2)校验拦截; NZ同构误传5维被dimNum校验拦截。
+    // v_tail仅支持qk/v head dim∈{64,72,128,256}(与kernel config矩阵一致):
+    // 尾列P直出bf16路径按s2BaseSizeCur∈{128,256}的config设计, D=72依赖B尾块N轴pad兜底
+    auto vtailDimOk = [](int64_t d) { return d == 64 || d == 72 || d == 128 || d == 256; };
+    OP_CHECK_IF(!vtailDimOk(qfaInfo.qkHeadDim) || !vtailDimOk(qfaInfo.vHeadDim),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    qfaInfo.opName, "v_tail", QfaLayoutToSerialString(qfaInfo.layoutQDescale).c_str(),
-                    "v_tail is only supported on decode scene in phase 1 (layout_q_descale must be N2TGD)"),
-                return ge::GRAPH_FAILED);
-    // 一期仅支持PA_BNBD布局: TND下v_tail为独立cache, 寻址前缀(Σtail)与主kv parser(ΣkvLen)不一致,
-    // PA_BBND/PA_NZ的尾块offsetCalculator参数序未适配, 均需二期扩展
-    OP_CHECK_IF(qfaInfo.kvLayout != QfaLayout::PA_BNBD,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    qfaInfo.opName, "layout_kv", QfaLayoutToSerialString(qfaInfo.kvLayout).c_str(),
-                    "v_tail is only supported with layout_kv=PA_BNBD in phase 1"),
+                    qfaInfo.opName, "v_tail",
+                    (std::to_string(qfaInfo.qkHeadDim) + "/" + std::to_string(qfaInfo.vHeadDim)).c_str(),
+                    "v_tail is only supported with qk/v head dim in {64, 72, 128, 256}"),
                 return ge::GRAPH_FAILED);
     if (CheckVTailExistence(qfaInfo) != ge::GRAPH_SUCCESS || CheckVTailShape(qfaInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -1051,12 +1053,15 @@ ge::graphStatus QuantChecker::CheckVTailShape(const QfaTilingInfo &qfaInfo) cons
                         ("dim1=" + std::to_string(vTail->GetStorageShape().GetDim(1))).c_str(),
                         ("The dim1(N2) of v_tail must be " + std::to_string(qfaInfo.n2Size)).c_str()),
                     return ge::GRAPH_FAILED);
-        OP_CHECK_IF(vTail->GetStorageShape().GetDim(2) != qfaInfo.blockSize,
+        // [二期] dim2(Bs)按PA/TND分支: PA=block_size(块结构), TND=64(尾窗固定容量)
+        uint32_t expectedBs = qfaInfo.pageAttentionFlag ? static_cast<uint32_t>(qfaInfo.blockSize) : 64U;
+        OP_CHECK_IF(vTail->GetStorageShape().GetDim(2) != expectedBs,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                         qfaInfo.opName, V_TAIL_NAME.c_str(),
                         ("dim2=" + std::to_string(vTail->GetStorageShape().GetDim(2))).c_str(),
-                        ("The dim2(Bs) of v_tail must be equal to block_size " + std::to_string(qfaInfo.blockSize) +
-                         " (v_tail cache shares the same block structure as main v cache)")
+                        ("The dim2(Bs) of v_tail must be " + std::to_string(expectedBs) +
+                         (qfaInfo.pageAttentionFlag ? " (PA: same block structure as main v cache)"
+                                                     : " (TND: fixed tail window capacity)"))
                             .c_str()),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(vTail->GetStorageShape().GetDim(3) != qfaInfo.vHeadDim,

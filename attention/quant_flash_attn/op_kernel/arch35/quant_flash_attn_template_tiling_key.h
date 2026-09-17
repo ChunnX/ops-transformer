@@ -58,8 +58,8 @@ ASCENDC_TPL_ARGS_DECL(QuantFlashAttn,
                       ASCENDC_TPL_BOOL_DECL(HasVTail, false, true));
 
 ASCENDC_TPL_SEL(
-    // MXFP8 PREFILL: 一期不支持v_tail(仅decode ND路径), 只枚举HasVTail=false,
-    // 避免实例化 useDn&&hasVTail 组合触发kernel入口static_assert
+    // MXFP8 PREFILL: [二期]方案A — 尾task全程DN范式(不切ND): VF用ProcessVec1VfDnMxfp8
+    // <T,bfloat16_t>现成bf16分支直出, A尾区改行主序布局(尾片乘isLeftTranspose=USE_DN)
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_TND_TND),
         ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64,
@@ -71,9 +71,8 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KvLayoutType_NO_PA, KvLayoutType_PA_BBND,
                              KvLayoutType_PA_BNBD, KvLayoutType_PA_NZ),
         ASCENDC_TPL_BOOL_SEL(IsFd, false),
-        ASCENDC_TPL_BOOL_SEL(HasVTail, false), ASCENDC_TPL_TILING_STRUCT_SEL(QuantFlashAttnTilingData)),
-    // MXFP8 DECODE + 非BNBD布局(NO_PA/BBND/NZ): 一期v_tail仅PA_BNBD(checker运行期拒绝其余布局),
-    // 且PA_BBND/PA_NZ的v_tail offsetCalculator分支为二期预留不可达, 只枚举HasVTail=false避免实例化
+        ASCENDC_TPL_BOOL_SEL(HasVTail, false, true), ASCENDC_TPL_TILING_STRUCT_SEL(QuantFlashAttnTilingData)),
+    // MXFP8 DECODE + 非PA布局(TND): [二期]支持v_tail((B,N2,64,D)直存寻址, 无btt)
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_TND_TND),
         ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64,
@@ -82,11 +81,12 @@ ASCENDC_TPL_SEL(
                              Config_S1Aligned128_S2Aligned512_DAligned72_DVAligned72),
         ASCENDC_TPL_UINT_SEL(QuantMode, ASCENDC_TPL_UI_LIST, QFA_MXFP8_FP32_DECODE),
         ASCENDC_TPL_BOOL_SEL(HasAttenMask, false, true),
-        ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KvLayoutType_NO_PA, KvLayoutType_PA_BBND,
-                             KvLayoutType_PA_NZ),
+        ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KvLayoutType_NO_PA),
         ASCENDC_TPL_BOOL_SEL(IsFd, false),
-        ASCENDC_TPL_BOOL_SEL(HasVTail, false), ASCENDC_TPL_TILING_STRUCT_SEL(QuantFlashAttnTilingData)),
-    // MXFP8 DECODE + PA_BNBD: 支持v_tail高精窗口
+        ASCENDC_TPL_BOOL_SEL(HasVTail, false, true), ASCENDC_TPL_TILING_STRUCT_SEL(QuantFlashAttnTilingData)),
+    // MXFP8 DECODE + PA布局(BBND/BNBD/NZ): [二期]三布局均支持v_tail高精窗口 —
+    // v_tail恒(Bn,N2,Bs,D) BNSD行主序契约(与kv_layout无关, 主cache尾段置零+独立原值cache),
+    // 主K/V仍按kv_layout寻址, B尾块AIV搬运不走offsetCalculator(其为AIC Nd2Nz时代遗留)
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_TND_TND),
         ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64,
@@ -95,7 +95,8 @@ ASCENDC_TPL_SEL(
                              Config_S1Aligned128_S2Aligned512_DAligned72_DVAligned72),
         ASCENDC_TPL_UINT_SEL(QuantMode, ASCENDC_TPL_UI_LIST, QFA_MXFP8_FP32_DECODE),
         ASCENDC_TPL_BOOL_SEL(HasAttenMask, false, true),
-        ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KvLayoutType_PA_BNBD),
+        ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KvLayoutType_PA_BBND, KvLayoutType_PA_BNBD,
+                             KvLayoutType_PA_NZ),
         ASCENDC_TPL_BOOL_SEL(IsFd, false),
         ASCENDC_TPL_BOOL_SEL(HasVTail, false, true), ASCENDC_TPL_TILING_STRUCT_SEL(QuantFlashAttnTilingData)),
     // FP8
