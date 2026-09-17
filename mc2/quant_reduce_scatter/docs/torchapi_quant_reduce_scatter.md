@@ -107,8 +107,8 @@ cann_ops_transformer.ops.quant_reduce_scatter(
 - 数据类型约束：
 
     <table style="undefined;table-layout: fixed; width: 1024px"><colgroup>
-    <col style="width: 128px">
     <col style="width: 256px">
+    <col style="width: 384px">
     <col style="width: 128px">
     <col style="width: 256px">
     </colgroup>
@@ -137,7 +137,7 @@ cann_ops_transformer.ops.quant_reduce_scatter(
 - shape约束：
 
     <table style="undefined;table-layout: fixed; width: 1024px"><colgroup>
-    <col style="width: 128px">
+    <col style="width: 256px">
     <col style="width: 256px">
     <col style="width: 256px">
     </colgroup>
