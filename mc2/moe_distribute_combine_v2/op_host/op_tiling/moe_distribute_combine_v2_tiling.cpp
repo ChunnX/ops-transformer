@@ -2016,7 +2016,7 @@ static uint64_t GetCommBufferSize(const gert::TilingContext *context,
     return commBufferSize;
 }
 
-static uint64_t GetReceiveBufferSize(const MoeDistributeCombineV2TilingData *tilingData, bool padExpertScales)
+static uint64_t GetReceiveBufferSize(const MoeDistributeCombineV2TilingData *tilingData)
 {
     uint32_t axisBS = tilingData->moeDistributeCombineV2Info.bs;
     uint32_t axisK = tilingData->moeDistributeCombineV2Info.k;
@@ -2028,11 +2028,7 @@ static uint64_t GetReceiveBufferSize(const MoeDistributeCombineV2TilingData *til
     uint32_t tokenPerAivNum = (axisBS + recvAivNum - 1U) / recvAivNum;
     uint64_t totalBufferSize = 0U;
     if (tilingData->moeDistributeCombineV2Info.hasExpertScales) {
-        uint64_t scaleRowBytes = axisK * sizeof(float);
-        if (padExpertScales) {
-            scaleRowBytes = (scaleRowBytes + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
-        }
-        totalBufferSize += (tokenPerAivNum * scaleRowBytes + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
+        totalBufferSize += (tokenPerAivNum * axisK * sizeof(float) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     }
     if (tilingData->moeDistributeCombineV2Info.isPerformance) {
         totalBufferSize +=
@@ -2050,11 +2046,10 @@ static void SetA3BufferNum(const uint64_t ubSize, const gert::TilingContext *con
 }
 
 static bool UbUsedCal(const uint64_t ubSize, const gert::TilingContext *context,
-                      MoeDistributeCombineV2TilingData *tilingData, const CombineV2Config &config, bool isLayered)
+                      MoeDistributeCombineV2TilingData *tilingData, const CombineV2Config &config)
 {
     // A3 retains its raw-data/separate-flag protocol after EP16 regression checks.
     // Its prefetch queues use the original A3 UB budget; A5 keeps the packed budget.
-    bool isA3FullMesh = false;
     if (mc2tiling::GetNpuArch(context) != Ops::Base::DAV_3510) {
         SetA3BufferNum(ubSize, context, tilingData, config);
         return true;
@@ -2069,14 +2064,14 @@ static bool UbUsedCal(const uint64_t ubSize, const gert::TilingContext *context,
     }
     // 单buf路径必须先通过UB检查，不能依赖运行时分配器兜底
     uint64_t singleBufferSize = GetComputeBufferSize(context, tilingData, config, BUFFER_SINGLE) + commBufferSize +
-                                GetReceiveBufferSize(tilingData, isA3FullMesh) + moeQueueBytes;
+                                GetReceiveBufferSize(tilingData) + moeQueueBytes;
     if (singleBufferSize > ubSize) {
         OP_LOGE_WITHOUT_REPORT(context->GetNodeName(),
                                "MoeDistributeCombineV2 single-buffer UB usage exceeds available UB size");
         return false;
     }
     uint64_t totalBufferSize = GetComputeBufferSize(context, tilingData, config, BUFFER_NUM) + commBufferSize +
-                               GetReceiveBufferSize(tilingData, isA3FullMesh);
+                               GetReceiveBufferSize(tilingData);
     tilingData->moeDistributeCombineV2Info.bufferNum =
         totalBufferSize + moeQueueBytes * BUFFER_NUM > ubSize ? BUFFER_SINGLE : BUFFER_NUM;
     return true;
@@ -2101,7 +2096,7 @@ static ge::graphStatus CheckAndCalWinSize(const gert::TilingContext *context,
     winSizeData.isSetFullMeshV2 = false;
     winSizeData.isLayered = isLayered;
     winSizeData.isMc2Context = config.isMc2Context;
-    winSizeData.isCombinePacked = mc2tiling::GetSocVersion(context) == "Ascend910_93" && !isLayered;
+    winSizeData.reserveA3FullMeshWindowPadding = mc2tiling::GetSocVersion(context) == "Ascend910_93" && !isLayered;
     OP_TILING_CHECK(CheckWinSize(context, nodeName, winSizeData) != ge::GRAPH_SUCCESS,
                     OP_LOGE_WITHOUT_REPORT(nodeName, "Get WinSize failed."), return ge::GRAPH_FAILED);
     tilingData.moeDistributeCombineV2Info.totalWinSizeEp = winSizeData.totalWinSizeEp;
@@ -2218,7 +2213,7 @@ ge::graphStatus CheckAndSetPlatformInfo(gert::TilingContext *context, MoeDistrib
     context->SetBlockDim(numBlocks);
     tilingData->moeDistributeCombineV2Info.aivNum = aivNum;
     tilingData->moeDistributeCombineV2Info.totalUbSize = ubSize;
-    OP_TILING_CHECK(!UbUsedCal(ubSize, context, tilingData, config, isLayered),
+    OP_TILING_CHECK(!UbUsedCal(ubSize, context, tilingData, config),
                     OP_LOGE_WITHOUT_REPORT(nodeName, "MoeDistributeCombineV2 UB usage exceeds available UB size"),
                     return ge::GRAPH_FAILED);
     context->SetScheduleMode(1); // 设置为batch mode模式，所有核同时启动

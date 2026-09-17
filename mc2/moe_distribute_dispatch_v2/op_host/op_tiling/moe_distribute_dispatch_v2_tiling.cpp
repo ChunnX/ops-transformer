@@ -1604,7 +1604,7 @@ static ge::graphStatus CheckAndCalWinSize(const gert::TilingContext *context,
     winSizeData.isSetFullMeshV2 = isSetFullMeshV2;
     winSizeData.isLayered = isLayered;
     winSizeData.isMc2Context = config.isMc2Context;
-    winSizeData.isCombinePacked = mc2tiling::GetSocVersion(context) == "Ascend910_93" && !isLayered;
+    winSizeData.reserveA3FullMeshWindowPadding = mc2tiling::GetSocVersion(context) == "Ascend910_93" && !isLayered;
     OP_TILING_CHECK(CheckWinSize(context, nodeName, winSizeData) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Get WinSize failed."), return ge::GRAPH_FAILED);
     tilingData.moeDistributeDispatchV2Info.totalWinSizeEp = winSizeData.totalWinSizeEp;
@@ -1698,24 +1698,23 @@ static uint32_t AllToAllBasicUsedBuffer(const gert::TilingContext *context,
 }
 
 static uint32_t A3FullMeshUsedBuffer(const gert::TilingContext *context,
-                                    const MoeDistributeDispatchV2TilingData &tilingData,
-                                    uint32_t expertIdsBufSize, uint32_t hOutSizeAlign,
-                                    const DispatchV2Config &config, const char *nodeName)
+                                     const MoeDistributeDispatchV2TilingData &tilingData, uint32_t expertIdsBufSize,
+                                     uint32_t hOutSizeAlign, const DispatchV2Config &config, const char *nodeName)
 {
     const auto &info = tilingData.moeDistributeDispatchV2Info;
     // calBeginBuf_, dataStateBuf and calEndBuf_ remain live until token sending ends.
     uint32_t usedSize = UB_ALIGN * 3U;
     if (info.hasElasticInfo) {
-        usedSize += Ceil((ELASTIC_INFO_OFFSET + RANK_LIST_NUM * info.epWorldSize) * sizeof(int32_t),
-                         UB_ALIGN, nodeName);
+        usedSize +=
+            Ceil((ELASTIC_INFO_OFFSET + RANK_LIST_NUM * info.epWorldSize) * sizeof(int32_t), UB_ALIGN, nodeName);
     }
     // SendCumSum retains both counting scratch buffers, the mask workspace and routing IDs.
     usedSize += BUFFER_NUM * info.maxSizeForUbBuffer + BUFFER_NUM * expertIdsBufSize;
     if (info.hasExpertScales) {
         usedSize += expertIdsBufSize;
     }
-    uint32_t countBufferSize = Ceil(info.moeExpertNum + info.sharedExpertRankNum,
-                                   UB_ALIGN / sizeof(int32_t), nodeName) * UB_ALIGN;
+    uint32_t countBufferSize =
+        Ceil(info.moeExpertNum + info.sharedExpertRankNum, UB_ALIGN / sizeof(int32_t), nodeName) * UB_ALIGN;
     usedSize += countBufferSize;
     if (info.isExpertMask || info.zeroComputeExpertNum != 0) {
         usedSize += Ceil(info.bs * sizeof(int32_t), UB_ALIGN, nodeName);

@@ -48,7 +48,7 @@ struct CheckWinSizeData {
     bool isSetFullMeshV2;
     bool isLayered;
     bool isMc2Context;
-    bool isCombinePacked = false;
+    bool reserveA3FullMeshWindowPadding = false;
 };
 
 inline ge::graphStatus CheckActualWinSize(const gert::TilingContext *context, const char *nodeName,
@@ -162,8 +162,9 @@ inline ge::graphStatus CheckWinSize(const gert::TilingContext *context, const ch
     uint64_t h = static_cast<uint64_t>(winSizeData.h);
     // combine数据区 token首地址对齐512
     uint64_t tokenNeedSizeCombine = ((h * MAX_OUT_DTYPE_SIZE + WIN_ADDR_ALIGN - 1UL) / WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
-    if (winSizeData.isCombinePacked) {
-        // Packed combine slots contain 480 bytes of payload per 512-byte block.
+    if (winSizeData.reserveA3FullMeshWindowPadding) {
+        // Preserve the established offset of the A3 fullmesh dispatch data region.
+        // This extra reservation is not a packed Combine payload protocol.
         tokenNeedSizeCombine =
             ((h * MAX_OUT_DTYPE_SIZE + FULL_MESH_DATA_ALIGN - 1UL) / FULL_MESH_DATA_ALIGN) * WIN_ADDR_ALIGN;
     }

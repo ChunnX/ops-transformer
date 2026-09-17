@@ -85,8 +85,7 @@ private:
     __aicore__ inline void GenerateActiveMask(half val);
     __aicore__ inline void MaskSpecialExpert();
     __aicore__ inline void MaskAlign();
-    __aicore__ inline void ExpertAlltoAllDispatchInnerCopyAdd(uint32_t toRankId, uint32_t tokenId, uint32_t topkId,
-                                                              uint32_t tkIndex);
+    __aicore__ inline void ExpertAlltoAllDispatchInnerCopyAdd(uint32_t toRankId, uint32_t tokenId, uint32_t topkId);
     __aicore__ inline void ExpertAlltoAllDispatchCopyAdd();
     __aicore__ inline void PrefetchDispatchToken(uint32_t tkIndex);
     __aicore__ inline void ExpertAlltoAllDispatchPipeline(LocalTensor<ExpandIdxType> expandIdxLocal,
@@ -584,17 +583,6 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::BuffInit()
     } else {
         tpipe_->InitBuffer(sendInputBuf_, sendSlotNum_ * hExpandXAlign32Size_); // 28K 存储搬入token
     }
-    if (sendCntNum_ > 0U) {
-        // A5 PR11528: explicit per-slot events avoid multi-entry queue bookkeeping.
-        uint32_t inputSlots = QuantMode > UNQUANT ? BUFFER_NUM : sendSlotNum_;
-        for (uint32_t slot = 0U; slot < inputSlots; slot++) {
-            if constexpr (QuantMode > UNQUANT) {
-                SetFlag<HardEvent::V_MTE2>(slot);
-            } else {
-                SetFlag<HardEvent::MTE3_MTE2>(slot);
-            }
-        }
-    }
 }
 
 template <CombineMC2TypeClass>
@@ -802,6 +790,16 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAl
         return;
     }
 
+    // A5 PR11528: explicit per-slot events avoid multi-entry queue bookkeeping.
+    uint32_t inputSlots = QuantMode > UNQUANT ? BUFFER_NUM : sendSlotNum_;
+    for (uint32_t slot = 0U; slot < inputSlots; slot++) {
+        if constexpr (QuantMode > UNQUANT) {
+            SetFlag<HardEvent::V_MTE2>(slot);
+        } else {
+            SetFlag<HardEvent::MTE3_MTE2>(slot);
+        }
+    }
+
     LocalTensor<ExpandIdxType> expandIdxLocal = indexCountsBuf_.Get<ExpandIdxType>();
     const DataCopyExtParams bskParams{1U, static_cast<uint32_t>(sendCntNum_ * EXPAND_IDX_INFO * sizeof(uint32_t)), 0U,
                                       0U, 0U};
@@ -814,7 +812,6 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAl
 
     ExpertAlltoAllDispatchPipeline(expandIdxLocal, statusTensor);
     // Drain available-slot events, including unused slots, before TPipe::Reset.
-    uint32_t inputSlots = QuantMode > UNQUANT ? BUFFER_NUM : sendSlotNum_;
     for (uint32_t slot = 0U; slot < inputSlots; slot++) {
         if constexpr (QuantMode > UNQUANT) {
             WaitFlag<HardEvent::V_MTE2>(slot);
@@ -851,7 +848,6 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAl
         // The independent completion flags and raw window layout stay paired.
         PrefetchDispatchToken(startTokenId_ + permIdx);
         for (uint32_t loop = batch; loop < batchEnd; loop++) {
-            uint32_t tkIndex = startTokenId_ + permIdx;
             uint32_t baseOffset = permIdx * EXPAND_IDX_INFO;
             uint32_t rankIdExpandIdx = static_cast<uint32_t>(expandIdxLocal(baseOffset)); // 位置0是rank_id
             uint32_t toRankId = rankIdExpandIdx;                                          // 位置0是rank_id
@@ -867,7 +863,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAl
                 }
                 PrefetchDispatchToken(startTokenId_ + nextPermIdx);
             }
-            ExpertAlltoAllDispatchInnerCopyAdd(toRankId, tokenId, topkId, tkIndex);
+            ExpertAlltoAllDispatchInnerCopyAdd(toRankId, tokenId, topkId);
             permIdx += permStride;
             if (permIdx >= sendCntNum_) {
                 permIdx -= sendCntNum_;
@@ -932,8 +928,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::PrefetchDispa
 template <CombineMC2TypeClass>
 __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAllDispatchInnerCopyAdd(uint32_t toRankId,
                                                                                                       uint32_t tokenId,
-                                                                                                      uint32_t topkId,
-                                                                                                      uint32_t tkIndex)
+                                                                                                      uint32_t topkId)
 {
     uint32_t epOffset = tokenId * (axisK_ + sharedExpertNum_) + topkId;
     GM_ADDR rankGM = GetWinAddrByRankId(toRankId) + epOffset * hAlignWinSize_;
