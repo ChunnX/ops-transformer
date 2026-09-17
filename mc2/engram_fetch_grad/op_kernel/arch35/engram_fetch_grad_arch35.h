@@ -1075,6 +1075,9 @@ __aicore__ inline bool EngramFetchGradArch35::A2aChunkSendStep()
                 } else {
                     continue;
                 }
+                if (s.localWriteCnt - static_cast<uint32_t>(s.remoteReadCnt) >= slotsPerSender) {
+                    continue;
+                }
             }
         }
 
