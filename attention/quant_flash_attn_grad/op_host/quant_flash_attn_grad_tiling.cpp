@@ -234,14 +234,18 @@ static ge::graphStatus ValidateRequiredInputs(gert::TilingContext *context, cons
                 OP_LOGE(opName, "metadata must have int32 dtype."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(metadataShape->GetStorageShape().GetDimNum() != 2,
                 OP_LOGE(opName, "metadata must have rank 2."), return ge::GRAPH_FAILED);
-    int64_t requiredMetadataRowSize = IsTnd(context) ?
-        17 + 9 * (context->GetOptionalInputShape(CU_SEQLENS_Q)->GetStorageShape().GetDim(0) - 1) : 16;
-    if (!IsTnd(context) && (sequsedQDesc != nullptr || sequsedKVDesc != nullptr)) {
+    // TND/sparse seqused 预留 17+10B（TND line swizzle）；dense padded seqused 为 17+3B。
+    int64_t requiredMetadataRowSize = 16;
+    if (IsTnd(context)) {
+        auto cuSeqlensQ = context->GetOptionalInputShape(CU_SEQLENS_Q);
+        OP_CHECK_IF(cuSeqlensQ == nullptr, OP_LOGE(opName, "TND requires cu_seqlens_q."), return ge::GRAPH_FAILED);
+        requiredMetadataRowSize = 17 + 10 * (cuSeqlensQ->GetStorageShape().GetDim(0) - 1);
+    } else if (sequsedQDesc != nullptr || sequsedKVDesc != nullptr) {
         const int64_t batchSize = context->GetInputShape(QUERY_IDX)->GetStorageShape().GetDim(0);
         const auto maskMode = context->GetAttrs()->GetAttrPointer<int64_t>(MASK_MODE);
         const bool isSparse = maskMode != nullptr && (*maskMode == 3 || *maskMode == 4);
         // Header, batch prefix (B + 1), and two dense or eight sparse B-arrays.
-        requiredMetadataRowSize = 17 + (isSparse ? 9 : 3) * batchSize;
+        requiredMetadataRowSize = 17 + (isSparse ? 10 : 3) * batchSize;
     }
     OP_CHECK_IF(metadataShape->GetStorageShape().GetDim(0) != 2 ||
                     metadataShape->GetStorageShape().GetDim(1) < requiredMetadataRowSize,

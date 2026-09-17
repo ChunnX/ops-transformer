@@ -73,8 +73,18 @@ constexpr uint32_t QUANT_FAG_SCHEDULE_ROWS_OFFSET_INDEX = 10U;
 constexpr uint32_t QUANT_FAG_SCHEDULE_COLS_OFFSET_INDEX = 11U;
 constexpr uint32_t QUANT_FAG_S1_TOKEN_OFFSET_INDEX = 12U;
 constexpr uint32_t QUANT_FAG_S2_TOKEN_OFFSET_INDEX = 13U;
-constexpr uint32_t QUANT_FAG_SCHEDULE_VERSION_INDEX = 14U;
+constexpr uint32_t QUANT_FAG_SCHEDULE_KIND_INDEX = 14U;
 constexpr uint32_t QUANT_FAG_SPARSE_ARRAY_COUNT = 6U;
+// TND line swizzle: 槽14=3, 槽8为mode, 9-13为lineM/N/P/Q/runSize偏移, token紧跟runSize
+constexpr uint32_t QUANT_FAG_SCHEDULE_MODE_INDEX = 8U;
+constexpr uint32_t QUANT_FAG_TND_LINE_MODE = 1U;
+constexpr uint32_t QUANT_FAG_TND_LINE_M_OFFSET_INDEX = 9U;
+constexpr uint32_t QUANT_FAG_TND_LINE_N_OFFSET_INDEX = 10U;
+constexpr uint32_t QUANT_FAG_TND_LINE_P_OFFSET_INDEX = 11U;
+constexpr uint32_t QUANT_FAG_TND_LINE_Q_OFFSET_INDEX = 12U;
+constexpr uint32_t QUANT_FAG_TND_LINE_RUN_SIZE_OFFSET_INDEX = 13U;
+constexpr uint32_t QUANT_FAG_DENSE_SWIZZLE = 2U;
+constexpr uint32_t QUANT_FAG_TND_LINE_SWIZZLE = 3U;
 constexpr uint32_t QUANT_FAG_ARRAY_BASE_INDEX = 16U;
 // batch 数不再有固定上限, 只受 metadata 第二行实际长度约束(见 GenQuantFagGradMetaData 的容量校验)
 // 分核基本块大小, 与 kernel 的 CUBE_BASEM / CUBE_BASEN 保持一致

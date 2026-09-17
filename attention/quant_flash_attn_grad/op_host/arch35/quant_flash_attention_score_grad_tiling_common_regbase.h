@@ -465,7 +465,6 @@ void GetOffset(FuzzyBaseInfoParamsRegbase &fBaseParams, int64_t &currentDqOffset
                int64_t blockIdx);
 void PrintShapeInfo(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase &fBaseParams);
 bool CheckSparseModeValue(FuzzyBaseInfoParamsRegbase &fBaseParams);
-bool CheckVarLenSparseModeValue(FuzzyBaseInfoParamsRegbase &fBaseParams);
 bool CheckPrefixNExist(FuzzyBaseInfoParamsRegbase &fBaseParams, const int64_t bIdx, const int64_t prefixN,
                        std::vector<std::vector<std::pair<int64_t, int64_t>>> &s1ValidIdx);
 void CalcleBandDeterParam(FuzzyBaseInfoParamsRegbase &fBaseParams);
@@ -486,8 +485,6 @@ ge::graphStatus ProcessOptionalInput(gert::TilingContext *context_, FuzzyBaseInf
 ge::graphStatus ProcessQuantInfo(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase &fBaseParams);
 ge::graphStatus ProcessSparseModeInfo(const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase &fBaseParams);
 ge::graphStatus ProcessTokensInfo(FuzzyBaseInfoParamsRegbase &fBaseParams);
-void SetQKVStartIdx(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase &fBaseParams);
-void SetPseLayout(FuzzyBaseInfoParamsRegbase &fBaseParams);
 bool SetSparseParams(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase &fBaseParams);
 void DetermineMode(FuzzyBaseInfoParamsRegbase &fBaseParams);
 } // namespace QuantFag

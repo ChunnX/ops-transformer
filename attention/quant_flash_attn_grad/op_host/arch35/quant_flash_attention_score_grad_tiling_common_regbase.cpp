@@ -652,12 +652,16 @@ void GetCommonS1S2OuterIndex(const FuzzyBaseInfoParamsRegbase &fBaseParams, int6
 void CalcleActualToken(FuzzyBaseInfoParamsRegbase &fBaseParams, int64_t batchIdx, int64_t &actualCalcS1Token,
                        int64_t &actualCalcS2Token)
 {
+    actualCalcS1Token = fBaseParams.s1Token;
+    actualCalcS2Token = fBaseParams.s2Token;
+    // TND/seqused 的右下角 token 在 metadata 逐 batch 计算，host 不用 Smax 校正。
+    if (fBaseParams.layoutType == INPUT_FORMAT_TND || fBaseParams.hasSequsedQ || fBaseParams.hasSequsedKV) {
+        return;
+    }
     int64_t actualS1Len = fBaseParams.actualSeqQlen[batchIdx];
     int64_t actualS2Len = fBaseParams.actualSeqKvlen[batchIdx];
     // 对unpad场景的token值做二次校正
     // sparse_mode =4 (band)时 或者sparse_mode ==3 (RIGHT_DOWN_CAUSAL) 时，token以右下角为基准，需要校正
-    actualCalcS1Token = fBaseParams.s1Token;
-    actualCalcS2Token = fBaseParams.s2Token;
     if ((fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CASUAL_BAND) &&
          batchIdx != fBaseParams.bandIdx) ||
         (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::BAND_LEFT_UP_CASUAL) &&
@@ -1000,7 +1004,7 @@ ge::graphStatus ProcessTokensInfo(FuzzyBaseInfoParamsRegbase &fBaseParams)
 
     // 对pad场景做校正
     // sparse_mode =4 (band)时 或者sparse_mode ==3 (RIGHT_DOWN_CAUSAL) 时，token以右下角为基准，需要校正
-    if (fBaseParams.layoutType != INPUT_FORMAT_TND &&
+    if (fBaseParams.layoutType != INPUT_FORMAT_TND && !fBaseParams.hasSequsedQ && !fBaseParams.hasSequsedKV &&
         (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL) ||
          fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::BAND))) {
         fBaseParams.s1Token = fBaseParams.s1Token + fBaseParams.s1 - fBaseParams.s2;
@@ -1026,13 +1030,13 @@ ge::graphStatus ProcessTokensInfo(FuzzyBaseInfoParamsRegbase &fBaseParams)
     }
 
     // 校验pad场景token是否合法
-    if (fBaseParams.layoutType != INPUT_FORMAT_TND &&
+    if (fBaseParams.layoutType != INPUT_FORMAT_TND && !fBaseParams.hasSequsedQ && !fBaseParams.hasSequsedKV &&
         (-fBaseParams.s1Token > int64_t(fBaseParams.s2) || -fBaseParams.s2Token > int64_t(fBaseParams.s1) ||
          (fBaseParams.s1Token + fBaseParams.s2Token) < 0)) {
         std::string valueMsg = "{" + std::to_string(fBaseParams.s1Token) + ", " + std::to_string(fBaseParams.s2Token) +
                                ", " + std::to_string(fBaseParams.s1Token + fBaseParams.s2Token) + "}";
-        std::string reasonMsg = "When inputLayout is TND, the valud of nextTokens, preTokens, nextToKens + preTokens "
-                                "cannot be less than {" +
+        std::string reasonMsg = "When inputLayout is not TND and seqused is absent, nextTokens, preTokens, "
+                                "nextTokens + preTokens cannot be less than {" +
                                 std::to_string(int64_t(-fBaseParams.s2)) + ", " +
                                 std::to_string(int64_t(-fBaseParams.s1)) + ", 0}";
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON("QuantFlashAttentionScoreGrad", "nextTokens, preTokens, nextToKens",

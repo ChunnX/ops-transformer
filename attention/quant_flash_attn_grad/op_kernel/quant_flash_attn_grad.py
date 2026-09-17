@@ -83,7 +83,17 @@ META_SCHEDULE_ROWS_OFFSET_IDX = 10
 META_SCHEDULE_COLS_OFFSET_IDX = 11
 META_S1_TOKEN_OFFSET_IDX = 12
 META_S2_TOKEN_OFFSET_IDX = 13
-META_SCHEDULE_VERSION_IDX = 14
+META_SCHEDULE_KIND_IDX = 14
+# TND line swizzle 时槽8为mode；dense swizzle 时槽8为 ROW_BEGIN 偏移
+META_SCHEDULE_MODE_IDX = 8
+META_TND_LINE_MODE = 1
+META_TND_LINE_M_OFFSET_IDX = 9
+META_TND_LINE_N_OFFSET_IDX = 10
+META_TND_LINE_P_OFFSET_IDX = 11
+META_TND_LINE_Q_OFFSET_IDX = 12
+META_TND_LINE_RUN_SIZE_OFFSET_IDX = 13
+META_DENSE_SWIZZLE = 2
+META_TND_LINE_SWIZZLE = 3
 
 init_data = [1] * 16
 
@@ -1375,6 +1385,246 @@ def cal_dense_swizzle_deter_index(
     return (found_b * n1 + n1_idx) * m_b * n_b + s2_idx * m_b + s1_idx
 
 
+def cal_tnd_line_swizzle_deter_index(
+    round_id,
+    coordinate_info,
+    const_info,
+    tensor_metadata,
+    tensor_seq_q,
+    tensor_seq_kv,
+    flag,
+):
+    coordinate_info.batch_id = -1
+    j = const_info.core_id_cube
+    if flag == True:
+        j += 1
+    k = const_info.core_num
+    if j >= k:
+        return -1
+    n1 = const_info.n2_size * const_info.g_size
+    g_size = const_info.g_size
+    mask_mode = const_info.mask_mode
+    is_band = mask_mode == 4
+    meta_base = const_info.metadata_len
+    b_size = const_info.b_size
+    prefix_base = meta_base + pl.getval(tensor_metadata, meta_base + META_ROUND_PREFIX_OFFSET_IDX)
+    s1_outer_base = meta_base + pl.getval(tensor_metadata, meta_base + META_S1_OUTER_OFFSET_IDX)
+    s2_outer_base = meta_base + pl.getval(tensor_metadata, meta_base + META_S2_OUTER_OFFSET_IDX)
+    line_m_base = meta_base + pl.getval(tensor_metadata, meta_base + META_TND_LINE_M_OFFSET_IDX)
+    line_n_base = meta_base + pl.getval(tensor_metadata, meta_base + META_TND_LINE_N_OFFSET_IDX)
+    line_p_base = meta_base + pl.getval(tensor_metadata, meta_base + META_TND_LINE_P_OFFSET_IDX)
+    line_q_base = meta_base + pl.getval(tensor_metadata, meta_base + META_TND_LINE_Q_OFFSET_IDX)
+    run_size_base = meta_base + pl.getval(tensor_metadata, meta_base + META_TND_LINE_RUN_SIZE_OFFSET_IDX)
+    s1_token_base = run_size_base + b_size
+    s2_token_base = s1_token_base + b_size
+    found_b = -1
+    delta = 0
+    prefix_lo = 0
+    for b_idx in pl.range(0, b_size, 1):
+        prefix_hi = pl.getval(tensor_metadata, prefix_base + b_idx + 1)
+        if found_b < 0 and round_id < prefix_hi:
+            found_b = b_idx
+            delta = round_id - prefix_lo
+        prefix_lo = prefix_hi
+    if found_b < 0:
+        return -1
+    line_m = pl.getval(tensor_metadata, line_m_base + found_b)
+    line_n = pl.getval(tensor_metadata, line_n_base + found_b)
+    line_p = pl.getval(tensor_metadata, line_p_base + found_b)
+    line_q = pl.getval(tensor_metadata, line_q_base + found_b)
+    run_size = pl.getval(tensor_metadata, run_size_base + found_b)
+    if line_m <= 0 or line_n <= 0 or run_size <= 0 or n1 <= 0:
+        return -1
+    a = delta + 1
+    j1 = j + 1
+    valid = 0
+    ok = 0
+    w = 0
+    x = 0
+    y = 0
+    y1 = 0
+    copy_id = 0
+    m = line_m
+    n = line_n
+    p = line_p
+    q = line_q
+    if is_band:
+        copies = n1 * run_size
+        if p >= m:
+            if j1 >= 1 and j1 <= k and a >= 1 and copies > 0 and m > 0 and n > 0:
+                y1 = ((a - 1) // m) * k + j1
+                if y1 <= n * copies:
+                    w = (y1 - 1) // n + 1
+                    y = (y1 - 1) % n + 1
+                    x = (y + (a - 1) - 1) % m + 1
+                    ok = 1
+            if (
+                ok == 1
+                and w >= 1
+                and w <= copies
+                and x >= 1
+                and x <= m
+                and y >= 1
+                and y <= n
+                and y <= x + q - 1
+            ):
+                valid = 1
+                copy_id = w
+        elif p + q > m:
+            n_new = min(m - 1 + q, n)
+            l1 = m - p
+            l2 = p + q - m
+            l3 = n_new - l1 - l2
+            dense_n = n_new - max(0, l3 - p + 1)
+            if j1 >= 1 and j1 <= k and a >= 1 and copies > 0 and m > 0 and dense_n > 0:
+                y1 = ((a - 1) // m) * k + j1
+                if y1 <= dense_n * copies:
+                    w = (y1 - 1) // dense_n + 1
+                    y = (y1 - 1) % dense_n + 1
+                    x = (y + (a - 1) - 1) % m + 1
+                    ok = 1
+            mapped = 0
+            if ok == 1:
+                l1 = m - p
+                l2 = p + q - m
+                l3 = n - l1 - l2
+                fold = max(0, l3 - p + 1)
+                mapped = 1
+                if fold > 0 and y <= fold and x >= p + y:
+                    y = n - fold + y
+                elif y <= l1 and x >= p + y:
+                    mapped = 0
+                if mapped == 1 and y > l1 + l2 and x <= y - l1 - l2:
+                    mapped = 0
+                if (
+                    mapped == 1
+                    and w >= 1
+                    and w <= copies
+                    and x >= 1
+                    and x <= m
+                    and y >= 1
+                    and y <= n
+                ):
+                    valid = 1
+                    copy_id = w
+        else:
+            seg = p + q - 1
+            if seg > 0:
+                a1 = ceil(a, seg)
+                a2 = a % seg
+                if a2 == 0:
+                    a2 = seg
+                l3 = max(0, min(p + n - m - 1, p + q - 2))
+                if l3 == 0 or n - m < 1:
+                    idx = (a1 - 1) * k + j1
+                    w = ceil(idx, n)
+                    y = idx % n
+                    if y == 0:
+                        y = n
+                    x = y + a2 - q
+                else:
+                    y_abs = (a1 - 1) * k + j1
+                    x_abs = y_abs + a2 - q
+                    if x_abs >= 1:
+                        w = ceil(x_abs, m)
+                        x = x_abs % m
+                        if x == 0:
+                            x = m
+                        y = x + q - a2
+                if w >= 1 and w <= copies and x >= 1 and x <= m and y >= 1 and y <= n:
+                    valid = 1
+                    copy_id = w
+    else:
+        total = n1 * run_size
+        pairs = total // 2
+        virt_m = m
+        virt_n = 2 * n - m + 3
+        pair_rounds = 0
+        if pairs > 0 and virt_n > 0:
+            pair_rounds = ceil(virt_n * pairs, k) * virt_m
+        if a <= pair_rounds:
+            if j1 >= 1 and j1 <= k and a >= 1 and pairs > 0 and virt_m > 0 and virt_n > 0:
+                y1 = ((a - 1) // virt_m) * k + j1
+                if y1 <= virt_n * pairs:
+                    w = (y1 - 1) // virt_n + 1
+                    y = (y1 - 1) % virt_n + 1
+                    x = (y + (a - 1) - 1) % virt_m + 1
+                    ok = 1
+            if ok == 1:
+                n_ext = n + 1
+                nid = 2 * w - 1
+                if y >= x + n_ext - m + 1:
+                    y = 2 * n_ext - m - y + 2
+                    x = m + 1 - x
+                    nid = 2 * w
+                if (
+                    nid >= 1
+                    and nid <= pairs * 2
+                    and x >= 1
+                    and x <= m
+                    and y >= 1
+                    and y <= n
+                    and y <= x + n - m + 1
+                ):
+                    valid = 1
+                    copy_id = nid
+        elif (total % 2) == 1:
+            single_round = a - pair_rounds
+            if j1 >= 1 and j1 <= k and single_round >= 1 and m > 0 and n > 0:
+                y1 = ((single_round - 1) // m) * k + j1
+                if y1 <= n:
+                    w = (y1 - 1) // n + 1
+                    y = (y1 - 1) % n + 1
+                    x = (y + (single_round - 1) - 1) % m + 1
+                    ok = 1
+            nid = total
+            if ok == 1 and x >= 1 and x <= m and y >= 1 and y <= n and y <= x + n - m + 1:
+                valid = 1
+                copy_id = nid
+    if valid == 0:
+        return -1
+    batch = found_b + (copy_id - 1) // n1
+    n1_idx = (copy_id - 1) % n1
+    s1o_real = pl.getval(tensor_metadata, s1_outer_base + batch)
+    s2o_real = pl.getval(tensor_metadata, s2_outer_base + batch)
+    s1_token = pl.getval(tensor_metadata, s1_token_base + batch)
+    s2_token = pl.getval(tensor_metadata, s2_token_base + batch)
+    m_off = 0
+    n_off = 0
+    if is_band:
+        p0 = _ceil_trunc(s1_token, CUBE_BASEM) + 1
+        q0 = _ceil_trunc(s2_token, CUBE_BASEN) + 1
+        if p0 > s1o_real:
+            p0 = s1o_real
+        if q0 > s2o_real:
+            q0 = s2o_real
+        if p0 < 0:
+            n_off = -p0
+        elif q0 < 0:
+            m_off = -q0
+        s1_idx = x - 1 + m_off
+        s2_idx = y - 1 + n_off
+    else:
+        s1_idx = x + max(0, s1o_real - s2o_real - 1) - 1
+        s2_idx = y - 1
+    if s1_idx >= s1o_real or s2_idx >= s2o_real or s1_idx < 0 or s2_idx < 0:
+        return -1
+    actual_s1 = get_actual_s1_len(const_info, tensor_seq_q, batch)
+    actual_s2 = get_actual_s2_len(const_info, tensor_seq_kv, batch)
+    coordinate_info.batch_id = batch
+    coordinate_info.n2_idx = n1_idx // g_size
+    coordinate_info.g_idx = n1_idx % g_size
+    coordinate_info.s1_idx = s1_idx
+    coordinate_info.s2_idx = s2_idx
+    coordinate_info.s1_outer = s1o_real
+    coordinate_info.s2_outer = s2o_real
+    coordinate_info.actual_s1_len = actual_s1
+    coordinate_info.actual_s2_len = actual_s2
+    coordinate_info.s1_token = s1_token
+    coordinate_info.s2_token = s2_token
+    return (batch * n1 + n1_idx) * s1o_real * s2o_real + s2_idx * s1o_real + s1_idx
+
+
 def cal_band_deter_index(round_id, max_loop_num, coordinate_info, const_info, band_info, flag):
     j = const_info.core_id_cube + 1
     if flag == True:
@@ -1535,18 +1785,31 @@ def cal_deter_index(
     coordinate_info.mask_mode = const_info.mask_mode
     next_valid_round_id = max_loop_num
     next_valid_index = -1
+    schedule_kind = 0
+    if is_var_len():
+        schedule_kind = meta_get(const_info, tensor_metadata, META_SCHEDULE_KIND_IDX)
     for current_round_id in pl.range(round_id, max_loop_num, 1):
         if is_var_len():
-            # Metadata supplies the per-batch dense or cropped sparse swizzle.
-            next_valid_index = cal_dense_swizzle_deter_index(
-                current_round_id,
-                coordinate_info,
-                const_info,
-                tensor_metadata,
-                tensor_seq_q,
-                tensor_seq_kv,
-                flag,
-            )
+            if schedule_kind == META_TND_LINE_SWIZZLE:
+                next_valid_index = cal_tnd_line_swizzle_deter_index(
+                    current_round_id,
+                    coordinate_info,
+                    const_info,
+                    tensor_metadata,
+                    tensor_seq_q,
+                    tensor_seq_kv,
+                    flag,
+                )
+            else:
+                next_valid_index = cal_dense_swizzle_deter_index(
+                    current_round_id,
+                    coordinate_info,
+                    const_info,
+                    tensor_metadata,
+                    tensor_seq_q,
+                    tensor_seq_kv,
+                    flag,
+                )
         elif sparse_type == 4:
             next_valid_index = cal_band_deter_index(
                 current_round_id, max_loop_num, coordinate_info, const_info, band_info, flag
@@ -1652,7 +1915,10 @@ def set_run_info(
         if is_var_len():
             # swizzle 下 (n1_idx, s2o) 与 linearIdx = (delta // m_b) * k + j 一一对应,
             # 同一列只会落在唯一一个核上, dk/dv 不存在跨核累加, 只需核内跨 s1 行累加。
-            run_info.kv_need_atomic = run_info.is_value_reuse
+            if sparse_type != 0:
+                run_info.kv_need_atomic = 1
+            else:
+                run_info.kv_need_atomic = run_info.is_value_reuse
         else:
             run_info.kv_need_atomic = (
                 coordinate_info.s2_outer != 1 and run_info.is_value_reuse
@@ -3508,8 +3774,16 @@ def quant_flash_attn_grad(
         pl.pto_assert(pl.getval(tensor_metadata, tiling.metadata_len + META_AIC_CORE_NUM_IDX) == pl.get_block_num(),
                       "QuantFAG: metadata AIC core count mismatch")
         if sparse_type != 0 or layout == 2:
-            pl.pto_assert(pl.getval(tensor_metadata, tiling.metadata_len + META_SCHEDULE_VERSION_IDX) == 2,
-                          "QuantFAG: sparse seqused requires metadata ABI v2")
+            schedule_kind = pl.getval(tensor_metadata, tiling.metadata_len + META_SCHEDULE_KIND_IDX)
+            pl.pto_assert(
+                schedule_kind == META_DENSE_SWIZZLE or schedule_kind == META_TND_LINE_SWIZZLE,
+                "QuantFAG: varlen sparse/TND requires dense swizzle or TND line swizzle",
+            )
+            if schedule_kind == META_TND_LINE_SWIZZLE:
+                pl.pto_assert(
+                    pl.getval(tensor_metadata, tiling.metadata_len + META_SCHEDULE_MODE_IDX) == META_TND_LINE_MODE,
+                    "QuantFAG: TND line swizzle requires LINE mode",
+                )
     # Physical packed starts and effective lengths have separate tensor views.
     # Missing inputs use metadata as an unused, non-null placeholder.
     if layout == 2:
@@ -4348,30 +4622,8 @@ def quant_flash_attn_grad(
         gen_band_info(const_info, band_info)
     loop_max = 0
     if is_var_len():
-        # 主循环的 trip count 不能来自 GM: 一旦 pl.range 的上界是 pl.getval 的结果,
-        # 循环携带的 run_info / coordinate_info(TupleType) 会让 CCE codegen 崩在
-        # EmitCarriedAssignments -> EmitTupleVariable。
-        # 这里改用只依赖 tiling 的上界(每 batch 都按定长 S 估):
-        #   真实轮数 = Σ_b ceil(n_b*n1/k)*m_b <= b * ceil(ceil(s2/512)*n1/k) * ceil(s1/512)
-        # 超出真实轮数的那些 round, cal_dense_swizzle_deter_index 因为前缀查不到 batch
-        # 会返回 -1, 走和 sparse 跳块一样的无效块分支, 只是多跑几次空转同步。
-        loop_max = (
-            const_info.b_size
-            * ceil(
-                ceil(const_info.s2_size, CUBE_BASEN)
-                * const_info.n2_size
-                * const_info.g_size,
-                const_info.core_num,
-            )
-            * ceil(const_info.s1_size, CUBE_BASEM)
-        )
-        if sparse_type != 0 or layout == 2:
-            # Sparse short-Q batches may need virtual rows for collision-free dQ.
-            loop_max = (
-                const_info.b_size
-                * ceil(const_info.s2_outer * const_info.n1_size, const_info.core_num)
-                * max(const_info.s1_outer, min(const_info.core_num, const_info.s2_outer))
-            )
+        # loop_max 必须来自 tiling，不能读 GM。
+        loop_max = const_info.deter_max_round
     else:
         loop_max = cal_deter_max_loop_num(const_info, band_info)
     # with pl.section_cube():

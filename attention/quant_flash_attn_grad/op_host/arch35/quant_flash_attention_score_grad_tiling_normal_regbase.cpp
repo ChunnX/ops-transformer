@@ -56,11 +56,14 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsIn
     if (strcmp(inputLayoutQ, "BSND") == 0) {
         // q shape = [B, S, N, D]
         headNum = queryShape->GetStorageShape().GetDim(2);
-    } else if (strcmp(inputLayoutQ, "BNSD") == 0 || strcmp(inputLayoutQ, "TND") == 0) {
+    } else if (strcmp(inputLayoutQ, "BNSD") == 0) {
         // q shape = [B, N, S, D]
         headNum = queryShape->GetStorageShape().GetDim(1);
+    } else if (strcmp(inputLayoutQ, "TND") == 0) {
+        // packed q shape = [T, N, D]; N is dim 1
+        headNum = queryShape->GetStorageShape().GetDim(1);
     } else {
-        OP_LOGE(context_, "Invalid layout_q: %s, only BSND/BNSD supported (TND pending varlen tiling template)",
+        OP_LOGE(context_, "Invalid layout_q: %s, only BSND/BNSD/TND supported",
                 inputLayoutQ);
         return ge::GRAPH_FAILED;
     }
@@ -69,7 +72,12 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsIn
         fBaseParams.layoutType = INPUT_FORMAT_TND;
         fBaseParams.t1 = queryShape->GetStorageShape().GetDim(0);
         fBaseParams.t2 = keyShape->GetStorageShape().GetDim(0);
-        fBaseParams.b = context_->GetOptionalInputShape(12)->GetStorageShape().GetDim(0) - 1;
+        auto cuSeqlensQ = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::ACTUAL_SEQ_Q_LEN));
+        OP_CHECK_IF(cuSeqlensQ == nullptr || cuSeqlensQ->GetStorageShape().GetDimNum() != 1 ||
+                        cuSeqlensQ->GetStorageShape().GetDim(0) < 2,
+                    OP_LOGE(context_, "TND requires int32 cu_seqlens_q with shape [B+1]."),
+                    return ge::GRAPH_FAILED);
+        fBaseParams.b = cuSeqlensQ->GetStorageShape().GetDim(0) - 1;
         fBaseParams.n2 = headNum;
         fBaseParams.g = 1;
         fBaseParams.d = queryShape->GetStorageShape().GetDim(2);
@@ -219,11 +227,30 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::DoSparse()
 {
     fBaseParams.sparseType = GetSparseType(); // 非确定性计算下获取sparseType
     fBaseParams.deterSparseType = GetDeterSparseTilingKey();
-    if (fBaseParams.layoutType == INPUT_FORMAT_TND) {
+    if (fBaseParams.layoutType == INPUT_FORMAT_TND || fBaseParams.hasSequsedQ || fBaseParams.hasSequsedKV) {
         fBaseParams.splitAxis = SplitAxisEnum::BN2GS1S2;
         fBaseParams.blockOuter = fBaseParams.aicNum;
         fBaseParams.blockFactor = 1;
         fBaseParams.maxValidBBLen = 1;
+        // deterMaxRound 取保守上界，不读 AICPU 槽0。
+        const int64_t bSize = fBaseParams.b;
+        const int64_t kNum = std::max(static_cast<int64_t>(1), static_cast<int64_t>(fBaseParams.aicNum));
+        const int64_t n1 = std::max(static_cast<int64_t>(1), fBaseParams.n1);
+        const int64_t s1Outer = fBaseParams.s1Outer;
+        const int64_t s2Outer = fBaseParams.s2Outer;
+        if (fBaseParams.layoutType == INPUT_FORMAT_TND ||
+            fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL) ||
+            fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::BAND)) {
+            fBaseParams.deterMaxRound = bSize * (s1Outer + 2) *
+                                        (CeilDivideBy((s2Outer + s1Outer + 4) * n1, kNum) + s1Outer);
+        } else {
+            const int64_t mTiles = CeilDivideBy(fBaseParams.s1, static_cast<int64_t>(QUANT_BLOCK_S1_SIZE));
+            const int64_t nTiles = CeilDivideBy(fBaseParams.s2, static_cast<int64_t>(QUANT_BLOCK_S2_SIZE));
+            fBaseParams.deterMaxRound = bSize * CeilDivideBy(nTiles * n1, kNum) * mTiles;
+        }
+        if (fBaseParams.deterMaxRound < 1) {
+            fBaseParams.deterMaxRound = 1;
+        }
         return ge::GRAPH_SUCCESS;
     }
     CalcleDeterParam();
@@ -424,11 +451,11 @@ void QuantFlashAttentionScoreGradTilingNormalRegbase::CalcleDeterParam()
         fBaseParams.s1Inner = fBaseParams.s1Inner * NUM_TWO;
         fBaseParams.s1Outer = CeilDivideBy(s1Outer, static_cast<int64_t>(NUM_TWO));
     }
-    if (fBaseParams.layoutType != INPUT_FORMAT_TND &&
-        fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_CAUSAL)) {
+    const bool varlenHostSkip = fBaseParams.layoutType == INPUT_FORMAT_TND || fBaseParams.hasSequsedQ ||
+                                fBaseParams.hasSequsedKV;
+    if (!varlenHostSkip && fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_CAUSAL)) {
         CalcleCausalDeterParam(fBaseParams);
-    } else if (fBaseParams.layoutType != INPUT_FORMAT_TND &&
-               fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND)) {
+    } else if (!varlenHostSkip && fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND)) {
         CalcleBandDeterParam(fBaseParams);
     }
     if (needChangeSplitItemMode1 || needChangeSplitItemMode2) {

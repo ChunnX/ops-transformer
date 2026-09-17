@@ -15,6 +15,8 @@
 
 #include "log.h"
 #include "status.h"
+#include <algorithm>
+#include <climits>
 #include <cstdio>
 #include <cmath>
 #include "quant_flash_attn_metadata_aicpu.h"
@@ -341,6 +343,364 @@ int64_t QuantFlashAttnMetadataCpuKernel::CalDeterMaxRound()
     }
 }
 
+namespace {
+constexpr int64_t MASK_MODE_CAUSAL = 3;
+constexpr int64_t MASK_MODE_BAND = 4;
+constexpr int64_t TND_LINE_KIND_RIGHT_DOWN = 3;
+constexpr int64_t TND_LINE_KIND_BAND = 4;
+constexpr int64_t TND_LINE_KIND_BAND_DENSE = 43;
+constexpr int64_t TND_LINE_TINY_AREA = 8;
+constexpr int64_t TND_LINE_TOKEN_UNLIMITED = 100000000LL;
+
+inline int64_t TndLineCeilDiv(int64_t num1, int64_t num2)
+{
+    if (num2 == 0) {
+        return 0;
+    }
+    return (num1 + num2 - 1) / num2;
+}
+
+inline int64_t GetRightDownRowShift(int64_t m, int64_t n)
+{
+    return std::max(static_cast<int64_t>(0), m - n - 1);
+}
+
+inline void GetRightDownVirt(int64_t m, int64_t n, int64_t &virtM, int64_t &virtN)
+{
+    m -= GetRightDownRowShift(m, n);
+    if (m < 1 || n < 1) {
+        virtM = 0;
+        virtN = 0;
+        return;
+    }
+    virtM = m;
+    virtN = 2 * n - m + 3;
+}
+
+inline bool TndLineRunIsWorthy(int64_t k, int64_t virtM, int64_t virtN, int64_t pairCount)
+{
+    if (virtM <= 0 || virtN <= 0 || virtM * virtN <= TND_LINE_TINY_AREA) {
+        return false;
+    }
+    return pairCount > 0 && virtN * pairCount >= k && virtM >= std::min(k, virtN);
+}
+
+inline int64_t CalBandWideCols(int64_t m, int64_t n, int64_t p, int64_t q)
+{
+    const int64_t nNew = std::min(m - 1 + q, n);
+    const int64_t l1 = m - p;
+    const int64_t l2 = p + q - m;
+    const int64_t l3 = nNew - l1 - l2;
+    const int64_t foldCols = std::max(static_cast<int64_t>(0), l3 - p + 1);
+    return nNew - foldCols;
+}
+
+inline int64_t CalBandNarrowRounds(int64_t k, int64_t n1, int64_t m, int64_t n, int64_t p, int64_t q)
+{
+    const int64_t l1 = q - 1;
+    const int64_t l2 = std::min(n - q + 1, m + 2 - p - q);
+    const int64_t l3 = std::max(static_cast<int64_t>(0), std::min(p + n - m - 1, p + q - 2));
+    int64_t overlap = 0;
+    const int64_t nNew = l1 + l2 + l3;
+    if (l3 != 0 && p <= l3) {
+        overlap = std::min(l3 - p + 1, l1);
+    }
+    const int64_t seg = p + q - 1;
+    return seg * TndLineCeilDiv((nNew - overlap) * n1 + overlap, k);
+}
+
+inline bool TndLineRunEmpty(const TndLineRunShape &shape, bool isBand)
+{
+    return shape.m < 1 || shape.n < 1 || (isBand && shape.p + shape.q < 2);
+}
+} // namespace
+
+bool QuantFlashAttnMetadataCpuKernel::IsTndLineBandMode() const
+{
+    return maskMode_ == MASK_MODE_BAND;
+}
+
+void QuantFlashAttnMetadataCpuKernel::CalTndLineActualToken(uint32_t bIdx, int64_t &s1Token, int64_t &s2Token)
+{
+    if (IsTndLineBandMode()) {
+        s1Token = (winLeft_ == -1) ? TND_LINE_TOKEN_UNLIMITED : static_cast<int64_t>(winLeft_);
+        s2Token = (winRight_ == -1) ? TND_LINE_TOKEN_UNLIMITED : static_cast<int64_t>(winRight_);
+    } else {
+        s1Token = TND_LINE_TOKEN_UNLIMITED;
+        s2Token = 0;
+    }
+    const int64_t s1Len = static_cast<int64_t>(GetS1SeqSize(bIdx));
+    const int64_t s2Len = static_cast<int64_t>(GetS2SeqSize(bIdx));
+    s1Token = s1Token + s1Len - s2Len;
+    s2Token = s2Token - s1Len + s2Len;
+}
+
+void QuantFlashAttnMetadataCpuKernel::GetTndLineOuterMN(uint32_t bIdx, int64_t &m, int64_t &n)
+{
+    const int64_t s1Len = static_cast<int64_t>(GetS1SeqSize(bIdx));
+    const int64_t s2Len = static_cast<int64_t>(GetS2SeqSize(bIdx));
+    if (s1Len <= 0 || s2Len <= 0) {
+        m = 0;
+        n = 0;
+        return;
+    }
+    m = TndLineCeilDiv(s1Len, static_cast<int64_t>(optiling::QUANT_FAG_CUBE_BASE_M));
+    n = TndLineCeilDiv(s2Len, static_cast<int64_t>(optiling::QUANT_FAG_CUBE_BASE_N));
+    m = m < 1 ? 1 : m;
+    n = n < 1 ? 1 : n;
+}
+
+TndLineRunShape QuantFlashAttnMetadataCpuKernel::MakeTndLineRunShape(uint32_t bIdx)
+{
+    TndLineRunShape shape;
+    GetTndLineOuterMN(bIdx, shape.m, shape.n);
+    if (!IsTndLineBandMode()) {
+        shape.m -= GetRightDownRowShift(shape.m, shape.n);
+        shape.kind = TND_LINE_KIND_RIGHT_DOWN;
+        return shape;
+    }
+
+    shape.kind = TND_LINE_KIND_BAND;
+    if (shape.m < 1 || shape.n < 1) {
+        return shape;
+    }
+    int64_t s1Token = 0;
+    int64_t s2Token = 0;
+    CalTndLineActualToken(bIdx, s1Token, s2Token);
+    shape.p = TndLineCeilDiv(s1Token, static_cast<int64_t>(optiling::QUANT_FAG_CUBE_BASE_M)) + 1;
+    shape.q = TndLineCeilDiv(s2Token, static_cast<int64_t>(optiling::QUANT_FAG_CUBE_BASE_N)) + 1;
+    shape.p = shape.p > shape.m ? shape.m : shape.p;
+    shape.q = shape.q > shape.n ? shape.n : shape.q;
+    if (shape.p < 0) {
+        shape.n = shape.n + shape.p;
+        shape.q = shape.p + shape.q;
+        shape.p = 1;
+    } else if (shape.q < 0) {
+        shape.m = shape.m + shape.q;
+        shape.p = shape.p + shape.q;
+        shape.q = 1;
+    }
+    int64_t actualM = shape.m;
+    int64_t actualN = shape.n;
+    if (shape.p + shape.q <= shape.m) {
+        const int64_t l1 = shape.q - 1;
+        const int64_t l2 = std::min(shape.n - shape.q + 1, shape.m + 2 - shape.p - shape.q);
+        const int64_t l3 =
+            std::max(static_cast<int64_t>(0), std::min(shape.p + shape.n - shape.m - 1, shape.p + shape.q - 2));
+        actualM = (l3 == 0) ? (shape.p + shape.q + l2 - 2) : shape.m;
+        actualN = l1 + l2 + l3;
+    } else {
+        actualM = shape.m;
+        actualN = std::min(shape.m - 1 + shape.q, shape.n);
+    }
+    shape.m = actualM;
+    shape.n = actualN;
+    shape.kind = (shape.p >= shape.m) ? TND_LINE_KIND_BAND_DENSE : TND_LINE_KIND_BAND;
+    return shape;
+}
+
+int64_t QuantFlashAttnMetadataCpuKernel::CountTndLineSameShapeRun(uint32_t start, TndLineRunShape &shape)
+{
+    shape = MakeTndLineRunShape(start);
+    uint32_t end = start;
+    while (end + 1 < static_cast<uint32_t>(batchSize_)) {
+        const TndLineRunShape next = MakeTndLineRunShape(end + 1);
+        if (next.m != shape.m || next.n != shape.n || next.p != shape.p || next.q != shape.q ||
+            next.kind != shape.kind) {
+            break;
+        }
+        end += 1;
+    }
+    return static_cast<int64_t>(end - start) + 1;
+}
+
+int64_t QuantFlashAttnMetadataCpuKernel::CalTndLineRunRounds(const TndLineRunShape &shape, int64_t total)
+{
+    const int64_t k = static_cast<int64_t>(aicCoreNum_);
+    const bool isBand = IsTndLineBandMode();
+    if (TndLineRunEmpty(shape, isBand)) {
+        return 0;
+    }
+    if (!isBand) {
+        int64_t virtM = 0;
+        int64_t virtN = 0;
+        GetRightDownVirt(shape.m, shape.n, virtM, virtN);
+        const int64_t runPairs = total / 2;
+        const int64_t pairRounds = (runPairs > 0 && virtN > 0) ? TndLineCeilDiv(virtN * runPairs, k) * virtM : 0;
+        const int64_t singleRounds = (total % 2 == 1) ? TndLineCeilDiv(shape.n, k) * shape.m : 0;
+        return pairRounds + singleRounds;
+    }
+    if (shape.kind == TND_LINE_KIND_BAND_DENSE) {
+        return TndLineCeilDiv(shape.n * total, k) * shape.m;
+    }
+    if (shape.p + shape.q <= shape.m) {
+        return CalBandNarrowRounds(k, total, shape.m, shape.n, shape.p, shape.q);
+    }
+    return TndLineCeilDiv(CalBandWideCols(shape.m, shape.n, shape.p, shape.q) * total, k) * shape.m;
+}
+
+bool QuantFlashAttnMetadataCpuKernel::PreferTndLineSwizzle()
+{
+    const int64_t k = static_cast<int64_t>(aicCoreNum_);
+    const int64_t n1 = static_cast<int64_t>(baseInfo.kvHeadNum);
+    const int64_t bSize = static_cast<int64_t>(batchSize_);
+    const bool isBand = IsTndLineBandMode();
+    if (k <= 0 || n1 <= 0 || bSize <= 0) {
+        return false;
+    }
+    if (numHeadsQ_ != numHeadsKv_ || n1 < 2) {
+        return false;
+    }
+    for (int64_t bIdx = 0; bIdx < bSize; ++bIdx) {
+        const int64_t s1Len = static_cast<int64_t>(GetS1SeqSize(static_cast<uint32_t>(bIdx)));
+        const int64_t s2Len = static_cast<int64_t>(GetS2SeqSize(static_cast<uint32_t>(bIdx)));
+        if (s1Len <= 0 || s2Len <= 0) {
+            return false;
+        }
+        if (!isBand && s1Len != s2Len) {
+            return false;
+        }
+    }
+
+    bool hasWork = false;
+    int64_t i = 0;
+    while (i < bSize) {
+        TndLineRunShape shape;
+        const int64_t groupSize = CountTndLineSameShapeRun(static_cast<uint32_t>(i), shape);
+        const int64_t total = n1 * groupSize;
+        if (TndLineRunEmpty(shape, isBand)) {
+            i += groupSize;
+            continue;
+        }
+        hasWork = true;
+        bool worthy = true;
+        if (!isBand) {
+            int64_t virtM = 0;
+            int64_t virtN = 0;
+            GetRightDownVirt(shape.m, shape.n, virtM, virtN);
+            worthy = TndLineRunIsWorthy(k, virtM, virtN, total / 2);
+            if (worthy && (total % 2 == 1) && shape.m < std::min(k, shape.n)) {
+                worthy = false;
+            }
+        } else if (shape.kind == TND_LINE_KIND_BAND_DENSE) {
+            worthy = TndLineRunIsWorthy(k, shape.m, shape.n, total);
+        } else if (shape.p + shape.q <= shape.m) {
+            worthy = shape.m * shape.n > TND_LINE_TINY_AREA;
+        } else {
+            worthy = TndLineRunIsWorthy(k, shape.m, CalBandWideCols(shape.m, shape.n, shape.p, shape.q), total);
+        }
+        if (!worthy) {
+            return false;
+        }
+        i += groupSize;
+    }
+    return hasWork;
+}
+
+bool QuantFlashAttnMetadataCpuKernel::CalTndLineSwizzleSchedule(TndLineSchedule &sched)
+{
+    const int64_t bSize = static_cast<int64_t>(batchSize_);
+    const int64_t n1 = static_cast<int64_t>(baseInfo.kvHeadNum);
+    sched.roundPrefix.assign(bSize + 1, 0);
+    sched.s1Outer.assign(bSize, 0);
+    sched.s2Outer.assign(bSize, 0);
+    sched.lineM.assign(bSize, 0);
+    sched.lineN.assign(bSize, 0);
+    sched.lineP.assign(bSize, 0);
+    sched.lineQ.assign(bSize, 0);
+    sched.runSize.assign(bSize, 0);
+    sched.s1Token.assign(bSize, 0);
+    sched.s2Token.assign(bSize, 0);
+
+    for (int64_t bIdx = 0; bIdx < bSize; ++bIdx) {
+        int64_t m = 0;
+        int64_t n = 0;
+        GetTndLineOuterMN(static_cast<uint32_t>(bIdx), m, n);
+        sched.s1Outer[bIdx] = m;
+        sched.s2Outer[bIdx] = n;
+        CalTndLineActualToken(static_cast<uint32_t>(bIdx), sched.s1Token[bIdx], sched.s2Token[bIdx]);
+    }
+
+    int64_t i = 0;
+    while (i < bSize) {
+        TndLineRunShape shape;
+        const int64_t groupSize = CountTndLineSameShapeRun(static_cast<uint32_t>(i), shape);
+        const int64_t runRounds = CalTndLineRunRounds(shape, n1 * groupSize);
+        if (runRounds > INT32_MAX - sched.roundPrefix[i]) {
+            KERNEL_LOG_ERROR("QuantFAG TND line swizzle exceeds int32 metadata round capacity");
+            return false;
+        }
+        const int64_t soloEnd = sched.roundPrefix[i] + runRounds;
+        for (int64_t r = 0; r < groupSize; ++r) {
+            sched.roundPrefix[i + r + 1] = soloEnd;
+            sched.lineM[i + r] = std::max(static_cast<int64_t>(0), shape.m);
+            sched.lineN[i + r] = std::max(static_cast<int64_t>(0), shape.n);
+            sched.lineP[i + r] = std::max(static_cast<int64_t>(0), shape.p);
+            sched.lineQ[i + r] = std::max(static_cast<int64_t>(0), shape.q);
+            sched.runSize[i + r] = groupSize;
+        }
+        i += groupSize;
+    }
+    return sched.roundPrefix[bSize] > 0;
+}
+
+bool QuantFlashAttnMetadataCpuKernel::GenQuantFagTndLineSchedule(optiling::detail::QuantFAGMetaData &gradMetaData)
+{
+    TndLineSchedule sched;
+    if (!CalTndLineSwizzleSchedule(sched)) {
+        return false;
+    }
+    const int64_t bSize = static_cast<int64_t>(batchSize_);
+    const int64_t roundPrefixBase = static_cast<int64_t>(optiling::QUANT_FAG_ARRAY_BASE_INDEX);
+    const int64_t s1OuterBase = roundPrefixBase + bSize + 1;
+    const int64_t s2OuterBase = s1OuterBase + bSize;
+    const int64_t lineMBase = s2OuterBase + bSize;
+    const int64_t lineNBase = lineMBase + bSize;
+    const int64_t linePBase = lineNBase + bSize;
+    const int64_t lineQBase = linePBase + bSize;
+    const int64_t runSizeBase = lineQBase + bSize;
+    const int64_t s1TokenBase = runSizeBase + bSize;
+    const int64_t s2TokenBase = s1TokenBase + bSize;
+    const int64_t needSize = s2TokenBase + bSize;
+    const int64_t fagRowSize = static_cast<int64_t>(GetFagOffset());
+    if (needSize > fagRowSize) {
+        KERNEL_LOG_INFO("QuantFAG TND line swizzle: batchSize %ld needs %ld metadata slots but row size is only %ld, "
+                        "falling back to dense swizzle",
+                        bSize, needSize, fagRowSize);
+        return false;
+    }
+
+    gradMetaData.SetMetaData(optiling::QUANT_FAG_SCHEDULE_VALID_INDEX, 1);
+    gradMetaData.SetDeterMaxRound(optiling::QUANT_FAG_DETER_MAX_NUM_INDEX, sched.roundPrefix[bSize]);
+    gradMetaData.SetMetaData(optiling::QUANT_FAG_ROUND_PREFIX_OFFSET_INDEX, roundPrefixBase);
+    gradMetaData.SetMetaData(optiling::QUANT_FAG_S1_OUTER_OFFSET_INDEX, s1OuterBase);
+    gradMetaData.SetMetaData(optiling::QUANT_FAG_S2_OUTER_OFFSET_INDEX, s2OuterBase);
+    gradMetaData.SetMetaData(optiling::QUANT_FAG_SCHEDULE_MODE_INDEX, optiling::QUANT_FAG_TND_LINE_MODE);
+    gradMetaData.SetMetaData(optiling::QUANT_FAG_TND_LINE_M_OFFSET_INDEX, lineMBase);
+    gradMetaData.SetMetaData(optiling::QUANT_FAG_TND_LINE_N_OFFSET_INDEX, lineNBase);
+    gradMetaData.SetMetaData(optiling::QUANT_FAG_TND_LINE_P_OFFSET_INDEX, linePBase);
+    gradMetaData.SetMetaData(optiling::QUANT_FAG_TND_LINE_Q_OFFSET_INDEX, lineQBase);
+    gradMetaData.SetMetaData(optiling::QUANT_FAG_TND_LINE_RUN_SIZE_OFFSET_INDEX, runSizeBase);
+    for (int64_t bIdx = 0; bIdx <= bSize; ++bIdx) {
+        gradMetaData.SetMetaData(static_cast<uint32_t>(roundPrefixBase + bIdx), sched.roundPrefix[bIdx]);
+    }
+    for (int64_t bIdx = 0; bIdx < bSize; ++bIdx) {
+        gradMetaData.SetMetaData(static_cast<uint32_t>(s1OuterBase + bIdx), sched.s1Outer[bIdx]);
+        gradMetaData.SetMetaData(static_cast<uint32_t>(s2OuterBase + bIdx), sched.s2Outer[bIdx]);
+        gradMetaData.SetMetaData(static_cast<uint32_t>(lineMBase + bIdx), sched.lineM[bIdx]);
+        gradMetaData.SetMetaData(static_cast<uint32_t>(lineNBase + bIdx), sched.lineN[bIdx]);
+        gradMetaData.SetMetaData(static_cast<uint32_t>(linePBase + bIdx), sched.lineP[bIdx]);
+        gradMetaData.SetMetaData(static_cast<uint32_t>(lineQBase + bIdx), sched.lineQ[bIdx]);
+        gradMetaData.SetMetaData(static_cast<uint32_t>(runSizeBase + bIdx), sched.runSize[bIdx]);
+        gradMetaData.SetMetaData(static_cast<uint32_t>(s1TokenBase + bIdx), sched.s1Token[bIdx]);
+        gradMetaData.SetMetaData(static_cast<uint32_t>(s2TokenBase + bIdx), sched.s2Token[bIdx]);
+    }
+    gradMetaData.SetMetaData(optiling::QUANT_FAG_SCHEDULE_KIND_INDEX, optiling::QUANT_FAG_TND_LINE_SWIZZLE);
+    KERNEL_LOG_INFO("QuantFAG TND line swizzle: batchSize %ld, aicNum %d, loopMax %ld, rowSize %ld", bSize, aicCoreNum_,
+                    sched.roundPrefix[bSize], fagRowSize);
+    return true;
+}
+
 // varlen 确定性 swizzle 分核: 逐 batch 累计轮数
 //   prefix[0]   = 0
 //   prefix[b+1] = prefix[b] + ceil(n_b * n1 / k) * m_b
@@ -458,6 +818,11 @@ bool QuantFlashAttnMetadataCpuKernel::GenQuantFagGradMetaData()
         return true;
     }
 
+    if ((maskMode_ == MASK_MODE_CAUSAL || maskMode_ == MASK_MODE_BAND) && PreferTndLineSwizzle() &&
+        GenQuantFagTndLineSchedule(gradMetaData)) {
+        return true;
+    }
+
     std::vector<int64_t> roundPrefix;
     std::vector<int64_t> s1OuterList;
     std::vector<int64_t> s2OuterList;
@@ -498,7 +863,8 @@ bool QuantFlashAttnMetadataCpuKernel::GenQuantFagGradMetaData()
         gradMetaData.SetMetaData(static_cast<uint32_t>(s1OuterBase + bIdx), s1OuterList[bIdx]);
         gradMetaData.SetMetaData(static_cast<uint32_t>(s2OuterBase + bIdx), s2OuterList[bIdx]);
     }
-    gradMetaData.SetMetaData(optiling::QUANT_FAG_SCHEDULE_VERSION_INDEX, sparseData.empty() ? 1 : 2);
+    gradMetaData.SetMetaData(optiling::QUANT_FAG_SCHEDULE_KIND_INDEX,
+                             sparseData.empty() ? 1 : optiling::QUANT_FAG_DENSE_SWIZZLE);
     for (size_t field = 0; field < sparseData.size(); ++field) {
         const int64_t fieldBase = sparseBase + static_cast<int64_t>(field) * bSize;
         gradMetaData.SetMetaData(optiling::QUANT_FAG_ROW_BEGIN_OFFSET_INDEX + field, fieldBase);
