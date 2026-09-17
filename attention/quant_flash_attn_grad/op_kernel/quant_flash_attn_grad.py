@@ -3180,19 +3180,23 @@ def process_first_s2(
     with pl.section_vector():
         if not last_run_info.is_dq_completed:
             set_quant_run_info(last_run_info, kv_inner_id, 2)
-            pl.system.wait_cross_core(
-                pipe=pl.PipeType.MTE3,
-                event_id=SYNC_DETER_FLAG,
-                sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
-            )
+            # Deterministic schedules assign disjoint Q blocks within a round.
+            # Order whole 512-row writebacks; event 4 still releases each 128-row UB tile.
+            if kv_inner_id == 0:
+                pl.system.wait_cross_core(
+                    pipe=pl.PipeType.MTE3,
+                    event_id=SYNC_DETER_FLAG,
+                    sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
+                )
 
             if last_run_info.s1_idx < last_run_info.inner_s1_loop_num:
                 copy_dqkv2gm(False, last_run_info, const_info, tensor_info)
-            pl.system.set_cross_core(
-                pipe=pl.PipeType.MTE3,
-                event_id=SYNC_DETER_FLAG,
-                sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
-            )
+            if kv_inner_id == CUBE_BASEM // TS - 1:
+                pl.system.set_cross_core(
+                    pipe=pl.PipeType.MTE3,
+                    event_id=SYNC_DETER_FLAG,
+                    sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
+                )
             pl.system.set_cross_core(
                 pipe=pl.PipeType.MTE3,
                 event_id=SYNC_TRANSFER_DQ_FLAG,
@@ -3264,6 +3268,13 @@ def drain_pending_task(run_info, const_info, tensor_info, tmp_info):
                 sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK,
             )
 
+    # Every logical round contributes one global phase, including empty rounds.
+    with pl.section_vector():
+        pl.system.wait_cross_core(
+            pipe=pl.PipeType.MTE3,
+            event_id=SYNC_DETER_FLAG,
+            sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
+        )
     if not run_info.is_dq_completed:
         for i in pl.range(4):
             set_quant_run_info(run_info, i, 0)
@@ -3276,11 +3287,6 @@ def drain_pending_task(run_info, const_info, tensor_info, tmp_info):
             )
             compute_dq(run_info, const_info, tensor_info)
             with pl.section_vector():
-                pl.system.wait_cross_core(
-                    pipe=pl.PipeType.MTE3,
-                    event_id=SYNC_DETER_FLAG,
-                    sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
-                )
                 if (
                     run_info.s1_idx
                     < run_info.inner_s1_loop_num
@@ -3290,27 +3296,15 @@ def drain_pending_task(run_info, const_info, tensor_info, tmp_info):
                     )
                 pl.system.set_cross_core(
                     pipe=pl.PipeType.MTE3,
-                    event_id=SYNC_DETER_FLAG,
-                    sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
-                )
-                pl.system.set_cross_core(
-                    pipe=pl.PipeType.MTE3,
                     event_id=SYNC_TRANSFER_DQ_FLAG,
                     sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK,
                 )
-    else:
-        with pl.section_vector():
-            for i in pl.range(4):
-                pl.system.wait_cross_core(
-                    pipe=pl.PipeType.MTE3,
-                    event_id=SYNC_DETER_FLAG,
-                    sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
-                )
-                pl.system.set_cross_core(
-                    pipe=pl.PipeType.MTE3,
-                    event_id=SYNC_DETER_FLAG,
-                    sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
-                )
+    with pl.section_vector():
+        pl.system.set_cross_core(
+            pipe=pl.PipeType.MTE3,
+            event_id=SYNC_DETER_FLAG,
+            sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
+        )
     run_info.is_dkv_completed = True
     run_info.is_dq_completed = True
 
@@ -4459,21 +4453,20 @@ def quant_flash_attn_grad(
         # with pl.section_cube():
         #     pl.printf("wenyu check3 next_valid_loop_idx : %d next_block_idx : %d is_valid_block : %d \n", next_valid_loop_idx, next_block_idx, is_valid_block)
         if is_valid_block:
-            # A gap may have already drained the previous task. Match the four
-            # writeback slots even when this core has no pending dQ.
+            # A gap may have already drained the previous task. Match one
+            # logical-round writeback phase even when this core has no pending dQ.
             if loop_idx > 0 and run_infos[(task_id + 1) % 2].is_dq_completed:
                 with pl.section_vector():
-                    for j in pl.range(4):
-                        pl.system.wait_cross_core(
-                            pipe=pl.PipeType.MTE3,
-                            event_id=SYNC_DETER_FLAG,
-                            sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
-                        )
-                        pl.system.set_cross_core(
-                            pipe=pl.PipeType.MTE3,
-                            event_id=SYNC_DETER_FLAG,
-                            sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
-                        )
+                    pl.system.wait_cross_core(
+                        pipe=pl.PipeType.MTE3,
+                        event_id=SYNC_DETER_FLAG,
+                        sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
+                    )
+                    pl.system.set_cross_core(
+                        pipe=pl.PipeType.MTE3,
+                        event_id=SYNC_DETER_FLAG,
+                        sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
+                    )
             set_run_info(
                 run_infos[task_id % 2],
                 run_infos[(task_id + 1) % 2],
