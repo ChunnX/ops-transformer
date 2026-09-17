@@ -25,5 +25,29 @@ constexpr uint64_t MX_FP8FP4_SCALE_K_L1_SIZE = 4096UL;
 constexpr uint64_t DOUBLE_BUFFER = 2UL;
 constexpr uint64_t SYNC_MODE4 = 4;
 
+// Shared by the AIC consumer and AIV0 producer. Slots stay fixed across all
+// persistent GMM calls, including tails; only the tensor's valid shape changes.
+struct MegaMoeMxL1Layout {
+    static constexpr uint64_t KB = 1024;
+    static constexpr uint64_t A_STAGES = 2;
+    static constexpr uint64_t B_STAGES = 4;
+    static constexpr uint64_t A_SLOT_BYTES = 64 * KB;
+    static constexpr uint64_t B_SLOT_BYTES = 64 * KB;
+    static constexpr uint64_t SCALE_SLOT_BYTES = 32 * KB;
+    static constexpr uint64_t HALF_L1_BYTES = 256 * KB;
+    static constexpr uint64_t A_OFFSET = 128 * KB;
+    static constexpr uint64_t SCALE_A_OFFSET = 192 * KB;
+    static constexpr uint64_t SCALE_B_OFFSET = 224 * KB;
+
+    // B4 map, in KiB:
+    // [0,64) B0, [64,128) B2, [128,192) A0, [192,224) scA0, [224,256) scB0
+    // [256,320) B1, [320,384) B3, [384,448) A1, [448,480) scA1, [480,512) scB1
+    // Both AIC and AIV0 use this mapping for the B consumer/producer ring.
+    __aicore__ static inline uint64_t BOffset(uint64_t slot)
+    {
+        return (slot & 1U) * HALF_L1_BYTES + (slot >> 1U) * B_SLOT_BYTES;
+    }
+};
+
 } // namespace Gemm
 } // namespace Blaze
