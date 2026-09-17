@@ -487,7 +487,7 @@ uint32_t SparseFlashMlaMetadataCpuKernel::GetOriTopkLength(uint32_t bsStride)
     if (oriTopK_ != 0 && oriMaskMode_ == static_cast<int32_t>(SparseMode::DEFAULT_MASK) &&
         oriTopkLength_ != nullptr && oriTopkLength_->GetData() != nullptr) {
         const int32_t *oriTopkPtr = static_cast<const int32_t *>(oriTopkLength_->GetData());
-        // Match the kernel's effective sparse length before planning FA/FD work.
+        // 规划 FA/FD 任务时，将有效稀疏长度限制到索引宽度，与内核的计算范围保持一致。
         return std::min(static_cast<uint32_t>(oriTopkPtr[bsStride]), static_cast<uint32_t>(oriTopK_));
     }
     // 如果不是 DEFAULT_MASK，使用 oriTopK_
@@ -539,7 +539,7 @@ uint32_t SparseFlashMlaMetadataCpuKernel::GetCmpTopkLength(uint32_t bsStride)
     if (cmpTopK_ != 0 && cmpMaskMode_ == static_cast<int32_t>(SparseMode::DEFAULT_MASK) &&
         cmpTopkLength_ != nullptr && cmpTopkLength_->GetData() != nullptr) {
         const int32_t *cmpTopkPtr = static_cast<const int32_t *>(cmpTopkLength_->GetData());
-        // Match the kernel's effective sparse length before planning FA/FD work.
+        // 规划 FA/FD 任务时，将有效稀疏长度限制到索引宽度，与内核的计算范围保持一致。
         return std::min(static_cast<uint32_t>(cmpTopkPtr[bsStride]), static_cast<uint32_t>(cmpTopK_));
     }
     // 如果不是 DEFAULT_MASK，使用 cmpTopK_
@@ -985,8 +985,8 @@ void SparseFlashMlaMetadataCpuKernel::GatherOriAndCmpCache(S1GCache &s1GCache)
 int64_t SparseFlashMlaMetadataCpuKernel::CalcBatchConsistencyBlockCost(
     const S1GCache &s1GCache, uint32_t blockIdx)
 {
-    // A reduction block contains consecutive base computations, including the
-    // partial ORI base before the first CMP base. The two tensors keep their own addresses.
+    // 规约块按基本计算块的顺序分组，ORI 尾块可以与 CMP 首块归入同一规约块。
+    // ORI 和 CMP 各自保留独立的存储地址。
     uint64_t basesPerBlock = s1GCache.reductionBlockSize / s2BaseSize_;
     uint64_t firstBase = static_cast<uint64_t>(blockIdx) * basesPerBlock;
     uint64_t oriBases = (static_cast<uint64_t>(s1GCache.actOriS2Size) + s2BaseSize_ - 1U) / s2BaseSize_;
@@ -1019,8 +1019,8 @@ void SparseFlashMlaMetadataCpuKernel::CalcBatchConsistencyS1GCache(
     s1GCache.s2Loop = static_cast<uint32_t>(
         (static_cast<uint64_t>(s1GCache.actOriS2Size) + s2BaseSize_ - 1U) / s2BaseSize_ +
         (static_cast<uint64_t>(s1GCache.actCmpS2Size) + s2BaseSize_ - 1U) / s2BaseSize_);
-    // Number the concatenated ORI/CMP base computations before assigning cores.
-    // A core boundary can only fall between these reduction blocks.
+    // 分核前按 ORI、CMP 的基本计算块连续划分规约块。
+    // 核之间的任务边界只能落在规约块之间。
     s1GCache.s2Start = 0U;
     s1GCache.s2End = (s1GCache.s2Loop + basesPerBlock - 1U) / basesPerBlock;
     s1GCache.s1GBlock = s1GCache.s2End;
@@ -1313,7 +1313,7 @@ uint32_t SparseFlashMlaMetadataCpuKernel::CalcCurBlockS2Loop(const AssignContext
     const S1GCache &s1GCache = assignContext.s1GCache;
     uint32_t basesPerBlock = s1GCache.reductionBlockSize / s2BaseSize_;
     uint64_t firstBase = static_cast<uint64_t>(assignContext.curS2Idx) * basesPerBlock;
-    // s2Loop is decremented as work is assigned; derive the row's full length here.
+    // 任务分配会递减 s2Loop，因此需从原始长度计算整行的基本块总数。
     uint64_t totalBases =
         (static_cast<uint64_t>(s1GCache.actOriS2Size) + s2BaseSize_ - 1U) / s2BaseSize_ +
         (static_cast<uint64_t>(s1GCache.actCmpS2Size) + s2BaseSize_ - 1U) / s2BaseSize_;

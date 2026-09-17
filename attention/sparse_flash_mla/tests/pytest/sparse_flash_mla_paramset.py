@@ -1139,7 +1139,7 @@ TEST_PARAMS = {
         "testcase_name": ["bc_reduction_unit_boundary"],
         "isSink": [True],
     },
-    # Raw ORI/CMP lengths exceed their index widths; FA/FD must use the clipped lengths.
+    # 原始 ORI/CMP 长度超过各自索引宽度，FA/FD 应使用截断后的有效长度。
     "bc_topk_length_exceeds_index_width": {
         "layout_q": ["TND"],
         "layout_kv": ["PA_BBND"],

@@ -778,7 +778,7 @@ TEST_PARAMS = {
         "batch_consistency_token_split": [[1, 1]],
         "batch_consistency_shape_change": [[1, 2]],
     },
-    # Raw ORI/CMP lengths exceed their index widths; FA/FD must use the clipped lengths.
+    # 原始 ORI/CMP 长度超过各自索引宽度，FA/FD 应使用截断后的有效长度。
     "bc_topk_length_exceeds_index_width": {
         "layout_q": ["TND"],
         "layout_kv": ["PA_BBND"],

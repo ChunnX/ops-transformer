@@ -185,9 +185,9 @@ class GeneralizedSFA:
         cmp_s2_size = 0 if cmp_k_fp32 is None else cmp_k_fp32.shape[0]
         reduce_size = self._get_batch_consistency_reduce_size(ori_s2_size, cmp_s2_size)
 
-        # Preserve each branch's 128-token base computations, then group their
-        # concatenation. An ORI tail remains a separate base even when the same
-        # reduction block also contains the first CMP base.
+        # 各分支仍按 128 的基本块大小计算，再将这些基本块连续分组。
+        # ORI 尾块保留独立的基本计算边界，
+        # 同时允许它与 CMP 首块归入同一规约块。
         tiles = []
         for k_tensor in (ori_k_fp32, cmp_k_fp32):
             if k_tensor is None or k_tensor.shape[0] == 0:
