@@ -54,13 +54,10 @@ __aicore__ inline SendMaskConfig CreateSendMaskConfig(const Params &params, uint
     const MegaMoeSendMaskBufferConfig &bufferConfig = aivCoreIdx < params.tilingData->sendMaskCoreCountWithExtraExpert ?
                                                           params.tilingData->sendMaskConfigForCoreWithExtraExpert :
                                                           params.tilingData->sendMaskConfigForCoreWithoutExtraExpert;
-    return {
-        .expertCountWinOffset = expertCountWinOffset,
-        .routeIndexAlignSize = static_cast<uint64_t>(Ops::Base::CeilAlign(
-            static_cast<int64_t>(params.tilingData->numMaxTokensPerRank) * static_cast<int64_t>(sizeof(TopkIndexType)),
-            static_cast<int64_t>(ALIGN_32))),
-        .routeIndexWinOffset = routeIndexWinOffset,
-        .bufferConfig = bufferConfig};
+    return {.expertCountWinOffset = expertCountWinOffset,
+            .routeIndexAlignSize = static_cast<uint64_t>(CalcDispatchRouteIndexAlignSize(params.tilingData)),
+            .routeIndexWinOffset = routeIndexWinOffset,
+            .bufferConfig = bufferConfig};
 }
 
 // 加载当前批次的 topkIds，并生成它们在完整数组中的下标。

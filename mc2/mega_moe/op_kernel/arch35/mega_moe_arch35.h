@@ -165,7 +165,7 @@ protected:
                                                                bfloat16_t, L1_TILE_M_256, L1_TILE_N, false>;
     BlockEpilogue epilogueOp_;
     SharedBlockEpilogue sharedEpilogueOp_;
-    TokenDispatchScratch<ActivationType> tokenDispatchScratch_;
+    TokenDispatchScratch<ActivationType, TopkIndexType> tokenDispatchScratch_;
     WaveCombineScratch waveCombineScratch_;
     TokenUnpermuteScratch tokenUnpermuteScratch_;
     MegaMoeImpl::ExceptionDumpEngine exceptionDump_;
@@ -323,7 +323,7 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
 {
     const TokenDispatchConfig &context = tokenDispatchConfig_;
-    TokenDispatchScratch<ActivationType> &scratch = tokenDispatchScratch_;
+    TokenDispatchScratch<ActivationType, TopkIndexType> &scratch = tokenDispatchScratch_;
     scratch.expertRevNumsGlobalTensor.SetGlobalBuffer(
         reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.expertRecvTokenCountPtr));
     if constexpr (g_coreType == AIC) {
@@ -358,8 +358,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
     uint32_t validTopkIndexTensorSize = Ops::Base::CeilAlign(
         static_cast<int64_t>(bufferConfig.routeItemsPerBatch) * static_cast<int64_t>(sizeof(TopkIndexType)),
         static_cast<int64_t>(ALIGN_32));
-    scratch.validTopkIndexTensor =
-        LocalTensor<uint8_t>(TPosition::VECCALC, validTopkIndexTensorAddr, validTopkIndexTensorSize);
+    scratch.validTopkIndexTensor = LocalTensor<TopkIndexType>(TPosition::VECCALC, validTopkIndexTensorAddr,
+                                                              validTopkIndexTensorSize / sizeof(TopkIndexType));
     /*
      * 路由批次 Tensor 后依次放置 copyTmp 环形缓冲区和 32B metaInfo 环形缓冲区。
      * Tensor 用途：DispatchExpertTokens 中的动态 dispatch 环形缓冲区，配合
