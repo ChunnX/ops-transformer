@@ -22,7 +22,6 @@ __spec__ = {
 }
 
 import numpy
-from typing import List
 
 
 def MoeInitRoutingV3_input(*input_arrays, **kwargs):
@@ -535,7 +534,7 @@ def _moe_init_routing_v3_numpy(
         expanded_x = expanded_x[:actual_expert_total_num, :]
         quant_mode_dtype_str_map = {11: "float8_e5m2", 12: "float8_e4m3fn"}
         from ttk.utilities import get_dtype_range
-        from ttk.utilities import numpy_bfloat16, numpy_float8_e5m2, numpy_float8_e4m3fn
+        from ttk.utilities import numpy_float8_e5m2, numpy_float8_e4m3fn
 
         def block_max_with_padding(expanded_x, row_block_size, col_block_size):
             batch, rows, cols = expanded_x.shape
