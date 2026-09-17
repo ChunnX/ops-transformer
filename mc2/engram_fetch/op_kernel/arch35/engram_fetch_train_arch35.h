@@ -675,9 +675,12 @@ __aicore__ inline void EngramFetchTrainArch35::SendCountPhase()
 
 __aicore__ inline void EngramFetchTrainArch35::SendCountToPeers()
 {
+    if (!isSender_) {
+        return;
+    }
     LoadSendCountsToUb();
     LocalTensor<int32_t> sendCountsUb = statusBuf_.Get<int32_t>();
-    for (uint32_t dstRank = aivId_; dstRank < numRanks_; dstRank += totalBlocks_) {
+    for (uint32_t dstRank = aivId_; dstRank < numRanks_; dstRank += numSendCores_) {
         int32_t countVal = sendCountsUb.GetValue(dstRank * UB_ALIGN / sizeof(int32_t));
 
         GM_ADDR remoteSendCountAddr = GetRemoteWinAddr(dstRank, sendCountOffset_) + rankId_ * STATE_OFFSET;
