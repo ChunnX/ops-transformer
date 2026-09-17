@@ -218,6 +218,7 @@ struct S1GCache {
     uint32_t actCmpS2Size{0};
     uint32_t s2Loop{0U};
     uint32_t reductionBlockSize{0U};
+    uint32_t reductionMSize{0U};
 };
 
 // 分核功能模块内部使用：记录分配过程中，当前核的负载信息
@@ -296,6 +297,8 @@ private:
     void CalcOriS1GCache(S1GCache &s1GCache, const SplitInfo &splitInfo);
     void CalcCmpS1GCache(S1GCache &s1GCache, const SplitInfo &splitInfo);
     void GatherOriAndCmpCache(S1GCache &s1GCache);
+    void CalcBatchConsistencyS1GCache(S1GCache &s1GCache, const SplitInfo &splitInfo);
+    int64_t CalcBatchConsistencyBlockCost(const S1GCache &s1GCache, uint32_t blockIdx);
     void CalcS1GCache(uint32_t s1GIdx, const SplitContext &splitContext, const BatchCache &batchCache,
                       S1GCache &s1GCache);
 
@@ -316,7 +319,7 @@ private:
 
     // FD
     bool IsNeedRecordFDInfo(const AssignContext &assignContext, const SplitResult &splitRes);
-    bool isFirstReductionBlock(const AssignContext &assignContext, const SplitResult &splitRes);
+    bool IsFirstReductionBlock(const AssignContext &assignContext, const SplitResult &splitRes);
     void RecordFDInfo(const SplitContext &splitContext, const AssignContext &assignContext, SplitResult &result);
 
     // main

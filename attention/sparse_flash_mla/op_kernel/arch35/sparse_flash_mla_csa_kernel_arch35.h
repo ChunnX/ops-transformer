@@ -583,12 +583,7 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Pro
                 if constexpr (IS_BATCH_CONSISTENCY) {
                     int64_t safeBaseBlockNum =
                         runParam.baseBlockNumPerReductionBlock > 0 ? runParam.baseBlockNumPerReductionBlock : 1LL;
-                    int64_t reductionLoopCount = s2LoopCount;
-                    if (s2LoopCount >= runParam.oriKvLoopEndIdx) {
-                        reductionLoopCount +=
-                            (safeBaseBlockNum - runParam.oriKvLoopEndIdx % safeBaseBlockNum) % safeBaseBlockNum;
-                    }
-                    if (runParam.isCrossCoreSplit && reductionLoopCount % safeBaseBlockNum == 0) {
+                    if (runParam.isCrossCoreSplit && s2LoopCount % safeBaseBlockNum == 0) {
                         runParam.s2SplitIdx = s2SplitIdxCounter++;
                     }
                 }

@@ -647,12 +647,7 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Proc
                 if constexpr (IS_BATCH_CONSISTENCY) {
                     int64_t safeBaseBlockNum =
                         runParam.baseBlockNumPerReductionBlock > 0 ? runParam.baseBlockNumPerReductionBlock : 1LL;
-                    int64_t reductionLoopCount = s2LoopCount;
-                    if (s2LoopCount >= runParam.oriKvLoopEndIdx) {
-                        reductionLoopCount +=
-                            (safeBaseBlockNum - runParam.oriKvLoopEndIdx % safeBaseBlockNum) % safeBaseBlockNum;
-                    }
-                    if (runParam.isCrossCoreSplit && (reductionLoopCount % safeBaseBlockNum == 0)) {
+                    if (runParam.isCrossCoreSplit && (s2LoopCount % safeBaseBlockNum == 0)) {
                         runParam.s2SplitIdx = s2SplitIdxCounter++;
                     }
                 }
@@ -729,13 +724,15 @@ __aicore__ inline int64_t QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::C
     int64_t s2BaseSize = static_cast<int64_t>(constInfo.s2BaseSize);
     int64_t oriLen = runParam.s2LineOriEndIdx - runParam.s2LineStartIdx;
     int64_t cmpLen = runParam.s2CmpLineEndIdx - runParam.s2CmpLineStartIdx;
-    int64_t reductionBlockSize = runParam.baseBlockNumPerReductionBlock * s2BaseSize;
-    int64_t oriReductionBlockNum = (oriLen + reductionBlockSize - 1) / reductionBlockSize;
-    if (s2BlockIdx <= oriReductionBlockNum) {
-        int64_t oriToken = static_cast<int64_t>(s2BlockIdx) * reductionBlockSize;
+    int64_t safeBaseBlockNum =
+        runParam.baseBlockNumPerReductionBlock > 0 ? runParam.baseBlockNumPerReductionBlock : 1LL;
+    int64_t oriBaseBlockNum = (oriLen + s2BaseSize - 1) / s2BaseSize;
+    int64_t baseBlockIdx = static_cast<int64_t>(s2BlockIdx) * safeBaseBlockNum;
+    if (baseBlockIdx <= oriBaseBlockNum) {
+        int64_t oriToken = baseBlockIdx * s2BaseSize;
         return oriToken < oriLen ? oriToken : oriLen;
     }
-    int64_t cmpToken = (static_cast<int64_t>(s2BlockIdx) - oriReductionBlockNum) * reductionBlockSize;
+    int64_t cmpToken = (baseBlockIdx - oriBaseBlockNum) * s2BaseSize;
     return oriLen + (cmpToken < cmpLen ? cmpToken : cmpLen);
 }
 
@@ -860,20 +857,12 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::SetR
     runInfo.isCrossCoreSplit = runParam.isCrossCoreSplit;
     runInfo.s2SplitIdx = runParam.s2SplitIdx;
     runInfo.isFirstS2SplitCore = runParam.isFirstS2SplitCore;
-    int64_t reductionLoopCount = s2LoopCount;
-    if constexpr (IS_BATCH_CONSISTENCY) {
-        if (s2LoopCount >= runParam.oriKvLoopEndIdx) {
-            int64_t block = runParam.baseBlockNumPerReductionBlock;
-            reductionLoopCount += (block - runParam.oriKvLoopEndIdx % block) % block;
-        }
-    }
-    int64_t baseBlockIdInReduceBlock = reductionLoopCount % runParam.baseBlockNumPerReductionBlock;
-    runInfo.reduceBlockId = reductionLoopCount / runParam.baseBlockNumPerReductionBlock;
+    int64_t baseBlockIdInReduceBlock = s2LoopCount % runParam.baseBlockNumPerReductionBlock;
+    runInfo.reduceBlockId = s2LoopCount / runParam.baseBlockNumPerReductionBlock;
     runInfo.isFirstBase = baseBlockIdInReduceBlock == 0;
     runInfo.isLastBase =
         runParam.baseBlockNumPerReductionBlock - baseBlockIdInReduceBlock == 1LL || s2LoopCount == s2LoopLimit;
     if constexpr (IS_BATCH_CONSISTENCY) {
-        runInfo.isLastBase = runInfo.isLastBase || s2LoopCount + 1 == runParam.oriKvLoopEndIdx;
         runInfo.isFirstReduce = baseBlockIdInReduceBlock == 1;
     } else {
         runInfo.isFirstReduce = runInfo.s2LoopCount == 1;
