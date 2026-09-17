@@ -101,6 +101,13 @@ struct TileInfo {
 };
 } // namespace MXFP4Kernel
 
+namespace MXFP8Kernel {
+static constexpr uint32_t TILE_GROUP_N = 16; // group window 16*128=2048
+using TaskInfo = MXFP4Kernel::TaskInfo;
+using TileInfo = MXFP4Kernel::TileInfo;
+using BatchOffsetInfo = MXFP4Kernel::BatchOffsetInfo;
+} // namespace MXFP8Kernel
+
 #include "../attn_infra/epilogue/block/bsa_block_epilogue.hpp"
 #include "../attn_infra/epilogue/bsa_epilogue_dispatch_policy.hpp"
 #include "../attn_infra/gemm/block/bsa_block_mmad.hpp"
