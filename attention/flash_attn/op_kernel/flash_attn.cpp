@@ -130,7 +130,7 @@ __global__ __aicore__ void flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key
     if constexpr (templateId == FA_Template_DN) {
         using CubeBlock = FlashAttnKernel::FANoQuantGqaBlockCubeDn<FA_T>;
         using VecFaBlock = FlashAttnKernel::FANoQuantGqaBlockVecDn<FA_T>;
-        using VecFdBlock = FlashAttnKernel::FiaBlockVecFlashDecode<FA_T>;
+        using VecFdBlock = FlashAttnKernel::FiaBlockVecFlashDecode<FA_T, true>;
         using VecDummy = FlashAttnKernel::FANoQuantGqaBlockVecDummyDn<FA_T>;
         using CubeDummy = FlashAttnKernel::FANoQuantGqaBlockCubeDummyDn<FA_T>;
 #ifdef __DAV_CUBE__
