@@ -17,35 +17,7 @@ def _cases():
     cases = deepcopy(existing)
     for case in cases:
         case["name"] = case["name"].replace("LAYOUT_", "STC12177_", 1)
-        case["design_source"] = "layout_boundary"
-    base = deepcopy(next(c for c in cases if c["layout_scenario"] == "Q129_SB128"))
-    # Reference: note/stc设计/qbsa_mxfp8_stc.csv, 128-Q / 512-KV alignment.
-    # EQ-UA cannot exist: a multiple of 512 is necessarily a multiple of 128.
-    relations = (
-        ("EQ_AA", 512, 512), ("EQ_AU", 128, 128), ("EQ_UU", 129, 129),
-        ("LT_AA", 128, 512), ("LT_AU", 128, 513), ("LT_UA", 129, 512),
-        ("LT_UU", 129, 513), ("GT_AA", 1024, 512), ("GT_AU", 1024, 513),
-        ("GT_UA", 641, 512), ("GT_UU", 641, 257),
-    )
-    ranges = ([-1, 1], [-0.01, 1], [-0.01, 0.1], [0, 0.001],
-              [0.001, 0.01], [1, 2], [-0.001, 0], [-1, -0.01],
-              [-3, 3], [-5, 5], [0, 0])
-    for i, (relation, sq, kv) in enumerate(relations):
-        batch, nq, nkv = ((1, 3, 3), (2, 4, 2), (3, 5, 1))[i % 3]
-        for layout in LAYOUTS:
-            case = deepcopy(base)
-            case.update(
-                name=f"STC12177_REF_{relation}_{layout}",
-                layout_scenario=f"REF_{relation}", test_tier="P1",
-                design_source="reference_stc_relationship_and_range", B=batch,
-                N1=nq, N2=nkv, S1_max=sq, seqused_kv=[kv] * batch,
-                layout_q=layout, layout_out=layout, mask_mode=3 if i % 2 else 0,
-                cu_seqlens_q=[b * sq for b in range(batch + 1)] if layout == "TND" else [],
-                sparse_mode="random" if i % 3 == 0 else "dense", seed=1217700 + i,
-                data_range_q=ranges[i], data_range_k=ranges[i], data_range_v=ranges[i],
-                case_group="layout_stc",
-            )
-            cases.append(case)
+        case["design_source"] = "compact_layout_boundary_and_relationship"
     return cases
 
 

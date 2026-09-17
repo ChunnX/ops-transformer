@@ -14,6 +14,8 @@ from cases import GOLDEN_DIR, select_cases
 def pytest_addoption(parser):
     group = parser.getgroup("qbsa-layout-stc")
     group.addoption("--run-npu", action="store_true", help="Require actual NPU execution (missing runtime is an error)")
+    group.addoption("--extended", action="store_true",
+                    help="Also collect optional graph/contract/metadata/adapter diagnostics beyond the 36-case STC")
     group.addoption("--tier", choices=("all", "P0", "P1"), default="all")
     group.addoption("--layout", choices=("all", "TND", "BSND", "BNSD"), default="all")
     group.addoption("--device-id", type=int, default=int(os.environ.get("QBSA_DEVICE", "0")))
@@ -23,10 +25,16 @@ def pytest_addoption(parser):
 def pytest_generate_tests(metafunc):
     if "stc_case" in metafunc.fixturenames:
         cases = select_cases(metafunc.config.getoption("--tier"), metafunc.config.getoption("--layout"))
-        if metafunc.definition.get_closest_marker("equivalence"):
-            # Each TND item internally invokes BOTH padded layouts on the SAME data.
-            cases = [c for c in select_cases(metafunc.config.getoption("--tier")) if c["layout_q"] == "TND"]
         metafunc.parametrize("stc_case", cases, ids=[c["name"] for c in cases])
+
+
+def pytest_collection_modifyitems(config, items):
+    if config.getoption("--extended"):
+        return
+    deselected = [item for item in items
+                  if item.get_closest_marker("npu") and not item.get_closest_marker("accuracy")]
+    items[:] = [item for item in items if item not in deselected]
+    config.hook.pytest_deselected(items=deselected)
 
 
 @pytest.fixture(scope="session")

@@ -35,12 +35,15 @@ def _run_golden(runtime, request, case, case_dir, graph=False):
 
 @pytest.mark.accuracy
 def test_accuracy(runtime, request, stc_case, case_dir, monkeypatch):
+    if stc_case["layout_q"] == "TND":
+        # Fold same-input equivalence into each baseline item, keeping 36 STC IDs.
+        _check_same_input_three_layouts(runtime, request, stc_case, case_dir, monkeypatch)
+        return
     monkeypatch.delenv("QBSA_CHECK_PADDED_LAYOUTS", raising=False)
     _run_golden(runtime, request, stc_case, case_dir)
 
 
-@pytest.mark.equivalence
-def test_same_input_three_layouts(runtime, request, stc_case, case_dir, monkeypatch):
+def _check_same_input_three_layouts(runtime, request, stc_case, case_dir, monkeypatch):
     golden = runtime[2]
     monkeypatch.setenv("QBSA_CHECK_PADDED_LAYOUTS", "1")
     calls = []
