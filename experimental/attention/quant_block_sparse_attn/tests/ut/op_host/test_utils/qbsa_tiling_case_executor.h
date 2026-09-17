@@ -161,7 +161,7 @@ inline bool ExecuteQbsaTilingCase(QuantBlockSparseAttnTilingUtParam param, Tilin
     });
 
     gert::TilingContextPara para("QuantBlockSparseAttn", inputTensorDesc, outputTensorDesc, attrs, &compileInfo,
-                                 "Ascend950", 64, 262144, 65536);
+                                 "Ascend950", 64, 262144, sizeof(optiling::QuantBlockSparseAttnTilingData));
     return ExecuteTiling(para, tilingInfo);
 }
 

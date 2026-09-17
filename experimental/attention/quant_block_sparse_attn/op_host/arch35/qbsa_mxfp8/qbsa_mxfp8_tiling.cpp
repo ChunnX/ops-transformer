@@ -9,6 +9,7 @@
  */
 
 #include <algorithm>
+#include <cstring>
 #include <limits>
 #include <string>
 
@@ -84,7 +85,7 @@ ge::graphStatus QbsaMxfp8Arch35Tiling::BuildTilingData()
         return ge::GRAPH_FAILED;
     }
     usedCoreNum_ = static_cast<uint32_t>(std::min<uint64_t>(GetAicCoreNum(), totalTaskNum_));
-    tilingData_ = {};
+    std::memset(&tilingData_, 0, sizeof(tilingData_));
     FillMxfp8CommonParams(tilingInfo_, usedCoreNum_, tilingData_);
 
     auto &mx = tilingData_.mxParams;

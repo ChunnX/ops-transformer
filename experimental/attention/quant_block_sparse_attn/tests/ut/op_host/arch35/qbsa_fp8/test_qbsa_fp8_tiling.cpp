@@ -39,7 +39,6 @@ TEST_P(QbsaFp8Arch35TilingTest, Tiling)
     const auto data = DecodeQbsaTilingData(tilingInfo);
     ExpectQbsaCommonTilingData(param, tilingInfo, data);
     EXPECT_EQ(data.fp8Params.needInit, 1U);
-    EXPECT_EQ(data.mxParams.scaleGroupSize, 0U);
 }
 
 INSTANTIATE_TEST_SUITE_P(

@@ -20,13 +20,14 @@
 #include "tiling_common/qbsa_op_contract.h"
 
 namespace optiling {
-// Runtime allocates RawTilingData from the registered schema size. The kernel-facing
-// POD remains the serialization contract; this byte payload keeps registration in
-// lockstep whenever that POD grows without duplicating its field definitions.
-constexpr size_t QBSA_TILING_DATA_CAPACITY = sizeof(QuantBlockSparseAttnTilingData);
+// Keep the registered buffer compatible with the existing 344-byte QBSA ABI.
+// Mode-specific payloads share storage and must fit inside this reserved capacity.
+constexpr std::size_t QBSA_REGISTERED_TILING_DATA_CAPACITY = 344U;
+static_assert(sizeof(QuantBlockSparseAttnTilingData) <= QBSA_REGISTERED_TILING_DATA_CAPACITY,
+              "QBSA tiling data exceeds its registered runtime capacity");
 
 BEGIN_TILING_DATA_DEF(QuantBlockSparseAttnRegisteredTilingData)
-TILING_DATA_FIELD_DEF_ARR(uint8_t, QBSA_TILING_DATA_CAPACITY, payload);
+TILING_DATA_FIELD_DEF_ARR(uint8_t, 344, payload);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(QuantBlockSparseAttn, QuantBlockSparseAttnRegisteredTilingData)
 
