@@ -33,17 +33,19 @@ using AscendC::Reg::AddrReg;
 using AscendC::Reg::MaskReg;
 using AscendC::Reg::RegTensor;
 
-static constexpr AscendC::Reg::DivSpecificMode DIV_MODE = {
-    AscendC::Reg::MaskMergeMode::ZEROING,
-    true,
-};
+static constexpr AscendC::Reg::CastTrait CAST_FP32_TO_BF16 = {AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::SAT,
+                                                              AscendC::Reg::MaskMergeMode::ZEROING,
+                                                              AscendC::RoundMode::CAST_RINT};
 
-static constexpr AscendC::Reg::CastTrait CAST_FP32_TO_BF16 = {
-    AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::NO_SAT, AscendC::Reg::MaskMergeMode::ZEROING,
-    AscendC::RoundMode::CAST_RINT};
+static constexpr AscendC::Reg::CastTrait CAST_BF16_TO_FP32 = {AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::SAT,
+                                                              AscendC::Reg::MaskMergeMode::ZEROING,
+                                                              AscendC::RoundMode::CAST_NONE};
 
 /*!
  * \brief Computes SiTU activation using vector instructions.
+ * Matches SituAndMulSparse with BF16 input/output and
+ * high_precision=false:
+ * round restored GMM inputs and each activation branch to BF16 before multiplying.
  *
  * \param[in] firstSrc          Gate branch input in UB.
  * \param[in] secondSrc         Up branch input in UB.
@@ -82,30 +84,41 @@ __simd_vf__ inline void GmmSituVf(__ubuf__ DataTypeIn *firstSrc, __ubuf__ DataTy
 
             AscendC::Reg::LoadAlign(gateInput, firstSrc + l0cOutOffset);
             AscendC::Reg::Muls(gateInput, gateInput, mulFactor, mask);
+            // Match the standalone operator's BF16 input after restoring the GMM scale.
+            AscendC::Reg::Cast<bfloat16_t, float, CAST_FP32_TO_BF16>(situBf16, gateInput, mask);
+            AscendC::Reg::Cast<float, bfloat16_t, CAST_BF16_TO_FP32>(gateInput, situBf16, mask);
 
+            AscendC::Reg::LoadAlign(upInput, secondSrc + l0cOutOffset);
+            AscendC::Reg::Muls(upInput, upInput, mulFactor, mask);
+            AscendC::Reg::Cast<bfloat16_t, float, CAST_FP32_TO_BF16>(situBf16, upInput, mask);
+            AscendC::Reg::Cast<float, bfloat16_t, CAST_BF16_TO_FP32>(upInput, situBf16, mask);
+
+            // Use the same default Div mode as SituAndMulSparse.
             AscendC::Reg::Muls(tmp, gateInput, neg2OverBeta, mask);
             AscendC::Reg::Exp(tmp, tmp, mask);
             AscendC::Reg::Adds(tmp, tmp, scalarOne, mask);
             AscendC::Reg::Duplicate(gateBranch, situBeta, mask);
-            AscendC::Reg::Div<float, &DIV_MODE>(gateBranch, gateBranch, tmp, mask);
+            AscendC::Reg::Div(gateBranch, gateBranch, tmp, mask);
             AscendC::Reg::Muls(gateBranch, gateBranch, scalarTwo, mask);
             AscendC::Reg::Adds(gateBranch, gateBranch, negBeta, mask);
 
             AscendC::Reg::Muls(tmp, gateInput, -scalarOne, mask);
             AscendC::Reg::Exp(tmp, tmp, mask);
             AscendC::Reg::Adds(tmp, tmp, scalarOne, mask);
-            AscendC::Reg::Div<float, &DIV_MODE>(gateBranch, gateBranch, tmp, mask);
-
-            AscendC::Reg::LoadAlign(upInput, secondSrc + l0cOutOffset);
-            AscendC::Reg::Muls(upInput, upInput, mulFactor, mask);
+            AscendC::Reg::Div(gateBranch, gateBranch, tmp, mask);
+            // high_precision=false rounds each branch independently before the product.
+            AscendC::Reg::Cast<bfloat16_t, float, CAST_FP32_TO_BF16>(situBf16, gateBranch, mask);
+            AscendC::Reg::Cast<float, bfloat16_t, CAST_BF16_TO_FP32>(gateBranch, situBf16, mask);
 
             AscendC::Reg::Muls(tmp, upInput, neg2OverAlpha, mask);
             AscendC::Reg::Exp(tmp, tmp, mask);
             AscendC::Reg::Adds(tmp, tmp, scalarOne, mask);
             AscendC::Reg::Duplicate(upBranch, situAlpha, mask);
-            AscendC::Reg::Div<float, &DIV_MODE>(upBranch, upBranch, tmp, mask);
+            AscendC::Reg::Div(upBranch, upBranch, tmp, mask);
             AscendC::Reg::Muls(upBranch, upBranch, scalarTwo, mask);
             AscendC::Reg::Adds(upBranch, upBranch, negAlpha, mask);
+            AscendC::Reg::Cast<bfloat16_t, float, CAST_FP32_TO_BF16>(situBf16, upBranch, mask);
+            AscendC::Reg::Cast<float, bfloat16_t, CAST_BF16_TO_FP32>(upBranch, situBf16, mask);
 
             AscendC::Reg::Mul(situOutput, gateBranch, upBranch, mask);
             AscendC::Reg::Cast<bfloat16_t, float, CAST_FP32_TO_BF16>(situBf16, situOutput, mask);
