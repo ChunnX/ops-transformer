@@ -11,15 +11,15 @@ import sys
 import types
 from .compressor import compressor
 
-# 构造独立模块 cpv2，使 from cann_ops_transformer.ops.cpv2 import compressor 可用。
+# 构造独立模块 ds41，使 from cann_ops_transformer.ops.ds41 import compressor 可用。
 # 父包从 sys.modules 取 ops 模块的 __name__，不依赖当前包的路径层级。
 # 本模块由 ops/__init__.py 自动发现触发 import，此时 ops 必已在 sys.modules 中。
 parent_pkg = sys.modules["cann_ops_transformer.ops"].__name__
-cpv2 = types.ModuleType(f"{parent_pkg}.cpv2")
-cpv2.__package__ = parent_pkg
-cpv2.compressor = compressor
-sys.modules[f"{parent_pkg}.cpv2"] = cpv2
-globals()["cpv2"] = cpv2
+ds41 = types.ModuleType(f"{parent_pkg}.ds41")
+ds41.__package__ = parent_pkg
+ds41.compressor = compressor
+sys.modules[f"{parent_pkg}.ds41"] = ds41
+globals()["ds41"] = ds41
 
-# 只暴露 cpv2，不暴露 compressor_v2 入口，避免与原 compressor 的 ops.compressor 冲突
-__all__ = ["cpv2"]
+# 只暴露 ds41，不暴露 compressor_v2 入口，避免与原 compressor 的 ops.compressor 冲突
+__all__ = ["ds41"]

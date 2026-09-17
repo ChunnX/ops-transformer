@@ -18,7 +18,7 @@ import pytest
 import random
 import math
 import ast
-from cann_ops_transformer.ops.cpv2 import compressor as compressor
+from cann_ops_transformer.ops.ds41 import compressor as compressor
 
 
 def test_compressor_process(filepath, device_id=0):
