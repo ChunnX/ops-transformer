@@ -943,12 +943,13 @@ public:
         }
     }
 
-    __aicore__ inline void BroadCastAndCopyOut(const RunInfoX &runInfo, LocalTensor<float> &sumUb,
-                                               LocalTensor<float> &maxUb, int64_t gmOffset, int64_t calculateSize)
+    __aicore__ inline void BroadCastAndCopyOut(LocalTensor<float> &sumUb, LocalTensor<float> &maxUb, int64_t gmOffset,
+                                               uint32_t gmDealRowCount)
     {
+        int64_t calculateSize = gmDealRowCount * fp32BaseSize;
         // Copy sum to gm
         LocalTensor<float> sumOutTensor = sumBrdcst_.template AllocTensor<float>();
-        FaVectorApi::BroadcastMaxSum(sumOutTensor, sumUb, runInfo.actVecMSize);
+        FaVectorApi::BroadcastMaxSum(sumOutTensor, sumUb, gmDealRowCount);
         sumBrdcst_.template EnQue(sumOutTensor);
         sumBrdcst_.template DeQue<float>();
         DataCopy(softmaxFDSumGm_[gmOffset], sumOutTensor, calculateSize);
@@ -956,7 +957,7 @@ public:
 
         // Copy max to gm
         LocalTensor<float> maxOutTensor = maxBrdcst_.template AllocTensor<float>();
-        FaVectorApi::BroadcastMaxSum(maxOutTensor, maxUb, runInfo.actVecMSize);
+        FaVectorApi::BroadcastMaxSum(maxOutTensor, maxUb, gmDealRowCount);
         maxBrdcst_.template EnQue(maxOutTensor);
         maxBrdcst_.template DeQue<float>();
         DataCopy(softmaxFDMaxGm_[gmOffset], maxOutTensor, calculateSize);
@@ -969,12 +970,24 @@ public:
         if (unlikely(runInfo.actVecMSize == 0)) {
             return;
         }
-        int64_t calculateSize = runInfo.actVecMSize * fp32BaseSize;
-        // 是否要改成halfMRealSize
+        uint32_t gmDealRowCount;
+        if constexpr (USE_DN) {
+            gmDealRowCount = runInfo.actVecMSize;
+        } else {
+            uint32_t groupsOf32 = (runInfo.actMSize + 31) / 32;
+            if (constInfo_.subBlockIdx == 0) {
+                gmDealRowCount = groupsOf32 * 16 > runInfo.actMSize ? runInfo.actMSize : groupsOf32 * 16;
+            } else {
+                int32_t vec1RemainRows = runInfo.actMSize - 16 * groupsOf32;
+                gmDealRowCount = 0 > vec1RemainRows ? 0 : vec1RemainRows;
+            }
+        }
+        if (gmDealRowCount == 0) {
+            return;
+        }
         int64_t gmOffset = runInfo.faTmpOutWsPos * mBaseSize * fp32BaseSize + runInfo.vecMbaseIdx * fp32BaseSize;
-        // flashDecodeS2Idx?nBufferStartM?
         // Copy sum to gm
-        BroadCastAndCopyOut(runInfo, sumUb, maxUb, gmOffset, calculateSize);
+        BroadCastAndCopyOut(sumUb, maxUb, gmOffset, gmDealRowCount);
     }
 
     __aicore__ inline void Bmm2ResForFDCopyOut(const RunInfoX &runInfo, LocalTensor<T> &vec2ResUb, uint32_t mStartVec,
