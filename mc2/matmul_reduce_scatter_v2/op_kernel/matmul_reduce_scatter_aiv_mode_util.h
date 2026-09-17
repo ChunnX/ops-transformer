@@ -308,15 +308,32 @@ public:
         uBuf_.FreeTensor<int32_t>(ubTensor);
     }
 
+    // DataCopy 参数构造辅助：消除各拷贝函数中重复的参数组装样板
+    __aicore__ inline DataCopyExtParams MakeDataCopyExtParams(uint16_t nBurst, uint32_t lenBurst, uint16_t srcStride,
+                                                              uint16_t dstStride)
+    {
+        return DataCopyExtParams(nBurst,    // blockCount
+                                 lenBurst,  // blockLen
+                                 srcStride, // srcStride
+                                 dstStride, // dstStride
+                                 0);
+    }
+
+    __aicore__ inline DataCopyParams MakeDataCopyParams(uint16_t nBurst, uint32_t lenBurst, uint16_t srcStride,
+                                                        uint16_t dstStride)
+    {
+        return DataCopyParams(nBurst,    // blockCount
+                              lenBurst,  // blockLen
+                              srcStride, // srcStride
+                              dstStride  // dstStride
+        );
+    }
+
     template <typename T>
     __aicore__ inline void CopyGmToUbufAlignB16(LocalTensor<T> ubTensor, __gm__ T *src, uint16_t nBurst,
                                                 uint32_t lenBurst, uint16_t srcStride, uint16_t dstStride)
     {
-        DataCopyExtParams dataCopyParams(nBurst,    // blockCount
-                                         lenBurst,  // blockLen
-                                         srcStride, // srcStride
-                                         dstStride, // dstStride
-                                         0);
+        DataCopyExtParams dataCopyParams = MakeDataCopyExtParams(nBurst, lenBurst, srcStride, dstStride);
         GlobalTensor<T> gmTensor;
         gmTensor.SetGlobalBuffer(src);
         DataCopyPadExtParams<T> padParams;
@@ -327,11 +344,7 @@ public:
     __aicore__ inline void CopyUbufToGmAlignB16(__gm__ T *dst, LocalTensor<T> ubTensor, uint16_t nBurst,
                                                 uint32_t lenBurst, uint16_t srcStride, uint16_t dstStride)
     {
-        DataCopyExtParams dataCopyParams(nBurst,    // blockCount
-                                         lenBurst,  // blockLen
-                                         srcStride, // srcStride
-                                         dstStride, // dstStride
-                                         0);
+        DataCopyExtParams dataCopyParams = MakeDataCopyExtParams(nBurst, lenBurst, srcStride, dstStride);
         GlobalTensor<T> gmTensor;
         gmTensor.SetGlobalBuffer(dst);
         DataCopyPad(gmTensor, ubTensor, dataCopyParams);
@@ -341,11 +354,7 @@ public:
     __aicore__ inline void CopyGmToUbuf(LocalTensor<T> ubTensor, __gm__ T *src, uint16_t nBurst, uint32_t lenBurst,
                                         uint16_t srcStride, uint16_t dstStride)
     {
-        DataCopyParams dataCopyParams(nBurst,    // blockCount
-                                      lenBurst,  // blockLen
-                                      srcStride, // srcStride
-                                      dstStride  // dstStride
-        );
+        DataCopyParams dataCopyParams = MakeDataCopyParams(nBurst, lenBurst, srcStride, dstStride);
         GlobalTensor<T> gmTensor;
         gmTensor.SetGlobalBuffer(src);
         DataCopy(ubTensor, gmTensor, dataCopyParams);
@@ -355,11 +364,7 @@ public:
     __aicore__ inline void CopyUbufToGm(__gm__ T *dst, LocalTensor<T> ubTensor, uint16_t nBurst, uint16_t lenBurst,
                                         uint16_t srcStride, uint16_t dstStride)
     {
-        DataCopyParams dataCopyParams(nBurst,    // blockCount
-                                      lenBurst,  // blockLen
-                                      srcStride, // srcStride
-                                      dstStride  // dstStride
-        );
+        DataCopyParams dataCopyParams = MakeDataCopyParams(nBurst, lenBurst, srcStride, dstStride);
         GlobalTensor<T> gmTensor;
         gmTensor.SetGlobalBuffer(dst);
         DataCopy(gmTensor, ubTensor, dataCopyParams);
