@@ -804,10 +804,10 @@ ge::graphStatus QLIV2InfoParser::GetN1Size()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QLIV2InfoParser::GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
+ge::graphStatus QLIV2InfoParser::GetActualSeqLenSize(int64_t &size, const gert::Tensor *tensor,
                                                      const std::string &actualSeqLenName) const
 {
-    size = static_cast<uint32_t>(tensor->GetShapeSize());
+    size = tensor->GetShapeSize();
     if (size <= 0) {
         OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
             opName_, actualSeqLenName.c_str(), std::to_string(size).c_str(),
@@ -879,7 +879,7 @@ ge::graphStatus QLIV2InfoParser::GetBatchSize()
         return ge::GRAPH_SUCCESS;
     } else { // TND
         // cu_seqlens_q shape is [B+1], batch_size = shape[0] - 1
-        uint32_t cuSeqLensQSize = 0;
+        int64_t cuSeqLensQSize = 0;
         if (GetActualSeqLenSize(cuSeqLensQSize, opParamInfo_.cuSeqLensQ.tensor, "input cu_seqlens_q") !=
             ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
@@ -893,7 +893,7 @@ ge::graphStatus QLIV2InfoParser::GetBatchSize()
 
         // Validate key side batch size consistency
         if (kLayout_ == DataLayout::TND) {
-            uint32_t cuSeqLensKSize = 0;
+            int64_t cuSeqLensKSize = 0;
             if (GetActualSeqLenSize(cuSeqLensKSize, opParamInfo_.cuSeqLensK.tensor, "cu_seqlens_k") !=
                 ge::GRAPH_SUCCESS) {
                 return ge::GRAPH_FAILED;

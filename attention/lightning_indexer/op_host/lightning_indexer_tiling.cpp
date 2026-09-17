@@ -597,7 +597,7 @@ ge::graphStatus LIInfoParser::GetN1Size()
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus LiGetActualSeqLenSize(uint32_t &liSize, const gert::Tensor *liTensor,
+static ge::graphStatus LiGetActualSeqLenSize(int64_t &liSize, const gert::Tensor *liTensor,
                                              const std::string &liActualSeqLenName, const char *liOpName)
 {
     liSize = static_cast<uint32_t>(liTensor->GetShapeSize());
@@ -610,7 +610,7 @@ static ge::graphStatus LiGetActualSeqLenSize(uint32_t &liSize, const gert::Tenso
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LIInfoParser::GetActualSeqLenSize(uint32_t &liSize, const gert::Tensor *liTensor,
+ge::graphStatus LIInfoParser::GetActualSeqLenSize(int64_t &liSize, const gert::Tensor *liTensor,
                                                   const std::string &liSeqLenName) const
 {
     return LiGetActualSeqLenSize(liSize, liTensor, liSeqLenName, opName_);

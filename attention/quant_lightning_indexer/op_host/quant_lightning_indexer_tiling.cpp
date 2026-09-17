@@ -634,10 +634,10 @@ ge::graphStatus QLIInfoParser::GetN1Size()
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus QliGetActualSeqLenSize(uint32_t &qliSize, const gert::Tensor *qliTensor,
+static ge::graphStatus QliGetActualSeqLenSize(int64_t &qliSize, const gert::Tensor *qliTensor,
                                               const std::string &qliActualSeqLenName, const char *qliOpName)
 {
-    qliSize = static_cast<uint32_t>(qliTensor->GetShapeSize());
+    qliSize = qliTensor->GetShapeSize();
     if (qliSize == 0) {
         OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
             qliOpName, qliActualSeqLenName.c_str(), std::to_string(qliSize).c_str(),
@@ -647,7 +647,7 @@ static ge::graphStatus QliGetActualSeqLenSize(uint32_t &qliSize, const gert::Ten
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QLIInfoParser::GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
+ge::graphStatus QLIInfoParser::GetActualSeqLenSize(int64_t &size, const gert::Tensor *tensor,
                                                    const std::string &actualSeqLenName) const
 {
     return QliGetActualSeqLenSize(size, tensor, actualSeqLenName, opName_);

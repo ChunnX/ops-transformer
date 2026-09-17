@@ -177,7 +177,7 @@ public:
     ge::graphStatus CheckTensorDescriptions() const;
     ge::graphStatus CheckRequiredAttrExistence() const;
     ge::graphStatus CheckRequiredParaExistence() const;
-    ge::graphStatus GetActualSeqLenSize(uint32_t &liSize, const gert::Tensor *liTensor,
+    ge::graphStatus GetActualSeqLenSize(int64_t &liSize, const gert::Tensor *liTensor,
                                         const std::string &liSeqLenName) const;
     ge::graphStatus GetOpName();
     ge::graphStatus GetNpuInfo();
