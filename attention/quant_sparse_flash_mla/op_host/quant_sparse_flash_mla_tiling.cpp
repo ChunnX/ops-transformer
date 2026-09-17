@@ -276,7 +276,7 @@ void QSMLAInfoParser::SetQSMLAShape()
 
 ge::graphStatus QSMLAInfoParser::GetN1Size()
 {
-    n1Size_ = static_cast<uint32_t>(GetAxisNum(qShape_, QSMLAAxis::N, qLayout_));
+    n1Size_ = GetAxisNum(qShape_, QSMLAAxis::N, qLayout_);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -336,7 +336,7 @@ ge::graphStatus QSMLAInfoParser::GetBatchSize()
     if (qLayout_ == QSMLALayout::TND) {
         return GetActualSeqLenQSize(bSize_);
     } else { // BSND
-        bSize_ = static_cast<uint32_t>(GetAxisNum(qShape_, QSMLAAxis::B, qLayout_));
+        bSize_ = GetAxisNum(qShape_, QSMLAAxis::B, qLayout_);
         return ge::GRAPH_SUCCESS;
     }
 }
@@ -356,10 +356,10 @@ ge::graphStatus QSMLAInfoParser::GetS1Size()
     // 1、非TND时, 以query的S维度为基准;
     // 2、TND时, actual_seq_lens_q必须传入, 以actual_seq_lens_q数组中的最大值为基准
     if (qLayout_ == QSMLALayout::TND) {
-        s1Size_ = static_cast<uint32_t>(GetAxisNum(qShape_, QSMLAAxis::T, qLayout_));
+        s1Size_ = GetAxisNum(qShape_, QSMLAAxis::T, qLayout_);
         return ge::GRAPH_SUCCESS;
     } else { // BSND
-        s1Size_ = static_cast<uint32_t>(GetAxisNum(qShape_, QSMLAAxis::S, qLayout_));
+        s1Size_ = GetAxisNum(qShape_, QSMLAAxis::S, qLayout_);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -449,7 +449,7 @@ ge::graphStatus QSMLAInfoParser::GetQkHeadDim()
 {
     // 获取qkHeadDim基准值
     // 以query的D维度为基准
-    qkHeadDim_ = static_cast<uint32_t>(GetAxisNum(qShape_, QSMLAAxis::D, qLayout_));
+    qkHeadDim_ = GetAxisNum(qShape_, QSMLAAxis::D, qLayout_);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -467,19 +467,19 @@ ge::graphStatus QSMLAInfoParser::GetSparseBlockCount()
 
 ge::graphStatus QSMLAInfoParser::GetActualseqInfo()
 {
-    maxActualseq_ = static_cast<uint32_t>(s2Size_);
+    maxActualseq_ = s2Size_;
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus QSMLAInfoParser::GetDSizeQ()
 {
-    dSizeQ_ = static_cast<uint32_t>(GetAxisNum(qShape_, QSMLAAxis::D, qLayout_));
+    dSizeQ_ = GetAxisNum(qShape_, QSMLAAxis::D, qLayout_);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus QSMLAInfoParser::GetDSizeKV()
 {
-    dSizeKV_ = static_cast<uint32_t>(GetAxisNum(oriKvShape_, QSMLAAxis::D, kvLayout_));
+    dSizeKV_ = GetAxisNum(oriKvShape_, QSMLAAxis::D, kvLayout_);
     return ge::GRAPH_SUCCESS;
 }
 

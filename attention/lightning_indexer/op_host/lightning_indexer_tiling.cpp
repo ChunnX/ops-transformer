@@ -572,10 +572,10 @@ ge::graphStatus LIInfoParser::CheckKeyContiguous() const
 ge::graphStatus LIInfoParser::GetN1Size()
 {
     if (qLayout_ == DataLayout::BSND) {
-        n1Size_ = static_cast<uint32_t>(opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_TWO));
+        n1Size_ = opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_TWO);
     } else {
         // TND
-        n1Size_ = static_cast<uint32_t>(opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_ONE));
+        n1Size_ = opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_ONE);
     }
     OP_LOGI(context_->GetNodeName(), "n1Size is %d", n1Size_);
     if (npuArch_ == NpuArch::DAV_3510) {
@@ -619,7 +619,7 @@ ge::graphStatus LIInfoParser::GetActualSeqLenSize(uint32_t &liSize, const gert::
 ge::graphStatus LIInfoParser::GetAndCheckN2Size()
 {
     uint32_t n2Index = (kLayout_ == DataLayout::TND) ? DIM_IDX_ONE : DIM_IDX_TWO;
-    n2Size_ = static_cast<uint32_t>(opParamInfo_.key.shape->GetStorageShape().GetDim(n2Index));
+    n2Size_ = opParamInfo_.key.shape->GetStorageShape().GetDim(n2Index);
     OP_LOGI(context_->GetNodeName(), "n2Size_ is %d", n2Size_);
     OP_CHECK_IF(n2Size_ != 1,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "key",
@@ -695,7 +695,7 @@ ge::graphStatus LIInfoParser::GetS1Size()
 
 ge::graphStatus LIInfoParser::GetAndCheckBlockSize()
 {
-    blockSize_ = static_cast<uint32_t>(opParamInfo_.key.shape->GetStorageShape().GetDim(DIM_IDX_ONE));
+    blockSize_ = opParamInfo_.key.shape->GetStorageShape().GetDim(DIM_IDX_ONE);
     OP_LOGI(context_->GetNodeName(), "blockSize_ is %d", blockSize_);
 
     OP_CHECK_IF(((blockSize_ % 16 != 0) || (blockSize_ == 0) || (blockSize_ > 1024)),

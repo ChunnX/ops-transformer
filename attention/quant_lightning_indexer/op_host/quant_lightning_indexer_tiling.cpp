@@ -633,10 +633,10 @@ ge::graphStatus QLIInfoParser::CheckShapeDim()
 ge::graphStatus QLIInfoParser::GetN1Size()
 {
     if (qLayout_ == DataLayout::BSND) {
-        n1Size_ = static_cast<uint32_t>(opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_TWO));
+        n1Size_ = opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_TWO);
     } else {
         // TND
-        n1Size_ = static_cast<uint32_t>(opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_ONE));
+        n1Size_ = opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_ONE);
     }
     OP_LOGI(context_->GetNodeName(), "n1Size is %d", n1Size_);
     return ge::GRAPH_SUCCESS;
@@ -665,9 +665,9 @@ ge::graphStatus QLIInfoParser::GetAndCheckN2Size()
 {
     // PA_BSND
     if (kLayout_ == DataLayout::TND) {
-        n2Size_ = static_cast<uint32_t>(opParamInfo_.key.shape->GetShape().GetDim(DIM_IDX_ONE));
+        n2Size_ = opParamInfo_.key.shape->GetShape().GetDim(DIM_IDX_ONE);
     } else {
-        n2Size_ = static_cast<uint32_t>(opParamInfo_.key.shape->GetShape().GetDim(DIM_IDX_TWO));
+        n2Size_ = opParamInfo_.key.shape->GetShape().GetDim(DIM_IDX_TWO);
     }
     OP_LOGI(context_->GetNodeName(), "N2 is %d", n2Size_);
     OP_CHECK_IF(n2Size_ != 1,
@@ -763,7 +763,7 @@ ge::graphStatus QLIInfoParser::GetS1Size()
 
 ge::graphStatus QLIInfoParser::GetAndCheckBlockSize()
 {
-    blockSize_ = static_cast<uint32_t>(opParamInfo_.key.shape->GetShape().GetDim(1));
+    blockSize_ = opParamInfo_.key.shape->GetShape().GetDim(1);
     OP_LOGI(context_->GetNodeName(), "blockSize_ is %d", blockSize_);
 
     OP_CHECK_IF(((blockSize_ % BLOCK_SIZE_FACTOR != 0) || (blockSize_ == 0) || (blockSize_ > BLOCK_SIZE_LIMIT)),

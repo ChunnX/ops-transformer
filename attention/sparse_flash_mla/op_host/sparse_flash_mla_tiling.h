@@ -313,18 +313,18 @@ private:
     SMLAParaInfo opParamInfo_;
     const SMLATilingInfo &smlaInfo_;
 
-    uint32_t bSize_ = 0;
-    uint32_t n1Size_ = 0;
-    uint32_t n2Size_ = 0;
-    uint32_t gSize_ = 0;
-    uint32_t s1Size_ = 0;
+    int64_t bSize_ = 0;
+    int64_t n1Size_ = 0;
+    int64_t n2Size_ = 0;
+    int64_t gSize_ = 0;
+    int64_t s1Size_ = 0;
     int64_t s2Size_ = 0;
     int64_t cmpS2Size_ = 0; // A5
     uint32_t qHeadDim_ = 0;
     uint32_t oriKvHeadDim_ = 0;
     uint32_t cmpKvHeadDim_ = 0;
 
-    uint32_t qTSize_ = 0; // 仅TND时生效
+    int64_t qTSize_ = 0; // 仅TND时生效
     int64_t cmpRatio_ = 1;
     int64_t oriWinLeft_ = 0;
     int64_t oriWinRight_ = 0;
@@ -339,8 +339,8 @@ private:
     SMLALayout outLayout_ = SMLALayout::TND;
     SMLALayout kvLayout_ = SMLALayout::PA_BBND;
 
-    int32_t oriBlockSize_ = 0;
-    int32_t cmpBlockSize_ = 0;
+    int64_t oriBlockSize_ = 0;
+    int64_t cmpBlockSize_ = 0;
 
     NpuArch npuArch_ = NpuArch::DAV_2201;
 
@@ -417,14 +417,14 @@ public:
     static constexpr int64_t invalidDimValue_ = std::numeric_limits<int64_t>::min();
 
     // BaseParams
-    uint32_t bSize_ = 0;
-    uint32_t n1Size_ = 0;
-    uint32_t n2Size_ = 0;
-    uint32_t gSize_ = 0;
-    uint32_t s1Size_ = 0;
+    int64_t bSize_ = 0;
+    int64_t n1Size_ = 0;
+    int64_t n2Size_ = 0;
+    int64_t gSize_ = 0;
+    int64_t s1Size_ = 0;
     int64_t s2Size_ = 0;
     int64_t cmpS2Size_ = 0; // A5
-    uint32_t qTSize_ = 0;
+    int64_t qTSize_ = 0;
     uint32_t qHeadDim_ = 0;
     uint32_t oriKvHeadDim_ = 0;
     uint32_t cmpKvHeadDim_ = 0;
@@ -458,8 +458,8 @@ public:
     // PageAttention
     uint32_t oriMaxBlockNumPerBatch_ = 0;
     uint32_t cmpMaxBlockNumPerBatch_ = 0;
-    int32_t oriBlockSize_ = 0;
-    int32_t cmpBlockSize_ = 0;
+    int64_t oriBlockSize_ = 0;
+    int64_t cmpBlockSize_ = 0;
 
     // template mode
     SMLATemplateMode perfMode_ = SMLATemplateMode::SWA_TEMPLATE_MODE;
