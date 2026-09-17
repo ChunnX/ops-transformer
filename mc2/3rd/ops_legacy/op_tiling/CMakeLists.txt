@@ -10,8 +10,6 @@
 
 set(CMAKE_LIBRARY_OUTPUT_DIRECTOR ${PROJECT_SOURCE_DIR}/build)
 
-# A5(arch35)及之后SoC与libophost_comm_legacy.so解耦: 目标SoC全部为arch35+时,
-# 宏隔离legacy dlopen适配层(编译桩实现, 与UT/内置桩语义一致), 并不再编译dlopen单例
 set(MC2_LEGACY_DECOUPLED OFF)
 if(ARCH_DIRECTORY)
     set(MC2_LEGACY_DECOUPLED ON)
