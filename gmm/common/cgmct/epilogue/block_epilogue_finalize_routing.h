@@ -35,10 +35,10 @@ constexpr int64_t OUT_ELE_NUM_ONE_BLK = 64;
 constexpr uint32_t Y_IDX = 0;
 constexpr uint32_t LOGIT_INDEX = 4;
 constexpr uint32_t MAX_SINGLE_MN = 128 * 256;
-constexpr uint16_t FR_OUTPUT_BUFFER_NUM = 2;
+constexpr uint16_t FR_OUTPUT_BUFFER_NUM = 4;
 constexpr uint32_t BLOCK_BYTES = 256;
-// Process the per-AIV GMM result in up to two in-place output chunks.
-constexpr uint64_t MAX_OUTPUT_M_UB = 64;
+// Process the per-AIV GMM result in up to four in-place output chunks.
+constexpr uint64_t MAX_OUTPUT_M_UB = 32;
 constexpr uint64_t BLOCK_ELEMENTS_FP32 = 8;
 } // namespace
 
