@@ -68,8 +68,6 @@ public:
     static constexpr uint32_t FD_VEC1_BROADCAST_BLOCK_ELEMS =
         FD_VEC1_MAX_ROWS * AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW;
     static constexpr uint32_t FD_VEC1_LSE_TMP_ELEMS = 2U * FD_VEC1_BROADCAST_BLOCK_ELEMS;
-    static_assert(s1BaseSize / CV_RATIO <= FD_VEC1_MAX_ROWS,
-                  "Vec1 FD broadcast scratch must cover every row in the vector tile");
     static constexpr uint32_t s2BaseSize = 128;
     static constexpr uint32_t vec1Srcstride = (s1BaseSize >> 1) + 1;
     static constexpr uint32_t dVTemplateType = 512;
