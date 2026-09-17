@@ -818,12 +818,7 @@ __aicore__ inline int32_t EngramFetchTrainArch35::CompleteCreditCounter(uint64_t
     LocalTensor<int32_t> creditLocal = creditBuf_.Get<int32_t>();
     int32_t value = CREDIT_READ_SENTINEL;
     while (value == CREDIT_READ_SENTINEL) {
-        DataCopyExtParams cpParams{1U, static_cast<uint32_t>(UB_ALIGN), 0U, 0U, 0U};
-        DataCopyPadExtParams<int32_t> cpPad{false, 0, 0, 0};
-        DataCopyPad(creditLocal, scratchGM, cpParams, cpPad);
-        AscendC::SetFlag<HardEvent::MTE2_S>(mte2SCntEvt_);
-        AscendC::WaitFlag<HardEvent::MTE2_S>(mte2SCntEvt_);
-        value = creditLocal.GetValue(0);
+        value = AscendC::ReadGmByPassDCache(reinterpret_cast<__gm__ int32_t *>(scratchAddr));
         TimeoutCheck(startTime, tag);
     }
     creditReadInFlight_ = false;
@@ -932,6 +927,14 @@ __aicore__ inline void EngramFetchTrainArch35::SendIndicesRemote(uint32_t dstRan
     uint32_t totalSent = 0;
     uint32_t localWriteCnt = 0;
     int32_t remoteReadCnt = 0;
+    GM_ADDR remoteCounterAddr = GetRemoteWinAddr(dstRank, indicesWriteOffset_) + rankId_ * STATE_OFFSET;
+    GM_ADDR primeSlotAddr = GetRemoteWinAddr(dstRank, indicesDataOffset_ + rankId_ * NUM_SLOTS * indicesSlotSize_);
+    if (sendCount > 0) {
+        int32_t primeRet = hcomm_.WriteWithNotifyNbi<true, PIPE_S, PIPE_MTE3, URMA_DEFAULT_CFG>(
+            handle, primeSlotAddr, sortedIndicesGM_ + sdispl * sizeof(int32_t), sizeof(int32_t), remoteCounterAddr, 0);
+        ascendc_assert(primeRet == 0, "prime WriteWithNotifyNbi failed, ret=%d, rankId=%u, dstRank=%u", primeRet,
+                       rankId_, dstRank);
+    }
 
     while (totalSent < static_cast<uint32_t>(sendCount)) {
         if (totalBlocks_ > 1U) {
