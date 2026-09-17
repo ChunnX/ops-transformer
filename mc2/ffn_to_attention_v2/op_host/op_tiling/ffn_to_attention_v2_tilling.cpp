@@ -180,6 +180,12 @@ ge::graphStatus FFNToAttentionV2TilingFunc(gert::TilingContext *context)
     tilingData->ffnToAttentionV2Info.addressTableWorkspaceOffset = tableOffset;
     tilingData->ffnToAttentionV2Info.addressTableWorkspaceBytes = tableBytes;
     workSpaces[0] = tableOffset + static_cast<size_t>(tableBytes);
+    OP_LOGI(context->GetNodeName(),
+            "FFNToAttentionV2 requested workspace: total=%lu, address_table_offset=%lu, "
+            "address_table_bytes=%lu, rank_table_stride=%lu, count_row_stride=%lu, aiv_num=%lu",
+            static_cast<unsigned long>(workSpaces[0]), static_cast<unsigned long>(tableOffset),
+            static_cast<unsigned long>(tableBytes), static_cast<unsigned long>(rankTableStride),
+            static_cast<unsigned long>(countRowStride), static_cast<unsigned long>(aivNum));
 
     // FFNToAttentionV2 on A5 uses the URMA communication implementation.
     bool rankTableMode = tilingData->ffnToAttentionV2Info.isInputRankTable;

@@ -446,27 +446,23 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::B
     const uint64_t srcUbAddr = reinterpret_cast<uint64_t>(rankCounts.GetPhyAddr());
     const bool dstInBounds = dstAddr >= tableBase && dstAddr <= tableEnd && copyBytes <= tableEnd - dstAddr;
     const bool srcInBounds = rankCountElements_ <= rankCounts.GetSize();
-    PRINTF("[F2A DataCopy args] core=%u rank=%u dstGM=0x%lx srcUB=0x%lx count=%u elemBytes=%u copyBytes=%lu\n", aivId_,
-           rankId_, dstAddr, srcUbAddr, rankCountElements_, static_cast<uint32_t>(sizeof(int32_t)), copyBytes);
-    PRINTF("[F2A DataCopy bounds] core=%u workspaceGM=0x%lx tableOffset=%lu tableBytes=%lu tableBase=0x%lx "
-           "tableEnd=0x%lx dstEnd=0x%lx dstOffset=%lu stride=%lu dstInBounds=%u srcCapacity=%u srcInBounds=%u\n",
-           aivId_, reinterpret_cast<uint64_t>(workspaceGMAddr_), addressTableWorkspaceOffset_,
-           addressTableWorkspaceBytes_, tableBase, tableEnd, dstAddr + copyBytes, dstAddr - tableBase,
-           perCoreRankCountStride_, static_cast<uint32_t>(dstInBounds), rankCounts.GetSize(),
-           static_cast<uint32_t>(srcInBounds));
-    for (uint32_t debugRank = 0U; debugRank < worldSize_; ++debugRank) {
-        int32_t debugCount = rankCounts.GetValue(debugRank);
-        if (debugCount != 0) {
-            PRINTF("[F2A DataCopy payload] core=%u dstRank=%u count=%d\n", aivId_, debugRank, debugCount);
-        }
+    constexpr uint32_t debugAivId = 46U;
+    if (aivId_ == debugAivId) {
+        PRINTF("[F2A count-copy] core=%u rank=%u ws=0x%lx offset=%lu bytes=%lu table=[0x%lx,0x%lx) "
+               "dst=[0x%lx,0x%lx) srcUB=0x%lx n=%u dstOK=%u srcOK=%u\n",
+               aivId_, rankId_, reinterpret_cast<uint64_t>(workspaceGMAddr_), addressTableWorkspaceOffset_,
+               addressTableWorkspaceBytes_, tableBase, tableEnd, dstAddr, dstAddr + copyBytes, srcUbAddr,
+               rankCountElements_, static_cast<uint32_t>(dstInBounds), static_cast<uint32_t>(srcInBounds));
     }
     DataCopy(perCoreRankCounts, rankCounts, rankCountElements_);
     // DataCopy is asynchronous. This marker separates instruction issue from MTE completion/error reporting.
-    PRINTF("[F2A DataCopy submitted] core=%u rank=%u dst=0x%lx bytes=%lu\n", aivId_, rankId_,
-           reinterpret_cast<uint64_t>(countRowAddr), copyBytes);
+    if (aivId_ == debugAivId) {
+        PRINTF("[F2A count-copy submitted] core=%u\n", aivId_);
+    }
     SyncFunc<HardEvent::MTE3_S>();
-    PRINTF("[F2A DataCopy completed] core=%u rank=%u dst=0x%lx bytes=%lu\n", aivId_, rankId_,
-           reinterpret_cast<uint64_t>(countRowAddr), static_cast<uint64_t>(rankCountElements_) * sizeof(int32_t));
+    if (aivId_ == debugAivId) {
+        PRINTF("[F2A count-copy completed] core=%u\n", aivId_);
+    }
     SyncAll<true>();
 
     // Every core independently sums the preceding core rows. Core 0 is not a centralized prefix calculator.
