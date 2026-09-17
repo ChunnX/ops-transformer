@@ -596,15 +596,21 @@ public:
         // Value
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID3);
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID4);
-        // L0A
+        // L0A: 2 outer x 2 micro = 4 片
         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID0);
         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID1);
-        // L0B
         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID2);
         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID3);
-        // L0C
+        // L0B: MM1 的 Q 用 4/6, MM2 的 V 用 4..7 —— 一起让满 4..7
+        AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID4);
+        AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID5);
+        AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID6);
+        AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID7);
+        // L0C: MM1 的 4 个小槽占 0..3 (MM2 只用 0 和 2)
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID0);
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID1);
+        AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID2);
+        AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID3);
         // cross core sync
         if constexpr (SM_MM2_MODE == Arch::CROSS_CORE_SYNC_MODE_4) {
             AscendC::CrossCoreSetFlag<SM_MM2_MODE, PIPE_MTE1>(Arch::FLAG_ID2);
@@ -654,8 +660,14 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID1);
         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID2);
         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID3);
+        AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID4);
+        AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID5);
+        AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID6);
+        AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID7);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID1);
+        AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID2);
+        AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID3);
         if constexpr (MM1_SM_MODE == Arch::CROSS_CORE_SYNC_MODE_4) {
             AscendC::CrossCoreWaitFlag<MM1_SM_MODE, PIPE_FIX>(Arch::FLAG_ID0);
             AscendC::CrossCoreWaitFlag<MM1_SM_MODE, PIPE_FIX>(Arch::FLAG_ID1);
