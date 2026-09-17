@@ -70,6 +70,7 @@ private:
     __aicore__ inline void UpdateTokenNumsOut();
     __aicore__ inline void InitBufferWait();
     __aicore__ inline void CalTokenSendExpertCnt(uint32_t dstExpertId, int32_t calCnt, int32_t &curExpertCnt);
+    __aicore__ inline int32_t CalSharedExpertTokenCnt(uint32_t curStatusExpId);
     __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startTokenId,
                                        uint32_t &endTokenId, uint32_t &sendTokenNum, bool isFront = true);
     __aicore__ inline GM_ADDR GetWindAddrByRankId(const int32_t rankId)
@@ -440,6 +441,14 @@ __aicore__ inline void MoeDistributeDispatch<TemplateDispatchTypeFunc>::SplitToC
 }
 
 template <TemplateDispatchTypeClass>
+__aicore__ inline int32_t MoeDistributeDispatch<TemplateDispatchTypeFunc>::CalSharedExpertTokenCnt(
+    uint32_t curStatusExpId)
+{
+    return (curStatusExpId + 1 + epRankId_) * axisBS_ / sharedExpertRankNum_ -
+           (curStatusExpId + epRankId_) * axisBS_ / sharedExpertRankNum_;
+}
+
+template <TemplateDispatchTypeClass>
 __aicore__ inline void MoeDistributeDispatch<TemplateDispatchTypeFunc>::SendToMoeExpert()
 {
     uint32_t startTokenId = 0;
@@ -512,9 +521,7 @@ __aicore__ inline void MoeDistributeDispatch<TemplateDispatchTypeFunc>::AlltoAll
 
     if (!isShareExpertRank_) {
         for (uint32_t curStatusExpId = 0; curStatusExpId < sharedExpertRankNum_; ++curStatusExpId) {
-            int32_t curExpertCnt = (curStatusExpId + 1 + epRankId_) * axisBS_ / sharedExpertRankNum_ -
-                                   (curStatusExpId + epRankId_) * axisBS_ / sharedExpertRankNum_;
-            statusTensor_((curStatusExpId) * 8 + 1) = curExpertCnt;
+            statusTensor_((curStatusExpId) * 8 + 1) = CalSharedExpertTokenCnt(curStatusExpId);
         }
     }
     if ((sharedExpertRankNum_ != 0) && (aivId_ >= moeUsedAivNum_)) { // 后面的核进行发给共享专家
@@ -667,9 +674,7 @@ __aicore__ inline void MoeDistributeDispatch<TemplateDispatchTypeFunc>::GetCumSu
     if (isShareExpertRank_) {
         SyncFunc<AscendC::HardEvent::MTE2_S>();
         for (uint32_t curStatusExpId = 0; curStatusExpId < sharedExpertRankNum_; ++curStatusExpId) {
-            int32_t curExpertCnt = (curStatusExpId + 1 + epRankId_) * axisBS_ / sharedExpertRankNum_ -
-                                   (curStatusExpId + epRankId_) * axisBS_ / sharedExpertRankNum_;
-            statusTensor_((curStatusExpId) * 8 + 1) = curExpertCnt;
+            statusTensor_((curStatusExpId) * 8 + 1) = CalSharedExpertTokenCnt(curStatusExpId);
         }
         SyncFunc<AscendC::HardEvent::S_V>();
     } else {
@@ -719,16 +724,7 @@ __aicore__ inline void MoeDistributeDispatch<TemplateDispatchTypeFunc>::LocalWin
         // 处理MOE专家，获取本卡状态空间中的索引及token数目
         totalMoeExpert = epWorldSize_ * moeExpertNumPerRank_;
     }
-    sendExpertNum_ = totalMoeExpert / aivNum_; // 每个aiv需要处理的专家数
-    uint32_t remainderRankNum = totalMoeExpert % aivNum_;
-    startExpertId_ = sendExpertNum_ * aivId_; // + sharedExpertRankNum_, 每个aiv发送的起始rankid
-    if (aivId_ < remainderRankNum) {          // 前remainderRankNum个aiv需要多发1个卡的数据
-        sendExpertNum_ += 1;
-        startExpertId_ += aivId_;
-    } else {
-        startExpertId_ += remainderRankNum;
-    }
-    endExpertId_ = startExpertId_ + sendExpertNum_;
+    SplitToCore(totalMoeExpert, aivNum_, startExpertId_, endExpertId_, sendExpertNum_);
     if (startExpertId_ >= totalMoeExpert) { // 多余的核return
         return;
     }
