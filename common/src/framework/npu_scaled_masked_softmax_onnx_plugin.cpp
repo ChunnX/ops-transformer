@@ -1,43 +1,94 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file npu_scaled_masked_softmax_onnx_plugin.cpp
  * \brief onnx plugin for npu custom operator npu_scaled_masked_softmax
  */
 
-#include "onnx_common.h"
+#include <cstdint>
+#include <limits>
+
+#include "nlohmann/json.hpp"
+#include "graph/operator.h"
+#include "register/register.h"
+#include "onnx_plugin_utils.h"
 
 namespace domi {
-using NodeProto = ge::onnx::NodeProto;
+// ONNX AttributeProto type values used by this plugin.
+constexpr int ATTRIBUTE_TYPE_FLOAT = 1;
+constexpr int ATTRIBUTE_TYPE_INT = 2;
 
-static Status ParseParamsNPUScaledMaskedSoftmax(const Message *op_src, ge::Operator &op_dest)
+static bool GetInt64(const nlohmann::json &value, int64_t &parsed_value)
 {
-    const NodeProto *node = dynamic_cast<const NodeProto *>(op_src);
-    if (node == nullptr) {
-        OP_LOGE(GetOpName(op_dest).c_str(), "Dynamic cast op_src to NodeProto failed!");
-        return FAILED;
+    if (!value.is_number_integer() ||
+        (value.is_number_unsigned() &&
+         value.get<uint64_t>() > static_cast<uint64_t>(std::numeric_limits<int64_t>::max()))) {
+        return false;
     }
+    parsed_value = value.get<int64_t>();
+    return true;
+}
 
-    float scale = 1.0;
+static Status ParseParamsNPUScaledMaskedSoftmax(const ge::Operator &op_src, ge::Operator &op_dest)
+{
+    float scale = 1.0F;
     bool fixed_triu_mask = false;
-    for (const auto &attr : node->attribute()) {
-        if (attr.name() == "scale" && attr.type() == ge::onnx::AttributeProto::FLOAT) {
-            scale = attr.f();
-        } else if (attr.name() == "fixed_triu_mask" && attr.type() == ge::onnx::AttributeProto::INT && attr.i() == 1) {
-            fixed_triu_mask = true;
+    ge::AscendString attributes;
+    // ONNX repeated AttributeProto messages are exposed as JSON in "attribute".
+    if (op_src.GetAttr("attribute", attributes) == ge::GRAPH_SUCCESS) {
+        if (attributes.GetString() == nullptr) {
+            return FAILED;
+        }
+        try {
+            const auto root = nlohmann::json::parse(attributes.GetString());
+            if (!root.is_object()) {
+                return FAILED;
+            }
+            if (root.contains("attribute")) {
+                const auto &attrs = root.at("attribute");
+                if (!attrs.is_array()) {
+                    return FAILED;
+                }
+                for (const auto &attr : attrs) {
+                    if (!attr.is_object()) {
+                        return FAILED;
+                    }
+                    const std::string name = attr.value("name", "");
+                    const int type = attr.value("type", 0);
+                    // Other types were ignored by the old parser.
+                    if (name == "scale" && type == ATTRIBUTE_TYPE_FLOAT) {
+                        // An omitted protobuf float field has the default value zero.
+                        if (!attr.contains("f")) {
+                            scale = 0.0F;
+                        } else if (!attr.at("f").is_number()) {
+                            return FAILED;
+                        } else {
+                            scale = attr.at("f").get<float>();
+                        }
+                    } else if (name == "fixed_triu_mask" && type == ATTRIBUTE_TYPE_INT) {
+                        // An omitted protobuf integer field has the default value zero.
+                        int64_t parsed_value = 0;
+                        if (attr.contains("i") && !GetInt64(attr.at("i"), parsed_value)) {
+                            return FAILED;
+                        }
+                        fixed_triu_mask = (parsed_value == 1);
+                    }
+                }
+            }
+        } catch (const nlohmann::json::exception &) {
+            return FAILED;
         }
     }
     op_dest.SetAttr("scale", scale);
     op_dest.SetAttr("fixed_triu_mask", fixed_triu_mask);
-
     return SUCCESS;
 }
 
@@ -53,6 +104,6 @@ REGISTER_CUSTOM_OP("ScaledMaskedSoftmax")
                    ge::AscendString("ai.onnx::16::NPUScaledMaskedSoftmax"),
                    ge::AscendString("ai.onnx::17::NPUScaledMaskedSoftmax"),
                    ge::AscendString("ai.onnx::18::NPUScaledMaskedSoftmax")})
-    .ParseParamsFn(ParseParamsNPUScaledMaskedSoftmax)
+    .ParseParamsByOperatorFn(ParseParamsNPUScaledMaskedSoftmax)
     .ImplyType(ImplyType::TVM);
 } // namespace domi
