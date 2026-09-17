@@ -23,7 +23,12 @@
  * 布局: 零、公共类型与常量(含客户标定大结构体 FitBalanceCalibration) /
  *       一、模型层(HCCL 通信 + matmul 算力梯度; 内部查表结构勿在算子侧引用) /
  *       二、切分与输出层(FormPartition + CutResult 适配) /
- *       三、求解层(自由长度求解器, ctx+钩子注入) / 四、公共钩子片段
+ *       三、求解层(自由长度求解器, ctx+键控分支) / 四、公共逻辑片段
+ *
+ * 零特有代码架构(2026-09-17 §4.24 裁定): 钩子机制已废除, 算子差异按
+ * (通信原语 KernelType, 通算顺序 CommComputeOrder, 通信引擎 CommEngine, dtype)
+ * 键控分支内化于引擎; 阈值经 FitBalanceCalibration.tunables(FitTunables) 注入。
+ * 算子侧 = CALIBRATION 实例 + 枚举入参 + 一行调用, 无任何算子特有代码。
  *
  * 统一引擎分派（三引擎接入结构完全一致, 见 CommEngine/ParseCommEngine）:
  *   同时支持多通信模式的算子按同一模式接入——CCU/AICPU 走自由长度分支（各引擎拟合表）;
@@ -178,7 +183,7 @@ struct TilingBestBaseBlock {
 // 通信轮次硬上限（来源: hccl_formulaic_tiling.h 的 MAX_TILE_CNT, 受 FFTS 队列大小限制）
 constexpr uint64_t MAX_TILE_CNT = 16;
 
-// 旧基类头文件里的通算比阈值（算子钩子使用）
+// 旧基类头文件里的通算比阈值（E9 减半鼓励门消费）
 constexpr double CALC_COMM_RATIO = 2.0;
 
 constexpr uint32_t BASE_BLOCK_M = 128;
@@ -227,6 +232,27 @@ inline CommEngine ParseCommEngine(const char *commMode)
     return CommEngine::AICPU;
 }
 
+// ====== 通算顺序枚举(键控维度: 同一原语可有相反顺序, 如 matmul_allto_all=mm→A2A /
+//       allto_all_matmul=A2A→mm; 顺序不可由原语推导, 必须显式传入) ======
+enum class CommComputeOrder {
+    COMPUTE_FIRST, // 计算在前通信在后(输出侧通信: RS/AR/matmul_allto_all)
+    COMM_FIRST,    // 通信在前计算在后(输入侧通信: AG/allto_all_matmul)
+};
+
+// ====== 键控分支的可调阈值(载体: FitBalanceCalibration.tunables, 缺省=现网值) ======
+// 机制随引擎键控分支下沉, 阈值留标定——同键算子将来分叉只改各自 CALIBRATION(§4.22 裁定)
+struct FitTunables {
+    // E9(AG 键): 短块减半鼓励门——通算平衡且半块双耗时均超阈, 才减半对齐长度(鼓励多切)
+    double halveEncourageMmUs = 40;   // 半块 matmul 耗时下限 (us)
+    double halveEncourageCommUs = 40; // 半块通信耗时下限 (us)
+    // E10(AR 键, P2-MMAR 接线): 切分开销绝对值反解 minLen 的双耗时下限
+    double minCutCommUs = 100; // 通信耗时下限 (us)
+    double minCutMmUs = 60;    // matmul 耗时下限 (us)
+};
+
+// fp4 子字节建模分母: 1 字节打包 2 个 fp4 元素(D6, dtype 键控)
+constexpr uint64_t FP4_PACK_RATIO = 2;
+
 // ============================================================================
 // 一、模型层
 // ============================================================================
@@ -235,7 +261,7 @@ inline CommEngine ParseCommEngine(const char *commMode)
 // 本引擎按设计仅在 950 标卡 4P/8P 生效, 旧芯片分支(310P 环网/910_93
 // 双环/基表两段式查表——其结果恒被 950 查表覆盖)经 grep 证实 5 个消费
 // 算子零调用后剥离; 老芯片的真实需求由原位保留的 B 家族(mc2/common/op_host/
-// op_tiling)满足。活跃 API 面(5 算子钩子实测): CommTime/InverseCommTime/
+// op_tiling)满足。活跃 API 面(键控分支/P2 算子实测): CommTime/InverseCommTime/
 // SetCommShapeLen/SetCommDTypeSize/GetCommDTypeSize/SetCommDtypeSizeExpansionFraction/
 // commTimeFactor_/GetRankTileNum(InitCtx 内部)。
 
@@ -420,7 +446,7 @@ protected:
 // ---- 1.2 matmul 模型（HCCL 算力/梯度模型, 自由长度分支专用, 950）----
 // 由旧 MatmulPerformanceModel + MatmulPerformanceArch35 合并精简(2026-09-15, 类名已去 arch35),
 // 剥离 310P/910_B4 分支与 4 参 FindCubeUtil(含其独占的 K 对齐修正链)——
-// 5 个消费算子钩子经 grep 证实仅用 1 参 FindCubeUtil/FindCubeUtilByL2Usage。
+// 5 个消费算子经 grep 证实仅用 1 参 FindCubeUtil/FindCubeUtilByL2Usage。
 
 namespace MatmulPerformance {
 constexpr double COMPUTES_PER_CYCLE = 4096; // 基础算力(查表未命中回退, 标定头回填同值)
@@ -645,7 +671,7 @@ protected:
 // ============================================================================
 
 // (2026-09-15 精简: 连续切分路径 FitTileLengthContinuous/SmallFrontTileCheck/
-//  LargeBackTileCheck/CommBoundShortAlign 为 B 家族(公式化)专用, A 家族 5 算子钩子
+//  LargeBackTileCheck/CommBoundShortAlign 为 B 家族(公式化)专用, A 家族 5 算子
 //  经 grep 证实零调用, 已随旧芯片逻辑剥离; B 家族原位副本不受影响)
 constexpr uint64_t LARGE_NK_BAR_BASE = 32;
 constexpr uint64_t SMALL_TILECNT_PAR = 2;
@@ -699,7 +725,7 @@ public:
     void NoCutTiling();
     void MaxTileCntUniform();
 
-    // 离散切分对齐 (A 家族全部算子的 Adjust 钩子使用)
+    // 离散切分对齐 (A 家族全部算子的 Adjust 阶段使用)
     void AlignTileSmall();
     void AlignTileLarge();
     void FitTileLengthDiscrete(bool smallDimAlignUp, bool goodLinearityShape, bool localAtFront = false);
@@ -915,20 +941,20 @@ inline void FormPartition::MaxTileCntUniform()
 // ============================================================================
 // 三、求解层（两分支求解器）
 // ============================================================================
-// ---- 3.1 自由长度求解器（ctx + 钩子注入, HCCL AICPU/CCU）----
+// ---- 3.1 自由长度求解器（ctx + 键控分支, HCCL AICPU/CCU; 钩子机制已于 §4.24 废除）----
 // ============================================================================
 
-// 调度上下文: 与旧 Mc2FitBasedBalanceTiling 基类的公开成员逐一对应
-// 运行时上下文: 引擎三件套 + 派生/过程量。
-// 刻意不含静态标定数据(在 FitBalanceCalibration)与冗余镜像字段:
-//   mmInfo(14 字段仅 5 个被钩子消费)→钩子直接用 ctx.matmulPerf.mmShapeInfo_(同一份数据);
-//   coreNum→mmShapeInfo_.coreNum; rankDim→ctx.commPerf.rankDim()。
+// 调度上下文: 引擎三件套 + 键控维度 + 过程量(刻意不含静态标定数据, 在 FitBalanceCalibration)
 struct FitBasedBalanceCtx {
     MatmulPerfModel matmulPerf;
     HCCLCommModel commPerf;
     FormPartition tilingM;
+    KernelType kernelType;      // 键控维度: 通信原语
+    CommComputeOrder order;     // 键控维度: 通算顺序
+    FitTunables tunables;       // 键控分支阈值(自 Calibration.tunables 拷贝)
     uint64_t rankTileNum = 1;   // 派生: commPerf.GetRankTileNum()(通信模型内的 rank 份数)
-    double ratioCalcComm = 1.0; // 过程量: Estimate 骨干设置的通算比(钩子消费)
+    double ratioCalcComm = 1.0; // 过程量: Estimate 骨干设置的通算比(键控分支消费)
+    double frontMMTime = 0; // 过程量(AG 键): 本地首轮计算耗时(本卡 A 块已在手, 首块无通信依赖)
 };
 // ============================================================================
 // 客户标定数据总集（算子侧唯一需要接触的标定类型, 2026-09-15 评审裁定:
@@ -996,11 +1022,13 @@ struct FitBalanceCalibration {
         L2CacheEstimateParameters defaultL2Param = {128, 192, 0.85, 0.75, 0.65}; // L2 档回退(通常勿动)
     };
     Matmul matmul;
+    FitTunables tunables; // 键控分支阈值(缺省=现网值, 通常勿动; 尾部可整段省略)
 };
 
-// 统一入口: 算子侧只传大结构体标定数据 + 通信引擎枚举(soc 恒 950)
-inline FitBasedBalanceCtx InitCtx(const TilingArgs &args, KernelType kernelType, CommEngine commEngine,
-                                  const FitBalanceCalibration &calib, TopoType topoType = TopoType::STANDARD_CARD)
+// 统一入口: 算子侧只传大结构体标定数据 + 键控枚举(原语/顺序/引擎; soc 恒 950)
+inline FitBasedBalanceCtx InitCtx(const TilingArgs &args, KernelType kernelType, CommComputeOrder order,
+                                  CommEngine commEngine, const FitBalanceCalibration &calib,
+                                  TopoType topoType = TopoType::STANDARD_CARD)
 {
     // 引擎分路 + 大结构体 → 引擎内部表适配(线性行转三段式, 按 null key 截断)
     const FitBalanceCalibration::CommFit &commFit = (commEngine == CommEngine::CCU) ? calib.ccu : calib.aicpu;
@@ -1040,37 +1068,46 @@ inline FitBasedBalanceCtx InitCtx(const TilingArgs &args, KernelType kernelType,
         mmTable.l2Count = i + 1;
     }
     mmTable.bestBaseBlock = calib.matmul.baseBlock;
-    FitBasedBalanceCtx ctx{MatmulPerfModel(args, mmTable), HCCLCommModel(args.rankDim, kernelType, commTable, topoType),
-                           FormPartition(args), 1, 1.0};
+    FitBasedBalanceCtx ctx{MatmulPerfModel(args, mmTable),
+                           HCCLCommModel(args.rankDim, kernelType, commTable, topoType),
+                           FormPartition(args),
+                           kernelType,
+                           order,
+                           calib.tunables,
+                           1,
+                           1.0};
     ctx.tilingM.SetMaxTileCnt(MAX_TILE_CNT); // Due to the limited FFTS queue size, a maximum of 16 rounds can be cut.
     ctx.rankTileNum = ctx.commPerf.GetRankTileNum();
+
+    // ---- 通算胶水(键控, 原散在各算子构造函数, §4.24 裁定随引擎下沉) ----
+    // D4 通信矩阵另一维: AG/A2A-in 沿 K 轴聚散 → kValue; RS/AR/A2A-out 沿 N 轴 → nValue
+    const bool commOnKAxis = (kernelType == KernelType::ALL_GATHER) ||
+                             ((kernelType == KernelType::ALL_TO_ALL) && (order == CommComputeOrder::COMM_FIRST));
+    ctx.commPerf.SetCommShapeLen(commOnKAxis ? ctx.matmulPerf.mmShapeInfo_.kValue : ctx.matmulPerf.mmShapeInfo_.nValue);
+    // D5 通信承载 dtype: AG/A2A-in 传 A 侧数据, 其余传 C 侧;
+    // D6 A 侧 fp4 无 0.5 字节表达, 按"1 字节打包 2 元素"建模(复用 HCCL 子字节机制)
+    if (commOnKAxis) {
+        if (args.geAType == ge::DataType::DT_FLOAT4_E2M1) {
+            ctx.commPerf.SetCommDTypeSize(1);
+            ctx.commPerf.SetCommDtypeSizeExpansionFraction(FP4_PACK_RATIO);
+            ctx.matmulPerf.mmShapeInfo_.inMatrixADtypeSize = 1; // L2 占用按 2x 高估, 避免 0 退化
+            ctx.matmulPerf.mmShapeInfo_.inMatrixBDtypeSize = 1;
+        } else {
+            ctx.commPerf.SetCommDTypeSize(ctx.matmulPerf.mmShapeInfo_.inMatrixADtypeSize);
+        }
+    } else {
+        // [P2 接线] RS 的 A&&B 双 fp4 mm 侧建模变体在 RSMM 迁移时接入
+        ctx.commPerf.SetCommDTypeSize(ctx.matmulPerf.mmShapeInfo_.outMatrixCDtypeSize);
+    }
+    // D7 离散对齐粒度初始化: baseM
+    ctx.tilingM.SetMinLenByMax(ctx.matmulPerf.GetBaseM());
+    ctx.tilingM.SetAlignLength(ctx.matmulPerf.GetBaseM());
     return ctx;
 }
 
-/*!
- * \brief 统一调度入口（= 旧 Mc2FitBasedBalanceTiling::GetTiling 流程逐行对应）
- *
- * 算子侧通过 HooksT 注入 4 个钩子（原派生类的 override, 静态分发）:
- *   hooks.EstimateMMCommTime(ctx) / hooks.SetShortTileLen(ctx)
- *   hooks.SetLongTileLen(ctx) / hooks.AdjustLongShortTileLen(ctx)
- */
-template <typename HooksT>
-CutResult Schedule(FitBasedBalanceCtx &ctx, HooksT &hooks)
-{
-    hooks.EstimateMMCommTime(ctx);
-    hooks.SetShortTileLen(ctx);
-    if (ctx.tilingM.totalLen < ctx.tilingM.cutRes.shortTileLen * 2) { // do not cut if mValue is too small
-        ctx.tilingM.NoCutTiling();
-    } else {
-        hooks.SetLongTileLen(ctx);
-        hooks.AdjustLongShortTileLen(ctx);
-    }
-    return ctx.tilingM.cutRes;
-}
-
 // ============================================================================
-// 四、公共钩子片段（算子特有钩子中可复用的公共逻辑, P2 算子迁移时优先对齐;
-//     2026-09-15 五算子钩子逐行对比提取, 覆盖率注明各行）
+// 四、公共逻辑片段（求解器键控分支与后续算子迁移复用的公共逻辑, P2 迁移时优先对齐;
+//     2026-09-15 五算子逐行对比提取, 覆盖率注明各行; §4.24 后由键控分支/P2 迁移消费）
 // ============================================================================
 
 // 短长块等长归一（5/5 算子 Adjust 尾部逐字一致）
@@ -1105,9 +1142,9 @@ inline void BalanceLongTileLen(FitBasedBalanceCtx &ctx, uint64_t rankTileNum)
     }
 }
 
-// ---- 以下为多算子共有(非全算子)片段: 算子钩子按需调用即为"开关"(调=走公共逻辑,
-//      不调=写算子自己的), 不设引擎级 bool 开关——片段与算子逻辑在钩子内交错,
-//      引擎级开关无法表达交错顺序且会重演配置汤) ----
+// ---- 以下为多算子共有(非全算子)片段: 求解器键控分支与 P2 迁移算子按需调用
+//      (调=走公共逻辑, 不调=走各自键控分支), 不设引擎级 bool 开关——片段与键控
+//      分支逻辑交错, 引擎级开关无法表达交错顺序且会重演配置汤) ----
 
 // Estimate 骨干（4/5: agmm/rs_v2/all_reduce/matmul_allto_all 一致）:
 // FindCubeUtil + GetMatmulGradient + 总量估计 + 通算比; shortTileAtBack 判定不在此
@@ -1159,6 +1196,72 @@ inline void ApplySmallShapeMinLen(FormPartition &tilingM, FitBasedBalanceCtx &ct
         ctx.matmulPerf.mmShapeInfo_.coreNum * ctx.matmulPerf.GetBaseM() * ctx.matmulPerf.GetBaseN() * TWO) {
         tilingM.SetMinLenByMax(ctx.matmulPerf.mmShapeInfo_.mValue);
     }
+}
+
+// 键控维度: isAg = (通信原语 == ALL_GATHER)。AG 语义——本卡 A 块已在手:
+// 首块计算无通信依赖(E5), 长块通信掩盖的是本地首轮计算而非短块(E19), 短块恒后置(E4)
+inline CutResult Schedule(FitBasedBalanceCtx &ctx)
+{
+    const bool isAg = (ctx.kernelType == KernelType::ALL_GATHER);
+
+    // ---- ① Estimate: 公共骨干(E1) + E2 mmRankMul 键控 ----
+    // E2: AG/RS 聚合 rankDim 份后 mm 按 rankDim 倍计; AR(reduce 已含)/A2A(分散已含) → 1
+    const uint64_t mmRankMul =
+        (ctx.kernelType == KernelType::ALL_GATHER || ctx.kernelType == KernelType::REDUCE_SCATTER ||
+         ctx.kernelType == KernelType::REDUCE_SCATTER_VIA_ALL_TO_ALL) ?
+            ctx.commPerf.rankDim() :
+            1;
+    const auto est = EstimateTotalTimes(ctx, mmRankMul);
+    if (isAg) {
+        // E5: 首轮独立计算的 L2 利用率与聚合后不同(frontUtil 修正)
+        const double frontUtil = ctx.matmulPerf.FindCubeUtilByL2Usage(ctx.matmulPerf.mmShapeInfo_.mValue, 1);
+        if (std::abs(frontUtil) > 1e-10) {
+            ctx.frontMMTime = ctx.matmulPerf.MatmulTime(ctx.matmulPerf.mmShapeInfo_.mValue, 1) / frontUtil;
+        } else {
+            ctx.frontMMTime = ctx.matmulPerf.MatmulTime(ctx.matmulPerf.mmShapeInfo_.mValue, 1);
+        }
+        ctx.tilingM.cutRes.shortTileAtBack = true; // E4: AG 恒后置
+    } else if (ctx.order == CommComputeOrder::COMPUTE_FIRST) {
+        // 先行段为瓶颈 → 短块后置(短块放另一端, 由长块掩盖)
+        ctx.tilingM.cutRes.shortTileAtBack = (est.totalMatmulTime >= est.totalTpTime);
+    } else {
+        ctx.tilingM.cutRes.shortTileAtBack = (est.totalTpTime > est.totalMatmulTime);
+    }
+
+    // ---- ② SetShort: E9(AG 键) 减半鼓励门 + 短块落位 ----
+    if (isAg) {
+        // 通算平衡且半块双耗时均超阈(切了不亏) → 对齐长度减半鼓励多切(阈值见 FitTunables)
+        const bool isCalcCommBalance = ctx.ratioCalcComm < CALC_COMM_RATIO;
+        const uint64_t cutLen = ctx.tilingM.GetAlignLength() / TWO;
+        const double mmCost = ctx.matmulPerf.MatmulTime(cutLen, ctx.commPerf.rankDim());
+        const double commCost = ctx.commPerf.CommTime(cutLen);
+        if (isCalcCommBalance && (mmCost > ctx.tunables.halveEncourageMmUs) &&
+            (commCost > ctx.tunables.halveEncourageCommUs)) {
+            ctx.tilingM.SetAlignLength(cutLen);
+            ctx.tilingM.SetMinLenByMin(cutLen);
+        }
+    }
+    // [P2 接线] E10(AR 键 阈值反解)/E11-E13(L2/小shape)/E14-E16(E27 等)随各算子迁移接入
+    ctx.tilingM.cutRes.shortTileLen = ctx.tilingM.GetMinLen();
+    ctx.tilingM.cutRes.numShortTile = 1U;
+
+    if (ctx.tilingM.totalLen < ctx.tilingM.cutRes.shortTileLen * 2) { // do not cut if mValue is too small
+        ctx.tilingM.NoCutTiling();
+        return ctx.tilingM.cutRes;
+    }
+
+    // ---- ③ SetLong: E19(AG 键) 长块通信掩盖本地首轮计算 / E18 公共双向配平 ----
+    if (isAg) {
+        ctx.tilingM.cutRes.longTileLen = ctx.commPerf.InverseCommTime(ctx.frontMMTime);
+    } else {
+        BalanceLongTileLen(ctx, ctx.rankTileNum);
+    }
+
+    // ---- ④ Adjust: E24(goodLinearity: AG 恒 true) + 离散化 + E25 等长归一 ----
+    const bool goodLin = isAg ? true : IsGoodLinearityShape(ctx.matmulPerf.mmShapeInfo_);
+    ctx.tilingM.FitTileLengthDiscrete(false, goodLin, isAg); // localAtFront: AG 前端有本地块
+    MergeEqualTiles(ctx.tilingM);
+    return ctx.tilingM.cutRes;
 }
 
 } // namespace fit_balance

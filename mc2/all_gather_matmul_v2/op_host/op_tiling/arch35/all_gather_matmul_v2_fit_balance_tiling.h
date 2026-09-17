@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * This program is free software: you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
@@ -10,17 +10,15 @@
 
 /*!
  * \file all_gather_matmul_v2_fit_balance_tiling.h
- * \brief AllGatherMatmulV2 fit-balance 算子侧唯一维护点
+ * \brief AllGatherMatmulV2 fit-balance 算子侧零特有代码形态（2026-09-17 §4.24 收官裁定）
  *
- * 内容分区（迁移方案 MC2_LEGACY_TILING_APACE_MIGRATION_PLAN.md §4.9 统一接口模式）:
- *   一、客户标定数据 —— 唯一实例 CALIBRATION(单一 FitBalanceCalibration 大结构体,
- *      2026-09-15 评审修订), 重新标定后只改其中数值;
- *   二、算子特有钩子（原派生类 override 的逐行拷贝; 含少量算子逻辑参数）;
- *   三、组装与新旧切换: GetFitBalanceCut(args) 一行调用; kUseNewEngine 置 false 即回老类
- *      （老类 all_gather_fit_balance_tiling.h 原样保留）。
+ * 本文件只剩三样东西, 无任何算子特有逻辑（钩子机制已废除, AG 特有逻辑已键控内化引擎）:
+ *   一、客户标定数据 CALIBRATION（唯一编辑面, 重新标定只改数值）;
+ *   二、一行组装: InitCtx(ALL_GATHER, COMM_FIRST, commEngine, CALIBRATION) + Schedule;
+ *   三、kUseNewEngine 新旧切换（置 false 重编译即回老类, 老类原样保留）。
  *
- * 公共逻辑（模型/切分引擎/调度流）在 apace/tiling/fit_balance_tiling.h 三、3.1（自由长度求解器）,
- * 本文件不重复任何公共实现。
+ * 公共逻辑与 AG 键控分支（E4 恒后置/E5 本地首轮重叠/E9 减半鼓励/E19 长块反解/
+ * E24 localAtFront + D4/D5/D6 胶水）均在 apace/tiling/fit_balance_tiling.h。
  */
 
 #ifndef __ALL_GATHER_MATMUL_V2_FIT_BALANCE_TILING_H__
@@ -76,111 +74,29 @@ static const fb::FitBalanceCalibration CALIBRATION = {
         /* baseBlock: matmul 最优基本块(单值; 未填用默认 {128,256,64}) */
         {256, 256, 128},
     },
+    // tunables: 键控分支阈值(E9 减半鼓励门 40/40 等), 缺省=现网值, 通常勿动
 };
 
 // ============================================================================
-// 二、算子特有钩子（= 老 all_gather_fit_balance_tiling.cpp 逐行拷贝, 状态存本结构体;
-//     以下 4 个常量为钩子逻辑参数(非标定数据): 减半鼓励门与 fp4 建模折算）
+// 二、组装与新旧切换
 // ============================================================================
 
-constexpr double MM_EXPANSION_TIME = 40;    // 短块减半仅当半块计算耗时 > 此值(us)
-constexpr double COMM_EXPANSION_TIME = 40;  // 且半块通信耗时 > 此值(us)
-constexpr uint64_t FP4_EXPANSION_RATIO = 2; // fp4 通信按"1字节打包2元素"建模的分母
-
-// 算子钩子: 由引擎 fb::Schedule(ctx, hooks) 按下述顺序回调(引擎持有调度流, 算子只写差异):
-//   ① EstimateMMCommTime → ② SetShortTileLen → [NoCut 判断] → ③ SetLongTileLen → ④ AdjustLongShortTileLen
-// (调度流修改只改引擎一处, 5 个算子同步生效; IDE 静态分析看不到模板分派的调用点属预期)
-struct AgMmV2Hooks {
-    double frontMMTime = 0;
-
-    void EstimateMMCommTime(mc2tiling::fit_balance::FitBasedBalanceCtx &ctx)
-    {
-        // Estimate 骨干(4/5 算子一致的公共片段): 模型刷新 + 总量 + 通算比
-        // AG 语义: 通信聚合 rankDim 份后 mm 按 rankDim 倍计(与老代码 MatmulTime(m, rankDim_) 一致)
-        const auto est = mc2tiling::fit_balance::EstimateTotalTimes(ctx, /*mmRankMul=*/ctx.commPerf.rankDim());
-        const double totalMatmulTime = est.totalMatmulTime;
-        const double totalTpTime = est.totalTpTime;
-        double frontUtil = ctx.matmulPerf.FindCubeUtilByL2Usage(ctx.matmulPerf.mmShapeInfo_.mValue, 1);
-        if (std::abs(frontUtil) > 1e-10) {
-            frontMMTime = ctx.matmulPerf.MatmulTime(ctx.matmulPerf.mmShapeInfo_.mValue, 1) / frontUtil;
-        } else {
-            frontMMTime = ctx.matmulPerf.MatmulTime(ctx.matmulPerf.mmShapeInfo_.mValue, 1);
-        }
-        ctx.tilingM.cutRes.shortTileAtBack = true; // AG 特有: 恒后置(其余算子按 bound 判定)
-        // ratioCalcComm 已由 EstimateTotalTimes 设置
-
-        uint64_t sizeOfComm = ctx.matmulPerf.mmShapeInfo_.mValue * ctx.matmulPerf.mmShapeInfo_.kValue *
-                              (ctx.commPerf.rankDim() - 1) / mc2tiling::fit_balance::ONE_MBYTE *
-                              ctx.commPerf.GetCommDTypeSize();
-        OPS_LOG_D("AllGatherMatmul",
-                  "Input shape {M, N, K} = {%lu, %lu, %lu}, cubeUtil_ %f, sizeOfComm %lu, "
-                  "totalMatmulTime %f, totalCommTime %f, minTileSize %lu, mAlignLen %lu, commTimeFactor_ %f, "
-                  "rankDim_ %lu, rankTile %lu",
-                  ctx.matmulPerf.mmShapeInfo_.mValue, ctx.matmulPerf.mmShapeInfo_.nValue,
-                  ctx.matmulPerf.mmShapeInfo_.kValue, ctx.matmulPerf.cubeUtil_, sizeOfComm, totalMatmulTime,
-                  totalTpTime, ctx.tilingM.GetMinLen(), ctx.tilingM.GetAlignLength(), ctx.commPerf.commTimeFactor_,
-                  ctx.commPerf.rankDim(), ctx.rankTileNum);
-    }
-
-    void SetLongTileLen(mc2tiling::fit_balance::FitBasedBalanceCtx &ctx)
-    {
-        // Long tile should overlap the cost time of local tile
-        ctx.tilingM.cutRes.longTileLen = ctx.commPerf.InverseCommTime(frontMMTime);
-    }
-
-    void SetShortTileLen(mc2tiling::fit_balance::FitBasedBalanceCtx &ctx)
-    {
-        // Encourage split more if the comm and calc is balanced and the cost of cutLen is sufficiently high
-        bool isCalcCommBalance = ctx.ratioCalcComm < mc2tiling::fit_balance::CALC_COMM_RATIO;
-        uint64_t cutLen = ctx.tilingM.GetAlignLength() / mc2tiling::fit_balance::TWO;
-        double mmCost = ctx.matmulPerf.MatmulTime(cutLen, ctx.commPerf.rankDim());
-        double commCost = ctx.commPerf.CommTime(cutLen);
-        if (isCalcCommBalance && (mmCost > MM_EXPANSION_TIME) && (commCost > COMM_EXPANSION_TIME)) {
-            ctx.tilingM.SetAlignLength(cutLen);
-            ctx.tilingM.SetMinLenByMin(cutLen);
-        }
-
-        ctx.tilingM.cutRes.shortTileLen = ctx.tilingM.GetMinLen();
-        ctx.tilingM.cutRes.numShortTile = 1U;
-    }
-
-    void AdjustLongShortTileLen(mc2tiling::fit_balance::FitBasedBalanceCtx &ctx)
-    {
-        ctx.tilingM.FitTileLengthDiscrete(false, true, true);
-        mc2tiling::fit_balance::MergeEqualTiles(ctx.tilingM); // 公共钩子片段(五算子一致的等长归一尾)
-    }
-};
-
-// ============================================================================
-// 三、边界转换 + 组装与新旧切换
-// ============================================================================
-
-// 统一引擎路径: 上下文构造 + 算子后置初始化(= 老类构造函数体逐行对应) + 统一调度
+// 统一引擎路径: 键控枚举 + 标定 → InitCtx(含通算胶水) → Schedule(含 AG 键控分支)。
 // baseMOut(可空): 回传 matmul 基本块(调用点 AdjustCutResultForAICPU 需要)
 inline CutResult ScheduleFitBalance(const mc2tiling::TilingArgs &args, fb::CommEngine commEngine,
                                     uint32_t *baseMOut = nullptr)
 {
     // 引擎分路在 InitCtx 内完成(按 CommEngine 选 CALIBRATION 的 aicpu/ccu 分区);
     // 本算子 kernel 仅 HCCL 两引擎, AIV_URMA 不可达(枚举值保留供三引擎分派框架)
-    auto ctx = fb::InitCtx(args, fb::KernelType::ALL_GATHER, commEngine, CALIBRATION, fb::TopoType::STANDARD_CARD);
-    ctx.commPerf.SetCommShapeLen(ctx.matmulPerf.mmShapeInfo_.kValue);
-    // fp4(DT_FLOAT4_E2M1) 通信侧建模: 每元素 0.5 字节, 按"1 字节打包 2 个 fp4"建模
-    // (SetCommDTypeSize(1) + ExpansionFraction(2), 复用 HCCL 子字节机制);
-    // matmul 侧 fp4 路由已由引擎正确处理(SetCalcType 经 geAType 识别, 查 CALIBRATION 的
-    // fp4 行取算力), 无需手动覆盖。inMatrixADtypeSize 置 1(L2 占用按 2x 高估, 避免 0 退化)。
-    if (args.geAType == ge::DataType::DT_FLOAT4_E2M1) {
-        ctx.commPerf.SetCommDTypeSize(1);
-        ctx.commPerf.SetCommDtypeSizeExpansionFraction(FP4_EXPANSION_RATIO);
-        ctx.matmulPerf.mmShapeInfo_.inMatrixADtypeSize = 1;
-        ctx.matmulPerf.mmShapeInfo_.inMatrixBDtypeSize = 1;
-    } else {
-        ctx.commPerf.SetCommDTypeSize(ctx.matmulPerf.mmShapeInfo_.inMatrixADtypeSize);
-    }
-    ctx.tilingM.SetMinLenByMax(ctx.matmulPerf.GetBaseM());
-    ctx.tilingM.SetAlignLength(ctx.matmulPerf.GetBaseM());
-
-    AgMmV2Hooks hooks;
-    CutResult cut = fb::Schedule(ctx, hooks);
+    auto ctx = fb::InitCtx(args, fb::KernelType::ALL_GATHER, fb::CommComputeOrder::COMM_FIRST, commEngine, CALIBRATION,
+                           fb::TopoType::STANDARD_CARD);
+    CutResult cut = fb::Schedule(ctx);
+    OPS_LOG_D("AllGatherMatmul",
+              "Input shape {M, N, K} = {%lu, %lu, %lu}, Final cut: shortTileAtBack %d, longTileLen %lu, "
+              "numLongTile %lu, shortTileLen %lu, numShortTile %lu",
+              ctx.matmulPerf.mmShapeInfo_.mValue, ctx.matmulPerf.mmShapeInfo_.nValue,
+              ctx.matmulPerf.mmShapeInfo_.kValue, cut.shortTileAtBack, cut.longTileLen, cut.numLongTile,
+              cut.shortTileLen, cut.numShortTile);
     if (baseMOut != nullptr) {
         *baseMOut = ctx.matmulPerf.GetBaseM();
     }
