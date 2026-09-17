@@ -360,7 +360,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <tr>
     <td>tuningConfigOptional（aclIntArray *）</td>
     <td>可选输入</td>
-    <td>第一个数代表各个专家处理的token数的预期值；第二个数表示是否开启weight亲和格式（先转置再NZ）。当前仅<a href="#ascend950-weightnz-s8s4场景约束">S8S4</a>场景支持。</td>
+    <td>第一个数代表各个专家处理的token数的预期值；第二个数表示是否开启weight特殊格式（按[E,N,K]排布后转换为NZ），适用于A2/A3的<a href="#a2-a3-weightnz-s8s4场景约束">S8S4（A8W4）</a>场景和Ascend 950的<a href="#ascend950-weightnz-s8s4场景约束">S8S4</a>场景，具体限制见对应场景约束。</td>
     <td>用户如不使用该参数，不传（即为nullptr）即可。</td>
     <td>INT64</td>
     <td>-</td>
@@ -556,7 +556,13 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
         | 伪量化pergroup | weight单 | $[E, G, N]$|
         | 伪量化pergroup | weight多 | $[G_i, N_i]$|
 
-    - x为INT8、weight为INT4、biasOptional为FLOAT32、scaleOptional为UINT64、antiquantScaleOptional为空、antiquantOffsetOptional为空、perTokenScaleOptional为FLOAT32、activationInputOptional为空。
+    <a id="a2-a3-weightnz-s8s4场景约束"></a>
+
+    - **S8S4（A8W4）场景：** x为INT8、weight为INT4（NZ格式）、biasOptional为FLOAT32、scaleOptional为UINT64、antiquantScaleOptional为空、antiquantOffsetOptional为空、perTokenScaleOptional为FLOAT32、activationInputOptional为空。
+
+      - 仅支持groupType=0（M轴分组），actType=0。
+      - x、out均为长度为1的TensorList；x为2维Tensor，shape为`[M,K]`。
+      - x、weight均不支持转置。weight为单Tensor时，默认逻辑shape为`[E,K,N]`，按NZ格式解析；当传入INT32时，每个INT32视为8个INT4。
 
       - weight、scaleOptional、biasOptional和offsetOptional支持单Tensor场景（tensorlist长度为1）和多Tensor场景（tensorlist长度大于1）。
 
@@ -570,6 +576,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
         - scale为pergroup与perchannel离线融合后的结果，shape要求为$[E, quantGroupNum, N]$，其中$quantGroupNum=k \div quantGroupSize$。
         - Bias为计算过程中离线计算的辅助结果，值要求为$8\times weight \times scale$，并在第1维累加，shape要求为$[E, N]$。
         - 要求N为8的整数倍。
+        - 各个专家处理的token数的预期值大于N/4时，即tuningConfigOptional中第一个值大于N/4时，通常会取得更好的性能，此时显存占用会增加$g \times K \times N$字节（其中g为matmul组数）。
 
       - 非对称量化场景：
 
@@ -580,6 +587,8 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
         - offsetOptional不为空。非对称量化offsetOptional为计算过程中离线计算辅助结果，即$antiquantOffset \times scale$，shape要求为$[E, 1, N]$，dtype为FLOAT32。
         - Bias为计算过程中离线计算的辅助结果，值要求为$8\times weight \times scale$，并在第1维累加，shape要求为$[E, N]$。
         - 要求N为8的整数倍。
+
+      - tuningConfigOptional数组第二个元素可置1，以开启S8S4（A8W4）场景的weight特殊格式模板，仅支持perchannel量化。此时weight须按`[E,N,K]`排布后进行ND2NZ转换，再作为算子输入。性能优势的shape范围参考：K >= 2048且N >= 2048。
 
     - 伪量化场景下，若weight的类型为INT8，仅支持perchannel模式；若weight的类型为INT4，对称量化支持perchannel和pergroup两种模式。若为pergroup，pergroup数G或$G_i$必须要能整除对应的$k_i$。若weight为多tensor，定义pergroup长度$s_i = k_i / G_i$，要求所有$s_i(i=1,2,...g)$都相等。非对称量化支持perchannel模式。
 
@@ -631,38 +640,44 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     - 以下入参为空：antiquantScaleOptional、antiquantOffsetOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional、activationFeatureOutOptional
     - 不为空的参数支持的数据类型组合要满足下表：
 
-      |groupType| x | weight | biasOptional | scaleOptional | offsetOptional | perTokenScaleOptional | groupListOptional | out |
-      |:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-      |0|INT8|INT4|FLOAT|UINT64|null|FLOAT|INT64|BFLOAT16|
-      |0|INT8|INT4|FLOAT|UINT64|FLOAT/null|FLOAT|INT64|FLOAT16|
+    | groupType | x | weight | biasOptional | scaleOptional | offsetOptional | perTokenScaleOptional | groupListOptional | out |
+    |:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+    | 0 | INT8 | INT4 | FLOAT | UINT64 | null | FLOAT | INT64 | BFLOAT16 |
+    | 0 | INT8 | INT4 | FLOAT | UINT64 | FLOAT/null | FLOAT | INT64 | FLOAT16 |
 
-    - scaleOptional与offsetOptional要满足下表（其中E为分组数）：
+    - **scaleOptional 与 offsetOptional shape**（$E$=组数）：
 
-      | 子场景 | offsetOptional | scaleOptional shape | offsetOptional shape | quantGroupSize | out |
-      |:---:|:---:|:---:|:---:|:---:|:---:|
-      | 对称per-group | null | `[E, K/256, N]` | - | 256 | FLOAT16/BFLOAT16 |
-      | 非对称per-channel | FLOAT32 | `[E, 1, N]` | `[E, 1, N]` | 0 | FLOAT16 |
+    | offsetOptional | 子场景 | scaleOptional shape | offsetOptional shape |
+    |:---:|:---|:---|:---|
+    | null | per-group 与 per-channel 离线融合 | `[E, K/256, N]` | - |
+    | 非空 | <abbr title="简称C量化，量化对象是右矩阵，每个channel分别使用独立的量化参数">perchannel</abbr> | `[E, 1, N]` | `[E, 1, N]`（FLOAT32） |
 
-    - 约束说明：
+    - **约束说明**：
 
       除公共约束外，S8S4场景其余约束如下：
 
-      |groupType| splitItem | actType | groupListType |
+      | groupType | splitItem | actType | groupListType |
       |:---:|:---:|:---:|:---|
-      |0|2/3|0|1（count）|
+      | 0（M轴分组） | 2/3 | 0 | 1（count） |
+
+      - 当前仅支持x、weight、biasOptional、scaleOptional、perTokenScaleOptional和out均为长度1的TensorList；offsetOptional非空时，其TensorList长度须为1（下表中省略该要求）。
 
       | 输入输出 | 子场景 | shape限制 |
       |:---:|:---|:---|
       | x | 单Tensor | 2维，shape为`[M,K]`，不支持转置 |
-      | weight | 单Tensor | 3维，shape为`[E,K,N]`，不支持转置 |
-      | biasOptional | 必选输入 | 2维，shape为`[E,N]`，数据类型FLOAT32 |
+      | weight | 单Tensor | 3维，默认逻辑shape为`[E,K,N]`，须为NZ格式，不支持转置 |
+      | biasOptional | 必选输入 | 2维，shape为`[E,N]` |
       | perTokenScaleOptional | 单Tensor | 1维，shape为`[M]` |
       | out | 单Tensor | - |
 
-      - x、weight、scaleOptional、biasOptional、perTokenScaleOptional和out均为长度1的TensorList。
       - biasOptional为必选输入，是INT4权重离线转换的校正量，按`8 × weight × scale`沿K轴规约得到。
-      - 对称per-group场景下，K不大于18432且必须是256的整数倍。
-      - S8S4 offsetOptional不为空的per-channel场景下，tuningConfigOptional数组第二个元素可置1。此时weight需按`[E,N,K]`排布并转换为NZ，仅支持长度为1的weight TensorList。
+      - 当weight传入数据类型为INT32时，会将每个INT32视为8个INT4。
+      - offsetOptional为空时，K不大于18432且必须是256的整数倍。
+
+    - tuningConfigOptional：可选调优参数。如不使用，传入nullptr即可。
+      - 第一个元素（下标0）：支持0和正整数，取值范围为`[0, min(M, UINT32_MAX)]`，其中M为输入x的行数。0表示不指定预期值，正整数表示各个专家处理的token数的预期值，例如128表示预期每个专家处理128个token（要求M不小于128）。当前S8S4实现仅校验并保存该值，暂不参与实际调优计算。
+      - 第二个元素（下标1）：仅支持0或1，其他值不支持。设为0或不提供该元素时，不开启weight特殊格式，weight按常规`[E,K,N]`逻辑布局解析；设为1时，开启weight特殊格式，仅支持offsetOptional不为空的per-channel场景，weight须按`[E,N,K]`排布后转换为NZ，且weight TensorList长度为1。
+      - 例如，传入`[0, 1]`表示不指定预期token数，并开启weight特殊格式。详见[S8S4场景约束](#ascend950-weightnz-s8s4场景约束)。
 
     **其他伪量化场景：**
     - 以下入参为空：offsetOptional、antiquantOffsetOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional、activationFeatureOutOptional
