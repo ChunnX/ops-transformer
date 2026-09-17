@@ -343,9 +343,10 @@ def init_dq_workspace(const_info, tensor_info):
                 dq_tile.current(),
                 offsets=[0, dq_offset + i],
             )
-        if is_var_len():
-            # seqused 下 s2o >= ceil(seqused_kv[b] / 512) 的整块从不被访问, 不清零的话
-            # post 阶段会把 workspace 脏数据搬进 dk/dv 输出的 padding 行。
+        if is_var_len() or sparse_type == 3 or sparse_type == 4:
+            # Sparse schedules can revisit a head/KV column after switching away.
+            # Zero the full workspace before additive writeback; varlen also needs
+            # zero padding for columns that are never visited.
             init_dk_size = (
                 const_info.k_pre_block_tail
                 if const_info.core_id_vec == const_info.k_pre_block_total - 1
@@ -1591,6 +1592,7 @@ def set_run_info(
     run_info.is_last_process_block = next_coordinate_info.batch_id == -1
     run_info.is_first_process_block = task_id == 0
     last_run_info.is_next_key_reuse = run_info.is_key_reuse
+    # This flag controls K/V cache loads, not whether dK/dV was written before.
     run_info.is_value_reuse = (
         tmp_info.last_s2_idx == coordinate_info.s2_idx
         and tmp_info.last_batch_idx == coordinate_info.batch_id
@@ -1650,7 +1652,12 @@ def set_run_info(
         run_info.deq_scale_v_value = pl.getval(tensor_info.tensor_v_descale, 0)
         run_info.deq_scale_do_value = pl.getval(tensor_info.tensor_do_descale, 0)
 
-        if is_var_len():
+        if not is_var_len() and (sparse_type == 3 or sparse_type == 4):
+            # Cache reuse only describes the preceding task. A sparse schedule
+            # may return to a previously written column, so always accumulate
+            # into the workspace cleared by init_dq_workspace (as FAG does).
+            run_info.kv_need_atomic = True
+        elif is_var_len():
             # swizzle 下 (n1_idx, s2o) 与 linearIdx = (delta // m_b) * k + j 一一对应,
             # 同一列只会落在唯一一个核上, dk/dv 不存在跨核累加, 只需核内跨 s1 行累加。
             run_info.kv_need_atomic = run_info.is_value_reuse
@@ -4488,28 +4495,14 @@ def quant_flash_attn_grad(
                     tmp_info[0],
                 )
         else:
-            if is_var_len():
-                # Do not carry dQ across skipped swizzle rounds: contributions
-                # from different rounds could otherwise write the same Q tile.
-                if loop_idx > 0:
-                    drain_pending_task(
-                        run_infos[(task_id + 1) % 2],
-                        const_info, tensor_info, tmp_info[0],
-                    )
-            else:
-                with pl.section_vector():
-                    if loop_idx > 0:
-                        for j in pl.range(4):
-                            pl.system.wait_cross_core(
-                                pipe=pl.PipeType.MTE3,
-                                event_id=SYNC_DETER_FLAG,
-                                sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
-                            )
-                            pl.system.set_cross_core(
-                                pipe=pl.PipeType.MTE3,
-                                event_id=SYNC_DETER_FLAG,
-                                sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
-                            )
+            # Keep pending dQ in its original logical round for every schedule.
+            # Deferring it past a gap can make different rounds update the same
+            # Q tile in one writeback slot and lose deterministic accumulation.
+            if loop_idx > 0:
+                drain_pending_task(
+                    run_infos[(task_id + 1) % 2],
+                    const_info, tensor_info, tmp_info[0],
+                )
         if is_valid_block:
             task_id += 1
 
