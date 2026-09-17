@@ -98,7 +98,7 @@ ge::graphStatus QSMLAInfoParser::GetNpuInfo()
     }
     int64_t deterministicLevel = context_->GetDeterministicLevel();
     batchConsistency_ = (deterministicLevel == BATCH_CONSISTENCY_LEVEL);
-    OP_LOGD(opName_, "deterministic_level=%ld", deterministicLevel);
+    OP_LOGD(opName_, "deterministic_level=%d", context_->GetDeterministicLevel());
 
     return ge::GRAPH_SUCCESS;
 }
