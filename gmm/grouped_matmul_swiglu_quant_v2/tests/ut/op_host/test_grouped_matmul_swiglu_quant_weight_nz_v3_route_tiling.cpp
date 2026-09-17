@@ -8,6 +8,7 @@
 #include "tiling_case_executor.h"
 #include "gmm_csv_ge_parse_utils.h"
 #include "../../../op_host/op_tiling/grouped_matmul_swiglu_quant_weight_nz_v3_tiling.h"
+#include "../../../op_kernel/arch35/grouped_matmul_swiglu_quant_weight_nz_v3_tiling_data.h"
 
 namespace {
 struct RouteCase {
@@ -61,11 +62,17 @@ gert::TilingContextPara MakeContext(const RouteCase& c, optiling::GMMCompileInfo
     return context;
 }
 
+const ::GMMSwigluQuantV3TilingDataParams* GetTilingData(const TilingInfo& result)
+{
+    EXPECT_EQ(result.tilingDataSize, sizeof(::GMMSwigluQuantV3TilingDataParams));
+    return reinterpret_cast<const ::GMMSwigluQuantV3TilingDataParams*>(result.tilingData.get());
+}
+
 TEST(GroupedMatmulSwigluQuantV3Route, V2CapabilityBoundaries)
 {
     const std::vector<RouteCase> cases = {
         {512, 128, 128, 1, false, 0}, {513, 128, 128, 1, false, 2},
-        {128, 128, 128, 1, true, 1}, {129, 128, 128, 1, true, 3},
+        {128, 128, 128, 1, true, 1}, {129, 128, 128, 1, true, 1},
         {1025, 128, 128, 2, false, 0}, {1026, 128, 128, 2, false, 2},
         {257, 128, 128, 2, true, 1}, {258, 128, 128, 2, true, 3},
         {1026, 128, 192, 2, false, 0}, {258, 128, 192, 2, true, 1},
@@ -82,6 +89,56 @@ TEST(GroupedMatmulSwigluQuantV3Route, V2CapabilityBoundaries)
             ASSERT_TRUE(ExecuteTiling(context, result));
             EXPECT_EQ(result.tilingKey, c.key);
             EXPECT_EQ(result.blockNum, 32U);
+        }
+    }
+}
+
+TEST(GroupedMatmulSwigluQuantV3Route, TensorApiUsesSymmetricL1Budget)
+{
+    for (bool trans : {false, true}) {
+        SCOPED_TRACE(::testing::Message() << "trans=" << trans);
+        optiling::GMMCompileInfo info{};
+        auto context = MakeContext({8192, 6144, 4096, 8, trans, trans ? 3 : 2}, &info, 0);
+        TilingInfo result;
+        ASSERT_TRUE(ExecuteTiling(context, result));
+        ASSERT_EQ(result.tilingKey, trans ? 3 : 2);
+        const auto* tilingData = GetTilingData(result);
+        ASSERT_NE(tilingData, nullptr);
+        const auto& mm = tilingData->mmTilingData;
+        EXPECT_EQ(mm.baseM, 256);
+        EXPECT_EQ(mm.baseN, 128);
+        EXPECT_EQ(mm.baseK, 128);
+        EXPECT_EQ(mm.depthA1, 4);
+        EXPECT_EQ(mm.depthB1, 4);
+        EXPECT_EQ(mm.stepKa, 2);
+        EXPECT_EQ(mm.stepKb, 2);
+        EXPECT_EQ(mm.dbL0C, 1);
+        const auto mxTypePara = static_cast<uint32_t>(mm.mxTypePara);
+        EXPECT_EQ(mxTypePara & 0xFFU, 24U);
+        EXPECT_EQ((mxTypePara >> 8U) & 0xFFU, 24U);
+    }
+}
+
+TEST(GroupedMatmulSwigluQuantV3Route, TensorApiKeepsKBoundaryScaleWindowWithinL1)
+{
+    for (int64_t k : {8192, 8320}) {
+        for (bool trans : {false, true}) {
+            SCOPED_TRACE(::testing::Message() << "K=" << k << ",trans=" << trans);
+            optiling::GMMCompileInfo info{};
+            auto context = MakeContext({8192, k, 4096, 8, trans, trans ? 3 : 2}, &info, 0);
+            TilingInfo result;
+            ASSERT_TRUE(ExecuteTiling(context, result));
+            ASSERT_EQ(result.tilingKey, trans ? 3 : 2);
+            const auto* tilingData = GetTilingData(result);
+            ASSERT_NE(tilingData, nullptr);
+            const auto& mm = tilingData->mmTilingData;
+            EXPECT_EQ(mm.baseM, 256);
+            EXPECT_EQ(mm.baseN, 128);
+            EXPECT_EQ(mm.baseK, 128);
+            EXPECT_EQ(mm.dbL0C, 1);
+            const auto mxTypePara = static_cast<uint32_t>(mm.mxTypePara);
+            EXPECT_EQ(mxTypePara & 0xFFU, 32U);
+            EXPECT_EQ((mxTypePara >> 8U) & 0xFFU, 32U);
         }
     }
 }

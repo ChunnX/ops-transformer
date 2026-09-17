@@ -358,8 +358,12 @@ bool GroupedMatmulSwigluQuantV3Tiling950::IsTensorApiCapable() const
     const uint64_t aivNum = platform.GetCoreNumAiv();
     const uint64_t averageM = inputParams_.mSize / inputParams_.groupNum;
     const uint64_t minAverageM = transposeWeight_ ? 128U : 512U;
+    // The 256x128 Tensor tile makes the A and concatenated-B L1 budgets
+    // symmetric.  Smaller total M values select a short baseM and can make
+    // the kernel's shared scale-K window exceed one L1 half; use CGMCT there.
     const bool capable = aicoreParams_.aicNum > 0 && aivNum == 2 * aicoreParams_.aicNum &&
-                         averageM > minAverageM && (transposeWeight_ || inputParams_.mSize > 512U) &&
+                         averageM > minAverageM && inputParams_.mSize >= 256U &&
+                         (transposeWeight_ || inputParams_.mSize > 512U) &&
                          inputParams_.nSize % 128U == 0 && inputParams_.kSize > 64U &&
                          inputParams_.kSize % 128U == 0;
     OP_LOGD(context_->GetNodeName(),
@@ -397,11 +401,17 @@ ge::graphStatus GroupedMatmulSwigluQuantV3Tiling950::DoOpTiling()
 ge::graphStatus GroupedMatmulSwigluQuantV3Tiling950::DoLibApiTiling()
 {
     CalBasicBlock();
-    basicTiling_.baseM = GroupedMatmul::CeilAlign(std::min(basicTiling_.baseM, static_cast<uint64_t>(128)),
+    // Keep the V2 Tensor API's 256-row tile.  This choice must be made before
+    // CalL1Tiling so the A/B data and MX-scale windows are budgeted together;
+    // changing baseM afterwards can make the shared scale-K window exceed L1.
+    // CGMCT retains its 128-row vector-epilogue limit.
+    const uint64_t maxBaseM = useTensorApi_ ? 256U : 128U;
+    basicTiling_.baseM = GroupedMatmul::CeilAlign(std::min(basicTiling_.baseM, maxBaseM),
                                                   GmmConstant::CUBE_BLOCK);
-    // CGMCT reserves two FP32 64x256 input tiles per AIV, allowing a
-    // 256-column output-half tile. Keep the Tensor API's existing UB limit.
-    const uint64_t maxBaseN = useTensorApi_ ? 64U : 256U;
+    // CGMCT reserves two FP32 64x256 input tiles per AIV, allowing a 256-column
+    // output-half tile. Tensor API uses 128 columns so its doubled SwiGLU B/scale
+    // budget remains symmetric with the 256-row A tile.
+    const uint64_t maxBaseN = useTensorApi_ ? 128U : 256U;
     basicTiling_.baseN = GroupedMatmul::CeilAlign(std::min(basicTiling_.baseN, maxBaseN),
                                                   GmmConstant::CUBE_BLOCK);
     // The common tiler must budget BOTH halves of B/ScaleB and L0C for
@@ -420,19 +430,21 @@ ge::graphStatus GroupedMatmulSwigluQuantV3Tiling950::DoLibApiTiling()
     // integer division.  That is sufficient when K is an exact multiple of
     // the L1 K window, but underestimates the final scale window for cases
     // such as K=160 with a 128-element L1 window.  V3 must also support the
-    // CGMCT fallback for these K values, so cover the tail scale groups with
-    // ceil-division before exporting TCubeTiling. For aligned K, retain the
-    // factors selected by CalL1Tiling: expanding them to the full K extent
-    // can exceed the L1 budget, particularly with wider baseN tiles.
+    // CGMCT fallback for these K values, so cover its tail scale groups with
+    // ceil-division before exporting TCubeTiling.  The Tensor API must keep
+    // the factors selected by CalL1Tiling: increasing them afterwards would
+    // invalidate the L1 budget.
     const uint64_t scaleWindowA = static_cast<uint64_t>(basicTiling_.stepKa) * basicTiling_.baseK;
     const uint64_t scaleWindowB = static_cast<uint64_t>(basicTiling_.stepKb) * basicTiling_.baseK;
-    if (inputParams_.kSize % scaleWindowA != 0) {
-        basicTiling_.scaleFactorA = static_cast<uint32_t>(
-            std::max<uint64_t>(1U, GroupedMatmul::CeilDiv(inputParams_.kSize, scaleWindowA)));
-    }
-    if (inputParams_.kSize % scaleWindowB != 0) {
-        basicTiling_.scaleFactorB = static_cast<uint32_t>(
-            std::max<uint64_t>(1U, GroupedMatmul::CeilDiv(inputParams_.kSize, scaleWindowB)));
+    if (!useTensorApi_) {
+        if (inputParams_.kSize % scaleWindowA != 0) {
+            basicTiling_.scaleFactorA = static_cast<uint32_t>(std::max<uint64_t>(
+                1U, GroupedMatmul::CeilDiv(inputParams_.kSize, scaleWindowA)));
+        }
+        if (inputParams_.kSize % scaleWindowB != 0) {
+            basicTiling_.scaleFactorB = static_cast<uint32_t>(std::max<uint64_t>(
+                1U, GroupedMatmul::CeilDiv(inputParams_.kSize, scaleWindowB)));
+        }
     }
 
     auto &mm = tilingData_.mmTilingData;
