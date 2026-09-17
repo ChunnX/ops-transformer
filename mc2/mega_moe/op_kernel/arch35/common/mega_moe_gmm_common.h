@@ -33,6 +33,30 @@ constexpr uint32_t SCALE_K_L1_RATE = 2U;
 
 using BlockScheduler = typename Blaze::Gemm::Block::BlockSchedulerSwizzle<3, 0>; // 3: SwizzleOffset
 
+// Non-owning references: AIC supplies MMAD, AIV0 supplies Prologue, AIV1 supplies neither.
+template <typename BlockMmad, typename BlockPrologue>
+struct A8W4BlockContext {
+    // AIC and AIV compile different pointer types; AIV1 carries no compute object.
+    using Block = Std::conditional_t<g_coreType == AscendC::AIC, BlockMmad, BlockPrologue>;
+    Block *block = nullptr;
+};
+
+// Own one block for a complete expert loop. Destruction drains its events before
+// the next Dispatch/quantization/shared stage reuses the same local resources.
+template <typename Config, typename Callback>
+__aicore__ inline void RunWithA8W4Block(const Params &params, Callback &&run)
+{
+    if constexpr (g_coreType == AscendC::AIC) {
+        typename Config::BlockMmad block;
+        run(typename Config::BlockContext{&block});
+    } else if (GetSubBlockIdx() == 0U) {
+        typename Config::BlockPrologue block;
+        run(typename Config::BlockContext{&block});
+    } else {
+        run(typename Config::BlockContext{});
+    }
+}
+
 // 根据数据类型路径选择对应的 BlockMmad 实现。
 template <bool IsA8W4, typename C>
 struct BlockMmadSelector;
@@ -110,6 +134,7 @@ struct Config {
     using L1Params = typename BlockMmad::L1Params;
     using BlockPrologue =
         Std::conditional_t<IsA8W4, Blaze::Gemm::Prologue::BlockPrologue<DispatchPolicy, ElementA, ElementB>, void>;
+    using BlockContext = A8W4BlockContext<BlockMmad, BlockPrologue>;
 
     static __aicore__ inline L1Params MakeL1Params(uint64_t kL1, uint64_t scaleKL1)
     {

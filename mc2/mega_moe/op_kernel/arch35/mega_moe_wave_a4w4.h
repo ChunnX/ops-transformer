@@ -217,26 +217,30 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
 {
     // GMM2 调度与 Combine 量化模式无关：统一按当前 WAVE 覆盖的专家 slice 顺序推进。
     uint32_t waveGmm2ExpertEndExclusive = waveRange.end.expertIdx + (waveRange.end.tokenIndexInExpert == 0U ? 0U : 1U);
-    for (uint32_t expertIdx = waveRange.begin.expertIdx; expertIdx < waveGmm2ExpertEndExclusive; ++expertIdx) {
-        uint32_t sliceTokenStartIndexInExpert =
-            expertIdx == waveRange.begin.expertIdx ? waveRange.begin.tokenIndexInExpert : 0U;
-        if (sliceTokenStartIndexInExpert == 0U) {
-            this->template PrepareGmmExpertState<false>(gmm2State, expertIdx);
+    using Config = GmmKernel::Config<true, 0, typename MoeQuantConfig::ActivationQuantOutType,
+        MoeWeightType, bfloat16_t, typename MoeQuantConfig::QuantScaleType, typename MoeQuantConfig::QuantScaleType>;
+    GmmKernel::RunWithA8W4Block<Config>(params_, [&](const auto &context) {
+        for (uint32_t expertIdx = waveRange.begin.expertIdx; expertIdx < waveGmm2ExpertEndExclusive; ++expertIdx) {
+            uint32_t sliceTokenStartIndexInExpert =
+                expertIdx == waveRange.begin.expertIdx ? waveRange.begin.tokenIndexInExpert : 0U;
+            if (sliceTokenStartIndexInExpert == 0U) {
+                this->template PrepareGmmExpertState<false>(gmm2State, expertIdx);
+            }
+            uint32_t expertTokenCount = static_cast<uint32_t>(Get<M_VALUE>(gmm2State.problemShape));
+            uint32_t sliceTokenEndIndexInExpert =
+                expertIdx == waveRange.end.expertIdx ? waveRange.end.tokenIndexInExpert : expertTokenCount;
+            uint32_t sliceTokenCount = sliceTokenEndIndexInExpert - sliceTokenStartIndexInExpert;
+            if (sliceTokenCount != 0U) {
+                uint64_t sliceGlobalEndIndex =
+                    static_cast<uint64_t>(gmm2State.globalTokenStartIndex) + sliceTokenEndIndexInExpert;
+                bool isFinalCombine = waveRange.end.expertIdx >= commonConfig_.moeExpertPerRank &&
+                                      sliceGlobalEndIndex >= waveRange.end.globalTokenIndex;
+                // W4 的 GMM2/Combine 调度集中在基类，派生模板只负责提供当前专家 slice。
+                RunGmm2CombineForExpert(gmm2State, gmm2AddrInfo, startBlockIdx_, sliceTokenStartIndexInExpert,
+                                        sliceTokenCount, combineBufferConfig, combineRowSequence, isFinalCombine, context);
+            }
         }
-        uint32_t expertTokenCount = static_cast<uint32_t>(Get<M_VALUE>(gmm2State.problemShape));
-        uint32_t sliceTokenEndIndexInExpert =
-            expertIdx == waveRange.end.expertIdx ? waveRange.end.tokenIndexInExpert : expertTokenCount;
-        uint32_t sliceTokenCount = sliceTokenEndIndexInExpert - sliceTokenStartIndexInExpert;
-        if (sliceTokenCount != 0U) {
-            uint64_t sliceGlobalEndIndex =
-                static_cast<uint64_t>(gmm2State.globalTokenStartIndex) + sliceTokenEndIndexInExpert;
-            bool isFinalCombine = waveRange.end.expertIdx >= commonConfig_.moeExpertPerRank &&
-                                  sliceGlobalEndIndex >= waveRange.end.globalTokenIndex;
-            // W4 的 GMM2/Combine 调度集中在基类，派生模板只负责提供当前专家 slice。
-            RunGmm2CombineForExpert(gmm2State, gmm2AddrInfo, startBlockIdx_, sliceTokenStartIndexInExpert,
-                                    sliceTokenCount, combineBufferConfig, combineRowSequence, isFinalCombine);
-        }
-    }
+    });
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
         DrainCombineRowBuffers(combineRowSequence, combineBufferConfig.rowBufferCount);
     }
