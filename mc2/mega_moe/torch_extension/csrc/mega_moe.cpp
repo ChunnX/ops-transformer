@@ -186,11 +186,18 @@ static void CheckMegaMoeInputs(const MegaMoeTensorInputs &inputs, int64_t epWorl
         CheckMegaMoeInputsA5(inputs, epWorldSize, moeExpertNum, socName);
     }
     TORCH_CHECK((inputs.x.dim() == DIM_TWO) && (inputs.topkIds.dim() == DIM_TWO), "The x and topk_ids should be 2D");
+    // x may be pre-quantized on Ascend950 (fp8_e5m2 / fp8_e4m3fn / uint8-packed fp4), which
+    // CheckMegaMoeXInput950 already validated; A2/A3 still take bf16/fp16 only.
     if (!isAscend950) {
         TORCH_CHECK(inputs.x.scalar_type() == at::kBFloat16 || inputs.x.scalar_type() == at::kHalf,
                     "dtype of x should be bfloat16 or float16.");
     }
     TORCH_CHECK(inputs.topkIds.scalar_type() == at::kInt, "dtype of topk_ids should be int.");
+    // CheckMegaMoeInputsA5 (which guards the mandatory weight lists) only runs for Ascend950, so A2/A3
+    // would otherwise reach the tiling path with an empty weight list.
+    if (!isAscend950) {
+        TORCH_CHECK(!inputs.weight1.empty() && !inputs.weight2.empty(), "weight1 and weight2 must not be empty");
+    }
     if (inputs.maskBuffer.has_value()) {
         const at::Tensor &mask = inputs.maskBuffer.value();
         TORCH_CHECK(mask.scalar_type() == at::kInt, "mask_buffer dtype must be int32.");
@@ -591,7 +598,11 @@ int64_t GetMegaMoeCclBufferSize(int64_t epWorldSize, int64_t moeExpertNum, int64
         TORCH_CHECK(dispatchQuantMode == 0 || dispatchQuantMode == 2 || dispatchQuantMode == 4,
                     "dispatch_quant_mode only support {0, 2, 4} on A2/A3, but got ", dispatchQuantMode);
 
-        bool isQuantRouting = (dispatchQuantMode == 4);
+        // A2/A3 only accept dispatch_quant_mode 0 (non-quant) or 2 (per-tensor INT8); mode 4 is the
+        // Ascend950 MXFP path. Deriving this from `== 4` left isQuantRouting permanently false here, so
+        // quant-routing calls were sized with the non-quant branch and the per-token scale region was
+        // dropped. This must agree with arch22 tiling's isQuantRouting (weight dtype derived).
+        bool isQuantRouting = (dispatchQuantMode == 2);
         // max_recv_token_num 为 0 时自动计算为 bs * epWorldSize * min(topK, expertPerRank)，
         if (maxRecvTokenNum == 0) {
             int64_t expertPerRank = moeExpertNum / epWorldSize;
