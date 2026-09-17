@@ -131,7 +131,12 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Init(GM_ADDR contextGM, GM_ADDR
                                                       GM_ADDR yGM, GM_ADDR expertTokenNumsGM, GM_ADDR workspaceGM,
                                                       GM_ADDR tilingGM)
 {
-    constexpr bool kRoutingIsQuant = std::is_same_v<BType_, AscendC::int4b_t> || std::is_same_v<BType_, int8_t>;
+    // Unified with mega_moe_arch22.h: A3 packs W4A8 weights as int32, so its predicate counts int32_t.
+    // A2 never sees an int32 weight -- mega_moe.cpp guards the A2 branch with
+    // `#if (ORIG_DTYPE_WEIGHT1 != DT_INT32)` -- so counting it here changes nothing on A2 and lets the
+    // two platforms share one predicate.
+    constexpr bool kRoutingIsQuant =
+        std::is_same_v<BType_, AscendC::int4b_t> || std::is_same_v<BType_, int32_t> || std::is_same_v<BType_, int8_t>;
 
     contextGM_ = contextGM;
     xGM_ = xGM;
@@ -198,7 +203,9 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
     using ArchTag = Arch::AtlasA2;
     constexpr bool enableUnitFlag = false;
     constexpr bool enableShuffleK = true;
-    constexpr bool isW4A8 = std::is_same_v<BType_, AscendC::int4b_t>;
+    // Unified with mega_moe_arch22.h -- see the note on kRoutingIsQuant above. A2 cannot reach the
+    // int32 arm, so this is a no-op on A2 and removes the last predicate divergence between platforms.
+    constexpr bool isW4A8 = std::is_same_v<BType_, AscendC::int4b_t> || std::is_same_v<BType_, int32_t>;
     constexpr bool isInt8 = std::is_same_v<BType_, int8_t>;
 
     using AElement = std::conditional_t<isW4A8, AscendC::int4b_t, std::conditional_t<isInt8, int8_t, AType_>>;
