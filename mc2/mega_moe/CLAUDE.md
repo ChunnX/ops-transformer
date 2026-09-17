@@ -71,20 +71,17 @@ The two paths share **none** of their compute kernels: arch22 uses the externall
 ### arch22 kernel internals (`op_kernel/arch22/`)
 
 - `mega_moe.cpp` — the single `__global__ mega_moe` entry. Selects A2 vs A3 via `TPL_ARCH` and the tiling struct via `TPL_QUANT_MODE`. **W4A8 on A2 is reserved but not yet implemented** (A3 supports it).
-- `mega_moe_arch22.h` — the **A3** class template `MegaMoe<..., IS_A2_>`; owns the GEMM/epilogue wiring and `Init`/`Process`.
-- `mega_moe_a2.h` — the **A2** class template `MegaMoeA2<...>`; A2 has its own epilogue/core-count arrangement.
-- Device kernels (one per quantised dtype, currently separate files):
-  - `mega_moe_kernel_a2_int8.hpp` — `MegaMoeKernelA2Int8`
-  - `mega_moe_kernel_a2_bf16.hpp` — `MegaMoeKernelA2BF16`
-  - `mega_moe_kernel_a2_bf16_w4a8.hpp` — `MegaMoeKernelA2Bf16W4A8`
+- `mega_moe_arch22.h` — the **single** class template `MegaMoe<..., IS_A2_>` for both platforms; owns the GEMM/epilogue wiring and `Init`/`Process`. The A2/A3 differences are exactly three `if constexpr (IS_A2_)` sites: `epilogueCoreNum`/`epilogueGranularity` in the int8 arm, `layoutA1RowStride`, and the device-kernel/`Params` tail.
+- Device kernels (the class template is merged; the kernels are deliberately still two):
+  - `mega_moe_kernel_a2.hpp` — `MegaMoeKernelA2<..., IsInt8, IsW4A8>`, shared by the A16W16 (bf16/fp16) and A8W8-INT paths on A2
+  - `mega_moe_kernel_a2_bf16_w4a8.hpp` — `MegaMoeKernelA2Bf16W4A8`; **reserved, never instantiated** (W4A8 on A2 is not implemented, and the tiling-key selection has no INT4 entry)
   - `mega_moe_kernel_a3.hpp` — `MegaMoeKernel` (adds a third epilogue for the A3 combine path)
 - `mega_moe_tiling_key.h` — declares the tiling-key template axes (`TPL_IS_TRANSPOSE_W1/W2`, `TPL_QUANT_MODE`, `TPL_QUANT_OUT_TYPE`, `TPL_ARCH`) via `ASCENDC_TPL_ARGS_DECL`/`ASCENDC_TPL_SEL`, binding each axis combination to a tiling struct.
 - `mega_moe_tiling_a2a3.h` — `MegaMoeA2A3TilingData` (common) + `MegaMoeTilingDataQuant`/`NonQuant` wrappers. Defines the `MEGA_MOE_QUANT_MODE_*` / `MEGA_MOE_QUANT_OUT_TYPE_*` / `SOC_ASCEND*` constants.
 - Sub-kernels:
   - `moe_permute_prologue/` — `MoePermutePrologue`, the dispatch-side permute/sort/gather prologue. Replaced the older `moe_init_routing_v2/` + `moe_init_routing_quant_v2/` pair.
   - `unpermute/` — token combine.
-  - `utils/` — shared infrastructure: per-token epilogues (SwiGLU, V2 dequant, W4A8 post-processing, quant fixpipe), `const_args.hpp` (named constants such as `PERMUTE_CHUNK`, `AIV_PER_AIC`, `GATE_UP_ROWS_PER_TOKEN`, `ICACHE_PRELOAD_LINES`), `dispatch_policy_custom.hpp`, `copy_l0c_to_gm_custom.hpp`, `hccl_shmem.hpp`.
-  - `utilsA2/` — the A2-only duplicates of the epilogue and `BlockMmad` headers. **These are the duplication this refactor targets**; see `refactor_notes/`.
+  - `utils/` — shared infrastructure: per-token epilogues (SwiGLU, V2 dequant, W4A8 post-processing, quant fixpipe), `const_args.hpp` (named constants such as `PERMUTE_CHUNK`, `AIV_PER_AIC`, `GATE_UP_ROWS_PER_TOKEN`, `ICACHE_PRELOAD_LINES`), `dispatch_policy_custom.hpp`, `copy_l0c_to_gm_custom.hpp`, `hccl_shmem.hpp`. These are now shared by A2 and A3; the former `utilsA2/` duplicates were removed by this refactor.
 
 Both A2 and A3 now run a **per-chunk pipeline**: tokens are processed in `PERMUTE_CHUNK` (1024) blocks with per-chunk cumsum/route-table buffers, and A3 additionally splits each chunk into receive rounds bounded by `recvRoundBudget` (`recvRoundsMax` rounds). `maxOutputSize_` is the per-round receive budget, not a token total. Route tables are served from per-core UB caches (`useUbRouteCache`) and per-token scales are batch-prefetched into UB.
 
@@ -109,16 +106,21 @@ Full input/output/attr semantics and per-scenario constraints are in `README.md`
 
 ## Refactor status (arch22 de-duplication)
 
-The arch22 A2/A3 paths are being de-duplicated: three near-identical A2 kernels and two parallel class templates, plus an A2-only copy of most epilogue/`BlockMmad` headers under `utilsA2/`, are being folded into one template set with `if constexpr` dispatch (no runtime cost).
+**Done.** The three near-identical A2 kernels are one, the two parallel class templates are one, and the A2-only `utilsA2/` copies of the epilogue/`BlockMmad` headers are gone. Work was staged as independently buildable commits so a regression can be bisected; each step left a note under `refactor_notes/`. Read `refactor_notes/README.md` for the step index and the **measured** codegen impact of every step.
 
-Work is staged as a sequence of independently buildable commits so a regression can be bisected; each step lands a note under `refactor_notes/`. Read `refactor_notes/README.md` for the step index and current status before changing anything in this area.
+### Codegen is not neutral — do not assume a merge is free
 
-**Hard constraints the refactor must preserve** (violating these breaks the op binary/tiling ABI or silently changes results):
+Every step was rebuilt from a clean `build/` and its 15 kernel objects fingerprinted. **Baseline → HEAD changes all 15 objects.** It is a pure reduction (`.text` −0.48%, no kernel growing; `.rela.text`, `.ascend.stack.size.record`, `.data` and `.rodata` unchanged to the byte), but it is not byte-equivalence. Individual steps differ sharply — B4 and all of B6 are 0/15 byte-identical, B1 is 12/15, B2/B3/B5-step-4 are 15/15. **Correctness rests on golden comparison, which has not been run.**
+
+One caveat before re-measuring: `ASCENDC_TPL_SEL` does not vary with the build's SoC, so **each kernel object contains both the A2 and the A3 instantiation** (20 `.ascend.meta.*` sections per object, 5 with the arch bit set). The same 15 objects come out of `--soc=ascend910b` and `--soc=ascend910_93`, so fingerprinting either package covers both platforms.
+
+**Hard constraints to preserve** (violating these breaks the op binary/tiling ABI or silently changes results):
 - The `__global__ mega_moe` signature and `GM_ADDR` argument list stay byte-identical.
 - `MegaMoeTilingDataQuant`/`NonQuant` struct memory layout stays byte-identical.
 - `ASCENDC_TPL_ARGS_DECL`/`ASCENDC_TPL_SEL` output (the tiling key) is unchanged.
-- A2 vs A3 differences in `epilogueCoreNum`/`epilogueGranularity` and the `kRoutingIsQuant` predicate (A3 counts `int32_t` for W4A8 packing, A2 does not) must remain behaviourally identical.
-- Master's newer arch22 machinery must survive the merge intact: the chunked `MoePermutePrologue`, `recvRoundsMax`/`recvRoundBudget` receive rounds, `mask_buffer` rank masking, the route-table UB cache (`useUbRouteCache`) and the per-token-scale UB batch prefetch.
+- The three `if constexpr (IS_A2_)` sites in `mega_moe_arch22.h` keep their two bodies **verbatim** — `epilogueCoreNum`/`epilogueGranularity` in the int8 arm (A2 uses `aivNum_/2` and a shorter curve; A3 uses `aivNum_` and a wider one), `layoutA1RowStride`, and the device-kernel/`Params` tail. A wrong `epilogueCoreNum` mis-partitions the epilogue silently.
+- The `kRoutingIsQuant` and `isW4A8` predicates are **shared** by both platforms and count `int32_t`. That is safe only because A2 can never be instantiated with an `int32_t` weight, which `#if (ORIG_DTYPE_WEIGHT1 != DT_INT32)` in `mega_moe.cpp` enforces. **Do not convert that guard to `if constexpr`** — `if constexpr (isA2) { return; }` would still instantiate `MegaMoe<..., int32_t, ...>`.
+- Master's newer arch22 machinery must survive intact: the chunked `MoePermutePrologue`, `recvRoundsMax`/`recvRoundBudget` receive rounds, `mask_buffer` rank masking, the route-table UB cache (`useUbRouteCache`) and the per-token-scale UB batch prefetch.
 
 When editing arch22, verify against `{W4A8, INT8, BF16, FP16} × {A2, A3} × {Quant, NonQuant} × {transpose_w1=0/1} × {transpose_w2=0/1}` and golden-compare `yOut` + `expertTokenNumsOut` per dtype/arch. Compilation and the UT suites are necessary but nowhere near sufficient.
 
