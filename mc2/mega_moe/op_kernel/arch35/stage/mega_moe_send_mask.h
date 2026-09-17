@@ -11,6 +11,8 @@
 #ifndef MEGA_MOE_SEND_MASK_H
 #define MEGA_MOE_SEND_MASK_H
 
+#include <type_traits>
+
 #include "../common/mega_moe_utils.h"
 
 namespace MegaMoeImpl {
@@ -35,18 +37,16 @@ __aicore__ inline SendMaskConfig CreateSendMaskConfig(const Params &params, uint
     const MegaMoeSendMaskBufferConfig &bufferConfig = aivCoreIdx < params.tilingData->sendMaskCoreCountWithExtraExpert ?
                                                           params.tilingData->sendMaskConfigForCoreWithExtraExpert :
                                                           params.tilingData->sendMaskConfigForCoreWithoutExtraExpert;
-    return {
-        .expertCountWinOffset = expertCountWinOffset,
-        .routeIndexAlignSize = static_cast<uint64_t>(Ops::Base::CeilAlign(
-            static_cast<int64_t>(params.tilingData->numMaxTokensPerRank) * static_cast<int64_t>(sizeof(TopkIndexType)),
-            static_cast<int64_t>(ALIGN_32))),
-        .routeIndexWinOffset = routeIndexWinOffset,
-        .bufferConfig = bufferConfig};
+    return {.expertCountWinOffset = expertCountWinOffset,
+            .routeIndexAlignSize = static_cast<uint64_t>(CalcDispatchRouteIndexAlignSize(params.tilingData)),
+            .routeIndexWinOffset = routeIndexWinOffset,
+            .bufferConfig = bufferConfig};
 }
 
+template <typename TopkIndexType>
 struct SendMaskScratch {
     LocalTensor<int32_t> topkIdsTensor;
-    LocalTensor<uint8_t> topkIndexTensor;
+    LocalTensor<TopkIndexType> topkIndexTensor;
     // Contiguous runtime-sized ring. Slot i starts at i * bufferConfig.bufferBytes.
     LocalTensor<uint8_t> routeRingTensor;
     LocalTensor<int32_t> sendCntAccTensor;
@@ -61,20 +61,20 @@ struct ExpertRouteInfo {
 // MTE Wave：把当前 route batch 中命中某专家的全局 topkIndex 压紧后直接写入对端槽。
 // 每个 slot 只保存 index；raw count 在所有 ring 写完成后由 PublishExpertCounts 独立发布。
 template <typename TopkIndexType>
-__aicore__ inline void LoadRouteBatch(SendMaskScratch &scratch, GlobalTensor<int32_t> &topkIdsGm, int32_t batchStart,
-                                      int32_t validLen)
+__aicore__ inline void LoadRouteBatch(SendMaskScratch<TopkIndexType> &scratch, GlobalTensor<int32_t> &topkIdsGm,
+                                      int32_t batchStart, int32_t validLen)
 {
     DataCopyExtParams loadParams{1U, static_cast<uint32_t>(validLen * sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPadExtParams<int32_t> loadPad{false, 0U, 0U, 0U};
     DataCopyPad(scratch.topkIdsTensor, topkIdsGm[batchStart], loadParams, loadPad);
     SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
-    LocalTensor<TopkIndexType> topkIndexTensor = scratch.topkIndexTensor.template ReinterpretCast<TopkIndexType>();
-    CreateVecIndex(topkIndexTensor, static_cast<TopkIndexType>(batchStart), validLen);
+    CreateVecIndex(scratch.topkIndexTensor, static_cast<TopkIndexType>(batchStart), validLen);
 }
 
 template <typename TopkIndexType>
 __aicore__ inline void GatherAndSendExpertTopkValidIndices(const MoeStageCommonConfig &common, GM_ADDR *winRankAddr,
-                                                           const SendMaskConfig &config, SendMaskScratch &scratch,
+                                                           const SendMaskConfig &config,
+                                                           SendMaskScratch<TopkIndexType> &scratch,
                                                            const ExpertRouteInfo &routeInfo, int32_t validLen)
 {
     const MegaMoeSendMaskBufferConfig &bufferConfig = config.bufferConfig;
@@ -82,7 +82,6 @@ __aicore__ inline void GatherAndSendExpertTopkValidIndices(const MoeStageCommonC
     TEventID eventId = static_cast<TEventID>(routeInfo.bufferIdx);
     uint32_t slotOffset = routeInfo.bufferIdx * bufferConfig.bufferBytes;
     LocalTensor<uint8_t> compareMaskTensor = scratch.routeRingTensor[slotOffset];
-    LocalTensor<TopkIndexType> topkIndexTensor = scratch.topkIndexTensor.template ReinterpretCast<TopkIndexType>();
     LocalTensor<TopkIndexType> tokValidIndexTensor =
         scratch.routeRingTensor[slotOffset + compareMaskBytes].template ReinterpretCast<TopkIndexType>();
 
@@ -91,15 +90,12 @@ __aicore__ inline void GatherAndSendExpertTopkValidIndices(const MoeStageCommonC
     if (validLen > 0) {
         CompareScalar(compareMaskTensor, scratch.topkIdsTensor, routeInfo.globalExpertId, AscendC::CMPMODE::EQ,
                       validLen);
-        if constexpr (sizeof(TopkIndexType) == sizeof(int16_t)) {
-            LocalTensor<uint16_t> compareMaskPatternTensor = compareMaskTensor.template ReinterpretCast<uint16_t>();
-            GatherMask(tokValidIndexTensor, topkIndexTensor, compareMaskPatternTensor, true,
-                       static_cast<uint32_t>(validLen), {1, 1, 0, 0}, batchMatchedRouteCount);
-        } else {
-            LocalTensor<uint32_t> compareMaskPatternTensor = compareMaskTensor.template ReinterpretCast<uint32_t>();
-            GatherMask(tokValidIndexTensor, topkIndexTensor, compareMaskPatternTensor, true,
-                       static_cast<uint32_t>(validLen), {1, 1, 0, 0}, batchMatchedRouteCount);
-        }
+        using CompareMaskPatternType =
+            typename std::conditional<sizeof(TopkIndexType) == sizeof(int16_t), uint16_t, uint32_t>::type;
+        LocalTensor<CompareMaskPatternType> compareMaskPatternTensor =
+            compareMaskTensor.template ReinterpretCast<CompareMaskPatternType>();
+        GatherMask(tokValidIndexTensor, scratch.topkIndexTensor, compareMaskPatternTensor, true,
+                   static_cast<uint32_t>(validLen), {1, 1, 0, 0}, batchMatchedRouteCount);
     }
     SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();
 
@@ -129,8 +125,9 @@ __aicore__ inline void GatherAndSendExpertTopkValidIndices(const MoeStageCommonC
 }
 
 // 将本核连续专家区间的 raw count 发布到各目标 rank 的 [localExpert][sourceRank] 表。
+template <typename TopkIndexType>
 __aicore__ inline void PublishExpertCounts(const MoeStageCommonConfig &common, GM_ADDR *winRankAddr,
-                                           const SendMaskConfig &config, const SendMaskScratch &scratch,
+                                           const SendMaskConfig &config, const SendMaskScratch<TopkIndexType> &scratch,
                                            int32_t ownedExpertBegin, int32_t ownedExpertNum, int32_t arrivalEpoch)
 {
     if (ownedExpertNum <= 0) {
@@ -193,7 +190,8 @@ __aicore__ inline void PublishExpertCounts(const MoeStageCommonConfig &common, G
 template <typename TopkIndexType>
 __aicore__ inline void GatherAndSendTopkValidIndices(const AivJobContext &job, const MoeStageCommonConfig &common,
                                                      const Params &params, GM_ADDR *winRankAddr,
-                                                     const SendMaskConfig &config, SendMaskScratch &scratch)
+                                                     const SendMaskConfig &config,
+                                                     SendMaskScratch<TopkIndexType> &scratch)
 {
     if constexpr (g_coreType == AIC) {
         return;
