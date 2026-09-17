@@ -16,6 +16,8 @@
 #include "common/op_host/matmul_common_infershape.h"
 #include "mc2_log_compat.h"
 
+#include <limits>
+
 using namespace gert;
 namespace {
 constexpr size_t MATMUL_MIN_SHAPE_SIZE = 2;
@@ -144,8 +146,11 @@ static ge::graphStatus InferShapeForMatMulV3(InferShapeContext *context)
         if (input_size != nullptr && hidden_size != nullptr && *input_size > 0 && *hidden_size > 0) {
             OP_LOGD(op_name, "get private attr, input_size: %ld, hidden_size: %ld", *input_size, *hidden_size);
             shape_x2_new.SetDim(1, shape_x1_new.GetDim(1));
+            OP_CHECK_IF(*input_size > std::numeric_limits<int64_t>::max() - BLOCK_SIZE + 1,
+                        OP_LOGE(op_name, "input_size %ld is too large and will cause overflow of int64.", *input_size),
+                        return ge::GRAPH_FAILED);
             int64_t align_dim = (*input_size + BLOCK_SIZE - 1) / BLOCK_SIZE * BLOCK_SIZE +
-                                (*hidden_size + BLOCK_SIZE) / BLOCK_SIZE * BLOCK_SIZE;
+                                (*hidden_size + BLOCK_SIZE - 1) / BLOCK_SIZE * BLOCK_SIZE;
             shape_x2_new.SetDim(0, align_dim);
         }
     }
