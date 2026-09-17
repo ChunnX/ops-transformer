@@ -29,9 +29,13 @@ constexpr float fp8e4m3MaxValue = 448.0f;
 constexpr float int8MaxValue = 127.0f;
 constexpr float hifp8MaxValue = 32768.0f;
 constexpr float floatEps = 2.220446049250313e-16;
-// CTRL[60]=0 makes every Reg Cast use its own CastTrait::SatMode.
-constexpr uint32_t CAST_GLOBAL_MODE_ENABLE_BIT = 60U;
+// CTRL[60] selects the Cast saturation source: 0 uses CastTrait::SatMode, while 1 uses global CTRL[48].
+// CTRL[48] selects global floating-point saturation: 0 is saturated and 1 is non-saturated.
+constexpr uint32_t CAST_SAT_MODE_CTRL_BIT = 60U;
+constexpr uint32_t CAST_GLOBAL_SAT_MODE_CTRL_BIT = 48U;
 constexpr int64_t CAST_USE_INSTRUCTION_SAT_MODE = 0;
+constexpr int64_t CAST_USE_GLOBAL_SAT_MODE = 1;
+constexpr int64_t CAST_GLOBAL_NO_SAT_MODE = 1;
 // MX V1 沿用 common softmax 技巧：先用 log2 转换以配合 exp2 指令，
 // 再通过 ln2 转回自然指数语义。MXFP8 DN VF 实现需要这两个常量。
 constexpr float LN2 = static_cast<float>(0.6931471806f);
@@ -121,21 +125,6 @@ constexpr static AscendC::Reg::CastTrait castTraitRintNoSatOne = {
     AscendC::Reg::SatMode::NO_SAT,
     AscendC::Reg::MaskMergeMode::ZEROING,
     AscendC::RoundMode::CAST_RINT,
-};
-
-// MX V2 FP32 -> BF16 output conversion preserves non-finite values.
-constexpr static AscendC::Reg::CastTrait castTraitRoundNoSatZero = {
-    AscendC::Reg::RegLayout::ZERO,
-    AscendC::Reg::SatMode::NO_SAT,
-    AscendC::Reg::MaskMergeMode::ZEROING,
-    AscendC::RoundMode::CAST_ROUND,
-};
-
-constexpr static AscendC::Reg::CastTrait castTraitRoundNoSatOne = {
-    AscendC::Reg::RegLayout::ONE,
-    AscendC::Reg::SatMode::NO_SAT,
-    AscendC::Reg::MaskMergeMode::ZEROING,
-    AscendC::RoundMode::CAST_ROUND,
 };
 
 #define USE_MLA_FULLQUANT_V1_P(vreg_exp, vreg_rowmax_p, MaskReg) \
