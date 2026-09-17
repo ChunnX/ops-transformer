@@ -104,7 +104,7 @@ private:
                                                  uint32_t &preparedWqeCount, uint32_t &sqWriteCount);
     __aicore__ inline GM_ADDR GetRankAddressTableAddr(uint32_t targetRank)
     {
-        return addressTableWorkspaceAddr_ + static_cast<uint64_t>(targetRank) * addressTableStridePerRank_;
+        return addressTableWinAddr_ + static_cast<uint64_t>(targetRank) * addressTableStridePerRank_;
     }
 
     TPipe *tpipe_{nullptr};
@@ -113,10 +113,10 @@ private:
 
     GM_ADDR inputDataAddr_{nullptr};
     GM_ADDR localFlagAddr_{nullptr};
-    GM_ADDR workspaceGMAddr_{nullptr};
-    GM_ADDR addressTableWorkspaceAddr_{nullptr};
-    GM_ADDR totalRankCountWorkspaceAddr_{nullptr};
-    GM_ADDR perCoreRankCountWorkspaceAddr_{nullptr};
+    GM_ADDR localWinAddr_{nullptr};
+    GM_ADDR addressTableWinAddr_{nullptr};
+    GM_ADDR totalRankCountWinAddr_{nullptr};
+    GM_ADDR perCoreRankCountWinAddr_{nullptr};
 
     GlobalTensor<xType> xGMTensor_;
     GlobalTensor<int32_t> sessionIdsGMTensor_;
@@ -155,8 +155,8 @@ private:
     uint64_t hSize_{0};
     uint64_t winTokenInfoTableSize_{0};
     uint64_t addressTableStridePerRank_{0};
-    uint64_t addressTableWorkspaceOffset_{0};
-    uint64_t addressTableWorkspaceBytes_{0};
+    uint64_t addressTableWinOffset_{0};
+    uint64_t addressTableBytes_{0};
     uint64_t perCoreRankCountStride_{0};
     uint32_t rankCountElements_{0};
     bool localWritesMayAliasInput_{false};
@@ -202,7 +202,7 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::I
     const uint64_t tokenWindowEnd = winTokenInfoTableSize_ + tokenSlotNum * axisHS_ * sizeof(xType);
     const uint64_t flagWindowOffset =
         Ceil(tokenWindowEnd, static_cast<uint64_t>(URMA_FLAG_SLOT_SIZE)) * URMA_FLAG_SLOT_SIZE;
-    // Only WQE flag sources need to reside in the registered window. Address-table metadata is local workspace data.
+    // Keep flag sources in place; address-table metadata follows all per-core flag slots.
     GM_ADDR localScratchAddr = GetWindowAddr(rankId_) + flagWindowOffset;
     localFlagAddr_ = localScratchAddr + static_cast<uint64_t>(aivId_) * URMA_FLAG_SLOT_SIZE;
 
@@ -210,29 +210,30 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::I
     // and the per-core count matrix. Every core publishes only its own count row.
     addressTableStridePerRank_ =
         Ceil(maxTokenNum_ * REMOTE_ADDRESS_ENTRY_SIZE, URMA_WIN_ADDR_ALIGN) * URMA_WIN_ADDR_ALIGN;
-    workspaceGMAddr_ = workspaceGM;
-    addressTableWorkspaceOffset_ = tilingData->ffnToAttentionV2Info.addressTableWorkspaceOffset;
-    addressTableWorkspaceAddr_ = workspaceGMAddr_ + addressTableWorkspaceOffset_;
-    addressTableWorkspaceBytes_ = tilingData->ffnToAttentionV2Info.addressTableWorkspaceBytes;
-    uint64_t addressTableWorkspaceBytes = static_cast<uint64_t>(worldSize_) * addressTableStridePerRank_;
+    (void)workspaceGM;
+    localWinAddr_ = GetWindowAddr(rankId_);
+    addressTableWinOffset_ = tilingData->ffnToAttentionV2Info.addressTableWinOffset;
+    addressTableWinAddr_ = localWinAddr_ + addressTableWinOffset_;
+    addressTableBytes_ = tilingData->ffnToAttentionV2Info.addressTableBytes;
+    uint64_t addressTableBytes = static_cast<uint64_t>(worldSize_) * addressTableStridePerRank_;
     rankCountElements_ = static_cast<uint32_t>(
         Ceil(static_cast<uint64_t>(worldSize_) * sizeof(int32_t), URMA_UB_ALIGN) * URMA_UB_ALIGN / sizeof(int32_t));
     uint64_t rankCountRowBytes = static_cast<uint64_t>(rankCountElements_) * sizeof(int32_t);
-    uint64_t totalRankCountWorkspaceBytes = Ceil(rankCountRowBytes, URMA_WIN_ADDR_ALIGN) * URMA_WIN_ADDR_ALIGN;
-    perCoreRankCountStride_ = totalRankCountWorkspaceBytes;
-    totalRankCountWorkspaceAddr_ = addressTableWorkspaceAddr_ + addressTableWorkspaceBytes;
-    perCoreRankCountWorkspaceAddr_ = totalRankCountWorkspaceAddr_ + totalRankCountWorkspaceBytes;
-    uint64_t requiredWorkspaceSize = addressTableWorkspaceBytes + totalRankCountWorkspaceBytes +
-                                     static_cast<uint64_t>(aivNum_) * perCoreRankCountStride_;
-    ascendc_assert(requiredWorkspaceSize <= tilingData->ffnToAttentionV2Info.addressTableWorkspaceBytes,
-                   "address-table workspace (%llu) exceeds reserved workspace (%llu)",
-                   static_cast<unsigned long long>(requiredWorkspaceSize),
-                   static_cast<unsigned long long>(tilingData->ffnToAttentionV2Info.addressTableWorkspaceBytes));
+    uint64_t totalRankCountBytes = Ceil(rankCountRowBytes, URMA_WIN_ADDR_ALIGN) * URMA_WIN_ADDR_ALIGN;
+    perCoreRankCountStride_ = totalRankCountBytes;
+    totalRankCountWinAddr_ = addressTableWinAddr_ + addressTableBytes;
+    perCoreRankCountWinAddr_ = totalRankCountWinAddr_ + totalRankCountBytes;
+    uint64_t requiredTableBytes =
+        addressTableBytes + totalRankCountBytes + static_cast<uint64_t>(aivNum_) * perCoreRankCountStride_;
+    ascendc_assert(requiredTableBytes <= tilingData->ffnToAttentionV2Info.addressTableBytes,
+                   "address-table size (%llu) exceeds reserved table size (%llu)",
+                   static_cast<unsigned long long>(requiredTableBytes),
+                   static_cast<unsigned long long>(tilingData->ffnToAttentionV2Info.addressTableBytes));
 
     // Validate the registered window tail used by flag sources.
     const uint64_t cclBufferSize = tilingData->ffnToAttentionV2Info.cclBufferSize;
     const uint64_t flagWindowSize = static_cast<uint64_t>(aivNum_) * URMA_FLAG_SLOT_SIZE;
-    const uint64_t requiredWindowSize = flagWindowOffset + flagWindowSize;
+    const uint64_t requiredWindowSize = addressTableWinOffset_ + addressTableBytes_;
     ascendc_assert(cclBufferSize >= requiredWindowSize,
                    "cclBufferSize (%llu) < requiredWindowSize (%llu), "
                    "context buffer may have been allocated for a different shape",
@@ -436,31 +437,31 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::B
     }
 
     GlobalTensor<int32_t> perCoreRankCounts;
-    GM_ADDR countRowAddr = perCoreRankCountWorkspaceAddr_ + static_cast<uint64_t>(aivId_) * perCoreRankCountStride_;
+    GM_ADDR countRowAddr = perCoreRankCountWinAddr_ + static_cast<uint64_t>(aivId_) * perCoreRankCountStride_;
     perCoreRankCounts.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(countRowAddr));
     SyncFunc<HardEvent::S_MTE3>();
     const uint64_t copyBytes = static_cast<uint64_t>(rankCountElements_) * sizeof(int32_t);
-    const uint64_t tableBase = reinterpret_cast<uint64_t>(addressTableWorkspaceAddr_);
-    const uint64_t tableEnd = tableBase + addressTableWorkspaceBytes_;
+    const uint64_t tableBase = reinterpret_cast<uint64_t>(addressTableWinAddr_);
+    const uint64_t tableEnd = tableBase + addressTableBytes_;
     const uint64_t dstAddr = reinterpret_cast<uint64_t>(countRowAddr);
     const uint64_t srcUbAddr = reinterpret_cast<uint64_t>(rankCounts.GetPhyAddr());
     const bool dstInBounds = dstAddr >= tableBase && dstAddr <= tableEnd && copyBytes <= tableEnd - dstAddr;
     const bool srcInBounds = rankCountElements_ <= rankCounts.GetSize();
     constexpr uint32_t debugAivId = 46U;
-    PRINTF("[F2A count-copy] core=%u rank=%u ws=0x%lx offset=%lu bytes=%lu table=[0x%lx,0x%lx) "
-           "dst=[0x%lx,0x%lx) srcUB=0x%lx n=%u dstOK=%u srcOK=%u\n",
-           aivId_, rankId_, reinterpret_cast<uint64_t>(workspaceGMAddr_), addressTableWorkspaceOffset_,
-           addressTableWorkspaceBytes_, tableBase, tableEnd, dstAddr, dstAddr + copyBytes, srcUbAddr,
-           rankCountElements_, static_cast<uint32_t>(dstInBounds), static_cast<uint32_t>(srcInBounds));
+    // PRINTF("[F2A count-copy] core=%u rank=%u win=0x%lx tableOffset=%lu bytes=%lu table=[0x%lx,0x%lx) "
+    //        "dst=[0x%lx,0x%lx) srcUB=0x%lx n=%u dstOK=%u srcOK=%u\n",
+    //        aivId_, rankId_, reinterpret_cast<uint64_t>(localWinAddr_), addressTableWinOffset_,
+    //        addressTableBytes_, tableBase, tableEnd, dstAddr, dstAddr + copyBytes, srcUbAddr,
+    //        rankCountElements_, static_cast<uint32_t>(dstInBounds), static_cast<uint32_t>(srcInBounds));
 
     DataCopy(perCoreRankCounts, rankCounts, rankCountElements_);
     // DataCopy is asynchronous. This marker separates instruction issue from MTE completion/error reporting.
 
-    PRINTF("[F2A count-copy submitted] core=%u\n", aivId_);
+    // PRINTF("[F2A count-copy submitted] core=%u\n", aivId_);
 
     SyncFunc<HardEvent::MTE3_S>();
 
-    PRINTF("[F2A count-copy completed] core=%u\n", aivId_);
+    // PRINTF("[F2A count-copy completed] core=%u\n", aivId_);
 
     SyncAll<true>();
 
@@ -470,7 +471,7 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::B
     ascendc_assert(prefixRowsPerBatch != 0U, "rank count row exceeds address-table UB buffer");
     LocalTensor<int32_t> prefixRows = addressTableBuf_.Get<int32_t>();
     GlobalTensor<int32_t> allPerCoreRankCounts;
-    allPerCoreRankCounts.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(perCoreRankCountWorkspaceAddr_));
+    allPerCoreRankCounts.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(perCoreRankCountWinAddr_));
     const DataCopyPadExtParams<int32_t> prefixPadParams{false, 0U, 0U, 0U};
     for (uint32_t coreStart = 0U; coreStart < aivId_; coreStart += prefixRowsPerBatch) {
         uint32_t copyRows = (coreStart + prefixRowsPerBatch > aivId_) ? aivId_ - coreStart : prefixRowsPerBatch;
@@ -495,7 +496,7 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::B
             rankCounts.SetValue(rank, rankPrefix.GetValue(rank) + rankCounts.GetValue(rank));
         }
         GlobalTensor<int32_t> totalRankCounts;
-        totalRankCounts.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(totalRankCountWorkspaceAddr_));
+        totalRankCounts.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(totalRankCountWinAddr_));
         SyncFunc<HardEvent::S_MTE3>();
         DataCopy(totalRankCounts, rankCounts, rankCountElements_);
         SyncFunc<HardEvent::MTE3_S>();
@@ -569,7 +570,7 @@ __aicore__ inline uint32_t FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc
     uint32_t targetRank)
 {
     GlobalTensor<int32_t> totalRankCounts;
-    totalRankCounts.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(totalRankCountWorkspaceAddr_));
+    totalRankCounts.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(totalRankCountWinAddr_));
     DataCopyExtParams copyParams{1U, static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U};
     const DataCopyPadExtParams<int32_t> padParams{false, 0U, 0U, 0U};
     DataCopyPad(statusTensor_, totalRankCounts[targetRank], copyParams, padParams);

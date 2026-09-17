@@ -129,7 +129,7 @@ def _get_hccl_comm_name(group, rank_id):
 def _calc_window_size(
     token_info_table_shape, token_data_shape, world_size, max_token_num=-1
 ):
-    """Calculate window capacity including flag sources; address tables use workspace."""
+    """Calculate window capacity including flag sources, address tables and count rows."""
     _op_module = _ffn_to_attention_op_builder.load()
     return _op_module.get_ffn_to_attention_ccl_buffer_size(
         token_info_table_shape, token_data_shape, world_size, max_token_num
@@ -167,9 +167,6 @@ class FFNToAttentionBuffer:
         self.token_info_table_shape = list(token_info_table_shape)
         self.token_data_shape = list(token_data_shape)
 
-        required_buffer_size = _calc_window_size(
-            token_info_table_shape, token_data_shape, world_size, max_token_num
-        )
         self.max_token_num = (
             world_size
             * self.token_info_table_shape[0]
@@ -177,6 +174,9 @@ class FFNToAttentionBuffer:
             * self.token_info_table_shape[2]
             if max_token_num == -1
             else max_token_num
+        )
+        required_buffer_size = _calc_window_size(
+            token_info_table_shape, token_data_shape, world_size, self.max_token_num
         )
         self.required_buffer_size = required_buffer_size
         self._capacity_shapes = (
@@ -244,9 +244,9 @@ def get_buffer_for_ffn_to_attention(
         world_size (int): Communication domain size.
         token_info_table_shape (List[int]): 3-element list [microBatchNum, BS, expertNumPerToken].
         token_data_shape (List[int]): 4-element list [microBatchNum, BS, expertNumPerToken, HS].
-        max_token_num (int): Compatibility argument; no longer limits x.shape[0]
-            or affects window sizing. Address tables are allocated by operator tiling
-            according to x.shape[0]. Window sizing includes local flag sources only.
+        max_token_num (int): Capacity for x.shape[0], used to reserve rank address tables
+            in the window. Defaults to world_size * microBatchNum * BS * expertNumPerToken
+            when -1. Set this explicitly if a larger input capacity is needed.
 
     Returns:
         FFNToAttentionBuffer: Buffer holding the communication context, group

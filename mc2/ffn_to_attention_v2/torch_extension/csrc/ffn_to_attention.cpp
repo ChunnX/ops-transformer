@@ -67,9 +67,9 @@ namespace {
 constexpr int64_t MB_ALIGN = 2LL * 1024LL * 1024LL; // 2MB
 constexpr int64_t BYTES_PER_FP16 = 2;
 constexpr int64_t BYTES_PER_INT32 = 4;
-// The factory has no tiling core count yet. Reserve a conservative flag-source budget;
-// tiling still checks the exact aivNum * 32B requirement before launching.
-constexpr int64_t FLAG_SOURCE_RESERVE_BYTES = 1024LL * 32LL;
+// Reserve for up to 1024 AIVs; host tiling uses the actual core count.
+constexpr int64_t AIV_RESERVE_COUNT = 1024LL;
+constexpr int64_t FLAG_SOURCE_RESERVE_BYTES = AIV_RESERVE_COUNT * 32LL;
 
 int64_t CeilAlign(int64_t val, int64_t align)
 {
@@ -114,10 +114,13 @@ int64_t GetFFNToAttentionCclBufferSize(const std::vector<int64_t> &tokenInfoTabl
     int64_t tokenDataSize = CheckedMul(CheckedMul(tokenSlots, hs), BYTES_PER_FP16);
     int64_t tokenInfoSize = CeilAlign(CheckedMul(tokenSlots, BYTES_PER_INT32), 512);
     int64_t rawSize = CeilAlign(CheckedAdd(tokenInfoSize, tokenDataSize), 32);
-    // Address tables live in operator workspace, not in the registered window.
-    // Keep maxTokenNum as a compatibility argument; it no longer affects window sizing.
-    int64_t flagSourceSize = FLAG_SOURCE_RESERVE_BYTES;
-    rawSize = CheckedAdd(rawSize, flagSourceSize);
+    rawSize = CeilAlign(CheckedAdd(rawSize, FLAG_SOURCE_RESERVE_BYTES), 512);
+    const int64_t tokenCapacity = maxTokenNum == -1 ? CheckedMul(worldSize, tokenSlots) : maxTokenNum;
+    const int64_t rankTableStride = CeilAlign(CheckedMul(tokenCapacity, 16), 512);
+    const int64_t countRowStride = CeilAlign(CheckedMul(worldSize, BYTES_PER_INT32), 512);
+    const int64_t tableBytes =
+        CheckedAdd(CheckedMul(worldSize, rankTableStride), CheckedMul(AIV_RESERVE_COUNT + 1, countRowStride));
+    rawSize = CheckedAdd(rawSize, tableBytes);
     return CeilAlign(rawSize, MB_ALIGN);
 }
 
@@ -128,6 +131,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("get_ffn_to_attention_ccl_buffer_size", &GetFFNToAttentionCclBufferSize,
           pybind11::arg("token_info_table_shape"), pybind11::arg("token_data_shape"), pybind11::arg("world_size"),
           pybind11::arg("max_token_num") = -1,
-          "URMA window size including flag sources; address tables use operator workspace");
+          "URMA window size including flag sources, rank address tables and count rows");
 }
 } // namespace op_api
