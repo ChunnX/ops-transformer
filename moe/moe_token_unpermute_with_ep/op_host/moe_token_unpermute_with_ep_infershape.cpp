@@ -27,7 +27,6 @@ static constexpr int64_t UNPERMUTE_WITH_EP_ARRT_RANGE = 1;
 
 static ge::graphStatus InferShapeForMoeTokenUnpermuteWithEp(gert::InferShapeContext *context)
 {
-    OP_LOGD(context->GetNodeName(), "Begin to do MoeTokenUnpermuteWithEp InferShape.");
     const gert::Shape *permuted_inputs_shape = context->GetInputShape(UNPERMUTE_WITH_EP_INPUT_TOKENS);
     if (permuted_inputs_shape->GetDimNum() != 2) {
         return GRAPH_FAILED;

@@ -28,7 +28,6 @@ static constexpr int FORTH_DIM = 3;
 
 static ge::graphStatus RopeQuantKvcacheInferShape(gert::InferShapeContext* context)
 {
-    OP_LOGD(context->GetNodeName(), "Begin to do RopeQuantKvcache InferShape.");
     const gert::Shape* qkvShape = context->GetInputShape(0);
     const gert::Shape* cacheShape = context->GetInputShape(KVCACHE_INPUT_INDEX);
 
