@@ -2760,7 +2760,7 @@ static void SetDedupModeParams(const gert::TilingContext *context, const MegaMoe
         // GMM 计算已能完全遮住 dispatch 通信，省下的字节不在关键路径上，只剩建表成本；bs≥4096
         // （savedBytes≥80MB）通信重新成为瓶颈，收益回归（-1.6%/-5.4%）。故 bs>1024 时门槛抬到
         // 60MB（实测 40MB 亏 / 80MB 赢的区间中插）。两阈值均基于 4P 实测，8 卡矩阵后需重校准。
-        constexpr double DEDUP_MID_BS_MIN_SAVED_BYTES = 60.0 * 1024.0 * 1024.0;
+        constexpr double DEDUP_MID_BS_MIN_SAVED_BYTES = 150.0 * 1024.0 * 1024.0;
         /*
          * combine 去重（专家粒度合并版）的收益边界低于纯 dispatch 去重：小 bs 档实测
          * S4(bs256,h5120,k6,saved=3.56MB) full 组合净赢 -2.8%，而 S1(bs64,saved=1.15MB)
