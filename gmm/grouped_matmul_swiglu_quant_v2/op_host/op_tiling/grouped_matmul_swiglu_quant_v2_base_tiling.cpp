@@ -52,17 +52,59 @@ static inline uint32_t SixteenAlign(uint32_t a, bool up = false)
     return a & ~15U;
 }
 
+int64_t GroupedMatmulSwigluQuantV2BaseTiling::CalMaxRowInUbA4W4(const uint64_t ubSize, const uint64_t n) const
+{
+    // A4W4 vector double-buffer 场景 UB 预算(与 kernel UpdateVecConfig 中 InitBuffer 的实际分配一致):
+    //   9 * row * n + 8 * AlignUp(row, 8) + 2 * n + 64 <= ubSize
+    // 其中:
+    //   9 * row * n  : mmOutQueue(fp32, depth2) = 8*row*n + quantOutQueue(int8, depth2) = row*n
+    //   8 * AlignUp(row,8) : quantScaleOutQueue(fp32, depth2) = 8 * AlignUp(row,8)
+    //   2 * n + 64   : reduceWorkspace(SwiGLU tmp n/2 *fp32 + ReduceMax res/tmp 各 32B)
+    const uint64_t ROW_N_COEF = 9;
+    const uint64_t ALIGN_COEF = 8;
+    const uint64_t N_COEF = 2;
+    const uint64_t CONSTANT_TERM = 64;
+    const int64_t MIN_ROW_THRESHOLD = 1;
+    auto alignUp8 = [](int64_t v) -> int64_t { return (v + 8 - 1) / 8 * 8; };
+
+    if (n == 0 || ubSize <= CONSTANT_TERM + N_COEF * n) {
+        OP_LOGE(context_->GetNodeName(), "GMM_SWIGLU_QUANT TILING A4W4: invalid n or ubSize, n = %lu, ubSize = %lu\n",
+                n, ubSize);
+        return 0;
+    }
+
+    // 先忽略对齐项给出初始估计, 再逐步递减直到满足 double buffer UB 预算
+    int64_t maxRowEstimate = static_cast<int64_t>(ubSize - CONSTANT_TERM - N_COEF * n) / (ROW_N_COEF * n);
+    if (maxRowEstimate < 0) {
+        maxRowEstimate = 0;
+    }
+
+    uint64_t totalSize = ROW_N_COEF * maxRowEstimate * n +
+                         ALIGN_COEF * static_cast<uint64_t>(alignUp8(maxRowEstimate)) + N_COEF * n + CONSTANT_TERM;
+    while (totalSize > ubSize && maxRowEstimate > 0) {
+        maxRowEstimate--;
+        totalSize = ROW_N_COEF * maxRowEstimate * n + ALIGN_COEF * static_cast<uint64_t>(alignUp8(maxRowEstimate)) +
+                    N_COEF * n + CONSTANT_TERM;
+    }
+
+    if (maxRowEstimate < MIN_ROW_THRESHOLD) {
+        OP_LOGE(context_->GetNodeName(), "GMM_SWIGLU_QUANT TILING A4W4: No valid row found for n = %lu, ubSize = %lu\n",
+                n, ubSize);
+        return 0;
+    }
+    return maxRowEstimate;
+}
+
 int64_t GroupedMatmulSwigluQuantV2BaseTiling::CalMaxRowInUbA8W4(const uint64_t ubSize, const uint64_t n) const
 {
     const uint64_t ALIGNMENT = 8;
-    const float WEIGHT_FACTOR = isA4W4_ ? 4.5f : 8.5f;
+    const float WEIGHT_FACTOR = 8.5f;
     const uint64_t ALIGNMENT_TERM_FACTOR = 4;
     const uint64_t LINEAR_TERM_FACTOR = 6;
     const uint64_t CONSTANT_TERM = 64;
     const int64_t MIN_ROW_THRESHOLD = 1;
 
     // A8W4 表达式：8.5 * row * n + 4 * alignUp(row, 8) + 6n + 64 <= ubSize
-    // A4W4 表达式：4.5 * row * n + 4 * alignUp(row, 8) + 6n + 64 <= ubSize
 
     // 忽略对齐项的初始估计
     if (n == 0 || ubSize <= CONSTANT_TERM + LINEAR_TERM_FACTOR * n) {
@@ -237,7 +279,9 @@ ge::graphStatus GroupedMatmulSwigluQuantV2BaseTiling::ParseInputAndAttr()
 
     groupNum_ = groupListShape->GetStorageShape().GetDim(0);
 
-    if (isA8W4MSD_ || isA4W4_) {
+    if (isA4W4_) {
+        maxProcessRowNum_ = CalMaxRowInUbA4W4(compileInfoPtr->ubSize_, n_);
+    } else if (isA8W4MSD_) {
         maxProcessRowNum_ = CalMaxRowInUbA8W4(compileInfoPtr->ubSize_, n_);
     } else {
         maxProcessRowNum_ = CalMaxRowInUb(compileInfoPtr->ubSize_, n_);
