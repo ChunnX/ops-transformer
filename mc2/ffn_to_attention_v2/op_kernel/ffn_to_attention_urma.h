@@ -442,14 +442,11 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::B
     const uint64_t srcUbAddr = reinterpret_cast<uint64_t>(rankCounts.GetPhyAddr());
     const bool dstInBounds = dstAddr >= tableBase && dstAddr <= tableEnd && copyBytes <= tableEnd - dstAddr;
     const bool srcInBounds = rankCountElements_ <= rankCounts.GetSize();
-    PRINTF("[F2A DataCopy args] core=%u rank=%u dstGM=%p srcUB=%lu count=%u elemBytes=%u copyBytes=%lu\n", aivId_,
-           rankId_, static_cast<void *>(countRowAddr), srcUbAddr, rankCountElements_,
-           static_cast<uint32_t>(sizeof(int32_t)), copyBytes);
-    PRINTF("[F2A DataCopy bounds] core=%u tableBase=%p tableEnd=%p dstEnd=%p dstOffset=%lu stride=%lu "
+    PRINTF("[F2A DataCopy args] core=%u rank=%u dstGM=0x%lx srcUB=0x%lx count=%u elemBytes=%u copyBytes=%lu\n", aivId_,
+           rankId_, dstAddr, srcUbAddr, rankCountElements_, static_cast<uint32_t>(sizeof(int32_t)), copyBytes);
+    PRINTF("[F2A DataCopy bounds] core=%u tableBase=0x%lx tableEnd=0x%lx dstEnd=0x%lx dstOffset=%lu stride=%lu "
            "dstInBounds=%u srcCapacity=%u srcInBounds=%u\n",
-           aivId_, static_cast<void *>(addressTableWorkspaceAddr_),
-           static_cast<void *>(addressTableWorkspaceAddr_ + addressTableWorkspaceBytes_),
-           static_cast<void *>(countRowAddr + copyBytes), dstAddr - tableBase, perCoreRankCountStride_,
+           aivId_, tableBase, tableEnd, dstAddr + copyBytes, dstAddr - tableBase, perCoreRankCountStride_,
            static_cast<uint32_t>(dstInBounds), rankCounts.GetSize(), static_cast<uint32_t>(srcInBounds));
     for (uint32_t debugRank = 0U; debugRank < worldSize_; ++debugRank) {
         int32_t debugCount = rankCounts.GetValue(debugRank);
@@ -459,8 +456,8 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::B
     }
     DataCopy(perCoreRankCounts, rankCounts, rankCountElements_);
     SyncFunc<HardEvent::MTE3_S>();
-    PRINTF("[F2A DataCopy after] core=%u rank=%u dst=%p bytes=%lu\n", aivId_, rankId_,
-           static_cast<void *>(countRowAddr), static_cast<uint64_t>(rankCountElements_) * sizeof(int32_t));
+    PRINTF("[F2A DataCopy after] core=%u rank=%u dst=0x%lx bytes=%lu\n", aivId_, rankId_,
+           reinterpret_cast<uint64_t>(countRowAddr), static_cast<uint64_t>(rankCountElements_) * sizeof(int32_t));
     SyncAll<true>();
 
     // Every core independently sums the preceding core rows. Core 0 is not a centralized prefix calculator.
