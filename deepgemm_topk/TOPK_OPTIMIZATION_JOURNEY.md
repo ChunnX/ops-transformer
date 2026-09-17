@@ -12,7 +12,9 @@
 | 版本 | 关键改动 | Phase 2 | 总耗时 | 主要问题 |
 |------|---------|---------|--------|---------|
 | v0 | bubble sort + 全量遍历 | ~17ms | — | 148× 冗余 |
-| v1 | Q token 按 SM 分配 | ~57ms | — | bubble O(K²) |
+| v1 | Q token 按 SM 分配 | ~0.2ms（理论）* | — | bubble O(K²)；57ms 为环境异常值 |
+
+> \* v1 工作量 = v0 的 1/148，理论应 ~0.2ms；当时测得的 57ms 与同期 Phase 1 由 ~50→107us 的波动均为**共享环境/DVFS 噪声**，后被 [SPLIT] 打点证明 Phase 1 稳定 ~50us（Phase 2 改动与 Phase 1 性能解耦）。
 | v2 | 8-bit radix select (SMEM atomicAdd) | ~412us | ~518us | atomic 争用 |
 | v3 | 8-warp 分段 + 局部 TopK + 候选合并 | ~1082us | — | merge 随机 GMEM 读 |
 | v4 | merge 值读改 SMEM + writer `__threadfence` | ~500us | — | 5M-cycle stall |
@@ -41,7 +43,9 @@ for (q_token = sm_idx * kNumTopkWarps + warp_idx;
 
 **现象**：原来每个 block 处理全部 624 token → 92,352 次 TopK（148 块 × 624），正确只需 624 次。
 
-**性能**：17ms →（bubble sort 主导）57ms。TopK 算法本身（O(K²)=O(512²) 串行 bubble）成为新瓶颈。
+**性能**：v0 的 17ms 是"冗余版"的墙钟时间（148 块并行做同一批 token，关键路径 = 单 warp 78 token × O(512²) bubble）。
+
+> **测量说明（重要）**：v1 当时实测到 57ms，但按工作量理论值应 ≈ 17ms/78 ≈ **0.2ms**。两个数字取自不同时间、不同环境占用，且同时期 Phase 1 也出现 50→107us 的波动（后被打点证明是共享环境 DVFS，非代码影响）。radix 时代分段计时反推 bubble 版每 token ~262K cycles，分摊后 ≈ 66us 量级——**57ms 是测量异常，不是真实回归**。v1 的正确结论是：修复 148× 冗余后，瓶颈转移到 bubble sort 的 O(K²) 本身。
 
 ## 2. v1 → v2：radix select 取代 bubble sort
 
