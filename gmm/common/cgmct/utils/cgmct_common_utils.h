@@ -131,13 +131,15 @@ __aicore__ inline uint64_t Align16(uint64_t x)
 /**
  * Get the aiv corenum from aic in different platforms
  */
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 2201 || __NPU_ARCH__ == 3510)
+constexpr uint32_t AIC_AIV_CORE_RATIO = 2U;
+#else
+constexpr uint32_t AIC_AIV_CORE_RATIO = 1U;
+#endif
+
 __aicore__ inline uint32_t GetAicAivTaskRation()
 {
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 2201 || __NPU_ARCH__ == 3510)
-    return 2U; // 2: aic:aiv = 1:2
-#else
-    return 1U;
-#endif
+    return AIC_AIV_CORE_RATIO;
 }
 
 template <typename CType, typename AType>

@@ -64,7 +64,7 @@ private:
     int32_t mBaseTail_;
     int32_t nBaseTail_;
     uint32_t blockNum_ = AscendC::GetBlockNum();
-    uint32_t blockIdx_ = AscendC::GetBlockIdx() / AscendC::GetTaskRation();
+    uint32_t blockIdx_;
     uint32_t startBlockIdx_;
     uint32_t endBlockIdx_{blockNum_ - 1};
 
@@ -72,7 +72,16 @@ public:
     __aicore__ inline BlockSchedulerGmmAswtWithTailSplit(int32_t baseM, int32_t baseN, int32_t baseK)
         : baseM_(baseM),
           baseN_(baseN),
-          baseK_(baseK)
+          baseK_(baseK),
+          blockIdx_(AscendC::GetBlockIdx() / AscendC::GetTaskRation())
+    {}
+
+    __aicore__ inline BlockSchedulerGmmAswtWithTailSplit(int32_t baseM, int32_t baseN, int32_t baseK,
+                                                         uint32_t taskRatio)
+        : baseM_(baseM),
+          baseN_(baseN),
+          baseK_(baseK),
+          blockIdx_(AscendC::GetBlockIdx() / taskRatio)
     {}
 
     __aicore__ inline void UpdateNextProblem(const TupleShape &problemShape)

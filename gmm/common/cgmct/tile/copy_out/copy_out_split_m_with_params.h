@@ -16,6 +16,7 @@
 #define MATMUL_TILE_COPY_OUT_COPY_OUT_SPLIT_M_WITH_PARAMS_H
 
 #include "../tile_copy_policy.h"
+#include "../../utils/cgmct_common_utils.h"
 #include "../../utils/tensor_utils.h"
 
 namespace Cgmct {
@@ -59,7 +60,8 @@ public:
                                       int32_t baseN, int32_t orgM, int32_t orgN, int32_t orgKc, uint8_t id = 0)
     {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-        l0CTileH = AscendC::Align(l0CTileH, 2); // 2 means SplitM scenario aligned to 2
+        constexpr uint32_t taskRatio = AIC_AIV_CORE_RATIO;
+        l0CTileH = AscendC::Align(l0CTileH, static_cast<int32_t>(taskRatio));
         uint32_t dimN = orgKc != 0 ? orgKc : orgN;
         constexpr uint32_t blockCount = AscendC::ONE_BLK_SIZE / sizeof(DstT);
         if constexpr (OutputType::format == CubeFormat::ND_ALIGN) {
@@ -67,8 +69,7 @@ public:
         }
         auto stride = dimN;
         int64_t dstOffset =
-            static_cast<int64_t>(static_cast<int64_t>(static_cast<int64_t>(curRow * baseM) * stride) >> 1) +
-            static_cast<int64_t>(curCol * baseN);
+            static_cast<int64_t>(curRow * baseM) * stride / taskRatio + static_cast<int64_t>(curCol * baseN);
 
         AscendC::FixpipeParamsC310<AscendC::CO2Layout::ROW_MAJOR> params;
         params.nSize = static_cast<uint16_t>(l0CTileW);
@@ -85,7 +86,7 @@ public:
             params.quantPre = QuantMode_t::F322BF16;
         }
         params.subBlockId = id;
-        params.dualDstCtl = static_cast<uint8_t>(AscendC::McgShfMode::DUAL_DST_SPLIT_M);
+        params.dualDstCtl = taskRatio > 1U ? static_cast<uint8_t>(AscendC::McgShfMode::DUAL_DST_SPLIT_M) : 0U;
         AscendC::Fixpipe<DstT, SrcT, AscendC::Impl::CFG_ROW_MAJOR_UB>(dstLocal[dstOffset], src, params);
 #else
         ASCENDC_ASSERT(false, { KERNEL_LOG(KERNEL_ERROR, "Only support DAV3510"); });
@@ -133,10 +134,11 @@ public:
                                       int32_t baseN, int orgM, int orgN, int orgKc, uint8_t id = 0)
     {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+        constexpr uint32_t taskRatio = AIC_AIV_CORE_RATIO;
         uint32_t stride = static_cast<uint32_t>(orgM * AscendC::BLOCK_CUBE);
         int64_t dstOffset =
             static_cast<int64_t>(curCol * baseN) * orgM + static_cast<int64_t>(curRow * baseM) * AscendC::BLOCK_CUBE;
-        dstOffset = dstOffset >> 1; // splitM or splitN
+        dstOffset /= taskRatio;
 
         AscendC::FixpipeParamsC310<AscendC::CO2Layout::NZ> params;
         int32_t baseBlockWidth = AscendC::Ceil(l0CTileW, AscendC::BLOCK_CUBE);
@@ -149,7 +151,7 @@ public:
         } else if constexpr (AscendC::IsSameType<DstT, bfloat16_t>::value && AscendC::IsSameType<SrcT, float>::value) {
             params.quantPre = QuantMode_t::F322BF16;
         }
-        params.dualDstCtl = static_cast<uint8_t>(AscendC::McgShfMode::DUAL_DST_SPLIT_M);
+        params.dualDstCtl = taskRatio > 1U ? static_cast<uint8_t>(AscendC::McgShfMode::DUAL_DST_SPLIT_M) : 0U;
         params.subBlockId = id;
         AscendC::Fixpipe<DstT, SrcT, AscendC::Impl::CFG_NZ_UB>(dst[dstOffset], src, params);
 #else
@@ -197,7 +199,8 @@ public:
                                       int32_t baseN, int32_t orgM, int32_t orgN, int32_t orgKc, uint8_t id = 0)
     {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-        l0CTileH = AscendC::Align(l0CTileH, 2); // 2 means SplitM scenario aligned to 2
+        constexpr uint32_t taskRatio = AIC_AIV_CORE_RATIO;
+        l0CTileH = AscendC::Align(l0CTileH, static_cast<int32_t>(taskRatio));
         uint32_t stride = l0CTileW;
         int64_t dstOffset = 0;
         constexpr uint32_t blockCount = AscendC::ONE_BLK_SIZE / sizeof(DstT);
@@ -216,7 +219,7 @@ public:
         } else if constexpr (AscendC::IsSameType<DstT, bfloat16_t>::value && AscendC::IsSameType<SrcT, float>::value) {
             params.quantPre = QuantMode_t::F322BF16;
         }
-        params.dualDstCtl = static_cast<uint8_t>(AscendC::McgShfMode::DUAL_DST_SPLIT_M);
+        params.dualDstCtl = taskRatio > 1U ? static_cast<uint8_t>(AscendC::McgShfMode::DUAL_DST_SPLIT_M) : 0U;
         params.subBlockId = id;
         AscendC::Fixpipe<DstT, SrcT, AscendC::Impl::CFG_ROW_MAJOR_UB>(dst[dstOffset], src, params);
 #else
