@@ -282,8 +282,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     params_.peermemInfo = PeermemInfo(g_winRankAddr_[rankId_], tilingData, A_ELEMS_PER_BYTE);
     params_.tilingData = tilingData;
     params_.diagRank = rankId_;
-    params_.diagRecords[0] = 0;
-    params_.diagRecords[1] = 0;
     params_.diagPrint = false;
     if constexpr (g_coreType == AIV) {
         params_.diagPrint =
@@ -299,17 +297,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
             params_.tilingData->topK, params_.tilingData->moeExpertPerRank, params_.tilingData->maxOutputSize,
             static_cast<uint32_t>(params_.tilingData->topkWeightsPrefetch),
             static_cast<uint32_t>(params_.tilingData->combineQuantMode));
-        printf("[MM_DIAG_LAYOUT] context=%llx workspace=%llx workspace_bytes=%llu route=%llx count=%llx quant=%llx "
-               "combine=%llx\n",
-               reinterpret_cast<unsigned long long>(context), reinterpret_cast<unsigned long long>(workspaceGM),
-               static_cast<unsigned long long>(layout.workspaceSize),
-               reinterpret_cast<unsigned long long>(params_.peermemInfo.maskRecvPtr),
-               reinterpret_cast<unsigned long long>(params_.peermemInfo.expertCountRecvPtr),
-               reinterpret_cast<unsigned long long>(params_.peermemInfo.quantTokenScalePtr),
-               reinterpret_cast<unsigned long long>(params_.peermemInfo.combineSendPtr));
+        printf("[MM_DIAG_LAYOUT] context=%p workspace=%p workspace_bytes=%llu route=%p count=%p quant=%p "
+               "combine=%p\n",
+               context, workspaceGM, static_cast<unsigned long long>(layout.workspaceSize),
+               params_.peermemInfo.maskRecvPtr, params_.peermemInfo.expertCountRecvPtr,
+               params_.peermemInfo.quantTokenScalePtr, params_.peermemInfo.combineSendPtr);
         for (uint32_t peer = 0; peer < params_.tilingData->epWorldSize; ++peer) {
-            printf("[MM_DIAG_PEER] rank=%u core=%u peer=%u window_after_dump_prefix=%llx\n", params_.diagRank,
-                   GetBlockIdx(), peer, reinterpret_cast<unsigned long long>(g_winRankAddr_[peer]));
+            printf("[MM_DIAG_PEER] rank=%u core=%u peer=%u window_after_dump_prefix=%p\n", params_.diagRank,
+                   GetBlockIdx(), peer, g_winRankAddr_[peer]);
         }
     }
     InitEpilogueAndCommonConfig(tilingData);

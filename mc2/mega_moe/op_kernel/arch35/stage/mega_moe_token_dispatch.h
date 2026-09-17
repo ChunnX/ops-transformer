@@ -88,13 +88,11 @@ __aicore__ inline void FetchDispatchTokenAndMetaInfo(const TokenDispatchConfig &
     int32_t tokenIndex = topkIndex / static_cast<int32_t>(params.tilingData->topK);
     uint64_t remoteCopyOffset =
         static_cast<uint64_t>(tokenIndex) * static_cast<uint64_t>(context.quantTokenScaleAlignBytes);
-    if (params.diagPrint && params.diagRecords[0] < 64U) {
-        ++params.diagRecords[0];
-        printf("[MM_DIAG_ADDR] rank=%u core=%u site=dispatch.token_read peer=%u base=%llx offset=%llu bytes=%llu "
+    if (params.diagPrint) {
+        printf("[MM_DIAG_ADDR] rank=%u core=%u site=dispatch.token_read peer=%u base=%p offset=%llu bytes=%llu "
                "limit=%llu\n",
                params.diagRank, GetBlockIdx(), static_cast<uint32_t>(remoteRankIdx),
-               reinterpret_cast<unsigned long long>(remoteRankGlobalTensor.GetPhyAddr()),
-               static_cast<unsigned long long>(remoteCopyOffset),
+               remoteRankGlobalTensor.GetPhyAddr(), static_cast<unsigned long long>(remoteCopyOffset),
                static_cast<unsigned long long>(context.quantTokenScaleAlignBytes),
                static_cast<unsigned long long>(static_cast<uint64_t>(params.tilingData->numMaxTokensPerRank) *
                                                context.quantTokenScaleAlignBytes));
@@ -164,32 +162,28 @@ __aicore__ inline void CopyTokensAndMetaForDispatch(const TokenDispatchConfig &c
     const MegaMoeDispatchBufferConfig &bufferConfig = context.bufferConfig;
     int32_t bufferCount = bufferConfig.bufferCount;
 
-    if (params.diagPrint && params.diagRecords[0] < 64U) {
-        ++params.diagRecords[0];
-        printf("[MM_DIAG_ADDR] rank=%u core=%u site=dispatch.data_write peer=%u base=%llx offset=%llu bytes=%llu "
+    if (params.diagPrint) {
+        printf("[MM_DIAG_ADDR] rank=%u core=%u site=dispatch.data_write peer=%u base=%p offset=%llu bytes=%llu "
                "limit=%llu\n",
                params.diagRank, GetBlockIdx(), static_cast<uint32_t>(params.diagRank),
-               reinterpret_cast<unsigned long long>(params.workspaceInfo.dispatchRevDataPtr),
+               params.workspaceInfo.dispatchRevDataPtr,
                static_cast<unsigned long long>(static_cast<uint64_t>(rowDstOffset) * scratch.revTokenElemCnt),
                static_cast<unsigned long long>(static_cast<uint64_t>(copyNum) * scratch.revTokenElemCnt),
                static_cast<unsigned long long>(context.maxOutputSize * scratch.revTokenElemCnt));
     }
-    if (params.diagPrint && params.diagRecords[0] < 64U) {
-        ++params.diagRecords[0];
-        printf("[MM_DIAG_ADDR] rank=%u core=%u site=dispatch.scale_write peer=%u base=%llx offset=%llu bytes=%llu "
+    if (params.diagPrint) {
+        printf("[MM_DIAG_ADDR] rank=%u core=%u site=dispatch.scale_write peer=%u base=%p offset=%llu bytes=%llu "
                "limit=%llu\n",
                params.diagRank, GetBlockIdx(), static_cast<uint32_t>(params.diagRank),
-               reinterpret_cast<unsigned long long>(params.workspaceInfo.dispatchRevScalePtr),
+               params.workspaceInfo.dispatchRevScalePtr,
                static_cast<unsigned long long>(static_cast<uint64_t>(rowDstOffset) * scratch.revScaleElemCnt),
                static_cast<unsigned long long>(static_cast<uint64_t>(copyNum) * scratch.revScaleElemCnt),
                static_cast<unsigned long long>(context.maxOutputSize * scratch.revScaleElemCnt));
     }
-    if (params.diagPrint && params.diagRecords[0] < 64U) {
-        ++params.diagRecords[0];
-        printf("[MM_DIAG_ADDR] rank=%u core=%u site=dispatch.meta_write peer=%u base=%llx offset=%llu bytes=%llu "
+    if (params.diagPrint) {
+        printf("[MM_DIAG_ADDR] rank=%u core=%u site=dispatch.meta_write peer=%u base=%p offset=%llu bytes=%llu "
                "limit=%llu\n",
-               params.diagRank, GetBlockIdx(), static_cast<uint32_t>(params.diagRank),
-               reinterpret_cast<unsigned long long>(params.workspaceInfo.metaInfoPtr),
+               params.diagRank, GetBlockIdx(), static_cast<uint32_t>(params.diagRank), params.workspaceInfo.metaInfoPtr,
                static_cast<unsigned long long>(static_cast<uint64_t>(rowDstOffset) * INT32_PER_256B * sizeof(int32_t)),
                static_cast<unsigned long long>(static_cast<uint64_t>(copyNum) * INT32_PER_256B * sizeof(int32_t)),
                static_cast<unsigned long long>(context.maxOutputSize * INT32_PER_256B * sizeof(int32_t)));
@@ -300,12 +294,11 @@ __aicore__ inline int32_t DispatchRankTokens(const TokenDispatchConfig &context,
             (static_cast<uint64_t>(localExpertId) * common.worldSize + remoteRankIdx) * context.routeIndexAlignSize;
         remoteRouteIndexGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
             params.peermemInfo.maskRecvPtr + slotOffset + static_cast<uint64_t>(routeOrdinal) * sizeof(int32_t)));
-        if (params.diagPrint && params.diagRecords[0] < 64U) {
-            ++params.diagRecords[0];
-            printf("[MM_DIAG_ADDR] rank=%u core=%u site=dispatch.route_read peer=%u base=%llx offset=%llu bytes=%llu "
+        if (params.diagPrint) {
+            printf("[MM_DIAG_ADDR] rank=%u core=%u site=dispatch.route_read peer=%u base=%p offset=%llu bytes=%llu "
                    "limit=%llu\n",
                    params.diagRank, GetBlockIdx(), static_cast<uint32_t>(params.diagRank),
-                   reinterpret_cast<unsigned long long>(params.peermemInfo.maskRecvPtr),
+                   params.peermemInfo.maskRecvPtr,
                    static_cast<unsigned long long>(slotOffset + static_cast<uint64_t>(routeOrdinal) * sizeof(int32_t)),
                    static_cast<unsigned long long>(static_cast<uint64_t>(batchDispatchRowCount) * sizeof(int32_t)),
                    static_cast<unsigned long long>(static_cast<uint64_t>(common.moeExpertPerRank) * common.worldSize *
@@ -487,13 +480,11 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
     if (params.diagPrint) {
         printf("[MM_DIAG] rank=%u core=%u stage=count_read_enter\n", params.diagRank, GetBlockIdx());
     }
-    if (params.diagPrint && params.diagRecords[0] < 64U) {
-        ++params.diagRecords[0];
-        printf("[MM_DIAG_ADDR] rank=%u core=%u site=dispatch.count_read peer=%u base=%llx offset=%llu bytes=%llu "
+    if (params.diagPrint) {
+        printf("[MM_DIAG_ADDR] rank=%u core=%u site=dispatch.count_read peer=%u base=%p offset=%llu bytes=%llu "
                "limit=%llu\n",
                params.diagRank, GetBlockIdx(), static_cast<uint32_t>(params.diagRank),
-               reinterpret_cast<unsigned long long>(params.peermemInfo.expertCountRecvPtr),
-               static_cast<unsigned long long>(0),
+               params.peermemInfo.expertCountRecvPtr, static_cast<unsigned long long>(0),
                static_cast<unsigned long long>(static_cast<uint64_t>(rawCountElementCount) * sizeof(int32_t)),
                static_cast<unsigned long long>(static_cast<uint64_t>(rawCountElementCount) * sizeof(int32_t)));
     }

@@ -93,7 +93,7 @@ __aicore__ inline void SendCombineTokenRow(uint32_t rowElements, uint64_t gmRemo
 {
     CombineTokenRoute route = LoadCombineTokenRoute(metaInfoTensor, 0U);
 
-    if (params.diagPrint && params.diagRecords[1] < 64U) {
+    if (params.diagPrint) {
         printf("[MM_DIAG_ROUTE] rank=%u core=%u peer=%u token=%u topk=%u window_offset=%llu\n", params.diagRank,
                GetBlockIdx(), route.dstRankId, route.tokenIdx, route.topkIdx,
                static_cast<unsigned long long>(gmRemoteBaseOffset));
@@ -103,12 +103,10 @@ __aicore__ inline void SendCombineTokenRow(uint32_t rowElements, uint64_t gmRemo
     gmRemoteD.SetGlobalBuffer(
         reinterpret_cast<__gm__ Element *>(GetRankWinAddrWithOffset(route.dstRankId, gmRemoteBaseOffset)));
     uint64_t gmDstRowOffset = GetCombineDstRowIndex(route, params) * rowElements;
-    if (params.diagPrint && params.diagRecords[1] < 64U) {
-        ++params.diagRecords[1];
-        printf("[MM_DIAG_ADDR] rank=%u core=%u site=combine.remote_write peer=%u base=%llx offset=%llu bytes=%llu "
+    if (params.diagPrint) {
+        printf("[MM_DIAG_ADDR] rank=%u core=%u site=combine.remote_write peer=%u base=%p offset=%llu bytes=%llu "
                "limit=%llu\n",
-               params.diagRank, GetBlockIdx(), static_cast<uint32_t>(route.dstRankId),
-               reinterpret_cast<unsigned long long>(gmRemoteD.GetPhyAddr()),
+               params.diagRank, GetBlockIdx(), static_cast<uint32_t>(route.dstRankId), gmRemoteD.GetPhyAddr(),
                static_cast<unsigned long long>(gmDstRowOffset * sizeof(Element)),
                static_cast<unsigned long long>(static_cast<uint64_t>(rowElements) * sizeof(Element)),
                static_cast<unsigned long long>(static_cast<uint64_t>(params.tilingData->numMaxTokensPerRank) *
@@ -425,12 +423,10 @@ __aicore__ inline void PreloadWaveCombineMetaInfo(const Params &params, WaveComb
     LocalTensor<int32_t> metaInfoUb = scratch.metaInfoTensor[ubTokenOffset * META_INFO_SIZE];
     GlobalTensor<int32_t> metaInfoGm;
     metaInfoGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.metaInfoPtr));
-    if (params.diagPrint && params.diagRecords[1] < 64U) {
-        ++params.diagRecords[1];
-        printf("[MM_DIAG_ADDR] rank=%u core=%u site=combine.meta_read peer=%u base=%llx offset=%llu bytes=%llu "
+    if (params.diagPrint) {
+        printf("[MM_DIAG_ADDR] rank=%u core=%u site=combine.meta_read peer=%u base=%p offset=%llu bytes=%llu "
                "limit=%llu\n",
-               params.diagRank, GetBlockIdx(), static_cast<uint32_t>(params.diagRank),
-               reinterpret_cast<unsigned long long>(params.workspaceInfo.metaInfoPtr),
+               params.diagRank, GetBlockIdx(), static_cast<uint32_t>(params.diagRank), params.workspaceInfo.metaInfoPtr,
                static_cast<unsigned long long>(gmTokenOffset * META_INFO_SIZE * sizeof(int32_t)),
                static_cast<unsigned long long>(static_cast<uint64_t>(tokenCount) * META_INFO_SIZE * sizeof(int32_t)),
                static_cast<unsigned long long>(static_cast<uint64_t>(params.tilingData->maxOutputSize) *
@@ -459,12 +455,11 @@ __aicore__ inline void SendWaveCombineToken(const MoeStageCommonConfig &common,
     DataCopyPadExtParams<bfloat16_t> gm2UbPad{false, 0U, 0U, 0U};
     uint64_t diagGmmOffset = reinterpret_cast<uint64_t>(gmm2OutGm.GetPhyAddr()) -
                              reinterpret_cast<uint64_t>(params.workspaceInfo.gmm2MmadResPtr);
-    if (params.diagPrint && params.diagRecords[1] < 64U) {
-        ++params.diagRecords[1];
-        printf("[MM_DIAG_ADDR] rank=%u core=%u site=combine.gmm2_read peer=%u base=%llx offset=%llu bytes=%llu "
+    if (params.diagPrint) {
+        printf("[MM_DIAG_ADDR] rank=%u core=%u site=combine.gmm2_read peer=%u base=%p offset=%llu bytes=%llu "
                "limit=%llu\n",
                params.diagRank, GetBlockIdx(), static_cast<uint32_t>(params.diagRank),
-               reinterpret_cast<unsigned long long>(params.workspaceInfo.gmm2MmadResPtr),
+               params.workspaceInfo.gmm2MmadResPtr,
                static_cast<unsigned long long>(diagGmmOffset + static_cast<uint64_t>(tokenLocal) *
                                                                    common.tokenHiddenDim * sizeof(bfloat16_t)),
                static_cast<unsigned long long>(bufferConfig.rowBytes),

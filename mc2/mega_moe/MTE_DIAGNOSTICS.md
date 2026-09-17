@@ -15,8 +15,8 @@ bash build.sh --pkg --soc=ascend950 --ops=mega_moe
 
 打印范围为 MTE、`maxOutputSize=2310`、AIV `GetBlockIdx()==5`。
 设备错误日志的 core 编号可能采用不同编号方式，需对照打印中的 core/sub。
-Dispatch、Combine 每次 Kernel 调用各最多 64 条地址日志；Combine 另打印对应的原始路由。
-达到上限后地址日志停止，阶段和 count 日志仍保留。printf 会扰动时序。
+地址直接用 `%p` 打印指针；无计数数组或限次逻辑，Combine 同时打印原始路由。
+printf 会扰动时序。
 
 ## 日志内容
 

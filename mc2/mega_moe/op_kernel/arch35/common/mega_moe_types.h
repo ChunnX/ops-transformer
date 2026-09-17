@@ -109,7 +109,6 @@ struct Params {
     // Temporary case 009 diagnostics, selected once at kernel initialization.
     bool diagPrint = false;
     uint32_t diagRank = 0;
-    mutable uint32_t diagRecords[2] = {0, 0};
     GM_ADDR aGmAddr;
     GM_ADDR expertIdxGmAddr;
     GM_ADDR bGmAddr;
