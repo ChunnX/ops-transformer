@@ -439,10 +439,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>输入</td>
             <td>表示对oriKvOptional的压缩率。</td>
             <td>
-            <ul>
-                <li>CFA/SCFA：取值范围1~128。</li>
-                <li>SWA：取值范围0~128。</li>
-            </ul>
+            取值范围：0~128。
             </td>
             <td>INT64</td>
             <td>N/A</td>
