@@ -603,6 +603,10 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::ReadFromCacheState(const
                                                                            uint32_t dDealSize, uint32_t stateIdx)
 {
     uint64_t blockTablebaseOffset = batchIdx * constInfo_.maxBlockNumPerBatch;
+    uint64_t ringBlockId = 0;
+    if constexpr (COMP::cacheMode == CACHE_MODE::RING_BUFFER) {
+        ringBlockId = blockTableGm.GetValue(batchIdx);
+    }
     uint32_t curSeqIdx = startSeqIdx;
     uint32_t copyFinishRowCnt = 0;
     uint32_t seqCnt = endSeqIdx - startSeqIdx;
@@ -612,7 +616,10 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::ReadFromCacheState(const
     while (copyFinishRowCnt < seqCnt) {
         uint64_t blockIdOffset = curSeqIdx / blockSize;
         uint64_t remainRowCnt = curSeqIdx % blockSize;
-        uint64_t idInBlockTable = blockTableGm.GetValue(blockTablebaseOffset + blockIdOffset);
+        uint64_t idInBlockTable = ringBlockId;
+        if constexpr (COMP::cacheMode == CACHE_MODE::LINEAR_BUFFER) {
+            idInBlockTable = blockTableGm.GetValue(blockTablebaseOffset + blockIdOffset);
+        }
         uint32_t copyRowCount = blockSize - remainRowCnt;
         if (copyFinishRowCnt + copyRowCount > seqCnt) {
             copyRowCount = seqCnt - copyFinishRowCnt;
@@ -637,6 +644,10 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::WriteToCacheState(const 
                                                                           uint32_t dDealSize, uint32_t stateIdx)
 {
     uint64_t blockTablebaseOffset = batchIdx * constInfo_.maxBlockNumPerBatch;
+    uint64_t ringBlockId = 0;
+    if constexpr (COMP::cacheMode == CACHE_MODE::RING_BUFFER) {
+        ringBlockId = blockTableGm.GetValue(batchIdx);
+    }
     uint32_t curSeqIdx = startSeqIdx;
     uint32_t copyFinishRowCnt = 0;
     uint32_t seqCnt = endSeqIdx - startSeqIdx;
@@ -646,12 +657,23 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::WriteToCacheState(const 
     while (copyFinishRowCnt < seqCnt) {
         uint64_t blockIdOffset = curSeqIdx / blockSize;
         uint64_t remainRowCnt = curSeqIdx % blockSize;
-        uint64_t idInBlockTable = blockTableGm.GetValue(blockTablebaseOffset + blockIdOffset);
+        uint64_t idInBlockTable = ringBlockId;
+        if constexpr (COMP::cacheMode == CACHE_MODE::LINEAR_BUFFER) {
+            idInBlockTable = blockTableGm.GetValue(blockTablebaseOffset + blockIdOffset);
+        }
         uint32_t copyRowCount = blockSize - remainRowCnt;
         if (copyFinishRowCnt + copyRowCount > seqCnt) {
             copyRowCount = seqCnt - copyFinishRowCnt;
         }
-        if (idInBlockTable != 0) {
+        if constexpr (COMP::cacheMode == CACHE_MODE::LINEAR_BUFFER) {
+            if (idInBlockTable != 0) {
+                uint64_t stateOffset = idInBlockTable * stateCacheStrideDim0 +
+                                       remainRowCnt * STATE_INTERLEAVE_FACTOR * coff_ * headDim +
+                                       stateIdx * coff_ * headDim + dStartIdx;
+                DataCopyWithOutputQue(state[stateOffset], input[copyFinishRowCnt * coff_ * dDealSize], copyRowCount,
+                                      dDealSize, coff_ * dDealSize, STATE_INTERLEAVE_FACTOR * coff_ * headDim);
+            }
+        } else {
             uint64_t stateOffset = idInBlockTable * stateCacheStrideDim0 +
                                    remainRowCnt * STATE_INTERLEAVE_FACTOR * coff_ * headDim +
                                    stateIdx * coff_ * headDim + dStartIdx;
@@ -674,6 +696,20 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::SaveState(const LocalTen
     uint64_t startSeqIdx = sliceInfo.bStartPos + sliceInfo.sIdx;
     uint32_t endSeqIdx = startSeqIdx + sliceInfo.validSeqCnt;
     uint64_t srcBaseOffset = sliceInfo.dealedSeqCnt * coff_ * dDealSize;
+
+    if constexpr (COMP::cacheMode == CACHE_MODE::RING_BUFFER) {
+        uint64_t compressSeqIdx = Trunc(sliceInfo.bStartPos + sliceInfo.bSeqUsed, (uint64_t)cmpRatio_);
+        uint32_t writeSeqStartIdx =
+            compressSeqIdx > (coff_ - 1) * cmpRatio_ ? compressSeqIdx - (coff_ - 1) * cmpRatio_ : 0;
+        if (endSeqIdx <= writeSeqStartIdx) {
+            return;
+        }
+        uint64_t validStartSeqIdx = startSeqIdx > static_cast<uint64_t>(writeSeqStartIdx) ?
+                                        startSeqIdx :
+                                        static_cast<uint64_t>(writeSeqStartIdx);
+        srcBaseOffset += (validStartSeqIdx - startSeqIdx) * coff_ * dDealSize;
+        startSeqIdx = validStartSeqIdx;
+    }
 
     if constexpr (COMP::coff == COFF::OVERLAP) {
         WriteToCacheState(stateGm, blockTableGm, srcLocal[srcBaseOffset], sliceInfo.bIdx, startSeqIdx, endSeqIdx,

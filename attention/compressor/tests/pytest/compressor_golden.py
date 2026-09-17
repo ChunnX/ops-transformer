@@ -542,26 +542,27 @@ def cpu_compressor_fp64(
                 ape[start_seq_id_in_sc:end_seq_idx_in_sc, :],
             )
 
-            if cache_mode == 1:
-                save_flag = True
-            else:
-                save_flag = (
-                    True
-                    if start_seq_idx >= (compress_seq_id - (coff - 1) * cmp_ratio)
-                    else False
+            save_start_seq_idx = start_seq_idx
+            save_end_seq_idx = end_seq_idx
+            if cache_mode == 2:
+                save_start_seq_idx = max(
+                    start_seq_idx, compress_seq_id - (coff - 1) * cmp_ratio
                 )
+            save_flag = save_start_seq_idx < save_end_seq_idx
             compress_flag = True if start_seq_idx < compress_seq_id else False
 
             if save_flag:
-                tmp_kv_state = new_kv_state[start_offset:end_offset, :]
-                tmp_score_state = new_score_state[start_offset:end_offset, :]
+                save_start_offset = start_offset + save_start_seq_idx - start_seq_idx
+                save_end_offset = end_offset - (end_seq_idx - save_end_seq_idx)
+                tmp_kv_state = new_kv_state[save_start_offset:save_end_offset, :]
+                tmp_score_state = new_score_state[save_start_offset:save_end_offset, :]
                 write_state_page_cache(
                     kv_state,
                     update_kv_position,
                     tmp_kv_state,
                     b_idx,
-                    start_seq_idx,
-                    end_seq_idx,
+                    save_start_seq_idx,
+                    save_end_seq_idx,
                     block_table,
                     cache_mode=cache_mode,
                 )
@@ -570,8 +571,8 @@ def cpu_compressor_fp64(
                     update_score_position,
                     tmp_score_state,
                     b_idx,
-                    start_seq_idx,
-                    end_seq_idx,
+                    save_start_seq_idx,
+                    save_end_seq_idx,
                     block_table,
                     cache_mode=cache_mode,
                 )
@@ -871,26 +872,27 @@ def cpu_compressor(
             )
             # 1.判断块是否需要存储到state
             # 2.判断块是否需要压缩
-            if cache_mode == 1:
-                save_flag = True
-            else:
-                save_flag = (
-                    True
-                    if start_seq_idx >= (compress_seq_id - (coff - 1) * cmp_ratio)
-                    else False
+            save_start_seq_idx = start_seq_idx
+            save_end_seq_idx = end_seq_idx
+            if cache_mode == 2:
+                save_start_seq_idx = max(
+                    start_seq_idx, compress_seq_id - (coff - 1) * cmp_ratio
                 )
+            save_flag = save_start_seq_idx < save_end_seq_idx
             compress_flag = True if start_seq_idx < compress_seq_id else False
 
             if save_flag:
-                tmp_kv_state = new_kv_state[start_offset:end_offset, :]
-                tmp_score_state = new_score_state[start_offset:end_offset, :]
+                save_start_offset = start_offset + save_start_seq_idx - start_seq_idx
+                save_end_offset = end_offset - (end_seq_idx - save_end_seq_idx)
+                tmp_kv_state = new_kv_state[save_start_offset:save_end_offset, :]
+                tmp_score_state = new_score_state[save_start_offset:save_end_offset, :]
                 write_state_page_cache(
                     kv_state,
                     update_kv_position,
                     tmp_kv_state,
                     b_idx,
-                    start_seq_idx,
-                    end_seq_idx,
+                    save_start_seq_idx,
+                    save_end_seq_idx,
                     block_table,
                     cache_mode=cache_mode,
                 )
@@ -899,8 +901,8 @@ def cpu_compressor(
                     update_score_position,
                     tmp_score_state,
                     b_idx,
-                    start_seq_idx,
-                    end_seq_idx,
+                    save_start_seq_idx,
+                    save_end_seq_idx,
                     block_table,
                     cache_mode=cache_mode,
                 )

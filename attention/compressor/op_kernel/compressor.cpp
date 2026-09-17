@@ -62,9 +62,9 @@ __global__ __aicore__ void compressor(__gm__ uint8_t *x, __gm__ uint8_t *wKv, __
     constexpr auto cacheMode = static_cast<CACHE_MODE>(CacheMode);
 #if (__CCE_AICORE__ == 220)
     if constexpr (static_cast<TEMPLATE_ID>(TemplateId) == TEMPLATE_ID::FULL_LOAD) {
-        INVOKE_COMPRESSOR_GENERAL_OP_IMPL(CompressorKernelFullLoad, xLayout, xDtype, coff);
+        INVOKE_COMPRESSOR_GENERAL_OP_IMPL(CompressorKernelFullLoad, xLayout, xDtype, coff, cacheMode);
     } else {
-        INVOKE_COMPRESSOR_GENERAL_OP_IMPL(CompressorKernelPerf, xLayout, xDtype, coff);
+        INVOKE_COMPRESSOR_GENERAL_OP_IMPL(CompressorKernelPerf, xLayout, xDtype, coff, cacheMode);
     }
 #else
     constexpr auto gradEnabled = static_cast<GRAD_ENABLED>(GradEnabled);

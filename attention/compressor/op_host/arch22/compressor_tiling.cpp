@@ -193,6 +193,8 @@ ge::graphStatus CompressorTiling::SetPageAttentionInfo()
     if (static_cast<uint8_t>(*context_->cacheMode) == static_cast<uint8_t>(CACHE_MODE::LINEAR_BUFFER)) {
         pageAttentionParams_->maxBlockNumPerBatch =
             context_->stateBlockTable.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1);
+    } else {
+        pageAttentionParams_->maxBlockNumPerBatch = 1;
     }
 
     return ge::GRAPH_SUCCESS;
@@ -652,6 +654,37 @@ ge::graphStatus CompressorTiling::CheckSingleParaStateCache() const
                     "state_cache stride0 must be greater than or equal to contiguous stride " +
                         std::to_string(contiguousStride0) + ", only axis 0 non-contiguous is supported"),
                 return ge::GRAPH_FAILED);
+    if (static_cast<uint8_t>(*context_->cacheMode) == static_cast<uint8_t>(CACHE_MODE::RING_BUFFER)) {
+        uint32_t blockNum = context_->stateCache.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0);
+        uint32_t batchSize = context_->x.shape->GetStorageShape().GetDimNum() == COMPRESSOR_DIM_NUM_3 ?
+                                 context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0) :
+                                 context_->cuSeqlens.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0) - 1;
+        OP_CHECK_IF(blockNum < batchSize,
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        context_->opName, STATE_CACHE_NAME, "dim 0=" + std::to_string(blockNum),
+                        "when cacheMode is 2, state_cache dim 0 should not be less than batchSize(" +
+                            std::to_string(batchSize) + ")"),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(context_->stateBlockTable.shape == nullptr ||
+                        context_->stateBlockTable.shape->GetStorageShape().GetDimNum() != COMPRESSOR_DIM_NUM_1,
+                    OP_LOGE_FOR_INVALID_SHAPEDIM(
+                        context_->opName, "state_block_table",
+                        context_->stateBlockTable.shape == nullptr ?
+                            "nullptr" :
+                            std::to_string(context_->stateBlockTable.shape->GetStorageShape().GetDimNum()),
+                        std::to_string(COMPRESSOR_DIM_NUM_1)),
+                    return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF(context_->stateBlockTable.shape == nullptr ||
+                        context_->stateBlockTable.shape->GetStorageShape().GetDimNum() != COMPRESSOR_DIM_NUM_2,
+                    OP_LOGE_FOR_INVALID_SHAPEDIM(
+                        context_->opName, "state_block_table",
+                        context_->stateBlockTable.shape == nullptr ?
+                            "nullptr" :
+                            std::to_string(context_->stateBlockTable.shape->GetStorageShape().GetDimNum()),
+                        std::to_string(COMPRESSOR_DIM_NUM_2)),
+                    return ge::GRAPH_FAILED);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -742,7 +775,6 @@ ge::graphStatus CompressorTiling::CheckSingleParaCoff() const
 
 ge::graphStatus CompressorTiling::CheckSingleParaCacheMode() const
 {
-    // A3 does not support the ring buffer mode (cache_mode=2).
     if (ge::GRAPH_SUCCESS != CheckAttrValueSupport(context_->cacheMode, CACHE_MODE, CACHE_MODE_NAME)) {
         return ge::GRAPH_FAILED;
     }
