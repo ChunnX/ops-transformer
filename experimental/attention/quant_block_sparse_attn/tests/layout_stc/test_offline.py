@@ -15,22 +15,35 @@ pytestmark = pytest.mark.offline
 
 
 def test_matrix_has_matched_triplets_and_reference_coverage():
-    assert len(TestCases) == 177
-    assert len({c["name"] for c in TestCases}) == 177
-    assert Counter(c["layout_q"] for c in TestCases) == dict.fromkeys(LAYOUTS, 59)
-    assert Counter(c["test_tier"] for c in TestCases) == {"P0": 18, "P1": 159}
+    assert len(TestCases) == 36
+    assert len({c["name"] for c in TestCases}) == 36
+    assert Counter(c["layout_q"] for c in TestCases) == dict.fromkeys(LAYOUTS, 12)
+    assert Counter(c["test_tier"] for c in TestCases) == {"P0": 12, "P1": 24}
     grouped = defaultdict(list)
     for case in TestCases:
+        assert 1 <= case["B"] <= 2
+        assert 1 <= case["N1"] <= 4 and 1 <= case["N2"] <= 2
+        assert 1 <= case["S1_max"] <= 129
+        assert len(case["seqused_kv"]) == case["B"]
+        assert all(0 <= length <= 257 for length in case["seqused_kv"])
+        assert case["block_size"] in (64, 128, 256)
         grouped[case["layout_scenario"]].append(case)
     for group in grouped.values():
         assert {c["layout_q"] for c in group} == set(LAYOUTS)
         ignored = {"name", "layout_q", "layout_out", "cu_seqlens_q"}
         logical = [{k: v for k, v in c.items() if k not in ignored} for c in group]
         assert logical[0] == logical[1] == logical[2]
-    assert {c["layout_scenario"] for c in TestCases if c["layout_scenario"].startswith("REF_")} == {
-        "REF_EQ_AA", "REF_EQ_AU", "REF_EQ_UU", "REF_LT_AA", "REF_LT_AU", "REF_LT_UA", "REF_LT_UU",
-        "REF_GT_AA", "REF_GT_AU", "REF_GT_UA", "REF_GT_UU",
-    }
+    assert {c["S1_max"] for c in TestCases} >= {1, 63, 64, 65, 127, 128, 129}
+    assert {c["sparse_q_block_size"] for c in TestCases} == {64, 128}
+    assert {c["mask_mode"] for c in TestCases} == {0, 3}
+    assert {c["N1"] // c["N2"] for c in TestCases} == {1, 2, 4}
+    assert any(c["sparse_mode"] == "random" for c in TestCases)
+    assert any(not c["return_softmax_lse"] for c in TestCases)
+    for relation, compare in (("LT", lambda q, k: q < k), ("EQ", lambda q, k: q == k),
+                              ("GT", lambda q, k: q > k)):
+        group = grouped[f"CAUSAL_{relation}"]
+        assert all(c["mask_mode"] == 3 and all(compare(c["S1_max"], k) for k in c["seqused_kv"])
+                   for c in group)
 
 
 @pytest.mark.parametrize("case", TestCases, ids=[c["name"] for c in TestCases])

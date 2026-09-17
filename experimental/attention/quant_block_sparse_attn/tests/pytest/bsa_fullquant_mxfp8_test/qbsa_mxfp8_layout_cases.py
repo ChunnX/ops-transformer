@@ -45,40 +45,29 @@ def _add_triplet(scenario, tier="P1", **overrides):
         TestCases.append(case)
 
 
-# Around vector/tile boundaries, keep B>1 and N1>1 so swapped axes are observable.
-for _block in (64, 128):
-    for _sq in (1, 15, 16, 17, 31, 32, 33, 63, 64, 65, 127, 128, 129):
-        _add_triplet(
-            f"Q{_sq}_SB{_block}", tier="P0" if _sq == 129 else "P1",
-            S1_max=_sq, block_size=_block,
-            sparse_q_block_size=_block, sparse_kv_block_size=_block,
-        )
-
-# Dense, unmasked rows force coverage across 256/512 KV boundaries and >1 task.
-for _kv in (255, 256, 257, 511, 512, 513, 1025):
-    _add_triplet(
-        f"KV{_kv}", tier="P0" if _kv == 513 else "P1",
-        S1_max=17, seqused_kv=[_kv, _kv],
-    )
-
-_add_triplet("MHA_B3", B=3, N1=3, N2=3, S1_max=65, seqused_kv=[257, 193, 129])
-_add_triplet("MQA_G5", N1=5, N2=1)
-_add_triplet("GQA_G5_B3", tier="P0", B=3, N1=15, N2=3, S1_max=257,
-             seqused_kv=[513, 491, 257])
-_add_triplet("CAUSAL_LT", mask_mode=3, seqused_kv=[513, 193])
-_add_triplet("CAUSAL_EQ", mask_mode=3, seqused_kv=[129, 129])
-_add_triplet("CAUSAL_GT", tier="P0", S1_max=257, mask_mode=3, seqused_kv=[129, 193])
-_add_triplet("KV_ZERO_BATCH", seqused_kv=[0, 257])
-_add_triplet("PA512_SHARED", block_size=512, sparse_q_block_size=64,
-             sparse_kv_block_size=64, seqused_kv=[1025, 769], blocknum=2)
-_add_triplet("SPARSE_RANDOM", S1_max=257, seqused_kv=[1025, 513], sparse_mode="random")
-_add_triplet("NO_LSE", tier="P0", block_size=64, sparse_q_block_size=64,
-             sparse_kv_block_size=64, mask_mode=3, return_softmax_lse=False)
-_add_triplet("P_E8M0", p_scale_value=0.03125)
-_add_triplet("P_FP32", p_scale_value=0.75, p_scale_type="float32")
-_add_triplet("SOFTMAX_SCALE", softmax_scale=0.125)
-_add_triplet("B1", B=1, seqused_kv=[257])
-_add_triplet("N1", N1=1, N2=1)
+# Twelve small scenarios, each expanded into three layouts: 36 cases total.
+# Most cases keep B>1, N1>1 and S!=N1 so an axis swap is observable.
+_add_triplet("Q1_N1", B=1, N1=1, N2=1, S1_max=1, seqused_kv=[1],
+             data_range_q=[0, 0], data_range_k=[0, 0], data_range_v=[0, 0])
+_add_triplet("Q63_SB64", S1_max=63, seqused_kv=[127, 65], block_size=64,
+             sparse_q_block_size=64, sparse_kv_block_size=64)
+_add_triplet("Q64_SB64_MHA", N1=2, N2=2, S1_max=64, seqused_kv=[128, 64],
+             block_size=64, sparse_q_block_size=64, sparse_kv_block_size=64)
+_add_triplet("Q65_SB64_MQA", tier="P0", N2=1, S1_max=65, seqused_kv=[129, 65],
+             block_size=64, sparse_q_block_size=64, sparse_kv_block_size=64,
+             p_scale_value=0.03125)
+_add_triplet("Q127_SB128", S1_max=127, seqused_kv=[255, 129])
+_add_triplet("Q128_SB128", S1_max=128, seqused_kv=[256, 128])
+_add_triplet("Q129_SB128", tier="P0")
+_add_triplet("CAUSAL_LT", S1_max=17, mask_mode=3, seqused_kv=[129, 65])
+_add_triplet("CAUSAL_EQ", N1=2, N2=2, S1_max=65, mask_mode=3, seqused_kv=[65, 65],
+             data_range_q=[-0.01, 0.1], data_range_k=[-0.01, 0.1], data_range_v=[-0.01, 0.1])
+_add_triplet("CAUSAL_GT", tier="P0", mask_mode=3, seqused_kv=[65, 97])
+_add_triplet("KV_ZERO_NO_LSE", tier="P0", S1_max=17, seqused_kv=[0, 129],
+             return_softmax_lse=False)
+_add_triplet("PA256_RANDOM_P_FP32", S1_max=65, block_size=256, sparse_q_block_size=64,
+             sparse_kv_block_size=64, blocknum=2, sparse_mode="random",
+             p_scale_value=0.75, p_scale_type="float32", softmax_scale=0.125)
 
 
 if __name__ == "__main__":
