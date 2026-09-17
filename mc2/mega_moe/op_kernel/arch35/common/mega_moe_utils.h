@@ -58,11 +58,6 @@ __aicore__ inline uint32_t GetSyncRoundTag(int32_t syncCount)
     return ((static_cast<uint32_t>(syncCount) & 0x7FU) | 0x80U) << 24U;
 }
 
-struct WorkRange {
-    uint32_t start = 0;
-    uint32_t count = 0;
-};
-
 /*
  * 对一段连续 int32 数据原地执行 inclusive prefix-scan。
  *
