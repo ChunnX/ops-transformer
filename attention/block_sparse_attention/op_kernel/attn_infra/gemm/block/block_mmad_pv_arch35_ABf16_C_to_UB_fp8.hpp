@@ -72,26 +72,33 @@ public:
     static constexpr uint32_t L0B_PINGPONG_BUF_SIZE = ArchTag::L0B_SIZE / L0_STAGES;
     static constexpr uint32_t L0C_PINGPONG_BUF_SIZE = ArchTag::L0C_SIZE / L0_STAGES;
 
-    // ---- Plan B: 外层大 db 里再切一层小 db ----
-    // 外层大 db 不变: L0A/L0B 每槽 32 KiB, 按 l0Stage % 2 交替。
-    // MM2 的 K=256 沿 K 拆成两个 128 微块:
-    //   L0A = P[128, 256] -> P[:, 0:128] / P[:, 128:256], 各 16 KiB
-    //   L0B = V[256, 128] -> V[0:128, :] / V[128:256, :], 各 16 KiB
-    // 两个微块读的是不同数据, 所以 A 和 B 都要内层独立的握手事件 ——
-    // MTE1_M 这条队列 A 占 0..3、B 占 4..7, 8 个 id 刚好用满。
-    // L0C 不拆: 两个微块是往同一块 L0C 累加的部分和, FixPipe 必须等两块都完,
-    // 拆了也拿不到 Cube/FixPipe 穿插, 只会多一次同步。
+    // ---- Plan C: QK 微切, PV 整块 ----
+    //
+    // K 是 PV 的**归约轴**: 沿 K 切开的两块是往同一块 L0C 累加的部分和, 第二条 MMAD
+    // 必须等第一条 (同址累加), FixPipe 又必须等两块都完 —— 所以切 K 拿不到任何
+    // Cube/FixPipe 穿插, 只会多一条 MMAD 和一次 MTE1 握手。故 Plan C 不再切:
+    // 一条 MMAD 吃满 K=256, P[128,256] / V[256,128] 各 32 KiB 连续占一个 outer 槽。
+    // (对照 MM1: 它切的是 M=kv 这条**自由轴**, 两块落进两个独立 L0C 片, 因此能穿插,
+    //  Plan C 原样保留它的微切。)
+    //
+    // L0_MICRO_STAGES 保持 2 不动 —— 它管的是**物理槽粒度**(16 KiB), 不是 K 的切分。
+    // 保持它才使得 l0ATensor[]/l0BTensor[] 的下标->偏移映射与 MM1 逐字节一致:
+    //   槽 0,1 = outer 0 = MM1 的两个微块;  槽 2,3 = outer 1 = PV 的整块。
+    // 事件号也因此天然错开 (MM1 占 0,1; PV 取 bufId*2 = 2), 无需重排。
     static constexpr uint32_t L0_MICRO_STAGES = 2;
-    static constexpr uint32_t L0_TILE_K_MICRO = L0_TILE_K / L0_MICRO_STAGES;
+    // Plan C: K 不再切分。整块 tile 一次进 L0, kMicroLoopNum 退化为 1,
+    // microK 恒 0, initMmad 里 (microK == 0) 恒真 -> 等价于无累加。
+    static constexpr uint32_t L0_TILE_K_MICRO = L0_TILE_K;
     static constexpr uint32_t L0A_MICRO_BUF_SIZE = ArchTag::L0A_SIZE / (L0_STAGES * L0_MICRO_STAGES);
     static constexpr uint32_t L0B_MICRO_BUF_SIZE = ArchTag::L0B_SIZE / (L0_STAGES * L0_MICRO_STAGES);
     static constexpr uint32_t L0C_MICRO_BUF_SIZE = ArchTag::L0C_SIZE / (L0_STAGES * L0_MICRO_STAGES);
-    static_assert(L0_TILE_K % L0_MICRO_STAGES == 0, "L0 tile K must split evenly into micro slots");
-    static_assert(L0A_MICRO_BUF_SIZE >= L0_TILE_M * L0_TILE_K_MICRO * sizeof(ElementA),
-                  "L0A micro slot too small for one micro K block");
-    static_assert(L0B_MICRO_BUF_SIZE >= L0_TILE_K_MICRO * L0_TILE_N * sizeof(ElementB),
-                  "L0B micro slot too small for one micro K block");
-    // L0C 只取每 outer 的第 0 片, 但要装得下整个 partial-sum tile。
+    // 整块 K tile 现在要连续占满**一整个 outer 槽** (32 KiB), 不再是半个。
+    // 这也是 Plan C 成立的前提: 槽里不再有"只放一个 16 KiB tile"的那半浪费。
+    static_assert(L0A_PINGPONG_BUF_SIZE >= L0_TILE_M * L0_TILE_K_MICRO * sizeof(ElementA),
+                  "L0 outer slot too small for the whole K tile of A (Plan C)");
+    static_assert(L0B_PINGPONG_BUF_SIZE >= L0_TILE_K_MICRO * L0_TILE_N * sizeof(ElementB),
+                  "L0 outer slot too small for the whole K tile of B (Plan C)");
+    // L0C 不拆: 不切 K 之后只有一块 partial-sum tile, FixPipe 一次走完。
     static_assert(L0C_MICRO_BUF_SIZE >= L0_TILE_M * L0_TILE_N * sizeof(ElementAccumulator),
                   "L0C micro slot too small for the OTmp tile");
     static constexpr uint32_t L0A_EVENT_BASE = 0;
@@ -131,9 +138,10 @@ public:
             l0ATensor[i] = resource.l0ABuf.template GetBufferByByte<ElementA>(L0A_MICRO_BUF_SIZE * i);
             l0BTensor[i] = resource.l0BBuf.template GetBufferByByte<ElementB>(L0B_MICRO_BUF_SIZE * i);
         }
-        // L0C 也切成 4 片, 但 MM2 只取每 outer 的第 0 片 (K 的两半累加在同一块里,
-        // 没有内层可言)。外层槽 stride 从 128 KiB 收到 64 KiB, 与 MM1 的 L0C 布局
-        // 对齐 —— 否则两个 MM 会用两套粒度盖同一片物理空间。
+        // L0C 也切成 4 片。Plan C 不切 K, 所以 MM2 只用每 outer 的**第 0 片**就够了
+        // (整块 OTmp 不再是两个部分和的累加, 一次 MMAD + 一次 FixPipe 走完)。
+        // 外层槽 stride 从 128 KiB 收到 64 KiB, 与 MM1 的 L0C 布局对齐 ——
+        // 否则两个 MM 会用两套粒度盖同一片物理空间。
         for (uint32_t i = 0; i < L0_STAGES * L0_MICRO_STAGES; i++) {
             l0CTensor[i] = resource.l0CBuf.template GetBufferByByte<ElementAccumulator>(L0C_MICRO_BUF_SIZE * i);
         }
@@ -239,8 +247,9 @@ public:
         using CopyL0CToDst = typename TileCopy_::template CopyL0CToDst<TensorC>;
 
         const uint32_t bufId = static_cast<uint32_t>(l0Stage++ % L0_STAGES);
-        // 内层小槽的事件: 下标 = 基址 + bufId * L0_MICRO_STAGES + microK。
-        // MTE1_M 这条队列里 L0A 占 0..3、L0B 占 4..7 (K 的两半读不同数据, 都要独立握手);
+        // 槽的事件: 下标 = 基址 + bufId * L0_MICRO_STAGES + microK。
+        // Plan C 不切 K, microK 恒 0, 所以 MM2 在 MTE1_M 这条队列上只用 L0A 的 2 号
+        // 和 L0B 的 6 号各一个 id (MM1 恒 outer 0, 占 L0A 0/1 与 L0B 4 号, 天然错开)。
         // L0C 走 M_FIX/FIX_M 另一条队列, 只取每 outer 的第 0 片, 号是 0 和 2。
         const uint32_t l0AMicroBase = L0A_EVENT_BASE + bufId * L0_MICRO_STAGES;
         const uint32_t l0BMicroBase = L0B_EVENT_BASE + bufId * L0_MICRO_STAGES;
@@ -297,6 +306,8 @@ public:
                         // 小槽按下标取。取模是为了 curBaseTileSize 超过一个 L0_TILE_K 时
                         // 仍只在已分配的小槽里轮转, 不越界; 槽内的 M_MTE1/MTE1_M 握手序
                         // 保证复用同一小槽时不会写读打架。
+                        // Plan C 下 kMicroLoopNum 恒 1、microK 恒 0, 取模是恒等操作,
+                        // 保留是为了 KV 尾块 (curBaseTileSize < L0_TILE_K) 时公式不特判。
                         const uint32_t l0AEventId = l0AMicroBase + microK % L0_MICRO_STAGES;
                         // L0A 事件基址 0, 事件号即缓冲片下标; L0B 基址 4, 两者要分开。
                         const uint32_t l0BSlot = bufId * L0_MICRO_STAGES + microK % L0_MICRO_STAGES;
@@ -335,7 +346,10 @@ public:
                             SetCrossCoreSync<4, PIPE_MTE1>(smToMm2Flag);
                         }
 
-                        // 只有整条 K 的第一个微块 init; 后面都往同一块 L0C 上累加。
+                        // Plan C 不切 K, microK 恒 0, 所以这一条退化成
+                        // "每个 KV tile 的第一条 MMAD 覆盖写" —— **没有部分和累加**。
+                        // (Plan B 的 (microK == 0) 条件在这里恒真, 保留是为了与
+                        //  curBaseTileSize > L0_TILE_K 的多趟 K 循环共用同一套公式。)
                         bool initMmad = (kL0Itr == 0) && (microK == 0);
                         uint32_t l0TileMAligned = RoundUp(l0TileMAct, 16);
                         AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0AEventId);
