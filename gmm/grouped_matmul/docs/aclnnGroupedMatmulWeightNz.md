@@ -360,7 +360,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <tr>
     <td>tuningConfigOptional（aclIntArray *）</td>
     <td>可选输入</td>
-    <td>第一个数代表各个专家处理的token数的预期值；第二个数表示是否开启weight亲和格式（先转置再NZ）。当前仅<a href="#ascend950-weightnz-s8s4场景约束">S8S4</a>场景支持。</td>
+    <td>第一个数代表各个专家处理的token数的预期值；第二个数表示是否开启weight特殊格式（按[E,N,K]排布后转换为NZ），适用于A2/A3的<a href="#a2-a3-weightnz-s8s4场景约束">S8S4（A8W4）</a>场景和Ascend 950的<a href="#ascend950-weightnz-s8s4场景约束">S8S4</a>场景，具体限制见对应场景约束。</td>
     <td>用户如不使用该参数，不传（即为nullptr）即可。</td>
     <td>INT64</td>
     <td>-</td>
@@ -556,7 +556,13 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
         | 伪量化pergroup | weight单 | $[E, G, N]$|
         | 伪量化pergroup | weight多 | $[G_i, N_i]$|
 
-    - x为INT8、weight为INT4、biasOptional为FLOAT32、scaleOptional为UINT64、antiquantScaleOptional为空、antiquantOffsetOptional为空、perTokenScaleOptional为FLOAT32、activationInputOptional为空。
+    <a id="a2-a3-weightnz-s8s4场景约束"></a>
+
+    - **S8S4（A8W4）场景：** x为INT8、weight为INT4（NZ格式）、biasOptional为FLOAT32、scaleOptional为UINT64、antiquantScaleOptional为空、antiquantOffsetOptional为空、perTokenScaleOptional为FLOAT32、activationInputOptional为空。
+
+      - 仅支持groupType=0（M轴分组），actType=0。
+      - x、out均为长度为1的TensorList；x为2维Tensor，shape为`[M,K]`。
+      - x、weight均不支持转置。weight为单Tensor时，默认逻辑shape为`[E,K,N]`，按NZ格式解析；当传入INT32时，每个INT32视为8个INT4。
 
       - weight、scaleOptional、biasOptional和offsetOptional支持单Tensor场景（tensorlist长度为1）和多Tensor场景（tensorlist长度大于1）。
 
@@ -570,6 +576,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
         - scale为pergroup与perchannel离线融合后的结果，shape要求为$[E, quantGroupNum, N]$，其中$quantGroupNum=k \div quantGroupSize$。
         - Bias为计算过程中离线计算的辅助结果，值要求为$8\times weight \times scale$，并在第1维累加，shape要求为$[E, N]$。
         - 要求N为8的整数倍。
+        - 各个专家处理的token数的预期值大于N/4时，即tuningConfigOptional中第一个值大于N/4时，通常会取得更好的性能，此时显存占用会增加$g \times K \times N$字节（其中g为matmul组数）。
 
       - 非对称量化场景：
 
@@ -580,6 +587,8 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
         - offsetOptional不为空。非对称量化offsetOptional为计算过程中离线计算辅助结果，即$antiquantOffset \times scale$，shape要求为$[E, 1, N]$，dtype为FLOAT32。
         - Bias为计算过程中离线计算的辅助结果，值要求为$8\times weight \times scale$，并在第1维累加，shape要求为$[E, N]$。
         - 要求N为8的整数倍。
+
+      - tuningConfigOptional数组第二个元素可置1，以开启S8S4（A8W4）场景的weight特殊格式模板，仅支持perchannel量化。此时weight须按`[E,N,K]`排布后进行ND2NZ转换，再作为算子输入；该排布不表示`transposeWeight=true`。性能优势的shape范围参考：K >= 2048且N >= 2048。
 
     - 伪量化场景下，若weight的类型为INT8，仅支持perchannel模式；若weight的类型为INT4，对称量化支持perchannel和pergroup两种模式。若为pergroup，pergroup数G或$G_i$必须要能整除对应的$k_i$。若weight为多tensor，定义pergroup长度$s_i = k_i / G_i$，要求所有$s_i(i=1,2,...g)$都相等。非对称量化支持perchannel模式。
 
