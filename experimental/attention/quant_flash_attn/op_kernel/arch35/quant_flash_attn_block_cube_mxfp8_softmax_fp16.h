@@ -144,12 +144,14 @@ private:
     LocalTensor<MM_OUT_T> mm2ResUB_;
 
     // ===== Event ID（内部流水同步，SetFlag/WaitFlag 显式编排）=====
-    // mte2 ↔ mte1：Q / KV 的 GM→L1
+    // mte2 ↔ mte1：Q / K / V 的 GM→L1（K/V 独立事件，避免并行在途串扰）
     static constexpr uint32_t Q_EVENT0  = EVENT_ID2;
     static constexpr uint32_t Q_EVENT1  = EVENT_ID3;
     uint32_t qBufId_ = 0;
-    static constexpr uint32_t KV_EVENT0 = EVENT_ID4;
-    static constexpr uint32_t KV_EVENT1 = EVENT_ID5;
+    static constexpr uint32_t K_EVENT0 = EVENT_ID4;
+    static constexpr uint32_t K_EVENT1 = EVENT_ID5;
+    static constexpr uint32_t V_EVENT0 = EVENT_ID6;
+    static constexpr uint32_t V_EVENT1 = EVENT_ID7;
     uint32_t kBufId_  = 0;
     uint32_t vBufId_  = 0;
 
@@ -221,8 +223,10 @@ private:
     {
         SetFlag<HardEvent::MTE1_MTE2>(Q_EVENT0);
         SetFlag<HardEvent::MTE1_MTE2>(Q_EVENT1);
-        SetFlag<HardEvent::MTE1_MTE2>(KV_EVENT0);
-        SetFlag<HardEvent::MTE1_MTE2>(KV_EVENT1);
+        SetFlag<HardEvent::MTE1_MTE2>(K_EVENT0);
+        SetFlag<HardEvent::MTE1_MTE2>(K_EVENT1);
+        SetFlag<HardEvent::MTE1_MTE2>(V_EVENT0);
+        SetFlag<HardEvent::MTE1_MTE2>(V_EVENT1);
 
         SetFlag<HardEvent::M_MTE1>(Q_L0B_EVENT0);
         SetFlag<HardEvent::M_MTE1>(K_L0A_EVENT0);
@@ -238,8 +242,10 @@ private:
     {
         WaitFlag<HardEvent::MTE1_MTE2>(Q_EVENT0);
         WaitFlag<HardEvent::MTE1_MTE2>(Q_EVENT1);
-        WaitFlag<HardEvent::MTE1_MTE2>(KV_EVENT0);
-        WaitFlag<HardEvent::MTE1_MTE2>(KV_EVENT1);
+        WaitFlag<HardEvent::MTE1_MTE2>(K_EVENT0);
+        WaitFlag<HardEvent::MTE1_MTE2>(K_EVENT1);
+        WaitFlag<HardEvent::MTE1_MTE2>(V_EVENT0);
+        WaitFlag<HardEvent::MTE1_MTE2>(V_EVENT1);
 
         WaitFlag<HardEvent::M_MTE1>(Q_L0B_EVENT0);
         WaitFlag<HardEvent::M_MTE1>(K_L0A_EVENT0);
@@ -383,11 +389,11 @@ public:
         }
 
         // ———— K 流式搬运（每 subLoop）————
-        WaitFlag<HardEvent::MTE1_MTE2>(KV_EVENT0 + kBufId_);
+        WaitFlag<HardEvent::MTE1_MTE2>(K_EVENT0 + kBufId_);
         CopyKGmToL1(runInfo, subLoopIdx);
         CopyKScaleGmToL1(runInfo, subLoopIdx);
-        SetFlag<HardEvent::MTE2_MTE1>(KV_EVENT0 + kBufId_);
-        WaitFlag<HardEvent::MTE2_MTE1>(KV_EVENT0 + kBufId_);
+        SetFlag<HardEvent::MTE2_MTE1>(K_EVENT0 + kBufId_);
+        WaitFlag<HardEvent::MTE2_MTE1>(K_EVENT0 + kBufId_);
 
         {
             WaitFlag<HardEvent::FIX_M>(L0C_EVENT0 + l0cBufId_);
@@ -405,7 +411,7 @@ public:
             SetFlag<HardEvent::M_FIX>(L0C_EVENT0 + l0cBufId_);
         }
 
-        SetFlag<HardEvent::MTE1_MTE2>(KV_EVENT0 + kBufId_);
+        SetFlag<HardEvent::MTE1_MTE2>(K_EVENT0 + kBufId_);
         kBufId_ = (kBufId_ + 1U) % 2U;
         if (unlikely(runInfo.isLastS2Loop && isLastSubLoop)) {
             SetFlag<HardEvent::MTE1_MTE2>(Q_EVENT0 + qBufId_);
@@ -466,11 +472,11 @@ public:
         WaitFlag<HardEvent::FIX_M>(L0C_EVENT0 + l0cBufId_);
 
         // ———— V 整行搬运 ————
-        WaitFlag<HardEvent::MTE1_MTE2>(KV_EVENT0 + vBufId_);
+        WaitFlag<HardEvent::MTE1_MTE2>(V_EVENT0 + vBufId_);
         CopyVGmToL1(runInfo);
         CopyVScaleGmToL1(runInfo);
-        SetFlag<HardEvent::MTE2_MTE1>(KV_EVENT0 + vBufId_);
-        WaitFlag<HardEvent::MTE2_MTE1>(KV_EVENT0 + vBufId_);
+        SetFlag<HardEvent::MTE2_MTE1>(V_EVENT0 + vBufId_);
+        WaitFlag<HardEvent::MTE2_MTE1>(V_EVENT0 + vBufId_);
 
         // ———— V/P 分 subK 加载 + MatmulVP 累加 ————
         uint32_t subKLoop = AttentionCommon::CeilDiv(runInfo.actSingleLoopS2Size, MM2_SUB_K_SIZE);
@@ -493,7 +499,7 @@ public:
             isFirstSubK = false;
         }
 
-        SetFlag<HardEvent::MTE1_MTE2>(KV_EVENT0 + vBufId_);
+        SetFlag<HardEvent::MTE1_MTE2>(V_EVENT0 + vBufId_);
         vBufId_ = (vBufId_ + 1U) % 2U;
 
         SetFlag<HardEvent::M_FIX>(L0C_EVENT0 + l0cBufId_);
