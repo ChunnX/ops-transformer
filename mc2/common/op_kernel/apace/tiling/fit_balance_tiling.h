@@ -20,13 +20,14 @@
  * 核利用率优先的实现问题(修复走独立事项)。相关标定方法论与实测数据仍有效,
  * 存档于 tiling-plan/ALLTO_ALL_MATMUL_V2_FIT_BALANCE_*。
  *
- * 布局: 零、公共类型与常量(含客户标定大结构体 FitBalanceCalibration) /
- *       一、模型层(HCCL 通信 + matmul 算力梯度; 内部查表结构勿在算子侧引用) /
- *       二、切分与输出层(FormPartition + CutResult 适配) /
+ * 布局: 零、引擎自有词汇(TilingCommEngine/顺序/阈值/标定大结构体 FitBalanceCalibration) /
+ *       二、切分与输出层(FormPartition——复用旧家族全局类) /
  *       三、求解层(自由长度求解器, ctx+键控分支) / 四、公共逻辑片段
  *
+ * 命名空间: global(2026-09-17 裁定——apace/tiling 与 mmtiling 一致; 公共词汇复用
+ * 旧家族全局头, 本文件只定义引擎自有符号)。
  * 零特有代码架构(2026-09-17 §4.24 裁定): 钩子机制已废除, 算子差异按
- * (通信原语 KernelType, 通算顺序 CommComputeOrder, 通信引擎 CommEngine, dtype)
+ * (通信原语 KernelType, 通算顺序 CommComputeOrder, 通信引擎 TilingCommEngine, dtype)
  * 键控分支内化于引擎; 阈值经 FitBalanceCalibration.tunables(FitTunables) 注入。
  * 算子侧 = CALIBRATION 实例 + 枚举入参 + 一行调用, 无任何算子特有代码。
  *
@@ -53,183 +54,41 @@
 // (不直接 include graph 头: 部分 TU 的 ge 链路来自不同 toolkit 路径, 直接引入会双重定义)
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
-#include "op_host/op_tiling/formulaic_tiling_datatype.h" // 全局 CutResult(引擎与算子侧共用, 勿在引擎内再定义副本)
+#include "op_host/op_tiling/formulaic_tiling_datatype.h" // 全局公共词汇(枚举/结构体/常量)+ CutResult
+#include "op_host/op_tiling/hccl_formulaic_tiling.h" // 全局 FormPartition/MAX_TILE_CNT/CALC_COMM_RATIO(复用, 勿再定义副本)
 #include "op_host/op_tiling/matmul_formulaic_tiling.h" // mc2tiling::TilingArgs(同上)
-
-namespace mc2tiling {
-namespace fit_balance {
 
 // ============================================================================
 // 零、公共类型与常量（两分支共享词汇: CutResult/TilingArgs/枚举等）
 // ============================================================================
-// ============================================================================
-
-constexpr uint64_t ONE = 1;
-constexpr uint64_t TWO = 2;
-constexpr uint64_t THREE = 3;
-constexpr uint64_t FOUR = 4;
-constexpr uint64_t ONE_KBYTE = 1024;
-constexpr uint64_t FOUR_KILO = 4096;
-constexpr uint64_t SMALL_M = 2048;
-constexpr uint64_t ONE_MBYTE = ONE_KBYTE * ONE_KBYTE;
-constexpr uint64_t ONE_GBYTE = ONE_KBYTE * ONE_MBYTE;
-constexpr uint64_t TEN_GBYTE = 10 * ONE_GBYTE;
-constexpr uint64_t FOUR_MBYTE = 4 * ONE_MBYTE;
-constexpr double L2_SIZE_PART = 128;  // soc 910B L2 comfort size
-constexpr double L2_SIZE_FULL = 192;  // soc 910B L2 full size
-constexpr double PART_L2_UTIL = 0.85; // cube utilization
-constexpr double FULL_L2_UTIL = 0.75; // cube utilization
-constexpr double NO_L2_UTIL = 0.65;   // cube utilization
-constexpr uint64_t MIN_COMM_RANKDIM = 2;
-
-enum class SocVersion {
-    SOC950 = 4, // 值 4 为键约定: 查表 key 前缀 "{soc}_" 的 soc 段沿用旧枚举序(950=4), 勿改;
-                // 引擎仅支持 950(旧芯片枚举值随旧芯片逻辑剥离, B 家族原位副本保留完整值域; 后续芯片在此扩展)
-};
-
-enum class KernelType {
-    ALL_REDUCE, // default
-    ALL_GATHER,
-    REDUCE_SCATTER,
-    ALL_TO_ALL,
-    REDUCE_SCATTER_VIA_ALL_TO_ALL,
-    ALL_REDUCE_VIA_TWO_SHOT,
-};
-
-enum class MatmulCalcType {
-    FP16, // default
-    QUANT,
-    ANTI_QUANT,
-};
-
-struct MatmulParameters {
-    SocVersion socType;
-    uint64_t coreNum;
-    uint64_t inMatrixADtypeSize;
-    uint64_t inMatrixBDtypeSize;
-    uint64_t outMatrixCDtypeSize;
-    uint64_t batchSize; // E / Ep
-    uint64_t mValue;
-    uint64_t nValue;
-    uint64_t kValue;
-    uint64_t baseM;
-    uint64_t baseN;
-    uint64_t baseK;
-    double computesPerCycle; // cube算力
-    double cyclePerMicroSec; // frequency
-};
-
-struct L2CacheEstimateParameters {
-    uint64_t sizePartL2;
-    uint64_t sizeFullL2;
-    double utilPartL2;
-    double utilFullL2;
-    double utilOutL2;
-};
-
-enum class HCCLType {
-    FULL_MESH, // 950 仅全互联一种通信形态(旧芯片环网形态随旧芯片逻辑剥离)
-};
-
-enum class TopoType {
-    STANDARD_CARD, // 0 - 标卡 4P
-    EIGHT_P,       // 1 - 8P场景（POD8P/Server8P）
-};
-
-struct HCCLInfo {
-    uint64_t rankDim;
-    uint64_t commDtypeSize; // data type size in hccl
-    uint64_t commMatrixLen; // equal to kValue in gather, equal to nValue in reduce
-    KernelType kernelType;
-    HCCLType commMethod;
-    TopoType topoType;
-    uint64_t maxStepSize; // number of steps in a full round of communication
-    uint64_t commDtypeSizeExpansionFraction;
-};
-
-struct HCCLFittingParameters {
-    double sizeToTimeBoundary1;
-    double sizeToTimeBoundary2;
-    double sizeToTimeLinearGradient;
-    double sizeToTimeLinearOffset;
-    double sizeToTimeParabolicPar1; // a
-    double sizeToTimeParabolicPar2; // b
-    double sizeToTimeParabolicPar3; // c
-    double timeToSizeBoundary1;
-    double timeToSizeBoundary2;
-    // y = ax*x + bx + c -->
-    // x = - sqrt((y - c + b*b / 4a) / a) - b / 2a
-    // x = - sqrt(a' * (y + b')) + c'
-    double timeToSizeParabolicPar1; // a'
-    double timeToSizeParabolicPar2; // b'
-    double timeToSizeParabolicPar3; // c'
-};
-
-using CutResult = ::CutResult; // 复用全局类型(字段完全一致, 2026-09-16 评审修正)
-
-struct TileArguments {
-    uint64_t mAlignLen;
-    uint64_t maxTileLen;
-    uint64_t minTileLen; // threshold size, max(commMinLen, matmulMinLen)
-    uint64_t maxTileCnt;
-};
-
-struct TilingBestBaseBlock {
-    uint32_t baseM = 256; // 256: init value for baseM
-    uint32_t baseN = 256; // 256: init value for baseN
-    uint32_t baseK = 128; // 128: init value for baseK
-};
-
-// 通信轮次硬上限（来源: hccl_formulaic_tiling.h 的 MAX_TILE_CNT, 受 FFTS 队列大小限制）
-constexpr uint64_t MAX_TILE_CNT = 16;
-
-// 旧基类头文件里的通算比阈值（E9 减半鼓励门消费）
-constexpr double CALC_COMM_RATIO = 2.0;
-
-constexpr uint32_t BASE_BLOCK_M = 128;
-constexpr uint32_t BASE_BLOCK_N = 256;
-constexpr uint32_t BASE_BLOCK_K = 64;
-
-enum class AicpuComType {
-    HCCL_CMD_INVALID = 0,
-    HCCL_CMD_BROADCAST = 1,
-    HCCL_CMD_ALLREDUCE,
-    HCCL_CMD_REDUCE,
-    HCCL_CMD_SEND,
-    HCCL_CMD_RECEIVE,
-    HCCL_CMD_ALLGATHER,
-    HCCL_CMD_REDUCE_SCATTER,
-    HCCL_CMD_ALLTOALLV,
-    HCCL_CMD_ALLTOALLVC,
-    HCCL_CMD_ALLTOALL,
-    HCCL_CMD_GATHER,
-    HCCL_CMD_HALFALLTOALLV = 20,
-    HCCL_CMD_MAX
-};
+// 公共词汇复用旧家族全局类型(formulaic_tiling_datatype.h 的枚举/结构体/常量,
+// hccl_formulaic_tiling.h 的 FormPartition/MAX_TILE_CNT/CALC_COMM_RATIO 等),
+// 本文件不再持有副本(2026-09-17 namespace 去 mc2tiling 化裁定: apace/tiling 与
+// mmtiling 一致用 global, 词汇表唯一真值在旧家族头); 以下仅引擎自有词汇。
 
 // 调度入参: 复用全局 mc2tiling::TilingArgs(字段完全一致)
 using TilingArgs = ::mc2tiling::TilingArgs;
 
-// ====== 通信引擎枚举与解析（三引擎统一分派的公共词汇）======
-enum class CommEngine {
+// ====== 通信引擎枚举与解析(三引擎统一分派; 名字带 Tiling 前缀避免与 HCCL SDK 全局 CommEngine typedef 冲突)======
+enum class TilingCommEngine {
     AICPU,
     CCU,
     AIV_URMA,
 };
 
 // comm_mode 属性解析: "aiv_urma"→AIV_URMA, "ccu"→CCU, 其余(含空指针/默认"ai_cpu")→AICPU
-inline CommEngine ParseCommEngine(const char *commMode)
+inline TilingCommEngine ParseCommEngine(const char *commMode)
 {
     if (commMode == nullptr) {
-        return CommEngine::AICPU;
+        return TilingCommEngine::AICPU;
     }
     if (strncmp(commMode, "aiv_urma", 8U) == 0) {
-        return CommEngine::AIV_URMA;
+        return TilingCommEngine::AIV_URMA;
     }
     if (strncmp(commMode, "ccu", 3U) == 0) {
-        return CommEngine::CCU;
+        return TilingCommEngine::CCU;
     }
-    return CommEngine::AICPU;
+    return TilingCommEngine::AICPU;
 }
 
 // ====== 通算顺序枚举(键控维度: 同一原语可有相反顺序, 如 matmul_allto_all=mm→A2A /
@@ -265,10 +124,6 @@ constexpr uint64_t FP4_PACK_RATIO = 2;
 // SetCommShapeLen/SetCommDTypeSize/GetCommDTypeSize/SetCommDtypeSizeExpansionFraction/
 // commTimeFactor_/GetRankTileNum(InitCtx 内部)。
 
-constexpr double FULL_MESH_TIME_FACTOR = 2.0; // allreduce time is 2.0x allgather or reducescatter
-constexpr uint64_t FITTING_RANK = 8;          // 拟合采用 8 die 通信
-
-// ====== 拟合表（引擎内部结构——算子侧一律使用 FitBalanceCalibration 大结构体,
 //      此处类型由 InitCtx 内部适配构造并按值持有, 勿在算子侧直接引用）======
 struct CommFitRow {
     uint32_t rankDim; // 匹配字段: 卡数
@@ -448,20 +303,6 @@ protected:
 // 剥离 310P/910_B4 分支与 4 参 FindCubeUtil(含其独占的 K 对齐修正链)——
 // 5 个消费算子经 grep 证实仅用 1 参 FindCubeUtil/FindCubeUtilByL2Usage。
 
-namespace MatmulPerformance {
-constexpr double COMPUTES_PER_CYCLE = 4096; // 基础算力(查表未命中回退, 标定头回填同值)
-// cycle per micro second (950)
-constexpr double CYCLE_PER_MICRO_SEC = 1.65 * ONE_KBYTE;
-// end: cycle per micro second
-constexpr double MAX_PARTICAL_ENHANCEMENT_FACTOR_CUBE_UTIL = 1.4;
-constexpr double MNVALUE_THRESHOLD = 820;
-constexpr double KVALUE_THRESHOLD = 1280;
-constexpr double FRONT_UTIL_EXPONENT_COEFFICIENT = 0.6;
-constexpr double CUBE_UTIL_EXPONENT_COEFFICIENT = 0.7;
-constexpr double MAX_CUBE_UTIL = 0.95;
-constexpr double AVERAGE_CUBE_UTIL = 0.75;
-} // namespace MatmulPerformance
-
 // ====== 模型参数表（引擎内部结构——算子侧一律使用 FitBalanceCalibration 大结构体,
 //      此处类型由 InitCtx 内部适配构造并按值持有, 勿在算子侧直接引用）======
 struct CubeCalcRow {
@@ -516,13 +357,13 @@ public:
         mmShapeInfo_.nValue = args.nValue;
         mmShapeInfo_.kValue = args.kValue;
         // 获取后续计算用的基本块(先默认, 再按标定数据 baseBlock 覆盖)
-        mmShapeInfo_.baseM = BASE_BLOCK_M;
-        mmShapeInfo_.baseN = BASE_BLOCK_N;
-        mmShapeInfo_.baseK = BASE_BLOCK_K;
+        mmShapeInfo_.baseM = mc2tiling::BASE_BLOCK_M;
+        mmShapeInfo_.baseN = mc2tiling::BASE_BLOCK_N;
+        mmShapeInfo_.baseK = mc2tiling::BASE_BLOCK_K;
         mmShapeInfo_.batchSize = 1UL; // 初始值
         isFp4_ = (args.geAType == ge::DataType::DT_FLOAT4_E2M1);
         SetCalcType(args);
-        mmShapeInfo_.cyclePerMicroSec = MatmulPerformance::CYCLE_PER_MICRO_SEC;
+        mmShapeInfo_.cyclePerMicroSec = MatmulPerformance::CYCLE_PER_MICRO_SEC_NPUARCH_3510; // 950 频率
         GetMachineParameters();
         mmShapeInfo_.baseM = perfTable_.bestBaseBlock.baseM;
         mmShapeInfo_.baseN = perfTable_.bestBaseBlock.baseN;
@@ -666,278 +507,12 @@ protected:
 };
 
 // ============================================================================
-// 二、切分与输出层（FormPartition + CutResult 适配）
+// 二、切分与输出层
 // ============================================================================
-// ============================================================================
+// FormPartition 复用旧家族全局类(op_host/op_tiling/hccl_formulaic_tiling.h):
+// A 家族使用的方法(离散切分路径)与旧实现逐行一致(引擎原副本仅少两条日志),
+// B 家族专用方法(连续切分)随旧类一并可见但 A 家族零调用。
 
-// (2026-09-15 精简: 连续切分路径 FitTileLengthContinuous/SmallFrontTileCheck/
-//  LargeBackTileCheck/CommBoundShortAlign 为 B 家族(公式化)专用, A 家族 5 算子
-//  经 grep 证实零调用, 已随旧芯片逻辑剥离; B 家族原位副本不受影响)
-constexpr uint64_t LARGE_NK_BAR_BASE = 32;
-constexpr uint64_t SMALL_TILECNT_PAR = 2;
-constexpr double BACKTILE_ALIGN_RATIO = 0.75;
-constexpr double ALIGN_RATIO_CALC_BOUND = 0.5;
-constexpr double ALIGN_RATIO_COMM_BOUND = 0.75;
-
-// 切分和对齐
-class FormPartition {
-public:
-    CutResult cutRes;                            // 切分结果
-    TileArguments tileArgs;                      // 切分参数
-    uint64_t totalLen = ONE;                     // 待切分的长度
-    double backTileRatio = BACKTILE_ALIGN_RATIO; // 计算长块个数使用的参数
-
-    // Constructor
-    explicit FormPartition(const TilingArgs &args)
-    {
-        totalLen = args.mValue;
-        tileArgs.mAlignLen = BASE_BLOCK_M; // 切分长度照顾mm性能，对齐baseM
-        tileArgs.minTileLen = tileArgs.mAlignLen;
-        tileArgs.maxTileCnt = ONE;
-        tileArgs.maxTileLen = totalLen;
-
-        cutRes.shortTileAtBack = false; // 计算Bound时短块后置，通信bound时短块前置
-        NoCutTiling();                  // 初始化为不切分
-    };
-
-    void SetMinLenByMax(uint64_t newLen);
-    void SetMinLenByMin(uint64_t newLen);
-    uint64_t GetMinLen()
-    {
-        return tileArgs.minTileLen;
-    };
-    void SetAlignLength(uint64_t newLen)
-    {
-        tileArgs.mAlignLen = std::max(newLen, ONE);
-    };
-    uint64_t GetAlignLength()
-    {
-        return tileArgs.mAlignLen;
-    };
-    void SetMaxTileCnt(uint64_t newSize)
-    {
-        tileArgs.maxTileCnt = std::max(newSize, ONE);
-    };
-
-    // TilingMethods
-    void GenerateInitialPartition(bool smallDimAlignUp = false);
-    bool SetShortTileLen(bool noCutFlag = false);
-    void NoCutTiling();
-    void MaxTileCntUniform();
-
-    // 离散切分对齐 (A 家族全部算子的 Adjust 阶段使用)
-    void AlignTileSmall();
-    void AlignTileLarge();
-    void FitTileLengthDiscrete(bool smallDimAlignUp, bool goodLinearityShape, bool localAtFront = false);
-    void CalcShortTile();
-    void CalcBackTile();
-    void RedistributeTile();
-};
-
-inline void FormPartition::SetMinLenByMax(uint64_t newLen)
-{
-    tileArgs.minTileLen = std::max(tileArgs.minTileLen, newLen);
-}
-
-inline void FormPartition::SetMinLenByMin(uint64_t newLen)
-{
-    tileArgs.minTileLen = std::min(tileArgs.minTileLen, newLen);
-}
-
-inline void FormPartition::AlignTileLarge()
-{
-    if (cutRes.numLongTile >= tileArgs.mAlignLen) {
-        return;
-    }
-    // Align cutRes.shortTileLen
-    cutRes.shortTileLen = (cutRes.shortTileLen + tileArgs.mAlignLen - 1) / tileArgs.mAlignLen * tileArgs.mAlignLen;
-    cutRes.longTileLen = (totalLen - cutRes.shortTileLen + cutRes.numLongTile - 1) / cutRes.numLongTile;
-    cutRes.shortTileLen = totalLen - cutRes.numLongTile * cutRes.longTileLen;
-}
-
-inline void FormPartition::AlignTileSmall()
-{
-    // Front tile already aligned, check backTile
-    bool smallBackTile = (cutRes.shortTileLen < tileArgs.mAlignLen) || (cutRes.shortTileLen < tileArgs.minTileLen);
-    smallBackTile = smallBackTile && cutRes.shortTileLen > 0U;
-    bool largeFrontTile =
-        (cutRes.longTileLen > 2 * tileArgs.mAlignLen) && (cutRes.longTileLen > 2 * tileArgs.minTileLen);
-    if (smallBackTile && largeFrontTile) {
-        uint64_t demand = tileArgs.mAlignLen * cutRes.numLongTile;
-        bool reBalance = (cutRes.shortTileLen + demand) <= cutRes.longTileLen;
-        if (reBalance) {
-            cutRes.shortTileLen += demand;
-            cutRes.longTileLen -= tileArgs.mAlignLen;
-        }
-    }
-
-    // 假如对齐后尾块长度大于主块，尝试校正使尾块长度<=主块长度
-    // 校正目标：主块长度为totalTileCnt均分MPerRank后向上对齐mAlignLen，尾块长度为MPerRank剩余大小
-    // 校正检查：totalTileCnt均分后，所有主块加起来最多向尾块抽取 mAlignLen *
-    // numLongTile 大小，尾块剩余大小为 (MPerRank/totalTileCnt) - mAlignLen *
-    // numLongTile 校正检查：检查条件为 (MPerRank/totalTileCnt) > mAlignLen *
-    // totalTileCnt, 确保尾块至少剩下mAlignLen大小
-    bool largeBackTile = (cutRes.shortTileLen > cutRes.longTileLen) &&
-                         ((totalLen / cutRes.totalTileCnt) > (tileArgs.mAlignLen * cutRes.totalTileCnt));
-    if (largeBackTile) {
-        cutRes.longTileLen =
-            (totalLen / cutRes.totalTileCnt + tileArgs.mAlignLen - 1) / tileArgs.mAlignLen * tileArgs.mAlignLen;
-        cutRes.shortTileLen = totalLen - cutRes.numLongTile * cutRes.longTileLen;
-    }
-}
-
-inline void FormPartition::GenerateInitialPartition(bool smallDimAlignUp)
-{
-    cutRes.longTileLen = std::max(cutRes.longTileLen, cutRes.shortTileLen);
-    cutRes.longTileLen = std::min(cutRes.longTileLen, totalLen - cutRes.shortTileLen);
-    uint64_t newTileLen = cutRes.longTileLen / tileArgs.mAlignLen * tileArgs.mAlignLen;
-    // 0.5 is half of mAlignLen
-    double alignRatio = ALIGN_RATIO_CALC_BOUND;
-    if (!cutRes.shortTileAtBack) {
-        alignRatio = ALIGN_RATIO_COMM_BOUND;
-    }
-
-    bool alignUpFlag = ((cutRes.longTileLen - newTileLen) > (tileArgs.mAlignLen * alignRatio)) || smallDimAlignUp;
-    if (alignUpFlag) {
-        cutRes.longTileLen = newTileLen + tileArgs.mAlignLen;
-    } else {
-        cutRes.longTileLen = newTileLen;
-    }
-    // find cutRes.totalTileCnt
-    cutRes.longTileLen = std::min(cutRes.longTileLen, tileArgs.maxTileLen);
-    cutRes.numLongTile = (totalLen - static_cast<uint64_t>(static_cast<double>(cutRes.shortTileLen) * backTileRatio)) /
-                         cutRes.longTileLen;
-    cutRes.numLongTile = std::max(cutRes.numLongTile, static_cast<uint64_t>(1));
-    cutRes.totalTileCnt = cutRes.numShortTile + cutRes.numLongTile;
-}
-
-inline void FormPartition::FitTileLengthDiscrete(bool smallDimAlignUp, bool goodLinearityShape, bool localAtFront)
-{
-    // 流水配平，找到初始切分长度和个数
-    GenerateInitialPartition(smallDimAlignUp);
-
-    // 处理剩余长度
-    uint64_t resLen = totalLen - cutRes.numLongTile * cutRes.longTileLen - cutRes.numShortTile * cutRes.shortTileLen;
-    bool largeBackTile =
-        (resLen >= cutRes.shortTileLen) && ((SMALL_TILECNT_PAR * cutRes.shortTileLen) >= cutRes.longTileLen);
-    goodLinearityShape =
-        (goodLinearityShape && (cutRes.shortTileLen >= tileArgs.mAlignLen)) || (!cutRes.shortTileAtBack);
-    bool smallCut = cutRes.numLongTile <= SMALL_TILECNT_PAR;
-    bool balanceCut = largeBackTile && goodLinearityShape && smallCut;
-    if (balanceCut) { // 重新均匀切分
-        cutRes.longTileLen = cutRes.shortTileLen;
-        cutRes.numLongTile = (totalLen - cutRes.shortTileLen) / cutRes.longTileLen; // floor
-        cutRes.numLongTile = std::max(cutRes.numLongTile, static_cast<uint64_t>(1));
-        cutRes.totalTileCnt = cutRes.numShortTile + cutRes.numLongTile;
-        largeBackTile = false;
-    }
-    if (cutRes.totalTileCnt == TWO && !localAtFront) {
-        // 如果前面没有local特殊处理，就把剩余长度均分给长块和短块
-        RedistributeTile();
-        largeBackTile = false;
-    }
-    bool moreFrontTile = largeBackTile && (cutRes.longTileLen <= cutRes.shortTileLen + resLen);
-    if (moreFrontTile) { // 增加长块个数
-        cutRes.numLongTile++;
-        CalcBackTile();
-    }
-
-    // 检查切分轮次总数符合约束
-    tileArgs.maxTileCnt = std::max(tileArgs.maxTileCnt, ONE); // 确保maxTileCnt > 0
-    if (cutRes.totalTileCnt > tileArgs.maxTileCnt) {
-        uint64_t tileLen = totalLen / tileArgs.maxTileCnt;
-        bool isDivisible = (tileLen * tileArgs.maxTileCnt == totalLen) && (tileLen % tileArgs.mAlignLen == 0U);
-        if (isDivisible) {
-            cutRes.numLongTile = tileArgs.maxTileCnt;
-            cutRes.longTileLen = tileLen;
-            cutRes.numShortTile = 0U;
-            cutRes.shortTileLen = 0U;
-            cutRes.totalTileCnt = tileArgs.maxTileCnt;
-        }
-    }
-    MaxTileCntUniform();
-
-    cutRes.shortTileLen = totalLen - cutRes.numLongTile * cutRes.longTileLen;
-    if (cutRes.longTileLen > ONE_KBYTE) {
-        AlignTileLarge();
-    } else {
-        AlignTileSmall();
-    }
-}
-
-inline void FormPartition::NoCutTiling()
-{
-    cutRes.totalTileCnt = 1U;
-    cutRes.numShortTile = 0U;
-    cutRes.numLongTile = 1U;
-    cutRes.shortTileLen = 0U;
-    cutRes.longTileLen = totalLen;
-}
-
-inline void FormPartition::CalcShortTile()
-{
-    cutRes.numShortTile = 0;
-    cutRes.shortTileLen = 0;
-    if (totalLen != cutRes.longTileLen * cutRes.numLongTile) {
-        cutRes.numShortTile = 1;
-        cutRes.shortTileLen = totalLen - cutRes.longTileLen * cutRes.numLongTile;
-    }
-}
-
-inline void FormPartition::CalcBackTile()
-{
-    CalcShortTile();
-    bool tinyBackTile = (cutRes.shortTileLen > 0) && (cutRes.shortTileLen < tileArgs.mAlignLen * 0.5);
-    if (tinyBackTile && cutRes.numLongTile > 1) {
-        cutRes.numLongTile -= 1;
-        cutRes.shortTileLen += cutRes.longTileLen;
-    }
-    cutRes.totalTileCnt = cutRes.numShortTile + cutRes.numLongTile;
-}
-
-// 据经验值，切分块数较多且每块长度接近matmul临界值时，ETE性能会劣化
-inline void FormPartition::RedistributeTile()
-{
-    uint64_t tmpBackTileLen = totalLen - cutRes.numLongTile * cutRes.longTileLen;
-    bool redistTileFlag = tmpBackTileLen > 2 * cutRes.shortTileLen;
-    if (redistTileFlag) {
-        uint64_t redistTileLen = (tmpBackTileLen - cutRes.shortTileLen) / cutRes.totalTileCnt;
-        redistTileLen = redistTileLen / tileArgs.mAlignLen * tileArgs.mAlignLen;
-        cutRes.longTileLen += redistTileLen;
-    }
-    CalcBackTile();
-}
-
-inline bool FormPartition::SetShortTileLen(bool noCutFlag)
-{
-    cutRes.shortTileLen = tileArgs.minTileLen;
-    cutRes.numShortTile = 1U;
-    // do not cut if mValue is too small
-    bool smallMPerRank = (totalLen < cutRes.shortTileLen * 2);
-    smallMPerRank = smallMPerRank || noCutFlag;
-    if (smallMPerRank) {
-        NoCutTiling();
-    }
-    return smallMPerRank;
-}
-
-inline void FormPartition::MaxTileCntUniform()
-{
-    if (cutRes.totalTileCnt <= tileArgs.maxTileCnt) {
-        return;
-    }
-    if (tileArgs.maxTileCnt <= 1 || totalLen < tileArgs.maxTileCnt) {
-        NoCutTiling();
-        return;
-    }
-
-    // 尾块应该小于主块
-    cutRes.longTileLen = totalLen / (tileArgs.maxTileCnt - 1);
-    cutRes.longTileLen = (cutRes.longTileLen + tileArgs.mAlignLen - 1) / tileArgs.mAlignLen * tileArgs.mAlignLen;
-    cutRes.longTileLen = std::min(cutRes.longTileLen, totalLen);
-    cutRes.numLongTile = totalLen / cutRes.longTileLen;
-    CalcBackTile();
-}
 // ============================================================================
 // 三、求解层（两分支求解器）
 // ============================================================================
@@ -1027,11 +602,11 @@ struct FitBalanceCalibration {
 
 // 统一入口: 算子侧只传大结构体标定数据 + 键控枚举(原语/顺序/引擎; soc 恒 950)
 inline FitBasedBalanceCtx InitCtx(const TilingArgs &args, KernelType kernelType, CommComputeOrder order,
-                                  CommEngine commEngine, const FitBalanceCalibration &calib,
+                                  TilingCommEngine commEngine, const FitBalanceCalibration &calib,
                                   TopoType topoType = TopoType::STANDARD_CARD)
 {
     // 引擎分路 + 大结构体 → 引擎内部表适配(线性行转三段式, 按 null key 截断)
-    const FitBalanceCalibration::CommFit &commFit = (commEngine == CommEngine::CCU) ? calib.ccu : calib.aicpu;
+    const FitBalanceCalibration::CommFit &commFit = (commEngine == TilingCommEngine::CCU) ? calib.ccu : calib.aicpu;
     CommFitTable commTable;
     commTable.defaultParams = commFit.platformDefault;
     commTable.rowCount = 0;
@@ -1263,8 +838,5 @@ inline CutResult Schedule(FitBasedBalanceCtx &ctx)
     MergeEqualTiles(ctx.tilingM);
     return ctx.tilingM.cutRes;
 }
-
-} // namespace fit_balance
-} // namespace mc2tiling
 
 #endif // __APACE_FIT_BALANCE_TILING_H__

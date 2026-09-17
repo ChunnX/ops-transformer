@@ -777,9 +777,9 @@ CutResult AllGatherQuantBmmTiling::GetTilingResult()
     // fit-balance 统一接口(P1 遗留补切: 本类经 DoSplitMTiling 虚分派是第二个消费方);
     // 标定数据+算子钩子在 all_gather_matmul_v2_fit_balance_tiling.h, 回退: kUseNewEngine 置 false。
     // 三引擎统一分派: ParseCommEngine 解析 comm_mode 后传入(本算子仅 HCCL 两引擎可达)
-    const auto commEngine = mc2tiling::fit_balance::ParseCommEngine(commMode_);
+    const auto commEngine = ParseCommEngine(commMode_);
     uint32_t baseM = 0;
-    CutResult result = agmm_v2_fit_balance::GetFitBalanceCut(args_, commEngine, &baseM);
+    CutResult result = GetFitBalanceCut(args_, commEngine, &baseM);
 
     auto kValue = args_.kValue;
     auto inputDtypeSize = args_.inputDtypeSize;
@@ -788,7 +788,7 @@ CutResult AllGatherQuantBmmTiling::GetTilingResult()
         inputDtypeSize = 1;
     }
 
-    if (commEngine == mc2tiling::fit_balance::CommEngine::CCU) {
+    if (commEngine == TilingCommEngine::CCU) {
         CommSizeInfo commSize{kValue, inputDtypeSize, args_.rankDim};
         AdjustCutResultForCCU(result, args_.mValue, commSize, opName_);
     } else {

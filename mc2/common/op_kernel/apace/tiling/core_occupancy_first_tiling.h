@@ -17,6 +17,8 @@
  * （headMSize = ceil(usedCoreNum / nTile) * baseM），不引入任何时延模型。
  * 当通算耗时不均衡时的进一步配平，见 fit_balance_tiling.h 的 fit-balance 策略。
  *
+ * 命名空间: global(2026-09-17 裁定——apace/tiling 与 mmtiling/quant_matmul_tiling 一致)。
+ *
  * 用法：
  *   统一入口 GetCoreOccupancyFirstTiling()（2026-09-17 §4.21 调用下沉）: op_tiling 只调
  *   该函数, 内部完成 SWAT matmul tiling → 核数守卫 → 通信切分 → fp4 K 轴修正;
@@ -32,8 +34,6 @@
 #include "tiling_data_struct_define.h"
 #include "matmul_tiling/quant_matmul_tiling.h"
 #include "../utils/apace_constant.h"
-
-namespace mc2tiling {
 
 class CoreOccupancyFirstTiling {
 public:
@@ -169,5 +169,3 @@ inline bool GetCoreOccupancyFirstTiling(fe::PlatFormInfos *platformInfo, uint64_
     }
     return true;
 }
-
-} // namespace mc2tiling

@@ -12,13 +12,14 @@
  * \file all_gather_matmul_v2_fit_balance_tiling.h
  * \brief AllGatherMatmulV2 fit-balance 算子侧零特有代码形态（2026-09-17 §4.24 收官裁定）
  *
+ * 命名空间 optiling(与本目录其他文件一致); 引擎符号为 global(apace/tiling 约定)。
  * 本文件只剩三样东西, 无任何算子特有逻辑（钩子机制已废除, AG 特有逻辑已键控内化引擎）:
  *   一、客户标定数据 CALIBRATION（唯一编辑面, 重新标定只改数值）;
  *   二、一行组装: InitCtx(ALL_GATHER, COMM_FIRST, commEngine, CALIBRATION) + Schedule;
  *   三、kUseNewEngine 新旧切换（置 false 重编译即回老类, 老类原样保留）。
  *
- * 公共逻辑与 AG 键控分支（E4 恒后置/E5 本地首轮重叠/E9 减半鼓励/E19 长块反解/
- * E24 localAtFront + D4/D5/D6 胶水）均在 apace/tiling/fit_balance_tiling.h。
+ * 公共逻辑与 AG 键控分支（E4 恒后置/E5 本地首轮重叠/E9 减半鼓励/E19 长块反解/E24
+ * localAtFront + D4/D5/D6 胶水)均在 apace/tiling/fit_balance_tiling.h(global)。
  */
 
 #ifndef __ALL_GATHER_MATMUL_V2_FIT_BALANCE_TILING_H__
@@ -32,16 +33,14 @@
 #include "op_host/op_tiling/formulaic_tiling_datatype.h" // 旧 CutResult/KernelType/TopoType(对外接口沿用旧类型)
 #include "op_host/op_tiling/matmul_formulaic_tiling.h"   // mc2tiling::TilingArgs
 
-namespace agmm_v2_fit_balance {
-
-namespace fb = mc2tiling::fit_balance; // fit-balance 家族公共层
+namespace optiling { // 与本目录其他 op_tiling 文件一致(2026-09-17 裁定)
 
 // ============================================================================
 // 一、客户标定数据（唯一实例; 结构与字段含义见公共文件 FitBalanceCalibration 定义。
 //     当前值提取自旧公共层全量表的本算子可达行, 2026-09-14）
 // ============================================================================
 
-static const fb::FitBalanceCalibration CALIBRATION = {
+static const FitBalanceCalibration CALIBRATION = {
     /* aicpu（commMode != "ccu"）*/
     {
         /* rows: {卡数, 斜率(us/MB), 截距(us)} */
@@ -62,14 +61,14 @@ static const fb::FitBalanceCalibration CALIBRATION = {
     {
         /* cubeCalc: {计算类型, isFp4, A/B/C 字节数, 有效算力(MACs/cycle)} */
         {
-            {fb::MatmulCalcType::QUANT, false, 1, 1, 2, 8192}, // fp8 量化(1B/1B/2B)
-            {fb::MatmulCalcType::QUANT, true, 1, 1, 2, 16384}, // fp4 量化(打包 1B/1B/2B, 算力约为 fp8 的 2×)
+            {MatmulCalcType::QUANT, false, 1, 1, 2, 8192}, // fp8 量化(1B/1B/2B)
+            {MatmulCalcType::QUANT, true, 1, 1, 2, 16384}, // fp4 量化(打包 1B/1B/2B, 算力约为 fp8 的 2×)
         },
         /* l2Param: {计算类型, isFp4, A/B/C 字节数, L2 档位参数} */
         {
-            {fb::MatmulCalcType::FP16, false, 2, 2, 2, {80, 128, 0.95, 0.85, 0.75}},  // 半精度
-            {fb::MatmulCalcType::QUANT, false, 1, 1, 2, {80, 128, 0.95, 0.85, 0.75}}, // fp8 量化
-            {fb::MatmulCalcType::QUANT, true, 1, 1, 2, {80, 128, 0.95, 0.85, 0.75}},  // fp4 量化(共用 fp8 档位)
+            {MatmulCalcType::FP16, false, 2, 2, 2, {80, 128, 0.95, 0.85, 0.75}},  // 半精度
+            {MatmulCalcType::QUANT, false, 1, 1, 2, {80, 128, 0.95, 0.85, 0.75}}, // fp8 量化
+            {MatmulCalcType::QUANT, true, 1, 1, 2, {80, 128, 0.95, 0.85, 0.75}},  // fp4 量化(共用 fp8 档位)
         },
         /* baseBlock: matmul 最优基本块(单值; 未填用默认 {128,256,64}) */
         {256, 256, 128},
@@ -83,14 +82,14 @@ static const fb::FitBalanceCalibration CALIBRATION = {
 
 // 统一引擎路径: 键控枚举 + 标定 → InitCtx(含通算胶水) → Schedule(含 AG 键控分支)。
 // baseMOut(可空): 回传 matmul 基本块(调用点 AdjustCutResultForAICPU 需要)
-inline CutResult ScheduleFitBalance(const mc2tiling::TilingArgs &args, fb::CommEngine commEngine,
+inline CutResult ScheduleFitBalance(const mc2tiling::TilingArgs &args, TilingCommEngine commEngine,
                                     uint32_t *baseMOut = nullptr)
 {
     // 引擎分路在 InitCtx 内完成(按 CommEngine 选 CALIBRATION 的 aicpu/ccu 分区);
     // 本算子 kernel 仅 HCCL 两引擎, AIV_URMA 不可达(枚举值保留供三引擎分派框架)
-    auto ctx = fb::InitCtx(args, fb::KernelType::ALL_GATHER, fb::CommComputeOrder::COMM_FIRST, commEngine, CALIBRATION,
-                           fb::TopoType::STANDARD_CARD);
-    CutResult cut = fb::Schedule(ctx);
+    auto ctx = InitCtx(args, KernelType::ALL_GATHER, CommComputeOrder::COMM_FIRST, commEngine, CALIBRATION,
+                       TopoType::STANDARD_CARD);
+    CutResult cut = Schedule(ctx);
     OPS_LOG_D("AllGatherMatmul",
               "Input shape {M, N, K} = {%lu, %lu, %lu}, Final cut: shortTileAtBack %d, longTileLen %lu, "
               "numLongTile %lu, shortTileLen %lu, numShortTile %lu",
@@ -107,8 +106,8 @@ inline CutResult ScheduleFitBalance(const mc2tiling::TilingArgs &args, fb::CommE
 constexpr bool kUseNewEngine = true;
 
 // 对外唯一入口：两个 GetTilingResult 调用点共用（commEngine 决定通信拟合选表; 三引擎
-// 统一分派模式——调用点用 mc2tiling::fit_balance::ParseCommEngine(commMode_) 解析后传入）
-inline CutResult GetFitBalanceCut(const mc2tiling::TilingArgs &args, fb::CommEngine commEngine,
+// 统一分派模式——调用点用 ParseCommEngine(commMode_) 解析后传入(global 符号)）
+inline CutResult GetFitBalanceCut(const mc2tiling::TilingArgs &args, TilingCommEngine commEngine,
                                   uint32_t *baseMOut = nullptr)
 {
     if (kUseNewEngine) {
@@ -121,6 +120,6 @@ inline CutResult GetFitBalanceCut(const mc2tiling::TilingArgs &args, fb::CommEng
     return tileFormulate.GetTiling();
 }
 
-} // namespace agmm_v2_fit_balance
+} // namespace optiling
 
 #endif // __ALL_GATHER_MATMUL_V2_FIT_BALANCE_TILING_H__
