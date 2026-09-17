@@ -718,13 +718,14 @@ def cal_dense_index(k, m, n, b, j, r, coordinate):
         coordinate.batch_id = -1
 
 def _isqrt(x):
+    # floor(sqrt(x)) for nonnegative int64 x. Keep a single loop-carried
+    # scalar to avoid PyPTO overwriting the old res/nxt state on the backedge.
     if x < 2:
         return x
-    res = x
-    nxt = (res + 1) // 2
-    while nxt < res:
-        res = nxt
-        nxt = (res + x // res) // 2
+    # This seed and the division-based condition avoid integer overflow.
+    res = x // 2 + 1
+    while res > x // res:
+        res = (res + x // res) // 2
     return res
 
 
