@@ -53,7 +53,7 @@ Each step is its own commit and its own build.
 | Step | Commit | Content | Codegen |
 |---|---|---|---|
 | 1 | *unify the dtype predicates* | D2 + D3 | **0/15 — byte-identical** |
-| 2 | *share Init and the member set* | D1, extract `LoadCommonTiling` | TBD |
+| 2 | *share Init and the member set* | D1, extract `LoadCommonTiling` | **0/15 — byte-identical** |
 | 3 | *share the Process() type aliases* | the 208 duplicated lines | TBD |
 | 4 | *one class, one entry point* | D4, D5, D6; delete `mega_moe_a2.h`; collapse `mega_moe.cpp` | TBD |
 
@@ -113,3 +113,45 @@ That matters beyond this step. D2 and D3 were the only *predicate-level*
 divergences between the platforms, and the merged class in step 4 will carry one
 `kRoutingIsQuant` and one `isW4A8` for both — this is the evidence that doing so
 cannot change A2.
+
+## Step 2 — share `Init` and the member set
+
+`mega_moe_a2.h` now loads its tiling fields through a `LoadCommonTiling` that is
+**byte-identical to `mega_moe_arch22.h`'s**, and its `Init` has the same shape as
+A3's:
+
+```cpp
+    if constexpr (kRoutingIsQuant) {
+        GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingDataQuant, tilingData, tilingGM);
+        LoadCommonTiling(tilingData.common);
+    } else {
+        GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingDataNonQuant, tilingData, tilingGM);
+        LoadCommonTiling(tilingData.common);
+    }
+```
+
+The two 13-line inline loads that A2 carried — verbatim duplicates of each other
+apart from the tiling struct type — collapse into those four lines. Two
+`auto tiling = (__gm__ ... *)tilingGM;` locals that were never read are gone with
+them. A2's `Init` body drops from 40 lines to 10 and now differs from A3's only
+by the absence of `maskBufferGM`.
+
+Member alignment: A2 **gained** `recvRoundsMax_` (A3 uses it to bound receive
+rounds; A2 does not, and the in-place comment says so rather than leaving a
+mystery field) and **lost** `rank_` / `rankSize_`, which were declared and then
+never assigned or read anywhere in the file. After this the ownership sets match
+except for `maskBufferGM_`, which is D1 and belongs to step 4.
+
+Net for the file: **+27 / −37**.
+
+### Codegen result
+
+| | |
+|---|---|
+| B6 step 1 → step 2 | **0 / 15 kernels changed — byte-identical** |
+
+Extracting a member function, adding one unread member and deleting two unread
+members are all free: the compiler was already emitting nothing for the dead
+members, and the new call has a single call site and inlines. This is the third
+consecutive byte-identical step in B6's opening moves, so every structural
+alignment performed so far is provably neutral rather than argued to be.

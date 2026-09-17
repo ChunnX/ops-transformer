@@ -103,8 +103,6 @@ private:
 
     TBuf<AscendC::TPosition::VECCALC> uBuf_;
 
-    int32_t rank_;
-    int32_t rankSize_;
     int32_t aivNum_;
 
     static constexpr int32_t UB_MOVE_NUM = 16 * 1024;
@@ -115,12 +113,36 @@ private:
     int32_t topK_;
     int32_t expertPerRank_;
     uint64_t maxOutputSize_;
+    // 接收侧轮表份数上限 = ceil(PERMUTE_CHUNK*EP*min(topK,epr) / recvRoundBudget)，A3 接收端轮次切分用。
+    // A2 不做接收轮次切分，保留同名字段只为与 A3 共用 LoadCommonTiling、并为 B6 后续类模板合并对齐成员集。
+    uint64_t recvRoundsMax_;
     int32_t epWorldSize_;
     int32_t listLen_;
     uint32_t activationCode_;
     float activationClamp_;
     float activationParams1_;
     float activationParams2_;
+
+    // Quant/NonQuant 两种 tiling 结构的 common 字段类型一致，此处统一加载公共字段。
+    // 与 mega_moe_arch22.h 中的同名函数逐字相同（含注释），是 B6 合并类模板前对齐两边结构的依据。
+    __aicore__ inline void LoadCommonTiling(const MegaMoeA2A3TilingData &common)
+    {
+        aivNum_ = common.aivNum;
+        m_ = common.M;
+        k_ = common.K;
+        n_ = common.N;
+        epWorldSize_ = common.worldSize;
+        topK_ = common.topK;
+        expertPerRank_ = common.expertPerRank;
+        // maxOutputSize 语义 = 单轮接收预算 B（recvRoundBudget）；接收行超出 B 由 kernel 接收端轮次切分处理
+        maxOutputSize_ = common.recvRoundBudget;
+        recvRoundsMax_ = common.recvRoundsMax;
+        listLen_ = common.listLen;
+        activationCode_ = common.activationCode;
+        activationClamp_ = common.activationClamp;
+        activationParams1_ = common.activationParams1;
+        activationParams2_ = common.activationParams2;
+    }
 };
 
 template <MegaMoeClassA2>
@@ -155,45 +177,13 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Init(GM_ADDR contextGM, GM_ADDR
     workspaceGM_ = workspaceGM;
     tilingGM_ = tilingGM;
 
+    // 与 mega_moe_arch22.h 的 Init 同形：分支只负责挑 tiling 结构，字段加载统一走 LoadCommonTiling。
     if constexpr (kRoutingIsQuant) {
-        auto tiling = (__gm__ MegaMoeTilingDataQuant *)tilingGM;
         GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingDataQuant, tilingData, tilingGM);
-
-        aivNum_ = tilingData.common.aivNum;
-        m_ = tilingData.common.M;
-        k_ = tilingData.common.K;
-        n_ = tilingData.common.N;
-        epWorldSize_ = tilingData.common.worldSize;
-        topK_ = tilingData.common.topK;
-        expertPerRank_ = tilingData.common.expertPerRank;
-        // maxOutputSize 语义 = 发送侧单 chunk 接收预算 B（recvRoundBudget，host 已算好）；
-        // 接收行按 chunk 分段（numChunks * B <= maxRecvTokenNum），kernel 内逐 chunk 复用
-        maxOutputSize_ = tilingData.common.recvRoundBudget;
-        listLen_ = tilingData.common.listLen;
-
-        activationCode_ = tilingData.common.activationCode;
-        activationClamp_ = tilingData.common.activationClamp;
-        activationParams1_ = tilingData.common.activationParams1;
-        activationParams2_ = tilingData.common.activationParams2;
+        LoadCommonTiling(tilingData.common);
     } else {
-        auto tiling = (__gm__ MegaMoeTilingDataNonQuant *)tilingGM;
         GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingDataNonQuant, tilingData, tilingGM);
-
-        aivNum_ = tilingData.common.aivNum;
-        m_ = tilingData.common.M;
-        k_ = tilingData.common.K;
-        n_ = tilingData.common.N;
-        epWorldSize_ = tilingData.common.worldSize;
-        topK_ = tilingData.common.topK;
-        expertPerRank_ = tilingData.common.expertPerRank;
-        // maxOutputSize 语义 = 发送侧单 chunk 接收预算 B（recvRoundBudget，host 已算好）
-        maxOutputSize_ = tilingData.common.recvRoundBudget;
-        listLen_ = tilingData.common.listLen;
-
-        activationCode_ = tilingData.common.activationCode;
-        activationClamp_ = tilingData.common.activationClamp;
-        activationParams1_ = tilingData.common.activationParams1;
-        activationParams2_ = tilingData.common.activationParams2;
+        LoadCommonTiling(tilingData.common);
     }
 }
 
