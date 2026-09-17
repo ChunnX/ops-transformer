@@ -72,6 +72,38 @@ public:
     static constexpr uint32_t L0B_PINGPONG_BUF_SIZE = ArchTag::L0B_SIZE / L0_STAGES;
     static constexpr uint32_t L0C_PINGPONG_BUF_SIZE = ArchTag::L0C_SIZE / L0_STAGES;
 
+    // ---- Plan B: 外层大 db 里再切一层小 db ----
+    // 外层大 db 不变: L0A/L0B 每槽 32 KiB, 按 l0Stage % 2 交替。
+    // MM2 的 K=256 沿 K 拆成两个 128 微块:
+    //   L0A = P[128, 256] -> P[:, 0:128] / P[:, 128:256], 各 16 KiB
+    //   L0B = V[256, 128] -> V[0:128, :] / V[128:256, :], 各 16 KiB
+    // 两个微块读的是不同数据, 所以 A 和 B 都要内层独立的握手事件 ——
+    // MTE1_M 这条队列 A 占 0..3、B 占 4..7, 8 个 id 刚好用满。
+    // L0C 不拆: 两个微块是往同一块 L0C 累加的部分和, FixPipe 必须等两块都完,
+    // 拆了也拿不到 Cube/FixPipe 穿插, 只会多一次同步。
+    static constexpr uint32_t L0_MICRO_STAGES = 2;
+    static constexpr uint32_t L0_TILE_K_MICRO = L0_TILE_K / L0_MICRO_STAGES;
+    static constexpr uint32_t L0A_MICRO_BUF_SIZE = ArchTag::L0A_SIZE / (L0_STAGES * L0_MICRO_STAGES);
+    static constexpr uint32_t L0B_MICRO_BUF_SIZE = ArchTag::L0B_SIZE / (L0_STAGES * L0_MICRO_STAGES);
+    static constexpr uint32_t L0C_MICRO_BUF_SIZE = ArchTag::L0C_SIZE / (L0_STAGES * L0_MICRO_STAGES);
+    static_assert(L0_TILE_K % L0_MICRO_STAGES == 0, "L0 tile K must split evenly into micro slots");
+    static_assert(L0A_MICRO_BUF_SIZE >= L0_TILE_M * L0_TILE_K_MICRO * sizeof(ElementA),
+                  "L0A micro slot too small for one micro K block");
+    static_assert(L0B_MICRO_BUF_SIZE >= L0_TILE_K_MICRO * L0_TILE_N * sizeof(ElementB),
+                  "L0B micro slot too small for one micro K block");
+    // L0C 只取每 outer 的第 0 片, 但要装得下整个 partial-sum tile。
+    static_assert(L0C_MICRO_BUF_SIZE >= L0_TILE_M * L0_TILE_N * sizeof(ElementAccumulator),
+                  "L0C micro slot too small for the OTmp tile");
+    static constexpr uint32_t L0A_EVENT_BASE = 0;
+    static constexpr uint32_t L0B_EVENT_BASE = L0_STAGES * L0_MICRO_STAGES; // 4
+
+    // 事件号是运行时算出来的, 越界编译不报错只会静默跑飞, 所以在这里把预算钉死。
+    // 用到的最大的号是 L0B_EVENT_BASE + L0_STAGES * L0_MICRO_STAGES - 1 = 7,
+    // 要求 MTE1<->M 这条队列至少有 8 面旗 (Ascend950PR: __NPU_ARCH__ == 3510 时
+    // QUE_MAX_EVENT == 8)。不够就必须改设计, 不是调大数字能解决的。
+    static_assert(L0B_EVENT_BASE + L0_STAGES * L0_MICRO_STAGES <= AscendC::QUE_MAX_EVENT,
+                  "Plan B MM2 needs 8 event ids on the MTE1<->M queue; QUE_MAX_EVENT is smaller");
+
     static constexpr bool FULL_QUANT_FP8 = AscendC::IsSameType<ElementA, fp8_e4m3fn_t>::value;
     static constexpr bool FULL_QUANT_HIF8 = AscendC::IsSameType<ElementA, hifloat8_t>::value;
 
@@ -93,10 +125,17 @@ public:
                 l1BufAddrStart + l1ATileM * l1ATileK * sizeof(ElementA) * l1ABufNum +
                 l1BTileK * l1BTileN * sizeof(ElementB) * i);
         }
-        for (uint32_t i = 0; i < L0_STAGES; i++) {
-            l0ATensor[i] = resource.l0ABuf.template GetBufferByByte<ElementA>(L0A_PINGPONG_BUF_SIZE * i);
-            l0BTensor[i] = resource.l0BBuf.template GetBufferByByte<ElementB>(L0B_PINGPONG_BUF_SIZE * i);
-            l0CTensor[i] = resource.l0CBuf.template GetBufferByByte<ElementAccumulator>(L0C_PINGPONG_BUF_SIZE * i);
+        // L0A/L0B 按小槽切: 下标 = outerId * L0_MICRO_STAGES + microK, 偏移即
+        // outerId * 大槽 + microK * 小槽, 正好等于小槽大小的线性递推。
+        for (uint32_t i = 0; i < L0_STAGES * L0_MICRO_STAGES; i++) {
+            l0ATensor[i] = resource.l0ABuf.template GetBufferByByte<ElementA>(L0A_MICRO_BUF_SIZE * i);
+            l0BTensor[i] = resource.l0BBuf.template GetBufferByByte<ElementB>(L0B_MICRO_BUF_SIZE * i);
+        }
+        // L0C 也切成 4 片, 但 MM2 只取每 outer 的第 0 片 (K 的两半累加在同一块里,
+        // 没有内层可言)。外层槽 stride 从 128 KiB 收到 64 KiB, 与 MM1 的 L0C 布局
+        // 对齐 —— 否则两个 MM 会用两套粒度盖同一片物理空间。
+        for (uint32_t i = 0; i < L0_STAGES * L0_MICRO_STAGES; i++) {
+            l0CTensor[i] = resource.l0CBuf.template GetBufferByByte<ElementAccumulator>(L0C_MICRO_BUF_SIZE * i);
         }
     }
 
@@ -200,9 +239,12 @@ public:
         using CopyL0CToDst = typename TileCopy_::template CopyL0CToDst<TensorC>;
 
         const uint32_t bufId = static_cast<uint32_t>(l0Stage++ % L0_STAGES);
-        const uint32_t l0AEventId = bufId;
-        const uint32_t l0BEventId = bufId + 2;
-        const uint32_t l0CEventId = bufId;
+        // 内层小槽的事件: 下标 = 基址 + bufId * L0_MICRO_STAGES + microK。
+        // MTE1_M 这条队列里 L0A 占 0..3、L0B 占 4..7 (K 的两半读不同数据, 都要独立握手);
+        // L0C 走 M_FIX/FIX_M 另一条队列, 只取每 outer 的第 0 片, 号是 0 和 2。
+        const uint32_t l0AMicroBase = L0A_EVENT_BASE + bufId * L0_MICRO_STAGES;
+        const uint32_t l0BMicroBase = L0B_EVENT_BASE + bufId * L0_MICRO_STAGES;
+        const uint32_t l0CEventId = bufId * L0_MICRO_STAGES;
 
         uint32_t rowNum = actualOriShape[0];
         uint32_t embed = actualOriShape[1];
@@ -236,7 +278,7 @@ public:
         for (uint32_t nL0Itr = 0; nL0Itr < nL0LoopNum; nL0Itr++) {
             uint32_t l0TileNAct = (nL0Itr == nL0LoopNum - 1) ? (embed - nL0Itr * L0_TILE_N) : L0_TILE_N;
             auto l0CLayoutTla = tla::MakeLayoutL0C(rowNum, l0TileNAct);
-            auto l0CTensorTla = tla::MakeTensor(l0CTensor[bufId], l0CLayoutTla, Arch::PositionL0C{});
+            auto l0CTensorTla = tla::MakeTensor(l0CTensor[l0CEventId], l0CLayoutTla, Arch::PositionL0C{});
             for (uint32_t mL0Itr = 0; mL0Itr < mL0LoopNum; mL0Itr++) {
                 uint32_t l0TileMAct = (mL0Itr == mL0LoopNum - 1) ? (rowNum - mL0Itr * L0_TILE_M) : L0_TILE_M;
                 // uint32_t mLoopCounter = GetCurLoopCounter(gatheredKvSTileIdx, mL0LoopNum, mL0Itr);
@@ -246,49 +288,68 @@ public:
                 for (uint32_t kL0Itr = 0; kL0Itr < kL0LoopNum; kL0Itr++) {
                     uint32_t l0TileKAct =
                         (kL0Itr == kL0LoopNum - 1) ? (curBaseTileSize - kL0Itr * L0_TILE_K) : L0_TILE_K;
-                    // when L0B buffers wouldn't be reused across the k loop
-                    // redundant L0B load caused by m loop can be avoided
-                    auto l1BTensorTlaTile =
-                        GetTile(l1BTensorTla, tla::MakeCoord(kL0Itr * L0_TILE_K, nL0Itr * L0_TILE_N),
-                                tla::MakeShape(l0TileKAct, l0TileNAct));
-                    auto l0BLayoutTla = tla::MakeLayout<ElementB, LayoutTagL0B>(l0TileKAct, l0TileNAct);
-                    auto l0BTensorTla = tla::MakeTensor(l0BTensor[bufId], l0BLayoutTla, Arch::PositionL0B{});
+                    uint32_t kMicroLoopNum = CeilDiv(l0TileKAct, L0_TILE_K_MICRO);
+                    for (uint32_t microK = 0; microK < kMicroLoopNum; microK++) {
+                        uint32_t microKAct = (microK == kMicroLoopNum - 1)
+                                                 ? (l0TileKAct - microK * L0_TILE_K_MICRO)
+                                                 : L0_TILE_K_MICRO;
+                        uint32_t microKOffset = kL0Itr * L0_TILE_K + microK * L0_TILE_K_MICRO;
+                        // 小槽按下标取。取模是为了 curBaseTileSize 超过一个 L0_TILE_K 时
+                        // 仍只在已分配的小槽里轮转, 不越界; 槽内的 M_MTE1/MTE1_M 握手序
+                        // 保证复用同一小槽时不会写读打架。
+                        const uint32_t l0AEventId = l0AMicroBase + microK % L0_MICRO_STAGES;
+                        // L0A 事件基址 0, 事件号即缓冲片下标; L0B 基址 4, 两者要分开。
+                        const uint32_t l0BSlot = bufId * L0_MICRO_STAGES + microK % L0_MICRO_STAGES;
+                        const uint32_t l0BEventId = l0BMicroBase + microK % L0_MICRO_STAGES;
+                        bool lastK = (kL0Itr == kL0LoopNum - 1) && (microK == kMicroLoopNum - 1);
 
-                    AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
-                    copyL1ToL0B(l0BTensorTla, l1BTensorTlaTile);
-                    AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0BEventId);
+                        // when L0B buffers wouldn't be reused across the k loop
+                        // redundant L0B load caused by m loop can be avoided
+                        auto l1BTensorTlaTile =
+                            GetTile(l1BTensorTla, tla::MakeCoord(microKOffset, nL0Itr * L0_TILE_N),
+                                    tla::MakeShape(microKAct, l0TileNAct));
+                        auto l0BLayoutTla = tla::MakeLayout<ElementB, LayoutTagL0B>(microKAct, l0TileNAct);
+                        auto l0BTensorTla =
+                            tla::MakeTensor(l0BTensor[l0BSlot], l0BLayoutTla, Arch::PositionL0B{});
 
-                    if ((mL0Itr == mL0LoopNum - 1) && (nL0Itr == nL0LoopNum - 1) && (kL0Itr == kL0LoopNum - 1)) {
-                        AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(l1BEventId);
+                        AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
+                        copyL1ToL0B(l0BTensorTla, l1BTensorTlaTile);
+                        AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0BEventId);
+
+                        if ((mL0Itr == mL0LoopNum - 1) && (nL0Itr == nL0LoopNum - 1) && lastK) {
+                            AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(l1BEventId);
+                        }
+
+                        auto l1ATensorTlaTile =
+                            GetTile(l1ATensorTla, tla::MakeCoord(mL0Itr * L0_TILE_M, microKOffset),
+                                    tla::MakeShape(l0TileMAct, microKAct));
+                        auto l0ALayoutTla = tla::MakeLayout<ElementA, LayoutTagL0A>(l0TileMAct, microKAct);
+                        auto l0ATensorTla =
+                            tla::MakeTensor(l0ATensor[l0AEventId], l0ALayoutTla, Arch::PositionL0A{});
+
+                        AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0AEventId);
+                        copyL1ToL0A(l0ATensorTla, l1ATensorTlaTile);
+                        AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0AEventId);
+                        // reverse crossCoreSync for P
+                        if ((mL0Itr == mL0LoopNum - 1) && (nL0Itr == nL0LoopNum - 1) && lastK) {
+                            SetCrossCoreSync<4, PIPE_MTE1>(smToMm2Flag);
+                        }
+
+                        // 只有整条 K 的第一个微块 init; 后面都往同一块 L0C 上累加。
+                        bool initMmad = (kL0Itr == 0) && (microK == 0);
+                        uint32_t l0TileMAligned = RoundUp(l0TileMAct, 16);
+                        AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0AEventId);
+
+                        AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0BEventId);
+
+                        if (mL0Itr == 0 && kL0Itr == 0 && microK == 0) {
+                            AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
+                        }
+                        tileMmad(l0CTensorTlaTile, l0ATensorTla, l0BTensorTla, l0TileMAligned, l0TileNAct, microKAct,
+                                 initMmad);
+                        AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0AEventId);
+                        AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
                     }
-
-                    auto l1ATensorTlaTile =
-                        GetTile(l1ATensorTla, tla::MakeCoord(mL0Itr * L0_TILE_M, kL0Itr * L0_TILE_K),
-                                tla::MakeShape(l0TileMAct, l0TileKAct));
-                    auto l0ALayoutTla = tla::MakeLayout<ElementA, LayoutTagL0A>(l0TileMAct, l0TileKAct);
-                    auto l0ATensorTla = tla::MakeTensor(l0ATensor[bufId], l0ALayoutTla, Arch::PositionL0A{});
-
-                    AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0AEventId);
-                    copyL1ToL0A(l0ATensorTla, l1ATensorTlaTile);
-                    AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0AEventId);
-                    // reverse crossCoreSync for P
-                    if ((mL0Itr == mL0LoopNum - 1) && (nL0Itr == nL0LoopNum - 1) && (kL0Itr == kL0LoopNum - 1)) {
-                        SetCrossCoreSync<4, PIPE_MTE1>(smToMm2Flag);
-                    }
-
-                    bool initMmad = (kL0Itr == 0);
-                    uint32_t l0TileMAligned = RoundUp(l0TileMAct, 16);
-                    AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0AEventId);
-
-                    AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0BEventId);
-
-                    if (mL0Itr == 0 && kL0Itr == 0) {
-                        AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
-                    }
-                    tileMmad(l0CTensorTlaTile, l0ATensorTla, l0BTensorTla, l0TileMAligned, l0TileNAct, l0TileKAct,
-                             initMmad);
-                    AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0AEventId);
-                    AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
                 }
             }
             // fixpipe
@@ -325,9 +386,9 @@ protected:
     /// Data members
     AscendC::LocalTensor<ElementA> l1ATensor[MAX_L1_STAGES];
     AscendC::LocalTensor<ElementB> l1BTensor[MAX_L1_STAGES];
-    AscendC::LocalTensor<ElementA> l0ATensor[L0_STAGES];
-    AscendC::LocalTensor<ElementB> l0BTensor[L0_STAGES];
-    AscendC::LocalTensor<ElementAccumulator> l0CTensor[L0_STAGES];
+    AscendC::LocalTensor<ElementA> l0ATensor[L0_STAGES * L0_MICRO_STAGES];
+    AscendC::LocalTensor<ElementB> l0BTensor[L0_STAGES * L0_MICRO_STAGES];
+    AscendC::LocalTensor<ElementAccumulator> l0CTensor[L0_STAGES * L0_MICRO_STAGES];
 
     TileMmad tileMmad;
     CopyL1ToL0A copyL1ToL0A;
