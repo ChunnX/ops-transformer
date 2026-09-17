@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 #pragma once
+using namespace AscendC;
 
 namespace BSA_ARC35 {
 
@@ -43,6 +44,10 @@ struct ConstInfo {
 };
 
 struct RunTimeInfo {
+    int64_t queryGmOffset{0}; // query gm offset
+    int64_t keyGmOffset{0};   // key gm offset
+    int64_t lseGmOffset{0};   // lse gm offset
+    int64_t sftgGmOffset{0};  // softmaxGradFront gm offset
     int32_t taskId{0};
     int32_t bIdx{0};  // 当前计算的batch的idx
     int32_t n1Idx{0}; // 当前计算的q_head的idx
@@ -50,21 +55,19 @@ struct RunTimeInfo {
     int32_t s1Idx{0}; // 当前计算的q_seq的起始idx
     int32_t s2Idx{0}; // 当前计算的kv_seq的起始idx
     int32_t last_q_seq_sum{0};
-    int32_t last_kv_seq_sum{0};
     int32_t cur_q_seq_len{0};
-    int32_t cur_kv_seq_len{0};
-    int32_t need_compute{0};     // 是否存在任务需要计算
-    int32_t need_copy_kv{0};     // 是否需要copy kv
+    int32_t need_compute{0}; // 是否存在任务需要计算
+    int32_t is_kv_end{0};
+    int32_t is_kv_change{0};
     int32_t kv_ping_pong_idx{0}; // kv的ping pong idx
+    int32_t last_kv_seq_sum{0};
+    int32_t cur_kv_seq_len{0};
+    int32_t need_copy_kv{0}; // 是否需要copy kv
     int32_t is_singlekv_last{0};
-    int64_t s1Len{0};         // 当前计算的q_seq的长度
-    int64_t s2Len{0};         // 当前计算的kv_seq的长度
-    int64_t s1LenAlign{0};    // 当前计算的q_seq的16对齐的长度
-    int64_t s2LenAlign{0};    // 当前计算的kv_seq的16对齐的长度
-    int64_t queryGmOffset{0}; // query gm offset
-    int64_t keyGmOffset{0};   // key gm offset
-    int64_t lseGmOffset{0};   // lse gm offset
-    int64_t sftgGmOffset{0};  // softmaxGradFront gm offset
+    int64_t s1Len{0};      // 当前计算的q_seq的长度
+    int64_t s2Len{0};      // 当前计算的kv_seq的长度
+    int64_t s1LenAlign{0}; // 当前计算的q_seq的16对齐的长度
+    int64_t s2LenAlign{0}; // 当前计算的kv_seq的16对齐的长度
 };
 
 __aicore__ inline int64_t IMin(int64_t a, int64_t b)
@@ -174,6 +177,54 @@ __aicore__ inline bool IsValidBlock(const ConstInfo &const_info, const int64_t b
                      n1_idx * (const_info.q_block_num * const_info.kv_block_num) +
                      kv_block_idx * const_info.q_block_num + q_block_idx;
     bool is_valid = block_sparse_mask[offset];
+    return is_valid;
+}
+
+__aicore__ inline bool IsValidBlock(const uint64_t (&mask_uint64)[2], const uint32_t pos)
+
+{
+    uint64_t mask_list = pos < 8 ? mask_uint64[0] : mask_uint64[1];
+    uint32_t idx = pos < 8 ? pos : pos - 8;
+    uint8_t byte = (uint8_t)(mask_list >> (idx * 8));
+    return byte;
+}
+
+__aicore__ inline bool IsValidBlockUint64(const ConstInfo &const_info, const int32_t batch_idx, const int32_t n1_idx,
+                                          const int32_t q_block_idx, const int32_t kv_block_idx,
+                                          __gm__ uint8_t *block_sparse_mask, uint32_t &first_one_pos,
+                                          bool hit_core_block, bool last_loop, uint64_t (&mask_uint64)[2])
+
+{
+    bool is_valid = false;
+    int64_t offset = batch_idx * (const_info.q_head_num * const_info.q_block_num * const_info.kv_block_num) +
+                     n1_idx * (const_info.q_block_num * const_info.kv_block_num) +
+                     kv_block_idx * const_info.q_block_num + q_block_idx;
+    offset = offset / 8;
+    uint64_t mask_list = ((__gm__ uint64_t *)block_sparse_mask)[offset];
+
+    if (mask_list == 0) {
+        return false;
+    }
+
+    if (!hit_core_block) {
+        return true;
+    }
+
+    for (int i = 0; i < 8; ++i) {
+        uint8_t byte = (uint8_t)(mask_list >> (i * 8));
+        if (byte == 1) {
+            is_valid = true;
+            first_one_pos = i;
+            mask_uint64[0] = mask_list;
+            if (!last_loop) {
+                mask_uint64[1] = ((__gm__ uint64_t *)block_sparse_mask)[offset + 1];
+            } else {
+                mask_uint64[1] = 0;
+            }
+            break;
+        }
+    }
+
     return is_valid;
 }
 

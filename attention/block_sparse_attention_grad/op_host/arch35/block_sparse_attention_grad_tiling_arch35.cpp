@@ -7,6 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
+#pragma once
 #include "err/ops_err.h"
 #include "log/log.h"
 #include "op_host/tiling_base.h"
@@ -14,6 +15,7 @@
 #include "tiling/platform/platform_ascendc.h"
 #include "../block_sparse_attention_grad_tiling.h"
 #include <algorithm>
+#include "non_zero_tiling_arch35.h"
 
 namespace optiling {
 namespace BSA_ARC35 {
@@ -21,6 +23,11 @@ namespace BSA_ARC35 {
 int64_t AlignTo(int64_t x, int64_t align)
 {
     return (x + align - 1) / align * align;
+}
+
+int64_t CeilDiv(int64_t x, int64_t align)
+{
+    return AlignTo(x, align) / align;
 }
 
 template <typename... Args>
@@ -250,6 +257,25 @@ protected:
         uint32_t singleM = AlignTo(2048, baseM_);
         // Keep all Q tiles for the current KV block/head on one cube core when
         // possible so DK/DV can accumulate in L0 and K/V stays cached in L1.
+        x_block_num_ = CeilDiv(q_seq_len_, blockShapeX_);
+        y_block_num_ = CeilDiv(kv_seq_len_, blockShapeY_);
+
+        if (UseNonZeroIndex()) {
+            uint64_t vecCoreNum = ascendcPlatform.GetCoreNumAiv();
+            uint64_t vecRegLen = ascendcPlatform.GetVecRegLen();
+            uint64_t ubSize;
+            ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
+            NonZeroAscendCTilingImpl tilingImpl = NonZeroAscendCTilingImpl(context_);
+
+            if (tilingImpl.DoTiling(vecCoreNum, ubSize, vecRegLen, tilingData_.mNonZeroTilingData) !=
+                ge::GRAPH_SUCCESS) {
+                // NonZero tiling 不支持该 shape 时回退到 master 的经典遍历路径，避免功能回退
+                OP_LOGW(context_->GetNodeName(), "Tiling4NonZero do tiling failed, fallback to classic path.");
+                useNonZeroIndex_ = false;
+            } else {
+                useNonZeroIndex_ = true;
+            }
+        }
 
         tilingData_.set_BlockX(blockShapeX_);
         tilingData_.set_BlockY(blockShapeY_);
@@ -298,6 +324,14 @@ protected:
 
         tilingData_.set_dqSize(dq_size);
         tilingData_.set_dkSize(dk_size);
+        if (useNonZeroIndex_) {
+            uint64_t block_sparse_mask_size =
+                static_cast<uint64_t>(batch_num_) * q_head_num_ * x_block_num_ * y_block_num_;
+            tilingData_.set_indexWorkspaceOffset(usr_workspace_offset);
+            usr_workspace_offset += block_sparse_mask_size * sizeof(int32_t);
+            tilingData_.set_indexShapeWorkspaceOffset(usr_workspace_offset);
+            usr_workspace_offset += 512;
+        }
         tilingData_.set_sftgWorkspaceOffset(usr_workspace_offset);
         usr_workspace_offset += sftg_size * sizeof(float);
         tilingData_.set_dqWorkspaceOffset(usr_workspace_offset);
@@ -334,7 +368,13 @@ protected:
          *  1011: FP16 BNSD DET
          *  1100: BF16 TND  DET
          *  1101: FP16 TND  DET
+         *  1020: FP16 BNSD NonZero-index (host 预生成 block index，非确定性)
          */
+        // NonZero index 路径使用独立 tiling key，保证其余 key 与 master 行为完全一致
+        if (useNonZeroIndex_) {
+            return 1020;
+        }
+
         default_key = (dataType_ == ge::DT_BF16) ? default_key : default_key + 0b001;
 
         if (strcmp(layout_, BSND_STR) == 0) {
@@ -353,6 +393,15 @@ protected:
     }
 
 private:
+    // 仅 FP16 + BNSD + 非确定 这一路走 host 预生成 block index 的 NonZero 优化路径
+    bool UseNonZeroIndex() const
+    {
+        return dataType_ == ge::DT_FLOAT16 && strcmp(layout_, BNSD_STR) == 0 && !deterministic_;
+    }
+
+    // NonZero tiling 是否真正生效（tiling 失败时回退到 master 经典路径）
+    bool useNonZeroIndex_ = false;
+
     const char *layout_;
     ge::DataType dataType_;
     uint64_t tilingKey_ = 1000; // arc35 默认tilingkey从1000开始
@@ -369,6 +418,8 @@ private:
     int32_t head_dim_ = 0;
     int32_t blockShapeX_ = 0;
     int32_t blockShapeY_ = 0;
+    int32_t x_block_num_ = 0;
+    int32_t y_block_num_ = 0;
     int32_t max_q_seq_len_ = 0;
     int32_t max_kv_seq_len_ = 0;
     bool deterministic_ = false;
