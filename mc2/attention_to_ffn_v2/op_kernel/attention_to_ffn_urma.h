@@ -126,7 +126,7 @@ private:
     __aicore__ inline void HcommInit();
     __aicore__ inline void ReadTokenMetaData(AttentionToFfnTokenMetaData &metaData, uint32_t tokenOffset);
     __aicore__ inline GM_ADDR GetWindowAddr(int32_t rankId);
-    __aicore__ inline uint64_t GetUrmaCommHandle(uint32_t dstRank);
+    __aicore__ inline uint64_t GetUrmaCommHandle(uint32_t dstRank, uint32_t channelIndex = 0U);
     __aicore__ inline void CopyTokenDataToGM(const AttentionToFfnTokenMetaData &metaData, GM_ADDR targetAddr,
                                              const DataCopyExtParams &xCopyParams);
     __aicore__ inline void SendToLocal(const AttentionToFfnTokenMetaData &metaData,
@@ -139,6 +139,7 @@ private:
                                                  uint32_t sourceTokenOffset, bool enableCqe);
     __aicore__ inline void CommitAndDrainChannel(HcommBatchHandle &batchHandle, uint64_t channel,
                                                  uint32_t &preparedWqeCount, uint32_t &sqWriteCount);
+    __aicore__ inline void RelayRemoteTokens(uint32_t dstRank, uint32_t channelIdx);
     __aicore__ inline void FindExpertRank(int32_t expertId);
     __aicore__ inline void QuantInit(GM_ADDR scales);
     __aicore__ inline void QuantProcess(uint32_t expertIndex);
@@ -223,6 +224,7 @@ private:
     uint32_t infoTableLastDimNum_{0};
     uint32_t aivNum_{0};
     uint32_t worldSize_{0};
+    uint32_t channelsPerRank_{1};
     uint32_t ffnNum_{0};
     uint32_t ffnStartRankId_{0};
     uint32_t sessionId_{0};
@@ -276,6 +278,11 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::I
     infoTableLastDimNum_ = tilingData->attentionToFfnV2Info.infoTableLastDimNum;
     aivNum_ = tilingData->attentionToFfnV2Info.aivNum;
     worldSize_ = tilingData->attentionToFfnV2Info.worldSize;
+    channelsPerRank_ = mc2Context_->channelsPerRank;
+    if (worldSize_ == 0U || channelsPerRank_ == 0U ||
+        channelsPerRank_ > Mc2Aclnn::HCCL_MAX_RANK_SIZE / worldSize_) {
+        channelsPerRank_ = 1U;
+    }
     quantMode_ = tilingData->attentionToFfnV2Info.quantMode;
     isScales_ = tilingData->attentionToFfnV2Info.isScales;
     ffnStartRankId_ = tilingData->attentionToFfnV2Info.ffnStartRankId;
@@ -622,10 +629,10 @@ __aicore__ inline GM_ADDR AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>
 }
 
 template <TemplateAttentionToFfnUrmaTypeClass>
-__aicore__ inline uint64_t AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::GetUrmaCommHandle(uint32_t dstRank)
+__aicore__ inline uint64_t AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::GetUrmaCommHandle(
+    uint32_t dstRank, uint32_t channelIndex)
 {
-    uint32_t index = dstRank > rankId_ ? dstRank - 1U : dstRank;
-    return mc2Context_->hcommHandle_[index];
+    return mc2Context_->hcommHandle_[dstRank * channelsPerRank_ + channelIndex];
 }
 
 template <TemplateAttentionToFfnUrmaTypeClass>
@@ -755,6 +762,81 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::C
 }
 
 template <TemplateAttentionToFfnUrmaTypeClass>
+__aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::RelayRemoteTokens(uint32_t dstRank,
+                                                                                                 uint32_t channelIdx)
+{
+    GM_ADDR toRankAddr = GetWindowAddr(static_cast<int32_t>(dstRank));
+    uint64_t channel = GetUrmaCommHandle(dstRank, channelIdx);
+    HcommBatchHandle batchHandle =
+        hcomm_.MakeBatchHandle(channel, hcommBatchWqeTensor_, ATTN_FFN_HCOMM_BATCH_UB_BYTES, toRankAddr);
+    uint32_t preparedWqeCount = 0U;
+    uint32_t sqWriteCount = 0U;
+    const uint64_t elementSize = (QuantMode != 0) ? sizeof(XOutType) : sizeof(XType);
+
+    // Data phase: a token whose index within dstRank (rankTokenIdx) is congruent to channelIdx
+    // is sent on this channel. All data WQEs of the channel are appended first.
+    uint32_t rankTokenIdx = 0U;
+    for (uint32_t tokenOffset = 0U; tokenOffset < totalSendNum_; ++tokenOffset) {
+        uint32_t scratchAiv = tokenOffset % aivNum_;
+        uint32_t scratchJ = tokenOffset / aivNum_;
+        uint32_t ubIdx = scratchAiv * maxTokensPerAiv_ + scratchJ;
+        int32_t tokenRankId = tokenRankScratchTensor_.GetValue(ubIdx);
+        if (tokenRankId == static_cast<int32_t>(dstRank)) {
+            if (rankTokenIdx % channelsPerRank_ == channelIdx) {
+                uint32_t tokenId = tokenOffset / (axisK_ + sharedExpertNum_);
+                uint32_t topkId = tokenOffset % (axisK_ + sharedExpertNum_);
+                uint64_t tokenDataOffset = winTokenDataOffset_ +
+                                           (static_cast<uint64_t>(tokenId) * (axisK_ + sharedExpertNum_) * axisHS_) +
+                                           (static_cast<uint64_t>(topkId) * axisHS_);
+                GM_ADDR remoteDataAddr = toRankAddr + winOffset_[1] + tokenDataOffset * elementSize;
+                GM_ADDR localDataAddr = stagingBaseAddr_ + static_cast<uint64_t>(tokenOffset) * stagingStride_;
+                const bool enableCqe = sqWriteCount + 1U >= HCOMM_SQ_MAX_PENDING;
+                AppendRemoteDataWrite(batchHandle, remoteDataAddr, localDataAddr, enableCqe);
+                ++preparedWqeCount;
+                ++sqWriteCount;
+                if (enableCqe) {
+                    CommitAndDrainChannel(batchHandle, channel, preparedWqeCount, sqWriteCount);
+                } else if (preparedWqeCount == URMA_BATCH_WQE_CAPACITY) {
+                    hcomm_.BatchCommit(batchHandle);
+                    preparedWqeCount = 0U;
+                }
+            }
+            ++rankTokenIdx;
+        }
+    }
+
+    // Flag phase: the same tokens on the same channel, appended after the data WQEs so each
+    // per-token flag lands after its data via in-channel WQE ordering.
+    rankTokenIdx = 0U;
+    for (uint32_t tokenOffset = 0U; tokenOffset < totalSendNum_; ++tokenOffset) {
+        uint32_t scratchAiv = tokenOffset % aivNum_;
+        uint32_t scratchJ = tokenOffset / aivNum_;
+        uint32_t ubIdx = scratchAiv * maxTokensPerAiv_ + scratchJ;
+        int32_t tokenRankId = tokenRankScratchTensor_.GetValue(ubIdx);
+        if (tokenRankId == static_cast<int32_t>(dstRank)) {
+            if (rankTokenIdx % channelsPerRank_ == channelIdx) {
+                GM_ADDR remoteFlagAddr = toRankAddr + winInfoTableOffset_ +
+                                         (TOKEN_INFO_TABLE_RS + tokenOffset) * sizeof(int32_t);
+                const bool enableCqe = sqWriteCount + 1U >= HCOMM_SQ_MAX_PENDING;
+                AppendRemoteFlagWrite(batchHandle, remoteFlagAddr, tokenOffset, enableCqe);
+                ++preparedWqeCount;
+                ++sqWriteCount;
+                if (enableCqe) {
+                    CommitAndDrainChannel(batchHandle, channel, preparedWqeCount, sqWriteCount);
+                } else if (preparedWqeCount == URMA_BATCH_WQE_CAPACITY) {
+                    hcomm_.BatchCommit(batchHandle);
+                    preparedWqeCount = 0U;
+                }
+            }
+            ++rankTokenIdx;
+        }
+    }
+    if (preparedWqeCount != 0U) {
+        hcomm_.BatchCommit(batchHandle);
+    }
+}
+
+template <TemplateAttentionToFfnUrmaTypeClass>
 __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::ActiveMaskCalCnt()
 {
     LocalTensor<bool> activeMaskTensor = activeMaskBuf_.Get<bool>();
@@ -854,6 +936,15 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::S
             DataCopyPad(tableFlagGMTensor, statusTensor_, statusParams);
             PipeBarrier<PIPE_MTE3>();
         } else {
+            // Multi-channel relay: the layer flag WQE is only ordered after WQEs on its own
+            // channel (channel 0), so drain the extra channels first to guarantee the flag
+            // lands after every channel's data and per-token flags. With channelsPerRank_ == 1
+            // the loop body never runs and the flag keeps pure in-channel ordering.
+            for (uint32_t channelIdx = 1U; channelIdx < channelsPerRank_; ++channelIdx) {
+                int32_t drainRet = hcomm_.Drain(GetUrmaCommHandle(ffnIdx, channelIdx));
+                ascendc_assert(drainRet == 0, "Urma drain before layer flag failed, ret=%d, rankId=%u, dstRank=%u",
+                               drainRet, rankId_, ffnIdx);
+            }
             uint64_t channel = GetUrmaCommHandle(ffnIdx);
             HcommBatchHandle batchHandle =
                 hcomm_.MakeBatchHandle(channel, hcommBatchWqeTensor_, ATTN_FFN_HCOMM_BATCH_UB_BYTES,
@@ -950,74 +1041,28 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::P
         PipeBarrier<PIPE_MTE3>();
         SyncAll<true>();
 
-        if (aivId_ == 0U) {
+        // Multi-channel relay phase: every AIV re-reads the token-rank scratch and relays the
+        // (dstRank, channel) slots assigned to it (slot = dstRank * channelsPerRank_ + channelIdx,
+        // slot % aivNum_ == aivId_). A token's rank index decides its channel, and its data WQE
+        // and flag WQE share that channel, so per-token flag ordering is preserved while
+        // multiple AIVs and channels submit in parallel.
+        {
             uint32_t scratchTotalEntries = aivNum_ * maxTokensPerAiv_;
             DataCopyExtParams scratchCopyParams = {1U, static_cast<uint32_t>(scratchTotalEntries * sizeof(int32_t)), 0U, 0U, 0U};
             DataCopyPadExtParams<int32_t> scratchCopyPadParams{false, 0U, 0U, 0U};
             DataCopyPad(tokenRankScratchTensor_, tokenRankScratchGMTensor_, scratchCopyParams, scratchCopyPadParams);
             SyncFunc<AscendC::HardEvent::MTE2_S>();
 
-            const uint64_t elementSize = (QuantMode != 0) ? sizeof(XOutType) : sizeof(XType);
             for (uint32_t dstRank = 0U; dstRank < worldSize_; ++dstRank) {
                 if (dstRank == rankId_) {
                     continue;
                 }
-                GM_ADDR toRankAddr = GetWindowAddr(static_cast<int32_t>(dstRank));
-                uint64_t channel = GetUrmaCommHandle(dstRank);
-                HcommBatchHandle batchHandle =
-                    hcomm_.MakeBatchHandle(channel, hcommBatchWqeTensor_, ATTN_FFN_HCOMM_BATCH_UB_BYTES,
-                                           toRankAddr);
-                uint32_t preparedWqeCount = 0U;
-                uint32_t sqWriteCount = 0U;
-                for (uint32_t tokenOffset = 0U; tokenOffset < totalSendNum_; ++tokenOffset) {
-                    uint32_t scratchAiv = tokenOffset % aivNum_;
-                    uint32_t scratchJ = tokenOffset / aivNum_;
-                    uint32_t ubIdx = scratchAiv * maxTokensPerAiv_ + scratchJ;
-                    int32_t tokenRankId = tokenRankScratchTensor_.GetValue(ubIdx);
-                    if (tokenRankId != static_cast<int32_t>(dstRank)) {
+                for (uint32_t channelIdx = 0U; channelIdx < channelsPerRank_; ++channelIdx) {
+                    uint32_t slot = dstRank * channelsPerRank_ + channelIdx;
+                    if (slot % aivNum_ != aivId_) {
                         continue;
                     }
-                    uint32_t tokenId = tokenOffset / (axisK_ + sharedExpertNum_);
-                    uint32_t topkId = tokenOffset % (axisK_ + sharedExpertNum_);
-                    uint64_t tokenDataOffset = winTokenDataOffset_ +
-                                               (static_cast<uint64_t>(tokenId) * (axisK_ + sharedExpertNum_) * axisHS_) +
-                                               (static_cast<uint64_t>(topkId) * axisHS_);
-                    GM_ADDR remoteDataAddr = toRankAddr + winOffset_[1] + tokenDataOffset * elementSize;
-                    GM_ADDR localDataAddr = stagingBaseAddr_ + static_cast<uint64_t>(tokenOffset) * stagingStride_;
-                    const bool enableCqe = sqWriteCount + 1U >= HCOMM_SQ_MAX_PENDING;
-                    AppendRemoteDataWrite(batchHandle, remoteDataAddr, localDataAddr, enableCqe);
-                    ++preparedWqeCount;
-                    ++sqWriteCount;
-                    if (enableCqe) {
-                        CommitAndDrainChannel(batchHandle, channel, preparedWqeCount, sqWriteCount);
-                    } else if (preparedWqeCount == URMA_BATCH_WQE_CAPACITY) {
-                        hcomm_.BatchCommit(batchHandle);
-                        preparedWqeCount = 0U;
-                    }
-                }
-                for (uint32_t tokenOffset = 0U; tokenOffset < totalSendNum_; ++tokenOffset) {
-                    uint32_t scratchAiv = tokenOffset % aivNum_;
-                    uint32_t scratchJ = tokenOffset / aivNum_;
-                    uint32_t ubIdx = scratchAiv * maxTokensPerAiv_ + scratchJ;
-                    int32_t tokenRankId = tokenRankScratchTensor_.GetValue(ubIdx);
-                    if (tokenRankId != static_cast<int32_t>(dstRank)) {
-                        continue;
-                    }
-                    GM_ADDR remoteFlagAddr = toRankAddr + winInfoTableOffset_ +
-                                             (TOKEN_INFO_TABLE_RS + tokenOffset) * sizeof(int32_t);
-                    const bool enableCqe = sqWriteCount + 1U >= HCOMM_SQ_MAX_PENDING;
-                    AppendRemoteFlagWrite(batchHandle, remoteFlagAddr, tokenOffset, enableCqe);
-                    ++preparedWqeCount;
-                    ++sqWriteCount;
-                    if (enableCqe) {
-                        CommitAndDrainChannel(batchHandle, channel, preparedWqeCount, sqWriteCount);
-                    } else if (preparedWqeCount == URMA_BATCH_WQE_CAPACITY) {
-                        hcomm_.BatchCommit(batchHandle);
-                        preparedWqeCount = 0U;
-                    }
-                }
-                if (preparedWqeCount != 0U) {
-                    hcomm_.BatchCommit(batchHandle);
+                    RelayRemoteTokens(dstRank, channelIdx);
                 }
             }
         }
