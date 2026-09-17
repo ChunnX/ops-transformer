@@ -41,8 +41,8 @@ struct StageTwoParams {
     GlobalTensor<highType> finalState; // (Nv, Dv, Dk)  highType（CalStateNew atomic add 目标）
     GlobalTensor<lowType> kg;          // (Nv, Sp, Dk)
     GlobalTensor<highType> attnInter;  // (Sp, Nv, Dv)  highType（CalAttnInter 覆盖写目标）
-    GlobalTensor<lowType> bf16State;   // (Nv, Dv, Dk)  state 的 lowType 影子（CalVPrime/CalAttnInter 的 B 输入）
-    GlobalTensor<lowType> bf16VNew;    // (Nv, Sp, Dv)  v_new 的 lowType 影子（CalStateNew 的 A 输入）
+    GlobalTensor<lowType> bf16State; // (Nv, Dv, Dk)  state 的 lowType 影子（CalVPrime/CalAttnInter 的 B 输入）
+    GlobalTensor<lowType> bf16VNew;  // (Nv, Sp, Dv)  v_new 的 lowType 影子（CalStateNew 的 A 输入）
     GM_ADDR ws;
     StageTwoMT<lowType, highType> *mm1;
     TPipe *pipe;
@@ -131,8 +131,7 @@ public:
                     uint64_t mmOffset1 = nvId * Sp_ * Dv_ + length * Dv_;
                     uint64_t attnInterOffset = nvId * Dv_ + length * Nv_ * Dv_;
                     CrossCoreWaitFlag(0x6);
-                    CalVPrime(sTP_->kCumdecay[mmOffset0], sTP_->bf16State[nvId * Dv_ * Dk_],
-                              sTP_->vInner[mmOffset1]);
+                    CalVPrime(sTP_->kCumdecay[mmOffset0], sTP_->bf16State[nvId * Dv_ * Dk_], sTP_->vInner[mmOffset1]);
                     CalAttnInter(sTP_->qPrime[mmOffset0], sTP_->bf16State[nvId * Dv_ * Dk_],
                                  sTP_->attnInter[attnInterOffset]);
                     CrossCoreSetFlag<0x2, PIPE_FIX>(0x2);
@@ -149,9 +148,8 @@ public:
     __aicore__ inline void CalGCumExp(GlobalTensor<highType> gCum)
     {
         if constexpr (hasG) {
-            DataCacheCleanAndInvalid<highType,
-                                     CacheLine::SINGLE_CACHE_LINE,
-                                     DcciDst::CACHELINE_OUT>(gCum[curChunkSize_ - 1]);
+            DataCacheCleanAndInvalid<highType, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
+                gCum[curChunkSize_ - 1]);
             highType tmpVal = gCum.GetValue(curChunkSize_ - 1);
             lastGCum_.SetValue(0, tmpVal);
             SetFlag<HardEvent::S_V>(S_V_EVENT);
@@ -175,22 +173,19 @@ public:
         inQueue_.FreeTensor(stateIn);
     }
 
-    __aicore__ inline void CalAttnInter(GlobalTensor<lowType> qPrime,
-                                        GlobalTensor<lowType> state,
+    __aicore__ inline void CalAttnInter(GlobalTensor<lowType> qPrime, GlobalTensor<lowType> state,
                                         GlobalTensor<highType> attnInter)
     {
         RunMatmul(qPrime, false, state, true, attnInter, curChunkSize_, Dv_, Dk_, 0, Nv_ * Dv_);
     }
 
-    __aicore__ inline void CalVPrime(GlobalTensor<lowType> kCumdecay,
-                                     GlobalTensor<lowType> state,
+    __aicore__ inline void CalVPrime(GlobalTensor<lowType> kCumdecay, GlobalTensor<lowType> state,
                                      GlobalTensor<highType> vPrime)
     {
         RunMatmul(kCumdecay, false, state, true, vPrime, curChunkSize_, Dv_, Dk_, 1);
     }
 
-    __aicore__ inline void CalStateNew(GlobalTensor<lowType> vInner,
-                                       GlobalTensor<lowType> kg,
+    __aicore__ inline void CalStateNew(GlobalTensor<lowType> vInner, GlobalTensor<lowType> kg,
                                        GlobalTensor<highType> state)
     {
         RunMatmul(vInner, true, kg, false, state, Dv_, Dk_, curChunkSize_, 1);
@@ -200,10 +195,8 @@ public:
     __aicore__ inline void CopyIn(GlobalTensor<inType> tmpGM, int32_t row, int32_t col)
     {
         LocalTensor<inType> inLocal = inQueue_.AllocTensor<inType>();
-        DataCopyExtParams inParams{static_cast<uint16_t>(row),
-                                   static_cast<uint32_t>(col * sizeof(inType)),
-                                   static_cast<uint32_t>(0),
-                                   0, 0};
+        DataCopyExtParams inParams{static_cast<uint16_t>(row), static_cast<uint32_t>(col * sizeof(inType)),
+                                   static_cast<uint32_t>(0), 0, 0};
         int padding = Ceil(col, BLOCK_SIZE / sizeof(inType)) * (BLOCK_SIZE / sizeof(inType)) - col;
         DataCopyPadExtParams<inType> copyPadParams{true, 0, static_cast<uint8_t>(padding), 0};
         DataCopyPad(inLocal, tmpGM, inParams, copyPadParams);
@@ -269,11 +262,9 @@ public:
     }
 
 private:
-    __aicore__ inline void RunMatmul(GlobalTensor<lowType> a, bool transA,
-                                     GlobalTensor<lowType> b, bool transB,
-                                     GlobalTensor<highType> c,
-                                     int64_t m, int64_t n, int64_t k,
-                                     int32_t atomic = 0, int64_t orgN = 0)
+    __aicore__ inline void RunMatmul(GlobalTensor<lowType> a, bool transA, GlobalTensor<lowType> b, bool transB,
+                                     GlobalTensor<highType> c, int64_t m, int64_t n, int64_t k, int32_t atomic = 0,
+                                     int64_t orgN = 0)
     {
         if (orgN > 0) {
             sTP_->mm1->SetOrgShape(m, n, k, k, orgN);

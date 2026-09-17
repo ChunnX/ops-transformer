@@ -127,16 +127,16 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoOpTiling()
     int64_t dk = tilingData_.dk;
     int64_t s = tilingData_.maxGroupLength;
     int64_t b = tilingData_.b;
-    tilingData_.interWorkspaceSz += sizeHigh * nv * s;                                   // gCumExp
-    tilingData_.interWorkspaceSz += sizeHigh * nv * s * dk;                              // kCumDecay
-    tilingData_.interWorkspaceSz += sizeHigh * nv * s * dv;                              // vInner
-    tilingData_.interWorkspaceSz += sizeHigh * nv * s * dk;                              // qPrime
-    tilingData_.interWorkspaceSz += sizeHigh * nv * s * dv;                              // attnInter
-    tilingData_.interWorkspaceSz += sizeHigh * nv * s * dk;                              // kg
-    tilingData_.interWorkspaceSz += sizeHigh * nv * s * c;                               // qkt
-    tilingData_.interWorkspaceSz += sizeHigh * b * nv * dv * dk;                         // highState
-    tilingData_.interWorkspaceSz += sizeHigh * nv * dv * dk;                             // bf16State (float 路径 state 的 bf16 影子)
-    tilingData_.interWorkspaceSz += sizeHigh * nv * s * dv;                              // bf16VNew (float 路径 v_new 的 bf16 影子)
+    tilingData_.interWorkspaceSz += sizeHigh * nv * s;           // gCumExp
+    tilingData_.interWorkspaceSz += sizeHigh * nv * s * dk;      // kCumDecay
+    tilingData_.interWorkspaceSz += sizeHigh * nv * s * dv;      // vInner
+    tilingData_.interWorkspaceSz += sizeHigh * nv * s * dk;      // qPrime
+    tilingData_.interWorkspaceSz += sizeHigh * nv * s * dv;      // attnInter
+    tilingData_.interWorkspaceSz += sizeHigh * nv * s * dk;      // kg
+    tilingData_.interWorkspaceSz += sizeHigh * nv * s * c;       // qkt
+    tilingData_.interWorkspaceSz += sizeHigh * b * nv * dv * dk; // highState
+    tilingData_.interWorkspaceSz += sizeHigh * nv * dv * dk;     // bf16State (float 路径 state 的 bf16 影子)
+    tilingData_.interWorkspaceSz += sizeHigh * nv * s * dv;      // bf16VNew (float 路径 v_new 的 bf16 影子)
     tilingData_.interWorkspaceSz += sizeHigh * c * c * tilingData_.aiCoreNum * MASK_NUM; // mask
 
     // stage1 workspace for intermediate variables
@@ -162,10 +162,8 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoMatmulTiling()
     // 通过 baseM/baseN/baseK 控制 L0A/L0B/L0C/L1 占用，避免 fp32 输入时越界。
     //   fp32: L0A=baseM*baseK*4, L0B=baseK*baseN*4, L0C=baseM*baseN*4(累加器恒为fp32)
     //   910B3: L0A=L0B=64KB, L0C=128KB, L1=512KB
-    auto buildTiling = [&](matmul_tiling::DataType aType, bool aTrans,
-                           matmul_tiling::DataType bType, bool bTrans,
-                           matmul_tiling::DataType cType,
-                           uint32_t baseM, uint32_t baseN, uint32_t baseK,
+    auto buildTiling = [&](matmul_tiling::DataType aType, bool aTrans, matmul_tiling::DataType bType, bool bTrans,
+                           matmul_tiling::DataType cType, uint32_t baseM, uint32_t baseN, uint32_t baseK,
                            AscendC::tiling::TCubeTiling &out) -> bool {
         matmul_tiling::MultiCoreMatmulTiling mm_;
         mm_.SetBufferSpace(l1Size, l0CSize, ubSize);
@@ -192,46 +190,36 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoMatmulTiling()
     };
 
     // ========== stage2/stage3 复用：bf16,bf16 -> bf16 ==========
-    if (!buildTiling(matmul_tiling::DataType::DT_BFLOAT16, true,
-                     matmul_tiling::DataType::DT_BFLOAT16, true,
-                     matmul_tiling::DataType::DT_BFLOAT16,
-                     MATMUL_BASE_M, MATMUL_BASE_N, MATMUL_BASE_K,
+    if (!buildTiling(matmul_tiling::DataType::DT_BFLOAT16, true, matmul_tiling::DataType::DT_BFLOAT16, true,
+                     matmul_tiling::DataType::DT_BFLOAT16, MATMUL_BASE_M, MATMUL_BASE_N, MATMUL_BASE_K,
                      tilingData_.matmulTilingFp32)) {
         return ge::GRAPH_FAILED;
     }
 
     // ========== stage1 kk / qk：bf16,bf16 -> fp32 ==========
-    if (!buildTiling(matmul_tiling::DataType::DT_BFLOAT16, true,
-                     matmul_tiling::DataType::DT_BFLOAT16, true,
-                     matmul_tiling::DataType::DT_FLOAT,
-                     MATMUL_BASE_M, MATMUL_BASE_N, MATMUL_BASE_K,
+    if (!buildTiling(matmul_tiling::DataType::DT_BFLOAT16, true, matmul_tiling::DataType::DT_BFLOAT16, true,
+                     matmul_tiling::DataType::DT_FLOAT, MATMUL_BASE_M, MATMUL_BASE_N, MATMUL_BASE_K,
                      tilingData_.matmulTilingBf16ToFp32)) {
         return ge::GRAPH_FAILED;
     }
 
     // ========== stage1 求逆 / attn@v_beta：fp32,fp32 -> fp32 ==========
-    if (!buildTiling(matmul_tiling::DataType::DT_FLOAT, false,
-                     matmul_tiling::DataType::DT_FLOAT, false,
-                     matmul_tiling::DataType::DT_FLOAT,
-                     MATMUL_BASE_M, MATMUL_BASE_N, MATMUL_FP32_BASE_K,
+    if (!buildTiling(matmul_tiling::DataType::DT_FLOAT, false, matmul_tiling::DataType::DT_FLOAT, false,
+                     matmul_tiling::DataType::DT_FLOAT, MATMUL_BASE_M, MATMUL_BASE_N, MATMUL_FP32_BASE_K,
                      tilingData_.matmulTilingFp32ToFp32)) {
         return ge::GRAPH_FAILED;
     }
 
     // ========== stage1 attn@k_cumdecay：fp32,fp32 -> bf16 ==========
-    if (!buildTiling(matmul_tiling::DataType::DT_FLOAT, false,
-                     matmul_tiling::DataType::DT_FLOAT, false,
-                     matmul_tiling::DataType::DT_BFLOAT16,
-                     MATMUL_BASE_M, MATMUL_BASE_N, MATMUL_FP32_BASE_K,
+    if (!buildTiling(matmul_tiling::DataType::DT_FLOAT, false, matmul_tiling::DataType::DT_FLOAT, false,
+                     matmul_tiling::DataType::DT_BFLOAT16, MATMUL_BASE_M, MATMUL_BASE_N, MATMUL_FP32_BASE_K,
                      tilingData_.matmulTilingFp32ToBf16)) {
         return ge::GRAPH_FAILED;
     }
 
     // ========== stage2 专用：bf16 A/B -> float C ==========
-    if (!buildTiling(matmul_tiling::DataType::DT_BFLOAT16, true,
-                     matmul_tiling::DataType::DT_BFLOAT16, true,
-                     matmul_tiling::DataType::DT_FLOAT,
-                     MATMUL_BASE_M, MATMUL_BASE_N, MATMUL_BASE_K,
+    if (!buildTiling(matmul_tiling::DataType::DT_BFLOAT16, true, matmul_tiling::DataType::DT_BFLOAT16, true,
+                     matmul_tiling::DataType::DT_FLOAT, MATMUL_BASE_M, MATMUL_BASE_N, MATMUL_BASE_K,
                      tilingData_.matmulTilingStage2)) {
         return ge::GRAPH_FAILED;
     }
@@ -365,11 +353,9 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::AnalyzeDtype()
 
     auto betaDtype = context_->GetInputDesc(BETA_INDEX)->GetDataType();
     auto stateDtype = context_->GetInputDesc(STATE_INDEX)->GetDataType();
-    OP_CHECK_IF(betaDtype != ge::DT_BF16,
-                OP_LOGE(context_->GetNodeName(), "beta dtype should be bfloat16"),
+    OP_CHECK_IF(betaDtype != ge::DT_BF16, OP_LOGE(context_->GetNodeName(), "beta dtype should be bfloat16"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(stateDtype != ge::DT_FLOAT,
-                OP_LOGE(context_->GetNodeName(), "initial_state dtype should be float32"),
+    OP_CHECK_IF(stateDtype != ge::DT_FLOAT, OP_LOGE(context_->GetNodeName(), "initial_state dtype should be float32"),
                 return ge::GRAPH_FAILED);
 
     auto actualSeqLengthsDtype = context_->GetInputDesc(ACTUAL_SEQ_LENGTHS_INDEX)->GetDataType();

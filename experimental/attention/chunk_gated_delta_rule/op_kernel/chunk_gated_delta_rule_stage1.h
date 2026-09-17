@@ -325,8 +325,7 @@ private:
         for (uint32_t i = 0; i < curParaNum; ++i) {
             AICProcess(mmBf16ToFp32_, queryConGm_[i * ckOffset_], keyConGm_[i * ckOffset_],
                        outQkGm_[chunkRowBase_[i] * chunkSize_],
-                       {validLenBatch_[i], validLenBatch_[i], dk_, validLenBatch_[i], validLenBatch_[i], dk_},
-                       true);
+                       {validLenBatch_[i], validLenBatch_[i], dk_, validLenBatch_[i], validLenBatch_[i], dk_}, true);
         }
         AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(0xA); // 同步5
         AscendC::CrossCoreWaitFlag(0x7);               // 同步2
@@ -413,14 +412,14 @@ private:
         for (uint32_t i = 0; i < curParaNum; ++i) {
             // q_prime = query * scale_ * g_cum_exp[:, None]  # (C, Dk)
             uint64_t wsOffset_ = i * ckOffset_ + subOffset_ * dk_;
-            QPrimeCompute(outQPrimeGm_[chunkRowBase_[i] * dk_],
-                          gCumSumUbFloat_[i * chunkSize_], gCumExpUbFloat_[i * chunkSize_], queryConGm_[wsOffset_]);
+            QPrimeCompute(outQPrimeGm_[chunkRowBase_[i] * dk_], gCumSumUbFloat_[i * chunkSize_],
+                          gCumExpUbFloat_[i * chunkSize_], queryConGm_[wsOffset_]);
         }
         AscendC::CrossCoreWaitFlag(0xA); // 同步5
     }
     __aicore__ inline void QKPreProcess(const GlobalTensor<lowType> &srcGm, const GlobalTensor<lowType> &dstGm,
-                                        const GlobalTensor<lowType> &outKgGm,
-                                        uint32_t subValidRows, bool kgFlag = false)
+                                        const GlobalTensor<lowType> &outKgGm, uint32_t subValidRows,
+                                        bool kgFlag = false)
     {
         // copyOut
         auto tmpTensor = outQueue_.AllocTensor<lowType>();
@@ -441,8 +440,8 @@ private:
         tmpTensor = outQueue_.DeQue<lowType>();
 
         uint32_t srcStride = (dkAligned_ - dk_) * sizeof(lowType) / BLOCK_SIZE;
-        DataCopyExtParams outParams{static_cast<uint16_t>(halfChunkSize_),
-                                    static_cast<uint32_t>(dk_ * sizeof(lowType)), srcStride, 0, 0};
+        DataCopyExtParams outParams{static_cast<uint16_t>(halfChunkSize_), static_cast<uint32_t>(dk_ * sizeof(lowType)),
+                                    srcStride, 0, 0};
         DataCopyPad(dstGm, tmpTensor, outParams);
         if constexpr (!hasG) {
             if (kgFlag) {
@@ -473,16 +472,16 @@ private:
             DataCopy(tmpOut, gCumSumUbFloat, chunkSize_);
             gOutQueue_.EnQue(tmpOut);
             tmpOut = gOutQueue_.DeQue<float>();
-            DataCopyExtParams params{static_cast<uint16_t>(1),
-                                     static_cast<uint32_t>(validLen * sizeof(float)), 0, 0, 0};
+            DataCopyExtParams params{static_cast<uint16_t>(1), static_cast<uint32_t>(validLen * sizeof(float)), 0, 0,
+                                     0};
             DataCopyPad(dst, tmpOut, params);
             gOutQueue_.FreeTensor(tmpOut);
         }
         PipeBarrier<PIPE_V>();
     }
 
-    __aicore__ inline void GammaCompute(const LocalTensor<float> gBroadUbFloat,
-                                        LocalTensor<float> gammaUbFloat, LocalTensor<float> gCumSumUbFloat)
+    __aicore__ inline void GammaCompute(const LocalTensor<float> gBroadUbFloat, LocalTensor<float> gammaUbFloat,
+                                        LocalTensor<float> gCumSumUbFloat)
     {
         // BroadCast
         uint32_t divShape[2] = {chunkSize_, chunkSize_};
@@ -638,8 +637,8 @@ private:
             // kg = k * (g_cum_exp[-1, None] / g_cum_exp)[..., None]
             uint32_t gEndShape[2] = {1, 1};
             uint32_t gBroadShape[2] = {halfChunkSize_, 1};
-            Broadcast<float, BROADCAST_AXIS, 0>(gEndBroadUbFloat_, gCumSumUbFloat[chunkSize_ - 1],
-                                                gBroadShape, gEndShape);
+            Broadcast<float, BROADCAST_AXIS, 0>(gEndBroadUbFloat_, gCumSumUbFloat[chunkSize_ - 1], gBroadShape,
+                                                gEndShape);
             PipeBarrier<PIPE_V>();
             Sub(gEndBroadUbFloat_, gEndBroadUbFloat_, gCumSumUbFloat[subOffset_], halfChunkSize_);
             PipeBarrier<PIPE_V>();
@@ -657,9 +656,9 @@ private:
         }
     }
 
-    __aicore__ inline void VBetaCompute(const GlobalTensor<lowType> valueGm,
-                                        const GlobalTensor<highType> vBetaWsGm, LocalTensor<float> betaUbFloat,
-                                        LocalTensor<float> valueUbFloat, uint32_t subValidRows)
+    __aicore__ inline void VBetaCompute(const GlobalTensor<lowType> valueGm, const GlobalTensor<highType> vBetaWsGm,
+                                        LocalTensor<float> betaUbFloat, LocalTensor<float> valueUbFloat,
+                                        uint32_t subValidRows)
     {
         uint64_t vBeginOffset = subOffset_ * vRowStride_;
         DataCopyInBf16WithStride(subValidRows, dv_, valueGm[vBeginOffset], vRowStride_);
@@ -685,8 +684,8 @@ private:
         DataCopyOutFp32(halfChunkSize_, dv_, dvAligned_, vBetaWsGm[subOffset_ * dv_]);
     }
 
-    __aicore__ inline void QPrimeCompute(const GlobalTensor<lowType> outQPrimeGm,
-                                         LocalTensor<float> gCumSumUbFloat, LocalTensor<float> gCumExpUbFloat,
+    __aicore__ inline void QPrimeCompute(const GlobalTensor<lowType> outQPrimeGm, LocalTensor<float> gCumSumUbFloat,
+                                         LocalTensor<float> gCumExpUbFloat,
                                          const GlobalTensor<lowType> queryContinousGm)
     {
         // data copy in qUbFloatCon_
@@ -729,8 +728,7 @@ private:
     __aicore__ inline void DataCopyInBf16(uint64_t len, GlobalTensor<lowType> y)
     {
         DataCopyPadExtParams<lowType> padParams;
-        DataCopyExtParams kkParams{static_cast<uint16_t>(1),
-                                   static_cast<uint32_t>(len * sizeof(lowType)), 0, 0, 0};
+        DataCopyExtParams kkParams{static_cast<uint16_t>(1), static_cast<uint32_t>(len * sizeof(lowType)), 0, 0, 0};
         bf16InLocal_ = inQueue_.AllocTensor<lowType>();
         DataCopyPad(bf16InLocal_, y, kkParams, padParams);
         inQueue_.EnQue<lowType>(bf16InLocal_);
@@ -777,8 +775,7 @@ private:
         DataCopyPadExtParams<float> padParams = {false, static_cast<uint8_t>(0), static_cast<uint8_t>(0),
                                                  static_cast<float>(0)};
         uint32_t srcGap = (srcRowStride - cols) * sizeof(float);
-        DataCopyExtParams params{static_cast<uint16_t>(rows),
-                                 static_cast<uint32_t>(cols * sizeof(float)),
+        DataCopyExtParams params{static_cast<uint16_t>(rows), static_cast<uint32_t>(cols * sizeof(float)),
                                  static_cast<uint32_t>(srcGap), static_cast<uint32_t>(dstRowStride), 0};
         fp32InLocal_ = inQueue_.AllocTensor<float>();
         DataCopyPad(fp32InLocal_, src, params, padParams);
@@ -793,33 +790,28 @@ private:
         DataCopyPadExtParams<lowType> padParams = {false, static_cast<uint8_t>(0), static_cast<uint8_t>(0),
                                                    static_cast<float>(0)};
         uint32_t srcGap = (srcRowStride - cols) * sizeof(lowType);
-        DataCopyExtParams params{static_cast<uint16_t>(rows),
-                                 static_cast<uint32_t>(cols * sizeof(lowType)),
+        DataCopyExtParams params{static_cast<uint16_t>(rows), static_cast<uint32_t>(cols * sizeof(lowType)),
                                  static_cast<uint32_t>(srcGap), 0, 0};
         bf16InLocal_ = inQueue_.AllocTensor<lowType>();
         DataCopyPad(bf16InLocal_, src, params, padParams);
         inQueue_.EnQue<lowType>(bf16InLocal_);
     }
 
-    __aicore__ inline void DataCopyOutBf16(uint32_t rows, uint32_t cols,
-                                           uint32_t colsAligned, GlobalTensor<lowType> y)
+    __aicore__ inline void DataCopyOutBf16(uint32_t rows, uint32_t cols, uint32_t colsAligned, GlobalTensor<lowType> y)
     {
         auto tmpLocal = outQueue_.DeQue<lowType>();
         uint32_t srcStride = (colsAligned - cols) * sizeof(lowType) / BLOCK_SIZE;
-        DataCopyExtParams yGMParams{static_cast<uint16_t>(rows),
-                                    static_cast<uint32_t>(cols * sizeof(lowType)),
+        DataCopyExtParams yGMParams{static_cast<uint16_t>(rows), static_cast<uint32_t>(cols * sizeof(lowType)),
                                     static_cast<uint32_t>(srcStride), 0, 0};
         DataCopyPad(y, tmpLocal, yGMParams);
         outQueue_.FreeTensor(tmpLocal);
     }
 
-    __aicore__ inline void DataCopyOutFp32(uint32_t rows, uint32_t cols,
-                                           uint32_t colsAligned, GlobalTensor<highType> y)
+    __aicore__ inline void DataCopyOutFp32(uint32_t rows, uint32_t cols, uint32_t colsAligned, GlobalTensor<highType> y)
     {
         auto tmpLocal = outQueue_.DeQue<float>();
         uint32_t srcStride = (colsAligned - cols) * sizeof(float) / BLOCK_SIZE;
-        DataCopyExtParams yGMParams{static_cast<uint16_t>(rows),
-                                    static_cast<uint32_t>(cols * sizeof(float)),
+        DataCopyExtParams yGMParams{static_cast<uint16_t>(rows), static_cast<uint32_t>(cols * sizeof(float)),
                                     static_cast<uint32_t>(srcStride), 0, 0};
         DataCopyPad(y, tmpLocal, yGMParams);
         outQueue_.FreeTensor(tmpLocal);

@@ -44,12 +44,8 @@ struct CGDRInitParams {
 };
 
 template <typename srcType, typename dstType>
-__aicore__ inline void CopyCast(
-    const GlobalTensor<srcType> &src,
-    const GlobalTensor<dstType> &dst,
-    TPipe *pipe,
-    const int64_t totalDataCount,
-    const RoundMode &roundMode)
+__aicore__ inline void CopyCast(const GlobalTensor<srcType> &src, const GlobalTensor<dstType> &dst, TPipe *pipe,
+                                const int64_t totalDataCount, const RoundMode &roundMode)
 {
     if ASCEND_IS_AIV {
         int64_t blkNum = GetBlockNum();
@@ -237,14 +233,12 @@ public:
                     cg.length = tiling_->maxGroupLength;
                 }
                 // float 路径：state 为 highType(float)
-                auto curState = (pos == seqStart) ?
-                                    initStateFloat_[bid * tiling_->nv * tiling_->dv * tiling_->dk] :
-                                    finalStateFloat_[bid * tiling_->nv * tiling_->dv * tiling_->dk];
+                auto curState = (pos == seqStart) ? initStateFloat_[bid * tiling_->nv * tiling_->dv * tiling_->dk] :
+                                                    finalStateFloat_[bid * tiling_->nv * tiling_->dv * tiling_->dk];
                 RunStage1(cg);
                 SyncAll<false>();
 
-                RunStage2(cg, curState,
-                          finalStateFloat_[bid * tiling_->nv * tiling_->dv * tiling_->dk]);
+                RunStage2(cg, curState, finalStateFloat_[bid * tiling_->nv * tiling_->dv * tiling_->dk]);
                 SyncAll<false>();
 
                 RunStage3(cg);
@@ -256,22 +250,21 @@ public:
 private:
     __aicore__ inline void RunStage1(const ChunkGroup &cg)
     {
-        GDRStageOneInitParams<lowType, highType> initStageOneParams{query_, key_, value_, beta_, g_,
-                                                                    gCum_, kCumDecay_, vInnerFloat_, qPrime_, kg_, qkt_,
-                                                                    stageWsAddr_, stageOneMask_, cg};
+        GDRStageOneInitParams<lowType, highType> initStageOneParams{query_, key_,         value_,        beta_,   g_,
+                                                                    gCum_,  kCumDecay_,   vInnerFloat_,  qPrime_, kg_,
+                                                                    qkt_,   stageWsAddr_, stageOneMask_, cg};
         stageOneOp_.Init(initStageOneParams, pipe_, tiling_);
         stageOneOp_.Process();
         pipe_->Reset();
     }
 
-    __aicore__ inline void RunStage2(ChunkGroup &cg, GlobalTensor<highType> stateIn,
-                                     GlobalTensor<highType> stateOut)
+    __aicore__ inline void RunStage2(ChunkGroup &cg, GlobalTensor<highType> stateIn, GlobalTensor<highType> stateOut)
     {
         Stage2<lowType, highType, hasG> stageTwoOp;
         StageTwoParams<lowType, highType> initStageTwoParams{
-            qPrime_, vInnerFloat_, gCum_, kCumDecay_, stateIn, stateOut, kg_,
-            attnInter_, bf16State_, bf16VNew_, stageWsAddr_, &stage2MT_, pipe_, &cg,
-            tiling_->nv, tiling_->nk, tiling_->dv, tiling_->dk};
+            qPrime_, vInnerFloat_, gCum_,       kCumDecay_,  stateIn,      stateOut,
+            kg_,     attnInter_,   bf16State_,  bf16VNew_,   stageWsAddr_, &stage2MT_,
+            pipe_,   &cg,          tiling_->nv, tiling_->nk, tiling_->dv,  tiling_->dk};
         stageTwoOp.Init(&initStageTwoParams, tiling_->aiCoreNum);
         stageTwoOp.Process();
         pipe_->Reset();
@@ -281,13 +274,21 @@ private:
     {
         Stage3<hasG> stageThreeOp;
         StageThreeParams initStageThreeParams{
-            qkt_, gCum_, bf16VNew_,
+            qkt_,
+            gCum_,
+            bf16VNew_,
             stageThreeMask_[int(GetBlockIdx() / 2) * tiling_->chunkSize * tiling_->chunkSize],
             stageWsAddr_,
             attnInter_,
             out_[cg.startPos * tiling_->nv * tiling_->dv],
-            &stage3MT_, pipe_, &cg, tiling_->scale,
-            tiling_->nv, tiling_->nk, tiling_->dv, tiling_->dk};
+            &stage3MT_,
+            pipe_,
+            &cg,
+            tiling_->scale,
+            tiling_->nv,
+            tiling_->nk,
+            tiling_->dv,
+            tiling_->dk};
         stageThreeOp.Init(&initStageThreeParams, tiling_->aiCoreNum);
         stageThreeOp.Process();
         pipe_->Reset();

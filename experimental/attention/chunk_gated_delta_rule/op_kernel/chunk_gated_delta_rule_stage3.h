@@ -70,8 +70,7 @@ public:
         paddedDv_ = Ceil(Dv_, BLOCK_SIZE / sizeof(bfloat16_t)) * (BLOCK_SIZE / sizeof(bfloat16_t));
         uint64_t workSpaceOffset = 0;
         tmpGM_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(
-            initParams->ws + workSpaceOffset +
-            coreNum_ * chunkSize_ * chunkSize_ * sizeof(float)));
+            initParams->ws + workSpaceOffset + coreNum_ * chunkSize_ * chunkSize_ * sizeof(float)));
         if ASCEND_IS_AIC {
             return;
         }
@@ -96,8 +95,7 @@ public:
         maskBuffer_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(tmpOffset), buffOffset);
 
         // 搬入mask
-        DataCopyExtParams inParams{static_cast<uint16_t>(chunkSize_),
-                                   static_cast<uint32_t>(chunkSize_ * sizeof(float)),
+        DataCopyExtParams inParams{static_cast<uint16_t>(chunkSize_), static_cast<uint32_t>(chunkSize_ * sizeof(float)),
                                    0, 0, 0};
         DataCopyPadExtParams<float> copyPadParams{false, 0, 0, 0};
         DataCopyPad(maskBuffer_, sTP_->maskTensor, inParams, copyPadParams);
@@ -139,8 +137,7 @@ public:
 
             if ASCEND_IS_AIC {
                 CrossCoreWaitFlag(0x4);
-                AICProcess(tmpGM_[coreId_ * chunkSize_ * chunkSize_],
-                           sTP_->vInner[nvId * Sp_ * Dv_ + chunkPos * Dv_],
+                AICProcess(tmpGM_[coreId_ * chunkSize_ * chunkSize_], sTP_->vInner[nvId * Sp_ * Dv_ + chunkPos * Dv_],
                            sTP_->attnInter[nvId * Dv_ + chunkPos * Nv_ * Dv_]);
                 CrossCoreSetFlag<0x2, PIPE_FIX>(0x3);
             }
@@ -155,8 +152,7 @@ public:
             auto g_cum = inQueue_.DeQue<float>();
             const uint32_t srcShape1[] = {static_cast<uint32_t>(chunkSize_), static_cast<uint32_t>(1)};
             const uint32_t srcShape2[] = {static_cast<uint32_t>(1), static_cast<uint32_t>(chunkSize_)};
-            const uint32_t dstShape[] = {static_cast<uint32_t>(chunkSize_),
-                                         static_cast<uint32_t>(chunkSize_)};
+            const uint32_t dstShape[] = {static_cast<uint32_t>(chunkSize_), static_cast<uint32_t>(chunkSize_)};
             Broadcast<float, BROADCAST_AXIS, 1>(tmpBuffer1_, g_cum, dstShape, srcShape1);
             Broadcast<float, BROADCAST_AXIS, 0>(tmpBuffer2_, g_cum, dstShape, srcShape2);
             PipeBarrier<PIPE_V>();
@@ -186,8 +182,7 @@ public:
         inQueue_.FreeTensor(qkt);
     }
 
-    __aicore__ inline void AICProcess(GlobalTensor<bfloat16_t> tmpGM,
-                                      GlobalTensor<bfloat16_t> vInner,
+    __aicore__ inline void AICProcess(GlobalTensor<bfloat16_t> tmpGM, GlobalTensor<bfloat16_t> vInner,
                                       GlobalTensor<float> attnInter)
     {
         // masked_qkt @ v_new, 结果以 fp32 atomic add 累加到 attnInter
@@ -207,17 +202,14 @@ public:
     // attnInter / out 形状为 (curChunkSize_, Dv_), 在外层 (Sp_, Nv_, Dv_) 中按 stride Nv_*Dv_ 排布.
     // 假设 Dv_ 已按 32B 对齐 (Dv_ 是 bf16 16 元素的整数倍, 同时也是 fp32 8 元素的整数倍),
     // 因此 UB 内每行无 padding, fp32 与 bf16 行布局一致, dstStride 均为 0.
-    __aicore__ inline void CastAndStore(GlobalTensor<float> attnInter,
-                                        GlobalTensor<bfloat16_t> out)
+    __aicore__ inline void CastAndStore(GlobalTensor<float> attnInter, GlobalTensor<bfloat16_t> out)
     {
         int32_t totalElems = static_cast<int32_t>(curChunkSize_) * static_cast<int32_t>(Dv_);
 
         // ---- 1) 读 fp32 attnInter (q_state + q_h 累加结果) 到 UB ----
         LocalTensor<float> inLocalFp32 = inQueue_.AllocTensor<float>();
-        DataCopyExtParams inParamsFp32{static_cast<uint16_t>(curChunkSize_),
-                                       static_cast<uint32_t>(Dv_ * sizeof(float)),
-                                       static_cast<uint32_t>((Nv_ - 1) * Dv_ * sizeof(float)),
-                                       static_cast<uint32_t>(0),
+        DataCopyExtParams inParamsFp32{static_cast<uint16_t>(curChunkSize_), static_cast<uint32_t>(Dv_ * sizeof(float)),
+                                       static_cast<uint32_t>((Nv_ - 1) * Dv_ * sizeof(float)), static_cast<uint32_t>(0),
                                        0};
         DataCopyPadExtParams<float> padParamsFp32{false, 0, 0, 0};
         DataCopyPad(inLocalFp32, attnInter, inParamsFp32, padParamsFp32);
@@ -247,11 +239,9 @@ public:
         LocalTensor<inType> inLocal = inQueue_.AllocTensor<inType>();
         // 非对齐拷入会自动对齐, 然后离散拷入UB
         int paddingCol = Ceil(col, BLOCK_SIZE / sizeof(inType)) * (BLOCK_SIZE / sizeof(inType));
-        DataCopyExtParams inParams{static_cast<uint16_t>(row),
-                                   static_cast<uint32_t>(col * sizeof(inType)),
+        DataCopyExtParams inParams{static_cast<uint16_t>(row), static_cast<uint32_t>(col * sizeof(inType)),
                                    static_cast<uint32_t>(0),
-                                   static_cast<uint32_t>((chunkSize_ - paddingCol) * sizeof(inType) / BLOCK_SIZE),
-                                   0};
+                                   static_cast<uint32_t>((chunkSize_ - paddingCol) * sizeof(inType) / BLOCK_SIZE), 0};
         DataCopyPadExtParams<inType> copyPadParams{false, 0, 0, 0};
         DataCopyPad(inLocal, tmpGM, inParams, copyPadParams);
         inQueue_.EnQue(inLocal);

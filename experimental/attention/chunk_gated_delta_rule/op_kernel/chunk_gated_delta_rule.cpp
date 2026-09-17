@@ -21,9 +21,10 @@ using namespace AscendC;
 using namespace matmul;
 using namespace ChunkGatedDeltaRule;
 
-extern "C" __global__ __aicore__ void chunk_gated_delta_rule(
-    GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR beta, GM_ADDR initialState, GM_ADDR seqlens, GM_ADDR gOptional,
-    GM_ADDR out, GM_ADDR finalState, GM_ADDR workspaceGM, GM_ADDR tilingGM)
+extern "C" __global__ __aicore__ void chunk_gated_delta_rule(GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR beta,
+                                                             GM_ADDR initialState, GM_ADDR seqlens, GM_ADDR gOptional,
+                                                             GM_ADDR out, GM_ADDR finalState, GM_ADDR workspaceGM,
+                                                             GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(ChunkGatedDeltaRuleTilingData);
     GET_TILING_DATA(tilingData, tilingGM);
@@ -32,9 +33,7 @@ extern "C" __global__ __aicore__ void chunk_gated_delta_rule(
 
     __gm__ uint8_t *user = GetUserWorkspace(workspaceGM);
 
-    CGDRInitParams initParams{
-        query, key, value, beta, initialState, seqlens, gOptional,
-        out, finalState};
+    CGDRInitParams initParams{query, key, value, beta, initialState, seqlens, gOptional, out, finalState};
     // gOptional 由 tilingKey 编译期分发
     if (TILING_KEY_IS(TILING_KEY_CGDR_HAS_G)) {
         CGDR<bfloat16_t, float, true> op(&pipe, &tilingData);
