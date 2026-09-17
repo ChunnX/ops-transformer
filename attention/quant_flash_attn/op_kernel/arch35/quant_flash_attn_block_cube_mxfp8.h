@@ -924,25 +924,48 @@ public:
         constexpr uint64_t pTailOffset =
             (static_cast<uint64_t>(mBaseSize) * s2BaseSize + mBaseSize * s2BaseSize / 32) / sizeof(bfloat16_t);
 
-        // B尾块: AIV搬运(CopyVTailToL1写vTailL1Slot_, decode同款通路) —
-        // [AIC MTE2失效] 尾片上下文AIC GM->L1直搬(copyVTailGmToL1_ ND2NZ)只到达第一个n分形
-        // (四代k/rowCount几何实证: IDENTITY j[0,16)恒对/j[16,64)恒stale, 与decode迁移前同症状,
-        // vec侧注释"尾片上下文的AIC MTE2 GM->L1实测静默失效"印证) — 改读AIV已写好的槽。
-        // 同步: decode同构 — AIV按[A尾区拷贝->CopyVTailToL1]->outputBuf.SetCrossCore()顺序下发,
-        // cube在mm2A.WaitCrossCore()后读槽。
+        // B尾块装载: TND走CUBE MTE2直搬(性能: DMA vs AIV 4096标量读/块), PA暂走AIV搬运槽。
+        // [复测实验] 此前"AIC MTE2尾片只到首n分形"的结论是被m=8非法Mmad bug污染的误归因
+        // (四代几何实验全部带着该bug; 换AIV槽后签名未变, 修realM后才全绿, CUBE直搬从未复测)。
         Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers_.Get();
         mm2ResL0C.Wait<HardEvent::FIX_M>();
         // [k=64] decode几何(k=MXFP8_V_TAIL_BOUNDARY): A尾区64列pad=0(VF originN掩码兜底);
-        // B槽64行全摆(AIV, pad行0兜底)
+        // B槽64行全摆(pad行0兜底)
         MMParam tailParam = MakeMMParam((uint32_t)mBaseSize, dVBaseSize, MXFP8_V_TAIL_BOUNDARY, USE_DN, false,
                                         true, true);
         // [flash对齐] 不设realM: flash C2的MMParam={mBaseSize, tileN, k, true, false}无realM覆盖,
         // m=128全行计算(垃圾M行有限值, 由V2/output按actM丢弃)。realM=actM=8时Mmad m=8非法
         // (m粒度16, 仅m==1有特判) — UB致L0C部分分形stale(实测NaN@M[0,2)xD带[16,64))。
-        MatmulFull<bfloat16_t, bfloat16_t, T, 128, dVBaseSize, MXFP_DIVISOR_SIZE, ABLayout::MK, ABLayout::KN, L0AType,
-                   L0BType>(mm2A.GetTensor<bfloat16_t>()[pTailOffset],
-                            vTailL1Slot_->GetTensor<bfloat16_t>(), mmL0ABuffers_, mmL0BBuffers_,
-                            mm2ResL0C.GetTensor<T>(), tailParam);
+        if constexpr (KvLayoutType == 0) {
+            // [TND] v_tail(B,N2,64,D)连续BNSD, copyVTailGmToL1_ ND2NZ摆形
+            Buffer<BufferType::L1> mm2BTail = l1KVBuffers_.Get();
+            mm2BTail.Wait<HardEvent::MTE1_MTE2>();
+            {
+                LocalTensor<bfloat16_t> mm2BTailTensor = mm2BTail.GetTensor<bfloat16_t>();
+                FaL1Tensor<bfloat16_t, L1Format::NZ> l1Tensor{.tensor = mm2BTailTensor,
+                                                              .rowCount = MXFP8_V_TAIL_BOUNDARY};
+                GmKvCoord gmCoord{.bIdx = runInfo.bIdx,
+                                  .n2Idx = runInfo.n2Idx,
+                                  .s2Idx = 0,
+                                  .dIdx = 0,
+                                  .s2DealSize = MXFP8_V_TAIL_BOUNDARY, // 64行全搬, pad行由A零列掩码
+                                  .dDealSize = constInfo_.dSizeV};
+                copyVTailGmToL1_(l1Tensor, vTailGm_, gmCoord);
+            }
+            mm2BTail.Set<HardEvent::MTE2_MTE1>();
+            mm2BTail.Wait<HardEvent::MTE2_MTE1>();
+            MatmulFull<bfloat16_t, bfloat16_t, T, 128, dVBaseSize, MXFP_DIVISOR_SIZE, ABLayout::MK, ABLayout::KN,
+                       L0AType, L0BType>(mm2A.GetTensor<bfloat16_t>()[pTailOffset],
+                                         mm2BTail.GetTensor<bfloat16_t>(), mmL0ABuffers_, mmL0BBuffers_,
+                                         mm2ResL0C.GetTensor<T>(), tailParam);
+            mm2BTail.Set<HardEvent::MTE1_MTE2>(); // 释放KV slot
+        } else {
+            // [PA] AIV搬运槽(decode同款, vec侧CopyVTailToL1写)
+            MatmulFull<bfloat16_t, bfloat16_t, T, 128, dVBaseSize, MXFP_DIVISOR_SIZE, ABLayout::MK, ABLayout::KN,
+                       L0AType, L0BType>(mm2A.GetTensor<bfloat16_t>()[pTailOffset],
+                                         vTailL1Slot_->GetTensor<bfloat16_t>(), mmL0ABuffers_, mmL0BBuffers_,
+                                         mm2ResL0C.GetTensor<T>(), tailParam);
+        }
 
         mm2ResL0C.Set<HardEvent::M_FIX>();
         mm2ResL0C.Wait<HardEvent::M_FIX>();

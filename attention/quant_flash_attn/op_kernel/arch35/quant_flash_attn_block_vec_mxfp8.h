@@ -443,7 +443,9 @@ public:
             // n分形(四代k/rowCount几何实证: j[0,16)恒对/j[16,64)恒stale, 与decode迁移前同症状) —
             // 复用decode已验证通路: AIV标量读GM->UB摆NZ->MTE3写vTailL1Slot_全D可靠。
             // 顺序复刻decode: A尾区拷贝 -> CopyVTailToL1 -> FreeTensor -> SetCrossCore。
-            if constexpr (HAS_V_TAIL) {
+            // [B尾块装载分派] TND: CUBE MTE2直搬(复测实验: 之前"只到首n分形"系m=8 bug误归因),
+            // PA: AIV标量搬运写vTailL1Slot_(decode同款通路, cube侧PA分支读槽)。
+            if constexpr (HAS_V_TAIL && KvLayoutType > 0) {
                 CopyVTailToL1(runInfo);
             }
             this->stage1OutQue_[stage1Offset].template FreeTensor(stage1CastTensor);
