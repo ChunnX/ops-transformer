@@ -137,6 +137,34 @@ static ge::graphStatus MoeDistributeCombineA2CheckShapeAndSetTiling(gert::Tiling
     return ge::GRAPH_SUCCESS;
 }
 
+static ge::graphStatus CheckA2CommQuantMode(int64_t commQuantMode, bool isLayered)
+{
+    OP_TILING_CHECK(!isLayered && commQuantMode != static_cast<CommQuantModeType>(CommQuantMode::NON_QUANT),
+                    OP_LOGE_FOR_INVALID_VALUE(K_OP_NAME, "commQuantMode", "invalid", "valid commQuantMode"),
+                    return GRAPH_FAILED);
+    OP_TILING_CHECK(isLayered && commQuantMode != static_cast<CommQuantModeType>(CommQuantMode::NON_QUANT) &&
+                        commQuantMode != static_cast<CommQuantModeType>(CommQuantMode::INT8_QUANT),
+                    OP_LOGE_FOR_INVALID_VALUE(K_OP_NAME, "commQuantMode", "invalid", "valid commQuantMode"),
+                    return GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckA2ExpertParallelAttrs(const int64_t *epWorldSizePtr, const int64_t *epRankIdPtr,
+                                                  const int64_t *moeExpertNumPtr)
+{
+    OP_TILING_CHECK(epWorldSizePtr == nullptr || *epWorldSizePtr <= 0 || *epWorldSizePtr > MAX_EP_WORLD_SIZE_A2 ||
+                        *epWorldSizePtr % RANK_NUM_PER_NODE_A2 != 0,
+                    OP_LOGE_FOR_INVALID_VALUE(K_OP_NAME, "epWorldSize", "invalid", "valid epWorldSize"),
+                    return GRAPH_FAILED);
+    OP_TILING_CHECK(epRankIdPtr == nullptr || *epRankIdPtr < 0 || *epRankIdPtr >= *epWorldSizePtr,
+                    OP_LOGE_FOR_INVALID_VALUE(K_OP_NAME, "epRankId", "invalid", "valid epRankId"), return GRAPH_FAILED);
+    OP_TILING_CHECK(moeExpertNumPtr == nullptr || *moeExpertNumPtr <= 0 || *moeExpertNumPtr > MAX_MOE_EXPERT_NUMS_A2 ||
+                        *moeExpertNumPtr % *epWorldSizePtr != 0,
+                    OP_LOGE_FOR_INVALID_VALUE(K_OP_NAME, "moeExpertNum", "invalid", "valid moeExpertNum"),
+                    return GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 static ge::graphStatus MoeDistributeCombineA2CheckAttrAndSetTiling(gert::TilingContext *context,
                                                                    MoeDistributeCombineA2Info &info,
                                                                    int32_t &commQuantMode, const bool isLayered)
@@ -150,16 +178,9 @@ static ge::graphStatus MoeDistributeCombineA2CheckAttrAndSetTiling(gert::TilingC
     auto sharedExpertRankNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_SHARED_EXPERT_RANK_NUM_INDEX);
     auto globalBsPtr = attrs->GetAttrPointer<int64_t>(ATTR_GLOBAL_BS_INDEX);
     auto commQuantModePtr = attrs->GetAttrPointer<int64_t>(ATTR_COMM_QUANT_MODE_INDEX);
-    OP_TILING_CHECK(epWorldSizePtr == nullptr || *epWorldSizePtr <= 0 || *epWorldSizePtr > MAX_EP_WORLD_SIZE_A2 ||
-                        *epWorldSizePtr % RANK_NUM_PER_NODE_A2 != 0,
-                    OP_LOGE_FOR_INVALID_VALUE(K_OP_NAME, "epWorldSize", "invalid", "valid epWorldSize"),
-                    return GRAPH_FAILED);
-    OP_TILING_CHECK(epRankIdPtr == nullptr || *epRankIdPtr < 0 || *epRankIdPtr >= *epWorldSizePtr,
-                    OP_LOGE_FOR_INVALID_VALUE(K_OP_NAME, "epRankId", "invalid", "valid epRankId"), return GRAPH_FAILED);
-    OP_TILING_CHECK(moeExpertNumPtr == nullptr || *moeExpertNumPtr <= 0 || *moeExpertNumPtr > MAX_MOE_EXPERT_NUMS_A2 ||
-                        *moeExpertNumPtr % *epWorldSizePtr != 0,
-                    OP_LOGE_FOR_INVALID_VALUE(K_OP_NAME, "moeExpertNum", "invalid", "valid moeExpertNum"),
-                    return GRAPH_FAILED);
+    if (CheckA2ExpertParallelAttrs(epWorldSizePtr, epRankIdPtr, moeExpertNumPtr) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     OP_TILING_CHECK(expertSharedTypePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(K_OP_NAME, "expertSharedType"),
                     return GRAPH_FAILED);
     OP_TILING_CHECK(sharedExpertRankNumPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(K_OP_NAME, "sharedExpertRankNum"),
@@ -167,13 +188,9 @@ static ge::graphStatus MoeDistributeCombineA2CheckAttrAndSetTiling(gert::TilingC
     OP_TILING_CHECK(globalBsPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(K_OP_NAME, "globalBs"), return GRAPH_FAILED);
     OP_TILING_CHECK(commQuantModePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(K_OP_NAME, "commQuantMode"),
                     return GRAPH_FAILED);
-    OP_TILING_CHECK(!isLayered && *commQuantModePtr != static_cast<CommQuantModeType>(CommQuantMode::NON_QUANT),
-                    OP_LOGE_FOR_INVALID_VALUE(K_OP_NAME, "commQuantMode", "invalid", "valid commQuantMode"),
-                    return GRAPH_FAILED);
-    OP_TILING_CHECK(isLayered && *commQuantModePtr != static_cast<CommQuantModeType>(CommQuantMode::NON_QUANT) &&
-                        *commQuantModePtr != static_cast<CommQuantModeType>(CommQuantMode::INT8_QUANT),
-                    OP_LOGE_FOR_INVALID_VALUE(K_OP_NAME, "commQuantMode", "invalid", "valid commQuantMode"),
-                    return GRAPH_FAILED);
+    if (CheckA2CommQuantMode(*commQuantModePtr, isLayered) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     const gert::StorageShape *expertIdStorageShape = context->GetInputShape(EXPERT_IDS_INDEX);
     OP_TILING_CHECK(expertIdStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(K_OP_NAME, "xShape"),
                     return GRAPH_FAILED);
@@ -262,6 +279,24 @@ static ge::graphStatus MoeDistributeCombineA2CheckWinSize(const gert::TilingCont
     return ge::GRAPH_SUCCESS;
 }
 
+static ge::graphStatus SetA2CommunicationTiling(gert::TilingContext *context,
+                                                MoeDistributeCombineA2TilingData *tilingData)
+{
+    const char *nodeName = context->GetNodeName();
+    auto attrs = context->GetAttrs();
+    auto group = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_GROUP_EP_INDEX));
+    uint32_t opType = 18; // batch write=18
+    std::string algConfig = "BatchWrite=level0:fullmesh";
+    AscendC::Mc2CcTilingConfig mc2CcTilingConfig(group, opType, algConfig);
+    OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling) != 0,
+                    OP_LOGE_WITHOUT_REPORT(nodeName, "mc2CcTilingConfig mc2tiling GetTiling mc2InitTiling failed"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling) != 0,
+                    OP_LOGE_WITHOUT_REPORT(nodeName, "mc2CcTilingConfig mc2tiling GetTiling mc2CcTiling failed"),
+                    return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 static ge::graphStatus MoeDistributeCombineA2TilingFuncImpl(gert::TilingContext *context)
 {
     const char *nodeName = context->GetNodeName();
@@ -303,17 +338,9 @@ static ge::graphStatus MoeDistributeCombineA2TilingFuncImpl(gert::TilingContext 
                     return ge::GRAPH_FAILED);
     uint32_t userWorkspaceSize = static_cast<uint32_t>(info.moeExpertNum) * sizeof(uint32_t) * 2;
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + userWorkspaceSize;
-    auto attrs = context->GetAttrs();
-    auto group = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_GROUP_EP_INDEX));
-    uint32_t opType = 18; // batch write=18
-    std::string algConfig = "BatchWrite=level0:fullmesh";
-    AscendC::Mc2CcTilingConfig mc2CcTilingConfig(group, opType, algConfig);
-    OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling) != 0,
-                    OP_LOGE_WITHOUT_REPORT(nodeName, "mc2CcTilingConfig mc2tiling GetTiling mc2InitTiling failed"),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling) != 0,
-                    OP_LOGE_WITHOUT_REPORT(nodeName, "mc2CcTilingConfig mc2tiling GetTiling mc2CcTiling failed"),
-                    return ge::GRAPH_FAILED);
+    if (SetA2CommunicationTiling(context, tilingData) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     OP_LOGI(nodeName, "Leave MoeDistributeCombineA2 tiling func.");
     return ge::GRAPH_SUCCESS;
 }

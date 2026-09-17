@@ -99,6 +99,7 @@ public:
     }
 
 private:
+    __aicore__ inline void DynamicQuantSumFp16ToServer(uint32_t copyNum, uint32_t bsIndex);
     __aicore__ inline void InitAttrs(const MoeDistributeCombineV2TilingData *tilingData);
     __aicore__ inline void InitLayeredAddr(GM_ADDR sendCount);
     __aicore__ inline void BuffInit();
@@ -993,34 +994,41 @@ __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFun
 }
 
 template <TemplateMC2TypeV2LayeredClass>
+__aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFunc>::DynamicQuantSumFp16ToServer(
+    uint32_t copyNum, uint32_t bsIndex)
+{
+    Duplicate(sumFp16Local_, static_cast<ExpandXType>(0.0), axisH_);
+    for (uint32_t j = 0; j < copyNum; j++) {
+        uint32_t offsetOnIpc =
+            (offsetReduceLocal_.GetValue(offsetIndex_) / axisBS_ * rankSizeOnWin_ * SERVER_RANK_SIZE +
+             offsetReduceLocal_.GetValue(offsetIndex_) % axisBS_ *
+                 (axisH_ * sizeof(ExpandXTransType) + scaleNumAlign_ * sizeof(ExpandXType))) /
+            sizeof(ExpandXTransType);
+        SyncFunc<AscendC::HardEvent::V_MTE2>(); // 下一个token用的buffer和上一个token用的buffer之间进行同步
+        DataCopy(castDataInt8_, localInWindow_[offsetOnIpc], axisH_);
+        DataCopy(absScaleTensor_,
+                 localInScaleWindow_[((offsetOnIpc + axisH_) * sizeof(ExpandXTransType)) / sizeof(ExpandXType)],
+                 scaleNumAlign_);
+        SyncFunc<AscendC::HardEvent::MTE2_V>();
+        Cast(reduceMaxOutTensor_, castDataInt8_, AscendC::RoundMode::CAST_NONE, axisH_);
+        PipeBarrier<PIPE_V>();
+        Brcb(scaleDup_, absScaleTensor_, repeatNum_, {1, VEC_LEN / UB_ALIGN}); // 填充scale值
+        PipeBarrier<PIPE_V>();
+        MulAddDst(sumFp16Local_, reduceMaxOutTensor_, scaleDup_, axisH_); // fp16乘加scale值
+        PipeBarrier<PIPE_V>();
+        offsetIndex_++;
+    }
+    SyncFunc<AscendC::HardEvent::V_MTE3>();
+    DataCopy(expandOutGlobal_[bsIndex * axisH_], sumFp16Local_, axisH_);
+}
+
+template <TemplateMC2TypeV2LayeredClass>
 __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFunc>::DynamicQuantSumToServer(
     uint32_t copyNum, uint32_t bsIndex)
 {
     if constexpr (std::is_same<ExpandXType, half>::value) { // fp16
 
-        Duplicate(sumFp16Local_, static_cast<ExpandXType>(0.0), axisH_);
-        for (uint32_t j = 0; j < copyNum; j++) {
-            uint32_t offsetOnIpc =
-                (offsetReduceLocal_.GetValue(offsetIndex_) / axisBS_ * rankSizeOnWin_ * SERVER_RANK_SIZE +
-                 offsetReduceLocal_.GetValue(offsetIndex_) % axisBS_ *
-                     (axisH_ * sizeof(ExpandXTransType) + scaleNumAlign_ * sizeof(ExpandXType))) /
-                sizeof(ExpandXTransType);
-            SyncFunc<AscendC::HardEvent::V_MTE2>(); // 下一个token用的buffer和上一个token用的buffer之间进行同步
-            DataCopy(castDataInt8_, localInWindow_[offsetOnIpc], axisH_);
-            DataCopy(absScaleTensor_,
-                     localInScaleWindow_[((offsetOnIpc + axisH_) * sizeof(ExpandXTransType)) / sizeof(ExpandXType)],
-                     scaleNumAlign_);
-            SyncFunc<AscendC::HardEvent::MTE2_V>();
-            Cast(reduceMaxOutTensor_, castDataInt8_, AscendC::RoundMode::CAST_NONE, axisH_);
-            PipeBarrier<PIPE_V>();
-            Brcb(scaleDup_, absScaleTensor_, repeatNum_, {1, VEC_LEN / UB_ALIGN}); // 填充scale值
-            PipeBarrier<PIPE_V>();
-            MulAddDst(sumFp16Local_, reduceMaxOutTensor_, scaleDup_, axisH_); // fp16乘加scale值
-            PipeBarrier<PIPE_V>();
-            offsetIndex_++;
-        }
-        SyncFunc<AscendC::HardEvent::V_MTE3>();
-        DataCopy(expandOutGlobal_[bsIndex * axisH_], sumFp16Local_, axisH_);
+        DynamicQuantSumFp16ToServer(copyNum, bsIndex);
     } else { // bf16
         Duplicate(inUbTemp_, 0.0f, axisH_);
         for (uint32_t j = 0; j < copyNum; j++) {
