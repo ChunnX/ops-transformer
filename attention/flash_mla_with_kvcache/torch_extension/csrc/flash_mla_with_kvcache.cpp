@@ -49,8 +49,9 @@ int64_t CalculateMlaMetadataSizeBytes(int64_t batchSize, int64_t aicCoreNum, int
 at::Tensor FlashMlaWithKvcacheMetadata(const c10::optional<at::Tensor> &cuSeqlensQ, const at::Tensor &cacheSeqlens,
                                        const c10::optional<at::Tensor> &sequsedQ, int64_t maxSeqlenQ,
                                        int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDimQk,
-                                       int64_t headDimV, int64_t maskMode, std::string layoutQ, int64_t aicCoreNum,
-                                       int64_t aivCoreNum, const at::Tensor &output)
+                                       int64_t headDimV, int64_t maskMode, std::string layoutQ, int64_t winLeft,
+                                       int64_t winRight, int64_t aicCoreNum, int64_t aivCoreNum,
+                                       const at::Tensor &output)
 {
     // Device inference from the seq-lens tensors (sparse_flash_mla precedent): cacheSeqlens 必传, cu/seq 可选.
     at::Device outputDevice = at::Device(std::string("npu"));
@@ -81,7 +82,7 @@ at::Tensor FlashMlaWithKvcacheMetadata(const c10::optional<at::Tensor> &cuSeqlen
     // Call order must match the schema/def input order (N5): cu_seqlens_q, cache_seqlens, seqused_q first,
     // then int attrs, then layout_q, then the output buffer.
     ACLNN_CMD(aclnnFlashMlaWithKvcacheMetadata, cuSeqlensQVal, cacheSeqlens, sequsedQVal, maxSeqlenQ, maxSeqlenKv,
-              numHeadsQ, numHeadsKv, headDimQk, headDimV, maskMode, layoutQPtr, output);
+              numHeadsQ, numHeadsKv, headDimQk, headDimV, maskMode, layoutQPtr, winLeft, winRight, output);
     return output;
 }
 
@@ -91,7 +92,7 @@ std::tuple<at::Tensor, at::Tensor> FlashMlaWithKvcache(
     const c10::optional<at::Tensor> &sequsedQ, const c10::optional<at::Tensor> &attnMask,
     const c10::optional<at::Tensor> &metadata, int64_t headDimV, double softmaxScale, int64_t maskMode,
     int64_t maxSeqlenQ, int64_t maxSeqlenKv, std::string layoutQ, std::string layoutKv, std::string layoutOut,
-    int64_t returnSoftmaxLse, int64_t aicCoreNum, int64_t aivCoreNum)
+    int64_t returnSoftmaxLse, int64_t winLeft, int64_t winRight, int64_t aicCoreNum, int64_t aivCoreNum)
 {
     int64_t tSize = 0;
     int64_t nSize = 0;
@@ -161,7 +162,7 @@ std::tuple<at::Tensor, at::Tensor> FlashMlaWithKvcache(
     // Python bool -> C++ int64_t: pybind11 auto-converts return_softmax_lse (True->1, False->0) before here.
     ACLNN_CMD(aclnnFlashMlaWithKvcache, q, kCache, blockTable, cacheSeqlens, cuSeqlensQ, sequsedQ, attnMask, metadata,
               headDimV, softmaxScale, maskMode, maxSeqlenQ, maxSeqlenKv, layoutQPtr, layoutKvPtr, layoutOutPtr,
-              returnSoftmaxLse, attentionOutput, softmaxLse);
+              returnSoftmaxLse, winLeft, winRight, attentionOutput, softmaxLse);
 
     return std::tuple<at::Tensor, at::Tensor>(attentionOutput, softmaxLse);
 }

@@ -33,8 +33,8 @@ extern aclnnStatus aclnnInnerFlashMlaWithKvcacheGetWorkspaceSize(
     const aclTensor *cacheSeqlensOptional, const aclTensor *cuSeqlensQOptional, const aclTensor *sequsedQOptional,
     const aclTensor *attnMaskOptional, const aclTensor *metadataOptional, int64_t headDimV, double softmaxScale,
     int64_t maskMode, int64_t maxSeqlenQ, int64_t maxSeqlenKV, const char *layoutQ, const char *layoutKv,
-    const char *layoutOut, int64_t returnSoftmaxLse, const aclTensor *attnOut, const aclTensor *softmaxLse,
-    uint64_t *workspaceSize, aclOpExecutor **executor);
+    const char *layoutOut, int64_t returnSoftmaxLse, int64_t winLeft, int64_t winRight, const aclTensor *attnOut,
+    const aclTensor *softmaxLse, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 extern aclnnStatus aclnnInnerFlashMlaWithKvcache(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                                  const aclrtStream stream);
@@ -63,8 +63,8 @@ aclnnStatus aclnnFlashMlaWithKvcacheGetWorkspaceSize(
     const aclTensor *cacheSeqlensOptional, const aclTensor *cuSeqlensQOptional, const aclTensor *sequsedQOptional,
     const aclTensor *attnMaskOptional, const aclTensor *metadataOptional, int64_t headDimV, double softmaxScale,
     int64_t maskMode, int64_t maxSeqlenQ, int64_t maxSeqlenKV, const char *layoutQ, const char *layoutKv,
-    const char *layoutOut, int64_t returnSoftmaxLse, const aclTensor *attnOut, const aclTensor *softmaxLseOptional,
-    uint64_t *workspaceSize, aclOpExecutor **executor)
+    const char *layoutOut, int64_t returnSoftmaxLse, int64_t winLeft, int64_t winRight, const aclTensor *attnOut,
+    const aclTensor *softmaxLseOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_LOGD("start aclnnFlashMlaWithKvcacheGetWorkspaceSize");
 
@@ -76,7 +76,7 @@ aclnnStatus aclnnFlashMlaWithKvcacheGetWorkspaceSize(
     aclnnStatus ret = aclnnInnerFlashMlaWithKvcacheGetWorkspaceSize(
         q, kCache, blockTableOptional, cacheSeqlensOptional, cuSeqlensQOptional, sequsedQOptional, attnMaskOptional,
         metadataOptional, headDimV, softmaxScale, maskMode, maxSeqlenQ, maxSeqlenKV, layoutQ, layoutKv, layoutOut,
-        returnSoftmaxLse, attnOut, placeHolder, workspaceSize, executor);
+        returnSoftmaxLse, winLeft, winRight, attnOut, placeHolder, workspaceSize, executor);
 
     // 销毁占位符
     if (returnSoftmaxLse == 0) {

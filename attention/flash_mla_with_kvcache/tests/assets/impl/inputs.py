@@ -25,6 +25,8 @@ def customize_inputs(
     metadata=None,
     layout_kv="PA_BBND",
     mask_mode=0,
+    win_left=-1,
+    win_right=-1,
     **kwargs,
 ):
     for name, tensor in (
@@ -70,7 +72,7 @@ def customize_inputs(
             offset += count
         block_table.copy_(table)
     if attn_mask is not None:
-        if mask_mode == 3:
+        if mask_mode in (3, 4):
             attn_mask.copy_(torch.ones_like(attn_mask).triu(diagonal=1))
         elif mask_mode == 0:
             attn_mask.zero_()

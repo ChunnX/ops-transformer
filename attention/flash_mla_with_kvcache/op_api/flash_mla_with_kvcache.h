@@ -31,13 +31,15 @@ namespace l0op {
  * @param metadataOptional    预计算tiling元数据（可选，INT32）
  * @param headDimV            k_cache中nope(value)段宽度（int32_t，默认512）
  * @param softmaxScale         softmax缩放系数（double）
- * @param maskMode            掩码模式（int32_t，仅支持0/1）
+ * @param maskMode            掩码模式（int32_t，支持0/3/4）
  * @param maxSeqlenQ          query最大序列长度（int32_t）
  * @param maxSeqlenKV         kv最大序列长度（int32_t）
  * @param layoutQ             query布局字符串
  * @param layoutKv            kv布局字符串
  * @param layoutOut           输出布局字符串
  * @param returnSoftmaxLse    是否输出softmax_lse（int32_t）
+ * @param winLeft             左窗口大小，-1表示无限；仅maskMode=4可设非负值。
+ * @param winRight            右窗口大小，-1表示无限；仅maskMode=4可设非负值。
  * @param executor            op执行器
  * @return std::array<const aclTensor*, 2> [attnOut, softmaxLse]
  *         任意元素为nullptr表示对应输出的InferShape或Launch失败。
@@ -47,7 +49,7 @@ const std::array<const aclTensor *, 2> FlashMlaWithKvcache(
     const aclTensor *cacheSeqlensOptional, const aclTensor *cuSeqlensQOptional, const aclTensor *sequsedQOptional,
     const aclTensor *attnMaskOptional, const aclTensor *metadataOptional, int32_t headDimV, double softmaxScale,
     int32_t maskMode, int32_t maxSeqlenQ, int32_t maxSeqlenKV, const char *layoutQ, const char *layoutKv,
-    const char *layoutOut, int32_t returnSoftmaxLse, aclOpExecutor *executor);
+    const char *layoutOut, int32_t returnSoftmaxLse, int64_t winLeft, int64_t winRight, aclOpExecutor *executor);
 
 } // namespace l0op
 

@@ -23,11 +23,11 @@ const std::array<const aclTensor *, 2> FlashMlaWithKvcache(
     const aclTensor *cacheSeqlensOptional, const aclTensor *cuSeqlensQOptional, const aclTensor *sequsedQOptional,
     const aclTensor *attnMaskOptional, const aclTensor *metadataOptional, int32_t headDimV, double softmaxScale,
     int32_t maskMode, int32_t maxSeqlenQ, int32_t maxSeqlenKV, const char *layoutQ, const char *layoutKv,
-    const char *layoutOut, int32_t returnSoftmaxLse, aclOpExecutor *executor)
+    const char *layoutOut, int32_t returnSoftmaxLse, int64_t winLeft, int64_t winRight, aclOpExecutor *executor)
 {
     L0_DFX(FlashMlaWithKvcache, q, kCache, blockTableOptional, cacheSeqlensOptional, cuSeqlensQOptional,
            sequsedQOptional, attnMaskOptional, metadataOptional, headDimV, softmaxScale, maskMode, maxSeqlenQ,
-           maxSeqlenKV, layoutQ, layoutKv, layoutOut, returnSoftmaxLse);
+           maxSeqlenKV, layoutQ, layoutKv, layoutOut, returnSoftmaxLse, winLeft, winRight);
 
     if (blockTableOptional == nullptr) {
         blockTableOptional = executor->AllocTensor(DataType::DT_INT32, Format::FORMAT_ND, Format::FORMAT_ND);
@@ -56,7 +56,7 @@ const std::array<const aclTensor *, 2> FlashMlaWithKvcache(
                                     sequsedQOptional, attnMaskOptional, metadataOptional),
                            OP_OUTPUT(attentionOutAlloc, softmaxLseAlloc),
                            OP_ATTR(headDimV, softmaxScale, maskMode, maxSeqlenQ, maxSeqlenKV, layoutQ, layoutKv,
-                                   layoutOut, returnSoftmaxLse));
+                                   layoutOut, returnSoftmaxLse, winLeft, winRight));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "FlashMlaWithKvcache InferShape failed.");
         return {nullptr, nullptr};
@@ -67,7 +67,7 @@ const std::array<const aclTensor *, 2> FlashMlaWithKvcache(
                                                sequsedQOptional, attnMaskOptional, metadataOptional),
                                       OP_OUTPUT(attentionOutAlloc, softmaxLseAlloc),
                                       OP_ATTR(headDimV, softmaxScale, maskMode, maxSeqlenQ, maxSeqlenKV, layoutQ,
-                                              layoutKv, layoutOut, returnSoftmaxLse));
+                                              layoutKv, layoutOut, returnSoftmaxLse, winLeft, winRight));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "FlashMlaWithKvcache launch kernel failed.");
         return {nullptr, nullptr};

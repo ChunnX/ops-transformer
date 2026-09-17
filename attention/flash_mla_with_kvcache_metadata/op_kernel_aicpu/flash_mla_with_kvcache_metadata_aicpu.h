@@ -13,7 +13,7 @@
  * \brief AICPU metadata producer for FlashMlaWithKvcacheMetadata.
  *        Inputs are 3 tensors: cuSeqlensQ (accumulated), cacheSeqlens (per-batch,
  *        non-cumulative kv lengths), sequsedQ (per-batch non-cumulative query lengths).
- *        Window is unlimited: preToken/nextToken are unconditionally UINT32_MAX.
+ *        BAND windows use the same right-aligned bounds as the main operator.
  */
 
 #ifndef FLASH_MLA_WITH_KVCACHE_METADATA_AICPU_H
@@ -67,6 +67,8 @@ private:
     int32_t headDimQk_ = 0;
     int32_t headDimV_ = 0;
     int32_t maskMode_ = 0;
+    int64_t winLeft_ = -1;
+    int64_t winRight_ = -1;
     std::string layoutQ_ = "BSND";
     std::string socVersion_ = "";
     int32_t aicCoreNum_ = 36U; // 36: default aic num

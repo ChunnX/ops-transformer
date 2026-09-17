@@ -85,6 +85,8 @@ public:
         this->Attr("layout_kv").AttrType(OPTIONAL).String("PA_BBND");
         this->Attr("layout_out").AttrType(OPTIONAL).String("NTD");
         this->Attr("return_softmax_lse").AttrType(OPTIONAL).Int(0);
+        this->Attr("win_left").AttrType(OPTIONAL).Int(-1);
+        this->Attr("win_right").AttrType(OPTIONAL).Int(-1);
 
         OpAICoreConfig aicore_config_95;
         aicore_config_95.DynamicCompileStaticFlag(true)

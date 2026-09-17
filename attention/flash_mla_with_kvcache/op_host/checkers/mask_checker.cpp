@@ -12,23 +12,8 @@
  * \file mask_checker.cpp
  * \brief Checker for mask_mode, attn_mask parameters (文档约束: Mask参数组)
  *
- * mask_mode <-> FIA sparseMode mapping:
- *   The fia*mla compute path has only ever been exercised with sparseMode in
- *   {NO_MASK(0), RIGHT_DOWN(3)} — hard gate at
- *   fused_infer_attention_score/op_host/arch35/fia_tiling_nonquant_mla.cpp:79
- *   (IsCapableSparseLayoutCheckMla), values from fia_tiling_info.h:69,72.
- *   This repo's MaskMode enum is {NO_MASK=0, CAUSAL=3, BAND=4}
- *   (fa_tiling_info.h:106-110) and the FIA kernel implements right-down
- *   causality via `sparseMode == fa_base_vector::RIGHT_DOWN_CAUSAL`
- *   (fia_kernel_noquant_mla.h:466). CAUSAL and SPARSE_MODE_RIGHT_DOWN are
- *   numerically identical (3), so the mapping is:
- *     mask_mode 0 (NO_MASK)  -> sparseMode 0 (NO_MASK)     [no attn_mask]
- *     mask_mode 3 (CAUSAL)   -> sparseMode 3 (RIGHT_DOWN) [attn_mask required]
- *   Every other value (incl. BAND=4) is REJECTED.
- *   FIA additionally requires attn_mask when sparseMode != 0
- *   (fia_tiling_info.cpp mask_checker CheckDimAndShape), so the
- *   "attn_mask required for CAUSAL" existence rule is kept.
- *   The left/right window attrs are NOT part of the interface — no checks.
+ * Modes 3 and 4 use the shared [2048, 2048] upper-triangular mask template.
+ * Mode 4 applies a right-aligned inclusive window. -1 means unbounded.
  */
 
 #include <map>
@@ -52,15 +37,14 @@ using namespace arch35MLA;
 
 ge::graphStatus MaskChecker::CheckSingleParaMaskMode(const FlashMlaWithKvcacheTilingInfo &faInfo)
 {
-    // only {0 (NO_MASK), 3 (CAUSAL == FIA SPARSE_MODE_RIGHT_DOWN)} are valid.
-    // BAND(4)/LEFT_UP/etc. route in FIA MLA to nothing — reject.
     const std::vector<int64_t> maskModeList = {static_cast<int64_t>(MaskMode::NO_MASK),
-                                               static_cast<int64_t>(MaskMode::CAUSAL)};
-    OP_CHECK_IF(ge::GRAPH_SUCCESS != CheckValueSupport(static_cast<int64_t>(faInfo.maskMode), maskModeList),
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    faInfo.opName, "mask_mode", std::to_string(faInfo.maskMode).c_str(),
-                    "The value of mask_mode can only be 0 (NO_MASK) or 3 (CAUSAL, == FIA RIGHT_DOWN)"),
-                return ge::GRAPH_FAILED);
+                                               static_cast<int64_t>(MaskMode::CAUSAL),
+                                               static_cast<int64_t>(MaskMode::BAND)};
+    OP_CHECK_IF(
+        ge::GRAPH_SUCCESS != CheckValueSupport(static_cast<int64_t>(faInfo.maskMode), maskModeList),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "mask_mode", std::to_string(faInfo.maskMode).c_str(),
+                                              "mask_mode must be 0 (NO_MASK), 3 (CAUSAL) or 4 (BAND)"),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -111,6 +95,12 @@ ge::graphStatus MaskChecker::CheckSinglePara(const FlashMlaWithKvcacheTilingInfo
 ge::graphStatus MaskChecker::CheckParaExistence(const FlashMlaWithKvcacheTilingInfo &faInfo)
 {
     auto &attnMaskTensor = faInfo.opParamInfo.attnMask.tensor;
+    OP_CHECK_IF(faInfo.winLeft < -1 || faInfo.winLeft > MASK_MODE_INT_MAX || faInfo.winRight < -1 ||
+                    faInfo.winRight > MASK_MODE_INT_MAX,
+                OP_LOGE(faInfo.opName, "win_left and win_right must be in [-1, INT32_MAX]."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        faInfo.maskMode != static_cast<int64_t>(MaskMode::BAND) && (faInfo.winLeft != -1 || faInfo.winRight != -1),
+        OP_LOGE(faInfo.opName, "win_left and win_right must be -1 for mask_mode 0 or 3."), return ge::GRAPH_FAILED);
 
     if (faInfo.maskMode == static_cast<int64_t>(MaskMode::NO_MASK)) {
         OP_CHECK_IF(attnMaskTensor != nullptr,
@@ -118,12 +108,12 @@ ge::graphStatus MaskChecker::CheckParaExistence(const FlashMlaWithKvcacheTilingI
                                                           "When mask_mode=0 (no mask mode), attn_mask must be empty"),
                     return ge::GRAPH_FAILED);
     }
-    if (faInfo.maskMode == static_cast<int64_t>(MaskMode::CAUSAL)) {
-        OP_CHECK_IF(
-            attnMaskTensor == nullptr,
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "attn_mask", "empty",
-                                                  "When mask_mode=3 (causal/right-down), attn_mask must be provided"),
-            return ge::GRAPH_FAILED);
+    if (faInfo.maskMode == static_cast<int64_t>(MaskMode::CAUSAL) ||
+        faInfo.maskMode == static_cast<int64_t>(MaskMode::BAND)) {
+        OP_CHECK_IF(attnMaskTensor == nullptr,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "attn_mask", "empty",
+                                                          "When mask_mode=3 or 4, attn_mask must be provided"),
+                    return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;

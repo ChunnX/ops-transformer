@@ -69,7 +69,7 @@ class FlashMlaWithKvcacheOpBuilder(OpBuilder):
             "Tensor? cu_seqlens_q=None, Tensor? seqused_q=None, "
             "int? max_seqlen_q=None, int? max_seqlen_kv=None, "
             "int head_dim_qk=576, int head_dim_v=512, "
-            'int? mask_mode=None, str? layout_q="BSND") -> Tensor',
+            'int? mask_mode=None, str? layout_q="BSND", int win_left=-1, int win_right=-1) -> Tensor',
             "flash_mla_with_kvcache(Tensor q, Tensor k_cache, "
             "Tensor? block_table=None, Tensor? cache_seqlens=None, "
             "Tensor? cu_seqlens_q=None, Tensor? seqused_q=None, "
@@ -77,7 +77,7 @@ class FlashMlaWithKvcacheOpBuilder(OpBuilder):
             "int head_dim_v=512, float softmax_scale=1.0, int mask_mode=0, "
             "int max_seqlen_q=-1, int max_seqlen_kv=-1, "
             'str layout_q="BSND", str layout_kv="PA_BBND", str? layout_out="BSND", '
-            "bool return_softmax_lse=False) -> (Tensor, Tensor)",
+            "bool return_softmax_lse=False, int win_left=-1, int win_right=-1) -> (Tensor, Tensor)",
         ]
 
     def register_meta(self):
@@ -99,6 +99,8 @@ class FlashMlaWithKvcacheOpBuilder(OpBuilder):
             head_dim_v: int = 512,
             mask_mode: Optional[int] = None,
             layout_q: Optional[str] = None,
+            win_left: int = -1,
+            win_right: int = -1,
         ):
             b_size = _calculate_batch_size(cache_seqlens)
             aic_core_num, aiv_core_num = _get_core_nums()
@@ -124,6 +126,8 @@ class FlashMlaWithKvcacheOpBuilder(OpBuilder):
             layout_kv: Optional[str] = "PA_BBND",
             layout_out: Optional[str] = "BSND",
             return_softmax_lse: Optional[bool] = False,
+            win_left: int = -1,
+            win_right: int = -1,
         ):
             layout_q = "BSND" if layout_q is None else layout_q
             layout_out = "BSND" if layout_out is None else layout_out
@@ -189,6 +193,8 @@ def flash_mla_with_kvcache_metadata(
     head_dim_v: int = 512,
     mask_mode: Optional[int] = 0,
     layout_q: Optional[str] = "BSND",
+    win_left: int = -1,
+    win_right: int = -1,
 ):
     """
     Dispatcher implementation: NPU.
@@ -218,6 +224,8 @@ def flash_mla_with_kvcache_metadata(
         head_dim_v,
         mask_mode,
         layout_q,
+        win_left,
+        win_right,
         aic_core_num,
         aiv_core_num,
         output,
@@ -243,6 +251,8 @@ def flash_mla_with_kvcache(
     layout_kv: Optional[str] = "PA_BBND",
     layout_out: Optional[str] = "BSND",
     return_softmax_lse: Optional[bool] = False,
+    win_left: int = -1,
+    win_right: int = -1,
 ):
     """
     Dispatcher implementation for NPU (DeepSeek MLA flash attention).
@@ -283,6 +293,8 @@ def flash_mla_with_kvcache(
         layout_kv,
         layout_out,
         return_softmax_lse,
+        win_left,
+        win_right,
         aic_core_num,
         aiv_core_num,
     )

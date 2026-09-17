@@ -161,7 +161,7 @@ int RunMetadataOnce(aclrtStream stream, int64_t batch, int64_t maxSeqQ, int64_t 
     void *workspaceAddr = nullptr;
     if (isMla) {
         r = aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize(cuT, seqKvT, nullptr, maxSeqQ, maxSeqKv, nHeadQ, nHeadKv,
-                                                             headDimQk, headDimV, maskMode, layoutQ, metaT,
+                                                             headDimQk, headDimV, maskMode, layoutQ, -1, -1, metaT,
                                                              &workspaceSize, &executor);
     } else {
         // flash_attn_metadata 侧仍为克隆前的旧签名，语义等价映射：cuSeqlensQ 槽=cuT、
@@ -455,7 +455,7 @@ static int RunNegativeRuntimeOnly()
         uint64_t ws = 0;
         if (ret == 0) {
             ret = aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize(cuT, seqKvT, nullptr, 8, 32768, 17, 1, 576, 512, 3,
-                                                                   "TND", metaT, &ws, &executor);
+                                                                   "TND", -1, -1, metaT, &ws, &executor);
             printf("[negative-child] GetWorkspaceSize with undersized buffer: aclnnStatus=%ld\n", ret);
             if (ret == 0) {
                 void *wsAddr = nullptr;
@@ -533,8 +533,8 @@ int main()
         uint64_t workspaceSize = 0;
         void *workspaceAddr = nullptr;
         ret = aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize(cuTmk, clTmk, nullptr, qS, kvS, numHeads,
-                                                               numKeyValueHeads, 576, headDim, 3, "TND", metadataTensor,
-                                                               &workspaceSize, &executor);
+                                                               numKeyValueHeads, 576, headDim, 3, "TND", -1, -1,
+                                                               metadataTensor, &workspaceSize, &executor);
         if (ret != ACL_SUCCESS) {
             printf("aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize %d\n", ret);
             return -1;

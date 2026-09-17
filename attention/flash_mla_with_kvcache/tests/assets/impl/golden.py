@@ -27,6 +27,8 @@ def cpu_flash_mla_with_kvcache(
     head_dim_v=512,
     softmax_scale=1.0,
     mask_mode=0,
+    win_left=-1,
+    win_right=-1,
     max_seqlen_q=-1,
     max_seqlen_kv=-1,
     layout_q="BSND",

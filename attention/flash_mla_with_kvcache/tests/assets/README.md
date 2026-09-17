@@ -45,3 +45,15 @@ assets 的精度策略；LSE 使用 testkit provider 的绝对误差 0.1。
 `fullgraph=True, options={"static_kernel_compile": True}`，不是 CSV 字段。
 这些用例是覆盖输入集，不代表全部已通过精度验证；此前 BF16 smoke 存在精度失败，
 本次不放宽比较阈值。
+
+## BAND 窗口回归
+
+安装同版本 MLA 主算子及 metadata custom 包、更新 torch 扩展后运行：
+
+```bash
+OMP_NUM_THREADS=10 MKL_NUM_THREADS=10 OPENBLAS_NUM_THREADS=10 MAX_JOBS=10 \
+python attention/flash_mla_with_kvcache/tests/assets/test_band.py
+```
+
+覆盖右对齐闭区间、FP16/BF16、分页边界、单点/无限窗口、空 batch、
+整行屏蔽、FlashDecode、mode 0/3 等价性和非法参数。CPU golden 同时检查 full/tiled 两条路径。

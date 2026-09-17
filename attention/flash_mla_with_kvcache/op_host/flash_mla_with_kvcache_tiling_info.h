@@ -28,7 +28,7 @@ namespace optiling {
 namespace flash_mla_with_kvcache {
 // ============================================================
 // String name constants for tensor and attribute parameters
-// (interface: no v / q_rope / k_rope / sinks / win_left / win_right;
+// (interface: no v / q_rope / k_rope / sinks;
 //  rope merged into q and k_cache, last dim 576 = head_dim_v(512) + rope(64))
 // ============================================================
 const std::string QUERY_NAME = "q";
@@ -66,7 +66,7 @@ constexpr uint32_t ATTN_MASK_INDEX = 6;
 constexpr uint32_t METADATA_INDEX = 7;
 
 // Attributes Index (order: head_dim_v, softmax_scale, mask_mode, max_seqlen_q,
-// max_seqlen_kv, layout_q, layout_kv, layout_out, return_softmax_lse)
+// max_seqlen_kv, layout_q, layout_kv, layout_out, return_softmax_lse, win_left, win_right)
 constexpr uint32_t ATTR_HEAD_DIM_V_INDEX = 0;    // head_dim_v (nope/value width inside k_cache, default 512)
 constexpr uint32_t ATTR_SOFTMAX_SCALE_INDEX = 1; // softmax_scale
 constexpr uint32_t ATTR_MASK_MODE_INDEX = 2;     // mask_mode
@@ -76,6 +76,8 @@ constexpr uint32_t ATTR_LAYOUT_Q_INDEX = 5;      // layout_q
 constexpr uint32_t ATTR_LAYOUT_KV_INDEX = 6;     // layout_kv
 constexpr uint32_t ATTR_LAYOUT_OUT_INDEX = 7;    // layout_out
 constexpr uint32_t ATTR_RETURN_LSE_INDEX = 8;    // return_softmax_lse
+constexpr uint32_t ATTR_WIN_LEFT_INDEX = 9;
+constexpr uint32_t ATTR_WIN_RIGHT_INDEX = 10;
 
 // Legacy aliases for backward compatibility
 constexpr uint32_t ATTR_SCALE_INDEX = ATTR_SOFTMAX_SCALE_INDEX;
@@ -160,7 +162,7 @@ struct FlashMlaWithKvcacheParaInfo {
     FlashMlaWithKvcacheOptionalParaInfo attnMask = {nullptr, nullptr};
     FlashMlaWithKvcacheOptionalParaInfo metadata = {nullptr, nullptr};
 
-    // 已从接口移除：key/value/cu_seqlens_kv/seqused_kv 输入与 win_left/win_right 属性。
+    // 已从接口移除：key/value/cu_seqlens_kv/seqused_kv 输入。
     // 说明：cuSeqlensKv/sequsedKv 仍保留字段占位（parser 不再填充，恒为 nullptr），
     // 供 arch35/flash_mla_with_kvcache_tiling.cpp 编译过渡使用。
     FlashMlaWithKvcacheOptionalParaInfo cuSeqlensKv = {nullptr, nullptr};
@@ -169,6 +171,8 @@ struct FlashMlaWithKvcacheParaInfo {
     const int64_t *headDimV = nullptr;
     const float *softmaxScale = nullptr;
     const int64_t *maskMode = nullptr;
+    const int64_t *winLeft = nullptr;
+    const int64_t *winRight = nullptr;
     const int64_t *maxSeqlenQ = nullptr;
     const int64_t *maxSeqlenKV = nullptr;
     const char *layoutQ = nullptr;

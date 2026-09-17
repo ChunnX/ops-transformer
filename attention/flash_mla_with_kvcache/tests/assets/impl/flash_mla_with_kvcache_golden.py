@@ -19,13 +19,14 @@
 - block_table (B, max_blocks) int32, 值 = k_cache 中的块索引;
   cache_seqlens (B,) int32, 逐 batch cache 长度(接口参数名)。
 - mask_mode: 0 = 无掩码全可见; 3 = RIGHT_DOWN 右对齐 causal(decode 时
-  q 位于序列末尾, 可见该序列全部 cache key; prefill 多 token 行内 causal)。
+  q 位于序列末尾, 可见该序列全部 cache key; prefill 多 token 行内 causal);
+  4 = BAND 右对齐闭区间窗口，win_left/win_right 的 -1 表示该侧无限。
 - 输出: attn_out dtype 同 q(宽 = head_dim_v); softmax_lse float32。形状:
   BNSD -> (B,N,S,DV) / (B,N,S); BSND -> (B,S,N,DV) / (B,N,S);
   TND  -> (T,N,DV) / (N,T)。return_softmax_lse=False 时 lse 为 zeros(1)。
 
 实现架构与 ``golden/flash_attn_golden.py`` 一致(QK 宽 D=576、V 宽 DV=512,
-flash golden 的 v_dim 独立机制天然覆盖): forward_golden(17 参对齐算子)
+flash golden 的 v_dim 独立机制天然覆盖): forward_golden(参数对齐算子)
 -> _compute_per_batch(逐 batch 防 OOM) -> _extract(PA_NZ 块还原)
 -> _compute_tiled_single(块式 online softmax) / _compute_full_single(全 bmm);
 mask_mode=3 用右对齐 causal(q_pos = q_idx + (skv - sq))。完全自包含,
@@ -200,6 +201,8 @@ class FlashMlaWithKvcacheGolden:
         layout_kv: str = "PA_NZ",
         layout_out: Optional[str] = None,
         return_softmax_lse: bool = False,
+        win_left: int = -1,
+        win_right: int = -1,
         device_mode: str = "npu",
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """计算 flash_mla_with_kvcache 参考实现。
@@ -216,12 +219,12 @@ class FlashMlaWithKvcacheGolden:
             raise ValueError(
                 f"unsupported layout_kv: {layout_kv} (仅 PA_NZ/PA_BBND/PA_BNBD)"
             )
-        if mask_mode not in (0, 3):
-            raise ValueError(f"mask_mode 仅支持 0/3, got {mask_mode}")
+        if mask_mode not in (0, 3, 4):
+            raise ValueError(f"mask_mode 仅支持 0/3/4, got {mask_mode}")
         if layout_q == "TND" and cu_seqlens_q is None:
             raise ValueError("layout_q=TND 要求 cu_seqlens_q")
-        # mask_mode=3 (RIGHT_DOWN): golden 按右对齐位置自构造, 忽略 attn_mask
-        if mask_mode == 3:
+        # Modes 3/4 construct the right-aligned mask from logical positions.
+        if mask_mode in (3, 4):
             attn_mask = None
 
         # ---- 几何参数统一提取(head_dim_v 为算子参数, TND/BNSD/BSND 的 N/S/B
@@ -319,6 +322,8 @@ class FlashMlaWithKvcacheGolden:
             attn_mask,
             scale,
             compute_mode,
+            win_left,
+            win_right,
         )
 
         # 4. 输出布局转换 + dtype
@@ -375,6 +380,8 @@ class FlashMlaWithKvcacheGolden:
         attn_mask: Optional[torch.Tensor],
         scale: float,
         compute_mode: str,
+        win_left: int,
+        win_right: int,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """逐 batch 计算, 每 batch q/k 保持输入 dtype 转 BNSD 后进入单头 compute。
 
@@ -447,7 +454,7 @@ class FlashMlaWithKvcacheGolden:
             # 单 KV 头 -> 所有 Q 头广播; masked 用右对齐 causal 自构造
             mask_b = (
                 None
-                if (compute_mode == "tiled" and mask_mode == 3)
+                if (compute_mode == "tiled" and mask_mode in (3, 4))
                 else self._build_batch_mask(
                     sq,
                     skv,
@@ -455,6 +462,8 @@ class FlashMlaWithKvcacheGolden:
                     attn_mask,
                     q.device,
                     b,
+                    win_left=win_left,
+                    win_right=win_right,
                 )
             )
 
@@ -475,27 +484,48 @@ class FlashMlaWithKvcacheGolden:
                 selected_mask = mask_b
                 if per_head_mask:
                     selected_mask = self._build_batch_mask(
-                        sq, skv, mask_mode, attn_mask, q.device, b, head_index=first
+                        sq,
+                        skv,
+                        mask_mode,
+                        attn_mask,
+                        q.device,
+                        b,
+                        head_index=first,
+                        win_left=win_left,
+                        win_right=win_right,
                     )
                 flat_q = q_heads.reshape(-1, q_heads.shape[-1])
                 if compute_mode == "tiled":
 
                     def mask_fn(qs, qe, ks, ke):
                         positions = torch.arange(qs, qe, device=q.device) % sq
-                        if mask_mode == 3:
+                        if mask_mode in (3, 4):
                             return self._build_mask_mode_mask(
-                                positions, torch.arange(ks, ke, device=q.device), delta
+                                positions,
+                                torch.arange(ks, ke, device=q.device),
+                                delta,
+                                mask_mode,
+                                win_left,
+                                win_right,
                             )
                         if selected_mask is None:
                             return None
                         return selected_mask[:, ks:ke].index_select(0, positions)
 
                     def kv_bounds(qs, qe):
-                        if mask_mode != 3:
+                        if mask_mode not in (3, 4):
                             return 0, skv
                         # A row tile can straddle heads; each head restarts Q.
-                        last_q = sq - 1 if qs // sq != (qe - 1) // sq else (qe - 1) % sq
-                        return 0, last_q + delta + 1
+                        crosses_head = qs // sq != (qe - 1) // sq
+                        first_q = 0 if crosses_head else qs % sq
+                        last_q = sq - 1 if crosses_head else (qe - 1) % sq
+                        if mask_mode == 3:
+                            return 0, last_q + delta + 1
+                        left = 0 if win_left == -1 else first_q + delta - win_left
+                        right = (
+                            skv if win_right == -1 else last_q + delta + win_right + 1
+                        )
+                        return left, right
 
                     o, l = attention_single(
                         flat_q,
@@ -570,14 +600,18 @@ class FlashMlaWithKvcacheGolden:
         scale: float,
         mask_mode: int = 0,
         delta: int = 0,
+        win_left: int = -1,
+        win_right: int = -1,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Online softmax with input-dtype Cube operands and FP32 accumulators."""
 
         def mask_fn(qs, qe, ks, ke):
-            if mask_mode == 3:
+            if mask_mode in (3, 4):
                 q_idx = torch.arange(qs, qe, device=q.device)
                 k_idx = torch.arange(ks, ke, device=q.device)
-                return self._build_mask_mode_mask(q_idx, k_idx, delta)
+                return self._build_mask_mode_mask(
+                    q_idx, k_idx, delta, mask_mode, win_left, win_right
+                )
             return None if mask is None else mask[qs:qe, ks:ke]
 
         return attention_single(
@@ -614,7 +648,7 @@ class FlashMlaWithKvcacheGolden:
         )
 
     # ==========================================================================
-    # Mask generation (右对齐 causal, 同 flash golden)
+    # Mask generation (右对齐 causal / BAND, 同 FlashAttn golden)
     # ==========================================================================
 
     @staticmethod
@@ -622,15 +656,27 @@ class FlashMlaWithKvcacheGolden:
         q_idx: torch.Tensor,
         k_idx: torch.Tensor,
         delta: int,
+        mask_mode: int = 3,
+        win_left: int = -1,
+        win_right: int = -1,
     ) -> Optional[torch.Tensor]:
-        """mask_mode=3 (RIGHT_DOWN): q 序列右对齐到 KV 序列末尾。
+        """Right-align Q to KV; True means masked out.
 
-        Q[i] 位于 KV 位置 i + (Skv - Sq); 屏蔽 k_pos > q_pos。
-        decode(Sq=1) 时 q 位于末尾 => 全部 cache key 可见。
+        Mode 3 keeps keys at or before q_pos. Mode 4 keeps the inclusive
+        [q_pos - win_left, q_pos + win_right] window; -1 means unbounded.
         """
         q_pos = q_idx.unsqueeze(1) + delta
         k_pos = k_idx.unsqueeze(0)
-        return k_pos > q_pos
+        if mask_mode == 3:
+            return k_pos > q_pos
+        masked = torch.zeros(
+            (q_idx.numel(), k_idx.numel()), dtype=torch.bool, device=q_idx.device
+        )
+        if win_left >= 0:
+            masked |= k_pos < q_pos - win_left
+        if win_right >= 0:
+            masked |= k_pos > q_pos + win_right
+        return masked
 
     def _build_batch_mask(
         self,
@@ -641,12 +687,16 @@ class FlashMlaWithKvcacheGolden:
         device: torch.device,
         batch_index: int,
         head_index: int = 0,
+        win_left: int = -1,
+        win_right: int = -1,
     ) -> Optional[torch.Tensor]:
         """Build (sq, skv) bool mask for a single batch. True = mask out."""
-        if mask_mode == 3:
+        if mask_mode in (3, 4):
             q_idx = torch.arange(sq, device=device)
             k_idx = torch.arange(skv, device=device)
-            return self._build_mask_mode_mask(q_idx, k_idx, skv - sq)
+            return self._build_mask_mode_mask(
+                q_idx, k_idx, skv - sq, mask_mode, win_left, win_right
+            )
         if attn_mask is not None:
             if attn_mask.dim() == 4:
                 attn_mask = attn_mask[
