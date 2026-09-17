@@ -29,18 +29,18 @@ aclnnStatus aclnnMoeDistributeDispatchV2GetWorkspaceSize(
     const aclTensor *xActiveMaskOptional, const aclTensor *expertScalesOptional, const char *groupEp,
     int64_t epWorldSize, int64_t epRankId, int64_t moeExpertNum, const char *groupTp, int64_t tpWorldSize,
     int64_t tpRankId, int64_t expertShardType, int64_t sharedExpertNum, int64_t sharedExpertRankNum, int64_t quantMode,
-    int64_t globalBs, int64_t expertTokenNumsType, const char *commAlg, aclTensor *expandXOut,
-    aclTensor *dynamicScalesOut, aclTensor *assistInfoForCombineOut, aclTensor *expertTokenNumsOut,
+    int64_t globalBs, int64_t expertTokenNumsType, const char *commAlg, const aclTensor *timerBuffer,
+    aclTensor *expandXOut, aclTensor *dynamicScalesOut, aclTensor *assistInfoForCombineOut, aclTensor *expertTokenNumsOut,
     aclTensor *epRecvCountsOut, aclTensor *tpRecvCountsOut, aclTensor *expandScalesOut, uint64_t *workspaceSize,
     aclOpExecutor **executor)
 {
     OP_LOGD("aclnn_dispatch v2 WorkspaceSize start");
     aclnnStatus getWorkspaceSizesRes = aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
-        x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional, nullptr, nullptr, groupEp, epWorldSize,
-        epRankId, moeExpertNum, groupTp, tpWorldSize, tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum,
-        quantMode, globalBs, expertTokenNumsType, commAlg, 0, 0, 0, expandXOut, dynamicScalesOut,
-        assistInfoForCombineOut, expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut, expandScalesOut, workspaceSize,
-        executor);
+        x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional, nullptr, nullptr, timerBuffer,
+        groupEp, epWorldSize, epRankId, moeExpertNum, groupTp, tpWorldSize, tpRankId, expertShardType,
+        sharedExpertNum, sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType, commAlg, 0, 0, 0, expandXOut,
+        dynamicScalesOut, assistInfoForCombineOut, expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut,
+        expandScalesOut, workspaceSize, executor);
 
     return getWorkspaceSizesRes;
 }

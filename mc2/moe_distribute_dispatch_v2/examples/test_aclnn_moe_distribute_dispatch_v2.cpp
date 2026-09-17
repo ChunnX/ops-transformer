@@ -23,6 +23,12 @@
 #include "aclnn/opdev/fp16_t.h"
 #include "aclnnop/aclnn_moe_distribute_dispatch_v2.h"
 #include "aclnnop/aclnn_moe_distribute_combine_v2.h"
+// CocTimer 打点：导出 CSV 用
+#include <sys/stat.h>
+#include <cerrno>
+#include <unistd.h>
+#include <climits>
+#include "../../tools/coc_timer/coc_timer_host.hpp"
 
 #define CHECK_RET(cond, return_expr) \
     do { \
@@ -97,6 +103,29 @@ void FreeDeviceAddr(void *deviceAddr)
     }
 }
 
+// CocTimer：把 device 侧计时缓冲区导出为 CSV（原始时间线 + 阶段耗时汇总）
+void ExportTimeCsv(int rankId, void *timerBufferDeviceAddr)
+{
+    std::string outDir = "output_timer";
+    int ret = mkdir(outDir.c_str(), 0777);
+    if (ret != 0 && errno != EEXIST) {
+        LOG_PRINT("[ERROR] mkdir failed. ret: %d, errno: %d, %s\n", ret, errno, strerror(errno));
+        return;
+    }
+    auto timeResult = CocTimerHost::GetTimeResult(timerBufferDeviceAddr);
+    std::string dataDir = outDir + "/data";
+    ret = mkdir(dataDir.c_str(), 0777);
+    if (ret != 0 && errno != EEXIST) {
+        LOG_PRINT("[ERROR] mkdir failed. ret: %d, errno: %d, %s\n", ret, errno, strerror(errno));
+        return;
+    }
+    std::string rawCsvFilePath = dataDir + "/timer_rank_" + std::to_string(rankId) + "_timeline.csv";
+    std::string durCsvFilePath = outDir + "/timer_rank_" + std::to_string(rankId) + ".csv";
+    CocTimerHost::WriteAllTimerResults(rawCsvFilePath, durCsvFilePath, timeResult);
+    LOG_PRINT("[Timer] Raw CSV: %s\n", rawCsvFilePath.c_str());
+    LOG_PRINT("[Timer] Duration CSV: %s\n", durCsvFilePath.c_str());
+}
+
 int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
 {
     int ret = aclrtSetCurrentContext(args.context);
@@ -109,14 +138,14 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
               args.rankId, hcomEpName, args.dispatchV2Stream, args.combineV2Stream, args.context);
 
     // 设置场景
-    int64_t BS = 8;
-    int64_t H = 7168;
-    int64_t K = 1;
+    int64_t BS = 8;   // BS 默认 8，可调（globalBS = BS * EP_WORLD_SIZE）
+    int64_t H = 3072;
+    int64_t K = 8;
     int64_t expertShardType = 0;
     int64_t sharedExpertNum = 0;
     int64_t sharedExpertRankNum = 0;
-    int64_t moeExpertNum = EP_WORLD_SIZE - sharedExpertRankNum;
-    int64_t quantMode = 0;
+    int64_t moeExpertNum = 384;   // Moe 专家总数（384 / 8 卡 = 每卡 48 本地专家）
+    int64_t quantMode = 2;        // 2 = PERTOKEN_DYNAMIC_QUANT（int8 逐 token 量化）
     int64_t globalBS = BS * EP_WORLD_SIZE;
     int64_t expertTokenNumsType = 0;
     int64_t outDtype = 0;
@@ -133,7 +162,7 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
         localExpertNum = moeExpertNum / (EP_WORLD_SIZE - sharedExpertRankNum);
         A = globalBS * (localExpertNum < K ? localExpertNum : K);
     }
-    std::string commAlg = "";
+    std::string commAlg = "fullmesh_v2";   // 必须显式指定，才走打点的 FULLMESH 分支
 
     /* 根据当前场景，构造device侧输入输出变量*/
     // 声明device侧输入输出变量
@@ -160,6 +189,12 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     aclTensor *epRecvCounts = nullptr;
     aclTensor *tpRecvCounts = nullptr;
     aclTensor *expandScales = nullptr;
+    // CocTimer 打点缓冲区（int64 计数，device/host 同尺寸）
+    void *timerBufferDeviceAddr = nullptr;
+    aclTensor *timerBuffer = nullptr;
+    long long timerBufferSize = static_cast<long long>(CocTimerHost::GetTotalTimerBufferSize());
+    std::vector<int64_t> timerBufferShape{timerBufferSize, 1};
+    std::vector<int64_t> timerBufferHostData(timerBufferSize, 0);
 
     // 定义当前场景下各变量维度
     std::vector<int64_t> xShape{BS, H};
@@ -235,6 +270,9 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     ret = CreateAclTensor(expandScalesHostData, expandScalesShape, &expandScalesDeviceAddr, aclDataType::ACL_FLOAT,
                           &expandScales);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(timerBufferHostData, timerBufferShape, &timerBufferDeviceAddr, aclDataType::ACL_INT64,
+                          &timerBuffer);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     /* 声明算子执行必需变量 */
     uint64_t dispatchV2WorkspaceSize = 0;
@@ -250,8 +288,8 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     ret = aclnnMoeDistributeDispatchV2GetWorkspaceSize(
         x, expertIds, (quantMode > 0 ? scales : nullptr), nullptr, expertScales, hcomEpName, EP_WORLD_SIZE,
         args.epRankId, moeExpertNum, nullptr, 0, 0, expertShardType, sharedExpertNum, sharedExpertRankNum, quantMode,
-        globalBS, expertTokenNumsType, commAlg.c_str(), expandX, dynamicScales, expandIdx, expertTokenNums,
-        epRecvCounts, tpRecvCounts, expandScales, &dispatchV2WorkspaceSize, &dispatchV2Executor);
+        globalBS, expertTokenNumsType, commAlg.c_str(), timerBuffer, expandX, dynamicScales, expandIdx,
+        expertTokenNums, epRecvCounts, tpRecvCounts, expandScales, &dispatchV2WorkspaceSize, &dispatchV2Executor);
     CHECK_RET(ret == ACL_SUCCESS,
               LOG_PRINT("[ERROR] aclnnMoeDistributedispatchV2GetWorkspaceSize failed. ret = %d\n", ret);
               return ret);
@@ -270,6 +308,11 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d\n", ret);
               return ret);
 
+    // CocTimer：导出本轮 dispatch 打点数据（需 -DENABLE_TIMER 编译 kernel 才有数据）
+    ExportTimeCsv(args.rankId, timerBufferDeviceAddr);
+
+    // combine 不参与打点验证：dispatch 数据已在上方导出，跳过 combine（恢复时去掉 #if 0）
+#if 0
     // 调用combineV2算子第一阶段接口
     ret = aclnnMoeDistributeCombineV2GetWorkspaceSize(
         expandX, expertIds, expandIdx, epRecvCounts, expertScales, tpRecvCounts, nullptr, nullptr, nullptr, nullptr,
@@ -292,6 +335,7 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     ret = aclrtSynchronizeStreamWithTimeout(args.combineV2Stream, 10000);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d\n", ret);
               return ret);
+#endif
 
     LOG_PRINT("[INFO] device_%d aclnnMoeDistributedispatchV2 and aclnnMoeDistributecombineV2 execute successfully.\n",
               args.rankId);
@@ -314,6 +358,7 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     DestroyTensor(epRecvCounts);
     DestroyTensor(tpRecvCounts);
     DestroyTensor(expandScales);
+    DestroyTensor(timerBuffer);
 
     FreeDeviceAddr(xDeviceAddr);
     FreeDeviceAddr(expertIdsDeviceAddr);
@@ -326,6 +371,7 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     FreeDeviceAddr(epRecvCountsDeviceAddr);
     FreeDeviceAddr(tpRecvCountsDeviceAddr);
     FreeDeviceAddr(expandScalesDeviceAddr);
+    FreeDeviceAddr(timerBufferDeviceAddr);
 
     HcclCommDestroy(args.hcclEpComm);
     aclrtDestroyStream(args.dispatchV2Stream);
@@ -509,7 +555,7 @@ int launchOneThreadDispatchV2AndCombineV2_A2(Args &args)
     ret = aclnnMoeDistributeDispatchV2GetWorkspaceSize(
         x, expertIds, (quantMode > 0 ? scales : nullptr), xActiveMask, expertScales, hcomEpName, EP_WORLD_SIZE_A2,
         args.epRankId, moeExpertNum, "", 0, 0, expertShardType, sharedExpertNum, sharedExpertRankNum, quantMode,
-        globalBs, expertTokenNumsType, commAlg.c_str(), expandX, dynamicScales, assistInfoForCombine, expertTokenNums,
+        globalBs, expertTokenNumsType, commAlg.c_str(), nullptr, expandX, dynamicScales, assistInfoForCombine, expertTokenNums,
         epRecvCounts, tpRecvCounts, expandScales, &dispatchWorkspaceSize, &dispatchExecutor);
 
     CHECK_RET(ret == ACL_SUCCESS,
@@ -530,6 +576,8 @@ int launchOneThreadDispatchV2AndCombineV2_A2(Args &args)
               LOG_PRINT("[ERROR] dispatch aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
               return ret);
     LOG_PRINT("[INFO] device_%d aclnnMoeDistributeDispatchV2 execute successfully.\n", args.rankId);
+    // combine 不参与打点验证（A2 路线同样跳过，消除链接依赖）
+#if 0
     /**************************************** 调用combine ********************************************/
     // 调用第一阶段接口
     ret = aclnnMoeDistributeCombineV2GetWorkspaceSize(
@@ -555,6 +603,7 @@ int launchOneThreadDispatchV2AndCombineV2_A2(Args &args)
     ret = aclrtSynchronizeStreamWithTimeout(args.combineV2Stream, 10000);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
               return ret);
+#endif
     LOG_PRINT("[INFO] device_%d aclnnMoeDistributeDispatchV2 and aclnnMoeDistributeCombineV2                      \
                 execute successfully.\n",
               args.rankId);

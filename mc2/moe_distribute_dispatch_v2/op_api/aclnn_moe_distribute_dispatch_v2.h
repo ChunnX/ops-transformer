@@ -42,6 +42,8 @@ extern "C" {
  * @param [in] globalBs: 计算可选输入，int。EP域全局的batch size大小。
  * @param [in] expertTokenNumsType: 计算可选输入，int。输出expertTokenNums中的值语义类型。
  * @param [in] commAlg: 计算可选输入，str。 通信算法类型。预留参数，暂未使用。
+ * @param [in] timerBuffer: 计算可选输入，Tensor。CocTimer 打点计时缓冲区，int64 类型 1 维 ND。
+ * 不需要打点时传 nullptr（此时 kernel 内打点逻辑自动旁路）。
  * @param [out] expandXOut: 计算输出，Tensor，必选输出，数据类型支持float16, bfloat16,
  int8，仅支持2维，数据格式支持ND。根据 expertIdx进行扩展过的token特征。
  * @param [out] dynamicScalesOut:
@@ -65,8 +67,8 @@ ACLNN_API aclnnStatus aclnnMoeDistributeDispatchV2GetWorkspaceSize(
     const aclTensor *xActiveMaskOptional, const aclTensor *expertScalesOptional, const char *groupEp,
     int64_t epWorldSize, int64_t epRankId, int64_t moeExpertNum, const char *groupTp, int64_t tpWorldSize,
     int64_t tpRankId, int64_t expertShardType, int64_t sharedExpertNum, int64_t sharedExpertRankNum, int64_t quantMode,
-    int64_t globalBs, int64_t expertTokenNumsType, const char *commAlg, aclTensor *expandXOut,
-    aclTensor *dynamicScalesOut, aclTensor *assistInfoForCombineOut, aclTensor *expertTokenNumsOut,
+    int64_t globalBs, int64_t expertTokenNumsType, const char *commAlg, const aclTensor *timerBuffer,
+    aclTensor *expandXOut, aclTensor *dynamicScalesOut, aclTensor *assistInfoForCombineOut, aclTensor *expertTokenNumsOut,
     aclTensor *epRecvCountsOut, aclTensor *tpRecvCountsOut, aclTensor *expandScalesOut, uint64_t *workspaceSize,
     aclOpExecutor **executor);
 

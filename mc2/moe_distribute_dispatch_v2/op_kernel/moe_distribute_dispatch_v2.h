@@ -67,7 +67,18 @@ public:
                                 GM_ADDR expertScales, GM_ADDR elasticInfo, GM_ADDR performanceInfo, GM_ADDR expandXOut,
                                 GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut, GM_ADDR expandScalesOut,
                                 GM_ADDR expertTokenNumsOut, GM_ADDR sendCountsOut, GM_ADDR workspaceGM, TPipe *pipe,
-                                const MoeDistributeDispatchV2TilingData *tilingData);
+                                const MoeDistributeDispatchV2Info *tilingData);
+    // Preserve existing callers that already materialize the full tiling struct.
+    __aicore__ inline void Init(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask,
+                                GM_ADDR expertScales, GM_ADDR elasticInfo, GM_ADDR performanceInfo, GM_ADDR expandXOut,
+                                GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut, GM_ADDR expandScalesOut,
+                                GM_ADDR expertTokenNumsOut, GM_ADDR sendCountsOut, GM_ADDR workspaceGM, TPipe *pipe,
+                                const MoeDistributeDispatchV2TilingData *tilingData)
+    {
+        Init(mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo, expandXOut,
+             dynamicScalesOut, expandIdxOut, expandScalesOut, expertTokenNumsOut, sendCountsOut, workspaceGM, pipe,
+             &tilingData->moeDistributeDispatchV2Info);
+    }
     __aicore__ inline void Process();
 
 private:
@@ -308,37 +319,35 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
     GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR expertScales,
     GM_ADDR elasticInfo, GM_ADDR performanceInfo, GM_ADDR expandXOut, GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut,
     GM_ADDR expandScalesOut, GM_ADDR expertTokenNumsOut, GM_ADDR sendCountsOut, GM_ADDR workspaceGM, TPipe *pipe,
-    const MoeDistributeDispatchV2TilingData *tilingData)
+    const MoeDistributeDispatchV2Info *tilingData)
 {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510) // A3不支持MX量化，无需使能饱和模式
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
 #endif
     tpipe_ = pipe;
     aivId_ = GetBlockIdx();
-    epRankId_ = tilingData->moeDistributeDispatchV2Info.epRankId;
-    epRankIdOriginal_ = tilingData->moeDistributeDispatchV2Info.epRankId;
+    epRankId_ = tilingData->epRankId;
+    epRankIdOriginal_ = tilingData->epRankId;
 
     // 检查hcclwinsize是否越界
-    totalWinSizeEp_ = static_cast<uint64_t>(tilingData->moeDistributeDispatchV2Info.totalWinSizeEp);
-    ctx_.InitAndCheck(mc2Context, tilingData->moeDistributeDispatchV2Info.epWorldSize, totalWinSizeEp_, tpipe_,
-                      expandXOut);
+    totalWinSizeEp_ = static_cast<uint64_t>(tilingData->totalWinSizeEp);
+    ctx_.InitAndCheck(mc2Context, tilingData->epWorldSize, totalWinSizeEp_, tpipe_, expandXOut);
 
-    totalUbSize_ = static_cast<uint32_t>(tilingData->moeDistributeDispatchV2Info.totalUbSize);
+    totalUbSize_ = static_cast<uint32_t>(tilingData->totalUbSize);
 
-    axisBS_ = tilingData->moeDistributeDispatchV2Info.bs;
-    axisH_ = tilingData->moeDistributeDispatchV2Info.h;
-    epWorldSizeOriginal_ = tilingData->moeDistributeDispatchV2Info.epWorldSize;
-    hasElasticInfoFlag_ = tilingData->moeDistributeDispatchV2Info.hasElasticInfo;
-    isPerformanceFlag_ = tilingData->moeDistributeDispatchV2Info.isPerformance;
-    cumsumTmpMinSize_ = tilingData->moeDistributeDispatchV2Info.cumsumTmpMinSize;
-    hasExpertScalesFlag_ = tilingData->moeDistributeDispatchV2Info.hasExpertScales;
-    epWorldSize_ = tilingData->moeDistributeDispatchV2Info.epWorldSize;
-    sharedExpertRankNum_ = tilingData->moeDistributeDispatchV2Info.sharedExpertRankNum;
-    moeExpertNum_ = tilingData->moeDistributeDispatchV2Info.moeExpertNum;
-    globalBS_ = tilingData->moeDistributeDispatchV2Info.globalBs;
-    scaleInBytes_ =
-        tilingData->moeDistributeDispatchV2Info.scalesCol * tilingData->moeDistributeDispatchV2Info.scalesTypeSize;
-    scalesCount_ = tilingData->moeDistributeDispatchV2Info.scalesCount;
+    axisBS_ = tilingData->bs;
+    axisH_ = tilingData->h;
+    epWorldSizeOriginal_ = tilingData->epWorldSize;
+    hasElasticInfoFlag_ = tilingData->hasElasticInfo;
+    isPerformanceFlag_ = tilingData->isPerformance;
+    cumsumTmpMinSize_ = tilingData->cumsumTmpMinSize;
+    hasExpertScalesFlag_ = tilingData->hasExpertScales;
+    epWorldSize_ = tilingData->epWorldSize;
+    sharedExpertRankNum_ = tilingData->sharedExpertRankNum;
+    moeExpertNum_ = tilingData->moeExpertNum;
+    globalBS_ = tilingData->globalBs;
+    scaleInBytes_ = tilingData->scalesCol * tilingData->scalesTypeSize;
+    scalesCount_ = tilingData->scalesCount;
 
     copyInAxisH_ = axisH_;
     copyOutAxisH_ = axisH_;
@@ -383,19 +392,19 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
     }
 
     axisMaxBS_ = globalBS_ / epWorldSizeOriginal_;
-    sharedExpertNum_ = tilingData->moeDistributeDispatchV2Info.sharedExpertNum;
+    sharedExpertNum_ = tilingData->sharedExpertNum;
     if (sharedExpertNum_ > 0) {
         rankNumPerSharedExpert_ = sharedExpertRankNum_ / sharedExpertNum_;
     }
-    expertTokenNumsType_ = tilingData->moeDistributeDispatchV2Info.expertTokenNumsType;
-    zeroComputeExpertNum_ = tilingData->moeDistributeDispatchV2Info.zeroComputeExpertNum;
+    expertTokenNumsType_ = tilingData->expertTokenNumsType;
+    zeroComputeExpertNum_ = tilingData->zeroComputeExpertNum;
     moeExpertRankNum_ = epWorldSize_ - sharedExpertRankNum_;
     moeExpertNumPerRank_ = moeExpertNum_ / moeExpertRankNum_;
 
-    isTokenMaskFlag_ = tilingData->moeDistributeDispatchV2Info.isTokenMask;
-    isExpertMaskFlag_ = tilingData->moeDistributeDispatchV2Info.isExpertMask;
-    axisK_ = tilingData->moeDistributeDispatchV2Info.k;
-    aivNum_ = tilingData->moeDistributeDispatchV2Info.aivNum;
+    isTokenMaskFlag_ = tilingData->isTokenMask;
+    isExpertMaskFlag_ = tilingData->isExpertMask;
+    axisK_ = tilingData->k;
+    aivNum_ = tilingData->aivNum;
     xGMTensor_.SetGlobalBuffer((__gm__ XInType *)x);
     xActiveMaskGMTensor_.SetGlobalBuffer((__gm__ bool *)xActiveMask);
     expertIdsGMTensor_.SetGlobalBuffer((__gm__ int32_t *)expertIds);

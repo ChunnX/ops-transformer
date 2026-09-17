@@ -34,7 +34,7 @@ __global__ __aicore__ void moe_distribute_dispatch_v3(GM_ADDR mc2Context, GM_ADD
                                                       GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(MoeDistributeDispatchV2TilingData);
-    GET_TILING_DATA_WITH_STRUCT(MoeDistributeDispatchV2TilingData, tilingData, tilingGM);
+    GET_TILING_DATA_MEMBER(MoeDistributeDispatchV2TilingData, moeDistributeDispatchV2Info, tilingData, tilingGM);
     TPipe pipe;
 #if ((ORIG_DTYPE_EXPAND_X == DT_BF16) || (ORIG_DTYPE_EXPAND_X == DT_FLOAT16))
     if constexpr (ArchTag == TILINGKEY_TPL_A3) {
@@ -42,7 +42,7 @@ __global__ __aicore__ void moe_distribute_dispatch_v3(GM_ADDR mc2Context, GM_ADD
             MoeDistributeDispatchV2FullMesh<Mc2Kernel::Mc2MoeContextHolder, DTYPE_X, DTYPE_EXPAND_X, Mc2Kernel::UNQUANT,
                                             false>
                 op;
-            op.Init(mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo,
+            op.Init(mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo, nullptr,
                     expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut, epSendCountsOut,
                     workspaceGM, &pipe, &tilingData);
             op.Process();
@@ -64,7 +64,7 @@ __global__ __aicore__ void moe_distribute_dispatch_v3(GM_ADDR mc2Context, GM_ADD
                 MoeDistributeDispatchV2FullMesh<Mc2Kernel::Mc2MoeContextHolder, DTYPE_X, DTYPE_EXPAND_X,
                                                 Mc2Kernel::STATIC_QUANT, false>
                     op;
-                op.Init(mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo,
+                op.Init(mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo, nullptr,
                         expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut,
                         epSendCountsOut, workspaceGM, &pipe, &tilingData);
                 op.Process();
@@ -73,7 +73,7 @@ __global__ __aicore__ void moe_distribute_dispatch_v3(GM_ADDR mc2Context, GM_ADD
                 MoeDistributeDispatchV2FullMesh<Mc2Kernel::Mc2MoeContextHolder, DTYPE_X, DTYPE_EXPAND_X,
                                                 Mc2Kernel::PERTOKEN_DYNAMIC_QUANT, ScaleMode>
                     op;
-                op.Init(mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo,
+                op.Init(mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo, nullptr,
                         expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut,
                         epSendCountsOut, workspaceGM, &pipe, &tilingData);
                 op.Process();
