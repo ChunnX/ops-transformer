@@ -23,7 +23,7 @@ except ImportError as import_error:  # pragma: no cover - depends on NPU environ
 else:
     TORCH_NPU_IMPORT_ERROR = None
 
-from common_utils import custom_ops
+from common_utils.extension_loader import ensure_qbsa_extension
 from qbsa_fp8.utils import combined_kv_cache
 
 
@@ -47,18 +47,7 @@ def _check_runtime_available():
         pytest.skip(f"torch_npu is not available: {TORCH_NPU_IMPORT_ERROR}")
     if not torch_npu.npu.is_available():
         pytest.skip("NPU device is not available (aclInit failed or no /dev/davinci*).")
-    if not custom_ops.has_quant_block_sparse_attn_op():
-        detail = "; ".join(custom_ops.load_errors()[:3])
-        suffix = f" Load errors: {detail}" if detail else ""
-        pytest.skip(
-            f"torch.ops.custom.npu_quant_block_sparse_attn is not registered.{suffix}"
-        )
-    if not custom_ops.has_quant_block_sparse_attn_metadata_op():
-        detail = "; ".join(custom_ops.load_errors()[:3])
-        suffix = f" Load errors: {detail}" if detail else ""
-        pytest.skip(
-            f"torch.ops.custom.npu_quant_block_sparse_attn_metadata is not registered.{suffix}"
-        )
+    ensure_qbsa_extension()
 
 
 def _prepare_kv_inputs(inputs):

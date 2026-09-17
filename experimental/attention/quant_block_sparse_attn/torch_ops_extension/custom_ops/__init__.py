@@ -6,41 +6,20 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 
-import os
-import pkgutil
-import warnings
-
 import torch
 import torch_npu
 
 # 导入so 和 python
-from . import custom_ops_lib
-from .converter import npu_quant_block_sparse_attn
-from .converter import npu_quant_block_sparse_attn_metadata
+from . import custom_ops_lib  # noqa: F401 - registers the schemas and eager/Meta implementations
+from .converter import npu_quant_block_sparse_attn as _attn_converter  # noqa: F401
+from .converter import npu_quant_block_sparse_attn_metadata as _metadata_converter  # noqa: F401
 
-__all__ = list(module for _, module, _ in pkgutil.iter_modules([os.path.dirname(__file__)]))
+# Export only this extension's operators. Other packages may share torch.ops.custom.
+npu_quant_block_sparse_attn = torch.ops.custom.npu_quant_block_sparse_attn
+npu_quant_block_sparse_attn_metadata = (
+    torch.ops.custom.npu_quant_block_sparse_attn_metadata
+)
+torch_npu.npu_quant_block_sparse_attn = npu_quant_block_sparse_attn
+torch_npu.npu_quant_block_sparse_attn_metadata = npu_quant_block_sparse_attn_metadata
 
-"""
-import custom ops as torch_npu ops to support the following usage:
-'torch.ops.custom.npu_quant_block_sparse_attn()'
-'torch_npu.npu_quant_block_sparse_attn()'
-"""
-
-# get torch.ops.custom module
-custom_ops_module = getattr(torch.ops, 'custom', None)
-
-if custom_ops_module is not None:
-    for op_name in dir(custom_ops_module):
-        if op_name.startswith('_'):
-            # skip built-in method, such as __name__, __doc__
-            continue
-
-        # get custom ops and set to torch_npu
-        custom_op_func = getattr(custom_ops_module, op_name)
-        setattr(torch_npu, op_name, custom_op_func)
-
-else:
-    WARN_MSG = "torch.ops.custom module is not found, mount custom ops to torch_npu failed." \
-               "Calling by torch_npu.xxx for custom ops is unsupported, please use torch.ops.custom.xxx."
-    warnings.warn(WARN_MSG)
-    warnings.filterwarnings("ignore", message=WARN_MSG)
+__all__ = ["npu_quant_block_sparse_attn", "npu_quant_block_sparse_attn_metadata"]

@@ -42,6 +42,7 @@ PYTEST_ROOT = os.path.dirname(CURRENT_DIR)
 if PYTEST_ROOT not in sys.path:
     sys.path.insert(0, PYTEST_ROOT)
 
+from common_utils.extension_loader import ensure_qbsa_extension
 from qbsa_mxfp8.utils import result_compare_method
 
 if not logging.getLogger().handlers:
@@ -67,8 +68,6 @@ if __name__ == "_qbsa_mxfp8_pytest_golden" and logging.getLogger().handlers:
     logger.addHandler(primary_handler)
     logger.propagate = False
 
-QBSA_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "../../.."))
-TORCH_OPS_EXTENSION_DIR = os.path.join(QBSA_ROOT, "torch_ops_extension")
 _CUSTOM_OPS_IMPORTED = False
 _DEFAULT_CASE_FILE = "qbsa_mxfp8_test_cases"
 _DEFAULT_CASE_CSV = os.path.join("csv", "qbsa_mxfp8_stc.csv")
@@ -155,31 +154,7 @@ def _ensure_custom_ops_registered():
     if _CUSTOM_OPS_IMPORTED:
         return
 
-    try:
-        from common_utils import custom_ops  # noqa: F401
-    except ImportError as common_import_error:
-        if TORCH_OPS_EXTENSION_DIR not in sys.path:
-            sys.path.insert(0, TORCH_OPS_EXTENSION_DIR)
-        try:
-            import custom_ops  # noqa: F401
-        except ImportError as source_import_error:
-            raise RuntimeError(
-                "import custom_ops failed. Please build/install QBSA PTA extension first, for example: "
-                "`cd experimental/attention/quant_block_sparse_attn/torch_ops_extension && bash build_and_install.sh`. "
-                f"Shared pytest loader import error: {common_import_error}. "
-                f"Source-tree import error: {source_import_error}."
-            ) from source_import_error
-
-    if not hasattr(torch.ops, "custom") or not hasattr(
-        torch.ops.custom, "npu_quant_block_sparse_attn"
-    ):
-        raise RuntimeError(
-            "torch.ops.custom.npu_quant_block_sparse_attn is not registered after importing custom_ops"
-        )
-    if not hasattr(torch.ops.custom, "npu_quant_block_sparse_attn_metadata"):
-        raise RuntimeError(
-            "torch.ops.custom.npu_quant_block_sparse_attn_metadata is not registered after importing custom_ops"
-        )
+    ensure_qbsa_extension()
     _CUSTOM_OPS_IMPORTED = True
 
 
