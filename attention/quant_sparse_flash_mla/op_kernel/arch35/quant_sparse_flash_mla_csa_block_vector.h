@@ -15,20 +15,19 @@
 #ifndef QUANT_SPARSE_FLASH_MLA_CSA_BLOCK_VECTOR_H
 #define QUANT_SPARSE_FLASH_MLA_CSA_BLOCK_VECTOR_H
 
-#if ASC_DEVKIT_MAJOR >= 9
-#include "kernel_basic_intf.h"
-#else
-#include "kernel_operator.h"
-#endif
-
 #include "util_regbase.h"
 #include "quant_sparse_flash_mla_common_arch35.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
 #include "../../../sparse_flash_mla/op_kernel/arch35/common/get_kv_phy_addr_vf.h"
-using AscendC::Reg::StoreDist;
 #include "../../../sparse_flash_mla/op_kernel/arch35/common/smla_vector_common_arch35.h"
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
+using AscendC::Reg::StoreDist;
 #include "../../../sparse_flash_mla/op_kernel/arch35/common/flash_decode.h"
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
 #include "../../../common/op_kernel/buffers_policy.h"
@@ -902,7 +901,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(
             if (includeSink) {
                 int64_t sinksOffset = 0;
                 if constexpr (!IS_SPLIT_G) {
-                    sinksOffset = GetBlockIdx() % 2 == 0 ? 0 : runInfo.firstHalfMRealSize; // 2：判断块索引的奇偶性
+                    sinksOffset = GetBlockIdx() % 2 == 0 ? 0 : runInfo.firstHalfMRealSize;
                 } else {
                     sinksOffset = runInfo.goIdx;
                     if (constInfo.subBlockIdx == 1) {

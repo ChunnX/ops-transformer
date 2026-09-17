@@ -746,7 +746,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitVec1SoftmaxFromSinks(Loca
     }
     int64_t sinksOffset = 0;
     if constexpr (!IS_SPLIT_G) {
-        sinksOffset = GetBlockIdx() % 2 == 0 ? 0 : runInfo.firstHalfMRealSize; // 2：判断块索引的奇偶性
+        sinksOffset = GetBlockIdx() % 2 == 0 ? 0 : runInfo.firstHalfMRealSize;
     } else {
         sinksOffset = runInfo.goIdx;
         if (constInfo.subBlockIdx == 1) {

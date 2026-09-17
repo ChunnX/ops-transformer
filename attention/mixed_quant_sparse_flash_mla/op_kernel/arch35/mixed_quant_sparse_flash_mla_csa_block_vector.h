@@ -1391,7 +1391,10 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(StaticBuffer<Q_T>
                                               GetIntraCoreWorkspaceIdx(runInfo, constInfo), stagingMOffset,
                                               runInfo.halfMRealSize, mqsmlaMaxUb, mqsmlaSumUb, tmpUb, INNERCORE_STAGE2,
                                               INNERCORE_STAGE_FD_MTE3_V);
-                SetFlag<HardEvent::MTE3_MTE2>(INNERCORE_INTRALSE_MTE3_MTE2(runInfo.multiCoreIdxMod2));
+                // Vec2 has no rows and returns early on an empty AIV; do not leave an unconsumed event.
+                if (runInfo.halfMRealSize > 0) {
+                    SetFlag<HardEvent::MTE3_MTE2>(INNERCORE_INTRALSE_MTE3_MTE2(runInfo.multiCoreIdxMod2));
+                }
             } else if (runInfo.isCrossCoreSplit && runInfo.isFirstS2SplitCore && runInfo.reduceBlockId == 0) {
                 AttentionCommon::S2SplitFdStagingLayout stagingLayout = {
                     constInfo.gSize, dTemplateAlign64, GetStagingSlotNum(false),

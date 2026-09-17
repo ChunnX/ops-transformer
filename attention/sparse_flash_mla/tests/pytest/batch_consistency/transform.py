@@ -758,6 +758,21 @@ class BatchCaseTransformer:
             raise InvalidTransformError(
                 "Query prefix resizing currently requires one selected batch"
             )
+        old_valid_length = schema.get_q_lengths(input_data, valid_only=True)[0]
+        query_axis = 1 if self.layout_q == "BSND" else 0
+        # Added Q rows are valid queries, rather than padding. Reuse a valid
+        # sparse selection together with its top-k length for those rows.
+        sparse_templates = {}
+        if target_length > old_valid_length:
+            for name in (
+                "ori_sparse_indices", "cmp_sparse_indices",
+                "ori_topk_length", "cmp_topk_length",
+            ):
+                tensor = tensors.get(name)
+                if tensor is not None:
+                    sparse_templates[name] = tensor.narrow(
+                        query_axis, old_valid_length - 1, 1
+                    ).clone()
         if self.layout_q == "BSND":
             tensors["q"] = self._resize_tensor_axis(tensors["q"], 1, target_length)
             for name in ("ori_sparse_indices", "cmp_sparse_indices"):
@@ -784,6 +799,10 @@ class BatchCaseTransformer:
                     tensors[name] = self._resize_tensor_axis(
                         tensor, 0, target_length, fill_value
                     )
+        for name, template in sparse_templates.items():
+            tensors[name].narrow(
+                query_axis, old_valid_length, target_length - old_valid_length
+            ).copy_(template)
         adapter.sync_query_aligned_fields()
         self._sync_token_lengths(adapter, [list(range(target_length))])
         self._sync_derived_fields(adapter)
@@ -963,7 +982,10 @@ class BatchCaseTransformer:
         common_tokens: int,
         derived_extra_tokens: int,
     ) -> ConsistencyCase:
-        """Mode 4: change Q shape while comparing an unchanged common prefix."""
+        """Mode 4: change Q shape while comparing an unchanged common prefix.
+
+        Added valid rows reuse an existing sparse selection, never -1 padding.
+        """
         valid_lengths = schema.get_q_lengths(self.input_data, valid_only=True)
         if batch_id < 0 or batch_id >= len(valid_lengths):
             raise ValueError(
@@ -989,6 +1011,7 @@ class BatchCaseTransformer:
         if self._has_position_sensitive_context() and new_ori_length < 0:
             raise InvalidTransformError("Mode 4 requires a negative aligned KV length")
         self._align_position_sensitive_context(new_data, batch_id, new_ori_length)
+        self._validate_shape_change_sparse_indices(new_data)
 
         mapping = [(batch_id, token, 0, token) for token in range(common_tokens)]
         oracle = ActualInputSemanticOracle.validate_mapped_tokens(
@@ -1018,6 +1041,42 @@ class BatchCaseTransformer:
                 "semantic_oracle": oracle,
             },
         )
+
+    @staticmethod
+    def _validate_shape_change_sparse_indices(input_data: Dict[str, Any]) -> None:
+        """Reject negative indices in effective sparse selections before NPU calls."""
+        adapter = CaseAdapter(input_data)
+        axis = 1 if adapter.get_layout_q() == "BSND" else 0
+        valid_length = schema.get_q_lengths(input_data, valid_only=True)[0]
+        for prefix in ("ori", "cmp"):
+            indices = adapter.tensors.get(f"{prefix}_sparse_indices")
+            if indices is None or adapter.tensors.get(f"{prefix}_kv") is None:
+                continue
+            indices = indices.narrow(axis, 0, valid_length)
+            lengths = adapter.tensors.get(f"{prefix}_topk_length")
+            kv_length = adapter.get_kv_lengths(prefix)[0]
+            width = indices.shape[-1]
+            if adapter.tensors.get(f"{prefix}_mask_mode", 0) != 0:
+                counts = []
+                for token in range(valid_length):
+                    left, right = ActualInputSemanticOracle._windows(
+                        input_data, 0, token
+                    )[prefix]
+                    counts.append(min(width, max(0, right - left)))
+                shape = [1] * indices.dim()
+                shape[axis] = valid_length
+                effective = torch.tensor(counts, device=indices.device).reshape(shape)
+            elif lengths is None:
+                effective = min(width, kv_length)
+            else:
+                effective = lengths.narrow(axis, 0, valid_length).clamp(max=kv_length)
+                effective = effective.unsqueeze(-1)
+            slots = torch.arange(width, device=indices.device)
+            if bool(((slots < effective) & (indices < 0)).any().item()):
+                raise InvalidTransformError(
+                    f"shape-change {prefix}_sparse_indices contains a negative index "
+                    "in the effective top-k range; -1 is only allowed in padding"
+                )
 
     @staticmethod
     def _random_query_values(query: torch.Tensor, seed: int) -> torch.Tensor:
