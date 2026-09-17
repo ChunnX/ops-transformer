@@ -71,6 +71,7 @@ static constexpr uint32_t HCOMM_PLAIN_WRITE_WQE_BYTES = 64;
 static constexpr uint32_t HCOMM_BATCH_BUFFER_BYTES = HCOMM_BATCH_CAPACITY * HCOMM_PLAIN_WRITE_WQE_BYTES;
 constexpr uint64_t UB_ALIGN = 32UL;
 static constexpr uint32_t META_CHUNK_TOKEN_MAX = 2048U;
+static constexpr uint32_t METADATA_BUFFER_NUM = 2U;
 static constexpr struct UrmaWqeEntry DEFAULT_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
 static constexpr struct UrmaWqeEntry DEFAULT_CQE_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .cqe = 1, .inlineEn = 0};
 // Keep the final flag ordered after payload writes without requesting an unconsumed CQE on every invocation.
@@ -245,7 +246,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR 
     metadataChunkTokens_ = (metadataChunkTokens_ == 0U) ? 1U : metadataChunkTokens_;
     uint32_t metadataChunkBytes =
         Ceil(static_cast<uint64_t>(metadataChunkTokens_) * RECV_META_FIELDS * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
-    tpipe_->InitBuffer(metadataBuf_, metadataChunkBytes);
+    tpipe_->InitBuffer(metadataBuf_, METADATA_BUFFER_NUM * metadataChunkBytes);
     tpipe_->InitBuffer(readStateBuf_, WIN_ADDR_ALIGN);
     statusTensor_ = readStateBuf_.Get<uint32_t>();
     diagWriter_.RunPosRecord(MOE_EP_COMBINE_RUN_POS_INIT_DONE);
@@ -435,23 +436,58 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ProcessRemote
     GM_ADDR remoteStateBase = GetUrmaStateAddrByRankId(targetRank, combineStateWinOffset_);
     uint64_t tokenBytes = static_cast<uint64_t>(axisH_) * sizeof(XType);
 
-    for (uint64_t chunkStart = rangeBegin; chunkStart < rangeEnd; chunkStart += metadataChunkTokens_) {
+    // Split the contiguous UB allocation into two aligned ping-pong buffers. Using the aligned byte stride is
+    // required when metadataChunkTokens_ is small and the raw metadata size is not naturally 32-byte aligned.
+    uint32_t metadataChunkBytes = static_cast<uint32_t>(
+        Ceil(static_cast<uint64_t>(metadataChunkTokens_) * metaBytesPerToken, UB_ALIGN) * UB_ALIGN);
+    uint32_t bufferStride = metadataChunkBytes / sizeof(int32_t);
+    LocalTensor<int32_t> metadataBuffer[METADATA_BUFFER_NUM];
+    metadataBuffer[0] = metadataLocal;
+    metadataBuffer[1] = metadataLocal[bufferStride];
+
+    // Load the first chunk before entering the ping-pong loop.
+    uint64_t firstChunkEnd =
+        (rangeBegin + metadataChunkTokens_ > rangeEnd) ? rangeEnd : rangeBegin + metadataChunkTokens_;
+    uint32_t firstChunkCount = static_cast<uint32_t>(firstChunkEnd - rangeBegin);
+    DataCopyExtParams firstCopyParams{1U, firstChunkCount * metaBytesPerToken, 0U, 0U, 0U};
+    DataCopyPad(metadataBuffer[0], recvSrcMetadataGm_[rangeBegin * RECV_META_FIELDS], firstCopyParams, padParams);
+    SyncFunc<AscendC::HardEvent::MTE2_S>();
+
+    uint32_t bufferIndex = 0U;
+    uint64_t chunkStart = rangeBegin;
+    while (chunkStart < rangeEnd) {
         uint64_t chunkEnd =
             (chunkStart + metadataChunkTokens_ > rangeEnd) ? rangeEnd : chunkStart + metadataChunkTokens_;
         uint32_t chunkCount = static_cast<uint32_t>(chunkEnd - chunkStart);
-        DataCopyExtParams copyParams{1U, chunkCount * metaBytesPerToken, 0U, 0U, 0U};
-        DataCopyPad(metadataLocal, recvSrcMetadataGm_[chunkStart * RECV_META_FIELDS], copyParams, padParams);
-        SyncFunc<AscendC::HardEvent::MTE2_S>();
+
+        // Launch the next GM-to-UB copy before processing the current buffer.
+        uint64_t nextChunkStart = chunkEnd;
+        bool hasNextChunk = nextChunkStart < rangeEnd;
+        if (hasNextChunk) {
+            uint64_t nextChunkEnd =
+                (nextChunkStart + metadataChunkTokens_ > rangeEnd) ? rangeEnd : nextChunkStart + metadataChunkTokens_;
+            uint32_t nextChunkCount = static_cast<uint32_t>(nextChunkEnd - nextChunkStart);
+            DataCopyExtParams nextCopyParams{1U, nextChunkCount * metaBytesPerToken, 0U, 0U, 0U};
+            uint32_t nextBufferIndex = (bufferIndex + 1U) % METADATA_BUFFER_NUM;
+            DataCopyPad(metadataBuffer[nextBufferIndex], recvSrcMetadataGm_[nextChunkStart * RECV_META_FIELDS],
+                        nextCopyParams, padParams);
+        }
 
         for (uint32_t i = 0; i < chunkCount; ++i) {
             uint32_t metaOffset = i * RECV_META_FIELDS;
-            int32_t srcTokenIdx = metadataLocal.GetValue(metaOffset + META_TOKEN_IDX_OFFSET);
-            int32_t srcTopKIdx = metadataLocal.GetValue(metaOffset + META_TOPK_IDX_OFFSET);
-            int32_t recvXIdx = metadataLocal.GetValue(metaOffset + META_RECV_X_IDX_OFFSET);
+            int32_t srcTokenIdx = metadataBuffer[bufferIndex].GetValue(metaOffset + META_TOKEN_IDX_OFFSET);
+            int32_t srcTopKIdx = metadataBuffer[bufferIndex].GetValue(metaOffset + META_TOPK_IDX_OFFSET);
+            int32_t recvXIdx = metadataBuffer[bufferIndex].GetValue(metaOffset + META_RECV_X_IDX_OFFSET);
             SendRemoteMetadataSlot(static_cast<uint32_t>(recvXIdx), srcTokenIdx, srcTopKIdx, remoteDataBase,
                                    remoteStateBase, tokenBytes);
         }
+
         SyncFunc<AscendC::HardEvent::S_MTE2>();
+        if (hasNextChunk) {
+            SyncFunc<AscendC::HardEvent::MTE2_S>();
+        }
+        bufferIndex = (bufferIndex + 1U) % METADATA_BUFFER_NUM;
+        chunkStart = chunkEnd;
     }
 }
 
