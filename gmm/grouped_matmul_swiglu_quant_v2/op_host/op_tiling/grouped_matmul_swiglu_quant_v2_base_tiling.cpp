@@ -424,6 +424,9 @@ ge::graphStatus GroupedMatmulSwigluQuantV2BaseTiling::DoOpTiling()
             ((usrWorkspaceLimit_ / DOUBLE_WORKSPACE_SPLIT) / (k_ * sizeof(int8_t) + DOUBLE_ROW * n_ * SIZE_OF_HALF_2));
     } else if (isA4W4_) {
         mLimit_ = ((usrWorkspaceLimit_ / DOUBLE_WORKSPACE_SPLIT) / (n_ * SIZE_OF_HALF_2));
+        if (isWeightTrans_) {
+            mLimit_ /= 2;
+        }
     } else {
         mLimit_ = ((usrWorkspaceLimit_ / DOUBLE_WORKSPACE_SPLIT) / INT32_DTYPE_SIZE) / n_;
     }
