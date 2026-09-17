@@ -110,7 +110,8 @@ private:
                                            AscendC::LocalTensor<uint32_t>& xLocal, uint64_t tileOffset,
                                            uint32_t currTileSize);
     __aicore__ inline void ComputeOnePass(uint32_t round, AscendC::GlobalTensor<ValT> inputXGm);
-    __aicore__ inline void ProcessRadix(AscendC::GlobalTensor<ValT> inputXGm);
+    template <typename HookT>
+    __aicore__ inline void ProcessRadix(AscendC::GlobalTensor<ValT> inputXGm, HookT hook);
     __aicore__ inline void ScatterSortedTile(
         AscendC::LocalTensor<ValT> xInputValueLocal, AscendC::LocalTensor<uint32_t> sortedIndexLocal,
         AscendC::LocalTensor<uint32_t> xInputIndexLocal, AscendC::LocalTensor<uint8_t> sortedValueLocal,
@@ -134,7 +135,8 @@ public:
     __aicore__ inline SortRadixMoreCore(){};
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR value, GM_ADDR sortIndex, GM_ADDR workspace,
                                 const SortLib::SortParams& params, AscendC::TPipe* pipe);
-    __aicore__ inline void Process();
+    template <typename HookT>
+    __aicore__ inline void Process(HookT hook);
 };
 
 template <typename ValT, typename IdxT, typename CountT, bool isDescend>
@@ -496,25 +498,29 @@ __aicore__ inline void SortRadixMoreCore<ValT, IdxT, CountT, isDescend>::SetupDo
 }
 
 template <typename ValT, typename IdxT, typename CountT, bool isDescend>
+template <typename HookT>
 __aicore__ inline void SortRadixMoreCore<ValT, IdxT, CountT, isDescend>::ProcessRadix(
-    AscendC::GlobalTensor<ValT> inputXGm)
-
+    AscendC::GlobalTensor<ValT> inputXGm, HookT hook)
 {
     AscendC::SyncAll();
     SetupDoubleBuffer();
+    hook();
     for (uint32_t round = 0; round < static_cast<uint32_t>(sizeof(ValT)); round++) {
         GetGlobalExclusiveSum(round, inputXGm);
         AscendC::SyncAll();
+        hook();
         ComputeOnePass(round, inputXGm);
         AscendC::SyncAll();
+        hook();
     }
 }
 
 template <typename ValT, typename IdxT, typename CountT, bool isDescend>
-__aicore__ inline void SortRadixMoreCore<ValT, IdxT, CountT, isDescend>::Process()
-
+template <typename HookT>
+__aicore__ inline void SortRadixMoreCore<ValT, IdxT, CountT, isDescend>::Process(HookT hook)
 {
-    ProcessRadix(inputXGm_[0]);
+    hook();
+    ProcessRadix(inputXGm_[0], hook);
 }
 
 template <typename ValT, typename IdxT, typename CountT, bool isDescend>

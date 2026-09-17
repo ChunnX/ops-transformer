@@ -37,6 +37,12 @@ constexpr uint32_t ENTRY_BUF_INT32_SLOTS = 5U; // entryBuf 头部被 int32 槽�
 constexpr uint32_t ACCUM_BUF_COPIES = 2U;      // fp32 累加行双缓冲份数（AccumBufBytes）
 constexpr uint32_t FLUSH_CAST_HEAD_BYTES =
     static_cast<uint32_t>(ENTRY_BUF_INT32_SLOTS * ENTRY_BATCH_CAP * sizeof(int32_t));
+constexpr uint32_t A2A_COPY_HALF_BYTES = 32U * 1024U;
+constexpr uint64_t A2aHookUbReserve(uint32_t numRanks)
+{
+    return HCOMM_INIT_SIZE + (numRanks * STATE_OFFSET + UB_ALIGN - 1U) / UB_ALIGN * UB_ALIGN +
+           2U * A2A_COPY_HALF_BYTES;
+}
 } // namespace Mc2Kernel
 
 struct EngramFetchGradTilingData {
