@@ -62,6 +62,7 @@ at::Tensor ConstructQuantCompressorOutputTensor(const at::Tensor &x, const at::T
     TORCH_CHECK(wkv.defined(), "Check wkv != nullptr failed");
     auto wkvDim = wkv.dim();
     TORCH_CHECK(wkvDim == DIM_TWO, "wkv dim num[", wkvDim, "] should be 2");
+    TORCH_CHECK(wkv.size(0) > VALUE_0, "wkv dim 0 should be greater than 0");
 
     auto D = wkv.size(0) / coff;
     if (xDim == DIM_THREE) {

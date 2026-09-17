@@ -63,6 +63,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> ConstructCompressorOutputTensor(
     TORCH_CHECK(wkv.defined(), "Check x != nullptr failed");
     auto wkvDim = wkv.dim();
     TORCH_CHECK(wkvDim == DIM_TWO, "wkv dim num[", wkvDim, "] should be 2");
+    TORCH_CHECK(wkv.size(0) > VALUE_0, "wkv dim 0 should be greater than 0");
 
     TORCH_CHECK(coff == VALUE_1 || coff == VALUE_2, "coff value[", coff, "] should be 1 or 2");
 
