@@ -74,7 +74,7 @@ public:
     static constexpr uint32_t PV_RE_DELAY_N = 20; // G=16 → Dpv>=19，取 20
     static constexpr uint32_t DELAY_PSCALE_N = 3;
 
-    // 21 不是 2 的幂，% 走 magic-multiply。32 盖住 PV_RE_DELAY_N+1，下标改 & mask。
+    // 32 盖住 PV_RE_DELAY_N+1，下标 & mask。TaskInfo/TileInfo 无 NSDMI，声明不带 ={}，入口不整表清零。
     static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = 32;
     static_assert((PRELOAD_TASK_CACHE_SIZE & (PRELOAD_TASK_CACHE_SIZE - 1u)) == 0u, "power of two");
     static_assert(PRELOAD_TASK_CACHE_SIZE >= PV_RE_DELAY_N + 1u, "must hold delay window");
@@ -193,8 +193,9 @@ public:
         uint64_t coreTaskNum = coreTaskNum_;
         coreTaskNum = (coreIdx < totalTaskNum_ % coreNum) ? (coreTaskNum + 1) : coreTaskNum;
 
-        TaskInfo taskInfos[PRELOAD_TASK_CACHE_SIZE] = {};
-        TileInfo tileInfos[PRELOAD_TASK_CACHE_SIZE] = {};
+        // 无 NSDMI、无 ={}：平凡类型默认初始化不写零。delay 窗先写后读。
+        TaskInfo taskInfos[PRELOAD_TASK_CACHE_SIZE];
+        TileInfo tileInfos[PRELOAD_TASK_CACHE_SIZE];
 
         // CreateTaskInfo 跨调用 batch 扫描状态：curTotalTaskNum 从首 batch task 数起步，
         // 后续调用在 while 循环内基于该状态续算，不再从 batch 0 重扫
@@ -291,7 +292,7 @@ public:
                 }
             }
             if (coreTileLoop >= DELAY_PSCALE_N && delay3CoreTaskId < coreTaskNum) {
-                // delay3TileInfo = tileInfos[(coreTileLoop - DELAY_PSCALE_N) & PRELOAD_TASK_CACHE_MASK];
+                // delay3TileInfo = tileInfos[(coreTileLoop - DELAY_PSCALE_N) & PRELOAD_TASK_CACHE_MASK]
                 if (delay3TileInfo.isUpdatePScale) {
                     if ASCEND_IS_AIC {
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_UB_TO_L1_BUF0 +
