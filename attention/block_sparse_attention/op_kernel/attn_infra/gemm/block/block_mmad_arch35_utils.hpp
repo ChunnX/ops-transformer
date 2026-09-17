@@ -188,7 +188,7 @@ namespace MXFP8 {
 static constexpr uint32_t KB_BYTE = 1024;
 
 // L1：方案 A G=16 / Dpv=20；P 环 = Dpv = 20；单槽 16KB = 128×128×1B
-// static constexpr uint32_t L1_P_BUF_CNT = 20;
+static constexpr uint32_t L1_P_BUF_CNT = 20;
 static constexpr uint32_t L1_P_BUF_SIZE = 16 * KB_BYTE;
 static constexpr uint32_t L1_P_BUF_OFFSET = 0;
 
