@@ -15,7 +15,7 @@
 
 ## Function
 
-- **Description**: Implements the backward propagation of [aclnnMoeInitRoutingV2](./aclnnMoeInitRoutingV2.md) to complete the weighted summation of tokens.
+- **Description**: Implements the backward propagation of [aclnnMoeInitRoutingV2](../../moe_init_routing_v2/docs/aclnnMoeInitRoutingV2_en.md) to complete the weighted summation of tokens.
 - **Formula**:
 
   $$

@@ -13,7 +13,7 @@
 
 ## Function
 
-- Description: Computes the attention backpropagation output in training scenarios, which is the backpropagation of [FlashAttentionScoreV4](./aclnnFlashAttentionScoreV4.md). The query, key, and value parameters of this API support multiple sequences with the same or different lengths.
+- Description: Computes the attention backpropagation output in training scenarios, which is the backpropagation of [FlashAttentionScoreV4](../../flash_attention_score/docs/aclnnFlashAttentionScoreV4_en.md). The query, key, and value parameters of this API support multiple sequences with the same or different lengths.
   - This API combines the [FlashAttentionScoreGradV2](./aclnnFlashAttentionScoreGradV2.md) and [FlashAttentionUnpaddingScoreGradV2](./aclnnFlashAttentionUnpaddingScoreGradV2.md) APIs and adjusts the Dropout function.
     - Ascend 950PR/Ascend 950DT: When keepProb is less than 1.0, if there is no external DropoutMask, the new parameter is used to generate the DropoutMask. If there is an external DropoutMask, the external DropoutMask is used.
 - Formulas:

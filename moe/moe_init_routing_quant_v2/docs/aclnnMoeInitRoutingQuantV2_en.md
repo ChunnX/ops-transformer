@@ -15,7 +15,7 @@
 
 ## Function
 
-- **Description**: This operator corresponds to the **routing computation** in the MoE model. It uses the computation result of the [aclnnMoeGatingTopKSoftmax](./aclnnMoeGatingTopKSoftmax.md) operator as the input and outputs the quantized routing matrix, `expandedXOut`, and other results for subsequent computation. This API has the following function changes based on [aclnnMoeInitRoutingQuant](./aclnnMoeInitRoutingQuant.md). Select a proper API based on your actual requirements.
+- **Description**: This operator corresponds to the **routing computation** in the MoE model. It uses the computation result of the [aclnnMoeGatingTopKSoftmax](../../moe_gating_top_k_softmax/docs/aclnnMoeGatingTopKSoftmax_en.md) operator as the input and outputs the quantized routing matrix, `expandedXOut`, and other results for subsequent computation. This API has the following function changes based on [aclnnMoeInitRoutingQuant](../../moe_init_routing_quant/docs/aclnnMoeInitRoutingQuant_en.md). Select a proper API based on your actual requirements.
 
   - Added the drop mode. In this mode, the output is based on the number of tokens processed by each expert and equal to the value of·`expertCapacity`. If the output exceeds the value, exceeded tokens are dropped. If the output falls short of the value, 0s are padded.
   - Added the optional output `expertTokensCountOrCumsumOut` in dropless mode. The output is based on the number of cumulative tokens (Cumsum) to be processed by each expert or the number of tokens (Count) to be processed by each expert.
@@ -26,57 +26,57 @@
 - **Formula**:
 
   1. Flatten the input expertIdx with shape [NUM_ROWS, K] into a row for sorting, where NUM_ROWS indicates the number of input tokens and K indicates the number of experts selected for tokens. The sortedExpertIdx and corresponding sortedRowIdx are obtained.
-  
-  $$
-  sortedExpertIdx, sortedRowIdx=keyValueSort(\text{flatten}(expertIdx))
-  $$
+      
+      $$
+      sortedExpertIdx, sortedRowIdx=keyValueSort(\text{flatten}(expertIdx))
+      $$
 
   2. Use `sortedRowIdx` for location mapping to obtain `expandedRowIdxOut`.
 
-  $$
-  expandedRowIdxOut[sortedRowIdx[i]]=i
-  $$
+      $$
+      expandedRowIdxOut[sortedRowIdx[i]]=i
+      $$
 
   3. In dropless mode, collect statistics on the histogram of each expert in `sortedExpertIdx` and perform Cumsum to obtain `expertTokensCountOrCumsumOutOptional`.
 
-  $$
-  expertTokensCountOrCumsumOutOptional[i]=Cumsum(Histogram(sortedExpertIdx))
-  $$
+      $$
+      expertTokensCountOrCumsumOutOptional[i]=Cumsum(Histogram(sortedExpertIdx))
+      $$
 
   4. In Drop mode, collect the histogram result of each expert in sortedExpertIdx to obtain expertTokensBeforeCapacityOutOptional.
 
-  $$
-  expertTokensBeforeCapacityOutOptional[i]=Histogram(sortedExpertIdx)
-  $$
+      $$
+      expertTokensBeforeCapacityOutOptional[i]=Histogram(sortedExpertIdx)
+      $$
 
   5. Obtain the quantization result.
 
-  - Static quantization:
+      - Static quantization:
 
-      $$
-      quantResult = round((x * scaleOptional) + offsetOptional)
-      $$
+          $$
+          quantResult = round((x * scaleOptional) + offsetOptional)
+          $$
 
-  - Dynamic quantization:
-    - If `scale` is not specified:
+      - Dynamic quantization:
+        - If `scale` is not specified:
 
-      $$
-      dynamicQuantScaleOutOptional = row\_max(abs(x)) / 127
-      $$
+          $$
+          dynamicQuantScaleOutOptional = row\_max(abs(x)) / 127
+          $$
 
-      $$
-      quantResult = round(x / dynamicQuantScaleOutOptional)
-      $$
+          $$
+          quantResult = round(x / dynamicQuantScaleOutOptional)
+          $$
 
-    - If `scale` is specified:
+        - If `scale` is specified:
 
-      $$
-      dynamicQuantScaleOutOptional = row\_max(abs(x * scaleOptional)) / 127
-      $$
+          $$
+          dynamicQuantScaleOutOptional = row\_max(abs(x * scaleOptional)) / 127
+          $$
 
-      $$
-      quantResult = round(x * scaleOptional / dynamicQuantScaleOutOptional)
-      $$
+          $$
+          quantResult = round(x * scaleOptional / dynamicQuantScaleOutOptional)
+          $$
 
   6. Obtain expandedXOut based on quantResult.
 

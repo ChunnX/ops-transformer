@@ -22,67 +22,101 @@
 
     1. MRoPE mode: The shape of `positions` is `(m, num_tokens)`, where `m` represents the number of elements in `mrope_section`. Valid values are `3` or `4`.
     
-    $$
-    cosSin[i] = cosSinCache[positions[i]]
-    $$
-
-    $$
-    cos, sin = cosSin.chunk(2, dim=-1)
-    $$
-
-    (1) When cacheMode is set to 0:
-    - When `mrope_section` contains 3 elements:
-    
       $$
-      cos0 = cos[0, :, :mropeSection[0]]
+      cosSin[i] = cosSinCache[positions[i]]
       $$
 
       $$
-      cos1 = cos[1, :, mropeSection[0]:(mropeSection[0] + mropeSection[1])]
+      cos, sin = cosSin.chunk(2, dim=-1)
       $$
 
-      $$
-      cos2 = cos[2, :, (mropeSection[0] + mropeSection[1]):(mropeSection[0] + mropeSection[1] + mropeSection[2])]
-      $$
-
-      $$
-      cos = torch.cat((cos0, cos1, cos2), dim=-1)
-      $$
-
-      $$
-      sin0 = sin[0, :, :mropeSection[0]]
-      $$
-
-      $$
-      sin1 = sin[1, :, mropeSection[0]:(mropeSection[0] + mropeSection[1])]
-      $$
-
-      $$
-      sin2 = sin[2, :, (mropeSection[0] + mropeSection[1]):(mropeSection[0] + mropeSection[1] + mropeSection[2])]
-      $$
-
-      $$
-      sin= torch.cat((sin0, sin1, sin2), dim=-1)
-      $$
-
-      $$
-      queryRot = query[..., :rotaryDim]
-      $$
-
-      $$
-      queryPass = query[..., rotaryDim:]
-      $$
-
-    - When `mrope_section` contains 4 elements:
-
-      $$
-      cos = torch.cat([m[i]\ for\ i, m\ in\ enumerate(cos.split(mropeSection, dim=-1))], dim=-1)
-      $$
-
-      $$
-      sin = torch.cat([m[i]\ for\ i, m\ in\ enumerate(sin.split(mropeSection, dim=-1))], dim=-1)
-      $$
+      (1) When cacheMode is set to 0:
+      - When `mrope_section` contains 3 elements:
       
+        $$
+        cos0 = cos[0, :, :mropeSection[0]]
+        $$
+
+        $$
+        cos1 = cos[1, :, mropeSection[0]:(mropeSection[0] + mropeSection[1])]
+        $$
+
+        $$
+        cos2 = cos[2, :, (mropeSection[0] + mropeSection[1]):(mropeSection[0] + mropeSection[1] + mropeSection[2])]
+        $$
+
+        $$
+        cos = torch.cat((cos0, cos1, cos2), dim=-1)
+        $$
+
+        $$
+        sin0 = sin[0, :, :mropeSection[0]]
+        $$
+
+        $$
+        sin1 = sin[1, :, mropeSection[0]:(mropeSection[0] + mropeSection[1])]
+        $$
+
+        $$
+        sin2 = sin[2, :, (mropeSection[0] + mropeSection[1]):(mropeSection[0] + mropeSection[1] + mropeSection[2])]
+        $$
+
+        $$
+        sin= torch.cat((sin0, sin1, sin2), dim=-1)
+        $$
+
+        $$
+        queryRot = query[..., :rotaryDim]
+        $$
+
+        $$
+        queryPass = query[..., rotaryDim:]
+        $$
+
+      - When `mrope_section` contains 4 elements:
+
+        $$
+        cos = torch.cat([m[i]\ for\ i, m\ in\ enumerate(cos.split(mropeSection, dim=-1))], dim=-1)
+        $$
+
+        $$
+        sin = torch.cat([m[i]\ for\ i, m\ in\ enumerate(sin.split(mropeSection, dim=-1))], dim=-1)
+        $$
+        
+        $$
+        queryRot = query[..., :rotaryDim]
+        $$
+
+        $$
+        queryPass = query[..., rotaryDim:]
+        $$
+
+      (2) When cacheMode is set to 1:
+
+      $$
+      cosTmp = cos
+      $$
+
+      $$
+      cos [..., 1:mropeSection[1] * 3:3] = cosTmp[1, ..., 1:mropeSection[1] * 3:3]
+      $$
+
+      $$
+      cos[..., 2:mropeSection[1] * 3:3] = cosTmp[2, ..., 2:mropeSection[1] * 3:3]
+      $$
+
+      $$
+      sinTmp = sin
+      $$
+
+      $$
+      sin[..., 1:mropeSection[1] * 3:3] = sinTmp [1, ..., 1:mropeSection[1] * 3:3]
+      $$
+
+      $$
+      sin[..., 2:mropeSection[1] * 3:3] = sinTmp [2, ..., 2:mropeSection[1] * 3:3]
+      $$
+
       $$
       queryRot = query[..., :rotaryDim]
       $$
@@ -91,87 +125,53 @@
       queryPass = query[..., rotaryDim:]
       $$
 
-    (2) When cacheMode is set to 1:
+      (1) rotate\_half (GPT-NeoX style) computation mode:
 
-    $$
-    cosTmp = cos
-    $$
+      $$
+      x1, x2 = torch.chunk(queryRot, 2, dim=-1)
+      $$
 
-    $$
-    cos [..., 1:mropeSection[1] * 3:3] = cosTmp[1, ..., 1:mropeSection[1] * 3:3]
-    $$
+      $$
+      o1[i] = x1[i] * cos[i] - x2[i] * sin[i]
+      $$
 
-    $$
-    cos[..., 2:mropeSection[1] * 3:3] = cosTmp[2, ..., 2:mropeSection[1] * 3:3]
-    $$
+      $$
+      o2[i] = x2[i] * cos[i] + x1[i] * sin[i]
+      $$
 
-    $$
-    sinTmp = sin
-    $$
+      $$
+      queryRot = torch.cat((o1, o2), dim=-1)
+      $$
 
-    $$
-    sin[..., 1:mropeSection[1] * 3:3] = sinTmp [1, ..., 1:mropeSection[1] * 3:3]
-    $$
+      $$
+      query = torch.cat((queryRot, queryPass), dim=-1)
+      $$
 
-    $$
-    sin[..., 2:mropeSection[1] * 3:3] = sinTmp [2, ..., 2:mropeSection[1] * 3:3]
-    $$
+      (2) rotate\_interleaved (GPT-J style) computation mode:
 
-    $$
-    queryRot = query[..., :rotaryDim]
-    $$
+      $$
+      x1 = queryRot[..., ::2]
+      $$
 
-    $$
-    queryPass = query[..., rotaryDim:]
-    $$
+      $$
+      x2 = queryRot[..., 1::2]
+      $$
 
-    (1) rotate\_half (GPT-NeoX style) computation mode:
+      $$
+      o1[i] = x1[i] * cos[i] - x2[i] * sin[i]
+      $$
 
-    $$
-    x1, x2 = torch.chunk(queryRot, 2, dim=-1)
-    $$
+      $$
+      o2[i] = x2[i] * cos[i] + x1[i] * sin[i]
+      $$
 
-    $$
-    o1[i] = x1[i] * cos[i] - x2[i] * sin[i]
-    $$
+      $$
+      queryRot = torch.stack((o1, o2), dim=-1)
+      $$
 
-    $$
-    o2[i] = x2[i] * cos[i] + x1[i] * sin[i]
-    $$
-
-    $$
-    queryRot = torch.cat((o1, o2), dim=-1)
-    $$
-
-    $$
-    query = torch.cat((queryRot, queryPass), dim=-1)
-    $$
-
-    (2) rotate\_interleaved (GPT-J style) computation mode:
-
-    $$
-    x1 = queryRot[..., ::2]
-    $$
-
-    $$
-    x2 = queryRot[..., 1::2]
-    $$
-
-    $$
-    o1[i] = x1[i] * cos[i] - x2[i] * sin[i]
-    $$
-
-    $$
-    o2[i] = x2[i] * cos[i] + x1[i] * sin[i]
-    $$
-
-    $$
-    queryRot = torch.stack((o1, o2), dim=-1)
-    $$
-
-    $$
-    query = torch.cat((queryRot, queryPass), dim=-1)
-    $$
+      $$
+      query = torch.cat((queryRot, queryPass), dim=-1)
+      $$
 
     2. RoPE mode: The shape of positions is [numTokens].
 

@@ -13,7 +13,7 @@
 
 ## Description
 
-Computes the backward output of attention in the training scenario, that is, the backward computation of [aclnnFlashAttentionScoreV3](./aclnnFlashAttentionScoreV3.md). Compared with the [aclnnFlashAttentionScoreGradV2](./aclnnFlashAttentionScoreGradV2.md) API, this API adds the sinkInOptional parameter and the dsinkOut output.
+Computes the backward output of attention in the training scenario, that is, the backward computation of [aclnnFlashAttentionScoreV3](../../flash_attention_score/docs/aclnnFlashAttentionScoreV3_en.md). Compared with the [aclnnFlashAttentionScoreGradV2](./aclnnFlashAttentionScoreGradV2.md) API, this API adds the sinkInOptional parameter and the dsinkOut output.
 
   - Ascend 950PR/Ascend 950DT: The sinkInOptional parameter and dsinkOut output are not supported.
   - When pseType is set to 1, the implementation is the same as that of [aclnnFlashAttentionScoreGrad](./aclnnFlashAttentionScoreGrad.md).

@@ -261,7 +261,7 @@ aclnnStatus aclnnMoeTokenUnpermuteGrad(
 - The following two modes are distinguished by the paddedMode parameter. When paddedMode is set to true, each expert can process a fixed number of tokens (capacity). When `paddedMode` is set to `false`, each token is processed by a fixed number of experts, which is specified by `topK_num`.
 - <term>Atlas A2 training products/Atlas A2 inference products</term> and <term>Atlas A3 training products/Atlas A3 inference products</term>: The value of `topK_num` is less than or equal to `512`.
 - Ascend 950PR/Ascend 950DT:
-  When this API is called, the framework internally calls the [aclnnMoeFinalizeRoutingV2Grad](./aclnnMoeFinalizeRoutingV2Grad.md) API. If a parameter error message is displayed, refer to the following parameter mapping:
+  When this API is called, the framework internally calls the [aclnnMoeFinalizeRoutingV2Grad](../../moe_finalize_routing_v2_grad/docs/aclnnMoeFinalizeRoutingV2Grad_en.md) API. If a parameter error message is displayed, refer to the following parameter mapping:
   - The permutedTokens input is equivalent to the expandedXOptional input of the aclnnMoeFinalizeRoutingV2Grad API.
   - The unpermutedTokensGrad input is equivalent to the gradY input of the aclnnMoeFinalizeRoutingV2Grad API.
   - The sortedIndices input is equivalent to the expandedRowIdx input of the aclnnMoeFinalizeRoutingV2Grad API.

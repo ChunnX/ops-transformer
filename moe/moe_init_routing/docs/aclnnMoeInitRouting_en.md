@@ -15,7 +15,7 @@
 
 ## Function
 
-- **Description**: Performs routing on the computation result of [aclnnMoeGatingTopKSoftmax](./aclnnMoeGatingTopKSoftmax.md).
+- **Description**: Performs routing on the computation result of [aclnnMoeGatingTopKSoftmax](../../moe_gating_top_k_softmax/docs/aclnnMoeGatingTopKSoftmax_en.md).
 - **Formula**:
   Flattens the input expertIdx with shape [NUM_ROWS, K] into a row for sorting. NUM_ROWS indicates the number of input tokens, and K indicates the number of experts selected by the tokens.
   

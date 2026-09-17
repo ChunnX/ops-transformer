@@ -23,36 +23,36 @@
     - Ascend 950PR/Ascend 950DT: The MX quantization scenario is added. For details, see [quantization methods](../../../docs/en/context/quant_mode_introduction.md).
 - Formulas:
 
-  - 1. Group matrix multiplication (GMM):
+  1. Group matrix multiplication (GMM):
 
-    $$
-    y_i=(x_i\times weight_i) * scale_i * perTokenScale_i
-    $$
+      $$
+      y_i=(x_i\times weight_i) * scale_i * perTokenScale_i
+      $$
 
-  - 2. Routing expert and expert output allocation:
+  2. Routing expert and expert output allocation:
 
-    For each token j, routing and output expert allocation are performed as follows:
+        For each token j, routing and output expert allocation are performed as follows:
 
-    $$
-    y[ rowIndex[i] , : ] = y[rowIndex[i], :] + 
-    y_{i(j)}[ j - start_{i(j)}]
-    $$
+        $$
+        y[ rowIndex[i] , : ] = y[rowIndex[i], :] + 
+        y_{i(j)}[ j - start_{i(j)}]
+        $$
 
-    $i(j)$ is the index of the expert to which token j is allocated. $y_{i(j)}[ j - start_{i(j)}]$ is the computation result of the token under the corresponding expert.
+        $i(j)$ is the index of the expert to which token j is allocated. $y_{i(j)}[ j - start_{i(j)}]$ is the computation result of the token under the corresponding expert.
 
-  - 3. Output fusion of shared experts:
+  3. Output fusion of shared experts:
 
-    $$
-    y [rowIndex[i],:] = y[rowIndex[i],:] + sharedInputWeight \times sharedInput[j, :]
-    $$
+        $$
+        y [rowIndex[i],:] = y[rowIndex[i],:] + sharedInputWeight \times sharedInput[j, :]
+        $$
 
-  - 4. Output fusion of shared experts: The final output is the result of merging all expert outputs and shared expert outputs based on rowIndex. The calculation process is as follows:
+  4. Output fusion of shared experts: The final output is the result of merging all expert outputs and shared expert outputs based on rowIndex. The calculation process is as follows:
 
-    $$
-    y[rowIndex[i],:] = \sum_{i \in \mathcal{E}[j]} y_i [j - start_i] + sharedInputWeight \times sharedInput[j, :]
-    $$
+        $$
+        y[rowIndex[i],:] = \sum_{i \in \mathcal{E}[j]} y_i [j - start_i] + sharedInputWeight \times sharedInput[j, :]
+        $$
 
-    $\mathcal{E}[j]$ is the set of experts assigned to token j.
+        $\mathcal{E}[j]$ is the set of experts assigned to token j.
 
 ## Prototype
 

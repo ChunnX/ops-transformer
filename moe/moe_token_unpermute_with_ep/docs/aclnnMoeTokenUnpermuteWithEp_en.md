@@ -145,7 +145,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEp(
       <td>rangeOptional</td>
       <td>Input</td>
       <td>Valid range of ep split. The size is 2.</td>
-      <td>If this parameter is left empty, numTopk is ignored and the execution logic is rolled back to <a href="./aclnnMoeTokenUnpermute.md">aclnnMoeTokenUnpermute</a>.</td>
+      <td>If this parameter is left empty, numTopk is ignored and the execution logic is rolled back to <a href="../../moe_token_unpermute/docs/aclnnMoeTokenUnpermute_en.md">aclnnMoeTokenUnpermute</a>.</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -288,7 +288,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEp(
 
 - The value of `topK_num` is less than or equal to `512`.
 - `paddedMode` cannot be set to `True`.
-- When `rangeOptional` is left empty, `numTopk` is ignored, and the execution logic is rolled back to [aclnnMoeTokenUnpermute](./aclnnMoeTokenUnpermute.md).
+- When `rangeOptional` is left empty, `numTopk` is ignored, and the execution logic is rolled back to [aclnnMoeTokenUnpermute](../../moe_token_unpermute/docs/aclnnMoeTokenUnpermute_en.md).
 
 ## Example
 

@@ -28,7 +28,7 @@
 
 ## Function Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnAllGatherAddGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnAllGatherAdd` is called to perform computation.
+Each operator has [two-phase API](../../../../docs/en/context/two_phase_api.md) calls. First, `aclnnAllGatherAddGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnAllGatherAdd` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnAllGatherAddGetWorkspaceSize(
@@ -160,7 +160,7 @@ aclnnStatus aclnnAllGatherAdd(
 
 - **Returns**
 
-    `aclnnStatus`: status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
+    `aclnnStatus`: status code. For details, see [aclnn Return Code](../../../../docs/en/context/aclnn_return_code.md).
     
     The first-phase API implements input parameter validation. The following error codes may be returned.
 
@@ -228,7 +228,7 @@ aclnnStatus aclnnAllGatherAdd(
 
 - **Returns**
 
-    `aclnnStatus`: status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
+    `aclnnStatus`: status code. For details, see [aclnn Return Code](../../../../docs/en/context/aclnn_return_code.md).
 
 ## Restrictions
 
@@ -238,7 +238,7 @@ aclnnStatus aclnnAllGatherAdd(
 
 ## Calling Example
 
-The following is the sample code, which is for reference only. For details about the compilation and execution processes, see [Compile and Run Example](../../../docs/en/context/compile_and_run_sample.md) in the README file of this operator.
+The following is the sample code, which is for reference only. For details about the compilation and execution processes, see [Compile and Run Example](../../../../docs/en/context/compile_and_run_sample.md) in the README file of this operator.
 
 Note: This sample code calls some HCCL collective communication library APIs, including HcclGetCommName, HcclCommInitAll, and HcclCommDestroy. For details, see [<<HCCL API (C)>>](https://www.hiascend.com/document/detail/en/CANNCommunityEdition/900/API/hcclapiref/hcclcpp_07_0001.html).
 

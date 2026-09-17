@@ -15,7 +15,7 @@
 
 ## Interfaces
 
-- **Description**: Performs the backpropagation of [aclnnMoeTokenPermute](./aclnnMoeTokenPermute.md).
+- **Description**: Performs the backpropagation of [aclnnMoeTokenPermute](../../moe_token_permute/docs/aclnnMoeTokenPermute_en.md).
 - **Formula**:
 
   $$
@@ -234,7 +234,7 @@ aclnnStatus aclnnMoeTokenPermuteGrad(
 
 - <term>Atlas A2 training products/Atlas A2 inference products</term> and <term>Atlas A3 training products/Atlas A3 inference products</term>: The value of `numTopk` is less than or equal to `512`.
 - Ascend 950PR/Ascend 950DT:
-  When this API is called, the framework internally calls the [aclnnMoeInitRoutingV2Grad](./aclnnMoeInitRoutingV2Grad.md) API. If a parameter error message is displayed, see the following parameter mapping:
+  When this API is called, the framework internally calls the [aclnnMoeInitRoutingV2Grad](../../moe_init_routing_v2_grad/docs/aclnnMoeInitRoutingV2Grad_en.md) API. If a parameter error message is displayed, see the following parameter mapping:
   - The permutedOutputGrad input is equivalent to the gradExpandedX input of the aclnnMoeInitRoutingV2Grad API.
   - The sortedIndices input is equivalent to the expandedRowIdx input of the aclnnMoeInitRoutingV2Grad API.
   - The numTopk input is equivalent to the topK input of the aclnnMoeInitRoutingV2Grad API.

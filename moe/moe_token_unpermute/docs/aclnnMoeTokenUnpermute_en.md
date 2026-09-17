@@ -267,7 +267,7 @@ aclnnStatus aclnnMoeTokenUnpermute(
 
 - <term>Atlas A2 training products/Atlas A2 inference products</term> and <term>Atlas A3 training products/Atlas A3 inference products</term>: The value of `topK_num` is less than or equal to `512`.
 - Ascend 950PR/Ascend 950DT:
-  When this API is called, the framework internally calls the [aclnnMoeFinalizeRoutingV2](./aclnnMoeFinalizeRoutingV2.md) API. If a parameter error message is displayed, see the following parameter mapping:
+  When this API is called, the framework internally calls the [aclnnMoeFinalizeRoutingV2](../../moe_finalize_routing_v2/docs/aclnnMoeFinalizeRoutingV2_en.md) API. If a parameter error message is displayed, see the following parameter mapping:
   - The permutedTokens input is equivalent to the expandedX input of the aclnnMoeFinalizeRoutingV2 API.
   - The sortedIndices input is equivalent to the expandedRowIdx input of the aclnnMoeFinalizeRoutingV2 API.
   - The probsOptional input is equivalent to the scalesOptional input of the aclnnMoeFinalizeRoutingV2 API.

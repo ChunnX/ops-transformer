@@ -44,36 +44,36 @@
 
     - **Computation process**
 
-      - 1. Determine the tokens of the current group based on `groupList[i]`, where $i \in [0,Len(groupList)]$.
+       1. Determine the tokens of the current group based on `groupList[i]`, where $i \in [0,Len(groupList)]$.
 
-        >Example: groupList = [3, 4, 4, 6].
-        >
-        >Zero-th right matrix `W[0,:,:]`, corresponding to tokens `x[0:3]` (3-0=3 tokens) at index positions [0, 3), corresponding to `x_scale[0:3]`, `w_scale[0]`, `Q[0:3]`, and `Q_scale[0:3]`.
-        >
-        >First right matrix `W[1,:,:]`, corresponding to token `x[3:4]` (4-3=1 token) at index position [3, 4), corresponding to `x_scale[3:4]`, `w_scale[1]`, `Q[3:4]`, and `Q_scale[3:4]`
-        >
-        >Second right matrix `W[2,:,:]`, corresponding to token `x[4:4]` (4-4=0 token) at index position [4, 4), corresponding to `x_scale[4:4]`, `w_scale[2]`, `Q[4:4]`, and `Q_scale[4:4]`
-        >
-        >Third right matrix `W[3,:,:]`, corresponding to tokens `x[4:6]` (6-4=2 tokens) at index positions [4, 6), corresponding to `x_scale[4:6]`, `w_scale[3]`, `Q[4:6]`, and `Q_scale[4:6]`
-        >
-        >Note: The parts that are not specified in groupList will not be updated.
-        >For example, when groupList = [12, 14, 18] and the shape of x is [30, N/2].
-        >
-        >The shape of the first output Q is [30, N/2]. The part of Q[18:, :] will not be updated or initialized, and the data is the original data when the GPU memory is allocated.
-        >
-        >Similarly, the shape of the second output Q_scale is [30]. The part of Q_scale[18:] is not updated or initialized, and the data is the original data when the video RAM space is allocated.
-        >
-        >That is, the output Q[:groupList[-1],:] and Q_scale[:groupList[-1]] are valid data.
+          >Example: groupList = [3, 4, 4, 6].
+          >
+          >Zero-th right matrix `W[0,:,:]`, corresponding to tokens `x[0:3]` (3-0=3 tokens) at index positions [0, 3), corresponding to `x_scale[0:3]`, `w_scale[0]`, `Q[0:3]`, and `Q_scale[0:3]`.
+          >
+          >First right matrix `W[1,:,:]`, corresponding to token `x[3:4]` (4-3=1 token) at index position [3, 4), corresponding to `x_scale[3:4]`, `w_scale[1]`, `Q[3:4]`, and `Q_scale[3:4]`
+          >
+          >Second right matrix `W[2,:,:]`, corresponding to token `x[4:4]` (4-4=0 token) at index position [4, 4), corresponding to `x_scale[4:4]`, `w_scale[2]`, `Q[4:4]`, and `Q_scale[4:4]`
+          >
+          >Third right matrix `W[3,:,:]`, corresponding to tokens `x[4:6]` (6-4=2 tokens) at index positions [4, 6), corresponding to `x_scale[4:6]`, `w_scale[3]`, `Q[4:6]`, and `Q_scale[4:6]`
+          >
+          >Note: The parts that are not specified in groupList will not be updated.
+          >For example, when groupList = [12, 14, 18] and the shape of x is [30, N/2].
+          >
+          >The shape of the first output Q is [30, N/2]. The part of Q[18:, :] will not be updated or initialized, and the data is the original data when the GPU memory is allocated.
+          >
+          >Similarly, the shape of the second output Q_scale is [30]. The part of Q_scale[18:] is not updated or initialized, and the data is the original data when the video RAM space is allocated.
+          >
+          >That is, the output Q[:groupList[-1],:] and Q_scale[:groupList[-1]] are valid data.
 
-      - 2. Perform the following computation based on the input parameters determined by grouping:
+       2. Perform the following computation based on the input parameters determined by grouping:
 
-        $C_{i} = (X_{i}\cdot W_{i} )\odot x\_scale_{i\,\text{Broadcast}} \odot w\_scale_{i\,\text{Broadcast}}$
+          $C_{i} = (X_{i}\cdot W_{i} )\odot x\_scale_{i\,\text{Broadcast}} \odot w\_scale_{i\,\text{Broadcast}}$
 
-        $C_{i,act}, gate_{i} = split(C_{i})$
+          $C_{i,act}, gate_{i} = split(C_{i})$
 
-        $S_{i}=Swish(C_{i,act})\odot gate_{i}$ &nbsp;&nbsp; where $Swish(x)=\frac{x}{1+e^{-x}}$
+          $S_{i}=Swish(C_{i,act})\odot gate_{i}$ &nbsp;&nbsp; where $Swish(x)=\frac{x}{1+e^{-x}}$
 
-      - 3. Quantize the output.
+       3. Quantize the output.
 
         $Q\_scale_{i} = \frac{max(|S_{i}|)}{127}$
 
@@ -102,46 +102,46 @@
       * $Q∈\mathbb{Z_8}^{M \times N / 2}$: quantized output matrix.
       * $Q\_scale∈\mathbb{R}^{M}$: quantization scale factor.
     - **Computation process**
-      - 1. Determine the tokens of the current group based on `groupList[i]`, where $i \in [0,Len(groupList)]$.
-        - The grouping logic is the same as that of A8W8.
-      - 2. The computation process of generating the auxiliary matrix (weightAssistMatrix) is as follows. (Note that the computation of weightAssistMatrix is performed offline and is not completed inside the operator.)
-        - For per-channel quantization ($w\_scale$ is 2D):
+       1. Determine the tokens of the current group based on `groupList[i]`, where $i \in [0,Len(groupList)]$.
+          - The grouping logic is the same as that of A8W8.
+       2. The computation process of generating the auxiliary matrix (weightAssistMatrix) is as follows. (Note that the computation of weightAssistMatrix is performed offline and is not completed inside the operator.)
+          - For per-channel quantization ($w\_scale$ is 2D):
 
-          $weightAssistMatrix_{i} = 8 × w\_scale × Σ_{k=0}^{K-1} weight[:,k,:]$
+            $weightAssistMatrix_{i} = 8 × w\_scale × Σ_{k=0}^{K-1} weight[:,k,:]$
 
-        - For per-group quantization ($w\_scale$ is 3D):
+          - For per-group quantization ($w\_scale$ is 3D):
 
-          $weightAssistMatrix_{i} = 8 × Σ_{k=0}^{K-1} (weight[:,k,:] × w\_scale[:, ⌊k/num\_per\_group⌋, :])$
+            $weightAssistMatrix_{i} = 8 × Σ_{k=0}^{K-1} (weight[:,k,:] × w\_scale[:, ⌊k/num\_per\_group⌋, :])$
 
-          Note: $num\_per\_group = K // K\_group\_num$
+            Note: $num\_per\_group = K // K\_group\_num$
 
-      - 3. Perform the following computation based on the input parameters determined by grouping:
+       3. Perform the following computation based on the input parameters determined by grouping:
 
-        - 3.1. Convert the left matrix $\mathbb{Z_8}$ into two $\mathbb{Z_4}$ components that represent the high and low bits.
-          $X\_high\_4bits_{i} = \lfloor \frac{X_{i}}{16} \rfloor$
-          $X\_low\_4bits_{i} = X_{i} \& 0x0f - 8$
-        - 3.2. Enable per-channel or per-group quantization during matrix multiplication.
-          Per-channel:
+          - 3.1. Convert the left matrix $\mathbb{Z_8}$ into two $\mathbb{Z_4}$ components that represent the high and low bits.
+            $X\_high\_4bits_{i} = \lfloor \frac{X_{i}}{16} \rfloor$
+            $X\_low\_4bits_{i} = X_{i} \& 0x0f - 8$
+          - 3.2. Enable per-channel or per-group quantization during matrix multiplication.
+            Per-channel:
 
-          $C\_high_{i} = (X\_high\_4bits_{i} \cdot W_{i}) \odot w\_scale_{i}$
+            $C\_high_{i} = (X\_high\_4bits_{i} \cdot W_{i}) \odot w\_scale_{i}$
 
-          $C\_low_{i} = (X\_low\_4bits_{i} \cdot W_{i}) \odot w\_scale_{i}$
+            $C\_low_{i} = (X\_low\_4bits_{i} \cdot W_{i}) \odot w\_scale_{i}$
 
-          Per-group:
+            Per-group:
 
-          $C\_high_{i} = \\ Σ_{k=0}^{K-1}((X\_high\_4bits_{i}[:, k * num\_per\_group : (k+1) * num\_per\_group] \cdot W_{i}[k *   num\_per\_group : (k+1) * num\_per\_group, :]) \odot w\_scale_{i}[k, :] )$
+            $C\_high_{i} = \\ Σ_{k=0}^{K-1}((X\_high\_4bits_{i}[:, k * num\_per\_group : (k+1) * num\_per\_group] \cdot W_{i}[k *   num\_per\_group : (k+1) * num\_per\_group, :]) \odot w\_scale_{i}[k, :] )$
 
-          $C\_low_{i} = \\ Σ_{k=0}^{K-1}((X\_low\_4bits_{i}[:, k * num\_per\_group : (k+1) * num\_per\_group] \cdot W_{i}[k *   num\_per\_group : (k+1) * num\_per\_group, :]) \odot w\_scale_{i}[k, :] )$
+            $C\_low_{i} = \\ Σ_{k=0}^{K-1}((X\_low\_4bits_{i}[:, k * num\_per\_group : (k+1) * num\_per\_group] \cdot W_{i}[k *   num\_per\_group : (k+1) * num\_per\_group, :]) \odot w\_scale_{i}[k, :] )$
 
-        - 3.3. Restore the matrix multiplication results of the high and low bits into the overall result.
+          - 3.3. Restore the matrix multiplication results of the high and low bits into the overall result.
 
-          $C_{i} = (C\_high_{i} * 16 + C\_low_{i} + weightAssistMatrix_{i}) \odot x\_scale_{i}$
+            $C_{i} = (C\_high_{i} * 16 + C\_low_{i} + weightAssistMatrix_{i}) \odot x\_scale_{i}$
 
-          $C_{i,act}, gate_{i} = split(C_{i})$
+            $C_{i,act}, gate_{i} = split(C_{i})$
 
-          $S_{i}=Swish(C_{i,act})\odot gate_{i}$ &nbsp;&nbsp; where $Swish(x)=\frac{x}{1+e^{-x}}$
+            $S_{i}=Swish(C_{i,act})\odot gate_{i}$ &nbsp;&nbsp; where $Swish(x)=\frac{x}{1+e^{-x}}$
 
-      - 3. Quantize the output.
+       4. Quantize the output.
 
         $Q\_scale_{i} = \frac{max(|S_{i}|)}{127}$
 
@@ -411,13 +411,13 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNZ(
 
 - A8W8 scenario (A: activation matrix (left matrix); W: weight matrix (right matrix); 8: INT8)
 
-  - 1. The length of the last axis of `x` cannot be greater than or equal to 65536.
-  - 2. The length of the N-axis cannot exceed 10240.
+   1. The length of the last axis of `x` cannot be greater than or equal to 65536.
+   2. The length of the N-axis cannot exceed 10240.
 
 - A8W4 scenario (A: activation matrix (left matrix); W: weight matrix (right matrix); 4: INT4)
 
-  - 1. The length of the last axis of `x` cannot be greater than or equal to 20000.
-  - 2. The length of the N-axis cannot exceed 10240.
+   1. The length of the last axis of `x` cannot be greater than or equal to 20000.
+   2. The length of the N-axis cannot exceed 10240.
 
 ## Calling Example
 

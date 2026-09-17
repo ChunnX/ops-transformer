@@ -15,7 +15,7 @@
 
 ## Function
 
-- Description: Performs mixture of experts (MoE) routing based on the computation results of [aclnnMoeGatingTopKSoftmaxV2](./aclnnMoeGatingTopKSoftmaxV2.md). Non-quantization, static quantization, and dynamic quantization configurations are supported. This API has the following function changes based on the V2 API [aclnnMoeInitRoutingV2](./aclnnMoeInitRoutingV2.md). Select a proper API based on your actual requirements.
+- Description: Performs mixture of experts (MoE) routing based on the computation results of [aclnnMoeGatingTopKSoftmaxV2](../../moe_gating_top_k_softmax_v2/docs/aclnnMoeGatingTopKSoftmaxV2_en.md). Non-quantization, static quantization, and dynamic quantization configurations are supported. This API has the following function changes based on the V2 API [aclnnMoeInitRoutingV2](../../moe_init_routing_v2/docs/aclnnMoeInitRoutingV2.md). Select a proper API based on your actual requirements.
 
   1. The dynamic and static quantization functions are added, and the int8 quantization mode of expendX is supported.
 
@@ -66,83 +66,83 @@
 
   1. Sort the input `expertIdx` to obtain the sorted result `sortedExpertIdx` and the corresponding index `sortedRowIdx`.
 
-    $$
-    sortedExpertIdx, sortedRowIdx=keyValueSort(expertIdx,rowIdx)
-    $$
+      $$
+      sortedExpertIdx, sortedRowIdx=keyValueSort(expertIdx,rowIdx)
+      $$
 
   2. Use `sortedRowIdx` for location mapping to obtain `expandedRowIdxOut`.
-    - When `rowIdxType` is `1`, the API outputs scatter indices.
+      - When `rowIdxType` is `1`, the API outputs scatter indices.
 
-      $$
-      expandedRowIdxOut[i]=sortedRowIdx[i]
-      $$
+        $$
+        expandedRowIdxOut[i]=sortedRowIdx[i]
+        $$
 
-    - When `rowIdxType` is `0`, the API outputs gather indices.
+      - When `rowIdxType` is `0`, the API outputs gather indices.
 
-      $$
-      expandedRowIdxOut[sortedRowIdx[i]]=i
-      $$
+        $$
+        expandedRowIdxOut[sortedRowIdx[i]]=i
+        $$
       
   3. Compute the histogram of `sortedExpertIdx` for each expert to obtain `expertTokensCountOrCumsumOutOptional`.
 
-    $$
-    expertTokensCountOrCumsumOutOptional[i]=Histogram(sortedExpertIdx)
-    $$
+      $$
+      expertTokensCountOrCumsumOutOptional[i]=Histogram(sortedExpertIdx)
+      $$
 
   4. If quantMode is not equal to -1, calculate the quantization result.
-     - Static quantization:
+      - Static quantization:
 
-     $$
-     quantResult=round((x∗scaleOptional)+offsetOptional)
-     $$
-     
-    - Dynamic quantization:
-        - If `scale` is not specified:
+        $$
+        quantResult=round((x∗scaleOptional)+offsetOptional)
+        $$
+      
+      - Dynamic quantization:
+          - If `scale` is not specified:
 
-            $$
-            dynamicQuantScaleOutOptional = row\_max(abs(x)) / 127
-            $$
+              $$
+              dynamicQuantScaleOutOptional = row\_max(abs(x)) / 127
+              $$
 
-            $$
-            quantResult = round(x / dynamicQuantScaleOutOptional)
-            $$
+              $$
+              quantResult = round(x / dynamicQuantScaleOutOptional)
+              $$
 
-        - If `scale` is specified:
+          - If `scale` is specified:
 
-            $$
-            dynamicQuantScaleOutOptional = row\_max(abs(x * scaleOptional)) / 127
-            $$
+              $$
+              dynamicQuantScaleOutOptional = row\_max(abs(x * scaleOptional)) / 127
+              $$
 
-            $$
-            quantResult = round(x / dynamicQuantScaleOutOptional)
-            $$
+              $$
+              quantResult = round(x / dynamicQuantScaleOutOptional)
+              $$
   
   5. Tokens are rearranged using scatter indices when the active expert range covers all experts. In other configurations, tokens are rearranged using gather indices. When `dropPadMode` is set to `1`, the number of tokens processed by each expert is padded to `expertCapacity`. Tokens exceeding `expertCapacity` are dropped, and insufficient tokens are padded with zeros. The resulting output `expandedXOut` is obtained as follows:
-    - Non-quantization scenarios:
-      - Rearrangement using scatter indices:
+      - Non-quantization scenarios:
+        - Rearrangement using scatter indices:
 
-      $$
-      expandedXOut[i]=x[scatterRowIdx[i] // K]
-      $$
+          $$
+          expandedXOut[i]=x[scatterRowIdx[i] // K]
+          $$
 
-      - Rearrangement using gather indices:
+        - Rearrangement using gather indices:
 
-      $$
-      expandedXOut[gatherRowIdx[i]]=x[i // K]
-      $$
+          $$
+          expandedXOut[gatherRowIdx[i]]=x[i // K]
+          $$
 
-    - Quantization scenarios:
-      - Rearrangement using scatter indices:
+      - Quantization scenarios:
+        - Rearrangement using scatter indices:
 
-      $$
-      expandedXOut[i]=quantResult[scatterRowIdx[i] // K]
-      $$
+        $$
+        expandedXOut[i]=quantResult[scatterRowIdx[i] // K]
+        $$
 
-      - Rearrangement using gather indices:
+        - Rearrangement using gather indices:
 
-      $$
-      expandedXOut[gatherRowIdx[i]]=quantResult[i // K]
-      $$
+        $$
+        expandedXOut[gatherRowIdx[i]]=quantResult[i // K]
+        $$
 
   6. The valid element count of `expandedRowIdxOut`, denoted by `availableIdxNum`, is calculated as the number of elements in `expertIdx` that fall within the range specified by `activeExpertRangeOptional`.
 

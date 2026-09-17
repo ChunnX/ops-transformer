@@ -21,7 +21,7 @@ Compared with aclnnGroupedMatmulFinalizeRoutingWeightNz, this API has the follow
 
 - The input parameters offsetOptional, antiquantScaleOptional, antiquantOffsetOptional, and tuningConfigOptional are added. The first three parameters are reserved and do not take effect currently. You can pass a null pointer.
 - <term>Atlas A2 training products/Atlas A2 inference products</term> and <term>Atlas A3 training products/Atlas A3 inference products</term>: The INT4 weight matrix is supported, and the tuningConfigOptional parameter is supported. The first value in the array indicates the expected number of tokens processed by each expert. During operator tiling, the operator is tiled based on the expected value, improving performance. Select the appropriate API as required.
-- Ascend 950PR/Ascend 950DT: The per-token-per-channel and static per-tensor-per-channel quantization scenarios are added. For details, see [quantization mode](aclnnGroupedMatmulFinalizeRoutingWeightNzV2).
+- Ascend 950PR/Ascend 950DT: The per-token-per-channel and static per-tensor-per-channel quantization scenarios are added. For details, see [quantization mode](../../../docs/en/context/quant_mode_introduction.md).
 
 ## Prototype
 

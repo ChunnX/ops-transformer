@@ -13,7 +13,7 @@
 
 ## Description
 
-- API function: Computes the attention backpropagation output in training scenarios, which is the backpropagation of [`aclnnFlashAttentionVarLenScoreV2`](./aclnnFlashAttentionVarLenScoreV2.md). Compared with the [aclnnFlashAttentionUnpaddingScoreGrad](./aclnnFlashAttentionUnpaddingScoreGrad.md) API, this API adds the pseType parameter.
+- API function: Computes the attention backpropagation output in training scenarios, which is the backpropagation of [`aclnnFlashAttentionVarLenScoreV2`](../../flash_attention_score/docs/aclnnFlashAttentionVarLenScoreV2_en.md). Compared with the [aclnnFlashAttentionUnpaddingScoreGrad](./aclnnFlashAttentionUnpaddingScoreGrad.md) API, this API adds the pseType parameter.
 
   - When pseType is set to 1, the implementation is the same as that of [aclnnFlashAttentionUnpaddingScoreGrad](./aclnnFlashAttentionUnpaddingScoreGrad.md).
   - When pseType is set to other values, the mul operation needs to be performed before the add operation.

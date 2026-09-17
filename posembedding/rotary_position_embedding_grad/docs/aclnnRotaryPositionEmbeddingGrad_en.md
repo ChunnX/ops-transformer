@@ -15,7 +15,7 @@
 
 ## Function
 
-- Function: Performs the backward computation of the single-channel rotary position embedding [aclnnRotaryPositionEmbedding](./aclnnRotaryPositionEmbedding.md).
+- Function: Performs the backward computation of the single-channel rotary position embedding [aclnnRotaryPositionEmbedding](../../rotary_position_embedding/docs/aclnnRotaryPositionEmbedding_en.md).
 - Formula:
   
     If the broadcast axis list in the forward computation of the rotary position embedding is `dims`, the calculation formula is as follows:

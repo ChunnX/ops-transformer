@@ -17,52 +17,52 @@
 - Formula: 
   1. If smoothScaleOptional is input, then:
   
-  $$
-      x = x\cdot scale_{smooth}
-  $$
+      $$
+          x = x\cdot scale_{smooth}
+      $$
 
   2. If xScaleOptional is not input, dynamic quantization is performed, and the x quantization coefficient needs to be calculated.
   
-  $$
-      scale_{x}=row\_max(abs(x))/max_{quantDataType}
-  $$
+      $$
+          scale_{x}=row\_max(abs(x))/max_{quantDataType}
+      $$
 
   3. Quantization
   
-  $$
-      x_{quantized}=round(x/scale_{x})
-  $$
+      $$
+          x_{quantized}=round(x/scale_{x})
+      $$
 
   4. Grouped matrix multiplication + dequantization
-    - 4.1 If the data type of the input $scale_{weight}$ is FLOAT32, then:
+      - 4.1 If the data type of the input $scale_{weight}$ is FLOAT32, then:
 
-  $$
-    \begin{aligned}
-      x^{*}_{quantized} &= x_{quantized}[group[i-1]:group[i]]\\
-      out^{*}_{quantized} &= out_{quantized}[group[i-1]:group[i]]\\
-      scale^{*}_{x} &= \begin{cases}
-                      scale_{x}[group[i-1]:group[i]] & pertoken \\
-                      scale_{x} & pertensor \\
-                      \end{cases} \\
-      out^{*}_{quantized} &= (x^{*}_{quantized}@weight_{quantized}[i] + bias) * scale_{weight}[i] * scale^{*}_{x}
-    \end{aligned}
-  $$
+        $$
+          \begin{aligned}
+            x^{*}_{quantized} &= x_{quantized}[group[i-1]:group[i]]\\
+            out^{*}_{quantized} &= out_{quantized}[group[i-1]:group[i]]\\
+            scale^{*}_{x} &= \begin{cases}
+                            scale_{x}[group[i-1]:group[i]] & pertoken \\
+                            scale_{x} & pertensor \\
+                            \end{cases} \\
+            out^{*}_{quantized} &= (x^{*}_{quantized}@weight_{quantized}[i] + bias) * scale_{weight}[i] * scale^{*}_{x}
+          \end{aligned}
+        $$
 
-  - 4.2 If the data type of the input $scale_{weight}$ is INT64, then:
+      - 4.2 If the data type of the input $scale_{weight}$ is INT64, then:
 
-    $$
-    x^{*}_{quantized} = x_{quantized}[group[i-1]:group[i]] \\
-    out^{*}_{quantized} = out_{quantized}[group[i-1]:group[i]] \\
-    scale_{weight} = torch.tensor(np.frombuffer(scale_{weight}.numpy().astype(np.int32).\\tobytes(), dtype=np.float32)).reshape(scale_{weight}) \\
-    out^{*}_{quantized} = (x^{*}_{quantized}@weight_{quantized}[i] + bias) * scale_{weight}[i]
-    $$
+          $$
+          x^{*}_{quantized} = x_{quantized}[group[i-1]:group[i]] \\
+          out^{*}_{quantized} = out_{quantized}[group[i-1]:group[i]] \\
+          scale_{weight} = torch.tensor(np.frombuffer(scale_{weight}.numpy().astype(np.int32).\\tobytes(), dtype=np.float32)).reshape(scale_{weight}) \\
+          out^{*}_{quantized} = (x^{*}_{quantized}@weight_{quantized}[i] + bias) * scale_{weight}[i]
+          $$
 
-    Note: In the scenario described in 4.2, the matrix multiplication operation has been performed on $scale_{weight}$ and $scale_{x}$ before the input of $scale_{weight}$. Therefore, this step is omitted during internal operator computation. This requires that the scenario must be pertensor static quantization. That is, before input, $scale_{weight}$ must be processed as follows to obtain data of the INT64 type:
+          Note: In the scenario described in 4.2, the matrix multiplication operation has been performed on $scale_{weight}$ and $scale_{x}$ before the input of $scale_{weight}$. Therefore, this step is omitted during internal operator computation. This requires that the scenario must be pertensor static quantization. That is, before input, $scale_{weight}$ must be processed as follows to obtain data of the INT64 type:
 
-    $$
-    scale_{weight} = scale_{weight} * scale_{x} \\
-    scale_{weight} = torch.tensor(np.frombuffer(scale_{weight}.numpy().astype(np.float32). \\tobytes(), dtype=np.int32).astype(np.int64)).reshape(scale_{weight})
-    $$
+          $$
+          scale_{weight} = scale_{weight} * scale_{x} \\
+          scale_{weight} = torch.tensor(np.frombuffer(scale_{weight}.numpy().astype(np.float32). \\tobytes(), dtype=np.int32).astype(np.int64)).reshape(scale_{weight})
+          $$
 
 ## Prototype
 

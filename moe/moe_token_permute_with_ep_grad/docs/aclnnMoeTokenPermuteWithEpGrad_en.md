@@ -137,7 +137,7 @@ aclnnStatus aclnnMoeTokenPermuteWithEpGrad(
       <td>rangeOptional</td>
       <td>Input</td>
       <td>Valid range of EP slicing. The size is <code>2</code>.</td>
-      <td>If this parameter is left empty, permutedProbsOutputGradOptional and probsGradOut are ignored, and the execution logic is rolled back to <a href="./aclnnMoeTokenPermuteGrad.md">aclnnMoeTokenPermuteGrad</a>.</td>
+      <td>If this parameter is left empty, permutedProbsOutputGradOptional and probsGradOut are ignored, and the execution logic is rolled back to <a href="../../moe_token_permute_grad/docs/aclnnMoeTokenPermuteGrad_en.md">aclnnMoeTokenPermuteGrad</a>.</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -277,7 +277,7 @@ aclnnStatus aclnnMoeTokenPermuteWithEpGrad(
 
 - numTopk <= 512.
 - `paddedMode` cannot be set to `True`.
-- When `rangeOptional` is left empty, `permutedProbsOutputGradOptional` and `probsGradOut` are ignored, and the execution logic is rolled back to [aclnnMoeTokenPermuteGrad](./aclnnMoeTokenPermuteGrad.md).
+- When `rangeOptional` is left empty, `permutedProbsOutputGradOptional` and `probsGradOut` are ignored, and the execution logic is rolled back to [aclnnMoeTokenPermuteGrad](../../moe_token_permute_grad/docs/aclnnMoeTokenPermuteGrad_en.md).
 
 ## Example
 
