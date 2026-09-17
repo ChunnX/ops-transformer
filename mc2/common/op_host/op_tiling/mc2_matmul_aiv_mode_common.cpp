@@ -59,10 +59,10 @@ ge::graphStatus ValidateCclBufferSizeIfAvailable(const char *group, const char *
         OP_LOGW(opName, "Can't get HCCL_BUFFSIZE, skip CCL buffer size validation.");
         return ge::GRAPH_SUCCESS;
     }
-    OP_TILING_CHECK(cclBufferSize < minBufferSize,
-                    OP_LOGE(opName, "HCCL_BUFFSIZE (%lu Bytes) too small, min required %lu Bytes", cclBufferSize,
-                            minBufferSize),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        cclBufferSize < minBufferSize,
+        OP_LOGE(opName, "HCCL_BUFFSIZE (%lu Bytes) too small, min required %lu Bytes", cclBufferSize, minBufferSize),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

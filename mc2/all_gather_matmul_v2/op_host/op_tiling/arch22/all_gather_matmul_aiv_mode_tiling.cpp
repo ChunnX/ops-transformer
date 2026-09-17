@@ -441,8 +441,7 @@ static bool CheckDtypeX1(const gert::TilingContext *context)
 
 static bool CheckDtypeX2(const gert::TilingContext *context, AllGatherMatmulAIVModeInfo &info, ge::DataType yType)
 {
-    const auto result =
-        mc2tiling::CheckAivMatmulScaleDtype(context->GetInputTensor(X2_SCALE_INDEX), yType);
+    const auto result = mc2tiling::CheckAivMatmulScaleDtype(context->GetInputTensor(X2_SCALE_INDEX), yType);
     info.isX2ScaleTypeInt64 = result.isInt64;
     return result.valid;
 }

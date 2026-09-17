@@ -30,7 +30,11 @@ struct MatrixPaddingParams {
 
     CATLASS_HOST_DEVICE
     MatrixPaddingParams(GM_ADDR src_, Layout srcLayout_, GM_ADDR dst_, Layout dstLayout_, bool required_)
-        : src(src_), srcLayout(srcLayout_), dst(dst_), dstLayout(dstLayout_), required(required_)
+        : src(src_),
+          srcLayout(srcLayout_),
+          dst(dst_),
+          dstLayout(dstLayout_),
+          required(required_)
     {}
 };
 
@@ -51,8 +55,7 @@ struct MatmulPaddingParams {
 };
 
 template <class ArchTag, class Element, class Layout>
-CATLASS_DEVICE void PadMatrix(Catlass::Arch::Resource<ArchTag> &resource,
-                              const MatrixPaddingParams<Layout> &params)
+CATLASS_DEVICE void PadMatrix(Catlass::Arch::Resource<ArchTag> &resource, const MatrixPaddingParams<Layout> &params)
 {
     if (!params.required) {
         return;
@@ -69,9 +72,8 @@ CATLASS_DEVICE void PadMatrix(Catlass::Arch::Resource<ArchTag> &resource,
 }
 
 template <class ArchTag, class AType, class BType>
-CATLASS_DEVICE void PadMatmulInputs(
-    Catlass::Arch::Resource<ArchTag> &resource,
-    const MatmulPaddingParams<typename AType::Layout, typename BType::Layout> &params)
+CATLASS_DEVICE void PadMatmulInputs(Catlass::Arch::Resource<ArchTag> &resource,
+                                    const MatmulPaddingParams<typename AType::Layout, typename BType::Layout> &params)
 {
     PadMatrix<ArchTag, typename AType::Element>(resource, params.matrixA);
     PadMatrix<ArchTag, typename BType::Element>(resource, params.matrixB);

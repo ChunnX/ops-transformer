@@ -175,11 +175,11 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::MoveToOtherRank
         for (int32_t cycle_idx = 0; cycle_idx < group_num; ++cycle_idx) {
             if (dst_rank != rankId && dst_rank < worldSize) {
                 if constexpr (std::is_same_v<X1Type, AscendC::int4b_t>) {
-                    Mc2AivDataCopy::CopyUbufToGmAlignB16(
-                        (__gm__ int8_t *)stateAddrPerRank[dst_rank] + rank_offset / 2, copyTensor, 1, block_len, 0, 0);
+                    Mc2AivDataCopy::CopyUbufToGmAlignB16((__gm__ int8_t *)stateAddrPerRank[dst_rank] + rank_offset / 2,
+                                                         copyTensor, 1, block_len, 0, 0);
                 } else {
-                    Mc2AivDataCopy::CopyUbufToGmAlignB16(
-                        (__gm__ X1Type *)stateAddrPerRank[dst_rank] + rank_offset, copyTensor, 1, block_len, 0, 0);
+                    Mc2AivDataCopy::CopyUbufToGmAlignB16((__gm__ X1Type *)stateAddrPerRank[dst_rank] + rank_offset,
+                                                         copyTensor, 1, block_len, 0, 0);
                 }
             }
             dst_rank = (dst_rank + skip_num) % rank_scope;
@@ -240,8 +240,8 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::MoveResultFromP
             Mc2AivDataCopy::CopyUbufToGmAlignB16(
                 gm_dst + gm_src_offset, ub_buff_st, actual_move_m,
                 actual_k_move_num_in_out * Catlass::SizeOfBits<X1Type>::value / 8,
-                (actual_k_move_num_in_peer_mem - actual_k_move_num_in_out) *
-                    Catlass::SizeOfBits<X1Type>::value / (8 * 32),
+                (actual_k_move_num_in_peer_mem - actual_k_move_num_in_out) * Catlass::SizeOfBits<X1Type>::value /
+                    (8 * 32),
                 (k - actual_k_move_num_in_out) * Catlass::SizeOfBits<X1Type>::value / (8 * 32));
             SetFlag<HardEvent::MTE3_MTE2>(event_id);
         }
@@ -267,12 +267,10 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::MoveResultToDst
         auto event_id = (move_idx & 1) ? EVENT_ID0 : EVENT_ID1;
         LocalTensor<supportX1Type> copyTensor = (move_idx & 1) ? copyTensor0 : copyTensor1;
         WaitFlag<HardEvent::MTE3_MTE2>(event_id);
-        Mc2AivDataCopy::CopyGmToUbufAlignB16(copyTensor, gm_src, 1,
-                                             actual_move_size * sizeof(supportX1Type), 0, 0);
+        Mc2AivDataCopy::CopyGmToUbufAlignB16(copyTensor, gm_src, 1, actual_move_size * sizeof(supportX1Type), 0, 0);
         SetFlag<HardEvent::MTE2_MTE3>(event_id);
         WaitFlag<HardEvent::MTE2_MTE3>(event_id);
-        Mc2AivDataCopy::CopyUbufToGmAlignB16(gm_dst, copyTensor, 1,
-                                             actual_move_size * sizeof(supportX1Type), 0, 0);
+        Mc2AivDataCopy::CopyUbufToGmAlignB16(gm_dst, copyTensor, 1, actual_move_size * sizeof(supportX1Type), 0, 0);
         gm_src += max_ub_ping_pong_size;
         gm_dst += max_ub_ping_pong_size;
         SetFlag<HardEvent::MTE3_MTE2>(event_id);

@@ -52,8 +52,9 @@ __attribute__((always_inline)) inline __aicore__ void CopyGmToUbuf(LocalTensor<T
 }
 
 template <typename T>
-__attribute__((always_inline)) inline __aicore__ void CopyGmToUbufAlignB16(
-    LocalTensor<T> ubTensor, __gm__ T *src, uint16_t nBurst, uint32_t lenBurst, uint16_t srcStride, uint16_t dstStride)
+__attribute__((always_inline)) inline __aicore__ void CopyGmToUbufAlignB16(LocalTensor<T> ubTensor, __gm__ T *src,
+                                                                           uint16_t nBurst, uint32_t lenBurst,
+                                                                           uint16_t srcStride, uint16_t dstStride)
 {
     DataCopyExtParams dataCopyParams(nBurst,    // blockCount
                                      lenBurst,  // blockLen
@@ -67,8 +68,9 @@ __attribute__((always_inline)) inline __aicore__ void CopyGmToUbufAlignB16(
 }
 
 template <typename T>
-__attribute__((always_inline)) inline __aicore__ void CopyUbufToGmAlignB16(
-    __gm__ T *dst, LocalTensor<T> ubTensor, uint16_t nBurst, uint32_t lenBurst, uint16_t srcStride, uint16_t dstStride)
+__attribute__((always_inline)) inline __aicore__ void CopyUbufToGmAlignB16(__gm__ T *dst, LocalTensor<T> ubTensor,
+                                                                           uint16_t nBurst, uint32_t lenBurst,
+                                                                           uint16_t srcStride, uint16_t dstStride)
 {
     DataCopyExtParams dataCopyParams(nBurst,    // blockCount
                                      lenBurst,  // blockLen
