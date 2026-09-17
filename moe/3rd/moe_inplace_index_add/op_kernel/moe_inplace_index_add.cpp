@@ -143,7 +143,6 @@ extern "C" __global__ __aicore__ void moe_inplace_index_add(GM_ADDR var, GM_ADDR
     if (workspace == nullptr) {
         return;
     }
-    SetSysWorkspace(workspace);
     GM_ADDR userWS = GetUserWorkspace(workspace);
     if (userWS == nullptr) {
         return;
