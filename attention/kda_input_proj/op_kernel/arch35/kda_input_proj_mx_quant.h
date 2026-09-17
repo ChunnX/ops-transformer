@@ -289,7 +289,8 @@ __aicore__ inline void KdaInputProjMxQuant<TypePack>::GetUbParams()
 
     ubFactorColLoopNum_ = CeilDiv(ubFactorCol32BlockNum_, maxUbBlockNum_);
     ubFactorColNormalBlockNum_ = CeilDiv(ubFactorCol32BlockNum_, ubFactorColLoopNum_);
-    ubFactorColNormalBlockNum_ = CeilDiv(ubFactorColNormalBlockNum_, DIGIT_TWO) * DIGIT_TWO;
+    // kernel CopyIn/CopyOut 按 scale pack-2 对齐，列方向头块 block 数需向上对齐到偶数
+    ubFactorColNormalBlockNum_ = CeilAlign(ubFactorColNormalBlockNum_, DIGIT_TWO);
     ubFactorColTailBlockNum_ = ubFactorCol32BlockNum_ - (ubFactorColLoopNum_ - DIGIT_ONE) * ubFactorColNormalBlockNum_;
     ubFactorColNormalBlockLen_ = ubFactorColNormalBlockNum_ * blockSize_;
     ubFactorColTailBlockLen_ = ubFactorColNum_ - (ubFactorColLoopNum_ - DIGIT_ONE) * ubFactorColNormalBlockLen_;
