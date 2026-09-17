@@ -104,7 +104,6 @@ public:
                                       uint32_t ubSBufId, uint32_t l1PBufId, Arch::CrossCoreFlag mm1ToSmFlag,
                                       Arch::CrossCoreFlag smToMm2Flag)
     {
-        AscendC::printf("tkd fp32 online-softmax\n");
         uint32_t mCopyOffset = RoundUp(actualBlockShape.m(), 8) / 2;
         uint32_t m = actualBlockShape.m() < mCopyOffset ? actualBlockShape.m() : mCopyOffset;
         m = subBlockIdx_ == 0 ? m : actualBlockShape.m() - m;
@@ -122,64 +121,60 @@ public:
         uint32_t blockStride = mRound;
         uint32_t tailN = (n - 1) % SM_VREG_SIZE + 1;
 
-        __ubuf__ float *sAddr = (__ubuf__ float *)lsUbTensor[ubSBufId].GetPhyAddr();
-        __ubuf__ ElementOutput *pAddr = (__ubuf__ ElementOutput *)lpUbTensor[ubSBufId].GetPhyAddr();
-        __ubuf__ float *nowMaxAddr = (__ubuf__ float *)lmUbTensor.GetPhyAddr();
-        __ubuf__ float *lastMaxAddr = (__ubuf__ float *)gmUbTensor.GetPhyAddr();
-        __ubuf__ float *nowSumAddr = (__ubuf__ float *)llUbTensor.GetPhyAddr();
-        __ubuf__ float *lastSumAddr = (__ubuf__ float *)glUbTensor.GetPhyAddr();
-        __ubuf__ float *expMaxAddr = (__ubuf__ float *)dmUbTensor[l1PBufId].GetPhyAddr();
+        __ubuf__ float *sUbAddr = (__ubuf__ float *)lsUbTensor[ubSBufId].GetPhyAddr();
+        __ubuf__ ElementOutput *pUbAddr = (__ubuf__ ElementOutput *)lpUbTensor[ubSBufId].GetPhyAddr();
+        __ubuf__ float *lmUbAddr = (__ubuf__ float *)lmUbTensor.GetPhyAddr();
+        __ubuf__ float *gmUbAddr = (__ubuf__ float *)gmUbTensor.GetPhyAddr();
+        __ubuf__ float *llUbAddr = (__ubuf__ float *)llUbTensor.GetPhyAddr();
+        __ubuf__ float *glUbAddr = (__ubuf__ float *)glUbTensor.GetPhyAddr();
+        __ubuf__ float *dmUbAddr = (__ubuf__ float *)dmUbTensor[l1PBufId].GetPhyAddr();
 
         WaitCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
         uint32_t kvBaseTileRegStages = CeilDiv(n, SM_VREG_SIZE);
         if (kvBaseTileRegStages == 1) {
-            ComputeScaleAndMax<KvBaseTileRegSplitStagesHighPrec::ONE>(sAddr, nowMaxAddr, m, tailN, scaleValue,
-                                                                      nRound);
+            if (isFirstKvSTile) {
+                ComputeAndUpdateMax<true>(sUbAddr, lmUbAddr, gmUbAddr, dmUbAddr, m, tailN, scaleValue, nRound,
+                                          tla::C<KvBaseTileRegSplitStagesHighPrec::ONE>{});
+            } else {
+                ComputeAndUpdateMax<false>(sUbAddr, lmUbAddr, gmUbAddr, dmUbAddr, m, tailN, scaleValue, nRound,
+                                           tla::C<KvBaseTileRegSplitStagesHighPrec::ONE>{});
+            }
         } else if (kvBaseTileRegStages == 2) {
-            ComputeScaleAndMax<KvBaseTileRegSplitStagesHighPrec::TWO>(sAddr, nowMaxAddr, m, tailN, scaleValue,
-                                                                      nRound);
-        }
-
-        AscendC::printf("tkd S after ComputeScaleAndMax\n");
-        AscendC::DumpTensor(lsUbTensor[ubSBufId], 0, 16);
-
-        AscendC::printf("tkd LocalMax after ComputeScaleAndMax\n");
-        AscendC::DumpTensor(lmUbTensor, 0, 16);
-
-
-        if (!isFirstKvSTile) {
-            UpdateMax(nowMaxAddr, lastMaxAddr, m);
-            AscendC::printf("tkd LocalMax after UpdateMax\n");
-            AscendC::DumpTensor(lmUbTensor, 0, 16);    
+            if (isFirstKvSTile) {
+                ComputeAndUpdateMax<true>(sUbAddr, lmUbAddr, gmUbAddr, dmUbAddr, m, tailN, scaleValue, nRound,
+                                          tla::C<KvBaseTileRegSplitStagesHighPrec::TWO>{});
+            } else {
+                ComputeAndUpdateMax<false>(sUbAddr, lmUbAddr, gmUbAddr, dmUbAddr, m, tailN, scaleValue, nRound,
+                                           tla::C<KvBaseTileRegSplitStagesHighPrec::TWO>{});
+            }
         }
 
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2);
         if (kvBaseTileRegStages == 1) {
-            ComputeExpSubSum<KvBaseTileRegSplitStagesHighPrec::ONE>(pAddr, sAddr, nowMaxAddr, nowSumAddr, m, tailN,
-                                                                    blockStride, nRound);
+            if (isFirstKvSTile) {
+                ComputePAndUpdateGlobalSum<true>(pUbAddr, sUbAddr, lmUbAddr, llUbAddr, glUbAddr, dmUbAddr, m,
+                                                 tailN, blockStride, nRound,
+                                                 tla::C<KvBaseTileRegSplitStagesHighPrec::ONE>{});
+            } else {
+                ComputePAndUpdateGlobalSum<false>(pUbAddr, sUbAddr, lmUbAddr, llUbAddr, glUbAddr, dmUbAddr, m,
+                                                  tailN, blockStride, nRound,
+                                                  tla::C<KvBaseTileRegSplitStagesHighPrec::ONE>{});
+            }
         } else if (kvBaseTileRegStages == 2) {
-            ComputeExpSubSum<KvBaseTileRegSplitStagesHighPrec::TWO>(pAddr, sAddr, nowMaxAddr, nowSumAddr, m, tailN,
-                                                                    blockStride, nRound);
+            if (isFirstKvSTile) {
+                ComputePAndUpdateGlobalSum<true>(pUbAddr, sUbAddr, lmUbAddr, llUbAddr, glUbAddr, dmUbAddr, m,
+                                                 tailN, blockStride, nRound,
+                                                 tla::C<KvBaseTileRegSplitStagesHighPrec::TWO>{});
+            } else {
+                ComputePAndUpdateGlobalSum<false>(pUbAddr, sUbAddr, lmUbAddr, llUbAddr, glUbAddr, dmUbAddr, m,
+                                                  tailN, blockStride, nRound,
+                                                  tla::C<KvBaseTileRegSplitStagesHighPrec::TWO>{});
+            }
         }
 
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(ubSBufId);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(ubSBufId);
         SetCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
-
-        AscendC::printf("tkd P after ComputeExpSubSum, row 0 by C0 blocks\n");
-        uint32_t pC0BlockNum = CeilDiv(n, ELE_NUM_PER_C0);
-        for (uint32_t c0BlockIdx = 0; c0BlockIdx < pC0BlockNum; ++c0BlockIdx) {
-            uint32_t logicalBegin = c0BlockIdx * ELE_NUM_PER_C0;
-            uint32_t validElemNum = n - logicalBegin;
-            validElemNum = validElemNum < ELE_NUM_PER_C0 ? validElemNum : ELE_NUM_PER_C0;
-            uint32_t physicalOffset = c0BlockIdx * blockStride * ELE_NUM_PER_C0;
-            AscendC::printf("tkd P C0 block %u, logical [%u, %u), physical offset %u\n", c0BlockIdx,
-                            logicalBegin, logicalBegin + validElemNum, physicalOffset);
-            AscendC::DumpTensor(lpUbTensor[ubSBufId][physicalOffset], 100 + c0BlockIdx, validElemNum);
-        }
-
-        AscendC::printf("tkd LocalSum after ComputeExpSubSum\n");
-        AscendC::DumpTensor(llUbTensor, 0, 16);    
 
         auto ubPLayoutTla = tla::MakeLayout<ElementOutput, LayoutOutput>(mRound, nRound);
         auto ubPTensorTla = tla::MakeTensor(lpUbTensor[ubSBufId], ubPLayoutTla, Arch::PositionUB{});
@@ -190,218 +185,211 @@ public:
         CopyPUbToPL1(l1PTensorTlaTile, ubPTensorTlaTile, m);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2);
         SetCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
-
-        if (isFirstKvSTile) {
-            SaveFirstTileStats(lastSumAddr, lastMaxAddr, nowSumAddr, nowMaxAddr, m);
-
-            AscendC::printf("tkd Global Max after SaveFirstTileStats\n");
-            AscendC::DumpTensor(gmUbTensor, 0, 16);
-            AscendC::printf("tkd Global Sum after SaveFirstTileStats\n");
-            AscendC::DumpTensor(glUbTensor, 0, 16);
-        } else {
-            UpdateStats(lastSumAddr, expMaxAddr, lastMaxAddr, nowSumAddr, nowMaxAddr, m);
-        }
         AscendC::PipeBarrier<PIPE_V>();
     }
 
 private:
-    template <KvBaseTileRegSplitStagesHighPrec stages>
-    __simd_vf__ inline void ComputeScaleAndMax(__ubuf__ float *srcUb, __ubuf__ float *newMaxUb, uint16_t m,
-                                               uint32_t tailN, float dScale, uint16_t s2BaseSize)
-    {
-        static_assert(stages == KvBaseTileRegSplitStagesHighPrec::ONE ||
-                          stages == KvBaseTileRegSplitStagesHighPrec::TWO,
-                      "ComputeScaleAndMax only supports ONE or TWO stages, please use the specialized versions.");
-    }
-
-    template <>
-    __simd_vf__ inline void ComputeScaleAndMax<KvBaseTileRegSplitStagesHighPrec::ONE>(
-        __ubuf__ float *srcUb, __ubuf__ float *newMaxUb, uint16_t m, uint32_t tailN, float dScale,
-        uint16_t s2BaseSize)
+    template <bool IsFirstKvSTile>
+    __simd_vf__ inline void ComputeAndUpdateMax(
+        __ubuf__ float *sUb, __ubuf__ float *lmUb, __ubuf__ float *gmUb, __ubuf__ float *dmUb, uint16_t m,
+        uint32_t tailN, float scaleValue, uint16_t s2BaseSize,
+        tla::C<KvBaseTileRegSplitStagesHighPrec::ONE>)
     {
         using namespace AscendC::Reg;
         RegTensor<float> minVreg;
-        RegTensor<float> srcVreg;
-        RegTensor<float> maxTmpVreg;
-        UnalignReg maxUreg;
-        MaskReg pregFull = CreateMask<float, MaskPattern::ALL>();
-        MaskReg pregTail = UpdateMask<float>(tailN);
+        RegTensor<float> sVreg;
+        RegTensor<float> lmVreg;
+        RegTensor<float> gmVreg;
+        RegTensor<float> hmVreg;
+        RegTensor<float> dmVreg;
+        UnalignReg lmUreg;
+        UnalignReg gmUreg;
+        UnalignReg dmUreg;
+        MaskReg maskReg32All = CreateMask<float, MaskPattern::ALL>();
+        MaskReg maskReg32TailN = UpdateMask<float>(tailN);
 
         Duplicate(minVreg, MIN_VALUE);
         for (uint16_t i = 0; i < m; ++i) {
-            LoadAlign(srcVreg, srcUb + i * s2BaseSize);
-            Muls(srcVreg, srcVreg, dScale, pregFull);
-            Select(srcVreg, srcVreg, minVreg, pregTail);
-            StoreAlign<float, StoreDist::DIST_NORM_B32>(srcUb + i * s2BaseSize, srcVreg, pregTail);
-            ReduceMax(maxTmpVreg, srcVreg, pregFull);
-            StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(newMaxUb, maxTmpVreg, maxUreg, 1);
+            LoadAlign(sVreg, sUb + i * s2BaseSize);
+            Muls(sVreg, sVreg, scaleValue, maskReg32All);
+            Select(sVreg, sVreg, minVreg, maskReg32TailN);
+            StoreAlign<float, StoreDist::DIST_NORM_B32>(sUb + i * s2BaseSize, sVreg, maskReg32TailN);
+            ReduceMax(lmVreg, sVreg, maskReg32All);
+            if constexpr (IsFirstKvSTile) {
+                StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(lmUb, lmVreg, lmUreg, 1);
+                StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(gmUb, lmVreg, gmUreg, 1);
+            } else {
+                LoadAlign<float, LoadDist::DIST_BRC_B32>(gmVreg, gmUb);
+                Max(hmVreg, lmVreg, gmVreg, maskReg32All);
+                FusedExpSub(dmVreg, gmVreg, hmVreg, maskReg32All);
+                StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(lmUb, hmVreg, lmUreg, 1);
+                StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(gmUb, hmVreg, gmUreg, 1);
+                StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(dmUb, dmVreg, dmUreg, 1);
+            }
         }
-        vstas(maxUreg, newMaxUb, 0, POST_UPDATE);
+        vstas(lmUreg, lmUb, 0, POST_UPDATE);
+        vstas(gmUreg, gmUb, 0, POST_UPDATE);
+        if constexpr (!IsFirstKvSTile) {
+            vstas(dmUreg, dmUb, 0, POST_UPDATE);
+        }
     }
 
-    template <>
-    __simd_vf__ inline void ComputeScaleAndMax<KvBaseTileRegSplitStagesHighPrec::TWO>(
-        __ubuf__ float *srcUb, __ubuf__ float *newMaxUb, uint16_t m, uint32_t tailN, float dScale,
-        uint16_t s2BaseSize)
+    template <bool IsFirstKvSTile>
+    __simd_vf__ inline void ComputeAndUpdateMax(
+        __ubuf__ float *sUb, __ubuf__ float *lmUb, __ubuf__ float *gmUb, __ubuf__ float *dmUb, uint16_t m,
+        uint32_t tailN, float scaleValue, uint16_t s2BaseSize,
+        tla::C<KvBaseTileRegSplitStagesHighPrec::TWO>)
     {
         using namespace AscendC::Reg;
-        RegTensor<float> srcVreg0;
-        RegTensor<float> srcVreg1;
-        RegTensor<float> maxTmpVreg;
-        UnalignReg maxUreg;
-        MaskReg pregFull = CreateMask<float, MaskPattern::ALL>();
-        MaskReg pregTail = UpdateMask<float>(tailN);
+        RegTensor<float> sVreg0;
+        RegTensor<float> sVreg1;
+        RegTensor<float> lmVreg;
+        RegTensor<float> gmVreg;
+        RegTensor<float> hmVreg;
+        RegTensor<float> dmVreg;
+        UnalignReg lmUreg;
+        UnalignReg gmUreg;
+        UnalignReg dmUreg;
+        MaskReg maskReg32All = CreateMask<float, MaskPattern::ALL>();
+        MaskReg maskReg32TailN = UpdateMask<float>(tailN);
 
         for (uint16_t i = 0; i < m; ++i) {
-            LoadAlign(srcVreg0, srcUb + i * s2BaseSize);
-            LoadAlign(srcVreg1, srcUb + i * s2BaseSize + FLOAT_VECTOR_SIZE);
-            Muls(srcVreg0, srcVreg0, dScale, pregFull);
-            Muls(srcVreg1, srcVreg1, dScale, pregFull);
-            StoreAlign<float, StoreDist::DIST_NORM_B32>(srcUb + i * s2BaseSize, srcVreg0, pregFull);
-            StoreAlign<float, StoreDist::DIST_NORM_B32>(srcUb + i * s2BaseSize + FLOAT_VECTOR_SIZE, srcVreg1,
-                                                        pregTail);
-            Max<float, MaskMergeMode::MERGING>(srcVreg0, srcVreg0, srcVreg1, pregTail);
-            ReduceMax(maxTmpVreg, srcVreg0, pregFull);
-            StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(newMaxUb, maxTmpVreg, maxUreg, 1);
+            LoadAlign(sVreg0, sUb + i * s2BaseSize);
+            LoadAlign(sVreg1, sUb + i * s2BaseSize + FLOAT_VECTOR_SIZE);
+            Muls(sVreg0, sVreg0, scaleValue, maskReg32All);
+            Muls(sVreg1, sVreg1, scaleValue, maskReg32All);
+            StoreAlign<float, StoreDist::DIST_NORM_B32>(sUb + i * s2BaseSize, sVreg0, maskReg32All);
+            StoreAlign<float, StoreDist::DIST_NORM_B32>(sUb + i * s2BaseSize + FLOAT_VECTOR_SIZE, sVreg1,
+                                                        maskReg32TailN);
+            Max<float, MaskMergeMode::MERGING>(sVreg0, sVreg0, sVreg1, maskReg32TailN);
+            ReduceMax(lmVreg, sVreg0, maskReg32All);
+            if constexpr (IsFirstKvSTile) {
+                StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(lmUb, lmVreg, lmUreg, 1);
+                StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(gmUb, lmVreg, gmUreg, 1);
+            } else {
+                LoadAlign<float, LoadDist::DIST_BRC_B32>(gmVreg, gmUb);
+                Max(hmVreg, lmVreg, gmVreg, maskReg32All);
+                FusedExpSub(dmVreg, gmVreg, hmVreg, maskReg32All);
+                StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(lmUb, hmVreg, lmUreg, 1);
+                StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(gmUb, hmVreg, gmUreg, 1);
+                StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(dmUb, dmVreg, dmUreg, 1);
+            }
         }
-        vstas(maxUreg, newMaxUb, 0, POST_UPDATE);
+        vstas(lmUreg, lmUb, 0, POST_UPDATE);
+        vstas(gmUreg, gmUb, 0, POST_UPDATE);
+        if constexpr (!IsFirstKvSTile) {
+            vstas(dmUreg, dmUb, 0, POST_UPDATE);
+        }
     }
 
-    __simd_vf__ inline void UpdateMax(__ubuf__ float *nowMaxUb, __ubuf__ float *lastMaxUb, uint32_t m)
+    // Keep local sum in llUb and update global sum in glUb directly from registers.
+    template <bool IsFirstKvSTile>
+    __simd_vf__ inline void ComputePAndUpdateGlobalSum(
+        __ubuf__ ElementOutput *pUb, __ubuf__ float *sUb, __ubuf__ float *lmUb, __ubuf__ float *llUb,
+        __ubuf__ float *glUb, __ubuf__ float *dmUb, uint16_t m, uint32_t tailN, uint32_t blockStride,
+        uint16_t s2BaseSize, tla::C<KvBaseTileRegSplitStagesHighPrec::ONE>)
     {
         using namespace AscendC::Reg;
-        RegTensor<float> nowMaxVreg;
-        RegTensor<float> lastMaxVreg;
-        MaskReg preg = UpdateMask<float>(m);
-        LoadAlign(nowMaxVreg, nowMaxUb);
-        LoadAlign(lastMaxVreg, lastMaxUb);
-        Max(nowMaxVreg, nowMaxVreg, lastMaxVreg, preg);
-        StoreAlign<float, StoreDist::DIST_NORM_B32>(nowMaxUb, nowMaxVreg, preg);
-    }
-
-    template <KvBaseTileRegSplitStagesHighPrec stages>
-    __simd_vf__ inline void ComputeExpSubSum(__ubuf__ ElementOutput *expUb, __ubuf__ float *srcUb,
-                                             __ubuf__ float *nowMaxUb, __ubuf__ float *expSumUb, uint16_t m,
-                                             uint32_t tailN, uint32_t blockStride, uint16_t s2BaseSize)
-    {
-        static_assert(stages == KvBaseTileRegSplitStagesHighPrec::ONE ||
-                          stages == KvBaseTileRegSplitStagesHighPrec::TWO,
-                      "ComputeExpSubSum only supports ONE or TWO stages, please use the specialized versions.");
-    }
-
-    template <>
-    __simd_vf__ inline void ComputeExpSubSum<KvBaseTileRegSplitStagesHighPrec::ONE>(
-        __ubuf__ ElementOutput *expUb, __ubuf__ float *srcUb, __ubuf__ float *nowMaxUb, __ubuf__ float *expSumUb,
-        uint16_t m, uint32_t tailN, uint32_t blockStride, uint16_t s2BaseSize)
-    {
-        using namespace AscendC::Reg;
-        constexpr static CastTrait castTraitZero = {RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING,
-                                                     AscendC::RoundMode::CAST_ROUND};
-        RegTensor<float> srcVreg;
-        RegTensor<float> expVreg;
-        RegTensor<float> expSumVreg;
-        RegTensor<float> maxVreg;
-        RegTensor<ElementOutput> pCastVreg;
-        RegTensor<ElementOutput> pVreg;
-        RegTensor<ElementOutput> pTmpVreg;
-        UnalignReg expSumUreg;
+        constexpr static CastTrait castTraitZeroRound = {RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING,
+                                                          AscendC::RoundMode::CAST_ROUND};
+        RegTensor<float> sVreg;
+        RegTensor<float> pVreg;
+        RegTensor<float> llVreg;
+        RegTensor<float> hmVreg;
+        RegTensor<float> dmVreg;
+        RegTensor<float> glVreg;
+        RegTensor<float> updatedGlVreg;
+        RegTensor<ElementOutput> pVreg16;
+        RegTensor<ElementOutput> deInterleaveVreg;
+        RegTensor<ElementOutput> deInterleaveTmpVreg;
+        UnalignReg llUreg;
+        UnalignReg glUreg;
         uint32_t tailMaskCount = tailN;
         uint32_t outputMaskCount = tailN;
-        MaskReg pregTail = UpdateMask<float>(tailMaskCount);
-        MaskReg pregFloatFull = CreateMask<float, MaskPattern::ALL>();
-        MaskReg pregOutput = UpdateMask<ElementOutput>(outputMaskCount);
+        MaskReg maskReg32TailN = UpdateMask<float>(tailMaskCount);
+        MaskReg maskReg32All = CreateMask<float, MaskPattern::ALL>();
+        MaskReg maskReg16Output = UpdateMask<ElementOutput>(outputMaskCount);
 
         for (uint16_t i = 0; i < m; ++i) {
-            LoadAlign<float, LoadDist::DIST_BRC_B32>(maxVreg, nowMaxUb + i);
-            LoadAlign(srcVreg, srcUb + i * s2BaseSize);
-            FusedExpSub(expVreg, srcVreg, maxVreg, pregTail);
-            ReduceSum(expSumVreg, expVreg, pregTail);
-            StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(expSumUb, expSumVreg, expSumUreg, 1);
-            Cast<ElementOutput, float, castTraitZero>(pCastVreg, expVreg, pregFloatFull);
-            DeInterleave(pVreg, pTmpVreg, pCastVreg, pCastVreg);
-            StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(expUb + i * ELE_NUM_PER_C0, pVreg, blockStride,
-                                                                     pregOutput);
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(hmVreg, lmUb + i);
+            LoadAlign(sVreg, sUb + i * s2BaseSize);
+            FusedExpSub(pVreg, sVreg, hmVreg, maskReg32TailN);
+            ReduceSum(llVreg, pVreg, maskReg32TailN);
+            StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(llUb, llVreg, llUreg, 1);
+            Cast<ElementOutput, float, castTraitZeroRound>(pVreg16, pVreg, maskReg32All);
+            DeInterleave(deInterleaveVreg, deInterleaveTmpVreg, pVreg16, pVreg16);
+            StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(pUb + i * ELE_NUM_PER_C0, deInterleaveVreg,
+                                                                     blockStride, maskReg16Output);
+            if constexpr (IsFirstKvSTile) {
+                StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(glUb, llVreg, glUreg, 1);
+            } else {
+                LoadAlign<float, LoadDist::DIST_BRC_B32>(dmVreg, dmUb + i);
+                LoadAlign<float, LoadDist::DIST_BRC_B32>(glVreg, glUb);
+                Mul(updatedGlVreg, dmVreg, glVreg, maskReg32All);
+                Add(updatedGlVreg, updatedGlVreg, llVreg, maskReg32All);
+                StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(glUb, updatedGlVreg, glUreg, 1);
+            }
         }
-        vstas(expSumUreg, expSumUb, 0, POST_UPDATE);
+        vstas(llUreg, llUb, 0, POST_UPDATE);
+        vstas(glUreg, glUb, 0, POST_UPDATE);
     }
 
-    template <>
-    __simd_vf__ inline void ComputeExpSubSum<KvBaseTileRegSplitStagesHighPrec::TWO>(
-        __ubuf__ ElementOutput *expUb, __ubuf__ float *srcUb, __ubuf__ float *nowMaxUb, __ubuf__ float *expSumUb,
-        uint16_t m, uint32_t tailN, uint32_t blockStride, uint16_t s2BaseSize)
+    template <bool IsFirstKvSTile>
+    __simd_vf__ inline void ComputePAndUpdateGlobalSum(
+        __ubuf__ ElementOutput *pUb, __ubuf__ float *sUb, __ubuf__ float *lmUb, __ubuf__ float *llUb,
+        __ubuf__ float *glUb, __ubuf__ float *dmUb, uint16_t m, uint32_t tailN, uint32_t blockStride,
+        uint16_t s2BaseSize, tla::C<KvBaseTileRegSplitStagesHighPrec::TWO>)
     {
         using namespace AscendC::Reg;
-        constexpr static CastTrait castTraitZero = {RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING,
-                                                     AscendC::RoundMode::CAST_ROUND};
-        RegTensor<float> srcVreg0;
-        RegTensor<float> srcVreg1;
-        RegTensor<float> expVreg0;
-        RegTensor<float> expVreg1;
-        RegTensor<float> expSumVreg;
-        RegTensor<float> maxVreg;
-        RegTensor<ElementOutput> pCastVreg0;
-        RegTensor<ElementOutput> pCastVreg1;
-        RegTensor<ElementOutput> pVreg;
-        RegTensor<ElementOutput> pTmpVreg;
-        UnalignReg expSumUreg;
+        constexpr static CastTrait castTraitZeroRound = {RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING,
+                                                          AscendC::RoundMode::CAST_ROUND};
+        RegTensor<float> sVreg0;
+        RegTensor<float> sVreg1;
+        RegTensor<float> pVreg0;
+        RegTensor<float> pVreg1;
+        RegTensor<float> llVreg;
+        RegTensor<float> hmVreg;
+        RegTensor<float> dmVreg;
+        RegTensor<float> glVreg;
+        RegTensor<float> updatedGlVreg;
+        RegTensor<ElementOutput> pVreg160;
+        RegTensor<ElementOutput> pVreg161;
+        RegTensor<ElementOutput> deInterleaveVreg;
+        RegTensor<ElementOutput> deInterleaveTmpVreg;
+        UnalignReg llUreg;
+        UnalignReg glUreg;
         uint32_t tailMaskCount = tailN;
         uint32_t outputMaskCount = FLOAT_VECTOR_SIZE + tailN;
-        MaskReg pregFull = CreateMask<float, MaskPattern::ALL>();
-        MaskReg pregTail = UpdateMask<float>(tailMaskCount);
-        MaskReg pregOutput = UpdateMask<ElementOutput>(outputMaskCount);
+        MaskReg maskReg32All = CreateMask<float, MaskPattern::ALL>();
+        MaskReg maskReg32TailN = UpdateMask<float>(tailMaskCount);
+        MaskReg maskReg16Output = UpdateMask<ElementOutput>(outputMaskCount);
 
         for (uint16_t i = 0; i < m; ++i) {
-            LoadAlign<float, LoadDist::DIST_BRC_B32>(maxVreg, nowMaxUb + i);
-            LoadAlign(srcVreg0, srcUb + i * s2BaseSize);
-            LoadAlign(srcVreg1, srcUb + i * s2BaseSize + FLOAT_VECTOR_SIZE);
-            FusedExpSub(expVreg0, srcVreg0, maxVreg, pregFull);
-            FusedExpSub(expVreg1, srcVreg1, maxVreg, pregTail);
-            Cast<ElementOutput, float, castTraitZero>(pCastVreg0, expVreg0, pregFull);
-            Cast<ElementOutput, float, castTraitZero>(pCastVreg1, expVreg1, pregFull);
-            DeInterleave(pVreg, pTmpVreg, pCastVreg0, pCastVreg1);
-            StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(expUb + i * ELE_NUM_PER_C0, pVreg, blockStride,
-                                                                     pregOutput);
-            Add<float, MaskMergeMode::MERGING>(expVreg0, expVreg0, expVreg1, pregTail);
-            ReduceSum(expSumVreg, expVreg0, pregFull);
-            StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(expSumUb, expSumVreg, expSumUreg, 1);
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(hmVreg, lmUb + i);
+            LoadAlign(sVreg0, sUb + i * s2BaseSize);
+            LoadAlign(sVreg1, sUb + i * s2BaseSize + FLOAT_VECTOR_SIZE);
+            FusedExpSub(pVreg0, sVreg0, hmVreg, maskReg32All);
+            FusedExpSub(pVreg1, sVreg1, hmVreg, maskReg32TailN);
+            Cast<ElementOutput, float, castTraitZeroRound>(pVreg160, pVreg0, maskReg32All);
+            Cast<ElementOutput, float, castTraitZeroRound>(pVreg161, pVreg1, maskReg32All);
+            DeInterleave(deInterleaveVreg, deInterleaveTmpVreg, pVreg160, pVreg161);
+            StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(pUb + i * ELE_NUM_PER_C0, deInterleaveVreg,
+                                                                     blockStride, maskReg16Output);
+            Add<float, MaskMergeMode::MERGING>(pVreg0, pVreg0, pVreg1, maskReg32TailN);
+            ReduceSum(llVreg, pVreg0, maskReg32All);
+            StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(llUb, llVreg, llUreg, 1);
+            if constexpr (IsFirstKvSTile) {
+                StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(glUb, llVreg, glUreg, 1);
+            } else {
+                LoadAlign<float, LoadDist::DIST_BRC_B32>(dmVreg, dmUb + i);
+                LoadAlign<float, LoadDist::DIST_BRC_B32>(glVreg, glUb);
+                Mul(updatedGlVreg, dmVreg, glVreg, maskReg32All);
+                Add(updatedGlVreg, updatedGlVreg, llVreg, maskReg32All);
+                StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(glUb, updatedGlVreg, glUreg, 1);
+            }
         }
-        vstas(expSumUreg, expSumUb, 0, POST_UPDATE);
-    }
-
-    __simd_vf__ inline void SaveFirstTileStats(__ubuf__ float *sumUb, __ubuf__ float *maxUb,
-                                               __ubuf__ float *newSumUb, __ubuf__ float *newMaxUb, uint32_t m)
-    {
-        using namespace AscendC::Reg;
-        RegTensor<float> sumVreg;
-        RegTensor<float> maxVreg;
-        MaskReg preg = UpdateMask<float>(m);
-        LoadAlign(sumVreg, newSumUb);
-        LoadAlign(maxVreg, newMaxUb);
-        StoreAlign<float, StoreDist::DIST_NORM_B32>(sumUb, sumVreg, preg);
-        StoreAlign<float, StoreDist::DIST_NORM_B32>(maxUb, maxVreg, preg);
-    }
-
-    __simd_vf__ inline void UpdateStats(__ubuf__ float *sumUb, __ubuf__ float *expMaxUb, __ubuf__ float *maxUb,
-                                        __ubuf__ float *newSumUb, __ubuf__ float *newMaxUb, uint32_t m)
-    {
-        using namespace AscendC::Reg;
-        RegTensor<float> lastMaxVreg;
-        RegTensor<float> newMaxVreg;
-        RegTensor<float> expMaxVreg;
-        RegTensor<float> lastSumVreg;
-        RegTensor<float> newSumVreg;
-        RegTensor<float> updatedSumVreg;
-        MaskReg preg = UpdateMask<float>(m);
-        LoadAlign(lastMaxVreg, maxUb);
-        LoadAlign(newMaxVreg, newMaxUb);
-        FusedExpSub(expMaxVreg, lastMaxVreg, newMaxVreg, preg);
-        StoreAlign<float, StoreDist::DIST_NORM_B32>(expMaxUb, expMaxVreg, preg);
-        StoreAlign<float, StoreDist::DIST_NORM_B32>(maxUb, newMaxVreg, preg);
-        LoadAlign(lastSumVreg, sumUb);
-        LoadAlign(newSumVreg, newSumUb);
-        Mul(updatedSumVreg, expMaxVreg, lastSumVreg, preg);
-        Add(updatedSumVreg, updatedSumVreg, newSumVreg, preg);
-        StoreAlign<float, StoreDist::DIST_NORM_B32>(sumUb, updatedSumVreg, preg);
+        vstas(llUreg, llUb, 0, POST_UPDATE);
+        vstas(glUreg, glUb, 0, POST_UPDATE);
     }
 
 private:
