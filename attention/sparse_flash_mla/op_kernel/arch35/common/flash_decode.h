@@ -45,9 +45,6 @@ namespace AttentionCommon {
 constexpr int64_t FD_MAX_S2_SPLIT_NUM = 2U;
 constexpr int64_t FD_INCREMENTAL_MERGE_INPUT_NUM = 2U;
 constexpr int64_t FD_BROADCAST_ELEMS_PER_ROW = 8U;
-constexpr uint32_t FD_VEC1_MAX_ROWS = 32U;
-constexpr uint32_t FD_VEC1_BROADCAST_BLOCK_ELEMS = FD_VEC1_MAX_ROWS * FD_BROADCAST_ELEMS_PER_ROW;
-constexpr uint32_t FD_VEC1_LSE_TMP_ELEMS = 2U * FD_VEC1_BROADCAST_BLOCK_ELEMS;
 constexpr int64_t FD_REDUCE_CHUNK_ROWS = 16U;
 static constexpr int64_t FD_BUFFER_SIZE_BYTE_32B = 32;
 
@@ -172,16 +169,14 @@ __aicore__ inline void StageBroadcastMaxSum(const S2SplitFdStagingLayout &layout
 }
 
 // Stage Vec1 max/sum to GM staging.
-// validRows must not exceed FD_VEC1_MAX_ROWS. tmpUb holds FD_VEC1_LSE_TMP_ELEMS floats,
-// with separate fixed-size max/sum broadcast blocks; stagingM describes the GM slot, not the UB tile.
-// tmpUb must not alias a live Vec2 accumulator. StageBroadcastMaxSum waits before tmpUb can be reused.
+// tmpUb must hold at least 2 * stagingM * broadcastElems floats (max + sum broadcast blocks).
 __aicore__ inline void StageVec1Lse(const S2SplitFdStagingLayout &layout, __gm__ uint8_t *stagingBase,
                                     int64_t workspaceIdx, int64_t stagingMOffset, int64_t validRows,
                                     LocalTensor<float> &maxUb, LocalTensor<float> &sumUb, LocalTensor<float> &tmpUb,
                                     uint8_t vToMte3Id, uint8_t mte3ToVId)
 {
     LocalTensor<float> tmpMaxBlockUb = tmpUb;
-    LocalTensor<float> tmpSumBlockUb = tmpUb[FD_VEC1_BROADCAST_BLOCK_ELEMS];
+    LocalTensor<float> tmpSumBlockUb = tmpUb[1024 / sizeof(float)];
     int64_t mSizeAlign8 = (validRows + layout.broadcastElems - 1) / layout.broadcastElems * layout.broadcastElems;
     int64_t brcbRepeat = mSizeAlign8 / layout.broadcastElems;
     Brcb(tmpMaxBlockUb, maxUb, brcbRepeat, {1, static_cast<uint16_t>(layout.broadcastElems)});

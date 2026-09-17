@@ -63,7 +63,12 @@ public:
     static constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32;
     /* =================编译期常量的基本块信息================= */
     static constexpr uint32_t s1BaseSize = 64;
-    static_assert(s1BaseSize / CV_RATIO <= AttentionCommon::FD_VEC1_MAX_ROWS,
+    // StageVec1Lse uses two 1 KiB broadcast blocks for max and sum.
+    static constexpr uint32_t FD_VEC1_MAX_ROWS = 32U;
+    static constexpr uint32_t FD_VEC1_BROADCAST_BLOCK_ELEMS =
+        FD_VEC1_MAX_ROWS * AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW;
+    static constexpr uint32_t FD_VEC1_LSE_TMP_ELEMS = 2U * FD_VEC1_BROADCAST_BLOCK_ELEMS;
+    static_assert(s1BaseSize / CV_RATIO <= FD_VEC1_MAX_ROWS,
                   "Vec1 FD broadcast scratch must cover every row in the vector tile");
     static constexpr uint32_t s2BaseSize = 128;
     static constexpr uint32_t vec1Srcstride = (s1BaseSize >> 1) + 1;
@@ -843,7 +848,6 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::StageLegacyVec1Lse(LocalTenso
     AttentionCommon::S2SplitFdStagingLayout stagingLayout = {constInfo.gSize, dTemplateAlign64, GetStagingSlotNum(),
                                                              AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW,
                                                              AttentionCommon::FD_REDUCE_CHUNK_ROWS};
-    // Vec1 runs ahead of Vec2: stage2OutBufs can still contain a live partial-O accumulator.
     LocalTensor<float> tmpUb = this->fdLseTmpUb.tensor;
     AttentionCommon::StageVec1Lse(stagingLayout, fdStagingBase, GetCrossCoreWorkspaceIdx(runInfo),
                                   GetFaStagingMOffset(runInfo, constInfo), static_cast<uint32_t>(runInfo.halfMRealSize),
@@ -1359,9 +1363,9 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::SoftmaxInitBuffer(uint32_t &u
                             0}; // 768：batchReduceTmpUb申请内存大小为768个float
         ubAddr += 768U * sizeof(float);
     } else {
-        // Ordinary FD needs max/sum staging even when softmax LSE is not returned to the caller.
-        fdLseTmpUb = {LocalTensor<float>(TPosition::VECIN, ubAddr, AttentionCommon::FD_VEC1_LSE_TMP_ELEMS), 0};
-        ubAddr += AttentionCommon::FD_VEC1_LSE_TMP_ELEMS * sizeof(float);
+        // 普通 FD 即使不向调用方返回 softmax LSE，也需要暂存 max 和 sum。
+        fdLseTmpUb = {LocalTensor<float>(TPosition::VECIN, ubAddr, FD_VEC1_LSE_TMP_ELEMS), 0};
+        ubAddr += FD_VEC1_LSE_TMP_ELEMS * sizeof(float);
     }
     softmaxExpBufs[0] = {LocalTensor<T>(TPosition::VECIN, ubAddr, softmaxBufSize / sizeof(T)), 0};
     ubAddr += softmaxBufSize;
