@@ -80,6 +80,7 @@ private:
     __aicore__ inline void SplitToCore(uint32_t curSendCnt_, uint32_t curUseAivNum, uint32_t &startTokenId_,
                                        uint32_t &endTokenId_, uint32_t &sendTokenNum_, bool isFront = true);
     __aicore__ inline void CalTokenSendExpertCnt(uint32_t dstExpertId, int32_t calCnt, int32_t &curExpertCnt);
+    __aicore__ inline void BatchWriteByStreams(__gm__ BatchWriteItem *items, uint32_t startIdx, uint32_t totalNum);
     __aicore__ inline GM_ADDR GetWindAddrByRankId(const int32_t rankId)
     {
         if (epRankId_ == rankId) {
@@ -438,20 +439,7 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::SendToSh
         SyncFunc<AscendC::HardEvent::S_MTE3>();
         DataCopyPad(itemTensor, batchItemInfo[index * itemSizeInt32Cnt], batchItemCopyOutParams);
     }
-    PipeBarrier<PIPE_ALL>();
-    // 一个核4个stream
-    int32_t length = sendTokenNum_ / sdmaUsedStreamPerCore_;
-    int32_t remain = sendTokenNum_ % sdmaUsedStreamPerCore_;
-    int32_t curOffset = 0;
-    for (uint32_t i = 0; i < sdmaUsedStreamPerCore_; i++) {
-        int newLength = length + (i < remain ? 1 : 0);
-        if (newLength <= 0) {
-            continue;
-        }
-        curOffset = startTokenId_ + length * i + (i < remain ? i : remain);
-        auto handleId =
-            hccl.BatchWrite<true>(reinterpret_cast<__gm__ uint8_t *>(sharedSendInfo_ + curOffset), newLength, i);
-    }
+    BatchWriteByStreams(sharedSendInfo_, startTokenId_, sendTokenNum_);
 }
 
 template <TemplateMC2TypeClass>
@@ -498,6 +486,25 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::SplitToC
         startTokenId += remainderTokenNum;
     }
     endTokenId = startTokenId + sendTokenNum;
+}
+
+template <TemplateMC2TypeClass>
+__aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::BatchWriteByStreams(
+    __gm__ BatchWriteItem *items, uint32_t startIdx, uint32_t totalNum)
+{
+    PipeBarrier<PIPE_ALL>();
+    // 一个核4个stream
+    int32_t length = totalNum / sdmaUsedStreamPerCore_;
+    int32_t remain = totalNum % sdmaUsedStreamPerCore_;
+    int32_t curOffset = 0;
+    for (uint32_t i = 0; i < sdmaUsedStreamPerCore_; i++) {
+        int newLength = length + (i < remain ? 1 : 0);
+        if (newLength <= 0) {
+            continue;
+        }
+        curOffset = startIdx + length * i + (i < remain ? i : remain);
+        auto handleId = hccl.BatchWrite<true>(reinterpret_cast<__gm__ uint8_t *>(items + curOffset), newLength, i);
+    }
 }
 
 template <TemplateMC2TypeClass>
@@ -563,19 +570,7 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::SendToMo
         SyncFunc<AscendC::HardEvent::S_MTE3>();
         DataCopyPad(itemTensor, batchItemInfo[index * itemSizeInt32Cnt], batchItemCopyOutParams);
     }
-    PipeBarrier<PIPE_ALL>();
-    // 一个核4个stream
-    int32_t length = sendTokenNum_ / sdmaUsedStreamPerCore_;
-    int32_t remain = sendTokenNum_ % sdmaUsedStreamPerCore_;
-    int32_t curOffset = 0;
-    for (uint32_t i = 0; i < sdmaUsedStreamPerCore_; i++) {
-        int newLength = length + (i < remain ? 1 : 0);
-        if (newLength <= 0) {
-            continue;
-        }
-        curOffset = startTokenId_ + length * i + (i < remain ? i : remain);
-        auto handleId = hccl.BatchWrite<true>(reinterpret_cast<__gm__ uint8_t *>(sendInfo_ + curOffset), newLength, i);
-    }
+    BatchWriteByStreams(sendInfo_, startTokenId_, sendTokenNum_);
     GlobalTensor<int32_t> expandIdxGMTensor;
     expandIdxGMTensor.SetGlobalBuffer((__gm__ int32_t *)(expandIdxOutGM_ + startTokenId_ * sizeof(int32_t)));
     DataCopyExtParams expertIdsCntParams = {1U, static_cast<uint32_t>(sendTokenNum_ * sizeof(uint32_t)), 0U, 0U, 0U};
@@ -695,20 +690,7 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::SetStatu
         SyncFunc<AscendC::HardEvent::S_MTE3>();
         DataCopyPad(itemTensor, batchItemInfo[index * itemSizeInt32Cnt], batchItemCopyOutParams);
     }
-    PipeBarrier<PIPE_ALL>();
-    // 一个核4个stream
-    int32_t length = sendExpertNum_ / sdmaUsedStreamPerCore_;
-    int32_t remain = sendExpertNum_ % sdmaUsedStreamPerCore_;
-    int32_t curOffset = 0;
-    for (uint32_t i = 0; i < sdmaUsedStreamPerCore_; i++) {
-        int newLength = length + (i < remain ? 1 : 0);
-        if (newLength <= 0) {
-            continue;
-        }
-        curOffset = startExpertId_ + length * i + (i < remain ? i : remain);
-        auto handleId =
-            hccl.BatchWrite<true>(reinterpret_cast<__gm__ uint8_t *>(statusSendInfo_ + curOffset), newLength, i);
-    }
+    BatchWriteByStreams(statusSendInfo_, startExpertId_, sendExpertNum_);
 }
 
 template <TemplateMC2TypeClass>
