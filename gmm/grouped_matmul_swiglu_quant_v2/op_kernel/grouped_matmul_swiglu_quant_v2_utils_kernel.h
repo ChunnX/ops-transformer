@@ -127,6 +127,10 @@ struct VecConfig {
     int64_t innerLoopNum = 0;
     int64_t tailLoopNum = 0;
     int64_t nextUpdateInterVal = 0;
+    // A4W4 smooth-scale 专家游标(专用, 不复用上面 curGroupIdx/nextUpdateInterVal):
+    // expertCursorEnd < 0 表示本 chunk 未初始化; 由单调递增的全局行号派生所属专家。
+    int64_t expertCursorIdx = 0;
+    int64_t expertCursorEnd = -1;
 };
 
 struct WorkSpaceSplitConfig {

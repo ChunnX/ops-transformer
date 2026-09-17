@@ -58,6 +58,9 @@ private:
     __aicore__ inline void ApplySmoothScale(uint32_t loopIdx, VecConfig &vecConfig,
                                             WorkSpaceSplitConfig &workspaceSplitConfig);
 
+    __aicore__ inline int64_t SeekExpertGroup(int64_t tokenRow, VecConfig &vecConfig,
+                                              WorkSpaceSplitConfig &workspaceSplitConfig);
+
     const GMMSwigluQuantV2 *__restrict gmmSwigluQuantV2;
     const GMMSwigluQuantV2BaseParams *__restrict gmmSwigluQuantV2BaseParams;
     GlobalTensor<float> perTokenScaleGM;
@@ -168,39 +171,18 @@ __aicore__ inline void GMMA4W4PostProcess::Swiglu(uint32_t loopIdx, VecConfig &v
 __aicore__ inline void GMMA4W4PostProcess::ApplySmoothScale(uint32_t loopIdx, VecConfig &vecConfig,
                                                             WorkSpaceSplitConfig &workspaceSplitConfig)
 {
-    int64_t smoothScaleDimNum = gmmSwigluQuantV2BaseParams->smoothScaleDimNum;
-    int64_t halfTokenLen = gmmSwigluQuantV2->tokenLen / SWIGLU_REDUCE_FACTOR;
-    int64_t currentTokenIdx = workspaceSplitConfig.leftMatrixStartIndex + vecConfig.startIdx + loopIdx;
+    const int64_t smoothScaleDimNum = gmmSwigluQuantV2BaseParams->smoothScaleDimNum;
+    const int64_t halfTokenLen = gmmSwigluQuantV2->tokenLen / SWIGLU_REDUCE_FACTOR;
+    const int64_t tokenRow = workspaceSplitConfig.leftMatrixStartIndex + vecConfig.startIdx + loopIdx;
+    // 游标: 由单调递增的全局行号派生所属专家(只在跨边界时前进, 跳过空专家), 均摊 O(1)/行。
+    const int64_t groupIdx = SeekExpertGroup(tokenRow, vecConfig, workspaceSplitConfig);
 
-    // 找到当前token所属的group
-    uint32_t groupIdx = 0;
-    int64_t prevM = 0;
-    int64_t totalTmp = 0;
-    if (gmmSwigluQuantV2BaseParams->groupListType == 1) {
-        for (uint32_t i = 0; i < workspaceSplitConfig.rightMatrixExpertStartIndex; i++) {
-            totalTmp += groupListGM.GetValue(i);
-        }
-    }
-    for (uint32_t i = workspaceSplitConfig.rightMatrixExpertStartIndex;
-         i <= workspaceSplitConfig.rightMatrixExpertEndIndex; i++) {
-        int64_t currM = 0;
-        if (gmmSwigluQuantV2BaseParams->groupListType == 0) {
-            currM = groupListGM.GetValue(i);
-        } else {
-            totalTmp += groupListGM.GetValue(i);
-            currM = totalTmp;
-        }
-        if (currentTokenIdx < currM) {
-            groupIdx = i;
-            break;
-        }
-        prevM = currM;
-    }
-
-    uint64_t preOffset = loopIdx * gmmSwigluQuantV2->tokenLen;
+    const uint64_t preOffset = static_cast<uint64_t>(loopIdx) * gmmSwigluQuantV2->tokenLen;
 
     if (smoothScaleDimNum == NUM_2) {
-        // smoothScale形状为 (E, N/2)，只需要当前group的那一行
+        // smoothScale (E, N/2): 用游标得到的 groupIdx 取该专家那一行, 逐元素乘(维持基线写法)。
+        // 注: dim==2 的每元素标量循环是独立瓶颈, 整行载入 UB + 向量 Mul 的优化需配 dim==2 harness
+        //     与 UB 预算专项验证, 未纳入本次游标改动。
         GmmsqSetWaitFlag<HardEvent::V_S>();
         for (uint32_t j = 0; j < halfTokenLen; j++) {
             float scale = smoothScaleGM.GetValue(groupIdx * halfTokenLen + j);
@@ -208,12 +190,57 @@ __aicore__ inline void GMMA4W4PostProcess::ApplySmoothScale(uint32_t loopIdx, Ve
             curFp32.SetValue(preOffset + j, val * scale);
         }
     } else if (smoothScaleDimNum == 1) {
-        // smoothScale形状为 (E,)，需要广播到 (N/2)
+        // smoothScale (E,): 单标量广播到 N/2
         float scale = smoothScaleGM.GetValue(groupIdx);
         GmmsqSetWaitFlag<HardEvent::S_V>();
         Muls(curFp32[preOffset], curFp32[preOffset], scale, halfTokenLen);
         PipeBarrier<PIPE_V>();
     }
+}
+
+// 专家游标: tokenRow 单调递增, 只在越过当前专家末时前进(while 天然跳过 0 长度空专家)。
+// 无独立倒计时计数器 => 不会与行进度脱节; 一次性初始化用 chunk 起始专家定位, 之后均摊 O(1)。
+__aicore__ inline int64_t GMMA4W4PostProcess::SeekExpertGroup(int64_t tokenRow, VecConfig &vecConfig,
+                                                              WorkSpaceSplitConfig &workspaceSplitConfig)
+{
+    const int64_t groupNum = gmmSwigluQuantV2->groupListLen;
+    const bool isCumsum = (gmmSwigluQuantV2BaseParams->groupListType == 0);
+    if (vecConfig.expertCursorEnd < 0) {
+        // 一次性定位: 从本 chunk 的起始专家扫到覆盖 tokenRow 的专家(每个 chunk 只做一次)。
+        int64_t g = workspaceSplitConfig.rightMatrixExpertStartIndex;
+        int64_t end;
+        if (isCumsum) {
+            end = groupListGM.GetValue(g);
+            while (g < groupNum - 1 && tokenRow >= end) {
+                g++;
+                end = groupListGM.GetValue(g);
+            }
+        } else {
+            int64_t prefix = 0;
+            for (int64_t i = 0; i <= g; i++) {
+                prefix += groupListGM.GetValue(i);
+            }
+            end = prefix;
+            while (g < groupNum - 1 && tokenRow >= end) {
+                g++;
+                end += groupListGM.GetValue(g);
+            }
+        }
+        vecConfig.expertCursorIdx = g;
+        vecConfig.expertCursorEnd = end;
+        return g;
+    }
+    // 快路径: 行号单调, 仅跨边界才前进(跳过空专家)。若已到最后专家仍越界, 属数据/切分异常,
+    // 保守钳在最后一个专家(不越界读), 不静默产出错误 scale 之外行为。
+    while (vecConfig.expertCursorIdx < groupNum - 1 && tokenRow >= vecConfig.expertCursorEnd) {
+        vecConfig.expertCursorIdx++;
+        if (isCumsum) {
+            vecConfig.expertCursorEnd = groupListGM.GetValue(vecConfig.expertCursorIdx);
+        } else {
+            vecConfig.expertCursorEnd += groupListGM.GetValue(vecConfig.expertCursorIdx);
+        }
+    }
+    return vecConfig.expertCursorIdx;
 }
 
 __aicore__ inline void GMMA4W4PostProcess::Quant(uint32_t loopIdx, VecConfig &vecConfig)
@@ -286,6 +313,8 @@ __aicore__ inline void GMMA4W4PostProcess::UpdateVecConfig(uint32_t blockIdx, Ve
         prevM = currM;
         curStartIdx -= tempM;
     }
+    // 游标状态按 chunk 重置(expertCursorEnd<0 触发 SeekExpertGroup 一次性定位)
+    vecConfig.expertCursorEnd = -1;
     // 第三步 计算总数据量
     vecConfig.outLoopNum =
         (vecConfig.taskNum + gmmSwigluQuantV2->maxProcessRowNum - 1) / gmmSwigluQuantV2->maxProcessRowNum;
