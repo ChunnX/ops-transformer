@@ -244,14 +244,14 @@ cann_ops_transformer.generic_block_sparse_attention(
 |                      |  sparse_block_idx  |      INPUT      |   Tensor   |
 |                      | sparse_block_count  |      INPUT      |   Tensor   |
 |                      |     block_shape     |   ATTR(REQUIRED) |  int[]  |
-|                      | layout_sparse_pattern | ATTR(OPTIONAL) |   int64   |
-|                      | residual_block_mode | ATTR(OPTIONAL) |   int64   |
-|                      | is_consistent_topk | ATTR(OPTIONAL) |   bool   |
 |                      |       metadata       | INPUT(OPTIONAL) |   Tensor   |
 |                      |    softmax_scale    | ATTR(OPTIONAL) |   float   |
 |                      |  softmax_precision  | ATTR(OPTIONAL) |   int   |
 |                      |      layout_q       | ATTR(OPTIONAL) |   string   |
 |                      |      layout_kv      | ATTR(OPTIONAL) |   string   |
+|                      | layout_sparse_pattern | ATTR(OPTIONAL) |   int64   |
+|                      | residual_block_mode | ATTR(OPTIONAL) |   int64   |
+|                      | is_consistent_topk | ATTR(OPTIONAL) |   bool   |
 |                      |   attention_out   |     OUTPUT     |   Tensor   |
 |   metadata参数组   |   max_seqlen_q   | ATTR(OPTIONAL) |   int   |
 |                      |  max_seqlen_kv  | ATTR(OPTIONAL) |   int   |

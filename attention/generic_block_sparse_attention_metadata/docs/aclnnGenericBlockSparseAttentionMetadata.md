@@ -561,7 +561,7 @@ aclnnStatus RunMetadata(const aclTensor *sparseBlockIdx, const aclTensor *sparse
     aclOpExecutor *executor = nullptr;
     aclnnStatus ret = aclnnGenericBlockSparseAttentionMetadataGetWorkspaceSize(
         sparseBlockIdx, sparseBlockCount, cuSeqLengthsQOptional, nullptr, nullptr, sequsedKvOptional, 16, 2048,
-        32, 8, 128, blockShape, 1, "TND", "PA_BBND", 1, 0, 0, -1, -1, metadataOptional, &workspaceSize,
+        32, 8, 128, blockShape, "TND", "PA_BBND", 4, 1, 0, 0, -1, -1, 1, false, metadataOptional, &workspaceSize,
         &executor);
     aclDestroyIntArray(blockShape);
     if (ret != ACL_SUCCESS) {
