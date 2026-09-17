@@ -215,7 +215,11 @@ private:
     uint32_t paddedTopkElems_{0};
     uint32_t numLocalExperts_{0};
     uint32_t hitCountStride_{0};        // 对齐到 32B 的 hitCount 存储步长 (int32 元素数)
-    uint32_t rankExpertCountStride_{0}; // per-core [rank][expert] row stride, aligned to 32 bytes
+    // [rank][expert] 计数表里每跑一个 rank 的行步长。必须补到 ELEM_ALIGN 的整数倍：CopyFromWindowByExpert 会按
+    // prefixRank * rankExpertRowStride_ 切片交给 VEC，而 VEC 访问 UB 要求 32 字节对齐；numLocalExperts_ 本身没有
+    // 对齐保证（host 侧就是 numExperts / epWorldSize，例：numExperts=4, epWorldSize=2 → 2）。
+    uint32_t rankExpertRowStride_{0};
+    uint32_t rankExpertCountStride_{0}; // 一核一整行的字节数（= rankExpertRowStride_ * epWorldSize_），8 的倍数
     uint32_t aivNum_{0};
     uint32_t axisK_{0};
     uint32_t axisH_{0};
@@ -331,7 +335,8 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 
     if constexpr (!IsCached) {
         hitCountStride_ = Ceil(numLocalExperts_, ELEM_ALIGN) * ELEM_ALIGN;
-        rankExpertCountStride_ = Ceil(epWorldSize_ * numLocalExperts_, ELEM_ALIGN) * ELEM_ALIGN;
+        rankExpertRowStride_ = Ceil(numLocalExperts_, ELEM_ALIGN) * ELEM_ALIGN;
+        rankExpertCountStride_ = rankExpertRowStride_ * epWorldSize_;
         paddedMetaElems_ = Ceil(META_TOPK_SECTION * axisKAlign_ + META_EXTRA_FIELDS, ELEM_ALIGN) * ELEM_ALIGN;
         paddedTopkElems_ = axisKAlign_;
         uint32_t ubHitCountBytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
@@ -566,7 +571,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
                 int32_t curExpertCnt = rsvdCnt;
                 int32_t currentHits = ubHitCount_.GetValue(localExpertId);
                 ubHitCount_.SetValue(localExpertId, currentHits + curExpertCnt);
-                uint32_t rankExpertIndex = rankId * numLocalExperts_ + localExpertId;
+                uint32_t rankExpertIndex = rankId * rankExpertRowStride_ + localExpertId;
                 int32_t rankExpertHits = ubRankExpertHitCount_.GetValue(rankExpertIndex);
                 ubRankExpertHitCount_.SetValue(rankExpertIndex, rankExpertHits + curExpertCnt);
             }
@@ -631,7 +636,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
             ubRankOffsets_.SetValue(rankId, rankPrefix);
         }
         for (uint32_t expertId = 0; expertId < numLocalExperts_; ++expertId) {
-            uint32_t rankExpertIndex = rankId * numLocalExperts_ + expertId;
+            uint32_t rankExpertIndex = rankId * rankExpertRowStride_ + expertId;
             int32_t jointTotal = ubRankExpertRowStart_.GetValue(rankExpertIndex);
             int32_t corePrefix = ubRankExpertHitCount_.GetValue(rankExpertIndex);
             ubRankExpertRowStart_.SetValue(rankExpertIndex, rankPrefix + corePrefix);
@@ -711,18 +716,19 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
 __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::CopyFromWindowByExpert()
 {
-    DataCopyExtParams hitCountOneCopyParams{1U, static_cast<uint32_t>(numLocalExperts_ * sizeof(int32_t)), 0U, 0U, 0U};
-    DataCopyPadExtParams<int32_t> hitCountOnePadParams{false, 0U, 0U, 0};
     SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
-    Adds(ubRowStart_, ubExpertPfx_, static_cast<int64_t>(0), numLocalExperts_);
-    for (uint32_t aiv = 0; aiv < aivId_; ++aiv) {
-        DataCopyPad(ubHitCount_, hitCountGm_[(int64_t)aiv * hitCountStride_], hitCountOneCopyParams,
-                    hitCountOnePadParams);
-        SyncFunc<AscendC::HardEvent::MTE2_V>();
-        Cast(ubHitCountRowI64_, ubHitCount_, RoundMode::CAST_NONE, numLocalExperts_);
-        Add(ubRowStart_, ubRowStart_, ubHitCountRowI64_, numLocalExperts_);
-        SyncFunc<AscendC::HardEvent::V_MTE2>();
+    // recv_x 段起点 = 专家前缀 + 本核之前所有核在该专家上的命中数。
+    // BuildRankRowStarts 已经把后者按 [rank][expert] 存进 ubRankExpertHitCount_，而且只累加了 coreId < aivId_
+    // 的核，所以对 rank 求和恒等于原来「逐核从 GM 搬 hitCount 再累加」的结果：
+    //     sum_r sum_{c<aivId_} H[c][r][e]  ==  sum_{c<aivId_} hitCountGm_[c][e]
+    // 原来那个循环是 aivId_ 次串行 DMA、每次夹两个 pipe 同步，是 CopyExpert 段里最长的一段串行标量；现在换成
+    // epWorldSize_ 次纯向量 Add，标量只剩发指令。
+    Duplicate(ubHitCount_, (int32_t)0, numLocalExperts_);
+    for (uint32_t prefixRank = 0; prefixRank < epWorldSize_; ++prefixRank) {
+        Add(ubHitCount_, ubHitCount_, ubRankExpertHitCount_[prefixRank * rankExpertRowStride_], numLocalExperts_);
     }
+    Cast(ubHitCountRowI64_, ubHitCount_, RoundMode::CAST_NONE, numLocalExperts_);
+    Add(ubRowStart_, ubExpertPfx_, ubHitCountRowI64_, numLocalExperts_);
 
     Duplicate(ubLocalCursor_, (int32_t)0, numLocalExperts_);
     SyncFunc<AscendC::HardEvent::V_S>();
@@ -882,7 +888,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
                 // Output metadata in source-row order without changing token/weight/scales placement.
                 uint32_t topkIdx = static_cast<uint32_t>(ubHitList_.GetValue(i * HIT_ENTRY_SIZE + HIT_TOPK_OFFSET));
                 uint32_t localExpertId = static_cast<uint32_t>(ubMeta_.GetValue(metaBase + topkIdx) - rankExpertBase);
-                uint32_t rankExpertIndex = rankId * numLocalExperts_ + localExpertId;
+                uint32_t rankExpertIndex = rankId * rankExpertRowStride_ + localExpertId;
                 int32_t metadataRow = ubRankExpertRowStart_.GetValue(rankExpertIndex);
                 DataCopyPad(recvSrcMetadataGm_[(int64_t)metadataRow * RECV_META_FIELDS],
                             ubStageMetaRing_[stageOff + i * ELEM_ALIGN], metaOutParams);
