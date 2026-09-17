@@ -231,6 +231,7 @@ private:
 
     uint32_t sortNumTileData_{0U}; // SortLib tile 元素数
     uint32_t sortTmpUbSize_{0U};   // SortLib AscendC::Sort 临时 UB
+    uint32_t chunkElems_{0U};
 
     TBuf<> entryBuf_;
     TBuf<> gradBuf_;
@@ -542,7 +543,21 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     gradSubBatch_ = tilingData->gradSubBatch;
     sortNumTileData_ = tilingData->sortNumTileData;
     sortTmpUbSize_ = tilingData->sortTmpUbSize;
-    if (gradSubBatch_ == 0U) {
+    chunkElems_ = tilingData->chunkElems;
+    if (chunkElems_ > 0U) {
+        uint32_t chunkFp32Stride = (chunkElems_ * sizeof(float) + Mc2Kernel::UB_ALIGN - 1U) / Mc2Kernel::UB_ALIGN *
+                                   Mc2Kernel::UB_ALIGN;
+        uint32_t chunkOutStride = chunkFp32Stride;
+        castBufBytes_ = (inputDtype_ != Mc2Kernel::ENGRAM_DT_FLOAT) ? chunkFp32Stride : 0U;
+        accumBufBytes_ = 2U * chunkFp32Stride;
+        uniqueEntryBytes_ = Mc2Kernel::FLUSH_CAST_HEAD_BYTES;
+        if (outputDtype_ != Mc2Kernel::ENGRAM_DT_FLOAT) {
+            uniqueEntryBytes_ += 2U * chunkOutStride;
+        }
+        if (gradSubBatch_ == 0U) {
+            gradSubBatch_ = 1U;
+        }
+    } else if (gradSubBatch_ == 0U) {
         // 旧 tiling 兼容回落：回落值必须同时受半缓冲容量约束（按 32B 对齐行 stride），
         // 否则 subLen*rowStride 越过 32KB 半缓冲
         uint32_t rowsPerPing = 1U;
@@ -686,18 +701,20 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     indicesBufElements_ = indicesBufSize / sizeof(int32_t);
 
     uint32_t maxByPong = MaxGradRowsPerPing(static_cast<uint32_t>(hiddenBytes_), gradSubBatch_);
-    if (inputDtype_ != Mc2Kernel::ENGRAM_DT_FLOAT) {
-        if (inputDtype_ == outputDtype_) {
-            castBufBytes_ = (static_cast<uint32_t>(hiddenDim_) * sizeof(float) + Mc2Kernel::UB_ALIGN - 1U) /
-                            Mc2Kernel::UB_ALIGN * Mc2Kernel::UB_ALIGN;
+    if (chunkElems_ == 0U) {
+        if (inputDtype_ != Mc2Kernel::ENGRAM_DT_FLOAT) {
+            if (inputDtype_ == outputDtype_) {
+                castBufBytes_ = (static_cast<uint32_t>(hiddenDim_) * sizeof(float) + Mc2Kernel::UB_ALIGN - 1U) /
+                                Mc2Kernel::UB_ALIGN * Mc2Kernel::UB_ALIGN;
+            } else {
+                castBufBytes_ = CastBufBytes(hiddenDim_, maxByPong);
+            }
         } else {
-            castBufBytes_ = CastBufBytes(hiddenDim_, maxByPong);
+            castBufBytes_ = 0U;
         }
-    } else {
-        castBufBytes_ = 0U;
+        accumBufBytes_ = AccumBufBytes(hiddenDim_);
+        uniqueEntryBytes_ = UniqueEntryBytes(hiddenDim_, outputDtype_);
     }
-    accumBufBytes_ = AccumBufBytes(hiddenDim_);
-    uniqueEntryBytes_ = UniqueEntryBytes(hiddenDim_, outputDtype_);
     uint32_t scatterPeak = Mc2Kernel::GRAD_BUF_BYTES + uniqueEntryBytes_ + castBufBytes_ + accumBufBytes_;
     uint32_t uniqueBufSize = (scatterPeak > Mc2Kernel::COMM_BUF_BYTES) ? scatterPeak : Mc2Kernel::COMM_BUF_BYTES;
     uint64_t permanentUsed = Mc2Kernel::HCOMM_INIT_SIZE + statusBufBytes_ + tempBufBytes_ + indicesBufBytes_;
@@ -710,6 +727,7 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     uniqueScatter_.Init(aivId_, totalBlocks_, rankId_, numRanks_, numEntriesPerRank_, hiddenDim_, hiddenBytes_,
                         inputDtype_, outputDtype_, tpipe_, entryBuf_, gradBuf_, indicesBuf_, tempBuf_, statusBuf_,
                         castFp32Buf_, accumBuf_);
+    uniqueScatter_.SetChunkElems(chunkElems_);
 }
 
 __aicore__ inline uint32_t EngramFetchGradArch35::LoadGradChunk(int64_t pos, int64_t end, LocalTensor<uint8_t> &buf,

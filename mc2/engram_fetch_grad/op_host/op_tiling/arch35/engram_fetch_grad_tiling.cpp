@@ -554,26 +554,17 @@ static ge::graphStatus SetTilingData(const gert::TilingContext *context, EngramF
                             tilingData.hiddenDim, bytesPerElem),
                     return ge::GRAPH_FAILED);
     tilingData.hiddenBytes = tilingData.hiddenDim * bytesPerElem;
-    // 单行 grad 必须可放入整缓冲 gradBuf_（64KB），同时消除 uint32 截断风险（SEC-2.3/topk-7/SEC-1.1）
-    OP_TILING_CHECK(tilingData.hiddenBytes > static_cast<int64_t>(Mc2Kernel::GRAD_BUF_BYTES),
-                    OP_LOGE(nodeName, "hiddenBytes=%lld exceeds grad buffer capacity %u", tilingData.hiddenBytes,
-                            Mc2Kernel::GRAD_BUF_BYTES),
-                    return ge::GRAPH_FAILED);
+    bool fullRowFits = tilingData.hiddenBytes <= static_cast<int64_t>(Mc2Kernel::GRAD_BUF_BYTES);
     tilingData.inputDtype = static_cast<int32_t>(inputDtype);
 
     auto gradUniqueDesc = context->GetOutputDesc(OUT_GRAD_UNIQUE);
     tilingData.outputDtype = static_cast<int32_t>(gradUniqueDesc->GetDataType());
-    // 半精度输出时 FlushAccum 借用 entryBuf_ 尾部（20KB 偏移后）作 flush cast 双缓冲，
-    // 需 20KB + 2*Align32(hiddenDim*2) 不越界（SEC-4.2③/TIL-3①；Kernel 侧另有 ascendc_assert 兜底）
     if (tilingData.outputDtype != static_cast<int32_t>(ge::DT_FLOAT)) {
         int64_t flushCastNeed =
             Mc2Kernel::FLUSH_CAST_HEAD_BYTES + 2 * AlignTo(static_cast<int64_t>(hiddenDim) * 2, Mc2Kernel::UB_ALIGN);
-        OP_TILING_CHECK(flushCastNeed > Mc2Kernel::ENTRY_BUF_BYTES,
-                        OP_LOGE(nodeName,
-                                "hiddenDim=%lld too large for half-precision output: flush cast staging "
-                                "needs %lld bytes, entryBuf capacity %lld",
-                                hiddenDim, flushCastNeed, Mc2Kernel::ENTRY_BUF_BYTES),
-                        return ge::GRAPH_FAILED);
+        if (flushCastNeed > Mc2Kernel::ENTRY_BUF_BYTES) {
+            fullRowFits = false;
+        }
     }
 
     auto commBufferSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_COMM_BUFFER_SIZE);
@@ -628,26 +619,46 @@ static ge::graphStatus SetTilingData(const gert::TilingContext *context, EngramF
         AlignTo(static_cast<int64_t>(tilingData.hiddenDim) * sizeof(float), static_cast<int64_t>(Mc2Kernel::UB_ALIGN)));
     uint32_t minUniqueNeed =
         Mc2Kernel::GRAD_BUF_BYTES + uniqueEntryBytes + accumNeed + (needCast ? 2U * fp32RowStride : 0U);
-    OP_TILING_CHECK(minUniqueNeed > availableForPool,
-                    OP_LOGE(nodeName,
-                            "unique-phase UB pool overflow: grad=%u + entry=%u + accum=%u + minCast=%u "
-                            "exceeds availableForPool=%u (hiddenDim=%lld, inputDtype=%d, outputDtype=%d)",
-                            Mc2Kernel::GRAD_BUF_BYTES, uniqueEntryBytes, accumNeed, needCast ? 2U * fp32RowStride : 0U,
-                            availableForPool, hiddenDim, tilingData.inputDtype, tilingData.outputDtype),
-                    return ge::GRAPH_FAILED);
-    uint32_t availableForCast = availableForPool - Mc2Kernel::GRAD_BUF_BYTES - uniqueEntryBytes - accumNeed;
-    uint32_t maxByCast = needCast ? (availableForCast / (fp32RowStride * Mc2Kernel::ACCUM_BUF_COPIES)) : maxByPong;
-    uint32_t gradSubBatch = maxByPong;
-    if (maxByCast < gradSubBatch) {
-        gradSubBatch = maxByCast;
+    if (minUniqueNeed > availableForPool) {
+        fullRowFits = false;
     }
-    if (gradSubBatch < 1U) {
-        gradSubBatch = 1U;
+    if (fullRowFits) {
+        tilingData.chunkElems = 0U;
+        uint32_t availableForCast = availableForPool - Mc2Kernel::GRAD_BUF_BYTES - uniqueEntryBytes - accumNeed;
+        uint32_t maxByCast = needCast ? (availableForCast / (fp32RowStride * Mc2Kernel::ACCUM_BUF_COPIES)) : maxByPong;
+        uint32_t gradSubBatch = maxByPong;
+        if (maxByCast < gradSubBatch) {
+            gradSubBatch = maxByCast;
+        }
+        if (gradSubBatch < 1U) {
+            gradSubBatch = 1U;
+        }
+        if (gradSubBatch > GRAD_SUB_BATCH_CAP) {
+            gradSubBatch = GRAD_SUB_BATCH_CAP;
+        }
+        tilingData.gradSubBatch = gradSubBatch;
+    } else {
+        tilingData.chunkElems = Mc2Kernel::HIDDEN_CHUNK_ELEMS;
+        uint32_t chunkInStride =
+            static_cast<uint32_t>(AlignTo(static_cast<int64_t>(Mc2Kernel::HIDDEN_CHUNK_ELEMS) * bytesPerElem,
+                                          static_cast<int64_t>(Mc2Kernel::UB_ALIGN)));
+        uint32_t chunkFp32Stride = static_cast<uint32_t>(
+            AlignTo(static_cast<int64_t>(Mc2Kernel::HIDDEN_CHUNK_ELEMS) * sizeof(float),
+                    static_cast<int64_t>(Mc2Kernel::UB_ALIGN)));
+        uint32_t chunkOutStride = chunkFp32Stride;
+        uint32_t chunkEntryBytes = Mc2Kernel::FLUSH_CAST_HEAD_BYTES + 2U * chunkOutStride;
+        uint32_t chunkMinNeed = Mc2Kernel::GRAD_BUF_BYTES + chunkEntryBytes + chunkFp32Stride +
+                                2U * chunkFp32Stride;
+        OP_TILING_CHECK(chunkMinNeed > availableForPool,
+                        OP_LOGE(nodeName, "chunk-mode UB pool overflow: need %u, availableForPool %u", chunkMinNeed,
+                                availableForPool),
+                        return ge::GRAPH_FAILED);
+        uint32_t chunkRows = Mc2Kernel::GRAD_BUF_BYTES / chunkInStride;
+        if (chunkRows < 1U) {
+            chunkRows = 1U;
+        }
+        tilingData.gradSubBatch = chunkRows;
     }
-    if (gradSubBatch > GRAD_SUB_BATCH_CAP) {
-        gradSubBatch = GRAD_SUB_BATCH_CAP;
-    }
-    tilingData.gradSubBatch = gradSubBatch;
 
     uint64_t hookReserve = Mc2Kernel::A2aHookUbReserve(tilingData.rankSize);
     uint64_t budget = static_cast<uint64_t>(tilingData.ubSize) - hookReserve;
@@ -673,8 +684,8 @@ static ge::graphStatus SetTilingData(const gert::TilingContext *context, EngramF
     tilingData.sortTmpUbSize = 512U + 7U * ((numTile + 31U) / 32U * 32U) + 256U;
     OP_LOGD(nodeName, "SortLib params: numTile=%u tileCount=%u tmpUb=%u budget=%llu", tilingData.sortNumTileData,
             tilingData.sortTileCount, tilingData.sortTmpUbSize, (unsigned long long)budget);
-    OP_LOGD(nodeName, "gradSubBatch=%u (hiddenBytes=%lld, hiddenDim=%lld, maxByPong=%u, maxByCast=%u, available=%u)",
-            gradSubBatch, tilingData.hiddenBytes, tilingData.hiddenDim, maxByPong, maxByCast, availableForCast);
+    OP_LOGD(nodeName, "gradSubBatch=%u chunkElems=%u (hiddenBytes=%lld, hiddenDim=%lld, maxByPong=%u)",
+            tilingData.gradSubBatch, tilingData.chunkElems, tilingData.hiddenBytes, tilingData.hiddenDim, maxByPong);
     OP_LOGD(nodeName, "permanentUb=%llu (status=%u, temp=%u, indices=%u)", permanentUb, statusBytes, tempBytes,
             indicesBytes);
 
