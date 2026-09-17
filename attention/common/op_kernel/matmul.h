@@ -638,8 +638,10 @@ __aicore__ inline void MatmulFull(const LocalTensor<A> &aL1Tensor, const LocalTe
     {
         LoadDataToL0A(L0ATensor, aL1Tensor, param, 0, GetLoadK(param), param.singleM); // s2*d,d,s2
     }
+    l0aBuffer.template Set<HardEvent::MTE1_M>();
 
     auto l0bBuffer = bL0BuffsDb.Get();
+    l0bBuffer.template Wait<HardEvent::M_MTE1>();
     LocalTensor<L0BDType> L0BTensor = l0bBuffer.template GetTensor<L0BDType>();
 #if (__NPU_ARCH__ != 2201) && (__NPU_ARCH__ != 5102)
     if constexpr (IsSameType<L0BDType, mx_fp8_e4m3_t>::value || IsSameType<L0BDType, fp4x2_e2m1_t>::value ||
@@ -650,9 +652,10 @@ __aicore__ inline void MatmulFull(const LocalTensor<A> &aL1Tensor, const LocalTe
     {
         LoadDataToL0B(L0BTensor, bL1Tensor, param, 0, GetLoadK(param), GetLoadN(param));
     }
-    l0aBuffer.template Set<HardEvent::MTE1_M>();
+    l0bBuffer.template Set<HardEvent::MTE1_M>();
 
     l0aBuffer.template Wait<HardEvent::MTE1_M>();
+    l0bBuffer.template Wait<HardEvent::MTE1_M>();
 
     MmadParams mmadParams;
     mmadParams.m = param.singleM;
@@ -671,6 +674,7 @@ __aicore__ inline void MatmulFull(const LocalTensor<A> &aL1Tensor, const LocalTe
     Mmad(cL0Tensor, L0ATensor, L0BTensor, mmadParams);
 
     l0aBuffer.template Set<HardEvent::M_MTE1>();
+    l0bBuffer.template Set<HardEvent::M_MTE1>();
 }
 
 // 切K
@@ -725,6 +729,7 @@ __aicore__ inline void MatmulK(const LocalTensor<A> &aL1Tensor, const LocalTenso
         }
 
         auto l0bBuffer = bL0BuffsDb.Get();
+        l0bBuffer.template Wait<HardEvent::M_MTE1>(); // mte1等Matmul：上一轮matmul完成后才能搬运新数据到L0B
         LocalTensor<L0BDType> L0BTensor = l0bBuffer.template GetTensor<L0BDType>();
         uint64_t loopNum = param.isRightTranspose ? 1 : kLoops;
 #if (__NPU_ARCH__ != 2201) && (__NPU_ARCH__ != 5102)
@@ -739,9 +744,9 @@ __aicore__ inline void MatmulK(const LocalTensor<A> &aL1Tensor, const LocalTenso
                           (k == (kLoops - 1) && param.loadK != 0) ? (((tileK + 15) >> 4) << 4) : tileK, GetLoadN(param),
                           loopNum);
         }
-        l0aBuffer.template Set<HardEvent::MTE1_M>(); // mte1搬运完后，通知可以开始matmul
+        l0bBuffer.template Set<HardEvent::MTE1_M>(); // mte1搬运完后，通知可以开始matmul
         // l0aBuffer和l0bBuffer共用MTE1_M，在D=512场景减少同步指令数量，提升性能
-        l0aBuffer.template Wait<HardEvent::MTE1_M>(); // matmul等mte1：L0A数据搬运完成后才能开始matmul
+        l0bBuffer.template Wait<HardEvent::MTE1_M>(); // matmul等mte1：L0B数据搬运完成后才能开始matmul
 
         MmadParams mmadParams;
         mmadParams.m = param.singleM;
@@ -763,6 +768,7 @@ __aicore__ inline void MatmulK(const LocalTensor<A> &aL1Tensor, const LocalTenso
         Mmad(cL0Tensor, L0ATensor, L0BTensor, mmadParams);
 
         l0aBuffer.template Set<HardEvent::M_MTE1>(); // matmul完成后，通知mte1可以开始搬运新数据到L0A
+        l0bBuffer.template Set<HardEvent::M_MTE1>(); // matmul完成后，通知mte1可以开始搬运新数据到L0B
     }
 }
 
