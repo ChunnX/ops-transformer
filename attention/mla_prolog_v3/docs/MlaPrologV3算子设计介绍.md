@@ -22,6 +22,10 @@
 
 4. 在输出Query量化的情况下，会对Query做Rowmax动态量化，最终得到量化后的Query和对应量化参数DequantScaleQNope
 
+5. 在queryNormFlag=true的情况下，输入$x$乘以$W^{DQ}$进行下采样和RmsNorm后得到压缩结果$c^Q$，作为queryNorm输出
+
+6. 在queryNormFlag=true且量化场景（weightQuantMode≠0）的情况下，会对$c^Q$做动态量化，最终得到量化后的queryNorm和对应量化参数dequantScaleQNorm
+
 具体的计算公式，参见[完整计算公式](#完整计算公式)章节
 
 ## 数据切分设计
@@ -73,15 +77,16 @@ TilingKey为uint64类型，每个模板参数对应TilingKey中的一到数个�
 
 |二进制位|变量名|说明|参数列表|
 |-------|------|----|-------|
-|0-3|CACHE_MODE|KVCache的存储格式|0-BNSD(预留)，1-PA_BSND，2-PA_NZ|
-|4-5|SCENARIO|输入场景|0-FP16(预留)，1-非量化场景，2-量化场景|
-|6-9|QUANT_MODE|量化场景|0-非量化，1-MMQcQr量化，2-MMQcQr量化+KVcache量化，3-MMcqCkvKr量化+MMQcQr量化，4-MMCqCkvkr量化+MMQcQr量化+KVcache量化，5-MMQcQr量化+KVcache pertile量化，6-MMCqCkvkr量化+MMQcQr量化+KVcache pertile量化，7-Mxfp8量化+MMQcQr量化8-Mxfp8量化+MMQcQr量化+KVcache量化|
-|10|ENABLE_DEQUANT_OPTIONAL|反量化开启，不能与ENABLE_DEQUANT_OPTIONAL一同使用|0-关闭，1-开启|
-|11|ENABLE_GROUP_COMPUTE_OPTIONAL|量化的算力分组优化，不能与ENABLE_DEQUANT_OPTIONAL一同使用|0-关闭，1-开启|
-|12-13|EMPTY_TENSOR_MODE|空tensor场景，用于输入tensor维度为0的情况|0-无空tensor，1-KVCache为空和KRCache为空， 2-Query为空|
-|14-15|ACTUAL_SEQ_LEN_MODE|actualSeqLen开启场景|0-关闭1-开启actualSeqLen|
-|16-17|SPLIT_M_MODE|切M模式 |0-关闭(切N) 1-开启(切M)|
-|18-25|CV_MODE|CV模式|ASCENDC_TPL_MIX_AIC_1_1(6)：1:1模式， ASCENDC_TPL_MIX_AIC_1_2(7)：1:2模式|
+|0-3|CACHE_MODE|KVCache的存储格式|0-ND（BSND/TND），1-PA_BSND，2-PA_NZ，3-PA_BLK_BSND，4-PA_BLK_NZ|
+|4-5|SCENARIO|输入场景|0-FP16(预留)，1-BF16，2-量化场景|
+|6-11|QUANT_MODE|量化场景|0-非量化，1-MMQcQr量化，2-MMQcQr量化+KVcache量化，3-MMcqCkvKr量化+MMQcQr量化，4-MMCqCkvkr量化+MMQcQr量化+KVcache量化，5-MMQcQr量化+KVcache pertoken-pergroup量化，6-MMCqCkvkr量化+MMQcQr量化+KVcache pertoken-pergroup量化，7-Mxfp8量化+MMCqCkvkr量化+MMQcQr量化，8-Mxfp8量化+MMCqCkvkr量化+MMQcQr量化+KVcache量化，9-Mxfp8量化+MMCqCkvkr量化+MMQcQr量化+KVcache pertoken-pergroup量化，10-fp8量化+MMcqCkvKr量化+MMQcQr量化，11-fp8量化+MMCqCkvkr量化+MMQcQr量化+KVcache量化，12-hif8量化+MMcqCkvKr量化+MMQcQr量化，13-hif8量化+MMCqCkvkr量化+MMQcQr量化+KVcache量化，14-fp8量化+MMcqCkvKr量化+MMQcQr量化+KVcache pertoken-pergroup量化，15-hif8量化+MMCqCkvkr量化+MMQcQr量化+KVcache pertoken-pergroup量化|
+|12|ENABLE_DEQUANT_OPTIONAL|反量化开启，不能与ENABLE_GROUP_COMPUTE_OPTIONAL一同使用|0-关闭，1-开启|
+|13|ENABLE_GROUP_COMPUTE_OPTIONAL|量化的算力分组优化，不能与ENABLE_DEQUANT_OPTIONAL一同使用|0-关闭，1-开启|
+|14-15|EMPTY_TENSOR_MODE|空tensor场景，用于输入tensor维度为0的情况|0-无空tensor，1-kv_cache/kr_cache为空，2-query为空且不更新cache|
+|16-17|ACTUAL_SEQ_LEN_MODE|actualSeqLen开启场景|0-关闭，1-开启actualSeqLen|
+|18-19|SPLIT_M_MODE|切M模式|0-关闭(切N)，1-开启(切M)|
+|20|ENABLE_ROPE|RoPE开关，仅V4可选关闭（doRope=false时直通写出），V1/V2/V3仅编译开启|0-关闭(passthrough)，1-开启|
+|21-29|CV_MODE|CV分核模式|ASCENDC_TPL_MIX_AIC_1_1(6)：1:1模式，ASCENDC_TPL_MIX_AIC_1_2(7)：1:2模式|
 
 ## 主流程
 
@@ -225,15 +230,25 @@ RMSNorm的计算参考公式（3）-（4）。
 
 当前包含两种量化方式：
 
-  - 动态量化：需要根据输入计算scale，并使用smooth_scale对输入进行平滑，对应公式为
+  - 动态量化（pertoken）：按行（每个token）计算scale，可使用smooth_scale对输入进行平滑，对应公式为
     $$
-    scale=max(abs(x\_float∗smooth\_scale))/127
+    scale=max(abs(x\_float∗smooth\_scale))/Q_{max}
     $$
-    smooth是指将数据变得“平滑”一些，容易对数据进行量化，如下图所示：
+    其中$Q_{max}$为量化输出类型的最大值：INT8取127，FLOAT8_E4M3FN取448，HIFLOAT8取32768。queryOut、queryNorm等输出采用该方式。smooth是指将数据变得“平滑”一些，容易对数据进行量化，如下图所示：
 
     ![smooth概念](../../../docs/zh/figures/smooth_concept.png)
 
-  - 静态量化：当前仅支持Perchannel量化，该量化是指按列量化，对输入tensor的每一列用一个scale进行量化。
+  - 动态量化（pergroup，mxfp8）：每32个元素为一组计算scale，scale为FLOAT8_E8M0类型，对应公式为
+    $$
+    scale=2^{\lfloor log_2(max(abs(x\_float))) \rfloor - 8}
+    $$
+    mxfp8全量化场景（weightQuantMode=3）下queryOut、queryNorm等数据采用该方式。
+
+  - 动态量化（pertoken-pergroup）：每tileSize（当前为128）个元素为一组计算scale，公式与pertoken一致，仅分组粒度不同。kvCache的pertoken-pergroup量化场景（kvCacheQuantMode=3）采用该方式。
+
+  - 静态量化（perchannel）：按列量化，对输入tensor的每一列用一个scale进行量化。weightDq、weightUqQr、weightDkvKr等权重的反量化参数（dequantScaleWDq、dequantScaleWUqQr、dequantScaleWDkvKr）以及kvCache的perchannel量化场景（kvCacheQuantMode=2）均采用该方式。
+
+  - 静态量化（pertensor）：对整个tensor用一个scale进行量化，kvCache的pertensor量化场景（kvCacheQuantMode=1）采用该方式，对应quantScaleCkv。
 
 ### MatmulQcQr
 
