@@ -18,9 +18,9 @@
 
 #pragma once
 #include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_numeric_size.hpp"
-#include "mc2_aiv_data_copy_common.h"
-#include "mc2_aiv_sync_common.h"
-#include "mc2_matmul_aiv_kernel_common.h"
+#include "../../common/op_kernel/mc2_aiv_data_copy_common.h"
+#include "../../common/op_kernel/mc2_aiv_sync_common.h"
+#include "../../common/op_kernel/mc2_matmul_aiv_kernel_common.h"
 
 using namespace AscendC;
 
