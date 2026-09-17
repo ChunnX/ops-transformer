@@ -36,7 +36,6 @@ struct TokenDispatchScratch {
     GlobalTensor<int32_t> cumsumInfoGlobalTensor;
     LocalTensor<TopkIndexType> validTopkIndexTensor;
     LocalTensor<int32_t> cumsumInfoTensor;
-    // Contiguous runtime-sized ring. A slot view is built from this UB base on demand.
     uint32_t copyTmpBaseAddr;
     LocalTensor<int32_t> metaInfoTensor;
     LocalTensor<int32_t> expertTokenNumsOutTensor;
@@ -145,7 +144,6 @@ __aicore__ inline void StoreDispatchTokenAndMetaInfo(const TokenDispatchConfig &
     SetFlag<AscendC::HardEvent::MTE3_S>(eventId);
 }
 
-// Prototype: MegaMoe::CopyGMToGMPerToken. Copies one dispatch shard and emits its metadata.
 template <typename TopkIndexType, typename ActivationType, typename QuantScaleType, bool TopkWeightsPrefetch>
 __aicore__ inline void CopyTokensAndMetaForDispatch(const TokenDispatchConfig &context, const Params &params,
                                                     GM_ADDR *winRankAddr,

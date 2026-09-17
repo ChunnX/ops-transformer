@@ -474,7 +474,6 @@ __aicore__ inline ExpertTokenPosition MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTyp
         state.hasPreparedWave = false;
     }
     if (isFirstWave) {
-        // Startup W0/W1 are fully dispatched using the host-selected ring depth.
         EnterSteadyDispatch();
     }
     if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
@@ -550,7 +549,6 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     ExpertTokenPosition gmm2PendingWaveEnd{};
     bool hasPendingGmm2Wave = false;
 
-    // AIV0 must wait for token counts even when Combine is not quantized.
     if constexpr (g_coreType == AIV) {
         if (GetSubBlockIdx() == 0U) {
             WaitForMoeExpertTokenCountReady(params_.workspaceInfo.flagSendCntCalToUpdParamsPtr, countWorkspace_, 0U);

@@ -32,7 +32,6 @@ struct SendMaskScratch {
     LocalTensor<int32_t> topkIdsTensor;
     // 当前批次元素在完整 topkIds 数组中的下标。
     LocalTensor<TopkIndexType> topkIdsIndexTensor;
-    // Contiguous runtime-sized ring. Slot i starts at i * bufferConfig.bufferBytes.
     LocalTensor<uint8_t> routeRingTensor;
     LocalTensor<int32_t> sendCntAccTensor;
 };
@@ -63,7 +62,7 @@ __aicore__ inline SendMaskConfig CreateSendMaskConfig(const Params &params, uint
 // 加载当前批次的 topkIds，并生成它们在完整数组中的下标。
 template <typename TopkIndexType>
 __aicore__ inline void PrepareTopkIdsForCurrentBatch(SendMaskScratch<TopkIndexType> &scratch, int32_t batchStart,
-                                                      int32_t validLen)
+                                                     int32_t validLen)
 {
     DataCopyExtParams loadParams{1U, static_cast<uint32_t>(validLen * sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPadExtParams<int32_t> loadPad{false, 0U, 0U, 0U};
@@ -190,7 +189,7 @@ __aicore__ inline void SendTopkIdsCountForExperts(const WorkRange &ownedExpertRa
      * 避开窗口零初值)，低 24 位为真实 count(上限 maxOutputSize 远小于 2^24)。
      * 接收端逐槽校验 epoch 后取低 24 位(见 token_dispatch.h PrepareMoeExpertTokenCountTable)。
      */
-    constexpr uint32_t EXPERT_COUNT_EPOCH_SHIFT = 24U; // Low 24 bits store the count; high 8 bits store the epoch.
+    constexpr uint32_t EXPERT_COUNT_EPOCH_SHIFT = 24U;
     for (int32_t ownedIdx = 0; ownedIdx < ownedExpertNum; ++ownedIdx) {
         int32_t rawCount = scratch.sendCntAccTensor.GetValue(ownedIdx);
         scratch.sendCntAccTensor.SetValue(ownedIdx, (arrivalEpoch << EXPERT_COUNT_EPOCH_SHIFT) | rawCount);
