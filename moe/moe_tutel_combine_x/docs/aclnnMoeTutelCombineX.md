@@ -1,5 +1,7 @@
 # aclnnMoeTutelCombineX
 
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/moe/moe_tutel_combine_x)
+
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
@@ -23,10 +25,10 @@
 
 ## 功能说明
 
-- 接口功能：MoE（Mixture of Experts）Tutel 路由反向 combine 的数据梯度接口。将专家缓冲区输出的梯度 y_grad，按路由元数据 indices/locations 收集回原始 token 位置，并逐 token 副本乘以门控权重 gates，得到输入侧梯度 x_grad；无效路由条目（容量丢弃、溢出容量）对应输出行为零。本接口与前向 MoeTutelDispatch 配套使用，gates/indices/locations 须由前向产出并在反向原样重放。
+- 接口功能：MoE（Mixture of Experts）Tutel路由反向combine的数据梯度接口。将专家缓冲区输出的梯度y_grad，按路由元数据indices/locations收集回原始token位置，并逐token副本乘以门控权重gates，得到输入侧梯度x_grad；无效路由条目（容量丢弃、溢出容量）对应输出行为零。本接口与前向MoeTutelDispatch配套使用，gates/indices/locations须由前向产出并在反向原样重放。
 - 计算公式：
 
-  维度与每专家容量 C 推导（C 不经算子属性传递，由张量维度与路由元数据推导）：
+  维度与每专家容量C推导（C不经算子属性传递，由张量维度与路由元数据推导）：
 
   $$
   EC = y\_grad.\mathrm{shape}[-2],\qquad H = y\_grad.\mathrm{shape}[-1],\qquad S = gates.\mathrm{shape}[-1]
@@ -36,11 +38,11 @@
   E = \max_{b,t}\big(indices[b,t]\big) + 1,\qquad
   C = \begin{cases}
   \left\lfloor \dfrac{EC}{E} \right\rfloor, & E \ge 1 \\[4pt]
-  0, & E = 0\ (\text{indices 全为 } -1)
+  0, & E = 0\ (\text{indices全为}-1)
   \end{cases}
   $$
 
-  逐条目计算（对每个 batch 元素 $b \in [0, B)$ 与 token 副本 $t \in [0, S)$；2D 形态即 $B = 1$，省去 $b$ 下标）：
+  逐条目计算（对每个batch元素$b \in [0, B)$与token副本$t \in [0, S)$；2D形态即$B = 1$，省去$b$下标）：
 
   $$
   r_{b,t} = indices[b,t] \cdot C + locations[b,t]
@@ -57,11 +59,11 @@
   \end{cases}
   $$
 
-  其中 $y\_grad$ 为专家缓冲区梯度（$[E, C, H]$ 展平为 $[EC, H]$ 或 $[B, EC, H]$ 连续布局），$gates$ 为门控权重，$indices$ 为命中的专家 ID，$locations$ 为专家缓冲区内槽位，$x\_grad$ 为输出梯度。无效条目对应输出行写精确 0，不产生 NaN 污染；有效行 NaN/±Inf 按 IEEE-754 传播。
+  其中$y\_grad$为专家缓冲区梯度（$[E, C, H]$展平为$[EC, H]$或$[B, EC, H]$连续布局），$gates$为门控权重，$indices$为命中的专家ID，$locations$为专家缓冲区内槽位，$x\_grad$为输出梯度。无效条目对应输出行写精确0，不产生NaN污染；有效行NaN/±Inf按IEEE-754传播。
 
 ## 函数原型
 
-每个算子分为两段式接口，必须先调用“aclnnMoeTutelCombineXGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTutelCombineX”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnMoeTutelCombineXGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTutelCombineX”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnMoeTutelCombineXGetWorkspaceSize(
@@ -121,7 +123,7 @@ aclnnStatus aclnnMoeTutelCombineX(
     <tr>
       <td>gates（const aclTensor*）</td>
       <td>输入</td>
-      <td>逐token副本的路由权重（softmax归一化门控值），对应计算公式中gates。</td>
+      <td>逐token副本的路由权重，对应计算公式中gates。</td>
       <td><li>支持空Tensor。</li><li>数据类型与yGrad保持一致。</li><li>shape须与indices、locations一致。</li></td>
       <td>数据类型与yGrad保持一致。</td>
       <td>ND</td>
@@ -182,7 +184,7 @@ aclnnStatus aclnnMoeTutelCombineX(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见aclnn返回码。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -242,11 +244,12 @@ aclnnStatus aclnnMoeTutelCombineX(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见aclnn返回码。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
-- 确定性说明：aclnnMoeTutelCombineX默认确定性实现。
+- 确定性计算：
+  - aclnnMoeTutelCombineX默认确定性实现。
 
 - 数据类型：仅支持yGrad/gates/out同为FLOAT、FLOAT16或BFLOAT16（三者一致，无dtype提升），indices/locations固定为INT32；跨组合混用（如yGrad为FLOAT而gates为FLOAT16）报错。
 
@@ -266,16 +269,14 @@ aclnnStatus aclnnMoeTutelCombineX(
 
 ## 调用示例
 
-示例代码如下，仅供参考（2D无batch形态微型数值例：E=2、C=2、EC=4、H=4、S=2，预期输出x_grad = [[0.5, 1, 1.5, 2], [4, 3, 2, 1]]）：
+示例代码如下，仅供参考（2D无batch形态微型数值例：E=2、C=2、EC=4、H=4、S=2，预期输出x_grad = [[0.5, 1, 1.5, 2], [4, 3, 2, 1]]），具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)：
 
 ```Cpp
-#include <cstdint>
 #include <cstdio>
 #include <vector>
 
 #include "acl/acl.h"
-#include "aclnn/opdev/op_errno.h"
-#include "aclnn_moe_tutel_combine_x.h"
+#include "aclnnop/aclnn_moe_tutel_combine_x.h"
 
 #define CHECK_RET(cond, return_expr) \
     do {                             \
@@ -344,7 +345,7 @@ int main()
     auto ret = Init(deviceId, &stream);
     CHECK_RET(ret == 0, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
-    // 2.构造输入与输出（2D无batch形态：y_grad [EC, H]，元数据 [S]，out [S, H]）
+    // 2.构造输入与输出（2D无batch形态：y_grad[EC, H]，元数据[S]，out[S, H]）
     std::vector<int64_t> yGradShape = {4, 4};  // y_grad: [EC, H]
     std::vector<int64_t> gatesShape = {2};     // gates/indices/locations: [S]
     std::vector<int64_t> outShape = {2, 4};    // out: [S, H] = gates.shape + (H,)
@@ -387,7 +388,7 @@ int main()
     // 调用aclnnMoeTutelCombineX第一段接口
     ret = aclnnMoeTutelCombineXGetWorkspaceSize(yGrad, gates, indices, locations, out,
                                                 &workspaceSize, &executor);
-    CHECK_RET(ret == ACLNN_SUCCESS,
+    CHECK_RET(ret == ACL_SUCCESS,
               LOG_PRINT("aclnnMoeTutelCombineXGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
     // 根据第一段接口计算出的workspaceSize申请device内存
     void* workspaceAddr = nullptr;
@@ -397,7 +398,7 @@ int main()
     }
     // 调用aclnnMoeTutelCombineX第二段接口
     ret = aclnnMoeTutelCombineX(workspaceAddr, workspaceSize, executor, stream);
-    CHECK_RET(ret == ACLNN_SUCCESS, LOG_PRINT("aclnnMoeTutelCombineX failed. ERROR: %d\n", ret); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeTutelCombineX failed. ERROR: %d\n", ret); return ret);
 
     // 4.(固定写法)同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);
@@ -436,25 +437,4 @@ int main()
     aclFinalize();
     return 0;
 }
-```
-
-编译与运行（x86_64服务器，需已安装CANN开发套件并完成本自定义算子包部署，`<op_package_path>`为算子包安装路径）：
-
-```bash
-# 编译示例
-g++ -std=c++17 demo.cpp -o demo \
-    -I${ASCEND_HOME_PATH}/include \
-    -I${ASCEND_HOME_PATH}/x86_64-linux/include \
-    -I<op_package_path>/vendors/MoeTutelCombineX/op_api/include \
-    -L${ASCEND_HOME_PATH}/lib64 \
-    -L<op_package_path>/vendors/MoeTutelCombineX/op_api/lib \
-    -lascendcl -lnnopbase -lcust_opapi \
-    -Wl,-rpath,<op_package_path>/vendors/MoeTutelCombineX/op_api/lib
-
-# 运行前设置自定义算子加载路径
-export ASCEND_CUSTOM_OPP_PATH=<op_package_path>/vendors/MoeTutelCombineX
-export LD_LIBRARY_PATH=<op_package_path>/vendors/MoeTutelCombineX/op_api/lib:${LD_LIBRARY_PATH}
-
-# 执行
-./demo
 ```

@@ -13,45 +13,49 @@
 
 ## 功能说明
 
-- 算子功能：完成 Mixture-of-Experts（MoE）模型反向传播中的 Combine 散射计算。算子按路由元数据（专家索引 `indices` 与专家 buffer 内位置 `locations`）从专家输出梯度 `y_grad` 中取出对应行，乘以门控权重 `gates` 后作为原始 token 位置的输入梯度 `x_grad` 输出。支持无 batch（`y_grad` 为 2 维）与带 batch（`y_grad` 为 3 维）两种张量形态。
+- 算子功能：完成MoE（Mixture of Experts）Tutel路由反向combine的数据梯度计算。算子按路由元数据（专家索引indices与专家buffer内位置locations）从专家输出梯度y_grad中取出对应行，乘以门控权重gates后作为原始token位置的输入梯度x_grad输出。支持无batch（y_grad为2维）与带batch（y_grad为3维）两种张量形态。
 
-- 计算公式：无 batch 场景下，`y_grad` 形状为 `[E*C, H]`，`gates`/`indices`/`locations` 形状为 `[S]`，`x_grad` 形状为 `[S, H]`。对每个 token `t`，设 `idx0 = indices[t]`、`idx1 = locations[t]`、`srcRow = idx0 * C + idx1`：
+- 计算公式：无batch场景下，y_grad形状为[EC, H]，gates/indices/locations形状为[S]，x_grad形状为[S, H]。对每个token t，设idx0=indices[t]、idx1=locations[t]、srcRow=idx0*C+idx1：
 
-$$
-x\_grad[t, h] =
-\begin{cases}
-gates[t] \times y\_grad[srcRow, h], & \text{if } idx0 \ge 0 \text{ and } 0 \le idx1 < C \text{ and } 0 \le srcRow < E \cdot C \\
-0, & \text{otherwise}
-\end{cases}
-$$
+  $$
+  x\_grad[t, h] =
+  \begin{cases}
+  gates[t] \times y\_grad[srcRow, h], & \text{if } idx0 \ge 0 \text{ and } 0 \le idx1 < C \text{ and } 0 \le srcRow < EC \\
+  0, & \text{otherwise}
+  \end{cases}
+  $$
 
-  带 batch 场景下，`y_grad` 形状为 `[B, E*C, H]`，`gates`/`indices`/`locations` 形状为 `[B, S]`，`x_grad` 形状为 `[B, S, H]`，对每个 batch `b`、每个 token `t` 按同一规则计算。
+  带batch场景下，y_grad形状为[B, EC, H]，gates/indices/locations形状为[B, S]，x_grad形状为[B, S, H]，对每个batch b、每个token t按同一规则计算。
 
-  其中 `E` 为路由覆盖的专家数（`E = max(indices) + 1`），`C` 为每个专家 buffer 的容量（`C = eC / E`，`eC` 为 `y_grad` 在无 batch 时的行数或带 batch 时的第二维长度），`H` 为隐藏维度（`y_grad` 最后一维），`S` 为 token 数（`gates` 最后一维），`B` 为 batch 数。
+  其中EC为y_grad无batch时的行数或带batch时的第二维长度，H为隐藏维度（y_grad最后一维），S为token数（gates最后一维），B为batch数。专家数E=max(indices)+1，每专家容量C=floor(EC/E)不经算子属性传递，由张量维度与路由元数据推导；E=1时C=EC；indices全为-1时E=0，全部条目无效，输出全零。
 
-- 计算规则补充说明：`x_grad` 的每个输出行只由对应 token 的一条路由条目决定，有效条目写 `gates[t] * y_grad[srcRow, :]`，无效条目（`indices[t] < 0`、`locations[t] < 0`、`locations[t] >= C` 或 `srcRow` 越出 `y_grad` 行范围）输出全零行，调用前无需对 `x_grad` 预置初值。
+- 计算规则补充说明：x_grad的每个输出行只由对应token的一条路由条目决定，有效条目写gates[t]*y_grad[srcRow, :]，无效条目（indices[t]<0、locations[t]<0、locations[t]>=C或srcRow越出y_grad行范围）输出全零行，不访问越界内存，调用前无需对x_grad预置初值。
 
 ## 参数说明
 
 | 参数名 | 输入/输出/属性 | 描述 | 数据类型 | 数据格式 |
 | :--- | :--- | :--- | :--- | :--- |
-| y_grad | 输入 | 表示专家 buffer 输出的梯度，即公式中的 y_grad。 | FLOAT16、FLOAT、BFLOAT16 | ND |
-| gates | 输入 | 表示每个 token 副本的路由权重（门控值），即公式中的 gates。 | FLOAT16、FLOAT、BFLOAT16 | ND |
-| indices | 输入 | 表示每个 token 副本被分配到的专家 ID，即公式中的 indices。 | INT32 | ND |
-| locations | 输入 | 表示每个 token 副本在其分配专家 buffer 内的位置偏移，即公式中的 locations。 | INT32 | ND |
-| x_grad | 输出 | 表示原始 token 位置的输入梯度，即公式中的 x_grad。 | FLOAT16、FLOAT、BFLOAT16 | ND |
+| y_grad | 输入 | 表示专家缓冲区输出的梯度，即公式中的y_grad。shape为[EC, H]或[B, EC, H]，rank为2或3。 | FLOAT16、FLOAT、BFLOAT16 | ND |
+| gates | 输入 | 表示每个token副本的路由权重（门控值），即公式中的gates。shape为[S]或[B, S]，与indices、locations一致。 | FLOAT16、FLOAT、BFLOAT16 | ND |
+| indices | 输入 | 表示每个token副本被分配到的专家ID，-1表示容量丢弃的无效条目，即公式中的indices。shape与gates一致。 | INT32 | ND |
+| locations | 输入 | 表示每个token副本在其分配专家缓冲区内的位置偏移，即公式中的locations。shape与gates一致。 | INT32 | ND |
+| x_grad | 输出 | 表示原始token位置的输入梯度，即公式中的x_grad。shape为gates的shape拼接y_grad最后一维，即[S, H]或[B, S, H]。 | FLOAT16、FLOAT、BFLOAT16 | ND |
 
 ## 约束说明
 
-- shape 与 rank 约定：`y_grad` 的 rank 为 2 或 3，`gates`/`indices`/`locations` 的 rank 为 1 或 2，且 `rank(y_grad) = rank(gates) + 1`；`gates`、`indices`、`locations` 三者 shape 一致；`x_grad` 的 shape 等于 `gates` 的 shape 拼接 `y_grad` 最后一维。隐藏维度 `H` 取值范围为 [1, 65535]，token 数 `S` 取值范围为 [1, 9223372036854775807]。
-- 数据类型约束：`y_grad`、`gates`、`x_grad` 三者数据类型必须一致（FLOAT16、FLOAT、BFLOAT16 三选一），`indices`、`locations` 固定为 INT32。
-- 数据格式约束：仅支持 ND 格式；传入的 Tensor 需为连续存储（strides 与 shape 一致），不支持非连续 Tensor。
-- 空 Tensor：shape 的任一允许维度为 0（如 `S=0`、`eC=0`、`H=0`）即视为空 Tensor，算子不执行散射写，`x_grad` 被置零或保持为空。
-- 索引语义：`indices[t] < 0`、`locations[t] < 0`、`locations[t] >= C` 或计算得到的源行越出 `y_grad` 行范围的条目为无效条目，对应输出行置零，不访问越界内存。
+- shape与rank契约：y_grad的rank为2或3，gates/indices/locations的rank为1或2，且rank(y_grad)=rank(gates)+1；gates、indices、locations三者shape一致；带batch（rank(y_grad)=3）时gates.dim0=y_grad.dim0。
+- 数据类型约束：y_grad、gates、x_grad三者数据类型必须一致（FLOAT16、FLOAT、BFLOAT16三选一），indices、locations固定为INT32。
+- 数据格式约束：仅支持ND格式。
+- 非连续Tensor：aclnnMoeTutelCombineX接口支持非连续Tensor，输入在接口内部自动连续化，结果写回用户提供的输出Tensor；图模式通过算子IR构图调用时，要求传入的Tensor为连续存储。
+- 确定性计算：
+  - aclnnMoeTutelCombineX默认确定性实现。
+- 空Tensor：S=0、H=0或B=0时输出为对应shape的空Tensor；EC=0且S大于0时C=0，全部条目无效，输出[S, H]全零。
+- 索引语义：indices[t]<0、locations[t]<0、locations[t]>=C或计算得到的源行越出y_grad行范围的条目为无效条目，对应输出行置零，不报错。
+- 路由元数据来源：gates/indices/locations须由前向MoeTutelDispatch产出并在反向原样重放，不允许反向独立重算路由。
 
 ## 调用说明
 
-| 调用方式 | 调用样例 | 说明 |
+| 调用方式 | 样例代码 | 说明 |
 | :--- | :--- | :--- |
-| aclnn API | - | 参见 [aclnnMoeTutelCombineX API 文档](docs/aclnnMoeTutelCombineX.md)，通过两段式接口 aclnnMoeTutelCombineXGetWorkspaceSize 与 aclnnMoeTutelCombineX 完成调用。 |
-| GE图模式 | - | 通过算子 IR 定义 [moe_tutel_combine_x_proto.h](op_graph/moe_tutel_combine_x_proto.h) 构图方式调用，图编译期由 InferShape/InferDataType 完成 shape、dtype 与 format 校验。 |
+| aclnn接口 | [test_aclnn_moe_tutel_combine_x](examples/test_aclnn_moe_tutel_combine_x.cpp) | 通过[aclnnMoeTutelCombineX](docs/aclnnMoeTutelCombineX.md)接口方式调用MoeTutelCombineX算子。 |
+| 图模式 | - | 通过[算子IR](op_graph/moe_tutel_combine_x_proto.h)构图方式调用MoeTutelCombineX算子。 |
