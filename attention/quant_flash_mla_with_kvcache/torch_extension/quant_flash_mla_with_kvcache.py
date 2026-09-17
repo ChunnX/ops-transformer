@@ -132,7 +132,7 @@ class QuantFlashMlaWithKvcacheOpBuilder(OpBuilder):
             layout_q: Optional[str] = "BSND",
         ):
             max_schedule_size = _calculate_max_schedule_size()
-            return torch.empty((2, max_schedule_size), dtype=torch.int32, device="meta")
+            return torch.empty((2, max_schedule_size), dtype=torch.int32, device="npu")
 
         @impl(get_as_library(), self.name, "Meta")
         def quant_flash_mla_with_kvcache_meta(
@@ -216,6 +216,8 @@ class QuantFlashMlaWithKvcacheOpBuilder(OpBuilder):
 # Instantiate the builder
 quant_flash_mla_with_kvcache_op_builder = QuantFlashMlaWithKvcacheOpBuilder()
 quant_flash_mla_with_kvcache_op_builder._ensure_initialized()
+# 预加载 C++ 扩展，避免 aclgraph/torch.compile 时在 compile 区域内首次调用 load() 触发 graph break
+quant_flash_mla_with_kvcache_op_builder.load(verbose=False)
 
 
 @impl(get_as_library(), QMLA_METADATA_OP_NAME, "PrivateUse1")
