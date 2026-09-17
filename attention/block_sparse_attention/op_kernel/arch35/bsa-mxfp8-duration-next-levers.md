@@ -479,3 +479,55 @@ sparse 溢价 139 cyc 里 O5 吃掉 86 cyc，剩下 ~53 cyc/tile ≈ 93 µs 还�
 - **Y=64 / nY==4**：PAIR256 满对 4 个满块，可两条 NDNUM2 或一条连续+一条 NDNUM2。现网主点是 Y=128，这条对 S=118800/keep=0.1 **几乎不触发**。
 - **V gather peek while**：`SparseVFusedBaseTileL1FullLoad` 每 tile 仍跑偷看合并。keep=0.1 非连续时 peek 失败得快，但每 tile 仍有一次 `GetValue`。没量过，不确定是不是剩下 53 cyc 的家。
 - 残差 181 µs 现在比「scalar−vec 余量再砍」更先碰到墙钟。没定位，可能是稀疏 K 的 MTE2 分段（两条 copy vs keep=1 一条）发得晚，和 cube/vec 重叠变差。
+
+## 10. 短点 +6 µs 同卡二分（NPU5，2026-09-17）
+
+SLO 改成 64 格相对 bcb05 不回退之后，O5 全量扫在 S=4096 上全 keep 红。同卡五包只跑 S=4096 keep=0.1 / 1.0，日志 `tests/mxfp8_pytest/bisect_s4096_npu5.log`。
+
+| 包 | keep=0.1 Dur | aic | scalar | cube | vec | keep=1 Dur | aic | vec |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| bcb05 | 20.3 | 19.3 | 13.3 | 2.3 | 4.7 | 50.1 | 49.1 | 24.4 |
+| gather256 | **20.2** | 19.3 | 11.3 | 2.3 | 5.3 | 51.2 | 50.3 | 29.1 |
+| **O1** | **25.4** | **23.0** | 12.7 | 2.3 | 5.0 | **54.9** | **52.6** | 28.4 |
+| O2 | 24.9 | 22.6 | 12.9 | 2.3 | 4.4 | 54.4 | 51.9 | 24.4 |
+| O5 | 24.1 | 21.9 | 12.9 | 2.3 | 4.2 | 53.8 | 51.4 | 24.3 |
+
+- **税在 O1**（gather256→O1）：keep=0.1 **+5.2 µs**，aic +3.7；keep=1 **+3.7 µs**。cube/mte2/instr 不变。
+- PAIR256 / QK gather256 **不是**短点元凶（keep=0.1 20.3→20.2）。不要给 PAIR256 做占用开关。
+- O2 / O5 略往回修（vec / nY=2），不是税。O5 保留。
+- O1 相对 gather 的源码差：`PRELOAD` 21→32、`taskInfos/tileInfos[32] = {}`、下标 `%`→`& mask`、pSlot 滚动。短点 aic 多出来的时间不在 cube/scalar 占用上，符合 **核入口把 32 槽 TaskInfo+TileInfo 整表清零**（21 项编译器可能展开，32 项掉进 memset 循环）。
+- 下一刀：保留 `& mask`（长 keep=0.1 的 O1 收益），去掉 `= {}`。delay 窗 `coreTileLoop >= PV_RE_DELAY_N` 保证先写后读。独立安装后四哨兵过了再 64 点。`Wait(V1_C1)` 仍无条件。
+
+### 10.1 去清零不够，21 槽滚动才把短点扳回来（NPU5，同卡）
+
+`TaskInfo`/`TileInfo` 有 NSDMI，只删 `={}` 仍会整表构造。改 `__attribute__((uninitialized))` 后装 `cann_bsa_0917_o1_nostack0`（bootstrap O5）。短点 aic 基本回来，Duration 还剩 ~2 µs。再把数组收成 21、下标改 if-wrap（热路径仍无 `%`），装 `cann_bsa_0917_o1_ring21`。冒烟均为 12 passed / 0 failed。
+
+| 包 | S4096 k0.1 | S4096 k1 | S118800 k0.1 | S118800 k1 |
+|---|---:|---:|---:|---:|
+| bcb05 | 20.3 | 50.1 | 1769 | 14941 |
+| gather256 | 20.2 | 51.2 | — | — |
+| O5 | 24.1 | 53.8 | 1612 | 14971 |
+| nostack0（32 uninit + mask） | 22.4 | 52.8 | **1608.8** | 14955 |
+| **ring21（21 uninit + wrap）** | **19.2** | **49.0** | 1655.0 | 14993 |
+
+- 短点税的主体是 **32 槽栈框**，不是 PAIR256。ring21 两短哨兵都优于 bcb05。
+- wrap 的 `if (slot==21)` 每拍 6 次，长 keep=0.1 scalar 1465→1571，Duration 1609→1655（相对 O5 −46 µs，相对 bcb05 仍 −114）。长 keep=1 Duration 14993 vs bcb05 14941（+52 / +0.35%），握手吃掉了大部分 scalar。
+- 现网候选：短点过关选 ring21；若长 keep=1 的 +50 µs 不可接受，下一刀把 wrap 改成无分支 `slot += 1; slot -= 21u * (slot == 21)`，或短路径 21 / 长路径 32+mask 分发。
+
+### 10.2 零构造 + 32 槽 + mask（NPU5 同场次，2026-09-17 11:43）
+
+两项成本拆开后补上缺格：删 `TaskInfo`/`TileInfo` NSDMI（`BatchOffsetInfo` 保留），数组 32 槽不带 `={}`，下标回到 `& mask`。安装 `cann_bsa_0917_o1_zeroctor`（bootstrap O5）。冒烟 12 passed。bcb05 同场次重测，长点与 9/14 画布一致。
+
+| 包 | S4096 k0.1 | S4096 k1 | S118800 k0.1 | S118800 k1 |
+|---|---:|---:|---:|---:|
+| bcb05 同场次 | 19.6 | 49.6 | 1771.1 | 14943.0 |
+| O5 | 24.1 | 53.8 | 1612 | 14971 |
+| nostack0 | 22.4 | 52.8 | 1608.8 | 14955 |
+| ring21 | 19.2 | 49.0 | 1655.0 | 14993 |
+| **zeroctor** | **19.3** | 50.4 | **1607.0** | 14976.1 |
+
+- 短 keep=0.1：19.3 vs 19.6，入口税关掉了，和 ring21 一档。
+- 长 keep=0.1：1607 vs 1771（−9.3%），scalar 1419.9，优于 nostack0 的 mask 路径，wrap 税不在。
+- 短 keep=1：50.4 vs 49.6（+0.8）；aic 48.2 vs 48.7，计算侧没退，Duration 差在头尾。
+- 长 keep=1：14976 vs 14943（+33 / +0.22%），和 O5 同量级，仍是 4-tile `V1_C1` 握手，不是这次改动引入的。
+- 源码现状即 zeroctor。64 点前短 keep=1 / 长 keep=1 算噪声带内还是红格，由验收阈值定。
