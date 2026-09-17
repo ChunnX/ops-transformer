@@ -54,7 +54,7 @@ logger = logging.getLogger(__name__)
 # 优先从环境变量读取，支持 GRAPH_PATH=7 python3 -m pytest ...
 import os as _os
 
-GRAPH_PATH = int(_os.environ.get("GRAPH_PATH", "0"))
+GRAPH_PATH = int(_os.environ.get("GRAPH_PATH", "7"))
 B = 1
 N_q = 1  # query heads
 N_kv = 1  # kv heads

@@ -13,6 +13,22 @@
 from fia_fullquant_mxfp8_paramset_common import expand_paramset_to_cases
 
 TEST_PARAMS = {
+    "PA_BnNBsD_B1_QS66_KVS505_Nq1_Nkv1_D128_SP3_PSCALE201": {
+        "B": [1],
+        "N_q": [1],
+        "N_kv": [1],
+        "D": [128],
+        "actual_seq_q": [[66]],
+        "actual_seq_kv": [[505]],
+        "enable_pa": [True],
+        "kv_cache_layout": ["BnNBsD"],
+        "block_size": [128],
+        "sparse_mode": [3],
+        "q_scale_layout": ["N2TGD"],
+        "p_scale": [201.0],
+        "enable_lse": [False],
+        "enable_rope": [False],
+    },
     "PA_BnNBsD_B1_QS0_KVS64_Nq1_Nkv1_D128_SP3": {
         "B": [1],
         "N_q": [1],
