@@ -720,6 +720,7 @@ template <typename BlockPrologue, typename Scheduler, typename TensorB, typename
 __aicore__ inline void Gmm2Aiv0PrologueA8W4(BlockPrologue &blockPrologue, Scheduler &scheduler, TensorB &gmB,
                                             const Config &config, uint32_t startLoopIdx, uint32_t tileNum)
 {
+    blockPrologue.SetConcatHalfN(0U);
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
         auto actualShape = scheduler.GetBlockShape(blockCoord);
@@ -797,7 +798,8 @@ template <typename BlockMmad, typename BlockPrologue, typename ElementC, bool Is
           bool NotifyCombineTileReady, typename Scheduler, typename Config>
 __aicore__ inline void Gmm2ExecA8W4(Scheduler &scheduler, const GMMAddrInfo &gmmAddrInfo, const Config &config,
                                     uint32_t startLoopIdx, uint32_t tileNum, uint32_t expertTokenCount,
-                                    uint32_t rowOffsetInExpert, const Params *params = nullptr)
+                                    uint32_t rowOffsetInExpert, const Params *params,
+                                    const A8W4PipelineContext<BlockMmad, BlockPrologue> &pipeline)
 {
     using KernelConfig = typename Config::KernelConfig;
     using ElementA = typename KernelConfig::ElementAType;
@@ -829,21 +831,42 @@ __aicore__ inline void Gmm2ExecA8W4(Scheduler &scheduler, const GMMAddrInfo &gmm
                                            decltype(gmScaleB), decltype(gmBias), decltype(gmC)>;
     WorkSetType workSet{scheduler, gmA, gmB, gmScaleA, gmScaleB, gmBias, gmC};
 
+    const bool resetBufferIndices = pipeline.mmad == nullptr;
     if constexpr (g_coreType == AscendC::AIC) {
-        BlockMmad blockMmad{};
-        typename BlockMmad::BlockShape l0TileShape{config.blockMmadTiling.tileM, config.blockMmadTiling.tileN,
-                                                   L0_TILE_K, 0};
-        typename BlockMmad::ProblemShape matmulShape{config.m, config.outputN, config.k, 0};
-        blockMmad.Init(matmulShape, l0TileShape, config.blockMmadTiling.l1Params);
-        Gmm2AicMmadA8W4<IsShared, IsLayered, NotifyCombineTileReady, BlockMmad, decltype(workSet.scheduler),
-                        decltype(workSet.gmA), decltype(workSet.gmScaleA), decltype(workSet.gmScaleB),
-                        std::remove_reference_t<decltype(workSet.gmC)>, Config>(
-            blockMmad, workSet.scheduler, workSet.gmA, workSet.gmScaleA, workSet.gmScaleB, workSet.gmC, gmmAddrInfo,
-            config, startLoopIdx, tileNum, expertTokenCount, rowOffsetInExpert);
+        if (pipeline.mmad != nullptr) {
+            auto &blockMmad = *pipeline.mmad;
+            typename BlockMmad::BlockShape l0TileShape{config.blockMmadTiling.tileM, config.blockMmadTiling.tileN,
+                                                       L0_TILE_K, 0};
+            typename BlockMmad::ProblemShape matmulShape{config.m, config.outputN, config.k, 0};
+            blockMmad.Init(matmulShape, l0TileShape, config.blockMmadTiling.l1Params, false,
+                           resetBufferIndices);
+            Gmm2AicMmadA8W4<IsShared, IsLayered, NotifyCombineTileReady, BlockMmad, decltype(workSet.scheduler),
+                            decltype(workSet.gmA), decltype(workSet.gmScaleA), decltype(workSet.gmScaleB),
+                            std::remove_reference_t<decltype(workSet.gmC)>, Config>(
+                blockMmad, workSet.scheduler, workSet.gmA, workSet.gmScaleA, workSet.gmScaleB, workSet.gmC, gmmAddrInfo,
+                config, startLoopIdx, tileNum, expertTokenCount, rowOffsetInExpert);
+        } else {
+            BlockMmad blockMmad{};
+            typename BlockMmad::BlockShape l0TileShape{config.blockMmadTiling.tileM, config.blockMmadTiling.tileN,
+                                                       L0_TILE_K, 0};
+            typename BlockMmad::ProblemShape matmulShape{config.m, config.outputN, config.k, 0};
+            blockMmad.Init(matmulShape, l0TileShape, config.blockMmadTiling.l1Params, false,
+                           resetBufferIndices);
+            Gmm2AicMmadA8W4<IsShared, IsLayered, NotifyCombineTileReady, BlockMmad, decltype(workSet.scheduler),
+                            decltype(workSet.gmA), decltype(workSet.gmScaleA), decltype(workSet.gmScaleB),
+                            std::remove_reference_t<decltype(workSet.gmC)>, Config>(
+                blockMmad, workSet.scheduler, workSet.gmA, workSet.gmScaleA, workSet.gmScaleB, workSet.gmC, gmmAddrInfo,
+                config, startLoopIdx, tileNum, expertTokenCount, rowOffsetInExpert);
+        }
     } else {
         if (GetSubBlockIdx() == 0U) {
-            BlockPrologue blockPrologue;
-            Gmm2Aiv0PrologueA8W4(blockPrologue, workSet.scheduler, workSet.gmB, config, startLoopIdx, tileNum);
+            if (pipeline.prologue != nullptr) {
+                auto &blockPrologue = *pipeline.prologue;
+                Gmm2Aiv0PrologueA8W4(blockPrologue, workSet.scheduler, workSet.gmB, config, startLoopIdx, tileNum);
+            } else {
+                BlockPrologue blockPrologue;
+                Gmm2Aiv0PrologueA8W4(blockPrologue, workSet.scheduler, workSet.gmB, config, startLoopIdx, tileNum);
+            }
         } else if constexpr (NotifyCombineTileReady) {
             using MakeLayoutC = typename KernelConfig::MakeLayoutC;
             CombineTokenRange<ElementC, MakeLayoutC>(workSet.scheduler, workSet.gmC, *params, gmmAddrInfo, config,
@@ -915,11 +938,14 @@ __aicore__ inline void RunGmm2Generic(const AscendC::Shape<int64_t, int64_t, int
 // RunGmm2A8W4：AIV0执行W4→W8 prologue，AIC执行GMM2；可选由配对AIV1逐tile Combine。
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB,
           uint32_t Gmm1TileM = L1_TILE_M_256, bool TopkWeightsPrefetch = false, bool IsShared = false,
-          bool IsLayered = false, bool IsWaveFlagGrained = false, bool NotifyCombineTileReady = false>
+          bool IsLayered = false, bool IsWaveFlagGrained = false, bool NotifyCombineTileReady = false,
+          typename PipelineContext = typename GmmKernel::Config<true, 0, ElementA, ElementB, ElementC,
+              ElementMxScaleA, ElementMxScaleB>::PipelineContext>
 __aicore__ inline void RunGmm2A8W4(const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                    const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx,
                                    const BlockJobContext &blockJob, uint32_t expertTokenCount,
-                                   uint32_t rowOffsetInExpert, const Params *params = nullptr)
+                                   uint32_t rowOffsetInExpert, const Params *params = nullptr,
+                                   const PipelineContext &pipeline = {})
 {
     static_assert(!IsShared || !NotifyCombineTileReady, "Shared expert GMM2 has its own completion counter");
     static_assert(!IsLayered || !NotifyCombineTileReady, "Layered GMM2 selects its synchronization through IsLayered");
@@ -927,7 +953,8 @@ __aicore__ inline void RunGmm2A8W4(const AscendC::Shape<int64_t, int64_t, int64_
     static_assert(std::is_same_v<ElementB, __fp4e2m1x2>, "Weight must be __fp4e2m1x2");
 
     using GmmConfig = GmmKernel::Config<true, 0, ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, false,
-                                        TopkWeightsPrefetch, IsShared, IsLayered, IsWaveFlagGrained>;
+                                        TopkWeightsPrefetch, IsShared, IsLayered, IsWaveFlagGrained,
+                                        PipelineContext::USE_L1_B4>;
     auto config = GmmConfig::BuildGmm2ProblemConfig(problemShape, blockJob, Gmm1TileM);
 
     using BlockMmad = typename GmmConfig::BlockMmad;
@@ -945,7 +972,7 @@ __aicore__ inline void RunGmm2A8W4(const AscendC::Shape<int64_t, int64_t, int64_
 
     GmmKernel::Gmm2ExecA8W4<BlockMmad, BlockPrologue, ElementC, IsShared, IsLayered, NotifyCombineTileReady,
                             GmmKernel::BlockScheduler, decltype(config)>(
-        scheduler, gmmAddrInfo, config, startLoopIdx, tileNum, expertTokenCount, rowOffsetInExpert, params);
+        scheduler, gmmAddrInfo, config, startLoopIdx, tileNum, expertTokenCount, rowOffsetInExpert, params, pipeline);
 
     startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
 }

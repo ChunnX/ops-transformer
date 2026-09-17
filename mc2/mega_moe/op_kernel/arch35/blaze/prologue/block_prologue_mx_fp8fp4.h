@@ -98,6 +98,7 @@
 #include "blaze/gemm/tile/shift_w4_to_w8.h"
 #include "blaze/gemm/tile/copy_weight_ub_to_l1.h"
 #include "block_prologue.h"
+#include "../gemm/utils/common_utils_mega_moe.h"
 
 namespace Blaze {
 namespace Gemm {
@@ -129,14 +130,15 @@ struct PrologueMxCastWOffsetParam {
 };
 
 // Macro aliases keep this dispatch-policy specialization concise and readable.
-#define BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS template <class OutType_, class InType_>
+#define BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS template <class OutType_, class InType_, bool UseL1B4>
 
-#define BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION BlockPrologue<MatmulMxFp8Fp4DynamicKL1TailResplit, OutType_, InType_>
+#define BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION BlockPrologue<MatmulMxFp8Fp4DynamicKL1TailResplit<UseL1B4>, OutType_, InType_>
 
 BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS
 class BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION {
 public:
-    using DispatchPolicy = MatmulMxFp8Fp4DynamicKL1TailResplit;
+    using DispatchPolicy = MatmulMxFp8Fp4DynamicKL1TailResplit<UseL1B4>;
+    static constexpr bool USE_L1_B4 = UseL1B4;
     using OutType = OutType_;
     using InType = InType_;
 
@@ -147,6 +149,7 @@ public:
     };
 
     __aicore__ explicit inline BlockPrologue(uint64_t concatHalfN = 0U);
+    __aicore__ inline void SetConcatHalfN(uint64_t n) { concatHalfN_ = n; }
     template <typename GMWeightTensorType>
     __aicore__ inline void operator()(const GMWeightTensorType &gmWeightTensor, uint64_t mL1Size, uint64_t kSize,
                                       uint64_t nL1Size, uint64_t nOffset, uint64_t nAlign,
@@ -161,6 +164,9 @@ protected:
     __aicore__ inline void ComputeBasicBlockAivNdKnNzNk(const PrologueMxCastWOffsetParam &offsetParam,
                                                         const GMWeightTensorType &gmWeightTensor);
 
+    template <typename GMWeightTensorType>
+    __aicore__ inline void PrefetchWeightHalf(const PrologueMxCastWOffsetParam &param,
+                                             const GMWeightTensorType &gmWeightTensor, uint64_t halfSeq);
     __aicore__ inline void WaitVectorToMTE2();
     __aicore__ inline void SetVectorToMTE2();
     template <typename Weight4BitTensorType, typename Weight8BitTensorType>
@@ -194,10 +200,8 @@ protected:
 
     // === Buffer Size Unit ===
     static constexpr uint64_t KB = 1024;
-    static constexpr uint64_t WEIGHT_L1_INIT_OFFSET = 0;
-    static constexpr uint64_t WEIGHT_L1_DB_OFFSET = 384 * KB;
-    static constexpr uint64_t L1_WEIGHT_OFFSETS[DOUBLE_BUFFER] = {WEIGHT_L1_INIT_OFFSET * sizeof(OutType),
-                                                                  WEIGHT_L1_DB_OFFSET * sizeof(OutType)};
+    using L1Layout = Blaze::Gemm::MegaMoeMxL1Layout<UseL1B4>;
+    static constexpr uint64_t WEIGHT_L1_BUFFER_NUM = L1Layout::B_BUFFER_NUM;
 
     // === Pipeline Buffer Configuration ===
     static constexpr uint64_t WEIGHT_8BIT_BUFFER_NUM = QUADRUPLE_BUFFER_NUM; // 4
@@ -251,7 +255,7 @@ protected:
 
     // === Dynamic Tiling Configuration ===
 
-    static constexpr uint64_t FINALIZE_AIC_WAIT_COUNT = 2;
+    static constexpr uint64_t FINALIZE_AIC_WAIT_COUNT = WEIGHT_L1_BUFFER_NUM;
 };
 
 BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS
@@ -282,39 +286,36 @@ template <typename GMWeightTensorType>
 __aicore__ inline void BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::ComputeBasicBlockAivNdKnNzNk(
     const PrologueMxCastWOffsetParam &param, const GMWeightTensorType &gmWeightTensor)
 {
-    // A single V core preserves the original half-K granularity for UB fit,
-    // but processes the two halves serially before notifying the cube core.
-    const uint64_t kMte2BaseSize = param.kbL1Size >> 1;
-
+    const uint64_t halfK = param.kbL1Size >> 1;
+    const uint64_t totalHalves = CeilDiv(param.kSize, param.kbL1Size) * SERIAL_HALF_K_PARTS;
+    uint64_t nextHalf = 0;
+    for (; nextHalf < min(uint64_t{2}, totalHalves); ++nextHalf) {
+        PrefetchWeightHalf(param, gmWeightTensor, nextHalf);
+    }
     for (uint64_t kOffset = 0; kOffset < param.kSize; kOffset += param.kbL1Size, cvLoopIdx_++) {
-        uint64_t l1RealLen = (kOffset + param.kbL1Size) > param.kSize ? param.kSize - kOffset : param.kbL1Size;
-
+        const uint64_t l1RealLen = min(param.kbL1Size, param.kSize - kOffset);
         auto l1BaseTensor = MakeL1WeightTensor(l1RealLen, param.nL1Size);
-
-        for (uint64_t halfIdx = 0; halfIdx < SERIAL_HALF_K_PARTS; ++halfIdx) {
-            uint64_t l1SplitOffset = halfIdx * kMte2BaseSize;
-            uint64_t mte2RealK = halfIdx == 0 ? min(kMte2BaseSize, l1RealLen) :
-                                                (l1RealLen > kMte2BaseSize ? l1RealLen - kMte2BaseSize : 0);
-
-            auto weight4BitTensor = MakeWeight4BitTensor(mte2RealK, param.nL1Size);
-            auto weight8BitTensor = MakeWeight8BitTensor(mte2RealK, param.nL1Size);
-            auto l1Tensor = l1BaseTensor.slice(asc::te::make_coord(l1SplitOffset, 0),
-                                               asc::te::make_shape(mte2RealK, param.nL1Size));
-
-            WaitVectorToMTE2();
-            CopyGmToUb(kOffset + l1SplitOffset, mte2RealK, param, gmWeightTensor, weight4BitTensor);
-
-            if (halfIdx == 0) {
+        for (uint64_t half = 0; half < SERIAL_HALF_K_PARTS; ++half) {
+            const uint64_t offset = half * halfK;
+            const uint64_t realK = l1RealLen > offset ? min(halfK, l1RealLen - offset) : 0;
+            const uint64_t slot = ubComputeLoopIdx_ & (kUbMte2BufferNum - 1);
+            auto w4 = asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::ub, InType>(WEIGHT_4BIT_OFFSETS[slot]),
+                asc::te::frame_layout_format<asc::te::zn_layout_ptn, AscendC::Std::Int<32>>{}(
+                    static_cast<int64_t>(realK), static_cast<int64_t>(param.nL1Size)));
+            auto w8 = MakeWeight8BitTensor(realK, param.nL1Size);
+            auto l1 = l1BaseTensor.slice(asc::te::make_coord(offset, 0), asc::te::make_shape(realK, param.nL1Size));
+            WaitFlag<HardEvent::MTE2_V>(EVENT_ID_MTE2_TO_V + slot);
+            WeightAntiQuantComputeNzNk(w4, w8);
+            SetFlag<HardEvent::V_MTE2>(vecEventIdVToMte2_ + slot);
+            // Publish another independent GM load before the current MTE3 write.
+            if (nextHalf < totalHalves) {
+                PrefetchWeightHalf(param, gmWeightTensor, nextHalf++);
+            }
+            if (half == 0) {
                 WaitAicToAiv();
             }
-
-            WeightAntiQuantComputeNzNk(weight4BitTensor, weight8BitTensor);
-            SetVectorToMTE2();
-            ubMte2LoopIdx_++;
-
-            CopyWeightToL1(mte2RealK, weight8BitTensor, l1Tensor);
+            CopyWeightToL1(realK, w8, l1);
         }
-
         SetAivToAic();
     }
 }
@@ -335,6 +336,12 @@ __aicore__ inline void BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::operator()(const
     offsetParam.nL1Size = nL1Size;
     offsetParam.nOffset = nOffset;
     offsetParam.kbL1Size = configuredKL1Size != 0 ? configuredKL1Size : CalcDynamicKBlock(mL1Size, nL1Size);
+    if constexpr (UseL1B4) {
+        // Match the AIC 64 KiB A-slot limit; converted A8W4 activations use one byte.
+        if (((mL1Size + 15U) / 16U * 16U) * offsetParam.kbL1Size > 64U * 1024U) {
+            offsetParam.kbL1Size = MX_FP8FP4_L1_K_CONFIG_256;
+        }
+    }
     offsetParam.nAlign = nAlign;
     ComputeBasicBlockAivNdKnNzNk(offsetParam, gmWeightTensor);
 }
@@ -389,9 +396,6 @@ __aicore__ inline void BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::CopyGmToUb(
         }
     }
 
-    // Synchronization point after copy completes
-    SetFlag<HardEvent::MTE2_V>(EVENT_ID_MTE2_TO_V);
-    WaitFlag<HardEvent::MTE2_V>(EVENT_ID_MTE2_TO_V);
 }
 
 BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS
@@ -463,8 +467,25 @@ __aicore__ inline auto BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::MakeL1WeightTens
     auto l1BaseLayout =
         asc::te::make_frame_layout<asc::te::zn_layout_ptn, asc::te::layout_trait_default<OutType>>(l1RealLen, nL1Size);
     return asc::te::make_tensor(
-        asc::te::make_mem_ptr<asc::te::location::l1, OutType>(L1_WEIGHT_OFFSETS[cvLoopIdx_ & (DOUBLE_BUFFER - 1)]),
+        asc::te::make_mem_ptr<asc::te::location::l1, OutType>(L1Layout::BOffset(cvLoopIdx_ & (WEIGHT_L1_BUFFER_NUM - 1))),
         l1BaseLayout);
+}
+
+BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS
+template <typename GMWeightTensorType>
+__aicore__ inline void BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::PrefetchWeightHalf(
+    const PrologueMxCastWOffsetParam &param, const GMWeightTensorType &gmWeightTensor, uint64_t halfSeq)
+{
+    const uint64_t halfK = param.kbL1Size >> 1;
+    const uint64_t offset = (halfSeq / SERIAL_HALF_K_PARTS) * param.kbL1Size +
+                            (halfSeq % SERIAL_HALF_K_PARTS) * halfK;
+    const uint64_t realK = offset < param.kSize ? min(halfK, param.kSize - offset) : 0;
+    const uint64_t slot = ubMte2LoopIdx_ & (kUbMte2BufferNum - 1);
+    WaitVectorToMTE2();
+    auto w4 = MakeWeight4BitTensor(realK, param.nL1Size);
+    CopyGmToUb(offset, realK, param, gmWeightTensor, w4);
+    SetFlag<HardEvent::MTE2_V>(EVENT_ID_MTE2_TO_V + slot);
+    ++ubMte2LoopIdx_;
 }
 
 #undef BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION
