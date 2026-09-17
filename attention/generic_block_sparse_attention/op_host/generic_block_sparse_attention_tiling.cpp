@@ -66,9 +66,9 @@ constexpr int BLOCK_TABLE_DIM_BATCH = 0;
 constexpr int BLOCK_TABLE_DIM_MAX_BLOCKS = 1;
 
 constexpr int ATTR_BLOCK_SHAPE_INDEX = 0;
-constexpr int ATTR_LAYOUT_SPARSE_PATTERN_INDEX = 1;
-constexpr int ATTR_Q_INPUT_LAYOUT_INDEX = 2;
-constexpr int ATTR_KV_INPUT_LAYOUT_INDEX = 3;
+constexpr int ATTR_Q_INPUT_LAYOUT_INDEX = 1;
+constexpr int ATTR_KV_INPUT_LAYOUT_INDEX = 2;
+constexpr int ATTR_LAYOUT_SPARSE_PATTERN_INDEX = 3;
 constexpr int ATTR_SCALE_VALUE_INDEX = 4;
 constexpr int ATTR_MASK_TYPE_INDEX = 5;
 constexpr int ATTR_QUANT_TYPE_INDEX = 6;

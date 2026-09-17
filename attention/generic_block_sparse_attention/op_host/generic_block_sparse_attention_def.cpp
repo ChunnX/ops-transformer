@@ -107,9 +107,9 @@ public:
             .FormatList({ge::FORMAT_ND});
 
         this->Attr("block_shape").AttrType(OPTIONAL).ListInt({1, 128});
-        this->Attr("layout_sparse_pattern").AttrType(OPTIONAL).Int(4);
         this->Attr("layout_q").AttrType(OPTIONAL).String("TND");
         this->Attr("layout_kv").AttrType(OPTIONAL).String("TND");
+        this->Attr("layout_sparse_pattern").AttrType(OPTIONAL).Int(4);
         this->Attr("scale_value").AttrType(OPTIONAL).Float(0.0);
         this->Attr("mask_type").AttrType(OPTIONAL).Int(0);
         this->Attr("quant_type").AttrType(OPTIONAL).Int(0);

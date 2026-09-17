@@ -292,7 +292,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnGenericBlockSparseAttent
     const aclTensor *vDequantScaleOptional, const aclTensor *pQuantScaleOptional,
     const aclTensor *cuSeqLengthsQOptional, const aclTensor *cuSeqLengthsKvOptional, const aclTensor *sequsedQOptional,
     const aclTensor *sequsedKvOptional, const aclTensor *blockTableOptional,     const aclIntArray *blockShape,
-    int64_t layoutSparsePattern, char *layoutQ, char *layoutKv, double scaleValue, int64_t maskType, int64_t quantType,
+    char *layoutQ, char *layoutKv, int64_t layoutSparsePattern, double scaleValue, int64_t maskType, int64_t quantType,
     double dstTypeMax, int64_t softmaxPrecision, int64_t winLeft, int64_t winRight, int64_t returnSoftmaxlse,
     int64_t residualBlockMode, bool isConsistentTopk, aclTensor *attentionOut, aclTensor *softmaxLseOptional,
     uint64_t *workspaceSize, aclOpExecutor **executor)
@@ -312,7 +312,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnGenericBlockSparseAttent
                    DFX_IN(query, key, value, sparseBlockIdx, sparseBlockCount, metadataOptional, attenMaskOptional,
                           qDequantScaleOptional, kDequantScaleOptional, vDequantScaleOptional, pQuantScaleOptional,
                           cuSeqLengthsQOptional, cuSeqLengthsKvOptional, sequsedQOptional, sequsedKvOptional,
-                          blockTableOptional, blockShape, layoutSparsePattern, layoutQ, layoutKv, scaleValue, maskType,
+                          blockTableOptional, blockShape, layoutQ, layoutKv, layoutSparsePattern, scaleValue, maskType,
                           quantType, dstTypeMax, softmaxPrecision, winLeft, winRight, returnSoftmaxlse,
                           residualBlockMode, isConsistentTopk),
                    DFX_OUT(attentionOut, softmaxLseOptional));
@@ -341,7 +341,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnGenericBlockSparseAttent
         query, keyFinal, valueFinal, sparseBlockIdx, sparseBlockCount, metadataOptional, attenMaskOptional,
         qDequantScaleOptional, kDequantScaleOptional, vDequantScaleOptional, pQuantScaleOptional, cuSeqLengthsQOptional,
         cuSeqLengthsKvOptional, sequsedQOptional, sequsedKvOptional, blockTableOptional, blockShape,
-        layoutSparsePattern, layoutQStr.c_str(), layoutKvStr.c_str(), scaleValue, maskType, quantType, dstTypeMax,
+        layoutQStr.c_str(), layoutKvStr.c_str(), layoutSparsePattern, scaleValue, maskType, quantType, dstTypeMax,
         softmaxPrecision, winLeft, winRight, returnSoftmaxlse, residualBlockMode, isConsistentTopk, attentionOut,
         executorImpl);
 

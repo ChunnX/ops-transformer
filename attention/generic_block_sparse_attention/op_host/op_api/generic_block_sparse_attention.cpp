@@ -26,7 +26,7 @@ const std::array<const aclTensor *, 2> GenericBlockSparseAttention(
     const aclTensor *vDequantScaleOptional, const aclTensor *pQuantScaleOptional,
     const aclTensor *cuSeqLengthsQOptional, const aclTensor *cuSeqLengthsKvOptional, const aclTensor *sequsedQOptional,
     const aclTensor *sequsedKvOptional, const aclTensor *blockTableOptional,     const aclIntArray *blockShape,
-    int64_t layoutSparsePattern, const char *layoutQ, const char *layoutKv, double scaleValue, int64_t maskType,
+    const char *layoutQ, const char *layoutKv, int64_t layoutSparsePattern, double scaleValue, int64_t maskType,
     int64_t quantType, double dstTypeMax, int64_t softmaxPrecision, int64_t winLeft, int64_t winRight,
     int64_t returnSoftmaxlse, int64_t residualBlockMode, bool isConsistentTopk, const aclTensor *attentionOut,
     aclOpExecutor *executor)
@@ -34,7 +34,7 @@ const std::array<const aclTensor *, 2> GenericBlockSparseAttention(
     L0_DFX(GenericBlockSparseAttention, query, key, value, sparseBlockIdx, sparseBlockCount, metadataOptional,
            attenMaskOptional, qDequantScaleOptional, kDequantScaleOptional, vDequantScaleOptional, pQuantScaleOptional,
            cuSeqLengthsQOptional, cuSeqLengthsKvOptional, sequsedQOptional, sequsedKvOptional, blockTableOptional,
-           blockShape, layoutSparsePattern, layoutQ, layoutKv, scaleValue, maskType, quantType, dstTypeMax,
+           blockShape, layoutQ, layoutKv, layoutSparsePattern, scaleValue, maskType, quantType, dstTypeMax,
            softmaxPrecision, winLeft, winRight, returnSoftmaxlse, residualBlockMode, isConsistentTopk);
 
     DataType outDtype =
@@ -49,7 +49,7 @@ const std::array<const aclTensor *, 2> GenericBlockSparseAttention(
                  cuSeqLengthsQOptional, cuSeqLengthsKvOptional, sequsedQOptional, sequsedKvOptional,
                  blockTableOptional),
         OP_OUTPUT(attentionOutTensor, softmaxLseTensor),
-        OP_ATTR(blockShape, layoutSparsePattern, layoutQ, layoutKv, static_cast<float>(scaleValue),
+        OP_ATTR(blockShape, layoutQ, layoutKv, layoutSparsePattern, static_cast<float>(scaleValue),
                 static_cast<int64_t>(maskType), static_cast<int64_t>(quantType), static_cast<float>(dstTypeMax),
                 static_cast<int64_t>(softmaxPrecision), static_cast<int64_t>(winLeft), static_cast<int64_t>(winRight),
                 static_cast<int64_t>(returnSoftmaxlse), static_cast<int64_t>(residualBlockMode),
@@ -66,7 +66,7 @@ const std::array<const aclTensor *, 2> GenericBlockSparseAttention(
                  cuSeqLengthsQOptional, cuSeqLengthsKvOptional, sequsedQOptional, sequsedKvOptional,
                  blockTableOptional),
         OP_OUTPUT(attentionOutTensor, softmaxLseTensor),
-        OP_ATTR(blockShape, layoutSparsePattern, layoutQ, layoutKv, static_cast<float>(scaleValue),
+        OP_ATTR(blockShape, layoutQ, layoutKv, layoutSparsePattern, static_cast<float>(scaleValue),
                 static_cast<int64_t>(maskType), static_cast<int64_t>(quantType), static_cast<float>(dstTypeMax),
                 static_cast<int64_t>(softmaxPrecision), static_cast<int64_t>(winLeft), static_cast<int64_t>(winRight),
                 static_cast<int64_t>(returnSoftmaxlse), static_cast<int64_t>(residualBlockMode),

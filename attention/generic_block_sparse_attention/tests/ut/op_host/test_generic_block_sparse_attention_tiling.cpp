@@ -98,19 +98,18 @@ std::vector<gert::TilingContextPara::TensorDescription> MakeOutputs(ge::DataType
 
 std::vector<gert::TilingContextPara::OpAttr> MakeAttrs(int64_t maskType, int64_t quantType, int64_t softmaxPrec,
                                                        int64_t returnLse, float dstTypeMax = 0.0f, int64_t winLeft = -1,
-                                                       int64_t winRight = -1,
-                                                       const std::string &layoutSparsePattern = "KVN_TotalQB_KB",
+                                                       int64_t winRight = -1, int64_t layoutSparsePattern = 4,
                                                        const std::string &layoutQ = "TND",
                                                        const std::string &layoutKv = "PA_BBND",
-                                                       int64_t residualBlockMode = 0, int64_t isConsistentTopk = 0,
+                                                       int64_t residualBlockMode = 1, bool isConsistentTopk = false,
                                                        const std::vector<int64_t> &blockShape = kBlockShape,
                                                        float scaleValue = kScale)
 {
     return {
         {"block_shape", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(blockShape)},
-        {"layout_sparse_pattern", Ops::Transformer::AnyValue::CreateFrom<std::string>(layoutSparsePattern)},
         {"layout_q", Ops::Transformer::AnyValue::CreateFrom<std::string>(layoutQ)},
         {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>(layoutKv)},
+        {"layout_sparse_pattern", Ops::Transformer::AnyValue::CreateFrom<int64_t>(layoutSparsePattern)},
         {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(scaleValue)},
         {"mask_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(maskType)},
         {"quant_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(quantType)},
@@ -120,7 +119,7 @@ std::vector<gert::TilingContextPara::OpAttr> MakeAttrs(int64_t maskType, int64_t
         {"win_right", Ops::Transformer::AnyValue::CreateFrom<int64_t>(winRight)},
         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<int64_t>(returnLse)},
         {"residual_block_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(residualBlockMode)},
-        {"is_consistent_topk", Ops::Transformer::AnyValue::CreateFrom<int64_t>(isConsistentTopk)},
+        {"is_consistent_topk", Ops::Transformer::AnyValue::CreateFrom<bool>(isConsistentTopk)},
     };
 }
 } // namespace
@@ -202,7 +201,7 @@ TEST_F(generic_block_sparse_attention_tiling_ut, unsupported_layout)
     GenericBlockSparseAttentionCompileInfo compileInfo;
     gert::TilingContextPara tilingContextPara(
         "GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT16), MakeOutputs(ge::DT_FLOAT16, false),
-        MakeAttrs(1, 0, 0, 0, 0.0f, -1, -1, "KVN_TotalQB_KB", "TND", "TND"), &compileInfo, "Ascend910B", 40, 196608);
+        MakeAttrs(1, 0, 0, 0, 0.0f, -1, -1, 4, "TND", "TND"), &compileInfo, "Ascend910B", 40, 196608);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
@@ -211,7 +210,7 @@ TEST_F(generic_block_sparse_attention_tiling_ut, unsupported_layout_sparse_patte
     GenericBlockSparseAttentionCompileInfo compileInfo;
     gert::TilingContextPara tilingContextPara(
         "GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT16), MakeOutputs(ge::DT_FLOAT16, false),
-        MakeAttrs(1, 0, 0, 0, 0.0f, -1, -1, "B_KN_KB_QB"), &compileInfo, "Ascend910B", 40, 196608);
+        MakeAttrs(1, 0, 0, 0, 0.0f, -1, -1, 1), &compileInfo, "Ascend910B", 40, 196608);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
@@ -230,7 +229,8 @@ TEST_F(generic_block_sparse_attention_tiling_ut, unsupported_block_shape_x)
     std::vector<int64_t> badBlockShape = {128, 128};
     gert::TilingContextPara tilingContextPara("GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT16),
                                               MakeOutputs(ge::DT_FLOAT16, false),
-                                              MakeAttrs(1, 0, 0, 0, 0.0f, -1, -1, 1, "TND", "PA_BBND", badBlockShape),
+                                              MakeAttrs(1, 0, 0, 0, 0.0f, -1, -1, 4, "TND", "PA_BBND", 1, false,
+                                                        badBlockShape),
                                               &compileInfo, "Ascend910B", 40, 196608);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
@@ -316,8 +316,8 @@ TEST_F(generic_block_sparse_attention_tiling_ut, scale_value_zero_defaults_to_rs
     GenericBlockSparseAttentionCompileInfo compileInfo;
     gert::TilingContextPara tilingContextPara(
         "GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT16), MakeOutputs(ge::DT_FLOAT16, false),
-        MakeAttrs(1, 0, 0, 0, 0.0f, -1, -1, 1, "TND", "PA_BBND", kBlockShape, 0.0f), &compileInfo, "Ascend910B", 40,
-        196608);
+        MakeAttrs(1, 0, 0, 0, 0.0f, -1, -1, 4, "TND", "PA_BBND", 1, false, kBlockShape, 0.0f), &compileInfo, "Ascend910B",
+        40, 196608);
     TilingInfo tilingInfo;
     ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
     EXPECT_EQ(tilingInfo.tilingKey, static_cast<int64_t>(kFp16Tiling910B));
