@@ -176,22 +176,14 @@ class CaseSchema:
                     f"{prefix}_topk_length shape {tuple(lengths.shape)} != sparse prefix "
                     f"{tuple(indices.shape[:-1])}"
                 )
-            index_width = int(indices.shape[-1])
             if (
                 lengths is not None
                 and lengths.numel()
                 and bool((lengths < 0).any().item())
             ):
                 raise SchemaError(f"{prefix}_topk_length contains negative values")
-            max_length = (
-                int(lengths.max().item())
-                if lengths is not None and lengths.numel()
-                else 0
-            )
-            if lengths is not None and max_length > index_width:
-                raise SchemaError(
-                    f"{prefix}_topk_length max {max_length} exceeds sparse index width {index_width}"
-                )
+            # 保留超出索引宽度的原始长度，以验证 metadata 和内核的截断行为。
+            # 批次变换后也保留原值。
 
     @staticmethod
     def get_q_lengths(
