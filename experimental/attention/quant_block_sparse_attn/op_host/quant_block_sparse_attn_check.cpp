@@ -908,6 +908,11 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckMXFP8FullQuantShape() const
             }
             uint64_t stride = 1U;
             for (size_t i = shape.GetDimNum(); i > 0U; --i) {
+                // A singleton index is always zero; its stride cannot affect the
+                // dense addresses used by the kernel (e.g. BNSD with N == 1).
+                if (shape.GetDim(i - 1U) == 1) {
+                    continue;
+                }
                 if (static_cast<uint64_t>(input->stride->GetStride(i - 1U)) != stride) {
                     OP_LOGE(kOpName, "Padded Q/QScale must be contiguous");
                     return ge::GRAPH_FAILED;
