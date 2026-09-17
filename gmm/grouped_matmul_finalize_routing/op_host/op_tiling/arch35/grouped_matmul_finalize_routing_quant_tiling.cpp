@@ -30,6 +30,9 @@ namespace optiling {
 void GroupedMatmulFinalizeRoutingQuantTiling::Reset()
 {
     tilingData_ = GMMFinalizeRoutingTilingData();
+    scaleType_ = 0;
+    rowIndexType_ = 0;
+    logitType_ = 0;
     OP_CHECK_IF(memset_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(), 0,
                          context_->GetRawTilingData()->GetCapacity()) != EOK,
                 OP_LOGE(inputParams_.opName, "Fail to clear tiling data"), return);
@@ -192,6 +195,7 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckOptionalInputsForRouting()
     auto logitDesc = context_->GetOptionalInputDesc(LOGIT_INDEX);
     if (logitDesc != nullptr) {
         auto logitDtype = logitDesc->GetDataType();
+        logitType_ = static_cast<int8_t>(logitDtype == ge::DT_BF16);
         bool supportLogitDtype = logitDtype == ge::DT_FLOAT ||
                                  (IsMicroScaling() && inputParams_.cDtype == ge::DT_BF16 &&
                                   logitDtype == ge::DT_BF16);
@@ -601,7 +605,8 @@ int64_t GroupedMatmulFinalizeRoutingQuantTiling::LogQuantParams() const
 uint64_t GroupedMatmulFinalizeRoutingQuantTiling::GetTilingKey() const
 {
     return GET_TPL_TILING_KEY(static_cast<uint64_t>(inputParams_.transA), static_cast<uint64_t>(inputParams_.transB),
-                              static_cast<uint64_t>(scaleType_), static_cast<uint64_t>(rowIndexType_));
+                              static_cast<uint64_t>(scaleType_), static_cast<uint64_t>(rowIndexType_),
+                              static_cast<uint64_t>(logitType_));
 }
 
 ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::DoLibApiTiling()
