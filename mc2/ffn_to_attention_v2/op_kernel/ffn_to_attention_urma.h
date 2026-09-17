@@ -447,22 +447,21 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::B
     const bool dstInBounds = dstAddr >= tableBase && dstAddr <= tableEnd && copyBytes <= tableEnd - dstAddr;
     const bool srcInBounds = rankCountElements_ <= rankCounts.GetSize();
     constexpr uint32_t debugAivId = 46U;
-    if (aivId_ == debugAivId) {
-        PRINTF("[F2A count-copy] core=%u rank=%u ws=0x%lx offset=%lu bytes=%lu table=[0x%lx,0x%lx) "
-               "dst=[0x%lx,0x%lx) srcUB=0x%lx n=%u dstOK=%u srcOK=%u\n",
-               aivId_, rankId_, reinterpret_cast<uint64_t>(workspaceGMAddr_), addressTableWorkspaceOffset_,
-               addressTableWorkspaceBytes_, tableBase, tableEnd, dstAddr, dstAddr + copyBytes, srcUbAddr,
-               rankCountElements_, static_cast<uint32_t>(dstInBounds), static_cast<uint32_t>(srcInBounds));
-    }
+    PRINTF("[F2A count-copy] core=%u rank=%u ws=0x%lx offset=%lu bytes=%lu table=[0x%lx,0x%lx) "
+           "dst=[0x%lx,0x%lx) srcUB=0x%lx n=%u dstOK=%u srcOK=%u\n",
+           aivId_, rankId_, reinterpret_cast<uint64_t>(workspaceGMAddr_), addressTableWorkspaceOffset_,
+           addressTableWorkspaceBytes_, tableBase, tableEnd, dstAddr, dstAddr + copyBytes, srcUbAddr,
+           rankCountElements_, static_cast<uint32_t>(dstInBounds), static_cast<uint32_t>(srcInBounds));
+
     DataCopy(perCoreRankCounts, rankCounts, rankCountElements_);
     // DataCopy is asynchronous. This marker separates instruction issue from MTE completion/error reporting.
-    if (aivId_ == debugAivId) {
-        PRINTF("[F2A count-copy submitted] core=%u\n", aivId_);
-    }
+
+    PRINTF("[F2A count-copy submitted] core=%u\n", aivId_);
+
     SyncFunc<HardEvent::MTE3_S>();
-    if (aivId_ == debugAivId) {
-        PRINTF("[F2A count-copy completed] core=%u\n", aivId_);
-    }
+
+    PRINTF("[F2A count-copy completed] core=%u\n", aivId_);
+
     SyncAll<true>();
 
     // Every core independently sums the preceding core rows. Core 0 is not a centralized prefix calculator.
