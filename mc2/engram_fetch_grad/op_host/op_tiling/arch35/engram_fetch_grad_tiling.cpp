@@ -565,7 +565,7 @@ static ge::graphStatus SetPlatformInfo(gert::TilingContext *context, EngramFetch
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus SetTilingData(const gert::TilingContext *context, EngramFetchGradTilingData &tilingData,
+static ge::graphStatus SetTilingData(gert::TilingContext *context, EngramFetchGradTilingData &tilingData,
                                      int64_t numTokens, uint32_t rankSize, int64_t totalRecv, int64_t hiddenDim)
 {
     const char *nodeName = context->GetNodeName();
@@ -701,6 +701,45 @@ static ge::graphStatus SetTilingData(const gert::TilingContext *context, EngramF
         gradSubBatch = GRAD_SUB_BATCH_CAP;
     }
     tilingData.gradSubBatch = gradSubBatch;
+
+    tilingData.sortImpl = 1;
+    bool canDirectCopy = (tilingData.inputDtype == tilingData.outputDtype);
+    uint32_t castBytes = needCast ? (canDirectCopy ? fp32RowStride : Mc2Kernel::COMM_BUF_BYTES) : 0U;
+    uint32_t accumBytes = 2U * fp32RowStride;
+    uint32_t poolSize = Mc2Kernel::COMM_BUF_BYTES + castBytes + accumBytes;
+    if (needCast && !canDirectCopy) {
+        tilingData.sortImpl = 0; 
+        OP_LOGD(nodeName, "SortLib fallback: non-direct dtype path keeps legacy sort");
+    } else if (static_cast<uint64_t>(tilingData.ubSize) < permanentUb + poolSize + 5120U + 64U * 21U) {
+        tilingData.sortImpl = 0; // budget 连最小 tile(64 元素)都放不下
+        OP_LOGD(nodeName, "SortLib fallback: ub budget too small (ubSize=%llu, permanent=%llu, pool=%u)",
+                (unsigned long long)tilingData.ubSize, (unsigned long long)permanentUb, poolSize);
+    } else {
+        uint64_t budget = static_cast<uint64_t>(tilingData.ubSize) - permanentUb - poolSize;
+        tilingData.sortUbBudget = static_cast<uint32_t>(budget);
+        uint32_t numTile = static_cast<uint32_t>((totalRecv + tilingData.aivNum - 1) / tilingData.aivNum);
+        uint32_t ubCap = static_cast<uint32_t>((budget - 5120U) / 21U);
+        if (numTile < 64U) {    // 最小 tile 64
+            numTile = 64U;
+        }
+        if (numTile > ubCap) {
+            numTile = ubCap;
+        }
+        tilingData.sortNumTileData = numTile;
+        tilingData.sortTileCount = static_cast<uint32_t>((totalRecv + numTile - 1) / numTile);
+        tilingData.sortActiveCores =
+            (tilingData.sortTileCount < tilingData.aivNum) ? tilingData.sortTileCount : tilingData.aivNum;
+        tilingData.sortTmpUbSize = 512U + 7U * ((numTile + 31U) / 32U * 32U) + 256U;
+        OP_LOGD(nodeName, "SortLib params: numTile=%u tileCount=%u activeCores=%u tmpUb=%u budget=%u",
+                tilingData.sortNumTileData, tilingData.sortTileCount, tilingData.sortActiveCores,
+                tilingData.sortTmpUbSize, tilingData.sortUbBudget);
+    }
+    if (tilingData.sortImpl == 1) {
+        // 内部使用核间同步(SyncAll), 需 batchmode 独占核资源, 否则多流并发可能死锁
+        auto schedRet = context->SetScheduleMode(1);
+        OP_TILING_CHECK(schedRet != ge::GRAPH_SUCCESS, OP_LOGE(nodeName, "SetScheduleMode(1) failed"),
+                        return ge::GRAPH_FAILED);
+    }
     OP_LOGD(nodeName, "gradSubBatch=%u (hiddenBytes=%lld, hiddenDim=%lld, maxByPong=%u, maxByCast=%u, available=%u)",
             gradSubBatch, tilingData.hiddenBytes, tilingData.hiddenDim, maxByPong, maxByCast, availableForCast);
     OP_LOGD(nodeName, "permanentUb=%llu (status=%u, temp=%u, indices=%u)", permanentUb, statusBytes, tempBytes,
@@ -797,6 +836,24 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const EngramFe
     int64_t wsSortSimtStaging = static_cast<int64_t>(tilingData.aivNum) * simtStagingOneArea * 2;
     int64_t wsSortTotal = wsSortTempVal + wsSortTempIdx + wsSortCompanion + wsSortHist + wsSortPrefix + wsSortCoreSums +
                           wsSortOffsets + wsSortSimtStaging;
+
+    // 排序存储中间结果需要的workspace
+    if (tilingData.sortImpl == 1) {
+        constexpr int64_t kRadixRounds = 4; // sizeof(int32_t)
+        int64_t slSeg0 = AlignTo(256LL * kRadixRounds * 4LL, Mc2Kernel::UB_ALIGN);
+        int64_t slSeg1 = AlignTo(static_cast<int64_t>(tilingData.sortTileCount) * 256LL * kRadixRounds * 4LL,
+                                 Mc2Kernel::UB_ALIGN);
+        int64_t slSeg2 = AlignTo(totalRecv * 4LL, Mc2Kernel::UB_ALIGN);
+        int64_t slSeg3 = 2LL * AlignTo(static_cast<int64_t>(tilingData.sortTileCount) * 256LL * 2LL,
+                                       Mc2Kernel::UB_ALIGN);
+        int64_t slSeg4 = AlignTo(static_cast<int64_t>(tilingData.sortTileCount) * tilingData.sortNumTileData,
+                                 Mc2Kernel::UB_ALIGN);
+        int64_t slSeg5 = AlignTo(totalRecv * 4LL, Mc2Kernel::UB_ALIGN);
+        int64_t wsSortLib = slSeg0 + slSeg1 + slSeg2 + slSeg3 + slSeg4 + slSeg5;
+        if (wsSortLib > wsSortTotal) {
+            wsSortTotal = wsSortLib;
+        }
+    }
 
     int64_t wsTotal = wsGradSorted + wsRecvGrad + wsSdispls + wsRdispls + wsCounterScratch + wsFlagScratch +
                       wsSegCount + wsCoreStart + wsSortTotal;
