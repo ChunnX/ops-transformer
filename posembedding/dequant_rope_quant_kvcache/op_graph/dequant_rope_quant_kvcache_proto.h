@@ -61,6 +61,8 @@ parameter.
 * @li k_cache: A Tensor with shape (C_1, C_2, Nkv, D). The type support int8, format support ND.
 * @li v_cache: A Tensor with shape (C_1, C_2, Nkv, D). The type support int8, format support ND.
 */
+#ifndef OPS_PROTO_DEF_DEQUANTROPEQUANTKVCACHE
+#define OPS_PROTO_DEF_DEQUANTROPEQUANTKVCACHE
 REG_OP(DequantRopeQuantKvcache)
     .INPUT(x, TensorType({DT_FLOAT16, DT_BF16, DT_INT32}))
     .INPUT(cos, TensorType({DT_FLOAT16, DT_BF16}))
@@ -86,6 +88,7 @@ REG_OP(DequantRopeQuantKvcache)
     .ATTR(kv_output, Bool, false)
     .ATTR(cache_mode, String, "contiguous")
     .OP_END_FACTORY_REG(DequantRopeQuantKvcache)
+#endif // OPS_PROTO_DEF_DEQUANTROPEQUANTKVCACHE
 } // namespace ge
 
 #endif // OPS_OP_PROTO_INC_DEQUANT_ROPE_OPS_H_
