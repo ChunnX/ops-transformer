@@ -317,10 +317,8 @@ public:
                 vTailGm_.offsetCalculator.Init(constInfo_.n2Size, constInfo_.blockSize, constInfo_.dSizeV,
                                                vTailBttGm_, constInfo_.tailMaxBlockNum);
             }
-        } else if constexpr (KV_NEEDS_WZH) {
-            // [TND] v_tail(B,N2,64,D)连续BNSD — 与主V同款parser寻址(s2行号=尾窗口内相对行)
-            vTailGm_.offsetCalculator.Init(constInfo_.n2Size, constInfo_.dSizeV, *this->kvSeqParserPtr_);
         }
+        // [PA专属] 非PA(TND等)不支持v_tail(checker入口拒绝), 无需初始化
     }
 
     __aicore__ inline void InitQBuffer(uint32_t batchSize, uint32_t n2Size, uint32_t gSize, uint32_t qSeqSize,

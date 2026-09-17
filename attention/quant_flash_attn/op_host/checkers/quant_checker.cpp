@@ -967,13 +967,17 @@ ge::graphStatus QuantChecker::CheckVTailFeature(const QfaTilingInfo &qfaInfo) co
             "v_tail is only supported in MxFP8 scenario (quant_mode=1)");
         return ge::GRAPH_FAILED;
     }
-    // [二期] PREFILL(DN)已支持v_tail: 方案A全程DN范式(VF DnMxfp8 bf16直出+A尾区行主序),
-    // 无范式切换(方案B的ND范式死锁已规避)
-    // v_tail布局契约(二期固化): v_tail恒BNSD行主序, 与kv_layout无关 —
-    //   PA场景: (Bn, N2, Bs=block_size, D)块结构 + block_table_tail必选;
-    //   TND场景: (B, N2, 64, D)直存(尾窗<64固定容量, batch间无前缀耦合), block_table_tail可空。
-    // 依据: 主cache尾段置零(真值只在v_tail), v_tail是写入路径的bf16原值暂存而非cache切片。
-    // 防呆线: BBND同构误传(Bn,Bs,N,D)被dim1(N2)校验拦截; NZ同构误传5维被dimNum校验拦截。
+    // [PA专属] 尾块高精窗口仅支持PA(paged KV cache)场景, 非PA(TND等连续布局)不支持:
+    // 生产KV cache全为PA布局, v_tail是写入路径按cache块剥离的尾块暂存
+    OP_CHECK_IF(!qfaInfo.pageAttentionFlag,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    qfaInfo.opName, "layout_kv", QfaLayoutToSerialString(qfaInfo.kvLayout).c_str(),
+                    "v_tail is only supported in PA scenario (paged KV cache layout)"),
+                return ge::GRAPH_FAILED);
+    // [契约] v_tail与主KV cache同布局(kv_layout) — 尾块从cache剥离直存:
+    //   PA_BNBD(BnNBsD): (Bn, N2, Bs, D) / PA_BBND(BnBsND): (Bn, Bs, N2, D)
+    //   PA_NZ: (Bn, N2, D/16, Bs, 16)(bf16的32B分形内径=16); block_table_tail必选。
+    // 依据: 主cache尾段置零(真值只在v_tail), v_tail是写入路径的bf16原值暂存。
     // v_tail仅支持qk/v head dim∈{64,72,128,256}(与kernel config矩阵一致):
     // 尾列P直出bf16路径按s2BaseSizeCur∈{128,256}的config设计, D=72依赖B尾块N轴pad兜底
     auto vtailDimOk = [](int64_t d) { return d == 64 || d == 72 || d == 128 || d == 256; };
@@ -1073,14 +1077,12 @@ ge::graphStatus QuantChecker::CheckVTailShape(const QfaTilingInfo &qfaInfo) cons
                             qfaInfo.opName, V_TAIL_NAME.c_str(), (std::to_string(vTailDimNum) + "D").c_str(),
                             "The shape dim of v_tail must be 4D matching main v cache layout"),
                         return ge::GRAPH_FAILED);
-            // dim1/dim2按布局: BnNBsD=(N2,Bs), BnBsND=(Bs,N2), TND=(N2,64)
+            // dim1/dim2按布局: BnNBsD=(N2,Bs), BnBsND=(Bs,N2) — 非PA已在入口拒绝
             uint32_t expectedDim1 = qfaInfo.n2Size;
-            uint32_t expectedDim2 = 64U;
+            uint32_t expectedDim2 = static_cast<uint32_t>(qfaInfo.blockSize);
             if (qfaInfo.kvLayout == QfaLayout::PA_BBND) {
                 expectedDim1 = static_cast<uint32_t>(qfaInfo.blockSize);
                 expectedDim2 = qfaInfo.n2Size;
-            } else if (qfaInfo.kvLayout == QfaLayout::PA_BNBD) {
-                expectedDim2 = static_cast<uint32_t>(qfaInfo.blockSize);
             }
             OP_CHECK_IF(vTail->GetStorageShape().GetDim(1) != expectedDim1 ||
                             vTail->GetStorageShape().GetDim(2) != expectedDim2,
