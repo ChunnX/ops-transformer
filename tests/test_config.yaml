@@ -1358,6 +1358,25 @@ moe:
     options:
       - moe_token_unpermute_with_routing_map_grad
 
+  moe_tutel_combine_gates:
+    module: True
+    src:
+      - moe/moe_tutel_combine_gates
+    exclude:
+      - moe/moe_tutel_combine_gates/docs
+      - moe/moe_tutel_combine_gates/README.md
+    ut_cov_exclude:
+      - moe/moe_tutel_combine_gates/docs
+      - moe/moe_tutel_combine_gates/examples
+      - moe/moe_tutel_combine_gates/tests
+      - moe/moe_tutel_combine_gates/op_graph
+      - moe/moe_tutel_combine_gates/op_kernel
+    test:
+      examples: True
+      ut: True
+    options:
+      - moe_tutel_combine_gates
+
 posembedding:
   apply_rotary_pos_emb:
     module: True
