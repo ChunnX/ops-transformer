@@ -33,7 +33,10 @@ __aicore__ inline uint32_t RoundUpAlign(uint32_t x, uint32_t block)
     return (x + block - 1U) / block * block;
 }
 
-__aicore__ inline uint32_t RoundUpAlign(uint32_t x) { return RoundUpAlign(x, UB_ALIGN_BYTES); }
+__aicore__ inline uint32_t RoundUpAlign(uint32_t x)
+{
+    return RoundUpAlign(x, UB_ALIGN_BYTES);
+}
 
 template <typename T>
 struct DoubleBufferSimd {
@@ -47,14 +50,26 @@ struct DoubleBufferSimd {
         doubleBuffer_[0] = currentBuffer;
         doubleBuffer_[1] = alternateBuffer;
     }
-    __aicore__ inline AscendC::GlobalTensor<T> Current() const { return doubleBuffer_[selector_]; }
-    __aicore__ inline AscendC::GlobalTensor<T> Alternate() const { return doubleBuffer_[selector_ ^ 1]; }
-    __aicore__ inline void UpdateSelect() { selector_ ^= 1; }
-    __aicore__ inline void Swap() { selector_ ^= 1; }
+    __aicore__ inline AscendC::GlobalTensor<T> Current() const
+    {
+        return doubleBuffer_[selector_];
+    }
+    __aicore__ inline AscendC::GlobalTensor<T> Alternate() const
+    {
+        return doubleBuffer_[selector_ ^ 1];
+    }
+    __aicore__ inline void UpdateSelect()
+    {
+        selector_ ^= 1;
+    }
+    __aicore__ inline void Swap()
+    {
+        selector_ ^= 1;
+    }
 };
 
 template <typename T>
-__aicore__ inline void CopyGmToUb(AscendC::GlobalTensor<T> src, AscendC::LocalTensor<T>& dst, uint64_t srcOffset,
+__aicore__ inline void CopyGmToUb(AscendC::GlobalTensor<T> src, AscendC::LocalTensor<T> &dst, uint64_t srcOffset,
                                   uint32_t count)
 {
     AscendC::DataCopyPadExtParams<T> padParams{false, 0, 0, 0};
@@ -67,7 +82,7 @@ __aicore__ inline void CopyGmToUb(AscendC::GlobalTensor<T> src, AscendC::LocalTe
 }
 
 template <typename T>
-__aicore__ inline void CopyUbToGm(AscendC::GlobalTensor<T> dst, AscendC::LocalTensor<T>& src, uint64_t dstOffset,
+__aicore__ inline void CopyUbToGm(AscendC::GlobalTensor<T> dst, AscendC::LocalTensor<T> &src, uint64_t dstOffset,
                                   uint32_t count)
 {
     AscendC::DataCopyExtParams params;
@@ -87,7 +102,7 @@ __aicore__ inline void SyncEvent()
 }
 
 template <typename T>
-__aicore__ inline void FillZeros(AscendC::GlobalTensor<T>& gm, uint64_t totalCount, uint32_t realCoreNum)
+__aicore__ inline void FillZeros(AscendC::GlobalTensor<T> &gm, uint64_t totalCount, uint32_t realCoreNum)
 {
     uint64_t minElem = FILL_MIN_BYTES / sizeof(T);
 
