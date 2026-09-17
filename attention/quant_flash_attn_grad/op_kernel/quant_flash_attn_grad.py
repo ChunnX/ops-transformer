@@ -2325,7 +2325,7 @@ def iterate_p_ds(p_l1_bit8, ds_l1_bit8, sdp_id, const_info, run_info, tensor_inf
     pl.set_validshape(lse_vec, [1, current_real_s1])
     pl.set_validshape(d_vec, [1, current_real_s1])
 
-    attn_vec = tensor_info.attn_vec.current()
+    attn_vec = tensor_info.attn_vec.next()
     attn_pre_vec = tensor_info.attn_pre_vec.current()
     if has_attn_mask:
         delta = cal_atten_mask_offset(run_info, const_info)
@@ -3973,15 +3973,15 @@ def quant_flash_attn_grad(
         type=pl.TileType(
             shape=[128, 64], dtype=pl.DT_INT8, target_memory=pl.MemorySpace.Vec
         ),
-        addrs=[VA4 + 512 * 10],
-        mutex_ids=[19],
+        addrs=[VA4 + 512 * 10, VA4 + 512 * 26],
+        mutex_ids=[19, 21],
     )
     # band需要pre/next两条边界, 各自从同一张压缩mask取一块, 仅sparse_type=4会真正搬运
     attn_pre_vec = pl.make_tile_group(
         type=pl.TileType(
             shape=[128, 64], dtype=pl.DT_INT8, target_memory=pl.MemorySpace.Vec
         ),
-        addrs=[VA4 + 512 * 26],
+        addrs=[VA4 + 512 * 42],
         mutex_ids=[20],
     )
     with pl.section_vector():
