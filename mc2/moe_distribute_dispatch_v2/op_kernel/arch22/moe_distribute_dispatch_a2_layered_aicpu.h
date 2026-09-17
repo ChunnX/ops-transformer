@@ -1210,8 +1210,9 @@ __aicore__ inline void MoeDistributeDispatchA2LayeredAicpu<TemplateMC2TypeA2laye
     // tBuf 内存分配
     // 4k ~ 6k 保存按expert统计的token个数信息
     LocalTensor<int64_t> tokenCntByExpUB = tBuf.GetWithOffset<int64_t>(2 * 1024 / sizeof(int64_t), 4 * 1024);
-    // 6k ~ 8k 保存token个数统计信息
-    LocalTensor<int32_t> tokenCntUB = tBuf.GetWithOffset<int32_t>(2 * 1024 / sizeof(int32_t), 6 * 1024);
+    // 6k ~ 14k 保存token个数统计信息(稀疏布局, 每个entry占EXP_TOKEN_COUNT_FLAG_CNT个int32)
+    LocalTensor<int32_t> tokenCntUB = tBuf.GetWithOffset<int32_t>(
+        serverNum * SERVER_RANK_SIZE * localMoeExpertNum_ * EXP_TOKEN_COUNT_FLAG_CNT, 6 * 1024);
     // 2k ~ 4k 保存权重信息
     LocalTensor<float> weightLt = tBuf.GetWithOffset<float>(2 * 1024 / sizeof(float), 2 * 1024);
 
