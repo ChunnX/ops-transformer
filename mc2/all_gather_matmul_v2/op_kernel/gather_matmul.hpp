@@ -28,6 +28,8 @@
 #include "block_mmad_preload_fixpipe.h"
 #include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tla_gemm_tile_copy.hpp"
 #include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tla_gemm_tile_mmad.hpp"
+#include "../../common/op_kernel/mc2_aiv_sync_common.h"
+#include "../../common/op_kernel/mc2_matmul_aiv_kernel_common.h"
 
 using namespace AscendC;
 
@@ -150,7 +152,7 @@ public:
     {
         uint32_t kIdx = 0;
         int64_t mIdx, nIdx;
-        GetBlockIdx(loopOffset, mLoop, nLoop, swizzlDirect, swizzlCount, mIdx, nIdx);
+        Mc2MatmulAiv::GetSwizzledBlockIdx(loopOffset, mLoop, nLoop, swizzlDirect, swizzlCount, mIdx, nIdx);
         return GemmCoord{static_cast<uint32_t>(mIdx), static_cast<uint32_t>(nIdx), kIdx}; // idx在uint32_t范围内
     }
 
@@ -399,7 +401,7 @@ public:
                                  gmANextIn[info.gmOffsetNextA], gmBInt8[info.gmOffsetNextB], info.blockSizeCoord,
                                  info.nextBlockSizeCoord, info.isFirstBlock, info.hasNextBlock);
             }
-            FFTSCrossCoreSync<PIPE_FIX, 2>(ctx.flagIdx);
+            Mc2AivSync::FFTSCrossCoreSync<PIPE_FIX, 2>(ctx.flagIdx);
         }
     }
 
@@ -424,7 +426,7 @@ public:
                           gmDst[info.gmOffsetC], params.layoutC, gmAInNext[info.gmOffsetNextA], gmB[info.gmOffsetNextB],
                           info.blockSizeCoord, info.nextBlockSizeCoord, info.isFirstBlock, info.hasNextBlock);
             }
-            FFTSCrossCoreSync<PIPE_FIX, 2>(ctx.flagIdx);
+            Mc2AivSync::FFTSCrossCoreSync<PIPE_FIX, 2>(ctx.flagIdx);
         }
     }
 
