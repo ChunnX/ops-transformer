@@ -20,8 +20,8 @@
 #include "tiling_common/qbsa_op_contract.h"
 
 namespace optiling {
-// Keep the registered buffer compatible with the existing 344-byte QBSA ABI.
-// Mode-specific payloads share storage and must fit inside this reserved capacity.
+// This is reserved buffer capacity, not compatibility with an older tiling layout.
+// Host and Kernel must be rebuilt together from the shared tiling data header.
 constexpr std::size_t QBSA_REGISTERED_TILING_DATA_CAPACITY = 344U;
 static_assert(sizeof(QuantBlockSparseAttnTilingData) <= QBSA_REGISTERED_TILING_DATA_CAPACITY,
               "QBSA tiling data exceeds its registered runtime capacity");

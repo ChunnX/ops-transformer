@@ -26,6 +26,9 @@ constexpr uint32_t QBSA_CORE_SPLIT_NUM = QBSA_MAX_CORE_NUM + 1U;
 constexpr uint8_t MX_PSCALE_DTYPE_E8M0 = 0U;
 constexpr uint8_t MX_PSCALE_DTYPE_FP32 = 1U;
 
+// Host and Kernel exchange raw bytes. Do not inherit packing from SDK/generated headers.
+#pragma pack(push, 8)
+
 struct QuantBlockSparseAttnBaseParams {
     uint32_t bSize;
     uint32_t t1Size;
@@ -118,6 +121,23 @@ struct QuantBlockSparseAttnTilingData {
         QuantBlockSparseAttnMxParams mxParams;
     };
 };
+
+#pragma pack(pop)
+
+// Fixed wire offsets must agree in both compilers; equal total sizes alone are insufficient.
+static_assert(sizeof(QuantBlockSparseAttnCommonParams) == 120U, "QBSA common tiling ABI changed");
+static_assert(offsetof(QuantBlockSparseAttnCommonParams, paParams) == 36U, "QBSA PA tiling offset changed");
+static_assert(offsetof(QuantBlockSparseAttnCommonParams, sparseParams) == 68U, "QBSA sparse tiling offset changed");
+static_assert(offsetof(QuantBlockSparseAttnCommonParams, maskParams) == 80U, "QBSA mask tiling offset changed");
+static_assert(offsetof(QuantBlockSparseAttnCommonParams, outputParams) == 104U, "QBSA output tiling offset changed");
+static_assert(sizeof(QuantBlockSparseAttnFp8Params) == 184U, "QBSA FP8 tiling ABI changed");
+static_assert(sizeof(QuantBlockSparseAttnMxParams) == 96U, "QBSA MXFP8 tiling ABI changed");
+static_assert(offsetof(QuantBlockSparseAttnTilingData, fp8Params) == 120U, "QBSA FP8 tiling offset changed");
+static_assert(offsetof(QuantBlockSparseAttnTilingData, mxParams) == 120U, "QBSA MXFP8 tiling offset changed");
+static_assert(offsetof(QuantBlockSparseAttnMxParams, kScaleStrides) == 32U, "QBSA K scale offset changed");
+static_assert(offsetof(QuantBlockSparseAttnMxParams, vScaleStrides) == 48U, "QBSA V scale offset changed");
+static_assert(offsetof(QuantBlockSparseAttnMxParams, scaleLastDim) == 68U, "QBSA scale last dimension offset changed");
+static_assert(sizeof(QuantBlockSparseAttnTilingData) == 304U, "QBSA tiling wire size changed");
 
 constexpr std::size_t QBSA_MODE_PARAMS_SIZE = sizeof(QuantBlockSparseAttnFp8Params) >
                                                       sizeof(QuantBlockSparseAttnMxParams) ?

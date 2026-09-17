@@ -101,5 +101,8 @@ void QbsaTilingStrategy::PrintTilingData() const
             tilingInfo_.kvBlockSizeVal, tilingInfo_.paBlockSizeVal, tilingInfo_.paBlockStrideVal);
     OP_LOGD(kOpName, "usedCoreNum:%u, totalTaskNum:%lu, tilingKey:%lu, tilingDataSize:%lu", usedCoreNum_, totalTaskNum_,
             tilingKey_, sizeof(tilingData_));
+    OP_LOGD(kOpName, "tilingDataCapacity:%lu, commonParamsSize:%lu, fp8ParamsOffset:%lu, mxParamsOffset:%lu",
+            context_->GetRawTilingData()->GetCapacity(), sizeof(QuantBlockSparseAttnCommonParams),
+            offsetof(QuantBlockSparseAttnTilingData, fp8Params), offsetof(QuantBlockSparseAttnTilingData, mxParams));
 }
 } // namespace optiling

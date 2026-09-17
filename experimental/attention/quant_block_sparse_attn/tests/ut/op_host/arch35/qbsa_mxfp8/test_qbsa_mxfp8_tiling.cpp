@@ -39,7 +39,12 @@ TEST_P(QbsaMxfp8Arch35TilingTest, Tiling)
     ExpectQbsaCommonTilingData(param, tilingInfo, data);
     EXPECT_EQ(data.mxParams.scaleGroupSize, 64U);
     EXPECT_EQ(data.mxParams.scaleLastDim, 2U);
-    EXPECT_EQ(data.fp8Params.needInit, 0U);
+    // Only the MXFP8 union member is active for quant_mode=2.
+    EXPECT_EQ(data.mxParams.queryScaleDSize, 2U);
+    EXPECT_EQ(data.mxParams.keyScaleDSize, 2U);
+    EXPECT_EQ(data.mxParams.kScaleStrides.n2Stride, static_cast<uint64_t>(data.commonParams.paParams.blockSize) * 4U);
+    EXPECT_EQ(data.mxParams.vScaleStrides.n2Stride,
+              static_cast<uint64_t>(data.commonParams.paParams.blockSize) / 64U * 128U * 2U);
 }
 
 INSTANTIATE_TEST_SUITE_P(
