@@ -523,10 +523,6 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::GetBaseShapeInfo()
     }
 
     int64_t cmpRatio = *cmpRatioPtr;
-    if (!(cmpRatio >= 1 && cmpRatio <= 128)) {
-        OP_LOGE(context_, "SparseFlashMlaGrad only support cmpRatio >= 1 and <=128, but got cmpRatio=%ld.", cmpRatio);
-        return ge::GRAPH_FAILED;
-    }
 
     int64_t oriWinLeft = *oriWinLeftPtr;
     int64_t oriWinRight = *oriWinRightPtr;
@@ -597,6 +593,21 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::GetBaseShapeInfo()
         tmpData.mode = SMLAG_SWA_MODE;
     } else {
         tmpData.mode = SMLAG_CFA_MODE;
+    }
+
+    if (tmpData.mode == SMLAG_SWA_MODE) {
+        if (!(cmpRatio >= 0 && cmpRatio <= 128)) {
+            OP_LOGE(context_,
+                    "SparseFlashMlaGrad SWA only support cmpRatio >= 0 and <=128, but got cmpRatio=%ld.", cmpRatio);
+            return ge::GRAPH_FAILED;
+        }
+    } else {
+        if (!(cmpRatio >= 1 && cmpRatio <= 128)) {
+            OP_LOGE(context_,
+                    "SparseFlashMlaGrad CFA/SCFA only support cmpRatio >= 1 and <=128, but got cmpRatio=%ld.",
+                    cmpRatio);
+            return ge::GRAPH_FAILED;
+        }
     }
 
     if (tmpData.mode == SMLAG_CFA_MODE || tmpData.mode == SMLAG_SCFA_MODE) {
