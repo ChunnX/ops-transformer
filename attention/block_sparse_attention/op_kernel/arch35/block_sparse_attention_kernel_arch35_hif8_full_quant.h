@@ -596,12 +596,15 @@ public:
         // Value
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID3);
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID4);
-        // L0A: 2 outer x 2 micro = 4 片
+        // L0A: 2 outer x 2 micro = 4 片。Plan C 下 MM1 稳态占 0/1 (g=1 那次走 2/3),
+        // MM2 整块占 2 —— id 2 由 g=1 的 MM1 交接给 MM2, 两边握手序刚好接上。
         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID0);
         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID1);
         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID2);
         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID3);
-        // L0B: MM1 的 Q 用 4/6, MM2 的 V 用 4..7 —— 一起让满 4..7
+        // L0B: MM1 的 Q 用 4 (g=1 那次 6), MM2 的 V 整块占 6 —— 同样在 6 上交接。
+        // Plan C 下 5/7 不再被任何人取用, 这里仍种满 4..7: 多个没人等的旗标是安全的,
+        // 少一个会被等的旗标则直接死锁, 所以宁多勿少。
         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID4);
         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID5);
         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID6);
