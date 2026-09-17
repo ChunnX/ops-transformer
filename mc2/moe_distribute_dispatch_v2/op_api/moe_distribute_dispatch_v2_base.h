@@ -53,7 +53,8 @@ ACLNN_API aclnnStatus aclnnMoeDistributeDispatchBase(void *workspace, uint64_t w
 ACLNN_API aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
     const aclTensor *x, const aclTensor *expertIds, const aclTensor *scalesOptional,
     const aclTensor *xActiveMaskOptional, const aclTensor *expertScalesOptional, const aclTensor *elasticInfoOptional,
-    const aclTensor *performanceInfoOptional, const char *groupEp, int64_t epWorldSize, int64_t epRankId,
+    const aclTensor *performanceInfoOptional, const aclTensor *timerBufferOptional, const char *groupEp,
+    int64_t epWorldSize, int64_t epRankId,
     int64_t moeExpertNum, const char *groupTp, int64_t tpWorldSize, int64_t tpRankId, int64_t expertShardType,
     int64_t sharedExpertNum, int64_t sharedExpertRankNum, int64_t quantMode, int64_t globalBs,
     int64_t expertTokenNumsType, const char *commAlg, int64_t zeroExpertNum, int64_t copyExpertNum,

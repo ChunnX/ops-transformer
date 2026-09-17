@@ -19,15 +19,18 @@ if (BUILD_OPEN_PROJECT)  # custom
         OPTYPE moe_distribute_dispatch_v2 ACLNNTYPE aclnn_inner)
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
     set(MC2_OPT ON PARENT_SCOPE)
-    set(moe_distribute_dispatch_v2_depends mc2/common mc2/3rd PARENT_SCOPE)
-    set(moe_distribute_dispatch_v2_a3_depends mc2/common mc2/3rd PARENT_SCOPE)
-    set(moe_distribute_dispatch_v2_a2_depends mc2/common mc2/3rd PARENT_SCOPE)
-    set(moe_distribute_dispatch_v2_apt_depends mc2/common mc2/3rd PARENT_SCOPE)
+    set(moe_distribute_dispatch_v2_depends mc2/common mc2/3rd mc2/tools PARENT_SCOPE)
+    set(moe_distribute_dispatch_v2_a3_depends mc2/common mc2/3rd mc2/tools PARENT_SCOPE)
+    set(moe_distribute_dispatch_v2_a2_depends mc2/common mc2/3rd mc2/tools PARENT_SCOPE)
+    set(moe_distribute_dispatch_v2_apt_depends mc2/common mc2/3rd mc2/tools PARENT_SCOPE)
 
     # --cce-auto-sync=off：指定CCE编译器是否自动执行线程间或模块间的同步操作
+    # -DENABLE_TIMER：打点开关（kernel 侧宏注入走 add_ops_compile_options，
+    #   不要用 build.sh --bisheng_flags 透传——ascendc_bin_param_build.py 不认 -D 参数；
+    #   正式性能测数时删掉 -DENABLE_TIMER 重编）
     add_ops_compile_options(
         OP_NAME MoeDistributeDispatchV2
-        OPTIONS --cce-auto-sync=off
+        OPTIONS --cce-auto-sync=off -DENABLE_TIMER
     )
 else() # 回黄host
     add_mc2_modules_sources(OPTYPE moe_distribute_dispatch_v2 ACLNNTYPE aclnn_inner)

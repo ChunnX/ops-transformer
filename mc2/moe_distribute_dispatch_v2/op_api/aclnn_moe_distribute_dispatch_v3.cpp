@@ -38,8 +38,8 @@ aclnnStatus aclnnMoeDistributeDispatchV3GetWorkspaceSize(
 {
     OP_LOGD("aclnn_dispatch v3 WorkspaceSize start");
     aclnnStatus getWorkspaceSizesRes = aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
-        x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional, elasticInfoOptional, nullptr, groupEp,
-        epWorldSize, epRankId, moeExpertNum, groupTp, tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
+        x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional, elasticInfoOptional, nullptr, nullptr,
+        groupEp, epWorldSize, epRankId, moeExpertNum, groupTp, tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
         sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType, commAlg, zeroExpertNum, copyExpertNum,
         constExpertNum, expandXOut, dynamicScalesOut, assistInfoForCombineOut, expertTokenNumsOut, epRecvCountsOut,
         tpRecvCountsOut, expandScalesOut, workspaceSize, executor);

@@ -34,6 +34,13 @@ public:
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         Mc2OpDef::DefineDispatchOptionalInputs(*this);
+        // CocTimer 打点缓冲区：可选输入，位于最后一个业务可选输入之后、所有输出之前
+        // kernel 侧签名顺序必须与此保持一致（见 arch22/..._a3.cpp / full_mesh.h）
+        this->Input("timer_buffer")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT64})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
         DefineOutputs();
         DefineAttributes();
 
