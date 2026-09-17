@@ -269,12 +269,10 @@ protected:
 
             if (tilingImpl.DoTiling(vecCoreNum, ubSize, vecRegLen, tilingData_.mNonZeroTilingData) !=
                 ge::GRAPH_SUCCESS) {
-                // NonZero tiling 不支持该 shape 时回退到 master 的经典遍历路径，避免功能回退
-                OP_LOGW(context_->GetNodeName(), "Tiling4NonZero do tiling failed, fallback to classic path.");
-                useNonZeroIndex_ = false;
-            } else {
-                useNonZeroIndex_ = true;
+                OP_LOGE(context_->GetNodeName(), "Tiling4NonZero do tiling failed, unsupported shape.");
+                return ge::GRAPH_FAILED;
             }
+            needNonZeroWorkspace_ = true;
         }
 
         tilingData_.set_BlockX(blockShapeX_);
@@ -324,13 +322,30 @@ protected:
 
         tilingData_.set_dqSize(dq_size);
         tilingData_.set_dkSize(dk_size);
-        if (useNonZeroIndex_) {
+        if (needNonZeroWorkspace_) {
+            // index workspace：存放 NonZero 预 kernel 输出的有效 block 下标（数量上界 = mask 元素个数）
             uint64_t block_sparse_mask_size =
                 static_cast<uint64_t>(batch_num_) * q_head_num_ * x_block_num_ * y_block_num_;
+            auto maskShape = context_->GetInputShape(6);
+            if (maskShape != nullptr) {
+                const gert::Shape &shape = maskShape->GetStorageShape();
+                uint64_t maskElemNum = 1;
+                for (size_t i = 0; i < shape.GetDimNum(); i++) {
+                    maskElemNum *= static_cast<uint64_t>(shape.GetDim(i));
+                }
+                block_sparse_mask_size = maskElemNum;
+            }
             tilingData_.set_indexWorkspaceOffset(usr_workspace_offset);
-            usr_workspace_offset += block_sparse_mask_size * sizeof(int32_t);
+            // 按 512B 对齐：index shape workspace 会被主 kernel 以 uint64 标量读取（必须 8B 对齐），
+            // 而 mask 元素个数很少时（例如整个 mask 只有 1 个 block）本段只有 4B，不补齐会触发标量非对齐异常。
+            usr_workspace_offset += AlignTo(static_cast<int64_t>(block_sparse_mask_size) * sizeof(int32_t), 512);
+            // index shape workspace：NonZero 输出的 [dim, dims, count]
             tilingData_.set_indexShapeWorkspaceOffset(usr_workspace_offset);
-            usr_workspace_offset += 512;
+            usr_workspace_offset += NON_ZERO_SHAPE_WORKSPACE_SIZE;
+            // NonZero 预 kernel 的分核计数 workspace：每个 AIV 核 128B
+            uint64_t vecCoreNum = ascendcPlatform.GetCoreNumAiv();
+            tilingData_.set_nonZeroWorkspaceOffset(usr_workspace_offset);
+            usr_workspace_offset += AlignTo(static_cast<int64_t>(vecCoreNum) * NON_ZERO_COUNT_BYTES_PER_CORE, 512);
         }
         tilingData_.set_sftgWorkspaceOffset(usr_workspace_offset);
         usr_workspace_offset += sftg_size * sizeof(float);
@@ -368,13 +383,10 @@ protected:
          *  1011: FP16 BNSD DET
          *  1100: BF16 TND  DET
          *  1101: FP16 TND  DET
-         *  1020: FP16 BNSD NonZero-index (host 预生成 block index，非确定性)
+         *
+         *  说明：非确定性 key（0000~0101）在 host 侧预生成 block index、
+         *  kernel 侧按 index 遍历有效块（NonZero 路径），不再读 blockSparseMask 判块。
          */
-        // NonZero index 路径使用独立 tiling key，保证其余 key 与 master 行为完全一致
-        if (useNonZeroIndex_) {
-            return 1020;
-        }
-
         default_key = (dataType_ == ge::DT_BF16) ? default_key : default_key + 0b001;
 
         if (strcmp(layout_, BSND_STR) == 0) {
@@ -393,14 +405,18 @@ protected:
     }
 
 private:
-    // 仅 FP16 + BNSD + 非确定 这一路走 host 预生成 block index 的 NonZero 优化路径
+    // 非确定性路径统一使用 host 预生成 block index 的 NonZero 遍历；
+    // 确定性路径（latin 轮次遍历）仍需 kernel 内读 mask，保持原实现不变。
     bool UseNonZeroIndex() const
     {
-        return dataType_ == ge::DT_FLOAT16 && strcmp(layout_, BNSD_STR) == 0 && !deterministic_;
+        return !deterministic_;
     }
 
-    // NonZero tiling 是否真正生效（tiling 失败时回退到 master 经典路径）
-    bool useNonZeroIndex_ = false;
+    // 是否需要 NonZero 相关的 workspace（index / index shape / 分核计数）
+    bool needNonZeroWorkspace_ = false;
+
+    static constexpr uint64_t NON_ZERO_SHAPE_WORKSPACE_SIZE = 512; // NonZero 输出 shape 占用 24B，留 512B
+    static constexpr uint64_t NON_ZERO_COUNT_BYTES_PER_CORE = 128; // 每个 AIV 在计数 workspace 占 128B
 
     const char *layout_;
     ge::DataType dataType_;

@@ -64,6 +64,7 @@ TILING_DATA_FIELD_DEF(uint64_t, dqSize);
 TILING_DATA_FIELD_DEF(uint64_t, dkSize);
 TILING_DATA_FIELD_DEF(uint64_t, indexWorkspaceOffset);
 TILING_DATA_FIELD_DEF(uint64_t, indexShapeWorkspaceOffset);
+TILING_DATA_FIELD_DEF(uint64_t, nonZeroWorkspaceOffset);
 TILING_DATA_FIELD_DEF(uint64_t, sftgWorkspaceOffset);
 TILING_DATA_FIELD_DEF(uint64_t, dqWorkspaceOffset);
 TILING_DATA_FIELD_DEF(uint64_t, dkWorkspaceOffset);
@@ -152,7 +153,6 @@ REGISTER_TILING_DATA_CLASS(BlockSparseAttentionGrad_1010, BlockSparseAttentionGr
 REGISTER_TILING_DATA_CLASS(BlockSparseAttentionGrad_1011, BlockSparseAttentionGradTilingDataArch35)
 REGISTER_TILING_DATA_CLASS(BlockSparseAttentionGrad_1012, BlockSparseAttentionGradTilingDataArch35)
 REGISTER_TILING_DATA_CLASS(BlockSparseAttentionGrad_1013, BlockSparseAttentionGradTilingDataArch35)
-REGISTER_TILING_DATA_CLASS(BlockSparseAttentionGrad_1020, BlockSparseAttentionGradTilingDataArch35)
 // BlockSparseAttentionGrad编译信息
 struct BlockSparseAttentionGradCompileInfo {
     uint32_t inputDataByte = 2;

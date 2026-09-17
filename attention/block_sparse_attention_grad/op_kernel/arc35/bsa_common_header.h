@@ -180,54 +180,6 @@ __aicore__ inline bool IsValidBlock(const ConstInfo &const_info, const int64_t b
     return is_valid;
 }
 
-__aicore__ inline bool IsValidBlock(const uint64_t (&mask_uint64)[2], const uint32_t pos)
-
-{
-    uint64_t mask_list = pos < 8 ? mask_uint64[0] : mask_uint64[1];
-    uint32_t idx = pos < 8 ? pos : pos - 8;
-    uint8_t byte = (uint8_t)(mask_list >> (idx * 8));
-    return byte;
-}
-
-__aicore__ inline bool IsValidBlockUint64(const ConstInfo &const_info, const int32_t batch_idx, const int32_t n1_idx,
-                                          const int32_t q_block_idx, const int32_t kv_block_idx,
-                                          __gm__ uint8_t *block_sparse_mask, uint32_t &first_one_pos,
-                                          bool hit_core_block, bool last_loop, uint64_t (&mask_uint64)[2])
-
-{
-    bool is_valid = false;
-    int64_t offset = batch_idx * (const_info.q_head_num * const_info.q_block_num * const_info.kv_block_num) +
-                     n1_idx * (const_info.q_block_num * const_info.kv_block_num) +
-                     kv_block_idx * const_info.q_block_num + q_block_idx;
-    offset = offset / 8;
-    uint64_t mask_list = ((__gm__ uint64_t *)block_sparse_mask)[offset];
-
-    if (mask_list == 0) {
-        return false;
-    }
-
-    if (!hit_core_block) {
-        return true;
-    }
-
-    for (int i = 0; i < 8; ++i) {
-        uint8_t byte = (uint8_t)(mask_list >> (i * 8));
-        if (byte == 1) {
-            is_valid = true;
-            first_one_pos = i;
-            mask_uint64[0] = mask_list;
-            if (!last_loop) {
-                mask_uint64[1] = ((__gm__ uint64_t *)block_sparse_mask)[offset + 1];
-            } else {
-                mask_uint64[1] = 0;
-            }
-            break;
-        }
-    }
-
-    return is_valid;
-}
-
 __aicore__ inline int32_t GetBlockLen(int32_t start_idx, int32_t end_idx, int32_t max_len)
 {
     return start_idx + max_len < end_idx ? max_len : (end_idx - start_idx);

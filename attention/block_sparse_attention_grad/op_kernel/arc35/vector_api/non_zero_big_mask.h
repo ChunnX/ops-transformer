@@ -190,25 +190,30 @@ template <typename T1, typename T2>
 template <typename CLS_NAME, void (CLS_NAME::*ComputeOutputPtr)(LocalTensor<int32_t> &yUb)>
 __aicore__ inline void NonZeroBigMask<T1, T2>::ProcessBase(CLS_NAME *objPtr)
 {
-    if (blockIdx_ >= tiling_->realCoreNum) {
-        return;
-    }
+    // 注意：不能在 SyncAll 之前 return。realCoreNum 可能小于实际启动的 AIV 核数
+    // （例如 mask 元素个数很少时），未参与计算的核也必须走到同一个 SyncAll，否则同步会挂死。
+    bool isActiveCore = blockIdx_ < tiling_->realCoreNum;
 
-    blkProcessNum_ = tiling_->numPerCore;
-    blockOffset_ = blockIdx_ * tiling_->numPerCore;
-    if (blockIdx_ < tiling_->numTailCore) {
-        blkProcessNum_ += 1;
-        blockOffset_ += blockIdx_;
-    } else {
-        blockOffset_ += tiling_->numTailCore;
-    }
+    if (isActiveCore) {
+        blkProcessNum_ = tiling_->numPerCore;
+        blockOffset_ = blockIdx_ * tiling_->numPerCore;
+        if (blockIdx_ < tiling_->numTailCore) {
+            blkProcessNum_ += 1;
+            blockOffset_ += blockIdx_;
+        } else {
+            blockOffset_ += tiling_->numTailCore;
+        }
 
-    if constexpr (sizeof(T1) == sizeof(int64_t)) {
-        CalcNonZeroNumPerCoreB64();
-    } else {
-        CalcNonZeroNumPerCore();
+        if constexpr (sizeof(T1) == sizeof(int64_t)) {
+            CalcNonZeroNumPerCoreB64();
+        } else {
+            CalcNonZeroNumPerCore();
+        }
     }
     SyncAll(); // 多核同步
+    if (!isActiveCore) {
+        return;
+    }
     SetMultipDim();
     if constexpr (sizeof(T1) == sizeof(int64_t)) {
         GetAllNumAndOffsetB64();
