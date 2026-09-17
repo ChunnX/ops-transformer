@@ -738,9 +738,10 @@ def _isqrt(x):
 
 
 def _ceil_trunc(a, b):
-    q = (a + b - 1) // b
-    if (a + b - 1) % b != 0 and a + b - 1 < 0:
-        q += 1
+    num = a + b - 1
+    q = num // b
+    if num % b != 0 and num < 0:
+        return q + 1
     return q
 
 
@@ -1384,6 +1385,63 @@ def cal_dense_swizzle_deter_index(
     return (found_b * n1 + n1_idx) * m_b * n_b + s2_idx * m_b + s1_idx
 
 
+def _tnd_line_commit(
+    coordinate_info,
+    const_info,
+    tensor_metadata,
+    tensor_seq_q,
+    tensor_seq_kv,
+    found_b,
+    copy_id,
+    x,
+    y,
+    n1,
+    g_size,
+    is_band,
+    s1_outer_base,
+    s2_outer_base,
+    s1_token_base,
+    s2_token_base,
+):
+    batch = found_b + (copy_id - 1) // n1
+    n1_idx = (copy_id - 1) % n1
+    s1o_real = pl.getval(tensor_metadata, s1_outer_base + batch)
+    s2o_real = pl.getval(tensor_metadata, s2_outer_base + batch)
+    s1_token = pl.getval(tensor_metadata, s1_token_base + batch)
+    s2_token = pl.getval(tensor_metadata, s2_token_base + batch)
+    if is_band:
+        p0 = min(_ceil_trunc(s1_token, CUBE_BASEM) + 1, s1o_real)
+        q0 = min(_ceil_trunc(s2_token, CUBE_BASEN) + 1, s2o_real)
+        if p0 < 0:
+            s1_idx = x - 1
+            s2_idx = y - 1 + (0 - p0)
+        elif q0 < 0:
+            s1_idx = x - 1 + (0 - q0)
+            s2_idx = y - 1
+        else:
+            s1_idx = x - 1
+            s2_idx = y - 1
+    else:
+        s1_idx = x + max(0, s1o_real - s2o_real - 1) - 1
+        s2_idx = y - 1
+    if s1_idx >= s1o_real or s2_idx >= s2o_real or s1_idx < 0 or s2_idx < 0:
+        return -1
+    actual_s1 = get_actual_s1_len(const_info, tensor_seq_q, batch)
+    actual_s2 = get_actual_s2_len(const_info, tensor_seq_kv, batch)
+    coordinate_info.batch_id = batch
+    coordinate_info.n2_idx = n1_idx // g_size
+    coordinate_info.g_idx = n1_idx % g_size
+    coordinate_info.s1_idx = s1_idx
+    coordinate_info.s2_idx = s2_idx
+    coordinate_info.s1_outer = s1o_real
+    coordinate_info.s2_outer = s2o_real
+    coordinate_info.actual_s1_len = actual_s1
+    coordinate_info.actual_s2_len = actual_s2
+    coordinate_info.s1_token = s1_token
+    coordinate_info.s2_token = s2_token
+    return (batch * n1 + n1_idx) * s1o_real * s2o_real + s2_idx * s1o_real + s1_idx
+
+
 def cal_tnd_line_swizzle_deter_index(
     round_id,
     coordinate_info,
@@ -1435,13 +1493,6 @@ def cal_tnd_line_swizzle_deter_index(
         return -1
     a = delta + 1
     j1 = j + 1
-    valid = 0
-    ok = 0
-    w = 0
-    x = 0
-    y = 0
-    y1 = 0
-    copy_id = 0
     m = line_m
     n = line_n
     p = line_p
@@ -1450,174 +1501,148 @@ def cal_tnd_line_swizzle_deter_index(
         copies = n1 * run_size
         if p >= m:
             if j1 >= 1 and j1 <= k and a >= 1 and copies > 0 and m > 0 and n > 0:
-                y1 = ((a - 1) // m) * k + j1
-                if y1 <= n * copies:
-                    w = (y1 - 1) // n + 1
-                    y = (y1 - 1) % n + 1
-                    x = (y + (a - 1) - 1) % m + 1
-                    ok = 1
-            if (
-                ok == 1
-                and w >= 1
-                and w <= copies
-                and x >= 1
-                and x <= m
-                and y >= 1
-                and y <= n
-                and y <= x + q - 1
-            ):
-                valid = 1
-                copy_id = w
-        elif p + q > m:
+                y1_d = ((a - 1) // m) * k + j1
+                if y1_d <= n * copies:
+                    w_d = (y1_d - 1) // n + 1
+                    y_d = (y1_d - 1) % n + 1
+                    x_d = (y_d + (a - 1) - 1) % m + 1
+                    if (
+                        w_d >= 1
+                        and w_d <= copies
+                        and x_d >= 1
+                        and x_d <= m
+                        and y_d >= 1
+                        and y_d <= n
+                        and y_d <= x_d + q - 1
+                    ):
+                        return _tnd_line_commit(
+                            coordinate_info, const_info, tensor_metadata, tensor_seq_q, tensor_seq_kv,
+                            found_b, w_d, x_d, y_d, n1, g_size, is_band,
+                            s1_outer_base, s2_outer_base, s1_token_base, s2_token_base,
+                        )
+            return -1
+        if p + q > m:
             n_new = min(m - 1 + q, n)
-            l1 = m - p
-            l2 = p + q - m
-            l3 = n_new - l1 - l2
-            dense_n = n_new - max(0, l3 - p + 1)
+            l1_w = m - p
+            l2_w = p + q - m
+            l3_w = n_new - l1_w - l2_w
+            dense_n = n_new - max(0, l3_w - p + 1)
             if j1 >= 1 and j1 <= k and a >= 1 and copies > 0 and m > 0 and dense_n > 0:
-                y1 = ((a - 1) // m) * k + j1
-                if y1 <= dense_n * copies:
-                    w = (y1 - 1) // dense_n + 1
-                    y = (y1 - 1) % dense_n + 1
-                    x = (y + (a - 1) - 1) % m + 1
-                    ok = 1
-            mapped = 0
-            if ok == 1:
-                l1 = m - p
-                l2 = p + q - m
-                l3 = n - l1 - l2
-                fold = max(0, l3 - p + 1)
-                mapped = 1
-                if fold > 0 and y <= fold and x >= p + y:
-                    y = n - fold + y
-                elif y <= l1 and x >= p + y:
-                    mapped = 0
-                if mapped == 1 and y > l1 + l2 and x <= y - l1 - l2:
-                    mapped = 0
-                if (
-                    mapped == 1
-                    and w >= 1
-                    and w <= copies
-                    and x >= 1
-                    and x <= m
-                    and y >= 1
-                    and y <= n
-                ):
-                    valid = 1
-                    copy_id = w
-        else:
-            seg = p + q - 1
-            if seg > 0:
-                a1 = ceil(a, seg)
-                a2_rem = a % seg
-                a2 = seg if a2_rem == 0 else a2_rem
-                l3 = max(0, min(p + n - m - 1, p + q - 2))
-                if l3 == 0 or n - m < 1:
-                    idx = (a1 - 1) * k + j1
-                    w = ceil(idx, n)
-                    y_rem = idx % n
-                    y = n if y_rem == 0 else y_rem
-                    x = y + a2 - q
-                else:
-                    y_abs = (a1 - 1) * k + j1
-                    x_abs = y_abs + a2 - q
-                    if x_abs >= 1:
-                        w = ceil(x_abs, m)
-                        x_rem = x_abs % m
-                        x = m if x_rem == 0 else x_rem
-                        y = x + q - a2
-                if w >= 1 and w <= copies and x >= 1 and x <= m and y >= 1 and y <= n:
-                    valid = 1
-                    copy_id = w
-    else:
-        total = n1 * run_size
-        pairs = total // 2
-        virt_m = m
-        virt_n = 2 * n - m + 3
-        pair_rounds = 0
-        if pairs > 0 and virt_n > 0:
-            pair_rounds = ceil(virt_n * pairs, k) * virt_m
-        if a <= pair_rounds:
-            if j1 >= 1 and j1 <= k and a >= 1 and pairs > 0 and virt_m > 0 and virt_n > 0:
-                y1 = ((a - 1) // virt_m) * k + j1
-                if y1 <= virt_n * pairs:
-                    w = (y1 - 1) // virt_n + 1
-                    y = (y1 - 1) % virt_n + 1
-                    x = (y + (a - 1) - 1) % virt_m + 1
-                    ok = 1
-            if ok == 1:
+                y1_w = ((a - 1) // m) * k + j1
+                if y1_w <= dense_n * copies:
+                    w_w = (y1_w - 1) // dense_n + 1
+                    y_w = (y1_w - 1) % dense_n + 1
+                    x_w = (y_w + (a - 1) - 1) % m + 1
+                    l1_m = m - p
+                    l2_m = p + q - m
+                    l3_m = n - l1_m - l2_m
+                    fold = max(0, l3_m - p + 1)
+                    fold_hit = 0
+                    if fold > 0 and y_w <= fold and x_w >= p + y_w:
+                        fold_hit = 1
+                    y_m = y_w + fold_hit * (n - fold)
+                    miss = 0
+                    if fold_hit == 0 and y_w <= l1_m and x_w >= p + y_w:
+                        miss = 1
+                    if y_m > l1_m + l2_m and x_w <= y_m - l1_m - l2_m:
+                        miss = 1
+                    if (
+                        miss == 0
+                        and w_w >= 1
+                        and w_w <= copies
+                        and x_w >= 1
+                        and x_w <= m
+                        and y_m >= 1
+                        and y_m <= n
+                    ):
+                        return _tnd_line_commit(
+                            coordinate_info, const_info, tensor_metadata, tensor_seq_q, tensor_seq_kv,
+                            found_b, w_w, x_w, y_m, n1, g_size, is_band,
+                            s1_outer_base, s2_outer_base, s1_token_base, s2_token_base,
+                        )
+            return -1
+        seg = p + q - 1
+        if seg <= 0:
+            return -1
+        a1 = (a - 1) // seg + 1
+        a2 = (a - 1) % seg + 1
+        l3_n = max(0, min(p + n - m - 1, p + q - 2))
+        if l3_n == 0 or n - m < 1:
+            idx = (a1 - 1) * k + j1
+            w_n = (idx - 1) // n + 1
+            y_n = (idx - 1) % n + 1
+            x_n = y_n + a2 - q
+            if w_n >= 1 and w_n <= copies and x_n >= 1 and x_n <= m and y_n >= 1 and y_n <= n:
+                return _tnd_line_commit(
+                    coordinate_info, const_info, tensor_metadata, tensor_seq_q, tensor_seq_kv,
+                    found_b, w_n, x_n, y_n, n1, g_size, is_band,
+                    s1_outer_base, s2_outer_base, s1_token_base, s2_token_base,
+                )
+            return -1
+        y_abs = (a1 - 1) * k + j1
+        x_abs = y_abs + a2 - q
+        if x_abs < 1:
+            return -1
+        w_n2 = (x_abs - 1) // m + 1
+        x_n2 = (x_abs - 1) % m + 1
+        y_n2 = x_n2 + q - a2
+        if w_n2 >= 1 and w_n2 <= copies and x_n2 >= 1 and x_n2 <= m and y_n2 >= 1 and y_n2 <= n:
+            return _tnd_line_commit(
+                coordinate_info, const_info, tensor_metadata, tensor_seq_q, tensor_seq_kv,
+                found_b, w_n2, x_n2, y_n2, n1, g_size, is_band,
+                s1_outer_base, s2_outer_base, s1_token_base, s2_token_base,
+            )
+        return -1
+    total = n1 * run_size
+    pairs = total // 2
+    virt_m = m
+    virt_n = 2 * n - m + 3
+    pair_rounds = ceil(virt_n * pairs, k) * virt_m
+    if a <= pair_rounds:
+        if j1 >= 1 and j1 <= k and a >= 1 and pairs > 0 and virt_m > 0 and virt_n > 0:
+            y1_c = ((a - 1) // virt_m) * k + j1
+            if y1_c <= virt_n * pairs:
+                w_c = (y1_c - 1) // virt_n + 1
+                y_c = (y1_c - 1) % virt_n + 1
+                x_c = (y_c + (a - 1) - 1) % virt_m + 1
                 n_ext = n + 1
-                nid = 2 * w - 1
-                if y >= x + n_ext - m + 1:
-                    y = 2 * n_ext - m - y + 2
-                    x = m + 1 - x
-                    nid = 2 * w
+                flip = 0
+                if y_c >= x_c + n_ext - m + 1:
+                    flip = 1
+                y_cm = y_c + flip * (2 * n_ext - m + 2 - 2 * y_c)
+                x_cm = x_c + flip * (m + 1 - 2 * x_c)
+                nid = 2 * w_c - 1 + flip
                 if (
                     nid >= 1
                     and nid <= pairs * 2
-                    and x >= 1
-                    and x <= m
-                    and y >= 1
-                    and y <= n
-                    and y <= x + n - m + 1
+                    and x_cm >= 1
+                    and x_cm <= m
+                    and y_cm >= 1
+                    and y_cm <= n
+                    and y_cm <= x_cm + n - m + 1
                 ):
-                    valid = 1
-                    copy_id = nid
-        elif (total % 2) == 1:
-            single_round = a - pair_rounds
-            if j1 >= 1 and j1 <= k and single_round >= 1 and m > 0 and n > 0:
-                y1 = ((single_round - 1) // m) * k + j1
-                if y1 <= n:
-                    w = (y1 - 1) // n + 1
-                    y = (y1 - 1) % n + 1
-                    x = (y + (single_round - 1) - 1) % m + 1
-                    ok = 1
-            nid = total
-            if ok == 1 and x >= 1 and x <= m and y >= 1 and y <= n and y <= x + n - m + 1:
-                valid = 1
-                copy_id = nid
-    if valid == 0:
+                    return _tnd_line_commit(
+                        coordinate_info, const_info, tensor_metadata, tensor_seq_q, tensor_seq_kv,
+                        found_b, nid, x_cm, y_cm, n1, g_size, is_band,
+                        s1_outer_base, s2_outer_base, s1_token_base, s2_token_base,
+                    )
         return -1
-    batch = found_b + (copy_id - 1) // n1
-    n1_idx = (copy_id - 1) % n1
-    s1o_real = pl.getval(tensor_metadata, s1_outer_base + batch)
-    s2o_real = pl.getval(tensor_metadata, s2_outer_base + batch)
-    s1_token = pl.getval(tensor_metadata, s1_token_base + batch)
-    s2_token = pl.getval(tensor_metadata, s2_token_base + batch)
-    m_off = 0
-    n_off = 0
-    if is_band:
-        p0 = _ceil_trunc(s1_token, CUBE_BASEM) + 1
-        q0 = _ceil_trunc(s2_token, CUBE_BASEN) + 1
-        if p0 > s1o_real:
-            p0 = s1o_real
-        if q0 > s2o_real:
-            q0 = s2o_real
-        if p0 < 0:
-            n_off = -p0
-        elif q0 < 0:
-            m_off = -q0
-        s1_idx = x - 1 + m_off
-        s2_idx = y - 1 + n_off
-    else:
-        s1_idx = x + max(0, s1o_real - s2o_real - 1) - 1
-        s2_idx = y - 1
-    if s1_idx >= s1o_real or s2_idx >= s2o_real or s1_idx < 0 or s2_idx < 0:
+    if (total % 2) == 1:
+        single_round = a - pair_rounds
+        if j1 >= 1 and j1 <= k and single_round >= 1 and m > 0 and n > 0:
+            y1_s = ((single_round - 1) // m) * k + j1
+            if y1_s <= n:
+                w_s = (y1_s - 1) // n + 1
+                y_s = (y1_s - 1) % n + 1
+                x_s = (y_s + (single_round - 1) - 1) % m + 1
+                if x_s >= 1 and x_s <= m and y_s >= 1 and y_s <= n and y_s <= x_s + n - m + 1:
+                    return _tnd_line_commit(
+                        coordinate_info, const_info, tensor_metadata, tensor_seq_q, tensor_seq_kv,
+                        found_b, total, x_s, y_s, n1, g_size, is_band,
+                        s1_outer_base, s2_outer_base, s1_token_base, s2_token_base,
+                    )
         return -1
-    actual_s1 = get_actual_s1_len(const_info, tensor_seq_q, batch)
-    actual_s2 = get_actual_s2_len(const_info, tensor_seq_kv, batch)
-    coordinate_info.batch_id = batch
-    coordinate_info.n2_idx = n1_idx // g_size
-    coordinate_info.g_idx = n1_idx % g_size
-    coordinate_info.s1_idx = s1_idx
-    coordinate_info.s2_idx = s2_idx
-    coordinate_info.s1_outer = s1o_real
-    coordinate_info.s2_outer = s2o_real
-    coordinate_info.actual_s1_len = actual_s1
-    coordinate_info.actual_s2_len = actual_s2
-    coordinate_info.s1_token = s1_token
-    coordinate_info.s2_token = s2_token
-    return (batch * n1 + n1_idx) * s1o_real * s2o_real + s2_idx * s1o_real + s1_idx
+    return -1
 
 
 def cal_band_deter_index(round_id, max_loop_num, coordinate_info, const_info, band_info, flag):
