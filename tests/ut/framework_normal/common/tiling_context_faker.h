@@ -164,7 +164,6 @@ public:
     std::string socVersion_;
     std::string socInfoString_;
     int32_t deterministicInfo_ = 0;
-    int32_t deterministicLevel_ = 0;
 };
 
 class TilingContextFaker : public OpTilingContextBuilder {
