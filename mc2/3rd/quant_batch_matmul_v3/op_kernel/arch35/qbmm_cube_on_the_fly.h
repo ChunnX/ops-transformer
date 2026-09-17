@@ -37,7 +37,7 @@ public:
     __aicore__ inline void UpdateGlobalAddr(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR bias, GM_ADDR perTokenScale,
                                             GM_ADDR scale, GM_ADDR cGM, GM_ADDR workSpace);
     __aicore__ inline void Process();
-
+    __aicore__ inline void SetHF32(bool isHf32);//wzy
 protected:
     __aicore__ inline void ComputeBmmOptiLoop();
     __aicore__ inline void ComputeBasicOptiLoop();
@@ -151,6 +151,10 @@ __aicore__ inline void MatMulASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::Process()
 }
 
 LOCAL_TEMPLATE_CLASS_PARAMS
+__aicore__ inline void MatMulASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::SetHF32(bool isHf32)
+{
+    mm_.SetHF32(isHf32, 1);
+}
 __aicore__ inline void MatMulASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::ComputeBmmOptiLoop()
 {
     uint64_t batchC3C4 =

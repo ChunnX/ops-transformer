@@ -40,6 +40,7 @@ public:
     __aicore__ inline void Process(bool isLast = true);
     __aicore__ inline uint64_t GetPreCoreNum();
     __aicore__ inline void MmEnd();
+    __aicore__ inline void SetHF32(bool isHf32);
 
 protected:
     __aicore__ inline void ComputeBasicOptiLoop(bool isLast = false);
@@ -236,6 +237,11 @@ LOCAL_TEMPLATE_CLASS_PARAMS
 __aicore__ inline void Mc2QuantBatchMatmulASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::MmEnd()
 {
     mm_.End();
+}
+LOCAL_TEMPLATE_CLASS_PARAMS
+__aicore__ inline void Mc2QuantBatchMatmulASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::SetHF32(bool isHf32)
+{
+    mm_.SetHF32(isHf32, 1);
 }
 } // namespace Mc2MatmulV3
 #endif // MC2_QUANT_BATCH_MATMUL
