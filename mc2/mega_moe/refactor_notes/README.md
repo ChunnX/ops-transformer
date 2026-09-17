@@ -33,7 +33,7 @@ commit, so that a regression can be attributed to a single step and bisected.
 | B3   | `refactor(mega_moe): merge V2 epilogues and unify epilogue numbering` | `utilsA2/block_epilogue_pertoken_v2_{bf16,int8}_a2.hpp` + `utils/block_epilogue_w4a8post_pertoken_v2.hpp` → `utils/block_epilogue_pertoken_v2.hpp` (4 specialisations → 2); also swaps the A3 epilogue numbering so BlockEpilogue2 = V2 on both platforms | done — A2+A3 green |
 | B4   | `chore(mega_moe): drop dead A2-only epilogue variants` | remove the unreferenced `utilsA2/block_epilogue_pertoken_row_a2_*.hpp` and the six A2-only policy declarations orphaned by B1–B3 | done — A2+A3 green |
 | B5   | `refactor(mega_moe): unify the three A2 device kernels` | `mega_moe_kernel_a2_{int8,bf16,bf16_w4a8}.hpp` → `mega_moe_kernel_a2.hpp`, `template<..., bool IsInt8, bool IsW4A8>`; five commits, see `step-B5-unify-a2-kernels.md` | done — A2 green, codegen measured |
-| B6   | `refactor(mega_moe): merge MegaMoeA2 into MegaMoe` | `mega_moe_a2.h` folded into `mega_moe_arch22.h` as `MegaMoe<..., IS_A2_>`; single entry in `mega_moe.cpp` | planned |
+| B6   | `refactor(mega_moe): merge MegaMoeA2 into MegaMoe` | `mega_moe_a2.h` folded into `mega_moe_arch22.h` as `MegaMoe<..., IS_A2_>`; single entry in `mega_moe.cpp`; three commits, see `step-B6-merge-class-templates.md` | done — codegen **byte-identical** on A2 and A3 |
 | B7   | `docs(mega_moe): no-loss audit and review` | audit table + final review doc | planned |
 
 ## Codegen impact of the whole series
