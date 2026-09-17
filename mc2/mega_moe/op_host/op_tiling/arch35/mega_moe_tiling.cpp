@@ -2425,7 +2425,7 @@ static ge::graphStatus CommitTilingResult(gert::TilingContext *context, const Me
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     context->SetBlockDim(
         ascendcPlatform.CalcTschBlockDim(tilingData->blockAivNum, tilingData->aicNum, tilingData->blockAivNum));
-    context->SetScheduleMode(1); // batch model, all cores start at the same time
+    context->SetScheduleMode(1);
     uint64_t tilingKey = CalcTilingKey(context, expertParams, tilingData);
     OP_LOGI(nodeName, "OP TilingKey is %lu", tilingKey);
     context->SetTilingKey(tilingKey);

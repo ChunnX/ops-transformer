@@ -304,7 +304,6 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::EnterSteadyDispatch()
 {
     if (GetSubBlockIdx() == 1U) {
-        // Startup has drained the ring. Keep its UB layout and route batch unchanged.
         tokenDispatchConfig_.bufferConfig.bufferCount = MIN_DISPATCH_BUFFER_COUNT;
     }
 }
@@ -494,9 +493,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
     uint32_t topkIdsIndexTensorAddr = topkIdsTensorAddr + topkIdsTensorSize;
     uint32_t topkIdsIndexTensorSize =
         static_cast<uint32_t>(routeItemsPerBatch) * static_cast<uint32_t>(sizeof(TopkIndexType));
-    sendMaskScratch_.topkIdsIndexTensor =
-        LocalTensor<TopkIndexType>(TPosition::VECCALC, topkIdsIndexTensorAddr,
-                                   topkIdsIndexTensorSize / sizeof(TopkIndexType));
+    sendMaskScratch_.topkIdsIndexTensor = LocalTensor<TopkIndexType>(TPosition::VECCALC, topkIdsIndexTensorAddr,
+                                                                     topkIdsIndexTensorSize / sizeof(TopkIndexType));
 
     uint32_t resetAddrActual = topkIdsIndexTensorAddr + topkIdsIndexTensorSize;
     resetTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, resetAddrActual, resetTensorSize / sizeof(int32_t));
@@ -590,7 +588,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm1
     }
     Gmm1UbActivationSync::EndSync(runtimeState.vecSetSyncCom, runtimeState.pingpongIdx);
     gmm1PingPongIdx_ = 0U;
-    // Continue MoE assignment after shared GMM1 so its first tiles can use the next cores.
 }
 
 template <TemplateMegaMoeTypeClass>

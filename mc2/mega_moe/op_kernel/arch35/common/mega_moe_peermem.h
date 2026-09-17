@@ -43,8 +43,8 @@ constexpr int64_t PEERMEM_SYNC_COUNT_REGION_SIZE = PEERMEM_DATA_OFFSET - PEERMEM
 constexpr int64_t PEERMEM_SYNC_SLOT_SIZE = static_cast<int64_t>(INT_CACHELINE) * sizeof(int32_t);
 
 // 通信拓扑：决定窗口数据区按 MTE 还是 URMA 布局推进。
-constexpr int64_t TOPO_TYPE_MTE = 0U;  // mte
-constexpr int64_t TOPO_TYPE_URMA = 1U; // urma
+constexpr int64_t TOPO_TYPE_MTE = 0U;
+constexpr int64_t TOPO_TYPE_URMA = 1U;
 
 HOST_DEVICE int64_t CalcUrmaSyncCountOffset(int64_t epWorldSize)
 {
