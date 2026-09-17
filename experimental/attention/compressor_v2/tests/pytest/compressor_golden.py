@@ -521,6 +521,11 @@ def cpu_compressor_fp64(
             else:
                 batch_seq_used = cu_seqlens[b_idx + 1] - cu_seqlens[b_idx]
         compress_seq_id = (batch_start_pos + batch_seq_used) // cmp_ratio * cmp_ratio
+        # state 写入窗口 = 本次序列末尾 min(batch_seq_used, block_size) 个 token
+        seq_end_all = batch_start_pos + batch_seq_used
+        save_start = (
+            seq_end_all - kv_state.shape[1] if seq_end_all > kv_state.shape[1] else 0
+        )
 
         batch_seq_idx = 0
         while batch_seq_idx < batch_seq_used:
@@ -538,36 +543,32 @@ def cpu_compressor_fp64(
             if cache_mode == 1:
                 save_flag = True
             else:
-                save_flag = (
-                    True
-                    if start_seq_idx >= (compress_seq_id - (coff - 1) * cmp_ratio)
-                    else False
-                )
+                save_flag = end_seq_idx > save_start
             compress_flag = True if start_seq_idx < compress_seq_id else False
 
             if save_flag:
-                tmp_kv_state = new_kv_state[start_offset:end_offset, :]
-                tmp_score_state = new_score_state[start_offset:end_offset, :]
-                write_state_page_cache(
-                    kv_state,
-                    update_kv_position,
-                    tmp_kv_state,
-                    b_idx,
-                    start_seq_idx,
-                    end_seq_idx,
-                    block_table,
-                    cache_mode=2,
-                )
-                write_state_page_cache(
-                    score_state,
-                    update_score_position,
-                    tmp_score_state,
-                    b_idx,
-                    start_seq_idx,
-                    end_seq_idx,
-                    block_table,
-                    cache_mode=2,
-                )
+                clip = max(start_seq_idx, save_start) - start_seq_idx
+                if clip < (end_seq_idx - start_seq_idx):
+                    write_state_page_cache(
+                        kv_state,
+                        update_kv_position,
+                        new_kv_state[start_offset + clip : end_offset, :],
+                        b_idx,
+                        start_seq_idx + clip,
+                        end_seq_idx,
+                        block_table,
+                        cache_mode=2,
+                    )
+                    write_state_page_cache(
+                        score_state,
+                        update_score_position,
+                        new_score_state[start_offset + clip : end_offset, :],
+                        b_idx,
+                        start_seq_idx + clip,
+                        end_seq_idx,
+                        block_table,
+                        cache_mode=2,
+                    )
 
             if compress_flag:
                 sc_kv_state = np.zeros(
@@ -839,6 +840,11 @@ def cpu_compressor(
                 )  # x的shape为2维, Th
         # 小于compress_seq_id的seq_id为需要压缩的token
         compress_seq_id = (batch_start_pos + batch_seq_used) // cmp_ratio * cmp_ratio
+        # state 写入窗口 = 本次序列末尾 min(batch_seq_used, block_size) 个 token
+        seq_end_all = batch_start_pos + batch_seq_used
+        save_start = (
+            seq_end_all - kv_state.shape[1] if seq_end_all > kv_state.shape[1] else 0
+        )
 
         batch_seq_idx = 0
         while batch_seq_idx < batch_seq_used:
@@ -861,36 +867,32 @@ def cpu_compressor(
             if cache_mode == 1:
                 save_flag = True
             else:
-                save_flag = (
-                    True
-                    if start_seq_idx >= (compress_seq_id - (coff - 1) * cmp_ratio)
-                    else False
-                )
+                save_flag = end_seq_idx > save_start
             compress_flag = True if start_seq_idx < compress_seq_id else False
 
             if save_flag:
-                tmp_kv_state = new_kv_state[start_offset:end_offset, :]
-                tmp_score_state = new_score_state[start_offset:end_offset, :]
-                write_state_page_cache(
-                    kv_state,
-                    update_kv_position,
-                    tmp_kv_state,
-                    b_idx,
-                    start_seq_idx,
-                    end_seq_idx,
-                    block_table,
-                    cache_mode=2,
-                )
-                write_state_page_cache(
-                    score_state,
-                    update_score_position,
-                    tmp_score_state,
-                    b_idx,
-                    start_seq_idx,
-                    end_seq_idx,
-                    block_table,
-                    cache_mode=2,
-                )
+                clip = max(start_seq_idx, save_start) - start_seq_idx
+                if clip < (end_seq_idx - start_seq_idx):
+                    write_state_page_cache(
+                        kv_state,
+                        update_kv_position,
+                        new_kv_state[start_offset + clip : end_offset, :],
+                        b_idx,
+                        start_seq_idx + clip,
+                        end_seq_idx,
+                        block_table,
+                        cache_mode=2,
+                    )
+                    write_state_page_cache(
+                        score_state,
+                        update_score_position,
+                        new_score_state[start_offset + clip : end_offset, :],
+                        b_idx,
+                        start_seq_idx + clip,
+                        end_seq_idx,
+                        block_table,
+                        cache_mode=2,
+                    )
 
             if compress_flag:
                 # init value and shape of one sc state

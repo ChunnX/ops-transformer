@@ -601,14 +601,15 @@ __aicore__ inline void CompressorV2BlockVector<COMP>::SaveState(
     uint64_t srcBaseOffset = sliceInfo.dealedSeqCnt * coff_ * dBaseSize;
 
     if constexpr (COMP::cacheMode == CACHE_MODE::RING_BUFFER) {
-        uint64_t compressSeqIdx = Trunc(sliceInfo.bStartPos + sliceInfo.bSeqUsed, (uint64_t)cmpRatio_);
-        uint32_t writeSeqStartIdx =
-            compressSeqIdx > (coff_ - 1) * cmpRatio_ ? compressSeqIdx - (coff_ - 1) * cmpRatio_ : 0;
+        // 写窗口 = 本 batch 本次调用序列末尾 min(bSeqUsed, blockSize) 个 token
+        uint64_t seqEnd = sliceInfo.bStartPos + sliceInfo.bSeqUsed;
+        uint64_t writeSeqStartIdx =
+            seqEnd > (uint64_t)constInfo_.blockSize ? seqEnd - (uint64_t)constInfo_.blockSize : 0ULL;
         if (endSeqIdx <= writeSeqStartIdx) {
             return;
         }
-        srcBaseOffset += (max(startSeqIdx, (uint64_t)writeSeqStartIdx) - startSeqIdx) * coff_ * dBaseSize;
-        startSeqIdx = max(startSeqIdx, (uint64_t)writeSeqStartIdx);
+        srcBaseOffset += (max(startSeqIdx, writeSeqStartIdx) - startSeqIdx) * coff_ * dBaseSize;
+        startSeqIdx = max(startSeqIdx, writeSeqStartIdx);
     }
 
     if constexpr (COMP::coff == COFF::OVERLAP) {
