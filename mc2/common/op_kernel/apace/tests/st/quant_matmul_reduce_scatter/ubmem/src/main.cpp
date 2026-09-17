@@ -45,7 +45,7 @@
 #include "apace/tiling/quant_matmul_tiling_swat.h"
 #include "apace/tiling/quant_matmul_tiling_data.h"
 #include "tiling/hccl/hccl_tiling.h"
-#include "kernel_launcher.h"
+#include "apace_qmrs_kernel_launcher.h"
 
 extern "C" HcclResult HcclCommInitAll(uint32_t commNum, int32_t *devIds, HcclComm *comm);
 extern "C" HcclResult HcclCommDestroy(HcclComm comm);
@@ -71,7 +71,10 @@ static int gBarrierCount = 0;
         } \
     } while (0)
 
-inline uint64_t CeilDivHost(uint64_t a, uint32_t b) { return (a + b - 1) / b; }
+inline uint64_t CeilDivHost(uint64_t a, uint32_t b)
+{
+    return (a + b - 1) / b;
+}
 
 void ParseArgs(int argc, char *argv[], int *m, int *k, int *n, int *rankNum, std::string &mode)
 {
@@ -135,7 +138,8 @@ int CreateTilingDataAndContext(const char *hcomName, aclrtStream stream, int m, 
     // Each rank computes the full M x N matmul (not M*rankNum).
     // The AlltoAll epilogue scatters the result, and ReduceAdd reduces.
     uint64_t totalM = static_cast<uint64_t>(m);
-    QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingEngine;
+    QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN, mm::BiasDataType::DT_FLOAT>
+        tilingEngine;
     tilingEngine.SetOptimizeEnable(false);
     tilingEngine.SetMTailAlignEnable(true);
 

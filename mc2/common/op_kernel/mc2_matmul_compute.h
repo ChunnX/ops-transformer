@@ -27,9 +27,7 @@ class MatmulCompute {
     using BiasT = typename BIAS_TYPE::T;
 
 public:
-    __aicore__ inline MatmulCompute()
-    {
-    }
+    __aicore__ inline MatmulCompute() {}
     __aicore__ inline void Init(Mc2Tiling::RCSTiling &cfg, TCubeTiling &tiling, Mc2Tiling::TileL2Tiling &l2Tiling,
                                 uint32_t rankID);
     __aicore__ inline void InitGlobalTensor(GM_ADDR bGM, GM_ADDR biasGM);
@@ -42,6 +40,8 @@ public:
 private:
     __aicore__ inline void SetOrgShapeAlign();
     __aicore__ inline void ComputeL2Tile(int32_t mTileIndex, int32_t nTileIndex);
+    template <bool SetBFirst = false>
+    __aicore__ inline void CalcBlockLoop(uint32_t offset, int32_t mTileIndex = 0, int32_t nTileIndex = 0);
 
 private:
     MatmulImpl<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, CFG_MDL> mm_;
@@ -65,18 +65,20 @@ __aicore__ inline void MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, T>::Init
 }
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, SplitType T>
-__aicore__ inline void
-MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, T>::InitGlobalTensor(GM_ADDR aGM, uint64_t aSize, GM_ADDR cGM,
-                                                                      uint64_t cSize)
+__aicore__ inline void MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, T>::InitGlobalTensor(GM_ADDR aGM,
+                                                                                             uint64_t aSize,
+                                                                                             GM_ADDR cGM,
+                                                                                             uint64_t cSize)
 {
     aGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ A_T *>(aGM), aSize);
     cGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ C_T *>(cGM), cSize);
 }
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, SplitType T>
-__aicore__ inline void
-MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, T>::Init(Mc2Tiling::RCSTiling &cfg, TCubeTiling &tiling,
-                                                          Mc2Tiling::TileL2Tiling &l2Tiling, uint32_t rankID)
+__aicore__ inline void MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, T>::Init(Mc2Tiling::RCSTiling &cfg,
+                                                                                 TCubeTiling &tiling,
+                                                                                 Mc2Tiling::TileL2Tiling &l2Tiling,
+                                                                                 uint32_t rankID)
 {
     // MatmulImpl初始化
     mm_.SetSubBlockIdx(0);
@@ -110,22 +112,27 @@ __aicore__ inline void MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, T>::SetO
 }
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, SplitType T>
-__aicore__ inline void MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, T>::Compute(uint32_t index, uint32_t offset)
+template <bool SetBFirst>
+__aicore__ inline void MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, T>::CalcBlockLoop(uint32_t offset,
+                                                                                          int32_t mTileIndex,
+                                                                                          int32_t nTileIndex)
 {
-    if (cfg_.rankN == 0) {
-        return;
-    }
-    // 每次block循环开始前需要计算初始blockIndex
-    block_.InitBlockIndex(index);
     for (uint32_t i = 0; i < block_.args_.blockCnt; i++) {
         // calculate blockCurrIndex
         block_.UpdateBlockIndex(i + offset);
         if (block_.args_.blockCurrIdx < block_.args_.totalBlockCnt) {
-            block_.UpdateBlockParams();
+            block_.UpdateBlockParams(mTileIndex, nTileIndex);
             block_.template CalcGMOffset<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE>();
+            // 调用MatmulImpl完成一次Block计算
             mm_.SetSingleShape(block_.args_.singleCoreM, block_.args_.singleCoreN, tiling_.singleCoreK);
-            mm_.SetTensorA(aGlobal[block_.offset_.offsetA], block_.args_.isTransA);
-            mm_.SetTensorB(bGlobal[block_.offset_.offsetB], block_.args_.isTransB);
+            // Preserve the setter order of each original compute path.
+            if constexpr (SetBFirst) {
+                mm_.SetTensorB(bGlobal[block_.offset_.offsetB], block_.args_.isTransB);
+                mm_.SetTensorA(aGlobal[block_.offset_.offsetA], block_.args_.isTransA);
+            } else {
+                mm_.SetTensorA(aGlobal[block_.offset_.offsetA], block_.args_.isTransA);
+                mm_.SetTensorB(bGlobal[block_.offset_.offsetB], block_.args_.isTransB);
+            }
             if (tiling_.isBias) {
                 mm_.SetBias(biasGlobal[block_.offset_.offsetBias]);
             }
@@ -140,6 +147,17 @@ __aicore__ inline void MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, T>::Comp
 }
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, SplitType T>
+__aicore__ inline void MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, T>::Compute(uint32_t index, uint32_t offset)
+{
+    if (cfg_.rankN == 0) {
+        return;
+    }
+    // 每次block循环开始前需要计算初始blockIndex
+    block_.InitBlockIndex(index);
+    CalcBlockLoop(offset);
+}
+
+template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, SplitType T>
 __aicore__ inline void MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, T>::ComputeWithoutIndex()
 {
     if (cfg_.rankN == 0) {
@@ -147,26 +165,7 @@ __aicore__ inline void MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, T>::Comp
     }
     // 每次block循环开始前需要计算初始blockIndex
     block_.InitBlockWithoutIndex();
-    for (uint32_t i = 0; i < block_.args_.blockCnt; i++) {
-        // calculate blockCurrIndex
-        block_.UpdateBlockIndex(i);
-        if (block_.args_.blockCurrIdx < block_.args_.totalBlockCnt) {
-            block_.UpdateBlockParams();
-            block_.template CalcGMOffset<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE>();
-            mm_.SetSingleShape(block_.args_.singleCoreM, block_.args_.singleCoreN, tiling_.singleCoreK);
-            mm_.SetTensorA(aGlobal[block_.offset_.offsetA], block_.args_.isTransA);
-            mm_.SetTensorB(bGlobal[block_.offset_.offsetB], block_.args_.isTransB);
-            if (tiling_.isBias) {
-                mm_.SetBias(biasGlobal[block_.offset_.offsetBias]);
-            }
-            mm_.Iterate();
-            mm_.GetTensorC(cGlobal[block_.offset_.offsetC]);
-            // 增加M等FIX同步
-            event_t eventIDFixToM = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::FIX_M));
-            SetFlag<HardEvent::FIX_M>(eventIDFixToM);
-            WaitFlag<HardEvent::FIX_M>(eventIDFixToM);
-        }
-    }
+    CalcBlockLoop(0);
 }
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, SplitType T>
@@ -179,27 +178,7 @@ __aicore__ inline void MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, T>::Comp
     // 每次block循环开始前需要更新m&n方向分核数
     block_.UpdateBlockCnt(mTileIndex, nTileIndex);
     block_.InitBlockIndex();
-    for (uint32_t i = 0; i < block_.args_.blockCnt; i++) {
-        // calculate blockCurrIndex
-        block_.UpdateBlockIndex(i);
-        if (block_.args_.blockCurrIdx < block_.args_.totalBlockCnt) {
-            block_.UpdateBlockParams(mTileIndex, nTileIndex);
-            block_.template CalcGMOffset<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE>();
-            // 调用MatmulImpl完成一次Block计算
-            mm_.SetSingleShape(block_.args_.singleCoreM, block_.args_.singleCoreN, tiling_.singleCoreK);
-            mm_.SetTensorB(bGlobal[block_.offset_.offsetB], block_.args_.isTransB);
-            mm_.SetTensorA(aGlobal[block_.offset_.offsetA], block_.args_.isTransA);
-            if (tiling_.isBias) {
-                mm_.SetBias(biasGlobal[block_.offset_.offsetBias]);
-            }
-            mm_.Iterate();
-            mm_.GetTensorC(cGlobal[block_.offset_.offsetC]);
-            // 增加M等FIX同步
-            event_t eventIDFixToM = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::FIX_M));
-            SetFlag<HardEvent::FIX_M>(eventIDFixToM);
-            WaitFlag<HardEvent::FIX_M>(eventIDFixToM);
-        }
-    }
+    CalcBlockLoop<true>(0, mTileIndex, nTileIndex);
 }
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, SplitType T>

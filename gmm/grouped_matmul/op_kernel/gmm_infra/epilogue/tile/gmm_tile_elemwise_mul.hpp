@@ -11,7 +11,7 @@
 #ifndef GMM_EPILOGUE_TILE_TILE_ELEMWISE_MUL_HPP
 #define GMM_EPILOGUE_TILE_TILE_ELEMWISE_MUL_HPP
 
-#include "../../../gmm_infra/base_defs.hpp"
+#include "../../../gmm_infra/gmm_base_defs.hpp"
 
 namespace Catlass::Epilogue::Tile {
 
@@ -21,8 +21,7 @@ template <
     /// Compute data type
     class ComputeType_,
     /// Length of the compute buffer
-    class TileShape_
->
+    class TileShape_>
 struct TileElemwiseMul {
     using ArchTag = ArchTag_;
     using ElementCompute = typename ComputeType_::Element;
@@ -32,11 +31,9 @@ struct TileElemwiseMul {
     TileElemwiseMul() {}
 
     CATLASS_DEVICE
-    void operator()(
-        AscendC::LocalTensor<ElementCompute> const &ubOut,
-        AscendC::LocalTensor<ElementCompute> const &ubIn0,
-        AscendC::LocalTensor<ElementCompute> const &ubIn1
-    )
+    void operator()(AscendC::LocalTensor<ElementCompute> const &ubOut,
+                    AscendC::LocalTensor<ElementCompute> const &ubIn0,
+                    AscendC::LocalTensor<ElementCompute> const &ubIn1)
     {
         // Do the calculation
         AscendC::Mul(ubOut, ubIn0, ubIn1, TileShape::COUNT);

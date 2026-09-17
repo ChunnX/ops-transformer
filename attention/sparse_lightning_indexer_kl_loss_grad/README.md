@@ -343,7 +343,7 @@
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：N1支持8、16、32、64。
     - <term>Ascend 950PR/Ascend 950DT</term>：N1支持1~128。
   - 参数K的支持情况:
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：K支持512、1024、2048、4096、8192。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：K支持1~8192。
     - <term>Ascend 950PR/Ascend 950DT</term>：K支持0~2048。
 
 - 典型值
@@ -387,3 +387,4 @@
 |----------------|-----------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------|
 | aclnn调用 | [aclnnSparseLightningIndexerKLLossGrad](./docs/aclnnSparseLightningIndexerKLLossGrad.md) | 通过[aclnnSparseLightningIndexerKLLossGrad](./docs/aclnnSparseLightningIndexerKLLossGrad.md)接口方式调用SparseLightningIndexerKLLossGrad算子。 |
 | pytest调用 | [test_sparse_lightning_indexer_kl_loss_grad](./tests/pytest/test_sparse_lightning_indexer_kl_loss_grad.py) | 通过torch extension接口进行功能和精度验证。 |
+| PyTorch API | - | 通过[sparse_lightning_indexer_kl_loss_grad](../../attention/sparse_lightning_indexer_kl_loss_grad/docs/torchapi_sparse_lightning_indexer_kl_loss_grad.md)接口调用sparse_lightning_indexer_kl_loss_grad算子。 |

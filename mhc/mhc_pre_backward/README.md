@@ -172,19 +172,16 @@
 
 ## 约束说明
 
-<!-- npu="950" id2 -->
 - <term>Ascend 950PR/Ascend 950DT</term>：
   - N目前支持4、6、8。
   - D支持1~16384，需满足64元素对齐。
-<!-- end id2 -->
-<!-- npu="A3,910b" id1 -->
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
   - N目前支持4。
-  - D支持1~16384，需满足128元素对齐。
-<!-- end id1 -->
+  - D支持1~100000，需满足128元素对齐。
 
 ## 调用说明
 
 | 调用方式 | 调用样例 | 说明 |
 | :--- | :--- | :--- |
 | aclnn调用 | [test_aclnn_mhc_pre_backward.cpp](examples/test_aclnn_mhc_pre_backward.cpp) | 通过[aclnnMhcPreBackward](docs/aclnnMhcPreBackward.md)接口方式调用MhcPreBackward算子。 |
+| aclnn调用 | [test_aclnn_mhc_pre_backward_v2.cpp](examples/test_aclnn_mhc_pre_backward_v2.cpp) | 通过[aclnnMhcPreBackwardV2](docs/aclnnMhcPreBackwardV2.md)接口指定Cube计算模式并调用MhcPreBackward算子。 |

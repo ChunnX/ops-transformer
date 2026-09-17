@@ -56,7 +56,6 @@ TILING_DATA_FIELD_DEF(uint32_t, maskType);
 TILING_DATA_FIELD_DEF(float, scaleValue);
 TILING_DATA_FIELD_DEF(uint32_t, totalQBlocks); // T: 所有batch中Q方向切块的总数
 
-
 // 稀疏分块参数 (blockShapeOptional)
 TILING_DATA_FIELD_DEF(uint64_t, blockShapeX); // block的x维度(Q方向)
 TILING_DATA_FIELD_DEF(uint64_t, blockShapeY); // block的y维度(KV方向)
@@ -115,6 +114,12 @@ REGISTER_TILING_DATA_CLASS(BlockSparseAttentionGrad_1002, BlockSparseAttentionGr
 REGISTER_TILING_DATA_CLASS(BlockSparseAttentionGrad_1003, BlockSparseAttentionGradTilingDataArch35)
 REGISTER_TILING_DATA_CLASS(BlockSparseAttentionGrad_1004, BlockSparseAttentionGradTilingDataArch35)
 REGISTER_TILING_DATA_CLASS(BlockSparseAttentionGrad_1005, BlockSparseAttentionGradTilingDataArch35)
+REGISTER_TILING_DATA_CLASS(BlockSparseAttentionGrad_1008, BlockSparseAttentionGradTilingDataArch35)
+REGISTER_TILING_DATA_CLASS(BlockSparseAttentionGrad_1009, BlockSparseAttentionGradTilingDataArch35)
+REGISTER_TILING_DATA_CLASS(BlockSparseAttentionGrad_1010, BlockSparseAttentionGradTilingDataArch35)
+REGISTER_TILING_DATA_CLASS(BlockSparseAttentionGrad_1011, BlockSparseAttentionGradTilingDataArch35)
+REGISTER_TILING_DATA_CLASS(BlockSparseAttentionGrad_1012, BlockSparseAttentionGradTilingDataArch35)
+REGISTER_TILING_DATA_CLASS(BlockSparseAttentionGrad_1013, BlockSparseAttentionGradTilingDataArch35)
 // BlockSparseAttentionGrad编译信息
 struct BlockSparseAttentionGradCompileInfo {
     uint32_t inputDataByte = 2;

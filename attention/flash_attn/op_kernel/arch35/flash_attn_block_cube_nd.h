@@ -16,15 +16,14 @@
 #define FLASH_ATTN_BLOCK_CUBE_ND_H_
 
 #include "../utils/flash_attn_type.h"
-#if __has_include("../../../common/op_kernel/matmul.h")
 #include "../../../common/op_kernel/matmul.h"
-#else
-#include "../../common/matmul.h"
-#endif
+#include "../../../common/op_kernel/const_def.h"
+#include "../../../common/op_kernel/arch_info.h"
 
 using namespace fa_base_matmul;
 
 namespace FlashAttnKernel {
+using ArchInfo::CV_RATIO;
 
 template <typename FA_T>
 class FANoQuantGqaBlockCubeNd {
@@ -65,13 +64,13 @@ public:
 
     // 核间同步ID
     static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4U;
-    static constexpr uint32_t CC_MM_0 = 0U;
-    static constexpr uint32_t CC_MM_1 = 1U;
-    static constexpr uint32_t CC_MM_2 = 2U;
-    static constexpr uint32_t CC_MM_3 = 3U;
-    static constexpr uint32_t CC_L1P_0 = 5U;
-    static constexpr uint32_t CC_L1P_1 = 6U;
-    static constexpr uint32_t CC_L1P_2 = 7U;
+    static constexpr uint32_t CROSSCORE_MM_0 = 0U;
+    static constexpr uint32_t CROSSCORE_MM_1 = 1U;
+    static constexpr uint32_t CROSSCORE_MM_2 = 2U;
+    static constexpr uint32_t CROSSCORE_MM_3 = 3U;
+    static constexpr uint32_t CROSSCORE_L1P_0 = 5U;
+    static constexpr uint32_t CROSSCORE_L1P_1 = 6U;
+    static constexpr uint32_t CROSSCORE_L1P_2 = 7U;
 
     // 核内同步ID
     static constexpr uint32_t Q_L1_BUFFER_ID0 = 0U;
@@ -214,15 +213,15 @@ public:
 
     __aicore__ inline void UnInitCrossCoreSync()
     {
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_MM_0);
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_MM_0 + AIV0_AIV1_OFFSET);
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_MM_1);
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_MM_1 + AIV0_AIV1_OFFSET);
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_MM_0);
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_MM_0 + AIV0_AIV1_OFFSET);
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_MM_1);
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_MM_1 + AIV0_AIV1_OFFSET);
         if constexpr (dBaseSize <= 128) {
-            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_MM_2);
-            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_MM_2 + AIV0_AIV1_OFFSET);
-            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_MM_3);
-            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_MM_3 + AIV0_AIV1_OFFSET);
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_MM_2);
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_MM_2 + AIV0_AIV1_OFFSET);
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_MM_3);
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_MM_3 + AIV0_AIV1_OFFSET);
         }
     }
 
@@ -248,12 +247,12 @@ public:
         uint32_t dstStride = (runInfo.actMSize + 15) >> 4 << 4;
         FaL1Tensor<Q_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
-        GmCoord gmCoord{.bIdx = runInfo.bIdx,
-                        .n2Idx = runInfo.n2Idx,
-                        .gS1Idx = runInfo.gS1Idx,
-                        .dIdx = dOffset,
-                        .gS1DealSize = runInfo.actMSize,
-                        .dDealSize = dRealSize};
+        GmCoordGs1Merge gmCoord{.bIdx = runInfo.bIdx,
+                                .n2Idx = runInfo.n2Idx,
+                                .gS1Idx = runInfo.gS1Idx,
+                                .dIdx = dOffset,
+                                .gS1DealSize = runInfo.actMSize,
+                                .dDealSize = dRealSize};
         copyQueryGmToL1_(l1Tensor, queryGm_, gmCoord);
     }
 
@@ -293,7 +292,7 @@ public:
         mmResBufId_ = (mmResBufId_ + 1) % UB_MM_RES_BUFCNT;
         LocalTensor<MM_T> mm1ResUbTensor =
             ubMmResBuffers_[mmResUbBufId * UB_MM_RES_BUF_BYTES].template ReinterpretCast<MM_T>();
-        uint32_t mmSyncIdx = CC_MM_0 + mmResUbBufId;
+        uint32_t mmSyncIdx = CROSSCORE_MM_0 + mmResUbBufId;
 
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(mmSyncIdx);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(mmSyncIdx + AIV0_AIV1_OFFSET);
@@ -338,8 +337,11 @@ public:
         {
             Mutex::Lock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
             LocalTensor<MM_T> l0CSubTensor = l0CBuffers_[l0cBufId_ * L0C_BUF_BYTES].template ReinterpretCast<MM_T>();
+            // K 轴取 pad 后宽度(D=72 → 128), L1 pad 区已清零, Mmad 结果数学等价
+            // Mmad K=D 精确累加; LoadData 搬运宽度按分形粒度对齐(对齐D=原值, D=72→80与Nd2Nz写入组数一致)
+            uint32_t ldK = ((constInfo_.dSize + 15) >> 4) << 4;
             MMParam param = MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)runInfo.actSingleLoopS2Size,
-                                        (uint32_t)(constInfo_.dSize), false, true);
+                                        constInfo_.dSize, false, true, true, true, 0, 0, ldK, 0);
             if constexpr (dBaseSize > 128) {
                 if constexpr (s2BaseSize == 256) {
                     MatmulN<Q_T, KV_T, MM_T, 64, 128, 256, ABLayout::MK, ABLayout::KN>(
@@ -375,8 +377,8 @@ public:
         uint32_t mmResUbBufId = mmResBufId_;
         mmResBufId_ = (mmResBufId_ + 1) % UB_MM_RES_BUFCNT;
         uint32_t pL1BufId = runInfo.loop % L1_P_BUFCNT;
-        uint32_t v1c2CrossCoreSyncIdx = CC_L1P_0 + pL1BufId;
-        uint32_t mmSyncIdx = CC_MM_0 + mmResUbBufId;
+        uint32_t v1c2CrossCoreSyncIdx = CROSSCORE_L1P_0 + pL1BufId;
+        uint32_t mmSyncIdx = CROSSCORE_MM_0 + mmResUbBufId;
         LocalTensor<Q_T> pL1Tensor = l1PBuffers_[pL1BufId * L1_P_BUF_BYTES].template ReinterpretCast<Q_T>();
         LocalTensor<MM_T> mm2ResUbTensor =
             ubMmResBuffers_[mmResUbBufId * UB_MM_RES_BUF_BYTES].template ReinterpretCast<MM_T>();
@@ -418,12 +420,27 @@ public:
         Mutex::Lock<PIPE_MTE1>(KV_L1_BUFFER_ID0 + kvL1BufId_);
         {
             uint32_t nLoops = (constInfo_.dSizeV + 128 - 1) / 128;
+            // Mmad N=真实尾块宽度精确计算; LoadData 搬运宽度按分形粒度对齐(D=72→80, 与Nd2Nz写入组数一致);
+            // Fixpipe nSize=真实列 + dstStride=128(UB行距) → vec2 128宽读, 尾列脏但 D 轴逐元素隔离无害
+            uint32_t lastTileN = constInfo_.dSizeV - (nLoops - 1) * 128;
+            uint32_t ldN = ((lastTileN + 15) >> 4) << 4;
             for (uint32_t n = 0; n < nLoops; n++) {
-                uint32_t tileN = (n == nLoops - 1) ? (constInfo_.dSizeV - n * 128) : 128;
+                uint32_t tileN = (n == nLoops - 1) ? lastTileN : 128;
+                uint32_t tileLdN = (n == nLoops - 1) ? ldN : 128;
                 Mutex::Lock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
                 LocalTensor<MM_T> l0CSubTensor =
                     l0CBuffers_[l0cBufId_ * L0C_BUF_BYTES].template ReinterpretCast<MM_T>();
-                MMParam param = {(uint32_t)mBaseSize, tileN, (uint32_t)runInfo.actSingleLoopS2Size, false, false};
+                MMParam param = {(uint32_t)mBaseSize,
+                                 tileN,
+                                 (uint32_t)runInfo.actSingleLoopS2Size,
+                                 false,
+                                 false,
+                                 true,
+                                 true,
+                                 0,
+                                 0,
+                                 0,
+                                 tileLdN};
                 param.realM = (uint32_t)runInfo.actMSize;
 
                 uint32_t s2Aligned = AttentionCommon::Align(runInfo.actSingleLoopS2Size, 16U);

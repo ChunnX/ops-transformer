@@ -971,9 +971,10 @@ def _online_softmax_update(S_ij, mask_j, mi, si, oi, ln_p_scale, LN2):
 
     m_block_j, _ = torch.max(S_ij, dim=-1, keepdims=True)
     m_block_j = torch.ceil(m_block_j / LN2) * LN2
+    m_block_j = m_block_j - ln_p_scale
     m_block_j = torch.max(mi, m_block_j)
 
-    P_ij_raw = torch.exp(S_ij - m_block_j + ln_p_scale)
+    P_ij_raw = torch.exp(S_ij - m_block_j)
     s_block_j = torch.sum(P_ij_raw, dim=-1, keepdims=True)
     P_ij_drop = P_ij_raw.to(FP8_DTYPE).to(torch.float32)
 
@@ -1252,7 +1253,6 @@ def _call_npu_fa_op(
         cu_seqlens_kv=cu_seqlens_kv_t if is_tnd_kv else None,
         seqused_q=seqused_q_t,
         seqused_kv=seqused_kv_t,
-        v_descale=v_descale,
         mask_mode=sparse_mode,
         layout_q=layout_q,
         layout_q_descale=layout_q_descale,
@@ -1344,7 +1344,7 @@ class Network(nn.Module):
             cu_seqlens_kv=cu_seqlens_kv,
             seqused_q=seqused_q,
             seqused_kv=seqused_kv,
-            v_descale=v_descale,
+            head_dim_v=None,
             mask_mode=sparse_mode,
             layout_q=layout_q,
             layout_q_descale=layout_q_descale,

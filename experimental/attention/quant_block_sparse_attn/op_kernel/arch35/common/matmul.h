@@ -52,6 +52,10 @@ struct MMParam {
     uint32_t realM = 0; // bmm2以s1realsize为M轴，不赋值时不影响现有代码逻辑
 };
 
+// singleM/singleN/singleK：单次 MMAD 的 M/N/K 维度。
+// isLeftTranspose/isRightTranspose：L1 中 A/B 矩阵加载到 L0A/L0B 时是否采用转置视图。
+// cmatrixInitVal：C 矩阵初始化配置；isOutKFisrt：当前是否为外层 K 循环首块。
+// unitFlag：MMAD unit flag；realM：M 轴尾块的实际长度，0 表示使用 singleM。
 __aicore__ inline MMParam MxMakeMMParam(uint32_t singleM, uint32_t singleN, uint32_t singleK, bool isLeftTranspose,
                                         bool isRightTranspose, bool cmatrixInitVal = true, bool isOutKFisrt = true,
                                         uint32_t unitFlag = 0, uint32_t realM = 0)
@@ -630,6 +634,75 @@ __aicore__ inline void MxMatmulFull(const LocalTensor<A> &aL1Tensor, const Local
     // 从而在 L1->L0 LoadData 阶段选择硬件随路反量化。
     MatmulFull<A, B, C, baseM, baseN, baseK, AL, BL, L0AType, L0BType, AScaleType, BScaleType, L0ADType, L0BDType>(
         aL1Tensor, bL1Tensor, aL0BuffsDb, bL0BuffsDb, cL0Tensor, param, aScaleL1Tensor, bScaleL1Tensor);
+}
+
+// MX C1 paired-subLoop path: keep the shared B/Q tile resident in L0B between two MMADs.
+// LOAD_B=true/RELEASE_B=false loads and retains B; LOAD_B=false/RELEASE_B=true reuses and releases it.
+template <bool LOAD_B, bool RELEASE_B, typename A, typename B, typename C, uint32_t baseM, uint32_t baseN,
+          uint32_t baseK, ABLayout AL, ABLayout BL, typename L0AType, typename L0BType,
+          typename AScaleType = fp8_e8m0_t, typename BScaleType = fp8_e8m0_t, typename L0ADType = A,
+          typename L0BDType = B>
+__aicore__ inline void MxMatmulFullReuseB(const LocalTensor<A> &aL1Tensor, const LocalTensor<B> &bL1Tensor,
+                                          L0AType &aL0BuffsDb, L0BType &bL0BuffsDb, const LocalTensor<C> &cL0Tensor,
+                                          MMParam &param,
+                                          const LocalTensor<AScaleType> &aScaleL1Tensor = LocalTensor<AScaleType>(),
+                                          const LocalTensor<BScaleType> &bScaleL1Tensor = LocalTensor<BScaleType>())
+{
+    static_assert(LOAD_B || RELEASE_B, "a reused MX L0B tile must be loaded or released");
+
+    Buffer<BufferType::L0A> l0aBuffer = aL0BuffsDb.Get();
+    l0aBuffer.Wait<HardEvent::M_MTE1>();
+    LocalTensor<L0ADType> l0aTensor = l0aBuffer.GetTensor<L0ADType>();
+#if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__) || (__NPU_ARCH__ == 5102))
+    if constexpr (IsSameType<L0ADType, mx_fp8_e4m3_t>::value) {
+        LoadDataToL0AMx<A, L0ADType>(l0aTensor, aL1Tensor, aScaleL1Tensor, param, 0, param.singleK, param.singleM);
+    } else
+#endif
+    {
+        LoadDataToL0A(l0aTensor, aL1Tensor, param, 0, param.singleK, param.singleM);
+    }
+    l0aBuffer.Set<HardEvent::MTE1_M>();
+
+    Buffer<BufferType::L0B> l0bBuffer;
+    if constexpr (LOAD_B) {
+        l0bBuffer = bL0BuffsDb.Get();
+        l0bBuffer.Wait<HardEvent::M_MTE1>();
+        LocalTensor<L0BDType> l0bTensor = l0bBuffer.GetTensor<L0BDType>();
+#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
+        if constexpr (IsSameType<L0BDType, mx_fp8_e4m3_t>::value) {
+            LoadDataToL0BMx<B, L0BDType>(l0bTensor, bL1Tensor, bScaleL1Tensor, param, 0, param.singleK, param.singleN);
+        } else
+#endif
+        {
+            LoadDataToL0B(l0bTensor, bL1Tensor, param, 0, param.singleK, param.singleN);
+        }
+        l0bBuffer.Set<HardEvent::MTE1_M>();
+        l0bBuffer.Wait<HardEvent::MTE1_M>();
+    } else {
+        // The preceding paired call consumed Get() and deliberately retained that exact L0B tile.
+        l0bBuffer = bL0BuffsDb.GetPre();
+    }
+
+    l0aBuffer.Wait<HardEvent::MTE1_M>();
+    LocalTensor<L0BDType> l0bTensor = l0bBuffer.GetTensor<L0BDType>();
+    MmadParams params;
+    params.m = param.realM != 0 ? param.realM : param.singleM;
+    params.n = param.singleN;
+    params.k = param.singleK;
+    params.cmatrixInitVal = param.isOutKFisrt;
+    params.cmatrixSource = false;
+    params.unitFlag = param.unitFlag;
+    constexpr uint32_t singleRowM = 1U;
+    // M=1 使用 MMAD 的最小 16 行分形执行；其余 M 值保持真实行数，由底层 matmul 处理尾块。
+    if (params.m == singleRowM) {
+        params.m = ONE_FRACTAL_H_ELEMENT;
+    }
+    Mmad(cL0Tensor, l0aTensor, l0bTensor, params);
+
+    l0aBuffer.Set<HardEvent::M_MTE1>();
+    if constexpr (RELEASE_B) {
+        l0bBuffer.Set<HardEvent::M_MTE1>();
+    }
 }
 
 // 切K

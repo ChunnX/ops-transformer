@@ -53,8 +53,15 @@ private:
     bool Prepare(CpuKernelContext &ctx);
     bool BalanceSchedule(SectionStreamKResult &splitRes);
     bool GenMetaData(SectionStreamKResult &splitRes);
+    void SetMetadataHead(const SectionStreamKResult &splitRes, optiling::detail::FaMetaData &faMetadata);
+    void SetMetadataFa(const SectionStreamKResult &splitRes, optiling::detail::FaMetaData &faMetadata);
+    void SetMetadataFd(const SectionStreamKResult &splitRes, optiling::detail::FaMetaData &faMetadata);
     bool ParamsInit();
+    bool CheckNeedInitOutput();
     std::vector<int64_t> GetTensorDataAsInt64(Tensor *tensor, size_t size);
+    uint32_t GetS1SeqSize(uint32_t bIdx);
+    uint32_t GetS2SeqSize(uint32_t bIdx);
+    int64_t CalDeterMaxRound();
 
 private:
     CpuKernelContext *context_ = nullptr;
@@ -62,7 +69,6 @@ private:
     Tensor *cuSeqlensKv_ = nullptr;
     Tensor *sequsedQ_ = nullptr;
     Tensor *sequsedKv_ = nullptr;
-    Tensor *vDescale_ = nullptr;
     Tensor *metaData_ = nullptr;
 
     int32_t batchSize_ = 0;
@@ -71,6 +77,7 @@ private:
     int32_t numHeadsQ_ = 0;
     int32_t numHeadsKv_ = 0;
     int32_t headDim_ = 0;
+    int32_t headDimV_ = 0;
     int32_t quantMode_ = 1;
     int32_t maskMode_ = 1;
     int32_t winLeft_ = -1;
@@ -82,10 +89,17 @@ private:
     std::string socVersion_ = "";
     int32_t aicCoreNum_ = 36U;
     int32_t aivCoreNum_ = 72U;
+    uint32_t s1Size_ = 0;
+    uint32_t s2Size_ = 0;
+    bool isGradEnabled_ = false;
+    int64_t fagDeterMaxRound_ = 0; // 延迟到 GenMetaData 中 Clear 之后写入
+    int64_t metadataDimNum_ = 0;   // 输出 tensor 维度数(宿主侧经 attr 下发, AICPU 侧 shape 可能未填充)
+    int64_t metadataRowSize_ = -1; // 输出 tensor 单行长度(2D 为 dim1, 1D 为 dim0), 同上
 
     uint32_t groupSize_ = 0;
     uint32_t mBaseSize_ = NUM_64;
     uint32_t s2BaseSize_ = NUM_128;
+    bool needInitOutput_ = false;
     load_balance::DeviceInfo deviceInfo;
     load_balance::BaseInfo baseInfo;
     load_balance::SectionStreamKParam param;
@@ -96,7 +110,6 @@ private:
         cuSeqlensKv = 1,
         sequsedQ = 2,
         sequsedKv = 3,
-        vDescale = 4,
         metaData = 0,
     };
 };

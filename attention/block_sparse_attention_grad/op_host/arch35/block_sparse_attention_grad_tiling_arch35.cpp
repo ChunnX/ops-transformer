@@ -13,6 +13,7 @@
 #include "op_host/tiling_templates_registry.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "../block_sparse_attention_grad_tiling.h"
+#include <algorithm>
 
 namespace optiling {
 namespace BSA_ARC35 {
@@ -65,19 +66,13 @@ ge::graphStatus InputCheck(const std::vector<int32_t> &q_shape, const std::vecto
 
 class BlockSparseAttentionGradArch35Tiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit BlockSparseAttentionGradArch35Tiling(gert::TilingContext *context_) : TilingBaseClass(context_)
-    {
-    }
-
+    explicit BlockSparseAttentionGradArch35Tiling(gert::TilingContext *context_)
+        : TilingBaseClass(context_)
+    {}
 
 protected:
     bool IsCapable() override
     {
-        if (context_->GetDeterministic() == 1) {
-            OP_LOGE(context_->GetNodeName(), "BlockSparseAttentionGrad not support Deterministic.");
-            return false;
-        }
-
         if (dataType_ != ge::DT_FLOAT16 && dataType_ != ge::DT_BF16) {
             OP_LOGE(context_->GetNodeName(), "BlockSparseAttentionGrad only support DT_FLOAT16 and DT_BF16.");
             return false;
@@ -88,9 +83,9 @@ protected:
             return false;
         }
 
-        if (blockShapeX_ % 64 != 0 || blockShapeY_ % 64 != 0) {
+        if (blockShapeX_ == 0 || blockShapeY_ == 0 || blockShapeX_ % 16 != 0 || blockShapeY_ % 16 != 0) {
             OP_LOGE(context_->GetNodeName(),
-                    "BlockSparseAttentionGrad only support blockShapeX_ and blockShapeY_ be multiple of 64.");
+                    "BlockSparseAttentionGrad only supports blockShapeX and blockShapeY that are multiples of 16.");
             return false;
         }
 
@@ -99,6 +94,7 @@ protected:
 
     ge::graphStatus GetShapeAttrsInfo() override
     {
+        deterministic_ = (context_->GetDeterministic() == 1);
         int32_t q_batch_num, q_group, q_head_num, q_seq_len, q_head_dim;
         int32_t k_batch_num, k_head_num, k_seq_len, k_head_dim;
         int32_t v_batch_num, v_head_num, v_seq_len, v_head_dim;
@@ -247,21 +243,21 @@ protected:
     ge::graphStatus DoOpTiling() override
     {
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
-        auto cubeCoreNum = ascendcPlatform.GetCoreNumAic();
+        cubeCoreNum_ = ascendcPlatform.GetCoreNumAic();
 
-        uint32_t baseM = blockShapeX_ <= 128 ? blockShapeX_ : 128;
-        uint32_t baseN = blockShapeY_ <= 128 ? blockShapeY_ : 128;
-        uint32_t singleM = AlignTo(2048, baseM);
-        uint32_t block_num_x = q_seq_len_ / blockShapeX_;
-        uint32_t block_num_y = kv_seq_len_ / blockShapeY_;
+        baseM_ = blockShapeX_ <= 128 ? blockShapeX_ : 128;
+        baseN_ = blockShapeY_ <= 128 ? blockShapeY_ : 128;
+        uint32_t singleM = AlignTo(2048, baseM_);
+        // Keep all Q tiles for the current KV block/head on one cube core when
+        // possible so DK/DV can accumulate in L0 and K/V stays cached in L1.
 
         tilingData_.set_BlockX(blockShapeX_);
         tilingData_.set_BlockY(blockShapeY_);
-        tilingData_.set_cubeCoreNum(cubeCoreNum);
-        tilingData_.set_baseM(baseM);
-        tilingData_.set_baseN(baseN);
+        tilingData_.set_cubeCoreNum(cubeCoreNum_);
+        tilingData_.set_baseM(baseM_);
+        tilingData_.set_baseN(baseN_);
         tilingData_.set_singleM(singleM);
-        context_->SetBlockDim(cubeCoreNum);
+        context_->SetBlockDim(cubeCoreNum_);
         context_->SetScheduleMode(1);
         return ge::GRAPH_SUCCESS;
     }
@@ -285,7 +281,6 @@ protected:
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
         uint64_t sys_workspace_size = ascendcPlatform.GetLibApiWorkSpaceSize();
         uint64_t usr_workspace_offset = 0;
-
         if (strcmp(layout_, BSND_STR) == 0 || strcmp(layout_, BNSD_STR) == 0) {
             dq_size = batch_num_ * q_seq_len_ * q_head_num_ * head_dim_;
             dk_size = batch_num_ * kv_seq_len_ * kv_head_num_ * head_dim_;
@@ -327,12 +322,18 @@ protected:
     {
         uint64_t default_key = 1000;
         /*
-         *  000: BF16 BSND
-         *  001: FP16 BSND
-         *  010: BF16 BNSD
-         *  011: FP16 BNSD
-         *  100: BF16 TND
-         *  101: FP16 TND
+         *  0000: BF16 BSND
+         *  0001: FP16 BSND
+         *  0010: BF16 BNSD
+         *  0011: FP16 BNSD
+         *  0100: BF16 TND
+         *  0101: FP16 TND
+         *  1000: BF16 BSND DET
+         *  1001: FP16 BSND DET
+         *  1010: BF16 BNSD DET
+         *  1011: FP16 BNSD DET
+         *  1100: BF16 TND  DET
+         *  1101: FP16 TND  DET
          */
         default_key = (dataType_ == ge::DT_BF16) ? default_key : default_key + 0b001;
 
@@ -342,6 +343,10 @@ protected:
             default_key += 0b010;
         } else if (strcmp(layout_, TND_STR) == 0) {
             default_key += 0b100;
+        }
+
+        if (deterministic_) {
+            default_key += 0b1000;
         }
 
         return default_key;
@@ -366,8 +371,11 @@ private:
     int32_t blockShapeY_ = 0;
     int32_t max_q_seq_len_ = 0;
     int32_t max_kv_seq_len_ = 0;
+    bool deterministic_ = false;
+    uint32_t cubeCoreNum_ = 0;
+    uint32_t baseM_ = 0;
+    uint32_t baseN_ = 0;
 };
-
 
 REGISTER_TILING_TEMPLATE_WITH_ARCH(BlockSparseAttentionGrad, BlockSparseAttentionGradArch35Tiling,
                                    static_cast<int32_t>(NpuArch::DAV_3510), 1);

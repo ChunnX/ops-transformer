@@ -12,6 +12,7 @@
 #define GROUPED_MATMUL_INFERSHAPE_COMMON_H_
 
 #include "register/op_impl_registry.h"
+#include <vector>
 #include "log/log.h"
 #include "platform/platform_info.h"
 
@@ -61,7 +62,7 @@ constexpr size_t GMM_SPLIT_M_SINGLE_WEIGHT_DIM = 3UL;
 constexpr size_t GMM_SPLIT_K_SINGLE_WEIGHT_DIM = 2UL;
 constexpr size_t LAST_DIM = 1UL;
 constexpr size_t PENULTIMATE_DIM = 2UL;
-constexpr size_t ANTEPENULTIMATE_DIM = 3UL; 
+constexpr size_t ANTEPENULTIMATE_DIM = 3UL;
 constexpr int64_t PERTILE_GROUP_SIZE = 128UL;
 constexpr size_t GMM_A8W4_OFFSET_DIM_NUM = 3UL;
 constexpr size_t GMM_A8W4_BIAS_DIM_NUM = 2UL;
@@ -108,14 +109,14 @@ enum class GMMActType : int64_t {
     END_ACT_TYPE_ENUM
 };
 
-const std::initializer_list<ge::DataType> BIAS_DTYPE_SUPPORT_LIST = {ge::DataType::DT_FLOAT, ge::DataType::DT_FLOAT16,
-                                                                     ge::DataType::DT_BF16};
+const std::vector<ge::DataType> BIAS_DTYPE_SUPPORT_LIST = {ge::DataType::DT_FLOAT, ge::DataType::DT_FLOAT16,
+                                                           ge::DataType::DT_BF16};
 
 class GroupedMatmulCommonUtil {
 public:
     GMMAttrs attrsInfo;
-    GroupedMatmulCommonUtil(){};
-    ~GroupedMatmulCommonUtil(){};
+    GroupedMatmulCommonUtil() {};
+    ~GroupedMatmulCommonUtil() {};
 
 private:
 };

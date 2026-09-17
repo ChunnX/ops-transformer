@@ -136,7 +136,7 @@ void FusedInferAttentionScoreTilingImpl::SetGSMerge(const FiaTilingInfo &fiaInfo
 
 bool FusedInferAttentionScoreTilingImpl::CheckPFAMergeSupport(const FiaTilingInfo &fiaInfo) const
 {
-    if (fiaInfo.s1Size * fiaInfo.gSize >= NUM_64) {
+    if (fiaInfo.gSize <= 1 || fiaInfo.s1Size * fiaInfo.gSize >= NUM_64) {
         return false;
     }
     bool isTransposeLayout = CheckTransposeLayout(fiaInfo);
@@ -1829,6 +1829,14 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetFATilingData(const FiaTil
             inputParams.kRopeStrides.set_bnStride(fiaInfo.kRopeBnStride);
             inputParams.kRopeStrides.set_n2Stride(fiaInfo.kRopeN2Stride);
         }
+        inputParams.kScaleStrides.set_bnStride(fiaInfo.kScaleBnStride);
+        inputParams.kScaleStrides.set_n2Stride(fiaInfo.kScaleN2Stride);
+        inputParams.vScaleStrides.set_bnStride(fiaInfo.vScaleBnStride);
+        inputParams.vScaleStrides.set_n2Stride(fiaInfo.vScaleN2Stride);
+        inputParams.kOffsetStrides.set_bnStride(fiaInfo.kOffsetBnStride);
+        inputParams.kOffsetStrides.set_n2Stride(fiaInfo.kOffsetN2Stride);
+        inputParams.vOffsetStrides.set_bnStride(fiaInfo.vOffsetBnStride);
+        inputParams.vOffsetStrides.set_n2Stride(fiaInfo.vOffsetN2Stride);
     }
     inputParams.set_dSizeRope(DSIZE_64);
     inputParams.set_scaleValue(fiaInfo.scaleValue);

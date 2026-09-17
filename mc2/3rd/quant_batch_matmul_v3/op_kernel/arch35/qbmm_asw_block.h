@@ -15,7 +15,7 @@
 #ifndef MC2_QBMM_ASW_BLOCK_H
 #define MC2_QBMM_ASW_BLOCK_H
 
-#include "quant_batch_matmul_v3_tiling_data.h"
+#include "qbmv3_arch35_tiling_data.h"
 #include "../quant_batch_matmul_v3_base.h"
 
 namespace Mc2QuantBatchMatmulV3 {
@@ -92,9 +92,7 @@ __aicore__ inline constexpr uint32_t GetVectorRegSize()
 
 class Mc2QuantBmmAswBlock {
 public:
-    __aicore__ inline Mc2QuantBmmAswBlock()
-    {
-    }
+    __aicore__ inline Mc2QuantBmmAswBlock() {}
     __aicore__ inline void Init(const DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams *tilingData, uint32_t blockIdx);
     __aicore__ inline void UpdateBasicIndex(uint64_t roundIdx);
     __aicore__ inline void UpdateBasicIndex4AL1FullLoad(uint64_t roundIdx);
@@ -197,6 +195,9 @@ __aicore__ inline void Mc2QuantBmmAswBlock::UpdateBlockParams(uint64_t roundIdx)
                 singleCoreNSplit = DequantBmm::Align(singleCoreNSplit, static_cast<uint64_t>(K0_INT8));
             }
         }
+        if (tilingData_->adaptiveSlidingWin.alignNTailSplit) {
+            singleCoreNSplit = DequantBmm::Align(singleCoreNSplit, static_cast<uint64_t>(BMM_BLOCK_NUM));
+        }
         uint64_t mSplitIdx = (blockIdx_ % params_.totalTailTile) % tilingData_->adaptiveSlidingWin.mTailTile;
         uint64_t nSplitIdx = (blockIdx_ % params_.totalTailTile) / tilingData_->adaptiveSlidingWin.mTailTile;
         params_.mSplitAddrOffset = mSplitIdx * singleCoreMSplit;
@@ -244,6 +245,9 @@ __aicore__ inline void Mc2QuantBmmAswBlock::UpdateBlockParams4AL1FullLoad(uint64
             } else {
                 singleCoreNSplit = DequantBmm::Align(singleCoreNSplit, static_cast<uint64_t>(K0_INT8));
             }
+        }
+        if (tilingData_->adaptiveSlidingWin.alignNTailSplit) {
+            singleCoreNSplit = DequantBmm::Align(singleCoreNSplit, static_cast<uint64_t>(BMM_BLOCK_NUM));
         }
         uint64_t mSplitIdx = blockIdx_ % params_.mCnt;
         uint64_t nSplitIdx = blockIdx_ / params_.mCnt % tilingData_->adaptiveSlidingWin.nTailTile;

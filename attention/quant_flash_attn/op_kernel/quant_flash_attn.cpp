@@ -22,13 +22,8 @@
 #include "arch35/quant_flash_attn_kernel_hif8.h"
 #include "arch35/quant_flash_attn_template_tiling_key.h"
 #include "arch35/quant_flash_attn_tiling_data.h"
-#if __has_include("../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h")
 #include "../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
 #include "../../common/op_kernel/vector_common.h"
-#else
-#include "../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
-#include "../common/op_kernel/vector_common.h"
-#endif
 
 using namespace AscendC;
 using namespace optiling;
@@ -45,7 +40,7 @@ __aicore__ inline void quant_flash_attn_mxfp8(
     using INPUT_T = fp8_e4m3fn_t;
     using OUT_T = bfloat16_t;
 
-    fa_base_matmul::idCounterNum = 0;
+    fa_base_matmul::ResetIdCounter();
 
     constexpr LayOutTypeEnum inputLayoutType = static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[inOutLayoutType][0]);
     constexpr LayOutTypeEnum outputLayoutType = static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[inOutLayoutType][1]);
@@ -115,7 +110,7 @@ inline __aicore__ void quant_flash_attn_gqa_fp8(
     __gm__ uint8_t *sinks, __gm__ uint8_t *metadata, __gm__ uint8_t *attnOut, __gm__ uint8_t *softmaxLse,
     __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
-    fa_base_matmul::idCounterNum = 0;
+    fa_base_matmul::ResetIdCounter();
 
     constexpr LayOutTypeEnum inputLayoutType = static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[inOutLayoutType][0]);
     constexpr LayOutTypeEnum outputLayoutType = static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[inOutLayoutType][1]);
@@ -179,7 +174,7 @@ __aicore__ inline void quant_flash_attn_hif8(
     using INPUT_T = hifloat8_t;
     using OUT_T = bfloat16_t;
 
-    fa_base_matmul::idCounterNum = 0;
+    fa_base_matmul::ResetIdCounter();
 
     constexpr LayOutTypeEnum inputLayoutType = static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[inOutLayoutType][0]);
     constexpr LayOutTypeEnum outputLayoutType = static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[inOutLayoutType][1]);

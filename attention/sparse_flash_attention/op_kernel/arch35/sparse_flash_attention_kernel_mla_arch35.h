@@ -30,21 +30,9 @@
 #include "sparse_flash_attention_common_arch35.h"
 #include "sparse_flash_attention_kvcache.h"
 
-#if __has_include("../../common/op_kernel/CopyInL1.h")
 #include "../../common/op_kernel/CopyInL1.h"
-#else
-#include "../common/CopyInL1.h"
-#endif
-#if __has_include("../../common/op_kernel/matmul.h")
 #include "../../common/op_kernel/matmul.h"
-#else
-#include "../common/matmul.h"
-#endif
-#if __has_include("../../common/op_kernel/FixpipeOut.h")
 #include "../../common/op_kernel/FixpipeOut.h"
-#else
-#include "../common/FixpipeOut.h"
-#endif
 
 using matmul::MatmulType;
 using namespace AscendC;
@@ -141,7 +129,7 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
     __gm__ uint8_t *softmaxSum, __gm__ uint8_t *sinks, __gm__ uint8_t *workspace,
     const SparseFlashAttentionTilingDataMla *__restrict tiling, __gm__ uint8_t *gmTiling, TPipe *tPipe)
 {
-    fa_base_matmul::idCounterNum = 0;
+    fa_base_matmul::ResetIdCounter();
     constInfo.subBlockIdx = GetSubBlockIdx();
     if ASCEND_IS_AIC {
         this->aicIdx = GetBlockIdx();
@@ -158,8 +146,12 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
     constInfo.s2BaseSize = 128;
 
     this->pipe = tPipe;
+    int64_t dSizeRope = 0;
+    if constexpr (HAS_ROPE) {
+        dSizeRope = 64; // 64: 编码维度
+    }
     vecBlock.InitVecBlock(tPipe, this->tilingData, this->sharedParams, this->aicIdx, constInfo.subBlockIdx,
-                          actualSeqLengthsQ, actualSeqLengths);
+                          actualSeqLengthsQ, actualSeqLengths, dSizeRope);
     if ASCEND_IS_AIV {
         constInfo.bSize = this->sharedParams.bSize;
         constInfo.gSize = this->sharedParams.gSize;
@@ -350,6 +342,7 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
     uint32_t mm1ResultSize = constInfo.s1BaseSize / CV_RATIO * constInfo.s2BaseSize * sizeof(T);
     uint32_t mm2ResultSize = constInfo.s1BaseSize / CV_RATIO * 512 * sizeof(T);
     uint32_t mm2LeftSize = constInfo.s1BaseSize * constInfo.s2BaseSize * sizeof(Q_T);
+    // P 复用 rope 槽位，L1 right 两侧都按 576 分配；none 实例 KV 仍按 512 pitch 搬入
     uint32_t mm1RightSize = constInfo.s2BaseSize * 576 * sizeof(Q_T);
     l1BufferManager.Init(pipe, 524288); // 512 * 1024
     // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
@@ -382,7 +375,8 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
         bmm1Buffers.Get().SetCrossCore();
     }
 
-    uint32_t v0ResSize = constInfo.s2BaseSize * 576U * sizeof(Q_T);
+    constexpr uint32_t kvTokenWidth = HAS_ROPE ? 576U : 512U;
+    uint32_t v0ResSize = constInfo.s2BaseSize * kvTokenWidth * sizeof(Q_T);
     int64_t totalOffset;
     if constexpr (IS_SPLIT_G) {
         totalOffset = v0ResSize * 3 * (aicIdx >> 1U);
@@ -422,7 +416,11 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
     constInfo.s2Size = sharedParams.s2Size;
     constInfo.dSize = sharedParams.dSize;
     constInfo.dSizeVInput = sharedParams.dSizeVInput;
-    constInfo.dSizeRope = 64;
+    if constexpr (HAS_ROPE) {
+        constInfo.dSizeRope = 64;
+    } else {
+        constInfo.dSizeRope = 0;
+    }
     constInfo.dSizeNope = 512;
     constInfo.tileSize = sharedParams.tileSize;
     constInfo.sparseBlockCount = sharedParams.sparseBlockCount;

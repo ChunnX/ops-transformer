@@ -15,15 +15,15 @@
 #ifndef MATMUL_REDUCE_SCATTER_AIV_MODE_BLOCK_EPILOGUE_DEQUANT_H
 #define MATMUL_REDUCE_SCATTER_AIV_MODE_BLOCK_EPILOGUE_DEQUANT_H
 
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/resource.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/dispatch_policy.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm_coord.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/gemm_type.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/matrix_coord.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/layout/layout.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/detail/callback.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/copy_gm_to_ub.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_catlass.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/tla_arch_resource.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tla_epilogue_dispatch_policy.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_gemm_coord.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tla_gemm_gemm_type.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_matrix_coord.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/layout/tla_layout_layout.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/detail/tla_detail_callback.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tla_epilogue_copy_gm_to_ub.hpp"
 
 namespace Catlass::Epilogue::Block {
 
@@ -187,8 +187,7 @@ public:
             auto &ubC = ubCList[ubListId];
             LayoutC layoutUbC{actualTileShape, ubTileStride};
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[ubListId]);
-            copyGmToUbC(ubC, gmC[layoutC.GetOffset(tileOffset)], layoutUbC,
-                        layoutC.GetTileLayout(actualTileShape));
+            copyGmToUbC(ubC, gmC[layoutC.GetOffset(tileOffset)], layoutUbC, layoutC.GetTileLayout(actualTileShape));
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[ubListId]);
 
             // perChannel scale: GM -> UB
@@ -202,12 +201,12 @@ public:
             // perToken scale: GM -> UB
             auto perTokenTileShape = actualTileShape.template GetCoordByAxis<0>();
             auto &ubPerTokenScale = ubPerTokenScaleList[ubListId];
-            auto layoutUbPerTokenScale =
-                LayoutScale::template MakeLayoutInUb<ElementPerTokenScale>(perTokenTileShape);
+            auto layoutUbPerTokenScale = LayoutScale::template MakeLayoutInUb<ElementPerTokenScale>(perTokenTileShape);
 
-            copyGmToUbPerTokenScale(ubPerTokenScale,
-                                    gmPerTokenScale[layoutPerTokenScale.GetOffset(tileOffset.template GetCoordByAxis<0>())],
-                                    layoutUbPerTokenScale, layoutPerTokenScale.GetTileLayout(perTokenTileShape));
+            copyGmToUbPerTokenScale(
+                ubPerTokenScale,
+                gmPerTokenScale[layoutPerTokenScale.GetOffset(tileOffset.template GetCoordByAxis<0>())],
+                layoutUbPerTokenScale, layoutPerTokenScale.GetTileLayout(perTokenTileShape));
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbPerTokenScaleMTE2VList[ubListId]);
 
             // bias: GM -> UB (optional)
@@ -273,8 +272,7 @@ public:
             auto &ubC = ubCList[ubListId];
             LayoutC layoutUbC{actualTileShape, ubTileStride};
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[ubListId]);
-            copyGmToUbC(ubC, gmC[layoutC.GetOffset(tileOffset)], layoutUbC,
-                        layoutC.GetTileLayout(actualTileShape));
+            copyGmToUbC(ubC, gmC[layoutC.GetOffset(tileOffset)], layoutUbC, layoutC.GetTileLayout(actualTileShape));
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[ubListId]);
 
             // perChannel scale: GM -> UB
@@ -353,11 +351,11 @@ public:
             // perToken scale: GM -> UB
             auto perTokenTileShape = actualTileShape.template GetCoordByAxis<0>();
             auto &ubPerTokenScale = ubPerTokenScaleList[ubListId];
-            auto layoutUbPerTokenScale = LayoutScale::template MakeLayoutInUb<ElementPerTokenScale>(
-                perTokenTileShape);
-            copyGmToUbPerTokenScale(ubPerTokenScale,
-                                    gmPerTokenScale[layoutPerTokenScale.GetOffset(tileOffset.template GetCoordByAxis<0>())],
-                                    layoutUbPerTokenScale, layoutPerTokenScale.GetTileLayout(perTokenTileShape));
+            auto layoutUbPerTokenScale = LayoutScale::template MakeLayoutInUb<ElementPerTokenScale>(perTokenTileShape);
+            copyGmToUbPerTokenScale(
+                ubPerTokenScale,
+                gmPerTokenScale[layoutPerTokenScale.GetOffset(tileOffset.template GetCoordByAxis<0>())],
+                layoutUbPerTokenScale, layoutPerTokenScale.GetTileLayout(perTokenTileShape));
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbPerTokenScaleMTE2VList[ubListId]);
 
             // bias: GM -> UB (optional)
@@ -391,8 +389,8 @@ public:
 private:
     // bias 从 GM 拷贝到 UB；half/bfloat16 时同时转成 FP32。ptrBias 为 nullptr 时直接返回。
     CATLASS_DEVICE
-    void CopyBiasToUb(MatrixCoord tileOffset, MatrixCoord actualTileShape,
-                      LayoutBias layoutBias, __gm__ ElementBias *ptrBias)
+    void CopyBiasToUb(MatrixCoord tileOffset, MatrixCoord actualTileShape, LayoutBias layoutBias,
+                      __gm__ ElementBias *ptrBias)
     {
         if (ptrBias == nullptr) {
             return;
@@ -438,9 +436,8 @@ private:
 
     // 将 FP32 结果 cast 到 D 并拷贝回 GM。op1/op2 传 gmD，perToken 场景传 gmOut。
     CATLASS_DEVICE
-    void CastToDAndStore(AscendC::LocalTensor<float> &castSrc, MatrixCoord tileOffset,
-                         MatrixCoord actualTileShape, LayoutD layoutD,
-                         AscendC::GlobalTensor<ElementD> &gmDst)
+    void CastToDAndStore(AscendC::LocalTensor<float> &castSrc, MatrixCoord tileOffset, MatrixCoord actualTileShape,
+                         LayoutD layoutD, AscendC::GlobalTensor<ElementD> &gmDst)
     {
         auto &ubD = ubDList[ubListId];
         auto ubTileStride = MakeCoord(static_cast<int64_t>(TileShape::COLUMN), 1L);
@@ -451,8 +448,7 @@ private:
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventUbDVMTE3List[ubListId]);
 
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventUbDVMTE3List[ubListId]);
-        copyUbToGmD(gmDst[layoutD.GetOffset(tileOffset)], ubD,
-                    layoutD.GetTileLayout(actualTileShape), layoutUbD);
+        copyUbToGmD(gmDst[layoutD.GetOffset(tileOffset)], ubD, layoutD.GetTileLayout(actualTileShape), layoutUbD);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(eventUbDMTE3VList[ubListId]);
     }
 

@@ -141,7 +141,7 @@ std::tuple<at::Tensor, at::Tensor> ConstructQuantSparseFlashMlaAttenOutTensor(co
         }
     } else {
         // 不返回时tensor传空
-        softmaxLseSize = {};
+        softmaxLseSize = {0};
     }
     at::Tensor softmaxLse = at::empty(softmaxLseSize, q.options().dtype(torch::kFloat32));
     return std::tuple<at::Tensor, at::Tensor>(attenOut, softmaxLse);
@@ -167,6 +167,7 @@ std::tuple<at::Tensor, at::Tensor> QuantSparseFlashMla(
 
     std::string layoutQStr = std::string(layoutQ);
     std::string layoutKvStr = std::string(layoutKv);
+    TORCH_CHECK(oriKv.has_value(), "ori_kv must be provided.");
     const at::Tensor &oriKvVal = *oriKv;
     // convert str
     char *layoutQPtr = const_cast<char *>(layoutQStr.c_str());

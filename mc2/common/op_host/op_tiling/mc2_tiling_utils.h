@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file mc2_tiling_utils.h
@@ -29,7 +29,7 @@
 #include "tiling/tiling_api.h"
 #include "op_host/tiling_type.h"
 #include "../../../3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_base_tiling_advanced.h"
-#include "platform/soc_spec.h"
+#include "op_host/util/op_const_def.h"
 
 namespace mc2tiling {
 constexpr uint32_t STANDARD_CARD_4P = 4;
@@ -141,6 +141,13 @@ uint8_t Mc2GetCommAlgo(int64_t rankDim, uint64_t mValue, const char *group, cons
 
 bool CheckDataTypeVaild(ge::DataType type, std::initializer_list<ge::DataType> supportDtypeList);
 
+// 解析commAlg属性：未配置(空或"0")时按HCCL环境变量回退选择分层/全互联方案；
+// 返回GRAPH_FAILED表示commAlg取值非法，由调用方负责打印错误日志
+ge::graphStatus ParseCommAlgWithEnvFallback(const char *entityName, const char *commAlg, bool &isLayered);
+
+// 读取HCCL环境变量判断是否使用分层(HCCL_INTRA_PCIE_ENABLE=1且HCCL_INTRA_ROCE_ENABLE=0)
+bool IsHcclPcieLayered(const char *entityName);
+
 void UpdateMatmulV3Args(optiling::mc2_matmul_v3_advanced::Mc2MatMulV3Args &mmV3Args, const mc2tiling::TilingArgs &args,
                         const char *opName);
 ge::graphStatus GetMatmulV3PriorityPolicy(const NpuArch npuArch, std::vector<int32_t> &priorities, const char *opName);
@@ -216,9 +223,9 @@ const std::map<ge::DataType, mc2tiling::HcclDataType> HCCL_DATA_TYPE = {
     {ge::DataType::DT_HIFLOAT8, mc2tiling::HcclDataType::HCCL_DATA_TYPE_HIF8}};
 
 const std::map<NpuArch, std::set<uint32_t>> supportedRankSizeSet = {
-    {NpuArch::DAV_2002, {1, 2, 4}},
-    {NpuArch::DAV_2201, {1, 2, 4, 8}},
-    {NpuArch::DAV_3510, {1, 2, 4, 8, 16, 32, 64}},
+    {Ops::Base::DAV_2002, {1, 2, 4}},
+    {Ops::Base::DAV_2201, {1, 2, 4, 8}},
+    {Ops::Base::DAV_3510, {1, 2, 4, 8, 16, 32, 64}},
 };
 
 const std::set<ge::Format> SUPPORTED_FORMAT = {ge::FORMAT_NCL,  ge::FORMAT_NCDHW, ge::FORMAT_DHWCN,
@@ -227,9 +234,9 @@ const std::set<ge::Format> SUPPORTED_FORMAT = {ge::FORMAT_NCL,  ge::FORMAT_NCDHW
 inline ge::graphStatus GetCclBufferSize(const char *groupStr, uint64_t *cclBufferSize, const char *nodeName)
 {
     HcclComm hcclComm;
-    OP_TILING_CHECK(Mc2Hcom::MC2HcomTopology::CommGetCclBufferSizeByGroup(groupStr, cclBufferSize, &hcclComm) !=
-                        HCCL_SUCCESS,
-                    OP_LOGE(nodeName, "CommGetCclBufferSizeByGroup failed"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        Mc2Hcom::MC2HcomTopology::CommGetCclBufferSizeByGroup(groupStr, cclBufferSize, &hcclComm) != HCCL_SUCCESS,
+        OP_LOGE(nodeName, "CommGetCclBufferSizeByGroup failed"), return ge::GRAPH_FAILED);
     if (hcclComm == nullptr) {
         OP_TILING_CHECK(Mc2Hcom::MC2HcomTopology::CommGetGroupLocalWindowSize(groupStr, cclBufferSize) != HCCL_SUCCESS,
                         OP_LOGE(nodeName, "GetGroupLocalWindowSize from topoInfo failed"), return ge::GRAPH_FAILED);
@@ -247,7 +254,7 @@ inline ge::graphStatus GetEpWinSize(const gert::TilingContext *context, const ch
                                     bool isLayered)
 {
     auto attrs = context->GetAttrs();
-    if (mc2tiling::GetNpuArch(context) == NpuArch::DAV_3510) {
+    if (mc2tiling::GetNpuArch(context) == Ops::Base::DAV_3510) {
         // A5 暂不支持 Hccl CommGetBufSizeCfg 接口，此处暂作规避
         // A5 实际物理分配为 HCCL_BUFFSIZE 的 2 倍
         hcclBufferSizeEp = mc2tiling::Mc2TilingUtils::GetMaxWindowSize() * 2UL;
@@ -271,19 +278,19 @@ inline ge::graphStatus GetEpWinSize(const gert::TilingContext *context, const ch
 // 临时判断是否为标卡4p形态(4卡，950)
 inline bool IsStandardCard4P(const uint32_t rankDim, const NpuArch npuArch)
 {
-    return ((rankDim == STANDARD_CARD_4P) && (npuArch == NpuArch::DAV_3510));
+    return ((rankDim == STANDARD_CARD_4P) && (npuArch == Ops::Base::DAV_3510));
 }
 
 // 判断是否为8P形态(8卡，950)
 inline bool Is8P(const uint32_t rankDim, const NpuArch npuArch)
 {
-    return ((rankDim == EIGHT_P_8P) && (npuArch == NpuArch::DAV_3510));
+    return ((rankDim == EIGHT_P_8P) && (npuArch == Ops::Base::DAV_3510));
 }
 
 // 判断是否使用 All2All + Vec Reduce 通路（StandardCard 4P 或 8P）
 inline bool IsUseA2APath(const uint32_t rankDim, const NpuArch npuArch)
 {
-    return ((npuArch == NpuArch::DAV_3510) && (rankDim == STANDARD_CARD_4P || rankDim == EIGHT_P_8P));
+    return ((npuArch == Ops::Base::DAV_3510) && (rankDim == STANDARD_CARD_4P || rankDim == EIGHT_P_8P));
 }
 } // namespace mc2tiling
 

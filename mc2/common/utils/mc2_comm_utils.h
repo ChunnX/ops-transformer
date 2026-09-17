@@ -20,9 +20,11 @@ constexpr char COMM_MODE_ENV[] = "ENV_MC2_COMM_MODE_AICPU";
 
 constexpr uint8_t COMM_MODE_CCU = 0;
 constexpr uint8_t COMM_MODE_AICPU = 1;
+constexpr uint8_t COMM_MODE_AIV = 2;
 
 constexpr uint8_t ENGINE_CCU = 0;
 constexpr uint8_t ENGINE_AICPU = 2;
+constexpr uint8_t ENGINE_MTE = 3;
 constexpr uint8_t ENGINE_CCU_SCHED = 6;
 
 inline uint8_t GetCommModeFromEnv()

@@ -17,8 +17,8 @@
 
 #include "kernel_operator.h"
 
-#include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
 #include "adv_api/activation/softmax.h"
+#include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
 #include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
 #include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_dn.h"
 #include "../../../common/op_kernel/arch35/vf/vf_flashupdate_new.h"
@@ -43,6 +43,27 @@ struct Bmm2ResBuffSel {
 };
 
 namespace BaseApi {
+
+template <bool useDn>
+__simd_vf__ inline void UpdateMinCheckValueVF(__ubuf__ float *dstUb, const float minValue, const float scaleValue,
+                                              const float pScale)
+{
+    RegTensor<float> vregMin;
+    RegTensor<float> vregPScale;
+    RegTensor<float> vregLnPScale;
+    MaskReg pregAll = CreateMask<uint16_t, MaskPattern::ALL>();
+    Duplicate(vregMin, minValue);
+    Duplicate(vregPScale, pScale);
+    Ln(vregLnPScale, vregPScale, pregAll);
+    if constexpr (useDn) {
+        Muls(vregMin, vregMin, scaleValue, pregAll);
+    }
+    Muls(vregMin, vregMin, INV_LN2, pregAll);
+    Truncate<float, RoundMode::CAST_CEIL>(vregMin, vregMin, pregAll);
+    Muls(vregMin, vregMin, LN2, pregAll);
+    Sub(vregMin, vregMin, vregLnPScale, pregAll);
+    StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ float *&)dstUb, vregMin, pregAll);
+}
 
 template <
     typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
@@ -103,7 +124,7 @@ public:
     using flashdecodeGmType = typename std::conditional<FLASH_DECODE, GlobalTensor<float>, int8_t>::type;
     using quantGmType = typename std::conditional<(isFp8), GlobalTensor<float>, int8_t>::type;
 
-    using ConstInfoX = ConstInfo_t<FiaKernelType::FULL_QUANT>;
+    using ConstInfoX = ConstInfo_t;
 
     using MM1_OUT_T = T;
     using MM2_OUT_T = T;
@@ -175,10 +196,6 @@ public:
         tPipe = pipe;
         uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32_LN2;
         this->negativeFloatScalar = *((T *)&tmp1);
-        if constexpr (USE_DN) {
-            minValue = NEGATIVE_MIN_VALUE_FP32;
-            UpdateMinCheckValue();
-        }
 
         InitVecInput(actualSeqQlenAddr, actualSeqKvlenAddr, pScale, attenMask, softmaxLse, attentionOut, workspace);
     }
@@ -435,18 +452,13 @@ public:
 
     __aicore__ inline void UpdateMinCheckValue()
     {
-        float min = *((float *)&minValue);
-        if constexpr (USE_DN) {
-            min *= constInfo.scaleValue;
-        }
-        float tmp = min * INV_LN2;
-        // int32_t 范围 [-2147483648, 2147483647]，下限约 -2.1e9
-        // 若 tmp 小于 int32 最小值，float 精度丢失，直接原样计算
-        if (tmp > -2147483648.0f) {
-            min = static_cast<int32_t>(tmp) * LN2;
-        } else {
-            min = tmp * LN2;
-        }
+        LocalTensor<float> minValueUb = commonTBuf.template Get<float>();
+        TEventID minCheckEventId = GetTPipePtr()->FetchEventID(HardEvent::V_S);
+        UpdateMinCheckValueVF<USE_DN>((__ubuf__ float *)minValueUb.GetPhyAddr(), *((float *)&minValue),
+                                      constInfo.scaleValue, pScaleValue);
+        SetFlag<HardEvent::V_S>(minCheckEventId);
+        WaitFlag<HardEvent::V_S>(minCheckEventId);
+        float min = minValueUb.GetValue(0);
         minValue = static_cast<uint32_t>(*reinterpret_cast<int32_t *>(&min));
     }
 
@@ -862,16 +874,16 @@ public:
         // mxfp8 colCount 只能为64或者128，与dDealSize相等
         FaUbTensor<OUTPUT_T, false> ubTensor{
             .tensor = attenOutUb, .rowCount = dealRowCount, .colCount = dTemplateAlign64};
-        GmCoord gmCoord{.bIdx = info.bIdx,
-                        .n2Idx = info.realN2Idx,
-                        .gS1Idx = info.gS1Idx + info.vecMbaseIdx + vecMIdx,
-                        .dIdx = 0,
-                        .gS1DealSize = gmDealRowCount,
-                        .dDealSize = (uint32_t)constInfo.dSizeV};
+        GmCoordGs1Merge gmCoord{.bIdx = info.bIdx,
+                                .n2Idx = info.realN2Idx,
+                                .gS1Idx = info.gS1Idx + info.vecMbaseIdx + vecMIdx,
+                                .dIdx = 0,
+                                .gS1DealSize = gmDealRowCount,
+                                .dDealSize = (uint32_t)constInfo.dSizeV};
         CopyAttentionOut(ubTensor, gmCoord);
     }
 
-    __aicore__ inline void CopyAttentionOut(FaUbTensor<OUTPUT_T, false> &ubTensor, GmCoord &gmCoord)
+    __aicore__ inline void CopyAttentionOut(FaUbTensor<OUTPUT_T, false> &ubTensor, GmCoordGs1Merge &gmCoord)
     {
         if constexpr (outLayout == LayOutTypeEnum::LAYOUT_BSH) {
             constexpr GmFormat OUT_FORMAT = GmFormat::BSNGD;
@@ -1026,6 +1038,7 @@ public:
                         vselrIndexesTensor.SetValue(i * (256 >> 2) + j, i + (j << 2));
                     }
                 }
+                UpdateMinCheckValue();
             } else {
                 tPipe->InitBuffer(vselrIndexesBuf[static_cast<int>(VselrIndexEnum::GT_64_AND_LTE_128_INDEX)],
                                   128); // s2realsize (64, 128]
@@ -1143,7 +1156,7 @@ public:
     static constexpr bool HAS_MASK = hasAtten;
     static constexpr bool FLASH_DECODE = isFd;
     using OUT_T = OUTPUT_T;
-    using ConstInfoX = ConstInfo_t<FiaKernelType::FULL_QUANT>;
+    using ConstInfoX = ConstInfo_t;
     __aicore__ inline FAFullQuantMxBlockVecDummy(ConstInfoX &constInfo){};
 };
 } // namespace BaseApi

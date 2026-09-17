@@ -18,15 +18,11 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "chunk_gated_delta_rule_utils.h"
 #include "../chunk_gated_delta_rule_tiling_data.h"
+#include "chunk_gated_delta_rule_matmul_basic.h"
+#include "vf/chunk_gated_delta_rule_stage3_vf.h"
 
 namespace ChunkGatedDeltaRule {
 using namespace AscendC;
-using namespace matmul;
-
-using aT3 = MatmulType<TPosition::GM, CubeFormat::ND, bfloat16_t, true>;
-using bT3 = MatmulType<TPosition::GM, CubeFormat::ND, bfloat16_t, true>;
-using cT3 = MatmulType<TPosition::GM, CubeFormat::ND, bfloat16_t>;
-using StageThreeMT = matmul::MatmulImpl<aT3, bT3, cT3>;
 
 struct StageThreeParams {
     GlobalTensor<bfloat16_t> qkt; // (Nv, Sp, Dk)
@@ -35,7 +31,6 @@ struct StageThreeParams {
     GlobalTensor<float> maskTensor;
     GM_ADDR ws;
     GlobalTensor<bfloat16_t> attnOut;
-    StageThreeMT *mm3;
     TPipe *pipe;
     ChunkGroup *cg;
     float scale;
@@ -67,6 +62,7 @@ public:
         tmpGM_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(
             initParams->ws + workSpaceOffset + coreNum_ * chunkSize_ * chunkSize_ * sizeof(float)));
         if ASCEND_IS_AIC {
+            mmBasic_.Init();
             return;
         }
         coreId_ /= AIC_AIV_1_1;
@@ -120,62 +116,49 @@ public:
 
             if ASCEND_IS_AIC {
                 CrossCoreWaitFlag(0x4);
-                AICProcess(tmpGM_[coreId_ * chunkSize_ * chunkSize_], sTP_->vInner[nvId * Sp_ * Dv_ + chunkPos * Dv_],
-                           sTP_->attnOut[nvId * Dv_ + chunkPos * Nv_ * Dv_]);
+                mmBasic_.Execute<false, false, true, bfloat16_t>(tmpGM_[coreId_ * chunkSize_ * chunkSize_],
+                                                                 sTP_->vInner[nvId * Sp_ * Dv_ + chunkPos * Dv_],
+                                                                 sTP_->attnOut[nvId * Dv_ + chunkPos * Nv_ * Dv_],
+                                                                 curChunkSize_, Dv_, curChunkSize_, 0, 0, Nv_ * Dv_);
                 CrossCoreSetFlag<0x2, PIPE_FIX>(0x3);
             }
+        }
+        if ASCEND_IS_AIC {
+            mmBasic_.End();
         }
     }
 
     __aicore__ inline void CalMaskedQKT(GlobalTensor<bfloat16_t> outGM, int nvId, int chunkPos)
     {
-        // chunkSize 大小进行自动补齐
+        // gated 路径先将长度为 curChunkSize_ 的 g 向量搬入独立 TBuf；随后 qkt 的 MTE2
+        // 搬运与 DeQue 保证此前的 g 搬运也已完成，使两个输入可由同一次 VF_CALL 读取。
         if constexpr (gOptional) {
-            AlignedCopyIn(sTP_->gCumExp[nvId * Sp_ + chunkPos], 1, curChunkSize_); // 自动补齐
-            auto g_cum = inQueue_.DeQue<float>();
-            const uint32_t srcShape1[] = {static_cast<uint32_t>(chunkSize_), static_cast<uint32_t>(1)};
-            const uint32_t srcShape2[] = {static_cast<uint32_t>(1), static_cast<uint32_t>(chunkSize_)};
-            const uint32_t dstShape[] = {static_cast<uint32_t>(chunkSize_), static_cast<uint32_t>(chunkSize_)};
-            Broadcast<float, BROADCAST_AXIS, 1>(tmpBuffer1_, g_cum, dstShape, srcShape1);
-            Broadcast<float, BROADCAST_AXIS, 0>(tmpBuffer2_, g_cum, dstShape, srcShape2);
-            PipeBarrier<PIPE_V>();
-            Sub(tmpBuffer1_, tmpBuffer1_, tmpBuffer2_, curChunkSize_ * chunkSize_);
-            PipeBarrier<PIPE_V>();
-            Mul(tmpBuffer1_, tmpBuffer1_, maskBuffer_, curChunkSize_ * chunkSize_);
-            PipeBarrier<PIPE_V>();
-            Exp<float, 0, true>(tmpBuffer1_, tmpBuffer1_, curChunkSize_ * chunkSize_);
-            PipeBarrier<PIPE_V>();
-            inQueue_.FreeTensor(g_cum);
-        } else {
-            Duplicate(tmpBuffer1_, static_cast<float>(1.0f), curChunkSize_ * chunkSize_);
-            PipeBarrier<PIPE_V>();
+            DataCopyExtParams gInParams{static_cast<uint16_t>(1), static_cast<uint32_t>(curChunkSize_ * sizeof(float)),
+                                        0, 0, 0};
+            DataCopyPadExtParams<float> gPadParams{false, 0, 0, 0};
+            DataCopyPad(tmpBuffer1_, sTP_->gCumExp[nvId * Sp_ + chunkPos], gInParams, gPadParams);
         }
 
         // qkt
         AlignedCopyIn(sTP_->qkt[nvId * Sp_ * chunkSize_ + chunkPos * chunkSize_], curChunkSize_, curChunkSize_);
         auto qkt = inQueue_.DeQue<bfloat16_t>();
         auto scale_qkt = outQueue_.AllocTensor<bfloat16_t>();
-        Cast(tmpBuffer2_, qkt, RoundMode::CAST_NONE, curChunkSize_ * chunkSize_);
-        Muls(tmpBuffer2_, tmpBuffer2_, sTP_->scale, curChunkSize_ * chunkSize_);
-        Mul(tmpBuffer2_, tmpBuffer2_, tmpBuffer1_, curChunkSize_ * chunkSize_);
-        // mask
-        Mul(tmpBuffer2_, tmpBuffer2_, maskBuffer_, curChunkSize_ * chunkSize_);
-        Cast(scale_qkt, tmpBuffer2_, RoundMode::CAST_RINT, curChunkSize_ * chunkSize_);
+        auto maskAddr = reinterpret_cast<__ubuf__ float *>(maskBuffer_.GetPhyAddr());
+        auto qktAddr = reinterpret_cast<__ubuf__ bfloat16_t *>(qkt.GetPhyAddr());
+        auto scaleQktAddr = reinterpret_cast<__ubuf__ bfloat16_t *>(scale_qkt.GetPhyAddr());
+        if constexpr (gOptional) {
+            auto gAddr = reinterpret_cast<__ubuf__ float *>(tmpBuffer1_.GetPhyAddr());
+            AscendC::VF_CALL<ComputeMaskedQktGatedVF>(scaleQktAddr, qktAddr, gAddr, maskAddr, sTP_->scale,
+                                                      static_cast<uint16_t>(curChunkSize_),
+                                                      static_cast<uint16_t>(chunkSize_));
+        } else {
+            AscendC::VF_CALL<ComputeMaskedQktNoGateVF>(scaleQktAddr, qktAddr, maskAddr, sTP_->scale,
+                                                       static_cast<uint16_t>(curChunkSize_),
+                                                       static_cast<uint16_t>(chunkSize_));
+        }
         outQueue_.EnQue(scale_qkt);
         AlignedCopyOut(outGM, curChunkSize_, curChunkSize_);
         inQueue_.FreeTensor(qkt);
-    }
-
-    __aicore__ inline void AICProcess(GlobalTensor<bfloat16_t> tmpGM, GlobalTensor<bfloat16_t> vInner,
-                                      GlobalTensor<bfloat16_t> attnInter)
-    {
-        // masked_qkt @ v_inner
-        sTP_->mm3->SetOrgShape(curChunkSize_, Dv_, curChunkSize_, curChunkSize_, Nv_ * Dv_); // MNK
-        sTP_->mm3->SetSingleShape(curChunkSize_, Dv_, curChunkSize_);                        // SingleCoreMNK
-        sTP_->mm3->SetTensorA(tmpGM);
-        sTP_->mm3->SetTensorB(vInner);
-        sTP_->mm3->IterateAll(attnInter, 1);
-        sTP_->mm3->End();
     }
 
     template <typename inType>
@@ -209,6 +192,7 @@ public:
 private:
     StageThreeParams *sTP_;
     TPipe *pipe_;
+    CGDRMatmulBasic mmBasic_;
     TQue<QuePosition::VECIN, BUFFER_NUM_ONE> inQueue_;
     TQue<QuePosition::VECOUT, BUFFER_NUM_ONE> outQueue_;
     TBuf<TPosition::VECCALC> tmpBuff_;

@@ -29,7 +29,7 @@ GroupedMatmul和MoeFinalizeRouting的融合算子，GroupedMatmul计算后的输
 
 本接口相较于aclnnGroupedMatmulFinalizeRoutingWeightNz，此接口新增：
 
-- 新增入参offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、tuningConfigOptional，其中前三个参数当前为预留参数，暂不生效，传入空指针即可。
+- 新增入参offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、tuningConfigOptional。<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>的INT4权重场景支持使用offsetOptional传入非对称量化偏移量；antiquantScaleOptional、antiquantOffsetOptional当前为预留参数，暂不生效，传入空指针即可。
 
 <!-- npu="A3,910b" id7 -->
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：新增对INT4类型weight矩阵的支持，支持tuningConfigOptional调优参数，数组中的第一个值表示各个专家处理的token数的预期值，算子tiling时会按照该预期值合理进行tiling切分，性能更优。请根据实际情况选择合适的接口。
@@ -147,10 +147,10 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       <td>offsetOptional</td>
       <td>输入</td>
       <td>非对称量化的偏移量。</td>
-      <td>目前暂未启用。</td>
+      <td>Atlas A2/A3的INT4权重非对称量化场景支持传入；对称量化场景传入nullptr。Ascend 950PR/Ascend 950DT暂不支持，必须传入nullptr。</td>
       <td>FLOAT</td>
       <td>ND</td>
-      <td>-</td>
+      <td>Atlas A2/A3场景支持三维，维度为(e, 1, n)</td>
       <td>✗</td>
     </tr>
     <tr>
@@ -334,7 +334,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
     - offsetOptional的shape支持三维，维度为(e, 1, n)，e、n和weight的e、n一致。
     - scale支持INT64、FLOAT、BF16。
     - rowIndex支持INT64、INT32。
-    - x1、x2、groupList是必选参数，scale、pertokenScaleOptional、logit、rowIndex、bias、sharedInput是可选参数。
+    - x1、x2、scale、groupList、logit、rowIndex是必选参数，bias、sharedInput是可选参数。x2为INT4或INT32时，pertokenScaleOptional是必选参数；x2为INT8时，pertokenScaleOptional是可选参数。
   <!-- end id9 -->
   <!-- npu="950" id10 -->
   - <term>Ascend 950PR/Ascend 950DT</term>：
@@ -453,10 +453,9 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
 
     | x1    | x2    | scale   | bias    | offsetOptional  | antiquantScaleOptional | antiquantOffsetOptional | pertokenScaleOptional | groupList | sharedInput | logit   |   rowIndex | out   | tuningConfigOptional |
     |------|------|---------|---------|---------|----------------|-----------------|---------------|-----------|-------------|---------|----------|-------| ----------------------|
-    | INT8 | INT8 | FLOAT | null    | null    | null           | null            | FLOAT       | INT64     | BFLOAT16    | FLOAT | INT64    | FLOAT |   IntArray             |
-    | INT8 | INT8 | FLOAT | null    | null    | null           | null            | FLOAT       | INT64     | BFLOAT16    | FLOAT | INT64    | FLOAT |   IntArray             |
-    | INT8 | INT4 | INT64   | FLOAT | FLOAT | null           | null            | FLOAT       | INT64     | BFLOAT16    | FLOAT | INT64    | FLOAT |   IntArray             |
-    | INT8 | INT4 | INT64   | FLOAT | null    | null           | null            | FLOAT       | INT64     | BFLOAT16    | FLOAT | INT64    | FLOAT |   IntArray             |
+    | INT8 | INT8 | FLOAT | BFLOAT16 / null | null | null | null | FLOAT / null | INT64 | BFLOAT16 / null | FLOAT | INT64 / INT32 | FLOAT | IntArray |
+    | INT8 | INT4 | INT64 | FLOAT / null | FLOAT | null | null | FLOAT | INT64 | BFLOAT16 / null | FLOAT | INT64 | FLOAT | IntArray |
+    | INT8 | INT4 | INT64 | FLOAT / null | null | null | null | FLOAT | INT64 | BFLOAT16 / null | FLOAT | INT64 | FLOAT | IntArray |
 
 </details>
 <!-- end id13 -->
@@ -655,7 +654,6 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
         void *logitDeviceAddr = nullptr;
         void *rowIndexDeviceAddr = nullptr;
         void *outDeviceAddr = nullptr;
-        void *tuningConfigDeviceAddr = nullptr;
 
         aclTensor* x = nullptr;
         aclTensor* w = nullptr;
@@ -679,8 +677,8 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
         groupListHostData[3] = 64;
 
         std::vector<uint16_t> sharedInputHostData(GetShapeSize(sharedInputShape));
-        std::vector<int64_t> logitHostData(GetShapeSize(logitShape));
-        std::vector<float> rowIndexHostData(GetShapeSize(rowIndexShape));
+        std::vector<float> logitHostData(GetShapeSize(logitShape));
+        std::vector<int64_t> rowIndexHostData(GetShapeSize(rowIndexShape));
         std::vector<float> outHostData(GetShapeSize(outShape));
 
         // 创建x aclTensor
@@ -731,13 +729,13 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
         // 创建tuningConfig aclIntArray
         aclIntArray *tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
         std::unique_ptr<aclIntArray, aclnnStatus (*)(const aclIntArray *)> tuningConfigIntArrayPtr(tuningConfig, aclDestroyIntArray);
-        std::unique_ptr<void, aclError (*)(void *)> tuningConfigDeviceAddrPtr(tuningConfigDeviceAddr, aclrtFree);
-        CHECK_RET(tuningConfig != nullptr, -1);
+        CHECK_RET(tuningConfig != nullptr, return -1);
         // 3. 调用CANN算子库API，需要修改为具体的Api名称
         uint64_t workspaceSize = 0;
         aclOpExecutor *executor;
         void *workspaceAddr = nullptr;
 
+        // x2需从ND格式转换为算子要求的NZ格式，因此先调用aclnnTransMatmulWeight完成权重格式转换。
         // 调用aclnnTransMatmulWeight第一段接口
         ret = aclnnTransMatmulWeightGetWorkspaceSize(w, &workspaceSize, &executor);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnTransMatmulWeightGetWorkspaceSize failed. ERROR: %d\n", ret);
@@ -757,6 +755,11 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
 
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize failed. ERROR: %d\n", ret);
                   return ret);
+        // 释放权重格式转换阶段申请的workspace，避免第二次分配覆盖指针造成内存泄漏。
+        if (workspaceAddr != nullptr) {
+            aclrtFree(workspaceAddr);
+            workspaceAddr = nullptr;
+        }
         // 根据第一段接口计算出的workspaceSize申请device内存
 
         if (workspaceSize > 0) {
@@ -993,8 +996,8 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       groupListHostData[0] = 64;
 
       std::vector<uint16_t> sharedInputHostData(GetShapeSize(sharedInputShape));
-      std::vector<int64_t> logitHostData(GetShapeSize(logitShape));
-      std::vector<float> rowIndexHostData(GetShapeSize(rowIndexShape));
+      std::vector<float> logitHostData(GetShapeSize(logitShape));
+      std::vector<int64_t> rowIndexHostData(GetShapeSize(rowIndexShape));
       std::vector<float> outHostData(GetShapeSize(outShape));
 
       // 创建x aclTensor
@@ -1101,7 +1104,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
 
   - MxA8W4数据流示例：
 
-  ``` Cpp
+  ```cpp
   #include <iostream>
   #include <memory>
   #include <vector>
@@ -1232,8 +1235,10 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       int64_t *dstShape = nullptr;
       uint64_t dstShapeSize = 0;
       int actualFormat;
-      ret = aclnnNpuFormatCastCalculateSizeAndFormat(srcTensor, 29, aclFormat::ACL_FORMAT_ND, &dstShape, &dstShapeSize,
-                                                     &actualFormat);
+      // aclnnNpuFormatCast的私有格式码：29表示FRACTAL_NZ。
+      constexpr int64_t kNpuFormatFractalNz = 29;
+      ret = aclnnNpuFormatCastCalculateSizeAndFormat(srcTensor, kNpuFormatFractalNz, aclFormat::ACL_FORMAT_ND,
+                                                     &dstShape, &dstShapeSize, &actualFormat);
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnNpuFormatCastCalculateSizeAndFormat failed. ERROR: %d\n", ret);
                 return ret);
 
@@ -1340,7 +1345,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
 
       std::vector<uint16_t> sharedInputHostData(GetShapeSize(sharedInputShape));
       std::vector<float> logitHostData(GetShapeSize(logitShape));
-      std::vector<float> rowIndexHostData(GetShapeSize(rowIndexShape));
+      std::vector<int64_t> rowIndexHostData(GetShapeSize(rowIndexShape));
       std::vector<float> outHostData(GetShapeSize(outShape));
 
       ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_FLOAT8_E4M3FN, &x);

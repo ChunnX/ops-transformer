@@ -99,6 +99,8 @@ _all_ops.update(_ep_ops)
 for _name, _target in _all_ops.items():
     _load_op(_name, _target)
 
+_ep_overridden_ops = frozenset(_ep_ops)
+
 try:
     del _discover_ops_from_entry_points, _discover_ops_from_dir, _load_op
     del _ep_ops, _dir_ops, _all_ops, _name, _target
@@ -109,6 +111,7 @@ except NameError:
 import sys as _sys
 
 _legacy_map = {
+    "attention_to_ffn": "mc2.attention_to_ffn_v2",
     "causal_conv1d_fn": "mamba.causal_conv1d",
     "causal_conv1d_update": "mamba.causal_conv1d",
     "comm_context": "mc2.common",
@@ -118,14 +121,21 @@ _legacy_map = {
     "dense_lightning_indexer_softmax_lse": "attention.dense_lightning_indexer_softmax_lse_v2",
     "elastic_buffer": "mc2.common",
     "flash_attn": "attention.flash_attn",
+    "flash_mla_with_kvcache": "attention.flash_mla_with_kvcache",
+    "flash_attn_grad": "attention.flash_attn_grad",
+    "generic_block_sparse_attention": "attention.generic_block_sparse_attention",
+    "ffn_to_attention": "mc2.ffn_to_attention_v2",
     "grouped_matmul_activation_quant": "gmm.grouped_matmul_activation_quant",
     "indexer_quant_cache": "attention.indexer_quant_cache",
     "inplace_partial_rotary_mul": "posembedding.inplace_partial_rotary_mul",
     "inplace_partial_rotary_mul_backward": "posembedding.inplace_partial_rotary_mul_grad",
     "kv_compress_epilog": "attention.kv_compress_epilog",
+    "kv_quant_sparse_flash_attention": "attention.kv_quant_sparse_flash_attention_v2",
     "lightning_indexer": "attention.lightning_indexer_v2",
     "lightning_indexer_kl_loss": "attention.lightning_indexer_kl_loss",
     "mega_moe": "mc2.mega_moe",
+    "quant_reduce_scatter": "mc2.quant_reduce_scatter",
+    "quant_all_reduce": "mc2.quant_all_reduce",
     "mhc_post": "mhc.mhc_post",
     "mhc_post_backward": "mhc.mhc_post_backward",
     "mhc_pre_sinkhorn": "mhc.mhc_pre_sinkhorn",
@@ -146,16 +156,28 @@ _legacy_map = {
     "sparse_flash_mla_grad": "attention.sparse_flash_mla_grad",
     "sparse_flash_mla_softmax_l1_norm": "attention.sparse_flash_mla_softmax_l1_norm",
     "sparse_lightning_indexer_kl_loss_grad": "attention.sparse_lightning_indexer_kl_loss_grad",
+    "generic_block_sparse_attention_grad": "attention.generic_block_sparse_attention_grad",
     "stem_oam_prep_paged_kv": "attention.stem_oam_prep_paged_kv",
     "stem_oam_prep_varlen_q": "attention.stem_oam_prep_varlen_q",
     "und_gen_qkv_rms_norm_rope_cache": "posembedding.und_gen_qkv_rms_norm_rope_cache",
     "fused_causal_conv1d": "attention.fused_causal_conv1d",
     "fused_causal_conv1d_": "attention.inplace_fused_causal_conv1d",
     "block_sparse_attention": "attention.block_sparse_attention",
+    "block_attention_residuals": "mhc.block_attention_residuals",
+    "block_attention_residuals_backward": "mhc.block_attention_residuals_grad",
+    "apply_rotary_pos_emb": "posembedding.apply_rotary_pos_emb",
+    "apply_rotary_pos_emb_grad": "posembedding.apply_rotary_pos_emb_grad",
+    "mla_prolog": "attention.mla_prolog_v3",
 }
 
 if __name__ == "cann_ops_transformer.ops":
     for _old_name, _new_target in _legacy_map.items():
+        if _old_name in _ep_overridden_ops:
+            logger.warning(
+                "legacy module '%s' is overridden by a package entry point, skip registering it",
+                _old_name,
+            )
+            continue
         try:
             _new_mod = importlib.import_module(
                 "cann_ops_transformer.ops.%s" % _new_target
@@ -163,6 +185,3 @@ if __name__ == "cann_ops_transformer.ops":
             _sys.modules["cann_ops_transformer.ops.%s" % _old_name] = _new_mod
         except (ImportError, RuntimeError, AttributeError) as _e:
             logger.warning("Failed to register legacy module '%s': %s", _old_name, _e)
-
-
-# Centralized operators not yet migrated to distributed structure

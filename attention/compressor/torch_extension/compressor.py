@@ -50,11 +50,11 @@ def _compressor_forward(
     wgate: torch.Tensor,
     state_cache: torch.Tensor,
     ape: torch.Tensor,
+    cmp_ratio: int,
     state_block_table: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.Tensor] = None,
     seqused: Optional[torch.Tensor] = None,
     start_pos: Optional[torch.Tensor] = None,
-    cmp_ratio: int = 4,
     coff: Optional[int] = 1,
     cache_mode: Optional[int] = 1,
     grad_enabled: Optional[bool] = False,
@@ -84,11 +84,11 @@ def _compressor_forward_fake(
     wgate: torch.Tensor,
     state_cache: torch.Tensor,
     ape: torch.Tensor,
+    cmp_ratio: int,
     state_block_table: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.Tensor] = None,
     seqused: Optional[torch.Tensor] = None,
     start_pos: Optional[torch.Tensor] = None,
-    cmp_ratio: int = 4,
     coff: Optional[int] = 1,
     cache_mode: Optional[int] = 1,
     grad_enabled: Optional[bool] = False,
@@ -131,18 +131,13 @@ def _compressor_backward(
     wgate: torch.Tensor,
     softmax_score: torch.Tensor,
     kv: torch.Tensor,
+    cmp_ratio: int,
     cu_seqlens: Optional[torch.Tensor] = None,
     seqused: Optional[torch.Tensor] = None,
     start_pos: Optional[torch.Tensor] = None,
-    cmp_ratio: int = 4,
     coff: Optional[int] = 1,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     op_module = compressor_op_builder.load()
-    d_x = torch.empty_like(x)
-    d_wkv = torch.empty_like(wkv)
-    d_wgate = torch.empty_like(wgate)
-    d_ape_size = (cmp_ratio, wkv.size(0))
-    d_ape = torch.empty(d_ape_size, dtype=torch.float32, device=x.device)
     return op_module.compressor_backward(
         d_cmp_kv,
         x,
@@ -166,10 +161,10 @@ def _compressor_backward_fake(
     wgate: torch.Tensor,
     softmax_score: torch.Tensor,
     kv: torch.Tensor,
+    cmp_ratio: int,
     cu_seqlens: Optional[torch.Tensor] = None,
     seqused: Optional[torch.Tensor] = None,
     start_pos: Optional[torch.Tensor] = None,
-    cmp_ratio: int = 4,
     coff: Optional[int] = 1,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     d_x = torch.empty_like(x)
@@ -184,8 +179,11 @@ def _compressor_backward_fake(
 # Register AutoGrad
 # ===========================================================================
 def setup_context(ctx, inputs, output):
+    ctx.set_materialize_grads(False)
     x, wkv, wgate = inputs[:3]
-    cu_seqlens, seqused, start_pos, cmp_ratio, coff = inputs[6:11]
+    cmp_ratio = inputs[5]
+    cu_seqlens, seqused, start_pos = inputs[7:10]
+    coff = inputs[10]
 
     cmp_kv, softmax_score, kv = output
     ctx.save_for_backward(
@@ -211,10 +209,10 @@ def backward(ctx, dout, *grads):
         wgate,
         softmax_score,
         kv,
+        cmp_ratio,
         cu_seqlens,
         seqused,
         start_pos,
-        cmp_ratio,
         coff,
     )
     return d_x, d_wkv, d_wgate, None, d_ape, *((None,) * 8)
@@ -229,7 +227,7 @@ def compressor(
     wgate: torch.Tensor,
     state_cache: torch.Tensor,
     ape: torch.Tensor,
-    cmp_ratio: int = 4,
+    cmp_ratio: int,
     *,
     state_block_table: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.Tensor] = None,
@@ -242,6 +240,8 @@ def compressor(
     dispatcher implementation for NPU.
     'PrivateUse1' is the combine key for custom NPU backends.
     """
+    if x is None or not isinstance(x, torch.Tensor):
+        raise ValueError("x must be a torch.Tensor, got {}".format(type(x).__name__))
     grad_enabled = x.requires_grad
     cmp_kv, softmax_score, kv = _compressor_forward(
         x,
@@ -249,11 +249,11 @@ def compressor(
         wgate,
         state_cache,
         ape,
+        cmp_ratio,
         state_block_table,
         cu_seqlens,
         seqused,
         start_pos,
-        cmp_ratio,
         coff,
         cache_mode,
         grad_enabled,

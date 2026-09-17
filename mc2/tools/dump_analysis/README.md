@@ -188,6 +188,125 @@ aiv_mte3_time：AI CORE->片上内存搬运类指令在AI Vector Core上的耗�
 | dump_analysis.sh脚本直调 | bash dump_analysis.sh TARGET_DIR=xxx TOOL_PATH=xxx PROFILING_PATH=xxx SP_MOE_NUM=0 TP_WORLDSIZE=1 SOC_VERSION=950 SHARE_EXPERT_CARD_COUNT=1 SHARE_EXPERT_NUM=1 GRAPH_PATH=xxx PLOG_PATH=xxx| 通过对sh脚本进行入参对指定的TARGET_DIR路径下的dump数据进行dump数据解析、对PROFILING_PATH下的profiling数据进行分析、对GRAPH_PATH下的图文件数据进行分析以及对PLOG_PATH下的plog日志进行分析。 |
 | dump_analysis.sh脚本直调 | bash dump_analysis.sh SOC_VERSION=910B START_A2_CLUSTER=1 | 将START_A2_CLUSTER=0时解析的结果放在同一台设备相同路径后执行，通过sh脚本对各机进行解析多机数据, A2 Dispatch和Combine Fullmesh方案建议使用 |
 
+## MC2 融合算子 dump 解析脚本
+
+更完整的命令示例、Workspace Segment 说明和矩阵查看方法见 [MC2 Dump 解析脚本使用说明](./MC2_DUMP_USAGE.md)。
+
+`parse_mc2_dump.py` 是统一入口。传入一个 Dump 文件时只解析该文件；传入算子名和 Dump 根目录时递归查找并批量解析 `tiling_data`、`args_info`、`workspace`、CCU XN/CKE 地址表以及 URMA 通信上下文。统一入口不读取 `exception_info.*`，也不生成 NPY。
+
+### 支持的算子和通路
+
+| 算子名 | 通路 | 可用简称 |
+| :--- | :--- | :--- |
+| `AllGatherMatmulV2` | CCU | `agmmv2` |
+| `AllGatherMatmulV3` | AIV + URMA | `agmmv3` |
+| `AlltoAllMatmul` | 主线 CCU；Apace CCU 自动识别 | `a2amm`、`AlltoAllMatmulApace` |
+| `AlltoAllMatmulV2` | AIV + URMA | `a2ammv2` |
+| `MatmulReduceScatterV2` | CCU | `mmrs`、`mmrsv2`、`MatmulReduceScatter` |
+
+### 最简使用方法
+
+在 dump 根目录中执行，只传算子名：
+
+```bash
+cd /path/to/data-dump
+python3 /path/to/ops-transformer_dfx/mc2/tools/dump_analysis/parse_mc2_dump.py mmrs
+```
+
+也可以在脚本目录执行，并把 dump 根目录作为第二个参数：
+
+```bash
+cd /path/to/ops-transformer_dfx/mc2/tools/dump_analysis
+python3 parse_mc2_dump.py AllGatherMatmulV2 /path/to/data-dump
+python3 parse_mc2_dump.py AllGatherMatmulV3 /path/to/data-dump
+python3 parse_mc2_dump.py AlltoAllMatmul /path/to/data-dump
+python3 parse_mc2_dump.py AlltoAllMatmulV2 /path/to/data-dump
+python3 parse_mc2_dump.py MatmulReduceScatterV2 /path/to/data-dump
+```
+
+`AlltoAllMatmul` 的主线 CCU 和 Apace CCU 共用同一个命令，脚本根据 `tiling_data` 中的结构和 WorkspaceLayout 自动判断通路。
+
+### 输入文件和输出结果
+
+统一入口会识别以下文件，文件名需要包含对应算子名：
+
+| 文件前缀 | 适用通路 | 是否应有 | 解析内容 |
+| :--- | :--- | :--- | :--- |
+| `tiling_data_` | 全部 | 必有 | Tiling 参数、通路信息、WorkspaceLayout 和各段偏移/长度 |
+| `args_info_` | 全部 | 必有 | Kernel 参数地址 |
+| `workspace_segN_typeM_` | 全部 | 必有 | Workspace 段编号、类型和大小；`type12` 按每核 StateDump 结构解析 |
+| `xn_addr_info_`、`cke_addr_info_` | CCU | 应有 | 小端 `uint64` 地址表 |
+| `comm_context_` | AIV + URMA | 应有 | URMA 通信上下文，并提示使用 `parse_matrix.py` 查看原始字节 |
+
+`tiling_data_*`、`args_info_*` 和 `workspace_segN_typeM_*` 是已开启 MC2 DFX Dump 后的核心文件。XN/CKE 只在 CCU 通路出现，`comm_context_*` 只在 URMA 通路出现。`peermem_window_*`、`peermem_segN_typeM_*`、`exception_info.*`、算子 `.json`、`.o` 和 `*_host.o` 不参与统一解析。
+
+更新后的算子代码有两种 TilingData 前缀。AllGatherMatmulV2、AlltoAllMatmul 主线/Apace 和 MatmulReduceScatterV2 使用 `Mc2InitTiling → Mc2CcTiling → DfxDumpInfo`，当前默认 WorkspaceLayout offset 为 576；AllGatherMatmulV3、AlltoAllMatmulV2 仍以 `DfxDumpInfo` 开头，WorkspaceLayout offset 为 0。当前源码始终声明 `dumpInfo` 成员，是否包含 DFX 内容由 `DfxDumpInfo` 内部的 `MC2_DFX_ENABLE` 控制；开启 DFX 时，Peermem 总大小和 PeermemLayout 的相对偏移为 208、216，解析脚本会按算子选取正确位置。
+
+批量解析结果输出到 `<dump根目录>/mc2_dump_analysis/<标准算子名>/`。每个源文件分别生成一个同名 `.txt`，并保留原 rank 子目录。单文件解析只需传入一个 Dump 文件，结果保存到 `<该文件所在目录>/mc2_dump_analysis/<标准算子名>/<原始文件名>.txt`。两种模式都不生成 NPY，也不生成合并的 `analysis.txt`；TilingData、ArgsInfo、StateDump 等后端脚本在终端显示的字段级结果会写入对应 TXT。
+
+`segN` 中的 `N` 只是该次 Tiling 中的段序号，不能单独代表数据语义；应以文件名中的 `typeM` 和 TilingData TXT 中的 `workspaceLayout` 为准。当前 Workspace 类型定义如下：
+
+| type | 含义 | type | 含义 |
+| :---: | :--- | :---: | :--- |
+| 0 | LIB_API | 1 | ND2NZ |
+| 2 | GATHER | 3 | GATHER_SCALE1 |
+| 4 | GATHER_SCALE | 5 | COMM_OUT |
+| 6 | PERMUTE_OUT | 7 | BIAS |
+| 8 | MM_RESULT | 9 | RECV_BUF |
+| 10 | COMM_INT8 | 11 | DYNAMIC_QUANT |
+| 12 | STATE_DUMP | 13 | MM_WORKSPACE |
+| 255 | RESERVED |  |  |
+
+其中 `type12` 是每核通信运行状态，不是矩阵结果；对应 TXT 会显示有效核数、commit/wait 总数，以及源码 `StateDumpPerCore` 中的逐核字段。数据型 Workspace 不会整段展开为文本；若要查看指定行列或解码特殊数据类型，请对原始 Dump 使用下面的 `parse_matrix.py`。
+
+`type13/MM_WORKSPACE` 是 Matmul helper 使用的内部临时区，不是 Matmul 结果。它没有固定元素类型或逻辑 shape，因此统一入口只按原始 `uint8` 字节显示；MMRS 的 Matmul 结果应查看 `type8/MM_RESULT`。
+
+### 指定行列查看 workspace 数据
+
+`parse_matrix.py` 需要提供真实数据类型和逻辑 shape。以下命令查看 BF16 矩阵第 0 到 9 行、每行第 0 到 63 列：
+
+```bash
+python3 parse_matrix.py workspace_seg1_type8_xxx \
+  --dtype bf16 --rows 8192 --cols 12288 \
+  --row-range 0 10 --col-range 0 64
+```
+
+只查看若干离散行列：
+
+```bash
+python3 parse_matrix.py workspace_seg1_type8_xxx \
+  --dtype bf16 --rows 8192 --cols 12288 \
+  --row 0 10 100 --col 0 1 2 3
+```
+
+支持的数据类型为 `fp16`、`bf16`、`fp8_e4m3`、`fp8_e5m2`、`fp4_e2m1`、`e8m0`、`int8`、`uint8` 和 `fp32`。当 dump 按列优先存放时增加 `--transpose`。为避免超大 workspace 被展开成大量 Python 对象，脚本只解码指定的显示范围，统计信息也仅针对该范围。
+
+矩阵的 `rows`、`cols` 和 `dtype` 不能只根据 `segN` 猜测，应结合用例输入、tiling 中的 M/K/N、量化模式和 WorkspaceLayout 确定。文件字节数应满足：普通类型为 `rows * cols * 每元素字节数`，FP4 为 `ceil(rows * cols / 2)`。
+
+### 单文件解析
+
+单独排查某个文件时仍使用统一入口，只传入该 Dump 文件。脚本会从文件名自动识别算子和文件类型，不需要选择后端脚本或增加解析模式：
+
+```bash
+# 解析 TilingData
+python3 parse_mc2_dump.py /path/to/tiling_data_MatmulReduceScatterV2.xxx
+
+# 解析 Kernel 参数地址
+python3 parse_mc2_dump.py /path/to/args_info_MatmulReduceScatterV2.xxx
+
+# 解析 StateDump Workspace
+python3 parse_mc2_dump.py /path/to/workspace_seg2_type12_MatmulReduceScatterV2.xxx
+```
+
+解析 `type12/STATE_DUMP` 时，脚本会自动在同目录查找时间戳最接近的同算子 TilingData，用它推导 AIC 核数和通路标签。单文件模式把结果直接打印到终端；需要给目录内每个 Dump 分别生成 TXT 时，使用前面的“算子名 + Dump 目录”批量调用。
+
+### 常见问题
+
+- 提示“没有找到受支持 dump 文件”：确认传入的是 `data-dump` 根目录，并确认文件名中包含正确的算子名。统一入口按文件名关联同一次算子 dump，不会把其他算子的同名前缀文件混进来。
+- StateDump 中核类型显示“未知”：一般是同次调用的 `tiling_data` 缺失、损坏，或文件名后缀无法关联；状态字段仍会解析，但无法可靠区分 C 核和 V 核。
+- workspace 文件大小和 shape 不一致：先检查 WorkspaceLayout 中该段的 `size` 是否等于 dump 文件大小，再检查量化类型、对齐/padding 和通信 rank 维度。
+- `type12` 中所有预期 slot 的 magic 都无效：这不是 commit/wait 字段偏移问题，而是该 StateDump 段没有被 Kernel 初始化，或 Dump 的段起始地址/时机不正确。统一入口会给出明确警告；对应 TXT 中这些 slot 会显示 `magicValid=false`。如果 magic 出现在非 512B 对齐位置，还会提示可能的段起点错位。
+
 ## 样例代码结果说明
 
 [INFO] 开始分析卡1数据<br>
@@ -341,11 +460,18 @@ aiv_mte3_time：AI CORE->片上内存搬运类指令在AI Vector Core上的耗�
 
 A5(950)芯片的 MoeEpDispatch/MoeEpCombine 算子采用结构化 win 区布局, 与原有 V2 算子的固定 1MB raw dump 不同。新增 `IS_MOE_EP` 参数, 为 1 时调用 `dump_analysis_moe_ep.py` 脚本进行结构化解析, 仅 `SOC_VERSION=950` 时生效。
 
-### dump_analysis.sh 新增参数
+### dump_analysis.sh 参数说明
 
-| 参数 | 说明 |
-|------|------|
-| `IS_MOE_EP` | 选填, 0: 使用原 `dump_analysis.py`, 1: 使用 `dump_analysis_moe_ep.py`, 仅 `SOC_VERSION=950` 生效, 默认 0 |
+| 参数 | 必填 | 说明 |
+|------|------|------|
+| `TARGET_DIR` | 是 | dump 数据路径, 单卡为 exception_info 所在目录, 多卡为包含数字子目录(如 0/ 1/ 3/ 4/)的父目录 |
+| `TOOL_PATH` | 是 | 装包路径下 tools 目录所在路径, 如 `xxx/xxx/pkg/cann-x.x.x/` |
+| `SOC_VERSION` | 是 | 芯片版本, 当前仅支持 `950` |
+| `IS_MOE_EP` | 否 | 0: 使用原 `dump_analysis.py`, 1: 使用 `dump_analysis_moe_ep.py`, 仅 `SOC_VERSION=950` 生效, 默认 0 |
+| `SP_MOE_NUM` | 否 | 特殊专家数, 不填默认 0 |
+| `TP_WORLDSIZE` | 否 | TP_WORLDSIZE, 不填默认 1 |
+| `SHARE_EXPERT_CARD_COUNT` | 否 | 共享专家卡数, 不填默认 0 |
+| `SHARE_EXPERT_NUM` | 否 | 共享专家数, 不填默认 0 |
 
 ### 调用方式
 
@@ -367,35 +493,133 @@ bash dump_analysis.sh \
     SHARE_EXPERT_NUM=0
 ```
 
-单卡: TARGET_DIR 下直接有 exception_info 文件; 多卡: TARGET_DIR 下有 0/ 1/ 等子目录。
-
-也可单独调用 py 脚本 (需先用 CANN 解析脚本预处理 exception_info):
-
-```bash
-# 单卡
-python3 dump_analysis_moe_ep.py <dump_data_path> <file_num> <is_multi>
-
-# 示例: 单卡
-python3 dump_analysis_moe_ep.py /path/to/dump 1 0
-
-# 示例: 多卡 (2 张卡)
-python3 dump_analysis_moe_ep.py /path/to/dump 2 1
-```
-
-| 参数 | 说明 |
-|------|------|
-| `dump_data_path` | dump 数据目录, 单卡为 exception_info 所在目录, 多卡为包含 0/ 1/ 子目录的父目录 |
-| `file_num` | 总卡数 |
-| `is_multi` | 0: 单卡, 1: 多卡 |
+单卡: TARGET_DIR 下直接有 exception_info 文件; 多卡: TARGET_DIR 下有数字命名的子目录(如 0/ 1/ 3/ 4/), 卡号无需连续。
 
 ### dump 文件说明
 
 - `exception_info.*` — CANN 框架 dump, 经 CANN 解析脚本解析后生成 `input.0*bin`(context)、`input.2*bin`(topk_idx) 等输入输出文件
-- `*.metadata.bin` — Metadata 区, 包含 `MoeEpDumpMetadata` 结构体(10 个 uint32 字段 + 7 个 Region 的 offset/size, offset/size 为 uint64)
-- `*.per_core_diag.bin` — Per-core 诊断区, 100 个核 x 512B, 每核前两个 uint32 为 op_count 和 run_pos
+- `*.metadata.bin` — Metadata 区, 包含 `MoeEpDumpMetadata` 结构体(10 个 uint32 字段 + 6 个 Region 的 offset/size, offset/size 为 uint64)
+- `*.per_core_diag.bin` — Per-core 诊断区, 100 个核 x 512B, 每核 512B slot 内含 4 个 MoeEpCoreDiagRecord(各 64B), 按 byte offset 固定映射:
+
+  | byte offset | op_index | 算子 |
+  |-------------|----------|------|
+  | 0           | 0        | dispatch |
+  | 64          | 1        | dispatch_epilogue |
+  | 128         | 2        | combine |
+  | 192         | 3        | combine_epilogue |
+
+  record 布局: uint64 opCnt + uint32 runPosition + uint32 epRankId + uint32 aivId
 - `*.count_notify.bin` — Count Notify 区, epWorldSize 个 512B 块, 每块第一个 uint32
 - `*.expert_count.bin` — Expert Count 区, epWorldSize 个 512B 块, 每块取 localExpertNum 个 uint32
 - `*.combine_token_state.bin` — Combine Token State 区, nmt*topK 个 512B 块, 每块第一个 uint32
+
+### dump 文件数据结构说明
+
+#### Metadata 结构体 (`metadata.bin`)
+
+Metadata 区固定 64 KiB, 有效结构体 <=512B 位于区域开头, 剩余保留。
+
+```cpp
+struct MoeEpDumpRegion {
+    uint64_t offset;
+    uint64_t size;
+};
+
+struct MoeEpDumpMetadata {
+    uint32_t layoutVersion;        // 布局版本
+    uint32_t nmt;                  // numMaxTokensPerRank
+    uint32_t topK;                 // topk 值
+    uint32_t hidden;               // hidden 维度
+    uint32_t epWorldSize;          // EP 总卡数
+    uint32_t localExpertNum;       // 本卡专家数
+    uint32_t aivNum;               // AIV 核数
+    uint32_t networkMode;          // 0=direct, 1=hybrid
+    uint32_t serverNum;            // 服务器数
+    uint32_t rankNumPerServer;     // 每服务器卡数
+    MoeEpDumpRegion regions[6];   // 6 个固定 Region (offset: uint64, size: uint64)
+};
+```
+
+Region 下标定义:
+
+| 下标 | Region 名称 | 说明 |
+|------|------------|------|
+| 0 | PER_CORE_DIAG | 每核诊断信息, 100x512B |
+| 1 | COUNT_NOTIFY | Dispatch 每源 rank 的 token 计数 |
+| 2 | EXPERT_COUNT | 每卡每专家 token 计数 |
+| 3 | DISPATCH_SLOT_STATE | Dispatch 通信完成状态 |
+| 4 | COMBINE_TOKEN_STATE | Combine 每(token,topk)状态 |
+| 5 | HYBRID_SCALEOUT_STATUS | Hybrid scaleout 状态(direct 模式填{0,0}) |
+
+#### Per-core 诊断记录 (`per_core_diag.bin`)
+
+Per-core 诊断区固定 100 个核 x 512B, 每个 AIV 使用一个 512B slot。每个 slot 内前 4 个 64B 分别分配给四个算子, 剩余 256B 保留。
+
+`MoeEpCoreDiagRecord` 固定 64B, 有效字段占前 20B:
+
+```cpp
+struct MoeEpCoreDiagRecord {
+    uint64_t opCnt;        // 执行轮次, 每次 Init 加 1
+    uint32_t runPosition;  // 最后完成的检查点, 0=Init 未完成
+    int32_t  epRankId;     // 本地 EP rank
+    uint32_t aivId;        // AIV ID
+    uint8_t  reserved[44]; // 保留
+};
+```
+
+字段 offset:
+
+| 字段 | Offset | Size |
+|------|--------|------|
+| opCnt | 0 | 8B |
+| runPosition | 8 | 4B |
+| epRankId | 12 | 4B |
+| aivId | 16 | 4B |
+| reserved | 20 | 44B |
+
+`runPosition` 按算子独立编号, 不同算子定义不同:
+
+| 值 | dispatch | dispatch_epilogue | combine | combine_epilogue |
+|----|----------|-------------------|---------|------------------|
+| 0 | Init 未完成 | Init 未完成 | Init 未完成 | Init 未完成 |
+| 1 | Init 完成 | Init 完成 | Init 完成 | Init 完成 |
+| 2 | count 等待和接收完成 | 已等待全部 Dispatch 状态到达 | URMA 发起完成 | 已等待全部 Combine 状态到达 |
+| 3 | URMA 发起完成 | 输出处理完成 | - | 输出处理完成 |
+
+#### Count Notify (`count_notify.bin`)
+
+布局: `epWorldSize` 个 512B 块, 每块第一个 uint32 为该源 rank 发送的 token 计数。
+
+| 偏移 | 大小 | 字段 |
+|------|------|------|
+| rank_id * 512B | 4B | 该 rank 发送的 token 计数 (uint32) |
+| rank_id * 512B + 4B | 508B | 保留 |
+
+#### Expert Count (`expert_count.bin`)
+
+布局: `epWorldSize` 个 512B 块, 每块包含 `localExpertNum` 个 uint32, 为该 rank 每个专家收到的 token 计数。
+
+| 偏移 | 大小 | 字段 |
+|------|------|------|
+| rank_id * 512B + expert_id * 4B | 4B | 该专家收到的 token 计数 (uint32) |
+| rank_id * 512B + localExpertNum * 4B | 512 - localExpertNum*4 B | 保留 |
+
+#### Dispatch Slot State (`dispatch_slot_state.bin`)
+
+布局: `dispatchNotifyCount * epWorldSize` 个 512B 块, 每块第一个 uint32 为该 (源 rank, notify 批次) 的通信完成状态。
+
+#### Combine Token State (`combine_token_state.bin`)
+
+布局: `nmt * topK` 个 512B 块, 每块第一个 uint32 为该 (token, topk) 的回传完成状态。
+
+| 偏移 | 大小 | 字段 |
+|------|------|------|
+| (token_id * topK + topk_id) * 512B | 4B | 回传完成状态 (uint32) |
+| ... + 4B | 508B | 保留 |
+
+#### Hybrid Scaleout Status (`hybrid_scaleout_status.bin`)
+
+布局: `serverNum * nmt` 个 512B 块, 每块为 hybrid 模式下的 scaleout 状态。direct 模式下 Region 为 `{0, 0}`, 不输出数据。
 
 ### MoeCommContext 结构体 (context / input.0)
 
@@ -409,43 +633,15 @@ struct MoeCommContext {
 };
 ```
 
-### Metadata 结构体
-
-```cpp
-struct MoeEpDumpMetadata {
-    uint32_t layoutVersion;        // 布局版本
-    uint32_t nmt;                  // numMaxTokensPerRank
-    uint32_t topK;                 // topk 值
-    uint32_t hidden;               // hidden 维度
-    uint32_t epWorldSize;          // EP 总卡数
-    uint32_t localExpertNum;       // 本卡专家数
-    uint32_t aivNum;               // AIV 核数
-    uint32_t networkMode;          // 0=direct, 1=hybrid
-    uint32_t serverNum;            // 服务器数
-    uint32_t rankNumPerServer;     // 每服务器卡数
-    MoeEpDumpRegion regions[7];    // 7 个固定 Region (offset: uint64, size: uint64)
-};
-```
-
-| 下标 | Region 名称 | 说明 |
-|------|------------|------|
-| 0 | PER_CORE_DIAG | 每核诊断信息, 100x512B |
-| 1 | COUNT_NOTIFY | Dispatch 每源 rank 的 token 计数 |
-| 2 | EXPERT_COUNT | 每卡每专家 token 计数 |
-| 3 | DISPATCH_SLOT_STATE | Dispatch 通信完成状态 |
-| 4 | COMBINE_TOKEN_STATE | Combine 每(token,topk)状态 |
-| 5 | COMBINE_STATE_TAIL | Combine 尾部状态 |
-| 6 | HYBRID_SCALEOUT_STATUS | Hybrid scaleout 状态(direct 模式填{0,0}) |
-
 ### 分析流程
 
 1. **解析参数, 构建卡目录列表** — 接收 `target_dir`, `file_num`, `is_multi`, 单卡直接使用 target_dir, 多卡按 `target_dir/0`~`target_dir/(N-1)` 构建
-2. **收集所有卡 Metadata** — 遍历每张卡读 `.metadata.bin`, 解析 10 个 uint32 + 7 个 Region(offset/size 为 uint64), 计算全局专家数 = sum(各卡 localExpertNum)
+2. **收集所有卡 Metadata** — 遍历每张卡读 `.metadata.bin`, 解析 10 个 uint32 + 6 个 Region(offset/size 为 uint64), 计算全局专家数 = sum(各卡 localExpertNum)
 3. **逐卡执行单卡分析**:
    - 打印该卡 Metadata (含开始/结束提示)
    - 解析 context (MoeCommContext 结构体): epRankId, rankSizePerServer, Win区地址, Handle地址, channelsPerRank
    - 解析 topk_idx (input.2): 按 Metadata 的 topK reshape 为 (bs, k), 校验值范围 0 <= val < 全局专家数, 打印全部数据
-   - 分析 Per-core 诊断区: 核数判断(op_count 和 run_pos 全为 0 时停止), 逐核打印
+   - 分析 Per-core 诊断区: 读取 4 个 op record(dispatch/dispatch_epilogue/combine/combine_epilogue), 核数判断(4 个 record 全为 0 时停止), 逐核逐 op 打印 opCnt/runPosition/epRankId/aivId
    - 分析 Count Notify / Expert Count / Combine Token State: 各 Region 数据解析, 打印时附带 shape 说明
 4. **写入 Excel** — 输出 `moe_ep_dump_analysis_result.xlsx`, 共 7 个 sheet
 
@@ -453,10 +649,10 @@ struct MoeEpDumpMetadata {
 
 | Sheet | 列 | 说明 |
 |-------|----|----|
-| `metadata` | card_num + 10 字段 + 14 Region 列(offset/size 拆分) + bs + core_count | 每卡一行 |
+| `metadata` | card_num + 10 字段 + 6 个 Region(offset/size 交替) + bs + core_count | 每卡一行 |
 | `context` | card_num, epRankId, rankSizePerServer, Win区地址_0~N, Handle地址_0~N, channelsPerRank | 按 MoeCommContext 结构体平铺, 每卡一行, N 取各卡最大 rankSizePerServer |
 | `topk_idx` | card_num, token_id, topk_id, expert_id | 每(token, topk)一行 |
-| `per_card_per_core` | card_num, core_count, core_id, op_count, run_pos | 每核一行 |
+| `per_card_per_core` | card_num, core_count, core_id, op_index, op_name, op_count, run_pos, ep_rank_id, aiv_id | 每核每 op 一行 |
 | `count_notify` | card_num, epWorldSize, rank_id, count | 每卡每 rank 一行 |
 | `expert_count` | card_num, localExpertNum, rank_id, expert_id, count | 每卡每 rank 每 expert 一行 |
 | `combine_token_state` | card_num, idx, token_state | 每卡每(token,topk)一行 |

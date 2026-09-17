@@ -268,7 +268,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>batchSize（int64_t）</td>
       <td>输入</td>
       <td>输入样本批量大小。</td>
-      <td>layoutQ为TND时无需手动指定，建议值为0。</td>
+      <td>layoutQOptional为TND时无需手动指定，建议值为0。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -318,7 +318,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>cmpTopk（int64_t）</td>
       <td>输入</td>
       <td>从cmpKv中筛选的稀疏token个数。</td>
-      <td>CSA场景下仅支持512或1024，SWA、HCA场景下为0，建议值为0。</td>
+      <td>Atlas A2/A3产品的CSA场景下支持[1, 8192]内的任意整数，SWA、HCA场景下为0，建议值为0。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -449,10 +449,10 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
 
   <ul>
     <!-- npu="A3" id7 -->
-    <li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> ：不支持sequsedQOptional、cmpTopkLengthOptional，numHeadsQ/numHeadsKv仅支持1、2、4、8、16、32、64、128；SWA稀疏ori_kv场景支持oriTopkLengthOptional、oriTopk大于0及oriMaskMode为0，oriWinLeft和oriWinRight支持非负数；其他SWA场景oriTopk为0、oriMaskMode为4、oriWinLeft为127、oriWinRight为0；cmpTopk仅支持0、512、1024，cmpMaskMode仅支持3，cmpRatio仅支持1、4、128。</li>
+    <li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> ：不支持sequsedQOptional、cmpTopkLengthOptional，numHeadsQ/numHeadsKv仅支持1、2、4、8、16、32、64、128；SWA稀疏ori_kv场景支持oriTopkLengthOptional、oriTopk大于0及oriMaskMode为0，oriWinLeft和oriWinRight支持非负数；其他SWA场景oriTopk为0、oriMaskMode为4、oriWinLeft为127、oriWinRight为0；cmpTopk支持[0, 8192]，其中0表示非稀疏压缩KV，cmpMaskMode仅支持3，cmpRatio仅支持1、4、128。</li>
     <!-- end id7 -->
     <!-- npu="910b" id8 -->
-    <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> ：不支持sequsedQOptional、cmpTopkLengthOptional，numHeadsQ/numHeadsKv仅支持1、2、4、8、16、32、64、128；SWA稀疏ori_kv场景支持oriTopkLengthOptional、oriTopk大于0及oriMaskMode为0，oriWinLeft和oriWinRight支持非负数；其他SWA场景oriTopk为0、oriMaskMode为4、oriWinLeft为127、oriWinRight为0；cmpTopk仅支持0、512、1024，cmpMaskMode仅支持3，cmpRatio仅支持1、4、128。</li>
+    <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> ：不支持sequsedQOptional、cmpTopkLengthOptional，numHeadsQ/numHeadsKv仅支持1、2、4、8、16、32、64、128；SWA稀疏ori_kv场景支持oriTopkLengthOptional、oriTopk大于0及oriMaskMode为0，oriWinLeft和oriWinRight支持非负数；其他SWA场景oriTopk为0、oriMaskMode为4、oriWinLeft为127、oriWinRight为0；cmpTopk支持[0, 8192]，其中0表示非稀疏压缩KV，cmpMaskMode仅支持3，cmpRatio仅支持1、4、128。</li>
     <!-- end id8 -->
   </ul>
 
@@ -564,7 +564,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
         <td>SWA场景cmpRatio不为1，或cmpRatio与CSA、HCA场景不匹配。</td>
       </tr>
       <tr>
-        <td>cmpTopk不为0、512或1024。</td>
+        <td>cmpTopk不在[0, 8192]范围内。</td>
       </tr>
       <tr>
         <td>SWA稀疏ori_kv场景未传入oriTopkLengthOptional，或oriTopkLengthOptional的shape、数据类型不符合规格；cmpTopkLengthOptional传入非空Tensor。</td>
@@ -622,7 +622,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
         <td>SWA场景cmpRatio不为1，或cmpRatio与CSA、HCA场景不匹配。</td>
       </tr>
       <tr>
-        <td>cmpTopk不为0、512或1024。</td>
+        <td>cmpTopk不在[0, 8192]范围内。</td>
       </tr>
       <tr>
         <td>SWA稀疏ori_kv场景未传入oriTopkLengthOptional，或oriTopkLengthOptional的shape、数据类型不符合规格；cmpTopkLengthOptional传入非空Tensor。</td>
@@ -1084,7 +1084,7 @@ int main() {
         printf("    End BN2     : %u\n", result.faMetadata[i][FA_BN2_END_INDEX]);
         printf("    End M       : %u\n", result.faMetadata[i][FA_M_END_INDEX]);
         printf("    End S2      : %u\n", result.faMetadata[i][FA_S2_END_INDEX]);
-        printf("    First Worksapce Index : %u\n", result.faMetadata[i][FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX]);
+        printf("    First Workspace Index : %u\n", result.faMetadata[i][FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX]);
         printf("    Max S2 Block Num : %u\n", result.faMetadata[i][FA_S2_MAX_NUM]);
     }
     for (uint32_t i = 0; i < AIV_CORE_MAX_NUM; ++i) {
@@ -1092,7 +1092,7 @@ int main() {
         printf("    Core Enable             : %u\n", result.fdMetadata[i][FD_CORE_ENABLE_INDEX]);
         printf("    FD Task BN2 Idx         : %u\n", result.fdMetadata[i][FD_BN2_IDX_INDEX]);
         printf("    FD Task M Idx           : %u\n", result.fdMetadata[i][FD_M_IDX_INDEX]);
-        printf("    FD Task S2 Idx          : %u\n", result.fdMetadata[i][FD_WORKSPACE_IDX_INDEX]);
+        printf("    FD Task Workspace Idx   : %u\n", result.fdMetadata[i][FD_WORKSPACE_IDX_INDEX]);
         printf("    FD Task Workspace Num   : %u\n", result.fdMetadata[i][FD_WORKSPACE_NUM_INDEX]);
         printf("    FD Subtask M Start      : %u\n", result.fdMetadata[i][FD_M_START_INDEX]);
         printf("    FD Subtask M Num        : %u\n", result.fdMetadata[i][FD_M_NUM_INDEX]);
