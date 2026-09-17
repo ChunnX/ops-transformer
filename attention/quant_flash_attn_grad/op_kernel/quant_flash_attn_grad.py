@@ -1509,25 +1509,22 @@ def cal_tnd_line_swizzle_deter_index(
             seg = p + q - 1
             if seg > 0:
                 a1 = ceil(a, seg)
-                a2 = a % seg
-                if a2 == 0:
-                    a2 = seg
+                a2_rem = a % seg
+                a2 = seg if a2_rem == 0 else a2_rem
                 l3 = max(0, min(p + n - m - 1, p + q - 2))
                 if l3 == 0 or n - m < 1:
                     idx = (a1 - 1) * k + j1
                     w = ceil(idx, n)
-                    y = idx % n
-                    if y == 0:
-                        y = n
+                    y_rem = idx % n
+                    y = n if y_rem == 0 else y_rem
                     x = y + a2 - q
                 else:
                     y_abs = (a1 - 1) * k + j1
                     x_abs = y_abs + a2 - q
                     if x_abs >= 1:
                         w = ceil(x_abs, m)
-                        x = x_abs % m
-                        if x == 0:
-                            x = m
+                        x_rem = x_abs % m
+                        x = m if x_rem == 0 else x_rem
                         y = x + q - a2
                 if w >= 1 and w <= copies and x >= 1 and x <= m and y >= 1 and y <= n:
                     valid = 1
