@@ -118,6 +118,9 @@ private:
                                        GM_ADDR gradUniqueOutGM);
     __aicore__ inline void AccumulateSubBatch(AscendC::LocalTensor<float> &gradFp32, uint32_t rowStrideFloats,
                                               uint32_t subStart, uint32_t subLen, GM_ADDR gradUniqueOutGM);
+    __aicore__ inline void AccumulateDirectSubBatch(AscendC::LocalTensor<uint8_t> &gradRaw, uint32_t subStart,
+                                                    uint32_t subLen, AscendC::LocalTensor<float> &castRow,
+                                                    GM_ADDR gradUniqueOutGM);
     __aicore__ inline void CastToFP32(AscendC::LocalTensor<float> outT, AscendC::LocalTensor<uint8_t> gradRaw,
                                       uint32_t count);
 
@@ -600,6 +603,45 @@ __aicore__ inline void EngramFetchGradUnique::AccumulateSubBatch(AscendC::LocalT
     }
 }
 
+__aicore__ inline void EngramFetchGradUnique::AccumulateDirectSubBatch(AscendC::LocalTensor<uint8_t> &gradRaw,
+                                                                        uint32_t subStart, uint32_t subLen,
+                                                                        AscendC::LocalTensor<float> &castRow,
+                                                                        GM_ADDR gradUniqueOutGM)
+{
+    AscendC::LocalTensor<float> accumBase = accumBuf_->Get<float>();
+    uint32_t hiddenDim = static_cast<uint32_t>(hiddenDim_);
+
+    for (uint32_t j = 0; j < subLen; j++) {
+        if (DirectFlagUb().GetValue(subStart + j) != 0) {
+            continue;
+        }
+        int32_t compactIdx = CompactIdxUb().GetValue(subStart + j);
+        if (compactIdx < 0 || compactIdx >= numEntriesPerRank_) {
+            continue;
+        }
+        if (compactIdx != accumCompactIdx_) {
+            if (accumDirty_) {
+                FlushAccum(gradUniqueOutGM);
+                accumIdx_ ^= 1U;
+                if (flushPending_[accumIdx_]) {
+                    AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(flushEvtMte3VArr_[accumIdx_]);
+                    flushPending_[accumIdx_] = false;
+                }
+            }
+            AscendC::LocalTensor<float> accum = accumBase[accumIdx_ * accumFloats_];
+            AscendC::Duplicate<float>(accum, 0.0f, hiddenDim);
+            AscendC::PipeBarrier<PIPE_V>();
+            accumCompactIdx_ = compactIdx;
+        }
+        AscendC::LocalTensor<float> accum = accumBase[accumIdx_ * accumFloats_];
+        CastToFP32(castRow, gradRaw[j * inRowStride_], hiddenDim);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Add<float>(accum, accum, castRow, hiddenDim);
+        AscendC::PipeBarrier<PIPE_V>();
+        accumDirty_ = true;
+    }
+}
+
 __aicore__ inline uint32_t EngramFetchGradUnique::ProcessBatchUnique(uint32_t cur, uint32_t batchLen,
                                                                      int32_t runningOffset, int32_t &prevEntry,
                                                                      bool &isFirstElement, int32_t &inclusiveSum,
@@ -692,7 +734,8 @@ __aicore__ inline uint32_t EngramFetchGradUnique::ProcessScatterBatch(
     // 行宽超过 32KB 半缓冲时禁用 ping/pong 拆分：整缓冲单行、跨 tile 用 evt_0 串行，
     // 否则 tileIdx=1 写 gradPing[32K] 处的单行会越过 gradBuf_ 污染池内相邻缓冲
     bool singleRowMode = inRowStride_ > Mc2Kernel::GRAD_PING_BYTES;
-    if (maxGradPerBatch > gradSubBatch_) {
+    bool canDirectCopyEarly = (inputDtype_ == outputDtype_);
+    if (!canDirectCopyEarly && maxGradPerBatch > gradSubBatch_) {
         maxGradPerBatch = gradSubBatch_;
     }
     uint32_t gradBufHalf = Mc2Kernel::GRAD_PING_BYTES;
@@ -763,7 +806,10 @@ __aicore__ inline uint32_t EngramFetchGradUnique::ProcessScatterBatch(
 
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(useEvt0 ? evtMte2V_0 : evtMte2V_1);
 
-        if (needCast) {
+        if (canDirectCopy && needCast) {
+            AscendC::LocalTensor<float> castRow = castBuf_->Get<float>();
+            AccumulateDirectSubBatch(gradRaw, subStart, subLen, castRow, gradUniqueOutGM);
+        } else if (needCast) {
             AscendC::LocalTensor<float> castPingF = castBuf_->Get<float>();
             AscendC::LocalTensor<float> castPongF = castPingF[castHalfFloats];
             AscendC::LocalTensor<float> gradFp32 = (bufIdx == 0U) ? castPingF : castPongF;
