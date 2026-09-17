@@ -16,21 +16,21 @@ FA_METADATA_OP_NAME = "flash_attn_metadata"
 METADATA_STRIDE = 16
 
 
-_Q_LAYOUT_DIMS = {"TND": 3, "BSND": 4, "BNSD": 4}
-_KV_LAYOUT_DIMS = {
-    **_Q_LAYOUT_DIMS,
+_LAYOUT_DIMS = {
+    "TND": 3,
+    "BSND": 4,
+    "BNSD": 4,
     "PA_BBND": 4,
     "PA_BNBD": 4,
     "PA_NZ": 5,
 }
 
 
-def _check_layout_dims(tensor, name, layout, supported_layouts):
-    expected = supported_layouts.get(layout)
-    torch._check(
-        expected is not None,
-        lambda: f"Unsupported {name} layout: {layout!r}, expected one of {tuple(supported_layouts)}",
-    )
+def _check_layout_dims(tensor, name, layout):
+    expected = _LAYOUT_DIMS.get(layout)
+    if expected is None:
+        # Layout validity is checked by tiling.
+        return
     torch._check(
         tensor.dim() == expected,
         lambda: f"{name} with layout {layout} expects {expected} dims, "
@@ -40,9 +40,9 @@ def _check_layout_dims(tensor, name, layout, supported_layouts):
 
 def _validate_layout_dims(q, k, v, layout_q, layout_kv):
     # Validate before indexing shapes or inferring output dimensions.
-    _check_layout_dims(q, "q", layout_q, _Q_LAYOUT_DIMS)
-    _check_layout_dims(k, "k", layout_kv, _KV_LAYOUT_DIMS)
-    _check_layout_dims(v, "v", layout_kv, _KV_LAYOUT_DIMS)
+    _check_layout_dims(q, "q", layout_q)
+    _check_layout_dims(k, "k", layout_kv)
+    _check_layout_dims(v, "v", layout_kv)
 
 
 def _get_npu_core_nums():
