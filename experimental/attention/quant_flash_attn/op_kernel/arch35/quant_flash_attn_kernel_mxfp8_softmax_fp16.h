@@ -440,7 +440,7 @@ public:
                         // mm1Res UB 槽位空闲（对应 V 核已消费完）
                         CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_C1_V1 + subBlockId * 16);
                         if (subBlockId == 0) {
-                            ComputeMm1(runInfo0, subLoopIdx); // K[128,128]×Q[128,256] → L0C[128,256]
+                            ComputeMm1(runInfo0, subLoopIdx, subLoopIdx + 1 == c1v1Loop);
                         }
                         FixpipeMm1(runInfo0, subLoopIdx, subBlockId); // 单目标搬 [128,128] 给 V(subBlockId)
                         CrossCoreSetFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_C1_V1 + subBlockId * 16);
@@ -466,7 +466,7 @@ public:
                     CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_V1_P_READY + vCore * 16);
                     CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_C2_V2 + vCore * 16);
                     ComputeMm2(runInfo2, vCore);   // V_ext[144,128]×P[128,128] → L0C[144,128]
-                    FixpipeMm2(runInfo2);   // 裁 [129,128] 单目标搬给 V(vCore)
+                    FixpipeMm2(runInfo2, vCore);   // 裁 [129,128] 单目标搬给 V(vCore)
                     CrossCoreSetFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_C2_V2 + vCore * 16);
                 } else {
                     if (vCore == constInfo_.subBlockIdx) {
@@ -481,9 +481,9 @@ public:
     }
 
     // ============================== 计算空壳（阶段二下沉 block 层，阶段三真实现）==============================
-    __aicore__ inline void ComputeMm1(RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t subLoopIdx)
+    __aicore__ inline void ComputeMm1(RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t subLoopIdx, bool isLastSubLoop)
     {
-        cubeBlock_.ComputeMm1(runInfo, subLoopIdx);
+        cubeBlock_.ComputeMm1(runInfo, subLoopIdx, isLastSubLoop);
     }
 
     __aicore__ inline void FixpipeMm1(RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t subLoopIdx, uint32_t subBlockId)
@@ -508,9 +508,9 @@ public:
         cubeBlock_.ComputeMm2(runInfo, vCore);
     }
 
-    __aicore__ inline void FixpipeMm2(RunInfoMxfp8SoftmaxFp16 &runInfo)
+    __aicore__ inline void FixpipeMm2(RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t vCore)
     {
-        cubeBlock_.FixpipeMm2(runInfo);
+        cubeBlock_.FixpipeMm2(runInfo, vCore);
     }
 
     __aicore__ inline void ComputeVec2(RunInfoMxfp8SoftmaxFp16 &runInfo)

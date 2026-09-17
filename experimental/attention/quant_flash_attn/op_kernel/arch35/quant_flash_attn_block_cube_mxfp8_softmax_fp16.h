@@ -366,7 +366,7 @@ public:
 
     __aicore__ inline void ReleaseTensors() { FreeEventID(); }
 
-    __aicore__ inline void ComputeMm1(RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t subLoopIdx)
+    __aicore__ inline void ComputeMm1(RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t subLoopIdx, bool isLastSubLoop)
     {
         // ———— Q 常驻载入（行首一次，同一行所有 K subLoop 复用）————
         if (unlikely(runInfo.isFirstS2Loop && subLoopIdx == 0)) {
@@ -407,7 +407,7 @@ public:
 
         SetFlag<HardEvent::MTE1_MTE2>(KV_EVENT0 + kBufId_);
         kBufId_ = (kBufId_ + 1U) % 2U;
-        if (unlikely(runInfo.isLastS2Loop)) {
+        if (unlikely(runInfo.isLastS2Loop && isLastSubLoop)) {
             SetFlag<HardEvent::MTE1_MTE2>(Q_EVENT0 + qBufId_);
             SetFlag<HardEvent::M_MTE1>(Q_L0B_EVENT0);
             qBufId_ = (qBufId_ + 1U) % 2U;
@@ -499,20 +499,24 @@ public:
         SetFlag<HardEvent::M_FIX>(L0C_EVENT0 + l0cBufId_);
     }
 
-    __aicore__ inline void FixpipeMm2(RunInfoMxfp8SoftmaxFp16 &runInfo)
+    __aicore__ inline void FixpipeMm2(RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t vCore)
     {
         WaitFlag<HardEvent::M_FIX>(L0C_EVENT0 + l0cBufId_);
 
         uint32_t l0cOffset = l0cBufId_ * 128U * 256U;
 
+        uint32_t actVecS1Size = (vCore == 0U)
+            ? AttentionCommon::Min(runInfo.actMSize, S1_SUB_BLOCK_SIZE)
+            : (runInfo.actMSize > S1_SUB_BLOCK_SIZE ? runInfo.actMSize - S1_SUB_BLOCK_SIZE : 0U);
+
         FixpipeParamsArch3510<CO2Layout::ROW_MAJOR> fixpipeParams;
-        fixpipeParams.nSize = (runInfo.actMSizeAlign32 + 7U) >> 3 << 3;
+        fixpipeParams.nSize = (actVecS1Size + 7U) >> 3 << 3;
         fixpipeParams.mSize = dBaseSize + 1U;
         fixpipeParams.srcStride = ((dBaseSize + ROWSUM_ROWS + 15U) / 16U) * 16U;
-        fixpipeParams.dstStride = runInfo.actMSizeAlign32;
+        fixpipeParams.dstStride = actVecS1Size;
         fixpipeParams.quantPre = QuantMode_t::NoQuant;
         fixpipeParams.dualDstCtl = 0;
-        fixpipeParams.subBlockId = runInfo.loop % 2U;
+        fixpipeParams.subBlockId = vCore;
         fixpipeParams.params.ndNum = 1U;
         fixpipeParams.params.srcNdStride = fixpipeParams.mSize;
         fixpipeParams.params.dstNdStride = fixpipeParams.dstStride;
