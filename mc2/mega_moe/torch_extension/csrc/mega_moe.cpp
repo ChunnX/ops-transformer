@@ -625,8 +625,8 @@ int64_t GetMegaMoeCclBufferSize(int64_t epWorldSize, int64_t moeExpertNum, int64
                 "combine_quant_mode only support 0, 3 or 4 on Ascend950, but got ", combineQuantMode);
 
     if (serverNum > 0) {
-        TORCH_CHECK(serverNum > 1 && serverNum <= epWorldSize && epWorldSize % serverNum == 0,
-                    "server_num should be in [2, ep_world_size] and divide ep_world_size, but got ", serverNum,
+        TORCH_CHECK(serverNum >= 1 && serverNum <= epWorldSize && epWorldSize % serverNum == 0,
+                    "server_num should be in [1, ep_world_size] and divide ep_world_size, but got ", serverNum,
                     " and ep_world_size ", epWorldSize);
         int64_t routeCapacity = numMaxTokensPerRank * numTopk;
         TORCH_CHECK(routeCapacity <= std::numeric_limits<int32_t>::max(),
