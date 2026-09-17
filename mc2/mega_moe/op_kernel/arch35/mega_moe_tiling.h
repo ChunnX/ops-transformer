@@ -100,17 +100,16 @@ constexpr int32_t BASE_RECV_ROUTE_ITEMS_PER_BATCH = 12288;
  * Send route batch 基准用于先选择 mask buffer 数量，再固定 buffer 数反推最终 batch。
  * Bsend 表示基准 batch 的 route item 数，N 表示 mask buffer 数：
  *   sendVariableBytes(Bsend, N) = 2 * Bsend * sizeof(int32_t) + N * CalcTopkValidIndexRingSlotBytes(Bsend, topK)；
- *   sendFixedBytes = resetTensorBytes + 2048 + 2 * xOutTensorBytes + 2 * xInTensorBytes
- *                    + sendCntAccBytes；
+ *   sendFixedBytes = resetBytes + quantScratchBytes + sendCntAccBytes；
  *   sendFixedBytes + sendVariableBytes(Bsend, N) <= availableUbBytes。
  *
- * count 固定占用 = Align32(CeilDiv(总专家数, 发送核数) * 4B)，专家数量紧凑存储。
- * 发送时仅对非对齐段使用已结束的前序工作区，不新增 UB；有共享时发送核数为 AIC 数，否则为 AIV 数。
- * 基准 batch 为 10240，保留既有 ring 深度选择和 batch 扩大策略。
+ * MTE 的 MoE/shared 共用输入双缓冲和 2048B mxTemp，需要独立共享量化时增加共享输出双缓冲。
+ * H=8192 时共享 FP8 输出双缓冲最多增加 16896B，FP4 最多增加 8704B。
+ * count 阶段复用累计表之前已结束使用的量化/下标/ring 区；输入双缓冲至少 4096B，
+ * 足以容纳一张卡最多 1024 个专家的 count 重排，无需额外预留重排区。
+ * 基准 batch 保持 10240，host 将共享输出计入固定占用后选择 ring 深度并扩大 batch。
  * ring 槽含 mask 和筛选下标：Bsend / 8 + Align32(CeilDiv(Bsend + topK - 1, topK) * 4)。
- * 以 h=8192、2048 专家、24 个发送核、topK=1、weight 预取和 reset 上限 8KiB 为例：
- *   固定区 60320B + 两个 route tensor 81920B + 双 ring 84480B = 226720B；
- *   相对 248KiB 预算余 27232B。完整预算仍需结合平台实际发送核数和 UB 大小。
+ * 此配置由 MTE 发送路径使用；URMA Layered 在 kernel 中单独计算发送布局。
  *
  * CalcTopkValidIndexBufferConfig 固定选中的 buffer 数后，用剩余 UB 扩大 batch，并向下对齐到 ALIGN_256。
  * SendMaskCal 使用 MTE3_V 的 EVENT_ID0~EVENT_ID5 管理 mask push ring。最低保留双 buffer，最多 6 个。
