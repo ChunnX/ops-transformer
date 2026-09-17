@@ -537,7 +537,7 @@ CheckContext MakeSparseContext()
     CheckContext context;
     context.opName = "SparseFlashMla";
     context.variant = OperatorVariant::SPARSE;
-    context.cmpRatio = 0;
+    context.cmpRatio = 1;
     context.oriMaskMode = 0;
     context.cmpMaskMode = 0;
     context.oriWinLeft = -1;
@@ -545,17 +545,6 @@ CheckContext MakeSparseContext()
     return context;
 }
 } // namespace
-
-TEST(SparseFlashMlaChecker, AcceptsZeroRatioOnlyWithoutCmpKv)
-{
-    SparseCompressionChecker checker;
-    CheckContext context = MakeSparseContext();
-    EXPECT_EQ(checker.CheckSinglePara(context), ge::GRAPH_SUCCESS);
-    EXPECT_EQ(checker.CheckParaExistence(context), ge::GRAPH_SUCCESS);
-
-    context.cmpKv.present = true;
-    EXPECT_EQ(checker.CheckSinglePara(context), ge::GRAPH_FAILED);
-}
 
 TEST(SparseFlashMlaChecker, AcceptsPagedAttentionSequsedWithShapeButNoTensorPointer)
 {
@@ -851,6 +840,11 @@ TEST(SparseFlashMlaChecker, RejectsInvalidSoftmaxLse)
 TEST(SparseFlashMlaChecker, RejectsInvalidCompressionParams)
 {
     SparseCompressionChecker compressionChecker;
+    {
+        CheckContext context = MakeSparseContext();
+        context.cmpRatio = 0;
+        EXPECT_EQ(compressionChecker.CheckSinglePara(context), ge::GRAPH_FAILED);
+    }
     {
         CheckContext context = MakeSparseContext();
         context.topkValueMode = 2;

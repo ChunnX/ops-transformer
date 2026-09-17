@@ -50,10 +50,11 @@ inline bool IsPowerOfTwoInRangeSmla(int64_t value, int64_t minValue, int64_t max
 
 inline bool IsCmpRatioSupportSmla(const char *socVersion, bool hasCmpKv, int64_t cmpTopk, int64_t cmpRatio)
 {
+    const bool isAscend950 = socVersion != nullptr && strstr(socVersion, "Ascend950") != nullptr;
     if (!hasCmpKv) {
-        return cmpRatio == 0;
+        return cmpRatio == (isAscend950 ? 1 : 0);
     }
-    if (socVersion != nullptr && strstr(socVersion, "Ascend950") != nullptr) {
+    if (isAscend950) {
         return cmpRatio >= SMLA_CMP_RATIO_LOWER_BOUND && cmpRatio <= SMLA_CMP_RATIO_UPPER_BOUND;
     }
     return (cmpTopk > 0) ? (cmpRatio == 1 || cmpRatio == 2 || cmpRatio == 4) : (cmpRatio == 128);

@@ -392,7 +392,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>cmpRatio（int64_t）</td>
       <td>输入</td>
       <td>cmpKv相对于压缩前KV长度的压缩倍率，用于恢复cmp侧mask使用的压缩前KV长度。</td>
-      <td>仅传入oriKv时不参与压缩KV计算。Atlas A2/A3（arch22）：SWA取0，CSA取1、2或4，HCA取128；Ascend 950PR/950DT（arch35）：SWA接受0或1，CSA/HCA支持1到128。</td>
+      <td>仅传入oriKv时不参与压缩KV计算。Atlas A2/A3（arch22）：SWA取0，CSA取1、2或4，HCA取128；Ascend 950PR/950DT（arch35）：SWA取1，CSA/HCA支持1到128。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
