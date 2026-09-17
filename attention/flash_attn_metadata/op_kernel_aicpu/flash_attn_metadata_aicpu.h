@@ -71,16 +71,16 @@ private:
     Tensor *metadata_ = nullptr;
 
     // input attr
-    int32_t batchSize_ = 0;
-    int32_t maxSeqlenQ_ = -1;
-    int32_t maxSeqlenKv_ = -1;
-    int32_t numHeadsQ_ = 0;
-    int32_t numHeadsKv_ = 0;
-    int32_t headDim_ = 0;
-    int32_t headDimV_ = -1; // -1: 未指定, 归一化后等于 headDim_
-    int32_t maskMode_ = 1;
-    int32_t winLeft_ = -1;
-    int32_t winRight_ = -1;
+    int64_t batchSize_ = 0;
+    int64_t maxSeqlenQ_ = -1;
+    int64_t maxSeqlenKv_ = -1;
+    int64_t numHeadsQ_ = 0;
+    int64_t numHeadsKv_ = 0;
+    int64_t headDim_ = 0;
+    int64_t headDimV_ = -1; // -1: 未指定, 归一化后等于 headDim_
+    int64_t maskMode_ = 1;
+    int64_t winLeft_ = -1;
+    int64_t winRight_ = -1;
     std::string layoutQ_ = "BSND";
     std::string layoutKv_ = "BSND";
     std::string layoutOut_ = "BSND";
