@@ -179,12 +179,16 @@ public:
     __aicore__ inline void WaitForVector()
     {
         AscendC::CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIV_SYNC_AIC_FLAG);
-        AscendC::CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIV_SYNC_AIC_FLAG + FLAG_ID_MAX);
+        if constexpr (AIC_AIV_CORE_RATIO > 1U) {
+            AscendC::CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIV_SYNC_AIC_FLAG + FLAG_ID_MAX);
+        }
     }
     __aicore__ inline void NotifyVector()
     {
         AscendC::CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIC_SYNC_AIV_FLAG);
-        AscendC::CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIC_SYNC_AIV_FLAG + FLAG_ID_MAX);
+        if constexpr (AIC_AIV_CORE_RATIO > 1U) {
+            AscendC::CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIC_SYNC_AIV_FLAG + FLAG_ID_MAX);
+        }
     }
     __aicore__ inline void WaitForCube()
     {
@@ -340,7 +344,7 @@ public:
             l0cOutUb_ = epilogueOp_.GetL0c2UbTensor();
         }
         InitParamsAndTensor(params);
-        BlockSchedulerOp bs(params.gmmParams.baseM, params.gmmParams.baseN, params.gmmParams.baseK);
+        BlockSchedulerOp bs(params.gmmParams.baseM, params.gmmParams.baseN, params.gmmParams.baseK, AIC_AIV_CORE_RATIO);
         SyncAll();
         if ASCEND_IS_AIV {
             AscendC::CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_MTE3>(AIV_SYNC_AIC_FLAG);

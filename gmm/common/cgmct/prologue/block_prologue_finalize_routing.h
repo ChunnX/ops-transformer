@@ -257,7 +257,7 @@ BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PA
     if ASCEND_IS_AIC {
         return;
     }
-    vectorCoreNum_ = uint32_t(GetBlockNum() * GetTaskRation());
+    vectorCoreNum_ = uint32_t(GetBlockNum() * AIC_AIV_CORE_RATIO);
     if (GetBlockIdx() >= vectorCoreNum_) {
         return;
     }
