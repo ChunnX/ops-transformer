@@ -135,8 +135,7 @@ class ElasticBufferOpBuilder(OpBuilder):
         """PyTorch operator signature."""
         return [
             "engram_fetch(Tensor context, Tensor indices, int hidden_size, "
-            "int num_entries, int dtype, Tensor fetched_sf, "
-            "int sf_table_addr) -> Tensor",
+            "int num_entries, int dtype, Tensor sf_table, Tensor fetched_sf) -> Tensor",
             "engram_fetch_train(Tensor context, Tensor indices, int hidden_size, "
             "int num_entries, int dtype, Tensor local_storage_addr, "
             "int num_max_tokens_per_rank, int comm_buffer_size, int rank_size) "
@@ -153,7 +152,7 @@ class ElasticBufferOpBuilder(OpBuilder):
 
         @impl(get_as_library(), "engram_fetch", "Meta")
         def engram_fetch_meta(
-            context, indices, hidden_size, num_entries, dtype, fetched_sf, sf_table_addr
+            context, indices, hidden_size, num_entries, dtype, sf_table, fetched_sf
         ):
             return torch.empty(
                 (indices.size(0), hidden_size),
@@ -254,11 +253,11 @@ _elastic_buffer_op_builder._ensure_initialized()
 
 @impl(get_as_library(), "engram_fetch", "PrivateUse1")
 def engram_fetch(
-    context, indices, hidden_size, num_entries, dtype, fetched_sf, sf_table_addr
+    context, indices, hidden_size, num_entries, dtype, sf_table, fetched_sf
 ):
     op_module = _elastic_buffer_op_builder.load()
     return op_module.ElasticBuffer.engram_fetch(
-        context, indices, hidden_size, num_entries, dtype, fetched_sf, sf_table_addr
+        context, indices, hidden_size, num_entries, dtype, sf_table, fetched_sf
     )
 
 
@@ -314,6 +313,7 @@ class _MoeEpWindowLayout:
     dispatch_slot_bytes: int
     combine_slot_bytes: int
     scaleup_receive_buffer_bytes: int
+    dispatch_stash_buffer_bytes: int
 
 
 def _get_moe_ep_window_layout(
@@ -325,8 +325,10 @@ def _get_moe_ep_window_layout(
 ) -> _MoeEpWindowLayout:
     win_addr_align = 512
     ub_align = 32
-    notify_cnt_align = 15000
-    combine_channel_count = 7
+    max_dispatch_channel_count = 56
+    max_dispatch_notify_count = 8
+    # Must match ElasticBuffer's direct-network MOE_CHANNEL_HANDLE_NUM reservation.
+    combine_channel_handle_count = 64
     max_out_dtype_size = 2
     metadata_dtype_size = 4
     state_dtype_size = 4
@@ -337,40 +339,53 @@ def _get_moe_ep_window_layout(
     dispatch_count_size = world_size * _inline_align(
         local_experts_num * state_dtype_size, win_addr_align
     )
-    dispatch_notify_count = (
-        _inline_align(num_max_tokens_per_rank, notify_cnt_align) // notify_cnt_align
+    dispatch_notify_count = min(
+        max_dispatch_notify_count, max_dispatch_channel_count // (world_size - 1)
     )
+    dispatch_notify_count = max(dispatch_notify_count, 1)
+
     dispatch_notify_size = (
         world_size * win_addr_align
         + world_size * dispatch_notify_count * win_addr_align
     )
     combine_state_size = (
         num_max_tokens_per_rank * topk * win_addr_align
-        + world_size * combine_channel_count * win_addr_align
+        + max(world_size, combine_channel_handle_count) * win_addr_align
         + win_addr_align  # Persistent constant source for asynchronous combine completion flags.
     )
+    # payload 发送状态位区: 按每对端预留 notify 槽位数预留
     state_buffer_size = (
         dump_metadata_bytes
         + per_core_diag_bytes
         + dispatch_count_size
         + dispatch_notify_size
+        + dispatch_notify_count * win_addr_align
         + combine_state_size
     )
 
     metadata_bytes = _inline_align(topk * metadata_dtype_size, ub_align)
     hidden_align = _inline_align(hidden * max_out_dtype_size, ub_align)
+    # stash 仅存元数据（scales+topk+topkWeights），scales 信息按 AlignUb(hidden) 做上界预留
+    dispatch_stash_per_slot_bytes = _inline_align(
+        _inline_align(hidden, ub_align) + metadata_bytes * 2 + ub_align, win_addr_align
+    )
     dispatch_per_slot_bytes = _inline_align(
-        hidden_align + metadata_bytes * 2 + ub_align, win_addr_align
+        hidden_align + dispatch_stash_per_slot_bytes, win_addr_align
     )
     combine_per_slot_bytes = _inline_align(hidden_align + ub_align, win_addr_align)
+
     scaleup_receive_buffer_bytes = (
         world_size * num_max_tokens_per_rank * dispatch_per_slot_bytes
+    )
+    dispatch_stash_buffer_bytes = (
+        num_max_tokens_per_rank * dispatch_stash_per_slot_bytes
     )
     return _MoeEpWindowLayout(
         state_buffer_bytes=state_buffer_size,
         dispatch_slot_bytes=dispatch_per_slot_bytes,
         combine_slot_bytes=combine_per_slot_bytes,
         scaleup_receive_buffer_bytes=scaleup_receive_buffer_bytes,
+        dispatch_stash_buffer_bytes=dispatch_stash_buffer_bytes,
     )
 
 
@@ -384,8 +399,9 @@ def _get_moe_ep_direct_window_bytes(
     )
     return (
         layout.state_buffer_bytes
-        + layout.scaleup_receive_buffer_bytes * 2
+        + layout.scaleup_receive_buffer_bytes
         + combine_receive_buffer_bytes
+        + layout.dispatch_stash_buffer_bytes
     )
 
 
@@ -403,6 +419,10 @@ def _get_moe_ep_window_bytes(
     torch._check(
         1 <= topk <= 32,
         lambda: f"topk only support in [1, 32], but got {topk=}.",
+    )
+    torch._check(
+        world_size > 1,
+        lambda: f"world_size mast be greater than 1, but got {world_size=}.",
     )
 
     mb_conversion = 1024 * 1024
@@ -529,9 +549,11 @@ class ElasticBuffer:
             num_topk: top-k value for MoE dispatch/combine.
             with_grad: whether to enable training mode.
             explicitly_destroy: if True, the caller needs to explicitly
-                invoke ``destroy`` to release resources; if False (default),
-                resources are released automatically when the instance is
-                garbage collected.
+                invoke ``destroy`` to release instance resources; if False
+                (default), ``destroy`` is invoked automatically when the
+                instance is garbage collected. Note that Engram host pinned
+                memory is retained in a process-level pool after ``destroy``
+                and freed when the process exits (see ``destroy``).
         """
         moe_args = (num_max_tokens_per_rank, hidden, num_topk)
         self._validate_init_args(group, num_cpu_bytes, moe_args, with_grad)
@@ -574,7 +596,6 @@ class ElasticBuffer:
         self._comm_buffer_size = 0
         self._rank_size = 0
         self._engram_sf = None
-        self._engram_sf_table_addr = 0
 
     @staticmethod
     def get_engram_storage_size_hint(
@@ -757,7 +778,6 @@ class ElasticBuffer:
         self._engram_num_entries = storage.size(0)
         self._engram_dtype = storage.dtype
         self._engram_sf = sf
-        self._engram_sf_table_addr = sf.data_ptr() if sf is not None else 0
         self._local_storage_addr = self._runtime.get_local_storage_addr()
         self._comm_buffer_size = self._runtime.get_comm_buffer_size()
         self._rank_size = self._runtime.get_rank_size()
@@ -823,10 +843,10 @@ class ElasticBuffer:
             self._engram_hidden_size,
             self._engram_num_entries,
             _ENGRAM_DTYPE_TO_INT[self._engram_dtype],
+            sf if sf is not None else torch.empty(0, device=indices.device),
             fetched_sf
             if fetched_sf is not None
             else torch.empty(0, device=indices.device),
-            self._engram_sf_table_addr,
         )
 
         def _wait():
@@ -1014,7 +1034,8 @@ class ElasticBuffer:
 
         recv_x, recv_src_meta, recv_topk_weights, recv_scales = (
             self._runtime.moe_ep_dispatch_epilogue(
-                dst_slot,
+                args.x,
+                args.topk_idx,
                 num_recv_per_rank,
                 num_recv_per_expert,
                 args.cached_recv_src_metadata,
@@ -1109,7 +1130,11 @@ class ElasticBuffer:
         )
 
         combined_x, combined_topk_weights = self._runtime.moe_ep_combine_epilogue(
+            x,
             handle.topk_idx,
+            _checked_handle_metadata_buffer(
+                handle, x.shape[0], self._ep_world_size, x.device
+            ),
             topk_weights,
             self._ep_world_size,
             self._rank_id,
@@ -1123,7 +1148,18 @@ class ElasticBuffer:
 
     def destroy(self) -> None:
         """
-        Destroy the ElasticBuffer and free host pinned memory.
+        Destroy the ElasticBuffer instance and release its resources.
+
+        Note: the Engram host pinned memory (including self-allocated pinned
+        memory and the registration mapping of caller-provided zero-copy
+        storage) is registered into the HCCL engine context and cannot be
+        unregistered. After ``destroy``, it is retained in a process-level
+        pool keyed by the communication domain and freed when the process
+        exits; the caller's storage memory itself is never freed. Rebuilding
+        an ElasticBuffer on the same group reuses the pooled memory:
+        self-allocated rebuild must not exceed the first-built size, and
+        zero-copy rebuild must use the same storage address and size as the
+        first registration.
 
         Returns:
             None
@@ -1144,7 +1180,6 @@ class ElasticBuffer:
         self._comm_buffer_size = 0
         self._rank_size = 0
         self._engram_sf = None
-        self._engram_sf_table_addr = 0
 
     def _check_engram_fetch_grad(
         self, grad_fetched: torch.Tensor, fetch_ctx: EngramFetchCtx

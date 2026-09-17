@@ -3,7 +3,7 @@
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Ascend 950DT</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
@@ -227,7 +227,7 @@ ElasticBuffer.engram_fetch(indices) -> Callable
 
 **输入参数**：
 
-- **indices** (`Tensor`)：必选参数，查询索引的NPU tensor，shape为 `(num_tokens,)`，表示要抓取的条目全局索引，各卡`len(indices)`保持一致。数据类型支持 `int32`，数据格式为 $ND$。元素取值范围需在 `[0, world_size × num_entries)`，若某一位置的元素取值超过了该范围，则返回值中该位置对应的数据为0。
+- **indices** (`Tensor`)：必选参数，查询索引的NPU tensor，shape为 `(num_tokens,)`，表示要抓取的条目全局索引（训练场景各卡`len(indices)`保持一致， 推理场景可以不一致）。数据类型支持 `int32`，数据格式为 $ND$。元素取值范围需在 `[0, world_size × num_entries)`，若某一位置的元素取值超过了该范围，则返回值中该位置对应的数据为0。
 
 **输出说明**：
 
@@ -456,11 +456,11 @@ ElasticBuffer.get_moe_ep_ccl_buffer_size(world_size, num_max_tokens_per_rank, hi
 
 ### destroy
 
-**功能**：释放ElasticBuffer资源，包括host pinned内存（推理模式）、Engram运行时资源（训练模式下同时解除上层表内存的注册映射，不会释放调用方的内存）和Dispatch/Combine通信上下文。训练模式下HCCL默认通信buffer由框架管理，无需手动释放。当构造时 `explicitly_destroy=False`（默认）时，实例被垃圾回收时会自动调用本方法；当 `explicitly_destroy=True` 时，需要由调用方显式调用。
+**功能**：释放ElasticBuffer实例持有的资源，包括Dispatch/Combine通信上下文。注意：Engram通信的host pinned内存（含推理模式自建的host pinned内存、训练模式下调用方零拷贝存储的注册映射）在创建时已注册进HCCL引擎上下文且无反注册接口，destroy后该部分内存由进程级共享池按通信域保留、随进程退出统一释放，destroy不会释放该部分内存（调用方的存储内存本体始终不会被释放）。同通信域销毁后重建ElasticBuffer时直接复用共享池内存，复用约束：自建buffer重建容量不得超过首建值；外部零拷贝buffer重建时地址与大小必须与首建注册一致，否则接口报错，此时需更换新的通信域。训练模式下HCCL默认通信buffer由框架管理，无需手动释放。当构造时 `explicitly_destroy=False`（默认）时，实例被垃圾回收时会自动调用本方法；当 `explicitly_destroy=True` 时，需要由调用方显式调用。
 
 **输入参数**：无参数。
 
-**输出**：无返回值，资源释放完成。
+**输出**：无返回值，实例资源释放完成。
 
 ## 约束说明
 
@@ -671,7 +671,7 @@ def train_worker(rank):
 
     # ==================== 生成 embedding 和 indices ====================
     torch.manual_seed(42 + rank)
-    storage = torch.randn(num_entries, hidden, dtype=dtype)
+    storage = torch.randn(num_entries, hidden, dtype=dtype, pin_memory=True)
     total_entries = num_entries * world_size
 
     torch.manual_seed(100 + rank)

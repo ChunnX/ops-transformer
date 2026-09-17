@@ -708,6 +708,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
     <!-- end id9 -->
 
 - 公共约束
+    - 本接口不支持非连续输出。
     - 入参为空的场景处理：
         - query为空Tensor：直接返回。
 
@@ -765,7 +766,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
         <tr>
             <td>S1、S2</td>
             <td>支持泛化</td>
-            <td>支持S1、S2支持不等长</td>
+            <td>支持S1、S2不等长</td>
         </tr>
         <tr>
             <td>N1</td>

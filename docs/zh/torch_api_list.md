@@ -24,13 +24,10 @@
 
 ## 接口列表
 
-> **确定性简介**：
+> [!NOTE]
 >
-> - 配置说明：因CANN或NPU型号不同等原因，可能无法保证同一个API运行结果一致。在相同条件下（平台、设备、版本号和其他随机性参数等），部分接口可通过PyTorch中控制算法确定性的全局开关[torch.use_deterministic_algorithms](https://github.com/pytorch/pytorch/blob/main/torch/__init__.py)开启确定性算法，使多次运行结果一致。
-> - 性能说明：同一个算子采用确定性计算通常比非确定性慢，因此模型单次运行性能可能会下降。但在实验、调试调测等需要保证多次运行结果相同来定位问题的场景，确定性计算可以提升效率。
-> - 线程说明：同一线程中只能设置一次确定性状态，多次设置以最后一次有效设置为准。有效设置是指设置确定性状态后，真正执行了一次算子任务下发。如果仅设置，没有算子下发，只能是确定性变量开启但未下发给算子，因此不执行算子。
->   解决方案：暂不推荐一个线程多次设置确定性。该问题在二进制开启和关闭情况下均存在，在后续版本中会解决该问题。
-> - 符号说明：表中"-"符号表示该接口暂不支持当前列产品。
+> - 算子特性介绍：调用API前，请先学习算子相关基础知识，包括**确定性算法**、**Batch一致性**、**常见量化模式**等，具体介绍参见[算子基本概念](context/basic_concept.md)。
+> - 符号说明：表格中“-”符号表示该接口暂不支持当前列产品。
 
 |    接口名   |   说明     |  确定性说明（A2/A3）  | 确定性说明（Ascend 950） |
 | ----------- | ------------------- | ------------------- | ------------------- |
@@ -80,7 +77,7 @@
 |[moe_init_routing_grad](../../moe/moe_init_routing_v2_grad/docs/torchapi_moe_init_routing_grad.md)|`moe_init_routing`的反向接口，封装aclnnMoeInitRoutingV2Grad。|默认支持确定性计算|默认支持确定性计算|
 |[moe_re_routing](../../moe/moe_re_routing_v2/docs/torchapi_moe_re_routing.md)|MoE网络中，进行AlltoAll操作从其他卡上拿到需要算的token后，将token按照专家顺序重新排列。支持对topkWeight重排。|默认确定性实现|默认确定性实现|
 |[moe_token_permute](../../moe/moe_token_permute/docs/torchapi_moe_token_permute.md)|根据专家索引扩展并排序token。|默认支持确定性计算。|
-|[msa_index_score](../../attention/msa_index_score/docs/torchapi_msa_index_score.md)|封装aclnnMsaIndexScore，计算MSA Index Branch的block score。|-|-|
+|[msa_index_score](../../attention/msa_index_score/docs/torchapi_msa_index_score.md)|计算 MSA Index Branch 的 block score，对每个 query token 与 KV sparse block 做 matmul+maxpool 得到重要性分数。|默认确定性实现|默认确定性实现|
 |[pool_key_indexer](../../attention/pool_key_indexer/docs/pool_key_indexer.md)|将多个连续token打包成一个pool（池），以pool为单位计算注意力相关性分数并选取top-k位置，从而在保持稀疏注意力优势的同时减少索引开销。|默认确定性实现|默认确定性实现|
 |[qkv_rms_norm_rope_cache_with_k_scale](../../posembedding/qkv_rms_norm_rope_cache_with_k_scale/docs/torchapi_qkv_rms_norm_rope_cache_with_k_scale.md)|融合Q/K/V拆分、Q/K RMSNorm、RoPE/M-RoPE、量化和KV Cache更新，支持原地与函数式接口及M-RoPE MX场景。|-|默认支持确定性计算。|
 |[quant_all_reduce](../../mc2/quant_all_reduce/docs/torchapi_quant_all_reduce.md)|实现低比特数据的AllReduce通信，在通信的过程中对数据进行反量化，并输出通信结果。|-|-|

@@ -16,7 +16,7 @@
 #ifndef KEY_POOL_KERNEL_PERF_H
 #define KEY_POOL_KERNEL_PERF_H
 
-#include "key_pool_comm.h"
+#include "key_pool_comm_arch22.h"
 #include "key_pool_template_tiling_key.h"
 #include "key_pool_tiling_data.h"
 #include "key_pool_tools.h"
@@ -397,7 +397,9 @@ __aicore__ inline void KeyPoolKernelPerf<COMP>::CalcSplitCoreInfo()
 
     constInfo.mm1KvResSize = (uint64_t)constInfo.mBaseSize * constInfo.headDim;
     constInfo.mm1ScoreResSize = (uint64_t)constInfo.mBaseSize * constInfo.headDim;
-    constInfo.vec1ResSize = (uint64_t)constInfo.mBaseSize * constInfo.headDim * constInfo.nSize;
+    // History-expanded Norm rows must keep the Host-planned per-core stride,
+    // even when SetBaseSize shrinks the current-token Cube tile.
+    constInfo.vec1ResSize = tilingData_->workspaceParams.vec1ResSize;
 
     constInfo.dbSize = (uint64_t)constInfo.coreGroupNum * constInfo.mm1KvResSize;
 }
@@ -536,11 +538,6 @@ __aicore__ inline void KeyPoolKernelPerf<COMP>::Process()
         } else {
             ComputeVec1(vec1Info);
         }
-    }
-    if ASCEND_IS_AIV {
-        PipeBarrier<PIPE_ALL>();
-        SyncAll();
-        blockVec_.ComputeIncrementalPool();
     }
     FreeEventID();
 }
