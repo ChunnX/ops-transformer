@@ -10,6 +10,7 @@
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
+import os
 import torch
 from torch.library import impl
 from torch_npu.utils._error_code import ErrCode, ops_error
