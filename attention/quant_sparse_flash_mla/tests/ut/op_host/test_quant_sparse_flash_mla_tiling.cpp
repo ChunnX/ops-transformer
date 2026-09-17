@@ -71,6 +71,7 @@ struct QSmlaCase {
     int64_t cmpMaskMode = 0;
     int64_t oriWinLeft = 127;
     int64_t oriWinRight = 0;
+    int32_t deterministicLevel = 0;
 };
 
 gert::StorageShape ToStorageShape(const std::vector<int64_t> &dims)
@@ -145,6 +146,7 @@ void RunQSmlaTilingCase(const QSmlaCase &c, ge::graphStatus expect, uint64_t exp
          {"topk_value_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
          {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
         &compileInfo, "Ascend950", 56, 262144);
+    tilingContextPara.deterministicLevel_ = c.deterministicLevel;
     ExecuteTestCase(tilingContextPara, expect, expectTilingKey);
 }
 } // namespace
@@ -154,6 +156,29 @@ TEST_F(QuantSparseFlashMlaTiling, test_tiling_swa_only_ori_kv_tnd_pa_nd_success)
 {
     QSmlaCase c;
     RunQSmlaTilingCase(c, ge::GRAPH_SUCCESS);
+}
+
+TEST_F(QuantSparseFlashMlaTiling, test_tiling_batch_consistency_key)
+{
+    QSmlaCase c;
+    constexpr uint64_t normalTilingKey = 2; // SWA, TND/PA_BBND, G=64
+    constexpr uint64_t batchConsistencyBit = 1ULL << 19;
+    for (int32_t level : {0, 1, 2, 3}) {
+        c.deterministicLevel = level;
+        RunQSmlaTilingCase(c, ge::GRAPH_SUCCESS, normalTilingKey | (level == 3 ? batchConsistencyBit : 0));
+    }
+}
+
+TEST_F(QuantSparseFlashMlaTiling, test_tiling_sparse_batch_consistency_key)
+{
+    QSmlaCase c;
+    c.oriSparseIndicesShape = {512, 1, 512};
+    constexpr uint64_t normalTilingKey = 2 | (3ULL << 9) | (1ULL << 18); // ORI_SPARSE, VEC_S2PHYADDR
+    constexpr uint64_t batchConsistencyBit = 1ULL << 19;
+    for (int32_t level : {0, 3}) {
+        c.deterministicLevel = level;
+        RunQSmlaTilingCase(c, ge::GRAPH_SUCCESS, normalTilingKey | (level == 3 ? batchConsistencyBit : 0));
+    }
 }
 
 // HCA with ori and cmp kv, TND/PA_BBND success
