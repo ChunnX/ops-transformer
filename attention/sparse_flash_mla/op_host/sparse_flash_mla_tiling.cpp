@@ -906,8 +906,8 @@ ge::graphStatus SMLAInfoParser::GetMaxBlockNumPerBatch()
 
 ge::graphStatus SMLAInfoParser::GetBlockSize()
 {
-    oriBlockSize_ = static_cast<int32_t>(GetAxisNum(oriKvShape_, SMLAAxis::Bs, kvLayout_));
-    cmpBlockSize_ = static_cast<int32_t>(GetAxisNum(cmpKvShape_, SMLAAxis::Bs, kvLayout_));
+    oriBlockSize_ = GetAxisNum(oriKvShape_, SMLAAxis::Bs, kvLayout_);
+    cmpBlockSize_ = GetAxisNum(cmpKvShape_, SMLAAxis::Bs, kvLayout_);
     return ge::GRAPH_SUCCESS;
 }
 

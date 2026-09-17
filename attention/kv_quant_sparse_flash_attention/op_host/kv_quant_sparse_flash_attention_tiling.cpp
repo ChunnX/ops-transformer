@@ -1812,7 +1812,7 @@ ge::graphStatus QSFAInfoParser::GetBatchSize()
     if (qLayout_ == QSFALayout::TND) {
         return GetActualSeqLenQSize(bSize_);
     } else { // BSND
-        bSize_ = static_cast<uint32_t>(GetAxisNum(queryShape_, QSFAAxis::B, qLayout_));
+        bSize_ = GetAxisNum(queryShape_, QSFAAxis::B, qLayout_);
         return ge::GRAPH_SUCCESS;
     }
 }
@@ -1822,7 +1822,7 @@ ge::graphStatus QSFAInfoParser::GetQTSize()
     // 获取query的T基准值
     // 1、非TND时, 以query的batch_size维度为基准;
     // 2、TND时, actual_seq_lens_q必须传入, 以actual_seq_lens_q数组的长度为B轴大小
-    qTSize_ = (qLayout_ == QSFALayout::TND) ? static_cast<uint32_t>(GetAxisNum(queryShape_, QSFAAxis::T, qLayout_)) : 0;
+    qTSize_ = (qLayout_ == QSFALayout::TND) ? GetAxisNum(queryShape_, QSFAAxis::T, qLayout_) : 0;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1832,7 +1832,7 @@ ge::graphStatus QSFAInfoParser::GetKVTSize()
     // 1、非TND时, 以key的batch_size维度为基准;
     // 2、TND时, actual_seq_lens_q必须传入, 以actual_seq_lens_q数组的长度为B轴大小
     kvTSize_ =
-        (kvLayout_ == QSFALayout::TND) ? static_cast<uint32_t>(GetAxisNum(keyShape_, QSFAAxis::T, kvLayout_)) : 0;
+        (kvLayout_ == QSFALayout::TND) ? GetAxisNum(keyShape_, QSFAAxis::T, kvLayout_) : 0;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1840,7 +1840,7 @@ ge::graphStatus QSFAInfoParser::GetQHeadDim()
 {
     // 获取qHeadDim基准值
     // 以query的D维度为基准
-    qHeadDim_ = static_cast<uint32_t>(GetAxisNum(queryShape_, QSFAAxis::D, qLayout_));
+    qHeadDim_ = GetAxisNum(queryShape_, QSFAAxis::D, qLayout_);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1848,7 +1848,7 @@ ge::graphStatus QSFAInfoParser::GetKHeadDim()
 {
     // 获取kHeadDim基准值
     // 以key的D维度为基准
-    kHeadDim_ = static_cast<uint32_t>(GetAxisNum(keyShape_, QSFAAxis::D, kvLayout_));
+    kHeadDim_ = GetAxisNum(keyShape_, QSFAAxis::D, kvLayout_);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1858,10 +1858,10 @@ ge::graphStatus QSFAInfoParser::GetS1Size()
     // 1、非TND时, 以query的S维度为基准;
     // 2、TND时, actual_seq_lens_q必须传入, 以actual_seq_lens_q数组中的最大值为基准
     if (qLayout_ == QSFALayout::TND) {
-        s1Size_ = static_cast<uint32_t>(GetAxisNum(queryShape_, QSFAAxis::T, qLayout_));
+        s1Size_ = GetAxisNum(queryShape_, QSFAAxis::T, qLayout_);
         return ge::GRAPH_SUCCESS;
     } else { // BSND
-        s1Size_ = static_cast<uint32_t>(GetAxisNum(queryShape_, QSFAAxis::S, qLayout_));
+        s1Size_ = GetAxisNum(queryShape_, QSFAAxis::S, qLayout_);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -1943,7 +1943,7 @@ ge::graphStatus QSFAInfoParser::GetMaxBlockNumPerBatch()
 
 ge::graphStatus QSFAInfoParser::GetSparseBlockCount()
 {
-    sparseBlockCount_ = static_cast<uint32_t>(GetAxisNum(sparseIndicesShape_, QSFAAxis::K, qLayout_));
+    sparseBlockCount_ = GetAxisNum(sparseIndicesShape_, QSFAAxis::K, qLayout_);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -1978,7 +1978,7 @@ ge::graphStatus QSFAInfoParser::GetValueHeadDim()
 {
     // 获取vHeadDim基准值
     // 以value的D维度为基准
-    vHeadDim_ = static_cast<uint32_t>(GetAxisNum(valueShape_, QSFAAxis::D, kvLayout_));
+    vHeadDim_ = GetAxisNum(valueShape_, QSFAAxis::D, kvLayout_);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -2017,13 +2017,13 @@ ge::graphStatus QSFAInfoParser::GetTopkLayout()
 
 ge::graphStatus QSFAInfoParser::GetN1Size()
 {
-    n1Size_ = static_cast<uint32_t>(GetAxisNum(queryShape_, QSFAAxis::N, qLayout_));
+    n1Size_ = GetAxisNum(queryShape_, QSFAAxis::N, qLayout_);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus QSFAInfoParser::GetN2Size()
 {
-    n2Size_ = static_cast<uint32_t>(GetAxisNum(keyShape_, QSFAAxis::N, kvLayout_));
+    n2Size_ = GetAxisNum(keyShape_, QSFAAxis::N, kvLayout_);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -2046,7 +2046,7 @@ ge::graphStatus QSFAInfoParser::GetGSize()
 
 ge::graphStatus QSFAInfoParser::GetActualseqInfo()
 {
-    maxActualseq_ = static_cast<uint32_t>(s2Size_);
+    maxActualseq_ = s2Size_;
     if (opParamInfo_.actualSeqLengths.tensor != nullptr) {
         actualLenDimsKV_ = opParamInfo_.actualSeqLengths.tensor->GetShapeSize();
     }
