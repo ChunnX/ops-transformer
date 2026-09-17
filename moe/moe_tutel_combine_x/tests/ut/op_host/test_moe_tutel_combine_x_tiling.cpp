@@ -107,3 +107,96 @@ TEST_F(MoeTutelCombineXTiling, moe_tutel_combine_x_tiling_normal_batch)
                                               {}, &compileInfo, "Ascend950");
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, TILING_KEY_NORMAL_BATCH, "", {});
 }
+
+// Batch form with mismatched micro-batch dims is rejected independently at
+// the tiling gate (the same contract as the graph-mode InferShape).
+TEST_F(MoeTutelCombineXTiling, moe_tutel_combine_x_tiling_batch_dim_mismatch)
+{
+    optiling::MoeTutelCombineXCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("MoeTutelCombineX",
+                                              {
+                                                  {{{3, 4, 2}, {3, 4, 2}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{2, 4}, {2, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{2, 4}, {2, 4}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{2, 4}, {2, 4}}, ge::DT_INT32, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                              },
+                                              {}, &compileInfo, "Ascend950");
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+// Dims below -1 are rejected at the tiling gate instead of flowing negative
+// values into TilingData.
+TEST_F(MoeTutelCombineXTiling, moe_tutel_combine_x_tiling_dim_below_minus_one)
+{
+    optiling::MoeTutelCombineXCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("MoeTutelCombineX",
+                                              {
+                                                  {{{-2, 4, 2}, {-2, 4, 2}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{2, 4}, {2, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{2, 4}, {2, 4}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{2, 4}, {2, 4}}, ge::DT_INT32, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                              },
+                                              {}, &compileInfo, "Ascend950");
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+// gates must share the y_grad dtype even when y_grad itself is a supported
+// float dtype.
+TEST_F(MoeTutelCombineXTiling, moe_tutel_combine_x_tiling_gates_dtype_mismatch)
+{
+    optiling::MoeTutelCombineXCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("MoeTutelCombineX",
+                                              {
+                                                  {{{4, 2}, {4, 2}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{4}, {4}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                  {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                              },
+                                              {}, &compileInfo, "Ascend950");
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+// indices/locations must be INT32 at the tiling gate.
+TEST_F(MoeTutelCombineXTiling, moe_tutel_combine_x_tiling_indices_not_int32)
+{
+    optiling::MoeTutelCombineXCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("MoeTutelCombineX",
+                                              {
+                                                  {{{4, 2}, {4, 2}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{4}, {4}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{4}, {4}}, ge::DT_INT64, ge::FORMAT_ND},
+                                                  {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                              },
+                                              {}, &compileInfo, "Ascend950");
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+// gates/indices/locations must be same-shaped at the tiling gate.
+TEST_F(MoeTutelCombineXTiling, moe_tutel_combine_x_tiling_metadata_shape_mismatch)
+{
+    optiling::MoeTutelCombineXCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("MoeTutelCombineX",
+                                              {
+                                                  {{{4, 2}, {4, 2}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{4}, {4}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{5}, {5}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                              },
+                                              {}, &compileInfo, "Ascend950");
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}

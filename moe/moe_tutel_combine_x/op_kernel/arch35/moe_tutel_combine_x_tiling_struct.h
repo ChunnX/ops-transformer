@@ -53,12 +53,13 @@
 //   0 - normal, no batch (y_grad is 2D)
 //   1 - empty tensor shortcut (output x_grad is zeroed)
 //   2 - normal, with batch (y_grad is 3D)
+// Macros (not an enum): the kernel entry dispatches via TILING_KEY_IS(...),
+// whose argument must be a numeric constant at the precompilation phase —
+// enum values are not accepted there by the CCE toolchain.
 // ---------------------------------------------------------------------------
-enum MoetutelcombinexTilingKey {
-    TILING_KEY_NORMAL_NO_BATCH = 0,
-    TILING_KEY_EMPTY = 1,
-    TILING_KEY_NORMAL_BATCH = 2
-};
+#define TILING_KEY_NORMAL_NO_BATCH 0
+#define TILING_KEY_EMPTY 1
+#define TILING_KEY_NORMAL_BATCH 2
 
 // IO slot counts: y_grad / gates / indices / locations in, x_grad out.
 constexpr int64_t kMaxInputSlots = 4;

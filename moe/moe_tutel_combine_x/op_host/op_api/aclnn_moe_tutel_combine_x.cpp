@@ -14,7 +14,7 @@
 // call, and reports the workspace size. Stage 2 hands everything to the
 // framework. L2 never launches kernels and never touches streams.
 //
-// Contract (spec.yaml):
+// Contract (docs/aclnnMoeTutelCombineX.md 参数说明/约束说明):
 //   inputs : y_grad [EC,H]/[B,EC,H] {fp32,fp16,bf16}, gates same dtype
 //            [S]/[B,S], indices/locations int32 same shape as gates
 //   output : x_grad = gates.shape + (y_grad.shape[-1],), dtype = y_grad's
@@ -65,15 +65,15 @@ bool CheckDtypeValid(const aclTensor *yGrad, const aclTensor *gates, const aclTe
     return true;
 }
 
-// ND-only layout contract (spec.yaml global_constraints「仅支持 ND 格式」,
-// design/Interface.md「format 约束：仅支持 ND」), checked on every user-facing
-// tensor including the output. The tiling-side CheckFormatSupport
-// (design/HostTiling.md §3) enforces the same contract in graph mode / on the
-// L0 node tensors, but in the aclnn path the L0 output is allocated internally
-// (always ND) and the user's out only receives a ViewCopy — so a non-ND user
-// output is invisible to the tiling check and must be rejected here (the L2
-// aclnn self-check carries the negative behavior, OpDef
-// NeedCheckSupportFlag(false)).
+// ND-only layout contract (README.md / docs/aclnnMoeTutelCombineX.md 约束说明
+// 「仅支持ND格式」), checked on every user-facing tensor including the output.
+// In graph mode the ND-only contract is enforced by the InferShape gate
+// (moe_tutel_combine_x_infershape.cpp); the tiling gate checks shapes and
+// dtypes but not formats. In the aclnn path the L0 output is allocated
+// internally (always ND) and the user's out only receives a ViewCopy — so a
+// non-ND user output is invisible to the graph-mode checks and must be
+// rejected here (the L2 aclnn self-check carries the negative behavior,
+// OpDef NeedCheckSupportFlag(false)).
 bool CheckFormat(const aclTensor *yGrad, const aclTensor *gates, const aclTensor *indices, const aclTensor *locations,
                  const aclTensor *out)
 {

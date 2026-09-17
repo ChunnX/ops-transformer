@@ -13,8 +13,11 @@
  * \brief InferShape / InferDataType of the MoeTutelCombineX operator (graph mode).
  *
  * Shape contract: x_grad.shape = gates.shape + (y_grad.shape[-1],), with
- * rank(y_grad) = rank(gates) + 1, rank(y_grad) in {2, 3} and gates/indices/
- * locations sharing the same shape. All tensors must be FORMAT_ND.
+ * rank(y_grad) = rank(gates) + 1, rank(y_grad) in {2, 3}, gates/indices/
+ * locations sharing the same shape, and the batch dim agreeing in batch form
+ * (rank(y_grad) = 3 implies gates.dim0 == y_grad.dim0, the same contract the
+ * aclnn L2 path enforces via MoeTutelCombineXOutShape). All tensors must be
+ * FORMAT_ND.
  */
 #include "register/op_impl_registry.h"             // IMPL_OP_INFERSHAPE macro
 #include "exe_graph/runtime/infer_shape_context.h" // InferShapeContext / InferDataTypeContext
@@ -86,6 +89,22 @@ static ge::graphStatus InferShape4MoeTutelCombineX(gert::InferShapeContext *cont
                                                   std::to_string(ygRank) + ", " + std::to_string(gatesRank),
                                                   "rank(y_grad) must equal rank(gates)+1");
         return ge::GRAPH_FAILED;
+    }
+
+    // Batch form (rank(y_grad) = 3): the micro-batch dim must agree. Unknown
+    // dims (-1) are tolerated with the same semantics as the metadata shape
+    // check below; the aclnn L2 path enforces the identical contract via
+    // MoeTutelCombineXOutShape, so graph mode must not silently accept an
+    // input the public API rejects.
+    if (ygRank == 3) {
+        const int64_t batchY = ygShape->GetDim(0);
+        const int64_t batchG = gatesShape->GetDim(0);
+        if (batchY >= 0 && batchG >= 0 && batchY != batchG) {
+            OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(context->GetNodeName(), "y_grad, gates",
+                                                      std::to_string(batchY) + ", " + std::to_string(batchG),
+                                                      "batch dims must agree when rank(y_grad) is 3");
+            return ge::GRAPH_FAILED;
+        }
     }
 
     // gates / indices / locations share the same shape (unknown dims tolerated).

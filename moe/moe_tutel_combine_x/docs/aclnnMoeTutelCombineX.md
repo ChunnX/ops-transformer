@@ -257,6 +257,8 @@ aclnnStatus aclnnMoeTutelCombineX(
 
 - shape契约：rank(yGrad)∈{2,3}且rank(yGrad)=rank(gates)+1；gates/indices/locations三者shape全等；带batch（rank(yGrad)=3）时gates.dim0=yGrad.dim0；out的shape=gates.shape拼接yGrad最后一维H，即[S, H]或[B, S, H]。
 
+- 动态shape：支持以-1表示未知维（动态shape），-1维传播到推导出的out对应维；维具体化后须满足上述rank与shape契约。维度值小于-1（如-2）为非法输入，报错退出。不支持动态rank，各输入rank须为上述固定取值。
+
 - 容量C派生：C=floor(EC/E)，其中EC=yGrad.shape[-2]、E=max(indices)+1，不经算子属性传递；E=0（indices全为-1）或E大于EC（此时floor(EC/E)恰为0）时C=0，全部条目无效，输出全零；E=1时C=EC，单专家路由正常取行。
 
 - 无效路由条目（indices=-1容量丢弃、locations为负、locations不小于C溢出容量、源行r越界）：零贡献静默跳过，不报错、不访问越界内存，对应输出行为精确0；y_grad中的NaN/±Inf仅在有效行按IEEE-754传播。

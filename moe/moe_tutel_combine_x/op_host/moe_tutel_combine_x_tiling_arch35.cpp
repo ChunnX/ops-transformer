@@ -52,6 +52,33 @@ ge::graphStatus MoeTutelCombineXTilingArch35::GetPlatformInfo()
 
 ge::graphStatus MoeTutelCombineXTilingArch35::GetShapeAttrsInfo()
 {
+    // Dims are either >= 0 (0 allowed for empty tensors) or -1 (unknown) —
+    // the same lower bound the graph-mode InferShape enforces; anything below
+    // -1 must be rejected here instead of flowing into TilingData.
+    auto ValidateDims = [](const gert::Shape &s) -> bool {
+        for (size_t d = 0; d < s.GetDimNum(); ++d) {
+            if (s.GetDim(d) < -1) {
+                return false;
+            }
+        }
+        return true;
+    };
+    // Known-dim equality (unknown -1 dims tolerated), mirroring the InferShape
+    // metadata shape check.
+    auto DimsMatch = [](const gert::Shape &a, const gert::Shape &b) -> bool {
+        if (a.GetDimNum() != b.GetDimNum()) {
+            return false;
+        }
+        for (size_t d = 0; d < a.GetDimNum(); ++d) {
+            const int64_t av = a.GetDim(d);
+            const int64_t bv = b.GetDim(d);
+            if (av >= 0 && bv >= 0 && av != bv) {
+                return false;
+            }
+        }
+        return true;
+    };
+
     auto ygShape = context_->GetInputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context_, ygShape);
     {
@@ -70,28 +97,64 @@ ge::graphStatus MoeTutelCombineXTilingArch35::GetShapeAttrsInfo()
                                                      "rank must be 2 or 3, got " + std::to_string(rankYGrad_));
             return ge::GRAPH_FAILED;
         }
+        if (!ValidateDims(s)) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "y_grad", "storage dims",
+                                                  "must be >= -1 (-1 marks an unknown dim)");
+            return ge::GRAPH_FAILED;
+        }
     }
 
     auto gatesShape = context_->GetInputShape(1);
     OP_CHECK_NULL_WITH_CONTEXT(context_, gatesShape);
+    int64_t gatesBatchDim = 0;
     {
         gert::Shape s = gatesShape->GetStorageShape();
         int64_t rankGates = static_cast<int64_t>(s.GetDimNum());
         if (rankGates == 1) {
             samples_ = s.GetDim(0);
         } else if (rankGates == 2) {
+            gatesBatchDim = s.GetDim(0);
             samples_ = s.GetDim(1);
         } else {
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->GetNodeName(), "gates",
                                                      "rank must be 1 or 2, got " + std::to_string(rankGates));
             return ge::GRAPH_FAILED;
         }
+        if (!ValidateDims(s)) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "gates", "storage dims",
+                                                  "must be >= -1 (-1 marks an unknown dim)");
+            return ge::GRAPH_FAILED;
+        }
+    }
+
+    // Batch form: the micro-batch dim must agree (the same contract the
+    // graph-mode InferShape and the aclnn L2 path enforce).
+    if (rankYGrad_ == 3 && gatesBatchDim >= 0 && batchSize_ >= 0 && gatesBatchDim != batchSize_) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "y_grad, gates",
+                                              std::to_string(batchSize_) + ", " + std::to_string(gatesBatchDim),
+                                              "batch dims must agree when rank(y_grad) is 3");
+        return ge::GRAPH_FAILED;
     }
 
     auto indicesShape = context_->GetInputShape(2);
     OP_CHECK_NULL_WITH_CONTEXT(context_, indicesShape);
     auto locationsShape = context_->GetInputShape(3);
     OP_CHECK_NULL_WITH_CONTEXT(context_, locationsShape);
+    {
+        gert::Shape gi = indicesShape->GetStorageShape();
+        gert::Shape gl = locationsShape->GetStorageShape();
+        gert::Shape gg = gatesShape->GetStorageShape();
+        if (!ValidateDims(gi) || !ValidateDims(gl)) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "indices, locations", "storage dims",
+                                                  "must be >= -1 (-1 marks an unknown dim)");
+            return ge::GRAPH_FAILED;
+        }
+        if (!DimsMatch(gg, gi) || !DimsMatch(gg, gl)) {
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->GetNodeName(), "gates/indices/locations",
+                                                     "shapes must match");
+            return ge::GRAPH_FAILED;
+        }
+    }
 
     auto inputDesc = context_->GetInputDesc(0);
     OP_CHECK_NULL_WITH_CONTEXT(context_, inputDesc);
@@ -104,6 +167,30 @@ ge::graphStatus MoeTutelCombineXTilingArch35::GetShapeAttrsInfo()
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "y_grad",
                                               std::to_string(static_cast<int>(dtype)), "must be FP16/FP32/BF16");
         return ge::GRAPH_FAILED;
+    }
+    // Independent dtype gate for the metadata inputs (the same contract the
+    // graph-mode InferDataType enforces): gates shares the y_grad dtype and
+    // indices/locations are INT32.
+    {
+        auto gatesDesc = context_->GetInputDesc(1);
+        OP_CHECK_NULL_WITH_CONTEXT(context_, gatesDesc);
+        if (gatesDesc->GetDataType() != dtype) {
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "gates",
+                                                  std::to_string(static_cast<int>(gatesDesc->GetDataType())),
+                                                  "must match y_grad dtype");
+            return ge::GRAPH_FAILED;
+        }
+        auto indicesDesc = context_->GetInputDesc(2);
+        OP_CHECK_NULL_WITH_CONTEXT(context_, indicesDesc);
+        auto locationsDesc = context_->GetInputDesc(3);
+        OP_CHECK_NULL_WITH_CONTEXT(context_, locationsDesc);
+        if (indicesDesc->GetDataType() != ge::DT_INT32 || locationsDesc->GetDataType() != ge::DT_INT32) {
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), "indices, locations",
+                                                   std::to_string(static_cast<int>(indicesDesc->GetDataType())) + ", " +
+                                                       std::to_string(static_cast<int>(locationsDesc->GetDataType())),
+                                                   "must be INT32");
+            return ge::GRAPH_FAILED;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -193,25 +280,33 @@ ge::graphStatus MoeTutelCombineXTilingArch35::DoOpTiling()
     bigCoreCnt_ = static_cast<int32_t>(tokenTotal_ % usedCoreNum_);
 
     // UB budget: consume the platform's actual UB size (ubSize_) capped to the
-    // design-time budget. On current silicon (UB >= 245760B) this keeps the
-    // exact design chunk values, while on parts with smaller UB the budget
-    // scales down so the kernel buffers never exceed the real on-chip UB.
+    // design-time budget, then reserve the two 32-byte gate-scalar staging
+    // buffers (gateTmp_/gateS_, allocated unconditionally by the kernel's
+    // InitBuffer) so the kernel's peak UB footprint
+    // 3*alignUp(hChunk,64)*sizeof(T) + 64 never exceeds the budget cap.
     int64_t ubAvailable = static_cast<int64_t>(ubSize_);
     if (ubAvailable <= 0) {
         ubAvailable = UB_BUDGET_CAP; // platform UB unavailable -> design budget
     }
-    int64_t ubBudget = std::min(ubAvailable, UB_BUDGET_CAP);
-    int64_t perBufBytes = (ubBudget / P) & ~31LL;
-    if (perBufBytes <= 0) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "ubSize", std::to_string(ubSize_),
-                                              "too small: per line buffer is 0 bytes (min viable budget is 96 B)");
+    constexpr int64_t kGateScalarBufBytes = 64; // gateTmp_(32B) + gateS_(32B)
+    int64_t ubForLines = std::min(ubAvailable, UB_BUDGET_CAP) - kGateScalarBufBytes;
+    if (ubForLines < P * 64 * dtypeSize_) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context_->GetNodeName(), "ubSize", std::to_string(ubSize_),
+            "too small: cannot fit three 64-element line buffers plus the gate staging buffers (min viable budget "
+            "is " +
+                std::to_string(P * 64 * dtypeSize_ + kGateScalarBufBytes) + " B)");
         return ge::GRAPH_FAILED;
     }
-    int64_t perBufElems = perBufBytes / dtypeSize_;
+    // Per-buffer element budget aligned down to the kernel's 64-element
+    // allocation granularity so alignUp(hChunk, 64) == hChunk and the byte
+    // account stays exact: 3*hChunk*sizeof(T) + 64 <= min(ubSize, UB_BUDGET_CAP).
+    int64_t perBufElems = (ubForLines / P) / dtypeSize_ / 64 * 64;
     // Branch-0 (no-batch) uniform chunk fixes hChunk = min(H, 20480), which is
-    // the FP32 per-buffer element budget (perBufBytes / 4). Derived dynamically
-    // so it scales with the budget.
-    int64_t perBufElemsFp32 = perBufBytes / 4;
+    // the FP32 per-buffer element budget (at the design cap: (245760-64)/3/4
+    // aligned down to 64 elements). Derived dynamically so it scales with the
+    // budget.
+    int64_t perBufElemsFp32 = (ubForLines / P) / 4 / 64 * 64;
     hChunk_ = hasBatch ? std::min(hidden_, std::max<int64_t>(1, perBufElems)) :
                          std::min(hidden_, std::max<int64_t>(1, perBufElemsFp32));
     hChunkCnt_ = Ops::Base::CeilDiv(hidden_, hChunk_);

@@ -22,7 +22,7 @@
 // the L2 parameter validation — keep it the single source of truth for the
 // output shape.
 //
-// Output shape contract (spec.yaml outputs.x_grad / REQUIREMENTS §8.1):
+// Output shape contract (README.md / docs/aclnnMoeTutelCombineX.md 参数与约束说明):
 //   x_grad.shape = gates.shape + (y_grad.shape[-1],)
 //     - no batch: y_grad [EC, H], metadata [S]        -> x_grad [S, H]
 //     - batch:    y_grad [B, EC, H], metadata [B, S]  -> x_grad [B, S, H]

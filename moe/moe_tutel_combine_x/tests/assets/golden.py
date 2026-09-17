@@ -9,9 +9,11 @@
 
 """TTK TestSpec golden for the ``moe_tutel_combine_x`` operator.
 
-Single source of truth: ``spec/spec.yaml``.  The reference math below is a
-line-by-line transcription of ``math_semantics.formula`` so it stays auditable
-against the spec; nothing is taken from any kernel artifact.
+Reference math source: the public operator docs — ``README.md`` (功能说明
+computation formula) and ``docs/aclnnMoeTutelCombineX.md`` (约束说明 shape/
+dtype/索引语义).  The reference math below is a line-by-line transcription of
+that formula so it stays auditable against the public contract; nothing is
+taken from any kernel artifact.
 
 Registrations (TTK TestSpec ``__spec__`` dict — loader resolves by CSV name):
   * ``moe_tutel_combine_x``   — Kernel / GEIR flow: golden gets numpy.ndarray.
@@ -64,7 +66,7 @@ __spec__ = {
 
 import numpy as np
 
-# spec.yaml cross_check: {standard: cross_check, level: L1} — applied to each
+# cross_check standard {standard: cross_check, level: L1} — applied to each
 # float16/bfloat16/float32 output dtype (the only output dtypes of this op).
 _TOLERANCE = {
     "float32": {"standard": "cross_check", "level": "L1"},
@@ -74,7 +76,8 @@ _TOLERANCE = {
 
 
 def _moe_tutel_combine_x_fp64(y_grad, gates, indices, locations):
-    """Reference math — verbatim transcription of spec.yaml math_semantics.formula.
+    """Reference math — verbatim transcription of the public formula
+    (README.md 功能说明 / docs/aclnnMoeTutelCombineX.md).
 
     ``y_grad`` / ``gates`` must already be float64 (cast by the callers); the
     float64 accumulation rule is applied at these boundaries.  ``indices`` /
@@ -222,7 +225,7 @@ class MoeTutelCombineXTestSpec:
     """Kernel / GEIR flow — golden receives numpy.ndarray, returns numpy.ndarray."""
 
     def golden(y_grad, gates, indices, locations, **kwargs):
-        """Parameters follow the operator input order (spec.yaml ``inputs``).
+        """Parameters follow the operator input order (README.md 参数说明).
 
         **kwargs carries the TTK framework context (input_dtypes, shapes,
         soc version, testcase name, ...) — not used by this golden.

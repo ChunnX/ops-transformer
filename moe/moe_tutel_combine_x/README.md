@@ -33,22 +33,67 @@
 
 ## 参数说明
 
-| 参数名 | 输入/输出/属性 | 描述 | 数据类型 | 数据格式 |
-| :--- | :--- | :--- | :--- | :--- |
-| y_grad | 输入 | 表示专家缓冲区输出的梯度，即公式中的y_grad。shape为[EC, H]或[B, EC, H]，rank为2或3。 | FLOAT16、FLOAT、BFLOAT16 | ND |
-| gates | 输入 | 表示每个token副本的路由权重（门控值），即公式中的gates。shape为[S]或[B, S]，与indices、locations一致。 | FLOAT16、FLOAT、BFLOAT16 | ND |
-| indices | 输入 | 表示每个token副本被分配到的专家ID，-1表示容量丢弃的无效条目，即公式中的indices。shape与gates一致。 | INT32 | ND |
-| locations | 输入 | 表示每个token副本在其分配专家缓冲区内的位置偏移，即公式中的locations。shape与gates一致。 | INT32 | ND |
-| x_grad | 输出 | 表示原始token位置的输入梯度，即公式中的x_grad。shape为gates的shape拼接y_grad最后一维，即[S, H]或[B, S, H]。 | FLOAT16、FLOAT、BFLOAT16 | ND |
+  <table style="table-layout: fixed; width: 910px"><colgroup>
+    <col style="width: 170px">
+    <col style="width: 170px">
+    <col style="width: 200px">
+    <col style="width: 200px">
+    <col style="width: 170px">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>参数名</th>
+        <th>输入/输出/属性</th>
+        <th>描述</th>
+        <th>数据类型</th>
+        <th>数据格式</th>
+      </tr></thead>
+    <tbody>
+      <tr>
+        <td>y_grad</td>
+        <td>输入</td>
+        <td>表示专家缓冲区输出的梯度，即公式中的y_grad。shape为[EC, H]或[B, EC, H]，rank为2或3。</td>
+        <td>FLOAT16、FLOAT、BFLOAT16</td>
+        <td>ND</td>
+      </tr>
+      <tr>
+        <td>gates</td>
+        <td>输入</td>
+        <td>表示每个token副本的路由权重（门控值），即公式中的gates。shape为[S]或[B, S]，与indices、locations一致。</td>
+        <td>FLOAT16、FLOAT、BFLOAT16</td>
+        <td>ND</td>
+      </tr>
+      <tr>
+        <td>indices</td>
+        <td>输入</td>
+        <td>表示每个token副本被分配到的专家ID，-1表示容量丢弃的无效条目，即公式中的indices。shape与gates一致。</td>
+        <td>INT32</td>
+        <td>ND</td>
+      </tr>
+      <tr>
+        <td>locations</td>
+        <td>输入</td>
+        <td>表示每个token副本在其分配专家缓冲区内的位置偏移，即公式中的locations。shape与gates一致。</td>
+        <td>INT32</td>
+        <td>ND</td>
+      </tr>
+      <tr>
+        <td>x_grad</td>
+        <td>输出</td>
+        <td>表示原始token位置的输入梯度，即公式中的x_grad。shape为gates的shape拼接y_grad最后一维，即[S, H]或[B, S, H]。</td>
+        <td>FLOAT16、FLOAT、BFLOAT16</td>
+        <td>ND</td>
+      </tr>
+    </tbody>
+  </table>
 
 ## 约束说明
 
 - shape与rank契约：y_grad的rank为2或3，gates/indices/locations的rank为1或2，且rank(y_grad)=rank(gates)+1；gates、indices、locations三者shape一致；带batch（rank(y_grad)=3）时gates.dim0=y_grad.dim0。
+- 动态shape：支持以-1表示未知维（动态shape）。图模式下-1维被接受并传播到输出shape（x_grad对应维为-1），维具体化后须满足上述rank与shape契约；维度值小于-1（如-2）为非法输入，报错退出。不支持动态rank，各输入rank须为上述固定取值。
 - 数据类型约束：y_grad、gates、x_grad三者数据类型必须一致（FLOAT16、FLOAT、BFLOAT16三选一），indices、locations固定为INT32。
 - 数据格式约束：仅支持ND格式。
 - 非连续Tensor：aclnnMoeTutelCombineX接口支持非连续Tensor，输入在接口内部自动连续化，结果写回用户提供的输出Tensor；图模式通过算子IR构图调用时，要求传入的Tensor为连续存储。
-- 确定性计算：
-  - aclnnMoeTutelCombineX默认确定性实现。
 - 空Tensor：S=0、H=0或B=0时输出为对应shape的空Tensor；EC=0且S大于0时C=0，全部条目无效，输出[S, H]全零。
 - 索引语义：indices[t]<0、locations[t]<0、locations[t]>=C或计算得到的源行越出y_grad行范围的条目为无效条目，对应输出行置零，不报错。
 - 路由元数据来源：gates/indices/locations须由前向MoeTutelDispatch产出并在反向原样重放，不允许反向独立重算路由。
@@ -57,5 +102,5 @@
 
 | 调用方式 | 样例代码 | 说明 |
 | :--- | :--- | :--- |
-| aclnn接口 | [test_aclnn_moe_tutel_combine_x](examples/test_aclnn_moe_tutel_combine_x.cpp) | 通过[aclnnMoeTutelCombineX](docs/aclnnMoeTutelCombineX.md)接口方式调用MoeTutelCombineX算子。 |
-| 图模式 | - | 通过[算子IR](op_graph/moe_tutel_combine_x_proto.h)构图方式调用MoeTutelCombineX算子。 |
+| aclnn API | [test_aclnn_moe_tutel_combine_x](examples/test_aclnn_moe_tutel_combine_x.cpp) | 通过[aclnnMoeTutelCombineX](docs/aclnnMoeTutelCombineX.md)接口方式调用MoeTutelCombineX算子。 |
+| GE图模式 | - | 通过[算子IR](op_graph/moe_tutel_combine_x_proto.h)构图方式调用MoeTutelCombineX算子。 |

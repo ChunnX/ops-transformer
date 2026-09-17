@@ -12,7 +12,7 @@
  * \file test_moe_tutel_combine_x.cpp
  * \brief CSV 驱动的 MoeTutelCombineX kernel UT（arch35 / Ascend950，cpudebug 仿真）。
  *
- * 用例矩阵见 ../test_moe_tutel_combine_x.csv（18 例：三分支 tilingKey 0/1/2 ×
+ * 用例矩阵见 ../test_moe_tutel_combine_x.csv（20 例：三分支 tilingKey 0/1/2 ×
  * 三 dtype × 边界集），迁移自插件工作区的内核级白盒/黑盒测试资产。
  *
  * 内核执行方式：
@@ -24,7 +24,7 @@
  *     与入口的分支结构逐行同构。
  *
  * 输出校验：kernel 输出（GM 共享内存）回读后与 utils 内的 fp64 参考
- * （spec 公式）逐点比对；输出缓冲先以 0xFF 毒化，未写入即失配。
+ * （README.md 公开公式）逐点比对；输出缓冲先以 0xFF 毒化，未写入即失配。
  */
 
 #ifdef __CCE_KT_TEST__

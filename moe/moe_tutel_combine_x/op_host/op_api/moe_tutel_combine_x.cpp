@@ -36,9 +36,10 @@ static std::array<const aclTensor *, 1> MoeTutelCombineXAiCore(const aclTensor *
 {
     L0_DFX(MoeTutelCombineXAiCore, yGrad, gates, indices, locations, out);
 
-    // MoeTutelCombineX declares no attrs (official IR, REQUIREMENTS §5.3), so
-    // the launcher list takes only the four inputs and the single output, in
-    // OpDef declaration order (y_grad, gates, indices, locations -> x_grad).
+    // MoeTutelCombineX declares no attrs (see op_graph/moe_tutel_combine_x_proto.h
+    // REG_OP — four inputs, one output, no .Attr entries), so the launcher list
+    // takes only the four inputs and the single output, in OpDef declaration
+    // order (y_grad, gates, indices, locations -> x_grad).
     auto ret =
         ADD_TO_LAUNCHER_LIST_AICORE(MoeTutelCombineX, OP_INPUT(yGrad, gates, indices, locations), OP_OUTPUT(out));
     OP_CHECK_ADD_TO_LAUNCHER_LIST_AICORE(ret != ACLNN_SUCCESS, return {},

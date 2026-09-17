@@ -74,11 +74,18 @@ extern "C" __global__ __aicore__ void moe_tutel_combine_x(GM_ADDR y_grad, GM_ADD
         MoeTutelCombineXKernel<DTYPE_Y_GRAD, false, true> op; // 主路径带 batch（key=2）
         op.Init(ins, outs, &t);
         op.Process();
-    } else {
+    } else if (TILING_KEY_IS(TILING_KEY_NORMAL_NO_BATCH)) {
+        // Every branch must be an explicit TILING_KEY_IS(...): the compile
+        // codegen instantiates one loadable sub-kernel symbol per explicit
+        // branch, so a bare `else` fallback leaves key=0 without a
+        // `<kernel>_0` symbol and the runtime binary registration fails.
         GM_ADDR ins[kMaxInputSlots] = {y_grad, gates, indices, locations};
         GM_ADDR outs[kMaxOutputSlots] = {x_grad};
         MoeTutelCombineXKernel<DTYPE_Y_GRAD, false, false> op; // 主路径无 batch（key=0）
         op.Init(ins, outs, &t);
         op.Process();
+    } else {
+        // Unreachable: the host tiling only sets tiling keys 0/1/2.
+        return;
     }
 }

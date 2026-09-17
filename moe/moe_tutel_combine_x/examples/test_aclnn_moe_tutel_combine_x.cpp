@@ -46,9 +46,10 @@ int Init(int32_t deviceId, aclrtStream *stream)
     auto ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n", ret); return ret);
     ret = aclrtSetDevice(deviceId);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret); aclFinalize(); return ret);
     ret = aclrtCreateStream(stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret); aclrtResetDevice(deviceId);
+              aclFinalize(); return ret);
     return 0;
 }
 
@@ -60,7 +61,12 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
     auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
     ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); return ret);
+    if (ret != ACL_SUCCESS) {
+        LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret);
+        aclrtFree(*deviceAddr);
+        *deviceAddr = nullptr;
+        return ret;
+    }
     std::vector<int64_t> strides(shape.size(), 1);
     for (int64_t i = shape.size() - 2; i >= 0; i--) {
         strides[i] = shape[i + 1] * strides[i + 1];
@@ -101,64 +107,92 @@ int main()
     aclTensor *indices = nullptr;
     aclTensor *locations = nullptr;
     aclTensor *xGrad = nullptr;
+    void *workspaceAddr = nullptr;
+    uint64_t workspaceSize = 0;
+
+    // Unified resource release shared by the early-exit and success paths:
+    // every resource created after Init is released here, so a failed step
+    // never leaks tensors, device memory, workspace or the stream.
+    auto cleanup = [&]() {
+        if (yGrad != nullptr) {
+            aclDestroyTensor(yGrad);
+        }
+        if (gates != nullptr) {
+            aclDestroyTensor(gates);
+        }
+        if (indices != nullptr) {
+            aclDestroyTensor(indices);
+        }
+        if (locations != nullptr) {
+            aclDestroyTensor(locations);
+        }
+        if (xGrad != nullptr) {
+            aclDestroyTensor(xGrad);
+        }
+        if (yGradDeviceAddr != nullptr) {
+            aclrtFree(yGradDeviceAddr);
+        }
+        if (gatesDeviceAddr != nullptr) {
+            aclrtFree(gatesDeviceAddr);
+        }
+        if (indicesDeviceAddr != nullptr) {
+            aclrtFree(indicesDeviceAddr);
+        }
+        if (locationsDeviceAddr != nullptr) {
+            aclrtFree(locationsDeviceAddr);
+        }
+        if (xGradDeviceAddr != nullptr) {
+            aclrtFree(xGradDeviceAddr);
+        }
+        if (workspaceAddr != nullptr) {
+            aclrtFree(workspaceAddr);
+        }
+        aclrtDestroyStream(stream);
+        aclrtResetDevice(deviceId);
+        aclFinalize();
+    };
 
     ret = CreateAclTensor(yGradHostData, yGradShape, &yGradDeviceAddr, aclDataType::ACL_FLOAT, &yGrad);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    CHECK_RET(ret == ACL_SUCCESS, cleanup(); return ret);
     ret = CreateAclTensor(gatesHostData, gatesShape, &gatesDeviceAddr, aclDataType::ACL_FLOAT, &gates);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    CHECK_RET(ret == ACL_SUCCESS, cleanup(); return ret);
     ret = CreateAclTensor(indicesHostData, gatesShape, &indicesDeviceAddr, aclDataType::ACL_INT32, &indices);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    CHECK_RET(ret == ACL_SUCCESS, cleanup(); return ret);
     ret = CreateAclTensor(locationsHostData, gatesShape, &locationsDeviceAddr, aclDataType::ACL_INT32, &locations);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    CHECK_RET(ret == ACL_SUCCESS, cleanup(); return ret);
     ret = CreateAclTensor(xGradHostData, xGradShape, &xGradDeviceAddr, aclDataType::ACL_FLOAT, &xGrad);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    CHECK_RET(ret == ACL_SUCCESS, cleanup(); return ret);
 
     // 3. two-phase aclnn call
-    uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     ret = aclnnMoeTutelCombineXGetWorkspaceSize(yGrad, gates, indices, locations, xGrad, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeTutelCombineXGetWorkspaceSize failed. ERROR: %d\n", ret);
-              return ret);
+              cleanup(); return ret);
 
-    void *workspaceAddr = nullptr;
     if (workspaceSize > 0) {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); cleanup(); return ret);
     }
 
     ret = aclnnMoeTutelCombineX(workspaceAddr, workspaceSize, executor, stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeTutelCombineX failed. ERROR: %d\n", ret); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeTutelCombineX failed. ERROR: %d\n", ret); cleanup(); return ret);
 
     // 4. wait for completion
     ret = aclrtSynchronizeStream(stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); cleanup(); return ret);
 
     // 5. copy the result back
     auto size = GetShapeSize(xGradShape);
     std::vector<float> resultData(size, 0.0f);
     ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(float), xGradDeviceAddr, size * sizeof(float),
                       ACL_MEMCPY_DEVICE_TO_HOST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); cleanup();
+              return ret);
     for (int64_t i = 0; i < size; i++) {
         LOG_PRINT("xGrad[%ld] is: %f\n", i, resultData[i]);
     }
 
     // 6. release resources
-    aclDestroyTensor(yGrad);
-    aclDestroyTensor(gates);
-    aclDestroyTensor(indices);
-    aclDestroyTensor(locations);
-    aclDestroyTensor(xGrad);
-    aclrtFree(yGradDeviceAddr);
-    aclrtFree(gatesDeviceAddr);
-    aclrtFree(indicesDeviceAddr);
-    aclrtFree(locationsDeviceAddr);
-    aclrtFree(xGradDeviceAddr);
-    if (workspaceSize > 0) {
-        aclrtFree(workspaceAddr);
-    }
-    aclrtDestroyStream(stream);
-    aclrtResetDevice(deviceId);
-    aclFinalize();
+    cleanup();
     return 0;
 }
