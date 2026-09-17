@@ -61,14 +61,14 @@ static const FitBalanceCalibration CALIBRATION = {
     {
         /* cubeCalc: {计算类型, isFp4, A/B/C 字节数, 有效算力(MACs/cycle)} */
         {
-            {MatmulCalcType::QUANT, false, 1, 1, 2, 8192}, // fp8 量化(1B/1B/2B)
-            {MatmulCalcType::QUANT, true, 1, 1, 2, 16384}, // fp4 量化(打包 1B/1B/2B, 算力约为 fp8 的 2×)
+            {MatmulDtypeKind::QUANT, false, 1, 1, 2, 8192}, // fp8 量化(1B/1B/2B)
+            {MatmulDtypeKind::QUANT, true, 1, 1, 2, 16384}, // fp4 量化(打包 1B/1B/2B, 算力约为 fp8 的 2×)
         },
         /* l2Param: {计算类型, isFp4, A/B/C 字节数, L2 档位参数} */
         {
-            {MatmulCalcType::FP16, false, 2, 2, 2, {80, 128, 0.95, 0.85, 0.75}},  // 半精度
-            {MatmulCalcType::QUANT, false, 1, 1, 2, {80, 128, 0.95, 0.85, 0.75}}, // fp8 量化
-            {MatmulCalcType::QUANT, true, 1, 1, 2, {80, 128, 0.95, 0.85, 0.75}},  // fp4 量化(共用 fp8 档位)
+            {MatmulDtypeKind::FP16, false, 2, 2, 2, {80, 128, 0.95, 0.85, 0.75}},  // 半精度
+            {MatmulDtypeKind::QUANT, false, 1, 1, 2, {80, 128, 0.95, 0.85, 0.75}}, // fp8 量化
+            {MatmulDtypeKind::QUANT, true, 1, 1, 2, {80, 128, 0.95, 0.85, 0.75}},  // fp4 量化(共用 fp8 档位)
         },
         /* baseBlock: matmul 最优基本块(单值; 未填用默认 {128,256,64}) */
         {256, 256, 128},
@@ -80,6 +80,49 @@ static const FitBalanceCalibration CALIBRATION = {
 // 二、组装与新旧切换
 // ============================================================================
 
+// 边界转换(引擎自包含, 2026-09-17 裁定): 旧全局类型 ↔ 引擎自有类型整字段拷贝
+inline FitBalanceTilingArgs ToEngineArgs(const mc2tiling::TilingArgs &a)
+{
+    return {static_cast<AicpuComType>(a.cmdType),
+            a.rankDim,
+            a.usedCoreNum,
+            a.orgMValue,
+            a.orgNValue,
+            a.orgKValue,
+            a.batchValue,
+            a.mValue,
+            a.kValue,
+            a.nValue,
+            a.baseMLimit,
+            a.inputDtypeSize,
+            a.outputDtypeSize,
+            a.aicCoreNum,
+            a.commTurn,
+            a.rankTileNum,
+            a.commAlg,
+            a.isATrans,
+            a.isBTrans,
+            a.enablePad,
+            a.enableSplitK,
+            a.isBias,
+            a.isStorageGather,
+            a.isLocal,
+            a.geAType,
+            a.geBType,
+            a.geCType,
+            a.geBiasType,
+            a.antiquantscaleDType,
+            a.aType,
+            a.bType,
+            a.cType,
+            a.biasType};
+}
+
+inline CutResult ToLegacyCut(const CommCutResult &c)
+{
+    return {c.shortTileAtBack, c.totalTileCnt, c.numLongTile, c.numShortTile, c.longTileLen, c.shortTileLen};
+}
+
 // 统一引擎路径: 键控枚举 + 标定 → InitCtx(含通算胶水) → Schedule(含 AG 键控分支)。
 // baseMOut(可空): 回传 matmul 基本块(调用点 AdjustCutResultForAICPU 需要)
 inline CutResult ScheduleFitBalance(const mc2tiling::TilingArgs &args, TilingCommEngine commEngine,
@@ -87,9 +130,9 @@ inline CutResult ScheduleFitBalance(const mc2tiling::TilingArgs &args, TilingCom
 {
     // 引擎分路在 InitCtx 内完成(按 CommEngine 选 CALIBRATION 的 aicpu/ccu 分区);
     // 本算子 kernel 仅 HCCL 两引擎, AIV_URMA 不可达(枚举值保留供三引擎分派框架)
-    auto ctx = InitCtx(args, KernelType::ALL_GATHER, CommComputeOrder::COMM_FIRST, commEngine, CALIBRATION,
-                       TopoType::STANDARD_CARD);
-    CutResult cut = Schedule(ctx);
+    auto ctx = InitCtx(ToEngineArgs(args), CommPrimitive::ALL_GATHER, CommComputeOrder::COMM_FIRST, commEngine,
+                       CALIBRATION, CommTopology::STANDARD_CARD);
+    CutResult cut = ToLegacyCut(Schedule(ctx));
     OPS_LOG_D("AllGatherMatmul",
               "Input shape {M, N, K} = {%lu, %lu, %lu}, Final cut: shortTileAtBack %d, longTileLen %lu, "
               "numLongTile %lu, shortTileLen %lu, numShortTile %lu",
