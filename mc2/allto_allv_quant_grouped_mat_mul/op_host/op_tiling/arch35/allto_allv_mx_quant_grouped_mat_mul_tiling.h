@@ -17,6 +17,7 @@
 
 #include "allto_allv_quant_grouped_mat_mul_tiling_common.h"
 #include "../../../../3rd/grouped_matmul/op_tiling/gmm_qbmm_tiling.h"
+#include "apace/kernel/fusions/allto_allv_quant_grouped_matmul/allto_allv_quant_grouped_matmul_tiling_data.h"
 
 namespace optiling {
 class AlltoAllvMXQuantGmmTiling : public AlltoAllvQuantGmmTilingCommon {
@@ -29,7 +30,9 @@ public:
 protected:
     // tiling base
     bool IsCapable() override;
+    ge::graphStatus GetShapeAttrsInfo() override;
     uint64_t GetTilingKey() const override;
+    ge::graphStatus PostTiling() override;
     // quant base
     ge::graphStatus CheckScaleFormatAndDtype() const override;
     ge::graphStatus CheckInputDtype() const override;
@@ -48,6 +51,12 @@ private:
     ge::graphStatus CheckQuantGroupSize() const;
     ge::graphStatus CheckGmmScaleShape() const;
     ge::graphStatus CheckMmScaleShape() const;
+    bool CheckApaceImplCapable() const;
+    ge::graphStatus BuildApaceTiling();
+    static void SetApaceMatmulTiling(const TCubeTiling &src, Apace::A2avGmmMxTiling &dst);
+
+    bool usingApaceImpl_{false};
+    Apace::hcommA2avQuantGmmTilingData apaceTilingData_{};
 };
 
 class AlltoAllvMXQuantGmmTilingHelper : public Mc2GroupedMatmulTiling::Mc2GroupedQbmmTiling {

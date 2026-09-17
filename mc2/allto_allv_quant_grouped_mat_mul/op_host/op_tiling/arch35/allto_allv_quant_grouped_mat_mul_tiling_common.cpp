@@ -266,9 +266,9 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::SetHcclTiling() const
 
     const uint32_t alltoAllvReduceType = 0u;
     mc2tiling::HcclDataType alltoallvHcclDataType = mc2tiling::HcclDataType::HCCL_DATA_TYPE_RESERVED;
-    // mxfp4 场景使用int8类型通信，通信量减半
+    // MXFP4 is packed as an unsigned byte stream.
     if (gmmXDataType_ == ge::DataType::DT_FLOAT4_E2M1) {
-        alltoallvHcclDataType = mc2tiling::HcclDataType::HCCL_DATA_TYPE_INT8;
+        alltoallvHcclDataType = mc2tiling::HcclDataType::HCCL_DATA_TYPE_UINT8;
     } else {
         alltoallvHcclDataType = mc2tiling::ConvertGeTypeToHcclType(context_->GetNodeName(), gmmXDataType_);
     }

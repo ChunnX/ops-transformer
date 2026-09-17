@@ -16,12 +16,40 @@
 #include "allto_allv_mx_quant_grouped_mat_mul_tiling.h"
 #include "mc2_tiling_utils.h"
 #include "mc2_comm_utils.h"
+#include "securec.h"
 
 using namespace ge;
 using namespace AscendC;
 using namespace Ops::Transformer::OpTiling;
 
 namespace optiling {
+
+ge::graphStatus AlltoAllvMXQuantGmmTiling::GetShapeAttrsInfo()
+{
+    MC2_CHECK_LOG_RET(context_->GetNodeName(), AlltoAllvQuantGmmTilingCommon::GetShapeAttrsInfo());
+    usingApaceImpl_ = CheckApaceImplCapable();
+    OP_LOGI(context_->GetNodeName(), "AlltoAllvQuantGroupedMatMul MX implementation: %s.",
+            usingApaceImpl_ ? "APACE AIC-only HCCL+Blaze" : "legacy");
+    return ge::GRAPH_SUCCESS;
+}
+
+bool AlltoAllvMXQuantGmmTiling::CheckApaceImplCapable() const
+{
+    if (epWorldSize_ == 0U || epWorldSize_ > Apace::A2AV_GMM_MAX_RANK_NUM || e_ == 0U ||
+        e_ * epWorldSize_ > Apace::A2AV_GMM_MAX_SEG_NUM) {
+        return false;
+    }
+
+    const bool xSupported = gmmXDataType_ == ge::DT_FLOAT8_E5M2 || gmmXDataType_ == ge::DT_FLOAT8_E4M3FN ||
+                            gmmXDataType_ == ge::DT_FLOAT4_E2M1;
+    const bool weightSupported = gmmWeightDataType_ == ge::DT_FLOAT8_E5M2 ||
+                                 gmmWeightDataType_ == ge::DT_FLOAT8_E4M3FN ||
+                                 gmmWeightDataType_ == ge::DT_FLOAT4_E2M1;
+    const bool xIsFp4 = gmmXDataType_ == ge::DT_FLOAT4_E2M1;
+    const bool weightIsFp4 = gmmWeightDataType_ == ge::DT_FLOAT4_E2M1;
+    return xSupported && weightSupported && xIsFp4 == weightIsFp4;
+}
+
 bool AlltoAllvMXQuantGmmTiling::IsCapable()
 {
     // support fp8_e5m2 or fp8_e4m3
@@ -43,8 +71,92 @@ uint64_t AlltoAllvMXQuantGmmTiling::GetTilingKey() const
     if (AlltoAllvQuantGmmTilingCommon::QuantGetAndConvertCommMode(context_, commMode) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    uint64_t tilingKey = GET_TPL_TILING_KEY(transGmmWeight_, transMmWeight_, commMode);
+    uint64_t tilingKey = GET_TPL_TILING_KEY(transGmmWeight_, transMmWeight_, commMode, usingApaceImpl_);
     return tilingKey;
+}
+
+void AlltoAllvMXQuantGmmTiling::SetApaceMatmulTiling(const TCubeTiling &src, Apace::A2avGmmMxTiling &dst)
+{
+    dst.baseM = static_cast<uint32_t>(src.baseM);
+    dst.baseN = static_cast<uint32_t>(src.baseN);
+    dst.baseK = static_cast<uint32_t>(src.baseK);
+    dst.kAL1 = static_cast<uint32_t>(src.stepKa * src.baseK);
+    dst.kBL1 = static_cast<uint32_t>(src.stepKb * src.baseK);
+    dst.scaleKAL1 = dst.kAL1;
+    dst.dbL0C = static_cast<uint8_t>(src.dbL0C);
+    dst.l1BufferStage = 2U;
+}
+
+ge::graphStatus AlltoAllvMXQuantGmmTiling::BuildApaceTiling()
+{
+    apaceTilingData_ = {};
+    apaceTilingData_.mc2InitTiling = tilingData->hcclA2avTilingInfo.hcclInitTiling;
+    apaceTilingData_.mc2CcTiling = tilingData->hcclA2avTilingInfo.a2avCcTiling;
+    apaceTilingData_.rankSize = static_cast<uint32_t>(epWorldSize_);
+    apaceTilingData_.expertNum = static_cast<uint32_t>(e_);
+    apaceTilingData_.k = static_cast<uint32_t>(h1_);
+    apaceTilingData_.n = static_cast<uint32_t>(n1_);
+    apaceTilingData_.scaleKLen = static_cast<uint32_t>(Ops::Base::CeilDiv(h1_, MX_BASIC_FACTOR) * 2U);
+    apaceTilingData_.isMxFp4 = gmmXDataType_ == ge::DT_FLOAT4_E2M1 ? 1U : 0U;
+    apaceTilingData_.hasPermuteOut = permuteOutFlag_ ? 1U : 0U;
+    apaceTilingData_.localMatmul = hasSharedExpertFlag_ ? 1U : 0U;
+    apaceTilingData_.dataRecvOffset = 0U;
+    apaceTilingData_.scaleRecvOffset = permuteOutSize_;
+
+    for (uint32_t expert = 0U; expert < apaceTilingData_.expertNum; ++expert) {
+        for (uint32_t peer = 0U; peer < apaceTilingData_.rankSize; ++peer) {
+            const uint32_t segment = expert * apaceTilingData_.rankSize + peer;
+            const uint32_t countsIndex = peer * apaceTilingData_.expertNum + expert;
+            apaceTilingData_.sparseGroupList[segment * 2U] = static_cast<int64_t>(expert);
+            apaceTilingData_.sparseGroupList[segment * 2U + 1U] = recvCounts[countsIndex];
+            apaceTilingData_.segmentSendRows[segment] = static_cast<uint32_t>(sendCounts[countsIndex]);
+        }
+    }
+    SetApaceMatmulTiling(tilingData->gmmQuantTilingData.mmTilingData, apaceTilingData_.gmmTiling);
+
+    if (hasSharedExpertFlag_) {
+        apaceTilingData_.mmM = static_cast<uint32_t>(bs_);
+        apaceTilingData_.mmK = static_cast<uint32_t>(h2_);
+        apaceTilingData_.mmN = static_cast<uint32_t>(n2_);
+        apaceTilingData_.mmGroupList[0] = static_cast<int64_t>(bs_);
+        SetApaceMatmulTiling(tilingData->mmQuantTilingData.mmTilingData, apaceTilingData_.mmTiling);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus AlltoAllvMXQuantGmmTiling::PostTiling()
+{
+    MC2_CHECK_LOG_RET(context_->GetNodeName(), AlltoAllvQuantGmmTilingCommon::PostTiling());
+    if (!usingApaceImpl_) {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    MC2_CHECK_LOG_RET(context_->GetNodeName(), BuildApaceTiling());
+    auto *rawTiling = context_->GetRawTilingData();
+    OP_TILING_CHECK(rawTiling == nullptr, OP_LOGE(context_->GetNodeName(), "raw tiling data is null."),
+                    return ge::GRAPH_FAILED);
+    const size_t capacity = rawTiling->GetCapacity();
+    OP_TILING_CHECK(capacity < sizeof(apaceTilingData_),
+                    OP_LOGE(context_->GetNodeName(), "tiling capacity %zu is less than APACE tiling size %zu.",
+                            capacity, sizeof(apaceTilingData_)),
+                    return ge::GRAPH_FAILED);
+    errno_t ret = memcpy_s(rawTiling->GetData(), capacity, &apaceTilingData_, sizeof(apaceTilingData_));
+    OP_TILING_CHECK(ret != EOK, OP_LOGE(context_->GetNodeName(), "copy APACE tiling failed, ret=%d.", ret),
+                    return ge::GRAPH_FAILED);
+
+    const size_t registeredSize = sizeof(QuantAlltoAllvGroupedMatmulTilingData);
+    if (capacity >= registeredSize && registeredSize > sizeof(apaceTilingData_)) {
+        ret = memset_s(reinterpret_cast<uint8_t *>(rawTiling->GetData()) + sizeof(apaceTilingData_),
+                       capacity - sizeof(apaceTilingData_), 0, registeredSize - sizeof(apaceTilingData_));
+        OP_TILING_CHECK(ret != EOK, OP_LOGE(context_->GetNodeName(), "clear APACE tiling padding failed, ret=%d.", ret),
+                        return ge::GRAPH_FAILED);
+        rawTiling->SetDataSize(registeredSize);
+    } else {
+        rawTiling->SetDataSize(sizeof(apaceTilingData_));
+    }
+    context_->SetScheduleMode(1);
+    context_->SetBlockDim(aicCoreNum_);
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus AlltoAllvMXQuantGmmTiling::CheckInputDtype() const

@@ -158,6 +158,8 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>
         hcclDataType_ = HCCL_DATA_TYPE_FP8E5M2;
     } else if constexpr (AscendC::IsSameType<hcclDataType, fp8_e4m3fn_t>::value) {
         hcclDataType_ = HCCL_DATA_TYPE_FP8E4M3;
+    } else if constexpr (AscendC::IsSameType<hcclDataType, fp4x2_e2m1_t>::value) {
+        hcclDataType_ = HCCL_DATA_TYPE_UINT8;
 #endif
     } else {
         hcclDataType_ = HCCL_DATA_TYPE_INT8;
