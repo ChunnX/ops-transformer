@@ -68,17 +68,18 @@ public:
     {}
 
     __aicore__ inline void Process();
-    __aicore__ inline void Init(__gm__ uint8_t *tokenX, __gm__ uint8_t *weightDq, __gm__ uint8_t *weightUqQr,
-                                __gm__ uint8_t *weightUk, __gm__ uint8_t *weightDkvKr, __gm__ uint8_t *rmsnormGammaCq,
-                                __gm__ uint8_t *rmsnormGammaCkv, __gm__ uint8_t *ropeSin, __gm__ uint8_t *ropeCos,
-                                __gm__ uint8_t *cacheIndex, __gm__ uint8_t *kvCache, __gm__ uint8_t *krCache,
-                                __gm__ uint8_t *dequantScaleX, __gm__ uint8_t *dequantScaleWDq,
-                                __gm__ uint8_t *deqScaleQcQrW, __gm__ uint8_t *dequantScaleWDkvkr,
-                                __gm__ uint8_t *quantScaleCkv, __gm__ uint8_t *quantScaleCkr,
-                                __gm__ uint8_t *smoothScaleCq, __gm__ uint8_t *actualSeqLen,
-                                __gm__ uint8_t *kNopeClipAlpha, __gm__ uint8_t *queryOut, __gm__ uint8_t *queryRopeOut,
-                                __gm__ uint8_t *dequantScaleQNopeOut, __gm__ uint8_t *queryNormOut,
-                                __gm__ uint8_t *dequantScaleQNormOut, __gm__ uint8_t *workspace);
+    __aicore__ inline void Init(__gm__ uint8_t *a22TokenX, __gm__ uint8_t *weightDq, __gm__ uint8_t *weightUqQr,
+                                __gm__ uint8_t *weightUk, __gm__ uint8_t *weightDkvKr,
+                                __gm__ uint8_t *a22RmsnormGammaCq, __gm__ uint8_t *rmsnormGammaCkv,
+                                __gm__ uint8_t *ropeSin, __gm__ uint8_t *ropeCos, __gm__ uint8_t *cacheIndex,
+                                __gm__ uint8_t *kvCache, __gm__ uint8_t *krCache, __gm__ uint8_t *dequantScaleX,
+                                __gm__ uint8_t *dequantScaleWDq, __gm__ uint8_t *deqScaleQcQrW,
+                                __gm__ uint8_t *dequantScaleWDkvkr, __gm__ uint8_t *quantScaleCkv,
+                                __gm__ uint8_t *quantScaleCkr, __gm__ uint8_t *smoothScaleCq,
+                                __gm__ uint8_t *actualSeqLen, __gm__ uint8_t *kNopeClipAlpha, __gm__ uint8_t *queryOut,
+                                __gm__ uint8_t *queryRopeOut, __gm__ uint8_t *dequantScaleQNopeOut,
+                                __gm__ uint8_t *queryNormOut, __gm__ uint8_t *dequantScaleQNormOut,
+                                __gm__ uint8_t *workspace);
 
 private:
     __aicore__ inline void CopyGlobalParams();
@@ -165,11 +166,11 @@ private:
                                                         uint32_t colQc, uint32_t colQr, uint32_t colOffsetCube,
                                                         uint32_t srcStride, uint32_t dstStride, uint32_t &inputOffset,
                                                         uint32_t &outputOffset, uint32_t totalDequantLoops,
-                                                        bool needSparseSync, uint32_t &colOffsetVec,
+                                                        bool a22NeedSparseSync, uint32_t &colOffsetVec,
                                                         uint32_t &dequantLoopCount);
     __aicore__ inline void DequantRopeSplitNRopeLoop(int64_t ropeQrOffset, int64_t ropeQrResOffset, uint32_t colQc,
                                                      uint32_t colQr, uint32_t colOffsetCube, uint32_t ropeDstStride,
-                                                     uint32_t ropeCnt, int64_t ropeStride, uint32_t &inputOffsetRope,
+                                                     uint32_t a22RopeCnt, int64_t ropeStride, uint32_t &inputOffsetRope,
                                                      uint32_t &outputOffsetRope, uint32_t &deqScaleOffset,
                                                      uint32_t deQuantScaleCqOffset, uint32_t &colOffsetRope);
     __aicore__ inline void DequantQcSplitNGroupCase(int64_t mmQnPreDequantOffset, int64_t mmQnPreDequantResOffset,
@@ -291,7 +292,7 @@ private:
 template <typename MLAPT>
 __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::Init(
     __gm__ uint8_t *a22TokenX, __gm__ uint8_t *weightDq, __gm__ uint8_t *weightUqQr, __gm__ uint8_t *weightUk,
-    __gm__ uint8_t *weightDkvKr, __gm__ uint8_t *rmsnormGammaCq, __gm__ uint8_t *rmsnormGammaCkv,
+    __gm__ uint8_t *weightDkvKr, __gm__ uint8_t *a22RmsnormGammaCq, __gm__ uint8_t *rmsnormGammaCkv,
     __gm__ uint8_t *ropeSin, __gm__ uint8_t *ropeCos, __gm__ uint8_t *cacheIndex, __gm__ uint8_t *kvCache,
     __gm__ uint8_t *krCache, __gm__ uint8_t *dequantScaleX, __gm__ uint8_t *dequantScaleWDq,
     __gm__ uint8_t *deqScaleQcQrW, __gm__ uint8_t *dequantScaleWDkvkr, __gm__ uint8_t *quantScaleCkv,
@@ -323,7 +324,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::Init(
     weightUqQrGm_.SetGlobalBuffer((__gm__ mmQcQrInputType *)weightUqQr); // NZ
     weightUkGm_.SetGlobalBuffer((__gm__ mmQnInputType *)weightUk);
     rmsnormGammaCkvGm_.SetGlobalBuffer((__gm__ rmsNormGammaType *)rmsnormGammaCkv);
-    rmsnormGammaCqGm_.SetGlobalBuffer((__gm__ rmsNormGammaType *)rmsnormGammaCq);
+    rmsnormGammaCqGm_.SetGlobalBuffer((__gm__ rmsNormGammaType *)a22RmsnormGammaCq);
     ropeCosGm_.SetGlobalBuffer((__gm__ ropeSinCosType *)ropeCos);
     ropeSinGm_.SetGlobalBuffer((__gm__ ropeSinCosType *)ropeSin);
     if constexpr (MLAPT::cacheMode != CACHE_MODE::ND) {
@@ -1553,8 +1554,8 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RmsNormAndQuantizeCkv(LocalTe
     LocalTensor<uint8_t> a22SharedBuf =
         a22InputLocal[vectorRow_ * baseParams_->headSizeCkv].template ReinterpretCast<uint8_t>();
     RmsNormNormal<mmCkvKrOutputType, rmsNormGammaType, rmsNormComputType, float, dequantScaleType>(
-        a22InputLocal, mmCkvKrResGm_[rmsNormAndScatterCkvParams.offset], rmsnormGammaCkvLocal_, dequantScaleWDkvKrLocal_,
-        dequantScaleXLocal, a22SharedBuf, rmsNormParams);
+        a22InputLocal, mmCkvKrResGm_[rmsNormAndScatterCkvParams.offset], rmsnormGammaCkvLocal_,
+        dequantScaleWDkvKrLocal_, dequantScaleXLocal, a22SharedBuf, rmsNormParams);
 
     AscendC::SetFlag<HardEvent::V_MTE2>(EVENT_ID0);
     AscendC::WaitFlag<HardEvent::V_MTE2>(EVENT_ID0);
@@ -2138,8 +2139,8 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantRopeSplitNDequantLoop(
 template <typename MLAPT>
 __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantRopeSplitNRopeLoop(
     int64_t ropeQrOffset, int64_t ropeQrResOffset, uint32_t colQc, uint32_t colQr, uint32_t colOffsetCube,
-    uint32_t ropeDstStride, uint32_t a22RopeCnt, int64_t ropeStride, uint32_t &inputOffsetRope, uint32_t &outputOffsetRope,
-    uint32_t &deqScaleOffset, uint32_t deQuantScaleCqOffset, uint32_t &colOffsetRope)
+    uint32_t ropeDstStride, uint32_t a22RopeCnt, int64_t ropeStride, uint32_t &inputOffsetRope,
+    uint32_t &outputOffsetRope, uint32_t &deqScaleOffset, uint32_t deQuantScaleCqOffset, uint32_t &colOffsetRope)
 {
     uint32_t a22RopeCntDown = mmQcQrParam_.m / 2;
     // RopeQrSplitN
@@ -2149,14 +2150,15 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantRopeSplitNRopeLoop(
             a22RopeCnt = a22RopeCntDown;
         }
         RopeQrSplitN(RopeQrSplitNParams{ropeQrResOffset, ropeQrOffset, inputOffsetRope, deqScaleOffset,
-                                        outputOffsetRope, ropeStride, ropeDstStride, deQuantScaleCqOffset, 0, a22RopeCnt});
+                                        outputOffsetRope, ropeStride, ropeDstStride, deQuantScaleCqOffset, 0,
+                                        a22RopeCnt});
         // cv1:1时，还需处理第二次，第二次在第一次的基础上计算偏移等
         if (cvRatio_ == 1) {
             RopeQrSplitN(RopeQrSplitNParams{
                 ropeQrResOffset, ropeQrOffset, static_cast<uint32_t>(inputOffsetRope + ropeStride * a22RopeCntDown),
                 deqScaleOffset, static_cast<uint32_t>(outputOffsetRope + baseParams_->headSizeQr * a22RopeCntDown),
-                ropeStride, ropeDstStride, a22RopeCntDown * FP32_BLOCK_ELEMENT_NUM, a22RopeCntDown * baseParams_->dimHeadRope,
-                (mmQcQrParam_.m + 1) / 2});
+                ropeStride, ropeDstStride, a22RopeCntDown * FP32_BLOCK_ELEMENT_NUM,
+                a22RopeCntDown * baseParams_->dimHeadRope, (mmQcQrParam_.m + 1) / 2});
         }
 
         outputOffsetRope += colQr;

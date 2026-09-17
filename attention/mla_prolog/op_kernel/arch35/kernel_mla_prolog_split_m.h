@@ -1533,7 +1533,8 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::ScatterKr(LocalTensor<krCacheTy
             int64_t smStartOffset;
             if constexpr ((MLAPT::cacheMode == CACHE_MODE::PA_NZ)) {
                 constexpr uint8_t smCol0 = ALIGN_BLOCK_SIZE / sizeof(kvCacheType);
-                smStartOffset = CeilDiv(baseParams_->headSizeCkv, smCol0) * smCol0 * baseParams_->blockSize; // 列方向的偏移
+                smStartOffset =
+                    CeilDiv(baseParams_->headSizeCkv, smCol0) * smCol0 * baseParams_->blockSize; // 列方向的偏移
             } else {
                 smStartOffset = baseParams_->headSizeCkv;
             }
@@ -1802,15 +1803,15 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::DynamicQuantQnAndMulQrSyncMMQn(
         baseParams_->stepBatchSize * baseParams_->numHeadSize * baseParams_->headSizeCkv * cubeBlockIdx_ +
         blockBatchOffset * totalSizeCkv + numHeadOffset * static_cast<int64_t>(baseParams_->headSizeCkv);
     int64_t smDynamicQuantQueryResOffset = batchOffset * totalSizeCkv + blockBatchOffset * totalSizeCkv +
-                                         numHeadOffset * static_cast<int64_t>(baseParams_->headSizeCkv);
+                                           numHeadOffset * static_cast<int64_t>(baseParams_->headSizeCkv);
     int64_t smScaleQueryNopeOffset = batchOffset * static_cast<int64_t>(baseParams_->numHeadSize) +
-                                   blockBatchOffset * static_cast<int64_t>(baseParams_->numHeadSize) + numHeadOffset;
+                                     blockBatchOffset * static_cast<int64_t>(baseParams_->numHeadSize) + numHeadOffset;
     int64_t smQueryOutStride = totalSizeCkv;
     int64_t smQrOutputStride =
         static_cast<int64_t>(baseParams_->numHeadSize) * static_cast<int64_t>(baseParams_->dimHeadRope);
     int64_t smQrPostProcessResOffset = batchOffset * static_cast<int64_t>(baseParams_->headSizeQr) +
-                                     numHeadOffset * static_cast<int64_t>(baseParams_->dimHeadRope) +
-                                     blockBatchOffset * static_cast<int64_t>(baseParams_->headSizeQr);
+                                       numHeadOffset * static_cast<int64_t>(baseParams_->dimHeadRope) +
+                                       blockBatchOffset * static_cast<int64_t>(baseParams_->headSizeQr);
 
     LocalTensor<uint8_t> shareTmpUb = shareBuffer_.Get<uint8_t>();
 
