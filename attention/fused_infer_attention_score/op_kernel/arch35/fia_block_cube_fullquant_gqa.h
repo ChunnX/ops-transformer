@@ -14,23 +14,12 @@
  */
 #ifndef FIA_BLOCK_CUBE_FULLQUANT_GQA_H_
 #define FIA_BLOCK_CUBE_FULLQUANT_GQA_H_
-#if __has_include("../../../common/op_kernel/offset_calculator.h")
 #include "../../../common/op_kernel/offset_calculator.h"
 #include "../../../common/op_kernel/matmul.h"
 #include "../../../common/op_kernel/FixpipeOut.h"
-#else
-#include "../../common/offset_calculator.h"
-#include "../../common/matmul.h"
-#include "../../common/FixpipeOut.h"
-#endif
 #include "memory_copy_arch35_fused_infer.h"
-#if __has_include("../../../common/op_kernel/arch35/infer_flash_attention_comm_arch35.h")
 #include "../../../common/op_kernel/arch35/infer_flash_attention_comm_arch35.h"
 #include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
-#else
-#include "../../common/arch35/infer_flash_attention_comm_arch35.h"
-#include "../../common/arch35/flash_attention_score_common_regbase_arch35.h"
-#endif
 #include "kernel_operator_list_tensor_intf.h"
 using namespace AscendC;
 using namespace AscendC::Impl::Detail;
@@ -127,7 +116,7 @@ public:
     using KeyScaleGmToL1Type = typename KeyScaleGmToL1Sel<KvLayoutType>::Type;
     using ValueScaleGmToL1Type = typename ValueScaleGmToL1Sel<KvLayoutType>::Type;
 
-    using ConstInfoX = ConstInfo_t<FiaKernelType::FULL_QUANT>;
+    using ConstInfoX = ConstInfo_t;
     TPipe *tPipe = nullptr;
     /* =====================GM变量(with layout)==================== */
     FaGmTensor<Q_T, Q_FORMAT> queryGm;
@@ -236,19 +225,17 @@ public:
 
         keyPtr = key;
         valuePtr = value;
-        if (constInfo.isKvContinuous) {
-            ListTensorDesc keyListTensorDesc((__gm__ void *)(this->keyPtr));
-            __gm__ uint8_t *key_ = (__gm__ uint8_t *)keyListTensorDesc.GetDataPtr<__gm__ uint8_t>(0);
-            ListTensorDesc valueListTensorDesc((__gm__ void *)(this->valuePtr));
-            __gm__ uint8_t *value_ = (__gm__ uint8_t *)valueListTensorDesc.GetDataPtr<__gm__ uint8_t>(0);
+        ListTensorDesc keyListTensorDesc((__gm__ void *)(this->keyPtr));
+        __gm__ uint8_t *key_ = (__gm__ uint8_t *)keyListTensorDesc.GetDataPtr<__gm__ uint8_t>(0);
+        ListTensorDesc valueListTensorDesc((__gm__ void *)(this->valuePtr));
+        __gm__ uint8_t *value_ = (__gm__ uint8_t *)valueListTensorDesc.GetDataPtr<__gm__ uint8_t>(0);
 
-            InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGmKv, constInfo.actualSeqLenKVSize,
-                         constInfo.n2Size, constInfo.blockSize, constInfo.dSize, keyGm, key_,
-                         constInfo.keyStrides.bnStride, constInfo.keyStrides.n2Stride);
-            InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGmKv, constInfo.actualSeqLenKVSize,
-                         constInfo.n2Size, constInfo.blockSize, constInfo.dSizeV, valueGm, value_,
-                         constInfo.valueStrides.bnStride, constInfo.valueStrides.n2Stride);
-        }
+        InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGmKv, constInfo.actualSeqLenKVSize,
+                     constInfo.n2Size, constInfo.blockSize, constInfo.dSize, keyGm, key_, constInfo.keyStrides.bnStride,
+                     constInfo.keyStrides.n2Stride);
+        InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGmKv, constInfo.actualSeqLenKVSize,
+                     constInfo.n2Size, constInfo.blockSize, constInfo.dSizeV, valueGm, value_,
+                     constInfo.valueStrides.bnStride, constInfo.valueStrides.n2Stride);
 
         if constexpr (HAS_ROPE) {
             InitQRopeBuffer(constInfo.bSize, constInfo.realN2Size, constInfo.realGSize, constInfo.s1Size,
@@ -395,7 +382,7 @@ public:
         uint32_t nopeDealSize = dRealSize;
         FaL1Tensor<KV_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
-        GmKvCoord gmCoord{.bIdx = constInfo.isKvContinuous ? runInfo.bIdx : 0,
+        GmKvCoord gmCoord{.bIdx = runInfo.bIdx,
                           .n2Idx = runInfo.n2Idx,
                           .s2Idx = s2Offset,
                           .dIdx = dOffset,
@@ -412,7 +399,7 @@ public:
             FaL1Tensor<ROPE_T, L1Format::NZ> l1Tensor = {
                 .tensor = (dstTensor[offset]).template ReinterpretCast<ROPE_T>(), .rowCount = dstStrideRope};
 
-            GmKvCoord gmCoord = {.bIdx = constInfo.isKvContinuous ? runInfo.bIdx : 0,
+            GmKvCoord gmCoord = {.bIdx = runInfo.bIdx,
                                  .n2Idx = runInfo.n2Idx,
                                  .s2Idx = s2Offset,
                                  .dIdx = 0,
@@ -436,7 +423,7 @@ public:
         uint32_t dstStride = (s2RealSize + 31) >> 5 << 5;
         FaL1Tensor<KV_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
-        GmKvCoord gmCoord{.bIdx = constInfo.isKvContinuous ? runInfo.bIdx : 0,
+        GmKvCoord gmCoord{.bIdx = runInfo.bIdx,
                           .n2Idx = runInfo.n2Idx,
                           .s2Idx = s2Offset,
                           .dIdx = dOffset,
@@ -662,7 +649,7 @@ public:
     using MM2_ABUF_POLICY_T = BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
     using MM2_ABUF_T = Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
 
-    using ConstInfoX = ConstInfo_t<FiaKernelType::FULL_QUANT>;
+    using ConstInfoX = ConstInfo_t;
     __aicore__ inline FAFullQuantGqaBlockCubeDummy(ConstInfoX &constInfo){};
 };
 } // namespace BaseApi
