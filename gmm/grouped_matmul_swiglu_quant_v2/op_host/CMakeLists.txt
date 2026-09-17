@@ -12,6 +12,12 @@ set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
 if (BUILD_OPEN_PROJECT)
     set(grouped_matmul_swiglu_quant_v2_depends gmm/common gmm/grouped_matmul CACHE INTERNAL "Dependencies for grouped_matmul_swiglu_quant_v2")
     set(grouped_matmul_swiglu_quant_v2_apt_depends gmm/common gmm/grouped_matmul CACHE INTERNAL "Dependencies for grouped_matmul_swiglu_quant_v2_apt")
+    # V3 is an additional ACLNN/kernel entry implemented in this V2 operator
+    # directory.  Keep the binary source staging rooted here so the generic
+    # Ascend C build logic does not look for a separate v3 source directory.
+    set(grouped_matmul_swiglu_quant_v3_apt_dir
+        ${CMAKE_CURRENT_SOURCE_DIR}/..
+        CACHE INTERNAL "Source directory for grouped_matmul_swiglu_quant_v3_apt")
     target_sources(op_host_aclnnExc PRIVATE
         grouped_matmul_swiglu_quant_v2_def.cpp
     )
