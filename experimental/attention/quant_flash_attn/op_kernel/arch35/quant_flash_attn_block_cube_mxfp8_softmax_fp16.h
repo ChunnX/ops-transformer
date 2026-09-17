@@ -137,10 +137,8 @@ private:
     LocalTensor<MM_OUT_T> mmL0CTensor_;   // L0C, C1[128,256]+C2[144,128] ring 双槽 [128,256]×2
 
     // ===== UB（Fixpipe 目标，TOTAL ≤ 256KB）=====
-    static constexpr uint32_t UB_MM1RES_SIZE = 128U * 128U; // [128,128] half/槽
-    static constexpr uint32_t UB_MM1RES_BUFCNT = 2U;        // ring 双缓冲
+    // UB 常量统一引用 common_def 跨核契约（UB_MM1RES_*/UB_MM2RES_*，单一来源，VectorBlock 同源）
     LocalTensor<SOFTMAX_T> mm1ResUB_;
-    static constexpr uint32_t UB_MM2RES_SIZE = (dBaseSize + 1U) * 256U; // [129,256] fp32 = 132KB
     LocalTensor<MM_OUT_T> mm2ResUB_;
 
     // ===== Event ID（内部流水同步，SetFlag/WaitFlag 显式编排）=====
@@ -325,10 +323,12 @@ public:
         // ===== L0C =====
         mmL0CTensor_ = LocalTensor<MM_OUT_T>(TPosition::CO1, 0U, L0C_SIZE);
 
-        mm1ResUB_ = LocalTensor<SOFTMAX_T>(TPosition::VECCALC, 0U, UB_MM1RES_SIZE * UB_MM1RES_BUFCNT);
-        mm2ResUB_ = LocalTensor<MM_OUT_T>(TPosition::VECCALC,
-                                          UB_MM1RES_SIZE * UB_MM1RES_BUFCNT * sizeof(SOFTMAX_T) / sizeof(MM_OUT_T),
-                                          UB_MM2RES_SIZE);
+        // V 核 UB 跨核契约（common_def 单一来源）：addr 为字节地址、size 为元素数。
+        // 注：原实现误将元素数当地址（除以 sizeof），致 mm2ResUB 与 mm1ResUB 后半重叠——已修正
+        static_assert(UB_MM2RES_BASE == 64U * 1024U, "common_def contract: mm2ResUB follows mm1ResUB 64KB");
+        mm1ResUB_ = LocalTensor<SOFTMAX_T>(TPosition::VECCALC, UB_MM1RES_BASE,
+                                           UB_MM1RES_SLOT * UB_MM1RES_BUFCNT);
+        mm2ResUB_ = LocalTensor<MM_OUT_T>(TPosition::VECCALC, UB_MM2RES_BASE, UB_MM2RES_SIZE);
 
         InitOneFillBuffer();
         InitL0BufferForReduceSum();
@@ -439,21 +439,23 @@ public:
         fixpipeParams.nSize = (actVecS1Size + 7U) >> 3 << 3;
         fixpipeParams.mSize = (actKSize + 1U) >> 1 << 1;
         fixpipeParams.srcStride = ((actKSize + 15U) / 16U) * 16U;
-        fixpipeParams.dstStride = actVecS1Size;
+        fixpipeParams.dstStride = S1_SUB_BLOCK_SIZE;  // 固定 pitch 128，nSize 恒 ≤ pitch，杜绝行覆盖
         fixpipeParams.quantPre = QuantMode_t::F322F16;
         fixpipeParams.deqScalar = static_cast<uint64_t>(
             *reinterpret_cast<const int32_t *>(&constInfo_.scaleValue));
-        fixpipeParams.dualDstCtl = 0;
-        fixpipeParams.subBlockId = runInfo.loop % 2U;
+        fixpipeParams.dualDstCtl = 0;  // 单目标模式（CANN PTO GetDualDstCtl 权威定义：0=Single/1=SplitM/2=SplitN）
+        fixpipeParams.subBlockId = static_cast<bool>(subBlockId);  // 函数参数：0→V0(S1前半)、1→V1(S1后半)
 
         fixpipeParams.params.ndNum = 1U;
         fixpipeParams.params.srcNdStride = fixpipeParams.mSize;
         fixpipeParams.params.dstNdStride = fixpipeParams.dstStride;
 
         uint32_t l0cOffset  = l0cBufId_ * 128U * 256U;
+        // TODO(corrections #4): 元素偏移进 NZ 分形布局 L0C 取列半——寻址合法性待数值验证
+        //（DN 无此用法先例，其用双目标 N-split 免偏移；若不合法改分形粒度偏移或 src 列起始字段）
         uint32_t l0cColOff  = subBlockId * S1_SUB_BLOCK_SIZE;
         uint32_t ubRingSlot = runInfo.loop % UB_MM1RES_BUFCNT;
-        uint32_t ubBase     = ubRingSlot * UB_MM1RES_SIZE;
+        uint32_t ubBase     = ubRingSlot * UB_MM1RES_SLOT;
 
         Fixpipe<SOFTMAX_T, MM_OUT_T, CFG_ROW_MAJOR>(
             mm1ResUB_[ubBase],
@@ -494,7 +496,7 @@ public:
             LoadVToL0A(runInfo, subK, actSubKSize);
             SetFlag<HardEvent::MTE1_M>(MM2_L0AB_EVENT0);
             WaitFlag<HardEvent::MTE1_M>(MM2_L0AB_EVENT0);
-            MatmulVP(runInfo, actSubKSize, isFirstSubK);
+            MatmulVP(runInfo, vCore, actSubKSize, isFirstSubK);
             SetFlag<HardEvent::M_MTE1>(MM2_L0AB_EVENT0);
             isFirstSubK = false;
         }
@@ -519,10 +521,10 @@ public:
         fixpipeParams.nSize = (actVecS1Size + 7U) >> 3 << 3;
         fixpipeParams.mSize = dBaseSize + 1U;
         fixpipeParams.srcStride = ((dBaseSize + ROWSUM_ROWS + 15U) / 16U) * 16U;
-        fixpipeParams.dstStride = actVecS1Size;
+        fixpipeParams.dstStride = S1_SUB_BLOCK_SIZE;  // 固定 pitch 128，nSize 恒 ≤ pitch，杜绝行覆盖
         fixpipeParams.quantPre = QuantMode_t::NoQuant;
-        fixpipeParams.dualDstCtl = 0;
-        fixpipeParams.subBlockId = vCore;
+        fixpipeParams.dualDstCtl = 0;  // 单目标模式（CANN PTO 权威定义：0=Single/1=SplitM/2=SplitN）
+        fixpipeParams.subBlockId = static_cast<bool>(vCore);  // 整块投递给对应 V 核
         fixpipeParams.params.ndNum = 1U;
         fixpipeParams.params.srcNdStride = fixpipeParams.mSize;
         fixpipeParams.params.dstNdStride = fixpipeParams.dstStride;
@@ -703,33 +705,33 @@ public:
     __aicore__ inline void LoadPToL0B(const RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t vCore,
                                         uint32_t subKIdx, uint32_t actSubKSize)
     {
+        // m/k 方向对齐 DN LoadPToL0（量产）：m 沿 S2（subK 切片）、k 沿 S1（固定满宽）、ifTranspose=true
         uint32_t pSlot = runInfo.pSlot;
 
         LocalTensor<QUANT_T> &pL1Tensor      = (vCore == 0U) ? pL1V0Tensor_  : pL1V1Tensor_;
         LocalTensor<SCALE_T> &pScaleL1Tensor  = (vCore == 0U) ? pScaleL1V0Tensor_ : pScaleL1V1Tensor_;
 
-        uint32_t actVecS1Size = (vCore == 0U)
-            ? AttentionCommon::Min(runInfo.actMSize, S1_SUB_BLOCK_SIZE)
-            : (runInfo.actMSize > S1_SUB_BLOCK_SIZE ? runInfo.actMSize - S1_SUB_BLOCK_SIZE : 0U);
+        uint32_t actSubKSizeAlign64 = (actSubKSize + 63U) / 64U * 64U;  // S2 方向 64 对齐（DN 同款）
+        uint32_t actS2SizeAlign64 = (runInfo.actSingleLoopS2Size + 63U) / 64U * 64U;  // 整槽 S2 对齐
 
         uint32_t pL1Offset       = pSlot * 256U * 128U;
-        uint32_t pScaleL1Offset  = pSlot * 1024U;
+        uint32_t pScaleL1Offset  = pSlot * L1_PSCALE_V0_SINGLE_SLOT_SIZE;  // 含 padding 的槽尺寸
 
         LoadData2DParamsV2 dataParams;
-        dataParams.mStartPosition = 0U;
-        dataParams.kStartPosition = subKIdx * (MM2_SUB_K_SIZE / 32U);
-        dataParams.mStep = actVecS1Size / 16U;
-        dataParams.kStep = actSubKSize / 32U;
-        dataParams.srcStride = runInfo.actSingleLoopS2SizeAlign / 16U;
-        dataParams.dstStride = actVecS1Size / 16U;
-        dataParams.ifTranspose = true;
+        dataParams.mStartPosition = subKIdx * (MM2_SUB_K_SIZE / 16U);   // subK 偏移沿 m（S2 方向）
+        dataParams.kStartPosition = 0U;
+        dataParams.mStep = actSubKSizeAlign64 / 16U;                    // m 沿 S2：当前 subK 切片
+        dataParams.kStep = S1_SUB_BLOCK_SIZE / 32U;                     // k 沿 S1：固定满宽 128/32=4
+        dataParams.srcStride = actS2SizeAlign64 / 16U;  // 整槽 S2 跨步（不随 subK 变）
+        dataParams.dstStride = S1_SUB_BLOCK_SIZE / 16U;                 // L0B 固定 pitch 128/16=8
+        dataParams.ifTranspose = true;                                  // L1 NZ [S2,S1] → L0B [K=S2, N=S1]
 
         LoadData2DMxParams scaleParams;
-        scaleParams.xStartPosition = 0U;
-        scaleParams.yStartPosition = subKIdx * (MM2_SUB_K_SIZE / 64U);
-        scaleParams.xStep = actVecS1Size / 16U;
-        scaleParams.yStep = (actSubKSize + 63U) / 64U;
-        scaleParams.srcStride = scaleParams.yStep;
+        scaleParams.xStartPosition = 0U;                                // x 沿 S1（与 data k 同向）
+        scaleParams.yStartPosition = subKIdx * (MM2_SUB_K_SIZE / 64U);  // y 沿 S2 组方向，subK 偏移
+        scaleParams.xStep = S1_SUB_BLOCK_SIZE / 16U;                    // 128/16 = 8
+        scaleParams.yStep = (actSubKSizeAlign64 + 63U) / 64U;
+        scaleParams.srcStride = actS2SizeAlign64 / 64U + 1U;  // DN 同款 bank 冲突预留 +1
         scaleParams.dstStride = scaleParams.yStep;
 
         uint32_t l0bOffset = 0U;
@@ -765,12 +767,18 @@ public:
                  vScaleL1Tensor_[vScaleL1Offset], dataParams, scaleParams);
     }
 
-    __aicore__ inline void MatmulVP(const RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t subKSize,
-                                     bool isFirstSubK)
+    __aicore__ inline void MatmulVP(const RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t vCore,
+                                     uint32_t subKSize, bool isFirstSubK)
     {
         MmadParams mmadParams;
-        mmadParams.m = dVBaseSize + ROWSUM_ROWS;  // 144 = 128(V) + 16(全1 rowsum)
-        mmadParams.n = runInfo.actMSizeAlign32;
+        mmadParams.m = dVBaseSize;
+        // 本 V 核的 S1 半（与 LoadPToL0B 固定满宽 kStep=4 的加载范围一致，杜绝读 L0B 越界；
+        // L0B 垃圾列 ≥ actVecS1Size 不参与计算）
+        uint32_t actVecS1Size = (vCore == 0U)
+            ? AttentionCommon::Min(runInfo.actMSize, S1_SUB_BLOCK_SIZE)
+            : (runInfo.actMSize > S1_SUB_BLOCK_SIZE ? runInfo.actMSize - S1_SUB_BLOCK_SIZE : 0U);
+        uint32_t actVecS1SizeAlign32 = (actVecS1Size + 31U) / 32U * 32U;
+        mmadParams.n = actVecS1SizeAlign32;
         mmadParams.k = subKSize;
         mmadParams.cmatrixInitVal = isFirstSubK;
         mmadParams.cmatrixSource   = !isFirstSubK;

@@ -472,7 +472,9 @@ public:
                     if (vCore == constInfo_.subBlockIdx) {
                         CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_C2_V2);
                         ComputeVec2(runInfo2); // 跨 S2 分块 rescale 累积，末块除+cast+输出
-                        CrossCoreSetFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_C2_V2);
+                        // 挂 PIPE_MTE3（corrections #8）：GM 拷贝（含 mm2ResUB 别名区 divOut/outputT
+                        // 的读）排空后才释放，否则 AIC 下一次 FixpipeMm2 覆写与在途读竞争
+                        CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_C2_V2);
                     }
                 }
             }

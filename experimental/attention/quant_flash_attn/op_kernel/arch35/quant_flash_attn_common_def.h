@@ -160,13 +160,26 @@ constexpr uint32_t L1_P_BUFCNT = PRELOAD_TASK_CACHE_SIZE;          // = 3
 
 constexpr uint32_t L1_P_V0_SINGLE_SLOT_SIZE      = 256 * 128; // fp8 [256,128] = 32KB
 constexpr uint32_t L1_P_V1_SINGLE_SLOT_SIZE      = 256 * 128;
-constexpr uint32_t L1_PSCALE_V0_SINGLE_SLOT_SIZE = 1024;      // e8m0 (256×128/32) = 1KB
-constexpr uint32_t L1_PSCALE_V1_SINGLE_SLOT_SIZE = 1024;
+// e8m0 (256×128/32=1024B) + bank 冲突预留 padding（DN 同几何 L1_P_DESCALE_SIZE=32*5*8=1280；
+// 配套 LoadPToL0B scale srcStride = S2/64 + 1 的 +1 预留，实现期数值对拍后可再精确调整）
+constexpr uint32_t L1_PSCALE_V0_SINGLE_SLOT_SIZE = 1280;
+constexpr uint32_t L1_PSCALE_V1_SINGLE_SLOT_SIZE = 1280;
 
 constexpr uint32_t L1_P_V0_BASE = 0;
 constexpr uint32_t L1_P_V1_BASE = L1_P_V0_BASE + L1_P_BUFCNT * L1_P_V0_SINGLE_SLOT_SIZE;
 constexpr uint32_t L1_PSCALE_V0_BASE = L1_P_V1_BASE + L1_P_BUFCNT * L1_P_V1_SINGLE_SLOT_SIZE;
 constexpr uint32_t L1_PSCALE_V1_BASE = L1_PSCALE_V0_BASE + L1_P_BUFCNT * L1_PSCALE_V0_SINGLE_SLOT_SIZE;
 constexpr uint32_t L1_SHARED_REGION_SIZE = L1_PSCALE_V1_BASE + L1_P_BUFCNT * L1_PSCALE_V1_SINGLE_SLOT_SIZE;
+
+// ===== V 核 UB 跨核契约（AIC Fixpipe 跨核写入 / VectorBlock 分配与消费，两侧同源引用）=====
+// 单位约定（对齐 LocalTensor(TPosition, addr, size)：addr=字节地址、size=元素数）：
+//   BASE 为字节地址；SLOT/SIZE 为元素数；mm1ResUB ring 槽位 = loop % UB_MM1RES_BUFCNT
+// mm1ResUB：C1 FixpipeMm1 的目标（subBlockId 寻址核），V1 softmax 的输入
+// mm2ResUB：C2 FixpipeMm2 的目标，V2 的输入（divOut/outputT 别名区见 block_vector 设计）
+constexpr uint32_t UB_MM1RES_BASE   = 0;                // 字节
+constexpr uint32_t UB_MM1RES_SLOT   = 128 * 128;        // half 元素/槽 [128,128] = 32KB
+constexpr uint32_t UB_MM1RES_BUFCNT = 2;                // ring：loop % 2
+constexpr uint32_t UB_MM2RES_BASE   = 64 * 1024;        // 字节（= mm1ResUB 2 槽 × 32KB 之后）
+constexpr uint32_t UB_MM2RES_SIZE   = (128 + 1) * 128;  // fp32 元素 [129,128] = 66,048B
 
 #endif // QUANT_FLASH_ATTN_COMMON_DEF_H_
