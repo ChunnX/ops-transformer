@@ -22,6 +22,12 @@
 #endif
 #include "../../../../common/op_kernel/mc2_moe_context.h"
 
+// Enabled by default on this investigation branch; no extra build flags required.
+// Diagnostic-only device state; does not change the host tiling or operator ABI.
+#ifndef MEGA_MOE_MTE_DIAG
+#define MEGA_MOE_MTE_DIAG 1
+#endif
+
 namespace MegaMoeImpl {
 
 using namespace AscendC;
@@ -106,6 +112,10 @@ struct ExpertWeightTensorListAddrs {
 };
 
 struct Params {
+#if MEGA_MOE_MTE_DIAG
+    uint32_t diagRank = 0;
+    mutable uint32_t diagRecords[2] = {0, 0};
+#endif
     GM_ADDR aGmAddr;
     GM_ADDR expertIdxGmAddr;
     GM_ADDR bGmAddr;

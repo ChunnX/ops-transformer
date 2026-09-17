@@ -25,6 +25,7 @@
 #include "adv_api/reduce/reduce.h"
 #include "../common/mega_moe_gmm_common.h"
 #include "../common/mega_moe_utils.h"
+#include "../common/mega_moe_mte_diagnostics.h"
 #include "../common/mega_moe_mxfp8_utils.h"
 #include "../../../../common/op_kernel/mc2_kernel_utils.h"
 #include "../../../../common/op_kernel/quantize_functions.h"
@@ -92,6 +93,24 @@ __aicore__ inline void SendCombineTokenRow(uint32_t rowElements, uint64_t gmRemo
                                            const Params &params)
 {
     CombineTokenRoute route = LoadCombineTokenRoute(metaInfoTensor, 0U);
+
+#if MEGA_MOE_MTE_DIAG
+    MteDiagRequire(params, route.dstRankId < params.tilingData->epWorldSize, "combine.peer", route.dstRankId,
+                   params.tilingData->epWorldSize);
+    MteDiagRequire(params, route.tokenIdx < params.tilingData->numMaxTokensPerRank, "combine.token", route.tokenIdx,
+                   params.tilingData->numMaxTokensPerRank);
+    MteDiagRequire(params, route.topkIdx < params.tilingData->topK, "combine.topk", route.topkIdx,
+                   params.tilingData->topK);
+    MteDiagRequire(params, reinterpret_cast<uint64_t>(g_winRankAddr_[route.dstRankId]) > EXCEPTION_DUMP_REGION_SIZE,
+                   "combine.window", reinterpret_cast<int64_t>(g_winRankAddr_[route.dstRankId]),
+                   EXCEPTION_DUMP_REGION_SIZE);
+    MteDiagRange(params, "combine.remote_write", GetRankWinAddrWithOffset(route.dstRankId, gmRemoteBaseOffset),
+                 GetCombineDstRowIndex(route, params) * rowElements * sizeof(Element),
+                 static_cast<uint64_t>(rowElements) * sizeof(Element),
+                 static_cast<uint64_t>(params.tilingData->numMaxTokensPerRank) * params.tilingData->topK * rowElements *
+                     sizeof(Element),
+                 route.dstRankId, true);
+#endif
 
     GlobalTensor<Element> gmRemoteD;
     gmRemoteD.SetGlobalBuffer(
@@ -408,6 +427,13 @@ __aicore__ inline void PreloadWaveCombineMetaInfo(const Params &params, WaveComb
     LocalTensor<int32_t> metaInfoUb = scratch.metaInfoTensor[ubTokenOffset * META_INFO_SIZE];
     GlobalTensor<int32_t> metaInfoGm;
     metaInfoGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.metaInfoPtr));
+#if MEGA_MOE_MTE_DIAG
+    MteDiagRange(params, "combine.meta_read", params.workspaceInfo.metaInfoPtr,
+                 gmTokenOffset * META_INFO_SIZE * sizeof(int32_t),
+                 static_cast<uint64_t>(tokenCount) * META_INFO_SIZE * sizeof(int32_t),
+                 static_cast<uint64_t>(params.tilingData->maxOutputSize) * META_INFO_SIZE * sizeof(int32_t),
+                 params.diagRank, true);
+#endif
     DataCopy(metaInfoUb, metaInfoGm[gmTokenOffset * META_INFO_SIZE], tokenCount * META_INFO_SIZE);
     SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
     WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
@@ -429,6 +455,15 @@ __aicore__ inline void SendWaveCombineToken(const MoeStageCommonConfig &common,
     LocalTensor<bfloat16_t> rowUb = scratch.rowBufferTensor[slotElementOffset];
     DataCopyExtParams gm2UbParams{1U, bufferConfig.rowBytes, 0U, 0U, 0U};
     DataCopyPadExtParams<bfloat16_t> gm2UbPad{false, 0U, 0U, 0U};
+#if MEGA_MOE_MTE_DIAG
+    uint64_t diagGmmOffset = reinterpret_cast<uint64_t>(gmm2OutGm.GetPhyAddr()) -
+                             reinterpret_cast<uint64_t>(params.workspaceInfo.gmm2MmadResPtr);
+    MteDiagRange(params, "combine.gmm2_read", params.workspaceInfo.gmm2MmadResPtr,
+                 diagGmmOffset + static_cast<uint64_t>(tokenLocal) * common.tokenHiddenDim * sizeof(bfloat16_t),
+                 bufferConfig.rowBytes,
+                 static_cast<uint64_t>(params.tilingData->maxOutputSize) * common.tokenHiddenDim * sizeof(bfloat16_t),
+                 params.diagRank, true);
+#endif
     DataCopyPad(rowUb, gmm2OutGm[static_cast<uint64_t>(tokenLocal) * common.tokenHiddenDim], gm2UbParams, gm2UbPad);
     if constexpr (CombineMode == COMBINE_NO_QUANT) {
         SetFlag<HardEvent::MTE2_MTE3>(eventId);
