@@ -27,8 +27,6 @@ static const std::unordered_set<ge::DataType> SCALE_TYPE_SUPPORT_SET = {ge::DT_U
                                                                         ge::DT_BF16, ge::DT_FLOAT8_E8M0};
 static const std::unordered_set<ge::DataType> PERTOEKN_SCALE_TYPE_SUPPORT_SET = {ge::DT_FLOAT, ge::DT_FLOAT8_E8M0};
 constexpr size_t GROUP_LIST_DIM_NUM = 1UL;
-constexpr size_t GROUP_LIST_SPARSE_DIM_NUM = 2UL;
-constexpr int64_t GROUP_LIST_TYPE_SPARSE_M = 2L;
 constexpr size_t X_SHAPE_DIM_SPLIT_M = 2UL;
 constexpr size_t W_SHAPE_DIM_SPLIT_M = 3UL;
 constexpr size_t X_SHAPE_DIM_SPLIT_K = 2UL;
@@ -501,7 +499,7 @@ ge::graphStatus GroupedMatmulQuantChecker::GetGroupNumValue(const gert::InferSha
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
     const int64_t *groupListTypePtr = attrs->GetAttrPointer<int64_t>(GMM_INDEX_ATTR_GROUP_LIST_TYPE);
     OP_CHECK_NULL_WITH_CONTEXT(context, groupListTypePtr);
-    if (*groupListTypePtr == GROUP_LIST_TYPE_SPARSE_M) {
+    if (*groupListTypePtr == GROUP_LIST_SPARSE) {
         OP_CHECK_IF(groupListShape->GetDimNum() != GROUP_LIST_SPARSE_DIM_NUM,
                     OP_LOGE(context->GetNodeName(),
                             "When groupListType is 2, groupList dim num should be [%zu], but the actual is [%zu].",
