@@ -714,18 +714,19 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
 __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::CopyFromWindowByExpert()
 {
-    DataCopyExtParams hitCountOneCopyParams{1U, static_cast<uint32_t>(numLocalExperts_ * sizeof(int32_t)), 0U, 0U, 0U};
-    DataCopyPadExtParams<int32_t> hitCountOnePadParams{false, 0U, 0U, 0};
     SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
-    Adds(ubRowStart_, ubExpertPfx_, static_cast<int64_t>(0), numLocalExperts_);
-    for (uint32_t aiv = 0; aiv < aivId_; ++aiv) {
-        DataCopyPad(ubHitCount_, hitCountGm_[(int64_t)aiv * hitCountStride_], hitCountOneCopyParams,
-                    hitCountOnePadParams);
-        SyncFunc<AscendC::HardEvent::MTE2_V>();
-        Cast(ubHitCountRowI64_, ubHitCount_, RoundMode::CAST_NONE, numLocalExperts_);
-        Add(ubRowStart_, ubRowStart_, ubHitCountRowI64_, numLocalExperts_);
-        SyncFunc<AscendC::HardEvent::V_MTE2>();
+    // recv_x 段起点 = 专家前缀 + 本核之前所有核在该专家上的命中数。
+    // BuildRankRowStarts 已经把后者按 [rank][expert] 存进 ubRankExpertHitCount_，而且只累加了 coreId < aivId_
+    // 的核，所以对 rank 求和恒等于原来「逐核从 GM 搬 hitCount 再累加」的结果：
+    //     sum_r sum_{c<aivId_} H[c][r][e]  ==  sum_{c<aivId_} hitCountGm_[c][e]
+    // 原来那个循环是 aivId_ 次串行 DMA、每次夹两个 pipe 同步，是 CopyExpert 段里最长的一段串行标量；现在换成
+    // epWorldSize_ 次纯向量 Add，标量只剩发指令。
+    Duplicate(ubHitCount_, (int32_t)0, numLocalExperts_);
+    for (uint32_t prefixRank = 0; prefixRank < epWorldSize_; ++prefixRank) {
+        Add(ubHitCount_, ubHitCount_, ubRankExpertHitCount_[prefixRank * numLocalExperts_], numLocalExperts_);
     }
+    Cast(ubHitCountRowI64_, ubHitCount_, RoundMode::CAST_NONE, numLocalExperts_);
+    Add(ubRowStart_, ubExpertPfx_, ubHitCountRowI64_, numLocalExperts_);
 
     Duplicate(ubLocalCursor_, (int32_t)0, numLocalExperts_);
     SyncFunc<AscendC::HardEvent::V_S>();
