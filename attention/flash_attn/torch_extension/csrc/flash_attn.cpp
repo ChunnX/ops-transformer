@@ -25,16 +25,27 @@ const int64_t DIM_FIVE = 5;
 const int64_t MAX_DIM_SIZE = 8;
 
 namespace {
-void CheckLayoutDims(const at::Tensor &tensor, const char *name, const std::string &layout, bool isQuery)
+void CheckQueryLayoutDims(const at::Tensor &query, const std::string &layout)
 {
     int64_t expected = 0;
     if (layout == "TND") {
         expected = DIM_THREE;
     } else if (layout == "BSND" || layout == "BNSD") {
         expected = DIM_FOUR;
-    } else if (!isQuery && (layout == "PA_BBND" || layout == "PA_BNBD")) {
+    }
+    TORCH_CHECK(expected != 0, "Unsupported q layout: ", layout);
+    TORCH_CHECK(query.dim() == expected, "q with layout ", layout, " expects ", expected, " dims, but got ",
+                query.dim(), " dims ", query.sizes());
+}
+
+void CheckKvLayoutDims(const at::Tensor &tensor, const char *name, const std::string &layout)
+{
+    int64_t expected = 0;
+    if (layout == "TND") {
+        expected = DIM_THREE;
+    } else if (layout == "BSND" || layout == "BNSD" || layout == "PA_BBND" || layout == "PA_BNBD") {
         expected = DIM_FOUR;
-    } else if (!isQuery && layout == "PA_NZ") {
+    } else if (layout == "PA_NZ") {
         expected = DIM_FIVE;
     }
     TORCH_CHECK(expected != 0, "Unsupported ", name, " layout: ", layout);
@@ -65,9 +76,9 @@ std::tuple<at::Tensor, at::Tensor> FlashAttn(
     int64_t maxSeqlenQ, int64_t maxSeqlenKv, string layoutQ, string layoutKv, string layoutOut,
     int64_t returnSoftmaxLse)
 {
-    CheckLayoutDims(q, "q", layoutQ, true);
-    CheckLayoutDims(k, "k", layoutKv, false);
-    CheckLayoutDims(v, "v", layoutKv, false);
+    CheckQueryLayoutDims(q, layoutQ);
+    CheckKvLayoutDims(k, "k", layoutKv);
+    CheckKvLayoutDims(v, "v", layoutKv);
 
     int64_t tSize = 0;
     int64_t nSize = 0;
