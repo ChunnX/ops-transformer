@@ -607,22 +607,19 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const EngramFe
         int64_t wsSortedIndicesTemp = aivNum * perCoreTempSize;
         int64_t wsPermOutTemp = aivNum * perCoreTempSize;
         int64_t wsCounterScratch = aivNum * UB_ALIGN;
-        constexpr int64_t NOTIFY_SLOT_CNT = 16;
-        int64_t numSendCores = aivNum / 2;
-        if (numSendCores == 0) {
-            numSendCores = 1;
-        }
-        if (numSendCores >= numRanks) {
-            numSendCores = numSendCores / numRanks * numRanks;
-        }
-        int64_t streamsPerCore = (numRanks + numSendCores - 1) / numSendCores;
-        int64_t wsNotifyScratch = numSendCores * streamsPerCore * NOTIFY_SLOT_CNT * UB_ALIGN;
         int64_t wsPartialCounts = aivNum * numRanks * static_cast<int64_t>(sizeof(int32_t));
         int64_t wsFlagScratch = aivNum * UB_ALIGN;
-        int64_t wsIndicesReadyFlag = numRanks * static_cast<int64_t>(sizeof(int32_t));
+        int64_t wsIndicesReadyFlag = AlignTo(numRanks * static_cast<int64_t>(sizeof(int32_t)), UB_ALIGN);
+        OP_TILING_CHECK(tilingData.totalRecv < 0 || tilingData.hiddenBytes <= 0 ||
+                            tilingData.totalRecv > INT64_MAX / tilingData.hiddenBytes,
+                        OP_LOGE(nodeName, "token staging size overflow: totalRecv=%ld, hiddenBytes=%ld",
+                                tilingData.totalRecv, tilingData.hiddenBytes),
+                        return ge::GRAPH_FAILED);
+        int64_t wsTokenStaging = tilingData.totalRecv * tilingData.hiddenBytes;
+        OP_LOGD(nodeName, "token staging bytes = %ld, totalRecv=%ld", wsTokenStaging, tilingData.totalRecv);
 
         int64_t wsTotal = wsSdispls + wsRdispls + wsSortedIndices + wsSortedIndicesTemp + wsPermOutTemp +
-                          wsCounterScratch + wsNotifyScratch + wsPartialCounts + wsFlagScratch + wsIndicesReadyFlag;
+                          wsCounterScratch + wsPartialCounts + wsFlagScratch + wsIndicesReadyFlag + wsTokenStaging;
         wsTotal = ((wsTotal + WORKSPACE_ALIGN_2MB - 1) / WORKSPACE_ALIGN_2MB) * WORKSPACE_ALIGN_2MB;
         wsTotal += SYSTEM_NEED_WORKSPACE;
         workSpaces[0] = static_cast<size_t>(wsTotal);
