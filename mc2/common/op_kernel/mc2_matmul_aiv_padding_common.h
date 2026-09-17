@@ -79,7 +79,7 @@ CATLASS_DEVICE void PadMatmulInputs(Catlass::Arch::Resource<ArchTag> &resource,
     PadMatrix<ArchTag, typename BType::Element>(resource, params.matrixB);
 }
 
-CATLASS_DEVICE inline void NotifyMatmulPaddingFinished(Catlass::Arch::CrossCoreFlag &finishFlag)
+CATLASS_DEVICE void NotifyMatmulPaddingFinished(Catlass::Arch::CrossCoreFlag &finishFlag)
 {
     Catlass::Arch::CrossCoreBarrier<0x0, PIPE_MTE3>();
     Catlass::Arch::CrossCoreSetFlag<0x2, PIPE_MTE3>(finishFlag);
