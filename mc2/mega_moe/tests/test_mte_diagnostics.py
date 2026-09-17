@@ -27,6 +27,8 @@ STUBS = r"""
 #include <limits>
 #define MEGA_MOE_UTILS_H
 #define __aicore__
+// CPU stubs do not model the device GM address space.
+#define __gm__
 using GM_ADDR = unsigned char *;
 constexpr int AIV = 1;
 constexpr int g_coreType = AIV;

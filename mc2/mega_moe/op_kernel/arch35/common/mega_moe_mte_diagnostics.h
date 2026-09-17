@@ -39,8 +39,9 @@ __aicore__ inline bool MteDiagSelected(const Params &p)
     return MteDiagEnabled(p) && (MEGA_MOE_MTE_DIAG_CORE < 0 || GetBlockIdx() == MEGA_MOE_MTE_DIAG_CORE);
 }
 
+// Device string literals live in GM; preserve that address space in label parameters.
 // No added barriers: these are scalar execution markers, not completion timestamps.
-__aicore__ inline void MteDiagStage(const Params &p, const char *stage)
+__aicore__ inline void MteDiagStage(const Params &p, const __gm__ char *stage)
 {
     if (MteDiagSelected(p)) {
         printf("[MM_DIAG] rank=%u core=%u sub=%u max=%u stage=%s cycle=%llu\n", p.diagRank, GetBlockIdx(),
@@ -48,7 +49,8 @@ __aicore__ inline void MteDiagStage(const Params &p, const char *stage)
     }
 }
 
-__aicore__ inline void MteDiagRequire(const Params &p, bool valid, const char *site, int64_t value, uint64_t limit)
+__aicore__ inline void MteDiagRequire(const Params &p, bool valid, const __gm__ char *site, int64_t value,
+                                      uint64_t limit)
 {
     if (MteDiagEnabled(p) && !valid) {
         printf("[MM_DIAG_INVALID] rank=%u core=%u sub=%u site=%s value=%lld limit=%llu max=%u\n", p.diagRank,
@@ -60,8 +62,8 @@ __aicore__ inline void MteDiagRequire(const Params &p, bool valid, const char *s
 
 // Subtraction avoids overflow in offset + bytes. Limits describe the current logical
 // partition, not the size/liveness of the remote HCCL registration.
-__aicore__ inline void MteDiagRange(const Params &p, const char *site, GM_ADDR base, uint64_t offset, uint64_t bytes,
-                                    uint64_t limit, uint32_t peer, bool combine = false)
+__aicore__ inline void MteDiagRange(const Params &p, const __gm__ char *site, GM_ADDR base, uint64_t offset,
+                                    uint64_t bytes, uint64_t limit, uint32_t peer, bool combine = false)
 {
     if (!MteDiagEnabled(p)) {
         return;
