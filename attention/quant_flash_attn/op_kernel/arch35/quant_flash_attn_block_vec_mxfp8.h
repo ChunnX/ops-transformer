@@ -439,6 +439,10 @@ public:
                 if (!runInfo.isS2SplitCore && constInfo_.isSoftmaxLseEnable) {
                     SoftmaxLseCopyOut(sumUb, maxUb, runInfo);
                 }
+            } else {
+                if (constInfo_.isSoftmaxLseEnable) {
+                    SoftmaxLseCopyOut(sumUb, maxUb, runInfo);
+                }
             }
         } else {
             if (constInfo_.isSoftmaxLseEnable) {
@@ -799,8 +803,10 @@ public:
                 } else {
                     Bmm2ResCastAndCopyOut(runInfo, vec2ResUb, mStartVec, mDealSize, gmDealRowCount);
                 }
+            } else {
+                Bmm2ResCastAndCopyOut(runInfo, vec2ResUb, mStartVec, mDealSize, gmDealRowCount);
             }
-        }else {
+        } else {
             Bmm2ResCastAndCopyOut(runInfo, vec2ResUb, mStartVec, mDealSize, gmDealRowCount);
         }
     }
