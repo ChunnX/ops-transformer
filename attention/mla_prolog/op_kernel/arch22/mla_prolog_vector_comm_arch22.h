@@ -216,16 +216,16 @@ __aicore__ inline void RowMax(LocalTensor<float> &dstUb, LocalTensor<float> &src
           outputLocal [i,j] = inputLocal[i,j] * scaleLocal[j] * scale2Local [i]
  * @param outputLocal 输出tensor [row , col]
  * @param inputLocal 输入tensor [row , col]
- * @param scaleLocal [1,col] 量化系数；行向量
  * @param scale2Local [row,8] 量化系数；列向量，8为float扩充为32Bytes
+ * @param scaleLocal [1,col] 量化系数；行向量
  * @param rectangleParams 描述待处理数据的排布，包括
-          row 行数
-          col 列数
           stride 一行的真实长度
+          col 列数
+          row 行数
  */
 template <typename T>
 __aicore__ inline void Dequant(const LocalTensor<float> &outputLocal, const LocalTensor<T> &inputLocal,
-                               const LocalTensor<float> &scaleLocal, const LocalTensor<float> &scale2Local,
+                               const LocalTensor<float> &scale2Local, const LocalTensor<float> &scaleLocal,
                                const Rectangle &rectangleParams)
 {
     uint64_t cnt = rectangleParams.col * rectangleParams.row;

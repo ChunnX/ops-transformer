@@ -41,43 +41,48 @@ __aicore__ inline void DequantPerTokenQc(const GlobalTensor<O> &outputGm, const 
                                          const LocalTensor<uint8_t> &shareTmpUb, Rectangle dequantRowColStrideParams,
                                          uint32_t oriRow)
 {
-    int64_t count = dequantRowColStrideParams.row * dequantRowColStrideParams.col;
+    int64_t perTokenCount = dequantRowColStrideParams.row * dequantRowColStrideParams.col;
 
-    LocalTensor<T> inputLocal = shareTmpUb.ReinterpretCast<T>();                         // count * sizeof(T)
-    LocalTensor<C> scaleLocal = inputLocal[count + 16].template ReinterpretCast<C>();    // count * sizeof(C)
-    LocalTensor<C> computeLocal = scaleLocal[count + 16].template ReinterpretCast<C>();  // count * sizeof(C)
-    LocalTensor<O> outputLocal = computeLocal[count + 16].template ReinterpretCast<O>(); // count * sizeof(O)
+    LocalTensor<T> perTokenInputLocal = shareTmpUb.ReinterpretCast<T>(); // count * sizeof(T)
+    LocalTensor<C> perTokenScaleLocal =
+        perTokenInputLocal[perTokenCount + 16].template ReinterpretCast<C>(); // count * sizeof(C)
+    LocalTensor<C> perTokenComputeLocal =
+        perTokenScaleLocal[perTokenCount + 16].template ReinterpretCast<C>(); // count * sizeof(C)
+    LocalTensor<O> perTokenOutputLocal =
+        perTokenComputeLocal[perTokenCount + 16].template ReinterpretCast<O>(); // count * sizeof(O)
 
-    DataCopyParams copyParams{
+    DataCopyParams perTokenCopyParams{
         static_cast<uint16_t>(dequantRowColStrideParams.row),
         static_cast<uint16_t>(dequantRowColStrideParams.col * sizeof(T) / 32U),
         static_cast<uint16_t>((dequantRowColStrideParams.stride - dequantRowColStrideParams.col) * sizeof(T) / 32U), 0};
 
-    Rectangle rectangleParams{
-        static_cast<uint32_t>(1),     // row
-        static_cast<uint32_t>(count), // col
-        static_cast<uint32_t>(count)  // columnStride
+    Rectangle perTokenRectangleParams{
+        static_cast<uint32_t>(1),             // row
+        static_cast<uint32_t>(perTokenCount), // col
+        static_cast<uint32_t>(perTokenCount)  // columnStride
     };
 
-    for (int64_t rowOffset = 0; rowOffset < oriRow; rowOffset += dequantRowColStrideParams.row) {
-        int64_t inputOffset = rowOffset * dequantRowColStrideParams.stride;
-        int64_t outputOffset = rowOffset * dequantRowColStrideParams.col;
+    for (int64_t perTokenRowOffset = 0; perTokenRowOffset < oriRow;
+         perTokenRowOffset += dequantRowColStrideParams.row) {
+        int64_t perTokenInputOffset = perTokenRowOffset * dequantRowColStrideParams.stride;
+        int64_t perTokenOutputOffset = perTokenRowOffset * dequantRowColStrideParams.col;
         // copy in
         SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
         WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
-        DataCopy(inputLocal, inputGm[inputOffset], copyParams);
-        DataCopy(scaleLocal, deqScaleQcQrWGm[inputOffset], copyParams);
+        DataCopy(perTokenInputLocal, inputGm[perTokenInputOffset], perTokenCopyParams);
+        DataCopy(perTokenScaleLocal, deqScaleQcQrWGm[perTokenInputOffset], perTokenCopyParams);
         SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
         WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
         // compute
-        Dequant(computeLocal, inputLocal, scaleLocal, deQuantScaleQcQrLocal, rectangleParams);
+        Dequant(perTokenComputeLocal, perTokenInputLocal, perTokenScaleLocal, deQuantScaleQcQrLocal,
+                perTokenRectangleParams);
         AscendC::PipeBarrier<PIPE_V>();
         // cast
-        Cast(outputLocal, computeLocal, RoundMode::CAST_RINT, count);
+        Cast(perTokenOutputLocal, perTokenComputeLocal, RoundMode::CAST_RINT, perTokenCount);
         SetFlag<HardEvent::V_MTE3>(EVENT_ID2);
         // copy out
         WaitFlag<HardEvent::V_MTE3>(EVENT_ID2);
-        DataCopy(outputGm[outputOffset], outputLocal, count);
+        DataCopy(outputGm[perTokenOutputOffset], perTokenOutputLocal, perTokenCount);
     }
 }
 
@@ -97,31 +102,32 @@ __aicore__ inline void CastPerTokenQc(const GlobalTensor<O> &outputGm, const Glo
                                       const LocalTensor<uint8_t> &shareTmpUb, Rectangle castRowColStrideParams,
                                       uint32_t oriRow)
 {
-    int64_t count = castRowColStrideParams.row * castRowColStrideParams.col;
+    int64_t castQcCount = castRowColStrideParams.row * castRowColStrideParams.col;
 
-    LocalTensor<T> inputLocal = shareTmpUb.ReinterpretCast<T>();                       // count * sizeof(T)
-    LocalTensor<O> outputLocal = inputLocal[count + 16].template ReinterpretCast<O>(); // count * sizeof(O)
+    LocalTensor<T> castQcInputLocal = shareTmpUb.ReinterpretCast<T>(); // count * sizeof(T)
+    LocalTensor<O> castQcOutputLocal =
+        castQcInputLocal[castQcCount + 16].template ReinterpretCast<O>(); // count * sizeof(O)
 
-    DataCopyParams copyParams{
+    DataCopyParams castQcCopyParams{
         static_cast<uint16_t>(castRowColStrideParams.row),
         static_cast<uint16_t>(castRowColStrideParams.col * sizeof(T) / 32U),
         static_cast<uint16_t>((castRowColStrideParams.stride - castRowColStrideParams.col) * sizeof(T) / 32U), 0};
 
-    for (int64_t rowOffset = 0; rowOffset < oriRow; rowOffset += castRowColStrideParams.row) {
-        int64_t inputOffset = rowOffset * castRowColStrideParams.stride;
-        int64_t outputOffset = rowOffset * castRowColStrideParams.col;
+    for (int64_t castQcRowOffset = 0; castQcRowOffset < oriRow; castQcRowOffset += castRowColStrideParams.row) {
+        int64_t castQcInputOffset = castRowColStrideParams.stride * castQcRowOffset;
+        int64_t castQcOutputOffset = castRowColStrideParams.col * castQcRowOffset;
         // copy in
         SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
         WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
-        DataCopy(inputLocal, inputGm[inputOffset], copyParams);
+        DataCopy(castQcInputLocal, inputGm[castQcInputOffset], castQcCopyParams);
         SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
         WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
         // cast
-        Cast(outputLocal, inputLocal, RoundMode::CAST_RINT, count);
+        Cast(castQcOutputLocal, castQcInputLocal, RoundMode::CAST_RINT, castQcCount);
         SetFlag<HardEvent::V_MTE3>(EVENT_ID2);
         // copy out
         WaitFlag<HardEvent::V_MTE3>(EVENT_ID2);
-        DataCopy(outputGm[outputOffset], outputLocal, count);
+        DataCopy(outputGm[castQcOutputOffset], castQcOutputLocal, castQcCount);
     }
 }
 
@@ -150,44 +156,49 @@ __aicore__ inline void DequantSplitNQc(const GlobalTensor<O> &outputGm, const Gl
                                        const LocalTensor<uint8_t> &shareTmpUb, Rectangle dequantRowColStrideParams,
                                        uint32_t oriCol, uint32_t dstStride, uint32_t subBlockIdx_)
 {
-    int64_t count = dequantRowColStrideParams.col * 1;
-    LocalTensor<T> inputLocal = shareTmpUb.ReinterpretCast<T>();                         // count * sizeof(T)
-    LocalTensor<C> scaleLocal = inputLocal[count + 16].template ReinterpretCast<C>();    // count * sizeof(C)
-    LocalTensor<C> computeLocal = scaleLocal[count + 16].template ReinterpretCast<C>();  // count * sizeof(C)
-    LocalTensor<O> outputLocal = computeLocal[count + 16].template ReinterpretCast<O>(); // count * sizeof(O)
+    int64_t splitQcCount = dequantRowColStrideParams.col * 1;
+    LocalTensor<T> splitQcInputLocal = shareTmpUb.ReinterpretCast<T>(); // count * sizeof(T)
+    LocalTensor<C> splitQcScaleLocal =
+        splitQcInputLocal[splitQcCount + 16].template ReinterpretCast<C>(); // count * sizeof(C)
+    LocalTensor<C> splitQcComputeLocal =
+        splitQcScaleLocal[splitQcCount + 16].template ReinterpretCast<C>(); // count * sizeof(C)
+    LocalTensor<O> splitQcOutputLocal =
+        splitQcComputeLocal[splitQcCount + 16].template ReinterpretCast<O>(); // count * sizeof(O)
 
-    DataCopyParams inputCopyParams{
-        static_cast<uint16_t>(1), static_cast<uint16_t>(count * sizeof(T) / 32U),
+    DataCopyParams splitQcInputCopyParams{
+        static_cast<uint16_t>(1), static_cast<uint16_t>(splitQcCount * sizeof(T) / 32U),
         static_cast<uint16_t>((dequantRowColStrideParams.stride - dequantRowColStrideParams.col) * sizeof(T) / 32U), 0};
 
-    DataCopyParams outputCopyParams{static_cast<uint16_t>(1), static_cast<uint16_t>(count * sizeof(O) / 32U), 0,
-                                    static_cast<uint16_t>(dstStride * sizeof(O) / 32U)};
+    DataCopyParams splitQcOutputCopyParams{static_cast<uint16_t>(1),
+                                           static_cast<uint16_t>(splitQcCount * sizeof(O) / 32U), 0,
+                                           static_cast<uint16_t>(dstStride * sizeof(O) / 32U)};
 
-    Rectangle rectangleParams{
-        static_cast<uint32_t>(1),     // row
-        static_cast<uint32_t>(count), // col
-        static_cast<uint32_t>(count)  // columnStride
+    Rectangle splitQcRectangleParams{
+        static_cast<uint32_t>(1),            // row
+        static_cast<uint32_t>(splitQcCount), // col
+        static_cast<uint32_t>(splitQcCount)  // columnStride
     };
 
     SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
-    int64_t scaleOffset = subBlockIdx_ * count;
-    DataCopy(scaleLocal, deqScaleQcQrWGm[scaleOffset], dequantRowColStrideParams.col);
-    for (int64_t rowOffset = 0; rowOffset < dequantRowColStrideParams.row; rowOffset++) {
-        int64_t inputOffset = rowOffset * oriCol + subBlockIdx_ * count;
-        int64_t outputOffset = rowOffset * oriCol + subBlockIdx_ * count;
+    int64_t splitQcScaleOffset = subBlockIdx_ * splitQcCount;
+    DataCopy(splitQcScaleLocal, deqScaleQcQrWGm[splitQcScaleOffset], dequantRowColStrideParams.col);
+    for (int64_t splitQcRowOffset = 0; splitQcRowOffset < dequantRowColStrideParams.row; splitQcRowOffset++) {
+        int64_t splitQcInputOffset = splitQcRowOffset * oriCol + subBlockIdx_ * splitQcCount;
+        int64_t splitQcOutputOffset = splitQcRowOffset * oriCol + subBlockIdx_ * splitQcCount;
         WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
-        DataCopy(inputLocal, inputGm[inputOffset], inputCopyParams);
+        DataCopy(splitQcInputLocal, inputGm[splitQcInputOffset], splitQcInputCopyParams);
         SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
         WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
         // compute
-        Dequant(computeLocal, inputLocal, scaleLocal, deQuantScaleQcQrLocal, rectangleParams);
+        Dequant(splitQcComputeLocal, splitQcInputLocal, splitQcScaleLocal, deQuantScaleQcQrLocal,
+                splitQcRectangleParams);
         AscendC::PipeBarrier<PIPE_V>();
         // cast
-        Cast(outputLocal, computeLocal, RoundMode::CAST_RINT, count);
+        Cast(splitQcOutputLocal, splitQcComputeLocal, RoundMode::CAST_RINT, splitQcCount);
         SetFlag<HardEvent::V_MTE3>(EVENT_ID2);
         // copy out
         WaitFlag<HardEvent::V_MTE3>(EVENT_ID2);
-        DataCopy(outputGm[outputOffset], outputLocal, count);
+        DataCopy(outputGm[splitQcOutputOffset], splitQcOutputLocal, splitQcCount);
         SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
     }
     WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);

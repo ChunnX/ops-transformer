@@ -18,15 +18,15 @@
 
 #include "mla_prolog_comm_arch35.h"
 #include "mla_prolog_vector_comm_arch35.h"
-#include "service_matmul_arch35.h"
-#include "service_rms_norm_arch35.h"
-#include "service_gather_sin_cos_arch35.h"
-#include "service_rotary_position_embedding_arch35.h"
 #include "service_scatter_cache_arch35.h"
+#include "service_rms_norm_arch35.h"
 #include "service_dequant_arch35.h"
+#include "service_matmul_arch35.h"
+#include "service_gather_sin_cos_arch35.h"
 #include "service_dynamic_quant_qn_mul_qr_arch35.h"
-#include "../mla_prolog_tiling_data.h"
+#include "service_rotary_position_embedding_arch35.h"
 #include "../mla_prolog_template_tiling_key.h"
+#include "../mla_prolog_tiling_data.h"
 
 namespace MlaProlog {
 template <typename MLAPT>
@@ -669,56 +669,57 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::CubeBufferInit()
 template <typename MLAPT>
 __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::WorkspaceInit(__gm__ uint8_t *workspace)
 {
-    int64_t workspaceOffset = 0;
+    int64_t snWorkspaceOffset = 0;
     if constexpr (std::is_same<rmsNormCqOutputType, FP8E4M3>::value && isFp8E8m0) {
         dequantScaleCqSize_ = baseParams_->headSizeCq / FP8_E4M3_BLOCK_SIZE;
     }
     dequantScaleCqSize_ = Align(dequantScaleCqSize_, BYTE_BLOCK);
     if constexpr (MLAPT::enableGroupComputeOpt || MLAPT::enableDequantOpt) {
-        dequantTool_.deQuantScaleCqGm_.SetGlobalBuffer((__gm__ dequantScaleType *)(workspace + workspaceOffset));
-        workspaceOffset += baseParams_->stepBatchSize * dequantScaleCqSize_;
+        dequantTool_.deQuantScaleCqGm_.SetGlobalBuffer((__gm__ dequantScaleType *)(workspace + snWorkspaceOffset));
+        snWorkspaceOffset += baseParams_->stepBatchSize * dequantScaleCqSize_;
     }
 
-    mmCkvKrResGm_.SetGlobalBuffer((__gm__ mmCkvKrOutputType *)(workspace + workspaceOffset));
-    workspaceOffset += static_cast<int64_t>(baseParams_->stepBatchSize) *
-                       static_cast<int64_t>(baseParams_->headSizeCkv + baseParams_->dimHeadRope) *
-                       static_cast<int64_t>(sizeof(mmCkvKrOutputType));
+    mmCkvKrResGm_.SetGlobalBuffer((__gm__ mmCkvKrOutputType *)(workspace + snWorkspaceOffset));
+    snWorkspaceOffset += static_cast<int64_t>(baseParams_->stepBatchSize) *
+                         static_cast<int64_t>(baseParams_->headSizeCkv + baseParams_->dimHeadRope) *
+                         static_cast<int64_t>(sizeof(mmCkvKrOutputType));
 
-    mmCqResGm_.SetGlobalBuffer((__gm__ mmCqOutputType *)(workspace + workspaceOffset));
+    mmCqResGm_.SetGlobalBuffer((__gm__ mmCqOutputType *)(workspace + snWorkspaceOffset));
 
     if (baseParams_->queryNormFlag == 0U) {
         // 全量化场景下`mmCqResGm_`与`rmsNormCqResGm_`的dtype不同，无法共用workspace，此处需要偏移`mmCqResGm_`占用的大小；
         if constexpr (!std::is_same<rmsNormCqOutputType, mmCqOutputType>::value) {
-            workspaceOffset += static_cast<int64_t>(baseParams_->stepBatchSize) *
-                               static_cast<int64_t>(baseParams_->headSizeCq) *
-                               static_cast<int64_t>(sizeof(mmCqOutputType));
+            snWorkspaceOffset += static_cast<int64_t>(baseParams_->stepBatchSize) *
+                                 static_cast<int64_t>(baseParams_->headSizeCq) *
+                                 static_cast<int64_t>(sizeof(mmCqOutputType));
         }
         // 不返回queryNorm时，rmsNormCq结果放在workspace
-        rmsNormCqResGm_.SetGlobalBuffer((__gm__ rmsNormCqOutputType *)(workspace + workspaceOffset));
-        workspaceOffset += static_cast<int64_t>(baseParams_->stepBatchSize) *
-                           static_cast<int64_t>(baseParams_->headSizeCq) * sizeof(rmsNormCqOutputType);
+        rmsNormCqResGm_.SetGlobalBuffer((__gm__ rmsNormCqOutputType *)(workspace + snWorkspaceOffset));
+        snWorkspaceOffset += static_cast<int64_t>(baseParams_->stepBatchSize) *
+                             static_cast<int64_t>(baseParams_->headSizeCq) * sizeof(rmsNormCqOutputType);
     } else {
         // 返回queryNorm时，rmsNormCq结果直接输出gm，此处需要偏移`mmCqResGm_`占用的大小
-        workspaceOffset += static_cast<int64_t>(baseParams_->stepBatchSize) *
-                           static_cast<int64_t>(baseParams_->headSizeCq) * static_cast<int64_t>(sizeof(mmCqOutputType));
+        snWorkspaceOffset += static_cast<int64_t>(baseParams_->stepBatchSize) *
+                             static_cast<int64_t>(baseParams_->headSizeCq) *
+                             static_cast<int64_t>(sizeof(mmCqOutputType));
     }
 
-    mmQcQrResGm_.SetGlobalBuffer((__gm__ mmQcQrOutputType *)(workspace + workspaceOffset));
+    mmQcQrResGm_.SetGlobalBuffer((__gm__ mmQcQrOutputType *)(workspace + snWorkspaceOffset));
     if constexpr (IsFullQuantMode<mmQcQrInputType, dequantScaleType, false>()) {
-        workspaceOffset += static_cast<int64_t>(baseParams_->stepBatchSize) *
-                           static_cast<int64_t>(baseParams_->headSizeQc + baseParams_->headSizeQr) *
-                           static_cast<int64_t>(sizeof(mmQcQrOutputType));
+        snWorkspaceOffset += static_cast<int64_t>(baseParams_->stepBatchSize) *
+                             static_cast<int64_t>(baseParams_->headSizeQc + baseParams_->headSizeQr) *
+                             static_cast<int64_t>(sizeof(mmQcQrOutputType));
     }
 
-    mmQcQrResDequantGm_.SetGlobalBuffer((__gm__ mmQnInputType *)(workspace + workspaceOffset));
+    mmQcQrResDequantGm_.SetGlobalBuffer((__gm__ mmQnInputType *)(workspace + snWorkspaceOffset));
     if constexpr (((std::is_same<mmInputType, int8_t>::value && std::is_same<kvCacheType, int8_t>::value) ||
                    (std::is_same<mmInputType, FP8E4M3>::value && std::is_same<kvCacheType, FP8E4M3>::value) ||
                    (std::is_same<mmInputType, HIF8>::value && std::is_same<kvCacheType, HIF8>::value)) &&
                   !isPertile) {
-        workspaceOffset += static_cast<int64_t>(baseParams_->stepBatchSize) *
-                           static_cast<int64_t>(baseParams_->numHeadSize) *
-                           static_cast<int64_t>(baseParams_->dimHeadSizeQc) * sizeof(mmQnInputType);
-        mmQnResGm_.SetGlobalBuffer((__gm__ mmQnOutputType *)(workspace + workspaceOffset));
+        snWorkspaceOffset += static_cast<int64_t>(baseParams_->stepBatchSize) *
+                             static_cast<int64_t>(baseParams_->numHeadSize) *
+                             static_cast<int64_t>(baseParams_->dimHeadSizeQc) * sizeof(mmQnInputType);
+        mmQnResGm_.SetGlobalBuffer((__gm__ mmQnOutputType *)(workspace + snWorkspaceOffset));
     }
 }
 

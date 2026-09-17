@@ -277,16 +277,16 @@ struct DequantQcQrSplitNParams {
 };
 
 struct RopeQrSplitNParams {
-    int64_t ropeQrOffset;
-    int64_t ropeQrResOffset;
-    uint32_t inputOffsetRope;
-    uint32_t deqScaleOffset;
-    uint32_t outputOffsetRope;
-    int64_t ropeStride;
-    uint32_t ropeDstStride;
-    uint32_t deQuantScaleCqOffset;
-    uint32_t sinCosOffset;
     uint32_t ropeCnt;
+    uint32_t sinCosOffset;
+    uint32_t deQuantScaleCqOffset;
+    uint32_t ropeDstStride;
+    int64_t ropeStride;
+    uint32_t outputOffsetRope;
+    uint32_t deqScaleOffset;
+    uint32_t inputOffsetRope;
+    int64_t ropeQrResOffset;
+    int64_t ropeQrOffset;
 };
 
 struct CkvkrParams {
@@ -341,33 +341,33 @@ struct AicOffset {
 };
 
 struct MMBufParams {
-    uint32_t aL1BufIter = 0;
-    uint32_t bL1BufIter = 0;
-    TBuffAddr aL1BufAddr;
-    TBuffAddr bL1BufAddr;
-    uint32_t aL0BufIter = 0;
-    uint32_t bL0BufIter = 0;
-    uint32_t cL0BufIter = 0;
-    TBuffAddr aL0BufAddr;
-    TBuffAddr bL0BufAddr;
     TBuffAddr cL0BufAddr;
+    TBuffAddr bL0BufAddr;
+    TBuffAddr aL0BufAddr;
+    uint32_t cL0BufIter = 0;
+    uint32_t bL0BufIter = 0;
+    uint32_t aL0BufIter = 0;
+    TBuffAddr bL1BufAddr;
+    TBuffAddr aL1BufAddr;
+    uint32_t bL1BufIter = 0;
+    uint32_t aL1BufIter = 0;
 };
 
 struct MMParams {
-    uint32_t m;
-    uint32_t n;
-    uint32_t k;
-    uint32_t orgM;
-    uint32_t orgN;
-    uint32_t orgKa;
-    uint32_t orgKb;
-    uint32_t orgKc;
-    uint32_t baseM;
-    uint32_t baseN;
-    uint32_t baseK;
-    uint32_t stepK;
-    uint32_t needSetOrgShape;
     uint32_t kL1StepSize;
+    uint32_t needSetOrgShape;
+    uint32_t stepK;
+    uint32_t baseK;
+    uint32_t baseN;
+    uint32_t baseM;
+    uint32_t orgKc;
+    uint32_t orgKb;
+    uint32_t orgKa;
+    uint32_t orgN;
+    uint32_t orgM;
+    uint32_t k;
+    uint32_t n;
+    uint32_t m;
 };
 
 template <uint8_t modeId, pipe_t pipe>

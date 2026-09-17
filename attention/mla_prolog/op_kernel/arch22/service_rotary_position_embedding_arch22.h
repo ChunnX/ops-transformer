@@ -126,8 +126,8 @@ __aicore__ inline void RotaryPosEmbPerTensor(LocalTensor<O> &outputLocal, const 
           C：ropeComputType，float
  * @param outputLocal 输出tensor
  * @param inputGm 输入tensor
- * @param cosLocal cos系数
  * @param sinLocal sin系数
+ * @param cosLocal cos系数
  * @param shareTmpUb 临时buffer
  * @param ropeParams 描述待处理数据的排布，包括
           row 行数
@@ -139,10 +139,10 @@ __aicore__ inline void RotaryPosEmbPerTensor(LocalTensor<O> &outputLocal, const 
  */
 template <typename T, typename C, typename O, bool enableDequant = false, bool doRope = true>
 __aicore__ inline void RotaryPosEmbPerHead(LocalTensor<O> &outputLocal, const GlobalTensor<T> &inputGm,
-                                           const LocalTensor<C> &cosLocal, const LocalTensor<C> &sinLocal,
+                                           const LocalTensor<C> &sinLocal, const LocalTensor<C> &cosLocal,
                                            LocalTensor<uint8_t> &shareTmpUb, Rectangle ropeParams, int64_t strideScale,
-                                           GlobalTensor<float> channelDeqScaleGm = GlobalTensor<float>(),
-                                           LocalTensor<float> deQuantScale = LocalTensor<float>())
+                                           LocalTensor<float> deQuantScale = LocalTensor<float>(),
+                                           GlobalTensor<float> channelDeqScaleGm = GlobalTensor<float>())
 {
     // 在 BS = 1 场景可能存在有row为零的情况，提前返回减少运算
     if (ropeParams.row == 0U) {
