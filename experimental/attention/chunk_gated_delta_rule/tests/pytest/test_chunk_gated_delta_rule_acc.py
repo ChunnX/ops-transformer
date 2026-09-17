@@ -13,6 +13,7 @@
 真值参考: attention/chunk_gated_delta_rule/tests/pytest 下的纯 torch fp32 参考实现
 对比指标: max_re / avg_re / rmse，并对 out(bf16) 与 final_state(fp32) 分别校验
 """
+
 import os
 import sys
 
@@ -21,6 +22,7 @@ import pytest
 import torch
 import torch_npu
 import cann_ops_transformer
+
 # 复用同目录下 test_chunk_gated_delta_rule_float 提供的 bit-close golden
 # （bf16 中间量模拟 NPU，输出布局与 NPU 算子一致，无需转置）
 _TEST_DIR = os.path.dirname(__file__)
@@ -54,8 +56,10 @@ def _compare(golden, actual, name):
     max_re = _max_re(golden, actual)
     avg_re = _avg_re(golden, actual)
     rmse = _rmse(golden, actual)
-    print(f"[{name}] max_re={max_re:.3e} (thr {MAX_RE_THRESH}), "
-          f"avg_re={avg_re:.3e} (thr {AVG_RE_THRESH}), rmse={rmse:.3e} (thr {RMSE_THRESH})")
+    print(
+        f"[{name}] max_re={max_re:.3e} (thr {MAX_RE_THRESH}), "
+        f"avg_re={avg_re:.3e} (thr {AVG_RE_THRESH}), rmse={rmse:.3e} (thr {RMSE_THRESH})"
+    )
     assert max_re < MAX_RE_THRESH, f"{name} max_re {max_re} >= {MAX_RE_THRESH}"
     assert avg_re < AVG_RE_THRESH, f"{name} avg_re {avg_re} >= {AVG_RE_THRESH}"
 
@@ -88,7 +92,7 @@ def test_chunk_gated_delta_rule_acc(B, seqlen, nk, nv, dk, dv, chunk_size, has_g
     actual_seq_lengths = torch.full((B,), seqlen, dtype=torch.int32, device=dev)
     g = None
     if has_g:
-        g = (torch.rand((seqlen * B, nv), dtype=torch.float32, device=dev) * -1.0)
+        g = torch.rand((seqlen * B, nv), dtype=torch.float32, device=dev) * -1.0
 
     # ============ NPU 算子直调（torch_extension binding，JIT 首次编译）============
     o_npu, state_npu = cann_ops_transformer.chunk_gated_delta_rule(
@@ -102,8 +106,14 @@ def test_chunk_gated_delta_rule_acc(B, seqlen, nk, nv, dk, dv, chunk_size, has_g
     # 输出 attn_out=(T,Nv,Dv) bf16, final_state=(B,Nv,Dv,Dk) fp32，与 NPU 算子布局一致，无需转置
     g_cpu = None if g is None else g.cpu()
     o_golden, state_golden = chunk_gdn_benchmark(
-        q.cpu(), k.cpu(), v.cpu(), beta.cpu(), scale,
-        initial_state.cpu(), actual_seq_lengths.cpu(), g_cpu,
+        q.cpu(),
+        k.cpu(),
+        v.cpu(),
+        beta.cpu(),
+        scale,
+        initial_state.cpu(),
+        actual_seq_lengths.cpu(),
+        g_cpu,
     )
     o_golden = o_golden.to(torch.float32)
     state_golden = state_golden.to(torch.float32)

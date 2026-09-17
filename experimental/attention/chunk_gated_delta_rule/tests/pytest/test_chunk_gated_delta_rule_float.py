@@ -17,6 +17,7 @@ DEVICE_ID = 0
 torch.npu.config.allow_internal_format = False
 torch.npu.set_compile_mode(jit_compile=False)
 
+
 def get_chunk(
     input,  # tensor of shape (S, ...)
     C,  # chunk size
@@ -63,7 +64,7 @@ def stage1_chunk(
 
     # 累积 gating: g_cum[i] = g_0 + g_1 + ... + g_i
     g_cum = g.cumsum(dim=-1)  # (C,)
-    g_cum_exp = g_cum.exp()   # (C,)
+    g_cum_exp = g_cum.exp()  # (C,)
 
     # 衰减矩阵: attn[i,j] = exp(g_cum_i - g_cum_j), 仅 j < i（严格下三角）
     lower = torch.tril(torch.ones(C, C, dtype=torch.bool, device=device), diagonal=-1)
@@ -83,7 +84,9 @@ def stage1_chunk(
     # kg[i] = key_i * exp(g_cum_last - g_cum_i): key 衰减到 chunk 末尾，用于 stage2 state 更新
     kg = key.float() * (g_cum[-1, None] - g_cum).exp()[..., None]  # (C, Dk)
     # k_cumdecay[i] = -beta_i * exp(g_cum_i) * key_i: key 与 state 交互的系数
-    k_cumdecay = (beta.unsqueeze(-1).float() * g_cum_exp[:, None]) * (-1) * key.float()  # (C, Dk)
+    k_cumdecay = (
+        (beta.unsqueeze(-1).float() * g_cum_exp[:, None]) * (-1) * key.float()
+    )  # (C, Dk)
 
     # v_beta = beta * value: delta rule 中的新值权重
     v_beta = value.float() * beta.unsqueeze(-1).float()  # (C, Dv)
@@ -94,7 +97,14 @@ def stage1_chunk(
     v_inner = attn_1 @ v_beta  # (C, Dv)
     k_cumdecay = attn_1 @ k_cumdecay  # (C, Dk)
 
-    return g_cum, k_cumdecay.to(torch.bfloat16), v_inner, q_prime.to(torch.bfloat16), kg.to(torch.bfloat16), qkt
+    return (
+        g_cum,
+        k_cumdecay.to(torch.bfloat16),
+        v_inner,
+        q_prime.to(torch.bfloat16),
+        kg.to(torch.bfloat16),
+        qkt,
+    )
 
 
 def stage1(
@@ -120,7 +130,9 @@ def stage1(
     padded_seq_len = (S + C - 1) // C * C
 
     g_cum = torch.zeros((Nv, padded_seq_len), dtype=torch.float32, device=device)
-    k_cumdecay = torch.zeros((Nv, padded_seq_len, Dk), dtype=torch.bfloat16, device=device)
+    k_cumdecay = torch.zeros(
+        (Nv, padded_seq_len, Dk), dtype=torch.bfloat16, device=device
+    )
     v_inner = torch.zeros((Nv, padded_seq_len, Dv), dtype=torch.float32, device=device)
     q_prime = torch.zeros((Nv, padded_seq_len, Dk), dtype=torch.bfloat16, device=device)
     kg = torch.zeros((Nv, padded_seq_len, Dk), dtype=torch.bfloat16, device=device)
@@ -135,16 +147,21 @@ def stage1(
             g_chunk = get_chunk(g[:, nid], C, idx)
             beta_chunk = get_chunk(beta[:, nid], C, idx)
 
-            g_cum_chunk, k_cumdecay_chunk, v_inner_chunk, qg_chunk, kg_chunk, qkt_chunk = stage1_chunk(
-                q_chunk, k_chunk, v_chunk, g_chunk, beta_chunk, scale
-            )
+            (
+                g_cum_chunk,
+                k_cumdecay_chunk,
+                v_inner_chunk,
+                qg_chunk,
+                kg_chunk,
+                qkt_chunk,
+            ) = stage1_chunk(q_chunk, k_chunk, v_chunk, g_chunk, beta_chunk, scale)
 
-            g_cum[nid, idx:idx + C] = g_cum_chunk
-            k_cumdecay[nid, idx:idx + C, :] = k_cumdecay_chunk
-            v_inner[nid, idx:idx + C, :] = v_inner_chunk
-            q_prime[nid, idx:idx + C, :] = qg_chunk
-            kg[nid, idx:idx + C, :] = kg_chunk
-            qkt[nid, idx:idx + C, :] = qkt_chunk
+            g_cum[nid, idx : idx + C] = g_cum_chunk
+            k_cumdecay[nid, idx : idx + C, :] = k_cumdecay_chunk
+            v_inner[nid, idx : idx + C, :] = v_inner_chunk
+            q_prime[nid, idx : idx + C, :] = qg_chunk
+            kg[nid, idx : idx + C, :] = kg_chunk
+            qkt[nid, idx : idx + C, :] = qkt_chunk
 
     return g_cum, k_cumdecay, v_inner, q_prime, kg, qkt
 
@@ -175,7 +192,9 @@ def stage2_chunk(
     v_new = v_inner + v_prime  # (C, Dv)
 
     # state 贡献: sum_i v_new_i ⊗ (key_i * exp(g_cum_last - g_cum_i))
-    state_out = v_new.transpose(0, 1).to(torch.bfloat16).float() @ kg.float()  # (Dv, Dk)
+    state_out = (
+        v_new.transpose(0, 1).to(torch.bfloat16).float() @ kg.float()
+    )  # (Dv, Dk)
 
     # state 更新: 旧 state 按 chunk 总衰减衰减 + 本 chunk 贡献
     state_old = state.float() * g_cum.exp()[-1]
@@ -203,17 +222,22 @@ def stage2(
     for nid in range(Nv):
         cur_state = state[nid]
         for idx in range(0, Sp, C):
-            qg_chunk = q_prime[nid, idx:idx + C, :]
-            v_inner_chunk = v_inner[nid, idx:idx + C, :]
-            g_cum_chunk = g_cum[nid, idx:idx + C]
-            k_cumdecay_chunk = k_cumdecay[nid, idx:idx + C, :]
-            kg_chunk = kg[nid, idx:idx + C, :]
+            qg_chunk = q_prime[nid, idx : idx + C, :]
+            v_inner_chunk = v_inner[nid, idx : idx + C, :]
+            g_cum_chunk = g_cum[nid, idx : idx + C]
+            k_cumdecay_chunk = k_cumdecay[nid, idx : idx + C, :]
+            kg_chunk = kg[nid, idx : idx + C, :]
             cur_state, attn_inter_chunk, v_new_chunk = stage2_chunk(
-                qg_chunk, v_inner_chunk, g_cum_chunk, k_cumdecay_chunk, cur_state, kg_chunk
+                qg_chunk,
+                v_inner_chunk,
+                g_cum_chunk,
+                k_cumdecay_chunk,
+                cur_state,
+                kg_chunk,
             )
 
-            attn_inter[nid, idx:idx + C, :] = attn_inter_chunk
-            v_new[nid, idx:idx + C, :] = v_new_chunk
+            attn_inter[nid, idx : idx + C, :] = attn_inter_chunk
+            v_new[nid, idx : idx + C, :] = v_new_chunk
         final_state[nid, ...] = cur_state
     return final_state, attn_inter, v_new
 
@@ -236,9 +260,16 @@ def stage3_chunk(
     # 构造下三角 causal mask（含对角线），用于 intra-chunk 因果注意力
     lower = torch.tril(torch.ones(C, C, dtype=torch.bool, device=device), diagonal=0)
     # masked_qkt[i,j] = (q_i @ k_j^T) * scale * exp(g_cum_i - g_cum_j), 仅 j <= i
-    masked_qkt = qkt.float() * scale * ((g_cum[:, None] - g_cum[None, :]) * lower).exp() * lower.float()
+    masked_qkt = (
+        qkt.float()
+        * scale
+        * ((g_cum[:, None] - g_cum[None, :]) * lower).exp()
+        * lower.float()
+    )
     # 模拟 NPU bf16 输入 fp32 累加：先截断到 bf16 再转 float 做矩阵乘
-    attn_inner = masked_qkt.to(torch.bfloat16).float() @ v_new.to(torch.bfloat16).float()  # (C, Dv)
+    attn_inner = (
+        masked_qkt.to(torch.bfloat16).float() @ v_new.to(torch.bfloat16).float()
+    )  # (C, Dv)
     # 最终输出 = inter-chunk（来自 state）+ intra-chunk（来自 chunk 内部注意力）
     core_attn_out = (attn_inter + attn_inner).to(torch.bfloat16)  # (C, Dv)
 
@@ -258,18 +289,22 @@ def stage3(
     S, _, _ = value.shape
     assert Sp == (S + C - 1) // C * C
 
-    attn_out = torch.empty((Sp, Nv, Dv), dtype=torch.bfloat16, device=value.device)  # (Sp, Nv, Dv)
+    attn_out = torch.empty(
+        (Sp, Nv, Dv), dtype=torch.bfloat16, device=value.device
+    )  # (Sp, Nv, Dv)
 
     for nid in range(Nv):
         for idx in range(0, Sp, C):
             v_chunk = get_chunk(value[:, nid, :], C, idx)
-            g_cum_chunk = g_cum[nid, idx:idx + C]
-            attn_inter_chunk = attn_inter[nid, idx:idx + C, :]
-            v_new_chunk = v_new[nid, idx:idx + C, :]
-            qkt_chunk = qkt[nid, idx:idx + C, :]
-            attn_out_chunk = stage3_chunk(qkt_chunk, v_chunk, scale, g_cum_chunk, attn_inter_chunk, v_new_chunk)
+            g_cum_chunk = g_cum[nid, idx : idx + C]
+            attn_inter_chunk = attn_inter[nid, idx : idx + C, :]
+            v_new_chunk = v_new[nid, idx : idx + C, :]
+            qkt_chunk = qkt[nid, idx : idx + C, :]
+            attn_out_chunk = stage3_chunk(
+                qkt_chunk, v_chunk, scale, g_cum_chunk, attn_inter_chunk, v_new_chunk
+            )
 
-            attn_out[idx:idx + C, nid, ...] = attn_out_chunk
+            attn_out[idx : idx + C, nid, ...] = attn_out_chunk
 
     return attn_out
 
@@ -310,15 +345,25 @@ def chunk_gdn_benchmark(
 
         # Stage1: chunk 内预处理（可并行），计算逆矩阵相关中间量
         g_cum, k_cum_decay, v_inner, q_prime, kg, qkt = stage1(
-            query[start:end], key[start:end], value[start:end], g[start:end], beta[start:end], scale, C
+            query[start:end],
+            key[start:end],
+            value[start:end],
+            g[start:end],
+            beta[start:end],
+            scale,
+            C,
         )
 
         # Stage2: chunk 间串行，state 传递与 inter-chunk attention
-        cur_state, attn_inter, v_new = stage2(q_prime, v_inner, g_cum, k_cum_decay, cur_state, kg, C)
+        cur_state, attn_inter, v_new = stage2(
+            q_prime, v_inner, g_cum, k_cum_decay, cur_state, kg, C
+        )
         final_state[bid] = cur_state
 
         # Stage3: chunk 内合并 attention（可并行），得到最终输出
-        attn_out_paddend = stage3(qkt, value[start:end], scale, g_cum, attn_inter, v_new, C)
+        attn_out_paddend = stage3(
+            qkt, value[start:end], scale, g_cum, attn_inter, v_new, C
+        )
 
         attn_out[start:end, ...] = attn_out_paddend[:S]
         start = end
@@ -337,8 +382,10 @@ def print_compare(name, npu, golden, topk=5):
     max_idx = int(torch.argmax(flat_diff))
     print(f"\n========== compare {name} ==========")
     print(f"shape: npu={tuple(npu.shape)}, golden={tuple(golden.shape)}")
-    print(f"abs_err: max={flat_diff[max_idx].item():.6e}, "
-          f"mean={flat_diff.mean().item():.6e}, min={flat_diff.min().item():.6e}")
+    print(
+        f"abs_err: max={flat_diff[max_idx].item():.6e}, "
+        f"mean={flat_diff.mean().item():.6e}, min={flat_diff.min().item():.6e}"
+    )
     print(f"max_err_idx={max_idx}")
     print(f"  npu[{max_idx}]    = {flat_npu[max_idx].item():.6e}")
     print(f"  golden[{max_idx}] = {flat_golden[max_idx].item():.6e}")
@@ -347,9 +394,13 @@ def print_compare(name, npu, golden, topk=5):
     topk = min(topk, flat_diff.numel())
     topk_vals, topk_idx = torch.topk(flat_diff, k=topk)
     print(f"top-{topk} abs_err:")
-    for rank, (idx, err) in enumerate(zip(topk_idx.tolist(), topk_vals.tolist()), start=1):
-        print(f"  #{rank} idx={idx}, err={err:.6e}, "
-              f"npu={flat_npu[idx].item():.6e}, golden={flat_golden[idx].item():.6e}")
+    for rank, (idx, err) in enumerate(
+        zip(topk_idx.tolist(), topk_vals.tolist()), start=1
+    ):
+        print(
+            f"  #{rank} idx={idx}, err={err:.6e}, "
+            f"npu={flat_npu[idx].item():.6e}, golden={flat_golden[idx].item():.6e}"
+        )
 
 
 def generate_test_cases(num_cases=200):
@@ -378,15 +429,21 @@ def generate_test_cases(num_cases=200):
     if base_case not in selected:
         selected[-1] = base_case
 
-    assert len(selected) == num_cases, f"Expected {num_cases} cases, got {len(selected)}"
+    assert len(selected) == num_cases, (
+        f"Expected {num_cases} cases, got {len(selected)}"
+    )
     return selected
 
 
 class TestChunkGatedDeltaRuleBenchmark(TestCase):
     @staticmethod
-    def benchmark_golden(q, k, v, g, beta, scale, initial_state, actual_seq_lengths, dtype):
+    def benchmark_golden(
+        q, k, v, g, beta, scale, initial_state, actual_seq_lengths, dtype
+    ):
         if g is None:
-            g = torch.zeros((v.shape[0], v.shape[1]), dtype=torch.float32, device=v.device)
+            g = torch.zeros(
+                (v.shape[0], v.shape[1]), dtype=torch.float32, device=v.device
+            )
         o_bench, state_bench = chunk_gdn_benchmark(
             q.to(dtype),
             k.to(dtype),
@@ -399,7 +456,9 @@ class TestChunkGatedDeltaRuleBenchmark(TestCase):
         )
         return o_bench.to(torch.float32), state_bench.to(torch.float32)
 
-    def execute_chunk_gated_delta_rule_case(self, batch_size, seqlen, nk, nv, dk, dv, dtype):
+    def execute_chunk_gated_delta_rule_case(
+        self, batch_size, seqlen, nk, nv, dk, dv, dtype
+    ):
         torch_npu.npu.set_device(int(DEVICE_ID))
         device = "npu:%s" % DEVICE_ID
         # ======================== gen input data start =============================
@@ -412,8 +471,12 @@ class TestChunkGatedDeltaRuleBenchmark(TestCase):
         q = F.normalize(q, p=2, dim=-1)
         k = F.normalize(k, p=2, dim=-1)
         scale = 1 / (dk**0.5)
-        initial_state = torch.rand((batch_size, nv, dv, dk), dtype=torch.float32, device=device)
-        actual_seq_lengths = torch.tensor([seqlen] * batch_size, dtype=torch.int32, device=device)
+        initial_state = torch.rand(
+            (batch_size, nv, dv, dk), dtype=torch.float32, device=device
+        )
+        actual_seq_lengths = torch.tensor(
+            [seqlen] * batch_size, dtype=torch.int32, device=device
+        )
         # ======================== gen input data finish =============================
 
         # calculate on npu
@@ -440,25 +503,36 @@ class TestChunkGatedDeltaRuleBenchmark(TestCase):
         self.assertRtolEqual(state_npu, state_bench, 0.001)
 
     def test_single_batch(self):
-        self.execute_chunk_gated_delta_rule_case(1, 128, 16, 16, 128, 128, torch.bfloat16)
+        self.execute_chunk_gated_delta_rule_case(
+            1, 128, 16, 16, 128, 128, torch.bfloat16
+        )
 
     def test_multi_batch(self):
-        self.execute_chunk_gated_delta_rule_case(4, 256, 16, 16, 128, 128, torch.bfloat16)
+        self.execute_chunk_gated_delta_rule_case(
+            4, 256, 16, 16, 128, 128, torch.bfloat16
+        )
 
     def test_head_num_differ(self):
-        self.execute_chunk_gated_delta_rule_case(2, 128, 16, 32, 128, 128, torch.bfloat16)
+        self.execute_chunk_gated_delta_rule_case(
+            2, 128, 16, 32, 128, 128, torch.bfloat16
+        )
 
     def test_base_case(self):
-        self.execute_chunk_gated_delta_rule_case(1, 1536, 8, 24, 128, 128, torch.bfloat16)
+        self.execute_chunk_gated_delta_rule_case(
+            1, 1536, 8, 24, 128, 128, torch.bfloat16
+        )
 
     def test_generated_cases(self):
         cases = generate_test_cases(num_cases=200)
         total = len(cases)
         for i, (batch_size, seqlen, nk, nv, dk, dv) in enumerate(cases):
-            print(f"[{i + 1}/{total}] batch={batch_size}, seqlen={seqlen}, "
-                  f"nk={nk}, nv={nv}, dk={dk}, dv={dv}")
+            print(
+                f"[{i + 1}/{total}] batch={batch_size}, seqlen={seqlen}, "
+                f"nk={nk}, nv={nv}, dk={dk}, dv={dv}"
+            )
             self.execute_chunk_gated_delta_rule_case(
-                batch_size, seqlen, nk, nv, dk, dv, torch.bfloat16)
+                batch_size, seqlen, nk, nv, dk, dv, torch.bfloat16
+            )
 
 
 if __name__ == "__main__":
