@@ -591,13 +591,20 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessMatmulSoftmax(uint32
         }
 
         if ASCEND_IS_AIV {
-            CrossCoreWaitFlag(SYNC_C1_TO_V1_FLAG[flagId % SYNC_C1_TO_V1_FLAG_NUMS]);
+            // （L2''）pass1 band 末预读时已提前 Wait 掉本 tile 的 ready（保证 AIC 写完才预读），
+            // 此处跳过避免二次 Wait 挂死；Set/Wait 保持严格 1:1
+            if (!vectorService.TakePreWaitedNextReady()) {
+                CrossCoreWaitFlag(SYNC_C1_TO_V1_FLAG[flagId % SYNC_C1_TO_V1_FLAG_NUMS]);
+            }
 #if 1 // pass1 消费
             vectorService.OnlineSoftmaxFirstPassChunk(qChunkStart, curQChunkSize, kChunkStart, curKChunkSize,
                                                       validXBlocks, validYBlocks);
 #endif
-            // 消费回执：挂 MTE2（scratch 读真正排空后才置位），AIC 收到后才可复用同槽
-            CrossCoreSetFlag<SYNC_MODE, PIPE_MTE2>(SYNC_V2_TO_C2_FLAG[flagId % SYNC_C1_TO_V1_FLAG_NUMS]);
+            // （receipt 前移）pass1 band 末已发 receipt（MTE2 队列空、零延迟），
+            // 此处补发未发的情况（pass1 早退），保证 Set/Wait 严格 1:1
+            if (!vectorService.TakeReceiptSent()) {
+                CrossCoreSetFlag<SYNC_MODE, PIPE_MTE2>(SYNC_V2_TO_C2_FLAG[flagId % SYNC_C1_TO_V1_FLAG_NUMS]);
+            }
         }
         flagId++;
     }

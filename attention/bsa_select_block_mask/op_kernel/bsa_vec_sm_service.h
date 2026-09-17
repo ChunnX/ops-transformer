@@ -125,6 +125,15 @@ private:
     event_t eventSft = (event_t)3;
 
 public:
+    // ---- L2'' 跨 tile 预读 + receipt 前移 ----
+    // evCross(6)：band 末 partSum 写出的 MTE3→V WAR 信号。原 band 末 Set+Wait（标量阻塞）
+    // 改为只 Set，Wait 挪到下 tile 入口 M2 发射之后——M2(t+1) 与 M3(t) 写出重叠。
+    static constexpr event_t evCross = (event_t)6;
+    bool nextHeadPrefetched = false; // 下 tile 首子带已在 slot0（入口跳过首读）
+    bool preWaitedNextReady = false; // 已提前 Wait 掉下 tile ready（base 循环跳过，Set/Wait 1:1）
+    bool receiptSentByPass1 = false; // 本 tile receipt 已在 band 末发出（base 跳过）
+
+public:
     // ---- pass1 chunk 上下文：每 chunk 首 tile 填充一次，其余 194 tile 直接消费 ----
     static constexpr uint32_t SUB_ROWS = 32;
     struct Pass1Band {
@@ -440,6 +449,8 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(uint32
     const bool fullTile = (kChunkSize == K_TILE_COLS);
     const uint32_t kChunkSizeAlign = fullTile ? K_TILE_COLS : (kChunkSize + 15) / 16 * 16;
 
+    // 入口 MTE3_MTE2 排空：band 末已 Wait MTE3_V（M3 排空才返回），此处排空对恢复以保护
+    // band 末 M3 写出与本 tile M2 读的时序（bisect 定论：延迟消费架构 50% 挂死不可用）
     SetFlag<HardEvent::MTE3_MTE2>(eventSft);
     WaitFlag<HardEvent::MTE3_MTE2>(eventSft);
 
@@ -470,7 +481,14 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(uint32
         const Pass1Band &bd = bands[bi];
 
         // 预读子带 0/1（MTE2 队列串行；子带 1 的读与子带 0 的 V 计算重叠）
-        NzReadSubBand(tileBase, bd.chunkStart, BSAMin(SUB_ROWS, bd.rows), kChunkSize, kChunkSizeAlign, 0, evSlot[0]);
+        // （L2''）若上一 tile band 末已预读本 band 首子带进 slot0，跳过首读直接消费
+        if (!nextHeadPrefetched) {
+            NzReadSubBand(tileBase, bd.chunkStart, BSAMin(SUB_ROWS, bd.rows), kChunkSize, kChunkSizeAlign, 0,
+                          evSlot[0]);
+        }
+        nextHeadPrefetched = false;
+        // M3(上 tile) 排空后本 tile V 链方可覆写 foldOut/tmpMax——band 末立即 Wait 已保证，
+        // 此处无需额外门（mte3vPending 延迟消费逻辑已随 bisect 定论移除：50% 挂死、收益归零）
         if (bd.nSub > 1) {
             NzReadSubBand(tileBase, bd.chunkStart + SUB_ROWS, BSAMin(SUB_ROWS, bd.rows - SUB_ROWS), kChunkSize,
                           kChunkSizeAlign, 1, evSlot[1]);
@@ -631,10 +649,31 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(uint32
                               evSlot[slot]);
             }
         }
-        // band 末批量写出：V→MTE3 一次同步 + partSum（4KB 粒度）+ partMax 各一段 + MTE3→V WAR
+        // band 末批量写出：V→MTE3 一次同步 + partSum（4KB 粒度）+ partMax 各一段
         // （同步对数从每 slice 2 对降为每 band 2 对；foldOut 容量恰 [64 行][32 组]）
         SetFlag<HardEvent::V_MTE3>(eventSft);
         WaitFlag<HardEvent::V_MTE3>(eventSft);
+        // （receipt 前移）tile t 的 scratch 读取早已全部完成（V_MTE3 对刚返回），此刻发 receipt：
+        // MTE2 队列为空 → 立即置位，AIC 零延迟。若留在 base 循环发，预读 M2 排在 MTE2 队列里
+        // 会推迟 receipt 置位 ~一个搬运时长，N=2 环下直接节流 AIC。仅末 band 发。
+        if (bd.sliceE == sliceNum && bi == bandNum - 1) {
+            CrossCoreSetFlag<SYNC_MODE, PIPE_MTE2>(SYNC_V2_TO_C2_FLAG[tileIdx % SYNC_C1_TO_V1_FLAG_NUMS]);
+            receiptSentByPass1 = true;
+        }
+        // （L2''）band 末 V 已排空——此处等 ready(t+1) 不阻塞任何 V 发射；预读下 tile 首子带
+        // 进 slot0（V(t:0) 早已消费完），M2(t+1:0) 与 M3(t) 写出/返回/旗标/下 tile 入口全程重叠。
+        // 仅限末 band、双子带对齐、下 tile 存在且全宽、非 chunk 末（下 tile 属下 chunk，
+        // 中隔 finalize 用 scoreUb）。
+        if (bi == bandNum - 1 && bd.nSub == 2 && kChunkStart + kChunkSize < validYBlocks &&
+            kChunkStart + 2 * K_TILE_COLS <= validYBlocks) {
+            AscendC::CrossCoreWaitFlag(SYNC_C1_TO_V1_FLAG[(tileIdx + 1) % SYNC_C1_TO_V1_FLAG_NUMS]);
+            preWaitedNextReady = true;
+            const uint64_t nextTileBase =
+                ctxAicRingBase + ((ctxChunkGlobalTile + tileIdx + 1) % BSA_SCRATCH_RING_TILES) * ctxTileElems;
+            NzReadSubBand(nextTileBase, bd.chunkStart, BSAMin(SUB_ROWS, bd.rows), K_TILE_COLS, K_TILE_COLS, 0,
+                          evSlot[0]);
+            nextHeadPrefetched = true;
+        }
         {
             const uint32_t bandElems = bd.rows * 32;
             for (uint32_t off = 0; off < bandElems; off += 1024) {
@@ -646,8 +685,10 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(uint32
             DataCopyPad(partMaxGmTensor[pmSlotBase + bd.chunkStart], tmpMax[bd.localStart],
                         {1, static_cast<uint16_t>(bd.rows * sizeof(float)), 0, 0});
         }
-        SetFlag<HardEvent::MTE3_V>(eventSft);
-        WaitFlag<HardEvent::MTE3_V>(eventSft);
+        // MTE3→V WAR：Set 后立即 Wait（bisect 定论：延迟消费虽有小收益但 50% 挂死，M3 段
+        // 仅 0.5µs/tile 不值；立即 Wait 下 M3(t) 排空后才返回——foldOut 保护完备、协议简洁）
+        SetFlag<HardEvent::MTE3_V>(evCross);
+        WaitFlag<HardEvent::MTE3_V>(evCross);
     }
 
     // 最后一次k循环存储sumbroc（供收尾归一化），覆盖本 AIV 全部行

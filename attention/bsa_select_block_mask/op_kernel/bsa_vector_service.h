@@ -61,6 +61,8 @@ public:
     __aicore__ inline void OnlineSoftmaxFirstPassChunk(uint32_t qChunkStart, uint32_t qChunkSize, uint32_t kChunkStart,
                                                        uint32_t kChunkSize, uint32_t validXBlocks,
                                                        uint32_t validYBlocks);
+    __aicore__ inline bool TakePreWaitedNextReady();
+    __aicore__ inline bool TakeReceiptSent();
     __aicore__ inline void SoftmaxSecondPassAndCast(uint32_t qChunkStart, uint32_t qChunkSize, uint32_t kChunkStart,
                                                     uint32_t kChunkSize, uint32_t batchIdx, uint32_t headIdx,
                                                     uint32_t validXBlocks, uint32_t validYBlocks);
@@ -149,6 +151,22 @@ __aicore__ inline void BSAVectorService<BSAT>::OnlineSoftmaxFirstPassChunk(uint3
                                                                            uint32_t validXBlocks, uint32_t validYBlocks)
 {
     softmaxOP.OnlineSoftmaxFirstPassChunk(qChunkStart, qChunkSize, kChunkStart, kChunkSize, validXBlocks, validYBlocks);
+}
+
+template <typename BSAT>
+__aicore__ inline bool BSAVectorService<BSAT>::TakePreWaitedNextReady()
+{
+    const bool v = softmaxOP.preWaitedNextReady;
+    softmaxOP.preWaitedNextReady = false;
+    return v;
+}
+
+template <typename BSAT>
+__aicore__ inline bool BSAVectorService<BSAT>::TakeReceiptSent()
+{
+    const bool v = softmaxOP.receiptSentByPass1;
+    softmaxOP.receiptSentByPass1 = false;
+    return v;
 }
 
 template <typename BSAT>
