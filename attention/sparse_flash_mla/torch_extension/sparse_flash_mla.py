@@ -48,7 +48,7 @@ class SparseFlashMlaOpBuilder(OpBuilder):
             "Tensor? cmp_residual_kv=None, "
             "Tensor? ori_topk_length=None, Tensor? cmp_topk_length=None, "
             "Tensor? sinks=None, Tensor? metadata=None, "
-            "float softmax_scale=1.0, int? cmp_ratio=None, "
+            "float softmax_scale=1.0, int cmp_ratio=1, "
             "int ori_mask_mode=0, int cmp_mask_mode=0, "
             "int ori_win_left=-1, int ori_win_right=-1, "
             'str layout_q="BSND", str layout_kv="BSND", '
@@ -114,7 +114,7 @@ class SparseFlashMlaOpBuilder(OpBuilder):
             sinks=None,
             metadata=None,
             softmax_scale=1.0,
-            cmp_ratio=None,
+            cmp_ratio=1,
             ori_mask_mode=0,
             cmp_mask_mode=0,
             ori_win_left=-1,
@@ -205,6 +205,7 @@ def sparse_flash_mla_metadata(
     max_seqlen_cmp_kv = 0 if max_seqlen_cmp_kv is None else max_seqlen_cmp_kv
     ori_topk = 0 if ori_topk is None else ori_topk
     cmp_topk = 0 if cmp_topk is None else cmp_topk
+    cmp_ratio = 1 if cmp_ratio is None else cmp_ratio
     ori_mask_mode = 0 if ori_mask_mode is None else ori_mask_mode
     cmp_mask_mode = 0 if cmp_mask_mode is None else cmp_mask_mode
     ori_win_left = -1 if ori_win_left is None else ori_win_left
@@ -213,7 +214,6 @@ def sparse_flash_mla_metadata(
     layout_kv = "BSND" if layout_kv is None else layout_kv
     has_ori_kv = True if has_ori_kv is None else has_ori_kv
     has_cmp_kv = True if has_cmp_kv is None else has_cmp_kv
-    cmp_ratio = (1 if has_cmp_kv else 0) if cmp_ratio is None else cmp_ratio
 
     op_module = sparse_flash_mla_op_builder.load()
     return op_module.sparse_flash_mla_metadata(
@@ -333,7 +333,7 @@ def sparse_flash_mla(
     sinks=None,
     metadata=None,
     softmax_scale=1.0,
-    cmp_ratio=None,
+    cmp_ratio=1,
     ori_mask_mode=0,
     cmp_mask_mode=0,
     ori_win_left=-1,
@@ -347,7 +347,6 @@ def sparse_flash_mla(
     dispatcher implementation for NPU.
     'PrivateUse1' is the combine key for custom NPU backends.
     """
-    cmp_ratio = (1 if cmp_kv is not None else 0) if cmp_ratio is None else cmp_ratio
     op_module = sparse_flash_mla_op_builder.load()
     return op_module.sparse_flash_mla(
         q,
