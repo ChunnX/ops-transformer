@@ -38,6 +38,7 @@
 
 #include "engram_fetch_grad_sort.h"
 #include "engram_fetch_grad_unique.h"
+#include "sortlib/sort_lib.h" 
 
 namespace Mc2Kernel {
 
@@ -172,6 +173,10 @@ private:
     GM_ADDR coreStartGM_{0};
     GM_ADDR sortCompanionGM_{0};
     GM_ADDR sortWorkspaceGm_{0};
+
+    int32_t sortImpl_{0};          // 0=legacy 1=SortLib
+    uint32_t sortNumTileData_{0U}; // SortLib tile 元素数
+    uint32_t sortTmpUbSize_{0U};   // SortLib AscendC::Sort 临时 UB
 
     TBuf<> entryBuf_;
     TBuf<> gradBuf_;
@@ -485,6 +490,9 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     outputDtype_ = tilingData->outputDtype;
     ubSize_ = tilingData->ubSize;
     gradSubBatch_ = tilingData->gradSubBatch;
+    sortImpl_ = tilingData->sortImpl;
+    sortNumTileData_ = tilingData->sortNumTileData;
+    sortTmpUbSize_ = tilingData->sortTmpUbSize;
     if (gradSubBatch_ == 0U) {
         // 旧 tiling 兼容回落：回落值必须同时受半缓冲容量约束（按 32B 对齐行 stride），
         // 否则 subLen*rowStride 越过 32KB 半缓冲
@@ -617,14 +625,26 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
 
     uint32_t sortUbSize = EngramFetchGradSort::EngramFetchGradSort::GetUbSize(maxSortCount, totalBlocks_);
     uint32_t maxByPong = MaxGradRowsPerPing(static_cast<uint32_t>(hiddenBytes_), gradSubBatch_);
-    uint32_t castBufSize = (inputDtype_ != Mc2Kernel::ENGRAM_DT_FLOAT) ? CastBufBytes(hiddenDim_, maxByPong) : 0U;
+    bool canDirectCopyDtype = (inputDtype_ == outputDtype_);
+    uint32_t castBufSize = 0U;
+    if (inputDtype_ != Mc2Kernel::ENGRAM_DT_FLOAT) {
+        if (canDirectCopyDtype) {
+            castBufSize = (static_cast<uint32_t>(hiddenDim_) * sizeof(float) + Mc2Kernel::UB_ALIGN - 1U) /
+                          Mc2Kernel::UB_ALIGN * Mc2Kernel::UB_ALIGN;
+        } else {
+            castBufSize = CastBufBytes(hiddenDim_, maxByPong);
+        }
+    }
     uint32_t accumBufSize = AccumBufBytes(hiddenDim_);
     uniqueEntryBytes_ = UniqueEntryBytes(hiddenDim_, outputDtype_);
     // unique 阶段池峰值：grad 整缓冲 + entryBuf 收缩区 + cast + accum（与 Process 二次 InitBuffer 布局一致）
     uint32_t uniqueBufSize = Mc2Kernel::GRAD_BUF_BYTES + uniqueEntryBytes_ + castBufSize + accumBufSize;
-    uint32_t poolSize = sortUbSize;
-    if (uniqueBufSize > poolSize) {
-        poolSize = uniqueBufSize;
+    if (uniqueBufSize < Mc2Kernel::COMM_BUF_BYTES) {
+        uniqueBufSize = Mc2Kernel::COMM_BUF_BYTES;
+    }
+    uint32_t poolSize = uniqueBufSize;
+    if (sortImpl_ == 0 && sortUbSize > poolSize) {
+        poolSize = sortUbSize;
     }
     // UB 池预算自检：池 + 常驻四缓冲必须落在 SetLocalMemorySize 授权范围内，超限确定性失败
     uint64_t permanentUsed = Mc2Kernel::HCOMM_INIT_SIZE + statusBufSize + tempBufSize + indicesBufSize;
@@ -1284,11 +1304,24 @@ __aicore__ inline void EngramFetchGradArch35::Process()
             InitCompanion(numRecv);
             SyncAll<true>();
 
-            sortPool_.Reset();
-            uint32_t maxSortCount = static_cast<uint32_t>(totalRecv_);
-            sorter_.Init(maxSortCount, totalBlocks_, recvLocalEntryOutGM_, sortCompanionGM_, sortWorkspaceGm_, *tpipe_,
-                         sortPool_);
-            RunSort(numRecv);
+            if (sortImpl_ == 1) {
+                SortLib::SortParams p;
+                p.numTileData = sortNumTileData_;
+                p.tileCount = (numRecv + p.numTileData - 1U) / p.numTileData;
+                p.activeCores = (p.tileCount < totalBlocks_) ? p.tileCount : totalBlocks_;
+                p.tmpUbSize = sortTmpUbSize_;
+                p.totalElements = static_cast<int64_t>(numRecv);
+                p.isSingleCore = 0;
+                SortLib::SortInvoke<int32_t, int32_t, uint32_t, false>(
+                    tpipe_, (__gm__ int32_t *)recvLocalEntryOutGM_, (__gm__ int32_t *)recvLocalEntryOutGM_,
+                    (__gm__ int32_t *)sortCompanionGM_, (__gm__ char *)sortWorkspaceGm_, p);
+            } else {
+                sortPool_.Reset();
+                uint32_t maxSortCount = static_cast<uint32_t>(totalRecv_);
+                sorter_.Init(maxSortCount, totalBlocks_, recvLocalEntryOutGM_, sortCompanionGM_, sortWorkspaceGm_, *tpipe_,
+                             sortPool_);
+                RunSort(numRecv);
+            }
 
             sortPool_.Reset();
             sortPool_.InitBuffer(entryBuf_, uniqueEntryBytes_);
