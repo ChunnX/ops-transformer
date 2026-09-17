@@ -47,6 +47,10 @@ public:
     virtual void SetSocParam(Mc2Tiling::AllGatherMatmulTilingData *tilingData, const char *group) = 0;
     virtual std::string GetAlgConfig(Mc2Tiling::AllGatherMatmulTilingData *tilingData) = 0;
     virtual ~AllGatherMatmulTilingBase() = default;
+
+private:
+    ge::graphStatus InitAllGatherCommParams(gert::TilingContext *context,
+        Mc2Tiling::AllGatherMatmulTilingData *tilingData, mc2tiling::TilingArgs &args, const char *group);
 };
 } // namespace optiling
 
