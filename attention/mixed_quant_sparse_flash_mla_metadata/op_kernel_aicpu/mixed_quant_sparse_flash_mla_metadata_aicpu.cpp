@@ -918,10 +918,14 @@ void MixedQuantSparseFlashMlaMetadataCpuKernel::GatherOriAndCmpCache(S1GCache &s
 int64_t MixedQuantSparseFlashMlaMetadataCpuKernel::CalcBatchConsistencyBlockCost(const S1GCache &s1GCache,
                                                                                  uint32_t blockIdx)
 {
-    // 规约块只对连续基本块分组，负载沿用各基本块缓存的 cost。
+    // ORI、CMP 分别划分规约块，负载沿用各基本块缓存的 cost。
     uint64_t basesPerBlock = s1GCache.reductionBlockSize / s2BaseSize_;
-    uint64_t firstBase = static_cast<uint64_t>(blockIdx) * basesPerBlock;
-    uint64_t lastBase = std::min(firstBase + basesPerBlock, static_cast<uint64_t>(s1GCache.cmpS2End));
+    uint64_t oriReductionBlockNum = (s1GCache.oriS2End + basesPerBlock - 1U) / basesPerBlock;
+    bool isOriBlock = blockIdx < oriReductionBlockNum;
+    uint64_t firstBase = isOriBlock ? static_cast<uint64_t>(blockIdx) * basesPerBlock :
+                                      s1GCache.cmpS2Start + (blockIdx - oriReductionBlockNum) * basesPerBlock;
+    uint64_t branchEnd = isOriBlock ? s1GCache.oriS2End : s1GCache.cmpS2End;
+    uint64_t lastBase = std::min(firstBase + basesPerBlock, branchEnd);
     uint64_t oriLast = std::min(lastBase, static_cast<uint64_t>(s1GCache.oriS2End));
     uint64_t cmpFirst = std::max(firstBase, static_cast<uint64_t>(s1GCache.cmpS2Start));
     int64_t cost = 0;
@@ -999,12 +1003,15 @@ void MixedQuantSparseFlashMlaMetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx, co
                               (static_cast<uint64_t>(s1GCache.actCmpS2Size) + s2BaseSize_ - 1U) / s2BaseSize_);
     if (isBatchConsistency_) {
         uint64_t totalSize = static_cast<uint64_t>(s1GCache.actOriS2Size) + s1GCache.actCmpS2Size;
-        uint64_t rawBlockSize = totalSize / BATCH_CONSISTENCY_MAX_REDUCTION_PARTS;
+        uint64_t rawBlockSize =
+            (totalSize + BATCH_CONSISTENCY_MAX_REDUCTION_PARTS - 1U) / BATCH_CONSISTENCY_MAX_REDUCTION_PARTS;
         s1GCache.reductionBlockSize =
             static_cast<uint32_t>(std::max((rawBlockSize + s2BaseSize_ - 1U) / s2BaseSize_, uint64_t{1}) * s2BaseSize_);
         uint32_t basesPerBlock = s1GCache.reductionBlockSize / s2BaseSize_;
-        // ORI、CMP 基本块连续分组，分核边界只落在规约块之间；整行负载保持不变。
-        s1GCache.s1GBlock = (s1GCache.s2Loop + basesPerBlock - 1U) / basesPerBlock;
+        // ORI、CMP 分别向上取整，尾部不共用规约块；整行负载保持不变。
+        uint32_t oriReductionBlockNum = (s1GCache.oriS2End + basesPerBlock - 1U) / basesPerBlock;
+        uint32_t cmpReductionBlockNum = (s1GCache.cmpS2End - s1GCache.cmpS2Start + basesPerBlock - 1U) / basesPerBlock;
+        s1GCache.s1GBlock = oriReductionBlockNum + cmpReductionBlockNum;
         s1GCache.s2End = s1GCache.s1GBlock;
         s1GCache.s1GLastBlockCost =
             s1GCache.s1GBlock == 0U ? 0 : CalcBatchConsistencyBlockCost(s1GCache, s1GCache.s1GBlock - 1U);
@@ -1225,12 +1232,17 @@ uint32_t MixedQuantSparseFlashMlaMetadataCpuKernel::CalcCurBlockS2Loop(const Ass
     }
     const S1GCache &s1GCache = assignContext.s1GCache;
     uint32_t basesPerBlock = s1GCache.reductionBlockSize / s2BaseSize_;
-    uint64_t firstBase = static_cast<uint64_t>(assignContext.curS2Idx) * basesPerBlock;
-    // 任务分配会递减 s2Loop，因此需从原始长度计算整行的基本块总数。
-    uint64_t totalBases = (static_cast<uint64_t>(s1GCache.actOriS2Size) + s2BaseSize_ - 1U) / s2BaseSize_ +
-                          (static_cast<uint64_t>(s1GCache.actCmpS2Size) + s2BaseSize_ - 1U) / s2BaseSize_;
-    return firstBase < totalBases ? static_cast<uint32_t>(std::min(uint64_t{basesPerBlock}, totalBases - firstBase)) :
-                                    0U;
+    // 任务分配会递减 s2Loop，因此从原始长度恢复两侧基础块数，分别计算尾块轮次。
+    uint64_t oriBaseBlockNum = (static_cast<uint64_t>(s1GCache.actOriS2Size) + s2BaseSize_ - 1U) / s2BaseSize_;
+    uint64_t cmpBaseBlockNum = (static_cast<uint64_t>(s1GCache.actCmpS2Size) + s2BaseSize_ - 1U) / s2BaseSize_;
+    uint64_t oriReductionBlockNum = (oriBaseBlockNum + basesPerBlock - 1U) / basesPerBlock;
+    bool isOriBlock = assignContext.curS2Idx < oriReductionBlockNum;
+    uint64_t firstBase = isOriBlock ? static_cast<uint64_t>(assignContext.curS2Idx) * basesPerBlock :
+                                      (assignContext.curS2Idx - oriReductionBlockNum) * basesPerBlock;
+    uint64_t branchBaseBlockNum = isOriBlock ? oriBaseBlockNum : cmpBaseBlockNum;
+    return firstBase < branchBaseBlockNum ?
+               static_cast<uint32_t>(std::min(uint64_t{basesPerBlock}, branchBaseBlockNum - firstBase)) :
+               0U;
 }
 
 void MixedQuantSparseFlashMlaMetadataCpuKernel::AssignByBlock(const SplitContext &splitContext,

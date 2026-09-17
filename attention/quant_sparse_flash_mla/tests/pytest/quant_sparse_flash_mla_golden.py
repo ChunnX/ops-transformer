@@ -40,7 +40,9 @@ def prepare_fd_params(params, policy="auto"):
     if not enabled:
         return False
     if params.get("batch_consistency"):
-        raise ValueError("fd_mode requires batch_consistency=False (deterministic level 0)")
+        raise ValueError(
+            "fd_mode requires batch_consistency=False (deterministic level 0)"
+        )
     for key, env, default in (
         ("fd_aic_core_num", "QSMLA_FD_AIC_NUM", 32),
         ("fd_aiv_core_num", "QSMLA_FD_AIV_NUM", None),
@@ -51,7 +53,9 @@ def prepare_fd_params(params, policy="auto"):
         if isinstance(value, bool) or isinstance(value, float):
             raise ValueError(f"{key} must be an integer")
         params[key] = int(value)
-    _validate_fd_cores(params["fd_aic_core_num"], params["fd_aiv_core_num"], params["N1"])
+    _validate_fd_cores(
+        params["fd_aic_core_num"], params["fd_aiv_core_num"], params["N1"]
+    )
     required = params.get("fd_require_split", False)
     if required not in (None, False, True, 0, 1):
         raise ValueError("fd_require_split must be a boolean")
@@ -113,12 +117,24 @@ def generate_metadata_golden(meta, aic_num=32, aiv_num=None):
         raise ValueError("metadata golden supports ordinary FD only")
     batch = int(meta["batch_size"])
     layout_q, layout_kv = meta["layout_q"], meta["layout_kv"]
-    if batch < 1 or layout_q not in ("BSND", "TND") or layout_kv not in ("BSND", "TND", "PA_BBND"):
+    if (
+        batch < 1
+        or layout_q not in ("BSND", "TND")
+        or layout_kv not in ("BSND", "TND", "PA_BBND")
+    ):
         raise ValueError("Invalid metadata batch or layout")
     vectors = {}
-    for name in ("cu_seqlens_q", "cu_seqlens_ori_kv", "cu_seqlens_cmp_kv",
-                 "seqused_q", "seqused_ori_kv", "seqused_cmp_kv", "cmp_residual_kv",
-                 "ori_topk_length", "cmp_topk_length"):
+    for name in (
+        "cu_seqlens_q",
+        "cu_seqlens_ori_kv",
+        "cu_seqlens_cmp_kv",
+        "seqused_q",
+        "seqused_ori_kv",
+        "seqused_cmp_kv",
+        "cmp_residual_kv",
+        "ori_topk_length",
+        "cmp_topk_length",
+    ):
         value = meta.get(name)
         if value is None:
             vectors[name] = None
@@ -127,19 +143,30 @@ def generate_metadata_golden(meta, aic_num=32, aiv_num=None):
         if not tensor.numel():
             vectors[name] = None
             continue
-        if tensor.dtype not in (torch.int32, torch.int64) or bool(((tensor < 0) | (tensor > 2**31 - 1)).any()):
+        if tensor.dtype not in (torch.int32, torch.int64) or bool(
+            ((tensor < 0) | (tensor > 2**31 - 1)).any()
+        ):
             raise ValueError(f"{name} must contain nonnegative int32 values")
         values = tensor.tolist()
         if name.startswith("cu_seqlens"):
-            if len(values) != batch + 1 or values[0] != 0 or any(x > y for x, y in zip(values, values[1:])):
+            if (
+                len(values) != batch + 1
+                or values[0] != 0
+                or any(x > y for x, y in zip(values, values[1:]))
+            ):
                 raise ValueError(f"Invalid {name}")
         elif "topk" not in name and len(values) != batch:
             raise ValueError(f"{name} must have B elements")
         vectors[name] = values
     if layout_q == "TND" and vectors["cu_seqlens_q"] is None:
         raise ValueError("TND requires cu_seqlens_q")
-    q_physical = ([int(meta["max_seqlen_q"])] * batch if layout_q == "BSND" else
-                  [y - x for x, y in zip(vectors["cu_seqlens_q"], vectors["cu_seqlens_q"][1:])])
+    q_physical = (
+        [int(meta["max_seqlen_q"])] * batch
+        if layout_q == "BSND"
+        else [
+            y - x for x, y in zip(vectors["cu_seqlens_q"], vectors["cu_seqlens_q"][1:])
+        ]
+    )
     q_lengths = vectors["seqused_q"] or q_physical
     if any(n > capacity for n, capacity in zip(q_lengths, q_physical)):
         raise ValueError("seqused_q exceeds physical query capacity")
@@ -147,7 +174,10 @@ def generate_metadata_golden(meta, aic_num=32, aiv_num=None):
     if ratio < 1:
         raise ValueError("cmp_ratio must be positive")
     has = {p: bool(meta.get(f"has_{p}_kv", True)) for p in ("ori", "cmp")}
-    topk = {"ori": int(meta.get("ori_topk") or 0), "cmp": int(meta.get("cmp_topk", meta.get("topk")) or 0)}
+    topk = {
+        "ori": int(meta.get("ori_topk") or 0),
+        "cmp": int(meta.get("cmp_topk", meta.get("topk")) or 0),
+    }
     lengths = {}
     for p in ("ori", "cmp"):
         mode = int(meta.get(f"{p}_mask_mode") or 0)
@@ -155,11 +185,22 @@ def generate_metadata_golden(meta, aic_num=32, aiv_num=None):
             raise ValueError(f"Invalid {p} mask mode or top-k")
         seq, cu = vectors[f"seqused_{p}_kv"], vectors[f"cu_seqlens_{p}_kv"]
         maximum = int(meta.get(f"max_seqlen_{p}_kv") or 0)
-        lengths[p] = (seq if seq is not None else
-                      [y - x for x, y in zip(cu, cu[1:])] if layout_kv == "TND" and cu is not None else
-                      [2**32 - 1 if topk[p] and (layout_kv == "PA_BBND" or maximum == 0) else maximum] * batch)
+        lengths[p] = (
+            seq
+            if seq is not None
+            else [y - x for x, y in zip(cu, cu[1:])]
+            if layout_kv == "TND" and cu is not None
+            else [
+                2**32 - 1
+                if topk[p] and (layout_kv == "PA_BBND" or maximum == 0)
+                else maximum
+            ]
+            * batch
+        )
         tk = vectors[f"{p}_topk_length"]
-        if tk is not None and (len(tk) != sum(q_physical) or any(n > topk[p] for n in tk)):
+        if tk is not None and (
+            len(tk) != sum(q_physical) or any(n > topk[p] for n in tk)
+        ):
             raise ValueError(f"Invalid {p}_topk_length shape or value")
     residuals = vectors["cmp_residual_kv"] or [0] * batch
     if any(n >= ratio for n in residuals):
@@ -191,7 +232,11 @@ def generate_metadata_golden(meta, aic_num=32, aiv_num=None):
         count = right - left + 1
         if topk[prefix]:
             tk = vectors[f"{prefix}_topk_length"]
-            offset = vectors["cu_seqlens_q"][b] if layout_q == "TND" else b * int(meta["max_seqlen_q"])
+            offset = (
+                vectors["cu_seqlens_q"][b]
+                if layout_q == "TND"
+                else b * int(meta["max_seqlen_q"])
+            )
             limit = tk[offset + q] if mode == 0 and tk is not None else topk[prefix]
             count = min(count, limit)
         return count
@@ -202,22 +247,31 @@ def generate_metadata_golden(meta, aic_num=32, aiv_num=None):
     for b in range(batch):
         current = []
         for q in range(q_lengths[b]):
-            current.append(_MetadataRowCosts(active_tokens("ori", b, q),
-                                              active_tokens("cmp", b, q), m_cost))
+            current.append(
+                _MetadataRowCosts(
+                    active_tokens("ori", b, q), active_tokens("cmp", b, q), m_cost
+                )
+            )
         rows.append(current)
         batch_costs.append(sum(row[-1] for row in current))
         batch_blocks.append(sum(len(row) - 1 for row in current))
-        batch_last.append(next((row[-1] - row[-2] for row in reversed(current) if len(row) > 1), 0))
+        batch_last.append(
+            next((row[-1] - row[-2] for row in reversed(current) if len(row) > 1), 0)
+        )
 
     metadata = torch.zeros(1024, dtype=torch.int32)
     fa, fd = metadata[:324].reshape(36, 9), metadata[324:900].reshape(72, 8)
     split_g = heads > 64
     cores = aic_num // 2 if split_g else aic_num
     if not any(batch_blocks):
-        all_kv_zero = not any(q_lengths[b] and any(has[p] and lengths[p][b] for p in has)
-                              for b in range(batch))
+        all_kv_zero = not any(
+            q_lengths[b] and any(has[p] and lengths[p][b] for p in has)
+            for b in range(batch)
+        )
         for core in range(2 if split_g else 1):
-            fa[core, :8] = torch.tensor([1, 0, 0, 0, batch if all_kv_zero else 0, 0, 0, 0])
+            fa[core, :8] = torch.tensor(
+                [1, 0, 0, 0, batch if all_kv_zero else 0, 0, 0, 0]
+            )
         return metadata
     b = q = tile = 0
     remaining_cost, remaining_blocks = batch_costs[0], batch_blocks[0]
@@ -230,7 +284,10 @@ def generate_metadata_golden(meta, aic_num=32, aiv_num=None):
         limit = unassigned // (cores - core)
         used_cost = used_blocks = 0
         first_slots.append(previous_slots + split_parts - 1)
-        while b < batch and (remaining_cost == 0 or limit + batch_last[b] // 2 >= used_cost + remaining_cost):
+        while b < batch and (
+            remaining_cost == 0
+            or limit + batch_last[b] // 2 >= used_cost + remaining_cost
+        ):
             used_cost += remaining_cost
             used_blocks += remaining_blocks
             b, q, tile = b + 1, 0, 0
@@ -249,7 +306,9 @@ def generate_metadata_golden(meta, aic_num=32, aiv_num=None):
                 remaining_blocks -= row_blocks
                 q, tile = q + 1, 0
             if q >= q_lengths[b]:
-                raise RuntimeError("Metadata row cursor exceeded batch before batch assignment")
+                raise RuntimeError(
+                    "Metadata row cursor exceeded batch before batch assignment"
+                )
             row = rows[b][q]
             while tile + 1 < len(row):
                 cost = row[tile + 1] - row[tile]
@@ -272,7 +331,10 @@ def generate_metadata_golden(meta, aic_num=32, aiv_num=None):
                 if q == q_lengths[b]:
                     b, q = b + 1, 0
                     if b < batch:
-                        remaining_cost, remaining_blocks = batch_costs[b], batch_blocks[b]
+                        remaining_cost, remaining_blocks = (
+                            batch_costs[b],
+                            batch_blocks[b],
+                        )
         end = (b, q, tile)
         if core and split_parts > 1 and end[:2] != endpoints[-1][:2]:
             tasks.append((*endpoints[-1][:2], previous_slots, split_parts, heads))
@@ -287,12 +349,14 @@ def generate_metadata_golden(meta, aic_num=32, aiv_num=None):
         raise RuntimeError("Metadata scheduling did not cover all KV tiles")
     for core, end in enumerate(endpoints):
         start = endpoints[core - 1] if core else (0, 0, 0)
-        record = torch.tensor([1, *start, *end, first_slots[core], max_loops if split_g else 0])
+        record = torch.tensor(
+            [1, *start, *end, first_slots[core], max_loops if split_g else 0]
+        )
         fa[2 * core if split_g else core] = record
         if split_g:
             fa[2 * core + 1] = record
     if split_g:
-        fa[:2 * cores, 8] = max_loops
+        fa[: 2 * cores, 8] = max_loops
     if tasks:
         load = sum(parts * m for _, _, _, parts, m in tasks)
         average = (load + aiv_num - 1) // aiv_num
@@ -303,9 +367,20 @@ def generate_metadata_golden(meta, aic_num=32, aiv_num=None):
             count = (m + per_vector - 1) // per_vector
             for index in range(count):
                 if vector >= aiv_num:
-                    raise ValueError("Configured AIV count cannot hold FD tasks; increase fd_aiv_core_num")
-                fd[vector, :7] = torch.tensor([1, bn, query, slot, parts, index * per_vector,
-                                               min(per_vector, m - index * per_vector)])
+                    raise ValueError(
+                        "Configured AIV count cannot hold FD tasks; increase fd_aiv_core_num"
+                    )
+                fd[vector, :7] = torch.tensor(
+                    [
+                        1,
+                        bn,
+                        query,
+                        slot,
+                        parts,
+                        index * per_vector,
+                        min(per_vector, m - index * per_vector),
+                    ]
+                )
                 vector += 1
     return metadata
 
@@ -313,8 +388,13 @@ def generate_metadata_golden(meta, aic_num=32, aiv_num=None):
 def metadata_fa_ranges(metadata):
     if metadata.dtype != torch.int32 or metadata.numel() != 1024:
         raise ValueError("metadata must be int32[1024]")
-    return sorted({(tuple(map(int, row[1:4])), tuple(map(int, row[4:7])))
-                   for row in metadata[:324].reshape(36, 9) if int(row[0])})
+    return sorted(
+        {
+            (tuple(map(int, row[1:4])), tuple(map(int, row[4:7])))
+            for row in metadata[:324].reshape(36, 9)
+            if int(row[0])
+        }
+    )
 
 
 def metadata_row_partitions(ranges, row, total_tiles):
@@ -328,9 +408,15 @@ def metadata_row_partitions(ranges, row, total_tiles):
                     raise ValueError(f"FA range exceeds row {row}")
                 parts.append((low, high))
     parts.sort()
-    if (not parts or parts[0][0] != 0 or parts[-1][1] != total_tiles
-            or any(left[1] != right[0] for left, right in zip(parts, parts[1:]))):
-        raise ValueError(f"Incomplete or overlapping FA coverage for row {row}: {parts}")
+    if (
+        not parts
+        or parts[0][0] != 0
+        or parts[-1][1] != total_tiles
+        or any(left[1] != right[0] for left, right in zip(parts, parts[1:]))
+    ):
+        raise ValueError(
+            f"Incomplete or overlapping FA coverage for row {row}: {parts}"
+        )
     return parts
 
 
@@ -431,8 +517,8 @@ class GeneralizedSFAQuant:
     def _get_batch_consistency_reduce_size(ori_s2_size, cmp_s2_size):
         """Return the S2 reduction-block size used by batch-consistency metadata."""
         total_s2_size = ori_s2_size + cmp_s2_size
-        # 与 metadata、计算内核和 SMLA/MQSMLA 对齐：先整除 32，再向上对齐到 128。
-        raw_reduce_size = total_s2_size // 32
+        # 先向上整除 32，再向上对齐到 128-token 基础块，与 metadata 和 kernel 保持一致。
+        raw_reduce_size = (total_s2_size + 31) // 32
         return max(((raw_reduce_size + 127) // 128) * 128, 128)
 
     @staticmethod
@@ -510,19 +596,18 @@ class GeneralizedSFAQuant:
         cmp_s2_size = 0 if cmp_k_fp32 is None else cmp_k_fp32.shape[0]
         reduce_size = self._get_batch_consistency_reduce_size(ori_s2_size, cmp_s2_size)
 
-        # 将各分支的基本计算块连续分组；即使同一规约块跨越 ORI/CMP 边界，
-        # 每个基本块仍使用各自的反量化系数。
-        tiles = []
+        # ORI、CMP 分别划分规约块，每个基本块使用所属分支的反量化系数。
+        blocks = []
         for k_tensor, kv_descale in (
             (ori_k_fp32, self.ori_kv_descale_val),
             (cmp_k_fp32, self.cmp_kv_descale_val),
         ):
             if k_tensor is None or k_tensor.shape[0] == 0:
                 continue
-            tiles.extend((tile, kv_descale) for tile in k_tensor.split(128, dim=0))
-        bases_per_block = reduce_size // 128
-        blocks = [tiles[start : start + bases_per_block]
-                  for start in range(0, len(tiles), bases_per_block)]
+            blocks.extend(
+                [(tile, kv_descale) for tile in block.split(128, dim=0)]
+                for block in k_tensor.split(reduce_size, dim=0)
+            )
 
         merged_lse = None
         merged_sum = None
@@ -566,28 +651,49 @@ class GeneralizedSFAQuant:
         parts = metadata_row_partitions(self.fd_ranges, row, ori_tiles + cmp_tiles)
         states = []
         for part, (low, high) in enumerate(parts):
-            maximum = (sinks.clone() if part == 0 and sinks is not None else
-                       torch.full((q.shape[0],), -torch.inf, dtype=torch.float32))
+            maximum = (
+                sinks.clone()
+                if part == 0 and sinks is not None
+                else torch.full((q.shape[0],), -torch.inf, dtype=torch.float32)
+            )
             total = torch.ones_like(maximum)
             accum = torch.zeros((q.shape[0], q.shape[-1]), dtype=torch.float32)
             for block in range(low, high):
                 is_ori = block < ori_tiles
                 start = (block if is_ori else block - ori_tiles) * 128
-                tile = (ori if is_ori else cmp)[start:start + 128]
+                tile = (ori if is_ori else cmp)[start : start + 128]
                 descale = self.ori_kv_descale_val if is_ori else self.cmp_kv_descale_val
                 maximum, total, accum = self._update_s2_tile(
-                    q, tile, self.softmax_scale * self.q_descale_val * descale,
-                    descale, maximum, total, accum,
+                    q,
+                    tile,
+                    self.softmax_scale * self.q_descale_val * descale,
+                    descale,
+                    maximum,
+                    total,
+                    accum,
                 )
-            states.append((maximum.double(), total.double(),
-                           accum.double() / total.double().unsqueeze(-1)))
+            states.append(
+                (
+                    maximum.double(),
+                    total.double(),
+                    accum.double() / total.double().unsqueeze(-1),
+                )
+            )
         maxima = torch.stack([state[0] for state in states])
         global_max = maxima.max(0).values
-        weights = torch.stack([state[1] for state in states]) * torch.exp(maxima - global_max)
+        weights = torch.stack([state[1] for state in states]) * torch.exp(
+            maxima - global_max
+        )
         denominator = weights.sum(0)
-        output = (torch.stack([state[2] for state in states]) * weights.unsqueeze(-1)).sum(0)
-        self.fd_trace.append({"row": list(row), "parts": [list(part) for part in parts]})
-        return (output / denominator.unsqueeze(-1)).float(), (global_max + torch.log(denominator)).float()
+        output = (
+            torch.stack([state[2] for state in states]) * weights.unsqueeze(-1)
+        ).sum(0)
+        self.fd_trace.append(
+            {"row": list(row), "parts": [list(part) for part in parts]}
+        )
+        return (output / denominator.unsqueeze(-1)).float(), (
+            global_max + torch.log(denominator)
+        ).float()
 
     def calculate_by_bnsd(
         self,
@@ -776,18 +882,29 @@ class GeneralizedSFAQuant:
                     cur_ori_k_bnsd_fp32 = cur_ori_k_bnsd.to(dtype=torch.float32)
                     # hifp8FullQuant: online softmax with hif8 quantized attention scores
                     hifp8_scale_value = 16.0
-                    if batch_consistency or getattr(self, "fd_ranges", None) is not None:
+                    if (
+                        batch_consistency
+                        or getattr(self, "fd_ranges", None) is not None
+                    ):
                         cmp_k_for_reduce = (
                             None if cmp_s2_loop_time == 0 else cur_cmp_k_fp32
                         )
                         if getattr(self, "fd_ranges", None) is not None:
                             acc_o, final_lse = self._calculate_fd(
-                                q_curr_fp32, cur_ori_k_bnsd_fp32, cmp_k_for_reduce,
-                                cur_sinks, i_B, i_N2, i_S1,
+                                q_curr_fp32,
+                                cur_ori_k_bnsd_fp32,
+                                cmp_k_for_reduce,
+                                cur_sinks,
+                                i_B,
+                                i_N2,
+                                i_S1,
                             )
                         else:
                             acc_o, final_lse = self._calculate_batch_consistency(
-                                q_curr_fp32, cur_ori_k_bnsd_fp32, cmp_k_for_reduce, cur_sinks,
+                                q_curr_fp32,
+                                cur_ori_k_bnsd_fp32,
+                                cmp_k_for_reduce,
+                                cur_sinks,
                             )
                         acc_o = acc_o / hifp8_scale_value
                         attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = acc_o.to(
@@ -2313,16 +2430,26 @@ def prepare_fd_data(data, generate_golden=True):
     if not prepare_fd_params(params):
         raise ValueError("prepare_fd_data requires fd_mode=True")
     meta_input = dict(data["metadata_input"])
-    for name in ("cu_seqlens_q", "cu_seqlens_ori_kv", "cu_seqlens_cmp_kv",
-                 "seqused_q", "seqused_ori_kv", "seqused_cmp_kv", "cmp_residual_kv",
-                 "ori_topk_length", "cmp_topk_length"):
+    for name in (
+        "cu_seqlens_q",
+        "cu_seqlens_ori_kv",
+        "cu_seqlens_cmp_kv",
+        "seqused_q",
+        "seqused_ori_kv",
+        "seqused_cmp_kv",
+        "cmp_residual_kv",
+        "ori_topk_length",
+        "cmp_topk_length",
+    ):
         meta_input[name] = data["op_input"].get(name)
     metadata = generate_metadata_golden(
         meta_input, params["fd_aic_core_num"], params["fd_aiv_core_num"]
     )
     actual_fd = bool(metadata[324:900].reshape(72, 8)[:, 0].any())
     if params.get("fd_require_split") and not actual_fd:
-        raise ValueError("FD split required but this shape/core configuration has no FD task")
+        raise ValueError(
+            "FD split required but this shape/core configuration has no FD task"
+        )
     data["golden_metadata"] = metadata
     data["fd_actual_split"] = actual_fd
     data["fd_core_config"] = (params["fd_aic_core_num"], params["fd_aiv_core_num"])
@@ -2342,6 +2469,8 @@ def get_fd_metadata_for_device(data, device):
     if tuple(data.get("fd_core_config", ())) != expected:
         raise ValueError("FD core counts changed; regenerate metadata and golden first")
     metadata = data.get("golden_metadata")
-    if metadata is None or not torch.equal(metadata, data["golden_state"]["fd_metadata"]):
+    if metadata is None or not torch.equal(
+        metadata, data["golden_state"]["fd_metadata"]
+    ):
         raise ValueError("FD metadata does not match the numerical reference")
     return metadata.to(device=device)

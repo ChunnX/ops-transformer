@@ -586,7 +586,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
                 if constexpr (IS_BATCH_CONSISTENCY) {
                     int64_t s2Load = runParam.s2LineOriEndIdx - runParam.s2LineStartIdx + runParam.s2CmpLineEndIdx;
                     int64_t s2BaseSize = static_cast<int64_t>(constInfo.s2BaseSize);
-                    int64_t s2PerReduceBlock = (s2Load / 32LL + s2BaseSize - 1) >> 7 << 7;
+                    int64_t s2PerReduceBlock = ((s2Load + 31LL) / 32LL + s2BaseSize - 1) >> 7 << 7;
                     int64_t baseBlockNum = s2PerReduceBlock >> 7;
                     runParam.baseBlockNumPerReductionBlock = baseBlockNum > 0 ? baseBlockNum : 1LL;
                 }
@@ -622,7 +622,12 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
                 if constexpr (IS_BATCH_CONSISTENCY) {
                     int64_t safeBaseBlockNum =
                         runParam.baseBlockNumPerReductionBlock > 0 ? runParam.baseBlockNumPerReductionBlock : 1LL;
-                    if (runParam.isCrossCoreSplit && (s2LoopCount % safeBaseBlockNum == 0)) {
+                    int64_t reductionLoopCount = s2LoopCount;
+                    if (s2LoopCount >= runParam.oriKvLoopEndIdx) {
+                        reductionLoopCount +=
+                            (safeBaseBlockNum - runParam.oriKvLoopEndIdx % safeBaseBlockNum) % safeBaseBlockNum;
+                    }
+                    if (runParam.isCrossCoreSplit && reductionLoopCount % safeBaseBlockNum == 0) {
                         runParam.s2SplitIdx = s2SplitIdxCounter++;
                     }
                 }
@@ -705,13 +710,13 @@ __aicore__ inline int64_t MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockTyp
     int64_t cmpLen = runParam.s2CmpLineEndIdx - runParam.s2CmpLineStartIdx;
     int64_t safeBaseBlockNum =
         runParam.baseBlockNumPerReductionBlock > 0 ? runParam.baseBlockNumPerReductionBlock : 1LL;
-    int64_t oriBaseBlockNum = (oriLen + s2BaseSize - 1) / s2BaseSize;
-    int64_t baseBlockIdx = static_cast<int64_t>(s2BlockIdx) * safeBaseBlockNum;
-    if (baseBlockIdx <= oriBaseBlockNum) {
-        int64_t oriToken = baseBlockIdx * s2BaseSize;
+    int64_t reductionBlockSize = safeBaseBlockNum * s2BaseSize;
+    int64_t oriReductionBlockNum = (oriLen + reductionBlockSize - 1) / reductionBlockSize;
+    if (s2BlockIdx <= oriReductionBlockNum) {
+        int64_t oriToken = static_cast<int64_t>(s2BlockIdx) * reductionBlockSize;
         return oriToken < oriLen ? oriToken : oriLen;
     }
-    int64_t cmpToken = (baseBlockIdx - oriBaseBlockNum) * s2BaseSize;
+    int64_t cmpToken = (static_cast<int64_t>(s2BlockIdx) - oriReductionBlockNum) * reductionBlockSize;
     return oriLen + (cmpToken < cmpLen ? cmpToken : cmpLen);
 }
 
@@ -839,10 +844,20 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
     runInfo.isFirstS2SplitCore = runParam.isFirstS2SplitCore;
     int64_t safeBaseBlockNum =
         runParam.baseBlockNumPerReductionBlock > 0 ? runParam.baseBlockNumPerReductionBlock : 1LL;
-    int64_t baseBlockIdInReduceBlock = s2LoopCount % safeBaseBlockNum;
-    runInfo.reduceBlockId = s2LoopCount / safeBaseBlockNum;
+    int64_t reductionLoopCount = s2LoopCount;
+    if constexpr (IS_BATCH_CONSISTENCY) {
+        // 进入 CMP 时补齐规约计数，不增加实际计算。
+        if (s2LoopCount >= runParam.oriKvLoopEndIdx) {
+            reductionLoopCount += (safeBaseBlockNum - runParam.oriKvLoopEndIdx % safeBaseBlockNum) % safeBaseBlockNum;
+        }
+    }
+    int64_t baseBlockIdInReduceBlock = reductionLoopCount % safeBaseBlockNum;
+    runInfo.reduceBlockId = reductionLoopCount / safeBaseBlockNum;
     runInfo.isFirstBase = baseBlockIdInReduceBlock == 0;
     runInfo.isLastBase = ((safeBaseBlockNum - baseBlockIdInReduceBlock) == 1LL) || (s2LoopCount == s2LoopLimit);
+    if constexpr (IS_BATCH_CONSISTENCY) {
+        runInfo.isLastBase = runInfo.isLastBase || s2LoopCount + 1 == runParam.oriKvLoopEndIdx;
+    }
     runInfo.needReduce = runInfo.reduceBlockId > 0;
     this->ComputeBmm1Tail(runInfo, runParam);
     InitUniqueRunInfo(runParam, runInfo);

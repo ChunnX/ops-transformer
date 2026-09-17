@@ -115,10 +115,8 @@ class GeneralizedSFA:
     def _get_batch_consistency_reduce_size(ori_s2_size, cmp_s2_size):
         """Return the S2 reduction-block size used by batch-consistency metadata."""
         total_s2_size = ori_s2_size + cmp_s2_size
-        # The kernel computes this quotient with integer division before
-        # rounding the result up to an S2 base block.  Keeping the floor here
-        # is observable at 4096-token boundaries (e.g. 4097..4127 tokens).
-        raw_reduce_size = total_s2_size // 32
+        # 先向上整除 32，再向上对齐到 128-token 基础块，与 metadata 和 kernel 保持一致。
+        raw_reduce_size = (total_s2_size + 31) // 32
         return max(((raw_reduce_size + 127) // 128) * 128, 128)
 
     @staticmethod
@@ -185,17 +183,15 @@ class GeneralizedSFA:
         cmp_s2_size = 0 if cmp_k_fp32 is None else cmp_k_fp32.shape[0]
         reduce_size = self._get_batch_consistency_reduce_size(ori_s2_size, cmp_s2_size)
 
-        # 各分支仍按 128 的基本块大小计算，再将这些基本块连续分组。
-        # ORI 尾块保留独立的基本计算边界，
-        # 同时允许它与 CMP 首块归入同一规约块。
-        tiles = []
+        # ORI、CMP 分别划分规约块，ORI 尾块结束后再开始 CMP 的规约。
+        blocks = []
         for k_tensor in (ori_k_fp32, cmp_k_fp32):
             if k_tensor is None or k_tensor.shape[0] == 0:
                 continue
-            tiles.extend(k_tensor.split(128, dim=0))
-        bases_per_block = reduce_size // 128
-        blocks = [tiles[start : start + bases_per_block]
-                  for start in range(0, len(tiles), bases_per_block)]
+            blocks.extend(
+                list(block.split(128, dim=0))
+                for block in k_tensor.split(reduce_size, dim=0)
+            )
 
         merged_lse = None
         merged_sum = None
