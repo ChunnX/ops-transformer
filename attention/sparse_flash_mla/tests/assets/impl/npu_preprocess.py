@@ -170,7 +170,9 @@ def build_metadata_arguments(q, ori_kv, cmp_kv, kwargs):
     cmp_topk = 0 if cmp_sparse_indices is None else int(cmp_sparse_indices.shape[-1])
 
     cmp_ratio_value = get_attribute(kwargs, "cmp_ratio")
-    cmp_ratio = int((1 if cmp_kv is not None else 0) if cmp_ratio_value is None else cmp_ratio_value)
+    cmp_ratio = int(
+        (1 if cmp_kv is not None else 0) if cmp_ratio_value is None else cmp_ratio_value
+    )
     max_seqlen_q = max_sequence(
         cu_q_values if cu_q_values is not None else cu_q,
         seq_q_values if seq_q_values is not None else seq_q,
