@@ -108,7 +108,7 @@ __simt_vf__ __launch_bounds__(ThreadCount) inline void WaitForCountTableSimtVF(c
 
 // SIMT 实验入口，直接将就绪 count 写入 UB，无需整表检查结果暂存区。
 // 启用前须为 SIMT Data Cache 预留至少 32 KiB，并核对整个 kernel 的 UB 布局及编译配置。
-// 调用处替换为 WaitForCountTableSimt<>(...)；默认最大 1024 线程。
+// 定义 MEGA_MOE_ENABLE_COUNT_SIMT 后调用点自动选择此路径；默认最大 1024 线程。
 // 调用方保证在 AIV 上执行，且 elementCount > 0。
 template <uint32_t ThreadCount = 1024U>
 __aicore__ inline void WaitForCountTableSimt(const __gm__ int32_t *countGm, __ubuf__ int32_t *counts,
