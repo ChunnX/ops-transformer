@@ -1541,7 +1541,6 @@ __aicore__ inline void EngramFetchGradArch35::Process()
             uniqueScatter_.SetEntryBufBytes(uniqueEntryBytes_);
 
             uniqueScatter_.CountUniquesParallel(numRecv, recvLocalEntryOutGM_, coreStartGM_, segCountGM_);
-            uniqueScatter_.ZeroGradUnique(numRecv, gradUniqueOutGM_);
             SyncAll<true>();
             uniqueScatter_.RunScatterCast(numRecv, recvLocalEntryOutGM_, uniqueLocalEntryOutGM_, numUniqueOutGM_,
                                            gradUniqueOutGM_, recvGradGM_, coreStartGM_, segCountGM_, sortCompanionGM_);

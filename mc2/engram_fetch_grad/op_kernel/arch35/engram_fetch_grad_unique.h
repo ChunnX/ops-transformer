@@ -12,11 +12,11 @@
 #define ENGRAM_FETCH_GRAD_UNIQUE_H
 
 #include "kernel_operator.h"
+#include "adv_api/reduce/reduce.h"
 #include "../engram_fetch_grad_utils.h"
 
 namespace EngramFetchGradUnique {
 
-constexpr uint32_t RECV_INDEX_UB_OFFSET = 2U;
 constexpr uint32_t COMPACT_INDEX_UB_OFFSET = 3U;
 constexpr uint32_t DIRECT_FLAG_UB_OFFSET = 4U;
 
@@ -84,10 +84,6 @@ public:
     __aicore__ inline AscendC::LocalTensor<int32_t> UniqueUb()
     {
         return entryBuf_->Get<int32_t>()[Mc2Kernel::ENTRY_BATCH_CAP];
-    }
-    __aicore__ inline AscendC::LocalTensor<int32_t> RecvIdxUb()
-    {
-        return entryBuf_->Get<int32_t>()[RECV_INDEX_UB_OFFSET * Mc2Kernel::ENTRY_BATCH_CAP];
     }
     __aicore__ inline AscendC::LocalTensor<int32_t> CompactIdxUb()
     {
@@ -324,36 +320,43 @@ __aicore__ inline void EngramFetchGradUnique::CountUniquesParallel(uint32_t numR
 
     uint32_t localUniqueCount = 0;
     if (start < rawEnd) {
-        AscendC::LocalTensor<int32_t> entryUb = tempBuf_->Get<int32_t>();
-        int32_t prevEntry = 0;
-        bool isFirstElement = (start == 0);
-        if (!isFirstElement) {
-            prevEntry = boundaryEntry;
-        }
-
+        AscendC::LocalTensor<int32_t> xUb = gradBuf_->Get<int32_t>();
+        AscendC::LocalTensor<int32_t> yUb = xUb[Mc2Kernel::ENTRY_BATCH_CAP];
+        AscendC::LocalTensor<int32_t> fUb = xUb[2 * Mc2Kernel::ENTRY_BATCH_CAP];
+        AscendC::DataCopyPadExtParams<int32_t> cpPad{false, 0, 0, 0};
         uint32_t cur = start;
         while (cur < rawEnd) {
             uint32_t batchLen = rawEnd - cur;
             if (batchLen > Mc2Kernel::ENTRY_BATCH_CAP) {
                 batchLen = Mc2Kernel::ENTRY_BATCH_CAP;
             }
-            AscendC::DataCopyExtParams cpParams{1U, static_cast<uint32_t>(batchLen * sizeof(int32_t)), 0U, 0U, 0U};
-            AscendC::DataCopyPadExtParams<int32_t> cpPad{false, 0, 0, 0};
-            AscendC::DataCopyPad(entryUb, sortedEntryGM[cur], cpParams, cpPad);
-            SyncFunc<AscendC::HardEvent::MTE2_S>(*pipe_);
-            for (uint32_t i = 0; i < batchLen; i++) {
-                int32_t entry = entryUb.GetValue(i);
-                bool isNewUnique;
-                if (isFirstElement) {
-                    isNewUnique = true;
-                    isFirstElement = false;
+            AscendC::DataCopyExtParams yParams{1U, static_cast<uint32_t>(batchLen * sizeof(int32_t)), 0U, 0U, 0U};
+            AscendC::DataCopyPad(yUb, sortedEntryGM[cur], yParams, cpPad);
+            bool isFirstBatch = (cur == 0U);
+            uint32_t xBase = isFirstBatch ? (cur + 1U) : (cur - 1U);
+            AscendC::DataCopyExtParams cpX{1U, static_cast<uint32_t>(batchLen * sizeof(int32_t)), 0U, 0U, 0U};
+            AscendC::DataCopyPad(xUb, sortedEntryGM[xBase], cpX, cpPad);
+            SyncFunc<AscendC::HardEvent::MTE2_V>(*pipe_);
+
+            uint32_t cntLen = isFirstBatch ? (batchLen - 1U) : batchLen;
+            if (cntLen > 0U) {
+                if (isFirstBatch) {
+                    AscendC::Sub<int32_t>(fUb, xUb, yUb, static_cast<int32_t>(cntLen));
                 } else {
-                    isNewUnique = (entry != prevEntry);
+                    AscendC::Sub<int32_t>(fUb, yUb, xUb, static_cast<int32_t>(cntLen));
                 }
-                if (isNewUnique) {
-                    localUniqueCount++;
-                }
-                prevEntry = entry;
+                AscendC::PipeBarrier<PIPE_V>();
+                AscendC::Mins<int32_t>(fUb, fUb, 1, static_cast<int32_t>(cntLen));
+                AscendC::PipeBarrier<PIPE_V>();
+
+                const uint32_t rshape[] = {1U, cntLen};
+                AscendC::LocalTensor<uint8_t> rsTmp = tempBuf_->Get<uint8_t>();
+                AscendC::ReduceSum<int32_t, AscendC::Pattern::Reduce::AR>(xUb, fUb, rsTmp, rshape, false);
+                SyncFunc<AscendC::HardEvent::V_S>(*pipe_);
+                localUniqueCount += static_cast<uint32_t>(xUb.GetValue(0));
+            }
+            if (isFirstBatch) {
+                localUniqueCount += 1U;
             }
             cur += batchLen;
         }
@@ -643,7 +646,6 @@ __aicore__ inline uint32_t EngramFetchGradUnique::ProcessBatchUnique(uint32_t cu
         }
         int32_t compactIdx = runningOffset + inclusiveSum - 1;
         CompactIdxUb().SetValue(i, compactIdx);
-        RecvIdxUb().SetValue(i, CompUb().GetValue(i));
         DirectFlagUb().SetValue(i, isNewUnique ? 1 : 0);
         if (i > 0) {
             DirectFlagUb().SetValue(i - 1, (canDirectCopy && prevIsNewUnique && prevCompact != compactIdx) ? 1 : 0);
@@ -743,7 +745,7 @@ __aicore__ inline uint32_t EngramFetchGradUnique::ProcessScatterBatch(
         }
 
         for (uint32_t j = 0; j < subLen; j++) {
-            int32_t recvIdx = RecvIdxUb().GetValue(subStart + j);
+            int32_t recvIdx = CompUb().GetValue(subStart + j);
             if (recvIdx < 0 || static_cast<uint32_t>(recvIdx) >= numRecv_) {
                 recvIdx = 0;
             }
