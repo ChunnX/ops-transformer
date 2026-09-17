@@ -188,8 +188,6 @@ __aicore__ inline void WaitFlagDevLocal(int64_t flagID)
     CrossCoreWaitFlag(flagID);
 }
 
-// supportMmadS8S4平台无L2cacheUseInfo，用宏隔离
-#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 5102))
 template <class A_T, class B_T, class C_T, class BiasT>
 __aicore__ inline void SetL2CacheEnable(const Mc2L2cacheUseInfo &l2EnableInfo, GlobalTensor<A_T> &aGlobal,
                                         GlobalTensor<B_T> &bGlobal, GlobalTensor<C_T> &cGlobal,
@@ -201,7 +199,6 @@ __aicore__ inline void SetL2CacheEnable(const Mc2L2cacheUseInfo &l2EnableInfo, G
         }
     }
 }
-#endif
 
 template <class T>
 __aicore__ inline void CopyGmToUbufAlign(const LocalTensor<T> &dst, const GlobalTensor<T> &src, uint16_t nBurst,
