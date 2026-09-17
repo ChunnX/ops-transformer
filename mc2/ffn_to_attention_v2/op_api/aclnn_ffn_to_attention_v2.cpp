@@ -92,8 +92,6 @@ aclnnStatus aclnnFFNToAttentionV2GetWorkspaceSize(
 
 aclnnStatus aclnnFFNToAttentionV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
 {
-    OP_LOGI("aclnnFFNToAttentionV2", "runtime workspace: addr=%p, size=%lu", workspace,
-            static_cast<unsigned long>(workspaceSize));
     if (NnopbaseSetHcclServerType) {
         NnopbaseSetHcclServerType(executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
     }
