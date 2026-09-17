@@ -13,6 +13,7 @@
  * \brief
  */
 
+#include "../../../common/op_kernel/moe_shared_jetty_context.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -132,6 +133,10 @@ static bool CheckInputTensorShape(const gert::TilingContext *context, const char
         contextShape->GetStorageShape().GetDimNum() != ONE_DIM,
         OP_LOGE(nodeName, "context dims must be 1, but got %lu.", contextShape->GetStorageShape().GetDimNum()),
         return false);
+    OP_TILING_CHECK(info.networkMode != NETWORK_HYBRID &&
+                        contextShape->GetStorageShape().GetDim(0) !=
+                            sizeof(Mc2Aclnn::MoeSharedJettyContext) / sizeof(int32_t),
+                    OP_LOGE(nodeName, "Direct dispatch requires a shared Jetty context."), return false);
     OP_TILING_CHECK(xShape->GetStorageShape().GetDimNum() != TWO_DIMS,
                     OP_LOGE(nodeName, "x dims must be 2, but got %lu.", xShape->GetStorageShape().GetDimNum()),
                     return false);

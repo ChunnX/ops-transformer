@@ -167,6 +167,23 @@ def print_card_metadata(card_num: int, card_metadata: dict):
 #   uint64_t epHcclBuffer[1024];                        // Win区地址
 #   uint64_t hcommHandle[1024];                         // Handle地址
 #   uint32_t channelsPerRank;                           // 每卡channel数
+SHARED_JETTY_NUM = 56
+CONTEXT_MAX_RANK_SIZE = 1024
+SHARED_CONTEXT_INTS = 2 + 2 * (CONTEXT_MAX_RANK_SIZE + SHARED_JETTY_NUM)
+
+
+def parse_shared_context(context):
+    if len(context) != SHARED_CONTEXT_INTS:
+        return None
+    raw = context.tobytes()
+    windows = np.frombuffer(raw, dtype=np.uint64, count=CONTEXT_MAX_RANK_SIZE, offset=8)
+    jetty_count = int(context[1]) & 0xFFFFFFFF
+    if jetty_count != SHARED_JETTY_NUM:
+        raise ValueError(f"Invalid shared Jetty count: {jetty_count}")
+    handles = np.frombuffer(raw, dtype=np.uint64, count=jetty_count, offset=8 + CONTEXT_MAX_RANK_SIZE * 8)
+    return int(context[0]), windows, handles
+
+
 def get_context(target_path: str):
     for filename in os.listdir(target_path):
         if "input.0" in filename and filename.endswith("bin"):
@@ -174,6 +191,13 @@ def get_context(target_path: str):
             context = np.fromfile(file_path, dtype=np.int32)
             logging.info("===== context 数据 =====")
             logging.info("context dtype: %s, size: %d", context.dtype, context.shape[0])
+            shared = parse_shared_context(context)
+            if shared is not None:
+                rank, windows, handles = shared
+                logging.info("Shared context: epRankId=%d, sharedJettyNum=%d", rank, len(handles))
+                logging.info("epHcclBuffer: %s", windows[windows != 0])
+                logging.info("multiChannelHandles: %s", handles)
+                return context
             raw = context.tobytes()
             # 前 2 个 uint32: epRankId, rankSizePerServer
             ep_rank_id = int(context[0])
@@ -470,10 +494,28 @@ def write_metadata_sheet(wb, all_metadata: dict, card_count: int):
 
 # 写 context sheet: 按 MoeCommContext 结构体平铺, 每卡一行
 # 列: card_num, epRankId, rankSizePerServer, epHcclBuffer_0..(rankSize-1), hcommHandle_0..(rankSize-1), channelsPerRank
+def write_shared_context_sheet(wb, all_context):
+    shared_contexts = [(card, parse_shared_context(ctx)) for card, ctx in enumerate(all_context)]
+    shared_contexts = [(card, ctx) for card, ctx in shared_contexts if ctx is not None]
+    if not shared_contexts:
+        return
+    ws = wb.create_sheet("shared_context")
+    ws.append(["card_num", "epRankId", "sharedJettyNum", "kind", "index", "address"])
+    for card, (rank, windows, handles) in shared_contexts:
+        for peer, address in enumerate(windows):
+            if address != 0:
+                ws.append([card, rank, len(handles), "epHcclBuffer", peer, hex(int(address))])
+        for jetty, address in enumerate(handles):
+            ws.append([card, rank, len(handles), "multiChannelHandle", jetty, hex(int(address))])
+
+
 def write_context_sheet(wb, all_context: list):
+    write_shared_context_sheet(wb, all_context)
     ws = wb.create_sheet("context")
     max_rank_size = 0
     for context_data in all_context:
+        if parse_shared_context(context_data) is not None:
+            continue
         if len(context_data) >= 2:
             rs = int(context_data[1]) & 0xFFFFFFFF
             if rs > max_rank_size:
@@ -484,6 +526,8 @@ def write_context_sheet(wb, all_context: list):
     header += ["channelsPerRank"]
     ws.append(header)
     for card_num, context_data in enumerate(all_context):
+        if parse_shared_context(context_data) is not None:
+            continue
         if len(context_data) < 4099:
             ws.append([card_num] + [None] * (3 + max_rank_size * 2 + 1))
             continue

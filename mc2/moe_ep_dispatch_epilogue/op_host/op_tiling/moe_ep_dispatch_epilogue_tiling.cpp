@@ -15,6 +15,7 @@
  *        eAlloc from output shape, workspace for rank+expert prefix sums.
  */
 
+#include "../../../common/op_kernel/moe_shared_jetty_context.h"
 #include <climits>
 #include <cmath>
 #include <cstdint>
@@ -226,7 +227,7 @@ static ge::graphStatus CheckInputDataType(const gert::TilingContext *context, co
 // 必须先于本函数完成 attr 校验，依赖 epWorldSize / numLocalExperts / nmt
 // ---------------------------------------------------------------------------
 static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context, const char *nodeName,
-                                             MoeEpDispatchEpilogueInfo &info)
+                                             MoeEpDispatchEpilogueInfo &info, uint32_t networkMode)
 {
     // ---- context: dim 必须 = 1 ----
     const gert::StorageShape *contextStorageShape = context->GetInputShape(CONTEXT_INDEX);
@@ -235,6 +236,12 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
         contextStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
         OP_LOGE(nodeName, "context dims must be 1, but got %lu.", contextStorageShape->GetStorageShape().GetDimNum()),
         return ge::GRAPH_FAILED);
+
+    OP_TILING_CHECK(networkMode != NETWORK_HYBRID &&
+                        contextStorageShape->GetStorageShape().GetDim(0) !=
+                            sizeof(Mc2Aclnn::MoeSharedJettyContext) / sizeof(int32_t),
+                    OP_LOGE(nodeName, "Direct dispatch epilogue requires a shared Jetty context."),
+                    return ge::GRAPH_FAILED);
 
     // ---- x [num_tokens, hidden]，hidden 为 cfg 唯一真值来源 ----
     const gert::StorageShape *xShape = context->GetInputShape(X_INDEX);
@@ -503,7 +510,7 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
     OP_TILING_CHECK(CheckInputDataType(context, nodeName, cached) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Check input dtype failed."), return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(CheckInputTensorShape(context, nodeName, info) != ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(CheckInputTensorShape(context, nodeName, info, networkMode) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Check input tensor shape failed."), return ge::GRAPH_FAILED);
 
     const int64_t topK = static_cast<int64_t>(info.cfg.topK);

@@ -129,7 +129,11 @@ class ElasticBufferOpBuilder(OpBuilder):
 
     def sources(self):
         """Path to C++ source code."""
-        return ["csrc/mc2/elastic_buffer.cpp"]
+        return [
+            "csrc/mc2/elastic_buffer.cpp",
+            "csrc/mc2/moe_shared_jetty_context.cpp",
+            "csrc/mc2/moe_shared_jetty_adapter.cpp",
+        ]
 
     def schema(self):
         """PyTorch operator signature."""

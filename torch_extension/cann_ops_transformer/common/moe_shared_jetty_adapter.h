@@ -12,9 +12,16 @@
 #define MC2_MOE_SHARED_JETTY_ADAPTER_H
 
 #include <cstdint>
+#include <string>
+
 #include "hccl/hccl_res.h"
 
+namespace at {
+class Tensor;
+}
+
 namespace Mc2Api {
+at::Tensor BuildMoeSharedJettyContext(const std::string &groupName, uint64_t requiredBufferSize);
 HcclResult CreateMoeMultiChannelHandle(HcclComm comm, const char *queueTag, const HcclChannelDesc *descs,
                                      uint32_t channelNum, uint64_t *handle);
 } // namespace Mc2Api

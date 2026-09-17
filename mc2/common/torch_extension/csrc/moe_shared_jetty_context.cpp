@@ -10,6 +10,7 @@
 
 #include "hccl_common.h"
 #include "moe_shared_jetty_adapter.h"
+#include "moe_shared_jetty_context.h"
 #include "torch_npu/csrc/aten/common/from_blob.h"
 
 #include <algorithm>
@@ -21,20 +22,13 @@
 
 namespace Mc2Api {
 namespace {
-constexpr uint32_t SHARED_JETTY_MAX_RANK_SIZE = 1024;
-constexpr uint32_t SHARED_JETTY_NUM = 56;
+constexpr uint32_t SHARED_JETTY_MAX_RANK_SIZE = Mc2Aclnn::MOE_SHARED_JETTY_MAX_RANK_SIZE;
+constexpr uint32_t SHARED_JETTY_NUM = Mc2Aclnn::MOE_SHARED_JETTY_NUM;
 constexpr size_t SHARED_JETTY_MAX_TAG_SIZE = 255;
 constexpr CommEngine CommEngineUse = CommEngine::COMM_ENGINE_AIV;
 } // namespace
 
-// Separate from MoeCommContext: these handles are indexed by Jetty, not by rank.
-// GetHandleRef uses peer < epRankId ? peer : peer - 1 within each multi-channel handle.
-struct MoeSharedJettyContext {
-    uint32_t epRankId = 0;
-    uint32_t sharedJettyNum = 0;
-    uint64_t epHcclBuffer[SHARED_JETTY_MAX_RANK_SIZE] = {};
-    uint64_t multiChannelHandles[SHARED_JETTY_NUM] = {};
-};
+using Mc2Aclnn::MoeSharedJettyContext;
 
 class MoeSharedJettyContextBuilder {
 private:
@@ -42,6 +36,7 @@ private:
     uint32_t rankSize_ = 0;
     uint32_t layer_ = 0;
     MoeSharedJettyContext context_;
+    uint64_t requiredBufferSize_ = 0;
     std::vector<HcclChannelDesc> channelDescs_;
 
     static void CheckHccl(HcclResult ret, const char *operation)
@@ -200,7 +195,8 @@ private:
         void *buffer = nullptr;
         uint64_t bufferSize = 0;
         CheckHccl(HcclGetHcclBufferFunc(comm_, &buffer, &bufferSize), "HcclGetHcclBuffer");
-        TORCH_CHECK(buffer != nullptr && bufferSize > 0, "Invalid local HCCL buffer");
+        TORCH_CHECK(buffer != nullptr && bufferSize >= requiredBufferSize_, "HCCL buffer is too small; required=",
+                    requiredBufferSize_, ", available=", bufferSize, "; increase HCCL_BUFFSIZE");
         context_.epHcclBuffer[context_.epRankId] = reinterpret_cast<uint64_t>(buffer);
         for (uint32_t peer = 0, index = 0; peer < rankSize_; ++peer) {
             if (peer == context_.epRankId) {
@@ -210,7 +206,8 @@ private:
             buffer = nullptr;
             CheckHccl(HcclChannelGetHcclBufferFunc(comm_, channels[index++], &buffer, &size),
                       "HcclChannelGetHcclBuffer");
-            TORCH_CHECK(buffer != nullptr && size > 0, "Invalid remote HCCL buffer, peer=", peer);
+            TORCH_CHECK(buffer != nullptr && size >= requiredBufferSize_, "Invalid remote HCCL buffer, peer=", peer,
+                        ", required=", requiredBufferSize_, ", available=", size);
             context_.epHcclBuffer[peer] = reinterpret_cast<uint64_t>(buffer);
         }
     }
@@ -234,6 +231,17 @@ private:
         GetHcclBuffers(channels);
     }
 
+    void ClearHcclBuffer()
+    {
+        void *buffer = nullptr;
+        uint64_t size = 0;
+        CheckHccl(HcclGetHcclBufferFunc(comm_, &buffer, &size), "HcclGetHcclBuffer");
+        // Clear once, before peers can finish the first channel handshake and start sending.
+        // Clear the whole allocation because later calls may request a larger window.
+        auto ret = aclrtMemset(buffer, size, 0, size);
+        TORCH_CHECK(ret == ACL_SUCCESS, "Clear shared Jetty HCCL buffer failed, ret=", ret);
+    }
+
     void *BuildContext(const std::string &contextTag)
     {
         void *ctx = nullptr;
@@ -245,6 +253,7 @@ private:
         }
         // Build resources before publishing the context so failed channel creation
         // cannot leave a partially initialized context in the HCCL cache.
+        ClearHcclBuffer();
         GetHcclCommResource(contextTag);
         CheckHccl(HcclEngineCtxCreateFunc(comm_, contextTag.c_str(), CommEngineUse, sizeof(context_), &ctx),
                   "HcclEngineCtxCreate");
@@ -269,7 +278,7 @@ private:
     }
 
 public:
-    at::Tensor Build(const std::string &groupName)
+    at::Tensor Build(const std::string &groupName, uint64_t requiredBufferSize)
     {
         // As with ordinary channel construction, callers must serialize builds on
         // the same communicator and enter them in matching order across its ranks.
@@ -285,11 +294,24 @@ public:
         context_ = {};
         channelDescs_.clear();
         GetRankInfo();
+        requiredBufferSize_ = requiredBufferSize;
+        void *buffer = nullptr;
+        uint64_t bufferSize = 0;
+        CheckHccl(HcclGetHcclBufferFunc(comm_, &buffer, &bufferSize), "HcclGetHcclBuffer");
+        TORCH_CHECK(buffer != nullptr && requiredBufferSize > 0 && bufferSize >= requiredBufferSize,
+                    "HCCL buffer is too small; required=", requiredBufferSize, ", available=", bufferSize,
+                    "; increase HCCL_BUFFSIZE before creating the communicator");
         CommProtocol protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP;
         GetCommProtocol(protocol);
         void *ctx = BuildContext(contextTag);
         return CreateContextTensor(ctx);
     }
 };
+
+at::Tensor BuildMoeSharedJettyContext(const std::string &groupName, uint64_t requiredBufferSize)
+{
+    MoeSharedJettyContextBuilder builder;
+    return builder.Build(groupName, requiredBufferSize);
+}
 
 } // namespace Mc2Api

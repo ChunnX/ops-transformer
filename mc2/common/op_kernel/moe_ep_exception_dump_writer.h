@@ -24,6 +24,7 @@ namespace MoeEpExceptionDump {
 
 class MoeEpCoreDiagWriter {
 public:
+    template <typename ContextType = Mc2Aclnn::MoeCommContext>
     __aicore__ inline void Init(GM_ADDR context, MoeEpCoreDiagOpIndex opIndex, AscendC::TPipe *tpipe)
     {
         if ASCEND_IS_NOT_AIV {
@@ -34,7 +35,7 @@ public:
         }
 
         tpipe_ = tpipe;
-        auto commContext = reinterpret_cast<__gm__ Mc2Aclnn::MoeCommContext *>(context);
+        auto commContext = reinterpret_cast<__gm__ ContextType *>(context);
         uint32_t aivId = AscendC::GetBlockIdx();
         GM_ADDR localWin = reinterpret_cast<GM_ADDR>(commContext->epHcclBuffer[commContext->epRankId]);
         recordAddr_ = localWin + MOE_EP_DUMP_METADATA_BYTES +
@@ -93,6 +94,7 @@ private:
     AscendC::TPipe *tpipe_{nullptr};
 };
 
+template <typename ContextType = Mc2Aclnn::MoeCommContext>
 __aicore__ inline void WriteMetadata(GM_ADDR context, GM_ADDR metadataSource)
 {
     if ASCEND_IS_NOT_AIV {
@@ -102,7 +104,7 @@ __aicore__ inline void WriteMetadata(GM_ADDR context, GM_ADDR metadataSource)
         return;
     }
 
-    auto commContext = reinterpret_cast<__gm__ Mc2Aclnn::MoeCommContext *>(context);
+    auto commContext = reinterpret_cast<__gm__ ContextType *>(context);
     GM_ADDR localWin = reinterpret_cast<GM_ADDR>(commContext->epHcclBuffer[commContext->epRankId]);
     AscendC::LocalTensor<uint8_t> metadataLocal{AscendC::TPosition::LCM, 0,
                                                 static_cast<uint32_t>(sizeof(MoeEpDumpMetadata))};

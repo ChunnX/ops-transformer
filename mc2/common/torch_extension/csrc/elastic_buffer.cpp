@@ -37,6 +37,7 @@
 
 // HCCL common utilities
 #include "hccl_common.h"
+#include "moe_shared_jetty_adapter.h"
 
 // ACLNN common utilities
 #include "aclnn_common.h"
@@ -1249,6 +1250,7 @@ public:
 private:
     void EnsureEngramContext(void *externalHostPtr = nullptr, int64_t externalBytes = 0);
     void EnsureMoeContext(int64_t cclBufferSize);
+    const at::Tensor &GetDispatchContext(int64_t topoType, int64_t cclBufferSize);
     int64_t ResolveRankNumPerServer(int64_t epWorldSize) const;
     int64_t ResolveTopoType(int64_t epWorldSize, int64_t rankNumPerServer) const;
 
@@ -1272,6 +1274,8 @@ private:
     int64_t engramExternalBytes_ = 0;
 
     at::Tensor moeContextTensor_;
+    at::Tensor moeSharedContextTensor_;
+    int64_t moeSharedBufferRequirement_ = 0;
     int64_t moeCclBufferSize_ = 0; // MoE 通信 buffer 大小（首次调用时按算子参数计算并内部申请注册）
     uint32_t moeRankSizePerServer_ = 2;
     void *moeDeviceBufPtr_ = nullptr;
@@ -1369,6 +1373,19 @@ void ElasticBuffer::EnsureMoeContext(int64_t cclBufferSize)
     moeMemHandle_ = resources.memHandle;
     moeContextTag_ = resources.contextTag;
     moeContextInitialized_ = true;
+}
+
+const at::Tensor &ElasticBuffer::GetDispatchContext(int64_t topoType, int64_t cclBufferSize)
+{
+    if (topoType == NETWORK_HYBRID) {
+        return moeContextTensor_;
+    }
+    TORCH_CHECK(cclBufferSize > 0, "MoE dispatch buffer size must be positive");
+    if (!moeSharedContextTensor_.defined() || cclBufferSize > moeSharedBufferRequirement_) {
+        moeSharedContextTensor_ = BuildMoeSharedJettyContext(groupName_, static_cast<uint64_t>(cclBufferSize));
+        moeSharedBufferRequirement_ = cclBufferSize;
+    }
+    return moeSharedContextTensor_;
 }
 
 int64_t ElasticBuffer::ResolveRankNumPerServer(int64_t epWorldSize) const
@@ -1610,6 +1627,8 @@ void ElasticBuffer::Destroy()
     moeContextInitialized_ = false;
     engramContextTensor_ = at::Tensor();
     localStorageAddrTensor_ = at::Tensor();
+    moeSharedContextTensor_ = at::Tensor();
+    moeSharedBufferRequirement_ = 0;
     moeContextTensor_ = at::Tensor();
 
     destroyed_ = true;
@@ -1750,9 +1769,11 @@ Mc2Api::ElasticBuffer::DispatchTensorList Mc2Api::ElasticBuffer::MoeEpDispatch(
                                   ConvertToAclDataType(scales.has_value() ? scalesTensor.scalar_type() : at::kFloat);
     TensorWrapper scalesWrapper = TensorWrapper{scalesTensor, scalesDtype};
 
-    ACLNN_CMD(aclnnMoeEpDispatch, moeContextTensor_, x, topkIdx, topkWeightsTensor, scalesWrapper, cachedSlotTensor,
+    const auto &dispatchContext = GetDispatchContext(topoType, cclBufferSize);
+    int64_t dispatchBufferSize = topoType == NETWORK_DIRECT ? cclBufferSize : moeCclBufferSize_;
+    ACLNN_CMD(aclnnMoeEpDispatch, dispatchContext, x, topkIdx, topkWeightsTensor, scalesWrapper, cachedSlotTensor,
               cachedRouteCountTensor, cachedRouteDstScaleoutTensor, cachedRouteScaleoutSlotTensor, epWorldSize,
-              epRankId, numExperts, numMaxTokensPerRank, moeCclBufferSize_, expertAlignment, doCpuSync,
+              epRankId, numExperts, numMaxTokensPerRank, dispatchBufferSize, expertAlignment, doCpuSync,
               hostPinnedCounterAddr, topoType, rankNumPerServer, numRecvPerRank, numRecvPerExpert, dstSlot, routeCount,
               routeDstScaleout, routeScaleoutSlot);
 
@@ -1793,8 +1814,10 @@ Mc2Api::ElasticBuffer::DispatchEpilogueTensorList Mc2Api::ElasticBuffer::MoeEpDi
         recvTopkWeightsOpt.has_value() ? *recvTopkWeightsOpt : at::empty({1}, recvX.options().dtype(at::kFloat));
     bool hasTopkWeights = recvTopkWeightsOpt.has_value();
 
-    ACLNN_CMD(aclnnMoeEpDispatchEpilogue, moeContextTensor_, x, topkIdx, numRecvPerRank, numRecvPerExpert,
-              cachedRecvSrcMetadataTensor, epWorldSize, epRankId, numExperts, numMaxTokensPerRank, moeCclBufferSize_,
+    const auto &dispatchContext = GetDispatchContext(topoType, cclBufferSize);
+    int64_t dispatchBufferSize = topoType == NETWORK_DIRECT ? cclBufferSize : moeCclBufferSize_;
+    ACLNN_CMD(aclnnMoeEpDispatchEpilogue, dispatchContext, x, topkIdx, numRecvPerRank, numRecvPerExpert,
+              cachedRecvSrcMetadataTensor, epWorldSize, epRankId, numExperts, numMaxTokensPerRank, dispatchBufferSize,
               hasTopkWeights, topoType, rankNumPerServer, recvX, recvSrcMetadata, recvTopkWeightsTensor,
               recvScalesWrapper);
 

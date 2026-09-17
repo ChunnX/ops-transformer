@@ -11,6 +11,8 @@
 #ifndef MOE_EP_EXCEPTION_DUMP_H
 #define MOE_EP_EXCEPTION_DUMP_H
 
+#include <cstddef>
+#include "../op_kernel/moe_shared_jetty_context.h"
 #include <array>
 #include <cstring>
 #include <string>
@@ -51,16 +53,28 @@ inline void MoeEpExceptionImpl(aclrtExceptionInfo *args, void *userdata, const c
         return;
     }
 
-    Mc2Aclnn::MoeCommContext context{};
-    ret = aclrtMemcpy(&context, sizeof(context), reinterpret_cast<void *>(contextAddr), sizeof(context),
+    static_assert(offsetof(Mc2Aclnn::MoeCommContext, epHcclBuffer) ==
+                  offsetof(Mc2Aclnn::MoeSharedJettyContext, epHcclBuffer));
+    static_assert(offsetof(Mc2Aclnn::MoeCommContext, epRankId) ==
+                  offsetof(Mc2Aclnn::MoeSharedJettyContext, epRankId));
+    // Both context layouts expose rank and the window table at the same offsets.
+    // Copy only the required fields; the shared context has no ordinary handle array.
+    uint32_t epRankId = 0;
+    ret = aclrtMemcpy(&epRankId, sizeof(epRankId), reinterpret_cast<void *>(contextAddr), sizeof(epRankId),
                       ACL_MEMCPY_DEVICE_TO_HOST);
-    if (ret != ACL_SUCCESS) {
-        OP_LOGE(OP_NAME, "aclrtMemcpy MoeCommContext failed for %s. ret=%d", op, ret);
+    if (ret != ACL_SUCCESS || epRankId >= Mc2Aclnn::HCCL_MAX_RANK_SIZE) {
+        OP_LOGE(OP_NAME, "Read Moe EP rank failed for %s. ret=%d, rank=%u", op, ret, epRankId);
         return;
     }
-
-    const uint32_t epRankId = context.epRankId;
-    const uint64_t winBase = context.epHcclBuffer[epRankId];
+    uint64_t winBase = 0;
+    uint64_t windowAddr = contextAddr + offsetof(Mc2Aclnn::MoeCommContext, epHcclBuffer) +
+                          static_cast<uint64_t>(epRankId) * sizeof(uint64_t);
+    ret = aclrtMemcpy(&winBase, sizeof(winBase), reinterpret_cast<void *>(windowAddr), sizeof(winBase),
+                      ACL_MEMCPY_DEVICE_TO_HOST);
+    if (ret != ACL_SUCCESS || winBase == 0) {
+        OP_LOGE(OP_NAME, "Read Moe EP window failed for %s. ret=%d", op, ret);
+        return;
+    }
     std::vector<uint8_t> metadataBuffer(MOE_EP_DUMP_METADATA_BYTES, 0U);
     ret = aclrtMemcpy(metadataBuffer.data(), metadataBuffer.size(), reinterpret_cast<void *>(winBase),
                       metadataBuffer.size(), ACL_MEMCPY_DEVICE_TO_HOST);
