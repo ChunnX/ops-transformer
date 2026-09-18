@@ -157,7 +157,7 @@
     <tr>
     <td style="white-space: nowrap">cclBufferSize</td>
     <td style="white-space: nowrap">属性</td>
-    <td style="white-space: nowrap">CCL通信缓冲区总大小（Bytes），由 <code>get_buffer_for_attention_to_ffn</code> 接口内部自动计算。需 >= token_info_size + token_data_size（按2MB向上对齐）。</td>
+    <td style="white-space: nowrap">CCL通信缓冲区总大小（Bytes），由 <code>get_buffer_for_attention_to_ffn</code> 接口内部自动计算。需 >= token_info_size + token_data_size + flag_staging_size（按2MB向上对齐）。</td>
     <td style="white-space: nowrap">INT64</td>
     <td style="white-space: nowrap">-</td>
     </tr>
@@ -186,7 +186,7 @@
 
 - `ccl_buffer_size`为HBM上分配的CCL通信缓冲区**总大小**（Bytes），需满足：
 
-$$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{tokenInfoSize} + \mathrm{tokenDataSize},\ 2\,\mathrm{MB})$$
+$$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{CeilAlign}(\mathrm{tokenInfoSize},\ 512) + \mathrm{CeilAlign}(\mathrm{tokenDataSize},\ 512) + \mathrm{flagStagingSize},\ 2\,\mathrm{MB})$$
 
 其中：
 
@@ -194,6 +194,7 @@ $$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{tokenInfoSize} + \mathrm{toke
   - 非量化模式：`tokenDataSize = attentionWorkerNum × microBatchNum × BS × (K+shared) × HS × 2B`
   - INT8/FP8量化模式：`tokenDataSize = attentionWorkerNum × microBatchNum × BS × (K+shared) × HS × 1B`
   - FP4量化模式：`HS`已按打包字节计算，`tokenDataSize = attentionWorkerNum × microBatchNum × BS × (K+shared) × HS × 1B`
+  - `flagStagingSize = (BS × (K+shared) + 1) × 32B`，为窗口内token数据区之后的URMA staging区（每token一个flag槽 + 1个layer flag槽）
 
 该大小由 `get_buffer_for_attention_to_ffn` 接口内部自动计算，用户无需自行计算或设置`ccl_buffer_size`。
 

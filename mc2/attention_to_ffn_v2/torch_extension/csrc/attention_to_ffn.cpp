@@ -79,6 +79,8 @@ constexpr int64_t NO_QUANT_MODE = 0;
 constexpr int64_t BYTES_PER_FP16 = 2;
 constexpr int64_t BYTES_PER_INT32 = 4;
 constexpr int64_t BYTES_PER_QUANT_ELEM = 1; // INT8/FP8 = 1 byte, FP4-packed HS already accounts for packing
+constexpr int64_t WIN_REGION_ALIGN = 512;   // window region start alignment (matches kernel WIN_ALIGN)
+constexpr int64_t FLAG_SLOT_BYTES = 32;     // URMA flag staging slot (matches kernel URMA_FLAG_SLOT_SIZE)
 
 int64_t CeilAlign(int64_t val, int64_t align)
 {
@@ -104,8 +106,17 @@ int64_t GetAttentionToFfnCclBufferSize(const std::vector<int64_t> &ffnTokenInfoT
     int64_t tokenInfoSize = attentionWorkerNum * microBatchNum * infoTableLastDim * BYTES_PER_INT32;
     int64_t bytesPerElem = (quantMode == NO_QUANT_MODE) ? BYTES_PER_FP16 : BYTES_PER_QUANT_ELEM;
     int64_t tokenDataSize = attentionWorkerNum * microBatchNum * bs * kPlusShared * hs * bytesPerElem;
-    int64_t rawSize = tokenInfoSize + tokenDataSize;
-    return CeilAlign(rawSize, MB_ALIGN);
+    // Compact contiguous staging area appended after the token-data region: one slot per token
+    // (stride = ceil(hs * elemSize, 32B)), physically separated from the session-slot receiving
+    // area to avoid HBM bank conflicts between local URMA reads and remote URMA writes.
+    int64_t stagingStride = CeilAlign(hs * bytesPerElem, FLAG_SLOT_BYTES);
+    int64_t maxTotalSendNum = bs * kPlusShared; // X is always 1
+    int64_t stagingSize = maxTotalSendNum * stagingStride;
+    // Persistent URMA flag staging area: one 32B flag slot per token plus one layer-flag slot.
+    int64_t flagStagingSize = (bs * kPlusShared + 1) * FLAG_SLOT_BYTES;
+    int64_t needed = CeilAlign(tokenInfoSize, WIN_REGION_ALIGN) + CeilAlign(tokenDataSize, WIN_REGION_ALIGN) +
+                     CeilAlign(stagingSize, WIN_REGION_ALIGN) + flagStagingSize;
+    return CeilAlign(needed, MB_ALIGN);
 }
 
 // Bind the C++ function to Python module
