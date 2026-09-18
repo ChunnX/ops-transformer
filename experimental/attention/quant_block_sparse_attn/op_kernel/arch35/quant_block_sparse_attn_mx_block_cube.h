@@ -49,31 +49,16 @@ public:
     static constexpr uint32_t S2_SPLIT = S2_BASE / 2U;
     static constexpr uint32_t D_BASE = static_cast<uint32_t>(dTemplateType);
     static constexpr uint32_t DV_BASE = static_cast<uint32_t>(dVTemplateType);
-    static constexpr bool IS_D64_S2_1024 = D_BASE == 64U && S2_BASE == 1024U;
-    // D64/S2=1024 uses a 512-token inner tile. P[M,K] occupies all 64 KiB L0A and
-    // C1[K,M] occupies all 256 KiB L0C, so those two memories use one full-size slot.
-    using L0ABuffers = typename std::conditional<IS_D64_S2_1024,
-        BuffersPolicySingleBuffer<BufferType::L0A>, BuffersPolicyDB<BufferType::L0A>>::type;
+    // D256 uses 128-token subtiles so every L0A/L0B operand fits a 32 KiB slot.
+    using L0ABuffers = BuffersPolicyDB<BufferType::L0A>;
     using L0BBuffers = BuffersPolicyDB<BufferType::L0B>;
-    using L0CBuffers = typename std::conditional<IS_D64_S2_1024,
-        BuffersPolicySingleBuffer<BufferType::L0C>, BuffersPolicyDB<BufferType::L0C>>::type;
-    using QBuffers = typename std::conditional<IS_D64_S2_1024,
-        BuffersPolicySingleBuffer<BufferType::L1>, BuffersPolicyDB<BufferType::L1>>::type;
-    using KBuffers = typename std::conditional<IS_D64_S2_1024,
-        BuffersPolicySingleBuffer<BufferType::L1>, BuffersPolicy4buff<BufferType::L1>>::type;
-    static constexpr uint32_t Q_BUFFER_NUM = IS_D64_S2_1024 ? 1U : 2U;
-    static constexpr uint32_t K_BUFFER_NUM = IS_D64_S2_1024 ? 1U : 4U;
-    static constexpr uint32_t V_BUFFER_NUM = 2U;
-    static constexpr uint32_t L0_A_SLOT_BYTES = IS_D64_S2_1024 ? 64U * 1024U : 32U * 1024U;
-    static constexpr uint32_t L0_B_SLOT_BYTES = 32U * 1024U;
-    static constexpr uint32_t L0_C_SLOT_BYTES = IS_D64_S2_1024 ? 256U * 1024U : 128U * 1024U;
+    using KBuffers = BuffersPolicy4buff<BufferType::L1>;
+    static constexpr uint32_t L0_AB_SLOT_BYTES = 32U * 1024U;
     static_assert(LAYOUT == QBSALayout::TND && KV_LAYOUT == QBSALayout::PA_BNBD && IS_PA,
                   "MX cube currently only supports TND query and PA_BNBD KV");
-    static_assert(M_BASE == 128U && D_BASE == DV_BASE &&
-                  ((D_BASE == 64U && (S2_BASE == 512U || S2_BASE == 1024U)) ||
-                   (D_BASE == 128U && S2_BASE == 512U) ||
-                   (D_BASE == 256U && S2_BASE == 256U)),
-                  "MX cube requires S1=128 and a supported (S2,D,DV) combination");
+    static_assert(M_BASE == 128U && S2_BASE == (D_BASE == 256U ? 256U : 512U) && D_BASE == DV_BASE &&
+                  (D_BASE == 64U || D_BASE == 128U || D_BASE == 256U),
+                  "MX cube requires S1=128, S2=(D256 ? 256 : 512) and D=DV in {64,128,256}");
     // 每 32 个 fp8 数据元素对应一个 e8m0 scale。
     static constexpr uint32_t MX_SCALE_GROUP = 32U;
     // V scale 为 [blockNum,N,blockSize/64,DV,2]。
@@ -113,32 +98,28 @@ public:
 
             constexpr uint32_t pSize = M_BASE * S2_BASE * (sizeof(INPUT_T) * MX_SCALE_GROUP +
                 sizeof(SCALE_T)) / MX_SCALE_GROUP;
-            constexpr uint32_t totalL1Size = 3U * pSize + Q_BUFFER_NUM * (qSize + qScaleSize) +
-                K_BUFFER_NUM * (kvSize + kvScaleSize) +
-                V_BUFFER_NUM * (kvSize + valueScaleSize);
+            constexpr uint32_t totalL1Size = 3U * pSize + 2U * (qSize + qScaleSize) +
+                4U * (kvSize + kvScaleSize) +
+                2U * (kvSize + valueScaleSize);
             static_assert(totalL1Size <= 512U * 1024U, "MX buffers exceed L1 capacity");
-            static_assert(S2_SPLIT * D_BASE * sizeof(INPUT_T) <= L0_A_SLOT_BYTES &&
-                          M_BASE * S2_SPLIT * sizeof(INPUT_T) <= L0_A_SLOT_BYTES &&
-                          S2_SPLIT * DV_BASE * sizeof(INPUT_T) <= L0_B_SLOT_BYTES &&
-                          M_BASE * D_BASE * sizeof(INPUT_T) <= L0_B_SLOT_BYTES,
+            static_assert(S2_SPLIT * D_BASE * sizeof(INPUT_T) <= L0_AB_SLOT_BYTES &&
+                          S2_SPLIT * DV_BASE * sizeof(INPUT_T) <= L0_AB_SLOT_BYTES &&
+                          M_BASE * D_BASE * sizeof(INPUT_T) <= L0_AB_SLOT_BYTES &&
+                          M_BASE * S2_SPLIT * sizeof(INPUT_T) <= L0_AB_SLOT_BYTES,
                           "MX full matmul operands exceed L0 slots");
-            static_assert(S2_SPLIT * M_BASE * sizeof(MM_T) <= L0_C_SLOT_BYTES &&
-                          M_BASE * DV_BASE * sizeof(MM_T) <= L0_C_SLOT_BYTES,
-                          "MX full matmul result exceeds its L0C slot");
-            // The S2=1024 specialization keeps P triple buffering and V double buffering.
-            // Q is resident across the paired C1 MMADs; K is released after its L1->L0 copy.
+            // Q/V use two buffers; K uses four slots for the paired C1 subLoops.
             l1QBuffers_.Init(*l1BufferManager_, qSize + qScaleSize);
             l1KVBuffers_.Init(*l1BufferManager_, kvSize + kvScaleSize);
             l1VBuffers_.Init(*l1BufferManager_, kvSize + valueScaleSize);
 
-            // L0B remains double-buffered for Q/V. The S2=1024 path gives L0A/L0C
-            // one full-capacity slot so P[128,512] and C1[512,128] both fit.
+            // L0A/L0B are double-buffered; retain paired Q reuse.
+            // L0C stays double-buffered: both C1 and C2 fit in 128 KiB.
             l0aBufferManager_.Init(tPipe_, 64U * 1024U);
             l0bBufferManager_.Init(tPipe_, 64U * 1024U);
             l0cBufferManager_.Init(tPipe_, 256U * 1024U);
-            mmL0ABuffers_.Init(l0aBufferManager_, L0_A_SLOT_BYTES);
-            mmL0BBuffers_.Init(l0bBufferManager_, L0_B_SLOT_BYTES);
-            mmL0CBuffers_.Init(l0cBufferManager_, L0_C_SLOT_BYTES);
+            mmL0ABuffers_.Init(l0aBufferManager_, L0_AB_SLOT_BYTES);
+            mmL0BBuffers_.Init(l0bBufferManager_, L0_AB_SLOT_BYTES);
+            mmL0CBuffers_.Init(l0cBufferManager_, 128U * 1024U);
         }
     }
 
@@ -561,12 +542,12 @@ private:
     BufferManager<BufferType::L0A> l0aBufferManager_;
     BufferManager<BufferType::L0B> l0bBufferManager_;
     BufferManager<BufferType::L0C> l0cBufferManager_;
-    QBuffers l1QBuffers_;
+    BuffersPolicyDB<BufferType::L1> l1QBuffers_;
     KBuffers l1KVBuffers_;
     BuffersPolicyDB<BufferType::L1> l1VBuffers_;
     L0ABuffers mmL0ABuffers_;
     L0BBuffers mmL0BBuffers_;
-    L0CBuffers mmL0CBuffers_;
+    BuffersPolicyDB<BufferType::L0C> mmL0CBuffers_;
 };
 } // namespace BaseApi
 
