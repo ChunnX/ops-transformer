@@ -27,7 +27,8 @@
 
 #pragma once
 
-#include "all_gather_fit_balance_tiling.h" // 老类(回退分支保留, 迁移收尾后随 P4 删除)
+#include "all_gather_fit_balance_tiling.h"            // 老类(回退分支保留, 迁移收尾后随 P4 删除)
+#include "apace/tiling/core_occupancy_first_tiling.h" // GetCommTilingFromV3/CommTilingData(miss→COF 分派)
 #include "apace/tiling/fit_balance_tiling.h"
 #include "mc2_log.h"
 #include "op_host/op_tiling/formulaic_tiling_datatype.h" // 旧 CutResult/KernelType/TopoType(对外接口沿用旧类型)
@@ -143,6 +144,35 @@ inline CutResult ScheduleFitBalance(const mc2tiling::TilingArgs &args, TilingCom
         *baseMOut = ctx.matmulPerf.GetBaseM();
     }
     return cut;
+}
+
+// §4.29 全家族分派: 通信标定表命中 → fit-balance; miss(未标定 rank) → 核利用率优先(op 侧自备
+// 全量 mm tiling 后调 GetCommTilingFromV3)。本函数只判断标定命中, COF 路径在各 tiling 类实现。
+inline bool IsCommCalibrated(uint32_t rankDim, TilingCommEngine commEngine)
+{
+    const auto &rows = (commEngine == TilingCommEngine::CCU) ? CALIBRATION.ccu.rows : CALIBRATION.aicpu.rows;
+    for (const auto &row : rows) {
+        if (row.rankDim == 0) { // 哨兵截断(与 InitCtx 同约定)
+            break;
+        }
+        if (row.rankDim == rankDim) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// COF 结果(head 在前/tail 在后) → CutResult(long/short) 映射; 短块(尾块)后置
+inline CutResult CutResultFromCof(const CommTilingData &data)
+{
+    CutResult r;
+    r.shortTileAtBack = true;
+    r.longTileLen = data.splitAxisTileSize;
+    r.numLongTile = data.splitAxisTileCnt;
+    r.shortTileLen = data.splitAxisTailSize;
+    r.numShortTile = data.splitAxisTailCnt;
+    r.totalTileCnt = data.splitAxisTileCnt + data.splitAxisTailCnt;
+    return r;
 }
 
 // 新旧切换开关: 置 false 并重新编译即整体回退老类路径（出问题时的回退手段）
