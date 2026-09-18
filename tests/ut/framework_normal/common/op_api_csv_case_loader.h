@@ -72,7 +72,7 @@ const std::unordered_map<std::string, op::SocVersion> SOC_VERSION{
     {"Ascend310P", op::SocVersion::ASCEND310P},     {"Ascend310B", op::SocVersion::ASCEND310B},
     {"Ascend310C", op::SocVersion::ASCEND310C},     {"Ascend610LITE", op::SocVersion::ASCEND610LITE},
     {"KirinX90", op::SocVersion::KIRINX90},         {"Kirin9030", op::SocVersion::KIRIN9030},
-    {"Ascend5162A", op::SocVersion::ASCEND5162A}};
+    {"Ascend5162A", op::SocVersion::ASCEND5162A},   {"3510", op::SocVersion::ASCEND950}}; // 3510: arch串(即DAV_3510),对应A5
 
 const std::unordered_map<std::string, aclnnStatus> ACR_RET{{"SUCCESS", ACLNN_SUCCESS},
                                                            {"PARAM_NULLPTR", ACLNN_ERR_PARAM_NULLPTR},
