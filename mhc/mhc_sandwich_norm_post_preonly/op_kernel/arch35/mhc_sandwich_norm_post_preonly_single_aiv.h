@@ -309,9 +309,8 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::ProcessTokenSingleAi
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
         LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-        // gamma1搬运与低精度h_in恢复使用独立流水，先发射MTE2以隐藏其耗时。
-        LoadGammaInto(bufGamma1Fp32_.Get<float>(), gamma1Gm_, tOff, tD);
         LoadHInCacheTile(tOff, tD, hIn);
+        LoadGammaInto(bufGamma1Fp32_.Get<float>(), gamma1Gm_, tOff, tD);
         SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
         WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
         ApplyScaleAndGamma(hIn, invRms1, bufGamma1Fp32_.Get<float>(), tD);
