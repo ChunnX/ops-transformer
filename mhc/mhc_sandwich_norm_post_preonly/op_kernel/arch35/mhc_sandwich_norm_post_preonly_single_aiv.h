@@ -55,10 +55,6 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::AccumulateHalfPartia
     LocalTensor<float> out = bufOutFp32_.Get<float>();
     LocalTensor<float> tmp = bufSqFp32_.Get<float>();
 
-    DataCopyExtParams copyParams = {1, 0, 0, 0, 0};
-    copyParams.blockLen = tD * sizeof(float);
-    DataCopyPadExtParams<float> copyPad = {false, 0, 0, 0};
-
     for (uint32_t half = 0; half < 2; ++half) {
         const uint32_t h0 = half * 2;
         const uint32_t h1 = h0 + 1;
@@ -74,7 +70,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::AccumulateHalfPartia
         for (uint32_t o = 0; o < N_; ++o) {
             LocalTensor<float> phi = bufPhiFp32_.AllocTensor<float>();
             uint64_t phiOffset = (uint64_t)o * phiCols_ + (uint64_t)h0 * D_ + tOff;
-            DataCopyPad(phi, phiGm_[phiOffset], copyParams, copyPad);
+            DataCopy(phi, phiGm_[phiOffset], tD);
             bufPhiFp32_.EnQue(phi);
             phi = bufPhiFp32_.DeQue<float>();
             Mul(out, x2[h0 * dimTile_], phi, tD);
@@ -83,7 +79,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::AccumulateHalfPartia
 
             phi = bufPhiFp32_.AllocTensor<float>();
             phiOffset = (uint64_t)o * phiCols_ + (uint64_t)h1 * D_ + tOff;
-            DataCopyPad(phi, phiGm_[phiOffset], copyParams, copyPad);
+            DataCopy(phi, phiGm_[phiOffset], tD);
             bufPhiFp32_.EnQue(phi);
             phi = bufPhiFp32_.DeQue<float>();
             Mul(tmp, x2[h1 * dimTile_], phi, tD);
