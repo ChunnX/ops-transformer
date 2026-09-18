@@ -1,15 +1,11 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software: you can redistribute it and/or modify it under the terms and conditions of
- * the CANN Open Software License Agreement Version 2.0 (the "License").
- * You may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.hiascend.com/license/
- *
- * Unless required by applicable law or agreed to in writing, software distributed under the License
- * is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and limitations under the License.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 
 /*!
@@ -83,10 +79,9 @@ private:
     __aicore__ inline void FetchByRank(uint32_t indicesBatchStart);
     __aicore__ inline void LocalFetchTokens(uint32_t indicesBatchStart, uint32_t tokenOffset, uint32_t tokenStride);
     __aicore__ inline void RemoteFetchRank(uint32_t ownerRank, uint32_t indicesBatchStart, uint32_t channelIdxInRank,
-                                            uint32_t channelCount);
+                                           uint32_t channelCount);
     __aicore__ inline void GatherRankTokens(uint32_t ownerRank, uint32_t batchLen, uint32_t compareCntMax,
-                                             uint32_t &runningOffset);
-
+                                            uint32_t &runningOffset);
     uint32_t channelsPerRank_{1};
 
     AscendC::TBuf<> hcommBuf_;
@@ -131,7 +126,7 @@ __aicore__ inline void EngramFetchArch35::Init(GM_ADDR commContext, GM_ADDR indi
     tpipe_->InitBuffer(hcommBatchBuf_, ENGRAM_BATCH_BUFFER_BYTES);
     AscendC::LocalTensor<uint8_t> hcommBatchTensor = hcommBatchBuf_.Get<uint8_t>();
     AscendC::Duplicate<uint8_t>(hcommBatchTensor, 0U, ENGRAM_BATCH_BUFFER_BYTES);
-    EngramFetchSyncFunc<AscendC::HardEvent::V_S>();
+    SyncFunc<AscendC::HardEvent::V_S>();
 
     uint32_t countsBufSize = AscendC::Ceil(numRanks_ * sizeof(uint32_t), UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(rankCountsBuf_, countsBufSize);
@@ -180,7 +175,7 @@ __aicore__ inline void EngramFetchArch35::CopyContextToUb()
 }
 
 __aicore__ inline void EngramFetchArch35::GatherRankTokens(uint32_t ownerRank, uint32_t batchLen,
-                                                            uint32_t compareCntMax, uint32_t &runningOffset)
+                                                           uint32_t compareCntMax, uint32_t &runningOffset)
 {
     AscendC::LocalTensor<uint32_t> rankCounts = rankCountsBuf_.Get<uint32_t>();
     AscendC::LocalTensor<uint32_t> rankOffsets = rankOffsetsBuf_.Get<uint32_t>();
@@ -196,7 +191,7 @@ __aicore__ inline void EngramFetchArch35::GatherRankTokens(uint32_t ownerRank, u
     uint64_t rsvdCnt = 0;
     AscendC::GatherMask(dstRegion, positions, mask.ReinterpretCast<uint32_t>(), true, batchLen, {1, 1, 0, 0}, rsvdCnt);
     AscendC::PipeBarrier<PIPE_V>();
-    EngramFetchSyncFunc<AscendC::HardEvent::V_S>();
+    SyncFunc<AscendC::HardEvent::V_S>();
 
     uint32_t count = static_cast<uint32_t>(rsvdCnt);
     rankOffsets.SetValue(ownerRank, runningOffset);
@@ -223,7 +218,7 @@ __aicore__ inline void EngramFetchArch35::ScatterByRank(uint32_t batchLen)
 
     AscendC::Div<int32_t>(rankIDs, indicesLocal, divisor, batchLen);
     AscendC::PipeBarrier<PIPE_V>();
-    EngramFetchSyncFunc<AscendC::HardEvent::V_S>();
+    SyncFunc<AscendC::HardEvent::V_S>();
 
     uint32_t runningOffset = 0;
     uint32_t totalBlocks = AscendC::GetBlockNum();
@@ -244,7 +239,7 @@ __aicore__ inline void EngramFetchArch35::Process()
             return;
         }
         CopyContextToUb();
-        EngramFetchSyncFunc<AscendC::HardEvent::MTE2_S>();
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
         uint32_t numTokens = static_cast<uint32_t>(numTokens_);
         uint32_t indicesBatchStart = 0;
         while (indicesBatchStart < numTokens) {
@@ -253,7 +248,7 @@ __aicore__ inline void EngramFetchArch35::Process()
                 indicesBatchLen = numTokens - indicesBatchStart;
             }
             CopyIndicesToUb(indicesBatchStart, indicesBatchLen);
-            EngramFetchSyncFunc<AscendC::HardEvent::MTE2_S>();
+            SyncFunc<AscendC::HardEvent::MTE2_S>();
             ScatterByRank(indicesBatchLen);
             FetchByRank(indicesBatchStart);
             indicesBatchStart += indicesBatchLen;
@@ -262,7 +257,7 @@ __aicore__ inline void EngramFetchArch35::Process()
 }
 
 __aicore__ inline void EngramFetchArch35::LocalFetchTokens(uint32_t indicesBatchStart, uint32_t tokenOffset,
-                                                            uint32_t tokenStride)
+                                                           uint32_t tokenStride)
 {
     AscendC::LocalTensor<uint64_t> commBufferLocal = commBufferBuf_.Get<uint64_t>();
     AscendC::LocalTensor<int32_t> indicesLocal = indicesBuf_.Get<int32_t>();
@@ -288,7 +283,7 @@ __aicore__ inline void EngramFetchArch35::LocalFetchTokens(uint32_t indicesBatch
             GatherSf(globalIdx, globalTokenIdx);
         }
     }
-    EngramFetchSyncFunc<AscendC::HardEvent::MTE3_S>();
+    SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
 
 template <auto const &config>
@@ -317,7 +312,7 @@ __aicore__ inline void EngramFetchArch35::FlushPreparedReads()
 }
 
 __aicore__ inline void EngramFetchArch35::RemoteFetchRank(uint32_t ownerRank, uint32_t indicesBatchStart,
-                                                           uint32_t channelIdxInRank, uint32_t channelCount)
+                                                          uint32_t channelIdxInRank, uint32_t channelCount)
 {
     AscendC::LocalTensor<uint64_t> commBufferLocal = commBufferBuf_.Get<uint64_t>();
     AscendC::LocalTensor<uint64_t> hcommHandleLocal = hcommHandleBuf_.Get<uint64_t>();

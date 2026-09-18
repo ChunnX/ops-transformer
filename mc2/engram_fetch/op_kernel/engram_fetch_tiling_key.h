@@ -18,6 +18,9 @@
 
 #include "ascendc/host_api/tiling/template_argument.h"
 
+// kernel 实例模式枚举(模板参数, 非用户 fetch_mode):
+// 由 op_host tiling 依据 fetch_mode attr(见 op_api/engram_fetch_mode_def.h)与 withGrad 推导:
+// fetch_mode=0 + withGrad=0 -> DEFAULT_MODE; fetch_mode=0 + withGrad=1 -> TRAIN_MODE; fetch_mode=1 -> LOCAL_MODE
 #define ENGRAM_FETCH_DEFAULT_MODE 0
 #define ENGRAM_FETCH_TRAIN_MODE 1
 #define ENGRAM_FETCH_LOCAL_MODE 2

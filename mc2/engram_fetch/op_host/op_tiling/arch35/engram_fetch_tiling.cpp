@@ -22,6 +22,7 @@
 #include "register/op_def_registry.h"
 #include "../../../op_kernel/engram_fetch_tiling_data.h"
 #include "../../../op_kernel/engram_fetch_tiling_key.h"
+#include "../../../op_api/engram_fetch_mode_def.h"
 
 using namespace AscendC;
 using namespace ge;
@@ -45,8 +46,6 @@ constexpr uint32_t ATTR_COMM_BUFFER_SIZE_INDEX = 3U;
 constexpr uint32_t ATTR_WITH_GRAD_INDEX = 4U;
 constexpr uint32_t ATTR_FETCH_MODE_INDEX = 5U;
 
-constexpr int64_t ENGRAM_FETCH_MODE_SLICED = 0;
-constexpr int64_t ENGRAM_FETCH_MODE_LOCAL = 1;
 constexpr uint32_t SF_TABLE_INDEX = 3U;
 
 constexpr uint32_t DIM_ONE = 1U;
