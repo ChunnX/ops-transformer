@@ -30,6 +30,7 @@ using WeightQuantBatchMatmulV2::Arch35::GMM_CACHE_LINE_4BIT_SIZE;
 using WeightQuantBatchMatmulV2::Arch35::GMM_CACHE_LINE_SIZE;
 using WeightQuantBatchMatmulV2::Arch35::IsMxA8W4;
 using WeightQuantBatchMatmulV2::Arch35::MX_A8W4_A_L1_RESERVED_KB;
+using WeightQuantBatchMatmulV2::Arch35::MX_GROUPSIZE;
 using WeightQuantBatchMatmulV2::Arch35::PREFETCH_A_MAX_M_SIZE;
 using WeightQuantBatchMatmulV2::Arch35::QUADRUPLE_BUFFER_NUM;
 using WeightQuantBatchMatmulV2::Arch35::QuantType;
@@ -194,7 +195,12 @@ __aicore__ inline void GMM_WQ_RESPLIT_CONTROLLER_CLASS::InitOffsetParam(
     offsetParam[0].kaL1Size = offsetParam[0].kbL1Size; // 当前实现a矩阵切分保持b矩阵一致
     offsetParam[0].kSize = gmmBaseTiling_->kSize;
     offsetParam[0].nSize = gmmBaseTiling_->nSize;
-    offsetParam[0].kAlign = CeilAlign(gmmBaseTiling_->kSize, static_cast<uint64_t>(BLOCK_CUBE));
+    if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
+        // FP4 NZ physical K is aligned to 32 elements.
+        offsetParam[0].kAlign = CeilAlign(gmmBaseTiling_->kSize, static_cast<uint64_t>(MX_GROUPSIZE));
+    } else {
+        offsetParam[0].kAlign = CeilAlign(gmmBaseTiling_->kSize, static_cast<uint64_t>(BLOCK_CUBE));
+    }
     offsetParam[1].kbL1Size = mmTiling_->baseK * mmTiling_->stepKb;
     offsetParam[1].kaL1Size = offsetParam[0].kbL1Size; // 当前实现a矩阵切分保持b矩阵一致
     offsetParam[1].kSize = offsetParam[0].kSize;
@@ -222,10 +228,14 @@ __aicore__ inline void GMM_WQ_RESPLIT_CONTROLLER_CLASS::SplitNByMultiCore(
         offsetParam[ctrlParam.processId].nOffset =
             ctrlParam.nOffset +
             ((ctrlParam.curBasicBlockId - ctrlParam.basicBlockLimit) % basicBlockCount) * basicBlockSize;
-        offsetParam[ctrlParam.processId].nL1Size =
-            offsetParam[ctrlParam.processId].nOffset + basicBlockSize > gmmBaseTiling_->nSize ?
-                gmmBaseTiling_->nSize - offsetParam[ctrlParam.processId].nOffset :
-                basicBlockSize;
+        if (offsetParam[ctrlParam.processId].nOffset >= gmmBaseTiling_->nSize) {
+            offsetParam[ctrlParam.processId].nL1Size = 0;
+        } else {
+            offsetParam[ctrlParam.processId].nL1Size =
+                offsetParam[ctrlParam.processId].nOffset + basicBlockSize > gmmBaseTiling_->nSize ?
+                    gmmBaseTiling_->nSize - offsetParam[ctrlParam.processId].nOffset :
+                    basicBlockSize;
+        }
         offsetParam[ctrlParam.processId].yGmAddr = reinterpret_cast<GM_ADDR>(yGm_);
         if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
             // MxA8W4场景，切换低阶api，支持kernel内动态调整k轴切分
@@ -266,14 +276,21 @@ __aicore__ inline void GMM_WQ_RESPLIT_CONTROLLER_CLASS::UpdateGmAddr(uint64_t gr
             }
         }
     } else {
-        if constexpr (IsSameType<wType, int4b_t>::value || IsSameType<wType, fp4x2_e2m1_t>::value ||
+        if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
+            const uint64_t weightKAlign = CeilAlign(kSize, static_cast<uint64_t>(MX_GROUPSIZE));
+            const uint64_t weightNAlign = CeilAlign(nSize, static_cast<uint64_t>(BLOCK_CUBE));
+            weightGm_ += (weightKAlign * weightNAlign) >> 1;
+        } else if constexpr (IsSameType<wType, int4b_t>::value || IsSameType<wType, fp4x2_e2m1_t>::value ||
                       IsSameType<wType, fp4x2_e1m2_t>::value) {
             weightGm_ += (nSize * kSize) >> 1;
         } else {
             weightGm_ += nSize * kSize;
         }
 
-        if constexpr (wqmmConfig.antiQuantType == QuantType::PER_GROUP || wqmmConfig.antiQuantType == QuantType::MX) {
+        if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
+            const uint64_t scaleKSpan = CeilDivide(kSize, static_cast<uint64_t>(MX_GROUPSIZE * 2)) * 2;
+            antiquantScaleGm_ += nSize * scaleKSpan;
+        } else if constexpr (wqmmConfig.antiQuantType == QuantType::PER_GROUP) {
             antiquantScaleGm_ += nSize * CeilDivide(kSize, static_cast<uint64_t>(gmmBaseTiling_->groupSize));
             antiquantOffsetGm_ += nSize * CeilDivide(kSize, static_cast<uint64_t>(gmmBaseTiling_->groupSize));
         } else {
@@ -286,7 +303,8 @@ __aicore__ inline void GMM_WQ_RESPLIT_CONTROLLER_CLASS::UpdateGmAddr(uint64_t gr
     }
 
     if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
-        perTokenScaleGm_ += mSize * CeilDivide(kSize, static_cast<uint64_t>(gmmBaseTiling_->groupSize));
+        const uint64_t scaleKSpan = CeilDivide(kSize, static_cast<uint64_t>(MX_GROUPSIZE * 2)) * 2;
+        perTokenScaleGm_ += mSize * scaleKSpan;
     } else {
         perTokenScaleGm_ += mSize;
     }

@@ -24,6 +24,7 @@
 #include "kernel_operator_intf.h"
 #endif
 #include "lib/matmul_intf.h"
+#include "c_api/asc_simd.h"
 #include "weight_quant_tool.h"
 
 #include "basic_api/weight_quant_basic_api_v1.h"
@@ -86,6 +87,8 @@ private:
                                                    int64_t kbL1RealSize, int64_t biasRealN, int64_t aGmOffset);
     __aicore__ inline void ConfigScaleDn2NzParams(uint64_t rowNum, uint64_t scaleKGmSize, uint64_t scaleKL1RealSize,
                                                   Dn2NzParams &dn2NzParams);
+    __aicore__ inline void PadMxKTailInL1(const LocalTensor<xType> &weightL1, uint64_t aL1Offset,
+                                          uint64_t kbL1RealSize, const BasicBlockOffsetParam &param);
 
     int8_t aL1DbNum_;
     bool isBias_;
@@ -132,6 +135,34 @@ __aicore__ inline uint64_t WQBMM_CUBE_COMPUTE_CLASS::CheckMaxSpace(const BasicBl
 }
 
 WQBMM_CUBE_COMPUTE_TEMPLATE_PARAM
+__aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::PadMxKTailInL1(const LocalTensor<xType> &weightL1,
+                                                                 uint64_t aL1Offset, uint64_t kbL1RealSize,
+                                                                 const BasicBlockOffsetParam &param)
+{
+    const uint64_t kC0Align = CeilAlign(kbL1RealSize, static_cast<uint64_t>(MX_GROUPSIZE));
+    const uint64_t kMxAlign = CeilAlign(kbL1RealSize, static_cast<uint64_t>(MX_GROUPSIZE * 2));
+    if (kC0Align == kMxAlign) {
+        return;
+    }
+
+    asc_fill_value_config config;
+    config.repeat = 1;
+    config.dst_gap = 0;
+
+    // ND2NZ has already zero-padded the partial FP8 C0 block. Fill the extra
+    // C0 block required by the 64-element MX MMAD K granularity.
+    const uint64_t mAlign = CeilAlign(param.mL1Size, static_cast<uint64_t>(BLOCK_CUBE));
+    config.blk_num = mAlign;
+    asc_fill_l1((__cbuf__ half *)aL1_[aL1Offset + kC0Align * mAlign].GetPhyAddr(), half(0), config);
+
+    // The dequantized weight in L1 is ZN. Its extra K C0 block is contiguous
+    // across the N-aligned tile.
+    const uint64_t nAlign = CeilAlign(param.nL1Size, static_cast<uint64_t>(BLOCK_CUBE));
+    config.blk_num = nAlign;
+    asc_fill_l1((__cbuf__ half *)weightL1[kC0Align * nAlign].GetPhyAddr(), half(0), config);
+}
+
+WQBMM_CUBE_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::LaunchMatmul(const LocalTensor<xType> &weightL1, int64_t kbOffset,
                                                               uint64_t kbL1RealSize, uint64_t cvLoopIdx,
                                                               const BasicBlockOffsetParam &param)
@@ -161,6 +192,9 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::LaunchMatmul(const LocalTensor<
     } else {
         aL1Offset = (aL1BufIdx_ & 1) * aL1DbOffset_;
     }
+    if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
+        PadMxKTailInL1(weightL1, aL1Offset, kbL1RealSize, param);
+    }
     if constexpr (!IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
         mmObj_.SetOrgShape(CeilAlign(param.mL1Size, static_cast<uint64_t>(BLOCK_CUBE)),
                            CeilAlign(param.nL1Size, static_cast<uint64_t>(BLOCK_CUBE)),
@@ -176,7 +210,11 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::LaunchMatmul(const LocalTensor<
         mmObj_.Iterate(kbOffset != 0);
     } else {
         BasicApiParamsV1 basicApiParams;
-        basicApiParams.l1KbSize = kbL1RealSize;
+        // MX scale covers two 32-element K blocks. Keep the basic API's K
+        // contract in the same 64-element unit as the scale tensor and zero
+        // padding prepared in L1. Logical K is still retained by param.kSize
+        // for GM offsets and boundary decisions.
+        basicApiParams.l1KbSize = CeilAlign(kbL1RealSize, SCALE_COPY_GROUP_SIZE * MX_GROUPSIZE);
         basicApiParams.l1KaSize = param.kaL1Size;
         basicApiParams.l0NSize = param.nL1Size;
         basicApiParams.l0MSize = param.mL1Size;
@@ -322,11 +360,14 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::CopyMxScaleGmToL1(const BasicBl
     if (kbL1Offset % MX_SCALE_K_L1_SIZE != 0) {
         return;
     }
-    uint64_t scaleKGmSize = param.kSize / MX_GROUPSIZE;
+    // Scale rows are physically padded to an even number of 32-element MX groups.
+    uint64_t scaleKGmSize = CeilDivide(param.kSize, static_cast<uint64_t>(MX_GROUPSIZE * 2)) * 2;
     // 当前scaleFactor为1，暂不考虑scaleFactor相关计算
     uint64_t scaleKL1StandardLen = MX_SCALE_K_L1_SIZE / MX_GROUPSIZE;
     uint64_t scaleKL1RealSize = (kbL1Offset + MX_SCALE_K_L1_SIZE) > param.kSize ?
-                                    (param.kSize - kbL1Offset) / MX_GROUPSIZE :
+                                    CeilAlign(CeilDivide(param.kSize - kbL1Offset,
+                                                        static_cast<uint64_t>(MX_GROUPSIZE)),
+                                              static_cast<uint64_t>(SCALE_COPY_GROUP_SIZE)) :
                                     scaleKL1StandardLen;
 
     // copy mxScaleA
@@ -335,8 +376,11 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::CopyMxScaleGmToL1(const BasicBl
 
     int64_t scaleAGmOffset = param.mOffset * scaleKGmSize + kbL1Offset / MX_GROUPSIZE;
     GlobalTensor<half> f16ScaleAGlobal;
+    uint64_t scaleAGmBufferSize = param.mL1Size == 0 ?
+                                      0 :
+                                      CeilDivide((param.mL1Size - 1) * scaleKGmSize + scaleKL1RealSize, 2UL);
     f16ScaleAGlobal.SetGlobalBuffer((__gm__ half *)mxScaleAGlobal_[scaleAGmOffset].GetPhyAddr(),
-                                    (param.mL1Size * scaleKL1RealSize) >> 1);
+                                    scaleAGmBufferSize);
     auto f16ScaleALocal = mxScaleAL1_[(mxScaleBufIdx_ & 1) * mxScaleAL1DbOffset_].template ReinterpretCast<half>();
 
     DataCopy(f16ScaleALocal, f16ScaleAGlobal, scaleAdn2NzParams);
