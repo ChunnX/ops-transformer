@@ -39,6 +39,8 @@ AttrList MakeAttrs(int64_t topk, int64_t cmpRatio, const char *layoutQ, const ch
         {"key_reduce_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(keyReduce)},
         {"score_scale", Ops::Transformer::AnyValue::CreateFrom<float>(scoreScale)},
         {"key_stride0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
+        {"init_blocks", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        {"local_blocks", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
     };
 }
 
@@ -215,7 +217,7 @@ TEST_F(GenericLightningIndexerProto, TND_LIv2)
 }
 
 // P-MSA-REJ: select_mode reserved
-TEST_F(GenericLightningIndexerProto, P_MSA_REJ_select_mode)
+TEST_F(GenericLightningIndexerProto, P_MSA_identity_maxpool)
 {
     gert::InfershapeContextPara para("GenericLightningIndexer",
                                      {
@@ -231,7 +233,27 @@ TEST_F(GenericLightningIndexerProto, P_MSA_REJ_select_mode)
                                          NullIn(),
                                      },
                                      {NullIn(), NullIn(ge::DT_FLOAT)},
-                                     MakeAttrs(32, 1, "BSND", "BSND", 0, 1, false, false, false, -1, false, 1, 1));
+                                     MakeAttrs(16, 16, "BSND", "BSND", 3, 1, false, false, false, -1, true, 1, 1));
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, {{0}, {1, 8, 8, 16}});
+}
+
+TEST_F(GenericLightningIndexerProto, P_MSA_REJ_incomplete_combo)
+{
+    gert::InfershapeContextPara para("GenericLightningIndexer",
+                                     {
+                                         {{{1, 8, 8, 128}, {1, 8, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                         {{{1, 32, 1, 128}, {1, 32, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                         NullIn(ge::DT_FLOAT16),
+                                         NullIn(),
+                                         NullIn(),
+                                         NullIn(),
+                                         NullIn(),
+                                         NullIn(ge::DT_FLOAT),
+                                         NullIn(ge::DT_FLOAT),
+                                         NullIn(),
+                                     },
+                                     {NullIn(), NullIn(ge::DT_FLOAT)},
+                                     MakeAttrs(32, 1, "BSND", "BSND", 0, 1, false, false, false, -1, false, 0, 0));
     ExecuteTestCase(para, ge::GRAPH_FAILED, {});
 }
 
@@ -300,12 +322,14 @@ TEST_F(GenericLightningIndexerProto, InferDataType)
         {"key_reduce_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         {"score_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
         {"key_stride0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
+        {"init_blocks", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        {"local_blocks", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
     };
     auto holder = gert::InferDataTypeContextFaker()
-                      .NodeIoNum(10, 2)
+                      .NodeIoNum(11, 2)
                       .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
                       .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .InputDataTypes({&fp16, &fp16, &fp16, &i32, &i32, &i32, &i32, &f32, &f32, &i32})
+                      .InputDataTypes({&fp16, &fp16, &fp16, &i32, &i32, &i32, &i32, &f32, &f32, &i32, &i32})
                       .NodeAttrs(dtypeAttrs)
                       .Build();
     auto ctx = holder.GetContext<gert::InferDataTypeContext>();

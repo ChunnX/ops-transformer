@@ -220,6 +220,10 @@ __aicore__ inline void GenericLightningIndexerKernel<LIT>::InitTilingData(
     constInfo.expandMode = tilingData->expandMode;
     constInfo.hasWeightedSum = tilingData->hasWeightedSum;
     constInfo.actType = tilingData->actType;
+    constInfo.selectMode = tilingData->selectMode;
+    constInfo.keyReduceMode = tilingData->keyReduceMode;
+    constInfo.initBlocks = tilingData->initBlocks;
+    constInfo.localBlocks = tilingData->localBlocks;
     constInfo.trunkLen = tilingData->trunkLen;
     constInfo.mBaseSizeMax = tilingData->mBaseSizeMax;
     constInfo.keyDequantScaleStride0 = tilingData->keyDequantScaleStride0;
@@ -783,8 +787,12 @@ __aicore__ inline void GenericLightningIndexerKernel<LIT>::ProcessBaseBlock(uint
         matmulService.ComputeMm1(runInfo);
     } else {
         vectorService.ProcessVec1(runInfo);
-        if (runInfo.isLastS2InnerLoop) { // 本核s2last
-            vectorService.ProcessTopK(runInfo);
+        if (runInfo.isLastS2InnerLoop) {
+            if constexpr (LIT::doTopK) {
+                vectorService.ProcessTopK(runInfo);
+            } else {
+                vectorService.ProcessMaxpoolScore(runInfo);
+            }
         }
     }
 }

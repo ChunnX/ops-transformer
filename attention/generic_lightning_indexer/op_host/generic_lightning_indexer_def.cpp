@@ -66,6 +66,11 @@ public:
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
+        this->Input("start_loc")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Output("sparse_indices")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_INT32})
@@ -90,6 +95,8 @@ public:
         this->Attr("key_reduce_mode").AttrType(OPTIONAL).Int(0);      // 0 none, 1 maxpool (step2)
         this->Attr("score_scale").AttrType(OPTIONAL).Float(1.0f);
         this->Attr("key_stride0").AttrType(OPTIONAL).Int(-1);
+        this->Attr("init_blocks").AttrType(OPTIONAL).Int(0);
+        this->Attr("local_blocks").AttrType(OPTIONAL).Int(0);
 
         OpAICoreConfig aicoreConfig;
         aicoreConfig.DynamicCompileStaticFlag(true)

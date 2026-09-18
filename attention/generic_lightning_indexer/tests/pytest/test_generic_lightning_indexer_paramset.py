@@ -94,6 +94,20 @@ PROFILES = [
         "score_scale": 1.0,
         "topk": 4,
     },
+    {
+        "id": "P-MSA",
+        "cmp_ratio": 8,
+        "act_type": 1,
+        "has_weighted_sum": False,
+        "sparse_mode": 3,
+        "expand_indices": False,
+        "append_tail": False,
+        "quant_mode": -1,
+        "score_scale": 1.0 / (128**0.5),
+        "topk": 16,
+        "key_reduce_mode": 1,
+        "select_mode": 1,
+    },
 ]
 
 
@@ -118,7 +132,11 @@ def test_golden_profile_shape_and_invalid_slot(cfg):
     weights = (
         np.ones((b, s1, n1), dtype=np.float32) if cfg["has_weighted_sum"] else None
     )
-    residual = np.array([1], dtype=np.int32) if r > 1 else None
+    residual = (
+        np.array([1], dtype=np.int32)
+        if r > 1 and cfg.get("select_mode", 0) == 0
+        else None
+    )
     idx, val = generic_lightning_indexer_golden(
         query,
         key,
@@ -134,9 +152,17 @@ def test_golden_profile_shape_and_invalid_slot(cfg):
         append_tail=cfg["append_tail"],
         return_value=True,
         score_scale=cfg["score_scale"],
+        key_reduce_mode=cfg.get("key_reduce_mode", 0),
+        select_mode=cfg.get("select_mode", 0),
     )
     idx_np = idx.numpy()
     val_np = val.numpy()
+    if cfg.get("select_mode", 0) == 1:
+        n_blocks = (s2 + r - 1) // r
+        n_out = ((max(n_blocks, 1) + 15) // 16) * 16
+        assert idx_np.shape == (0,)
+        assert val_np.shape == (b, s1, n1, n_out)
+        return
     last = _expected_idx_last(cfg)
     assert idx_np.shape == (b, s1, last)
     assert val_np.shape == (b, s1, cfg["topk"])

@@ -29,6 +29,9 @@ constexpr uint32_t ATTR_QUANT_MODE = 9;
 constexpr uint32_t ATTR_RETURN_VALUE = 10;
 constexpr uint32_t ATTR_SELECT_MODE = 11;
 constexpr uint32_t ATTR_KEY_REDUCE_MODE = 12;
+constexpr uint32_t GLI_KEY_INDEX = 1;
+constexpr uint32_t GLI_BLOCK_TABLE_INDEX = 6;
+constexpr int64_t SCORE_BLOCK_ALIGN = 16;
 
 constexpr int64_t TOPK_MIN = 1;
 constexpr int64_t TOPK_MAX_CONTINUOUS = 2048;
@@ -48,6 +51,11 @@ static int64_t IndicesLastDim(int64_t topk, int64_t cmpRatio, bool expand, bool 
     }
     int64_t expanded = topk * cmpRatio;
     return appendTail ? (expanded + cmpRatio - 1) : expanded;
+}
+
+static int64_t RoundUpTo(int64_t value, int64_t align)
+{
+    return (align == 0) ? value : ((value + align - 1) / align * align);
 }
 
 static ge::graphStatus InferShapeGenericLightningIndexer(gert::InferShapeContext *context)
@@ -144,23 +152,66 @@ static ge::graphStatus InferShapeGenericLightningIndexer(gert::InferShapeContext
                                               std::to_string(quantMode).c_str(), "quant_mode should be -1 or 0..5"),
         return ge::GRAPH_FAILED);
 
-    // Step 1: MSA reserved attrs are rejected so the IR stays explicit.
-    OP_CHECK_IF(selectMode != 0,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    "GenericLightningIndexer", "select_mode", std::to_string(selectMode).c_str(),
-                    "Step1 only supports select_mode=0 (topk); 1 is reserved for MSA"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(keyReduceMode != 0,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    "GenericLightningIndexer", "key_reduce_mode", std::to_string(keyReduceMode).c_str(),
-                    "Step1 only supports key_reduce_mode=0; 1 (maxpool) is reserved for MSA"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(actType == 1,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GenericLightningIndexer", "act_type", "1",
-                                                      "Step1 only supports act_type=0 (relu); identity is reserved"),
-                return ge::GRAPH_FAILED);
+    const bool isMsa = (selectMode == 1 || keyReduceMode == 1 || actType == 1);
+    if (isMsa) {
+        OP_CHECK_IF(selectMode != 1 || keyReduceMode != 1 || actType != 1,
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                        "GenericLightningIndexer", "msa combo",
+                        "MSA requires act_type=1, key_reduce_mode=1 and select_mode=1 together"),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(hasWeighted,
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("GenericLightningIndexer", "has_weighted_sum",
+                                                             "MSA requires has_weighted_sum=false"),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(expand || appendTail,
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("GenericLightningIndexer", "expand_indices",
+                                                             "MSA forbids expand_indices/append_tail"),
+                    return ge::GRAPH_FAILED);
+    }
 
     (void)hasWeighted;
+    if (isMsa) {
+        const gert::Shape *keyShape = context->GetInputShape(GLI_KEY_INDEX);
+        OP_CHECK_NULL_WITH_CONTEXT(context, keyShape);
+        int64_t nBlocks = 1;
+        if (layoutK == "PA_BBND") {
+            const gert::Shape *btShape = context->GetOptionalInputShape(GLI_BLOCK_TABLE_INDEX);
+            OP_CHECK_IF(btShape == nullptr, OP_LOGE(context, "PA_BBND requires block_table for MSA"),
+                        return ge::GRAPH_FAILED);
+            nBlocks = btShape->GetDim(1);
+        } else if (layoutK == "TND") {
+            nBlocks = (keyShape->GetDim(0) + cmpRatio - 1) / cmpRatio;
+        } else {
+            nBlocks = (keyShape->GetDim(1) + cmpRatio - 1) / cmpRatio;
+        }
+        if (nBlocks <= 0) {
+            nBlocks = 1;
+        }
+        nBlocks = RoundUpTo(nBlocks, SCORE_BLOCK_ALIGN);
+        sparseIndicesShape->SetDimNum(1);
+        sparseIndicesShape->SetDim(0, 0);
+        if (layoutQ == "BSND") {
+            OP_CHECK_IF(queryShape->GetDimNum() != 4,
+                        OP_LOGE(context, "Layout BSND, queryDims (%zu) must be 4!", queryShape->GetDimNum()),
+                        return ge::GRAPH_FAILED);
+            sparseValuesShape->SetDimNum(4);
+            sparseValuesShape->SetDim(0, queryShape->GetDim(0));
+            sparseValuesShape->SetDim(1, queryShape->GetDim(1));
+            sparseValuesShape->SetDim(2, queryShape->GetDim(2));
+            sparseValuesShape->SetDim(3, nBlocks);
+        } else {
+            OP_CHECK_IF(queryShape->GetDimNum() != 3,
+                        OP_LOGE(context, "Layout TND, queryDims (%zu) must be 3!", queryShape->GetDimNum()),
+                        return ge::GRAPH_FAILED);
+            sparseValuesShape->SetDimNum(3);
+            sparseValuesShape->SetDim(0, queryShape->GetDim(0));
+            sparseValuesShape->SetDim(1, queryShape->GetDim(1));
+            sparseValuesShape->SetDim(2, nBlocks);
+        }
+        OP_LOGI(context->GetNodeName(), "GenericLightningIndexer InferShape MSA nBlocks=%ld", nBlocks);
+        return ge::GRAPH_SUCCESS;
+    }
+
     const int64_t outLastDim = IndicesLastDim(topk, cmpRatio, expand, appendTail);
 
     if (layoutQ == "BSND") {

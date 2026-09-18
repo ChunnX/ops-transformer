@@ -53,6 +53,11 @@ def generic_lightning_indexer_golden(
     append_tail=False,
     return_value=False,
     score_scale=1.0,
+    key_reduce_mode=0,
+    select_mode=0,
+    start_loc=None,
+    init_blocks=0,
+    local_blocks=0,
     **kwargs,
 ):
     """NumPy golden matching docs/generic_lightning_indexer_design.md §3."""
@@ -80,6 +85,51 @@ def generic_lightning_indexer_golden(
     residual = np.zeros((b,), dtype=np.int32)
     if cmp_residual_k is not None:
         residual = np.asarray(_to_np(cmp_residual_k), dtype=np.int32).reshape(-1)
+    sloc = np.zeros((b,), dtype=np.int32)
+    if start_loc is not None:
+        sloc = np.asarray(_to_np(start_loc), dtype=np.int32).reshape(-1)
+
+    if int(key_reduce_mode) == 1 or int(select_mode) == 1:
+        pooled_b = []
+        for bi in range(b):
+            act_s2 = s2
+            if actual_seq_k is not None:
+                act_s2 = int(np.asarray(_to_np(actual_seq_k)).reshape(-1)[bi])
+            l_orig = act_s2
+            scores = np.einsum("snd,tnd->snt", q4[bi], k4[bi, :act_s2]) * float(
+                score_scale
+            )
+            n_blocks = (act_s2 + r - 1) // r
+            n_out = ((max(n_blocks, 1) + 15) // 16) * 16
+            pooled = np.full((s1, n1, n_out), -np.inf, dtype=np.float32)
+            for qi in range(s1):
+                if sparse_mode == 0:
+                    vis_tokens = act_s2
+                elif sparse_mode == 4:
+                    vis_tokens = qi + 1
+                else:
+                    vis_tokens = max(l_orig - s1 + qi + 1, 0)
+                vis_tokens = min(vis_tokens, act_s2)
+                for h in range(n1):
+                    for blk in range(n_blocks):
+                        b0 = blk * r
+                        b1 = min((blk + 1) * r, act_s2)
+                        vis_end = min(vis_tokens, b1)
+                        if vis_end > b0:
+                            pooled[qi, h, blk] = scores[qi, h, b0:vis_end].max()
+                sl = int(sloc[bi]) if start_loc is not None else (s1 - 1) // max(r, 1)
+                if init_blocks > 0:
+                    pooled[qi, :, : min(int(init_blocks), n_out)] += 1e30
+                if local_blocks > 0:
+                    lo = max(0, sl + 1 - int(local_blocks))
+                    hi = min(sl + 1, n_out)
+                    pooled[qi, :, lo:hi] += 1e29
+            pooled_b.append(pooled)
+        values = np.stack(pooled_b, axis=0)
+        if layout_q == "TND":
+            values = values[0]
+        indices = np.zeros((0,), dtype=np.int32)
+        return torch.from_numpy(indices), torch.from_numpy(values.astype(np.float32))
 
     indices_rows = []
     value_rows = []

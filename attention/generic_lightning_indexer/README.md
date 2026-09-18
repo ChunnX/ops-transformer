@@ -36,7 +36,7 @@ $$
 | LIv2 / QLIv2 | r | relu | yes | 0/3 | no | no |
 | PoolKeyIndexer | pool_size | relu | yes | 0/3 | yes | yes |
 | Qwen CLI | 4 | relu | **no** | **4** | yes | yes |
-| MSA（Step 2） | 1 | identity | no | 0/3 | — | — |
+| MSA | r（maxpool 窗） | identity | no | 0/3 | — | — |
 
 ## 调用
 

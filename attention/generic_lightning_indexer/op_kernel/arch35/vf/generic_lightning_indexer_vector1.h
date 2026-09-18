@@ -202,7 +202,7 @@ __simd_callee__ inline void BroadcastLane(AscendC::Reg::RegTensor<float> &dst, _
     AscendC::Reg::LoadAlign<float, AscendC::Reg::LoadDist::DIST_BRC_B32>(dst, src + laneIdx);
 }
 
-template <typename W_T>
+template <typename W_T, bool ApplyRelu = true>
 __aicore__ inline void MulWeightAndReduceSum(const LocalTensor<uint32_t> &out, // out    [S2Base]     [128   ] 2
                                              const LocalTensor<float> &qk,     // q*k^t  [G, S2Base]  [64 128] 2
                                              const LocalTensor<W_T> &weight,   // w      [G]          [64    ] 1
@@ -250,8 +250,10 @@ __aicore__ inline void MulWeightAndReduceSum(const LocalTensor<uint32_t> &out, /
             AscendC::Reg::LoadAlign<float>(regQK[1], qk1 + 128 * i);
             AscendC::Reg::Gather(regwBrc, regW, brcGatherIndex);
 
-            AscendC::Reg::Relu(regQK[0], regQK[0], maskAll);
-            AscendC::Reg::Relu(regQK[1], regQK[1], maskAll);
+            if constexpr (ApplyRelu) {
+                AscendC::Reg::Relu(regQK[0], regQK[0], maskAll);
+                AscendC::Reg::Relu(regQK[1], regQK[1], maskAll);
+            }
 
             AscendC::Reg::MulAddDst(regSum[0], regQK[0], regwBrc, maskAll);
             AscendC::Reg::MulAddDst(regSum[1], regQK[1], regwBrc, maskAll);

@@ -70,6 +70,7 @@ public:
     __aicore__ inline GenericLightningIndexerServiceVector(){};
     __aicore__ inline void ProcessVec1(const GliCommon::RunInfo &info);
     __aicore__ inline void ProcessTopK(const GliCommon::RunInfo &info);
+    __aicore__ inline void ProcessMaxpoolScore(const GliCommon::RunInfo &info);
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void InitParams(const struct GliCommon::ConstInfo &constInfo,
                                       const GenericLightningIndexerTilingData *__restrict tilingData);
@@ -686,7 +687,7 @@ __aicore__ inline void GenericLightningIndexerServiceVector<LIT>::ProcessVec1(co
                 weightScaleFp32UB_[pingpong * CeilDiv(s1BaseSize_, 2) * 128 + s1IdxTmp * 128],
                 kScaleUB_[kScalePingpong * 16 * s2BaseSize_ + kScaleBlkOff], gSize_, constInfo_.qkScale);
         } else {
-            vector1::MulWeightAndReduceSum(
+            vector1::MulWeightAndReduceSum<W_T, LIT::applyRelu>(
                 vec1OutUB_[pingpong * CeilDiv(s1BaseSize_, 2) * s2BaseSize_ + s1IdxTmp * s2BaseSize_],
                 resMm1UB_[pingpong * CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_ + s1IdxTmp * gSize_ * s2BaseSize_],
                 weightUB_[pingpong * CeilDiv(s1BaseSize_, 2) * gSizeAlign16 + s1IdxTmp * gSizeAlign16], gSize_,
@@ -975,6 +976,37 @@ __aicore__ inline void GenericLightningIndexerServiceVector<LIT>::ProcessTopK(co
         }
         SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
     }
+}
+
+template <typename LIT>
+__aicore__ inline void GenericLightningIndexerServiceVector<LIT>::ProcessMaxpoolScore(const GliCommon::RunInfo &info)
+{
+    // Step 2: dump window-max of vec1 scores into sparse_values. Windows are cmp_ratio (poolSize_).
+    uint32_t nBlocks = (info.actS2Size + poolSize_ - 1) / poolSize_;
+    if (nBlocks == 0) {
+        nBlocks = 1;
+    }
+    uint32_t s1 = info.actS1Size;
+    uint64_t kSeqAlign = GliCommon::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_);
+    for (uint32_t row = 0; row < s1; ++row) {
+        for (uint32_t blk = 0; blk < nBlocks; ++blk) {
+            float mx = -3.4e38f;
+            uint32_t begin = blk * poolSize_;
+            uint32_t end = begin + poolSize_;
+            if (end > info.actS2Size) {
+                end = info.actS2Size;
+            }
+            for (uint32_t t = begin; t < end; ++t) {
+                uint32_t encoded = scoreGm.GetValue(row * kSeqAlign + t);
+                float v = *reinterpret_cast<float *>(&encoded);
+                if (v > mx) {
+                    mx = v;
+                }
+            }
+            valueOutGm.SetValue(info.valueOutOffset + static_cast<uint64_t>(row) * nBlocks + blk, mx);
+        }
+    }
+    DataCacheCleanAndInvalid<float, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(valueOutGm);
 }
 } // namespace GliKernel
 #endif
