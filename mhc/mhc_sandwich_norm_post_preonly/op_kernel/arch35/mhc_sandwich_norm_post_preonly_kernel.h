@@ -110,8 +110,7 @@ public:
         pipe_.InitBuffer(bufResFp32_,           N_ * dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufSqFp32_,            dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufPostComb_,          POST_COMB_SIZE * sizeof(float));
-        // 每次把同一输出对应的两个相邻head合并搬入一个连续缓存。
-        pipe_.InitBuffer(bufPhiFp32_,  1, BUFFER_NUM_TWO * dimTile_ * sizeof(float));
+        pipe_.InitBuffer(bufPhiFp32_,  BUFFER_NUM_TWO, dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufHInPrimeBf16_,   1, dimTile_ * sizeof(T));
         pipe_.InitBuffer(bufScalar_,            SCALAR_BUF_SIZE);
         pipe_.InitBuffer(bufReduceWork_,        dimTile_ * sizeof(float));
@@ -196,7 +195,7 @@ private:
     TBuf<TPosition::VECCALC>   bufResFp32_;
     TBuf<TPosition::VECCALC>   bufSqFp32_;
     TBuf<TPosition::VECCALC>   bufPostComb_;
-    TQue<TPosition::VECIN, 1>  bufPhiFp32_;
+    TQue<TPosition::VECIN, BUFFER_NUM_TWO>  bufPhiFp32_;
     TQue<TPosition::VECOUT, 1> bufHInPrimeBf16_;
     TBuf<TPosition::VECCALC>   bufScalar_;
     TBuf<TPosition::VECCALC>   bufReduceWork_;
