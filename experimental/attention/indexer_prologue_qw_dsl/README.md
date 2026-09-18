@@ -51,6 +51,12 @@ indexer_prologue_qw(
 | `rope_cos` | 必选 | RoPE cosine | `float32` | `(T, Dr)` |
 | `softmax_scale` | 必选 | W 路 GEMM 之后的标量 | `float` | - |
 
+上表的 dtype 是硬约束，不是建议：kernel 的 DMA 按声明的元素宽度发 burst，`rope_sin` / `rope_cos` 传 bf16 会让 MTE2 按 fp32 的长度去读只有一半字节的 buffer。host 侧现在会先校验 dtype 再下发（只看 metadata，不读 tensor 的值），不匹配直接 `ValueError`。
+
+`softmax_scale` 是 kernel 标量，不是 device tensor，所以调用它不会触发 host→device 搬运。
+
+`w` 的 K 轴归约在核间用 GM atomic add 完成，**不是逐位可复现的**：partial 落盘顺序不固定，fp32 加法不满足结合律，同一组输入重复跑低位会变（T=144 实测相对误差在 8.7e-3 ~ 1.5e-2 漂）。`q` / `descale_q` 走整数 epilogue，逐位稳定。`w` 不需要调用者预置 0，kernel 自己清零。
+
 ### 输出
 
 | 参数名 | 描述 | 数据类型 | 形状 |
