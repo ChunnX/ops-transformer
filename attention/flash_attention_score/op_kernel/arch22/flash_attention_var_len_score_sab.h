@@ -453,7 +453,9 @@ __aicore__ inline void FlashAttentionVarLenScoreSameAB<layOutType, hasPse, hasAt
 
     SplitSameABExtraInfo extraInfo[3];
     int64_t taskId = 0;
-    event_t eventIdMte3ToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
+    event_t eventIdMte3ToMte2[3] = {static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>()),
+                                    static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>()),
+                                    static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>())};
     if ASCEND_IS_AIC {
         if (this->needL1Carry) {
             SetFlag<HardEvent::MTE1_MTE2>(Q_EVENT0);
@@ -504,7 +506,7 @@ __aicore__ inline void FlashAttentionVarLenScoreSameAB<layOutType, hasPse, hasAt
             if (taskId > 0) {
                 if ASCEND_IS_AIV {
                     this->ProcessVec1(extraInfo[(taskId + 2) % 3]);
-                    SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2);
+                    SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2[(taskId + 2) % 3]);
                     CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_V1_C2_FLAG[(taskId + 2) % 3]);
                 }
             }
@@ -516,7 +518,7 @@ __aicore__ inline void FlashAttentionVarLenScoreSameAB<layOutType, hasPse, hasAt
 
             if (taskId > 0) {
                 if ASCEND_IS_AIV {
-                    WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2);
+                    WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2[(taskId + 2) % 3]);
                 }
 
                 if ASCEND_IS_AIC {
@@ -543,7 +545,7 @@ __aicore__ inline void FlashAttentionVarLenScoreSameAB<layOutType, hasPse, hasAt
         if ASCEND_IS_AIV {
             CrossCoreWaitFlag(SYNC_C1_V1_FLAG[(taskId + 2) % 3]);
             this->ProcessVec1(extraInfo[(taskId + 2) % 3]);
-            SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2);
+            SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2[(taskId + 2) % 3]);
             CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_V1_C2_FLAG[(taskId + 2) % 3]);
         }
         if (taskId > 1) {
@@ -552,7 +554,7 @@ __aicore__ inline void FlashAttentionVarLenScoreSameAB<layOutType, hasPse, hasAt
             }
         }
         if ASCEND_IS_AIV {
-            WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2);
+            WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2[(taskId + 2) % 3]);
         }
         if ASCEND_IS_AIC {
             CrossCoreWaitFlag(SYNC_V1_C2_FLAG[(taskId + 2) % 3]);

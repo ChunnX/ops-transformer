@@ -833,7 +833,9 @@ __aicore__ inline void FlashAttentionScoreS1s2Bn2gs1SameAB<implMode, layOutType,
 
     SplitSameABExtraInfo extraInfo[3];
     int64_t taskId = 0;
-    event_t eventIdMte3ToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
+    event_t eventIdMte3ToMte2[3] = {static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>()),
+                                    static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>()),
+                                    static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>())};
 
     bool notSecondLast = true;
     bool notLast = true;
@@ -885,7 +887,7 @@ __aicore__ inline void FlashAttentionScoreS1s2Bn2gs1SameAB<implMode, layOutType,
             if (taskId > 0 && notLast) {
                 if ASCEND_IS_AIV {
                     this->ProcessVec1(extraInfo[(taskId + 2) % 3]);
-                    AscendC::SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2);
+                    AscendC::SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2[(taskId + 2) % 3]);
                     CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_V1_C2_FLAG[(taskId + 2) % 3]);
                 }
             }
@@ -899,7 +901,7 @@ __aicore__ inline void FlashAttentionScoreS1s2Bn2gs1SameAB<implMode, layOutType,
 
             if (taskId > 0 && notLast) {
                 if ASCEND_IS_AIV {
-                    AscendC::WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2);
+                    AscendC::WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2[(taskId + 2) % 3]);
                 }
                 if ASCEND_IS_AIC {
                     CrossCoreWaitFlag(SYNC_V1_C2_FLAG[(taskId + 2) % 3]);
