@@ -310,26 +310,42 @@ void PrintPeermemInfo(const MegaMoeTilingData *tilingData, const char *nodeName)
 }
 
 /*
- * comm_alg 承载 MTE 通信去重开关（该 attr 历史上强制空串、完全空置，借用它可零签名改动）：
- * "" 关闭；"dedup" 全开；"dedup_dispatch"/"dedup_combine" 单开（A/B 归因用）。
- * 返回位掩码 bit0=dispatch bit1=combine；无效串返回 -1，由 CheckCommAlgAttr 拦截。
+ * 去重请求位（终态语义 2026-09-17）：正式判定与 comm_alg 零关联——dispatch 位恒请求
+ * （真开假开由后续收益门按形状裁决），combine 位由 combine_comm_mode 属性显式请求
+ * （0=关，1=请求，仍受门与护栏裁决）。非 MTE 拓扑不具备去重能力：自动请求位在此
+ * 静默关位回落（门控语义；显式请求撞非 MTE 由 CheckDedupRequestAttrs 报错在前）。
+ * comm_alg 仅研发调试旁路：非空时覆盖请求位（"off"=强制全关，AB 基线；dedup 族直通）。
+ * 返回位掩码 bit0=dispatch bit1=combine；无效值返回 -1，由 CheckDedupRequestAttrs 拦截。
  */
-static int64_t GetDedupModeByCommAlg(const gert::TilingContext *context, const MegaMoeConfig &config)
+static int64_t GetDedupMode(const gert::TilingContext *context, const MegaMoeConfig &config)
 {
-    auto commAlgPtr = context->GetAttrs()->GetAttrPointer<char>(static_cast<int>(config.attrCommAlgIndex));
-    if (commAlgPtr == nullptr || std::strcmp(commAlgPtr, "") == 0) {
+    auto attrs = context->GetAttrs();
+    auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrCommAlgIndex));
+    if (commAlgPtr != nullptr && std::strcmp(commAlgPtr, "") != 0) {
+        if (std::strcmp(commAlgPtr, "off") == 0) {
+            return 0;
+        }
+        if (std::strcmp(commAlgPtr, "dedup") == 0) {
+            return DEDUP_MODE_DISPATCH | DEDUP_MODE_COMBINE;
+        }
+        if (std::strcmp(commAlgPtr, "dedup_dispatch") == 0) {
+            return DEDUP_MODE_DISPATCH;
+        }
+        if (std::strcmp(commAlgPtr, "dedup_combine") == 0) {
+            return DEDUP_MODE_COMBINE;
+        }
+        return -1;
+    }
+    auto topoTypePtr = attrs->GetAttrPointer<int64_t>(static_cast<int>(config.attrTopoTypeIndex));
+    if (topoTypePtr != nullptr && *topoTypePtr != TOPO_TYPE_MTE) {
         return 0;
     }
-    if (std::strcmp(commAlgPtr, "dedup") == 0) {
-        return DEDUP_MODE_DISPATCH | DEDUP_MODE_COMBINE;
+    auto ccmPtr = attrs->GetAttrPointer<int64_t>(static_cast<int>(config.attrCombineCommModeIndex));
+    int64_t combineCommMode = ccmPtr == nullptr ? 0 : *ccmPtr;  // 旧序列化图无该属性时按默认 0
+    if (combineCommMode != 0 && combineCommMode != 1) {
+        return -1;
     }
-    if (std::strcmp(commAlgPtr, "dedup_dispatch") == 0) {
-        return DEDUP_MODE_DISPATCH;
-    }
-    if (std::strcmp(commAlgPtr, "dedup_combine") == 0) {
-        return DEDUP_MODE_COMBINE;
-    }
-    return -1;
+    return DEDUP_MODE_DISPATCH | (combineCommMode == 1 ? DEDUP_MODE_COMBINE : 0);
 }
 
 /*
@@ -554,23 +570,39 @@ static ge::graphStatus CheckAndSetEpWorldSizeAttr(const gert::TilingContext *con
 }
 
 /*
- * 校验通信算法属性；支持默认空串与 MTE 通信去重族（dedup / dedup_dispatch / dedup_combine）。
+ * 校验去重请求属性（终态）：combine_comm_mode 只收 0/1；comm_alg 仅调试旁路白名单
+ * （空/"off"/dedup 族）。显式请求（ccm=1 或 comm_alg dedup 族）撞上能力约束
+ * （非 MTE 拓扑、量化 combine）直接报错不静默降级；自动请求的 dispatch 位不在此拦——
+ * 非 MTE 时由 GetDedupMode 关位回落。
  */
-static ge::graphStatus CheckCommAlgAttr(const gert::TilingContext *context, const MegaMoeConfig &config,
-                                        const char *nodeName)
+static ge::graphStatus CheckDedupRequestAttrs(const gert::TilingContext *context, const MegaMoeConfig &config,
+                                              const char *nodeName)
 {
     auto attrs = context->GetAttrs();
     auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrCommAlgIndex));
-    int64_t dedupMode = GetDedupModeByCommAlg(context, config);
-    OP_TILING_CHECK(dedupMode < 0,
+    bool commAlgExplicit = commAlgPtr != nullptr && std::strcmp(commAlgPtr, "") != 0;
+    auto ccmPtr = attrs->GetAttrPointer<int64_t>(static_cast<int>(config.attrCombineCommModeIndex));
+    int64_t combineCommMode = ccmPtr == nullptr ? 0 : *ccmPtr;
+    OP_TILING_CHECK(combineCommMode != 0 && combineCommMode != 1,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "combineCommMode",
+                                              std::to_string(combineCommMode).c_str(), "only support 0 or 1"),
+                    return ge::GRAPH_FAILED);
+    // 旁路串合法性：GetDedupMode 对无效串返回 -1（合法自动路径恒 >= 0，非 MTE 已回落 0）。
+    OP_TILING_CHECK(GetDedupMode(context, config) < 0,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "commAlg", commAlgPtr,
-                                              "only support \"\", \"dedup\", \"dedup_dispatch\", \"dedup_combine\""),
+                                              "only support \"\", \"off\", \"dedup\", \"dedup_dispatch\", \"dedup_combine\""),
                     return ge::GRAPH_FAILED);
     int64_t topoType = *attrs->GetAttrPointer<int64_t>(config.attrTopoTypeIndex);
-    OP_TILING_CHECK(dedupMode != 0 && topoType != TOPO_TYPE_MTE,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "commAlg", commAlgPtr,
+    // 显式请求 + 非 MTE = 报错（自动请求位已由 GetDedupMode 关位回落，不会走到这里的报错值）。
+    bool explicitDedupRequest =
+        (commAlgExplicit && std::strcmp(commAlgPtr, "off") != 0) || combineCommMode == 1;
+    OP_TILING_CHECK(explicitDedupRequest && topoType != TOPO_TYPE_MTE,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "dedup request",
+                                              commAlgExplicit ? commAlgPtr : "combine_comm_mode=1",
                                               "dedup family only supported with topoType MTE(0)"),
                     return ge::GRAPH_FAILED);
+    // 终态语义下量化 combine 校验只看真实 COMBINE 请求位（旁路或 ccm=1）。
+    int64_t dedupMode = GetDedupMode(context, config);
     // combine 去重当前只实现非量化 combine 路径；量化 combine 直接报错，不做静默降级。
     auto combineQuantModePtr = attrs->GetAttrPointer<int64_t>(config.attrCombineQuantModeIndex);
     int64_t combineQuantMode = combineQuantModePtr == nullptr ? COMBINE_QUANT_OUT_TYPE_NO_QUANT : *combineQuantModePtr;
@@ -891,8 +923,8 @@ static ge::graphStatus CheckCclBufferCapacity(const gert::TilingContext *context
     auto attrs = context->GetAttrs();
     int64_t yDtypeSize = ge::GetSizeByDataType(context->GetOutputDesc(config.yIndex)->GetDataType());
     // 记录布局是否带权重段与最终 tilingData 同式（tkw=1 或 combine 去重）；此处收益门可能尚未
-    // 裁决，按 comm_alg 原始转译算下界偏保守（门只会关位、实际需求只小不大），安全。
-    const int64_t dedupModeForLayout = GetDedupModeByCommAlg(context, config);
+    // 裁决，按原始请求位算下界偏保守（门只会关位、实际需求只小不大），安全。
+    const int64_t dedupModeForLayout = GetDedupMode(context, config);
     const bool recordHasWeights = tilingData->topkWeightsPrefetch == 1 ||
                                   (dedupModeForLayout > 0 && (dedupModeForLayout & DEDUP_MODE_COMBINE) != 0);
     int64_t leastCclBufferSize = CalcLeastCclBufferSize(static_cast<int64_t>(tilingData->numMaxTokensPerRank),
@@ -2393,7 +2425,7 @@ static ge::graphStatus CheckAndSetIndependentAttrs(const gert::TilingContext *co
                     OP_LOGE(nodeName, "topology type is invalid."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckAndSetEpWorldSizeAttr(context, config, tilingData, nodeName) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "EP world size is invalid."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(CheckCommAlgAttr(context, config, nodeName) != ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(CheckDedupRequestAttrs(context, config, nodeName) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "communication algorithm is invalid."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckAndSetQuantModeAttrs(context, config, tilingData, nodeName) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "quantization mode attributes are invalid."), return ge::GRAPH_FAILED);
@@ -2457,17 +2489,18 @@ static ge::graphStatus CheckAndSetPlatformParams(gert::TilingContext *context, M
 }
 
 /*
- * comm_alg 去重开关落库 + per-shape 收益/容量门。必须在 bs/h/topK/epWorldSize 全部写入
+ * 去重请求位落库（终态：dispatch 恒请求 + ccm 请求 combine，comm_alg 仅调试旁路）
+ * + per-shape 收益/容量门。必须在 bs/h/topK/epWorldSize 全部写入
  * tilingData 之后、workspace 与自适应 buffer 规划之前调用（两者按 dedupMode 定布局）。
  */
 static void SetDedupModeParams(const gert::TilingContext *context, const MegaMoeConfig &config,
                                MegaMoeTilingData *tilingData, const char *nodeName)
 {
-    // 去重开关经 comm_alg 转译落库。combine 去重两种权重语义并存：tkw=1 沿用 prefetch
+    // 去重请求位落库（来源见 GetDedupMode）。combine 去重两种权重语义并存：tkw=1 沿用 prefetch
     // （激活层乘权、合并与 unpermute 纯加）；tkw=0 时合并阶段在发送端按成员权重乘加，
     // 权重经记录尾段下发（布局判定统一走 MegaMoeRecordHasTopkWeights，prefetch 位保持 attr
     // 原值不强拉——强拉会偏离 tkw=0 golden 的乘权位置语义，历史实翻）。
-    tilingData->dedupMode = static_cast<int32_t>(GetDedupModeByCommAlg(context, config));
+    tilingData->dedupMode = static_cast<int32_t>(GetDedupMode(context, config));
     // prepass chunk 可行性护栏：floorChunk（保 chunkCount≤DEDUP_PREPASS_MAX_CHUNKS）不得冲破
     // UB 容量上限，否则 prepass member 区越界写（如 k32 且 numMaxTokensPerRank>18432）。
     // 公式与 kernel CalcDedupPrepassChunkTokens 逐项同源（常量单一真源 mega_moe_constants.h）。
@@ -2509,12 +2542,12 @@ static void SetDedupModeParams(const gert::TilingContext *context, const MegaMoe
         // 两阈值均基于 4P 实测，8 卡矩阵后需重校准。
         constexpr double DEDUP_MID_BS_MIN_SAVED_BYTES = 60.0 * 1024.0 * 1024.0;
         /*
-         * combine 去重（专家粒度合并版）的收益边界低于纯 dispatch 去重：小 bs 档实测
-         * S4(bs256,h5120,k6,saved=3.56MB) full 组合净赢 -2.8%，而 S1(bs64,saved=1.15MB)
-         * 净亏 +11.7%——combine 位使能（必 tkw=1）时阈值取 3MB（贴 S4 侧保守，边界两侧
-         * 均有实测）。纯 dispatch 维持 6MB（S4 的 dd tkw1 实测 +3.9% 亏，不可放宽）；
-         * 中档 60MB 分界由 PF3(39.8MB,+1.5%)/PF2(79.6MB,-3.7%) 两侧实测支撑，combine
-         * 与 dispatch 同界。数据：2026-09-10 cv2b 门降实验批 + PF 域批（4P）。
+         * 三档同取 60MB 的定档依据（2026-09-17 p6 探针批终裁）：曾按 cv2b 实验精标 3MB
+         * （combine 双开，S4 bs256/h5120/k6 净赢 -2.8%）/6MB（纯 dispatch），但该赢格
+         * 不可外推——在真实 decode 谱形状（k8/h6144）上用 6/3 档放开后，B256/B512 均匀
+         * 与倾斜四格开态全亏（min +1.9%~+4.3%：计算全遮通信，省的字节不在关键路径，
+         * 建表为纯成本）。60MB 一刀切关掉 decode 全谱是保护而非错杀；decode 域的最优
+         * 即门关精确回落零劣化。收益全部来自 prefill 大 bs（通信重新成为瓶颈）。
          */
         constexpr double DEDUP_COMBINE_MIN_SAVED_BYTES = 60.0 * 1024.0 * 1024.0;
         constexpr int32_t DEDUP_SMALL_BS_LIMIT = 1024;
