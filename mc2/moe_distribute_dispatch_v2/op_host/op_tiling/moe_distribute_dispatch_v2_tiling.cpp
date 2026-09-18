@@ -632,6 +632,7 @@ static ge::graphStatus CheckGroupAttrParams(const gert::TilingContext *context, 
     auto epRankIdPtr = attrs->GetAttrPointer<int64_t>(config.attrEpRankIdIndex);
     auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int64_t>(config.attrCommAlgIndex));
     int64_t epWorldSize = *epWorldSizePtr;
+    NpuArch npuArch = mc2tiling::GetNpuArch(context);
     isLayered = (commAlgPtr != nullptr) && (strcmp(commAlgPtr, "hierarchy") == 0); // isLayered赋值
     std::string socVersion = mc2tiling::GetSocVersion(context);
     int64_t maxEpworldsize = 0;
