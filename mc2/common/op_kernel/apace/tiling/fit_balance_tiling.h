@@ -998,7 +998,7 @@ struct FitBalanceCalibration {
         double defaultComputesPerCycle = 4096.0;                   // 算力档回退(通常勿动)
         L2UtilTiers defaultL2Param = {128, 192, 0.85, 0.75, 0.65}; // L2 档回退(通常勿动)
     };
-    MatmulFit matmul;
+    MatmulFit mmFit;
     FitTunables tunables; // 键控分支阈值(缺省=现网值, 通常勿动; 尾部可整段省略)
 };
 
@@ -1020,30 +1020,30 @@ inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, CommPrimitiv
         commTable.rowCount = i + 1;
     }
     MatmulPerfTable mmTable;
-    mmTable.defaultComputesPerCycle = calib.matmul.defaultComputesPerCycle;
-    mmTable.defaultL2Params = calib.matmul.defaultL2Param;
-    mmTable.bestBaseBlock = calib.matmul.baseBlock;
+    mmTable.defaultComputesPerCycle = calib.mmFit.defaultComputesPerCycle;
+    mmTable.defaultL2Params = calib.mmFit.defaultL2Param;
+    mmTable.bestBaseBlock = calib.mmFit.baseBlock;
     mmTable.cubeCalcCount = 0;
     for (size_t i = 0; i < FitBalanceCalibration::MAX_CUBE_CALC_ROWS; ++i) {
-        if (calib.matmul.cubeCalc[i].aBytes == 0) {
+        if (calib.mmFit.cubeCalc[i].aBytes == 0) {
             break;
         }
-        mmTable.cubeCalcRows[i] = {calib.matmul.cubeCalc[i].calcType, calib.matmul.cubeCalc[i].isFp4,
-                                   calib.matmul.cubeCalc[i].aBytes,   calib.matmul.cubeCalc[i].bBytes,
-                                   calib.matmul.cubeCalc[i].cBytes,   calib.matmul.cubeCalc[i].computesPerCycle};
+        mmTable.cubeCalcRows[i] = {calib.mmFit.cubeCalc[i].calcType, calib.mmFit.cubeCalc[i].isFp4,
+                                   calib.mmFit.cubeCalc[i].aBytes,   calib.mmFit.cubeCalc[i].bBytes,
+                                   calib.mmFit.cubeCalc[i].cBytes,   calib.mmFit.cubeCalc[i].computesPerCycle};
         mmTable.cubeCalcCount = i + 1;
     }
     mmTable.l2Count = 0;
     for (size_t i = 0; i < FitBalanceCalibration::MAX_L2_PARAM_ROWS; ++i) {
-        if (calib.matmul.l2Param[i].aBytes == 0) {
+        if (calib.mmFit.l2Param[i].aBytes == 0) {
             break;
         }
-        mmTable.l2Rows[i] = {calib.matmul.l2Param[i].calcType, calib.matmul.l2Param[i].isFp4,
-                             calib.matmul.l2Param[i].aBytes,   calib.matmul.l2Param[i].bBytes,
-                             calib.matmul.l2Param[i].cBytes,   calib.matmul.l2Param[i].params};
+        mmTable.l2Rows[i] = {calib.mmFit.l2Param[i].calcType, calib.mmFit.l2Param[i].isFp4,
+                             calib.mmFit.l2Param[i].aBytes,   calib.mmFit.l2Param[i].bBytes,
+                             calib.mmFit.l2Param[i].cBytes,   calib.mmFit.l2Param[i].params};
         mmTable.l2Count = i + 1;
     }
-    mmTable.bestBaseBlock = calib.matmul.baseBlock;
+    mmTable.bestBaseBlock = calib.mmFit.baseBlock;
     FitBasedBalanceCtx ctx{MatmulPerfModel(args, mmTable),
                            HCCLCommModel(args.rankDim, commPrimitive, commTable, topoType),
                            CutPlanner(args),

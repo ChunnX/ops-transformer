@@ -58,7 +58,7 @@ static const FitBalanceCalibration CALIBRATION = {
             {4, 5.841842, 8.590666}, // TODO(CCU 重标): 当前沿用历史共用值(旧表无引擎维度)
         },
     },
-    /* matmulFit: matmul 性能拟合(算力档位/L2 档位/基本块) */
+    /* mmFit: matmul 性能拟合(算力档位/L2 档位/基本块) */
     {
         /* cubeCalc: {计算类型, isFp4, A/B/C 字节数, 有效算力(MACs/cycle)} */
         {
