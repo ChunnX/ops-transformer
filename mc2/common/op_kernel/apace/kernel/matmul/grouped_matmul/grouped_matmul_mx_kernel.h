@@ -215,10 +215,7 @@ public:
             const int64_t problemK = asc::te::get<MNK_K>(problemShape_);
             if (problemM <= 0 || problemN <= 0 || problemK <= 0) {
                 if (tiling_.groupListType == GROUP_LIST_TYPE_SPARSE && problemM <= 0) {
-                    // Sparse groups are not required to be packed at the front.  A
-                    // zero-token group can be followed by a non-empty expert/rank
-                    // segment, so keep scanning instead of terminating the batch.
-                    continue;
+                    break;
                 }
                 continue;
             }
