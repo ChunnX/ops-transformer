@@ -239,7 +239,7 @@ cann_ops_transformer.sparse_flash_mla(
   - `cmp_residual_kv`配合`cmp_ratio`使用，可恢复压缩前KV长度。且每个batch的值需要小于`cmp_ratio`，即`cmp_residual_kv[i]` < `cmp_ratio`。仅当`cmp_kv`存在、`cmp_mask_mode=3`且`cmp_ratio!=1`时传入；`cmp_mask_mode=0`或`cmp_ratio=1`时不允许传入。
   - `cmp_ratio`在主算子和Metadata接口中的取值必须一致，具体取值随产品和计算场景变化：
     <!-- npu="A3,910b" id5 -->
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：SWA取0，CSA取1、2或4，HCA取128。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不传入`cmp_kv`时为SWA，`cmp_ratio`不参与计算；CSA取1、2或4，HCA取128。
     <!-- end id5 -->
     <!-- npu="950" id6 -->
     - <term>Ascend 950PR/Ascend 950DT</term>：SWA取1，CSA/HCA支持1到128。

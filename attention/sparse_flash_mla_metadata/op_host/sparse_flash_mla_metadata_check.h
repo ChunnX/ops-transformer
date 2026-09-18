@@ -51,7 +51,7 @@ inline bool IsPowerOfTwoInRangeSmla(int64_t value, int64_t minValue, int64_t max
 inline bool IsCmpRatioSupportSmla(const char *socVersion, bool hasCmpKv, int64_t cmpTopk, int64_t cmpRatio)
 {
     if (!hasCmpKv) {
-        return cmpRatio == ((socVersion != nullptr && strstr(socVersion, "Ascend950") != nullptr) ? 1 : 0);
+        return !(socVersion != nullptr && strstr(socVersion, "Ascend950") != nullptr) || cmpRatio == 1;
     }
     if (socVersion != nullptr && strstr(socVersion, "Ascend950") != nullptr) {
         return cmpRatio >= SMLA_CMP_RATIO_LOWER_BOUND && cmpRatio <= SMLA_CMP_RATIO_UPPER_BOUND;
@@ -309,11 +309,6 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
             }
             return ACLNN_ERR_PARAM_INVALID;
         }
-    } else if (!(socVersion != nullptr && strstr(socVersion, "Ascend950") != nullptr) &&
-               !IsCmpRatioSupportSmla(socVersion, hasCmpKv, cmpTopk, cmpRatio)) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "cmp_ratio", std::to_string(cmpRatio),
-                                              "When has_cmp_kv is false, the value of cmp_ratio must be 0");
-        return ACLNN_ERR_PARAM_INVALID;
     }
     if (layoutQOptional == nullptr) {
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(SMLA_ACLNN_OP_NAME, "layout_q", "layout_q cannot be empty");
