@@ -1134,9 +1134,15 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::P
                         preparedWqeCount = 0U;
                     }
                 }
-                if (preparedWqeCount != 0U) {
-                    hcomm_.BatchCommit(batchHandle);
-                }
+                // The URMA engine fetches WQE entries and their remote-window binding from the
+                // shared hcommBatchWqeTensor_ asynchronously after BatchCommit. The bucket version
+                // issues each rank's batches back-to-back, so the next rank's MakeBatchHandle
+                // rebinds the buffer before the tail entries of this rank (the flag WQEs and the
+                // last few data WQEs) have been consumed, and they execute against a stale
+                // binding. The previous full-scan version was immune only because its per-rank
+                // rescans delayed the rebind by ~10^5 cycles. Drain the channel so every WQE of
+                // this rank is consumed before the batch buffer is reused.
+                CommitAndDrainChannel(batchHandle, channel, preparedWqeCount, sqWriteCount);
             }
         }
 
