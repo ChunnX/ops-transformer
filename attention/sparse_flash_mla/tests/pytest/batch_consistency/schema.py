@@ -244,7 +244,14 @@ class CaseSchema:
             cu_q = tensors.get("cu_seqlens_q")
             if cu_q is not None:
                 cu_list = cu_q.to("cpu", torch.int64).tolist()
-                expected = [index * q.shape[1] for index in range(batch_size + 1)]
+                seqused_q = tensors.get("seqused_q")
+                if seqused_q is None:
+                    lengths = [int(q.shape[1])] * batch_size
+                else:
+                    lengths = seqused_q.to("cpu", torch.int64).tolist()
+                expected = [0]
+                for length in lengths:
+                    expected.append(expected[-1] + int(length))
                 if cu_list != expected:
                     raise SchemaError(
                         f"BSND cu_seqlens_q {cu_list} != expected {expected}"
