@@ -106,6 +106,8 @@ __aicore__ inline void GroupedMatMulKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bi
     mmParams.l1Stages = 2U;
     mmParams.l0cStages = static_cast<uint16_t>(mmTilingData.dbL0C);
     if constexpr (EnableGelu) {
+        // The FP32 GELU Fixpipe path owns the complete L0C and uses explicit M/FIX slot synchronization.
+        mmParams.l0cStages = 1U;
         mmParams.oriK = static_cast<uint64_t>(mmTilingData.Ka);
         mmParams.splitM = 1U;
         mmParams.ubDB = BlockEpilogue::UB_BUFFER_DEPTH;
