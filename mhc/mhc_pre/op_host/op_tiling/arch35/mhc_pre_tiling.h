@@ -57,6 +57,9 @@ TILING_DATA_FIELD_DEF(uint32_t, mkUseGmStage);
 TILING_DATA_FIELD_DEF(uint32_t, stage2UsedAivNum);
 TILING_DATA_FIELD_DEF(uint32_t, stage2RowsPerCore);
 TILING_DATA_FIELD_DEF(uint32_t, implMode);
+// AIC:AIV 核数比（aivNum / aicNum）：ascend950 为 2，ascend960dt 为 1。
+// kernel 侧 AIV->AIC 配对（GetBlockIdx()/aivPerAic）依赖该值，置于结构末尾保证旧布局兼容。
+TILING_DATA_FIELD_DEF(uint32_t, aivPerAic);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(MhcPre, MhcPreTilingData);
@@ -141,6 +144,7 @@ private:
     MhcPreTilingData tilingData_;
     uint32_t blockDim_ = 32; // AIC
     uint32_t aivBlockDim_ = 64;
+    uint32_t aivPerAic_ = 2; // aivBlockDim_ / blockDim_，平台相关：950=2，960dt=1
     uint64_t totalLength_ = 0;
     uint64_t m_ = 0;
     uint64_t ubSize_ = 0;

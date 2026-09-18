@@ -13,7 +13,8 @@ if (BUILD_OPEN_PROJECT)
         mhc_pre_def.cpp
     )
 
-    if("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend950")
+    if("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend950" OR "${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend960dt")
+        # ascend960dt 与 ascend950 同属 arch35 指令集, 编译选项一致
         add_ops_compile_options(
             OP_NAME MhcPre
             COMPUTE_UNIT Ascend950PR_9599

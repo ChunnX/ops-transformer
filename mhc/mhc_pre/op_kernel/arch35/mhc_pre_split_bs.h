@@ -40,7 +40,7 @@ public:
         SyncAll<false>();
 
         if ASCEND_IS_AIV {
-            vector_.coreIdx_ = GetBlockIdx() / vector_.kDoubleBufferCount;
+            vector_.coreIdx_ = GetBlockIdx() / vector_.tiling_->aivPerAic;  // AIV->AIC 配对折算, 平台相关(950:2, 960dt:1)
             vector_.AIVPreLoad();
         }
         if ASCEND_IS_AIC {

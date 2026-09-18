@@ -66,6 +66,7 @@ const constexpr size_t SYSTEM_WORKSPACE = 20 * 1024 * 1024;
 
 // Runtime scheduling configuration.
 const constexpr uint32_t SCHEDULE_MODE = 1;
+// AIC:AIV = 1:2 的既有平台核数比（ascend950/910b/910_93）；ascend960dt 为 1:1。
 const constexpr uint32_t AIV_AIC_RATIO = 2U;
 
 // Attributes and their accepted values.
@@ -572,11 +573,21 @@ ge::graphStatus MhcPreBaseTiling::InitPlatformMemory()
     blockDim_ = static_cast<uint32_t>(ascendcPlatform.GetCoreNumAic());
     aivBlockDim_ = static_cast<uint32_t>(ascendcPlatform.GetCoreNumAiv());
 
-    OP_CHECK_IF(
-        aivBlockDim_ != blockDim_ * AIV_AIC_RATIO,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "aivNum", std::to_string(aivBlockDim_).c_str(),
-                                              "MhcPre only support aivNum == aicNum * 2"),
-        return ge::GRAPH_FAILED);
+    // AIC:AIV 核数比平台相关：ascend950/910b/910_93 为 1:2（原有支持），
+    // ascend960dt 为 1:1（放开）。按实际核数比分流：非 1:2 且非 1:1 的比例维持原有拦截。
+    // 注：CANN 9.2.0 的 SocVersion 枚举暂无 960dt，核数比即平台指纹，无需 soc 名判断。
+    if (aivBlockDim_ == blockDim_ * AIV_AIC_RATIO) {
+        aivPerAic_ = AIV_AIC_RATIO;
+    } else if (aivBlockDim_ == blockDim_ && blockDim_ != 0U) {
+        aivPerAic_ = 1U; // ascend960dt: CV 1:1
+    } else {
+        OP_CHECK_IF(
+            true,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "aivNum",
+                                                  std::to_string(aivBlockDim_).c_str(),
+                                                  "MhcPre only support aivNum == aicNum * 2 (or aivNum == aicNum on ascend960dt)"),
+            return ge::GRAPH_FAILED);
+    }
 
     ubSize_ = ubSize; // Save UB size for later validation
 
@@ -641,7 +652,7 @@ ge::graphStatus MhcPreBaseTiling::ParseEpsAttributes()
 bool MhcPreBaseTiling::CanUseMk() const
 {
     bool supportedN = N_ == N_VALID_VALUES[0] || N_ == N_VALID_VALUES[1] || N_ == N_VALID_VALUES[2];
-    uint64_t activeCoreNum = std::min<uint64_t>(blockDim_, aivBlockDim_ / 2U);
+    uint64_t activeCoreNum = std::min<uint64_t>(blockDim_, aivBlockDim_ / aivPerAic_);
     // Each M-K AIC owns one M tile; reject shapes that cannot be covered by all active AICs.
     uint64_t maxCoveredM = activeCoreNum * M_K_M_L1_MAX_SIZE;
     return supportedN && totalLength_ <= M_K_MAX_VALIDATED_TOTAL_LENGTH && totalLength_ <= maxCoveredM &&
@@ -691,7 +702,7 @@ ge::graphStatus MhcPreBaseTiling::CalculateMkTiling()
     auto ceilDiv = [](uint64_t value, uint64_t divisor) -> uint64_t { return (value + divisor - 1U) / divisor; };
     auto roundUp = [&ceilDiv](uint64_t value, uint64_t align) -> uint64_t { return ceilDiv(value, align) * align; };
 
-    uint64_t activeCoreNum = std::min<uint64_t>(blockDim_, aivBlockDim_ / 2U);
+    uint64_t activeCoreNum = std::min<uint64_t>(blockDim_, aivBlockDim_ / aivPerAic_);
     usedCoreNum_ = static_cast<uint32_t>(activeCoreNum);
     scaleMean_ = 1.0f / static_cast<float>(matK_);
     uint64_t minMDim = std::min<uint64_t>(activeCoreNum, ceilDiv(totalLength_, M_K_M_L1_MAX_SIZE));
@@ -804,6 +815,7 @@ void MhcPreBaseTiling::FillTilingData()
     tilingData_.set_hasGamma(hasGamma_);
     tilingData_.set_hasResi(hasResi_);
     tilingData_.set_implMode(implMode_);
+    tilingData_.set_aivPerAic(aivPerAic_);
 
     tilingData_.set_scaleMean(scaleMean_);
 }
