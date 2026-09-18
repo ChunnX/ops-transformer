@@ -336,21 +336,15 @@ public:
                 }
                 AscendC::SetFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
                 AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
-                // 需要kernel传输ubCTensor的时候确保其shape的m，n是满足32B（8个32位元素）对齐的
-                // rounded up by 8 and splited in half to each AIV
-                // valid rows in AIV0: [0, mFixPAligned8 / 2 - 1]
-                // valid rows in AIV1: [mFixPAligned8 / 2, rowNum - 1]
                 using CopyL0CToDst = typename TileCopy_::template CopyL0CToDst<TensorC>;
                 if constexpr (AscendC::IsSameType<ElementC, float>::value) {
-                    uint32_t mFixPAligned8 = RoundUp(rowNum, 8);
                     uint32_t nFixPAligned8 = RoundUp(l0TileNAct, 8);
                     auto ubCTensorTlaTile = GetTile(ubCTensor, tla::MakeCoord(0, nL0Itr * L0_TILE_N),
-                                                    tla::MakeShape(mFixPAligned8, nFixPAligned8));
+                                                    tla::MakeShape(rowNum, nFixPAligned8));
                     CopyL0CToDst copyL0CToDst;
                     copyL0CToDst(ubCTensorTlaTile, l0CTensorTla);
                 } else {
-                    uint32_t mFixPAligned8 = RoundUp(rowNum, 8);
-                    uint32_t mPerSubCore = mFixPAligned8 / 2;
+                    uint32_t mPerSubCore = RoundUp(rowNum, 2) / 2;
                     uint32_t nFixPAligned16 = RoundUp(l0TileNAct, 16);
                     auto ubCTensorTlaTile = GetTile(ubCTensor, tla::MakeCoord(0, nL0Itr * L0_TILE_N),
                                                     tla::MakeShape(mPerSubCore, nFixPAligned16));

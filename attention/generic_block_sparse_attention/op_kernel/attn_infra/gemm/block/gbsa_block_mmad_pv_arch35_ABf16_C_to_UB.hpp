@@ -324,14 +324,10 @@ public:
             }
             AscendC::SetFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
             AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
-            // 需要kernel传输ubCTensor的时候确保其shape的m，n是满足32B（8个32位元素）对齐的
-            // rounded up by 8 and splited in half to each AIV
-            // valid rows in AIV0: [0, mFixPAligned8 / 2 - 1]
-            // valid rows in AIV1: [mFixPAligned8 / 2, rowNum - 1]
-            uint32_t mFixPAligned8 = RoundUp(rowNum, 8);
+            // SPLIT_M rounds the logical M size up to an even value internally; N is aligned to 32B here.
             uint32_t nFixPAligned8 = RoundUp(l0TileNAct, 8);
             auto ubCTensorTlaTile =
-                GetTile(ubCTensor, tla::MakeCoord(0, nL0Itr * L0_TILE_N), tla::MakeShape(mFixPAligned8, nFixPAligned8));
+                GetTile(ubCTensor, tla::MakeCoord(0, nL0Itr * L0_TILE_N), tla::MakeShape(rowNum, nFixPAligned8));
             copyL0CToDst(ubCTensorTlaTile, l0CTensorTla);
             AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
         }

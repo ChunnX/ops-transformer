@@ -148,7 +148,7 @@ public:
                                       uint32_t ubSBufId, uint32_t l1PBufId, Arch::CrossCoreFlag mm1ToSmFlag,
                                       Arch::CrossCoreFlag smToMm2Flag)
     {
-        uint32_t mCopyOffset = RoundUp(actualBlockShape.m(), 8) / 2;
+        uint32_t mCopyOffset = RoundUp(actualBlockShape.m(), 2) / 2;
         uint32_t m = actualBlockShape.m() < mCopyOffset ? actualBlockShape.m() : mCopyOffset;
         m = subBlockIdx_ == 0 ? m : actualBlockShape.m() - m;
         if (m == 0) {

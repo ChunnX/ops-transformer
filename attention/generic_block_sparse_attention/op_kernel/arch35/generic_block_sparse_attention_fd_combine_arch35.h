@@ -66,7 +66,7 @@ public:
         const uint32_t aivIdx = AscendC::GetBlockIdx();
         const uint32_t aivNum = AscendC::GetBlockNum() * subBlockNum;
         const uint32_t groupSize = tilingData->groupSize;
-        const uint32_t rowSplit = Min(groupSize, RoundUp(groupSize, FLOATS_PER_BLOCK) / subBlockNum);
+        const uint32_t rowSplit = Min(groupSize, RoundUp(groupSize, 2U) / subBlockNum);
         const uint32_t sub0Rows = rowSplit;
         const uint32_t sub1Rows = groupSize - rowSplit;
         const uint32_t combineTaskNum = static_cast<uint32_t>(meta->combineTaskNum);

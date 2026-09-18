@@ -492,10 +492,10 @@ public:
         uint32_t subBlockIdx = AscendC::GetSubBlockIdx();
         uint32_t subBlockNum = AscendC::GetSubBlockNum();
 
-        uint32_t rowNumOriAligned8 = RoundUp(rowNumOri, 8);
+        uint32_t rowNumOriAligned2 = RoundUp(rowNumOri, 2);
         uint32_t colNumOriAligned8 = RoundUp(colNumOri, 8);
 
-        uint32_t rowNumSplit = rowNumOriAligned8 / subBlockNum;
+        uint32_t rowNumSplit = rowNumOriAligned2 / subBlockNum;
         rowNumSplit = (rowNumOri < rowNumSplit) ? rowNumOri : rowNumSplit;
         uint32_t rowNumCurSubCore = (subBlockIdx == 0) ? rowNumSplit : (rowNumOri - rowNumSplit);
         uint32_t rowOffsetCurSubCore = rowNumSplit * subBlockIdx;
@@ -531,7 +531,7 @@ public:
         const uint32_t rowNumOri = actualOriShape[0];
         const uint32_t colNumOri = actualOriShape[1];
         const uint32_t subBlockIdx = AscendC::GetSubBlockIdx();
-        uint32_t rowNumSplit = RoundUp(rowNumOri, 8) / AscendC::GetSubBlockNum();
+        uint32_t rowNumSplit = RoundUp(rowNumOri, 2) / AscendC::GetSubBlockNum();
         rowNumSplit = (rowNumOri < rowNumSplit) ? rowNumOri : rowNumSplit;
         const uint32_t rowNumCurSubCore = subBlockIdx == 0 ? rowNumSplit : rowNumOri - rowNumSplit;
         const uint32_t rowOffsetCurSubCore = rowNumSplit * subBlockIdx;
@@ -556,7 +556,7 @@ public:
                                                uint32_t groupSize, uint32_t colNum, uint32_t fdLseSubStride)
     {
         const uint32_t subBlockIdx = AscendC::GetSubBlockIdx();
-        uint32_t rowNumSplit = RoundUp(groupSize, 8) / AscendC::GetSubBlockNum();
+        uint32_t rowNumSplit = RoundUp(groupSize, 2) / AscendC::GetSubBlockNum();
         rowNumSplit = groupSize < rowNumSplit ? groupSize : rowNumSplit;
         const uint32_t rowNum = subBlockIdx == 0 ? rowNumSplit : groupSize - rowNumSplit;
         const uint32_t rowOffset = rowNumSplit * subBlockIdx;
@@ -586,7 +586,7 @@ public:
         const uint32_t rowNumOri = actualOriShape[0];
         const uint32_t colNumOri = actualOriShape[1];
         const uint32_t subBlockIdx = AscendC::GetSubBlockIdx();
-        uint32_t rowNumSplit = RoundUp(rowNumOri, 8) / AscendC::GetSubBlockNum();
+        uint32_t rowNumSplit = RoundUp(rowNumOri, 2) / AscendC::GetSubBlockNum();
         rowNumSplit = rowNumOri < rowNumSplit ? rowNumOri : rowNumSplit;
         const uint32_t rowNum = subBlockIdx == 0 ? rowNumSplit : rowNumOri - rowNumSplit;
         const uint32_t rowOffset = rowNumSplit * subBlockIdx;
