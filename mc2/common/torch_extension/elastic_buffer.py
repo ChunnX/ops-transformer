@@ -903,18 +903,12 @@ class ElasticBuffer:
             self._fetch_mode,
         )
 
-        if self._fetch_mode == FETCH_MODE_LOCAL:
-            # 全量本NPU模式: 无 RDMA 在途读, kernel 完成即数据可见, 短路 wait
-            def _wait():
-                self._engram_fetch_in_progress = False
-                if sf is not None:
-                    return fetched, fetched_sf
-                return fetched
-
-            return _wait
-
         def _wait():
-            result = torch.ops.cann_ops_transformer.engram_fetch_wait(context, fetched)
+            # 全量本NPU模式: 无 RDMA 在途读, kernel 完成即数据可见, 短路 wait
+            if self._fetch_mode == FETCH_MODE_LOCAL:
+                result = fetched
+            else:
+                result = torch.ops.cann_ops_transformer.engram_fetch_wait(context, fetched)
             self._engram_fetch_in_progress = False
             if sf is not None:
                 return result, fetched_sf
