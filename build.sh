@@ -1816,6 +1816,7 @@ while [[ $# -gt 0 ]]; do
     -f|--changed_list)
         PR_CHANGED_FILES="$2"
         if [[ "$ENABLE_OPKERNEL" == "TRUE" ]]; then
+            echo "lxw===============11"
             ops_names=$(python3 scripts/ci/get_changed_files_ops.py $PR_CHANGED_FILES -s "$ASCEND_SOC_UNITS")
             echo "Operators that need custom package compilation:$ops_names"
             if [ -z "${ops_names}" ]; then
@@ -1826,6 +1827,7 @@ while [[ $# -gt 0 ]]; do
             ops_names="${ops_names//;/,}"
             ascend_op_name="$ops_names"
         else
+            echo "lxw===============22"
             ENABLE_SMOKE=TRUE
             PKG_MODE="cust"
             vendor_name="custom"
@@ -1953,6 +1955,7 @@ while [[ $# -gt 0 ]]; do
         shift
         ;;
     --opkernel_test)
+        echo "lxw===============33"
         ENABLE_TEST=TRUE
         OP_KERNEL=TRUE
         shift
