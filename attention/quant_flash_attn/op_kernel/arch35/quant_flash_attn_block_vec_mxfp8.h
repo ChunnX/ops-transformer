@@ -1143,13 +1143,13 @@ public:
         GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(vToMte3Id_[1]);
     }
 
-    // 排空FA最后一个任务在途的attentionOut MTE3: vec2输出是懒等待模式(下一任务开头才WaitFlag),
-    // FA结束时MTE3可能未完成; FD静态Tensor会覆写同一UB区域, 必须先等MTE3落地。
-    // WaitFlag消耗掉标志后补一次SetFlag, 维持与FreeEventID中WaitFlag的配对。
+    // 排空FA全部在途MTE3(GM写: lse sum/max/accumOut/attentionOut)。
+    // SetFlag<MTE3_V>插入MTE3队列尾部, WaitFlag等到即证明之前所有MTE3指令已落地GM,
+    // 与ClearOutput的initOutputEventId用法一致(该id此时空闲且flag=0, 用后归0, 不影响其他配对)。
     __aicore__ inline void DrainMte3()
     {
-        WaitFlag<HardEvent::MTE3_V>(mte3ToVId_[0]);
-        SetFlag<HardEvent::MTE3_V>(mte3ToVId_[0]);
+        SetFlag<HardEvent::MTE3_V>(initOutputEventId);
+        WaitFlag<HardEvent::MTE3_V>(initOutputEventId);
     }
 
     __aicore__ inline void AttenMaskCopyIn(LocalTensor<uint8_t> attenMaskUb, uint32_t vecMIdx, uint32_t mDealSize,
