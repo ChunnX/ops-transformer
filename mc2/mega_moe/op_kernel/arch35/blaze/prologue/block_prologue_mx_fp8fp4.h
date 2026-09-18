@@ -131,14 +131,16 @@ struct PrologueMxCastWOffsetParam {
 };
 
 // Macro aliases keep this dispatch-policy specialization concise and readable.
-#define BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS template <class OutType_, class InType_>
+#define BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS template <class OutType_, class InType_, bool UseDynamicL1Layout>
 
-#define BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION BlockPrologue<MatmulMxFp8Fp4DynamicKL1TailResplit, OutType_, InType_>
+#define BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION BlockPrologue<MatmulMxFp8Fp4DynamicKL1TailResplit<UseDynamicL1Layout>, OutType_, InType_>
 
 BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS
-class BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION {
+class BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION : private Blaze::Gemm::MegaMoeMxL1Storage<UseDynamicL1Layout> {
 public:
-    using DispatchPolicy = MatmulMxFp8Fp4DynamicKL1TailResplit;
+    using DispatchPolicy = MatmulMxFp8Fp4DynamicKL1TailResplit<UseDynamicL1Layout>;
+    using L1Storage = Blaze::Gemm::MegaMoeMxL1Storage<UseDynamicL1Layout>;
+    static constexpr bool USE_DYNAMIC_L1_LAYOUT = UseDynamicL1Layout;
     using OutType = OutType_;
     using InType = InType_;
 
@@ -148,7 +150,7 @@ public:
         __gm__ InType *ptrB;
     };
 
-    __aicore__ inline BlockPrologue();
+    __aicore__ explicit inline BlockPrologue(const L1Storage &storage = {});
     template <typename GMWeightTensorType>
     __aicore__ inline void operator()(const GMWeightTensorType &gmWeightTensor, uint64_t mL1Size, uint64_t kSize,
                                       uint64_t nL1Size, uint64_t nOffset, uint64_t nAlign,
@@ -191,6 +193,15 @@ protected:
     // L1 tensor creation functions
     __aicore__ inline auto MakeL1WeightTensor(uint64_t l1RealLen, uint64_t nL1Size);
 
+    __aicore__ inline uint64_t GetBBufferNum() const
+    {
+        if constexpr (UseDynamicL1Layout) {
+            return this->allocation_.bBufferNum;
+        } else {
+            return DOUBLE_BUFFER;
+        }
+    }
+
     uint64_t cvLoopIdx_ = 0;
 
     uint64_t ubMte2LoopIdx_ = 0;
@@ -202,7 +213,6 @@ protected:
     static constexpr uint64_t WEIGHT_L1_DB_OFFSET = 384 * KB;
     static constexpr uint64_t L1_WEIGHT_OFFSETS[DOUBLE_BUFFER] = {
         WEIGHT_L1_INIT_OFFSET * sizeof(OutType), WEIGHT_L1_DB_OFFSET * sizeof(OutType)};
-
     // === Pipeline Buffer Configuration ===
     static constexpr uint64_t WEIGHT_8BIT_BUFFER_NUM = QUADRUPLE_BUFFER_NUM; // 4
 
@@ -253,13 +263,11 @@ protected:
     static constexpr uint64_t SYNC_AIV_AIC_FLAG = 0;
     static constexpr uint64_t SYNC_AIC_AIV_FLAG = 1;
 
-    // === Dynamic Tiling Configuration ===
-
-    static constexpr uint64_t FINALIZE_AIC_WAIT_COUNT = 2;
 };
 
 BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS
-__aicore__ inline BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::BlockPrologue()
+__aicore__ inline BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::BlockPrologue(
+    const L1Storage &storage) : L1Storage(storage)
 {
     for (uint16_t idx = 0; idx < kUbMte2BufferNum; idx++) {
         SetFlag<HardEvent::V_MTE2>(vecEventIdVToMte2_ + idx);
@@ -337,7 +345,11 @@ __aicore__ inline void BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::operator()(const
     offsetParam.kSize = kSize;
     offsetParam.nL1Size = nL1Size;
     offsetParam.nOffset = nOffset;
-    offsetParam.kbL1Size = configuredKL1Size != 0 ? configuredKL1Size : CalcDynamicKBlock(mL1Size, nL1Size);
+    if constexpr (UseDynamicL1Layout) {
+        offsetParam.kbL1Size = this->allocation_.tileK;
+    } else {
+        offsetParam.kbL1Size = configuredKL1Size != 0 ? configuredKL1Size : CalcDynamicKBlock(mL1Size, nL1Size);
+    }
     offsetParam.nAlign = nAlign;
     offsetParam.concatHalfN = concatHalfN;
     ComputeBasicBlockAivNdKnNzNk(offsetParam, gmWeightTensor);
@@ -346,7 +358,7 @@ __aicore__ inline void BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::operator()(const
 BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS
 __aicore__ inline BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::~BlockPrologue()
 {
-    for (uint64_t idx = 0; idx < FINALIZE_AIC_WAIT_COUNT; ++idx) {
+    for (uint64_t idx = 0; idx < GetBBufferNum(); ++idx) {
         WaitAicToAiv();
     }
     FinalizeVectorCompute();
@@ -463,8 +475,12 @@ __aicore__ inline auto BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::MakeL1WeightTens
 {
     auto l1BaseLayout =
         asc::te::make_frame_layout<asc::te::zn_layout_ptn, asc::te::layout_trait_default<OutType>>(l1RealLen, nL1Size);
+    uint64_t weightL1Offset = L1_WEIGHT_OFFSETS[cvLoopIdx_ % DOUBLE_BUFFER];
+    if constexpr (UseDynamicL1Layout) {
+        weightL1Offset = this->allocation_.bOffsets[cvLoopIdx_ % this->allocation_.bBufferNum];
+    }
     return asc::te::make_tensor(
-        asc::te::make_mem_ptr<asc::te::location::l1, OutType>(L1_WEIGHT_OFFSETS[cvLoopIdx_ & (DOUBLE_BUFFER - 1)]),
+        asc::te::make_mem_ptr<asc::te::location::l1, OutType>(weightL1Offset),
         l1BaseLayout);
 }
 

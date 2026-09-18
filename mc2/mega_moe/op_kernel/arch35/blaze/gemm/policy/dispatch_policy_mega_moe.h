@@ -24,6 +24,7 @@ namespace Gemm {
  * @struct MatmulMxFp8Fp4DynamicKL1TailResplit
  * @brief Dispatch policy for the MX FP8/FP4 dynamic KL1 tail-resplit path.
  */
+template <bool UseDynamicL1Layout = false>
 struct MatmulMxFp8Fp4DynamicKL1TailResplit {};
 
 } // namespace Gemm
