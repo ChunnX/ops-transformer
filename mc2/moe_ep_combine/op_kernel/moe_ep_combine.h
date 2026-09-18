@@ -73,9 +73,8 @@ constexpr uint64_t UB_ALIGN = 32UL;
 static constexpr uint32_t META_CHUNK_TOKEN_MAX = 2048U;
 static constexpr struct UrmaWqeEntry DEFAULT_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
 static constexpr struct UrmaWqeEntry DEFAULT_CQE_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .cqe = 1, .inlineEn = 0};
-// Keep the final flag ordered after payload writes without requesting an unconsumed CQE on every invocation.
-// CQE-enabled payload checkpoints and Drain remain in the SQ high-watermark path.
-static constexpr struct UrmaWqeEntry CHANNEL_FLAG_WQE_CONFIG = {.odr = 6, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
+// 最后通知生成CQE，由Epilogue等待本通道发送完成。
+static constexpr struct UrmaWqeEntry CHANNEL_FLAG_WQE_CONFIG = {.odr = 6, .fence = 1, .se = 0, .cqe = 1, .inlineEn = 0};
 template <TemplateMoeEpCombineTypeClass>
 class MoeEpCombine {
 public:
@@ -99,7 +98,8 @@ private:
     __aicore__ inline void GetCoreAssignment(uint32_t totalBlocks, uint32_t &targetRank, uint32_t &coreIndexInGroup,
                                              uint32_t &groupSize);
     __aicore__ inline void SendRemoteMetadataSlot(uint32_t recvXIdx, int32_t srcTokenIdx, int32_t srcTopKIdx,
-                                                  GM_ADDR remoteDataBase, GM_ADDR remoteStateBase, uint64_t tokenBytes);
+                                                  GM_ADDR remoteDataBase, GM_ADDR remoteStateBase, uint64_t tokenBytes,
+                                                  bool lastToken);
     __aicore__ inline void ProcessRemoteMetadataRange(uint32_t targetRank, uint64_t rangeBegin, uint64_t rangeEnd,
                                                       uint32_t channelIndex);
     __aicore__ inline void SendPhaseDirectFromMetadata();
@@ -357,7 +357,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SplitRange(ui
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendRemoteMetadataSlot(
     uint32_t recvXIdx, int32_t srcTokenIdx, int32_t srcTopKIdx, GM_ADDR remoteDataBase, GM_ADDR remoteStateBase,
-    uint64_t tokenBytes)
+    uint64_t tokenBytes, bool lastToken)
 {
     uint64_t dstSlot =
         static_cast<uint64_t>(static_cast<uint32_t>(srcTokenIdx)) * topK_ + static_cast<uint32_t>(srcTopKIdx);
@@ -366,16 +366,18 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendRemoteMet
     // completion edge, so an unusually skewed rank range could fill the SQ and silently lose the later flag WQE.
     constexpr uint32_t writesPerToken = HasTopkWeight == 1 ? 2U : 1U;
     bool drainAfterToken = sqWriteCount_ + 2U * writesPerToken > HCOMM_SQ_MAX_PENDING;
+    // 最后一个token的末笔写生成CQE，最终Drain留到Epilogue末尾。
+    bool needCqe = drainAfterToken || lastToken;
     if constexpr (HasTopkWeight == 1) {
         PrepareWrite<DEFAULT_WQE_CONFIG>(remoteDataBase + dstSlot * perSlotBytes_, tokenAddr, tokenBytes);
-    } else if (drainAfterToken) {
+    } else if (needCqe) {
         PrepareWrite<DEFAULT_CQE_WQE_CONFIG>(remoteDataBase + dstSlot * perSlotBytes_, tokenAddr, tokenBytes);
     } else {
         PrepareWrite<DEFAULT_WQE_CONFIG>(remoteDataBase + dstSlot * perSlotBytes_, tokenAddr, tokenBytes);
     }
     if constexpr (HasTopkWeight == 1) {
         GM_ADDR weightAddr = reinterpret_cast<GM_ADDR>(topkWeightsGm_.GetPhyAddr(recvXIdx));
-        if (drainAfterToken) {
+        if (needCqe) {
             PrepareWrite<DEFAULT_CQE_WQE_CONFIG>(remoteStateBase + dstSlot * WIN_ADDR_ALIGN, weightAddr, sizeof(float));
         } else {
             PrepareWrite<DEFAULT_WQE_CONFIG>(remoteStateBase + dstSlot * WIN_ADDR_ALIGN, weightAddr, sizeof(float));
@@ -419,7 +421,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ProcessRemote
             int32_t srcTopKIdx = metadataLocal.GetValue(metaOffset + META_TOPK_IDX_OFFSET);
             int32_t recvXIdx = metadataLocal.GetValue(metaOffset + META_RECV_X_IDX_OFFSET);
             SendRemoteMetadataSlot(static_cast<uint32_t>(recvXIdx), srcTokenIdx, srcTopKIdx, remoteDataBase,
-                                   remoteStateBase, tokenBytes);
+                                   remoteStateBase, tokenBytes, chunkStart + i + 1U == rangeEnd);
         }
         SyncFunc<AscendC::HardEvent::S_MTE2>();
     }
@@ -529,9 +531,10 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseDire
             }
         }
     }
-    // Only SQ high-watermark checkpoints drain; the final ordered flag is submitted without waiting here.
+    // 主阶段只提交末尾CQE，最终等待放在Epilogue。
     FlushPreparedWrites();
-    if (sendsTokens) {
+    {
+        // 空发送也需要发布channel的CQ计数。
         DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
     }
     diagWriter_.RunPosRecord(MOE_EP_COMBINE_RUN_POS_URMA_REQUESTS_ISSUE_DONE);
