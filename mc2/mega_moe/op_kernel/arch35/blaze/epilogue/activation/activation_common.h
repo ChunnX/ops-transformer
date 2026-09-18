@@ -41,6 +41,12 @@ constexpr AscendC::Reg::CastTrait CAST_FP32_TO_BF16 = {AscendC::Reg::RegLayout::
                                                        AscendC::Reg::MaskMergeMode::ZEROING,
                                                        AscendC::RoundMode::CAST_RINT};
 
+// 显式保留 FP32 Exp/Div 的非规格化数值，不受编译单元 --cce-ftz 选项影响。
+static constexpr AscendC::Reg::ExpSpecificMode REG_EXP_MODE = {AscendC::Reg::MaskMergeMode::ZEROING,
+                                                               AscendC::ExpAlgo::PRECISION_1ULP_FTZ_FALSE};
+static constexpr AscendC::Reg::DivSpecificMode REG_DIV_MODE = {AscendC::Reg::MaskMergeMode::ZEROING, false,
+                                                               AscendC::DivAlgo::PRECISION_1ULP_FTZ_FALSE};
+
 /*
  * 单个门控激活 tile 的完整执行上下文。
  *
