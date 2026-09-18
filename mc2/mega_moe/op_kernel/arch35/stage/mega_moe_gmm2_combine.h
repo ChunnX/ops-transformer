@@ -1283,6 +1283,7 @@ __aicore__ inline void SendWaveCombineTokenDedupMerge(const MoeStageCommonConfig
                descRowBase, flags);
         return;
     }
+    PRINTF("[DM1] b=%d rb=%u f=%d mc=%u\n", static_cast<int32_t>(AscendC::GetBlockIdx()), descRowBase, flags, memberCount);
     const int32_t minTopkIdx = dedupScratch.descTensor.GetValue(descRowBase + 1U);
     CombineImpl::CombineTokenRoute route = CombineImpl::LoadCombineTokenRoute(tokenMetaInfo, 0U);
     GlobalTensor<bfloat16_t> gmRemoteD;
@@ -1309,6 +1310,7 @@ __aicore__ inline void SendWaveCombineTokenDedupMerge(const MoeStageCommonConfig
             Ops::Base::CeilAlign(topK * static_cast<uint32_t>(sizeof(float)), static_cast<uint32_t>(ALIGN_32));
         const uint64_t lastRow = static_cast<uint64_t>(static_cast<uint32_t>(dedupScratch.descTensor.GetValue(
             descRowBase + DEDUP_ROW_DESC_HEADER_INT32 + (memberCount - 1U) * 3U)));
+        PRINTF("[DM2] b=%d lastRow=%lu\n", static_cast<int32_t>(AscendC::GetBlockIdx()), lastRow);
         GlobalTensor<int32_t> revWeightsGm;
         revWeightsGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.dispatchRevWeightsPtr +
                                                                         lastRow * weightAlignBytes));
@@ -1333,6 +1335,7 @@ __aicore__ inline void SendWaveCombineTokenDedupMerge(const MoeStageCommonConfig
         for (uint32_t j = 0U; j < memberCount; ++j) {
             const uint64_t memberRow = static_cast<uint64_t>(static_cast<uint32_t>(dedupScratch.descTensor.GetValue(
                 descRowBase + DEDUP_ROW_DESC_HEADER_INT32 + j * 3U)));
+            if (segBase == 0U) { PRINTF("[DM3] b=%d j=%u mr=%lu\n", static_cast<int32_t>(AscendC::GetBlockIdx()), j, memberRow); }
             const uint32_t buf = j & 1U;
             TEventID memberEvent = static_cast<TEventID>(WAVE_COMBINE_DEDUP_MEMBER_EVENT_BASE + static_cast<int32_t>(buf));
             if (dedupState.memberArmed[buf]) {
@@ -1371,6 +1374,7 @@ __aicore__ inline void SendWaveCombineTokenDedupMerge(const MoeStageCommonConfig
     DataCopyPad(gmRemoteD[gmDstRowOffset], dedupScratch.mergeSendTensor, ub2GmParams);
     SetFlag<HardEvent::MTE3_V>(mergeEvent);
     dedupState.mergeSendArmed = true;
+    PRINTF("[DM4] b=%d done rb=%u\n", static_cast<int32_t>(AscendC::GetBlockIdx()), descRowBase);
 }
 
 // 排空去重 combine 的全部在途事件：行环 slot（复用基础 Drain）+ 成员乒乓 + 合并发送。
