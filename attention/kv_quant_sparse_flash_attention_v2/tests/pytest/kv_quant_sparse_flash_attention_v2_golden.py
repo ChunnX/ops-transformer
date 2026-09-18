@@ -1026,10 +1026,29 @@ def _t_increattention_bnsd(fa_param):
                     cur_sinks = sinks_tensor[n2Idx * g : (n2Idx + 1) * g]
                 if emptyFlag:
                     continue
-                # 对齐NPU数值链: 边界值输入下CPU fp32累加可能溢出/精度不足, 先升fp64精确累加再回fp32
-                bmm1Res = torch.matmul(
-                    q_curr.to(torch.float64), k_sparse.to(torch.float64).T
-                ).float()
+                # 对齐NPU数值链(实测反推): bmm1的nope部分(前512维)在宽精度中精确
+                # 求和后向上(+inf方向)量化到2^-4网格; rope部分(后64维)按16维分块、
+                # 块内精确求和、块间以fp32(RNE)级联累加(溢出时inf粘滞)。边界值输入
+                # 下(行公共基数巨大而key间差异小于fp32 ulp, 或单项乘积超出fp32范围),
+                # 该数值链决定每key得分的fp32分布, 必须按此建模而非fp64整体精确累加
+                k_dim = q_curr.shape[-1]
+                rope_dim = 64
+                nope_dim = k_dim - rope_dim
+                nope_sum = torch.matmul(
+                    q_curr[..., :nope_dim].to(torch.float64),
+                    k_sparse[..., :nope_dim].to(torch.float64).T,
+                )
+                nope_quant = torch.ceil(nope_sum * 16.0) / 16.0
+                acc = nope_quant.float()
+                q_rope_f64 = q_curr[..., nope_dim:].to(torch.float64)
+                k_rope_f64 = k_sparse[..., nope_dim:].to(torch.float64)
+                for chunk_start in range(0, rope_dim, 16):
+                    chunk_sum = torch.matmul(
+                        q_rope_f64[..., chunk_start : chunk_start + 16],
+                        k_rope_f64[..., chunk_start : chunk_start + 16].T,
+                    )
+                    acc = (acc.double() + chunk_sum).float()
+                bmm1Res = acc
                 scaleRes = bmm1Res * scaleValue
                 softmax_res, x_max, x_sum = softmax(scaleRes, cur_sinks)
                 exp_unnorm = torch.exp(scaleRes - x_max)
