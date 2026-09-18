@@ -60,15 +60,44 @@ python3 -m pip install build_out/cann_ops_transformer-*.whl --force-reinstall --
 
 ## 运行方式
 
+### 卡数与设备指定
+
+| 层 | 方法 | 示例 |
+| ---- | ---- | ---- |
+| HCCL 组大小（几张卡一组） | `--nproc N`（默认 `2`） | `bash run_example.sh --nproc 8 ...` |
+| 选用哪些物理卡 | 环境变量 `ASCEND_RT_VISIBLE_DEVICES` | `export ASCEND_RT_VISIBLE_DEVICES=0,1`（选空闲卡，多进程抢卡时常用） |
+
+> 约束：sliced 模式要求 `--num-entries` 能被 `--nproc` 整除；local 模式仅支持推理（`--phase train` 会报错，`both` 自动跳过训练）。
+
+### 小规格功能验证
+
+默认参数（4096 行 × 256 维 × 512 tokens）本身就是小规格，直接跑即可：
+
 ```bash
 cd examples/mc2/engram_fetch_e2e
 
-# 一键验证: 默认 2 卡, 依次跑 sliced + local 两种模式(推理+训练)
+# 1. 标准全量功能验证: 2 卡, sliced + local 两模式, 推理+训练+零拷贝
 bash run_example.sh
 
-# 仅验证 local 模式
-bash run_example.sh --fetch-mode local
+# 2. 叠加 sf(scale factor) 链路验证(推理阶段生效)
+bash run_example.sh --with-sf
 
+# 3. dtype 矩阵轮跑(5 种类型 × 2 模式)
+bash run_example.sh --dtypes all
+
+# 4. 仅验证 local 模式 / 仅验证训练
+bash run_example.sh --fetch-mode local
+bash run_example.sh --fetch-mode sliced --phase train
+
+# 5. 更小规格快速冒烟(512 行 × 256 维 × 128 tokens, 直接 torchrun 调起)
+python3 -m torch.distributed.run --standalone --nproc_per_node=2 \
+    test_engram_fetch_e2e.py \
+    --fetch-mode sliced --phase infer --with-sf --num-entries 512 --hidden 256 --num-tokens 128
+```
+
+### 其他运行示例
+
+```bash
 # 4 卡 + 指定数据类型/表规模等（其余参数透传给测试脚本）
 bash run_example.sh --fetch-mode sliced --nproc 4 --dtype fp16 --num-entries 8192 --num-tokens 1024
 
@@ -81,8 +110,8 @@ torchrun --standalone --nproc_per_node=2 test_engram_fetch_e2e.py --fetch-mode l
 | 参数 | 默认值 | 说明 |
 | :--- | :----- | :--- |
 | `--fetch-mode` | `sliced` | `sliced`(0)=切片跨 NPU 通信；`local`(1)=全量本 NPU |
-| `--phase` | `both` | `infer`=仅推理；`train`=仅训练；`both`=全部 |
-| `--dtype` | `bf16` | 表数据类型：`bf16`/`fp16`/`fp32` |
+| `--phase` | `both` | `infer`=仅推理；`train`=仅训练；`both`=全部；`perf`=取数性能测试（见下文） |
+| `--dtype` | `bf16` | 表数据类型：`bf16`/`fp16`/`fp32`/`fp8e4m3`/`fp8e5m2` |
 | `--num-entries` | `4096` | 全局表总行数（需能被 rank 数整除） |
 | `--hidden` | `256` | 隐藏维大小 |
 | `--num-tokens` | `512` | 每 rank 取数 token 数（训练模式下作为 `num_max_tokens_per_rank`） |
