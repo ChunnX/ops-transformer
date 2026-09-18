@@ -313,8 +313,12 @@ public:
                   CommTopology topoType = CommTopology::STANDARD_CARD)
         : fitTable_(fitTable)
     {
-        commTypeInfo_.commPrimitive = inputKernelType;                                       // 区分哪个MC2算子
-        commTypeInfo_.rankDim = std::max(static_cast<uint64_t>(inputRankDim), MIN_RANK_DIM); // 并行维度最小为2
+        commTypeInfo_.commPrimitive = inputKernelType; // 区分哪个MC2算子
+        // 通信域卡数(op 侧来自 GetRankSize(group)), 下限钳位 2, 三层原因:
+        //   ① 防 uint64 下溢: GetCommRankShares 的 AG 远程份数 = rankDim-1, rankDim=0 时下溢;
+        //   ② 防退化: 单卡无集合通信可建模, 拟合表均按 ≥2 卡标定, 退化输入按最接近的 2 卡建模;
+        //   ③ 历史防御: 老基类服务全家族, rankDim 来源多样(attr/group/shape 推导)不可靠, 入口统一兜底
+        commTypeInfo_.rankDim = std::max(static_cast<uint64_t>(inputRankDim), MIN_RANK_DIM);
         commTypeInfo_.commDtypeSizeExpansionFraction = 1;
         commTypeInfo_.maxStepSize = 1;
         commTypeInfo_.topoType = topoType;
