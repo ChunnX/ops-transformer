@@ -10,12 +10,12 @@
 
 // ========================================================================
 // mhc_sandwich_norm_post_preonly_kernel_compute.h
-// 计算 building blocks: 数据加载、RMSNorm、MHC Post、Gate
+// 共享计算模块：数据加载、RMSNorm、MHC Post、门控
 // ========================================================================
 
-// ---- Data loading ----
+// 数据加载
 
-/// Load h_post[N] and h_res[N*N] for a token.
+/// 加载一个token的h_post[N]和h_res[N*N]。
 __aicore__ inline void LoadTokenWeights(uint32_t token, float (&postVals)[N_MAX], float (&combVals)[N_MAX * N_MAX])
 {
     const uint32_t N = N_;
@@ -40,7 +40,7 @@ __aicore__ inline void LoadTokenWeights(uint32_t token, float (&postVals)[N_MAX]
         combVals[i] = hResUb.GetValue(i);
 }
 
-/// Load h_out[token, tOff:tOff+tD] bf16 → bufHOutFp32_ fp32
+/// 将h_out[token, tOff:tOff+tD]从低精度加载并转换为FP32。
 __aicore__ inline void LoadHOutAndCast(uint64_t gmOffset, uint32_t tD)
 {
     LocalTensor<T> hBf16 = bufHOutBf16_.AllocTensor<T>();
@@ -52,7 +52,7 @@ __aicore__ inline void LoadHOutAndCast(uint64_t gmOffset, uint32_t tD)
     bufHOutBf16_.FreeTensor(hBf16);
 }
 
-/// Load residual[token, 0:N, tOff:tOff+tD] bf16 → bufResFp32_ fp32
+/// 将residual[token, 0:N, tOff:tOff+tD]从低精度加载并转换为FP32。
 __aicore__ inline void LoadResidualAndCast(uint64_t gmBaseOffset, uint32_t tD)
 {
     const uint32_t N = N_;
@@ -68,7 +68,7 @@ __aicore__ inline void LoadResidualAndCast(uint64_t gmBaseOffset, uint32_t tD)
     bufResidualBf16_.FreeTensor(resBf16);
 }
 
-/// Load a gamma vector into the specified buffer for tile [tOff, tOff+tD)
+/// 将gamma的[tOff, tOff+tD)分块加载到指定缓存。
 __aicore__ inline void LoadGammaInto(LocalTensor<float> dst, GlobalTensor<float> &src, uint32_t tOff, uint32_t tD)
 {
     DataCopyExtParams gP = {1, 0, 0, 0, 0};
@@ -77,13 +77,13 @@ __aicore__ inline void LoadGammaInto(LocalTensor<float> dst, GlobalTensor<float>
     DataCopyPad(dst, src[tOff], gP, gPad);
 }
 
-// ---- RMSNorm primitives ----
+// RMSNorm基础计算
 
-/// High-precision ReduceSum using binary tree accumulation (Pattern::Reduce::AR)
+/// 使用二叉树累加模式执行高精度ReduceSum。
 __aicore__ inline float ReduceSumPrecise(LocalTensor<float> src, uint32_t tD)
 {
     LocalTensor<float> scBuf = bufScalar_.Get<float>();
-    constexpr uint32_t REDUCE_ALIGN = 16; // ReduceSum requires 16-element alignment
+    constexpr uint32_t REDUCE_ALIGN = 16; // ReduceSum要求16个元素对齐
     uint32_t tDAligned = (tD + REDUCE_ALIGN - 1) / REDUCE_ALIGN * REDUCE_ALIGN;
     uint32_t srcShape[2] = {1, tDAligned};
     ReduceSum<float, AscendC::Pattern::Reduce::AR, false>(scBuf, src, srcShape, true);
@@ -91,7 +91,7 @@ __aicore__ inline float ReduceSumPrecise(LocalTensor<float> src, uint32_t tD)
     return scBuf.GetValue(0);
 }
 
-/// Compute sum-of-squares using ReduceSumPrecise
+/// 使用ReduceSumPrecise计算平方和。
 __aicore__ inline float ReduceSumSq(LocalTensor<float> src, uint32_t tD)
 {
     LocalTensor<float> sqBuf = bufSqFp32_.Get<float>();
@@ -100,13 +100,13 @@ __aicore__ inline float ReduceSumSq(LocalTensor<float> src, uint32_t tD)
     return ReduceSumPrecise(sqBuf, tD);
 }
 
-/// 1/sqrt(sumSq * invCount + eps) — scalar precision
+/// 使用标量精度计算1/sqrt(sumSq * invCount + eps)。
 __aicore__ inline __attribute__((always_inline)) float ComputeInvRms(float sumSq, float invCount)
 {
     return 1.0f / sqrt(sumSq * invCount + normEps_);
 }
 
-/// Apply in-place: buf = buf * scalar, then buf = buf * gamma
+/// 原地依次执行标量缩放和gamma缩放。
 __aicore__ inline void ApplyScaleAndGamma(LocalTensor<float> buf, float scale, LocalTensor<float> gamma, uint32_t tD)
 {
     Muls(buf, buf, scale, tD);
@@ -115,32 +115,9 @@ __aicore__ inline void ApplyScaleAndGamma(LocalTensor<float> buf, float scale, L
     PipeBarrier<PIPE_V>();
 }
 
-// ---- MHC_Post ----
+// MHC_Post计算
 
-/// Compute x2 for myN heads into bufX2Fp32_:
-///   x2[hi] = postVals[hStart+hi] * hOutFp32 + sum_j(combVals[j,h] * resFp32[j])
-__aicore__ inline void ComputeX2MyHeads(const float (&postVals)[N_MAX], const float (&combVals)[N_MAX * N_MAX],
-                                        uint32_t tD)
-{
-    const uint32_t N = N_;
-    const uint32_t myN = myHeadCount_;
-    const uint32_t hStart = headStart_;
-    LocalTensor<float> x2Fp32 = bufX2Fp32_.Get<float>();
-    LocalTensor<float> hOutFp32 = bufHOutFp32_.Get<float>();
-    LocalTensor<float> resFp32 = bufResFp32_.Get<float>();
-
-    for (uint32_t hi = 0; hi < myN; ++hi)
-        Muls(x2Fp32[hi * dimTile_], hOutFp32, postVals[hStart + hi], tD);
-    PipeBarrier<PIPE_V>();
-
-    for (uint32_t j = 0; j < N; ++j) {
-        for (uint32_t hi = 0; hi < myN; ++hi)
-            Axpy(x2Fp32[hi * dimTile_], resFp32[j * dimTile_], combVals[j * N + (hStart + hi)], tD);
-        PipeBarrier<PIPE_V>();
-    }
-}
-
-/// Compute x2 for ALL N heads into bufX2Fp32_ (single-core path, batched)
+/// 单核批量计算全部N个head的x2，并写入bufX2Fp32_。
 __aicore__ inline void ComputeX2AllHeadsBatched(const float (&postVals)[N_MAX], const float (&combVals)[N_MAX * N_MAX],
                                                 uint32_t tD)
 {
@@ -159,7 +136,7 @@ __aicore__ inline void ComputeX2AllHeadsBatched(const float (&postVals)[N_MAX], 
     }
 }
 
-/// Compute x2 for ALL N heads, per-head serialized (multi-tile single-core)
+/// 单核多分块路径按head串行计算全部x2。
 __aicore__ inline void ComputeX2AllHeadsSerial(const float (&postVals)[N_MAX], const float (&combVals)[N_MAX * N_MAX],
                                                uint32_t tD)
 {
@@ -178,9 +155,9 @@ __aicore__ inline void ComputeX2AllHeadsSerial(const float (&postVals)[N_MAX], c
     }
 }
 
-// ---- Gate computation ----
+// 门控计算
 
-/// Compute gate[0..N-1] from xHatVals (after invRmsPre scaling):
+/// 由xHatVals计算gate[0..N-1]，其中包含invRmsPre缩放：
 ///   gate[i] = sigmoid(alpha0 * xHat[i] + bias[i]) + hcEps
 __aicore__ inline void ComputeGateValues(float totalSumSqPre, float (&xHatVals)[N_MAX], float (&gate)[N_MAX])
 {

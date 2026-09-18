@@ -9,15 +9,13 @@
 */
 
 // ========================================================================
-// R9: MhcSandwichNormPostPreonly — entry point
+// MhcSandwichNormPostPreonly A5入口
 //
-// File structure:
-//   mhc_sandwich_norm_post_preonly_common.h       — constants, type traits
-//   mhc_sandwich_norm_post_preonly_kernel.h       — class: Init, Process, shared building blocks
-//   mhc_sandwich_norm_post_preonly_dualcore.h     — ProcessTokenDualCore (single-tile, D<=2560)
-//   mhc_sandwich_norm_post_preonly_dualcore_mt.h  — ProcessTokenDualCoreMultiTile (multi-tile, D=5120)
-//   mhc_sandwich_norm_post_preonly_singlecore.h   — ProcessToken + PhaseAB/C/D (fallback)
-//   mhc_sandwich_norm_post_preonly.cpp            — this file (kernel entry point)
+// 文件结构：
+//   mhc_sandwich_norm_post_preonly_common.h       — 常量和类型特征
+//   mhc_sandwich_norm_post_preonly_kernel.h       — 类定义、初始化、执行和共享计算模块
+//   mhc_sandwich_norm_post_preonly_single_aiv.h   — 已验证的单AIV回退路径
+//   mhc_sandwich_norm_post_preonly_apt.cpp        — Kernel入口
 // ========================================================================
 
 #include "arch35/mhc_sandwich_norm_post_preonly_kernel.h"
@@ -30,16 +28,18 @@ mhc_sandwich_norm_post_preonly(GM_ADDR h_out, GM_ADDR residual, GM_ADDR h_post, 
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
 
-    if (workspace == nullptr) {
-        return;
-    }
-    GM_ADDR usrWorkspace = GetUserWorkspace(workspace);
-    if (usrWorkspace == nullptr) {
-        return;
-    }
-
     KernelMhcSandwichNormPostPreonly<DTYPE_H_OUT> op;
     op.Init(h_out, residual, h_post, h_res, phi, alpha_0, bias, gamma_0, gamma_1, gamma_2, h_in_prime, x_2_out,
-            h_in_f32, usrWorkspace, tiling);
-    op.Process();
+            h_in_f32, nullptr, tiling);
+    // bit0和bit1选择可选语义分支，bit2保留给双sibling AIV执行方案。
+    // 枚举四个单AIV键，确保Host下发的每个入口都能被运行时二进制注册表找到。
+    if (TILING_KEY_IS(0)) {
+        op.Process();
+    } else if (TILING_KEY_IS(1)) {
+        op.Process();
+    } else if (TILING_KEY_IS(2)) {
+        op.Process();
+    } else if (TILING_KEY_IS(3)) {
+        op.Process();
+    }
 }

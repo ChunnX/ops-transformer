@@ -48,6 +48,8 @@ static aclnnStatus MhcSandwichNormPostPreonlyCommonProcess(
 
     residual = l0op::Contiguous(residual, uniqueExecutor.get());
     CHECK_COND(residual != nullptr, ACLNN_ERR_INNER_NULLPTR, "Contiguous residual failed.");
+    CHECK_COND(hOut->GetDataType() == residual->GetDataType(), ACLNN_ERR_PARAM_INVALID,
+               "hOut and residual must have the same dtype.");
 
     hPost = l0op::Contiguous(hPost, uniqueExecutor.get());
     CHECK_COND(hPost != nullptr, ACLNN_ERR_INNER_NULLPTR, "Contiguous hPost failed.");
