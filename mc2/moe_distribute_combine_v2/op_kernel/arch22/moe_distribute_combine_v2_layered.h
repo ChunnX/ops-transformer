@@ -81,7 +81,7 @@ public:
     __aicore__ inline MoeDistributeCombineV2Layered(){};
     __aicore__ inline void Init(GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR sendCount,
                                 GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR XOut, GM_ADDR workspaceGM, TPipe *pipe,
-                                const MoeDistributeCombineV2TilingData *tilingData, GM_ADDR contextGM);
+                                const MoeDistributeCombineV2Info *tilingData, GM_ADDR contextGM);
     __aicore__ inline void Process();
     template <typename T>
     inline __aicore__ T RoundUp(const T val, const T align)
@@ -99,7 +99,7 @@ public:
     }
 
 private:
-    __aicore__ inline void InitAttrs(const MoeDistributeCombineV2TilingData *tilingData);
+    __aicore__ inline void InitAttrs(const MoeDistributeCombineV2Info *tilingData);
     __aicore__ inline void InitLayeredAddr(GM_ADDR sendCount);
     __aicore__ inline void BuffInit();
     __aicore__ inline void SplitCoreCal();
@@ -269,17 +269,17 @@ private:
 
 template <TemplateMC2TypeV2LayeredClass>
 __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFunc>::InitAttrs(
-    const MoeDistributeCombineV2TilingData *tilingData)
+    const MoeDistributeCombineV2Info *tilingData)
 {
-    rankId_ = tilingData->moeDistributeCombineV2Info.epRankId;
-    axisBS_ = tilingData->moeDistributeCombineV2Info.bs;
-    axisH_ = tilingData->moeDistributeCombineV2Info.h;
-    axisK_ = tilingData->moeDistributeCombineV2Info.k;
-    aivNum_ = tilingData->moeDistributeCombineV2Info.aivNum;
-    moeExpertNum_ = tilingData->moeDistributeCombineV2Info.moeExpertNum;
-    worldSize_ = tilingData->moeDistributeCombineV2Info.epWorldSize;
-    globalBs_ = tilingData->moeDistributeCombineV2Info.globalBs;
-    isInputTokenMaskFlag_ = tilingData->moeDistributeCombineV2Info.isTokenMask;
+    rankId_ = tilingData->epRankId;
+    axisBS_ = tilingData->bs;
+    axisH_ = tilingData->h;
+    axisK_ = tilingData->k;
+    aivNum_ = tilingData->aivNum;
+    moeExpertNum_ = tilingData->moeExpertNum;
+    worldSize_ = tilingData->epWorldSize;
+    globalBs_ = tilingData->globalBs;
+    isInputTokenMaskFlag_ = tilingData->isTokenMask;
     uint32_t maxBsPerRank = globalBs_ / worldSize_;
     maxLocalBs_ = maxBsPerRank > MAX_LOCAL_BS ? MAX_LOCAL_BS : maxBsPerRank;
     if constexpr (std::is_same<ExpandXType, half>::value) { // fp16
@@ -345,8 +345,7 @@ __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFun
 template <TemplateMC2TypeV2LayeredClass>
 __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFunc>::Init(
     GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR sendCount, GM_ADDR scales, GM_ADDR xActiveMask,
-    GM_ADDR XOut, GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeCombineV2TilingData *tilingData,
-    GM_ADDR contextGM)
+    GM_ADDR XOut, GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeCombineV2Info *tilingData, GM_ADDR contextGM)
 {
     tpipe_ = pipe;
     InitAttrs(tilingData);
