@@ -523,9 +523,12 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessPoolingK(uint32_t ba
         uint32_t startKBlock, endKBlock;
         CalcKPoolingRangeValid(startKBlock, endKBlock, validYBlocks);
 
-        for (uint32_t kBlockIdx = startKBlock; kBlockIdx < endKBlock; kBlockIdx++) {
-            vectorService.PoolingSingleKBlock(batchIdx, headIdx, kBlockIdx, keyGm, actualBlockLenKVGm, kCmpGm,
-                                              seqPrefixSumKV, blockPrefixSumKV);
+        // 批量快速路径：满块且无变长标记时整段一次批处理（转置读+单次ReduceMean）
+        if (!vectorService.FastPoolingKRange(batchIdx, headIdx, startKBlock, endKBlock, seqPrefixSumKV)) {
+            for (uint32_t kBlockIdx = startKBlock; kBlockIdx < endKBlock; kBlockIdx++) {
+                vectorService.PoolingSingleKBlock(batchIdx, headIdx, kBlockIdx, keyGm, actualBlockLenKVGm, kCmpGm,
+                                                  seqPrefixSumKV, blockPrefixSumKV);
+            }
         }
     }
 }
@@ -560,9 +563,12 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessPoolingQ(uint32_t ba
             endQBlockIdx = startQBlockIdx + excuteBlock;
         }
 
-        for (uint32_t qBlockIdx = startQBlockIdx; qBlockIdx < endQBlockIdx; qBlockIdx++) {
-            vectorService.PoolingSingleQBlock(batchIdx, headIdx, qBlockIdx, queryGm, actualBlockLenQGm, qCmpGm,
-                                              seqPrefixSumQ, blockPrefixSumQ);
+        // 批量快速路径：满块且无变长标记时本 sub-vec 段一次批处理（转置读+单次ReduceMean）
+        if (!vectorService.FastPoolingQRange(batchIdx, headIdx, startQBlockIdx, endQBlockIdx, seqPrefixSumQ)) {
+            for (uint32_t qBlockIdx = startQBlockIdx; qBlockIdx < endQBlockIdx; qBlockIdx++) {
+                vectorService.PoolingSingleQBlock(batchIdx, headIdx, qBlockIdx, queryGm, actualBlockLenQGm, qCmpGm,
+                                                  seqPrefixSumQ, blockPrefixSumQ);
+            }
         }
     }
 }

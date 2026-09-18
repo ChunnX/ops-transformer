@@ -58,6 +58,10 @@ public:
                                                GlobalTensor<IN_T> &keyGm, GlobalTensor<int64_t> &actualBlockLenKVGm,
                                                GlobalTensor<POOL_OUT_T> &kCmpGm, uint64_t seqPrefixSumKV,
                                                uint64_t blockPrefixSumKV);
+    __aicore__ inline bool FastPoolingQRange(uint32_t batchIdx, uint32_t headIdx, uint32_t startQBlockIdx,
+                                             uint32_t endQBlockIdx, uint64_t seqPrefixSumQ);
+    __aicore__ inline bool FastPoolingKRange(uint32_t batchIdx, uint32_t headIdx, uint32_t startKBlock,
+                                             uint32_t endKBlock, uint64_t seqPrefixSumKV);
     __aicore__ inline void OnlineSoftmaxFirstPassChunk(uint32_t qChunkStart, uint32_t qChunkSize, uint32_t kChunkStart,
                                                        uint32_t kChunkSize, uint32_t validXBlocks,
                                                        uint32_t validYBlocks);
@@ -143,6 +147,22 @@ __aicore__ inline void BSAVectorService<BSAT>::PoolingSingleKBlock(uint32_t batc
 {
     poolOP.PoolingSingleKBlock(batchIdx, headIdx, kBlockIdx, keyGm, actualBlockLenKVGm, kCmpGm, seqPrefixSumKV,
                                blockPrefixSumKV);
+}
+
+template <typename BSAT>
+__aicore__ inline bool BSAVectorService<BSAT>::FastPoolingQRange(uint32_t batchIdx, uint32_t headIdx,
+                                                                 uint32_t startQBlockIdx, uint32_t endQBlockIdx,
+                                                                 uint64_t seqPrefixSumQ)
+{
+    return poolOP.FastPoolingQRange(batchIdx, headIdx, startQBlockIdx, endQBlockIdx, seqPrefixSumQ);
+}
+
+template <typename BSAT>
+__aicore__ inline bool BSAVectorService<BSAT>::FastPoolingKRange(uint32_t batchIdx, uint32_t headIdx,
+                                                                 uint32_t startKBlock, uint32_t endKBlock,
+                                                                 uint64_t seqPrefixSumKV)
+{
+    return poolOP.FastPoolingKRange(batchIdx, headIdx, startKBlock, endKBlock, seqPrefixSumKV);
 }
 
 template <typename BSAT>
