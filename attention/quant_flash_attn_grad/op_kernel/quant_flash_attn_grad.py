@@ -1850,6 +1850,28 @@ def iterate_mm_ds_p(mm1_res, mm2_res, const_info, run_info, tensor_info):
 
 
 @pl.vector_function
+def merge_band_attn_mask_vf(attn_tile, attn_pre_tile):
+    # Preserve the packed predicate bits: keep = next & ~pre.
+    # Reinterpret pairs of bytes as uint16 for the bitwise vector operations.
+    preg_all_16 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_UINT16)
+    preg_all_8 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_INT8)
+    for offset in pl.range(0, TS * TS_HALF, 256):
+        next_bytes = vf.load_align(attn_tile, offset)
+        pre_bytes = vf.load_align(attn_pre_tile, offset)
+        next_words = vf.bit_cast(next_bytes, dtype=pl.DT_UINT16)
+        pre_words = vf.bit_cast(pre_bytes, dtype=pl.DT_UINT16)
+        pre_inverse = vf.not_(pre_words, preg_all_16)
+        keep_words = vf.and_(next_words, pre_inverse, preg_all_16)
+        # Keep the merged mask in the second acquired slot. The next pair
+        # can then load into the other two slots while P/dS consumes this one.
+        vf.store_align(
+            attn_pre_tile + offset,
+            vf.bit_cast(keep_words, dtype=pl.DT_INT8),
+            preg_all_8,
+        )
+
+
+@pl.vector_function
 def compute_p_ds_vf(
     sp_tile,
     dpds_tile,
@@ -1859,7 +1881,6 @@ def compute_p_ds_vf(
     lse_tile,
     d_tile,
     attn_tile,
-    attn_pre_tile,
     src_m,
     src_n,
     ss,
@@ -1878,11 +1899,6 @@ def compute_p_ds_vf(
         preg_mask3 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_INT32)
         preg_mask4 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_INT32)
         vreg_min = vf.full(ATTEN_MASK_MIN, preg_all_32, dtype=pl.DT_FP32)
-        if sparse_type == 4:
-            preg_pre1 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_INT32)
-            preg_pre2 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_INT32)
-            preg_pre3 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_INT32)
-            preg_pre4 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_INT32)
 
     vreg_d = vf.load_align(d_tile, 0)
     vreg_perm = vf.load_align(perm_tile, 0)
@@ -1917,17 +1933,6 @@ def compute_p_ds_vf(
             vreg_sp2 = vf.select(vreg_sp2, vreg_min, preg_mask2)
             vreg_sp3 = vf.select(vreg_sp3, vreg_min, preg_mask3)
             vreg_sp4 = vf.select(vreg_sp4, vreg_min, preg_mask4)
-
-            if sparse_type == 4:
-                preg_pre1 = vf.load_align(attn_pre_tile, i * 64, dist=pl.LoadDist.DS)
-                preg_pre2 = vf.load_align(attn_pre_tile, (i + 1) * 64, dist=pl.LoadDist.DS)
-                preg_pre3 = vf.load_align(attn_pre_tile, (i + 2) * 64, dist=pl.LoadDist.DS)
-                preg_pre4 = vf.load_align(attn_pre_tile, (i + 3) * 64, dist=pl.LoadDist.DS)
-
-                vreg_sp1 = vf.select(vreg_min, vreg_sp1, preg_pre1)
-                vreg_sp2 = vf.select(vreg_min, vreg_sp2, preg_pre2)
-                vreg_sp3 = vf.select(vreg_min, vreg_sp3, preg_pre3)
-                vreg_sp4 = vf.select(vreg_min, vreg_sp4, preg_pre4)
 
         # vf.store(sp_tile, vreg_sp1)
         vreg_sp1 = vf.exp_sub(vreg_sp1, vreg_lse, preg_all)
@@ -2087,17 +2092,6 @@ def compute_p_ds_vf(
             vreg_sp3 = vf.select(vreg_sp3, vreg_min, preg_mask3)
             vreg_sp4 = vf.select(vreg_sp4, vreg_min, preg_mask4)
 
-            if sparse_type == 4:
-                preg_pre1 = vf.load_align(attn_pre_tile, (i + 4) * 64, dist=pl.LoadDist.DS)
-                preg_pre2 = vf.load_align(attn_pre_tile, (i + 5) * 64, dist=pl.LoadDist.DS)
-                preg_pre3 = vf.load_align(attn_pre_tile, (i + 6) * 64, dist=pl.LoadDist.DS)
-                preg_pre4 = vf.load_align(attn_pre_tile, (i + 7) * 64, dist=pl.LoadDist.DS)
-
-                vreg_sp1 = vf.select(vreg_min, vreg_sp1, preg_pre1)
-                vreg_sp2 = vf.select(vreg_min, vreg_sp2, preg_pre2)
-                vreg_sp3 = vf.select(vreg_min, vreg_sp3, preg_pre3)
-                vreg_sp4 = vf.select(vreg_min, vreg_sp4, preg_pre4)
-
         vreg_sp1 = vf.exp_sub(vreg_sp1, vreg_lse, preg_all)
         vreg_sp2 = vf.exp_sub(vreg_sp2, vreg_lse, preg_all)
         vreg_sp3 = vf.exp_sub(vreg_sp3, vreg_lse, preg_all)
@@ -2243,7 +2237,6 @@ def compute_p_ds(
     d_tile,
     zero_tile,
     attn_tile,
-    attn_pre_tile,
     src_m,
     src_n,
     ss,
@@ -2263,7 +2256,6 @@ def compute_p_ds(
         lse_tile,
         d_tile,
         attn_tile,
-        attn_pre_tile,
         src_m,
         src_n,
         ss,
@@ -2343,8 +2335,7 @@ def load_attn_mask(attn_vec, attn_pre_vec, run_info, const_info, tensor_info):
 
 def preload_attn_mask(run_info, const_info, tensor_info):
     # Match the consumer guards: empty sub-blocks must not advance the mask slot.
-    # Band keeps both mask loads at the consumer; its pre mask is single-buffered.
-    if not has_attn_mask or sparse_type == 4:
+    if not has_attn_mask:
         return
     if (
         run_info.s2_idx >= run_info.inner_s2_loop_num
@@ -2361,11 +2352,16 @@ def preload_attn_mask(run_info, const_info, tensor_info):
     if current_real_s1 <= 0:
         return
 
-    # pl.load and the VF consumer retain the tile group's MTE2/V mutex pairing.
-    # Advance once in this path; iterate_p_ds consumes it with current().
-    attn_vec = tensor_info.attn_vec.next()
-    attn_pre_vec = tensor_info.attn_pre_vec.current()
+    # Every load acquires the next slot of the shared three-buffer ring.
+    # Band pairs rotate (0, 1), (2, 0), (1, 2); fusion writes the second slot,
+    # leaving the other two available for the next pair of mask loads.
+    attn_vec = tensor_info.attn_mask_pool.next()
+    attn_pre_vec = attn_vec
+    if sparse_type == 4:
+        attn_pre_vec = tensor_info.attn_mask_pool.next()
     load_attn_mask(attn_vec, attn_pre_vec, run_info, const_info, tensor_info)
+    if sparse_type == 4:
+        merge_band_attn_mask_vf(attn_vec, attn_pre_vec)
 
 
 def iterate_p_ds(p_l1_bit8, ds_l1_bit8, sdp_id, const_info, run_info, tensor_info):
@@ -2390,11 +2386,9 @@ def iterate_p_ds(p_l1_bit8, ds_l1_bit8, sdp_id, const_info, run_info, tensor_inf
     pl.set_validshape(lse_vec, [1, current_real_s1])
     pl.set_validshape(d_vec, [1, current_real_s1])
 
-    attn_vec = tensor_info.attn_vec.current()
-    attn_pre_vec = tensor_info.attn_pre_vec.current()
-    if has_attn_mask and sparse_type == 4:
-        attn_vec = tensor_info.attn_vec.next()
-        load_attn_mask(attn_vec, attn_pre_vec, run_info, const_info, tensor_info)
+    # The last acquired slot holds the final mask: next for causal, or the
+    # second slot overwritten by band fusion. Consumption does not advance it.
+    attn_vec = tensor_info.attn_mask_pool.current()
     # pl.system.bar_all()
     # pl.printf("222 wenyu  \n")
     # pl.dump_data(attn_vec, offsets=[0, 0], shapes=[4,64])
@@ -2440,7 +2434,6 @@ def iterate_p_ds(p_l1_bit8, ds_l1_bit8, sdp_id, const_info, run_info, tensor_inf
         d_vec,
         zero_vec,
         attn_vec,
-        attn_pre_vec,
         current_real_s2,
         current_real_s1,
         run_info.deq_scale_q_value
@@ -3999,20 +3992,14 @@ def quant_flash_attn_grad(
         addrs=[VA4 + 512 * 9],
         mutex_ids=[18],
     )
-    attn_vec = pl.make_tile_group(
+    # One shared ring for both mask boundaries; each slot retains its own
+    # MTE2/V mutex. This uses the same UB space as the former DB + single slot.
+    attn_mask_pool = pl.make_tile_group(
         type=pl.TileType(
             shape=[128, 64], dtype=pl.DT_INT8, target_memory=pl.MemorySpace.Vec
         ),
-        addrs=[VA4 + 512 * 10, VA4 + 512 * 26],
-        mutex_ids=[19, 21],
-    )
-    # band需要pre/next两条边界, 各自从同一张压缩mask取一块, 仅sparse_type=4会真正搬运
-    attn_pre_vec = pl.make_tile_group(
-        type=pl.TileType(
-            shape=[128, 64], dtype=pl.DT_INT8, target_memory=pl.MemorySpace.Vec
-        ),
-        addrs=[VA4 + 512 * 42],
-        mutex_ids=[20],
+        addrs=[VA4 + 512 * 10, VA4 + 512 * 26, VA4 + 512 * 42],
+        mutex_ids=[19, 21, 20],
     )
     with pl.section_vector():
         pl.expands(zero_vec.current(), 0)
@@ -4260,8 +4247,7 @@ def quant_flash_attn_grad(
         d_vec=d_vec,
         perm_vec=perm_vec,
         zero_vec=zero_vec,
-        attn_vec=attn_vec,
-        attn_pre_vec=attn_pre_vec,
+        attn_mask_pool=attn_mask_pool,
         ds_l1=ds_l1,
         ds_l1_t=ds_l1_t,
         ds_l1_bit8=ds_l1_bit8,
