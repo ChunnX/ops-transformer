@@ -206,6 +206,7 @@ class AttentionToFfnBuffer:
             commAlg="urma",
             opName="attention_to_ffn",
             customCclBufferSize=required_buffer_size,
+            multiChannel=True,
         )
         self.context = self._ctx_manager.create_context()
         self.ccl_buffer_size = self._ctx_manager.ccl_buffer_size
