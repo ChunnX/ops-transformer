@@ -772,16 +772,9 @@ public:
         // FD静态Tensor业务区起始偏移: 跨核bmm区 + FA保留区, 落在FA瞬态区内分时复用
         vecFdBlock_.template InitBuffers<GetMmUbTotalSize() + VecFaBlockType::GetPersistUbSize()>();
         AscendC::ICachePreLoad(2);
-        vecFdBlock_.AllocEventID();
         SyncAll();
-        // 排空FA尾部在途指令: vec2输出MTE3(懒等待模式)、vec1/vec2的V写(stage1Out/stage2Out)、
-        // mask的MTE2写; FD静态Tensor覆写同UB区域, 任一pipe未排空都会产生跨pipe竞争(随机精度错误)
-        vecFaBlock_.DrainMte3();
-        AscendC::PipeBarrier<PIPE_V>();
-        AscendC::PipeBarrier<PIPE_MTE2>();
         vecFdBlock_.FlashDecode(fdParams_);
         SyncAll(); // 多section场景: 保证所有核FD读workspace完成后, 才能进入下一section FA覆写
-        vecFdBlock_.FreeEventID();
     }
 
     __aicore__ inline void GetFASectionInfo(uint32_t sectionIdx)
