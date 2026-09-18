@@ -28,10 +28,14 @@ FP8_DATA_RANGE_LEFT = -5
 FP8_DATA_RANGE_RIGHT = 5
 
 
-def restore_cmp_kv_lengths(seqused_cmp_kv, cmp_ratio, cmp_residual_kv=None):
+def restore_cmp_kv_lengths(
+    seqused_cmp_kv, cmp_ratio, cmp_residual_kv=None, cmp_mask_mode=3
+):
     """Restore the logical CMP context lengths used by the Arch35 kernels."""
     if seqused_cmp_kv is None:
         return None
+    if cmp_mask_mode == 0 or int(cmp_ratio) == 1:
+        cmp_residual_kv = None
     if cmp_residual_kv is not None and len(cmp_residual_kv) != len(seqused_cmp_kv):
         raise ValueError("cmp_residual_kv and seqused_cmp_kv must have the same length")
 
@@ -150,7 +154,7 @@ class GeneralizedSFAQuant:
         G = int(self.N1 / self.N2)
         s2_base_size = 128
         cmp_restored_lengths = restore_cmp_kv_lengths(
-            seqused_cmp_kv, self.cmp_ratio, cmp_residual_kv
+            seqused_cmp_kv, self.cmp_ratio, cmp_residual_kv, self.cmp_mask_mode
         )
 
         for i_B in range(B):
@@ -1248,7 +1252,7 @@ def gen_cmp_kv(
     cmp_topk_length = None
     if template_run_mode in ("CSA", "ORI_CMP_SPARSE") and cmp_max_s2 != 0:
         cmp_restored_len = restore_cmp_kv_lengths(
-            seqused_cmp_kv, cmp_ratio, cmp_residual_kv
+            seqused_cmp_kv, cmp_ratio, cmp_residual_kv, cmp_mask_mode
         )
         if layout_q == "BSND":
             cmp_sparse_indices, cmp_topk_length = gen_sparse_indices_bsnd(
@@ -1447,7 +1451,6 @@ def gen_data(params, generate_golden=True):
         )
 
     # D维度固定512，已对齐128，无需padding
-    block_num = block_num1 if block_num1 >= block_num2 else block_num2
 
     # generate sinks tensor (only when isSink=True)
     if isSink:
@@ -1473,7 +1476,7 @@ def gen_data(params, generate_golden=True):
         T1,
         N2,
         D,
-        block_num,
+        block_num1,
         block_size1,
         ori_max_s2,
         ori_max_block_num_per_batch,
@@ -1513,7 +1516,7 @@ def gen_data(params, generate_golden=True):
             N2,
             D,
             K,
-            block_num,
+            block_num2,
             block_size2,
             cmp_max_s2,
             cmp_max_block_num_per_batch,
@@ -1547,22 +1550,29 @@ def gen_data(params, generate_golden=True):
         and (template_run_mode in ("HCA", "CSA", "ORI_CMP_SPARSE"))
         and cmp_k_in_pa_shape is not None
     ):
+        # 0轴非连续：ori/cmp独立成池后，每个物理块仍补齐到block_size1+block_size2行，
+        # 保持与原融合布局相同的stride覆盖
         total_block = block_size1 + block_size2
-        fusion_base = torch.zeros((block_num, total_block, N2, D), dtype=ori_kv_type)
-        fusion_base[:, :block_size1, :, :] = ori_k_in_pa_shape
-        fusion_base[:, block_size1:, :, :] = cmp_k_in_pa_shape
+        ori_fusion_base = torch.zeros(
+            (block_num1, total_block, N2, D), dtype=ori_kv_type
+        )
+        ori_fusion_base[:, :block_size1, :, :] = ori_k_in_pa_shape
+        cmp_fusion_base = torch.zeros(
+            (block_num2, total_block, N2, D), dtype=cmp_kv_type
+        )
+        cmp_fusion_base[:, block_size1:, :, :] = cmp_k_in_pa_shape
         stride_n = total_block * N2 * D
         stride_bs = N2 * D
         stride_n2 = D
         stride_d = 1
         ori_k_in_pa_shape = torch.as_strided(
-            fusion_base,
-            size=[block_num, block_size1, N2, D],
+            ori_fusion_base,
+            size=[block_num1, block_size1, N2, D],
             stride=[stride_n, stride_bs, stride_n2, stride_d],
         )
         cmp_k_in_pa_shape = torch.as_strided(
-            fusion_base,
-            size=[block_num, block_size2, N2, D],
+            cmp_fusion_base,
+            size=[block_num2, block_size2, N2, D],
             stride=[stride_n, stride_bs, stride_n2, stride_d],
             storage_offset=block_size1 * N2 * D,
         )
@@ -1657,9 +1667,6 @@ def gen_data(params, generate_golden=True):
     # Sparse templates derive KV lengths from sparse indices and top-k lengths.
     # Keep the derived values for metadata and CPU Golden, but do not expose them
     # as direct API inputs when their CSV slots are intentionally absent.
-    no_actual_length = template_run_mode in ("ORI_SPARSE", "ORI_CMP_SPARSE")
-    op_seqused_ori_kv = None if no_actual_length else seqused_ori_kv
-    op_seqused_cmp_kv = None if no_actual_length else seqused_cmp_kv
     cu_seqlens_ori_kv = cu_seqlens_ori_kv if layout_kv == "TND" else None
     cu_seqlens_cmp_kv = cu_seqlens_cmp_kv if layout_kv == "TND" else None
 
@@ -1716,8 +1723,8 @@ def gen_data(params, generate_golden=True):
             "seqused_q": seqused_q,
             "cu_seqlens_ori_kv": cu_seqlens_ori_kv,
             "cu_seqlens_cmp_kv": cu_seqlens_cmp_kv,
-            "seqused_ori_kv": op_seqused_ori_kv,
-            "seqused_cmp_kv": op_seqused_cmp_kv,
+            "seqused_ori_kv": seqused_ori_kv,
+            "seqused_cmp_kv": seqused_cmp_kv,
             "cmp_residual_kv": cmp_residual_kv,
             "sinks": sinks,
             "q_descale": q_descale,

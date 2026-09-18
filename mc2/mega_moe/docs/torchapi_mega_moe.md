@@ -710,7 +710,7 @@ sym_buffer.update_group(group) -> None
         <td>intermediate_hidden</td>
         <td>int</td>
         <td>必选</td>
-        <td>激活后的中间特征维度。Linear1同时生成gate和up两个分支，因此Linear1的完整输出宽度为2 × intermediate_hidden。</td>
+        <td>激活后的中间特征维度。Linear1同时生成gate和up两个分支，因此Linear1的完整输出宽度为2 × intermediate_hidden。当前暂未使用，不参与通信缓冲区大小计算。</td>
     </tr>
     <tr>
         <td>max_recv_token_num</td>
@@ -991,7 +991,7 @@ sym_buffer.update_group(group) -> None
         <td rowspan="3">shared_l1_weights<sup>1</sup></td>
         <td rowspan="3">list[Tensor]</td>
         <td rowspan="3">可选</td>
-        <td rowspan="3">共享专家网络第一线性层的权重矩阵（包括门控与上投影），用于将输入映射至中间维度，输出供给激活函数。</td>
+        <td rowspan="3">共享专家网络第一线性层的权重矩阵（包括门控与上投影），用于将输入映射至中间维度，输出供给激活函数。数据类型必须与MoE专家第一线性层权重l1_weights的逻辑数据类型一致。</td>
         <td>FLOAT8_E5M2</td>
         <td>ND</td>
         <td>(shared_expert_num_per_rank, 2 × intermediate_hidden, hidden)</td>
@@ -1010,7 +1010,7 @@ sym_buffer.update_group(group) -> None
         <td rowspan="3">shared_l2_weights<sup>1</sup></td>
         <td rowspan="3">list[Tensor]</td>
         <td rowspan="3">可选</td>
-        <td rowspan="3">共享专家网络第二线性层的权重矩阵，负责将激活后的中间特征投影回隐藏维度。数据类型与l1_weights一致。</td>
+        <td rowspan="3">共享专家网络第二线性层的权重矩阵，负责将激活后的中间特征投影回隐藏维度。数据类型必须与MoE专家第二线性层权重l2_weights的逻辑数据类型一致。</td>
         <td>FLOAT8_E5M2</td>
         <td>ND</td>
         <td>(shared_expert_num_per_rank, hidden, intermediate_hidden)</td>

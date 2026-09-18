@@ -3,7 +3,7 @@
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Ascend 950DT</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
@@ -383,7 +383,7 @@ ElasticBuffer.dispatch(
 - **recv_topk_idx** (`None`)：当前版本始终为 `None`，预留参数。
 - **recv_topk_weights** (`Tensor | None`)：表示本卡收到的topK权重。仅当输入 `topk_weights` 不为 `None` 时返回，否则为 `None`。要求为1 维张量，shape为 `(A,)`，数据类型为 `float32`，数据格式为 $ND$，作为 [combine](#combine) 的 `topk_weights` 输入。
 - **handle** (`EPHandle`)：表示dispatch阶段生成的handle对象，包含slot索引、元数据等信息，需传递给 [combine](#combine) 使用。handle的属性如下：
-  - **dst_buffer_slot_idx** (`Tensor`)：slot索引，shape为 `(BS, K)`，dtype为 `int32`。
+  - **dst_buffer_slot_idx** (`Tensor`)：发送侧索引，dtype为 `int32`。
   - **recv_src_metadata** (`Tensor`)：接收元数据，shape为 `(A_alloc, 5)`，dtype为 `int32`；仅前 `sum(num_recv_tokens_per_expert)` 行有效。
   - **recv_rank_offsets** (`Tensor`)：各源EP rank对应metadata行数的排他前缀和，shape为 `(ep_world_size + 1,)`，dtype为 `int32`；rank `r` 的metadata区间为 `[recv_rank_offsets[r], recv_rank_offsets[r + 1])`，最后一个元素等于有效metadata行数。它是下述 packed buffer 尾部的视图，cached模式复用其内容，不再是独立算子输入/输出。
   - **recv_metadata_buffer** (`Tensor`)：连续一维 `int32` backing tensor，基址要求512B对齐。前 `A_alloc * 5` 个元素保留五列语义；offsets从 `align_up(A_alloc * 5 * 4, 512)` 字节处开始。总字节数为 `align_up(A_alloc * 5 * 4, 512) + align_up((ep_world_size + 1) * 4, 512)`。两段padding不参与计算或精度比较，内容未定义。`recv_src_metadata` 和 `recv_rank_offsets` 必须保持为此buffer的视图。
@@ -456,11 +456,11 @@ ElasticBuffer.get_moe_ep_ccl_buffer_size(world_size, num_max_tokens_per_rank, hi
 
 ### destroy
 
-**功能**：释放ElasticBuffer资源，包括host pinned内存（推理模式）、Engram运行时资源（训练模式下同时解除上层表内存的注册映射，不会释放调用方的内存）和Dispatch/Combine通信上下文。训练模式下HCCL默认通信buffer由框架管理，无需手动释放。当构造时 `explicitly_destroy=False`（默认）时，实例被垃圾回收时会自动调用本方法；当 `explicitly_destroy=True` 时，需要由调用方显式调用。
+**功能**：释放ElasticBuffer实例持有的资源，包括Dispatch/Combine通信上下文。注意：Engram通信的host pinned内存（含推理模式自建的host pinned内存、训练模式下调用方零拷贝存储的注册映射）在创建时已注册进HCCL引擎上下文且无反注册接口，destroy后该部分内存由进程级共享池按通信域保留、随进程退出统一释放，destroy不会释放该部分内存（调用方的存储内存本体始终不会被释放）。同通信域销毁后重建ElasticBuffer时直接复用共享池内存，复用约束：自建buffer重建容量不得超过首建值；外部零拷贝buffer重建时地址与大小必须与首建注册一致，否则接口报错，此时需更换新的通信域。训练模式下HCCL默认通信buffer由框架管理，无需手动释放。当构造时 `explicitly_destroy=False`（默认）时，实例被垃圾回收时会自动调用本方法；当 `explicitly_destroy=True` 时，需要由调用方显式调用。
 
 **输入参数**：无参数。
 
-**输出**：无返回值，资源释放完成。
+**输出**：无返回值，实例资源释放完成。
 
 ## 约束说明
 
@@ -671,7 +671,7 @@ def train_worker(rank):
 
     # ==================== 生成 embedding 和 indices ====================
     torch.manual_seed(42 + rank)
-    storage = torch.randn(num_entries, hidden, dtype=dtype)
+    storage = torch.randn(num_entries, hidden, dtype=dtype, pin_memory=True)
     total_entries = num_entries * world_size
 
     torch.manual_seed(100 + rank)

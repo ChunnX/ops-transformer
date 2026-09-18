@@ -365,16 +365,17 @@ def _get_moe_ep_window_layout(
 
     metadata_bytes = _inline_align(topk * metadata_dtype_size, ub_align)
     hidden_align = _inline_align(hidden * max_out_dtype_size, ub_align)
-    dispatch_per_slot_bytes = _inline_align(
-        hidden_align + metadata_bytes * 2 + ub_align, win_addr_align
-    )
-    combine_per_slot_bytes = _inline_align(hidden_align + ub_align, win_addr_align)
-    scaleup_receive_buffer_bytes = (
-        world_size * num_max_tokens_per_rank * dispatch_per_slot_bytes
-    )
     # stash 仅存元数据（scales+topk+topkWeights），scales 信息按 AlignUb(hidden) 做上界预留
     dispatch_stash_per_slot_bytes = _inline_align(
         _inline_align(hidden, ub_align) + metadata_bytes * 2 + ub_align, win_addr_align
+    )
+    dispatch_per_slot_bytes = _inline_align(
+        hidden_align + dispatch_stash_per_slot_bytes, win_addr_align
+    )
+    combine_per_slot_bytes = _inline_align(hidden_align + ub_align, win_addr_align)
+
+    scaleup_receive_buffer_bytes = (
+        world_size * num_max_tokens_per_rank * dispatch_per_slot_bytes
     )
     dispatch_stash_buffer_bytes = (
         num_max_tokens_per_rank * dispatch_stash_per_slot_bytes
@@ -514,6 +515,8 @@ class _DispatchArgs:
     cached_route_dst_scaleout: Optional[torch.Tensor]
     cached_route_scaleout_slot: Optional[torch.Tensor]
     cached_recv_src_metadata: Optional[torch.Tensor]
+    cached_num_recv_per_rank: Optional[torch.Tensor]
+    cached_num_recv_per_expert: Optional[torch.Tensor]
     num_experts: int
     num_max_tokens_per_rank: int
     expert_alignment: int
@@ -548,9 +551,11 @@ class ElasticBuffer:
             num_topk: top-k value for MoE dispatch/combine.
             with_grad: whether to enable training mode.
             explicitly_destroy: if True, the caller needs to explicitly
-                invoke ``destroy`` to release resources; if False (default),
-                resources are released automatically when the instance is
-                garbage collected.
+                invoke ``destroy`` to release instance resources; if False
+                (default), ``destroy`` is invoked automatically when the
+                instance is garbage collected. Note that Engram host pinned
+                memory is retained in a process-level pool after ``destroy``
+                and freed when the process exits (see ``destroy``).
         """
         moe_args = (num_max_tokens_per_rank, hidden, num_topk)
         self._validate_init_args(group, num_cpu_bytes, moe_args, with_grad)
@@ -1023,6 +1028,11 @@ class ElasticBuffer:
             hp_addr,
             ccl_buffer_size,
         )
+        if args.cached_output_capacity is not None:
+            # cache 模式 kernel 跳过路由计算，输出直接复用 handle 携带的上一步值
+            num_recv_per_rank = args.cached_num_recv_per_rank
+            num_recv_per_expert = args.cached_num_recv_per_expert
+            dst_slot = args.cached_dst_slot_idx
 
         actual_a = self._get_dispatch_recv_count(args)
         recv_x, recv_src_meta, recv_topk_weights, recv_scales = (
@@ -1031,7 +1041,8 @@ class ElasticBuffer:
 
         recv_x, recv_src_meta, recv_topk_weights, recv_scales = (
             self._runtime.moe_ep_dispatch_epilogue(
-                dst_slot,
+                args.x,
+                args.topk_idx,
                 num_recv_per_rank,
                 num_recv_per_expert,
                 args.cached_recv_src_metadata,
@@ -1144,7 +1155,18 @@ class ElasticBuffer:
 
     def destroy(self) -> None:
         """
-        Destroy the ElasticBuffer and free host pinned memory.
+        Destroy the ElasticBuffer instance and release its resources.
+
+        Note: the Engram host pinned memory (including self-allocated pinned
+        memory and the registration mapping of caller-provided zero-copy
+        storage) is registered into the HCCL engine context and cannot be
+        unregistered. After ``destroy``, it is retained in a process-level
+        pool keyed by the communication domain and freed when the process
+        exits; the caller's storage memory itself is never freed. Rebuilding
+        an ElasticBuffer on the same group reuses the pooled memory:
+        self-allocated rebuild must not exceed the first-built size, and
+        zero-copy rebuild must use the same storage address and size as the
+        first registration.
 
         Returns:
             None
@@ -1329,6 +1351,8 @@ class ElasticBuffer:
                 handle.route_dst_scaleout,
                 handle.route_scaleout_slot,
                 packed_metadata,
+                handle.num_recv_tokens_per_rank,
+                handle.num_recv_tokens_per_expert,
                 handle.num_experts,
                 handle.num_max_tokens_per_rank,
                 handle.expert_alignment,
@@ -1347,6 +1371,8 @@ class ElasticBuffer:
             x,
             scales,
             topk_idx,
+            None,
+            None,
             None,
             None,
             None,
