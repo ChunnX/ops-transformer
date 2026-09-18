@@ -10,7 +10,6 @@
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
-import os
 import torch
 from torch.library import impl
 from torch_npu.utils._error_code import ErrCode, ops_error
@@ -227,7 +226,6 @@ def _npu_mega_moe(
     rank_num_per_server=None,
     topk_weights_type=0,
 ):
-    comm_alg = _resolve_comm_alg(combine_comm_mode, comm_alg)
     activation_params_list = _normalize_activation_params(
         activation, activation_clamp, activation_params
     )
@@ -271,6 +269,7 @@ def _npu_mega_moe(
         topo_type,
         rank_num_per_server,
         topk_weights_type,
+        combine_comm_mode,
     )
 
 
@@ -286,6 +285,7 @@ class _MegaMoeCclBufferSizeParams:
     dispatch_quant_out_dtype: Optional[torch.dtype]
     combine_quant_mode: int
     comm_alg: str
+    combine_comm_mode: int
     topk_weights_type: int
 
     def __call__(self, server_num: int = 0) -> int:
@@ -303,6 +303,7 @@ class _MegaMoeCclBufferSizeParams:
             dispatch_quant_out_dtype=self.dispatch_quant_out_dtype,
             combine_quant_mode=self.combine_quant_mode,
             comm_alg=self.comm_alg,
+            combine_comm_mode=self.combine_comm_mode,
             topk_weights_type=self.topk_weights_type,
             server_num=server_num,
         )
@@ -344,7 +345,8 @@ class SymmBuffer:
         self.dispatch_quant_mode = dispatch_quant_mode
         self.dispatch_quant_out_dtype = dispatch_quant_out_dtype
         self.combine_quant_mode = combine_quant_mode
-        self.comm_alg = _resolve_comm_alg(combine_comm_mode, comm_alg)
+        self.comm_alg = comm_alg
+        self.combine_comm_mode = combine_comm_mode
         self.topk_weights_type = topk_weights_type
         self._check_params()
 
@@ -364,6 +366,7 @@ class SymmBuffer:
             dispatch_quant_out_dtype=dispatch_quant_out_dtype,
             combine_quant_mode=combine_quant_mode,
             comm_alg=self.comm_alg,
+            combine_comm_mode=self.combine_comm_mode,
             topk_weights_type=topk_weights_type,
         )
         # Use the exact MTE size initially; cross-super context replaces it with the URMA size before malloc.
@@ -517,6 +520,7 @@ class SymmBuffer:
             dispatch_quant_out_dtype=self.dispatch_quant_out_dtype,
             combine_quant_mode=self.combine_quant_mode,
             comm_alg=self.comm_alg,
+            combine_comm_mode=self.combine_comm_mode,
             topk_weights_type=self.topk_weights_type,
         )
         required_ccl_buffer_size = ccl_buffer_size_params()
@@ -589,40 +593,24 @@ def _get_mega_moe_ccl_buffer_size(
     topk_weights_type: int = 0,
     server_num: int = 0,
 ) -> int:
-    comm_alg = _resolve_comm_alg(combine_comm_mode, comm_alg)
     _op_module = _mega_moe_op_builder.load()
     quant_dtype_int = _dtype_to_int(dispatch_quant_out_dtype)  # 将torch.dtype转换为int
     return _op_module.get_mega_moe_ccl_buffer_size(
-        ep_world_size,
-        moe_expert_num,
-        num_max_tokens_per_rank,
-        num_topk,
-        hidden,
-        max_recv_token_num,
-        dispatch_quant_mode,
-        quant_dtype_int,
-        combine_quant_mode,
-        comm_alg,
-        topk_weights_type,
-        server_num,
+        ep_world_size=ep_world_size,
+        moe_expert_num=moe_expert_num,
+        num_max_tokens_per_rank=num_max_tokens_per_rank,
+        num_topk=num_topk,
+        hidden=hidden,
+        max_recv_token_num=max_recv_token_num,
+        dispatch_quant_mode=dispatch_quant_mode,
+        dispatch_quant_out_dtype=quant_dtype_int,
+        combine_quant_mode=combine_quant_mode,
+        comm_alg=comm_alg,
+        combine_comm_mode=combine_comm_mode,
+        topk_weights_type=topk_weights_type,
+        server_num=server_num,
     )
 
-
-def _resolve_comm_alg(combine_comm_mode, comm_alg):
-    """架构师定案接口（2026-09-17）：dispatch 去重由 tiling 收益门按形状自动判定（调用方恒请求）；
-    combine 去重由 combine_comm_mode 属性显式控制（0=关，1=开）。comm_alg 降为兼容通道：
-    显式传了非空 comm_alg 时按旧语义直通（内部调试/AB 对比用），否则由 combine_comm_mode 翻译。"""
-    if comm_alg:
-        return comm_alg
-    if combine_comm_mode not in (0, 1):
-        raise ValueError(f"combine_comm_mode only supports 0 or 1, got {combine_comm_mode!r}")
-    if combine_comm_mode == 1:
-        return "dedup"
-    # 架构师终态：dispatch 去重恒请求、由 tiling 收益门自动判定。为不静默改变存量调用
-    # （comm_alg 空历史语义=全关）的行为，终态暂由 MGB_AUTO_DISPATCH=1 启用，确认后翻转默认。
-    if os.environ.get("MGB_AUTO_DISPATCH") == "1":
-        return "dedup_dispatch"
-    return ""
 
 
 def get_symm_buffer_for_mega_moe(
