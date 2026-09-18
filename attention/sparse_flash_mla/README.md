@@ -190,7 +190,7 @@
     <tr>
       <td>cmp_ratio</td>
       <td>可选属性</td>
-      <td>表示cmp_kv相对于压缩前KV长度的压缩倍率，取值范围为0到128，用于恢复cmp侧mask使用的压缩前KV长度；仅传入ori_kv时不参与压缩KV计算。</td>
+      <td>表示cmp_kv相对于压缩前KV长度的压缩倍率，用于恢复cmp侧mask使用的压缩前KV长度；仅传入ori_kv时不参与压缩KV计算。支持1到128。</td>
       <td>INT</td>
       <td>-</td>
     </tr>
@@ -275,8 +275,7 @@
 - 该接口当前支持四种计算场景：SWA（Sliding Window Attention）场景仅传入`ori_kv`；SWA稀疏ori_kv场景传入`ori_kv`、`ori_sparse_indices`及`ori_topk_length`；CSA（Compressed Sparse Attention）场景传入`ori_kv`、`cmp_kv`及`cmp_sparse_indices`；HCA（Heavily Compressed Attention）场景传入`ori_kv`及`cmp_kv`。
 - 通用规格约束如下：
   - KV\_N仅支持1，D仅支持512。其中，`ori_kv`和`cmp_kv`的D_kv由nope(448)和rope(64)拼接而成。
-  - `cmp_ratio`表示`cmp_kv`相对于压缩前KV长度的压缩倍率；仅传入`ori_kv`时不参与压缩KV计算，取值见下方产品型号约束。SWA、CSA、HCA模板由KV及稀疏索引是否传入决定，不能仅根据`cmp_ratio`判断。
-  - `cmp_ratio`默认值为1。<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>的SWA由不传入`cmp_kv`确定，`cmp_ratio`不参与计算；CSA支持1、2或4，HCA取128。
+  - `cmp_ratio`表示`cmp_kv`相对于压缩前KV长度的压缩倍率；仅传入`ori_kv`时，`cmp_ratio`不参与压缩KV计算，需保持默认值1；支持1到128。
   - `ori_mask_mode`、`cmp_mask_mode`、`ori_win_left`和`ori_win_right`的取值随产品型号而变化，详见“产品型号约束”。
   - PageAttention的block_size支持1到1024。
   - `layout_q`和`layout_kv`组合仅支持"BSND"/"BSND"、"TND"/"TND"、"BSND"/"PA_BBND"、"TND"/"PA_BBND"；非PA_BBND场景下`layout_q`和`layout_kv`必须一致。
