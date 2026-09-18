@@ -712,10 +712,12 @@ __aicore__ inline void EngramFetchGradUnique::LoadCoreRange(uint32_t numRecv, GM
 
     AscendC::LocalTensor<int32_t> ub = tempBuf_->Get<int32_t>();
     uint32_t totalBytes = totalBlocks_ * static_cast<uint32_t>(sizeof(int32_t));
+    uint32_t segOffElems = (totalBytes + Mc2Kernel::UB_ALIGN - 1U) / Mc2Kernel::UB_ALIGN *
+                           (Mc2Kernel::UB_ALIGN / static_cast<uint32_t>(sizeof(int32_t)));
     AscendC::DataCopyPadExtParams<int32_t> pad{false, 0, 0, 0};
     AscendC::DataCopyExtParams params{1U, totalBytes, 0U, 0U, 0U};
     AscendC::DataCopyPad(ub, coreStartGMT, params, pad);
-    AscendC::LocalTensor<int32_t> segUb = ub[totalBlocks_];
+    AscendC::LocalTensor<int32_t> segUb = ub[segOffElems];
     AscendC::DataCopyPad(segUb, segCountGMT, params, pad);
     SyncFunc<AscendC::HardEvent::MTE2_S>(*pipe_);
 
