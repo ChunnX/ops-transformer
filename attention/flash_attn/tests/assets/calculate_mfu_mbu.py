@@ -9,11 +9,15 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-"""Join TTK result/case CSVs by testcase_name and append FlashAttn MFU/MBU.
+"""Calculate FlashAttn MFU/MBU directly from a TTK result CSV.
 
 Example (peaks are decimal TFLOPS and TB/s, duration defaults to microseconds):
-  python calculate_mfu_mbu.py --result result.csv --cases testcase/cases.csv \
+  python calculate_mfu_mbu.py --result result.csv \
       --peak-tflops 378.47 --peak-bandwidth-tb-s 1.6 --output metrics.csv
+
+By default, use api_name, tensor_view_shapes, tensor_dtypes and attributes in
+each result row. For reduced results, supply --cases testcase/cases.csv to join
+external case CSV(s) by testcase_name instead.
 
 For graph results, select --duration-column graph_aclgraph_device_perf_us.
 Other duration columns can be selected explicitly, with --duration-unit us/ms/s.
@@ -261,10 +265,9 @@ def main(argv=None):
     parser.add_argument(
         "--cases",
         "-c",
-        required=True,
         nargs="+",
         type=Path,
-        help="case CSV(s) or directories",
+        help="optional external case CSV(s) or directories; default: use result rows",
     )
     parser.add_argument(
         "--output", "-o", type=Path, help="default: <result_stem>_metrics.csv"
@@ -289,7 +292,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         fields, rows = read_csv(args.result)
-        cases = load_cases(args.cases)
+        cases = load_cases(args.cases) if args.cases else {}
         column = args.duration_column or next(
             (
                 x
@@ -327,19 +330,37 @@ def main(argv=None):
                 )
                 if not math.isfinite(duration) or duration <= 0:
                     raise ValueError("duration must be finite and positive")
-                matches = cases.get(row["testcase_name"], [])
-                if not matches:
-                    raise ValueError("case not found")
-                if row.get("api_name") and any(
-                    row["api_name"] != case.get("api_name") for _, case in matches
-                ):
-                    raise ValueError("result and case api_name differ; narrow --cases")
-                costs = {theoretical_cost(case) for _, case in matches}
-                if len(costs) != 1:
-                    raise ValueError(
-                        "ambiguous case name with different costs; narrow --cases"
+                if args.cases:
+                    matches = cases.get(row["testcase_name"], [])
+                    if not matches:
+                        raise ValueError("case not found")
+                    if row.get("api_name") and any(
+                        row["api_name"] != case.get("api_name") for _, case in matches
+                    ):
+                        raise ValueError(
+                            "result and case api_name differ; narrow --cases"
+                        )
+                    costs = {theoretical_cost(case) for _, case in matches}
+                    if len(costs) != 1:
+                        raise ValueError(
+                            "ambiguous case name with different costs; narrow --cases"
+                        )
+                    flops, byte_count = costs.pop()
+                else:
+                    required = (
+                        "api_name",
+                        "tensor_view_shapes",
+                        "tensor_dtypes",
+                        "attributes",
                     )
-                flops, byte_count = costs.pop()
+                    missing = [
+                        key for key in required if not (row.get(key) or "").strip()
+                    ]
+                    if missing:
+                        raise ValueError(
+                            f"result lacks {', '.join(missing)}; provide --cases"
+                        )
+                    flops, byte_count = theoretical_cost(row)
                 tflops, bandwidth = flops / duration / 1e6, byte_count / duration / 1e6
                 row.update(
                     metrics_duration_us=duration,
