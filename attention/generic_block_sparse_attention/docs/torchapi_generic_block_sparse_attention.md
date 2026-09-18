@@ -67,16 +67,14 @@ cann_ops_transformer.generic_block_sparse_attention_metadata(
     seqused_kv=None,
     max_seqlen_q=-1,
     max_seqlen_kv=-1,
+    is_packed_gqa=True,
     layout_q="TND",
     layout_kv="PA_BBND",
-    layout_sparse_pattern=4,
     mask_mode=1,
     quant_mode=0,
     softmax_precision=1,
     win_left=-1,
     win_right=-1,
-    residual_block_mode=1,
-    is_consistent_topk=False,
 ) -> Tensor
 ```
 
@@ -100,9 +98,9 @@ cann_ops_transformer.generic_block_sparse_attention(
     seqused_q=None,
     seqused_kv=None,
     block_table=None,
+    layout_sparse_pattern="KVN_TotalQB_KB",
     layout_q="TND",
     layout_kv="PA_BBND",
-    layout_sparse_pattern=4,
     softmax_scale=0.0,
     mask_mode=1,
     quant_mode=0,
@@ -111,8 +109,8 @@ cann_ops_transformer.generic_block_sparse_attention(
     win_left=-1,
     win_right=-1,
     return_softmax_lse=False,
-    residual_block_mode=1,
-    is_consistent_topk=False,
+    residual_block_mode=0,
+    is_consistent_topk=0,
     attention_out_dtype=None,
 ) -> (Tensor, Tensor)
 ```
@@ -162,16 +160,14 @@ cann_ops_transformer.generic_block_sparse_attention(
 | seqused_kv | Tensor | 可选 | 指定每batch中实际使用的kv序列长度，截断冗余运算 | int32 | ND | (B,) |
 | max_seqlen_q | int | 可选 | 指定查询q序列的长度上限 | int32 | - | - |
 | max_seqlen_kv | int | 可选 | 指定键k和值v序列的长度上限 | int32 | - | - |
+| is_packed_gqa | bool | 可选 | 是否启用Packed GQA | bool | - | - |
 | layout_q | string | 可选 | 定义输入query张量的布局格式 | string | - | - |
 | layout_kv | string | 可选 | 定义输入key/value张量的布局格式 | string | - | - |
-| layout_sparse_pattern | int | 可选 | 稀疏pattern排布，默认`4`（KVN_TotalQB_KB），当前仅支持该值 | int64 | - | - |
 | mask_mode | int/MaskMode | 可选 | 掩码模式，支持传入枚举或对应 int 值，枚举定义见「mask_mode 枚举」 | int32 | - | - |
 | quant_mode | int/QuantMode | 可选 | 量化模式，支持传入枚举或对应 int 值，枚举定义见「quant_mode 枚举」 | int32 | - | - |
 | softmax_precision | int | 可选 | Softmax精度模式 | int32 | - | - |
 | win_left | int | 可选 | window左界限 | int32 | - | - |
 | win_right | int | 可选 | window右界限 | int32 | - | - |
-| residual_block_mode | int | 可选 | 尾块策略：0不强制选尾块，1强制选尾块，须与主算子一致，默认1 | int64 | - | - |
-| is_consistent_topk | bool | 可选 | 各Q块topK是否一致：False按count读取，True统一topK，须与主算子一致，默认False | bool | - | - |
 
 ### generic_block_sparse_attention
 
@@ -194,9 +190,9 @@ cann_ops_transformer.generic_block_sparse_attention(
 | seqused_q | Tensor | 可选 | 指定每batch中实际使用的序列长度，截断冗余运算 | int32 | ND | (B,) |
 | seqused_kv | Tensor | 可选 | 指定每batch中实际使用的kv序列长度，截断冗余运算 | int32 | ND | (B,) |
 | block_table | Tensor | 可选 | 用于Paged Attention计算中的块索引映射 | int32 | ND | (B, max_num_blocks_per_seq) |
+| layout_sparse_pattern | string | 可选 | 稀疏pattern排布，默认`KVN_TotalQB_KB`，当前仅支持该值 | string | - | - |
 | layout_q | string | 可选 | 定义输入query张量的布局格式 | string | - | - |
 | layout_kv | string | 可选 | 定义输入key/value张量的布局格式 | string | - | - |
-| layout_sparse_pattern | int | 可选 | 稀疏pattern排布，默认`4`（KVN_TotalQB_KB），当前仅支持该值 | int64 | - | - |
 | softmax_scale | float | 可选 | 可显式设置缩放因子，覆盖默认计算 | float32 | - | - |
 | mask_mode | int/MaskMode | 可选 | 掩码模式，支持传入枚举或对应 int 值，枚举定义见「mask_mode 枚举」 | int32 | - | - |
 | quant_mode | int/QuantMode | 可选 | 量化模式，支持传入枚举或对应 int 值，枚举定义见「quant_mode 枚举」 | int32 | - | - |
@@ -205,8 +201,8 @@ cann_ops_transformer.generic_block_sparse_attention(
 | win_left | int | 可选 | window左界限 | int32 | - | - |
 | win_right | int | 可选 | window右界限 | int32 | - | - |
 | return_softmax_lse | bool | 可选 | 是否需要获取softmax的LSE结果 | bool | - | - |
-| residual_block_mode | int | 可选 | 尾块策略：0不强制选尾块，1强制选尾块，默认1 | int64 | - | - |
-| is_consistent_topk | bool | 可选 | 各Q块topK是否一致：False按count读取，True统一topK，默认False | bool | - | - |
+| residual_block_mode | int | 可选 | 尾块策略：0不强制选尾块，1强制选尾块 | int32 | - | - |
+| is_consistent_topk | int | 可选 | 各Q块topK是否一致：0按count读取，1统一topK | int32 | - | - |
 | attention_out_dtype | dtype | 可选 | 输出dtype；`quant_mode!=0`时必填，`quant_mode=0`且未指定时与q一致 | ScalarType | - | - |
 
 ## 返回值说明
@@ -244,14 +240,12 @@ cann_ops_transformer.generic_block_sparse_attention(
 |                      |  sparse_block_idx  |      INPUT      |   Tensor   |
 |                      | sparse_block_count  |      INPUT      |   Tensor   |
 |                      |     block_shape     |   ATTR(REQUIRED) |  int[]  |
+|                      | layout_sparse_pattern | ATTR(OPTIONAL) |   string   |
 |                      |       metadata       | INPUT(OPTIONAL) |   Tensor   |
 |                      |    softmax_scale    | ATTR(OPTIONAL) |   float   |
 |                      |  softmax_precision  | ATTR(OPTIONAL) |   int   |
 |                      |      layout_q       | ATTR(OPTIONAL) |   string   |
 |                      |      layout_kv      | ATTR(OPTIONAL) |   string   |
-|                      | layout_sparse_pattern | ATTR(OPTIONAL) |   int64   |
-|                      | residual_block_mode | ATTR(OPTIONAL) |   int64   |
-|                      | is_consistent_topk | ATTR(OPTIONAL) |   bool   |
 |                      |   attention_out   |     OUTPUT     |   Tensor   |
 |   metadata参数组   |   max_seqlen_q   | ATTR(OPTIONAL) |   int   |
 |                      |  max_seqlen_kv  | ATTR(OPTIONAL) |   int   |
@@ -468,11 +462,11 @@ cann_ops_transformer.generic_block_sparse_attention(
         <td>layout_sparse_pattern</td>
         <td>
             <ul>
-                <li>data_type仅支持INT64</li>
-                <li>当前仅支持4（KVN_TotalQB_KB）</li>
+                <li>data_type仅支持STRING</li>
+                <li>当前仅支持KVN_TotalQB_KB</li>
             </ul>
         </td>
-        <td>可选属性，默认值为4</td>
+        <td>可选属性，默认值为KVN_TotalQB_KB</td>
         <td>metadata接口与主算子须一致</td>
         <td>无</td>
     </tr>
@@ -909,14 +903,12 @@ quant_mode参数解释见「quant_mode 枚举」。
         seqused_kv=seqused_kv,
         max_seqlen_q=Q_S,
         max_seqlen_kv=KV_S,
+        is_packed_gqa=True,
         layout_q="TND",
         layout_kv="PA_BBND",
-        layout_sparse_pattern=4,
         mask_mode=1,
         quant_mode=0,
         softmax_precision=1,
-        residual_block_mode=1,
-        is_consistent_topk=False,
     )
 
     attention_out, softmax_lse = cann_ops_transformer.ops.generic_block_sparse_attention(
@@ -930,9 +922,9 @@ quant_mode参数解释见「quant_mode 枚举」。
         cu_seqlens_q=cu_seqlens_q,
         seqused_kv=seqused_kv,
         block_table=block_table,
+        layout_sparse_pattern="KVN_TotalQB_KB",
         layout_q="TND",
         layout_kv="PA_BBND",
-        layout_sparse_pattern=4,
         softmax_scale=1.0 / (D ** 0.5),
         mask_mode=1,
         quant_mode=0,

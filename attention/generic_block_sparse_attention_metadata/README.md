@@ -130,6 +130,13 @@
       <td>-</td>
     </tr>
     <tr>
+      <td>isPackedGQA</td>
+      <td>属性</td>
+      <td>同一个group内的qHead是否共享相同的稀疏pattern，当前仅支持1。</td>
+      <td>INT64</td>
+      <td>-</td>
+    </tr>
+    <tr>
       <td>layoutQ</td>
       <td>属性</td>
       <td>主算子Query的数据排布格式，当前仅支持"TND"。</td>
@@ -141,13 +148,6 @@
       <td>属性</td>
       <td>主算子Key/Value的数据排布格式，当前仅支持"PA_BBND"。</td>
       <td>STRING</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>layoutSparsePattern</td>
-      <td>属性</td>
-      <td>稀疏pattern排布。默认4，表示"KVN_TotalQB_KB"（同group内的qHead共享按KV头packed的稀疏pattern）；当前仅支持该值。</td>
-      <td>INT64</td>
       <td>-</td>
     </tr>
     <tr>
@@ -186,20 +186,6 @@
       <td>-</td>
     </tr>
     <tr>
-      <td>residualBlockMode</td>
-      <td>属性</td>
-      <td>尾块策略：0不强制选尾块，1强制把不满一块的KV尾块纳入计算。须与主算子一致，当前默认1。</td>
-      <td>INT64</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>isConsistentTopk</td>
-      <td>属性</td>
-      <td>各Q块topK是否相同：false按sparseBlockCount逐块读取，true所有Q块使用相同topK。须与主算子一致，当前默认false。</td>
-      <td>BOOL</td>
-      <td>-</td>
-    </tr>
-    <tr>
       <td>metadataOptional</td>
       <td>输出</td>
       <td>主算子使用的分核结果，shape固定为(1024,)。</td>
@@ -212,8 +198,7 @@
 ## 约束说明
 
 - 本算子必须与`GenericBlockSparseAttention`配套使用。所有对应输入和属性须与随后调用的主算子一致，每次调用主算子前均须重新生成`metadataOptional`。
-- 当前仅支持`layoutQ="TND"`、`layoutKv="PA_BBND"`、`layoutSparsePattern=4`（KVN_TotalQB_KB）、`blockShape=[1, 128]`和`headDim=128`。
-- `residualBlockMode`与`isConsistentTopk`须与主算子对应属性取值保持一致；metadata中记录了二者的配置签名，主算子执行时会校验，不一致会导致metadata校验失败。
+- 当前仅支持`layoutQ="TND"`、`layoutKv="PA_BBND"`、`isPackedGQA=1`、`blockShape=[1, 128]`和`headDim=128`。
 - `numQHeads >= numKvHeads`且`numQHeads % numKvHeads == 0`，`numQHeads / numKvHeads`不超过128。
 - `sparseBlockIdx`最后一维须不小于`sparseBlockCount`中所有元素的最大值，且当前不超过256。
 - 输出`metadataOptional`是固定为INT32、shape为(1024,)的不透明数据，不得解析、修改或跨不同输入和属性复用。
