@@ -743,8 +743,14 @@ private:
                 xCopyParams.srcStride = (BasicApiRoundUp<P>(currentK) - currentK) * sizeof(P);
                 xCopyParams.dstStride = (vector_.tiling_->kL1Size - currentK) * sizeof(P);
                 uint64_t stageSlotElements = static_cast<uint64_t>(vector_.tiling_->mL1Size) * vector_.tiling_->kL1Size;
+                // 外层 2U 为每 AIC 的 GM stage 乒乓 slot 数(与 CV 比无关); 内层折算为 AIV->AIC 配对比, 平台相关。
+#ifdef MHC_PRE_SUPPORT_960DT
                 uint64_t stageOffset = (2U * (GetBlockIdx() / vector_.tiling_->aivPerAic) + aL1BufferId) * stageSlotElements +
                                        static_cast<uint64_t>(rowStart) * vector_.tiling_->kL1Size;
+#else
+                uint64_t stageOffset = (2U * (GetBlockIdx() / 2U) + aL1BufferId) * stageSlotElements +
+                                       static_cast<uint64_t>(rowStart) * vector_.tiling_->kL1Size;
+#endif
                 DataCopyPad(xStageGm_[stageOffset], xFloatLocal, xCopyParams);
                 vector_.outQueue_.FreeTensor(xFloatLocal);
             } else {

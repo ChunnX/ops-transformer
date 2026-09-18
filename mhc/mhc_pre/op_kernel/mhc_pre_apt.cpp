@@ -30,7 +30,14 @@ __global__ __aicore__ void mhc_pre(GM_ADDR x, GM_ADDR phi, GM_ADDR alpha, GM_ADD
     GET_TILING_DATA(tilingData, tilingGM);
     __gm__ uint8_t *user = GetUserWorkspace(workspaceGM);
 
+    // 任务类型声明 AIC:AIV 配对组成，编译期确定，无法经 tiling 运行时切换：
+    // ascend950/910b/910_93 为 1:2（原值），ascend960dt 为 1:1。
+    // 由 CMake 在 ascend960dt 编译轮注入 -DMHC_PRE_SUPPORT_960DT 区分。
+#ifdef MHC_PRE_SUPPORT_960DT
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
+#else
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+#endif
     TPipe pipe;
     if constexpr (TILING_MODE == MHC_PRE_SPLIT_BS) {
         InitParams initParams{x, phi, alpha, bias, gamma, hin, h_post,

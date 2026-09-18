@@ -575,7 +575,10 @@ ge::graphStatus MhcPreBaseTiling::InitPlatformMemory()
 
     // AIC:AIV 核数比平台相关：ascend950/910b/910_93 为 1:2（原有支持），
     // ascend960dt 为 1:1（放开）。按实际核数比分流：非 1:2 且非 1:1 的比例维持原有拦截。
-    // 注：CANN 9.2.0 的 SocVersion 枚举暂无 960dt，核数比即平台指纹，无需 soc 名判断。
+    // 注：host tiling so 全 soc 共用一份，无法按平台宏隔离，只能运行时区分；
+    // CANN 9.2.0 的 SocVersion 枚举暂无 960dt，核数比即平台指纹。kernel 侧差异
+    // （任务类型/AIV 配对折算）由 CMake 注入的 MHC_PRE_SUPPORT_960DT 宏编译期隔离，
+    // 950 kernel 编译路径与原版一致。
     if (aivBlockDim_ == blockDim_ * AIV_AIC_RATIO) {
         aivPerAic_ = AIV_AIC_RATIO;
     } else if (aivBlockDim_ == blockDim_ && blockDim_ != 0U) {

@@ -13,8 +13,16 @@ if (BUILD_OPEN_PROJECT)
         mhc_pre_def.cpp
     )
 
-    if("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend950" OR "${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend960dt")
-        # ascend960dt 与 ascend950 同属 arch35 指令集, 编译选项一致
+    if("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend960dt")
+        # ascend960dt 与 ascend950 同属 arch35 指令集, 编译选项一致; CV 核数比 1:1(950 为 1:2),
+        # kernel 侧差异代码以 MHC_PRE_SUPPORT_960DT 宏隔离(任务类型/AIV 配对折算), 950 编译路径保持原样
+        add_ops_compile_options(
+            OP_NAME MhcPre
+            COMPUTE_UNIT Ascend950PR_9599
+            OPTIONS -mllvm -cce-aicore-dcci-before-kernel-end=false
+                    -DMHC_PRE_SUPPORT_960DT
+        )
+    elseif("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend950")
         add_ops_compile_options(
             OP_NAME MhcPre
             COMPUTE_UNIT Ascend950PR_9599
