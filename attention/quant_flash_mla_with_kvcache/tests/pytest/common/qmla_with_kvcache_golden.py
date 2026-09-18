@@ -57,7 +57,7 @@ logger = logging.getLogger(__name__)
 # 配置区
 # ==============================================================================
 # GRAPH_PATH: 0=单算子, 3=静态图, 5=动态图, 6=tiling下沉, 7=aclgraph
-GRAPH_PATH = 0
+GRAPH_PATH = 7
 DEVICE_ID = 0
 
 B = 1
@@ -75,7 +75,7 @@ QMLA_V_HEAD_DIM = D_V  # 512
 
 SEQUSED_Q = [8] * B
 CACHE_SEQLENS = [102400] * B
-MAX_SEQLEN_Q = -1   # -1 means auto-derive from SEQUSED_Q
+MAX_SEQLEN_Q = -1  # -1 means auto-derive from SEQUSED_Q
 MAX_SEQLEN_KV = -1  # -1 means auto-derive from CACHE_SEQLENS
 # Layout 选择 (TND: query 排布 (T, N_q, D); deq_q 用 TN (T, N_q) 第0维与 query 一致)
 INPUT_LAYOUT = "TND"
@@ -860,45 +860,73 @@ def get_npu_fa_kwargs():
 
 
 class Network(nn.Module):
+    """aclgraph/torch.compile 编译目标: forward 只包含两个 torch.library op 调用。
+
+    所有预处理（tensor 创建、reshape、layout 转换）在 fia_mla_torch_npu 中完成，
+    传入 forward 的均为已处理好的 NPU tensor 或标量。
+    """
+
     def __init__(self):
         super(Network, self).__init__()
 
     def forward(
         self,
-        q,
-        k,
-        mask,
-        seqused_q,
-        cache_seqlens,
-        dequant_scale_q,
-        dequant_scale_k,
-        p_scale,
+        q_576,
+        k_cache_576,
+        deq_q_flat,
+        deq_k_scalar,
         block_table,
-        q_n,
-        kv_n,
+        cache_seqlens_t,
+        cu_seqlens_q,
+        seqused_q_t,
+        mask,
         softmax_scale,
         layout,
-        block_size,
-        out_dtype,
+        layout_kv,
+        max_sq,
+        max_skv,
     ):
-        # 新接口两段式：直接复用 call_npu_fa_op（metadata -> 主算子）
-        return call_npu_fa_op(
-            q,
-            k,
-            mask,
-            seqused_q,
-            cache_seqlens,
-            dequant_scale_q,
-            dequant_scale_k,
-            p_scale,
-            block_table,
-            q_n,
-            kv_n,
-            softmax_scale,
-            layout,
-            block_size,
-            out_dtype,
+        # 使用 torch.ops 直接调用注册的 op，Dynamo 会将其视为原子节点不会 trace 进 dispatcher
+        metadata = torch.ops.cann_ops_transformer.quant_flash_mla_with_kvcache_metadata(
+            cache_seqlens_t,
+            N_q,
+            N_kv,
+            QMLA_QUANT_MODE,
+            cu_seqlens_q=cu_seqlens_q,
+            seqused_q=seqused_q_t,
+            max_seqlen_q=max_sq,
+            max_seqlen_kv=max_skv,
+            head_dim_qk=QMLA_QK_HEAD_DIM,
+            head_dim_v=QMLA_V_HEAD_DIM,
+            mask_mode=MASK_MODE,
+            layout_q=layout,
         )
+
+        atten_out, lse_out = (
+            torch.ops.cann_ops_transformer.quant_flash_mla_with_kvcache(
+                q_576,
+                k_cache_576,
+                deq_q_flat,
+                deq_k_scalar,
+                block_table,
+                cache_seqlens_t,
+                QMLA_QUANT_MODE,
+                cu_seqlens_q=cu_seqlens_q,
+                seqused_q=seqused_q_t,
+                attn_mask=mask,
+                metadata=metadata,
+                softmax_scale=softmax_scale,
+                mask_mode=MASK_MODE,
+                max_seqlen_q=max_sq,
+                max_seqlen_kv=max_skv,
+                head_dim_v=QMLA_V_HEAD_DIM,
+                layout_q=layout,
+                layout_kv=layout_kv,
+                layout_out=layout,
+                return_softmax_lse=ENABLE_LSE,
+            )
+        )
+        return atten_out, lse_out
 
 
 def call_npu_fa_op(
@@ -924,7 +952,9 @@ def call_npu_fa_op(
     :param k:        K_cache PA (Bn, N, Bs, 576) fp8, 与 Q 相同合并方式
     V 由算子内部从 k_cache 的 nope 前 512 维复用, 无需传入
     """
-    assert quant_flash_mla_with_kvcache is not None, "cann_ops_transformer not installed"
+    assert quant_flash_mla_with_kvcache is not None, (
+        "cann_ops_transformer not installed"
+    )
     torch.npu.synchronize()
 
     # ---- 1) q / k_cache 已是 nope+rope 合并后的 576 维 fp8, 直接使用 ----
@@ -948,7 +978,9 @@ def call_npu_fa_op(
     # cache_seqlens: PA场景下为每batch KV实际长度（BY_BATCH模式, 非累积）
     max_sq = MAX_SEQLEN_Q if MAX_SEQLEN_Q > 0 else max(seqused_q)
     max_skv = MAX_SEQLEN_KV if MAX_SEQLEN_KV > 0 else max(cache_seqlens)
-    cache_seqlens_t = torch.tensor(cache_seqlens, dtype=torch.int32, device="npu").contiguous()
+    cache_seqlens_t = torch.tensor(
+        cache_seqlens, dtype=torch.int32, device="npu"
+    ).contiguous()
     # cu_seqlens_q (TND): 累计序列，含前导 0 -> [0, l1, l1+l2, ...]
     cu_q = [0]
     _acc = 0
@@ -960,9 +992,6 @@ def call_npu_fa_op(
     seqused_q_t = torch.tensor(seqused_q, dtype=torch.int32, device="npu").contiguous()
     # 确保device数据同步完成后再传入metadata算子
     torch.npu.synchronize()
-    print(f"######{cu_seqlens_q=}")
-    print(f"######{seqused_q_t=}")
-    print(f"######{cache_seqlens_t=}")
     # ---- 3) 两段式：先 metadata，再主算子 ----
     metadata = quant_flash_mla_with_kvcache_metadata(
         cache_seqlens=cache_seqlens_t,
@@ -1042,6 +1071,43 @@ def fia_mla_torch_npu(
             out_dtype,
         )
 
+    # ---- 预处理（compile 区域外）----
+    torch.npu.synchronize()
+    q_576 = q.to(FP8_DTYPE).contiguous()
+    k_cache_576 = k.to(FP8_DTYPE).contiguous()
+
+    deq_q_flat = dequant_scale_q.float().contiguous()
+    if deq_q_flat.dim() == 3:
+        deq_q_flat = deq_q_flat.squeeze(-1)
+    if deq_q_flat.dim() == 4:
+        b, n, s, _ = deq_q_flat.shape
+        deq_q_flat = deq_q_flat.permute(0, 2, 1, 3).reshape(b * s, n).contiguous()
+    deq_q_flat = deq_q_flat.float().npu().contiguous()
+
+    deq_k_scalar = (
+        dequant_scale_k.float().reshape(-1)[0].contiguous().view(1).view(-1).npu()
+    )
+
+    max_sq = MAX_SEQLEN_Q if MAX_SEQLEN_Q > 0 else max(seqused_q)
+    max_skv = MAX_SEQLEN_KV if MAX_SEQLEN_KV > 0 else max(cache_seqlens)
+    cache_seqlens_t = torch.tensor(
+        cache_seqlens, dtype=torch.int32, device="npu"
+    ).contiguous()
+    cu_q = [0]
+    _acc = 0
+    for _s in seqused_q:
+        _acc += int(_s)
+        cu_q.append(_acc)
+    cu_seqlens_q = torch.tensor(cu_q, dtype=torch.int32, device="npu").contiguous()
+    seqused_q_t = torch.tensor(seqused_q, dtype=torch.int32, device="npu").contiguous()
+    block_table_t = (
+        block_table.int().npu().contiguous()
+        if not block_table.is_npu
+        else block_table.int().contiguous()
+    )
+    layout_kv = _KV_LAYOUT_MAP.get(KV_CACHE_LAYOUT, "PA_BNBD")
+    torch.npu.synchronize()
+
     npu_mode = Network().to("npu:%s" % int(DEVICE_ID))
     config = CompilerConfig()
     with torch.no_grad():
@@ -1049,21 +1115,20 @@ def fia_mla_torch_npu(
         npu_backend = tng.get_npu_backend(compiler_config=config)
 
         fa_args = (
-            q,
-            k,
+            q_576,
+            k_cache_576,
+            deq_q_flat,
+            deq_k_scalar,
+            block_table_t,
+            cache_seqlens_t,
+            cu_seqlens_q,
+            seqused_q_t,
             mask,
-            seqused_q,
-            cache_seqlens,
-            dequant_scale_q,
-            dequant_scale_k,
-            p_scale,
-            block_table,
-            q_n,
-            kv_n,
             softmax_scale,
             layout,
-            block_size,
-            out_dtype,
+            layout_kv,
+            max_sq,
+            max_skv,
         )
 
         if GRAPH_PATH == 3:
@@ -1081,7 +1146,6 @@ def fia_mla_torch_npu(
             )
             atten_out, lse_out = npu_mode(*fa_args)
         elif GRAPH_PATH in (6, 7):
-            # tiling 下沉 / aclgraph: 需要标记静态 shape
             if GRAPH_PATH == 7:
                 logger.info("[NPU] GRAPH_PATH == 7, aclgraph...")
                 config.debug.aclgraph.disable_reinplace_inplaceable_ops_pass = True
@@ -1093,13 +1157,15 @@ def fia_mla_torch_npu(
                 npu_mode, fullgraph=True, backend=npu_backend, dynamic=True
             )
             for t in (
-                q,
-                k,
+                q_576,
+                k_cache_576,
+                deq_q_flat,
+                deq_k_scalar,
+                block_table_t,
+                cache_seqlens_t,
+                cu_seqlens_q,
+                seqused_q_t,
                 mask,
-                dequant_scale_q,
-                dequant_scale_k,
-                p_scale,
-                block_table,
             ):
                 if t is not None:
                     torch._dynamo.mark_static(t)
@@ -1239,9 +1305,7 @@ def npu_fp8_full_quant_mla(
     out_dtype = OUTPUT_DETYPE
 
     accum_seq_q = (
-        make_accum_seq(seqused_q)
-        if INPUT_LAYOUT in ("NTD_TND", "TND")
-        else seqused_q
+        make_accum_seq(seqused_q) if INPUT_LAYOUT in ("NTD_TND", "TND") else seqused_q
     )
     npu_input_layout = INPUT_LAYOUT
 
@@ -1300,9 +1364,7 @@ def npu_fp8_full_quant_mla(
             k_pa_for_golden = k_pa.clone()
             v_pa_for_golden = v_pa.clone()
             block_table_for_golden = block_table.copy()
-            k_rope_pa_for_golden = (
-                k_rope_pa.clone() if k_rope_pa is not None else None
-            )
+            k_rope_pa_for_golden = k_rope_pa.clone() if k_rope_pa is not None else None
             cache_info = (
                 k_pa_for_golden,
                 v_pa_for_golden,
@@ -1317,12 +1379,8 @@ def npu_fp8_full_quant_mla(
             kv_cache = torch.stack([k_pa, k_pa], dim=1)
             kv_cache = kv_cache.npu()
             k_pa = kv_cache[:, 0]
-            logger.info(
-                f"[NPU] k_pa is_contiguous={k_pa.is_contiguous()}"
-            )
-            logger.info(
-                f"[NPU] k_pa strides={k_pa.stride()}"
-            )
+            logger.info(f"[NPU] k_pa is_contiguous={k_pa.is_contiguous()}")
+            logger.info(f"[NPU] k_pa strides={k_pa.stride()}")
 
         output = fa_run_npu(
             q_npu,
@@ -1574,7 +1632,5 @@ if __name__ == "__main__":
 
     if ENABLE_LSE:
         logger.info("\n[Step 5] LSE 精度对比")
-        cpu_lse_tnd_torch = convert_q_bnsd_to_layout(
-            cpu_lse, SEQUSED_Q, compare_layout
-        )
+        cpu_lse_tnd_torch = convert_q_bnsd_to_layout(cpu_lse, SEQUSED_Q, compare_layout)
         result_compare_method.check_result(cpu_lse_tnd_torch, lse_out)
