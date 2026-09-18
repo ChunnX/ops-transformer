@@ -753,14 +753,7 @@ def flash_attn_grad_preload3(
             (dkvRowEndP - dkvRowStartP) * dV,
         )
 
-        # ---- dsink 归约（官方同构：写点/读点拉开）----
-        # 写点：主循环末尾各 AIV 的槽位行；读点：这里。
-        #   * 中间隔着整段 process_post（本 AIV 行区间的 dq/dk/dv 搬运与
-        #     计算），是天然的时间/流水间隔；
-        #   * 读前先做一遍读侧预热（load+store 到 scratch）：实测 SYNCALL
-        #     之后第一次读别的 AIV 的行可能拿到尚未全局可见的值，第二遍
-        #     才新鲜，预热把窗口消掉；
-        #   * 再按固定行序归约，括号结构逐位可复现。
+        # ---- dsink 归约 ----
         sink_row_ub = make_sink_row_post_ub(v1w)
         sink_red_ub = make_sink_red_post_ub(v1w)
         if constInfo.sinkOptional == 1:

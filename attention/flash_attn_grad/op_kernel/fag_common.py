@@ -76,11 +76,12 @@ AIV_PER_CORE = 2
 # dsink 每 AIV 独占的 UB 累加器容量（fp32 lane 数）= 支持的 Q head 数上限。
 # 累加器按 lane 定位 head（lane 序号 == head 序号），一个 vreg 只有
 # VF_LANES 个 lane，超出的 head 由 dsink_acc_vf 按 vreg 段寻址，所以 N1
-# 没有 64/128 的 lane 限制，只受这块**静态** UB 的容量限制。取值按最紧的
-# 256/768 档预算定（主图其余 buffer 用完还剩约 25KB），host 侧用同一个值
-# 拒绝超限，避免越界写。
+# 没有 64/128 的 lane 限制，只受这块**静态** UB 的容量限制。按最紧的
+# 256/768 档预算，主图其余 buffer 用完还剩约 25KB（上限约 6.5K lane）；
+# 当前取 1024（4KB），覆盖真实模型的 N1（≤128）并给主图后续 buffer 留余量。
+# host 侧用同一个值拒绝超限，避免越界写。
 # workspace 的槽位行数 = 实际 AIV 数，与 N1 无关，不设上限。
-SINK_HEADS_MAX = 4096
+SINK_HEADS_MAX = 1024
 VF_LANES_FP16 = 128
 # 压缩 mask 边长 2048，minValue = 0xFF7FFFFF
 ATTEN_MASK_COMPRESS = 2048

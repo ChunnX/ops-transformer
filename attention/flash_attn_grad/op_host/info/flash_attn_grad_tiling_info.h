@@ -86,7 +86,7 @@ constexpr int64_t MAX_HEAD_DIM = 768;
 // 必须与 kernel 的 fag_common.SINK_HEADS_MAX 保持一致。kernel 按 lane 定位
 // head（lane 序号 == head 序号，跨 vreg 段寻址），故 N1 只受这块静态 UB
 // 限制；超限在 host 侧拒绝而不是越界写。
-constexpr int64_t FAG_SINK_HEADS_MAX = 4096;
+constexpr int64_t FAG_SINK_HEADS_MAX = 1024;
 
 // ---------------------------------------------------------------------------
 // L2 解析结果。策略层对它只读。
