@@ -23,7 +23,7 @@ namespace MegaMoeImpl {
 // count 整表检查失败后的重试间隔。
 constexpr int64_t COUNT_TABLE_POLL_BACKOFF_CYCLES = 500;
 
-// 批量检查高 8 位轮次标签，并在同一份 UB 快照中保留低 24 位 count。
+// 只检查 UB 快照的高 8 位轮次标签，不修改 count；成功后由前缀和计算去除标签。
 // expectedSyncRoundTag 使用 GetSyncRoundTag 返回的高 8 位标签；pending[0] 为零时才可消费快照。
 // pending 的各 lane 累积所有向量的失败结果，尾部无效 lane 不参与比较或写回。
 __simd_vf__ inline void CheckCountRoundTagsVF(__ubuf__ uint32_t *counts, __ubuf__ uint32_t *pending,
@@ -34,13 +34,11 @@ __simd_vf__ inline void CheckCountRoundTagsVF(__ubuf__ uint32_t *counts, __ubuf_
     AscendC::Reg::RegTensor<uint32_t> epochReg;
     AscendC::Reg::RegTensor<uint32_t> pendingReg;
     AscendC::Reg::RegTensor<uint32_t> oneReg;
-    AscendC::Reg::RegTensor<uint32_t> countMaskReg;
     AscendC::Reg::RegTensor<uint32_t> resultReg;
     AscendC::Reg::MaskReg fullMask = AscendC::Reg::CreateMask<uint32_t, AscendC::Reg::MaskPattern::ALL>();
     AscendC::Reg::MaskReg firstLaneMask = AscendC::Reg::CreateMask<uint32_t, AscendC::Reg::MaskPattern::VL1>();
     AscendC::Reg::Duplicate(pendingReg, 0U, fullMask);
     AscendC::Reg::Duplicate(oneReg, 1U, fullMask);
-    AscendC::Reg::Duplicate(countMaskReg, 0x00FFFFFFU, fullMask);
     for (uint32_t offset = 0U; offset < elementCount; offset += ELEMENTS_PER_VECTOR) {
         uint32_t validCount = elementCount - offset;
         AscendC::Reg::MaskReg activeMask = AscendC::Reg::UpdateMask<uint32_t>(validCount);
@@ -50,8 +48,6 @@ __simd_vf__ inline void CheckCountRoundTagsVF(__ubuf__ uint32_t *counts, __ubuf_
         AscendC::Reg::Compares<uint32_t, AscendC::CMPMODE::NE>(mismatchMask, epochReg, expectedSyncRoundTag >> 24U,
                                                                activeMask);
         AscendC::Reg::Select(pendingReg, oneReg, pendingReg, mismatchMask);
-        AscendC::Reg::And(countReg, countReg, countMaskReg, activeMask);
-        AscendC::Reg::StoreAlign(counts + offset, countReg, activeMask);
     }
     AscendC::Reg::Reduce<AscendC::Reg::ReduceType::MAX>(resultReg, pendingReg, fullMask);
     AscendC::Reg::StoreAlign(pending, resultReg, firstLaneMask);
@@ -65,19 +61,16 @@ __aicore__ inline void WaitForCountTable(const AscendC::GlobalTensor<int32_t> &c
                                          const AscendC::LocalTensor<int32_t> &pending, uint32_t elementCount,
                                          uint32_t expectedSyncRoundTag)
 {
-    for (;;) {
-        // 包括重试时的 count 去 tag 写回，必须完成后才能由 MTE2 覆盖同一 UB。
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_EVENT_ID2);
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_EVENT_ID2);
+    // 首次搬运前保护此前的 Vector 访问；重试时上一轮 V_S 和 Scalar 判断已保证 VF 完成。
+    SyncFuncStatic<AscendC::HardEvent::V_MTE2, SYNC_EVENT_ID2>();
+    while (true) {
         AscendC::DataCopyPad(counts, countGm, {1U, elementCount * static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U},
                              {true, 0U, 0U, 0U});
-        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_EVENT_ID2);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_EVENT_ID2);
+        SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID2>();
         asc_vf_call<CheckCountRoundTagsVF>(reinterpret_cast<__ubuf__ uint32_t *>(counts.GetPhyAddr()),
                                            reinterpret_cast<__ubuf__ uint32_t *>(pending.GetPhyAddr()), elementCount,
                                            expectedSyncRoundTag);
-        AscendC::SetFlag<AscendC::HardEvent::V_S>(SYNC_EVENT_ID2);
-        AscendC::WaitFlag<AscendC::HardEvent::V_S>(SYNC_EVENT_ID2);
+        SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();
         if (pending.GetValue(0U) == 0) {
             return;
         }
@@ -133,7 +126,8 @@ __simd_vf__ inline void ComputeExpertCountTablesVF(__ubuf__ int32_t *count, __ub
                                                    uint32_t elementCount, uint32_t expertCount, uint32_t worldSize,
                                                    uint32_t maxOutputSize)
 {
-    InclusivePrefixSumInt32(count, elementCount);
+    // SIMD 快照仍带标签；SIMT 已去标签，两条路径均只累加低 24 位 count。
+    InclusivePrefixSumInt32<0x00FFFFFF>(count, elementCount);
 
     // prefix 已写回 UB；后续从同一区域 Gather 前建立 VEC_STORE -> VEC_LOAD 可见性。
     AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
