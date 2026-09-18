@@ -29,7 +29,7 @@ namespace {
 static aclnnStatus MhcSandwichNormPostPreonlyCommonProcess(
     const aclTensor *hOut, const aclTensor *residual, const aclTensor *hPost, const aclTensor *hResOptional,
     const aclTensor *phi, const aclTensor *alpha0, const aclTensor *bias, const aclTensor *gamma0Optional,
-    const aclTensor *gamma1, const aclTensor *gamma2Optional, double normEps, double mhcPreNormEps, double hcEps,
+    const aclTensor *gamma1, const aclTensor *gamma2Optional, float normEps, float mhcPreNormEps, float hcEps,
     bool returnHInF32, const aclTensor *hInPrimeOut, const aclTensor *x2Out, const aclTensor *hInF32OutOptional,
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
@@ -93,9 +93,9 @@ static aclnnStatus MhcSandwichNormPostPreonlyCommonProcess(
 aclnnStatus aclnnMhcSandwichNormPostPreonlyGetWorkspaceSize(
     const aclTensor *hOut, const aclTensor *residual, const aclTensor *hPost, const aclTensor *hResOptional,
     const aclTensor *phi, const aclTensor *alpha0, const aclTensor *bias, const aclTensor *gamma1,
-    const aclTensor *gamma0Optional, const aclTensor *gamma2Optional, double normEps, double mhcPreNormEps,
-    double hcEps, bool returnHInF32, const aclTensor *hInPrimeOut, const aclTensor *x2Out,
-    const aclTensor *hInF32OutOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
+    const aclTensor *gamma0Optional, const aclTensor *gamma2Optional, float normEps, float mhcPreNormEps, float hcEps,
+    bool returnHInF32, const aclTensor *hInPrimeOut, const aclTensor *x2Out, const aclTensor *hInF32OutOptional,
+    uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(
         aclnnMhcSandwichNormPostPreonly,

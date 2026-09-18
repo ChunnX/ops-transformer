@@ -119,6 +119,8 @@ static ge::graphStatus TilingMhcSandwichNormPostPreonly(gert::TilingContext *con
         OP_LOGE("MhcSandwichNormPostPreonly", "headCount (N) must be %u, got %u", HOST_N_MAX, N);
         return ge::GRAPH_FAILED;
     }
+    // TODO: 支持泛化 D。当前多 tile Kernel 仅保存两块 D tile，解除该保护前需先
+    // 完成任意 tile 数的 x2 暂存、workspace 扩容及精度验证。
     if (D != HOST_D_TILE_MAX && D != HOST_D_MAX) {
         OP_LOGE("MhcSandwichNormPostPreonly", "embedDim (D) must be %u or %u, got %u", HOST_D_TILE_MAX, HOST_D_MAX, D);
         return ge::GRAPH_FAILED;

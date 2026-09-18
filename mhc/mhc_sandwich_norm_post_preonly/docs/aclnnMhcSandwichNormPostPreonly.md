@@ -116,7 +116,7 @@ aclnnStatus aclnnMhcSandwichNormPostPreonlyGetWorkspaceSize(
     const aclTensor *hResOptional, const aclTensor *phi, const aclTensor *alpha0,
     const aclTensor *bias, const aclTensor *gamma1,
     const aclTensor *gamma0Optional, const aclTensor *gamma2Optional,
-    double normEps, double mhcPreNormEps, double hcEps,
+    float normEps, float mhcPreNormEps, float hcEps,
     bool returnHInF32, const aclTensor *hInPrimeOut,
     const aclTensor *x2Out, const aclTensor *hInF32OutOptional,
     uint64_t *workspaceSize, aclOpExecutor **executor)
@@ -145,9 +145,9 @@ aclnnStatus aclnnMhcSandwichNormPostPreonly(
   <tr><td>gamma1（aclTensor*）</td><td>输入</td><td>RMSNorm_1的缩放因子。</td><td><ul><li>不支持空Tensor。</li><li>shape为(D)。</li></ul></td><td>FLOAT32</td><td>ND</td><td>1</td><td>√</td></tr>
   <tr><td>gamma0Optional（aclTensor*）</td><td>可选输入</td><td>RMSNorm_0的缩放因子。</td><td><ul><li>暂不支持传空指针。</li><li>shape为(D)。</li></ul></td><td>FLOAT32</td><td>ND</td><td>1</td><td>√</td></tr>
   <tr><td>gamma2Optional（aclTensor*）</td><td>可选输入</td><td>RMSNorm_mid的缩放因子。</td><td><ul><li>可传空指针，表示跳过RMSNorm_mid。</li><li>非空时shape为(N×D)。</li></ul></td><td>FLOAT32</td><td>ND</td><td>1</td><td>√</td></tr>
-  <tr><td>normEps（double）</td><td>可选输入</td><td>RMSNorm的防除零参数。</td><td>建议值：1e-6。</td><td>DOUBLE</td><td>-</td><td>-</td><td>-</td></tr>
-  <tr><td>mhcPreNormEps（double）</td><td>可选输入</td><td>MHC_Pre内部RMS的防除零参数。</td><td>建议值：1e-6。</td><td>DOUBLE</td><td>-</td><td>-</td><td>-</td></tr>
-  <tr><td>hcEps（double）</td><td>可选输入</td><td>Sigmoid门控结果的加性偏移。</td><td>建议值：1e-6。</td><td>DOUBLE</td><td>-</td><td>-</td><td>-</td></tr>
+  <tr><td>normEps（float）</td><td>可选输入</td><td>RMSNorm的防除零参数。</td><td>建议值：1e-6。</td><td>FLOAT</td><td>-</td><td>-</td><td>-</td></tr>
+  <tr><td>mhcPreNormEps（float）</td><td>可选输入</td><td>MHC_Pre内部RMS的防除零参数。</td><td>建议值：1e-6。</td><td>FLOAT</td><td>-</td><td>-</td><td>-</td></tr>
+  <tr><td>hcEps（float）</td><td>可选输入</td><td>Sigmoid门控结果的加性偏移。</td><td>建议值：1e-6。</td><td>FLOAT</td><td>-</td><td>-</td><td>-</td></tr>
   <tr><td>returnHInF32（bool）</td><td>可选输入</td><td>是否返回RMSNorm_1的FLOAT计算结果。</td><td><ul><li>取值为true时，hInF32OutOptional必须为非空指针。</li><li>取值为false时，hInF32OutOptional必须为空指针。</li></ul></td><td>BOOL</td><td>-</td><td>-</td><td>-</td></tr>
   <tr><td>hInPrimeOut（aclTensor*）</td><td>输出</td><td>下一层输入，对应公式中的hInPrime。</td><td><ul><li>不支持空Tensor。</li><li>shape为(T, D)或(B, S, D)，数据类型与hOut一致。</li></ul></td><td>FLOAT16、BFLOAT16</td><td>ND</td><td>2-3</td><td>×</td></tr>
   <tr><td>x2Out（aclTensor*）</td><td>输出</td><td>MHC_Post或可选RMSNorm_mid的输出。</td><td><ul><li>不支持空Tensor。</li><li>shape为(T, N, D)或(B, S, N, D)，数据类型与hOut一致。</li></ul></td><td>FLOAT16、BFLOAT16</td><td>ND</td><td>3-4</td><td>×</td></tr>

@@ -42,8 +42,11 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> MhcSandwichNormPostPreonly(
     if (returnHInF32) {
         hInF32 = at::empty_symint(hInPrime.sym_sizes(), hOut.options().dtype(at::kFloat));
     }
+    const float normEpsFloat = static_cast<float>(normEps);
+    const float mhcPreNormEpsFloat = static_cast<float>(mhcPreNormEps);
+    const float hcEpsFloat = static_cast<float>(hcEps);
     ACLNN_CMD(aclnnMhcSandwichNormPostPreonly, hOut, residual, hPost, hResOptional, phi, alpha0, bias, gamma1, gamma0,
-              gamma2, normEps, mhcPreNormEps, hcEps, returnHInF32, hInPrime, x2Out, hInF32);
+              gamma2, normEpsFloat, mhcPreNormEpsFloat, hcEpsFloat, returnHInF32, hInPrime, x2Out, hInF32);
     return {hInPrime, x2Out, hInF32};
 }
 
