@@ -81,6 +81,9 @@ constexpr uint32_t HCOMM_BATCH_WQE_BYTES = 64U;
 constexpr uint32_t ATTN_FFN_HCOMM_BATCH_UB_BYTES = 16U * 1024U;
 constexpr uint32_t URMA_BATCH_WQE_CAPACITY = ATTN_FFN_HCOMM_BATCH_UB_BYTES / HCOMM_BATCH_WQE_BYTES;
 constexpr uint32_t HCOMM_SQ_MAX_PENDING = 32767U;
+// UB cache budget for the current layer's expert rank table slice; larger tables keep
+// using direct GM scalar reads instead of growing the phase-1 UB footprint unboundedly.
+constexpr uint32_t RANK_TABLE_CACHE_MAX_BYTES = 16U * 1024U;
 
 static constexpr AscendC::UrmaWqeEntry REMOTE_DATA_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .inlineEn = 0};
 static constexpr AscendC::UrmaWqeEntry REMOTE_ORDERED_FLAG_WQE_CONFIG = {.odr = 6, .fence = 1, .se = 1, .inlineEn = 0};
@@ -139,7 +142,10 @@ private:
                                                  uint32_t sourceTokenOffset, bool enableCqe);
     __aicore__ inline void CommitAndDrainChannel(HcommBatchHandle &batchHandle, uint64_t channel,
                                                  uint32_t &preparedWqeCount, uint32_t &sqWriteCount);
+    __aicore__ inline void BuildRankBuckets(LocalTensor<int32_t> &bucketStart, LocalTensor<int32_t> &bucketCursor,
+                                            LocalTensor<int32_t> &bucketIdx);
     __aicore__ inline void FindExpertRank(int32_t expertId);
+    __aicore__ inline int32_t GetRankTableValue(uint64_t sliceOffset);
     __aicore__ inline void QuantInit(GM_ADDR scales);
     __aicore__ inline void QuantProcess(uint32_t expertIndex);
     __aicore__ inline void ReduceMaxInplace(const LocalTensor<float> &srcLocal, uint32_t count);
@@ -183,6 +189,8 @@ private:
     LocalTensor<int32_t> flagValueTensor_;
     LocalTensor<uint32_t> flagOffsetTensor_;
     LocalTensor<int32_t> tokenRankScratchTensor_;
+    LocalTensor<int32_t> expertRankTableTensor_;
+    LocalTensor<uint64_t> windowAddrTensor_;
 
     TBuf<> smoothScalesBuf_;
     TBuf<> expertIdsBuf_;
@@ -197,6 +205,9 @@ private:
     TBuf<> flagValueBuf_;
     TBuf<> flagOffsetBuf_;
     TBuf<> tokenRankScratchBuf_;
+    TBuf<> expertRankTableBuf_;
+    TBuf<> windowAddrBuf_;
+    TBuf<> rankBucketBuf_;
     LocalTensor<uint8_t> hcommBatchWqeTensor_;
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> xQueue_;
     TQue<QuePosition::VECIN, 1> xInQueue_;
@@ -245,6 +256,7 @@ private:
     uint64_t winInfoTableOffset_{0};
     uint64_t winOffset_[WIN_OFFSET_CNT]{0, 0};
     bool isScales_{false};
+    bool rankTableCached_{false};
 };
 
 template <TemplateAttentionToFfnUrmaTypeClass>
@@ -310,6 +322,37 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::I
     expertIdsTensor_ = expertIdsBuf_.Get<int32_t>();
     tpipe_->InitBuffer(statusBuf_, UB_ALIGN);
     statusTensor_ = statusBuf_.Get<int32_t>();
+
+    // Phase-1 per-token lookups (expert rank table rows, per-rank window base addresses) are
+    // cached in UB once via bulk MTE2 copies: ReadTokenMetaData otherwise pays 4 uncached
+    // scalar GM reads per token. The rank table cache holds only the current layer's slice;
+    // oversized tables fall back to direct GM reads so the extra UB footprint stays bounded.
+    uint32_t expertRankTableBytes = static_cast<uint32_t>(expertRankTableCnt * sizeof(int32_t));
+    rankTableCached_ = expertRankTableBytes <= RANK_TABLE_CACHE_MAX_BYTES;
+    if (rankTableCached_) {
+        tpipe_->InitBuffer(expertRankTableBuf_, Ceil(expertRankTableBytes, UB_ALIGN) * UB_ALIGN);
+        expertRankTableTensor_ = expertRankTableBuf_.Get<int32_t>();
+    }
+    tpipe_->InitBuffer(windowAddrBuf_,
+                       Ceil(static_cast<uint32_t>(worldSize_ * sizeof(uint64_t)), UB_ALIGN) * UB_ALIGN);
+    windowAddrTensor_ = windowAddrBuf_.Get<uint64_t>();
+    // Two int32 arrays of worldSize entries for the phase-2 rank bucket sort: bucket start
+    // offsets and scatter cursors.
+    tpipe_->InitBuffer(rankBucketBuf_,
+                       Ceil(static_cast<uint32_t>(worldSize_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN * 2U);
+
+    GlobalTensor<uint64_t> windowAddrGMTensor;
+    windowAddrGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(&mc2Context_->epHcclBuffer_[0]));
+    DataCopyExtParams windowAddrCopyParams = {1U, static_cast<uint32_t>(worldSize_ * sizeof(uint64_t)), 0U, 0U, 0U};
+    DataCopyPadExtParams<uint64_t> windowAddrCopyPadParams{false, 0U, 0U, 0U};
+    DataCopyPad(windowAddrTensor_, windowAddrGMTensor, windowAddrCopyParams, windowAddrCopyPadParams);
+    if (rankTableCached_) {
+        DataCopyExtParams rankTableCopyParams = {1U, expertRankTableBytes, 0U, 0U, 0U};
+        DataCopyPadExtParams<int32_t> rankTableCopyPadParams{false, 0U, 0U, 0U};
+        DataCopyPad(expertRankTableTensor_, expertRankTableGMTensor_[layIdsExpRankTableOffset_],
+                    rankTableCopyParams, rankTableCopyPadParams);
+    }
+    SyncFunc<HardEvent::MTE2_S>();
 
     uint32_t maxTotalSendNum = axisX_ * axisBS_ * (axisK_ + sharedExpertNum_);
     uint32_t maxTokensPerAiv = Ceil(maxTotalSendNum, aivNum_);
@@ -577,16 +620,29 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::Q
 }
 
 template <TemplateAttentionToFfnUrmaTypeClass>
+__aicore__ inline int32_t AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::GetRankTableValue(
+    uint64_t sliceOffset)
+{
+    if (rankTableCached_) {
+        return expertRankTableTensor_.GetValue(static_cast<uint32_t>(sliceOffset));
+    }
+    return expertRankTableGMTensor_.GetValue(sliceOffset + layIdsExpRankTableOffset_);
+}
+
+template <TemplateAttentionToFfnUrmaTypeClass>
 __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::FindExpertRank(int32_t expertId)
 {
-    uint64_t expRankTableOffset = expertId * expRankTableM_ + layIdsExpRankTableOffset_;
-    uint32_t rankCnt = expertRankTableGMTensor_.GetValue(expRankTableOffset);
+    // Offset relative to the current layer's table slice; the uint32 multiply keeps the
+    // legacy wrapping arithmetic for out-of-range expert ids. GetRankTableValue re-bases
+    // the offset onto the full GM table when the slice is not cached.
+    uint64_t expRankTableOffset = static_cast<uint32_t>(expertId) * expRankTableM_;
+    uint32_t rankCnt = static_cast<uint32_t>(GetRankTableValue(expRankTableOffset));
     if (rankCnt == 0) {
         return;
     }
     uint32_t rankOffset = (sessionId_ % rankCnt) * RANK_OFFSET_STRIDE + 1;
-    toRankId_ = expertRankTableGMTensor_.GetValue(expRankTableOffset + rankOffset);
-    localExpId_ = expertRankTableGMTensor_.GetValue(expRankTableOffset + rankOffset + 1);
+    toRankId_ = GetRankTableValue(expRankTableOffset + rankOffset);
+    localExpId_ = GetRankTableValue(expRankTableOffset + rankOffset + 1);
 }
 
 template <TemplateAttentionToFfnUrmaTypeClass>
@@ -618,7 +674,8 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::H
 template <TemplateAttentionToFfnUrmaTypeClass>
 __aicore__ inline GM_ADDR AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::GetWindowAddr(int32_t rankId)
 {
-    return (GM_ADDR)mc2Context_->epHcclBuffer_[rankId];
+    // Served from the UB cache filled in Init; phase 1 hits this once per token.
+    return (GM_ADDR)windowAddrTensor_.GetValue(static_cast<uint32_t>(rankId));
 }
 
 template <TemplateAttentionToFfnUrmaTypeClass>
@@ -752,6 +809,59 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::C
     int32_t ret = hcomm_.Drain(channel);
     ascendc_assert(ret == 0, "Urma drain failed, ret=%d, rankId=%u, channel=%lu", ret, rankId_, channel);
     sqWriteCount = 0U;
+}
+
+template <TemplateAttentionToFfnUrmaTypeClass>
+__aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::BuildRankBuckets(
+    LocalTensor<int32_t> &bucketStart, LocalTensor<int32_t> &bucketCursor, LocalTensor<int32_t> &bucketIdx)
+{
+    // Counting sort of token offsets by destination rank. The scratch readback holds one
+    // toRankId per token in [aiv][round] layout; walking tokenOffset in order (aiv cycling
+    // 0..aivNum-1, round advancing on wrap) replaces the per-token div/mod remapping.
+    // Tokens whose scratch rank is out of [0, worldSize) are dropped, matching the previous
+    // per-rank scan which could never match them.
+    for (uint32_t rank = 0; rank < worldSize_; ++rank) {
+        bucketStart.SetValue(rank, 0);
+    }
+    uint32_t scratchAiv = 0;
+    uint32_t scratchJ = 0;
+    for (uint32_t tokenOffset = 0; tokenOffset < totalSendNum_; ++tokenOffset) {
+        uint32_t ubIdx = scratchAiv * maxTokensPerAiv_ + scratchJ;
+        uint32_t tokenRank = static_cast<uint32_t>(tokenRankScratchTensor_.GetValue(ubIdx));
+        if (tokenRank < worldSize_) {
+            bucketStart.SetValue(tokenRank, bucketStart.GetValue(tokenRank) + 1);
+        }
+        if (++scratchAiv == aivNum_) {
+            scratchAiv = 0;
+            ++scratchJ;
+        }
+    }
+    // Exclusive prefix sum: bucketStart[rank] becomes the rank's first slot in bucketIdx,
+    // bucketCursor tracks the scatter position (and equals the bucket end once done).
+    int32_t nextBucketStart = 0;
+    for (uint32_t rank = 0; rank < worldSize_; ++rank) {
+        int32_t rankTokenCnt = bucketStart.GetValue(rank);
+        bucketStart.SetValue(rank, nextBucketStart);
+        bucketCursor.SetValue(rank, nextBucketStart);
+        nextBucketStart += rankTokenCnt;
+    }
+    // Stable scatter keeps ascending tokenOffset within each bucket, preserving the
+    // per-rank WQE issue order the ordered flag WQEs (odr=6, se=1) rely on.
+    scratchAiv = 0;
+    scratchJ = 0;
+    for (uint32_t tokenOffset = 0; tokenOffset < totalSendNum_; ++tokenOffset) {
+        uint32_t ubIdx = scratchAiv * maxTokensPerAiv_ + scratchJ;
+        uint32_t tokenRank = static_cast<uint32_t>(tokenRankScratchTensor_.GetValue(ubIdx));
+        if (tokenRank < worldSize_) {
+            int32_t cursor = bucketCursor.GetValue(tokenRank);
+            bucketIdx.SetValue(cursor, static_cast<int32_t>(tokenOffset));
+            bucketCursor.SetValue(tokenRank, cursor + 1);
+        }
+        if (++scratchAiv == aivNum_) {
+            scratchAiv = 0;
+            ++scratchJ;
+        }
+    }
 }
 
 template <TemplateAttentionToFfnUrmaTypeClass>
@@ -957,10 +1067,29 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::P
             DataCopyPad(tokenRankScratchTensor_, tokenRankScratchGMTensor_, scratchCopyParams, scratchCopyPadParams);
             SyncFunc<AscendC::HardEvent::MTE2_S>();
 
+            // Group token offsets by destination rank (counting sort: histogram + stable
+            // scatter) so each rank's WQEs are emitted from its own bucket instead of
+            // rescanning all tokens once per rank per pass ((worldSize - 1) data scans plus
+            // as many flag scans, each with per-token div/mod remapping). bucketIdx reuses
+            // the expertIds buffer, which is dead after phase 1 and always holds at least
+            // totalSendNum_ int32 slots (expertIdsCnt_ >= totalSendNum_).
+            LocalTensor<int32_t> bucketStart = rankBucketBuf_.Get<int32_t>();
+            uint32_t rankBucketAlignedBytes =
+                Ceil(static_cast<uint32_t>(worldSize_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
+            LocalTensor<int32_t> bucketCursor =
+                rankBucketBuf_.GetWithOffset<int32_t>(worldSize_, rankBucketAlignedBytes);
+            LocalTensor<int32_t> bucketIdx = expertIdsTensor_;
+            BuildRankBuckets(bucketStart, bucketCursor, bucketIdx);
+
             const uint64_t elementSize = (QuantMode != 0) ? sizeof(XOutType) : sizeof(XType);
             for (uint32_t dstRank = 0U; dstRank < worldSize_; ++dstRank) {
                 if (dstRank == rankId_) {
                     continue;
+                }
+                int32_t bucketBegin = bucketStart.GetValue(dstRank);
+                int32_t bucketEnd = bucketCursor.GetValue(dstRank);
+                if (bucketBegin == bucketEnd) {
+                    continue; // ranks without tokens are skipped before any channel setup
                 }
                 GM_ADDR toRankAddr = GetWindowAddr(static_cast<int32_t>(dstRank));
                 uint64_t channel = GetUrmaCommHandle(dstRank);
@@ -969,18 +1098,13 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::P
                                            toRankAddr);
                 uint32_t preparedWqeCount = 0U;
                 uint32_t sqWriteCount = 0U;
-                for (uint32_t tokenOffset = 0U; tokenOffset < totalSendNum_; ++tokenOffset) {
-                    uint32_t scratchAiv = tokenOffset % aivNum_;
-                    uint32_t scratchJ = tokenOffset / aivNum_;
-                    uint32_t ubIdx = scratchAiv * maxTokensPerAiv_ + scratchJ;
-                    int32_t tokenRankId = tokenRankScratchTensor_.GetValue(ubIdx);
-                    if (tokenRankId != static_cast<int32_t>(dstRank)) {
-                        continue;
-                    }
-                    uint32_t tokenId = tokenOffset / (axisK_ + sharedExpertNum_);
-                    uint32_t topkId = tokenOffset % (axisK_ + sharedExpertNum_);
+                const uint32_t tokenExperts = axisK_ + sharedExpertNum_;
+                for (int32_t bucketPos = bucketBegin; bucketPos < bucketEnd; ++bucketPos) {
+                    uint32_t tokenOffset = static_cast<uint32_t>(bucketIdx.GetValue(bucketPos));
+                    uint32_t tokenId = tokenOffset / tokenExperts;
+                    uint32_t topkId = tokenOffset - tokenId * tokenExperts;
                     uint64_t tokenDataOffset = winTokenDataOffset_ +
-                                               (static_cast<uint64_t>(tokenId) * (axisK_ + sharedExpertNum_) * axisHS_) +
+                                               (static_cast<uint64_t>(tokenId) * tokenExperts * axisHS_) +
                                                (static_cast<uint64_t>(topkId) * axisHS_);
                     GM_ADDR remoteDataAddr = toRankAddr + winOffset_[1] + tokenDataOffset * elementSize;
                     GM_ADDR localDataAddr = stagingBaseAddr_ + static_cast<uint64_t>(tokenOffset) * stagingStride_;
@@ -995,14 +1119,8 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::P
                         preparedWqeCount = 0U;
                     }
                 }
-                for (uint32_t tokenOffset = 0U; tokenOffset < totalSendNum_; ++tokenOffset) {
-                    uint32_t scratchAiv = tokenOffset % aivNum_;
-                    uint32_t scratchJ = tokenOffset / aivNum_;
-                    uint32_t ubIdx = scratchAiv * maxTokensPerAiv_ + scratchJ;
-                    int32_t tokenRankId = tokenRankScratchTensor_.GetValue(ubIdx);
-                    if (tokenRankId != static_cast<int32_t>(dstRank)) {
-                        continue;
-                    }
+                for (int32_t bucketPos = bucketBegin; bucketPos < bucketEnd; ++bucketPos) {
+                    uint32_t tokenOffset = static_cast<uint32_t>(bucketIdx.GetValue(bucketPos));
                     GM_ADDR remoteFlagAddr = toRankAddr + winInfoTableOffset_ +
                                              (TOKEN_INFO_TABLE_RS + tokenOffset) * sizeof(int32_t);
                     const bool enableCqe = sqWriteCount + 1U >= HCOMM_SQ_MAX_PENDING;
