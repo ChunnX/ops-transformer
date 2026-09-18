@@ -37,7 +37,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::LoadHOutCacheTile(ui
 // 并显式保留设计规定的两处低精度往返边界。
 template<typename T>
 __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::ComputeX2PostTile(
-    uint32_t tOff, uint32_t tD, float invRms0,
+    uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
     const float (&postVals)[N_MAX], const float (&combVals)[N_MAX * N_MAX])
 {
     LoadHOutCacheTile(tOff, tD);
@@ -235,7 +235,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::ProcessTokenSingleAi
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        ComputeX2PostTile(tOff, tD, invRms0, postVals, combVals);
+        ComputeX2PostTile(token, tOff, tD, invRms0, postVals, combVals);
         CacheX2Tile(token, tOff, tD, !useRmsMid_);
 
         LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
