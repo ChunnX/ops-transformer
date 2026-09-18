@@ -1102,14 +1102,14 @@ public:
 
     // FA保留区字节数(紧跟kernel侧ubBufferManager_的跨核bmm区之后):
     // softmax状态(12*256) + preLoop(3*256) + brdcst(FLASH_DECODE时2*2048) + commonTBuf(512)
-    // + softmaxLseQueue(512, 常开) + vselr索引表(isFp8时)
+    // + softmaxLseQueue(2048, 常开) + vselr索引表(isFp8时, 按256上界对齐)
     static __aicore__ inline constexpr uint32_t GetPersistUbSize()
     {
         constexpr uint32_t softmaxSize = (12U + 3U) * 256U;
         constexpr uint32_t brdcstSize = FLASH_DECODE ? (2U * 2048U) : 0U;
         constexpr uint32_t commonSize = 512U;
-        constexpr uint32_t lseSize = 512U;
-        constexpr uint32_t vselrSize = isFp8 ? (USE_DN ? 256U : (128U + 64U)) : 0U;
+        constexpr uint32_t lseSize = (mBaseSize >> 1U) * sizeof(float) * 8U;
+        constexpr uint32_t vselrSize = isFp8 ? 256U : 0U;
         return softmaxSize + brdcstSize + commonSize + lseSize + vselrSize;
     }
 
@@ -1141,6 +1141,15 @@ public:
         GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(mte3ToVId_[1]);
         GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(vToMte3Id_[0]);
         GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(vToMte3Id_[1]);
+    }
+
+    // 排空FA最后一个任务在途的attentionOut MTE3: vec2输出是懒等待模式(下一任务开头才WaitFlag),
+    // FA结束时MTE3可能未完成; FD静态Tensor会覆写同一UB区域, 必须先等MTE3落地。
+    // WaitFlag消耗掉标志后补一次SetFlag, 维持与FreeEventID中WaitFlag的配对。
+    __aicore__ inline void DrainMte3()
+    {
+        WaitFlag<HardEvent::MTE3_V>(mte3ToVId_[0]);
+        SetFlag<HardEvent::MTE3_V>(mte3ToVId_[0]);
     }
 
     __aicore__ inline void AttenMaskCopyIn(LocalTensor<uint8_t> attenMaskUb, uint32_t vecMIdx, uint32_t mDealSize,

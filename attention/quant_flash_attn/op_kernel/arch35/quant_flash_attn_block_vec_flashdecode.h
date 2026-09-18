@@ -102,9 +102,11 @@ private:
 
     // dV按64对齐后的元素数(与FA侧dTemplateAlign64推导一致, 不依赖头文件)
     static constexpr uint32_t FD_DV_ALIGN64 = ((static_cast<uint32_t>(dVTemplateType) + 63U) / 64U) * 64U;
-    // lse系buffer(sum/max/exp)字节尺寸; mm2系buffer 16行*dAlign*fp32为上界
+    // mm2系buffer实际最大行数(fdBalanceMBaseSize=8, 见FlashDecode主循环)
+    static constexpr uint32_t FD_BALANCE_M_BASE = 8U;
+    // lse系buffer(sum/max/exp)字节尺寸; mm2系buffer 8行*dAlign*fp32
     static constexpr uint32_t FD_LSE_BUF_BYTES = BUFFER_SIZE_BYTE_4K + BUFFER_SIZE_BYTE_2K; // 6144
-    static constexpr uint32_t FD_MM2_BUF_BYTES = 16U * FD_DV_ALIGN64 * sizeof(float);
+    static constexpr uint32_t FD_MM2_BUF_BYTES = FD_BALANCE_M_BASE * FD_DV_ALIGN64 * sizeof(float);
 
     static constexpr float FLOAT_INF = 3e+99;
     static constexpr bool HAS_MASK = hasAtten;
@@ -252,7 +254,8 @@ public:
         }
     }
 
-    // TPipe兼容版: 供尚未切换静态布局的kernel(fp8/hif8)使用, 保持原Reset+分配语义
+    // TPipe兼容版: 供尚未切换静态布局的kernel(fp8/hif8)使用, 保持原Reset+分配语义,
+    // buffer尺寸与静态版保持一致
     __aicore__ inline void InitBuffers(TPipe *pipe)
     {
         if ASCEND_IS_AIV {

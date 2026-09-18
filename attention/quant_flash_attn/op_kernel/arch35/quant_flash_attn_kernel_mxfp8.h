@@ -774,6 +774,7 @@ public:
         AscendC::ICachePreLoad(2);
         vecFdBlock_.AllocEventID();
         SyncAll();
+        vecFaBlock_.DrainMte3(); // 排空FA在途的attentionOut MTE3, 防止FD覆写同UB区域产生竞争
         vecFdBlock_.FlashDecode(fdParams_);
         SyncAll(); // 多section场景: 保证所有核FD读workspace完成后, 才能进入下一section FA覆写
         vecFdBlock_.FreeEventID();
