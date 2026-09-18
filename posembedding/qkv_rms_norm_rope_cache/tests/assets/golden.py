@@ -1,0 +1,471 @@
+"""QkvRmsNormRopeCache 多通路 golden(TestSpec 范式)。
+
+01_requirement.md §3.3 的通路支持表:
+| 通路   | 支持 | 依据 |
+|--------|------|------|
+| kernel | ✅  | op_kernel/arch35/ 有 arch35 regbase 实现 |
+| geir   | ✅  | op_graph/qkv_rms_norm_rope_cache_proto.h 已注册 REG_OP(QkvRmsNormRopeCache) |
+| aclnn  | ✅  | op_host/op_api/aclnn_qkv_rms_norm_rope_cache.{h,cpp} |
+| e2e    | ✅  | libtorch_npu.so 命中 aclnnQkvRmsNormRopeCache 与 npu_qkv_rms_norm_rope_cache |
+
+计算语义按【算子契约】(README + op_graph proto + aclnn doc)写,不照抄内核的步骤划分与
+内部布局:内核按 (token, head) 行循环、把 cache 写成 [BlockNum, N*D1, BlockSize, D0] 的
+PA_NZ 分片;本 golden 只按"输入张量语义 + 输出张量语义"逐步拼接 —— split -> rmsnorm ->
+rope(half-and-half) -> quant -> scatter,布局从 cache 的 shape 反推。
+"""
+
+import numpy as np
+import torch
+
+__spec__ = {
+    "qkv_rms_norm_rope_cache": "QkvRmsNormRopeCacheKernelSpec",
+    "aclnnQkvRmsNormRopeCache": "QkvRmsNormRopeCacheAclnnSpec",
+    "torch.ops.npu.npu_qkv_rms_norm_rope_cache": "QkvRmsNormRopeCacheTorchSpec",
+}
+
+_TOL = {
+    "float16": {"standard": "cross_check", "level": "L1"},
+    "bfloat16": {"standard": "cross_check", "level": "L1"},
+    "float32": {"standard": "cross_check", "level": "L1"},
+    # 量化输出走 quant 判据(绝对误差 <= 1 LSB),不参与三方
+    "int8": {"standard": "quant"},
+}
+
+
+def _as_int_list(v):
+    if v is None:
+        return None
+    if isinstance(v, str):
+        v = v.strip().strip("[]()")
+        return [int(float(x)) for x in v.split(",") if x.strip() != ""]
+    return [int(x) for x in v]
+
+
+def _as_bool(v):
+    if isinstance(v, str):
+        return v.strip().lower() in ("true", "yes", "1")
+    return bool(v)
+
+
+def _cache_shape(block_num, head_num, head_dim, block_size, elem_bytes):
+    d0 = 32 // elem_bytes
+    return (int(block_num), int(head_num * head_dim // d0), int(block_size), int(d0))
+
+
+def _rms_norm(x, gamma, eps):
+    """x: [..., D] 沿最后一维归一化。"""
+    var = torch.mean(x * x, dim=-1, keepdim=True)
+    return x / torch.sqrt(var + eps) * gamma
+
+
+def _rope_half_and_half(x, cos, sin):
+    """half-and-half:out = x*cos + cat(-x2, x1)*sin,沿最后一维。"""
+    half = x.shape[-1] // 2
+    x1 = x[..., :half]
+    x2 = x[..., half:]
+    rotated = torch.cat((-x2, x1), dim=-1)
+    return x * cos + rotated * sin
+
+
+def _quant(x, scale, offset):
+    if scale is not None:
+        x = x / scale
+    if offset is not None:
+        x = x + offset
+    if scale is not None:
+        x = torch.round(x).clamp(-128, 127)
+    return x
+
+
+def _scatter_pa_nz(data_rows, cache, index, head_dim, num_head):
+    """data_rows: [T, num_head*head_dim];cache: [BlockNum, num_head*head_dim/D0, BlockSize, D0]。
+
+    cache 的第 2 维是「head × D 内的 D0 分片」,即 [BlockNum][head*D1][BlockSize][D0],
+    与 A2 契约的 [BlockNum, N*D/D0, BlockSize, D0] 同一件事(只是把第 2 维拆成 head 与分片两层)。
+    布局从 cache 的 shape 反推,不照抄内核的地址算术。
+    """
+    block_num, hd, block_size, d0 = cache.shape
+    d1 = head_dim // d0
+    idx = index.reshape(-1).to(torch.int64)
+    valid = idx >= 0
+    page_id = torch.where(valid, idx // block_size, torch.zeros_like(idx))
+    in_page = torch.where(valid, idx % block_size, torch.zeros_like(idx))
+    slot = (page_id * block_size + in_page)[valid]  # 命中 [BlockNum*BlockSize] 展平后的行号
+    # 把 [BN][head*D1][BS][D0] 换成 [BN][BS][head*D1][D0] 再展平成 [BN*BS] 行,才谈得上"按槽位整行覆盖"
+    o = cache.permute(0, 2, 1, 3).contiguous().reshape(block_num * block_size, hd * d0)
+    src = data_rows.reshape(-1, hd * d0).to(o.dtype)
+    o[slot] = src[valid]
+    return o.reshape(block_num, block_size, hd, d0).permute(0, 2, 1, 3).contiguous()
+
+
+_COMPUTE_KWARGS = ("qkv_size", "head_nums", "epsilon", "cache_mode", "is_output_qkv", "output_dtypes")
+
+
+# aclnn 头文件 / torch 接口的属性名与 def.cpp 常常不同名(GNSQ 实例同款坑)。
+# 三套命名都收:kernel=def.cpp 蛇形、aclnn=头文件驼峰、torch=接口签名。
+_ALIASES = {
+    "qkv_size": ("qkv_size", "qkvSize", "qkv_size_list"),
+    "head_nums": ("head_nums", "headNums"),
+    "epsilon": ("epsilon",),
+    "cache_mode": ("cache_mode", "cacheModeOptional", "cacheMode"),
+    "is_output_qkv": ("is_output_qkv", "isOutputQkv"),
+    "output_dtypes": ("output_dtypes",),
+}
+
+
+def _pick(kwargs):
+    """TTK 会附带 full_soc_version / testcase_name 等框架侧 kwargs,只取算子契约用到的。"""
+    out = {}
+    for key, names in _ALIASES.items():
+        for n in names:
+            if n in kwargs:
+                out[key] = kwargs[n]
+                break
+    return out
+
+
+def _compute(qkv, q_gamma, k_gamma, cos, sin, index, q_out, k_cache, v_cache, k_scale=None, v_scale=None,
+             k_offset=None, v_offset=None, qkv_size=None, head_nums=None, epsilon=1e-6, cache_mode="PA_NZ",
+             is_output_qkv=False, output_dtypes=None):
+    """按算子契约计算 6 个输出,顺序 = def.cpp 的输出序。
+
+    golden 只做精度向上兜底(CPU half 残缺),不向下砍档。
+    """
+    if qkv.dim() == 2:
+        qkv = qkv.unsqueeze(0) if qkv.numel() == 0 else qkv
+    qkv = qkv.to(torch.float32) if qkv.dtype in (torch.float16, torch.bfloat16) else qkv
+    q_gamma = q_gamma.to(qkv.dtype)
+    k_gamma = k_gamma.to(qkv.dtype)
+    cos = cos.to(qkv.dtype)
+    sin = sin.to(qkv.dtype)
+    total, n_all_dim = qkv.shape
+
+    b_size, s_size, n_all, d_dim = [int(v) for v in _as_int_list(qkv_size)]
+    n_q, n_k, n_v = [int(v) for v in _as_int_list(head_nums)]
+    eps = float(epsilon)
+    assert total == b_size * s_size, "qkv dim0 must equal B*S"
+    assert n_all_dim == n_all * d_dim, "qkv dim1 must equal N*D"
+    assert n_all == n_q + n_k + n_v and n_k == n_v, "head_nums must satisfy N = Nq+Nk+Nv, Nk = Nv"
+
+    x = qkv.reshape(total, n_all, d_dim)
+    q = x[:, :n_q, :]
+    k = x[:, n_q:n_q + n_k, :]
+    v = x[:, n_q + n_k:, :]
+
+    # cos/sin 是 [B*S, D],逐 token 广播到该 token 的所有 head
+    cos_r = cos.reshape(total, 1, d_dim).to(x.dtype)
+    sin_r = sin.reshape(total, 1, d_dim).to(x.dtype)
+
+    q_norm = _rope_half_and_half(_rms_norm(q, q_gamma, eps), cos_r, sin_r)
+    k_norm = _rope_half_and_half(_rms_norm(k, k_gamma, eps), cos_r, sin_r)
+
+    q_rows = q_norm.reshape(total, n_q * d_dim)
+    k_rows = k_norm.reshape(total, n_k * d_dim)
+    v_rows = v.reshape(total, n_v * d_dim)
+
+    k_final = _scatter_pa_nz(_quant(k_norm, k_scale, k_offset).reshape(total, n_k * d_dim), k_cache, index, d_dim, n_k)
+    v_final = _scatter_pa_nz(_quant(v, v_scale, v_offset).reshape(total, n_v * d_dim), v_cache, index, d_dim, n_v)
+
+    # 全程保持输入提升后的 dtype(框架 Promote 给什么就算什么),向下 cast 由各通路外壳负责
+    return [q_rows, k_final, v_final, q_rows.clone(), k_rows, v_rows]
+
+
+def _np_of(t, name):
+    """torch.Tensor -> numpy.ndarray,按算子输出 dtype。
+
+    bf16 必须走 ml_dtypes:torch 的 bf16 张量在本环境 `.numpy()` 不支持,
+    而 `np.ndarray.astype('bfloat16')` 会静默回落到 'V2'(void 2 字节)。
+    """
+    dt = _torch_dtype(str(name))
+    if dt is torch.bfloat16:
+        import ml_dtypes
+        return t.to(torch.float32).numpy().astype(ml_dtypes.bfloat16)
+    return t.to(dt).numpy()
+
+
+def _cast_outs(outs, kwargs):
+    """aclnn / e2e 通路:按 CSV 的 output_dtypes 把结果 cast 回算子输出 dtype。
+
+    必须经 torch 转 —— np.ndarray.astype('bfloat16') 会静默回落到 'V2'(void 2 字节),
+    让 bf16 输出在 TTK 侧的元素数差 2 倍,表现为莫名其妙的 shape mismatch。
+    """
+    od = kwargs.get("output_dtypes") or []
+    od = [d[0] if isinstance(d, (list, tuple)) else str(d) for d in od]
+    return [o.to(_torch_dtype(od[i])) if i < len(od) else o for i, o in enumerate(outs)]
+
+
+def _torch_dtype(name):
+    return {
+        "float16": torch.float16,
+        "bfloat16": torch.bfloat16,
+        "float32": torch.float32,
+        "int8": torch.int8,
+        "int64": torch.int64,
+        "float64": torch.float64,
+    }.get(str(name), torch.float32)
+
+
+def _fill_optional(tensors, dtypes):
+    """把 TTK 传进来的 None / 空张量规整成 None,便于按契约分支。"""
+    out = []
+    for t, d in zip(tensors, dtypes):
+        if t is None or (hasattr(t, "numel") and t.numel() == 0):
+            out.append(None)
+        else:
+            out.append(t)
+    return out
+
+
+class _Compose:
+    """竞品标杆:用 torch 原生算子拼等价语义,在远端 A100 上执行。
+
+    与 _compute 保持相互独立:这里用 permute/cat 的显式展开而非同一组表达式,
+    但**算法与 dtype 一致**(rms 用 mean+sqrt、half-and-half 旋转、round+clamp 到 int8),
+    输出一律 cast 回 NPU 输出 dtype —— 竞品留在 fp32 会让 cross_check 的比值凭空爆表。
+    """
+
+    def __init__(self, **kwargs):
+        self.qkv_size = _as_int_list(kwargs.get("qkv_size"))
+        self.head_nums = _as_int_list(kwargs.get("head_nums"))
+        self.epsilon = float(kwargs.get("epsilon", 1e-6))
+        self.is_output_qkv = _as_bool(kwargs.get("is_output_qkv", False))
+        self.output_dtypes = kwargs.get("output_dtypes")
+
+    def __call__(self, *tensors, **kwargs):
+        """独立于 _compute 的实现:同一算法(逐条对齐:mean+sqrt、half-and-half 旋转、
+        round+clamp 量化、PA_NZ 散射),但表达式与数据组织不同 —— 用 split 切分、用切片赋值
+        拼旋转项、用 index_put_ 一次性散射,便于两侧交叉验证(照抄实现会让两边同错)。"""
+        qkv, q_gamma, k_gamma, cos, sin, index = tensors[0], tensors[1], tensors[2], tensors[3], tensors[4], tensors[5]
+        q_out, k_cache, v_cache = tensors[6], tensors[7], tensors[8]
+        k_scale = tensors[9] if len(tensors) > 9 else None
+        v_scale = tensors[10] if len(tensors) > 10 else None
+        k_offset = tensors[11] if len(tensors) > 11 else None
+        v_offset = tensors[12] if len(tensors) > 12 else None
+
+        f32 = torch.float32
+        qkv = qkv.to(f32)
+        q_gamma, k_gamma, cos, sin = q_gamma.to(f32), k_gamma.to(f32), cos.to(f32), sin.to(f32)
+        total, n_all_dim = qkv.shape
+        b_size, s_size, n_all, d_dim = [int(v) for v in self.qkv_size]
+        n_q, n_k, n_v = [int(v) for v in self.head_nums]
+        eps = float(self.epsilon)
+
+        rows = qkv.reshape(total, n_all, d_dim)
+        q, k, v = rows.split([n_q, n_k, n_v], dim=1)
+
+        cos_r = cos.reshape(total, 1, d_dim)
+        sin_r = sin.reshape(total, 1, d_dim)
+
+        def _norm(t, g):
+            # 必须与算子实现同算法:先 sqrt 再相除(不是乘 1/sqrt —— 那会多一次舍入,
+            # 让竞品凭空更准,三方比值失真)
+            return t / torch.sqrt(torch.mean(t * t, dim=-1, keepdim=True) + eps) * g
+
+        def _rotate(t):
+            half = t.shape[-1] // 2
+            rot = torch.empty_like(t)
+            rot[..., :half] = -t[..., half:]
+            rot[..., half:] = t[..., :half]
+            return t * cos_r + rot * sin_r
+
+        def _quant(t, sc, off):
+            y = t
+            if sc is not None:
+                y = y / sc
+            if off is not None:
+                y = y + off
+            if sc is not None:
+                y = torch.round(y).clamp(-128, 127)
+            return y
+
+        def _scatter_pa_nz(data_rows, cache):
+            block_num, hd, block_size, d0 = cache.shape
+            d1 = d_dim // d0
+            n_head = data_rows.shape[-1] // d_dim
+            idx = index.reshape(-1).to(torch.int64)
+            good = idx >= 0
+            page = (idx // block_size)[good]
+            off = (idx % block_size)[good]
+            cache_bs = cache.permute(0, 2, 1, 3).contiguous().reshape(block_num * block_size, hd * d0)
+            src = data_rows.reshape(-1, n_head * d1 * d0).to(cache_bs.dtype)[good]
+            flat_row = page * block_size + off
+            cols = torch.arange(cache_bs.shape[1], device=cache_bs.device).expand(flat_row.numel(), -1)
+            cache_bs.index_put_((flat_row.unsqueeze(1), cols), src, accumulate=False)
+            return cache_bs.reshape(block_num, block_size, n_head, d1, d0).permute(0, 2, 3, 1, 4).reshape(
+                block_num, hd, block_size, d0)
+
+        q_res = _rotate(_norm(q, q_gamma)).reshape(total, n_q * d_dim)
+        k_pre = _rotate(_norm(k, k_gamma))
+        v_pre = v
+        k_res = _scatter_pa_nz(_quant(k_pre, k_scale, k_offset).reshape(total, n_k * d_dim), k_cache)
+        v_res = _scatter_pa_nz(_quant(v_pre, v_scale, v_offset).reshape(total, n_v * d_dim), v_cache)
+
+        od = self.output_dtypes or []
+        od = [d[0] if isinstance(d, (list, tuple)) else str(d) for d in od]
+        outs = [q_res, k_res, v_res, q_res.clone(), k_pre.reshape(total, n_k * d_dim), v_pre.reshape(total, n_v * d_dim)]
+        return [o.to(_torch_dtype(od[i])) if i < len(od) else o for i, o in enumerate(outs)]
+
+
+def _to_npu_array(a):
+    """NPU 侧(customize_inputs)用:原样保留数组与 dtype,只把"该输入缺省"统一成 None。
+
+    与 _to_tensor 的关键区别:【不做任何 dtype 提升】。customize_inputs 的返回值会替换
+    TTK 的运行时输入,提升上去就下不来了(内核会拿到"声明 bf16、实为 fp32"的缓冲)。
+    """
+    if a is None or not isinstance(a, np.ndarray):
+        return a
+    if a.dtype == object or a.size == 0:
+        return None
+    return a
+
+
+def _fill_index(index, total, block_num, block_size, seed, as_numpy=False):
+    """index 契约:[B*S],取值不可重复,值域 [-1, BlockNum*BlockSize);-1 表示跳过。
+
+    取值本身由 numpy 生成;as_numpy 决定返回 numpy 还是 torch(NPU 侧要 numpy)。
+    """
+    rng = np.random.RandomState(seed)
+    capacity = block_num * block_size
+    if total <= capacity:
+        vals = rng.permutation(capacity)[:total]
+    else:
+        vals = rng.randint(0, capacity, size=total)
+    idx = vals.astype(np.int64)
+    if total > capacity:
+        idx[capacity:] = -1
+    return idx if as_numpy else torch.from_numpy(idx)
+
+
+def _seed_of(kwargs):
+    import zlib
+    name = str(kwargs.get("testcase_name", "qkv_rms_norm_rope_cache"))
+    return zlib.crc32(name.encode("utf-8")) & 0x7FFFFFFF
+
+
+_TORCH_SAFE_DTYPES = frozenset({
+    np.dtype(np.float64), np.dtype(np.float32), np.dtype(np.float16), np.dtype(np.complex64), np.dtype(np.complex128),
+    np.dtype(np.int64), np.dtype(np.int32), np.dtype(np.int16), np.dtype(np.int8), np.dtype(np.uint8),
+    np.dtype(np.uint16), np.dtype(np.uint32), np.dtype(np.uint64), np.dtype(np.bool_),
+})
+
+
+def get(seq, idx):
+    """越界取 None(可选张量在不同通路的个数不同)。"""
+    return seq[idx] if seq is not None and idx < len(seq) else None
+
+
+def _to_tensor(a):
+    """None / object ndarray(TTK 用它表达"该可选输入缺省")保持 None,其余转 torch。"""
+    if a is None:
+        return None
+    if isinstance(a, torch.Tensor):
+        return a
+    if not isinstance(a, np.ndarray):
+        return a
+    if a.dtype == object or a.size == 0:
+        return None
+    if a.dtype not in _TORCH_SAFE_DTYPES:
+        # ml_dtypes 的 bfloat16 / float8 等,torch.from_numpy 不认;
+        # bf16 -> fp32 是精确的向上提升,不影响精度判据
+        a = a.astype(np.float32)
+    return torch.from_numpy(np.ascontiguousarray(a))
+
+
+def _prepare(tensors, *, for_npu=False, **kwargs):
+    """把 index 重写成合法取值。返回新的 list;None 位置保持 None。
+
+    只重建 index,其余张量【原对象原样返回】——它们本来就不需要改,
+    多绕一趟 torch 只会平白引入 dtype 漂移(见 _to_npu_array)。
+
+    for_npu=False(golden 计算):经 _to_tensor 转 torch,bf16 会抬成 fp32
+        —— 无害,算完按输出 dtype cast 回去即可。
+    for_npu=True(customize_inputs,NPU 侧):全程 numpy,不碰任何 dtype
+        —— 其返回值会替换 TTK 的运行时输入,dtype 必须与声明一致。
+    """
+    t = [_to_npu_array(a) for a in tensors] if for_npu else [_to_tensor(a) for a in tensors]
+    index = t[5]
+    k_cache = t[7]
+    total = int(index.size if for_npu else index.numel())
+    block_num = int(k_cache.shape[0])
+    block_size = int(k_cache.shape[2])
+    t[5] = _fill_index(index, total, block_num, block_size, _seed_of(kwargs), as_numpy=for_npu)
+    return t
+
+
+class QkvRmsNormRopeCacheKernelSpec:
+    """kernel + geir 共用。golden 收 numpy.ndarray,返 numpy.ndarray。"""
+
+    def customize_inputs(*inputs, **kwargs):
+        # 走 numpy 侧:_prepare 只重建 index,其余输入原对象返回,dtype 不会漂移。
+        return _prepare(inputs, for_npu=True, **kwargs)
+
+    def golden(*inputs, **kwargs):
+        tensors = _prepare(inputs, **kwargs)
+        outs = _compute(*tensors, **_pick(kwargs))
+        od = kwargs.get("output_dtypes") or []
+        od = [d[0] if isinstance(d, (list, tuple)) else str(d) for d in od]
+        return [_np_of(o, od[i]) if i < len(od) else o.numpy() for i, o in enumerate(outs)]
+
+    third_party = {"torch": _Compose}
+    tolerance = _TOL
+
+
+class QkvRmsNormRopeCacheAclnnSpec:
+    """aclnn 通路。golden 收已 H2D 的 torch.Tensor,直接返 Tensor。
+
+    参数名取自 op_host/op_api/aclnn_qkv_rms_norm_rope_cache.h。
+    """
+
+    # aclnn 形参序(与 aclnn_qkv_rms_norm_rope_cache.h 一一对应,共 20 个,全部按位置下发):
+    #   13 张量 -> qkvSize -> headNums -> epsilon -> cacheModeOptional -> 3 个 proto 输出
+    def _split(qkv, qGamma, kGamma, cos, sin, index, qOut, kCache, vCache, kScale, vScale, kOffset, vOffset,
+               qkvSize, headNums, epsilon, cacheModeOptional, qOutBeforeQuant, kOutBeforeQuant, vOutBeforeQuant,
+               **kwargs):
+        tensors = [qkv, qGamma, kGamma, cos, sin, index, qOut, kCache, vCache, kScale, vScale, kOffset, vOffset]
+        picked = {
+            "qkv_size": qkvSize,
+            "head_nums": headNums,
+            "epsilon": 1e-6 if epsilon is None else epsilon,
+            # aclnn 层由 proto 指针是否存在推导 is_output_qkv(与 op_api L2 的判据一致)
+            "is_output_qkv": qOutBeforeQuant is not None,
+            "output_dtypes": kwargs.get("output_dtypes"),
+        }
+        return tensors, picked, kwargs
+
+    def customize_inputs(qkv, qGamma, kGamma, cos, sin, index, qOut, kCache, vCache, kScale, vScale, kOffset, vOffset,
+                         qkvSize, headNums, epsilon, cacheModeOptional, qOutBeforeQuant, kOutBeforeQuant,
+                         vOutBeforeQuant, **kwargs):
+        # aclnn 通路:TTK 丢弃 customize_inputs 的返回值,index 必须原地改写
+        tensors, picked, kwargs = QkvRmsNormRopeCacheAclnnSpec._split(
+            qkv, qGamma, kGamma, cos, sin, index, qOut, kCache, vCache, kScale, vScale, kOffset, vOffset, qkvSize,
+            headNums, epsilon, cacheModeOptional, qOutBeforeQuant, kOutBeforeQuant, vOutBeforeQuant, **kwargs)
+        new = _prepare(tensors, **kwargs)
+        if hasattr(index, "copy_"):
+            index.copy_(new[5])
+        return [qkv, qGamma, kGamma, cos, sin, new[5], qOut, kCache, vCache, kScale, vScale, kOffset, vOffset, qkvSize,
+                headNums, epsilon, cacheModeOptional, qOutBeforeQuant, kOutBeforeQuant, vOutBeforeQuant]
+
+    def golden(qkv, qGamma, kGamma, cos, sin, index, qOut, kCache, vCache, kScale, vScale, kOffset, vOffset, qkvSize,
+               headNums, epsilon, cacheModeOptional, qOutBeforeQuant, kOutBeforeQuant, vOutBeforeQuant, **kwargs):
+        tensors, picked, kwargs = QkvRmsNormRopeCacheAclnnSpec._split(
+            qkv, qGamma, kGamma, cos, sin, index, qOut, kCache, vCache, kScale, vScale, kOffset, vOffset, qkvSize,
+            headNums, epsilon, cacheModeOptional, qOutBeforeQuant, kOutBeforeQuant, vOutBeforeQuant, **kwargs)
+        outs = _compute(*_prepare(tensors, **kwargs), **picked)
+        return _cast_outs(outs, kwargs)
+
+    third_party = {"torch": _Compose}
+    tolerance = _TOL
+
+
+class QkvRmsNormRopeCacheTorchSpec:
+    """e2e(torch_npu.npu_qkv_rms_norm_rope_cache)。"""
+
+    def golden(*inputs, **kwargs):
+        return _cast_outs(_compute(*_prepare(inputs, **kwargs), **_pick(kwargs)), kwargs)
+
+    third_party = {"torch": _Compose}
+    tolerance = _TOL
+
+
+# 【不存在】tf / onnx / caffe 通路:算子目录内无 framework 插件源、无 onnx 插件源,
+# 全仓 find -name '*qkv_rms_norm*' 仅命中算子目录自身(见 ../01_requirement.md §3.3)。
