@@ -64,7 +64,7 @@ public:
             .DynamicFormatFlag(false)      // 固定 ND，不支持动态格式转换
             .DynamicRankSupportFlag(true)  // 支持双 rank 形态：y_grad 2D/3D、元数据 1D/2D
             .DynamicShapeSupportFlag(true) // S / H / EC / B 每步可变（动态 shape）
-            .NeedCheckSupportFlag(false)   // 跳过框架 support check（rank/同形/dtype 契约由 L2 aclnn 自检）
+            .NeedCheckSupportFlag(false)   // 跳过框架 support check（rank/同形/dtype 契约由图模式 InferShape 自检）
             .PrecisionReduceFlag(false)    // 禁止隐式降精度：fp32 主梯度值域可超 fp16 表示域（±65504），
                                            // 降档会破坏数值契约；3 dtype 均有精确 kernel，无需降级回退
             .ExtendCfgInfo("opFile.value",

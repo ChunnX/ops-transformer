@@ -10,7 +10,9 @@
 
 message(STATUS "=== Debug: start ops.moe.moe_tutel_combine_x.op_host.CMakeLists.txt")
 if (BUILD_OPEN_PROJECT)
-    target_sources(op_host_aclnnInner PRIVATE
+    # 本算子仅支持 GE 图模式调用（无 aclnn 单算子调用方式，op_api 层已删除）：
+    # def 走 aclnnExc 分类，只生成 op proto / ops-info，不生成任何 aclnn 包装。
+    target_sources(op_host_aclnnExc PRIVATE
         moe_tutel_combine_x_def.cpp
     )
     add_ops_compile_options(
@@ -24,5 +26,5 @@ if (BUILD_OPEN_PROJECT)
 endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)
-    add_modules_sources(OPTYPE moe_tutel_combine_x ACLNNTYPE aclnn)
+    add_modules_sources(OPTYPE moe_tutel_combine_x ACLNNTYPE aclnn_exclude)
 endif()

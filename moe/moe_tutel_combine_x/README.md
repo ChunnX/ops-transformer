@@ -93,7 +93,7 @@
 - 动态shape：支持以-1表示未知维（动态shape）。图模式下-1维被接受并传播到输出shape（x_grad对应维为-1），维具体化后须满足上述rank与shape契约；维度值小于-1（如-2）为非法输入，报错退出。不支持动态rank，各输入rank须为上述固定取值。
 - 数据类型约束：y_grad、gates、x_grad三者数据类型必须一致（FLOAT16、FLOAT、BFLOAT16三选一），indices、locations固定为INT32。
 - 数据格式约束：仅支持ND格式。
-- 非连续Tensor：aclnnMoeTutelCombineX接口支持非连续Tensor，输入在接口内部自动连续化，结果写回用户提供的输出Tensor；图模式通过算子IR构图调用时，要求传入的Tensor为连续存储。
+- 非连续Tensor：要求传入的Tensor为连续存储（图模式经算子IR构图调用）。
 - 空Tensor：S=0、H=0或B=0时输出为对应shape的空Tensor；EC=0且S大于0时C=0，全部条目无效，输出[S, H]全零。
 - 索引语义：indices[t]<0、locations[t]<0、locations[t]>=C或计算得到的源行越出y_grad行范围的条目为无效条目，对应输出行置零，不报错。
 - 路由元数据来源：gates/indices/locations须由前向MoeTutelDispatch产出并在反向原样重放，不允许反向独立重算路由。
@@ -102,5 +102,4 @@
 
 | 调用方式 | 样例代码 | 说明 |
 | :--- | :--- | :--- |
-| aclnn API | [test_aclnn_moe_tutel_combine_x](examples/test_aclnn_moe_tutel_combine_x.cpp) | 通过[aclnnMoeTutelCombineX](docs/aclnnMoeTutelCombineX.md)接口方式调用MoeTutelCombineX算子。 |
 | GE图模式 | - | 通过[算子IR](op_graph/moe_tutel_combine_x_proto.h)构图方式调用MoeTutelCombineX算子。 |

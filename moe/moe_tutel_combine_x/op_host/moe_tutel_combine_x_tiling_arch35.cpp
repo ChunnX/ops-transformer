@@ -128,7 +128,7 @@ ge::graphStatus MoeTutelCombineXTilingArch35::GetShapeAttrsInfo()
     }
 
     // Batch form: the micro-batch dim must agree (the same contract the
-    // graph-mode InferShape and the aclnn L2 path enforce).
+    // graph-mode InferShape enforces).
     if (rankYGrad_ == 3 && gatesBatchDim >= 0 && batchSize_ >= 0 && gatesBatchDim != batchSize_) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "y_grad, gates",
                                               std::to_string(batchSize_) + ", " + std::to_string(gatesBatchDim),

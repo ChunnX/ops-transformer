@@ -9,17 +9,13 @@
 
 """TTK TestSpec golden for the ``moe_tutel_combine_x`` operator.
 
-Reference math source: the public operator docs — ``README.md`` (功能说明
-computation formula) and ``docs/aclnnMoeTutelCombineX.md`` (约束说明 shape/
-dtype/索引语义).  The reference math below is a line-by-line transcription of
-that formula so it stays auditable against the public contract; nothing is
-taken from any kernel artifact.
+Reference math source: the public operator doc — ``README.md`` (功能说明
+computation formula / 约束说明 shape/dtype/索引语义).  The reference math
+below is a line-by-line transcription of that formula so it stays auditable
+against the public contract; nothing is taken from any kernel artifact.
 
 Registrations (TTK TestSpec ``__spec__`` dict — loader resolves by CSV name):
-  * ``moe_tutel_combine_x``   — Kernel / GEIR flow: golden gets numpy.ndarray.
-  * ``aclnnMoeTutelCombineX`` — ACLNN flow: golden gets torch.Tensor (device);
-    the marshaling accepts either currency, so a downstream torch-layer spec
-    may inherit this golden function verbatim.
+  * ``moe_tutel_combine_x`` — Kernel / GEIR flow: golden gets numpy.ndarray.
 
 Float64 accumulation rule (workflow-mandated, overrides any lower accumulator
 dtype declared in the spec): every floating-point operand is cast to float64
@@ -51,17 +47,12 @@ index_select row gathering + gates broadcast multiply + invalid-entry zeroing.
     Competitor APIs are reached through the ``third_party`` declaration (executed
     in an isolated XPU subprocess), never via an in-process import.  The xpu
     server binds ``__call__`` parameters by name against the caller's param
-    pool, and that pool differs per flow (aclnn: C-header camelCase
-    ``yGrad``/``gates``/``indices``/``locations``/``out``; proto/framework:
-    spec snake_case ``y_grad``/...), so ``__call__`` accepts both spellings of
-    the first operand (all binding params defaulted — names absent from a pool
-    are skipped by the dispatcher, never mis-bound); ``dim`` carries the
+    pool (spec snake_case ``y_grad``/...); ``dim`` carries the
     reference_oracle kwarg default.
 """
 
 __spec__ = {
     "moe_tutel_combine_x": "MoeTutelCombineXTestSpec",
-    "aclnnMoeTutelCombineX": "AclnnMoeTutelCombineXTestSpec",
 }
 
 import numpy as np
@@ -77,7 +68,7 @@ _TOLERANCE = {
 
 def _moe_tutel_combine_x_fp64(y_grad, gates, indices, locations):
     """Reference math — verbatim transcription of the public formula
-    (README.md 功能说明 / docs/aclnnMoeTutelCombineX.md).
+    (README.md 功能说明 / 约束说明).
 
     ``y_grad`` / ``gates`` must already be float64 (cast by the callers); the
     float64 accumulation rule is applied at these boundaries.  ``indices`` /
@@ -162,15 +153,12 @@ class MoeTutelCombineXTorchRef:
     Anchored on the spec reference_oracle (``torch.index_select``, kwargs
     ``dim: 0``) composed with the spec's equivalent reference decomposition:
     index_select row gather + gates broadcast multiply + invalid-entry zeroing.
-    ``__call__`` binds by name against the caller's param pool: the aclnn flow
-    derives names from the C header (``yGrad``/``gates``/``indices``/
-    ``locations``/``out``), proto/framework flows from the spec inputs
-    (``y_grad``/...).  All binding params are keyword-only and defaulted so a
-    name absent from one pool is skipped (never mis-bound to a shifted
-    position; leftovers land in ``**kwargs``), and the first operand accepts
-    both spellings (``yGrad`` wins when bound).  ``dim`` keeps the
-    reference_oracle kwarg default.  Computed in the tensors' native dtype —
-    the competitor's own semantics.
+    ``__call__`` binds by name against the caller's param pool (proto/framework
+    flows use the spec input names ``y_grad``/...).  All binding params are
+    keyword-only and defaulted so a name absent from the pool is skipped
+    (never mis-bound to a shifted position; leftovers land in ``**kwargs``).
+    ``dim`` keeps the reference_oracle kwarg default.  Computed in the
+    tensors' native dtype — the competitor's own semantics.
     """
 
     def __init__(self, dim=0, **kwargs):
@@ -183,12 +171,11 @@ class MoeTutelCombineXTorchRef:
         gates=None,
         indices=None,
         locations=None,
-        yGrad=None,
         **kwargs,
     ):
         import torch
 
-        y = yGrad if yGrad is not None else y_grad
+        y = y_grad
         H = y.shape[-1]
         S = gates.shape[-1]
         B = (gates.numel() // S) if S > 0 else 1
@@ -230,24 +217,6 @@ class MoeTutelCombineXTestSpec:
         **kwargs carries the TTK framework context (input_dtypes, shapes,
         soc version, testcase name, ...) — not used by this golden.
         """
-        return [_combine_x_golden_impl(y_grad, gates, indices, locations)]
-
-    third_party = {"torch": MoeTutelCombineXTorchRef}
-    tolerance = _TOLERANCE
-
-
-class AclnnMoeTutelCombineXTestSpec:
-    """ACLNN flow — golden receives torch.Tensor (device), returns torch.Tensor (CPU).
-
-    Parameter order follows ``aclnnMoeTutelCombineXGetWorkspaceSize`` minus
-    workspaceSize/executor.  The C header declares the output tensor ``out``
-    as the 5th positional param and TTK passes all 5 positionally, so the
-    golden carries a trailing ``out=None`` placeholder — the kernel's
-    (uninitialized) output buffer, ignored: the golden returns its own
-    expected value.
-    """
-
-    def golden(y_grad, gates, indices, locations, out=None, **kwargs):
         return [_combine_x_golden_impl(y_grad, gates, indices, locations)]
 
     third_party = {"torch": MoeTutelCombineXTorchRef}

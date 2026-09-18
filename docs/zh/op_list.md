@@ -1531,7 +1531,7 @@
     <td><a href="../../moe/moe_tutel_combine_x/README.md">moe_tutel_combine_x</a></td>
     <td>✓</td>
     <td>✓</td>
-    <td>✓</td>
+    <td>✗</td>
     <td>✓</td>
     <td>AI Core</td>
     <td>MoE Tutel路由反向combine的数据梯度计算，按路由元数据indices和locations从专家缓冲区梯度y_grad中收集对应行，乘以门控权重gates后写回原始token位置，得到输入侧梯度x_grad。</td>

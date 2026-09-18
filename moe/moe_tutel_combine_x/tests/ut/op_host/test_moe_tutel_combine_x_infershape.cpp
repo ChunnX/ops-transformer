@@ -87,7 +87,7 @@ TEST_F(MoeTutelCombineX, moe_tutel_combine_x_infer_shape_dynamic)
 }
 
 // batch form with mismatched micro-batch dims (y_grad.dim0 != gates.dim0)
-// must be rejected — the same contract the aclnn L2 path enforces.
+// must be rejected — the shape contract of the operator.
 TEST_F(MoeTutelCombineX, moe_tutel_combine_x_infer_shape_batch_dim_mismatch)
 {
     gert::InfershapeContextPara infershapeContextPara("MoeTutelCombineX",
