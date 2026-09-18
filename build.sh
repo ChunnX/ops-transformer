@@ -864,13 +864,16 @@ function build_torch_extension_whl() {
         fi
 
         if [[ -n "${ascend_op_name}" ]]; then
-            export TORCH_EXTENSION_OPS="${ascend_op_name}"
+            # setup.py 按逗号解析 TORCH_EXTENSION_OPS；--ops 依赖追加使用分号
+            # 分隔（见主流程 moe_distribute_combine_v2 等追加逻辑），此处统一
+            # 归一化为逗号，避免分号混入算子名导致单算子打包漏选
+            export TORCH_EXTENSION_OPS="${ascend_op_name//;/,}"
             if [[ -n "${vendor_name}" ]]; then
                 export TORCH_EXTENSION_VENDOR="${vendor_name}"
             else
                 export TORCH_EXTENSION_VENDOR="custom"
             fi
-            log "[INFO] Building torch_extension whl with ops: ${ascend_op_name}, vendor: ${TORCH_EXTENSION_VENDOR}"
+            log "[INFO] Building torch_extension whl with ops: ${TORCH_EXTENSION_OPS}, vendor: ${TORCH_EXTENSION_VENDOR}"
         else
             unset TORCH_EXTENSION_OPS
             unset TORCH_EXTENSION_VENDOR

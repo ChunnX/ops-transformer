@@ -173,7 +173,11 @@ class OpBuilder(ABC):
             return OpBuilder._loaded_ops[self.name]
 
         # Lazy import avoids pulling arg_check into every builder import path.
-        from cann_ops_transformer.utils.arg_check import wrap_op_module
+        # Use a relative import so that vendored packages (e.g. the lightweight
+        # packages named cann_ops_transformer_<vendor> built with
+        # TORCH_EXTENSION_OPS) resolve within themselves instead of the base
+        # package name that may not be installed.
+        from ..utils.arg_check import wrap_op_module
 
         op_module = load(
             name=self.name,
