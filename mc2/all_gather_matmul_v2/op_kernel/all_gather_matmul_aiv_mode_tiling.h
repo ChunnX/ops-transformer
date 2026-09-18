@@ -18,8 +18,8 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <type_traits>
 #include "kernel_tiling/kernel_tiling.h"
-#include "../../common/op_kernel/mc2_matmul_aiv_mode_tiling_common.h"
 
 constexpr static int32_t MAX_BLOCK_COUNT = 2;
 
@@ -59,7 +59,18 @@ struct CoCTiling {
     int32_t numBlocks = -1;
     int32_t rankSize = -1;
 
-    Mc2MatmulAivModeTiling aivModeTiling;
+    int32_t m0 = -1;
+    int32_t k0 = -1;
+    int32_t n0 = -1;
+    int32_t mLoop = -1;
+    int32_t kLoop = -1;
+    int32_t nLoop = -1;
+    int32_t swizzlCount = -1;
+    int32_t swizzlDirect = -1;
+    int32_t pValue = -1;
+    int32_t ubMoveNum = -1;
+    int32_t commNpuSplit = -1;
+    int32_t commDataSplit = -1;
     int32_t commDirect = -1;
     int32_t lenPerLoop = -1;
     int32_t extraUbMoveNum = -1;
@@ -75,7 +86,9 @@ struct CoCTiling {
 };
 
 static_assert(std::is_standard_layout_v<CoCTiling>);
-static_assert(offsetof(CoCTiling, aivModeTiling) == 5 * sizeof(int32_t));
+static_assert(offsetof(CoCTiling, m0) == 5 * sizeof(int32_t));
+static_assert(offsetof(CoCTiling, commDataSplit) == 16 * sizeof(int32_t));
+static_assert(offsetof(CoCTiling, is91093) == 27 * sizeof(int32_t));
 static_assert(sizeof(CoCTiling) == 28 * sizeof(int32_t));
 
 struct AllGatherMatmulAIVModeTilingData {
