@@ -11,8 +11,8 @@
 职责是把「本核该干哪些块」翻译成逐 task 的 :class:`FagRunInfo`：
 
 1. **块级有效性**：``is_block_valid_i`` / ``skip_invalid``；
-2. **分核映射**：线性支读 AICPU metadata，swizzle 支按列/按 packed 有效块
-   跨核发放；
+2. **分核映射**：线性支读 AICPU metadata；dense swizzle 走 ``swizzle_idx``；
+   mask 3/4 过门走 ``fag_colsplit`` HeadSliceSplit；未过门走 skip_invalid；
 3. **逐 task 展开**：``set_run_info`` 把全局块下标拆成 (b, n2, g, s2o, s1o)
    与各张量的 GM 偏移，并算好 K/V 复用与 dK/dV flush 的开关。
 
@@ -25,6 +25,7 @@ import pypto_pro.language as pl
 
 # --- generated imports (fag_fiximports.py) ---
 from fag_common import CUBE_BASEM, CUBE_BASEN, VECTOR_BASEM
+from fag_colsplit import col_core_count, col_local_to_global, col_packed_to_dense
 # --- end generated imports ---
 
 # ==================================================================
@@ -92,7 +93,12 @@ def next_work_gidx(
     denseCursor,
     numBlocks,
 ):
-    """下一块全局下标；本核没有活块时 -1。线性走 skip_invalid，swizzle 走公式。"""
+    """下一块全局下标；本核没有活块时 -1。
+
+    swizzle 是 tilingkey 编译期常量。``swizzle == 0`` 先折叠，死支不进
+    swizzle 核。mask 3/4 过门走 HeadSliceSplit（col_local_to_global），
+    未过门走 skip_invalid。dense swizzle 走 swizzle_idx，一行不改。
+    """
     if swizzle == 0:
         return skip_invalid(constInfo, denseCursor, blockEnd)
     if localIdx >= numBlocks:
@@ -122,64 +128,6 @@ def swizzle_idx(constInfo, cBlockIdx, coreNum, localIdx):
     return head * constInfo.s1oS2o + s2Idx * constInfo.s1Outer + s1Idx
 
 
-# Packed 反函数按列扫描的上限。S=8192 -> s2Outer=64；本轮不做 S>32768。
-PACKED_SCAN_MAX = 128
-
-
-def packed_g_to_s1s2(constInfo, gDimTail):
-    """packed 有效块下标 -> (s1o, s2o)。按列扫描，与 kernel 既有 packed 同序。
-
-    暂不改成求根公式，按列扫描即可。
-    mask_mode 静态分支只编一侧长度公式。
-    """
-    acc = 0
-    s1Idx = 0
-    s2Idx = 0
-    found = 0
-    m = constInfo.s1Outer
-    n = constInfo.s2Outer
-    for s2 in pl.range(0, PACKED_SCAN_MAX):
-        if s2 < n:
-            active = 1
-        else:
-            active = 0
-        if mask_mode == 3:
-            need = s2 * CUBE_BASEN + 1
-            rhs = need - (constInfo.s2Size - constInfo.s1Size)
-            if rhs < 1:
-                s1Min = 0
-            else:
-                s1Min = pl.max((rhs + CUBE_BASEM - 1) // CUBE_BASEM - 1, 0)
-            length = pl.max(m - s1Min, 0) * active
-            s1Base = s1Min
-        elif mask_mode == 4:
-            xMin = pl.max(s2 - constInfo.bandQ, 0)
-            xMax = pl.min(m - 1, s2 + constInfo.bandP)
-            length = pl.max(xMax - xMin + 1, 0) * active
-            s1Base = xMin
-        else:
-            length = m * active
-            s1Base = 0
-        if found == 0:
-            if gDimTail >= acc:
-                if gDimTail < acc + length:
-                    s2Idx = s2
-                    s1Idx = s1Base + (gDimTail - acc)
-                    found = 1
-        acc = acc + length
-    return s1Idx, s2Idx
-
-
-def packed_to_dense_idx(constInfo, packedIdx):
-    total = constInfo.totalPerBatchNum
-    if total < 1:
-        total = constInfo.s1oS2o
-    bIdx = packedIdx // total
-    gDimTail = packedIdx % total
-    s1Idx, s2Idx = packed_g_to_s1s2(constInfo, gDimTail)
-    return bIdx * constInfo.s1oS2o + s2Idx * constInfo.s1Outer + s1Idx
-
-
 # ==================================================================
 #  AICPU metadata 布局 —— 与 flash_attn_grad_metadata_split.h 对齐
 # ==================================================================
@@ -201,7 +149,7 @@ META_VIEW_LEN = 8192
 def block_range_of(constInfo, cBlockIdx, coreNum, blockStart, blockEnd):
     """本核负责的块数。线性支读 metadata；swizzle 仍走列跨核公式。
 
-    mask+swizzle 按 packed 有效块跨核发，不再用整矩形列跨核。
+    mask 3/4 过门按 HeadSliceSplit 计块数；未过门读 metadata 区间。
     分核开关用 tilingkey 裸名 ``swizzle``，与 ``next_work_gidx`` 一样先判
     ``swizzle == 0``，死支公式不进线性核。
     """
@@ -215,9 +163,7 @@ def block_range_of(constInfo, cBlockIdx, coreNum, blockStart, blockEnd):
         return pl.astype(
             ((rem + coreNum - 1) // coreNum) * constInfo.s1Outer, pl.DT_INT64
         )
-    fused = constInfo.bSize * constInfo.n2Size * constInfo.gSize
-    remP = pl.max(fused * constInfo.totalPerBatchNum - cBlockIdx, 0)
-    return pl.astype((remP + coreNum - 1) // coreNum, pl.DT_INT64)
+    return pl.astype(col_core_count(constInfo, cBlockIdx, coreNum), pl.DT_INT64)
 
 
 def block_idx_of(constInfo, cBlockIdx, coreNum, blockStart, localIdx):
@@ -228,9 +174,8 @@ def block_idx_of(constInfo, cBlockIdx, coreNum, blockStart, localIdx):
         return pl.astype(
             swizzle_idx(constInfo, cBlockIdx, coreNum, localIdx), pl.DT_INT64
         )
-    return pl.astype(
-        packed_to_dense_idx(constInfo, cBlockIdx + localIdx * coreNum), pl.DT_INT64
-    )
+    gidx = col_local_to_global(constInfo, cBlockIdx, coreNum, localIdx)
+    return pl.astype(col_packed_to_dense(constInfo, gidx), pl.DT_INT64)
 
 
 # ==================================================================

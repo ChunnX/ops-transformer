@@ -34,12 +34,13 @@ vector 子核各自发来的信号。
 以下是这两个模板共同的设计约束，改动前务必读完。
 
 当前裁剪范围：非 TND（BSND/BNSD）、FP16。mask_mode 0=dense，3=causal，
-4=band。tilingkey ``swizzle`` 区分线性 skip 无效块与 packed 有效块分核。
+4=band。tilingkey ``swizzle`` 区分线性 skip 无效块与 mask 按列分核。
 BN2 支持 mask，禁止 BN2+swizzle。
 
 dQ/dK/dV 均由 fixpipe 经 GM workspace 做 atomicAdd 累加。dK/dV 的 L0C
 驻留累加作为后续优化单独叠加。mask_mode 静态分支：0 恒有效，3=causal
-块有效，4=band 区间；线性路径 skip 无效块。
+块有效，4=band 区间；线性路径 skip 无效块。mask 3/4 非 TND GS1S2 过门
+走 HeadSliceSplit 按列分核，未过门仍 skip。
 
 Tmpl.BN2GS1S2 且 d_align<=192 走 flash_attn_grad_preload3 的
 PRELOAD_TIMES=3（+2）。其余（Tmpl.BN2、D=256/768 GS1S2）走

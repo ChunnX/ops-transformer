@@ -151,8 +151,11 @@ class FlashAttnGradTilingKey:
         # 一般 d_align==dv_align；仅 D=192 且 Dv=128 允许 dv_align=128。
         if d_align != dv_align and not (d_align == 192 and dv_align == 128):
             return False
-        # D=192 / 256 / 768 只编非 TND。mask 3/4 与 dense 共用 GS1S2 D-split；
-        # swizzle+mask 的 Group B 未迁，不编那几份。
+        # TND swizzle 是另一套实现（列前缀和在 AICPU），本轮不接。
+        if layout == 1 and swizzle == 1:
+            return False
+        # D=192 / 256 / 768 只编非 TND。mask 3/4 与 dense 共用 GS1S2 D-split。
+        # 非 TND 的 swizzle=1 必须编出来：长序列 mask 过门走 HeadSliceSplit。
         if d_align == 192 or d_align == 256 or d_align == 768:
-            return layout == 0 and (mask_mode == 0 or swizzle == 0)
+            return layout == 0
         return True

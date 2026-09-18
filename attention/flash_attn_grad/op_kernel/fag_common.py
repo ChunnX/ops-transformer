@@ -18,6 +18,8 @@
 
 import pypto_pro.language as pl
 
+from fag_colsplit import ceil_div_signed, col_prefix_body
+
 # ---- 基本块尺寸 ----
 CUBE_BASEM = 128  # s1 对齐 128
 CUBE_BASEN = 128  # s2 对齐 128
@@ -133,6 +135,41 @@ def set_const_info(tiling, coreNum):
     """
     s1Outer = (tiling.s1 + CUBE_BASEM - 1) // CUBE_BASEM
     s2Outer = (tiling.s2 + CUBE_BASEN - 1) // CUBE_BASEN
+
+    # ---- 按列分核的列几何常量（只有 mask 3/4 读，mask0 折叠成 0）----
+    # mask3 是 band 的特例：取 P = M-1 使上界 min(c+P, M-1) 恒为 M-1，
+    # 且末列不需要特例（上界本来就没被 s2 截断）。
+    # mask3 的 s1Token 是 INT32_MAX + s1 - s2（可能已溢出），这里不读它。
+    if mask_mode == 0:
+        colP = 0
+        colQ = 0
+        colRounds = 1
+        packedPerHead = s1Outer * s2Outer
+    else:
+        # 单侧正无穷 token=INT32_MAX，P/Q 必须夹到 outer-1，否则 col_prefix 溢出。
+        colQ = ceil_div_signed(tiling.s2Token, CUBE_BASEM)
+        colQ = pl.min(colQ, s2Outer - 1)
+        if mask_mode == 3:
+            colP = s1Outer - 1
+            colLastHi = s1Outer - 1
+        else:
+            colP = ceil_div_signed(tiling.s1Token, CUBE_BASEM)
+            colP = pl.min(colP, s1Outer - 1)
+            # 末列上界：s2Right 被 s2 截断成 Lc = 64*ceil(s2/64)
+            lc = ((tiling.s2 + 63) // 64) * 64
+            colLastHi = pl.min(
+                ceil_div_signed(lc + tiling.s1Token, CUBE_BASEM) - 1, s1Outer - 1
+            )
+        # 每 head 的有效块数 = P(N) = 前 N-1 列的统一梯形 + 末列。
+        # **不能**用 tiling.totalPerBatchNum：它会多算无效块（S1=256/S2=128
+        # mask3 真值 1、它给 2），拿它当 packed 空间大小会派发到无效块。
+        lastLo = pl.max(s2Outer - 1 - colQ, 0)
+        packedPerHead = col_prefix_body(s1Outer, colP, colQ, s2Outer - 1) + pl.max(
+            colLastHi - lastLo + 1, 0
+        )
+        # HeadSliceSplit 不再用 K 轮转。字段留下以免 Tiling/constInfo 漂移。
+        colRounds = 1
+
     return pl.struct(
         "FagConstInfo",
         bSize=tiling.b,
@@ -183,8 +220,12 @@ def set_const_info(tiling, coreNum):
         s1Token=tiling.s1Token,
         s2Token=tiling.s2Token,
         totalPerBatchNum=tiling.totalPerBatchNum,
-        bandP=(pl.max(tiling.s1Token, 0) + CUBE_BASEM - 1) // CUBE_BASEM,
-        bandQ=(pl.max(tiling.s2Token, 0) + CUBE_BASEN - 1) // CUBE_BASEN,
+        # 按列分核的列几何。colP/colQ 不夹负值——旧的 bandP/bandQ 用
+        # max(token,0) 夹到 0，token < -128 时会多算一整行，见 SPEC §3.2。
+        colP=colP,
+        colQ=colQ,
+        packedPerHead=packedPerHead,
+        colRounds=colRounds,
     )
 
 
