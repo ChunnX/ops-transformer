@@ -32,6 +32,8 @@ _MOE_EP_METADATA_FIELDS = 5
 
 # engram fetch 模式: 0=切片分存+跨NPU通信(默认, 行为与历史版本一致, 推理/训练均支持);
 # 1=全量表冗余到每个NPU, 取数纯本地(仅推理, 不支持 with_grad=True)
+# 值契约与 op 侧 mc2/engram_fetch/op_api/engram_fetch_mode_def.h 及
+# PTA C++ 侧 elastic_buffer.cpp 的 ENGRAM_FETCH_MODE_* 常量保持同步, 修改需同步
 FETCH_MODE_SLICED = 0
 FETCH_MODE_LOCAL = 1
 _FETCH_MODES = (FETCH_MODE_SLICED, FETCH_MODE_LOCAL)

@@ -55,6 +55,8 @@ constexpr uint32_t HCCL_COMM_LAYERS_UB_MEM = 0;
 constexpr uint32_t GET_LOCAL_SERVER_RANK_SIZE_LAYER = 0;
 constexpr int64_t NETWORK_DIRECT = 0;
 constexpr int64_t NETWORK_HYBRID = 1;
+// engram fetch 模式(独立编译包无法 include op 侧头文件, 与 op 包共享头
+// mc2/engram_fetch/op_api/engram_fetch_mode_def.h 及 Python 侧 FETCH_MODE_* 保持值契约, 修改需同步)
 constexpr int64_t ENGRAM_FETCH_MODE_SLICED = 0; // 切片分存 + 跨NPU通信(默认)
 constexpr int64_t ENGRAM_FETCH_MODE_LOCAL = 1;  // 全量表冗余到每个 NPU, 取数纯本地
 constexpr int64_t BUFFER_ALIGNMENT = 2 * 1024 * 1024;

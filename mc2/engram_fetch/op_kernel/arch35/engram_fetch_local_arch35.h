@@ -1,15 +1,11 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software: you can redistribute it and/or modify it under the terms and conditions of
- * the CANN Open Software License Agreement Version 2.0 (the "License").
- * You may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.hiascend.com/license/
- *
- * Unless required by applicable law or agreed to in writing, software distributed under the License
- * is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and limitations under the License.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 
 /*!
@@ -94,7 +90,7 @@ __aicore__ inline void EngramFetchLocalArch35::GatherRange(uint32_t start, uint3
             batchLen = end - cur;
         }
         CopyIndicesToUb(cur, batchLen);
-        EngramFetchSyncFunc<AscendC::HardEvent::MTE2_S>();
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
 
         for (uint32_t i = 0; i < batchLen; i++) {
             int32_t entry = indicesLocal.GetValue(i);
@@ -123,7 +119,7 @@ __aicore__ inline void EngramFetchLocalArch35::Process()
         // 的分配风格同构; 朴素 ceil 切分在 T%totalBlocks 较小时会使近半数核空转)
         auto assign = GetTokenRangeAssignment(totalBlocks_, aivId_, static_cast<uint32_t>(numTokens_));
         GatherRange(assign.start, assign.start + assign.count);
-        EngramFetchSyncFunc<AscendC::HardEvent::MTE3_S>();
+        SyncFunc<AscendC::HardEvent::MTE3_S>();
     }
 }
 

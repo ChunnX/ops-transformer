@@ -21,11 +21,9 @@
 #include "opdev/op_log.h"
 #include "log/log.h"
 #include "aclnnInner_engram_fetch.h"
+#include "engram_fetch_mode_def.h"
 
 using namespace op;
-
-constexpr int64_t ENGRAM_FETCH_MODE_SLICED = 0; // 切片跨NPU(默认, 推理/训练)
-constexpr int64_t ENGRAM_FETCH_MODE_LOCAL = 1;  // 全量本NPU(仅推理)
 
 static bool CheckNotNull(const aclTensor *commContext, const aclTensor *indices, const aclTensor *fetched)
 {
