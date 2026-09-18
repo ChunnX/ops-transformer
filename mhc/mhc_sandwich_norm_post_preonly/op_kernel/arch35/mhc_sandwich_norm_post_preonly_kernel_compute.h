@@ -53,8 +53,8 @@ __aicore__ inline void LoadHOutAndCast(uint64_t gmOffset, uint32_t tD)
     bufHOutBf16_.FreeTensor(hBf16);
 }
 
-/// 将residual[token, 0:N, tOff:tOff+tD]从低精度加载并转换为FP32。
-__aicore__ inline void LoadResidualAndCast(uint64_t gmBaseOffset, uint32_t tD)
+/// 发射residual[token, 0:N, tOff:tOff+tD]的低精度搬运，允许调用方穿插独立Vector计算。
+__aicore__ inline void PrefetchResidual(uint64_t gmBaseOffset, uint32_t tD)
 {
     // Host已固定校验N为4，使用编译期常量便于展开标量循环。
     constexpr uint32_t N = N_MAX;
@@ -62,7 +62,13 @@ __aicore__ inline void LoadResidualAndCast(uint64_t gmBaseOffset, uint32_t tD)
     for (uint32_t n = 0; n < N; ++n)
         DataCopy(resBf16[n * dimTile_], residualGm_[gmBaseOffset + (uint64_t)n * D_], tD);
     bufResidualBf16_.EnQue(resBf16);
-    resBf16 = bufResidualBf16_.DeQue<T>();
+}
+
+/// 等待已发射的residual搬运并转换为FP32。
+__aicore__ inline void FinishResidualCast(uint32_t tD)
+{
+    constexpr uint32_t N = N_MAX;
+    LocalTensor<T> resBf16 = bufResidualBf16_.DeQue<T>();
     LocalTensor<float> resFp32 = bufResFp32_.Get<float>();
     for (uint32_t n = 0; n < N; ++n)
         Cast(resFp32[n * dimTile_], resBf16[n * dimTile_], RoundMode::CAST_NONE, tD);
