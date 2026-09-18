@@ -860,25 +860,6 @@ DequantBmm::Mc2SlidingWindowParams &AllGatherQuantBmmTiling::MutableTCubeTailTil
     return allGatherMatmulTilingDataFp8_->quantBmmv3TailTiling.adaptiveSlidingWin;
 }
 
-void AllGatherQuantBmmTiling::DisableFp4TailSplit(::TCubeTiling &matmulTiling,
-                                                  DequantBmm::Mc2SlidingWindowParams &winParam)
-{
-    // 临时验证：mxfp4 非转置场景写死尾块不切分，屏蔽滑动窗口尾块 M/N 切分，规避精度问题
-    OP_LOGI(opName_, "disable tail split for mxfp4: mTailTile=%u, nTailTile=%u -> 1", winParam.mTailTile,
-            winParam.nTailTile);
-    winParam.mTailTile = 1;
-    winParam.nTailTile = 1;
-    winParam.alignNTailSplit = 0;
-
-    // 尾块不切分后，usedCoreNum 回退为 min(基本块总数, aicNum)，避免核数大于基本块数导致越界计算
-    int64_t mCnt = (static_cast<int64_t>(matmulTiling.M) + matmulTiling.baseM - 1) / matmulTiling.baseM;
-    int64_t nCnt = (static_cast<int64_t>(matmulTiling.N) + matmulTiling.baseN - 1) / matmulTiling.baseN;
-    int64_t totalCnt = mCnt * nCnt;
-    int64_t aicNum = static_cast<int64_t>(args_.aicCoreNum);
-    matmulTiling.usedCoreNum = static_cast<int32_t>(totalCnt < aicNum ? totalCnt : aicNum);
-    OP_LOGI(opName_, "disable tail split for mxfp4: usedCoreNum=%d", matmulTiling.usedCoreNum);
-}
-
 ge::graphStatus AllGatherQuantBmmTiling::DoAdaptSlidWindowTiling()
 {
     // local块切分
@@ -888,7 +869,8 @@ ge::graphStatus AllGatherQuantBmmTiling::DoAdaptSlidWindowTiling()
         AllGatherQuantBmmHelper mmLocalTile(*this, allGatherMatmulTilingDataFp8_->quantBmmv3LocalTiling, true);
         MC2_CHECK_LOG_RET(opName_, mmLocalTile.DoTiling());
         if (isFp4_ && !args_.isBTrans) {
-            DisableFp4TailSplit(MutableTCubeLocalTilingData(), MutableTCubeLocalTilingWindowParam());
+            OP_LOGI(opName_, "enable alignNTailSplit for local tiling");
+            MutableTCubeLocalTilingWindowParam().alignNTailSplit = 1;
         }
     }
     args_.mValue = (quantMmMode_ == mc2tiling::Mc2QuantMode::PERTENSOR_MODE) ?
@@ -900,7 +882,8 @@ ge::graphStatus AllGatherQuantBmmTiling::DoAdaptSlidWindowTiling()
     if (args_.nValue != 0) {
         MC2_CHECK_LOG_RET(opName_, mmTile.DoTiling());
         if (isFp4_ && !args_.isBTrans) {
-            DisableFp4TailSplit(MutableTCubeTileTilingData(), MutableTCubeTileTilingWindowParam());
+            OP_LOGI(opName_, "enable alignNTailSplit for tile tiling");
+            MutableTCubeTileTilingWindowParam().alignNTailSplit = 1;
         }
     }
     if (quantMmMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE) {
@@ -919,7 +902,8 @@ ge::graphStatus AllGatherQuantBmmTiling::DoAdaptSlidWindowTiling()
     if (args_.nValue != 0) {
         MC2_CHECK_LOG_RET(opName_, mmTail.DoTiling());
         if (isFp4_ && !args_.isBTrans) {
-            DisableFp4TailSplit(MutableTCubeTailTilingData(), MutableTCubeTailTilingWindowParam());
+            OP_LOGI(opName_, "enable alignNTailSplit for tail tiling");
+            MutableTCubeTailTilingWindowParam().alignNTailSplit = 1;
         }
     }
     if (quantMmMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE) {

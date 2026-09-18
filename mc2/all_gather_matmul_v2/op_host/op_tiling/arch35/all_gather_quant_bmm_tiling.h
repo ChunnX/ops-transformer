@@ -62,7 +62,6 @@ protected:
     Mc2Tiling::RCSTiling &MutableRCSTilingDataA5();
 
     ge::graphStatus DoAdaptSlidWindowTiling();
-    void DisableFp4TailSplit(::TCubeTiling &matmulTiling, DequantBmm::Mc2SlidingWindowParams &winParam);
     ge::graphStatus SetMc2Hcomm();
     void SetTilingKeyParams();
     ge::graphStatus CheckGroupSize();
