@@ -98,6 +98,7 @@ protected:
     static constexpr uint64_t MIN_WORLD_SIZE = 2;
     static constexpr uint64_t MAX_WORLD_SIZE = 16;
     static constexpr uint64_t MAX_GROUP_NAME_LEN = 128;
+    static constexpr uint64_t Y_OUTPUT_BYTE = 2;
 
     ge::graphStatus CheckTensorAttrs()
     {
@@ -732,10 +733,33 @@ protected:
         td->commTilingData.splitAxisTailCnt = tailTileCnt;
         td->commTilingData.nonSplitAxisSize = np_;
 
-        OP_LOGI(opName, "comm tiling: tileSize=%lu, tileCnt=%lu, tailSize=%lu, tailCnt=%lu, nonSplitSize=%lu",
+        // buffer 复用
+        if (hccBufPtr != nullptr && *hccBufPtr > 0 && static_cast<uint64_t>(*hccBufPtr) < WIN_REUSE_BUDGET_CAP) {
+            OP_LOGE_WITH_INVALID_ATTR(opName, "hccl_buffer_size", std::to_string(*hccBufPtr).c_str(),
+                                      (std::string(">= ") + std::to_string(WIN_REUSE_BUDGET_CAP / (1024UL * 1024UL)) +
+                                       " MB (400MB) for win buffer reuse").c_str());
+            return ge::GRAPH_FAILED;
+        }
+        uint64_t totalWinBytesNeeded = m_ * n_ * Y_OUTPUT_BYTE;
+        uint64_t slotNum = 0;
+        if (totalWinBytesNeeded <= WIN_REUSE_BUDGET_CAP) {
+            slotNum = totalTileCnt; // 空间足够时不复用buffer 此时slotNum = tileNum
+        } else {
+            uint64_t slotDataSize = headMSize * n_ * Y_OUTPUT_BYTE;
+            if (slotDataSize > WIN_REUSE_BUDGET_CAP) {
+                OP_LOGE_WITHOUT_REPORT(opName, "Per tile datasize: %lu is bigger than win cap datasize %lu", slotDataSize,
+                    WIN_REUSE_BUDGET_CAP);
+                return ge::GRAPH_FAILED;
+            }
+            uint64_t budgetDepth = (slotDataSize == 0) ? totalTileCnt : WIN_REUSE_BUDGET_CAP / slotDataSize;
+            slotNum = std::min(budgetDepth, totalTileCnt);
+        }
+        td->commTilingData.slotNum = slotNum;
+
+        OP_LOGI(opName, "comm tiling: tileSize=%lu, tileCnt=%lu, tailSize=%lu, tailCnt=%lu, nonSplitSize=%lu, slotNum=%lu",
                 td->commTilingData.splitAxisTileSize, td->commTilingData.splitAxisTileCnt,
                 td->commTilingData.splitAxisTailSize, td->commTilingData.splitAxisTailCnt,
-                td->commTilingData.nonSplitAxisSize);
+                td->commTilingData.nonSplitAxisSize, td->commTilingData.slotNum);
 
         return ge::GRAPH_SUCCESS;
     }
