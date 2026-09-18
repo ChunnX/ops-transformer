@@ -361,9 +361,6 @@ class SymmBuffer:
                 "bytes required by this config. Create the largest-config SymmBuffer first, "
                 "or destroy the previous one before re-creating."
             )
-        # 首建窗口后各 rank 的注册/地址交换与 kernel 启动存在竞态（去重姿势作为首例时
-        # 实测 kernel trap + MTE 越界，2026-09-18 定谳）；建链完成后全组同步一次再放行。
-        torch.distributed.barrier(group)
         self.topo_type = self._ctx_manager.topo_type
         self.rank_num_per_server = self._ctx_manager.rank_num_per_server
         self.mask_buffer = None
