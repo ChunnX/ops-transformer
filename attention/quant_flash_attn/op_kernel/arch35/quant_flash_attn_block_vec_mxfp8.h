@@ -1080,6 +1080,7 @@ public:
                         vselrIndexesTensor.SetValue(i * (256 >> 2) + j, i + (j << 2));
                     }
                 }
+                UpdateMinCheckValue();
             } else {
                 tPipe_->InitBuffer(vselrIndexesBuf_[static_cast<int>(VselrIndexEnum::GT_64_AND_LTE_128_INDEX)],
                                    128); // s2realsize (64, 128]
