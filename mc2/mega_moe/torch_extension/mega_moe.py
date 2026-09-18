@@ -680,6 +680,7 @@ def mega_moe(
         dispatch_quant_mode=sym_buffer.dispatch_quant_mode,
         combine_quant_mode=sym_buffer.combine_quant_mode,
         comm_alg=sym_buffer.comm_alg,
+        combine_comm_mode=sym_buffer.combine_comm_mode,
         num_max_tokens_per_rank=sym_buffer.num_max_tokens_per_rank,
         activation=activation,
         activation_clamp=activation_clamp,
