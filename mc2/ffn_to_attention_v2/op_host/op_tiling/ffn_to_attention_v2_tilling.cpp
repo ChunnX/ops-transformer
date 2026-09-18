@@ -145,7 +145,8 @@ ge::graphStatus FFNToAttentionV2TilingFunc(gert::TilingContext *context)
                     return ge::GRAPH_FAILED);
     const size_t flagWindowSize = aivNum * URMA_FLAG_SLOT_SIZE;
     const auto &info = tilingData->ffnToAttentionV2Info;
-    // Mirror the explicit InitBuffer allocations on AIV0, which also owns the HCOMM buffers.
+    // Mirror the explicit InitBuffer allocations per AIV. The HCOMM buffers are allocated on
+    // every AIV for the multi-channel relay, so the sum is each AIV's UB footprint.
     const uint64_t alignedPayloadBytes =
         (static_cast<uint64_t>(info.H) * TOKEN_DTYPE_BYTES + URMA_UB_ALIGN - 1U) / URMA_UB_ALIGN * URMA_UB_ALIGN;
     const uint64_t ubCountRowBytes =

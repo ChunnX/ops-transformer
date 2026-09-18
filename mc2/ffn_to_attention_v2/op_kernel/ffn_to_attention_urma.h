@@ -93,7 +93,7 @@ private:
     __aicore__ inline void PrefetchTokenMetaData(uint64_t tokenStart, uint32_t tokenNum);
     __aicore__ inline void ReadTokenMetaDataFromLocal(ReadTokenMetaDataStruct &metaDataStruct, uint32_t localOffset);
     __aicore__ inline GM_ADDR GetWindowAddr(uint32_t curAttenWorkRank);
-    __aicore__ inline uint64_t GetUrmaCommHandle(uint32_t dstRank);
+    __aicore__ inline uint64_t GetUrmaCommHandle(uint32_t dstRank, uint32_t channelIndex);
     __aicore__ inline void HcommInit();
     __aicore__ inline void InitLocalFlag();
     __aicore__ inline void SendToLocal(GM_ADDR remoteDataAddr, GM_ADDR remoteFlagAddr, uint64_t yOffset,
@@ -107,7 +107,7 @@ private:
                                                  bool enableCqe);
     __aicore__ inline void BuildAddressTable();
     __aicore__ inline uint32_t GetAddressTableCount(uint32_t targetRank);
-    __aicore__ inline void SendAddressTable(uint32_t targetRank, uint32_t entryCount);
+    __aicore__ inline void SendAddressTable(uint32_t targetRank, uint32_t entryCount, uint32_t channelIdx);
     template <typename BatchHandleType>
     __aicore__ inline void CommitAndDrainChannel(BatchHandleType &batchHandle, HcommChannelHandle channel,
                                                  uint32_t &preparedWqeCount, uint32_t &sqWriteCount);
@@ -160,6 +160,7 @@ private:
     uint32_t expertNumPerToken_{0};
     uint32_t aivNum_{0};
     uint32_t worldSize_{0};
+    uint32_t channelsPerRank_{1};
     uint64_t batchSizeSendCnt_{0};
     uint64_t hSize_{0};
     uint64_t winTokenInfoTableSize_{0};
@@ -191,6 +192,13 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::I
     aivNum_ = tilingData->ffnToAttentionV2Info.aivNum;
     worldSize_ = tilingData->ffnToAttentionV2Info.worldSize;
     maxTokenNum_ = tilingData->ffnToAttentionV2Info.maxTokenNum;
+    // Multi-channel: hcommHandle_ is laid out by rank * channelsPerRank + channel. Guard against
+    // an unset or oversized context value so a degenerate context still falls back to 1 channel.
+    channelsPerRank_ = mc2Context_->channelsPerRank;
+    if (worldSize_ == 0U || channelsPerRank_ == 0U ||
+        channelsPerRank_ > Mc2Aclnn::HCCL_MAX_RANK_SIZE / worldSize_) {
+        channelsPerRank_ = 1U;
+    }
 
     inputDataAddr_ = x;
     xGMTensor_.SetGlobalBuffer(reinterpret_cast<__gm__ xType *>(x));
@@ -282,10 +290,10 @@ __aicore__ inline GM_ADDR FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
-__aicore__ inline uint64_t FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::GetUrmaCommHandle(uint32_t dstRank)
+__aicore__ inline uint64_t FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::GetUrmaCommHandle(
+    uint32_t dstRank, uint32_t channelIndex)
 {
-    uint32_t index = dstRank > rankId_ ? dstRank - 1U : dstRank;
-    return mc2Context_->hcommHandle_[index];
+    return mc2Context_->hcommHandle_[dstRank * channelsPerRank_ + channelIndex];
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
@@ -559,20 +567,21 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::C
         preparedWqeCount = 0U;
     }
     int32_t ret = hcomm_.Drain(channel);
-    ascendc_assert(ret == 0, "Urma drain failed, ret=%d", ret);
+    ascendc_assert(ret == 0, "Urma drain failed, ret=%d, rankId=%u, channel=%lu", ret, rankId_, channel);
     sqWriteCount = 0U;
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
 __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::SendAddressTable(uint32_t targetRank,
-                                                                                                uint32_t entryCount)
+                                                                                                 uint32_t entryCount,
+                                                                                                 uint32_t channelIdx)
 {
     if (entryCount == 0U) {
         return;
     }
 
     GM_ADDR remoteWindowAddr = GetWindowAddr(targetRank);
-    HcommChannelHandle channel = GetUrmaCommHandle(targetRank);
+    HcommChannelHandle channel = GetUrmaCommHandle(targetRank, channelIdx);
     auto batchHandle = hcomm_.MakeBatchHandle(channel, hcommBatchTensor_, URMA_BATCH_BUFFER_SIZE, remoteWindowAddr);
     GlobalTensor<uint64_t> rankAddressTable;
     rankAddressTable.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(GetRankAddressTableAddr(targetRank)));
@@ -583,7 +592,8 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
     uint32_t preparedWqeCount = 0U;
     uint32_t sqWriteCount = 0U;
 
-    // Preserve the existing protocol: all data WQEs for this rank are submitted before any flag WQE.
+    // Data phase: an entry whose index within the rank (rankEntryIdx) is congruent to channelIdx
+    // is sent on this channel. All data WQEs of the channel are appended first.
     for (uint32_t chunkStart = 0U; chunkStart < entryCount; chunkStart += entryChunkMax) {
         uint32_t curEntries = (chunkStart + entryChunkMax > entryCount) ? entryCount - chunkStart : entryChunkMax;
         DataCopyExtParams copyParams{1U, curEntries * REMOTE_ADDRESS_ENTRY_SIZE, 0U, 0U, 0U};
@@ -592,6 +602,9 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
                     padParams);
         SyncFunc<HardEvent::MTE2_S>();
         for (uint32_t i = 0U; i < curEntries; ++i) {
+            if ((chunkStart + i) % channelsPerRank_ != channelIdx) {
+                continue;
+            }
             uint32_t entryOffset = i * entryElements;
             RemoteAddressEntry addressEntry{entriesLocal.GetValue(entryOffset),
                                             entriesLocal.GetValue(entryOffset + 1U)};
@@ -608,6 +621,9 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
         }
     }
 
+    // Flag phase: the same entries on the same channel, appended after the data WQEs so each
+    // per-token flag lands after its data via in-channel WQE ordering. The channel's first flag
+    // uses the ordered WQE config so it only becomes visible after the whole data phase.
     bool firstFlag = true;
     for (uint32_t chunkStart = 0U; chunkStart < entryCount; chunkStart += entryChunkMax) {
         uint32_t curEntries = (chunkStart + entryChunkMax > entryCount) ? entryCount - chunkStart : entryChunkMax;
@@ -617,6 +633,9 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
                     padParams);
         SyncFunc<HardEvent::MTE2_S>();
         for (uint32_t i = 0U; i < curEntries; ++i) {
+            if ((chunkStart + i) % channelsPerRank_ != channelIdx) {
+                continue;
+            }
             uint32_t entryOffset = i * entryElements;
             RemoteAddressEntry addressEntry{entriesLocal.GetValue(entryOffset),
                                             entriesLocal.GetValue(entryOffset + 1U)};
@@ -643,21 +662,29 @@ template <TemplateFFNToAttentionUrmaTypeClass>
 __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::Process()
 {
     if ASCEND_IS_AIV {
-        if (aivId_ == 0U) {
-            HcommInit();
-        }
+        HcommInit();
         InitLocalFlag();
         BuildAddressTable();
-        if (aivId_ == 0U) {
-            for (uint32_t dstRank = 0U; dstRank < worldSize_; ++dstRank) {
-                if (dstRank == rankId_) {
+
+        // Multi-channel relay phase: every AIV relays the (dstRank, channel) slots assigned to it
+        // (slot = dstRank * channelsPerRank_ + channelIdx, slot % aivNum_ == aivId_). An entry's
+        // index within the rank decides its channel, and its data WQE and flag WQE share that
+        // channel, so per-token flag ordering is preserved while multiple AIVs and channels
+        // submit in parallel.
+        for (uint32_t dstRank = 0U; dstRank < worldSize_; ++dstRank) {
+            if (dstRank == rankId_) {
+                continue;
+            }
+            for (uint32_t channelIdx = 0U; channelIdx < channelsPerRank_; ++channelIdx) {
+                uint32_t slot = dstRank * channelsPerRank_ + channelIdx;
+                if (slot % aivNum_ != aivId_) {
                     continue;
                 }
-                SendAddressTable(dstRank, GetAddressTableCount(dstRank));
+                SendAddressTable(dstRank, GetAddressTableCount(dstRank), channelIdx);
             }
         }
 
-        // Keep all AIVs alive until AIV0 finishes submitting remote WQEs.
+        // Keep all AIVs alive until every AIV finishes submitting remote WQEs.
         SyncAll<true>();
     }
 }
