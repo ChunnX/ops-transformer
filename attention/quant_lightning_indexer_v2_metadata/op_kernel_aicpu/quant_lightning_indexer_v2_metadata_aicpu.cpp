@@ -326,15 +326,21 @@ void QuantLightningIndexerV2MetadataCpuKernel::CalcSplitInfo(SplitContext &split
         }
     }
     ValidSocVersion validSocVersion = ProcessSocVersion();
-    if (validSocVersion == ValidSocVersion::ASCEND950) {
-        if (maxS2Size_ < static_cast<uint32_t>(topk_)) {
-            supportFd_ = false;
-            return;
-        }
-        if (maxS2Size_ > fdToleranceRatio * s2BaseSize_) {
-            supportFd_ = true;
-            return;
-        }
+    // P10: 910b FD 启用 — 仅 decode (maxSeqlenQ==1) 且小批量 (batchSize<=4):
+    // decode 每块仅 1 行有效, 奇 AIV 结构性空转 (仿真实测); 大批量 (如 B=16) 时
+    // 批间并行已充分, FD 的 per-task 开销 (LD 保存/归并/跨核同步) 超过收益;
+    // prefill 满块 [2,2] 对称无空转, 且 910b s2Base=2048 粒度下 AssignByBlock
+    // 跨批切分存在丢 tile 问题 (保持原分核)。
+    if (maxSeqlenQ_ != 1 || batchSize_ > 4U) {
+        supportFd_ = false;
+        return;
+    }
+    if (maxS2Size_ < static_cast<uint32_t>(topk_)) {
+        supportFd_ = false;
+        return;
+    }
+    if (maxS2Size_ > fdToleranceRatio * s2BaseSize_) {
+        supportFd_ = true;
     }
 }
 

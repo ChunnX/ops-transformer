@@ -310,11 +310,20 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::KeyNd2NzForPA(uint64_t s2L1RealSize,
                                                           const QLIV2Common::RunInfo &runInfo)
 {
     uint64_t s2L1Offset = 0;
+    // A11: key 0 轴非连续寻址 — 块基址 = 表值 x keyStride0 (host 下发的真实 stride)。
+    // keyStride0 == 0 (旧调用/非 PA 紧凑) 时兜底原紧凑公式, 现网行为 bit 级不变 (R8)
+    uint64_t blkStride = constInfo_.keyStride0 != 0 ?
+                             static_cast<uint64_t>(constInfo_.keyStride0) :
+                             static_cast<uint64_t>(constInfo_.kCacheBlockSize) * constInfo_.kHeadNum *
+                                 constInfo_.headDim;
     while (s2L1Offset < s2L1RealSize) {
         uint64_t s2BlkId = (s2L1Offset + s2GmOffset) / constInfo_.kCacheBlockSize;
         uint64_t s2BlkOffset = (s2L1Offset + s2GmOffset) % constInfo_.kCacheBlockSize;
-        uint64_t keyGmOffset = blkTableGm_.GetValue(runInfo.bIdx * constInfo_.maxBlockNumPerBatch + s2BlkId) *
-                                   constInfo_.kCacheBlockSize * constInfo_.kHeadNum * constInfo_.headDim +
+        // P13 同型防御: 表寻址 bIdx * maxBlockNumPerBatch 为 uint32 乘法, block_table 总项
+        // 超 2^32 时截断 — 提前提升 uint64
+        uint64_t keyGmOffset = blkTableGm_.GetValue(static_cast<uint64_t>(runInfo.bIdx) *
+                                                        constInfo_.maxBlockNumPerBatch + s2BlkId) *
+                                   blkStride +
                                s2BlkOffset * constInfo_.headDim;
         uint64_t s2Mte2Size = s2L1RealSize - s2L1Offset;
         s2Mte2Size = s2BlkOffset + s2Mte2Size >= constInfo_.kCacheBlockSize ? constInfo_.kCacheBlockSize - s2BlkOffset :
