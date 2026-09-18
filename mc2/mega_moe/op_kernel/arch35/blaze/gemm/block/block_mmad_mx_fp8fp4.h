@@ -151,6 +151,16 @@ private:
     __aicore__ inline void CopyBAndScaleBL1ToL0(const TensorBL1Type &tensorBL1, uint64_t l1KOffset, uint64_t kbOffset,
                                                 uint64_t realL0K, uint64_t realL0ScaleK,
                                                 const BlockMmadOffsetParam &param);
+    struct InputPrefetchState {
+        uint64_t nextAOffset;
+        uint64_t nextScaleOffset;
+        uint64_t aSlot;
+        uint64_t scaleSlot;
+    };
+    template <typename TensorA, typename TensorScaleA, typename TensorScaleB>
+    __aicore__ inline void PrefetchInputs(const TensorA &tensorA, const TensorScaleA &tensorScaleA,
+                                        const TensorScaleB &tensorScaleB, const BlockMmadOffsetParam &param,
+                                        uint64_t consumerOffset, InputPrefetchState &state);
     template <typename TensorA>
     __aicore__ inline void PrefetchA(const TensorA &tensorA, const BlockMmadOffsetParam &param,
                                    uint64_t offset, uint64_t slot);
@@ -162,7 +172,7 @@ private:
     __aicore__ inline void CopyAGmToL1(const TensorA &tensorA, const BlockMmadOffsetParam &param, int64_t kaGmOffset, uint64_t slot);
     template <typename TensorScaleA, typename TensorScaleB>
     __aicore__ inline void CopyMxScaleGmToL1(const TensorScaleA &tensorScaleA, const TensorScaleB &tensorScaleB,
-                                             const BlockMmadOffsetParam &param, uint64_t kbL1Offset);
+                                             const BlockMmadOffsetParam &param, uint64_t kbL1Offset, uint64_t slot);
 
 
     template <typename TensorC>
@@ -429,11 +439,35 @@ __aicore__ inline void BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::PrefetchA(
 }
 
 BLOCK_MMAD_MX_FP8FP4_TEMPLATE_PARAMS
+template <typename TensorA, typename TensorScaleA, typename TensorScaleB>
+__aicore__ inline void BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::PrefetchInputs(
+    const TensorA &tensorA, const TensorScaleA &tensorScaleA, const TensorScaleB &tensorScaleB,
+    const BlockMmadOffsetParam &param, uint64_t consumerOffset, InputPrefetchState &state)
+{
+    const uint64_t aLimit = consumerOffset + allocation_.aStages * param.kaL1Size;
+    // Only the current and next scale windows can be resident. Do not queue a
+    // third window's wait ahead of the consumer that must release its slot.
+    const uint64_t scaleLimit = (consumerOffset / param.scaleKL1Size + DOUBLE_BUFFER) * param.scaleKL1Size;
+    while (state.nextAOffset < param.kSize && state.nextAOffset < aLimit && state.nextAOffset < scaleLimit) {
+        if (state.nextAOffset == state.nextScaleOffset) {
+            WaitFlag<HardEvent::MTE1_MTE2>(eventIdsMxScaleMte1ToMte2_ + state.scaleSlot);
+            CopyMxScaleGmToL1(tensorScaleA, tensorScaleB, param, state.nextScaleOffset, state.scaleSlot);
+            SetFlag<HardEvent::MTE2_MTE1>(eventIdsScaleReady_ + state.scaleSlot);
+            state.nextScaleOffset += param.scaleKL1Size;
+            state.scaleSlot ^= 1;
+        }
+        PrefetchA(tensorA, param, state.nextAOffset, state.aSlot);
+        state.nextAOffset += param.kaL1Size;
+        state.aSlot = (state.aSlot + 1) % allocation_.aStages;
+    }
+}
+
+BLOCK_MMAD_MX_FP8FP4_TEMPLATE_PARAMS
 template <typename TensorScaleA, typename TensorScaleB>
 __aicore__ inline void BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::CopyMxScaleGmToL1(const TensorScaleA &tensorScaleA,
                                                                               const TensorScaleB &tensorScaleB,
                                                                               const BlockMmadOffsetParam &param,
-                                                                              uint64_t kbL1Offset)
+                                                                              uint64_t kbL1Offset, uint64_t slot)
 {
     uint64_t scaleKGmSize = CeilDiv(param.kSize, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
     uint64_t scaleKL1StandardLen = CeilDiv(param.scaleKL1Size, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
@@ -442,27 +476,31 @@ __aicore__ inline void BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::CopyMxScaleGmToL1(co
                                     scaleKL1StandardLen;
     auto CopyScaleGM2L1 = asc::te::make_copy(asc::te::copy_gm_to_l1{});
     auto layoutScaleAL1 = MakeLayoutScaleAL1{}(param.mL1Size, scaleKL1RealSize);
-    tensorScaleAL1_ = asc::te::make_tensor(
+    auto destinationA = asc::te::make_tensor(
         asc::te::make_mem_ptr<asc::te::location::l1, fp8_e8m0_t>(
-            allocation_.scaleAOffsets[scaleL1BufIdx_]),
+            allocation_.scaleAOffsets[slot]),
         layoutScaleAL1);
     auto gmBlockScaleA =
         tensorScaleA.slice(asc::te::make_coord(0, CeilDiv(kbL1Offset, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE),
                            asc::te::make_shape(param.mL1Size, scaleKL1RealSize));
-    asc::te::copy(CopyScaleGM2L1, tensorScaleAL1_, gmBlockScaleA);
+    asc::te::copy(CopyScaleGM2L1, destinationA, gmBlockScaleA);
 
     auto layoutScaleBL1 = MakeLayoutScaleBL1{}(scaleKL1RealSize, param.nL1Size);
-    tensorScaleBL1_ = asc::te::make_tensor(
+    auto destinationB = asc::te::make_tensor(
         asc::te::make_mem_ptr<asc::te::location::l1, fp8_e8m0_t>(
-            allocation_.scaleBOffsets[scaleL1BufIdx_]),
+            allocation_.scaleBOffsets[slot]),
         layoutScaleBL1);
     auto gmBlockScaleB =
         tensorScaleB.slice(asc::te::make_coord(CeilDiv(kbL1Offset, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE, 0),
                            asc::te::make_shape(scaleKL1RealSize, param.nL1Size));
     if (concatHalfN_ != 0U) {
-        MegaMoeImpl::CopyGmm1ScaleConcatToL1(tensorScaleBL1_, gmBlockScaleB, concatHalfN_, k_);
+        MegaMoeImpl::CopyGmm1ScaleConcatToL1(destinationB, gmBlockScaleB, concatHalfN_, k_);
     } else {
-        asc::te::copy(CopyScaleGM2L1, tensorScaleBL1_, gmBlockScaleB);
+        asc::te::copy(CopyScaleGM2L1, destinationB, gmBlockScaleB);
+    }
+    if (!allocation_.dynamic) {
+        tensorScaleAL1_ = destinationA;
+        tensorScaleBL1_ = destinationB;
     }
 }
 
@@ -617,31 +655,30 @@ __aicore__ inline void BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::operator()(const Ten
         blockParam.l0KSize = (blockParam.mL1Size <= 128 && blockParam.nL1Size <= 128) ? 256 : 128;
         CalcDynamicKBlock(blockParam.mL1Size, blockParam.nL1Size, 0, blockParam.kaL1Size, blockParam.kbL1Size);
     }
-    uint64_t nextAOffset = 0;
-    if (allocation_.dynamic && blockParam.kSize != 0) {
-        // Scale readiness precedes A lookahead, so later A loads cannot delay it.
-        WaitScaleMTE1ToMTE2();
-        CopyMxScaleGmToL1(tensorScaleA, tensorScaleB, blockParam, 0);
-        SetFlag<HardEvent::MTE2_MTE1>(eventIdsScaleReady_ + scaleL1BufIdx_);
-        for (uint64_t i = 0; i < allocation_.aStages && nextAOffset < blockParam.kSize; ++i) {
-            PrefetchA(tensorA, blockParam, nextAOffset, (aL1BufIdx_ + i) % allocation_.aStages);
-            nextAOffset += blockParam.kaL1Size;
-        }
+    InputPrefetchState prefetch{0, 0, aL1BufIdx_, scaleL1BufIdx_};
+    if (allocation_.dynamic) {
+        PrefetchInputs(tensorA, tensorScaleA, tensorScaleB, blockParam, 0, prefetch);
     }
     for (uint64_t kbGmOffset = 0; kbGmOffset < blockParam.kSize;
          kbGmOffset += blockParam.kbL1Size, bL1BufIdx_ = (bL1BufIdx_ + 1) % allocation_.bStages) {
         uint64_t kbL1RealSize = (kbGmOffset + blockParam.kbL1Size) >= blockParam.kSize ? blockParam.kSize - kbGmOffset :
                                                                                          blockParam.kbL1Size;
         if (kbGmOffset % blockParam.scaleKL1Size == 0) {
-            if (!allocation_.dynamic || kbGmOffset != 0) {
-                WaitScaleMTE1ToMTE2();
-                CopyMxScaleGmToL1(tensorScaleA, tensorScaleB, blockParam, kbGmOffset);
-                if (allocation_.dynamic) {
-                    SetFlag<HardEvent::MTE2_MTE1>(eventIdsScaleReady_ + scaleL1BufIdx_);
-                }
-            }
             if (allocation_.dynamic) {
                 WaitFlag<HardEvent::MTE2_MTE1>(eventIdsScaleReady_ + scaleL1BufIdx_);
+                // Bind only the consumed slot. Prefetching the next window must
+                // not change the current scale tensors or their tail layouts.
+                const uint64_t realScaleK = CeilDiv(min(blockParam.scaleKL1Size,
+                    blockParam.kSize - kbGmOffset), MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
+                tensorScaleAL1_ = asc::te::make_tensor(
+                    asc::te::make_mem_ptr<asc::te::location::l1, fp8_e8m0_t>(allocation_.scaleAOffsets[scaleL1BufIdx_]),
+                    MakeLayoutScaleAL1{}(blockParam.mL1Size, realScaleK));
+                tensorScaleBL1_ = asc::te::make_tensor(
+                    asc::te::make_mem_ptr<asc::te::location::l1, fp8_e8m0_t>(allocation_.scaleBOffsets[scaleL1BufIdx_]),
+                    MakeLayoutScaleBL1{}(realScaleK, blockParam.nL1Size));
+            } else {
+                WaitScaleMTE1ToMTE2();
+                CopyMxScaleGmToL1(tensorScaleA, tensorScaleB, blockParam, kbGmOffset, scaleL1BufIdx_);
             }
         }
 
@@ -662,15 +699,13 @@ __aicore__ inline void BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::operator()(const Ten
         ProcessTileL1(kbGmOffset, kbL1RealSize, blockParam, tensorC, copyUbToV1);
         uint64_t nextKbGmOffset = kbGmOffset + blockParam.kbL1Size;
         if (nextKbGmOffset % blockParam.kaL1Size == 0 || nextKbGmOffset >= blockParam.kSize) {
-            const uint64_t releasedSlot = aL1BufIdx_;
             SetMTE1ToMTE2();
-            if (allocation_.dynamic && nextAOffset < blockParam.kSize) {
-                PrefetchA(tensorA, blockParam, nextAOffset, releasedSlot);
-                nextAOffset += blockParam.kaL1Size;
-            }
         }
         if (nextKbGmOffset % blockParam.scaleKL1Size == 0 || nextKbGmOffset >= blockParam.kSize) {
             SetScaleMTE1ToMTE2();
+        }
+        if (allocation_.dynamic) {
+            PrefetchInputs(tensorA, tensorScaleA, tensorScaleB, blockParam, nextKbGmOffset, prefetch);
         }
         SetAicToAiv();
     }
