@@ -120,6 +120,10 @@ if [ "${task_name}" == "Pre_Compile" ]; then
         LOG_HEAD "NOTE: changed files are not supported in pre_smoke"
         exit 0
     fi
+    if [ $ret -eq 0 ]; then
+        LOG_HEAD "=============opkernel build success========="
+        exit 0
+    fi
     DP_ASSERT_EQUAL "$ret" "0" "Build ${REPOSITORY_NAME}"
 else
     if [ "${GE_ST_RT2}X" == "kirinx90X" ]; then
