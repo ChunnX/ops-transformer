@@ -7,6 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
+#pragma once
 #include "err/ops_err.h"
 #include "log/log.h"
 #include "op_host/tiling_base.h"
@@ -14,6 +15,7 @@
 #include "tiling/platform/platform_ascendc.h"
 #include "../block_sparse_attention_grad_tiling.h"
 #include <algorithm>
+#include "non_zero_tiling_arch35.h"
 
 namespace optiling {
 namespace BSA_ARC35 {
@@ -21,6 +23,11 @@ namespace BSA_ARC35 {
 int64_t AlignTo(int64_t x, int64_t align)
 {
     return (x + align - 1) / align * align;
+}
+
+int64_t CeilDiv(int64_t x, int64_t align)
+{
+    return AlignTo(x, align) / align;
 }
 
 template <typename... Args>
@@ -247,16 +254,28 @@ protected:
 
         baseM_ = blockShapeX_ <= 128 ? blockShapeX_ : 128;
         baseN_ = blockShapeY_ <= 128 ? blockShapeY_ : 128;
-        uint32_t singleM = AlignTo(2048, baseM_);
-        // Keep all Q tiles for the current KV block/head on one cube core when
-        // possible so DK/DV can accumulate in L0 and K/V stays cached in L1.
+        x_block_num_ = CeilDiv(q_seq_len_, blockShapeX_);
+        y_block_num_ = CeilDiv(kv_seq_len_, blockShapeY_);
+
+        // 确定性与非确定性路径统一使用 host 预生成的 block index 遍历（NonZero 路径），
+        // 因此这里总是需要 NonZero 预 kernel 的 tiling 与 workspace。
+        uint64_t vecCoreNum = ascendcPlatform.GetCoreNumAiv();
+        uint64_t vecRegLen = ascendcPlatform.GetVecRegLen();
+        uint64_t ubSize;
+        ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
+        NonZeroAscendCTilingImpl tilingImpl = NonZeroAscendCTilingImpl(context_);
+
+        if (tilingImpl.DoTiling(vecCoreNum, ubSize, vecRegLen, tilingData_.mNonZeroTilingData) != ge::GRAPH_SUCCESS) {
+            OP_LOGE(context_->GetNodeName(), "Tiling4NonZero do tiling failed, unsupported shape.");
+            return ge::GRAPH_FAILED;
+        }
+        needNonZeroWorkspace_ = true;
 
         tilingData_.set_BlockX(blockShapeX_);
         tilingData_.set_BlockY(blockShapeY_);
         tilingData_.set_cubeCoreNum(cubeCoreNum_);
         tilingData_.set_baseM(baseM_);
         tilingData_.set_baseN(baseN_);
-        tilingData_.set_singleM(singleM);
         context_->SetBlockDim(cubeCoreNum_);
         context_->SetScheduleMode(1);
         return ge::GRAPH_SUCCESS;
@@ -298,10 +317,77 @@ protected:
 
         tilingData_.set_dqSize(dq_size);
         tilingData_.set_dkSize(dk_size);
+        // 确定性路径核间分工（必须与 kernel 侧 bsa_addr_compute.h 的 unit/子段划分保持一致）：
+        //   G = batchNum * kvHeadNum；组内 kv_block 是一个连续段。
+        //   k = dqSplitNum = max(1, ceil(cubeCoreNum / G))：把每组的 kv_block 均分为 k 个子段，
+        //   子段 p 覆盖 kv_block ∈ [p*KV/k, (p+1)*KV/k)。cube 核 c 负责所有 unit = (组 g, 子段 p)
+        //   中满足 (g*k + p) % cubeCoreNum == c 的单位。
+        //   同一 dq 槽位 (b, n1, s1) 的各 kv_block 落在不同子段上、每段只有一个拥有者，
+        //   因此每段 buffer 单写者、累加顺序 = 程序顺序，vector 端按段号固定升序归约 => bitwise 可复现；
+        //   k == 1（头数足够多）时所有核写同一份 dq buffer 的不重叠槽位，无需分段归约，性能与
+        //   非确定性路径一致。
+        //   s1PhaseNum：再把 q_block 空间均分为若干相位，外层按相位推进遍历，使同一核重复访问同一段
+        //   dq buffer 的距离降到 1/s1PhaseNum。否则 k 份 dq 分段（k × dqSize）整体远超 L2，
+        //   fp32 原子加退化为 HBM 读改写，实测会把 cube MTE2 从 416us 拖到 1015us。
+        uint32_t dq_split_num = 1;
+        uint32_t s1_phase_num = 1;
+        if (deterministic_) {
+            uint64_t group_num =
+                static_cast<uint64_t>(batch_num_) * static_cast<uint64_t>(std::max<int32_t>(kv_head_num_, 1));
+            if (group_num == 0) {
+                group_num = 1;
+            }
+            uint64_t split_num =
+                static_cast<uint64_t>(CeilDiv(static_cast<int64_t>(cubeCoreNum_), static_cast<int64_t>(group_num)));
+            if (dq_size != 0) {
+                // 多占用 (k-1) 份 dq buffer，按 workspace 预算设上限（至少 1 段）
+                uint64_t max_split = 1 + DQ_SPLIT_EXTRA_WS_LIMIT / (dq_size * sizeof(float));
+                split_num = std::min(split_num, max_split);
+            }
+            dq_split_num = static_cast<uint32_t>(std::max<uint64_t>(split_num, 1));
+            if (dq_split_num > 1 && dq_size != 0) {
+                uint64_t hot = static_cast<uint64_t>(dq_split_num) * dq_size * sizeof(float);
+                uint64_t phase = CeilDiv(static_cast<int64_t>(hot), static_cast<int64_t>(DQ_HOT_L2_BUDGET));
+                uint64_t q_block_upper = static_cast<uint64_t>(
+                    CeilDiv(static_cast<int64_t>(q_seq_len_), static_cast<int64_t>(blockShapeX_)));
+                if (q_block_upper > 0 && phase > q_block_upper) {
+                    phase = q_block_upper;
+                }
+                phase = std::min(phase, static_cast<uint64_t>(MAX_S1_PHASE_NUM));
+                s1_phase_num = static_cast<uint32_t>(std::max<uint64_t>(phase, 1));
+            }
+        }
+        tilingData_.set_dqSplitNum(dq_split_num);
+        tilingData_.set_s1PhaseNum(s1_phase_num);
+        if (needNonZeroWorkspace_) {
+            // index workspace：存放 NonZero 预 kernel 输出的有效 block 下标（数量上界 = mask 元素个数）
+            uint64_t block_sparse_mask_size =
+                static_cast<uint64_t>(batch_num_) * q_head_num_ * x_block_num_ * y_block_num_;
+            auto maskShape = context_->GetInputShape(6);
+            if (maskShape != nullptr) {
+                const gert::Shape &shape = maskShape->GetStorageShape();
+                uint64_t maskElemNum = 1;
+                for (size_t i = 0; i < shape.GetDimNum(); i++) {
+                    maskElemNum *= static_cast<uint64_t>(shape.GetDim(i));
+                }
+                block_sparse_mask_size = maskElemNum;
+            }
+            tilingData_.set_indexWorkspaceOffset(usr_workspace_offset);
+            // 按 512B 对齐：index shape workspace 会被主 kernel 以 uint64 标量读取（必须 8B 对齐），
+            // 而 mask 元素个数很少时（例如整个 mask 只有 1 个 block）本段只有 4B，不补齐会触发标量非对齐异常。
+            usr_workspace_offset += AlignTo(static_cast<int64_t>(block_sparse_mask_size) * sizeof(int32_t), 512);
+            // index shape workspace：NonZero 输出的 [dim, dims, count]
+            tilingData_.set_indexShapeWorkspaceOffset(usr_workspace_offset);
+            usr_workspace_offset += NON_ZERO_SHAPE_WORKSPACE_SIZE;
+            // NonZero 预 kernel 的分核计数 workspace：每个 AIV 核 128B
+            uint64_t vecCoreNum = ascendcPlatform.GetCoreNumAiv();
+            tilingData_.set_nonZeroWorkspaceOffset(usr_workspace_offset);
+            usr_workspace_offset += AlignTo(static_cast<int64_t>(vecCoreNum) * NON_ZERO_COUNT_BYTES_PER_CORE, 512);
+        }
         tilingData_.set_sftgWorkspaceOffset(usr_workspace_offset);
         usr_workspace_offset += sftg_size * sizeof(float);
         tilingData_.set_dqWorkspaceOffset(usr_workspace_offset);
-        usr_workspace_offset += dq_size * sizeof(float);
+        usr_workspace_offset += dq_size * dq_split_num * sizeof(float);
         tilingData_.set_dkWorkspaceOffset(usr_workspace_offset);
         usr_workspace_offset += dk_size * sizeof(float);
         tilingData_.set_dvWorkspaceOffset(usr_workspace_offset);
@@ -334,6 +420,9 @@ protected:
          *  1011: FP16 BNSD DET
          *  1100: BF16 TND  DET
          *  1101: FP16 TND  DET
+         *
+         *  说明：非确定性 key（0000~0101）与确定性 key（1000~1101）都在 host 侧预生成
+         *  block index、kernel 侧按 index 遍历有效块（NonZero 路径），不再读 blockSparseMask 判块。
          */
         default_key = (dataType_ == ge::DT_BF16) ? default_key : default_key + 0b001;
 
@@ -353,6 +442,18 @@ protected:
     }
 
 private:
+    // 是否需要 NonZero 相关的 workspace（index / index shape / 分核计数）
+    bool needNonZeroWorkspace_ = false;
+
+    static constexpr uint64_t NON_ZERO_SHAPE_WORKSPACE_SIZE = 512; // NonZero 输出 shape 占用 24B，留 512B
+    static constexpr uint64_t NON_ZERO_COUNT_BYTES_PER_CORE = 128; // 每个 AIV 在计数 workspace 占 128B
+    // 确定性路径 dq 分段归约允许的额外 workspace 上限（仅 (dqSplitNum-1) 份 dq buffer 计入）
+    static constexpr uint64_t DQ_SPLIT_EXTRA_WS_LIMIT = 1UL << 30; // 1GB
+    // 确定性路径 dq 分段热工作集预算：超出该预算即用 s1 相位切分降低重复访问距离（见 GetWorkspaceSize）
+    static constexpr uint64_t DQ_HOT_L2_BUDGET = 32UL * 1024 * 1024; // 32MB
+    // s1 相位上限：相位过多会让 dk/dv 的 L0C->GM 落盘次数线性增长，实测 4 为最优
+    static constexpr uint64_t MAX_S1_PHASE_NUM = 4;
+
     const char *layout_;
     ge::DataType dataType_;
     uint64_t tilingKey_ = 1000; // arc35 默认tilingkey从1000开始
@@ -369,6 +470,8 @@ private:
     int32_t head_dim_ = 0;
     int32_t blockShapeX_ = 0;
     int32_t blockShapeY_ = 0;
+    int32_t x_block_num_ = 0;
+    int32_t y_block_num_ = 0;
     int32_t max_q_seq_len_ = 0;
     int32_t max_kv_seq_len_ = 0;
     bool deterministic_ = false;

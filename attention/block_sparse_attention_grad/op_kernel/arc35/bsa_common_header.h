@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 #pragma once
+using namespace AscendC;
 
 namespace BSA_ARC35 {
 
@@ -30,41 +31,32 @@ static constexpr uint32_t FLAG_C2_V2 = 1;     // cube(dyV) -> vec(softmaxGrad)
 static constexpr uint32_t FLAG_V1_C3 = 2;     // vec(softmax) -> cube(dv)
 static constexpr uint32_t FLAG_V2_C45 = 3;    // vec(softmaxGrad) -> cube(dq\dk)
 static constexpr uint32_t FLAG_CUBE_POST = 4; // vec(softmaxGrad) -> cube(dq\dk)
-static constexpr uint32_t FLAG_DETER_FIX = 5; // AIC mode-0: order mm345 waves
-
-struct ConstInfo {
-    int32_t q_head_num{0};
-    int32_t kv_head_num{0};
-    int32_t block_x{0};
-    int32_t block_y{0};
-    int32_t head_dim{0};
-    int32_t q_block_num{0};
-    int32_t kv_block_num{0};
-};
 
 struct RunTimeInfo {
+    int64_t queryGmOffset{0}; // query gm offset
+    int64_t keyGmOffset{0};   // key gm offset
+    int64_t lseGmOffset{0};   // lse gm offset
+    int64_t sftgGmOffset{0};  // softmaxGradFront gm offset
     int32_t taskId{0};
+    int32_t s1Phase{0}; // 确定性路径 s1 相位号：同一 (kv 块, 相位) 内 dk/dv 在 L0C 内累加，跨相位需落盘累加
     int32_t bIdx{0};  // 当前计算的batch的idx
     int32_t n1Idx{0}; // 当前计算的q_head的idx
     int32_t n2Idx{0}; // 当前计算的kv_head的idx
     int32_t s1Idx{0}; // 当前计算的q_seq的起始idx
     int32_t s2Idx{0}; // 当前计算的kv_seq的起始idx
     int32_t last_q_seq_sum{0};
-    int32_t last_kv_seq_sum{0};
     int32_t cur_q_seq_len{0};
-    int32_t cur_kv_seq_len{0};
-    int32_t need_compute{0};     // 是否存在任务需要计算
-    int32_t need_copy_kv{0};     // 是否需要copy kv
+    int32_t need_compute{0}; // 是否存在任务需要计算
+    int64_t dqWsOffset{0};   // 本任务 dq 累加写入 dq_workspace 的段内偏移（确定性分段归约用）
+    int32_t is_kv_end{0};
+    int32_t is_kv_change{0};
     int32_t kv_ping_pong_idx{0}; // kv的ping pong idx
-    int32_t is_singlekv_last{0};
-    int64_t s1Len{0};         // 当前计算的q_seq的长度
-    int64_t s2Len{0};         // 当前计算的kv_seq的长度
-    int64_t s1LenAlign{0};    // 当前计算的q_seq的16对齐的长度
-    int64_t s2LenAlign{0};    // 当前计算的kv_seq的16对齐的长度
-    int64_t queryGmOffset{0}; // query gm offset
-    int64_t keyGmOffset{0};   // key gm offset
-    int64_t lseGmOffset{0};   // lse gm offset
-    int64_t sftgGmOffset{0};  // softmaxGradFront gm offset
+    int32_t last_kv_seq_sum{0};
+    int32_t cur_kv_seq_len{0};
+    int64_t s1Len{0};      // 当前计算的q_seq的长度
+    int64_t s2Len{0};      // 当前计算的kv_seq的长度
+    int64_t s1LenAlign{0}; // 当前计算的q_seq的16对齐的长度
+    int64_t s2LenAlign{0}; // 当前计算的kv_seq的16对齐的长度
 };
 
 __aicore__ inline int64_t IMin(int64_t a, int64_t b)
@@ -75,21 +67,6 @@ __aicore__ inline int64_t IMin(int64_t a, int64_t b)
 __aicore__ inline int64_t IMax(int64_t a, int64_t b)
 {
     return a > b ? a : b;
-}
-
-__aicore__ inline int64_t ICeil(int64_t n, int64_t d)
-{
-    return d == 0 ? 0 : (n + d - 1) / d;
-}
-
-__aicore__ inline int64_t IGcd(int64_t a, int64_t b)
-{
-    while (b > 0) {
-        int64_t r = a % b;
-        a = b;
-        b = r;
-    }
-    return a;
 }
 
 template <typename T>
@@ -160,21 +137,6 @@ __aicore__ inline int64_t GetSftgGmOffset(int64_t lastBatchSum, int64_t current_
         // BNS8
         return batch_idx * (head_num * current_seq_len) * 8 + n1Idx * (current_seq_len) * 8 + seqlen_idx * 8;
     }
-}
-
-__aicore__ inline bool IsValidBlock(const ConstInfo &const_info, const int64_t batch_idx, const int64_t n1_idx,
-                                    const int64_t q_block_idx, const int64_t kv_block_idx,
-                                    __gm__ uint8_t *block_sparse_mask)
-
-{
-    // The public mask layout is [B, N1, Q_BLOCK, KV_BLOCK].  The Arch35 aclnn
-    // adapter transposes it to contiguous [B, N1, KV_BLOCK, Q_BLOCK] before
-    // launching this kernel.
-    int64_t offset = batch_idx * (const_info.q_head_num * const_info.q_block_num * const_info.kv_block_num) +
-                     n1_idx * (const_info.q_block_num * const_info.kv_block_num) +
-                     kv_block_idx * const_info.q_block_num + q_block_idx;
-    bool is_valid = block_sparse_mask[offset];
-    return is_valid;
 }
 
 __aicore__ inline int32_t GetBlockLen(int32_t start_idx, int32_t end_idx, int32_t max_len)
