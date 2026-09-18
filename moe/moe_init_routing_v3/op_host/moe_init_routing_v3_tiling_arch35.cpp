@@ -24,6 +24,11 @@ const static int64_t COUTSORT_FILTER_CHUNK_SIZE = 4096LL;
 const static int64_t HALF_COUTSORT_FILTER_CHUNK_SIZE = 2048LL;
 const static int64_t COUTSORT_MAX_ACTUAL_EXPERT_NUM = 256LL;
 const static int64_t COUTSORT_ONE_BLOCK_ELEMENT = 8LL;
+// Histogram 计数路径：Histograms 指令一个 VL(256B) 处理 256 个 uint8，
+// 既作载入步长，也作 expertU8 暂存区尾部越界读的余量
+const static int64_t COUTSORT_HIST_U8_REPEAT = 256LL;
+// Histogram 计数路径：uint8 值域 [0,256) 对应 256 个 uint16 频次桶
+const static int64_t COUTSORT_HIST_BIN_NUM = 256LL;
 // CutOrigin：UB 预算余量（字节）
 const static int64_t COUTSORT_UB_MARGIN_BYTES = 1024LL;
 
@@ -2027,14 +2032,25 @@ int64_t MoeInitRoutingV3TilingArch35::EstimateArch35CountingSortFullLoadUB(int64
     total += Ops::Base::CeilAlign((expertEnd_ - expertStart_) * static_cast<int64_t>(sizeof(int64_t)), UB_BLOCK_SIZE);
     // prefixSum
     total += Ops::Base::CeilAlign(expertCountStride * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE);
-    // filteredPairs (pairs)
-    total += Ops::Base::CeilAlign(coreEntries * NUM_TWO * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE);
+    // filteredPairs (pairs)：kernel 按 64 元素粒度交错整批落盘，尾部会多写不足一批的槽位，
+    // 容量为 Ceil(coreEntries, 64) * 2 * 64 = 2 * entriesAligned（与 kernel ComputeCommonUbLayout 镜像）
+    total += Ops::Base::CeilAlign(entriesAligned * NUM_TWO * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE);
     // expertIdxFp32
     total += Ops::Base::CeilAlign(entriesAligned * static_cast<int64_t>(sizeof(float)), UB_BLOCK_SIZE);
     // 3 个 mask
     total += maskBytes * NUM_THREE;
     // gatheredExpert / flatIdx / gatheredIdx
     total += Ops::Base::CeilAlign(entriesAligned * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE) * NUM_THREE;
+    // Histogram 计数路径暂存区（与 kernel ComputeCommonUbLayout 镜像）：
+    // expertU8 为专家偏移窄化后的 uint8 区（真实元素数 + 1 个 VL 余量，覆盖末个 VL 的越界读）；
+    // histBin 为 256 个 uint16 频次桶；histBinU32 为 bins 扩展成 32bit 的累加缓冲（Min(expertCountStride,256) 个）
+    total += Ops::Base::CeilAlign(coreEntries * static_cast<int64_t>(sizeof(uint8_t)) + COUTSORT_HIST_U8_REPEAT,
+                                  UB_BLOCK_SIZE);
+    total += Ops::Base::CeilAlign(COUTSORT_HIST_BIN_NUM * static_cast<int64_t>(sizeof(uint16_t)), UB_BLOCK_SIZE);
+    total +=
+        Ops::Base::CeilAlign((expertCountStride < COUTSORT_HIST_BIN_NUM ? expertCountStride : COUTSORT_HIST_BIN_NUM) *
+                                 static_cast<int64_t>(sizeof(uint32_t)),
+                             UB_BLOCK_SIZE);
     // 量化临时区（quantMode_ != UNQUANT）：单行 int8 + scale slot（scaleSlotSize=8 floats=32B），
     // 与 kernel ComputeUbLayout 镜像，避免 mode-1 UB 预算偏小被静默降级到 mode-2
     if (quantMode_ != QUANT_MODE_UNQUANT) {

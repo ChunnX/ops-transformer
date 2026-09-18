@@ -24,6 +24,16 @@ namespace MoeInitRoutingV3 {
 using namespace AscendC;
 
 constexpr int64_t COUNT_SOURT_SIMT_THREAD_NUM = 1024;
+// Histogram 计数路径：Histograms 指令一个 VL(256B) 处理 256 个 uint8，
+// 既作载入步长，也作 expertU8 暂存区尾部越界读的余量
+constexpr int64_t COUNT_SORT_HIST_U8_REPEAT = 256;
+// Histogram 计数路径：uint8 值域 [0,256) 对应 256 个 uint16 频次桶
+constexpr int64_t COUNT_SORT_HIST_BIN_NUM = 256;
+// Histogram 计数路径：单桶计数上限受 uint16 限制（65535），按 chunk 分块统计后扩展到 32bit 累加，
+// 保证任一桶的增量 <= CHUNK <= 65535；取 256 的倍数使每块都按整 VL 处理
+constexpr int64_t COUNT_SORT_HIST_CHUNK = 32768;
+// pairs 交错向量写的粒度：一个 VL(256B) 处理 64 个 int32
+constexpr int64_t COUNT_SORT_PAIRS_I32_REPEAT = 64;
 
 // topkWeight 重排输出（SIMT GM->GM scatter）
 __simt_vf__ __aicore__ LAUNCH_BOUND(COUNT_SOURT_SIMT_THREAD_NUM) inline void CoutSortFullLoadTopkWeightScatterSimt(
@@ -53,6 +63,53 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(COUNT_SOURT_SIMT_THREAD_NUM) inline void Cou
     }
 }
 
+__simd_vf__ inline void MoeV3FullLoadHistogramVF(__ubuf__ uint8_t *srcAddr, __ubuf__ uint16_t *dstAddr,
+                                                 uint32_t validCount)
+{
+    using namespace AscendC::Reg;
+    // 与 ComputeCommonUbLayout 中 expertU8Local 区的载入步长/尾部余量必须一致
+    constexpr uint32_t U8_REPEAT = static_cast<uint32_t>(COUNT_SORT_HIST_U8_REPEAT);
+    RegTensor<uint8_t> srcReg;
+    RegTensor<uint16_t> dstReg0, dstReg1;
+    Duplicate(dstReg0, static_cast<uint16_t>(0));
+    Duplicate(dstReg1, static_cast<uint16_t>(0));
+    uint16_t repeatTimes = static_cast<uint16_t>((validCount + U8_REPEAT - 1) / U8_REPEAT);
+    uint32_t remain = validCount;
+    for (uint16_t i = 0; i < repeatTimes; ++i) {
+        MaskReg mask = UpdateMask<uint8_t>(remain);
+        LoadAlign<uint8_t>(srcReg, srcAddr + U8_REPEAT * i);
+        Histograms<uint8_t, uint16_t, HistogramsBinType::BIN0, HistogramsType::FREQUENCY>(dstReg0, srcReg, mask);
+        Histograms<uint8_t, uint16_t, HistogramsBinType::BIN1, HistogramsType::FREQUENCY>(dstReg1, srcReg, mask);
+    }
+    MaskReg maskAll = CreateMask<uint16_t, MaskPattern::ALL>();
+    StoreAlign<uint16_t>(dstAddr, dstReg0, maskAll);
+    StoreAlign<uint16_t>(dstAddr + 128, dstReg1, maskAll);
+}
+
+// pairs 交错写：把压紧后的 [localFlatIdx] 与 [expertOffset] 两条向量按 [j0,e0,j1,e1,...] 布局
+// 一次性写回 UB，替代原先逐元素的标量 GetValue/SetValue。
+// validCount 向上取整到 64 后，尾部多余槽位写入的是源缓冲区 padding 的垃圾值，
+// 调用方以 filteredCount_（= 有效元素数）为界消费，不会读到；写入长度 2*Ceil(validCount,64)
+// 不超过 pairs 区容量 2*Ceil(coreEntries_,64)*64（ComputeCommonUbLayout 已按同粒度预留），不会越界。
+__simd_vf__ inline void MoeV3FullLoadPairsInterleaveVF(__ubuf__ uint32_t *idxAddr, __ubuf__ uint32_t *expertAddr,
+                                                       __ubuf__ uint32_t *pairsAddr, uint32_t validCount)
+{
+    using namespace AscendC::Reg;
+    // 与 ComputeCommonUbLayout 中 pairs 区的容量预留粒度必须一致
+    constexpr uint32_t I32_REPEAT = static_cast<uint32_t>(COUNT_SORT_PAIRS_I32_REPEAT);
+    // 源码为 int32（localFlatIdx / expertOffset，均非负），按位交错用 uint32_t 承载；
+    // StoreAlign<*, StoreDist::DIST_INTLV_B32> 仓库既有用法均为 uint32_t
+    RegTensor<uint32_t> idxReg;
+    RegTensor<uint32_t> expertReg;
+    MaskReg maskAll = CreateMask<uint32_t, MaskPattern::ALL>();
+    uint16_t repeatTimes = static_cast<uint16_t>((validCount + I32_REPEAT - 1) / I32_REPEAT);
+    for (uint16_t i = 0; i < repeatTimes; ++i) {
+        LoadAlign<uint32_t>(idxReg, idxAddr + I32_REPEAT * i);
+        LoadAlign<uint32_t>(expertReg, expertAddr + I32_REPEAT * i);
+        StoreAlign<uint32_t, StoreDist::DIST_INTLV_B32>(pairsAddr + 2 * I32_REPEAT * i, idxReg, expertReg, maskAll);
+    }
+}
+
 template <typename T>
 class MoeV3CountingSortFullLoadUnquantized {
 public:
@@ -73,6 +130,7 @@ private:
     __aicore__ inline void LoadXBackground(GlobalTensor<T> &xGm);
     __aicore__ inline void FilterAndCount();
     __aicore__ inline void FilterAndCountVector();
+    __aicore__ inline void FilterAndCountHistogram();
     __aicore__ inline void WriteExpertCountToWorkspace();
     __aicore__ inline void ComputeGlobalOffset();
     __aicore__ inline void LoadAndReduceAllCoreExpertCount(LocalTensor<int32_t> &allCoreExpertCountLocal,
@@ -173,7 +231,10 @@ private:
     int64_t gatheredExpertLocalOffset_;
     int64_t flatIdxBufferLocalOffset_;
     int64_t gatheredIdxLocalOffset_;
-    int64_t commonBufSize_; // 公共区结尾 offset
+    int64_t expertU8LocalOffset_; // Histogram 路径：专家偏移窄化到 uint8 的暂存区
+    int64_t histBinOffset_;       // Histogram 路径：uint16 频次桶（COUNT_SORT_HIST_BIN_NUM 个）
+    int64_t histBinU32Offset_;    // Histogram 路径：频次桶的 uint32 扩展区（分块累加用）
+    int64_t commonBufSize_;       // 公共区结尾 offset
 
     // 聚合搬出参数（从 tiling 读取）
     int64_t coutSortAggrEnable_{0};
@@ -441,7 +502,10 @@ __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::ComputeCommonUbL
     offset += AlignBytes(expertCountStride_, static_cast<int64_t>(sizeof(int32_t)));
 
     filteredPairsLocalOffset_ = offset;
-    offset += AlignBytes(maxFilteredCount_ * 2, static_cast<int64_t>(sizeof(int32_t)));
+    // 交错向量写按 COUNT_SORT_PAIRS_I32_REPEAT 元素粒度整批落盘，尾部会多写不足一批的槽位，
+    // 容量按 Ceil(maxFilteredCount_, REPEAT) * 2 * REPEAT 预留，否则 coreEntries_ 非 64 倍数时越界写
+    offset += AlignBytes(Ceil(maxFilteredCount_, COUNT_SORT_PAIRS_I32_REPEAT) * 2 * COUNT_SORT_PAIRS_I32_REPEAT,
+                         static_cast<int64_t>(sizeof(int32_t)));
 
     expertIdxFp32LocalOffset_ = offset;
     offset += AlignBytes(entriesAligned_, static_cast<int64_t>(sizeof(float)));
@@ -461,6 +525,21 @@ __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::ComputeCommonUbL
 
     gatheredIdxLocalOffset_ = offset;
     offset += AlignBytes(entriesAligned_, static_cast<int64_t>(sizeof(int32_t)));
+
+    // Histogram 计数路径暂存区：专家偏移窄化到 uint8。
+    // Histograms 按整 VL 把数据读进寄存器，最后一个（可能不满的）VL 会多读至多 255 字节；
+    // 这些多读的 lane 被 UpdateMask 屏蔽、不参与统计，故无需按整 VL 补齐整个区域，
+    // 只需覆盖真实元素数并额外留出 1 个 VL 的余量，避免越界读。
+    expertU8LocalOffset_ = offset;
+    offset += AlignBytes(coreEntries_, static_cast<int64_t>(sizeof(uint8_t))) + COUNT_SORT_HIST_U8_REPEAT;
+
+    histBinOffset_ = offset;
+    offset += AlignBytes(COUNT_SORT_HIST_BIN_NUM, static_cast<int64_t>(sizeof(uint16_t)));
+
+    // bins->uint32 扩展缓冲只需 histAddLen = Min(expertCountStride_, COUNT_SORT_HIST_BIN_NUM) 个，
+    // FullLoad 准入已保证 actualExpertNum_ <= 32，故按 expertCountStride_ 预留即可
+    histBinU32Offset_ = offset;
+    offset += AlignBytes(Min(expertCountStride_, COUNT_SORT_HIST_BIN_NUM), static_cast<int64_t>(sizeof(uint32_t)));
 
     // 公共区结尾
     // 聚合搬出分桶区（coutSortAggrEnable=1 时）：bucketBase + offsetTbl + countTbl
@@ -502,7 +581,7 @@ __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::FilterAndCount()
 {
     LocalTensor<int32_t> expertCountLocal = buf_.Get<int32_t>()[expertCountLocalOffset_ / sizeof(int32_t)];
     Duplicate(expertCountLocal, static_cast<int32_t>(0), static_cast<int32_t>(expertCountStride_));
-    FilterAndCountVector();
+    FilterAndCountHistogram();
 }
 
 template <typename T>
@@ -567,6 +646,97 @@ __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::FilterAndCountVe
         filteredPairsLocal.SetValue(filteredCount_ * 2 + 1, expertOffset);
         filteredCount_++;
     }
+}
+
+template <typename T>
+__aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::FilterAndCountHistogram()
+{
+    LocalTensor<int32_t> expertIdxLocal = buf_.Get<int32_t>()[expertIdxLocalOffset_ / sizeof(int32_t)];
+    LocalTensor<int32_t> expertCountLocal = buf_.Get<int32_t>()[expertCountLocalOffset_ / sizeof(int32_t)];
+    LocalTensor<int32_t> filteredPairsLocal = buf_.Get<int32_t>()[filteredPairsLocalOffset_ / sizeof(int32_t)];
+
+    // 向量过滤：Cast int32->fp32 -> CompareScalar(GE/LT) -> And -> GatherMask 压缩合法专家 + 原始下标 j
+    LocalTensor<float> expertIdxFp32Local = buf_.Get<float>()[expertIdxFp32LocalOffset_ / sizeof(float)];
+    Cast(expertIdxFp32Local, expertIdxLocal, RoundMode::CAST_ROUND, entriesAligned_);
+    PipeBarrier<PIPE_V>();
+
+    LocalTensor<uint8_t> compareMask0 = buf_.Get<uint8_t>()[compareMask0Offset_];
+    LocalTensor<uint8_t> compareMask1 = buf_.Get<uint8_t>()[compareMask1Offset_];
+    LocalTensor<uint8_t> gatherMaskLocal = buf_.Get<uint8_t>()[gatherMaskOffset_];
+
+    CompareScalar(compareMask0, expertIdxFp32Local, static_cast<float>(expertStart_), CMPMODE::GE, entriesAligned_);
+    PipeBarrier<PIPE_V>();
+    CompareScalar(compareMask1, expertIdxFp32Local, static_cast<float>(expertEnd_), CMPMODE::LT, entriesAligned_);
+    PipeBarrier<PIPE_V>();
+    And(gatherMaskLocal.ReinterpretCast<uint16_t>(), compareMask0.ReinterpretCast<uint16_t>(),
+        compareMask1.ReinterpretCast<uint16_t>(),
+        Ceil(entriesAligned_, MASK_STRIDE) * MASK_STRIDE / DST_REP_STRIDE / 2);
+    PipeBarrier<PIPE_V>();
+
+    LocalTensor<int32_t> gatheredExpertLocal = buf_.Get<int32_t>()[gatheredExpertLocalOffset_ / sizeof(int32_t)];
+    uint64_t rsvdCnt = 0;
+    GatherMaskParams gatherMaskParams;
+    gatherMaskParams.repeatTimes = 1;
+    gatherMaskParams.src0BlockStride = 1;
+    gatherMaskParams.src0RepeatStride = DST_REP_STRIDE;
+    gatherMaskParams.src1RepeatStride = DST_REP_STRIDE;
+    GatherMask(gatheredExpertLocal, expertIdxLocal, gatherMaskLocal.ReinterpretCast<uint32_t>(), true,
+               static_cast<uint32_t>(coreEntries_), gatherMaskParams, rsvdCnt);
+    PipeBarrier<PIPE_V>();
+    int64_t filteredInBatch = static_cast<int64_t>(rsvdCnt);
+
+    LocalTensor<int32_t> flatIdxBufferLocal = buf_.Get<int32_t>()[flatIdxBufferLocalOffset_ / sizeof(int32_t)];
+    ArithProgression<int32_t>(flatIdxBufferLocal, static_cast<int32_t>(0), 1, static_cast<int32_t>(coreEntries_));
+    PipeBarrier<PIPE_V>();
+
+    LocalTensor<int32_t> gatheredIdxLocal = buf_.Get<int32_t>()[gatheredIdxLocalOffset_ / sizeof(int32_t)];
+    uint64_t idxRsvdCnt = 0;
+    GatherMask(gatheredIdxLocal, flatIdxBufferLocal, gatherMaskLocal.ReinterpretCast<uint32_t>(), true,
+               static_cast<uint32_t>(coreEntries_), gatherMaskParams, idxRsvdCnt);
+    PipeBarrier<PIPE_V>();
+
+    // 窄化：gatheredExpert - expertStart_ -> [0, actualExpertNum_)。源已剔除越界专家，无污染；
+    // actualExpertNum_ <= 32，远小于 256，故无溢出、无负数，int32->uint8 一步精确转换
+    Adds(gatheredExpertLocal, gatheredExpertLocal, static_cast<int32_t>(-expertStart_),
+         static_cast<int32_t>(filteredInBatch));
+    PipeBarrier<PIPE_V>();
+    LocalTensor<uint8_t> expertU8Local = buf_.Get<uint8_t>()[expertU8LocalOffset_];
+    Cast(expertU8Local, gatheredExpertLocal, RoundMode::CAST_NONE, static_cast<int32_t>(filteredInBatch));
+    PipeBarrier<PIPE_V>();
+
+    // Histograms 计数 -> uint16 bins。单桶计数上限受硬件 uint16 目的类型限制（65535），
+    // 故按 COUNT_SORT_HIST_CHUNK 分块统计，每块结束后扩展成 32bit 累加进 expertCountLocal，
+    // 使累加域与标量路径一致（32bit 无溢出），单桶增量恒 <= CHUNK <= 65535。
+    LocalTensor<uint16_t> histBinLocal = buf_.Get<uint16_t>()[histBinOffset_ / sizeof(uint16_t)];
+    LocalTensor<uint32_t> histBinU32Local = buf_.Get<uint32_t>()[histBinU32Offset_ / sizeof(uint32_t)];
+    __ubuf__ uint8_t *expertU8Addr = (__ubuf__ uint8_t *)expertU8Local.GetPhyAddr();
+    __ubuf__ uint16_t *histBinAddr = (__ubuf__ uint16_t *)histBinLocal.GetPhyAddr();
+    // bins 有 COUNT_SORT_HIST_BIN_NUM 个，expertCountLocal 只有 expertCountStride_ 个，取小者免越界
+    int64_t histAddLen = Min(expertCountStride_, COUNT_SORT_HIST_BIN_NUM);
+    for (int64_t chunkStart = 0; chunkStart < filteredInBatch; chunkStart += COUNT_SORT_HIST_CHUNK) {
+        int64_t chunkElems = Min(filteredInBatch - chunkStart, COUNT_SORT_HIST_CHUNK);
+        // VF 内部先 Duplicate 清零，故每块统计互不干扰
+        VF_CALL<MoeV3FullLoadHistogramVF>(expertU8Addr + chunkStart, histBinAddr, static_cast<uint32_t>(chunkElems));
+        PipeBarrier<PIPE_V>();
+        // Atlas 350 的 Cast 支持 uint16->uint32 但不支持 uint16->int32，故先扩成 uint32 再按位视图转 int32。
+        // 频次恒为非负且远小于 INT32_MAX，视图转换无歧义。
+        Cast(histBinU32Local, histBinLocal, RoundMode::CAST_NONE, static_cast<int32_t>(histAddLen));
+        PipeBarrier<PIPE_V>();
+        Add(expertCountLocal, expertCountLocal, histBinU32Local.ReinterpretCast<int32_t>(),
+            static_cast<int32_t>(histAddLen));
+        PipeBarrier<PIPE_V>();
+    }
+    // expertCountLocal 由 V(Add) 写出（标量路径为 S），写回 GM 的 MTE3 需 V_MTE3 同步
+    SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
+
+    // pairs 构建：压紧后的 [localFlatIdx] / [expertOffset] 两条向量交错写回，替代逐元素标量 SetValue。
+    // 两者均非负 int32，按位交错故直接以 uint32_t 视图传入
+    VF_CALL<MoeV3FullLoadPairsInterleaveVF>(
+        (__ubuf__ uint32_t *)gatheredIdxLocal.GetPhyAddr(), (__ubuf__ uint32_t *)gatheredExpertLocal.GetPhyAddr(),
+        (__ubuf__ uint32_t *)filteredPairsLocal.GetPhyAddr(), static_cast<uint32_t>(filteredInBatch));
+    PipeBarrier<PIPE_V>();
+    SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
+    filteredCount_ = filteredInBatch;
 }
 
 template <typename T>
