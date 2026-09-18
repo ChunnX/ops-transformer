@@ -373,6 +373,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Advance
                 }
             }
             NotifyWaveGmm2Ready(waveCombineJob_, params_, gmm2Position.expertIdx);
+            PRINTF("[W2] b=%d notify e=%u\n", static_cast<int32_t>(AscendC::GetBlockIdx()), gmm2Position.expertIdx);
         }
         ++gmm2Position.expertIdx;
         gmm2Position.tokenIndexInExpert = 0U;
@@ -481,6 +482,8 @@ __aicore__ inline uint32_t MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Fin
                 __gm__ int32_t *expertTokenCountAddr =
                     reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.expertRecvTokenCountPtr) + countOffset;
                 if (AscendC::ReadGmByPassDCache(expertTokenCountAddr) != 0) {
+                    PRINTF("[W1] b=%d allcore=%u v=%d\n", static_cast<int32_t>(AscendC::GetBlockIdx()), expertIdx,
+                           AscendC::ReadGmByPassDCache(expertTokenCountAddr));
                     return expertIdx;
                 }
             }
@@ -525,6 +528,8 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         state.combineBeginExpertIndex = waveEndPosition.expertIdx;
     } else if ((params_.tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0) {
         // 非量化 combine 去重：与量化路径同构的专家粒度消费；缓冲配置在 pipeline 起始按 dedup 初始化。
+        PRINTF("[W3] b=%d ce=[%u,%u) ac=%u\n", static_cast<int32_t>(AscendC::GetBlockIdx()),
+               state.combineBeginExpertIndex, waveEndPosition.expertIdx, state.allCoreCombineExpertIndex);
         ProcessCombineExpertsDedup(state.combineBeginExpertIndex, waveEndPosition.expertIdx, state.combineExpertState,
                                    combineBufferConfig, state.allCoreCombineExpertIndex,
                                    state.allCoreCombineExpertState);
