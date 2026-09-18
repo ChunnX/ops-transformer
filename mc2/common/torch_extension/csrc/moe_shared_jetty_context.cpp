@@ -23,7 +23,6 @@
 
 namespace Mc2Api {
 namespace {
-constexpr uint32_t SHARED_JETTY_MAX_RANK_SIZE = Mc2Aclnn::MOE_SHARED_JETTY_MAX_RANK_SIZE;
 constexpr uint32_t SHARED_JETTY_NUM = Mc2Aclnn::MOE_SHARED_JETTY_NUM;
 constexpr size_t SHARED_JETTY_MAX_TAG_SIZE = 255;
 constexpr CommEngine CommEngineUse = CommEngine::COMM_ENGINE_AIV;
@@ -49,8 +48,8 @@ private:
     {
         CheckHccl(HcclGetRankIdFunc(comm_, &context_.epRankId), "HcclGetRankId");
         CheckHccl(HcclGetRankSizeFunc(comm_, &rankSize_), "HcclGetRankSize");
-        TORCH_CHECK(rankSize_ >= 2 && rankSize_ <= SHARED_JETTY_MAX_RANK_SIZE,
-                    "Invalid shared Jetty rank size: ", rankSize_);
+        TORCH_CHECK(rankSize_ == Mc2Aclnn::MOE_SHARED_JETTY_WORLD_SIZE,
+                    "MoE shared Jetty currently requires 8 ranks, got ", rankSize_);
         TORCH_CHECK(context_.epRankId < rankSize_, "Invalid shared Jetty rank ID: ", context_.epRankId);
         // Each shared Jetty serves every remote rank.
         context_.sharedJettyNum = SHARED_JETTY_NUM;

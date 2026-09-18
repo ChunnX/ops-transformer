@@ -144,19 +144,19 @@ per-rank 有效 slot 数也可考虑与最终完成通知合并传递；同样�
 
 本节记录通信接口迁移，与前面的计数优化方案分开实施。当前已完成源码接入，尚未进行 CANN 编译和 NPU 验证；两个计数 Tensor、去重和专家还原逻辑保持原样。
 
-- Direct dispatch、dispatch epilogue 使用共享 context；Hybrid 和 combine 两个算子继续使用普通 context。Python 参数和输出不变。直接调用 ACLNN 的 Direct 调用方必须传入 `MoeSharedJettyContext`，旧 context 会被 tiling 的长度检查拒绝。
-- Host 固定建立 56 个共享 Jetty。保留按目标 rank 分组、组内切分 token 的调度，实际发送核数不超过 56，每个发送核按 `aivId` 独占一个 Jetty。原 `channelIndex` 继续表示组内分片和通知槽位。
+- 四个算子统一使用共享 context，旧普通 MoE context builder、自建窗口池和单对端 kernel 路径已弃用。Python 参数和输出不变。Host 建链与四个 tiling 入口均限定 8P。直接 ACLNN 调用须使用 Direct topology 和 `MoeSharedJettyContext`，旧 context 或 Hybrid topology 会被 tiling 拒绝；本轮不支持旧跨超算法。
+- Host 每个 rank 固定建立 56 个共享 Jetty，每个 Jetty 均包含按 rank 升序跳过自身的 7 个对端。远端句柄索引固定为 `peerIndex * 8 + channelIndex`，不随实际发送组大小变化。64 AIV 时，7 个远端组各 8 核，使用全部 56 个队列，本卡组不占远端 Jetty。保留 dispatch 原有发送核上限和取整规则，combine 保留原余数分组、超过 64 核时远端组优先及剩余本地核的规则，不引入公共调度层。
 - 计数、payload 和空分片通知均使用 `MakeBatchHandle → GetHandleRef → WriteNbi / WriteWithNotifyNbi → BatchCommit`。对端索引按升序跳过本卡；本卡仍走本地拷贝。本版不合并跨对端 batch，也不改成所有核遍历所有对端。
-- epilogue 保留原等待条件与通知清理，只适配共享 context 的窗口访问。发送核不足以覆盖所有 rank 时，按实际发送核数重新划分 rank，避免漏发。
-- 共享窗口使用 HCCL 内置 buffer，容量由通信域的 `HCCL_BUFFSIZE` 配置决定，接入时检查容量。首次缓存未命中时，在建链前清零整个本地窗口；缓存命中不清零。通信域须持续存活，构建失败后沿用现有约定废弃通信域。
-- 迁移期间仍会建立普通 context，供拓扑识别、Hybrid 和 combine 使用，因此不是最终资源占用方案。共享内置窗口在 dispatch 到 epilogue 完成之间不可被其他通信操作覆盖。
+- epilogue 保留原等待条件与通知清理，只适配共享 context 的窗口访问。低 AIV 时 dispatch 保留连续 rank 分配，combine 保留按核号步进遍历 rank；两者不强行统一。
+- 共享窗口使用 HCCL 内置 buffer，容量由通信域的 `HCCL_BUFFSIZE` 配置决定，首次接入检查本地及远端容量。首次缓存未命中时，在建链前清零整个本地窗口；缓存命中不清零。本轮按各 rank 一致的窗口配置验证；缓存复用后扩大请求时仅复查本地容量，未覆盖各 rank 不同窗口容量的场景。通信域须持续存活，构建失败后沿用现有约定废弃通信域。
+- 四个算子复用同一份 HCCL 共享 context，不再提前建立普通 MoE context。共享内置窗口在算子链完成之前不可被其他通信操作覆盖。Engram 的独立通信实现不在本次删除范围。
 - 同步适配 Device 诊断、Host 异常回调和离线 dump 解析，避免将较小的共享 context 当作普通结构读取。
 
 本地 asc-comm 接口核对结果：batch 形式的 `WriteNbi`、`WriteWithNotifyNbi`、`ReadNbi` 支持由 `GetHandleRef` 选择共享 Jetty 内的对端，均包含连续地址和 scatter/gather 重载；`BatchCommit`、`Drain` 有对应 batch 重载。单次 scatter/gather 请求不能跨对端。当前公开的 `WriteValueNbi`、`WriteReduceNbi`、`AtomicFAA`、`AtomicCAS`、`Commit`、`Lock`、`Unlock` 只有普通 `ChannelHandle` 重载，不能直接传入 `MultiChannelHandle`。
 
-`BatchCommit` 表示提交，不等同于远端接收完成。当前仍由接收侧通知协议判断 payload 就绪；没有因本次迁移新增 CQE 或 Drain 等待。
+`BatchCommit` 表示提交，不等同于远端接收完成，也不对累计未完成的 SQ 请求自动节流。按当前仅测试 4096 token 的要求，dispatch 保留原 128 SQE 批次边界，不新增 SQ 水位判断、CQE 或 Drain；接收侧仍以原通知协议判断 payload 就绪。该决定不构成更大 token 规模已验证的结论。combine 保留本次共享接入已有的最终标记 CQE/Drain 和 SQ 高水位处理。
 
-设备验收至少覆盖：8 卡与 16 卡、空分片、零发送、非均衡路由、Cached / 非 Cached、`DoCpuSync`、连续多轮，以及 dispatch → epilogue → combine → combine epilogue。静态核对不能替代上述设备验证。
+本轮设备验收以 8 卡为准，覆盖空分片、零发送、非均衡路由、Cached / 非 Cached、`DoCpuSync`、连续多轮，以及 dispatch → epilogue → combine → combine epilogue。其他 rank 数及跨超不作为已验证能力。静态核对不能替代设备验证。
 
 ## 第二章：moe_ep_dispatch_epilogue
 
@@ -164,8 +164,28 @@ per-rank 有效 slot 数也可考虑与最终完成通知合并传递；同样�
 
 ## 第三章：moe_ep_combine
 
-待后续讨论并记录优化方案。
+### 3.1 共享 Jetty 最小穿刺
+
+combine 仅使用 dispatch 的 `MoeSharedJettyContext`，context 仍由 HCCL 管理，Torch 仅持有其 Tensor。不再保留普通 context/channel 分支或 `SharedJetty` 双模板；公开算子参数不变。
+
+保留按目标 rank 分核、metadata 分段、token/weight 写入位置及完成标记布局。远端组使用第一章所述的紧凑句柄索引，通过 `MakeBatchHandle → GetHandleRef → WriteNbi → BatchCommit` 选择对端并批量提交。对端索引按 rank 排序并跳过自身；低 AIV 分支可由同一核串行切换多个对端。保留 combine 的 `hcomm_.Init`。
+
+8P 固定每远端 8 个 lane，与原 8P 的通道数量一致。原分核函数不变，不再通过新增调度辅助截断或取整 combine 核数。共享最终标记请求 CQE，并在提交后 Drain，避免跨轮次复用时遗留完成事件。SQ 高水位按无权重 1、有权重 2 个 WQEBB 计算，提前生成 CQE 并给最终标记保留容量。
+
+本次不修改 token 排布、接收 metadata 或算子输入输出，也不实施第一章的计数 Tensor 优化。直接调用 ACLNN 的调用方在 Direct 模式下须传共享 context；tiling 会拒绝旧普通 context。
+
+### 3.2 验证边界
+
+本轮 Python 调度模型通过 2048 组组合：8P、1～128 个 AIV、全部 8 个源 rank、dispatch/combine 两种分核。检查了远端队列索引范围、单写者、token 覆盖及通知数量，64 AIV 及以上使用全部 56 个远端队列。另逐字对比确认 dispatch 分核函数与共享接入前版本一致，combine 分核及 epilogue 完成计数函数与当前 HEAD 一致。模型不是设备代码执行；之前已删除公共调度头的编译结果不作为本版证据。尚未对本次完整改动进行 CANN 编译或 NPU 精度验证。
+
+设备验收应覆盖 dispatch → dispatch epilogue → combine → combine epilogue 连续执行、连续多轮复用、空分片、零 token、非均衡路由、带/不带 topk weight及低 AIV 多对端。修改 kernel 后须重新编译安装自定义算子包；修改 Torch 扩展后须重新构建并安装 wheel。
 
 ## 第四章：moe_ep_combine_epilogue
 
-待后续讨论并记录优化方案。
+### 4.1 共享 context 配套接入
+
+与 combine 使用同一份共享窗口，只解析共享 context。异常 metadata 和核诊断显式使用共享类型，沿用已有共享 context 离线解析。
+
+完成标记数量沿用原 `GetCompletionChannelCount`，与 combine 原分核对应，包括不足 8 核、非 8 倍数和超过 64 核的情况。接收归约仍使用原 `aivNum`，保留原来的归约分核、topk weight 处理和标记清理流程。
+
+本章与第三章一起验证；静态检查不代表设备运行或精度通过。

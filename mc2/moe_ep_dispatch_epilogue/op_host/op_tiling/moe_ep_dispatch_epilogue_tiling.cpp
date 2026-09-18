@@ -67,8 +67,8 @@ constexpr uint32_t ONE_DIM = 1U;
 constexpr uint32_t TWO_DIMS = 2U;
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024U * 1024U;
 constexpr uint64_t WIN_ADDR_ALIGN = 512UL;
-constexpr int64_t MAX_EP_WORLD_SIZE = 1024;
-constexpr int64_t MIN_EP_WORLD_SIZE = 2;
+constexpr int64_t MAX_EP_WORLD_SIZE = Mc2Aclnn::MOE_SHARED_JETTY_WORLD_SIZE;
+constexpr int64_t MIN_EP_WORLD_SIZE = Mc2Aclnn::MOE_SHARED_JETTY_WORLD_SIZE;
 constexpr int64_t MAX_NUM_EXPERTS = 2048;
 constexpr int64_t MIN_NUM_EXPERTS = 2;
 constexpr int64_t K_MAX = 32;
@@ -237,10 +237,10 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
         OP_LOGE(nodeName, "context dims must be 1, but got %lu.", contextStorageShape->GetStorageShape().GetDimNum()),
         return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(networkMode != NETWORK_HYBRID &&
+    OP_TILING_CHECK(networkMode == NETWORK_HYBRID ||
                         contextStorageShape->GetStorageShape().GetDim(0) !=
                             sizeof(Mc2Aclnn::MoeSharedJettyContext) / sizeof(int32_t),
-                    OP_LOGE(nodeName, "Direct dispatch epilogue requires a shared Jetty context."),
+                    OP_LOGE(nodeName, "Dispatch epilogue requires shared Jetty context and direct topology."),
                     return ge::GRAPH_FAILED);
 
     // ---- x [num_tokens, hidden]，hidden 为 cfg 唯一真值来源 ----

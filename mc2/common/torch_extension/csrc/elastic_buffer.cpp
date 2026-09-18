@@ -55,15 +55,10 @@ constexpr uint32_t HCCL_COMM_LAYERS_MTE_CCU = 1;
 constexpr uint32_t HCCL_COMM_LAYERS_UB_MEM = 0;
 constexpr uint32_t GET_LOCAL_SERVER_RANK_SIZE_LAYER = 0;
 constexpr int64_t NETWORK_DIRECT = 0;
-constexpr int64_t NETWORK_HYBRID = 1;
 constexpr int64_t BUFFER_ALIGNMENT = 2 * 1024 * 1024;
 constexpr int64_t MB_SIZE = 1024LL * 1024LL;
-constexpr int64_t HUGE1G_SIZE = 1024ULL * 1024ULL * 1024ULL;
 constexpr int DIM_ONE = 1;
 constexpr int DIM_TWO = 2;
-constexpr uint32_t MOE_CHANNEL_HANDLE_NUM = 64U;
-constexpr uint32_t MOE_CHANNEL_NOTIFY_NUM = 3U;
-constexpr uint32_t MEM_HANDLE_NUM = 1U;
 constexpr int64_t SEND_COUNTS_ALIGN_FACTOR = 8;
 constexpr int64_t MOE_EP_METADATA_FIELDS = 5;
 constexpr int64_t MOE_EP_METADATA_ALIGN_BYTES = 512;
@@ -150,14 +145,6 @@ struct EngramCommContext {
     uint32_t channelsPerRank = 1;
 };
 
-struct MoeCommContext {
-    uint32_t epRankId = 0;
-    uint32_t rankSizePerServer = 0;
-    uint64_t epHcclBuffer[HCCL_MAX_RANK_SIZE] = {};
-    ChannelHandle hcommHandle[HCCL_MAX_RANK_SIZE] = {};
-    uint32_t channelsPerRank = 1;
-};
-
 struct RankLinkInfo {
     CommProtocol protocol;
     uint32_t layer;
@@ -167,30 +154,6 @@ struct LayerRanks {
     uint32_t layer;
     std::vector<uint32_t> ranks;
 };
-
-struct MoeContextResources {
-    at::Tensor contextTensor;
-    int64_t cclBufferSize = 0;
-    uint32_t rankSizePerServer = 0;
-    void *deviceBufPtr = nullptr;
-    aclrtDrvMemHandle physicalMemHandle = nullptr;
-    HcclMemHandle memHandle = nullptr;
-    std::string contextTag;
-};
-
-// 进程级 MoE 通信 buffer 共享池：HCCL 引擎 ctx 以 tag 为单例缓存在通信域内，注册内存
-// (HcclCommMemReg)与 channel 均无反注册/销毁接口，其内容(epHcclBuffer[])指向本类自建的
-// 物理内存。因此物理内存生命周期与 tag 绑定并保留至进程级：同 tag 多实例共享，Destroy 仅
-// 解除本实例引用、不释放内存，同 group destroy 后重建 ElasticBuffer 时按既有容量直接复用
-// (重建声明的 cclBufferSize 不得超过首建值)。
-struct MoeSharedBufferEntry {
-    void *deviceBufPtr = nullptr;
-    aclrtDrvMemHandle physicalMemHandle = nullptr;
-    HcclMemHandle memHandle = nullptr;
-    int64_t cclBufferSize = 0; // 实际已申请的物理内存字节数
-};
-static std::mutex gMoeSharedBufferMutex;
-static std::unordered_map<std::string, MoeSharedBufferEntry> gMoeSharedBuffers;
 
 struct EngramContextResources {
     HcclComm hcclComm = nullptr;
@@ -786,387 +749,6 @@ private:
     }
 };
 
-class MoeContextBuilder : public HcclContextBuilderBase {
-public:
-    MoeContextBuilder() = default;
-    ~MoeContextBuilder()
-    {
-        // RAII: Build 完整成功(所有权已转移)之外的任意异常路径，回滚已申请的物理内存，防泄露
-        if (!ownershipReleased_) {
-            ReleaseLocalDeviceBuffer();
-        }
-    }
-    MoeContextBuilder(const MoeContextBuilder &) = delete;
-    MoeContextBuilder &operator=(const MoeContextBuilder &) = delete;
-
-    MoeContextResources Build(const std::string &groupName, int64_t customCclBufferSize)
-    {
-        ASCEND_LOGI("start build");
-        InitHcclEngineCtxFunctions();
-
-        HcclComm hcclComm = nullptr;
-        AcquireHcclHandle(groupName, hcclComm);
-
-        CommProtocol protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP;
-        GetCommProtocol(hcclComm, protocol);
-
-        // 所需实际总字节数需要大于0，且2MB对齐
-        TORCH_CHECK(customCclBufferSize > 0, "ccl buffer size must be greater than 0, got ", customCclBufferSize);
-        TORCH_CHECK(customCclBufferSize % (2 * MB_SIZE) == 0, "ccl buffer size must be divisible by 2MB, got ",
-                    customCclBufferSize);
-        cclBufferSize_ = customCclBufferSize;
-
-        MoeCommContext context;
-        rankNumPerServer_ = rankNumPerUbDomain_;
-        TORCH_CHECK(rankNumPerServer_ > 0, "rank_num_per_server must be positive after resolving MoE topology");
-        context.rankSizePerServer = rankNumPerServer_;
-
-        void *ctx = nullptr;
-        BuildContext(hcclComm, groupName, "moe_dispatch_combine_multi_channel", protocol, context, ctx);
-        TORCH_CHECK(ctx != nullptr, "Create MoE context tensor failed: ctx is nullptr");
-        int64_t numElements = (sizeof(MoeCommContext) + sizeof(int32_t) - 1) / sizeof(int32_t);
-        auto options = at::TensorOptions().dtype(at::kInt).device(c10::DeviceType::PrivateUse1);
-        // HCCL owns ctx; the tensor only provides a non-owning view of the cached device context.
-        MoeContextResources resources;
-        resources.contextTensor = at_npu::native::from_blob(ctx, {numElements}, options);
-        resources.cclBufferSize = cclBufferSize_;
-        resources.rankSizePerServer = rankNumPerServer_;
-        resources.deviceBufPtr = deviceBufPtr_;
-        resources.physicalMemHandle = physicalMemHandle_;
-        resources.memHandle = memHandle_;
-        resources.contextTag = groupName + "moe_dispatch_combine_multi_channel";
-        if (createdNew_) {
-            // 首次创建: 物理内存入共享池(与 tag 绑定的不可销毁资源同生命周期)，Destroy 不释放，同 group 重建时复用
-            std::lock_guard<std::mutex> lock(gMoeSharedBufferMutex);
-            MoeSharedBufferEntry &entry = gMoeSharedBuffers[resources.contextTag];
-            entry.deviceBufPtr = deviceBufPtr_;
-            entry.physicalMemHandle = physicalMemHandle_;
-            entry.memHandle = memHandle_;
-            entry.cclBufferSize = cclBufferSize_;
-        }
-        ownershipReleased_ = true; // 所有权已转移(共享池/既有持有者)，builder 析构不释放
-        return resources;
-    }
-
-private:
-    // 回滚本 builder 持有的物理内存(异常路径)，顺序与申请严格互逆
-    void ReleaseLocalDeviceBuffer()
-    {
-        if (deviceBufPtr_ != nullptr) {
-            if (physicalMemHandle_ != nullptr) {
-                (void)aclrtUnmapMem(deviceBufPtr_);
-                (void)aclrtFreePhysical(physicalMemHandle_);
-                physicalMemHandle_ = nullptr;
-            }
-            (void)aclrtReleaseMemAddress(deviceBufPtr_);
-            deviceBufPtr_ = nullptr;
-        }
-        memHandle_ = nullptr;
-    }
-
-    void BuildContext(const HcclComm &commHandle, const std::string &groupName, const std::string &opName,
-                      const CommProtocol &protocol, MoeCommContext &context, void *&ctx)
-    {
-        std::string contextTag = groupName + opName;
-        CheckContextTag(contextTag);
-        CommEngine engine = CommEngine::COMM_ENGINE_AIV;
-
-        GetOrCreateContext(commHandle, contextTag, engine, protocol, ctx, context);
-    }
-
-    void CreateContext(const HcclComm &commHandle, const std::string &contextTag, const CommEngine &engine,
-                       const CommProtocol &protocol, void *&ctx, MoeCommContext *context)
-    {
-        uint64_t contextSize = sizeof(MoeCommContext);
-        CreateEngineContext(commHandle, contextTag, engine, contextSize, ctx);
-
-        uint32_t rankSize = 0;
-        GetRankInfo(commHandle, context->epRankId, rankSize);
-
-        std::string memBufferTag = contextTag + "_buffer";
-        CheckContextTag(memBufferTag);
-        AllocateAndRegisterDeviceBuffer(commHandle, memBufferTag);
-
-        GetHcclCommResource(commHandle, engine, protocol, *context, rankSize, memBufferTag);
-
-        CopyContextToDevice(commHandle, contextTag, engine, context, contextSize);
-    }
-
-    void GetOrCreateContext(const HcclComm &commHandle, const std::string &contextTag, const CommEngine &engine,
-                            const CommProtocol &protocol, void *&ctx, MoeCommContext &context)
-    {
-        uint64_t ctxSize = 0;
-        auto hcclRet = HcclEngineCtxGetFunc(commHandle, contextTag.c_str(), engine, &ctx, &ctxSize);
-        if (hcclRet != HCCL_SUCCESS) {
-            CreateContext(commHandle, contextTag, engine, protocol, ctx, &context);
-            createdNew_ = true;
-            return;
-        }
-        // ctx 已存在(同 group 曾创建过，含 destroy 后重建)：物理内存由共享池按 tag 保留，复用既有 buffer。
-        // 重建声明的容量不得超过首建容量，否则 tiling 按声明值校验通过、 kernel 经共享 ctx 写入会超出实际物理内存。
-        MoeSharedBufferEntry entry;
-        {
-            std::lock_guard<std::mutex> lock(gMoeSharedBufferMutex);
-            auto iter = gMoeSharedBuffers.find(contextTag);
-            TORCH_CHECK(iter != gMoeSharedBuffers.end(), "MoE comm context of group '", contextTag,
-                        "' exists but its buffer is missing from the shared pool; an earlier build on this "
-                        "group may have failed midway, please use a new comm group");
-            TORCH_CHECK(cclBufferSize_ <= iter->second.cclBufferSize,
-                        "ccl buffer size exceeds the existing buffer of this group, requested ", cclBufferSize_,
-                        ", allocated ", iter->second.cclBufferSize,
-                        "; the shared comm buffer is sized by the first ElasticBuffer created on this group, "
-                        "destroy and recreate with a larger size is not supported, please use a new comm group");
-            entry = iter->second;
-        }
-        deviceBufPtr_ = entry.deviceBufPtr;
-        physicalMemHandle_ = entry.physicalMemHandle;
-        memHandle_ = entry.memHandle;
-        ownershipReleased_ = true; // 复用资源不归本 builder 所有，析构不得释放
-    }
-
-    void GetCommProtocol(const HcclComm &commHandle, CommProtocol &protocol)
-    {
-        ASCEND_LOGI("start GetCommProtocol");
-        uint32_t layerNum = 0;
-        uint32_t *layerList = nullptr;
-        GetNetLayers(commHandle, layerList, layerNum);
-
-        if (layerNum == HCCL_COMM_LAYERS_MTE_CCU) {
-            GetRankSizePerServer(commHandle, rankNumPerUbDomain_);
-            return;
-        }
-
-        CheckProtocolSupport(commHandle, layerList, layerNum, protocol);
-    }
-
-    bool HasUbGPeer() const
-    {
-        for (const auto &entry : rankLinkMap_) {
-            if (entry.second.protocol == CommProtocol::COMM_PROTOCOL_UB_RTP) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    void InitHcclChannel(const HcclComm &commHandle, uint32_t rankDim, uint32_t srcRankId, uint32_t channelsPerRank,
-                         const CommProtocol &protocol, std::vector<HcclChannelDesc> &channelDesc)
-    {
-        uint32_t channelNum = static_cast<uint32_t>(channelDesc.size());
-        auto hcclRet = HcclChannelDescInit(channelDesc.data(), channelNum);
-        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HCCL channel init failed, ret: ", hcclRet);
-
-        uint32_t netLayerNum = 0;
-        uint32_t *netLayerList = nullptr;
-        GetNetLayers(commHandle, netLayerList, netLayerNum);
-        TORCH_CHECK(netLayerNum > 0, "Get HCCL net layers failed, netLayerNum is ", netLayerNum);
-
-        for (uint32_t peer = 0; peer < rankDim; ++peer) {
-            if (peer == srcRankId) {
-                continue;
-            }
-            uint32_t peerIndex = (peer > srcRankId) ? (peer - 1) : peer;
-            RankLinkInfo linkInfo = ResolveLinkInfo(peer, protocol, netLayerList);
-            CommLink *links = nullptr;
-            GetHcclCommLink(commHandle, linkInfo.layer, srcRankId, peer, linkInfo.protocol, links);
-            for (uint32_t channel = 0; channel < channelsPerRank; ++channel) {
-                // Handles are compact by remote rank because the local rank does not need an HCOMM channel.
-                uint32_t channelId = peerIndex * channelsPerRank + channel;
-                channelDesc[channelId].channelProtocol = linkInfo.protocol;
-                channelDesc[channelId].remoteRank = peer;
-                channelDesc[channelId].notifyNum = MOE_CHANNEL_NOTIFY_NUM;
-                channelDesc[channelId].localEndpoint = links->srcEndpointDesc;
-                channelDesc[channelId].remoteEndpoint = links->dstEndpointDesc;
-                channelDesc[channelId].memHandles = &memHandle_;
-                channelDesc[channelId].memHandleNum = MEM_HANDLE_NUM;
-            }
-        }
-    }
-
-    void GetHcclCommChannel(const HcclComm &commHandle, const CommEngine &engine, uint32_t rankDim, uint32_t srcRankId,
-                            const CommProtocol &protocol, MoeCommContext &context)
-    {
-        TORCH_CHECK(rankDim >= HCCL_MIN_RANK_SIZE && rankDim <= HCCL_MAX_RANK_SIZE, "Invalid HCCL rank size ", rankDim);
-        uint32_t remoteRankNum = rankDim - 1;
-        bool hasUbGPeer = HasUbGPeer();
-        context.channelsPerRank = 1U;
-        if (!hasUbGPeer && rankDim < MOE_CHANNEL_HANDLE_NUM) {
-            context.channelsPerRank = MOE_CHANNEL_HANDLE_NUM / rankDim;
-        }
-        TORCH_CHECK(context.channelsPerRank > 0, "No HCCL channel capacity for rank size ", rankDim);
-        TORCH_CHECK(context.channelsPerRank <= HCCL_MAX_RANK_SIZE / rankDim,
-                    "HCCL channel handles exceed capacity, rank size ", rankDim, ", channels per rank ",
-                    context.channelsPerRank);
-        uint32_t channelNum = remoteRankNum * context.channelsPerRank;
-        std::vector<HcclChannelDesc> channelDesc(channelNum);
-        ChannelHandle channelBuf[HCCL_MAX_RANK_SIZE] = {};
-
-        InitHcclChannel(commHandle, rankDim, srcRankId, context.channelsPerRank, protocol, channelDesc);
-        AcquireChannels(commHandle, engine, channelDesc, channelBuf);
-
-        uint32_t channelIndex = 0;
-        for (uint32_t peer = 0; peer < rankDim; ++peer) {
-            if (peer == srcRankId) {
-                continue;
-            }
-            for (uint32_t channel = 0; channel < context.channelsPerRank; ++channel) {
-                context.hcommHandle[peer * context.channelsPerRank + channel] = channelBuf[channelIndex++];
-            }
-        }
-    }
-
-    void GetHcclCommResource(const HcclComm &commHandle, const CommEngine &engine, const CommProtocol &protocol,
-                             MoeCommContext &context, uint32_t rankSize, const std::string &targetTag)
-    {
-        uint32_t rankId = context.epRankId;
-        GetHcclCommChannel(commHandle, engine, rankSize, rankId, protocol, context);
-
-        GetRegisteredCommResource(commHandle, context, rankSize, targetTag);
-    }
-
-    // 单次物理内存申请(预留虚拟地址→分配物理→映射→设权限→清零)，失败时回滚已完成的步骤。
-    // prop由调用方预先构造，内部仅按memAttr变更大页规格后使用。
-    bool AllocateHugePageBuffer(uint64_t allocSizeBytes, aclrtPhysicalMemProp &prop, aclrtMemAttr memAttr)
-    {
-        void *virPtr = nullptr;
-        aclError ret = aclrtReserveMemAddress(&virPtr, allocSizeBytes, 0, nullptr, 0);
-        if (ret != ACL_SUCCESS) {
-            ASCEND_LOGI("aclrtReserveMemAddress(%lu) failed, ret=%d", allocSizeBytes, ret);
-            return false;
-        }
-
-        prop.memAttr = memAttr;
-        aclrtDrvMemHandle physicalHandle = nullptr;
-        ret = aclrtMallocPhysical(&physicalHandle, allocSizeBytes, &prop, 0);
-        if (ret != ACL_SUCCESS) {
-            ASCEND_LOGI("aclrtMallocPhysical(%lu) failed, ret=%d", allocSizeBytes, ret);
-            (void)aclrtReleaseMemAddress(virPtr);
-            return false;
-        }
-
-        ret = aclrtMapMem(virPtr, allocSizeBytes, 0, physicalHandle, 0);
-        if (ret != ACL_SUCCESS) {
-            ASCEND_LOGI("aclrtMapMem(%lu) failed, ret=%d", allocSizeBytes, ret);
-            (void)aclrtFreePhysical(physicalHandle);
-            (void)aclrtReleaseMemAddress(virPtr);
-            return false;
-        }
-
-        int32_t deviceId = 0;
-        ret = aclrtGetDevice(&deviceId);
-        if (ret != ACL_SUCCESS) {
-            // 设备句柄获取失败非内存不足，直接报错；报错前回滚已完成的步骤防泄露
-            (void)aclrtUnmapMem(virPtr);
-            (void)aclrtFreePhysical(physicalHandle);
-            (void)aclrtReleaseMemAddress(virPtr);
-            TORCH_CHECK(false, "aclrtGetDevice failed, ret=", ret);
-        }
-        aclrtMemAccessDesc accessDesc = {};
-        accessDesc.flags = ACL_RT_MEM_ACCESS_FLAGS_READWRITE;
-        accessDesc.location.id = static_cast<uint32_t>(deviceId);
-        accessDesc.location.type = ACL_MEM_LOCATION_TYPE_DEVICE;
-        ret = aclrtMemSetAccess(virPtr, allocSizeBytes, &accessDesc, 1);
-        if (ret != ACL_SUCCESS) {
-            ASCEND_LOGI("aclrtMemSetAccess failed, ret=%d", ret);
-            (void)aclrtUnmapMem(virPtr);
-            (void)aclrtFreePhysical(physicalHandle);
-            (void)aclrtReleaseMemAddress(virPtr);
-            return false;
-        }
-
-        deviceBufPtr_ = virPtr;
-        physicalMemHandle_ = physicalHandle;
-        return true;
-    }
-
-    void AllocateAndRegisterDeviceBuffer(const HcclComm &commHandle, const std::string &memBufferTag)
-    {
-        TORCH_CHECK(cclBufferSize_ > 0, "ccl buffer size must be greater than 0, got ", cclBufferSize_);
-        uint64_t bufferSizeBytes = static_cast<uint64_t>(cclBufferSize_);
-        if (deviceBufPtr_ == nullptr) {
-            // 物理内存属性: PINNED(物理地址连续) + 当前设备定位，大页规格按实际情况调整
-            int32_t deviceId = 0;
-            aclError ret = aclrtGetDevice(&deviceId);
-            TORCH_CHECK(ret == ACL_SUCCESS, "aclrtGetDevice failed, ret=", ret);
-            aclrtPhysicalMemProp prop = {};
-            prop.handleType = ACL_MEM_HANDLE_TYPE_NONE;
-            prop.allocationType = ACL_MEM_ALLOCATION_TYPE_PINNED;
-            prop.location.id = static_cast<uint32_t>(deviceId);
-            prop.location.type = ACL_MEM_LOCATION_TYPE_DEVICE;
-
-            // 优先1G大页(申请量按1G向上对齐)，不足时降级2M大页(申请量=原始需求，天然2M对齐)
-            uint64_t allocBufferBytesAlign = CeilDiv(cclBufferSize_, HUGE1G_SIZE) * HUGE1G_SIZE;
-            if (!AllocateHugePageBuffer(allocBufferBytesAlign, prop, ACL_MEM_HUGE1G)) {
-                ASCEND_LOGI("1G hugepage allocation failed, fallback to 2M hugepage");
-                TORCH_CHECK(AllocateHugePageBuffer(bufferSizeBytes, prop, ACL_MEM_HUGE),
-                            "Allocate ccl buffer failed for both 1G and 2M hugepage, size=", bufferSizeBytes);
-            }
-
-            // 按实际通信窗口大小清零（1G大页对齐时申请量大于需求，尾部无需清零）
-            ret = aclrtMemset(deviceBufPtr_, bufferSizeBytes, 0, bufferSizeBytes);
-            TORCH_CHECK(ret == ACL_SUCCESS, "aclrtMemset(deviceBufPtr_) failed, ret=", ret);
-        }
-        if (memHandle_ == nullptr) {
-            CommMem mem;
-            mem.type = COMM_MEM_TYPE_DEVICE;
-            mem.addr = deviceBufPtr_;
-            mem.size = bufferSizeBytes;
-            auto hcclRet = HcclCommMemRegFunc(commHandle, memBufferTag.c_str(), &mem, &memHandle_);
-            TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclCommMemReg(tag='", memBufferTag, "', size=", bufferSizeBytes,
-                        ") failed, ret=", hcclRet);
-        }
-    }
-
-    void GetRegisteredCommResource(const HcclComm &commHandle, MoeCommContext &context, uint32_t rankSize,
-                                   const std::string &targetTag)
-    {
-        uint32_t rankId = context.epRankId;
-        context.epHcclBuffer[rankId] = reinterpret_cast<uint64_t>(deviceBufPtr_);
-        for (uint32_t peer = 0; peer < rankSize; ++peer) {
-            if (peer == rankId) {
-                continue;
-            }
-            uint32_t memNum = 0;
-            CommMem *remoteMems = nullptr;
-            char **memTags = nullptr;
-            auto hcclRet = HcclChannelGetRemoteMemsFunc(commHandle, context.hcommHandle[peer * context.channelsPerRank],
-                                                        &memNum, &remoteMems, &memTags);
-            TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclChannelGetRemoteMems(peer=", peer, ") failed, ret=", hcclRet);
-            bool hasTargetMem = false;
-            for (uint32_t j = 0; j < memNum; ++j) {
-                if (memTags == nullptr || remoteMems == nullptr) {
-                    break;
-                }
-                if (memTags[j] != nullptr && targetTag == memTags[j]) {
-                    context.epHcclBuffer[peer] = reinterpret_cast<uint64_t>(remoteMems[j].addr);
-                    hasTargetMem = true;
-                    break;
-                }
-            }
-            TORCH_CHECK(hasTargetMem, "Target Mem : ", targetTag, " is not found.");
-        }
-    }
-
-    static void GetRankSizePerServer(const HcclComm &commHandle, uint32_t &rankSizePerServer)
-    {
-        uint32_t *netLayerList = nullptr;
-        uint32_t netLayerNum = 0;
-        GetNetLayers(commHandle, netLayerList, netLayerNum);
-
-        uint32_t netLayers = netLayerList[GET_LOCAL_SERVER_RANK_SIZE_LAYER];
-        auto hcclRet = HcclRankGraphGetRankSizeByLayerFunc(commHandle, netLayers, &rankSizePerServer);
-        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get HCCL rank size per server failed, ret: ", hcclRet);
-    }
-
-    uint32_t rankNumPerServer_ = 2;
-    int64_t cclBufferSize_ = 0;
-    void *deviceBufPtr_ = nullptr;
-    aclrtDrvMemHandle physicalMemHandle_ = nullptr;
-    HcclMemHandle memHandle_ = nullptr;
-    bool createdNew_ = false;        // 本次 Build 是否首次创建(ctx 不存在)
-    bool ownershipReleased_ = false; // 物理内存所有权是否已转移(共享池/复用)，析构不再释放
-};
-
 // ElasticBuffer class - unified interface for Engram storage and MoE EP kernels
 class ElasticBuffer {
 public:
@@ -1249,10 +831,7 @@ public:
 
 private:
     void EnsureEngramContext(void *externalHostPtr = nullptr, int64_t externalBytes = 0);
-    void EnsureMoeContext(int64_t cclBufferSize);
-    const at::Tensor &GetDispatchContext(int64_t topoType, int64_t cclBufferSize);
-    int64_t ResolveRankNumPerServer(int64_t epWorldSize) const;
-    int64_t ResolveTopoType(int64_t epWorldSize, int64_t rankNumPerServer) const;
+    const at::Tensor &GetMoeExecutionContext(int64_t cclBufferSize);
 
     std::string groupName_;
     int64_t engramNumCpuBytes_;
@@ -1273,16 +852,8 @@ private:
     bool engramExternalRegisteredByUs_ = false;
     int64_t engramExternalBytes_ = 0;
 
-    at::Tensor moeContextTensor_;
     at::Tensor moeSharedContextTensor_;
     int64_t moeSharedBufferRequirement_ = 0;
-    int64_t moeCclBufferSize_ = 0; // MoE 通信 buffer 大小（首次调用时按算子参数计算并内部申请注册）
-    uint32_t moeRankSizePerServer_ = 2;
-    void *moeDeviceBufPtr_ = nullptr;
-    aclrtDrvMemHandle moePhysicalMemHandle_ = nullptr;
-    HcclMemHandle moeMemHandle_ = nullptr;
-    std::string moeContextTag_; // 共享池 key（group + opName），复用/入池时使用
-    bool moeContextInitialized_ = false;
 
     int64_t engramHiddenSize_ = 0;
     int64_t engramNumEntries_ = 0;
@@ -1353,53 +924,16 @@ void ElasticBuffer::EnsureEngramContext(void *externalHostPtr, int64_t externalB
     engramContextInitialized_ = true;
 }
 
-// Lazy-initialize the MoE comm context on the first MoE kernel invocation (four entry points
-// keep equal triggering rights, same as the original pattern). The CCL buffer size is computed
-// by Python from the actual operator arguments and passed in; it is internally allocated as
-// 2M-hugepage pinned physical memory and registered to the comm domain.
-void ElasticBuffer::EnsureMoeContext(int64_t cclBufferSize)
+// HCCL owns the shared context and window; all four MoE entry points reuse this view.
+const at::Tensor &ElasticBuffer::GetMoeExecutionContext(int64_t cclBufferSize)
 {
-    TORCH_CHECK(!destroyed_, "ElasticBuffer cannot be used after destroy, please create a new ElasticBuffer instance");
-    if (moeContextInitialized_) {
-        return;
-    }
-    MoeContextBuilder builder;
-    MoeContextResources resources = builder.Build(groupName_, cclBufferSize);
-    moeContextTensor_ = resources.contextTensor;
-    moeCclBufferSize_ = resources.cclBufferSize;
-    moeRankSizePerServer_ = resources.rankSizePerServer;
-    moeDeviceBufPtr_ = resources.deviceBufPtr;
-    moePhysicalMemHandle_ = resources.physicalMemHandle;
-    moeMemHandle_ = resources.memHandle;
-    moeContextTag_ = resources.contextTag;
-    moeContextInitialized_ = true;
-}
-
-const at::Tensor &ElasticBuffer::GetDispatchContext(int64_t topoType, int64_t cclBufferSize)
-{
-    if (topoType == NETWORK_HYBRID) {
-        return moeContextTensor_;
-    }
-    TORCH_CHECK(cclBufferSize > 0, "MoE dispatch buffer size must be positive");
+    TORCH_CHECK(!destroyed_, "ElasticBuffer cannot be used after destroy");
+    TORCH_CHECK(cclBufferSize > 0, "MoE buffer size must be positive");
     if (!moeSharedContextTensor_.defined() || cclBufferSize > moeSharedBufferRequirement_) {
         moeSharedContextTensor_ = BuildMoeSharedJettyContext(groupName_, static_cast<uint64_t>(cclBufferSize));
         moeSharedBufferRequirement_ = cclBufferSize;
     }
     return moeSharedContextTensor_;
-}
-
-int64_t ElasticBuffer::ResolveRankNumPerServer(int64_t epWorldSize) const
-{
-    int64_t rankNumPerServer = static_cast<int64_t>(moeRankSizePerServer_);
-    TORCH_CHECK(rankNumPerServer > 0, "rank_num_per_server must be positive, got ", rankNumPerServer);
-    TORCH_CHECK(epWorldSize % rankNumPerServer == 0, "ep_world_size must be divisible by rank_num_per_server, got ",
-                epWorldSize, " and ", rankNumPerServer);
-    return rankNumPerServer;
-}
-
-int64_t ElasticBuffer::ResolveTopoType(int64_t epWorldSize, int64_t rankNumPerServer) const
-{
-    return (epWorldSize / rankNumPerServer > 1) ? NETWORK_HYBRID : NETWORK_DIRECT;
 }
 
 // EngramWrite - write data with automatic barrier.
@@ -1599,14 +1133,7 @@ void ElasticBuffer::Destroy()
     // HCCL 默认 buffer 由框架管理，无需手动释放
     commBufferSize_ = 0;
 
-    // MoE 通信 buffer 已按 tag 注册进 HCCL 通信域(HcclCommMemReg 无反注册接口)，其地址被
-    // 引擎 ctx(含其他 rank 缓存的 epHcclBuffer[])引用且无法销毁：Destroy 仅解除本实例引用，
-    // 物理内存由共享池按 tag 保留，同 group 重建 ElasticBuffer 时复用(容量以首建为准)。
-    moeDeviceBufPtr_ = nullptr;
-    moePhysicalMemHandle_ = nullptr;
-    moeMemHandle_ = nullptr;
-    moeContextTag_.clear();
-    moeCclBufferSize_ = 0;
+    // Shared MoE resources remain owned by the HCCL communicator.
 
     if (engramHostBufPtr_ != nullptr) {
         if (!engramStorageExternal_ || engramExternalRegisteredByUs_) {
@@ -1624,12 +1151,10 @@ void ElasticBuffer::Destroy()
         engramExternalBytes_ = 0;
     }
     engramContextInitialized_ = false;
-    moeContextInitialized_ = false;
     engramContextTensor_ = at::Tensor();
     localStorageAddrTensor_ = at::Tensor();
     moeSharedContextTensor_ = at::Tensor();
     moeSharedBufferRequirement_ = 0;
-    moeContextTensor_ = at::Tensor();
 
     destroyed_ = true;
 }
@@ -1728,9 +1253,8 @@ Mc2Api::ElasticBuffer::DispatchTensorList Mc2Api::ElasticBuffer::MoeEpDispatch(
     TORCH_CHECK(x.dim() == DIM_TWO, "x dims must be 2, but got ", x.dim());
     TORCH_CHECK(topkIdx.dim() == DIM_TWO, "topk_idx dims must be 2, but got ", topkIdx.dim());
     TORCH_CHECK(epWorldSize > 0, "ep_world_size must be positive, got ", epWorldSize);
-    EnsureMoeContext(cclBufferSize);
-    int64_t rankNumPerServer = ResolveRankNumPerServer(epWorldSize);
-    int64_t topoType = ResolveTopoType(epWorldSize, rankNumPerServer);
+    int64_t rankNumPerServer = epWorldSize;
+    int64_t topoType = NETWORK_DIRECT;
 
     bool anyCached = cachedDstSlotIdx.has_value();
     TORCH_CHECK(!(anyCached && doCpuSync), "cached mode is incompatible with do_cpu_sync=True");
@@ -1739,8 +1263,6 @@ Mc2Api::ElasticBuffer::DispatchTensorList Mc2Api::ElasticBuffer::MoeEpDispatch(
     bool allCachedRoute =
         cachedRouteCount.has_value() && cachedRouteDstScaleout.has_value() && cachedRouteScaleoutSlot.has_value();
     TORCH_CHECK(!anyCachedRoute || allCachedRoute, "cached route tensors must be all present or all absent");
-    bool hybridCached = anyCached && topoType == NETWORK_HYBRID;
-    TORCH_CHECK(!hybridCached || allCachedRoute, "hybrid cached dispatch requires all cached route tensors");
 
     auto xSize = x.sizes();
     int64_t numTokens = xSize[0];
@@ -1769,8 +1291,8 @@ Mc2Api::ElasticBuffer::DispatchTensorList Mc2Api::ElasticBuffer::MoeEpDispatch(
                                   ConvertToAclDataType(scales.has_value() ? scalesTensor.scalar_type() : at::kFloat);
     TensorWrapper scalesWrapper = TensorWrapper{scalesTensor, scalesDtype};
 
-    const auto &dispatchContext = GetDispatchContext(topoType, cclBufferSize);
-    int64_t dispatchBufferSize = topoType == NETWORK_DIRECT ? cclBufferSize : moeCclBufferSize_;
+    const auto &dispatchContext = GetMoeExecutionContext(cclBufferSize);
+    int64_t dispatchBufferSize = cclBufferSize;
     ACLNN_CMD(aclnnMoeEpDispatch, dispatchContext, x, topkIdx, topkWeightsTensor, scalesWrapper, cachedSlotTensor,
               cachedRouteCountTensor, cachedRouteDstScaleoutTensor, cachedRouteScaleoutSlotTensor, epWorldSize,
               epRankId, numExperts, numMaxTokensPerRank, dispatchBufferSize, expertAlignment, doCpuSync,
@@ -1795,9 +1317,8 @@ Mc2Api::ElasticBuffer::DispatchEpilogueTensorList Mc2Api::ElasticBuffer::MoeEpDi
                                  recvX.device());
     }
 
-    EnsureMoeContext(cclBufferSize);
-    int64_t rankNumPerServer = ResolveRankNumPerServer(epWorldSize);
-    int64_t topoType = ResolveTopoType(epWorldSize, rankNumPerServer);
+    int64_t rankNumPerServer = epWorldSize;
+    int64_t topoType = NETWORK_DIRECT;
 
     at::Tensor cachedRecvSrcMetadataTensor = cachedRecvSrcMetadata.has_value() ? *cachedRecvSrcMetadata : at::Tensor();
 
@@ -1814,8 +1335,8 @@ Mc2Api::ElasticBuffer::DispatchEpilogueTensorList Mc2Api::ElasticBuffer::MoeEpDi
         recvTopkWeightsOpt.has_value() ? *recvTopkWeightsOpt : at::empty({1}, recvX.options().dtype(at::kFloat));
     bool hasTopkWeights = recvTopkWeightsOpt.has_value();
 
-    const auto &dispatchContext = GetDispatchContext(topoType, cclBufferSize);
-    int64_t dispatchBufferSize = topoType == NETWORK_DIRECT ? cclBufferSize : moeCclBufferSize_;
+    const auto &dispatchContext = GetMoeExecutionContext(cclBufferSize);
+    int64_t dispatchBufferSize = cclBufferSize;
     ACLNN_CMD(aclnnMoeEpDispatchEpilogue, dispatchContext, x, topkIdx, numRecvPerRank, numRecvPerExpert,
               cachedRecvSrcMetadataTensor, epWorldSize, epRankId, numExperts, numMaxTokensPerRank, dispatchBufferSize,
               hasTopkWeights, topoType, rankNumPerServer, recvX, recvSrcMetadata, recvTopkWeightsTensor,
@@ -1841,14 +1362,14 @@ void Mc2Api::ElasticBuffer::MoeEpCombine(const at::Tensor &x, const at::Tensor &
     TORCH_CHECK(x.dim() == DIM_TWO, "x dims must be 2, but got ", x.dim());
     TORCH_CHECK(topkIdx.dim() == DIM_TWO, "topk_idx dims must be 2, but got ", topkIdx.dim());
     CheckMoeEpMetadataTensor(recvSrcMetadata, "recv_src_metadata", x.size(0), epWorldSize, x.device());
-    EnsureMoeContext(cclBufferSize);
-    int64_t rankNumPerServer = ResolveRankNumPerServer(epWorldSize);
-    int64_t topoType = ResolveTopoType(epWorldSize, rankNumPerServer);
+    int64_t rankNumPerServer = epWorldSize;
+    int64_t topoType = NETWORK_DIRECT;
 
     c10::optional<at::Tensor> topkWeightsOpt = topkWeights;
 
-    ACLNN_CMD(aclnnMoeEpCombine, moeContextTensor_, x, topkIdx, recvSrcMetadata, numRecvTokensPerExpert, topkWeightsOpt,
-              epWorldSize, epRankId, numExperts, numMaxTokensPerRank, moeCclBufferSize_, topoType, rankNumPerServer);
+    const auto &combineContext = GetMoeExecutionContext(cclBufferSize);
+    ACLNN_CMD(aclnnMoeEpCombine, combineContext, x, topkIdx, recvSrcMetadata, numRecvTokensPerExpert, topkWeightsOpt,
+              epWorldSize, epRankId, numExperts, numMaxTokensPerRank, cclBufferSize, topoType, rankNumPerServer);
 }
 
 Mc2Api::ElasticBuffer::CombineEpilogueTensorList Mc2Api::ElasticBuffer::MoeEpCombineEpilogue(
@@ -1860,17 +1381,17 @@ Mc2Api::ElasticBuffer::CombineEpilogueTensorList Mc2Api::ElasticBuffer::MoeEpCom
     TORCH_CHECK(x.dim() == DIM_TWO, "x dims must be 2, but got ", x.dim());
     TORCH_CHECK(topkIdx.dim() == DIM_TWO, "topk_idx dims must be 2, but got ", topkIdx.dim());
     CheckMoeEpMetadataTensor(recvSrcMetadata, "recv_src_metadata", x.size(0), epWorldSize, x.device());
-    EnsureMoeContext(cclBufferSize);
-    int64_t rankNumPerServer = ResolveRankNumPerServer(epWorldSize);
-    int64_t topoType = ResolveTopoType(epWorldSize, rankNumPerServer);
+    int64_t rankNumPerServer = epWorldSize;
+    int64_t topoType = NETWORK_DIRECT;
 
     bool hasTopkWeights = topkWeights.has_value();
     at::Tensor combinedTopkWeightsTensor = combinedTopkWeightsOpt.has_value() ?
                                                *combinedTopkWeightsOpt :
                                                at::empty({1}, combinedX.options().dtype(at::kFloat));
 
-    ACLNN_CMD(aclnnMoeEpCombineEpilogue, moeContextTensor_, x, topkIdx, recvSrcMetadata, topkWeights, epWorldSize,
-              epRankId, numExperts, numMaxTokensPerRank, moeCclBufferSize_, hasTopkWeights, topoType, rankNumPerServer,
+    const auto &combineContext = GetMoeExecutionContext(cclBufferSize);
+    ACLNN_CMD(aclnnMoeEpCombineEpilogue, combineContext, x, topkIdx, recvSrcMetadata, topkWeights, epWorldSize,
+              epRankId, numExperts, numMaxTokensPerRank, cclBufferSize, hasTopkWeights, topoType, rankNumPerServer,
               combinedX, combinedTopkWeightsTensor);
 
     c10::optional<at::Tensor> combinedTopkWeightsOutput;

@@ -17,6 +17,6 @@
 #define MOE_EP_COMBINE_BASE_H
 #include <cstdint>
 
-#include "../../common/op_kernel/mc2_moe_context.h"
+#include "../../common/op_kernel/moe_shared_jetty_context.h"
 
 #endif // MOE_EP_COMBINE_BASE_H

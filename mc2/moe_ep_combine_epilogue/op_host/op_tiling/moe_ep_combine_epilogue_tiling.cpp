@@ -21,6 +21,7 @@
 #include "graph/utils/type_utils.h"
 #include "mc2_tiling_utils.h"
 #include "moe_ep_window_layout.h"
+#include "../../../common/op_kernel/moe_shared_jetty_context.h"
 #include "../../../common/utils/moe_ep_exception_dump.h"
 #include "register/op_def_registry.h"
 #include "register/tilingdata_base.h"
@@ -54,8 +55,8 @@ constexpr uint32_t ATTR_RANK_NUM_PER_SERVER_INDEX = 7;
 
 constexpr uint32_t ONE_DIMS = 1U;
 constexpr uint32_t TWO_DIMS = 2U;
-constexpr int64_t MAX_EP_WORLD_SIZE = 1024;
-constexpr int64_t MIN_EP_WORLD_SIZE = 2;
+constexpr int64_t MAX_EP_WORLD_SIZE = Mc2Aclnn::MOE_SHARED_JETTY_WORLD_SIZE;
+constexpr int64_t MIN_EP_WORLD_SIZE = Mc2Aclnn::MOE_SHARED_JETTY_WORLD_SIZE;
 constexpr int64_t MAX_NUM_EXPERTS = 2048;
 constexpr int64_t MIN_NUM_EXPERTS = 2;
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024U * 1024U;
@@ -367,6 +368,12 @@ static ge::graphStatus BuildAndCheckWindowLayout(const gert::TilingContext *cont
                     OP_LOGE(nodeName, "Calculate Moe EP window layout failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckMoeEpWindowCapacity(layout.requiredBytes, maxWindowSize, nodeName) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Check Moe EP window capacity failed."), return ge::GRAPH_FAILED);
+
+    const auto *contextShape = context->GetInputShape(CONTEXT_INDEX);
+    OP_TILING_CHECK(networkMode == NETWORK_HYBRID ||
+                       contextShape->GetStorageShape().GetDim(0) !=
+                           sizeof(Mc2Aclnn::MoeSharedJettyContext) / sizeof(int32_t),
+                   OP_LOGE(nodeName, "Combine requires shared Jetty context and direct topology."), return ge::GRAPH_FAILED);
 
     info.dumpMetadata = BuildMoeEpDumpMetadata(params, layout, info.aivNum);
     info.combineStateWinOffset = layout.combineStateWinOffset;

@@ -83,30 +83,6 @@ __aicore__ inline GM_ADDR GetWindowAddrByRankId(__gm__ ContextType *context, uin
     return (GM_ADDR)context->epHcclBuffer[rankId] + offset;
 }
 
-__aicore__ inline uint64_t GetCommHandle(__gm__ Mc2Aclnn::MoeCommContext *context, uint32_t rankId,
-                                         uint32_t channelIndex = 0U)
-{
-    uint32_t channelsPerRank = context->channelsPerRank == 0U ? 1U : context->channelsPerRank;
-    return context->hcommHandle[rankId * channelsPerRank + channelIndex];
-}
-
-// For Hybrid
-__aicore__ inline uint32_t GetCurrentServerIndex(uint32_t epRankId, uint32_t rankNumPerServer)
-{
-    return rankNumPerServer == 0U ? 0U : epRankId / rankNumPerServer;
-}
-
-__aicore__ inline uint32_t GetServerStartRank(uint32_t epRankId, uint32_t rankNumPerServer)
-{
-    return GetCurrentServerIndex(epRankId, rankNumPerServer) * rankNumPerServer;
-}
-
-__aicore__ inline uint32_t GetServerEndRank(uint32_t epRankId, uint32_t rankNumPerServer, uint32_t epWorldSize)
-{
-    uint32_t serverEndRank = GetServerStartRank(epRankId, rankNumPerServer) + rankNumPerServer;
-    return serverEndRank > epWorldSize ? epWorldSize : serverEndRank;
-}
-
 #endif
 
 } // namespace MoeEpDispatchBase
@@ -115,7 +91,6 @@ namespace Mc2Kernel {
 
 #if defined(ENABLE_MOE_EP_KERNEL)
 
-using MoeEpDispatchBase::GetCommHandle;
 using MoeEpDispatchBase::GetExpertFreq;
 
 template <typename ContextType>

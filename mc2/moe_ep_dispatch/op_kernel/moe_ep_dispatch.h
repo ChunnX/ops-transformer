@@ -117,6 +117,8 @@ private:
                                                uint32_t calCntAlign, uint32_t tmpOffset);
     __aicore__ inline void CalSendCnt();
     __aicore__ inline void Communication();
+    __aicore__ inline void SendCountToPeer(uint32_t peer, GM_ADDR dst, GM_ADDR src,
+                                           GM_ADDR notifyAddr, uint64_t notifyVal);
     __aicore__ inline void GetRecvCount();
     __aicore__ inline void SetRecvNumPerExpert();
     __aicore__ inline void SetRecvNumPerRank(LocalTensor<int32_t> recvTmpTensor);
@@ -136,6 +138,13 @@ private:
                                        uint32_t &sendNum);
     __aicore__ inline bool GetCoreAssignment(uint32_t &copyRankStart, uint32_t &copyRankNum, uint32_t &channelIndex,
                                              uint32_t &coreIndexInGroup, uint32_t &groupSize);
+
+    __aicore__ inline uint64_t GetSharedCommHandle(uint32_t peer)
+    {
+        uint32_t peerIndex = peer < epRankId_ ? peer : peer - 1U;
+        uint32_t index = peerIndex * Mc2Aclnn::MOE_SHARED_JETTY_LANES + channelIndex_;
+        return mc2Context_->multiChannelHandles[index];
+    }
 
     TPipe *tpipe_{nullptr};
     __gm__ Mc2Aclnn::MoeSharedJettyContext *mc2Context_{nullptr};
@@ -326,7 +335,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     dstRankWinOffset_ = static_cast<uint64_t>(epRankId_) * axisMaxBS_ * perSlotBytes_; // 目标窗口地址偏移
     tokenCntAlign_ = srcTokenListBytes_ / sizeof(int32_t);
     // Keep the original per-rank notification lanes; each sender owns a distinct shared Jetty.
-    channelsPerRank_ = dispatchNotifyCount_;
+    channelsPerRank_ = Mc2Aclnn::MOE_SHARED_JETTY_LANES;
     dstStateWinOffset_ = static_cast<uint64_t>(epRankId_) * dispatchNotifyCount_ * WIN_ADDR_ALIGN; // 目标状态地址偏移
 
     topkIdxGMTensor_.SetGlobalBuffer((__gm__ int32_t *)topkIdx);
@@ -400,7 +409,6 @@ __aicore__ inline bool MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetCoreAssi
     uint32_t jettyCntPerRank = dispatchNotifyCount_ < channelsPerRank_ ? dispatchNotifyCount_ : channelsPerRank_;
     uint32_t maxJettyAivNum = epWorldSize_ * jettyCntPerRank;
     uint32_t activeAivNum = aivNum_ > maxJettyAivNum ? maxJettyAivNum : aivNum_;
-    activeAivNum = activeAivNum > mc2Context_->sharedJettyNum ? mc2Context_->sharedJettyNum : activeAivNum;
     if (activeAivNum >= epWorldSize_) { // 多channel情况下，发送使用核数，必须整除 epWorldSize
         activeAivNum = activeAivNum / epWorldSize_ * epWorldSize_;
     }
@@ -431,8 +439,8 @@ __aicore__ inline bool MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetCoreAssi
         copyRankStart = targetRank;
     } else {
         channelIndex = 0;
-        uint32_t copyRankEnd = 0;
-        SplitToCore(epWorldSize_, activeAivNum, copyRankStart, copyRankEnd, copyRankNum);
+        copyRankNum = rankNumPerCore_;
+        copyRankStart = startRankId_;
     }
     return true;
 }
@@ -670,6 +678,19 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCnt(
 }
 
 template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendCountToPeer(
+    uint32_t peer, GM_ADDR dst, GM_ADDR src, GM_ADDR notifyAddr, uint64_t notifyVal)
+{
+    auto multiHandle = static_cast<MultiChannelHandle>(GetSharedCommHandle(peer));
+    auto batch = hcomm_.MakeBatchHandle(multiHandle, hcommTensor_, HCOMM_INIT_SIZE);
+    uint32_t peerIndex = peer < epRankId_ ? peer : peer - 1;
+    auto &handle = hcomm_.GetHandleRef(batch, peerIndex, dst);
+    CheckSharedJettyResult(hcomm_.WriteWithNotifyNbi<DATA_CFG>(handle, dst, src,
+                                                           moeNumPerRankSize_, notifyAddr, notifyVal));
+    CheckSharedJettyResult(hcomm_.BatchCommit(batch));
+}
+
+template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Communication()
 {
     // 通信初始化
@@ -699,13 +720,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Communicati
         GM_ADDR srcWorkspaceAddr = sendCntWorkspaceAddr_ + epWorldSizeAlign512_ + srcStride * sizeof(int32_t);
 
         if (dstRankId != epRankId_) { // 远端 使用URMA发送 count + state
-            auto multiHandle = static_cast<MultiChannelHandle>(mc2Context_->multiChannelHandles[aivId_]);
-            auto batch = hcomm_.MakeBatchHandle(multiHandle, hcommTensor_, HCOMM_INIT_SIZE);
-            uint32_t peerIndex = dstRankId < epRankId_ ? dstRankId : dstRankId - 1;
-            auto &handle = hcomm_.GetHandleRef(batch, peerIndex, remoteCountAddr);
-            CheckSharedJettyResult(hcomm_.WriteWithNotifyNbi<DATA_CFG>(handle, remoteCountAddr, srcWorkspaceAddr,
-                                                                   moeNumPerRankSize_, notifyAddr, notifyVal));
-            CheckSharedJettyResult(hcomm_.BatchCommit(batch));
+            SendCountToPeer(dstRankId, remoteCountAddr, srcWorkspaceAddr, notifyAddr, notifyVal);
             continue;
         }
 
@@ -1070,7 +1085,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteToRemo
             DataCopy(dstStatusGMTensor, statusTensor, UB_STRIDE);
             continue;
         }
-        uint64_t commHandle = mc2Context_->multiChannelHandles[aivId_];
+        uint64_t commHandle = GetSharedCommHandle(dstRankId);
         uint32_t cntPerChannel = Ceil(sendTokenNum, groupSize_);
         uint32_t tokenStart = coreIndexInGroup_ * cntPerChannel;
         if (sendTokenNum == 0 || tokenStart >= sendTokenNum) {

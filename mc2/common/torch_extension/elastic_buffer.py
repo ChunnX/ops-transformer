@@ -996,7 +996,7 @@ class ElasticBuffer:
             ),
         )
         hp_addr = self._prepare_host_counter(args.do_cpu_sync)
-        # 首次调用时按算子参数计算CCL通信buffer大小(MB)，由C++ EnsureMoeContext内部申请注册
+        # Validate the requested window capacity against the HCCL-owned shared buffer.
         ccl_buffer_size = _get_moe_ep_window_bytes(
             self._ep_world_size,
             args.num_max_tokens_per_rank,
@@ -1109,7 +1109,7 @@ class ElasticBuffer:
             if topk_weights is None
             else torch.empty((num_tokens, topk), dtype=torch.float32, device=x.device)
         )
-        # 首次调用时按算子参数计算CCL通信buffer大小(MB)，由C++ EnsureMoeContext内部申请注册
+        # Validate the requested window capacity against the HCCL-owned shared buffer.
         ccl_buffer_size = _get_moe_ep_window_bytes(
             self._ep_world_size,
             handle.num_max_tokens_per_rank,

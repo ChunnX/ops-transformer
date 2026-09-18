@@ -33,7 +33,6 @@
 #include "moe_ep_dispatch_tiling_key.h"
 #include "moe_ep_dispatch_tiling.h"
 #include "moe_ep_dispatch.h"
-#include "moe_ep_dispatch_hybrid.h"
 
 using namespace MoeEpDispatchImpl;
 using namespace Mc2Tiling;
@@ -55,20 +54,10 @@ __global__ __aicore__ void moe_ep_dispatch(GM_ADDR context, GM_ADDR x, GM_ADDR t
 
 #if defined(ENABLE_MOE_EP_KERNEL)
 
-    if constexpr (NetworkMode == TILINGKEY_HYBRID) {
-        MoeEpDispatchHybridImpl::MoeEpDispatchHybrid<DTYPE_X, ScalesType, DoCpuSync, IsCached, IsTopkWeights,
-                                                     NetworkMode>
-            op;
-        op.Init(context, x, topkIdx, topkWeights, scales, cachedSlotIdx, cachedRouteCount, cachedRouteDstScaleout,
-                cachedRouteScaleoutSlot, numRecvPerRank, numRecvPerExpert, dstBufferSlotIdx, routeCount,
-                routeDstScaleout, routeScaleoutSlot, workspaceGM, tilingGM, &pipe, &tilingData);
-        op.Process();
-    } else {
-        MoeEpDispatch<DTYPE_X, ScalesType, DoCpuSync, IsCached, IsTopkWeights, NetworkMode> op;
-        op.Init(context, x, topkIdx, topkWeights, scales, cachedSlotIdx, numRecvPerRank, numRecvPerExpert,
-                dstBufferSlotIdx, workspaceGM, tilingGM, &pipe, &tilingData);
-        op.Process();
-    }
+    MoeEpDispatch<DTYPE_X, ScalesType, DoCpuSync, IsCached, IsTopkWeights, NetworkMode> op;
+    op.Init(context, x, topkIdx, topkWeights, scales, cachedSlotIdx, numRecvPerRank, numRecvPerExpert,
+            dstBufferSlotIdx, workspaceGM, tilingGM, &pipe, &tilingData);
+    op.Process();
 
 #endif
 }

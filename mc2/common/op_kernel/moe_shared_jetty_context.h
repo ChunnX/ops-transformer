@@ -15,6 +15,8 @@
 
 namespace Mc2Aclnn {
 constexpr uint32_t MOE_SHARED_JETTY_NUM = 56;
+constexpr uint32_t MOE_SHARED_JETTY_WORLD_SIZE = 8;
+constexpr uint32_t MOE_SHARED_JETTY_LANES = MOE_SHARED_JETTY_NUM / (MOE_SHARED_JETTY_WORLD_SIZE - 1);
 constexpr uint32_t MOE_SHARED_JETTY_MAX_RANK_SIZE = 1024;
 
 // Each handle shares one local Jetty across peers ordered by rank, excluding self.

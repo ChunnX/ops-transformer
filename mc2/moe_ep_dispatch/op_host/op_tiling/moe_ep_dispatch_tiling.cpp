@@ -69,8 +69,8 @@ constexpr uint32_t ONE_DIM = 1U;
 constexpr uint32_t TWO_DIMS = 2U;
 constexpr int64_t H_MAX = 8192;
 constexpr int64_t K_MAX = 32;
-constexpr int64_t MAX_EP_WORLD_SIZE = 1024;
-constexpr int64_t MIN_EP_WORLD_SIZE = 2;
+constexpr int64_t MAX_EP_WORLD_SIZE = Mc2Aclnn::MOE_SHARED_JETTY_WORLD_SIZE;
+constexpr int64_t MIN_EP_WORLD_SIZE = Mc2Aclnn::MOE_SHARED_JETTY_WORLD_SIZE;
 constexpr int64_t MAX_NUM_EXPERTS = 2048;
 constexpr int64_t MIN_NUM_EXPERTS = 2;
 constexpr uint64_t MAX_OUT_DTYPE_SIZE = 2UL;
@@ -133,10 +133,10 @@ static bool CheckInputTensorShape(const gert::TilingContext *context, const char
         contextShape->GetStorageShape().GetDimNum() != ONE_DIM,
         OP_LOGE(nodeName, "context dims must be 1, but got %lu.", contextShape->GetStorageShape().GetDimNum()),
         return false);
-    OP_TILING_CHECK(info.networkMode != NETWORK_HYBRID &&
+    OP_TILING_CHECK(info.networkMode == NETWORK_HYBRID ||
                         contextShape->GetStorageShape().GetDim(0) !=
                             sizeof(Mc2Aclnn::MoeSharedJettyContext) / sizeof(int32_t),
-                    OP_LOGE(nodeName, "Direct dispatch requires a shared Jetty context."), return false);
+                    OP_LOGE(nodeName, "Dispatch requires shared Jetty context and direct topology."), return false);
     OP_TILING_CHECK(xShape->GetStorageShape().GetDimNum() != TWO_DIMS,
                     OP_LOGE(nodeName, "x dims must be 2, but got %lu.", xShape->GetStorageShape().GetDimNum()),
                     return false);
