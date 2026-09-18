@@ -466,7 +466,11 @@ public:
 
     __aicore__ inline void ComputeMm2(RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t vCore)
     {
-        WaitFlag<HardEvent::FIX_M>(L0C_EVENT0 + l0cBufId_);
+        // S1 尾行（actMSize ≤ 128）时 vCore=1 无有效列：跳过计算与 L0C 搬运（不赌 Mmad n=0
+        // 的硬件行为）；V 拷贝（vCore=0 恒有效）与 V 槽归还（vCore=1 分支）保持无条件执行
+        uint32_t actVecS1Size = (vCore == 0U)
+            ? AttentionCommon::Min(runInfo.actMSize, S1_SUB_BLOCK_SIZE)
+            : (runInfo.actMSize > S1_SUB_BLOCK_SIZE ? runInfo.actMSize - S1_SUB_BLOCK_SIZE : 0U);
 
         // ———— V 整行搬运（每 task 仅 vCore=0 一次，槽跨两个 vCore 的 C2 持有）————
         // 配对依赖：ExecuteTask Phase2 的 vCore 循环必须无条件 0→1 顺序执行
@@ -480,38 +484,53 @@ public:
             WaitFlag<HardEvent::MTE2_MTE1>(KV_EVENT0 + kvBufId_);
         }
 
-        // ———— V/P 分 subK 加载 + MatmulVP 累加 ————
-        uint32_t subKLoop = AttentionCommon::CeilDiv(runInfo.actSingleLoopS2Size, MM2_SUB_K_SIZE);
-        bool isFirstSubK = true;
-        for (uint32_t subK = 0U; subK < subKLoop; ++subK) {
-            uint32_t actSubKSize = (subK + 1U == subKLoop)
-                ? runInfo.actSingleLoopS2Size - subK * MM2_SUB_K_SIZE
-                : MM2_SUB_K_SIZE;
+        if (actVecS1Size > 0U) {
+            WaitFlag<HardEvent::FIX_M>(L0C_EVENT0 + l0cBufId_);
 
-            WaitFlag<HardEvent::M_MTE1>(MM2_L0AB_EVENT0);
-            if (unlikely(runInfo.isLastS2Loop && actSubKSize < MM2_SUB_K_SIZE)) {
-                InitL0BufferForReduceSum();
+            // ———— V/P 分 subK 加载 + MatmulVP 累加 ————
+            uint32_t subKLoop = AttentionCommon::CeilDiv(runInfo.actSingleLoopS2Size, MM2_SUB_K_SIZE);
+            bool isFirstSubK = true;
+            for (uint32_t subK = 0U; subK < subKLoop; ++subK) {
+                uint32_t actSubKSize = (subK + 1U == subKLoop)
+                    ? runInfo.actSingleLoopS2Size - subK * MM2_SUB_K_SIZE
+                    : MM2_SUB_K_SIZE;
+
+                WaitFlag<HardEvent::M_MTE1>(MM2_L0AB_EVENT0);
+                if (unlikely(runInfo.isLastS2Loop && actSubKSize < MM2_SUB_K_SIZE)) {
+                    InitL0BufferForReduceSum();
+                }
+                LoadPToL0B(runInfo, vCore, subK, actSubKSize);
+                LoadVToL0A(runInfo, subK, actSubKSize);
+                SetFlag<HardEvent::MTE1_M>(MM2_L0AB_EVENT0);
+                WaitFlag<HardEvent::MTE1_M>(MM2_L0AB_EVENT0);
+                MatmulVP(runInfo, vCore, actSubKSize, isFirstSubK);
+                SetFlag<HardEvent::M_MTE1>(MM2_L0AB_EVENT0);
+                isFirstSubK = false;
             }
-            LoadPToL0B(runInfo, vCore, subK, actSubKSize);
-            LoadVToL0A(runInfo, subK, actSubKSize);
-            SetFlag<HardEvent::MTE1_M>(MM2_L0AB_EVENT0);
-            WaitFlag<HardEvent::MTE1_M>(MM2_L0AB_EVENT0);
-            MatmulVP(runInfo, vCore, actSubKSize, isFirstSubK);
-            SetFlag<HardEvent::M_MTE1>(MM2_L0AB_EVENT0);
-            isFirstSubK = false;
+
+            SetFlag<HardEvent::M_FIX>(L0C_EVENT0 + l0cBufId_);  // 与 FixpipeMm2 的 Wait<M_FIX> 配对（同守卫内）
         }
 
-        // ———— V 槽释放移至 vCore=1 末尾（两个 vCore 的 LoadV 都完成后）————
+        // ———— V 槽释放移至 vCore=1 末尾（两个 vCore 的 LoadV 都完成后；无条件执行，
+        //     即使 vCore=1 闲置也必须归还 V 单拷共享的槽，否则 ring 死锁）————
         if (vCore == 1U) {
             SetFlag<HardEvent::MTE1_MTE2>(KV_EVENT0 + kvBufId_);
             kvBufId_ = (kvBufId_ + 1U) % L1_KV_BUFCNT;
         }
-
-        SetFlag<HardEvent::M_FIX>(L0C_EVENT0 + l0cBufId_);
     }
 
     __aicore__ inline void FixpipeMm2(RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t vCore)
     {
+        // 与 ComputeMm2 同守卫：S1 尾行时 vCore=1 跳过（其 Wait<M_FIX>/Set<FIX_M> 与
+        // ComputeMm2 的 Set<M_FIX>/Wait<FIX_M> 在守卫内成对跳过，flag 保持配平；
+        // l0cBufId_ 翻转也随之跳过，与活跃 vCore 的翻转节奏一致）
+        uint32_t actVecS1Size = (vCore == 0U)
+            ? AttentionCommon::Min(runInfo.actMSize, S1_SUB_BLOCK_SIZE)
+            : (runInfo.actMSize > S1_SUB_BLOCK_SIZE ? runInfo.actMSize - S1_SUB_BLOCK_SIZE : 0U);
+        if (actVecS1Size == 0U) {
+            return;
+        }
+
         WaitFlag<HardEvent::M_FIX>(L0C_EVENT0 + l0cBufId_);
 
         uint32_t l0cOffset = l0cBufId_ * 128U * 256U;
