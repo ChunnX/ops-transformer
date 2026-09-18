@@ -873,7 +873,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2CommalgEmpty)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
-// normal: share rank
+// normal: share rank 这里
 TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2CommalgFullmesh)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
@@ -919,7 +919,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2CommalgFullmesh)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
-// normal: share rank
+// normal: share rank 这里
 TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2CommalgHierarchy)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
@@ -1065,7 +1065,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2CommalgEmptyWithEnv)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
-// normal: share rank
+// normal: share rank 这里
 TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2CommalgFullmeshWithEnv)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
@@ -1111,7 +1111,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2CommalgFullmeshWithEnv)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
-// normal: share rank
+// normal: share rank 这里
 TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2CommalgFullmeshZeroComputeExpertNotZero)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
@@ -3679,6 +3679,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2EpWorldSizeLe8Success)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, 0UL);
 }
 
+// 这里
 TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2Quant2WithScalesSuccess)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
@@ -3785,7 +3786,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2CommAlgEmptyPcieEnvHierarchy)
         setenv("HCCL_INTRA_ROCE_ENABLE", origRoce.c_str(), 1);
     }
 }
-
+// 这里
 TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2SmallHcclBuffFullmeshWarn)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
@@ -4664,7 +4665,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2BadPerformanceInfoShapeFailed)
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_FAILED);
 }
-
+// 这里
 TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2SmallHcclBuffHierarchyWarn)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
@@ -5040,7 +5041,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2BadKZeroFailed)
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_FAILED);
 }
-
+// 这里
 TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2GlobalBsNonZeroSuccess)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
