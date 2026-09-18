@@ -1414,13 +1414,16 @@ __aicore__ inline void RunWaveCombineStageDedup(const MoeStageCommonConfig &comm
     if (currentCoreTokenRange.count == 0U) {
         return;
     }
+    PRINTF("[DR1] b=%d e=%u tn=%u\n", static_cast<int32_t>(AscendC::GetBlockIdx()), expertIdx, currentExpertTokenNum);
     MM_KTS_T(ktsReadyWaitT0);
     WaitWaveGmm2Ready(job, params, expertIdx);
+    PRINTF("[DR2] b=%d e=%u gmm2ok\n", static_cast<int32_t>(AscendC::GetBlockIdx()), expertIdx);
     MM_KTS_SPAN(MgbKts::MM_DEDUP_MERGE_WAIT, 0U, expertIdx, 0U, 0U, ktsReadyWaitT0);
     // prepass 槽 0（每核 done 计数）到齐后整张 desc 表方可读；combine 消费点远晚于 prepass 收尾，
     // 此处等待实际≈0，仅作契约兜底。
     WaitUntilGmFlagEquals(reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.dedupPrepassReadyPtr),
                           static_cast<int32_t>(GetBlockNum()));
+    PRINTF("[DR3] b=%d e=%u prepassok\n", static_cast<int32_t>(AscendC::GetBlockIdx()), expertIdx);
     MM_KTS_T(ktsCombineT0);
 
     const uint32_t strideInt32 =
@@ -1452,6 +1455,11 @@ __aicore__ inline void RunWaveCombineStageDedup(const MoeStageCommonConfig &comm
         for (uint32_t i = 0U; i < batchTokenNum; ++i) {
             const int32_t flags = dedupScratch.descTensor.GetValue(i * strideInt32);
             const bool inGroup = (flags & DEDUP_ROW_FLAG_GROUP) != 0;
+            if (i == 0U) {
+                CombineImpl::CombineTokenRoute pr = CombineImpl::LoadCombineTokenRoute(scratch.metaInfoTensor[i * META_INFO_SIZE], 0U);
+                PRINTF("[DR4] b=%d f=%d dst=%d tok=%d\n", static_cast<int32_t>(AscendC::GetBlockIdx()), flags,
+                       static_cast<int32_t>(pr.dstRankId), static_cast<int32_t>(pr.tokenIdx));
+            }
             if (inGroup && (flags & DEDUP_ROW_FLAG_LAST) == 0) {
                 continue; // SKIP：贡献由组内末行合并发送
             }
