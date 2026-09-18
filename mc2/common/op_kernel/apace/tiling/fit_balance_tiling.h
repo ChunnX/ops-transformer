@@ -281,22 +281,6 @@ constexpr uint64_t FP4_PACK_RATIO = 2;
 
 // ====== 拟合表（引擎内部结构——算子侧一律使用 FitBalanceCalibration 大结构体,
 //      此处类型由 InitCtx 内部适配构造并按值持有, 勿在算子侧直接引用）======
-struct CommFitRow {
-    uint32_t rankDim; // 匹配字段: 卡数
-    CommFitParams params;
-};
-
-struct CommFitTable {
-    static constexpr size_t MAX_ROWS = 4;
-    CommFitRow rows[MAX_ROWS] = {};
-    size_t rowCount = 0;
-};
-
-// 组装线性拟合行(标定行即线性, 直通)
-inline CommFitParams MakeLinearCommFit(double slopeUsPerMb, double interceptUs)
-{
-    return {slopeUsPerMb, interceptUs};
-}
 
 class HCCLCommModel {
 public:
@@ -319,10 +303,9 @@ public:
     // 的推导, 勿混用勿"统一"。
     uint64_t commRankCntForMm_ = 1;
 
-    // Constructor（soc 恒 950）
-    HCCLCommModel(uint32_t inputRankDim, CommPrimitive inputKernelType, const CommFitTable &fitTable,
+    // Constructor(soc 恒 950; commFitParams 由 InitCtx 按 rankDim 从标定选定的行, miss=零值行)
+    HCCLCommModel(uint32_t inputRankDim, CommPrimitive inputKernelType, CommFitParams commFitParams,
                   CommTopology topoType = CommTopology::STANDARD_CARD)
-        : fitTable_(fitTable)
     {
         commTypeInfo_.commPrimitive = inputKernelType; // 区分哪个MC2算子
         // 通信域卡数(op 侧来自 GetRankSize(group)), 下限钳位 2, 三层原因:
@@ -332,8 +315,9 @@ public:
         commTypeInfo_.rankDim = std::max(static_cast<uint64_t>(inputRankDim), MIN_RANK_DIM);
         commTypeInfo_.commDtypeSizeExpansionFraction = 1;
         commTypeInfo_.maxStepSize = 1;
-        commTypeInfo_.topoType = topoType;
         InitPrimitiveParams();
+        commTypeInfo_.topoType = topoType;
+        commEstimatePar_ = commFitParams; // InitCtx 按 rankDim 选定的标定行(miss=零值行)
     };
 
     // ---- 通信口径设置(InitCtx 键控胶水调用; fp4 子字节= dtypeSize 1 + fraction 2) ----
@@ -378,13 +362,6 @@ public:
                 1 :
                 ((commTypeInfo_.commPrimitive == CommPrimitive::ALL_GATHER) ? (commTypeInfo_.rankDim - 1) :
                                                                               commTypeInfo_.rankDim);
-        commEstimatePar_ = {};
-        for (size_t i = 0; i < fitTable_.rowCount; ++i) {
-            if (fitTable_.rows[i].rankDim == commTypeInfo_.rankDim) {
-                commEstimatePar_ = fitTable_.rows[i].params;
-                break;
-            }
-        }
     }
 
     // 性能拟合函数: 纯线性 y = slope·x + offset (x=通信数据量 MB), 再除时间折算因子
@@ -404,9 +381,6 @@ public:
         return static_cast<uint64_t>(tmpSize * BYTES_PER_MB /
                                      (commTypeInfo_.commMatrixLen * commRankCnt_ * GetRealDtypeSizes()));
     }
-
-protected:
-    CommFitTable fitTable_; // 拟合表按值持有(自包含, 由 InitCtx 从大结构体适配)
 };
 
 // ---- 1.2 matmul 模型（HCCL 算力/梯度模型, 自由长度分支专用, 950）----
@@ -428,39 +402,6 @@ constexpr double MAX_CUBE_UTIL = 0.95;
 constexpr double AVERAGE_CUBE_UTIL = 0.75;
 } // namespace MatmulPerfConst
 
-// ====== 模型参数表（引擎内部结构——算子侧一律使用 FitBalanceCalibration 大结构体,
-//      此处类型由 InitCtx 内部适配构造并按值持有, 勿在算子侧直接引用）======
-struct CubeCalcRow {
-    MatmulDtypeKind calcType;
-    bool isFp4;
-    uint64_t aBytes;
-    uint64_t bBytes;
-    uint64_t cBytes;
-    double computesPerCycle;
-};
-
-struct L2ParamRow {
-    MatmulDtypeKind calcType;
-    bool isFp4;
-    uint64_t aBytes;
-    uint64_t bBytes;
-    uint64_t cBytes;
-    L2UtilTiers params;
-};
-
-struct MatmulPerfTable {
-    static constexpr size_t MAX_CUBE_ROWS = 4;
-    static constexpr size_t MAX_L2_ROWS = 4;
-    static constexpr size_t MAX_BASE_ROWS = 2;
-    CubeCalcRow cubeCalcRows[MAX_CUBE_ROWS] = {};
-    size_t cubeCalcCount = 0;
-    double defaultComputesPerCycle = 4096.0; // key 未命中回退
-    L2ParamRow l2Rows[MAX_L2_ROWS] = {};
-    size_t l2Count = 0;
-    L2UtilTiers defaultL2Params = {128, 192, 0.85, 0.75, 0.65};
-    MatmulBaseBlock bestBaseBlock = {128, 256, 64}; // matmul 最优基本块(单值)
-};
-
 class MatmulPerfModel {
 public:
     MatmulShapeInfo mmShapeInfo_;
@@ -469,9 +410,10 @@ public:
     double cubeUtil_ = 0.8;
     double matmulGradient_ = 1.0;
 
-    // Constructor（soc 恒 950, 频率 1689.6 cycle/us）
-    MatmulPerfModel(const FitBalanceTilingArgs &args, const MatmulPerfTable &perfTable)
-        : perfTable_(perfTable)
+    // Constructor(soc 恒 950, 频率 1689.6 cycle/us; 选行参数由 InitCtx 按 dtype 五元组从标定选定)
+    MatmulPerfModel(const FitBalanceTilingArgs &args, double computesPerCycle, L2UtilTiers l2Params,
+                    MatmulBaseBlock baseBlock)
+        : l2Params_(l2Params)
     {
         mmShapeInfo_.socType = TilingSocVersion::SOC950;
         mmShapeInfo_.coreNum = args.aicCoreNum; // 每die核数
@@ -481,27 +423,20 @@ public:
         mmShapeInfo_.mValue = args.mValue;
         mmShapeInfo_.nValue = args.nValue;
         mmShapeInfo_.kValue = args.kValue;
-        // 获取后续计算用的基本块(先默认, 再按标定数据 baseBlock 覆盖)
-        mmShapeInfo_.baseM = DEFAULT_BASE_M;
-        mmShapeInfo_.baseN = DEFAULT_BASE_N;
-        mmShapeInfo_.baseK = DEFAULT_BASE_K;
+        mmShapeInfo_.baseM = baseBlock.baseM;
+        mmShapeInfo_.baseN = baseBlock.baseN;
+        mmShapeInfo_.baseK = baseBlock.baseK;
         mmShapeInfo_.batchSize = 1UL; // 初始值
         isFp4_ = (args.geAType == ge::DataType::DT_FLOAT4_E2M1);
-        SetCalcTypeAndMachineParams(args);
+        SetCalcType(args);
+        mmShapeInfo_.computesPerCycle = computesPerCycle;
         mmShapeInfo_.cyclePerMicroSec = MatmulPerfConst::CYCLE_PER_MICRO_SEC;
-        mmShapeInfo_.baseM = perfTable_.bestBaseBlock.baseM;
-        mmShapeInfo_.baseN = perfTable_.bestBaseBlock.baseN;
-        mmShapeInfo_.baseK = perfTable_.bestBaseBlock.baseK;
     };
 
-    // 950 量化语义: fp4/fp8/HIF8 或 A8W8 量化, 其余按 FP16 建模
-    // fp4 经 geAType 识别(matmul_tiling::DataType 无 fp4 枚举, aType 对 fp4 为 DT_MAX)
-    // （旧实现的 310P A16W8 与 910_B INT8 排除分支随旧芯片逻辑剥离）
-    // ---- 构造期 dtype 分类 + 算力查表 ----
-    // 950 量化语义: fp4/fp8/HIF8 或 A8W8 量化, 其余按 FP16 建模; fp4 经 geAType 识别
-    // (matmul_tiling::DataType 无 fp4 枚举, aType 对 fp4 为 DT_MAX——§4.17 修复)。
-    // 算力按 (calcType, isFp4, A/B/C 字节数) 五元组匹配标定行, 未命中回退默认 4096 MACs/cycle。
-    void SetCalcTypeAndMachineParams(const FitBalanceTilingArgs &args)
+    // dtype 分类(选行匹配键的推导; 查表选行已在 InitCtx 完成):
+    // 950 量化语义: fp4/fp8/HIF8 或 A8W8 量化, 其余按 FP16 建模;
+    // fp4 经 geAType 识别(matmul_tiling::DataType 无 fp4 枚举, aType 对 fp4 为 DT_MAX, §4.17)
+    void SetCalcType(const FitBalanceTilingArgs &args)
     {
         if ((args.aType == matmul_tiling::DataType::DT_HIFLOAT8) ||
             (args.aType == matmul_tiling::DataType::DT_FLOAT8_E4M3FN) ||
@@ -509,34 +444,11 @@ public:
             (args.aType == matmul_tiling::DataType::DT_INT8) || (args.geAType == ge::DataType::DT_FLOAT4_E2M1)) {
             calcType_ = MatmulDtypeKind::QUANT;
         }
-        auto matchesDtype = [this](const auto &row) {
-            return (row.calcType == calcType_) && (row.isFp4 == isFp4_) &&
-                   (row.aBytes == mmShapeInfo_.inMatrixADtypeSize) && (row.bBytes == mmShapeInfo_.inMatrixBDtypeSize) &&
-                   (row.cBytes == mmShapeInfo_.outMatrixCDtypeSize);
-        };
-        mmShapeInfo_.computesPerCycle = perfTable_.defaultComputesPerCycle;
-        for (size_t i = 0; i < perfTable_.cubeCalcCount; ++i) {
-            if (matchesDtype(perfTable_.cubeCalcRows[i])) {
-                mmShapeInfo_.computesPerCycle = perfTable_.cubeCalcRows[i].computesPerCycle;
-                break;
-            }
-        }
     }
     // L2 档位利用率 + 950 调和平均公式(950 专用模型, 调和分支无条件执行)
     double FindCubeUtilByL2Usage(uint64_t mSize, uint64_t commRankCntForMm, uint64_t *maxTileLen = nullptr)
     {
-        const auto matchesDtype = [this](const auto &row) {
-            return (row.calcType == calcType_) && (row.isFp4 == isFp4_) &&
-                   (row.aBytes == mmShapeInfo_.inMatrixADtypeSize) && (row.bBytes == mmShapeInfo_.inMatrixBDtypeSize) &&
-                   (row.cBytes == mmShapeInfo_.outMatrixCDtypeSize);
-        };
-        L2UtilTiers l2EstimatePar = perfTable_.defaultL2Params;
-        for (size_t i = 0; i < perfTable_.l2Count; ++i) {
-            if (matchesDtype(perfTable_.l2Rows[i])) {
-                l2EstimatePar = perfTable_.l2Rows[i].params;
-                break;
-            }
-        }
+        const L2UtilTiers &l2EstimatePar = l2Params_; // InitCtx 构造期已按 dtype 选定
         uint64_t tmpBaseM = std::min(mmShapeInfo_.baseM, mSize);
         uint64_t tmpBaseN = mmShapeInfo_.baseN;
         uint64_t mBlockNum = (mSize + tmpBaseM - 1) / tmpBaseM * commRankCntForMm;
@@ -628,8 +540,8 @@ public:
         return tileSize;
     }
 
-protected:
-    MatmulPerfTable perfTable_; // 模型参数表按值持有(自包含, 由 InitCtx 从大结构体适配)
+private:
+    L2UtilTiers l2Params_; // InitCtx 构造期按 dtype 五元组选定的 L2 档位(实例内恒定, 免逐次查表)
 };
 
 // ============================================================================
@@ -1007,45 +919,53 @@ inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, CommPrimitiv
                                   TilingCommEngine commEngine, const FitBalanceCalibration &calib,
                                   CommTopology topoType = CommTopology::STANDARD_CARD)
 {
-    // 引擎分路 + 大结构体 → 引擎内部表适配(线性行转三段式, 按 null key 截断)
-    const FitBalanceCalibration::CommFit &commFit = (commEngine == TilingCommEngine::CCU) ? calib.ccu : calib.aicpu;
-    CommFitTable commTable;
-    commTable.rowCount = 0;
+    // ---- 标定选行(所有匹配键此刻已知: rankDim 与 dtype 均来自 args, 就地选定传纯参数) ----
+    // 通信行: 按引擎分区(aicpu/ccu) + rankDim 匹配首个命中行; miss=零值行(§4.29 防御 NoCut)
+    const auto &commRows = ((commEngine == TilingCommEngine::CCU) ? calib.ccu : calib.aicpu).rows;
+    CommFitParams commFitParams = {};
     for (size_t i = 0; i < FitBalanceCalibration::MAX_COMM_FIT_ROWS; ++i) {
-        if (commFit.rows[i].rankDim == 0) {
+        if (commRows[i].rankDim == 0) { // 哨兵截断
             break;
         }
-        commTable.rows[i] = {commFit.rows[i].rankDim,
-                             MakeLinearCommFit(commFit.rows[i].linearSlope, commFit.rows[i].linearOffset)};
-        commTable.rowCount = i + 1;
+        if (commRows[i].rankDim == args.rankDim) {
+            commFitParams = {commRows[i].linearSlope, commRows[i].linearOffset};
+            break;
+        }
     }
-    MatmulPerfTable mmTable;
-    mmTable.defaultComputesPerCycle = calib.mmFit.defaultComputesPerCycle;
-    mmTable.defaultL2Params = calib.mmFit.defaultL2Param;
-    mmTable.bestBaseBlock = calib.mmFit.baseBlock;
-    mmTable.cubeCalcCount = 0;
+    // matmul 行: 按通信引擎无关的 dtype 五元组匹配算力行与 L2 档行(键推导与模型 SetCalcType 一致)
+    const auto isQuant = (args.aType == matmul_tiling::DataType::DT_HIFLOAT8) ||
+                         (args.aType == matmul_tiling::DataType::DT_FLOAT8_E4M3FN) ||
+                         (args.aType == matmul_tiling::DataType::DT_FLOAT8_E5M2) ||
+                         (args.aType == matmul_tiling::DataType::DT_INT8) ||
+                         (args.geAType == ge::DataType::DT_FLOAT4_E2M1);
+    const MatmulDtypeKind calcType = isQuant ? MatmulDtypeKind::QUANT : MatmulDtypeKind::FP16;
+    const bool isFp4 = (args.geAType == ge::DataType::DT_FLOAT4_E2M1);
+    const auto matchesDtype = [&](const auto &row) {
+        return (row.calcType == calcType) && (row.isFp4 == isFp4) && (row.aBytes == args.inputDtypeSize) &&
+               (row.bBytes == args.inputDtypeSize) && (row.cBytes == args.outputDtypeSize);
+    };
+    double computesPerCycle = calib.mmFit.defaultComputesPerCycle;
     for (size_t i = 0; i < FitBalanceCalibration::MAX_CUBE_CALC_ROWS; ++i) {
-        if (calib.mmFit.cubeCalc[i].aBytes == 0) {
+        if (calib.mmFit.cubeCalc[i].aBytes == 0) { // 哨兵截断
             break;
         }
-        mmTable.cubeCalcRows[i] = {calib.mmFit.cubeCalc[i].calcType, calib.mmFit.cubeCalc[i].isFp4,
-                                   calib.mmFit.cubeCalc[i].aBytes,   calib.mmFit.cubeCalc[i].bBytes,
-                                   calib.mmFit.cubeCalc[i].cBytes,   calib.mmFit.cubeCalc[i].computesPerCycle};
-        mmTable.cubeCalcCount = i + 1;
+        if (matchesDtype(calib.mmFit.cubeCalc[i])) {
+            computesPerCycle = calib.mmFit.cubeCalc[i].computesPerCycle;
+            break;
+        }
     }
-    mmTable.l2Count = 0;
+    L2UtilTiers l2Params = calib.mmFit.defaultL2Param;
     for (size_t i = 0; i < FitBalanceCalibration::MAX_L2_PARAM_ROWS; ++i) {
-        if (calib.mmFit.l2Param[i].aBytes == 0) {
+        if (calib.mmFit.l2Param[i].aBytes == 0) { // 哨兵截断
             break;
         }
-        mmTable.l2Rows[i] = {calib.mmFit.l2Param[i].calcType, calib.mmFit.l2Param[i].isFp4,
-                             calib.mmFit.l2Param[i].aBytes,   calib.mmFit.l2Param[i].bBytes,
-                             calib.mmFit.l2Param[i].cBytes,   calib.mmFit.l2Param[i].params};
-        mmTable.l2Count = i + 1;
+        if (matchesDtype(calib.mmFit.l2Param[i])) {
+            l2Params = calib.mmFit.l2Param[i].params;
+            break;
+        }
     }
-    mmTable.bestBaseBlock = calib.mmFit.baseBlock;
-    FitBasedBalanceCtx ctx{MatmulPerfModel(args, mmTable),
-                           HCCLCommModel(args.rankDim, commPrimitive, commTable, topoType),
+    FitBasedBalanceCtx ctx{MatmulPerfModel(args, computesPerCycle, l2Params, calib.mmFit.baseBlock),
+                           HCCLCommModel(args.rankDim, commPrimitive, commFitParams, topoType),
                            CutPlanner(args),
                            commPrimitive,
                            order,
