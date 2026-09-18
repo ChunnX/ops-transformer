@@ -38,7 +38,7 @@ using namespace MoeEpDispatchImpl;
 using namespace Mc2Tiling;
 using namespace AscendC;
 
-template <bool DoCpuSync, bool IsCached, bool IsTopkWeights, bool IsMxQuant, uint8_t NetworkMode>
+template <bool DoCpuSync, bool IsCached, bool IsTopkWeights, bool IsMxQuant>
 __global__ __aicore__ void moe_ep_dispatch(GM_ADDR context, GM_ADDR x, GM_ADDR topkIdx, GM_ADDR topkWeights,
                                            GM_ADDR scales, GM_ADDR cachedSlotIdx, GM_ADDR cachedRouteCount,
                                            GM_ADDR cachedRouteDstScaleout, GM_ADDR cachedRouteScaleoutSlot,
@@ -54,7 +54,9 @@ __global__ __aicore__ void moe_ep_dispatch(GM_ADDR context, GM_ADDR x, GM_ADDR t
 
 #if defined(ENABLE_MOE_EP_KERNEL)
 
-    MoeEpDispatch<DTYPE_X, ScalesType, DoCpuSync, IsCached, IsTopkWeights, NetworkMode> op;
+    // Route tensors remain in the mainline kernel ABI. Shared-Jetty only caches dstBufferSlotIdx and does not write
+    // route outputs; ElasticBuffer supplies neutral placeholders for its public Python path.
+    MoeEpDispatch<DTYPE_X, ScalesType, DoCpuSync, IsCached, IsTopkWeights> op;
     op.Init(context, x, topkIdx, topkWeights, scales, cachedSlotIdx, numRecvPerRank, numRecvPerExpert,
             dstBufferSlotIdx, workspaceGM, tilingGM, &pipe, &tilingData);
     op.Process();

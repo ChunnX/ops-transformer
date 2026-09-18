@@ -114,7 +114,7 @@ private:
                                                   GM_ADDR remoteDataBase, GM_ADDR remoteStateBase, uint64_t tokenBytes);
     __aicore__ inline void ProcessRemoteMetadataRange(uint32_t targetRank, uint64_t rangeBegin, uint64_t rangeEnd,
                                                       uint32_t channelIndex);
-    __aicore__ inline void SendPhaseDirectFromMetadata();
+    __aicore__ inline void SendPhaseFromMetadata();
     __aicore__ inline void SendAssignedPayload(uint32_t targetRank, uint32_t coreIndex, uint32_t groupSize);
 
     __aicore__ inline uint64_t GetCommHandle(uint32_t rankId, uint32_t channelIndex)
@@ -546,7 +546,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendAssignedP
 }
 
 template <TemplateMoeEpCombineTypeClass>
-__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseDirectFromMetadata()
+__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseFromMetadata()
 {
     if (epWorldSize_ == 0U || aivNum_ == 0U) {
         return;
@@ -594,7 +594,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseDire
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Process()
 {
-    SendPhaseDirectFromMetadata();
+    SendPhaseFromMetadata();
 }
 
 #endif

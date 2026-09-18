@@ -14,7 +14,6 @@
  */
 
 #include "../../../common/op_kernel/moe_shared_jetty_context.h"
-#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -43,9 +42,6 @@ constexpr uint32_t TOPK_IDX_INDEX = 2U;
 constexpr uint32_t TOPK_WEIGHTS_INDEX = 3U;
 constexpr uint32_t SCALES_INDEX = 4U;
 constexpr uint32_t CACHED_SLOT_IDX_INDEX = 5U;
-constexpr uint32_t CACHED_ROUTE_COUNT_INDEX = 6U;
-constexpr uint32_t CACHED_ROUTE_DST_SCALEOUT_INDEX = 7U;
-constexpr uint32_t CACHED_ROUTE_SCALEOUT_SLOT_INDEX = 8U;
 
 constexpr uint32_t NUM_RECV_PER_RANK_INDEX = 0U;
 constexpr uint32_t NUM_RECV_PER_EXPERT_INDEX = 1U;
@@ -62,15 +58,11 @@ constexpr uint32_t ATTR_CCL_BUFFER_SIZE_INDEX = 4;
 constexpr uint32_t ATTR_EXPERT_ALIGNMENT_INDEX = 5;
 constexpr uint32_t ATTR_DO_CPU_SYNC_INDEX = 6;
 constexpr uint32_t ATTR_HOST_PINNED_COUNTER_ADDR_INDEX = 7;
-constexpr uint32_t ATTR_TOPO_TYPE_INDEX = 8;
-constexpr uint32_t ATTR_RANK_NUM_PER_SERVER_INDEX = 9;
 
 constexpr uint32_t ONE_DIM = 1U;
 constexpr uint32_t TWO_DIMS = 2U;
 constexpr int64_t H_MAX = 8192;
 constexpr int64_t K_MAX = 32;
-constexpr int64_t MAX_EP_WORLD_SIZE = Mc2Aclnn::MOE_SHARED_JETTY_WORLD_SIZE;
-constexpr int64_t MIN_EP_WORLD_SIZE = Mc2Aclnn::MOE_SHARED_JETTY_WORLD_SIZE;
 constexpr int64_t MAX_NUM_EXPERTS = 2048;
 constexpr int64_t MIN_NUM_EXPERTS = 2;
 constexpr uint64_t MAX_OUT_DTYPE_SIZE = 2UL;
@@ -83,9 +75,6 @@ constexpr int64_t SCALES_ALIGN_EVEN = 2; // fp8 align 2
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024U * 1024U;
 constexpr uint64_t WIN_ADDR_ALIGN = 512UL;
 constexpr uint64_t UB_ALIGN = 32UL;
-
-constexpr uint32_t NETWORK_DIRECT = 0U;
-constexpr uint32_t NETWORK_HYBRID = 1U;
 
 constexpr uint32_t TOPK_AND_TOPK_WEIGHT_NUMBER = 2U;
 
@@ -104,18 +93,8 @@ static void PrintTilingDataInfo(const char *nodeName, const MoeEpDispatchInfo &i
     OP_LOGD(nodeName, "doCpuSync is %u.", info.doCpuSync);
     OP_LOGD(nodeName, "isCached is %u.", info.isCached);
     OP_LOGD(nodeName, "isTopkWeights is %u.", info.isTopkWeights);
-    OP_LOGD(nodeName, "networkMode is %u.", info.networkMode);
-    OP_LOGD(nodeName, "rankNumPerServer is %u.", info.hybrid.rankNumPerServer);
-    OP_LOGD(nodeName, "serverNum is %u.", info.hybrid.serverNum);
-    OP_LOGD(nodeName, "scaleoutAivNum is %u.", info.hybrid.scaleoutAivNum);
-    OP_LOGD(nodeName, "scaleupAivNum is %u.", info.hybrid.scaleupAivNum);
     OP_LOGD(nodeName, "aivNum is %u.", info.aivNum);
-    OP_LOGD(nodeName, "scaleoutSlotAlignedBytes is %u.", info.window.scaleoutSlotAlignedBytes);
-    OP_LOGD(nodeName, "sendEntryTokenRangeBytes is %lu.", info.workspace.sendEntryTokenRangeBytes);
     OP_LOGD(nodeName, "hostPinnedCounterAddr is %lu.", info.hostPinnedCounterAddr);
-    OP_LOGD(nodeName, "routeWorkspaceOffset is %lu.", info.workspace.routeWorkspaceOffset);
-    OP_LOGD(nodeName, "scaleoutRecvDataOffset is %lu.", info.window.scaleoutRecvDataOffset);
-    OP_LOGD(nodeName, "scaleoutRecvStatusOffset is %lu.", info.window.scaleoutRecvStatusOffset);
     OP_LOGD(nodeName, "payloadStashWinOffset is %lu.", info.window.payloadStashWinOffset);
     OP_LOGD(nodeName, "totalWinSizeEp is %lu.", info.totalWinSizeEp);
     OP_LOGD(nodeName, "totalUbSize is %lu.", info.totalUbSize);
@@ -133,10 +112,11 @@ static bool CheckInputTensorShape(const gert::TilingContext *context, const char
         contextShape->GetStorageShape().GetDimNum() != ONE_DIM,
         OP_LOGE(nodeName, "context dims must be 1, but got %lu.", contextShape->GetStorageShape().GetDimNum()),
         return false);
-    OP_TILING_CHECK(info.networkMode == NETWORK_HYBRID ||
-                        contextShape->GetStorageShape().GetDim(0) !=
-                            sizeof(Mc2Aclnn::MoeSharedJettyContext) / sizeof(int32_t),
-                    OP_LOGE(nodeName, "Dispatch requires shared Jetty context and direct topology."), return false);
+    constexpr int64_t expectedContextElements = sizeof(Mc2Aclnn::MoeSharedJettyContext) / sizeof(int32_t);
+    OP_TILING_CHECK(contextShape->GetStorageShape().GetDim(0) != expectedContextElements,
+                    OP_LOGE(nodeName, "Shared Jetty context length must be %ld, but got %ld.", expectedContextElements,
+                            contextShape->GetStorageShape().GetDim(0)),
+                    return false);
     OP_TILING_CHECK(xShape->GetStorageShape().GetDimNum() != TWO_DIMS,
                     OP_LOGE(nodeName, "x dims must be 2, but got %lu.", xShape->GetStorageShape().GetDimNum()),
                     return false);
@@ -175,7 +155,7 @@ static bool CheckInputTensorShape(const gert::TilingContext *context, const char
 }
 
 static bool CheckOptionalTensorShape(const gert::TilingContext *context, const char *nodeName, int64_t topkDim0,
-                                     int64_t topkDim1, const MoeEpDispatchInfo &info)
+                                     int64_t topkDim1)
 {
     const gert::StorageShape *weightsShape = context->GetOptionalInputShape(TOPK_WEIGHTS_INDEX);
     const gert::StorageShape *cachedShape = context->GetOptionalInputShape(CACHED_SLOT_IDX_INDEX);
@@ -218,39 +198,6 @@ static bool CheckOptionalTensorShape(const gert::TilingContext *context, const c
                 "cached_slot_idx dim1 must equal topk_idx dim1, but got cached_slot_idx dim1=%ld, topk_idx dim1=%ld.",
                 cachedShape->GetStorageShape().GetDim(1), topkDim1),
             return false);
-    }
-
-    const gert::StorageShape *cachedRouteCountShape = context->GetOptionalInputShape(CACHED_ROUTE_COUNT_INDEX);
-    const gert::StorageShape *cachedRouteDstScaleoutShape =
-        context->GetOptionalInputShape(CACHED_ROUTE_DST_SCALEOUT_INDEX);
-    const gert::StorageShape *cachedRouteScaleoutSlotShape =
-        context->GetOptionalInputShape(CACHED_ROUTE_SCALEOUT_SLOT_INDEX);
-    bool anyCachedRoute = cachedRouteCountShape != nullptr || cachedRouteDstScaleoutShape != nullptr ||
-                          cachedRouteScaleoutSlotShape != nullptr;
-    bool allCachedRoute = cachedRouteCountShape != nullptr && cachedRouteDstScaleoutShape != nullptr &&
-                          cachedRouteScaleoutSlotShape != nullptr;
-    OP_TILING_CHECK(anyCachedRoute && !allCachedRoute,
-                    OP_LOGE(nodeName, "cached route tensors must be provided together."), return false);
-    OP_TILING_CHECK(cachedShape != nullptr && info.networkMode == NETWORK_HYBRID && !allCachedRoute,
-                    OP_LOGE(nodeName, "cached route tensors are required in hybrid cached mode."), return false);
-    if (allCachedRoute) {
-        int64_t routeCapacity = topkDim1;
-        OP_TILING_CHECK(cachedRouteCountShape->GetStorageShape().GetDimNum() != ONE_DIM,
-                        OP_LOGE(nodeName, "cached_route_count dims must be 1."), return false);
-        OP_TILING_CHECK(cachedRouteCountShape->GetStorageShape().GetDim(0) != topkDim0,
-                        OP_LOGE(nodeName, "cached_route_count dim0 must equal topk dim0."), return false);
-        const gert::StorageShape *routeTwoDimShapes[] = {cachedRouteDstScaleoutShape, cachedRouteScaleoutSlotShape};
-        const char *routeTwoDimNames[] = {"cached_route_dst_scaleout", "cached_route_scaleout_slot"};
-        for (uint32_t routeIndex = 0; routeIndex < 2U; ++routeIndex) {
-            OP_TILING_CHECK(routeTwoDimShapes[routeIndex]->GetStorageShape().GetDimNum() != TWO_DIMS,
-                            OP_LOGE(nodeName, "%s dims must be 2.", routeTwoDimNames[routeIndex]), return false);
-            OP_TILING_CHECK(routeTwoDimShapes[routeIndex]->GetStorageShape().GetDim(0) != topkDim0,
-                            OP_LOGE(nodeName, "%s dim0 must equal topk dim0.", routeTwoDimNames[routeIndex]),
-                            return false);
-            OP_TILING_CHECK(routeTwoDimShapes[routeIndex]->GetStorageShape().GetDim(1) != routeCapacity,
-                            OP_LOGE(nodeName, "%s dim1 must equal route capacity.", routeTwoDimNames[routeIndex]),
-                            return false);
-        }
     }
 
     return true;
@@ -353,6 +300,7 @@ static bool CheckOutputTensorShape(const gert::TilingContext *context, const cha
                             "topk_idx dim1=%ld.",
                             dstSlotIdxShape->GetStorageShape().GetDim(1), topkDim1),
                     return false);
+    // Legacy route outputs remain required by the public ABI; the extension initializes neutral values for them.
     int64_t routeCapacity = topkDim1;
     OP_TILING_CHECK(routeCountShape->GetStorageShape().GetDimNum() != ONE_DIM,
                     OP_LOGE(nodeName, "route_count dims must be 1."), return false);
@@ -379,9 +327,6 @@ static bool CheckInputTensorDtype(const gert::TilingContext *context, const char
     auto topkIdxDesc = context->GetInputDesc(TOPK_IDX_INDEX);
     auto topkWeightsDesc = context->GetOptionalInputDesc(TOPK_WEIGHTS_INDEX);
     auto cachedSlotIdxDesc = context->GetOptionalInputDesc(CACHED_SLOT_IDX_INDEX);
-    auto cachedRouteCountDesc = context->GetOptionalInputDesc(CACHED_ROUTE_COUNT_INDEX);
-    auto cachedRouteDstScaleoutDesc = context->GetOptionalInputDesc(CACHED_ROUTE_DST_SCALEOUT_INDEX);
-    auto cachedRouteScaleoutSlotDesc = context->GetOptionalInputDesc(CACHED_ROUTE_SCALEOUT_SLOT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, contextDesc);
     OP_CHECK_NULL_WITH_CONTEXT(context, xDesc);
     OP_CHECK_NULL_WITH_CONTEXT(context, topkIdxDesc);
@@ -415,18 +360,6 @@ static bool CheckInputTensorDtype(const gert::TilingContext *context, const char
                                 ge::TypeUtils::DataTypeToSerialString(cachedSlotIdxDesc->GetDataType()).c_str()),
                         return false);
     }
-    const gert::CompileTimeTensorDesc *cachedRouteDescs[] = {cachedRouteCountDesc, cachedRouteDstScaleoutDesc,
-                                                             cachedRouteScaleoutSlotDesc};
-    const char *cachedRouteNames[] = {"cached_route_count", "cached_route_dst_scaleout", "cached_route_scaleout_slot"};
-    for (uint32_t routeIndex = 0; routeIndex < 3U; ++routeIndex) {
-        if (cachedRouteDescs[routeIndex] != nullptr) {
-            OP_TILING_CHECK(cachedRouteDescs[routeIndex]->GetDataType() != ge::DT_INT32,
-                            OP_LOGE(nodeName, "%s dtype must be DT_INT32, but got %d.", cachedRouteNames[routeIndex],
-                                    static_cast<int32_t>(cachedRouteDescs[routeIndex]->GetDataType())),
-                            return false);
-        }
-    }
-
     return true;
 }
 
@@ -502,18 +435,6 @@ static ge::graphStatus CheckInputTensorFormat(const gert::TilingContext *context
         OP_TILING_CHECK(static_cast<ge::Format>(cachedSlotIdxFormat) == ge::FORMAT_FRACTAL_NZ,
                         OP_LOGE(nodeName, "cached_slot_idx format is invalid."), return ge::GRAPH_FAILED);
     }
-    const uint32_t cachedRouteIndexes[] = {CACHED_ROUTE_COUNT_INDEX, CACHED_ROUTE_DST_SCALEOUT_INDEX,
-                                           CACHED_ROUTE_SCALEOUT_SLOT_INDEX};
-    const char *cachedRouteNames[] = {"cached_route_count", "cached_route_dst_scaleout", "cached_route_scaleout_slot"};
-    for (uint32_t routeIndex = 0; routeIndex < 3U; ++routeIndex) {
-        auto cachedRouteDesc = context->GetOptionalInputDesc(cachedRouteIndexes[routeIndex]);
-        if (cachedRouteDesc != nullptr) {
-            auto cachedRouteFormat = ge::GetPrimaryFormat(cachedRouteDesc->GetStorageFormat());
-            OP_TILING_CHECK(static_cast<ge::Format>(cachedRouteFormat) == ge::FORMAT_FRACTAL_NZ,
-                            OP_LOGE(nodeName, "%s format is invalid.", cachedRouteNames[routeIndex]),
-                            return ge::GRAPH_FAILED);
-        }
-    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -559,7 +480,7 @@ static ge::graphStatus CheckInputTensor(const gert::TilingContext *context, cons
 {
     OP_TILING_CHECK(!CheckInputTensorShape(context, nodeName, info),
                     OP_LOGE(nodeName, "Check input tensor shape failed."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(!CheckOptionalTensorShape(context, nodeName, info.cfg.numTokens, info.cfg.topK, info),
+    OP_TILING_CHECK(!CheckOptionalTensorShape(context, nodeName, info.cfg.numTokens, info.cfg.topK),
                     OP_LOGE(nodeName, "Check optional input tensor shape failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(!CheckInputTensorDtype(context, nodeName), OP_LOGE(nodeName, "Check input tensor dtype failed."),
                     return ge::GRAPH_FAILED);
@@ -577,19 +498,12 @@ static ge::graphStatus CheckInputTensor(const gert::TilingContext *context, cons
     uint32_t scalesSizeAlign32 = isXFp8 ? ((info.scalesBytes + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN : 0;
     // stash 的元数据 slot：scales + topk + topkWeights + pad（不含 x）
     uint32_t metaSize = scalesSizeAlign32 + kAlign32 * TOPK_AND_TOPK_WEIGHT_NUMBER + UB_ALIGN;
-    if (info.networkMode == NETWORK_HYBRID) {
-        // hybrid 槽布局保持原样: [x: ALIGN32(tokenSize)][scales][meta]，整槽 512 对齐（hybrid kernel 整槽搬运）
-        uint32_t hAlign32 = ((tokenSize + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
-        info.metaSlotBytes = metaSize;
-        info.perSlotBytes = ((hAlign32 + metaSize + WIN_ADDR_ALIGN - 1UL) / WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
-    } else {
-        // direct 紧凑槽布局: [x: tokenSize][meta: metaSlotBytes]，multi-sge 连续打包
-        info.metaSlotBytes = (metaSize + WIN_ADDR_ALIGN - 1UL) / WIN_ADDR_ALIGN * WIN_ADDR_ALIGN;
-        info.perSlotBytes = tokenSize + info.metaSlotBytes;
-    }
+    // Shared-Jetty layout: [x: tokenSize][meta: metaSlotBytes], packed by multi-SGE writes.
+    info.metaSlotBytes = (metaSize + WIN_ADDR_ALIGN - 1UL) / WIN_ADDR_ALIGN * WIN_ADDR_ALIGN;
+    info.perSlotBytes = tokenSize + info.metaSlotBytes;
     info.isTopkWeights = (context->GetOptionalInputShape(TOPK_WEIGHTS_INDEX) != nullptr) ? 1 : 0;
-    OP_LOGD(nodeName, "metaSlotBytes = %u, perSlotBytes = %u(hidden=%u, networkMode=%u)", info.metaSlotBytes,
-            info.perSlotBytes, info.cfg.hidden, info.networkMode);
+    OP_LOGD(nodeName, "metaSlotBytes = %u, perSlotBytes = %u(hidden=%u)", info.metaSlotBytes, info.perSlotBytes,
+            info.cfg.hidden);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -614,23 +528,15 @@ static ge::graphStatus CheckCommAttr(const gert::TilingContext *context, const c
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
     auto epRankIdPtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_RANK_ID_INDEX);
     auto cclBufferSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_CCL_BUFFER_SIZE_INDEX);
-    auto requestedNetworkModePtr = attrs->GetAttrPointer<int64_t>(ATTR_TOPO_TYPE_INDEX);
-    auto rankNumPerServerPtr = attrs->GetAttrPointer<int64_t>(ATTR_RANK_NUM_PER_SERVER_INDEX);
     OP_TILING_CHECK(epWorldSizePtr == nullptr, OP_LOGE(nodeName, "epWorldSizePtr is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(epRankIdPtr == nullptr, OP_LOGE(nodeName, "epRankIdPtr is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(cclBufferSizePtr == nullptr, OP_LOGE(nodeName, "cclBufferSizePtr is null."),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(requestedNetworkModePtr == nullptr, OP_LOGE(nodeName, "requestedNetworkModePtr is null."),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(rankNumPerServerPtr == nullptr, OP_LOGE(nodeName, "rankNumPerServerPtr is null."),
-                    return ge::GRAPH_FAILED);
 
     int64_t epWorldSize = *epWorldSizePtr;
-    int64_t requestedNetworkMode = *requestedNetworkModePtr;
-    int64_t rankNumPerServer = *rankNumPerServerPtr;
-    OP_TILING_CHECK((epWorldSize < MIN_EP_WORLD_SIZE) || (epWorldSize > MAX_EP_WORLD_SIZE),
-                    OP_LOGE(nodeName, "ep_world_size is invalid, should be in [%ld, %ld], but got %ld.",
-                            MIN_EP_WORLD_SIZE, MAX_EP_WORLD_SIZE, epWorldSize),
+    OP_TILING_CHECK(epWorldSize != Mc2Aclnn::MOE_SHARED_JETTY_WORLD_SIZE,
+                    OP_LOGE(nodeName, "Shared Jetty requires ep_world_size=%u, but got %ld.",
+                            Mc2Aclnn::MOE_SHARED_JETTY_WORLD_SIZE, epWorldSize),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         (*epRankIdPtr < 0) || (*epRankIdPtr >= epWorldSize),
@@ -640,19 +546,8 @@ static ge::graphStatus CheckCommAttr(const gert::TilingContext *context, const c
                     OP_LOGE(nodeName, "ccl_buffer_size must be positive, but got %ld.", *cclBufferSizePtr),
                     return ge::GRAPH_FAILED);
 
-    MoeEpTopology topology{};
-    OP_TILING_CHECK(ResolveMoeEpTopology(static_cast<uint32_t>(epWorldSize), requestedNetworkMode, rankNumPerServer,
-                                         topology) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(nodeName,
-                            "Invalid Moe EP topology: epWorldSize=%ld, topoType=%ld, "
-                            "rankNumPerServer=%ld.",
-                            epWorldSize, requestedNetworkMode, rankNumPerServer),
-                    return ge::GRAPH_FAILED);
     info.cfg.epWorldSize = static_cast<uint32_t>(epWorldSize);
     info.cfg.epRankId = static_cast<uint32_t>(*epRankIdPtr);
-    info.hybrid.rankNumPerServer = topology.rankNumPerServer;
-    info.hybrid.serverNum = topology.serverNum;
-    info.networkMode = topology.networkMode;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -722,43 +617,20 @@ static uint64_t AlignUpWin(const uint64_t data)
     return (data + WIN_ADDR_ALIGN - 1) / WIN_ADDR_ALIGN * WIN_ADDR_ALIGN;
 }
 
-static void SetDispatchSlotLayout(MoeEpDispatchInfo &info)
-{
-    // Scaleout slot只携带基础payload和Proxy重建路由所需的dst_slot_idx。
-    uint64_t scaleoutSlotRawBytes =
-        static_cast<uint64_t>(info.perSlotBytes) + static_cast<uint64_t>(info.cfg.topK) * sizeof(int32_t);
-    info.window.scaleoutSlotAlignedBytes = static_cast<uint32_t>(AlignUpWin(scaleoutSlotRawBytes));
-}
-
-static uint64_t AlignUpUb(const uint64_t data)
-{
-    return (data + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
-}
-
-static void SetSendEntryLayout(MoeEpDispatchInfo &info)
-{
-    uint64_t tokenRangeCapacity =
-        (static_cast<uint64_t>(info.cfg.numMaxTokensPerRank) + info.aivNum - 1UL) / info.aivNum;
-    info.workspace.sendEntryTokenRangeBytes = AlignUpUb(tokenRangeCapacity * MOE_EP_SEND_ENTRY_BYTES);
-}
-
 static uint64_t BuildDispatchWorkspaceLayout(MoeEpDispatchInfo &info)
 {
     uint64_t epWorldSize = static_cast<uint64_t>(info.cfg.epWorldSize);
     uint64_t moeExpertNumPerRank = static_cast<uint64_t>(info.cfg.numLocalExperts);
     uint64_t aivNum = static_cast<uint64_t>(info.aivNum);
-    uint64_t superNodeCount = static_cast<uint64_t>(info.hybrid.serverNum);
     uint64_t numTokens = static_cast<uint64_t>(info.cfg.numTokens);
 
     // counter 区: [aivNum][epAlignWin] 布局，每核写自己的行
     uint64_t epAlignWinBytes = AlignUpWin(epWorldSize * sizeof(int32_t));
     uint64_t counterBytes = aivNum * epAlignWinBytes;
 
-    // sendCntPerRank 区  HYBRID [ep][512B]， DIRECT [epAlignWin]
-    uint64_t sendCntPerRankBytes =
-        (info.networkMode == NETWORK_HYBRID) ? epWorldSize * WIN_ADDR_ALIGN : epAlignWinBytes;
+    uint64_t sendCntPerRankBytes = epAlignWinBytes;
 
-    // sendCntPerExpert 区: 两边一致
+    // sendCntPerExpert 区
     uint64_t sendCntPerExpertBytes = AlignUpWin(moeExpertNumPerRank * epWorldSize * sizeof(int32_t));
 
     // dstRank 区 [BS][K]
@@ -773,26 +645,8 @@ static uint64_t BuildDispatchWorkspaceLayout(MoeEpDispatchInfo &info)
     info.workspace.srcTokenTableOffset = sendCntBytes + dstRankInfoBytes;
     info.workspace.srcTokenListBytes = srcTokenListBytes;
 
-    // scaleout counter 与 scaleup counter 一样按每 AIV 一份，SendPhase 用它做 slot prefix。
-    uint64_t scaleoutCounterBytes =
-        (info.networkMode == NETWORK_HYBRID) ? aivNum * AlignUpWin(superNodeCount * sizeof(int32_t)) : 0UL;
     // 保留公共 workspace 尾部，兼容框架侧的 GM workspace 预留。
     uint64_t globalABytes = UB_ALIGN;
-    if (info.networkMode == NETWORK_HYBRID) {
-        uint64_t remoteServerCount = superNodeCount - 1UL;
-        info.workspace.routeWorkspaceOffset = sendCntBytes;
-        uint64_t workspaceOffset = info.workspace.routeWorkspaceOffset + scaleoutCounterBytes;
-        // 源端发送记录按 token 范围独立对齐，避免多个生产核写入同一个 32B 数据块。
-        info.workspace.scaleoutSendEntryOffset = workspaceOffset;
-        workspaceOffset += remoteServerCount * aivNum * info.workspace.sendEntryTokenRangeBytes;
-        info.workspace.scaleupSendEntryOffset = workspaceOffset;
-        workspaceOffset +=
-            static_cast<uint64_t>(info.hybrid.rankNumPerServer) * aivNum * info.workspace.sendEntryTokenRangeBytes;
-        return SYSTEM_NEED_WORKSPACE + workspaceOffset + globalABytes;
-    }
-    info.workspace.routeWorkspaceOffset = 0UL;
-    info.workspace.scaleoutSendEntryOffset = 0UL;
-    info.workspace.scaleupSendEntryOffset = 0UL;
     return SYSTEM_NEED_WORKSPACE + sendCntBytes + dstRankInfoBytes + srcTokenTableBytes + globalABytes;
 }
 
@@ -805,9 +659,8 @@ static ge::graphStatus BuildAndCheckWindowLayout(const gert::TilingContext *cont
                     return ge::GRAPH_FAILED);
     const uint64_t maxWindowSize = static_cast<uint64_t>(*cclBufferSizePtr);
     uint32_t aivNum = info.aivNum;
-    const MoeEpWindowLayoutParams params = {
-        info.cfg.epWorldSize, info.cfg.numLocalExperts, info.cfg.numMaxTokensPerRank, info.cfg.topK,
-        info.cfg.hidden,      info.networkMode,         info.hybrid.rankNumPerServer, info.hybrid.serverNum};
+    const MoeEpWindowLayoutParams params = {info.cfg.epWorldSize, info.cfg.numLocalExperts,
+                                            info.cfg.numMaxTokensPerRank, info.cfg.topK, info.cfg.hidden};
     MoeEpWindowLayout layout{};
     OP_TILING_CHECK(CalcMoeEpWindowLayout(params, layout) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Calculate Moe EP window layout failed."), return ge::GRAPH_FAILED);
@@ -830,8 +683,6 @@ static ge::graphStatus BuildAndCheckWindowLayout(const gert::TilingContext *cont
     info.window.slotWinStateOffset = layout.slotWinStateOffset;
     info.window.payloadWinStateOffset = layout.payloadWinStateOffset;
     info.window.winDataOffset = layout.winDataOffset;
-    info.window.scaleoutRecvDataOffset = layout.scaleoutRecvDataOffset;
-    info.window.scaleoutRecvStatusOffset = layout.scaleoutRecvStatusOffset;
     info.window.payloadStashWinOffset = layout.payloadStashWinOffset;
     OP_LOGD(nodeName, "windowSize = %lu, requiredBytes = %lu", maxWindowSize, layout.requiredBytes);
     return ge::GRAPH_SUCCESS;
@@ -846,7 +697,7 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, MoeEpDispatchI
 }
 
 static uint64_t CalTilingKey(const uint32_t doCpuSync, const uint32_t isCached, const uint32_t isTopkWeights,
-                             const uint32_t isMxQuant, const uint32_t networkMode)
+                             const uint32_t isMxQuant)
 {
     bool cpuSyncMode = false;
     bool CachedMode = false;
@@ -865,13 +716,11 @@ static uint64_t CalTilingKey(const uint32_t doCpuSync, const uint32_t isCached, 
         mxQuantMode = true;
     }
 
-    return GET_TPL_TILING_KEY(cpuSyncMode, CachedMode, topkWeightsMode, mxQuantMode, static_cast<uint8_t>(networkMode));
+    return GET_TPL_TILING_KEY(cpuSyncMode, CachedMode, topkWeightsMode, mxQuantMode);
 }
 
-static void SetPlatformAndNetworkInfo(gert::TilingContext *context, MoeEpDispatchInfo &info, const char *nodeName)
+static void SetPlatformInfo(gert::TilingContext *context, MoeEpDispatchInfo &info, const char *nodeName)
 {
-    info.hybrid.scaleoutAivNum = 0U;
-    info.hybrid.scaleupAivNum = 0U;
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint64_t ubSize = 0UL;
@@ -879,31 +728,6 @@ static void SetPlatformAndNetworkInfo(gert::TilingContext *context, MoeEpDispatc
     uint32_t blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
     info.aivNum = aivNum;
     info.totalUbSize = ubSize;
-    if (info.networkMode == NETWORK_HYBRID) {
-        // 目标数量不超过AIV数时每个Proxy/本地Rank独占一个owner，否则优先按3:1分给跨超和节点内组。
-        uint32_t remoteScaleoutCount = info.hybrid.serverNum - 1U;
-        uint32_t localRankCount = info.hybrid.rankNumPerServer;
-        uint32_t communicationOwnerCount = remoteScaleoutCount + localRankCount;
-        if (communicationOwnerCount <= aivNum) {
-            info.hybrid.scaleoutAivNum = remoteScaleoutCount;
-            info.hybrid.scaleupAivNum = localRankCount;
-        } else if (aivNum == 1U) {
-            info.hybrid.scaleoutAivNum = 1U;
-            info.hybrid.scaleupAivNum = 0U;
-        } else {
-            uint32_t expectedScaleoutCoreCount = (aivNum * 3U + 3U) / 4U;
-            expectedScaleoutCoreCount = std::min(expectedScaleoutCoreCount, aivNum - 1U);
-            info.hybrid.scaleoutAivNum = std::min(remoteScaleoutCount, expectedScaleoutCoreCount);
-            info.hybrid.scaleupAivNum = std::min(localRankCount, aivNum - info.hybrid.scaleoutAivNum);
-
-            uint32_t remainingCoreCount = aivNum - info.hybrid.scaleoutAivNum - info.hybrid.scaleupAivNum;
-            uint32_t additionalScaleoutCoreCount =
-                std::min(remainingCoreCount, remoteScaleoutCount - info.hybrid.scaleoutAivNum);
-            info.hybrid.scaleoutAivNum += additionalScaleoutCoreCount;
-            remainingCoreCount -= additionalScaleoutCoreCount;
-            info.hybrid.scaleupAivNum += std::min(remainingCoreCount, localRankCount - info.hybrid.scaleupAivNum);
-        }
-    }
     context->SetBlockDim(blockDim);
     context->SetScheduleMode(1U);
     OP_LOGD(nodeName, "blockDim=%u, aivNum=%u, ubSize=%lu", blockDim, aivNum, ubSize);
@@ -922,24 +746,17 @@ static ge::graphStatus MoeEpDispatchTilingFunc(gert::TilingContext *context)
                     OP_LOGE(nodeName, "Check attr params failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckInputTensor(context, nodeName, info) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Check input tensor failed."), return ge::GRAPH_FAILED);
-    SetDispatchSlotLayout(info);
     OP_TILING_CHECK(CheckOutputTensor(context, nodeName, info) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Check output tensor failed."), return ge::GRAPH_FAILED);
 
-    SetPlatformAndNetworkInfo(context, info, nodeName);
-    if (info.networkMode == NETWORK_HYBRID) {
-        SetSendEntryLayout(info);
-    } else {
-        info.workspace.sendEntryTokenRangeBytes = 0UL;
-    }
+    SetPlatformInfo(context, info, nodeName);
     OP_TILING_CHECK(BuildAndCheckWindowLayout(context, info, nodeName) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Check window size failed."), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(SetWorkSpace(context, info, nodeName) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Set workspace failed."), return ge::GRAPH_FAILED);
 
-    uint64_t tilingKey =
-        CalTilingKey(info.doCpuSync, info.isCached, info.isTopkWeights, info.isMxQuant, info.networkMode);
+    uint64_t tilingKey = CalTilingKey(info.doCpuSync, info.isCached, info.isTopkWeights, info.isMxQuant);
     OP_LOGD(nodeName, "tilingKey is %lu", tilingKey);
     context->SetTilingKey(tilingKey);
     PrintTilingDataInfo(nodeName, info);

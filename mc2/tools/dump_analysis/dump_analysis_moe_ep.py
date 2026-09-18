@@ -52,6 +52,7 @@ REGION_NAMES = [
     "COMBINE_TOKEN_STATE",
     "HYBRID_SCALEOUT_STATUS",
 ]
+# Region 5 is retained only for the legacy dump ABI. Shared-Jetty metadata stores [0, 0].
 # Region 名称到 dump 文件后缀的映射, 每个 Region 单独输出一个 .bin 文件
 REGION_FILE_SUFFIX = {
     "METADATA": "metadata.bin",
@@ -110,7 +111,7 @@ def read_region_file(target_path: str, suffix: str, log_filename: bool = False):
 
 
 # 从 .metadata.bin 文件解析 Metadata
-# 有效结构体布局: 10 个 uint32 字段 + 7 个 MoeEpDumpRegion(offset: uint64, size: uint64), 每个 region 占 4 个 uint32
+# 有效结构体布局: 10 个 uint32 字段 + 6 个 MoeEpDumpRegion(offset: uint64, size: uint64), 每个 region 占 4 个 uint32
 def parse_metadata(target_path: str):
     metadata_dict = {name: 0 for name in METADATA_FIELD_NAMES}
     for name in REGION_NAMES:
@@ -123,7 +124,7 @@ def parse_metadata(target_path: str):
     # 解析 10 个 uint32 字段
     for i, name in enumerate(METADATA_FIELD_NAMES):
         metadata_dict[name] = int(metadata_raw[i])
-    # 解析 7 个 Region 的 offset 和 size (每个 region: offset uint64 + size uint64 = 4 个 uint32)
+    # 解析 6 个 Region 的 offset 和 size (每个 region: offset uint64 + size uint64 = 4 个 uint32)
     for i, name in enumerate(REGION_NAMES):
         base = 10 + i * 4
         offset = int(metadata_raw[base]) | (int(metadata_raw[base + 1]) << 32)
@@ -161,12 +162,12 @@ def print_card_metadata(card_num: int, card_metadata: dict):
 
 
 # 从 exception_info 解析后的 input.0.bin 中读取 context 数据
-# context 对应 MoeCommContext 结构体:
-#   uint32_t epRankId;                                  // 卡id
-#   uint32_t rankSizePerServer;                         // epWorldSize
-#   uint64_t epHcclBuffer[1024];                        // Win区地址
-#   uint64_t hcommHandle[1024];                         // Handle地址
-#   uint32_t channelsPerRank;                           // 每卡channel数
+# 当前 context 对应 MoeSharedJettyContext:
+#   uint32_t epRankId;
+#   uint32_t sharedJettyNum;
+#   uint64_t epHcclBuffer[1024];
+#   uint64_t multiChannelHandles[56];
+# get_context 仍保留旧 MoeCommContext 的解析回退，用于历史 dump。
 SHARED_JETTY_NUM = 56
 CONTEXT_MAX_RANK_SIZE = 1024
 SHARED_CONTEXT_INTS = 2 + 2 * (CONTEXT_MAX_RANK_SIZE + SHARED_JETTY_NUM)
@@ -449,7 +450,7 @@ def analyze_single_card(
     )
 
 
-# 写 metadata sheet: 每卡一行, 10 个 uint32 字段 + 7 个 Region 拆为 offset/size 两列 + bs + core_count
+# 写 metadata sheet: 每卡一行, 10 个 uint32 字段 + 6 个 Region 拆为 offset/size 两列 + bs + core_count
 def write_metadata_sheet(wb, all_metadata: dict, card_count: int):
     ws = wb.active
     ws.title = "metadata"
@@ -492,8 +493,7 @@ def write_metadata_sheet(wb, all_metadata: dict, card_count: int):
         ws.append(row)
 
 
-# 写 context sheet: 按 MoeCommContext 结构体平铺, 每卡一行
-# 列: card_num, epRankId, rankSizePerServer, epHcclBuffer_0..(rankSize-1), hcommHandle_0..(rankSize-1), channelsPerRank
+# 当前结构写入 shared_context sheet；旧 MoeCommContext 继续写入 context sheet。
 def write_shared_context_sheet(wb, all_context):
     shared_contexts = [(card, parse_shared_context(ctx)) for card, ctx in enumerate(all_context)]
     shared_contexts = [(card, ctx) for card, ctx in shared_contexts if ctx is not None]
@@ -639,7 +639,7 @@ def write_combine_token_state_sheet(wb, all_combine_token_state: list):
             ws.append([card_num, idx, state])
 
 
-# 将所有分析结果写入 Excel: 7 个 sheet(metadata/context/topk_idx/per_card_per_core/count_notify/expert_count/combine_token_state)
+# 将分析结果写入 Excel；当前 dump 还会生成 shared_context sheet，context sheet仅保留旧格式回退。
 def save_to_excel(result: AllAnalysisResult):
     wb = Workbook()
     write_metadata_sheet(wb, result.all_metadata, result.card_count)

@@ -53,6 +53,7 @@ public:
         this->Attr("num_experts").AttrType(REQUIRED).Int();
         this->Attr("num_max_tokens_per_rank").AttrType(REQUIRED).Int();
         this->Attr("ccl_buffer_size").AttrType(REQUIRED).Int();
+        // Retained only for compatibility with the mainline ACLNN schema; shared-Jetty tiling ignores both attrs.
         this->Attr("topo_type").AttrType(OPTIONAL).Int(0);
         this->Attr("rank_num_per_server").AttrType(OPTIONAL).Int(1);
 

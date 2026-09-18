@@ -92,6 +92,7 @@ struct MoeEpDumpMetadata {
     uint32_t epWorldSize;
     uint32_t localExpertNum;
     uint32_t aivNum;
+    // Legacy dump fields kept to preserve the binary layout. Shared-Jetty mode writes 0, 1 and epWorldSize.
     uint32_t networkMode;
     uint32_t serverNum;
     uint32_t rankNumPerServer;

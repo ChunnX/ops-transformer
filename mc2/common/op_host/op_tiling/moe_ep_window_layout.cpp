@@ -26,21 +26,6 @@ uint64_t AlignMoeEpWin(uint64_t value)
     return (value + MOE_EP_WIN_ALIGN - 1UL) / MOE_EP_WIN_ALIGN * MOE_EP_WIN_ALIGN;
 }
 
-ge::graphStatus ResolveMoeEpTopology(uint32_t epWorldSize, int64_t requestedNetworkMode, int64_t rankNumPerServer,
-                                     MoeEpTopology &topology)
-{
-    if ((requestedNetworkMode != MOE_EP_NETWORK_DIRECT && requestedNetworkMode != MOE_EP_NETWORK_HYBRID) ||
-        rankNumPerServer <= 0 || epWorldSize % static_cast<uint64_t>(rankNumPerServer) != 0UL) {
-        return ge::GRAPH_FAILED;
-    }
-    topology.rankNumPerServer = static_cast<uint32_t>(rankNumPerServer);
-    topology.serverNum = epWorldSize / topology.rankNumPerServer;
-    topology.networkMode = requestedNetworkMode == MOE_EP_NETWORK_HYBRID && topology.serverNum > 1U ?
-                               MOE_EP_NETWORK_HYBRID :
-                               MOE_EP_NETWORK_DIRECT;
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus CalcMoeEpWindowLayout(const MoeEpWindowLayoutParams &params, MoeEpWindowLayout &layout)
 {
     std::memset(&layout, 0, sizeof(layout));
@@ -53,7 +38,6 @@ ge::graphStatus CalcMoeEpWindowLayout(const MoeEpWindowLayoutParams &params, Moe
     const uint64_t epWorldSize = params.epWorldSize;
     const uint64_t nmt = params.nmt;
     const uint64_t topK = params.topK;
-    const uint64_t serverNum = params.serverNum;
     const uint64_t countNotifySize = epWorldSize * MOE_EP_WIN_ALIGN;
     const uint64_t expertCountSize = epWorldSize * AlignMoeEpWin(params.localExpertNum * sizeof(int32_t));
 
@@ -70,9 +54,8 @@ ge::graphStatus CalcMoeEpWindowLayout(const MoeEpWindowLayoutParams &params, Moe
     layout.payloadWinStateOffset = layout.slotWinStateOffset + layout.dispatchSlotStateSize;
     layout.payloadWinStateSize = layout.dispatchNotifyCount * MOE_EP_WIN_ALIGN;
     layout.combineStateWinOffset = layout.payloadWinStateOffset + layout.payloadWinStateSize;
-    const uint64_t combineFlagCount =
-        epWorldSize > MOE_EP_COMBINE_CHANNEL_HANDLE_COUNT ? epWorldSize : MOE_EP_COMBINE_CHANNEL_HANDLE_COUNT;
-    const uint64_t combineReceiveStateSize = nmt * topK * MOE_EP_WIN_ALIGN + combineFlagCount * MOE_EP_WIN_ALIGN;
+    const uint64_t combineReceiveStateSize =
+        nmt * topK * MOE_EP_WIN_ALIGN + MOE_EP_COMBINE_FLAG_COUNT * MOE_EP_WIN_ALIGN;
     layout.combineFlagSourceWinOffset = layout.combineStateWinOffset + combineReceiveStateSize;
     // The non-inline asynchronous completion write must read from persistent window storage, not op workspace.
     // This source is separate from the receive flags cleared by Combine Epilogue.
@@ -83,26 +66,14 @@ ge::graphStatus CalcMoeEpWindowLayout(const MoeEpWindowLayoutParams &params, Moe
     const uint64_t topKAlign = AlignMoeEpUb(topK * MOE_EP_METADATA_DTYPE_SIZE);
     layout.dispatchMetaPerSlotBytes = AlignMoeEpWin(AlignMoeEpUb(params.hidden) + 2UL * topKAlign + MOE_EP_UB_ALIGN);
     layout.dispatchReservedPerSlotBytes = AlignMoeEpWin(hiddenAlign + layout.dispatchMetaPerSlotBytes);
-    layout.scaleoutReservedPerSlotBytes = AlignMoeEpWin(layout.dispatchReservedPerSlotBytes + topK * sizeof(int32_t));
     layout.combineReservedPerSlotBytes = AlignMoeEpWin(hiddenAlign + MOE_EP_UB_ALIGN);
     layout.dispatchRecvDataSize = epWorldSize * nmt * layout.dispatchReservedPerSlotBytes;
     layout.combineDataSize = nmt * topK * layout.combineReservedPerSlotBytes;
 
-    if (params.networkMode == MOE_EP_NETWORK_HYBRID) {
-        layout.scaleoutRecvDataOffset = dataBase;
-        layout.scaleoutRecvDataSize = serverNum * nmt * layout.scaleoutReservedPerSlotBytes;
-        layout.winDataOffset = layout.scaleoutRecvDataOffset + layout.scaleoutRecvDataSize;
-        layout.scaleoutRecvStatusOffset = layout.winDataOffset + layout.dispatchRecvDataSize;
-        layout.scaleoutRecvStatusSize = serverNum * nmt * MOE_EP_WIN_ALIGN;
-        layout.combineDataWinOffset = layout.scaleoutRecvStatusOffset + layout.scaleoutRecvStatusSize;
-        layout.payloadStashWinOffset = layout.combineDataWinOffset + layout.combineDataSize;
-        layout.payloadStashWinSize = nmt * layout.scaleoutReservedPerSlotBytes;
-    } else {
-        layout.winDataOffset = dataBase;
-        layout.combineDataWinOffset = layout.winDataOffset + layout.dispatchRecvDataSize;
-        layout.payloadStashWinOffset = layout.combineDataWinOffset + layout.combineDataSize;
-        layout.payloadStashWinSize = nmt * layout.dispatchMetaPerSlotBytes;
-    }
+    layout.winDataOffset = dataBase;
+    layout.combineDataWinOffset = layout.winDataOffset + layout.dispatchRecvDataSize;
+    layout.payloadStashWinOffset = layout.combineDataWinOffset + layout.combineDataSize;
+    layout.payloadStashWinSize = nmt * layout.dispatchMetaPerSlotBytes;
     layout.requiredBytes = layout.payloadStashWinOffset + layout.payloadStashWinSize;
     return ge::GRAPH_SUCCESS;
 }
@@ -128,9 +99,10 @@ MoeEpDumpMetadata BuildMoeEpDumpMetadata(const MoeEpWindowLayoutParams &params, 
     metadata.epWorldSize = params.epWorldSize;
     metadata.localExpertNum = params.localExpertNum;
     metadata.aivNum = aivNum;
-    metadata.networkMode = params.networkMode;
-    metadata.serverNum = params.serverNum;
-    metadata.rankNumPerServer = params.rankNumPerServer;
+    // Preserve the dump structure layout; these legacy fields no longer select an execution path.
+    metadata.networkMode = 0U;
+    metadata.serverNum = 1U;
+    metadata.rankNumPerServer = params.epWorldSize;
 
     const uint64_t countNotifySize = static_cast<uint64_t>(params.epWorldSize) * MOE_EP_WIN_ALIGN;
     const uint64_t combineTokenStateSize = static_cast<uint64_t>(params.nmt) * params.topK * MOE_EP_WIN_ALIGN;
@@ -141,8 +113,8 @@ MoeEpDumpMetadata BuildMoeEpDumpMetadata(const MoeEpWindowLayoutParams &params, 
     metadata.regions[MOE_EP_DUMP_REGION_DISPATCH_SLOT_STATE] = {layout.slotWinStateOffset,
                                                                 layout.dispatchSlotStateSize};
     metadata.regions[MOE_EP_DUMP_REGION_COMBINE_TOKEN_STATE] = {layout.combineStateWinOffset, combineTokenStateSize};
-    metadata.regions[MOE_EP_DUMP_REGION_HYBRID_SCALEOUT_STATUS] = {layout.scaleoutRecvStatusOffset,
-                                                                   layout.scaleoutRecvStatusSize};
+    // Preserve the legacy region index in the dump ABI; shared-Jetty has no scaleout-status region.
+    metadata.regions[MOE_EP_DUMP_REGION_HYBRID_SCALEOUT_STATUS] = {0UL, 0UL};
     return metadata;
 }
 

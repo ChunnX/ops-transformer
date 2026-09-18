@@ -51,6 +51,8 @@ public:
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
+        // Legacy route tensors remain in the mainline ACLNN ABI. Shared-Jetty ignores cached route inputs;
+        // ElasticBuffer initializes the route outputs as neutral placeholders.
         this->Input("cached_route_count")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
@@ -100,6 +102,7 @@ public:
         this->Attr("expert_alignment").AttrType(OPTIONAL).Int(1);
         this->Attr("do_cpu_sync").AttrType(OPTIONAL).Bool(true);
         this->Attr("host_pinned_counter_addr").AttrType(OPTIONAL).Int(0);
+        // Retained only for compatibility with the mainline ACLNN schema; shared-Jetty tiling ignores both attrs.
         this->Attr("topo_type").AttrType(OPTIONAL).Int(0);
         this->Attr("rank_num_per_server").AttrType(OPTIONAL).Int(1);
 

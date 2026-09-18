@@ -20,8 +20,6 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "../../common/op_kernel/moe_ep_exception_dump_defs.h"
 
-constexpr uint32_t MOE_EP_SEND_ENTRY_BYTES = 2U * sizeof(uint32_t); // source slot和destination slot
-
 struct MoeEpCommonTilingData {
     uint32_t epWorldSize;
     uint32_t epRankId;
@@ -34,37 +32,22 @@ struct MoeEpCommonTilingData {
     uint32_t expertAlignment;
 };
 
-struct MoeEpDispatchHybridInfo {
-    uint32_t rankNumPerServer;
-    uint32_t serverNum;
-    uint32_t scaleoutAivNum;
-    uint32_t scaleupAivNum;
-};
-
 struct MoeEpDispatchWindowLayout {
-    uint32_t scaleoutSlotAlignedBytes; // scaleout 数据和转发元信息 slot 字节数
     uint64_t cntWinStateOffset;
     uint64_t slotWinStateOffset;
     uint64_t payloadWinStateOffset; // payload 发送状态位区偏移（slot 状态区之后）
     uint64_t winDataOffset;
-    uint64_t scaleoutRecvDataOffset;
-    uint64_t scaleoutRecvStatusOffset;
     uint64_t payloadStashWinOffset;
 };
 
 struct MoeEpDispatchWorkspaceLayout {
-    uint64_t sendEntryTokenRangeBytes; // 单个 token 范围的发送记录字节数
     uint64_t srcTokenListBytes;        // 发送到每个对端卡的 token索引表 字节数（512B 对齐，int32）
     uint64_t dstRankInfoOffset;        // dstRank 区偏移（sendCnt 区之后），布局 [BS][K] int16
     uint64_t srcTokenTableOffset;      // srcTokenTable 区偏移（dstRank 区之后），布局 [ep][nmtAlign] int32
-    uint64_t routeWorkspaceOffset;
-    uint64_t scaleoutSendEntryOffset;
-    uint64_t scaleupSendEntryOffset;
 };
 
 struct MoeEpDispatchInfo {
     MoeEpCommonTilingData cfg;
-    MoeEpDispatchHybridInfo hybrid;
     MoeEpDispatchWindowLayout window;
     MoeEpDispatchWorkspaceLayout workspace;
     MoeEpDumpMetadata dumpMetadata;
@@ -78,7 +61,6 @@ struct MoeEpDispatchInfo {
     uint32_t isCached;
     uint32_t isTopkWeights;
     uint32_t isMxQuant;
-    uint32_t networkMode;
     uint32_t dispatchNotifyCount;
     uint32_t aivNum;
 };

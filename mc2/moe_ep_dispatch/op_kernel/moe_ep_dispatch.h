@@ -54,8 +54,8 @@
 namespace MoeEpDispatchImpl {
 
 #define TemplateMoeEpDispatchTypeClass \
-    typename XType, typename ScalesType, bool DoCpuSync, bool IsCached, bool IsTopkWeights, uint8_t NetworkMode
-#define TemplateMoeEpDispatchTypeFunc XType, ScalesType, DoCpuSync, IsCached, IsTopkWeights, NetworkMode
+    typename XType, typename ScalesType, bool DoCpuSync, bool IsCached, bool IsTopkWeights
+#define TemplateMoeEpDispatchTypeFunc XType, ScalesType, DoCpuSync, IsCached, IsTopkWeights
 
 #if defined(ENABLE_MOE_EP_KERNEL)
 
@@ -110,8 +110,8 @@ private:
     __aicore__ inline void CalSendCntHistograms(LocalTensor<int16_t> dstTensor, LocalTensor<int16_t> &tempTensor,
                                                 LocalTensor<uint32_t> sendCntTensor, uint32_t calCnt,
                                                 uint32_t scopeSize);
-    __aicore__ inline void DedupAndSendDirect(LocalTensor<int16_t> expertIdsTensor, uint32_t calCnt,
-                                              uint32_t calCntAlign, uint32_t tmpOffset);
+    __aicore__ inline void DedupAndSend(LocalTensor<int16_t> expertIdsTensor, uint32_t calCnt,
+                                       uint32_t calCntAlign, uint32_t tmpOffset);
     __aicore__ inline void CalSendCntPerRank(uint32_t calCnt, uint32_t calCntAlign, uint32_t tmpOffset);
     __aicore__ inline void CalSendCntPerExpert(LocalTensor<int16_t> expertIdsTensor, uint32_t calCnt,
                                                uint32_t calCntAlign, uint32_t tmpOffset);
@@ -157,7 +157,7 @@ private:
     GlobalTensor<int32_t> numRecvPerRankGMTensor_;
     GlobalTensor<int64_t> numRecvPerExpertGMTensor_;
     GlobalTensor<int32_t> cachedSlotIdxGMTensor_;
-    GlobalTensor<int32_t> scaleupCounterGMTensor_;
+    GlobalTensor<int32_t> sendCounterGMTensor_;
     GlobalTensor<int32_t> recvCounterGMTensor_;
     GlobalTensor<int32_t> sendCntPerRankGMTensor_;
     GlobalTensor<int32_t> sendCntPerExpertGMTensor_;
@@ -193,7 +193,7 @@ private:
     GM_ADDR workspaceGM_{nullptr};
     GM_ADDR hostPinnedCounterAddrGM_{nullptr};
     GM_ADDR xAddr_{nullptr};
-    GM_ADDR scaleupCounterAddr_{nullptr};
+    GM_ADDR sendCounterAddr_{nullptr};
     GM_ADDR sendCntWorkspaceAddr_{nullptr};
     GM_ADDR dstRankInfoAddr_{nullptr};
     GM_ADDR srcTokenTableAddr_{nullptr};
@@ -362,7 +362,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     scalesCopyParams_ = {1U, static_cast<uint16_t>(scalesBytes_), 0U, 0U};
     padParams_ = {true, 0, 0, 0};
 
-    scaleupCounterAddr_ = workspaceGM;
+    sendCounterAddr_ = workspaceGM;
     sendCntWorkspaceAddr_ = workspaceGM + static_cast<uint64_t>(aivNum_) * epWorldSizeAlign512_;
     dstRankInfoAddr_ = workspaceGM + dstRankInfoOffset_;
     srcTokenTableAddr_ = workspaceGM + srcTokenTableOffset_;
@@ -371,7 +371,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     payloadStashStateWinAddr_ = GetWinAddrByRankId(mc2Context_, epRankId_, payloadWinStateOffset_);
     localSlotWinAddr_ = GetWinAddrByRankId(mc2Context_, epRankId_, winDataOffset_) + dstRankWinOffset_;
     payloadStashWinAddr_ = GetWinAddrByRankId(mc2Context_, epRankId_, payloadStashWinOffset_);
-    scaleupCounterGMTensor_.SetGlobalBuffer((__gm__ int32_t *)scaleupCounterAddr_);
+    sendCounterGMTensor_.SetGlobalBuffer((__gm__ int32_t *)sendCounterAddr_);
     recvCounterGMTensor_.SetGlobalBuffer((__gm__ int32_t *)localCntStateWinAddr_);
     metaSlotGMTensor_.SetGlobalBuffer((__gm__ int32_t *)payloadStashWinAddr_);
     sendCntPerRankGMTensor_.SetGlobalBuffer((__gm__ int32_t *)sendCntWorkspaceAddr_);
@@ -498,7 +498,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCntH
 }
 
 template <TemplateMoeEpDispatchTypeClass>
-__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::DedupAndSendDirect(
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::DedupAndSend(
     LocalTensor<int16_t> expertIdsTensor, uint32_t calCnt, uint32_t calCntAlign, uint32_t tmpOffset)
 {
     uint32_t maskCnt = Ceil(calCntAlign, BITS_PER_BYTE);
@@ -658,7 +658,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCnt(
             DataCopyPad(dstSlotIdxTensor_, cachedSlotIdxGMTensor_[topkIdxOffset], topkIdsCntParams,
                         topkIdsCntCopyPadParams); // copy slotId
         }
-        DedupAndSendDirect(tempTensorInt16, calCnt, calCntAlign, tmpOffset); // 去重
+        DedupAndSend(tempTensorInt16, calCnt, calCntAlign, tmpOffset); // 去重
         if constexpr (IsCached) {
             SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
             DataCopyPad(dstSlotIdxGMTensor_[topkIdxOffset], dstSlotIdxTensor_, topkIdsCntParams);
@@ -670,7 +670,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCnt(
         DataCopyPad(dstRankGMTensor_[topkIdxOffset], dstRankTensor_, dstRankCopyParams);
     }
     // 拷入Workspace 对应计数区
-    DataCopy(scaleupCounterGMTensor_[aivId_ * counterAlign512_], sendCntPerRankTensor_, counterCnt_);
+    DataCopy(sendCounterGMTensor_[aivId_ * counterAlign512_], sendCntPerRankTensor_, counterCnt_);
     SetAtomicAdd<int32_t>();
     DataCopyPad(sendCntPerRankGMTensor_, sendCntPerRankTensor_, sendPerRankParams_);
     DataCopyPad(sendCntPerExpertGMTensor_, sendCntPerExpertTensor_, sendPerExpertParams_);
@@ -845,7 +845,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetSlotStar
         uint32_t copyNum = (i == groupCnt - 1) ? (aivId_ - copyNumPerGroup * i) : copyNumPerGroup;
         uint32_t gmOffset = i * copyNumPerGroup * epWorldSizeAlign512_ / sizeof(int32_t);
         counterCopyParams.blockCount = static_cast<uint16_t>(copyNum);
-        DataCopyPad(counterTmpTensor, scaleupCounterGMTensor_[gmOffset], counterCopyParams, padParams_);
+        DataCopyPad(counterTmpTensor, sendCounterGMTensor_[gmOffset], counterCopyParams, padParams_);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         const uint32_t shape[] = {copyNum, counterCnt_};
         ReduceSum<int32_t, AscendC::Pattern::Reduce::RA, true>(hitTmpTensor, counterTmpTensor, sharedTmpTensor, shape,

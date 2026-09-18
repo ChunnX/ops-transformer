@@ -533,9 +533,9 @@ struct MoeEpDumpMetadata {
     uint32_t epWorldSize;          // EP 总卡数
     uint32_t localExpertNum;       // 本卡专家数
     uint32_t aivNum;               // AIV 核数
-    uint32_t networkMode;          // 0=direct, 1=hybrid
-    uint32_t serverNum;            // 服务器数
-    uint32_t rankNumPerServer;     // 每服务器卡数
+    uint32_t networkMode;          // 兼容字段；shared-Jetty 固定为 0
+    uint32_t serverNum;            // 兼容字段；shared-Jetty 固定为 1
+    uint32_t rankNumPerServer;     // 兼容字段；shared-Jetty 固定为 epWorldSize
     MoeEpDumpRegion regions[6];   // 6 个固定 Region (offset: uint64, size: uint64)
 };
 ```
@@ -549,7 +549,7 @@ Region 下标定义:
 | 2 | EXPERT_COUNT | 每卡每专家 token 计数 |
 | 3 | DISPATCH_SLOT_STATE | Dispatch 通信完成状态 |
 | 4 | COMBINE_TOKEN_STATE | Combine 每(token,topk)状态 |
-| 5 | HYBRID_SCALEOUT_STATUS | Hybrid scaleout 状态(direct 模式填{0,0}) |
+| 5 | HYBRID_SCALEOUT_STATUS | 旧 dump ABI 保留槽；shared-Jetty 固定为 `{0,0}`，不输出数据 |
 
 #### Per-core 诊断记录 (`per_core_diag.bin`)
 
@@ -617,21 +617,22 @@ struct MoeEpCoreDiagRecord {
 | (token_id * topK + topk_id) * 512B | 4B | 回传完成状态 (uint32) |
 | ... + 4B | 508B | 保留 |
 
-#### Hybrid Scaleout Status (`hybrid_scaleout_status.bin`)
+#### Legacy Hybrid Scaleout Status (`hybrid_scaleout_status.bin`)
 
-布局: `serverNum * nmt` 个 512B 块, 每块为 hybrid 模式下的 scaleout 状态。direct 模式下 Region 为 `{0, 0}`, 不输出数据。
+该 Region 编号和文件后缀仅为兼容旧 dump ABI 保留。shared-Jetty 实现始终写 `{0,0}`，不会输出该文件。
 
-### MoeCommContext 结构体 (context / input.0)
+### MoeSharedJettyContext 结构体 (context / input.0)
 
 ```cpp
-struct MoeCommContext {
-    uint32_t epRankId;              // 卡id
-    uint32_t rankSizePerServer;    // 每服务器rank数 (epWorldSize = rankSizePerServer * serverNum)
-    uint64_t epHcclBuffer[1024];   // Win区地址, 打印前 rankSize 个
-    uint64_t hcommHandle[1024];    // Handle地址, 打印前 rankSize 个
-    uint32_t channelsPerRank;       // 每卡channel数
+struct MoeSharedJettyContext {
+    uint32_t epRankId;                    // 本地 EP rank
+    uint32_t sharedJettyNum;              // 固定为 56
+    uint64_t epHcclBuffer[1024];          // 各 rank 的 Win 地址
+    uint64_t multiChannelHandles[56];     // 7 个对端 * 每对端 8 条 lane
 };
 ```
+
+分析脚本会优先按该结构解析；旧 `MoeCommContext` 解析仅作为历史 dump 的兼容回退。
 
 ### 分析流程
 
@@ -639,18 +640,19 @@ struct MoeCommContext {
 2. **收集所有卡 Metadata** — 遍历每张卡读 `.metadata.bin`, 解析 10 个 uint32 + 6 个 Region(offset/size 为 uint64), 计算全局专家数 = sum(各卡 localExpertNum)
 3. **逐卡执行单卡分析**:
    - 打印该卡 Metadata (含开始/结束提示)
-   - 解析 context (MoeCommContext 结构体): epRankId, rankSizePerServer, Win区地址, Handle地址, channelsPerRank
+   - 解析 context (`MoeSharedJettyContext`): epRankId, sharedJettyNum, Win 地址和 56 个 multi-channel handle；旧结构仅兼容回退
    - 解析 topk_idx (input.2): 按 Metadata 的 topK reshape 为 (bs, k), 校验值范围 0 <= val < 全局专家数, 打印全部数据
    - 分析 Per-core 诊断区: 读取 4 个 op record(dispatch/dispatch_epilogue/combine/combine_epilogue), 核数判断(4 个 record 全为 0 时停止), 逐核逐 op 打印 opCnt/runPosition/epRankId/aivId
    - 分析 Count Notify / Expert Count / Combine Token State: 各 Region 数据解析, 打印时附带 shape 说明
-4. **写入 Excel** — 输出 `moe_ep_dump_analysis_result.xlsx`, 共 7 个 sheet
+4. **写入 Excel** — 输出 `moe_ep_dump_analysis_result.xlsx`；shared-Jetty dump 额外生成 `shared_context` sheet
 
 ### Excel 输出 sheet 说明
 
 | Sheet | 列 | 说明 |
 |-------|----|----|
 | `metadata` | card_num + 10 字段 + 6 个 Region(offset/size 交替) + bs + core_count | 每卡一行 |
-| `context` | card_num, epRankId, rankSizePerServer, Win区地址_0~N, Handle地址_0~N, channelsPerRank | 按 MoeCommContext 结构体平铺, 每卡一行, N 取各卡最大 rankSizePerServer |
+| `shared_context` | card_num, epRankId, sharedJettyNum, kind, index, address | 当前 shared-Jetty context 的 Win 和 multi-channel handle 地址 |
+| `context` | card_num, epRankId, rankSizePerServer, Win区地址_0~N, Handle地址_0~N, channelsPerRank | 仅用于旧 MoeCommContext dump 的兼容回退 |
 | `topk_idx` | card_num, token_id, topk_id, expert_id | 每(token, topk)一行 |
 | `per_card_per_core` | card_num, core_count, core_id, op_index, op_name, op_count, run_pos, ep_rank_id, aiv_id | 每核每 op 一行 |
 | `count_notify` | card_num, epWorldSize, rank_id, count | 每卡每 rank 一行 |

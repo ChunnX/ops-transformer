@@ -38,6 +38,7 @@
 // HCCL common utilities
 #include "hccl_common.h"
 #include "moe_shared_jetty_adapter.h"
+#include "moe_shared_jetty_context.h"
 
 // ACLNN common utilities
 #include "aclnn_common.h"
@@ -54,7 +55,8 @@ constexpr uint32_t HCCL_MIN_RANK_SIZE = 2;
 constexpr uint32_t HCCL_COMM_LAYERS_MTE_CCU = 1;
 constexpr uint32_t HCCL_COMM_LAYERS_UB_MEM = 0;
 constexpr uint32_t GET_LOCAL_SERVER_RANK_SIZE_LAYER = 0;
-constexpr int64_t NETWORK_DIRECT = 0;
+// The public ACLNN signatures still carry the mainline topology attrs. Shared-Jetty tiling ignores them.
+constexpr int64_t MOE_EP_COMPAT_TOPO_TYPE = 0;
 constexpr int64_t BUFFER_ALIGNMENT = 2 * 1024 * 1024;
 constexpr int64_t MB_SIZE = 1024LL * 1024LL;
 constexpr int DIM_ONE = 1;
@@ -104,7 +106,8 @@ static inline void CheckMoeEpMetadataTensor(const at::Tensor &metadata, const ch
                                             int64_t epWorldSize, const at::Device &device)
 {
     TORCH_CHECK(capacity >= 0 && capacity <= INT32_MAX, "metadata capacity must be in [0, INT32_MAX]");
-    TORCH_CHECK(epWorldSize >= 2 && epWorldSize <= 1024, "ep_world_size must be in [2, 1024]");
+    TORCH_CHECK(epWorldSize == Mc2Aclnn::MOE_SHARED_JETTY_WORLD_SIZE, "shared Jetty requires ep_world_size=",
+                Mc2Aclnn::MOE_SHARED_JETTY_WORLD_SIZE, ", but got ", epWorldSize);
     // Packed ABI: five-column A_alloc rows, then separately 512B-aligned rank offsets.
     const int64_t elementBytes = sizeof(int32_t);
     const int64_t offsetBytes = AlignTo(capacity * MOE_EP_METADATA_FIELDS * elementBytes, MOE_EP_METADATA_ALIGN_BYTES);
@@ -1252,18 +1255,11 @@ Mc2Api::ElasticBuffer::DispatchTensorList Mc2Api::ElasticBuffer::MoeEpDispatch(
 {
     TORCH_CHECK(x.dim() == DIM_TWO, "x dims must be 2, but got ", x.dim());
     TORCH_CHECK(topkIdx.dim() == DIM_TWO, "topk_idx dims must be 2, but got ", topkIdx.dim());
-    TORCH_CHECK(epWorldSize > 0, "ep_world_size must be positive, got ", epWorldSize);
-    int64_t rankNumPerServer = epWorldSize;
-    int64_t topoType = NETWORK_DIRECT;
+    TORCH_CHECK(epWorldSize == Mc2Aclnn::MOE_SHARED_JETTY_WORLD_SIZE, "shared Jetty requires ep_world_size=",
+                Mc2Aclnn::MOE_SHARED_JETTY_WORLD_SIZE, ", but got ", epWorldSize);
 
     bool anyCached = cachedDstSlotIdx.has_value();
     TORCH_CHECK(!(anyCached && doCpuSync), "cached mode is incompatible with do_cpu_sync=True");
-    bool anyCachedRoute =
-        cachedRouteCount.has_value() || cachedRouteDstScaleout.has_value() || cachedRouteScaleoutSlot.has_value();
-    bool allCachedRoute =
-        cachedRouteCount.has_value() && cachedRouteDstScaleout.has_value() && cachedRouteScaleoutSlot.has_value();
-    TORCH_CHECK(!anyCachedRoute || allCachedRoute, "cached route tensors must be all present or all absent");
-
     auto xSize = x.sizes();
     int64_t numTokens = xSize[0];
     int64_t topK = topkIdx.size(1);
@@ -1296,8 +1292,8 @@ Mc2Api::ElasticBuffer::DispatchTensorList Mc2Api::ElasticBuffer::MoeEpDispatch(
     ACLNN_CMD(aclnnMoeEpDispatch, dispatchContext, x, topkIdx, topkWeightsTensor, scalesWrapper, cachedSlotTensor,
               cachedRouteCountTensor, cachedRouteDstScaleoutTensor, cachedRouteScaleoutSlotTensor, epWorldSize,
               epRankId, numExperts, numMaxTokensPerRank, dispatchBufferSize, expertAlignment, doCpuSync,
-              hostPinnedCounterAddr, topoType, rankNumPerServer, numRecvPerRank, numRecvPerExpert, dstSlot, routeCount,
-              routeDstScaleout, routeScaleoutSlot);
+              hostPinnedCounterAddr, MOE_EP_COMPAT_TOPO_TYPE, epWorldSize, numRecvPerRank, numRecvPerExpert, dstSlot,
+              routeCount, routeDstScaleout, routeScaleoutSlot);
 
     return std::make_tuple(numRecvPerRank, numRecvPerExpert, dstSlot, routeCount, routeDstScaleout, routeScaleoutSlot);
 }
@@ -1316,10 +1312,6 @@ Mc2Api::ElasticBuffer::DispatchEpilogueTensorList Mc2Api::ElasticBuffer::MoeEpDi
         CheckMoeEpMetadataTensor(*cachedRecvSrcMetadata, "cached_recv_src_metadata", recvX.size(0), epWorldSize,
                                  recvX.device());
     }
-
-    int64_t rankNumPerServer = epWorldSize;
-    int64_t topoType = NETWORK_DIRECT;
-
     at::Tensor cachedRecvSrcMetadataTensor = cachedRecvSrcMetadata.has_value() ? *cachedRecvSrcMetadata : at::Tensor();
 
     aclDataType recvScalesDtype = aclDataType::ACL_FLOAT;
@@ -1339,7 +1331,7 @@ Mc2Api::ElasticBuffer::DispatchEpilogueTensorList Mc2Api::ElasticBuffer::MoeEpDi
     int64_t dispatchBufferSize = cclBufferSize;
     ACLNN_CMD(aclnnMoeEpDispatchEpilogue, dispatchContext, x, topkIdx, numRecvPerRank, numRecvPerExpert,
               cachedRecvSrcMetadataTensor, epWorldSize, epRankId, numExperts, numMaxTokensPerRank, dispatchBufferSize,
-              hasTopkWeights, topoType, rankNumPerServer, recvX, recvSrcMetadata, recvTopkWeightsTensor,
+              hasTopkWeights, MOE_EP_COMPAT_TOPO_TYPE, epWorldSize, recvX, recvSrcMetadata, recvTopkWeightsTensor,
               recvScalesWrapper);
 
     c10::optional<at::Tensor> recvTopkWeightsOutput;
@@ -1362,14 +1354,13 @@ void Mc2Api::ElasticBuffer::MoeEpCombine(const at::Tensor &x, const at::Tensor &
     TORCH_CHECK(x.dim() == DIM_TWO, "x dims must be 2, but got ", x.dim());
     TORCH_CHECK(topkIdx.dim() == DIM_TWO, "topk_idx dims must be 2, but got ", topkIdx.dim());
     CheckMoeEpMetadataTensor(recvSrcMetadata, "recv_src_metadata", x.size(0), epWorldSize, x.device());
-    int64_t rankNumPerServer = epWorldSize;
-    int64_t topoType = NETWORK_DIRECT;
 
     c10::optional<at::Tensor> topkWeightsOpt = topkWeights;
 
     const auto &combineContext = GetMoeExecutionContext(cclBufferSize);
     ACLNN_CMD(aclnnMoeEpCombine, combineContext, x, topkIdx, recvSrcMetadata, numRecvTokensPerExpert, topkWeightsOpt,
-              epWorldSize, epRankId, numExperts, numMaxTokensPerRank, cclBufferSize, topoType, rankNumPerServer);
+              epWorldSize, epRankId, numExperts, numMaxTokensPerRank, cclBufferSize, MOE_EP_COMPAT_TOPO_TYPE,
+              epWorldSize);
 }
 
 Mc2Api::ElasticBuffer::CombineEpilogueTensorList Mc2Api::ElasticBuffer::MoeEpCombineEpilogue(
@@ -1381,8 +1372,6 @@ Mc2Api::ElasticBuffer::CombineEpilogueTensorList Mc2Api::ElasticBuffer::MoeEpCom
     TORCH_CHECK(x.dim() == DIM_TWO, "x dims must be 2, but got ", x.dim());
     TORCH_CHECK(topkIdx.dim() == DIM_TWO, "topk_idx dims must be 2, but got ", topkIdx.dim());
     CheckMoeEpMetadataTensor(recvSrcMetadata, "recv_src_metadata", x.size(0), epWorldSize, x.device());
-    int64_t rankNumPerServer = epWorldSize;
-    int64_t topoType = NETWORK_DIRECT;
 
     bool hasTopkWeights = topkWeights.has_value();
     at::Tensor combinedTopkWeightsTensor = combinedTopkWeightsOpt.has_value() ?
@@ -1391,8 +1380,8 @@ Mc2Api::ElasticBuffer::CombineEpilogueTensorList Mc2Api::ElasticBuffer::MoeEpCom
 
     const auto &combineContext = GetMoeExecutionContext(cclBufferSize);
     ACLNN_CMD(aclnnMoeEpCombineEpilogue, combineContext, x, topkIdx, recvSrcMetadata, topkWeights, epWorldSize,
-              epRankId, numExperts, numMaxTokensPerRank, cclBufferSize, hasTopkWeights, topoType, rankNumPerServer,
-              combinedX, combinedTopkWeightsTensor);
+              epRankId, numExperts, numMaxTokensPerRank, cclBufferSize, hasTopkWeights, MOE_EP_COMPAT_TOPO_TYPE,
+              epWorldSize, combinedX, combinedTopkWeightsTensor);
 
     c10::optional<at::Tensor> combinedTopkWeightsOutput;
     if (hasTopkWeights) {

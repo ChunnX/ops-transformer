@@ -444,7 +444,7 @@ ElasticBuffer.get_moe_ep_ccl_buffer_size(world_size, num_max_tokens_per_rank, hi
 
 **输入参数**：
 
-- **world_size** (`int`)：必选参数，表示EP通信域的大小（即参与EP通信的卡数）。取值范围 `[2, 1024]`。
+- **world_size** (`int`)：必选参数，表示EP通信域的大小（即参与EP通信的卡数）。当前shared-Jetty实现固定要求为 `8`。
 - **num_max_tokens_per_rank** (`int`)：必选参数，表示每张卡上的最大token数量上限。
 - **hidden** (`int`)：必选参数，表示hidden size隐藏层大小。取值范围 `(0, 8192]`。
 - **num_experts** (`int`)：必选参数，MoE专家总数量，取值范围 `[2, 2048]`，且满足 `num_experts % ep_world_size = 0`。
@@ -501,6 +501,7 @@ ElasticBuffer.get_moe_ep_ccl_buffer_size(world_size, num_max_tokens_per_rank, hi
   - 全局条目总数 `world_size × num_entries` 必须小于2^31（int32 最大值），保证indices索引不溢出。
 
 - **Dispatch/Combine配套约束**：
+  - 当前Dispatch/Combine仅支持shared-Jetty通信路径，EP通信域 `world_size` 必须等于 `8`。
   - [dispatch](#dispatch) 和 [combine](#combine) 必须配套使用。
   - 调用接口过程中使用的 `num_experts`、`num_max_tokens_per_rank` 参数取值所有卡需保持一致，且 [dispatch](#dispatch) 和 [combine](#combine) 对应参数也需保持一致。
   - 当前版本不支持bias参数，`bias` 必须传入 `None`。
@@ -519,6 +520,7 @@ ElasticBuffer.get_moe_ep_ccl_buffer_size(world_size, num_max_tokens_per_rank, hi
 
 - **通信域约束**：
   - Engram通信域 `world_size` 范围 `[2, 1024]`，支持多卡分布式场景。
+  - Dispatch/Combine的EP通信域固定为8卡；该约束不适用于Engram接口。
   - 一个模型中的 [dispatch](#dispatch) 和 [combine](#combine) 算子仅支持相同EP通信域，且该通信域中不允许有其他算子。
 
 - **特殊场景处理**：
@@ -740,7 +742,7 @@ from torch.multiprocessing import Process
 from cann_ops_transformer import ElasticBuffer
 
 master_ip = "127.0.0.1"
-world_size = 2
+world_size = 8
 num_experts = world_size * 4
 num_max_tokens_per_rank = 128
 hidden = 4096

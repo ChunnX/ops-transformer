@@ -15,20 +15,18 @@
 
 #include "graph/ge_error_codes.h"
 #include "../../op_kernel/moe_ep_exception_dump_defs.h"
+#include "../../op_kernel/moe_shared_jetty_context.h"
 
 namespace Mc2Tiling {
 
 constexpr uint64_t MOE_EP_UB_ALIGN = 32UL;
 constexpr uint64_t MOE_EP_WIN_ALIGN = 512UL;
-constexpr uint64_t MOE_EP_CHANNEL_BUDGET = 56UL;
-constexpr uint64_t MOE_EP_DISPATCH_NOTIFY_COUNT = 8UL;
-// ElasticBuffer creates at most 64 direct-network channel handles in total. UB-GPeer uses one channel per rank,
-// so reserve whichever completion-flag count is larger without depending on the device context at tiling time.
-constexpr uint64_t MOE_EP_COMBINE_CHANNEL_HANDLE_COUNT = 64UL;
+constexpr uint64_t MOE_EP_CHANNEL_BUDGET = Mc2Aclnn::MOE_SHARED_JETTY_NUM;
+constexpr uint64_t MOE_EP_DISPATCH_NOTIFY_COUNT = Mc2Aclnn::MOE_SHARED_JETTY_LANES;
+constexpr uint64_t MOE_EP_COMBINE_FLAG_COUNT =
+    static_cast<uint64_t>(Mc2Aclnn::MOE_SHARED_JETTY_WORLD_SIZE) * Mc2Aclnn::MOE_SHARED_JETTY_LANES;
 constexpr uint64_t MOE_EP_MAX_OUT_DTYPE_SIZE = 2UL;
 constexpr uint64_t MOE_EP_METADATA_DTYPE_SIZE = 4UL;
-constexpr uint32_t MOE_EP_NETWORK_DIRECT = 0U;
-constexpr uint32_t MOE_EP_NETWORK_HYBRID = 1U;
 
 struct MoeEpWindowLayoutParams {
     uint32_t epWorldSize;
@@ -36,15 +34,6 @@ struct MoeEpWindowLayoutParams {
     uint32_t nmt;
     uint32_t topK;
     uint32_t hidden;
-    uint32_t networkMode;
-    uint32_t rankNumPerServer;
-    uint32_t serverNum;
-};
-
-struct MoeEpTopology {
-    uint32_t networkMode;
-    uint32_t rankNumPerServer;
-    uint32_t serverNum;
 };
 
 struct MoeEpWindowLayout {
@@ -65,12 +54,8 @@ struct MoeEpWindowLayout {
     uint64_t combineStateWinSize;
     uint64_t combineFlagSourceWinOffset; // Shared 512B constant source, after the receive completion flags.
 
-    uint64_t scaleoutRecvDataOffset;
-    uint64_t scaleoutRecvDataSize;
     uint64_t winDataOffset;
     uint64_t dispatchRecvDataSize;
-    uint64_t scaleoutRecvStatusOffset;
-    uint64_t scaleoutRecvStatusSize;
     uint64_t combineDataWinOffset;
     uint64_t combineDataSize;
     uint64_t payloadStashWinOffset;
@@ -78,16 +63,12 @@ struct MoeEpWindowLayout {
 
     uint64_t dispatchReservedPerSlotBytes;
     uint64_t dispatchMetaPerSlotBytes; // dispatch stash 的纯元数据（无 x）
-    uint64_t scaleoutReservedPerSlotBytes;
     uint64_t combineReservedPerSlotBytes;
     uint64_t requiredBytes;
 };
 
 uint64_t AlignMoeEpUb(uint64_t value);
 uint64_t AlignMoeEpWin(uint64_t value);
-
-ge::graphStatus ResolveMoeEpTopology(uint32_t epWorldSize, int64_t requestedNetworkMode, int64_t rankNumPerServer,
-                                     MoeEpTopology &topology);
 
 ge::graphStatus CalcMoeEpWindowLayout(const MoeEpWindowLayoutParams &params, MoeEpWindowLayout &layout);
 

@@ -114,12 +114,12 @@ private:
     TPipe *tpipe_{nullptr};
     MoeEpExceptionDump::MoeEpCoreDiagWriter diagWriter_;
     uint32_t epRankId_{0};
-    bool isDirectSelfRank_{false}; // 当前遍历的源 rank 是否为 direct 本端段
+    bool isLocalRank_{false};
     uint32_t aivId_{0};
     GlobalTensor<int32_t> numRecvPerRankGm_;
     GlobalTensor<int64_t> numRecvPerExpertGm_;
 
-    GlobalTensor<XType> xGm_; // 本端源 x（direct: 从输入直接获取）
+    GlobalTensor<XType> xGm_; // Local-rank payload is read from the input tensor.
     GlobalTensor<XType> recvXGm_;
     GlobalTensor<float> recvTopkWeightsGm_;
     GlobalTensor<int32_t> recvSrcMetadataGm_;
@@ -685,7 +685,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         }
 
         // Local-rank payload is read directly from the input tensor.
-        isDirectSelfRank_ = (rankId == static_cast<uint32_t>(epRankId_));
+        isLocalRank_ = (rankId == static_cast<uint32_t>(epRankId_));
         GM_ADDR srcRankBase = localWinAddr_ + (int64_t)rankId * numMaxTokensPerRank_ * perSlotBytes_;
         GlobalTensor<int32_t> srcMetaGm;
 
@@ -734,7 +734,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
                 }
 
                 GlobalTensor<XType> srcTokenTensor;
-                if (isDirectSelfRank_) { // direct 自段 x 未入窗口，直读输入 x
+                if (isLocalRank_) {
                     srcTokenTensor = xGm_[static_cast<int64_t>(tokenIdxMeta) * axisH_];
                 } else {
                     srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType *>(slotAddr), axisH_);
@@ -871,9 +871,9 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
             GM_ADDR slotAddr = localWinAddr_ + (int64_t)srcRankId * numMaxTokensPerRank_ * perSlotBytes_ +
                                (int64_t)slotIdx * perSlotBytes_;
             // Local-rank payload is read directly from the input tensor.
-            bool directSelfRank = (srcRankId == static_cast<int32_t>(epRankId_));
+            bool localRank = (srcRankId == static_cast<int32_t>(epRankId_));
             GlobalTensor<XType> srcTokenTensor;
-            if (directSelfRank) {
+            if (localRank) {
                 srcTokenTensor = xGm_[static_cast<int64_t>(tokenIdx) * axisH_];
             } else {
                 srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType *>(slotAddr), axisH_);
