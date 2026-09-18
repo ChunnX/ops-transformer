@@ -81,22 +81,22 @@ def unpack_uint8_to_fp4(packed):
 def quantize_group(vec_f32, side):
     """按侧分组量化整行 512 元素（物理序 nope[448]‖rope[64]）。
 
-    side="win" → group32 FP8 E4M3：返回 (fp8 张量 [S,512], scale bf16 [S,16])。
+    side="ori" → group32 FP8 E4M3：返回 (fp8 张量 [S,512], scale bf16 [S,16])。
     side="cmp" → group16 FP4 E2M1（x2 打包）：返回 (packed uint8 [S,256], scale bf16 [S,32])。
     scale = amax/fmax 转 bf16；量化用 bf16 回读的 scale（与 kernel 数值流一致）。
     """
     torch = _torch()
-    assert side in ("win", "cmp")
+    assert side in ("ori", "cmp")
     rows = vec_f32.shape[0]
-    g, ng = ((C.GROUP_SIZE_WIN, C.NUM_GROUPS_WIN) if side == "win"
+    g, ng = ((C.GROUP_SIZE_ORI, C.NUM_GROUPS_ORI) if side == "ori"
              else (C.GROUP_SIZE_CMP, C.NUM_GROUPS_CMP))
     grp = vec_f32.reshape(rows, ng, g)
     amax = grp.abs().amax(dim=-1, keepdim=True).clamp(min=1e-8)  # [rows,ng,1]
-    fmax = FP8_E4M3_MAX if side == "win" else FP4_E2M1_MAX
+    fmax = FP8_E4M3_MAX if side == "ori" else FP4_E2M1_MAX
     scale_bf16 = (amax / fmax).to(torch.bfloat16)
     scale_used = scale_bf16.float().clamp(min=1e-30)
     n = (grp / scale_used).clamp(-fmax, fmax)
-    if side == "win":
+    if side == "ori":
         q = n.to(torch.float8_e4m3fn)               # torch CPU 支持
         return q.reshape(rows, ng * g), scale_bf16.reshape(rows, ng)
     enc = e2m1_encode(n)                            # [rows,ng,g] uint8 码点
@@ -105,16 +105,16 @@ def quantize_group(vec_f32, side):
 
 
 def dequant_group(data, scale, side):
-    """win group32 / cmp group16 反量化 → bf16 [rows,512]（物理序 nope‖rope）。
+    """ori group32 / cmp group16 反量化 → bf16 [rows,512]（物理序 nope‖rope）。
 
-    kernel 侧数值流：win 走 fp8→f32→bf16（cast 精确/RN）→ vmul bf16；cmp 走 LUT 查表
+    kernel 侧数值流：ori 走 fp8→f32→bf16（cast 精确/RN）→ vmul bf16；cmp 走 LUT 查表
     （e2m1 值在 bf16 精确）→ vmul bf16。两者等价于 bf16(码值) × bf16(scale) → RN bf16。"""
     torch = _torch()
-    assert side in ("win", "cmp")
+    assert side in ("ori", "cmp")
     rows = scale.shape[0]
-    g, ng = ((C.GROUP_SIZE_WIN, C.NUM_GROUPS_WIN) if side == "win"
+    g, ng = ((C.GROUP_SIZE_ORI, C.NUM_GROUPS_ORI) if side == "ori"
              else (C.GROUP_SIZE_CMP, C.NUM_GROUPS_CMP))
-    if side == "win":
+    if side == "ori":
         k_bf16 = data.float().to(torch.bfloat16).reshape(rows, ng, g)
     else:
         codes = unpack_uint8_to_fp4(data.reshape(rows, ng * g // 2))
@@ -277,7 +277,7 @@ def make_inputs(scenario=C.Scenario.ORI_SPARSE, quant_mode=C.QuantMode.CONTIGUOU
 
     q_lengths, cu_seqlens_q, seqused_q = query_lengths(
         batch_size, seqlen_q, cu_seqlens_q, seqused_q)
-    win_lengths = batch_lengths(seqlen_kv)
+    ori_lengths = batch_lengths(seqlen_kv)
     query_batch = torch.repeat_interleave(torch.arange(batch_size), q_lengths.long())
     T1, D = int(q_lengths.sum()), C.D
     g = torch.Generator().manual_seed(seed)
@@ -316,8 +316,8 @@ def make_inputs(scenario=C.Scenario.ORI_SPARSE, quant_mode=C.QuantMode.CONTIGUOU
         # 保持既有seed对应的逻辑KV值：历史随机流先生成rope，再生成nope。
         # 量化前整理为公共nope/rope顺序，scale也按此顺序生成。
         vec = torch.cat((vec[:, C.D_ROPE:], vec[:, :C.D_ROPE]), dim=-1)
-        data, scale = quantize_group(vec, "win" if side == "ori" else "cmp")
-        ref[side] = {"side": "win" if side == "ori" else "cmp", "data": data, "scale": scale}
+        data, scale = quantize_group(vec, side)
+        ref[side] = {"side": side, "data": data, "scale": scale}
         ref[f"{side}_seqlens"] = pool_lengths
         ref[f"{side}_offsets"] = offsets
         pool_per_query = pool_lengths[query_batch]
@@ -337,7 +337,7 @@ def make_inputs(scenario=C.Scenario.ORI_SPARSE, quant_mode=C.QuantMode.CONTIGUOU
         ref[f"{side}_sparse_indices"] = indices
         ref[f"{side}_topk_length"] = lengths
 
-    make_side("ori", win_lengths, ori_topk, ori_topk_length, ori_kv_topk_mode)
+    make_side("ori", ori_lengths, ori_topk, ori_topk_length, ori_kv_topk_mode)
     if scenario == C.Scenario.ORI_CMP_SPARSE:
         make_side("cmp", batch_lengths(cmp_seqlen), cmp_topk, cmp_topk_length, cmp_kv_topk_mode)
     inputs = {"q": q, "sinks": sinks, "quant_mode": int(quant_mode),
@@ -356,27 +356,27 @@ def make_inputs(scenario=C.Scenario.ORI_SPARSE, quant_mode=C.QuantMode.CONTIGUOU
 # 于是 PA 寻址 = W6 行索引 + 一次 blockTable 标量查表。逻辑 K̃（dequant 值）与布局无关。
 #
 # ★ 新量化 v2（quant_mode=1 唯一编码，两池行宽**分家**）：
-#   win_kv (FP8 E4M3)    544 B/token = nope[448]+rope[64] 全 fp8 @0..512 ‖ scale 16×bf16 @512
+#   ori_kv (FP8 E4M3)    544 B/token = nope[448]+rope[64] 全 fp8 @0..512 ‖ scale 16×bf16 @512
 #   cmp_kv (FP4 E2M1 x2) 320 B/token = nope[448]+rope[64] 全 fp4x2 @0..256 ‖ scale 32×bf16 @256
 #   物理字节序 = nope[448] ‖ rope[64]；scale i 覆盖物理序元素 [g*i, g*(i+1))，无 pad 字段。
-#   win 的 g=32，cmp 的 g=16。
+#   ori 的 g=32，cmp 的 g=16。
 
 
 def _kv_row_bytes(kv):
     """逻辑 KV 一段 → 物理**逻辑行**（uint8），行宽由 `kv["side"]` 携带：
 
-    win → ``{"row": [S,544]}``（512 B fp8 数据 ‖ 16×bf16 scale）。
+    ori → ``{"row": [S,544]}``（512 B fp8 数据 ‖ 16×bf16 scale）。
     cmp → ``{"row": [S,320]}``（256 B fp4x2 打包数据 ‖ 32×bf16 scale）。"""
     torch = _torch()
     side = kv["side"]
-    data_b = kv["data"].contiguous().view(torch.uint8)      # win [S,512] / cmp [S,256]
-    scale_b = kv["scale"].contiguous().view(torch.uint8)    # win [S,32] / cmp [S,64]
+    data_b = kv["data"].contiguous().view(torch.uint8)      # ori [S,512] / cmp [S,256]
+    scale_b = kv["scale"].contiguous().view(torch.uint8)    # ori [S,32] / cmp [S,64]
     S, data_len = data_b.shape
-    scale_bytes = C.KV_SCALE_BYTES_WIN if side == "win" else C.KV_SCALE_BYTES_CMP
+    scale_bytes = C.KV_SCALE_BYTES_ORI if side == "ori" else C.KV_SCALE_BYTES_CMP
     row = torch.zeros(S, data_len + scale_bytes, dtype=torch.uint8)
     row[:, :data_len] = data_b
     row[:, data_len:] = scale_b
-    assert row.shape[1] == (C.KV_ROW_BYTES_WIN if side == "win" else C.KV_ROW_BYTES_CMP)
+    assert row.shape[1] == (C.KV_ROW_BYTES_ORI if side == "ori" else C.KV_ROW_BYTES_CMP)
     return {"row": row}
 
 

@@ -8,7 +8,7 @@ from test_case import DEFAULTS, MODES
 
 BOOL_FIELDS = {
     'return_softmax_lse', 'kv_axis0_noncontiguous',
-    'omit_win_topk_length', 'omit_cmp_topk_length',
+    'omit_ori_topk_length', 'omit_cmp_topk_length',
 }
 INT_FIELDS = {
     'B', 'K1', 'K2', 'block_size1', 'block_size2', 'quant_mode', 'seed',
@@ -16,13 +16,13 @@ INT_FIELDS = {
 }
 LENGTH_FIELDS = {'S1', 'S2', 'S2C'}
 QUERY_FIELDS = {'cu_seqlens_q', 'seqused_q'}
-TOPK_FIELDS = {'win_topk_length', 'cmp_topk_length'}
+TOPK_FIELDS = {'ori_topk_length', 'cmp_topk_length'}
 FIXED_FIELDS = {
     'layout_q': 'TND', 'layout_kv': 'PA_BBND',
     'N1': 64, 'N2': 1, 'D': 512, 'rope_head_dim': 64,
     'quant_mode': 1,
 }
-ALIASES = {'K': 'K2', 'win_kv_topk_mode': 'ori_kv_topk_mode'}
+ALIASES = {'K': 'K2'}
 COMMENT_FIELDS = {'备注'}
 SUPPORTED_FIELDS = (set(DEFAULTS) | BOOL_FIELDS | INT_FIELDS | LENGTH_FIELDS
                     | set(FIXED_FIELDS) | set(ALIASES)
@@ -123,13 +123,13 @@ def _normalize(values):
     _, cumulative, _ = query_lengths(
         merged['B'], merged['S1'], merged['cu_seqlens_q'], merged['seqused_q'])
     t1 = int(cumulative[-1])
-    for field, width in (('win_topk_length', 'K1'), ('cmp_topk_length', 'K2')):
+    for field, width in (('ori_topk_length', 'K1'), ('cmp_topk_length', 'K2')):
         if p.get(field) is not None:
             try:
                 _topk_lengths(t1, merged[width], p[field])
             except (ValueError, TypeError, RuntimeError) as exc:
                 raise ValueError(f'{field}: {exc}') from exc
-    for field, length in (('ori_kv_topk_mode', 'win_topk_length'),
+    for field, length in (('ori_kv_topk_mode', 'ori_topk_length'),
                           ('cmp_kv_topk_mode', 'cmp_topk_length')):
         if merged[length] is None and merged[field] not in ('fullK', 'random'):
             raise ValueError(f'{field} supports only fullK/random')

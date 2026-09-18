@@ -25,9 +25,9 @@ DEFAULTS = {
     "S2C": 2048,
     "K1": 128,
     "K2": 512,
-    "omit_win_topk_length": False,
+    "omit_ori_topk_length": False,
     "omit_cmp_topk_length": False,
-    "win_topk_length": None,
+    "ori_topk_length": None,
     "cmp_topk_length": None,
     "ori_kv_topk_mode": "fullK",
     "cmp_kv_topk_mode": "fullK",
@@ -57,15 +57,15 @@ def build_case(params):
         cmp_seqlen=p["S2C"], ori_topk=int(p["K1"]), cmp_topk=int(p["K2"]),
         seed=int(p["seed"]), dist=p["dist"],
         cu_seqlens_q=p["cu_seqlens_q"], seqused_q=p["seqused_q"],
-        ori_topk_length=p['win_topk_length'],
+        ori_topk_length=p['ori_topk_length'],
         cmp_topk_length=p['cmp_topk_length'],
         ori_kv_topk_mode=p["ori_kv_topk_mode"],
         cmp_kv_topk_mode=p["cmp_kv_topk_mode"],
     )
-    for side, ref_side in (("win", "ori"), ("cmp", "cmp")):
-        if p.get(f"omit_{side}_topk_length") and ref.get(f"{ref_side}_topk_length") is not None:
-            width = ref[f"{ref_side}_sparse_indices"].shape[-1]
-            if bool((ref[f"{ref_side}_topk_length"] != width).any()):
+    for side in ("ori", "cmp"):
+        if p.get(f"omit_{side}_topk_length") and ref.get(f"{side}_topk_length") is not None:
+            width = ref[f"{side}_sparse_indices"].shape[-1]
+            if bool((ref[f"{side}_topk_length"] != width).any()):
                 raise ValueError(f"omitting {side}_topk_length requires all K indices to be valid")
     if p.get("softmax_scale") is not None:
         ref["softmax_scale"] = float(p["softmax_scale"])
@@ -118,26 +118,26 @@ def run_prepared(
     if not _npu_available():
         raise RuntimeError("torch_npu/device unavailable")
     pa_ori = case["pa"]
-    win_kv = _pa_tensor(
-        pa_ori, C.KV_ROW_BYTES_WIN,
+    ori_kv = _pa_tensor(
+        pa_ori, C.KV_ROW_BYTES_ORI,
         axis0_noncontiguous=p["kv_axis0_noncontiguous"])
     pa_cmp = case["pa_cmp"]
     has_cmp = mode == "ORI_CMP_SPARSE"
     kwargs = {
         "q": case["q"].npu(),
-        "win_kv": win_kv,
+        "ori_kv": ori_kv,
         "cmp_kv": _pa_tensor(
             pa_cmp, C.KV_ROW_BYTES_CMP,
             axis0_noncontiguous=p["kv_axis0_noncontiguous"]) if has_cmp else None,
-        "win_sparse_indices": case["idx_ori"].reshape(case["t1"], 1, -1).npu(),
+        "ori_sparse_indices": case["idx_ori"].reshape(case["t1"], 1, -1).npu(),
         "cmp_sparse_indices": case["idx_cmp"].reshape(case["t1"], 1, -1).npu() if has_cmp else None,
-        "win_block_table": pa_ori["block_table"].npu(),
+        "ori_block_table": pa_ori["block_table"].npu(),
         "cmp_block_table": pa_cmp["block_table"].npu() if has_cmp else None,
         "cu_seqlens_q": case["cu_seqlens_q"].npu(),
         "seqused_q": case["seqused_q"].npu() if case.get("seqused_q") is not None else None,
-        "seqused_win_kv": None,
+        "seqused_ori_kv": None,
         "seqused_cmp_kv": None,
-        "win_topk_length": case["len_ori"].reshape(case["t1"], 1).npu(),
+        "ori_topk_length": case["len_ori"].reshape(case["t1"], 1).npu(),
         "cmp_topk_length": (case["len_cmp"].reshape(case["t1"], 1).npu()
                             if has_cmp else None),
         "sinks": case["sinks"].npu(),
@@ -148,14 +148,14 @@ def run_prepared(
         "layout_kv": "PA_BBND",
         "return_softmax_lse": p.get("return_softmax_lse", False),
     }
-    for side in ("win", "cmp"):
+    for side in ("ori", "cmp"):
         kv = kwargs[f"{side}_kv"]
         if kv is not None:
             print(f"{side}_kv shape={tuple(kv.shape)} stride={kv.stride()} "
                   f"storage_offset={kv.storage_offset()}")
     actual, actual_lse = _call_public(
         kwargs, mode, case["t1"],
-        omit_win_length=p.get("omit_win_topk_length", False),
+        omit_ori_length=p.get("omit_ori_topk_length", False),
         omit_cmp_length=p.get("omit_cmp_topk_length", False),
         metadata_backend=metadata_backend,
         verify_metadata_backends=verify_metadata_backends)
@@ -235,7 +235,7 @@ def _make_metadata_python(rows, device):
     return metadata
 
 
-def _call_public(kwargs, mode, t1, *, omit_win_length=False, omit_cmp_length=False,
+def _call_public(kwargs, mode, t1, *, omit_ori_length=False, omit_cmp_length=False,
                  metadata_backend="aicpu", verify_metadata_backends=False):
     """Run metadata and attention through the installed wheel's torch.ops."""
     # Explicit import surfaces DSL registration failures instead of testing another implementation.
@@ -254,7 +254,7 @@ def _call_public(kwargs, mode, t1, *, omit_win_length=False, omit_cmp_length=Fal
             kwargs["metadata"] = _make_metadata_python(t1, kwargs["q"].device).npu()
         else:
             aicpu_metadata = mixed_quant_sparse_flash_mla_metadata(
-                kwargs["win_topk_length"], cmp_lengths,
+                kwargs["ori_topk_length"], cmp_lengths,
                 cu_seqlens_q=kwargs["cu_seqlens_q"],
                 num_heads_q=C.N1, num_heads_kv=1, head_dim=C.D,
                 quant_mode=kwargs["quant_mode"], has_cmp_kv=(mode == "ORI_CMP_SPARSE"))
@@ -265,8 +265,8 @@ def _call_public(kwargs, mode, t1, *, omit_win_length=False, omit_cmp_length=Fal
                     python_metadata, aicpu_metadata.cpu(), rtol=0, atol=0)
                 print("[mqsmla metadata] aicpu/python partition match")
     # Metadata keeps its required length inputs; attention can omit either side.
-    if omit_win_length:
-        kwargs.pop("win_topk_length")
+    if omit_ori_length:
+        kwargs.pop("ori_topk_length")
     if omit_cmp_length:
         kwargs.pop("cmp_topk_length")
     want_lse = kwargs.get("return_softmax_lse", False)

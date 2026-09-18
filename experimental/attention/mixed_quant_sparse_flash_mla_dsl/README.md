@@ -15,8 +15,8 @@
 
 MixedQuantSparseFlashMla（MQSMLA）用于混合量化稀疏 MLA 注意力计算。Q 为 BF16；窗口 KV 使用 per-token-group FP8 E4M3，压缩 KV 使用 per-token-group FP4 E2M1，窗口侧 group size 为 32、压缩侧为 16、scale 为 BF16。算子按稀疏逻辑索引和 block table 从分页 KV 中收集数据，反量化后计算注意力，Key 和 Value 共享同一份 latent 数据。
 
-- `ORI_SPARSE`：仅使用 win 侧。
-- `ORI_CMP_SPARSE`：同时使用 win 与 cmp 侧，两侧 KV 一起参与 softmax。
+- `ORI_SPARSE`：仅使用 ori 侧。
+- `ORI_CMP_SPARSE`：同时使用 ori 与 cmp 侧，两侧 KV 一起参与 softmax。
 
 设 query 行 t、头 h 对应的有效 KV 集合为 I(t)，反量化后为 k_j=v_j，缩放系数为 s，sink 为 a_h（所有 batch/query 共用），数学语义为：
 
@@ -48,17 +48,17 @@ batch、K、block size、KV 页距、block table 容量、softmax scale、设备
 mixed_quant_sparse_flash_mla(
     q,
     *,
-    win_kv=None,
+    ori_kv=None,
     cmp_kv=None,
-    win_sparse_indices=None,
+    ori_sparse_indices=None,
     cmp_sparse_indices=None,
-    win_block_table=None,
+    ori_block_table=None,
     cmp_block_table=None,
     cu_seqlens_q=None,
     seqused_q=None,
-    seqused_win_kv=None,
+    seqused_ori_kv=None,
     seqused_cmp_kv=None,
-    win_topk_length=None,
+    ori_topk_length=None,
     cmp_topk_length=None,
     sinks=None,
     metadata=None,
@@ -81,13 +81,13 @@ mixed_quant_sparse_flash_mla(
 | `N2` | KV头数，当前固定为1 |
 | `D` | Q和反量化后KV的逻辑head dim，当前固定为512 |
 | `G` | 每个KV头对应的Q头数，`G=N1/N2` |
-| `K1` | `win_sparse_indices`最后一维的容量 |
+| `K1` | `ori_sparse_indices`最后一维的容量 |
 | `K2` | `cmp_sparse_indices`最后一维的容量 |
-| `blocknum1` | `win_kv`物理block数量 |
+| `blocknum1` | `ori_kv`物理block数量 |
 | `blocknum2` | `cmp_kv`物理block数量 |
-| `blocksize1` | `win_kv`每个物理block包含的token数 |
+| `blocksize1` | `ori_kv`每个物理block包含的token数 |
 | `blocksize2` | `cmp_kv`每个物理block包含的token数 |
-| `max_num_blocks_per_seq1` | `win_block_table`第二维容量，即单batch最大逻辑block数 |
+| `max_num_blocks_per_seq1` | `ori_block_table`第二维容量，即单batch最大逻辑block数 |
 | `max_num_blocks_per_seq2` | `cmp_block_table`第二维容量，即单batch最大逻辑block数 |
 
 ### 输入和属性
@@ -95,21 +95,21 @@ mixed_quant_sparse_flash_mla(
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | `q` | Tensor | 必选 | Query输入。 | `bfloat16` | ND | `(T1, N1, 512)` |
-| `win_kv` | Tensor | 可选 | 窗口KV Cache，Key和Value共享同一份MLA latent数据。按token进行group size为32的FP8 E4M3量化，以`uint8`字节视图传入；每个token占544字节。 | `uint8` | ND | `(blocknum1, blocksize1, N2, 544)` |
+| `ori_kv` | Tensor | 可选 | 窗口KV Cache，Key和Value共享同一份MLA latent数据。按token进行group size为32的FP8 E4M3量化，以`uint8`字节视图传入；每个token占544字节。 | `uint8` | ND | `(blocknum1, blocksize1, N2, 544)` |
 | `cmp_kv` | Tensor | 可选 | 压缩KV Cache。`ORI_CMP_SPARSE`模式必选，`ORI_SPARSE`模式不传。按token进行group size为16的FP4 E2M1量化，以两个FP4元素打包为一个字节的`uint8`视图传入；每个token占320字节。 | `uint8` | ND | `(blocknum2, blocksize2, N2, 320)` |
-| `win_sparse_indices` | Tensor | 可选 | 窗口KV的逻辑token索引。传入length时每行前`win_topk_length`个元素有效、其余填`-1`；不传length时全部K1列有效。 | `int32` | ND | `(T1, N2, K1)` |
+| `ori_sparse_indices` | Tensor | 可选 | 窗口KV的逻辑token索引。传入length时每行前`ori_topk_length`个元素有效、其余填`-1`；不传length时全部K1列有效。 | `int32` | ND | `(T1, N2, K1)` |
 | `cmp_sparse_indices` | Tensor | 可选 | 压缩KV的逻辑token索引。`ORI_CMP_SPARSE`模式必选，`ORI_SPARSE`模式不传。传入length时每行前`cmp_topk_length`个元素有效、其余填`-1`；不传length时全部K2列有效。 | `int32` | ND | `(T1, N2, K2)` |
-| `win_block_table` | Tensor | 可选 | `win_kv`的逻辑block到物理block映射表。 | `int32` | ND | `(B, max_num_blocks_per_seq1)` |
+| `ori_block_table` | Tensor | 可选 | `ori_kv`的逻辑block到物理block映射表。 | `int32` | ND | `(B, max_num_blocks_per_seq1)` |
 | `cmp_block_table` | Tensor | 可选 | `cmp_kv`的逻辑block到物理block映射表。`ORI_CMP_SPARSE`模式必选，`ORI_SPARSE`模式不传。 | `int32` | ND | `(B, max_num_blocks_per_seq2)` |
 | `cu_seqlens_q` | Tensor | 可选 | 各batch的query累积序列长度。首元素为0，末元素为`T1`。算子不生成缺省值，缺传时拦截报错。 | `int32` | ND | `(B+1,)` |
 | `seqused_q` | Tensor | 可选 | 各batch中实际使用的query token数，仅作交叉校验：若传入，其值必须等于对应batch的query跨度（当前不支持query行padding）。不能替代`cu_seqlens_q`（不能由它推导累积序列长度）。 | `int32` | ND | `(B,)` |
-| `seqused_win_kv` | Tensor | 可选 | 预留参数。上游语义为各batch中实际使用的窗口KV token数；当前实现仅校验其为`int32`且形状为`(B,)`，不解析、不消费其内容，传入与否不影响计算结果。 | `int32` | ND | `(B,)` |
+| `seqused_ori_kv` | Tensor | 可选 | 预留参数。上游语义为各batch中实际使用的窗口KV token数；当前实现仅校验其为`int32`且形状为`(B,)`，不解析、不消费其内容，传入与否不影响计算结果。 | `int32` | ND | `(B,)` |
 | `seqused_cmp_kv` | Tensor | 可选 | 预留参数。上游语义为各batch中实际使用的压缩KV token数；当前实现仅校验其为`int32`且形状为`(B,)`，不解析、不消费其内容，传入与否不影响计算结果。 | `int32` | ND | `(B,)` |
-| `win_topk_length` | Tensor | 可选 | 默认None，使用全部K1列。 每个query实际使用的窗口稀疏索引数，是`win_sparse_indices`有效前缀的准确长度，取值范围为`[0, K1]`。长度为0时跳过该侧KV；两侧均为0时输出为0，开启LSE时其值为sinks；可不传（None）。 | `int32` | ND | `(T1, N2)` |
+| `ori_topk_length` | Tensor | 可选 | 默认None，使用全部K1列。 每个query实际使用的窗口稀疏索引数，是`ori_sparse_indices`有效前缀的准确长度，取值范围为`[0, K1]`。长度为0时跳过该侧KV；两侧均为0时输出为0，开启LSE时其值为sinks；可不传（None）。 | `int32` | ND | `(T1, N2)` |
 | `cmp_topk_length` | Tensor | 可选 | 默认None，使用全部K2列。 每个query实际使用的压缩稀疏索引数，是`cmp_sparse_indices`有效前缀的准确长度，取值范围为`[0, K2]`。仅在`ORI_CMP_SPARSE`模式可传。 当前不支持空query；可不传（None）。 | `int32` | ND | `(T1, N2)` |
 | `sinks` | Tensor | 可选 | 各Q头的可学习attention sink，只进softmax分母。算子不生成缺省值，缺传时拦截报错；不需要sink时显式传入全0张量。 | `float32` | ND | `(N1,)`，所有 batch/query 共用 |
-| `metadata` | Tensor | 可选 | 分核任务表，驱动多核的query行划分。前blocks项为各核分到的首个query行序号（m-tile起点），后blocks项为各核分到的query行数；所有核的区间合起来必须恰好无缝无叠地覆盖`[0, T1)`。算子不生成缺省值，缺传时拦截报错；须先调用`mixed_quant_sparse_flash_mla_metadata(win_topk_length, cmp_topk_length, cu_seqlens_q=..., num_heads_q=64, num_heads_kv=1, head_dim=512, quant_mode=1, has_cmp_kv=...)`生成（两阶段调用）。 | `int32` | ND | `(2 * blocks,)` |
-| `quant_mode` | int | 必选 | 量化模式，必须显式传入`1`，无默认值。Q为BF16；`win_kv`为per-token-group FP8 E4M3、group size为32、scale为BF16；`cmp_kv`为per-token-group FP4 E2M1、group size为16、scale为BF16。 | `int32` | - | - |
+| `metadata` | Tensor | 可选 | 分核任务表，驱动多核的query行划分。前blocks项为各核分到的首个query行序号（m-tile起点），后blocks项为各核分到的query行数；所有核的区间合起来必须恰好无缝无叠地覆盖`[0, T1)`。算子不生成缺省值，缺传时拦截报错；须先调用`mixed_quant_sparse_flash_mla_metadata(ori_topk_length, cmp_topk_length, cu_seqlens_q=..., num_heads_q=64, num_heads_kv=1, head_dim=512, quant_mode=1, has_cmp_kv=...)`生成（两阶段调用）。 | `int32` | ND | `(2 * blocks,)` |
+| `quant_mode` | int | 必选 | 量化模式，必须显式传入`1`，无默认值。Q为BF16；`ori_kv`为per-token-group FP8 E4M3、group size为32、scale为BF16；`cmp_kv`为per-token-group FP4 E2M1、group size为16、scale为BF16。 | `int32` | - | - |
 | `softmax_scale` | float | 可选 | Softmax前QK乘积的缩放系数。默认值为`None`，表示使用`1/sqrt(512)`。 | `float32` | - | - |
 | `layout_q` | string | 可选 | Q布局，当前仅支持`"TND"`，默认值为`"TND"`。 | string | - | - |
 | `layout_kv` | string | 可选 | KV布局，当前仅支持`"PA_BBND"`，默认值为`"PA_BBND"`。 | string | - | - |
@@ -129,16 +129,16 @@ mixed_quant_sparse_flash_mla(
 
 ```python
 mixed_quant_sparse_flash_mla_metadata(
-    win_topk_length,
+    ori_topk_length,
     cmp_topk_length,
     *,
     cu_seqlens_q=None,
     seqused_q=None,
-    seqused_win_kv=None,
+    seqused_ori_kv=None,
     seqused_cmp_kv=None,
     batch_size=None,
     max_seqlen_q=None,
-    max_seqlen_win_kv=None,
+    max_seqlen_ori_kv=None,
     max_seqlen_cmp_kv=None,
     num_heads_q,
     num_heads_kv,
@@ -146,22 +146,22 @@ mixed_quant_sparse_flash_mla_metadata(
     quant_mode,
     layout_q="TND",
     layout_kv="PA_BBND",
-    has_win_kv=True,
+    has_ori_kv=True,
     has_cmp_kv=True,
 ) -> Tensor
 ```
 
 | 参数 | 类型 / 形状 | 默认值 | 当前用途 |
 | :--- | :--- | :--- | :--- |
-| `win_topk_length` | int32 Tensor `(T1,N2)` | 必传 | 校验形状；长度值暂不影响分核 |
+| `ori_topk_length` | int32 Tensor `(T1,N2)` | 必传 | 校验形状；长度值暂不影响分核 |
 | `cmp_topk_length` | int32 Tensor `(T1,N2)` | 必传 | 校验形状；长度值暂不影响分核 |
 | `cu_seqlens_q` | int32 Tensor `(B+1,)` | None | 优先以最后一项确定T1 |
 | `seqused_q` | int32 Tensor `(B,)` | None | 无cu_seqlens_q时以总和确定T1 |
-| `seqused_win_kv` | int32 Tensor `(B,)` | None | 预留 |
+| `seqused_ori_kv` | int32 Tensor `(B,)` | None | 预留 |
 | `seqused_cmp_kv` | int32 Tensor `(B,)` | None | 预留 |
 | `batch_size` | int | None | 无query长度Tensor时与max_seqlen_q相乘 |
 | `max_seqlen_q` | int | None | 同上，仅适用于各batch均为该长度 |
-| `max_seqlen_win_kv` | int | None | 预留 |
+| `max_seqlen_ori_kv` | int | None | 预留 |
 | `max_seqlen_cmp_kv` | int | None | 预留 |
 | `num_heads_q` | int | 必传 | 当前校验为64 |
 | `num_heads_kv` | int | 必传 | 当前校验为1 |
@@ -169,7 +169,7 @@ mixed_quant_sparse_flash_mla_metadata(
 | `quant_mode` | int | 必传 | 当前校验为1 |
 | `layout_q` | str | TND | 当前仅支持TND |
 | `layout_kv` | str | PA_BBND | 当前仅支持PA_BBND |
-| `has_win_kv` | bool | True | 当前必须为True |
+| `has_ori_kv` | bool | True | 当前必须为True |
 | `has_cmp_kv` | bool | True | 控制是否计入cmp侧固定负载 |
 | 返回 `metadata` | int32 Tensor `(x,)` | — | x=2*blocks；前半段起点、后半段数量 |
 
@@ -177,42 +177,42 @@ mixed_quant_sparse_flash_mla_metadata(
 
 `blocks`为设备Cube核数，通过`torch.npu.get_device_properties(...).cube_core_num`获取；metadata生成使用topk_length所在NPU，tiling使用`q.device`，调用方须使它们位于同一NPU。workspace容量和kernel发射核数均使用tiling查询结果。
 
-query token总数依次由`cu_seqlens_q[-1]`、`seqused_q.sum()`或`batch_size * max_seqlen_q`派生；均未提供时使用`win_topk_length.shape[0]`。`has_cmp_kv`默认True；`ORI_SPARSE`必须显式传False。该函数按均摊负载模型（每个query的负载视为恒定：`win_kv` 128个token，`ORI_CMP_SPARSE`模式下再加`cmp_kv` 512个token）用贪心均衡算法切分，返回int32 `(2 * blocks,)`分核任务表（等权重下即近似均分）；返回值**直接落在NPU设备上**，可原样传给算子入口。
+query token总数依次由`cu_seqlens_q[-1]`、`seqused_q.sum()`或`batch_size * max_seqlen_q`派生；均未提供时使用`ori_topk_length.shape[0]`。`has_cmp_kv`默认True；`ORI_SPARSE`必须显式传False。该函数按均摊负载模型（每个query的负载视为恒定：`ori_kv` 128个token，`ORI_CMP_SPARSE`模式下再加`cmp_kv` 512个token）用贪心均衡算法切分，返回int32 `(2 * blocks,)`分核任务表（等权重下即近似均分）；返回值**直接落在NPU设备上**，可原样传给算子入口。
 
 
 ### KV 量化与分页布局
 
-每个 token 数据的物理和逻辑顺序均为 `nope[448] + rope[64]`，其后紧接 scale，win 每连续 32 个元素共享一个 BF16 scale，共 16 个 scale；cmp 每连续 16 个元素共享一个 BF16 scale，共 32 个 scale。输入均为 uint8 字节视图，token 内没有额外 padding。
+每个 token 数据的物理和逻辑顺序均为 `nope[448] + rope[64]`，其后紧接 scale，ori 每连续 32 个元素共享一个 BF16 scale，共 16 个 scale；cmp 每连续 16 个元素共享一个 BF16 scale，共 32 个 scale。输入均为 uint8 字节视图，token 内没有额外 padding。
 
 | 输入 | 数据字节范围 | scale 字节范围 | 每 token 字节数 |
 | :--- | :--- | :--- | :--- |
-| win_kv | nope `[0,448)`，rope `[448,512)`；FP8 E4M3 | `[512,544)`，16 个 BF16 scale | 544 |
+| ori_kv | nope `[0,448)`，rope `[448,512)`；FP8 E4M3 | `[512,544)`，16 个 BF16 scale | 544 |
 | cmp_kv | nope `[0,224)`，rope `[224,256)`；FP4 E2M1 | `[256,320)`，32 个 BF16 scale | 320 |
 
-FP4 偶数位置元素存于低 4 bit，奇数位置元素存于高 4 bit。第 i 个 scale 覆盖物理顺序中的元素 `[g*i,g*(i+1))`，win 的 g=32，cmp 的 g=16。
+FP4 偶数位置元素存于低 4 bit，奇数位置元素存于高 4 bit。第 i 个 scale 覆盖物理顺序中的元素 `[g*i,g*(i+1))`，ori 的 g=32，cmp 的 g=16。
 
-win/cmp 使用各自的 block size、block table 和逻辑索引空间。batch b 内逻辑 token p 的地址为：
+ori/cmp 使用各自的 block size、block table 和逻辑索引空间。batch b 内逻辑 token p 的地址为：
 
 ```text
 physical_page = block_table[b, p // block_size]
 byte_offset = physical_page * kv.stride(0) + (p % block_size) * row_bytes
 ```
 
-当前 N2=1。KV 仅第 0 轴允许非连续，stride 必须为 `(page_stride,N2*row_bytes,row_bytes,1)`，且 `page_stride >= block_size*N2*row_bytes`。win/cmp 页距可不同，不要求是 row_bytes 的整数倍；页间 padding 不参与计算。其他输入必须连续且与 q 位于同一 NPU，运行入口不整理布局或搬运输入。
+当前 N2=1。KV 仅第 0 轴允许非连续，stride 必须为 `(page_stride,N2*row_bytes,row_bytes,1)`，且 `page_stride >= block_size*N2*row_bytes`。ori/cmp 页距可不同，不要求是 row_bytes 的整数倍；页间 padding 不参与计算。其他输入必须连续且与 q 位于同一 NPU，运行入口不整理布局或搬运输入。
 
 ## 约束说明
 
 - 当前仅支持`layout_q="TND"`和`layout_kv="PA_BBND"`。
 - 当前仅支持`quant_mode=1`，不再支持旧版608字节/token的KV编码。
 - `D`固定为512，`N2`固定为1；`N1`固定为64（不再支持N1=128的SPLIT_G形态及其他N1取值）。
-- `ORI_SPARSE`和`ORI_CMP_SPARSE`均不接收mask、window或压缩率参数。`seqused_win_kv`和`seqused_cmp_kv`为预留参数，当前实现不解析其内容；KV的有效计算长度只由对应的稀疏索引和`topk_length`指定。
-- 对每个query，`win_sparse_indices`的前`win_topk_length`项必须是合法的窗口KV逻辑token索引，其余项必须填`-1`。
+- `ORI_SPARSE`和`ORI_CMP_SPARSE`均不接收mask、window或压缩率参数。`seqused_ori_kv`和`seqused_cmp_kv`为预留参数，当前实现不解析其内容；KV的有效计算长度只由对应的稀疏索引和`topk_length`指定。
+- 对每个query，`ori_sparse_indices`的前`ori_topk_length`项必须是合法的窗口KV逻辑token索引，其余项必须填`-1`。
 - 对每个query，`cmp_sparse_indices`的前`cmp_topk_length`项必须是合法的压缩KV逻辑token索引，其余项必须填`-1`。
-- 两侧`topk_length`独立可选；不传时对应全部K列参与计算（不得包含`-1`）。传入时必须为准确前缀长度且不得超过K。长度为0时跳过该侧KV；两侧均为0（无cmp时win为0）的query不发射KV tile，输出写0，开启LSE时写对应head的sinks。
+- 两侧`topk_length`独立可选；不传时对应全部K列参与计算（不得包含`-1`）。传入时必须为准确前缀长度且不得超过K。长度为0时跳过该侧KV；两侧均为0（无cmp时ori为0）的query不发射KV tile，输出写0，开启LSE时写对应head的sinks。
 - `cu_seqlens_q`必须显式传入：首元素必须为0，整体非递减，末元素必须为`T1`；算子不生成缺省值，也不能由`seqused_q`推导。
-- `win_block_table`和`cmp_block_table`中的有效物理block编号不得越界；每个有效稀疏索引映射到的逻辑block必须位于对应block table的有效范围内。
+- `ori_block_table`和`cmp_block_table`中的有效物理block编号不得越界；每个有效稀疏索引映射到的逻辑block必须位于对应block table的有效范围内。
 - `sinks`必须显式传入（不需要sink时传全0张量）；`metadata`必须显式传入（用`mixed_quant_sparse_flash_mla_metadata`生成，两阶段调用）。`metadata`为分核任务表：`int32`且形状为`(2 * blocks,)`；前blocks项是各核的query行起点、后blocks项是各核的query行数量，各核区间必须恰好覆盖`[0, T1)`（无缝、无重叠）。
-- q、win_kv、cmp_kv、稀疏索引及block table等输入不支持空Tensor（各维度必须大于0）。
+- q、ori_kv、cmp_kv、稀疏索引及block table等输入不支持空Tensor（各维度必须大于0）。
 - 各参数shape中使用相同符号的维度必须保持一致。
 
 
@@ -234,7 +234,7 @@ DSL 文件更名后，需同时重新构建并安装 net native wheel 和本仓 
 版本号不变时使用 `python -m pip install --no-deps --force-reinstall` 安装两个新包，
 确保 metadata 和 attention 均通过 `ops.mixed_quant_sparse_flash_mla` 导入。
 
-`ds41` 为与 compressor_v2 共用的实际模块名。MQSMLA 的 torch 调用为 `torch.ops.cann_ops_transformer.ds41.mixed_quant_sparse_flash_mla(...)`，metadata 同层；底层 schema 使用 `ds41.mixed_quant_sparse_flash_mla` 与 `ds41.mixed_quant_sparse_flash_mla_metadata`，与主线注册名互不冲突。下面的函数接收已按上述格式打包并置于 NPU 的输入，可用于 win-only 或 win+cmp；两侧 attention 长度均省略，使用全部 K 列：
+`ds41` 为与 compressor_v2 共用的实际模块名。MQSMLA 的 torch 调用为 `torch.ops.cann_ops_transformer.ds41.mixed_quant_sparse_flash_mla(...)`，metadata 同层；底层 schema 使用 `ds41.mixed_quant_sparse_flash_mla` 与 `ds41.mixed_quant_sparse_flash_mla_metadata`，与主线注册名互不冲突。下面的函数接收已按上述格式打包并置于 NPU 的输入，可用于 ori-only 或 ori+cmp；两侧 attention 长度均省略，使用全部 K 列：
 
 ```python
 import torch
@@ -245,25 +245,25 @@ from cann_ops_transformer.ops.ds41 import (
 )
 
 
-def attention(q, win_kv, win_indices, win_table, cu_seqlens_q, sinks,
+def attention(q, ori_kv, ori_indices, ori_table, cu_seqlens_q, sinks,
               cmp_kv=None, cmp_indices=None, cmp_table=None):
     t1 = q.shape[0]
     has_cmp = cmp_kv is not None
-    win_lengths = torch.full((t1, 1), win_indices.shape[-1],
+    ori_lengths = torch.full((t1, 1), ori_indices.shape[-1],
                              dtype=torch.int32, device=q.device)
     cmp_lengths = torch.full((t1, 1), cmp_indices.shape[-1] if has_cmp else 0,
                              dtype=torch.int32, device=q.device)
     metadata = mixed_quant_sparse_flash_mla_metadata(
-        win_lengths, cmp_lengths,
+        ori_lengths, cmp_lengths,
         cu_seqlens_q=cu_seqlens_q,
         num_heads_q=64, num_heads_kv=1, head_dim=512, quant_mode=1,
-        has_win_kv=True, has_cmp_kv=has_cmp,
+        has_ori_kv=True, has_cmp_kv=has_cmp,
     )
     return mixed_quant_sparse_flash_mla(
         q,
-        win_kv=win_kv, cmp_kv=cmp_kv,
-        win_sparse_indices=win_indices, cmp_sparse_indices=cmp_indices,
-        win_block_table=win_table, cmp_block_table=cmp_table,
+        ori_kv=ori_kv, cmp_kv=cmp_kv,
+        ori_sparse_indices=ori_indices, cmp_sparse_indices=cmp_indices,
+        ori_block_table=ori_table, cmp_block_table=cmp_table,
         cu_seqlens_q=cu_seqlens_q,
         sinks=sinks, metadata=metadata,
         quant_mode=1, return_softmax_lse=True,
@@ -286,7 +286,7 @@ python3 -m pytest -q -s experimental/attention/mixed_quant_sparse_flash_mla_dsl/
 
 [test_case_paramset.py](tests/test_case_paramset.py) 中的 `TEST_PARAMS` 定义命名参数组，`ENABLED_PARAMS` 选择运行组，各参数取值做笛卡尔积展开。所有用例统一通过已安装 wheel 的 `torch.ops` 调用 metadata 和 attention，不再按文件路径加载 DSL 源码；修改算子后须重新执行上述构建与安装命令。默认包含 decode 用例及 `torch_extension` 接口回归组，覆盖两模式与 LSE 开关。CPU golden 与输入生成使用测试侧独立常量，不导入 kernel。
 
-CPU golden 独立执行反量化、稀疏 gather 与注意力计算，使用测试侧契约常量。`kv_axis0_noncontiguous` 控制 KV 页间非连续输入，统一作用于所有活动KV侧，框架固定页间padding为64字节，storage起点为0；活动KV侧默认显式传入topk_length，可用omit_win_topk_length / omit_cmp_topk_length省略对应attention参数，手动指定长度优先，未指定的侧才按`fullK` / `random`生成全K长度/随机有效前缀。新增用例和形状组合可修改参数集或 Excel 表格。
+CPU golden 独立执行反量化、稀疏 gather 与注意力计算，使用测试侧契约常量。`kv_axis0_noncontiguous` 控制 KV 页间非连续输入，统一作用于所有活动KV侧，框架固定页间padding为64字节，storage起点为0；活动KV侧默认显式传入topk_length，可用omit_ori_topk_length / omit_cmp_topk_length省略对应attention参数，手动指定长度优先，未指定的侧才按`fullK` / `random`生成全K长度/随机有效前缀。新增用例和形状组合可修改参数集或 Excel 表格。
 
 
 ### Excel 批量用例
@@ -310,11 +310,11 @@ python3 -m pytest --collect-only -q experimental/attention/mixed_quant_sparse_fl
 - 可添加 `备注` 列描述泛化目标；读取器忽略备注内容，不传入测试参数。精简白盒表位于 `tests/excel/mqsmla_whitebox_cases.xlsx`，使用默认 `decode` sheet，当前启用的典型参数集场景位于表格前部，其后为B、S2、block_size等形状参数代表值。
 - 形状列：`B`、`S1`、`S2`、`S2C`、`K1`、`K2`、`block_size1`、`block_size2`。`S1/S2/S2C` 可填整数或 `[1, 3]` 这样的 B 元素列表，列表表示每个 batch 的长度，不做笛卡尔积。
 - `cu_seqlens_q` / `seqused_q`：可填一维整数列表，分别为 B+1 个累积偏移（从0开始）和 B 个实际query长度。例如 `B=3`、`cu_seqlens_q=[0,1,4,6]`、`seqused_q=[1,3,2]` 生成 `q.shape=(6,64,512)`。可只传其中一项；只传 `seqused_q` 时测试框架生成 `cu_seqlens_q`。两者都传必须满足相邻差分等于 `seqused_q`，每个batch长度须为正，不支持padding。任一字段传入时忽略 `S1`；均未传时才使用 `S1`（标量表示每个batch等长，也兼容B元素列表）。参数集中写成 `"cu_seqlens_q": [[0,1,4,6]]` / `"seqused_q": [[1,3,2]]`，也接受整数Tensor候选值；保存/回放保留这些输入。
-- `win_topk_length` / `cmp_topk_length`：手动指定的有效前缀长度，优先于对应fullK/random模式。可填长度为T的列表`[17,32,64]` / `[[17],[32],[64]]`（按TND顺序，每个query一个长度，T1由query长度字段决定）。每项必须在`[0,K1]` / `[0,K2]`内；K1/K2仍是indices容量，不会随有效长度改变。活动侧长度同时为0的空query不支持。两侧独立处理，只有空单元格/None/null才使用该侧fullK/random生成默认长度。
-- 参数集仍按候选列表展开：`"win_topk_length": [[17,32,64]]`表示一组T1=3的逐query长度；`[None]`表示按模式生成。当前decode参数按B分别配置T个长度；大prefill用例仍可省略长度字段并使用fullK。白盒表仅保留S1=1的decode用例。
+- `ori_topk_length` / `cmp_topk_length`：手动指定的有效前缀长度，优先于对应fullK/random模式。可填长度为T的列表`[17,32,64]` / `[[17],[32],[64]]`（按TND顺序，每个query一个长度，T1由query长度字段决定）。每项必须在`[0,K1]` / `[0,K2]`内；K1/K2仍是indices容量，不会随有效长度改变。活动侧长度同时为0的空query不支持。两侧独立处理，只有空单元格/None/null才使用该侧fullK/random生成默认长度。
+- 参数集仍按候选列表展开：`"ori_topk_length": [[17,32,64]]`表示一组T1=3的逐query长度；`[None]`表示按模式生成。当前decode参数按B分别配置T个长度；大prefill用例仍可省略长度字段并使用fullK。白盒表仅保留S1=1的decode用例。
 - 输入控制列：`ori_kv_topk_mode` / `cmp_kv_topk_mode`（`fullK` / `random`）、`seed`、`dist`（仅支持 `norm`，默认值也是 `norm`）、`softmax_scale`（留空使用默认缩放）。
 - 布尔列：`return_softmax_lse`、`kv_axis0_noncontiguous`，接受 Excel 布尔值、大小写 TRUE/FALSE 或 1/0。第0轴非连续仅通过 `kv_axis0_noncontiguous` 开关控制，不配置两侧独立开关、padding大小或storage offset。
-- 兼容列：主线 `K` 映射为压缩侧 `K2`，`win_kv_topk_mode` 映射为 `ori_kv_topk_mode`；`cmp_ratio` 可按 `S2 // cmp_ratio` 推导 `S2C`，显式给出冲突值时报错。可填固定契约列 `layout_q=TND`、`layout_kv=PA_BBND`、`N1=64`、`N2=1`、`D=512`、`rope_head_dim=64`、`quant_mode=1`。
+- 兼容列：主线 `K` 映射为压缩侧 `K2`；`cmp_ratio` 可按 `S2 // cmp_ratio` 推导 `S2C`，显式给出冲突值时报错。可填固定契约列 `layout_q=TND`、`layout_kv=PA_BBND`、`N1=64`、`N2=1`、`D=512`、`rope_head_dim=64`、`quant_mode=1`。
 - 读取方式参考主线，字段语义以此 DSL 支持子集为准，不直接执行主线所有模板。非空未知列、未支持的模式/布局、非法值、重复名称和公式单元格会在收集时明确报错，包含文件、sheet 和行号；不会静默跳过整表或忽略非空参数。请粘贴公式计算后的数值。
 
 所有结果仍由 pytest 汇总，可用 `--junitxml=/absolute/path/results.xml` 保存报告。
@@ -404,11 +404,11 @@ N1=64、N2=1、head_dim=512 固定。改变 K1/K2、开启 LSE，需要通过 `C
 默认有/无 cmp 的 native 二进制均使用一维 sinks。二维 `[B,N1]` 输入会校验报错。
 测试输入和独立 CPU golden 使用同一契约，旧二维 sinks 的 `.pt` 数据需重新 batch_save。
 
-当前默认 MQSMLA wheel 预编译 6 种 topk_length 结构：有 cmp 时 win/cmp
-长度分别可传 Tensor 或 None（4 种），无 cmp 时 win 长度可传 Tensor 或 None（2 种）。
+当前默认 MQSMLA wheel 预编译 6 种 topk_length 结构：有 cmp 时 ori/cmp
+长度分别可传 Tensor 或 None（4 种），无 cmp 时 ori 长度可传 Tensor 或 None（2 种）。
 省略 attention 的某侧长度表示该侧全部 K 个索引有效，不允许 -1 填充；
 metadata 接口仍要求长度 Tensor，调用方可单独传全 K 长度，无 cmp 侧传零长度。
-测试参数 omit_win_topk_length / omit_cmp_topk_length 支持参数集及 Excel；
+测试参数 omit_ori_topk_length / omit_cmp_topk_length 支持参数集及 Excel；
 测试先按完整长度计算 metadata，再省略对应 attention keyword。默认仍关闭 LSE。
 
 保存用例格式为 `mqsmla-dsl-input-golden-v2`，布局标记 `nope448-rope64-scale`。旧 rope/nope 格式不能直接回放，需用 `batch_save` 重新生成输入与独立 CPU golden。白盒工作簿为 `tests/excel/mqsmla_whitebox_cases.xlsx`，保存目录为 `tests/mqsmla_whitebox_cases/`。

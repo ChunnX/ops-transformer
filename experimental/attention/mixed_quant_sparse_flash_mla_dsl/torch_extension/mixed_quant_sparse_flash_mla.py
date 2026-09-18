@@ -31,16 +31,16 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
         """PyTorch operator signatures."""
         return [
             (
-                'ds41.mixed_quant_sparse_flash_mla_metadata(Tensor win_topk_length, '
+                'ds41.mixed_quant_sparse_flash_mla_metadata(Tensor ori_topk_length, '
                 'Tensor cmp_topk_length, '
                 '*, '
                 'Tensor? cu_seqlens_q=None, '
                 'Tensor? seqused_q=None, '
-                'Tensor? seqused_win_kv=None, '
+                'Tensor? seqused_ori_kv=None, '
                 'Tensor? seqused_cmp_kv=None, '
                 'int? batch_size=None, '
                 'int? max_seqlen_q=None, '
-                'int? max_seqlen_win_kv=None, '
+                'int? max_seqlen_ori_kv=None, '
                 'int? max_seqlen_cmp_kv=None, '
                 'int num_heads_q, '
                 'int num_heads_kv, '
@@ -48,23 +48,23 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
                 'int quant_mode, '
                 'str layout_q="TND", '
                 'str layout_kv="PA_BBND", '
-                'bool has_win_kv=True, '
+                'bool has_ori_kv=True, '
                 'bool has_cmp_kv=True) -> Tensor'
             ),
             (
                 'ds41.mixed_quant_sparse_flash_mla(Tensor q, '
                 '*, '
-                'Tensor? win_kv=None, '
+                'Tensor? ori_kv=None, '
                 'Tensor? cmp_kv=None, '
-                'Tensor? win_sparse_indices=None, '
+                'Tensor? ori_sparse_indices=None, '
                 'Tensor? cmp_sparse_indices=None, '
-                'Tensor? win_block_table=None, '
+                'Tensor? ori_block_table=None, '
                 'Tensor? cmp_block_table=None, '
                 'Tensor? cu_seqlens_q=None, '
                 'Tensor? seqused_q=None, '
-                'Tensor? seqused_win_kv=None, '
+                'Tensor? seqused_ori_kv=None, '
                 'Tensor? seqused_cmp_kv=None, '
-                'Tensor? win_topk_length=None, '
+                'Tensor? ori_topk_length=None, '
                 'Tensor? cmp_topk_length=None, '
                 'Tensor? sinks=None, '
                 'Tensor? metadata=None, '
@@ -81,16 +81,16 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
         """Register metadata FakeTensor and attention Meta implementations."""
         @torch.library.register_fake("cann_ops_transformer::" + MQSMLA_METADATA_OP_NAME)
         def mixed_quant_sparse_flash_mla_metadata_meta(
-            win_topk_length: torch.Tensor,
+            ori_topk_length: torch.Tensor,
             cmp_topk_length: torch.Tensor,
             *,
             cu_seqlens_q: Optional[torch.Tensor] = None,
             seqused_q: Optional[torch.Tensor] = None,
-            seqused_win_kv: Optional[torch.Tensor] = None,
+            seqused_ori_kv: Optional[torch.Tensor] = None,
             seqused_cmp_kv: Optional[torch.Tensor] = None,
             batch_size: Optional[int] = None,
             max_seqlen_q: Optional[int] = None,
-            max_seqlen_win_kv: Optional[int] = None,
+            max_seqlen_ori_kv: Optional[int] = None,
             max_seqlen_cmp_kv: Optional[int] = None,
             num_heads_q: int,
             num_heads_kv: int,
@@ -98,10 +98,10 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
             quant_mode: int,
             layout_q: str = "TND",
             layout_kv: str = "PA_BBND",
-            has_win_kv: bool = True,
+            has_ori_kv: bool = True,
             has_cmp_kv: bool = True,
         ):
-            device = win_topk_length.device
+            device = ori_topk_length.device
             target = None if device.type == "meta" else device
             blocks = int(torch.npu.get_device_properties(target).cube_core_num)
             return torch.empty((2 * blocks,), dtype=torch.int32, device="meta")
@@ -110,17 +110,17 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
         def mixed_quant_sparse_flash_mla_meta(
             q,
             *,
-            win_kv=None,
+            ori_kv=None,
             cmp_kv=None,
-            win_sparse_indices=None,
+            ori_sparse_indices=None,
             cmp_sparse_indices=None,
-            win_block_table=None,
+            ori_block_table=None,
             cmp_block_table=None,
             cu_seqlens_q=None,
             seqused_q=None,
-            seqused_win_kv=None,
+            seqused_ori_kv=None,
             seqused_cmp_kv=None,
-            win_topk_length=None,
+            ori_topk_length=None,
             cmp_topk_length=None,
             sinks=None,
             metadata=None,
@@ -132,7 +132,7 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
         ):
             attn_out = torch.empty(q.shape, dtype=torch.bfloat16, device="meta")
             if return_softmax_lse:
-                n2 = win_kv.shape[2]
+                n2 = ori_kv.shape[2]
                 if layout_q == "TND":
                     lse_shape = (n2, q.shape[0], q.shape[1] // n2)
                 else:
@@ -149,16 +149,16 @@ mixed_quant_sparse_flash_mla_op_builder._ensure_initialized()
 
 @impl(get_as_library(), MQSMLA_METADATA_OP_NAME, "PrivateUse1")
 def mixed_quant_sparse_flash_mla_metadata(
-    win_topk_length: torch.Tensor,
+    ori_topk_length: torch.Tensor,
     cmp_topk_length: torch.Tensor,
     *,
     cu_seqlens_q: Optional[torch.Tensor] = None,
     seqused_q: Optional[torch.Tensor] = None,
-    seqused_win_kv: Optional[torch.Tensor] = None,
+    seqused_ori_kv: Optional[torch.Tensor] = None,
     seqused_cmp_kv: Optional[torch.Tensor] = None,
     batch_size: Optional[int] = None,
     max_seqlen_q: Optional[int] = None,
-    max_seqlen_win_kv: Optional[int] = None,
+    max_seqlen_ori_kv: Optional[int] = None,
     max_seqlen_cmp_kv: Optional[int] = None,
     num_heads_q: int,
     num_heads_kv: int,
@@ -166,22 +166,22 @@ def mixed_quant_sparse_flash_mla_metadata(
     quant_mode: int,
     layout_q: str = "TND",
     layout_kv: str = "PA_BBND",
-    has_win_kv: bool = True,
+    has_ori_kv: bool = True,
     has_cmp_kv: bool = True,
 ):
     """Generate the core task table through the net wheel DSL host interface."""
     from ops.mixed_quant_sparse_flash_mla import mixed_quant_sparse_flash_mla_metadata as dsl_metadata
 
     return dsl_metadata(
-        win_topk_length,
+        ori_topk_length,
         cmp_topk_length,
         cu_seqlens_q=cu_seqlens_q,
         seqused_q=seqused_q,
-        seqused_win_kv=seqused_win_kv,
+        seqused_ori_kv=seqused_ori_kv,
         seqused_cmp_kv=seqused_cmp_kv,
         batch_size=batch_size,
         max_seqlen_q=max_seqlen_q,
-        max_seqlen_win_kv=max_seqlen_win_kv,
+        max_seqlen_ori_kv=max_seqlen_ori_kv,
         max_seqlen_cmp_kv=max_seqlen_cmp_kv,
         num_heads_q=num_heads_q,
         num_heads_kv=num_heads_kv,
@@ -189,23 +189,23 @@ def mixed_quant_sparse_flash_mla_metadata(
         quant_mode=quant_mode,
         layout_q=layout_q,
         layout_kv=layout_kv,
-        has_win_kv=has_win_kv,
+        has_ori_kv=has_ori_kv,
         has_cmp_kv=has_cmp_kv,
     )
 
 
 @torch.library.register_kernel("cann_ops_transformer::" + MQSMLA_METADATA_OP_NAME, None)
 def mixed_quant_sparse_flash_mla_metadata_fallback(
-    win_topk_length: torch.Tensor,
+    ori_topk_length: torch.Tensor,
     cmp_topk_length: torch.Tensor,
     *,
     cu_seqlens_q: Optional[torch.Tensor] = None,
     seqused_q: Optional[torch.Tensor] = None,
-    seqused_win_kv: Optional[torch.Tensor] = None,
+    seqused_ori_kv: Optional[torch.Tensor] = None,
     seqused_cmp_kv: Optional[torch.Tensor] = None,
     batch_size: Optional[int] = None,
     max_seqlen_q: Optional[int] = None,
-    max_seqlen_win_kv: Optional[int] = None,
+    max_seqlen_ori_kv: Optional[int] = None,
     max_seqlen_cmp_kv: Optional[int] = None,
     num_heads_q: int,
     num_heads_kv: int,
@@ -213,19 +213,19 @@ def mixed_quant_sparse_flash_mla_metadata_fallback(
     quant_mode: int,
     layout_q: str = "TND",
     layout_kv: str = "PA_BBND",
-    has_win_kv: bool = True,
+    has_ori_kv: bool = True,
     has_cmp_kv: bool = True,
 ):
     return mixed_quant_sparse_flash_mla_metadata(
-        win_topk_length,
+        ori_topk_length,
         cmp_topk_length,
         cu_seqlens_q=cu_seqlens_q,
         seqused_q=seqused_q,
-        seqused_win_kv=seqused_win_kv,
+        seqused_ori_kv=seqused_ori_kv,
         seqused_cmp_kv=seqused_cmp_kv,
         batch_size=batch_size,
         max_seqlen_q=max_seqlen_q,
-        max_seqlen_win_kv=max_seqlen_win_kv,
+        max_seqlen_ori_kv=max_seqlen_ori_kv,
         max_seqlen_cmp_kv=max_seqlen_cmp_kv,
         num_heads_q=num_heads_q,
         num_heads_kv=num_heads_kv,
@@ -233,7 +233,7 @@ def mixed_quant_sparse_flash_mla_metadata_fallback(
         quant_mode=quant_mode,
         layout_q=layout_q,
         layout_kv=layout_kv,
-        has_win_kv=has_win_kv,
+        has_ori_kv=has_ori_kv,
         has_cmp_kv=has_cmp_kv,
     )
 
@@ -245,17 +245,17 @@ torch.compiler.allow_in_graph(mixed_quant_sparse_flash_mla_metadata)
 def mixed_quant_sparse_flash_mla(
     q,
     *,
-    win_kv=None,
+    ori_kv=None,
     cmp_kv=None,
-    win_sparse_indices=None,
+    ori_sparse_indices=None,
     cmp_sparse_indices=None,
-    win_block_table=None,
+    ori_block_table=None,
     cmp_block_table=None,
     cu_seqlens_q=None,
     seqused_q=None,
-    seqused_win_kv=None,
+    seqused_ori_kv=None,
     seqused_cmp_kv=None,
-    win_topk_length=None,
+    ori_topk_length=None,
     cmp_topk_length=None,
     sinks=None,
     metadata=None,
@@ -269,7 +269,7 @@ def mixed_quant_sparse_flash_mla(
     from ops.mixed_quant_sparse_flash_mla import mixed_quant_sparse_flash_mla as dsl_attention
     attn_out = torch.empty(q.shape, dtype=torch.bfloat16, device=q.device)
     if return_softmax_lse:
-        n2 = win_kv.shape[2]
+        n2 = ori_kv.shape[2]
         if layout_q == "TND":
             lse_shape = (n2, q.shape[0], q.shape[1] // n2)
         else:
@@ -279,17 +279,17 @@ def mixed_quant_sparse_flash_mla(
     softmax_lse = torch.empty(lse_shape, dtype=torch.float32, device=q.device)
     dsl_attention(
         q,
-        win_kv=win_kv,
+        ori_kv=ori_kv,
         cmp_kv=cmp_kv,
-        win_sparse_indices=win_sparse_indices,
+        ori_sparse_indices=ori_sparse_indices,
         cmp_sparse_indices=cmp_sparse_indices,
-        win_block_table=win_block_table,
+        ori_block_table=ori_block_table,
         cmp_block_table=cmp_block_table,
         cu_seqlens_q=cu_seqlens_q,
         seqused_q=seqused_q,
-        seqused_win_kv=seqused_win_kv,
+        seqused_ori_kv=seqused_ori_kv,
         seqused_cmp_kv=seqused_cmp_kv,
-        win_topk_length=win_topk_length,
+        ori_topk_length=ori_topk_length,
         cmp_topk_length=cmp_topk_length,
         sinks=sinks,
         metadata=metadata,
