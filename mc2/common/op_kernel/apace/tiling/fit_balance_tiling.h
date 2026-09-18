@@ -279,9 +279,6 @@ constexpr uint64_t FP4_PACK_RATIO = 2;
 // SetCommShapeLen/SetCommDTypeSize/SetCommDtypeSizeExpansionFraction/
 // commTimeFactor_/GetCommRankShares(InitCtx 内部)。
 
-constexpr double ALLREDUCE_TIME_FACTOR = 2.0; // allreduce time is 2.0x allgather or reducescatter
-constexpr uint64_t CALIBRATED_RANK_DIM = 8;   // 拟合采用 8 die 通信
-
 // ====== 拟合表（引擎内部结构——算子侧一律使用 FitBalanceCalibration 大结构体,
 //      此处类型由 InitCtx 内部适配构造并按值持有, 勿在算子侧直接引用）======
 struct CommFitRow {
@@ -305,7 +302,7 @@ class HCCLCommModel {
 public:
     CommFitParams commEstimatePar_;
     CommModelInfo commTypeInfo_;
-    double commTimeFactor_ = 1.0; // allreduce time is 2.0x allgather or reducescatter
+    double commTimeFactor_ = 1.0; // 时间折算因子, 恒 1(§4.31: 8-die 折算桥接已随 plain RS 死分支删除)
     // 通信数据量倍数(每轮线上流动的 rank 份数): AG/RS(含 via-A2A)=rankDim(聚合/分发一轮
     // 流动 rankDim 份), AR/A2A=1(每轮一份)。进 CommTime/InverseCommTime 的字节数换算;
     // 与 commRankShares(利用率模型流转份数)/mmRankMul(mm 行数倍数) 是三个不同口径的倍数。
@@ -347,9 +344,9 @@ public:
     }
 
     // ---- 构造期按通信原语初始化两个建模口径 + 标定查表 ----
-    // commDataMul_: 通信数据量份数放大(AG/RS=rankDim 通信聚合/分发全量, 其余=1);
-    // commTimeFactor_: 8-die 标定值 → 实际卡数的时间折算(plain RS=2×rankDim/8, AG/RS-via-A2A
-    //   与 AR/A2A 覆盖为 1)。
+    // commDataMul_: 通信数据量倍数(见成员定义处取值表);
+    // commTimeFactor_: 恒 1(§4.31)——老公式化家族的 8-die AR 折算桥接(plain RS 专用, 无 A 家族
+    //   消费者且 950 表无标定行)已随死分支删除, A 家族全部原语的标定行均为直接口径。
     // 通信流水线流转的 rank 数据份数 GetCommRankShares(每卡视角): AG=rankDim-1(本卡份已在手
     //   不经通信)、RS/A2A=rankDim(全部份经通信流转)、AR=1(two-shot 每轮一份)——进 cubeUtil
     //   利用率模型的工作集 M 跨度, 与 mm 总行数倍数 MmRankMul 是两个口径。
@@ -358,19 +355,11 @@ public:
     void InitPrimitiveParams()
     {
         commTypeInfo_.commMethod = CommMeshType::FULL_MESH;
-        const bool isGatherOrPlainScatter = (commTypeInfo_.commPrimitive == CommPrimitive::ALL_GATHER) ||
-                                            (commTypeInfo_.commPrimitive == CommPrimitive::REDUCE_SCATTER);
-        if (isGatherOrPlainScatter) {
-            // 通信查表使用总数据量，实际时间 = 总数据量 / rankDim / 带宽; 拟合采用 8 die 通信
-            commTimeFactor_ = ALLREDUCE_TIME_FACTOR * static_cast<double>(commTypeInfo_.rankDim) /
-                              static_cast<double>(CALIBRATED_RANK_DIM);
-            commDataMul_ = commTypeInfo_.rankDim;
-        }
+        // AG / RS-via-A2A: 聚合/分发量即拟合口径(一轮线上流动 rankDim 份, 标定行直接可用);
+        // 其余(AR/A2A): 每轮一份, 均为默认值 commDataMul_=1 / commTimeFactor_=1, 无需设置
         if ((commTypeInfo_.commPrimitive == CommPrimitive::ALL_GATHER) ||
             (commTypeInfo_.commPrimitive == CommPrimitive::REDUCE_SCATTER_VIA_ALL_TO_ALL)) {
-            // AG / RS-via-A2A 的聚合/分发量即拟合口径, 无 8-die 折算
             commDataMul_ = commTypeInfo_.rankDim;
-            commTimeFactor_ = 1;
         }
         commEstimatePar_ = {};
         for (size_t i = 0; i < fitTable_.rowCount; ++i) {
