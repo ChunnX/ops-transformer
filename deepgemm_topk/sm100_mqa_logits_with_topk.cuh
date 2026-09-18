@@ -158,8 +158,10 @@ CUTLASS_DEVICE void warp_bucket_topk(
     uint32_t definite_count = 0;
     uint32_t remaining = kSparseCount;
 
-    // === 4 轮 8-bit radix select（字节从高到低） ===
-    for (int round = 0; round < 4 && remaining > 0; ++round) {
+    // === 2 轮 8-bit radix select（字节从高到低） ===
+    // logits 为 bf16 提升值: 低 16 位恒为 0，只有字节 3/2 携带信息，
+    // 后 2 轮（字节 1/0）恒空转，故只跑 2 轮——结果与 4 轮逐位一致。
+    for (int round = 0; round < 2 && remaining > 0; ++round) {
         const int shift = (3 - round) * 8;                 // 本轮看第几个字节
         const uint32_t prefix_mask = (round == 0) ? 0u : (0xFFFFFFFFu << (32 - round * 8));
         const uint32_t prefix_val = kth_value & prefix_mask; // 前几轮已确定的前缀
@@ -991,7 +993,8 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
                     return (u & 0x80000000u) ? ~u : (u ^ 0x80000000u);
                 };
                 uint32_t kth = 0, def_cnt = 0, rem = kSparseCount;
-                for (int round = 0; round < 4 && rem > 0; ++round) {
+                // bf16 数据: 只跑 2 轮（字节 3/2），后 2 轮恒空转
+                for (int round = 0; round < 2 && rem > 0; ++round) {
                     const int shift = (3 - round) * 8;
                     const uint32_t pmask = (round == 0) ? 0u : (0xFFFFFFFFu << (32 - round * 8));
                     const uint32_t pval = kth & pmask;
