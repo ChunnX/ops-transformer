@@ -11,28 +11,6 @@
 #ifndef MHC_SANDWICH_NORM_POST_PREONLY_SINGLE_AIV_H_
 #define MHC_SANDWICH_NORM_POST_PREONLY_SINGLE_AIV_H_
 
-// 第一遍将低精度h_out保存在尚未使用的x2缓存首段，第二遍直接从UB恢复，
-// 避免为计算R1和R2重复读取同一段GM数据。
-template<typename T>
-__aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::CacheHOutAndCast(
-    uint32_t token, uint32_t tOff, uint32_t tD)
-{
-    LocalTensor<T> hOutCache = bufX2Cache_.Get<T>()[tOff];
-    DataCopy(hOutCache, hOutGm_[(uint64_t)token * D_ + tOff], tD);
-    SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
-    WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-    Cast(bufHOutFp32_.Get<float>(), hOutCache, RoundMode::CAST_NONE, tD);
-    PipeBarrier<PIPE_V>();
-}
-
-template<typename T>
-__aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::LoadHOutCacheTile(uint32_t tOff, uint32_t tD)
-{
-    LocalTensor<T> hOutCache = bufX2Cache_.Get<T>()[tOff];
-    Cast(bufHOutFp32_.Get<float>(), hOutCache, RoundMode::CAST_NONE, tD);
-    PipeBarrier<PIPE_V>();
-}
-
 // 构造一个低精度x2_post分块。R1使用normEps_，R2保持h_res的[j,n]索引顺序，
 // 并显式保留设计规定的两处低精度往返边界。
 template<typename T>
@@ -40,7 +18,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::ComputeX2PostTile(
     uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
     const float (&postVals)[N_MAX], const float (&combVals)[N_MAX * N_MAX])
 {
-    LoadHOutCacheTile(tOff, tD);
+    LoadHOutAndCast((uint64_t)token * D_ + tOff, tD);
     LoadGammaInto(bufGamma0Fp32_.Get<float>(), gamma0Gm_, tOff, tD);
     SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
     WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
@@ -225,7 +203,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::ProcessTokenSingleAi
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        CacheHOutAndCast(token, tOff, tD);
+        LoadHOutAndCast((uint64_t)token * D_ + tOff, tD);
         sumSq0 += ReduceSumSq(bufHOutFp32_.Get<float>(), tD);
     }
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
