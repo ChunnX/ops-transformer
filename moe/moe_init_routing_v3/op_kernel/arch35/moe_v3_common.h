@@ -105,6 +105,7 @@ constexpr uint16_t BF16_EXP_INVSUB = 0x7f00;
 constexpr uint16_t NEW_MANTISSA = 0x0008;
 constexpr int64_t EXERPT_TOKENS_COUNT = 1;
 constexpr int64_t EXERPT_TOKENS_KEY_VALUE = 2;
+constexpr int64_t EXERPT_TOKENS_CUMSUM = 0;
 constexpr int64_t EXERPT_TOKENS_NONE = 0;
 
 // CountingSort 性能模板相关常量

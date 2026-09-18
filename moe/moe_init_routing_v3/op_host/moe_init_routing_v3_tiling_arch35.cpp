@@ -24,6 +24,11 @@ const static int64_t COUTSORT_FILTER_CHUNK_SIZE = 4096LL;
 const static int64_t HALF_COUTSORT_FILTER_CHUNK_SIZE = 2048LL;
 const static int64_t COUTSORT_MAX_ACTUAL_EXPERT_NUM = 256LL;
 const static int64_t COUTSORT_ONE_BLOCK_ELEMENT = 8LL;
+// Histogram 计数路径：Histograms 指令一个 VL(256B) 处理 256 个 uint8，
+// 既作载入步长，也作 expertU8 暂存区尾部越界读的余量
+const static int64_t COUTSORT_HIST_U8_REPEAT = 256LL;
+// Histogram 计数路径：uint8 值域 [0,256) 对应 256 个 uint16 频次桶
+const static int64_t COUTSORT_HIST_BIN_NUM = 256LL;
 // CutOrigin：UB 预算余量（字节）
 const static int64_t COUTSORT_UB_MARGIN_BYTES = 1024LL;
 
@@ -2023,18 +2028,42 @@ int64_t MoeInitRoutingV3TilingArch35::EstimateArch35CountingSortFullLoadUB(int64
     // allCoreExpertCount（Phase B）
     total +=
         Ops::Base::CeilAlign(aivCoreNum_ * expertCountStride * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE);
-    // expertTokens
-    total += Ops::Base::CeilAlign((expertEnd_ - expertStart_) * static_cast<int64_t>(sizeof(int64_t)), UB_BLOCK_SIZE);
+    // KEY_VALUE：按「非零专家键值对 + 尾部哨兵」预留 min(actualExpertNum + 1, expertNum) * 2 个 int64 槽位；
+    // 非 KEY_VALUE：由 MoeV3FullLoadSeedsAndTokens{Count,CumSum}VF 以 DIST_INTLV_B32 一次落盘，
+    // 该指令忽略 mask、固定写满 VL*2 = 512B 的 int32，故容量须与该宽度取 max
+    int64_t actualExpertNum = expertEnd_ - expertStart_;
+    int64_t expertTokensBufElems = (expertTokensNumType_ == EXPERT_TOKENS_TYPE_KEY_VALUE) ?
+                                       std::min(actualExpertNum + 1, expertNum_) * DIM_VALUE_TWO :
+                                       actualExpertNum;
+    int64_t expertTokensUbBytes =
+        Ops::Base::CeilAlign(expertTokensBufElems * static_cast<int64_t>(sizeof(int64_t)), UB_BLOCK_SIZE);
+    if (expertTokensNumType_ != EXPERT_TOKENS_TYPE_KEY_VALUE) {
+        int64_t tokenIntlvBytes = Ops::Base::CeilAlign(
+            COUTSORT_HIST_BIN_NUM / NUM_TWO * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE);
+        expertTokensUbBytes = std::max(expertTokensUbBytes, tokenIntlvBytes);
+    }
+    total += expertTokensUbBytes;
     // prefixSum
     total += Ops::Base::CeilAlign(expertCountStride * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE);
-    // filteredPairs (pairs)
-    total += Ops::Base::CeilAlign(coreEntries * NUM_TWO * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE);
+    // filteredPairs (pairs)：kernel 按 64 元素粒度交错整批落盘，尾部会多写不足一批的槽位，
+    // 容量为 Ceil(coreEntries, 64) * 2 * 64 = 2 * entriesAligned（与 kernel ComputeCommonUbLayout 镜像）
+    total += Ops::Base::CeilAlign(entriesAligned * NUM_TWO * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE);
     // expertIdxFp32
     total += Ops::Base::CeilAlign(entriesAligned * static_cast<int64_t>(sizeof(float)), UB_BLOCK_SIZE);
     // 3 个 mask
     total += maskBytes * NUM_THREE;
     // gatheredExpert / flatIdx / gatheredIdx
     total += Ops::Base::CeilAlign(entriesAligned * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE) * NUM_THREE;
+    // Histogram 计数路径暂存区（与 kernel ComputeCommonUbLayout 镜像）：
+    // expertU8 为专家偏移窄化后的 uint8 区（真实元素数 + 1 个 VL 余量，覆盖末个 VL 的越界读）；
+    // histBin 为 256 个 uint16 频次桶；histBinU32 为 bins 扩展成 32bit 的累加缓冲（Min(expertCountStride,256) 个）
+    total += Ops::Base::CeilAlign(coreEntries * static_cast<int64_t>(sizeof(uint8_t)) + COUTSORT_HIST_U8_REPEAT,
+                                  UB_BLOCK_SIZE);
+    total += Ops::Base::CeilAlign(COUTSORT_HIST_BIN_NUM * static_cast<int64_t>(sizeof(uint16_t)), UB_BLOCK_SIZE);
+    total +=
+        Ops::Base::CeilAlign((expertCountStride < COUTSORT_HIST_BIN_NUM ? expertCountStride : COUTSORT_HIST_BIN_NUM) *
+                                 static_cast<int64_t>(sizeof(uint32_t)),
+                             UB_BLOCK_SIZE);
     // 量化临时区（quantMode_ != UNQUANT）：单行 int8 + scale slot（scaleSlotSize=8 floats=32B），
     // 与 kernel ComputeUbLayout 镜像，避免 mode-1 UB 预算偏小被静默降级到 mode-2
     if (quantMode_ != QUANT_MODE_UNQUANT) {
@@ -2047,7 +2076,6 @@ int64_t MoeInitRoutingV3TilingArch35::EstimateArch35CountingSortFullLoadUB(int64
     }
     // 聚合搬出相关缓冲区仅在 coutSortAggrEnable=1 时申请：bucketBase + offsetTbl + countTbl。
     // 聚合搬出 gatherOutBuf 位于 UB 最前，固定预留 AGGRBUFBYTES_A5。
-    int64_t actualExpertNum = expertEnd_ - expertStart_;
     int64_t aggrOutRows = AGGRBUFBYTES_A5 / (colsAligned * inputXDtypeSize_);
     bool aggrEnable = (aggrOutRows >= NUM_TWO) && (actualExpertNum <= COUTSORT_FULLLOAD_MAX_ACTUAL_EXPERT_NUM) &&
                       (quantMode_ == QUANT_MODE_UNQUANT);
@@ -2140,9 +2168,11 @@ void MoeInitRoutingV3TilingArch35::ComputeArch35CountingSortCutOriginTiling()
     int64_t expertCountStride = Ops::Base::CeilAlign(actualExpertNum, COUTSORT_ONE_BLOCK_ELEMENT);
 
     int64_t chunkAligned = Ops::Base::CeilAlign(COUTSORT_FILTER_CHUNK_SIZE, COUTSORT_ONE_BLOCK_ELEMENT);
-    // 持久区：仅 expertCountLocal（Phase A→B 存活）
+    // 持久区：expertCountLocal（Phase A→B 存活）+ 全局含式前缀（Phase B 收尾段消费：
+    // WriteExpertIdxValue 的 SIMT 二分段尾专家、ExpertTokens CUMSUM 输出加宽），
+    // 后者由 ComputeGlobalOffset 在走本核游标时顺手落盘，两处消费者因此都不必再走一遍标量前缀
     int64_t persistentSize =
-        Ops::Base::CeilAlign(expertCountStride * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE);
+        Ops::Base::CeilAlign(expertCountStride * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE) * NUM_TWO;
     // Phase A：chunked filtering
     // expertIdxLocal + expertIdxFp32Local + 3 mask + flatIdxBuffer + gatheredExpert/gatheredIdx）
     int64_t phaseASize = Ops::Base::CeilAlign(chunkAligned * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE);
