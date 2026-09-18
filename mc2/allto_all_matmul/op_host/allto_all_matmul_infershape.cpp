@@ -40,7 +40,8 @@ constexpr size_t INDEX_ATTR_X1_QUANT_MODE = 4;
 constexpr size_t INDEX_ATTR_X2_QUANT_MODE = 5;
 constexpr size_t INDEX_ATTR_TRANS_X1 = 9;
 constexpr size_t INDEX_ATTR_TRANS_X2 = 10;
-constexpr size_t INDEX_ATTR_ALLTOALL_OUT_FLAG = 12;
+// 索引12为comm_mode(字符串属性),alltoall_out_flag按def.cpp属性注册顺序为13
+constexpr size_t INDEX_ATTR_ALLTOALL_OUT_FLAG = 13;
 // output tensor index
 constexpr size_t INDEX_OUT = 0;
 constexpr size_t INDEX_ALLTO_ALL_OUT = 1;
