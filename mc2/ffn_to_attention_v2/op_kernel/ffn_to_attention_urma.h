@@ -26,15 +26,9 @@
 #include "adv_api/reduce/sum.h"
 #include "ffn_to_attention_v2_tiling.h"
 
-#if __has_include("../common/moe_distribute_base.h")
-#include "../common/moe_distribute_base.h"
-#include "../common/attention_ffn_context.h"
-#include "../common/mc2_kernel_utils.h"
-#else
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/attention_ffn_context.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
-#endif
 
 namespace FFNToAttentionImpl {
 
@@ -140,9 +134,6 @@ private:
     GlobalTensor<int32_t> expertOffsetsGMTensor_;
     GlobalTensor<int64_t> actualTokenNumGMTensor_;
     GlobalTensor<int32_t> attnRankTableGMTensor_;
-    GlobalTensor<uint64_t> remoteRelayInfoGMTensor_;
-    GlobalTensor<uint64_t> remoteRelayListHeadGMTensor_;
-    GlobalTensor<uint64_t> remoteRelayListTailGMTensor_;
     LocalTensor<xType> xTmpTensor_;
     LocalTensor<int32_t> statusTensor_;
     LocalTensor<uint8_t> hcommTensor_;
