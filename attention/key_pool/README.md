@@ -33,7 +33,7 @@
   ```text
   logits[q, r] = G[q * cmpRatio + r] + ape[r]
   weight = softmax(logits, dim=0)
-  pooledKeyOut[b, q - startPool[b]] = sum(weight[r] * K_norm[q * cmpRatio + r], dim=0)
+  pooled[b, q - startPool[b]] = sum(weight[r] * K_norm[q * cmpRatio + r], dim=0)
   ```
 
   历史token通过`cacheBlockTable`从`stateCache`读取，当前输入token的投影
@@ -206,7 +206,11 @@
 - `N`为物理block数；
 - `BS`为block size；
 - `L`为每个Batch的最大逻辑block数；
-- `Sr=ceil(L*BS/cmpRatio)`，表示pooledKeyOut的容量。
+- BSH输出为`[B,Sr,D]`，`Sr=ceil(S/cmpRatio)`。
+- TH输出为`[Tr,D]`，`Tr=min(T,floor(T/cmpRatio)+B)`。
+- 每个Batch的有效行数为`n[b]=floor((startPos[b]+seqLen[b])/cmpRatio)-floor(startPos[b]/cmpRatio)`。
+  BSH将有效结果放在`pooledKeyOut[b,:n[b]]`；TH按Batch顺序将有效结果连续拼接，
+  第b个Batch的起点为前面所有Batch的`n`之和。其余输出行未初始化。
 - `BSH`：Batch-Sequence-Hidden的输入布局，`hiddenStates`的shape为
   `[B,S,H]`。其中`B`表示BatchSize，`S`表示每个Batch当前输入的序列
   长度，`H`表示hiddensize。
@@ -241,4 +245,4 @@
 | 调用方式 | 调用样例                                                                   | 说明                                                           |
 |--------------|------------------------------------------------------------------------|--------------------------------------------------------------|
 | aclnn调用 | [test_aclnn_key_pool](./examples/test_aclnn_key_pool.cpp) | 通过[aclnnKeyPool](./docs/aclnnKeyPool.md)接口方式调用KeyPool算子。 |
-| PyTorch API | - | 通过 [key_pool.md](../../torch_extension/cann_ops_transformer/docs/zh/key_pool.md) 接口调用 KeyPool 算子。 |
+| PyTorch API | - | 通过 [torchapi_key_pool.md](../../attention/key_pool/docs/torchapi_key_pool.md) 接口调用 KeyPool 算子。 |

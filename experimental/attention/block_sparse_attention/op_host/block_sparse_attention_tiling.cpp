@@ -98,7 +98,10 @@ namespace optiling {
 constexpr uint32_t BASIC_BLOCK_SIZE = 128;
 constexpr uint32_t WORKSPACE_BLOCK_SIZE_DB = 131072;
 constexpr uint32_t NUM3 = 3;
+constexpr uint32_t SOC_VER_910B_CODE = 1;
+constexpr uint32_t SOC_VER_910_93_CODE = 2;
 constexpr uint32_t SOC_VER_950_CODE = 4;
+constexpr int64_t A2A3_EFF_ROWS_BLOCK_ALIGN = 64;
 constexpr uint32_t INF_WINDOW_SIZE_PRE_NEXT = 2147483647;
 
 constexpr uint32_t TILE_SIZE_16 = 16;
@@ -127,6 +130,12 @@ enum QuantMode : int64_t {
 static bool IsMxfp4Quant(int64_t qm)
 {
     return qm == MXFP4_OCP_QUANT || qm == MXFP4_CX_QUANT;
+}
+
+// 判断是否为 FP8 量化(per-tile 或 per-head)
+static bool IsFp8Quant(int64_t qm)
+{
+    return qm == FP8_QUANT || qm == FP8_PERHEAD_QUANT;
 }
 
 static std::string DataTypeToString(ge::DataType dataType)
@@ -729,7 +738,11 @@ ge::graphStatus BSATiling::ParseSparsePattern(gert::TilingContext *bsaContext)
             blockShapeY_ = blockShapeList[1];
         }
     }
-    const int64_t defaultShape = (socVer_ == SOC_VER_950_CODE) ? MIN_BLOCK_ALIGN : DEFAULT_BLOCK_SHAPE;
+    const bool isA5 = (socVer_ == SOC_VER_950_CODE);
+    const bool isA2OrA3 = (socVer_ == SOC_VER_910B_CODE) || (socVer_ == SOC_VER_910_93_CODE);
+    const bool hasEffRowsMask = bsaContext->GetOptionalInputTensor(ATTEN_MASK_INDEX) != nullptr;
+    const int64_t defaultShape =
+        isA5 ? MIN_BLOCK_ALIGN : (isA2OrA3 && hasEffRowsMask ? A2A3_EFF_ROWS_BLOCK_ALIGN : DEFAULT_BLOCK_SHAPE);
     if (CheckSparsePattern(bsaContext, defaultShape) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
@@ -758,58 +771,107 @@ static bool IsKvScalePerHeadShape(gert::TilingContext *bsaContext)
     return kvScaleShape->GetStorageShape().GetDimNum() == DIM_NUM_2;
 }
 
+ge::graphStatus BSATiling::ParseA2A3AttenMask(gert::TilingContext *bsaContext, const gert::Tensor *attenMaskTensor,
+                                              uint32_t &attenMaskMaxBlockNum)
+{
+    if (quantMode_ != NO_QUANT) {
+        OP_LOGE(bsaContext->GetNodeName(),
+                "attenMask (blockEffRows) only supports no quant on non-950 chips, but got quantMode=%ld.", quantMode_);
+        return ge::GRAPH_FAILED;
+    }
+    auto &attenMaskShape = attenMaskTensor->GetStorageShape();
+    // A2/A3 use one shared [maxBlockNum, 2] table: [effective Q rows, effective KV rows].
+    if (attenMaskShape.GetDimNum() != DIM_NUM_2) {
+        OP_LOGE(bsaContext->GetNodeName(),
+                "A2/A3 attenMask (blockEffRows) must be 2D [maxBlockNum, 2], but got dimNum %zu.",
+                attenMaskShape.GetDimNum());
+        return ge::GRAPH_FAILED;
+    }
+    if (attenMaskShape.GetDim(DIM_1) != 2) {
+        OP_LOGE(bsaContext->GetNodeName(), "A2/A3 attenMask (blockEffRows) dim1 must be 2, but got %ld.",
+                attenMaskShape.GetDim(DIM_1));
+        return ge::GRAPH_FAILED;
+    }
+    attenMaskMaxBlockNum = static_cast<uint32_t>(attenMaskShape.GetDim(DIM_0));
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus BSATiling::ParseA5AttenMask(gert::TilingContext *bsaContext, const gert::Tensor *attenMaskTensor,
+                                            uint32_t &attenMaskMaxBlockNum)
+{
+    if (IsFp8Quant(quantMode_)) {
+        // FP8 量化下 attenMask(blockEffRows) 须为 float8_e4m3fn 输入
+        if (dataType_ != ge::DT_FLOAT8_E4M3FN) {
+            OP_LOGE(bsaContext->GetNodeName(),
+                    "attenMask (blockEffRows) requires float8_e4m3fn input for FP8 quant, "
+                    "but got dtype=%s.",
+                    DataTypeToString(dataType_).c_str());
+            return ge::GRAPH_FAILED;
+        }
+        // FP8 下 attenMask(blockEffRows) 支持两种形态:
+        //   - per-tile(quantMode=1): kv tile 不跨量化块;
+        //   - per-head(quantMode=20): 跨块 gather(scale 与块无关)。
+        bool kvScalePerHead = IsKvScalePerHeadShape(bsaContext);
+        if (quantMode_ == FP8_PERHEAD_QUANT && !kvScalePerHead) {
+            OP_LOGE(bsaContext->GetNodeName(),
+                    "attenMask (blockEffRows) requires FP8 per-head (quantMode=20, k/v scale 2D), "
+                    "but got perHeadKvScale=%d.",
+                    static_cast<int>(kvScalePerHead));
+            return ge::GRAPH_FAILED;
+        }
+    } else if (!IsMxfp4Quant(quantMode_)) {
+        OP_LOGE(bsaContext->GetNodeName(),
+                "attenMask (blockEffRows) is only supported for mxfp4(quantMode=2 and 3) "
+                "and FP8(quantMode=1 and 20) on chip 950, but got quantMode=%ld.",
+                quantMode_);
+        return ge::GRAPH_FAILED;
+    }
+    auto &attenMaskShape = attenMaskTensor->GetStorageShape();
+    if (attenMaskShape.GetDimNum() != DIM_NUM_4) {
+        OP_LOGE(bsaContext->GetNodeName(), "A5 attenMask (blockEffRows) must be 4D, but got dimNum %zu.",
+                attenMaskShape.GetDimNum());
+        return ge::GRAPH_FAILED;
+    }
+    if (attenMaskShape.GetDim(DIM_3) != 2) {
+        OP_LOGE(bsaContext->GetNodeName(), "A5 attenMask (blockEffRows) last dim must be 2, but got %ld.",
+                attenMaskShape.GetDim(DIM_3));
+        return ge::GRAPH_FAILED;
+    }
+    uint32_t attenMaskBatch = static_cast<uint32_t>(attenMaskShape.GetDim(DIM_0));
+    uint32_t attenMaskNumHeads = static_cast<uint32_t>(attenMaskShape.GetDim(DIM_1));
+    attenMaskMaxBlockNum = static_cast<uint32_t>(attenMaskShape.GetDim(DIM_2));
+    if (attenMaskBatch != batch_ || attenMaskNumHeads != numHeads_) {
+        OP_LOGE(bsaContext->GetNodeName(),
+                "A5 attenMask (blockEffRows) batch/numHeads mismatch: expected (%u, %u), got (%u, %u).", batch_,
+                numHeads_, attenMaskBatch, attenMaskNumHeads);
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus BSATiling::ParseAttenMask(gert::TilingContext *bsaContext)
 {
     const auto *attenMaskTensor = bsaContext->GetOptionalInputTensor(ATTEN_MASK_INDEX);
     if (attenMaskTensor == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
-    if (socVer_ != SOC_VER_950_CODE) {
-        OP_LOGE(bsaContext->GetNodeName(), "attenMask (blockEffRows) is only supported on chip 950.");
-        return ge::GRAPH_FAILED;
-    }
-    // effRows 仅在 FP8 + per-head kv scale([B, kvHeads] 两维) 分支接入。
-    bool kvScalePerHead = IsKvScalePerHeadShape(bsaContext);
-    if (dataType_ != ge::DT_FLOAT8_E4M3FN || !kvScalePerHead) {
-        OP_LOGE(bsaContext->GetNodeName(),
-                "attenMask (blockEffRows) is only supported for fp8 full-quant with per-head kv scale (quantMode=20, "
-                "k/v scale 2D), but got dtype=%s, blockShapeY=%u, perHeadKvScale=%d.",
-                DataTypeToString(dataType_).c_str(), blockShapeY_, static_cast<int>(kvScalePerHead));
-        return ge::GRAPH_FAILED;
-    }
-
+    const bool isA5 = (socVer_ == SOC_VER_950_CODE);
+    const bool isA2OrA3 = (socVer_ == SOC_VER_910B_CODE) || (socVer_ == SOC_VER_910_93_CODE);
     auto attenMaskDtype = attenMaskTensor->GetDataType();
     if (attenMaskDtype != ge::DT_INT32) {
         OP_LOGE(bsaContext->GetNodeName(), "attenMask (blockEffRows) must be INT32, but got %s.",
                 DataTypeToString(attenMaskDtype).c_str());
         return ge::GRAPH_FAILED;
     }
-    auto &attenMaskShape = attenMaskTensor->GetStorageShape();
-    if (attenMaskShape.GetDimNum() != DIM_NUM_4) {
-        OP_LOGE(bsaContext->GetNodeName(), "attenMask (blockEffRows) must be 4D, but got dimNum %zu.",
-                attenMaskShape.GetDimNum());
-        return ge::GRAPH_FAILED;
-    }
-    if (attenMaskShape.GetDim(DIM_3) != 2) {
-        OP_LOGE(bsaContext->GetNodeName(), "attenMask (blockEffRows) last dim must be 2, but got %ld.",
-                attenMaskShape.GetDim(DIM_3));
-        return ge::GRAPH_FAILED;
-    }
-
-    uint32_t attenMaskBatch = static_cast<uint32_t>(attenMaskShape.GetDim(DIM_0));
-    uint32_t attenMaskNumHeads = static_cast<uint32_t>(attenMaskShape.GetDim(DIM_1));
-    uint32_t attenMaskMaxBlockNum = static_cast<uint32_t>(attenMaskShape.GetDim(DIM_2));
-    if (attenMaskBatch != batch_ || attenMaskNumHeads != numHeads_) {
-        OP_LOGE(bsaContext->GetNodeName(),
-                "attenMask (blockEffRows) batch/numHeads mismatch: expected (%u, %u), got (%u, %u).", batch_, numHeads_,
-                attenMaskBatch, attenMaskNumHeads);
-        return ge::GRAPH_FAILED;
-    }
-    if (attenMaskNumHeads != kvHeads_) {
-        OP_LOGE(bsaContext->GetNodeName(),
-                "attenMask (blockEffRows) requires numHeads == kvHeads (no GQA/MQA), but numHeads=%u, kvHeads=%u.",
-                numHeads_, kvHeads_);
-        return ge::GRAPH_FAILED;
+    uint32_t attenMaskMaxBlockNum = 0;
+    if (isA5) {
+        if (ParseA5AttenMask(bsaContext, attenMaskTensor, attenMaskMaxBlockNum) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+    } else if (isA2OrA3) {
+        if (ParseA2A3AttenMask(bsaContext, attenMaskTensor, attenMaskMaxBlockNum) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
     }
 
     uint32_t expectedMaxBlockNum = std::max(maxQBlockNum_, maxKvBlockNum_);
@@ -880,6 +942,11 @@ ge::graphStatus BSATiling::ValidateGenericDequantScale(gert::TilingContext *bsaC
             return ge::GRAPH_FAILED;
         }
         if (dequantScaleDimNum == DIM_NUM_2) {
+            if (quantMode_ != FP8_PERHEAD_QUANT) {
+                OP_LOGE(bsaContext->GetNodeName(), "Parameter %s requires quantMode=20 when the shape is 2D.",
+                        parameterName.c_str());
+                return ge::GRAPH_FAILED;
+            }
             if (parameterIndex == Q_DEQUANT_SCALE_INDEX) {
                 OP_LOGE(
                     bsaContext->GetNodeName(),
@@ -1434,7 +1501,7 @@ void BSATiling::CalcMatmulPhaseL1TileInfo950()
         pL1BufNum_ = TRIO_BUF;
     }
     if (quantMode_ == FP8_QUANT || quantMode_ == FP8_PERHEAD_QUANT) {
-        // quantMode=1、20（effRows） 均为 fp8 全量化 + 512 kv tile, L1 tile 配置必须一致
+        // 两种 FP8 模式共用全量化 L1 配置(按当前选中的 kv tile 尺寸)。
         B8FullQuantKVPL1TileInfo950(qBaseTileAligned128, embeddingSizeAligned128, kvBaseTileAligned128);
     }
 }

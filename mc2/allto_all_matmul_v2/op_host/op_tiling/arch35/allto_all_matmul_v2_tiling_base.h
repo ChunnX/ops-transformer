@@ -616,8 +616,8 @@ protected:
             //   worldSize * m_per_rank * (x1_data + x1_scale) + 2MB 预留
             // x1_data = kPerRank * sizeof(dtype)，fp4 打包存储(4bit)所以用 bit 精确计算
             // x1_scale = ceil(kPerRank / MX_SCALE_ALIGN) * SCALE_LAST_DIM * sizeof(uint8)
-            uint64_t x1Bits = (x1Dtype == ge::DT_FLOAT4_E2M1) ? 4UL : 8UL;
-            uint64_t scaleKGroups = (kPerRank + MX_SCALE_ALIGN - 1UL) / MX_SCALE_ALIGN;
+            uint64_t x1Bits = (x1Dtype == ge::DT_FLOAT4_E2M1) ? MXFP4_BITS : MXFP8_BITS;
+            uint64_t scaleKGroups = CeilDiv(kPerRank, MX_SCALE_ALIGN);
             uint64_t perRankBits = kPerRank * x1Bits + scaleKGroups * SCALE_LAST_DIM * 8UL;
             uint64_t commDataBits = worldSize_ * m_ * perRankBits;
             uint64_t commDataBytes = (commDataBits + 7UL) / 8UL;
@@ -669,7 +669,7 @@ protected:
             tilingEngine.SetPlatformInfoPtr(context_->GetPlatformInfo());
             tilingEngine.SetBiasInfo(hasBias);
             tilingEngine.EnableBaseMHalving(true);
-            tilingEngine.SetBiasInfo(hasBias);
+            tilingEngine.SetOptimizeEnable(false);
             tilingEngine.GetTilingData(m_, n_, k_, false, true, td->tileQbmmTilingData);
         } else {
             QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN,
@@ -678,7 +678,7 @@ protected:
             tilingEngine.SetPlatformInfoPtr(context_->GetPlatformInfo());
             tilingEngine.SetBiasInfo(hasBias);
             tilingEngine.EnableBaseMHalving(true);
-            tilingEngine.SetBiasInfo(hasBias);
+            tilingEngine.SetOptimizeEnable(false);
             tilingEngine.GetTilingData(m_, n_, k_, false, true, td->tileQbmmTilingData);
         }
 
@@ -711,6 +711,40 @@ protected:
             td->commTilingData.nonSplitAxisSize = ka / 2;
         }
 
+        // win 区 buffer 复用深度决策：budget 取自 context 的 hccl_buffer_size，
+        // < 400MB 拦截，>= 400MB 用 400MB。data 复用、scale 恒全量，故预算需扣除 scale 固定占用。
+        if (hccBufPtr != nullptr && *hccBufPtr > 0 && static_cast<uint64_t>(*hccBufPtr) < WIN_REUSE_BUDGET_CAP) {
+            OP_LOGE_WITH_INVALID_ATTR(opName, "hccl_buffer_size", std::to_string(*hccBufPtr).c_str(),
+                                      (std::string(">= ") + std::to_string(WIN_REUSE_BUDGET_CAP / (1024UL * 1024UL)) +
+                                       " MB (400MB) for win buffer reuse")
+                                          .c_str());
+            return ge::GRAPH_FAILED;
+        }
+        uint64_t winBudget = WIN_REUSE_BUDGET_CAP;
+
+        uint64_t totalTiles = td->commTilingData.splitAxisTileCnt + td->commTilingData.splitAxisTailCnt;
+        uint64_t maxTileSize = std::max(td->commTilingData.splitAxisTileSize, td->commTilingData.splitAxisTailSize);
+        uint64_t x1Bits = (x1Dtype == ge::DT_FLOAT4_E2M1) ? MXFP4_BITS : MXFP8_BITS;
+        uint64_t dataSlotSize = worldSize_ * maxTileSize * (ka * x1Bits / 8UL);
+        uint64_t scaleKGroups = CeilDiv(ka, MX_SCALE_ALIGN);
+        uint64_t scaleSlotSize = worldSize_ * maxTileSize * scaleKGroups * SCALE_LAST_DIM;
+        uint64_t fullWinBytes = totalTiles * (dataSlotSize + scaleSlotSize);
+
+        uint64_t slotNum;
+        if (fullWinBytes <= winBudget) {
+            slotNum = totalTiles;
+        } else {
+            uint64_t scaleWinFixed = totalTiles * scaleSlotSize;
+            uint64_t dataBudget = (scaleWinFixed >= winBudget) ? 0UL : winBudget - scaleWinFixed;
+            uint64_t budgetDepth = (dataSlotSize == 0UL) ? totalTiles : dataBudget / dataSlotSize;
+            slotNum = std::min({WIN_REUSE_DEPTH_CAP, budgetDepth, totalTiles});
+        }
+        if (slotNum < WIN_REUSE_DEPTH_MIN) {
+            slotNum = WIN_REUSE_DEPTH_MIN;
+        }
+        td->commTilingData.slotNum = slotNum;
+        td->scaleCommTilingData.slotNum = 0;
+
         OP_LOGI(opName, "comm tiling: tileSize=%lu, tileCnt=%lu, tailSize=%lu, tailCnt=%lu, nonSplitSize=%lu",
                 td->commTilingData.splitAxisTileSize, td->commTilingData.splitAxisTileCnt,
                 td->commTilingData.splitAxisTailSize, td->commTilingData.splitAxisTailCnt,
@@ -719,10 +753,38 @@ protected:
                 td->scaleCommTilingData.splitAxisTileSize, td->scaleCommTilingData.splitAxisTileCnt,
                 td->scaleCommTilingData.splitAxisTailSize, td->scaleCommTilingData.splitAxisTailCnt,
                 td->scaleCommTilingData.nonSplitAxisSize);
+        OP_LOGI(opName,
+                "win reuse: totalTiles=%lu, dataSlotBytes=%lu, scaleSlotBytes=%lu, fullWinBytes=%lu, slotNum=%lu",
+                totalTiles, dataSlotSize, scaleSlotSize, fullWinBytes, slotNum);
 
         td->localMatmul = precisionMode_;
 
         OP_LOGI(opName, "localMatmul precisionMode=%u", precisionMode_);
+
+#if MC2_DFX_ENABLE
+        platform_ascendc::PlatformAscendC ascendcPlatform(context_->GetPlatformInfo());
+        libApiWorkSpaceSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
+
+        td->dumpInfo.workspaceLayout.totalSize = libApiWorkSpaceSize_;
+        td->dumpInfo.workspaceLayout.segCount = 1;
+        td->dumpInfo.workspaceLayout.segments[0] = {
+            0UL, libApiWorkSpaceSize_, static_cast<uint8_t>(Utils::WS_SEG_LIB_API), {}};
+        td->dumpInfo.workspaceLayout.totalSize += Utils::STATE_DUMP_TOTAL_SIZE;
+        td->dumpInfo.workspaceLayout.segCount = 2;
+        td->dumpInfo.workspaceLayout.segments[1] = {
+            libApiWorkSpaceSize_, Utils::STATE_DUMP_TOTAL_SIZE, static_cast<uint8_t>(Utils::WS_SEG_STATE_DUMP), {}};
+        double typeSize = (x1Dtype == ge::DT_FLOAT4_E2M1) ? 0.5 : 1.0;
+        uint64_t scaleKDim = (k_ + 63UL) / 64UL;
+        uint64_t dataRegionBytes = worldSize_ * m_ * static_cast<uint64_t>(static_cast<double>(k_) * typeSize);
+        uint64_t scaleRegionBytes = worldSize_ * m_ * scaleKDim * 2UL;
+        td->dumpInfo.peermemDataSize = dataRegionBytes + scaleRegionBytes;
+        td->dumpInfo.peermemLayout.totalSize = td->dumpInfo.peermemDataSize;
+        td->dumpInfo.peermemLayout.segCount = 2;
+        td->dumpInfo.peermemLayout.segments[0] = {
+            0UL, dataRegionBytes, static_cast<uint8_t>(Utils::PEERMEM_SEG_DATA), {}};
+        td->dumpInfo.peermemLayout.segments[1] = {
+            dataRegionBytes, scaleRegionBytes, static_cast<uint8_t>(Utils::PEERMEM_SEG_SCALE), {}};
+#endif
 
         return ge::GRAPH_SUCCESS;
     }
@@ -747,6 +809,13 @@ protected:
         }
         platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
         workspaceSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
+#if MC2_DFX_ENABLE
+        // DFX: workspace 尾部追加 64KB 状态打点区
+        workspaceSize_ += Utils::STATE_DUMP_TOTAL_SIZE;
+        OP_LOGI(context_->GetNodeName(),
+                "AAMV2 workspace: libApiWorkSpaceSize=%lu, stateDumpSize=%lu, workspaceSize=%lu",
+                workspaceSize_ - Utils::STATE_DUMP_TOTAL_SIZE, Utils::STATE_DUMP_TOTAL_SIZE, workspaceSize_);
+#endif
         auto *wsBuf = context_->GetWorkspaceSizes(1);
         if (wsBuf != nullptr) {
             wsBuf[0] = workspaceSize_;
@@ -756,7 +825,9 @@ protected:
 
     ge::graphStatus PostTiling() override
     {
-        context_->GetRawTilingData()->SetDataSize(context_->GetRawTilingData()->GetCapacity());
+        // tiling 数据只声明结构体大小（capacity-8），尾部 8 字节留给框架写入 DFX 指针（atomicIndex），
+        // 否则异常 dump 时 IDEDD 从 opParaSize-8 处读到 0，导致 exception_info 解析中止
+        context_->GetRawTilingData()->SetDataSize(sizeof(allToAllMatmulTilingData));
         context_->SetBlockDim(usedCoreNum_);
         return ge::GRAPH_SUCCESS;
     }
@@ -765,6 +836,9 @@ private:
     uint64_t m_{0}, k_{0}, n_{0};
     uint64_t worldSize_{1};
     uint32_t precisionMode_{0};
+#if MC2_DFX_ENABLE
+    uint64_t libApiWorkSpaceSize_{0};
+#endif
     QuantMatmulPlatformInfo quantPlatformInfo_;
 };
 
@@ -772,6 +846,6 @@ private:
 
 using AlltoAllMatmulV2TilingClass = MC2Tiling::AlltoAllMatmulV2TilingClass;
 REGISTER_TILING_TEMPLATE_WITH_ARCH(AlltoAllMatmulV2, AlltoAllMatmulV2TilingClass,
-                                   static_cast<int32_t>(NpuArch::DAV_3510), 1);
+                                   static_cast<int32_t>(Ops::Base::DAV_3510), 1);
 
 #endif

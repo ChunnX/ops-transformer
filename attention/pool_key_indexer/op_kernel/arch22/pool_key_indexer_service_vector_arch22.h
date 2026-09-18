@@ -25,11 +25,19 @@ using namespace PkiServiceVec;
 constexpr uint32_t BASE_TOPK = 2048;
 constexpr uint32_t SPARSE_COUNT_4K = 4096;
 constexpr uint32_t LD_PARAM_NUM = 16;
-// 展开输出分段长度(int32 元素数): ExpandAndAppendIndices/清理路径按此分批
-// 生成并 DataCopyPad 写 GM, 使 expandOutBuf_ 固定 4KB, 不再随 outputLen
-// (=topk+ps-1)线性增长。arch22 UB 仅 192KB, poolSize>1 时固定 171KB 缓冲
-// 叠加整行展开缓冲会越界(缺陷 D/E, 507015), 分段是根治手段。
+// 展开输出分段长度(int32 元素数): 展开/清理按此分批生成并写 GM, 使
+// expandOutBuf_ 固定 4KB, 不随 outputLen 增长越 arch22 192KB UB 上限
 constexpr uint32_t EXPAND_CHUNK = 1024;
+// vgather 展开路径的段长(独立于标量/vecPath 的 EXPAND_CHUNK; Gather/Muls/Add
+// 均为 Level-2 count 形式, 2201 下软件展开为 count-mask, repeatTime=count/64)。
+constexpr uint32_t EXPAND_GATHER_CHUNK = 512;
+// A2/A3 AIV TPipe UB 池硬上限(release 模式 InitBuffer 越池不报错), 超限回退标量展开。
+constexpr uint32_t PKI_UB_POOL_LIMIT_BYTES = 196608;
+// poolSize%8!=0 展开路径向量化开关: 1=vgather 向量展开(Gather+Muls+Add);
+// 0=回退全标量展开路径(逐 token GetValue/SetValue)。
+#ifndef PKI_EXPAND_VEC
+#define PKI_EXPAND_VEC 1
+#endif
 constexpr uint32_t EVENTID_V_TO_MTE2_PING = 0;
 constexpr uint32_t EVENTID_V_TO_MTE2_PONG = 1;
 constexpr uint32_t EVENTID_V_TO_MTE2_TMPUB = 2;
@@ -91,10 +99,17 @@ private:
                                                   int64_t idxOutBase, uint32_t sparseCount, uint32_t poolSize,
                                                   uint32_t validS2Len, int32_t poolTailK, int32_t L_orig,
                                                   uint32_t curS1Idx, uint32_t curS1Size);
+    // vgather 展开模板(qOff/pTpl)在 workLocal_ 中的起始偏移(poolIndices 区之后)
+    __aicore__ inline uint32_t ExpandGatherTplOffset()
+    {
+        uint32_t alignedPoolSize = PkiCommon::Align(poolSize_, (uint32_t)8);
+        return alignedPoolSize + PkiCommon::Align(static_cast<uint32_t>(constInfo_.sparseCount), (uint32_t)8);
+    }
+    // 一次性构建 qOff[i]=(i/ps)*4 / pTpl[i]=i%ps 展开模板, 常驻 workLocal_ 尾部
+    __aicore__ inline void BuildExpandGatherTpl();
 
-    // 标量(S pipe)与向量(V pipe)/MTE3 间必须显式硬同步, PipeBarrier<PIPE_V>
-    // 只保证 V 流水线内部有序, 不保证 S 侧读写顺序(对齐 arch35 的
-    // VToSSync/SToVSync/SToMTE3Sync 模式, 参照 bsa_select_block_mask)
+    // 标量(S pipe)与向量(V pipe)/MTE3 间必须显式硬同步,
+    // PipeBarrier<PIPE_V> 不保证 S 侧读写顺序
     __aicore__ inline void VToSSync()
     {
         event_t eventID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
@@ -177,6 +192,8 @@ private:
     int32_t s2BaseSize_ = 0;
     uint32_t poolSize_ = 1;
     uint32_t outputLen_ = 0;
+    // poolSize%8!=0 且 UB 预算允许时置 true(InitBuffers), 展开走 vgather 路径
+    bool expandGatherOn_ = false;
 
     // para for LD
     uint32_t mrgListNum_ = 4;
@@ -197,37 +214,61 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::InitBuffers(TPipe *pipe
     outNeedBufSize = reduceCacheSize > outNeedBufSize ? reduceCacheSize : outNeedBufSize;
     virTopK = constInfo_.isSparseCountOver2K ? constInfo_.sparseCount : BASE_TOPK;
 
+    // 尺寸落具名局部量, 供下方 UB 预算按字节核算(与 InitBuffer 调用同源)
+    uint32_t tmpBufSize = (groupInner_ * s2BaseSize_ + s2BaseSize_) * 2 * sizeof(float);
+    uint32_t sortOutBufSize = CeilDiv(s1BaseSize_, 2) * virTopK * 2 * sizeof(float);
+    uint32_t indexBufSize = s2BaseSize_ * sizeof(int32_t);
+    uint32_t reduceOutBufSize = s2BaseSize_ * 2 * sizeof(float);
+    uint32_t brcBufSize = groupInner_ * 8 * sizeof(float);
+    uint32_t paramBufSize = LD_PARAM_NUM * sizeof(int64_t);
+
     pipe->InitBuffer(outQueue_, 1, outNeedBufSize); // 32KB  extract
     // 68KB 在搬运cube核计算得到的结果和weight时，分成两块34KB，用于db；在mrgsort时，用作临时UB
-    pipe->InitBuffer(tmpBuf_, (groupInner_ * s2BaseSize_ + s2BaseSize_) * 2 * sizeof(float));
-    pipe->InitBuffer(sortOutBuf_, CeilDiv(s1BaseSize_, 2) * virTopK * 2 * sizeof(float)); // 64KB
-    pipe->InitBuffer(indexBuf_, s2BaseSize_ * sizeof(int32_t));                           // 2KB
-    pipe->InitBuffer(reduceOutBuf_, s2BaseSize_ * 2 * sizeof(float));                     // 4KB
-    pipe->InitBuffer(brcBuf_, groupInner_ * 8 * sizeof(float));
-    pipe->InitBuffer(paramBuf_, LD_PARAM_NUM * sizeof(int64_t));
+    pipe->InitBuffer(tmpBuf_, tmpBufSize);
+    pipe->InitBuffer(sortOutBuf_, sortOutBufSize);     // 64KB
+    pipe->InitBuffer(indexBuf_, indexBufSize);         // 2KB
+    pipe->InitBuffer(reduceOutBuf_, reduceOutBufSize); // 4KB
+    pipe->InitBuffer(brcBuf_, brcBufSize);
+    pipe->InitBuffer(paramBuf_, paramBufSize);
 
     if (poolSize_ > 1) {
-        // expandOutLocal_ 固定 EXPAND_CHUNK(1024) 元素: 展开/清理均按此分段
-        // 生成并 DataCopyPad 写 GM, 不再按整行 outputLen(=topk+ps-1)线性分配
-        // (大 topk 时 8~33KB, 叠加固定缓冲 171KB 越 arch22 192KB UB 上限,
-        // 缺陷 D/E 根因, 见 ExpandAndAppendIndices/CleanInvalidOutput 分段写)
+        // expandOutLocal_ 固定 EXPAND_CHUNK(1024) 元素, 展开/清理按此分段写 GM,
+        // 避免整行 outputLen 分配越 arch22 192KB UB 上限
         uint32_t expandOutLen = PkiCommon::Align(static_cast<uint64_t>(EXPAND_CHUNK), (uint64_t)8);
         pipe->InitBuffer(expandOutBuf_, expandOutLen * sizeof(uint32_t));
         expandOutLocal_ = expandOutBuf_.Get<int32_t>();
         uint32_t workSize = PkiCommon::Align(static_cast<uint64_t>(poolSize_ + 64), (uint64_t)8) +
                             PkiCommon::Align(static_cast<uint64_t>(constInfo_.sparseCount + 64), (uint64_t)8);
+#if PKI_EXPAND_VEC
+        // ps%8!=0 时 workLocal_ 尾部常驻 qOff/pTpl 模板; 按 UB 池上限核算,
+        // 超限(如 ps=2/topk=8192→sc=4096)回退标量路径。
+        expandGatherOn_ = (poolSize_ % 8 != 0);
+        if (expandGatherOn_) {
+            uint32_t tplEnd = ExpandGatherTplOffset() + EXPAND_GATHER_CHUNK * 2;
+            uint32_t fixedBytes = outNeedBufSize + tmpBufSize + sortOutBufSize + indexBufSize + reduceOutBufSize +
+                                  brcBufSize + paramBufSize + expandOutLen * sizeof(uint32_t);
+            uint32_t gatherBytes = PkiCommon::Max(workSize, tplEnd) * sizeof(uint32_t);
+            if (fixedBytes + gatherBytes <= PKI_UB_POOL_LIMIT_BYTES) {
+                workSize = PkiCommon::Max(workSize, tplEnd);
+            } else {
+                expandGatherOn_ = false; // UB 预算不足, 回退标量路径
+            }
+        }
+#else
+        expandGatherOn_ = false;
+#endif
         pipe->InitBuffer(workBuf_, workSize * sizeof(uint32_t));
         workLocal_ = workBuf_.Get<int32_t>();
-        // 向量路径(poolSize%8==0)的展开模板 offsetTpl[0..poolSize)=0..ps-1 经
-        // CreateVecIndex 一次性构建并常驻 workLocal_ 头部(kernel 生命周期不变),
-        // 替代 ExpandAndAppendIndices 每行 ps 次 SetValue 标量重建 + SToVSync
-        // 的逐行开销(对齐 arch35 一次性模板优化)。CreateVecIndex 为 V pipe
-        // 向量写, 与消费它的 Add 同 pipe, 中间隔多次向量操作与跨核同步,
-        // 同 pipe 有序性足够; workLocal_ 除模板外无其他写方(poolIndices 从
-        // alignedPoolSize 起存放), 常驻安全。
+        // 向量路径的展开模板经 CreateVecIndex 一次性构建常驻 workLocal_ 头部,
+        // 替代每行标量重建的逐行开销(与消费方同 pipe, 常驻安全)
         if (poolSize_ % 8 == 0) {
             AscendC::CreateVecIndex(workLocal_, static_cast<int32_t>(0), poolSize_);
         }
+#if PKI_EXPAND_VEC
+        else if (expandGatherOn_) {
+            BuildExpandGatherTpl();
+        }
+#endif
     }
 
     tmpUb_ = tmpBuf_.Get<float>();
@@ -244,9 +285,7 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::InitBuffers(TPipe *pipe
     // step2. globalTopkUb_ [CeilDiv(s1BaseSize_, 2), BASE_TOPK, 2]   -inf,-1
     InitSortOutBuf(globalTopkUb_, CeilDiv(s1BaseSize_, 2) * virTopK * 2);
 
-    // step3. 初始化vec1ParamGm，是否进行LD的标志位设为-1(needFd=-1)
-    // vec1ResIn32Gm = [aic, 2, s1BaseSize_, 16] int32
-    // ws清零 [needFd, s2AcSeq, s2Start, s2End, isS2End, bn2idx, s1Idx, ......]
+    // step3. 初始化 vec1ParamGm, LD 标志位设为 -1(needFd=-1), 布局 [aic, 2, s1BaseSize_, 16]
     LocalTensor<float> tmpBuff = outQueue_.AllocTensor<float>();
     Duplicate(tmpBuff.template ReinterpretCast<int32_t>(), -1, 2 * (s1BaseSize_ / 2) * paramNum_ * 2);
     outQueue_.EnQue<float>(tmpBuff);
@@ -262,6 +301,10 @@ template <typename LIT>
 __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::InitLDBuffers(TPipe *pipe)
 {
     pipe->Reset();
+    // Reset 后按 LD 布局重分配缓冲(地址与主集不同): 先排空主集在途的
+    // MTE3 读与 V 写, 再重建展开模板, 避免与模板 S 写竞态
+    SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
+    VToSSync();
     pipe->InitBuffer(ldToBeMrgBuf_, 2 * BASE_TOPK * mrgListNum_ * sizeof(float)); // 2：value + index
     pipe->InitBuffer(ldTmpBuf_, 2 * BASE_TOPK * mrgListNum_ * sizeof(float));     // 2：value + index
     pipe->InitBuffer(ldOutValueBuf_, BASE_TOPK * sizeof(float));
@@ -272,12 +315,24 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::InitLDBuffers(TPipe *pi
         expandOutLocal_ = expandOutBuf_.Get<int32_t>();
         uint32_t workSize = PkiCommon::Align(static_cast<uint64_t>(poolSize_ + 64), (uint64_t)8) +
                             PkiCommon::Align(static_cast<uint64_t>(constInfo_.sparseCount + 64), (uint64_t)8);
+#if PKI_EXPAND_VEC
+        // 与 InitBuffers 同式重算模板尺寸(expandGatherOn_ 已在 InitBuffers 门禁置位)
+        if (expandGatherOn_) {
+            uint32_t tplEnd = ExpandGatherTplOffset() + EXPAND_GATHER_CHUNK * 2;
+            workSize = PkiCommon::Max(workSize, tplEnd);
+        }
+#endif
         pipe->InitBuffer(workBuf_, workSize * sizeof(uint32_t));
         workLocal_ = workBuf_.Get<int32_t>();
         // Reset 后重配的 LD 阶段 workLocal_ 需重建展开模板(见 InitBuffers)
         if (poolSize_ % 8 == 0) {
             AscendC::CreateVecIndex(workLocal_, static_cast<int32_t>(0), poolSize_);
         }
+#if PKI_EXPAND_VEC
+        else if (expandGatherOn_) {
+            BuildExpandGatherTpl();
+        }
+#endif
     }
 }
 
@@ -330,6 +385,24 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::FreeEventID()
     WaitFlag<HardEvent::V_MTE2>(EVENTID_V_TO_MTE2_TMPUB);
 }
 
+#if PKI_EXPAND_VEC
+// 一次性构建 vgather 展开模板常驻 workLocal_ 尾部只读: qOff[i]=(i/ps)*4,
+// pTpl[i]=i%ps; S pipe 标量写, SToVSync 保证后续 V pipe 读可见
+template <typename LIT>
+__aicore__ inline void PoolKeyIndexerServiceVector<LIT>::BuildExpandGatherTpl()
+{
+    uint32_t ps = poolSize_;
+    uint32_t tplOff = ExpandGatherTplOffset();
+    LocalTensor<int32_t> qOffI32 = workLocal_[tplOff];
+    LocalTensor<int32_t> pTplI32 = workLocal_[tplOff + EXPAND_GATHER_CHUNK];
+    for (uint32_t i = 0; i < EXPAND_GATHER_CHUNK; i++) {
+        qOffI32.SetValue(i, static_cast<int32_t>((i / ps) * sizeof(int32_t)));
+        pTplI32.SetValue(i, static_cast<int32_t>(i % ps));
+    }
+    SToVSync(); // 标量写(S pipe) -> 后续 V pipe Gather/Muls/Add 读可见
+}
+#endif
+
 template <typename LIT>
 __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ExpandAndAppendIndices(
     LocalTensor<int32_t> poolIndices, LocalTensor<int32_t> &tokenIndices, LocalTensor<int32_t> &workBuf,
@@ -352,22 +425,34 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ExpandAndAppendIndices(
 
     uint32_t expandRounds = (validS2Len > 0) ? PkiCommon::Min(validS2Len, sparseCount) : 0;
     bool vecPath = (poolSize % 8 == 0);
+#if PKI_EXPAND_VEC
+    bool gatherPath = !vecPath && expandGatherOn_; // ps%8!=0 时走 vgather 向量展开
+#else
+    bool gatherPath = false;
+#endif
     uint32_t alignedPoolSize = PkiCommon::Align(poolSize, (uint32_t)8);
 
-    // 展开模板 offsetTpl(0..ps-1) 已在 InitBuffers/InitLDBuffers 经 CreateVecIndex
-    // 一次性构建并常驻 workBuf 头部, 无需逐行标量重建(省 ps 次 SetValue +
-    // SToVSync, 对齐 arch35 一次性模板优化)
+    // 展开模板已一次性构建常驻 workBuf 头部, 无需逐行标量重建
     LocalTensor<int32_t> offsetTpl = workBuf;
-    if (expandRounds > 0) {
-        VToSSync(); // poolIndices 向量写 → 后续标量 GetValue 可见
+    // vgather 展开模板 qOff/pTpl 常驻 workLocal_ 尾部(见 BuildExpandGatherTpl);
+    // 声明置于 #if 外保证宏关时仍可编译(gatherPath 恒 false 不进入)
+    LocalTensor<uint32_t> qOffTpl;
+    LocalTensor<int32_t> pTpl;
+#if PKI_EXPAND_VEC
+    if (gatherPath) {
+        uint32_t tplOff = ExpandGatherTplOffset();
+        qOffTpl = workBuf[tplOff].template ReinterpretCast<uint32_t>();
+        pTpl = workBuf[tplOff + EXPAND_GATHER_CHUNK];
+    }
+#endif
+    if (expandRounds > 0 && !gatherPath) {
+        VToSSync(); // poolIndices 向量写 → 后续标量 GetValue 可见(gatherPath 无 S 侧读)
     }
 
-    // 分段生成并写出: expandOutBuf_ 固定 EXPAND_CHUNK(1024) 元素(4KB),
-    // 不再随 outputLen(=topk+ps-1, 大 topk 时 8~33KB)线性增长, 否则叠加
-    // 固定缓冲(171KB, arch22 UB 仅 192KB)越界(缺陷 D/E, 507015)。
-    // 展开区段边界对齐到池(poolSize 粒度): 每池完整包含, 向量路径纯
-    // Duplicate+Add SIMD(poolSize%8==0 时 alignedPoolSize==poolSize, 32B 对齐)。
-    uint32_t poolsPerSeg = PkiCommon::Max((uint32_t)1, EXPAND_CHUNK / poolSize);
+    // 分段生成写出: expandOutBuf_ 固定 4KB, 不随 outputLen 增长越 UB 上限;
+    // 段边界对齐到池粒度(向量路径保持 32B 对齐)
+    uint32_t segChunk = gatherPath ? EXPAND_GATHER_CHUNK : EXPAND_CHUNK;
+    uint32_t poolsPerSeg = PkiCommon::Max((uint32_t)1, segChunk / poolSize);
 
     // ---- 展开区 [0, topk): 按池对齐分段 ----
     uint32_t segDone = 0;
@@ -382,29 +467,45 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ExpandAndAppendIndices(
         outStarted = true;
         Duplicate<int32_t>(tokenIndices, -1, segLen);
         PipeBarrier<PIPE_V>();
+        if (!vecPath && !gatherPath) {
+            // V→S: 标量 SetValue 须等本段 -1 填充(V 写)落地, 否则会被迟到的 V 写覆盖
+            VToSSync();
+        }
 
         uint32_t kLo = segDone / poolSize;
         uint32_t kHi = PkiCommon::Min(kLo + kLen, expandRounds);
-        for (uint32_t k = kLo; k < kHi; k++) {
-            int32_t base = poolIndices.GetValue(k) * static_cast<int32_t>(poolSize);
-            uint32_t off = (k - kLo) * poolSize;
-            if (vecPath) {
-                // 向量展开: Duplicate(广播 base) + Add(加模板), 全 SIMD
-                Duplicate<int32_t>(tokenIndices[off], base, alignedPoolSize);
-                PipeBarrier<PIPE_V>();
-                Add<int32_t>(tokenIndices[off], tokenIndices[off], offsetTpl, alignedPoolSize);
-            } else {
-                // 非 8 倍数 poolSize: 无法用 32B 对齐向量写, 逐 token 标量写
-                for (uint32_t p = 0; p < poolSize; p++) {
-                    tokenIndices.SetValue(off + p, base + static_cast<int32_t>(p));
+        if (gatherPath) {
+            // vgather 向量展开(全 V pipe): tokenIndices[i] = poolIndices[kLo+i/ps]*ps + i%ps;
+            // count 模式下 [validLen,segLen) 不写, kHi<kLo 时 validLen 归零防下溢
+            uint32_t validLen = (kHi > kLo) ? (kHi - kLo) * poolSize : 0;
+            if (validLen > 0) {
+                Gather(tokenIndices, poolIndices, qOffTpl, static_cast<uint32_t>(kLo * sizeof(int32_t)), validLen);
+                PipeBarrier<PIPE_V>(); // Gather 写 → Muls 原地读
+                Muls(tokenIndices, tokenIndices, static_cast<int32_t>(poolSize), validLen);
+                PipeBarrier<PIPE_V>(); // Muls 写 → Add 原地读
+                Add<int32_t>(tokenIndices, tokenIndices, pTpl, validLen);
+            }
+        } else {
+            for (uint32_t k = kLo; k < kHi; k++) {
+                int32_t base = poolIndices.GetValue(k) * static_cast<int32_t>(poolSize);
+                uint32_t off = (k - kLo) * poolSize;
+                if (vecPath) {
+                    // 向量展开: Duplicate(广播 base) + Add(加模板), 全 SIMD
+                    Duplicate<int32_t>(tokenIndices[off], base, alignedPoolSize);
+                    PipeBarrier<PIPE_V>();
+                    Add<int32_t>(tokenIndices[off], tokenIndices[off], offsetTpl, alignedPoolSize);
+                } else {
+                    // 非 8 倍数 poolSize: 无法用 32B 对齐向量写, 逐 token 标量写
+                    for (uint32_t p = 0; p < poolSize; p++) {
+                        tokenIndices.SetValue(off + p, base + static_cast<int32_t>(p));
+                    }
                 }
             }
         }
 
-        // V 写(Duplicate -1 / 向量展开)对 MTE3(DataCopyPad) 可见; 非 vec 路径
-        // 的标量 SetValue 也需 S→MTE3
+        // V 写(Duplicate -1 / 向量展开)对 MTE3(DataCopyPad) 可见; 标量路径另需 S→MTE3
         VToMTE3Sync();
-        if (!vecPath) {
+        if (!vecPath && !gatherPath) {
             SToMTE3Sync();
         }
         DataCopyPad(idxOutGm[idxOutBase + segDone], tokenIndices,
@@ -439,10 +540,8 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::CleanInvalidOutput(int6
 {
     uint32_t idxOutLen = (poolSize_ > 1) ? outputLen_ : constInfo_.sparseCount;
     if (poolSize_ > 1) {
-        // 分段写 -1: expandOutLocal_ 固定 EXPAND_CHUNK(1024) 元素, 分段
-        // Duplicate -1 + DataCopyPad 逐段写 GM, 避免按整行 idxOutLen(大 topk
-        // 可达 8~33KB)铺满 expandOutLocal_ 越界(与 ExpandAndAppendIndices
-        // 分段写同一根因, 缺陷 D/E)
+        // 分段写 -1: 固定 EXPAND_CHUNK 分段 Duplicate -1 + DataCopyPad 写 GM,
+        // 避免按整行 idxOutLen 铺满 expandOutLocal_ 越界
         uint32_t segDone = 0;
         while (segDone < idxOutLen) {
             uint32_t segLen = PkiCommon::Min(EXPAND_CHUNK, idxOutLen - segDone);
@@ -674,20 +773,13 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessVec(const PkiCom
                         outQueue_.FreeTensor(outValueUb);
                     }
                     PipeBarrier<PIPE_V>();
-                    // MTE3→V: 上一行的 DataCopyPad 可能仍在读 expandOutLocal_,
-                    // 本行 ExpandAndAppendIndices 开头的 Duplicate(-1)(V 写)会覆写
-                    // 同一 UB, 必须等上一行 MTE3 读完成后才可写(行尾仅有惰性
-                    // SetWaitFlag<MTE3_V> 登记, 不构成等待; arch35 行循环头有显式
-                    // WaitFlag<MTE3_V>, 本处对齐修复)。SetFlag 由 MTE3 队尾执行,
-                    // WaitFlag 在 V 队列等待, 构成真跨流水同步。
+                    // MTE3→V: 等上一行 DataCopyPad 读完 expandOutLocal_ 再覆写
+                    // (行尾 SetWaitFlag 仅登记不等待, 此处显式等待)
                     event_t evtMte3V = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
                     SetFlag<HardEvent::MTE3_V>(evtMte3V);
                     WaitFlag<HardEvent::MTE3_V>(evtMte3V);
-                    // cuRealAcSeq 对非因果为当前 batch 实际池数(actS2Size), 对因果为
-                    // 逐行可见池数; 均为有效池数上界。不可回退 sparseCount: 当实际池数
-                    // < sparseCount 时, TopK 结果尾部为 -1 无效池标记, 若仍按
-                    // sparseCount 轮展开会把 -1*poolSize 的负索引块([-ps,-1])写入
-                    // 输出且 validExpand==topk 使 -1 清理分支不触发(对齐 arch35 语义)
+                    // cuRealAcSeq 为有效池数上界, 不可回退 sparseCount(实际池数
+                    // 不足时 TopK 尾部 -1 标记会展开成负索引残留)
                     uint32_t validS2Len = static_cast<uint32_t>(cuRealAcSeq);
                     ExpandAndAppendIndices(workLocal_[alignedPoolSize], expandOutLocal_, workLocal_, indiceOutGm,
                                            info.indiceOutOffset + cuS1Idx * outputLen_, constInfo_.sparseCount,
@@ -722,9 +814,8 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessVec(const PkiCom
                     }
                 }
             } else if (needCopyWsGm) {
-                // vec1Res Gm = [aic, s1BaseSize_, 2, 2, topkOut_] float32
-                // vec1Param Gm = [aic, s1BaseSize_, 2, 16] int64
-                //     16 = [needFd, s2AcSeq, s2Start, s2End, isS2End, bn2idx, s1Idx, S1ProcNum, ......]
+                // vec1Res Gm = [aic, s1BaseSize_, 2, 2, topkOut_] float32;
+                // vec1Param Gm = [aic, s1BaseSize_, 2, 16] int64(LD 参数)
 
                 int64_t wsOffset = (blockId_ / 2) * s1BaseSize_ * 2 * 2 * BASE_TOPK + // 2个AIV共同地址偏移
                                    (blockId_ % 2) * (s1BaseSize_ / 2) * 2 * 2 * BASE_TOPK + // 每个AIV的地址偏移，S1方向
@@ -751,14 +842,9 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessVec(const PkiCom
                 // slot 12: values 输出偏移(行宽 sparseCount, 与 slot 8 的 indices
                 // 偏移行宽不同, poolSize>1 时不可复用 slot 8)
                 tmpiBuff.SetValue(12, static_cast<int64_t>(info.valueOutOffset + cuS1Idx * constInfo_.sparseCount));
-                // 写入头尾判断
-                // [head, tail]
-                // head: 与前面规约，与前后规约
-                // tail: 与后面规约
+                // 写入头尾判断: head 与前面块规约, tail 与后面块规约
                 bool isTailReduce = blockS2StartIdx_ == 0; // 一定是isLastTile
-                // WS偏移规则 blockS2StartIdx_ != 0
-                // 跟前面块做规约 写到0偏移 不用做计算 blockS2StartIdx_ == 0 and !isS2End
-                // 跟后面块做规约 写到1偏移  需要 + s1BaseSize_, BASE_TOPK*2
+                // WS偏移规则: 与前面块规约写 0 偏移; 与后面块规约写 1 偏移
                 if (isTailReduce) { // S2不是最后结束的数据就需要往后做规约，放入第二块ws
                     wsInfoOffset += paramNum_;
                     wsOffset += 2 * BASE_TOPK;
@@ -836,10 +922,8 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessLD()
     LocalTensor<float> curValueIdxUb = ldToBeMrgBuf_.Get<float>();
     LocalTensor<float> tmpUb = ldTmpBuf_.Get<float>();
 
-    // S2开头信息
-    // 开始必然没有头规约，因此从尾规约开始处理，while循环读取下一个核的头规约
-    // 存满4个list或者遇到S2结尾，则做merge，直到做完S2
-    // 每个核都忽略自己的头规约，因为必然由前面的核做完
+    // S2开头信息: 从尾规约开始, while 读取后续核头规约, 存满 4 个 list 或
+    // S2 结尾则 merge; 每个核忽略自己的头规约(由前面核完成)
     uint32_t s1LdStartIdx = 0;
     uint32_t s1ProcNum = 0;
     uint64_t paramGmCoreOffset = tmpCubeId * s1BaseSize_ * 2 * paramNum_;
@@ -974,15 +1058,13 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessLD()
             Extract(outValueUb, outIdxUb, curValueIdxUb, (BASE_TOPK / 32));
             if (poolSize_ > 1) {
                 PipeBarrier<PIPE_V>();
-                // MTE3→V: 上一行的 DataCopyPad 可能仍在读 expandOutLocal_,
-                // 本行 ExpandAndAppendIndices 的 Duplicate(-1)(V 写)必须等其
-                // 完成(与 ProcessVec 主输出路径同位修复)
+                // MTE3→V: 等上一行 DataCopyPad 读完 expandOutLocal_ 再覆写
+                // (与 ProcessVec 主输出路径相同)
                 event_t evtMte3V = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
                 SetFlag<HardEvent::MTE3_V>(evtMte3V);
                 WaitFlag<HardEvent::MTE3_V>(evtMte3V);
-                // s2ActSeq(=写入侧 cuRealAcSeq)非因果为 batch 实际池数/因果为逐行
-                // 可见池数, 不可回退 sparseCount(实际池数<sparseCount 时会展开 -1
-                // 无效池标记产生 [-ps,-1] 负索引残留, 见 ProcessVec 同位修复)
+                // s2ActSeq 为有效池数上界, 不可回退 sparseCount
+                // (否则 -1 无效池标记展开成负索引残留)
                 uint32_t validS2Len = static_cast<uint32_t>(s2ActSeq);
                 ExpandAndAppendIndices(outIdxUb.template ReinterpretCast<int32_t>(), expandOutLocal_, workLocal_,
                                        indiceOutGm, outOffset, constInfo_.sparseCount, poolSize_, validS2Len,
@@ -1000,9 +1082,8 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessLD()
             Extract(outValueUb, outIdxUb, curValueIdxUb, (BASE_TOPK / 32));
             PipeBarrier<PIPE_V>();
             if (poolSize_ > 1) {
-                // MTE3→V: 上一行的 DataCopyPad 可能仍在读 expandOutLocal_,
-                // 本行 ExpandAndAppendIndices 的 Duplicate(-1)(V 写)必须等其
-                // 完成(与 ProcessVec 主输出路径同位修复)
+                // MTE3→V: 等上一行 DataCopyPad 读完 expandOutLocal_ 再覆写
+                // (与 ProcessVec 主输出路径相同)
                 event_t evtMte3V = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
                 SetFlag<HardEvent::MTE3_V>(evtMte3V);
                 WaitFlag<HardEvent::MTE3_V>(evtMte3V);

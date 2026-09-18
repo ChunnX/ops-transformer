@@ -16,7 +16,7 @@
 #ifndef KEY_POOL_KERNEL_H
 #define KEY_POOL_KERNEL_H
 
-#include "key_pool_comm.h"
+#include "key_pool_comm_arch35.h"
 #include "key_pool_template_tiling_key.h"
 #include "key_pool_tiling_data.h"
 #include "key_pool_tools.h"
@@ -531,11 +531,6 @@ __aicore__ inline void KeyPoolKernel<COMP>::Process()
         } else {
             ComputeVec1(vec1Info);
         }
-    }
-    if ASCEND_IS_AIV {
-        PipeBarrier<PIPE_ALL>();
-        SyncAll();
-        blockVec_.ComputeIncrementalPool();
     }
     FreeEventID();
 }

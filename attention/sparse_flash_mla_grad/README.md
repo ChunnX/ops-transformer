@@ -17,21 +17,21 @@
 
 - 计算公式：
 
-    阶段一：根据不同cmp_ratio场景，对输入ori_kv与cmp_kv进行选择
+    阶段一：根据cmp_kv与cmp_sparse_indices是否传入选择计算场景，并对输入ori_kv与cmp_kv进行选择。
 
-    * 当cmp_ratio = 1 (SWA)：
+    * SWA（cmp_kv为空）：
 
     $$
     selectedKv\text{ }=\text{ }orikv
     $$
 
-    * 当cmp_ratio = 4 (SCFA)：
+    * SCFA（cmp_kv与cmp_sparse_indices均非空）：
 
     $$
     selectedKv\text{ }=concat(oriKv, \text{ }Gather \left( cmpkv,topkIndices \left[ i \left]  \left)) ,\text{ }0\text{ } < =i < \text{ }selectBlockCount\right. \right. \right. \right.
     $$
 
-    * else (CFA):
+    * CFA（cmp_kv非空且cmp_sparse_indices为空）：
 
     $$
     selectedKv\text{ }=concat(oriKv, \text{ }cmpkv)
@@ -350,5 +350,10 @@
     </a>
     接口方式调用算子
     </td>
+  </tr>
+  <tr>
+    <td class="tg-9wq8">PyTorch API</td>
+    <td class="tg-0pky">-</td>
+    <td class="tg-lboi">通过<a href="../../attention/sparse_flash_mla_grad/docs/torchapi_sparse_flash_mla_grad.md">sparse_flash_mla_grad</a>接口调用sparse_flash_mla_grad算子。</td>
   </tr>
 </tbody></table>

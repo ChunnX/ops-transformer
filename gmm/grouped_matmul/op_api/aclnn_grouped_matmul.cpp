@@ -516,14 +516,14 @@ static aclnnStatus CheckNotNull(const aclTensorList *x, const aclTensorList *wei
 {
     CHECK_COND(x != nullptr, ACLNN_ERR_PARAM_NULLPTR, "X must not be nullptr.");
     CHECK_COND(x->Size() != 0, ACLNN_ERR_PARAM_INVALID, "X must not be empty tensorlist.");
-    CHECK_COND(CheckTensorListNotNull(x, "X") == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID, "X must not be nullptr.");
+    CHECK_COND(CheckTensorListNotNull(x, "X") == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR, "X must not be nullptr.");
     CHECK_COND(weight != nullptr, ACLNN_ERR_PARAM_NULLPTR, "Weight must not be nullptr.");
     CHECK_COND(weight->Size() != 0, ACLNN_ERR_PARAM_INVALID, "Weight must not be empty tensorlist.");
-    CHECK_COND(CheckTensorListNotNull(weight, "Weight") == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
+    CHECK_COND(CheckTensorListNotNull(weight, "Weight") == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR,
                "Weight must not be nullptr.");
     CHECK_COND(y != nullptr, ACLNN_ERR_PARAM_NULLPTR, "Y must not be nullptr.");
     CHECK_COND(y->Size() != 0, ACLNN_ERR_PARAM_INVALID, "Y must not be empty tensorlist.");
-    CHECK_COND(CheckTensorListNotNull(y, "Y") == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID, "Y must not be nullptr.");
+    CHECK_COND(CheckTensorListNotNull(y, "Y") == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR, "Y must not be nullptr.");
     return ACLNN_SUCCESS;
 }
 
@@ -1450,6 +1450,8 @@ const char *GetAclnnGetWorkspaceSizeOpName(gmm::GMMApiVersion apiVersion)
             return "aclnnGroupedMatmulV5GetWorkspaceSize";
         case gmm::GMMApiVersion::WeightNz:
             return "aclnnGroupedMatmulWeightNzGetWorkspaceSize";
+        case gmm::GMMApiVersion::QuantGroupedMatmulInplaceAdd:
+            return "aclnnQuantGroupedMatmulInplaceAddGetWorkspaceSize";
         default:
             return "aclnnGroupedMatmulGetWorkspaceSize";
     }
@@ -2294,15 +2296,14 @@ static aclnnStatus CheckTuningConfig(const gmm::GroupedMatmulParams &gmmParams)
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus CheckTensorListLength(const aclTensorList *tensorList)
+static aclnnStatus CheckTensorListLength(const aclTensorList *tensorList, int64_t maxLength = MAX_GROUP_LIST_SIZE_ARRAY)
 {
     size_t groupSize = 0;
     if (tensorList != nullptr) {
         groupSize = tensorList->Size();
     }
-    CHECK_COND(groupSize <= MAX_GROUP_LIST_SIZE_ARRAY, ACLNN_ERR_PARAM_INVALID,
-               "Length of tensorList should not exceed %ld, but actually got %lu.", MAX_GROUP_LIST_SIZE_ARRAY,
-               groupSize);
+    CHECK_COND(groupSize <= static_cast<size_t>(maxLength), ACLNN_ERR_PARAM_INVALID,
+               "Length of tensorList should not exceed %ld, but actually got %lu.", maxLength, groupSize);
     return ACLNN_SUCCESS;
 }
 
@@ -2310,17 +2311,24 @@ static aclnnStatus CheckGroupSize(const gmm::GroupedMatmulParams &gmmParams)
 {
     // Only groupSizes of necessary inputs will be checked here.
     // The groupSizes of optional inputs and output will be checked in subsequent steps.
+    int64_t maxWeightLength = MAX_GROUP_LIST_SIZE_ARRAY;
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        // only no quant support group size upper 128 on DAV3510
         if ((gmmParams.xDtype == DataType::DT_BF16 || gmmParams.xDtype == DataType::DT_FLOAT16 ||
              gmmParams.xDtype == DataType::DT_FLOAT) &&
             gmmParams.xDtype == (*gmmParams.weight)[0]->GetDataType()) {
             return gmm::AclnnGroupedMatmulNoQuantDAV3510Checker(gmmParams).CheckGroupedMatmulGroupSizeNoQuantDAV3510();
         }
+        // MX WeightNz single-multi-single supports one weight and scale tensor per group.
+        if (IsWeightNzMultiTensorCase(gmmParams) && IsQuant(gmmParams.xDtype, (*gmmParams.weight)[0]->GetDataType()) &&
+            gmmParams.scaleOptional != nullptr && gmmParams.scaleOptional->Size() > 0 &&
+            (*gmmParams.scaleOptional)[0] != nullptr &&
+            (*gmmParams.scaleOptional)[0]->GetDataType() == DataType::DT_FLOAT8_E8M0) {
+            maxWeightLength = MAX_GROUP_LIST_SIZE_TENSOR;
+        }
     }
     CHECK_COND(CheckTensorListLength(gmmParams.x) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
                "Invalid length of tensorList x.");
-    CHECK_COND(CheckTensorListLength(gmmParams.weight) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
+    CHECK_COND(CheckTensorListLength(gmmParams.weight, maxWeightLength) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
                "Invalid length of tensorList weight.");
 
     return ACLNN_SUCCESS;
