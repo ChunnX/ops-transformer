@@ -242,7 +242,7 @@ ge::graphStatus CompressorTiling::SetInnerSplitInfo()
         baseParams_->kBaseNum = 1;
         baseParams_->kBaseSize = baseParams_->hiddenSize;
         if ((dBaseNum * mBaseNum) < baseParams_->usedCoreNum) {
-            baseParams_->kBaseNum = baseParams_->usedCoreNum / dBaseNum;
+            baseParams_->kBaseNum = std::min(kAlignNum, baseParams_->usedCoreNum / dBaseNum);
             baseParams_->kBaseSize = kAlignNum / baseParams_->kBaseNum * 128;
         }
         for (uint32_t i = 0; i < baseParams_->usedCoreNum; i++) {
