@@ -54,8 +54,8 @@ __global__ __aicore__ void engram_fetch(GM_ADDR commContext, GM_ADDR indices, GM
     } else if constexpr (EngramFetchMode == ENGRAM_FETCH_TRAIN_MODE) {
         AscendC::TPipe pipe;
         EngramFetchTrainArch35 op;
-        op.Init(commContext, indices, fetched, permOut, sendCountsOut, recvCountsOut, recvLocalEntryOut, numRecvOut,
-                workspaceGM, localStorageAddr, &pipe, &tilingData);
+        op.Init(commContext, indices, fetched, fetchedSf, permOut, sendCountsOut, recvCountsOut, recvLocalEntryOut,
+                numRecvOut, workspaceGM, localStorageAddr, &pipe, &tilingData);
         op.Process();
     }
 #endif
