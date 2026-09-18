@@ -190,7 +190,6 @@ private:
     LocalTensor<uint32_t> flagOffsetTensor_;
     LocalTensor<int32_t> tokenRankScratchTensor_;
     LocalTensor<int32_t> expertRankTableTensor_;
-    LocalTensor<uint64_t> windowAddrTensor_;
 
     TBuf<> smoothScalesBuf_;
     TBuf<> expertIdsBuf_;
@@ -206,7 +205,6 @@ private:
     TBuf<> flagOffsetBuf_;
     TBuf<> tokenRankScratchBuf_;
     TBuf<> expertRankTableBuf_;
-    TBuf<> windowAddrBuf_;
     TBuf<> rankBucketBuf_;
     LocalTensor<uint8_t> hcommBatchWqeTensor_;
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> xQueue_;
@@ -323,29 +321,21 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::I
     tpipe_->InitBuffer(statusBuf_, UB_ALIGN);
     statusTensor_ = statusBuf_.Get<int32_t>();
 
-    // Phase-1 per-token lookups (expert rank table rows, per-rank window base addresses) are
-    // cached in UB once via bulk MTE2 copies: ReadTokenMetaData otherwise pays 4 uncached
-    // scalar GM reads per token. The rank table cache holds only the current layer's slice;
-    // oversized tables fall back to direct GM reads so the extra UB footprint stays bounded.
+    // Phase-1 per-token lookups (expert rank table rows) are cached in UB once via a bulk MTE2
+    // copy: ReadTokenMetaData otherwise pays uncached scalar GM reads per token. The rank table
+    // cache holds only the current layer's slice; oversized tables fall back to direct GM reads
+    // so the extra UB footprint stays bounded.
     uint32_t expertRankTableBytes = static_cast<uint32_t>(expertRankTableCnt * sizeof(int32_t));
     rankTableCached_ = expertRankTableBytes <= RANK_TABLE_CACHE_MAX_BYTES;
     if (rankTableCached_) {
         tpipe_->InitBuffer(expertRankTableBuf_, Ceil(expertRankTableBytes, UB_ALIGN) * UB_ALIGN);
         expertRankTableTensor_ = expertRankTableBuf_.Get<int32_t>();
     }
-    tpipe_->InitBuffer(windowAddrBuf_,
-                       Ceil(static_cast<uint32_t>(worldSize_ * sizeof(uint64_t)), UB_ALIGN) * UB_ALIGN);
-    windowAddrTensor_ = windowAddrBuf_.Get<uint64_t>();
     // Two int32 arrays of worldSize entries for the phase-2 rank bucket sort: bucket start
     // offsets and scatter cursors.
     tpipe_->InitBuffer(rankBucketBuf_,
                        Ceil(static_cast<uint32_t>(worldSize_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN * 2U);
 
-    GlobalTensor<uint64_t> windowAddrGMTensor;
-    windowAddrGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(&mc2Context_->epHcclBuffer_[0]));
-    DataCopyExtParams windowAddrCopyParams = {1U, static_cast<uint32_t>(worldSize_ * sizeof(uint64_t)), 0U, 0U, 0U};
-    DataCopyPadExtParams<uint64_t> windowAddrCopyPadParams{false, 0U, 0U, 0U};
-    DataCopyPad(windowAddrTensor_, windowAddrGMTensor, windowAddrCopyParams, windowAddrCopyPadParams);
     if (rankTableCached_) {
         DataCopyExtParams rankTableCopyParams = {1U, expertRankTableBytes, 0U, 0U, 0U};
         DataCopyPadExtParams<int32_t> rankTableCopyPadParams{false, 0U, 0U, 0U};
@@ -674,8 +664,7 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::H
 template <TemplateAttentionToFfnUrmaTypeClass>
 __aicore__ inline GM_ADDR AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::GetWindowAddr(int32_t rankId)
 {
-    // Served from the UB cache filled in Init; phase 1 hits this once per token.
-    return (GM_ADDR)windowAddrTensor_.GetValue(static_cast<uint32_t>(rankId));
+    return (GM_ADDR)mc2Context_->epHcclBuffer_[rankId];
 }
 
 template <TemplateAttentionToFfnUrmaTypeClass>
@@ -965,12 +954,11 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::S
             PipeBarrier<PIPE_MTE3>();
         } else {
             uint64_t channel = GetUrmaCommHandle(ffnIdx);
-            HcommBatchHandle batchHandle =
-                hcomm_.MakeBatchHandle(channel, hcommBatchWqeTensor_, ATTN_FFN_HCOMM_BATCH_UB_BYTES,
-                                       GetWindowAddr(static_cast<int32_t>(ffnIdx)));
-            hcomm_.WriteNbi<REMOTE_ORDERED_FLAG_WQE_CONFIG>(batchHandle, tableFlagGM, layerFlagAddr_,
-                            static_cast<int64_t>(sizeof(int32_t) * TOKEN_INFO_TABLE_COPY_BLOCK_CNT));
-            hcomm_.BatchCommit(batchHandle);
+            int32_t ret = hcomm_.WriteNbi(channel, tableFlagGM, layerFlagAddr_,
+                                          static_cast<int64_t>(sizeof(int32_t) * TOKEN_INFO_TABLE_COPY_BLOCK_CNT));
+            ascendc_assert(ret == 0, "WriteNbi layer flag failed, ret=%d, rankId=%u, ffnIdx=%u", ret, rankId_, ffnIdx);
+            ret = hcomm_.Drain(channel);
+            ascendc_assert(ret == 0, "Drain layer flag failed, ret=%d, rankId=%u, ffnIdx=%u", ret, rankId_, ffnIdx);
         }
     }
 }
