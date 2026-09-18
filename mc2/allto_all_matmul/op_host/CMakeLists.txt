@@ -38,7 +38,8 @@ if (BUILD_OPEN_PROJECT)  # custom
         # ascend960dt: HiF4 全量化路径 + MX 量化路径
         add_ops_compile_options(
             OP_NAME AlltoAllMatmul
-            OPTIONS -mllvm
+            OPTIONS --cce-auto-sync=off
+                    -mllvm
                     -cce-aicore-dcci-before-kernel-end=false
                     -DENABLE_CV_COMM_VIA_SSBUF=true
         )
