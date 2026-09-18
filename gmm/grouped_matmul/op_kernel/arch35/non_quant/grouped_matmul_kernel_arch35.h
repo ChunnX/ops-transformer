@@ -38,6 +38,7 @@ __aicore__ inline void GroupedMatMulKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bi
     using BType = DTYPE_X;
     using CType = DTYPE_Y;
     using BiasType = DTYPE_BIAS;
+    using EpilogueInputType = AscendC::Std::conditional_t<EnableGelu, float, CType>;
     using LayoutC = asc::te::nd_ext_layout_ptn;
     using LayoutBias = asc::te::nd_ext_layout_ptn;
     using ProblemShape = asc::te::shape<int64_t, int64_t, int64_t, int64_t>;
@@ -51,7 +52,8 @@ __aicore__ inline void GroupedMatMulKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bi
     using BlockMmad = Blaze::Gemm::Block::BlockMmad<DispatchPolicy, AType, LayoutA, BType, LayoutB, CType, LayoutC,
                                                     BiasType, LayoutBias>;
     using BlockEpilogue = AscendC::Std::conditional_t<EnableGelu,
-                                                      Blaze::Epilogue::Block::BlockEpilogueGeluFixpipe<CType>,
+                                                      Blaze::Epilogue::Block::BlockEpilogueGeluFixpipe<
+                                                          CType, EpilogueInputType>,
                                                       Blaze::Epilogue::Block::BlockEpilogueEmpty>;
     using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerGmmNoQuant;
     using GroupedMatmulKernel =
