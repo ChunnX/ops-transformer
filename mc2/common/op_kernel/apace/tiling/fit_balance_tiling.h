@@ -276,7 +276,7 @@ constexpr uint64_t FP4_PACK_RATIO = 2;
 // 双环/基表两段式查表——其结果恒被 950 查表覆盖)经 grep 证实 5 个消费
 // 算子零调用后剥离; 老芯片的真实需求由原位保留的 B 家族(mc2/common/op_host/
 // op_tiling)满足。活跃 API 面(键控分支/P2 算子实测): CommTime/InverseCommTime/
-// SetCommShapeLen/SetCommDTypeSize/GetCommDTypeSize/SetCommDtypeSizeExpansionFraction/
+// SetCommShapeLen/SetCommDTypeSize/SetCommDtypeSizeExpansionFraction/
 // commTimeFactor_/GetCommRankShares(InitCtx 内部)。
 
 constexpr double ALLREDUCE_TIME_FACTOR = 2.0; // allreduce time is 2.0x allgather or reducescatter
@@ -316,13 +316,12 @@ public:
         commTypeInfo_.commPrimitive = inputKernelType;                                       // 区分哪个MC2算子
         commTypeInfo_.rankDim = std::max(static_cast<uint64_t>(inputRankDim), MIN_RANK_DIM); // 并行维度最小为2
         commTypeInfo_.commDtypeSizeExpansionFraction = 1;
-        InitParametersForFullMesh();
         commTypeInfo_.maxStepSize = 1;
-        InitCommParameters();
         commTypeInfo_.topoType = topoType;
-        GetCommParameters();
+        InitPrimitiveParams();
     };
 
+    // ---- 通信口径设置(InitCtx 键控胶水调用; fp4 子字节= dtypeSize 1 + fraction 2) ----
     void SetCommShapeLen(uint64_t len)
     {
         commTypeInfo_.commMatrixLen = len;
@@ -331,74 +330,52 @@ public:
     {
         commTypeInfo_.commDtypeSize = dTypeSize;
     }
-    inline void SetCommDtypeSizeExpansionFraction(uint64_t number)
+    void SetCommDtypeSizeExpansionFraction(uint64_t number)
     {
         commTypeInfo_.commDtypeSizeExpansionFraction = number;
     }
-    double GetRealDtypeSizes() const
+    double GetRealDtypeSizes() const // 有效每元素字节数 = dtypeSize / fraction
     {
         return static_cast<double>(commTypeInfo_.commDtypeSize) / commTypeInfo_.commDtypeSizeExpansionFraction;
-    }
-    uint64_t GetCommDTypeSize()
-    {
-        return commTypeInfo_.commDtypeSize;
     }
     uint64_t rankDim() const
     {
         return commTypeInfo_.rankDim;
     }
-    void ChangeCommTimeFactorByDivision(double factor)
+
+private:
+    bool commPrimitiveIs(CommPrimitive k) const
     {
-        if (factor > 0) {
-            commTimeFactor_ /= factor;
-        }
+        return commTypeInfo_.commPrimitive == k;
     }
-    void SetFullMeshCommTimeFactor()
-    {
-        // 通信查表使用总数据量，实际时间 = 总数据量 / rankDim / 带宽; 拟合采用 8 die 通信
-        commTimeFactor_ = ALLREDUCE_TIME_FACTOR;
-        ChangeCommTimeFactorByDivision(static_cast<double>(CALIBRATED_RANK_DIM) /
-                                       static_cast<double>(commTypeInfo_.rankDim));
-    }
-    void InitParametersForFullMesh()
+
+public:
+    // ---- 构造期按通信原语初始化两个建模口径 + 标定查表 ----
+    // lookUpTileNum_: 通信数据量份数放大(AG/RS=rankDim 通信聚合/分发全量, 其余=1);
+    // commTimeFactor_: 8-die 标定值 → 实际卡数的时间折算(plain RS=2×rankDim/8, AG/RS-via-A2A
+    //   与 AR/A2A 覆盖为 1)。
+    // 通信流水线流转的 rank 数据份数 GetCommRankShares(每卡视角): AG=rankDim-1(本卡份已在手
+    //   不经通信)、RS/A2A=rankDim(全部份经通信流转)、AR=1(two-shot 每轮一份)——进 cubeUtil
+    //   利用率模型的工作集 M 跨度, 与 mm 总行数倍数 MmRankMul 是两个口径。
+    // 标定查表按 rankDim 匹配(首个命中行; soc/commPrimitive 为算子实例常量, 已在构造参数区分)。
+    //   §4.29 分派后 miss 由 op 层走 COF——未命中置零值行(CommTime 恒 0 → NoCut), 防御而非回退。
+    void InitPrimitiveParams()
     {
         commTypeInfo_.commMethod = CommMeshType::FULL_MESH;
-        if ((commTypeInfo_.commPrimitive == CommPrimitive::ALL_GATHER) ||
-            (commTypeInfo_.commPrimitive == CommPrimitive::REDUCE_SCATTER)) {
-            SetFullMeshCommTimeFactor();
+        const bool isGatherOrPlainScatter =
+            (commPrimitiveIs(CommPrimitive::ALL_GATHER) || commPrimitiveIs(CommPrimitive::REDUCE_SCATTER));
+        if (isGatherOrPlainScatter) {
+            // 通信查表使用总数据量，实际时间 = 总数据量 / rankDim / 带宽; 拟合采用 8 die 通信
+            commTimeFactor_ = ALLREDUCE_TIME_FACTOR * static_cast<double>(commTypeInfo_.rankDim) /
+                              static_cast<double>(CALIBRATED_RANK_DIM);
             lookUpTileNum_ = commTypeInfo_.rankDim;
         }
-    }
-    // 通信流水线流转的 rank 数据份数(每卡视角): AG=rankDim-1(本卡份已在手不经通信)、
-    // RS/A2A=rankDim(全部份经通信流转)、AR=1(two-shot 每轮一份)。进 cubeUtil 利用率
-    // 模型的工作集 M 跨度(FindCubeUtil), 与 mm 总行数倍数 MmRankMul 是两个口径。
-    uint64_t GetFullMeshRankShares()
-    {
-        if (commTypeInfo_.commPrimitive == CommPrimitive::ALL_GATHER) {
-            return commTypeInfo_.rankDim - 1;
-        }
-        return commTypeInfo_.rankDim;
-    }
-    uint64_t GetCommRankShares()
-    {
-        if (commTypeInfo_.commPrimitive != CommPrimitive::ALL_REDUCE) {
-            return GetFullMeshRankShares();
-        }
-        return 1;
-    }
-    void InitCommParameters()
-    {
-        if ((commTypeInfo_.commPrimitive == CommPrimitive::ALL_GATHER) ||
-            (commTypeInfo_.commPrimitive == CommPrimitive::REDUCE_SCATTER_VIA_ALL_TO_ALL)) {
+        if (commPrimitiveIs(CommPrimitive::ALL_GATHER) ||
+            commPrimitiveIs(CommPrimitive::REDUCE_SCATTER_VIA_ALL_TO_ALL)) {
+            // AG / RS-via-A2A 的聚合/分发量即拟合口径, 无 8-die 折算
             lookUpTileNum_ = commTypeInfo_.rankDim;
             commTimeFactor_ = 1;
         }
-    }
-    // 按 rankDim 匹配标定行(soc/commPrimitive 对算子实例为常量, 已在构造参数中区分)。
-    // §4.29 全家族分派后 miss 由 op 层走 COF, 引擎不再有回退模型——未命中置零值行
-    // (CommTime 恒 0 → NoCut), 防御性行为而非可用的回退路径。
-    void GetCommParameters()
-    {
         commEstimatePar_ = {};
         for (size_t i = 0; i < fitTable_.rowCount; ++i) {
             if (fitTable_.rows[i].rankDim == commTypeInfo_.rankDim) {
@@ -406,6 +383,13 @@ public:
                 break;
             }
         }
+    }
+    uint64_t GetCommRankShares()
+    {
+        if (commPrimitiveIs(CommPrimitive::ALL_REDUCE)) {
+            return 1;
+        }
+        return commPrimitiveIs(CommPrimitive::ALL_GATHER) ? (commTypeInfo_.rankDim - 1) : commTypeInfo_.rankDim;
     }
 
     // 性能拟合函数: 纯线性 y = slope·x + offset (x=通信数据量 MB), 再除时间折算因子
@@ -508,9 +492,8 @@ public:
         mmShapeInfo_.baseK = DEFAULT_BASE_K;
         mmShapeInfo_.batchSize = 1UL; // 初始值
         isFp4_ = (args.geAType == ge::DataType::DT_FLOAT4_E2M1);
-        SetCalcType(args);
+        SetCalcTypeAndMachineParams(args);
         mmShapeInfo_.cyclePerMicroSec = MatmulPerfConst::CYCLE_PER_MICRO_SEC;
-        GetMachineParameters();
         mmShapeInfo_.baseM = perfTable_.bestBaseBlock.baseM;
         mmShapeInfo_.baseN = perfTable_.bestBaseBlock.baseN;
         mmShapeInfo_.baseK = perfTable_.bestBaseBlock.baseK;
@@ -519,7 +502,11 @@ public:
     // 950 量化语义: fp4/fp8/HIF8 或 A8W8 量化, 其余按 FP16 建模
     // fp4 经 geAType 识别(matmul_tiling::DataType 无 fp4 枚举, aType 对 fp4 为 DT_MAX)
     // （旧实现的 310P A16W8 与 910_B INT8 排除分支随旧芯片逻辑剥离）
-    void SetCalcType(const FitBalanceTilingArgs &args)
+    // ---- 构造期 dtype 分类 + 算力查表 ----
+    // 950 量化语义: fp4/fp8/HIF8 或 A8W8 量化, 其余按 FP16 建模; fp4 经 geAType 识别
+    // (matmul_tiling::DataType 无 fp4 枚举, aType 对 fp4 为 DT_MAX——§4.17 修复)。
+    // 算力按 (calcType, isFp4, A/B/C 字节数) 五元组匹配标定行, 未命中回退默认 4096 MACs/cycle。
+    void SetCalcTypeAndMachineParams(const FitBalanceTilingArgs &args)
     {
         if ((args.aType == matmul_tiling::DataType::DT_HIFLOAT8) ||
             (args.aType == matmul_tiling::DataType::DT_FLOAT8_E4M3FN) ||
@@ -527,32 +514,30 @@ public:
             (args.aType == matmul_tiling::DataType::DT_INT8) || (args.geAType == ge::DataType::DT_FLOAT4_E2M1)) {
             calcType_ = MatmulDtypeKind::QUANT;
         }
-    }
-
-    // 按 (calcType, A/B/C 字节数) 匹配标定行(soc 对算子实例为常量)
-    template <typename RowT>
-    bool MatchesDtype(const RowT &row) const
-    {
-        return (row.calcType == calcType_) && (row.isFp4 == isFp4_) &&
-               (row.aBytes == mmShapeInfo_.inMatrixADtypeSize) && (row.bBytes == mmShapeInfo_.inMatrixBDtypeSize) &&
-               (row.cBytes == mmShapeInfo_.outMatrixCDtypeSize);
-    }
-    void GetMachineParameters()
-    {
+        auto matchesDtype = [this](const auto &row) {
+            return (row.calcType == calcType_) && (row.isFp4 == isFp4_) &&
+                   (row.aBytes == mmShapeInfo_.inMatrixADtypeSize) && (row.bBytes == mmShapeInfo_.inMatrixBDtypeSize) &&
+                   (row.cBytes == mmShapeInfo_.outMatrixCDtypeSize);
+        };
         mmShapeInfo_.computesPerCycle = perfTable_.defaultComputesPerCycle;
         for (size_t i = 0; i < perfTable_.cubeCalcCount; ++i) {
-            if (MatchesDtype(perfTable_.cubeCalcRows[i])) {
+            if (matchesDtype(perfTable_.cubeCalcRows[i])) {
                 mmShapeInfo_.computesPerCycle = perfTable_.cubeCalcRows[i].computesPerCycle;
-                return;
+                break;
             }
         }
     }
     // L2 档位利用率 + 950 调和平均公式(950 专用模型, 调和分支无条件执行)
     double FindCubeUtilByL2Usage(uint64_t mSize, uint64_t commRankShares, uint64_t *maxTileLen = nullptr)
     {
+        const auto matchesDtype = [this](const auto &row) {
+            return (row.calcType == calcType_) && (row.isFp4 == isFp4_) &&
+                   (row.aBytes == mmShapeInfo_.inMatrixADtypeSize) && (row.bBytes == mmShapeInfo_.inMatrixBDtypeSize) &&
+                   (row.cBytes == mmShapeInfo_.outMatrixCDtypeSize);
+        };
         L2UtilTiers l2EstimatePar = perfTable_.defaultL2Params;
         for (size_t i = 0; i < perfTable_.l2Count; ++i) {
-            if (MatchesDtype(perfTable_.l2Rows[i])) {
+            if (matchesDtype(perfTable_.l2Rows[i])) {
                 l2EstimatePar = perfTable_.l2Rows[i].params;
                 break;
             }
