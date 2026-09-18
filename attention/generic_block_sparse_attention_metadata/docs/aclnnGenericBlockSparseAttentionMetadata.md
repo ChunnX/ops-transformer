@@ -307,7 +307,7 @@ aclnnStatus aclnnGenericBlockSparseAttentionMetadata(
           <li>0：online softmax和rescale全部采取fp32，适合追求计算精度的场景。</li>
           <li>1：混合精度；online softmax采取fp16/bf16（与attentionOut相同），rescale采取fp32，online softmax阶段可能数值溢出。</li>
         </ul>
-        芯片约束：Ascend 950仅支持1；Atlas A2/A3上FLOAT16可配置0或1，BFLOAT16仅支持0；FP8路径仅支持1。
+        芯片约束：Ascend 950非量化FLOAT16/BFLOAT16场景支持0或1，FP8路径仅支持1；Atlas A2/A3上FLOAT16可配置0或1，BFLOAT16仅支持0。
       </td>
       <td>INT64</td>
       <td>-</td>

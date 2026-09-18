@@ -401,7 +401,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
           <li>0：online softmax和rescale全部采取fp32，适合追求计算精度的场景。</li>
           <li>1：混合精度；online softmax采取fp16/bf16（与attentionOut相同），rescale采取fp32，online softmax阶段可能数值溢出。</li>
         </ul>
-        芯片约束：Ascend 950仅支持1；Atlas A2/A3上FLOAT16可配置0或1，BFLOAT16仅支持0；FP8路径仅支持1。
+        芯片约束：Ascend 950非量化FLOAT16/BFLOAT16场景支持0或1，FP8路径仅支持1；Atlas A2/A3上FLOAT16可配置0或1，BFLOAT16仅支持0。
       </td>
       <td>INT64</td>
       <td>-</td>
@@ -962,7 +962,7 @@ PA_BBND必须传入非空blockTable。A5 TND非PA的K/V为[totalKTokens,numKeyVa
 
 - A5 TND非PA：Q/KV分别必传INT64 [B+1]存储前缀，首项为0、单调不减、末项等于各自T；seqused为可选INT32 [B]，值在[0,对应存储段长度]内。Q/KV前缀数组必须描述相同batch数。
 - TND非PA的ACLNN入口会将Q/K/V归一化为连续张量；直接进入Tiling的非连续Dense描述不支持。稀疏KV块号是batch内逻辑块号，不是物理页号。
-- 本阶段D=128、blockShape=[1,128]、isPackedGQA=1、maskType=1、A5 softmaxPrecision=1。有效KvLen<Qlen时沿用当前空输出语义；空结果O=0，LSE使用-FLT_MAX。
+- 本阶段D=128、blockShape=[1,128]、isPackedGQA=1、maskType=1；A5非量化FP16/BF16的paged PA_BBND与non-paged TND均支持softmaxPrecision=0/1。有效KvLen<Qlen时沿用当前空输出语义；空结果O=0，LSE使用-FLT_MAX。
 
 - 确定性计算：aclnnGenericBlockSparseAttention默认确定性实现。
 - 调用前须先执行aclnnGenericBlockSparseAttentionMetadata生成metadataOptional，再调用本接口；metadata须与当前输入/属性配套，每次调用须重新生成。

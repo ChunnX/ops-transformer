@@ -31,7 +31,7 @@ BSA host 当前要求 Q/KV layout 相同，且 regular kernel 的 KV shape 构�
 
 建议第一阶段交付 FP16/BF16 的 TND 非 PA，覆盖 LSE、seqused 和 FD；第二阶段让独立的 FP8 full-quant kernel 接入相同访问策略，再开放非 PA quantType=5。BSND/BNSD 是明确的扩展设计，本阶段不宣称已支持。若本次交付要求覆盖 A5 全部现有 dtype，则第一、二阶段合并验收。
 
-第一阶段继承现有限制：`D=128`、`blockShape=[1,128]`、`isPackedGQA=1`、`maskType=1`、A5 `softmaxPrecision=1`、`Nq % Nkv=0`、`groupSize<=128`、`topK<=256`。非 PA 仍是块稀疏注意力，稀疏块大小与存储是否分页无关。
+第一阶段继承现有限制：`D=128`、`blockShape=[1,128]`、`isPackedGQA=1`、`maskType=1`、A5非量化FP16/BF16支持`softmaxPrecision=0/1`、`Nq % Nkv=0`、`groupSize<=128`、`topK<=256`。非 PA 仍是块稀疏注意力，稀疏块大小与存储是否分页无关。
 
 代码中的耦合点：
 

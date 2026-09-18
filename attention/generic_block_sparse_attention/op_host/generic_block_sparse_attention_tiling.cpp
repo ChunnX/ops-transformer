@@ -298,8 +298,7 @@ ge::graphStatus GBSATiling::GetInputLayout(gert::TilingContext *context)
     // Determine paging before parsing shapes, strides or sequence-input requirements.
     isPaged_ = context->GetOptionalInputShape(BLOCK_TABLE_INDEX) != nullptr;
     if ((isPaged_ && layoutKv_ != "PA_BBND") || (!isPaged_ && layoutKv_ != "TND")) {
-        OP_LOGE(context->GetNodeName(),
-                "KV layout must be PA_BBND with blockTable, or TND without blockTable.");
+        OP_LOGE(context->GetNodeName(), "KV layout must be PA_BBND with blockTable, or TND without blockTable.");
         return ge::GRAPH_FAILED;
     }
     if (!isPaged_ && socVer_ != SOC_VER_950_CODE) {
@@ -454,8 +453,8 @@ ge::graphStatus GBSATiling::ParseQueryKeyShapes(gert::TilingContext *context)
         OP_LOGE(context->GetNodeName(), "Invalid Q/K/V ranks for the selected layouts.");
         return ge::GRAPH_FAILED;
     }
-    if (q.GetDim(0) < 0 || q.GetDim(0) > std::numeric_limits<int32_t>::max() ||
-        q.GetDim(1) <= 0 || q.GetDim(1) > std::numeric_limits<int32_t>::max() || q.GetDim(2) != 128) {
+    if (q.GetDim(0) < 0 || q.GetDim(0) > std::numeric_limits<int32_t>::max() || q.GetDim(1) <= 0 ||
+        q.GetDim(1) > std::numeric_limits<int32_t>::max() || q.GetDim(2) != 128) {
         OP_LOGE(context->GetNodeName(), "TND Q requires nonnegative T within INT32, positive heads and D=128.");
         return ge::GRAPH_FAILED;
     }
@@ -531,8 +530,7 @@ ge::graphStatus GBSATiling::ParseSparseTensors(gert::TilingContext *context)
                 groupSize_, numHeads_, kvHeads_, GBSA_MAX_GROUP_SIZE);
         return ge::GRAPH_FAILED;
     }
-    if (sparseIdxShape->GetStorageShape().GetDim(SPARSE_IDX_DIM_Q_BLOCK) !=
-            static_cast<int64_t>(totalQTokens_) ||
+    if (sparseIdxShape->GetStorageShape().GetDim(SPARSE_IDX_DIM_Q_BLOCK) != static_cast<int64_t>(totalQTokens_) ||
         sparseIdxShape->GetStorageShape().GetDim(SPARSE_IDX_DIM_KV_BLOCK) <= 0) {
         OP_LOGE(context->GetNodeName(), "For blockShapeX=1, totalQBlocks must equal Tq and topK must be positive.");
         return ge::GRAPH_FAILED;
@@ -573,8 +571,7 @@ ge::graphStatus GBSATiling::ParseSparseTensors(gert::TilingContext *context)
 ge::graphStatus GBSATiling::ParseBlockTable(gert::TilingContext *context)
 {
     const auto *cuQ = context->GetOptionalInputShape(CU_SEQ_LENGTHS_Q_INDEX);
-    if (cuQ == nullptr || cuQ->GetStorageShape().GetDimNum() != 1U ||
-        cuQ->GetStorageShape().GetDim(0) < 1 ||
+    if (cuQ == nullptr || cuQ->GetStorageShape().GetDimNum() != 1U || cuQ->GetStorageShape().GetDim(0) < 1 ||
         cuQ->GetStorageShape().GetDim(0) - 1 > std::numeric_limits<int32_t>::max()) {
         OP_LOGE(context->GetNodeName(), "TND Q requires cuSeqLengthsQ[B+1].");
         return ge::GRAPH_FAILED;
@@ -586,8 +583,7 @@ ge::graphStatus GBSATiling::ParseBlockTable(gert::TilingContext *context)
         return ge::GRAPH_SUCCESS;
     }
     if (blockTableShape == nullptr || blockTableShape->GetStorageShape().GetDimNum() != 2U ||
-        blockTableShape->GetStorageShape().GetDim(0) != batch_ ||
-        blockTableShape->GetStorageShape().GetDim(1) <= 0 ||
+        blockTableShape->GetStorageShape().GetDim(0) != batch_ || blockTableShape->GetStorageShape().GetDim(1) <= 0 ||
         blockTableShape->GetStorageShape().GetDim(1) > std::numeric_limits<int32_t>::max()) {
         OP_LOGE(context->GetNodeName(), "PA_BBND requires blockTable[B,maxBlocksPerBatch].");
         return ge::GRAPH_FAILED;
@@ -766,8 +762,7 @@ ge::graphStatus GBSATiling::CheckCuSeqLengths(gert::TilingContext *context)
     const int indices[] = {CU_SEQ_LENGTHS_Q_INDEX, CU_SEQ_LENGTHS_KV_INDEX, SEQUSED_Q_INDEX, SEQUSED_KV_INDEX};
     for (const int index : indices) {
         const bool isCu = index == CU_SEQ_LENGTHS_Q_INDEX || index == CU_SEQ_LENGTHS_KV_INDEX;
-        const bool required = index == CU_SEQ_LENGTHS_Q_INDEX ||
-                              (index == CU_SEQ_LENGTHS_KV_INDEX && !isPaged) ||
+        const bool required = index == CU_SEQ_LENGTHS_Q_INDEX || (index == CU_SEQ_LENGTHS_KV_INDEX && !isPaged) ||
                               (index == SEQUSED_KV_INDEX && isPaged);
         const auto *shape = context->GetOptionalInputShape(index);
         if (shape == nullptr) {
@@ -794,9 +789,14 @@ ge::graphStatus GBSATiling::CheckCuSeqLengths(gert::TilingContext *context)
 
 ge::graphStatus GBSATiling::CheckSoftmaxPrecision(gert::TilingContext *context)
 {
+    if (softmaxPrecision_ != 0 && softmaxPrecision_ != 1) {
+        OP_LOGE(context->GetNodeName(), "Unsupported softmaxPrecision=%u, only 0 or 1 is supported.",
+                softmaxPrecision_);
+        return ge::GRAPH_FAILED;
+    }
     if (socVer_ == SOC_VER_950_CODE) {
-        if (softmaxPrecision_ != 1) {
-            OP_LOGE(context->GetNodeName(), "On chip 950, only softmaxPrecision=1 is supported, but got %u.",
+        if (quantType_ == GBSA_QUANT_TYPE_FULL && softmaxPrecision_ != 1) {
+            OP_LOGE(context->GetNodeName(), "On chip 950, FP8 full-quant only supports softmaxPrecision=1, but got %u.",
                     softmaxPrecision_);
             return ge::GRAPH_FAILED;
         }
@@ -813,8 +813,7 @@ ge::graphStatus GBSATiling::CheckSoftmaxPrecision(gert::TilingContext *context)
 ge::graphStatus GBSATiling::CheckQuantConfig(gert::TilingContext *context)
 {
     // Full-quant contract: quantType=5 iff Q/K/V dtype is FLOAT8_E4M3FN; FP8 only on 950.
-    if (!isPaged_ && (quantType_ != 0 ||
-        (dataType_ != ge::DT_FLOAT16 && dataType_ != ge::DT_BF16))) {
+    if (!isPaged_ && (quantType_ != 0 || (dataType_ != ge::DT_FLOAT16 && dataType_ != ge::DT_BF16))) {
         OP_LOGE(context->GetNodeName(), "TND non-paged KV currently supports FP16/BF16 quantType=0 only.");
         return ge::GRAPH_FAILED;
     }
@@ -845,7 +844,7 @@ uint64_t GBSATiling::GenerateTilingKey()
      * BSA-style decimal bitfields (must match op_kernel tilingkey.h):
      * - [0-1]   Q Layout           2=TND
      * - [2-4]   Mask Type          maskType_ * 1000 (current path: 1)
-     * - [5-7]   Softmax Precision  0=Float, 1=Half (*100000); arch35 keys keep 0
+     * - [5-7]   Softmax Precision  0=Float, 1=Half/BF16 (*100000)
      * - [8-10]  PagedCache         0=Dense, 1=WithCache (*1000000)
      * - [11-13] KV Layout          30=TND, 70=PA_BBND (*1000000)
      * - dtype                    FP16=+0, BF16=+22220, FP8 out FP16=+10 / BF16=+20
@@ -874,8 +873,8 @@ uint64_t GBSATiling::GenerateTilingKey()
         tilingKey += 1000000ULL;
     }
 
-    // Softmax precision: only discriminates kernels on arch22
-    if (!isArch35 && softmaxPrecision_ == 1) {
+    // Softmax precision: 0=FP32 softmax, 1=FP16/BF16 softmax.
+    if (softmaxPrecision_ == 1) {
         tilingKey += 100000ULL;
     }
 

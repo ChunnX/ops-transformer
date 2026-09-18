@@ -532,7 +532,8 @@ cann_ops_transformer.generic_block_sparse_attention(
                 <td>
                     <ul>
                         <li>data_type支持INT</li>
-                        <li>Ascend 950当前仅支持1</li>
+                        <li>Ascend 950非量化FLOAT16/BFLOAT16场景支持0（高精度）和1（混合精度）</li>
+                        <li>Ascend 950 FP8量化场景仅支持1</li>
                     </ul>
                 </td>
                 <td>可选属性，默认值为1</td>

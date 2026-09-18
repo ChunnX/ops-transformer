@@ -24,6 +24,7 @@ template <class BlockMmadQK, class EpilogueOnlineSoftmax, class BlockMmadPV, cla
 class GbsaRegularKernelArch35 {
     static_assert(qFormat == Format::TND, "Only TND Q is enabled currently");
     static_assert(!isPaged || kvFormat == Format::BSND, "Only PA_BBND is enabled currently");
+
 public:
     using ArchTag = typename BlockMmadPV::ArchTag;
 
@@ -56,8 +57,7 @@ public:
     __aicore__ inline void operator()(GbsaKernelParamsArch35 const &params)
     {
         if (params.tiling == nullptr || params.metaData == nullptr || params.cuSeqLengths == nullptr ||
-            ((params.blockTable != nullptr) != isPaged) ||
-            (isPaged && params.sequsedKv == nullptr) ||
+            ((params.blockTable != nullptr) != isPaged) || (isPaged && params.sequsedKv == nullptr) ||
             (!isPaged && params.cuSeqLengthsKv == nullptr)) {
             return;
         }
@@ -65,6 +65,7 @@ public:
             reinterpret_cast<__gm__ GenericBlockSparseAttn::GenericBlockSparseAttentionTilingData *>(params.tiling);
         FetchBaseShapeInfo(tilingData, params.metaData);
         CalcOnChipBufTileInfo(tilingData);
+        CalcUBufTileInfo();
         __gm__ const GbsaMetadata::Metadata *meta =
             reinterpret_cast<__gm__ const GbsaMetadata::Metadata *>(params.metaData);
         uint32_t coreIdx = AscendC::GetBlockIdx();
@@ -109,8 +110,8 @@ public:
         // Validate storage prefixes on every core before entering cross-core synchronization.
         // Metadata owns task scheduling; it cannot check the actual Q/K/V tensor capacities.
         uint64_t actualQTokens = 0;
-        if (!ValidateSeqLengths<qFormat>(gCuSeqLengths, gSequsedQ, hasSequsedQ, batch_,
-                                  tilingData->totalQTokens, actualQTokens) ||
+        if (!ValidateSeqLengths<qFormat>(gCuSeqLengths, gSequsedQ, hasSequsedQ, batch_, tilingData->totalQTokens,
+                                         actualQTokens) ||
             actualQTokens * kvHeads_ != totalTaskNum_) {
             return;
         }
@@ -118,14 +119,13 @@ public:
         if constexpr (!isPaged) {
             uint64_t actualKvTokens = 0;
             if (!ValidateSeqLengths<kvFormat>(gCuSeqLengthsKv, gSequsedKv, hasSequsedKv, batch_,
-                                      tilingData->totalKvTokens, actualKvTokens)) {
+                                              tilingData->totalKvTokens, actualKvTokens)) {
                 return;
             }
         } else {
             for (uint32_t b = 0; b < batch_; ++b) {
                 const int32_t len = gSequsedKv.GetValue(b);
-                if (len < 0 || static_cast<uint64_t>(len) >
-                    static_cast<uint64_t>(maxBlocksPerBatch_) * blockShapeY_) {
+                if (len < 0 || static_cast<uint64_t>(len) > static_cast<uint64_t>(maxBlocksPerBatch_) * blockShapeY_) {
                     return;
                 }
             }
@@ -161,8 +161,8 @@ public:
 #endif
 #ifdef __DAV_VEC__
         coreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
-        EpilogueOnlineSoftmax epilogueOnlineSoftmax(resource, scaleValue_);
-        EpilogueRescaleO epilogueRescaleO(resource);
+        EpilogueOnlineSoftmax epilogueOnlineSoftmax(resource, scaleValue_, uBufTileHelper_);
+        EpilogueRescaleO epilogueRescaleO(resource, uBufTileHelper_);
 #endif
 
         uint32_t groupSize = groupSize_;
@@ -257,13 +257,12 @@ public:
             } else {
                 // Values were validated before synchronization; use cu for storage and seqused for visibility.
                 ReadBatchSeqInfo<kvFormat>(gCuSeqLengthsKv, gSequsedKv, hasSequsedKv, batchIdx,
-                                tilingData->totalKvTokens, kvSeq);
+                                           tilingData->totalKvTokens, kvSeq);
             }
             const uint32_t kvSeqlen = kvSeq.actualLen;
             uint32_t qSeqlen =
                 hasSequsedQ ? static_cast<uint32_t>(gSequsedQ.GetValue(static_cast<int64_t>(batchIdx))) : qStorageLen;
-            const BatchSeqInfo qSeq{
-                static_cast<uint64_t>(gCuSeqLengths.GetValue(batchIdx)), qStorageLen, qSeqlen};
+            const BatchSeqInfo qSeq{static_cast<uint64_t>(gCuSeqLengths.GetValue(batchIdx)), qStorageLen, qSeqlen};
             uint64_t gmOffsetQ = GetTensorOffset<qFormat>(qSeq, qTokenInBatch, qHeadStart, qHeads_, embed_);
             uint64_t gmOffsetO = gmOffsetQ;
             // LSE [T, N, 1]: packed GQA writes groupSize contiguous heads for one token.
@@ -335,8 +334,8 @@ public:
                     }
                     const int64_t btOffset = static_cast<int64_t>(batchIdx) * maxBlocksPerBatch_ + logicalId;
                     storageBlockId = gBlockTable.GetValue(btOffset);
-                    if (storageBlockId < 0 || static_cast<uint64_t>(storageBlockId) >=
-                        tilingData->totalKvTokens / blockSize_) {
+                    if (storageBlockId < 0 ||
+                        static_cast<uint64_t>(storageBlockId) >= tilingData->totalKvTokens / blockSize_) {
                         continue;
                     }
                 }
@@ -371,8 +370,7 @@ public:
                 if (kvBlockIdx < kvSLoopNum) {
                     uint32_t kvSTileSizeAct = validTileSize[kvBlockIdx];
                     const uint64_t gmOffsetK = KvBlockOffset<kvFormat, isPaged>(
-                        validBlockIds[kvBlockIdx], kvSeq, kvHeadIdx, kvHeads_, embed_,
-                        blockShapeY_, kStride0_);
+                        validBlockIds[kvBlockIdx], kvSeq, kvHeadIdx, kvHeads_, embed_, blockShapeY_, kStride0_);
 
                     GemmCoord actualBlockShapeQK{rowNum, kvSTileSizeAct, embed_};
                     uint32_t ubSBufId = kvBlockIdx % UB_S_OTMP_BUF_STAGES;
@@ -389,8 +387,8 @@ public:
                         kvBlockIdx, mm1L0ATotalStages_, mm2L0ATotalStages_, kvSLoopNum, true);
                     uint64_t prefixSumL0BStages = CalcCrossMm1Mm2PrefixSumL0ABStages(
                         kvBlockIdx, mm1L0BTotalStages_, mm2L0BTotalStages_, kvSLoopNum, true);
-                    blockMmadQK(gmKTensorTla, ubSTensorTla, gIdentityIdx, actualBlockShapeQK, 0, blockShapeY_, blockShapeY_,
-                                blockShapeY_, 1, 1, prefixSumL0AStages, prefixSumL0BStages, mm1ToSmFlag);
+                    blockMmadQK(gmKTensorTla, ubSTensorTla, gIdentityIdx, actualBlockShapeQK, 0, blockShapeY_,
+                                blockShapeY_, blockShapeY_, 1, 1, prefixSumL0AStages, prefixSumL0BStages, mm1ToSmFlag);
                     if (kvBlockIdx == kvSLoopNum - 1)
                         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID0);
 #endif
@@ -409,8 +407,7 @@ public:
                     uint32_t kvBlockIdxDe = kvBlockIdx - PRE_LAUNCH;
                     uint32_t kvSTileSizeAct = validTileSize[kvBlockIdxDe];
                     const uint64_t gmOffsetV = KvBlockOffset<kvFormat, isPaged>(
-                        validBlockIds[kvBlockIdxDe], kvSeq, kvHeadIdx, kvHeads_, embed_,
-                        blockShapeY_, vStride0_);
+                        validBlockIds[kvBlockIdxDe], kvSeq, kvHeadIdx, kvHeads_, embed_, blockShapeY_, vStride0_);
 
                     GemmCoord actualBlockShapePV{rowNum, embed_, kvSTileSizeAct};
                     uint32_t ubOTmpBufId = kvBlockIdxDe % UB_S_OTMP_BUF_STAGES;
@@ -540,6 +537,38 @@ private:
         return prefixSumStages;
     }
 
+    __aicore__ inline void CalcUBufTileInfo()
+    {
+        constexpr uint32_t qBaseTilePerSubCore = 64;
+        uint32_t kvBaseTilePerSubCore = RoundUp(kvBaseTile_, 32);
+        uint32_t embedPerSubCore = RoundUp(embed_, 32);
+        uint32_t pExtraElemNum = 0;
+        if constexpr (AscendC::IsSameType<ElementS, float>::value) {
+            constexpr uint32_t ELE_NUM_PER_DATABLOCK = 32 / sizeof(ElementP);
+            uint32_t pNFractalNum = kvBaseTilePerSubCore / ELE_NUM_PER_DATABLOCK;
+            pExtraElemNum = (pNFractalNum - 1) * ELE_NUM_PER_DATABLOCK;
+        }
+        uint32_t sStartOffset = 0;
+        uint32_t pStartOffset =
+            sStartOffset + qBaseTilePerSubCore * kvBaseTilePerSubCore * sizeof(ElementS) * UB_S_OTMP_BUF_STAGES;
+        uint32_t loStartOffset = pStartOffset + (qBaseTilePerSubCore * kvBaseTilePerSubCore + pExtraElemNum) *
+                                                    sizeof(ElementP) * UB_S_OTMP_BUF_STAGES;
+        uint32_t goStartOffset =
+            loStartOffset + qBaseTilePerSubCore * embedPerSubCore * sizeof(ElementOTmp) * UB_S_OTMP_BUF_STAGES;
+        uint32_t lmStartOffset = goStartOffset + qBaseTilePerSubCore * embedPerSubCore * sizeof(ElementOTmp);
+        uint32_t gmStartOffset = lmStartOffset + qBaseTilePerSubCore * sizeof(float);
+        uint32_t dmStartOffset = gmStartOffset + qBaseTilePerSubCore * sizeof(float);
+        uint32_t llStartOffset = dmStartOffset + qBaseTilePerSubCore * (PRE_LAUNCH + 1) * sizeof(float);
+        uint32_t glStartOffset = llStartOffset + qBaseTilePerSubCore * sizeof(float);
+        uint32_t lseStartOffset = glStartOffset + qBaseTilePerSubCore * sizeof(float);
+        uint32_t maskStartOffset = lseStartOffset + qBaseTilePerSubCore * (32 / sizeof(float)) * sizeof(float);
+
+        uBufTileHelper_ = Epilogue::Block::UBufTileHelper(qBaseTilePerSubCore, kvBaseTilePerSubCore, embedPerSubCore,
+                                                          sStartOffset, pStartOffset, loStartOffset, goStartOffset,
+                                                          lmStartOffset, gmStartOffset, dmStartOffset, llStartOffset,
+                                                          glStartOffset, lseStartOffset, maskStartOffset);
+    }
+
     __aicore__ inline void InitCrossCoreDstBuf(AscendC::LocalTensor<ElementP> (&l1PTensor)[MAX_CROSS_CORE_BUF_STAGES],
                                                AscendC::LocalTensor<ElementS> (&ubSTensor)[UB_S_OTMP_BUF_STAGES],
                                                AscendC::LocalTensor<ElementOTmp> (&ubOTmpTensor)[UB_S_OTMP_BUF_STAGES])
@@ -548,16 +577,13 @@ private:
             l1PTensor[i] = resource.l1Buf.template GetBufferByByte<ElementP>(
                 mm2L1AddrStart_ + mm2L1TileM_ * mm2L1TileKLeft_ * sizeof(ElementP) * i);
         }
-        uint32_t rowNumPerSubCore = EpilogueOnlineSoftmax::SM_ROW_MAX_ELEM_NUM;
-        uint32_t colNumPerSubCore = EpilogueOnlineSoftmax::SM_COL_MAX_ELEM_NUM;
-        uint32_t rescaleCol = EpilogueRescaleO::RESCALE_COL_MAX_ELEM_NUM;
         for (uint32_t i = 0; i < UB_S_OTMP_BUF_STAGES; i++) {
-            ubSTensor[i] = resource.ubBuf.template GetBufferByByte<ElementS>(rowNumPerSubCore * colNumPerSubCore *
-                                                                             sizeof(ElementS) * i);
+            ubSTensor[i] = resource.ubBuf.template GetBufferByByte<ElementS>(
+                uBufTileHelper_.sStartOffset +
+                uBufTileHelper_.qBaseTilePerSubCore * uBufTileHelper_.kvBaseTilePerSubCore * sizeof(ElementS) * i);
             ubOTmpTensor[i] = resource.ubBuf.template GetBufferByByte<ElementOTmp>(
-                rowNumPerSubCore * colNumPerSubCore * sizeof(ElementS) * UB_S_OTMP_BUF_STAGES +
-                rowNumPerSubCore * colNumPerSubCore * sizeof(ElementP) * UB_S_OTMP_BUF_STAGES +
-                rowNumPerSubCore * rescaleCol * sizeof(ElementOTmp) * i);
+                uBufTileHelper_.loStartOffset +
+                uBufTileHelper_.qBaseTilePerSubCore * uBufTileHelper_.embedPerSubCore * sizeof(ElementOTmp) * i);
         }
     }
 
@@ -701,6 +727,7 @@ private:
     uint32_t mm2L1AddrStart_ = 0;
     Gemm::Block::Mm1L1TileHelper mm1L1TileHelper_;
     Gemm::Block::Mm2L1TileHelper mm2L1TileHelper_;
+    Epilogue::Block::UBufTileHelper uBufTileHelper_;
 };
 
 } // namespace GbsaKernelArch35
