@@ -230,10 +230,6 @@ public:
                                       uint64_t prefixSumL0AStages, uint64_t prefixSumL0BStages,
                                       Arch::CrossCoreFlag mm1ToSmFlag)
     {
-        using CopyL0CToDst = typename TileCopy_::template CopyL0CToDst<TensorC>;
-        CopyL0CToDst copyL0CToDstSub0;
-        CopyL0CToDst copyL0CToDstSub1;
-
         uint32_t rowNum = actualOriShape[0];
         uint32_t embed = actualOriShape[2];
         uint32_t curBaseTileSize = actualOriShape[1];
@@ -344,17 +340,29 @@ public:
                 // rounded up by 8 and splited in half to each AIV
                 // valid rows in AIV0: [0, mFixPAligned8 / 2 - 1]
                 // valid rows in AIV1: [mFixPAligned8 / 2, rowNum - 1]
-                uint32_t mFixPAligned8 = RoundUp(rowNum, 8);
-                uint32_t mPerSubCore = mFixPAligned8 / 2;
-                uint32_t nFixPAligned16 = RoundUp(l0TileNAct, 16);
-                auto ubCTensorTlaTile = GetTile(ubCTensor, tla::MakeCoord(0, nL0Itr * L0_TILE_N),
-                                                tla::MakeShape(mPerSubCore, nFixPAligned16));
-                auto l0CTensorTlaTileSub0 =
-                    GetTile(l0CTensorTla, tla::MakeCoord(0, 0), tla::MakeShape(mPerSubCore, l0TileNAct));
-                auto l0CTensorTlaTileSub1 =
-                    GetTile(l0CTensorTla, tla::MakeCoord(mPerSubCore, 0), tla::MakeShape(mPerSubCore, l0TileNAct));
-                copyL0CToDstSub0(ubCTensorTlaTile, l0CTensorTlaTileSub0, false);
-                copyL0CToDstSub1(ubCTensorTlaTile, l0CTensorTlaTileSub1, true);
+                using CopyL0CToDst = typename TileCopy_::template CopyL0CToDst<TensorC>;
+                if constexpr (AscendC::IsSameType<ElementC, float>::value) {
+                    uint32_t mFixPAligned8 = RoundUp(rowNum, 8);
+                    uint32_t nFixPAligned8 = RoundUp(l0TileNAct, 8);
+                    auto ubCTensorTlaTile = GetTile(ubCTensor, tla::MakeCoord(0, nL0Itr * L0_TILE_N),
+                                                    tla::MakeShape(mFixPAligned8, nFixPAligned8));
+                    CopyL0CToDst copyL0CToDst;
+                    copyL0CToDst(ubCTensorTlaTile, l0CTensorTla);
+                } else {
+                    uint32_t mFixPAligned8 = RoundUp(rowNum, 8);
+                    uint32_t mPerSubCore = mFixPAligned8 / 2;
+                    uint32_t nFixPAligned16 = RoundUp(l0TileNAct, 16);
+                    auto ubCTensorTlaTile = GetTile(ubCTensor, tla::MakeCoord(0, nL0Itr * L0_TILE_N),
+                                                    tla::MakeShape(mPerSubCore, nFixPAligned16));
+                    auto l0CTensorTlaTileSub0 =
+                        GetTile(l0CTensorTla, tla::MakeCoord(0, 0), tla::MakeShape(mPerSubCore, l0TileNAct));
+                    auto l0CTensorTlaTileSub1 =
+                        GetTile(l0CTensorTla, tla::MakeCoord(mPerSubCore, 0), tla::MakeShape(mPerSubCore, l0TileNAct));
+                    CopyL0CToDst copyL0CToDstSub0;
+                    CopyL0CToDst copyL0CToDstSub1;
+                    copyL0CToDstSub0(ubCTensorTlaTile, l0CTensorTlaTileSub0, false);
+                    copyL0CToDstSub1(ubCTensorTlaTile, l0CTensorTlaTileSub1, true);
+                }
                 AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
             }
         }

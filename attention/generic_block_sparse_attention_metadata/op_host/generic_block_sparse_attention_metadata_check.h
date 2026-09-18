@@ -355,16 +355,16 @@ aclnnStatus CheckGbsaQuantType(int64_t quantType, bool isArch35)
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus CheckGbsaSoftmaxPrecision(int64_t softmaxPrecision, bool isArch35)
+aclnnStatus CheckGbsaSoftmaxPrecision(int64_t softmaxPrecision, int64_t quantType)
 {
     if (softmaxPrecision != GBSA_SOFTMAX_PRECISION_HIGH && softmaxPrecision != GBSA_SOFTMAX_PRECISION_MIXED) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "softmaxPrecision only supports %lld or %lld, but got %lld.",
                 GBSA_SOFTMAX_PRECISION_HIGH, GBSA_SOFTMAX_PRECISION_MIXED, softmaxPrecision);
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (isArch35 && softmaxPrecision != GBSA_SOFTMAX_PRECISION_MIXED) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "softmaxPrecision only supports %lld on Atlas A5.",
-                GBSA_SOFTMAX_PRECISION_MIXED);
+    if (quantType == GBSA_QUANT_TYPE_FLOAT8 && softmaxPrecision != GBSA_SOFTMAX_PRECISION_MIXED) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "FP8 quantization only supports softmaxPrecision=%lld, but got %lld.",
+                GBSA_SOFTMAX_PRECISION_MIXED, softmaxPrecision);
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
@@ -376,7 +376,7 @@ aclnnStatus CheckGbsaPlatformAttrs(int64_t quantType, int64_t softmaxPrecision, 
     if (status != ACLNN_SUCCESS) {
         return status;
     }
-    return CheckGbsaSoftmaxPrecision(softmaxPrecision, isArch35);
+    return CheckGbsaSoftmaxPrecision(softmaxPrecision, quantType);
 }
 
 aclnnStatus CheckGbsaMaskAttrs(int64_t maskType, int64_t windowSizeLeft, int64_t windowSizeRight)

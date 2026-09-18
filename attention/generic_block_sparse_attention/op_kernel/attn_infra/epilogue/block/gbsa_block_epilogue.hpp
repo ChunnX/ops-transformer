@@ -28,8 +28,10 @@ class BlockEpilogue {
 #include "../../../attn_infra/epilogue/block/block_epilogue_rescale_o_low_prec.hpp"
 #endif
 #if (__CCE_AICORE__ == 310)
+#include "../../../attn_infra/epilogue/block/gbsa_block_epilogue_arch35_utils.hpp"
 #include "../../../attn_infra/epilogue/block/gbsa_block_epilogue_mask2idx_arch35.hpp"
 #include "../../../attn_infra/epilogue/block/gbsa_block_epilogue_rescale_o_arch35_reg_high_prec.hpp"
+#include "../../../attn_infra/epilogue/block/gbsa_block_epilogue_online_softmax_arch35_reg_high_prec.hpp"
 #include "../../../attn_infra/epilogue/block/gbsa_block_epilogue_online_softmax_arch35_reg_low_prec.hpp"
 #include "../../../attn_infra/epilogue/block/gbsa_block_epilogue_online_softmax_arch35_reg_low_prec_bf16.hpp"
 #endif

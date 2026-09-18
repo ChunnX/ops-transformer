@@ -60,6 +60,7 @@ public:
             reinterpret_cast<__gm__ GenericBlockSparseAttn::GenericBlockSparseAttentionTilingData *>(params.tiling);
         FetchBaseShapeInfo(gbsaTilingData, params.metaData);
         CalcOnChipBufTileInfo(gbsaTilingData);
+        CalcUBufTileInfo();
         __gm__ const GbsaMetadata::Metadata *meta =
             reinterpret_cast<__gm__ const GbsaMetadata::Metadata *>(params.metaData);
         uint32_t coreIdx = AscendC::GetBlockIdx();
@@ -133,8 +134,8 @@ public:
 #endif
 #ifdef __DAV_VEC__
         coreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
-        EpilogueOnlineSoftmax epilogueOnlineSoftmax(resource, scaleValue_);
-        EpilogueRescaleO epilogueRescaleO(resource);
+        EpilogueOnlineSoftmax epilogueOnlineSoftmax(resource, scaleValue_, uBufTileHelper_);
+        EpilogueRescaleO epilogueRescaleO(resource, uBufTileHelper_);
 #endif
 
         uint32_t groupSize = groupSize_;
@@ -493,6 +494,32 @@ private:
         return prefixSumStages;
     }
 
+    __aicore__ inline void CalcUBufTileInfo()
+    {
+        constexpr uint32_t qBaseTilePerSubCore = 64;
+        uint32_t kvBaseTilePerSubCore = RoundUp(kvBaseTile_, 32);
+        uint32_t embedPerSubCore = RoundUp(embed_, 32);
+        uint32_t sStartOffset = 0;
+        uint32_t pStartOffset =
+            sStartOffset + qBaseTilePerSubCore * kvBaseTilePerSubCore * sizeof(ElementS) * UB_S_OTMP_BUF_STAGES;
+        uint32_t loStartOffset =
+            pStartOffset + qBaseTilePerSubCore * kvBaseTilePerSubCore * sizeof(ElementP) * UB_S_OTMP_BUF_STAGES;
+        uint32_t goStartOffset =
+            loStartOffset + qBaseTilePerSubCore * embedPerSubCore * sizeof(ElementOTmp) * UB_S_OTMP_BUF_STAGES;
+        uint32_t lmStartOffset = goStartOffset + qBaseTilePerSubCore * embedPerSubCore * sizeof(ElementOTmp);
+        uint32_t gmStartOffset = lmStartOffset + qBaseTilePerSubCore * sizeof(float);
+        uint32_t dmStartOffset = gmStartOffset + qBaseTilePerSubCore * sizeof(float);
+        uint32_t llStartOffset = dmStartOffset + qBaseTilePerSubCore * (PRE_LAUNCH + 1) * sizeof(float);
+        uint32_t glStartOffset = llStartOffset + qBaseTilePerSubCore * sizeof(float);
+        uint32_t lseStartOffset = glStartOffset + qBaseTilePerSubCore * sizeof(float);
+        uint32_t maskStartOffset = lseStartOffset + qBaseTilePerSubCore * (32 / sizeof(float)) * sizeof(float);
+
+        uBufTileHelper_ = Epilogue::Block::UBufTileHelper(qBaseTilePerSubCore, kvBaseTilePerSubCore, embedPerSubCore,
+                                                          sStartOffset, pStartOffset, loStartOffset, goStartOffset,
+                                                          lmStartOffset, gmStartOffset, dmStartOffset, llStartOffset,
+                                                          glStartOffset, lseStartOffset, maskStartOffset);
+    }
+
     __aicore__ inline void InitCrossCoreDstBuf(AscendC::LocalTensor<ElementP> (&l1PTensor)[MAX_CROSS_CORE_BUF_STAGES],
                                                AscendC::LocalTensor<ElementS> (&ubSTensor)[UB_S_OTMP_BUF_STAGES],
                                                AscendC::LocalTensor<ElementOTmp> (&ubOTmpTensor)[UB_S_OTMP_BUF_STAGES])
@@ -501,16 +528,13 @@ private:
             l1PTensor[i] = resource.l1Buf.template GetBufferByByte<ElementP>(
                 mm2L1AddrStart_ + mm2L1TileM_ * mm2L1TileKLeft_ * sizeof(ElementP) * i);
         }
-        uint32_t rowNumPerSubCore = EpilogueOnlineSoftmax::SM_ROW_MAX_ELEM_NUM;
-        uint32_t colNumPerSubCore = EpilogueOnlineSoftmax::SM_COL_MAX_ELEM_NUM;
-        uint32_t rescaleCol = EpilogueRescaleO::RESCALE_COL_MAX_ELEM_NUM;
         for (uint32_t i = 0; i < UB_S_OTMP_BUF_STAGES; i++) {
-            ubSTensor[i] = resource.ubBuf.template GetBufferByByte<ElementS>(rowNumPerSubCore * colNumPerSubCore *
-                                                                             sizeof(ElementS) * i);
+            ubSTensor[i] = resource.ubBuf.template GetBufferByByte<ElementS>(
+                uBufTileHelper_.sStartOffset +
+                uBufTileHelper_.qBaseTilePerSubCore * uBufTileHelper_.kvBaseTilePerSubCore * sizeof(ElementS) * i);
             ubOTmpTensor[i] = resource.ubBuf.template GetBufferByByte<ElementOTmp>(
-                rowNumPerSubCore * colNumPerSubCore * sizeof(ElementS) * UB_S_OTMP_BUF_STAGES +
-                rowNumPerSubCore * colNumPerSubCore * sizeof(ElementS) * UB_S_OTMP_BUF_STAGES +
-                rowNumPerSubCore * rescaleCol * sizeof(ElementOTmp) * i);
+                uBufTileHelper_.loStartOffset +
+                uBufTileHelper_.qBaseTilePerSubCore * uBufTileHelper_.embedPerSubCore * sizeof(ElementOTmp) * i);
         }
     }
 
@@ -653,6 +677,7 @@ private:
     uint32_t mm2L1AddrStart_ = 0;
     Gemm::Block::Mm1L1TileHelper mm1L1TileHelper_;
     Gemm::Block::Mm2L1TileHelper mm2L1TileHelper_;
+    Epilogue::Block::UBufTileHelper uBufTileHelper_;
 };
 
 } // namespace GbsaKernelArch35

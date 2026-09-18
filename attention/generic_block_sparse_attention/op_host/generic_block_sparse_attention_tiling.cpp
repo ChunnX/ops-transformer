@@ -691,9 +691,14 @@ ge::graphStatus GBSATiling::CheckCuSeqLengths(gert::TilingContext *context)
 
 ge::graphStatus GBSATiling::CheckSoftmaxPrecision(gert::TilingContext *context)
 {
+    if (softmaxPrecision_ != 0 && softmaxPrecision_ != 1) {
+        OP_LOGE(context->GetNodeName(), "Unsupported softmaxPrecision=%u, only 0 or 1 is supported.",
+                softmaxPrecision_);
+        return ge::GRAPH_FAILED;
+    }
     if (socVer_ == SOC_VER_950_CODE) {
-        if (softmaxPrecision_ != 1) {
-            OP_LOGE(context->GetNodeName(), "On chip 950, only softmaxPrecision=1 is supported, but got %u.",
+        if (quantType_ == GBSA_QUANT_TYPE_FULL && softmaxPrecision_ != 1) {
+            OP_LOGE(context->GetNodeName(), "On chip 950, FP8 full-quant only supports softmaxPrecision=1, but got %u.",
                     softmaxPrecision_);
             return ge::GRAPH_FAILED;
         }
@@ -737,8 +742,9 @@ uint64_t GBSATiling::GenerateTilingKey()
      * BSA-style decimal bitfields (must match op_kernel tilingkey.h):
      * - [0-1]   Q Layout           2=TND
      * - [2-4]   Mask Type          maskType_ * 1000 (current path: 1)
-     * - [5-7]   Softmax Precision  0=Float, 1=Half (*100000); arch35 keys keep 0
-     * - [8-10]  PagedCache         1=WithCache (*1000000)
+     * - [5-7]   Softmax Precision  0=Float, 1=Half/BF16 (*100000)
+     * - [8-10]  PagedCache         1=WithCache
+     * (*1000000)
      * - [11-13] KV Layout          70=PA_BBND (*1000000 → 70000000)
      * - dtype                    FP16=+0, BF16=+22220, FP8 out FP16=+10 / BF16=+20
      * - LSE                      +100000000
@@ -765,8 +771,8 @@ uint64_t GBSATiling::GenerateTilingKey()
     // Paged cache required on current path
     tilingKey += 1000000ULL;
 
-    // Softmax precision: only discriminates kernels on arch22
-    if (!isArch35 && softmaxPrecision_ == 1) {
+    // Softmax precision: 0=FP32 softmax, 1=FP16/BF16 softmax.
+    if (softmaxPrecision_ == 1) {
         tilingKey += 100000ULL;
     }
 

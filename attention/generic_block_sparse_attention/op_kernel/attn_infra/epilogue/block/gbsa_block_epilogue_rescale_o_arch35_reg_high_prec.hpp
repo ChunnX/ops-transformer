@@ -14,6 +14,7 @@
 #include "../../../attn_infra/gbsa_base_defs.hpp"
 #include "../../../attn_infra/arch/gbsa_resource.hpp"
 #include "../../../attn_infra/epilogue/gbsa_epilogue_dispatch_policy.hpp"
+#include "../../../attn_infra/epilogue/block/gbsa_block_epilogue_arch35_utils.hpp"
 #include "../../../attn_infra/epilogue/tile_common/gbsa_epilogue_tile_copy.hpp"
 #include "../../../attn_infra/gbsa_gemm_coord.hpp"
 #include "../../../attn_infra/gbsa_matrix_coord.hpp"
@@ -46,34 +47,24 @@ public:
     using CopyUbToGmO = typename TileCopy::CopyUbToGmO;
 
     static constexpr uint32_t UB_OTMP_BUF_STAGES = 2;
-    static constexpr uint32_t UB_UINT8_BLOCK_SIZE = 32768;
-    static constexpr uint32_t DM_UB_GLOBAL_ELEM_NUM = 64;
     static constexpr uint32_t RESCALE_ROW_MAX_ELEM_NUM = 64;
     static constexpr uint32_t RESCALE_COL_MAX_ELEM_NUM = 128;
     static constexpr uint32_t RESCALE_VREG_SIZE = 256 / sizeof(ElementOTmp);
     static constexpr float MAX_VALUE_RECIPROCAL_FP8 = 1.0f / 448.0f;
     static constexpr bool FULL_QUANT_FP8 = AscendC::IsSameType<ElementKV, fp8_e4m3fn_t>::value;
-    __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource)
+    __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource, UBufTileHelper &uBufTileHelper)
     {
-        constexpr uint32_t LO_UB_TENSOR_OFFSET = 4 * UB_UINT8_BLOCK_SIZE;
-        constexpr uint32_t GO_UB_TENSOR_OFFSET = 6 * UB_UINT8_BLOCK_SIZE;
-        constexpr uint32_t LM_UB_TENSOR_OFFSET = 7 * UB_UINT8_BLOCK_SIZE;
-        constexpr uint32_t GM_UB_TENSOR_OFFSET = LM_UB_TENSOR_OFFSET + 64 * sizeof(float);
-        constexpr uint32_t DM_UB_TENSOR_OFFSET = GM_UB_TENSOR_OFFSET + 64 * sizeof(float);
-        constexpr uint32_t LL_UB_TENSOR_OFFSET = DM_UB_TENSOR_OFFSET + 3 * 64 * sizeof(float);
-        constexpr uint32_t GL_UB_TENSOR_OFFSET = LL_UB_TENSOR_OFFSET + 64 * sizeof(float);
-        constexpr uint32_t LSE_UB_TENSOR_OFFSET = GL_UB_TENSOR_OFFSET + 64 * sizeof(float);
-
         for (uint32_t i = 0; i < UB_OTMP_BUF_STAGES; i++) {
-            loUbTensor[i] =
-                resource.ubBuf.template GetBufferByByte<ElementOTmp>(LO_UB_TENSOR_OFFSET + i * UB_UINT8_BLOCK_SIZE);
+            loUbTensor[i] = resource.ubBuf.template GetBufferByByte<ElementOTmp>(
+                uBufTileHelper.loStartOffset +
+                uBufTileHelper.qBaseTilePerSubCore * uBufTileHelper.embedPerSubCore * sizeof(ElementOTmp) * i);
         }
-        goUbTensor32 = resource.ubBuf.template GetBufferByByte<ElementOTmp>(GO_UB_TENSOR_OFFSET);
-        goUbTensor16 = resource.ubBuf.template GetBufferByByte<ElementO>(GO_UB_TENSOR_OFFSET);
-        glUbTensor32 = resource.ubBuf.template GetBufferByByte<float>(GL_UB_TENSOR_OFFSET);
-        dmUbTensor32 = resource.ubBuf.template GetBufferByByte<float>(DM_UB_TENSOR_OFFSET);
-        gmUbTensor32 = resource.ubBuf.template GetBufferByByte<float>(GM_UB_TENSOR_OFFSET);
-        lseUbTensor32 = resource.ubBuf.template GetBufferByByte<float>(LSE_UB_TENSOR_OFFSET);
+        goUbTensor32 = resource.ubBuf.template GetBufferByByte<ElementOTmp>(uBufTileHelper.goStartOffset);
+        goUbTensor16 = resource.ubBuf.template GetBufferByByte<ElementO>(uBufTileHelper.goStartOffset);
+        glUbTensor32 = resource.ubBuf.template GetBufferByByte<float>(uBufTileHelper.glStartOffset);
+        dmUbTensor32 = resource.ubBuf.template GetBufferByByte<float>(uBufTileHelper.dmStartOffset);
+        gmUbTensor32 = resource.ubBuf.template GetBufferByByte<float>(uBufTileHelper.gmStartOffset);
+        lseUbTensor32 = resource.ubBuf.template GetBufferByByte<float>(uBufTileHelper.lseStartOffset);
     }
 
     __aicore__ inline ~BlockEpilogue() {}
@@ -136,7 +127,7 @@ public:
         __ubuf__ ElementOTmp *loUb = (__ubuf__ ElementOTmp *)loUbTensor[ubOTmpBufId].GetPhyAddr();
         __ubuf__ ElementOTmp *glUb = (__ubuf__ ElementOTmp *)glUbTensor32.GetPhyAddr();
         __ubuf__ ElementOTmp *dmUb =
-            (__ubuf__ ElementOTmp *)dmUbTensor32[curTileMod * DM_UB_GLOBAL_ELEM_NUM].GetPhyAddr();
+            (__ubuf__ ElementOTmp *)dmUbTensor32[curTileMod * RESCALE_ROW_MAX_ELEM_NUM].GetPhyAddr();
         __ubuf__ float *gmUb = (__ubuf__ float *)gmUbTensor32.GetPhyAddr();
         __ubuf__ float *lseUb = (__ubuf__ float *)lseUbTensor32.GetPhyAddr();
 

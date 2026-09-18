@@ -53,10 +53,12 @@ constexpr float kScale = 1.0f / sqrt(static_cast<float>(kD));
 constexpr uint64_t kFp16Tiling910B = 9200000071001002ULL;
 constexpr uint64_t kBf16Tiling910B = 9200000071023222ULL;
 constexpr uint64_t kFp16HalfSmTiling910B = 9200000071101002ULL;
-constexpr uint64_t kFp16Tiling950 = 9250000071001002ULL;
-constexpr uint64_t kBf16Tiling950 = 9250000071023222ULL;
-constexpr uint64_t kFp8Fp16Tiling950 = 9250000071001012ULL;
-constexpr uint64_t kFp8Bf16Tiling950 = 9250000071001022ULL;
+constexpr uint64_t kFp16Fp32SmTiling950 = 9250000071001002ULL;
+constexpr uint64_t kFp16Fp16SmTiling950 = 9250000071101002ULL;
+constexpr uint64_t kBf16Fp32SmTiling950 = 9250000071023222ULL;
+constexpr uint64_t kBf16Bf16SmTiling950 = 9250000071123222ULL;
+constexpr uint64_t kFp8Fp16SmTiling950 = 9250000071101012ULL;
+constexpr uint64_t kFp8Bf16SmTiling950 = 9250000071101022ULL;
 
 std::vector<int64_t> kBlockShape = {kBlockShapeX, kBlockSize};
 
@@ -157,22 +159,40 @@ TEST_F(generic_block_sparse_attention_tiling_ut, unsupported_return_softmax_lse)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-TEST_F(generic_block_sparse_attention_tiling_ut, tnd_paged_fp16_950)
+TEST_F(generic_block_sparse_attention_tiling_ut, tnd_paged_fp16_high_precision_950)
+{
+    GenericBlockSparseAttentionCompileInfo compileInfo;
+    gert::TilingContextPara tilingContextPara("GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT16),
+                                              MakeOutputs(ge::DT_FLOAT16, false), MakeAttrs(1, 0, 0, 0), &compileInfo,
+                                              "Ascend950", 56, 262144);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, kFp16Fp32SmTiling950);
+}
+
+TEST_F(generic_block_sparse_attention_tiling_ut, tnd_paged_fp16_mixed_precision_950)
 {
     GenericBlockSparseAttentionCompileInfo compileInfo;
     gert::TilingContextPara tilingContextPara("GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT16),
                                               MakeOutputs(ge::DT_FLOAT16, false), MakeAttrs(1, 0, 1, 0), &compileInfo,
                                               "Ascend950", 56, 262144);
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, kFp16Tiling950);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, kFp16Fp16SmTiling950);
 }
 
-TEST_F(generic_block_sparse_attention_tiling_ut, tnd_paged_bf16_950)
+TEST_F(generic_block_sparse_attention_tiling_ut, tnd_paged_bf16_high_precision_950)
+{
+    GenericBlockSparseAttentionCompileInfo compileInfo;
+    gert::TilingContextPara tilingContextPara("GenericBlockSparseAttention", MakeInputs(ge::DT_BF16),
+                                              MakeOutputs(ge::DT_BF16, false), MakeAttrs(1, 0, 0, 0), &compileInfo,
+                                              "Ascend950", 56, 262144);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, kBf16Fp32SmTiling950);
+}
+
+TEST_F(generic_block_sparse_attention_tiling_ut, tnd_paged_bf16_mixed_precision_950)
 {
     GenericBlockSparseAttentionCompileInfo compileInfo;
     gert::TilingContextPara tilingContextPara("GenericBlockSparseAttention", MakeInputs(ge::DT_BF16),
                                               MakeOutputs(ge::DT_BF16, false), MakeAttrs(1, 0, 1, 0), &compileInfo,
                                               "Ascend950", 56, 262144);
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, kBf16Tiling950);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, kBf16Bf16SmTiling950);
 }
 
 TEST_F(generic_block_sparse_attention_tiling_ut, tnd_paged_fp8_out_fp16_950)
@@ -181,7 +201,7 @@ TEST_F(generic_block_sparse_attention_tiling_ut, tnd_paged_fp8_out_fp16_950)
     gert::TilingContextPara tilingContextPara("GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT8_E4M3FN),
                                               MakeOutputs(ge::DT_FLOAT16, false), MakeAttrs(1, 5, 1, 0), &compileInfo,
                                               "Ascend950", 56, 262144);
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, kFp8Fp16Tiling950);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, kFp8Fp16SmTiling950);
 }
 
 TEST_F(generic_block_sparse_attention_tiling_ut, tnd_paged_fp8_out_bf16_950)
@@ -190,7 +210,7 @@ TEST_F(generic_block_sparse_attention_tiling_ut, tnd_paged_fp8_out_bf16_950)
     gert::TilingContextPara tilingContextPara("GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT8_E4M3FN),
                                               MakeOutputs(ge::DT_BF16, false), MakeAttrs(1, 5, 1, 0), &compileInfo,
                                               "Ascend950", 56, 262144);
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, kFp8Bf16Tiling950);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, kFp8Bf16SmTiling950);
 }
 
 TEST_F(generic_block_sparse_attention_tiling_ut, unsupported_layout)
@@ -326,11 +346,20 @@ TEST_F(generic_block_sparse_attention_tiling_ut, scale_value_zero_defaults_to_rs
     EXPECT_FLOAT_EQ(scaleValue, kScale);
 }
 
-TEST_F(generic_block_sparse_attention_tiling_ut, unsupported_softmax_precision_0_on_950)
+TEST_F(generic_block_sparse_attention_tiling_ut, unsupported_fp8_softmax_precision_0_on_950)
+{
+    GenericBlockSparseAttentionCompileInfo compileInfo;
+    gert::TilingContextPara tilingContextPara("GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT8_E4M3FN),
+                                              MakeOutputs(ge::DT_FLOAT16, false), MakeAttrs(1, 5, 0, 0), &compileInfo,
+                                              "Ascend950", 56, 262144);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(generic_block_sparse_attention_tiling_ut, unsupported_softmax_precision_value_on_950)
 {
     GenericBlockSparseAttentionCompileInfo compileInfo;
     gert::TilingContextPara tilingContextPara("GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT16),
-                                              MakeOutputs(ge::DT_FLOAT16, false), MakeAttrs(1, 0, 0, 0), &compileInfo,
+                                              MakeOutputs(ge::DT_FLOAT16, false), MakeAttrs(1, 0, 2, 0), &compileInfo,
                                               "Ascend950", 56, 262144);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
