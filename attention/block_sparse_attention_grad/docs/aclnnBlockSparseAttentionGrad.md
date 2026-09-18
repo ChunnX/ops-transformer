@@ -519,13 +519,6 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
 
   <!-- end id10 -->
 
-* 确定性计算：
-  - <term>Atlas A2 训练产品</term>、<term>Atlas A3 训练产品</term>：不支持确定性计算场景。
-
-  <!-- npu="950" id11 -->
-  - <term>Ascend 950PR/Ascend 950DT</term>：默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
-  <!-- end id11 -->
-
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
