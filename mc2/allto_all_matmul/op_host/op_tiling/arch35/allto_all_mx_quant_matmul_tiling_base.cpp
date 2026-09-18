@@ -246,10 +246,22 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::CheckMxQuantTensorDataType(cons
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "x2", Ops::Base::ToString(x2Dtype).c_str(),
                                                   "The dtype of x2 must be hifloat4 in HIFLOAT4 quant mode."),
             return ge::GRAPH_FAILED);
+    } else {
+        // MX 量化场景不允许 hifloat4: hifloat4 仅属于 HIFLOAT4_QUANT(8/8) 模式，
+        // 防止该组合通过校验后落入未定义的 mxfp8/tilingKey 分支
+        OP_TILING_CHECK(
+            (x1Dtype == ge::DT_HIFLOAT4 || x2Dtype == ge::DT_HIFLOAT4),
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                opName, "x1 and x2", (Ops::Base::ToString(x1Dtype) + " and " + Ops::Base::ToString(x2Dtype)).c_str(),
+                "hifloat4 is only supported in HIFLOAT4 quant mode, x1QuantMode and x2QuantMode must both be 8."),
+            return ge::GRAPH_FAILED);
     }
-    // 校验 bias 数据类型（如果存在）
+    // 校验 bias 数据类型（如果存在）; HiF4 量化场景不支持 bias，仅允许为 None
     auto biasTensorDesc = context->GetOptionalInputDesc(INPUT_BIAS_INDEX);
     if (biasTensorDesc != nullptr) {
+        OP_TILING_CHECK(isHiF4_,
+                        OP_LOGE(opName, "The bias is not supported in HIFLOAT4 quant mode, it must be None."),
+                        return ge::GRAPH_FAILED);
         ge::DataType biasDtype = biasTensorDesc->GetDataType();
         OP_TILING_CHECK((biasDtype != ge::DT_FLOAT),
                         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "bias", Ops::Base::ToString(biasDtype).c_str(),
@@ -286,6 +298,14 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::CheckMxQuantTensorDataType(cons
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "y", Ops::Base::ToString(yDtype).c_str(),
                                               "The dtype of y must be within the range {float16, bfloat16, float}."),
         return ge::GRAPH_FAILED);
+    // HiF4 量化场景: 输出仅支持 float16/bfloat16(不支持 float)
+    if (isHiF4_) {
+        OP_TILING_CHECK(
+            (yDtype != ge::DT_FLOAT16 && yDtype != ge::DT_BF16),
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "y", Ops::Base::ToString(yDtype).c_str(),
+                                                  "The dtype of y must be float16 or bfloat16 in HIFLOAT4 quant mode."),
+            return ge::GRAPH_FAILED);
+    }
     if (x1Dtype == ge::DT_FLOAT4_E2M1 || x2Dtype == ge::DT_FLOAT4_E2M1) {
         isMxFp4_ = true;
         matmulQuantType_ = QuantType::MXFP4_QUANT;
@@ -327,16 +347,6 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::CheckMxQuantShapeInfo(const ger
     uint64_t x1ScaleDimNum = x1ScaleShape->GetStorageShape().GetDimNum();
     uint64_t x2ScaleDimNum = x2ScaleShape->GetStorageShape().GetDimNum();
     OP_TILING_CHECK(
-        (x1Dim1 % MX_SCALE_ALIGN != 0),
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x1", Ops::Base::ToString(x1Shape->GetStorageShape()).c_str(),
-                                              "The dim(k) of x1 must be divisible by 64."),
-        return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(
-        (x2Dim1 % MX_SCALE_ALIGN != 0),
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x2", Ops::Base::ToString(x2Shape->GetStorageShape()).c_str(),
-                                              "The dim(k) of x2 must be divisible by 64."),
-        return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(
         (x1ScaleDimNum != DIM_THREE),
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName, "x1Scale", (std::to_string(x1ScaleDimNum) + "D").c_str(),
                                                  "The shape dim of x1Scale must be 3D."),
@@ -346,7 +356,25 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::CheckMxQuantShapeInfo(const ger
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName, "x2Scale", (std::to_string(x2ScaleDimNum) + "D").c_str(),
                                                  "The shape dim of x2Scale must be 3D."),
         return ge::GRAPH_FAILED);
+    // 读取 transposeX2 并区分 B 矩阵布局:
+    // transB(true): x2=[N,K], K 在 dim1, x2Scale=[N, K/64, 1];
+    // ND(false): x2=[K,N], K 在 dim0, x2Scale=[K/64, N, 1]
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(opName, "Failed to get attrs."), return ge::GRAPH_FAILED);
+    const bool *isTransX2 = attrs->GetAttrPointer<bool>(indexSchema.x2Transpose);
+    OP_TILING_CHECK(isTransX2 == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName, "isTransX2"), return ge::GRAPH_FAILED);
+    const uint64_t x2KDim = (*isTransX2) ? x2Dim1 : x2Dim0;
+    const uint64_t x2NDim = (*isTransX2) ? x2Dim0 : x2Dim1;
+    OP_TILING_CHECK(
+        (x1Dim1 % MX_SCALE_ALIGN != 0),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x1", Ops::Base::ToString(x1Shape->GetStorageShape()).c_str(),
+                                              "The dim(k) of x1 must be divisible by 64."),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (x2KDim % MX_SCALE_ALIGN != 0),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x2", Ops::Base::ToString(x2Shape->GetStorageShape()).c_str(),
+                                              "The dim(k) of x2 must be divisible by 64."),
+        return ge::GRAPH_FAILED);
     const char *group = attrs->GetAttrPointer<char>(ATTR_GROUP_INDEX);
     int64_t rankDim = 0;
     if (MatmulAlltoAllTilingUtil::GetAndValidateRankSize(context, opName, group, rankDim) != ge::GRAPH_SUCCESS) {
@@ -380,16 +408,34 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::CheckMxQuantShapeInfo(const ger
                         opName, "x2Scale", Ops::Base::ToString(x2ScaleShape->GetStorageShape()).c_str(),
                         "The shape [2] of x2Scale must be " + std::to_string(expectScaleLastDim)),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((x2ScaleDim0 != x2Dim0),
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x2Scale",
-                                                          Ops::Base::ToString(x2ScaleShape->GetStorageShape()).c_str(),
-                                                          "The shape [0] of x2Scale must be " + std::to_string(x2Dim0)),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((x2ScaleDim1 != x2Dim1 / MX_SCALE_ALIGN),
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        opName, "x2Scale", Ops::Base::ToString(x2ScaleShape->GetStorageShape()).c_str(),
-                        "The shape [1] of x2Scale must be " + std::to_string(x2Dim1 / MX_SCALE_ALIGN)),
-                    return ge::GRAPH_FAILED);
+    // x2Scale 布局随 transposeX2 变化: transB 为 [N, K/64, 1], ND 为 [K/64, N, 1]
+    if (*isTransX2) {
+        OP_TILING_CHECK((x2ScaleDim0 != x2NDim),
+                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x2Scale",
+                                                              Ops::Base::ToString(x2ScaleShape->GetStorageShape())
+                                                                  .c_str(),
+                                                              "The shape [0] of x2Scale must be " +
+                                                                  std::to_string(x2NDim)),
+                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK((x2ScaleDim1 != x2KDim / MX_SCALE_ALIGN),
+                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                            opName, "x2Scale", Ops::Base::ToString(x2ScaleShape->GetStorageShape()).c_str(),
+                            "The shape [1] of x2Scale must be " + std::to_string(x2KDim / MX_SCALE_ALIGN)),
+                        return ge::GRAPH_FAILED);
+    } else {
+        OP_TILING_CHECK((x2ScaleDim0 != x2KDim / MX_SCALE_ALIGN),
+                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                            opName, "x2Scale", Ops::Base::ToString(x2ScaleShape->GetStorageShape()).c_str(),
+                            "The shape [0] of x2Scale must be " + std::to_string(x2KDim / MX_SCALE_ALIGN)),
+                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK((x2ScaleDim1 != x2NDim),
+                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x2Scale",
+                                                              Ops::Base::ToString(x2ScaleShape->GetStorageShape())
+                                                                  .c_str(),
+                                                              "The shape [1] of x2Scale must be " +
+                                                                  std::to_string(x2NDim)),
+                        return ge::GRAPH_FAILED);
+    }
     return ge::GRAPH_SUCCESS;
 }
 

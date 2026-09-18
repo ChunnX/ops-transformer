@@ -304,6 +304,9 @@ static const std::initializer_list<op::DataType> SCALE_DTYPE_FP8_SUPPORT_LIST_A5
 static const std::initializer_list<op::DataType> X_DTYPE_HIF4_SUPPORT_LIST_A5 = {op::DataType::DT_HIFLOAT4};
 // 量化模式下Scale支持的HIF4_SCALE数据类型（HIF4全量化）(A5)
 static const std::initializer_list<op::DataType> SCALE_DTYPE_HIF4_SUPPORT_LIST_A5 = {op::DataType::DT_HIFLOAT4_SCALE};
+// 量化模式下Output支持的数据类型（HIF4全量化，仅FP16/BF16，不含FP32）(A5)
+static const std::initializer_list<op::DataType> OUTPUT_DTYPE_HIF4_SUPPORT_LIST_A5 = {
+    op::DataType::DT_FLOAT16, op::DataType::DT_BF16};
 
 // KC动态量化场景下，校验所有输入的参数类型是否正确(A5)
 static bool CheckKCDynQuantDtypesValidA5(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
@@ -374,7 +377,7 @@ static bool CheckMXQuantDtypesValidA5(const aclTensor *x1, const aclTensor *x2, 
 }
 
 // HiF4全量化场景下，校验所有输入的参数类型是否正确(A5)
-// x1/x2均为hifloat4, scale为hifloat4_scale(shape [M, K/64, 1]), y支持FP16/BF16/FP, bias为FP
+// x1/x2均为hifloat4, scale为hifloat4_scale(shape [M, K/64, 1]), y仅支持FP16/BF16, bias/alltoAllOut仅支持None
 static bool CheckHiF4QuantDtypesValidA5(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
                                         const aclTensor *x1ScaleOptional, const aclTensor *x2Scale,
                                         const aclTensor *output, const aclTensor *alltoAllOutOptional)
@@ -393,15 +396,15 @@ static bool CheckHiF4QuantDtypesValidA5(const aclTensor *x1, const aclTensor *x2
                                              SCALE_DTYPE_HIF4_SUPPORT_LIST_A5, HIF4_SCENE, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnAlltoAllQuantMatmul", x2Scale, SCALE_DTYPE_HIF4_SUPPORT_LIST_A5,
                                              HIF4_SCENE, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnAlltoAllQuantMatmul", output, OUTPUT_DTYPE_SUPPORT_LIST_A5,
+    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnAlltoAllQuantMatmul", output, OUTPUT_DTYPE_HIF4_SUPPORT_LIST_A5,
                                              HIF4_SCENE, return false);
     if (biasOptional != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnAlltoAllQuantMatmul", biasOptional, BIAS_DTYPE_SUPPORT_LIST_A5,
-                                                 HIF4_SCENE, return false);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In hif4 quant scenario, bias is not supported, it must be None.");
+        return false;
     }
     if (alltoAllOutOptional != nullptr) {
-        OP_CHECK_DTYPE_NOT_SAME_WITH_SCENARIO("aclnnAlltoAllQuantMatmul", x1, alltoAllOutOptional, HIF4_SCENE,
-                                              return false);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In hif4 quant scenario, alltoAllOut is not supported, it must be None.");
+        return false;
     }
     return true;
 }
