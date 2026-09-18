@@ -643,6 +643,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCnt(
         DataCopyExtParams dstRankCopyParams = {1U, static_cast<uint32_t>(calCnt * sizeof(int16_t)), 0U, 0U, 0U};
         DataCopyPad(dstRankGMTensor_[topkIdxOffset], dstRankTensor_, dstRankCopyParams);
     }
+
     // 拷入Workspace 对应计数区
     DataCopy(scaleupCounterGMTensor_[aivId_ * counterAlign512_], sendCntPerRankTensor_, counterCnt_);
     SetAtomicAdd<int32_t>();
