@@ -82,7 +82,17 @@ constexpr size_t URMA_WORKSPACE_ALIGN = 32U;
 constexpr size_t ADDRESS_ENTRY_SIZE = 2U * sizeof(uint64_t);
 constexpr size_t ADDRESS_TABLE_ALIGN = 512U;
 constexpr uint32_t BATCH_MODE_SCHEDULE = 1U;
+// Extra workspace headroom required by the URMA communication runtime.
 constexpr size_t RESERVED_WORKSPACE_SIZE = 1024 * 1024 * 64LL;
+// Mirrors of the kernel UB buffer constants in op_kernel/ffn_to_attention_urma.h; keep both sides in sync.
+constexpr uint64_t TOKEN_DTYPE_BYTES = 2U;
+constexpr uint64_t URMA_BUFFER_NUM = 2U;
+constexpr uint64_t URMA_UB_ALIGN = 32U;
+constexpr uint64_t URMA_HCOMM_INIT_SIZE = 512U;
+constexpr uint64_t URMA_BATCH_BUFFER_SIZE = 256U * 64U;
+constexpr uint64_t METADATA_CHUNK_BUFFER_SIZE = 256U * 4U * sizeof(int32_t);
+constexpr uint64_t ADDRESS_TABLE_BUFFER_SIZE = 40U * 1024U;
+constexpr uint64_t RANK_INFO_SEGMENT_NUM = 3U;
 
 ge::graphStatus FFNToAttentionV2TilingFunc(gert::TilingContext *context)
 {
@@ -137,10 +147,13 @@ ge::graphStatus FFNToAttentionV2TilingFunc(gert::TilingContext *context)
     const size_t flagWindowSize = aivNum * URMA_FLAG_SLOT_SIZE;
     const auto &info = tilingData->ffnToAttentionV2Info;
     // Mirror the explicit InitBuffer allocations on AIV0, which also owns the HCOMM buffers.
-    const uint64_t alignedPayloadBytes = (static_cast<uint64_t>(info.H) * sizeof(uint16_t) + 31U) / 32U * 32U;
-    const uint64_t ubCountRowBytes = (static_cast<uint64_t>(worldSize) * sizeof(int32_t) + 31U) / 32U * 32U;
+    const uint64_t alignedPayloadBytes =
+        (static_cast<uint64_t>(info.H) * TOKEN_DTYPE_BYTES + URMA_UB_ALIGN - 1U) / URMA_UB_ALIGN * URMA_UB_ALIGN;
+    const uint64_t ubCountRowBytes =
+        (static_cast<uint64_t>(worldSize) * sizeof(int32_t) + URMA_UB_ALIGN - 1U) / URMA_UB_ALIGN * URMA_UB_ALIGN;
     const uint64_t requiredUbBytes =
-        2U * alignedPayloadBytes + 32U + 4096U + 40U * 1024U + 3U * ubCountRowBytes + 512U + 256U * 64U;
+        URMA_BUFFER_NUM * alignedPayloadBytes + URMA_UB_ALIGN + METADATA_CHUNK_BUFFER_SIZE + ADDRESS_TABLE_BUFFER_SIZE +
+        RANK_INFO_SEGMENT_NUM * ubCountRowBytes + URMA_HCOMM_INIT_SIZE + URMA_BATCH_BUFFER_SIZE;
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint64_t availableUbBytes = 0U;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, availableUbBytes);
@@ -150,7 +163,7 @@ ge::graphStatus FFNToAttentionV2TilingFunc(gert::TilingContext *context)
     // Shape limits validated by the base tiling bound these products (MB=1, BS<=512, K<=17, HS<=8320).
     const uint64_t tokenSlotNum = static_cast<uint64_t>(info.microBatchNum) * info.BS * info.expertNumPerToken;
     const uint64_t tokenInfoBytes = (tokenSlotNum * sizeof(int32_t) + 511U) / 512U * 512U;
-    const uint64_t tokenWindowEnd = tokenInfoBytes + tokenSlotNum * info.HS * sizeof(uint16_t);
+    const uint64_t tokenWindowEnd = tokenInfoBytes + tokenSlotNum * info.HS * TOKEN_DTYPE_BYTES;
     const uint64_t flagWindowOffset =
         (tokenWindowEnd + URMA_WORKSPACE_ALIGN - 1U) / URMA_WORKSPACE_ALIGN * URMA_WORKSPACE_ALIGN;
     const uint64_t rankTableStride =

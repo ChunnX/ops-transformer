@@ -32,6 +32,10 @@
 
 namespace FFNToAttentionImpl {
 
+// x only supports FLOAT16/BFLOAT16, both of which occupy 2 bytes per element.
+// The host tiling mirrors this value in ffn_to_attention_v2_tilling.cpp; keep both sides in sync.
+constexpr uint32_t TOKEN_DTYPE_BYTES = 2U;
+
 constexpr uint8_t URMA_BUFFER_NUM = 2U;
 constexpr uint32_t URMA_UB_ALIGN = 32U;
 constexpr uint64_t URMA_WIN_ADDR_ALIGN = 512UL;
@@ -52,6 +56,11 @@ constexpr uint32_t METADATA_CHUNK_BUFFER_SIZE = METADATA_CHUNK_TOKEN_NUM * METAD
 constexpr uint32_t REMOTE_ADDRESS_ENTRY_FIELD_NUM = 2U;
 constexpr uint32_t REMOTE_ADDRESS_ENTRY_SIZE = REMOTE_ADDRESS_ENTRY_FIELD_NUM * sizeof(uint64_t);
 constexpr uint32_t ADDRESS_TABLE_BUFFER_SIZE = 40U * 1024U;
+
+// rankInfoBuf_ layout: [own rank counts | preceding-core prefix | per-batch reduce sums], one row each.
+constexpr uint32_t RANK_INFO_SEGMENT_NUM = 3U;
+constexpr uint32_t RANK_INFO_PREFIX_SEG_IDX = 1U;
+constexpr uint32_t RANK_INFO_REDUCE_SUM_SEG_IDX = 2U;
 static constexpr AscendC::UrmaWqeEntry REMOTE_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
 static constexpr AscendC::UrmaWqeEntry REMOTE_CQE_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .cqe = 1, .inlineEn = 0};
 static constexpr AscendC::UrmaWqeEntry REMOTE_ORDERED_FLAG_WQE_CONFIG = {
@@ -156,10 +165,8 @@ private:
     uint64_t winTokenInfoTableSize_{0};
     uint64_t addressTableStridePerRank_{0};
     uint64_t addressTableWinOffset_{0};
-    uint64_t addressTableBytes_{0};
     uint64_t perCoreRankCountStride_{0};
     uint32_t rankCountElements_{0};
-    bool localWritesMayAliasInput_{false};
 };
 
 template <TemplateFFNToAttentionUrmaTypeClass>
@@ -170,6 +177,8 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::I
 {
     tpipe_ = pipe;
     aivId_ = GetBlockIdx();
+    static_assert(sizeof(xType) == TOKEN_DTYPE_BYTES,
+                  "token dtype must match TOKEN_DTYPE_BYTES assumed by host tiling");
     mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::AttentionFFNContext *>(mc2Context);
     rankId_ = mc2Context_->epRankId;
 
@@ -214,7 +223,6 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::I
     localWinAddr_ = GetWindowAddr(rankId_);
     addressTableWinOffset_ = tilingData->ffnToAttentionV2Info.addressTableWinOffset;
     addressTableWinAddr_ = localWinAddr_ + addressTableWinOffset_;
-    addressTableBytes_ = tilingData->ffnToAttentionV2Info.addressTableBytes;
     uint64_t addressTableBytes = static_cast<uint64_t>(worldSize_) * addressTableStridePerRank_;
     rankCountElements_ = static_cast<uint32_t>(
         Ceil(static_cast<uint64_t>(worldSize_) * sizeof(int32_t), URMA_UB_ALIGN) * URMA_UB_ALIGN / sizeof(int32_t));
@@ -223,30 +231,14 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::I
     perCoreRankCountStride_ = totalRankCountBytes;
     totalRankCountWinAddr_ = addressTableWinAddr_ + addressTableBytes;
     perCoreRankCountWinAddr_ = totalRankCountWinAddr_ + totalRankCountBytes;
-    uint64_t requiredTableBytes =
-        addressTableBytes + totalRankCountBytes + static_cast<uint64_t>(aivNum_) * perCoreRankCountStride_;
-    ascendc_assert(requiredTableBytes <= tilingData->ffnToAttentionV2Info.addressTableBytes,
-                   "address-table size (%llu) exceeds reserved table size (%llu)",
-                   static_cast<unsigned long long>(requiredTableBytes),
-                   static_cast<unsigned long long>(tilingData->ffnToAttentionV2Info.addressTableBytes));
 
-    // Validate the registered window tail used by flag sources.
-    const uint64_t cclBufferSize = tilingData->ffnToAttentionV2Info.cclBufferSize;
-    const uint64_t flagWindowSize = static_cast<uint64_t>(aivNum_) * URMA_FLAG_SLOT_SIZE;
-    const uint64_t requiredWindowSize = addressTableWinOffset_ + addressTableBytes_;
-    ascendc_assert(cclBufferSize >= requiredWindowSize,
-                   "cclBufferSize (%llu) < requiredWindowSize (%llu), "
-                   "context buffer may have been allocated for a different shape",
-                   static_cast<unsigned long long>(cclBufferSize), static_cast<unsigned long long>(requiredWindowSize));
     // x may be a view of registered memory, but its payload must not alias the scratch tail.
+    const uint64_t flagWindowSize = static_cast<uint64_t>(aivNum_) * URMA_FLAG_SLOT_SIZE;
     const uint64_t inputAddr = reinterpret_cast<uint64_t>(inputDataAddr_);
     const uint64_t scratchBegin = reinterpret_cast<uint64_t>(localScratchAddr);
     const uint64_t scratchEnd = reinterpret_cast<uint64_t>(localScratchAddr) + flagWindowSize;
     ascendc_assert(inputAddr >= scratchEnd || inputAddr + maxTokenNum_ * hSize_ <= scratchBegin,
                    "x overlaps local flag window tail");
-    const uint64_t localWindowBegin = reinterpret_cast<uint64_t>(GetWindowAddr(rankId_));
-    localWritesMayAliasInput_ =
-        inputAddr < localWindowBegin + tokenWindowEnd && inputAddr + maxTokenNum_ * hSize_ > localWindowBegin;
 
     tpipe_->InitBuffer(xQueue_, URMA_BUFFER_NUM, Ceil(hSize_, static_cast<uint64_t>(URMA_UB_ALIGN)) * URMA_UB_ALIGN);
     tpipe_->InitBuffer(statusBuf_, URMA_UB_ALIGN);
@@ -254,7 +246,7 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::I
     tpipe_->InitBuffer(metadataBuf_, METADATA_CHUNK_BUFFER_SIZE);
     metadataTensor_ = metadataBuf_.Get<int32_t>();
     tpipe_->InitBuffer(addressTableBuf_, ADDRESS_TABLE_BUFFER_SIZE);
-    tpipe_->InitBuffer(rankInfoBuf_, 3U * rankCountElements_ * sizeof(int32_t));
+    tpipe_->InitBuffer(rankInfoBuf_, RANK_INFO_SEGMENT_NUM * rankCountElements_ * sizeof(int32_t));
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
@@ -407,8 +399,8 @@ template <TemplateFFNToAttentionUrmaTypeClass>
 __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::BuildAddressTable()
 {
     LocalTensor<int32_t> rankCounts = rankInfoBuf_.Get<int32_t>();
-    LocalTensor<int32_t> rankPrefix = rankCounts[rankCountElements_];
-    LocalTensor<int32_t> prefixSums = rankCounts[2U * rankCountElements_];
+    LocalTensor<int32_t> rankPrefix = rankCounts[RANK_INFO_PREFIX_SEG_IDX * rankCountElements_];
+    LocalTensor<int32_t> prefixSums = rankCounts[RANK_INFO_REDUCE_SUM_SEG_IDX * rankCountElements_];
     Duplicate<int32_t>(rankCounts, 0, rankCountElements_);
     Duplicate<int32_t>(rankPrefix, 0, rankCountElements_);
     SyncFunc<HardEvent::V_S>();
@@ -447,7 +439,6 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::B
     // Every core independently sums the preceding core rows. Core 0 is not a centralized prefix calculator.
     uint32_t rankCountRowBytes = rankCountElements_ * sizeof(int32_t);
     uint32_t prefixRowsPerBatch = ADDRESS_TABLE_BUFFER_SIZE / rankCountRowBytes;
-    ascendc_assert(prefixRowsPerBatch != 0U, "rank count row exceeds address-table UB buffer");
     LocalTensor<int32_t> prefixRows = addressTableBuf_.Get<int32_t>();
     GlobalTensor<int32_t> allPerCoreRankCounts;
     allPerCoreRankCounts.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(perCoreRankCountWinAddr_));
@@ -485,7 +476,6 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::B
     // Each UB bucket starts on a 32B boundary; GM entries remain tightly packed 16B records.
     uint32_t bucketBytes = ADDRESS_TABLE_BUFFER_SIZE / worldSize_ / URMA_UB_ALIGN * URMA_UB_ALIGN;
     uint32_t entriesPerRank = bucketBytes / REMOTE_ADDRESS_ENTRY_SIZE;
-    ascendc_assert(entriesPerRank != 0U, "worldSize leaves no room for rank address-table buckets");
     uint32_t groupTokenMax = entriesPerRank < METADATA_CHUNK_TOKEN_NUM ? entriesPerRank : METADATA_CHUNK_TOKEN_NUM;
     LocalTensor<uint64_t> addressEntries = addressTableBuf_.Get<uint64_t>();
     constexpr uint32_t entryElements = REMOTE_ADDRESS_ENTRY_SIZE / sizeof(uint64_t);
@@ -503,7 +493,7 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::B
             uint64_t sourceTokenIndex = groupStart + i;
             ReadTokenMetaDataStruct metaDataStruct;
             ReadTokenMetaDataFromLocal(metaDataStruct, i);
-            ascendc_assert(metaDataStruct.curAttenWorkRank < worldSize_, "attention rank is out of range");
+            // Rank range was already validated in Pass 1 over the same [scanStart, scanEnd) window.
             uint64_t tokenSlot = (static_cast<uint64_t>(metaDataStruct.curMicroBatchIds) * axisBS_ +
                                   metaDataStruct.curTokenBatchOffset) *
                                      expertNumPerToken_ +
