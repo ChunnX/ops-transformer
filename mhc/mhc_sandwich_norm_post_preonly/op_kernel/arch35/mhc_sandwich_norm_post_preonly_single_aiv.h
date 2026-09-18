@@ -244,15 +244,30 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::ProcessTokenSingleAi
         for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
             const uint32_t tD = GetTileD(tile);
             const uint32_t tOff = tile * dimTile_;
+            // R3阶段gamma0缓存已经空闲，与gamma2缓存组成双缓冲；
+            // 首个gamma2搬运和x2缓存恢复重叠，后续搬运与前一head的Vector计算重叠。
+            LocalTensor<float> gammaEven = bufGamma2Fp32_.Get<float>();
+            LocalTensor<float> gammaOdd = bufGamma0Fp32_.Get<float>();
+            LoadGammaInto(gammaEven, gamma2Gm_, tOff, tD);
             LoadX2CacheTile(tOff, tD);
             LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
-            LocalTensor<float> gamma2 = bufGamma2Fp32_.Get<float>();
             for (uint32_t n = 0; n < N_MAX; ++n) {
-                LoadGammaInto(gamma2, gamma2Gm_, n * D_ + tOff, tD);
+                LocalTensor<float> gammaCurrent = gammaEven;
+                LocalTensor<float> gammaNext = gammaOdd;
+                if ((n & 1U) != 0) {
+                    gammaCurrent = gammaOdd;
+                    gammaNext = gammaEven;
+                }
                 SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
                 WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-                ApplyScaleAndGamma(x2[n * dimTile_], invRmsMid, gamma2, tD);
-                FenceVToMte2();
+                if (n + 1 < N_MAX) {
+                    LoadGammaInto(gammaNext, gamma2Gm_, (n + 1) * D_ + tOff, tD);
+                }
+                ApplyScaleAndGamma(x2[n * dimTile_], invRmsMid, gammaCurrent, tD);
+                // 当前缓存会在两轮后再次由MTE2写入，前两轮显式建立V到MTE2依赖。
+                if (n + 2 < N_MAX) {
+                    FenceVToMte2();
+                }
             }
             CacheX2Tile(token, tOff, tD, true);
             AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf);
