@@ -19,10 +19,11 @@
  *
  * 命名空间: global(2026-09-17 裁定——apace/tiling 与 mmtiling/quant_matmul_tiling 一致)。
  *
- * 用法：
- *   统一入口 GetCoreOccupancyFirstTiling()（2026-09-17 §4.21 调用下沉）: op_tiling 只调
- *   该函数, 内部完成 SWAT matmul tiling → 核数守卫 → 通信切分 → fp4 K 轴修正;
- *   分步接口 GetCommTilingData() 保留供仅需通信切分的调用方使用。
+ * 用法（三层, 2026-09-17 §4.29 全家族分派后为 miss 路径的统一走向）：
+ *   核心推导 DeriveCommCut()——(m, n, baseM, baseN, usedCoreNum) → head/tail 切分, 纯几何;
+ *   V3 形态包装 GetCommTilingFromV3()——Mc2MatMulV3TilingData(TCubeTiling) 版, AGMM 等用;
+ *   SWAT 形态包装 GetCommTilingData()/GetCoreOccupancyFirstTiling()——QuantMatmulTilingData
+ *   版(data/scale 双通道 + fp4 K 轴修正), a2a_v2 等量化融合路径用。
  */
 
 #pragma once
@@ -33,10 +34,30 @@
 #include "matmul_tiling/quant_matmul_tiling.h"
 #include "../utils/apace_constant.h"
 
+// 核心推导: 每轮通信 M 跨度 = 一个计算波 headMSize = ceil(usedCoreNum/nTile)×baseM,
+// 纯几何无时延模型。baseM/baseN/usedCoreNum 任一为 0(matmul tiling 异常)返回 false,
+// 由调用方决定回退行为(校验与日志在 op_tiling, 2026-09-17 裁定)。
+inline bool DeriveCommCut(uint64_t m, uint64_t n, uint64_t baseM, uint64_t baseN, uint64_t usedCoreNum,
+                          uint64_t &headMSize, uint64_t &headTileCnt, uint64_t &tailMSize, uint64_t &tailTileCnt)
+{
+    if (baseM == 0UL || baseN == 0UL || usedCoreNum == 0UL) {
+        return false;
+    }
+    const uint64_t nTile = (n + baseN - 1) / baseN;
+    headMSize = ((usedCoreNum + nTile - 1) / nTile) * baseM;
+    if (headMSize == 0UL) {
+        return false;
+    }
+    headTileCnt = m / headMSize;
+    tailMSize = m % headMSize;
+    tailTileCnt = (tailMSize > 0) ? 1 : 0;
+    return true;
+}
+
 class CoreOccupancyFirstTiling {
 public:
     /*!
-     * \brief 计算数据通道的通信 tiling
+     * \brief 计算数据通道的通信 tiling（SWAT 形态: QuantMatmulTilingData 输入, data/scale 双通道）
      *
      * \param m         M_per_rank（单卡输出 M）
      * \param n         N
@@ -63,28 +84,17 @@ public:
             return;
         }
 
-        uint64_t baseM = mmTiling.baseM;
-        uint64_t baseN = mmTiling.baseN;
-        uint64_t usedCoreNum = mmTiling.usedCoreNum;
-
-        // 防御性零值守卫：baseM/baseN/usedCoreNum 为 0 说明 matmul tiling 异常，
-        // 此时无法推导通信切分，直接返回零值 tiling 避免除零。
-        if (baseM == 0UL || baseN == 0UL || usedCoreNum == 0UL) {
+        uint64_t headMSize = 0;
+        uint64_t headTileCnt = 0;
+        uint64_t tailMSize = 0;
+        uint64_t tailTileCnt = 0;
+        if (!DeriveCommCut(m, n, mmTiling.baseM, mmTiling.baseN, mmTiling.usedCoreNum, headMSize, headTileCnt,
+                           tailMSize, tailTileCnt)) {
+            // 防御性零值守卫: matmul tiling 异常时返回零值 tiling(与原实现一致)
             dataTiling = {};
             scaleTiling = {};
             return;
         }
-
-        auto nTile = (n + baseN - 1) / baseN;
-        uint64_t headMSize = ((usedCoreNum + nTile - 1) / nTile) * baseM;
-        if (headMSize == 0UL) {
-            dataTiling = {};
-            scaleTiling = {};
-            return;
-        }
-        uint64_t headTileCnt = m / headMSize;
-        uint64_t tailMSize = m % headMSize;
-        uint64_t tailTileCnt = (tailMSize > 0) ? 1 : 0;
 
         dataTiling.splitAxisTileSize = headMSize;
         dataTiling.splitAxisTileCnt = headTileCnt;
@@ -96,6 +106,27 @@ public:
         scaleTiling.nonSplitAxisSize = ka / MX_GROUP_SIZE;
     }
 };
+
+// V3 形态包装: Mc2MatMulV3 tiling 产物(tCubeTiling 的 baseM/baseN/usedCoreNum)→单通道通信切分。
+// AGMM 等 HCCL 通信算子无 scale 通道; nonSplitAxisSize(通信轴长度)由调用方按自身通信轴设置。
+// 返回 false = matmul tiling 异常(零值 tiling 已给出), 调用方决定回退(校验日志在 op_tiling)。
+inline bool GetCommTilingFromV3(uint64_t m, uint64_t n, uint64_t baseM, uint64_t baseN, uint64_t usedCoreNum,
+                                CommTilingData &dataTiling)
+{
+    uint64_t headMSize = 0;
+    uint64_t headTileCnt = 0;
+    uint64_t tailMSize = 0;
+    uint64_t tailTileCnt = 0;
+    if (!DeriveCommCut(m, n, baseM, baseN, usedCoreNum, headMSize, headTileCnt, tailMSize, tailTileCnt)) {
+        dataTiling = {};
+        return false;
+    }
+    dataTiling.splitAxisTileSize = headMSize;
+    dataTiling.splitAxisTileCnt = headTileCnt;
+    dataTiling.splitAxisTailSize = tailMSize;
+    dataTiling.splitAxisTailCnt = tailTileCnt;
+    return true;
+}
 
 /*!
  * \brief 统一入口: SWAT matmul tiling → 核数守卫 → 核利用率优先通信切分 → fp4 K 轴修正
