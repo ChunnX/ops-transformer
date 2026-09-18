@@ -130,21 +130,11 @@ struct CommModelInfo {
     uint64_t commDtypeSizeExpansionFraction;
 };
 
-// 通信时间三段式拟合参数(8 字段, 2026-09-17 按现存数据裁剪——原 12 字段中的
-// 前向二次项 a 与反解抛物线组 a'/b'/c' 在全部现存行中标定值恒 0, 属死值/死路径, 已删):
-//   前向:  x ≤ b1 → 平坦(timeToSizeBoundary1, 即中段函数在 b1 点的值, 连续性构造);
-//          b1 < x ≤ b2 → 中段直线 par2·x + par3;  x > b2 → 线性段 gradient·x + offset
-//   反解:  t > tb2 → 线性段直接除;  tb1 < t ≤ tb2 → 中段(现存数据无反解参数, 恒 0 退化);
-//          其余 → x = b1
+// 通信时间线性拟合参数(2 字段, §4.29 分派落地后 miss 回退路径整体废弃——标定命中是
+// 引擎唯一入口, 拟合模型收敛为纯线性 y = slope·x + offset; 12→8→2 两轮裁剪史见 §4.28/§4.29)
 struct CommFitParams {
-    double sizeToTimeBoundary1;      // 前向: 平坦/中段分界 (MB)
-    double sizeToTimeBoundary2;      // 前向: 中段/线性分界 (MB)
-    double sizeToTimeLinearGradient; // 线性段斜率 (us/MB)
-    double sizeToTimeLinearOffset;   // 线性段截距 (us)
-    double sizeToTimeParabolicPar2;  // 中段斜率 b (a=0 恒直线, 二次项已裁剪)
-    double sizeToTimeParabolicPar3;  // 中段截距 c
-    double timeToSizeBoundary1;      // 反解: 中段时间下界(us); 兼前向平坦段时间值
-    double timeToSizeBoundary2;      // 反解: 线性段时间下界(us)
+    double linearSlopeUsPerMb; // 斜率 (us/MB), 带宽项
+    double linearOffsetUs;     // 截距 (us), 每轮同步固定开销
 };
 
 // 引擎切分结果(M 轴 1短+N长 的切分方案; 算子侧边界处转换为旧全局 CommCutResult)
@@ -303,13 +293,12 @@ struct CommFitTable {
     static constexpr size_t MAX_ROWS = 4;
     CommFitRow rows[MAX_ROWS] = {};
     size_t rowCount = 0;
-    CommFitParams defaultParams = {}; // key 未命中时的回退行 + rankDim 折算因子缩放
 };
 
-// 组装纯线性拟合行（算子侧标定头用: 两段边界置 0, 任意 x>0 走线性分支 y = k·x + b）
+// 组装线性拟合行(标定行即线性, 直通)
 inline CommFitParams MakeLinearCommFit(double slopeUsPerMb, double interceptUs)
 {
-    return {0, 0, slopeUsPerMb, interceptUs, 0, 0, 0, 0};
+    return {slopeUsPerMb, interceptUs};
 }
 
 class HCCLCommModel {
@@ -405,53 +394,34 @@ public:
             commTimeFactor_ = 1;
         }
     }
-    // 按 rankDim 匹配标定行(soc/commPrimitive 对算子实例为常量, 已在构造参数中区分)
+    // 按 rankDim 匹配标定行(soc/commPrimitive 对算子实例为常量, 已在构造参数中区分)。
+    // §4.29 全家族分派后 miss 由 op 层走 COF, 引擎不再有回退模型——未命中置零值行
+    // (CommTime 恒 0 → NoCut), 防御性行为而非可用的回退路径。
     void GetCommParameters()
     {
-        const CommFitParams *hit = nullptr;
+        commEstimatePar_ = {};
         for (size_t i = 0; i < fitTable_.rowCount; ++i) {
             if (fitTable_.rows[i].rankDim == commTypeInfo_.rankDim) {
-                hit = &fitTable_.rows[i].params;
+                commEstimatePar_ = fitTable_.rows[i].params;
                 break;
             }
         }
-        if (hit != nullptr) {
-            commEstimatePar_ = *hit;
-        } else {
-            commEstimatePar_ = fitTable_.defaultParams;
-            ChangeCommTimeFactorByDivision(static_cast<double>(CALIBRATED_RANK_DIM) /
-                                           static_cast<double>(commTypeInfo_.rankDim));
-        }
     }
 
-    // 性能拟合函数
+    // 性能拟合函数: 纯线性 y = slope·x + offset (x=通信数据量 MB), 再除时间折算因子
     double CommTime(uint64_t mSize) const
     {
-        double commDataSize = mSize * commTypeInfo_.commMatrixLen * lookUpTileNum_ * GetRealDtypeSizes();
-        double tmpSize = commDataSize / BYTES_PER_MB;
-        double result = commEstimatePar_.timeToSizeBoundary1;
-        if (tmpSize > commEstimatePar_.sizeToTimeBoundary2) {
-            result = commEstimatePar_.sizeToTimeLinearGradient * tmpSize + commEstimatePar_.sizeToTimeLinearOffset;
-        } else if (tmpSize > commEstimatePar_.sizeToTimeBoundary1) {
-            result = commEstimatePar_.sizeToTimeParabolicPar2 * tmpSize + commEstimatePar_.sizeToTimeParabolicPar3;
-        }
-
-        result /= commTimeFactor_;
-        return result;
+        const double commDataSize =
+            static_cast<double>(mSize) * commTypeInfo_.commMatrixLen * lookUpTileNum_ * GetRealDtypeSizes();
+        const double tmpSize = commDataSize / BYTES_PER_MB;
+        return (commEstimatePar_.linearSlopeUsPerMb * tmpSize + commEstimatePar_.linearOffsetUs) / commTimeFactor_;
     }
 
+    // 纯线性反解: x = (t·factor - offset) / slope, 再换算回 M 行数
     uint64_t InverseCommTime(double targetTime) const
     {
-        double tmpSize = commEstimatePar_.sizeToTimeBoundary1;
-        if (targetTime > commEstimatePar_.timeToSizeBoundary2) {
-            tmpSize =
-                (targetTime - commEstimatePar_.sizeToTimeLinearOffset) / commEstimatePar_.sizeToTimeLinearGradient;
-        } else if (targetTime > commEstimatePar_.timeToSizeBoundary1) {
-            // 中段反解: 现存全部行(标定线性行/平台默认行)均无反解参数(原 a'/b'/c' 恒 0)——
-            // 原实现此段恒算出 -sqrt(0)+0 = 0(退化), 且 AR 线性求根特判条件 b'≠0 恒假(死分支)。
-            // 此处按现存数据的精确行为保留恒 0; 若未来标定产出真二次中段, 再引入反解参数。
-            tmpSize = 0;
-        }
+        const double tmpSize =
+            (targetTime * commTimeFactor_ - commEstimatePar_.linearOffsetUs) / commEstimatePar_.linearSlopeUsPerMb;
         return static_cast<uint64_t>(tmpSize * BYTES_PER_MB /
                                      (commTypeInfo_.commMatrixLen * lookUpTileNum_ * GetRealDtypeSizes()));
     }
@@ -998,11 +968,9 @@ inline uint64_t MmRankMul(const FitBasedBalanceCtx &ctx)
 //   };
 //
 // 填写规则:
-//   - 未填的行/字段自动取默认值(零值或 NSDMI 平台默认), 查表 miss 走回退路径;
-//   - 通信行按 rankDim 匹配, matmul 行按 (calcType, A/B/C 字节数) 匹配
-//     (soc/commPrimitive 对算子实例为常量, 不进入匹配); 行按前缀填, 0 值行=未填;
-//   - platformDefault/default* 为平台级默认(三段式 8 参数, 通常勿动), 已给默认值可整段省略;
-//   - 通信已标定行为纯线性拟合(客户标定产出即 斜率+截距 两个数), 引擎内部转三段式。
+//   - 通信行按 rankDim 匹配(未标定形态由 op 层分派走核利用率优先, §4.29——引擎不设回退);
+//   - matmul 行按 (calcType, A/B/C 字节数) 匹配, 未填字段取 NSDMI 默认; 行按前缀填, 0 值行=未填;
+//   - 通信行为纯线性拟合(客户标定产出即 斜率+截距 两个数)。
 // ============================================================================
 
 struct FitBalanceCalibration {
@@ -1018,9 +986,7 @@ struct FitBalanceCalibration {
             double linearSlope;  // 线性段斜率 (us/MB)
             double linearOffset; // 线性段截距 (us), 含每轮同步固定开销
         };
-        Row rows[MAX_COMM_FIT_ROWS] = {}; // 已标定行, rankDim=0 表示未填(跳过)
-        // 平台默认回退行(未标定形态走此行 + rankDim 折算缩放; 三段式 12 参数, 勿动)
-        CommFitParams platformDefault = {0.032, 1.371, 2.59568, 5.8887, 2.86702, 5.608, 5.6997, 9.448};
+        Row rows[MAX_COMM_FIT_ROWS] = {}; // 已标定行, rankDim=0 表示未填(哨兵截断)
     };
     CommFit aicpu; // AICPU 引擎(comm_mode != "ccu")
     CommFit ccu;   // CCU 引擎(comm_mode == "ccu")
@@ -1062,7 +1028,6 @@ inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, CommPrimitiv
     // 引擎分路 + 大结构体 → 引擎内部表适配(线性行转三段式, 按 null key 截断)
     const FitBalanceCalibration::CommFit &commFit = (commEngine == TilingCommEngine::CCU) ? calib.ccu : calib.aicpu;
     CommFitTable commTable;
-    commTable.defaultParams = commFit.platformDefault;
     commTable.rowCount = 0;
     for (size_t i = 0; i < FitBalanceCalibration::MAX_COMM_FIT_ROWS; ++i) {
         if (commFit.rows[i].rankDim == 0) {
@@ -1130,6 +1095,12 @@ inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, CommPrimitiv
     } else {
         // [P2 接线] RS 的 A&&B 双 fp4 mm 侧建模变体在 RSMM 迁移时接入
         ctx.commPerf.SetCommDTypeSize(ctx.matmulPerf.mmShapeInfo_.outMatrixCDtypeSize);
+    }
+    // §4.29 分派后引擎不设回退模型: 标定未命中(零值行 slope=0)时置 minLen=mValue——
+    // NoCut 门控即输出单块不切(防御行为, 正常分派下 op 层已引走 COF, 不可达;
+    // 同时避免 InverseCommTime 除零斜率的 float→uint UB)
+    if (ctx.commPerf.commEstimatePar_.linearSlopeUsPerMb == 0.0) {
+        ctx.tilingM.SetMinLenByMax(ctx.matmulPerf.mmShapeInfo_.mValue);
     }
     // D7 离散对齐粒度初始化: baseM
     ctx.tilingM.SetMinLenByMax(ctx.matmulPerf.GetBaseM());
