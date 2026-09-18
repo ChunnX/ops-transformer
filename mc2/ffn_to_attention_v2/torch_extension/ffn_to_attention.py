@@ -126,11 +126,13 @@ def _get_hccl_comm_name(group, rank_id):
     return get_backend(torch.device("npu")).get_hccl_comm_name(rank_id, init_comm=False)
 
 
-def _calc_window_size(token_info_table_shape, token_data_shape):
-    """Calculate the required window buffer size in bytes."""
+def _calc_window_size(
+    token_info_table_shape, token_data_shape, world_size, max_token_num=-1
+):
+    """Calculate window capacity including flag sources, address tables and count rows."""
     _op_module = _ffn_to_attention_op_builder.load()
     return _op_module.get_ffn_to_attention_ccl_buffer_size(
-        token_info_table_shape, token_data_shape
+        token_info_table_shape, token_data_shape, world_size, max_token_num
     )
 
 
@@ -147,7 +149,17 @@ class FFNToAttentionBuffer:
         world_size: int,
         token_info_table_shape: List[int],
         token_data_shape: List[int],
+        *,
+        max_token_num: int = -1,
     ):
+        if world_size != torch.distributed.get_world_size(group):
+            raise ValueError("world_size must match the communication group size")
+        if (
+            not isinstance(max_token_num, int)
+            or isinstance(max_token_num, bool)
+            or max_token_num < -1
+        ):
+            raise ValueError("max_token_num must be an integer >= -1")
         self.group = group
         self.rank_id = torch.distributed.get_rank(group)
         self.group_name = _get_hccl_comm_name(group, self.rank_id)
@@ -155,8 +167,21 @@ class FFNToAttentionBuffer:
         self.token_info_table_shape = list(token_info_table_shape)
         self.token_data_shape = list(token_data_shape)
 
+        self.max_token_num = (
+            world_size
+            * self.token_info_table_shape[0]
+            * self.token_info_table_shape[1]
+            * self.token_info_table_shape[2]
+            if max_token_num == -1
+            else max_token_num
+        )
         required_buffer_size = _calc_window_size(
-            token_info_table_shape, token_data_shape
+            token_info_table_shape, token_data_shape, world_size, self.max_token_num
+        )
+        self.required_buffer_size = required_buffer_size
+        self._capacity_shapes = (
+            tuple(self.token_info_table_shape),
+            tuple(self.token_data_shape),
         )
         self._ctx_manager = CommContextManager(
             self.group_name,
@@ -172,9 +197,15 @@ class FFNToAttentionBuffer:
         )
         self.context = self._ctx_manager.create_context()
         self.ccl_buffer_size = self._ctx_manager.ccl_buffer_size
+        if self.ccl_buffer_size < self.required_buffer_size:
+            raise RuntimeError(
+                f"Context reports {self.ccl_buffer_size} bytes, but the window requires "
+                f"{self.required_buffer_size} bytes"
+            )
 
     def destroy(self):
         self._ctx_manager.destroy()
+        self.context = None
 
     def get_window_addr(self) -> int:
         """Get the local window memory device address from the context."""
@@ -199,6 +230,8 @@ def get_buffer_for_ffn_to_attention(
     world_size: int,
     token_info_table_shape: List[int],
     token_data_shape: List[int],
+    *,
+    max_token_num: int = -1,
 ) -> FFNToAttentionBuffer:
     """Create a communication buffer for ffn_to_attention.
 
@@ -211,6 +244,9 @@ def get_buffer_for_ffn_to_attention(
         world_size (int): Communication domain size.
         token_info_table_shape (List[int]): 3-element list [microBatchNum, BS, expertNumPerToken].
         token_data_shape (List[int]): 4-element list [microBatchNum, BS, expertNumPerToken, HS].
+        max_token_num (int): Capacity for x.shape[0], used to reserve rank address tables
+            in the window. Defaults to world_size * microBatchNum * BS * expertNumPerToken
+            when -1. Set this explicitly if a larger input capacity is needed.
 
     Returns:
         FFNToAttentionBuffer: Buffer holding the communication context, group
@@ -221,6 +257,7 @@ def get_buffer_for_ffn_to_attention(
         world_size,
         token_info_table_shape,
         token_data_shape,
+        max_token_num=max_token_num,
     )
 
 
@@ -256,6 +293,20 @@ def ffn_to_attention(
     Returns:
         None. Data is sent to peer ranks via the HCCL window; no host-visible output.
     """
+    if buffer.context is None:
+        raise RuntimeError("FFNToAttentionBuffer has been destroyed")
+    if (
+        tuple(buffer.token_info_table_shape),
+        tuple(buffer.token_data_shape),
+    ) != buffer._capacity_shapes:
+        raise ValueError(
+            "Window shapes cannot change after buffer creation; create a replacement buffer"
+        )
+    torch._check(x.dim() == 2, lambda: "x must be a 2D tensor")
+    torch._check(
+        x.shape[1] <= buffer.token_data_shape[3],
+        lambda: "x.shape[1] exceeds the window token slot width HS",
+    )
     torch.ops.cann_ops_transformer.npu_ffn_to_attention(
         buffer.context,
         x,
