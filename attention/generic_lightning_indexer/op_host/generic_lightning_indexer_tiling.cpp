@@ -112,6 +112,12 @@ ge::graphStatus GenericLightningIndexerTiling::ParseAndCheckParams(GenericLightn
     info.appendTail = *appendPtr;
     info.quantMode = static_cast<int32_t>(*quantPtr);
     info.returnValue = *retValPtr;
+    info.selectMode = static_cast<int32_t>(*selectPtr);
+    info.keyReduceMode = static_cast<int32_t>(*keyReducePtr);
+    const int64_t *initBlocksPtr = attrs->GetInt(GLI_ATTR_INIT_BLOCKS);
+    const int64_t *localBlocksPtr = attrs->GetInt(GLI_ATTR_LOCAL_BLOCKS);
+    info.initBlocks = (initBlocksPtr == nullptr) ? 0 : static_cast<uint32_t>(*initBlocksPtr);
+    info.localBlocks = (localBlocksPtr == nullptr) ? 0 : static_cast<uint32_t>(*localBlocksPtr);
     const float *scoreScalePtr = attrs->GetAttrPointer<float>(GLI_ATTR_SCORE_SCALE);
     info.scoreScale = (scoreScalePtr == nullptr) ? 1.0f : *scoreScalePtr;
 
@@ -119,13 +125,22 @@ ge::graphStatus GenericLightningIndexerTiling::ParseAndCheckParams(GenericLightn
                 OP_LOGE(context_, "sparse_mode must be 0/3/4"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(info.appendTail && !info.expandIndices, OP_LOGE(context_, "append_tail requires expand_indices"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(*selectPtr != 0, OP_LOGE(context_, "Step1 rejects select_mode=%ld (MSA reserved)", *selectPtr),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(*keyReducePtr != 0,
-                OP_LOGE(context_, "Step1 rejects key_reduce_mode=%ld (MSA reserved)", *keyReducePtr),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(info.actType != 0, OP_LOGE(context_, "Step1 rejects act_type=%d (identity reserved)", info.actType),
-                return ge::GRAPH_FAILED);
+
+    const bool isMsa = (info.selectMode == 1 || info.keyReduceMode == 1 || info.actType == 1);
+    if (isMsa) {
+        OP_CHECK_IF(info.selectMode != 1 || info.keyReduceMode != 1 || info.actType != 1,
+                    OP_LOGE(context_, "MSA requires act_type=1, key_reduce_mode=1, select_mode=1"),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(info.hasWeightedSum, OP_LOGE(context_, "MSA requires has_weighted_sum=false"),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(info.expandIndices, OP_LOGE(context_, "MSA forbids expand_indices"), return ge::GRAPH_FAILED);
+        info.returnValue = true;
+    } else {
+        OP_CHECK_IF(info.actType != 0, OP_LOGE(context_, "non-MSA act_type must be 0 (relu)"), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(info.selectMode != 0, OP_LOGE(context_, "non-MSA select_mode must be 0"), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(info.keyReduceMode != 0, OP_LOGE(context_, "non-MSA key_reduce_mode must be 0"),
+                    return ge::GRAPH_FAILED);
+    }
 
     info.expandMode = 0;
     if (info.expandIndices) {
@@ -207,7 +222,7 @@ ge::graphStatus GenericLightningIndexerTiling::ParseAndCheckParams(GenericLightn
                     OP_LOGE(context_, "TND requires actual_seq_k"), return ge::GRAPH_FAILED);
     }
 
-    const bool needResidual = (info.cmpRatio > 1 && info.sparseMode != 0);
+    const bool needResidual = (info.cmpRatio > 1 && info.sparseMode != 0 && info.keyReduceMode == 0);
     const gert::Tensor *residual = context_->GetOptionalInputTensor(GLI_CMP_RESIDUAL_K_INDEX);
     OP_CHECK_IF(needResidual && residual == nullptr,
                 OP_LOGE(context_, "cmp_residual_k required when cmp_ratio!=1 and sparse_mode!=0"),
@@ -308,6 +323,10 @@ void GenericLightningIndexerTiling::SetTilingData(const GenericLightningIndexerT
     tilingData_.set_expandMode(info.expandMode);
     tilingData_.set_hasWeightedSum(info.hasWeightedSum ? 1 : 0);
     tilingData_.set_actType(static_cast<uint32_t>(info.actType));
+    tilingData_.set_selectMode(static_cast<uint32_t>(info.selectMode));
+    tilingData_.set_keyReduceMode(static_cast<uint32_t>(info.keyReduceMode));
+    tilingData_.set_initBlocks(info.initBlocks);
+    tilingData_.set_localBlocks(info.localBlocks);
 }
 
 ge::graphStatus GenericLightningIndexerTiling::DoTiling(GenericLightningIndexerTilingInfo *tilingInfo)
@@ -342,7 +361,12 @@ ge::graphStatus GenericLightningIndexerTiling::DoTiling(GenericLightningIndexerT
     } else if (tilingInfo->queryDtype == ge::DT_FLOAT8_E4M3FN) {
         tplDtQ = GLI_TPL_FP8;
     }
-    uint32_t headReduce = tilingInfo->hasWeightedSum ? GLI_TPL_HEAD_WEIGHTED : GLI_TPL_HEAD_SUM;
+    uint32_t headReduce = GLI_TPL_HEAD_WEIGHTED;
+    if (tilingInfo->keyReduceMode == 1) {
+        headReduce = GLI_TPL_HEAD_NONE;
+    } else if (!tilingInfo->hasWeightedSum) {
+        headReduce = GLI_TPL_HEAD_SUM;
+    }
     uint64_t tilingKey =
         GET_TPL_TILING_KEY(tplDtQ, tplDtQ, static_cast<uint32_t>(GLI_TPL_INT32),
                            static_cast<uint32_t>(tilingInfo->layoutQ), static_cast<uint32_t>(tilingInfo->layoutK),

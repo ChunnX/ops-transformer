@@ -109,9 +109,9 @@ int main()
     char layoutK[] = "BSND";
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
-    ret = aclnnGenericLightningIndexerGetWorkspaceSize(q, k, w, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-                                                       nullptr, 8, 1, layoutQ, layoutK, 3, 0, true, false, false, -1,
-                                                       true, 0, 0, 1.0f, -1, idx, val, &workspaceSize, &executor);
+    ret = aclnnGenericLightningIndexerGetWorkspaceSize(
+        q, k, w, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 8, 1, layoutQ, layoutK, 3, 0,
+        true, false, false, -1, true, 0, 0, 1.0f, -1, 0, 0, idx, val, &workspaceSize, &executor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         LOG_PRINT("aclnnGenericLightningIndexerGetWorkspaceSize failed. ERROR: %d\n", ret);
         return ret;

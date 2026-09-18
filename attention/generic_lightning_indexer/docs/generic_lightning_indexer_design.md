@@ -3,7 +3,7 @@
 - **算子名**：`GenericLightningIndexer` / `aclnnGenericLightningIndexer`
 - **路径**：`attention/generic_lightning_indexer`
 - **开发分支**：`generic-lightning-indexer`（基于 `cann/master` `12a3dd661`）
-- **阶段**：Step 1（收编前 5 个 indexer + Qwen CLI；为 MSA 预留接口）
+- **阶段**：Step 2（收编前 5 个 indexer + Qwen CLI + MsaIndexScore）
 - **日期**：2026-09-18
 
 配套分析：
@@ -142,14 +142,21 @@ $$
 | PoolKeyIndexer | `pool_size` | relu | true | 0 或 3 | 1 | 1 | none/FP8/MXFP8 | $1/\sqrt{D}$ |
 | Qwen CLI | 4（可配） | relu | **false（累加和）** | **4** | 1 | 1 | none（后续可量化） | 1 |
 
-### 4.2 Step 2 预留（本阶段只占属性，tiling 拒绝 kernel 路径）
+### 4.2 Step 2（MsaIndexScore）
 
 | 来源 | `act_type` | `has_weighted_sum` | `key_reduce_mode` | `select_mode` | 说明 |
 |---|---|---|---|---|---|
-| MsaIndexScore | identity | false | **maxpool** | **none** | 输出 block score，TopK 在算子外 |
-| MSA + 融合 TopK（可选） | identity | false | maxpool | topk | 若后续 MiniMax 要把 TopK 融进来 |
+| MsaIndexScore | identity | false | **maxpool** | **none** | 输出 block score，TopK 在算子外；保留 N1 |
+| MSA + 融合 TopK（可选） | identity | false | maxpool | topk | 预留，本阶段 tiling 仍要求 select_mode=none |
 
-`key_reduce_mode` 与 `select_mode` 在 Step 1 的合法取值仅为 `none` / `topk`。
+三者必须成套出现：`act_type=1` ∧ `key_reduce_mode=1` ∧ `select_mode=1`。`cmp_ratio` 在此剖面表示 **maxpool 窗**（典型 128），不再表示上游压缩比，也不再要求 `cmp_residual_k`。
+
+额外输入/属性：
+
+- `start_loc` `[B]`：query 所在逻辑 block，生成 local_mask
+- `init_blocks` / `local_blocks`：local_mask 的 sink 与窗口；均为 0 时关闭
+
+输出：`sparse_indices` 空；`sparse_values` 为 `[B,S1,N1,Align16(ceil(S2/r))]`（TND 去 B）。MSA 原 IR 的 `[N1,T1,blocks]` 由调用方 permute。
 
 ---
 
@@ -204,7 +211,7 @@ $$
 - HeadDim $=128$，$K_N=1$，$H_I\in[1,64]$。
 - `append_tail=true` ⇒ `expand_indices=true`。
 - `has_weighted_sum=true` ⇒ `weights` 非空；反之 `weights` 必须为空。
-- `act_type=identity` 在 Step 1 仅允许与 `select_mode=topk` 且 `key_reduce_mode=none` 组合（给 MSA 预留 identity+maxpool，但 Step 1 不跑）。
+- `act_type=identity` 仅允许与 `key_reduce_mode=maxpool` 且 `select_mode=none` 成套出现（MSA）。
 - `sparse_mode=4` 建议与 `expand_indices=true` 一起使用（Qwen）；允许单独使用以便单测 mask。
 
 ### 5.4 Shape
@@ -349,7 +356,7 @@ Step 1 `ASCENDC_TPL_SEL` 只枚举需要的组合，避免笛卡尔积：
 | P-QLIv2 | QLIv2 | r=4, quant MXFP8 | topk |
 | P-PKI | PKI | r=16, relu, weighted, sm=3, expand+append | topk*r+(r-1) |
 | P-QWEN | Qwen CLI | r=4, relu, **sum**, sm=**4**, expand+append | topk*r+(r-1) |
-| P-MSA-REJ | MSA 预留 | select_mode=1 或 key_reduce=1 | InferShape/Tiling **失败**（Step 1） |
+| P-MSA | MSA | act=1, key_reduce=1, select=1 | InferShape/Tiling 成功，values=`[B,S1,N1,Align16(ceil(S2/r))]` |
 
 另覆盖：TND、PA_BBND、`return_value`、`weights` 与 `has_weighted_sum` 不一致、`append_tail` 无 expand、`cmp_ratio` 越界。
 
@@ -383,7 +390,7 @@ Commit A  需求设计文档（本文件）
 Commit B  Host：def / infershape / tiling / proto / CMake / InferShape UT
 Commit C  Kernel：Policy + arch35 调度 + Act/Reduce/TopK/Expand（FP16/BF16）
 Commit D  量化 / PA 路径补齐 + 剖面 ST
-Commit E  （Step 2，另开迭代）MSA Maxpool + select_mode=none
+Commit E  （Step 2）MSA：identity + Maxpool + select_mode=none + start_loc/local_mask 属性
 ```
 
 每步可运行对应 UT；kernel 未就绪时 Host UT 仍可回归接口。

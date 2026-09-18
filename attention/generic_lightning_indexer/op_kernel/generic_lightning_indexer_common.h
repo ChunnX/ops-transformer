@@ -42,9 +42,12 @@ struct GliType {
     static constexpr bool pageAttention = (K_LAYOUT_T == GliLayout::PA_BSND);
     static constexpr GliLayout layout = LAYOUT_T;
     static constexpr GliLayout keyLayout = K_LAYOUT_T;
-    static constexpr uint32_t headReduce = HEAD_REDUCE; // 0 weighted, 1 sum
+    static constexpr uint32_t headReduce = HEAD_REDUCE; // 0 weighted, 1 sum, 2 none (MSA keep heads)
     static constexpr uint32_t expandMode = EXPAND_MODE; // 0 off, 1 expand, 2 expand+append
     static constexpr bool useWeights = (HEAD_REDUCE == 0);
+    static constexpr bool keepHeads = (HEAD_REDUCE == 2);
+    static constexpr bool applyRelu = (HEAD_REDUCE != 2);
+    static constexpr bool doTopK = (HEAD_REDUCE != 2);
     static constexpr bool doExpand = (EXPAND_MODE != 0);
     // 量化模式判定: FP8 输入 + E8M0 scale => mxFP8 硬件路径;
     // FP8 输入 + float scale => per-token-head vector 融合路径
@@ -130,6 +133,10 @@ struct ConstInfo {
     uint32_t expandMode = 0;
     uint32_t hasWeightedSum = 1;
     uint32_t actType = 0;
+    uint32_t selectMode = 0;
+    uint32_t keyReduceMode = 0;
+    uint32_t initBlocks = 0;
+    uint32_t localBlocks = 0;
     uint64_t kSeqSize = 0ULL;
     uint64_t qSeqSize = 1ULL;
 

@@ -42,6 +42,8 @@ AttrList MakeAttrs(int64_t topk, int64_t cmpRatio, const char *layoutQ, const ch
         {"key_reduce_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(keyReduce)},
         {"score_scale", Ops::Transformer::AnyValue::CreateFrom<float>(scoreScale)},
         {"key_stride0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
+        {"init_blocks", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        {"local_blocks", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
     };
 }
 
@@ -240,6 +242,31 @@ TEST_F(GenericLightningIndexerTilingArch35, P_MSA_REJ_key_reduce)
                                  MakeAttrs(32, 1, "BSND", "BSND", 0, false, false, false, -1, false, 0, 1),
                                  &compileInfo, "Ascend950", 56, 262144, 16384);
     ExecuteTestCase(para, ge::GRAPH_FAILED);
+}
+
+TEST_F(GenericLightningIndexerTilingArch35, P_MSA_identity_maxpool)
+{
+    optiling::GenericLightningIndexerCompileInfo compileInfo;
+    gert::TilingContextPara para("GenericLightningIndexer",
+                                 {
+                                     {{{1, 8, 8, 128}, {1, 8, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                     {{{1, 32, 1, 128}, {1, 32, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                     NullIn(ge::DT_FLOAT16),
+                                     NullIn(),
+                                     NullIn(),
+                                     NullIn(),
+                                     NullIn(),
+                                     NullIn(ge::DT_FLOAT),
+                                     NullIn(ge::DT_FLOAT),
+                                     NullIn(),
+                                 },
+                                 {
+                                     {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND},
+                                     {{{1, 8, 8, 16}, {1, 8, 8, 16}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                 },
+                                 MakeAttrs(16, 16, "BSND", "BSND", 3, false, false, false, -1, true, 1, 1, 1),
+                                 &compileInfo, "Ascend950", 56, 262144, 16384);
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, SKIP_TILING_KEY);
 }
 
 TEST_F(GenericLightningIndexerTilingArch35, P_QLI_fp8_pth)

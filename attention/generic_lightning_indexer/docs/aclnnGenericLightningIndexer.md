@@ -17,7 +17,7 @@
 | LightningIndexerV2 / QLIv2 | r | relu | yes | 0/3 | no | no |
 | PoolKeyIndexer | pool_size | relu | yes | 0/3 | yes | yes |
 | Qwen CLI | 4 | relu | **no** | **4** | yes | yes |
-| MsaIndexScore | Step 2：`select_mode=1` / `key_reduce_mode=1` 本阶段 tiling 拒绝 | | | | | |
+| MsaIndexScore | Step 2：`act_type=1` + `key_reduce_mode=1` + `select_mode=1`，values 为 block score | | | | | |
 
 `topk` 一律表示**打分轴**选出的个数。旧 PKI 的 token 预算需先除以 `pool_size`。
 
@@ -28,11 +28,11 @@ aclnnStatus aclnnGenericLightningIndexerGetWorkspaceSize(
     const aclTensor *query, const aclTensor *key, const aclTensor *weights,
     const aclTensor *actualSeqQ, const aclTensor *actualSeqK, const aclTensor *cmpResidualK,
     const aclTensor *blockTable, const aclTensor *qDescale, const aclTensor *kDescale,
-    const aclTensor *metadata,
+    const aclTensor *metadata, const aclTensor *startLoc,
     int64_t topk, int64_t cmpRatio, char *layoutQ, char *layoutK, int64_t sparseMode,
     int64_t actType, bool hasWeightedSum, bool expandIndices, bool appendTail,
     int64_t quantMode, bool returnValue, int64_t selectMode, int64_t keyReduceMode,
-    float scoreScale, int64_t keyStride0,
+    float scoreScale, int64_t keyStride0, int64_t initBlocks, int64_t localBlocks,
     const aclTensor *sparseIndicesOut, const aclTensor *sparseValuesOut,
     uint64_t *workspaceSize, aclOpExecutor **executor);
 
@@ -42,9 +42,9 @@ aclnnStatus aclnnGenericLightningIndexer(void *workspace, uint64_t workspaceSize
 
 调用示例：`examples/test_aclnn_generic_lightning_indexer.cpp`。
 
-## 约束（Step 1）
+## 约束
 
 - HeadDim=128，Key N=1，Query N∈[1,64]
-- `act_type` 仅 0（ReLU）；identity 与 MSA maxpool 预留到 Step 2
+- MSA 剖面：`act_type=1`、`key_reduce_mode=1`、`select_mode=1` 必须成套；`has_weighted_sum=false`
 - `append_tail=true` 需要 `expand_indices=true`
 - `has_weighted_sum=true` 必须传 weights，反之必须为空

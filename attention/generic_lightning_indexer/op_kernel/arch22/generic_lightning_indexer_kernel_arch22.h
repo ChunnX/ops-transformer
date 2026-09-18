@@ -181,6 +181,10 @@ __aicore__ inline void GenericLightningIndexerKernel<LIT>::InitTilingData(
     constInfo.expandMode = tilingData->expandMode;
     constInfo.hasWeightedSum = tilingData->hasWeightedSum;
     constInfo.actType = tilingData->actType;
+    constInfo.selectMode = tilingData->selectMode;
+    constInfo.keyReduceMode = tilingData->keyReduceMode;
+    constInfo.initBlocks = tilingData->initBlocks;
+    constInfo.localBlocks = tilingData->localBlocks;
     constInfo.trunkLen = tilingData->trunkLen;
     constInfo.mBaseSizeMax = tilingData->mBaseSizeMax;
     constInfo.keyDequantScaleStride0 = tilingData->keyDequantScaleStride0;
