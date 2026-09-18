@@ -169,11 +169,19 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::GetKeyScale(const QLIV2Common::RunIn
     if constexpr (PAGE_ATTENTION) {
         // A11: k_scale 0 轴非连续 — 块基址 = 表值 x keyDequantScaleStride0 (真实 stride);
         // 0 时兜底原紧凑公式 (kCacheBlockSize_), 现网行为不变 (R8)
-        int32_t kScaleBlkStride = constInfo_.keyDequantScaleStride0 != 0 ?
-                                      static_cast<int32_t>(constInfo_.keyDequantScaleStride0) : kCacheBlockSize_;
+        // P13: 页跨度提升 int64 后再乘 — paged 混合缓存可超 2^31 个 scale 元素,
+        // blockId * stride 的 int32 乘法在物理块号 >= ceil(2^31/stride) 时溢出
+        // (stride=73856 时首个溢出块 29077), 负偏移符号扩展后越界/静默错读。
+        // 必须在乘法前提升: static_cast<int64_t>(blockId * stride32) 已溢出无效。
+        // 回归用例: qli_cand_test/test_qli_cand.py::test_qli_p13_kscale_int32_overflow
+        int64_t kScaleBlkStride = constInfo_.keyDequantScaleStride0 != 0 ?
+                                      static_cast<int64_t>(constInfo_.keyDequantScaleStride0) :
+                                      static_cast<int64_t>(kCacheBlockSize_);
         int32_t startBlockTableIdx = startS2 / kCacheBlockSize_;
         int32_t startBlockTableOffset = startS2 % kCacheBlockSize_;
-        int32_t blockTableBatchOffset = batchId * maxBlockNumPerBatch_;
+        // P13 同型防御: batchId * maxBlockNumPerBatch_ 的 int32 乘法在 block_table
+        // 总项超 2^31 (≈8.6GB 表) 时溢出 — 提前提升 int64
+        int64_t blockTableBatchOffset = static_cast<int64_t>(batchId) * maxBlockNumPerBatch_;
         copyInParams.blockCount = 1;
         copyInParams.srcStride = 0;
         copyInParams.dstStride = 0;
