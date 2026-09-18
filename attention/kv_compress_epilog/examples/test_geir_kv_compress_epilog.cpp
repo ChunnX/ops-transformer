@@ -51,8 +51,8 @@ using std::vector;
     placeholder##inputIndex##_desc.SetPlacement(ge::kPlacementHost); \
     placeholder##inputIndex##_desc.SetFormat(FORMAT_ND); \
     Tensor tensor_placeholder##inputIndex; \
-    ret = GenOnesData(placeholder##inputIndex##_shape, tensor_placeholder##inputIndex, \
-                      placeholder##inputIndex##_desc, inputDtype, 2); \
+    ret = GenOnesData(placeholder##inputIndex##_shape, tensor_placeholder##inputIndex, placeholder##inputIndex##_desc, \
+                      inputDtype, 2); \
     if (ret != SUCCESS) { \
         printf("%s - ERROR - [XIR]: Generate input data failed\n", GetTime().c_str()); \
         return FAILED; \
