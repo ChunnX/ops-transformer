@@ -450,7 +450,7 @@ def is_swa_case(params):
     return (
         template_mode is None
         and (params.get("K") is None or params.get("K") == ["None"])
-        and params.get("cmp_ratio") is None
+        and params.get("cmp_kv_type") is None
     )
 
 
