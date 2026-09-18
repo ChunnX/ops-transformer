@@ -822,25 +822,14 @@ bool Mc2AdaptiveSlidingWindowTiling::IsInValidWeighNzTailSplit(uint64_t splitCnt
 
 bool Mc2AdaptiveSlidingWindowTiling::IsInValidMxFp4NonTransNTailSplit(uint64_t nTile) const
 {
-    // ND MXFP4 + transB=0: B inner axis is N, FP4 packs 2 values/byte. Kernel uses
-    // nOffset = nIndex * baseN + nSplitIdx * Ceil(singleCoreN, nTailTile).
-    // Odd nOffset misaligns packed B (and is the ID0071-class precision failure).
-    bool isMxFp4NdNonTrans = !inputParams_.transB && inputParams_.bFormat != ge::FORMAT_FRACTAL_NZ &&
-                             (inputParams_.aDtype == ge::DT_FLOAT4_E2M1 || inputParams_.bDtype == ge::DT_FLOAT4_E2M1) &&
-                             inputParams_.scaleDtype == ge::DT_FLOAT8_E8M0;
-    if (!isMxFp4NdNonTrans || nTile <= 1UL) {
+    // ND MXFP4 + transB=0: N is the packed FP4 inner axis. Disable leftover-core N
+    // resplit (nTailTile stays 1) so mTailTile absorbs unused cores instead.
+    if (nTile <= 1UL) {
         return false;
     }
-    auto isOddStride = [nTile](uint64_t nLen) -> bool {
-        if (nLen == 0UL) {
-            return false;
-        }
-        return ((nLen + nTile - 1UL) / nTile) % 2UL != 0UL;
-    };
-    if (isOddStride(adaptiveWin_.nTail)) {
-        return true;
-    }
-    return adaptiveWin_.nBlockCnt > 1UL && isOddStride(adaptiveWin_.baseN);
+    return !inputParams_.transB && inputParams_.bFormat != ge::FORMAT_FRACTAL_NZ &&
+           (inputParams_.aDtype == ge::DT_FLOAT4_E2M1 || inputParams_.bDtype == ge::DT_FLOAT4_E2M1) &&
+           inputParams_.scaleDtype == ge::DT_FLOAT8_E8M0;
 }
 
 void Mc2AdaptiveSlidingWindowTiling::CalcTailBasicBlock()
@@ -858,21 +847,15 @@ void Mc2AdaptiveSlidingWindowTiling::CalcTailBasicBlock()
     auto &secSplitValid = preIsN ? mTile : nTile;
     while (CalUsedCoreNum(preSplit + 1, secSplit) <= aicoreParams_.aicNum) {
         preSplit += 1UL;
-        bool invalidPre = IsInValidPerblockTailSplit(preSplit) || IsInValidWeighNzTailSplit(preSplit, true);
-        if (preIsN) {
-            invalidPre = invalidPre || IsInValidMxFp4NonTransNTailSplit(preSplit);
-        }
-        if (!invalidPre) {
+        if (!IsInValidPerblockTailSplit(preSplit) && !IsInValidWeighNzTailSplit(preSplit, true) &&
+            !(preIsN && IsInValidMxFp4NonTransNTailSplit(preSplit))) {
             preSplitValid = preSplit;
         }
 
         if (CalUsedCoreNum(preSplit, secSplit + 1) <= aicoreParams_.aicNum) {
             secSplit += 1UL;
-            bool invalidSec = IsInValidPerblockTailSplit(secSplit) || IsInValidWeighNzTailSplit(secSplit, false);
-            if (!preIsN) {
-                invalidSec = invalidSec || IsInValidMxFp4NonTransNTailSplit(secSplit);
-            }
-            if (!invalidSec) {
+            if (!IsInValidPerblockTailSplit(secSplit) && !IsInValidWeighNzTailSplit(secSplit, false) &&
+                !(!preIsN && IsInValidMxFp4NonTransNTailSplit(secSplit))) {
                 secSplitValid = secSplit;
             }
         }
