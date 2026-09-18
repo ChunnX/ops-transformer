@@ -474,8 +474,16 @@ class BatchCaseTransformer:
             metadata["cu_seqlens_q"] = cu_tensor
             params["cu_seqlens_q"] = new_cu_q
         elif self.layout_q == "BSND" and original_cu_q is not None:
-            physical_s1 = int(new_q.shape[1])
-            cu_values = [index * physical_s1 for index in range(new_batch_size + 1)]
+            original_valid = self.tensors.get("seqused_q")
+            if original_valid is None:
+                lengths = [int(new_q.shape[1])] * new_batch_size
+            else:
+                lengths = (
+                    layouts.select_per_batch_vec(original_valid, batch_ids)
+                    .to("cpu", torch.int64)
+                    .tolist()
+                )
+            cu_values = layouts.recompute_cu_seqlens(lengths)
             cu_tensor = self._cu_tensor(cu_values, original_cu_q)
             tensors["cu_seqlens_q"] = cu_tensor
             metadata["cu_seqlens_q"] = cu_tensor
@@ -908,8 +916,13 @@ class BatchCaseTransformer:
             )
             cmp_length, residual = divmod(new_ori_length, ratio)
             self._set_kv_lengths(input_data, "cmp", [cmp_length])
-            reference = tensors.get("cmp_residual_kv")
-            self._set_vector(adapter, "cmp_residual_kv", [residual], reference)
+            # The operator contract rejects cmp_residual_kv for an unmasked
+            # compressed branch and when there is no compression.  Resizing an
+            # ori-position-sensitive case must not synthesize that forbidden
+            # optional input merely because cmp_kv is present.
+            if cmp_mode != 0 and ratio != 1:
+                reference = tensors.get("cmp_residual_kv")
+                self._set_vector(adapter, "cmp_residual_kv", [residual], reference)
         self._sync_derived_fields(adapter)
         schema.check_invariants(input_data)
 
