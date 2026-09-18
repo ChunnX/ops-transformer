@@ -79,23 +79,19 @@ constexpr int32_t INPUT_DTYPE = 2;
 constexpr int32_t MIN_P_VALUE = 1;
 constexpr uint32_t MAX_BLOCK_COUNT = 2;
 
-// Tiling Code Mask
-constexpr int32_t COMMDATASPLIT_MASK = 0b11111;
-constexpr int32_t COMMDATASPLIT_BNUM = 5;
-constexpr int32_t COMMNPUSPLIT_MASK = 0b11111;
-constexpr int32_t COMMNPUSPLIT_BNUM = 5;
-constexpr int32_t COMMDIRECT_MASK = 0b1;
-constexpr int32_t COMMDIRECT_BNUM = 1;
-constexpr int32_t UBMOVENUM_MASK = 0b11111111;
-constexpr int32_t UBMOVENUM_BNUM = 8;
-constexpr int32_t PVALUE_MASK = 0b1111;
-constexpr int32_t PVALUE_BNUM = 4;
-constexpr int32_t SWIZZLCOUNT_MASK = 0b1111;
-constexpr int32_t SWIZZLCOUNT_BNUM = 4;
-constexpr int32_t SWIZZLDIRECT_MASK = 0b1;
-constexpr int32_t SWIZZLDIRECT_BNUM = 1;
-constexpr int32_t M0_MASK = 0b1;
-constexpr int32_t M0_BNUM = 1;
+struct TilingCodeField {
+    uint32_t mask;
+    uint32_t bitCount;
+};
+
+constexpr TilingCodeField COMM_DATA_SPLIT_FIELD = {0b11111U, 5U};
+constexpr TilingCodeField COMM_NPU_SPLIT_FIELD = {0b11111U, 5U};
+constexpr TilingCodeField COMM_DIRECT_FIELD = {0b1U, 1U};
+constexpr TilingCodeField UB_MOVE_NUM_FIELD = {0b11111111U, 8U};
+constexpr TilingCodeField P_VALUE_FIELD = {0b1111U, 4U};
+constexpr TilingCodeField SWIZZLE_COUNT_FIELD = {0b1111U, 4U};
+constexpr TilingCodeField SWIZZLE_DIRECT_FIELD = {0b1U, 1U};
+constexpr TilingCodeField M0_FIELD = {0b1U, 1U};
 
 // Tiling Code Default Value
 constexpr int32_t ALLGATHERV2_MATMUL_NPU910B_TWO_RANK_INT8_CODE_DEFAULT = 428889128;
