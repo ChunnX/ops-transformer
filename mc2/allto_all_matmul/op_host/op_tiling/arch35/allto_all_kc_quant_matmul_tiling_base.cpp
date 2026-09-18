@@ -250,6 +250,7 @@ ge::graphStatus AllToAllKcQuantMatmulTilingBase::SetHcclTiling()
         OP_LOGE(opName_, "SetHcclTiling failed");
         return ge::GRAPH_FAILED;
     }
+    hcclServerType_ = hcclServerEngine;
     std::string algoName = Mc2Tiling::SelectAllToAllAlgoName(
         opName_, contextInfo_.group, hcclServerEngine, inferredInfo_.tileM, contextInfo_.args_.kValue,
         contextInfo_.args_.inputDtypeSize, contextInfo_.args_.rankDim);
@@ -580,12 +581,7 @@ uint64_t AllToAllKcQuantMatmulTilingBase::GetTilingKey() const
     bool isSmallK = sizeOfSmallKUsed < sizeOfUB ? true : false;
     // 35代表float8_e5m2,36代表float8e4m3
     uint32_t quantMode = (x1QuantDtype == FP8_E5M2_VALUES) ? KC_QUANT_FP8E5M2_MODE : KC_QUANT_FP8E4M3_MODE;
-    uint8_t hcclServerType = 0;
-    if (MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo_, ALLTOALL_MATMUL_INDEX_SCHEMA,
-                                                        hcclServerType) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
-    uint8_t commMode = (hcclServerType == mc2tiling::A5_CCU_ENGINE) ? ALL2ALL_COMM_TYPE_CCU : ALL2ALL_COMM_TYPE_AICPU;
+    uint8_t commMode = (hcclServerType_ == mc2tiling::A5_CCU_ENGINE) ? ALL2ALL_COMM_TYPE_CCU : ALL2ALL_COMM_TYPE_AICPU;
     const uint64_t tilingKey =
         GET_TPL_TILING_KEY(quantMode, x2TransposeFlag, biasDType, isSmallK, commMode, false, ADDBIAS_OFF);
     OP_LOGD(opName_,
