@@ -132,7 +132,7 @@ class QuantFlashMlaWithKvcacheOpBuilder(OpBuilder):
             layout_q: Optional[str] = "BSND",
         ):
             max_schedule_size = _calculate_max_schedule_size()
-            return torch.empty((2, max_schedule_size), dtype=torch.int32, device="npu")
+            return torch.empty((2, max_schedule_size), dtype=torch.int32, device="meta")
 
         @impl(get_as_library(), self.name, "Meta")
         def quant_flash_mla_with_kvcache_meta(
@@ -208,8 +208,8 @@ class QuantFlashMlaWithKvcacheOpBuilder(OpBuilder):
                 attention_out_size = (n_size, t_size, head_dim_v)
 
             return (
-                torch.empty(attention_out_size, dtype=torch.bfloat16, device="meta"),
-                torch.empty(softmax_out_size, dtype=torch.float32, device="meta"),
+                torch.empty(attention_out_size, dtype=torch.bfloat16, device=q.device),
+                torch.empty(softmax_out_size, dtype=torch.float32, device=q.device),
             )
 
 
