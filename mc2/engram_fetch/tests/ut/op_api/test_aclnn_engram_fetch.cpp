@@ -112,6 +112,60 @@ TEST_F(AclnnEngramFetchTest, ascend950_inference_local_success)
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
+// sf 链路: sfTable/fetchedSf 非空(fp8 表 + E8M0 sf, packs=ceil(hidden/32)=16), 覆盖 kernel GatherSf 分支
+TEST_F(AclnnEngramFetchTest, ascend950_inference_sf_success)
+{
+    auto commContext_desc = TensorDesc({2048}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto indices_desc = TensorDesc({8}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 7);
+    auto sfTable_desc = TensorDesc({32, 16}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
+    auto fetched_desc = TensorDesc({8, 512}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto fetchedSf_desc = TensorDesc({8, 16}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
+
+    int32_t hiddenSize = 512;
+    int64_t numEntriesPerRank = 4;
+    int64_t zero = 0;
+    int64_t fetchModeSliced = 0;
+
+    auto ut = OP_API_UT(aclnnEngramFetch,
+                        INPUT(commContext_desc, indices_desc, nullptr, sfTable_desc, fetched_desc, nullptr, nullptr,
+                              nullptr, nullptr, nullptr, fetchedSf_desc, hiddenSize, numEntriesPerRank, zero, zero,
+                              zero, fetchModeSliced),
+                        OUTPUT());
+
+    uint64_t workspace_size = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_NULLPTR);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+// sf 链路 + local 模式: 全量表在本 rank, sfTable 为全量表
+TEST_F(AclnnEngramFetchTest, ascend950_inference_local_sf_success)
+{
+    auto commContext_desc = TensorDesc({2048}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto indices_desc = TensorDesc({8}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 31);
+    auto sfTable_desc = TensorDesc({32, 16}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
+    auto fetched_desc = TensorDesc({8, 512}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto fetchedSf_desc = TensorDesc({8, 16}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
+
+    int32_t hiddenSize = 512;
+    int64_t numEntriesFull = 32;
+    int64_t zero = 0;
+    int64_t fetchModeLocal = 1;
+
+    auto ut = OP_API_UT(aclnnEngramFetch,
+                        INPUT(commContext_desc, indices_desc, nullptr, sfTable_desc, fetched_desc, nullptr, nullptr,
+                              nullptr, nullptr, nullptr, fetchedSf_desc, hiddenSize, numEntriesFull, zero, zero,
+                              zero, fetchModeLocal),
+                        OUTPUT());
+
+    uint64_t workspace_size = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_NULLPTR);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
 TEST_F(AclnnEngramFetchTest, ascend950_training_success)
 {
     auto commContext_desc = TensorDesc({6146}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);

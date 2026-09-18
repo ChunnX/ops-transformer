@@ -39,6 +39,7 @@
 import argparse
 import os
 import sys
+import time
 import traceback
 
 import torch
@@ -51,6 +52,8 @@ _DTYPE_MAP = {
     "bf16": torch.bfloat16,
     "fp16": torch.float16,
     "fp32": torch.float32,
+    "fp8e4m3": torch.float8_e4m3fn,
+    "fp8e5m2": torch.float8_e5m2,
 }
 
 
@@ -64,15 +67,20 @@ def parse_args():
     )
     parser.add_argument(
         "--phase",
-        choices=["infer", "train", "both"],
+        choices=["infer", "train", "both", "perf"],
         default="both",
-        help="验证阶段: infer=仅推理, train=仅训练(含grad与零拷贝), both=全部(默认)",
+        help="验证阶段: infer=仅推理, train=仅训练(含grad与零拷贝), both=全部(默认), perf=取数性能测试",
     )
     parser.add_argument("--dtype", choices=list(_DTYPE_MAP.keys()), default="bf16", help="表数据类型, 默认 bf16")
     parser.add_argument("--num-entries", type=int, default=4096, help="全局表 entry 总行数(需能被rank数整除), 默认 4096")
     parser.add_argument("--hidden", type=int, default=256, help="隐藏维大小, 默认 256")
     parser.add_argument("--num-tokens", type=int, default=512, help="每 rank 参与取数的 token 数, 默认 512")
     parser.add_argument("--seed", type=int, default=2026, help="随机种子(全量表各rank生成一致, indices/grad按rank区分), 默认 2026")
+    parser.add_argument("--with-sf", action="store_true",
+                        help="推理/perf 阶段启用 scale factor 链路: engram_write(storage, sf) 并校验 fetched_sf"
+                             "(fp8 表配 E8M0 sf, 其他配 fp32 sf); 训练 kernel 不支持 sf")
+    parser.add_argument("--iters", type=int, default=20, help="perf 阶段计时迭代次数, 默认 20")
+    parser.add_argument("--warmup", type=int, default=5, help="perf 阶段预热迭代次数, 默认 5")
     args = parser.parse_args()
     args.fetch_mode = "sliced" if args.fetch_mode in ("sliced", "0") else "local"
     return args
@@ -100,6 +108,23 @@ def gen_indices(seed, num_entries, num_tokens, pool_size=64):
     uni = torch.randint(0, num_entries, (n_uni,), generator=g, dtype=torch.int64)
     idx = torch.cat([dup, uni])
     return idx[torch.randperm(idx.numel(), generator=g)].to(torch.int32)
+
+
+def gen_sf_table(seed, num_rows, hidden, storage_dtype):
+    """构造 scale factor 表(全量表, 各 rank 一致): 每 32 个元素一个 scale。
+    fp8 表配 E8M0 sf(量化场景), 其他表配 fp32 sf(通用拷贝路径)。"""
+    packs = (hidden + 31) // 32
+    g = torch.Generator().manual_seed(seed)
+    if storage_dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
+        return torch.randint(0, 256, (num_rows, packs), generator=g, dtype=torch.uint8).view(torch.float8_e8m0fnu)
+    return torch.rand(num_rows, packs, generator=g, dtype=torch.float32)
+
+
+def unwrap_fetched(result):
+    """engram_fetch 返回的 callable 在提供 sf 时返回 (fetched, fetched_sf), 否则返回 fetched。"""
+    if isinstance(result, tuple):
+        return result[0], result[1]
+    return result, None
 
 
 class Checker:
@@ -138,16 +163,36 @@ def run_infer_phase(args, group, rank, world_size, device, checker, full_table):
     fetch_mode = fetch_mode_value(args.fetch_mode)
     storage = rank_storage(full_table, rank, world_size, fetch_mode).contiguous()
     num_cpu_bytes = ElasticBuffer.get_engram_storage_size_hint(storage.size(0), args.hidden, full_table.dtype)
+    sf_table = None
+    if args.with_sf:
+        # sf 为全量表(NPU 张量, 各 rank 一致), 行数与全局 entry 数对齐
+        sf_table = gen_sf_table(args.seed + 50, full_table.size(0), args.hidden, full_table.dtype).to(device)
 
     buf = ElasticBuffer(group, num_cpu_bytes=num_cpu_bytes, explicitly_destroy=True, fetch_mode=fetch_mode)
-    buf.engram_write(storage)
+    buf.engram_write(storage, sf_table)
 
     indices = gen_indices(args.seed + 10 + rank, full_table.size(0), args.num_tokens)
-    fetched = buf.engram_fetch(indices.to(device))()
+    indices_npu = indices.to(device)
+    fetched, fetched_sf = unwrap_fetched(buf.engram_fetch(indices_npu)())
 
     torch.npu.synchronize()
     golden = full_table[indices.long()]
     checker.check_equal(f"[infer/{args.fetch_mode}] fetch 结果与全表 gather golden 一致", fetched.cpu(), golden)
+    if args.with_sf:
+        sf_golden = sf_table[indices_npu.long()]
+        checker.check_equal(f"[infer/{args.fetch_mode}] fetched_sf 与 sf 表 gather golden 一致",
+                            fetched_sf.cpu(), sf_golden.cpu())
+
+    # memcpy 更新路径(非零拷贝): 二次 engram_write 经 host 窗口全量 memcpy + 双 barrier,
+    # 之后 fetch 应立即读到新表数据
+    updated_full = gen_table(args.seed + 60, full_table.size(0), args.hidden, full_table.dtype)
+    buf.engram_write(rank_storage(updated_full, rank, world_size, fetch_mode).contiguous())
+    indices_upd = gen_indices(args.seed + 70 + rank, full_table.size(0), args.num_tokens)
+    fetched_upd, _ = unwrap_fetched(buf.engram_fetch(indices_upd.to(device))())
+
+    torch.npu.synchronize()
+    checker.check_equal(f"[infer/{args.fetch_mode}] memcpy 更新路径: 二次 write 后 fetch 可见新数据",
+                        fetched_upd.cpu(), updated_full[indices_upd.long()])
 
     buf.destroy()
 
@@ -232,6 +277,71 @@ def run_train_phase(args, group, rank, world_size, device, checker, full_table):
     buf.destroy()
 
 
+def run_perf_phase(args, group, rank, world_size, device, checker, full_table):
+    """取数性能测试: 预生成 iters 组 indices 轮换取数, 报告流水/同步两种口径的时延与带宽。"""
+    fetch_mode = fetch_mode_value(args.fetch_mode)
+    storage = rank_storage(full_table, rank, world_size, fetch_mode).contiguous()
+    num_cpu_bytes = ElasticBuffer.get_engram_storage_size_hint(storage.size(0), args.hidden, full_table.dtype)
+    sf_table = None
+    if args.with_sf:
+        sf_table = gen_sf_table(args.seed + 50, full_table.size(0), args.hidden, full_table.dtype).to(device)
+    buf = ElasticBuffer(group, num_cpu_bytes=num_cpu_bytes, explicitly_destroy=True, fetch_mode=fetch_mode)
+    buf.engram_write(storage, sf_table)
+
+    # 预生成 iters 组 indices(避免计时中在 host 生成), 轮换使用
+    idx_list = [gen_indices(args.seed + 1000 + rank * args.iters + i, full_table.size(0), args.num_tokens).to(device)
+                for i in range(args.iters)]
+
+    # 首次正确性抽查(性能循环不做 golden, 首次结果必须正确)
+    fetched, _ = unwrap_fetched(buf.engram_fetch(idx_list[0])())
+    torch.npu.synchronize()
+    checker.check_equal(f"[perf/{args.fetch_mode}] 首次 fetch 正确性抽查", fetched.cpu(),
+                        full_table[idx_list[0].long().cpu()])
+
+    for i in range(args.warmup):
+        buf.engram_fetch(idx_list[i % args.iters])()
+    torch.npu.synchronize()
+    dist.barrier()
+
+    # 口径1: 流水时延(整段循环后一次同步, 含 kernel 流水重叠)
+    t0 = time.perf_counter()
+    for i in range(args.iters):
+        buf.engram_fetch(idx_list[i])()
+    torch.npu.synchronize()
+    dist.barrier()
+    pipelined_s = time.perf_counter() - t0
+
+    # 口径2: 同步时延(每次 fetch 后同步, 含完整等待)
+    t0 = time.perf_counter()
+    for i in range(args.iters):
+        buf.engram_fetch(idx_list[i])()
+        torch.npu.synchronize()
+    synced_s = time.perf_counter() - t0
+
+    hidden_bytes = args.hidden * full_table.element_size()
+    bytes_per_fetch = args.num_tokens * hidden_bytes
+    sf_bytes_per_fetch = 0
+    if args.with_sf:
+        sf_bytes_per_fetch = args.num_tokens * sf_table.size(1) * sf_table.element_size()
+    total_bytes = bytes_per_fetch + sf_bytes_per_fetch
+
+    table_bytes = full_table.numel() * full_table.element_size()
+    window_bytes = storage.numel() * full_table.element_size()
+    print(
+        f"[rank {rank}] [perf] mode={args.fetch_mode} dtype={args.dtype} vocab={full_table.size(0)} "
+        f"hidden={args.hidden} sf={'on' if args.with_sf else 'off'}\n"
+        f"[rank {rank}] [perf] 全局表 {table_bytes / 1024 / 1024:.1f} MiB, 本rank窗口 {window_bytes / 1024 / 1024:.1f} MiB"
+        f"({storage.size(0)} 行), 容量 hint {num_cpu_bytes / 1024 / 1024:.1f} MiB\n"
+        f"[rank {rank}] [perf] tokens/fetch={args.num_tokens}, 数据 {bytes_per_fetch / 1024 / 1024:.2f} MiB/fetch"
+        + (f"(+sf {sf_bytes_per_fetch / 1024:.0f} KiB/fetch)" if args.with_sf else "") + f", iters={args.iters}\n"
+        f"[rank {rank}] [perf] 流水: {pipelined_s / args.iters * 1000:.3f} ms/fetch, "
+        f"有效带宽 {total_bytes * args.iters / pipelined_s / 1e9:.2f} GB/s\n"
+        f"[rank {rank}] [perf] 同步: {synced_s / args.iters * 1000:.3f} ms/fetch",
+        flush=True,
+    )
+    buf.destroy()
+
+
 def main():
     args = parse_args()
     rank = int(os.environ["RANK"])
@@ -250,6 +360,11 @@ def main():
     if args.fetch_mode == "local" and args.phase == "both":
         print("[INFO] local 模式(fetch_mode=1)仅支持推理场景, 自动跳过训练阶段验证", flush=True)
         args.phase = "infer"
+    if args.with_sf and args.phase == "train":
+        print("[ERROR] --with-sf 仅支持推理/perf 阶段(训练 kernel 不支持 sfTable)", flush=True)
+        sys.exit(1)
+    if args.with_sf and args.phase == "both":
+        print("[INFO] --with-sf 仅在推理阶段生效(训练 kernel 不支持 sfTable)", flush=True)
 
     torch_npu.npu.set_device(local_rank)
     device = torch.device(f"npu:{local_rank}")
@@ -264,6 +379,8 @@ def main():
             run_infer_phase(args, group, rank, world_size, device, checker, full_table)
         if args.phase in ("train", "both"):
             run_train_phase(args, group, rank, world_size, device, checker, full_table)
+        if args.phase == "perf":
+            run_perf_phase(args, group, rank, world_size, device, checker, full_table)
     except Exception:
         print(f"[rank {rank}] [FAIL] 执行异常:\n{traceback.format_exc()}", flush=True)
         dist.destroy_process_group()
