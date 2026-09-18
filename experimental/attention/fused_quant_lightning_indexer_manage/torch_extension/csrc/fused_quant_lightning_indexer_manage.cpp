@@ -15,6 +15,8 @@
 
 #include <torch/extension.h>
 
+#include <tuple>
+
 #include "aclnn_common.h"
 
 namespace op_api {
@@ -144,10 +146,15 @@ FusedQuantLightningIndexerManage(const at::Tensor &indexWeights, const at::Tenso
     const int64_t keyStride = indexKeyCache.stride(0);
     const int64_t scaleStride = indexKeyDequantScale.stride(0);
     const int64_t weightStride = indexWeights.stride(0);
-    ACLNN_CMD(aclnnFusedQuantLightningIndexerManage, indexWeights, queryDequantScale, query, indexKeyDequantScale,
-              indexKeyCache, indexBlockTable, actualSeqLengthsQuery, actualSeqLengthsKey, offloadSeqLengthsKey,
-              numCacheTokens, requestState, reqPoolEntries, cacheSlotsPool, keyStride, scaleStride, weightStride,
-              topkSrcIds, topkDstSlots, topkMissCounts, missSrcIds, missDstSlots, missCounts, cacheSlotsPool);
+    auto keepalive = std::make_tuple(indexWeights, queryDequantScale, query, indexKeyDequantScale, indexKeyCache,
+                                     indexBlockTable, actualSeqLengthsQuery, actualSeqLengthsKey, offloadSeqLengthsKey,
+                                     numCacheTokens, requestState, reqPoolEntries, cacheSlotsPool, topkSrcIds,
+                                     topkDstSlots, topkMissCounts, missSrcIds, missDstSlots, missCounts);
+    ACLNN_CMD_ORDERED(aclnnFusedQuantLightningIndexerManage, keepalive, indexWeights, queryDequantScale, query,
+                      indexKeyDequantScale, indexKeyCache, indexBlockTable, actualSeqLengthsQuery,
+                      actualSeqLengthsKey, offloadSeqLengthsKey, numCacheTokens, requestState, reqPoolEntries,
+                      cacheSlotsPool, keyStride, scaleStride, weightStride, topkSrcIds, topkDstSlots, topkMissCounts,
+                      missSrcIds, missDstSlots, missCounts, cacheSlotsPool);
 
 }
 
