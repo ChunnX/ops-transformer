@@ -820,6 +820,29 @@ bool Mc2AdaptiveSlidingWindowTiling::IsInValidWeighNzTailSplit(uint64_t splitCnt
     return tailN % GetShapeWithDataType(L1_ALIGN_SIZE, inputParams_.bDtype) != 0UL;
 }
 
+bool Mc2AdaptiveSlidingWindowTiling::IsInValidMxFp4NonTransNTailSplit(uint64_t nTile) const
+{
+    // ND MXFP4 + transB=0: B inner axis is N, FP4 packs 2 values/byte. Kernel uses
+    // nOffset = nIndex * baseN + nSplitIdx * Ceil(singleCoreN, nTailTile).
+    // Odd nOffset misaligns packed B (and is the ID0071-class precision failure).
+    bool isMxFp4NdNonTrans = !inputParams_.transB && inputParams_.bFormat != ge::FORMAT_FRACTAL_NZ &&
+                             (inputParams_.aDtype == ge::DT_FLOAT4_E2M1 || inputParams_.bDtype == ge::DT_FLOAT4_E2M1) &&
+                             inputParams_.scaleDtype == ge::DT_FLOAT8_E8M0;
+    if (!isMxFp4NdNonTrans || nTile <= 1UL) {
+        return false;
+    }
+    auto isOddStride = [nTile](uint64_t nLen) -> bool {
+        if (nLen == 0UL) {
+            return false;
+        }
+        return ((nLen + nTile - 1UL) / nTile) % 2UL != 0UL;
+    };
+    if (isOddStride(adaptiveWin_.nTail)) {
+        return true;
+    }
+    return adaptiveWin_.nBlockCnt > 1UL && isOddStride(adaptiveWin_.baseN);
+}
+
 void Mc2AdaptiveSlidingWindowTiling::CalcTailBasicBlock()
 {
     if (adaptiveWin_.tailWinBlockCnt == 0UL) {
@@ -830,17 +853,26 @@ void Mc2AdaptiveSlidingWindowTiling::CalcTailBasicBlock()
     uint64_t nTile = 1UL;
     uint64_t preSplit = 1UL;
     uint64_t secSplit = 1UL;
-    auto &preSplitValid = adaptiveWin_.mTail >= adaptiveWin_.nTail ? mTile : nTile;
-    auto &secSplitValid = adaptiveWin_.mTail >= adaptiveWin_.nTail ? nTile : mTile;
+    const bool preIsN = adaptiveWin_.mTail < adaptiveWin_.nTail;
+    auto &preSplitValid = preIsN ? nTile : mTile;
+    auto &secSplitValid = preIsN ? mTile : nTile;
     while (CalUsedCoreNum(preSplit + 1, secSplit) <= aicoreParams_.aicNum) {
         preSplit += 1UL;
-        if (!IsInValidPerblockTailSplit(preSplit) && !IsInValidWeighNzTailSplit(preSplit, true)) {
+        bool invalidPre = IsInValidPerblockTailSplit(preSplit) || IsInValidWeighNzTailSplit(preSplit, true);
+        if (preIsN) {
+            invalidPre = invalidPre || IsInValidMxFp4NonTransNTailSplit(preSplit);
+        }
+        if (!invalidPre) {
             preSplitValid = preSplit;
         }
 
         if (CalUsedCoreNum(preSplit, secSplit + 1) <= aicoreParams_.aicNum) {
             secSplit += 1UL;
-            if (!IsInValidPerblockTailSplit(secSplit) && !IsInValidWeighNzTailSplit(secSplit, false)) {
+            bool invalidSec = IsInValidPerblockTailSplit(secSplit) || IsInValidWeighNzTailSplit(secSplit, false);
+            if (!preIsN) {
+                invalidSec = invalidSec || IsInValidMxFp4NonTransNTailSplit(secSplit);
+            }
+            if (!invalidSec) {
                 secSplitValid = secSplit;
             }
         }
@@ -859,7 +891,7 @@ void Mc2AdaptiveSlidingWindowTiling::CalcTailBasicBlockAfullLoad()
         while (CalUsedCoreNum(adaptiveWin_.mTailTile, (nTile + 1UL)) <= aicoreParams_.aicNum &&
                adaptiveWin_.baseN / (nTile + 1UL) >= MIN_BASEN_PER_TILE) {
             nTile += 1UL;
-            if (IsInValidWeighNzTailSplit(nTile, true)) {
+            if (IsInValidWeighNzTailSplit(nTile, true) || IsInValidMxFp4NonTransNTailSplit(nTile)) {
                 continue;
             }
             nTileValid = nTile;

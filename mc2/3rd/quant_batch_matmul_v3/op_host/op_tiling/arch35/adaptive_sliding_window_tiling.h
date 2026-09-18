@@ -129,6 +129,7 @@ protected:
     uint64_t GetBiasMode() const;
     bool IsInValidPerblockTailSplit(uint64_t splitCnt) const;
     bool IsInValidWeighNzTailSplit(uint64_t splitCnt, bool isPreSplit) const;
+    bool IsInValidMxFp4NonTransNTailSplit(uint64_t nTile) const;
     void Reset();
 
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams tilingDataSelf_;
