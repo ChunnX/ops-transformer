@@ -343,13 +343,6 @@ public:
         return commTypeInfo_.rankDim;
     }
 
-private:
-    bool commPrimitiveIs(CommPrimitive k) const
-    {
-        return commTypeInfo_.commPrimitive == k;
-    }
-
-public:
     // ---- 构造期按通信原语初始化两个建模口径 + 标定查表 ----
     // lookUpTileNum_: 通信数据量份数放大(AG/RS=rankDim 通信聚合/分发全量, 其余=1);
     // commTimeFactor_: 8-die 标定值 → 实际卡数的时间折算(plain RS=2×rankDim/8, AG/RS-via-A2A
@@ -362,16 +355,16 @@ public:
     void InitPrimitiveParams()
     {
         commTypeInfo_.commMethod = CommMeshType::FULL_MESH;
-        const bool isGatherOrPlainScatter =
-            (commPrimitiveIs(CommPrimitive::ALL_GATHER) || commPrimitiveIs(CommPrimitive::REDUCE_SCATTER));
+        const bool isGatherOrPlainScatter = (commTypeInfo_.commPrimitive == CommPrimitive::ALL_GATHER) ||
+                                            (commTypeInfo_.commPrimitive == CommPrimitive::REDUCE_SCATTER);
         if (isGatherOrPlainScatter) {
             // 通信查表使用总数据量，实际时间 = 总数据量 / rankDim / 带宽; 拟合采用 8 die 通信
             commTimeFactor_ = ALLREDUCE_TIME_FACTOR * static_cast<double>(commTypeInfo_.rankDim) /
                               static_cast<double>(CALIBRATED_RANK_DIM);
             lookUpTileNum_ = commTypeInfo_.rankDim;
         }
-        if (commPrimitiveIs(CommPrimitive::ALL_GATHER) ||
-            commPrimitiveIs(CommPrimitive::REDUCE_SCATTER_VIA_ALL_TO_ALL)) {
+        if ((commTypeInfo_.commPrimitive == CommPrimitive::ALL_GATHER) ||
+            (commTypeInfo_.commPrimitive == CommPrimitive::REDUCE_SCATTER_VIA_ALL_TO_ALL)) {
             // AG / RS-via-A2A 的聚合/分发量即拟合口径, 无 8-die 折算
             lookUpTileNum_ = commTypeInfo_.rankDim;
             commTimeFactor_ = 1;
@@ -386,10 +379,11 @@ public:
     }
     uint64_t GetCommRankShares()
     {
-        if (commPrimitiveIs(CommPrimitive::ALL_REDUCE)) {
+        if (commTypeInfo_.commPrimitive == CommPrimitive::ALL_REDUCE) {
             return 1;
         }
-        return commPrimitiveIs(CommPrimitive::ALL_GATHER) ? (commTypeInfo_.rankDim - 1) : commTypeInfo_.rankDim;
+        return (commTypeInfo_.commPrimitive == CommPrimitive::ALL_GATHER) ? (commTypeInfo_.rankDim - 1) :
+                                                                            commTypeInfo_.rankDim;
     }
 
     // 性能拟合函数: 纯线性 y = slope·x + offset (x=通信数据量 MB), 再除时间折算因子
