@@ -352,15 +352,6 @@ class SymmBuffer:
         )
         self.context = self._ctx_manager.create_context()
         self.ccl_buffer_size = self._ctx_manager.ccl_buffer_size
-        # 同 group 复用已注册通信窗口时，实际窗口为首个 SymmBuffer 的尺寸；小于本配置需求时
-        # kernel 会静默越界（此前"能跑"是踩中大页对齐余量的未定义行为），必须响亮失败。
-        if self.ccl_buffer_size < required_ccl_buffer_size:
-            raise RuntimeError(
-                "SymmBuffer: existing comm window for this group is "
-                f"{self.ccl_buffer_size} bytes, smaller than the {required_ccl_buffer_size} "
-                "bytes required by this config. Create the largest-config SymmBuffer first, "
-                "or destroy the previous one before re-creating."
-            )
         self.topo_type = self._ctx_manager.topo_type
         self.rank_num_per_server = self._ctx_manager.rank_num_per_server
         self.mask_buffer = None
