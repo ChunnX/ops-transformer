@@ -24,10 +24,9 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::ComputeX2PostTile(
     WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
     ApplyScaleAndGamma(bufHOutFp32_.Get<float>(), invRms0, bufGamma0Fp32_.Get<float>(), tD);
     FenceVToMte2();
-    // residual搬运与h_out的低精度往返使用不同缓存和流水，提前入队以隐藏MTE2耗时。
-    PrefetchResidual((uint64_t)token * N_ * D_ + tOff, tD);
     QuantizeRoundTrip(bufHOutFp32_.Get<float>(), tD);
-    FinishResidualCast(tD);
+
+    LoadResidualAndCast((uint64_t)token * N_ * D_ + tOff, tD);
     ComputeX2AllHeadsBatched(postVals, combVals, tD);
 }
 
