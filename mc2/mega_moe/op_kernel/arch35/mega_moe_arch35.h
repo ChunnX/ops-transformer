@@ -757,8 +757,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendTopkIdsIndexAndCoun
     CrossCoreWaitFlag<ALL_AICORE_SYNC_MODE, PIPE_MTE3>(MTE_QUANT_READY_FLAG);
     // 将 reset 和量化完成条件传递给 Scalar，在输入准备后的统一等待处消费。
     SetFlag<HardEvent::MTE3_S>(SYNC_EVENT_ID3);
-    // 复用全 AIV 完成条件，通知配对 AIC 可以读取量化输入。
-    CrossCoreSetFlag<AIC_ALL_AIV_SYNC_MODE, PIPE_MTE3>(INPUT_READY_FLAG);
+    // AIV0 转发全 AIV 完成条件；有共享专家时，不必等 AIV1 发完下标才启动 AIC。
+    if (GetSubBlockIdx() == 0U) {
+        CrossCoreSetFlag<AIC_SINGLE_AIV_SYNC_MODE, PIPE_MTE3>(INPUT_READY_FLAG);
+    }
     if (ownedExpertRange.count > 0U) {
         PipeBarrier<PIPE_MTE3>();
         const int32_t syncCount = GetSyncCount(params_.peermemInfo.rankSyncInWorldPtr, aivCoreIdx_);
@@ -839,8 +841,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessInputPreparation
         ownedExpertRange = GetBalancedWorkRange(totalExperts, {.jobIndex = blockIdx_, .totalJobs = blockNum_});
     }
     /*
-     * AIV 先发送下标；发送 count 前等待全部 AIV 完成 reset 和量化，并向 AIC 通知输入就绪。
-     * AIC 等配对 AIV 转发量化完成通知后读取输入；直接 UB 输出另等 AIV0 释放发送源空间。
+     * AIV 先发送下标；发送 count 前等待全部 AIV 完成 reset 和量化，由 AIV0 向 AIC 通知输入就绪。
+     * 有共享专家时 AIV0 不发送下标，AIC 可与 AIV1 的下标发送并行；FIX 输出另等 AIV0 释放 UB。
      * 共享专家使用 A8W8/A4W4：AIC/AIV0 执行共享 GMM1 和激活，AIV1 执行下标/count 发送。
      * 共享专家使用 A8W4：AIC/AIV0 执行共享 GMM1 和权重转换，AIV1 完成下标/count 发送后执行共享激活。
      * count 携带本轮 epoch，接收端逐项确认远端输入就绪；共享计算不等待入口跨卡握手。
@@ -866,7 +868,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
     }
     // 进入计算前，按核类型等待输入就绪及工作区释放。
     if constexpr (g_coreType == AIC) {
-        CrossCoreWaitFlag<AIC_ALL_AIV_SYNC_MODE, PIPE_MTE2>(INPUT_READY_FLAG);
+        CrossCoreWaitFlag<AIC_SINGLE_AIV_SYNC_MODE, PIPE_MTE2>(INPUT_READY_FLAG);
         // 除输入搬运外，Scalar 的状态轮询也必须在全 AIV reset 完成之后。
         SyncFuncStatic<HardEvent::MTE2_S, SYNC_EVENT_ID3>();
         // 各路径统一消费 AIV0 的 UB 释放通知，防止 FIX 覆盖尚在发送的数据。
