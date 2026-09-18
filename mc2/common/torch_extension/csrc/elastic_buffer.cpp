@@ -1897,8 +1897,10 @@ at::Tensor ElasticBuffer::EngramFetch(const at::Tensor &context, const at::Tenso
     }
     aclTensor *nullTensor = nullptr;
     int64_t zero = 0;
+    // 参数须与 aclnnEngramFetchGetWorkspaceSize 的 17 个形参一一对应:
+    // 11 个 tensor(commContext..fetchedSf) + 6 个 scalar(hiddenSize..fetchMode), 宏自动追加 workspaceSize*/executor*
     ACLNN_CMD(aclnnEngramFetch, context, indices, nullTensor, sfTable, fetched, nullTensor, nullTensor, nullTensor,
-              nullTensor, nullTensor, nullTensor, fetchedSf, hiddenSize, numEntries, zero, zero, zero, fetchMode);
+              nullTensor, nullTensor, fetchedSf, hiddenSize, numEntries, zero, zero, zero, fetchMode);
     return fetched;
 }
 
