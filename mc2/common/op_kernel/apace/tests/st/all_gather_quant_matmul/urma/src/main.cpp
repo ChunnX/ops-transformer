@@ -53,15 +53,16 @@ static constexpr uint32_t TILE_M = 512;
         } \
     } while (0)
 
-void ParseArgs(int argc, char *argv[], int *m, int *k, int *n, int *rankNum, std::string &mode)
+void ParseArgs(int argc, char *argv[], int *m, int *k, int *n, int *rankNum, std::string &mode, int *bufferCount)
 {
     if (argc >= 2 && (std::string(argv[1]) == "--help" || std::string(argv[1]) == "-h")) {
-        std::cerr << "Usage: " << argv[0] << " m k n rankNum [mode]" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " m k n rankNum [mode] [bufferCount]" << std::endl;
         std::cerr << "  m: row of matrix A per rank" << std::endl;
         std::cerr << "  k: col of matrix A (= row of matrix B, full K)" << std::endl;
         std::cerr << "  n: col of matrix B (total N)" << std::endl;
         std::cerr << "  rankNum: number of ranks" << std::endl;
         std::cerr << "  mode: optional, 'precision' (default) | 'perf'" << std::endl;
+        std::cerr << "  bufferCount: optional, win buffer slot reuse count, 0=no reuse (default 0)" << std::endl;
         exit(1);
     }
     if (argc < 5) {
@@ -88,6 +89,10 @@ void ParseArgs(int argc, char *argv[], int *m, int *k, int *n, int *rankNum, std
     if (mode != "precision" && mode != "perf") {
         throw std::invalid_argument("ERROR: mode must be 'precision' or 'perf'");
     }
+    *bufferCount = (argc >= 7) ? std::stoi(argv[6]) : 0;
+    if (*bufferCount < 0) {
+        throw std::invalid_argument("ERROR: bufferCount must be >= 0");
+    }
 }
 
 int LaunchKernel(uint32_t usedCoreNum, aclrtStream stream, CommContext *devContext, GM_ADDR deviceA,
@@ -99,7 +104,7 @@ int LaunchKernel(uint32_t usedCoreNum, aclrtStream stream, CommContext *devConte
     return 0;
 }
 
-int RunAllGatherQuantMatmul(int rankNum, int rankId, int m, int k, int n, const std::string &mode)
+int RunAllGatherQuantMatmul(int rankNum, int rankId, int m, int k, int n, int bufferCount, const std::string &mode)
 {
     const char *ipport = "tcp://127.0.0.1:8998";
     INFO_LOG("rankNum=%d, rankId=%d", rankNum, rankId);
@@ -127,9 +132,10 @@ int RunAllGatherQuantMatmul(int rankNum, int rankId, int m, int k, int n, const 
     tilingData.commTile.splitAxisTailSize = tailM;
     tilingData.commTile.splitAxisTailCnt = tailCnt;
     tilingData.commTile.nonSplitAxisSize = static_cast<uint32_t>(k);
+    tilingData.commTile.slotNum = static_cast<uint64_t>(bufferCount);
 
-    printf("[Rank %d] Tiling: tileCnt=%u, tileM=%u, tailCnt=%u, tailM=%u, paddedTailM=%u, commTurn=%u\n", rankId,
-           tileCnt, tileM, tailCnt, tailM, paddedTailM, tileCnt + tailCnt);
+    printf("[Rank %d] Tiling: tileCnt=%u, tileM=%u, tailCnt=%u, tailM=%u, paddedTailM=%u, commTurn=%u, bufferCount=%d\n",
+           rankId, tileCnt, tileM, tailCnt, tailM, paddedTailM, tileCnt + tailCnt, bufferCount);
 
     // ---- ACL Init ----
     ACL_CHECK(aclInit(nullptr));
@@ -285,10 +291,10 @@ int RunAllGatherQuantMatmul(int rankNum, int rankId, int m, int k, int n, const 
 
 int main(int argc, char *argv[])
 {
-    int m = 0, k = 0, n = 0, rankNum = 0;
+    int m = 0, k = 0, n = 0, rankNum = 0, bufferCount = 0;
     std::string mode;
     try {
-        ParseArgs(argc, argv, &m, &k, &n, &rankNum, mode);
+        ParseArgs(argc, argv, &m, &k, &n, &rankNum, mode, &bufferCount);
     } catch (const std::invalid_argument &e) {
         std::cerr << e.what() << std::endl;
         return -1;
@@ -302,7 +308,7 @@ int main(int argc, char *argv[])
             ERROR_LOG("Fork failed for rank %d", rankId);
             exit(-1);
         } else if (pid == 0) {
-            exit(RunAllGatherQuantMatmul(rankNum, rankId, m, k, n, mode));
+            exit(RunAllGatherQuantMatmul(rankNum, rankId, m, k, n, bufferCount, mode));
         } else {
             pids[rankId] = pid;
             INFO_LOG("Forked Rank %d -> PID %d", rankId, pid);
