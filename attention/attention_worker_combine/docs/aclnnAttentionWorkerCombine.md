@@ -5,7 +5,7 @@
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：不支持
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
@@ -140,8 +140,8 @@ aclnnStatus aclnnAttentionWorkerCombine(
     <tr>
       <td>tokenDtype</td>
       <td>输入</td>
-      <td>指定scheduleContext中token数据的原始精度类型。0表示FLOAT16；1表示BFLOAT16。</td>
-      <td>取值为0或1。</td>
+      <td>指定scheduleContext中token数据的原始精度类型。0表示FLOAT16；1表示BFLOAT16；<term>Ascend 950PR/Ascend 950DT</term>另支持MXFP反量化，2表示MXFP8_E5M2、3表示MXFP8_E4M3FN、4表示MXFP4_E2M1。</td>
+      <td>非量化取值为0或1；MXFP反量化场景取值为2、3或4。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
