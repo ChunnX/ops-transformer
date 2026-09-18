@@ -41,7 +41,7 @@
 #define Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128 0
 #define Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128 1
 #define Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64 2
-#define Config_S1Aligned128_S2Aligned256_DAligned256_DVAligned256 4 // 3 reserved for the former D256/S2=512 path
+#define Config_S1Aligned128_S2Aligned256_DAligned256_DVAligned256 3
 
 #define QBSA_TPL_4_BW 4
 

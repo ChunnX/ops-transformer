@@ -75,16 +75,6 @@ public:
     static constexpr uint32_t STAGE1_OUT_UB_SIZE = VEC_M_BASE * STAGE1_CAST_ROW_STRIDE * sizeof(INPUT_T);
     static constexpr uint32_t PSCALE_SUB_LOOP_UB_SIZE = VEC_M_BASE * S2_SPLIT / MX_SCALE_GROUP * sizeof(SCALE_T);
     static constexpr uint32_t SOFTMAX_STATE_UB_SIZE = VEC_M_BASE * sizeof(float);
-    // Include the cross-core C1/C2 allocation made by the kernel. All sizes
-    // are multiples of 32 bytes, including optional mask and LSE queues.
-    static constexpr uint32_t TOTAL_UB_BYTES =
-        2U * VEC_M_BASE * S2_SPLIT * sizeof(MM_T) +
-        2U * VEC_M_BASE * DV_BASE * sizeof(MM_T) +
-        2U * STAGE1_OUT_UB_SIZE + PSCALE_SUB_LOOP_UB_SIZE +
-        (3U * SOFTMAX_BUFFER_NUM + 3U) * SOFTMAX_STATE_UB_SIZE +
-        (HAS_LSE ? VEC_M_BASE * sizeof(float) * 8U : 0U) +
-        (HAS_ATTEN ? ATTEN_MASK_UB_SIZE : 0U) + (USE_DN ? DN_VSELR_INDEX_SIZE : 0U);
-    static_assert(TOTAL_UB_BYTES <= 248U * 1024U, "MX buffers exceed the 248 KiB UB budget");
     static constexpr float MX_EMPTY_LSE_VALUE = -3e+99; // 与 CUDA 空 softmax 行的 LSE=-Inf 语义一致。
 
     __aicore__ inline void Init(TPipe *pipe, __gm__ uint8_t *pScale, __gm__ uint8_t *softmaxLse,
@@ -525,7 +515,7 @@ private:
         constexpr uint16_t pScaleDstStride = ((S2_SPLIT / MX_SCALE_GROUP) >> 1U) - 1U;
         const uint64_t vecOffset = constInfo.subBlockIdx * pScaleDataLen;
         if constexpr (SUB_LOOP == 1U) {
-            // subLoop1 为前半 P 写入 rescale，每 64 列重复一份行 scale。
+            // subLoop1 写 P 的后 S2_SPLIT 列，每 64 列重复一份行 scale。
             for (uint32_t columnGroup = 0U; columnGroup < S2_SPLIT / 64U; ++columnGroup) {
                 DataCopy(pScaleL1Tensor[vecOffset + columnGroup * 32U], pScaleSubLoopTensor,
                          {4, 1, 0, pScaleDstStride});

@@ -50,8 +50,6 @@ public:
     static constexpr uint32_t S2_SPLIT = S2_BASE / 2U;
     static constexpr uint32_t D_BASE = static_cast<uint32_t>(dTemplateType);
     static constexpr uint32_t DV_BASE = static_cast<uint32_t>(dVTemplateType);
-    static constexpr uint32_t C1_BUFFER_NUM = 2U;
-    using C1Buffers = BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
     static_assert(LAYOUT == QBSALayout::TND && KV_LAYOUT == QBSALayout::PA_BNBD && IS_PA,
                   "MXFullQuantMode currently only supports TND query and PA_BNBD KV");
     static_assert(M_BASE == 128U && S2_BASE == (D_BASE == 256U ? 256U : 512U) && D_BASE == DV_BASE &&
@@ -162,16 +160,14 @@ private:
 
     __aicore__ inline void InitMMResBuf()
     {
-        // Two C1 slots allow Fixpipe/V1 overlap for every supported D.
-        // V2 runs before V1 and consumes C2 from the preceding iteration, so
-        // waiting for V1 to release C1 cannot form a cycle with the current C2.
+        // C1 UB 为 [64,S2_SPLIT] fp32，C2 UB 为 [64,DV_BASE] fp32。
         constexpr uint32_t mm1ResultSize = M_BASE / CV_RATIO * S2_BASE * sizeof(MM_T) / 2U;
         constexpr uint32_t mm2ResultSize = M_BASE / CV_RATIO * DV_BASE * sizeof(MM_T);
         // L1 连续保存 P(e4m3) 和 PScale(e8m0)，供 C2 随路反量化。
         constexpr uint32_t mm2LeftSize = M_BASE * S2_BASE * sizeof(INPUT_T) + M_BASE * S2_BASE / 32U;
         l1BufferManager.Init(pipe, 512U * 1024U);
         l1PBuffers.Init(l1BufferManager, mm2LeftSize);
-        ubBufferManager.Init(pipe, mm1ResultSize * C1_BUFFER_NUM + mm2ResultSize);
+        ubBufferManager.Init(pipe, mm1ResultSize * 2U + mm2ResultSize);
         bmm1Buffers.Init(ubBufferManager, mm1ResultSize);
         bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
     }
@@ -179,9 +175,8 @@ private:
     __aicore__ inline void CrossCoreBufferInit()
     {
         if ASCEND_IS_AIV {
-            for (uint32_t i = 0U; i < C1_BUFFER_NUM; ++i) {
-                bmm1Buffers.Get().SetCrossCore();
-            }
+            bmm1Buffers.Get().SetCrossCore();
+            bmm1Buffers.Get().SetCrossCore();
             bmm2Buffers.Get().SetCrossCore();
         }
     }
@@ -189,9 +184,8 @@ private:
     __aicore__ inline void CrossCoreBufferUninit()
     {
         if ASCEND_IS_AIC {
-            for (uint32_t i = 0U; i < C1_BUFFER_NUM; ++i) {
-                bmm1Buffers.Get().WaitCrossCore();
-            }
+            bmm1Buffers.Get().WaitCrossCore();
+            bmm1Buffers.Get().WaitCrossCore();
             bmm2Buffers.Get().WaitCrossCore();
         }
     }
@@ -481,7 +475,7 @@ private:
     GlobalTensor<int32_t> seqUsedKvGm;
     BufferManager<BufferType::UB> ubBufferManager;
     BufferManager<BufferType::L1> l1BufferManager;
-    C1Buffers bmm1Buffers;
+    BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers;
     BuffersPolicySingleBuffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm2Buffers;
     BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers;
     QuantBlockSparseAttnMxBlockCube<INPUT_T, MM_T, OUTPUT_T, LAYOUT, KV_LAYOUT, s1TemplateType, s2TemplateType,
