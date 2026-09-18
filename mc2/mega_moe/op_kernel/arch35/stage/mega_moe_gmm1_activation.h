@@ -690,10 +690,9 @@ __aicore__ inline void RunGmm1Generic(BlockEpilogueActivationMxQuant<EpilogueEle
 // RunGmm1A8W4：执行 A8W4 prologue（W4→W8）、GMM1、Activation 和量化。
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB,
           uint32_t Gmm1TileM = L1_TILE_M_256, uint32_t EpilogueTileM = Gmm1TileM, bool TopkWeightsPrefetch = false,
-          bool IsShared = false, bool IsWaveFlagGrained = false, typename... LayoutArgs>
+          bool IsShared = false, bool IsWaveFlagGrained = false, typename PipelineContext, typename... LayoutArgs>
 __aicore__ inline void RunGmm1A8W4(
-                                   const typename GmmKernel::Config<true, 0, ElementA, ElementB, ElementC,
-                                       ElementMxScaleA, ElementMxScaleB>::PipelineContext &pipeline,
+                                   const PipelineContext &pipeline,
                                    BlockEpilogueActivationMxQuant<ElementA, ElementC, EpilogueTileM, L1_TILE_N,
                                                                   TopkWeightsPrefetch> &activationQuantOp,
                                    const Params &params,
@@ -706,7 +705,8 @@ __aicore__ inline void RunGmm1A8W4(
     static_assert(std::is_same_v<ElementB, __fp4e2m1x2>, "Weight must be __fp4e2m1x2");
 
     using GmmConfig = GmmKernel::Config<true, 0, ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, false,
-                                        TopkWeightsPrefetch, IsShared, false, IsWaveFlagGrained>;
+                                        TopkWeightsPrefetch, IsShared, false, IsWaveFlagGrained,
+                                        PipelineContext::USE_DYNAMIC_L1>;
     auto config = GmmConfig::BuildGmm1ProblemConfig(problemShape, blockJob, Gmm1TileM);
 
     if constexpr (g_coreType == AIV) {

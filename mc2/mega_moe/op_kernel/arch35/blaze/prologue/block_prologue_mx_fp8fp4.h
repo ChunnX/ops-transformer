@@ -130,14 +130,16 @@ struct PrologueMxCastWOffsetParam {
 };
 
 // Macro aliases keep this dispatch-policy specialization concise and readable.
-#define BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS template <class OutType_, class InType_>
+#define BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS template <class OutType_, class InType_, bool UseDynamicL1>
 
-#define BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION BlockPrologue<MatmulMxFp8Fp4DynamicKL1TailResplit, OutType_, InType_>
+#define BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION BlockPrologue<MatmulMxFp8Fp4DynamicKL1TailResplit<UseDynamicL1>, OutType_, InType_>
 
 BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS
-class BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION {
+class BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION : private Blaze::Gemm::MegaMoeMxL1Storage<UseDynamicL1> {
 public:
-    using DispatchPolicy = MatmulMxFp8Fp4DynamicKL1TailResplit;
+    using DispatchPolicy = MatmulMxFp8Fp4DynamicKL1TailResplit<UseDynamicL1>;
+    using L1Storage = Blaze::Gemm::MegaMoeMxL1Storage<UseDynamicL1>;
+    static constexpr bool USE_DYNAMIC_L1 = UseDynamicL1;
     using OutType = OutType_;
     using InType = InType_;
 
@@ -147,7 +149,8 @@ public:
         __gm__ InType *ptrB;
     };
 
-    __aicore__ explicit inline BlockPrologue(uint64_t concatHalfN = 0U);
+    __aicore__ explicit inline BlockPrologue(uint64_t concatHalfN = 0U,
+        const L1Storage &storage = {});
     __aicore__ inline void SetConcatHalfN(uint64_t n) { concatHalfN_ = n; }
     template <typename GMWeightTensorType>
     __aicore__ inline void operator()(const GMWeightTensorType &gmWeightTensor, uint64_t mL1Size, uint64_t kSize,
@@ -191,6 +194,7 @@ protected:
     // L1 tensor creation functions
     __aicore__ inline auto MakeL1WeightTensor(uint64_t l1RealLen, uint64_t nL1Size);
 
+    using L1Storage::allocation_;
     uint64_t concatHalfN_ = 0;
     uint64_t cvLoopIdx_ = 0;
 
@@ -199,9 +203,6 @@ protected:
 
     // === Buffer Size Unit ===
     static constexpr uint64_t KB = 1024;
-    using L1Layout = Blaze::Gemm::MegaMoeMxL1Layout;
-    static constexpr uint64_t WEIGHT_L1_BUFFER_NUM = L1Layout::B_STAGES;
-
     // === Pipeline Buffer Configuration ===
     static constexpr uint64_t WEIGHT_8BIT_BUFFER_NUM = QUADRUPLE_BUFFER_NUM; // 4
 
@@ -252,13 +253,11 @@ protected:
     static constexpr uint64_t SYNC_AIV_AIC_FLAG = 0;
     static constexpr uint64_t SYNC_AIC_AIV_FLAG = 1;
 
-    // === Dynamic Tiling Configuration ===
-
-    static constexpr uint64_t FINALIZE_AIC_WAIT_COUNT = WEIGHT_L1_BUFFER_NUM;
 };
 
 BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS
-__aicore__ inline BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::BlockPrologue(uint64_t concatHalfN)
+__aicore__ inline BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::BlockPrologue(
+    uint64_t concatHalfN, const L1Storage &storage) : L1Storage(storage)
 {
     concatHalfN_ = concatHalfN;
     for (uint16_t idx = 0; idx < kUbMte2BufferNum; idx++) {
@@ -339,6 +338,9 @@ __aicore__ inline void BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::operator()(const
     if (((mL1Size + 15U) / 16U * 16U) * offsetParam.kbL1Size > 64U * 1024U) {
         offsetParam.kbL1Size = MX_FP8FP4_L1_K_CONFIG_256;
     }
+    if constexpr (UseDynamicL1) {
+        offsetParam.kbL1Size = allocation_.tileK;
+    }
     offsetParam.nAlign = nAlign;
     ComputeBasicBlockAivNdKnNzNk(offsetParam, gmWeightTensor);
 }
@@ -346,7 +348,7 @@ __aicore__ inline void BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::operator()(const
 BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS
 __aicore__ inline BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::~BlockPrologue()
 {
-    for (uint64_t idx = 0; idx < FINALIZE_AIC_WAIT_COUNT; ++idx) {
+    for (uint64_t idx = 0; idx < allocation_.bStages; ++idx) {
         WaitAicToAiv();
     }
     FinalizeVectorCompute();
@@ -464,7 +466,7 @@ __aicore__ inline auto BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::MakeL1WeightTens
     auto l1BaseLayout =
         asc::te::make_frame_layout<asc::te::zn_layout_ptn, asc::te::layout_trait_default<OutType>>(l1RealLen, nL1Size);
     return asc::te::make_tensor(
-        asc::te::make_mem_ptr<asc::te::location::l1, OutType>(L1Layout::BOffset(cvLoopIdx_ & (WEIGHT_L1_BUFFER_NUM - 1))),
+        asc::te::make_mem_ptr<asc::te::location::l1, OutType>(allocation_.bOffsets[cvLoopIdx_ % allocation_.bStages]),
         l1BaseLayout);
 }
 

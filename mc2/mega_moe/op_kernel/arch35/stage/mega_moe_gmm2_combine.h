@@ -938,13 +938,14 @@ __aicore__ inline void RunGmm2Generic(const AscendC::Shape<int64_t, int64_t, int
 // RunGmm2A8W4：AIV0执行W4→W8 prologue，AIC执行GMM2；可选由配对AIV1逐tile Combine。
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB,
           uint32_t Gmm1TileM = L1_TILE_M_256, bool TopkWeightsPrefetch = false, bool IsShared = false,
-          bool IsLayered = false, bool IsWaveFlagGrained = false, bool NotifyCombineTileReady = false>
+          bool IsLayered = false, bool IsWaveFlagGrained = false, bool NotifyCombineTileReady = false,
+          typename PipelineContext = typename GmmKernel::Config<true, 0, ElementA, ElementB, ElementC,
+              ElementMxScaleA, ElementMxScaleB>::PipelineContext>
 __aicore__ inline void RunGmm2A8W4(const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                    const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx,
                                    const BlockJobContext &blockJob, uint32_t expertTokenCount,
                                    uint32_t rowOffsetInExpert, const Params *params = nullptr,
-                                   const typename GmmKernel::Config<true, 0, ElementA, ElementB, ElementC,
-                                       ElementMxScaleA, ElementMxScaleB>::PipelineContext &pipeline = {})
+                                   const PipelineContext &pipeline = {})
 {
     static_assert(!IsShared || !NotifyCombineTileReady, "Shared expert GMM2 has its own completion counter");
     static_assert(!IsLayered || !NotifyCombineTileReady, "Layered GMM2 selects its synchronization through IsLayered");
@@ -952,7 +953,8 @@ __aicore__ inline void RunGmm2A8W4(const AscendC::Shape<int64_t, int64_t, int64_
     static_assert(std::is_same_v<ElementB, __fp4e2m1x2>, "Weight must be __fp4e2m1x2");
 
     using GmmConfig = GmmKernel::Config<true, 0, ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, false,
-                                        TopkWeightsPrefetch, IsShared, IsLayered, IsWaveFlagGrained>;
+                                        TopkWeightsPrefetch, IsShared, IsLayered, IsWaveFlagGrained,
+                                        PipelineContext::USE_DYNAMIC_L1>;
     auto config = GmmConfig::BuildGmm2ProblemConfig(problemShape, blockJob, Gmm1TileM);
 
     using BlockMmad = typename GmmConfig::BlockMmad;

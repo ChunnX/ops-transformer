@@ -80,7 +80,8 @@ private:
 
 protected:
     using A8W4PipelineContext = typename GmmKernel::Config<true, 0, typename MoeQuantConfig::ActivationQuantOutType,
-        MoeWeightType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>::PipelineContext;
+        MoeWeightType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, false, false, false, false, false,
+        MoeQuantConfig::AXW_MODE == AxWMode::A8W4>::PipelineContext;
     __aicore__ inline void SendAndQuantBuffInit();
     __aicore__ inline void DispatchBuffInit();
     __aicore__ inline void EnterSteadyDispatch();
