@@ -11,6 +11,7 @@
 #include <gtest/gtest.h>
 #include "mc2_infer_shape_case_executor.h"
 #include "infer_datatype_context_faker.h"
+#include "infer_shape_context_faker.h"
 #include "base/registry/op_impl_space_registry_v2.h"
 
 namespace MoeDistributeCombineTeardownInferShapeUT {
@@ -283,6 +284,39 @@ TEST_F(MoeDistributeCombineTeardownInfershape, InferShape_debug_log)
     std::vector<std::vector<int64_t>> xOutputShape = {{8, 4096}};
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, xOutputShape);
     setenv("ASCEND_GLOBAL_LOG_LEVEL", "3", 1);
+}
+
+TEST_F(MoeDistributeCombineTeardownInfershape, InferShape_rejects_missing_required_inputs)
+{
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    auto inferShapeFunc = spaceRegistry->GetOpImpl("MoeDistributeCombineTeardown")->infer_shape;
+    gert::Tensor inputTensor({{8, 4096}, {8, 4096}}, {ge::FORMAT_ND, ge::FORMAT_ND, {}},
+                             gert::kFollowing, ge::DT_FLOAT16, nullptr);
+
+    // Index 6 is the control case: all six required input shapes are present.
+    for (size_t missingIndex : {6U, 1U, 3U, 4U, 5U}) {
+        SCOPED_TRACE(missingIndex);
+        std::vector<gert::Tensor *> inputs(6, &inputTensor);
+        if (missingIndex < inputs.size()) {
+            inputs[missingIndex] = nullptr;
+        }
+        auto contextHolder = gert::InferShapeContextFaker()
+                                 .SetOpType("MoeDistributeCombineTeardown")
+                                 .NodeIoNum(6, 1)
+                                 .InputTensors(inputs)
+                                 .Build();
+        auto context = contextHolder.GetContext();
+        ASSERT_NE(context, nullptr);
+        ASSERT_NE(context->GetOutputShape(0), nullptr);
+        if (missingIndex < inputs.size()) {
+            ASSERT_EQ(context->GetInputShape(missingIndex), nullptr);
+            EXPECT_EQ(inferShapeFunc(context), ge::GRAPH_FAILED);
+        } else {
+            ASSERT_EQ(inferShapeFunc(context), ge::GRAPH_SUCCESS);
+            EXPECT_EQ(context->GetOutputShape(0)->GetDim(0), 8);
+            EXPECT_EQ(context->GetOutputShape(0)->GetDim(1), 4096);
+        }
+    }
 }
 
 } // namespace MoeDistributeCombineTeardownInferShapeUT
