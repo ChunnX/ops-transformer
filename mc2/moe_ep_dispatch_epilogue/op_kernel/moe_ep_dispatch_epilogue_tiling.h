@@ -40,6 +40,7 @@ struct MoeEpDispatchEpilogueInfo {
     uint32_t networkMode = 0; // 0 = direct(紧拼槽布局 meta@tokenSize), 1 = hybrid(对齐槽布局 meta@hAlign)
     uint64_t rankExpertHitCountOffset = 0;  // per-core [rank][expert] count matrix offset in workspace
     uint64_t metadataRankOffsetsOffset = 0; // byte offset of the aligned tail in packed metadata
+    uint64_t localRecvIndexOffset = 0;      // byte offset of [num_tokens, top_k] local recv_x reverse index
 };
 
 struct MoeEpDispatchEpilogueTilingData {
