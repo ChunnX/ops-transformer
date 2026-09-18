@@ -660,15 +660,30 @@ protected:
         }
         auto x1Dtype = x1DescTiling->GetDataType();
         bool hasBias = context_->GetOptionalInputShape(IDX_INPUT_BIAS) != nullptr;
-        // 通算切分统一入口(§4.21 调用下沉, 2026-09-17): SWAT matmul tiling → 核数守卫 →
-        // 核利用率优先通信切分 → MXFP4 K 轴字节数修正, 序列整体下沉于
-        // apace/tiling/core_occupancy_first_tiling.h (含每 rank 至少一核的 kernel 死锁守卫)
-        if (!GetCoreOccupancyFirstTiling(context_->GetPlatformInfo(), m_, n_, ka, x1Dtype == ge::DT_FLOAT4_E2M1,
-                                         hasBias, worldSize_, quantPlatformInfo_, opName, td->tileQbmmTilingData,
-                                         td->commTilingData, td->scaleCommTilingData)) {
+        // 通算切分统一入口(§4.21 调用下沉, 2026-09-17): SWAT matmul tiling → 核利用率优先
+        // 通信切分 → MXFP4 K 轴字节数修正, 纯计算序列在 apace/tiling/core_occupancy_first_tiling.h;
+        // 核数守卫与日志留在 op_tiling(2026-09-17 裁定)
+        GetCoreOccupancyFirstTiling(context_->GetPlatformInfo(), m_, n_, ka, x1Dtype == ge::DT_FLOAT4_E2M1, hasBias,
+                                    td->tileQbmmTilingData, td->commTilingData, td->scaleCommTilingData);
+        usedCoreNum_ = td->tileQbmmTilingData.usedCoreNum;
+
+        // matmul 实际分配核数必须 >= rankSize（kernel 侧通信切分依赖每 rank 至少一个核，
+        // 见 RunAllToAll: if (GetBlockIdx() < rankSize)），否则部分 rank 无核参与 alltoall 导致死锁。
+        if (static_cast<uint64_t>(usedCoreNum_) < worldSize_) {
+            OP_LOGE_WITHOUT_REPORT(opName,
+                                   "[coreNum] usedCoreNum(%u) is less than rankSize(%lu), "
+                                   "matmul tiling 分配核数不足以覆盖所有 rank",
+                                   usedCoreNum_, worldSize_);
             return ge::GRAPH_FAILED;
         }
-        usedCoreNum_ = td->tileQbmmTilingData.usedCoreNum;
+
+        // 可用核数 = min(aicNum, aivNum)，必须 >= rankSize（通信切分依赖每 rank 至少一个核）
+        uint64_t availCoreNum = std::min(quantPlatformInfo_.aicNum, quantPlatformInfo_.aivNum);
+        if (availCoreNum < worldSize_) {
+            OP_LOGE_WITHOUT_REPORT(opName, "[coreNum] availCoreNum(%lu) is less than rankSize(%lu)", availCoreNum,
+                                   worldSize_);
+            return ge::GRAPH_FAILED;
+        }
 
         OP_LOGI(opName, "comm tiling: tileSize=%lu, tileCnt=%lu, tailSize=%lu, tailCnt=%lu, nonSplitSize=%lu",
                 td->commTilingData.splitAxisTileSize, td->commTilingData.splitAxisTileCnt,

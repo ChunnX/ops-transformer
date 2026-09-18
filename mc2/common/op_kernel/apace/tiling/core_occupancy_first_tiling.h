@@ -27,10 +27,8 @@
 
 #pragma once
 
-#include <algorithm>
 #include <cstdlib>
 #include <cstdint>
-#include "mc2_log.h"
 #include "tiling_data_struct_define.h"
 #include "matmul_tiling/quant_matmul_tiling.h"
 #include "../utils/apace_constant.h"
@@ -110,19 +108,16 @@ public:
  * \param isFp4         x1 为 MXFP4 打包存储(2 fp4/字节): SWAT 按 fp4 推导 baseK 与 L1 布局,
  *                      数据通信 K 轴字节数减半(scale 为 e8m0, 32 元素/字节, 不受影响)
  * \param hasBias       是否带 bias 输入
- * \param worldSize     通信域卡数(守卫: 每 rank 至少一核参与 alltoall, 否则 kernel 侧死锁)
- * \param platform      可用核数(守卫: min(aicNum, aivNum) >= worldSize)
- * \param opName        日志用算子名
- * \param[out] mmTiling     matmul tiling 结果(含 usedCoreNum, 调用方 SetBlockDim 用)
+ * \param[out] mmTiling     matmul tiling 结果(含 usedCoreNum, 调用方校验/SetBlockDim 用)
  * \param[out] dataTiling   数据通道通信切分
  * \param[out] scaleTiling  Scale 通道通信切分
- * \return true=成功; false=核数守卫失败(日志已打印具体原因)
+ *
+ * 纯计算序列, 不含校验与日志——核数守卫(usedCoreNum>=rankSize 防 kernel 死锁、
+ * min(aic,aiv)>=rankSize)与错误日志由调用方 op_tiling 负责(2026-09-17 裁定)。
  */
-inline bool GetCoreOccupancyFirstTiling(fe::PlatFormInfos *platformInfo, uint64_t m, uint64_t n, uint64_t ka,
-                                        bool isFp4, bool hasBias, uint64_t worldSize,
-                                        const QuantMatmulPlatformInfo &platform, const char *opName,
-                                        QuantMatmulTilingData &mmTiling, CommTilingData &dataTiling,
-                                        CommTilingData &scaleTiling)
+inline void GetCoreOccupancyFirstTiling(fe::PlatFormInfos *platformInfo, uint64_t m, uint64_t n, uint64_t ka,
+                                        bool isFp4, bool hasBias, QuantMatmulTilingData &mmTiling,
+                                        CommTilingData &dataTiling, CommTilingData &scaleTiling)
 {
     // ---- matmul tiling(SWAT): MXFP4 按 fp4 推导 baseK(256 vs 128)与 L1 布局, 其余按 fp8 ----
     if (isFp4) {
@@ -142,24 +137,6 @@ inline bool GetCoreOccupancyFirstTiling(fe::PlatFormInfos *platformInfo, uint64_
         tilingEngine.GetTilingData(m, n, ka, false, true, mmTiling);
     }
 
-    // ---- 守卫 1: matmul 实际分配核数必须 >= rankSize ----
-    // (kernel 侧通信切分依赖每 rank 至少一个核, 见 RunAllToAll: if (GetBlockIdx() < rankSize),
-    //  否则部分 rank 无核参与 alltoall 导致死锁)
-    if (static_cast<uint64_t>(mmTiling.usedCoreNum) < worldSize) {
-        OP_LOGE_WITHOUT_REPORT(opName,
-                               "[coreNum] usedCoreNum(%u) is less than rankSize(%lu), "
-                               "matmul tiling 分配核数不足以覆盖所有 rank",
-                               mmTiling.usedCoreNum, worldSize);
-        return false;
-    }
-    // ---- 守卫 2: 可用核数 = min(aicNum, aivNum) 必须 >= rankSize ----
-    const uint64_t availCoreNum = std::min(platform.aicNum, platform.aivNum);
-    if (availCoreNum < worldSize) {
-        OP_LOGE_WITHOUT_REPORT(opName, "[coreNum] availCoreNum(%lu) is less than rankSize(%lu)", availCoreNum,
-                               worldSize);
-        return false;
-    }
-
     // ---- 通信切分: 核利用率优先(历史: aiv_urma 路径的 fit-balance tiling 已废弃, 2026-09-15) ----
     CoreOccupancyFirstTiling::GetCommTilingData(m, n, ka, mmTiling, dataTiling, scaleTiling);
 
@@ -167,5 +144,4 @@ inline bool GetCoreOccupancyFirstTiling(fe::PlatFormInfos *platformInfo, uint64_
     if (isFp4) {
         dataTiling.nonSplitAxisSize = ka / 2;
     }
-    return true;
 }
