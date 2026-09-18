@@ -724,9 +724,8 @@ __aicore__ inline void Gmm2Aiv0PrologueA8W4(BlockPrologue &blockPrologue, Schedu
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
         auto actualShape = scheduler.GetBlockShape(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
-        auto mL1Size = Get<M_VALUE>(actualShape);
         auto nL1Size = Get<N_VALUE>(actualShape);
-        blockPrologue(gmB, mL1Size, config.k, nL1Size, nLoc, config.n, config.blockMmadTiling.l1Params.kL1, 0U);
+        blockPrologue(gmB, config.k, nL1Size, nLoc, config.n, 0U);
     }
 }
 
@@ -836,7 +835,7 @@ __aicore__ inline void Gmm2ExecA8W4(Scheduler &scheduler, const GMMAddrInfo &gmm
                                                    L0_TILE_K, 0};
         typename BlockMmad::ProblemShape matmulShape{config.m, config.outputN, config.k, 0};
         // GMM2 has no gate/up concatenation; preserve the persistent buffer indices.
-        blockMmad.template Init<false>(matmulShape, l0TileShape, config.blockMmadTiling.l1Params, false);
+        blockMmad.template Init<false>(matmulShape, l0TileShape, false);
         Gmm2AicMmadA8W4<IsShared, IsLayered, NotifyCombineTileReady, BlockMmad, decltype(workSet.scheduler),
                         decltype(workSet.gmA), decltype(workSet.gmScaleA), decltype(workSet.gmScaleB),
                         std::remove_reference_t<decltype(workSet.gmC)>, Config>(

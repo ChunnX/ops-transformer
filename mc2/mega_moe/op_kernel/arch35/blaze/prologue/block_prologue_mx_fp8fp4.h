@@ -52,14 +52,10 @@
  * | 64KB      | 128KB | 8-bit weight quad         | Quad      |
  * | **Total (used)** | **192KB** | Within 248KB UB hardware limit | |
  *
- * ## L1 Buffer Layout (Non-Contiguous)
- *
- * ### 8-bit Weight (Double Buffered, 128KB Total)
- * Two separate 64KB buffers at different L1 locations:
- * - Buffer 0: 64KB at `WEIGHT_L1_INIT_OFFSET`
- * - Buffer 1: 64KB at `WEIGHT_L1_INIT_OFFSET + WEIGHT_L1_DB_OFFSET`
- *
- * Note: Buffers are NOT contiguous in L1 memory
+ * ## L1 Buffer Layout
+ * Host tiling supplies the W8 B-slot count and byte offsets through MegaMoeL1Layout.
+ * AIC and AIV0 read the same layout; logical B slots alternate between two physical halves.
+ * Each slot holds one K256 x N256 tile; tail tiles copy only their valid extent.
  *
  * ## Key Design Decisions
  *
@@ -99,6 +95,7 @@
 #include "blaze/gemm/tile/copy_weight_ub_to_l1.h"
 #include "block_prologue.h"
 #include "blaze/gemm/utils/common_utils_mega_moe.h"
+#include "mega_moe_tiling.h"
 
 namespace Blaze {
 namespace Gemm {
@@ -112,10 +109,6 @@ using AscendC::TEventID;
 using AscendC::WaitFlag;
 
 using Blaze::Gemm::DOUBLE_BUFFER;
-using Blaze::Gemm::MX_FP8FP4_L1_K_CONFIG_256;
-using Blaze::Gemm::MX_FP8FP4_L1_K_CONFIG_512;
-using Blaze::Gemm::MX_FP8FP4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD;
-using Blaze::Gemm::MX_FP8FP4_L1_K_DYNAMIC_CONFIG_N_THRESHOLD;
 using Blaze::Gemm::SYNC_MODE4;
 
 static constexpr int32_t QUADRUPLE_BUFFER_NUM = 4;
@@ -148,15 +141,15 @@ public:
         __gm__ InType *ptrB;
     };
 
-    __aicore__ inline BlockPrologue();
+    __aicore__ explicit inline BlockPrologue(const MegaMoeL1Layout &layout);
     template <typename GMWeightTensorType>
-    __aicore__ inline void operator()(const GMWeightTensorType &gmWeightTensor, uint64_t mL1Size, uint64_t kSize,
+    __aicore__ inline void operator()(const GMWeightTensorType &gmWeightTensor, uint64_t kSize,
                                       uint64_t nL1Size, uint64_t nOffset, uint64_t nAlign,
-                                      uint64_t configuredKL1Size = 0, uint64_t concatHalfN = 0);
+                                      uint64_t concatHalfN = 0);
     __aicore__ inline ~BlockPrologue();
 
 protected:
-    __aicore__ inline uint64_t CalcDynamicKBlock(uint64_t mL1Size, uint64_t nL1Size) const;
+
     __aicore__ inline void SetAivToAic();
     __aicore__ inline void WaitAicToAiv();
     template <typename GMWeightTensorType>
@@ -191,6 +184,7 @@ protected:
     // L1 tensor creation functions
     __aicore__ inline auto MakeL1WeightTensor(uint64_t l1RealLen, uint64_t nL1Size);
 
+    const MegaMoeL1Layout layout_;
     uint64_t cvLoopIdx_ = 0;
 
     uint64_t ubMte2LoopIdx_ = 0;
@@ -198,11 +192,6 @@ protected:
 
     // === Buffer Size Unit ===
     static constexpr uint64_t KB = 1024;
-    static constexpr uint64_t WEIGHT_L1_INIT_OFFSET = 0;
-    static constexpr uint64_t WEIGHT_L1_DB_OFFSET = 384 * KB;
-    static constexpr uint64_t L1_WEIGHT_OFFSETS[DOUBLE_BUFFER] = {
-        WEIGHT_L1_INIT_OFFSET * sizeof(OutType), WEIGHT_L1_DB_OFFSET * sizeof(OutType)};
-
     // === Pipeline Buffer Configuration ===
     static constexpr uint64_t WEIGHT_8BIT_BUFFER_NUM = QUADRUPLE_BUFFER_NUM; // 4
 
@@ -253,13 +242,11 @@ protected:
     static constexpr uint64_t SYNC_AIV_AIC_FLAG = 0;
     static constexpr uint64_t SYNC_AIC_AIV_FLAG = 1;
 
-    // === Dynamic Tiling Configuration ===
-
-    static constexpr uint64_t FINALIZE_AIC_WAIT_COUNT = 2;
 };
 
 BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS
-__aicore__ inline BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::BlockPrologue()
+__aicore__ inline BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::BlockPrologue(
+    const MegaMoeL1Layout &layout) : layout_(layout)
 {
     for (uint16_t idx = 0; idx < kUbMte2BufferNum; idx++) {
         SetFlag<HardEvent::V_MTE2>(vecEventIdVToMte2_ + idx);
@@ -268,16 +255,6 @@ __aicore__ inline BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::BlockPrologue()
     for (uint16_t idx = 0; idx < WEIGHT_8BIT_BUFFER_NUM; idx++) {
         SetFlag<HardEvent::MTE3_V>(vecEventIdMte3ToV_ + idx);
     }
-}
-
-BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS
-__aicore__ inline uint64_t BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::CalcDynamicKBlock(uint64_t mL1Size,
-                                                                                      uint64_t nL1Size) const
-{
-    return (mL1Size <= MX_FP8FP4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD &&
-            nL1Size <= MX_FP8FP4_L1_K_DYNAMIC_CONFIG_N_THRESHOLD) ?
-               MX_FP8FP4_L1_K_CONFIG_512 :
-               MX_FP8FP4_L1_K_CONFIG_256;
 }
 
 BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS
@@ -324,9 +301,9 @@ __aicore__ inline void BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::ComputeBasicBloc
 BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS
 template <typename GMWeightTensorType>
 __aicore__ inline void BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::operator()(const GMWeightTensorType &gmWeightTensor,
-                                                                           uint64_t mL1Size, uint64_t kSize,
+                                                                           uint64_t kSize,
                                                                            uint64_t nL1Size, uint64_t nOffset,
-                                                                           uint64_t nAlign, uint64_t configuredKL1Size,
+                                                                           uint64_t nAlign,
                                                                            uint64_t concatHalfN)
 {
     // Type assertions - __aicore__ guarantees these types are valid
@@ -337,7 +314,7 @@ __aicore__ inline void BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::operator()(const
     offsetParam.kSize = kSize;
     offsetParam.nL1Size = nL1Size;
     offsetParam.nOffset = nOffset;
-    offsetParam.kbL1Size = configuredKL1Size != 0 ? configuredKL1Size : CalcDynamicKBlock(mL1Size, nL1Size);
+    offsetParam.kbL1Size = layout_.tileK;
     offsetParam.nAlign = nAlign;
     offsetParam.concatHalfN = concatHalfN;
     ComputeBasicBlockAivNdKnNzNk(offsetParam, gmWeightTensor);
@@ -346,7 +323,7 @@ __aicore__ inline void BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::operator()(const
 BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS
 __aicore__ inline BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::~BlockPrologue()
 {
-    for (uint64_t idx = 0; idx < FINALIZE_AIC_WAIT_COUNT; ++idx) {
+    for (uint64_t idx = 0; idx < layout_.bBufferNum; ++idx) {
         WaitAicToAiv();
     }
     FinalizeVectorCompute();
@@ -463,8 +440,9 @@ __aicore__ inline auto BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::MakeL1WeightTens
 {
     auto l1BaseLayout =
         asc::te::make_frame_layout<asc::te::zn_layout_ptn, asc::te::layout_trait_default<OutType>>(l1RealLen, nL1Size);
+    const uint64_t weightL1Offset = layout_.bOffsets[cvLoopIdx_ % layout_.bBufferNum];
     return asc::te::make_tensor(
-        asc::te::make_mem_ptr<asc::te::location::l1, OutType>(L1_WEIGHT_OFFSETS[cvLoopIdx_ & (DOUBLE_BUFFER - 1)]),
+        asc::te::make_mem_ptr<asc::te::location::l1, OutType>(weightL1Offset),
         l1BaseLayout);
 }
 

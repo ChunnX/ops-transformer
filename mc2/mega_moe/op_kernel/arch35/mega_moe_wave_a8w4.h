@@ -282,11 +282,11 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
         MoeWeightType, bfloat16_t, typename MoeQuantConfig::QuantScaleType,
         typename MoeQuantConfig::QuantScaleType, false, TopkWeightsPrefetch, false, false, true>;
     if constexpr (g_coreType == AIC) {
-        typename Config::BlockMmad blockMmad;
+        typename Config::BlockMmad blockMmad(params_.tilingData->a8w4L1Layout);
         RunMoeExpertLoop(gmm1AddrInfo, gmm2AddrInfo, dispatchPosition, combineBufferConfig,
                          BlockContext{&blockMmad});
     } else if (GetSubBlockIdx() == 0U) {
-        typename Config::BlockPrologue blockPrologue;
+        typename Config::BlockPrologue blockPrologue(params_.tilingData->a8w4L1Layout);
         RunMoeExpertLoop(gmm1AddrInfo, gmm2AddrInfo, dispatchPosition, combineBufferConfig,
                          BlockContext{&blockPrologue});
     } else {
