@@ -2303,30 +2303,7 @@ def cal_atten_mask_offset_pre(run_info, const_info):
     return delta_pre
 
 
-def iterate_p_ds(p_l1_bit8, ds_l1_bit8, sdp_id, const_info, run_info, tensor_info):
-    real_s1 = run_info.inner_s1_real_size[run_info.s1_idx]
-    real_s2 = run_info.inner_s2_real_size[run_info.s2_idx]
-    first_half_s1 = ceil(real_s1, QUANT_S1_BASE_COUNT) * QUANT_S1_BASE_COUNT // 2
-    current_real_s1 = (
-        first_half_s1 if const_info.sub_id == 0 else real_s1 - first_half_s1
-    )
-    if layout == 2:
-        current_real_s1 = min(current_real_s1, real_s1 - const_info.sub_id * first_half_s1)
-    current_real_s2 = ceil(real_s2, QUANT_S2_BASE_COUNT) * QUANT_S2_BASE_COUNT
-
-    lse_vec = tensor_info.lse_vec.next()
-    d_vec = tensor_info.d_vec.next()
-
-    if current_real_s1 <= 0:
-        return
-
-    perm_vec = tensor_info.perm_vec.current()
-    zero_vec = tensor_info.zero_vec.current()
-    pl.set_validshape(lse_vec, [1, current_real_s1])
-    pl.set_validshape(d_vec, [1, current_real_s1])
-
-    attn_vec = tensor_info.attn_vec.next()
-    attn_pre_vec = tensor_info.attn_pre_vec.current()
+def load_attn_mask(attn_vec, attn_pre_vec, run_info, const_info, tensor_info):
     if has_attn_mask:
         delta = cal_atten_mask_offset(run_info, const_info)
         if delta >= 0:
@@ -2362,6 +2339,62 @@ def iterate_p_ds(p_l1_bit8, ds_l1_bit8, sdp_id, const_info, run_info, tensor_inf
                 ],
                 order=[0, 1],
             )
+
+
+def preload_attn_mask(run_info, const_info, tensor_info):
+    # Match the consumer guards: empty sub-blocks must not advance the mask slot.
+    # Band keeps both mask loads at the consumer; its pre mask is single-buffered.
+    if not has_attn_mask or sparse_type == 4:
+        return
+    if (
+        run_info.s2_idx >= run_info.inner_s2_loop_num
+        or run_info.s1_idx >= run_info.inner_s1_loop_num
+    ):
+        return
+    real_s1 = run_info.inner_s1_real_size[run_info.s1_idx]
+    first_half_s1 = ceil(real_s1, QUANT_S1_BASE_COUNT) * QUANT_S1_BASE_COUNT // 2
+    current_real_s1 = (
+        first_half_s1 if const_info.sub_id == 0 else real_s1 - first_half_s1
+    )
+    if layout == 2:
+        current_real_s1 = min(current_real_s1, real_s1 - const_info.sub_id * first_half_s1)
+    if current_real_s1 <= 0:
+        return
+
+    # pl.load and the VF consumer retain the tile group's MTE2/V mutex pairing.
+    # Advance once in this path; iterate_p_ds consumes it with current().
+    attn_vec = tensor_info.attn_vec.next()
+    attn_pre_vec = tensor_info.attn_pre_vec.current()
+    load_attn_mask(attn_vec, attn_pre_vec, run_info, const_info, tensor_info)
+
+
+def iterate_p_ds(p_l1_bit8, ds_l1_bit8, sdp_id, const_info, run_info, tensor_info):
+    real_s1 = run_info.inner_s1_real_size[run_info.s1_idx]
+    real_s2 = run_info.inner_s2_real_size[run_info.s2_idx]
+    first_half_s1 = ceil(real_s1, QUANT_S1_BASE_COUNT) * QUANT_S1_BASE_COUNT // 2
+    current_real_s1 = (
+        first_half_s1 if const_info.sub_id == 0 else real_s1 - first_half_s1
+    )
+    if layout == 2:
+        current_real_s1 = min(current_real_s1, real_s1 - const_info.sub_id * first_half_s1)
+    current_real_s2 = ceil(real_s2, QUANT_S2_BASE_COUNT) * QUANT_S2_BASE_COUNT
+
+    lse_vec = tensor_info.lse_vec.next()
+    d_vec = tensor_info.d_vec.next()
+
+    if current_real_s1 <= 0:
+        return
+
+    perm_vec = tensor_info.perm_vec.current()
+    zero_vec = tensor_info.zero_vec.current()
+    pl.set_validshape(lse_vec, [1, current_real_s1])
+    pl.set_validshape(d_vec, [1, current_real_s1])
+
+    attn_vec = tensor_info.attn_vec.current()
+    attn_pre_vec = tensor_info.attn_pre_vec.current()
+    if has_attn_mask and sparse_type == 4:
+        attn_vec = tensor_info.attn_vec.next()
+        load_attn_mask(attn_vec, attn_pre_vec, run_info, const_info, tensor_info)
     # pl.system.bar_all()
     # pl.printf("222 wenyu  \n")
     # pl.dump_data(attn_vec, offsets=[0, 0], shapes=[4,64])
@@ -2908,6 +2941,9 @@ def process_sp(run_info, const_info, sdp_id, tensor_info):
 
 def process_p_ds(run_info, const_info, sdp_id, tensor_info, tmp_info):
     with pl.section_vector():
+        # Mask data depends only on run_info, so issue MTE2 before waiting for
+        # Cube results and the P/dS L1 buffers. Their original waits stay below.
+        preload_attn_mask(run_info, const_info, tensor_info)
         pl.system.wait_cross_core(
             pipe=pl.PipeType.V,
             event_id=sdp_id + 5,
