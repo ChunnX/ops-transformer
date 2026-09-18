@@ -40,7 +40,8 @@ constexpr size_t INDEX_ATTR_X1_QUANT_MODE = 4;
 constexpr size_t INDEX_ATTR_X2_QUANT_MODE = 5;
 constexpr size_t INDEX_ATTR_TRANS_X1 = 9;
 constexpr size_t INDEX_ATTR_TRANS_X2 = 10;
-constexpr size_t INDEX_ATTR_ALLTOALL_OUT_FLAG = 12;
+constexpr size_t INDEX_ATTR_COMM_MODE = 12;
+constexpr size_t INDEX_ATTR_ALLTOALL_OUT_FLAG = 13;
 // output tensor index
 constexpr size_t INDEX_OUT = 0;
 constexpr size_t INDEX_ALLTO_ALL_OUT = 1;
@@ -212,7 +213,7 @@ static ge::graphStatus InferAllToAllOutShapeAlltoAllMatmul(gert::InferShapeConte
                     OUTPUT_INFER_SHAPE, allToAllOutFirstDim, allToAllOutSecondDim);
         } else {
             allToAllOut->SetDim(0U, shape.m);
-            allToAllOut->SetDim(1U, shape.n);
+            allToAllOut->SetDim(1U, shape.k2);
         }
     }
     return ge::GRAPH_SUCCESS;
