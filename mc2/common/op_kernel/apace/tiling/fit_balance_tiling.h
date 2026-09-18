@@ -946,7 +946,7 @@ inline uint64_t MmRankMul(const FitBasedBalanceCtx &ctx)
 //   static const FitBalanceCalibration CALIBRATION = {
 //       /* aicpu */  { /* rows */ { {"4_1_0_4", 斜率, 截距} } },
 //       /* ccu */    { /* rows */ { {"4_1_0_4", 斜率, 截距} } },
-//       /* matmul */ { /* cubeCalc */ { {"4_1_1_1_2", 算力} }, ... },
+//       /* matmul */ { /* cubeCalc */ { {MatmulDtypeKind, isFp4, aB, bB, cB, 算力} }, ... },
 //   };
 //
 // 填写规则:
@@ -973,9 +973,9 @@ struct FitBalanceCalibration {
     CommFit aicpu; // AICPU 引擎(comm_mode != "ccu")
     CommFit ccu;   // CCU 引擎(comm_mode == "ccu")
 
-    // —— matmul 模型（字段序: 用户常改字段在前, 平台默认在后——聚合初始化可省尾部,
-    //    省略的尾部字段自动取 NSDMI 默认值）——
-    struct Matmul {
+    // —— matmul 性能拟合（对仗 CommFit; 字段序: 用户常改字段在前, 平台默认在后——聚合初始化
+    //    可省尾部, 省略的尾部字段自动取 NSDMI 默认值）——
+    struct MatmulFit {
         struct CubeCalc {
             MatmulDtypeKind calcType;
             bool isFp4;              // FP16 / QUANT / ANTI_QUANT
@@ -998,7 +998,7 @@ struct FitBalanceCalibration {
         double defaultComputesPerCycle = 4096.0;                   // 算力档回退(通常勿动)
         L2UtilTiers defaultL2Param = {128, 192, 0.85, 0.75, 0.65}; // L2 档回退(通常勿动)
     };
-    Matmul matmul;
+    MatmulFit matmul;
     FitTunables tunables; // 键控分支阈值(缺省=现网值, 通常勿动; 尾部可整段省略)
 };
 
