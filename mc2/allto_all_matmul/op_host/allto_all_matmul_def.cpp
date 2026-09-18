@@ -144,7 +144,7 @@ public:
         this->MC2().HcclGroup("group");
 
         // ascend960dt AI处理器定义OpAICoreConfig变量，在950 dtype组合基础上追加HiF4全量化组合
-        // HiF4: x1/x2为DT_HIFLOAT4, scale为DT_HIFLOAT4_SCALE(shape [M, K/64, 1]), y支持FP16/BF16/FP
+        // HiF4: x1/x2为DT_HIFLOAT4, scale为DT_HIFLOAT4_SCALE(shape [M, K/64, 1]), y仅支持FP16/BF16(不支持FP)
         OpAICoreConfig aicoreConfig_960dt;
         aicoreConfig_960dt.Input("x1")
             .ParamType(REQUIRED)
@@ -156,7 +156,7 @@ public:
                        ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,
                        ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,
                        ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E2M1,
-                       ge::DT_HIFLOAT4,      ge::DT_HIFLOAT4,      ge::DT_HIFLOAT4})
+                       ge::DT_HIFLOAT4,      ge::DT_HIFLOAT4})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         aicoreConfig_960dt.Input("x2")
@@ -169,7 +169,7 @@ public:
                        ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,
                        ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,
                        ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E2M1,
-                       ge::DT_HIFLOAT4,      ge::DT_HIFLOAT4,      ge::DT_HIFLOAT4})
+                       ge::DT_HIFLOAT4,      ge::DT_HIFLOAT4})
             .FormatList({ge::FORMAT_ND})
             .IgnoreContiguous();
         aicoreConfig_960dt.Input("bias")
@@ -179,7 +179,7 @@ public:
                        ge::DT_FLOAT,   ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT,
                        ge::DT_FLOAT,   ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT,
                        ge::DT_FLOAT,   ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT,
-                       ge::DT_FLOAT,   ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT})
+                       ge::DT_FLOAT,   ge::DT_FLOAT, ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         aicoreConfig_960dt.Input("x1_scale")
@@ -192,7 +192,7 @@ public:
                        ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
                        ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
                        ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
-                       ge::DT_HIFLOAT4_SCALE, ge::DT_HIFLOAT4_SCALE, ge::DT_HIFLOAT4_SCALE})
+                       ge::DT_HIFLOAT4_SCALE, ge::DT_HIFLOAT4_SCALE})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         aicoreConfig_960dt.Input("x2_scale")
@@ -205,7 +205,7 @@ public:
                        ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
                        ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
                        ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
-                       ge::DT_HIFLOAT4_SCALE, ge::DT_HIFLOAT4_SCALE, ge::DT_HIFLOAT4_SCALE})
+                       ge::DT_HIFLOAT4_SCALE, ge::DT_HIFLOAT4_SCALE})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         aicoreConfig_960dt.Input("comm_scale")
@@ -230,7 +230,7 @@ public:
                        ge::DT_FLOAT,   ge::DT_FLOAT16, ge::DT_BF16,  ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16,
                        ge::DT_FLOAT,   ge::DT_FLOAT16, ge::DT_BF16,  ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16,
                        ge::DT_FLOAT,   ge::DT_FLOAT16, ge::DT_BF16,  ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16,
-                       ge::DT_FLOAT,   ge::DT_FLOAT16, ge::DT_BF16,  ge::DT_FLOAT})
+                       ge::DT_FLOAT,   ge::DT_FLOAT16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND});
         aicoreConfig_960dt.Output("all2all_out")
             .ParamType(OPTIONAL)
@@ -242,7 +242,7 @@ public:
                        ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,
                        ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,
                        ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E2M1,
-                       ge::DT_HIFLOAT4,      ge::DT_HIFLOAT4,      ge::DT_HIFLOAT4})
+                       ge::DT_HIFLOAT4,      ge::DT_HIFLOAT4})
             .FormatList({ge::FORMAT_ND});
         aicoreConfig_960dt.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
