@@ -283,6 +283,15 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckDtype() const
                         "in mx quant mode, the dtypes of x and weight must be within the range "
                         "DT_FLOAT8_E4M3FN/DT_FLOAT8_E5M2/DT_FLOAT4_E2M1"),
                     return false);
+        OP_CHECK_IF(
+            inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ && a8w8 &&
+                (inputParams_.aDtype != ge::DT_FLOAT8_E4M3FN || inputParams_.bDtype != ge::DT_FLOAT8_E4M3FN),
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                inputParams_.opType, "x, weight",
+                ListToString(ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype),
+                             ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype)),
+                "in MX A8W8 weight NZ mode, x and weight must both be DT_FLOAT8_E4M3FN"),
+            return false);
     } else {
         OP_CHECK_IF(!(inputParams_.aDtype == ge::DT_FLOAT8_E4M3FN || inputParams_.aDtype == ge::DT_INT8 ||
                       inputParams_.aDtype == ge::DT_HIFLOAT8),
