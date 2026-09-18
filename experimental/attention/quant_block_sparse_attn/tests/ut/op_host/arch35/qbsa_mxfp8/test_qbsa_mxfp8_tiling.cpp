@@ -37,6 +37,11 @@ TEST_P(QbsaMxfp8Arch35TilingTest, Tiling)
     ASSERT_EQ(tilingInfo.tilingDataSize, sizeof(optiling::QuantBlockSparseAttnMxfp8TilingData));
     const auto data = DecodeQbsaTilingData<optiling::QuantBlockSparseAttnMxfp8TilingData>(tilingInfo);
     ExpectQbsaCommonTilingData(param, tilingInfo, data.commonParams);
+    const auto queryHeads = param.query.shape_.GetStorageShape().GetDim(param.layout_q == "NTD" ? 0U : 1U);
+    const auto kvHeads = param.key.shape_.GetStorageShape().GetDim(1U);
+    ASSERT_GT(kvHeads, 0);
+    EXPECT_EQ(data.commonParams.baseParams.n2Size, kvHeads);
+    EXPECT_EQ(data.commonParams.baseParams.gSize, queryHeads / kvHeads);
     EXPECT_EQ(data.mxParams.scaleGroupSize, 64U);
     EXPECT_EQ(data.mxParams.scaleLastDim, 2U);
     EXPECT_EQ(data.mxParams.queryScaleDSize, 2U);

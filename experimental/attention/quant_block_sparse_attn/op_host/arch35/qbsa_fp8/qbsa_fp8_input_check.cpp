@@ -13,10 +13,9 @@
 
 #include "graph/utils/type_utils.h"
 #include "log/log.h"
-#include "qbsa_common_check.h"
-#include "qbsa_check_utils.h"
-#include "qbsa_op_contract.h"
-#include "../../op_kernel/arch35/common/quant_block_sparse_attn_const.h"
+#include "qbsa_fp8_tiling.h"
+#include "../../tiling_common/qbsa_check_utils.h"
+#include "../../../op_kernel/arch35/common/quant_block_sparse_attn_const.h"
 
 namespace optiling {
 using namespace qbsa_check;
@@ -27,14 +26,34 @@ constexpr size_t DIM_NUM_2 = 2U;
 constexpr size_t DIM_NUM_3 = 3U;
 constexpr size_t DIM_NUM_4 = 4U;
 constexpr int64_t QBSA_ATTEN_MASK_DIM_VALUE = 2048;
+// These limits belong to this architecture and quantization mode only.
+constexpr uint32_t kMaxBatchSize = 65536U;
+constexpr uint32_t kMaxQueryHeads = 128U;
+constexpr uint32_t kMaxKvHeads = 8U;
+constexpr uint32_t kMaxGroupSize = 16U;
+constexpr uint32_t kHeadDim = 128U;
+constexpr uint32_t kValueHeadDim = 128U;
 } // namespace
 
-QbsaCommonCheck::QbsaCommonCheck(const QuantBlockSparseAttnTilingInfo &tilingInfo)
-    : tilingInfo_(tilingInfo)
-{}
-
-ge::graphStatus QbsaCommonCheck::CheckLayouts(const char *kvLayout, const char *sparseLayout) const
+ge::graphStatus QbsaFp8Arch35Tiling::ResolveHeadGrouping()
 {
+    if (tilingInfo_.n1Size == 0U || tilingInfo_.n2Size == 0U || tilingInfo_.n1Size % tilingInfo_.n2Size != 0U) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            kOpName, "n1Size (query head num)", std::to_string(tilingInfo_.n1Size),
+            "Must be divisible by n2Size (kv head num) " + std::to_string(tilingInfo_.n2Size));
+        return ge::GRAPH_FAILED;
+    }
+
+    tilingInfo_.gSize = tilingInfo_.n1Size / tilingInfo_.n2Size;
+    tilingInfo_.isGqa = (tilingInfo_.gSize > 1U);
+
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QbsaFp8Arch35Tiling::CheckLayouts() const
+{
+    constexpr const char *kvLayout = "PA_BNBD";
+    constexpr const char *sparseLayout = "B_N_Qb_Kb";
     if (tilingInfo_.layoutKVStr != kvLayout || tilingInfo_.layoutSparseIndicesStr != sparseLayout) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
             kOpName, "layout_kv/layout_sparse_indices",
@@ -45,8 +64,10 @@ ge::graphStatus QbsaCommonCheck::CheckLayouts(const char *kvLayout, const char *
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QbsaCommonCheck::CheckSoftmaxScale(float minExclusive, float maxInclusive) const
+ge::graphStatus QbsaFp8Arch35Tiling::CheckSoftmaxScale() const
 {
+    constexpr float minExclusive = 0.0F;
+    constexpr float maxInclusive = 1.0F;
     if (!(tilingInfo_.softmaxScaleVal > minExclusive && tilingInfo_.softmaxScaleVal <= maxInclusive)) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
             kOpName, "softmax_scale", std::to_string(tilingInfo_.softmaxScaleVal),
@@ -56,10 +77,17 @@ ge::graphStatus QbsaCommonCheck::CheckSoftmaxScale(float minExclusive, float max
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QbsaCommonCheck::CheckDtype(ge::DataType qkvDtype, ge::DataType outputDtype) const
+ge::graphStatus QbsaFp8Arch35Tiling::CheckDtype() const
 {
+    constexpr ge::DataType qkvDtype = ge::DT_FLOAT8_E4M3FN;
+    constexpr ge::DataType outputDtype = ge::DT_BF16;
     const auto &opParamInfo = tilingInfo_.opParamInfo;
-    if (CheckKVDtypeConsistency(opParamInfo) != ge::GRAPH_SUCCESS) {
+    if (opParamInfo.key.desc != nullptr && opParamInfo.value.desc != nullptr &&
+        opParamInfo.key.desc->GetDataType() != opParamInfo.value.desc->GetDataType()) {
+        OP_LOGE_FOR_INVALID_DTYPE(kOpName, "key/value",
+                                  ge::TypeUtils::DataTypeToSerialString(opParamInfo.key.desc->GetDataType()) + "/" +
+                                      ge::TypeUtils::DataTypeToSerialString(opParamInfo.value.desc->GetDataType()),
+                                  "key and value must have the same dtype");
         return ge::GRAPH_FAILED;
     }
     if (tilingInfo_.qDtype != qkvDtype) {
@@ -139,8 +167,9 @@ ge::graphStatus QbsaCommonCheck::CheckDtype(ge::DataType qkvDtype, ge::DataType 
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QbsaCommonCheck::CheckFormat(ge::Format expectedFormat) const
+ge::graphStatus QbsaFp8Arch35Tiling::CheckFormat() const
 {
+    constexpr ge::Format expectedFormat = ge::FORMAT_ND;
     const auto &opParamInfo = tilingInfo_.opParamInfo;
     const gert::CompileTimeTensorDesc *requiredDescs[] = {
         opParamInfo.query.desc,         opParamInfo.key.desc,          opParamInfo.value.desc,
@@ -176,7 +205,7 @@ ge::graphStatus QbsaCommonCheck::CheckFormat(ge::Format expectedFormat) const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QbsaCommonCheck::CheckActualSeqLen() const
+ge::graphStatus QbsaFp8Arch35Tiling::CheckActualSeqLen() const
 {
     const auto &opParamInfo = tilingInfo_.opParamInfo;
     if (opParamInfo.cuSeqlensQ.tensor != nullptr) {
@@ -200,7 +229,7 @@ ge::graphStatus QbsaCommonCheck::CheckActualSeqLen() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QbsaCommonCheck::CheckMetadata() const
+ge::graphStatus QbsaFp8Arch35Tiling::CheckMetadata() const
 {
     const auto &opParamInfo = tilingInfo_.opParamInfo;
     if (opParamInfo.metadata.desc == nullptr) {
@@ -230,7 +259,7 @@ ge::graphStatus QbsaCommonCheck::CheckMetadata() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QbsaCommonCheck::CheckPaInputs() const
+ge::graphStatus QbsaFp8Arch35Tiling::CheckPaInputs() const
 {
     const auto &opParamInfo = tilingInfo_.opParamInfo;
     if (opParamInfo.blockTable.tensor == nullptr) {
@@ -253,7 +282,7 @@ ge::graphStatus QbsaCommonCheck::CheckPaInputs() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QbsaCommonCheck::CheckReservedInputs() const
+ge::graphStatus QbsaFp8Arch35Tiling::CheckReservedInputs() const
 {
     const auto &opParamInfo = tilingInfo_.opParamInfo;
     if (opParamInfo.cuSeqlensKV.tensor != nullptr) {
@@ -271,7 +300,7 @@ ge::graphStatus QbsaCommonCheck::CheckReservedInputs() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QbsaCommonCheck::CheckShapeConsistency() const
+ge::graphStatus QbsaFp8Arch35Tiling::CheckShapeConsistency() const
 {
     const auto &opParamInfo = tilingInfo_.opParamInfo;
     const gert::Shape &sparseIndicesShape = opParamInfo.sparseIndices.shape->GetStorageShape();
@@ -309,12 +338,6 @@ ge::graphStatus QbsaCommonCheck::CheckShapeConsistency() const
         return ge::GRAPH_FAILED;
     }
 
-    if (tilingInfo_.n1Size % tilingInfo_.n2Size != 0U) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            kOpName, "n1Size (query head num) ", std::to_string(tilingInfo_.n1Size),
-            "Must be divisible by n2Size (kv head num) " + std::to_string(tilingInfo_.n2Size));
-        return ge::GRAPH_FAILED;
-    }
     if (tilingInfo_.qBlockSizeVal == 0U || tilingInfo_.kvBlockSizeVal == 0U) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
             kOpName, "q_block_size/kv_block_size",
@@ -334,26 +357,26 @@ ge::graphStatus QbsaCommonCheck::CheckShapeConsistency() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QbsaCommonCheck::CheckShapeLimits(const QbsaShapeLimits &limits) const
+ge::graphStatus QbsaFp8Arch35Tiling::CheckShapeLimits() const
 {
-    if (tilingInfo_.bSize > limits.maxBatchSize || tilingInfo_.n1Size > limits.maxQueryHeads ||
-        tilingInfo_.n2Size > limits.maxKvHeads || tilingInfo_.gSize > limits.maxGroupSize ||
-        tilingInfo_.dSize != limits.headDim || tilingInfo_.dSizeV != limits.valueHeadDim) {
+    if (tilingInfo_.bSize > kMaxBatchSize || tilingInfo_.n1Size > kMaxQueryHeads || tilingInfo_.n2Size > kMaxKvHeads ||
+        tilingInfo_.gSize > kMaxGroupSize || tilingInfo_.dSize != kHeadDim || tilingInfo_.dSizeV != kValueHeadDim) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
             kOpName, "B/N1/N2/G/D/DV",
             std::to_string(tilingInfo_.bSize) + "/" + std::to_string(tilingInfo_.n1Size) + "/" +
                 std::to_string(tilingInfo_.n2Size) + "/" + std::to_string(tilingInfo_.gSize) + "/" +
                 std::to_string(tilingInfo_.dSize) + "/" + std::to_string(tilingInfo_.dSizeV),
-            "Requires B<=" + std::to_string(limits.maxBatchSize) + ", N1<=" + std::to_string(limits.maxQueryHeads) +
-                ", N2<=" + std::to_string(limits.maxKvHeads) + ", G<=" + std::to_string(limits.maxGroupSize) +
-                ", D=" + std::to_string(limits.headDim) + ", DV=" + std::to_string(limits.valueHeadDim));
+            "Requires B<=" + std::to_string(kMaxBatchSize) + ", N1<=" + std::to_string(kMaxQueryHeads) +
+                ", N2<=" + std::to_string(kMaxKvHeads) + ", G<=" + std::to_string(kMaxGroupSize) +
+                ", D=" + std::to_string(kHeadDim) + ", DV=" + std::to_string(kValueHeadDim));
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QbsaCommonCheck::CheckKeyValueShape(uint32_t expectedBlockSize) const
+ge::graphStatus QbsaFp8Arch35Tiling::CheckKeyValueShape() const
 {
+    const uint32_t expectedBlockSize = tilingInfo_.kvBlockSizeVal;
     const auto &opParamInfo = tilingInfo_.opParamInfo;
     if (opParamInfo.key.shape == nullptr || opParamInfo.value.shape == nullptr) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "key/value", "nullptr", "shape is nullptr");
@@ -433,7 +456,7 @@ ge::graphStatus QbsaCommonCheck::CheckKeyValueShape(uint32_t expectedBlockSize) 
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QbsaCommonCheck::CheckNoneOrCausalMask() const
+ge::graphStatus QbsaFp8Arch35Tiling::CheckNoneOrCausalMask() const
 {
     if (tilingInfo_.maskModeVal != QBSA_MASK_MODE_NONE && tilingInfo_.maskModeVal != QBSA_MASK_MODE_CAUSAL) {
         OP_LOGE_WITH_INVALID_ATTR(kOpName, "mask_mode", std::to_string(tilingInfo_.maskModeVal), "0 or 3");

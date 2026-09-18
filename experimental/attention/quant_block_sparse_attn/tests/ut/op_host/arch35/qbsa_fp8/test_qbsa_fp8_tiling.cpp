@@ -38,6 +38,12 @@ TEST_P(QbsaFp8Arch35TilingTest, Tiling)
     ASSERT_EQ(tilingInfo.tilingDataSize, sizeof(optiling::QuantBlockSparseAttnFp8TilingData));
     const auto data = DecodeQbsaTilingData<optiling::QuantBlockSparseAttnFp8TilingData>(tilingInfo);
     ExpectQbsaCommonTilingData(param, tilingInfo, data.commonParams);
+    const auto queryHeads = param.query.shape_.GetStorageShape().GetDim(param.layout_q == "NTD" ? 0U : 1U);
+    const auto kvHeads = param.key.shape_.GetStorageShape().GetDim(1U);
+    ASSERT_GT(kvHeads, 0);
+    EXPECT_EQ(data.commonParams.baseParams.n2Size, kvHeads);
+    EXPECT_EQ(data.commonParams.baseParams.gSize, queryHeads / kvHeads);
+    EXPECT_EQ(data.fp8Params.isGqa, queryHeads > kvHeads ? 1U : 0U);
     EXPECT_EQ(data.fp8Params.needInit, 1U);
 
     // A valid case must fit its own payload exactly and reject an undersized buffer.

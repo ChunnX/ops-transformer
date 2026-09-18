@@ -113,6 +113,6 @@ ge::graphStatus QbsaMxfp8Arch35Tiling::BuildTilingData()
 
 ge::graphStatus QbsaMxfp8Arch35Tiling::SaveTilingData()
 {
-    return PublishTilingData(&tilingData_, sizeof(tilingData_));
+    return PublishTilingData(tilingData_);
 }
 } // namespace optiling

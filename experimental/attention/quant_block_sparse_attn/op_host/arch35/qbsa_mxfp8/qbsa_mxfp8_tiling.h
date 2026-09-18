@@ -11,7 +11,6 @@
 #ifndef QBSA_MXFP8_TILING_H_
 #define QBSA_MXFP8_TILING_H_
 
-#include "../../tiling_common/qbsa_common_check.h"
 #include "../../tiling_common/qbsa_tiling_strategy.h"
 #include "../../../op_kernel/arch35/qbsa_mxfp8/qbsa_mxfp8_tiling_data.h"
 
@@ -35,7 +34,20 @@ private:
     ge::graphStatus CheckMxPaBlockSize() const;
     ge::graphStatus CheckMxfp8FullQuantShape() const;
 
-    QbsaCommonCheck commonCheck_;
+    ge::graphStatus ResolveHeadGrouping();
+    ge::graphStatus CheckLayouts() const;
+    ge::graphStatus CheckSoftmaxScale() const;
+    ge::graphStatus CheckDtype() const;
+    ge::graphStatus CheckFormat() const;
+    ge::graphStatus CheckActualSeqLen() const;
+    ge::graphStatus CheckMetadata() const;
+    ge::graphStatus CheckPaInputs() const;
+    ge::graphStatus CheckReservedInputs() const;
+    ge::graphStatus CheckShapeConsistency() const;
+    ge::graphStatus CheckShapeLimits() const;
+    ge::graphStatus CheckKeyValueShape() const;
+    ge::graphStatus CheckNoneOrCausalMask() const;
+
     QuantBlockSparseAttnMxfp8TilingData tilingData_;
 };
 } // namespace optiling

@@ -113,16 +113,6 @@ ge::graphStatus QbsaTilingContextParser::ParseKeyValue(QuantBlockSparseAttnTilin
         return ge::GRAPH_FAILED;
     }
 
-    if (tilingInfo.n2Size == 0U || tilingInfo.n1Size % tilingInfo.n2Size != 0U) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            kOpName, "n1Size (query head num)", std::to_string(tilingInfo.n1Size),
-            "Must be divisible by n2Size (kv head num) " + std::to_string(tilingInfo.n2Size));
-        return ge::GRAPH_FAILED;
-    }
-
-    tilingInfo.gSize = tilingInfo.n1Size / tilingInfo.n2Size;
-    tilingInfo.isGqa = (tilingInfo.gSize > 1U);
-
     if (!QBSAGetDimAsU32(valueShape, QBSAGetAxisIdx(QBSALayout::PA_BNBD, QBSAAxis::HEAD_DIM), tilingInfo.dSizeV)) {
         OP_LOGE(kOpName, "Failed to parse value head dimension");
         return ge::GRAPH_FAILED;

@@ -34,7 +34,15 @@ protected:
     virtual ge::graphStatus BuildTilingData() = 0;
     virtual ge::graphStatus SaveTilingData() = 0;
 
-    ge::graphStatus PublishTilingData(const void *data, std::size_t dataSize);
+    template <typename T>
+    ge::graphStatus PublishTilingData(const T &data)
+    {
+        if (CheckTilingDataCapacity(sizeof(T)) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+        auto *target = context_->GetTilingData<T>();
+        return PublishTilingData(target, &data, sizeof(T));
+    }
 
     uint32_t GetAicCoreNum() const;
 
@@ -45,6 +53,8 @@ protected:
     uint64_t tilingKey_ = 0U;
 
 private:
+    ge::graphStatus CheckTilingDataCapacity(std::size_t dataSize) const;
+    ge::graphStatus PublishTilingData(void *target, const void *data, std::size_t dataSize);
     void PrintTilingData(std::size_t dataSize) const;
 };
 } // namespace optiling

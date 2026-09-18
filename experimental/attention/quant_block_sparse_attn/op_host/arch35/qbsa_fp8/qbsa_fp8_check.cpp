@@ -27,8 +27,7 @@ constexpr size_t DIM_NUM_4 = 4U;
 } // namespace
 
 QbsaFp8Arch35Tiling::QbsaFp8Arch35Tiling(gert::TilingContext *context)
-    : QbsaTilingStrategy(context),
-      commonCheck_(tilingInfo_)
+    : QbsaTilingStrategy(context)
 {}
 
 ge::graphStatus QbsaFp8Arch35Tiling::CheckAttributes() const
@@ -39,10 +38,10 @@ ge::graphStatus QbsaFp8Arch35Tiling::CheckAttributes() const
     if (CheckFp8BlockSize() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    if (commonCheck_.CheckLayouts("PA_BNBD", "B_N_Qb_Kb") != ge::GRAPH_SUCCESS) {
+    if (CheckLayouts() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    return commonCheck_.CheckSoftmaxScale(0.0F, 1.0F);
+    return CheckSoftmaxScale();
 }
 
 ge::graphStatus QbsaFp8Arch35Tiling::CheckTensorMetadata() const
@@ -50,14 +49,14 @@ ge::graphStatus QbsaFp8Arch35Tiling::CheckTensorMetadata() const
     if (CheckFp8Inputs() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    if (commonCheck_.CheckPaInputs() != ge::GRAPH_SUCCESS || commonCheck_.CheckMetadata() != ge::GRAPH_SUCCESS ||
-        commonCheck_.CheckReservedInputs() != ge::GRAPH_SUCCESS) {
+    if (CheckPaInputs() != ge::GRAPH_SUCCESS || CheckMetadata() != ge::GRAPH_SUCCESS ||
+        CheckReservedInputs() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    if (commonCheck_.CheckDtype(ge::DT_FLOAT8_E4M3FN, ge::DT_BF16) != ge::GRAPH_SUCCESS) {
+    if (CheckDtype() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    if (commonCheck_.CheckFormat(ge::FORMAT_ND) != ge::GRAPH_SUCCESS) {
+    if (CheckFormat() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return CheckFp8ScaleDtype();
@@ -65,25 +64,27 @@ ge::graphStatus QbsaFp8Arch35Tiling::CheckTensorMetadata() const
 
 ge::graphStatus QbsaFp8Arch35Tiling::ParseShapeFacts(QbsaTilingContextParser &parser)
 {
-    return parser.ParsePaShapeFacts(tilingInfo_);
+    if (parser.ParsePaShapeFacts(tilingInfo_) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    return ResolveHeadGrouping();
 }
 
 ge::graphStatus QbsaFp8Arch35Tiling::CheckShapeRelations() const
 {
-    if (commonCheck_.CheckShapeConsistency() != ge::GRAPH_SUCCESS) {
+    if (CheckShapeConsistency() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    if (commonCheck_.CheckShapeLimits({QBSA_MAX_BATCH_SIZE, 128U, QBSA_MAX_N2_SIZE, QBSA_MAX_G_SIZE, QBSA_D_SIZE,
-                                       QBSA_D_SIZE}) != ge::GRAPH_SUCCESS) {
+    if (CheckShapeLimits() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    if (commonCheck_.CheckKeyValueShape(tilingInfo_.kvBlockSizeVal) != ge::GRAPH_SUCCESS) {
+    if (CheckKeyValueShape() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    if (commonCheck_.CheckActualSeqLen() != ge::GRAPH_SUCCESS) {
+    if (CheckActualSeqLen() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    if (commonCheck_.CheckNoneOrCausalMask() != ge::GRAPH_SUCCESS) {
+    if (CheckNoneOrCausalMask() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     if (CheckFp8QuantShape() != ge::GRAPH_SUCCESS) {

@@ -30,10 +30,11 @@ add_tiling_modules()
 target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
     quant_block_sparse_attn_tiling.cpp
     tiling_common/qbsa_tiling_context.cpp
-    tiling_common/qbsa_common_check.cpp
     tiling_common/qbsa_tiling_strategy.cpp
     arch35/qbsa_fp8/qbsa_fp8_check.cpp
+    arch35/qbsa_fp8/qbsa_fp8_input_check.cpp
     arch35/qbsa_fp8/qbsa_fp8_tiling.cpp
     arch35/qbsa_mxfp8/qbsa_mxfp8_check.cpp
+    arch35/qbsa_mxfp8/qbsa_mxfp8_input_check.cpp
     arch35/qbsa_mxfp8/qbsa_mxfp8_tiling.cpp
 )

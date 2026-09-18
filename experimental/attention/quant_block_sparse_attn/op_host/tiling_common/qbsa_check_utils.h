@@ -81,23 +81,6 @@ inline ge::graphStatus CheckInputDtype(const QBSARequiredParaInfo &input, const 
     return ge::GRAPH_SUCCESS;
 }
 
-inline ge::graphStatus CheckKVDtypeConsistency(const QuantBlockSparseAttnParaInfo &opParamInfo)
-{
-    if (opParamInfo.key.desc == nullptr || opParamInfo.value.desc == nullptr) {
-        return ge::GRAPH_SUCCESS;
-    }
-    const ge::DataType keyType = opParamInfo.key.desc->GetDataType();
-    const ge::DataType valueType = opParamInfo.value.desc->GetDataType();
-    if (keyType != valueType) {
-        OP_LOGE_FOR_INVALID_DTYPE(
-            kCheckOpName, "key/value",
-            ge::TypeUtils::DataTypeToSerialString(keyType) + "/" + ge::TypeUtils::DataTypeToSerialString(valueType),
-            "key and value must have the same dtype");
-        return ge::GRAPH_FAILED;
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
 inline ge::graphStatus CheckStrideDim(const gert::Stride *stride, const char *inputName, size_t dim, uint64_t expected,
                                       bool hasViewStride)
 {

@@ -66,7 +66,7 @@ uint32_t QbsaTilingStrategy::GetAicCoreNum() const
     return aicNum == 0U ? QBSA_MAX_CORE_NUM : std::min(aicNum, QBSA_MAX_CORE_NUM);
 }
 
-ge::graphStatus QbsaTilingStrategy::PublishTilingData(const void *data, std::size_t dataSize)
+ge::graphStatus QbsaTilingStrategy::CheckTilingDataCapacity(std::size_t dataSize) const
 {
     if (usedCoreNum_ == 0U) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "usedCoreNum", "0", "Mode strategy must select a core");
@@ -84,8 +84,17 @@ ge::graphStatus QbsaTilingStrategy::PublishTilingData(const void *data, std::siz
         return ge::GRAPH_FAILED;
     }
 
-    std::memcpy(rawTilingData->GetData(), data, dataSize);
-    rawTilingData->SetDataSize(dataSize);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QbsaTilingStrategy::PublishTilingData(void *target, const void *data, std::size_t dataSize)
+{
+    if (target == nullptr) {
+        OP_LOGE(kOpName, "Typed tiling data is nullptr");
+        return ge::GRAPH_FAILED;
+    }
+    std::memcpy(target, data, dataSize);
+    context_->GetRawTilingData()->SetDataSize(dataSize);
     context_->SetBlockDim(usedCoreNum_);
     context_->SetTilingKey(tilingKey_);
     context_->SetScheduleMode(1);
