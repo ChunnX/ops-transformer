@@ -40,13 +40,6 @@ using namespace matmul_allto_all_check;
 constexpr size_t THREE_DIMS = 3U;
 static constexpr int64_t INT4_NUMS_IN_INT32 = 8; // 一个int32包含8个int4
 
-// ascend950(DAV_3510)与ascend960dt(DAV_9201)共用A5(arch35代)校验与处理路径
-static bool IsDavidArch()
-{
-    NpuArch npuArch = GetCurrentPlatformInfo().GetCurNpuArch();
-    return npuArch == Ops::Base::DAV_3510 || npuArch == Ops::Base::DAV_9201;
-}
-
 // 将int32的输入dtype修改为int4, 同时ViewShape和ViewStrides也从int32修改为int4所对应的
 aclTensor *ConvertTensorToInt4(const aclTensor *input, aclOpExecutor *executor)
 {
@@ -85,9 +78,12 @@ static bool CheckNotNull(const aclTensor *x1, const aclTensor *x2, const aclTens
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Input x2 should not be null.");
         return false;
     }
-    if ((static_cast<QuantModeType>(x1QuantMode) == QuantModeType::MX_QUANT && IsDavidArch()) ||
-         (static_cast<QuantModeType>(x1QuantMode) == QuantModeType::HIFLOAT4_QUANT &&
-        GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_9201)) {
+    if ((static_cast<QuantModeType>(x1QuantMode) == QuantModeType::MX_QUANT &&
+         GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) ||
+        (static_cast<QuantModeType>(x1QuantMode) == QuantModeType::MX_QUANT &&
+         GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_9201) ||
+        (static_cast<QuantModeType>(x1QuantMode) == QuantModeType::HIFLOAT4_QUANT &&
+         GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_9201)) {
         if (x1ScaleOptional == nullptr) {
             OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The current scenario is not pertoken dynamic quantization,"
                                              "input x1ScaleOptional should not be null.");
@@ -157,8 +153,8 @@ static bool Check1DScaleShape(const aclTensor *x2, const aclTensor *x2Scale, boo
 
 // 校验Scale为3D时的shape（MX量化/HiF4量化）
 // MX scale shape 为 [M, K/64, 2](每64元素2个E8M0); HiF4 scale shape 为 [M, K/64, 1](每64元素1个4-byte hif4_scale)
-static bool Check3DScaleShape(const aclTensor *x1, const aclTensor *x2, const aclTensor *x1Scale,
-                              const aclTensor *x2Scale, bool transposeX2, int64_t expectedScaleLastDim)
+static bool Check3DScaleShape(const aclTensor *x2, const aclTensor *x1Scale, const aclTensor *x2Scale, bool transposeX2,
+                              int64_t expectedScaleLastDim)
 {
     if (x1Scale->GetViewShape().GetDimNum() != THREE_DIMS) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnAlltoAllQuantMatmul", "x1Scale",
@@ -192,32 +188,11 @@ static bool Check3DScaleShape(const aclTensor *x1, const aclTensor *x2, const ac
                 expectedScaleLastDim, x2ScaleLastDim);
         return false;
     }
-    // scale dim1 与 K 的分组数一致性(MX/HiF4 通用, ceil 语义与 tiling 侧 InferGroupSize 一致):
-    // x1Scale dim1 == CeilDiv(Ka, 64), x2Scale dim1 == CeilDiv(K, 64)
-    constexpr int64_t SCALE_GROUP_SIZE = 64;
-    const int64_t kaValue = x1->GetViewShape().GetDim(1);
-    const int64_t kValue = transposeX2 ? x2->GetViewShape().GetDim(1) : x2->GetViewShape().GetDim(0);
-    const int64_t expectX1ScaleDimK = (kaValue + SCALE_GROUP_SIZE - 1) / SCALE_GROUP_SIZE;
-    const int64_t expectX2ScaleDimK = (kValue + SCALE_GROUP_SIZE - 1) / SCALE_GROUP_SIZE;
-    if (x1Scale->GetViewShape().GetDim(1) != expectX1ScaleDimK) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "The second dim of x1Scale should be CeilDiv(Ka, 64) = %ld, but now it is: %ld.", expectX1ScaleDimK,
-                x1Scale->GetViewShape().GetDim(1));
-        return false;
-    }
-
-    const int64_t x2ScaleK = transposeX2 ? x2Scale->GetViewShape().GetDim(1) : x2Scale->GetViewShape().GetDim(0);
-    if (x2ScaleK != expectX2ScaleDimK) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "The second dim of x2Scale should be CeilDiv(K, 64) = %ld, but now it is: %ld.", expectX2ScaleDimK,
-                x2ScaleK);
-        return false;
-    }
     return true;
 }
 
 // 校验输入Scaleshape
-static bool CheckScaleShape(const aclTensor *x1, const aclTensor *x2, const aclTensor *x1Scale, const aclTensor *x2Scale,
+static bool CheckScaleShape(const aclTensor *x2, const aclTensor *x1Scale, const aclTensor *x2Scale,
                             int64_t x1QuantMode, int64_t x2QuantMode, bool transposeX2)
 {
     bool scaleShapeValid = true;
@@ -227,21 +202,14 @@ static bool CheckScaleShape(const aclTensor *x1, const aclTensor *x2, const aclT
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In the mx quantization scenario, x2 must be transposed.");
             return false;
         });
-        scaleShapeValid = Check3DScaleShape(x1, x2, x1Scale, x2Scale, transposeX2, TWO);
+        constexpr int64_t MX_SCALE_LAST_DIM = 2;
+        scaleShapeValid = Check3DScaleShape(x2, x1Scale, x2Scale, transposeX2, MX_SCALE_LAST_DIM);
     } else if (static_cast<QuantModeType>(x1QuantMode) == QuantModeType::HIFLOAT4_QUANT &&
                static_cast<QuantModeType>(x2QuantMode) == QuantModeType::HIFLOAT4_QUANT) {
         // HiF4 支持转置与非转置两种 B 矩阵布局, scale shape 为 [M, K/64, 1];
         // Ka 需按 128 对齐(统一校验规则, 同时保证 Ka%64==0 且 scale 组数为偶数)
         constexpr int64_t HIF4_SCALE_LAST_DIM = 1;
-        constexpr int64_t HIF4_KA_ALIGN_SIZE = 128;
-        const int64_t kaValue = x1->GetViewShape().GetDim(1);
-        if (kaValue % HIF4_KA_ALIGN_SIZE != 0) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "In hif4 quant scenario, Ka (the second dim of x1) must be 128-aligned, but now it is: %ld.",
-                    kaValue);
-            return false;
-        }
-        scaleShapeValid = Check3DScaleShape(x1, x2, x1Scale, x2Scale, transposeX2, HIF4_SCALE_LAST_DIM);
+        scaleShapeValid = Check3DScaleShape(x2, x1Scale, x2Scale, transposeX2, HIF4_SCALE_LAST_DIM);
     } else if (static_cast<QuantModeType>(x1QuantMode) == QuantModeType::DYN_PERTOKEN_QUANT &&
                static_cast<QuantModeType>(x2QuantMode) == QuantModeType::PERCHANNEL_QUANT) {
         scaleShapeValid = Check1DScaleShape(x2, x2Scale, transposeX2);
@@ -300,13 +268,13 @@ static const std::initializer_list<op::DataType> SCALE_DTYPE_FP32_SUPPORT_LIST_A
 static const std::initializer_list<op::DataType> BIAS_DTYPE_SUPPORT_LIST_A5 = {op::DataType::DT_FLOAT};
 // 量化模式下Scale支持的FP8数据类型（MXQuant量化）(A5)
 static const std::initializer_list<op::DataType> SCALE_DTYPE_FP8_SUPPORT_LIST_A5 = {op::DataType::DT_FLOAT8_E8M0};
-// 量化模式下X支持的HIF4数据类型（HIF4全量化）(A5)
-static const std::initializer_list<op::DataType> X_DTYPE_HIF4_SUPPORT_LIST_A5 = {op::DataType::DT_HIFLOAT4};
-// 量化模式下Scale支持的HIF4_SCALE数据类型（HIF4全量化）(A5)
-static const std::initializer_list<op::DataType> SCALE_DTYPE_HIF4_SUPPORT_LIST_A5 = {op::DataType::DT_HIFLOAT4_SCALE};
-// 量化模式下Output支持的数据类型（HIF4全量化，仅FP16/BF16，不含FP32）(A5)
-static const std::initializer_list<op::DataType> OUTPUT_DTYPE_HIF4_SUPPORT_LIST_A5 = {
-    op::DataType::DT_FLOAT16, op::DataType::DT_BF16};
+// 量化模式下X支持的HIF4数据类型（HIF4全量化）(A6)
+static const std::initializer_list<op::DataType> X_DTYPE_HIF4_SUPPORT_LIST_A6 = {op::DataType::DT_HIFLOAT4};
+// 量化模式下Scale支持的HIF4_SCALE数据类型（HIF4全量化）(A6)
+static const std::initializer_list<op::DataType> SCALE_DTYPE_HIF4_SUPPORT_LIST_A6 = {op::DataType::DT_HIFLOAT4_SCALE};
+// 量化模式下Output支持的数据类型（HIF4全量化，仅FP16/BF16，不含FP32）(A6)
+static const std::initializer_list<op::DataType> OUTPUT_DTYPE_HIF4_SUPPORT_LIST_A6 = {op::DataType::DT_FLOAT16,
+                                                                                      op::DataType::DT_BF16};
 
 // KC动态量化场景下，校验所有输入的参数类型是否正确(A5)
 static bool CheckKCDynQuantDtypesValidA5(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
@@ -378,13 +346,13 @@ static bool CheckMXQuantDtypesValidA5(const aclTensor *x1, const aclTensor *x2, 
 
 // HiF4全量化场景下，校验所有输入的参数类型是否正确(A5)
 // x1/x2均为hifloat4, scale为hifloat4_scale(shape [M, K/64, 1]), y仅支持FP16/BF16, bias/alltoAllOut仅支持None
-static bool CheckHiF4QuantDtypesValidA5(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
+static bool CheckHiF4QuantDtypesValidA6(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
                                         const aclTensor *x1ScaleOptional, const aclTensor *x2Scale,
                                         const aclTensor *output, const aclTensor *alltoAllOutOptional)
 {
-    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnAlltoAllQuantMatmul", x1, X_DTYPE_HIF4_SUPPORT_LIST_A5, HIF4_SCENE,
+    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnAlltoAllQuantMatmul", x1, X_DTYPE_HIF4_SUPPORT_LIST_A6, HIF4_SCENE,
                                              return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnAlltoAllQuantMatmul", x2, X_DTYPE_HIF4_SUPPORT_LIST_A5, HIF4_SCENE,
+    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnAlltoAllQuantMatmul", x2, X_DTYPE_HIF4_SUPPORT_LIST_A6, HIF4_SCENE,
                                              return false);
     if (x1->GetDataType() != x2->GetDataType()) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
@@ -393,10 +361,10 @@ static bool CheckHiF4QuantDtypesValidA5(const aclTensor *x1, const aclTensor *x2
         return false;
     }
     OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnAlltoAllQuantMatmul", x1ScaleOptional,
-                                             SCALE_DTYPE_HIF4_SUPPORT_LIST_A5, HIF4_SCENE, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnAlltoAllQuantMatmul", x2Scale, SCALE_DTYPE_HIF4_SUPPORT_LIST_A5,
+                                             SCALE_DTYPE_HIF4_SUPPORT_LIST_A6, HIF4_SCENE, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnAlltoAllQuantMatmul", x2Scale, SCALE_DTYPE_HIF4_SUPPORT_LIST_A6,
                                              HIF4_SCENE, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnAlltoAllQuantMatmul", output, OUTPUT_DTYPE_HIF4_SUPPORT_LIST_A5,
+    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnAlltoAllQuantMatmul", output, OUTPUT_DTYPE_HIF4_SUPPORT_LIST_A6,
                                              HIF4_SCENE, return false);
     if (biasOptional != nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In hif4 quant scenario, bias is not supported, it must be None.");
@@ -428,7 +396,7 @@ static bool CheckDtypesValid(const aclTensor *x1, const aclTensor *x2, const acl
     } else if (static_cast<QuantModeType>(x1QuantMode) == QuantModeType::HIFLOAT4_QUANT &&
                static_cast<QuantModeType>(x2QuantMode) == QuantModeType::HIFLOAT4_QUANT) {
         isAllDtypesValid =
-            CheckHiF4QuantDtypesValidA5(x1, x2, biasOptional, x1ScaleOptional, x2Scale, output, alltoAllOutOptional);
+            CheckHiF4QuantDtypesValidA6(x1, x2, biasOptional, x1ScaleOptional, x2Scale, output, alltoAllOutOptional);
     } else {
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
             "aclnnAlltoAllQuantMatmul", "x1QuantMode/x2QuantMode",
@@ -552,18 +520,20 @@ static aclnnStatus CheckAndHandleParams(const aclTensor *x1, const aclTensor *x2
     // 检查空tensor
     CHECK_RET(CheckNotEmptyTensor(x1, x2, transposeX2), ACLNN_ERR_PARAM_INVALID);
     // 检查shape
-    if (IsDavidArch()) {
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510 ||
+        GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_9201) {
         CHECK_RET(
             CheckShapeAAMM("allto_all_quant_matmul", x1, x2, biasOptional, transposeX2, output, alltoAllOutOptional),
             ACLNN_ERR_PARAM_INVALID);
-        CHECK_RET(CheckScaleShape(x1, x2, x1ScaleOptional, x2Scale, x1QuantMode, x2QuantMode, transposeX2),
+        CHECK_RET(CheckScaleShape(x2, x1ScaleOptional, x2Scale, x1QuantMode, x2QuantMode, transposeX2),
                   ACLNN_ERR_PARAM_INVALID);
     }
     // 检查输入的数据类型是否在API支持的数据类型范围之内，需要根据芯片型号和api定义校验
     if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B) {
         CHECK_RET(CheckAllDtypesValid(x1, x2, x1QuantMode, x1ScaleOptional, x2Scale, output, alltoAllOutOptional),
                   ACLNN_ERR_PARAM_INVALID);
-    } else if (IsDavidArch()) {
+    } else if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510 ||
+               GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_9201) {
         CHECK_RET(CheckDtypesValid(x1, x2, biasOptional, x1ScaleOptional, x2Scale, x1QuantMode, x2QuantMode,
                                    x1QuantDtype, output, alltoAllOutOptional),
                   ACLNN_ERR_PARAM_INVALID);
@@ -613,7 +583,8 @@ extern "C" aclnnStatus InnerAlltoAllQuantMatmulGetWorkspaceSize(
     int64_t yDtype = output->GetDataType(); // yDtype根据实际output的类型赋值，图模式需要该参数
     bool all2AllOutFlag = IsAll2AllOut("allto_all_quant_matmul", all2AllOutOptional);
     // 部分参数根据芯片型号不同，需要设置不同的默认值
-    if (IsDavidArch()) {
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510 ||
+        GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_9201) {
         // ACL和GE的datatype枚举值对undefined定义不同，inner接口进入到算子内部，需要使用GE枚举值
         commQuantDtype = op::DataType::DT_UNDEFINED;
     }
@@ -655,7 +626,8 @@ extern "C" aclnnStatus aclnnAlltoAllQuantMatmulBaseGetWorkspaceSize(
     aclnnStatus checkX2Ret = CheckX2Valid("allto_all_quant_matmul", x2);
     CHECK_RET(checkX2Ret == ACLNN_SUCCESS, checkX2Ret); // 先检查x2是否合法，避免非法操作
     auto transX2 = x2;                                  // 复制一个x2
-    if (IsDavidArch()) { // 只有当非连续时，才会涉及到转连续等情况
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510 ||
+        GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_9201) { // 只有当非连续时，才会涉及到转连续等情况
         bool notContiguous =
             IsTransposeLastTwoDims(x2); // notContiguous标识x2是否是非连续的，通常在pytorch经过.t()会导致x2非连续
         OP_LOGI("The notContiguous is: %d , and transposeX2 is: %d", notContiguous, transposeX2);
@@ -706,7 +678,8 @@ extern "C" aclnnStatus aclnnAlltoAllQuantMatmulBase(void *workspace, uint64_t wo
                                                     aclrtStream stream)
 {
     if (NnopbaseSetHcclServerType) {
-        if (IsDavidArch()) {
+        if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510 ||
+            GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_9201) {
             CHECK_RET(executor != nullptr, ACLNN_ERR_PARAM_NULLPTR);
             void *arg = NnopbaseGetUserHandle(executor);
             uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
