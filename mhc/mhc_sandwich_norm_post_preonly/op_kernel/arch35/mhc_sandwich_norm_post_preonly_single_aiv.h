@@ -23,6 +23,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::ComputeX2PostTile(
     SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
     WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
     ApplyScaleAndGamma(bufHOutFp32_.Get<float>(), invRms0, bufGamma0Fp32_.Get<float>(), tD);
+    FenceVToMte2();
     QuantizeRoundTrip(bufHOutFp32_.Get<float>(), tD);
 
     LoadResidualAndCast((uint64_t)token * N_ * D_ + tOff, tD);
@@ -164,6 +165,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::ProcessTokenSingleAi
                 SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
                 WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
                 ApplyScaleAndGamma(x2[n * dimTile_], invRmsMid, gamma2, tD);
+                FenceVToMte2();
                 QuantizeRoundTrip(x2[n * dimTile_], tD);
             }
             AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf);
@@ -217,6 +219,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::ProcessTokenSingleAi
         SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
         WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
         ApplyScaleAndGamma(hIn, invRms1, bufGamma1Fp32_.Get<float>(), tD);
+        FenceVToMte2();
         WriteHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tD);
     }
 }

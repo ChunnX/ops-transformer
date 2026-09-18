@@ -35,6 +35,12 @@ __aicore__ inline void FenceMte3ToMte2()
     WaitFlag<HardEvent::MTE3_MTE2>(evtMte3toMte2_);
 }
 
+__aicore__ inline void FenceVToMte2()
+{
+    SetFlag<HardEvent::V_MTE2>(evtVtoMte2_);
+    WaitFlag<HardEvent::V_MTE2>(evtVtoMte2_);
+}
+
 __aicore__ inline void LoadLowPrecisionTile(
     GlobalTensor<T> &src, uint64_t gmOffset, LocalTensor<float> dst, uint32_t count)
 {
