@@ -49,6 +49,8 @@ __simd_vf__ inline void VfCalcPScale(__ubuf__ uint8_t *pscale, __ubuf__ half *su
     RegTensor<uint8_t> vregScaleB;
     MaskReg pregHalf = CreateMask<half, MaskPattern::ALL>();
     MaskReg pregU8 = CreateMask<uint8_t, MaskPattern::ALL>();
+    uint32_t pscaleValidCount = 128;  // 有效数据 128 字节（防 ALL 掩码写 256B 溢出到下一槽位）
+    MaskReg pregU8Valid = UpdateMask<uint8_t>(pscaleValidCount);
 
     // ① half 域整数运算：Δk = k_i - K_final，+127 → e8m0 字节值
     LoadAlign(vregSubLoopMax, subLoopMax);
@@ -63,7 +65,8 @@ __simd_vf__ inline void VfCalcPScale(__ubuf__ uint8_t *pscale, __ubuf__ half *su
     Or(vregScaleA, vregScaleA, vregScaleB, pregU8);
 
     // ③ 存 e8m0 buffer（uint8 位模式 = 2^Δk 的 e8m0 编码）
-    StoreAlign(pscale, vregScaleA, pregU8);
+    //    用 128 元素部分掩码（非 ALL 256），只写有效 128 字节，防溢出到 pscaleUB 相邻槽位
+    StoreAlign(pscale, vregScaleA, pregU8Valid);
 }
 
 } // namespace QfaVectorApi
