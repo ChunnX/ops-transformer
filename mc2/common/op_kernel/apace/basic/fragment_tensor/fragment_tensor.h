@@ -10,7 +10,7 @@
 
 /*!
  * \file fragment_tensor.h
- * \brief FragmentTensor：FragmentTensor：多个 GM fragment 的统一抽象，支持 Slice / Copy / Scatter。
+ * \brief FragmentTensor：FragmentTensor：多个 GM fragment 的统一抽象，支持 slice / Copy / Scatter。
  */
 
 #pragma once
@@ -164,8 +164,9 @@ public:
         return sliceShape_[d];
     }
 
+    // 逻辑切片（记录 coord/shape，不做地址解析），与 asc::te::tensor::slice 同名同义，支持泛型代码统一调用
     template <typename CoordType, typename ShapeType>
-    __aicore__ inline auto Slice(const CoordType &coord, const ShapeType &shape) const
+    __aicore__ inline auto slice(const CoordType &coord, const ShapeType &shape) const
     {
         FragmentTensor result(*this);
         SliceImpl(result.sliceCoord_, result.sliceShape_, coord, shape, AscendC::Std::make_index_sequence<Dims>{});
