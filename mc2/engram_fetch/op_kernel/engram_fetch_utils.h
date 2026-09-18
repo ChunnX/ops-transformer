@@ -48,6 +48,7 @@ struct EngramCommContext {
     uint64_t commBuffer[HCCL_MAX_RANK_SIZE];
     uint64_t hcommHandle[HCCL_MAX_RANK_SIZE * 2];
     uint32_t channelsPerRank;
+    uint64_t sfAddrList[HCCL_MAX_RANK_SIZE];
 };
 
 struct CoreAssignment {
