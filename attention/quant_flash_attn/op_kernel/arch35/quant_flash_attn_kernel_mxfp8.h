@@ -762,6 +762,7 @@ public:
         vecFdBlock_.AllocEventID();
         SyncAll();
         vecFdBlock_.FlashDecode(fdParams_);
+        SyncAll(); // 多section场景: 保证所有核FD读workspace完成后, 才能进入下一section FA覆写
         vecFdBlock_.FreeEventID();
     }
 
@@ -810,6 +811,11 @@ public:
         }
         for (uint32_t sectionIdx = 0; sectionIdx < sectionNum_; sectionIdx++) {
             if (constInfo_.aicIdx < constInfo_.coreNum) {
+                if ASCEND_IS_AIV {
+                    if (sectionIdx > 0) {
+                        vecFaBlock_.InitBuffers(); // FD InitBuffers的pipe Reset会释放FA buffer, 多section需重新初始化
+                    }
+                }
                 FlashAttention(sectionIdx);
             }
             if constexpr (FLASH_DECODE) {
