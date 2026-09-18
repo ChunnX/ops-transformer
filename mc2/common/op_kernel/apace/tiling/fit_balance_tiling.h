@@ -277,7 +277,7 @@ constexpr uint64_t FP4_PACK_RATIO = 2;
 // 算子零调用后剥离; 老芯片的真实需求由原位保留的 B 家族(mc2/common/op_host/
 // op_tiling)满足。活跃 API 面(键控分支/P2 算子实测): CommTime/InverseCommTime/
 // SetCommShapeLen/SetCommDTypeSize/SetCommDtypeSizeExpansionFraction/
-// commTimeFactor_/commRankShares_/commDataMul_(InitCtx 内部口径参数)。
+// commTimeFactor_/mmWorksetShares_/commDataMul_(InitCtx 内部口径参数)。
 
 // ====== 拟合表（引擎内部结构——算子侧一律使用 FitBalanceCalibration 大结构体,
 //      此处类型由 InitCtx 内部适配构造并按值持有, 勿在算子侧直接引用）======
@@ -306,11 +306,13 @@ public:
     // 通信数据量倍数(每轮线上流动的 rank 份数): AG/RS(含 via-A2A)=rankDim(聚合/分发一轮
     // 流动 rankDim 份), AR/A2A=1(每轮一份)。进 CommTime/InverseCommTime 的字节数换算。
     uint64_t commDataMul_ = 1;
-    // 通信流水线流转的 rank 数据份数(每卡视角, 进 cubeUtil 利用率模型的工作集 M 跨度):
-    // AG=rankDim-1(本卡份已在手不经通信)、RS/A2A=rankDim(全部份经通信流转)、AR=1(two-shot
-    // 每轮一份)。与 commDataMul_(AG 差 1、A2A 差 rankDim-1)、mmRankMul(mm 行数倍数) 是三个
-    // 不同口径的份数, 极易混淆, 勿混用。
-    uint64_t commRankShares_ = 1;
+    // mm 工作集 rank 份数(计算利用率模型 FindCubeUtil 的工作集 M 跨度系数——本卡 cube 在
+    // 稳态流水里拿捏的 M 跨度是几份 rank 数据宽): AG=rankDim-1(front 本地块经 E5 按单独
+    // shares=1 建模, 稳态只算远程份)、RS/A2A=rankDim(标定按全部份)、AR=1(two-shot 每轮一份)。
+    // 与 commDataMul_(通信模型过网字节数, AG=rankDim/A2A=1)、ctx.mmRankMul(mm 总行数倍数,
+    // AG·RS=rankDim/A2A·AR=1) 是三个独立标定的口径系数——取值表是标定历史事实而非同一物理量
+    // 的推导, 勿混用勿"统一"。
+    uint64_t mmWorksetShares_ = 1;
 
     // Constructor（soc 恒 950）
     HCCLCommModel(uint32_t inputRankDim, CommPrimitive inputKernelType, const CommFitTable &fitTable,
@@ -366,7 +368,7 @@ public:
             (commTypeInfo_.commPrimitive == CommPrimitive::REDUCE_SCATTER_VIA_ALL_TO_ALL)) {
             commDataMul_ = commTypeInfo_.rankDim;
         }
-        commRankShares_ =
+        mmWorksetShares_ =
             (commTypeInfo_.commPrimitive == CommPrimitive::ALL_REDUCE) ?
                 1 :
                 ((commTypeInfo_.commPrimitive == CommPrimitive::ALL_GATHER) ? (commTypeInfo_.rankDim - 1) :
@@ -516,7 +518,7 @@ public:
         }
     }
     // L2 档位利用率 + 950 调和平均公式(950 专用模型, 调和分支无条件执行)
-    double FindCubeUtilByL2Usage(uint64_t mSize, uint64_t commRankShares, uint64_t *maxTileLen = nullptr)
+    double FindCubeUtilByL2Usage(uint64_t mSize, uint64_t mmWorksetShares, uint64_t *maxTileLen = nullptr)
     {
         const auto matchesDtype = [this](const auto &row) {
             return (row.calcType == calcType_) && (row.isFp4 == isFp4_) &&
@@ -532,7 +534,7 @@ public:
         }
         uint64_t tmpBaseM = std::min(mmShapeInfo_.baseM, mSize);
         uint64_t tmpBaseN = mmShapeInfo_.baseN;
-        uint64_t mBlockNum = (mSize + tmpBaseM - 1) / tmpBaseM * commRankShares;
+        uint64_t mBlockNum = (mSize + tmpBaseM - 1) / tmpBaseM * mmWorksetShares;
         uint64_t nBlockNum = (mmShapeInfo_.nValue + tmpBaseN - 1) / tmpBaseN;
         uint64_t memUsage =
             std::min(mBlockNum, mmShapeInfo_.coreNum) * tmpBaseM + std::min(nBlockNum, mmShapeInfo_.coreNum) * tmpBaseN;
@@ -553,8 +555,8 @@ public:
 
         /*950 cube利用率计算公式：两个输入为M、N的调和平均数和K。MN调和平均数的阈值为820，K阈值为1280，
         小于这个阈值认为提供负增益，大于这个阈值认为提供正增益，但正增益最高不超过1.4倍。*/
-        double mnharmonicMean = static_cast<double>(mSize * commRankShares * mmShapeInfo_.nValue) /
-                                static_cast<double>(mSize * commRankShares + mmShapeInfo_.nValue);
+        double mnharmonicMean = static_cast<double>(mSize * mmWorksetShares * mmShapeInfo_.nValue) /
+                                static_cast<double>(mSize * mmWorksetShares + mmShapeInfo_.nValue);
         double kExponentiated = std::min(
             MatmulPerfConst::MAX_PARTICAL_ENHANCEMENT_FACTOR_CUBE_UTIL,
             std::pow(static_cast<double>(mmShapeInfo_.kValue), MatmulPerfConst::CUBE_UTIL_EXPONENT_COEFFICIENT) /
@@ -569,7 +571,7 @@ public:
         if (maxTileLen != nullptr) {
             *maxTileLen = mmShapeInfo_.mValue;
             uint64_t tmpSize =
-                std::min(mBlockNum + commRankShares, mmShapeInfo_.coreNum) - std::min(mBlockNum, mmShapeInfo_.coreNum);
+                std::min(mBlockNum + mmWorksetShares, mmShapeInfo_.coreNum) - std::min(mBlockNum, mmShapeInfo_.coreNum);
             tmpSize = tmpSize * mmShapeInfo_.inMatrixADtypeSize * tmpBaseM * mmShapeInfo_.kValue / BYTES_PER_MB;
             if (tmpSize > diff && memUsage <= l2EstimatePar.sizeFullL2 && nBlockNum > mmShapeInfo_.coreNum) {
                 *maxTileLen = (mSize + mmShapeInfo_.baseM - 1) / mmShapeInfo_.baseM * mmShapeInfo_.baseM;
@@ -578,10 +580,10 @@ public:
         return tmpUtil;
     }
     // 单参版本(消费算子钩子唯一使用的入口)
-    void FindCubeUtil(uint64_t commRankShares)
+    void FindCubeUtil(uint64_t mmWorksetShares)
     {
-        double mnharmonicMean = static_cast<double>(mmShapeInfo_.mValue * commRankShares * mmShapeInfo_.nValue) /
-                                static_cast<double>(mmShapeInfo_.mValue * commRankShares + mmShapeInfo_.nValue);
+        double mnharmonicMean = static_cast<double>(mmShapeInfo_.mValue * mmWorksetShares * mmShapeInfo_.nValue) /
+                                static_cast<double>(mmShapeInfo_.mValue * mmWorksetShares + mmShapeInfo_.nValue);
         double kExponentiated = std::min(
             MatmulPerfConst::MAX_PARTICAL_ENHANCEMENT_FACTOR_CUBE_UTIL,
             std::pow(static_cast<double>(mmShapeInfo_.kValue), MatmulPerfConst::CUBE_UTIL_EXPONENT_COEFFICIENT) /
@@ -912,7 +914,7 @@ struct FitBasedBalanceCtx {
     CommPrimitive commPrimitive; // 键控维度: 通信原语
     CommComputeOrder order;      // 键控维度: 通算顺序
     FitTunables tunables;        // 键控分支阈值(自 Calibration.tunables 拷贝)
-    uint64_t commRankShares = 1; // 派生: commPerf.commRankShares_(通信流水线流转的 rank 数据份数, 取值表见模型成员注释)
+    uint64_t mmWorksetShares = 1; // 派生: commPerf.mmWorksetShares_(mm 工作集 rank 份数, 取值表见模型成员注释)
     uint64_t mmRankMul = 1;     // 派生: MmRankMul(ctx)(本卡 mm 总行数的 rank 倍数, 见该函数注释)
     double ratioCalcComm = 1.0; // 过程量: Estimate 骨干设置的通算比(键控分支消费)
     double frontMMTime = 0; // 过程量(AG 键): 本地首轮计算耗时(本卡 A 块已在手, 首块无通信依赖)
@@ -1046,7 +1048,7 @@ inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, CommPrimitiv
                            1.0};
     ctx.tilingM.SetMaxTileCnt(
         MAX_COMM_ROUNDS); // Due to the limited FFTS queue size, a maximum of 16 rounds can be cut.
-    ctx.commRankShares = ctx.commPerf.commRankShares_;
+    ctx.mmWorksetShares = ctx.commPerf.mmWorksetShares_;
     ctx.mmRankMul = MmRankMul(ctx);
 
     // ---- 通算胶水(键控, 原散在各算子构造函数, §4.24 裁定随引擎下沉) ----
@@ -1135,7 +1137,7 @@ struct EstimateTimesResult {
 };
 inline EstimateTimesResult EstimateTotalTimes(FitBasedBalanceCtx &ctx)
 {
-    ctx.matmulPerf.FindCubeUtil(ctx.commRankShares);
+    ctx.matmulPerf.FindCubeUtil(ctx.mmWorksetShares);
     ctx.matmulPerf.GetMatmulGradient();
     EstimateTimesResult r;
     r.totalMatmulTime = ctx.matmulPerf.MatmulTime(ctx.matmulPerf.mmShapeInfo_.mValue, ctx.mmRankMul);
