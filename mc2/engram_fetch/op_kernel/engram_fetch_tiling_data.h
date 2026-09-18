@@ -31,5 +31,8 @@ struct EngramFetchTilingData {
     int64_t commBufferSize;
     int64_t numSfPacks;
     int64_t sfElemSize;
+    uint32_t sortNumTileData; // SortLib: 每 tile 元素数（训练模式收端全局排序用）
+    uint32_t sortTileCount;   // SortLib: tile 数
+    uint32_t sortTmpUbSize;   // SortLib: AscendC::Sort 临时 UB 字节
 };
 #endif
