@@ -37,7 +37,7 @@
 #endif
 
 #include "engram_fetch_grad_unique.h"
-#include "sortlib/sort_lib.h"
+#include "../../../common/op_kernel/sortlib/sort_lib.h"
 
 namespace Mc2Kernel {
 
