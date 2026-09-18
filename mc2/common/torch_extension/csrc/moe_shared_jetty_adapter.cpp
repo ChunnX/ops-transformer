@@ -9,7 +9,7 @@
  */
 
 #include "moe_shared_jetty_adapter.h"
-#include "hcomm_host.h"
+#include "adv_api/hcomm/hcomm_host.h"
 
 namespace Mc2Api {
 // Keep hcomm_host.h's function-pointer typedefs out of translation units using

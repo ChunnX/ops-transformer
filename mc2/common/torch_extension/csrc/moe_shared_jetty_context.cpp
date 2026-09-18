@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include <torch/extension.h>
 #include "hccl_common.h"
 #include "moe_shared_jetty_adapter.h"
 #include "moe_shared_jetty_context.h"
