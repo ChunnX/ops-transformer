@@ -19,6 +19,7 @@
 // ===== vf 头文件（编译冒烟：让编译器解析已实现的 vf 代码，提前暴露问题）=====
 #include "vf/vf_common_def.h"
 #include "vf/vf_calc_rescale_factor.h"
+#include "vf/vf_calc_pscale.h"
 
 namespace QFA_KERNEL {
 

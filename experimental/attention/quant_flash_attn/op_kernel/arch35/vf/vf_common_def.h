@@ -44,6 +44,24 @@ constexpr static AscendC::Reg::CastTrait h2iOne = {
     AscendC::RoundMode::CAST_ROUND,
 };
 
+// ===== 窄化 CastTrait（half→uint8，2:1，带 SAT 饱和——MxFP4 mxscale 同款） =====
+
+// 窄化 Cast（half→uint8）：取偶数位元素（0, 2, 4, ...），饱和到 [0,255]
+constexpr static AscendC::Reg::CastTrait castTraitZero = {
+    AscendC::Reg::RegLayout::ZERO,
+    AscendC::Reg::SatMode::SAT,
+    AscendC::Reg::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::CAST_ROUND,
+};
+
+// 窄化 Cast（half→uint8）：取奇数位元素（1, 3, 5, ...），饱和到 [0,255]
+constexpr static AscendC::Reg::CastTrait castTraitOne = {
+    AscendC::Reg::RegLayout::ONE,
+    AscendC::Reg::SatMode::SAT,
+    AscendC::Reg::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::CAST_ROUND,
+};
+
 // ===== 数学常量（log2 整数域量化用） =====
 constexpr half NUM_127      = static_cast<half>(127.0f);   // fp32/e8m0 指数偏置
 constexpr half ZERO_VALUE   = static_cast<half>(0.0f);     // 防御负指数
