@@ -16,6 +16,10 @@
 #ifndef QUANT_FLASH_ATTN_BLOCK_VECTOR_MXFP8_SOFTMAX_FP16_H_
 #define QUANT_FLASH_ATTN_BLOCK_VECTOR_MXFP8_SOFTMAX_FP16_H_
 
+// ===== vf 头文件（编译冒烟：让编译器解析已实现的 vf 代码，提前暴露问题）=====
+#include "vf/vf_common_def.h"
+#include "vf/vf_calc_rescale_factor.h"
+
 namespace QFA_KERNEL {
 
 template <typename QUANT_T, typename SCALE_T, typename OUT_T>

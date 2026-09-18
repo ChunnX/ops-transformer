@@ -1,0 +1,59 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, and you can redistribute it and/or modify it under the terms of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * You should have received a copy of the License along with this program.
+ * If not, see <https://www.hiascend.com/legal/cannlicense>.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FIT FOR A PARTICULAR
+ * PURPOSE.
+ */
+
+/*!
+ * \file vf_common_def.h
+ * \brief VectorBlock 共享常量（CastTrait / 数学常量），镜像 MxFP4 参考 vf_common_def.h
+ */
+
+#ifndef VF_COMMON_DEF_H_
+#define VF_COMMON_DEF_H_
+
+#include "kernel_tensor.h"
+
+namespace QFA_KERNEL {
+namespace QfaVectorApi {
+
+using namespace AscendC;
+using namespace AscendC::Reg;
+
+// ===== CastTrait（宽度变化时的元素路由控制，非舍入模式） =====
+// h2i 前缀 = "half to int"；Zero/One 指 RegLayout 编号（偶数位/奇数位元素抽取）
+
+// 宽化 Cast（half→int32）：取偶数位元素（0, 2, 4, ...）
+constexpr static AscendC::Reg::CastTrait h2iZero = {
+    AscendC::Reg::RegLayout::ZERO,
+    AscendC::Reg::SatMode::UNKNOWN,
+    AscendC::Reg::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::CAST_ROUND,
+};
+
+// 宽化 Cast（half→int32）：取奇数位元素（1, 3, 5, ...）
+constexpr static AscendC::Reg::CastTrait h2iOne = {
+    AscendC::Reg::RegLayout::ONE,
+    AscendC::Reg::SatMode::UNKNOWN,
+    AscendC::Reg::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::CAST_ROUND,
+};
+
+// ===== 数学常量（log2 整数域量化用） =====
+constexpr half NUM_127      = static_cast<half>(127.0f);   // fp32/e8m0 指数偏置
+constexpr half ZERO_VALUE   = static_cast<half>(0.0f);     // 防御负指数
+constexpr int16_t SHIFT_VALUE = 23;                        // fp32 尾数域位宽（移位目标）
+
+constexpr half LN2    = static_cast<half>(0.6931471806f);  // P 归一化用：k·ln2
+constexpr half INV_LN2 = static_cast<half>(1.4426950409f); // 量化用：max/ln2
+constexpr half MIN_VALUE = static_cast<half>(-65504.0f);  // fp16 最小值（accMax 复位）
+
+} // namespace QfaVectorApi
+} // namespace QFA_KERNEL
+
+#endif // VF_COMMON_DEF_H_

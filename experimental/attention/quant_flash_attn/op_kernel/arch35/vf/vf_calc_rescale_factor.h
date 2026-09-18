@@ -18,6 +18,7 @@
 #define VF_CALC_RESCALE_FACTOR_H_
 
 #include "kernel_tensor.h"
+#include "vf_common_def.h"
 
 namespace QFA_KERNEL {
 namespace QfaVectorApi {
@@ -37,23 +38,28 @@ using namespace AscendC::Reg;
  * @param [in]  blkStartMax  块开始量化指数 K^{blkStart}（blockStartMaxUB，half 整数）
  * @param [in]  finalMax     块最终量化指数 K^{final}（softmaxMaxUB[stateSlot]，half 整数）
  *
- * 指令链：Sub(half 整数减) → Adds 127 → Maxs 0 → Cast<int32> 双舍入 → ShiftLefts 23 → Store
+ * 指令链：Sub(half 整数减) → Adds 127 → Maxs 0
+ *        → Cast<int32> ×2（RegLayout ZERO/ONE 各取偶/奇位元素，宽度展开 half[128]→int32[64]×2）
+ *        → ShiftLefts 23（移入 fp32 指数域）→ Interleave（偶奇重组成顺序）→ Store ×2
  * 镜像：MxFP4 vf_computeScale_dn_mxfp4.h L60-76（位构造，量产验证）
+ *
+ * RegLayout 说明：h2iZero/h2iOne 的舍入模式相同（CAST_ROUND），区别在 RegLayout 字段
+ * （ZERO=取偶数位元素，ONE=取奇数位元素）——控制宽度变化时的元素路由，非舍入模式。
  */
-__simd_vf__ inline void VfCalcRescaleFactor(__ubuf__ float *softmaxExp, const __ubuf__ half *blkStartMax,
-                                 const __ubuf__ half *finalMax)
+__simd_vf__ inline void VfCalcRescaleFactor(__ubuf__ float *softmaxExp, __ubuf__ half *blkStartMax,
+                                            __ubuf__ half *finalMax)
 {
     RegTensor<half> vregBlkStart;
     RegTensor<half> vregFinal;
     RegTensor<half> vregDeltaK;       // ΔK = K^{blkStart} - K^{final}（整数，≤ 0）
-    RegTensor<int32_t> vregBitsA;     // fp32 位模式（舍入 A）
-    RegTensor<int32_t> vregBitsB;     // fp32 位模式（舍入 B）
+    RegTensor<float> vregBitsA;       // fp32 位模式（声明 float，Cast/ShiftLefts 时强转 int32——MxFP4 同款）
+    RegTensor<float> vregBitsB;       // fp32 位模式（同上）
     MaskReg pregHalf = CreateMask<half, MaskPattern::ALL>();
     MaskReg pregI32 = CreateMask<int32_t, MaskPattern::ALL>();
 
     // [128] half = 1 个寄存器；[128] fp32 输出 = 2 × 64 元素寄存器
     for (uint32_t i = 0; i < 2; i++) {
-        // ① 整数减法：ΔK = K^{blkStart} - K^{final}
+        // ① half 域整数运算：ΔK = K^{blkStart} - K^{final}
         LoadAlign(vregBlkStart, blkStartMax + i * 64);
         LoadAlign(vregFinal, finalMax + i * 64);
         Sub(vregDeltaK, vregBlkStart, vregFinal, pregHalf);
@@ -62,18 +68,22 @@ __simd_vf__ inline void VfCalcRescaleFactor(__ubuf__ float *softmaxExp, const __
         Adds(vregDeltaK, vregDeltaK, 127.0h, pregHalf);
         Maxs(vregDeltaK, vregDeltaK, 0.0h, pregHalf);
 
-        // ③ Cast int32 双舍入（MxFP4 同款防整数边界歧义）
-        Cast<int32_t, half, castTraitZero>(vregBitsA, vregDeltaK, pregHalf);
-        Cast<int32_t, half, castTraitOne>(vregBitsB, vregDeltaK, pregHalf);
+        // ③ 宽度展开：half[128] → int32[64]×2
+        //    RegLayout::ZERO 取偶数位元素，RegLayout::ONE 取奇数位元素
+        //    （两次 Cast 各填一个 256B int32 寄存器，舍入模式相同，非双舍入）
+        Cast<int32_t, half, h2iZero>((RegTensor<int32_t> &)vregBitsA, vregDeltaK, pregHalf);
+        Cast<int32_t, half, h2iOne>((RegTensor<int32_t> &)vregBitsB, vregDeltaK, pregHalf);
 
         // ④ ShiftLefts 23：整数值移入 fp32 指数域位置
         //    (ΔK + 127) << 23 = fp32 位模式，尾数全零，指数域 = ΔK + 127
-        ShiftLefts(vregBitsA, vregBitsA, 23, pregI32);
-        ShiftLefts(vregBitsB, vregBitsB, 23, pregI32);
+        ShiftLefts((RegTensor<int32_t> &)vregBitsA, (RegTensor<int32_t> &)vregBitsA, SHIFT_VALUE, pregI32);
+        ShiftLefts((RegTensor<int32_t> &)vregBitsB, (RegTensor<int32_t> &)vregBitsB, SHIFT_VALUE, pregI32);
 
-        // ⑤ Interleave 双舍入合并（MxFP4 同款），按 fp32 位模式存
-        Interleave(vregBitsA, vregBitsB, vregBitsA, vregBitsB);
+        // ⑤ Interleave：偶奇交错重组成顺序（A=前64，B=后64），存为 fp32
+        Interleave((RegTensor<int32_t> &)vregBitsA, (RegTensor<int32_t> &)vregBitsB,
+                   (RegTensor<int32_t> &)vregBitsA, (RegTensor<int32_t> &)vregBitsB);
         StoreAlign(softmaxExp + i * 64, vregBitsA, pregI32);
+        StoreAlign(softmaxExp + i * 64 + 64 / 2, vregBitsB, pregI32);
     }
 }
 
