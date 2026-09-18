@@ -9,6 +9,7 @@
  */
 #include <iostream>
 #include <gtest/gtest.h>
+#include "register/tilingdata_base.h"
 #include "tiling_context_faker.h"
 #include "tiling_case_executor.h"
 using namespace std;
