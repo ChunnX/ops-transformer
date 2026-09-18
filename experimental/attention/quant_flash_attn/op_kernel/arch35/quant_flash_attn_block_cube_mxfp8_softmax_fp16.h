@@ -445,16 +445,20 @@ public:
         fixpipeParams.params.srcNdStride = fixpipeParams.mSize;
         fixpipeParams.params.dstNdStride = fixpipeParams.dstStride;
 
-        uint32_t l0cOffset  = l0cBufId_ * 128U * 256U;
-        // TODO(corrections #4): 元素偏移进 NZ 分形布局 L0C 取列半——寻址合法性待数值验证
-        //（DN 无此用法先例，其用双目标 N-split 免偏移；若不合法改分形粒度偏移或 src 列起始字段）
-        uint32_t l0cColOff  = subBlockId * S1_SUB_BLOCK_SIZE;
+        uint32_t l0cSlotOff = l0cBufId_ * 128U * 256U;   // L0C ring 槽基址（每槽 [128,256] fp32 = 128KB）
+        // S1 半块起点偏移（#4 修正）：L0C NZ 布局为列组(16列) N-major 排布，
+        // 列组 ng 起点 = ng × align16(M) × 16 元素（组大小 = M行×16列；与 srcStride 同基准，
+        // srcStride 单位 = 16 元素）。列 128 = 列组 8 → 偏移 = subBlockId × 8 × align16(M) × 16
+        //   = subBlockId × S1_SUB_BLOCK_SIZE × align16(actKSize)。
+        // 满块 actKSize=128 → 16384 元素（64KB 半槽边界）；尾块 actKSize=96 → 12288（[96,256] 精确半分）。
+        // 布局模型由 srcStride 语义（DN/mxfp8 参考互证）+ 槽尺寸双重验算，待 S1=256 数值对拍终审
+        uint32_t l0cHalfOff = subBlockId * S1_SUB_BLOCK_SIZE * ((actKSize + 15U) / 16U) * 16U;
         uint32_t ubRingSlot = runInfo.loop % UB_MM1RES_BUFCNT;
         uint32_t ubBase     = ubRingSlot * UB_MM1RES_SLOT;
 
         Fixpipe<SOFTMAX_T, MM_OUT_T, CFG_ROW_MAJOR>(
             mm1ResUB_[ubBase],
-            mmL0CTensor_[l0cOffset + l0cColOff],
+            mmL0CTensor_[l0cSlotOff + l0cHalfOff],
             fixpipeParams);
 
         // subBlockId=1 做完最后一次 Fixpipe 后释放 L0C 并翻转槽
@@ -534,10 +538,6 @@ public:
         WaitFlag<HardEvent::M_FIX>(L0C_EVENT0 + l0cBufId_);
 
         uint32_t l0cOffset = l0cBufId_ * 128U * 256U;
-
-        uint32_t actVecS1Size = (vCore == 0U)
-            ? AttentionCommon::Min(runInfo.actMSize, S1_SUB_BLOCK_SIZE)
-            : (runInfo.actMSize > S1_SUB_BLOCK_SIZE ? runInfo.actMSize - S1_SUB_BLOCK_SIZE : 0U);
 
         FixpipeParamsArch3510<CO2Layout::ROW_MAJOR> fixpipeParams;
         fixpipeParams.nSize = (actVecS1Size + 7U) >> 3 << 3;
