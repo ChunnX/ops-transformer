@@ -61,6 +61,28 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::LoadX2CacheTile(uint
     PipeBarrier<PIPE_V>();
 }
 
+// R6读取完当前x2分块后，首个head的对应缓存区已经不会再被使用，
+// 将其复用为低精度h_in缓存，保留量化往返边界并避免GM临时写回。
+template<typename T>
+__aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::CacheHInTile(
+    uint32_t tOff, uint32_t tD, LocalTensor<float> hIn)
+{
+    LocalTensor<T> hInCache = bufX2Cache_.Get<T>()[tOff];
+    CastToIO(hInCache, hIn, tD);
+    PipeBarrier<PIPE_V>();
+    Cast(hIn, hInCache, RoundMode::CAST_NONE, tD);
+    PipeBarrier<PIPE_V>();
+}
+
+template<typename T>
+__aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::LoadHInCacheTile(
+    uint32_t tOff, uint32_t tD, LocalTensor<float> hIn)
+{
+    LocalTensor<T> hInCache = bufX2Cache_.Get<T>()[tOff];
+    Cast(hIn, hInCache, RoundMode::CAST_NONE, tD);
+    PipeBarrier<PIPE_V>();
+}
+
 // 固定的R4/R5归约树将与双sibling AIV路径共用。half0固定覆盖展平区间[0,2D)，
 // half1固定覆盖[2D,4D)，调用方只执行一次顶层合并partial0+partial1。
 template<typename T>
@@ -248,7 +270,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::ProcessTokenSingleAi
     ComputeGateValues(totalSumSqPre, xHatVals, gate);
 
     // 第三遍：计算R6和h_in低精度边界。在完整D轴的R7标量确定前，
-    // h_in_prime临时保存h_in。
+    // 复用已经消费完的x2缓存首段保存低精度h_in。
     float sumSq1 = 0.0f;
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
@@ -262,11 +284,9 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::ProcessTokenSingleAi
             Axpy(hIn, x2[n * dimTile_], gate[n], tD);
             PipeBarrier<PIPE_V>();
         }
-        QuantizeRoundTrip(hIn, tD);
+        CacheHInTile(tOff, tD, hIn);
         sumSq1 += ReduceSumSq(hIn, tD);
-        WriteLowPrecisionTile(hInPrimeGm_, (uint64_t)token * D_ + tOff, hIn, tD);
     }
-    FenceMte3ToMte2();
 
     // 第四遍：沿完整D轴计算R7并写最终输出。
     const float invRms1 = ComputeInvRms(sumSq1, invD_);
@@ -274,7 +294,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::ProcessTokenSingleAi
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
         LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-        LoadLowPrecisionTile(hInPrimeGm_, (uint64_t)token * D_ + tOff, hIn, tD);
+        LoadHInCacheTile(tOff, tD, hIn);
         LoadGammaInto(bufGamma1Fp32_.Get<float>(), gamma1Gm_, tOff, tD);
         SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
         WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
