@@ -352,6 +352,18 @@ class SymmBuffer:
         )
         self.context = self._ctx_manager.create_context()
         self.ccl_buffer_size = self._ctx_manager.ccl_buffer_size
+        # 同 group 复用已注册通信窗口时，实际窗口为首个 SymmBuffer 的尺寸；小于本配置需求时
+        # kernel 会静默越界（此前"能跑"是踩中大页对齐余量的未定义行为），必须响亮失败。
+        if self.ccl_buffer_size < required_ccl_buffer_size:
+            raise RuntimeError(
+                "SymmBuffer: existing comm window for this group is "
+                f"{self.ccl_buffer_size} bytes, smaller than the {required_ccl_buffer_size} "
+                "bytes required by this config. Create the largest-config SymmBuffer first, "
+                "or destroy the previous one before re-creating."
+            )
+        # 首建窗口后各 rank 的注册/地址交换与 kernel 启动存在竞态（去重姿势作为首例时
+        # 实测 kernel trap + MTE 越界，2026-09-18 定谳）；建链完成后全组同步一次再放行。
+        torch.distributed.barrier(group)
         self.topo_type = self._ctx_manager.topo_type
         self.rank_num_per_server = self._ctx_manager.rank_num_per_server
         self.mask_buffer = None
