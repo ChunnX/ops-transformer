@@ -58,6 +58,7 @@ protected:
     NpuArch npuArch_;
     const char *opName_{nullptr};
     uint32_t libApiWorkSpaceSize_{0};
+    uint8_t hcclServerType_{0};
     TilingContextInfo contextInfo_;
     TilingInferredInfo inferredInfo_;
 #if MC2_DFX_ENABLE

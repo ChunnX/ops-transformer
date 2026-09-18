@@ -56,6 +56,7 @@ TEST_P(InferShapeTest, param)
          {"transpose_x1", Ops::Transformer::AnyValue::CreateFrom<bool>(param.transpose_x1)},
          {"transpose_x2", Ops::Transformer::AnyValue::CreateFrom<bool>(param.transpose_x2)},
          {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.group_size)},
+         {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
          {"alltoall_out_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(param.alltoall_out_flag)}},
         param.inputInstance, param.outputInstance);
 
