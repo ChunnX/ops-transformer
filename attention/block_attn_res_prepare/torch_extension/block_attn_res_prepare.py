@@ -9,7 +9,7 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import math
-from typing import Tuple
+from typing import Optional, Tuple
 
 import torch
 from torch import _check as torch_check
@@ -31,6 +31,7 @@ MIN_BLOCK_NUM = 1
 MAX_BLOCK_NUM = 64
 MIN_HEAD_DIM = 1
 MAX_HEAD_DIM = 8192
+OUTPUT_DTYPE = torch.float32
 
 
 def _check_dimensions(
@@ -163,6 +164,88 @@ def _check_inputs(
     )
 
 
+def _check_output_tensor(
+    name: str,
+    tensor: torch.Tensor,
+    expected_shape: Tuple[int, ...],
+    device: torch.device,
+) -> None:
+    torch_check(
+        isinstance(tensor, torch.Tensor),
+        lambda name=name: f"{name} must be a Tensor, but got {type(tensor).__name__}",
+    )
+    torch_check(
+        tuple(tensor.shape) == tuple(expected_shape),
+        lambda name=name, tensor=tensor, expected_shape=expected_shape: (
+            f"{name} must have shape {list(expected_shape)}, but got {list(tensor.shape)}"
+        ),
+    )
+    torch_check(
+        tensor.dtype == OUTPUT_DTYPE,
+        lambda name=name, tensor=tensor: (
+            f"{name} must have dtype {OUTPUT_DTYPE}, but got {tensor.dtype}"
+        ),
+    )
+    torch_check(
+        tensor.device == device,
+        lambda name=name, tensor=tensor, device=device: (
+            f"{name} must be on the same device as inputs, "
+            f"but got {tensor.device} while inputs are on {device}"
+        ),
+    )
+    torch_check(
+        tensor.is_contiguous(),
+        lambda name=name: f"{name} must be contiguous",
+    )
+
+
+def _check_outputs(
+    block_res: torch.Tensor,
+    pseudo_query: torch.Tensor,
+    numerator: Optional[torch.Tensor],
+    logit_max: Optional[torch.Tensor],
+    exp_sum: Optional[torch.Tensor],
+) -> None:
+    total_t = block_res.size(T_DIM_INDEX)
+    total_s = pseudo_query.size(S_DIM_INDEX)
+    total_d = block_res.size(D_DIM_INDEX)
+    outputs = (
+        ("numerator", numerator, (total_s, total_t, total_d)),
+        ("logit_max", logit_max, (total_s, total_t)),
+        ("exp_sum", exp_sum, (total_s, total_t)),
+    )
+    for name, tensor, expected_shape in outputs:
+        if tensor is not None:
+            _check_output_tensor(name, tensor, expected_shape, block_res.device)
+
+
+def _resolve_outputs(
+    block_res: torch.Tensor,
+    pseudo_query: torch.Tensor,
+    numerator: Optional[torch.Tensor],
+    logit_max: Optional[torch.Tensor],
+    exp_sum: Optional[torch.Tensor],
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Validate provided outputs and allocate the missing ones on ``block_res`` device."""
+    _check_outputs(block_res, pseudo_query, numerator, logit_max, exp_sum)
+    total_t = block_res.size(T_DIM_INDEX)
+    total_s = pseudo_query.size(S_DIM_INDEX)
+    total_d = block_res.size(D_DIM_INDEX)
+    if numerator is None:
+        numerator = torch.empty(
+            (total_s, total_t, total_d), dtype=OUTPUT_DTYPE, device=block_res.device
+        )
+    if logit_max is None:
+        logit_max = torch.empty(
+            (total_s, total_t), dtype=OUTPUT_DTYPE, device=block_res.device
+        )
+    if exp_sum is None:
+        exp_sum = torch.empty(
+            (total_s, total_t), dtype=OUTPUT_DTYPE, device=block_res.device
+        )
+    return numerator, logit_max, exp_sum
+
+
 class _BlockAttnResPrepareOpBuilder(OpBuilder):
     def __init__(self):
         super().__init__("block_attn_res_prepare", category="attention")
@@ -173,23 +256,24 @@ class _BlockAttnResPrepareOpBuilder(OpBuilder):
     def schema(self) -> str:
         return (
             "block_attn_res_prepare(Tensor block_res, Tensor valid_blocks, "
-            "Tensor pseudo_query, *, float eps=0.000001) -> (Tensor, Tensor, Tensor)"
+            "Tensor pseudo_query, *, float eps=0.000001, Tensor? numerator=None, "
+            "Tensor? logit_max=None, Tensor? exp_sum=None) -> (Tensor, Tensor, Tensor)"
         )
 
     def register_meta(self):
         @impl(get_as_library(), self.name, "Meta")
         def block_attn_res_prepare_meta(
-            block_res, valid_blocks, pseudo_query, *, eps=DEFAULT_EPS
+            block_res,
+            valid_blocks,
+            pseudo_query,
+            *,
+            eps=DEFAULT_EPS,
+            numerator=None,
+            logit_max=None,
+            exp_sum=None,
         ):
             _check_inputs(block_res, valid_blocks, pseudo_query, eps)
-            total_t = block_res.size(T_DIM_INDEX)
-            total_s = pseudo_query.size(S_DIM_INDEX)
-            total_d = block_res.size(D_DIM_INDEX)
-            output_options = {"dtype": torch.float32, "device": "meta"}
-            numerator = torch.empty((total_s, total_t, total_d), **output_options)
-            logit_max = torch.empty((total_s, total_t), **output_options)
-            exp_sum = torch.empty((total_s, total_t), **output_options)
-            return numerator, logit_max, exp_sum
+            return _resolve_outputs(block_res, pseudo_query, numerator, logit_max, exp_sum)
 
 
 _block_attn_res_prepare_op_builder = _BlockAttnResPrepareOpBuilder()
@@ -203,9 +287,20 @@ def _block_attn_res_prepare(
     pseudo_query: torch.Tensor,
     *,
     eps: float = DEFAULT_EPS,
+    numerator: Optional[torch.Tensor] = None,
+    logit_max: Optional[torch.Tensor] = None,
+    exp_sum: Optional[torch.Tensor] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     op_module = _block_attn_res_prepare_op_builder.load()
-    return op_module.block_attn_res_prepare(block_res, valid_blocks, pseudo_query, eps)
+    return op_module.block_attn_res_prepare(
+        block_res,
+        valid_blocks,
+        pseudo_query,
+        eps=eps,
+        numerator=numerator,
+        logit_max=logit_max,
+        exp_sum=exp_sum,
+    )
 
 
 def block_attn_res_prepare(
@@ -214,6 +309,9 @@ def block_attn_res_prepare(
     pseudo_query: torch.Tensor,
     *,
     eps: float = DEFAULT_EPS,
+    numerator: Optional[torch.Tensor] = None,
+    logit_max: Optional[torch.Tensor] = None,
+    exp_sum: Optional[torch.Tensor] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Run the Ascend 950 BlockAttnResPrepare Phase 1 operator.
 
@@ -223,12 +321,30 @@ def block_attn_res_prepare(
             and values above ``N`` are clipped to ``N``.
         pseudo_query: FP32 tensor with shape ``[S, D]``.
         eps: Positive numerical-stability coefficient. Defaults to ``1e-6``.
+        numerator: Optional FP32 output tensor with shape ``[S, T, D]`` receiving the softmax numerator.
+            Must be contiguous and live on the same device as the inputs. When omitted, a new tensor is
+            allocated internally.
+        logit_max: Optional FP32 output tensor with shape ``[S, T]`` receiving the logit maximum.
+            Must be contiguous and live on the same device as the inputs. When omitted, a new tensor is
+            allocated internally.
+        exp_sum: Optional FP32 output tensor with shape ``[S, T]`` receiving the max-shifted exponential sum.
+            Must be contiguous and live on the same device as the inputs. When omitted, a new tensor is
+            allocated internally.
 
     Returns:
         ``(numerator, logit_max, exp_sum)`` with shapes
-        ``[S, T, D]``, ``[S, T]``, and ``[S, T]`` respectively; all outputs are FP32.
+        ``[S, T, D]``, ``[S, T]``, and ``[S, T]`` respectively; all outputs are FP32. Provided output
+        tensors are validated (shape / dtype / device / contiguity) and used directly without extra
+        copies; omitted ones are allocated internally.
     """
     _check_inputs(block_res, valid_blocks, pseudo_query, eps)
+    _check_outputs(block_res, pseudo_query, numerator, logit_max, exp_sum)
     return torch.ops.cann_ops_transformer.block_attn_res_prepare(
-        block_res, valid_blocks, pseudo_query, eps=eps
+        block_res,
+        valid_blocks,
+        pseudo_query,
+        eps=eps,
+        numerator=numerator,
+        logit_max=logit_max,
+        exp_sum=exp_sum,
     )
