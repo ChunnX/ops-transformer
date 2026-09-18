@@ -426,12 +426,11 @@ aclnnStatus CheckGbsaMetadataParams(const aclTensor *sparseBlockIdx, const aclTe
                                     const aclTensor *cuSeqLengthsOptional, const aclTensor *cuSeqLengthsKvOptional,
                                     const aclTensor *seqUsedQOptional, const aclTensor *seqUsedKvOptional,
                                     int64_t maxQSeqLen, int64_t maxKvSeqLen, int64_t numQHeads, int64_t numKvHeads,
-                                     int64_t headDim, int64_t blockShapeX, int64_t blockShapeY,
-                                     const char *qInputLayout, const char *kvInputLayout, int64_t layoutSparsePattern,
-                                     int64_t maskType,
-                                     int64_t quantType, int64_t softmaxPrecision, int64_t windowSizeLeft,
-                                     int64_t windowSizeRight, int64_t residualBlockMode, bool isConsistentTopk,
-                                     bool isArch35, const aclTensor *metadata)
+                                    int64_t headDim, int64_t blockShapeX, int64_t blockShapeY,
+                                    const char *qInputLayout, const char *kvInputLayout, int64_t layoutSparsePattern,
+                                    int64_t maskType, int64_t quantType, int64_t softmaxPrecision,
+                                    int64_t windowSizeLeft, int64_t windowSizeRight, int64_t residualBlockMode,
+                                    bool isArch35, const aclTensor *metadata)
 {
     aclnnStatus status = CheckGbsaRequiredInputs(sparseBlockIdx, sparseBlockCount, metadata);
     if (status != ACLNN_SUCCESS) {
@@ -480,7 +479,6 @@ aclnnStatus CheckGbsaMetadataParams(const aclTensor *sparseBlockIdx, const aclTe
     if (status != ACLNN_SUCCESS) {
         return status;
     }
-    (void)isConsistentTopk;
     return CheckGbsaMaskAttrs(maskType, windowSizeLeft, windowSizeRight);
 }
 

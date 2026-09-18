@@ -72,7 +72,8 @@ bool GenericBlockSparseAttentionMetadataAicpu::Prepare(CpuKernelContext &ctx)
         GetAttrValue(ctx, "num_kv_heads", numKvHeads_) && GetAttrValue(ctx, "head_dim", headDim_) &&
         GetAttrValue(ctx, "block_shape_x", blockShapeX_) && GetAttrValue(ctx, "block_shape_y", blockShapeY_) &&
         GetAttrValue(ctx, "is_packed_gqa", isPackedGQA_) && GetAttrValue(ctx, "q_input_layout", qInputLayout_) &&
-        GetAttrValue(ctx, "aic_core_num", aicCoreNum_) && GetAttrValue(ctx, "residual_block_mode", residualBlockMode_) &&
+        GetAttrValue(ctx, "aic_core_num", aicCoreNum_) &&
+        GetAttrValue(ctx, "residual_block_mode", residualBlockMode_) &&
         GetAttrValue(ctx, "is_consistent_topk", isConsistentTopk_);
     return attrsValid && CheckInputs();
 }

@@ -50,9 +50,8 @@ aclnnStatus aclnnGenericBlockSparseAttentionMetadataGetWorkspaceSize(
     const aclTensor *cuSeqLengthsKvOptional, const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
     int64_t maxQSeqLen, int64_t maxKvSeqLen, int64_t numQHeads, int64_t numKvHeads, int64_t headDim,
     const aclIntArray *blockShape, const char *layoutQ, const char *layoutKv, int64_t layoutSparsePattern,
-    int64_t maskType,
-    int64_t quantType, int64_t softmaxPrecision, int64_t winLeft, int64_t winRight, int64_t residualBlockMode,
-    bool isConsistentTopk, const aclTensor *metadataOptional,
+    int64_t maskType, int64_t quantType, int64_t softmaxPrecision, int64_t winLeft, int64_t winRight,
+    int64_t residualBlockMode, bool isConsistentTopk, const aclTensor *metadataOptional,
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     if (workspaceSize == nullptr || executor == nullptr) {
@@ -73,8 +72,8 @@ aclnnStatus aclnnGenericBlockSparseAttentionMetadataGetWorkspaceSize(
         CheckGbsaMetadataParams(sparseBlockIdx, sparseBlockCount, cuSeqLengthsQOptional, cuSeqLengthsKvOptional,
                                 sequsedQOptional, sequsedKvOptional, maxQSeqLen, maxKvSeqLen, numQHeads, numKvHeads,
                                 headDim, blockShapeX, blockShapeY, layoutQ, layoutKv, layoutSparsePattern, maskType,
-                                quantType, softmaxPrecision, winLeft, winRight, residualBlockMode, isConsistentTopk,
-                                isArch35, metadataOptional);
+                                quantType, softmaxPrecision, winLeft, winRight, residualBlockMode, isArch35,
+                                metadataOptional);
     CHECK_RET(status == ACLNN_SUCCESS, status);
 
     // Map the layout pattern to the AICPU-side packed-GQA flag (1: packed by KV head, 0: unpacked).
