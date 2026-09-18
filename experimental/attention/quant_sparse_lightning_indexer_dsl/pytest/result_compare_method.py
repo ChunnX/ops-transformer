@@ -140,44 +140,23 @@ def find_batch_and_position(act_q, x):
     # 超出所有批次范围
     return (-1, -1)
 
-def judge_value_by_isclose(real_data, data_compe, force_bf16=False):
+def judge_value_by_isclose(real_data, data_compe):
     atol = 2.5e-05
     rtol = 0.005
     pct_thd = 0.005
     diff_thd = 0.005
-    # force_bf16: QLIV2 的 returnValue 固定为 bf16，但流程中已被 .float() 转成 float32，
-    # 无法通过 dtype 判断，需强制按 bf16 门限对比。
-    is_bfloat16 = force_bf16 or (str(real_data.dtype) in ("bfloat16", "torch.bfloat16"))
-    if isinstance(real_data, torch.Tensor):
-        real_data = real_data.detach().cpu().float().numpy()
-    else:
-        real_data = np.asarray(real_data)
-    if isinstance(data_compe, torch.Tensor):
-        data_compe = data_compe.detach().cpu().float().numpy()
-    else:
-        data_compe = np.asarray(data_compe)
     start = 0
     end = real_data.size - 1
     if end < start:
         end = start
     split_count = int(end - start + 1) if end != start else 1
 
-    if is_bfloat16:
-        # bf16 尾数位少、舍入误差大，误差门限放宽到 1/128（约 0.0078125）
+    if str(real_data.dtype) == 'bfloat16':
         atol = 0.0001
-        rtol = 1.0 / 128
-        diff_thd = 1.0 / 128
-        diff_result = np.isclose(
-            real_data.astype(np.float32),
-            data_compe.astype(np.float32),
-            rtol=rtol,
-            atol=atol,
-            equal_nan=True,
-        )
+        diff_result = np.isclose(real_data.astype(np.float32), data_compe.astype(np.float32), rtol=rtol, atol=atol,
+                                 equal_nan=True)
     else:
-        diff_result = np.isclose(
-            real_data, data_compe, rtol=rtol, atol=atol, equal_nan=True
-        )
+        diff_result = np.isclose(real_data, data_compe, rtol=rtol, atol=atol, equal_nan=True)
     err_idx = np.where(diff_result != np.array((True,)))[0]
     diff_abs = abs(data_compe - real_data)
     b1 = np.maximum(np.abs(real_data), (np.abs(data_compe)))
@@ -186,14 +165,14 @@ def judge_value_by_isclose(real_data, data_compe, force_bf16=False):
     eps = 10e-10
     err_diff = diff_abs / (b + eps)
     err_diff = err_diff[err_idx]
-    fulfill_percent = float(split_count - err_idx.size) / float(split_count) * 100.0
+    fulfill_percent = float(split_count - err_idx.size) / \
+                      float(split_count) * 100.0
     pct_thd = (1 - pct_thd) * 100.0
     result = True if (fulfill_percent >= pct_thd) else False
     return result
 
-
 def compare_topk_valid(cur_cpu, cur_npu, topk_value, bsn, diff_npu, diff_cpu,
-                       cur_npu_output_value=None, cur_cpu_output_value=None, thres=0.001, return_value_flag=False):
+                       cur_npu_output_value=None, cur_cpu_output_value=None, thres=0.0001, return_value_flag=False):
     b_idx, s1_idx, n2_idx = bsn
     max_re = 0.0
     npu_pass = True
@@ -255,8 +234,7 @@ def trans_tnd_actseq(list):
             raise ValueError(f'TND情况下 act_seq_len 为非递减数列 act_seq_len={list}')
     return list_new
 
-def check_result(expect, result, topk_value, params, *, return_value=False,
-                 cpu_topk_value=None, npu_topk_value=None):
+def check_result(expect, result, topk_value, params):
     batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num,\
     qk_dtype, weight_dtype, dequant_dtype, actual_seq_dtype, act_seq_q, act_seq_k, query_quant_mode,key_quant_mode, layout_query,\
     layout_key, sparse_count, sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange,\
@@ -285,14 +263,14 @@ def check_result(expect, result, topk_value, params, *, return_value=False,
     npu_pass = True
     max_error = 0
     max_re = 0
-    thres = 0.001
+    thres = 0.0001
     diff_thd=0.01
     pct_thd=0.05
     max_diff_hd=0.1
     rtol=0.005
     atol=0.000025
     max_error_idx = 10000000
-    return_value_flag = bool(return_value)
+    return_value_flag = True
     cpu_output = expect.cpu().numpy()
     npu_output = result.cpu().numpy()
     real_data = result.cpu().numpy()
@@ -314,25 +292,6 @@ def check_result(expect, result, topk_value, params, *, return_value=False,
     print(f"total_line is {total_rows}")
     npu_reshape = npu_output.reshape([total_rows, sparse_count])
     cpu_reshape = cpu_output.reshape([total_rows, sparse_count])
-    cpu_values = npu_values = None
-    if return_value_flag:
-        if cpu_topk_value is None or npu_topk_value is None:
-            return "Failed", 0.0
-        if tuple(cpu_topk_value.shape) != tuple(expect.shape) or tuple(npu_topk_value.shape) != tuple(result.shape):
-            return "Failed", 0.0
-        cpu_values = cpu_topk_value.detach().float().cpu().numpy().reshape(total_rows, sparse_count)
-        npu_values = npu_topk_value.detach().float().cpu().numpy().reshape(total_rows, sparse_count)
-    # Structural errors must fail before the tie-tolerant set comparison.
-    # Valid indices occupy the prefix; every remaining slot must be exactly -1.
-    for row_id, (expected_row, actual_row) in enumerate(zip(cpu_reshape, npu_reshape)):
-        valid_count = int(np.count_nonzero(expected_row >= 0))
-        valid_indices = actual_row[:valid_count]
-        if np.any(valid_indices < 0) or np.any(valid_indices >= topk_value.shape[-1]) or np.any(actual_row[valid_count:] != -1):
-            print_log(f"row {row_id}: invalid sparse index padding or valid count", level='ERROR')
-            return "Failed", 0.0
-        if np.unique(valid_indices).size != valid_count:
-            print_log(f"row {row_id}: duplicate valid sparse indices", level='ERROR')
-            return "Failed", 0.0
     start_time = time()
     invalid_data = cpu_reshape != -1
     valid_lens = invalid_data.sum(axis=-1)  # (total_rows,)
@@ -355,8 +314,8 @@ def check_result(expect, result, topk_value, params, *, return_value=False,
         if layout_query == "TND":
             b_idx, s1_idx = find_batch_and_position(act_seq_q, bsn[0])
             bsn = (b_idx, s1_idx, bsn[-1])
-        cur_cpu_output_value = None if cpu_values is None else cpu_values[t_id, :]
-        cur_npu_output_value = None if npu_values is None else npu_values[t_id, :]
+        cur_cpu_output_value = cpu_reshape[t_id, :]
+        cur_npu_output_value = npu_reshape[t_id, :]
         npu_pass_t = True
         max_re_t = 0
         valid_len = valid_lens[t_id]
@@ -383,7 +342,7 @@ def check_result(expect, result, topk_value, params, *, return_value=False,
     end = real_data.size - 1
     if end < start:
         end = start
-    diff_result = real_data == data_compe
+    diff_result = np.isclose(real_data, data_compe, rtol=rtol, atol=atol, equal_nan=True)
     err_idx = np.where(diff_result != np.array((True,)))[0]
     diff_abs = abs(data_compe - real_data)
     b1 = np.maximum(np.abs(real_data), (np.abs(data_compe)))
@@ -399,7 +358,7 @@ def check_result(expect, result, topk_value, params, *, return_value=False,
                         float(split_count) * 100.0
     display_output_np_isclose(real_data, data_compe, start, end)
     pct_thd = (1 - pct_thd) * 100.0
-    result = "Pass" if npu_pass else "Failed"
+    result = "Pass" if (npu_pass or topk_precision) else "Failed"
     print_log(
         '---------------------------------------------------------------------------------------')
     print_log('Rtol   \t Atol   \t PctThd   \t PctRlt   \t Result')

@@ -14,8 +14,6 @@ from qsli_test_utils import QsliCaseSelector, generate_qsli_test_data
 
 
 def _value(value):
-    if hasattr(value, "item"):
-        value = value.item()
     if pd.isna(value):
         return None
     if isinstance(value, str):

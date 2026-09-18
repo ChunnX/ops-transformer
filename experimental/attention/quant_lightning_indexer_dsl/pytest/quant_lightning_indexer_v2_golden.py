@@ -23,6 +23,7 @@ quant_lightning_indexer = (
 )
 
 
+PAGE_SIZE = 128
 N1 = 32
 N2 = 1
 PACKED_D = 64
@@ -170,20 +171,15 @@ def generate_qliv2_test_data(test_data):
         raise ValueError("q_t_size must be positive")
     if (int(p["q_head_num"]), int(p["k_head_num"]), int(p["head_dim"])) != (32, 1, 128):
         raise ValueError("fixed QLI axes must be N1=32, N2=1, D=128")
-    page_size = int(p["block_size"])
-    if page_size <= 0:
-        raise ValueError("block_size must be positive")
+    if int(p["block_size"]) != PAGE_SIZE:
+        raise ValueError("DSL transfer paramset fixes PA block_size at 128")
     if int(p["k_t_size"]) != s2:
         raise ValueError("k_t_size must equal k_seq for this transfer paramset")
 
     generator = torch.Generator(device="cpu").manual_seed(int(p["seed"]))
-    pages = (s2 + page_size - 1) // page_size
-    physical_pages = int(p["block_num"])
-    if physical_pages <= 0:
-        raise ValueError("block_num must be positive")
-    # Validate scale ranges before allocating the potentially large Q tensor.
-    _make_e8m0_bytes((1,), p["q_scale_datarange"], p["dequant_dtype"])
-    _make_e8m0_bytes((1,), p["k_scale_datarange"], p["dequant_dtype"])
+    pages = (s2 + PAGE_SIZE - 1) // PAGE_SIZE
+    if int(p["block_num"]) != pages:
+        raise ValueError(f"block_num must equal ceil(k_seq/128)={pages}")
     if p["weight_dtype"] != torch.float32:
         raise TypeError(f"weight_dtype must be FP32/torch.float32, got {p['weight_dtype']}")
     if p["actual_seq_dtype"] != torch.int32:
@@ -194,7 +190,7 @@ def generate_qliv2_test_data(test_data):
         p["query_datarange"], p["qk_dtype"], generator,
     )
     k = _make_mxfp4_bytes(
-        (physical_pages, page_size, N2, PACKED_D * FP4_PACK_NUM),
+        (pages, PAGE_SIZE, N2, PACKED_D * FP4_PACK_NUM),
         p["key_datarange"], p["qk_dtype"], generator,
     )
     weight_low, weight_high = _range_pair(
@@ -206,7 +202,7 @@ def generate_qliv2_test_data(test_data):
         (total_q, N1, 2, 2), p["q_scale_datarange"], p["dequant_dtype"]
     )
     k_descale = _make_e8m0_bytes(
-        (physical_pages, page_size, N2, 2, 2),
+        (pages, PAGE_SIZE, N2, 2, 2),
         p["k_scale_datarange"], p["dequant_dtype"],
     )
 
@@ -269,30 +265,18 @@ def generate_qliv2_test_data(test_data):
         residual = [index % ratio for index in range(batch)]
     residual_tensor = None if residual is None else _int_tensor(residual, residual)
 
+    page_ids = torch.arange(pages, dtype=torch.int32)
     block_table_value = p["block_table"]
-    if _is_auto(block_table_value):
-        lengths = [s2] * batch if used_k is None else used_k.tolist()
-        required_pages = [(length + page_size - 1) // page_size for length in lengths]
-        if max(required_pages, default=0) > physical_pages:
-            raise ValueError("block_num cannot cover a batch's used K pages")
-        block_table = torch.full((batch, pages), -1, dtype=torch.int32)
-        # A physical pool can hold disjoint sequences or intentionally shared pages.
-        disjoint = sum(required_pages) <= physical_pages
-        page_ids = torch.randperm(physical_pages, generator=generator).to(torch.int32)
-        cursor = 0
-        for index, count in enumerate(required_pages):
-            if disjoint:
-                block_table[index, :count] = page_ids[cursor:cursor + count]
-                cursor += count
-            else:
-                block_table[index, :count] = torch.roll(page_ids, shifts=index)[:count]
-    else:
-        block_table = None if block_table_value is None else _int_tensor(block_table_value, block_table_value)
-    if block_table is not None:
-        if block_table.ndim != 2 or block_table.shape[0] != batch:
-            raise ValueError("block_table must have shape (B, logical_pages)")
-        if torch.any(block_table < -1) or torch.any(block_table >= physical_pages):
-            raise ValueError("block_table contains an invalid physical page")
+    block_table = (
+        torch.stack([torch.roll(page_ids, shifts=index) for index in range(batch)])
+        if _is_auto(block_table_value)
+        else None if block_table_value is None
+        else _int_tensor(block_table_value, block_table_value)
+    )
+    if block_table is not None and tuple(block_table.shape) != (batch, pages):
+        raise ValueError(
+            f"block_table must have shape ({batch},{pages}), got {tuple(block_table.shape)}"
+        )
     return QliV2InputData(
         q, k, w, q_descale, k_descale, cu, used_q, used_k,
         residual_tensor, block_table, tuple(test_data),
@@ -350,27 +334,8 @@ def run_qliv2_case_data(data, device_id=0):
     npu_kwargs = {name: _to_npu(value) for name, value in kwargs.items()}
     topk = npu_kwargs.pop("topk")
     quant_mode = npu_kwargs.pop("quant_mode")
-    q_npu = data.q.npu()
-    npu_kwargs["metadata"] = (
-        torch.ops.cann_ops_transformer.ds41.quant_lightning_indexer_metadata(
-            cu_seqlens_q=npu_kwargs["cu_seqlens_q"],
-            seqused_q=npu_kwargs["seqused_q"],
-            seqused_k=npu_kwargs["seqused_k"],
-            cmp_residual_k=npu_kwargs["cmp_residual_k"],
-            max_seqlen_q=npu_kwargs["max_seqlen_q"],
-            max_seqlen_k=npu_kwargs["block_table"].shape[1] * k_npu.shape[1] if npu_kwargs["block_table"] is not None else k_npu.shape[0]*k_npu.shape[1],
-            num_heads_q=q_npu.shape[1], num_heads_k=k_npu.shape[2], head_dim=q_npu.shape[-1]*2,
-            candidate_topk_blocks=npu_kwargs["candidate_topk_blocks"],
-            candidate_block_size=npu_kwargs["candidate_block_size"],
-            mask_mode=npu_kwargs["mask_mode"],
-            cmp_ratio=npu_kwargs["cmp_ratio"], topk=topk,
-            layout_k="PA_BBND",
-        )
-    )
-    assert tuple(npu_kwargs["metadata"].shape) == (1024,), "metadata must use the fixed ASC shape"
-    print("QLI_METADATA", tuple(npu_kwargs["metadata"].shape), flush=True)
     npu_outputs = quant_lightning_indexer(
-        q_npu, k_npu, data.w.npu(), data.q_descale.npu(),
+        data.q.npu(), k_npu, data.w.npu(), data.q_descale.npu(),
         k_scale_npu, topk, quant_mode, **npu_kwargs,
     )
     torch.npu.synchronize()

@@ -1,103 +1,262 @@
 # Quant Sparse Lightning Indexer
 
-QSLI 在一个融合 Kernel 中完成离散 candidate gather、MXFP4 QK、BF16 权重归约、mask、流式 TopK 和可选 LD 归并。metadata 决定 LI/LD 分核；输出索引保持逻辑 token 语义。
+## 功能说明
 
-## 融合 K 接口
+`quant_sparse_lightning_indexer` 是 QSLI 的融合 DSL sample。算子接收已量化的
+MXFP4 Query、离散 PageAttention Key/KScale 和 candidate block 列表，完成：
 
-按照最新 `qsli.xlsx`，PA_BBND 的 `k` 同时携带 K 和 E8M0 scale。接口新增可选 `descale_k=None`，仅为后续 K=TND 路径预留；当前 PA_BBND 路径必须保持 None。
+1. 根据 `candidate_block_indices` 和 `block_table` 将离散 K/KScale 拼接成 Cube tile；
+2. 在 MXFP4 Cube 上计算 Query-Key 相关性；
+3. 执行 ReLU、Query head 权重归约和 mask；
+4. 对 token 分数执行流式 TopK；
+5. 将 compact position 恢复为逻辑 token index，并应用 `output_idx_offset`。
 
-| 输入 | dtype | 物理 shape |
-|---|---|---|
-| q | uint8，打包 MXFP4 | `(T1,32,64)` |
-| k | uint8，K/scale 融合 | `(physical_pages, block_size/8, 544)` |
-| w | float32 | `(T1,32)` |
-| descale_q | float8_e8m0fnu 或 uint8 位表示 | `(T1,32,2,2)` |
-| candidate_block_indices | int32 | `(T1,1,2048)` |
-| candidate_block_length | int32 | `(T1,1)` |
+离散 KV gather、PageAttention 地址映射、QK、mask、TopK 和输出映射均在一个融合
+Kernel 内完成。K 和 KScale 保持 MXFP4/E8M0 表示，不包含软件反量化流程，也不会对
+输入 candidate block 重新排序。
 
-逻辑 D=128，N1=32，N2=1。每个 candidate block 包含 8 个 token，连续存储 `K[8,64]` 的 512B，随后是 `scale[8,4]` 的 32B。PA block_size 支持 16 的倍数且不超过 1024。融合 K 允许第 0 轴带 padding，内部两轴必须连续。
-
-测试数据的打包示例（在算子调用及性能计时之外完成）：
+## 函数原型
 
 ```python
-packed_k = torch.cat((
-    key_bytes.reshape(pages, block_size // 8, 512),
-    key_scale_bytes.reshape(pages, block_size // 8, 32),
-), dim=-1)
+def quant_sparse_lightning_indexer(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    w: torch.Tensor,
+    descale_q: torch.Tensor,
+    descale_k: torch.Tensor,
+    candidate_block_indices: torch.Tensor,
+    candidate_block_length: torch.Tensor,
+    topk: int,
+    quant_mode: int,
+    candidate_block_size: int,
+    *,
+    cu_seqlens_q: Optional[torch.Tensor] = None,
+    seqused_q: Optional[torch.Tensor] = None,
+    seqused_k: Optional[torch.Tensor] = None,
+    cmp_residual_k: Optional[torch.Tensor] = None,
+    block_table: Optional[torch.Tensor] = None,
+    output_idx_offset: Optional[torch.Tensor] = None,
+    metadata: Optional[torch.Tensor] = None,
+    max_seqlen_q: int = -1,
+    mask_mode: int = 0,
+    cmp_ratio: int = 1,
+    layout_q: str = "TND",
+    layout_kv: str = "PA_BBND",
+    return_value: bool = False,
+) -> tuple[torch.Tensor, torch.Tensor]
 ```
 
-算子接口内部不会调用额外的打包或解包小算子。V0 读取融合数据，分别以 ND 写入 K 与 scale staging，Cube 从 staging 读取并完成相应格式转换。
+该入口注册为
+`torch.ops.cann_ops_transformer.ds41.quant_sparse_lightning_indexer`；通过
+`cann_ops_transformer.ops.ds41` 导入的同名对象就是该 Torch operator。
 
-## Torch 调用
+## 维度含义
+
+- `T1`：所有 Batch 的 Query token 数之和。
+- `B`：Batch 数量。
+- `N1`：Query head 数，固定为 32。
+- `N2`：Key head 数，固定为 1。
+- `D`：Q/K 逻辑特征维度，固定为 128。
+- `PA`：物理 PageAttention block 数量。
+- `block_size`：每个 PA block 的 token 数，固定为 128。
+- `C`：candidate block 容量，固定为 2048。
+- 一个 candidate block 包含 8 个连续逻辑 K token。
+
+MXFP4 每个字节打包两个逻辑元素，因此 `q` 和 `k` 的物理末维为 `D/2=64`。
+每个 E8M0 scale 对应 32 个逻辑 D 元素；D=128 时每行 Q/K 使用 4 个 scale，接口
+表示为 `(D/64,2)=(2,2)`。
+
+## 参数说明
+
+| 参数名 | 类型 | Shape | 说明 |
+|---|---|---|---|
+| `q` | NPU `torch.uint8` | `(T1,N1,D)` | Packed MXFP4 Query。必须是 TND 排布，不支持空 Tensor。 |
+| `k` | NPU `torch.uint8` | `(block_num,block_size,N2,D)` | Packed MXFP4 PageAttention Key。支持仅第 0 轴非连续。 |
+| `w` | NPU `torch.float32` | `(T1,N1)` | Query head 的归约权重。 |
+| `descale_q` | NPU `torch.uint8` 或 `torch.float8_e8m0fnu` | `(T1,N1,Ceil(D/64),2)` | Query 的 4 个 E8M0 MX scale。 |
+| `descale_k` | NPU `torch.uint8` 或 `torch.float8_e8m0fnu` | `(block_num,block_size,N2,D)` | Key 的 4 个 E8M0 MX scale。支持仅第 0 轴非连续。 |
+| `candidate_block_indices` | NPU `torch.int32` | `(T1,1,C)` | 每行 Query 对应的逻辑 candidate block id。只读取有效前缀，后缀忽略。 |
+| `candidate_block_length` | NPU `torch.int32` | 建议为 `(T1,1)` | 每行 candidate 的有效前缀长度，取值范围为 `[0,C]`。 |
+| `cu_seqlens_q` | 可选，NPU `torch.int32` | `(B+1,)` | TND Query 的 Batch 前缀和。未传入时仅表示单 Batch。 |
+| `seqused_q` | 可选，NPU `torch.int32` | `(B,)` | 每个 Batch 的有效 Query 长度，用于 TND padding。 |
+| `seqused_k` | 可选，NPU `torch.int32` | `(B,)` | 每个 Batch 的实际 K 长度，用于 mask。 |
+| `cmp_residual_k` | 条件输入，NPU `torch.int32` | `(B,)` | 压缩 causal mask 的残余长度。仅 `mask_mode=3` 且 `cmp_ratio!=1` 时传入。 |
+| `block_table` | 可选，NPU `torch.int32` | `(B,max_blocks)` | 逻辑 PA page 到物理 page 的映射。`B>1` 时必须传入。 |
+| `output_idx_offset` | 可选，NPU `torch.int32` | `(T1,1)` | 加到每行有效输出 token index 上的偏移量。 |
+
+### 属性
+
+| 属性名 | 范围/取值 | 说明 |
+|---|---|---|
+| `topk` | `[1,8192]` | 每行保留的 token 数量。 |
+| `candidate_block_size` | `8` | 一个 candidate block 对应的 K token 数。 |
+| `quant_mode` | `1` | 当前 sample 唯一支持的量化模式。 |
+| `max_seqlen_q` | `-1` 或非负整数 | 接口兼容属性；`-1` 表示不指定。 |
+| `mask_mode` | `0` 或 `3` | `0` 表示不使用 causal mask，`3` 表示右下 causal mask。 |
+| `cmp_ratio` | `[1,128]` | K 的压缩比例。 |
+| `layout_q` | `"TND"` | 当前唯一支持的 Query layout。 |
+| `layout_kv` | `"PA_BBND"` | 当前唯一支持的 Key layout。 |
+
+`metadata` 是保留参数，当前必须为 `None`；QSLI 使用融合 Kernel 内的手工分核。
+`return_value` 是兼容参数，当前接口始终返回 `sparse_indices` 和 `sparse_values`。
+
+## 输出说明
+
+返回两个 Tensor 组成的 tuple：
+
+| 位置 | 含义 | 数据类型 | Shape | 说明 |
+|---|---|---|---|---|
+| `0` | `sparse_indices` | NPU `torch.int32` | `(T1,1,topk)` | TopK 对应的逻辑 K token index。有效 index 已加 `output_idx_offset`；无效位置为 `-1`。 |
+| `1` | `sparse_values` | NPU `torch.bfloat16` | `(T1,1,topk)` | 与 `sparse_indices` 配对的相关性值；无效位置为 0。 |
+
+当有效 token 数少于 `topk` 时，输出尾部按上述无效值填充。TopK 顺序不承诺作为
+稳定排序接口；精度比较应同时结合 index 对应的 value。
+
+## PageAttention 与 candidate 语义
+
+`candidate_block_indices[t,0,i]` 是由 8 个 token 组成的逻辑 block id。Kernel 中的
+地址恢复过程为：
+
+```text
+logical_token_begin = candidate_block_id * 8
+logical_page        = logical_token_begin // 128
+offset_in_page      = logical_token_begin % 128
+physical_page       = block_table[batch, logical_page]
+```
+
+未传入 `block_table` 时，物理 page 与逻辑 page 相同，且只支持单 Batch。输入
+candidate 的有效前缀必须属于对应 Batch 的逻辑 K 范围。
+
+## 非连续 Tensor 支持
+
+`k` 和 `descale_k` 支持第 0 轴非连续，连续 Tensor 是该 stride 规则的特例。除第 0
+轴外，其余轴必须保持标准 ND 连续 stride；不支持任意内轴转置或负 stride。
+K 与 KScale 的第 0 轴 stride 独立读取，因此可以分别为连续或非连续。
+
+## 动态 Shape 与编译缓存
+
+以下维度或 stride 使用 `cannbotdsl.Dim` 动态编译：
+
+- `T1`、`B`、`PA`；
+- `block_table` 的 `max_blocks`；
+- K 和 KScale 的第 0 轴 stride。
+
+S2 对应的 `logical_k_capacity` 作为运行时标量传入 Kernel。编译结果由线程锁保护并
+缓存在进程内，同一 constexpr 配置下改变上述 shape/stride 不会再次编译。
+
+当前 DSL 的 Host ABI 要求 `fp4x2_e2m1` staging 使用静态 shape，因此以下项目仍是
+有限编译特化项：
+
+- `worker_count=min(T1,32)`；
+- `topk`；
+- `mask_mode`、`cmp_ratio`；
+- 可选输入是否存在对应的 constexpr 分支。
+
+## 约束说明
+
+- 所有 Tensor 输入必须位于同一 NPU device。
+- `T1>0`、`PA>0`。
+- `N1=32`、`N2=1`、逻辑 `D=128`、PA `block_size=128`。
+- candidate 容量固定为 2048，candidate block size 固定为 8。
+- `B>1` 时必须提供 `cu_seqlens_q` 和 `block_table`。
+- `mask_mode=3` 且 `cmp_ratio!=1` 时必须提供 `cmp_residual_k`；其他场景必须传
+  `None`。
+- `descale_k` 第 0 轴 stride 必须满足 E8M0 pair 对齐。
+
+## 调用说明
+
+依赖已配置的 CANN、PyTorch、torch_npu 和 CANNBotDSL 环境。通过仓库
+`torch_extension` 构建流程安装 `cann_ops_transformer` 后使用：
+
+| 调用方式 | 入口 | 说明 |
+| :--- | :--- | :--- |
+| PyTorch API | `cann_ops_transformer.ops.ds41.quant_sparse_lightning_indexer` | 分配输出并调用 DSL，返回 `(sparse_indices, sparse_values)` |
+| torch.ops | `torch.ops.cann_ops_transformer.ds41.quant_sparse_lightning_indexer` | 导入扩展完成注册后，可通过 PyTorch 自定义算子入口调用；参数和返回值与 PyTorch API 一致 |
+| DSL 直调 | [`torch_extension/quant_sparse_lightning_indexer_dsl.py`](torch_extension/quant_sparse_lightning_indexer_dsl.py) | 返回包含两个输出的 `dict`，主要用于内部实现和调试 |
+
+`ds41` 是实际 Python 模块名和 `torch.library` 注册名。正常业务代码推荐使用
+PyTorch API；需要验证注册通路时可直接使用 `torch.ops`。
+
+## 调用示例
 
 ```python
 from cann_ops_transformer.ops.ds41 import (
     quant_sparse_lightning_indexer,
-    quant_sparse_lightning_indexer_metadata,
 )
 
-metadata = quant_sparse_lightning_indexer_metadata(
+result = quant_sparse_lightning_indexer(
+    q,
+    k,
+    weights,
+    descale_q,
+    descale_k,
+    candidate_block_indices,
     candidate_block_length,
+    topk,
+    quant_mode,
+    candidate_block_size,
     cu_seqlens_q=cu_seqlens_q,
     seqused_q=seqused_q,
     seqused_k=seqused_k,
-    cmp_residual_k=cmp_residual_k,
-    num_heads_q=32, num_heads_k=1, head_dim=128,
-    topk=512, quant_mode=1, candidate_block_size=8,
-    max_seqlen_q=max_seqlen_q, max_seqlen_k=max_seqlen_k,
-    mask_mode=3, cmp_ratio=2,
-    layout_q="TND", layout_k="PA_BBND",
-)
-indices, values = quant_sparse_lightning_indexer(
-    q, packed_k, weights, descale_q,
-    candidate_block_indices, candidate_block_length,
-    512, 1, 8,
-    cu_seqlens_q=cu_seqlens_q,
-    seqused_q=seqused_q, seqused_k=seqused_k,
-    cmp_residual_k=cmp_residual_k,
-    block_table=block_table, metadata=metadata,
+    cmp_residual_k=None,
+    block_table=block_table,
     output_idx_offset=output_idx_offset,
-    max_seqlen_q=max_seqlen_q,
-    mask_mode=3, cmp_ratio=2,
-    layout_q="TND", layout_kv="PA_BBND",
-    return_value=False,
+    mask_mode=mask_mode,
+    cmp_ratio=cmp_ratio,
+    layout_q=layout_q,
+    layout_kv=layout_kv,
+)
+
+sparse_indices, sparse_values = result
+```
+
+等价的 `torch.ops` 调用如下。先导入算子扩展以完成注册：
+
+```python
+import torch
+import cann_ops_transformer.ops.attention.quant_sparse_lightning_indexer_dsl
+
+result = torch.ops.cann_ops_transformer.ds41.quant_sparse_lightning_indexer(
+    q,
+    k,
+    weights,
+    descale_q,
+    descale_k,
+    candidate_block_indices,
+    candidate_block_length,
+    topk,
+    quant_mode,
+    candidate_block_size,
+    cu_seqlens_q=cu_seqlens_q,
+    seqused_q=seqused_q,
+    seqused_k=seqused_k,
+    cmp_residual_k=None,
+    block_table=block_table,
+    output_idx_offset=output_idx_offset,
+    mask_mode=mask_mode,
+    cmp_ratio=cmp_ratio,
+    layout_q=layout_q,
+    layout_kv=layout_kv,
 )
 ```
 
-metadata 是 NPU int32 `[1024]`，由 AICPU 算子生成，可在输入长度和调度参数不变时复用。未提供时，DSL wrapper 会生成 metadata。metadata 同时表示 LD 与非 LD 分核，主计算消费这些边界。
-
-可选 Tensor 为 `descale_k`、`cu_seqlens_q`、`cu_seqlens_k`、`seqused_q`、`seqused_k`、`cmp_residual_k`、`block_table`、`output_idx_offset` 和 `metadata`。`B>1` 时需要 cu_seqlens_q 和 block_table；`mask_mode=3` 且 `cmp_ratio!=1` 时需要 cmp_residual_k，其他组合传 None。
-
-属性：topk 在 `[1,8192]`；quant_mode=1；candidate_block_size=8；mask_mode=0/3；cmp_ratio 在 `[1,128]`；max_seqlen_q 为 -1 或非负数。所有 Tensor 应位于同一 NPU。
-
-## 输出及索引
-
-- indices：int32 `(T1,1,topk)`，无效位置为 -1。
-- return_value=True 时 values 为 BF16 `(T1,1,topk)`；False 时返回空 Tensor `(0,)`。
-- output_idx_offset 仅作用于有效索引。有效 token 不足 topk 时按无效值填充。
-- candidate_block_length 指有效前缀长度，范围为 `[0,2048]`。候选 block id 对应连续 8 个逻辑 token；后缀不参与计算。TopK 不承诺相同分数的稳定排序。
-
-PA 地址为 `physical_page * k.stride(0) + block_within_page * 544`；physical_page 由 block_table 映射，无 block_table 时仅支持单 Batch 的恒等映射。
-
-## 编译与测试
-
-T1、B、physical_pages、block_table 宽度和 K 的第 0 轴 stride 为动态量。mask_mode、cmp_ratio、PA block_size、topk 和可选参数存在性参与静态配置。默认导出覆盖 mask_mode=0/3、cmp_ratio=1/2、PA=64/128、output_idx_offset 有/无；其他受支持配置需要相应静态产物或使用环境允许的 JIT。
-
-原始 pytest 的 20 条 Excel 用例通过真实 Torch 接口调用 metadata 和计算算子。新生成 PT 使用融合 K；旧 PT 由测试适配器在 CPU 打包后上传，保留原有独立 golden 及比较器。`test_quant_sparse_lightning_indexer_generalization.py` 补充静态组合、非连续 PA、零候选及尾块检查。
-
-## 2026-09-18 接口更新
-
-计算和 metadata 接口均新增可选 `cu_seqlens_k=None`。该参数在当前 PA_BBND 路径中不参与寻址和长度计算，仍由 `block_table`、`seqused_k` 控制；本次没有增加 K=TND 的实现。
-
-接口表规定 `layout_kv`（计算）/`layout_k`（metadata）默认 `TND`，因此当前可执行调用须显式指定 `PA_BBND`。metadata 默认 `mask_mode=0`、`cmp_ratio=1`；causal 压缩场景须显式传入 `3`、`2`。`max_seqlen_q/max_seqlen_k` 继续默认 `-1`。metadata 的 PrivateUse1、fallback 与 fake 注册保留。
+测试入口和转测用例说明见
+`test/quant_sparse_lightning_indexer/README.md`。
 
 
-## Batch 一致性
+## net Native wheel 调用
 
-算子读取 `torch_npu.npu._get_deterministic_level()`：等于 `3` 时，V0 按 candidate 原始顺序逐块调用 `mem_copy`，每块搬入 544B（8 个 token 的 K 与内联 scale）。开关作为运行时 int32 参数传入，与普通路径共享静态编译版本，不新增公开 Torch 参数。
+DSL 实现统一维护在 `cannbot-arena-ds41/net/ops/`，三个算子通过
+`net/native_package/run-build.sh --group ds41` 编译到同一个
+`cannbot-arena-net-ops` wheel。先安装该 wheel，再构建并安装本仓的
+`cann_ops_transformer` wheel。torch_extension 仅保留 torch 注册和接口适配，
+运行时从已安装的 `ops` 包导入 host 入口，不再打包本目录的 DSL 副本。
+pytest 仍通过已安装的 torch wheel 调用 `torch.ops`。
 
-普通路径尝试将相邻两个 candidate 块合并为一条 `ascvec.copy_gm2ub`。仅当第二块物理地址位于第一块之后且 DMA 间距合法时合并；倒序、重复地址等情况回退为两条单行搬运。不会按物理地址交换候选顺序。
+Native 包预编译范围由导出配置决定；默认覆盖已有单算子 smoke 配置，
+其他静态配置需通过 `CANNBOTDSL_DS41_PROFILES` 指定 JSON 后重新打包。
+详见 net 工程 `native_package/README.md`。
 
-`pytest/test_quant_sparse_lightning_indexer_generalization.py` 直接使用 level=3；若运行时不支持则明确跳过，不映射或替换算子开关。测试逐字节比较相同样本在 B=1/2/12/32、PA64/128 下的索引与分数，检查两条路径共享编译对象；不以误差阈值代替 batch 一致性检查。
-
-本次 kernel ABI 新增运行时标量，部署时须重新导出匹配本版源码的 native 二进制，不能直接沿用旧包。开关值变化本身不触发新的静态编译。
+2026-09-09 net 迁移 smoke：`pytest/test_quant_sparse_lightning_indexer_single.py
+-k qsli_decode` 结果 `1 passed, 9 deselected`；
+`CANNBOTDSL_NATIVE_BINARY_MODE=require` 下报告 `installed_hit=1`。

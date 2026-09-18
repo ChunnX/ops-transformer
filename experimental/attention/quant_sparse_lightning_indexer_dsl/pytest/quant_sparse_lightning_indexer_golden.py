@@ -31,6 +31,7 @@ class GeneralizedQSLI:
     """Self-contained QSLI reference following the ASC QLI golden structure."""
 
     GROUP_SIZE = 32
+    BLOCK_SIZE = 128
     CANDIDATE_BLOCK_SIZE = 8
     CANDIDATE_CAPACITY = 2048
 
@@ -179,7 +180,7 @@ class GeneralizedQSLI:
                 if not valid:
                     raise ValueError("every batch requires a physical K page")
                 pages.append(valid)
-        capacity = [len(row) * int(k.shape[1]) for row in pages]
+        capacity = [len(row) * self.BLOCK_SIZE for row in pages]
         used_k = (
             capacity
             if seqused_k is None
@@ -208,8 +209,8 @@ class GeneralizedQSLI:
         pages: list[int],
         logical_tokens: torch.Tensor,
     ) -> torch.Tensor:
-        logical_page = torch.div(logical_tokens, int(decoded_k.shape[1]), rounding_mode="floor")
-        page_offset = logical_tokens % int(decoded_k.shape[1])
+        logical_page = torch.div(logical_tokens, cls.BLOCK_SIZE, rounding_mode="floor")
+        page_offset = logical_tokens % cls.BLOCK_SIZE
         page_tensor = torch.tensor(pages, dtype=torch.long)
         physical_page = page_tensor.index_select(0, logical_page)
         return decoded_k[physical_page, page_offset, 0]
@@ -267,8 +268,8 @@ class GeneralizedQSLI:
     ) -> dict[str, torch.Tensor]:
         if tuple(q.shape[1:]) != (32, 64):
             raise ValueError("q must have shape (T1,32,64)")
-        if k.ndim != 4 or tuple(k.shape[2:]) != (1, 64):
-            raise ValueError("k must have shape (block_num,block_size,1,64)")
+        if tuple(k.shape[1:]) != (128, 1, 64):
+            raise ValueError("k must have shape (block_num,128,1,64)")
         if candidate_block_indices.shape[-1] != self.CANDIDATE_CAPACITY:
             raise ValueError("candidate capacity must be 2048")
         cu, used_q, used_k, pages, residual = self._page_plan(
@@ -410,27 +411,12 @@ class GeneralizedQSLI:
         }
 
 
-def pack_candidate_k(k: torch.Tensor, descale_k: torch.Tensor) -> torch.Tensor:
-    """Fixture-only packing: each eight-token block is K[512] + scale[32]."""
-    pages, page_size = k.shape[:2]
-    return torch.cat((k.view(torch.uint8).reshape(pages, page_size // 8, 512),
-                      descale_k.view(torch.uint8).reshape(pages, page_size // 8, 32)), dim=-1)
-
-
-def unpack_candidate_k(packed: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-    """Decode the public packed layout independently on CPU for golden."""
-    if packed.dtype != torch.uint8 or packed.ndim != 3 or packed.shape[-1] != 544:
-        raise ValueError("packed K must be uint8 [pages, PA/8, 544]")
-    pages, blocks = packed.shape[:2]
-    return (packed[..., :512].reshape(pages, blocks * 8, 1, 64),
-            packed[..., 512:].reshape(pages, blocks * 8, 1, 2, 2))
-
-
 def quant_sparse_lightning_indexer_golden(
     q: torch.Tensor,
     k: torch.Tensor,
     w: torch.Tensor,
     descale_q: torch.Tensor,
+    descale_k: torch.Tensor,
     candidate_block_indices: torch.Tensor,
     candidate_block_length: torch.Tensor,
     cu_seqlens_q: Optional[torch.Tensor] = None,
@@ -453,7 +439,6 @@ def quant_sparse_lightning_indexer_golden(
 ) -> dict[str, torch.Tensor]:
     if metadata is not None:
         raise ValueError("metadata is reserved and must be None")
-    k, descale_k = unpack_candidate_k(k)
     golden = GeneralizedQSLI(
         topk=topk,
         candidate_block_size=candidate_block_size,
@@ -478,6 +463,7 @@ def quant_sparse_lightning_indexer_golden_selected(
     k: torch.Tensor,
     w: torch.Tensor,
     descale_q: torch.Tensor,
+    descale_k: torch.Tensor,
     candidate_block_indices: torch.Tensor,
     candidate_block_length: torch.Tensor,
     selected_rows: list[int],
@@ -499,7 +485,6 @@ def quant_sparse_lightning_indexer_golden_selected(
     return_value: bool = False,
 ) -> dict[str, torch.Tensor]:
     """Prefill golden for selected rows, retaining their full-sequence mask."""
-    k, descale_k = unpack_candidate_k(k)
     golden = GeneralizedQSLI(
         topk=topk,
         candidate_block_size=candidate_block_size,

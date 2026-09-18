@@ -526,8 +526,8 @@ def _cpu_page_plan(
         used = _cpu_int_list(seqused_q, "seqused_q")
         if any(v < 0 or v > q_lengths[b] for b, v in enumerate(used)):
             raise ValueError("seqused_q values must be within each cu_seqlens_q interval")
-    if int(max_seqlen_q) != -1 and (int(max_seqlen_q) < 0 or max(used, default=0) > int(max_seqlen_q)):
-        raise ValueError("max_seqlen_q must be -1 or cover every valid query length")
+    if int(max_seqlen_q) != -1 and (int(max_seqlen_q) < 0 or max(q_lengths, default=0) > int(max_seqlen_q)):
+        raise ValueError("max_seqlen_q must be -1 or cover every query sequence")
 
     if block_table is None:
         page_ids = [list(range(physical_blocks)) for _ in range(batch)]
