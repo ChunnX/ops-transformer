@@ -63,7 +63,7 @@ cann_ops_transformer.indexer_quant_cache(cache, cache_scale, x, slot_mapping, *,
         <td>Tensor</td>
         <td>必选</td>
         <td>当前层的分页KV Cache，<b>仅支持四维shape</b>（num_slots = blockNum × blockSize），<b>headDim须 ≥ d</b>（MX-FP4以fp4元素计）。在<b>blockNum维支持非连续</b>（分页）。MX-FP4模式下cache为FP4（每字节打包2个fp4值）。数据格式为$ND$。</td>
-        <td>float8_e4m3fn、float8_e5m2、uint8、float4_E2M1、float4_e1m2</td>
+        <td>float8_e4m3fn、float8_e5m2、uint8、float4_e2m1fn_x2（打包）</td>
         <td>(blockNum, blockSize, 1, headDim)</td>
     </tr>
     <tr>
@@ -109,7 +109,7 @@ cann_ops_transformer.indexer_quant_cache(cache, cache_scale, x, slot_mapping, *,
         <td>round_scale</td>
         <td>bool</td>
         <td>可选</td>
-        <td>MX-FP8模式（quant_mode=0）下是否对scale进行舍入。默认值True。</td>
+        <td>MX-FP8/Normal模式（quant_mode=0/1）下是否对scale进行舍入。默认值True。</td>
         <td>BOOL</td>
         <td>-</td>
     </tr>
@@ -139,7 +139,7 @@ cann_ops_transformer.indexer_quant_cache(cache, cache_scale, x, slot_mapping, *,
   - cache.headDim ≥ d（MX-FP4以fp4元素计，d个fp4值占⌈d/2⌉字节）；
   - cache_scale.headDim ≥ scaleCol，scaleCol = mxfp8/mxfp4：⌈d/32⌉；fp8/hifloat8：1；
   - 示例：d=128、quant_mode=0 → scaleCol=4 → cache.headDim ≥ 128 且cache_scale.headDim ≥ 4。
-- slot_mapping的维度应等于x的维度减1，即slot_mapping为x除最后一维外的所有维度展平。
+- slot_mapping的维度应等于x的维度减1，且slot_mapping.shape须与x.shape[:-1]一致。
 - slot_mapping中值为-1的token会被跳过不处理；其余有效元素取值范围为[0, num_slots - 1]，且元素值应保证不重复，重复时不保证结果正确性。
 
 ## 确定性计算
@@ -162,7 +162,7 @@ cann_ops_transformer.indexer_quant_cache(cache, cache_scale, x, slot_mapping, *,
     cache = torch.zeros(block_num, block_size, 1, d, dtype=torch.float8_e4m3fn).npu()
     cache_scale = torch.zeros(block_num, block_size, 1, 1, dtype=torch.float32).npu()  # mode1 scaleCol=1
     x = torch.randn(bs, d, dtype=torch.float16).npu()
-    slot_mapping = torch.randint(0, block_num * block_size, (bs,), dtype=torch.int32).npu()
+    slot_mapping = torch.arange(bs, dtype=torch.int32).npu()
 
     indexer_quant_cache(
         cache, cache_scale, x, slot_mapping, quant_mode="fp8", round_scale=True, x_scale=1.0)
@@ -189,3 +189,12 @@ cann_ops_transformer.indexer_quant_cache(cache, cache_scale, x, slot_mapping, *,
     model(cache, cache_scale, x, slot_mapping)
     print(cache.shape, cache.dtype, cache_scale.shape, cache_scale.dtype)
     ```
+
+## dtype 与异常说明
+
+- eager 的 mxfp8 cache 支持 `torch.float8_e4m3fn`、`torch.float8_e5m2`，或承载 E4M3 编码的 `torch.uint8`；scale 为 `torch.float8_e8m0fnu` 或相同编码的 uint8。
+- eager 的 mxfp4 cache 支持 `torch.float4_e2m1fn_x2` 或承载 E2M1 编码的 uint8。两种载体的最后一维均按打包字节计，至少为 d/2；扩展会转换为 ACL 的 FP4 逻辑元素维度。当前 Torch 入口不提供 E1M2 选择；需要 E1M2 时使用 ACLNN/GE 的原生 FP4 dtype。
+- 上述 uint8 重解释由 eager 的 C++ 包装器完成；torchair 图入口直接使用 GE dtype，不承诺 uint8 MX 载体或非连续 cache 的等价支持。图示例使用连续的原生 FP8/float32 张量。
+- 未知量化模式在 Python 模式解析阶段抛出 `ValueError`；schema 参数类型错误或 C++ 参数检查失败（空 cache、rank、d 对齐或 dtype 配对等）抛出 `RuntimeError`。底层 ACLNN 执行失败由 TorchNPU 以运行时异常传播，异步错误可能在 `torch.npu.synchronize()` 时出现。
+- `slot_mapping.shape` 必须与 `x.shape[:-1]` 完全相同，不能仅元素个数相等。动态 shape、特殊值和越界 slot 的保护行为见 [README](../README.md#输入与框架范围)。
+- `round_scale` 也作用于 Normal（fp8）模式；HiFloat8/MX-FP4 不使用此属性。

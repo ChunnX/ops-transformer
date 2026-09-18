@@ -417,3 +417,12 @@ int main() {
     return 0;
 }
 ```
+
+
+## 输入拒绝与执行行为
+
+- `aclnnIndexerQuantCacheGetWorkspaceSize` 对任一空 tensor 指针以及空 `workspaceSize` / `executor` 输出指针返回 `161001`（ACLNN_ERR_PARAM_NULLPTR）。
+- 四个输入中任一个为空张量、quantMode 不在 [0,3] 或 dtype 与模式不匹配时返回 `161002`（ACLNN_ERR_PARAM_INVALID）。有效配对：0=FP8+E8M0，1=FP8/UINT8+FLOAT，2=UINT8+FLOAT，3=FP4+E8M0；x 为 FLOAT16/BF16，slotMapping 为 INT32。
+- 不合法的 rank、shape、行宽或分页布局在 Tiling 阶段失败。其最终 ACLNN 错误码由执行框架返回，不将 Tiling 失败统一描述为 161002；检查两阶段接口返回值，并在流同步处检查异步设备错误。
+- cacheScaleRef 也不支持空张量。HiFloat8 不写 cacheScaleRef，但仍要求合法的四维描述。
+- 动态 shape、框架范围、特殊值及非法 slot 的保护行为见 [README](../README.md#输入与框架范围)。运行时所有实际维度须为正；无法解析的未知维及动态 rank 不支持。

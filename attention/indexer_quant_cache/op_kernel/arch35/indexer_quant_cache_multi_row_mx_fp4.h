@@ -66,7 +66,7 @@ public:
                 int64_t curSlotIdx =
                     curBlockIdx * tilingData->rowOfFormerBlock + rowOuterIdx * tilingData->rowFactor + rowInnerIdx;
                 int64_t slot = slotMappingGm.GetValue(curSlotIdx);
-                if (slot == -1) {
+                if (slot < 0 || slot >= tilingData->numSlots) {
                     continue;
                 }
                 CopyIn(xGm[xGmBaseOffset + rowOuterIdx * tilingData->rowFactor * tilingData->d +

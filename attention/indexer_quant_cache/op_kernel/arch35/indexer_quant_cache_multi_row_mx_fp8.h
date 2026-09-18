@@ -94,7 +94,7 @@ public:
             for (; r + FOUR_UNFOLD <= curRowFactor; r += FOUR_UNFOLD) {
                 for (int32_t k = 0; k < FOUR_UNFOLD; k++) {
                     int64_t curSlotIdx = slotMappingGm.GetValue(slotGmBase + r + k);
-                    if (curSlotIdx == -1) {
+                    if (curSlotIdx < 0 || curSlotIdx >= tilingData->numSlots) {
                         continue;
                     }
                     CopyOut(cacheLocal[(r + k) * RoundUp<T1>(tilingData->d)],
@@ -109,7 +109,7 @@ public:
             }
             for (; r < curRowFactor; r++) {
                 int64_t curSlotIdx = slotMappingGm.GetValue(slotGmBase + r);
-                if (curSlotIdx == -1) {
+                if (curSlotIdx < 0 || curSlotIdx >= tilingData->numSlots) {
                     continue;
                 }
                 CopyOut(cacheLocal[r * RoundUp<T1>(tilingData->d)],

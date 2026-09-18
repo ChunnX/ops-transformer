@@ -407,11 +407,13 @@ __simd_vf__ inline void VFProcessDynamicBlockQuantVF(__ubuf__ T0 *yLocalAddr, __
                 Reduce<AscendC::Reg::ReduceType::MAX>(partMax, xAbs, cmpAbs);
                 Max(rowMax, rowMax, partMax, preg1);
             }
+            Duplicate(scale, 0.0f, preg1);
+            Duplicate(invScale, 1.0f, preg1);
             Compares<float, CMPMODE::NE>(cmpScalar, rowMax, (float)0.0, preg1);
             Mul(scale, rowMax, (RegTensor<float> &)coeffReg, cmpScalar);
             Min(scale, scale, inf, preg1);
             if constexpr (!roundScale) {
-                Div<float, &mode>(invScale, one, scale, preg1);
+                Div<float, &mode>(invScale, one, scale, cmpScalar);
             } else {
                 ShiftRights(rsExp, (RegTensor<uint32_t> &)scale, static_cast<int16_t>(FAST_LOG_SHIFT_BITS), preg1);
                 And(rsMant, (RegTensor<uint32_t> &)scale, rsMantMask, preg1);

@@ -24,6 +24,7 @@ import numpy as np
 __spec__ = {
     "indexer_quant_cache": "IndexerQuantCacheTestSpec",
     "aclnnIndexerQuantCache": "IndexerQuantCacheTestSpec",
+    "indexer_quant_cache_e2e.run": "IndexerQuantCacheTorchTestSpec",
 }
 
 # Third-party dtype handles are imported lazily (see _ensure_dtypes) so that importing
@@ -114,6 +115,8 @@ def _to_numpy(t):
             return tc.view(torch.uint8).numpy().view(F8E5M2)
         if "float8_e8m0" in str(tc.dtype):
             return tc.view(torch.uint8).numpy().view(F8E8M0)
+        if "float4_e2m1fn_x2" in str(tc.dtype):
+            return tc.view(torch.uint8).numpy()
         return tc.numpy()
     return np.ascontiguousarray(t)
 
@@ -409,7 +412,7 @@ def _indexer_core(
 
     for i in range(bs):
         slot = int(sm[i])
-        if slot < 0:
+        if slot < 0 or slot >= cache2d.shape[0]:
             continue
         if quant_mode == 0:
             c, s = _encode_mxfp8_row(x_f32[i], d, fp8_type, fp8_max, round_scale)
@@ -523,7 +526,56 @@ class IndexerQuantCacheTestSpec:
         return (cache, cache_scale, x, slot_data)
 
     tolerance = {
+        "float8_e4m3fn": {"standard": "binary_equal"},
+        "float8_e5m2": {"standard": "binary_equal"},
+        "uint8": {"standard": "binary_equal"},
+        "float32": {"standard": "binary_equal"},
         "float4_e2m1": {"standard": "binary_equal"},
         "float4_e1m2": {"standard": "binary_equal"},
         "float8_e8m0": {"standard": "binary_equal"},
     }
+
+
+class IndexerQuantCacheTorchTestSpec(IndexerQuantCacheTestSpec):
+    """Reference for the public eager API, including its packed uint8 carriers."""
+
+    @staticmethod
+    def golden(
+        cache,
+        cache_scale,
+        x,
+        slot_mapping,
+        quant_mode="fp8",
+        round_scale=True,
+        x_scale=1.0,
+        **kwargs,
+    ):
+        _ensure_dtypes()
+        mode = {"mxfp8": 0, "fp8": 1, "hifloat8": 2, "mxfp4": 3}[
+            quant_mode.strip().lower()
+        ]
+        cache_np = _to_numpy(cache)
+        scale_np = _to_numpy(cache_scale)
+        cache_dtype, scale_dtype = cache_np.dtype, scale_np.dtype
+        if mode == 0 and cache_dtype == np.uint8:
+            cache_np = cache_np.view(F8E4M3)
+        if mode in (0, 3) and scale_dtype == np.uint8:
+            scale_np = scale_np.view(F8E8M0)
+        if mode == 3:
+            # Torch stores two E2M1 values per byte; reference dtypes store one nibble per byte.
+            unpacked = np.empty(
+                (*cache_np.shape[:-1], cache_np.shape[-1] * 2), np.uint8
+            )
+            unpacked[..., 0::2] = cache_np & 0x0F
+            unpacked[..., 1::2] = cache_np >> 4
+            cache_np = unpacked.view(FP4E2M1)
+        out, scales = _indexer_core(
+            cache_np, scale_np, x, slot_mapping, mode, round_scale, x_scale
+        )
+        if mode == 3:
+            bits = out.view(np.uint8)
+            out = bits[..., 0::2] | (bits[..., 1::2] << 4)
+        return [
+            np.ascontiguousarray(out.view(cache_dtype)),
+            np.ascontiguousarray(scales.view(scale_dtype)),
+        ]

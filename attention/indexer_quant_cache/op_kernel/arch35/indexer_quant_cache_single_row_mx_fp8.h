@@ -61,12 +61,12 @@ public:
 
         int64_t xGmBaseOffset = curBlockIdx * tilingData->rowOfFormerBlock * tilingData->d;
         for (int64_t rowOuterIdx = 0; rowOuterIdx < rowOuterLoop; rowOuterIdx++) {
-            xLocal = xQue.template AllocTensor<T0>();
             int64_t curSlotIdx = curBlockIdx * tilingData->rowOfFormerBlock + rowOuterIdx * tilingData->rowFactor;
             int64_t slot = slotMappingGm.GetValue(curSlotIdx);
-            if (slot == -1) {
+            if (slot < 0 || slot >= tilingData->numSlots) {
                 continue;
             }
+            xLocal = xQue.template AllocTensor<T0>();
             CopyIn(xGm[xGmBaseOffset + rowOuterIdx * tilingData->rowFactor * tilingData->d], xLocal, 1, tilingData->d);
 
             xQue.template EnQue(xLocal);

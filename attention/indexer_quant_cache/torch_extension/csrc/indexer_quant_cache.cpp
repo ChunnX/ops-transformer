@@ -39,10 +39,12 @@ TensorWrapper MakeTensorWrapper(const at::Tensor &tensor, int64_t quantMode, Ten
     switch (quantMode) {
         case MXFP8_QUANT_MODE:
             if (role == TensorRole::CACHE) {
-                TORCH_CHECK(tensorType == at::kByte || tensorType == at::kFloat8_e4m3fn,
-                            "When quant_mode is mxfp8, cache must be torch.uint8 or torch.float8_e4m3fn, but got ",
-                            tensorType);
-                return {tensor, ACL_FLOAT8_E4M3FN};
+                TORCH_CHECK(
+                    tensorType == at::kByte || tensorType == at::kFloat8_e4m3fn || tensorType == at::kFloat8_e5m2,
+                    "When quant_mode is mxfp8, cache must be torch.uint8, torch.float8_e4m3fn or torch.float8_e5m2, "
+                    "but got ",
+                    tensorType);
+                return {tensor, tensorType == at::kFloat8_e5m2 ? ACL_FLOAT8_E5M2 : ACL_FLOAT8_E4M3FN};
             }
             TORCH_CHECK(tensorType == at::kByte || tensorType == at::kFloat8_e8m0fnu,
                         "When quant_mode is mxfp8, cache_scale must be torch.uint8 or torch.float8_e8m0fnu, but got ",

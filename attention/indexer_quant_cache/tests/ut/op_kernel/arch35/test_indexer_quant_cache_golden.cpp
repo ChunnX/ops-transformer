@@ -63,6 +63,7 @@ IndexerQuantCacheTilingData MakeTiling(const NormalGolden &golden)
     IndexerQuantCacheTilingData tiling;
     std::memset(&tiling, 0, sizeof(tiling));
     tiling.bs = BS;
+    tiling.numSlots = CACHE_ROWS;
     tiling.d = D;
     tiling.scaleCol = 1;
     tiling.rowOfFormerBlock = BS;
@@ -83,7 +84,8 @@ IndexerQuantCacheTilingData MakeTiling(const NormalGolden &golden)
     return tiling;
 }
 
-void RunAndCheckNormalGolden(const NormalGolden &golden)
+void RunAndCheckNormalGolden(const NormalGolden &golden, const std::array<int32_t, BS> &slots = SLOT_MAPPING,
+                             bool zeroInput = false)
 {
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
 
@@ -101,10 +103,13 @@ void RunAndCheckNormalGolden(const NormalGolden &golden)
     uint8_t *workspace = GmAlloc<uint8_t>(SYS_WORKSPACE);
     uint8_t *tiling = GmAlloc<uint8_t>(sizeof(IndexerQuantCacheTilingData));
 
-    std::memset(cache, 0, CACHE_SIZE);
-    std::memset(cacheScale, 0, SCALE_SIZE);
+    std::memset(cache, 0x55, CACHE_SIZE);
+    std::memset(cacheScale, 0x55, SCALE_SIZE);
     FillInput(x);
-    std::memcpy(slotMapping, SLOT_MAPPING.data(), SLOT_SIZE);
+    if (zeroInput) {
+        std::memset(x, 0, X_SIZE);
+    }
+    std::memcpy(slotMapping, slots.data(), SLOT_SIZE);
     std::memset(cacheOut, 0, CACHE_SIZE);
     std::memset(cacheScaleOut, 0, SCALE_SIZE);
     std::memset(workspace, 0, SYS_WORKSPACE);
@@ -117,14 +122,17 @@ void RunAndCheckNormalGolden(const NormalGolden &golden)
     int64_t cacheMismatch = 0;
     int64_t scaleMismatch = 0;
     for (int64_t row = 0; row < BS; ++row) {
-        const bool skipped = SLOT_MAPPING[row] < 0;
+        bool skipped = true;
+        for (const auto slot : slots) {
+            skipped = skipped && slot != row;
+        }
         for (int64_t col = 0; col < D; ++col) {
-            const uint8_t expected = skipped ? 0 : golden.cache[col & 1];
+            const uint8_t expected = skipped ? 0x55 : golden.cache[col & 1];
             cacheMismatch += cache[row * D + col] != expected;
         }
         uint32_t actualScale = 0;
         std::memcpy(&actualScale, cacheScale + row * sizeof(uint32_t), sizeof(actualScale));
-        scaleMismatch += actualScale != (skipped ? 0 : golden.scale);
+        scaleMismatch += actualScale != (skipped ? 0x55555555U : golden.scale);
     }
     EXPECT_EQ(cacheMismatch, 0) << "cache differs from the literal float8_e4m3fn golden";
     EXPECT_EQ(scaleMismatch, 0) << "cache scale differs from the literal float32 golden";
@@ -150,4 +158,21 @@ TEST(IndexerQuantCacheNormalGolden, NoRoundScale)
 {
     // Input alternates 1.0/-0.5. 1/448 scale produces E4M3FN bytes 0x7E/0xF6.
     RunAndCheckNormalGolden(NormalGolden{0, {0x7E, 0xF6}, 0x3B124925U});
+}
+
+TEST(IndexerQuantCacheNormalGolden, AllRowsSkipped)
+{
+    RunAndCheckNormalGolden(NormalGolden{1, {0x78, 0xF0}, 0x3B800000U}, {-1, -1, -1, -1});
+}
+
+TEST(IndexerQuantCacheNormalGolden, InvalidSlotsThenValidRow)
+{
+    RunAndCheckNormalGolden(NormalGolden{1, {0x78, 0xF0}, 0x3B800000U}, {-2, CACHE_ROWS, -1, 3});
+}
+
+TEST(IndexerQuantCacheNormalGolden, ZeroInput)
+{
+    for (int64_t roundScale : {0, 1}) {
+        RunAndCheckNormalGolden(NormalGolden{roundScale, {0, 0}, 0}, SLOT_MAPPING, true);
+    }
 }

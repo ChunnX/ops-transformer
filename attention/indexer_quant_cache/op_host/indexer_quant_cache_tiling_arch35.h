@@ -60,6 +60,7 @@ TILING_DATA_FIELD_DEF(int64_t, cacheRowStride);   // per-position stride of cach
 TILING_DATA_FIELD_DEF(int64_t, cacheBlockStride); // per-block (blockNum) stride of cache
 TILING_DATA_FIELD_DEF(int64_t, scaleRowStride);   // per-position stride of scale (= scaleCol)
 TILING_DATA_FIELD_DEF(int64_t, scaleBlockStride); // per-block (blockNum) stride of scale
+TILING_DATA_FIELD_DEF(int64_t, numSlots);         // Logical cache slot bound for device-side scatter protection.
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(IndexerQuantCache, IndexerQuantCacheTilingData)
