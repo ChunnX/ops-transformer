@@ -50,14 +50,12 @@ private:
     static constexpr uint32_t L1_Q_BUFCNT                = 2;
     static constexpr uint32_t L1_QSCALE_SINGLE_SLOT_SIZE = 1024;        // 1KB
     static constexpr uint32_t L1_QSCALE_BUFCNT           = 2;
-    static constexpr uint32_t L1_K_SINGLE_SLOT_SIZE      = 128 * 128;   // 16KB
-    static constexpr uint32_t L1_K_BUFCNT                = 2;
-    static constexpr uint32_t L1_KSCALE_SINGLE_SLOT_SIZE = 512;         // 512B
-    static constexpr uint32_t L1_KSCALE_BUFCNT           = 2;
-    static constexpr uint32_t L1_V_SINGLE_SLOT_SIZE      = 256 * 128;   // 32KB
-    static constexpr uint32_t L1_V_BUFCNT                = 2;
-    static constexpr uint32_t L1_VSCALE_SINGLE_SLOT_SIZE = 1024;        // 1KB
-    static constexpr uint32_t L1_VSCALE_BUFCNT           = 2;
+    // KV 合用 4 槽 ring（DN 同款）：K 整块（C1 消费）与 V 整块（C2 消费）按使用顺序轮转取槽；
+    // 槽型统一 [actS2Size≤256, 128] fp8 = 32KB，K 的 subLoop 切片与 V 的 subK 切片均在 Load 阶段完成
+    static constexpr uint32_t L1_KV_SINGLE_SLOT_SIZE      = 256 * 128;   // 32KB
+    static constexpr uint32_t L1_KV_BUFCNT                = 4;
+    static constexpr uint32_t L1_KVSCALE_SINGLE_SLOT_SIZE = 1024;        // 1KB, e8m0 [256, 128/32]
+    static constexpr uint32_t L1_KVSCALE_BUFCNT           = 4;
     static constexpr uint32_t L1_ONEFILL_V_SIZE          = 144 * 128;   // 18KB
     static constexpr uint32_t L1_ONEFILL_VSCALE_SIZE     = 576;          // 576B
     static constexpr uint16_t ONE_FILL_BLOCK_CNT = L1_ONEFILL_V_SIZE / 32;           // 576
@@ -68,11 +66,9 @@ private:
     // ===== L1 私有区 BASE（从共享区末尾链式推导）=====
     static constexpr uint32_t L1_Q_BASE = L1_SHARED_REGION_SIZE;
     static constexpr uint32_t L1_QSCALE_BASE = L1_Q_BASE + L1_Q_BUFCNT * L1_Q_SINGLE_SLOT_SIZE;
-    static constexpr uint32_t L1_K_BASE = L1_QSCALE_BASE + L1_QSCALE_BUFCNT * L1_QSCALE_SINGLE_SLOT_SIZE;
-    static constexpr uint32_t L1_KSCALE_BASE = L1_K_BASE + L1_K_BUFCNT * L1_K_SINGLE_SLOT_SIZE;
-    static constexpr uint32_t L1_V_BASE = L1_KSCALE_BASE + L1_KSCALE_BUFCNT * L1_KSCALE_SINGLE_SLOT_SIZE;
-    static constexpr uint32_t L1_VSCALE_BASE = L1_V_BASE + L1_V_BUFCNT * L1_V_SINGLE_SLOT_SIZE;
-    static constexpr uint32_t L1_ONEFILL_V_BASE = L1_VSCALE_BASE + L1_VSCALE_BUFCNT * L1_VSCALE_SINGLE_SLOT_SIZE;
+    static constexpr uint32_t L1_KV_BASE = L1_QSCALE_BASE + L1_QSCALE_BUFCNT * L1_QSCALE_SINGLE_SLOT_SIZE;
+    static constexpr uint32_t L1_KVSCALE_BASE = L1_KV_BASE + L1_KV_BUFCNT * L1_KV_SINGLE_SLOT_SIZE;
+    static constexpr uint32_t L1_ONEFILL_V_BASE = L1_KVSCALE_BASE + L1_KVSCALE_BUFCNT * L1_KVSCALE_SINGLE_SLOT_SIZE;
     static constexpr uint32_t L1_ONEFILL_VSCALE_BASE = L1_ONEFILL_V_BASE + L1_ONEFILL_V_SIZE;
 
     // ===== L0 尺寸常量 =====
@@ -117,13 +113,11 @@ private:
     LocalTensor<SCALE_T> pScaleL1V0Tensor_;
     LocalTensor<SCALE_T> pScaleL1V1Tensor_;
 
-    // --- 私有区（Q/K/V 及 scale）---
+    // --- 私有区（Q 及 scale / KV 合用 ring）---
     LocalTensor<QUANT_T>  qL1Tensor_;
     LocalTensor<SCALE_T> qScaleL1Tensor_;
-    LocalTensor<QUANT_T>  kL1Tensor_;
-    LocalTensor<SCALE_T> kScaleL1Tensor_;
-    LocalTensor<QUANT_T>  vL1Tensor_;
-    LocalTensor<SCALE_T> vScaleL1Tensor_;
+    LocalTensor<QUANT_T>  kvL1Tensor_;     // K/V 合用 4 槽 ring（K 整块 C1 消费、V 整块 C2 消费）
+    LocalTensor<SCALE_T> kvScaleL1Tensor_;
 
     // --- 刷 1 常驻（独立 L1 buffer，一次 Fill 全程只读）---
     LocalTensor<QUANT_T>  oneFillVL1Tensor_;
@@ -142,16 +136,15 @@ private:
     LocalTensor<MM_OUT_T> mm2ResUB_;
 
     // ===== Event ID（内部流水同步，SetFlag/WaitFlag 显式编排）=====
-    // mte2 ↔ mte1：Q / K / V 的 GM→L1（K/V 独立事件，避免并行在途串扰）
+    // mte2 ↔ mte1：Q（独立 2 槽）/ KV 合用 ring（每槽一事件，DN 同款 KV_EVENT0~3）
     static constexpr uint32_t Q_EVENT0  = EVENT_ID2;
     static constexpr uint32_t Q_EVENT1  = EVENT_ID3;
     uint32_t qBufId_ = 0;
-    static constexpr uint32_t K_EVENT0 = EVENT_ID4;
-    static constexpr uint32_t K_EVENT1 = EVENT_ID5;
-    static constexpr uint32_t V_EVENT0 = EVENT_ID6;
-    static constexpr uint32_t V_EVENT1 = EVENT_ID7;
-    uint32_t kBufId_  = 0;
-    uint32_t vBufId_  = 0;
+    static constexpr uint32_t KV_EVENT0 = EVENT_ID4;
+    static constexpr uint32_t KV_EVENT1 = EVENT_ID5;
+    static constexpr uint32_t KV_EVENT2 = EVENT_ID6;
+    static constexpr uint32_t KV_EVENT3 = EVENT_ID7;
+    uint32_t kvBufId_ = 0;   // K（C1）与 V（C2）按使用顺序轮转，% 4
 
     // mte1 ↔ m：Q→L0B / K→L0A（使用 EVENT_ID2~5，Q_L0B=2/3, K_L0A=4/5）
     static constexpr uint32_t Q_L0B_EVENT0  = EVENT_ID2;
@@ -221,10 +214,10 @@ private:
     {
         SetFlag<HardEvent::MTE1_MTE2>(Q_EVENT0);
         SetFlag<HardEvent::MTE1_MTE2>(Q_EVENT1);
-        SetFlag<HardEvent::MTE1_MTE2>(K_EVENT0);
-        SetFlag<HardEvent::MTE1_MTE2>(K_EVENT1);
-        SetFlag<HardEvent::MTE1_MTE2>(V_EVENT0);
-        SetFlag<HardEvent::MTE1_MTE2>(V_EVENT1);
+        SetFlag<HardEvent::MTE1_MTE2>(KV_EVENT0);
+        SetFlag<HardEvent::MTE1_MTE2>(KV_EVENT1);
+        SetFlag<HardEvent::MTE1_MTE2>(KV_EVENT2);
+        SetFlag<HardEvent::MTE1_MTE2>(KV_EVENT3);
 
         SetFlag<HardEvent::M_MTE1>(Q_L0B_EVENT0);
         SetFlag<HardEvent::M_MTE1>(K_L0A_EVENT0);
@@ -240,10 +233,10 @@ private:
     {
         WaitFlag<HardEvent::MTE1_MTE2>(Q_EVENT0);
         WaitFlag<HardEvent::MTE1_MTE2>(Q_EVENT1);
-        WaitFlag<HardEvent::MTE1_MTE2>(K_EVENT0);
-        WaitFlag<HardEvent::MTE1_MTE2>(K_EVENT1);
-        WaitFlag<HardEvent::MTE1_MTE2>(V_EVENT0);
-        WaitFlag<HardEvent::MTE1_MTE2>(V_EVENT1);
+        WaitFlag<HardEvent::MTE1_MTE2>(KV_EVENT0);
+        WaitFlag<HardEvent::MTE1_MTE2>(KV_EVENT1);
+        WaitFlag<HardEvent::MTE1_MTE2>(KV_EVENT2);
+        WaitFlag<HardEvent::MTE1_MTE2>(KV_EVENT3);
 
         WaitFlag<HardEvent::M_MTE1>(Q_L0B_EVENT0);
         WaitFlag<HardEvent::M_MTE1>(K_L0A_EVENT0);
@@ -299,14 +292,10 @@ public:
                                           L1_Q_BUFCNT * L1_Q_SINGLE_SLOT_SIZE);
         qScaleL1Tensor_ = LocalTensor<SCALE_T>(TPosition::A1, L1_QSCALE_BASE,
                                                L1_QSCALE_BUFCNT * L1_QSCALE_SINGLE_SLOT_SIZE);
-        kL1Tensor_ = LocalTensor<QUANT_T>(TPosition::A1, L1_K_BASE,
-                                          L1_K_BUFCNT * L1_K_SINGLE_SLOT_SIZE);
-        kScaleL1Tensor_ = LocalTensor<SCALE_T>(TPosition::A1, L1_KSCALE_BASE,
-                                               L1_KSCALE_BUFCNT * L1_KSCALE_SINGLE_SLOT_SIZE);
-        vL1Tensor_ = LocalTensor<QUANT_T>(TPosition::A1, L1_V_BASE,
-                                          L1_V_BUFCNT * L1_V_SINGLE_SLOT_SIZE);
-        vScaleL1Tensor_ = LocalTensor<SCALE_T>(TPosition::A1, L1_VSCALE_BASE,
-                                               L1_VSCALE_BUFCNT * L1_VSCALE_SINGLE_SLOT_SIZE);
+        kvL1Tensor_ = LocalTensor<QUANT_T>(TPosition::A1, L1_KV_BASE,
+                                           L1_KV_BUFCNT * L1_KV_SINGLE_SLOT_SIZE);
+        kvScaleL1Tensor_ = LocalTensor<SCALE_T>(TPosition::A1, L1_KVSCALE_BASE,
+                                                L1_KVSCALE_BUFCNT * L1_KVSCALE_SINGLE_SLOT_SIZE);
         oneFillVL1Tensor_ = LocalTensor<QUANT_T>(TPosition::A1, L1_ONEFILL_V_BASE,
                                                  L1_ONEFILL_V_SIZE);
         oneFillVScaleL1Tensor_ = LocalTensor<SCALE_T>(TPosition::A1, L1_ONEFILL_VSCALE_BASE,
@@ -388,12 +377,15 @@ public:
             WaitFlag<HardEvent::MTE1_M>(Q_L0B_EVENT0);
         }
 
-        // ———— K 流式搬运（每 subLoop）————
-        WaitFlag<HardEvent::MTE1_MTE2>(K_EVENT0 + kBufId_);
-        CopyKGmToL1(runInfo, subLoopIdx);
-        CopyKScaleGmToL1(runInfo, subLoopIdx);
-        SetFlag<HardEvent::MTE2_MTE1>(K_EVENT0 + kBufId_);
-        WaitFlag<HardEvent::MTE2_MTE1>(K_EVENT0 + kBufId_);
+        // ———— K 整块搬运（每 task 一次，仅 subLoopIdx==0；槽跨整个 C1 subLoop 循环持有，
+        //     subLoop 切片由 LoadKToL0A 的 mStartPosition 在槽内寻址）————
+        if (subLoopIdx == 0U) {
+            WaitFlag<HardEvent::MTE1_MTE2>(KV_EVENT0 + kvBufId_);
+            CopyKGmToL1(runInfo);
+            CopyKScaleGmToL1(runInfo);
+            SetFlag<HardEvent::MTE2_MTE1>(KV_EVENT0 + kvBufId_);
+            WaitFlag<HardEvent::MTE2_MTE1>(KV_EVENT0 + kvBufId_);
+        }
 
         {
             WaitFlag<HardEvent::FIX_M>(L0C_EVENT0 + l0cBufId_);
@@ -411,12 +403,15 @@ public:
             SetFlag<HardEvent::M_FIX>(L0C_EVENT0 + l0cBufId_);
         }
 
-        SetFlag<HardEvent::MTE1_MTE2>(K_EVENT0 + kBufId_);
-        kBufId_ = (kBufId_ + 1U) % 2U;
-        if (unlikely(runInfo.isLastS2Loop && isLastSubLoop)) {
-            SetFlag<HardEvent::MTE1_MTE2>(Q_EVENT0 + qBufId_);
-            SetFlag<HardEvent::M_MTE1>(Q_L0B_EVENT0);
-            qBufId_ = (qBufId_ + 1U) % 2U;
+        // ———— K 槽在 C1 末尾释放（所有 subLoop 的 L0A 切片加载完成后）————
+        if (isLastSubLoop) {
+            SetFlag<HardEvent::MTE1_MTE2>(KV_EVENT0 + kvBufId_);
+            kvBufId_ = (kvBufId_ + 1U) % L1_KV_BUFCNT;
+            if (unlikely(runInfo.isLastS2Loop)) {
+                SetFlag<HardEvent::MTE1_MTE2>(Q_EVENT0 + qBufId_);
+                SetFlag<HardEvent::M_MTE1>(Q_L0B_EVENT0);
+                qBufId_ = (qBufId_ + 1U) % 2U;
+            }
         }
     }
 
@@ -473,12 +468,17 @@ public:
     {
         WaitFlag<HardEvent::FIX_M>(L0C_EVENT0 + l0cBufId_);
 
-        // ———— V 整行搬运 ————
-        WaitFlag<HardEvent::MTE1_MTE2>(V_EVENT0 + vBufId_);
-        CopyVGmToL1(runInfo);
-        CopyVScaleGmToL1(runInfo);
-        SetFlag<HardEvent::MTE2_MTE1>(V_EVENT0 + vBufId_);
-        WaitFlag<HardEvent::MTE2_MTE1>(V_EVENT0 + vBufId_);
+        // ———— V 整行搬运（每 task 仅 vCore=0 一次，槽跨两个 vCore 的 C2 持有）————
+        // 配对依赖：ExecuteTask Phase2 的 vCore 循环必须无条件 0→1 顺序执行
+        //（vCore=1 的 LoadVToL0A 无需额外同步——MTE1 管道序保证在 copy 之后；
+        //  释放的 Set<MTE1_MTE2> 挂 MTE1 管道，两个 vCore 的全部 LoadV 完成后才触发）
+        if (vCore == 0U) {
+            WaitFlag<HardEvent::MTE1_MTE2>(KV_EVENT0 + kvBufId_);
+            CopyVGmToL1(runInfo);
+            CopyVScaleGmToL1(runInfo);
+            SetFlag<HardEvent::MTE2_MTE1>(KV_EVENT0 + kvBufId_);
+            WaitFlag<HardEvent::MTE2_MTE1>(KV_EVENT0 + kvBufId_);
+        }
 
         // ———— V/P 分 subK 加载 + MatmulVP 累加 ————
         uint32_t subKLoop = AttentionCommon::CeilDiv(runInfo.actSingleLoopS2Size, MM2_SUB_K_SIZE);
@@ -501,8 +501,11 @@ public:
             isFirstSubK = false;
         }
 
-        SetFlag<HardEvent::MTE1_MTE2>(V_EVENT0 + vBufId_);
-        vBufId_ = (vBufId_ + 1U) % 2U;
+        // ———— V 槽释放移至 vCore=1 末尾（两个 vCore 的 LoadV 都完成后）————
+        if (vCore == 1U) {
+            SetFlag<HardEvent::MTE1_MTE2>(KV_EVENT0 + kvBufId_);
+            kvBufId_ = (kvBufId_ + 1U) % L1_KV_BUFCNT;
+        }
 
         SetFlag<HardEvent::M_FIX>(L0C_EVENT0 + l0cBufId_);
     }
@@ -566,46 +569,45 @@ public:
         copyQueryScaleGmToL1_(l1Tensor, queryScaleGm_, gmCoord);
     }
 
-    __aicore__ inline void CopyKGmToL1(const RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t subLoopIdx)
+    // K 整块拷贝（每 task 一次）：[actSingleLoopS2Size, dBaseSize] → kvL1 槽；
+    // rowCount 与 LoadKToL0A 的 srcStride 同基准（actSingleLoopS2SizeAlign，DN 同款），
+    // subLoop 切片由 LoadKToL0A 的 mStartPosition 在槽内寻址
+    __aicore__ inline void CopyKGmToL1(const RunInfoMxfp8SoftmaxFp16 &runInfo)
     {
-        uint32_t actKSize = (subLoopIdx + 1 == AttentionCommon::CeilDiv(runInfo.actSingleLoopS2Size, S2_SPLIT_SIZE))
-                                ? runInfo.actSingleLoopS2Size - subLoopIdx * S2_SPLIT_SIZE
-                                : S2_SPLIT_SIZE;
-        uint32_t l1BaseOffset = kBufId_ * L1_K_SINGLE_SLOT_SIZE;
-        FaL1Tensor<QUANT_T, L1Format::NZ> l1Tensor{.tensor = kL1Tensor_[l1BaseOffset], .rowCount = actKSize};
+        uint32_t l1BaseOffset = kvBufId_ * L1_KV_SINGLE_SLOT_SIZE;
+        uint32_t dstStride = runInfo.actSingleLoopS2SizeAlign;
+        FaL1Tensor<QUANT_T, L1Format::NZ> l1Tensor{.tensor = kvL1Tensor_[l1BaseOffset], .rowCount = dstStride};
 
         GmKvCoord gmCoord{.bIdx = runInfo.bIdx,
                           .n2Idx = runInfo.n2Idx,
-                          .s2Idx = runInfo.s2Idx + subLoopIdx * S2_SPLIT_SIZE,
+                          .s2Idx = runInfo.s2Idx,
                           .dIdx = 0U,
-                          .s2DealSize = actKSize,
+                          .s2DealSize = runInfo.actSingleLoopS2Size,
                           .dDealSize = dBaseSize};
         copyKvGmToL1_(l1Tensor, keyGm_, gmCoord);
     }
 
-    __aicore__ inline void CopyKScaleGmToL1(const RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t subLoopIdx)
+    __aicore__ inline void CopyKScaleGmToL1(const RunInfoMxfp8SoftmaxFp16 &runInfo)
     {
-        uint32_t actKSize = (subLoopIdx + 1 == AttentionCommon::CeilDiv(runInfo.actSingleLoopS2Size, S2_SPLIT_SIZE))
-                                ? runInfo.actSingleLoopS2Size - subLoopIdx * S2_SPLIT_SIZE
-                                : S2_SPLIT_SIZE;
         uint32_t dDealSize = dBaseSize / MXFP_GROUP_SIZE;
-        uint32_t l1BaseOffset = kBufId_ * L1_KSCALE_SINGLE_SLOT_SIZE;
-        FaL1Tensor<SCALE_T, L1Format::NZ> l1Tensor{.tensor = kScaleL1Tensor_[l1BaseOffset], .rowCount = actKSize};
+        uint32_t l1BaseOffset = kvBufId_ * L1_KVSCALE_SINGLE_SLOT_SIZE;
+        uint32_t dstStride = runInfo.actSingleLoopS2SizeAlign;
+        FaL1Tensor<SCALE_T, L1Format::NZ> l1Tensor{.tensor = kvScaleL1Tensor_[l1BaseOffset], .rowCount = dstStride};
 
         GmKvCoord gmCoord{.bIdx = runInfo.bIdx,
                           .n2Idx = runInfo.n2Idx,
-                          .s2Idx = runInfo.s2Idx + subLoopIdx * S2_SPLIT_SIZE,
+                          .s2Idx = runInfo.s2Idx,
                           .dIdx = 0U,
-                          .s2DealSize = actKSize,
+                          .s2DealSize = runInfo.actSingleLoopS2Size,
                           .dDealSize = dDealSize};
         copyKeyScaleGmToL1_(l1Tensor, keyScaleGm_, gmCoord);
     }
 
     __aicore__ inline void CopyVGmToL1(const RunInfoMxfp8SoftmaxFp16 &runInfo)
     {
-        uint32_t l1BaseOffset = vBufId_ * L1_V_SINGLE_SLOT_SIZE;
+        uint32_t l1BaseOffset = kvBufId_ * L1_KV_SINGLE_SLOT_SIZE;
         uint32_t dstStride = (runInfo.actSingleLoopS2Size + 63U) / 64U * 64U;
-        FaL1Tensor<QUANT_T, L1Format::NZ> l1Tensor{.tensor = vL1Tensor_[l1BaseOffset], .rowCount = dstStride};
+        FaL1Tensor<QUANT_T, L1Format::NZ> l1Tensor{.tensor = kvL1Tensor_[l1BaseOffset], .rowCount = dstStride};
 
         GmKvCoord gmCoord{.bIdx = runInfo.bIdx,
                           .n2Idx = runInfo.n2Idx,
@@ -618,10 +620,10 @@ public:
 
     __aicore__ inline void CopyVScaleGmToL1(const RunInfoMxfp8SoftmaxFp16 &runInfo)
     {
-        uint32_t l1BaseOffset = vBufId_ * L1_VSCALE_SINGLE_SLOT_SIZE;
+        uint32_t l1BaseOffset = kvBufId_ * L1_KVSCALE_SINGLE_SLOT_SIZE;
         uint32_t dstStride = (runInfo.actSingleLoopS2Size + 63U) / 64U * 64U;
         uint32_t dDealSize = dBaseSize / MXFP_GROUP_SIZE;
-        FaL1Tensor<SCALE_T, L1Format::NZ> l1Tensor{.tensor = vScaleL1Tensor_[l1BaseOffset], .rowCount = dstStride};
+        FaL1Tensor<SCALE_T, L1Format::NZ> l1Tensor{.tensor = kvScaleL1Tensor_[l1BaseOffset], .rowCount = dstStride};
 
         GmKvCoord gmCoord{.bIdx = runInfo.bIdx,
                           .n2Idx = runInfo.n2Idx,
@@ -681,10 +683,12 @@ public:
         scaleParams.srcStride = scaleParams.yStep;
         scaleParams.dstStride = scaleParams.yStep;
 
-        uint32_t kL1Offset      = kBufId_ * L1_K_SINGLE_SLOT_SIZE;
-        uint32_t kScaleL1Offset = kBufId_ * L1_KSCALE_SINGLE_SLOT_SIZE;
-        LoadData(mm1L0ATensor_[kL0aBufId_ * 128U * 128U], kL1Tensor_[kL1Offset],
-                 kScaleL1Tensor_[kScaleL1Offset], dataParams, scaleParams);
+        // 槽内整块寻址：srcStride = actSingleLoopS2SizeAlign/16（与 CopyKGmToL1 的 rowCount 同基准），
+        // subLoop 切片靠 mStartPosition —— 整块拷贝后本参数组自洽（修复原 subLoop 紧凑拷贝与此的不一致）
+        uint32_t kvL1Offset      = kvBufId_ * L1_KV_SINGLE_SLOT_SIZE;
+        uint32_t kvScaleL1Offset = kvBufId_ * L1_KVSCALE_SINGLE_SLOT_SIZE;
+        LoadData(mm1L0ATensor_[kL0aBufId_ * 128U * 128U], kvL1Tensor_[kvL1Offset],
+                 kvScaleL1Tensor_[kvScaleL1Offset], dataParams, scaleParams);
     }
 
     __aicore__ inline void MatmulKQ(const RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t actKSize)
@@ -761,10 +765,10 @@ public:
         scaleParams.srcStride = scaleParams.yStep;
         scaleParams.dstStride = scaleParams.yStep;
 
-        uint32_t vL1Offset      = vBufId_ * L1_V_SINGLE_SLOT_SIZE;
-        uint32_t vScaleL1Offset = vBufId_ * L1_VSCALE_SINGLE_SLOT_SIZE;
-        LoadData(mm2L0ATensor_.template ReinterpretCast<QUANT_T>(), vL1Tensor_[vL1Offset],
-                 vScaleL1Tensor_[vScaleL1Offset], dataParams, scaleParams);
+        uint32_t kvL1Offset      = kvBufId_ * L1_KV_SINGLE_SLOT_SIZE;
+        uint32_t kvScaleL1Offset = kvBufId_ * L1_KVSCALE_SINGLE_SLOT_SIZE;
+        LoadData(mm2L0ATensor_.template ReinterpretCast<QUANT_T>(), kvL1Tensor_[kvL1Offset],
+                 kvScaleL1Tensor_[kvScaleL1Offset], dataParams, scaleParams);
     }
 
     __aicore__ inline void MatmulVP(const RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t vCore,
