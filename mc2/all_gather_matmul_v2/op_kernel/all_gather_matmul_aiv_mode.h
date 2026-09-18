@@ -22,7 +22,7 @@
 #endif
 #include "adv_api/hccl/hccl.h"
 #include "kernel_tiling/kernel_tiling.h"
-#include "gather_moe_distribute_base.h"
+#include "../../common/op_kernel/moe_distribute_base.h"
 #include "all_gather_matmul_aiv_mode_tiling.h"
 #include "all_gather_matmul_aiv_mode_util.h"
 #include "all_gather_matmul_aiv_mode_padding.h"
@@ -236,22 +236,23 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Init(GM_ADDR aG
     k = tilingData.allGatherMatmulInfo.K;
     n = tilingData.allGatherMatmulInfo.N;
 
-    m0 = tilingData.cocTiling.m0; // tiling 寻优
-    k0 = tilingData.cocTiling.k0; // tiling 寻优
-    n0 = tilingData.cocTiling.n0; // tiling 寻优
+    const auto &aivModeTiling = tilingData.cocTiling.aivModeTiling;
+    m0 = aivModeTiling.m0; // tiling 寻优
+    k0 = aivModeTiling.k0; // tiling 寻优
+    n0 = aivModeTiling.n0; // tiling 寻优
 
-    m_loop = tilingData.cocTiling.mLoop;
-    n_loop = tilingData.cocTiling.nLoop;
-    k_loop = tilingData.cocTiling.kLoop;
-    pValue = tilingData.cocTiling.pValue;
+    m_loop = aivModeTiling.mLoop;
+    n_loop = aivModeTiling.nLoop;
+    k_loop = aivModeTiling.kLoop;
+    pValue = aivModeTiling.pValue;
 
-    max_ub_ping_pong_size = tilingData.cocTiling.ubMoveNum / MAX_BLOCK_COUNT;
-    comm_npu_split = tilingData.cocTiling.commNpuSplit;   // tiling 寻优
-    comm_data_split = tilingData.cocTiling.commDataSplit; // tiling 寻优
+    max_ub_ping_pong_size = aivModeTiling.ubMoveNum / MAX_BLOCK_COUNT;
+    comm_npu_split = aivModeTiling.commNpuSplit;   // tiling 寻优
+    comm_data_split = aivModeTiling.commDataSplit; // tiling 寻优
     comm_direct = tilingData.cocTiling.commDirect;        // tiling 寻优
     len_per_loop = tilingData.cocTiling.lenPerLoop;       // tiling 寻优
-    swizzlCount = tilingData.cocTiling.swizzlCount;       // 家里tiling写死
-    swizzlDirect = tilingData.cocTiling.swizzlDirect;     // 家里tiling写死
+    swizzlCount = aivModeTiling.swizzlCount;  // 家里tiling写死
+    swizzlDirect = aivModeTiling.swizzlDirect; // 家里tiling写死
     core_count = comm_npu_split * comm_data_split;
 
     coreIdx = GetBlockIdx();              // 0-48核

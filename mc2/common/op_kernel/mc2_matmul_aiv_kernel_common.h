@@ -58,6 +58,23 @@ inline __aicore__ void GetSwizzledBlockIdx(int32_t loopIdx, int32_t mLoop, int32
     }
 }
 
+template <class TileShape, class Coord>
+inline __aicore__ Coord GetBlockLocCoord(Coord blockIdxCoord)
+{
+    return Coord{blockIdxCoord.m() * TileShape::M, blockIdxCoord.n() * TileShape::N,
+                 blockIdxCoord.k() * TileShape::K};
+}
+
+template <class TileShape, class Coord>
+inline __aicore__ Coord GetBlockSizeCoord(Coord blockIdxCoord, Coord blockLocCoord, int32_t mLoop, int32_t mSize,
+                                          int32_t nLoop, int32_t nSize, int32_t kSize)
+{
+    uint32_t mActual = (blockIdxCoord.m() == (mLoop - 1)) ? (mSize - blockLocCoord.m()) : TileShape::M;
+    uint32_t nActual = (blockIdxCoord.n() == (nLoop - 1)) ? (nSize - blockLocCoord.n()) : TileShape::N;
+    uint32_t kActual = kSize;
+    return Coord{mActual, nActual, kActual};
+}
+
 } // namespace Mc2MatmulAiv
 
 #endif // MC2_MATMUL_AIV_KERNEL_COMMON_H
