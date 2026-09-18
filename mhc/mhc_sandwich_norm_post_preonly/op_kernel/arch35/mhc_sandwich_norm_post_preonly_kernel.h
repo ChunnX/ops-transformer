@@ -105,9 +105,9 @@ public:
         pipe_.InitBuffer(bufGamma0Fp32_,        dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufGamma1Fp32_,        dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufX2Fp32_,            N_ * dimTile_ * sizeof(float));
-        pipe_.InitBuffer(bufOutFp32_,           dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufResidualBf16_,   1, N_ * dimTile_ * sizeof(T));
-        pipe_.InitBuffer(bufResFp32_,           N_ * dimTile_ * sizeof(float));
+        // 前四行先保存residual，之后复用为R4/R5的五行归约输入；第五行兼作通用输出暂存。
+        pipe_.InitBuffer(bufResFp32_,     (N_ + 1) * dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufSqFp32_,            dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufPostComb_,          POST_COMB_SIZE * sizeof(float));
         pipe_.InitBuffer(bufPhiFp32_,  BUFFER_NUM_TWO, dimTile_ * sizeof(float));
@@ -190,7 +190,6 @@ private:
     TBuf<TPosition::VECCALC>   bufGamma1Fp32_;
     TBuf<TPosition::VECCALC>   bufGamma2Fp32_;
     TBuf<TPosition::VECCALC>   bufX2Fp32_;
-    TBuf<TPosition::VECCALC>   bufOutFp32_;
     TQue<TPosition::VECIN, 1>  bufResidualBf16_;
     TBuf<TPosition::VECCALC>   bufResFp32_;
     TBuf<TPosition::VECCALC>   bufSqFp32_;

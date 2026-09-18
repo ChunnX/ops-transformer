@@ -52,32 +52,76 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::AccumulateHalfPartia
     uint32_t tOff, uint32_t tD, float (&sumSqHalf)[2], float (&dotHalf)[2][N_MAX])
 {
     LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
-    LocalTensor<float> out = bufOutFp32_.Get<float>();
+    LocalTensor<float> reduceRows = bufResFp32_.Get<float>();
     LocalTensor<float> tmp = bufSqFp32_.Get<float>();
 
     DataCopyExtParams copyParams = {1, 0, 0, 0, 0};
     copyParams.blockLen = tD * sizeof(float);
     DataCopyPadExtParams<float> copyPad = {false, 0, 0, 0};
 
+    // 尾块的物理行跨度仍为dimTile_，不能作为紧凑二维张量归约；
+    // 尾块保持逐行归约，完整分块才使用五行批量归约。
+    if (tD != dimTile_) {
+        LocalTensor<float> out = reduceRows[N_MAX * dimTile_];
+        for (uint32_t half = 0; half < 2; ++half) {
+            const uint32_t h0 = half * 2;
+            const uint32_t h1 = h0 + 1;
+
+            Mul(out, x2[h0 * dimTile_], x2[h0 * dimTile_], tD);
+            PipeBarrier<PIPE_V>();
+            Mul(tmp, x2[h1 * dimTile_], x2[h1 * dimTile_], tD);
+            PipeBarrier<PIPE_V>();
+            Add(out, out, tmp, tD);
+            PipeBarrier<PIPE_V>();
+            sumSqHalf[half] += ReduceSumPrecise(out, tD);
+
+            for (uint32_t o = 0; o < N_MAX; ++o) {
+                LocalTensor<float> phi = bufPhiFp32_.AllocTensor<float>();
+                uint64_t phiOffset = (uint64_t)o * phiCols_ + (uint64_t)h0 * D_ + tOff;
+                DataCopyPad(phi, phiGm_[phiOffset], copyParams, copyPad);
+                bufPhiFp32_.EnQue(phi);
+                phi = bufPhiFp32_.DeQue<float>();
+                Mul(out, x2[h0 * dimTile_], phi, tD);
+                PipeBarrier<PIPE_V>();
+                bufPhiFp32_.FreeTensor(phi);
+
+                phi = bufPhiFp32_.AllocTensor<float>();
+                phiOffset = (uint64_t)o * phiCols_ + (uint64_t)h1 * D_ + tOff;
+                DataCopyPad(phi, phiGm_[phiOffset], copyParams, copyPad);
+                bufPhiFp32_.EnQue(phi);
+                phi = bufPhiFp32_.DeQue<float>();
+                Mul(tmp, x2[h1 * dimTile_], phi, tD);
+                PipeBarrier<PIPE_V>();
+                bufPhiFp32_.FreeTensor(phi);
+
+                Add(out, out, tmp, tD);
+                PipeBarrier<PIPE_V>();
+                dotHalf[half][o] += ReduceSumPrecise(out, tD);
+            }
+        }
+        return;
+    }
+
     for (uint32_t half = 0; half < 2; ++half) {
         const uint32_t h0 = half * 2;
         const uint32_t h1 = h0 + 1;
 
-        Mul(out, x2[h0 * dimTile_], x2[h0 * dimTile_], tD);
+        // 五行依次保存{sumSqPre,dot0,dot1,dot2,dot3}，一次按行归约，
+        // 避免每个标量结果都单独触发一次Vector到Scalar的等待。
+        Mul(reduceRows, x2[h0 * dimTile_], x2[h0 * dimTile_], tD);
         PipeBarrier<PIPE_V>();
         Mul(tmp, x2[h1 * dimTile_], x2[h1 * dimTile_], tD);
         PipeBarrier<PIPE_V>();
-        Add(out, out, tmp, tD);
-        PipeBarrier<PIPE_V>();
-        sumSqHalf[half] += ReduceSumPrecise(out, tD);
+        Add(reduceRows, reduceRows, tmp, tD);
 
         for (uint32_t o = 0; o < N_MAX; ++o) {
+            LocalTensor<float> dotRow = reduceRows[(o + 1) * dimTile_];
             LocalTensor<float> phi = bufPhiFp32_.AllocTensor<float>();
             uint64_t phiOffset = (uint64_t)o * phiCols_ + (uint64_t)h0 * D_ + tOff;
             DataCopyPad(phi, phiGm_[phiOffset], copyParams, copyPad);
             bufPhiFp32_.EnQue(phi);
             phi = bufPhiFp32_.DeQue<float>();
-            Mul(out, x2[h0 * dimTile_], phi, tD);
+            Mul(dotRow, x2[h0 * dimTile_], phi, tD);
             PipeBarrier<PIPE_V>();
             bufPhiFp32_.FreeTensor(phi);
 
@@ -90,9 +134,17 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::AccumulateHalfPartia
             PipeBarrier<PIPE_V>();
             bufPhiFp32_.FreeTensor(phi);
 
-            Add(out, out, tmp, tD);
-            PipeBarrier<PIPE_V>();
-            dotHalf[half][o] += ReduceSumPrecise(out, tD);
+            Add(dotRow, dotRow, tmp, tD);
+        }
+
+        PipeBarrier<PIPE_V>();
+        LocalTensor<float> scBuf = bufScalar_.Get<float>();
+        uint32_t reduceShape[2] = {N_MAX + 1, tD};
+        ReduceSum<float, AscendC::Pattern::Reduce::AR, false>(scBuf, reduceRows, reduceShape, true);
+        PipeBarrier<PIPE_V>();
+        sumSqHalf[half] += scBuf.GetValue(0);
+        for (uint32_t o = 0; o < N_MAX; ++o) {
+            dotHalf[half][o] += scBuf.GetValue(o + 1);
         }
     }
 }
@@ -126,7 +178,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::ProcessTokenSingleAi
 
         LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
         if (useRmsMid_) {
-            LocalTensor<float> out = bufOutFp32_.Get<float>();
+            LocalTensor<float> out = bufResFp32_.Get<float>()[N_MAX * dimTile_];
             LocalTensor<float> tmp = bufSqFp32_.Get<float>();
             for (uint32_t half = 0; half < 2; ++half) {
                 const uint32_t h0 = half * 2;
@@ -195,7 +247,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::ProcessTokenSingleAi
         const uint32_t tOff = tile * dimTile_;
         LoadX2OutputTile(token, tOff, tD);
         LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
-        LocalTensor<float> hIn = bufOutFp32_.Get<float>();
+        LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
         Muls(hIn, x2, gate[0], tD);
         PipeBarrier<PIPE_V>();
         for (uint32_t n = 1; n < N_MAX; ++n) {
@@ -213,7 +265,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::ProcessTokenSingleAi
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        LocalTensor<float> hIn = bufOutFp32_.Get<float>();
+        LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
         LoadLowPrecisionTile(hInPrimeGm_, (uint64_t)token * D_ + tOff, hIn, tD);
         LoadGammaInto(bufGamma1Fp32_.Get<float>(), gamma1Gm_, tOff, tD);
         SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
