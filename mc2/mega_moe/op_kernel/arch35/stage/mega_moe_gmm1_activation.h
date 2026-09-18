@@ -704,7 +704,8 @@ __aicore__ inline void RunGmm1A8W4(
     static_assert(std::is_same_v<ElementB, __fp4e2m1x2>, "Weight must be __fp4e2m1x2");
 
     using GmmConfig = GmmKernel::Config<true, 0, ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, false,
-                                        TopkWeightsPrefetch, IsShared, false, IsWaveFlagGrained>;
+                                        TopkWeightsPrefetch, IsShared, false, IsWaveFlagGrained,
+                                        PipelineContext::USE_DYNAMIC_L1_LAYOUT>;
     auto config = GmmConfig::BuildGmm1ProblemConfig(problemShape, blockJob, Gmm1TileM);
 
     if constexpr (g_coreType == AIV) {
