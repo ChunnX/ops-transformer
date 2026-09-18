@@ -292,6 +292,18 @@ inline bool IsUseA2APath(const uint32_t rankDim, const NpuArch npuArch)
 {
     return ((npuArch == Ops::Base::DAV_3510) && (rankDim == STANDARD_CARD_4P || rankDim == EIGHT_P_8P));
 }
+
+// 量化后单 token 的消息长度（quantExpandX 第 1 维）：对齐到 512B
+inline int64_t GetQuantTokenMsgSize(int64_t H)
+{
+    constexpr int64_t kQuantBlockAlign = 32;
+    constexpr int64_t kQuantScaleAlign = 8;
+    constexpr int64_t kQuantBufAlign = 512;
+    auto ceilAlign = [](int64_t a, int64_t b) { return (a + b - 1) / b * b; };
+    return ceilAlign(static_cast<int64_t>(ceilAlign(H, kQuantBlockAlign) +
+                                          ceilAlign(H, kQuantScaleAlign) / kQuantScaleAlign * sizeof(float)),
+                     kQuantBufAlign);
+}
 } // namespace mc2tiling
 
 #endif
