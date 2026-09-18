@@ -56,6 +56,27 @@ struct CoreAssignment {
     uint32_t rankGroupSize;
 };
 
+struct TokenRangeAssignment {
+    uint32_t start;
+    uint32_t count;
+};
+
+// 余数感知的连续 token 区间分配(与 GetCoreAssignment 同构的分配风格):
+// 前 (numTokens % totalBlocks) 个核各多分 1 个 token, 保证全部核参与且核间负载差 <= 1
+__aicore__ inline TokenRangeAssignment GetTokenRangeAssignment(uint32_t totalBlocks, uint32_t aivId,
+                                                                uint32_t numTokens)
+{
+    TokenRangeAssignment result{0, 0};
+    if (totalBlocks == 0U) {
+        return result;
+    }
+    uint32_t base = numTokens / totalBlocks;
+    uint32_t remainder = numTokens % totalBlocks;
+    result.start = aivId * base + ((aivId < remainder) ? aivId : remainder);
+    result.count = base + ((aivId < remainder) ? 1U : 0U);
+    return result;
+}
+
 __aicore__ inline CoreAssignment GetCoreAssignment(uint32_t totalBlocks, uint32_t aivId, uint32_t numRanks)
 {
     CoreAssignment result{numRanks, 0, 0};

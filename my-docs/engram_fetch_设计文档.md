@@ -100,8 +100,7 @@ engram 全局按行编号（global entry index），构成全局索引空间。
 ```
 
 - kernel 侧通过 `comm_context` 拿到 rankId/rankSize/各 rank 表基址/通道句柄；
-- 推理 local 命中读 `commBuffer[rankId]`；训练 local 读 `localStorageAddr`（int64 标量张量，同为
-  host pinned 的设备映射地址）。
+- local（仅推理）命中读 `commBuffer[rankId]`（host pinned 注册内存的设备映射地址）。
 
 ---
 
@@ -142,7 +141,8 @@ EngramFetchTilingFunc / EngramFetchGradTilingFunc
   ├─ 1. CheckInterfaceTensor：tensor ptr/dtype/shape/format 校验
   │     （fetch：hidden 128 对齐、fetched (T,H)、perm (T,)、numRecv (1,)…；
   │       grad：sendCounts.dim0 % 8 == 0、rankSize = dim0/8 ≤ 1024、
-  │             numEntriesPerRank×rankSize ≤ INT32_MAX（local 模式仅校验自身，§9.5））
+  │             numEntriesPerRank×rankSize ≤ INT32_MAX；
+  │       fetch：with_grad=1 且 fetch_mode=1 → 直接 GRAPH_FAILED，训练不支持 local））
   ├─ 2. SetPlatformInfo：aivNum ← GetCoreNumAiv；blockDim ← CalcTschBlockDim(aivNum, 0, aivNum)
   │     （fetch/wait/grad 一致：纯 AIV 启动，AIC=0）
   ├─ 3. SetTilingData：填充下表字段（含 ubSize ← GetCoreMemSize(UB)）
@@ -173,8 +173,8 @@ EngramFetchTilingFunc / EngramFetchGradTilingFunc
 
 | 字段 | 类型 | 来源 | 用途 |
 |---|---|---|---|
-| `numTokens` | int64 | gradFetched.dim0 | UnsortGrad 的行数（local 模式闲置） |
-| `numEntriesPerRank` | int32 | attr | 排序 maxValue（mode=0 需 ×W ≤ INT32_MAX；mode=1 即全表行数） |
+| `numTokens` | int64 | gradFetched.dim0 | UnsortGrad 的行数 |
+| `numEntriesPerRank` | int32 | attr | 排序 maxValue（×W ≤ INT32_MAX） |
 | `hiddenDim` / `hiddenBytes` | int64 | gradFetched.dim1 × dtypeSize | 行宽；gradBuf/cast/accum 尺寸推导 |
 | `aivNum` | uint32 | 平台 | per-core scratch 维度 |
 | `ubSize` | uint64 | 平台 | sortPool UB 预算 |
@@ -193,9 +193,9 @@ fetch（`engram_fetch_tiling_key.h`，`ASCENDC_TPL_UINT_DECL(EngramFetchMode, 8b
 | 0 | 0 | 0 `ENGRAM_FETCH_DEFAULT_MODE` | EngramFetchArch35 |
 | 1 | 0 | 1 `ENGRAM_FETCH_TRAIN_MODE` | EngramFetchTrainArch35 |
 | 0 | 1 | 2 `ENGRAM_FETCH_LOCAL_MODE` | **EngramFetchLocalArch35（新）** |
-| 1 | 1 | 3 `ENGRAM_FETCH_TRAIN_LOCAL_MODE` | **EngramFetchTrainLocalArch35（新）** |
+| 1 | 1 | — | **拒绝**（tiling 报错：local 仅支持推理） |
 
-grad（`engram_fetch_grad_tiling_key.h`）：0 = DEFAULT（不变）/ 1 = **LOCAL（新）**。
+grad（`engram_fetch_grad_tiling_key.h`）：0 = DEFAULT（**不做任何修改**）。
 
 kernel 入口按 `if constexpr (EngramFetchMode == …)` 编译期裁剪，同一 `.o` 内含全部 4（或 2）个
 实例（二进制 `kernelList` 中的 `_0.._3` / `_0.._1`，见 §14.2 编译核验）。
@@ -272,7 +272,7 @@ workspace 计算使用该值（偏大约 8 倍，功能无害）。grad tiling �
 
 UB 预算：`availableUb = ubSize − (区1..7) − 8KB(UB_RESERVED_SIZE)`；sf 路径共用 relayQue（sfBytes =
 numSfPacks×sfElemSize ≪ 32KB）。**所有 buffer 以 32B 对齐分配**（TBuf 分配器保证），向量比较段按
-256B 对齐补齐（`ALIGNED_LEN_256`）——见 §10.3。
+256B 对齐补齐（`ALIGNED_LEN_256`）——见 §10.2。
 
 ### 5.3 分核策略（`engram_fetch_arch35.h:291-296`，`GetCoreAssignment`）
 
@@ -296,7 +296,7 @@ ReadNbi 写入 `hcommBatchBuf_` 的 WQE 累积至 `ENGRAM_BATCH_CAPACITY=128` �
 
 ### 6.1 五阶段流水（核内 `SyncAll<true>` 全核栅栏分隔）
 
-1. `CountAndScatterPhase`：统计每 owner rank 的 token 数 → sendCounts（32B 步长布局，见 §10.3-2）；
+1. `CountAndScatterPhase`：统计每 owner rank 的 token 数 → sendCounts（32B 步长布局，见 §10.2-2）；
 2. `ComputeSdispls`：send 侧偏移表（workspace 区 1）；
 3. `GatherAndSortPhase`：按 rank 分组重排 indices → sortedIndices + perm（分组位置→原始位置）；
 4. `SendCountPhase` + `ExchangeIndices`：a2a 交换索引请求（4 槽位窗口 + 读写计数器背压，
@@ -352,7 +352,7 @@ maxTokensPerSlot  = tokenSlotSize / hiddenBytes               // 槽容量（行
 ```
 
 槽寻址：indices 槽 `(rank, slot)` 交错排列 → 相邻槽属于**不同 rank**，多 sender 并发写天然错开
-32B 行（§10.3-3）；token 槽同理按 (rank, group) 交错。
+32B 行（§10.2-3）；token 槽同理按 (rank, group) 交错。
 
 ### 6.4 本地 workspace 逐字节布局（`InitWorkspaceLayout`，`engram_fetch_train_arch35.h:496-541`）
 
@@ -489,7 +489,7 @@ unique 阶段以 companion 对齐梯度行。
 
 ---
 
-## 8. 新需求：arch35 全量本 NPU 模式（fetch_mode=1）
+## 8. 新需求：arch35 全量本 NPU 模式（fetch_mode=1，仅推理）
 
 ### 8.1 需求描述
 
@@ -497,6 +497,10 @@ arch35（ascend950）上支持**将全局数据整表放到每个 NPU 上**：
 
 - 之前：全局数据切片分发到不同 NPU，取任意数据需走跨 NPU 通信（RDMA / a2a）；
 - 现在：**每个 NPU 上都有全局全量表**，任意 index 均在本卡本地，**取数完全不需要跨 NPU 通信**。
+
+**适用范围：仅推理场景**。训练场景（`with_grad=True`）不支持 local 模式 ——
+`fetch_mode=1 + with_grad=1` 组合在 tiling（`OP_TILING_CHECK` 报错）与 PTA 构造函数
+（`torch._check` 报错）两级显式拒绝；engram_fetch_grad 算子不做任何修改。
 
 ### 8.2 动机与适用场景
 
@@ -513,8 +517,8 @@ arch35（ascend950）上支持**将全局数据整表放到每个 NPU 上**：
 - **默认行为不变**：不传新参数时仍走跨 NPU 通信（fetch_mode=0），完全后向兼容；
 - `engram_write` 语义随模式变化：mode=1 时写入的是**全量表**（storage.size(0) = 全局 entry 数，
   此时 `num_entries_per_rank` attr 承载"本 rank 表行数 = 全局行数"）；
-- 训练反向：grad 聚合的 `localEntry = entry − rankId×numEntriesPerRank` 在 mode=1 下必须改为
-  `localEntry = entry`，排序 maxValue 相应收缩，否则索引换算错误。
+- **训练不支持 local**：`with_grad=True + fetch_mode=1` 在 PTA 构造与算子 tiling 两级拒绝，
+  grad 算子保持基线实现不动。
 
 ---
 
@@ -523,7 +527,21 @@ arch35（ascend950）上支持**将全局数据整表放到每个 NPU 上**：
 ### 9.1 总体思路
 
 新增算子属性 `fetch_mode`（int，0=切片跨 NPU（默认）/ 1=全量本 NPU），经 tiling key 派生
-4 个 fetch 内核实例 + 2 个 grad 内核实例（§4.3）。
+3 个 fetch 内核实例（DEFAULT / TRAIN / LOCAL，§4.3）；**engram_fetch_grad 不做任何修改**
+（训练场景不支持 local 模式）。
+
+推理两个内核（sliced 的 `EngramFetchArch35` 与 local 的 `EngramFetchLocalArch35`）抽公共基类
+**`EngramFetchInferBase`**（新文件 `engram_fetch_infer_base_arch35.h`）实现代码复用：
+
+| 基类成员/方法 | 说明 |
+|---|---|
+| `EngramFetchSyncFunc<event>` | 统一事件同步模板（原先 sliced/local 两份重复定义） |
+| `InitInferBase()` | GM 输入指针 / ctx 解析（rankId/rankSize）/ tiling 解析 / relayQue_ 初始化 |
+| `InitIndicesBuffer(usedUb, bytesPerIndice)` | indicesBatchSize_ 推导 + indicesBuf_ 分配（按模式传入各自 UB 占用） |
+| `CopyIndicesToUb` / `GatherSf` / `LocalCopySlice` / `HasSf` | 逐字节相同的公共数据面原语 |
+| 公共成员 | indicesGM_/fetchedGM_/sfTableGM_/fetchedSfGM_/ctxPtr_/tiling 字段/relayQue_/indicesBuf_ 等 |
+
+基类头**不 include hcomm/hccl**，local 内核保持零 hcomm 依赖。
 
 ### 9.2 推理 local 内核（EngramFetchLocalArch35）
 
@@ -541,14 +559,21 @@ for batch in indices (UB 容量分批):
 - 不 Init Hcomm、不读通道、不调用 wait（kernel 完成即数据可见）；
 - 越界 entry 跳过（沿用训练内核的防御性风格）。
 
-**分核策略（token 连续区间分片）**：
+**分核策略（余数感知 token 连续区间分配，`GetTokenRangeAssignment`）**：
 
 ```
-totalPerCore = ceil(T / totalBlocks)
-start = aivId × totalPerCore; end = min(start + totalPerCore, T)   // 每核独占一段连续 token
+base      = T / totalBlocks;  remainder = T % totalBlocks
+start(c)  = c × base + min(c, remainder)
+count(c)  = base + (c < remainder ? 1 : 0)      // 前 remainder 个核各多分 1 个 token
 ```
 
-**UB 逐字节布局（`engram_fetch_local_arch35.h:124-136`）**：
+- 与 sliced 模式 `GetCoreAssignment` 的分配风格同构（余数感知，核间负载差 ≤ 1）；
+- **全部 AIV 核参与**：朴素 `ceil` 切分在 `T % B` 较小时会使近半数核空转
+  （如 T=47、B=46：ceil 法仅 24 核工作，余数感知 46 核全参与）；
+- 每核独占一段连续 token，fetched 写按核分片连续，GM 写流天然分散；
+- `count==0` 的核（仅出现在 T < B 时）直接空转返回。
+
+**UB 逐字节布局（`engram_fetch_local_arch35.h`，基类 `InitInferBase` + `InitIndicesBuffer`）**：
 
 | # | buffer | 大小公式 | 用途 |
 |---|---|---|---|
@@ -560,76 +585,23 @@ availableUb     = ubSize − 64KB − 8KB
 indicesBatchSize = min(T, availableUb / 4)
 ```
 
-### 9.3 训练 local 内核（EngramFetchTrainLocalArch35）
+### 9.3 训练 local 内核 —— 已移除
 
-产出与 TRAIN_MODE **完全相同的 6 个输出**（PTA/反向契约不变），但全部本地生成、零通信：
+按需求收窄，**训练场景不支持 local 模式**：`EngramFetchTrainLocalArch35` 及其 tiling key
+（原 key 3 `ENGRAM_FETCH_TRAIN_LOCAL_MODE`）已删除；tiling 对 `with_grad=1 + fetch_mode=1`
+直接报参数错（§4.3）。
 
-| 输出 | local 模式取值 | 说明 |
-|---|---|---|
-| fetched | `table[indices[t]]` | 纯本地 gather（表基址 localStorageAddr） |
-| perm | 恒等置换 `perm[t]=t` | 分组序 == 原始 token 序（ArithProgression 向量生成） |
-| sendCounts | `[me]=T`，其余 0（32B 步长布局） | 我的 token 全部"发给我自己" |
-| recvCounts | `[me]=T`，其余 0 | 我只服务我自己的请求 |
-| recvLocalEntry | `= indices`（token 序，批量 DataCopy 直写） | 收到的请求即本卡 indices |
-| numRecv | `= T` | |
+### 9.4 反向 grad local 分支 —— 已移除
 
-**分核策略（token 连续区间分片 + 0 号核独写计数器）**：fetched/perm/recvLocalEntry 按 §9.2 区间
-分片并行；sendCounts/recvCounts/numRecv 由 **aivId==0 独占写**（写者唯一，无需跨核同步）。
-无窗口布局、无状态位、无计数器、无 SyncAll 依赖。
-
-**UB 逐字节布局（`engram_fetch_local_arch35.h:327-349`）**：
-
-| # | buffer | 大小公式 | 用途 |
-|---|---|---|---|
-| 1 | `pingBuf_` | 32KB | 拷贝乒乓左半 |
-| 2 | `pongBuf_` | 32KB | 拷贝乒乓右半（MTE2/MTE3 事件对隔离） |
-| 3 | `tempBuf_` | Align32(W×8×4B) | sendCounts(W×8)/recvCounts(W)/numRecv(1) 写出暂存（零填+置位） |
-| 4 | `indicesBuf_` | Align32(batch×4B) | 当前批 indices |
-| 5 | `permBuf_` | Align32(batch×4B) | ArithProgression 恒等 perm |
-
-```
-availableUb      = ubSize − 64KB − tempBufSize − 8KB
-indicesBatchSize = min(T, availableUb / 8)                  // indices+perm 各 4B
-```
-
-**乒乓拷贝事件链（`LocalCopySlice`，`engram_fetch_local_arch35.h:469-509`）**：
-
-```
-tile k (bufIdx = k%2):
-  [k≥2] WaitFlag(MTE3_MTE2, bufIdx)         // 等该 buffer 上一次 MTE3 完成
-  DataCopyPad(UB[bufIdx] ← GM src)          // MTE2
-  SetFlag/WaitFlag(MTE2_MTE3, bufIdx)       // 拷入完成 → 可发出
-  DataCopyPad(GM dst ← UB[bufIdx])          // MTE3
-  SetFlag(MTE3_MTE2, bufIdx)                // 发出完成 → 下一轮可复用
-尾: 等最后两个 tile 的 MTE3_MTE2
-```
-
-### 9.4 反向 grad local 分支
-
-grad 收到上述"退化上下文"后：
-
-1. **跳过** InitFlagsAndDispls / ClearWinCounters / CrossRankBarrier / UnsortGrad / ExchangeGrad
-   （零窗口访问、零跨核 rank 交互；workspace 区 1-6 闲置，§7.4）；
-2. `recvGradGM_ := gradFetchedGM_`（梯度已在"接收序"= token 序，免拷贝）；
-3. `UniqueScatterAdd` 复用：entries = recvLocalEntry(=indices)，companion 对齐 token 序；
-   - 排序 maxValue：`numEntriesPerRank`（mode=1 下即全表行数），不再乘 rankSize；
-   - **`localEntry = entry`**（`SetEntryOffset(0)`，去掉 `rankId×numEntriesPerRank` 偏移）；
-4. 保留 `SyncAll<true>` ×2（InitCompanion 后 + CountUniquesParallel 后），保证 coreStart/segCount
-   GM 可见性（替代正常路径 FinishExchangeGrad 的收尾同步）；numRecv 读取方式与 DEFAULT 一致
-   （DCCI + GetValue）。
-
-> 正确性：mode=1 下每卡持全量表副本，本卡梯度只聚合本卡 token 覆盖的 entry，产出稀疏
-> (gradUnique, uniqueLocalEntry)；跨卡一致性由上层优化器按副本归约（与 DP 梯度 all-reduce 同语义），
-> 不在本算子范围内。
+engram_fetch_grad **整体保持基线实现**（不做任何修改）：不支持 local 模式，反向仅服务
+sliced 训练前向（fetch_mode=0）产生的反向上下文。
 
 ### 9.5 tiling / workspace 差异
 
-- fetch local（推理/训练）：workspace 仅 `SYSTEM_NEED_WORKSPACE(16MB)`（无 a2a 区域）；
+- fetch local（仅推理）：workspace 与推理默认路径一致，仅 `SYSTEM_NEED_WORKSPACE`（无 a2a 区域）；
 - 其余校验（dtype/shape/format/hidden 128 对齐等）与既有路径一致；
-- `fetch_mode` 越界（∉{0,1}）报参数错；
-- grad local：workspace 保留原计算（区 1-6 闲置但无害，避免 tiling 双路径）；
-- grad tiling 的 `rankSize×numEntriesPerRank ≤ INT32_MAX` 上限校验在 local 模式下放宽为
-  `numEntriesPerRank ≤ INT32_MAX`（entry 即全表行号，无 rank 偏移组合，`engram_fetch_grad_tiling.cpp:588-596`）。
+- `fetch_mode` 越界（∉{0,1}）或 `with_grad=1 且 fetch_mode=1` 均报参数错；
+- grad tiling 无任何改动。
 
 ---
 
@@ -640,26 +612,13 @@ grad 收到上述"退化上下文"后：
 | 内核 | 划分维度 | 公式 | 写者唯一性 |
 |---|---|---|---|
 | 推理 DEFAULT | **owner rank**（连续分组/跨步） | `GetCoreAssignment` / `ownerRank ≡ aivId (mod totalBlocks)` | fetched 行：本地核写本地命中、RDMA 引擎直写远端命中（每行单写者） |
-| 推理 LOCAL | **token 连续区间** | `[aivId×ceil(T/B), min(…))` | fetched/sf 行每行单写者 |
+| 推理 LOCAL | **token 连续区间（余数感知）** | `GetTokenRangeAssignment`：base=T/B，前 T%B 核多 1 个（核间差 ≤1，全核参与） | fetched/sf 行每行单写者 |
 | 训练 DEFAULT | **rank×tokenGroup 交错** | `myOwnerRank = aivId%rankCores; myTokenGroup = aivId/rankCores`；sender/receiver/flag 三角色 | 窗口槽按 (rank, slot/group) 交错独占；fetched 由 receiver 按槽写 |
-| 训练 LOCAL | **token 连续区间 + 0 号核写计数** | 同推理 LOCAL；counters 仅 aivId==0 | 6 输出全部单写者（§10.2） |
 | grad DEFAULT | **sender(rank 流)/receiver/flag** | `sendersPerRank×W` 发送流；unique 阶段按 coreStart/segCount 分段 | gradUnique 原子加（FP32 AtomicAdd 同行多写者聚合）；uniqueLocalEntry 去重后单写 |
-| grad LOCAL | 同 grad DEFAULT 的 unique 分段 | coreStart/segCount 分段并行 | 同上 |
 
-### 10.2 训练 local 写者唯一性矩阵（无锁无栅栏的依据）
+（训练 LOCAL / grad LOCAL 已随"local 仅推理"收窄移除。）
 
-| 输出 | 写者 | 依据 |
-|---|---|---|
-| fetched[t] | 持有 token 区间含 t 的核 | 区间不相交 |
-| perm[t] | 同上 | 同上 |
-| recvLocalEntry[t] | 同上 | 同上 |
-| sendCounts[r] (r∈[0,W)) | aivId==0 | 独占 |
-| recvCounts[r] | aivId==0 | 独占 |
-| numRecv[0] | aivId==0 | 独占 |
-
-→ 训练 local 全程无需 SyncAll / 原子操作 / 锁；唯一跨核依赖是 grad 阶段读取（跨算子，stream 顺序保证）。
-
-### 10.3 bank 冲突 / 伪共享规避机制清单
+### 10.2 bank 冲突 / 伪共享规避机制清单
 
 1. **UB 32B 对齐基线**（`UB_ALIGN=32`，所有 `InitBuffer` 尺寸经 `Ceil(…, 32B)` 向上取整）：
    UB 访存通路以 32B 为粒度交错，全部 buffer 起址 32B 对齐消除跨 bank 截断；MTE `DataCopy`
@@ -671,8 +630,8 @@ grad 收到上述"退化上下文"后：
    写相邻槽天然落在不同 32B 行；`indicesSlotSize/tokenSlotSize` 以 32B 为单位整除，槽内无跨行残片。
 4. **向量段 256B 对齐补齐**（`ALIGNED_LEN_256`，`compareCntMax`）：Div/Compare/前缀扫等向量指令
    按 256B 对齐段处理（尾部 mask 过滤 dummy 元素），保证向量通路满宽访问。
-5. **双缓冲/乒乓**：`relayQue`（RELAY_BUFFER_NUM=2）、grad `castFp32Buf`/`accumBuf`
-   （ACCUM_BUF_COPIES=2）、train-local `ping/pong`（独立 MTE2_MTE3 / MTE3_MTE2 事件对）——
+5. **双缓冲**：`relayQue`（RELAY_BUFFER_NUM=2，推理 sliced/local 与 grad 共用基类原语）、
+   grad `castFp32Buf`/`accumBuf`（ACCUM_BUF_COPIES=2）——
    MTE2（读入）与 MTE3（写出）始终错开不同 buffer，既隐藏搬运时延，又避免同 buffer 读写
    的 bank 争用与数据冒险。
 6. **GM 行 128B 对齐**（attr 校验 hiddenSize % 128 == 0）：权重行/fetched 行起址跨 bank 均匀分布，
@@ -688,17 +647,19 @@ grad 收到上述"退化上下文"后：
 
 ```
 aclnnEngramFetchGetWorkspaceSize(..., int64_t withGrad, int64_t fetchMode, uint64_t*, aclOpExecutor**)
-aclnnEngramFetchGradGetWorkspaceSize(..., int64_t commBufferSize, int64_t fetchMode, uint64_t*, aclOpExecutor**)
 ```
+
+- aclnn 层新增 `CheckFetchMode`：`fetch_mode ∉ [0,1]` 或 `with_grad=1 且 fetch_mode=1` 直接返回
+  `ACLNN_ERR_PARAM_INVALID`（快速失败，亦是 UT 可观测的拒绝层）；
+- engram_fetch_grad 的 aclnn 接口**不变**（无 fetchMode 参数）。
 
 ### 11.2 属性定义
 
 ```
-EngramFetch      .Attr("fetch_mode").AttrType(OPTIONAL).Int()   // 0 sliced(默认) / 1 local
-EngramFetchGrad  .Attr("fetch_mode").AttrType(OPTIONAL).Int()
+EngramFetch      .Attr("fetch_mode").AttrType(OPTIONAL).Int()   // 0 sliced(默认) / 1 local(仅推理)
 ```
 
-attr 索引：fetch 侧 `fetch_mode` 为第 6 个 attr（index 5），grad 侧第 3 个（index 2），
+attr 索引：fetch 侧 `fetch_mode` 为第 6 个 attr（index 5），
 与 tiling 侧 `ATTR_FETCH_MODE_INDEX` 常量对齐（由 def 文件自动生成 aclnnInner 头）。
 
 ---
@@ -708,23 +669,25 @@ attr 索引：fetch 侧 `fetch_mode` 为第 6 个 attr（index 5），grad 侧�
 `ElasticBuffer` 新增 `fetch_mode` 参数，**默认 0 = 跨 NPU 通信**：
 
 ```python
-ElasticBuffer.FETCH_MODE_SLICED = 0   # 切片 + 跨 NPU 通信（默认，行为与历史版本完全一致）
-ElasticBuffer.FETCH_MODE_LOCAL  = 1   # 全量表冗余到每个 NPU，取数纯本地
+ElasticBuffer.FETCH_MODE_SLICED = 0   # 切片 + 跨 NPU 通信（默认，推理/训练，行为与历史完全一致）
+ElasticBuffer.FETCH_MODE_LOCAL  = 1   # 全量表冗余到每个 NPU，取数纯本地（仅推理）
 
 buf = ElasticBuffer(group, num_cpu_bytes=get_engram_storage_size_hint(num_entries_full, hidden),
-                    fetch_mode=ElasticBuffer.FETCH_MODE_LOCAL)
+                    fetch_mode=ElasticBuffer.FETCH_MODE_LOCAL)   # 仅推理
 buf.engram_write(full_table)          # mode=1 写入全量表
 w = buf.engram_fetch(indices)()       # 纯本地 gather；mode=1 下 wait 被短路（无 RDMA 在途）
-# 训练： with_grad=True 时反向 engram_fetch_grad 自动走 local 分支
+# with_grad=True 与 fetch_mode=1 组合: 构造函数直接报错（训练不支持 local）
 ```
 
-- op schema：`engram_fetch(..., int dtype, int fetch_mode)`、
-  `engram_fetch_train(..., int rank_size, int fetch_mode)`（PrivateUse1 + Meta 同步适配）；
+- op schema：仅推理接口 `engram_fetch(..., int dtype, int fetch_mode)` 追加 `int fetch_mode`
+  （PrivateUse1 + Meta 同步适配）；`engram_fetch_train` / `engram_fetch_grad` 的 schema **不变**；
+- 构造函数：`with_grad=True + fetch_mode=1` → `torch._check` 报错（训练不支持 local）；
 - csrc：构造函数追加 `fetchMode`（默认 0，pybind 关键字默认值保持向后兼容）；
   - mode=1 时 context 构建**跳过通道获取与远端地址交换**（不依赖任何卡间 RDMA 链路），
-    仅保留 host pinned 注册 + 本地基址；with_grad 仍查询 HCCL buffer size（attr 校验需要）；
+    仅保留 host pinned 注册 + 本地基址；
   - `EngramWrite` 的 INT32 上限校验按模式区分（mode=1：行数 ≤ INT32_MAX）；
-  - 推理 mode=1 的 wait 调用在 Python 层短路，不发 aclnnEngramFetchWait。
+  - 推理 mode=1 的 wait 调用在 Python 层短路，不发 aclnnEngramFetchWait；
+  - `EngramFetchTrain`/`EngramFetchGrad` 不感知 fetchMode（训练恒为 sliced）。
 
 ---
 
@@ -732,13 +695,14 @@ w = buf.engram_fetch(indices)()       # 纯本地 gather；mode=1 下 wait 被�
 
 | 项 | 约束 |
 |---|---|
-| hidden_size | 128 对齐（两模式一致；亦是 §10.3-6 的行对齐依据） |
+| hidden_size | 128 对齐（两模式一致；亦是 §10.2-6 的行对齐依据） |
 | indices | int32 1D，NPU 张量；mode=1 取值域 [0, 全局 entry 数) |
-| 训练 num_max_tokens_per_rank | ≥ numTokens（local 模式沿用） |
-| sendCounts 32B 步长 | fetch↔grad 接口契约，local 模式保持同一布局 |
+| 训练 num_max_tokens_per_rank | ≥ numTokens |
+| **训练 + local** | **不支持**：`with_grad=1 + fetch_mode=1` 在 tiling 与 PTA 构造两级拒绝 |
+| sendCounts 32B 步长 | fetch↔grad 接口契约（sliced 训练路径） |
 | 平台 | 仅 ascend950（arch35）；内核需 ASC_DEVKIT>9.0 且 HCOMM>9.0 |
 | rankSize | [2, 1024]（local 模式同样要求组内 ≥2 卡，走 HCCL 组构建） |
-| 兼容性 | 不传 fetch_mode ⇔ fetch_mode=0，aclnn/PTA 行为与历史完全一致（eager；序列化 graph 因 schema 追加参数不兼容旧图） |
+| 兼容性 | 不传 fetch_mode ⇔ fetch_mode=0，aclnn/PTA 行为与历史完全一致（eager；序列化 graph 因推理 schema 追加参数不兼容旧图） |
 
 ---
 
@@ -746,35 +710,48 @@ w = buf.engram_fetch(indices)()       # 纯本地 gather；mode=1 下 wait 被�
 
 ### 14.1 本机环境结论
 
-- 本机为 A3（ascend910_93）服务器：engram_fetch 为 950 专属算子，**无法本机运行 kernel 级功能验证**
-  （执行器无法匹配 950 kernel 二进制；host 侧 tiling 链路经 UT 的 950 平台 mock 全覆盖，见 14.2）；
-- 编译验证环境：**CANN 9.2.0 原生环境**（ASC_DEVKIT/HCOMM 9.2）。
-  > 早期验证曾需要 CANN 9.1.0 + asc-comm 开发补丁（MakeBatchHandle/BatchCommit 批量 Hcomm API）；
-  > 该 API 已进入 9.2.0 主线，当前无需补丁。
+- 本机为 A2（ascend910B2，8 卡）服务器：engram_fetch 为 950 专属算子，**无法本机运行 kernel 级功能验证**
+  （本机 SoC 不在算子 AddConfig 列表；但安装算子包后 op_api UT 可在 950 二进制 + 本机执行器下
+  完成 GetWorkspaceSize 全链路验证，见 14.2）；
+- 编译验证环境：**CANN 9.1 + asc-comm 开发补丁 overlay**（`~/tmp/cann950`，`source ~/tmp/env950.sh`）。
+  > 现有 CANN 9.1 的 `adv_api/hcomm` 尚无 `MakeBatchHandle/BatchCommit` 批量 Hcomm API，
+  > 由 `/home/qianlong/workspace/cann/asc-comm` 的补丁安装提供（sliced 内核的批量 RDMA 读依赖）。
 
-### 14.2 已完成的编译/UT 验证（2026-09-16 复验）
+### 14.2 已完成的编译/UT 验证（2026-09-18 复验，本轮"local 仅推理 + 多核分核修复"重构后）
 
 | 项 | 命令 | 结果 |
 |---|---|---|
-| arch35 全量出包 | `bash build.sh --pkg --soc=ascend950 --module=mc2 --ops=engram_fetch,engram_fetch_grad,engram_fetch_wait -j16` | ✅ exit=0，`build_out/cann-ops-transformer-custom_linux-aarch64.run` 生成（含 19 个 kernel .o） |
-| kernel 实例覆盖 | 二进制 `kernelList` 解析 | ✅ EngramFetch 每 dtype 含 **4 实例**（`_0.._3` = DEFAULT/TRAIN/LOCAL/TRAIN_LOCAL，5 dtype）；EngramFetchGrad 含 **2 实例**（`_0/_1` = DEFAULT/LOCAL，bf16/fp16/fp32）；EngramFetchWait 5 dtype |
-| op_api UT 编译+运行 | `bash build.sh --opapi_test --noexec --soc=ascend950 --module=mc2 --ops=engram_fetch,engram_fetch_grad -j16` 后 `transformer_op_api_ut --gtest_filter='*Engram*'` | ✅ **15/15 通过**（nullptr 校验 / local success / **invalid fetch_mode 拒绝**；host 侧 aclnn→tiling→tiling key→workspace 全链路在 950 平台 mock 下验证） |
-| PTA schema | python 导入 + `torch.library.define` | ✅ 4 个 schema（含新增 `int fetch_mode`）全部解析注册成功；`FETCH_MODE_SLICED/LOCAL` 常量可用 |
+| arch35 全量出包 | `bash build.sh --pkg --soc=ascend950 --module=mc2 --ops=engram_fetch,engram_fetch_grad,engram_fetch_wait -j16` | ✅ exit=0，`build_out/cann-ops-transformer-custom_linux-aarch64.run` 生成 |
+| kernel 实例覆盖 | 二进制 `kernelList` 解析 | ✅ EngramFetch 5 dtype × **3 实例**（`_0.._2` = DEFAULT/TRAIN/LOCAL）；EngramFetchGrad 9 dtype × **1 实例**（DEFAULT，基线还原）；EngramFetchWait 5 dtype × 1 |
+| op_api UT 编译+运行 | `bash build.sh --opapi_test --noexec --soc=ascend950 --module=mc2 --ops=engram_fetch,engram_fetch_grad -j16`；安装 `.run` 至 overlay CANN 并 `source ~/tmp/cann950/vendors/custom_transformer/bin/set_env.bash` 后运行 `transformer_op_api_ut --gtest_filter='*Engram*'` | ✅ **14/14 通过**：推理 sliced/local、训练 sliced 成功；**train+local 与 fetch_mode=2 被 aclnn 层拒绝（ACLNN_ERR_PARAM_INVALID）**；nullptr 校验；grad 基线用例 |
+| PTA 校验 | python 导入 + 构造参数检查 | ✅ `with_grad=True + fetch_mode=1` 构造拒绝；`fetch_mode=2` 拒绝；`with_grad+sliced` / `infer+local` 通过参数校验；schema 仅推理接口含 `fetch_mode` |
+
+> **UT 环境备注**：op_api UT 的 success 用例要求执行器能找到 ascend950 二进制——必须先把 `.run`
+> 安装到 overlay CANN（`--install-path=$HOME/tmp/cann950`）并 source 其
+> `vendors/custom_transformer/bin/set_env.bash`，否则执行器报 161001（历史"15/15"结论系未装包时的
+> 误判：当时"拒绝"用例因 161001 巧合通过，成功用例实则全部失败）。attr 拒绝在 aclnn 层
+> （`aclnn_engram_fetch.cpp` 的 `CheckFetchMode`）即可观测；tiling 层 `OP_TILING_CHECK` 为运行时兜底。
 
 ### 14.3 用户在 arch35（950）环境的功能验证建议
 
+端到端用例已提供于 `examples/mc2/engram_fetch_e2e/`（`bash run_example.sh` 一键跑两种模式）：
+
 1. mode=1 推理：W 卡各写同一全量表 → fetch 随机 indices → 与 CPU golden 逐行比对（含 sf 路径）；
-2. mode=1 训练：fetched 前向比对 + gradFetched 回传 → gradUnique/uniqueLocalEntry 与参考
-   scatter-add（按 indices 去重求和）比对；perm 应为恒等、sendCounts/recvCounts 仅 [me]=T、numRecv=T；
+2. mode=0 训练（sliced）：fetched 前向比对 + gradFetched 回传 → gradUnique/uniqueLocalEntry 与参考
+   scatter-add（按 indices 去重求和）比对；
 3. 回归：mode=0（不传 fetch_mode）行为与基线一致；
-4. 边界：空 indices、单 entry 表、indices 全部越界（应全跳过）、大表（行数接近 INT32_MAX）。
+4. 拒绝路径：`with_grad=True + fetch_mode=1` 构造即报错；边界：空 indices、单 entry 表、
+   indices 全部越界（应全跳过）、大表（行数接近 INT32_MAX）。
 
 ### 14.4 关键环境备注（950 编译复现方法）
 
 ```bash
 # 1) 依赖（首次构建网络受限时手动补齐子模块）
 cd third_party/ops-tensor && git submodule update --init --recursive --depth=1
-# 2) 编译（CANN ≥ 9.2.0 原生环境，无需额外补丁）
-source ~/Ascend/cann-9.2.0/bin/setenv.bash
+# 2) 编译（CANN 9.1 + asc-comm 补丁 overlay 环境）
+source ~/tmp/env950.sh
 bash build.sh --pkg --soc=ascend950 --module=mc2 --ops=engram_fetch,engram_fetch_grad,engram_fetch_wait -j16
+# 3) op_api UT 前置: 安装算子包到 overlay CANN 并 source 环境后再运行
+cd build_out && bash cann-ops-transformer-custom_linux-aarch64.run --install-path=$HOME/tmp/cann950
+source ~/tmp/cann950/vendors/custom_transformer/bin/set_env.bash
 ```

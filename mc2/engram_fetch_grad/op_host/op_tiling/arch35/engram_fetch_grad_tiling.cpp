@@ -46,10 +46,6 @@ constexpr uint32_t OUT_NUM_UNIQUE = 2U;
 
 constexpr uint32_t ATTR_NUM_ENTRIES_PER_RANK = 0U;
 constexpr uint32_t ATTR_COMM_BUFFER_SIZE = 1U;
-constexpr uint32_t ATTR_FETCH_MODE = 2U;
-
-constexpr int64_t ENGRAM_FETCH_GRAD_MODE_SLICED = 0;
-constexpr int64_t ENGRAM_FETCH_GRAD_MODE_LOCAL = 1;
 
 constexpr uint32_t DIM_ONE = 1U;
 constexpr uint32_t DIM_TWO = 2U;
@@ -526,8 +522,7 @@ static ge::graphStatus SetPlatformInfo(gert::TilingContext *context, EngramFetch
 }
 
 static ge::graphStatus SetTilingData(const gert::TilingContext *context, EngramFetchGradTilingData &tilingData,
-                                     int64_t numTokens, uint32_t rankSize, int64_t totalRecv, int64_t hiddenDim,
-                                     bool isLocalMode)
+                                     int64_t numTokens, uint32_t rankSize, int64_t totalRecv, int64_t hiddenDim)
 {
     const char *nodeName = context->GetNodeName();
     auto attrs = context->GetAttrs();
@@ -544,10 +539,8 @@ static ge::graphStatus SetTilingData(const gert::TilingContext *context, EngramF
     auto numEntriesPerRankPtr = attrs->GetAttrPointer<int64_t>(ATTR_NUM_ENTRIES_PER_RANK);
     tilingData.numEntriesPerRank = static_cast<int32_t>(*numEntriesPerRankPtr);
     // entry id 空间为 int32（rankId*numEntriesPerRank + 局部序号），乘积不得越界（SEC-2.1）
-    // local(fetch_mode=1) 模式: entry 即全量表行号(无 rank 偏移), entry 空间即 numEntriesPerRank 本身
     OP_TILING_CHECK(tilingData.numEntriesPerRank < 0 ||
-                        (!isLocalMode && rankSize > 0 &&
-                         static_cast<int64_t>(rankSize) * tilingData.numEntriesPerRank > INT32_MAX),
+                        (rankSize > 0 && static_cast<int64_t>(rankSize) * tilingData.numEntriesPerRank > INT32_MAX),
                     OP_LOGE(nodeName, "numEntriesPerRank(%d) * rankSize(%u) exceeds INT32_MAX",
                             tilingData.numEntriesPerRank, rankSize),
                     return ge::GRAPH_FAILED);
@@ -703,13 +696,12 @@ static ge::graphStatus SetTilingData(const gert::TilingContext *context, EngramF
     return ge::GRAPH_SUCCESS;
 }
 
-static void SetTilingKey(gert::TilingContext *context, bool isLocalMode)
+static void SetTilingKey(gert::TilingContext *context)
 {
     const char *nodeName = context->GetNodeName();
-    const uint64_t tilingKey = isLocalMode ? GET_TPL_TILING_KEY(ENGRAM_FETCH_GRAD_LOCAL_MODE)
-                                           : GET_TPL_TILING_KEY(ENGRAM_FETCH_GRAD_DEFAULT_MODE);
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(ENGRAM_FETCH_GRAD_DEFAULT_MODE);
     context->SetTilingKey(tilingKey);
-    OP_LOGD(nodeName, "tilingKey is [%lu] in engram_fetch_grad (isLocalMode=%d).", tilingKey, isLocalMode);
+    OP_LOGD(nodeName, "tilingKey is [%llu] in engram_fetch_grad.", tilingKey);
 }
 
 static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const EngramFetchGradTilingData &tilingData)
@@ -788,19 +780,6 @@ static ge::graphStatus EngramFetchGradTilingFunc(gert::TilingContext *context)
     EngramFetchGradTilingData *tilingData = context->GetTilingData<EngramFetchGradTilingData>();
     OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "tilingData"), return ge::GRAPH_FAILED);
 
-    bool isLocalMode = false;
-    auto attrs = context->GetAttrs();
-    if (attrs != nullptr) {
-        auto fetchModePtr = attrs->GetAttrPointer<int64_t>(ATTR_FETCH_MODE);
-        if (fetchModePtr != nullptr) {
-            OP_TILING_CHECK(*fetchModePtr != ENGRAM_FETCH_GRAD_MODE_SLICED && *fetchModePtr != ENGRAM_FETCH_GRAD_MODE_LOCAL,
-                            OP_LOGE_FOR_INVALID_VALUE(nodeName, "fetch_mode",
-                                                      std::to_string(*fetchModePtr).c_str(), "[0, 1]"),
-                            return ge::GRAPH_FAILED);
-            isLocalMode = (*fetchModePtr == ENGRAM_FETCH_GRAD_MODE_LOCAL);
-        }
-    }
-
     int64_t numTokens = 0;
     uint32_t rankSize = 0;
     int64_t totalRecv = 0;
@@ -817,17 +796,16 @@ static ge::graphStatus EngramFetchGradTilingFunc(gert::TilingContext *context)
     auto schedRet = context->SetScheduleMode(1);
     OP_TILING_CHECK(schedRet != ge::GRAPH_SUCCESS, OP_LOGE(nodeName, "SetScheduleMode(1) failed"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(SetTilingData(context, *tilingData, numTokens, rankSize, totalRecv, hiddenDim, isLocalMode) !=
-                        ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(SetTilingData(context, *tilingData, numTokens, rankSize, totalRecv, hiddenDim) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "set tiling data failed."), return ge::GRAPH_FAILED);
 
-    SetTilingKey(context, isLocalMode);
+    SetTilingKey(context);
 
     OP_TILING_CHECK(SetWorkSpace(context, *tilingData) != ge::GRAPH_SUCCESS, OP_LOGE(nodeName, "set workspace failed."),
                     return ge::GRAPH_FAILED);
 
     PrintEngramFetchGradTilingData(tilingData, nodeName);
-    OP_LOGI(nodeName, "EngramFetchGrad tiling end. (isLocalMode=%d)", isLocalMode);
+    OP_LOGI(nodeName, "EngramFetchGrad tiling end.");
     return ge::GRAPH_SUCCESS;
 }
 

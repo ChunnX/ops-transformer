@@ -13,9 +13,8 @@
  * \brief engram_fetch 算子 op_api 侧 aclnn 接口 UT
  *
  * 测试 aclnnEngramFetchGetWorkspaceSize 的参数校验:
- * - 推理场景: 可选 input/output 为 nullptr, with_grad=0, fetch_mode=0
- * - 训练场景: 可选 input/output 非空, with_grad=1, fetch_mode=0
- * - local 模式(fetch_mode=1): 推理/训练全量本 NPU 取数
+ * - 推理场景: 可选 input/output 为 nullptr, with_grad=0, fetch_mode=0/1
+ * - 训练场景: 可选 input/output 非空, with_grad=1, fetch_mode=0(fetch_mode=1被拒绝)
  * - nullptr 场景: 必选输入/输出为 nullptr
  *
  * aclnnEngramFetch 接口签名:
@@ -146,7 +145,8 @@ TEST_F(AclnnEngramFetchTest, ascend950_training_success)
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
-TEST_F(AclnnEngramFetchTest, ascend950_training_local_success)
+// local 模式(fetch_mode=1)仅支持推理场景, 训练场景(with_grad=1)应被tiling拒绝
+TEST_F(AclnnEngramFetchTest, ascend950_training_local_rejected)
 {
     auto commContext_desc = TensorDesc({6146}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
     auto indices_desc = TensorDesc({8}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 31);
@@ -175,8 +175,7 @@ TEST_F(AclnnEngramFetchTest, ascend950_training_local_success)
     uint64_t workspace_size = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
-    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_NULLPTR);
-    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 TEST_F(AclnnEngramFetchTest, ascend950_invalid_fetch_mode)
@@ -199,7 +198,7 @@ TEST_F(AclnnEngramFetchTest, ascend950_invalid_fetch_mode)
     uint64_t workspace_size = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
-    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 TEST_F(AclnnEngramFetchTest, ascend950_nullptr_commContext)
