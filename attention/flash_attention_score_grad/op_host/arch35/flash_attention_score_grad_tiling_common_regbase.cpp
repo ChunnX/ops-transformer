@@ -1674,7 +1674,6 @@ void SetSplitAxis(const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbas
         bnSparseLimit && (fBaseParams.s1 > BN2_MAX_S || fBaseParams.s2 > BN2_MAX_S) &&
         (fBaseParams.s1 <= BN2_MULTIBLK_SEQ && fBaseParams.s2 <= BN2_MULTIBLK_SEQ) &&
         (fBaseParams.n1 == fBaseParams.n2) && fBaseParams.d <= BN2_MAX_D && (fBaseParams.queryType != ge::DT_FLOAT) &&
-        (fBaseParams.d == fBaseParams.d1) &&
         !(fBaseParams.queryType == ge::DT_FLOAT8_E5M2 || fBaseParams.queryType == ge::DT_FLOAT8_E4M3FN ||
           fBaseParams.queryType == ge::DT_HIFLOAT8) &&
         !fBaseParams.hasRope;
