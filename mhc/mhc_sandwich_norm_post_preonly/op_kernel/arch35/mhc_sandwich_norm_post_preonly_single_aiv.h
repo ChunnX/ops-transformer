@@ -284,6 +284,20 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::ProcessTokenSingleAi
     float gate[N_MAX];
     ComputeGateValues(totalSumSqPre, xHatVals, gate);
 
+    // 最多三个分块时，复用已经空闲的三个gamma缓存提前搬运完整gamma1，
+    // 让MTE2与后续整段R6的Vector计算重叠；更多分块保持原逐块加载路径。
+    const bool prefetchGamma1 = dimLoop_ <= 3;
+    if (prefetchGamma1) {
+        FenceVToMte2();
+        LoadGammaInto(bufGamma1Fp32_.Get<float>(), gamma1Gm_, 0, GetTileD(0));
+        if (dimLoop_ > 1) {
+            LoadGammaInto(bufGamma0Fp32_.Get<float>(), gamma1Gm_, dimTile_, GetTileD(1));
+        }
+        if (dimLoop_ > 2) {
+            LoadGammaInto(bufGamma2Fp32_.Get<float>(), gamma1Gm_, 2 * dimTile_, GetTileD(2));
+        }
+    }
+
     // 第三遍：计算R6和h_in低精度边界。在完整D轴的R7标量确定前，
     // 复用已经消费完的x2缓存首段保存低精度h_in。
     float sumSq1 = 0.0f;
@@ -305,15 +319,29 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::ProcessTokenSingleAi
 
     // 第四遍：沿完整D轴计算R7并写最终输出。
     const float invRms1 = ComputeInvRms(sumSq1, invD_);
+    if (prefetchGamma1) {
+        SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+        WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
+    }
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
         LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
         LoadHInCacheTile(tOff, tD, hIn);
-        LoadGammaInto(bufGamma1Fp32_.Get<float>(), gamma1Gm_, tOff, tD);
-        SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
-        WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-        ApplyScaleAndGamma(hIn, invRms1, bufGamma1Fp32_.Get<float>(), tD);
+        LocalTensor<float> gamma1 = bufGamma1Fp32_.Get<float>();
+        if (prefetchGamma1) {
+            if (tile == 1) {
+                gamma1 = bufGamma0Fp32_.Get<float>();
+            } else if (tile == 2) {
+                gamma1 = bufGamma2Fp32_.Get<float>();
+            }
+        } else {
+            LoadGammaInto(gamma1, gamma1Gm_, tOff, tD);
+            SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+            WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
+        }
+        ApplyScaleAndGamma(hIn, invRms1, gamma1, tD);
+        // 保留跨分块及跨token的缓冲复用保护，避免后续MTE2覆盖仍在读取的gamma缓存。
         FenceVToMte2();
         WriteHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tD);
     }
