@@ -34,7 +34,7 @@
 
 ## 文件结构
 
-#### pytest文件结构说明
+### pytest文件结构说明
 
 - test_run.sh                                  # 执行脚本，支持single/batch两种命令
 - batch_isolated_run.sh                        # 批量隔离执行脚本（shell层进程隔离+msprof性能采集）
@@ -90,7 +90,7 @@ bash test_run.sh batch
 1、生成pt文件：
 
 ``` bash
-python3 batch/compressor_pt_save.py "excel/*.xlsx" pt_path
+python3 batch/compressor_pt_save.py "excel/*.csv" pt_path
 ```
 
 2、替换测试脚本路径：
@@ -121,9 +121,9 @@ bash batch_isolated_run.sh ./pt_path 0         # 不采集性能
 bash batch_isolated_run.sh ./pt_path 1         # 采集性能（挂载msprof）
 ```
 
-## Excel 用例表格式
+## 用例表格式（CSV）
 
-`excel/test_cases.xlsx` 的 Sheet1 需包含以下列：
+`excel/test_cases.csv` 需包含以下列：
 
 | 列名 | 类型 | 示例 | 说明 |
 |---|---|---|---|

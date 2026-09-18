@@ -46,8 +46,8 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
         pytest.skip(f"Excel file not found: {excel_file_path}", allow_module_level=True)
 
     try:
-        # 读取 Excel 文件的指定 sheet
-        df = pd.read_excel(excel_file_path, sheet_name=sheetname)
+        # 读取 CSV 用例文件
+        df = pd.read_csv(excel_file_path)
         df = df.replace({np.nan: None, pd.NA: None})
 
         # 定义必需的列名

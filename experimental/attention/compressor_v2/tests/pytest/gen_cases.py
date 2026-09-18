@@ -100,10 +100,10 @@ for group_name, params in p.TEST_PARAMS.items():
         rows.append(row)
 
 df = pd.DataFrame(rows, columns=OUT_COLUMNS)
-out = "/home/m00946864/ops-transformer/experimental/attention/compressor_v2/tests/pytest/excel/test_cases.xlsx"
+out = "/home/m00946864/ops-transformer/experimental/attention/compressor_v2/tests/pytest/excel/test_cases.csv"
 import os
 
 os.makedirs(os.path.dirname(out), exist_ok=True)
-df.to_excel(out, index=False, sheet_name="Sheet1")
+df.to_csv(out, index=False)
 print(f"written {len(rows)} rows -> {out}")
 print(df.to_string())

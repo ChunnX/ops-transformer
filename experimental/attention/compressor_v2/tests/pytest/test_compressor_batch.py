@@ -39,7 +39,7 @@ allowed_names = set()
 if excel_path:
     try:
         if os.path.exists(excel_path):
-            df = pd.read_excel(excel_path, sheet_name=0)
+            df = pd.read_csv(excel_path)
             df = df.replace({np.nan: None, pd.NA: None})
             if "Testcase_Name" in df.columns:
                 allowed_names = set(df["Testcase_Name"].dropna().astype(str))

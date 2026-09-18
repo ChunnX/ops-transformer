@@ -142,7 +142,6 @@
 </tbody>
 </table>
 
-
 ## 约束说明
 
 - x参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、H（Head Size）表示hidden层的大小、D（Head Dim）表示hidden层的最小单元大小、T表示所有Batch输入样本序列长度的累加和。
@@ -202,4 +201,4 @@
   | 调用方式   | 样例代码 | 说明                                          |
   | ---------- | -------- | --------------------------------------------- |
   | aclnn API  | -        | 通过[aclnnCompressorV2](./docs/aclnnCompressor.md)接口调用CompressorV2算子。 |
-  | PyTorch API | -        | 通过[ds41.compressor](../../../torch_extension/cann_ops_transformer/docs/zh/compressor.md)接口调用CompressorV2算子。 |
+  | PyTorch API | -        | 通过 `from cann_ops_transformer.ops.ds41 import compressor` 接口调用CompressorV2算子。 |

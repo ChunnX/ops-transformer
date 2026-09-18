@@ -15,8 +15,8 @@ pip install pandas openpyxl
 
 ## 一、填写测试用例表格
 
-**模板文件**：`tests/pytest/excel/test_cases_template.xlsx`
-（复制一份改名为 `test_cases.xlsx` 使用，或直接改模板）
+**模板文件**：`tests/pytest/excel/test_cases_template.csv`
+（复制一份改名为 `test_cases.csv` 使用，或直接改模板）
 
 ### 列说明
 
@@ -69,7 +69,7 @@ pip install pandas openpyxl
 
 ```bash
 cd experimental/attention/compressor_v2/tests/pytest
-python -u batch/compressor_pt_save.py excel/test_cases.xlsx pt_path
+python -u batch/compressor_pt_save.py excel/test_cases.csv pt_path
 ```
 
 - 输出：`pt_path/<Testcase_Name>.pt`
@@ -95,7 +95,7 @@ python -u -m pytest -rA -s test_compressor_batch.py -v -m ci \
 方式一：用 Excel 过滤（环境变量 `TEST_CASE_EXCEL`，脚本只跑 Excel 里 Testcase_Name 存在的 .pt）
 
 ```bash
-TEST_CASE_EXCEL=excel/test_cases.xlsx python -u -m pytest -rA -s test_compressor_batch.py -v -m ci ...
+TEST_CASE_EXCEL=excel/test_cases.csv python -u -m pytest -rA -s test_compressor_batch.py -v -m ci ...
 ```
 
 方式二：单条隔离执行（每条一个进程）
