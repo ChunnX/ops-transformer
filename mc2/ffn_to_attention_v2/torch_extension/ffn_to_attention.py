@@ -129,7 +129,7 @@ def _get_hccl_comm_name(group, rank_id):
 def _calc_window_size(
     token_info_table_shape, token_data_shape, world_size, max_token_num=-1
 ):
-    """Calculate the complete window capacity, including local flag and relay storage."""
+    """Calculate window capacity including flag sources, address tables and count rows."""
     _op_module = _ffn_to_attention_op_builder.load()
     return _op_module.get_ffn_to_attention_ccl_buffer_size(
         token_info_table_shape, token_data_shape, world_size, max_token_num
@@ -167,9 +167,6 @@ class FFNToAttentionBuffer:
         self.token_info_table_shape = list(token_info_table_shape)
         self.token_data_shape = list(token_data_shape)
 
-        required_buffer_size = _calc_window_size(
-            token_info_table_shape, token_data_shape, world_size, max_token_num
-        )
         self.max_token_num = (
             world_size
             * self.token_info_table_shape[0]
@@ -177,6 +174,9 @@ class FFNToAttentionBuffer:
             * self.token_info_table_shape[2]
             if max_token_num == -1
             else max_token_num
+        )
+        required_buffer_size = _calc_window_size(
+            token_info_table_shape, token_data_shape, world_size, self.max_token_num
         )
         self.required_buffer_size = required_buffer_size
         self._capacity_shapes = (
@@ -244,10 +244,9 @@ def get_buffer_for_ffn_to_attention(
         world_size (int): Communication domain size.
         token_info_table_shape (List[int]): 3-element list [microBatchNum, BS, expertNumPerToken].
         token_data_shape (List[int]): 4-element list [microBatchNum, BS, expertNumPerToken, HS].
-        max_token_num (int): Capacity for local relay info (must cover x.shape[0]).
-            -1 reserves world_size * microBatchNum * BS * expertNumPerToken entries.
-            All ranks must use the same capacity when creating their buffers.
-            Window sizing also includes local flag sources and per-rank relay list heads/tails.
+        max_token_num (int): Capacity for x.shape[0], used to reserve rank address tables
+            in the window. Defaults to world_size * microBatchNum * BS * expertNumPerToken
+            when -1. Set this explicitly if a larger input capacity is needed.
 
     Returns:
         FFNToAttentionBuffer: Buffer holding the communication context, group
@@ -304,10 +303,6 @@ def ffn_to_attention(
             "Window shapes cannot change after buffer creation; create a replacement buffer"
         )
     torch._check(x.dim() == 2, lambda: "x must be a 2D tensor")
-    torch._check(
-        x.shape[0] <= buffer.max_token_num,
-        lambda: "x.shape[0] exceeds max_token_num; all ranks must coordinate buffer replacement",
-    )
     torch._check(
         x.shape[1] <= buffer.token_data_shape[3],
         lambda: "x.shape[1] exceeds the window token slot width HS",
