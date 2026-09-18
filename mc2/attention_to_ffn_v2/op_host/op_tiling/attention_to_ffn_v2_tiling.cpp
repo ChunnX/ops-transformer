@@ -238,12 +238,12 @@ ge::graphStatus CheckUrmaWinLayout(gert::TilingContext *context, AttentionToFfnV
     return ge::GRAPH_SUCCESS;
 }
 
-// Extend workspace for the per-token toRankId scratch table. Phase 1 (all AIVs) writes
-// toRankId[tokenOffset] to GM; Phase 2 (AIV0 only) DataCopyPads it to UB and scans UB
-// instead of calling ReadTokenMetaData, eliminating FindExpertRank's 3 GM scalar reads
-// per token from the WQE scanning loop.
-static void ExtendWorkspaceForTokenRankScratch(gert::TilingContext *context,
-                                               AttentionToFfnV2TilingData *tilingData)
+// Extend workspace for the relay rank tables. Phase 1 (all AIVs) counts its remote records per
+// rank and publishes one count row per AIV; the scatter pass buckets token offsets into compact
+// per-rank tables; the relay reads only the served ranks' tables, replacing the previous
+// full-list rescan per (dstRank, channel) slot.
+static void ExtendWorkspaceForRankTables(gert::TilingContext *context,
+                                         AttentionToFfnV2TilingData *tilingData)
 {
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     if (workSpaces == nullptr) {
@@ -253,14 +253,16 @@ static void ExtendWorkspaceForTokenRankScratch(gert::TilingContext *context,
     const size_t expertNumPerToken =
         static_cast<size_t>(info.K) + (static_cast<size_t>(info.expertNum) - info.moeExpertNum);
     const size_t maxTotalSendNum = static_cast<size_t>(info.X) * info.BS * expertNumPerToken;
-    const size_t maxTokensPerAiv = (maxTotalSendNum + info.aivNum - 1U) / info.aivNum;
-    const size_t scratchTableBytes = maxTokensPerAiv * info.aivNum * sizeof(int32_t);
     const size_t ffnNum = static_cast<size_t>(info.worldSize) - info.attentionWorkerNum;
     const size_t ffnNumAlignSize = CeilAlignSize(ffnNum * sizeof(int32_t), WORKSPACE_ELEMENT_OFFSET);
     const size_t syncStatusRegionBytes = ffnNumAlignSize * info.aivNum;
-    const size_t scratchTableOffset = CeilAlignSize(syncStatusRegionBytes, WORKSPACE_ELEMENT_OFFSET);
-    const size_t scratchTableAlignBytes = CeilAlignSize(scratchTableBytes, WORKSPACE_ELEMENT_OFFSET);
-    workSpaces[0] += scratchTableOffset + scratchTableAlignBytes;
+    const size_t regionsOffset = CeilAlignSize(syncStatusRegionBytes, WORKSPACE_ELEMENT_OFFSET);
+    const size_t rankCountRowBytes = CeilAlignSize(static_cast<size_t>(info.worldSize) * sizeof(int32_t), UB_ALIGN_SIZE);
+    const size_t countRowStride = CeilAlignSize(rankCountRowBytes, WORKSPACE_ELEMENT_OFFSET);
+    const size_t countMatrixBytes =
+        CeilAlignSize(static_cast<size_t>(info.aivNum) * countRowStride, WORKSPACE_ELEMENT_OFFSET);
+    const size_t bucketTableBytes = CeilAlignSize(maxTotalSendNum * sizeof(int32_t), WORKSPACE_ELEMENT_OFFSET);
+    workSpaces[0] += regionsOffset + countMatrixBytes + bucketTableBytes;
 }
 
 ge::graphStatus TilingNewQuantMode(gert::TilingContext *context, uint32_t quantMode)
@@ -301,7 +303,7 @@ ge::graphStatus TilingNewQuantMode(gert::TilingContext *context, uint32_t quantM
                     OP_LOGE(nodeName, "failed to enable batch schedule mode"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckUrmaWinLayout(context, tilingData, tilingKeyQuantMode, outDtype) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "failed to check URMA win layout"), return ge::GRAPH_FAILED);
-    ExtendWorkspaceForTokenRankScratch(context, tilingData);
+    ExtendWorkspaceForRankTables(context, tilingData);
     return SetV2TilingKey(context, tilingKeyQuantMode, outDtype, info.isScales, info.syncFlag == 1U, info.isActiveMask);
 }
 } // namespace
@@ -309,9 +311,9 @@ ge::graphStatus TilingNewQuantMode(gert::TilingContext *context, uint32_t quantM
 ge::graphStatus AttentionToFfnV2TilingFunc(gert::TilingContext *context)
 {
     // Deployment marker: grep plog for this tag to verify the rebuilt package is actually
-    // loaded (v9: tokenRankScratch in workspace + dedicated UB; Phase 2 reads toRankId from
-    // UB instead of FindExpertRank, eliminating 3 GM scalar reads per token from WQE loop).
-    OP_LOGI(context->GetNodeName(), "[AT2FFN_V2_URMA_FIX] v9 (wsScratch + ubRankRead) active");
+    // loaded (v10: per-rank counting in Phase 1 + compact bucket tables; the relay reads only
+    // the served ranks' tables instead of rescanning the full token list per slot).
+    OP_LOGI(context->GetNodeName(), "[AT2FFN_V2_URMA_FIX] v10 (rankBucketTables) active");
     auto attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "attrs"),
                     return ge::GRAPH_FAILED);
@@ -346,7 +348,7 @@ ge::graphStatus AttentionToFfnV2TilingFunc(gert::TilingContext *context)
     OP_TILING_CHECK(
         CheckUrmaWinLayout(context, tilingData, info.quantMode, ATTN_FFN_TILINGKEY_OUT_INT8) != ge::GRAPH_SUCCESS,
         OP_LOGE(context->GetNodeName(), "failed to check URMA win layout"), return ge::GRAPH_FAILED);
-    ExtendWorkspaceForTokenRankScratch(context, tilingData);
+    ExtendWorkspaceForRankTables(context, tilingData);
     return SetV2TilingKey(context, info.quantMode, ATTN_FFN_TILINGKEY_OUT_INT8, info.isScales, info.syncFlag == 1U,
                           info.isActiveMask);
 }

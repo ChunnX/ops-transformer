@@ -82,6 +82,16 @@ constexpr uint32_t ATTN_FFN_HCOMM_BATCH_UB_BYTES = 16U * 1024U;
 constexpr uint32_t URMA_BATCH_WQE_CAPACITY = ATTN_FFN_HCOMM_BATCH_UB_BYTES / HCOMM_BATCH_WQE_BYTES;
 constexpr uint32_t HCOMM_SQ_MAX_PENDING = 32767U;
 
+// Compact per-rank token tables (counting-sort layout) for the relay phase. rankInfoBuf_ layout:
+// [bucket fill counts | running write prefix | per-rank totals | table start], one row each.
+constexpr uint32_t RANK_INFO_SEGMENT_NUM = 4U;
+constexpr uint32_t RANK_INFO_COUNT_SEG_IDX = 0U;
+constexpr uint32_t RANK_INFO_PREFIX_SEG_IDX = 1U;
+constexpr uint32_t RANK_INFO_TOTAL_SEG_IDX = 2U;
+constexpr uint32_t RANK_INFO_START_SEG_IDX = 3U;
+constexpr uint32_t BUCKET_BUFFER_SIZE = 32U * 1024U;
+constexpr uint32_t BUCKET_GROUP_TOKEN_MAX = 256U;
+
 static constexpr AscendC::UrmaWqeEntry REMOTE_DATA_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .inlineEn = 0};
 static constexpr AscendC::UrmaWqeEntry REMOTE_ORDERED_FLAG_WQE_CONFIG = {.odr = 6, .fence = 1, .se = 1, .inlineEn = 0};
 static constexpr AscendC::UrmaWqeEntry REMOTE_DATA_CQE_WQE_CONFIG = {
@@ -139,6 +149,8 @@ private:
                                                  uint32_t sourceTokenOffset, bool enableCqe);
     __aicore__ inline void CommitAndDrainChannel(HcommBatchHandle &batchHandle, uint64_t channel,
                                                  uint32_t &preparedWqeCount, uint32_t &sqWriteCount);
+    __aicore__ inline void BuildRankTableOffsets();
+    __aicore__ inline void ScatterTokensToRankTables();
     __aicore__ inline void RelayRemoteTokens(uint32_t dstRank, uint32_t channelIdx);
     __aicore__ inline void FindExpertRank(int32_t expertId);
     __aicore__ inline void QuantInit(GM_ADDR scales);
@@ -159,8 +171,12 @@ private:
     GM_ADDR syncStatusWorkspaceGM_{nullptr};
     GM_ADDR stagingBaseAddr_{nullptr};
     uint64_t stagingStride_{0};
-    GM_ADDR tokenRankScratchBase_{nullptr};
-    uint32_t maxTokensPerAiv_{0};
+    GM_ADDR countMatrixBase_{nullptr};
+    GM_ADDR bucketTablesBase_{nullptr};
+    uint32_t rankCountElements_{0};
+    uint32_t countRowStride_{0};
+    uint32_t entriesPerRank_{0};
+    uint32_t groupTokenMax_{0};
 
     GlobalTensor<XType> xGMTensor_;
     GlobalTensor<int32_t> sessionIdGMTensor_;
@@ -171,7 +187,6 @@ private:
     GlobalTensor<float> scalesGMTensor_;
     GlobalTensor<bool> activeMaskGMTensor_;
     GlobalTensor<int32_t> syncStatusGMTensor_;
-    GlobalTensor<int32_t> tokenRankScratchGMTensor_;
 
     LocalTensor<XType> xInTensor_;
     LocalTensor<XType> xTmpTensor_;
@@ -184,6 +199,7 @@ private:
     LocalTensor<int32_t> flagValueTensor_;
     LocalTensor<uint32_t> flagOffsetTensor_;
     LocalTensor<int32_t> tokenRankScratchTensor_;
+    LocalTensor<int32_t> bucketTensor_;
 
     TBuf<> smoothScalesBuf_;
     TBuf<> expertIdsBuf_;
@@ -198,6 +214,8 @@ private:
     TBuf<> flagValueBuf_;
     TBuf<> flagOffsetBuf_;
     TBuf<> tokenRankScratchBuf_;
+    TBuf<> bucketBuf_;
+    TBuf<> rankInfoBuf_;
     LocalTensor<uint8_t> hcommBatchWqeTensor_;
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> xQueue_;
     TQue<QuePosition::VECIN, 1> xInQueue_;
@@ -327,10 +345,18 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::I
     tpipe_->InitBuffer(flagOffsetBuf_, flagOffsetBufSize);
     flagOffsetTensor_ = flagOffsetBuf_.Get<uint32_t>();
 
-    uint32_t scratchTotalEntries = maxTokensPerAiv * aivNum_;
-    uint32_t tokenRankScratchBufSize = Ceil(scratchTotalEntries * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
-    tpipe_->InitBuffer(tokenRankScratchBuf_, tokenRankScratchBufSize);
+    // The rank stash only feeds this AIV's scatter pass; the relay phase reads the compact
+    // per-rank token tables in GM instead of the full cross-AIV scratch.
+    uint32_t tokenRankStashBytes = Ceil(maxTokensPerAiv * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
+    tpipe_->InitBuffer(tokenRankScratchBuf_, tokenRankStashBytes);
     tokenRankScratchTensor_ = tokenRankScratchBuf_.Get<int32_t>();
+    // bucketBuf_ is reused sequentially: prefix rows (BuildRankTableOffsets) -> per-rank scatter
+    // buckets (ScatterTokensToRankTables) -> relay entry chunks (RelayRemoteTokens).
+    tpipe_->InitBuffer(bucketBuf_, BUCKET_BUFFER_SIZE);
+    bucketTensor_ = bucketBuf_.Get<int32_t>();
+    rankCountElements_ =
+        static_cast<uint32_t>(Ceil(worldSize_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN / sizeof(int32_t));
+    tpipe_->InitBuffer(rankInfoBuf_, RANK_INFO_SEGMENT_NUM * rankCountElements_ * sizeof(int32_t));
 
     if constexpr (QuantMode != 0) {
         QuantInit(scales);
@@ -383,14 +409,22 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::I
     localFlagAddr_ = stagingBaseAddr_ + stagingRegionAlignSize;
     layerFlagAddr_ = localFlagAddr_ + static_cast<uint64_t>(expertIdsCnt_) * URMA_FLAG_SLOT_SIZE;
 
-    // tokenRankScratch lives in the per-call workspace. Phase 1 writes toRankId to UB (contiguous
-    // per-AIV block), then DataCopyPads UB→GM via MTE3 (bypasses L1, no cache coherency issue).
-    // Phase 2 DataCopyPads GM→UB, then reads via GetValue with index remapping.
-    maxTokensPerAiv_ = maxTokensPerAiv;
-    const uint64_t tokenRankScratchOffset = static_cast<uint64_t>(aivNum_) * aivWorkspaceOffset_;
-    tokenRankScratchBase_ = workspaceGM + tokenRankScratchOffset;
-    tokenRankScratchGMTensor_.SetGlobalBuffer(
-        reinterpret_cast<__gm__ int32_t *>(tokenRankScratchBase_));
+    // Rank tables live in the per-call workspace right after the isSync status region:
+    // [aivNum_ per-AIV count rows | compact per-rank token-offset tables]. Phase 1 publishes each
+    // AIV's per-rank remote counts (UB->GM via MTE3, GM->UB via MTE2, no cache coherency issue);
+    // the scatter pass buckets token offsets into the compact tables; the relay then reads only
+    // the tables of the destinations it serves instead of rescanning the full token list.
+    const uint64_t countMatrixOffset = static_cast<uint64_t>(aivNum_) * aivWorkspaceOffset_;
+    countMatrixBase_ = workspaceGM + countMatrixOffset;
+    countRowStride_ = static_cast<uint32_t>(Ceil(rankCountElements_ * sizeof(int32_t), WORKSPACE_ELEMENT_OFFSET) *
+                                            WORKSPACE_ELEMENT_OFFSET);
+    const uint64_t countMatrixBytes = Ceil(static_cast<uint64_t>(aivNum_) * countRowStride_,
+                                           WORKSPACE_ELEMENT_OFFSET) * WORKSPACE_ELEMENT_OFFSET;
+    bucketTablesBase_ = countMatrixBase_ + countMatrixBytes;
+    const uint32_t bucketRankNum = (worldSize_ == 0U) ? 1U : worldSize_;
+    const uint32_t bucketBytes = BUCKET_BUFFER_SIZE / bucketRankNum / UB_ALIGN * UB_ALIGN;
+    entriesPerRank_ = (bucketBytes / sizeof(int32_t) == 0U) ? 1U : bucketBytes / sizeof(int32_t);
+    groupTokenMax_ = (entriesPerRank_ < BUCKET_GROUP_TOKEN_MAX) ? entriesPerRank_ : BUCKET_GROUP_TOKEN_MAX;
 }
 
 template <TemplateAttentionToFfnUrmaTypeClass>
@@ -762,9 +796,128 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::C
 }
 
 template <TemplateAttentionToFfnUrmaTypeClass>
+__aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::BuildRankTableOffsets()
+{
+    LocalTensor<int32_t> rankInfo = rankInfoBuf_.Get<int32_t>();
+    // The count segment was already published to GM, so it is reused as the ReduceSum scratch.
+    LocalTensor<int32_t> reduceSums = rankInfo[RANK_INFO_COUNT_SEG_IDX * rankCountElements_];
+    LocalTensor<int32_t> writePrefix = rankInfo[RANK_INFO_PREFIX_SEG_IDX * rankCountElements_];
+    LocalTensor<int32_t> totalCounts = rankInfo[RANK_INFO_TOTAL_SEG_IDX * rankCountElements_];
+    LocalTensor<int32_t> tableStart = rankInfo[RANK_INFO_START_SEG_IDX * rankCountElements_];
+    Duplicate<int32_t>(writePrefix, 0, rankCountElements_);
+    Duplicate<int32_t>(totalCounts, 0, rankCountElements_);
+    SyncFunc<HardEvent::V_S>();
+
+    GlobalTensor<int32_t> countMatrixGM;
+    countMatrixGM.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(countMatrixBase_));
+    const uint32_t rowBytes = rankCountElements_ * sizeof(int32_t);
+    LocalTensor<int32_t> prefixRows = bucketTensor_;
+    const uint32_t rowsPerBatch = BUCKET_BUFFER_SIZE / rowBytes;
+    const DataCopyPadExtParams<int32_t> padParams{false, 0U, 0U, 0U};
+
+    // Exclusive prefix over the preceding AIV rows: where this AIV's bucket flushes land.
+    for (uint32_t rowStart = 0U; rowStart < aivId_; rowStart += rowsPerBatch) {
+        uint32_t copyRows = (rowStart + rowsPerBatch > aivId_) ? aivId_ - rowStart : rowsPerBatch;
+        DataCopyExtParams copyParams{static_cast<uint16_t>(copyRows), rowBytes,
+                                     static_cast<uint32_t>(countRowStride_ - rowBytes), 0U, 0U};
+        DataCopyPad(prefixRows, countMatrixGM[static_cast<uint64_t>(rowStart) * countRowStride_ / sizeof(int32_t)],
+                    copyParams, padParams);
+        SyncFunc<HardEvent::MTE2_V>();
+        const uint32_t prefixShape[] = {copyRows, rankCountElements_};
+        ReduceSum<int32_t, AscendC::Pattern::Reduce::RA, true>(reduceSums, prefixRows, prefixShape, false);
+        Add(writePrefix, writePrefix, reduceSums, rankCountElements_);
+        if (rowStart + copyRows < aivId_) {
+            SyncFunc<HardEvent::V_MTE2>();
+        }
+    }
+    SyncFunc<HardEvent::V_MTE2>();
+    // Every AIV also sums all rows so it locally knows each rank's total entry count.
+    for (uint32_t rowStart = 0U; rowStart < aivNum_; rowStart += rowsPerBatch) {
+        uint32_t copyRows = (rowStart + rowsPerBatch > aivNum_) ? aivNum_ - rowStart : rowsPerBatch;
+        DataCopyExtParams copyParams{static_cast<uint16_t>(copyRows), rowBytes,
+                                     static_cast<uint32_t>(countRowStride_ - rowBytes), 0U, 0U};
+        DataCopyPad(prefixRows, countMatrixGM[static_cast<uint64_t>(rowStart) * countRowStride_ / sizeof(int32_t)],
+                    copyParams, padParams);
+        SyncFunc<HardEvent::MTE2_V>();
+        const uint32_t totalShape[] = {copyRows, rankCountElements_};
+        ReduceSum<int32_t, AscendC::Pattern::Reduce::RA, true>(reduceSums, prefixRows, totalShape, false);
+        Add(totalCounts, totalCounts, reduceSums, rankCountElements_);
+        if (rowStart + copyRows < aivNum_) {
+            SyncFunc<HardEvent::V_MTE2>();
+        }
+    }
+    SyncFunc<HardEvent::V_S>();
+
+    // Compact layout: rank r's table starts right after the tables of all preceding ranks.
+    tableStart.SetValue(0, 0);
+    for (uint32_t rank = 1U; rank < worldSize_; ++rank) {
+        tableStart.SetValue(rank, tableStart.GetValue(rank - 1U) + totalCounts.GetValue(rank - 1U));
+    }
+}
+
+template <TemplateAttentionToFfnUrmaTypeClass>
+__aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::ScatterTokensToRankTables()
+{
+    LocalTensor<int32_t> rankInfo = rankInfoBuf_.Get<int32_t>();
+    LocalTensor<int32_t> rankCounts = rankInfo[RANK_INFO_COUNT_SEG_IDX * rankCountElements_];
+    LocalTensor<int32_t> writePrefix = rankInfo[RANK_INFO_PREFIX_SEG_IDX * rankCountElements_];
+    LocalTensor<int32_t> tableStart = rankInfo[RANK_INFO_START_SEG_IDX * rankCountElements_];
+    LocalTensor<int32_t> bucketEntries = bucketTensor_;
+    GlobalTensor<int32_t> bucketTablesGM;
+    bucketTablesGM.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(bucketTablesBase_));
+    const uint64_t roundNum = Ceil(static_cast<uint64_t>(totalSendNum_), static_cast<uint64_t>(aivNum_));
+
+    // Bucket this AIV's remote token offsets by rank in UB, then batch-copy each bucket into the
+    // rank's compact GM table at (tableStart + writePrefix). Each UB bucket starts on a 32B
+    // boundary; GM entries remain tightly packed 4B offsets.
+    for (uint64_t roundStart = 0U; roundStart < roundNum; roundStart += groupTokenMax_) {
+        uint64_t roundEnd = (roundStart + groupTokenMax_ > roundNum) ? roundNum : roundStart + groupTokenMax_;
+        Duplicate<int32_t>(rankCounts, 0, rankCountElements_);
+        SyncFunc<HardEvent::V_S>();
+        for (uint64_t round = roundStart; round < roundEnd; ++round) {
+            uint32_t tokenOffset = static_cast<uint32_t>(static_cast<uint64_t>(aivId_) + round * aivNum_);
+            if (tokenOffset >= totalSendNum_) {
+                continue;
+            }
+            int32_t dstRank = tokenRankScratchTensor_.GetValue(static_cast<int32_t>(round));
+            if (dstRank == static_cast<int32_t>(rankId_)) {
+                continue; // Local tokens were already delivered by SendToLocal in Phase 1.
+            }
+            uint32_t localIndex = static_cast<uint32_t>(rankCounts.GetValue(dstRank));
+            bucketEntries.SetValue(static_cast<uint32_t>(dstRank) * entriesPerRank_ + localIndex,
+                                   static_cast<int32_t>(tokenOffset));
+            rankCounts.SetValue(dstRank, static_cast<int32_t>(localIndex + 1U));
+        }
+
+        SyncFunc<HardEvent::S_MTE3>();
+        for (uint32_t rank = 0U; rank < worldSize_; ++rank) {
+            uint32_t count = static_cast<uint32_t>(rankCounts.GetValue(rank));
+            if (count == 0U) {
+                continue;
+            }
+            uint32_t writeStart =
+                static_cast<uint32_t>(tableStart.GetValue(rank)) + static_cast<uint32_t>(writePrefix.GetValue(rank));
+            DataCopyExtParams entryCopyParams{1U, count * sizeof(int32_t), 0U, 0U, 0U};
+            DataCopyPad(bucketTablesGM[writeStart], bucketEntries[rank * entriesPerRank_], entryCopyParams);
+            writePrefix.SetValue(rank, static_cast<int32_t>(writeStart + count));
+        }
+        SyncFunc<HardEvent::MTE3_S>();
+    }
+}
+
+template <TemplateAttentionToFfnUrmaTypeClass>
 __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::RelayRemoteTokens(uint32_t dstRank,
                                                                                                  uint32_t channelIdx)
 {
+    LocalTensor<int32_t> rankInfo = rankInfoBuf_.Get<int32_t>();
+    LocalTensor<int32_t> totalCounts = rankInfo[RANK_INFO_TOTAL_SEG_IDX * rankCountElements_];
+    LocalTensor<int32_t> tableStart = rankInfo[RANK_INFO_START_SEG_IDX * rankCountElements_];
+    uint32_t entryCount = static_cast<uint32_t>(totalCounts.GetValue(dstRank));
+    if (entryCount == 0U) {
+        return;
+    }
+    uint32_t baseEntry = static_cast<uint32_t>(tableStart.GetValue(dstRank));
+
     GM_ADDR toRankAddr = GetWindowAddr(static_cast<int32_t>(dstRank));
     uint64_t channel = GetUrmaCommHandle(dstRank, channelIdx);
     HcommBatchHandle batchHandle =
@@ -772,63 +925,70 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::R
     uint32_t preparedWqeCount = 0U;
     uint32_t sqWriteCount = 0U;
     const uint64_t elementSize = (QuantMode != 0) ? sizeof(XOutType) : sizeof(XType);
+    LocalTensor<int32_t> entriesLocal = bucketTensor_;
+    constexpr uint32_t entryChunkMax = BUCKET_BUFFER_SIZE / sizeof(int32_t);
+    const DataCopyPadExtParams<int32_t> padParams{false, 0U, 0U, 0U};
+    GlobalTensor<int32_t> bucketTablesGM;
+    bucketTablesGM.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(bucketTablesBase_));
 
-    // Data phase: a token whose index within dstRank (rankTokenIdx) is congruent to channelIdx
+    // Data phase: an entry whose index within dstRank (rankEntryIdx) is congruent to channelIdx
     // is sent on this channel. All data WQEs of the channel are appended first.
-    uint32_t rankTokenIdx = 0U;
-    for (uint32_t tokenOffset = 0U; tokenOffset < totalSendNum_; ++tokenOffset) {
-        uint32_t scratchAiv = tokenOffset % aivNum_;
-        uint32_t scratchJ = tokenOffset / aivNum_;
-        uint32_t ubIdx = scratchAiv * maxTokensPerAiv_ + scratchJ;
-        int32_t tokenRankId = tokenRankScratchTensor_.GetValue(ubIdx);
-        if (tokenRankId == static_cast<int32_t>(dstRank)) {
-            if (rankTokenIdx % channelsPerRank_ == channelIdx) {
-                uint32_t tokenId = tokenOffset / (axisK_ + sharedExpertNum_);
-                uint32_t topkId = tokenOffset % (axisK_ + sharedExpertNum_);
-                uint64_t tokenDataOffset = winTokenDataOffset_ +
-                                           (static_cast<uint64_t>(tokenId) * (axisK_ + sharedExpertNum_) * axisHS_) +
-                                           (static_cast<uint64_t>(topkId) * axisHS_);
-                GM_ADDR remoteDataAddr = toRankAddr + winOffset_[1] + tokenDataOffset * elementSize;
-                GM_ADDR localDataAddr = stagingBaseAddr_ + static_cast<uint64_t>(tokenOffset) * stagingStride_;
-                const bool enableCqe = sqWriteCount + 1U >= HCOMM_SQ_MAX_PENDING;
-                AppendRemoteDataWrite(batchHandle, remoteDataAddr, localDataAddr, enableCqe);
-                ++preparedWqeCount;
-                ++sqWriteCount;
-                if (enableCqe) {
-                    CommitAndDrainChannel(batchHandle, channel, preparedWqeCount, sqWriteCount);
-                } else if (preparedWqeCount == URMA_BATCH_WQE_CAPACITY) {
-                    hcomm_.BatchCommit(batchHandle);
-                    preparedWqeCount = 0U;
-                }
+    for (uint32_t chunkStart = 0U; chunkStart < entryCount; chunkStart += entryChunkMax) {
+        uint32_t curEntries = (chunkStart + entryChunkMax > entryCount) ? entryCount - chunkStart : entryChunkMax;
+        DataCopyExtParams copyParams{1U, curEntries * sizeof(int32_t), 0U, 0U, 0U};
+        SyncFunc<HardEvent::S_MTE2>();
+        DataCopyPad(entriesLocal, bucketTablesGM[baseEntry + chunkStart], copyParams, padParams);
+        SyncFunc<HardEvent::MTE2_S>();
+        for (uint32_t i = 0U; i < curEntries; ++i) {
+            if ((chunkStart + i) % channelsPerRank_ != channelIdx) {
+                continue;
             }
-            ++rankTokenIdx;
+            uint32_t tokenOffset = static_cast<uint32_t>(entriesLocal.GetValue(i));
+            uint32_t tokenId = tokenOffset / (axisK_ + sharedExpertNum_);
+            uint32_t topkId = tokenOffset % (axisK_ + sharedExpertNum_);
+            uint64_t tokenDataOffset = winTokenDataOffset_ +
+                                       (static_cast<uint64_t>(tokenId) * (axisK_ + sharedExpertNum_) * axisHS_) +
+                                       (static_cast<uint64_t>(topkId) * axisHS_);
+            GM_ADDR remoteDataAddr = toRankAddr + winOffset_[1] + tokenDataOffset * elementSize;
+            GM_ADDR localDataAddr = stagingBaseAddr_ + static_cast<uint64_t>(tokenOffset) * stagingStride_;
+            const bool enableCqe = sqWriteCount + 1U >= HCOMM_SQ_MAX_PENDING;
+            AppendRemoteDataWrite(batchHandle, remoteDataAddr, localDataAddr, enableCqe);
+            ++preparedWqeCount;
+            ++sqWriteCount;
+            if (enableCqe) {
+                CommitAndDrainChannel(batchHandle, channel, preparedWqeCount, sqWriteCount);
+            } else if (preparedWqeCount == URMA_BATCH_WQE_CAPACITY) {
+                hcomm_.BatchCommit(batchHandle);
+                preparedWqeCount = 0U;
+            }
         }
     }
 
-    // Flag phase: the same tokens on the same channel, appended after the data WQEs so each
+    // Flag phase: the same entries on the same channel, appended after the data WQEs so each
     // per-token flag lands after its data via in-channel WQE ordering.
-    rankTokenIdx = 0U;
-    for (uint32_t tokenOffset = 0U; tokenOffset < totalSendNum_; ++tokenOffset) {
-        uint32_t scratchAiv = tokenOffset % aivNum_;
-        uint32_t scratchJ = tokenOffset / aivNum_;
-        uint32_t ubIdx = scratchAiv * maxTokensPerAiv_ + scratchJ;
-        int32_t tokenRankId = tokenRankScratchTensor_.GetValue(ubIdx);
-        if (tokenRankId == static_cast<int32_t>(dstRank)) {
-            if (rankTokenIdx % channelsPerRank_ == channelIdx) {
-                GM_ADDR remoteFlagAddr = toRankAddr + winInfoTableOffset_ +
-                                         (TOKEN_INFO_TABLE_RS + tokenOffset) * sizeof(int32_t);
-                const bool enableCqe = sqWriteCount + 1U >= HCOMM_SQ_MAX_PENDING;
-                AppendRemoteFlagWrite(batchHandle, remoteFlagAddr, tokenOffset, enableCqe);
-                ++preparedWqeCount;
-                ++sqWriteCount;
-                if (enableCqe) {
-                    CommitAndDrainChannel(batchHandle, channel, preparedWqeCount, sqWriteCount);
-                } else if (preparedWqeCount == URMA_BATCH_WQE_CAPACITY) {
-                    hcomm_.BatchCommit(batchHandle);
-                    preparedWqeCount = 0U;
-                }
+    for (uint32_t chunkStart = 0U; chunkStart < entryCount; chunkStart += entryChunkMax) {
+        uint32_t curEntries = (chunkStart + entryChunkMax > entryCount) ? entryCount - chunkStart : entryChunkMax;
+        DataCopyExtParams copyParams{1U, curEntries * sizeof(int32_t), 0U, 0U, 0U};
+        SyncFunc<HardEvent::S_MTE2>();
+        DataCopyPad(entriesLocal, bucketTablesGM[baseEntry + chunkStart], copyParams, padParams);
+        SyncFunc<HardEvent::MTE2_S>();
+        for (uint32_t i = 0U; i < curEntries; ++i) {
+            if ((chunkStart + i) % channelsPerRank_ != channelIdx) {
+                continue;
             }
-            ++rankTokenIdx;
+            uint32_t tokenOffset = static_cast<uint32_t>(entriesLocal.GetValue(i));
+            GM_ADDR remoteFlagAddr = toRankAddr + winInfoTableOffset_ +
+                                     (TOKEN_INFO_TABLE_RS + tokenOffset) * sizeof(int32_t);
+            const bool enableCqe = sqWriteCount + 1U >= HCOMM_SQ_MAX_PENDING;
+            AppendRemoteFlagWrite(batchHandle, remoteFlagAddr, tokenOffset, enableCqe);
+            ++preparedWqeCount;
+            ++sqWriteCount;
+            if (enableCqe) {
+                CommitAndDrainChannel(batchHandle, channel, preparedWqeCount, sqWriteCount);
+            } else if (preparedWqeCount == URMA_BATCH_WQE_CAPACITY) {
+                hcomm_.BatchCommit(batchHandle);
+                preparedWqeCount = 0U;
+            }
         }
     }
     if (preparedWqeCount != 0U) {
@@ -976,15 +1136,23 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::P
             Duplicate<int32_t>(ffnStatusTensor_, static_cast<int32_t>(0), ffnNumAlignCnt_);
         }
 
+        LocalTensor<int32_t> rankCounts = rankInfoBuf_.Get<int32_t>();
+        Duplicate<int32_t>(rankCounts, 0, rankCountElements_);
+        SyncFunc<AscendC::HardEvent::V_S>();
+
         const uint64_t roundNum = Ceil(static_cast<uint64_t>(totalSendNum_), static_cast<uint64_t>(aivNum_));
         DataCopyExtParams xCopyParams = {1U, static_cast<uint32_t>(hSize_), 0U, 0U, 0U};
         remoteFlagCnt_ = 0;
 
+        // Phase 1: metadata + staging. Each AIV also counts its remote records per rank and
+        // keeps its own toRankId stash in UB for the scatter pass.
         for (uint64_t round = 0; round < roundNum; ++round) {
             const uint32_t tokenOffset = static_cast<uint32_t>(static_cast<uint64_t>(aivId_) + round * aivNum_);
             if (tokenOffset < totalSendNum_) {
                 AttentionToFfnTokenMetaData metaData;
                 ReadTokenMetaData(metaData, tokenOffset);
+                ascendc_assert(metaData.toRankId >= 0 && static_cast<uint32_t>(metaData.toRankId) < worldSize_,
+                               "toRankId is out of range");
                 tokenRankScratchTensor_.SetValue(round, metaData.toRankId);
 
                 if constexpr (isSync) {
@@ -1001,6 +1169,7 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::P
                     SendToLocal(metaData, xCopyParams);
                 } else {
                     StageRemoteData(metaData, xCopyParams, tokenOffset);
+                    rankCounts.SetValue(metaData.toRankId, rankCounts.GetValue(metaData.toRankId) + 1);
                 }
             }
         }
@@ -1026,44 +1195,44 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::P
         }
         PipeBarrier<PIPE_MTE3>();
 
-        // Write this AIV's toRankId block from UB to GM via MTE3 (bypasses L1 cache,
-        // no cache flush needed). Each AIV writes a contiguous block at offset
-        // aivId_ * maxTokensPerAiv_, avoiding interleaved cache line false sharing.
-        SyncFunc<HardEvent::S_MTE3>();
+        // Publish this AIV's per-rank remote counts to the GM count matrix via MTE3 (bypasses
+        // L1 cache, no cache flush needed). Each AIV writes its own row, no false sharing.
         {
-            DataCopyExtParams scratchWriteParams = {1U, static_cast<uint32_t>(maxTokensPerAiv_ * sizeof(int32_t)), 0U, 0U, 0U};
-            GlobalTensor<int32_t> scratchBlockGM;
-            GM_ADDR blockAddr = tokenRankScratchBase_ +
-                                static_cast<uint64_t>(aivId_) * maxTokensPerAiv_ * sizeof(int32_t);
-            scratchBlockGM.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(blockAddr));
-            DataCopyPad(scratchBlockGM, tokenRankScratchTensor_, scratchWriteParams);
+            GlobalTensor<int32_t> countRowGM;
+            GM_ADDR countRowAddr = countMatrixBase_ + static_cast<uint64_t>(aivId_) * countRowStride_;
+            countRowGM.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(countRowAddr));
+            DataCopyExtParams countCopyParams{1U, rankCountElements_ * sizeof(int32_t), 0U, 0U, 0U};
+            const DataCopyPadExtParams<int32_t> countPadParams{false, 0U, 0U, 0U};
+            SyncFunc<HardEvent::S_MTE3>();
+            DataCopyPad(countRowGM, rankCounts, countCopyParams, countPadParams);
+            SyncFunc<HardEvent::MTE3_S>();
         }
-        PipeBarrier<PIPE_MTE3>();
         SyncAll<true>();
 
-        // Multi-channel relay phase: every AIV re-reads the token-rank scratch and relays the
-        // (dstRank, channel) slots assigned to it (slot = dstRank * channelsPerRank_ + channelIdx,
-        // slot % aivNum_ == aivId_). A token's rank index decides its channel, and its data WQE
-        // and flag WQE share that channel, so per-token flag ordering is preserved while
-        // multiple AIVs and channels submit in parallel.
-        {
-            uint32_t scratchTotalEntries = aivNum_ * maxTokensPerAiv_;
-            DataCopyExtParams scratchCopyParams = {1U, static_cast<uint32_t>(scratchTotalEntries * sizeof(int32_t)), 0U, 0U, 0U};
-            DataCopyPadExtParams<int32_t> scratchCopyPadParams{false, 0U, 0U, 0U};
-            DataCopyPad(tokenRankScratchTensor_, tokenRankScratchGMTensor_, scratchCopyParams, scratchCopyPadParams);
-            SyncFunc<AscendC::HardEvent::MTE2_S>();
+        // Phase 2: derive the compact-table offsets, then bucket this AIV's remote token
+        // offsets into the per-rank GM tables. The SyncAll guarantees every AIV's counts are
+        // visible before the prefix sums, and the second SyncAll guarantees every table is
+        // complete before any AIV starts relaying.
+        BuildRankTableOffsets();
+        ScatterTokensToRankTables();
+        SyncAll<true>();
 
-            for (uint32_t dstRank = 0U; dstRank < worldSize_; ++dstRank) {
-                if (dstRank == rankId_) {
+        // Multi-channel relay phase: every AIV relays the (dstRank, channel) slots assigned to
+        // it (slot = dstRank * channelsPerRank_ + channelIdx, slot % aivNum_ == aivId_),
+        // reading only the compact table of the rank it serves. An entry's index within the
+        // rank decides its channel, and its data WQE and flag WQE share that channel, so
+        // per-token flag ordering is preserved while multiple AIVs and channels submit in
+        // parallel.
+        for (uint32_t dstRank = 0U; dstRank < worldSize_; ++dstRank) {
+            if (dstRank == rankId_) {
+                continue;
+            }
+            for (uint32_t channelIdx = 0U; channelIdx < channelsPerRank_; ++channelIdx) {
+                uint32_t slot = dstRank * channelsPerRank_ + channelIdx;
+                if (slot % aivNum_ != aivId_) {
                     continue;
                 }
-                for (uint32_t channelIdx = 0U; channelIdx < channelsPerRank_; ++channelIdx) {
-                    uint32_t slot = dstRank * channelsPerRank_ + channelIdx;
-                    if (slot % aivNum_ != aivId_) {
-                        continue;
-                    }
-                    RelayRemoteTokens(dstRank, channelIdx);
-                }
+                RelayRemoteTokens(dstRank, channelIdx);
             }
         }
 
