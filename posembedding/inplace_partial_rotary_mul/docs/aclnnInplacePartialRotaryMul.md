@@ -132,7 +132,7 @@ aclnnStatus aclnnInplacePartialRotaryMul(
       <td>partialSlice</td>
       <td>输入</td>
       <td>部分旋转的切片范围[start, end)，作用于最后一维。</td>
-      <td>不传值则默认整D轴做旋转编码，start和end相等时则不做旋转编码。</td>
+      <td>ACLNN接口要求传入长度为2的数组。Ascend950的图/属性路径缺省时按[0, 0]处理；910B/910_93上图/属性路径缺省时默认整D轴做旋转编码。显式传入start和end且二者相等时不做旋转编码。</td>
       <td>INT64数组</td>
       <td>-</td>
       <td>-</td>

@@ -366,9 +366,10 @@ ge::graphStatus InplacePartialRopeRegBaseTilingClass::GetShapeAttrsInfo()
 
     // 获取slice
     const gert::ContinuousVector *sliceRangeListPtr = attrs->GetAttrPointer<gert::ContinuousVector>(1);
-    if (sliceRangeListPtr->GetSize() == 0) {
+    if (sliceRangeListPtr == nullptr || sliceRangeListPtr->GetSize() == 0) {
+        // Ascend950 default: an omitted partial_slice is an empty slice.
         sliceStart_ = 0;
-        sliceEnd_ = d_;
+        sliceEnd_ = 0;
     } else {
         const int64_t *expertRangeList = reinterpret_cast<const int64_t *>(sliceRangeListPtr->GetData());
         sliceStart_ = expertRangeList[0];
