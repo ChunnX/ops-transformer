@@ -150,13 +150,12 @@ private:
     GM_ADDR commX1ScaleGM1_;
     GM_ADDR commOutGM_;
 
+    // 是否为 HiF4 scale 场景(影响 4-bit 数据 2:1 打包与 scale 单元长度)
+    static constexpr bool isHiF4Scale_ = AscendC::IsSameType<ScaleType, hif4_scale>::value;
     // Scale 通信数据类型: MX 为 E8M0; HiF4 的 hif4_scale 为完整 4 字节元数据(E6M2+E1_8+E1_16),
     // HCCL 未提供专用类型, 按 UINT32 传输
-    static constexpr uint64_t mxScaleHcclDataType_ = Blaze::Gemm::Kernel::IsHif4<X1Type>() ?
-                                                         AscendC::HCCL_DATA_TYPE_UINT32 :
-                                                         AscendC::HCCL_DATA_TYPE_FP8E8M0;
-    // 是否为 HiF4 scale 场景(影响 4-bit 数据 2:1 打包与 scale 单元长度)
-    static constexpr bool isHiF4Scale_ = Blaze::Gemm::Kernel::IsHif4<X1Type>();
+    static constexpr uint64_t mxScaleHcclDataType_ =
+        isHiF4Scale_ ? AscendC::HCCL_DATA_TYPE_UINT32 : AscendC::HCCL_DATA_TYPE_FP8E8M0;
     static constexpr uint64_t x1HcclDataType_ = GetX1HcclDataType<X1Type>();
     uint32_t rankId_{0};
     uint32_t rankDim_{0};
@@ -194,8 +193,7 @@ AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, ScaleType,
     commX1ScaleGM1_ = workspaceGM;
     // scale 通信空间(字节): MX 为 组数*2(E8M0)*M 行; HiF4 为 组数*4(hif4_scale)*M 行
     // 每 64 元素组 scale 单元数与单元宽度统一由 MxScaleKLen 泛化
-    uint64_t x1ScaleLen = static_cast<uint64_t>(
-                              Blaze::Gemm::Kernel::MxScaleKLen<ScaleType>(commTiling.nonSplitAxisSize)) *
+    uint64_t x1ScaleLen = static_cast<uint64_t>(Blaze::Gemm::MxScaleKLen<X1Type>(commTiling.nonSplitAxisSize)) *
                           static_cast<uint64_t>(sizeof(ScaleType)) * static_cast<uint64_t>(splitAxisSize_);
     x1ScaleLen = Blaze::Gemm::CeilDiv(x1ScaleLen, ALIGN_NUM) * ALIGN_NUM;
     commOutGM_ = all2all_out;
@@ -221,16 +219,15 @@ AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, ScaleType,
         rankForComm = Blaze::Gemm::CeilDiv(rankForComm, MXFP_DATA_NUM_PER_BYTE);
     }
     // scale 每 rank 通信单元数(按 scale 元素计): MX 为 E8M0 单元(Ka/64*2), HiF4 为 UINT32 单元(Ka/64)
-    uint32_t scaleKPerRank =
-        static_cast<uint32_t>(Blaze::Gemm::Kernel::MxScaleKLen<ScaleType>(originalRankForComm));
+    uint32_t scaleKPerRank = static_cast<uint32_t>(Blaze::Gemm::MxScaleKLen<X1Type>(originalRankForComm));
 
     uint64_t dataStrideCount = static_cast<uint64_t>(splitAxisSize_) * rankForComm;
     uint64_t scaleSendCount = static_cast<uint64_t>(splitAxisSize_) * scaleKPerRank;
     opStateDump_.DoDump(DUMP_FIELD_STEP, POS_COMM_BEFORE, static_cast<uint8_t>(Utils::RT_PHASE_COMM_PREPARE));
     // DoDump不统计scale commit次数
     commState_.scaleHandle_ = commState_.hccl_.template AlltoAll<true>(
-        x1Scale_, commX1ScaleGM1_, static_cast<uint64_t>(scaleSendCount * sizeof(ScaleType)), static_cast<AscendC::HcclDataType>(mxScaleHcclDataType_),
-        scaleSendCount, 1);
+        x1Scale_, commX1ScaleGM1_, static_cast<uint64_t>(scaleSendCount * sizeof(ScaleType)),
+        static_cast<AscendC::HcclDataType>(mxScaleHcclDataType_), scaleSendCount, 1);
     if (commTiling.splitAxisTileCnt > 0) {
         uint64_t headSendCount = static_cast<uint64_t>(commTiling.splitAxisTileSize) * rankForComm;
         commState_.dataHeadHandle_ = commState_.hccl_.template AlltoAll<true>(
@@ -255,8 +252,7 @@ AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, ScaleType,
 template <typename X1Type, typename X2Type, typename YType, typename CommDataTypeX1, typename ScaleType,
           typename AlltoAllMatmulTilingDataType, AscendC::HcclServerType ServerType, bool IsMxFp4, bool TransB>
 __aicore__ inline void AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, ScaleType,
-                                                      AlltoAllMatmulTilingDataType, ServerType, IsMxFp4,
-                                                      TransB>::Run()
+                                                      AlltoAllMatmulTilingDataType, ServerType, IsMxFp4, TransB>::Run()
 {
     if (tilingData_->localMatmul != 0) {
         opStateDump_.DoDump(DUMP_FIELD_POSITION, POS_COMP_LOCAL_BEFORE);
