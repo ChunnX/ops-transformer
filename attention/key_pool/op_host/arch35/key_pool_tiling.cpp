@@ -108,6 +108,7 @@ ge::graphStatus KeyPoolTiling::GetNpuInfo()
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->platformInfo);
     socVersion_ = ascendcPlatform.GetSocVersion();
+    npuArch_ = ascendcPlatform.GetCurNpuArch();
 
     libapiSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
 
@@ -176,7 +177,7 @@ ge::graphStatus KeyPoolTiling::SetTemplateId()
     if (context_->templateId == TemplateId::EMPTY_HIDDEN_STATES) {
         return ge::GRAPH_SUCCESS;
     }
-    if (socVersion_ == platform_ascendc::SocVersion::ASCEND950) {
+    if (npuArch_ == NpuArch::DAV_3510) {
         // 设置高性能模板
         if (context_->normWeight.desc == nullptr && context_->layout == LayoutType::LAYOUT_BSH &&
             baseParams_->seqSize <= 4 && baseParams_->tokenSize <= 256) {

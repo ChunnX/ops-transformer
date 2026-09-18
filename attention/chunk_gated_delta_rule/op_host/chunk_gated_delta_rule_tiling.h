@@ -96,7 +96,8 @@ protected:
     ChunkGatedDeltaRuleCompileInfo compileInfo_;
     ChunkGatedDeltaRule::ChunkGatedDeltaRuleTilingData tilingData_;
     ChunkGatedDeltaRuleInfo inputParams_;
-    platform_ascendc::SocVersion socVersion_;
+    NpuArch npuArch_;
+    platform_ascendc::SocVersion socVersion_; // 供后续A2/A3型号级区分使用,950平台判断走npuArch_
 };
 
 } // namespace optiling
