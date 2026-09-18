@@ -57,34 +57,33 @@ __simd_vf__ inline void VfCalcRescaleFactor(__ubuf__ float *softmaxExp, __ubuf__
     MaskReg pregHalf = CreateMask<half, MaskPattern::ALL>();
     MaskReg pregI32 = CreateMask<int32_t, MaskPattern::ALL>();
 
-    // [128] half = 1 个寄存器；[128] fp32 输出 = 2 × 64 元素寄存器
-    for (uint32_t i = 0; i < 2; i++) {
-        // ① half 域整数运算：ΔK = K^{blkStart} - K^{final}
-        LoadAlign(vregBlkStart, blkStartMax + i * 64);
-        LoadAlign(vregFinal, finalMax + i * 64);
-        Sub(vregDeltaK, vregBlkStart, vregFinal, pregHalf);
+    // [128] half 输入 = 1 个寄存器（无循环，一次走完——half 域 1 寄存器装 128 元素；
+    // 原 fp32 方案需 2 轮循环是每寄存器仅 64 元素之故，域切换后循环已无意义）
+    // ① half 域整数运算：ΔK = K^{blkStart} - K^{final}
+    LoadAlign(vregBlkStart, blkStartMax);
+    LoadAlign(vregFinal, finalMax);
+    Sub(vregDeltaK, vregBlkStart, vregFinal, pregHalf);
 
-        // ② +127（fp32 指数偏置）并防御负值
-        Adds(vregDeltaK, vregDeltaK, 127.0h, pregHalf);
-        Maxs(vregDeltaK, vregDeltaK, 0.0h, pregHalf);
+    // ② +127（fp32 指数偏置）并防御负值
+    Adds(vregDeltaK, vregDeltaK, 127.0h, pregHalf);
+    Maxs(vregDeltaK, vregDeltaK, 0.0h, pregHalf);
 
-        // ③ 宽度展开：half[128] → int32[64]×2
-        //    RegLayout::ZERO 取偶数位元素，RegLayout::ONE 取奇数位元素
-        //    （两次 Cast 各填一个 256B int32 寄存器，舍入模式相同，非双舍入）
-        Cast<int32_t, half, h2iZero>((RegTensor<int32_t> &)vregBitsA, vregDeltaK, pregHalf);
-        Cast<int32_t, half, h2iOne>((RegTensor<int32_t> &)vregBitsB, vregDeltaK, pregHalf);
+    // ③ 宽度展开：half[128] → int32[64]×2
+    //    RegLayout::ZERO 取偶数位元素（e0, e2, ...），RegLayout::ONE 取奇数位（e1, e3, ...）
+    //    （两次 Cast 各填一个 256B int32 寄存器，舍入模式相同，非双舍入）
+    Cast<int32_t, half, h2iZero>((RegTensor<int32_t> &)vregBitsA, vregDeltaK, pregHalf);
+    Cast<int32_t, half, h2iOne>((RegTensor<int32_t> &)vregBitsB, vregDeltaK, pregHalf);
 
-        // ④ ShiftLefts 23：整数值移入 fp32 指数域位置
-        //    (ΔK + 127) << 23 = fp32 位模式，尾数全零，指数域 = ΔK + 127
-        ShiftLefts((RegTensor<int32_t> &)vregBitsA, (RegTensor<int32_t> &)vregBitsA, SHIFT_VALUE, pregI32);
-        ShiftLefts((RegTensor<int32_t> &)vregBitsB, (RegTensor<int32_t> &)vregBitsB, SHIFT_VALUE, pregI32);
+    // ④ ShiftLefts 23：整数值移入 fp32 指数域位置
+    //    (ΔK + 127) << 23 = fp32 位模式，尾数全零，指数域 = ΔK + 127
+    ShiftLefts((RegTensor<int32_t> &)vregBitsA, (RegTensor<int32_t> &)vregBitsA, SHIFT_VALUE, pregI32);
+    ShiftLefts((RegTensor<int32_t> &)vregBitsB, (RegTensor<int32_t> &)vregBitsB, SHIFT_VALUE, pregI32);
 
-        // ⑤ Interleave：偶奇交错重组成顺序（A=前64，B=后64），存为 fp32
-        Interleave((RegTensor<int32_t> &)vregBitsA, (RegTensor<int32_t> &)vregBitsB,
-                   (RegTensor<int32_t> &)vregBitsA, (RegTensor<int32_t> &)vregBitsB);
-        StoreAlign(softmaxExp + i * 64, vregBitsA, pregI32);
-        StoreAlign(softmaxExp + i * 64 + 64 / 2, vregBitsB, pregI32);
-    }
+    // ⑤ Interleave：偶奇交错重组成顺序（A=前64，B=后64），存为 fp32
+    Interleave((RegTensor<int32_t> &)vregBitsA, (RegTensor<int32_t> &)vregBitsB,
+               (RegTensor<int32_t> &)vregBitsA, (RegTensor<int32_t> &)vregBitsB);
+    StoreAlign(softmaxExp, vregBitsA, pregI32);        // 输出 [0..63]
+    StoreAlign(softmaxExp + 64, vregBitsB, pregI32);   // 输出 [64..127]
 }
 
 } // namespace QfaVectorApi
