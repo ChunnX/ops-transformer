@@ -24,3 +24,278 @@ expect nan count: 0
   t=6: nan 从 n=30 开始
   t=7: nan 从 n=30 开始
 === DEBUG end ===
+
+
+=== DEBUG metadata ===
+head[0:8] (sectionNum,isFD,mBase,s2Base,aicNum,aivNum,needInit,?): [6, 1, 128, 256, 32, 64, 0, 0]
+section 0 core0 FA[bnS,mS,s2S,bnE,mE,s2E,ws]: [0, 0, 0, 0, 11, 3, 0]
+  active cores: 32 / 32
+   core0: bn[0,0) m[0,11) s2[0,3)
+   core1: bn[0,1) m[11,10) s2[3,8)
+   core2: bn[1,2) m[10,9) s2[8,13)
+   core3: bn[2,3) m[9,8) s2[13,18)
+   core4: bn[3,4) m[8,8) s2[18,3)
+   core5: bn[4,5) m[8,7) s2[3,8)
+   core6: bn[5,6) m[7,6) s2[8,13)
+   core7: bn[6,7) m[6,5) s2[13,18)
+   core8: bn[7,8) m[5,5) s2[18,3)
+   core9: bn[8,9) m[5,4) s2[3,8)
+   core10: bn[9,10) m[4,3) s2[8,13)
+   core11: bn[10,11) m[3,2) s2[13,18)
+   core12: bn[11,12) m[2,2) s2[18,3)
+   core13: bn[12,13) m[2,1) s2[3,8)
+   core14: bn[13,14) m[1,0) s2[8,13)
+   core15: bn[14,14) m[0,11) s2[13,18)
+   core16: bn[14,15) m[11,11) s2[18,1)
+   core17: bn[15,16) m[11,10) s2[1,6)
+   core18: bn[16,17) m[10,9) s2[6,11)
+   core19: bn[17,18) m[9,8) s2[11,16)
+   core20: bn[18,19) m[8,8) s2[16,1)
+   core21: bn[19,20) m[8,7) s2[1,6)
+   core22: bn[20,21) m[7,6) s2[6,11)
+   core23: bn[21,22) m[6,5) s2[11,16)
+   core24: bn[22,23) m[5,5) s2[16,2)
+   core25: bn[23,24) m[5,4) s2[2,7)
+   core26: bn[24,25) m[4,3) s2[7,12)
+   core27: bn[25,26) m[3,2) s2[12,18)
+   core28: bn[26,27) m[2,2) s2[18,4)
+   core29: bn[27,28) m[2,1) s2[4,9)
+   core30: bn[28,29) m[1,0) s2[9,14)
+   core31: bn[29,30) m[0,0) s2[14,0)
+section 1 core0 FA[bnS,mS,s2S,bnE,mE,s2E,ws]: [30, 0, 0, 30, 11, 3, 0]
+  active cores: 32 / 32
+   core0: bn[30,30) m[0,11) s2[0,3)
+   core1: bn[30,31) m[11,10) s2[3,8)
+   core2: bn[31,32) m[10,9) s2[8,13)
+   core3: bn[32,33) m[9,8) s2[13,18)
+   core4: bn[33,34) m[8,8) s2[18,3)
+   core5: bn[34,35) m[8,7) s2[3,8)
+   core6: bn[35,36) m[7,6) s2[8,13)
+   core7: bn[36,37) m[6,5) s2[13,18)
+   core8: bn[37,38) m[5,5) s2[18,3)
+   core9: bn[38,39) m[5,4) s2[3,8)
+   core10: bn[39,40) m[4,3) s2[8,13)
+   core11: bn[40,41) m[3,2) s2[13,18)
+   core12: bn[41,42) m[2,2) s2[18,3)
+   core13: bn[42,43) m[2,1) s2[3,8)
+   core14: bn[43,44) m[1,0) s2[8,13)
+   core15: bn[44,44) m[0,11) s2[13,18)
+   core16: bn[44,45) m[11,11) s2[18,1)
+   core17: bn[45,46) m[11,10) s2[1,6)
+   core18: bn[46,47) m[10,9) s2[6,11)
+   core19: bn[47,48) m[9,8) s2[11,16)
+   core20: bn[48,49) m[8,8) s2[16,1)
+   core21: bn[49,50) m[8,7) s2[1,6)
+   core22: bn[50,51) m[7,6) s2[6,11)
+   core23: bn[51,52) m[6,5) s2[11,16)
+   core24: bn[52,53) m[5,5) s2[16,2)
+   core25: bn[53,54) m[5,4) s2[2,7)
+   core26: bn[54,55) m[4,3) s2[7,12)
+   core27: bn[55,56) m[3,2) s2[12,18)
+   core28: bn[56,57) m[2,2) s2[18,4)
+   core29: bn[57,58) m[2,1) s2[4,9)
+   core30: bn[58,59) m[1,0) s2[9,14)
+   core31: bn[59,60) m[0,0) s2[14,0)
+section 2 core0 FA[bnS,mS,s2S,bnE,mE,s2E,ws]: [60, 0, 0, 60, 11, 3, 0]
+  active cores: 32 / 32
+   core0: bn[60,60) m[0,11) s2[0,3)
+   core1: bn[60,61) m[11,10) s2[3,8)
+   core2: bn[61,62) m[10,9) s2[8,13)
+   core3: bn[62,63) m[9,8) s2[13,18)
+   core4: bn[63,64) m[8,8) s2[18,3)
+   core5: bn[64,65) m[8,7) s2[3,8)
+   core6: bn[65,66) m[7,6) s2[8,13)
+   core7: bn[66,67) m[6,5) s2[13,18)
+   core8: bn[67,68) m[5,5) s2[18,3)
+   core9: bn[68,69) m[5,4) s2[3,8)
+   core10: bn[69,70) m[4,3) s2[8,13)
+   core11: bn[70,71) m[3,2) s2[13,18)
+   core12: bn[71,72) m[2,2) s2[18,3)
+   core13: bn[72,73) m[2,1) s2[3,8)
+   core14: bn[73,74) m[1,0) s2[8,13)
+   core15: bn[74,74) m[0,11) s2[13,18)
+   core16: bn[74,75) m[11,11) s2[18,1)
+   core17: bn[75,76) m[11,10) s2[1,6)
+   core18: bn[76,77) m[10,9) s2[6,11)
+   core19: bn[77,78) m[9,8) s2[11,16)
+   core20: bn[78,79) m[8,8) s2[16,1)
+   core21: bn[79,80) m[8,7) s2[1,6)
+   core22: bn[80,81) m[7,6) s2[6,11)
+   core23: bn[81,82) m[6,5) s2[11,16)
+   core24: bn[82,83) m[5,5) s2[16,2)
+   core25: bn[83,84) m[5,4) s2[2,7)
+   core26: bn[84,85) m[4,3) s2[7,12)
+   core27: bn[85,86) m[3,2) s2[12,18)
+   core28: bn[86,87) m[2,2) s2[18,4)
+   core29: bn[87,88) m[2,1) s2[4,9)
+   core30: bn[88,89) m[1,0) s2[9,14)
+   core31: bn[89,90) m[0,0) s2[14,0)
+section 3 core0 FA[bnS,mS,s2S,bnE,mE,s2E,ws]: [90, 0, 0, 90, 11, 3, 0]
+  active cores: 32 / 32
+   core0: bn[90,90) m[0,11) s2[0,3)
+   core1: bn[90,91) m[11,10) s2[3,8)
+   core2: bn[91,92) m[10,9) s2[8,13)
+   core3: bn[92,93) m[9,8) s2[13,18)
+   core4: bn[93,94) m[8,8) s2[18,3)
+   core5: bn[94,95) m[8,7) s2[3,8)
+   core6: bn[95,96) m[7,6) s2[8,13)
+   core7: bn[96,97) m[6,5) s2[13,18)
+   core8: bn[97,98) m[5,5) s2[18,3)
+   core9: bn[98,99) m[5,4) s2[3,8)
+   core10: bn[99,100) m[4,3) s2[8,13)
+   core11: bn[100,101) m[3,2) s2[13,18)
+   core12: bn[101,102) m[2,2) s2[18,3)
+   core13: bn[102,103) m[2,1) s2[3,8)
+   core14: bn[103,104) m[1,0) s2[8,13)
+   core15: bn[104,104) m[0,11) s2[13,18)
+   core16: bn[104,105) m[11,11) s2[18,1)
+   core17: bn[105,106) m[11,10) s2[1,6)
+   core18: bn[106,107) m[10,9) s2[6,11)
+   core19: bn[107,108) m[9,8) s2[11,16)
+   core20: bn[108,109) m[8,8) s2[16,1)
+   core21: bn[109,110) m[8,7) s2[1,6)
+   core22: bn[110,111) m[7,6) s2[6,11)
+   core23: bn[111,112) m[6,5) s2[11,16)
+   core24: bn[112,113) m[5,5) s2[16,2)
+   core25: bn[113,114) m[5,4) s2[2,7)
+   core26: bn[114,115) m[4,3) s2[7,12)
+   core27: bn[115,116) m[3,2) s2[12,18)
+   core28: bn[116,117) m[2,2) s2[18,4)
+   core29: bn[117,118) m[2,1) s2[4,9)
+   core30: bn[118,119) m[1,0) s2[9,14)
+   core31: bn[119,120) m[0,0) s2[14,0)
+section 4 core0 FA[bnS,mS,s2S,bnE,mE,s2E,ws]: [120, 0, 0, 120, 11, 3, 0]
+  active cores: 32 / 32
+   core0: bn[120,120) m[0,11) s2[0,3)
+   core1: bn[120,121) m[11,10) s2[3,8)
+   core2: bn[121,122) m[10,9) s2[8,13)
+   core3: bn[122,123) m[9,8) s2[13,18)
+   core4: bn[123,124) m[8,8) s2[18,3)
+   core5: bn[124,125) m[8,7) s2[3,8)
+   core6: bn[125,126) m[7,6) s2[8,13)
+   core7: bn[126,127) m[6,5) s2[13,18)
+   core8: bn[127,128) m[5,5) s2[18,3)
+   core9: bn[128,129) m[5,4) s2[3,8)
+   core10: bn[129,130) m[4,3) s2[8,13)
+   core11: bn[130,131) m[3,2) s2[13,18)
+   core12: bn[131,132) m[2,2) s2[18,3)
+   core13: bn[132,133) m[2,1) s2[3,8)
+   core14: bn[133,134) m[1,0) s2[8,13)
+   core15: bn[134,134) m[0,11) s2[13,18)
+   core16: bn[134,135) m[11,11) s2[18,1)
+   core17: bn[135,136) m[11,10) s2[1,6)
+   core18: bn[136,137) m[10,9) s2[6,11)
+   core19: bn[137,138) m[9,8) s2[11,16)
+   core20: bn[138,139) m[8,8) s2[16,1)
+   core21: bn[139,140) m[8,7) s2[1,6)
+   core22: bn[140,141) m[7,6) s2[6,11)
+   core23: bn[141,142) m[6,5) s2[11,16)
+   core24: bn[142,143) m[5,5) s2[16,2)
+   core25: bn[143,144) m[5,4) s2[2,7)
+   core26: bn[144,145) m[4,3) s2[7,12)
+   core27: bn[145,146) m[3,2) s2[12,18)
+   core28: bn[146,147) m[2,2) s2[18,4)
+   core29: bn[147,148) m[2,1) s2[4,9)
+   core30: bn[148,149) m[1,0) s2[9,14)
+   core31: bn[149,150) m[0,0) s2[14,0)
+section 5 core0 FA[bnS,mS,s2S,bnE,mE,s2E,ws]: [150, 0, 0, 150, 3, 14, 0]
+  active cores: 32 / 32
+   core0: bn[150,150) m[0,3) s2[0,14)
+   core1: bn[150,150) m[3,7) s2[14,8)
+   core2: bn[150,150) m[7,11) s2[8,3)
+   core3: bn[150,151) m[11,2) s2[3,19)
+   core4: bn[151,151) m[2,6) s2[19,13)
+   core5: bn[151,151) m[6,10) s2[13,7)
+   core6: bn[151,152) m[10,2) s2[7,4)
+   core7: bn[152,152) m[2,5) s2[4,18)
+   core8: bn[152,152) m[5,9) s2[18,12)
+   core9: bn[152,153) m[9,1) s2[12,9)
+   core10: bn[153,153) m[1,5) s2[9,3)
+   core11: bn[153,153) m[5,8) s2[3,17)
+   core12: bn[153,154) m[8,0) s2[17,14)
+   core13: bn[154,154) m[0,4) s2[14,8)
+   core14: bn[154,154) m[4,8) s2[8,2)
+   core15: bn[154,154) m[8,11) s2[2,19)
+   core16: bn[154,155) m[11,3) s2[19,13)
+   core17: bn[155,155) m[3,7) s2[13,7)
+   core18: bn[155,155) m[7,11) s2[7,1)
+   core19: bn[155,156) m[11,2) s2[1,18)
+   core20: bn[156,156) m[2,6) s2[18,12)
+   core21: bn[156,156) m[6,10) s2[12,6)
+   core22: bn[156,157) m[10,2) s2[6,3)
+   core23: bn[157,157) m[2,5) s2[3,17)
+   core24: bn[157,157) m[5,9) s2[17,11)
+   core25: bn[157,158) m[9,1) s2[11,8)
+   core26: bn[158,158) m[1,5) s2[8,2)
+   core27: bn[158,158) m[5,8) s2[2,16)
+   core28: bn[158,159) m[8,0) s2[16,13)
+   core29: bn[159,159) m[0,4) s2[13,8)
+   core30: bn[159,159) m[4,8) s2[8,3)
+   core31: bn[159,160) m[8,0) s2[3,0)
+section 0 FD aiv0: bn=0 mIdx=11 ws=0 wsNum=2 mStart=0 mLen=92
+section 0 FD aiv1: bn=1 mIdx=10 ws=2 wsNum=2 mStart=0 mLen=64
+section 0 FD aiv2: bn=1 mIdx=10 ws=2 wsNum=2 mStart=64 mLen=64
+section 0 FD aiv3: bn=2 mIdx=9 ws=4 wsNum=2 mStart=0 mLen=64
+section 0 FD aiv4: bn=2 mIdx=9 ws=4 wsNum=2 mStart=64 mLen=64
+section 0 FD aiv5: bn=3 mIdx=8 ws=6 wsNum=2 mStart=0 mLen=64
+section 0 FD aiv6: bn=3 mIdx=8 ws=6 wsNum=2 mStart=64 mLen=64
+section 0 FD aiv7: bn=4 mIdx=8 ws=8 wsNum=2 mStart=0 mLen=64
+section 0 FD aiv8: bn=4 mIdx=8 ws=8 wsNum=2 mStart=64 mLen=64
+section 0 FD aiv9: bn=5 mIdx=7 ws=10 wsNum=2 mStart=0 mLen=64
+  section 0 FD tasks: 59
+section 1 FD aiv0: bn=30 mIdx=11 ws=0 wsNum=2 mStart=0 mLen=92
+section 1 FD aiv1: bn=31 mIdx=10 ws=2 wsNum=2 mStart=0 mLen=64
+section 1 FD aiv2: bn=31 mIdx=10 ws=2 wsNum=2 mStart=64 mLen=64
+section 1 FD aiv3: bn=32 mIdx=9 ws=4 wsNum=2 mStart=0 mLen=64
+section 1 FD aiv4: bn=32 mIdx=9 ws=4 wsNum=2 mStart=64 mLen=64
+section 1 FD aiv5: bn=33 mIdx=8 ws=6 wsNum=2 mStart=0 mLen=64
+section 1 FD aiv6: bn=33 mIdx=8 ws=6 wsNum=2 mStart=64 mLen=64
+section 1 FD aiv7: bn=34 mIdx=8 ws=8 wsNum=2 mStart=0 mLen=64
+section 1 FD aiv8: bn=34 mIdx=8 ws=8 wsNum=2 mStart=64 mLen=64
+section 1 FD aiv9: bn=35 mIdx=7 ws=10 wsNum=2 mStart=0 mLen=64
+  section 1 FD tasks: 59
+section 2 FD aiv0: bn=60 mIdx=11 ws=0 wsNum=2 mStart=0 mLen=92
+section 2 FD aiv1: bn=61 mIdx=10 ws=2 wsNum=2 mStart=0 mLen=64
+section 2 FD aiv2: bn=61 mIdx=10 ws=2 wsNum=2 mStart=64 mLen=64
+section 2 FD aiv3: bn=62 mIdx=9 ws=4 wsNum=2 mStart=0 mLen=64
+section 2 FD aiv4: bn=62 mIdx=9 ws=4 wsNum=2 mStart=64 mLen=64
+section 2 FD aiv5: bn=63 mIdx=8 ws=6 wsNum=2 mStart=0 mLen=64
+section 2 FD aiv6: bn=63 mIdx=8 ws=6 wsNum=2 mStart=64 mLen=64
+section 2 FD aiv7: bn=64 mIdx=8 ws=8 wsNum=2 mStart=0 mLen=64
+section 2 FD aiv8: bn=64 mIdx=8 ws=8 wsNum=2 mStart=64 mLen=64
+section 2 FD aiv9: bn=65 mIdx=7 ws=10 wsNum=2 mStart=0 mLen=64
+  section 2 FD tasks: 59
+section 3 FD aiv0: bn=90 mIdx=11 ws=0 wsNum=2 mStart=0 mLen=92
+section 3 FD aiv1: bn=91 mIdx=10 ws=2 wsNum=2 mStart=0 mLen=64
+section 3 FD aiv2: bn=91 mIdx=10 ws=2 wsNum=2 mStart=64 mLen=64
+section 3 FD aiv3: bn=92 mIdx=9 ws=4 wsNum=2 mStart=0 mLen=64
+section 3 FD aiv4: bn=92 mIdx=9 ws=4 wsNum=2 mStart=64 mLen=64
+section 3 FD aiv5: bn=93 mIdx=8 ws=6 wsNum=2 mStart=0 mLen=64
+section 3 FD aiv6: bn=93 mIdx=8 ws=6 wsNum=2 mStart=64 mLen=64
+section 3 FD aiv7: bn=94 mIdx=8 ws=8 wsNum=2 mStart=0 mLen=64
+section 3 FD aiv8: bn=94 mIdx=8 ws=8 wsNum=2 mStart=64 mLen=64
+section 3 FD aiv9: bn=95 mIdx=7 ws=10 wsNum=2 mStart=0 mLen=64
+  section 3 FD tasks: 59
+section 4 FD aiv0: bn=120 mIdx=11 ws=0 wsNum=2 mStart=0 mLen=92
+section 4 FD aiv1: bn=121 mIdx=10 ws=2 wsNum=2 mStart=0 mLen=64
+section 4 FD aiv2: bn=121 mIdx=10 ws=2 wsNum=2 mStart=64 mLen=64
+section 4 FD aiv3: bn=122 mIdx=9 ws=4 wsNum=2 mStart=0 mLen=64
+section 4 FD aiv4: bn=122 mIdx=9 ws=4 wsNum=2 mStart=64 mLen=64
+section 4 FD aiv5: bn=123 mIdx=8 ws=6 wsNum=2 mStart=0 mLen=64
+section 4 FD aiv6: bn=123 mIdx=8 ws=6 wsNum=2 mStart=64 mLen=64
+section 4 FD aiv7: bn=124 mIdx=8 ws=8 wsNum=2 mStart=0 mLen=64
+section 4 FD aiv8: bn=124 mIdx=8 ws=8 wsNum=2 mStart=64 mLen=64
+section 4 FD aiv9: bn=125 mIdx=7 ws=10 wsNum=2 mStart=0 mLen=64
+  section 4 FD tasks: 59
+section 5 FD aiv0: bn=150 mIdx=3 ws=0 wsNum=2 mStart=0 mLen=64
+section 5 FD aiv1: bn=150 mIdx=3 ws=0 wsNum=2 mStart=64 mLen=64
+section 5 FD aiv2: bn=150 mIdx=7 ws=2 wsNum=2 mStart=0 mLen=64
+section 5 FD aiv3: bn=150 mIdx=7 ws=2 wsNum=2 mStart=64 mLen=64
+section 5 FD aiv4: bn=150 mIdx=11 ws=4 wsNum=2 mStart=0 mLen=92
+section 5 FD aiv5: bn=151 mIdx=2 ws=6 wsNum=2 mStart=0 mLen=64
+section 5 FD aiv6: bn=151 mIdx=2 ws=6 wsNum=2 mStart=64 mLen=64
+section 5 FD aiv7: bn=151 mIdx=6 ws=8 wsNum=2 mStart=0 mLen=64
+section 5 FD aiv8: bn=151 mIdx=6 ws=8 wsNum=2 mStart=64 mLen=64
+section 5 FD aiv9: bn=151 mIdx=10 ws=10 wsNum=2 mStart=0 mLen=64
+  section 5 FD tasks: 59
+=== DEBUG end ===
