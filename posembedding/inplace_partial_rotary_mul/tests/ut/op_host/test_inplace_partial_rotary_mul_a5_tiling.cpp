@@ -788,6 +788,30 @@ TEST_F(InplacePartialRotaryMulTilingA5, slice_empty_noop)
     ExecuteTestCase(tilingPara, ge::GRAPH_SUCCESS, expectTilingKey, "", expectWorkspaces);
 }
 
+// Ascend950 default: an omitted partial_slice is treated as [0, 0].
+TEST_F(InplacePartialRotaryMulTilingA5, default_slice_empty_noop)
+{
+    optiling::InplacePartialRotaryPositionEmbeddingCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingPara("InplacePartialRotaryMul",
+        {
+            {{{2, 4, 8, 128}, {2, 4, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{2, 4, 8, 64}, {2, 4, 8, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{2, 4, 8, 64}, {2, 4, 8, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {{{2, 4, 8, 128}, {2, 4, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"partial_slice", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>({})},
+        },
+        &compileInfo, kSocVersion, k950CoreNum, k950UbSize);
+
+    uint64_t expectTilingKey = 20040;
+    vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
+    ExecuteTestCase(tilingPara, ge::GRAPH_SUCCESS, expectTilingKey, "", expectWorkspaces);
+}
+
 // cos/sin last dim == 0: valid no-op, no rope computation
 TEST_F(InplacePartialRotaryMulTilingA5, cos_sin_empty_d_noop)
 {
