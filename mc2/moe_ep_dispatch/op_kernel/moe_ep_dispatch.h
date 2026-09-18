@@ -1117,7 +1117,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenBy
                 localDescs[j + 1].addr = metaStashAddr;
                 srcIdx++;
             }
-            // 最后一波token生成CQE，由Epilogue末尾等待发送完成。
+            // 最后一批 token 的末笔写生成 CQE，epilogue 末尾等待发送完成
             if (processed + batchCnt == tokenNum && i + 1U == batchGroup) {
                 hcomm_.WriteNbi<LAST_DATA_CFG>(batchHandle, remoteWinAddr, localDescs, sgePerSqe);
             } else {

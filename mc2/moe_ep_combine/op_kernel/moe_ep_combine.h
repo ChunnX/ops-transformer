@@ -73,7 +73,7 @@ constexpr uint64_t UB_ALIGN = 32UL;
 static constexpr uint32_t META_CHUNK_TOKEN_MAX = 2048U;
 static constexpr struct UrmaWqeEntry DEFAULT_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
 static constexpr struct UrmaWqeEntry DEFAULT_CQE_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .cqe = 1, .inlineEn = 0};
-// 最后通知生成CQE，由Epilogue等待本通道发送完成。
+// Request a CQE for the final flag so epilogue can drain all sends on this channel.
 static constexpr struct UrmaWqeEntry CHANNEL_FLAG_WQE_CONFIG = {.odr = 6, .fence = 1, .se = 0, .cqe = 1, .inlineEn = 0};
 template <TemplateMoeEpCombineTypeClass>
 class MoeEpCombine {
@@ -366,7 +366,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendRemoteMet
     // completion edge, so an unusually skewed rank range could fill the SQ and silently lose the later flag WQE.
     constexpr uint32_t writesPerToken = HasTopkWeight == 1 ? 2U : 1U;
     bool drainAfterToken = sqWriteCount_ + 2U * writesPerToken > HCOMM_SQ_MAX_PENDING;
-    // 最后一个token的末笔写生成CQE，最终Drain留到Epilogue末尾。
+    // Request a CQE on the last token's final write; drain at the end of epilogue.
     bool needCqe = drainAfterToken || lastToken;
     if constexpr (HasTopkWeight == 1) {
         PrepareWrite<DEFAULT_WQE_CONFIG>(remoteDataBase + dstSlot * perSlotBytes_, tokenAddr, tokenBytes);
@@ -531,10 +531,10 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseDire
             }
         }
     }
-    // 主阶段只提交末尾CQE，最终等待放在Epilogue。
+    // Submit the final CQE-enabled writes here; epilogue drains their completions.
     FlushPreparedWrites();
     {
-        // 空发送也需要发布channel的CQ计数。
+        // Publish channel CQ counters even when no tokens are sent.
         DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
     }
     diagWriter_.RunPosRecord(MOE_EP_COMBINE_RUN_POS_URMA_REQUESTS_ISSUE_DONE);

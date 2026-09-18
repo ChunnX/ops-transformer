@@ -26,7 +26,7 @@ __aicore__ inline void DrainChannels(__gm__ Mc2Aclnn::MoeCommContext *context, u
     Hcomm<COMM_PROTOCOL_UBC_CTP> comm;
     comm.Init(commBuf.Get<uint8_t>(), 512U);
     uint32_t channels = context->channelsPerRank == 0U ? 1U : context->channelsPerRank;
-    // 每个channel只由一个核消费CQ；未使用的channel没有待消费CQE。
+    // Assign one core per channel to consume CQEs. Unused channels have no pending CQEs.
     for (uint32_t index = GetBlockIdx(); index < worldSize * channels; index += GetBlockNum()) {
         if (index / channels == context->epRankId) {
             continue;
