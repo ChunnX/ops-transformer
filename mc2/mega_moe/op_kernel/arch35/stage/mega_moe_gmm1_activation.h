@@ -705,7 +705,7 @@ __aicore__ inline void RunGmm1A8W4(
 
     using GmmConfig = GmmKernel::Config<true, 0, ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, false,
                                         TopkWeightsPrefetch, IsShared, false, IsWaveFlagGrained,
-                                        PipelineContext::USE_L1_B4>;
+                                        PipelineContext::USE_DYNAMIC_L1_LAYOUT>;
     auto config = GmmConfig::BuildGmm1ProblemConfig(problemShape, blockJob, Gmm1TileM);
 
     if constexpr (g_coreType == AIV) {
