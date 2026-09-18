@@ -133,7 +133,7 @@ public:
         }
         // 缓存标量
         alpha0_ = alpha0Gm_.GetValue(0);
-        for (uint32_t i = 0; i < phiRows_ && i < N_MAX; ++i) {
+        for (uint32_t i = 0; i < N_MAX; ++i) {
             biasCache_[i] = biasGm_.GetValue(i);
         }
 

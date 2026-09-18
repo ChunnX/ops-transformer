@@ -18,7 +18,8 @@
 /// 加载一个token的h_post[N]和h_res[N*N]。
 __aicore__ inline void LoadTokenWeights(uint32_t token, float (&postVals)[N_MAX], float (&combVals)[N_MAX * N_MAX])
 {
-    const uint32_t N = N_;
+    // Host已固定校验N为4，使用编译期常量便于展开标量循环。
+    constexpr uint32_t N = N_MAX;
     LocalTensor<float> postCombUb = bufPostComb_.Get<float>();
     LocalTensor<float> hPostUb = postCombUb;
     LocalTensor<float> hResUb = postCombUb[ALIGN8]; // h_post[N] aligned to 8 elements
@@ -55,7 +56,8 @@ __aicore__ inline void LoadHOutAndCast(uint64_t gmOffset, uint32_t tD)
 /// 将residual[token, 0:N, tOff:tOff+tD]从低精度加载并转换为FP32。
 __aicore__ inline void LoadResidualAndCast(uint64_t gmBaseOffset, uint32_t tD)
 {
-    const uint32_t N = N_;
+    // Host已固定校验N为4，使用编译期常量便于展开标量循环。
+    constexpr uint32_t N = N_MAX;
     LocalTensor<T> resBf16 = bufResidualBf16_.AllocTensor<T>();
     for (uint32_t n = 0; n < N; ++n)
         DataCopy(resBf16[n * dimTile_], residualGm_[gmBaseOffset + (uint64_t)n * D_], tD);
@@ -121,7 +123,8 @@ __aicore__ inline void ApplyScaleAndGamma(LocalTensor<float> buf, float scale, L
 __aicore__ inline void ComputeX2AllHeadsBatched(const float (&postVals)[N_MAX], const float (&combVals)[N_MAX * N_MAX],
                                                 uint32_t tD)
 {
-    const uint32_t N = N_;
+    // Host已固定校验N为4，使用编译期常量便于展开标量循环。
+    constexpr uint32_t N = N_MAX;
     LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
     LocalTensor<float> hOut = bufHOutFp32_.Get<float>();
     LocalTensor<float> res = bufResFp32_.Get<float>();
@@ -140,7 +143,8 @@ __aicore__ inline void ComputeX2AllHeadsBatched(const float (&postVals)[N_MAX], 
 __aicore__ inline void ComputeX2AllHeadsSerial(const float (&postVals)[N_MAX], const float (&combVals)[N_MAX * N_MAX],
                                                uint32_t tD)
 {
-    const uint32_t N = N_;
+    // Host已固定校验N为4，使用编译期常量便于展开标量循环。
+    constexpr uint32_t N = N_MAX;
     LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
     LocalTensor<float> hOut = bufHOutFp32_.Get<float>();
     LocalTensor<float> res = bufResFp32_.Get<float>();
@@ -161,9 +165,10 @@ __aicore__ inline void ComputeX2AllHeadsSerial(const float (&postVals)[N_MAX], c
 ///   gate[i] = sigmoid(alpha0 * xHat[i] + bias[i]) + hcEps
 __aicore__ inline void ComputeGateValues(float totalSumSqPre, float (&xHatVals)[N_MAX], float (&gate)[N_MAX])
 {
-    const uint32_t N = N_;
+    // Host已固定校验N为4，使用编译期常量便于展开标量循环。
+    constexpr uint32_t N = N_MAX;
     float invRmsPre = 1.0f / sqrt(totalSumSqPre * invK_ + mhcPreNormEps_);
-    for (uint32_t o = 0; o < phiRows_; ++o)
+    for (uint32_t o = 0; o < N; ++o)
         xHatVals[o] *= invRmsPre;
 
     LocalTensor<float> scBuf = bufScalar_.Get<float>();

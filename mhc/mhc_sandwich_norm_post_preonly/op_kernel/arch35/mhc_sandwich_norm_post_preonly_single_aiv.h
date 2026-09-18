@@ -29,7 +29,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::ComputeX2PostTile(
     LoadResidualAndCast((uint64_t)token * N_ * D_ + tOff, tD);
     ComputeX2AllHeadsBatched(postVals, combVals, tD);
     LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
-    for (uint32_t n = 0; n < N_; ++n) {
+    for (uint32_t n = 0; n < N_MAX; ++n) {
         QuantizeRoundTrip(x2[n * dimTile_], tD);
     }
 }
@@ -40,7 +40,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::LoadX2OutputTile(
 {
     LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
     const uint64_t base = (uint64_t)token * N_ * D_ + tOff;
-    for (uint32_t n = 0; n < N_; ++n) {
+    for (uint32_t n = 0; n < N_MAX; ++n) {
         LoadLowPrecisionTile(x2OutGm_, base + (uint64_t)n * D_, x2[n * dimTile_], tD);
     }
 }
@@ -71,7 +71,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::AccumulateHalfPartia
         PipeBarrier<PIPE_V>();
         sumSqHalf[half] += ReduceSumPrecise(out, tD);
 
-        for (uint32_t o = 0; o < N_; ++o) {
+        for (uint32_t o = 0; o < N_MAX; ++o) {
             LocalTensor<float> phi = bufPhiFp32_.AllocTensor<float>();
             uint64_t phiOffset = (uint64_t)o * phiCols_ + (uint64_t)h0 * D_ + tOff;
             DataCopyPad(phi, phiGm_[phiOffset], copyParams, copyPad);
@@ -144,7 +144,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::ProcessTokenSingleAi
         }
 
         const uint64_t outBase = (uint64_t)token * N_ * D_ + tOff;
-        for (uint32_t n = 0; n < N_; ++n) {
+        for (uint32_t n = 0; n < N_MAX; ++n) {
             WriteX2OutTile(x2[n * dimTile_], outBase + (uint64_t)n * D_, tD);
         }
     }
@@ -160,7 +160,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::ProcessTokenSingleAi
             LoadX2OutputTile(token, tOff, tD);
             LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
             LocalTensor<float> gamma2 = bufGamma2Fp32_.Get<float>();
-            for (uint32_t n = 0; n < N_; ++n) {
+            for (uint32_t n = 0; n < N_MAX; ++n) {
                 LoadGammaInto(gamma2, gamma2Gm_, n * D_ + tOff, tD);
                 SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
                 WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
@@ -171,7 +171,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::ProcessTokenSingleAi
             AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf);
 
             const uint64_t outBase = (uint64_t)token * N_ * D_ + tOff;
-            for (uint32_t n = 0; n < N_; ++n) {
+            for (uint32_t n = 0; n < N_MAX; ++n) {
                 WriteX2OutTile(x2[n * dimTile_], outBase + (uint64_t)n * D_, tD);
             }
         }
@@ -181,7 +181,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::ProcessTokenSingleAi
     // 固定执行顶层合并，与双sibling方案保持一致。
     const float totalSumSqPre = sumSqHalf[0] + sumSqHalf[1];
     float xHatVals[N_MAX];
-    for (uint32_t o = 0; o < N_; ++o) {
+    for (uint32_t o = 0; o < N_MAX; ++o) {
         xHatVals[o] = dotHalf[0][o] + dotHalf[1][o];
     }
     float gate[N_MAX];
@@ -198,7 +198,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::ProcessTokenSingleAi
         LocalTensor<float> hIn = bufOutFp32_.Get<float>();
         Muls(hIn, x2, gate[0], tD);
         PipeBarrier<PIPE_V>();
-        for (uint32_t n = 1; n < N_; ++n) {
+        for (uint32_t n = 1; n < N_MAX; ++n) {
             Axpy(hIn, x2[n * dimTile_], gate[n], tD);
             PipeBarrier<PIPE_V>();
         }
