@@ -28,21 +28,37 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::ComputeX2PostTile(
 
     LoadResidualAndCast((uint64_t)token * N_ * D_ + tOff, tD);
     ComputeX2AllHeadsBatched(postVals, combVals, tD);
+}
+
+// 将完整x2以输出dtype常驻UB，同时完成设计要求的低精度往返；写GM仅用于保留x2_out输出语义。
+template<typename T>
+__aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::CacheX2Tile(
+    uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput)
+{
     LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
+    LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
+    const uint64_t outBase = (uint64_t)token * N_ * D_ + tOff;
     for (uint32_t n = 0; n < N_MAX; ++n) {
-        QuantizeRoundTrip(x2[n * dimTile_], tD);
+        LocalTensor<T> cacheTile = x2Cache[n * D_ + tOff];
+        CastToIO(cacheTile, x2[n * dimTile_], tD);
+        PipeBarrier<PIPE_V>();
+        Cast(x2[n * dimTile_], cacheTile, RoundMode::CAST_NONE, tD);
+        PipeBarrier<PIPE_V>();
+        if (writeOutput) {
+            WriteX2OutTile(x2[n * dimTile_], outBase + (uint64_t)n * D_, tD);
+        }
     }
 }
 
 template<typename T>
-__aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::LoadX2OutputTile(
-    uint32_t token, uint32_t tOff, uint32_t tD)
+__aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::LoadX2CacheTile(uint32_t tOff, uint32_t tD)
 {
     LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
-    const uint64_t base = (uint64_t)token * N_ * D_ + tOff;
+    LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
     for (uint32_t n = 0; n < N_MAX; ++n) {
-        LoadLowPrecisionTile(x2OutGm_, base + (uint64_t)n * D_, x2[n * dimTile_], tD);
+        Cast(x2[n * dimTile_], x2Cache[n * D_ + tOff], RoundMode::CAST_NONE, tD);
     }
+    PipeBarrier<PIPE_V>();
 }
 
 // 固定的R4/R5归约树将与双sibling AIV路径共用。half0固定覆盖展平区间[0,2D)，
@@ -169,12 +185,13 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::ProcessTokenSingleAi
     }
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
 
-    // 第二遍：计算R1/R2和第一处x2低精度边界。x2_out是唯一的跨遍暂存，
-    // 不分配完整FP32 x2工作空间。
+    // 第二遍：计算R1/R2和第一处x2低精度边界。完整x2以输出dtype常驻UB，
+    // 避免后续两遍从GM回读，同时不分配完整FP32 x2工作空间。
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
         ComputeX2PostTile(token, tOff, tD, invRms0, postVals, combVals);
+        CacheX2Tile(token, tOff, tD, !useRmsMid_);
 
         LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
         if (useRmsMid_) {
@@ -195,12 +212,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::ProcessTokenSingleAi
             AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf);
         }
 
-        const uint64_t outBase = (uint64_t)token * N_ * D_ + tOff;
-        for (uint32_t n = 0; n < N_MAX; ++n) {
-            WriteX2OutTile(x2[n * dimTile_], outBase + (uint64_t)n * D_, tD);
-        }
     }
-    FenceMte3ToMte2();
 
     // 可选R3沿完整N*D向量计算，不按head分别归一化。
     if (useRmsMid_) {
@@ -209,7 +221,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::ProcessTokenSingleAi
         for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
             const uint32_t tD = GetTileD(tile);
             const uint32_t tOff = tile * dimTile_;
-            LoadX2OutputTile(token, tOff, tD);
+            LoadX2CacheTile(tOff, tD);
             LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
             LocalTensor<float> gamma2 = bufGamma2Fp32_.Get<float>();
             for (uint32_t n = 0; n < N_MAX; ++n) {
@@ -218,17 +230,12 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::ProcessTokenSingleAi
                 WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
                 ApplyScaleAndGamma(x2[n * dimTile_], invRmsMid, gamma2, tD);
                 FenceVToMte2();
-                QuantizeRoundTrip(x2[n * dimTile_], tD);
             }
+            CacheX2Tile(token, tOff, tD, true);
             AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf);
-
-            const uint64_t outBase = (uint64_t)token * N_ * D_ + tOff;
-            for (uint32_t n = 0; n < N_MAX; ++n) {
-                WriteX2OutTile(x2[n * dimTile_], outBase + (uint64_t)n * D_, tD);
-            }
         }
-        FenceMte3ToMte2();
     }
+    FenceMte3ToV();
 
     // 固定执行顶层合并，与双sibling方案保持一致。
     const float totalSumSqPre = sumSqHalf[0] + sumSqHalf[1];
@@ -245,7 +252,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::ProcessTokenSingleAi
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        LoadX2OutputTile(token, tOff, tD);
+        LoadX2CacheTile(tOff, tD);
         LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
         LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
         Muls(hIn, x2, gate[0], tD);

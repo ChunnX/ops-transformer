@@ -105,6 +105,9 @@ public:
         pipe_.InitBuffer(bufGamma0Fp32_,        dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufGamma1Fp32_,        dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufX2Fp32_,            N_ * dimTile_ * sizeof(float));
+        // dimTile=2560时其余固定缓存共194912B；D=7168的完整低精度x2为57344B，
+        // 合计252256B，小于A5的256KiB UB上限。
+        pipe_.InitBuffer(bufX2Cache_,            K_ * sizeof(T));
         pipe_.InitBuffer(bufResidualBf16_,   1, N_ * dimTile_ * sizeof(T));
         // 前四行先保存residual，之后复用为R4/R5的五行归约输入；第五行兼作通用输出暂存。
         pipe_.InitBuffer(bufResFp32_,     (N_ + 1) * dimTile_ * sizeof(float));
@@ -113,7 +116,6 @@ public:
         pipe_.InitBuffer(bufPhiFp32_,  BUFFER_NUM_TWO, dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufHInPrimeBf16_,   1, dimTile_ * sizeof(T));
         pipe_.InitBuffer(bufScalar_,            SCALAR_BUF_SIZE);
-        pipe_.InitBuffer(bufReduceWork_,        dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufGamma2Fp32_,        dimTile_ * sizeof(float));
 
         evtMte2toV_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::MTE2_V>());
@@ -168,7 +170,8 @@ private:
     __aicore__ inline void ProcessTokenSingleAiv(uint32_t token);
     __aicore__ inline void ComputeX2PostTile(uint32_t token, uint32_t tOff, uint32_t tD,
         float invRms0, const float (&postVals)[N_MAX], const float (&combVals)[N_MAX * N_MAX]);
-    __aicore__ inline void LoadX2OutputTile(uint32_t token, uint32_t tOff, uint32_t tD);
+    __aicore__ inline void CacheX2Tile(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput);
+    __aicore__ inline void LoadX2CacheTile(uint32_t tOff, uint32_t tD);
     __aicore__ inline void AccumulateHalfPartials(uint32_t tOff, uint32_t tD,
         float (&sumSqHalf)[2], float (&dotHalf)[2][N_MAX]);
 
@@ -190,6 +193,7 @@ private:
     TBuf<TPosition::VECCALC>   bufGamma1Fp32_;
     TBuf<TPosition::VECCALC>   bufGamma2Fp32_;
     TBuf<TPosition::VECCALC>   bufX2Fp32_;
+    TBuf<TPosition::VECCALC>   bufX2Cache_;
     TQue<TPosition::VECIN, 1>  bufResidualBf16_;
     TBuf<TPosition::VECCALC>   bufResFp32_;
     TBuf<TPosition::VECCALC>   bufSqFp32_;
@@ -197,7 +201,6 @@ private:
     TQue<TPosition::VECIN, BUFFER_NUM_TWO>  bufPhiFp32_;
     TQue<TPosition::VECOUT, 1> bufHInPrimeBf16_;
     TBuf<TPosition::VECCALC>   bufScalar_;
-    TBuf<TPosition::VECCALC>   bufReduceWork_;
 
     // GM张量
     GlobalTensor<T>     hOutGm_, residualGm_, hInPrimeGm_, x2OutGm_;
