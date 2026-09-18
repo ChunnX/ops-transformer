@@ -35,6 +35,12 @@ __aicore__ inline void FenceMte3ToMte2()
     WaitFlag<HardEvent::MTE3_MTE2>(evtMte3toMte2_);
 }
 
+__aicore__ inline void FenceMte3ToV()
+{
+    SetFlag<HardEvent::MTE3_V>(evtMte3toV_);
+    WaitFlag<HardEvent::MTE3_V>(evtMte3toV_);
+}
+
 __aicore__ inline void FenceVToMte2()
 {
     SetFlag<HardEvent::V_MTE2>(evtVtoMte2_);
@@ -71,8 +77,7 @@ __aicore__ inline void WriteHInPrimeTile(LocalTensor<float> src, uint64_t gmOffs
         SetFlag<HardEvent::V_MTE3>(evtVtoMte3_);
         WaitFlag<HardEvent::V_MTE3>(evtVtoMte3_);
         DataCopy(hInF32Gm_[gmOffset], src, count);
-        SetFlag<HardEvent::MTE3_V>(evtMte3toV_);
-        WaitFlag<HardEvent::MTE3_V>(evtMte3toV_);
+        FenceMte3ToV();
     }
 }
 
