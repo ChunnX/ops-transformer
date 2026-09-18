@@ -139,8 +139,11 @@ public:
 
         // 仅单分块路径提前加载gamma
         if (dimLoop_ == 1) {
-            DataCopy(bufGamma0Fp32_.Get<float>(), gamma0Gm_[0], dimTile_);
-            DataCopy(bufGamma1Fp32_.Get<float>(), gamma1Gm_[0], dimTile_);
+            DataCopyExtParams gP = {1, 0, 0, 0, 0};
+            gP.blockLen = dimTile_ * sizeof(float);
+            DataCopyPadExtParams<float> gPad = {false, 0, 0, 0};
+            DataCopyPad(bufGamma0Fp32_.Get<float>(), gamma0Gm_[0], gP, gPad);
+            DataCopyPad(bufGamma1Fp32_.Get<float>(), gamma1Gm_[0], gP, gPad);
             // gamma_2的形状为[N*D]，在RMSNorm_mid中按head加载
         }
         

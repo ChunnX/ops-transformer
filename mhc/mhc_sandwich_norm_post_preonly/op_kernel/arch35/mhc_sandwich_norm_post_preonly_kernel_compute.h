@@ -71,7 +71,10 @@ __aicore__ inline void LoadResidualAndCast(uint64_t gmBaseOffset, uint32_t tD)
 /// 将gamma的[tOff, tOff+tD)分块加载到指定缓存。
 __aicore__ inline void LoadGammaInto(LocalTensor<float> dst, GlobalTensor<float> &src, uint32_t tOff, uint32_t tD)
 {
-    DataCopy(dst, src[tOff], tD);
+    DataCopyExtParams gP = {1, 0, 0, 0, 0};
+    gP.blockLen = tD * sizeof(float);
+    DataCopyPadExtParams<float> gPad = {false, 0, 0, 0};
+    DataCopyPad(dst, src[tOff], gP, gPad);
 }
 
 // RMSNorm基础计算
