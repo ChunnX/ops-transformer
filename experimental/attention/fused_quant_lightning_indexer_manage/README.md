@@ -105,7 +105,9 @@ L <= actual_seq_lengths_key[b] - (Q_b-1)
 
 shape、dtype、stride、设备等静态 ABI 错误在调用时由 Torch/host 直接报错。对于设备端能够检测的逐请求非法 metadata、TopK/union 容量或 victim 不足，失败协议为：`miss_counts[b]=-1`，相关 `topk_miss_counts=-1`，该请求的 TopK src/dst 全部为 `-1`，pool row 保持调用前内容；该请求的 COPY buffer 不可使用，其他合法请求继续执行。
 
-## Query 布局
+## 其他说明
+
+### Query 布局
 
 对请求 `b` 的 query 行 `r`，令 `end = actual_seq_lengths_query[b]`、`Q_b` 为该请求路数，则该路的因果可见长度为：
 
@@ -115,7 +117,7 @@ V_r = actual_seq_lengths_key[b] - (end - 1 - r)
 
 同一请求的各路 query 在 T 轴连续。每路在完整 `[0,V_r)` 上执行 A5 C8 LI；`-2/-1` 的 `L` 不截断 LI 搜索域，只划分缓存管理域。
 
-## LI 与输出约定
+### LI 与输出约定
 
 每路 LI 输出最多 2048 个 source。只有真实入选 Top2048 的 tail token 才出现在输出中。对 `-2/-1`，`token >= L` 的入选 tail 直接归为 hit，目标 slot 为 `C + token % 256`，不进入 pool、COPY union 或 victim scan。调用方若消费该 slot 范围，需按自身链路准备对应存储；本算子不负责下游配置。
 
@@ -123,21 +125,21 @@ V_r = actual_seq_lengths_key[b] - (end - 1 - r)
 
 `miss_src_ids[b,:miss_counts[b]]` 和 `miss_dst_slots[b,:miss_counts[b]]` 在 count 非负时有效，后缀内容不保证。
 
-## 请求状态与生命周期
+### 请求状态与生命周期
 
-### `-3`：非卸载
+#### `-3`：非卸载
 
 每路按自己的 `V_r` 执行 LI；可见长度不足 2048 时仍走 LI，有效后缀外填 `-1`。有效输出满足 `topk_dst_slots == topk_src_ids`；该请求所有 `topk_miss_counts=0`、`miss_counts=0`。`offload_seq_lengths_key` 和 `num_cache_tokens` 不参与检索或缓存管理。
 
 每次 `-3` 调用都把对应的完整 pool row 写为 identity：`pool[source]=source`，范围为 `[0,S)`。该状态不产生 COPY 列表，`miss_src_ids/miss_dst_slots` 内容无效。
 
-### `-2`：首次填充
+#### `-2`：首次填充
 
 要求 `L=offload_seq_lengths_key[b]`、`C=num_cache_tokens[b]`。算子忽略旧 pool，包括先前 `-3` 留下的 identity row。完成各路 full-visible Top2048 后，只将入选且 `token < L` 的 source 加入请求级 union；先安置该 union，再从 `[0,L)` 中非 union source 补 filler，直到恰好有 C 个 resident，slot 为 `0..C-1`。入选 tail 是 hit，不进入 union。
 
 成功时，每路 `topk_miss_counts` 等于该路入选 prefix 数；TopK 输出为 prefix miss 在前、tail hit 在后；`miss_counts[b]=C`，COPY 列表只含 C 个 prefix resident，当前实现的 `miss_dst_slots[b,:C]` 依次为 `0..C-1`。完整 pool row 清为 `-1` 后，仅这些 resident source 映射到各自 slot。算子先校验 metadata、TopK union 和 C 容量，再改动 pool，以保持可检测失败时的请求级原子性。
 
-### `-1`：卸载稳态
+#### `-1`：卸载稳态
 
 入选的 `token < L` 按调用前 pool 判定 resident hit 或 miss；入选 tail 始终为 hit。对全部路的 prefix miss 做请求级去重 union，保护入选的 prefix hit，再进行 hashed victim scan、分配 slot 并更新 pool。每路仍保持 miss-prefix/hit-suffix；`topk_miss_counts` 只统计该路 prefix miss，`miss_counts` 只统计请求级 unique prefix miss，COPY 仅列出这些 miss。不保证 union 列表或路内两段按 ID 排序。
 
