@@ -33,6 +33,14 @@ constexpr uint32_t SCALE_K_L1_RATE = 2U;
 
 using BlockScheduler = typename Blaze::Gemm::Block::BlockSchedulerSwizzle<3, 0>; // 3: SwizzleOffset
 
+// Non-owning references: AIC supplies MMAD, AIV0 supplies Prologue, AIV1 supplies neither.
+template <typename BlockMmad, typename BlockPrologue>
+struct A8W4PipelineContext {
+    static constexpr bool USE_DYNAMIC_L1_LAYOUT = BlockMmad::USE_DYNAMIC_L1_LAYOUT;
+    BlockMmad *mmad = nullptr;
+    BlockPrologue *prologue = nullptr;
+};
+
 // 根据数据类型路径选择对应的 BlockMmad 实现。
 template <bool IsA8W4, typename C>
 struct BlockMmadSelector;
@@ -59,7 +67,8 @@ struct BlockMmadSelector<true, C> {
 // 汇总 GMM1/GMM2 在不同量化路径下共用的类型、shape 和 layout 配置。
 template <bool IsA8W4, uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC,
           typename ElementMxScaleA, typename ElementMxScaleB, bool IsWeightNZ = false, bool TopkWeightsPrefetch = false,
-          bool IsShared = false, bool IsLayered = false, bool IsWaveFlagGrained = false>
+          bool IsShared = false, bool IsLayered = false, bool IsWaveFlagGrained = false,
+          bool UseDynamicL1Layout = false>
 struct Config {
     static constexpr bool IS_SHARED = IsShared;
     static constexpr bool IS_WEIGHT_NZ = IsWeightNZ;
@@ -83,7 +92,7 @@ struct Config {
     using LayoutScaleB = asc::te::scaleb_dn_layout_ptn;
 
     using LayoutBias = asc::te::nd_ext_layout_ptn;
-    using DispatchPolicy = Std::conditional_t<IsA8W4, Blaze::Gemm::MatmulMxFp8Fp4DynamicKL1TailResplit,
+    using DispatchPolicy = Std::conditional_t<IsA8W4, Blaze::Gemm::MatmulMxFp8Fp4DynamicKL1TailResplit<UseDynamicL1Layout>,
                                               Blaze::Gemm::GroupedMatmulWithScaleMx<>>;
     using LayoutB =
         Std::conditional_t<IsA8W4, asc::te::zn_layout_ptn,
@@ -110,6 +119,7 @@ struct Config {
     using L1Params = typename BlockMmad::L1Params;
     using BlockPrologue =
         Std::conditional_t<IsA8W4, Blaze::Gemm::Prologue::BlockPrologue<DispatchPolicy, ElementA, ElementB>, void>;
+    using PipelineContext = A8W4PipelineContext<BlockMmad, BlockPrologue>;
 
     static __aicore__ inline L1Params MakeL1Params(uint64_t kL1, uint64_t scaleKL1)
     {
