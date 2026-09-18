@@ -277,7 +277,7 @@ constexpr uint64_t FP4_PACK_RATIO = 2;
 // 算子零调用后剥离; 老芯片的真实需求由原位保留的 B 家族(mc2/common/op_host/
 // op_tiling)满足。活跃 API 面(键控分支/P2 算子实测): CommTime/InverseCommTime/
 // SetCommShapeLen/SetCommDTypeSize/SetCommDtypeSizeExpansionFraction/
-// commTimeFactor_/GetCommRankShares(InitCtx 内部)。
+// commTimeFactor_/commRankShares_/commDataMul_(InitCtx 内部口径参数)。
 
 // ====== 拟合表（引擎内部结构——算子侧一律使用 FitBalanceCalibration 大结构体,
 //      此处类型由 InitCtx 内部适配构造并按值持有, 勿在算子侧直接引用）======
@@ -304,9 +304,13 @@ public:
     CommModelInfo commTypeInfo_;
     double commTimeFactor_ = 1.0; // 时间折算因子, 恒 1(§4.31: 8-die 折算桥接已随 plain RS 死分支删除)
     // 通信数据量倍数(每轮线上流动的 rank 份数): AG/RS(含 via-A2A)=rankDim(聚合/分发一轮
-    // 流动 rankDim 份), AR/A2A=1(每轮一份)。进 CommTime/InverseCommTime 的字节数换算;
-    // 与 commRankShares(利用率模型流转份数)/mmRankMul(mm 行数倍数) 是三个不同口径的倍数。
+    // 流动 rankDim 份), AR/A2A=1(每轮一份)。进 CommTime/InverseCommTime 的字节数换算。
     uint64_t commDataMul_ = 1;
+    // 通信流水线流转的 rank 数据份数(每卡视角, 进 cubeUtil 利用率模型的工作集 M 跨度):
+    // AG=rankDim-1(本卡份已在手不经通信)、RS/A2A=rankDim(全部份经通信流转)、AR=1(two-shot
+    // 每轮一份)。与 commDataMul_(AG 差 1、A2A 差 rankDim-1)、mmRankMul(mm 行数倍数) 是三个
+    // 不同口径的份数, 极易混淆, 勿混用。
+    uint64_t commRankShares_ = 1;
 
     // Constructor（soc 恒 950）
     HCCLCommModel(uint32_t inputRankDim, CommPrimitive inputKernelType, const CommFitTable &fitTable,
@@ -315,7 +319,7 @@ public:
     {
         commTypeInfo_.commPrimitive = inputKernelType; // 区分哪个MC2算子
         // 通信域卡数(op 侧来自 GetRankSize(group)), 下限钳位 2, 三层原因:
-        //   ① 防 uint64 下溢: GetCommRankShares 的 AG 远程份数 = rankDim-1, rankDim=0 时下溢;
+        //   ① 防 uint64 下溢: AG 远程流转份数 = rankDim-1, rankDim=0 时下溢;
         //   ② 防退化: 单卡无集合通信可建模, 拟合表均按 ≥2 卡标定, 退化输入按最接近的 2 卡建模;
         //   ③ 历史防御: 老基类服务全家族, rankDim 来源多样(attr/group/shape 推导)不可靠, 入口统一兜底
         commTypeInfo_.rankDim = std::max(static_cast<uint64_t>(inputRankDim), MIN_RANK_DIM);
@@ -351,9 +355,6 @@ public:
     // commDataMul_: 通信数据量倍数(见成员定义处取值表);
     // commTimeFactor_: 恒 1(§4.31)——老公式化家族的 8-die AR 折算桥接(plain RS 专用, 无 A 家族
     //   消费者且 950 表无标定行)已随死分支删除, A 家族全部原语的标定行均为直接口径。
-    // 通信流水线流转的 rank 数据份数 GetCommRankShares(每卡视角): AG=rankDim-1(本卡份已在手
-    //   不经通信)、RS/A2A=rankDim(全部份经通信流转)、AR=1(two-shot 每轮一份)——进 cubeUtil
-    //   利用率模型的工作集 M 跨度, 与 mm 总行数倍数 MmRankMul 是两个口径。
     // 标定查表按 rankDim 匹配(首个命中行; soc/commPrimitive 为算子实例常量, 已在构造参数区分)。
     //   §4.29 分派后 miss 由 op 层走 COF——未命中置零值行(CommTime 恒 0 → NoCut), 防御而非回退。
     void InitPrimitiveParams()
@@ -365,6 +366,11 @@ public:
             (commTypeInfo_.commPrimitive == CommPrimitive::REDUCE_SCATTER_VIA_ALL_TO_ALL)) {
             commDataMul_ = commTypeInfo_.rankDim;
         }
+        commRankShares_ =
+            (commTypeInfo_.commPrimitive == CommPrimitive::ALL_REDUCE) ?
+                1 :
+                ((commTypeInfo_.commPrimitive == CommPrimitive::ALL_GATHER) ? (commTypeInfo_.rankDim - 1) :
+                                                                              commTypeInfo_.rankDim);
         commEstimatePar_ = {};
         for (size_t i = 0; i < fitTable_.rowCount; ++i) {
             if (fitTable_.rows[i].rankDim == commTypeInfo_.rankDim) {
@@ -372,14 +378,6 @@ public:
                 break;
             }
         }
-    }
-    uint64_t GetCommRankShares()
-    {
-        if (commTypeInfo_.commPrimitive == CommPrimitive::ALL_REDUCE) {
-            return 1;
-        }
-        return (commTypeInfo_.commPrimitive == CommPrimitive::ALL_GATHER) ? (commTypeInfo_.rankDim - 1) :
-                                                                            commTypeInfo_.rankDim;
     }
 
     // 性能拟合函数: 纯线性 y = slope·x + offset (x=通信数据量 MB), 再除时间折算因子
@@ -914,9 +912,9 @@ struct FitBasedBalanceCtx {
     CommPrimitive commPrimitive; // 键控维度: 通信原语
     CommComputeOrder order;      // 键控维度: 通算顺序
     FitTunables tunables;        // 键控分支阈值(自 Calibration.tunables 拷贝)
-    uint64_t commRankShares = 1; // 派生: commPerf.GetCommRankShares()(通信流水线流转的 rank 数据份数)
-    uint64_t mmRankMul = 1;      // 派生: MmRankMul(ctx)(本卡 mm 总行数的 rank 倍数, 见该函数注释)
-    double ratioCalcComm = 1.0;  // 过程量: Estimate 骨干设置的通算比(键控分支消费)
+    uint64_t commRankShares = 1; // 派生: commPerf.commRankShares_(通信流水线流转的 rank 数据份数, 取值表见模型成员注释)
+    uint64_t mmRankMul = 1;     // 派生: MmRankMul(ctx)(本卡 mm 总行数的 rank 倍数, 见该函数注释)
+    double ratioCalcComm = 1.0; // 过程量: Estimate 骨干设置的通算比(键控分支消费)
     double frontMMTime = 0; // 过程量(AG 键): 本地首轮计算耗时(本卡 A 块已在手, 首块无通信依赖)
 };
 
@@ -1048,7 +1046,7 @@ inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, CommPrimitiv
                            1.0};
     ctx.tilingM.SetMaxTileCnt(
         MAX_COMM_ROUNDS); // Due to the limited FFTS queue size, a maximum of 16 rounds can be cut.
-    ctx.commRankShares = ctx.commPerf.GetCommRankShares();
+    ctx.commRankShares = ctx.commPerf.commRankShares_;
     ctx.mmRankMul = MmRankMul(ctx);
 
     // ---- 通算胶水(键控, 原散在各算子构造函数, §4.24 裁定随引擎下沉) ----
