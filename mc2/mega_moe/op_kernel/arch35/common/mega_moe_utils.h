@@ -67,6 +67,8 @@ __aicore__ inline uint32_t GetSyncRoundTag(int32_t syncCount)
  *
  * 本函数是 VF 内部的可复用计算单元，其他 VF 可直接调用，不会产生额外的 VF 启动。
  */
+// InputMask 可在加载时去除输入中的标记位，默认保留完整 int32 数值。
+template <int32_t InputMask = -1>
 __simd_callee__ inline void InclusivePrefixSumInt32(__ubuf__ int32_t *values, uint32_t elementCount)
 {
     constexpr uint32_t ELEMENTS_PER_VECTOR = GetVecLen() / sizeof(int32_t);
@@ -75,16 +77,23 @@ __simd_callee__ inline void InclusivePrefixSumInt32(__ubuf__ int32_t *values, ui
     AscendC::Reg::RegTensor<int32_t> carryReg;
     AscendC::Reg::RegTensor<int32_t> laneIndexReg;
     AscendC::Reg::RegTensor<int32_t> shiftedIndexReg;
+    AscendC::Reg::RegTensor<int32_t> inputMaskReg;
     AscendC::Reg::MaskReg fullMask = AscendC::Reg::CreateMask<int32_t, AscendC::Reg::MaskPattern::ALL>();
 
     AscendC::Reg::Arange(laneIndexReg, 0);
     AscendC::Reg::Duplicate(carryReg, 0, fullMask);
+    if constexpr (InputMask != -1) {
+        AscendC::Reg::Duplicate(inputMaskReg, InputMask, fullMask);
+    }
     for (uint32_t vectorOffset = 0U; vectorOffset < elementCount; vectorOffset += ELEMENTS_PER_VECTOR) {
         uint32_t validCount = elementCount - vectorOffset;
         validCount = validCount < ELEMENTS_PER_VECTOR ? validCount : ELEMENTS_PER_VECTOR;
         uint32_t maskCount = validCount;
         AscendC::Reg::MaskReg activeMask = AscendC::Reg::UpdateMask<int32_t>(maskCount);
         AscendC::Reg::LoadAlign(prefixReg, values + vectorOffset);
+        if constexpr (InputMask != -1) {
+            AscendC::Reg::And(prefixReg, prefixReg, inputMaskReg, activeMask);
+        }
 
         for (uint32_t shift = 1U; shift < validCount; shift <<= 1U) {
             AscendC::Reg::Adds(shiftedIndexReg, laneIndexReg, -static_cast<int32_t>(shift), fullMask);
