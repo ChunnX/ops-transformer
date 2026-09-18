@@ -156,7 +156,8 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::AccumulateHalfPartia
         PipeBarrier<PIPE_V>();
         LocalTensor<float> scBuf = bufScalar_.Get<float>();
         uint32_t reduceShape[2] = {N_MAX + 1, tD};
-        ReduceSum<float, AscendC::Pattern::Reduce::AR, false>(scBuf, reduceRows, reduceShape, true);
+        // 五行输入在归约后不再使用，允许接口复用源缓冲，避免额外申请UB。
+        ReduceSum<float, AscendC::Pattern::Reduce::AR, true>(scBuf, reduceRows, reduceShape, true);
         PipeBarrier<PIPE_V>();
         sumSqHalf[half] += scBuf.GetValue(0);
         for (uint32_t o = 0; o < N_MAX; ++o) {
