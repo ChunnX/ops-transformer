@@ -772,17 +772,10 @@ private:
                                   externalBytes);
 
         if (fetchMode_ == ENGRAM_FETCH_MODE_LOCAL) {
-            // 全量本NPU模式: 不获取任何跨卡通道/远端地址(不依赖卡间 RDMA 链路), 仅记录本 rank 表基址;
-            // with_grad 仍查询 HCCL 默认 buffer 大小(算子 fetch/grad tiling 的 comm_buffer_size attr 校验依赖)
+            // 全量本NPU模式(仅推理): 不获取任何跨卡通道/远端地址(不依赖卡间 RDMA 链路),
+            // 仅记录本 rank 表基址
             resources.context.virtualAddrList[resources.context.rankId] =
                 reinterpret_cast<uint64_t>(resources.deviceBufPtr);
-            if (withGrad_) {
-                void *localBuffer = nullptr;
-                uint64_t localBufferSize = 0;
-                auto hcclRet = HcclGetHcclBufferFunc(resources.hcclComm, &localBuffer, &localBufferSize);
-                TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclGetHcclBuffer failed, ret=", hcclRet);
-                resources.commBufferSize = static_cast<int64_t>(localBufferSize);
-            }
         } else {
             uint32_t *netLayerList = nullptr;
             uint32_t netLayerNum = 0;
@@ -1223,8 +1216,7 @@ public:
     static EngramFetchTrainOutput EngramFetchTrain(const at::Tensor &context, const at::Tensor &indices,
                                                    int64_t hiddenSize, int64_t numEntries, int64_t dtypeEnum,
                                                    const at::Tensor &localStorageAddr, int64_t numMaxTokensPerRank,
-                                                   int64_t commBufferSize, int64_t rankSize,
-                                                   int64_t fetchMode = ENGRAM_FETCH_MODE_SLICED);
+                                                   int64_t commBufferSize, int64_t rankSize);
     static at::Tensor EngramFetchWait(const at::Tensor &context, const at::Tensor &fetched);
 
     // Stateless static method for training backward (graph-mode compatible).
@@ -1235,8 +1227,7 @@ public:
                                                  const at::Tensor &perm, const at::Tensor &sendCounts,
                                                  const at::Tensor &recvCounts, const at::Tensor &recvLocalEntry,
                                                  const at::Tensor &numRecv, int64_t numEntries, int64_t commBufferSize,
-                                                 int64_t numMaxTokensPerRank, int64_t rankSize,
-                                                 int64_t fetchMode = ENGRAM_FETCH_MODE_SLICED);
+                                                 int64_t numMaxTokensPerRank, int64_t rankSize);
 
     static int64_t GetEngramStorageSizeHint(int64_t numEntries, int64_t hiddenSize,
                                             at::ScalarType dtype = at::kBFloat16);
@@ -1329,6 +1320,10 @@ ElasticBuffer::ElasticBuffer(const std::string &groupName, int64_t numCpuBytes, 
 {
     TORCH_CHECK(fetchMode == ENGRAM_FETCH_MODE_SLICED || fetchMode == ENGRAM_FETCH_MODE_LOCAL,
                 "fetch_mode must be 0 (sliced, cross-NPU) or 1 (local, full replication), got ", fetchMode);
+    TORCH_CHECK(!(withGrad && fetchMode == ENGRAM_FETCH_MODE_LOCAL),
+                "fetch_mode=1 (local, full replication) only supports inference, "
+                "with_grad=True is not supported in local fetch_mode, got with_grad=",
+                withGrad, ", fetch_mode=", fetchMode);
     InitHcclEngineCtxFunctions();
     InitHcclFunctions();
 }
@@ -1507,8 +1502,7 @@ at::Tensor ElasticBuffer::EngramFetch(const at::Tensor &context, const at::Tenso
 // Outputs: fetched + save-for-backward ctx tensors (perm, sendCounts, recvCounts, recvLocalEntry, numRecv).
 ElasticBuffer::EngramFetchTrainOutput ElasticBuffer::EngramFetchTrain(
     const at::Tensor &context, const at::Tensor &indices, int64_t hiddenSize, int64_t numEntries, int64_t dtypeEnum,
-    const at::Tensor &localStorageAddr, int64_t numMaxTokensPerRank, int64_t commBufferSize, int64_t rankSize,
-    int64_t fetchMode)
+    const at::Tensor &localStorageAddr, int64_t numMaxTokensPerRank, int64_t commBufferSize, int64_t rankSize)
 {
     auto dtype = static_cast<at::ScalarType>(dtypeEnum);
     int64_t numTokens = indices.size(0);
@@ -1526,10 +1520,11 @@ ElasticBuffer::EngramFetchTrainOutput ElasticBuffer::EngramFetchTrain(
 
     if (numTokens > 0) {
         constexpr int64_t withGrad = 1;
+        constexpr int64_t fetchModeSliced = ENGRAM_FETCH_MODE_SLICED; // 训练场景仅支持切片跨NPU模式
         aclTensor *nullTensor = nullptr;
         ACLNN_CMD(aclnnEngramFetch, context, indices, localStorageAddr, nullTensor, fetched, perm, sendCounts,
                   recvCounts, recvLocalEntry, numRecv, nullTensor, hiddenSize, numEntries, numMaxTokensPerRank,
-                  commBufferSize, withGrad, fetchMode);
+                  commBufferSize, withGrad, fetchModeSliced);
     }
     return std::make_tuple(fetched, perm, sendCounts, recvCounts, recvLocalEntry, numRecv);
 }
@@ -1548,7 +1543,7 @@ at::Tensor ElasticBuffer::EngramFetchWait(const at::Tensor &context, const at::T
 ElasticBuffer::EngramFetchGradOutput ElasticBuffer::EngramFetchGrad(
     const at::Tensor &context, const at::Tensor &gradFetched, const at::Tensor &perm, const at::Tensor &sendCounts,
     const at::Tensor &recvCounts, const at::Tensor &recvLocalEntry, const at::Tensor &numRecv, int64_t numEntries,
-    int64_t commBufferSize, int64_t numMaxTokensPerRank, int64_t rankSize, int64_t fetchMode)
+    int64_t commBufferSize, int64_t numMaxTokensPerRank, int64_t rankSize)
 {
     int64_t hidden = gradFetched.size(1);
     TORCH_CHECK(rankSize > 0 && numMaxTokensPerRank <= INT64_MAX / rankSize,
@@ -1562,7 +1557,7 @@ ElasticBuffer::EngramFetchGradOutput ElasticBuffer::EngramFetchGrad(
     auto numUnique = at::empty({1}, at::TensorOptions().dtype(at::kInt).device(gradFetched.device()));
 
     ACLNN_CMD(aclnnEngramFetchGrad, context, gradFetched, perm, sendCounts, recvCounts, recvLocalEntry, numRecv,
-              gradUnique, uniqueLocalEntry, numUnique, numEntries, commBufferSize, fetchMode);
+              gradUnique, uniqueLocalEntry, numUnique, numEntries, commBufferSize);
 
     return std::make_tuple(gradUnique, uniqueLocalEntry, numUnique);
 }
@@ -1917,28 +1912,24 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
                     pybind11::arg("num_entries"), pybind11::arg("dtype"), pybind11::arg("sf_table"),
                     pybind11::arg("fetched_sf"),
                     pybind11::arg("fetch_mode") = Mc2Api::ENGRAM_FETCH_MODE_SLICED)
-        .def_static(
-            "engram_fetch_train",
-            static_cast<Mc2Api::ElasticBuffer::EngramFetchTrainOutput (*)(
-                const at::Tensor &, const at::Tensor &, int64_t, int64_t, int64_t, const at::Tensor &, int64_t, int64_t,
-                int64_t, int64_t)>(&Mc2Api::ElasticBuffer::EngramFetchTrain),
-            pybind11::arg("context"), pybind11::arg("indices"), pybind11::arg("hidden_size"),
-            pybind11::arg("num_entries"), pybind11::arg("dtype"), pybind11::arg("local_storage_addr"),
-            pybind11::arg("num_max_tokens_per_rank"), pybind11::arg("comm_buffer_size"), pybind11::arg("rank_size"),
-            pybind11::arg("fetch_mode") = Mc2Api::ENGRAM_FETCH_MODE_SLICED)
+        .def_static("engram_fetch_train", &Mc2Api::ElasticBuffer::EngramFetchTrain, pybind11::arg("context"),
+                    pybind11::arg("indices"), pybind11::arg("hidden_size"), pybind11::arg("num_entries"),
+                    pybind11::arg("dtype"), pybind11::arg("local_storage_addr"),
+                    pybind11::arg("num_max_tokens_per_rank"), pybind11::arg("comm_buffer_size"),
+                    pybind11::arg("rank_size"))
         .def_static("engram_fetch_wait", &Mc2Api::ElasticBuffer::EngramFetchWait, pybind11::arg("context"),
                     pybind11::arg("fetched"))
         .def_static(
             "engram_fetch_grad_op",
             static_cast<Mc2Api::ElasticBuffer::EngramFetchGradOutput (*)(
                 const at::Tensor &, const at::Tensor &, const at::Tensor &, const at::Tensor &, const at::Tensor &,
-                const at::Tensor &, const at::Tensor &, int64_t, int64_t, int64_t, int64_t, int64_t)>(
+                const at::Tensor &, const at::Tensor &, int64_t, int64_t, int64_t, int64_t)>(
                 &Mc2Api::ElasticBuffer::EngramFetchGrad),
             pybind11::arg("context"), pybind11::arg("gradFetched").noconvert(), pybind11::arg("perm").noconvert(),
             pybind11::arg("sendCounts").noconvert(), pybind11::arg("recvCounts").noconvert(),
             pybind11::arg("recvLocalEntry").noconvert(), pybind11::arg("numRecv").noconvert(),
             pybind11::arg("numEntries"), pybind11::arg("commBufferSize"), pybind11::arg("numMaxTokensPerRank"),
-            pybind11::arg("rankSize"), pybind11::arg("fetch_mode") = Mc2Api::ENGRAM_FETCH_MODE_SLICED)
+            pybind11::arg("rankSize"))
         .def("engram_barrier", &Mc2Api::ElasticBuffer::EngramBarrier, pybind11::arg("useCommStream") = true,
              pybind11::arg("withCpuSync") = false)
         .def("destroy", &Mc2Api::ElasticBuffer::Destroy)

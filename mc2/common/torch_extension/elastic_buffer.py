@@ -30,7 +30,8 @@ _ENGRAM_INT_TO_DTYPE = {v: k for k, v in _ENGRAM_DTYPE_TO_INT.items()}
 _ENGRAM_SF_DTYPES = (torch.float32, torch.float8_e8m0fnu)
 _MOE_EP_METADATA_FIELDS = 5
 
-# engram fetch 模式: 0=切片分存+跨NPU通信(默认, 行为与历史版本一致); 1=全量表冗余到每个NPU, 取数纯本地
+# engram fetch 模式: 0=切片分存+跨NPU通信(默认, 行为与历史版本一致, 推理/训练均支持);
+# 1=全量表冗余到每个NPU, 取数纯本地(仅推理, 不支持 with_grad=True)
 FETCH_MODE_SLICED = 0
 FETCH_MODE_LOCAL = 1
 _FETCH_MODES = (FETCH_MODE_SLICED, FETCH_MODE_LOCAL)
@@ -144,12 +145,12 @@ class ElasticBufferOpBuilder(OpBuilder):
             "int fetch_mode) -> Tensor",
             "engram_fetch_train(Tensor context, Tensor indices, int hidden_size, "
             "int num_entries, int dtype, Tensor local_storage_addr, "
-            "int num_max_tokens_per_rank, int comm_buffer_size, int rank_size, "
-            "int fetch_mode) -> (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)",
+            "int num_max_tokens_per_rank, int comm_buffer_size, int rank_size) "
+            "-> (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)",
             "engram_fetch_wait(Tensor context, Tensor fetched) -> Tensor",
             "engram_fetch_grad(Tensor context, Tensor grad_fetched, Tensor perm, Tensor send_counts, "
             "Tensor recv_counts, Tensor recv_local_entry, Tensor num_recv, int num_entries, "
-            "int comm_buffer_size, int num_max_tokens_per_rank, int rank_size, int fetch_mode) "
+            "int comm_buffer_size, int num_max_tokens_per_rank, int rank_size) "
             "-> (Tensor, Tensor, Tensor)",
         ]
 
@@ -178,7 +179,6 @@ class ElasticBufferOpBuilder(OpBuilder):
                 num_max_tokens_per_rank,
                 _comm_buffer_size,
                 rank_size,
-                _fetch_mode,
             ) = args
             num_tokens = indices.size(0)
             max_r = num_max_tokens_per_rank * rank_size
@@ -220,7 +220,6 @@ class ElasticBufferOpBuilder(OpBuilder):
             comm_buffer_size,
             num_max_tokens_per_rank,
             rank_size,
-            fetch_mode,
         ):
             # Outputs are NOT narrowed; full maxR rows. Caller narrows by num_unique.
             num_max_tokens_per_rank = (
@@ -294,7 +293,6 @@ def engram_fetch_grad(
     comm_buffer_size,
     num_max_tokens_per_rank,
     rank_size,
-    fetch_mode,
 ):
     op_module = _elastic_buffer_op_builder.load()
     return op_module.ElasticBuffer.engram_fetch_grad_op(
@@ -309,7 +307,6 @@ def engram_fetch_grad(
         comm_buffer_size,
         num_max_tokens_per_rank,
         rank_size,
-        fetch_mode,
     )
 
 
@@ -538,9 +535,10 @@ class ElasticBuffer:
 
     Engram fetch modes:
         FETCH_MODE_SLICED (0, default): global table sharded across ranks,
-            fetching requires cross-NPU communication.
-        FETCH_MODE_LOCAL (1): full global table replicated on every NPU,
-            fetching is purely local (no cross-NPU communication).
+            fetching requires cross-NPU communication (inference & training).
+        FETCH_MODE_LOCAL (1, inference only): full global table replicated
+            on every NPU, fetching is purely local (no cross-NPU
+            communication); not supported with with_grad=True.
     """
 
     FETCH_MODE_SLICED = FETCH_MODE_SLICED
@@ -574,9 +572,10 @@ class ElasticBuffer:
                 garbage collected.
             fetch_mode: engram fetch mode. 0 (FETCH_MODE_SLICED, default):
                 global table is sharded across ranks, fetching goes through
-                cross-NPU communication (RDMA / a2a); 1 (FETCH_MODE_LOCAL):
-                the full global table is replicated on every NPU, fetching
-                is purely local with no cross-NPU communication.
+                cross-NPU communication (RDMA / a2a); 1 (FETCH_MODE_LOCAL,
+                inference only): the full global table is replicated on every
+                NPU, fetching is purely local with no cross-NPU communication;
+                not supported together with with_grad=True.
         """
         moe_args = (num_max_tokens_per_rank, hidden, num_topk)
         self._validate_init_args(group, num_cpu_bytes, moe_args, with_grad)
@@ -591,6 +590,14 @@ class ElasticBuffer:
             lambda: (
                 f"fetch_mode must be one of {_FETCH_MODES} "
                 f"(0=FETCH_MODE_SLICED, 1=FETCH_MODE_LOCAL), got {fetch_mode}."
+            ),
+        )
+        _torch_check(
+            not (with_grad and fetch_mode == FETCH_MODE_LOCAL),
+            lambda: (
+                "fetch_mode=1 (FETCH_MODE_LOCAL, full replication) only supports inference, "
+                f"with_grad=True is not supported in local fetch_mode, got with_grad={with_grad}, "
+                f"fetch_mode={fetch_mode}."
             ),
         )
 
@@ -859,7 +866,6 @@ class ElasticBuffer:
                     self._num_max_tokens_per_rank,
                     self._comm_buffer_size,
                     self._rank_size,
-                    self._fetch_mode,
                 )
             )
             ctx = EngramFetchCtx(
@@ -955,7 +961,6 @@ class ElasticBuffer:
                 self._comm_buffer_size,
                 self._num_max_tokens_per_rank,
                 self._rank_size,
-                self._fetch_mode,
             )
         )
         # Narrow to actualK rows outside the graph (.item() syncs; not graph-safe).

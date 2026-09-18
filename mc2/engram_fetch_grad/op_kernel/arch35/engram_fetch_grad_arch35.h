@@ -76,13 +76,6 @@ public:
 
     __aicore__ inline void Process();
 
-    // fetch_mode=1(全量本NPU): 反向无跨rank梯度交换, entry即本表行号(无rank偏移)
-    __aicore__ inline void SetLocalMode()
-    {
-        isLocalMode_ = true;
-        uniqueScatter_.SetEntryOffset(0);
-    }
-
 private:
     __aicore__ inline void WriteNbiChecked(uint64_t handle, GM_ADDR dst, GM_ADDR src, uint64_t len);
     __aicore__ inline void DrainChecked(uint64_t handle);
@@ -162,7 +155,6 @@ private:
     uint32_t pendingHandleCount_{0};
     uint64_t pendingHandles_[Mc2Kernel::MAX_PENDING_HANDLES]{0};
     bool creditReadInFlight_{false};
-    bool isLocalMode_{false};
     bool isSender_{false};
     bool isReceiver_{false};
     bool isFlagCore_{false};
@@ -1127,9 +1119,7 @@ __aicore__ inline void EngramFetchGradArch35::InitCompanion(uint32_t numRecv)
 __aicore__ inline void EngramFetchGradArch35::RunSort(uint32_t numRecv)
 {
     // 乘积上限由 Host 侧 rankSize*numEntriesPerRank <= INT32_MAX 校验保证，int64 中间量双保险
-    // local 模式下 entry 即全量表行号, 排序键无需减去本 rank 的偏移
-    int64_t offset =
-        isLocalMode_ ? 0 : static_cast<int64_t>(rankId_) * static_cast<int64_t>(numEntriesPerRank_);
+    int64_t offset = static_cast<int64_t>(rankId_) * static_cast<int64_t>(numEntriesPerRank_);
     sorter_.SetValueOffset(static_cast<int32_t>(offset));
     sorter_.SetMaxValue(static_cast<uint32_t>(numEntriesPerRank_));
     sorter_.Process(numRecv, *tpipe_);
@@ -1261,53 +1251,6 @@ __aicore__ inline void EngramFetchGradArch35::CrossRankBarrierWait()
 __aicore__ inline void EngramFetchGradArch35::Process()
 {
     if ASCEND_IS_AIV {
-        if (isLocalMode_) {
-            // fetch_mode=1: 全量表在本 rank, 反向零通信。
-            // fetch_train_local 产出的反向上下文为退化形态: perm=恒等, numRecv=numTokens,
-            // recvLocalEntry=indices(token序), 故 gradFetched 本身即"接收序"梯度,
-            // 免 UnsortGrad/ExchangeGrad, 直接进入 排序+去重+FP32聚合。
-            recvGradGM_ = gradFetchedGM_;
-            GlobalTensor<int32_t> numRecvGM;
-            numRecvGM.SetGlobalBuffer((__gm__ int32_t *)numRecvOutGM_);
-            DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(numRecvGM);
-            uint32_t numRecv = static_cast<uint32_t>(numRecvGM.GetValue(0));
-            if (numRecv == 0) {
-                uniqueScatter_.WriteNumUniqueZero(numUniqueOutGM_);
-            } else {
-                InitCompanion(numRecv);
-                SyncAll<true>();
-
-                sortPool_.Reset();
-                uint32_t maxSortCount = static_cast<uint32_t>(totalRecv_);
-                sorter_.Init(maxSortCount, totalBlocks_, recvLocalEntryOutGM_, sortCompanionGM_, sortWorkspaceGm_,
-                             *tpipe_, sortPool_);
-                RunSort(numRecv);
-
-                sortPool_.Reset();
-                sortPool_.InitBuffer(entryBuf_, uniqueEntryBytes_);
-                sortPool_.InitBuffer(gradBuf_, Mc2Kernel::GRAD_BUF_BYTES);
-                uint32_t maxByPong = MaxGradRowsPerPing(static_cast<uint32_t>(hiddenBytes_), gradSubBatch_);
-                if (inputDtype_ != Mc2Kernel::ENGRAM_DT_FLOAT) {
-                    sortPool_.InitBuffer(castFp32Buf_, CastBufBytes(hiddenDim_, maxByPong));
-                }
-                sortPool_.InitBuffer(accumBuf_, AccumBufBytes(hiddenDim_));
-                uniqueScatter_.SetCastBuf(castFp32Buf_);
-                uniqueScatter_.SetAccumBuf(accumBuf_);
-                uniqueScatter_.SetGradSubBatch(gradSubBatch_);
-                uniqueScatter_.SetEntryBufBytes(uniqueEntryBytes_);
-
-                uniqueScatter_.CountUniquesParallel(numRecv, recvLocalEntryOutGM_, coreStartGM_, segCountGM_);
-                uniqueScatter_.ZeroGradUnique(numRecv, gradUniqueOutGM_);
-                // 正常路径此处为 FinishExchangeGrad(): 其收尾 SyncAll 保证各核 CountUniquesParallel
-                // 写入的 coreStart/segCount(GM) 对 RunScatterCast 可见; local 模式无通信, 仅保留该同步
-                SyncAll<true>();
-                uniqueScatter_.RunScatterCast(numRecv, recvLocalEntryOutGM_, uniqueLocalEntryOutGM_, numUniqueOutGM_,
-                                              gradUniqueOutGM_, recvGradGM_, coreStartGM_, segCountGM_,
-                                              sortCompanionGM_);
-            }
-            return;
-        }
-
         InitFlagsAndDispls();
         ClearWinCounters();
         SyncAll<true>();

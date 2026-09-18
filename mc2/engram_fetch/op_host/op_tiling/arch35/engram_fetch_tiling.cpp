@@ -574,11 +574,11 @@ static void SetTilingKey(gert::TilingContext *context, bool isTraining, bool isL
     const char *nodeName = context->GetNodeName();
     uint64_t tilingKey;
     if (isTraining) {
-        tilingKey = isLocalMode ? GET_TPL_TILING_KEY(ENGRAM_FETCH_TRAIN_LOCAL_MODE)
-                                : GET_TPL_TILING_KEY(ENGRAM_FETCH_TRAIN_MODE);
+        // local 模式仅支持推理, 训练场景已在 TilingFunc 前置拒绝
+        tilingKey = GET_TPL_TILING_KEY(ENGRAM_FETCH_TRAIN_MODE);
     } else {
         tilingKey = isLocalMode ? GET_TPL_TILING_KEY(ENGRAM_FETCH_LOCAL_MODE)
-                                : GET_TPL_TILING_KEY(ENGRAM_FETCH_DEFAULT_MODE);
+                                 : GET_TPL_TILING_KEY(ENGRAM_FETCH_DEFAULT_MODE);
     }
     context->SetTilingKey(tilingKey);
     OP_LOGD(nodeName, "tilingKey is [%lu] in engram_fetch (isTraining=%d, isLocalMode=%d).", tilingKey, isTraining,
@@ -589,17 +589,11 @@ static void SetTilingKey(gert::TilingContext *context, bool isTraining, bool isL
  * @brief 设置workspace大小
  */
 static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const EngramFetchTilingData &tilingData,
-                                    bool isTraining, bool isLocalMode)
+                                    bool isTraining)
 {
     const char *nodeName = context->GetNodeName();
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(nodeName, "workSpaces is nullptr."), return ge::GRAPH_FAILED);
-
-    // local 模式：全量表在本 rank，无 a2a 交换，无需额外 workspace 区域
-    if (isLocalMode) {
-        workSpaces[0] = SYSTEM_NEED_WORKSPACE;
-        return ge::GRAPH_SUCCESS;
-    }
 
     if (isTraining) {
         int64_t numRanks = static_cast<int64_t>(tilingData.rankSize);
@@ -682,6 +676,13 @@ static ge::graphStatus EngramFetchTilingFunc(gert::TilingContext *context)
         }
     }
 
+    // local 模式(全量本NPU)仅支持推理场景, 训练场景不支持
+    OP_TILING_CHECK(!(isTraining && isLocalMode),
+                    OP_LOGE(nodeName,
+                            "fetch_mode=1 (local, full replication) only supports inference, "
+                            "training (with_grad=1) is not supported."),
+                    return ge::GRAPH_FAILED);
+
     // 1. tensor check (ptr + dtype + shape + format)
     int64_t numTokens = 0;
     OP_TILING_CHECK(TilingCheckEngramFetch(context, numTokens) != ge::GRAPH_SUCCESS,
@@ -709,7 +710,7 @@ static ge::graphStatus EngramFetchTilingFunc(gert::TilingContext *context)
     SetTilingKey(context, isTraining, isLocalMode);
 
     // 6. set workspace
-    OP_TILING_CHECK(SetWorkSpace(context, *tilingData, isTraining, isLocalMode) != ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(SetWorkSpace(context, *tilingData, isTraining) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "set workspace failed."), return ge::GRAPH_FAILED);
 
     // 7. print info

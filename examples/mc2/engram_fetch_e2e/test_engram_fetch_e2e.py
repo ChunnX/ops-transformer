@@ -17,19 +17,18 @@
 通过 torchrun 以多进程方式启动，每个进程绑定一张 NPU，组成一个 HCCL 通信组，
 验证 engram_fetch 的两种取数模式端到端功能是否正确：
 
-  - fetch_mode=0（sliced，切片跨 NPU 通信，默认）:
+  - fetch_mode=0（sliced，切片跨 NPU 通信，默认，推理/训练均支持）:
       全局表按 rank 均匀切片分存，各 rank 经 engram_write 写入本 rank 分片，
       fetch 任意全局 index 时由持有该 entry 的远端 rank 通过跨 NPU 通信取回。
-  - fetch_mode=1（local，全量本 NPU）:
+  - fetch_mode=1（local，全量本 NPU，仅推理）:
       全局全量表冗余到每个 NPU，各 rank 经 engram_write 写入同一份全量表，
       fetch 任意全局 index 均在本卡本地完成，无任何跨 NPU 通信。
 
 验证项（与 CPU golden 比对）：
-  1. 推理:   engram_fetch 结果与 CPU 全表 embedding gather 逐行完全一致；
-  2. 训练:   前向结果一致 + engram_fetch_grad 输出的
+  1. 推理:   engram_fetch 结果与 CPU 全表 embedding gather 逐行完全一致（两种模式）；
+  2. 训练:   仅 sliced 模式。前向结果一致 + engram_fetch_grad 输出的
              (grad_unique, unique_local_entry) 与 CPU 去重 scatter-add 聚合一致
-             （mode=0: 各 rank 得到其所持分片 entry 的跨 rank 全局聚合梯度；
-               mode=1: 各 rank 仅聚合本 rank token 的梯度, local entry 即全局 entry）；
+             （各 rank 得到其所持分片 entry 的跨 rank 全局聚合梯度）；
   3. 零拷贝: with_grad 模式下原地更新 storage 后, 立即 fetch 可读到更新后的数据。
 
 运行方式（详见 README.md，或直接使用 run_example.sh）:
@@ -170,21 +169,10 @@ def golden_grad_sliced(rank, world_size, rows_per_rank, idx_cpu_list, grad_cpu_l
     return torch.tensor(ids, dtype=torch.int32), vals
 
 
-def golden_grad_local(idx_cpu, grad_cpu, hidden, dtype):
-    """mode=1 golden: 仅聚合本 rank 自己 token 的梯度(local entry = 全局 entry, 去重升序)。"""
-    acc = {}
-    for t in range(idx_cpu.numel()):
-        acc.setdefault(int(idx_cpu[t]), []).append(grad_cpu[t])
-    ids = sorted(acc.keys())
-    if not ids:
-        return torch.empty(0, dtype=torch.int32), torch.empty(0, hidden, dtype=dtype)
-    vals = torch.stack([torch.stack(acc[i]).sum(0) for i in ids]).to(dtype)
-    return torch.tensor(ids, dtype=torch.int32), vals
-
-
 def run_train_phase(args, group, rank, world_size, device, checker, full_table):
-    fetch_mode = fetch_mode_value(args.fetch_mode)
-    mode_name = args.fetch_mode
+    # 训练场景仅支持 sliced 模式(fetch_mode=0); local 模式(全量本NPU)仅支持推理
+    fetch_mode = ElasticBuffer.FETCH_MODE_SLICED
+    mode_name = "sliced"
     rows_per_rank = full_table.size(0) // world_size
 
     shard = rank_storage(full_table, rank, world_size, fetch_mode)
@@ -204,12 +192,6 @@ def run_train_phase(args, group, rank, world_size, device, checker, full_table):
     checker.check_equal(f"[train/{mode_name}] 前向 fetched 与全表 gather golden 一致",
                         fetched.cpu(), full_table[indices.long()])
 
-    if fetch_mode == ElasticBuffer.FETCH_MODE_LOCAL:
-        checker.check_equal(f"[train/{mode_name}] local模式 ctx.perm 为恒等排列",
-                            ctx.perm.cpu(), torch.arange(args.num_tokens, dtype=torch.int32))
-        checker.check_equal(f"[train/{mode_name}] local模式 ctx.num_recv == numTokens",
-                            ctx.num_recv.cpu(), torch.full((1,), args.num_tokens, dtype=torch.int32))
-
     g = torch.Generator().manual_seed(args.seed + 200 + rank)
     grad_fetched = torch.randn(args.num_tokens, args.hidden, generator=g, dtype=torch.float32)
     grad_fetched_npu = grad_fetched.to(full_table.dtype).to(device)
@@ -225,13 +207,9 @@ def run_train_phase(args, group, rank, world_size, device, checker, full_table):
     idx_cpu_list = [t.cpu() for t in idx_gather]
     grad_cpu_list = [t.cpu().float() for t in grad_gather]
 
-    if fetch_mode == ElasticBuffer.FETCH_MODE_LOCAL:
-        golden_ids, golden_vals = golden_grad_local(idx_cpu_list[rank], grad_cpu_list[rank],
-                                                    args.hidden, full_table.dtype)
-    else:
-        golden_ids, golden_vals = golden_grad_sliced(rank, world_size, rows_per_rank,
-                                                     idx_cpu_list, grad_cpu_list,
-                                                     args.hidden, full_table.dtype)
+    golden_ids, golden_vals = golden_grad_sliced(rank, world_size, rows_per_rank,
+                                                 idx_cpu_list, grad_cpu_list,
+                                                 args.hidden, full_table.dtype)
     checker.check_equal(f"[train/{mode_name}] unique_local_entry 与 golden 去重索引一致",
                         unique_local_entry.cpu(), golden_ids)
     if golden_ids.numel() > 0:
@@ -266,6 +244,12 @@ def main():
     if args.num_entries % world_size != 0:
         print(f"[ERROR] --num-entries({args.num_entries}) 需能被 rank 数({world_size})整除", flush=True)
         sys.exit(1)
+    if args.fetch_mode == "local" and args.phase == "train":
+        print("[ERROR] local 模式(fetch_mode=1)仅支持推理场景, 不支持训练(--phase train)", flush=True)
+        sys.exit(1)
+    if args.fetch_mode == "local" and args.phase == "both":
+        print("[INFO] local 模式(fetch_mode=1)仅支持推理场景, 自动跳过训练阶段验证", flush=True)
+        args.phase = "infer"
 
     torch_npu.npu.set_device(local_rank)
     device = torch.device(f"npu:{local_rank}")

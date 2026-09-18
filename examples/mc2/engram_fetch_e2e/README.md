@@ -15,20 +15,21 @@
 
 engram_fetch 支持两种取数模式（本用例两种均覆盖，可一键运行或分别运行）：
 
-| 模式 | fetch_mode | 全局表布局 | 取数路径 |
-| :--- | :--------: | :--------- | :------- |
-| 切片分存（默认） | `0` (FETCH_MODE_SLICED) | 全局表按 rank 均匀切片，每卡仅持有本 rank 分片 | 跨 NPU 通信（RDMA/a2a），由持有该 entry 的远端 rank 取回 |
-| 全量本 NPU | `1` (FETCH_MODE_LOCAL) | 全局全量表冗余到每个 NPU | 纯本地 gather，无任何跨 NPU 通信 |
+| 模式 | fetch_mode | 全局表布局 | 取数路径 | 支持场景 |
+| :--- | :--------: | :--------- | :------- | :------- |
+| 切片分存（默认） | `0` (FETCH_MODE_SLICED) | 全局表按 rank 均匀切片，每卡仅持有本 rank 分片 | 跨 NPU 通信（RDMA/a2a），由持有该 entry 的远端 rank 取回 | 推理 + 训练 |
+| 全量本 NPU | `1` (FETCH_MODE_LOCAL) | 全局全量表冗余到每个 NPU | 纯本地 gather，无任何跨 NPU 通信 | **仅推理**（`with_grad=True` 不支持，接口会直接报错） |
 
 ### 验证项
 
-1. **推理**（`with_grad=False`）：`engram_write` 写入本 rank 表 → `engram_fetch` 随机全局 indices（含重复 index）→ 结果与 CPU 全表 embedding gather golden **逐行完全一致**；
-2. **训练**（`with_grad=True`）：
+1. **推理**（`with_grad=False`，两种模式均验证）：`engram_write` 写入本 rank 表 → `engram_fetch` 随机全局 indices（含重复 index）→ 结果与 CPU 全表 embedding gather golden **逐行完全一致**；
+2. **训练**（`with_grad=True`，仅 sliced 模式）：
    - 前向 `engram_fetch` 结果与 golden 一致；
    - 反向 `engram_fetch_grad` 输出的 `(grad_unique, unique_local_entry)` 与 CPU 去重 scatter-add 聚合 golden 一致：
-     - 模式 0：各 rank 得到其所持分片 entry 的**跨 rank 全局聚合**梯度（local entry 为分片内偏移）；
-     - 模式 1：各 rank 仅聚合**本 rank 自己 token** 的梯度（local entry 即全局 entry）；并校验 ctx 契约（perm 恒等、numRecv == numTokens）；
+     各 rank 得到其所持分片 entry 的**跨 rank 全局聚合**梯度（local entry 为分片内偏移）；
 3. **零拷贝**：`with_grad` 模式下 storage 为零拷贝映射，原地更新表数据后再次 fetch 立即可见新数据。
+
+> 说明：local 模式仅支持推理，`run_example.sh --fetch-mode local` 默认只跑推理阶段；显式传 `--fetch-mode local --phase train` 会直接报错退出。
 
 ## 环境准备
 
@@ -60,7 +61,7 @@ python3 -m pip install build_out/cann_ops_transformer-*.whl --force-reinstall --
 ## 运行方式
 
 ```bash
-cd examples/mc2/engram_fetch
+cd examples/mc2/engram_fetch_e2e
 
 # 一键验证: 默认 2 卡, 依次跑 sliced + local 两种模式(推理+训练)
 bash run_example.sh
@@ -93,12 +94,10 @@ torchrun --standalone --nproc_per_node=2 test_engram_fetch_e2e.py --fetch-mode l
 
 ```
 [rank 0] [PASS] [infer/local] fetch 结果与全表 gather golden 一致
-[rank 0] [PASS] [train/local] 前向 fetched 与全表 gather golden 一致
-[rank 0] [PASS] [train/local] local模式 ctx.perm 为恒等排列
-[rank 0] [PASS] [train/local] local模式 ctx.num_recv == numTokens
-[rank 0] [PASS] [train/local] unique_local_entry 与 golden 去重索引一致
-[rank 0] [PASS] [train/local] grad_unique 与 golden 梯度聚合一致
-[rank 0] [PASS] [train/local] 零拷贝: storage 原地更新后 fetch 可见新数据
+[rank 0] [PASS] [train/sliced] 前向 fetched 与全表 gather golden 一致
+[rank 0] [PASS] [train/sliced] unique_local_entry 与 golden 去重索引一致
+[rank 0] [PASS] [train/sliced] grad_unique 与 golden 梯度聚合一致
+[rank 0] [PASS] [train/sliced] 零拷贝: storage 原地更新后 fetch 可见新数据
 [rank 0] engram_fetch(local, bf16) 端到端验证全部通过
 ...
 [SUMMARY] 全部模式验证通过: sliced local

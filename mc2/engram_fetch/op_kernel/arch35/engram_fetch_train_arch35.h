@@ -486,7 +486,7 @@ __aicore__ inline void EngramFetchTrainArch35::InitHcommAndPipe()
     tpipe_->InitBuffer(hcommBatchBuf_, HCOMM_BATCH_BUFFER_BYTES);
     LocalTensor<uint8_t> hcommBatchTensor = hcommBatchBuf_.Get<uint8_t>();
     Duplicate<uint8_t>(hcommBatchTensor, 0U, HCOMM_BATCH_BUFFER_BYTES);
-    SyncFunc<AscendC::HardEvent::V_S>();
+    EngramFetchTrainSyncFunc<AscendC::HardEvent::V_S>();
 
     tpipe_->InitBuffer(relayQue_, RELAY_BUFFER_NUM, tileBytes_);
     mte2SEvt_ = static_cast<int32_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_S));
