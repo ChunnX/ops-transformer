@@ -72,17 +72,12 @@ ge::graphStatus GetCompressorV2ShapeDim(const gert::InferShapeContext *context, 
     auto stateCacheShape = context->GetRequiredInputShape(STATE_CACHE_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, stateCacheShape);
 
-    // (B, sMax/block_size) | (B, )
-    auto stateBlockTableShape = context->GetOptionalInputShape(STATE_BLOCK_TABLE_INPUT_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, stateBlockTableShape);
+    // TH 布局下 cu_seqlens 必填；state_block_table / seqused / start_pos 均为可选输入，
+    // 传 nullptr 表示对应功能未启用，infershape 不做非空校验（与 v1 一致）
     if (xShape->GetDimNum() == DIM_NUM_2) {
         auto cuSeqlensShape = context->GetOptionalInputShape(CU_SEQ_LEN_INPUT_INDEX); // (B+1,)
         OP_CHECK_NULL_WITH_CONTEXT(context, cuSeqlensShape);
     }
-    auto seqUsedShape = context->GetOptionalInputShape(SEQ_USED_INPUT_INDEX); // (B,)
-    OP_CHECK_NULL_WITH_CONTEXT(context, seqUsedShape);
-    auto startPosShape = context->GetOptionalInputShape(START_POS_INPUT_INDEX); // (B,)
-    OP_CHECK_NULL_WITH_CONTEXT(context, startPosShape);
 
     auto attr = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attr);

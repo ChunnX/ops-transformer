@@ -202,4 +202,4 @@
   | 调用方式   | 样例代码 | 说明                                          |
   | ---------- | -------- | --------------------------------------------- |
   | aclnn API  | -        | 通过[aclnnCompressorV2](./docs/aclnnCompressor.md)接口调用CompressorV2算子。 |
-  | PyTorch API | -        | 通过[ds41.compressor](../../torch_extension/cann_ops_transformer/docs/zh/compressor.md)接口调用CompressorV2算子。 |
+  | PyTorch API | -        | 通过[ds41.compressor](../../../torch_extension/cann_ops_transformer/docs/zh/compressor.md)接口调用CompressorV2算子。 |
