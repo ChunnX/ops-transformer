@@ -88,7 +88,8 @@ __aicore__ inline float ReduceSumPrecise(LocalTensor<float> src, uint32_t tD)
     constexpr uint32_t REDUCE_ALIGN = 16; // ReduceSum要求16个元素对齐
     uint32_t tDAligned = (tD + REDUCE_ALIGN - 1) / REDUCE_ALIGN * REDUCE_ALIGN;
     uint32_t srcShape[2] = {1, tDAligned};
-    ReduceSum<float, AscendC::Pattern::Reduce::AR, false>(scBuf, src, srcShape, true);
+    // 输入在归约后不再使用，允许归约过程复用输入缓冲，减少内部UB与标量调度开销。
+    ReduceSum<float, AscendC::Pattern::Reduce::AR, true>(scBuf, src, srcShape, true);
     PipeBarrier<PIPE_V>();
     return scBuf.GetValue(0);
 }
