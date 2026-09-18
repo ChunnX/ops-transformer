@@ -695,7 +695,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendTopkIdsIndexAndCoun
     }
     // 通知在共享量化之后发布，覆盖此前的 reset 和全部量化写回；空专家任务也参与。
     CrossCoreWaitFlag<ALL_AICORE_SYNC_MODE, PIPE_MTE3>(MTE_QUANT_READY_FLAG);
-    // 将 reset 和量化完成条件传递给 Scalar，在输入准备后的统一等待处消费。
+    // 将 reset 和量化完成条件传递给 Scalar，在输入准备末尾消费。
     SetFlag<HardEvent::MTE3_S>(SYNC_EVENT_ID3);
     // AIV0 转发全 AIV 完成条件；有共享专家时，不必等 AIV1 发完下标才启动 AIC。
     if (GetSubBlockIdx() == 0U) {
@@ -776,6 +776,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessInputPreparation
      * count 携带本轮 epoch，接收端逐项确认远端输入就绪；共享计算不等待入口跨卡握手。
      */
     SendTopkIdsIndexAndCount(ownedExpertRange);
+    // Scalar 读取 GM ready 状态前确认 reset 已完成；此事件在 count 发送前发布。
+    WaitFlag<HardEvent::MTE3_S>(SYNC_EVENT_ID3);
 }
 
 /*
@@ -794,16 +796,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
     if constexpr (g_coreType == AIV) {
         ProcessInputPreparationStage();
     }
-    // 进入计算前，按核类型等待输入就绪及工作区释放。
+    // AIC 进入计算前等待输入就绪及工作区释放。
     if constexpr (g_coreType == AIC) {
         CrossCoreWaitFlag<AIC_SINGLE_AIV_SYNC_MODE, PIPE_MTE2>(INPUT_READY_FLAG);
         // 除输入搬运外，Scalar 的状态轮询也必须在全 AIV reset 完成之后。
         SyncFuncStatic<HardEvent::MTE2_S, SYNC_EVENT_ID3>();
         // 各路径统一消费 AIV0 的 UB 释放通知，防止 FIX 覆盖尚在发送的数据。
         CrossCoreWaitFlag<AIC_SINGLE_AIV_SYNC_MODE, PIPE_FIX>(INPUT_UB_FREE_FLAG);
-    } else {
-        // Scalar 读取 GM ready 状态前确认 reset 已完成；此事件在 count 发送前发布。
-        WaitFlag<HardEvent::MTE3_S>(SYNC_EVENT_ID3);
     }
     // 共享 A8W4 写 GM，由 AIV1 消费；独立事件使剩余 ACK 不阻塞 MoE GMM 启动。
     Gmm1ActivationSync sharedGmm1ActivationSync(1U, GmmEventPair::SHARED_GMM1);
