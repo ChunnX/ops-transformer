@@ -191,6 +191,16 @@ ge::graphStatus AllToAllMatmulTilingBase::CheckAlltoAllOutShape(const gert::Tili
                                                   .c_str(),
                                               "The first dim of x1 should be rankSize times of allToAllOut first dim"),
         return ge::GRAPH_FAILED);
+    // 补充第 2 维校验：allToAllOut 第 2 维应为 x1 第 2 维的 rankSize 倍（与 infershape 推导一致），
+    // 原先只校验第 0 维，outDim1 取值后未使用，用户传错 k2 维度的 all_to_all_out 可通过 tiling
+    OP_TILING_CHECK(x1Dim1 != (outDim1 / rankDim),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        opName, "x1 and allToAllOut",
+                        (Ops::Base::ToString(x1Shape->GetStorageShape()) + " and " +
+                         Ops::Base::ToString(allToAllOutShape->GetStorageShape()))
+                            .c_str(),
+                        "The second dim of allToAllOut should be rankSize times of x1 second dim"),
+                    return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

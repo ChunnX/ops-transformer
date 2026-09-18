@@ -56,6 +56,9 @@ TEST_P(InferShapeTest, param)
          {"transpose_x1", Ops::Transformer::AnyValue::CreateFrom<bool>(param.transpose_x1)},
          {"transpose_x2", Ops::Transformer::AnyValue::CreateFrom<bool>(param.transpose_x2)},
          {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.group_size)},
+         // 属性注册顺序（def.cpp/proto.h）：... group_size(11)、comm_mode(12)、alltoall_out_flag(13)。
+         // 补上 comm_mode 使 mock 属性表与真实算子索引一致，避免 alltoall_out_flag 读到错位属性
+         {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
          {"alltoall_out_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(param.alltoall_out_flag)}},
         param.inputInstance, param.outputInstance);
 

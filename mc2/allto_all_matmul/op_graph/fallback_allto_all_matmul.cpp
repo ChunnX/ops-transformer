@@ -299,6 +299,11 @@ static ge::graphStatus AlltoAllMatmulExecuteFunc(gert::OpExecuteContext *host_ap
         OPS_ERR_IF(ret != ge::GRAPH_SUCCESS,
                    OPS_LOG_E(AlltoAllMatmulInfo, "Aclnn allto all quant matmul api error code %d", ret),
                    return ge::GRAPH_FAILED);
+    } else {
+        // 量化组合未命中任何分发分支，原先静默返回 SUCCESS（空输出继续传播），补报错兜底
+        OPS_LOG_E(AlltoAllMatmulInfo, "Unsupported quant mode combination: x1QuantMode %ld, x2QuantMode %ld.",
+                  x1QuantMode, x2QuantMode);
+        return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }

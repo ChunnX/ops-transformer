@@ -40,7 +40,10 @@ constexpr size_t INDEX_ATTR_X1_QUANT_MODE = 4;
 constexpr size_t INDEX_ATTR_X2_QUANT_MODE = 5;
 constexpr size_t INDEX_ATTR_TRANS_X1 = 9;
 constexpr size_t INDEX_ATTR_TRANS_X2 = 10;
-constexpr size_t INDEX_ATTR_ALLTOALL_OUT_FLAG = 12;
+// 属性注册顺序（def.cpp/proto.h）：... group_size(11)、comm_mode(12)、alltoall_out_flag(13)。
+// 原索引 12 实为 comm_mode（字符串属性），按 bool* 读取属类型混淆，alltoall_out_flag 恒为 true
+constexpr size_t INDEX_ATTR_COMM_MODE = 12;
+constexpr size_t INDEX_ATTR_ALLTOALL_OUT_FLAG = 13;
 // output tensor index
 constexpr size_t INDEX_OUT = 0;
 constexpr size_t INDEX_ALLTO_ALL_OUT = 1;
@@ -211,8 +214,10 @@ static ge::graphStatus InferAllToAllOutShapeAlltoAllMatmul(gert::InferShapeConte
                     "Allto all matmul all_to_all_out shape after infer shape, outputDim: %ld, m: %ld n: %ld.",
                     OUTPUT_INFER_SHAPE, allToAllOutFirstDim, allToAllOutSecondDim);
         } else {
+            // 动态shape分支：第0维未知(-1)；第2维为 k2 = k1*rankNum（静态则给出正确值，动态保持未知），
+            // 原误设为 n——all_to_all_out 是 AlltoAll+Permute 的输出，与 n 无关，n≠k2 时图编译 shape 冲突
             allToAllOut->SetDim(0U, shape.m);
-            allToAllOut->SetDim(1U, shape.n);
+            allToAllOut->SetDim(1U, shape.k2);
         }
     }
     return ge::GRAPH_SUCCESS;
