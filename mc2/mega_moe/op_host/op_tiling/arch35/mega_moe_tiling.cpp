@@ -1370,7 +1370,7 @@ static uint32_t CalcTopkValidIndexFixedBufferBytes(const MegaMoeTilingData *tili
 
     uint32_t moeQuantOutputBufferBytes = CalcDispatchCopyBufferBytes(tilingData, moeActivationElementsPerByte);
     uint32_t quantOutputBufferBytes = moeQuantOutputBufferBytes;
-    if (isSharedQuantIndependent == 1U) {
+    if (isSharedQuantIndependent) {
         // 两侧量化分时复用同一组 xOut UB，按较大的单 token 记录预留；共享专家不存储 topK weight。
         uint32_t sharedQuantOutputBufferBytes =
             CalcQuantTokenAndScaleBytes(tilingData, sharedActivationElementsPerByte);
@@ -2086,15 +2086,11 @@ static ge::graphStatus CheckWeightScaleShapeRelations(const gert::TilingContext 
 
 /*
  * 校验已传入的 x scales 维数及其与逻辑 BS/H 的 shape 关系。
+ * 调用方需先确认 scales 可选输入存在，再调用本函数。
  */
 static ge::graphStatus CheckXScalesShape(const gert::TilingContext *context, const MegaMoeConfig &config, int64_t bs,
                                          int64_t h, const char *nodeName)
 {
-    const auto *scalesDesc = context->GetOptionalInputDesc(config.scalesIndex);
-    if (scalesDesc == nullptr) {
-        return ge::GRAPH_SUCCESS;
-    }
-
     const gert::StorageShape *scalesStorageShape = context->GetOptionalInputShape(config.scalesIndex);
     const auto &scalesShape = scalesStorageShape->GetOriginShape();
     OP_TILING_CHECK(
@@ -2174,8 +2170,10 @@ static ge::graphStatus CheckDispatchInputShapes(const gert::TilingContext *conte
     }
     const int64_t bs = xStorageShape->GetOriginShape().GetDim(0);
     const int64_t h = xStorageShape->GetOriginShape().GetDim(1);
-    OP_TILING_CHECK(CheckXScalesShape(context, config, bs, h, nodeName) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(nodeName, "x scales shape is invalid."), return ge::GRAPH_FAILED);
+    if (context->GetOptionalInputDesc(config.scalesIndex) != nullptr) {
+        OP_TILING_CHECK(CheckXScalesShape(context, config, bs, h, nodeName) != ge::GRAPH_SUCCESS,
+                        OP_LOGE(nodeName, "x scales shape is invalid."), return ge::GRAPH_FAILED);
+    }
     OP_TILING_CHECK(CheckRoutingInputShapes(context, config, bs, nodeName) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "routing input shapes are invalid."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
