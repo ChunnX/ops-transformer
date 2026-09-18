@@ -648,6 +648,8 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(uint32
                               BSAMin(SUB_ROWS, bd.rows - (j + 2) * SUB_ROWS), kChunkSize, kChunkSizeAlign, slot,
                               evSlot[slot]);
             }
+            // （M3 拆半实测 -0.65ms：band 中 V_MTE3 Set+Wait 把 scalar 锁到 slot0 排空才发射
+            // slot1 的 V 链，V 管道多 ~0.2µs 气泡/tile > 藏掉的 M3 传输 ~0.1µs，净损失，不做）
         }
         // band 末批量写出：V→MTE3 一次同步 + partSum（4KB 粒度）+ partMax 各一段
         // （同步对数从每 slice 2 对降为每 band 2 对；foldOut 容量恰 [64 行][32 组]）
@@ -724,15 +726,20 @@ __aicore__ inline void BSAVecSmService<BSAT>::SoftmaxFinalizeBatch(const PostRow
     // rs 布局（fp32 元素）：[0,1024) RA tmp；[1024,1280) fp16Row[unit][tile][32 half]；[1280,1312) invCols
     //   [1312,1824) unitRes[unit][tile][32]；[1824,1952) corrAll；[1952,2080) diffSlice
     //   [2080,2592) pmT[4][128]；[2592,3616) corrBroc
+    // rs 布局（fp32 元素，BATCH=8）：[0,1024) RA tmp；[1024,1536) fp16Row[unit][tile][32 half]
+    //   [1536,1568) invCols；[1568,2592) unitRes[unit][tile][32]
+    //   [2592,2720) corrAll；[2720,2848) diffSlice
+    //   [2848,3872) pmT[8][128]；[3872,4384) corrBroc
+    //   （pass2 与 pass1 foldOut[4096..6144) 不同相位无冲突；总 4384 < 6144）
     LocalTensor<T> rs = postPoolOP.GetReduceTemp();
     LocalTensor<uint8_t> raTmp = rs[0].ReinterpretCast<uint8_t>();
     LocalTensor<OUT_T> fp16Row = rs[1024].ReinterpretCast<OUT_T>();
-    LocalTensor<T> invCols = rs[1280];
-    LocalTensor<T> unitRes = rs[1312];
-    LocalTensor<T> corrAll = rs[1824];
-    LocalTensor<T> diffSlice = rs[1952];
-    LocalTensor<T> pmT = rs[2080];
-    LocalTensor<T> corrBroc = rs[2592];
+    LocalTensor<T> invCols = rs[1536];
+    LocalTensor<T> unitRes = rs[1568];
+    LocalTensor<T> corrAll = rs[2592];
+    LocalTensor<T> diffSlice = rs[2720];
+    LocalTensor<T> pmT = rs[2848];
+    LocalTensor<T> corrBroc = rs[3872];
     LocalTensor<T> psUb = scoreUb; // 批槽 [批内 tile][2048 float]（归属行段，rel 行索引）
 
     const uint32_t ownRows = slices[sliceNum - 1].localRowStart + slices[sliceNum - 1].rowCount;
@@ -880,12 +887,12 @@ __aicore__ inline void BSAVecSmService<BSAT>::SoftmaxFinalize(uint32_t qChunkSta
 
     // invCols 全 full tile 默认值（循环外一次构建；仅尾 tile 重算）
     LocalTensor<T> rs0 = postPoolOP.GetReduceTemp();
-    LocalTensor<T> invCols = rs0[1280];
+    LocalTensor<T> invCols = rs0[1536]; // 与 SoftmaxFinalizeBatch 的 rs 布局同步（BATCH=8 布局）
     AscendC::Duplicate(invCols, float(1.0f / 16.0f), 32);
     AscendC::PipeBarrier<PIPE_V>();
 
     const uint32_t lastFull = constInfo.yBlocks / K_TILE_COLS; // full tile 数（余数为尾 tile）
-    constexpr uint32_t BATCH = 4;                              // 每 batch 处理的 tile 数
+    constexpr uint32_t BATCH = 8;                              // 每 batch 处理的 tile 数
     // full tile 按 BATCH=4 批处理
     for (uint32_t t0 = 0; t0 < lastFull; t0 += BATCH) {
         const uint32_t k = BSAMin(BATCH, lastFull - t0);
