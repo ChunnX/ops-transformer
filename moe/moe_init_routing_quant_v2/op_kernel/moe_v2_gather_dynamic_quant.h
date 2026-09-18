@@ -454,7 +454,6 @@ __aicore__ inline void MoeV2GatherDynamicQuant<T, quantType>::CopyOutXQuantEH(in
         DataCopyPad(dynamicQuantScaleGm[(rowOffset + i)], quantScaleLocal, quantScaleParams);
 
         LocalTensor<int8_t> outLocal = inputXOutQueue.template DeQue<int8_t>();
-        SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
         DataCopyPad(expandedXGm[(rowOffset + i) * this->cols], outLocal, copyOutParams);
 
         inputXInQueue.FreeTensor(inLocal);
