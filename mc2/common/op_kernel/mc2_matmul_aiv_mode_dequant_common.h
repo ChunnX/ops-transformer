@@ -44,21 +44,21 @@ struct DataInfo {
     using LayoutD = typename DType::Layout;
 
     static constexpr bool IS_ELEMENT_TYPE_VALID =
-        std::is_same_v<ElementC, int32_t> &&
-        (std::is_same_v<ElementD, half> || std::is_same_v<ElementD, bfloat16_t>) &&
+        std::is_same_v<ElementC, int32_t> && (std::is_same_v<ElementD, half> || std::is_same_v<ElementD, bfloat16_t>) &&
         std::is_same_v<ElementScale, float> && std::is_same_v<ElementPerTokenScale, float>;
-    static constexpr bool IS_LAYOUT_VALID =
-        std::is_same_v<LayoutC, Catlass::layout::RowMajor> &&
-        std::is_same_v<LayoutScale, Catlass::layout::VectorLayout> &&
-        std::is_same_v<LayoutPerTokenScale, Catlass::layout::VectorLayout> &&
-        std::is_same_v<LayoutD, Catlass::layout::RowMajor>;
+    static constexpr bool IS_LAYOUT_VALID = std::is_same_v<LayoutC, Catlass::layout::RowMajor> &&
+                                            std::is_same_v<LayoutScale, Catlass::layout::VectorLayout> &&
+                                            std::is_same_v<LayoutPerTokenScale, Catlass::layout::VectorLayout> &&
+                                            std::is_same_v<LayoutD, Catlass::layout::RowMajor>;
 };
 
 template <class Resource>
 class UbTensorAllocator {
 public:
     CATLASS_DEVICE
-    explicit UbTensorAllocator(const Resource &resource) : resource_(resource), offset_(0U)
+    explicit UbTensorAllocator(const Resource &resource)
+        : resource_(resource),
+          offset_(0U)
     {}
 
     template <typename T>
@@ -83,7 +83,11 @@ private:
 class EventIdAllocator {
 public:
     CATLASS_DEVICE
-    EventIdAllocator() : eventVMte2_(0), eventMte2V_(0), eventMte3V_(0), eventVMte3_(0)
+    EventIdAllocator()
+        : eventVMte2_(0),
+          eventMte2V_(0),
+          eventMte3V_(0),
+          eventVMte3_(0)
     {}
 
     CATLASS_DEVICE int32_t NextVMte2()

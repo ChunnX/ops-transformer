@@ -247,12 +247,12 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Init(GM_ADDR aG
     pValue = aivModeTiling.pValue;
 
     max_ub_ping_pong_size = aivModeTiling.ubMoveNum / MAX_BLOCK_COUNT;
-    comm_npu_split = aivModeTiling.commNpuSplit;   // tiling 寻优
-    comm_data_split = aivModeTiling.commDataSplit; // tiling 寻优
-    comm_direct = tilingData.cocTiling.commDirect;        // tiling 寻优
-    len_per_loop = tilingData.cocTiling.lenPerLoop;       // tiling 寻优
-    swizzlCount = aivModeTiling.swizzlCount;  // 家里tiling写死
-    swizzlDirect = aivModeTiling.swizzlDirect; // 家里tiling写死
+    comm_npu_split = aivModeTiling.commNpuSplit;    // tiling 寻优
+    comm_data_split = aivModeTiling.commDataSplit;  // tiling 寻优
+    comm_direct = tilingData.cocTiling.commDirect;  // tiling 寻优
+    len_per_loop = tilingData.cocTiling.lenPerLoop; // tiling 寻优
+    swizzlCount = aivModeTiling.swizzlCount;        // 家里tiling写死
+    swizzlDirect = aivModeTiling.swizzlDirect;      // 家里tiling写死
     core_count = comm_npu_split * comm_data_split;
 
     coreIdx = GetBlockIdx();              // 0-48核

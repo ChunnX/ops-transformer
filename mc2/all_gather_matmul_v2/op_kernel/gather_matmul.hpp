@@ -174,9 +174,9 @@ public:
     {
         GemmCoord blockIdxCoord = GetBlockIdCoord(loopIdx, mLoops, nLoops, params.swizzlDirect, params.swizzlCount);
         GemmCoord blockLocCoord = Mc2MatmulAiv::GetBlockLocCoord<L1TileShape>(blockIdxCoord);
-        GemmCoord blockSizeCoord = Mc2MatmulAiv::GetBlockSizeCoord<L1TileShape>(
-            blockIdxCoord, blockLocCoord, mLoops, params.problemShape.m(), nLoops, params.problemShape.n(),
-            params.problemShape.k());
+        GemmCoord blockSizeCoord =
+            Mc2MatmulAiv::GetBlockSizeCoord<L1TileShape>(blockIdxCoord, blockLocCoord, mLoops, params.problemShape.m(),
+                                                         nLoops, params.problemShape.n(), params.problemShape.k());
         MatrixCoord offsetA{blockLocCoord.m(), blockLocCoord.k()};
         MatrixCoord offsetB{blockLocCoord.k(), blockLocCoord.n()};
         MatrixCoord offsetC{blockLocCoord.m(), blockLocCoord.n()};
@@ -284,9 +284,9 @@ public:
         GemmCoord blockIdxCoord =
             GetBlockIdCoord(loopOffsetInBlock, ctx.actualPValue, nLoops, params.swizzlDirect, params.swizzlCount);
         GemmCoord blockLocCoord = Mc2MatmulAiv::GetBlockLocCoord<L1TileShape>(blockIdxCoord);
-        GemmCoord blockSizeCoord = Mc2MatmulAiv::GetBlockSizeCoord<L1TileShape>(
-            blockIdxCoord, blockLocCoord, ctx.actualPValue, ctx.blockM, nLoops, params.problemShape.n(),
-            params.problemShape.k());
+        GemmCoord blockSizeCoord =
+            Mc2MatmulAiv::GetBlockSizeCoord<L1TileShape>(blockIdxCoord, blockLocCoord, ctx.actualPValue, ctx.blockM,
+                                                         nLoops, params.problemShape.n(), params.problemShape.k());
         MatrixCoord offsetA{blockLocCoord.m(), blockLocCoord.k()};
         MatrixCoord offsetB{blockLocCoord.k(), blockLocCoord.n()};
         MatrixCoord offsetC{blockLocCoord.m(), blockLocCoord.n()};

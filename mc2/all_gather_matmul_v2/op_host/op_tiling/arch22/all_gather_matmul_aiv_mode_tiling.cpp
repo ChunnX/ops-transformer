@@ -138,8 +138,7 @@ void AllGatherV2MatmulNPU910BTwoRankINT8Tiling(CoCTiling &cocTilingData)
 
     AllGatherV2DecodeTilingData(code, cocTilingData);
 
-    cocTilingData.lenPerLoop =
-        cocTilingData.aivModeTiling.ubMoveNum * cocTilingData.aivModeTiling.commDataSplit;
+    cocTilingData.lenPerLoop = cocTilingData.aivModeTiling.ubMoveNum * cocTilingData.aivModeTiling.commDataSplit;
     DealTilingParamByBuffSize(cocTilingData);
 }
 
@@ -153,8 +152,7 @@ void AllGatherV2MatmulNPU910BEightRankINT4Tiling(CoCTiling &cocTilingData)
 
     AllGatherV2DecodeTilingData(code, cocTilingData);
 
-    cocTilingData.lenPerLoop =
-        cocTilingData.aivModeTiling.ubMoveNum * cocTilingData.aivModeTiling.commDataSplit;
+    cocTilingData.lenPerLoop = cocTilingData.aivModeTiling.ubMoveNum * cocTilingData.aivModeTiling.commDataSplit;
     DealTilingParamByBuffSize(cocTilingData);
 }
 
@@ -168,8 +166,7 @@ void AllGatherV2MatmulNPU910BFourRankINT8Tiling(CoCTiling &cocTilingData)
 
     AllGatherV2DecodeTilingData(code, cocTilingData);
 
-    cocTilingData.lenPerLoop =
-        cocTilingData.aivModeTiling.ubMoveNum * cocTilingData.aivModeTiling.commDataSplit;
+    cocTilingData.lenPerLoop = cocTilingData.aivModeTiling.ubMoveNum * cocTilingData.aivModeTiling.commDataSplit;
     DealTilingParamByBuffSize(cocTilingData);
 }
 
@@ -183,8 +180,7 @@ void AllGatherV2MatmulNPU910BFourRankFP16Tiling(CoCTiling &cocTilingData)
 
     AllGatherV2DecodeTilingData(code, cocTilingData);
 
-    cocTilingData.lenPerLoop =
-        cocTilingData.aivModeTiling.ubMoveNum * cocTilingData.aivModeTiling.commDataSplit;
+    cocTilingData.lenPerLoop = cocTilingData.aivModeTiling.ubMoveNum * cocTilingData.aivModeTiling.commDataSplit;
     DealTilingParamByBuffSize(cocTilingData);
 }
 
@@ -198,8 +194,7 @@ void AllGatherV2MatmulNPU910BEightRankINT8Tiling(CoCTiling &cocTilingData)
 
     AllGatherV2DecodeTilingData(code, cocTilingData);
 
-    cocTilingData.lenPerLoop =
-        cocTilingData.aivModeTiling.ubMoveNum * cocTilingData.aivModeTiling.commDataSplit;
+    cocTilingData.lenPerLoop = cocTilingData.aivModeTiling.ubMoveNum * cocTilingData.aivModeTiling.commDataSplit;
     DealTilingParamByBuffSize(cocTilingData);
 }
 
@@ -213,8 +208,7 @@ void AllGatherV2MatmulNPU910BEightRankFP16Tiling(CoCTiling &cocTilingData)
 
     AllGatherV2DecodeTilingData(code, cocTilingData);
 
-    cocTilingData.lenPerLoop =
-        cocTilingData.aivModeTiling.ubMoveNum * cocTilingData.aivModeTiling.commDataSplit;
+    cocTilingData.lenPerLoop = cocTilingData.aivModeTiling.ubMoveNum * cocTilingData.aivModeTiling.commDataSplit;
     DealTilingParamByBuffSize(cocTilingData);
 }
 
@@ -228,8 +222,7 @@ void AllGatherV2MatmulNPU91093FourRankINT8Tiling(CoCTiling &cocTilingData)
 
     AllGatherV2DecodeTilingData(code, cocTilingData);
 
-    cocTilingData.lenPerLoop =
-        cocTilingData.aivModeTiling.ubMoveNum * cocTilingData.aivModeTiling.commDataSplit;
+    cocTilingData.lenPerLoop = cocTilingData.aivModeTiling.ubMoveNum * cocTilingData.aivModeTiling.commDataSplit;
     DealTilingParamByBuffSize(cocTilingData);
 }
 
@@ -243,8 +236,7 @@ void AllGatherV2MatmulNPU91093EightRankINT8Tiling(CoCTiling &cocTilingData)
 
     AllGatherV2DecodeTilingData(code, cocTilingData);
 
-    cocTilingData.lenPerLoop =
-        cocTilingData.aivModeTiling.ubMoveNum * cocTilingData.aivModeTiling.commDataSplit;
+    cocTilingData.lenPerLoop = cocTilingData.aivModeTiling.ubMoveNum * cocTilingData.aivModeTiling.commDataSplit;
     DealTilingParamByBuffSize(cocTilingData);
 }
 
@@ -258,8 +250,7 @@ void AllGatherV2MatmulNPU91093FourRankFP16Tiling(CoCTiling &cocTilingData)
 
     AllGatherV2DecodeTilingData(code, cocTilingData);
 
-    cocTilingData.lenPerLoop =
-        cocTilingData.aivModeTiling.ubMoveNum * cocTilingData.aivModeTiling.commDataSplit;
+    cocTilingData.lenPerLoop = cocTilingData.aivModeTiling.ubMoveNum * cocTilingData.aivModeTiling.commDataSplit;
     DealTilingParamByBuffSize(cocTilingData);
 }
 
@@ -273,8 +264,7 @@ void AllGatherV2MatmulNPU91093EightRankFP16Tiling(CoCTiling &cocTilingData)
 
     AllGatherV2DecodeTilingData(code, cocTilingData);
 
-    cocTilingData.lenPerLoop =
-        cocTilingData.aivModeTiling.ubMoveNum * cocTilingData.aivModeTiling.commDataSplit;
+    cocTilingData.lenPerLoop = cocTilingData.aivModeTiling.ubMoveNum * cocTilingData.aivModeTiling.commDataSplit;
     DealTilingParamByBuffSize(cocTilingData);
 }
 
@@ -439,8 +429,7 @@ void GetUsrWorkSpaceSize(uint32_t nElemAlign, uint32_t elementSize, uint64_t &us
     info.accumWorkSpacePingPong = false;
     if (info.quantFlag) {
         const auto &aivModeTiling = cocTiling.aivModeTiling;
-        info.accumWorkSpacePingPong =
-            (info.M >= MAX_BLOCK_COUNT * aivModeTiling.m0 * aivModeTiling.pValue);
+        info.accumWorkSpacePingPong = (info.M >= MAX_BLOCK_COUNT * aivModeTiling.m0 * aivModeTiling.pValue);
         uint32_t workspaceM =
             info.accumWorkSpacePingPong ? MAX_BLOCK_COUNT * aivModeTiling.m0 * aivModeTiling.pValue : info.M;
         userWorkSpaceSize += static_cast<uint64_t>(workspaceM) * info.N * rankSize * sizeof(int32_t);

@@ -61,8 +61,7 @@ inline __aicore__ void GetSwizzledBlockIdx(int32_t loopIdx, int32_t mLoop, int32
 template <class TileShape, class Coord>
 inline __aicore__ Coord GetBlockLocCoord(Coord blockIdxCoord)
 {
-    return Coord{blockIdxCoord.m() * TileShape::M, blockIdxCoord.n() * TileShape::N,
-                 blockIdxCoord.k() * TileShape::K};
+    return Coord{blockIdxCoord.m() * TileShape::M, blockIdxCoord.n() * TileShape::N, blockIdxCoord.k() * TileShape::K};
 }
 
 template <class TileShape, class Coord>
