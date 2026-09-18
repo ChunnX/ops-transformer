@@ -96,7 +96,7 @@ protected:
     ChunkGatedDeltaRuleCompileInfo compileInfo_;
     ChunkGatedDeltaRule::ChunkGatedDeltaRuleTilingData tilingData_;
     ChunkGatedDeltaRuleInfo inputParams_;
-    platform_ascendc::SocVersion socVersion_;
+    NpuArch npuArch_;
 };
 
 } // namespace optiling

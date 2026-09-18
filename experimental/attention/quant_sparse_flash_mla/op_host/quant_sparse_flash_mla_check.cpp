@@ -93,7 +93,7 @@ void QSMLATilingCheck::Init()
     opName_ = qsmlaInfo_.opName;
     platformInfo_ = qsmlaInfo_.platformInfo;
     opParamInfo_ = qsmlaInfo_.opParamInfo;
-    socVersion_ = qsmlaInfo_.socVersion;
+    npuArch_ = qsmlaInfo_.npuArch;
 
     qLayout_ = qsmlaInfo_.qLayout;
     kvLayout_ = qsmlaInfo_.kvLayout;

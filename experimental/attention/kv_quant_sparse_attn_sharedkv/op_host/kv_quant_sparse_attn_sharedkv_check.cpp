@@ -122,7 +122,7 @@ void KvQuantSASTilingCheck::Init()
     opName_ = sasInfo_.opName;
     platformInfo_ = sasInfo_.platformInfo;
     opParamInfo_ = sasInfo_.opParamInfo;
-    socVersion_ = sasInfo_.socVersion;
+    npuArch_ = sasInfo_.npuArch;
 
     bSize_ = sasInfo_.bSize;
     bSize_ = opParamInfo_.oriBlockTable.tensor->GetShape().GetStorageShape().GetDim(0);

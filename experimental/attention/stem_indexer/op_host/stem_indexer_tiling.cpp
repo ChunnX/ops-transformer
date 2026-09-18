@@ -59,11 +59,11 @@ ge::graphStatus StemIndexerInfoParser::GetNpuInfo()
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
     OP_CHECK_IF(aicNum == 0 || aivNum == 0, OP_LOGE(opName_, "num of core obtained is 0."), return ge::GRAPH_FAILED);
 
-    socVersion_ = ascendcPlatform.GetSocVersion();
+    npuArch_ = ascendcPlatform.GetCurNpuArch();
     // 当前仅适配 A5（ASCEND950），A2/A3 暂未适配
-    if (socVersion_ != platform_ascendc::SocVersion::ASCEND950) {
-        OP_LOGE(opName_, "SOC Version[%d] is not support, only ASCEND950 is supported.",
-                static_cast<int32_t>(socVersion_));
+    if (npuArch_ != NpuArch::DAV_3510) {
+        OP_LOGE(opName_, "NpuArch[%u] is not support, only DAV_3510(A5) is supported.",
+                static_cast<uint32_t>(npuArch_));
         return ge::GRAPH_FAILED;
     }
 
@@ -469,7 +469,7 @@ void StemIndexerInfoParser::GenerateInfo(StemIndexerTilingInfo &stemInfo)
     stemInfo.opName = opName_;
     stemInfo.platformInfo = platformInfo_;
     stemInfo.opParamInfo = opParamInfo_;
-    stemInfo.socVersion = socVersion_;
+    stemInfo.npuArch = npuArch_;
     stemInfo.bSize = bSize_;
     stemInfo.qHeadNum = qHeadNum_;
     stemInfo.kvHeadNum = kvHeadNum_;

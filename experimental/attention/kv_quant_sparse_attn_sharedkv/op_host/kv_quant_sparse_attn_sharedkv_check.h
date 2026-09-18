@@ -250,7 +250,7 @@ public:
     KvQuantSASParaInfo opParamInfo;
 
     // Base Param
-    platform_ascendc::SocVersion socVersion = platform_ascendc::SocVersion::ASCEND910B;
+    NpuArch npuArch = NpuArch::DAV_2201;
     uint32_t bSize = 0;
     uint32_t n1Size = 0;
     uint32_t n2Size = 0;
@@ -394,7 +394,7 @@ public:
     uint32_t cmpMaxBlockNumPerBatch_ = 0;
     int32_t oriBlockSize_ = 0;
     int32_t cmpBlockSize_ = 0;
-    platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
+    NpuArch npuArch_ = NpuArch::DAV_2201;
     ge::DataType qType_ = ge::DT_FLOAT16;
     ge::DataType oriKvType_ = ge::DT_FLOAT16;
     ge::DataType cmpKvType_ = ge::DT_FLOAT16;
@@ -563,7 +563,7 @@ private:
 
     uint32_t aicNum_ = 0;
     uint32_t aivNum_ = 0;
-    platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
+    NpuArch npuArch_ = NpuArch::DAV_2201;
     uint64_t l2CacheSize_ = 0;
 
     bool isSameSeqAllKVTensor_ = true;
