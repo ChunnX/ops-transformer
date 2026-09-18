@@ -53,6 +53,15 @@ public:
     static constexpr uint32_t dVBaseSize = CubeBlockType::dVBaseSize;
     static constexpr uint32_t s2SplitSize = (dBaseSize == 256) ? 128U : 256U;
 
+    // kernel侧ubBufferManager_(跨核bmm1/bmm2)占用的UB字节数, 与InitMMResBuf的分配公式一致,
+    // 作为FD静态Tensor业务区(FD InitBuffers)的起始基准偏移
+    static constexpr uint32_t GetMmUbTotalSize()
+    {
+        constexpr uint32_t mm1ResultSize = mBaseSize / CV_RATIO * s2BaseSize * sizeof(T) / 2;
+        constexpr uint32_t mm2ResultSize = mBaseSize / CV_RATIO * dVBaseSize * sizeof(T);
+        return mm1ResultSize * 2 + mm2ResultSize;
+    }
+
     static constexpr bool USE_DN = CubeBlockType::USE_DN;
     static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
 
@@ -753,11 +762,15 @@ public:
 
     __aicore__ inline void FlashDecode(uint32_t sectionIdx)
     {
+        // FD静态Tensor业务区必须完全落在FA瞬态区内, 编译期校验布局容量
+        static_assert(VecFdBlockType::GetFdTotalUbSize() <= VecFaBlockType::GetTransientUbSize(),
+                      "FD static UB region exceeds FA transient region");
         if (!constInfo_.enableFlashDecode) {
             return;
         }
         GetFDSectionInfo(sectionIdx);
-        vecFdBlock_.InitBuffers(this->pipe_);
+        // FD静态Tensor业务区起始偏移: 跨核bmm区 + FA保留区, 落在FA瞬态区内分时复用
+        vecFdBlock_.template InitBuffers<GetMmUbTotalSize() + VecFaBlockType::GetPersistUbSize()>();
         AscendC::ICachePreLoad(2);
         vecFdBlock_.AllocEventID();
         SyncAll();
@@ -811,11 +824,6 @@ public:
         }
         for (uint32_t sectionIdx = 0; sectionIdx < sectionNum_; sectionIdx++) {
             if (constInfo_.aicIdx < constInfo_.coreNum) {
-                if ASCEND_IS_AIV {
-                    if (sectionIdx > 0) {
-                        vecFaBlock_.InitBuffers(); // FD InitBuffers的pipe Reset会释放FA buffer, 多section需重新初始化
-                    }
-                }
                 FlashAttention(sectionIdx);
             }
             if constexpr (FLASH_DECODE) {

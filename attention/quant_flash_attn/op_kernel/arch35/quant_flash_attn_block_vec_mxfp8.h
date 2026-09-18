@@ -1053,22 +1053,12 @@ public:
 
     __aicore__ inline void InitBuffers()
     {
-        uint32_t mm1ResultSize = mBaseSize / CV_RATIO * s2BaseSize * sizeof(T);
-        uint32_t mm2ResultSize = mBaseSize / CV_RATIO * dTemplateAlign64 * sizeof(T);
         uint32_t attenMaskSize = mBaseSize / CV_RATIO * (s2BaseSize >> 1U);
+        // ===== 保留区: 跨section必须存活的buffer, 分配顺序与GetPersistUbSize保持一致 =====
         SoftmaxInitBuffer();
-        tPipe_->InitBuffer(stage2OutBuf_, 64 * dTemplateAlign64 * sizeof(T));
-        tPipe_->InitBuffer(stage1OutQue_[0], 1, 16640); // (32 + 1) * (256 / 32) * 64
-        tPipe_->InitBuffer(stage1OutQue_[1], 1, 16640);
         tPipe_->InitBuffer(commonTBuf_, 512);
-        if constexpr (HAS_MASK) {
-            tPipe_->InitBuffer(attenMaskInQue_[0], 1, attenMaskSize); // 256 * 64
-        }
-
-        if (constInfo_.isSoftmaxLseEnable) {
-            // 8: 适配TND，每行的结果存为8个重复lse元素（32B对齐）
-            this->tPipe_->InitBuffer(softmaxLseQueue_, 1, (mBaseSize >> 1U) * sizeof(float) * 8);
-        }
+        // softmaxLseQueue_常开分配(未使能LSE时空闲), 保证FD静态布局偏移编译期确定
+        this->tPipe_->InitBuffer(softmaxLseQueue_, 1, (mBaseSize >> 1U) * sizeof(float) * 8);
         if constexpr (isFp8) {
             if constexpr (USE_DN) {
                 tPipe_->InitBuffer(vselrIndexesBuf_[static_cast<int>(VselrIndexEnum::DN_INDEX)], 256);
@@ -1100,6 +1090,37 @@ public:
                 }
             }
         }
+
+        // ===== 瞬态区: FD静态Tensor覆盖区, 分配顺序与GetTransientUbSize保持一致 =====
+        tPipe_->InitBuffer(stage2OutBuf_, 64 * dTemplateAlign64 * sizeof(T));
+        tPipe_->InitBuffer(stage1OutQue_[0], 1, 16640); // (32 + 1) * (256 / 32) * 64
+        tPipe_->InitBuffer(stage1OutQue_[1], 1, 16640);
+        if constexpr (HAS_MASK) {
+            tPipe_->InitBuffer(attenMaskInQue_[0], 1, attenMaskSize); // 256 * 64
+        }
+    }
+
+    // FA保留区字节数(紧跟kernel侧ubBufferManager_的跨核bmm区之后):
+    // softmax状态(12*256) + preLoop(3*256) + brdcst(FLASH_DECODE时2*2048) + commonTBuf(512)
+    // + softmaxLseQueue(512, 常开) + vselr索引表(isFp8时)
+    static __aicore__ inline constexpr uint32_t GetPersistUbSize()
+    {
+        constexpr uint32_t softmaxSize = (12U + 3U) * 256U;
+        constexpr uint32_t brdcstSize = FLASH_DECODE ? (2U * 2048U) : 0U;
+        constexpr uint32_t commonSize = 512U;
+        constexpr uint32_t lseSize = 512U;
+        constexpr uint32_t vselrSize = isFp8 ? (USE_DN ? 256U : (128U + 64U)) : 0U;
+        return softmaxSize + brdcstSize + commonSize + lseSize + vselrSize;
+    }
+
+    // FA瞬态区字节数: stage2Out + stage1Out*2 + attenMask, FD静态Tensor业务区(见FD block
+    // GetFdTotalUbSize)须完全落在该区间内, 供static_assert校验
+    static __aicore__ inline constexpr uint32_t GetTransientUbSize()
+    {
+        constexpr uint32_t stage2Size = 64U * dTemplateAlign64 * sizeof(T);
+        constexpr uint32_t stage1Size = 2U * 16640U;
+        constexpr uint32_t maskSize = HAS_MASK ? (mBaseSize / CV_RATIO * (s2BaseSize >> 1U)) : 0U;
+        return stage2Size + stage1Size + maskSize;
     }
 
     __aicore__ inline void AllocEventID()
