@@ -170,7 +170,7 @@ if _TORCHAIR_AVAILABLE:
     @register_fx_node_ge_converter(
         torch.ops.cann_ops_transformer.fused_causal_conv1d.default
     )
-    def converter_fused_causal_conv1d(
+    def convert_fused_causal_conv1d(
         x: Tensor,
         weight: Tensor,
         conv_states: Tensor,

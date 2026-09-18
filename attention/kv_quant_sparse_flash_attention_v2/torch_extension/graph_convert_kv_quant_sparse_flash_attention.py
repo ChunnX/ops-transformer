@@ -229,3 +229,10 @@ if _TORCHAIR_AVAILABLE:
             key_dtype=key_dtype,
             value_dtype=value_dtype,
         )
+
+else:
+
+    def convert_kv_quant_sparse_flash_attention(*args, **kwargs):
+        raise RuntimeError(
+            "GE converter requires torchair, but torchair is not available."
+        )

@@ -1,6 +1,6 @@
 # -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2025 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# This program is free software: you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
 # THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
@@ -21,22 +21,24 @@ except ImportError as e:
     raise
 
 _op_namespace = torch.ops.cann_ops_transformer
-
-for _name in dir(ops):
-    if _name.startswith("_") or hasattr(_op_namespace, _name):
-        continue
-    globals()[_name] = getattr(ops, _name)
-del _name
+_missing = object()
 
 
 def __getattr__(name):
-    if hasattr(_op_namespace, name):
-        handle = getattr(_op_namespace, name)
-        globals()[name] = handle
-        return handle
+    if not name.startswith("_"):
+        # 先经 ops 懒加载：仅触发被访问算子的 import / schema 注册 / JIT 编译
+        attr = getattr(ops, name, _missing)
+        if attr is not _missing:
+            globals()[name] = attr
+            return attr
+        # 再查 torch.ops namespace（此前已注册过的算子）
+        if hasattr(_op_namespace, name):
+            handle = getattr(_op_namespace, name)
+            globals()[name] = handle
+            return handle
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def __dir__():
     _seen = set(globals()) | set(dir(_op_namespace)) | set(dir(ops))
-    return sorted(_seen)
+    return sorted(n for n in _seen if not n.startswith("_"))

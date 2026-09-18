@@ -240,7 +240,7 @@ ops-transformer/
 
 负责在torchair图模式（GE）下把aten算子转换为GE节点：
 
-1. **可选依赖保护**：torchair相关import统一包在`try/except ImportError`中，用`_TORCHAIR_AVAILABLE`标志位控制，避免在无torchair环境下导入失败。
+1. **可选依赖保护**：torchair相关import统一包在`try/except ImportError`中，用`_TORCHAIR_AVAILABLE`标志位控制，避免在无torchair环境下导入失败。`if _TORCHAIR_AVAILABLE:`分支必须配`else:`分支，在`else`中定义同名Converter stub（调用时抛`RuntimeError("GE converter requires torchair, but torchair is not available.")`），保证模块级`convert_*`函数名在任何环境下都存在——否则算子层`__init__.py`对Converter的具体函数名import会在无torchair环境下失败，导致整个算子（含eager接口）不可用。
 2. **GE op函数**：定义与`op_type`同名的大驼峰函数（如`FlashAttentionScore`），通过docstring写明`REG_OP`的IR定义（INPUT/DYNAMIC_INPUT/OPTIONAL_INPUT/OUTPUT/ATTR等），并组织`inputs`/`attrs`/`outputs`后调用`ge_op(...)`，IR通过`IrDef(...)`链式声明。
 3. **Converter注册**：用`@register_fx_node_ge_converter(torch.ops.cann_ops_transformer.flash_attn.default)`装饰`convert_flash_attn`函数，其参数顺序与schema完全一致，函数体调用上面的GE op函数。
 4. 在`ops/__init__.py`中导出Converter（如`convert_flash_attn`），确保注册逻辑被执行。
@@ -257,8 +257,8 @@ ops-transformer/
     from .graph_convert_flash_attn import convert_flash_attn
     ```
     若算子有额外的辅助导出（如`flash_attn_metadata`、`get_symm_buffer_for_mega_moe`），也一并加入`__all__`和import。
-2. **`ops/__init__.py`（子包层）**：已改造为自动发现模式（目录扫描 + entry point），无需手动添加import。新增算子只要按规范放置文件并定义`__init__.py`的`__all__`，就会被自动加载。
-3. **`cann_ops_transformer/__init__.py`（包根层）**：通过`from . import ops`触发注册，并通过`__getattr__`和`__dir__`动态导出算子接口，使用户可直接通过`cann_ops_transformer.<接口名>`访问。
+2. **`ops/__init__.py`（子包层）**：已改造为自动发现 + 懒加载模式（目录扫描 + entry point + `__all__` 静态解析），无需手动添加import。新增算子只要按规范放置文件并定义`__init__.py`的`__all__`，就会被自动发现；算子模块只在对应接口首次被属性访问时才import（触发schema/meta/converter注册与JIT编译），避免使用单个算子时编译全部算子。注意`__all__`必须是静态字符串列表字面量（用于构建懒加载导出索引）。如需一次性加载全部算子（例如要求`torch.ops.cann_ops_transformer`全量注册），可显式调用`cann_ops_transformer.ops.load_all()`。
+3. **`cann_ops_transformer/__init__.py`（包根层）**：通过`from . import ops`导入子包（仅做发现，不加载算子），并通过`__getattr__`和`__dir__`把接口访问委托给`ops`的懒加载逻辑，使用户可直接通过`cann_ops_transformer.<接口名>`访问且只加载该接口对应的算子。
 
 ## 4. 文档规范（`<category>/<op>/docs/torchapi_${op_api}.md`）
 
