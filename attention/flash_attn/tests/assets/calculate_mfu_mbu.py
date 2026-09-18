@@ -18,6 +18,8 @@ Example (peaks are decimal TFLOPS and TB/s, duration defaults to microseconds):
 By default, use api_name, tensor_view_shapes, tensor_dtypes and attributes in
 each result row. For reduced results, supply --cases testcase/cases.csv to join
 external case CSV(s) by testcase_name instead.
+Input encoding defaults to UTF-8 (with optional BOM), falling back to GB18030
+(compatible with GBK). Use --encoding to override; output is always UTF-8.
 
 For graph results, select --duration-column graph_aclgraph_device_perf_us.
 Other duration columns can be selected explicitly, with --duration-unit us/ms/s.
@@ -40,6 +42,7 @@ the script writes all rows and exits 1 if any row could not be calculated.
 import argparse
 import ast
 import csv
+import io
 import math
 from pathlib import Path
 import sys
@@ -229,22 +232,39 @@ def theoretical_cost(row):
     return flops, total_bytes
 
 
-def read_csv(path):
-    with path.open(encoding="utf-8-sig", newline="") as stream:
+def read_csv(path, encoding="auto"):
+    data = path.read_bytes()
+    candidates = ("utf-8-sig", "gb18030") if encoding == "auto" else (encoding,)
+    for candidate in candidates:
+        try:
+            contents = data.decode(candidate)
+            break
+        except LookupError as exc:
+            raise ValueError(f"unknown encoding: {candidate}") from exc
+        except UnicodeDecodeError:
+            continue
+    else:
+        raise ValueError(
+            f"{path}: cannot decode using {', '.join(candidates)}; "
+            "specify the CSV encoding with --encoding"
+        )
+    if encoding == "auto" and candidate != "utf-8-sig":
+        print(f"{path}: using {candidate} input encoding", file=sys.stderr)
+    with io.StringIO(contents, newline="") as stream:
         reader = csv.DictReader(stream)
         if not reader.fieldnames or "testcase_name" not in reader.fieldnames:
             raise ValueError(f"{path}: missing testcase_name column")
         return reader.fieldnames, list(reader)
 
 
-def load_cases(paths):
+def load_cases(paths, encoding="auto"):
     cases = {}
     for path in paths:
         files = sorted(path.glob("*.csv")) if path.is_dir() else [path]
         if not files:
             raise ValueError(f"no case CSVs found in {path}")
         for file in files:
-            _, rows = read_csv(file)
+            _, rows = read_csv(file, encoding)
             for row in rows:
                 cases.setdefault(row["testcase_name"], []).append((file, row))
     return cases
@@ -262,6 +282,11 @@ def main(argv=None):
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("--result", "-r", required=True, type=Path)
+    parser.add_argument(
+        "--encoding",
+        default="auto",
+        help="input CSV encoding for result/cases: auto (UTF-8 then GB18030), gbk, etc.",
+    )
     parser.add_argument(
         "--cases",
         "-c",
@@ -291,8 +316,8 @@ def main(argv=None):
     parser.add_argument("--duration-unit", choices=("us", "ms", "s"), default="us")
     args = parser.parse_args(argv)
     try:
-        fields, rows = read_csv(args.result)
-        cases = load_cases(args.cases) if args.cases else {}
+        fields, rows = read_csv(args.result, args.encoding)
+        cases = load_cases(args.cases, args.encoding) if args.cases else {}
         column = args.duration_column or next(
             (
                 x
