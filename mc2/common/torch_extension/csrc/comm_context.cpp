@@ -32,6 +32,8 @@ constexpr uint32_t HCCL_COMM_LAYERS_MTE_CCU = 1;
 constexpr uint32_t HCCL_COMM_LAYERS_UB_MEM = 0;
 constexpr uint32_t GET_LOCAL_SERVER_RANK_SIZE_LAYER = 0;
 constexpr int64_t DEFAULT_RANK_NUM_PER_SERVER = 2;
+constexpr uint32_t MOE_CHANNEL_HANDLE_NUM = 64U;
+constexpr uint32_t MOE_CHANNEL_NOTIFY_NUM = 3U;
 
 enum class TopoType : uint32_t {
     INTRA_SUPER_NODE = 0, // 超节点内通信（默认）
@@ -55,6 +57,7 @@ struct CommContext {
     uint64_t kfcContextAddr = 0; // 通信API所需的地址
     uint64_t epHcclBuffer_[HCCL_MAX_RANK_SIZE] = {};
     ChannelHandle hcommHandle_[HCCL_MAX_RANK_SIZE] = {}; // ROCE或者URMA通信所需句柄
+    uint32_t channelsPerRank = 0; // 每个rank的channel数量，0表示未启用多channel（紧凑布局）
 };
 
 // ======================== Common Types and Utilities ========================
@@ -217,13 +220,14 @@ public:
     void Build(const std::string &group, int64_t worldSize, int64_t &cclBufferSize, at::Tensor &contextTensor,
                const std::string &commAlg, const std::string &opName, int64_t customCclBufferSize = 0,
                const py::object &customCclBufferSizeResolver = py::none(), void **customDeviceBuffer = nullptr,
-               HcclMemHandle *customMemHandle = nullptr)
+               HcclMemHandle *customMemHandle = nullptr, bool multiChannel = false)
     {
         ASCEND_LOGI("Start to get CommContext Tensor, group: %s", group.c_str());
         InitHcclEngineCtxFunctions();
         customCclBufferSize_ = customCclBufferSize;
         customDeviceBuffer_ = customDeviceBuffer;
         customMemHandle_ = customMemHandle;
+        multiChannel_ = multiChannel;
 
         HcclComm hcclHandle;
         AcquireHcclHandle(group, hcclHandle);
@@ -497,8 +501,8 @@ public:
 
     // ---- Channel management helpers ----
 
-    void InitHcclChannel(const HcclComm &commHandle, uint32_t rankDim, uint32_t srcRankId, const CommProtocol &protocol,
-                         std::vector<HcclChannelDesc> &channelDesc)
+    void InitHcclChannel(const HcclComm &commHandle, uint32_t rankDim, uint32_t srcRankId, uint32_t channelsPerRank,
+                         const CommProtocol &protocol, std::vector<HcclChannelDesc> &channelDesc)
     {
         uint32_t channelNum = channelDesc.size();
         auto hcclRet = HcclChannelDescInit(channelDesc.data(), channelNum);
@@ -514,16 +518,23 @@ public:
             if (dstRank == srcRankId) {
                 continue;
             }
-            uint32_t channelId = (dstRank > srcRankId) ? (dstRank - 1) : dstRank;
+            uint32_t peerIndex = (dstRank > srcRankId) ? (dstRank - 1) : dstRank;
             RankLinkInfo linkInfo = ResolveLinkInfo(dstRank, protocol, netLayerList, netLayerNum);
             CommLink *links = nullptr;
             GetHcclCommLink(commHandle, linkInfo.layer, srcRankId, dstRank, linkInfo.protocol, links);
-            channelDesc[channelId].channelProtocol = linkInfo.protocol;
-            channelDesc[channelId].remoteRank = dstRank;
-            channelDesc[channelId].localEndpoint = links->srcEndpointDesc;
-            channelDesc[channelId].remoteEndpoint = links->dstEndpointDesc;
-            channelDesc[channelId].memHandles = customMemHandle_;
-            channelDesc[channelId].memHandleNum = 1;
+            for (uint32_t channel = 0; channel < channelsPerRank; ++channel) {
+                // Handles are compact by remote rank because the local rank does not need an HCOMM channel.
+                uint32_t channelId = peerIndex * channelsPerRank + channel;
+                channelDesc[channelId].channelProtocol = linkInfo.protocol;
+                channelDesc[channelId].remoteRank = dstRank;
+                if (channelsPerRank > 1U) {
+                    channelDesc[channelId].notifyNum = MOE_CHANNEL_NOTIFY_NUM;
+                }
+                channelDesc[channelId].localEndpoint = links->srcEndpointDesc;
+                channelDesc[channelId].remoteEndpoint = links->dstEndpointDesc;
+                channelDesc[channelId].memHandles = customMemHandle_;
+                channelDesc[channelId].memHandleNum = 1;
+            }
         }
     }
 
@@ -545,14 +556,49 @@ public:
         ASCEND_LOGI("Start to get HCCL communication channel");
         TORCH_CHECK(rankDim > 0 && rankDim <= HCCL_MAX_RANK_SIZE, "Invalid HCCL rank size: ", rankDim);
         TORCH_CHECK(srcRankId < rankDim, "Invalid local rank ", srcRankId, " for rank size ", rankDim);
-        uint32_t channelNum = rankDim - 1;
+        if (!multiChannel_) {
+            // Legacy layout: one channel per remote peer, compact (self excluded). Ops that have
+            // not opted into multi-channel keep reading this layout, byte-identical to before.
+            commContextStruct->channelsPerRank = 0U;
+            uint32_t channelNum = rankDim - 1;
+            std::vector<HcclChannelDesc> channelDesc(channelNum);
+
+            InitHcclChannel(commHandle, rankDim, srcRankId, 1U, protocol, channelDesc);
+
+            auto hcclRet =
+                HcclChannelAcquireFunc(commHandle, engine, channelDesc.data(), channelNum, commContextStruct->hcommHandle_);
+            TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Acquire HCCL channel failed, ret: ", hcclRet);
+            return;
+        }
+        commContextStruct->channelsPerRank = 1U;
+        if (rankDim < MOE_CHANNEL_HANDLE_NUM) {
+            commContextStruct->channelsPerRank = MOE_CHANNEL_HANDLE_NUM / rankDim;
+        }
+        uint32_t channelsPerRank = commContextStruct->channelsPerRank;
+        TORCH_CHECK(channelsPerRank > 0 && channelsPerRank <= HCCL_MAX_RANK_SIZE / rankDim,
+                    "HCCL channel handles exceed capacity, rank size ", rankDim, ", channels per rank ",
+                    channelsPerRank);
+        uint32_t remoteRankNum = rankDim - 1;
+        uint32_t channelNum = remoteRankNum * channelsPerRank;
         std::vector<HcclChannelDesc> channelDesc(channelNum);
+        ChannelHandle channelBuf[HCCL_MAX_RANK_SIZE] = {};
 
-        InitHcclChannel(commHandle, rankDim, srcRankId, protocol, channelDesc);
+        InitHcclChannel(commHandle, rankDim, srcRankId, channelsPerRank, protocol, channelDesc);
 
-        auto hcclRet =
-            HcclChannelAcquireFunc(commHandle, engine, channelDesc.data(), channelNum, commContextStruct->hcommHandle_);
+        auto hcclRet = HcclChannelAcquireFunc(commHandle, engine, channelDesc.data(), channelNum, channelBuf);
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Acquire HCCL channel failed, ret: ", hcclRet);
+
+        // Scatter to by-rank layout: hcommHandle_[peer * channelsPerRank + channel]; the local
+        // rank's slots stay zero and are never used by the kernels.
+        uint32_t channelIndex = 0;
+        for (uint32_t peer = 0; peer < rankDim; ++peer) {
+            if (peer == srcRankId) {
+                continue;
+            }
+            for (uint32_t channel = 0; channel < channelsPerRank; ++channel) {
+                commContextStruct->hcommHandle_[peer * channelsPerRank + channel] = channelBuf[channelIndex++];
+            }
+        }
     }
 
     // ---- Resource management helpers ----
@@ -565,7 +611,9 @@ public:
         uint32_t rankId = commContextStruct->epRankId;
 
         GetHcclCommChannel(commHandle, rankSize, rankId, protocol, engine, commContextStruct);
-        ASCEND_LOGI("Get HCCL communication channel success, channel num is: %u", rankSize - 1);
+        uint32_t channelsPerRank = commContextStruct->channelsPerRank;
+        ASCEND_LOGI("Get HCCL communication channel success, channel num is: %u, channelsPerRank is: %u",
+                    (rankSize - 1) * (channelsPerRank == 0U ? 1U : channelsPerRank), channelsPerRank);
 
         GetRegisteredCommResource(commHandle, commContextStruct, rankSize, targetTag);
         hcclBuffSize = static_cast<uint64_t>(customCclBufferSize_);
@@ -608,7 +656,8 @@ public:
             if (peer == rankId) {
                 continue;
             }
-            uint32_t idx = (peer < rankId) ? peer : (peer - 1);
+            uint32_t idx = (commContextStruct->channelsPerRank == 0U) ? ((peer < rankId) ? peer : (peer - 1))
+                                                                      : peer * commContextStruct->channelsPerRank;
             uint32_t memNum = 0;
             CommMem *remoteMems = nullptr;
             char **memTags = nullptr;
@@ -743,6 +792,7 @@ public:
     int64_t customCclBufferSize_ = 0;
     void **customDeviceBuffer_ = nullptr;
     HcclMemHandle *customMemHandle_ = nullptr;
+    bool multiChannel_ = false;
 };
 
 // ======================== CommContextManager ========================
@@ -751,7 +801,8 @@ class CommContextManager {
 public:
     CommContextManager(const std::string &group, int64_t worldSize, const py::object &backend = py::str("kfc"),
                        const std::string &commAlg = "ub-mem", const std::string &opName = "moe_dispatch_ffn_combine",
-                       int64_t customCclBufferSize = 0, const py::object &customCclBufferSizeResolver = py::none())
+                       int64_t customCclBufferSize = 0, const py::object &customCclBufferSizeResolver = py::none(),
+                       bool multiChannel = false)
         : group_(group),
           commAlg_(commAlg),
           opName_(opName),
@@ -762,7 +813,8 @@ public:
           topoType_(TopoType::INTRA_SUPER_NODE),
           rankNumPerServer_(DEFAULT_RANK_NUM_PER_SERVER),
           customCclBufferSize_(customCclBufferSize),
-          customCclBufferSizeResolver_(customCclBufferSizeResolver)
+          customCclBufferSizeResolver_(customCclBufferSizeResolver),
+          multiChannel_(multiChannel)
     {}
 
     ~CommContextManager()
@@ -869,7 +921,7 @@ private:
             case BackendMode::CHANNEL: {
                 HcclChannelContextBuilder builder;
                 builder.Build(group_, worldSize_, cclBufferSize_, tensor, commAlg_, opName_, customCclBufferSize_,
-                              customCclBufferSizeResolver_, &customDeviceBuffer_, &customMemHandle_);
+                              customCclBufferSizeResolver_, &customDeviceBuffer_, &customMemHandle_, multiChannel_);
                 localDeviceBuffer_ = customDeviceBuffer_;
                 topoType_ = builder.GetTopoType();
                 rankNumPerServer_ = builder.GetRankNumPerServer();
@@ -891,6 +943,7 @@ private:
     int64_t rankNumPerServer_ = DEFAULT_RANK_NUM_PER_SERVER;
     int64_t customCclBufferSize_ = 0;
     py::object customCclBufferSizeResolver_;
+    bool multiChannel_ = false;
     void *customDeviceBuffer_ = nullptr;
     void *localDeviceBuffer_ = nullptr;
     HcclMemHandle customMemHandle_ = nullptr;
@@ -901,10 +954,11 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     py::class_<CommContextManager>(m, "CommContextManager")
         .def(py::init<const std::string &, int64_t, const py::object &, const std::string &, const std::string &,
-                      int64_t, const py::object &>(),
+                      int64_t, const py::object &, bool>(),
              py::arg("group"), py::arg("worldSize"), py::arg("backend") = std::string("kfc"),
              py::arg("commAlg") = std::string("ub-mem"), py::arg("opName") = std::string("moe_dispatch_ffn_combine"),
-             py::arg("customCclBufferSize") = 0, py::arg("customCclBufferSizeResolver") = py::none())
+             py::arg("customCclBufferSize") = 0, py::arg("customCclBufferSizeResolver") = py::none(),
+             py::arg("multiChannel") = false)
         .def("create_context", &CommContextManager::CreateContext)
         .def("update_group", &CommContextManager::UpdateGroup, py::arg("group"), py::arg("contextTensor").noconvert())
         .def("destroy", &CommContextManager::Destroy)
