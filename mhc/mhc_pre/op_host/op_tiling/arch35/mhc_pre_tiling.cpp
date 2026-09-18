@@ -573,23 +573,29 @@ ge::graphStatus MhcPreBaseTiling::InitPlatformMemory()
     blockDim_ = static_cast<uint32_t>(ascendcPlatform.GetCoreNumAic());
     aivBlockDim_ = static_cast<uint32_t>(ascendcPlatform.GetCoreNumAiv());
 
-    // AIC:AIV 核数比平台相关：ascend950/910b/910_93 为 1:2（原有支持），
-    // ascend960dt 为 1:1（放开）。按实际核数比分流：非 1:2 且非 1:1 的比例维持原有拦截。
-    // 注：host tiling so 全 soc 共用一份，无法按平台宏隔离，只能运行时区分；
-    // CANN 9.2.0 的 SocVersion 枚举暂无 960dt，核数比即平台指纹。kernel 侧差异
-    // （任务类型/AIV 配对折算）由 CMake 注入的 MHC_PRE_SUPPORT_960DT 宏编译期隔离，
+    // 平台指纹：NpuArch::DAV_9201 即 ascend960dt（与 950 的 DAV_3510 同 arch35 指令集，
+    // CV 核数比 1:1）。host tiling so 全 soc 共用一份，无法按平台宏隔离，只能运行时区分。
+    // kernel 侧差异（任务类型/AIV 配对折算）由 CMake 注入的 MHC_PRE_SUPPORT_960DT 宏编译期隔离，
     // 950 kernel 编译路径与原版一致。
-    if (aivBlockDim_ == blockDim_ * AIV_AIC_RATIO) {
-        aivPerAic_ = AIV_AIC_RATIO;
-    } else if (aivBlockDim_ == blockDim_ && blockDim_ != 0U) {
-        aivPerAic_ = 1U; // ascend960dt: CV 1:1
-    } else {
+    const bool isAscend960DT = ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_9201;
+    if (!isAscend960DT) {
+        // 非 ascend960dt 平台保持原有校验：仅支持 AIC:AIV = 1:2
         OP_CHECK_IF(
-            true,
+            aivBlockDim_ != blockDim_ * AIV_AIC_RATIO,
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "aivNum",
                                                   std::to_string(aivBlockDim_).c_str(),
-                                                  "MhcPre only support aivNum == aicNum * 2 (or aivNum == aicNum on ascend960dt)"),
+                                                  "MhcPre only support aivNum == aicNum * 2"),
             return ge::GRAPH_FAILED);
+        aivPerAic_ = AIV_AIC_RATIO;
+    } else {
+        // ascend960dt: CV 核数比 1:1，放开原 1:2 核数比校验
+        OP_CHECK_IF(
+            aivBlockDim_ != blockDim_,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "aivNum",
+                                                  std::to_string(aivBlockDim_).c_str(),
+                                                  "MhcPre only support aivNum == aicNum on ascend960dt"),
+            return ge::GRAPH_FAILED);
+        aivPerAic_ = 1U;
     }
 
     ubSize_ = ubSize; // Save UB size for later validation

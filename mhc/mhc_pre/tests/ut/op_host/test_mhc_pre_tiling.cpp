@@ -1903,10 +1903,12 @@ static void CheckCoreRatioTiling(uint32_t cubeCoreCnt, uint32_t vectorCoreCnt, g
     ExecuteTestCase(tilingContextPara, expected);
 }
 
-// aicNum:aivNum = 1:1，ascend960dt 场景，tiling 放开（aivPerAic=1），预期成功
-TEST_F(MhcPreTiling, Ut_Check_CoreRatio_1to1_Success)
+// aicNum:aivNum = 1:1，非 1:2 核数比。UT 平台(MakeAscend950SocInfo 的 socVersion 为
+// Ascend950，非 DAV_9201)保持原有 1:2 校验，预期失败；ascend960dt(DAV_9201) 的 1:1
+// 放开由 960dt 环境覆盖，UT 无法构造 960dt 平台。
+TEST_F(MhcPreTiling, Ut_Check_CoreRatio_1to1_Fail)
 {
-    CheckCoreRatioTiling(32, 32, ge::GRAPH_SUCCESS);
+    CheckCoreRatioTiling(32, 32, ge::GRAPH_FAILED);
 }
 
 // aicNum:aivNum = 1:3，不满足1:2，预期失败
