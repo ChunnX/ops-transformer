@@ -378,7 +378,8 @@ __aicore__ inline void GMM_WQ_BASIC_BLOCK_CLASS::HandleMxA8W4Scale(const BasicBl
         return;
     }
 
-    uint64_t mxScaleMxGroupNum = CeilDivide(offsetParam.kSize, MX_GROUPSIZE);
+    // Each physical scale pair covers 64 K elements and occupies two E8M0 bytes.
+    uint64_t mxScaleMxGroupNum = CeilDivide(offsetParam.kSize, MX_GROUPSIZE * 2) * 2;
     uint64_t mxScaleRealGroupNum = CeilDivide(mxScaleKSize, MX_GROUPSIZE);
 
     vectorCompute_.WaitVToMTE2();

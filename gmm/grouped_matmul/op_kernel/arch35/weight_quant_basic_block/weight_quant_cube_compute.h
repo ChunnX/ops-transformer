@@ -322,11 +322,12 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::CopyMxScaleGmToL1(const BasicBl
     if (kbL1Offset % MX_SCALE_K_L1_SIZE != 0) {
         return;
     }
-    uint64_t scaleKGmSize = param.kSize / MX_GROUPSIZE;
+    // Scale rows are physically padded to an even number of 32-element MX groups.
+    uint64_t scaleKGmSize = CeilDivide(param.kSize, static_cast<uint64_t>(MX_GROUPSIZE * 2)) * 2;
     // 当前scaleFactor为1，暂不考虑scaleFactor相关计算
     uint64_t scaleKL1StandardLen = MX_SCALE_K_L1_SIZE / MX_GROUPSIZE;
     uint64_t scaleKL1RealSize = (kbL1Offset + MX_SCALE_K_L1_SIZE) > param.kSize ?
-                                    (param.kSize - kbL1Offset) / MX_GROUPSIZE :
+                                    CeilDivide(param.kSize - kbL1Offset, static_cast<uint64_t>(MX_GROUPSIZE)) :
                                     scaleKL1StandardLen;
 
     // copy mxScaleA
@@ -335,8 +336,11 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::CopyMxScaleGmToL1(const BasicBl
 
     int64_t scaleAGmOffset = param.mOffset * scaleKGmSize + kbL1Offset / MX_GROUPSIZE;
     GlobalTensor<half> f16ScaleAGlobal;
+    uint64_t scaleAGmBufferSize = param.mL1Size == 0 ?
+                                      0 :
+                                      CeilDivide((param.mL1Size - 1) * scaleKGmSize + scaleKL1RealSize, 2UL);
     f16ScaleAGlobal.SetGlobalBuffer((__gm__ half *)mxScaleAGlobal_[scaleAGmOffset].GetPhyAddr(),
-                                    (param.mL1Size * scaleKL1RealSize) >> 1);
+                                    scaleAGmBufferSize);
     auto f16ScaleALocal = mxScaleAL1_[(mxScaleBufIdx_ & 1) * mxScaleAL1DbOffset_].template ReinterpretCast<half>();
 
     DataCopy(f16ScaleALocal, f16ScaleAGlobal, scaleAdn2NzParams);
