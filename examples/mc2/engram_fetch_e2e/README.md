@@ -87,6 +87,36 @@ torchrun --standalone --nproc_per_node=2 test_engram_fetch_e2e.py --fetch-mode l
 | `--hidden` | `256` | 隐藏维大小 |
 | `--num-tokens` | `512` | 每 rank 取数 token 数（训练模式下作为 `num_max_tokens_per_rank`） |
 | `--seed` | `2026` | 随机种子（全量表各 rank 一致，indices/grad 按 rank 区分） |
+| `--with-sf` | 关 | 推理/perf 阶段启用 scale factor 链路：`engram_write(storage, sf)` 并校验 `fetched_sf`（fp8 表配 E8M0 sf，其他配 fp32 sf）；训练 kernel 不支持 sf |
+| `--iters` | `20` | perf 阶段计时迭代次数 |
+| `--warmup` | `5` | perf 阶段预热迭代次数 |
+
+`run_example.sh` 额外选项：
+
+| 选项 | 默认 | 说明 |
+| ---- | ---- | ---- |
+| `--dtypes LIST\|all` | 关 | 轮跑多种表数据类型（逗号分隔，或 `all`=bf16,fp16,fp32,fp8e4m3,fp8e5m2），与 `--fetch-mode` 组成矩阵；使用后不得再透传 `--dtype` |
+
+## 性能测试（perf 阶段）
+
+```bash
+# 客户规格: 51.38万词表 × 576 维, 8192 tokens/fetch, bf16, 2卡
+bash run_example.sh --fetch-mode sliced --phase perf --num-entries 513800 --hidden 576 \
+    --num-tokens 8192 --iters 20
+# local 模式(全量表冗余到每卡)
+bash run_example.sh --fetch-mode local --phase perf --num-entries 513800 --hidden 576 \
+    --num-tokens 8192 --iters 20
+```
+
+客户规格（513800×576）存储占用参考：
+
+| dtype | 全局表 | local 每卡窗口 | sliced 每卡窗口（W 卡） |
+| ---- | ---- | ---- | ---- |
+| bf16/fp16 | 564.5 MiB | 566.0 MiB | 564.5/W MiB（8卡 72.0 MiB） |
+| fp32 | 1129.0 MiB | 1130.0 MiB | 1129/W MiB（8卡 142.0 MiB） |
+| fp8e4m3（含 sf 预留） | 282.2 MiB（+E8M0 sf 8.8 MiB NPU 张量） | 330.0 MiB | 330/W MiB（8卡 42.0 MiB） |
+
+> 注：513800 = 2³×5²×7×367，sliced 模式 rank 数需整除（2/4/5/7/8/10 可行，16 不可）；16 卡 local 模式不受限。
 
 ## 判定标准
 
