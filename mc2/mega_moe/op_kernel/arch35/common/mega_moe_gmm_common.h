@@ -36,7 +36,7 @@ using BlockScheduler = typename Blaze::Gemm::Block::BlockSchedulerSwizzle<3, 0>;
 // Non-owning references: AIC supplies MMAD, AIV0 supplies Prologue, AIV1 supplies neither.
 template <typename BlockMmad, typename BlockPrologue>
 struct A8W4PipelineContext {
-    static constexpr bool USE_L1_B4 = BlockMmad::USE_L1_B4;
+    static constexpr bool USE_DYNAMIC_L1_LAYOUT = BlockMmad::USE_DYNAMIC_L1_LAYOUT;
     BlockMmad *mmad = nullptr;
     BlockPrologue *prologue = nullptr;
 };
@@ -68,7 +68,7 @@ struct BlockMmadSelector<true, C> {
 template <bool IsA8W4, uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC,
           typename ElementMxScaleA, typename ElementMxScaleB, bool IsWeightNZ = false, bool TopkWeightsPrefetch = false,
           bool IsShared = false, bool IsLayered = false, bool IsWaveFlagGrained = false,
-          bool UseL1B4 = false>
+          bool UseDynamicL1Layout = false>
 struct Config {
     static constexpr bool IS_SHARED = IsShared;
     static constexpr bool IS_WEIGHT_NZ = IsWeightNZ;
@@ -92,7 +92,7 @@ struct Config {
     using LayoutScaleB = asc::te::scaleb_dn_layout_ptn;
 
     using LayoutBias = asc::te::nd_ext_layout_ptn;
-    using DispatchPolicy = Std::conditional_t<IsA8W4, Blaze::Gemm::MatmulMxFp8Fp4DynamicKL1TailResplit<UseL1B4>,
+    using DispatchPolicy = Std::conditional_t<IsA8W4, Blaze::Gemm::MatmulMxFp8Fp4DynamicKL1TailResplit<UseDynamicL1Layout>,
                                               Blaze::Gemm::GroupedMatmulWithScaleMx<>>;
     using LayoutB =
         Std::conditional_t<IsA8W4, asc::te::zn_layout_ptn,

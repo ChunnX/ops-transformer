@@ -954,7 +954,7 @@ __aicore__ inline void RunGmm2A8W4(const AscendC::Shape<int64_t, int64_t, int64_
 
     using GmmConfig = GmmKernel::Config<true, 0, ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, false,
                                         TopkWeightsPrefetch, IsShared, IsLayered, IsWaveFlagGrained,
-                                        PipelineContext::USE_L1_B4>;
+                                        PipelineContext::USE_DYNAMIC_L1_LAYOUT>;
     auto config = GmmConfig::BuildGmm2ProblemConfig(problemShape, blockJob, Gmm1TileM);
 
     using BlockMmad = typename GmmConfig::BlockMmad;

@@ -281,12 +281,16 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
     using ReuseConfig = GmmKernel::Config<true, 0, typename MoeQuantConfig::QuantOutType,
         MoeWeightType, bfloat16_t, typename MoeQuantConfig::QuantScaleType,
         typename MoeQuantConfig::QuantScaleType, false, TopkWeightsPrefetch, false, false, true, true>;
+    const uint64_t gmm2K = commonConfig_.gmm1OutputDim / ACTIVATION_N_HALF;
+    const uint64_t maxK = commonConfig_.tokenHiddenDim > gmm2K ? commonConfig_.tokenHiddenDim : gmm2K;
+    const auto allocation = Blaze::Gemm::CalcMegaMoeMxL1Allocation<
+        GMM1_TILE_M, L1_TILE_N, GmmKernel::L1_TILE_K>(maxK);
     if constexpr (g_coreType == AIC) {
-        typename ReuseConfig::BlockMmad blockMmad;
+        typename ReuseConfig::BlockMmad blockMmad(allocation);
         RunMoeExpertLoop(gmm1AddrInfo, gmm2AddrInfo, dispatchPosition, combineBufferConfig,
                          PipelineContext{&blockMmad, nullptr});
     } else if (GetSubBlockIdx() == 0U) {
-        typename ReuseConfig::BlockPrologue blockPrologue;
+        typename ReuseConfig::BlockPrologue blockPrologue(0U, allocation);
         RunMoeExpertLoop(gmm1AddrInfo, gmm2AddrInfo, dispatchPosition, combineBufferConfig,
                          PipelineContext{nullptr, &blockPrologue});
     } else {
