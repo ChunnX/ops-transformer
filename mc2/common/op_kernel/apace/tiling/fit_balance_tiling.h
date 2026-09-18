@@ -303,11 +303,13 @@ public:
     CommFitParams commEstimatePar_;
     CommModelInfo commTypeInfo_;
     double commTimeFactor_ = 1.0; // 时间折算因子, 恒 1(§4.31: 8-die 折算桥接已随 plain RS 死分支删除)
-    // 通信数据量倍数(每轮线上流动的 rank 份数): AG/RS(含 via-A2A)=rankDim(聚合/分发一轮
-    // 流动 rankDim 份), AR/A2A=1(每轮一份)。进 CommTime/InverseCommTime 的字节数换算。
+    // 通信数据量倍数(每轮线上流动的 rank 份数; 旧代码原名 lookUpTileNum_, "数据拟合查表参数"):
+    // AG/RS(含 via-A2A)=rankDim(聚合/分发一轮流动 rankDim 份), AR/A2A=1(每轮一份)。
+    // 进 CommTime/InverseCommTime 的字节数换算。
     uint64_t commDataMul_ = 1;
     // mm 工作集 rank 份数(计算利用率模型 FindCubeUtil 的工作集 M 跨度系数——本卡 cube 在
-    // 稳态流水里拿捏的 M 跨度是几份 rank 数据宽): AG=rankDim-1(front 本地块经 E5 按单独
+    // 稳态流水里拿捏的 M 跨度是几份 rank 数据宽; 旧代码原名 rankTileNum_, 由 GetRankTileNum()/
+    // GetFullMeshRankTileNum() 派生): AG=rankDim-1(front 本地块经 E5 按单独
     // shares=1 建模, 稳态只算远程份)、RS/A2A=rankDim(标定按全部份)、AR=1(two-shot 每轮一份)。
     // 与 commDataMul_(通信模型过网字节数, AG=rankDim/A2A=1)、ctx.mmRankMul(mm 总行数倍数,
     // AG·RS=rankDim/A2A·AR=1) 是三个独立标定的口径系数——取值表是标定历史事实而非同一物理量
@@ -920,7 +922,9 @@ struct FitBasedBalanceCtx {
     double frontMMTime = 0; // 过程量(AG 键): 本地首轮计算耗时(本卡 A 块已在手, 首块无通信依赖)
 };
 
-// 本卡 mm 总行数的 rank 倍数(通信原语语义派生; InitCtx 单次赋值进 ctx.mmRankMul, 消费方读字段):
+// 本卡 mm 总行数的 rank 倍数(通信原语语义派生; InitCtx 单次赋值进 ctx.mmRankMul, 消费方读字段。
+// 旧代码无独立变量——隐式散在各算子钩子对 MatmulTime(m, rankDim_)/MatmulTime(m, 1) 的调用里,
+// §4.11 五算子逐行对比时显名提取):
 //   AG: mValue 为聚合前本卡份, 聚合后每卡算全量 m×rankDim 行;
 //   RS: mValue 已被除为 scatter 保留份, mm 算除之前的全量 orgM = m×rankDim 行;
 //   AR/A2A: mm 即本卡 1 份 m 行(规约/分发在原语语义内)。
