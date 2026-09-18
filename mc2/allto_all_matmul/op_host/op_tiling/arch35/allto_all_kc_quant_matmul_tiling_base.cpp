@@ -583,7 +583,7 @@ uint64_t AllToAllKcQuantMatmulTilingBase::GetTilingKey() const
     uint8_t hcclServerType = 0;
     if (MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo_, ALLTOALL_MATMUL_INDEX_SCHEMA,
                                                         hcclServerType) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
+        OP_LOGD(opName_, "GetAndConvertCommMode failed, use default commMode AICPU for tiling.");
     }
     uint8_t commMode = (hcclServerType == mc2tiling::A5_CCU_ENGINE) ? ALL2ALL_COMM_TYPE_CCU : ALL2ALL_COMM_TYPE_AICPU;
     const uint64_t tilingKey =

@@ -249,7 +249,7 @@ uint64_t AllToAllFpMatmulTilingBase::GetTilingKey() const
     uint8_t hcclServerType = 0;
     if (MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo_, ALLTOALL_MATMUL_INDEX_SCHEMA,
                                                         hcclServerType) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
+        OP_LOGD(opName_, "GetAndConvertCommMode failed, use default commMode AICPU for tiling.");
     }
     uint8_t commMode = (hcclServerType == mc2tiling::A5_CCU_ENGINE) ? ALL2ALL_COMM_TYPE_CCU : ALL2ALL_COMM_TYPE_AICPU;
     // 非量化+有bias: 按M/N规模选择分核策略; 否则关闭
