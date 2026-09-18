@@ -14,11 +14,12 @@
  *
  * Init():
  *   AIC: hccl_.InitV2()/SetCcTilingV2()，批量下发 AllGather<true>（scale + dataHead + dataTail），
- *        GetCommPolicy().state_ = &commState_ 绑定 WaitPolicy。
+ *        GetBufferSyncMgr().state_ = &commState_ 绑定 WaitPolicy。
  *
  * Run():
- *   AIC: 执行 FragmentTensor kernel，所有核 WaitTile 完成后再统一 Finalize → hccl_.Finalize。
- *        kernel 内逐 tile commPolicy_.WaitTile(dependTileIdx) → state_->hccl_.Wait(handle)。
+ *   AIC: 执行 FragmentTensor kernel，所有核 Acquire 完成后再统一 Finalize → hccl_.Finalize。
+ *        kernel 内逐 tile bufferSyncMgr_.Acquire(dependTileIdx) → state_->hccl_.Wait(handle)。
+ * hcomm 通道由 HCCL 自管 buffer，不支持 win 复用：enableBufferReuse=false，Release 为空实现。
  */
 
 #pragma once
@@ -59,7 +60,7 @@ template <AscendC::HcclServerType ServerType>
 struct HcommCommWaitPolicy {
     HcommCommState<ServerType> *state_{nullptr};
 
-    __aicore__ inline void WaitTile(uint32_t tileIdx)
+    __aicore__ inline void Acquire(uint32_t tileIdx)
     {
         // dependTileIdx=0 (HEAD): 本 rank 数据，无需等待通信
         if (tileIdx == 0) {
@@ -77,6 +78,11 @@ struct HcommCommWaitPolicy {
             state_->hccl_.Wait(state_->dataTailHandle_);
         }
     }
+
+    __aicore__ inline void Release(uint32_t tileIdx)
+    {
+        (void)tileIdx; // hcomm 通道由 HCCL 自管 buffer，无 win 复用，无需释放
+    }
 };
 
 template <typename AType, typename BType, typename CType, AscendC::HcclServerType ServerType, bool IsMxFp4>
@@ -90,7 +96,7 @@ public:
                                 GM_ADDR cGM, GM_ADDR gatherOut, GM_ADDR workspaceGM);
     __aicore__ inline void Run();
 
-    using QuantMatmulKernelImpl = AllGatherQbmmMxKernel<AType, BType, CType, HcommCommWaitPolicy<ServerType>>;
+    using QuantMatmulKernelImpl = AllGatherQbmmMxKernel<AType, BType, CType, HcommCommWaitPolicy<ServerType>, false>;
     using KernelParams = typename QuantMatmulKernelImpl::Params;
 
     QuantMatmulKernelImpl quantMatmulKernelImpl_;
@@ -208,8 +214,8 @@ __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, Serv
 #if MC2_DFX_ENABLE
     opStateDump_.Init(workspaceGM_, &tilingData_->dumpInfo.workspaceLayout, tilingData_->mmTile.usedCoreNum);
 #endif
-    // Bind CommPolicy to CommState
-    quantMatmulKernelImpl_.GetCommPolicy().state_ = &commState_;
+    // Bind BufferSyncManager to CommState（hcomm 非 win 复用路径，slotNum 无效）
+    quantMatmulKernelImpl_.GetBufferSyncMgr().state_ = &commState_;
     commState_.tileCnt_ = tileCnt_;
 }
 

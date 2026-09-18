@@ -13,6 +13,7 @@
  * \brief host侧tiling实现 (AllGatherMatmulV3, MX-quant FP8/FP4, apace UDMA path)
  */
 
+#include <algorithm>
 #include <climits>
 #include <cstdint>
 #include <cstring>
@@ -730,6 +731,33 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, const ShapeIn
     tilingData->commTile.splitAxisTailCnt = tailCnt;
     tilingData->commTile.nonSplitAxisSize = k;
 
+    // win 区 buffer 复用深度决策：fullWin ≤ 400MB 时不复用(slotNum=totalTiles)，
+    // 否则在 400MB 预算内取最大复用深度（≤128 flag 同步安全上限，下限 2 保证双缓冲）。
+    // data 复用、scale 恒全量，故预算需扣除 scale 固定占用。
+    // AG 的 win 每 slot 只存 remote 数据（rankSize-1 段，跳过本卡），slotSize 用 (rankSize-1) 系数。
+    uint64_t totalTiles = tileCnt + tailCnt;
+    uint64_t maxTileSize = (tileM > tailM) ? tileM : tailM;
+    ge::DataType winX1Dtype = context->GetInputDesc(IDX_INPUT_X1)->GetDataType();
+    uint64_t x1Bits = (winX1Dtype == ge::DT_FLOAT4_E2M1) ? MXFP4_BITS : MXFP8_BITS;
+    uint64_t dataSlotSize = (rankSize - 1UL) * maxTileSize * (k * x1Bits / 8UL);
+    uint64_t scaleKGroups = (k + MX_SCALE_BLOCK - 1UL) / MX_SCALE_BLOCK;
+    uint64_t scaleSlotSize = (rankSize - 1UL) * maxTileSize * scaleKGroups * SCALE_LAST_DIM;
+    uint64_t fullWinBytes = totalTiles * (dataSlotSize + scaleSlotSize);
+
+    uint64_t slotNum;
+    if (fullWinBytes <= WIN_REUSE_BUDGET_CAP) {
+        slotNum = totalTiles;
+    } else {
+        uint64_t scaleWinFixed = totalTiles * scaleSlotSize;
+        uint64_t dataBudget = (scaleWinFixed >= WIN_REUSE_BUDGET_CAP) ? 0UL : WIN_REUSE_BUDGET_CAP - scaleWinFixed;
+        uint64_t budgetDepth = (dataSlotSize == 0UL) ? totalTiles : dataBudget / dataSlotSize;
+        slotNum = std::min({WIN_REUSE_DEPTH_CAP, budgetDepth, totalTiles});
+    }
+    if (slotNum < WIN_REUSE_DEPTH_MIN) {
+        slotNum = WIN_REUSE_DEPTH_MIN;
+    }
+    tilingData->commTile.slotNum = slotNum;
+
     // mm tiling via SWAT engine：按 x1 实际 dtype 分发。 fp8 统一用 e4m3 实例化，fp4统一用 e2m1 实例化
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     bool hasBias = context->GetOptionalInputShape(IDX_INPUT_BIAS) != nullptr;
@@ -783,6 +811,9 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, const ShapeIn
             m, totalLogicalM, k, n, rankSize, usedCoreNum, static_cast<uint32_t>(tilingData->isBias),
             tilingData->commTile.splitAxisTileSize, tilingData->commTile.splitAxisTileCnt,
             tilingData->commTile.splitAxisTailSize, tilingData->commTile.splitAxisTailCnt);
+    OP_LOGI(nodeName,
+            "win reuse: totalTiles=%lu, dataSlotBytes=%lu, scaleSlotBytes=%lu, fullWinBytes=%lu, slotNum=%lu",
+            totalTiles, dataSlotSize, scaleSlotSize, fullWinBytes, slotNum);
 
 #if MC2_DFX_ENABLE
     uint64_t libApiSize = ascendcPlatform.GetLibApiWorkSpaceSize();
