@@ -156,7 +156,7 @@
         R"({"hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1", "Intrinsic_fix_pipe_l0c2out": false, "Intrinsic_data_move_l12ub": true, "Intrinsic_data_move_l0c2ub": true, "Intrinsic_data_move_out2l1_nd2nz": false, "UB_SIZE": )"; \
     string compileInfoStringMiddle =                                                                                                                                                                                                         \
         R"(, "L2_SIZE": 33554432, "L1_SIZE": 524288, "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072, "CORE_NUM": )";                                                                                                               \
-    string compileInfoStringSuffix = std::string(", \"socVersion\":\"") + tilingContextPara.socVersion_ + "\"} }";                                                                                                                           \
+    string compileInfoStringSuffix = std::string(", \"socVersion\":\"") + GetArchNumString(tilingContextPara.socVersion_) + "\"} }";                                                                                                           \
     string compileInfoString = compileInfoStringPrefix + std::to_string(tilingContextPara.ubSize_) +                                                                                                                                         \
                                compileInfoStringMiddle + std::to_string(tilingContextPara.coreNum_) +                                                                                                                                        \
                                compileInfoStringSuffix;                                                                                                                                                                                      \
@@ -169,9 +169,10 @@
     map<string, string> versions;                                                                                                                                                                                                            \
     string version = tilingContextPara.socVersion_;                                                                                                                                                                                          \
     if (isNpuArchString(version)) {                                                                                                                                                                                                          \
+        string archNum = GetArchNumString(version);                                                                                                                                                                                          \
         map<string, string> archToSoc = {{"3510", "Ascend950"}};                                                                                                                                                                             \
-        versions = {{"NpuArch", tilingContextPara.socVersion_},                                                                                                                                                                              \
-                    {"Short_SoC_version", archToSoc[tilingContextPara.socVersion_]}};                                                                                                                                                        \
+        versions = {{"NpuArch", archNum},                                                                                                                                                                                                    \
+                    {"Short_SoC_version", archToSoc[archNum]}};                                                                                                                                                                               \
     } else {                                                                                                                                                                                                                                 \
         map<string, string> socToArch = {                                                                                                                                                                                                    \
             {"Ascend310P", "2002"}, {"Ascend910B", "2201"}, {"Ascend910_93", "2201"}, {"Ascend950", "3510"}};                                                                                                                                \
@@ -193,6 +194,9 @@
 
 static bool isNpuArchString(string version)
 {
+    if (version.rfind("DAV_", 0) == 0) {
+        version = version.substr(strlen("DAV_"));
+    }
     if (version.empty()) {
         return false;
     }
@@ -203,6 +207,15 @@ static bool isNpuArchString(string version)
         }
     }
     return true;
+}
+
+// 归一化arch串:"DAV_3510"->"3510";soc名(如"Ascend950")原样返回
+static string GetArchNumString(const string &version)
+{
+    if (version.rfind("DAV_", 0) == 0) {
+        return version.substr(strlen("DAV_"));
+    }
+    return version;
 }
 
 static std::string to_string_fnv_hash(const void *buf, size_t size)
