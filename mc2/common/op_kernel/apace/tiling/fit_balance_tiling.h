@@ -1190,19 +1190,20 @@ inline void BalanceLongTileLen(FitBasedBalanceCtx &ctx)
 // Estimate 骨干（4/5: agmm/rs_v2/all_reduce/matmul_allto_all 一致）:
 // FindCubeUtil + GetMatmulGradient + 总量估计 + 通算比; shortTileAtBack 判定不在此
 // (各算子语义相反: rs_v2 系 mm>=comm→后置, allto_all_matmul 是 comm>mm→后置, agmm 恒后置)。
-// 总量倍数由 MmRankMul(ctx) 按通信原语内部派生(见其注释), 调用方无需传;
-// mmTimeScale: matmul_allto_all 的 KC_QUANT 模式传 1.43(其余 1.0);
-// allto_all_matmul 自有拟合模型不适用本片段。
+// 总量倍数由 MmRankMul(ctx) 按通信原语内部派生(见其注释), 调用方无需传。
+// [已废弃 2026-09-17] mmTimeScale/KC_QUANT×1.43 补偿不再保留——与 A2AMM 独立拟合
+// 同根因(老切分尾块引发 matmul 膨胀, 理论失准), 新架构不引入该膨胀, 无需补偿;
+// MMA2A 的 E14(80μs 不切门)迁移时同样不带 ×1.43。
 struct EstimateTimesResult {
     double totalMatmulTime = 0.0;
     double totalTpTime = 0.0;
 };
-inline EstimateTimesResult EstimateTotalTimes(FitBasedBalanceCtx &ctx, double mmTimeScale = 1.0)
+inline EstimateTimesResult EstimateTotalTimes(FitBasedBalanceCtx &ctx)
 {
     ctx.matmulPerf.FindCubeUtil(ctx.commRankShares);
     ctx.matmulPerf.GetMatmulGradient();
     EstimateTimesResult r;
-    r.totalMatmulTime = ctx.matmulPerf.MatmulTime(ctx.matmulPerf.mmShapeInfo_.mValue, MmRankMul(ctx)) * mmTimeScale;
+    r.totalMatmulTime = ctx.matmulPerf.MatmulTime(ctx.matmulPerf.mmShapeInfo_.mValue, MmRankMul(ctx));
     r.totalTpTime = ctx.commPerf.CommTime(ctx.matmulPerf.mmShapeInfo_.mValue);
     ctx.ratioCalcComm = (std::max(r.totalTpTime, r.totalMatmulTime) / std::min(r.totalTpTime, r.totalMatmulTime));
     return r;
