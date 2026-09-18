@@ -982,9 +982,22 @@ struct FitBasedBalanceCtx {
     CommComputeOrder order;      // 键控维度: 通算顺序
     FitTunables tunables;        // 键控分支阈值(自 Calibration.tunables 拷贝)
     uint64_t commRankShares = 1; // 派生: commPerf.GetCommRankShares()(通信流水线流转的 rank 数据份数)
+    uint64_t mmRankMul = 1;      // 派生: MmRankMul(ctx)(本卡 mm 总行数的 rank 倍数, 见该函数注释)
     double ratioCalcComm = 1.0;  // 过程量: Estimate 骨干设置的通算比(键控分支消费)
     double frontMMTime = 0; // 过程量(AG 键): 本地首轮计算耗时(本卡 A 块已在手, 首块无通信依赖)
 };
+
+// 本卡 mm 总行数的 rank 倍数(通信原语语义派生; InitCtx 单次赋值进 ctx.mmRankMul, 消费方读字段):
+//   AG: mValue 为聚合前本卡份, 聚合后每卡算全量 m×rankDim 行;
+//   RS: mValue 已被除为 scatter 保留份, mm 算除之前的全量 orgM = m×rankDim 行;
+//   AR/A2A: mm 即本卡 1 份 m 行(规约/分发在原语语义内)。
+inline uint64_t MmRankMul(const FitBasedBalanceCtx &ctx)
+{
+    return (ctx.commPrimitive == CommPrimitive::ALL_GATHER || ctx.commPrimitive == CommPrimitive::REDUCE_SCATTER ||
+            ctx.commPrimitive == CommPrimitive::REDUCE_SCATTER_VIA_ALL_TO_ALL) ?
+               ctx.commPerf.rankDim() :
+               1;
+}
 // ============================================================================
 // 客户标定数据总集（算子侧唯一需要接触的标定类型, 2026-09-15 评审裁定:
 // 单一大结构体替代"引擎侧一堆小结构体 + 算子侧一堆具名 constexpr"）
@@ -1103,10 +1116,12 @@ inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, CommPrimitiv
                            order,
                            calib.tunables,
                            1,
+                           1,
                            1.0};
     ctx.tilingM.SetMaxTileCnt(
         MAX_COMM_ROUNDS); // Due to the limited FFTS queue size, a maximum of 16 rounds can be cut.
     ctx.commRankShares = ctx.commPerf.GetCommRankShares();
+    ctx.mmRankMul = MmRankMul(ctx);
 
     // ---- 通算胶水(键控, 原散在各算子构造函数, §4.24 裁定随引擎下沉) ----
     // D4 通信矩阵另一维: AG/A2A-in 沿 K 轴聚散 → kValue; RS/AR/A2A-out 沿 N 轴 → nValue
@@ -1156,18 +1171,6 @@ inline bool IsGoodLinearityShape(const MatmulShapeInfo &mmInfo)
     return mmInfo.kValue * mmInfo.nValue >= GOOD_LINEARITY_NK_BYTES * BYTES_PER_MB;
 }
 
-// 本卡 mm 总行数的 rank 倍数(通信原语语义派生, 调用方无需传参):
-//   AG: mValue 为聚合前本卡份, 聚合后每卡算全量 m×rankDim 行;
-//   RS: mValue 已被除为 scatter 保留份, mm 算除之前的全量 orgM = m×rankDim 行;
-//   AR/A2A: mm 即本卡 1 份 m 行(规约/分发在原语语义内)。
-inline uint64_t MmRankMul(const FitBasedBalanceCtx &ctx)
-{
-    return (ctx.commPrimitive == CommPrimitive::ALL_GATHER || ctx.commPrimitive == CommPrimitive::REDUCE_SCATTER ||
-            ctx.commPrimitive == CommPrimitive::REDUCE_SCATTER_VIA_ALL_TO_ALL) ?
-               ctx.commPerf.rankDim() :
-               1;
-}
-
 // 双向配平长块（3/5 算子一致: rs_v2 / all_reduce / matmul_allto_all）:
 //   短块后置(计算 bound) → 长块 = 反解通信时长(掩盖短块计算);
 //   短块前置(通信 bound) → 长块 = 反解计算时长(掩盖短块通信)。
@@ -1175,11 +1178,11 @@ inline uint64_t MmRankMul(const FitBasedBalanceCtx &ctx)
 inline void BalanceLongTileLen(FitBasedBalanceCtx &ctx)
 {
     if (ctx.tilingM.cutRes.shortTileAtBack) {
-        const double targetTime = ctx.matmulPerf.MatmulTime(ctx.tilingM.cutRes.shortTileLen, MmRankMul(ctx));
+        const double targetTime = ctx.matmulPerf.MatmulTime(ctx.tilingM.cutRes.shortTileLen, ctx.mmRankMul);
         ctx.tilingM.cutRes.longTileLen = ctx.commPerf.InverseCommTime(targetTime);
     } else {
         const double targetTime = ctx.commPerf.CommTime(ctx.tilingM.cutRes.shortTileLen);
-        ctx.tilingM.cutRes.longTileLen = ctx.matmulPerf.InverseMatmulTime(targetTime, MmRankMul(ctx));
+        ctx.tilingM.cutRes.longTileLen = ctx.matmulPerf.InverseMatmulTime(targetTime, ctx.mmRankMul);
     }
 }
 
@@ -1190,7 +1193,7 @@ inline void BalanceLongTileLen(FitBasedBalanceCtx &ctx)
 // Estimate 骨干（4/5: agmm/rs_v2/all_reduce/matmul_allto_all 一致）:
 // FindCubeUtil + GetMatmulGradient + 总量估计 + 通算比; shortTileAtBack 判定不在此
 // (各算子语义相反: rs_v2 系 mm>=comm→后置, allto_all_matmul 是 comm>mm→后置, agmm 恒后置)。
-// 总量倍数由 MmRankMul(ctx) 按通信原语内部派生(见其注释), 调用方无需传。
+// 总量倍数 ctx.mmRankMul 由 InitCtx 按通信原语单次派生(见 MmRankMul 注释)。
 // [已废弃 2026-09-17] mmTimeScale/KC_QUANT×1.43 补偿不再保留——与 A2AMM 独立拟合
 // 同根因(老切分尾块引发 matmul 膨胀, 理论失准), 新架构不引入该膨胀, 无需补偿;
 // MMA2A 的 E14(80μs 不切门)迁移时同样不带 ×1.43。
@@ -1203,7 +1206,7 @@ inline EstimateTimesResult EstimateTotalTimes(FitBasedBalanceCtx &ctx)
     ctx.matmulPerf.FindCubeUtil(ctx.commRankShares);
     ctx.matmulPerf.GetMatmulGradient();
     EstimateTimesResult r;
-    r.totalMatmulTime = ctx.matmulPerf.MatmulTime(ctx.matmulPerf.mmShapeInfo_.mValue, MmRankMul(ctx));
+    r.totalMatmulTime = ctx.matmulPerf.MatmulTime(ctx.matmulPerf.mmShapeInfo_.mValue, ctx.mmRankMul);
     r.totalTpTime = ctx.commPerf.CommTime(ctx.matmulPerf.mmShapeInfo_.mValue);
     ctx.ratioCalcComm = (std::max(r.totalTpTime, r.totalMatmulTime) / std::min(r.totalTpTime, r.totalMatmulTime));
     return r;
@@ -1245,7 +1248,7 @@ inline CommCutResult Schedule(FitBasedBalanceCtx &ctx)
 {
     const bool isAg = (ctx.commPrimitive == CommPrimitive::ALL_GATHER);
 
-    // ---- ① Estimate: 公共骨干(E1) + E2 总量倍数(MmRankMul 按 CommPrimitive 内部派生) ----
+    // ---- ① Estimate: 公共骨干(E1) + E2 总量倍数(ctx.mmRankMul, InitCtx 已派生) ----
     const auto est = EstimateTotalTimes(ctx);
     if (isAg) {
         // E5: 首轮独立计算的 L2 利用率与聚合后不同(frontUtil 修正)
@@ -1289,7 +1292,7 @@ inline CommCutResult Schedule(FitBasedBalanceCtx &ctx)
     if (isAg) {
         ctx.tilingM.cutRes.longTileLen = ctx.commPerf.InverseCommTime(ctx.frontMMTime);
     } else {
-        BalanceLongTileLen(ctx); // 乘数 MmRankMul(ctx) 内部派生(老代码 A2A 曾误用管线系数 rankTileNum)
+        BalanceLongTileLen(ctx); // 乘数 ctx.mmRankMul(老代码 A2A 曾误用管线系数 rankTileNum)
     }
 
     // ---- ④ Adjust: E24(goodLinearity: AG 恒 true) + 离散化 + E25 等长归一 ----
