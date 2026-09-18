@@ -5,7 +5,7 @@
 | 被测特性 | 47b981b42 `alltoallmatmul新增hif4全量化特性` |
 | 测试层级 | op_host tiling UT / op_api UT / apace 公共组件 UT（新增） |
 | 关联设计 | HiF4_Apace_Template_Design.md（§5 §6 §7.6） |
-| 用例总数 | 71（正向 36 + 反向 35） |
+| 用例总数 | 66（正向 29 + 反向 37；含 apace 组件 15 条） |
 
 ## 1. 测试范围与框架
 
@@ -50,8 +50,8 @@ x2(nonTrans)= [K, N]           HIFLOAT4        （ND 布局）
 x1Scale = [m×R, Ka/64, 1]      HIFLOAT4_SCALE
 x2Scale(transB)   = [N, K/64, 1]    HIFLOAT4_SCALE
 x2Scale(nonTrans) = [K/64, N, 1]    HIFLOAT4_SCALE
-bias    = [N]                  FLOAT（可选）
-y       = [m, N]               BF16（默认，变体 FP16/FLOAT）
+bias    = 无（HiF4 场景仅支持 None，传入任意 bias 即报错）
+y       = [m, N]               BF16（默认，变体 FP16；FLOAT 不支持）
 attr: x1QuantMode=8, x2QuantMode=8, groupSize=4295032896=(1,1,64),
       transposeX1=false, commMode=ccu（默认）, alltoalloutFlag=false
 基准小 shape：R=2, m=128, N=256, K=256（Ka=128）
@@ -64,10 +64,9 @@ attr: x1QuantMode=8, x2QuantMode=8, groupSize=4295032896=(1,1,64),
 | 编号 | 变更点（相对基准） | 覆盖目标 | 期望 tilingKey 字段 |
 | :--- | :--- | :--- | :--- |
 | UT-TH-01 | 基准（R2/m128/N256/K256/transB/ccu/无bias/y=BF16） | HiF4 最小合法规格端到端 tiling 成功；Ka=128 下限 | (QUANTMODE=4, X2TRANS=1, BIAS=1, K0, COMM=CCU, APACE=1, ADD=0) |
-| UT-TH-02 | transposeX2=**false**（ND）：x2=[K,N]=[256,256]，x2Scale=[K/64,N,1]=[4,256,1] | ND 布局 tiling 放行（CheckX2Transpose HiF4 分支）；ND 的 baseN 对齐 64 | (4, X2TRANS=**0**, 1, 0, CCU, 1, 0) ⚠ **已知问题 R1**：当前 CheckMxQuantShapeInfo 按 [N,K] 假定校验 x2Scale 会误拒（报 shape[0] of x2Scale must be K），本用例预期值钉住修复后行为；修复前 expectStatus 暂记 FAILED 并标记 XFAIL |
+| UT-TH-02 | transposeX2=**false**（ND）：x2=[K,N]=[256,256]，x2Scale=[K/64,N,1]=[4,256,1] | ND 布局 tiling 放行（CheckX2Transpose/CheckMxQuantShapeInfo 均已按 transposeX2 分支化，R1 已修复转正） | (4, X2TRANS=**0**, 1, 0, CCU, 1, 0) |
 | UT-TH-03 | R=4，K=512（Ka=128），m=64（x1=[256,128]） | 4 卡准入；mValue 整除 | 同 01 |
-| UT-TH-04 | bias=[256] FLOAT | hasBias 传递 SetBiasInfo(true)；tilingKey DTYPEBIAS 恒 1（无变化） | 同 01 |
-| UT-TH-05 | y=FLOAT16 / y=FLOAT（拆 2 条） | 输出 dtype 三支持（与 BF16 共 3 条） | 同 01 |
+| UT-TH-05 | y=FLOAT16（1 条；y=FLOAT 不支持，转反向 UT-TH-E21） | 输出 dtype 支持（BF16/FP16 共 2 条） | 同 01 |
 | UT-TH-06 | commMode=**aicpu** | 通信引擎枚举分支；tilingKey COMMTYPE=AICPU | (4,1,1,0,**AICPU**,1,0) |
 | UT-TH-07 | m=272（x1=[544,128]，m%256=16 尾块） | M 尾块 tiling（mBlockCnt=2, mTail=16）；AlignCutResForKernel 余数路径 | 同 01 |
 | UT-TH-08 | Ka=256（K=512, R2，x2=[256,512]，x2Scale=[256,8,1]） | baseK=256 上限分支（min(Ka,256)） | 同 01 |
@@ -94,14 +93,16 @@ attr: x1QuantMode=8, x2QuantMode=8, groupSize=4295032896=(1,1,64),
 | UT-TH-E10 | x1Scale=[256, **1**, 1]（dim1≠Ka/64） | "shape [1] of x1Scale must be 2" |
 | UT-TH-E11 | x2Scale=[256, 4, **2**] | "shape [2] of x2Scale must be 1" |
 | UT-TH-E12 | x1QuantMode=6, x2QuantMode=8（混合） | IsCapable 不命中（6/8 非 MX 非 HiF4）→ tiling 无实现，FAILED |
-| UT-TH-E13 | ~~MX 模式 + hif4 dtype~~ **已移除**：实测推演该组合可通过 tiling dtype 列表（MX 列表已含 DT_HIFLOAT4）且后续校验不一定拦截，行为不确定（关联设计 R3），暂不钉用例；待 R3 补显式互斥校验后增加 | — |
-| UT-TH-E14 | bias=[256] FLOAT16 | "dtype of bias must be FLOAT" |
+| UT-TH-E13 | MX 模式（6/6）+ x1/x2=HIFLOAT4 + scale=E8M0 + groupSize=(1,1,32) | CheckMxQuantTensorDataType："hifloat4 is only supported in HIFLOAT4 quant mode"（互斥校验已补，R3 已修复恢复本用例） |
+| UT-TH-E14 | bias=[256] FLOAT16 | bias 存在即先报 "The bias is not supported in HIFLOAT4 quant mode"（dtype 校验不可达，保留钉错误信息顺序） |
 | UT-TH-E15 | y=[128,256] INT32 | y dtype 不在 {FP16,BF16,FP32} |
 | UT-TH-E16 | transposeX1=true | 公共 CheckAttrsInfo 拒绝（HiF4 不支持 A 转置） |
 | UT-TH-E17 | x1Scale 2D=[256, 2] | CheckMxQuantShapeInfo："shape dim of x1Scale must be 3D" |
 | UT-TH-E18 | x2（transB）K 维=192：x2=[256,192]（K%64≠0） | "dim(k) of x2 must be divisible by 64" |
 | UT-TH-E19 | x1Scale format=FRACTAL_NZ | CheckMxTensorFormat："scale format must be ND" |
 | UT-TH-E20 | x1 首维 255（M_total 不能整除 R=2） | 公共 shape 校验（m 整除）失败 |
+| UT-TH-E21 | y=[128,256] FLOAT | CheckMxQuantTensorDataType："The dtype of y must be float16 or bfloat16 in HIFLOAT4 quant mode" |
+| UT-TH-E22 | bias=[256] FLOAT（存在即拒绝） | CheckMxQuantTensorDataType："The bias is not supported in HIFLOAT4 quant mode, it must be None" |
 
 ## 3. op_api UT 用例
 
@@ -112,8 +113,8 @@ attr: x1QuantMode=8, x2QuantMode=8, groupSize=4295032896=(1,1,64),
 | 编号 | 变更点 | 覆盖目标 |
 | :--- | :--- | :--- |
 | UT-API-01 | 基准（transB=true, y=BF16, 无 bias, x1Scale 非空） | HiF4 基本校验链全通过 |
-| UT-API-02 | y=FLOAT16 / y=FLOAT（2 条） | 输出 dtype 组合 |
-| UT-API-03 | bias=[256] FLOAT | bias 可选输入合法 |
+| UT-API-02 | y=FLOAT16（1 条；y=FLOAT 不支持，转反向 UT-API-E16） | 输出 dtype 组合（BF16/FP16 共 2 条） |
+| UT-API-03 | ~~bias=[256] FLOAT~~ **转反向**：HiF4 场景 bias 仅支持 None（UT-API-E17） | — |
 | UT-API-04 | x2 传入 .t() 非连续视图 + transposeX2=false | 自动转连续 + transposeX2 置 true（§5.5） |
 | UT-API-05 | transposeX2=false，x2=[K,N] 连续，x2Scale=[K/64,N,1] | op_api 层 ND 放行（CheckScaleShape HiF4 分支；不报 "must be transposed"——MX 才有该限制） |
 
@@ -130,12 +131,14 @@ attr: x1QuantMode=8, x2QuantMode=8, groupSize=4295032896=(1,1,64),
 | UT-API-E07 | x1=HIFLOAT4, x2=FLOAT4_E2M1 | PARAM_INVALID："x1 and x2 must have same dtype" |
 | UT-API-E08 | x1Scale dtype=FLOAT8_E8M0 | PARAM_INVALID：scale 支持列表 |
 | UT-API-E09 | y=INT32 | PARAM_INVALID：output 支持列表 |
-| UT-API-E10 | bias=FLOAT16 | PARAM_INVALID：bias 支持列表 |
-| UT-API-E11 | all2allOut=[128,256] FLOAT16（≠x1 dtype） | PARAM_INVALID："same dtype"（OP_CHECK_DTYPE_NOT_SAME） |
+| UT-API-E10 | bias=FLOAT16 | PARAM_INVALID："bias is not supported, it must be None"（存在即拒绝，dtype 不可达） |
+| UT-API-E11 | all2allOut=[128,256] BF16 | PARAM_INVALID："alltoAllOut is not supported, it must be None"（存在即拒绝） |
 | UT-API-E12 | x2 非连续（.t() 视图）+ transposeX2=**true** | PARAM_INVALID："x2 not contiguous, and set x2 transpose, it is error!" |
 | UT-API-E13 | x1Scale 2D=[256,2] | PARAM_INVALID："shape of x1Scale must be 3D" |
-| UT-API-E14 | x1QuantMode=6, x2QuantMode=6 + x1/x2=HIFLOAT4 + scale=E8M0 | 校验链不命中 HiF4/MX dtype 组合（MX A5 列表含 HIFLOAT4 但 scale E8M0→ MX 校验链行为），预期 PARAM_INVALID（结合 UT-TH-E13 交叉钉住） |
+| UT-API-E14 | x1QuantMode=6, x2QuantMode=6 + x1/x2=HIFLOAT4 + scale=E8M0 | PARAM_INVALID：MX dtype 列表拒绝（"x1 不在 MX 支持列表"，与 tiling 侧 UT-TH-E13 交叉钉住） |
 | UT-API-E15 | x1=[256,128] 但 y=[100,256]（m 不符） | 公共 CheckShapeAAMM 拦截 |
+| UT-API-E16 | y=[128,256] FLOAT | PARAM_INVALID："In hif4 quant scenario, output 不在 HIF4 支持列表"（仅 FP16/BF16） |
+| UT-API-E17 | bias=[256] FLOAT（存在即拒绝） | PARAM_INVALID："In hif4 quant scenario, bias is not supported, it must be None" |
 
 ## 4. apace 公共组件 UT（新增）
 
@@ -179,16 +182,19 @@ attr: x1QuantMode=8, x2QuantMode=8, groupSize=4295032896=(1,1,64),
 
 | 套件 | 正向 | 反向 | 合计 | 交付形式 | 执行状态（2026-09, A5 包） |
 | :--- | :-: | :-: | :-: | :--- | :--- |
-| op_host tiling（§2，UT-TH-05 拆 2 条，移除 TH-10/E13） | 12（UT-TH-02 暂 XFAIL） | 19 | 31 | `test_allto_all_matmul_hif4_tiling.csv/.cpp`（门控） | 门控 SKIP（待 A6 devkit） |
-| op_api（§3，UT-API-02 拆 2 条，E12 非连续用例需代码级构造暂缓） | 6 | 12 | 18 | `test_aclnn_allto_all_quant_matmul_hif4.csv/.cpp`（门控） | 门控 SKIP（待 A6 devkit） |
-| apace 组件（§4：UT-AP 6 + UT-SW 9） | 15 | — | 15 | `test_allto_all_matmul_hif4_swat_tiling.cpp` | **15/15 通过（实测）** |
-| **合计** | **33** | **31** | **64** | — | — |
+| op_host tiling（§2，UT-TH-04/E22、TH-05-fp32/E21 正反转换，E13 恢复，TH-02 转正） | 11 | 21 | 32 | `test_allto_all_matmul_hif4_tiling.csv/.cpp`（门控） | 门控 SKIP（待 A6 devkit） |
+| op_api（§3，UT-API-02 拆条收敛、API-03/E17 正反转换，新增 E14/E16，E12 非连续用例需代码级构造暂缓） | 3 | 16 | 19 | `test_aclnn_allto_all_quant_matmul_hif4.csv/.cpp`（门控） | 门控 SKIP（待 A6 devkit） |
+| apace 组件（§4：UT-AP 6 + UT-SW 9；UT-SW-07 为组件能力测试，端到端不放行 bias） | 15 | — | 15 | `test_allto_all_matmul_hif4_swat_tiling.cpp` | **15/15 通过（实测）** |
+| **合计** | **29** | **37** | **66** | — | — |
 
-> 注：§1 表头原计数 71 为初版规划；落地时因 SUPPORT_RANK_SIZE={2,4,8,16} 移除 R=3 用例、因 R3 行为不确定移除 E13、op_api E12 暂缓，最终 64 条。
+> 注：§1 表头原计数 71 为初版规划；落地时因 SUPPORT_RANK_SIZE={2,4,8,16} 移除 R=3 用例、op_api E12 暂缓；
+> 校验增强（output 限 FP16/BF16、bias 限 None、MX+hif4 互斥、ND 布局放行）后，正向 29 + 反向 37 = 66 条。
+> CSV 以实际行为准（tiling CSV 32 行 = 11 正 + 21 反，含 groupSize 显式传参正向用例；op_api CSV 19 行 = 3 正 + 16 反）。
 
 执行顺序建议：UT-AP（纯常量）→ UT-IG → UT-SW → op_host tiling → op_api。全部反向用例需断言错误码与日志关键片段（`OP_LOGE_FOR_INVALID_*` 场景文案），避免仅断言 FAILED 状态导致误拦截（拦截在更早的公共校验）。
 
 ### 已知问题联动
 
-- **R1（ND 布局 tiling 误拒）**：UT-TH-02 钉住正确行为（SUCCESS），修复前标记 XFAIL 并在用例名后缀 `//issue-R1`，防止用例被静默跳过；
-- **R3（MX+hif4 错误信息不直接）**：UT-TH-E13 / UT-API-E14 当前仅能断言"失败"，修复增强后补断言具体文案。
+- **R1（ND 布局 tiling 误拒）已修复**：CheckMxQuantShapeInfo 已按 transposeX2 分支化校验 x2 的 K 维与 x2Scale 布局（transB=[N,K]/[N,K/64,1]，ND=[K,N]/[K/64,N,1]），UT-TH-02 由 XFAIL 转正（CSV 行 `hif4_nd_r2`，expectStatus=SUCCESS）；
+- **R3（MX+hif4 互斥）已修复**：CheckMxQuantTensorDataType 补 `!isHiF4_ && hifloat4 → 报错` 显式互斥，UT-TH-E13 恢复并断言具体文案（CSV 行 `hif4_err_mxmode_hif4_dtype`）；
+- **校验增强（本批新增拦截）**：output 限 FP16/BF16（UT-TH-E21/UT-API-E16）、bias 限 None（UT-TH-E22/UT-API-E17，aclnn 同步拒绝）、aclnn 拒绝 alltoAllOut 存在性（UT-API-E11）；def 960dt 组合表已同步移除 hif4+FLOAT 输出组合。
