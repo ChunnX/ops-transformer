@@ -98,10 +98,34 @@ static ge::graphStatus MoeDistributeDispatchA2CheckCommAlg(const gert::TilingCon
         return ge::GRAPH_SUCCESS;
     }
     auto commAlg = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_COMM_ALG_INDEX));
-    OP_TILING_CHECK(mc2tiling::ParseCommAlgWithEnvFallback(K_INNER_DEBUG, commAlg, isLayered) != ge::GRAPH_SUCCESS,
-                    OP_LOGE_WITH_INVALID_ATTR(K_INNER_DEBUG, "comm_alg", commAlg, "\"fullmesh\" or \"hierarchy\""),
-                    return ge::GRAPH_FAILED);
-    return ge::GRAPH_SUCCESS;
+    if (commAlg == nullptr || strlen(commAlg) == 0 || strcmp(commAlg, "0") == 0) {
+        OP_LOGW(K_INNER_DEBUG, "Attr commAlg is invalid, please configure fullmesh or hierarchy.");
+
+        const char *hcclIntraPcieEnable = getenv("HCCL_INTRA_PCIE_ENABLE");
+        const char *hcclIntraRoceEnable = getenv("HCCL_INTRA_ROCE_ENABLE");
+        if (hcclIntraPcieEnable != nullptr && hcclIntraRoceEnable != nullptr && strcmp(hcclIntraPcieEnable, "1") == 0 &&
+            strcmp(hcclIntraRoceEnable, "0") == 0) {
+            OP_LOGD(K_INNER_DEBUG,
+                    "ENV HCCL_INTRA_PCIE_ENABLE = 1 and HCCL_INTRA_ROCE_ENABLE = 0, use hierarchy algorithm.");
+            isLayered = true;
+        } else {
+            OP_LOGD(K_INNER_DEBUG,
+                    "ENV HCCL_INTRA_PCIE_ENABLE != 1 or HCCL_INTRA_ROCE_ENABLE != 0, use default fullmesh algorithm.");
+        }
+        return ge::GRAPH_SUCCESS;
+    }
+
+    OP_LOGI(K_INNER_DEBUG, "commAlg is %s", commAlg);
+
+    if (commAlg != nullptr && strcmp(commAlg, "fullmesh") == 0) {
+        return ge::GRAPH_SUCCESS;
+    } else if (commAlg != nullptr && strcmp(commAlg, "hierarchy") == 0) {
+        isLayered = true;
+        return ge::GRAPH_SUCCESS;
+    } else {
+        OP_LOGE_WITH_INVALID_ATTR(K_INNER_DEBUG, "comm_alg", commAlg, "\"fullmesh\" or \"hierarchy\"");
+        return GRAPH_FAILED;
+    }
 }
 
 static uint64_t MoeDistributeDispatchA2CalcTilingKey(const gert::TilingContext *context, const bool isLayered)

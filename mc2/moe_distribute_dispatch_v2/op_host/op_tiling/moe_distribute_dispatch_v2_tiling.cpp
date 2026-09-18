@@ -1608,6 +1608,7 @@ static ge::graphStatus CheckAndCalWinSize(const gert::TilingContext *context,
     winSizeData.isLayered = isLayered;
     winSizeData.isMc2Context = config.isMc2Context;
 
+    //
     OP_TILING_CHECK(CheckWinSize(context, nodeName, winSizeData) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Get WinSize failed."), return ge::GRAPH_FAILED);
     // 总的win区大小
