@@ -187,6 +187,7 @@ private:
     GlobalTensor<float> scalesGMTensor_;
     GlobalTensor<bool> activeMaskGMTensor_;
     GlobalTensor<int32_t> syncStatusGMTensor_;
+    GlobalTensor<int32_t> tokenRankScratchGMTensor_;
 
     LocalTensor<XType> xInTensor_;
     LocalTensor<XType> xTmpTensor_;
