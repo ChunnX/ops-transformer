@@ -1,336 +1,171 @@
-# Quant Lightning Indexer（DSL MXFP4）
+# Quant Lightning Indexer DSL
 
-本目录提供 `quant_lightning_indexer` 的 CANNBotDSL 融合实现。接口以最新 `qli.xlsx` 与 `qli_metadata.xlsx` 为准。当前计算支持 Query=TND、Key=PA_BBND，支持 output_idx_offset 及 metadata 驱动的 LD/S2 分核。
+QLI 对 MXFP4 Q/K 计算带权归约分数、mask 和 TopK，可同时生成 candidate block 索引。本文以 [Torch 接口](torch_extension/quant_lightning_indexer.py) 的实际签名为准。
 
-实现入口为 `quant_lightning_indexer.py`。一次 Python 调用只下发一个顶层
-`QliFusedKernel`，Cube、Vector1、Sparse TopK 和可选 Candidate TopK 均在该融合
-Kernel 内完成。Sample 只负责接口校验、输出及 workspace 分配和 Kernel 调用，
-不生成测试数据，也不计算 CPU Golden。
+## 必选数据输入
 
-## 功能说明
+T1 为所有 batch 查询 token 总数，P 为物理页数，PA 为页大小，N1 支持 32 或 64。
 
-Quant Lightning Indexer 用于稀疏 Attention 的前处理。对每个 Query token，算子
-计算 32 个 Query group 与有效 Key token 的 MXFP4 点积，乘以 E8M0 反量化系数，
-经过 ReLU 和 FP32 权重加权后沿 group 轴归约，最后选出分数最高的 token 索引。
+| 参数 | dtype | 物理 shape / 说明 |
+|---|---|---|
+| q | uint8 | `[T1,N1,64]`，打包 MXFP4 |
+| k | uint8 | `[P,PA,1,64]`，打包 MXFP4 |
+| w | float32 | `[T1,N1]` |
+| descale_q | uint8 | `[T1,N1,2,2]`，E8M0 位表示 |
+| descale_k | uint8 | `[P,PA,1,2,2]`，E8M0 位表示；必选 |
 
-令逻辑 head dim 为 `D=128`、group 数为 `N1=32`，核心计算可写为：
+K 和 K scale 分开传入；QLI 的 K 由 Cube 读取，VEC1 使用 BF16 计算。不要使用旧名 q_descale/k_descale。
 
-$$
-score(t,s)=\sum_{g=0}^{31}w(t,g)\cdot
-\operatorname{ReLU}\left(\operatorname{Dequant}
-\left(q(t,g)\cdot k(s)^T\right)\right)
-$$
-
-主要过程如下：
-
-1. Cube 使用原生 FP4 E2M1 数据执行 128×128 QK 矩阵乘，累加类型为 FP32。
-2. Vector1 按 ASC QLI V2 的舍入边界执行 ReLU、权重乘加和 32 group 归约，生成
-   BF16 score code 及对应的 `uint16` 可排序 key。
-3. Sparse TopK 使用 Arch35 `vf_topk_16.h` 对应的 uint16 radix 选择流程返回 token
-   索引和 BF16 分数；超过 16K 的 S2 在同一 AIV 内按 trunk/history 逐段合并。
-4. Candidate 开启时，每连续 8 个有效 token 形成一个 Candidate block，以该块的
-   score 最大值参与同一套 TopK 比较。Candidate 的 8-token 分组与 PA 的
-   128-token page 是两个独立概念。
-
-## Python 接口
+## 完整接口签名
 
 ```python
 def quant_lightning_indexer(
-    q: torch.Tensor,
-    k: torch.Tensor,
-    w: torch.Tensor,
-    descale_q: torch.Tensor,
-    descale_k: torch.Tensor,
-    topk: int,
-    quant_mode: int,
+    q,
+    k,
+    w,
+    descale_q,
+    descale_k,
+    topk,
+    quant_mode,
     *,
-    cu_seqlens_q: Optional[torch.Tensor] = None,
-    cu_seqlens_k: Optional[torch.Tensor] = None,
-    seqused_q: Optional[torch.Tensor] = None,
-    seqused_k: Optional[torch.Tensor] = None,
-    cmp_residual_k: Optional[torch.Tensor] = None,
-    block_table: Optional[torch.Tensor] = None,
-    output_idx_offset: Optional[torch.Tensor] = None,
-    metadata: Optional[torch.Tensor] = None,
-    max_seqlen_q: int = -1,
-    mask_mode: int = 0,
-    cmp_ratio: int = 1,
-    layout_q: str = "TND",
-    layout_kv: str = "TND",
-    return_value: bool = False,
-    candidate_topk_blocks: int = -1,
-    candidate_block_size: int = -1,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]
+    cu_seqlens_q=None,
+    cu_seqlens_k=None,
+    seqused_q=None,
+    seqused_k=None,
+    cmp_residual_k=None,
+    block_table=None,
+    output_idx_offset=None,
+    metadata=None,
+    max_seqlen_q=-1,
+    mask_mode=0,
+    cmp_ratio=1,
+    layout_q='TND',
+    layout_kv='TND',
+    return_value=False,
+    candidate_topk_blocks=-1,
+    candidate_block_size=-1,
+):
+    ...
+
+def quant_lightning_indexer_metadata(
+    cu_seqlens_q=None,
+    cu_seqlens_k=None,
+    seqused_q=None,
+    seqused_k=None,
+    cmp_residual_k=None,
+    *,
+    batch_size=None,
+    max_seqlen_q=-1,
+    max_seqlen_k=-1,
+    num_heads_q,
+    num_heads_k,
+    head_dim,
+    topk,
+    mask_mode=0,
+    cmp_ratio=1,
+    layout_q='TND',
+    layout_k='TND',
+    candidate_topk_blocks=-1,
+    candidate_block_size=-1,
+):
+    ...
 ```
 
-该入口注册为
-`torch.ops.cann_ops_transformer.ds41.quant_lightning_indexer`；通过
-`cann_ops_transformer.ops.ds41` 导入的同名对象就是该 Torch operator。
+`candidate_topk_blocks=-1, candidate_block_size=-1` 关闭 candidate；开启时分别传正整数容量和 8，例如 2048、8。metadata 与计算调用使用相同配置。
 
-## 维度说明
+## 当前支持范围
 
-| 符号 | 含义 | 当前范围 |
+当前实现只支持 `layout_q="TND"`、`layout_kv="PA_BBND"`，metadata 对应参数名为 `layout_k`。虽然 schema 中 K 布局默认值为 `"TND"`，当前调用必须显式指定 `"PA_BBND"`；接受 `cu_seqlens_k` 不代表已经实现 K=TND。
+
+逻辑 head_dim=128，KV head 数为 1；MXFP4 每两个元素打包为一个 uint8，所以 Q/K 的数据维度为 64 字节。PA 页大小 `block_size` 从 K 的 shape 推导，支持 16 的倍数且不超过 1024，和 candidate 的 8-token block 是两个不同概念。没有固定 128K 的 token 上限。
+
+所有实际计算输入 Tensor 必须位于同一 NPU。序列信息及索引使用 int32；除 PA 存储允许第 0 轴 padding 外，应使用连续 Tensor。
+
+## 公共可选参数
+
+| 参数 | 默认值 | 含义及当前约束 |
 |---|---|---|
-| `B` | Batch 数 | 动态；多 Batch 时由 `cu_seqlens_q.shape[0] - 1` 得到 |
-| `T1` | TND Query 总 token 数 | 动态，且大于 0 |
-| `N1` | Query group/head 数 | 固定为 32 |
-| `N2` | Key head 数 | 固定为 1 |
-| `D` | Q/K 逻辑 head dim | 固定为 128 |
-| `P` | `k` 的物理 PA page 数 | 动态，且大于 0 |
-| `block_size` | 每个 PA page 的 token 数 | 固定为 128 |
-| `S2` | 每个 Batch 的有效 Key token 数 | 动态，容量上限为 128K |
-| `C` | Candidate 输出容量 | `candidate_topk_blocks`；关闭时为 0 |
+| cu_seqlens_q | None | int32 `[B+1]`，TND 查询的累计长度；B>1 时必需 |
+| cu_seqlens_k | None | 接口预留；当前 PA_BBND 路径不参与寻址或长度计算 |
+| seqused_q | None | int32 `[B]`，各 batch 有效查询长度 |
+| seqused_k | None | int32 `[B]`，各 batch 有效 KV 长度；省略时按当前 PA 容量处理 |
+| cmp_residual_k | None | int32 `[B]`，压缩 causal 边界的残余长度；mask_mode=3 且 cmp_ratio!=1 时必需，其他组合传 None |
+| block_table | None | int32 `[B, max_pages]`，逻辑页到物理页的映射；B>1 时必需，省略只支持单 batch 恒等映射 |
+| output_idx_offset | None | int32 `[T1,1]`，仅对有效输出 token 索引加偏移，-1 保持不变 |
+| metadata | None | int32 `[1024]`，必须由调用方先调用对应 metadata 接口生成；省略或传 None 直接报错 |
+| max_seqlen_q | -1 | 查询长度上界；-1 使用推导路径，建议显式传入 |
+| mask_mode | 0 | 支持 0、3；3 为 causal 场景 |
+| cmp_ratio | 1 | 压缩比例，支持 `[1,128]` |
+| layout_q / layout_kv | "TND" / "TND" | 当前必须传 "TND" / "PA_BBND" |
+| return_value | False | 是否输出 TopK 分数；性能测试使用 False |
 
-MXFP4 每个 `uint8` 存放两个 FP4 E2M1 数，因此逻辑 `D=128` 对应 Q/K 的物理末轴
-长度 `D/2=64`。反量化 scale 每 32 个逻辑 D 元素一组，故末两轴为
-`(D/64, 2)=(2,2)`。
+`topk` 为必选整数，范围 `[1,8192]`；`quant_mode` 为必选整数，当前为 1（MXFP4）。可选参数表示 schema 允许省略，不表示所有参数组合都可省略。
 
-## 参数说明
+## Metadata 参数与返回值
 
-| 参数名 | 类型与 shape | 输入属性 | 说明 |
-|---|---|---|---|
-| `q` | `uint8 [T1,N1,D]` | 输入 | 打包 MXFP4 Query；，必须连续。 |
-| `k` | `uint8 [block_num,block_size,N2,D]` | 输入 | 打包 MXFP4 Key，布局为 `PA_BBND`；仅支持 0 轴非连续。 |
-| `w` | `float32 [T1,N1]` | 输入 | 32 个 Query group 的权重，必须连续。 |
-| `descale_q` | `uint8 [T1,N1,Ceil(D/64),2]` | 输入 | E8M0 Query 反量化系数。该 shape 即 `(T1,N1,D/64,2)`，必须连续。 |
-| `descale_k` | `[block_num,block_size,N2,D]` | 输入 | E8M0 Key 反量化系数；仅支持 0 轴非连续，0 轴步长应与 `k` 的物理 page 对应。 |
-| `cu_seqlens_q` | `int32 [B+1]` | 可选输入 | TND 中各 Batch Query 长度的前缀和。省略时按单 Batch 处理；`B>1` 时必须传入。 |
-| `seqused_q` | `int32 [B]` | 可选输入 | 各 Batch Query 的有效前缀长度。 |
-| `seqused_k` | `int32 [B]` | 可选输入 | 各 Batch 的实际 S2，数值为直接长度而非累计长度，可落在 128-token page 的中间。 |
-| `cmp_residual_k` | `int32 [B]` | 条件输入 | 仅 `mask_mode=3` 且 `cmp_ratio!=1` 时必须传入，表示压缩 Key 的残余长度。其他组合必须为 `None`。 |
-| `block_table` | `int32 [B,max_num_blocks_per_seq]` | 可选输入 | 每个 Batch 从逻辑 Key page 到 `k/descale_k` 物理 page 的映射；尾部未用项使用 `-1`。省略时按物理 page 顺序读取。 |
-| `metadata` | `int32 [1024]` | 可选输入 | AICPU metadata 算子生成的分核信息；省略时由 wrapper 生成。 |
-| `topk` | `int` | 必选属性 | Sparse TopK 的输出数量，范围 `[1,8192]`。 |
-| `quant_mode` | `int` | 必选属性 | 当前仅支持 `1`，表示 Q/K 为 MXFP4 E2M1、scale 为 E8M0。 |
-| `max_seqlen_q` | `int`，默认 `-1` | 属性 | Query 单 Batch 最大长度；`-1` 表示使用 `T1`。显式值应不小于实际最大 Query 长度。 |
-| `mask_mode` | `int`，默认 `0` | 属性 | `0`：无 mask；`3`：压缩 Key causal mask。 |
-| `cmp_ratio` | `int`，默认 `1` | 属性 | Key 压缩比，范围 `[1,128]`。传入的 S2 是压缩后的长度。 |
-| `layout_q` | `str`，默认 `"TND"` | 属性 | 当前仅支持 `TND`。 |
-| `layout_kv` | `str`，默认 `"TND"` | 属性 | 当前执行必须显式传 `PA_BBND`；K=TND 暂未实现。 |
-| `return_value` | `bool`，默认 `False` | 属性 | 为保持表格接口兼容而保留。当前 Torch 返回 tuple 始终包含 `sparse_values`；精度转测使用 `True`。 |
-| `candidate_topk_blocks` | `int`，默认 `-1` | 属性 | `-1` 关闭 Candidate；正数表示每个 Query 的 Candidate 输出容量 `C`。 |
-| `candidate_block_size` | `int`，默认 `-1` | 属性 | Candidate 关闭时必须为 `-1`；开启时固定为 `8`。 |
+metadata 不接收 Q/K 数据、block_table 或 PA block_size。`num_heads_q`、`num_heads_k`、`head_dim`、`topk` 是必选的关键字参数。序列参数沿用上表语义，另外有以下属性：
 
-所有 Tensor 输入都必须位于与 `q` 相同的 NPU。除 `k` 和 `descale_k` 的 0 轴
-非连续能力外，其余输入要求连续。
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| batch_size | None | 可由 cu_seqlens_q 或 seqused_q 的 shape 推导，否则默认单 batch；显式值必须与长度 Tensor 一致 |
+| max_seqlen_q | -1 | 显式查询长度上界；省略时从查询序列信息推导，可能读取设备数据到 host |
+| max_seqlen_k | -1 | 原始 KV 长度上界，非 candidate token 数；省略时从 seqused_k 推导，可能读取设备数据到 host |
+| layout_k | "TND" | 当前必须显式传 "PA_BBND"，注意不同于计算接口的 layout_kv |
+
+metadata 返回 NPU 上固定 shape `[1024]` 的 int32 Tensor，由 AICPU 生成调度信息。计算 kernel 消费其中的分核边界，支持 LD 和非 LD，不需要调用者自行划分核。复用要求序列长度、压缩/掩码参数和调度配置不变；QSLI 还要求 candidate_block_length 不变。metadata 与计算算子的对应参数必须一致。计算接口保留 metadata=None 的签名默认值以兼容参数顺序，但DSL 运行时入口拒绝 None，不再内部生成 metadata。
+
+Torch 接口包含 NPU（PrivateUse1）实现、metadata fallback 注册和 register_fake。fake 仅描述输出 shape/dtype；fallback 不表示支持 CPU 执行 NPU 算子。显式生成 metadata 可避免把生成开销混入计算算子的计时。
+
 
 ## 返回值
 
-函数返回四个 Tensor 组成的 tuple：
+始终返回四个 Tensor：
 
-| 位置 | 含义 | 数据类型与 shape | 说明 |
-|---|---|---|---|
-| `0` | `sparse_indices` | `int32 [T1,1,topk]` | 选中的逻辑 Key token 索引。 |
-| `1` | `sparse_values` | `bfloat16 [T1,1,topk]` | 与 `sparse_indices` 对应的 QLI score。 |
-| `2` | `candidate_block_indices` | `int32 [T1,1,C]` | Candidate block 索引；关闭 Candidate 时 shape 为 `[T1,1,0]`。 |
-| `3` | `candidate_block_length` | `int32 [T1,1]` | 每个 Query 有效的 Candidate 输出数量。 |
+| 返回值 | dtype | shape |
+|---|---|---|
+| indices | int32 | `[T1,1,topk]` |
+| values | bfloat16 | return_value=True 时为 `[T1,1,topk]`，否则为 `[0]` |
+| candidate_indices | int32 | 开启时为 `[T1,1,candidate_topk_blocks]`，否则为 `[0]` |
+| candidate_length | int32 | 开启时为 `[T1,1]`，否则为 `[0]` |
 
-TopK 遵循 ASC VF 的稳定流式选择语义：先按输入顺序输出大于第 K 阈值的项，再按
-输入顺序补齐等于阈值的项，不承诺结果按分数完全降序排列。
-
-## 约束说明
-
-- 当前只支持 `quant_mode=1`、`layout_q="TND"`、`layout_kv="PA_BBND"`、
-  `N1=32`、`N2=1`、逻辑 `D=128` 和 PA `block_size=128`。
-- `q`、`k` 使用 `uint8` 承载打包 MXFP4；`descale_q`、`descale_k` 使用
-  `uint8` 承载 E8M0 bit pattern，不接受 BF16/FP16 替代。
-- `k` 仅允许 0 轴带 page padding；其内层 stride 必须为 `(64,64,1)`。
-  `descale_k` 同样仅允许 0 轴非连续，其内层 stride 必须为 `(4,4,2,1)`。
-  两者的 0 轴步长都必须覆盖完整 PA 存储行。
-- 有 `block_table` 时，Key 容量为 `block_table.shape[1] * 128`；否则为
-  `k.shape[0] * 128`。当前动态 Kernel 的 S2 容量上限为 128K。
-- `seqused_k[b]` 必须不超过对应 Batch 的映射容量；S2 尾块无需补齐到 128，
-  Kernel 会在 NPU 上完成尾部 mask。
-- `cu_seqlens_q`、`seqused_q`、`seqused_k`、`cmp_residual_k` 和
-  `block_table` 均为 NPU `int32` 连续 Tensor。
-- `mask_mode=3` 且 `cmp_ratio!=1` 时，`cmp_residual_k[b]` 应满足
-  `0 <= cmp_residual_k[b] < cmp_ratio`。
-- Candidate 开关是编译期分支：`(-1,-1)` 会完整裁掉 Candidate 计算和对应资源；
-  开启时 `candidate_topk_blocks>0` 且 `candidate_block_size=8`。
-- 本实现不包含 LD/S2 多核切分。每个 Cube task 最多处理同一 Batch 的 4 个 Query
-  行，并由两个 AIV 分担；一个 task 的完整 S2 始终由同一 AIC 遍历。
-
-## 动态 Shape 与编译缓存
-
-`B`、`T1`、物理 page 数、`block_table` 宽度、实际 S2、`max_seqlen_q` 和
-`seqused_*` 的数值均通过符号 shape 或运行时标量传入，不进入编译缓存键。进程内
-`_COMPILED_KERNEL` 使用锁保护并缓存已编译 runner，因此同一静态分支下切换
-Batch、T1 或 S2 不会重复编译。
-
-以下参数会改变 Kernel 的静态控制流或输出宽度，取值变化时会产生新的编译缓存项：
-
-- `topk`；
-- Candidate 开关及 `candidate_topk_blocks`；
-- `mask_mode`、`cmp_ratio`；
-- `cu_seqlens_q`、`seqused_q`、`seqused_k`、`cmp_residual_k`、`block_table`
-  是否存在。
-
-缓存只在当前 Python 进程内有效，进程重启后的首次调用仍需编译。
-
-## 实现说明
-
-- Q/K 和 scale 的公开输入保持 `uint8`。受当前 CANNBotDSL packed-FP4 动态宿主
-  carrier 限制，融合 Kernel 内先由 AIV 将动态输入搬入固定 staging，再由 AIC 以
-  `fp4x2_e2m1` 和 `float8_e8m0` 原生类型进入 Cube；该过程没有额外小算子下发。
-- ASC Vector1 使用 BF16 `MulAddDst`。当前 CANN 9.2 下 DSL raw `vmadd` 不提供
-  BF16 operand overload，因此仅 128-token Vector1 算术 carrier 使用 FP32，并在
-  ASC 定义的边界执行逐步 BF16-grid round-to-nearest-even。完整 S2 不分配 FP32
-  score buffer，GM 中保存的是 16 位 score code 和 sortable key。
-- Sparse 与 Candidate 均使用融合 Kernel 内的 raw-VF radix TopK；跨 VF 阶段的
-  标量通过 UB 存取，不使用 `vreduce_max + vscatter` 合并方案。
-
-## 调用说明
-
-依赖已配置的 CANN、PyTorch、torch_npu 和 CANNBotDSL 环境。通过仓库
-`torch_extension` 构建流程安装 `cann_ops_transformer` 后使用：
-
-| 调用方式 | 入口 | 说明 |
-| :--- | :--- | :--- |
-| PyTorch API | `cann_ops_transformer.ops.ds41.quant_lightning_indexer` | 分配输出并调用 DSL，返回 `(sparse_indices, sparse_values, candidate_block_indices, candidate_block_length)` |
-| torch.ops | `torch.ops.cann_ops_transformer.ds41.quant_lightning_indexer` | 导入扩展完成注册后，可通过 PyTorch 自定义算子入口调用；参数和返回值与 PyTorch API 一致 |
-| DSL 直调 | [`torch_extension/quant_lightning_indexer_dsl.py`](torch_extension/quant_lightning_indexer_dsl.py) | 返回包含四个输出的 `dict`，主要用于内部实现和调试 |
-
-`ds41` 是实际 Python 模块名和 `torch.library` 注册名。正常业务代码推荐使用
-PyTorch API；需要验证注册通路时可直接使用 `torch.ops`。
+无效 token 索引用 -1 填充；有效 token 不足 topk 时不产生越界索引。candidate 输出为逻辑 8-token block 索引，有效数量由 candidate_length 给出；不足容量的后缀为 -1。TopK 不承诺同分索引稳定排序。
 
 ## 调用示例
 
-以下示例假设输入 Tensor 已按上表在 NPU 上准备完成；Sample 接口本身不负责生成
-或随机化数据：
+以下示例假设已按上述 shape 准备同一 NPU 上的输入，B、S1、S2 为对应长度上界，压缩 residual 由调用方按输入语义提供。开启 candidate，同时关闭分数返回：
 
 ```python
 from cann_ops_transformer.ops.ds41 import (
     quant_lightning_indexer,
+    quant_lightning_indexer_metadata,
 )
 
-result = quant_lightning_indexer(
-    q,
-    k,
-    w,
-    descale_q,
-    descale_k,
-    topk,
-    quant_mode,
+metadata = quant_lightning_indexer_metadata(
     cu_seqlens_q=cu_seqlens_q,
     seqused_q=seqused_q,
     seqused_k=seqused_k,
-    cmp_residual_k=None,
-    block_table=block_table,
-    metadata=None,
-    max_seqlen_q=max_seqlen_q,
-    mask_mode=mask_mode,
-    cmp_ratio=cmp_ratio,
-    layout_q=layout_q,
-    layout_kv=layout_kv,
-    return_value=return_value,
-    candidate_topk_blocks=candidate_topk_blocks,
-    candidate_block_size=candidate_block_size,
+    cmp_residual_k=cmp_residual_k,
+    batch_size=B, max_seqlen_q=S1, max_seqlen_k=S2,
+    num_heads_q=q.shape[1], num_heads_k=1, head_dim=128, topk=512,
+    mask_mode=3, cmp_ratio=2, layout_q="TND", layout_k="PA_BBND",
+    candidate_topk_blocks=2048, candidate_block_size=8,
 )
-
-(
-    sparse_indices,
-    sparse_values,
-    candidate_indices,
-    candidate_length,
-) = result
-```
-
-等价的 `torch.ops` 调用如下。先导入算子扩展以完成注册：
-
-```python
-import torch
-import cann_ops_transformer.ops.attention.quant_lightning_indexer_dsl
-
-result = torch.ops.cann_ops_transformer.ds41.quant_lightning_indexer(
-    q,
-    k,
-    w,
-    descale_q,
-    descale_k,
-    topk,
-    quant_mode,
+indices, values, candidate_indices, candidate_length = quant_lightning_indexer(
+    q, k, w, descale_q, descale_k, 512, 1,
     cu_seqlens_q=cu_seqlens_q,
-    seqused_q=seqused_q,
-    seqused_k=seqused_k,
-    cmp_residual_k=None,
-    block_table=block_table,
-    metadata=None,
-    max_seqlen_q=max_seqlen_q,
-    mask_mode=mask_mode,
-    cmp_ratio=cmp_ratio,
-    layout_q=layout_q,
-    layout_kv=layout_kv,
-    return_value=return_value,
-    candidate_topk_blocks=candidate_topk_blocks,
-    candidate_block_size=candidate_block_size,
+    seqused_q=seqused_q, seqused_k=seqused_k,
+    cmp_residual_k=cmp_residual_k, block_table=block_table,
+    output_idx_offset=output_idx_offset, metadata=metadata,
+    max_seqlen_q=S1, mask_mode=3, cmp_ratio=2,
+    layout_q="TND", layout_kv="PA_BBND", return_value=False,
+    candidate_topk_blocks=2048, candidate_block_size=8,
 )
 ```
 
-关闭 Candidate 时两个属性必须同时传 `-1`：
+关闭 candidate 时，两处调用均省略 candidate 参数或都传 `-1, -1`，仍接收四个返回值。不能把 QLI 的独立 K/scale 直接当作 QSLI 的融合 K。
 
-```python
-result = quant_lightning_indexer(
-    q,
-    k,
-    w,
-    descale_q,
-    descale_k,
-    topk,
-    quant_mode,
-    cu_seqlens_q=cu_seqlens_q,
-    seqused_q=seqused_q,
-    seqused_k=seqused_k,
-    cmp_residual_k=None,
-    block_table=block_table,
-    metadata=None,
-    candidate_topk_blocks=-1,
-    candidate_block_size=-1,
-)
-```
+## 编译与验证
 
-## 精度验证
+Torch 接口分别调用 `ops.quant_lightning_indexer_dsl` / `ops.quant_sparse_lightning_indexer_dsl` 及对应 metadata 模块。使用 native 包时须保持源码、Torch 接口和导出产物版本一致。静态配置变化是否命中取决于包内导出的组合与缓存，不能仅凭第二次调用耗时推断；metadata 调用与 DSL 计算 kernel 编译是不同环节。
 
-CPU Golden 为本工程独立实现，不引用 ASC 源码；比较入口复现 ASC QLI V2 的
-`result_compare_method`。Sparse 索引/值与 Candidate 索引均进入统一比较，
-Candidate 还校验有效长度、索引合法性、唯一性和尾部 `-1` padding。
-
-```bash
-cd /home/x00949573/code/cannbot-arena_qli/test/quant_lightning_indexer
-./test_run.sh single
-
-# 只运行指定用例
-./test_run.sh single --cases decode_b8_s2_8k,cross_09_pa_axis0_noncontiguous
-
-# Excel -> PT -> NPU/CPU 批量比较
-./test_run.sh batch --excel /path/to/cases.xlsx --sheet Sheet1 \
-  --pt-path ./pt_path --output ./result.xlsx
-```
-
-当前动态 Shape 转测 paramset 包含 decode、prefill、S2 极小尾块、128 边界、
-16K TopK trunk/history merge、`cmp_ratio=2`、Batch=32、PA 0 轴非连续及
-Candidate 关闭分支。最近一次回归结果为 `12 passed`；运行日志位于
-`outputs/qli_dynamic_shape_paramset_12.log`。
-
-
-## net Native wheel 调用
-
-DSL 实现统一维护在 `cannbot-arena-ds41/net/ops/`，三个算子通过
-`net/native_package/run-build.sh --group ds41` 编译到同一个
-`cannbot-arena-net-ops` wheel。先安装该 wheel，再构建并安装本仓的
-`cann_ops_transformer` wheel。torch_extension 仅保留 torch 注册和接口适配，
-运行时从已安装的 `ops` 包导入 host 入口，不再打包本目录的 DSL 副本。
-pytest 仍通过已安装的 torch wheel 调用 `torch.ops`。
-
-Native 包预编译范围由导出配置决定；默认覆盖已有单算子 smoke 配置，
-其他静态配置需通过 `CANNBOTDSL_DS41_PROFILES` 指定 JSON 后重新打包。
-详见 net 工程 `native_package/README.md`。
-
-2026-09-09 net 迁移 smoke：`QLIV2_CASE_NAMES=decode_b8_s2_8k` 运行
-`pytest/test_quant_lightning_indexer_v2_single.py`，结果 `1 passed`；
-`CANNBOTDSL_NATIVE_BINARY_MODE=require` 下报告 `installed_hit=1`。
-
-## 2026-09-18 接口更新
-
-计算和 metadata 接口均新增可选 `cu_seqlens_k=None`。该参数在当前 PA_BBND 路径中不参与寻址和长度计算，仍由 `block_table`、`seqused_k` 控制；本次没有增加 K=TND 的实现。
-
-接口表规定 `layout_kv`（计算）/`layout_k`（metadata）默认 `TND`，因此当前可执行调用须显式指定 `PA_BBND`。metadata 默认 `mask_mode=0`、`cmp_ratio=1`；causal 压缩场景须显式传入 `3`、`2`。`max_seqlen_q/max_seqlen_k` 继续默认 `-1`。metadata 的 PrivateUse1、fallback 与 fake 注册保留。
+测试入口及数据准备见 [pytest 文档](pytest/README.md)，典型用例位于 [pytest/excel](pytest/excel)。回归应通过真实 Torch 接口先生成 metadata，再传给计算接口，并检查实际加载的 DSL 路径。
