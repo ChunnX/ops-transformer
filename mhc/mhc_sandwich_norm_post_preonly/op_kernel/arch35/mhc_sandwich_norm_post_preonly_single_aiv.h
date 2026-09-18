@@ -38,14 +38,27 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::CacheX2Tile(
     LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
     LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
     const uint64_t outBase = (uint64_t)token * N_ * D_ + tOff;
+
+    // 四个head写入互不重叠的低精度缓存，统一等待后再恢复FP32，
+    // 保留逐元素量化边界并减少重复的Vector流水屏障。
     for (uint32_t n = 0; n < N_MAX; ++n) {
         LocalTensor<T> cacheTile = x2Cache[n * D_ + tOff];
         CastToIO(cacheTile, x2[n * dimTile_], tD);
-        PipeBarrier<PIPE_V>();
+    }
+    PipeBarrier<PIPE_V>();
+    for (uint32_t n = 0; n < N_MAX; ++n) {
+        LocalTensor<T> cacheTile = x2Cache[n * D_ + tOff];
         Cast(x2[n * dimTile_], cacheTile, RoundMode::CAST_NONE, tD);
-        PipeBarrier<PIPE_V>();
-        if (writeOutput) {
-            WriteX2OutTile(x2[n * dimTile_], outBase + (uint64_t)n * D_, tD);
+    }
+    PipeBarrier<PIPE_V>();
+
+    if (writeOutput) {
+        // cacheTile已经是x2_out所需的最终低精度位值，直接写GM，
+        // 避免先恢复FP32再重复量化和反复申请输出队列。
+        SetFlag<HardEvent::V_MTE3>(evtVtoMte3_);
+        WaitFlag<HardEvent::V_MTE3>(evtVtoMte3_);
+        for (uint32_t n = 0; n < N_MAX; ++n) {
+            DataCopy(x2OutGm_[outBase + (uint64_t)n * D_], x2Cache[n * D_ + tOff], tD);
         }
     }
 }
