@@ -1280,7 +1280,10 @@ inline CommCutResult Schedule(FitBasedBalanceCtx &ctx)
     if (isAg) {
         ctx.tilingM.cutRes.longTileLen = ctx.commPerf.InverseCommTime(ctx.frontMMTime);
     } else {
-        BalanceLongTileLen(ctx, ctx.rankTileNum);
+        // E18 乘数 = mmRankMul(短块计算的工作量倍数, 通信语义决定): 老代码 RS/AR 传
+        // rankTileNum_ 系值恰好相同(rankDim/1), A2A 硬编码 1(≠其 rankTileNum=rankDim)——
+        // 统一按 mmRankMul 取值, 勿用 ctx.rankTileNum(那是通信管线几何系数, 进 FindCubeUtil)
+        BalanceLongTileLen(ctx, mmRankMul);
     }
 
     // ---- ④ Adjust: E24(goodLinearity: AG 恒 true) + 离散化 + E25 等长归一 ----
