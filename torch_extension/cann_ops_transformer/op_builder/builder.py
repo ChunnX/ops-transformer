@@ -173,7 +173,11 @@ class OpBuilder(ABC):
             return OpBuilder._loaded_ops[self.name]
 
         # Lazy import avoids pulling arg_check into every builder import path.
-        from cann_ops_transformer.utils.arg_check import wrap_op_module
+        # Keep custom wheels isolated from the built-in cann_ops_transformer
+        # package.  setup.py renames this package for single-op custom wheels,
+        # so an absolute import would load the built-in package and register a
+        # second TORCH_LIBRARY("cann_ops_transformer", "DEF").
+        from ..utils.arg_check import wrap_op_module
 
         op_module = load(
             name=self.name,
