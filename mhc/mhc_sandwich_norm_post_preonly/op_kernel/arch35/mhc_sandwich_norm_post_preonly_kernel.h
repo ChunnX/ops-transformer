@@ -112,8 +112,10 @@ public:
         pipe_.InitBuffer(bufPostComb_,          POST_COMB_SIZE * sizeof(float));
         pipe_.InitBuffer(bufPhiFp32_,  BUFFER_NUM_TWO, dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufHInPrimeBf16_,   1, dimTile_ * sizeof(T));
+        // R6结束后残差和x2临时区均已不再使用；用独立低精度缓存跨越R7归约，
+        // 避免把中间h_in写入最终输出后再从GM读回。
+        pipe_.InitBuffer(bufHInCache_,          D_ * sizeof(T));
         pipe_.InitBuffer(bufScalar_,            SCALAR_BUF_SIZE);
-        pipe_.InitBuffer(bufReduceWork_,        dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufGamma2Fp32_,        dimTile_ * sizeof(float));
 
         evtMte2toV_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::MTE2_V>());
@@ -169,6 +171,7 @@ private:
     __aicore__ inline void ComputeX2PostTile(uint32_t token, uint32_t tOff, uint32_t tD,
         float invRms0, const float (&postVals)[N_MAX], const float (&combVals)[N_MAX * N_MAX]);
     __aicore__ inline void LoadX2OutputTile(uint32_t token, uint32_t tOff, uint32_t tD);
+    __aicore__ inline void CacheHInTile(uint32_t tOff, uint32_t tD, LocalTensor<float> hIn);
     __aicore__ inline void AccumulateHalfPartials(uint32_t tOff, uint32_t tD,
         float (&sumSqHalf)[2], float (&dotHalf)[2][N_MAX]);
 
@@ -197,8 +200,8 @@ private:
     TBuf<TPosition::VECCALC>   bufPostComb_;
     TQue<TPosition::VECIN, BUFFER_NUM_TWO>  bufPhiFp32_;
     TQue<TPosition::VECOUT, 1> bufHInPrimeBf16_;
+    TBuf<TPosition::VECCALC>   bufHInCache_;
     TBuf<TPosition::VECCALC>   bufScalar_;
-    TBuf<TPosition::VECCALC>   bufReduceWork_;
 
     // GM张量
     GlobalTensor<T>     hOutGm_, residualGm_, hInPrimeGm_, x2OutGm_;
