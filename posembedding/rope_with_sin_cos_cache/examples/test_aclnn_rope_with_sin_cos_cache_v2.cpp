@@ -124,7 +124,7 @@ int main() {
   aclTensor* cosSinCache = nullptr;
   int64_t headSize = 32;
   bool isNeoxStyle = true;
-  int64_t cacheMode = 1;
+  int64_t cacheMode = 0;
   aclTensor *queryOut = nullptr;
   aclTensor *keyOut = nullptr;
 
