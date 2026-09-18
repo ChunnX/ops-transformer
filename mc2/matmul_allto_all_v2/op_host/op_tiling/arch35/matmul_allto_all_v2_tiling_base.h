@@ -747,8 +747,7 @@ protected:
 
     uint64_t GetTilingKey() const override
     {
-        return GET_TPL_TILING_KEY(MX_QUANT_MODE, 1 /*x2Transpose*/, DTYPE_BIAS_FP32, 0 /*isSmallK*/,
-                                  ALL2ALL_COMM_TYPE_UDMA);
+        return GET_TPL_TILING_KEY(MX_QUANT_MODE, 1 /*x2Transpose*/, DTYPE_BIAS_FP32, ALL2ALL_COMM_TYPE_UDMA);
     }
 
     ge::graphStatus GetWorkspaceSize() override

@@ -16,7 +16,7 @@
 using namespace AscendC;
 using namespace Apace;
 
-template <uint32_t QUANTMODE, bool X2TRANSPOSE, uint32_t DTYPEBIAS, bool ISSMALLK, uint32_t COMMTYPE>
+template <uint32_t QUANTMODE, bool X2TRANSPOSE, uint32_t DTYPEBIAS, uint32_t COMMTYPE>
 __global__ __aicore__ void matmul_allto_all_v2(GM_ADDR context, GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR x1_scale,
                                                GM_ADDR x2_scale, GM_ADDR y, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
