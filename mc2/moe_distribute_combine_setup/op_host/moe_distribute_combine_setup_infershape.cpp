@@ -14,6 +14,7 @@
  */
 #include "runtime_util.h"
 #include "mc2_log.h"
+#include "../../common/op_host/mc2_combine_infershape.h"
 #include "platform/platform_info.h"
 
 using namespace ge;
@@ -21,8 +22,6 @@ namespace ops {
 static constexpr size_t DIM_ONE = 1UL;
 static constexpr size_t DIM_TWO = 2UL;
 static constexpr int64_t NEG_ONE = -1;
-static constexpr int64_t RANK_NUM_PER_NODE = 8;
-static constexpr int64_t ASSIST_INFO_NUM_PER_A = 128;
 static constexpr int64_t COMM_CMD_INFO_BASE = 16;
 static constexpr int64_t ALIGN_8 = 8;
 static constexpr int64_t ALIGN_32 = 32;
@@ -43,21 +42,6 @@ static constexpr size_t COMBINE_INPUT_ATTR_GLOBAL_BS_INDEX = 7;
 static constexpr size_t COMBINE_INPUT_ATTR_COMM_QUANT_MODE_INDEX = 8;
 static constexpr size_t COMBINE_INPUT_ATTR_COMM_TYPE_INDEX = 9;
 
-template <typename T>
-std::string Shape2String(const T &shape)
-{
-    std::ostringstream oss;
-    oss << "[";
-    if (shape.GetDimNum() > 0) {
-        for (size_t i = 0; i < shape.GetDimNum() - 1; ++i) {
-            oss << shape.GetDim(i) << ", ";
-        }
-        oss << shape.GetDim(shape.GetDimNum() - 1);
-    }
-    oss << "]";
-    return oss.str();
-}
-
 inline int64_t Align(int64_t x, int64_t base)
 {
     if (base == 0) {
@@ -73,48 +57,24 @@ static ge::graphStatus InferShapeMoeDistributeCombineSetup(gert::InferShapeConte
     // 获取输入shape
     const gert::Shape *expandXShape = context->GetInputShape(COMBINE_INPUT_EXPAND_X_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, expandXShape);
-
     const gert::Shape *expertIdsShape = context->GetInputShape(COMBINE_INPUT_EXPERT_IDS_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, expertIdsShape);
-
     const gert::Shape *assistInfoForCombineShape = context->GetInputShape(COMBINE_INPUT_ASSIST_INFO_FOR_COMBINE_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, assistInfoForCombineShape);
-
     gert::Shape *quantExpandXShape = context->GetOutputShape(COMBINE_OUTPUT_QUANT_EXPAND_X_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, quantExpandXShape);
-
     gert::Shape *commCmdInfoShape = context->GetOutputShape(COMBINE_OUTPUT_COMM_CMD_INFO_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, commCmdInfoShape);
 
-    const auto attrs = context->GetAttrs();
-    OPS_CHECK_NULL_WITH_CONTEXT(context, attrs);
-
-    const auto epWorldSize = attrs->GetAttrPointer<int64_t>(COMBINE_INPUT_ATTR_EP_WORLD_SIZE_INDEX);
-    OPS_CHECK_NULL_WITH_CONTEXT(context, epWorldSize);
-
-    const auto epRankId = attrs->GetAttrPointer<int64_t>(COMBINE_INPUT_ATTR_EP_RANK_ID_INDEX);
-    OPS_CHECK_NULL_WITH_CONTEXT(context, epRankId);
-
-    const auto moeExpertNum = attrs->GetAttrPointer<int64_t>(COMBINE_INPUT_ATTR_MOE_EXPERT_NUM_INDEX);
-    OPS_CHECK_NULL_WITH_CONTEXT(context, moeExpertNum);
-
-    const auto expertShardType = attrs->GetAttrPointer<int64_t>(COMBINE_INPUT_ATTR_EXPERT_SHARD_TYPE_INDEX);
-    OPS_CHECK_NULL_WITH_CONTEXT(context, expertShardType);
-
-    const auto sharedExpertNum = attrs->GetAttrPointer<int64_t>(COMBINE_INPUT_ATTR_SHARED_EXPERT_NUM_INDEX);
-    OPS_CHECK_NULL_WITH_CONTEXT(context, sharedExpertNum);
-
-    const auto sharedExpertRankNum = attrs->GetAttrPointer<int64_t>(COMBINE_INPUT_ATTR_SHARED_EXPERT_RANK_NUM_INDEX);
-    OPS_CHECK_NULL_WITH_CONTEXT(context, sharedExpertRankNum);
-
-    const auto globalBs = attrs->GetAttrPointer<int64_t>(COMBINE_INPUT_ATTR_GLOBAL_BS_INDEX);
-    OPS_CHECK_NULL_WITH_CONTEXT(context, globalBs);
-
-    const auto commQuantMode = attrs->GetAttrPointer<int64_t>(COMBINE_INPUT_ATTR_COMM_QUANT_MODE_INDEX);
-    OPS_CHECK_NULL_WITH_CONTEXT(context, commQuantMode);
-
-    const auto commType = attrs->GetAttrPointer<int64_t>(COMBINE_INPUT_ATTR_COMM_TYPE_INDEX);
-    OPS_CHECK_NULL_WITH_CONTEXT(context, commType);
+    const auto epWorldSize = Mc2InferShape::GetRequiredInt64Attr(context, COMBINE_INPUT_ATTR_EP_WORLD_SIZE_INDEX);
+    const auto epRankId = Mc2InferShape::GetRequiredInt64Attr(context, COMBINE_INPUT_ATTR_EP_RANK_ID_INDEX);
+    const auto moeExpertNum = Mc2InferShape::GetRequiredInt64Attr(context, COMBINE_INPUT_ATTR_MOE_EXPERT_NUM_INDEX);
+    const auto expertShardType = Mc2InferShape::GetRequiredInt64Attr(context, COMBINE_INPUT_ATTR_EXPERT_SHARD_TYPE_INDEX);
+    const auto sharedExpertNum = Mc2InferShape::GetRequiredInt64Attr(context, COMBINE_INPUT_ATTR_SHARED_EXPERT_NUM_INDEX);
+    const auto sharedExpertRankNum = Mc2InferShape::GetRequiredInt64Attr(context, COMBINE_INPUT_ATTR_SHARED_EXPERT_RANK_NUM_INDEX);
+    const auto globalBs = Mc2InferShape::GetRequiredInt64Attr(context, COMBINE_INPUT_ATTR_GLOBAL_BS_INDEX);
+    const auto commQuantMode = Mc2InferShape::GetRequiredInt64Attr(context, COMBINE_INPUT_ATTR_COMM_QUANT_MODE_INDEX);
+    const auto commType = Mc2InferShape::GetRequiredInt64Attr(context, COMBINE_INPUT_ATTR_COMM_TYPE_INDEX);
 
     int64_t a = ((expandXShape->GetDimNum() == 1U) ? NEG_ONE : expandXShape->GetDim(0));
     int64_t h = ((expandXShape->GetDimNum() == 1U) ? NEG_ONE : expandXShape->GetDim(1));
@@ -124,12 +84,12 @@ static ge::graphStatus InferShapeMoeDistributeCombineSetup(gert::InferShapeConte
     quantExpandXShape->SetDim(0U, a);
     quantExpandXShape->SetDim(1U, hs);
     OP_LOGD(context->GetNodeName(), "quantExpandX shape is :%s after infershape.",
-            Shape2String(*quantExpandXShape).c_str());
+            Mc2InferShape::CombineShapeToString(*quantExpandXShape).c_str());
 
     commCmdInfoShape->SetDimNum(DIM_ONE);
     commCmdInfoShape->SetDim(0U, (a + *epWorldSize) * COMM_CMD_INFO_BASE);
     OP_LOGD(context->GetNodeName(), "commCmdInfo shape is :%s after infershape.",
-            Shape2String(*commCmdInfoShape).c_str());
+            Mc2InferShape::CombineShapeToString(*commCmdInfoShape).c_str());
     OP_LOGD(context->GetNodeName(), "End to do InferShapeMoeDistributeCombineSetup.");
 
     return ge::GRAPH_SUCCESS;

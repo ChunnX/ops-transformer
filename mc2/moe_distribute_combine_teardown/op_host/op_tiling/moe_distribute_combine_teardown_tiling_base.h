@@ -61,6 +61,16 @@ protected:
     ge::graphStatus CheckTensorDataTypeSecondPart() const;
     ge::graphStatus CheckPrimaryTensorFormats() const;
     ge::graphStatus CheckTensorFormat() const;
+
+    template <typename T>
+    const T *GetRequiredAttr(uint32_t index, const char *name) const;
+    ge::graphStatus CheckScalesAndIdxShapeRelation(const gert::StorageShape *expertScalesShape,
+                                                   const gert::StorageShape *expandIdxShape,
+                                                   const gert::StorageShape *xOutShape, int64_t bs, int64_t k) const;
+    ge::graphStatus CheckExpandXDimA(int64_t a, int64_t bs, int64_t k) const;
+    ge::graphStatus CheckInputDescDtype(uint32_t index, const char *name, ge::DataType expected,
+                                        const char *expectedStr) const;
+    ge::graphStatus CheckDescFractalNz(const gert::CompileTimeTensorDesc *desc, const char *name) const;
     ge::graphStatus SetWorkspace();
     ge::graphStatus CheckHcclBuffsize();
     virtual ge::graphStatus SetHcommCfg() = 0;

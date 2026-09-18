@@ -64,7 +64,6 @@ constexpr int64_t URMA_COMM = 2;
 constexpr int64_t QUANT_HS_OFFSET = 4;
 constexpr int64_t MAX_EP_WORLD_SIZE = 4;
 constexpr int64_t BS_UPPER_BOUND = 4;
-constexpr int64_t ALIGN_8 = 8UL;
 constexpr int64_t ALIGN_32 = 32UL;
 constexpr int64_t ALIGN_512 = 512UL;
 constexpr uint32_t AICPUNUM = 4U;
@@ -522,9 +521,7 @@ ge::graphStatus MoeDistributeCombineSetupTilingBase::CheckCalcTensorShapeSizeAnd
                         "Dim0 of assistInfoForCombine must be equal to A * 128"),
                     return ge::GRAPH_FAILED);
 
-    int64_t tokenMsgSizeGolden = ops::CeilAlign(
-        static_cast<int64_t>(ops::CeilAlign(H, ALIGN_32) + ops::CeilAlign(H, ALIGN_8) / ALIGN_8 * sizeof(float)),
-        ALIGN_512);
+    int64_t tokenMsgSizeGolden = mc2tiling::GetQuantTokenMsgSize(H);
     OP_TILING_CHECK(tokenMsgSize != tokenMsgSizeGolden,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "quantExpandXOut",
                                                           (std::string("dim1=") + std::to_string(tokenMsgSize)).c_str(),
