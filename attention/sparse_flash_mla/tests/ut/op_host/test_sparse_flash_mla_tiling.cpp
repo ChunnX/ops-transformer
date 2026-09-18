@@ -95,7 +95,7 @@ TEST_F(SparseFlashMlaTiling, test_tiling_swa_only_ori_kv_fp16_tnd_pa_nd)
         },
         {
             {"softmax_scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.04419417381615906f)},
-            {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"ori_mask_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
             {"cmp_mask_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"ori_win_left", Ops::Transformer::AnyValue::CreateFrom<int64_t>(127)},
@@ -144,7 +144,7 @@ TEST_F(SparseFlashMlaTiling, test_tiling_swa_only_ori_kv_bf16_tnd_pa_nd)
         },
         {
             {"softmax_scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.04419417381615906f)},
-            {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"ori_mask_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
             {"cmp_mask_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"ori_win_left", Ops::Transformer::AnyValue::CreateFrom<int64_t>(127)},
