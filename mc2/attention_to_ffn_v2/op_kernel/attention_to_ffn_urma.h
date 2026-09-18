@@ -897,7 +897,7 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::S
             }
             uint32_t writeStart =
                 static_cast<uint32_t>(tableStart.GetValue(rank)) + static_cast<uint32_t>(writePrefix.GetValue(rank));
-            DataCopyExtParams entryCopyParams{1U, count * sizeof(int32_t), 0U, 0U, 0U};
+            DataCopyExtParams entryCopyParams{1U, static_cast<uint32_t>(count * sizeof(int32_t)), 0U, 0U, 0U};
             DataCopyPad(bucketTablesGM[writeStart], bucketEntries[rank * entriesPerRank_], entryCopyParams);
             writePrefix.SetValue(rank, static_cast<int32_t>(writeStart + count));
         }
@@ -935,7 +935,7 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::R
     // is sent on this channel. All data WQEs of the channel are appended first.
     for (uint32_t chunkStart = 0U; chunkStart < entryCount; chunkStart += entryChunkMax) {
         uint32_t curEntries = (chunkStart + entryChunkMax > entryCount) ? entryCount - chunkStart : entryChunkMax;
-        DataCopyExtParams copyParams{1U, curEntries * sizeof(int32_t), 0U, 0U, 0U};
+        DataCopyExtParams copyParams{1U, static_cast<uint32_t>(curEntries * sizeof(int32_t)), 0U, 0U, 0U};
         SyncFunc<HardEvent::S_MTE2>();
         DataCopyPad(entriesLocal, bucketTablesGM[baseEntry + chunkStart], copyParams, padParams);
         SyncFunc<HardEvent::MTE2_S>();
@@ -968,7 +968,7 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::R
     // per-token flag lands after its data via in-channel WQE ordering.
     for (uint32_t chunkStart = 0U; chunkStart < entryCount; chunkStart += entryChunkMax) {
         uint32_t curEntries = (chunkStart + entryChunkMax > entryCount) ? entryCount - chunkStart : entryChunkMax;
-        DataCopyExtParams copyParams{1U, curEntries * sizeof(int32_t), 0U, 0U, 0U};
+        DataCopyExtParams copyParams{1U, static_cast<uint32_t>(curEntries * sizeof(int32_t)), 0U, 0U, 0U};
         SyncFunc<HardEvent::S_MTE2>();
         DataCopyPad(entriesLocal, bucketTablesGM[baseEntry + chunkStart], copyParams, padParams);
         SyncFunc<HardEvent::MTE2_S>();
@@ -1201,10 +1201,8 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::P
             GlobalTensor<int32_t> countRowGM;
             GM_ADDR countRowAddr = countMatrixBase_ + static_cast<uint64_t>(aivId_) * countRowStride_;
             countRowGM.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(countRowAddr));
-            DataCopyExtParams countCopyParams{1U, rankCountElements_ * sizeof(int32_t), 0U, 0U, 0U};
-            const DataCopyPadExtParams<int32_t> countPadParams{false, 0U, 0U, 0U};
             SyncFunc<HardEvent::S_MTE3>();
-            DataCopyPad(countRowGM, rankCounts, countCopyParams, countPadParams);
+            DataCopy(countRowGM, rankCounts, rankCountElements_);
             SyncFunc<HardEvent::MTE3_S>();
         }
         SyncAll<true>();
