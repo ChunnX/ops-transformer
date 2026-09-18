@@ -1204,14 +1204,9 @@ public:
     {
         return engramCommContext_.rankSize;
     }
-    int64_t GetFetchMode() const
-    {
-        return fetchMode_;
-    }
-
     static at::Tensor EngramFetch(const at::Tensor &context, const at::Tensor &indices, int64_t hiddenSize,
                                   int64_t numEntries, int64_t dtypeEnum, const at::Tensor &sfTable,
-                                  at::Tensor &fetchedSf, int64_t fetchMode = ENGRAM_FETCH_MODE_SLICED);
+                                  at::Tensor &fetchedSf, int64_t fetchMode);
     using EngramFetchTrainOutput = std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor>;
     static EngramFetchTrainOutput EngramFetchTrain(const at::Tensor &context, const at::Tensor &indices,
                                                    int64_t hiddenSize, int64_t numEntries, int64_t dtypeEnum,
@@ -1520,11 +1515,10 @@ ElasticBuffer::EngramFetchTrainOutput ElasticBuffer::EngramFetchTrain(
 
     if (numTokens > 0) {
         constexpr int64_t withGrad = 1;
-        constexpr int64_t fetchModeSliced = ENGRAM_FETCH_MODE_SLICED; // 训练场景仅支持切片跨NPU模式
         aclTensor *nullTensor = nullptr;
         ACLNN_CMD(aclnnEngramFetch, context, indices, localStorageAddr, nullTensor, fetched, perm, sendCounts,
                   recvCounts, recvLocalEntry, numRecv, nullTensor, hiddenSize, numEntries, numMaxTokensPerRank,
-                  commBufferSize, withGrad, fetchModeSliced);
+                  commBufferSize, withGrad, ENGRAM_FETCH_MODE_SLICED); // 训练场景仅支持切片跨NPU模式
     }
     return std::make_tuple(fetched, perm, sendCounts, recvCounts, recvLocalEntry, numRecv);
 }
@@ -1903,15 +1897,13 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
              pybind11::arg("fetchMode") = Mc2Api::ENGRAM_FETCH_MODE_SLICED)
         .def("engram_write", &Mc2Api::ElasticBuffer::EngramWrite, pybind11::arg("storage").noconvert(),
              pybind11::arg("sf") = pybind11::none())
-        .def("get_fetch_mode", &Mc2Api::ElasticBuffer::GetFetchMode)
         .def_static("engram_fetch",
                     static_cast<at::Tensor (*)(const at::Tensor &, const at::Tensor &, int64_t, int64_t, int64_t,
                                                const at::Tensor &, at::Tensor &, int64_t)>(
                         &Mc2Api::ElasticBuffer::EngramFetch),
                     pybind11::arg("context"), pybind11::arg("indices"), pybind11::arg("hidden_size"),
                     pybind11::arg("num_entries"), pybind11::arg("dtype"), pybind11::arg("sf_table"),
-                    pybind11::arg("fetched_sf"),
-                    pybind11::arg("fetch_mode") = Mc2Api::ENGRAM_FETCH_MODE_SLICED)
+                    pybind11::arg("fetched_sf"), pybind11::arg("fetch_mode"))
         .def_static("engram_fetch_train", &Mc2Api::ElasticBuffer::EngramFetchTrain, pybind11::arg("context"),
                     pybind11::arg("indices"), pybind11::arg("hidden_size"), pybind11::arg("num_entries"),
                     pybind11::arg("dtype"), pybind11::arg("local_storage_addr"),
