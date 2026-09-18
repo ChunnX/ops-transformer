@@ -121,6 +121,7 @@ if [ "${task_name}" == "Pre_Compile" ]; then
         exit 0
     fi
     if [ $ret -eq 0 ]; then
+        ls build/ascend910b/all_gather_matmul
         LOG_HEAD "=============opkernel build success========="
         exit 0
     fi
