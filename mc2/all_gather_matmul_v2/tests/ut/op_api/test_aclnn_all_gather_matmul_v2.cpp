@@ -948,7 +948,11 @@ TEST_F(AllGatherMatmulV2AclnnTest, TestCommModeCcu)
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
-TEST_F(AllGatherMatmulV2AclnnTest, TestCommModeEmptyAutoDetect)
+// T8/L2-212：commMode 空串 → 拒绝。op_api CheckAndHandleCommMode 对空串
+// 不匹配 'ccu'/'ai_cpu' 走 ACLNN_ERR_PARAM_INVALID 拒绝分支；tiling
+// AnalyzeAttrs 强校验同样拒绝——两通道行为一致（已闭环）。原用例名
+// TestCommModeEmptyAutoDetect 有误导（暗示"自动检测"），随 T8 重命名对齐。
+TEST_F(AllGatherMatmulV2AclnnTest, TestCommModeEmptyRejected)
 {
     TensorDesc x1 = TensorDesc({8, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc x2 = TensorDesc({256, 512}, ACL_FLOAT16, ACL_FORMAT_ND);
@@ -1429,6 +1433,202 @@ TEST_F(AllGatherMatmulV2AclnnAIVTest, TestAIVRequiredTensorsAllNullptr)
                                                              &executor);     // 必须是有效地址
 
     EXPECT_EQ(ret, ACLNN_ERR_PARAM_NULLPTR);
+}
+
+
+// ====== T6 非量化补例（2.1 §5.3 缺项 + 边界值核对，2026-09-19）======
+// 说明：新增用例统一使用语义正确的 commTurn=0（历史用例位置 10 的 8 为
+// 旧签名 rank_size 残留值，op_api 层不校验 commTurn，维持原样不改）。
+
+// 950 双引擎非量化正例细化：bf16 / ai_cpu
+TEST_F(AllGatherMatmulV2AclnnTest, TestNonQuantBF16AicpuBasic)
+{
+    TensorDesc x1 = TensorDesc({8, 256}, ACL_BF16, ACL_FORMAT_ND);
+    TensorDesc x2 = TensorDesc({256, 512}, ACL_BF16, ACL_FORMAT_ND);
+    TensorDesc output = TensorDesc({8, 512}, ACL_BF16, ACL_FORMAT_ND);
+    TensorDesc gatherOut = TensorDesc({8, 256}, ACL_BF16, ACL_FORMAT_ND);
+    auto ut =
+        OP_API_UT(aclnnAllGatherMatmulV2,
+                  INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 0, 1, 0, "ai_cpu"),
+                  OUTPUT(output, gatherOut, nullptr));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+// 950 双引擎非量化正例细化：bf16 / ccu
+TEST_F(AllGatherMatmulV2AclnnTest, TestNonQuantBF16CcuBasic)
+{
+    TensorDesc x1 = TensorDesc({8, 256}, ACL_BF16, ACL_FORMAT_ND);
+    TensorDesc x2 = TensorDesc({256, 512}, ACL_BF16, ACL_FORMAT_ND);
+    TensorDesc output = TensorDesc({8, 512}, ACL_BF16, ACL_FORMAT_ND);
+    TensorDesc gatherOut = TensorDesc({8, 256}, ACL_BF16, ACL_FORMAT_ND);
+    auto ut =
+        OP_API_UT(aclnnAllGatherMatmulV2,
+                  INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 0, 1, 0, "ccu"),
+                  OUTPUT(output, gatherOut, nullptr));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+// transB 正例（950 CCU/ai_cpu 路径实参形态）：x2 以 (k,n) view + 交换
+// strides (1,k) 传入（IsTransposeLastTwoDims 按 stride 判定；CheckShape 按
+// dim0 取 k 轴）；物理 storage 为 (n,k) 行主序（W.t() 连续）。op_api
+// TransX2Tensor 将其重建为 inner 侧 (n,k) 连续 desc + is_trans_b。
+// x1=(8,256) k=256；逻辑 W=(256,16)：
+//   view shape (k=256, n=16)，strides (1,256)，storage (16,256)。
+TEST_F(AllGatherMatmulV2AclnnTest, TestNonQuantTransBValid)
+{
+    TensorDesc x1 = TensorDesc({8, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc x2 = TensorDesc({256, 16}, ACL_FLOAT16, ACL_FORMAT_ND, {1, 256}, 0, {16, 256});
+    TensorDesc output = TensorDesc({8, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gatherOut = TensorDesc({8, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto ut =
+        OP_API_UT(aclnnAllGatherMatmulV2,
+                  INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 0, 1, 0, "ccu"),
+                  OUTPUT(output, gatherOut, nullptr));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+// k 上界内最大值正例（KVALUE_MAX=65535，k=65534 合法；L1-112 op_api 侧）
+TEST_F(AllGatherMatmulV2AclnnTest, TestFP16K65534Valid)
+{
+    TensorDesc x1 = TensorDesc({137, 65534}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc x2 = TensorDesc({65534, 128}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc output = TensorDesc({137, 128}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gatherOut = TensorDesc({137, 65534}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto ut =
+        OP_API_UT(aclnnAllGatherMatmulV2,
+                  INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 0, 1, 0, "ai_cpu"),
+                  OUTPUT(output, gatherOut, nullptr));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+// k 边界值核对（L2-205）：k=255（恰低于下界 256）→ 拒绝
+TEST_F(AllGatherMatmulV2AclnnTest, TestKAxisBoundary255Rejected)
+{
+    TensorDesc x1 = TensorDesc({8, 255}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc x2 = TensorDesc({255, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc output = TensorDesc({8, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gatherOut = TensorDesc({8, 255}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto ut =
+        OP_API_UT(aclnnAllGatherMatmulV2,
+                  INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 0, 1, 0, "ai_cpu"),
+                  OUTPUT(output, gatherOut, nullptr));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+// k 边界值核对（L2-206）：k=65535（恰达上界，KVALUE_MAX=65535 含边界拒绝）→ 拒绝
+TEST_F(AllGatherMatmulV2AclnnTest, TestKAxisBoundary65535Rejected)
+{
+    TensorDesc x1 = TensorDesc({8, 65535}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc x2 = TensorDesc({65535, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc output = TensorDesc({8, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gatherOut = TensorDesc({8, 65535}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto ut =
+        OP_API_UT(aclnnAllGatherMatmulV2,
+                  INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 0, 1, 0, "ai_cpu"),
+                  OUTPUT(output, gatherOut, nullptr));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+// 非 2 维拒绝（L2-214 补缺）：x1 3 维
+TEST_F(AllGatherMatmulV2AclnnTest, TestX1ThreeDimRejected)
+{
+    TensorDesc x1 = TensorDesc({8, 8, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc x2 = TensorDesc({256, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc output = TensorDesc({8, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gatherOut = TensorDesc({8, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto ut =
+        OP_API_UT(aclnnAllGatherMatmulV2,
+                  INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 0, 1, 0, "ai_cpu"),
+                  OUTPUT(output, gatherOut, nullptr));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+// x2 空 tensor（k≠0）拒绝（L2-219 补缺）：x2=(0,n) 而 x1.k=256 ≠ 0
+TEST_F(AllGatherMatmulV2AclnnTest, TestEmptyX2WithNonZeroK)
+{
+    TensorDesc x1 = TensorDesc({8, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc x2 = TensorDesc({0, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc output = TensorDesc({8, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gatherOut = TensorDesc({8, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto ut =
+        OP_API_UT(aclnnAllGatherMatmulV2,
+                  INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 0, 1, 0, "ai_cpu"),
+                  OUTPUT(output, gatherOut, nullptr));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+// L2-213（非 transB 非连续 x2，950 CCU）——T-A5 落地（2.1 v2 §4.3/§7.2；
+// 2.2 V2-B4 行为现状声明，CP2.1 v2 裁定：冻结 ≤ CP3、依据须源码级核实）：
+// 源码实证（aclnn_all_gather_matmul_v2.cpp L634-640）——非 transB 非连续 x2 的
+// 显式拒绝仅在 DAV_2201/AIV 分支（GetCurNpuArch()==DAV_2201 条件下
+// IsTensorContiguous(x2) 校验）；950/CCU 分支无该校验，实参按 stride 由 kernel
+// 解释。期望（源码核实 + mock 平台实测回填）：接口层不拒绝（ACLNN_SUCCESS）。
+// 端到端数值行为（stride 语义正确性）待有卡环境验证（B9-⑤ 长期待办）。
+// mock 实测回填（T-A5 冻结依据）：本用例返回 361001=ACLNN_ERR_RUNTIME_ERROR，
+// 触发链为 nnopbase NnopbaseCreateExecutorSpace→NnopbaseInit→
+// aclrtCtxGetFloatOverflowAddr（107002 context null，无卡环境依赖）——套件内
+// 所有放行型用例同此（断言约定 EXPECT_NE(·, ACLNN_ERR_PARAM_INVALID)）；
+// op_api 校验链放行非 transB 非连续 x2（未触发 161002），V2-B4 声明成立。
+TEST_F(AllGatherMatmulV2AclnnTest, TestCCUNonContiguousX2WithoutTranspose)
+{
+    TensorDesc x1 = TensorDesc({32, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc x2 = TensorDesc({256, 128}, ACL_FLOAT16, ACL_FORMAT_ND, {128 + 10, 1}, 0, {256, 128 + 10});
+    TensorDesc output = TensorDesc({32, 128}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gatherOut = TensorDesc({32, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto ut =
+        OP_API_UT(aclnnAllGatherMatmulV2,
+                  INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "ccu"),
+                  OUTPUT(output, gatherOut, nullptr));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    // 接口层不拒绝（非 PARAM_INVALID 即放行；mock 无卡环境 inner 恒返 361001）
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+
+// ====== 3.3 白盒补例：CheckFormat 非 ND 拒绝分支族（L176-206）======
+// x1/x2/output/bias/gatherOut/amaxOut 六处同构「仅支持 ND」校验；既有
+// 3510 fixture 全为 ACL_FORMAT_ND（tiling 层仅有 x1 fractal_nz 行），以
+// x1 ACL_FORMAT_FRACTAL_NZ 为代表覆盖该分支族。
+TEST_F(AllGatherMatmulV2AclnnTest, TestNonNDFormatRejected)
+{
+    TensorDesc x1 = TensorDesc({8, 256}, ACL_FLOAT16, ACL_FORMAT_FRACTAL_NZ);
+    TensorDesc x2 = TensorDesc({256, 512}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc output = TensorDesc({8, 512}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gatherOut = TensorDesc({8, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto ut =
+        OP_API_UT(aclnnAllGatherMatmulV2,
+                  INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 0, 1, 0, "ai_cpu"),
+                  OUTPUT(output, gatherOut, nullptr));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 } // namespace

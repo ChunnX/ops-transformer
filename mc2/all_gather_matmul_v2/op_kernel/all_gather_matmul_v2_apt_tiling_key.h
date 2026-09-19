@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file all_gather_matmul_v2_apt_tiling_key.h
@@ -46,6 +46,10 @@ namespace Mc2Tiling {
 #endif
 
 // 模板参数
+// 位序口径（V2-B1/R13）：CANN FastEncodeTilingKeyDirect（tiling/template_argument.h）按声明顺序正序编码、
+// 先声明占低位（tilingKey |= encodeVal << totalBits 逐维累进）。R13 起非量化恒 APACE，USING_APACE_IMPL
+// 维度整体删除，tiling key 回落 6 维编码——非量化 key 回落旧编码值（257/259/1/3，TRANS_B ×
+// HCCL_COMM_MODE 组合），量化 key 不变。
 ASCENDC_TPL_ARGS_DECL(Mc2AllGatherMatmulV2Apt, // 算子OpType
                       ASCENDC_TPL_BOOL_DECL(INPUT_IS_BF16FP16, 0, 1), ASCENDC_TPL_BOOL_DECL(TRANS_B, 0, 1),
                       ASCENDC_TPL_UINT_DECL(OUTPUTDTYPE, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST,
@@ -64,21 +68,26 @@ ASCENDC_TPL_ARGS_DECL(Mc2AllGatherMatmulV2Apt, // 算子OpType
 
 // 模板参数组合
 // 用于调用GET_TPL_TILING_KEY获取TilingKey时，接口内部校验TilingKey是否合法
+// 核型逐组合声明（a2a 范式，KERNEL_TYPE_SEL 为 ARGS_SEL 首参）：非量化组合 AIC_ONLY（R13，
+// 恒 APACE、无 AIV block）；量化组合 MIX_AIC_1_2（行为不变）
 ASCENDC_TPL_SEL(
-    // base_tiling
-    ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_BOOL_SEL(INPUT_IS_BF16FP16, 1), ASCENDC_TPL_BOOL_SEL(TRANS_B, 0, 1),
+    // base_tiling: INPUT_IS_BF16FP16(1) x TRANS_B(0,1) x OUTPUTDTYPE(FP16_BF16)，AIC_ONLY（R13 非量化恒 APACE）
+    ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_KERNEL_TYPE_SEL(ASCENDC_TPL_AIC_ONLY), ASCENDC_TPL_BOOL_SEL(INPUT_IS_BF16FP16, 1),
+                         ASCENDC_TPL_BOOL_SEL(TRANS_B, 0, 1),
                          ASCENDC_TPL_UINT_SEL(OUTPUTDTYPE, ASCENDC_TPL_UI_LIST, OUTPUT_TYPE_IS_FP16_BF16),
                          SET_NOT_USE_QUANT_BMM_SEL),
 
-    // quant_bmm_tiling
+    // quant_bmm_tiling: MIX_AIC_1_2（量化不走 APACE，组合不变）
     ASCENDC_TPL_ARGS_SEL(
-        ASCENDC_TPL_BOOL_SEL(INPUT_IS_BF16FP16, 0), ASCENDC_TPL_BOOL_SEL(TRANS_B, 0, 1),
+        ASCENDC_TPL_KERNEL_TYPE_SEL(ASCENDC_TPL_MIX_AIC_1_2), ASCENDC_TPL_BOOL_SEL(INPUT_IS_BF16FP16, 0),
+        ASCENDC_TPL_BOOL_SEL(TRANS_B, 0, 1),
         ASCENDC_TPL_UINT_SEL(OUTPUTDTYPE, ASCENDC_TPL_UI_LIST, OUTPUT_TYPE_IS_FP16_BF16, OUTPUT_TYPE_IS_FLOAT),
         ASCENDC_TPL_UINT_SEL(QUANTMMMODE, ASCENDC_TPL_UI_LIST, TPL_DEFAULT_MODE),
         ASCENDC_TPL_UINT_SEL(SCALETYPE, ASCENDC_TPL_UI_LIST, SCALE_TYPE_IS_MX),
         ASCENDC_TPL_UINT_SEL(HCCL_COMM_MODE, ASCENDC_TPL_UI_LIST, HCCL_COMM_MODE_CCU, HCCL_COMM_MODE_AICPU)),
     ASCENDC_TPL_ARGS_SEL(
-        ASCENDC_TPL_BOOL_SEL(INPUT_IS_BF16FP16, 0), ASCENDC_TPL_BOOL_SEL(TRANS_B, 0, 1),
+        ASCENDC_TPL_KERNEL_TYPE_SEL(ASCENDC_TPL_MIX_AIC_1_2), ASCENDC_TPL_BOOL_SEL(INPUT_IS_BF16FP16, 0),
+        ASCENDC_TPL_BOOL_SEL(TRANS_B, 0, 1),
         ASCENDC_TPL_UINT_SEL(OUTPUTDTYPE, ASCENDC_TPL_UI_LIST, OUTPUT_TYPE_IS_FP16_BF16, OUTPUT_TYPE_IS_FLOAT),
         ASCENDC_TPL_UINT_SEL(QUANTMMMODE, ASCENDC_TPL_UI_LIST, TPL_DEFAULT_MODE, TPL_PERBLOCK_MODE),
         ASCENDC_TPL_UINT_SEL(SCALETYPE, ASCENDC_TPL_UI_LIST, SCALE_TYPE_NOT_IS_MX),
