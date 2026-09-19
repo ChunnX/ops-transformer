@@ -172,8 +172,6 @@ private:
     __aicore__ inline void LoadX2CacheTile(uint32_t tOff, uint32_t tD);
     __aicore__ inline void CacheHInTile(uint32_t tOff, uint32_t tD, LocalTensor<float> hIn);
     __aicore__ inline void LoadHInCacheTile(uint32_t tOff, uint32_t tD, LocalTensor<float> hIn);
-    template<bool LOAD_X2>
-    __aicore__ inline float ComputeR6Tile(uint32_t tOff, uint32_t tD, const float (&gate)[N_MAX]);
     __aicore__ inline void AccumulateHalfPartials(uint32_t tOff, uint32_t tD,
         float (&sumSqHalf)[2], float (&dotHalf)[2][N_MAX]);
 

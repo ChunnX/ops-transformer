@@ -97,28 +97,6 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     PipeBarrier<PIPE_V>();
 }
 
-// 计算一个R6分片并返回该分片的平方和。最后完成R4/R5的x2分片仍驻留在FP32缓存时，
-// 由模板参数在编译期删除重复的低精度恢复。
-template<typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32>
-template<bool LOAD_X2>
-__aicore__ inline float KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32>::ComputeR6Tile(
-    uint32_t tOff, uint32_t tD, const float (&gate)[N_MAX])
-{
-    if constexpr (LOAD_X2) {
-        LoadX2CacheTile(tOff, tD);
-    }
-    LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
-    LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-    Muls(hIn, x2, gate[0], tD);
-    PipeBarrier<PIPE_V>();
-    for (uint32_t n = 1; n < N_MAX; ++n) {
-        Axpy(hIn, x2[n * dimTile_], gate[n], tD);
-        PipeBarrier<PIPE_V>();
-    }
-    CacheHInTile(tOff, tD, hIn);
-    return ReduceSumSq(hIn, tD);
-}
-
 // 固定的R4/R5归约树将与双sibling AIV路径共用。half0固定覆盖展平区间[0,2D)，
 // half1固定覆盖[2D,4D)，调用方只执行一次顶层合并partial0+partial1。
 template<typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32>
@@ -324,21 +302,20 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     // 第三遍：计算R6和h_in低精度边界。在完整D轴的R7标量确定前，
     // 复用已经消费完的x2缓存首段保存低精度h_in。
     float sumSq1 = 0.0f;
-    if (dimLoop_ == 1) {
-        // 单分片仍驻留在FP32缓存，直接进入R6。
-        sumSq1 = ComputeR6Tile<false>(0, GetTileD(0), gate);
-    } else if (dimLoop_ == 2 && lastDimTile_ == 0) {
-        // 目标D=5120先消费仍驻留的tile1，再恢复tile0；最终仍按tile0+tile1合并，
-        // 保持原标量归约顺序不变。
-        const float sumSqTile1 = ComputeR6Tile<false>(dimTile_, dimTile_, gate);
-        const float sumSqTile0 = ComputeR6Tile<true>(0, dimTile_, gate);
-        sumSq1 = sumSqTile0 + sumSqTile1;
-    } else {
-        for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
-            const uint32_t tD = GetTileD(tile);
-            const uint32_t tOff = tile * dimTile_;
-            sumSq1 += ComputeR6Tile<true>(tOff, tD, gate);
+    for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
+        const uint32_t tD = GetTileD(tile);
+        const uint32_t tOff = tile * dimTile_;
+        LoadX2CacheTile(tOff, tD);
+        LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
+        LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
+        Muls(hIn, x2, gate[0], tD);
+        PipeBarrier<PIPE_V>();
+        for (uint32_t n = 1; n < N_MAX; ++n) {
+            Axpy(hIn, x2[n * dimTile_], gate[n], tD);
+            PipeBarrier<PIPE_V>();
         }
+        CacheHInTile(tOff, tD, hIn);
+        sumSq1 += ReduceSumSq(hIn, tD);
     }
 
     // 第四遍：沿完整D轴计算R7并写最终输出。
