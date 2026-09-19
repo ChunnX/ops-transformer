@@ -19,11 +19,19 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::ComputeX2PostTile(
     const float (&postVals)[N_MAX], const float (&combVals)[N_MAX * N_MAX])
 {
     LoadHOutAndCast((uint64_t)token * D_ + tOff, tD);
-    LoadGammaInto(bufGamma0Fp32_.Get<float>(), gamma0Gm_, tOff, tD);
-    SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
-    WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-    ApplyScaleAndGamma(bufHOutFp32_.Get<float>(), invRms0, bufGamma0Fp32_.Get<float>(), tD);
-    FenceVToMte2();
+    LocalTensor<float> gamma0 = bufGamma0Fp32_.Get<float>();
+    if (D_ == 5120U) {
+        gamma0 = gamma0[tOff];
+    } else {
+        LoadGammaInto(gamma0, gamma0Gm_, tOff, tD);
+        SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+        WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
+    }
+    ApplyScaleAndGamma(bufHOutFp32_.Get<float>(), invRms0, gamma0, tD);
+    // 常驻路径只在最后一块消费完成后允许MTE2覆盖gamma0缓存。
+    if (D_ != 5120U || tOff + tD == D_) {
+        FenceVToMte2();
+    }
     QuantizeRoundTrip(bufHOutFp32_.Get<float>(), tD);
 
     LoadResidualAndCast((uint64_t)token * N_ * D_ + tOff, tD);
@@ -217,9 +225,17 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::ProcessTokenSingleAi
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
         LoadHOutAndCast((uint64_t)token * D_ + tOff, tD);
+        // 在首块RMSNorm_0归约期间搬运完整gamma0，隐藏后续第二遍的MTE2等待。
+        if (D_ == 5120U && tile == 0U) {
+            LoadGammaInto(bufGamma0Fp32_.Get<float>(), gamma0Gm_, 0U, D_);
+        }
         sumSq0 += ReduceSumSq(bufHOutFp32_.Get<float>(), tD);
     }
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
+    if (D_ == 5120U) {
+        SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+        WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
+    }
 
     // 第二遍：计算R1/R2和第一处x2低精度边界。完整x2以输出dtype常驻UB，
     // 避免后续两遍从GM回读，同时不分配完整FP32 x2工作空间。
