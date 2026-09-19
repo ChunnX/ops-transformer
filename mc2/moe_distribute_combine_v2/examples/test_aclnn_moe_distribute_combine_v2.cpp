@@ -20,6 +20,9 @@
 #include <vector>
 #include <memory>
 #include <cstdio>
+#include <cstdlib>
+#include <cerrno>
+#include <climits>
 #include "acl/acl.h"
 #include "hccl/hccl.h"
 #include "aclnn/opdev/fp16_t.h"
@@ -48,13 +51,10 @@ struct Args {
 };
 
 const uint32_t MACHINE_NUM = 1;
-const char *env_dev_num = std::getenv("ENV_DEV_NUM");
 
 const uint32_t EP_WORLD_SIZE = 2;
 const uint32_t DEV_NUM = EP_WORLD_SIZE;
 
-const bool IS_TEST_A2 = false;
-const bool IS_TEST_A3A5 = true;
 const uint32_t EP_WORLD_SIZE_A2 = 8;
 const uint32_t DEV_NUM_A2 = EP_WORLD_SIZE_A2;
 
@@ -642,6 +642,7 @@ int run_example_on_A2()
 
     Args args[DEV_NUM_A2];
     std::vector<std::unique_ptr<std::thread>> threads(DEV_NUM_A2);
+    std::vector<int> results(DEV_NUM_A2, EXIT_SUCCESS);
     for (uint32_t rankId = 0; rankId < DEV_NUM_A2; rankId++) {
         uint32_t epRankId = rankId;
 
@@ -651,17 +652,25 @@ int run_example_on_A2()
         args[rankId].dispatchV2Stream = dispatchV2Stream[rankId];
         args[rankId].combineV2Stream = combineV2Stream[rankId];
         args[rankId].context = context[rankId];
-        threads[rankId].reset(new (std::nothrow)
-                                  std::thread(&launchOneThreadDispatchV2AndCombineV2_A2, std::ref(args[rankId])));
+        threads[rankId].reset(new std::thread([&args, &results, rankId]() {
+            results[rankId] = launchOneThreadDispatchV2AndCombineV2_A2(args[rankId]);
+        }));
     }
 
     for (uint32_t rankId = 0; rankId < DEV_NUM_A2; rankId++) {
         threads[rankId]->join();
     }
 
-    aclFinalize();
+    ret = aclFinalize();
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclFinalize failed, ret = %d\n", ret); return ret);
     LOG_PRINT("[INFO] aclFinalize success\n");
-    return 0;
+    for (size_t rankId = 0; rankId < results.size(); ++rankId) {
+        if (results[rankId] != ACL_SUCCESS) {
+            LOG_PRINT("[ERROR] rank %zu failed, ret = %d\n", rankId, results[rankId]);
+            return EXIT_FAILURE;
+        }
+    }
+    return EXIT_SUCCESS;
 }
 
 int run_example_on_A3A5()
@@ -695,6 +704,7 @@ int run_example_on_A3A5()
     Args args[DEV_NUM];
     // 各线程调用各卡执行算子
     std::vector<std::unique_ptr<std::thread>> threads(DEV_NUM);
+    std::vector<int> results(DEV_NUM, EXIT_SUCCESS);
     for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
         uint32_t epRankId = rankId;
 
@@ -704,36 +714,58 @@ int run_example_on_A3A5()
         args[rankId].dispatchV2Stream = dispatchV2Stream[rankId];
         args[rankId].combineV2Stream = combineV2Stream[rankId];
         args[rankId].context = context[rankId];
-        threads[rankId].reset(new (std::nothrow)
-                                  std::thread(&launchOneThreadDispatchV2AndCombineV2_A3A5, std::ref(args[rankId])));
+        threads[rankId].reset(new std::thread([&args, &results, rankId]() {
+            results[rankId] = launchOneThreadDispatchV2AndCombineV2_A3A5(args[rankId]);
+        }));
     }
     for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
         threads[rankId]->join();
     }
-    aclFinalize();
+    ret = aclFinalize();
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclFinalize failed, ret = %d\n", ret); return ret);
     LOG_PRINT("[INFO] aclFinalize success\n");
-    return 0;
+    for (size_t rankId = 0; rankId < results.size(); ++rankId) {
+        if (results[rankId] != ACL_SUCCESS) {
+            LOG_PRINT("[ERROR] rank %zu failed, ret = %d\n", rankId, results[rankId]);
+            return EXIT_FAILURE;
+        }
+    }
+    return EXIT_SUCCESS;
 }
 
-int main(int argc, char *argv[])
+int main()
 {
-    if (!env_dev_num) {
-        LOG_PRINT("[ERROR] Please check whether environment variable ENV_DEV_NUM is set correctly.\n");
-        LOG_PRINT("[WARNING] For details related to ENV_DEV_NUM, see aclnnMoeDistributeCombineV2.md.\n");
-        return 0;
+    // This switch selects the sample inputs; build.sh --soc does not change them.
+    const char *platform = std::getenv("MOE_COMBINE_EXAMPLE_PLATFORM");
+    // Preserve the original A3/A5 default for existing callers.
+    if (platform == nullptr || *platform == '\0') {
+        platform = "A3A5";
     }
-    int actual_env_dev_num = std::stoi(std::string(env_dev_num));
-    if (actual_env_dev_num < DEV_NUM) {
-        LOG_PRINT("[INFO] ENV_DEV_NUM = %d is less than %d, currently not supported\n", actual_env_dev_num, DEV_NUM);
-        return 0;
-    }
-    if (IS_TEST_A2) {
-        LOG_PRINT("Example on <Atlas A2> will be executed!\n");
-        int ret = run_example_on_A2();
-    } else if (IS_TEST_A3A5) {
-        LOG_PRINT("Example on <Atlas A3> or <Atlas A5> will be executed!\n");
-        int ret = run_example_on_A3A5();
+    const bool isA2 = std::strcmp(platform, "A2") == 0;
+    if (!isA2 && std::strcmp(platform, "A3A5") != 0) {
+        LOG_PRINT("[ERROR] MOE_COMBINE_EXAMPLE_PLATFORM must be A2 or A3A5.\n");
+        return EXIT_FAILURE;
     }
 
-    return 0;
+    const char *envDevNum = std::getenv("ENV_DEV_NUM");
+    if (envDevNum == nullptr || *envDevNum == '\0') {
+        LOG_PRINT("[ERROR] Set ENV_DEV_NUM to the number of available logical devices.\n");
+        return EXIT_FAILURE;
+    }
+    char *end = nullptr;
+    errno = 0;
+    const long actualDevNum = std::strtol(envDevNum, &end, 10);
+    const uint32_t requiredDevNum = isA2 ? DEV_NUM_A2 : DEV_NUM;
+    if (errno != 0 || *end != '\0' || actualDevNum <= 0 || actualDevNum > INT_MAX) {
+        LOG_PRINT("[ERROR] ENV_DEV_NUM must be a positive integer.\n");
+        return EXIT_FAILURE;
+    }
+    if (actualDevNum < static_cast<long>(requiredDevNum)) {
+        LOG_PRINT("[ERROR] %s sample requires %u logical devices (IDs 0-%u), ENV_DEV_NUM = %ld.\n",
+                  platform, requiredDevNum, requiredDevNum - 1, actualDevNum);
+        return EXIT_FAILURE;
+    }
+    LOG_PRINT("[INFO] Running %s sample on %u logical devices.\n", platform, requiredDevNum);
+    const int ret = isA2 ? run_example_on_A2() : run_example_on_A3A5();
+    return ret == ACL_SUCCESS ? EXIT_SUCCESS : EXIT_FAILURE;
 }

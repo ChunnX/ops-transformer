@@ -13,7 +13,7 @@
  * \brief
  */
 
-#include "register/op_def_registry.h"
+#include "../../common/op_host/mc2_combine_registration.h"
 
 namespace ops {
 class MoeDistributeCombineSetup : public OpDef {
@@ -25,17 +25,7 @@ public:
         DefineOutputs();
         DefineAttributes();
 
-        OpAICoreConfig aicore_config;
-        aicore_config.DynamicCompileStaticFlag(true)
-            .DynamicFormatFlag(true)
-            .DynamicRankSupportFlag(true)
-            .DynamicShapeSupportFlag(true)
-            .NeedCheckSupportFlag(false)
-            .PrecisionReduceFlag(true)
-            .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
-            .ExtendCfgInfo("prebuildPattern.value", "Opaque")
-            .ExtendCfgInfo("jitCompile.flag", "static_false")
-            .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
+        auto aicore_config = Mc2OpDef::BuildCombineAICoreConfig("static_false");
 
         this->AICore().AddConfig("ascend950", aicore_config);
         this->MC2().HcclGroup({"group_ep"});
@@ -80,18 +70,8 @@ private:
 
     void DefineAttributes()
     {
-        this->Attr("group_ep").AttrType(REQUIRED).String();
-        this->Attr("ep_world_size").AttrType(REQUIRED).Int();
-        this->Attr("ep_rank_id").AttrType(REQUIRED).Int();
-        this->Attr("moe_expert_num").AttrType(REQUIRED).Int();
-        this->Attr("expert_shard_type").AttrType(OPTIONAL).Int(0);
-        this->Attr("shared_expert_num").AttrType(OPTIONAL).Int(1);
-        this->Attr("shared_expert_rank_num").AttrType(OPTIONAL).Int(0);
-        this->Attr("global_bs").AttrType(OPTIONAL).Int(0);
-        this->Attr("comm_quant_mode").AttrType(OPTIONAL).Int(0);
-        this->Attr("comm_type").AttrType(OPTIONAL).Int(0);
-        this->Attr("comm_alg").AttrType(OPTIONAL).String("");
-    }
+        Mc2OpDef::DefineCombineStageAttributes(*this);
+}
 };
 
 OP_ADD(MoeDistributeCombineSetup);

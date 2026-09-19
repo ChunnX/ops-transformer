@@ -430,3 +430,42 @@
 | 调用方式  | 样例代码                                  | 说明                                                     |
 | :--------: | :----------------------------------------: | :-------------------------------------------------------: |
 | aclnn接口 | [test_aclnn_moe_distribute_combine_v2.cpp](./examples/test_aclnn_moe_distribute_combine_v2.cpp) | 通过[aclnnMoeDistributeCombineV2](./docs/aclnnMoeDistributeCombineV2.md)接口方式调用moe_distribute_combine_v2算子。 |
+
+
+### 运行自定义算子包示例（Atlas A2）
+
+该示例先调用 `MoeDistributeDispatchV2`，再调用 `MoeDistributeCombineV2`，用于验证通信和算子调用流程，不包含完整的数值精度对比。运行环境需提供配套的 DispatchV2 头文件、库和 kernel；仅安装 combine 算子包不意味着已安装 DispatchV2。
+
+1. 在实际运行的容器中安装本次构建的自定义算子包，并加载 CANN 和算子包环境。以下假设包通过 `--install-path="${ASCEND_OPP_PATH}"` 安装，且构建时使用默认 `--vendor_name=custom`：
+
+   ```bash
+   # 按实际安装路径调整；先加载 CANN，再加载自定义包环境。
+   source /root/cann-9.3.0/set_env.sh
+   source "${ASCEND_OPP_PATH}/vendors/custom_transformer/bin/set_env.bash"
+   ```
+
+2. 确认容器可访问 A2 示例使用的 8 个逻辑设备（编号 0～7），设置示例参数：
+
+   ```bash
+   export ENV_DEV_NUM=8
+   ```
+
+   `MOE_COMBINE_EXAMPLE_PLATFORM` 未设置或为空时保留原有 `A3A5` 默认分支，已有调用无需新增平台变量。A2 必须显式设置为 `A2`；设置为 `A3A5` 可显式选择原有分支。建议像下面的命令一样仅为本次运行设置平台变量，避免影响后续测试。`--soc` 控制构建配置，不会自动切换此运行参数。A3/A5 分支保留原有 2 个逻辑设备和输入配置；切换前需按目标产品的约束检查通信域大小及输入参数，不能仅切换平台变量就认定适配所有 A3/A5 场景。
+
+   `ENV_DEV_NUM` 表示环境可用的逻辑设备数，必须是正整数，且不小于所选示例要求的设备数。它不会改变示例的通信域大小，也不会增加实际可用设备。A2 分支固定使用 8 个逻辑设备；不足 8 个设备时不能直接运行本示例。
+
+3. 在仓库根目录运行：
+
+   ```bash
+   set -o pipefail
+   MOE_COMBINE_EXAMPLE_PLATFORM=A2 \
+   bash build.sh --run_example moe_distribute_combine_v2 eager cust \
+       --vendor_name=custom \
+       --soc=ascend910b 2>&1 | tee /tmp/combine_v2_example.log
+   ```
+
+   `--run_example` 后的算子名、`eager` 和 `cust` 是位置参数，不要用 `--ops=` 替代。`cust` 使示例链接已安装自定义包的 `libcust_opapi.so`。修改示例后重新执行此命令即可编译示例，无需仅为示例改动重新打包安装算子。
+
+检查各 rank 的执行日志和命令退出状态。示例对无效平台、缺失/非法/不足的 `ENV_DEV_NUM` 返回非零状态，并汇总工作线程的执行返回值；初始化、工作线程或最终 `aclFinalize` 返回失败时，进程返回非零状态。设备或通信故障仍可能导致等待/超时，应结合日志排查。更新算子包后应重新启动示例或业务进程。
+
+兼容性说明：本次仅调整 CombineV2 示例及其运行说明，不修改 `build.sh`、算子实现或其他算子示例。A2/A3A5 原有输入、通信域大小和设备编号保持不变。失败退出状态的修正是有意的行为变化：过去可能返回成功的配置错误或执行失败现在返回非零状态，依赖“失败也返回 0”的脚本需相应调整；成功路径仍返回 0。
