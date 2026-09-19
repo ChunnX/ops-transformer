@@ -41,11 +41,8 @@ ge::graphStatus CalcMoeEpWindowLayout(const MoeEpWindowLayoutParams &params, Moe
     const uint64_t countNotifySize = epWorldSize * MOE_EP_WIN_ALIGN;
     const uint64_t expertCountSize = epWorldSize * AlignMoeEpWin(params.localExpertNum * sizeof(int32_t));
 
-    uint64_t notifySlots = MOE_EP_CHANNEL_BUDGET / (epWorldSize - 1UL);
-    if (notifySlots > MOE_EP_DISPATCH_NOTIFY_COUNT) {
-        notifySlots = MOE_EP_DISPATCH_NOTIFY_COUNT;
-    }
-    layout.dispatchNotifyCount = static_cast<uint32_t>(notifySlots == 0UL ? 1UL : notifySlots);
+    // Completion slots describe physical Jetty owners, not per-rank lanes.
+    layout.dispatchNotifyCount = static_cast<uint32_t>(MOE_EP_DISPATCH_NOTIFY_COUNT);
 
     layout.cntWinStateOffset = MOE_EP_FIXED_PREFIX_BYTES;
     layout.cntWinStateSize = countNotifySize + expertCountSize;
@@ -54,11 +51,11 @@ ge::graphStatus CalcMoeEpWindowLayout(const MoeEpWindowLayoutParams &params, Moe
     layout.payloadWinStateOffset = layout.slotWinStateOffset + layout.dispatchSlotStateSize;
     layout.payloadWinStateSize = layout.dispatchNotifyCount * MOE_EP_WIN_ALIGN;
     layout.combineStateWinOffset = layout.payloadWinStateOffset + layout.payloadWinStateSize;
+    const uint64_t combineFlagCount = epWorldSize * MOE_EP_JETTY_COUNT;
     const uint64_t combineReceiveStateSize =
-        nmt * topK * MOE_EP_WIN_ALIGN + MOE_EP_COMBINE_FLAG_COUNT * MOE_EP_WIN_ALIGN;
+        nmt * topK * MOE_EP_WIN_ALIGN + combineFlagCount * MOE_EP_WIN_ALIGN;
     layout.combineFlagSourceWinOffset = layout.combineStateWinOffset + combineReceiveStateSize;
-    // The non-inline asynchronous completion write must read from persistent window storage, not op workspace.
-    // This source is separate from the receive flags cleared by Combine Epilogue.
+    // Non-inline asynchronous completion writes read this persistent constant rather than reusable op workspace.
     layout.combineStateWinSize = combineReceiveStateSize + MOE_EP_WIN_ALIGN;
 
     const uint64_t dataBase = layout.combineStateWinOffset + layout.combineStateWinSize;

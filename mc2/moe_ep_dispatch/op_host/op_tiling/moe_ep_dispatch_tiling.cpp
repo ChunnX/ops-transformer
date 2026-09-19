@@ -534,9 +534,11 @@ static ge::graphStatus CheckCommAttr(const gert::TilingContext *context, const c
                     return ge::GRAPH_FAILED);
 
     int64_t epWorldSize = *epWorldSizePtr;
-    OP_TILING_CHECK(epWorldSize != Mc2Aclnn::MOE_SHARED_JETTY_WORLD_SIZE,
-                    OP_LOGE(nodeName, "Shared Jetty requires ep_world_size=%u, but got %ld.",
-                            Mc2Aclnn::MOE_SHARED_JETTY_WORLD_SIZE, epWorldSize),
+    OP_TILING_CHECK(epWorldSize < Mc2Aclnn::MOE_SHARED_JETTY_MIN_RANK_SIZE ||
+                        epWorldSize > Mc2Aclnn::MOE_SHARED_JETTY_MAX_RANK_SIZE,
+                    OP_LOGE(nodeName, "Shared Jetty requires ep_world_size in [%u, %u], but got %ld.",
+                            Mc2Aclnn::MOE_SHARED_JETTY_MIN_RANK_SIZE,
+                            Mc2Aclnn::MOE_SHARED_JETTY_MAX_RANK_SIZE, epWorldSize),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         (*epRankIdPtr < 0) || (*epRankIdPtr >= epWorldSize),
@@ -624,7 +626,7 @@ static uint64_t BuildDispatchWorkspaceLayout(MoeEpDispatchInfo &info)
     uint64_t aivNum = static_cast<uint64_t>(info.aivNum);
     uint64_t numTokens = static_cast<uint64_t>(info.cfg.numTokens);
 
-    // counter 区: [aivNum][epAlignWin] 布局，每核写自己的行
+    // Reserve [aivNum][epAlignWin]; prepare core i writes logical row i, leaving 32 sender-only rows unused.
     uint64_t epAlignWinBytes = AlignUpWin(epWorldSize * sizeof(int32_t));
     uint64_t counterBytes = aivNum * epAlignWinBytes;
 
@@ -684,6 +686,7 @@ static ge::graphStatus BuildAndCheckWindowLayout(const gert::TilingContext *cont
     info.window.payloadWinStateOffset = layout.payloadWinStateOffset;
     info.window.winDataOffset = layout.winDataOffset;
     info.window.payloadStashWinOffset = layout.payloadStashWinOffset;
+    info.window.completionFlagSourceWinOffset = layout.combineFlagSourceWinOffset;
     OP_LOGD(nodeName, "windowSize = %lu, requiredBytes = %lu", maxWindowSize, layout.requiredBytes);
     return ge::GRAPH_SUCCESS;
 }
@@ -750,6 +753,14 @@ static ge::graphStatus MoeEpDispatchTilingFunc(gert::TilingContext *context)
                     OP_LOGE(nodeName, "Check output tensor failed."), return ge::GRAPH_FAILED);
 
     SetPlatformInfo(context, info, nodeName);
+    OP_TILING_CHECK(info.aivNum <= Mc2Aclnn::MOE_SHARED_JETTY_NUM,
+                    OP_LOGE(nodeName, "Shared Jetty dispatch requires %u sender AIVs and at least one prepare "
+                                      "AIV, but got %u AIVs.", Mc2Aclnn::MOE_SHARED_JETTY_NUM, info.aivNum),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(info.aivNum > MOE_EP_PER_CORE_DIAG_SLOT_COUNT,
+                    OP_LOGE(nodeName, "aiv_num=%u exceeds diagnostic slot capacity %lu.", info.aivNum,
+                            MOE_EP_PER_CORE_DIAG_SLOT_COUNT),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(BuildAndCheckWindowLayout(context, info, nodeName) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Check window size failed."), return ge::GRAPH_FAILED);
 

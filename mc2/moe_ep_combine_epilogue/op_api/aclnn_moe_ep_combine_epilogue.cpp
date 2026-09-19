@@ -32,7 +32,9 @@ static aclnnStatus CheckNotNull(const aclTensor *context, const aclTensor *x, co
 static aclnnStatus CheckParams(int64_t epWorldSize, int64_t epRankId, int64_t numExperts, int64_t numMaxTokensPerRank,
                                int64_t cclBufferSize)
 {
-    CHECK_RET(epWorldSize == Mc2Aclnn::MOE_SHARED_JETTY_WORLD_SIZE, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(epWorldSize >= Mc2Aclnn::MOE_SHARED_JETTY_MIN_RANK_SIZE &&
+                  epWorldSize <= Mc2Aclnn::MOE_SHARED_JETTY_MAX_RANK_SIZE,
+              ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(epRankId >= 0 && epRankId < epWorldSize, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(numExperts % epWorldSize == 0, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(numMaxTokensPerRank > 0, ACLNN_ERR_PARAM_INVALID);

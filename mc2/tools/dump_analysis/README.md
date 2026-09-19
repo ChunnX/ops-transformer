@@ -606,7 +606,7 @@ struct MoeEpCoreDiagRecord {
 
 #### Dispatch Slot State (`dispatch_slot_state.bin`)
 
-布局: `dispatchNotifyCount * epWorldSize` 个 512B 块, 每块第一个 uint32 为该 (源 rank, notify 批次) 的通信完成状态。
+布局: `dispatchNotifyCount * epWorldSize` 个 512B 块, 每块第一个 uint32 为该 (源 rank, physical Jetty owner) 的通信完成状态。
 
 #### Combine Token State (`combine_token_state.bin`)
 
@@ -626,13 +626,15 @@ struct MoeEpCoreDiagRecord {
 ```cpp
 struct MoeSharedJettyContext {
     uint32_t epRankId;                    // 本地 EP rank
-    uint32_t sharedJettyNum;              // 固定为 56
+    uint32_t epRankSize;                  // communicator 的实际 EP rank 数
+    uint32_t sharedJettyNum;              // 固定为 32
+    uint32_t reserved;
     uint64_t epHcclBuffer[1024];          // 各 rank 的 Win 地址
-    uint64_t multiChannelHandles[56];     // 7 个对端 * 每对端 8 条 lane
+    uint64_t multiChannelHandles[32];     // 每个 handle 对应一个跨全部远端 peer 的物理 Jetty
 };
 ```
 
-分析脚本会优先按该结构解析；旧 `MoeCommContext` 解析仅作为历史 dump 的兼容回退。
+分析脚本会优先按该结构解析，同时按长度兼容旧版 56-handle shared-Jetty context；旧 `MoeCommContext` 解析作为其他历史 dump 的兼容回退。
 
 ### 分析流程
 
@@ -640,7 +642,7 @@ struct MoeSharedJettyContext {
 2. **收集所有卡 Metadata** — 遍历每张卡读 `.metadata.bin`, 解析 10 个 uint32 + 6 个 Region(offset/size 为 uint64), 计算全局专家数 = sum(各卡 localExpertNum)
 3. **逐卡执行单卡分析**:
    - 打印该卡 Metadata (含开始/结束提示)
-   - 解析 context (`MoeSharedJettyContext`): epRankId, sharedJettyNum, Win 地址和 56 个 multi-channel handle；旧结构仅兼容回退
+   - 解析 context (`MoeSharedJettyContext`): epRankId, epRankSize, sharedJettyNum, Win 地址和 32 个 multi-channel handle；旧结构仅兼容回退
    - 解析 topk_idx (input.2): 按 Metadata 的 topK reshape 为 (bs, k), 校验值范围 0 <= val < 全局专家数, 打印全部数据
    - 分析 Per-core 诊断区: 读取 4 个 op record(dispatch/dispatch_epilogue/combine/combine_epilogue), 核数判断(4 个 record 全为 0 时停止), 逐核逐 op 打印 opCnt/runPosition/epRankId/aivId
    - 分析 Count Notify / Expert Count / Combine Token State: 各 Region 数据解析, 打印时附带 shape 说明
@@ -651,7 +653,7 @@ struct MoeSharedJettyContext {
 | Sheet | 列 | 说明 |
 |-------|----|----|
 | `metadata` | card_num + 10 字段 + 6 个 Region(offset/size 交替) + bs + core_count | 每卡一行 |
-| `shared_context` | card_num, epRankId, sharedJettyNum, kind, index, address | 当前 shared-Jetty context 的 Win 和 multi-channel handle 地址 |
+| `shared_context` | card_num, epRankId, epRankSize, sharedJettyNum, kind, index, address | 当前 shared-Jetty context 的 Win 和 multi-channel handle 地址 |
 | `context` | card_num, epRankId, rankSizePerServer, Win区地址_0~N, Handle地址_0~N, channelsPerRank | 仅用于旧 MoeCommContext dump 的兼容回退 |
 | `topk_idx` | card_num, token_id, topk_id, expert_id | 每(token, topk)一行 |
 | `per_card_per_core` | card_num, core_count, core_id, op_index, op_name, op_count, run_pos, ep_rank_id, aiv_id | 每核每 op 一行 |

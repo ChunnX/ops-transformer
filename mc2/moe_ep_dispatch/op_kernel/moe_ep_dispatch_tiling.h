@@ -38,6 +38,7 @@ struct MoeEpDispatchWindowLayout {
     uint64_t payloadWinStateOffset; // payload 发送状态位区偏移（slot 状态区之后）
     uint64_t winDataOffset;
     uint64_t payloadStashWinOffset;
+    uint64_t completionFlagSourceWinOffset;
 };
 
 struct MoeEpDispatchWorkspaceLayout {

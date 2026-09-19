@@ -106,8 +106,11 @@ static inline void CheckMoeEpMetadataTensor(const at::Tensor &metadata, const ch
                                             int64_t epWorldSize, const at::Device &device)
 {
     TORCH_CHECK(capacity >= 0 && capacity <= INT32_MAX, "metadata capacity must be in [0, INT32_MAX]");
-    TORCH_CHECK(epWorldSize == Mc2Aclnn::MOE_SHARED_JETTY_WORLD_SIZE, "shared Jetty requires ep_world_size=",
-                Mc2Aclnn::MOE_SHARED_JETTY_WORLD_SIZE, ", but got ", epWorldSize);
+    TORCH_CHECK(epWorldSize >= Mc2Aclnn::MOE_SHARED_JETTY_MIN_RANK_SIZE &&
+                    epWorldSize <= Mc2Aclnn::MOE_SHARED_JETTY_MAX_RANK_SIZE,
+                "shared Jetty ep_world_size must be in [", Mc2Aclnn::MOE_SHARED_JETTY_MIN_RANK_SIZE, ", ",
+                Mc2Aclnn::MOE_SHARED_JETTY_MAX_RANK_SIZE,
+                "], but got ", epWorldSize);
     // Packed ABI: five-column A_alloc rows, then separately 512B-aligned rank offsets.
     const int64_t elementBytes = sizeof(int32_t);
     const int64_t offsetBytes = AlignTo(capacity * MOE_EP_METADATA_FIELDS * elementBytes, MOE_EP_METADATA_ALIGN_BYTES);
@@ -1256,8 +1259,11 @@ Mc2Api::ElasticBuffer::DispatchTensorList Mc2Api::ElasticBuffer::MoeEpDispatch(
 {
     TORCH_CHECK(x.dim() == DIM_TWO, "x dims must be 2, but got ", x.dim());
     TORCH_CHECK(topkIdx.dim() == DIM_TWO, "topk_idx dims must be 2, but got ", topkIdx.dim());
-    TORCH_CHECK(epWorldSize == Mc2Aclnn::MOE_SHARED_JETTY_WORLD_SIZE, "shared Jetty requires ep_world_size=",
-                Mc2Aclnn::MOE_SHARED_JETTY_WORLD_SIZE, ", but got ", epWorldSize);
+    TORCH_CHECK(epWorldSize >= Mc2Aclnn::MOE_SHARED_JETTY_MIN_RANK_SIZE &&
+                    epWorldSize <= Mc2Aclnn::MOE_SHARED_JETTY_MAX_RANK_SIZE,
+                "shared Jetty ep_world_size must be in [", Mc2Aclnn::MOE_SHARED_JETTY_MIN_RANK_SIZE, ", ",
+                Mc2Aclnn::MOE_SHARED_JETTY_MAX_RANK_SIZE,
+                "], but got ", epWorldSize);
 
     bool anyCached = cachedDstSlotIdx.has_value();
     TORCH_CHECK(!(anyCached && doCpuSync), "cached mode is incompatible with do_cpu_sync=True");

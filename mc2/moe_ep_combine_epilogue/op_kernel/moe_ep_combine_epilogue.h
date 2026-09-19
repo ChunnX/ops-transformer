@@ -83,10 +83,9 @@ private:
     __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startTokenId,
                                        uint32_t &endTokenId, uint32_t &tokenPerAivNum);
     __aicore__ inline void BuffInit();
-    __aicore__ inline uint32_t GetCompletionChannelCount();
     __aicore__ inline void LoadTopkIds();
     __aicore__ inline void MaskCheck();
-    __aicore__ inline bool WaitDispatch(uint32_t completionChannelCount);
+    __aicore__ inline bool WaitCombineCompletion();
     __aicore__ inline void ClearCompletionFlags();
     __aicore__ inline void BuildLocalRecvIndex();
     __aicore__ inline void ProcessTopKToken(uint32_t tokenIndex);
@@ -108,7 +107,7 @@ private:
 
     uint32_t rankId_{0};
     uint32_t epWorldSize_{0};
-    uint32_t combineChannelCount_{1};
+    uint32_t combineJettyCount_{1};
     uint32_t numMaxTokensPerRank_{0};
     uint32_t numTokens_{0};
     uint32_t topK_{0};
@@ -225,7 +224,13 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     using ContextType = Mc2Aclnn::MoeSharedJettyContext;
     auto *ctx = reinterpret_cast<__gm__ ContextType *>(context);
     rankId_ = ctx->epRankId;
-    combineChannelCount_ = Mc2Aclnn::MOE_SHARED_JETTY_LANES;
+    if (ctx->epRankSize != epWorldSize_ || rankId_ >= epWorldSize_ || rankId_ != tilingData_->cfg.epRankId ||
+        ctx->sharedJettyNum != Mc2Aclnn::MOE_SHARED_JETTY_NUM) {
+        AscendC::printf("MoE shared Jetty context mismatch, rank=%u, size=%u, tiling=%u, jettys=%u\n", rankId_,
+                        ctx->epRankSize, epWorldSize_, ctx->sharedJettyNum);
+        AscendC::Trap();
+    }
+    combineJettyCount_ = Mc2Aclnn::MOE_SHARED_JETTY_NUM;
     for (uint32_t i = 0; i < epWorldSize_; ++i) {
         winRankAddr_[i] = (GM_ADDR)ctx->epHcclBuffer[i];
     }
@@ -312,41 +317,34 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
 }
 
 template <TemplateMoeEpCombineEpilogueTypeClass>
-__aicore__ inline uint32_t MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc>::GetCompletionChannelCount()
-{
-    if (aivNum_ < epWorldSize_) {
-        return 1U;
-    }
-    uint32_t maxChannelAivNum = epWorldSize_ * combineChannelCount_;
-    if (aivNum_ > maxChannelAivNum) {
-        return combineChannelCount_;
-    }
-    uint32_t baseGroupSize = aivNum_ / epWorldSize_;
-    uint32_t remainder = aivNum_ % epWorldSize_;
-    return baseGroupSize + ((rankId_ < remainder) ? 1U : 0U);
-}
-
-template <TemplateMoeEpCombineEpilogueTypeClass>
-__aicore__ inline bool MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc>::WaitDispatch(
-    uint32_t completionChannelCount)
+__aicore__ inline bool MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc>::WaitCombineCompletion()
 {
     uint64_t flagOffset = static_cast<uint64_t>(numMaxTokensPerRank_) * topK_ * WIN_ADDR_ALIGN;
     GM_ADDR stateGM = GetUrmaStateAddrByRankId(rankId_, combineStateWinOffset_) + flagOffset;
     LocalTensor<uint32_t> stateTensor = stateBuf_.Get<uint32_t>();
     LocalTensor<uint32_t> waitSum = waitSumBuf_.Get<uint32_t>();
 
-    uint32_t totalFlagCount = epWorldSize_ * combineChannelCount_;
-    GlobalTensor<uint32_t> stateGMTensor;
-    stateGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(stateGM));
-    DataCopyParams params = {static_cast<uint16_t>(totalFlagCount), 1U,
-                             static_cast<uint16_t>((WIN_ADDR_ALIGN - UB_ALIGN) / UB_ALIGN), 0U};
-    DataCopy(stateTensor, stateGMTensor, params);
-    SyncFunc<AscendC::HardEvent::MTE2_V>();
-    uint32_t shape[] = {totalFlagCount, UB_ALIGN / sizeof(uint32_t)};
-    ReduceSum<uint32_t, AscendC::Pattern::Reduce::RA, false>(waitSum, stateTensor, shape, true);
-    SyncFunc<AscendC::HardEvent::V_S>();
-    uint32_t expectedFlagSum = epWorldSize_ * completionChannelCount;
-    return waitSum.GetValue(0) == expectedFlagSum;
+    uint32_t totalFlagCount = epWorldSize_ * combineJettyCount_;
+    for (uint32_t flagStart = 0U; flagStart < totalFlagCount;
+         flagStart += Mc2Aclnn::MOE_SHARED_JETTY_FLAG_CHUNK_SIZE) {
+        uint32_t flagCount = totalFlagCount - flagStart;
+        flagCount = flagCount < Mc2Aclnn::MOE_SHARED_JETTY_FLAG_CHUNK_SIZE ?
+                        flagCount : Mc2Aclnn::MOE_SHARED_JETTY_FLAG_CHUNK_SIZE;
+        GlobalTensor<uint32_t> stateGMTensor;
+        stateGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(
+            stateGM + static_cast<uint64_t>(flagStart) * WIN_ADDR_ALIGN));
+        DataCopyParams params = {static_cast<uint16_t>(flagCount), 1U,
+                                 static_cast<uint16_t>((WIN_ADDR_ALIGN - UB_ALIGN) / UB_ALIGN), 0U};
+        DataCopy(stateTensor, stateGMTensor, params);
+        SyncFunc<AscendC::HardEvent::MTE2_V>();
+        uint32_t shape[] = {flagCount, UB_ALIGN / sizeof(uint32_t)};
+        ReduceSum<uint32_t, AscendC::Pattern::Reduce::RA, false>(waitSum, stateTensor, shape, true);
+        SyncFunc<AscendC::HardEvent::V_S>();
+        if (waitSum.GetValue(0) != flagCount) {
+            return false;
+        }
+    }
+    return true;
 }
 
 template <TemplateMoeEpCombineEpilogueTypeClass>
@@ -393,18 +391,24 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
 {
     uint64_t flagOffset = static_cast<uint64_t>(numMaxTokensPerRank_) * topK_ * WIN_ADDR_ALIGN;
     GM_ADDR stateGM = GetUrmaStateAddrByRankId(rankId_, combineStateWinOffset_) + flagOffset;
+    uint32_t totalFlagCount = epWorldSize_ * combineJettyCount_;
     LocalTensor<uint32_t> stateTensor = stateBuf_.Get<uint32_t>();
-    uint32_t totalFlagCount = epWorldSize_ * combineChannelCount_;
     SyncFunc<AscendC::HardEvent::S_V>();
-    Duplicate<uint32_t>(stateTensor, 0U, totalFlagCount * STATE_OFFSET / sizeof(uint32_t));
-    SyncFunc<AscendC::HardEvent::V_MTE3>();
-
-    GlobalTensor<uint32_t> stateGMTensor;
-    stateGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(stateGM));
-    DataCopyParams clearParams = {static_cast<uint16_t>(totalFlagCount), 1U, 0U,
-                                  static_cast<uint16_t>((WIN_ADDR_ALIGN - UB_ALIGN) / UB_ALIGN)};
-    DataCopy(stateGMTensor, stateTensor, clearParams);
-    SyncFunc<AscendC::HardEvent::MTE3_S>();
+    for (uint32_t flagStart = 0U; flagStart < totalFlagCount;
+         flagStart += Mc2Aclnn::MOE_SHARED_JETTY_FLAG_CHUNK_SIZE) {
+        uint32_t flagCount = totalFlagCount - flagStart;
+        flagCount = flagCount < Mc2Aclnn::MOE_SHARED_JETTY_FLAG_CHUNK_SIZE ?
+                        flagCount : Mc2Aclnn::MOE_SHARED_JETTY_FLAG_CHUNK_SIZE;
+        Duplicate<uint32_t>(stateTensor, 0U, flagCount * STATE_OFFSET / sizeof(uint32_t));
+        SyncFunc<AscendC::HardEvent::V_MTE3>();
+        GlobalTensor<uint32_t> stateGMTensor;
+        stateGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(
+            stateGM + static_cast<uint64_t>(flagStart) * WIN_ADDR_ALIGN));
+        DataCopyParams clearParams = {static_cast<uint16_t>(flagCount), 1U, 0U,
+                                      static_cast<uint16_t>((WIN_ADDR_ALIGN - UB_ALIGN) / UB_ALIGN)};
+        DataCopy(stateGMTensor, stateTensor, clearParams);
+        SyncFunc<AscendC::HardEvent::MTE3_S>();
+    }
 }
 
 template <TemplateMoeEpCombineEpilogueTypeClass>
@@ -531,15 +535,13 @@ __aicore__ inline uint32_t MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueType
 template <TemplateMoeEpCombineEpilogueTypeClass>
 __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc>::RecvPhaseReduce()
 {
-    uint32_t completionChannelCount = GetCompletionChannelCount();
-    uint32_t totalFlagCount = epWorldSize_ * combineChannelCount_;
-    uint32_t flagBufferBytes = totalFlagCount * STATE_OFFSET;
+    uint32_t flagBufferBytes = Mc2Aclnn::MOE_SHARED_JETTY_FLAG_CHUNK_SIZE * STATE_OFFSET;
     tpipe_->InitBuffer(stateBuf_, flagBufferBytes);
     tpipe_->InitBuffer(waitSumBuf_, UB_ALIGN);
     BuildLocalRecvIndex();
 
     if (aivId_ == 0U) {
-        while (!WaitDispatch(completionChannelCount)) {
+        while (!WaitCombineCompletion()) {
         }
         ClearCompletionFlags();
     }

@@ -44,11 +44,13 @@
 #endif
 #include "moe_ep_dispatch_tiling.h"
 #include "moe_ep_dispatch_base.h"
+#include "moe_ep_dispatch_schedule.h"
 
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #include "../../common/op_kernel/mc2_moe_context.h"
 #include "../../common/op_kernel/moe_shared_jetty_context.h"
+#include "../../common/op_kernel/moe_shared_jetty_kernel_utils.h"
 #include "../../common/op_kernel/moe_ep_exception_dump_writer.h"
 
 namespace MoeEpDispatchImpl {
@@ -79,7 +81,9 @@ constexpr uint32_t MAX_BATCH_SIZE = 160 * 1024U;                  // srcTokenIdx
 constexpr uint32_t SGE_PER_SLOT = 2U;                             // 每 slot 两个 SGE: x 与 meta
 constexpr uint32_t SGE_PER_SQE = 12U;                             // 单 SQE 的 SGE 数
 constexpr uint32_t SLOT_NUM_PER_SQE = SGE_PER_SQE / SGE_PER_SLOT; // 单 SQE 的 slot 数
-constexpr uint32_t HCOMM_BATCH_CAPACITY = 128U;                   // 通信敲 db 间隔
+constexpr uint32_t HCOMM_BATCH_CAPACITY = 128U;                   // UB capacity in full 12-SGE requests
+// Start DMA after eight full 12-SGE requests; subsequent batches use the existing UB capacity.
+constexpr uint32_t HCOMM_FIRST_BATCH_WQEBB = 32U;
 constexpr uint32_t HCOMM_SGE_BYTES = 16U;
 constexpr uint32_t HCOMM_SQE_BYTES = 48U;
 constexpr uint32_t HCOMM_WQE_BYTES = 64U;
@@ -105,6 +109,13 @@ public:
     __aicore__ inline void Process();
 
 private:
+    __aicore__ inline void InitTilingAndRoles(const MoeEpDispatchInfo &info);
+    __aicore__ inline void InitDerivedValues();
+    __aicore__ inline void BindInputTensors(GM_ADDR topkIdx, GM_ADDR topkWeights, GM_ADDR scales,
+                                            GM_ADDR cachedSlotIdx, GM_ADDR numRecvPerRank,
+                                            GM_ADDR numRecvPerExpert, GM_ADDR dstBufferSlotIdx);
+    __aicore__ inline void InitCopyParams();
+    __aicore__ inline void BindWorkspaceAndWindow(GM_ADDR workspaceGM);
     __aicore__ inline void BufferInit();
     __aicore__ inline void ResetCounters();
     __aicore__ inline void CalSendCntHistograms(LocalTensor<int16_t> dstTensor, LocalTensor<int16_t> &tempTensor,
@@ -115,6 +126,11 @@ private:
     __aicore__ inline void CalSendCntPerRank(uint32_t calCnt, uint32_t calCntAlign, uint32_t tmpOffset);
     __aicore__ inline void CalSendCntPerExpert(LocalTensor<int16_t> expertIdsTensor, uint32_t calCnt,
                                                uint32_t calCntAlign, uint32_t tmpOffset);
+    __aicore__ inline void CalSendCntGroup(uint32_t group, uint32_t groupCnt, uint32_t &calCnt,
+                                           LocalTensor<int32_t> topkIdsGroupTensor,
+                                           LocalTensor<int16_t> tempTensorInt16,
+                                           const DataCopyPadExtParams<int32_t> &copyPadParams);
+    __aicore__ inline void PublishSendCounts();
     __aicore__ inline void CalSendCnt();
     __aicore__ inline void Communication();
     __aicore__ inline void SendCountToPeer(uint32_t peer, GM_ADDR dst, GM_ADDR src,
@@ -123,9 +139,18 @@ private:
     __aicore__ inline void SetRecvNumPerExpert();
     __aicore__ inline void SetRecvNumPerRank(LocalTensor<int32_t> recvTmpTensor);
     __aicore__ inline void WriteToRemoteWindow();
+    __aicore__ inline void GetTokenRange(uint32_t dstRank, uint32_t &tokenStart, uint32_t &tokenNum);
     __aicore__ inline void CommBufferInit();
-    __aicore__ inline void SendTokenByChannel(uint32_t tokenStart, uint32_t tokenNum, uint32_t dstRankId,
-                                              uint64_t commHandle, GM_ADDR notifyAddr);
+    __aicore__ inline void SendTokenChunkToPeer(uint32_t dstRankId, GM_ADDR notifyAddr);
+    __aicore__ inline void SendTokenData(uint32_t tokenStart, uint32_t tokenNum, uint32_t dstRankId,
+                                         GM_ADDR remoteWinAddr, BufDesc *localDescs);
+    __aicore__ inline void WritePayload(GM_ADDR dst, BufDesc *localDescs, uint32_t sgeCount);
+    __aicore__ inline void SendCompletion(uint32_t dstRankId, GM_ADDR notifyAddr);
+    __aicore__ inline void ReserveBatchSpace(uint32_t wqebbCount);
+    __aicore__ inline void CommitBatch(bool force);
+    __aicore__ inline uint32_t GetTokenBoundary(uint32_t dstRank, uint32_t tokenBoundary);
+    __aicore__ inline uint32_t LowerBoundToken(uint32_t dstRank, uint32_t begin, uint32_t end,
+                                               uint32_t tokenBoundary);
     __aicore__ inline void SetSrcTokenIdxAndDstSlot(uint32_t topkOffset, uint32_t calCnt, uint32_t calCntAlign,
                                                     uint32_t &sendLocalCnt, LocalTensor<int32_t> &cntLocalTensor);
     __aicore__ inline void ProcessMetaSlot(uint32_t startId, uint32_t tokenCnt, uint32_t sendLocalCnt,
@@ -133,22 +158,22 @@ private:
     __aicore__ inline void SendPhase();
     __aicore__ inline void GetSlotStartNum();
     __aicore__ inline void CopyInMetaInfo(uint32_t tokenId, uint32_t topkOffset);
-    __aicore__ inline void SetStatus();
-    __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startId, uint32_t &endId,
-                                       uint32_t &sendNum);
-    __aicore__ inline bool GetCoreAssignment(uint32_t &copyRankStart, uint32_t &copyRankNum, uint32_t &channelIndex,
-                                             uint32_t &coreIndexInGroup, uint32_t &groupSize);
+    __aicore__ inline void PublishPrepareReady();
+    __aicore__ inline void WaitPrepareReady();
+    __aicore__ inline void GetOverlappingCores(uint32_t begin, uint32_t end, uint32_t coreCount,
+                                              uint32_t &first, uint32_t &last) const;
+    __aicore__ inline void SplitToCore(uint32_t itemCount, uint32_t coreCount, uint32_t coreIndex,
+                                       uint32_t &startId, uint32_t &endId, uint32_t &itemCountPerCore);
 
-    __aicore__ inline uint64_t GetSharedCommHandle(uint32_t peer)
+    __aicore__ inline uint64_t GetOwnedJettyHandle()
     {
-        uint32_t peerIndex = peer < epRankId_ ? peer : peer - 1U;
-        uint32_t index = peerIndex * Mc2Aclnn::MOE_SHARED_JETTY_LANES + channelIndex_;
-        return mc2Context_->multiChannelHandles[index];
+        return mc2Context_->multiChannelHandles[aivId_];
     }
 
     TPipe *tpipe_{nullptr};
     __gm__ Mc2Aclnn::MoeSharedJettyContext *mc2Context_{nullptr};
     AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_; // 通信上下文
+    AscendC::BatchHandle<AscendC::MultiChannelHandle> payloadBatch_{};
     MoeEpExceptionDump::MoeEpCoreDiagWriter diagWriter_;
 
     GlobalTensor<int32_t> topkIdxGMTensor_;
@@ -202,12 +227,12 @@ private:
     GM_ADDR localSlotWinAddr_{nullptr};
     GM_ADDR payloadStashWinAddr_{nullptr};
     GM_ADDR payloadStashStateWinAddr_{nullptr};
+    GM_ADDR completionFlagSourceWinAddr_{nullptr};
 
     uint32_t axisBS_{0};
     uint32_t axisH_{0};
     uint32_t axisK_{0};
     uint32_t epWorldSize_{0};
-    uint32_t channelsPerRank_{1};
     uint32_t moeExpertNumPerRank_{0};
     uint32_t axisMaxBS_{0};
     uint32_t scalesBytes_{0};
@@ -220,15 +245,14 @@ private:
     uint32_t endTokenId_{0};
     uint32_t sendTokenNum_{0};
     uint32_t perGroupTokenNum_{0};
-    uint32_t startRankId_{0};
-    uint32_t endRankId_{0};
-    uint32_t rankNumPerCore_{0};
-    uint32_t copyRankStart_{0};
-    uint32_t copyRankNum_{0};
-    uint32_t channelIndex_{0};
-    uint32_t coreIndexInGroup_{0};
-    uint32_t groupSize_{1};
+    uint32_t sendCoreCount_{0};
+    uint32_t prepareCoreCount_{0};
+    uint32_t prepareCoreStart_{0};
+    uint32_t prepareCoreId_{0};
     uint32_t hcommBatchBufferBytes_{0};
+    uint32_t pendingWqebb_{0};
+    uint32_t activePeerIndex_{0};
+    bool firstBatchCommitted_{false};
     uint32_t tokenSize_{0};
     uint32_t kAlignSize_{0};
     uint32_t axisKAlign_{0};
@@ -259,9 +283,11 @@ private:
     uint64_t payloadWinStateOffset_{0};
     uint64_t winDataOffset_{0};
     uint64_t payloadStashWinOffset_{0};
+    uint64_t completionFlagSourceWinOffset_{0};
     uint64_t dstRankWinOffset_{0};
     uint64_t dstStateWinOffset_{0};
-    bool coreAssigned_{false};
+    bool isSendCore_{false};
+    bool isPrepareCore_{false};
 
     DataCopyParams statusCopyParams_;
     DataCopyParams clearStatusCopyParams_;
@@ -274,34 +300,31 @@ private:
 };
 
 template <TemplateMoeEpDispatchTypeClass>
-__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
-    GM_ADDR context, GM_ADDR x, GM_ADDR topkIdx, GM_ADDR topkWeights, GM_ADDR scales, GM_ADDR cachedSlotIdx,
-    GM_ADDR numRecvPerRank, GM_ADDR numRecvPerExpert, GM_ADDR dstBufferSlotIdx, GM_ADDR workspaceGM, GM_ADDR tilingGM,
-    TPipe *pipe, const MoeEpDispatchTilingData *tilingData)
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::InitTilingAndRoles(
+    const MoeEpDispatchInfo &info)
 {
-    tpipe_ = pipe;
-    aivId_ = GetBlockIdx();
-    workspaceGM_ = workspaceGM;
-    mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::MoeSharedJettyContext *>(context);
-    epRankId_ = mc2Context_->epRankId;
-    constexpr size_t metadataOffset =
-        offsetof(MoeEpDispatchTilingData, moeEpDispatchInfo) + offsetof(MoeEpDispatchInfo, dumpMetadata);
-    MoeEpExceptionDump::WriteMetadata<Mc2Aclnn::MoeSharedJettyContext>(context, tilingGM + metadataOffset);
-    diagWriter_.Init<Mc2Aclnn::MoeSharedJettyContext>(context, MOE_EP_CORE_DIAG_DISPATCH, tpipe_);
-
-    const auto &info = tilingData->moeEpDispatchInfo;
-    xAddr_ = x;
     metaSlotBytes_ = info.metaSlotBytes;
     axisBS_ = info.cfg.numTokens;
     axisH_ = info.cfg.hidden;
     axisK_ = info.cfg.topK;
     epWorldSize_ = info.cfg.epWorldSize;
+    if (mc2Context_->epRankSize != epWorldSize_ || epRankId_ >= epWorldSize_ || epRankId_ != info.cfg.epRankId) {
+        AscendC::printf("MoE shared Jetty rank mismatch, context=%u/%u, tiling world=%u\n", epRankId_,
+                        mc2Context_->epRankSize, epWorldSize_);
+        AscendC::Trap();
+    }
     moeExpertNum_ = info.cfg.numExperts;
     moeExpertNumPerRank_ = info.cfg.numLocalExperts;
     axisMaxBS_ = info.cfg.numMaxTokensPerRank;
     scalesBytes_ = info.scalesBytes;
     perSlotBytes_ = info.perSlotBytes;
     aivNum_ = info.aivNum;
+    sendCoreCount_ = Mc2Aclnn::MOE_SHARED_JETTY_NUM;
+    prepareCoreStart_ = sendCoreCount_;
+    prepareCoreCount_ = aivNum_ > prepareCoreStart_ ? aivNum_ - prepareCoreStart_ : 0U;
+    isSendCore_ = aivId_ < sendCoreCount_;
+    isPrepareCore_ = aivId_ >= prepareCoreStart_ && aivId_ < prepareCoreStart_ + prepareCoreCount_;
+    prepareCoreId_ = isPrepareCore_ ? aivId_ - prepareCoreStart_ : 0U;
     srcTokenListBytes_ = info.workspace.srcTokenListBytes;
     dstRankInfoOffset_ = info.workspace.dstRankInfoOffset;
     srcTokenTableOffset_ = info.workspace.srcTokenTableOffset;
@@ -310,15 +333,24 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     payloadWinStateOffset_ = info.window.payloadWinStateOffset;
     winDataOffset_ = info.window.winDataOffset;
     payloadStashWinOffset_ = info.window.payloadStashWinOffset;
+    completionFlagSourceWinOffset_ = info.window.completionFlagSourceWinOffset;
     dispatchNotifyCount_ = info.dispatchNotifyCount;
+    if (dispatchNotifyCount_ != Mc2Aclnn::MOE_SHARED_JETTY_NUM) {
+        AscendC::printf("MoE dispatch notify count mismatch, got=%u\n", dispatchNotifyCount_);
+        AscendC::Trap();
+    }
     hostPinnedCounterAddrGM_ = reinterpret_cast<GM_ADDR>(info.hostPinnedCounterAddr);
+}
 
+template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::InitDerivedValues()
+{
     tokenSize_ = axisH_ * sizeof(XType);
     kAlignSize_ = Ceil(axisK_ * TOPK_INFO_SIZE, UB_ALIGN) * UB_ALIGN;
     axisKAlign_ = kAlignSize_ / TOPK_INFO_SIZE;
     metaSlotStride_ = metaSlotBytes_ / sizeof(int32_t);
     epWorldSizeAlign_ = Ceil(epWorldSize_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
-    perGroupTokenNum_ = PER_GROUP_SIZE / sizeof(int16_t) / axisK_; // token num per group
+    perGroupTokenNum_ = PER_GROUP_SIZE / sizeof(int16_t) / axisK_;
     perGroupSizeAlign_ = Ceil(perGroupTokenNum_ * axisK_ * sizeof(int16_t), ALIGNED_LEN_256) * ALIGNED_LEN_256;
     maskBytesAlign_ = Ceil(Ceil(perGroupSizeAlign_ / sizeof(int16_t), BITS_PER_BYTE), UB_ALIGN) * UB_ALIGN;
     epWorldSizeAlign512_ = Ceil(epWorldSize_ * sizeof(int32_t), WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
@@ -332,19 +364,23 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     moeNumPerRankAlign512_ = Ceil(moeNumPerRankSize_, WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
     moeExpertNumAlign512_ = Ceil(moeExpertNum_ * sizeof(int32_t), WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
     cntFlagWinSize_ = epWorldSize_ * WIN_ADDR_ALIGN;
-    dstRankWinOffset_ = static_cast<uint64_t>(epRankId_) * axisMaxBS_ * perSlotBytes_; // 目标窗口地址偏移
+    dstRankWinOffset_ = static_cast<uint64_t>(epRankId_) * axisMaxBS_ * perSlotBytes_;
     tokenCntAlign_ = srcTokenListBytes_ / sizeof(int32_t);
-    // Keep the original per-rank notification lanes; each sender owns a distinct shared Jetty.
-    channelsPerRank_ = Mc2Aclnn::MOE_SHARED_JETTY_LANES;
-    dstStateWinOffset_ = static_cast<uint64_t>(epRankId_) * dispatchNotifyCount_ * WIN_ADDR_ALIGN; // 目标状态地址偏移
+    dstStateWinOffset_ = static_cast<uint64_t>(epRankId_) * dispatchNotifyCount_ * WIN_ADDR_ALIGN;
+}
 
+template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::BindInputTensors(
+    GM_ADDR topkIdx, GM_ADDR topkWeights, GM_ADDR scales, GM_ADDR cachedSlotIdx, GM_ADDR numRecvPerRank,
+    GM_ADDR numRecvPerExpert, GM_ADDR dstBufferSlotIdx)
+{
     topkIdxGMTensor_.SetGlobalBuffer((__gm__ int32_t *)topkIdx);
     if constexpr (IsTopkWeights) {
         topkWeightsGMTensor_.SetGlobalBuffer((__gm__ float *)topkWeights);
     }
     if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
         scalesGMTensor_.SetGlobalBuffer((__gm__ ScalesType *)scales);
-        topkCopyAlign_ = Ceil(scalesBytes_, UB_ALIGN) * UB_ALIGN / sizeof(int32_t); // meta 槽内 topk 的 int32 偏移
+        topkCopyAlign_ = Ceil(scalesBytes_, UB_ALIGN) * UB_ALIGN / sizeof(int32_t);
     }
     if constexpr (IsCached) {
         cachedSlotIdxGMTensor_.SetGlobalBuffer((__gm__ int32_t *)cachedSlotIdx);
@@ -352,7 +388,11 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     numRecvPerRankGMTensor_.SetGlobalBuffer((__gm__ int32_t *)numRecvPerRank);
     numRecvPerExpertGMTensor_.SetGlobalBuffer((__gm__ int64_t *)numRecvPerExpert);
     dstSlotIdxGMTensor_.SetGlobalBuffer((__gm__ int32_t *)dstBufferSlotIdx);
+}
 
+template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::InitCopyParams()
+{
     statusCopyParams_ = {static_cast<uint16_t>(epWorldSize_), 1U, static_cast<uint16_t>(STATE_STRIDE), 0U};
     clearStatusCopyParams_ = {static_cast<uint16_t>(epWorldSize_), 1U, 0U, static_cast<uint16_t>(STATE_STRIDE)};
     sendPerExpertParams_ = {1U, static_cast<uint16_t>(moeExpertNum_ * sizeof(int32_t)), 0U, 0U};
@@ -361,7 +401,11 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     topkCopyParams_ = {1U, static_cast<uint16_t>(axisK_ * TOPK_INFO_SIZE), 0U, 0U};
     scalesCopyParams_ = {1U, static_cast<uint16_t>(scalesBytes_), 0U, 0U};
     padParams_ = {true, 0, 0, 0};
+}
 
+template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::BindWorkspaceAndWindow(GM_ADDR workspaceGM)
+{
     sendCounterAddr_ = workspaceGM;
     sendCntWorkspaceAddr_ = workspaceGM + static_cast<uint64_t>(aivNum_) * epWorldSizeAlign512_;
     dstRankInfoAddr_ = workspaceGM + dstRankInfoOffset_;
@@ -371,6 +415,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     payloadStashStateWinAddr_ = GetWinAddrByRankId(mc2Context_, epRankId_, payloadWinStateOffset_);
     localSlotWinAddr_ = GetWinAddrByRankId(mc2Context_, epRankId_, winDataOffset_) + dstRankWinOffset_;
     payloadStashWinAddr_ = GetWinAddrByRankId(mc2Context_, epRankId_, payloadStashWinOffset_);
+    completionFlagSourceWinAddr_ = GetWinAddrByRankId(mc2Context_, epRankId_, completionFlagSourceWinOffset_);
     sendCounterGMTensor_.SetGlobalBuffer((__gm__ int32_t *)sendCounterAddr_);
     recvCounterGMTensor_.SetGlobalBuffer((__gm__ int32_t *)localCntStateWinAddr_);
     metaSlotGMTensor_.SetGlobalBuffer((__gm__ int32_t *)payloadStashWinAddr_);
@@ -378,71 +423,49 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     sendCntPerExpertGMTensor_.SetGlobalBuffer((__gm__ int32_t *)(sendCntWorkspaceAddr_ + epWorldSizeAlign512_));
     dstRankGMTensor_.SetGlobalBuffer((__gm__ int16_t *)dstRankInfoAddr_);
     srcTokenIdxGMTensor_.SetGlobalBuffer((__gm__ int32_t *)srcTokenTableAddr_);
+}
+
+template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
+    GM_ADDR context, GM_ADDR x, GM_ADDR topkIdx, GM_ADDR topkWeights, GM_ADDR scales, GM_ADDR cachedSlotIdx,
+    GM_ADDR numRecvPerRank, GM_ADDR numRecvPerExpert, GM_ADDR dstBufferSlotIdx, GM_ADDR workspaceGM, GM_ADDR tilingGM,
+    TPipe *pipe, const MoeEpDispatchTilingData *tilingData)
+{
+    tpipe_ = pipe;
+    aivId_ = GetBlockIdx();
+    workspaceGM_ = workspaceGM;
+    mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::MoeSharedJettyContext *>(context);
+    if (mc2Context_->sharedJettyNum != Mc2Aclnn::MOE_SHARED_JETTY_NUM) {
+        AscendC::printf("MoE shared Jetty count mismatch, got=%u\n", mc2Context_->sharedJettyNum);
+        AscendC::Trap();
+    }
+    epRankId_ = mc2Context_->epRankId;
+    constexpr size_t metadataOffset =
+        offsetof(MoeEpDispatchTilingData, moeEpDispatchInfo) + offsetof(MoeEpDispatchInfo, dumpMetadata);
+    MoeEpExceptionDump::WriteMetadata<Mc2Aclnn::MoeSharedJettyContext>(context, tilingGM + metadataOffset);
+    diagWriter_.Init<Mc2Aclnn::MoeSharedJettyContext>(context, MOE_EP_CORE_DIAG_DISPATCH, tpipe_);
+
+    const auto &info = tilingData->moeEpDispatchInfo;
+    xAddr_ = x;
+    InitTilingAndRoles(info);
+    InitDerivedValues();
+    BindInputTensors(topkIdx, topkWeights, scales, cachedSlotIdx, numRecvPerRank, numRecvPerExpert,
+                     dstBufferSlotIdx);
+    InitCopyParams();
+    BindWorkspaceAndWindow(workspaceGM);
+
     diagWriter_.RunPosRecord(MOE_EP_DISPATCH_RUN_POS_INIT_DONE);
 }
 
 template <TemplateMoeEpDispatchTypeClass>
-__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SplitToCore(uint32_t curSendCnt,
-                                                                                 uint32_t curUseAivNum,
-                                                                                 uint32_t &startId, uint32_t &endId,
-                                                                                 uint32_t &sendNum)
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SplitToCore(
+    uint32_t itemCount, uint32_t coreCount, uint32_t coreIndex, uint32_t &startId, uint32_t &endId,
+    uint32_t &itemCountPerCore)
 {
-    sendNum = curSendCnt / curUseAivNum;               // 每个aiv需要发送的数量
-    uint32_t remainderNum = curSendCnt % curUseAivNum; // 余数
-    startId = sendNum * aivId_;                        // 每个aiv发送时的起始rankid
-    if (aivId_ < remainderNum) {                       // 前remainderRankNum个aiv需要多发1个卡的数据
-        sendNum++;
-        startId += aivId_;
-    } else {
-        startId += remainderNum;
-    }
-    endId = startId + sendNum;
-}
-
-template <TemplateMoeEpDispatchTypeClass>
-__aicore__ inline bool MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetCoreAssignment(uint32_t &copyRankStart,
-                                                                                       uint32_t &copyRankNum,
-                                                                                       uint32_t &channelIndex,
-                                                                                       uint32_t &coreIndexInGroup,
-                                                                                       uint32_t &groupSize)
-{
-    uint32_t jettyCntPerRank = dispatchNotifyCount_ < channelsPerRank_ ? dispatchNotifyCount_ : channelsPerRank_;
-    uint32_t maxJettyAivNum = epWorldSize_ * jettyCntPerRank;
-    uint32_t activeAivNum = aivNum_ > maxJettyAivNum ? maxJettyAivNum : aivNum_;
-    if (activeAivNum >= epWorldSize_) { // 多channel情况下，发送使用核数，必须整除 epWorldSize
-        activeAivNum = activeAivNum / epWorldSize_ * epWorldSize_;
-    }
-    if (aivId_ >= activeAivNum) {
-        return false;
-    }
-
-    bool splitRankChannels = channelsPerRank_ > 1 && activeAivNum >= epWorldSize_;
-    coreIndexInGroup = 0;
-    groupSize = 1;
-    if (splitRankChannels) {
-        groupSize = activeAivNum / epWorldSize_;
-        uint32_t accumulated = 0;
-        uint32_t targetRank = epWorldSize_;
-        for (uint32_t rank = 0; rank < epWorldSize_; ++rank) {
-            if (aivId_ < accumulated + groupSize) {
-                targetRank = rank;
-                coreIndexInGroup = aivId_ - accumulated;
-                break;
-            }
-            accumulated += groupSize;
-        }
-        if (targetRank >= epWorldSize_ || groupSize == 0) {
-            return false;
-        }
-        channelIndex = coreIndexInGroup;
-        copyRankNum = 1;
-        copyRankStart = targetRank;
-    } else {
-        channelIndex = 0;
-        copyRankNum = rankNumPerCore_;
-        copyRankStart = startRankId_;
-    }
-    return true;
+    auto range = MoeEpDispatchSchedule::Partition(itemCount, coreCount, coreIndex);
+    startId = range.begin;
+    endId = range.end;
+    itemCountPerCore = endId - startId;
 }
 
 template <TemplateMoeEpDispatchTypeClass>
@@ -469,12 +492,27 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::BufferInit(
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::ResetCounters()
 {
-    if (aivId_ != aivNum_ - 1) { // 仅尾核做per-expert/rank 清0
-        return;
+    if (aivId_ == 0U) {
+        LocalTensor<int32_t> flagTensor = maskBuf_.Get<int32_t>();
+        Duplicate<int32_t>(flagTensor, 1, WIN_ADDR_ALIGN / sizeof(int32_t));
+        GlobalTensor<int32_t> flagSource;
+        flagSource.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(completionFlagSourceWinAddr_));
+        SyncFunc<AscendC::HardEvent::V_MTE3>();
+        DataCopy(flagSource, flagTensor, WIN_ADDR_ALIGN / sizeof(int32_t));
+        SyncFunc<AscendC::HardEvent::MTE3_S>();
     }
-    SyncFunc<AscendC::HardEvent::V_MTE3>();
-    DataCopyPad(sendCntPerExpertGMTensor_, sendCntPerExpertTensor_, sendPerExpertParams_);
-    DataCopy(sendCntPerRankGMTensor_, sendCntPerRankTensor_, counterCnt_);
+    if (isSendCore_) {
+        GlobalTensor<int32_t> readyState;
+        readyState.SetGlobalBuffer(
+            reinterpret_cast<__gm__ int32_t *>(payloadStashStateWinAddr_ + aivId_ * WIN_ADDR_ALIGN));
+        SyncFunc<AscendC::HardEvent::V_MTE3>();
+        DataCopy(readyState, sendCntPerRankTensor_, UB_STRIDE);
+    }
+    if (aivId_ == aivNum_ - 1U) {
+        SyncFunc<AscendC::HardEvent::V_MTE3>();
+        DataCopyPad(sendCntPerExpertGMTensor_, sendCntPerExpertTensor_, sendPerExpertParams_);
+        DataCopy(sendCntPerRankGMTensor_, sendCntPerRankTensor_, counterCnt_);
+    }
 }
 
 template <TemplateMoeEpDispatchTypeClass>
@@ -617,10 +655,62 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCntP
 }
 
 template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCntGroup(
+    uint32_t group, uint32_t groupCnt, uint32_t &calCnt, LocalTensor<int32_t> topkIdsGroupTensor,
+    LocalTensor<int16_t> tempTensorInt16, const DataCopyPadExtParams<int32_t> &copyPadParams)
+{
+    uint32_t groupOffset = group * perGroupTokenNum_;
+    if (group == groupCnt - 1U) {
+        calCnt = (sendTokenNum_ - groupOffset) * axisK_;
+    }
+    uint32_t topkIdxOffset = (startTokenId_ + groupOffset) * axisK_;
+    uint32_t tmpOffset = Ceil(calCnt * sizeof(int16_t), ALIGNED_LEN_256) * ALIGNED_LEN_256;
+    uint32_t calCntAlign = tmpOffset / sizeof(int16_t);
+    DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(calCnt * sizeof(int32_t)), 0U, 0U, 0U};
+    dstRankTensor_ = dstExpBuf_.GetWithOffset<int16_t>(calCntAlign, 0);
+    if (group > 0U) {
+        SyncFunc<AscendC::HardEvent::V_MTE2>();
+    }
+    DataCopyPad(topkIdsGroupTensor, topkIdxGMTensor_[topkIdxOffset], copyParams, copyPadParams);
+    SyncFunc<AscendC::HardEvent::MTE2_V>();
+    Cast(tempTensorInt16, topkIdsGroupTensor, RoundMode::CAST_NONE, calCnt);
+    CalSendCntPerExpert(tempTensorInt16, calCnt, calCntAlign, tmpOffset);
+    if constexpr (IsCached) {
+        dstSlotIdxTensor_ = topkIdsBuf_.Get<int32_t>();
+        SyncFunc<AscendC::HardEvent::V_MTE2>();
+        DataCopyPad(dstSlotIdxTensor_, cachedSlotIdxGMTensor_[topkIdxOffset], copyParams, copyPadParams);
+    }
+    DedupAndSend(tempTensorInt16, calCnt, calCntAlign, tmpOffset);
+    if constexpr (IsCached) {
+        SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
+        DataCopyPad(dstSlotIdxGMTensor_[topkIdxOffset], dstSlotIdxTensor_, copyParams);
+        SyncFunc<AscendC::HardEvent::MTE3_V>();
+    }
+    CalSendCntPerRank(calCnt, calCntAlign, tmpOffset);
+    SyncFunc<AscendC::HardEvent::V_MTE3>();
+    DataCopyExtParams dstRankCopyParams = {1U, static_cast<uint32_t>(calCnt * sizeof(int16_t)), 0U, 0U, 0U};
+    DataCopyPad(dstRankGMTensor_[topkIdxOffset], dstRankTensor_, dstRankCopyParams);
+}
+
+template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::PublishSendCounts()
+{
+    DataCopy(sendCounterGMTensor_[prepareCoreId_ * counterAlign512_], sendCntPerRankTensor_, counterCnt_);
+    SetAtomicAdd<int32_t>();
+    DataCopyPad(sendCntPerRankGMTensor_, sendCntPerRankTensor_, sendPerRankParams_);
+    DataCopyPad(sendCntPerExpertGMTensor_, sendCntPerExpertTensor_, sendPerExpertParams_);
+    SetAtomicNone();
+}
+
+template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCnt()
 {
-    SplitToCore(axisBS_, aivNum_, startTokenId_, endTokenId_, sendTokenNum_); // 按token数量分核
+    if (!isPrepareCore_) {
+        return;
+    }
+    SplitToCore(axisBS_, prepareCoreCount_, prepareCoreId_, startTokenId_, endTokenId_, sendTokenNum_);
     if (startTokenId_ >= axisBS_) {
+        DataCopy(sendCounterGMTensor_[prepareCoreId_ * counterAlign512_], sendCntPerRankTensor_, counterCnt_);
         return;
     }
 
@@ -630,59 +720,19 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCnt(
     LocalTensor<int16_t> tempTensorInt16 = tempBuf_.Get<int16_t>();
     DataCopyPadExtParams<int32_t> topkIdsCntCopyPadParams{false, 0U, 0U, 0U};
 
-    for (uint32_t group = 0; group < groupCnt; group++) {
-        uint32_t groupOffset = group * perGroupTokenNum_;
-        if (group == groupCnt - 1) {
-            calCnt = (sendTokenNum_ - groupOffset) * axisK_;
-        }
-        uint32_t topkIdxOffset = (startTokenId_ + groupOffset) * axisK_;
-        uint32_t tmpOffset = Ceil(calCnt * sizeof(int16_t), ALIGNED_LEN_256) * ALIGNED_LEN_256;
-        uint32_t calCntAlign = tmpOffset / sizeof(int16_t);
-        DataCopyExtParams topkIdsCntParams = {1U, static_cast<uint32_t>(calCnt * sizeof(int32_t)), 0U, 0U, 0U};
-        dstRankTensor_ = dstExpBuf_.GetWithOffset<int16_t>(calCntAlign, 0);
-        if (group > 0) {
-            SyncFunc<AscendC::HardEvent::V_MTE2>();
-        }
-        DataCopyPad(topkIdsGroupTensor, topkIdxGMTensor_[topkIdxOffset], topkIdsCntParams,
-                    topkIdsCntCopyPadParams); // copy topkId
-        SyncFunc<AscendC::HardEvent::MTE2_V>();
-        Cast(tempTensorInt16, topkIdsGroupTensor, RoundMode::CAST_NONE, calCnt);
-
-        // perExpert 计算
-        CalSendCntPerExpert(tempTensorInt16, calCnt, calCntAlign, tmpOffset);
-
-        // 去重，计算 per-rank
-        if constexpr (IsCached) { // cache下复用 dstSlotIdx
-            dstSlotIdxTensor_ = topkIdsBuf_.Get<int32_t>();
-            SyncFunc<AscendC::HardEvent::V_MTE2>();
-            DataCopyPad(dstSlotIdxTensor_, cachedSlotIdxGMTensor_[topkIdxOffset], topkIdsCntParams,
-                        topkIdsCntCopyPadParams); // copy slotId
-        }
-        DedupAndSend(tempTensorInt16, calCnt, calCntAlign, tmpOffset); // 去重
-        if constexpr (IsCached) {
-            SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
-            DataCopyPad(dstSlotIdxGMTensor_[topkIdxOffset], dstSlotIdxTensor_, topkIdsCntParams);
-            SyncFunc<AscendC::HardEvent::MTE3_V>();
-        }
-        CalSendCntPerRank(calCnt, calCntAlign, tmpOffset);
-        SyncFunc<AscendC::HardEvent::V_MTE3>();
-        DataCopyExtParams dstRankCopyParams = {1U, static_cast<uint32_t>(calCnt * sizeof(int16_t)), 0U, 0U, 0U};
-        DataCopyPad(dstRankGMTensor_[topkIdxOffset], dstRankTensor_, dstRankCopyParams);
+    for (uint32_t group = 0; group < groupCnt; ++group) {
+        CalSendCntGroup(group, groupCnt, calCnt, topkIdsGroupTensor, tempTensorInt16, topkIdsCntCopyPadParams);
     }
-    // 拷入Workspace 对应计数区
-    DataCopy(sendCounterGMTensor_[aivId_ * counterAlign512_], sendCntPerRankTensor_, counterCnt_);
-    SetAtomicAdd<int32_t>();
-    DataCopyPad(sendCntPerRankGMTensor_, sendCntPerRankTensor_, sendPerRankParams_);
-    DataCopyPad(sendCntPerExpertGMTensor_, sendCntPerExpertTensor_, sendPerExpertParams_);
-    SetAtomicNone();
+    PublishSendCounts();
 }
 
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendCountToPeer(
     uint32_t peer, GM_ADDR dst, GM_ADDR src, GM_ADDR notifyAddr, uint64_t notifyVal)
 {
-    auto multiHandle = static_cast<MultiChannelHandle>(GetSharedCommHandle(peer));
+    auto multiHandle = static_cast<MultiChannelHandle>(GetOwnedJettyHandle());
     auto batch = hcomm_.MakeBatchHandle(multiHandle, hcommTensor_, HCOMM_INIT_SIZE);
+    Mc2Kernel::CheckSharedJettyQueueDepth(batch);
     uint32_t peerIndex = peer < epRankId_ ? peer : peer - 1;
     auto &handle = hcomm_.GetHandleRef(batch, peerIndex, dst);
     CheckSharedJettyResult(hcomm_.WriteWithNotifyNbi<DATA_CFG>(handle, dst, src,
@@ -693,23 +743,17 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendCountTo
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Communication()
 {
-    // 通信初始化
+    if (!isSendCore_) {
+        return;
+    }
     tpipe_->InitBuffer(hcommBuf_, HCOMM_INIT_SIZE);
     hcommTensor_ = hcommBuf_.Get<uint8_t>();
     Duplicate<uint8_t>(hcommTensor_, 0, HCOMM_INIT_SIZE);
     SyncFunc<AscendC::HardEvent::V_S>();
-    SplitToCore(epWorldSize_, aivNum_, startRankId_, endRankId_, rankNumPerCore_); // 按卡分核
-    coreAssigned_ = GetCoreAssignment(copyRankStart_, copyRankNum_, channelIndex_, coreIndexInGroup_, groupSize_);
-    if (!coreAssigned_) {
-        return;
-    }
 
     DataCopy(sendCntPerRankTensor_, sendCntPerRankGMTensor_, counterCnt_);
     SyncFunc<AscendC::HardEvent::MTE2_S>();
-    for (uint32_t dstRankId = copyRankStart_; dstRankId < copyRankStart_ + copyRankNum_; ++dstRankId) {
-        if (channelIndex_ != 0) {
-            continue;
-        }
+    for (uint32_t dstRankId = aivId_; dstRankId < epWorldSize_; dstRankId += sendCoreCount_) {
         int32_t sendCnt = sendCntPerRankTensor_.GetValue(dstRankId);
         uint64_t notifyVal = (static_cast<uint64_t>(sendCnt) << NOTIFY_VAL_SHIFT) | 1U;
         uint32_t srcStride = dstRankId * moeExpertNumPerRank_;
@@ -831,10 +875,10 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetSlotStar
 {
     slotIdxPerRankTensor_ = sendCntExpertBuf_.GetWithOffset<int32_t>(counterCnt_, 0);
     Duplicate<int32_t>(slotIdxPerRankTensor_, 0, epWorldSize_);
-    if (aivId_ == 0) { // 0核起始id 均为0
+    if (prepareCoreId_ == 0U) {
         return;
     }
-    uint32_t groupCnt = Ceil(aivId_ * epWorldSizeAlign_, perGroupSizeAlign_ * 2);
+    uint32_t groupCnt = Ceil(prepareCoreId_ * epWorldSizeAlign_, perGroupSizeAlign_ * 2);
     uint32_t copyNumPerGroup = perGroupSizeAlign_ * 2 / epWorldSizeAlign_;
     LocalTensor<int32_t> counterTmpTensor = topkIdsBuf_.Get<int32_t>();
     LocalTensor<int32_t> hitTmpTensor = sendCntRankBuf_.Get<int32_t>();
@@ -842,7 +886,8 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetSlotStar
     DataCopyParams counterCopyParams = {1U, static_cast<uint16_t>(epWorldSizeAlign_),
                                         static_cast<uint16_t>(epWorldSizeAlign512_ - epWorldSizeAlign_), 0U};
     for (uint32_t i = 0; i < groupCnt; i++) {
-        uint32_t copyNum = (i == groupCnt - 1) ? (aivId_ - copyNumPerGroup * i) : copyNumPerGroup;
+        uint32_t copyNum =
+            (i == groupCnt - 1) ? (prepareCoreId_ - copyNumPerGroup * i) : copyNumPerGroup;
         uint32_t gmOffset = i * copyNumPerGroup * epWorldSizeAlign512_ / sizeof(int32_t);
         counterCopyParams.blockCount = static_cast<uint16_t>(copyNum);
         DataCopyPad(counterTmpTensor, sendCounterGMTensor_[gmOffset], counterCopyParams, padParams_);
@@ -980,7 +1025,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::ProcessMeta
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendPhase()
 {
-    if (startTokenId_ >= axisBS_) {
+    if (!isPrepareCore_ || startTokenId_ >= axisBS_) {
         return;
     }
     GetSlotStartNum(); // 计算起始slot id
@@ -1017,22 +1062,59 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendPhase()
 }
 
 template <TemplateMoeEpDispatchTypeClass>
-__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SetStatus()
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::PublishPrepareReady()
 {
-    if (aivId_ >= groupSize_) {
+    if (!isPrepareCore_ || startTokenId_ == endTokenId_) {
         return;
     }
+    uint32_t firstSender = 0U;
+    uint32_t lastSender = 0U;
+    GetOverlappingCores(startTokenId_, endTokenId_, sendCoreCount_, firstSender, lastSender);
+    LocalTensor<int32_t> statusTensor = maskBuf_.Get<int32_t>();
+    Duplicate<int32_t>(statusTensor, 1, UB_STRIDE);
+    SyncFunc<AscendC::HardEvent::V_MTE3>();
+    // Publish only after all source indices and metadata in this prepare interval are visible.
+    PipeBarrier<PIPE_MTE3>();
+    SetAtomicAdd<int32_t>();
+    for (uint32_t sender = firstSender; sender < lastSender; ++sender) {
+        GlobalTensor<int32_t> readyCounter;
+        readyCounter.SetGlobalBuffer(
+            reinterpret_cast<__gm__ int32_t *>(payloadStashStateWinAddr_ + sender * WIN_ADDR_ALIGN));
+        DataCopy(readyCounter, statusTensor, UB_STRIDE);
+    }
+    SetAtomicNone();
+}
 
-    int32_t notifyVal = dispatchNotifyCount_ / groupSize_;
-    if (aivId_ < (dispatchNotifyCount_ % groupSize_)) {
-        notifyVal++;
+template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WaitPrepareReady()
+{
+    uint32_t prepareStart = 0U;
+    uint32_t prepareEnd = 0U;
+    SplitToCore(axisBS_, sendCoreCount_, aivId_, startTokenId_, endTokenId_, sendTokenNum_);
+    GetOverlappingCores(startTokenId_, endTokenId_, prepareCoreCount_, prepareStart, prepareEnd);
+    uint32_t expectedReady = prepareEnd - prepareStart;
+    if (expectedReady == 0U) {
+        return;
     }
     LocalTensor<int32_t> statusTensor = maskBuf_.Get<int32_t>();
-    GlobalTensor<int32_t> srcStatusGMTensor;
-    srcStatusGMTensor.SetGlobalBuffer((__gm__ int32_t *)(payloadStashStateWinAddr_ + aivId_ * WIN_ADDR_ALIGN));
-    Duplicate<int32_t>(statusTensor, notifyVal, UB_STRIDE);
-    SyncFunc<AscendC::HardEvent::V_MTE3>();
-    DataCopy(srcStatusGMTensor, statusTensor, UB_STRIDE);
+    GlobalTensor<int32_t> readyCounter;
+    readyCounter.SetGlobalBuffer(
+        reinterpret_cast<__gm__ int32_t *>(payloadStashStateWinAddr_ + aivId_ * WIN_ADDR_ALIGN));
+    int32_t ready = 0;
+    while (ready != static_cast<int32_t>(expectedReady)) {
+        DataCopy(statusTensor, readyCounter, UB_STRIDE);
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
+        ready = statusTensor.GetValue(0);
+    }
+}
+
+template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetOverlappingCores(
+    uint32_t begin, uint32_t end, uint32_t coreCount, uint32_t &first, uint32_t &last) const
+{
+    auto overlap = MoeEpDispatchSchedule::Overlap(axisBS_, coreCount, begin, end);
+    first = overlap.begin;
+    last = overlap.end;
 }
 
 template <TemplateMoeEpDispatchTypeClass>
@@ -1058,118 +1140,198 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CommBufferI
 }
 
 template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetTokenRange(
+    uint32_t dstRank, uint32_t &tokenStart, uint32_t &tokenNum)
+{
+    tokenStart = GetTokenBoundary(dstRank, startTokenId_);
+    tokenNum = 0U;
+    if (startTokenId_ < endTokenId_) {
+        tokenNum = GetTokenBoundary(dstRank, endTokenId_) - tokenStart;
+    }
+}
+
+template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline uint32_t MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetTokenBoundary(
+    uint32_t dstRank, uint32_t tokenBoundary)
+{
+    uint32_t prepare = tokenBoundary == axisBS_ ? prepareCoreCount_ :
+                        MoeEpDispatchSchedule::Owner(axisBS_, prepareCoreCount_, tokenBoundary);
+    uint32_t base = 0U;
+    for (uint32_t row = 0U; row < prepare; ++row) {
+        base += static_cast<uint32_t>(sendCounterGMTensor_.GetValue(row * counterAlign512_ + dstRank));
+    }
+    if (tokenBoundary == axisBS_) {
+        return base;
+    }
+    auto range = MoeEpDispatchSchedule::Partition(axisBS_, prepareCoreCount_, prepare);
+    // At a prepare boundary its predecessor's count suffices; the next producer may still be running.
+    if (tokenBoundary == range.begin) {
+        return base;
+    }
+    uint32_t peerCount = static_cast<uint32_t>(
+        sendCounterGMTensor_.GetValue(prepare * counterAlign512_ + dstRank));
+    return LowerBoundToken(dstRank, base, base + peerCount, tokenBoundary);
+}
+
+template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline uint32_t MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::LowerBoundToken(
+    uint32_t dstRank, uint32_t begin, uint32_t end, uint32_t tokenBoundary)
+{
+    // Only search the ready boundary producer's sorted peer slice, never unfinished neighboring slices.
+    uint32_t peerBase = dstRank * tokenCntAlign_;
+    while (begin < end) {
+        uint32_t middle = begin + (end - begin) / 2U;
+        uint32_t token = static_cast<uint32_t>(srcTokenIdxGMTensor_.GetValue(peerBase + middle));
+        if (token < tokenBoundary) {
+            begin = middle + 1U;
+        } else {
+            end = middle;
+        }
+    }
+    return begin;
+}
+
+template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteToRemoteWindow()
 {
-    CommBufferInit();
-    if (!coreAssigned_) {
+    if (!isSendCore_) {
         return;
     }
+    CommBufferInit();
+    WaitPrepareReady();
+    DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(sendCounterGMTensor_);
+    DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(srcTokenIdxGMTensor_);
+    payloadBatch_ = hcomm_.MakeBatchHandle(static_cast<MultiChannelHandle>(GetOwnedJettyHandle()),
+                                          hcommBatchTensor_, hcommBatchBufferBytes_);
+    Mc2Kernel::CheckSharedJettyQueueDepth(payloadBatch_);
+    pendingWqebb_ = 0U;
+    firstBatchCommitted_ = false;
 
-    payloadStashStateWinAddr_ += channelIndex_ * WIN_ADDR_ALIGN;
-    LocalTensor<int32_t> sendNumPerRankTensor = sendCntRankBuf_.Get<int32_t>();
-    LocalTensor<int32_t> statusTensor = maskBuf_.Get<int32_t>();
-    DataCopy(sendNumPerRankTensor, sendCntPerRankGMTensor_, counterCnt_);
-    SyncFunc<AscendC::HardEvent::MTE2_S>();
-
-    for (uint32_t dstRankId = copyRankStart_; dstRankId < copyRankStart_ + copyRankNum_; ++dstRankId) {
-        uint32_t sendTokenNum = sendNumPerRankTensor.GetValue(dstRankId);
+    // Stagger the first peer so all 32 Jettys do not burst into the same destination at once.
+    for (uint32_t peerOffset = 0; peerOffset < epWorldSize_; ++peerOffset) {
+        uint32_t dstRankId = (aivId_ + peerOffset) % epWorldSize_;
         GM_ADDR notifyAddr = GetWinAddrByRankId(mc2Context_, dstRankId, slotWinStateOffset_) + dstStateWinOffset_;
-        notifyAddr += channelIndex_ * WIN_ADDR_ALIGN;
+        notifyAddr += aivId_ * WIN_ADDR_ALIGN;
         if (unlikely(dstRankId == epRankId_)) {
-            GlobalTensor<int32_t> srcStatusGMTensor;
-            GlobalTensor<int32_t> dstStatusGMTensor;
-            srcStatusGMTensor.SetGlobalBuffer((__gm__ int32_t *)payloadStashStateWinAddr_);
-            dstStatusGMTensor.SetGlobalBuffer((__gm__ int32_t *)notifyAddr);
-            DataCopy(statusTensor, srcStatusGMTensor, UB_STRIDE);
-            SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
-            DataCopy(dstStatusGMTensor, statusTensor, UB_STRIDE);
+            SendCompletion(dstRankId, notifyAddr);
             continue;
         }
-        uint64_t commHandle = GetSharedCommHandle(dstRankId);
-        uint32_t cntPerChannel = Ceil(sendTokenNum, groupSize_);
-        uint32_t tokenStart = coreIndexInGroup_ * cntPerChannel;
-        if (sendTokenNum == 0 || tokenStart >= sendTokenNum) {
-            auto batch = hcomm_.MakeBatchHandle(static_cast<MultiChannelHandle>(commHandle),
-                                                hcommBatchTensor_, hcommBatchBufferBytes_);
-            uint32_t peerIndex = dstRankId < epRankId_ ? dstRankId : dstRankId - 1;
-            auto &handle = hcomm_.GetHandleRef(batch, peerIndex, notifyAddr);
-            CheckSharedJettyResult(hcomm_.WriteNbi<NOTIFY_CFG>(handle, notifyAddr, payloadStashStateWinAddr_,
-                                                               WIN_ADDR_ALIGN));
-            CheckSharedJettyResult(hcomm_.BatchCommit(batch));
-            continue;
-        }
-        uint32_t tokenNum = (tokenStart + cntPerChannel > sendTokenNum) ? (sendTokenNum - tokenStart) : cntPerChannel;
-        SendTokenByChannel(tokenStart, tokenNum, dstRankId, commHandle, notifyAddr);
+        activePeerIndex_ = dstRankId < epRankId_ ? dstRankId : dstRankId - 1U;
+        SendTokenChunkToPeer(dstRankId, notifyAddr);
     }
+    CommitBatch(true);
     DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(topkIdxGMTensor_);
 }
 
 template <TemplateMoeEpDispatchTypeClass>
-__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenByChannel(
-    uint32_t tokenStart, uint32_t tokenNum, uint32_t dstRankId, uint64_t commHandle, GM_ADDR notifyAddr)
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenData(
+    uint32_t tokenStart, uint32_t tokenNum, uint32_t dstRankId, GM_ADDR remoteWinAddr,
+    BufDesc *localDescs)
 {
-    uint32_t processed = 0;
-    uint32_t commCnt = 0;
+    uint32_t processed = 0U;
     uint32_t maxBatchCnt = MAX_BATCH_SIZE / sizeof(int32_t);
+    DataCopyExtParams copyParams = {1U, 0U, 0U, 0U, 0U};
+    DataCopyPadExtParams<int32_t> copyPadParams{false, 0U, 0U, 0U};
+    LocalTensor<int32_t> srcTokenIdxTensor = tempBuf_.Get<int32_t>();
+    GlobalTensor<int32_t> srcTokenIdxGMTensor;
+    srcTokenIdxGMTensor.SetGlobalBuffer(
+        reinterpret_cast<__gm__ int32_t *>(srcTokenTableAddr_ + static_cast<uint64_t>(dstRankId) * srcTokenListBytes_));
+    while (processed < tokenNum) {
+        uint32_t batchCnt = (tokenNum - processed > maxBatchCnt) ? maxBatchCnt : tokenNum - processed;
+        copyParams.blockLen = static_cast<uint32_t>(batchCnt * sizeof(int32_t));
+        DataCopyPad(srcTokenIdxTensor, srcTokenIdxGMTensor[tokenStart + processed], copyParams, copyPadParams);
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
+        uint32_t batchGroup = Ceil(batchCnt, SLOT_NUM_PER_SQE);
+        uint32_t srcIdx = 0U;
+        for (uint32_t i = 0U; i < batchGroup; ++i) {
+            uint32_t slotNum = i == batchGroup - 1U ? batchCnt - i * SLOT_NUM_PER_SQE : SLOT_NUM_PER_SQE;
+            uint32_t sgePerSqe = slotNum * SGE_PER_SLOT;
+            for (uint32_t j = 0U; j < sgePerSqe; j += SGE_PER_SLOT) {
+                uint64_t srcTokenId = static_cast<uint64_t>(srcTokenIdxTensor.GetValue(srcIdx++));
+                localDescs[j].addr = xAddr_ + srcTokenId * tokenSize_;
+                localDescs[j + 1U].addr = payloadStashWinAddr_ + srcTokenId * metaSlotBytes_;
+            }
+            WritePayload(remoteWinAddr, localDescs, sgePerSqe);
+            remoteWinAddr += slotNum * perSlotBytes_;
+        }
+        processed += batchCnt;
+        // The next peer reuses this UB even when the payload batch has not been committed.
+        SyncFunc<AscendC::HardEvent::S_MTE2>();
+    }
+}
+
+template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenChunkToPeer(
+    uint32_t dstRankId, GM_ADDR notifyAddr)
+{
+    uint32_t tokenStart = 0U;
+    uint32_t tokenNum = 0U;
+    GetTokenRange(dstRankId, tokenStart, tokenNum);
     BufDesc localDescs[SGE_PER_SQE] = {};
     for (uint32_t i = 0; i < SGE_PER_SQE; i += SGE_PER_SLOT) { // srcLen 预填
         localDescs[i].len = tokenSize_;
         localDescs[i + 1].len = metaSlotBytes_;
     }
-    DataCopyExtParams srcTokenCopyParams = {1U, 0U, 0U, 0U, 0U};
-    DataCopyPadExtParams<int32_t> srcTokenCopyPadParams{false, 0U, 0U, 0U};
-    LocalTensor<int32_t> srcTokenIdxTensor = tempBuf_.Get<int32_t>();
-    GlobalTensor<int32_t> srcTokenIdxGMTensor;
-    srcTokenIdxGMTensor.SetGlobalBuffer(
-        (__gm__ int32_t *)(srcTokenTableAddr_ + static_cast<uint64_t>(dstRankId) * srcTokenListBytes_));
     GM_ADDR remoteWinBaseAddr = GetWinAddrByRankId(mc2Context_, dstRankId, winDataOffset_) + dstRankWinOffset_ +
                                 static_cast<uint64_t>(tokenStart) * perSlotBytes_;
-    SyncFunc<AscendC::HardEvent::V_S>(); // hcommBatchTensor_ init
+    SendTokenData(tokenStart, tokenNum, dstRankId, remoteWinBaseAddr, localDescs);
+    SendCompletion(dstRankId, notifyAddr);
+}
 
-    auto batchHandle = hcomm_.MakeBatchHandle(static_cast<MultiChannelHandle>(commHandle), hcommBatchTensor_,
-                                             hcommBatchBufferBytes_);
-    uint32_t peerIndex = dstRankId < epRankId_ ? dstRankId : dstRankId - 1;
-    auto &handle = hcomm_.GetHandleRef(batchHandle, peerIndex, remoteWinBaseAddr);
-    GM_ADDR remoteWinAddr = remoteWinBaseAddr;
-    while (processed < tokenNum) {
-        uint32_t batchCnt = (tokenNum - processed > maxBatchCnt) ? maxBatchCnt : tokenNum - processed;
-        srcTokenCopyParams.blockLen = static_cast<uint32_t>(batchCnt * sizeof(int32_t));
-        DataCopyPad(srcTokenIdxTensor, srcTokenIdxGMTensor[tokenStart + processed], srcTokenCopyParams,
-                    srcTokenCopyPadParams);
-        SyncFunc<AscendC::HardEvent::MTE2_S>();
-        uint32_t batchGroup = Ceil(batchCnt, SLOT_NUM_PER_SQE);
-        uint32_t srcIdx = 0;
-        uint32_t slotNum = SLOT_NUM_PER_SQE;
-        uint32_t sgePerSqe = SGE_PER_SQE;
-        for (uint32_t i = 0; i < batchGroup; i++) {
-            if (i == batchGroup - 1) {
-                slotNum = batchCnt - i * SLOT_NUM_PER_SQE;
-                sgePerSqe = slotNum * SGE_PER_SLOT;
-            }
-            for (uint32_t j = 0; j < sgePerSqe; j += SGE_PER_SLOT) {
-                uint64_t srcTokenId = static_cast<uint64_t>(srcTokenIdxTensor.GetValue(srcIdx));
-                GM_ADDR metaStashAddr = payloadStashWinAddr_ + srcTokenId * metaSlotBytes_;
-                localDescs[j].addr = xAddr_ + srcTokenId * tokenSize_;
-                localDescs[j + 1].addr = metaStashAddr;
-                srcIdx++;
-            }
-            CheckSharedJettyResult(hcomm_.WriteNbi<DATA_CFG>(handle, remoteWinAddr, localDescs, sgePerSqe));
-            commCnt++;
-            if (commCnt == HCOMM_BATCH_CAPACITY) {
-                CheckSharedJettyResult(hcomm_.BatchCommit(batchHandle));
-                commCnt = 0;
-            }
-            remoteWinAddr += slotNum * perSlotBytes_;
-        }
-        processed += batchCnt;
-        if (processed < tokenNum) {
-            SyncFunc<AscendC::HardEvent::S_MTE2>();
-        }
+template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::ReserveBatchSpace(uint32_t wqebbCount)
+{
+    uint32_t limit = firstBatchCommitted_ ? hcommBatchBufferBytes_ / HCOMM_WQE_BYTES : HCOMM_FIRST_BATCH_WQEBB;
+    if (pendingWqebb_ + wqebbCount > limit) {
+        CommitBatch(true);
     }
-    localDescs[0].addr = payloadStashStateWinAddr_;
-    localDescs[0].len = WIN_ADDR_ALIGN;
-    CheckSharedJettyResult(hcomm_.WriteNbi<NOTIFY_CFG>(handle, notifyAddr, localDescs, 1));
-    CheckSharedJettyResult(hcomm_.BatchCommit(batchHandle));
+}
+
+template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CommitBatch(bool force)
+{
+    uint32_t limit = firstBatchCommitted_ ? hcommBatchBufferBytes_ / HCOMM_WQE_BYTES : HCOMM_FIRST_BATCH_WQEBB;
+    if (pendingWqebb_ != 0U && (force || pendingWqebb_ >= limit)) {
+        CheckSharedJettyResult(hcomm_.BatchCommit(payloadBatch_));
+        pendingWqebb_ = 0U;
+        firstBatchCommitted_ = true;
+    }
+}
+
+template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WritePayload(
+    GM_ADDR dst, BufDesc *localDescs, uint32_t sgeCount)
+{
+    uint32_t wqebbCount = Ceil(HCOMM_SQE_BYTES + sgeCount * HCOMM_SGE_BYTES, HCOMM_WQE_BYTES);
+    ReserveBatchSpace(wqebbCount);
+    auto &handle = hcomm_.GetHandleRef(payloadBatch_, activePeerIndex_, dst);
+    CheckSharedJettyResult(hcomm_.WriteNbi<DATA_CFG>(handle, dst, localDescs, sgeCount));
+    pendingWqebb_ += wqebbCount;
+    CommitBatch(false);
+}
+
+template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendCompletion(
+    uint32_t dstRankId, GM_ADDR notifyAddr)
+{
+    if (dstRankId == epRankId_) {
+        LocalTensor<int32_t> statusTensor = maskBuf_.Get<int32_t>();
+        GlobalTensor<int32_t> source;
+        GlobalTensor<int32_t> target;
+        source.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(completionFlagSourceWinAddr_));
+        target.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(notifyAddr));
+        DataCopy(statusTensor, source, UB_STRIDE);
+        SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
+        DataCopy(target, statusTensor, UB_STRIDE);
+        SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
+        return;
+    }
+    constexpr uint32_t flagWqebb = (HCOMM_SQE_BYTES + HCOMM_SGE_BYTES) / HCOMM_WQE_BYTES;
+    ReserveBatchSpace(flagWqebb);
+    auto &handle = hcomm_.GetHandleRef(payloadBatch_, activePeerIndex_, notifyAddr);
+    CheckSharedJettyResult(hcomm_.WriteNbi<NOTIFY_CFG>(handle, notifyAddr, completionFlagSourceWinAddr_, WIN_ADDR_ALIGN));
+    pendingWqebb_ += flagWqebb;
+    CommitBatch(false);
 }
 
 template <TemplateMoeEpDispatchTypeClass>
@@ -1180,10 +1342,9 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Process()
         CalSendCnt();
         SyncAll<true>();
         Communication();
-        GetRecvCount();
         SendPhase();
-        SetStatus();
-        SyncAll<true>();
+        PublishPrepareReady();
+        GetRecvCount();
         WriteToRemoteWindow();
         diagWriter_.RunPosRecord(MOE_EP_DISPATCH_RUN_POS_URMA_REQUESTS_ISSUE_DONE);
     }

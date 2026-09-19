@@ -29,12 +29,9 @@ _ENGRAM_DTYPE_TO_INT = {
 _ENGRAM_INT_TO_DTYPE = {v: k for k, v in _ENGRAM_DTYPE_TO_INT.items()}
 _ENGRAM_SF_DTYPES = (torch.float32, torch.float8_e8m0fnu)
 _MOE_EP_METADATA_FIELDS = 5
-_MOE_SHARED_JETTY_WORLD_SIZE = 8
-_MOE_SHARED_JETTY_NUM = 56
-_MOE_SHARED_JETTY_LANES = _MOE_SHARED_JETTY_NUM // (_MOE_SHARED_JETTY_WORLD_SIZE - 1)
-_MOE_SHARED_JETTY_FLAG_COUNT = (
-    _MOE_SHARED_JETTY_WORLD_SIZE * _MOE_SHARED_JETTY_LANES
-)
+_MOE_SHARED_JETTY_NUM = 32
+_MOE_SHARED_JETTY_MIN_RANK_SIZE = 2
+_MOE_SHARED_JETTY_MAX_RANK_SIZE = 1024
 
 _MOE_EP_METADATA_ALIGN_ELEMENTS = 128  # 512 bytes, int32 elements
 
@@ -45,7 +42,11 @@ def _metadata_buffer_layout(capacity: int, ep_world_size: int):
         lambda: "metadata capacity must be in [0, INT32_MAX]",
     )
     torch._check(
-        2 <= ep_world_size <= 1024, lambda: "ep_world_size must be in [2, 1024]"
+        _MOE_SHARED_JETTY_MIN_RANK_SIZE <= ep_world_size <= _MOE_SHARED_JETTY_MAX_RANK_SIZE,
+        lambda: (
+            "ep_world_size must be in "
+            f"[{_MOE_SHARED_JETTY_MIN_RANK_SIZE}, {_MOE_SHARED_JETTY_MAX_RANK_SIZE}]"
+        ),
     )
     align = _MOE_EP_METADATA_ALIGN_ELEMENTS
     offset = (capacity * _MOE_EP_METADATA_FIELDS + align - 1) // align * align
@@ -336,8 +337,6 @@ def _get_moe_ep_window_layout(
 ) -> _MoeEpWindowLayout:
     win_addr_align = 512
     ub_align = 32
-    max_dispatch_channel_count = _MOE_SHARED_JETTY_NUM
-    max_dispatch_notify_count = _MOE_SHARED_JETTY_LANES
     max_out_dtype_size = 2
     metadata_dtype_size = 4
     state_dtype_size = 4
@@ -348,10 +347,7 @@ def _get_moe_ep_window_layout(
     dispatch_count_size = world_size * _inline_align(
         local_experts_num * state_dtype_size, win_addr_align
     )
-    dispatch_notify_count = min(
-        max_dispatch_notify_count, max_dispatch_channel_count // (world_size - 1)
-    )
-    dispatch_notify_count = max(dispatch_notify_count, 1)
+    dispatch_notify_count = _MOE_SHARED_JETTY_NUM
 
     dispatch_notify_size = (
         world_size * win_addr_align
@@ -359,10 +355,10 @@ def _get_moe_ep_window_layout(
     )
     combine_state_size = (
         num_max_tokens_per_rank * topk * win_addr_align
-        + _MOE_SHARED_JETTY_FLAG_COUNT * win_addr_align
-        + win_addr_align  # Persistent constant source for asynchronous combine completion flags.
+        + world_size * _MOE_SHARED_JETTY_NUM * win_addr_align
+        + win_addr_align  # Persistent constant source shared by asynchronous dispatch/combine flags.
     )
-    # payload 发送状态位区: 按每对端预留 notify 槽位数预留
+    # Completion state is indexed by source rank and physical Jetty owner.
     state_buffer_size = (
         dump_metadata_bytes
         + per_core_diag_bytes
@@ -429,10 +425,10 @@ def _get_moe_ep_window_bytes(
         lambda: f"topk only support in [1, 32], but got {topk=}.",
     )
     torch._check(
-        world_size == _MOE_SHARED_JETTY_WORLD_SIZE,
+        _MOE_SHARED_JETTY_MIN_RANK_SIZE <= world_size <= _MOE_SHARED_JETTY_MAX_RANK_SIZE,
         lambda: (
-            "shared Jetty requires "
-            f"world_size={_MOE_SHARED_JETTY_WORLD_SIZE}, but got {world_size}."
+            "shared Jetty world_size must be in "
+            f"[{_MOE_SHARED_JETTY_MIN_RANK_SIZE}, {_MOE_SHARED_JETTY_MAX_RANK_SIZE}], but got {world_size}."
         ),
     )
 

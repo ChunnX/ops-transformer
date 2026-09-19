@@ -96,6 +96,7 @@ private:
     __aicore__ inline void CountHits();
     __aicore__ inline void BuildRankRowStarts();
     __aicore__ inline void WaitDispatch();
+    __aicore__ inline void ClearDispatchFlags();
     __aicore__ inline void CopyFromWindowByExpert();
     __aicore__ inline void CopyFromWindowByCachedMeta();
     __aicore__ inline void CopyCachedRankOffsets();
@@ -114,6 +115,7 @@ private:
     TPipe *tpipe_{nullptr};
     MoeEpExceptionDump::MoeEpCoreDiagWriter diagWriter_;
     uint32_t epRankId_{0};
+    uint32_t tilingRankId_{0};
     bool isLocalRank_{false};
     uint32_t aivId_{0};
     GlobalTensor<int32_t> numRecvPerRankGm_;
@@ -233,6 +235,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     axisK_ = tilingData->cfg.topK;
     axisH_ = tilingData->cfg.hidden;
     epWorldSize_ = tilingData->cfg.epWorldSize;
+    tilingRankId_ = tilingData->cfg.epRankId;
     numMaxTokensPerRank_ = tilingData->cfg.numMaxTokensPerRank;
     perSlotBytes_ = tilingData->cfg.perSlotBytes;
     dispatchNotifyCount_ = tilingData->dispatchNotifyCount;
@@ -256,6 +259,12 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     GM_ADDR localWindow = nullptr;
     auto *ctx = reinterpret_cast<__gm__ Mc2Aclnn::MoeSharedJettyContext *>(context);
     epRankId_ = ctx->epRankId;
+    if (ctx->epRankSize != epWorldSize_ || epRankId_ >= epWorldSize_ || epRankId_ != tilingRankId_ ||
+        ctx->sharedJettyNum != Mc2Aclnn::MOE_SHARED_JETTY_NUM) {
+        AscendC::printf("MoE shared Jetty context mismatch, rank=%u, size=%u, tiling=%u, jettys=%u\n", epRankId_,
+                        ctx->epRankSize, epWorldSize_, ctx->sharedJettyNum);
+        AscendC::Trap();
+    }
     localWindow = reinterpret_cast<GM_ADDR>(ctx->epHcclBuffer[epRankId_]);
     MoeEpExceptionDump::WriteMetadata<Mc2Aclnn::MoeSharedJettyContext>(context, tilingGM + metadataOffset);
     diagWriter_.Init<Mc2Aclnn::MoeSharedJettyContext>(context, MOE_EP_CORE_DIAG_DISPATCH_EPILOGUE, tpipe_);
@@ -303,11 +312,13 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     uint32_t ubExpertPfxBytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
     uint32_t expertReduceTmpBytes =
         ReduceSumWorkNeedSize(static_cast<int32_t>(numLocalExperts_), sizeof(int64_t)) * sizeof(int64_t);
+    uint32_t flagChunkCount = totalNotifyCnt_ < Mc2Aclnn::MOE_SHARED_JETTY_FLAG_CHUNK_SIZE ?
+                                  totalNotifyCnt_ : Mc2Aclnn::MOE_SHARED_JETTY_FLAG_CHUNK_SIZE;
     uint32_t statusReduceTmpBytes =
-        ReduceSumWorkNeedSize(static_cast<int32_t>(totalNotifyCnt_), sizeof(float)) * sizeof(float);
+        ReduceSumWorkNeedSize(static_cast<int32_t>(flagChunkCount), sizeof(float)) * sizeof(float);
     uint32_t sharedBytes = expertReduceTmpBytes > statusReduceTmpBytes ? expertReduceTmpBytes : statusReduceTmpBytes;
     tpipe_->InitBuffer(ubExpertPfxBuf_, ubExpertPfxBytes);
-    tpipe_->InitBuffer(waitStatusBuf_, totalNotifyCnt_ * UB_ALIGN);
+    tpipe_->InitBuffer(waitStatusBuf_, flagChunkCount * UB_ALIGN);
     tpipe_->InitBuffer(waitSumBuf_, UB_ALIGN);
     tpipe_->InitBuffer(sharedTmpBuf_, sharedBytes);
     ubExpertPfx_ = ubExpertPfxBuf_.Get<int64_t>();
@@ -456,32 +467,51 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     }
 
     uint32_t mask = 1;
-    int32_t sumOfFlag = 0;
-    int32_t commpareFlag = static_cast<int32_t>(totalNotifyCnt_);
-    GlobalTensor<int32_t> statusGMTensor;
     LocalTensor<float> sharedTmp = sharedTmpBuf_.Get<float>();
     LocalTensor<float> ubWaitStatusFp32 = ubWaitStatus_.template ReinterpretCast<float>();
     LocalTensor<float> ubWaitSumFp32 = ubWaitSum_.template ReinterpretCast<float>();
-    statusGMTensor.SetGlobalBuffer((__gm__ int32_t *)localSlotStateWinAddr_);
-    DataCopyParams statusCopyParams = {static_cast<uint16_t>(totalNotifyCnt_), 1U,
-                                       static_cast<uint16_t>((WIN_ADDR_ALIGN - UB_ALIGN) / UB_ALIGN), 0U};
-    DataCopyParams clearStatusCopyParams = {static_cast<uint16_t>(totalNotifyCnt_), 1U, 0U,
-                                            static_cast<uint16_t>((WIN_ADDR_ALIGN - UB_ALIGN) / UB_ALIGN)};
 
     SyncFunc<AscendC::HardEvent::S_V>(); // 确保expertSum_计算完成
-    while (sumOfFlag != commpareFlag) {
-        DataCopy(ubWaitStatus_, statusGMTensor, statusCopyParams);
-        SyncFunc<AscendC::HardEvent::MTE2_V>();
-        ReduceSum(ubWaitSumFp32, ubWaitStatusFp32, sharedTmp, mask, totalNotifyCnt_, 1);
-        SyncFunc<AscendC::HardEvent::V_S>();
-        sumOfFlag = ubWaitSum_.GetValue(0);
+    for (uint32_t flagStart = 0U; flagStart < totalNotifyCnt_;
+         flagStart += Mc2Aclnn::MOE_SHARED_JETTY_FLAG_CHUNK_SIZE) {
+        uint32_t flagCount = totalNotifyCnt_ - flagStart;
+        flagCount = flagCount < Mc2Aclnn::MOE_SHARED_JETTY_FLAG_CHUNK_SIZE ?
+                        flagCount : Mc2Aclnn::MOE_SHARED_JETTY_FLAG_CHUNK_SIZE;
+        GlobalTensor<int32_t> statusGMTensor;
+        statusGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
+            localSlotStateWinAddr_ + static_cast<uint64_t>(flagStart) * WIN_ADDR_ALIGN));
+        DataCopyParams statusCopyParams = {static_cast<uint16_t>(flagCount), 1U,
+                                           static_cast<uint16_t>((WIN_ADDR_ALIGN - UB_ALIGN) / UB_ALIGN), 0U};
+        int32_t sumOfFlag = 0;
+        while (sumOfFlag != static_cast<int32_t>(flagCount)) {
+            DataCopy(ubWaitStatus_, statusGMTensor, statusCopyParams);
+            SyncFunc<AscendC::HardEvent::MTE2_V>();
+            ReduceSum(ubWaitSumFp32, ubWaitStatusFp32, sharedTmp, mask, flagCount, 1);
+            SyncFunc<AscendC::HardEvent::V_S>();
+            sumOfFlag = ubWaitSum_.GetValue(0);
+        }
     }
-    Duplicate<int32_t>(ubWaitStatus_, 0, totalNotifyCnt_ * UB_ALIGN / sizeof(int32_t));
-    SyncFunc<AscendC::HardEvent::V_MTE3>();
-    DataCopy(statusGMTensor, ubWaitStatus_, clearStatusCopyParams);
-    // Dispatch reuses these notification slots in the next continue round.  SyncAll only synchronizes AIVs; it does
-    // not replace the MTE3 completion required before a later kernel can publish the next round's notifications.
-    SyncFunc<AscendC::HardEvent::MTE3_S>();
+    ClearDispatchFlags();
+}
+
+template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
+__aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::ClearDispatchFlags()
+{
+    for (uint32_t flagStart = 0U; flagStart < totalNotifyCnt_;
+         flagStart += Mc2Aclnn::MOE_SHARED_JETTY_FLAG_CHUNK_SIZE) {
+        uint32_t flagCount = totalNotifyCnt_ - flagStart;
+        flagCount = flagCount < Mc2Aclnn::MOE_SHARED_JETTY_FLAG_CHUNK_SIZE ?
+                        flagCount : Mc2Aclnn::MOE_SHARED_JETTY_FLAG_CHUNK_SIZE;
+        Duplicate<int32_t>(ubWaitStatus_, 0, flagCount * UB_ALIGN / sizeof(int32_t));
+        SyncFunc<AscendC::HardEvent::V_MTE3>();
+        GlobalTensor<int32_t> statusGMTensor;
+        statusGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
+            localSlotStateWinAddr_ + static_cast<uint64_t>(flagStart) * WIN_ADDR_ALIGN));
+        DataCopyParams clearParams = {static_cast<uint16_t>(flagCount), 1U, 0U,
+                                      static_cast<uint16_t>((WIN_ADDR_ALIGN - UB_ALIGN) / UB_ALIGN)};
+        DataCopy(statusGMTensor, ubWaitStatus_, clearParams);
+        SyncFunc<AscendC::HardEvent::MTE3_S>();
+    }
 }
 
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>

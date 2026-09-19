@@ -14,15 +14,21 @@
 #include <cstdint>
 
 namespace Mc2Aclnn {
-constexpr uint32_t MOE_SHARED_JETTY_NUM = 56;
-constexpr uint32_t MOE_SHARED_JETTY_WORLD_SIZE = 8;
-constexpr uint32_t MOE_SHARED_JETTY_LANES = MOE_SHARED_JETTY_NUM / (MOE_SHARED_JETTY_WORLD_SIZE - 1);
+// One AIV sender exclusively owns one physical Jetty. Jettys are shared by all
+// remote peers; they are not partitioned by rank.
+constexpr uint32_t MOE_SHARED_JETTY_NUM = 32;
+constexpr uint32_t MOE_SHARED_JETTY_SQ_DEPTH = 4096;
+constexpr uint32_t MOE_SHARED_JETTY_CQ_DEPTH = 64;
+constexpr uint32_t MOE_SHARED_JETTY_FLAG_CHUNK_SIZE = 256;
+constexpr uint32_t MOE_SHARED_JETTY_MIN_RANK_SIZE = 2;
 constexpr uint32_t MOE_SHARED_JETTY_MAX_RANK_SIZE = 1024;
 
 // Each handle shares one local Jetty across peers ordered by rank, excluding self.
 struct MoeSharedJettyContext {
     uint32_t epRankId = 0;
+    uint32_t epRankSize = 0;
     uint32_t sharedJettyNum = 0;
+    uint32_t reserved = 0;
     uint64_t epHcclBuffer[MOE_SHARED_JETTY_MAX_RANK_SIZE] = {};
     uint64_t multiChannelHandles[MOE_SHARED_JETTY_NUM] = {};
 };

@@ -144,19 +144,19 @@ per-rank 有效 slot 数也可考虑与最终完成通知合并传递；同样�
 
 本节记录通信接口迁移，与前面的计数优化方案分开实施。当前已完成源码接入，尚未进行 CANN 编译和 NPU 验证；两个计数 Tensor、去重和专家还原逻辑保持原样。
 
-- 四个算子统一使用共享 context，旧普通 MoE context builder、topology 分流和单对端 kernel 路径已弃用。Python 参数和输出不变。Host 建链与四个 tiling 入口均限定 8P。直接 ACLNN 调用须传入 `MoeSharedJettyContext`；topology 属性仅为兼容主线 ACLNN ABI 而保留，tiling 不再据此选择或拒绝路径。本轮不支持旧跨超算法。
-- Host 每个 rank 固定建立 56 个共享 Jetty，每个 Jetty 均包含按 rank 升序跳过自身的 7 个对端。远端句柄索引固定为 `peerIndex * 8 + channelIndex`，不随实际发送组大小变化。64 AIV 时，7 个远端组各 8 核，使用全部 56 个队列，本卡组不占远端 Jetty。保留 dispatch 原有发送核上限和取整规则，combine 保留原余数分组、超过 64 核时远端组优先及剩余本地核的规则，不引入公共调度层。
-- 计数、payload 和空分片通知均使用 `MakeBatchHandle → GetHandleRef → WriteNbi / WriteWithNotifyNbi → BatchCommit`。对端索引按升序跳过本卡；本卡仍走本地拷贝。本版不合并跨对端 batch，也不改成所有核遍历所有对端。
-- epilogue 保留原等待条件与通知清理，只适配共享 context 的窗口访问。低 AIV 时 dispatch 保留连续 rank 分配，combine 保留按核号步进遍历 rank；两者不强行统一。
+- 四个算子统一使用共享 context，旧普通 MoE context builder、topology 分流和单对端 kernel 路径已弃用。Python 参数和输出不变。world size 由运行时参数和 communicator context 共同校验，不再限定 8P；当前显式支持范围为 2～1024，设备可行范围仍受完整 shape/UB/window 约束。直接 ACLNN 调用须传入 `MoeSharedJettyContext`；topology 属性仅为兼容主线 ACLNN ABI 而保留。
+- Host 每个 rank 固定建立 32 个共享 Jetty，每个 Jetty 均包含按 rank 升序跳过自身的全部远端 peer。sender AIV 0～31 与 Jetty 0～31 一一绑定，每个 owner 遍历所有 peer；核/Jetty 映射不随卡数改变。
+- Dispatch 固定由 0～31 号核绑定 32 个 Jetty，并将 BS 独立均分为 32 个发送区间；其余 `aivNum - 32` 个 prepare 核另行均分 BS。sender 只等待与其区间相交的 prepare，利用原 count 前缀和 ready 分片内的 source-token lower_bound 定位连续远端 slot；卡数不参与分核。Dispatch 要求 `33 <= aivNum <= 100`，上限来自固定的每核诊断区容量。Combine 对每个 peer 的 metadata 区间做 32 路无重叠切分。
+- count 使用 `MakeBatchHandle → GetHandleRef → WriteWithNotifyNbi → BatchCommit`，payload 和空分片通知使用 `WriteNbi`；对端索引按升序跳过本卡，本卡仍走本地拷贝。完成标志按 `[source rank][Jetty owner]` 布局，epilogue 等待 `worldSize × 32` 个标志，并以固定 chunk 分块搬入 UB。
 - shared-Jetty builder 按算子参数计算的容量自行申请、清零并通过 `HcclCommMemReg` 注册窗口；channel descriptor 绑定该内存句柄，并通过首个共享 channel 按 tag 获取各 peer 的远端窗口地址。该路径不使用 HCCL 内置 buffer，也不依赖 `HCCL_BUFFSIZE`。同一通信域首次建立的容量固定，后续请求不得超过首建容量；各 rank 的窗口参数须一致。通信域须持续存活，注册后的资源构建失败时沿用现有约定废弃通信域。
 - 四个算子复用同一份 HCCL 共享 context 和独立注册窗口，不再提前建立普通 MoE context。注册窗口在算子链完成之前不可被其他调用覆盖。Engram 的独立通信实现不在本次删除范围。
 - 同步适配 Device 诊断、Host 异常回调和离线 dump 解析，避免将较小的共享 context 当作普通结构读取。
 
 本地 asc-comm 接口核对结果：batch 形式的 `WriteNbi`、`WriteWithNotifyNbi`、`ReadNbi` 支持由 `GetHandleRef` 选择共享 Jetty 内的对端，均包含连续地址和 scatter/gather 重载；`BatchCommit`、`Drain` 有对应 batch 重载。单次 scatter/gather 请求不能跨对端。当前公开的 `WriteValueNbi`、`WriteReduceNbi`、`AtomicFAA`、`AtomicCAS`、`Commit`、`Lock`、`Unlock` 只有普通 `ChannelHandle` 重载，不能直接传入 `MultiChannelHandle`。
 
-`BatchCommit` 表示提交，不等同于远端接收完成，也不对累计未完成的 SQ 请求自动节流。dispatch 保留原 128 SQE 批次边界，不新增 CQE 或 Drain；combine 同样只提交 payload 和最终有序标记，不在发送 kernel 中 Drain，接收侧仍由各自 epilogue 按原通知协议等待 payload 就绪。当前每个 SQ 深度为 8192，本轮按要求不增加 SQ 水位和超限处理；该能力及更大 token 规模留待后续单独实现和验证。
+`BatchCommit` 表示提交，不等同于远端接收完成，也不对累计未完成的 SQ 请求自动节流。Dispatch payload 跨 peer 复用同一个 owner batch，按实际 WQEBB 计量：首批32、后续512、最后剩余请求强制提交；不新增 CQE 或 Drain。Combine 同样只提交 payload 和最终有序标记，接收侧仍由各自 epilogue 等待全部 payload 就绪。本版本要求实际资源为 32 Jetty、SQ 4096 WQEBB、CQ 64，并在 device 构造 batch 后严格核对；当前 HCCL 公共建链接口没有显式深度参数，因此该深度映射仍是平台资源策略的外部约束，必须在 NPU 建链时验证。本轮按要求不增加 SQ 累计水位保护。
 
-本轮设备验收以 8 卡为准，覆盖空分片、零发送、非均衡路由、Cached / 非 Cached、`DoCpuSync`、连续多轮，以及 dispatch → epilogue → combine → combine epilogue。其他 rank 数及跨超不作为已验证能力。静态核对不能替代设备验证。
+设备验收至少覆盖 2P/4P/8P/16P、不同 `aivNum - 32` prepare 核数、BS 小于 prepare 核数、BS 不能被 prepare 核数整除（典型 64 AIV 时即 32）、空分片、零发送、非均衡路由、Cached / 非 Cached、`DoCpuSync`、连续多轮，以及 dispatch → epilogue → combine → combine epilogue。静态核对不能替代设备验证。
 
 ## 第二章：moe_ep_dispatch_epilogue
 
@@ -168,15 +168,13 @@ per-rank 有效 slot 数也可考虑与最终完成通知合并传递；同样�
 
 combine 仅使用 dispatch 的 `MoeSharedJettyContext`，context 仍由 HCCL 管理，Torch 仅持有其 Tensor。不再保留普通 context/channel 分支或 `SharedJetty` 双模板；公开算子参数不变。
 
-保留按目标 rank 分核、metadata 分段、token/weight 写入位置及完成标记布局。远端组使用第一章所述的紧凑句柄索引，通过 `MakeBatchHandle → GetHandleRef → WriteNbi → BatchCommit` 选择对端并批量提交。对端索引按 rank 排序并跳过自身；低 AIV 分支可由同一核串行切换多个对端。保留 combine 的 `hcomm_.Init`。
-
-8P 固定每远端 8 个 lane，与原 8P 的通道数量一致。原分核函数不变，不再通过新增调度辅助截断或取整 combine 核数。共享最终标记保持 `fence=1, cqe=0`，在 payload 之后提交但不在 combine 中等待；combine epilogue 观察到标记后再读取数据。本轮不保留发送端 SQ 高水位 CQE/Drain 逻辑，当前每 SQ 8192 深度的超限保护留待后续处理。
+Combine 不再按目标 rank 分核：AIV 0～31 分别独占 Jetty 0～31，每个 owner 遍历全部 peer，并把该 peer 的 metadata 区间按 32 份切分。token/weight 写入位置及主线输出排布不变；通过 `MakeBatchHandle → GetHandleRef → WriteNbi → BatchCommit` 切换对端并批量提交。对端索引按 rank 排序并跳过自身。共享最终标记保持 `fence=1, cqe=0`，在各 peer payload 之后提交但不在 combine 中等待；combine epilogue 观察全部 `worldSize × 32` 标记后再读取数据。
 
 本次不修改 token 排布、接收 metadata 或算子输入输出，也不实施第一章的计数 Tensor 优化。直接调用 ACLNN 的调用方在 Direct 模式下须传共享 context；tiling 会拒绝旧普通 context。
 
 ### 3.2 验证边界
 
-本轮 Python 调度模型通过 2048 组组合：8P、1～128 个 AIV、全部 8 个源 rank、dispatch/combine 两种分核。检查了远端队列索引范围、单写者、token 覆盖及通知数量，64 AIV 及以上使用全部 56 个远端队列。另逐字对比确认 dispatch 分核函数与共享接入前版本一致，combine 分核及 epilogue 完成计数函数与当前 HEAD 一致。模型不是设备代码执行；之前已删除公共调度头的编译结果不作为本版证据。尚未对本次完整改动进行 CANN 编译或 NPU 精度验证。
+本轮 CPU 测试直接编译 Dispatch 使用的区间划分函数，覆盖1～68个 prepare 核、空/小BS及4095/4096/4097，验证独立32路发送区间与ready交集；随机路由模型将计数前缀加边界二分与全表 lower_bound 对照，验证slot完整且无重叠。另已静态检查 Combine 每 peer 的32路metadata覆盖及C++/Python window公式。CPU测试和模型不是AscendC/Hcomm设备执行，尚未进行CANN编译或NPU精度验证。
 
 设备验收应覆盖 dispatch → dispatch epilogue → combine → combine epilogue 连续执行、连续多轮复用、空分片、零 token、非均衡路由、带/不带 topk weight及低 AIV 多对端。修改 kernel 后须重新编译安装自定义算子包；修改 Torch 扩展后须重新构建并安装 wheel。
 
@@ -186,6 +184,6 @@ combine 仅使用 dispatch 的 `MoeSharedJettyContext`，context 仍由 HCCL 管
 
 与 combine 使用同一份共享窗口，只解析共享 context。异常 metadata 和核诊断显式使用共享类型，沿用已有共享 context 离线解析。
 
-完成标记数量沿用原 `GetCompletionChannelCount`，与 combine 原分核对应，包括不足 8 核、非 8 倍数和超过 64 核的情况。接收归约仍使用原 `aivNum`，保留原来的归约分核、topk weight 处理和标记清理流程。
+完成标记固定按 `[source rank][Jetty owner]` 布局为 `epWorldSize × 32`；Combine Epilogue 分块等待全部标记后再清零。接收归约仍使用运行时 `aivNum`，保留原来的归约分核、topk weight 处理和输出排布。
 
 本章与第三章一起验证；静态检查不代表设备运行或精度通过。

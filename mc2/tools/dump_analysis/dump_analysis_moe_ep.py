@@ -164,25 +164,44 @@ def print_card_metadata(card_num: int, card_metadata: dict):
 # 从 exception_info 解析后的 input.0.bin 中读取 context 数据
 # 当前 context 对应 MoeSharedJettyContext:
 #   uint32_t epRankId;
+#   uint32_t epRankSize;
 #   uint32_t sharedJettyNum;
+#   uint32_t reserved;
 #   uint64_t epHcclBuffer[1024];
-#   uint64_t multiChannelHandles[56];
+#   uint64_t multiChannelHandles[32];
 # get_context 仍保留旧 MoeCommContext 的解析回退，用于历史 dump。
-SHARED_JETTY_NUM = 56
+SHARED_JETTY_NUM = 32
+LEGACY_SHARED_JETTY_NUM = 56
+CONTEXT_MIN_RANK_SIZE = 2
 CONTEXT_MAX_RANK_SIZE = 1024
-SHARED_CONTEXT_INTS = 2 + 2 * (CONTEXT_MAX_RANK_SIZE + SHARED_JETTY_NUM)
+SHARED_CONTEXT_HEADER_BYTES = 16
+SHARED_CONTEXT_INTS = SHARED_CONTEXT_HEADER_BYTES // 4 + 2 * (CONTEXT_MAX_RANK_SIZE + SHARED_JETTY_NUM)
+LEGACY_SHARED_CONTEXT_INTS = 2 + 2 * (CONTEXT_MAX_RANK_SIZE + LEGACY_SHARED_JETTY_NUM)
 
 
 def parse_shared_context(context):
+    if len(context) == LEGACY_SHARED_CONTEXT_INTS:
+        raw = context.tobytes()
+        jetty_count = int(context[1]) & 0xFFFFFFFF
+        if jetty_count != LEGACY_SHARED_JETTY_NUM:
+            return None
+        windows = np.frombuffer(raw, dtype=np.uint64, count=CONTEXT_MAX_RANK_SIZE, offset=8)
+        handles_offset = 8 + CONTEXT_MAX_RANK_SIZE * 8
+        handles = np.frombuffer(raw, dtype=np.uint64, count=jetty_count, offset=handles_offset)
+        return int(context[0]), int(np.count_nonzero(windows)), windows, handles
     if len(context) != SHARED_CONTEXT_INTS:
         return None
     raw = context.tobytes()
-    windows = np.frombuffer(raw, dtype=np.uint64, count=CONTEXT_MAX_RANK_SIZE, offset=8)
-    jetty_count = int(context[1]) & 0xFFFFFFFF
+    rank_size = int(context[1]) & 0xFFFFFFFF
+    jetty_count = int(context[2]) & 0xFFFFFFFF
     if jetty_count != SHARED_JETTY_NUM:
         raise ValueError(f"Invalid shared Jetty count: {jetty_count}")
-    handles = np.frombuffer(raw, dtype=np.uint64, count=jetty_count, offset=8 + CONTEXT_MAX_RANK_SIZE * 8)
-    return int(context[0]), windows, handles
+    if not CONTEXT_MIN_RANK_SIZE <= rank_size <= CONTEXT_MAX_RANK_SIZE:
+        raise ValueError(f"Invalid shared Jetty rank size: {rank_size}")
+    windows = np.frombuffer(raw, dtype=np.uint64, count=CONTEXT_MAX_RANK_SIZE, offset=SHARED_CONTEXT_HEADER_BYTES)
+    handles_offset = SHARED_CONTEXT_HEADER_BYTES + CONTEXT_MAX_RANK_SIZE * 8
+    handles = np.frombuffer(raw, dtype=np.uint64, count=jetty_count, offset=handles_offset)
+    return int(context[0]), rank_size, windows, handles
 
 
 def get_context(target_path: str):
@@ -194,8 +213,9 @@ def get_context(target_path: str):
             logging.info("context dtype: %s, size: %d", context.dtype, context.shape[0])
             shared = parse_shared_context(context)
             if shared is not None:
-                rank, windows, handles = shared
-                logging.info("Shared context: epRankId=%d, sharedJettyNum=%d", rank, len(handles))
+                rank, rank_size, windows, handles = shared
+                logging.info("Shared context: epRankId=%d, epRankSize=%d, sharedJettyNum=%d", rank, rank_size,
+                             len(handles))
                 logging.info("epHcclBuffer: %s", windows[windows != 0])
                 logging.info("multiChannelHandles: %s", handles)
                 return context
@@ -500,13 +520,13 @@ def write_shared_context_sheet(wb, all_context):
     if not shared_contexts:
         return
     ws = wb.create_sheet("shared_context")
-    ws.append(["card_num", "epRankId", "sharedJettyNum", "kind", "index", "address"])
-    for card, (rank, windows, handles) in shared_contexts:
+    ws.append(["card_num", "epRankId", "epRankSize", "sharedJettyNum", "kind", "index", "address"])
+    for card, (rank, rank_size, windows, handles) in shared_contexts:
         for peer, address in enumerate(windows):
             if address != 0:
-                ws.append([card, rank, len(handles), "epHcclBuffer", peer, hex(int(address))])
+                ws.append([card, rank, rank_size, len(handles), "epHcclBuffer", peer, hex(int(address))])
         for jetty, address in enumerate(handles):
-            ws.append([card, rank, len(handles), "multiChannelHandle", jetty, hex(int(address))])
+            ws.append([card, rank, rank_size, len(handles), "multiChannelHandle", jetty, hex(int(address))])
 
 
 def write_context_sheet(wb, all_context: list):

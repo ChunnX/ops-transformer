@@ -111,9 +111,11 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const
                     return ge::GRAPH_FAILED);
 
     int64_t epWorldSize = *epWorldSizePtr;
-    OP_TILING_CHECK(epWorldSize != Mc2Aclnn::MOE_SHARED_JETTY_WORLD_SIZE,
-                    OP_LOGE(nodeName, "Shared Jetty requires ep_world_size=%u, but got %ld.",
-                            Mc2Aclnn::MOE_SHARED_JETTY_WORLD_SIZE, epWorldSize),
+    OP_TILING_CHECK(epWorldSize < Mc2Aclnn::MOE_SHARED_JETTY_MIN_RANK_SIZE ||
+                        epWorldSize > Mc2Aclnn::MOE_SHARED_JETTY_MAX_RANK_SIZE,
+                    OP_LOGE(nodeName, "Shared Jetty requires ep_world_size in [%u, %u], but got %ld.",
+                            Mc2Aclnn::MOE_SHARED_JETTY_MIN_RANK_SIZE,
+                            Mc2Aclnn::MOE_SHARED_JETTY_MAX_RANK_SIZE, epWorldSize),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         (*epRankIdPtr < 0) || (*epRankIdPtr >= epWorldSize),
@@ -497,6 +499,10 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
     uint64_t ubSize = 0UL;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
     OP_TILING_CHECK(aivNum == 0U, OP_LOGE(nodeName, "Platform reports aiv_num=0."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(aivNum > MOE_EP_PER_CORE_DIAG_SLOT_COUNT,
+                    OP_LOGE(nodeName, "aiv_num=%u exceeds diagnostic slot capacity %lu.", aivNum,
+                            MOE_EP_PER_CORE_DIAG_SLOT_COUNT),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(ubSize == 0UL, OP_LOGE(nodeName, "Platform reports ub_size=0."), return ge::GRAPH_FAILED);
     uint32_t blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
     context->SetBlockDim(blockDim);

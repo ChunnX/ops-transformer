@@ -44,6 +44,7 @@
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #include "../../common/op_kernel/moe_ep_exception_dump_writer.h"
+#include "../../common/op_kernel/moe_shared_jetty_kernel_utils.h"
 
 #include "moe_ep_combine_base.h"
 #include "moe_ep_combine_tiling.h"
@@ -71,7 +72,7 @@ constexpr uint64_t UB_ALIGN = 32UL;
 static constexpr uint32_t META_CHUNK_TOKEN_MAX = 2048U;
 static constexpr struct UrmaWqeEntry DEFAULT_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
 // Keep the final flag ordered after payload writes; the epilogue waits for it without a sender-side completion wait.
-static constexpr struct UrmaWqeEntry CHANNEL_FLAG_WQE_CONFIG = {.odr = 6, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
+static constexpr struct UrmaWqeEntry JETTY_FLAG_WQE_CONFIG = {.odr = 6, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
 
 __aicore__ inline void CheckCommResult(int32_t ret)
 {
@@ -95,8 +96,8 @@ public:
 private:
     __aicore__ inline void InitContext(GM_ADDR context, GM_ADDR tilingGM);
     __aicore__ inline void InitMetadata(GM_ADDR x, GM_ADDR recvSrcMetadata, GM_ADDR topkWeights);
-    __aicore__ inline void SendChannelFlag(uint32_t dstRank, uint32_t channelIndex);
-    __aicore__ inline void BeginPreparedWrites(uint32_t dstRank, uint32_t channelIndex);
+    __aicore__ inline void SendJettyFlag(uint32_t dstRank, uint32_t jettyIndex);
+    __aicore__ inline void BeginPreparedWrites(uint32_t dstRank, uint32_t jettyIndex);
     __aicore__ inline void InitFlagSource();
     template <auto const &config>
     __aicore__ inline void PrepareWrite(GM_ADDR dst, GM_ADDR src, uint64_t len);
@@ -105,20 +106,15 @@ private:
     __aicore__ inline void FlushPreparedWrites(bool keepHandle = false);
     __aicore__ inline void SplitRange(uint64_t rangeBegin, uint64_t rangeEnd, uint32_t coreCount, uint32_t coreIndex,
                                       uint64_t &coreBegin, uint64_t &coreEnd);
-    __aicore__ inline void GetCoreAssignment(uint32_t totalBlocks, uint32_t &targetRank, uint32_t &coreIndexInGroup,
-                                             uint32_t &groupSize);
     __aicore__ inline void SendRemoteMetadataSlot(uint32_t recvXIdx, int32_t srcTokenIdx, int32_t srcTopKIdx,
                                                   GM_ADDR remoteDataBase, GM_ADDR remoteStateBase, uint64_t tokenBytes);
     __aicore__ inline void ProcessRemoteMetadataRange(uint32_t targetRank, uint64_t rangeBegin, uint64_t rangeEnd,
-                                                      uint32_t channelIndex);
+                                                      uint32_t jettyIndex);
     __aicore__ inline void SendPhaseFromMetadata();
-    __aicore__ inline void SendAssignedPayload(uint32_t targetRank, uint32_t coreIndex, uint32_t groupSize);
 
-    __aicore__ inline uint64_t GetCommHandle(uint32_t rankId, uint32_t channelIndex)
+    __aicore__ inline uint64_t GetJettyHandle(uint32_t jettyIndex)
     {
-        uint32_t peerIndex = rankId < rankId_ ? rankId : rankId - 1U;
-        uint32_t index = peerIndex * Mc2Aclnn::MOE_SHARED_JETTY_LANES + channelIndex;
-        return mc2Context_->multiChannelHandles[index];
+        return mc2Context_->multiChannelHandles[jettyIndex];
     }
     __aicore__ inline GM_ADDR GetUrmaWinAddrByRankId(uint32_t rankId, uint64_t offset)
     {
@@ -137,7 +133,7 @@ private:
 
     uint32_t rankId_{0};
     uint32_t epWorldSize_{0};
-    uint32_t combineChannelCount_{1};
+    uint32_t combineJettyCount_{1};
     uint32_t numMaxTokensPerRank_{0};
     uint32_t topK_{0};
     uint32_t axisH_{0};
@@ -176,7 +172,7 @@ private:
     GM_ADDR flagSourceWinAddr_{nullptr};
     uint32_t aivId_{0};
     HcommBatchHandle activeBatchHandle_{};
-    uint64_t activeBatchChannel_{0};
+    uint64_t activeJettyHandle_{0};
     uint32_t activePeerIndex_{0};
     GM_ADDR activeRemoteWindow_{nullptr};
     uint32_t preparedWriteCount_{0};
@@ -226,12 +222,22 @@ template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::InitContext(GM_ADDR context, GM_ADDR tilingGM)
 {
     mc2Context_ = reinterpret_cast<__gm__ ContextType *>(context);
+    if (mc2Context_->sharedJettyNum != Mc2Aclnn::MOE_SHARED_JETTY_NUM) {
+        AscendC::printf("MoE shared Jetty count mismatch, got=%u\n", mc2Context_->sharedJettyNum);
+        AscendC::Trap();
+    }
     rankId_ = mc2Context_->epRankId;
+    if (mc2Context_->epRankSize != epWorldSize_ || rankId_ >= epWorldSize_ ||
+        rankId_ != tilingData_->cfg.epRankId) {
+        AscendC::printf("MoE shared Jetty rank mismatch, context=%u/%u, tiling world=%u\n", rankId_,
+                        mc2Context_->epRankSize, epWorldSize_);
+        AscendC::Trap();
+    }
     constexpr size_t metadataOffset =
         offsetof(MoeEpCombineTilingData, moeEpCombineInfo) + offsetof(MoeEpCombineInfo, dumpMetadata);
     MoeEpExceptionDump::WriteMetadata<ContextType>(context, tilingGM + metadataOffset);
     diagWriter_.Init<ContextType>(context, MOE_EP_CORE_DIAG_COMBINE, tpipe_);
-    combineChannelCount_ = Mc2Aclnn::MOE_SHARED_JETTY_LANES;
+    combineJettyCount_ = Mc2Aclnn::MOE_SHARED_JETTY_NUM;
     for (uint32_t i = 0; i < epWorldSize_; ++i) {
         winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer[i];
     }
@@ -281,19 +287,19 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::FlushPrepared
     }
     if (!keepHandle) {
         activeBatchHandle_ = {};
-        activeBatchChannel_ = 0;
+        activeJettyHandle_ = 0;
         activeBatchInitialized_ = false;
     }
 }
 
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BeginPreparedWrites(uint32_t dstRank,
-                                                                                       uint32_t channelIndex)
+                                                                                       uint32_t jettyIndex)
 {
     activePeerIndex_ = dstRank < rankId_ ? dstRank : dstRank - 1U;
     activeRemoteWindow_ = winRankAddr_[dstRank];
-    uint64_t commHandle = GetCommHandle(dstRank, channelIndex);
-    if (activeBatchInitialized_ && activeBatchChannel_ == commHandle) {
+    uint64_t commHandle = GetJettyHandle(jettyIndex);
+    if (activeBatchInitialized_ && activeJettyHandle_ == commHandle) {
         return;
     }
     if (activeBatchInitialized_) {
@@ -301,7 +307,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BeginPrepared
     }
     activeBatchHandle_ = hcomm_.MakeBatchHandle(static_cast<CommHandle>(commHandle), hcommBatchTensor_,
                                                 HCOMM_BATCH_BUFFER_BYTES, winRankAddr_[dstRank]);
-    activeBatchChannel_ = commHandle;
+    Mc2Kernel::CheckSharedJettyQueueDepth(activeBatchHandle_);
+    activeJettyHandle_ = commHandle;
     activeBatchInitialized_ = true;
 }
 
@@ -338,10 +345,10 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareMultiS
 }
 
 template <TemplateMoeEpCombineTypeClass>
-__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendChannelFlag(uint32_t dstRank,
-                                                                                   uint32_t channelIndex)
+__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendJettyFlag(uint32_t dstRank,
+                                                                                 uint32_t jettyIndex)
 {
-    uint64_t flagIndex = static_cast<uint64_t>(rankId_) * combineChannelCount_ + channelIndex;
+    uint64_t flagIndex = static_cast<uint64_t>(rankId_) * combineJettyCount_ + jettyIndex;
     uint64_t flagOffset =
         static_cast<uint64_t>(numMaxTokensPerRank_) * topK_ * WIN_ADDR_ALIGN + flagIndex * WIN_ADDR_ALIGN;
     GM_ADDR flagAddr = GetUrmaStateAddrByRankId(dstRank, combineStateWinOffset_) + flagOffset;
@@ -352,8 +359,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendChannelFl
         DataCacheCleanAndInvalid<uint64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(localFlag);
         return;
     }
-    BeginPreparedWrites(dstRank, channelIndex);
-    PrepareWrite<CHANNEL_FLAG_WQE_CONFIG>(flagAddr, flagSourceWinAddr_, WIN_ADDR_ALIGN);
+    BeginPreparedWrites(dstRank, jettyIndex);
+    PrepareWrite<JETTY_FLAG_WQE_CONFIG>(flagAddr, flagSourceWinAddr_, WIN_ADDR_ALIGN);
 }
 
 template <TemplateMoeEpCombineTypeClass>
@@ -414,12 +421,12 @@ template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ProcessRemoteMetadataRange(uint32_t targetRank,
                                                                                               uint64_t rangeBegin,
                                                                                               uint64_t rangeEnd,
-                                                                                              uint32_t channelIndex)
+                                                                                              uint32_t jettyIndex)
 {
     if (rangeBegin >= rangeEnd) {
         return;
     }
-    BeginPreparedWrites(targetRank, channelIndex);
+    BeginPreparedWrites(targetRank, jettyIndex);
     constexpr uint32_t metaBytesPerToken = RECV_META_FIELDS * sizeof(int32_t);
     LocalTensor<int32_t> metadataLocal = metadataBuf_.Get<int32_t>();
     const DataCopyPadExtParams<int32_t> padParams{false, 0U, 0U, 0U};
@@ -448,116 +455,34 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ProcessRemote
 }
 
 template <TemplateMoeEpCombineTypeClass>
-__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::GetCoreAssignment(uint32_t totalBlocks,
-                                                                                     uint32_t &targetRank,
-                                                                                     uint32_t &coreIndexInGroup,
-                                                                                     uint32_t &groupSize)
-{
-    uint32_t maxChannelAivNum = epWorldSize_ * combineChannelCount_;
-    bool hasExtraAivs = totalBlocks > maxChannelAivNum;
-    if (hasExtraAivs) {
-        // Put all remote communication AIVs first; the remaining AIVs only publish local completion flags.
-        uint32_t remoteAivNum = (epWorldSize_ - 1U) * combineChannelCount_;
-        if (aivId_ < remoteAivNum) {
-            uint32_t remoteRankIndex = aivId_ / combineChannelCount_;
-            targetRank = remoteRankIndex < rankId_ ? remoteRankIndex : remoteRankIndex + 1U;
-            coreIndexInGroup = aivId_ % combineChannelCount_;
-            groupSize = combineChannelCount_;
-        } else {
-            targetRank = rankId_;
-            coreIndexInGroup = aivId_ - remoteAivNum;
-            groupSize = totalBlocks - remoteAivNum;
-        }
-        return;
-    }
-
-    uint32_t baseGroupSize = totalBlocks / epWorldSize_;
-    uint32_t remainder = totalBlocks % epWorldSize_;
-    uint32_t accumulated = 0;
-    for (uint32_t rank = 0; rank < epWorldSize_; ++rank) {
-        uint32_t currentGroupSize = baseGroupSize + ((rank < remainder) ? 1U : 0U);
-        if (aivId_ < accumulated + currentGroupSize) {
-            targetRank = rank;
-            groupSize = currentGroupSize;
-            coreIndexInGroup = aivId_ - accumulated;
-            return;
-        }
-        accumulated += currentGroupSize;
-    }
-    targetRank = epWorldSize_;
-    groupSize = 0;
-    coreIndexInGroup = 0;
-}
-
-template <TemplateMoeEpCombineTypeClass>
-__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendAssignedPayload(
-    uint32_t targetRank, uint32_t coreIndex, uint32_t groupSize)
-{
-    bool sendsTokens = actualA_ != 0U && aivId_ < aivNum_;
-    if (sendsTokens) {
-        if (aivNum_ >= epWorldSize_) {
-            // Local payload is consumed directly by combine epilogue; combine only sends remote-rank entries.
-            if (targetRank != rankId_) {
-                uint64_t rankBegin = static_cast<uint32_t>(rankOffsetsTensor_.GetValue(targetRank));
-                uint64_t rankEnd = static_cast<uint32_t>(rankOffsetsTensor_.GetValue(targetRank + 1U));
-                uint64_t entryBegin = 0U;
-                uint64_t entryEnd = 0U;
-                SplitRange(rankBegin, rankEnd, groupSize, coreIndex, entryBegin, entryEnd);
-                ProcessRemoteMetadataRange(targetRank, entryBegin, entryEnd, coreIndex);
-            }
-        } else {
-            for (uint32_t rank = aivId_; rank < epWorldSize_; rank += aivNum_) {
-                if (rank == rankId_) {
-                    continue;
-                }
-                uint64_t rankBegin = static_cast<uint32_t>(rankOffsetsTensor_.GetValue(rank));
-                uint64_t rankEnd = static_cast<uint32_t>(rankOffsetsTensor_.GetValue(rank + 1U));
-                ProcessRemoteMetadataRange(rank, rankBegin, rankEnd, 0U);
-            }
-        }
-    }
-}
-
-template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseFromMetadata()
 {
-    if (epWorldSize_ == 0U || aivNum_ == 0U) {
+    if (epWorldSize_ == 0U || aivNum_ < combineJettyCount_) {
         return;
     }
-
-    uint32_t activeAivNum = aivNum_;
+    InitFlagSource();
+    SyncAll<true>();
+    if (aivId_ >= combineJettyCount_) {
+        return;
+    }
     activeBatchHandle_ = {};
-    activeBatchChannel_ = 0U;
+    activeJettyHandle_ = 0U;
     preparedWriteCount_ = 0U;
     activeBatchInitialized_ = false;
 
-    // Match upstream's rank/channel owners, including the local flag group and low-AIV rank stride.
-    bool splitRankTokens = activeAivNum >= epWorldSize_;
-    uint32_t targetRank = epWorldSize_;
-    uint32_t coreIndexInGroup = 0U;
-    uint32_t groupSize = 1U;
-    if (splitRankTokens && aivId_ < activeAivNum) {
-        GetCoreAssignment(activeAivNum, targetRank, coreIndexInGroup, groupSize);
-    }
-    SendAssignedPayload(targetRank, coreIndexInGroup, groupSize);
-
-    InitFlagSource();
-    // Publish AIV0's shared constant-source initialization before any remote flag is submitted.
-    SyncAll<true>();
-
-    // Match upstream: publish flags after this AIV's payload phase, even for empty rank/channel slices.
-    // In the low-AIV branch the same strided rank list is visited again, using channel 0 only.
-    bool publishesChannelFlag = aivId_ < activeAivNum && (!splitRankTokens || coreIndexInGroup < combineChannelCount_);
-    if (publishesChannelFlag) {
-        if (splitRankTokens) {
-            SendChannelFlag(targetRank, coreIndexInGroup);
-        } else {
-            for (uint32_t dstRank = aivId_; dstRank < epWorldSize_; dstRank += activeAivNum) {
-                SendChannelFlag(dstRank, 0U);
-            }
+    // Stagger the first peer so all 32 Jettys do not burst into the same destination at once.
+    for (uint32_t peerOffset = 0U; peerOffset < epWorldSize_; ++peerOffset) {
+        uint32_t dstRank = (aivId_ + peerOffset) % epWorldSize_;
+        if (dstRank != rankId_ && actualA_ != 0U) {
+            uint64_t rankBegin = static_cast<uint32_t>(rankOffsetsTensor_.GetValue(dstRank));
+            uint64_t rankEnd = static_cast<uint32_t>(rankOffsetsTensor_.GetValue(dstRank + 1U));
+            uint64_t entryBegin = 0U;
+            uint64_t entryEnd = 0U;
+            SplitRange(rankBegin, rankEnd, combineJettyCount_, aivId_, entryBegin, entryEnd);
+            ProcessRemoteMetadataRange(dstRank, entryBegin, entryEnd, aivId_);
         }
+        SendJettyFlag(dstRank, aivId_);
     }
-    // Submit the final ordered flag without waiting; combine epilogue owns the receive-side completion wait.
     FlushPreparedWrites();
     DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
     diagWriter_.RunPosRecord(MOE_EP_COMBINE_RUN_POS_URMA_REQUESTS_ISSUE_DONE);

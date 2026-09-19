@@ -206,9 +206,13 @@ private:
     {
         CheckHccl(HcclGetRankIdFunc(comm_, &context_.epRankId), "HcclGetRankId");
         CheckHccl(HcclGetRankSizeFunc(comm_, &rankSize_), "HcclGetRankSize");
-        TORCH_CHECK(rankSize_ == Mc2Aclnn::MOE_SHARED_JETTY_WORLD_SIZE,
-                    "MoE shared Jetty currently requires 8 ranks, got ", rankSize_);
+        TORCH_CHECK(rankSize_ >= Mc2Aclnn::MOE_SHARED_JETTY_MIN_RANK_SIZE &&
+                        rankSize_ <= Mc2Aclnn::MOE_SHARED_JETTY_MAX_RANK_SIZE,
+                    "MoE shared Jetty rank size must be in [", Mc2Aclnn::MOE_SHARED_JETTY_MIN_RANK_SIZE, ", ",
+                    Mc2Aclnn::MOE_SHARED_JETTY_MAX_RANK_SIZE,
+                    "], got ", rankSize_);
         TORCH_CHECK(context_.epRankId < rankSize_, "Invalid shared Jetty rank ID: ", context_.epRankId);
+        context_.epRankSize = rankSize_;
         // Each shared Jetty serves every remote rank.
         context_.sharedJettyNum = SHARED_JETTY_NUM;
     }
@@ -453,7 +457,10 @@ public:
         // After a resource build failure, discard the communicator before retrying:
         // HCCL may still own channels or contexts from the failed attempt.
         TORCH_CHECK(!groupName.empty() && groupName.find('\0') == std::string::npos, "Invalid HCCL group name");
-        const std::string contextTag = groupName + "_moe_dispatch_combine_shared_jetty";
+        const std::string contextTag = groupName + "_moe_dispatch_combine_shared_jetty_v2_j" +
+                                       std::to_string(Mc2Aclnn::MOE_SHARED_JETTY_NUM) + "_sq" +
+                                       std::to_string(Mc2Aclnn::MOE_SHARED_JETTY_SQ_DEPTH) + "_cq" +
+                                       std::to_string(Mc2Aclnn::MOE_SHARED_JETTY_CQ_DEPTH);
         const std::string bufferTag = contextTag + "_buffer";
         const std::string lastQueueTag = contextTag + "_jetty_" + std::to_string(SHARED_JETTY_NUM - 1);
         TORCH_CHECK(lastQueueTag.size() <= SHARED_JETTY_MAX_TAG_SIZE, "Shared Jetty context tag is too long");

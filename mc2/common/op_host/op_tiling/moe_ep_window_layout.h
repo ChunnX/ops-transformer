@@ -21,10 +21,8 @@ namespace Mc2Tiling {
 
 constexpr uint64_t MOE_EP_UB_ALIGN = 32UL;
 constexpr uint64_t MOE_EP_WIN_ALIGN = 512UL;
-constexpr uint64_t MOE_EP_CHANNEL_BUDGET = Mc2Aclnn::MOE_SHARED_JETTY_NUM;
-constexpr uint64_t MOE_EP_DISPATCH_NOTIFY_COUNT = Mc2Aclnn::MOE_SHARED_JETTY_LANES;
-constexpr uint64_t MOE_EP_COMBINE_FLAG_COUNT =
-    static_cast<uint64_t>(Mc2Aclnn::MOE_SHARED_JETTY_WORLD_SIZE) * Mc2Aclnn::MOE_SHARED_JETTY_LANES;
+constexpr uint64_t MOE_EP_JETTY_COUNT = Mc2Aclnn::MOE_SHARED_JETTY_NUM;
+constexpr uint64_t MOE_EP_DISPATCH_NOTIFY_COUNT = Mc2Aclnn::MOE_SHARED_JETTY_NUM;
 constexpr uint64_t MOE_EP_MAX_OUT_DTYPE_SIZE = 2UL;
 constexpr uint64_t MOE_EP_METADATA_DTYPE_SIZE = 4UL;
 
@@ -52,7 +50,7 @@ struct MoeEpWindowLayout {
     uint64_t payloadWinStateSize;
     uint64_t combineStateWinOffset;
     uint64_t combineStateWinSize;
-    uint64_t combineFlagSourceWinOffset; // Shared 512B constant source, after the receive completion flags.
+    uint64_t combineFlagSourceWinOffset; // Shared 512B constant source for dispatch/combine completion flags.
 
     uint64_t winDataOffset;
     uint64_t dispatchRecvDataSize;

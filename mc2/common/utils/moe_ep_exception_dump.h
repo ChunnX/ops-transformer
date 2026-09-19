@@ -53,21 +53,22 @@ inline void MoeEpExceptionImpl(aclrtExceptionInfo *args, void *userdata, const c
         return;
     }
 
-    static_assert(offsetof(Mc2Aclnn::MoeCommContext, epHcclBuffer) ==
-                  offsetof(Mc2Aclnn::MoeSharedJettyContext, epHcclBuffer));
-    static_assert(offsetof(Mc2Aclnn::MoeCommContext, epRankId) ==
-                  offsetof(Mc2Aclnn::MoeSharedJettyContext, epRankId));
-    // Both context layouts expose rank and the window table at the same offsets.
-    // Copy only the required fields; the shared context has no ordinary handle array.
-    uint32_t epRankId = 0;
-    ret = aclrtMemcpy(&epRankId, sizeof(epRankId), reinterpret_cast<void *>(contextAddr), sizeof(epRankId),
-                      ACL_MEMCPY_DEVICE_TO_HOST);
-    if (ret != ACL_SUCCESS || epRankId >= Mc2Aclnn::HCCL_MAX_RANK_SIZE) {
-        OP_LOGE(OP_NAME, "Read Moe EP rank failed for %s. ret=%d, rank=%u", op, ret, epRankId);
+    uint32_t contextHeader[4] = {};
+    static_assert(offsetof(Mc2Aclnn::MoeSharedJettyContext, epHcclBuffer) == sizeof(contextHeader));
+    ret = aclrtMemcpy(contextHeader, sizeof(contextHeader), reinterpret_cast<void *>(contextAddr),
+                      sizeof(contextHeader), ACL_MEMCPY_DEVICE_TO_HOST);
+    uint32_t epRankId = contextHeader[0];
+    uint32_t epRankSize = contextHeader[1];
+    uint32_t sharedJettyNum = contextHeader[2];
+    if (ret != ACL_SUCCESS || epRankSize < Mc2Aclnn::MOE_SHARED_JETTY_MIN_RANK_SIZE ||
+        epRankSize > Mc2Aclnn::MOE_SHARED_JETTY_MAX_RANK_SIZE || epRankId >= epRankSize ||
+        sharedJettyNum != Mc2Aclnn::MOE_SHARED_JETTY_NUM) {
+        OP_LOGE(OP_NAME, "Read Moe EP context failed for %s. ret=%d, rank=%u, size=%u, jettys=%u", op, ret,
+                epRankId, epRankSize, sharedJettyNum);
         return;
     }
     uint64_t winBase = 0;
-    uint64_t windowAddr = contextAddr + offsetof(Mc2Aclnn::MoeCommContext, epHcclBuffer) +
+    uint64_t windowAddr = contextAddr + offsetof(Mc2Aclnn::MoeSharedJettyContext, epHcclBuffer) +
                           static_cast<uint64_t>(epRankId) * sizeof(uint64_t);
     ret = aclrtMemcpy(&winBase, sizeof(winBase), reinterpret_cast<void *>(windowAddr), sizeof(winBase),
                       ACL_MEMCPY_DEVICE_TO_HOST);
