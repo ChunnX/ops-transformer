@@ -32,9 +32,8 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
 
 // 将完整x2以输出dtype常驻UB，同时完成设计要求的低精度往返；写GM仅用于保留x2_out输出语义。
 template<typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32>
-template<bool WRITE_OUTPUT>
 __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32>::CacheX2Tile(
-    uint32_t token, uint32_t tOff, uint32_t tD)
+    uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput)
 {
     LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
     LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
@@ -53,8 +52,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     }
     PipeBarrier<PIPE_V>();
 
-    // 调用位置已经确定是否写出，使热路径不再保留运行时分支。
-    if constexpr (WRITE_OUTPUT) {
+    if (writeOutput) {
         // cacheTile已经是x2_out所需的最终低精度位值，直接写GM，
         // 避免先恢复FP32再重复量化和反复申请输出队列。
         SetFlag<HardEvent::V_MTE3>(evtVtoMte3_);
@@ -231,7 +229,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
         ComputeX2PostTile(token, tOff, tD, invRms0, postVals, combVals);
-        CacheX2Tile<!USE_RMS_MID>(token, tOff, tD);
+        CacheX2Tile(token, tOff, tD, !USE_RMS_MID);
 
         LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
         if constexpr (USE_RMS_MID) {
@@ -286,7 +284,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
                     FenceVToMte2();
                 }
             }
-            CacheX2Tile<true>(token, tOff, tD);
+            CacheX2Tile(token, tOff, tD, true);
             AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf);
         }
     }
