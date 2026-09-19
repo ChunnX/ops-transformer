@@ -1568,12 +1568,6 @@ void ElasticBuffer::Destroy()
         return;
     }
 
-    try {
-        EngramBarrier(true, true);
-    } catch (const std::exception &e) {
-        ASCEND_LOGE("EngramBarrier in Destroy failed: %s", e.what());
-    }
-
     // HCCL 默认 buffer 由框架管理，无需手动释放
     commBufferSize_ = 0;
 
@@ -1587,6 +1581,11 @@ void ElasticBuffer::Destroy()
     moeCclBufferSize_ = 0;
 
     if (engramHostBufPtr_ != nullptr) {
+        try {
+            EngramBarrier(true, true);
+        } catch (const std::exception &e) {
+            ASCEND_LOGE("EngramBarrier in Destroy failed: %s", e.what());
+        }
         if (!engramStorageExternal_ || engramExternalRegisteredByUs_) {
             aclError ret = aclrtHostUnregister(engramHostBufPtr_);
             TORCH_CHECK(ret == ACL_SUCCESS, "aclrtHostUnregister failed, ret: ", ret);
