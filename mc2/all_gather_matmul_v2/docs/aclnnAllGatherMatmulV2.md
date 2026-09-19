@@ -469,11 +469,28 @@ aclnnStatus aclnnAllGatherMatmulV2(
 
 <!-- end id12 -->
 
+## 实现说明
+
+<!-- npu="950" id15 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：
+    - 非量化FLOAT16/BFLOAT16路径存在两套内核实现并存，接口行为与约束完全一致（接口冻结，对使用者透明）：
+        - **v1实现（默认）**：HCCL windows + mat_mul_v3 计算栈，覆盖量化与非量化全部支持域；
+        - **APACE实现**：基于APACE框架（hcomm变体）的非量化融合实现，仅承接非量化FLOAT16/BFLOAT16路径。
+    - 实现切换开关：环境变量`ASCEND_MC2_AGMV2_APACE_IMPL=1`启用APACE实现（仅对非量化FLOAT16/BFLOAT16且rank_size不超过64时生效）；默认关闭（初期默认v1路径），APACE路径上板验证通过后计划切换为默认。量化路径（FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8/FLOAT4_E2M1/INT8/INT4）不受该开关影响，恒走v1实现。
+    - 两分支共享同一接口签名、入参校验与shape推导；切换实现不改变本文件的接口描述与约束说明，v1分支既有tiling key编码值不变。
+<!-- end id15 -->
+
+
 ## 调用示例
 
 说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy,请参考[《HCCL API (C)》](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
+
+<!-- npu="950" id16 -->
+- <term>Ascend 950PR/Ascend 950DT</term>非量化FLOAT16/BFLOAT16场景另提供参数化样例[test_aclnn_all_gather_matmul_v2_fp16.cpp](../examples/arch35/test_aclnn_all_gather_matmul_v2_fp16.cpp)：通过环境变量`AGM_V2_DEV_NUM`（rank数，默认2，取值2/4/8/...）、`AGM_V2_COMM_MODE`（通信模式，`ccu`/`ai_cpu`，默认`ccu`）、`AGM_V2_DTYPE`（数据类型，`fp16`/`bf16`，默认`fp16`）、`AGM_V2_M`/`AGM_V2_K`/`AGM_V2_N`（矩阵形状，默认256/256/128，k取值范围为[256, 65535)）参数化执行，并内嵌精度自校验（gatherOut位级比对、output混合容差比对，全rank通过时进程退出码为0）。运行命令、实现切换开关（`ASCEND_MC2_AGMV2_APACE_IMPL`）与批量用例驱动方式参见[算子README](../README.md)的「调用说明」「实现说明」与「有卡环境验证指引」。
+<!-- end id16 -->
+
 
 <!-- npu="A3,910b" id13 -->
 - <term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>：
