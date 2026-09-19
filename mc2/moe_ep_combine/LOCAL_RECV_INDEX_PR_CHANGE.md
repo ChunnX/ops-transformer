@@ -274,9 +274,10 @@ metadata 行 1 的 `srcRankId` 是 1，它属于 rank 1 的原始 token。当前
 
 - `numTokens_`：从 tiling 配置读取原始 token 数；
 - `localRecvIndexGm_`：指向 packed metadata 第三段；
-- `InitLocalRecvIndex()`：并行初始化反向索引。
+- `InitLocalRecvIndex()`：并行初始化反向索引；
+- `ubLocalIndexValue_`：32 Byte 对齐的单值 UB 暂存区，用于安全写出本地反向索引。
 
-初始化时使用 `SplitToCore(numTokens * topK, aivNum, ...)` 将连续索引空间分给各 AIV，每个 AIV 将自己的区间写为 `-1`，避免多个核重复初始化同一区域。
+初始化时先按每 8 个 `int32`（32 Byte）组成一个 block，再使用 `SplitToCore(blockCount, aivNum, ...)` 将连续 block 分给各 AIV。每个 AIV 将自己的区间写为 `-1`，既避免多个核重复初始化同一区域，也保证每个核调用 `InitOutput` 时的 GM 起始地址满足 32 Byte 对齐；最后一个 block 可以只处理有效尾部元素。
 
 ### 7.2 普通（non-cached）路径
 
@@ -295,7 +296,7 @@ if srcRankMeta == epRankId:
     local_recv_index[lookupIndex] = recvXRow
 ```
 
-这不是再次遍历 metadata，而是在既有处理循环中额外写一个 `int32`。
+这不是再次遍历 metadata，而是在既有处理循环中额外写一个 `int32`。实现时不能直接把 `ubStageMeta_[rowStart + 4]` 作为 `DataCopyPad` 的 UB 源：第五列相对 32 Byte 对齐行首偏移 16 Byte，不满足非原子 MTE 指令的地址对齐要求。实际流程是先用标量指令将 `recvXRow` 写入 32 Byte 对齐的 `ubLocalIndexValue_`，建立 `S -> MTE3` 依赖后再搬到 GM，并在复用暂存区前等待 `MTE3 -> S` 完成。
 
 ### 7.3 cached 路径
 
@@ -312,6 +313,8 @@ if srcRankId == epRankId
 ```
 
 cached 路径不会直接复用 cached packed buffer 尾部的 local index，而是根据五列 metadata 重建当前输出 buffer 的 local index。这样当前输出仍由本轮 dispatch epilogue 完整生产。
+
+cached metadata 每行只有 5 个 `int32`，行跨度为 20 Byte，因此第五列的 UB 地址同样不保证 32 Byte 对齐。cached 路径从 UB 读取出标量 `recvXIdx` 后，也通过 `ubLocalIndexValue_` 暂存并写出，不能直接从 packed metadata 的第五列发起非原子 MTE3 搬运。
 
 ### 7.4 初始化与写入顺序
 
@@ -492,6 +495,7 @@ numTokens * topK * sizeof(int32)
 - 每个 handle/buffer 的 `numTokens * topK` 个 `int32` 存储；
 - dispatch epilogue 对整张索引表的一次 `-1` 初始化；
 - 每个本地来源有效路由的一次 `int32` GM 写；
+- 每次本地索引写使用一个对齐的 32 Byte UB 暂存块，并增加必要的 Scalar/MTE3 同步；
 - combine epilogue 对索引分片的一次连续 GM 读。
 
 因此小 token、小 topK 或本 rank metadata 很少时，dispatch 侧新增开销可能抵消部分收益。最终性能应按典型训练 shape 分别测量 dispatch epilogue、combine epilogue和端到端耗时。
@@ -537,6 +541,7 @@ numTokens * topK * sizeof(int32)
 - 某些本地路由被丢弃，索引保持 `-1`；
 - `numTokens` 不能被 AIV 数整除；
 - `numTokens * topK` 小于 AIV 数；
+- `numTokens * topK` 不能被 8 整除，验证尾 block 初始化及各核 GM 起始地址对齐；
 - 有/无 topK weight；
 - FP16/BF16 以及项目支持的 FP8/scales 路径；
 - cached handle 使用新 packed 长度并正确重建索引。
@@ -565,7 +570,8 @@ numTokens * topK * sizeof(int32)
 2. 同一个 `(tokenIdx, topkIdx)` 按语义应最多对应一个本地有效 `recvXIdx`。若产生重复记录，后写入者会覆盖先写入者。
 3. 初始化 `-1` 与有效索引写入之间必须保持全核时序，避免迟到的初始化覆盖有效值。
 4. dispatch、combine 和 Python/C++ 扩展的 512 Byte 对齐公式必须始终一致。
-5. 普通 `moe_ep_combine` 尚未消费新索引；如果后续也改为直接加载，可进一步删除它自身的 metadata 扫描逻辑，但那不属于本次提交。
+5. 非原子 MTE 搬运的 UB 地址必须满足 32 Byte 对齐。五列 metadata 的第五列位于行首 `+16 Byte`，cached packed 行的跨度还是 20 Byte，二者都不能直接作为单个 `int32` 写 GM 的 UB 源，必须经过对齐暂存区。
+6. 普通 `moe_ep_combine` 尚未消费新索引；如果后续也改为直接加载，可进一步删除它自身的 metadata 扫描逻辑，但那不属于本次提交。
 
 ## 17. 结论
 
