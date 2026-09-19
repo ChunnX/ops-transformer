@@ -58,8 +58,11 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         // UB和GM中的行跨度相同，用一次二维搬运减少MTE3发射次数。
         SetFlag<HardEvent::V_MTE3>(evtVtoMte3_);
         WaitFlag<HardEvent::V_MTE3>(evtVtoMte3_);
-        DataCopyExtParams copyParams = {N_MAX, tD * sizeof(T),
-                                        (D_ - tD) * sizeof(T), (D_ - tD) * sizeof(T), 0};
+        DataCopyExtParams copyParams = {};
+        copyParams.blockCount = N_MAX;
+        copyParams.blockLen = tD * sizeof(T);
+        copyParams.srcStride = (D_ - tD) * sizeof(T);
+        copyParams.dstStride = (D_ - tD) * sizeof(T);
         DataCopyPad(x2OutGm_[outBase], x2Cache[tOff], copyParams);
     }
 }
