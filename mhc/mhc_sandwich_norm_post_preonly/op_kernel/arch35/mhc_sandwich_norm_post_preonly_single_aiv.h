@@ -325,20 +325,13 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         const uint32_t tOff = tile * dimTile_;
         LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
         LoadHInCacheTile(tOff, tD, hIn);
-        // 上一分片使用完gamma1后已经发出V到MTE2事件；延后到真正覆写前等待，
-        // 使事件完成过程能够与上一分片输出以及当前分片h_in恢复重叠。
-        if (tile != 0) {
-            WaitFlag<HardEvent::V_MTE2>(evtVtoMte2_);
-        }
         LoadGammaInto(bufGamma1Fp32_.Get<float>(), gamma1Gm_, tOff, tD);
         SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
         WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
         ApplyScaleAndGamma(hIn, invRms1, bufGamma1Fp32_.Get<float>(), tD);
-        SetFlag<HardEvent::V_MTE2>(evtVtoMte2_);
+        FenceVToMte2();
         WriteHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tD);
     }
-    // 回收最后一个事件，保证下一token首次使用同一事件标识前状态完整。
-    WaitFlag<HardEvent::V_MTE2>(evtVtoMte2_);
 }
 
 #endif // MHC_SANDWICH_NORM_POST_PREONLY_SINGLE_AIV_H_
