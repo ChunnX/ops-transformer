@@ -1312,18 +1312,26 @@ ElasticBuffer::ElasticBuffer(const std::string &groupName, int64_t numCpuBytes, 
 // Destructor - automatic resource cleanup only when explicitlyDestroy is false
 ElasticBuffer::~ElasticBuffer()
 {
+    ASCEND_LOGI("ElasticBuffer destructor enter: this=%p, explicitlyDestroy=%d, destroyed=%d, "
+                "engramContextInitialized=%d, moeContextInitialized=%d",
+                static_cast<void *>(this), static_cast<int>(explicitlyDestroy_), static_cast<int>(destroyed_),
+                static_cast<int>(engramContextInitialized_), static_cast<int>(moeContextInitialized_));
     if (explicitlyDestroy_) {
         if (!destroyed_) {
             ASCEND_LOGI("ElasticBuffer is destroyed without explicit destroy() call, "
                         "resource leak may occur when explicitly_destroy is set to true.");
         }
+        ASCEND_LOGI("ElasticBuffer destructor exit without cleanup: this=%p", static_cast<void *>(this));
         return;
     }
     try {
+        ASCEND_LOGI("ElasticBuffer destructor calling Destroy: this=%p", static_cast<void *>(this));
         Destroy();
+        ASCEND_LOGI("ElasticBuffer destructor Destroy completed: this=%p", static_cast<void *>(this));
     } catch (const std::exception &e) {
         ASCEND_LOGE("ElasticBuffer destructor cleanup failed: %s", e.what());
     }
+    ASCEND_LOGI("ElasticBuffer destructor exit: this=%p", static_cast<void *>(this));
 }
 
 void ElasticBuffer::EnsureEngramContext(void *externalHostPtr, int64_t externalBytes)
@@ -1573,12 +1581,20 @@ void ElasticBuffer::EngramBarrier(bool useCommStream, bool withCpuSync)
 // Destroy - explicit resource cleanup
 void ElasticBuffer::Destroy()
 {
+    ASCEND_LOGI("ElasticBuffer Destroy enter: this=%p, destroyed=%d, engramContextInitialized=%d, "
+                "moeContextInitialized=%d",
+                static_cast<void *>(this), static_cast<int>(destroyed_), static_cast<int>(engramContextInitialized_),
+                static_cast<int>(moeContextInitialized_));
     if (destroyed_) {
+        ASCEND_LOGI("ElasticBuffer Destroy skipped because it is already destroyed: this=%p",
+                    static_cast<void *>(this));
         return;
     }
 
     try {
+        ASCEND_LOGI("ElasticBuffer Destroy EngramBarrier begin: this=%p", static_cast<void *>(this));
         EngramBarrier(true, true);
+        ASCEND_LOGI("ElasticBuffer Destroy EngramBarrier end: this=%p", static_cast<void *>(this));
     } catch (const std::exception &e) {
         ASCEND_LOGE("EngramBarrier in Destroy failed: %s", e.what());
     }
@@ -1617,6 +1633,7 @@ void ElasticBuffer::Destroy()
     moeContextTensor_ = at::Tensor();
 
     destroyed_ = true;
+    ASCEND_LOGI("ElasticBuffer Destroy exit: this=%p", static_cast<void *>(this));
 }
 
 // GetEngramStorageSizeHint - calculate recommended CPU buffer size (static method)
