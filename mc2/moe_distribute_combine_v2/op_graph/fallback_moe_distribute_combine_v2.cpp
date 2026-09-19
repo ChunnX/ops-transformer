@@ -148,7 +148,7 @@ static ge::graphStatus FetchAttrs(OpExecuteContext *ctx, CombineV2Params &p)
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus DispatchCombineV2(const CombineV2Params &p)
+static ge::graphStatus DispatchCombineV2(OpExecuteContext *host_api_ctx, const CombineV2Params &p)
 {
     if (p.elastic_info != nullptr || p.ori_x != nullptr || p.const_expert_alpha_1 != nullptr ||
         p.const_expert_alpha_2 != nullptr || p.const_expert_v != nullptr || *p.zero_expert_num != 0 ||
@@ -193,7 +193,7 @@ static graphStatus MoeDistributeCombineV2ExecuteFunc(OpExecuteContext *host_api_
         FetchAttrs(host_api_ctx, params) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    return DispatchCombineV2(params);
+    return DispatchCombineV2(host_api_ctx, params);
 }
 
 IMPL_OP(MoeDistributeCombineV2).OpExecuteFunc(MoeDistributeCombineV2ExecuteFunc);
