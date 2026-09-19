@@ -182,11 +182,9 @@ __aicore__ inline void ComputeGateValues(float totalSumSqPre, float (&xHatVals)[
     PipeBarrier<PIPE_V>();
     Adds(scBuf, scBuf, 1.0f, EXP_DIV_ELEM); // 1 + exp(-z)
     PipeBarrier<PIPE_V>();
-    LocalTensor<float> onesBuf = scBuf[EXP_DIV_ELEM * 2];
-    Duplicate(onesBuf, 1.0f, EXP_DIV_ELEM);
-    PipeBarrier<PIPE_V>();
     LocalTensor<float> gateBuf = scBuf[EXP_DIV_ELEM];
-    Div(gateBuf, onesBuf, scBuf, EXP_DIV_ELEM); // 1 / (1+exp(-z))
+    // A5原生倒数指令直接计算1/(1+exp(-z))，避免构造全1向量再做除法。
+    Reciprocal(gateBuf, scBuf, EXP_DIV_ELEM);
     PipeBarrier<PIPE_V>();
     Adds(gateBuf, gateBuf, hcEps_, EXP_DIV_ELEM); // + hcEps
     PipeBarrier<PIPE_V>();
