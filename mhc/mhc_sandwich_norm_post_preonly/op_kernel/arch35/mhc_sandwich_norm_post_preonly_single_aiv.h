@@ -18,8 +18,16 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
     const float (&postVals)[N_MAX], const float (&combVals)[N_MAX * N_MAX])
 {
-    LoadHOutAndCast((uint64_t)token * D_ + tOff, tD);
+    // 先发射h_out，再在队列等待前发射gamma0，使gamma0搬运可与
+    // h_out的低精度转FP32重叠；两份数据仍使用原有独立缓存和事件。
+    LocalTensor<T> hBf16 = bufHOutBf16_.AllocTensor<T>();
+    DataCopy(hBf16, hOutGm_[(uint64_t)token * D_ + tOff], tD);
+    bufHOutBf16_.EnQue(hBf16);
     LoadGammaInto(bufGamma0Fp32_.Get<float>(), gamma0Gm_, tOff, tD);
+    hBf16 = bufHOutBf16_.DeQue<T>();
+    Cast(bufHOutFp32_.Get<float>(), hBf16, RoundMode::CAST_NONE, tD);
+    PipeBarrier<PIPE_V>();
+    bufHOutBf16_.FreeTensor(hBf16);
     SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
     WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
     ApplyScaleAndGamma(bufHOutFp32_.Get<float>(), invRms0, bufGamma0Fp32_.Get<float>(), tD);
