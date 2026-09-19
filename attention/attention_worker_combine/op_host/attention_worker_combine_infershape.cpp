@@ -29,6 +29,9 @@ constexpr size_t OUTPUT_IDX_NEXT_LAYER_ID = 1;
 constexpr size_t IDX_ZERO = 0;
 constexpr size_t IDX_ONE = 1;
 constexpr int64_t DIM_NUM = 2;
+constexpr size_t SCHEDULE_CONTEXT_DIM_NUM = 1;
+constexpr size_t EXPERT_SCALES_DIM_NUM = 2;
+constexpr size_t LAYER_ID_DIM_NUM = 1;
 constexpr int64_t TOKEN_DTYPE_FP16 = 0;
 constexpr int64_t TOKEN_DTYPE_BF16 = 1;
 
@@ -43,6 +46,20 @@ graphStatus InferShape4AttentionWorkerCombine(gert::InferShapeContext *context)
     OP_CHECK_NULL_WITH_CONTEXT(context, scheduleContextInputShape);
     OP_CHECK_NULL_WITH_CONTEXT(context, expertScalesInputShape);
     OP_CHECK_NULL_WITH_CONTEXT(context, layerIdInputShape);
+
+    // check input rank against the public shape contract (see README constraints)
+    OP_CHECK_IF(scheduleContextInputShape->GetDimNum() != SCHEDULE_CONTEXT_DIM_NUM,
+                OP_LOGE(context->GetNodeName(), "schedule_context must be 1D, but got dim num %zu.",
+                        scheduleContextInputShape->GetDimNum()),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(expertScalesInputShape->GetDimNum() != EXPERT_SCALES_DIM_NUM,
+                OP_LOGE(context->GetNodeName(), "expert_scales must be 2D [BS, K], but got dim num %zu.",
+                        expertScalesInputShape->GetDimNum()),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        layerIdInputShape->GetDimNum() != LAYER_ID_DIM_NUM,
+        OP_LOGE(context->GetNodeName(), "layer_id must be 1D, but got dim num %zu.", layerIdInputShape->GetDimNum()),
+        return ge::GRAPH_FAILED);
 
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
