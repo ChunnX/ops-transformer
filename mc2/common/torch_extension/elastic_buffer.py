@@ -1246,7 +1246,7 @@ class ElasticBuffer:
                 "engram_fetch_grad must be called after at least one engram_write"
             )
         expected_dtype = self._engram_dtype
-        if self._engram_sf is not None and grad_fetched.dtype == torch.float32:
+        if self._engram_sf is not None:
             pass
         elif grad_fetched.dtype != expected_dtype:
             raise RuntimeError(
