@@ -72,6 +72,13 @@ protected:
     // 稀疏 mask 下的空轮不参与、也不打断分组，因此用核内自持状态判断，而不是比较相邻任务 offset。
     uint32_t dkv_group_open_{0};
     int32_t kv_ping_pong_idx_{0};
+    // latin 分组的尾部有效性缓存：同一分组（ceil(r/m) 相同）内 w、y 固定，x 随轮次每步 +1（模 m），
+    // 因此进入分组时按轮转顺序扫一遍 mask 的 q_block 行、记下“最后一个有效 x 的轮转位置”，
+    // 之后每轮只做一次整数比较——替代原来每轮 O(m) 的 mask 扫描（每次迭代都带整数除模 + 逐字节 GM 标量读）。
+    // mask 已由 aclnn 适配层转成 [B, N1, KV_BLOCK, Q_BLOCK] 连续布局，
+    // 固定 (bIdx, n1Idx, kv_block) 时 q_block 方向是连续字节，天然适合批量读。
+    uint32_t grp_g_{0};              // 缓存对应的分组序号 ceil(r/m)，0 表示未缓存
+    uint32_t grp_last_valid_pos_{0}; // 分组内最后一个有效 x 的轮转位置；0 表示本轮之后无有效任务
     ConstInfo const_info_;
 
     __gm__ int32_t *index_ptr_{nullptr};
@@ -339,50 +346,59 @@ protected:
         return (bn1 >= 1 && x >= 1 && x <= m && y >= 1 && y <= n);
     }
 
-    // 第 r 轮之后、同一 latin 分组内是否还有有效任务；没有则本轮的 kv 可以提前收尾
-    __aicore__ inline bool LastValidInGroup(int64_t k, int64_t m, int64_t n, int64_t bflat, int64_t j, int64_t r,
-                                            uint32_t latin_max)
+    // 进入一个 latin 分组时建立「尾部是否还有有效块」的缓存。
+    //
+    // 同一分组内（ceil(r/m) 相同、core j 固定）w、y 不变，x 随轮次每步 +1（模 m），
+    // 因此只需扫一遍本分组剩余的轮转位置，记下最后一个有效 x 的位置；之后每轮的
+    // is_kv_end 退化成一次整数比较。相比原来每轮 MostValidInGroup 的 O(m) 扫描：
+    //   - 去掉了每轮迭代里的 MapDenseIndex/MapGqaIndex（含 IGcd、多次整数除模）
+    //   - mask 读取沿途连续推进（q_block 方向连续），不再逐字节算 offset 读 GM
+    // 单次分组扫描量 = 本分组剩余轮数，摊到每轮约 1 次迭代，且都是寄存器算术。
+    __aicore__ inline void BuildGroupTailCache(int64_t G, int64_t m, uint32_t pos, int64_t x, int32_t s1Idx,
+                                               int32_t s2Idx, int32_t bIdx, int32_t n1Idx, int32_t cur_q)
     {
-        if (m <= 0) {
-            return true;
+        grp_g_ = static_cast<uint32_t>(G);
+        grp_last_valid_pos_ = 0;
+        int64_t pos_max = m;
+        if (G * m > static_cast<int64_t>(deter_max_round_)) {
+            pos_max = static_cast<int64_t>(deter_max_round_) - (G - 1) * m;
         }
-        int64_t group_end = ICeil(r, m) * m;
-        if (group_end > latin_max) {
-            group_end = latin_max;
+        if (pos_max <= static_cast<int64_t>(pos)) {
+            return;
         }
-        for (int64_t rr = r + 1; rr <= group_end; rr++) {
-            int64_t w = 0;
-            int64_t x = 0;
-            int64_t y = 0;
-            bool ok = false;
-            if (q_group_ <= 1) {
-                ok = MapDenseIndex(k, m, n, bflat, j, rr, w, x, y);
+        // x 的上界：s1Idx = (x-1)*base_m_ 必须 < cur_q
+        const int64_t x_max = ICeil(static_cast<int64_t>(cur_q), static_cast<int64_t>(base_m_));
+        // 固定 (bIdx, n1Idx, kv_block) 后 mask 行的基址（q_block = 0 处的字节偏移）
+        const int64_t qbn = const_info_.q_block_num;
+        const int64_t kbn = const_info_.kv_block_num;
+        const int64_t kv_block_idx = static_cast<int64_t>(s2Idx) / block_y_;
+        __gm__ uint8_t *mask_row = blockSparseMask_ + static_cast<int64_t>(bIdx) * (const_info_.q_head_num * qbn * kbn) +
+                                   static_cast<int64_t>(n1Idx) * (qbn * kbn) + kv_block_idx * qbn;
+        // 用 qb + frac 表示 acc = (x-1)*base_m_ = qb*block_x_ + frac，推进时只做加减
+        // （base_m_ <= block_x_，故每次最多进一位），避免每次迭代做除法
+        int64_t xq = x;
+        int32_t qb = s1Idx / block_x_;
+        int32_t frac = s1Idx % block_x_;
+        for (int64_t pp = static_cast<int64_t>(pos) + 1; pp <= pos_max; ++pp) {
+            ++xq;
+            if (xq > m) {
+                xq = 1;
+                qb = 0;
+                frac = 0;
             } else {
-                ok = MapGqaIndex(k, m, n, bflat, j, rr, q_group_, w, x, y);
+                frac += base_m_;
+                if (frac >= block_x_) {
+                    frac -= block_x_;
+                    ++qb;
+                }
             }
-            if (!ok) {
+            if (xq > x_max) {
                 continue;
             }
-            int64_t bn1 = w - 1;
-            int32_t bIdx = static_cast<int32_t>(bn1 / q_head_num_);
-            int32_t n1Idx = static_cast<int32_t>(bn1 % q_head_num_);
-            int32_t s1Idx = static_cast<int32_t>((x - 1) * base_m_);
-            int32_t s2Idx = static_cast<int32_t>((y - 1) * base_n_);
-            int32_t cur_q = q_seq_len_;
-            int32_t cur_kv = kv_seq_len_;
-            if constexpr (INPUT_LAYOUT == TND) {
-                if (bIdx < 0 || bIdx >= batch_num_) {
-                    continue;
-                }
-                cur_q = GetSeqLen(bIdx, actualQseqlen_);
-                cur_kv = GetSeqLen(bIdx, actualKvseqlen_);
-            }
-            if (s1Idx >= 0 && s2Idx >= 0 && s1Idx < cur_q && s2Idx < cur_kv &&
-                IsValidBlock(const_info_, bIdx, n1Idx, s1Idx / block_x_, s2Idx / block_y_, blockSparseMask_)) {
-                return false;
+            if (mask_row[qb] != 0) {
+                grp_last_valid_pos_ = static_cast<uint32_t>(pp);
             }
         }
-        return true;
     }
 
     __aicore__ inline void GetRunTimeInfoDeter(RunTimeInfo &runTimeInfo)
@@ -460,16 +476,21 @@ protected:
         runTimeInfo.lseGmOffset = GetLseGmOffset<INPUT_LAYOUT>(last_q, cur_q, q_head_num_, bIdx, s1Idx, n1Idx);
         runTimeInfo.sftgGmOffset = GetSftgGmOffset<INPUT_LAYOUT>(last_q, cur_q, q_head_num_, bIdx, s1Idx, n1Idx);
         runTimeInfo.need_compute = 1;
+        const int64_t g_idx = ICeil(r, m);                                   // latin 分组序号
+        const uint32_t pos = static_cast<uint32_t>(r - (g_idx - 1) * m);     // 分组内轮转位置 1..m
         if (!dkv_group_open_) {
             // 开启新分组：换一块 K/V L1 槽位，dk/dv 的 L0C 累加器重置（cmatrixInitVal = 1）
             kv_ping_pong_idx_ = (kv_ping_pong_idx_ + 1) % 3;
             runTimeInfo.is_kv_change = 1;
             dkv_group_open_ = 1;
+            // 本分组的第一轮有效任务：一次性把“本组后面还有没有有效块”算好
+            BuildGroupTailCache(g_idx, m, pos, x, s1Idx, s2Idx, bIdx, n1Idx, cur_q);
         } else {
             runTimeInfo.is_kv_change = 0;
         }
         runTimeInfo.kv_ping_pong_idx = kv_ping_pong_idx_;
-        const bool last = LastValidInGroup(k, m, n, bflat, j, r, deter_max_round_);
+        // 本组内最后一轮有效任务 => 收尾（fixpipe 落盘 dk/dv）
+        const bool last = (static_cast<uint32_t>(g_idx) == grp_g_) && (pos >= grp_last_valid_pos_);
         runTimeInfo.is_kv_end = last ? 1 : 0;
         if (last) {
             dkv_group_open_ = 0;
