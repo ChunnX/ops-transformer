@@ -147,12 +147,8 @@ public:
         Duplicate(vec_in_ping_, (float)0.0, PRE_TILE_LEN);
         SET_FLAG(V, MTE3, EVENT_ID0);
         WAIT_FLAG(V, MTE3, EVENT_ID0);
-        // 确定性路径下 dq 被分成 dqSplitNum 段（每段 dqSize 个元素），逐段清零（避免单次 size 超 uint32）
-        uint32_t dq_size = static_cast<uint32_t>(tilingData->dqSize);
-        for (uint32_t c = 0; c < tilingData->dqSplitNum; c++) {
-            ComputeEvenCoreInfo(info, dq_size, PRE_TILE_LEN);
-            ComputeVecPre(dq_workspace[static_cast<int64_t>(c) * static_cast<int64_t>(dq_size)], vec_in_ping_, info);
-        }
+        ComputeEvenCoreInfo(info, tilingData->dqSize, PRE_TILE_LEN);
+        ComputeVecPre(dq_workspace, vec_in_ping_, info);
         ComputeEvenCoreInfo(info, tilingData->dkSize, PRE_TILE_LEN);
         ComputeVecPre(dk_workspace, vec_in_ping_, info);
         ComputeVecPre(dv_workspace, vec_in_ping_, info);
@@ -357,10 +353,6 @@ public:
         ComputeVecPost<false>(dv_out_gm, dv_workspace, info, post_ping_pong_idx);
         ComputeVecPost<true>(dk_out_gm, dk_workspace, info, post_ping_pong_idx);
         ComputeEvenCoreInfo(info, dq_size, POST_TILE_LEN);
-        // 确定性路径：先把 dqSplitNum 段 dq 部分和按段号顺序归约到第 0 段，再走原来的 scale + cast
-        if (tilingData->dqSplitNum > 1) {
-            ComputeVecDqSplitReduce(dq_workspace, dq_size, tilingData->dqSplitNum, info, post_ping_pong_idx);
-        }
         ComputeVecPost<true>(dq_out_gm, dq_workspace, info, post_ping_pong_idx);
 
         WAIT_FLAG(MTE3, MTE2, event_ping_);
@@ -467,79 +459,6 @@ private:
             SET_FLAG(MTE3, MTE2, EVENT_ID0);
             WAIT_FLAG(MTE3, MTE2, EVENT_ID0);
         }
-    }
-
-    // 确定性路径 dq 分段归约：把第 1..split_num-1 段的 dq 部分和按段号递增顺序原子加到第 0 段。
-    // 每个任务只写自己那段 buffer，同一段内该 (batch, kv_head, kv_block) 的贡献又只由单核按程序顺序
-    // 累加，因此每个 dq 槽位的求和顺序固定；这里再按段号 c 递增顺序归约，结果 bitwise 可复现。
-    // 归约完成后由 ComputeVecPost 统一做 scale + cast 输出。
-    __aicore__ inline void ComputeVecDqSplitReduce(const GlobalTensor<float> &workspace, int64_t dq_size,
-                                                   uint32_t split_num, const EvenCoreInfo &info,
-                                                   uint32_t &post_ping_pong_idx)
-    {
-        if (info.start_idx >= info.data_size) {
-            return;
-        }
-
-        for (uint32_t c = 1; c < split_num; c++) {
-            const int64_t split_base = static_cast<int64_t>(c) * dq_size;
-            uint32_t process_size = info.max_process_size;
-            for (uint32_t i = 0; i < info.loop_num; i++) {
-                if (unlikely(i == info.loop_num - 1)) {
-                    process_size = info.align_tail;
-                    if (process_size == 0) {
-                        break;
-                    }
-                }
-                LocalTensor<float> vecIn = post_ping_pong_idx ? vec_in_ping_ : vec_in_pong_;
-                event_id = post_ping_pong_idx ? event_ping_ : event_pong_;
-                int64_t gm_offset = (int64_t)info.start_idx + i * info.max_process_size;
-
-                WAIT_FLAG(MTE3, MTE2, event_id);
-                DataCopy(vecIn, workspace[split_base + gm_offset], process_size);
-                SET_FLAG(MTE2, V, EVENT_ID0);
-                WAIT_FLAG(MTE2, V, EVENT_ID0);
-
-                SET_FLAG(V, MTE3, EVENT_ID0);
-                WAIT_FLAG(V, MTE3, EVENT_ID0);
-                SetAtomicAdd<float>();
-                DataCopy(workspace[gm_offset], vecIn, process_size);
-                SetAtomicNone();
-
-                SET_FLAG(MTE3, MTE2, event_id);
-                post_ping_pong_idx = 1 - post_ping_pong_idx;
-            }
-
-            if (info.pad_tail > 0) {
-                LocalTensor<float> vecIn = post_ping_pong_idx ? vec_in_ping_ : vec_in_pong_;
-                event_id = post_ping_pong_idx ? event_ping_ : event_pong_;
-                int64_t gm_offset =
-                    (int64_t)info.start_idx + (info.loop_num - 1) * info.max_process_size + info.align_tail;
-                DataCopyParams copyParam;
-                copyParam.blockCount = 1;
-                copyParam.blockLen = info.pad_tail * sizeof(float);
-                copyParam.srcStride = 0;
-                copyParam.dstStride = 0;
-
-                WAIT_FLAG(MTE3, MTE2, event_id);
-                DataCopyPad(vecIn, workspace[split_base + gm_offset], copyParam, {false, 0, 0, 0});
-                SET_FLAG(MTE2, V, EVENT_ID0);
-                WAIT_FLAG(MTE2, V, EVENT_ID0);
-
-                SET_FLAG(V, MTE3, EVENT_ID0);
-                WAIT_FLAG(V, MTE3, EVENT_ID0);
-                SetAtomicAdd<float>();
-                DataCopyPad(workspace[gm_offset], vecIn, copyParam);
-                SetAtomicNone();
-
-                SET_FLAG(MTE3, MTE2, event_id);
-                post_ping_pong_idx = 1 - post_ping_pong_idx;
-            }
-        }
-
-        // 阻塞式等 MTE3 把所有原子加写完，保证本核后续 MTE2 读第 0 段时可见（用独立事件，不动 ping/pong 门）
-        SET_FLAG(MTE3, MTE2, EVENT_ID1);
-        WAIT_FLAG(MTE3, MTE2, EVENT_ID1);
     }
 
     template <bool MULS>

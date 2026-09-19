@@ -16,15 +16,12 @@ using namespace AscendC;
 
 namespace BSA_ARC35 {
 
-template <typename INPUT_TYPE, uint32_t INPUT_LAYOUT, class TILING_CLASS, bool DETERMINISTIC_ENABLE,
-          bool INDEX_ENABLE = false>
+template <typename INPUT_TYPE, uint32_t INPUT_LAYOUT, class TILING_CLASS, bool DETERMINISTIC_ENABLE>
 struct BSA_TYPE {
     using input_type = INPUT_TYPE;
     static constexpr uint32_t input_layout = INPUT_LAYOUT;
     using tiling_class = TILING_CLASS;
     static constexpr bool deterministic_enable = DETERMINISTIC_ENABLE;
-    // 是否使用 host 预生成的 block index workspace 遍历（NonZero 优化路径）
-    static constexpr bool index_enable = INDEX_ENABLE;
 };
 
 template <typename BSA_TYPE>
@@ -32,6 +29,7 @@ class BlockSparseAttentionGradArch35 {
     using INPUT_TYPE = typename BSA_TYPE::input_type;
     static constexpr uint32_t INPUT_LAYOUT = BSA_TYPE::input_layout;
     using TILING_CLASS = typename BSA_TYPE::tiling_class;
+    static constexpr bool DETERMINISTIC_ENABLE = BSA_TYPE::deterministic_enable;
 
 private:
     AddrComputeModule<BSA_TYPE> addr_;
@@ -59,9 +57,9 @@ public:
     __aicore__ inline BlockSparseAttentionGradArch35(){};
 
     __aicore__ inline void Process(GM_ADDR dout, GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR attention_out,
-                                   GM_ADDR softmaxLse, GM_ADDR blockShape, GM_ADDR attentionMask, GM_ADDR actualQseqlen,
-                                   GM_ADDR actualKvseqlen, GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR workspace,
-                                   const TILING_CLASS *tilingData, TPipe *tPipe)
+                                   GM_ADDR softmaxLse, GM_ADDR blockSparseMask, GM_ADDR blockShape, GM_ADDR attentionMask,
+                                   GM_ADDR actualQseqlen, GM_ADDR actualKvseqlen, GM_ADDR dq, GM_ADDR dk, GM_ADDR dv,
+                                   GM_ADDR workspace, const TILING_CLASS *tilingData, TPipe *tPipe)
     {
         uint32_t base_m = tilingData->baseM;
         uint32_t base_n = tilingData->baseN;
@@ -80,7 +78,7 @@ public:
         dk_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dkWorkspaceOffset));
         dv_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dvWorkspaceOffset));
         sftg_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->sftgWorkspaceOffset));
-        addr_.Init(tilingData, actualQseqlen, actualKvseqlen, workspace);
+        addr_.Init(tilingData, actualQseqlen, actualKvseqlen, workspace, blockSparseMask);
         tPipe->InitBuffer(ub_buffer_, UB_SIZE);
         tPipe->InitBuffer(l1_buffer_, L1_SIZE);
         // ub_buffer [base_m * base_n * sizeof(float) * 2]
@@ -115,11 +113,9 @@ public:
     __aicore__ inline void kv_reuse_check(RunTimeInfo &lastRunTimeInfo, RunTimeInfo &runTimeInfo,
                                           RunTimeInfo &nextRunTimeInfo, bool first)
     {
-        // 确定性路径把 s1 划分为若干相位：同一 (kv 块, 相位) 内 dk/dv 在 L0C 中连续累加，
-        // 跨相位（即使还是同一个 kv 块）必须落盘一次并重新 init，否则 L0C 会被其它任务的 Mmad 覆盖。
-        // 非确定性路径 s1Phase 恒为 0，行为与原来一致。
-        const bool nextNewGroup = (nextRunTimeInfo.keyGmOffset != runTimeInfo.keyGmOffset) ||
-                                  (nextRunTimeInfo.s1Phase != runTimeInfo.s1Phase);
+        // 两条路径都在“连续若干轮命中同一个 KV 块”时把 dk/dv 留在 L0C 里累加，只有换 KV 块才落盘。
+        // 确定性路径的 latin-square 调度保证同一分组内连续 m 轮的 y（KV 块）不变，因此判定条件相同。
+        const bool nextNewGroup = (nextRunTimeInfo.keyGmOffset != runTimeInfo.keyGmOffset);
         if (nextRunTimeInfo.need_compute == 0) {
             runTimeInfo.is_kv_end = true;
         } else {
@@ -165,29 +161,44 @@ public:
             } else {
                 runTimeInfo_[ping_pong_idx] = nextRunTimeInfo_;
             }
+            // 预取下一个任务必须每轮无条件执行：确定性路径存在没有任务的空轮（mask 稀疏时很常见），
+            // 若放在 need_compute 分支内，遍历会卡在空轮上不再推进。
+            addr_.GetRunTimeInfo(nextRunTimeInfo_);
 
-            if (runTimeInfo_[ping_pong_idx].need_compute) {
-                addr_.GetRunTimeInfo(nextRunTimeInfo_);
-                kv_reuse_check(runTimeInfo_[last_ping_pong_idx], runTimeInfo_[ping_pong_idx], nextRunTimeInfo_,
-                               taskId == 0);
+            const bool cur_compute = runTimeInfo_[ping_pong_idx].need_compute != 0;
+            const bool prev_compute = taskId > 0 && runTimeInfo_[last_ping_pong_idx].need_compute != 0;
+            if (cur_compute) {
+                if constexpr (!DETERMINISTIC_ENABLE) {
+                    kv_reuse_check(runTimeInfo_[last_ping_pong_idx], runTimeInfo_[ping_pong_idx], nextRunTimeInfo_,
+                                   taskId == 0);
+                }
+                // 上一轮没有计算任务时本任务的 Q/K 没有被预取，必须当场加载（first = true）
+                const bool first = (taskId == 0) || !prev_compute;
                 // mm12
                 cubeOp.SendMatmulQK(query_gm_, key_gm_, mm1_res_ub_tensor_, runTimeInfo_[ping_pong_idx],
-                                    nextRunTimeInfo_, taskId % 3, taskId == 0);
+                                    nextRunTimeInfo_, taskId % 3, first);
                 cubeOp.SendMatmulDyV(dout_gm_, val_gm_, mm2_res_ub_tensor_, runTimeInfo_[ping_pong_idx],
-                                     nextRunTimeInfo_, taskId % 3, taskId == 0);
+                                     nextRunTimeInfo_, taskId % 3, first);
                 CrossCoreSetFlag<2, PIPE_FIX>(FLAG_C1_V1);
             }
 
-            if (taskId > 0 && runTimeInfo_[last_ping_pong_idx].need_compute) {
+            if (prev_compute) {
                 CrossCoreWaitFlag<2, PIPE_MTE1>(FLAG_V1_C3);
-                // 确定性路径下每个任务只写自己那段 dq buffer（段内偏移 dqWsOffset），单写者保证
-                // fp32 原子加顺序 = 程序顺序；非确定性路径 dqWsOffset 恒为 0，行为与原来一致。
-                cubeOp.SendMatmulDq(ds_l1_tensor_, dq_workspace_[runTimeInfo_[last_ping_pong_idx].dqWsOffset],
-                                    runTimeInfo_[last_ping_pong_idx], (taskId - 1) % 3);
+                cubeOp.SendMatmulDq(ds_l1_tensor_, dq_workspace_, runTimeInfo_[last_ping_pong_idx], (taskId - 1) % 3);
                 cubeOp.SendMatmulDk(ds_l1_tensor_, dk_workspace_, runTimeInfo_[last_ping_pong_idx], (taskId - 1) % 3);
                 cubeOp.SendMatmulDv(p_l1_tensor_, dv_workspace_, runTimeInfo_[last_ping_pong_idx], (taskId - 1) % 3);
             }
-            if (runTimeInfo_[ping_pong_idx].need_compute == false) {
+            if constexpr (DETERMINISTIC_ENABLE) {
+                // 每轮一次跨核 barrier：本轮所有核的 mm345 原子加全部完成后才允许进入下一轮，
+                // 把 dq/dk/dv 的 fp32 原子加顺序固定成“轮次序” => bitwise 可复现。
+                if (taskId > 0) {
+                    CrossCoreSetFlag<0, PIPE_FIX>(FLAG_DETER_FIX);
+                    CrossCoreWaitFlag<0, PIPE_FIX>(FLAG_DETER_FIX);
+                }
+                if (taskId >= addr_.GetDeterMaxRound()) {
+                    break;
+                }
+            } else if (runTimeInfo_[ping_pong_idx].need_compute == false) {
                 break;
             }
             taskId++;
@@ -217,6 +228,7 @@ public:
         this->SetEventFlag();
         RunTimeInfo runTimeInfo_;
         RunTimeInfo nextRunTimeInfo_;
+        bool prev_compute = false;
 
         while (true) {
             ping_pong_idx = taskId % 2;
@@ -230,16 +242,25 @@ public:
             } else {
                 runTimeInfo_ = nextRunTimeInfo_;
             }
+            // 与 AIC 侧一致：预取必须每轮无条件执行，否则确定性路径会卡在空轮上
+            addr_.GetRunTimeInfo(nextRunTimeInfo_);
 
-            if (runTimeInfo_.need_compute) {
-                addr_.GetRunTimeInfo(nextRunTimeInfo_);
-                vecOp.SendVecSftPreProcess(runTimeInfo_, nextRunTimeInfo_, ping_pong_idx, taskId == 0);
+            const bool cur_compute = runTimeInfo_.need_compute != 0;
+            if (cur_compute) {
+                vecOp.SendVecSftPreProcess(runTimeInfo_, nextRunTimeInfo_, ping_pong_idx,
+                                           (taskId == 0) || !prev_compute);
                 CrossCoreWaitFlag<2, PIPE_V>(FLAG_C1_V1);
                 vecOp.SendVecSoftmax(p_l1_tensor_, ds_l1_tensor_, mm1_res_ub_tensor_, mm2_res_ub_tensor_, runTimeInfo_);
                 CrossCoreSetFlag<2, PIPE_MTE3>(FLAG_V1_C3);
             }
+            prev_compute = cur_compute;
 
-            if (runTimeInfo_.need_compute == false) {
+            if constexpr (DETERMINISTIC_ENABLE) {
+                // 与 AIC 侧保持相同的迭代次数，否则 CrossCore flag 会错位
+                if (taskId >= addr_.GetDeterMaxRound()) {
+                    break;
+                }
+            } else if (runTimeInfo_.need_compute == false) {
                 break;
             }
             taskId++;

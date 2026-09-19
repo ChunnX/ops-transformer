@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include "kernel_operator.h"
 #include "kernel_operator_list_tensor_intf.h"
@@ -22,7 +22,7 @@
 
 #if __CCE_AICORE__ == 310
 namespace {
-// 统一入口：AIV 先在 index workspace 上生成有效 block 下标，再进入主 kernel 按 index 遍历。
+// 非确定性路径入口：AIV 先在 index workspace 上生成有效 block 下标，再进入主 kernel 按 index 遍历。
 // 生成过程与主 kernel 共用同一个 TPipe，因此生成结束后先销毁再重新初始化。
 template <typename BSA_TYPE_T>
 __aicore__ inline void RunBsagByNonZeroIndex(
@@ -41,7 +41,20 @@ __aicore__ inline void RunBsagByNonZeroIndex(
     tPipe->Destroy();
     tPipe->Init();
     BSA_ARC35::BlockSparseAttentionGradArch35<BSA_TYPE_T> op;
-    op.Process(dout, query, key, value, out, softmaxLse, blockShape, attentionMask, actualSeqLengths,
+    op.Process(dout, query, key, value, out, softmaxLse, blockSparseMask, blockShape, attentionMask, actualSeqLengths,
+               actualSeqLengthsKv, dq, dk, dv, user, tilingDataPtr, tPipe);
+}
+
+// 确定性路径入口：不走 NonZero 预 kernel，主 kernel 直读 blockSparseMask 判块，
+// 按 latin-square 轮转调度 + 每轮一次跨核 barrier 固定 dq/dk/dv 的原子加顺序。
+template <typename BSA_TYPE_T>
+__aicore__ inline void RunBsagDeter(
+    GM_ADDR dout, GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR out, GM_ADDR softmaxLse, GM_ADDR blockSparseMask,
+    GM_ADDR blockShape, GM_ADDR attentionMask, GM_ADDR actualSeqLengths, GM_ADDR actualSeqLengthsKv, GM_ADDR dq,
+    GM_ADDR dk, GM_ADDR dv, GM_ADDR user, const BlockSparseAttentionGradTilingDataArch35 *tilingDataPtr, TPipe *tPipe)
+{
+    BSA_ARC35::BlockSparseAttentionGradArch35<BSA_TYPE_T> op;
+    op.Process(dout, query, key, value, out, softmaxLse, blockSparseMask, blockShape, attentionMask, actualSeqLengths,
                actualSeqLengthsKv, dq, dk, dv, user, tilingDataPtr, tPipe);
 }
 } // namespace
@@ -67,66 +80,62 @@ extern "C" __global__ __aicore__ void block_sparse_attention_grad(
     const BlockSparseAttentionGradTilingDataArch35 *__restrict tilingDataPtrArch35 = &tiling_data_in;
     using ARC35_TILING_CLASS = BlockSparseAttentionGradTilingDataArch35;
     TPipe tPipe;
+    // 1000~1005：非确定性路径（NonZero index 遍历）
     if (TILING_KEY_IS(1000)) {
-        using bsa_type = BSA_ARC35::BSA_TYPE<bfloat16_t, BSA_ARC35::BSND, ARC35_TILING_CLASS, false, true>;
+        using bsa_type = BSA_ARC35::BSA_TYPE<bfloat16_t, BSA_ARC35::BSND, ARC35_TILING_CLASS, false>;
         RunBsagByNonZeroIndex<bsa_type>(dout, query, key, value, out, softmaxLse, blockSparseMask, blockShape,
                                         attentionMask, actualSeqLengths, actualSeqLengthsKv, dq, dk, dv, user,
                                         tilingDataPtrArch35, &tPipe);
     } else if (TILING_KEY_IS(1001)) {
-        using bsa_type = BSA_ARC35::BSA_TYPE<half, BSA_ARC35::BSND, ARC35_TILING_CLASS, false, true>;
+        using bsa_type = BSA_ARC35::BSA_TYPE<half, BSA_ARC35::BSND, ARC35_TILING_CLASS, false>;
         RunBsagByNonZeroIndex<bsa_type>(dout, query, key, value, out, softmaxLse, blockSparseMask, blockShape,
                                         attentionMask, actualSeqLengths, actualSeqLengthsKv, dq, dk, dv, user,
                                         tilingDataPtrArch35, &tPipe);
     } else if (TILING_KEY_IS(1002)) {
-        using bsa_type = BSA_ARC35::BSA_TYPE<bfloat16_t, BSA_ARC35::BNSD, ARC35_TILING_CLASS, false, true>;
+        using bsa_type = BSA_ARC35::BSA_TYPE<bfloat16_t, BSA_ARC35::BNSD, ARC35_TILING_CLASS, false>;
         RunBsagByNonZeroIndex<bsa_type>(dout, query, key, value, out, softmaxLse, blockSparseMask, blockShape,
                                         attentionMask, actualSeqLengths, actualSeqLengthsKv, dq, dk, dv, user,
                                         tilingDataPtrArch35, &tPipe);
     } else if (TILING_KEY_IS(1003)) {
-        using bsa_type = BSA_ARC35::BSA_TYPE<half, BSA_ARC35::BNSD, ARC35_TILING_CLASS, false, true>;
+        using bsa_type = BSA_ARC35::BSA_TYPE<half, BSA_ARC35::BNSD, ARC35_TILING_CLASS, false>;
         RunBsagByNonZeroIndex<bsa_type>(dout, query, key, value, out, softmaxLse, blockSparseMask, blockShape,
                                         attentionMask, actualSeqLengths, actualSeqLengthsKv, dq, dk, dv, user,
                                         tilingDataPtrArch35, &tPipe);
     } else if (TILING_KEY_IS(1004)) {
-        using bsa_type = BSA_ARC35::BSA_TYPE<bfloat16_t, BSA_ARC35::TND, ARC35_TILING_CLASS, false, true>;
+        using bsa_type = BSA_ARC35::BSA_TYPE<bfloat16_t, BSA_ARC35::TND, ARC35_TILING_CLASS, false>;
         RunBsagByNonZeroIndex<bsa_type>(dout, query, key, value, out, softmaxLse, blockSparseMask, blockShape,
                                         attentionMask, actualSeqLengths, actualSeqLengthsKv, dq, dk, dv, user,
                                         tilingDataPtrArch35, &tPipe);
     } else if (TILING_KEY_IS(1005)) {
-        using bsa_type = BSA_ARC35::BSA_TYPE<half, BSA_ARC35::TND, ARC35_TILING_CLASS, false, true>;
+        using bsa_type = BSA_ARC35::BSA_TYPE<half, BSA_ARC35::TND, ARC35_TILING_CLASS, false>;
         RunBsagByNonZeroIndex<bsa_type>(dout, query, key, value, out, softmaxLse, blockSparseMask, blockShape,
                                         attentionMask, actualSeqLengths, actualSeqLengthsKv, dq, dk, dv, user,
                                         tilingDataPtrArch35, &tPipe);
+    // 1008~1013：确定性路径（latin-square + 每轮跨核 barrier，直读 mask，不走 NonZero 预 kernel）
     } else if (TILING_KEY_IS(1008)) {
-        using bsa_type = BSA_ARC35::BSA_TYPE<bfloat16_t, BSA_ARC35::BSND, ARC35_TILING_CLASS, true, true>;
-        RunBsagByNonZeroIndex<bsa_type>(dout, query, key, value, out, softmaxLse, blockSparseMask, blockShape,
-                                        attentionMask, actualSeqLengths, actualSeqLengthsKv, dq, dk, dv, user,
-                                        tilingDataPtrArch35, &tPipe);
+        using bsa_type = BSA_ARC35::BSA_TYPE<bfloat16_t, BSA_ARC35::BSND, ARC35_TILING_CLASS, true>;
+        RunBsagDeter<bsa_type>(dout, query, key, value, out, softmaxLse, blockSparseMask, blockShape, attentionMask,
+                               actualSeqLengths, actualSeqLengthsKv, dq, dk, dv, user, tilingDataPtrArch35, &tPipe);
     } else if (TILING_KEY_IS(1009)) {
-        using bsa_type = BSA_ARC35::BSA_TYPE<half, BSA_ARC35::BSND, ARC35_TILING_CLASS, true, true>;
-        RunBsagByNonZeroIndex<bsa_type>(dout, query, key, value, out, softmaxLse, blockSparseMask, blockShape,
-                                        attentionMask, actualSeqLengths, actualSeqLengthsKv, dq, dk, dv, user,
-                                        tilingDataPtrArch35, &tPipe);
+        using bsa_type = BSA_ARC35::BSA_TYPE<half, BSA_ARC35::BSND, ARC35_TILING_CLASS, true>;
+        RunBsagDeter<bsa_type>(dout, query, key, value, out, softmaxLse, blockSparseMask, blockShape, attentionMask,
+                               actualSeqLengths, actualSeqLengthsKv, dq, dk, dv, user, tilingDataPtrArch35, &tPipe);
     } else if (TILING_KEY_IS(1010)) {
-        using bsa_type = BSA_ARC35::BSA_TYPE<bfloat16_t, BSA_ARC35::BNSD, ARC35_TILING_CLASS, true, true>;
-        RunBsagByNonZeroIndex<bsa_type>(dout, query, key, value, out, softmaxLse, blockSparseMask, blockShape,
-                                        attentionMask, actualSeqLengths, actualSeqLengthsKv, dq, dk, dv, user,
-                                        tilingDataPtrArch35, &tPipe);
+        using bsa_type = BSA_ARC35::BSA_TYPE<bfloat16_t, BSA_ARC35::BNSD, ARC35_TILING_CLASS, true>;
+        RunBsagDeter<bsa_type>(dout, query, key, value, out, softmaxLse, blockSparseMask, blockShape, attentionMask,
+                               actualSeqLengths, actualSeqLengthsKv, dq, dk, dv, user, tilingDataPtrArch35, &tPipe);
     } else if (TILING_KEY_IS(1011)) {
-        using bsa_type = BSA_ARC35::BSA_TYPE<half, BSA_ARC35::BNSD, ARC35_TILING_CLASS, true, true>;
-        RunBsagByNonZeroIndex<bsa_type>(dout, query, key, value, out, softmaxLse, blockSparseMask, blockShape,
-                                        attentionMask, actualSeqLengths, actualSeqLengthsKv, dq, dk, dv, user,
-                                        tilingDataPtrArch35, &tPipe);
+        using bsa_type = BSA_ARC35::BSA_TYPE<half, BSA_ARC35::BNSD, ARC35_TILING_CLASS, true>;
+        RunBsagDeter<bsa_type>(dout, query, key, value, out, softmaxLse, blockSparseMask, blockShape, attentionMask,
+                               actualSeqLengths, actualSeqLengthsKv, dq, dk, dv, user, tilingDataPtrArch35, &tPipe);
     } else if (TILING_KEY_IS(1012)) {
-        using bsa_type = BSA_ARC35::BSA_TYPE<bfloat16_t, BSA_ARC35::TND, ARC35_TILING_CLASS, true, true>;
-        RunBsagByNonZeroIndex<bsa_type>(dout, query, key, value, out, softmaxLse, blockSparseMask, blockShape,
-                                        attentionMask, actualSeqLengths, actualSeqLengthsKv, dq, dk, dv, user,
-                                        tilingDataPtrArch35, &tPipe);
+        using bsa_type = BSA_ARC35::BSA_TYPE<bfloat16_t, BSA_ARC35::TND, ARC35_TILING_CLASS, true>;
+        RunBsagDeter<bsa_type>(dout, query, key, value, out, softmaxLse, blockSparseMask, blockShape, attentionMask,
+                               actualSeqLengths, actualSeqLengthsKv, dq, dk, dv, user, tilingDataPtrArch35, &tPipe);
     } else if (TILING_KEY_IS(1013)) {
-        using bsa_type = BSA_ARC35::BSA_TYPE<half, BSA_ARC35::TND, ARC35_TILING_CLASS, true, true>;
-        RunBsagByNonZeroIndex<bsa_type>(dout, query, key, value, out, softmaxLse, blockSparseMask, blockShape,
-                                        attentionMask, actualSeqLengths, actualSeqLengthsKv, dq, dk, dv, user,
-                                        tilingDataPtrArch35, &tPipe);
+        using bsa_type = BSA_ARC35::BSA_TYPE<half, BSA_ARC35::TND, ARC35_TILING_CLASS, true>;
+        RunBsagDeter<bsa_type>(dout, query, key, value, out, softmaxLse, blockSparseMask, blockShape, attentionMask,
+                               actualSeqLengths, actualSeqLengthsKv, dq, dk, dv, user, tilingDataPtrArch35, &tPipe);
     }
 
 #else

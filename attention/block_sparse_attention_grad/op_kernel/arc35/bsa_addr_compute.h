@@ -13,6 +13,9 @@ using namespace AscendC;
 
 namespace BSA_ARC35 {
 
+// 两条路径共用同一套 RunTimeInfo 填充与 K/V 复用判定，仅“取哪一个 block”的遍历方式不同：
+//   - 确定性路径：直读 blockSparseMask 判块，按 latin-square 轮转调度取 (w, x, y)；
+//   - 非确定性路径：按 host 侧 NonZero 预 kernel 生成的 block index workspace 顺序取块。
 template <typename BSA_TYPE>
 class AddrComputeModule {
 protected:
@@ -20,13 +23,11 @@ protected:
     static constexpr uint32_t INPUT_LAYOUT = BSA_TYPE::input_layout;
     using TILING_CLASS = typename BSA_TYPE::tiling_class;
     static constexpr bool DETERMINISTIC_ENABLE = BSA_TYPE::deterministic_enable;
-    // 是否走 host 预生成的 block index workspace 遍历（NonZero 优化路径）
-    static constexpr bool INDEX_ENABLE = BSA_TYPE::index_enable;
-    static_assert(INDEX_ENABLE,
-                  "BSAG arch35: 确定性与非确定性路径统一使用 NonZero index 遍历，不再读 blockSparseMask 判块");
+
     GM_ADDR actualQseqlen_;
     GM_ADDR actualKvseqlen_;
-    GM_ADDR indexWorkspace_;
+    GM_ADDR blockSparseMask_;   // 确定性路径直读的 block 稀疏 mask
+    GM_ADDR indexWorkspace_;    // 非确定性路径：有效块下标表
     GM_ADDR indexShapeWorkspace_;
     int32_t batch_num_;
     int32_t q_seq_len_;
@@ -57,30 +58,27 @@ protected:
     int32_t block_global_idx{0};
     int32_t block_local_idx{0};
     uint64_t vaild_block_num{0};
-    // 确定性路径核间分工（与 host 侧 GetWorkspaceSize 的 dqSplitNum 计算一致）：
-    //   组 g = batch * kvHeadNum + n2；单位 u = g * k + p，p ∈ [0, k) 为该组 kv_block 的子段号，
-    //   子段 p 覆盖 kv_block 区间 [p*KV/k, (p+1)*KV/k)。cube 核 c 负责所有 u % cubeCoreNum == c 的单位。
-    //   同一 dq 槽位 (b, n1, s1) 的各个 kv_block 恰好落在不同子段 p 上、每段只有一个拥有者，
-    //   因此每段 buffer 单写者、累加顺序 = 程序顺序，vector 端再按段号固定升序归约 => bitwise 可复现。
-    //   组内 s2 只有一段（k == 1）时所有核写到同一份 dq buffer 的不重叠槽位，无需分段归约。
-    int32_t dq_split_num_{1}; // k：每组的 kv_block 子段数，同时也是 dq 分段数（非确定性为 1）
-    int32_t group_num_{1};    // G = batchNum * kvHeadNum
-    int64_t dq_size_{0};      // dq 元素总量
-    // s1 相位遍历：把 q_block 空间均分为 s1_phase_num_ 段，外层按相位推进，使同一核重复访问同一段
-    // dq buffer 的距离从整份 dq 缩到 1/s1PhaseNum，避免 k 份 dq 分段整体超出 L2 后原子加回写 HBM。
-    int32_t s1_phase_num_{1};
-    int32_t cur_phase_{0};    // 当前相位
-    int32_t it_unit_{0};      // 当前遍历到的单位编号（步长 = cube_core_num_）
-    int32_t it_n1_{0};        // 单位内当前 (b,q_head) 的偏移（0..q_group-1）
-    int32_t it_s2_{0};        // 单位内子段 s2 偏移
-    int32_t it_pos_{0};       // 当前 entry 子区间已消费到的下标
-    int32_t it_end_{0};       // 当前 entry 子区间的上界
-    int64_t it_dq_offset_{0}; // 当前单位对应的 dq 段 workspace 偏移（子段号 * dqSize）
+
+    // 确定性路径调度状态：把全部 (batch, q_head) × (s1 块) × (s2 块) 任务按 latin-square
+    // 轮转分给 cube 核——第 r 轮第 j 个核处理 (w, x, y)，同一轮内各核的 x、y 两两不同，
+    // 因此各核并发写 dq/dk/dv 命中的地址互不重叠；再配合每轮一次跨核 barrier，
+    // fp32 原子加的先后顺序被固定成“轮次序” => bitwise 可复现。
+    int32_t s1_outer_{0};     // m = ceil(maxQSeqLen / baseM)
+    int32_t s2_outer_{0};     // n = ceil(maxKvSeqLen / baseN)
+    uint32_t deter_latin_r_{0};
+    uint32_t deter_max_round_{0};
+    // K/V 复用分组状态：同一 latin 分组内连续 m 轮的 y（KV 块）不变，分组未关闭时 K/V 常驻
+    // L1、dk/dv 在 L0C 内继续累加；关闭时换一块 L1 槽位并重置 L0C 累加器。
+    // 稀疏 mask 下的空轮不参与、也不打断分组，因此用核内自持状态判断，而不是比较相邻任务 offset。
+    uint32_t dkv_group_open_{0};
+    int32_t kv_ping_pong_idx_{0};
+    ConstInfo const_info_;
+
     __gm__ int32_t *index_ptr_{nullptr};
 
 public:
     __aicore__ inline void Init(const TILING_CLASS *tilingData, GM_ADDR actualQseqlen, GM_ADDR actualKvseqlen,
-                                GM_ADDR workspace)
+                                GM_ADDR workspace, GM_ADDR blockSparseMask)
     {
         this->batch_num_ = tilingData->batchNum;
         this->q_seq_len_ = tilingData->qSeqLen;
@@ -92,6 +90,7 @@ public:
         this->cube_core_num_ = tilingData->cubeCoreNum;
         this->actualQseqlen_ = actualQseqlen;
         this->actualKvseqlen_ = actualKvseqlen;
+        this->blockSparseMask_ = blockSparseMask;
         this->indexWorkspace_ = workspace + tilingData->indexWorkspaceOffset;
         this->indexShapeWorkspace_ = workspace + tilingData->indexShapeWorkspaceOffset;
         this->block_x_ = tilingData->BlockX;
@@ -120,20 +119,97 @@ public:
             q_block_num_ = CeilDiv(q_seq_len_, block_x_);
             kv_block_num_ = CeilDiv(kv_seq_len_, block_y_);
         }
-        // 确定性路径：dq 子段数 k / s1 相位数由 tiling 下发（非确定性恒为 1）
-        this->dq_size_ = static_cast<int64_t>(tilingData->dqSize);
-        this->dq_split_num_ = (tilingData->dqSplitNum > 0) ? static_cast<int32_t>(tilingData->dqSplitNum) : 1;
-        this->s1_phase_num_ = (tilingData->s1PhaseNum > 0) ? static_cast<int32_t>(tilingData->s1PhaseNum) : 1;
-        this->group_num_ = batch_num_ * IMax(kv_head_num_, 1);
-        if (this->group_num_ < 1) {
-            this->group_num_ = 1;
+        s1_outer_ = CeilDiv(max_q_seq_len_, base_m_);
+        s2_outer_ = CeilDiv(max_kv_seq_len_, base_n_);
+        if constexpr (DETERMINISTIC_ENABLE) {
+            deter_max_round_ = CalcDeterMaxRound();
         }
+        const_info_.q_head_num = q_head_num_;
+        const_info_.kv_head_num = kv_head_num_;
+        const_info_.block_x = block_x_;
+        const_info_.block_y = block_y_;
+        const_info_.head_dim = head_dim_;
+        const_info_.q_block_num = q_block_num_;
+        const_info_.kv_block_num = kv_block_num_;
         this->index_ptr_ = (__gm__ int32_t *)indexWorkspace_;
         if ASCEND_IS_AIC {
             this->cube_core_idx_ = GetBlockIdx();
         }
         if ASCEND_IS_AIV {
             this->cube_core_idx_ = GetBlockIdx() / 2;
+        }
+    }
+
+    __aicore__ inline uint32_t GetDeterMaxRound() const
+    {
+        return deter_max_round_;
+    }
+
+    __aicore__ inline void GetRunTimeInfo(RunTimeInfo &runTimeInfo)
+    {
+        if constexpr (DETERMINISTIC_ENABLE) {
+            GetRunTimeInfoDeter(runTimeInfo);
+            return;
+        }
+        GetRunTimeInfoByIndex(runTimeInfo);
+    }
+
+protected:
+    // ------------------------------------------------------------------
+    // 非确定性路径：NonZero 预 kernel 产出的有效块下标表
+    // ------------------------------------------------------------------
+
+    // 每个核连续取 INDEX_BLOCK_NUM 个有效块，让相邻任务尽量落在同一 KV 块上，提高 K/V 复用率
+    static constexpr int32_t INDEX_BLOCK_NUM = 16;
+
+    // 取第 flat_index 个有效块填充 runTimeInfo；返回 false 表示该块已超出真实序列长度、需跳过
+    __aicore__ inline bool FillRunTimeInfoByIndex(int32_t flat_index, RunTimeInfo &runTimeInfo)
+    {
+        int32_t b_idx;
+        int32_t n1_idx;
+        int32_t s1_block;
+        int32_t s2_block;
+        unravel_index(flat_index, b_idx, n1_idx, s1_block, s2_block);
+        if (b_idx != bIdx_) {
+            bIdx_ = b_idx;
+            UpdateSeqLenByBatch(b_idx);
+        }
+        n1Idx_ = n1_idx;
+        s1Idx_ = s1_block * base_m_;
+        s2Idx_ = s2_block * base_n_;
+        if (s1Idx_ >= cur_q_seq_len_ || s2Idx_ >= cur_kv_seq_len_) {
+            // mask 末尾的补齐块（TND 短序列、block 未铺满）不产生任务
+            return false;
+        }
+        RunTimeInfoRecord(runTimeInfo, s1Idx_, s2Idx_, GetBlockLen(s1Idx_, cur_q_seq_len_, base_m_),
+                          GetBlockLen(s2Idx_, cur_kv_seq_len_, base_n_));
+        return true;
+    }
+
+    __aicore__ inline void GetRunTimeInfoByIndex(RunTimeInfo &runTimeInfo)
+    {
+        runTimeInfo.need_compute = 0;
+        if (unlikely(loop_num_ == 0)) {
+            this->vaild_block_num = ((__gm__ uint64_t *)indexShapeWorkspace_)[2];
+            block_global_idx = cube_core_idx_;
+            block_local_idx = 0;
+            loop_num_ = 1;
+        }
+        while (true) {
+            if (block_local_idx >= INDEX_BLOCK_NUM) {
+                block_global_idx += cube_core_num_;
+                block_local_idx = 0;
+            }
+            int64_t index_workspace_offset = static_cast<int64_t>(block_global_idx) * INDEX_BLOCK_NUM + block_local_idx;
+            if (index_workspace_offset >= static_cast<int64_t>(vaild_block_num)) {
+                return; // 有效块 index 已耗尽
+            }
+            block_local_idx++;
+            loop_num_++;
+            int32_t block_sparse_idx = index_ptr_[index_workspace_offset];
+            if (FillRunTimeInfoByIndex(block_sparse_idx, runTimeInfo)) {
+                return;
+            }
         }
     }
 
@@ -163,210 +239,241 @@ public:
         last_kv_seq_sum_ = b_idx > 0 ? GetSeqTotalLen(b_idx - 1, actualKvseqlen_) : 0;
     }
 
-    __aicore__ inline void GetRunTimeInfo(RunTimeInfo &runTimeInfo)
+    // ------------------------------------------------------------------
+    // 确定性路径：latin-square 无冲突轮转
+    // ------------------------------------------------------------------
+
+    // 总轮数只与形状有关、与 mask 稀疏度无关（稀疏 mask 下空轮直接产出 need_compute = 0）
+    __aicore__ inline uint32_t CalcDeterMaxRound()
     {
-        // 确定性与非确定性路径统一按 host 预生成的 block index 遍历，不再读 blockSparseMask 判块
-        GetRunTimeInfoByIndex(runTimeInfo);
+        int64_t m = s1_outer_;
+        int64_t n = s2_outer_;
+        int64_t k = cube_core_num_;
+        if (m <= 0 || n <= 0 || k <= 0) {
+            return 0;
+        }
+        if (q_group_ <= 1) {
+            int64_t b = static_cast<int64_t>(batch_num_) * q_head_num_;
+            k = IMin(k, b * m);
+            return static_cast<uint32_t>(m * ICeil(b * n, k));
+        }
+        int64_t b = static_cast<int64_t>(batch_num_) * kv_head_num_;
+        int64_t g = q_group_;
+        k = IMin(IMin(k, b * g * m), b * n);
+        int64_t R = IMax(IMax(ICeil(b * n * g, k), ICeil(n, m)), g);
+        return static_cast<uint32_t>(R * m);
     }
 
-protected:
-    // 每个核连续取 INDEX_BLOCK_NUM 个有效块，让相邻任务尽量落在同一 KV 块上，提高 K/V 复用率
-    static constexpr int32_t INDEX_BLOCK_NUM = 16;
-
-    // 取第 flat_index 个有效块填充 runTimeInfo；返回 false 表示该块已超出真实序列长度、需跳过
-    __aicore__ inline bool FillRunTimeInfoByIndex(int32_t flat_index, RunTimeInfo &runTimeInfo)
+    __aicore__ inline bool MapDenseIndex(int64_t k, int64_t m, int64_t n, int64_t b, int64_t j, int64_t r, int64_t &w,
+                                         int64_t &x, int64_t &y)
     {
-        int32_t b_idx;
-        int32_t n1_idx;
-        int32_t s1_block;
-        int32_t s2_block;
-        unravel_index(flat_index, b_idx, n1_idx, s1_block, s2_block);
-        if (b_idx != bIdx_) {
-            bIdx_ = b_idx;
-            UpdateSeqLenByBatch(b_idx);
-        }
-        n1Idx_ = n1_idx;
-        s1Idx_ = s1_block * base_m_;
-        s2Idx_ = s2_block * base_n_;
-        if (s1Idx_ >= cur_q_seq_len_ || s2Idx_ >= cur_kv_seq_len_) {
-            // mask 末尾的补齐块（TND 短序列、block 未铺满）不产生任务
+        k = IMin(k, b * m);
+        if (j > k || j < 1 || r < 1) {
             return false;
         }
-        RunTimeInfoRecord(runTimeInfo, s1Idx_, s2Idx_, GetBlockLen(s1Idx_, cur_q_seq_len_, base_m_),
-                          GetBlockLen(s2Idx_, cur_kv_seq_len_, base_n_));
+        int64_t p = (ICeil(r, m) - 1) * k + j;
+        w = p % b;
+        w = (w != 0) ? w : b;
+        y = ICeil(p, b);
+        int64_t y1 = y % m;
+        y1 = (y1 != 0) ? y1 : m;
+        int64_t r1 = r % m;
+        r1 = (r1 != 0) ? r1 : m;
+        x = y1 + r1 - 1;
+        if (x > m) {
+            x -= m;
+        }
+        return (w >= 1 && w <= b && x >= 1 && x <= m && y >= 1 && y <= n);
+    }
+
+    __aicore__ inline bool MapGqaIndex(int64_t k, int64_t m, int64_t n, int64_t b, int64_t core_id, int64_t round_id,
+                                       int64_t g, int64_t &bn1, int64_t &x, int64_t &y)
+    {
+        k = IMin(IMin(k, b * g * m), b * n);
+        int64_t R = IMax(IMax(ICeil(b * n * g, k), ICeil(n, m)), g);
+        if (core_id < 1 || core_id > k || round_id < 1 || round_id > R * m) {
+            return false;
+        }
+        int64_t ID = (core_id - 1) * R + ICeil(round_id, m);
+        int64_t local_id = round_id % m;
+        local_id = local_id != 0 ? local_id : m;
+        if (ID > g * n * b) {
+            return false;
+        }
+        int64_t N = b * g;
+        int64_t b_id = ID % N;
+        b_id = b_id != 0 ? b_id : N;
+        b_id = ICeil(b_id, g);
+        y = ICeil(ID, N);
+        int64_t w = ID % g;
+        w = w != 0 ? w : g;
+        int64_t gcd = IGcd(N, R);
+        int64_t t1 = R / gcd;
+        int64_t t2 = N / gcd;
+        int64_t t1_new = t1 * m;
+        int64_t y1 = y % t1_new;
+        y1 = y1 != 0 ? y1 : t1_new;
+        int64_t offset = ICeil(y1, t1);
+        if (t1_new < n) {
+            int64_t n1 = (n % t1_new);
+            n1 = n1 != 0 ? n1 : t1_new;
+            if (y <= n - n1) {
+                int64_t delta = ICeil(y, t1_new);
+                ID += delta;
+                if (ID > (delta - 1) * t2 * m * R + offset * t2 * R) {
+                    ID -= t2 * R;
+                }
+                b_id = ID % N;
+                b_id = b_id != 0 ? b_id : N;
+                b_id = ICeil(b_id, g);
+                w = ID % g;
+                w = w != 0 ? w : g;
+                y = ICeil(ID, N);
+            }
+        }
+        x = local_id + offset - 1;
+        if (x > m) {
+            x -= m;
+        }
+        bn1 = w + (b_id - 1) * g;
+        return (bn1 >= 1 && x >= 1 && x <= m && y >= 1 && y <= n);
+    }
+
+    // 第 r 轮之后、同一 latin 分组内是否还有有效任务；没有则本轮的 kv 可以提前收尾
+    __aicore__ inline bool LastValidInGroup(int64_t k, int64_t m, int64_t n, int64_t bflat, int64_t j, int64_t r,
+                                            uint32_t latin_max)
+    {
+        if (m <= 0) {
+            return true;
+        }
+        int64_t group_end = ICeil(r, m) * m;
+        if (group_end > latin_max) {
+            group_end = latin_max;
+        }
+        for (int64_t rr = r + 1; rr <= group_end; rr++) {
+            int64_t w = 0;
+            int64_t x = 0;
+            int64_t y = 0;
+            bool ok = false;
+            if (q_group_ <= 1) {
+                ok = MapDenseIndex(k, m, n, bflat, j, rr, w, x, y);
+            } else {
+                ok = MapGqaIndex(k, m, n, bflat, j, rr, q_group_, w, x, y);
+            }
+            if (!ok) {
+                continue;
+            }
+            int64_t bn1 = w - 1;
+            int32_t bIdx = static_cast<int32_t>(bn1 / q_head_num_);
+            int32_t n1Idx = static_cast<int32_t>(bn1 % q_head_num_);
+            int32_t s1Idx = static_cast<int32_t>((x - 1) * base_m_);
+            int32_t s2Idx = static_cast<int32_t>((y - 1) * base_n_);
+            int32_t cur_q = q_seq_len_;
+            int32_t cur_kv = kv_seq_len_;
+            if constexpr (INPUT_LAYOUT == TND) {
+                if (bIdx < 0 || bIdx >= batch_num_) {
+                    continue;
+                }
+                cur_q = GetSeqLen(bIdx, actualQseqlen_);
+                cur_kv = GetSeqLen(bIdx, actualKvseqlen_);
+            }
+            if (s1Idx >= 0 && s2Idx >= 0 && s1Idx < cur_q && s2Idx < cur_kv &&
+                IsValidBlock(const_info_, bIdx, n1Idx, s1Idx / block_x_, s2Idx / block_y_, blockSparseMask_)) {
+                return false;
+            }
+        }
         return true;
     }
 
-    // NonZero 优化路径：按 host 预生成的 block index workspace 顺序取任务
-    __aicore__ inline void GetRunTimeInfoByIndex(RunTimeInfo &runTimeInfo)
+    __aicore__ inline void GetRunTimeInfoDeter(RunTimeInfo &runTimeInfo)
     {
-        if constexpr (DETERMINISTIC_ENABLE) {
-            GetRunTimeInfoByUnit(runTimeInfo);
+        runTimeInfo.need_compute = 0;
+        deter_latin_r_++;
+        int64_t m = s1_outer_;
+        int64_t n = s2_outer_;
+        int64_t k = cube_core_num_;
+        int64_t j = cube_core_idx_ + 1;
+        int64_t r = static_cast<int64_t>(deter_latin_r_);
+        if (deter_latin_r_ > deter_max_round_ || m <= 0 || n <= 0 || k <= 0) {
             return;
         }
-        runTimeInfo.need_compute = 0;
-        if (unlikely(loop_num_ == 0)) {
-            this->vaild_block_num = ((__gm__ uint64_t *)indexShapeWorkspace_)[2];
-            block_global_idx = cube_core_idx_;
-            block_local_idx = 0;
-            loop_num_ = 1;
+        int64_t w = 0;
+        int64_t x = 0;
+        int64_t y = 0;
+        bool ok = false;
+        int64_t bflat = q_group_ <= 1 ? static_cast<int64_t>(batch_num_) * q_head_num_ :
+                                        static_cast<int64_t>(batch_num_) * kv_head_num_;
+        if (q_group_ <= 1) {
+            ok = MapDenseIndex(k, m, n, bflat, j, r, w, x, y);
+        } else {
+            ok = MapGqaIndex(k, m, n, bflat, j, r, q_group_, w, x, y);
         }
-        while (true) {
-            if (block_local_idx >= INDEX_BLOCK_NUM) {
-                block_global_idx += cube_core_num_;
-                block_local_idx = 0;
-            }
-            int64_t index_workspace_offset = static_cast<int64_t>(block_global_idx) * INDEX_BLOCK_NUM + block_local_idx;
-            if (index_workspace_offset >= static_cast<int64_t>(vaild_block_num)) {
-                return; // 有效块 index 已耗尽
-            }
-            block_local_idx++;
-            loop_num_++;
-            int32_t block_sparse_idx = index_ptr_[index_workspace_offset];
-            if (FillRunTimeInfoByIndex(block_sparse_idx, runTimeInfo)) {
+        if (!ok) {
+            return;
+        }
+        int64_t bn1 = w - 1;
+        int32_t bIdx = static_cast<int32_t>(bn1 / q_head_num_);
+        int32_t n1Idx = static_cast<int32_t>(bn1 % q_head_num_);
+        int32_t n2Idx = n1Idx / q_group_;
+        int32_t s1Idx = static_cast<int32_t>((x - 1) * base_m_);
+        int32_t s2Idx = static_cast<int32_t>((y - 1) * base_n_);
+        int32_t cur_q = q_seq_len_;
+        int32_t cur_kv = kv_seq_len_;
+        int32_t last_q = 0;
+        int32_t last_kv = 0;
+        if constexpr (INPUT_LAYOUT == TND) {
+            if (bIdx < 0 || bIdx >= batch_num_) {
                 return;
             }
+            cur_q = GetSeqLen(bIdx, actualQseqlen_);
+            cur_kv = GetSeqLen(bIdx, actualKvseqlen_);
+            last_q = bIdx > 0 ? GetSeqTotalLen(bIdx - 1, actualQseqlen_) : 0;
+            last_kv = bIdx > 0 ? GetSeqTotalLen(bIdx - 1, actualKvseqlen_) : 0;
+        } else if (bIdx < 0 || bIdx >= batch_num_) {
+            return;
         }
-    }
-
-    // 相位对应的 s1 block 下界 / 上界：把 [0, q_block_num_) 均分成 s1_phase_num_ 段。
-    __aicore__ inline int32_t PhaseLoBlock(int32_t phase) const
-    {
-        return static_cast<int32_t>((static_cast<int64_t>(phase) * q_block_num_) / s1_phase_num_);
-    }
-
-    __aicore__ inline int32_t PhaseHiBlock(int32_t phase) const
-    {
-        return static_cast<int32_t>((static_cast<int64_t>(phase + 1) * q_block_num_) / s1_phase_num_);
-    }
-
-    // 二分：第一个满足 (entry / q_block_num_) >= group_key 的 entry 下标（group_key 单调不减）
-    __aicore__ inline int32_t LowerBoundGroup(int32_t group_key) const
-    {
-        int32_t lo = 0;
-        int32_t hi = static_cast<int32_t>(vaild_block_num);
-        while (lo < hi) {
-            int32_t mid = lo + ((hi - lo) >> 1);
-            if (index_ptr_[mid] / q_block_num_ < group_key) {
-                lo = mid + 1;
-            } else {
-                hi = mid;
-            }
+        if (s1Idx >= cur_q || s2Idx >= cur_kv || s1Idx < 0 || s2Idx < 0) {
+            return;
         }
-        return lo;
-    }
-
-    // 二分：同 group 内第一个满足 (entry % q_block_num_) >= target 的 entry 下标（s1 单调不减）
-    __aicore__ inline int32_t LowerBoundS1(int32_t lo, int32_t hi, int32_t target) const
-    {
-        while (lo < hi) {
-            int32_t mid = lo + ((hi - lo) >> 1);
-            if (index_ptr_[mid] % q_block_num_ < target) {
-                lo = mid + 1;
-            } else {
-                hi = mid;
-            }
+        if (!IsValidBlock(const_info_, bIdx, n1Idx, s1Idx / block_x_, s2Idx / block_y_, blockSparseMask_)) {
+            return;
         }
-        return lo;
-    }
-
-    // 确定性路径：按 (相位 -> 本核负责的单位 -> q_head -> s2 子段) 顺序，用二分定位本核任务区间，
-    // 只访问属于本核的 entry（不再线性扫全表），同时让同一段 dq buffer 的重复访问距离缩小到 1/相位数。
-    __aicore__ inline void GetRunTimeInfoByUnit(RunTimeInfo &runTimeInfo)
-    {
-        runTimeInfo.need_compute = 0;
-        if (unlikely(loop_num_ == 0)) {
-            this->vaild_block_num = ((__gm__ uint64_t *)indexShapeWorkspace_)[2];
-            // 相位不是越多越好：dk/dv 每个相位都要落盘一次，稀疏 mask 下 (s2, 相位) 落盘次数几乎不随
-            // 稀疏度下降，相位过多反而更慢。这里按运行期有效块数收敛相位数（稠密保持 tiling 值）。
-            if (s1_phase_num_ > 1 && kv_block_num_ > 0) {
-                int32_t phase_cap = static_cast<int32_t>(vaild_block_num / (static_cast<uint64_t>(kv_block_num_) * 4));
-                if (phase_cap < 1) {
-                    phase_cap = 1;
-                }
-                if (phase_cap < s1_phase_num_) {
-                    s1_phase_num_ = phase_cap;
-                }
-            }
-            loop_num_ = 1;
-            cur_phase_ = 0;
-            it_unit_ = cube_core_idx_;
-            it_n1_ = 0;
-            it_s2_ = 0;
-            it_pos_ = 0;
-            it_end_ = 0;
+        int32_t s1Len = GetBlockLen(s1Idx, cur_q, base_m_);
+        int32_t s2Len = GetBlockLen(s2Idx, cur_kv, base_n_);
+        runTimeInfo.bIdx = bIdx;
+        runTimeInfo.last_q_seq_sum = last_q;
+        runTimeInfo.last_kv_seq_sum = last_kv;
+        runTimeInfo.cur_q_seq_len = cur_q;
+        runTimeInfo.cur_kv_seq_len = cur_kv;
+        runTimeInfo.s1Idx = s1Idx;
+        runTimeInfo.s2Idx = s2Idx;
+        runTimeInfo.n1Idx = n1Idx;
+        runTimeInfo.n2Idx = n2Idx;
+        runTimeInfo.s1Len = s1Len;
+        runTimeInfo.s2Len = s2Len;
+        runTimeInfo.s1LenAlign = RoundUp(s1Len, 16);
+        runTimeInfo.s2LenAlign = RoundUp(s2Len, 16);
+        runTimeInfo.queryGmOffset =
+            GetQKVGmOffset<INPUT_LAYOUT>(last_q, cur_q, q_head_num_, head_dim_, bIdx, s1Idx, n1Idx);
+        runTimeInfo.keyGmOffset =
+            GetQKVGmOffset<INPUT_LAYOUT>(last_kv, cur_kv, kv_head_num_, head_dim_, bIdx, s2Idx, n2Idx);
+        runTimeInfo.lseGmOffset = GetLseGmOffset<INPUT_LAYOUT>(last_q, cur_q, q_head_num_, bIdx, s1Idx, n1Idx);
+        runTimeInfo.sftgGmOffset = GetSftgGmOffset<INPUT_LAYOUT>(last_q, cur_q, q_head_num_, bIdx, s1Idx, n1Idx);
+        runTimeInfo.need_compute = 1;
+        if (!dkv_group_open_) {
+            // 开启新分组：换一块 K/V L1 槽位，dk/dv 的 L0C 累加器重置（cmatrixInitVal = 1）
+            kv_ping_pong_idx_ = (kv_ping_pong_idx_ + 1) % 3;
+            runTimeInfo.is_kv_change = 1;
+            dkv_group_open_ = 1;
+        } else {
+            runTimeInfo.is_kv_change = 0;
         }
-        while (true) {
-            if (it_pos_ >= it_end_) {
-                if (!AdvanceUnitGroup()) {
-                    return; // 本核任务已全部取完
-                }
-            }
-            int32_t block_sparse_idx = index_ptr_[it_pos_++];
-            runTimeInfo.dqWsOffset = it_dq_offset_;
-            runTimeInfo.s1Phase = cur_phase_;
-            if (FillRunTimeInfoByIndex(block_sparse_idx, runTimeInfo)) {
-                return;
-            }
+        runTimeInfo.kv_ping_pong_idx = kv_ping_pong_idx_;
+        const bool last = LastValidInGroup(k, m, n, bflat, j, r, deter_max_round_);
+        runTimeInfo.is_kv_end = last ? 1 : 0;
+        if (last) {
+            dkv_group_open_ = 0;
         }
-    }
-
-    // 找到下一个存在有效块的 (相位, 单位, q_head, s2) entry 子区间 [it_pos_, it_end_)；返回 false 表示结束
-    __aicore__ inline bool AdvanceUnitGroup()
-    {
-        const int32_t vaild = static_cast<int32_t>(vaild_block_num);
-        const int32_t k = dq_split_num_;
-        const int32_t total_units = group_num_ * k;
-        while (cur_phase_ < s1_phase_num_) {
-            const int32_t ph_lo = PhaseLoBlock(cur_phase_);
-            const int32_t ph_hi = PhaseHiBlock(cur_phase_);
-            while (it_unit_ < total_units) {
-                const int32_t unit = it_unit_;
-                const int32_t sub = unit % k;   // kv_block 子段号 = dq 段号
-                const int32_t group = unit / k; // (batch, kv_head)
-                const int32_t n2 = group % kv_head_num_;
-                const int32_t b_idx = group / kv_head_num_;
-                const int32_t s2_lo = static_cast<int32_t>((static_cast<int64_t>(sub) * kv_block_num_) / k);
-                const int32_t s2_hi = static_cast<int32_t>((static_cast<int64_t>(sub + 1) * kv_block_num_) / k);
-                const int32_t n1_base = n2 * q_group_;
-                const int32_t n1_num = IMin(q_group_, q_head_num_ - n1_base);
-                while (it_n1_ < n1_num) {
-                    const int32_t n1 = n1_base + it_n1_;
-                    while (it_s2_ < s2_hi - s2_lo) {
-                        const int32_t s2_block = s2_lo + it_s2_;
-                        it_s2_++;
-                        if (s2_block >= kv_block_num_ || ph_lo >= ph_hi) {
-                            continue;
-                        }
-                        const int32_t group_key = (b_idx * q_head_num_ + n1) * kv_block_num_ + s2_block;
-                        const int32_t g_lo = LowerBoundGroup(group_key);
-                        if (g_lo >= vaild || index_ptr_[g_lo] / q_block_num_ != group_key) {
-                            continue; // 稀疏 mask 下该 (b, q_head, kv_block) 无有效块
-                        }
-                        const int32_t g_hi = LowerBoundGroup(group_key + 1);
-                        const int32_t lo = LowerBoundS1(g_lo, g_hi, ph_lo);
-                        const int32_t hi = (ph_hi >= q_block_num_) ? g_hi : LowerBoundS1(lo, g_hi, ph_hi);
-                        if (lo < hi) {
-                            it_pos_ = lo;
-                            it_end_ = hi;
-                            it_dq_offset_ = static_cast<int64_t>(sub) * dq_size_;
-                            return true;
-                        }
-                    }
-                    it_s2_ = 0;
-                    it_n1_++;
-                }
-                it_n1_ = 0;
-                it_unit_ += cube_core_num_;
-            }
-            cur_phase_++;
-            it_unit_ = cube_core_idx_;
-            it_n1_ = 0;
-            it_s2_ = 0;
-        }
-        it_pos_ = 0;
-        it_end_ = 0;
-        return false;
     }
 
 private:
