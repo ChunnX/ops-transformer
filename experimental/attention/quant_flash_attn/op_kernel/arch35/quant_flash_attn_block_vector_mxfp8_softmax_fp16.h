@@ -22,6 +22,7 @@
 #include "vf/vf_calc_pscale.h"
 #include "vf/vf_flashupdate_acc.h"
 #include "vf/vf_div_cast_bf16.h"
+#include "vf/vf_softmax_fp16_to_fp8.h"
 
 namespace QFA_KERNEL {
 
@@ -171,6 +172,11 @@ public:
         if (subLoopIdx == 0U && !runInfo.isFirstS2Loop) {
             DataCopy(blockStartMaxUB_, softmaxMaxUB_[stateSlot * UB_SMAX_SLOT], UB_SMAX_SLOT);
         }
+
+        // softmax 主体：max 归约 → 量化合并 → exp → cast fp8 → NZ 打包
+        QfaVectorApi::VfSoftmaxFp16ToFp8(vec1PUb_, softmaxMaxUB_, subLoopUsedMaxUB_, pNzIdxUB_,
+                                           mm1ResUB_, pScaleHalf_, validRows, subLoopIdx,
+                                           mmSlot, stateSlot);
     }
 
     __aicore__ inline void ComputeVec2(RunInfoMxfp8SoftmaxFp16 &runInfo)
