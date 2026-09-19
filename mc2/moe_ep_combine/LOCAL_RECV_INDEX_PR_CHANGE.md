@@ -274,9 +274,11 @@ metadata 行 1 的 `srcRankId` 是 1，它属于 rank 1 的原始 token。当前
 
 - `numTokens_`：从 tiling 配置读取原始 token 数；
 - `localRecvIndexGm_`：指向 packed metadata 第三段；
-- `InitLocalRecvIndex()`：并行初始化反向索引。
+- `InitLocalRecvIndex()`：并行初始化反向索引；
+- `ubStageLocalIndexRing_`：普通路径使用的 32 Byte 对齐 local-index stage ring，与 metadata/weight stage ring 同步轮转；
+- `ubLocalIndexValue_`：cached 路径使用的 32 Byte 对齐单值 UB 暂存区。
 
-初始化时使用 `SplitToCore(numTokens * topK, aivNum, ...)` 将连续索引空间分给各 AIV，每个 AIV 将自己的区间写为 `-1`，避免多个核重复初始化同一区域。
+初始化时先按每 8 个 `int32`（32 Byte）组成一个 block，再使用 `SplitToCore(blockCount, aivNum, ...)` 将连续 block 分给各 AIV。每个 AIV 将自己的区间写为 `-1`，既避免多个核重复初始化同一区域，也保证每个核调用 `InitOutput` 时的 GM 起始地址满足 32 Byte 对齐；最后一个 block 可以只处理有效尾部元素。
 
 ### 7.2 普通（non-cached）路径
 
@@ -295,7 +297,18 @@ if srcRankMeta == epRankId:
     local_recv_index[lookupIndex] = recvXRow
 ```
 
-这不是再次遍历 metadata，而是在既有处理循环中额外写一个 `int32`。
+这不是再次遍历 metadata，而是在既有处理循环中额外写一个 `int32`。实现时不能直接把 `ubStageMetaRing_[rowStart + 4]` 作为 `DataCopyPad` 的 UB 源：第五列相对 32 Byte 对齐行首偏移 16 Byte，不满足非原子 MTE 指令的地址对齐要求。
+
+普通路径会将 `recvXRow` 额外写入当前 `stageBuf` 对应的 `ubStageLocalIndexRing_[stageOff + i * ELEM_ALIGN]`。该地址与 metadata 行首一样按 32 Byte 对齐。loop B 在已有的一次 `S -> MTE3` 握手后连续发出 token weight、metadata 和 local index 的写操作，不再为每个 local index 单独调用 `SyncFunc<S_MTE3>()` 和 `SyncFunc<MTE3_S>()`。三个 stage 输出共同由 `stageEvtMte3ToS_[stageBuf]` 保护，只有同一个 ring slot 再次使用前才等待此前的 MTE3 完成。
+
+```text
+同一个 stageBuf
+  ├─ ubStageMetaRing_       -> metadata 第一段
+  ├─ ubStageWeightsRing_    -> recv_topk_weights
+  └─ ubStageLocalIndexRing_ -> packed metadata 第三段 local_recv_index
+
+一次 S -> MTE3 提交，复用 stageBuf 前统一等待 MTE3 -> S
+```
 
 ### 7.3 cached 路径
 
@@ -312,6 +325,8 @@ if srcRankId == epRankId
 ```
 
 cached 路径不会直接复用 cached packed buffer 尾部的 local index，而是根据五列 metadata 重建当前输出 buffer 的 local index。这样当前输出仍由本轮 dispatch epilogue 完整生产。
+
+cached metadata 每行只有 5 个 `int32`，行跨度为 20 Byte，因此第五列的 UB 地址同样不保证 32 Byte 对齐。cached 路径从 UB 读取出标量 `recvXIdx` 后，也通过 `ubLocalIndexValue_` 暂存并写出，不能直接从 packed metadata 的第五列发起非原子 MTE3 搬运。有 topK weight 时，weight 与 local index 在同一次 `S -> MTE3` 后连续发出，并在两者都提交后只等待一次 `MTE3 -> S`，避免为 local index 再增加一组同步；无 topK weight 时仍需用一组同步保护单值暂存区复用。
 
 ### 7.4 初始化与写入顺序
 
@@ -492,6 +507,8 @@ numTokens * topK * sizeof(int32)
 - 每个 handle/buffer 的 `numTokens * topK` 个 `int32` 存储；
 - dispatch epilogue 对整张索引表的一次 `-1` 初始化；
 - 每个本地来源有效路由的一次 `int32` GM 写；
+- 普通路径增加 `STAGE_RING * topK * 32 Byte` 的对齐 UB 暂存空间；local index 复用 metadata stage ring 的已有 Scalar/MTE3 同步，不再逐条排空 MTE3；
+- cached 路径保留一个 32 Byte 单值暂存块；有 topK weight 时复用 weight 写出的同步，无 topK weight 时本地索引写仍需要单独同步；
 - combine epilogue 对索引分片的一次连续 GM 读。
 
 因此小 token、小 topK 或本 rank metadata 很少时，dispatch 侧新增开销可能抵消部分收益。最终性能应按典型训练 shape 分别测量 dispatch epilogue、combine epilogue和端到端耗时。
@@ -537,6 +554,7 @@ numTokens * topK * sizeof(int32)
 - 某些本地路由被丢弃，索引保持 `-1`；
 - `numTokens` 不能被 AIV 数整除；
 - `numTokens * topK` 小于 AIV 数；
+- `numTokens * topK` 不能被 8 整除，验证尾 block 初始化及各核 GM 起始地址对齐；
 - 有/无 topK weight；
 - FP16/BF16 以及项目支持的 FP8/scales 路径；
 - cached handle 使用新 packed 长度并正确重建索引。
@@ -557,6 +575,8 @@ numTokens * topK * sizeof(int32)
 - combine epilogue kernel 时间；
 - dispatch + expert + combine 端到端时间；
 - 不同 `numTokens`、`topK`、本地路由比例和 EP world size；
+- 对比逐条同步版本与 stage-ring 版本，确认 non-cached 路径不再随本地索引条数线性增加 MTE3 排空次数；
+- cached 路径分别覆盖有/无 topK weight，确认合并同步后的耗时变化；
 - GM 带宽、AIV 利用率和 UB 使用情况。
 
 ## 16. 评审时需要重点关注的实现假设
@@ -565,7 +585,9 @@ numTokens * topK * sizeof(int32)
 2. 同一个 `(tokenIdx, topkIdx)` 按语义应最多对应一个本地有效 `recvXIdx`。若产生重复记录，后写入者会覆盖先写入者。
 3. 初始化 `-1` 与有效索引写入之间必须保持全核时序，避免迟到的初始化覆盖有效值。
 4. dispatch、combine 和 Python/C++ 扩展的 512 Byte 对齐公式必须始终一致。
-5. 普通 `moe_ep_combine` 尚未消费新索引；如果后续也改为直接加载，可进一步删除它自身的 metadata 扫描逻辑，但那不属于本次提交。
+5. 非原子 MTE 搬运的 UB 地址必须满足 32 Byte 对齐。五列 metadata 的第五列位于行首 `+16 Byte`，cached packed 行的跨度还是 20 Byte，二者都不能直接作为单个 `int32` 写 GM 的 UB 源，必须经过对齐暂存区。
+6. `ubStageLocalIndexRing_` 的生命周期必须与 `ubStageMetaRing_` 一致：写出前受同一个 `S -> MTE3` 握手约束，复用前受同一个 `stageEvtMte3ToS_[stageBuf]` 约束，不能在 MTE3 尚未消费时被 Scalar 覆盖。
+7. 普通 `moe_ep_combine` 尚未消费新索引；如果后续也改为直接加载，可进一步删除它自身的 metadata 扫描逻辑，但那不属于本次提交。
 
 ## 17. 结论
 
