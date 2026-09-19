@@ -120,7 +120,7 @@ private:
         // MTE 同样依赖本区。漏分配则 dispatchRevWeightsPtr 为 nullptr，首 launch 即 MTE invalid GM。
         // tkw=1 与去重关闭态在 MTE 下不使用本区，保持既有布局不变。
         if (tilingData->topkWeightsPrefetch == 0 && (tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0) {
-            InitializeUrmaPrefetchWeights(tilingData);
+            InitializeDispatchRevWeights(tilingData);
         }
         // Stride per AIC, measured in int32_t elements.
         int64_t expertRecvTokenCountStride = static_cast<int64_t>(
@@ -146,7 +146,7 @@ private:
     HOST_DEVICE void InitializeUrma(const MegaMoeTilingData *tilingData, uint32_t serverNum)
     {
         InitializeDispatchBuffers(tilingData);
-        InitializeUrmaPrefetchWeights(tilingData);
+        InitializeDispatchRevWeights(tilingData);
         int64_t expertRecvTokenCountBytes =
             static_cast<int64_t>(tilingData->moeExpertPerRank) * ALIGN_32 * tilingData->aicNum;
         InitializeActivationBuffers(tilingData);
@@ -181,9 +181,10 @@ private:
             Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * dispatchScaleElementsPerToken, ALIGN_512);
     }
 
-    HOST_DEVICE void InitializeUrmaPrefetchWeights(const MegaMoeTilingData *tilingData)
+    HOST_DEVICE void InitializeDispatchRevWeights(const MegaMoeTilingData *tilingData)
     {
-        // prefetch 之外，tkw=0 且 combine 去重（仅 MTE）也需要本区：dispatch 侧把 LAST 行
+        // dispatch 接收侧权重区，两种场景共用、MTE 与 URMA 两条初始化路径都必须调用：
+        // tkw=1 的权重预取；tkw=0 且 combine 去重——dispatch 侧把 LAST 行
         // 整 token 的 topK 权重段落在这里，merge 一次连续读取后按成员 topkIndex 乘权。
         const bool dedupCombineWeights = tilingData->topkWeightsPrefetch == 0 &&
                                          (tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0;
