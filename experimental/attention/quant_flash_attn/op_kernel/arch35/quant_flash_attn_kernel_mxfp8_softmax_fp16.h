@@ -499,10 +499,7 @@ public:
         AscendC::printf("[V1][AIV%u] loop=%u subLoop=%u slot=%u\n", constInfo_.aivIdx, runInfo.loop, subLoopIdx,
                         runInfo.softmaxStateSlot);
 #endif
-        // TODO(阶段三): 在线 flash softmax（维护 accMax，不做 sum），P/pScale 经 MTE3 写 AIC L1，
-        //               末 subLoop 统一算 pScale rescale 与跨块 exp 因子
-        (void)runInfo;
-        (void)subLoopIdx;
+        vectorBlock_.ComputeVec1(runInfo, subLoopIdx);
     }
 
     __aicore__ inline void ComputeMm2(RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t vCore)
@@ -520,8 +517,7 @@ public:
 #if QFA_SF16_DEBUG_PRINTF
         AscendC::printf("[V2][AIV%u] loop=%u slot=%u\n", constInfo_.aivIdx, runInfo.loop, runInfo.softmaxStateSlot);
 #endif
-        // TODO(阶段三): 跨 S2 分块 rescale 累积分子/分母，末块除 + cast bf16 + 转置输出 GM
-        (void)runInfo;
+        vectorBlock_.ComputeVec2(runInfo);
     }
 
     // ============================== Process 入口 ==============================
@@ -540,10 +536,14 @@ public:
             if (constInfo_.aicIdx < constInfo_.coreNum) {
                 if ASCEND_IS_AIC {
                     cubeBlock_.InitTensors();
+                } else if ASCEND_IS_AIV {
+                    vectorBlock_.InitTensorsVec();
                 }
                 FlashAttention(sectionIdx);
                 if ASCEND_IS_AIC {
                     cubeBlock_.ReleaseTensors();
+                } else if ASCEND_IS_AIV {
+                    vectorBlock_.ReleaseTensorsVec();
                 }
             }
         }

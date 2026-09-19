@@ -124,6 +124,24 @@ public:
         pScaleL1V1Tensor_ = LocalTensor<SCALE_T>(TPosition::A1, L1_PSCALE_V1_BASE,
                                                  L1_P_BUFCNT * L1_PSCALE_V1_SINGLE_SLOT_SIZE);
     }
+
+    __aicore__ inline void ComputeVec1(RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t subLoopIdx)
+    {
+        // TODO(批次3.x): 在线 flash softmax（VfSoftmaxFp16ToFp8），P/pscale 经 MTE3 写 AIC L1
+        (void)runInfo;
+        (void)subLoopIdx;
+    }
+
+    __aicore__ inline void ComputeVec2(RunInfoMxfp8SoftmaxFp16 &runInfo)
+    {
+        // TODO(批次4.x): VfFlashUpdateAcc 累积 + VfDivAndCast + 转置 + GM 输出
+        (void)runInfo;
+    }
+
+    __aicore__ inline void ReleaseTensorsVec()
+    {
+        // TODO(批次2.3): 跨核 flag 配平（kernel 层负责）
+    }
 };
 
 } // namespace QFA_KERNEL
