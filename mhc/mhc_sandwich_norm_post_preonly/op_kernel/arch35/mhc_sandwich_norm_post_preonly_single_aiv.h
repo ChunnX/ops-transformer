@@ -105,7 +105,6 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
 {
     LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
     LocalTensor<float> reduceRows = bufResFp32_.Get<float>();
-    LocalTensor<float> tmp = bufSqFp32_.Get<float>();
 
     DataCopyExtParams copyParams = {1, 0, 0, 0, 0};
     copyParams.blockLen = tD * sizeof(float);
@@ -121,9 +120,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
 
             Mul(out, x2[h0 * dimTile_], x2[h0 * dimTile_], tD);
             PipeBarrier<PIPE_V>();
-            Mul(tmp, x2[h1 * dimTile_], x2[h1 * dimTile_], tD);
-            PipeBarrier<PIPE_V>();
-            Add(out, out, tmp, tD);
+            MulAddDst(out, x2[h1 * dimTile_], x2[h1 * dimTile_], tD);
             PipeBarrier<PIPE_V>();
             sumSqHalf[half] += ReduceSumPrecise(out, tD);
 
@@ -142,12 +139,9 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
                 DataCopyPad(phi, phiGm_[phiOffset], copyParams, copyPad);
                 bufPhiFp32_.EnQue(phi);
                 phi = bufPhiFp32_.DeQue<float>();
-                Mul(tmp, x2[h1 * dimTile_], phi, tD);
+                MulAddDst(out, x2[h1 * dimTile_], phi, tD);
                 PipeBarrier<PIPE_V>();
                 bufPhiFp32_.FreeTensor(phi);
-
-                Add(out, out, tmp, tD);
-                PipeBarrier<PIPE_V>();
                 dotHalf[half][o] += ReduceSumPrecise(out, tD);
             }
         }
@@ -162,9 +156,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         // 避免每个标量结果都单独触发一次Vector到Scalar的等待。
         Mul(reduceRows, x2[h0 * dimTile_], x2[h0 * dimTile_], tD);
         PipeBarrier<PIPE_V>();
-        Mul(tmp, x2[h1 * dimTile_], x2[h1 * dimTile_], tD);
-        PipeBarrier<PIPE_V>();
-        Add(reduceRows, reduceRows, tmp, tD);
+        MulAddDst(reduceRows, x2[h1 * dimTile_], x2[h1 * dimTile_], tD);
 
         for (uint32_t o = 0; o < N_MAX; ++o) {
             LocalTensor<float> dotRow = reduceRows[(o + 1) * dimTile_];
@@ -182,11 +174,9 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
             DataCopyPad(phi, phiGm_[phiOffset], copyParams, copyPad);
             bufPhiFp32_.EnQue(phi);
             phi = bufPhiFp32_.DeQue<float>();
-            Mul(tmp, x2[h1 * dimTile_], phi, tD);
+            MulAddDst(dotRow, x2[h1 * dimTile_], phi, tD);
             PipeBarrier<PIPE_V>();
             bufPhiFp32_.FreeTensor(phi);
-
-            Add(dotRow, dotRow, tmp, tD);
         }
 
         PipeBarrier<PIPE_V>();
@@ -234,15 +224,12 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
         if constexpr (USE_RMS_MID) {
             LocalTensor<float> out = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-            LocalTensor<float> tmp = bufSqFp32_.Get<float>();
             for (uint32_t half = 0; half < 2; ++half) {
                 const uint32_t h0 = half * 2;
                 const uint32_t h1 = h0 + 1;
                 Mul(out, x2[h0 * dimTile_], x2[h0 * dimTile_], tD);
                 PipeBarrier<PIPE_V>();
-                Mul(tmp, x2[h1 * dimTile_], x2[h1 * dimTile_], tD);
-                PipeBarrier<PIPE_V>();
-                Add(out, out, tmp, tD);
+                MulAddDst(out, x2[h1 * dimTile_], x2[h1 * dimTile_], tD);
                 PipeBarrier<PIPE_V>();
                 midSqHalf[half] += ReduceSumPrecise(out, tD);
             }
