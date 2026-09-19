@@ -328,11 +328,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::ProcessTokenSingleAi
         WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
         ApplyScaleAndGamma(hIn, invRms1, bufGamma1Fp32_.Get<float>(), tD);
         FenceVToMte2();
-        WriteHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tOff, tD);
-    }
-    if (!returnHInF32_) {
-        // 各分片使用低精度缓存的不重叠区间，整段写完后再统一保护下一token的缓存复用。
-        FenceMte3ToV();
+        WriteHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tD);
     }
 }
 

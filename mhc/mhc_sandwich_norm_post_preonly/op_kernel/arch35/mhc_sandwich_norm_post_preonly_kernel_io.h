@@ -70,18 +70,13 @@ __aicore__ inline void WriteLowPrecisionTile(
     bufHInPrimeBf16_.FreeTensor(tmp);
 }
 
-__aicore__ inline void WriteHInPrimeTile(
-    LocalTensor<float> src, uint64_t gmOffset, uint32_t cacheOffset, uint32_t count)
+__aicore__ inline void WriteHInPrimeTile(LocalTensor<float> src, uint64_t gmOffset, uint32_t count)
 {
-    // 最后一遍不再需要原始x2，复用对应分片直接承接低精度输出，省去队列入队和出队。
-    LocalTensor<T> low = bufX2Cache_.Get<T>()[cacheOffset];
-    CastToIO(low, src, count);
-    SetFlag<HardEvent::V_MTE3>(evtVtoMte3_);
-    WaitFlag<HardEvent::V_MTE3>(evtVtoMte3_);
-    DataCopy(hInPrimeGm_[gmOffset], low, count);
+    WriteLowPrecisionTile(hInPrimeGm_, gmOffset, src, count);
     if (returnHInF32_) {
+        SetFlag<HardEvent::V_MTE3>(evtVtoMte3_);
+        WaitFlag<HardEvent::V_MTE3>(evtVtoMte3_);
         DataCopy(hInF32Gm_[gmOffset], src, count);
-        // FP32临时缓冲会在下一分片复用，因此本分片必须等待写回完成。
         FenceMte3ToV();
     }
 }
