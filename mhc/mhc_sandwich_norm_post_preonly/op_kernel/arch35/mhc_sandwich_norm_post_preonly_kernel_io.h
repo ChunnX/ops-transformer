@@ -88,8 +88,20 @@ __aicore__ inline void WriteX2OutTile(LocalTensor<float> src, uint64_t gmOffset,
 
 __aicore__ inline uint32_t GetTileD(uint32_t tile) const
 {
+    if constexpr (TWO_FULL_DIM_TILES) {
+        return dimTile_;
+    }
     if (lastDimTile_ != 0 && tile == dimLoop_ - 1) {
         return lastDimTile_;
     }
     return dimTile_;
+}
+
+// D=5120路径恰好是两个完整2560分片，编译期固定循环上界和尾块长度。
+__aicore__ inline uint32_t GetDimLoop() const
+{
+    if constexpr (TWO_FULL_DIM_TILES) {
+        return 2;
+    }
+    return dimLoop_;
 }
