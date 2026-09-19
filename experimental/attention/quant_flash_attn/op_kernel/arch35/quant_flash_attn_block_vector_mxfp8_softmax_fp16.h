@@ -177,6 +177,47 @@ public:
         QfaVectorApi::VfSoftmaxFp16ToFp8(vec1PUb_, softmaxMaxUB_, subLoopUsedMaxUB_, pNzIdxUB_,
                                            mm1ResUB_, pScaleHalf_, validRows, subLoopIdx,
                                            mmSlot, stateSlot);
+
+        // P → AIC L1（MTE3，NZ 块拷贝）
+        SetFlag<HardEvent::V_MTE3>(EVT_P_COPY);
+        WaitFlag<HardEvent::V_MTE3>(EVT_P_COPY);
+        // TODO(批次3.3): NZ 三段链 MTE3 块参数确定后填充（当前线性占位）
+        LocalTensor<QUANT_T> &pL1Target = (constInfo_.subBlockIdx == 0U) ? pL1V0Tensor_ : pL1V1Tensor_;
+        DataCopy(pL1Target[runInfo.pSlot * L1_P_V0_SINGLE_SLOT_SIZE
+                          + subLoopIdx * s2SubLoopSize * (s1BaseSize / 2)],
+                 vec1PUb_[subLoopIdx * s2SubLoopSize * (s1BaseSize / 2)],
+                 s2SubLoopSize * (s1BaseSize / 2));  // 占位：线性拷贝，NZ 布局待批次3.3
+
+        // ===== 末 subLoop epilogue：跨块因子 + pscale 统一写 =====
+        if (isLastSub) {
+            // 跨块 rescale 因子（非首块才算）
+            if (!runInfo.isFirstS2Loop) {
+                QfaVectorApi::VfCalcRescaleFactor(softmaxExpUB_, blockStartMaxUB_, softmaxMaxUB_,
+                                                   taskSlot, stateSlot);
+            }
+            // pscale 各 subLoop 统一写（末 subLoop 恒为 127，跳过计算）
+            LocalTensor<SCALE_T> &pScaleL1Target =
+                (constInfo_.subBlockIdx == 0U) ? pScaleL1V0Tensor_ : pScaleL1V1Tensor_;
+            LocalTensor<uint8_t> pscaleU8 = pscaleUB_.template ReinterpretCast<uint8_t>();
+            for (uint32_t i = 0; i < c1v1Loop; i++) {
+                if (i < c1v1Loop - 1) {
+                    QfaVectorApi::VfCalcPScale(pscaleU8, subLoopUsedMaxUB_, softmaxMaxUB_,
+                                                taskSlot, i, stateSlot);
+                } else {
+                    // 末 subLoop pscale 恒为 2^0：e8m0 字节 127（uint8 视图填充，避免 e8m0 标量填充限制）
+                    Duplicate(pscaleU8[(taskSlot * UB_PSCALE_SUBLOOPS + i) * UB_PSCALE_SLOT],
+                              static_cast<uint8_t>(127), UB_PSCALE_SLOT);
+                }
+                SetFlag<HardEvent::V_MTE3>(EVT_P_COPY);
+                WaitFlag<HardEvent::V_MTE3>(EVT_P_COPY);
+                DataCopy(pScaleL1Target.template ReinterpretCast<uint8_t>()
+                             [runInfo.pSlot * L1_PSCALE_V0_SINGLE_SLOT_SIZE + i * UB_PSCALE_SLOT],
+                         pscaleU8[(taskSlot * UB_PSCALE_SUBLOOPS + i) * UB_PSCALE_SLOT],
+                         UB_PSCALE_SLOT);
+            }
+            // 为下一任务的顶部等待补 Set（全部 P/pscale MTE3 排空后触发）
+            SetFlag<HardEvent::MTE3_V>(EVT_P_COPY);
+        }
     }
 
     __aicore__ inline void ComputeVec2(RunInfoMxfp8SoftmaxFp16 &runInfo)

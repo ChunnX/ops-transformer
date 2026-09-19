@@ -39,8 +39,8 @@ using namespace AscendC::Reg;
  * 分层约定（MxFP4 同款）：vf 参数用 uint8_t*（原始字节），e8m0 语义由 __aicore__
  * 调用层负责（传入前 ReinterpretCast）。
  */
-__simd_vf__ inline void VfCalcPScale(__ubuf__ uint8_t *pscale, __ubuf__ half *subLoopMax,
-                                     __ubuf__ half *finalMax)
+__simd_vf__ inline void VfCalcPScaleVF(__ubuf__ uint8_t *pscale, __ubuf__ half *subLoopMax,
+                                         __ubuf__ half *finalMax)
 {
     RegTensor<half> vregSubLoopMax;
     RegTensor<half> vregFinalMax;
@@ -67,6 +67,33 @@ __simd_vf__ inline void VfCalcPScale(__ubuf__ uint8_t *pscale, __ubuf__ half *su
     // ③ 存 e8m0 buffer（uint8 位模式 = 2^Δk 的 e8m0 编码）
     //    用 128 元素部分掩码（非 ALL 256），只写有效 128 字节，防溢出到 pscaleUB 相邻槽位
     StoreAlign(pscale, vregScaleA, pregU8Valid);
+}
+
+/*
+ * @ingroup VfaVectorApi
+ * @brief VfCalcPScale 的 __aicore__ wrapper：接收 LocalTensor + 槽位索引，内部转指针调 vf
+ *
+ * @param [in] pscaleUB        pscale 缓冲（uint8_t 视图，[taskSlot][subLoopIdx][128] 布局）
+ * @param [in] usedMaxUB       subLoop k_i 缓冲（[subLoopIdx][128] 布局）
+ * @param [in] softmaxMaxUB    accMax 缓冲（[stateSlot][128] 布局）
+ * @param [in] taskSlot        任务槽（0..2）
+ * @param [in] subLoopIdx      subLoop 序号（0..2）
+ * @param [in] stateSlot       accMax 状态槽（0..2）
+ */
+__aicore__ inline void VfCalcPScale(const LocalTensor<uint8_t> &pscaleUB,
+                                     const LocalTensor<half> &usedMaxUB,
+                                     const LocalTensor<half> &softmaxMaxUB, uint32_t taskSlot,
+                                     uint32_t subLoopIdx, uint32_t stateSlot)
+{
+    constexpr uint32_t pscaleSlot = 128;        // 单 pscale 槽字节数
+    constexpr uint32_t pscaleSubLoops = 3;      // 每 task 槽的 subLoop 数
+    __ubuf__ uint8_t *pscalePtr = reinterpret_cast<__ubuf__ uint8_t *>(pscaleUB.GetPhyAddr())
+                                    + (taskSlot * pscaleSubLoops + subLoopIdx) * pscaleSlot;
+    __ubuf__ half *subLoopMaxPtr = reinterpret_cast<__ubuf__ half *>(usedMaxUB.GetPhyAddr())
+                                     + subLoopIdx * pscaleSlot;
+    __ubuf__ half *finalMaxPtr = reinterpret_cast<__ubuf__ half *>(softmaxMaxUB.GetPhyAddr())
+                                   + stateSlot * pscaleSlot;
+    VfCalcPScaleVF(pscalePtr, subLoopMaxPtr, finalMaxPtr);
 }
 
 } // namespace QfaVectorApi

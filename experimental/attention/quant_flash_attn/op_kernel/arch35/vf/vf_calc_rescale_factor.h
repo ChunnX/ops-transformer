@@ -46,8 +46,8 @@ using namespace AscendC::Reg;
  * RegLayout 说明：h2iZero/h2iOne 的舍入模式相同（CAST_ROUND），区别在 RegLayout 字段
  * （ZERO=取偶数位元素，ONE=取奇数位元素）——控制宽度变化时的元素路由，非舍入模式。
  */
-__simd_vf__ inline void VfCalcRescaleFactor(__ubuf__ float *softmaxExp, __ubuf__ half *blkStartMax,
-                                            __ubuf__ half *finalMax)
+__simd_vf__ inline void VfCalcRescaleFactorVF(__ubuf__ float *softmaxExp, __ubuf__ half *blkStartMax,
+                                                __ubuf__ half *finalMax)
 {
     RegTensor<half> vregBlkStart;
     RegTensor<half> vregFinal;
@@ -84,6 +84,30 @@ __simd_vf__ inline void VfCalcRescaleFactor(__ubuf__ float *softmaxExp, __ubuf__
                (RegTensor<int32_t> &)vregBitsA, (RegTensor<int32_t> &)vregBitsB);
     StoreAlign(softmaxExp, vregBitsA, pregI32);        // 输出 [0..63]
     StoreAlign(softmaxExp + 64, vregBitsB, pregI32);   // 输出 [64..127]
+}
+
+/*
+ * @ingroup VfaVectorApi
+ * @brief VfCalcRescaleFactor 的 __aicore__ wrapper：接收 LocalTensor + 槽位索引，内部转指针调 vf
+ *
+ * @param [in] softmaxExpUB     rescale 因子输出（float 视图，[taskSlot][128] 布局）
+ * @param [in] blockStartMaxUB  块首快照 m_{k-1}（[128]）
+ * @param [in] softmaxMaxUB     accMax 缓冲（[stateSlot][128] 布局）
+ * @param [in] taskSlot         任务槽（0..2）
+ * @param [in] stateSlot        accMax 状态槽（0..2）
+ */
+__aicore__ inline void VfCalcRescaleFactor(const LocalTensor<float> &softmaxExpUB,
+                                            const LocalTensor<half> &blockStartMaxUB,
+                                            const LocalTensor<half> &softmaxMaxUB, uint32_t taskSlot,
+                                            uint32_t stateSlot)
+{
+    constexpr uint32_t smaxSlot = 128;  // 单槽 half 元素数
+    __ubuf__ float *expPtr = reinterpret_cast<__ubuf__ float *>(softmaxExpUB.GetPhyAddr())
+                               + taskSlot * smaxSlot;
+    __ubuf__ half *blkStartPtr = reinterpret_cast<__ubuf__ half *>(blockStartMaxUB.GetPhyAddr());
+    __ubuf__ half *finalMaxPtr = reinterpret_cast<__ubuf__ half *>(softmaxMaxUB.GetPhyAddr())
+                                   + stateSlot * smaxSlot;
+    VfCalcRescaleFactorVF(expPtr, blkStartPtr, finalMaxPtr);
 }
 
 } // namespace QfaVectorApi
