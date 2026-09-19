@@ -111,7 +111,8 @@ public:
         pipe_.InitBuffer(bufResFp32_,     (N_ + 1) * dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufSqFp32_,            dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufPostComb_,          POST_COMB_SIZE * sizeof(float));
-        pipe_.InitBuffer(bufPhiFp32_,  BUFFER_NUM_TWO, dimTile_ * sizeof(float));
+        // 两个phi槽各增加32B，使第二槽与第一槽错开UB bank，降低MTE2预取与Vector读取冲突。
+        pipe_.InitBuffer(bufPhiFp32_,  BUFFER_NUM_TWO, (dimTile_ + ALIGN8) * sizeof(float));
         pipe_.InitBuffer(bufHInPrimeBf16_,   1, dimTile_ * sizeof(T));
         pipe_.InitBuffer(bufScalar_,            SCALAR_BUF_SIZE);
         pipe_.InitBuffer(bufGamma2Fp32_,        dimTile_ * sizeof(float));
