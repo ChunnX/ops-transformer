@@ -126,6 +126,27 @@ _OUT_LAYOUT_EXPECTED_NDIM = {
     "BNSD": 4,
 }
 
+# layout 一致性校验表, 与 op_host/checkers/quant_checker.cpp 中 QFA_LAYOUT_CONSTRAINT_TABLE 的
+# requireLayoutConsistent 字段保持一致。仅记录需要 layout_q/kv/out 三者一致的 quant_mode。
+_LAYOUT_REQUIRE_CONSISTENT = {
+    # HIF8: layout_q, layout_kv, layout_out 三者必须相同
+    int(QuantMode.A8C8_QKV_HIF8_PER_TENSOR_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32),
+}
+
+
+def _check_layout_constraint(
+    quant_mode, layout_q, layout_q_descale, layout_kv, layout_out
+):
+    """校验 layout 一致性
+    HIF8 场景下 layout_q、layout_kv、layout_out 三者必须相同。"""
+    if quant_mode not in _LAYOUT_REQUIRE_CONSISTENT:
+        return
+    torch._check(
+        layout_q == layout_kv == layout_out,
+        lambda: f"When quant_mode is {quant_mode}, layout_q, layout_kv and layout_out must be the same, "
+        f"but got layout_q={layout_q}, layout_kv={layout_kv}, layout_out={layout_out}",
+    )
+
 
 def _get_output_shape_sizes(q, v, layout_q, layout_kv):
     """提取决定输出 shape 的维度: q 的 B/T、S、N 维度(D 恒为 q 最后一维, 不提取)
@@ -358,6 +379,10 @@ def quant_flash_attn_metadata(
     layout_out = "BSND" if layout_out is None else layout_out
     head_dim_v = head_dim if head_dim_v is None else head_dim_v
 
+    _check_layout_constraint(
+        quant_mode, layout_q, layout_q_descale, layout_kv, layout_out
+    )
+
     max_schedule_size = _calculate_max_schedule_size(batch_size, num_heads_kv)
     output = torch.empty((2, max_schedule_size), dtype=torch.int32, device="npu")
 
@@ -478,6 +503,10 @@ def quant_flash_attn(
     )
     quant_mode = _resolve_quant_mode(quant_mode)
     mask_mode = _resolve_mask_mode(mask_mode)
+
+    _check_layout_constraint(
+        quant_mode, layout_q, layout_q_descale, layout_kv, layout_out
+    )
 
     # 取 shape 前校验 q/v 非空及维度, 避免 None 或维度不足导致 AttributeError/IndexError
     torch._check(q is not None, lambda: "q must not be None")
