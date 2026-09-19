@@ -13,9 +13,8 @@
 
 // 构造一个低精度x2_post分块。R1使用normEps_，R2保持h_res的[j,n]索引顺序，
 // 并显式保留设计规定的两处低精度往返边界。
-template<typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool TWO_FULL_DIM_TILES>
-__aicore__ inline void
-KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, TWO_FULL_DIM_TILES>::ComputeX2PostTile(
+template<typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32>
+__aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32>::ComputeX2PostTile(
     uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
     const float (&postVals)[N_MAX], const float (&combVals)[N_MAX * N_MAX])
 {
@@ -32,9 +31,8 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, TWO_FULL_DIM_T
 }
 
 // 将完整x2以输出dtype常驻UB，同时完成设计要求的低精度往返；写GM仅用于保留x2_out输出语义。
-template<typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool TWO_FULL_DIM_TILES>
-__aicore__ inline void
-KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, TWO_FULL_DIM_TILES>::CacheX2Tile(
+template<typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32>
+__aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32>::CacheX2Tile(
     uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput)
 {
     LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
@@ -65,9 +63,8 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, TWO_FULL_DIM_T
     }
 }
 
-template<typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool TWO_FULL_DIM_TILES>
-__aicore__ inline void
-KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, TWO_FULL_DIM_TILES>::LoadX2CacheTile(
+template<typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32>
+__aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32>::LoadX2CacheTile(
     uint32_t tOff, uint32_t tD)
 {
     LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
@@ -80,9 +77,8 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, TWO_FULL_DIM_T
 
 // R6读取完当前x2分块后，首个head的对应缓存区已经不会再被使用，
 // 将其复用为低精度h_in缓存，保留量化往返边界并避免GM临时写回。
-template<typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool TWO_FULL_DIM_TILES>
-__aicore__ inline void
-KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, TWO_FULL_DIM_TILES>::CacheHInTile(
+template<typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32>
+__aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32>::CacheHInTile(
     uint32_t tOff, uint32_t tD, LocalTensor<float> hIn)
 {
     LocalTensor<T> hInCache = bufX2Cache_.Get<T>()[tOff];
@@ -92,9 +88,8 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, TWO_FULL_DIM_T
     PipeBarrier<PIPE_V>();
 }
 
-template<typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool TWO_FULL_DIM_TILES>
-__aicore__ inline void
-KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, TWO_FULL_DIM_TILES>::LoadHInCacheTile(
+template<typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32>
+__aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32>::LoadHInCacheTile(
     uint32_t tOff, uint32_t tD, LocalTensor<float> hIn)
 {
     LocalTensor<T> hInCache = bufX2Cache_.Get<T>()[tOff];
@@ -104,9 +99,8 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, TWO_FULL_DIM_T
 
 // 固定的R4/R5归约树将与双sibling AIV路径共用。half0固定覆盖展平区间[0,2D)，
 // half1固定覆盖[2D,4D)，调用方只执行一次顶层合并partial0+partial1。
-template<typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool TWO_FULL_DIM_TILES>
-__aicore__ inline void
-KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, TWO_FULL_DIM_TILES>::AccumulateHalfPartials(
+template<typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32>
+__aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32>::AccumulateHalfPartials(
     uint32_t tOff, uint32_t tD, float (&sumSqHalf)[2], float (&dotHalf)[2][N_MAX])
 {
     LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
@@ -208,9 +202,8 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, TWO_FULL_DIM_T
     }
 }
 
-template<typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool TWO_FULL_DIM_TILES>
-__aicore__ inline void
-KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, TWO_FULL_DIM_TILES>::ProcessTokenSingleAiv(
+template<typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32>
+__aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32>::ProcessTokenSingleAiv(
     uint32_t token)
 {
     float postVals[N_MAX];
@@ -222,7 +215,7 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, TWO_FULL_DIM_T
 
     // 第一遍：沿完整D轴计算R1。
     float sumSq0 = 0.0f;
-    for (uint32_t tile = 0; tile < GetDimLoop(); ++tile) {
+    for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
         LoadHOutAndCast((uint64_t)token * D_ + tOff, tD);
@@ -232,7 +225,7 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, TWO_FULL_DIM_T
 
     // 第二遍：计算R1/R2和第一处x2低精度边界。完整x2以输出dtype常驻UB，
     // 避免后续两遍从GM回读，同时不分配完整FP32 x2工作空间。
-    for (uint32_t tile = 0; tile < GetDimLoop(); ++tile) {
+    for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
         ComputeX2PostTile(token, tOff, tD, invRms0, postVals, combVals);
@@ -263,7 +256,7 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, TWO_FULL_DIM_T
     if constexpr (USE_RMS_MID) {
         const float totalMidSq = midSqHalf[0] + midSqHalf[1];
         const float invRmsMid = 1.0f / sqrt(totalMidSq * invK_ + normEps_);
-        for (uint32_t tile = 0; tile < GetDimLoop(); ++tile) {
+        for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
             const uint32_t tD = GetTileD(tile);
             const uint32_t tOff = tile * dimTile_;
             // R3阶段gamma0缓存已经空闲，与gamma2缓存组成双缓冲；
@@ -309,7 +302,7 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, TWO_FULL_DIM_T
     // 第三遍：计算R6和h_in低精度边界。在完整D轴的R7标量确定前，
     // 复用已经消费完的x2缓存首段保存低精度h_in。
     float sumSq1 = 0.0f;
-    for (uint32_t tile = 0; tile < GetDimLoop(); ++tile) {
+    for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
         LoadX2CacheTile(tOff, tD);
@@ -327,7 +320,7 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, TWO_FULL_DIM_T
 
     // 第四遍：沿完整D轴计算R7并写最终输出。
     const float invRms1 = ComputeInvRms(sumSq1, invD_);
-    for (uint32_t tile = 0; tile < GetDimLoop(); ++tile) {
+    for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
         LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];

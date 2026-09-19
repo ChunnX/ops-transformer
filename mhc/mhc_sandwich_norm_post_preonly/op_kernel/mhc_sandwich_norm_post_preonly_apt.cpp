@@ -28,47 +28,26 @@ mhc_sandwich_norm_post_preonly(GM_ADDR h_out, GM_ADDR residual, GM_ADDR h_post, 
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
 
-    // bit0和bit1选择可选语义分支，bit2保留给双sibling AIV执行方案，
-    // bit3表示D轴恰好是两个完整分片。
-    // 枚举通用分片和双完整分片的单AIV键，并把可选语义与分片形态变为编译期常量，
+    // bit0和bit1选择可选语义分支，bit2保留给双sibling AIV执行方案。
+    // 枚举四个单AIV键，并把两个可选语义变为编译期常量，
     // 使每个二进制只保留实际需要的执行分支。
     if (TILING_KEY_IS(0)) {
-        KernelMhcSandwichNormPostPreonly<DTYPE_H_OUT, false, false, false> op;
+        KernelMhcSandwichNormPostPreonly<DTYPE_H_OUT, false, false> op;
         op.Init(h_out, residual, h_post, h_res, phi, alpha_0, bias, gamma_0, gamma_1, gamma_2, h_in_prime, x_2_out,
                 h_in_f32, nullptr, tiling);
         op.Process();
     } else if (TILING_KEY_IS(1)) {
-        KernelMhcSandwichNormPostPreonly<DTYPE_H_OUT, true, false, false> op;
+        KernelMhcSandwichNormPostPreonly<DTYPE_H_OUT, true, false> op;
         op.Init(h_out, residual, h_post, h_res, phi, alpha_0, bias, gamma_0, gamma_1, gamma_2, h_in_prime, x_2_out,
                 h_in_f32, nullptr, tiling);
         op.Process();
     } else if (TILING_KEY_IS(2)) {
-        KernelMhcSandwichNormPostPreonly<DTYPE_H_OUT, false, true, false> op;
+        KernelMhcSandwichNormPostPreonly<DTYPE_H_OUT, false, true> op;
         op.Init(h_out, residual, h_post, h_res, phi, alpha_0, bias, gamma_0, gamma_1, gamma_2, h_in_prime, x_2_out,
                 h_in_f32, nullptr, tiling);
         op.Process();
     } else if (TILING_KEY_IS(3)) {
-        KernelMhcSandwichNormPostPreonly<DTYPE_H_OUT, true, true, false> op;
-        op.Init(h_out, residual, h_post, h_res, phi, alpha_0, bias, gamma_0, gamma_1, gamma_2, h_in_prime, x_2_out,
-                h_in_f32, nullptr, tiling);
-        op.Process();
-    } else if (TILING_KEY_IS(8)) {
-        KernelMhcSandwichNormPostPreonly<DTYPE_H_OUT, false, false, true> op;
-        op.Init(h_out, residual, h_post, h_res, phi, alpha_0, bias, gamma_0, gamma_1, gamma_2, h_in_prime, x_2_out,
-                h_in_f32, nullptr, tiling);
-        op.Process();
-    } else if (TILING_KEY_IS(9)) {
-        KernelMhcSandwichNormPostPreonly<DTYPE_H_OUT, true, false, true> op;
-        op.Init(h_out, residual, h_post, h_res, phi, alpha_0, bias, gamma_0, gamma_1, gamma_2, h_in_prime, x_2_out,
-                h_in_f32, nullptr, tiling);
-        op.Process();
-    } else if (TILING_KEY_IS(10)) {
-        KernelMhcSandwichNormPostPreonly<DTYPE_H_OUT, false, true, true> op;
-        op.Init(h_out, residual, h_post, h_res, phi, alpha_0, bias, gamma_0, gamma_1, gamma_2, h_in_prime, x_2_out,
-                h_in_f32, nullptr, tiling);
-        op.Process();
-    } else if (TILING_KEY_IS(11)) {
-        KernelMhcSandwichNormPostPreonly<DTYPE_H_OUT, true, true, true> op;
+        KernelMhcSandwichNormPostPreonly<DTYPE_H_OUT, true, true> op;
         op.Init(h_out, residual, h_post, h_res, phi, alpha_0, bias, gamma_0, gamma_1, gamma_2, h_in_prime, x_2_out,
                 h_in_f32, nullptr, tiling);
         op.Process();

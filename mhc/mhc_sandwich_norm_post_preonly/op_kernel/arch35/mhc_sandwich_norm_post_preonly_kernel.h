@@ -22,7 +22,7 @@
 
 #include "mhc_sandwich_norm_post_preonly_common.h"
 
-template<typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool TWO_FULL_DIM_TILES>
+template<typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32>
 class KernelMhcSandwichNormPostPreonly {
 public:
     __aicore__ inline KernelMhcSandwichNormPostPreonly() {}
