@@ -102,13 +102,11 @@ public:
         // UB空间分配
         pipe_.InitBuffer(bufHOutBf16_,       1, dimTile_ * sizeof(T));
         pipe_.InitBuffer(bufHOutFp32_,          dimTile_ * sizeof(float));
-        // 目标D=5120路径让gamma0完整常驻，其他D继续使用单分块缓存。
-        const uint32_t gamma0Count = (D_ == 5120U) ? D_ : dimTile_;
-        pipe_.InitBuffer(bufGamma0Fp32_,        gamma0Count * sizeof(float));
+        pipe_.InitBuffer(bufGamma0Fp32_,        dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufGamma1Fp32_,        dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufX2Fp32_,            N_ * dimTile_ * sizeof(float));
-        // dimTile=2560时原固定缓存共194912B；D=5120增加10240B gamma0并使用40960B x2缓存，
-        // 合计246112B。D=7168保持分块gamma0并使用57344B x2缓存，合计252256B，均小于256KiB。
+        // dimTile=2560时其余固定缓存共194912B；D=7168的完整低精度x2为57344B，
+        // 合计252256B，小于A5的256KiB UB上限。
         pipe_.InitBuffer(bufX2Cache_,            K_ * sizeof(T));
         pipe_.InitBuffer(bufResidualBf16_,   1, N_ * dimTile_ * sizeof(T));
         // 前四行先保存residual，之后复用为R4/R5的五行归约输入；第五行兼作通用输出暂存。
