@@ -63,8 +63,6 @@ static constexpr uint32_t RECV_META_FIELDS = 5U;
 static constexpr uint32_t META_TOKEN_IDX_OFFSET = 1U;
 static constexpr uint32_t META_TOPK_IDX_OFFSET = 2U;
 static constexpr uint32_t META_RECV_X_IDX_OFFSET = 4U;
-// Keep one SQ entry unused. A token that would make the following token cross this limit requests a CQE and drains.
-static constexpr uint32_t HCOMM_SQ_MAX_PENDING = 32767U;
 // PR 111 requires each committed batch to contain fewer WQEBBs than the SQ depth.
 static constexpr uint32_t HCOMM_BATCH_CAPACITY = 256;
 static constexpr uint32_t HCOMM_PLAIN_WRITE_WQE_BYTES = 64;
@@ -72,9 +70,8 @@ static constexpr uint32_t HCOMM_BATCH_BUFFER_BYTES = HCOMM_BATCH_CAPACITY * HCOM
 constexpr uint64_t UB_ALIGN = 32UL;
 static constexpr uint32_t META_CHUNK_TOKEN_MAX = 2048U;
 static constexpr struct UrmaWqeEntry DEFAULT_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
-static constexpr struct UrmaWqeEntry DEFAULT_CQE_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .cqe = 1, .inlineEn = 0};
-// Shared queues are reused by later operators; consume the final CQE before returning.
-static constexpr struct UrmaWqeEntry SHARED_FLAG_WQE_CONFIG = {.odr = 6, .fence = 1, .se = 0, .cqe = 1, .inlineEn = 0};
+// Keep the final flag ordered after payload writes; the epilogue waits for it without a sender-side completion wait.
+static constexpr struct UrmaWqeEntry CHANNEL_FLAG_WQE_CONFIG = {.odr = 6, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
 
 __aicore__ inline void CheckCommResult(int32_t ret)
 {
@@ -183,7 +180,6 @@ private:
     uint32_t activePeerIndex_{0};
     GM_ADDR activeRemoteWindow_{nullptr};
     uint32_t preparedWriteCount_{0};
-    uint32_t sqWriteCount_{0};
     bool activeBatchInitialized_{false};
 };
 
@@ -306,7 +302,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BeginPrepared
     activeBatchHandle_ = hcomm_.MakeBatchHandle(static_cast<CommHandle>(commHandle), hcommBatchTensor_,
                                                 HCOMM_BATCH_BUFFER_BYTES, winRankAddr_[dstRank]);
     activeBatchChannel_ = commHandle;
-    sqWriteCount_ = 0;
     activeBatchInitialized_ = true;
 }
 
@@ -321,7 +316,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWrite(
     auto &handle = hcomm_.GetHandleRef(activeBatchHandle_, activePeerIndex_, activeRemoteWindow_);
     CheckCommResult(hcomm_.WriteNbi<config>(handle, dst, src, len));
     ++preparedWriteCount_;
-    ++sqWriteCount_;
 }
 
 template <TemplateMoeEpCombineTypeClass>
@@ -341,7 +335,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareMultiS
     auto &handle = hcomm_.GetHandleRef(activeBatchHandle_, activePeerIndex_, activeRemoteWindow_);
     CheckCommResult(hcomm_.WriteNbi<config>(handle, dst, srcDescs, srcNum));
     preparedWriteCount_ += wqebbCount;
-    sqWriteCount_ += wqebbCount;
 }
 
 template <TemplateMoeEpCombineTypeClass>
@@ -360,10 +353,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendChannelFl
         return;
     }
     BeginPreparedWrites(dstRank, channelIndex);
-    PrepareWrite<SHARED_FLAG_WQE_CONFIG>(flagAddr, flagSourceWinAddr_, WIN_ADDR_ALIGN);
-    FlushPreparedWrites(true);
-    CheckCommResult(hcomm_.Drain(activeBatchHandle_));
-    sqWriteCount_ = 0U;
+    PrepareWrite<CHANNEL_FLAG_WQE_CONFIG>(flagAddr, flagSourceWinAddr_, WIN_ADDR_ALIGN);
 }
 
 template <TemplateMoeEpCombineTypeClass>
@@ -411,29 +401,12 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendRemoteMet
         static_cast<uint64_t>(static_cast<uint32_t>(srcTokenIdx)) * topK_ + static_cast<uint32_t>(srcTopKIdx);
     GM_ADDR tokenAddr = reinterpret_cast<GM_ADDR>(xGm_.GetPhyAddr(static_cast<uint64_t>(recvXIdx) * axisH_));
     GM_ADDR remoteSlotBase = remoteDataBase + dstSlot * perSlotBytes_;
-    // Request completion before the following token would exhaust the shared SQ.
-    // Two SGEs occupy two WQEBBs; the final flag still has one reserved entry.
-    constexpr uint32_t tokenWqebbCount = HasTopkWeight == 1 ? 2U : 1U;
-    bool drainAfterToken = sqWriteCount_ + 2U * tokenWqebbCount > HCOMM_SQ_MAX_PENDING;
     if constexpr (HasTopkWeight == 1) {
         GM_ADDR weightAddr = reinterpret_cast<GM_ADDR>(topkWeightsGm_.GetPhyAddr(recvXIdx));
         AscendC::BufDesc srcDescs[2] = {{tokenAddr, hAlignSize_}, {weightAddr, sizeof(float)}};
-        if (drainAfterToken) {
-            PrepareMultiSgeWrite<DEFAULT_CQE_WQE_CONFIG>(remoteSlotBase, srcDescs, 2U);
-        } else {
-            PrepareMultiSgeWrite<DEFAULT_WQE_CONFIG>(remoteSlotBase, srcDescs, 2U);
-        }
+        PrepareMultiSgeWrite<DEFAULT_WQE_CONFIG>(remoteSlotBase, srcDescs, 2U);
     } else {
-        if (drainAfterToken) {
-            PrepareWrite<DEFAULT_CQE_WQE_CONFIG>(remoteSlotBase, tokenAddr, tokenBytes);
-        } else {
-            PrepareWrite<DEFAULT_WQE_CONFIG>(remoteSlotBase, tokenAddr, tokenBytes);
-        }
-    }
-    if (drainAfterToken) {
-        FlushPreparedWrites(true);
-        CheckCommResult(hcomm_.Drain(activeBatchHandle_));
-        sqWriteCount_ = 0U;
+        PrepareWrite<DEFAULT_WQE_CONFIG>(remoteSlotBase, tokenAddr, tokenBytes);
     }
 }
 
@@ -556,7 +529,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseFrom
     activeBatchHandle_ = {};
     activeBatchChannel_ = 0U;
     preparedWriteCount_ = 0U;
-    sqWriteCount_ = 0U;
     activeBatchInitialized_ = false;
 
     // Match upstream's rank/channel owners, including the local flag group and low-AIV rank stride.
@@ -585,7 +557,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseFrom
             }
         }
     }
-    // Every remote completion flag has drained its shared queue before releasing the batch.
+    // Submit the final ordered flag without waiting; combine epilogue owns the receive-side completion wait.
     FlushPreparedWrites();
     DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
     diagWriter_.RunPosRecord(MOE_EP_COMBINE_RUN_POS_URMA_REQUESTS_ISSUE_DONE);

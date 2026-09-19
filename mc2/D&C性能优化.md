@@ -154,7 +154,7 @@ per-rank 有效 slot 数也可考虑与最终完成通知合并传递；同样�
 
 本地 asc-comm 接口核对结果：batch 形式的 `WriteNbi`、`WriteWithNotifyNbi`、`ReadNbi` 支持由 `GetHandleRef` 选择共享 Jetty 内的对端，均包含连续地址和 scatter/gather 重载；`BatchCommit`、`Drain` 有对应 batch 重载。单次 scatter/gather 请求不能跨对端。当前公开的 `WriteValueNbi`、`WriteReduceNbi`、`AtomicFAA`、`AtomicCAS`、`Commit`、`Lock`、`Unlock` 只有普通 `ChannelHandle` 重载，不能直接传入 `MultiChannelHandle`。
 
-`BatchCommit` 表示提交，不等同于远端接收完成，也不对累计未完成的 SQ 请求自动节流。按当前仅测试 4096 token 的要求，dispatch 保留原 128 SQE 批次边界，不新增 SQ 水位判断、CQE 或 Drain；接收侧仍以原通知协议判断 payload 就绪。该决定不构成更大 token 规模已验证的结论。combine 保留本次共享接入已有的最终标记 CQE/Drain 和 SQ 高水位处理。
+`BatchCommit` 表示提交，不等同于远端接收完成，也不对累计未完成的 SQ 请求自动节流。dispatch 保留原 128 SQE 批次边界，不新增 CQE 或 Drain；combine 同样只提交 payload 和最终有序标记，不在发送 kernel 中 Drain，接收侧仍由各自 epilogue 按原通知协议等待 payload 就绪。当前每个 SQ 深度为 8192，本轮按要求不增加 SQ 水位和超限处理；该能力及更大 token 规模留待后续单独实现和验证。
 
 本轮设备验收以 8 卡为准，覆盖空分片、零发送、非均衡路由、Cached / 非 Cached、`DoCpuSync`、连续多轮，以及 dispatch → epilogue → combine → combine epilogue。其他 rank 数及跨超不作为已验证能力。静态核对不能替代设备验证。
 
@@ -170,7 +170,7 @@ combine 仅使用 dispatch 的 `MoeSharedJettyContext`，context 仍由 HCCL 管
 
 保留按目标 rank 分核、metadata 分段、token/weight 写入位置及完成标记布局。远端组使用第一章所述的紧凑句柄索引，通过 `MakeBatchHandle → GetHandleRef → WriteNbi → BatchCommit` 选择对端并批量提交。对端索引按 rank 排序并跳过自身；低 AIV 分支可由同一核串行切换多个对端。保留 combine 的 `hcomm_.Init`。
 
-8P 固定每远端 8 个 lane，与原 8P 的通道数量一致。原分核函数不变，不再通过新增调度辅助截断或取整 combine 核数。共享最终标记请求 CQE，并在提交后 Drain，避免跨轮次复用时遗留完成事件。SQ 高水位按无权重 1、有权重 2 个 WQEBB 计算，提前生成 CQE 并给最终标记保留容量。
+8P 固定每远端 8 个 lane，与原 8P 的通道数量一致。原分核函数不变，不再通过新增调度辅助截断或取整 combine 核数。共享最终标记保持 `fence=1, cqe=0`，在 payload 之后提交但不在 combine 中等待；combine epilogue 观察到标记后再读取数据。本轮不保留发送端 SQ 高水位 CQE/Drain 逻辑，当前每 SQ 8192 深度的超限保护留待后续处理。
 
 本次不修改 token 排布、接收 metadata 或算子输入输出，也不实施第一章的计数 Tensor 优化。直接调用 ACLNN 的调用方在 Direct 模式下须传共享 context；tiling 会拒绝旧普通 context。
 
