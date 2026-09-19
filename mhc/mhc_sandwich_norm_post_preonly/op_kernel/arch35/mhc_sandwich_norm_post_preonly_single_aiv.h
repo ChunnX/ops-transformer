@@ -266,6 +266,12 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
             LoadGammaInto(gammaEven, gamma2Gm_, tOff, tD);
             LoadX2CacheTile(tOff, tD);
             LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
+            // 四个head共享同一个中间归一化系数，先批量缩放并统一等待，
+            // 让首个gamma2搬运覆盖更多Vector计算，同时减少逐head屏障。
+            for (uint32_t n = 0; n < N_MAX; ++n) {
+                Muls(x2[n * dimTile_], x2[n * dimTile_], invRmsMid, tD);
+            }
+            PipeBarrier<PIPE_V>();
             for (uint32_t n = 0; n < N_MAX; ++n) {
                 LocalTensor<float> gammaCurrent = gammaEven;
                 LocalTensor<float> gammaNext = gammaOdd;
@@ -278,7 +284,8 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
                 if (n + 1 < N_MAX) {
                     LoadGammaInto(gammaNext, gamma2Gm_, (n + 1) * D_ + tOff, tD);
                 }
-                ApplyScaleAndGamma(x2[n * dimTile_], invRmsMid, gammaCurrent, tD);
+                Mul(x2[n * dimTile_], x2[n * dimTile_], gammaCurrent, tD);
+                PipeBarrier<PIPE_V>();
                 // 当前缓存会在两轮后再次由MTE2写入，前两轮显式建立V到MTE2依赖。
                 if (n + 2 < N_MAX) {
                     FenceVToMte2();
