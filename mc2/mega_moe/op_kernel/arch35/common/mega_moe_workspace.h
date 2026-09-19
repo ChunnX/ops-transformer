@@ -116,6 +116,12 @@ private:
     HOST_DEVICE void InitializeMte(const MegaMoeTilingData *tilingData)
     {
         InitializeDispatchBuffers(tilingData);
+        // tkw=0 且 combine 去重：dispatch 把 LAST 行整 token 权重段落 revWeights 区、merge 读回乘权，
+        // MTE 同样依赖本区。漏分配则 dispatchRevWeightsPtr 为 nullptr，首 launch 即 MTE invalid GM。
+        // tkw=1 与去重关闭态在 MTE 下不使用本区，保持既有布局不变。
+        if (tilingData->topkWeightsPrefetch == 0 && (tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0) {
+            InitializeUrmaPrefetchWeights(tilingData);
+        }
         // Stride per AIC, measured in int32_t elements.
         int64_t expertRecvTokenCountStride = static_cast<int64_t>(
             Ops::Base::CeilAlign(tilingData->moeExpertPerRank, static_cast<uint32_t>(INT_CACHELINE)));
