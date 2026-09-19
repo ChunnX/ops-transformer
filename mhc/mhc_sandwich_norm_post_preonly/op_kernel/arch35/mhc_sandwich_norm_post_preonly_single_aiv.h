@@ -308,12 +308,13 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         LoadX2CacheTile(tOff, tD);
         LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
         LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
+        // R6的四条指令位于同一Vector流水并按原顺序读写hIn，
+        // 只在完整链结束后统一等待，减少短依赖链中的屏障发射。
         Muls(hIn, x2, gate[0], tD);
-        PipeBarrier<PIPE_V>();
         for (uint32_t n = 1; n < N_MAX; ++n) {
             Axpy(hIn, x2[n * dimTile_], gate[n], tD);
-            PipeBarrier<PIPE_V>();
         }
+        PipeBarrier<PIPE_V>();
         CacheHInTile(tOff, tD, hIn);
         sumSq1 += ReduceSumSq(hIn, tD);
     }
