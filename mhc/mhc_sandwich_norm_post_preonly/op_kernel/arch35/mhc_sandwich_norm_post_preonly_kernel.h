@@ -22,7 +22,7 @@
 
 #include "mhc_sandwich_norm_post_preonly_common.h"
 
-template<typename T>
+template<typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32>
 class KernelMhcSandwichNormPostPreonly {
 public:
     __aicore__ inline KernelMhcSandwichNormPostPreonly() {}
@@ -58,9 +58,7 @@ public:
         K_              = N_ * D_;
         invD_           = td.invD;
         invK_           = td.invK;
-        useRmsMid_      = (td.useRmsMid != 0);
         coresPerToken_  = td.coresPerToken;
-        returnHInF32_ = (td.returnHInF32 != 0);
 
         const uint32_t blockIdx = GetBlockIdx();
         if (blockIdx >= usedCoreNum_) {
@@ -90,7 +88,7 @@ public:
         biasGm_.SetGlobalBuffer((__gm__ float *)bias_gm,      ALIGN8);
         gamma0Gm_.SetGlobalBuffer((__gm__ float *)gamma_0_gm, D_);
         gamma1Gm_.SetGlobalBuffer((__gm__ float *)gamma_1_gm, D_);
-        if (useRmsMid_) {
+        if constexpr (USE_RMS_MID) {
             gamma2Gm_.SetGlobalBuffer((__gm__ float *)gamma_2_gm, K_);
         }
         hInPrimeGm_.SetGlobalBuffer((__gm__ T *)h_in_prime_gm, (uint64_t)totalTokens_ * D_);
@@ -220,9 +218,6 @@ private:
     uint32_t tokenStart_ = 0, tokenEnd_ = 0;
     float alpha0_ = 0.0f;
     float biasCache_[N_MAX] = {0.0f};
-    bool useRmsMid_ = false;
-    bool returnHInF32_ = false;
-
     // A5执行方案选择值，第一阶段只使用1
     uint32_t coresPerToken_ = 1;
 

@@ -73,7 +73,7 @@ __aicore__ inline void WriteLowPrecisionTile(
 __aicore__ inline void WriteHInPrimeTile(LocalTensor<float> src, uint64_t gmOffset, uint32_t count)
 {
     WriteLowPrecisionTile(hInPrimeGm_, gmOffset, src, count);
-    if (returnHInF32_) {
+    if constexpr (RETURN_H_IN_F32) {
         SetFlag<HardEvent::V_MTE3>(evtVtoMte3_);
         WaitFlag<HardEvent::V_MTE3>(evtVtoMte3_);
         DataCopy(hInF32Gm_[gmOffset], src, count);
