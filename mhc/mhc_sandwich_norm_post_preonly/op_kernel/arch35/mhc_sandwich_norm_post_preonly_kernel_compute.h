@@ -15,8 +15,8 @@
 
 // 数据加载
 
-/// 加载一个token的h_post[N]和h_res[N*N]。
-__aicore__ inline void LoadTokenWeights(uint32_t token, float (&postVals)[N_MAX], float (&combVals)[N_MAX * N_MAX])
+/// 发射一个token的h_post[N]和h_res[N*N]搬运。
+__aicore__ inline void PrefetchTokenWeights(uint32_t token)
 {
     // Host已固定校验N为4，使用编译期常量便于展开标量循环。
     constexpr uint32_t N = N_MAX;
@@ -34,6 +34,15 @@ __aicore__ inline void LoadTokenWeights(uint32_t token, float (&postVals)[N_MAX]
         DataCopyPadExtParams<float> cpad = {true, 0, 0, 0};
         DataCopyPad(hResUb, hResGm_[(uint64_t)token * N * N], cp, cpad);
     }
+}
+
+/// 等待权重搬运完成并读取标量。
+__aicore__ inline void ReadTokenWeights(float (&postVals)[N_MAX], float (&combVals)[N_MAX * N_MAX])
+{
+    constexpr uint32_t N = N_MAX;
+    LocalTensor<float> postCombUb = bufPostComb_.Get<float>();
+    LocalTensor<float> hPostUb = postCombUb;
+    LocalTensor<float> hResUb = postCombUb[ALIGN8];
     PipeBarrier<PIPE_ALL>();
     for (uint32_t i = 0; i < N; ++i)
         postVals[i] = hPostUb.GetValue(i);

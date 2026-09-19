@@ -211,16 +211,20 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     float sumSqHalf[2] = {0.0f, 0.0f};
     float dotHalf[2][N_MAX] = {{0.0f, 0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 0.0f}};
     float midSqHalf[2] = {0.0f, 0.0f};
-    LoadTokenWeights(token, postVals, combVals);
 
-    // 第一遍：沿完整D轴计算R1。
+    // 第一遍：沿完整D轴计算R1。首个h_out分片完成加载后发射小权重搬运，
+    // 尝试用后续Vector归约隐藏权重MTE2，并在真正使用前统一等待。
     float sumSq0 = 0.0f;
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
         LoadHOutAndCast((uint64_t)token * D_ + tOff, tD);
+        if (tile == 0) {
+            PrefetchTokenWeights(token);
+        }
         sumSq0 += ReduceSumSq(bufHOutFp32_.Get<float>(), tD);
     }
+    ReadTokenWeights(postVals, combVals);
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
 
     // 第二遍：计算R1/R2和第一处x2低精度边界。完整x2以输出dtype常驻UB，
