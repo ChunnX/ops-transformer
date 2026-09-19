@@ -59,6 +59,7 @@ static constexpr uint32_t NETWORK_HYBRID = 1U; // 1 = hybrid dispatch, 0 = direc
 static constexpr uint32_t RECV_META_FIELDS = 5;
 static constexpr uint8_t BUFFER_NUM = 2;
 static constexpr uint32_t ELEM_ALIGN = 8U;
+static constexpr uint32_t INT32_PER_BLOCK = UB_ALIGN / sizeof(int32_t);
 static constexpr uint32_t META_TOPK_SECTION = 2U;
 static constexpr uint32_t META_EXTRA_FIELDS = 2U;
 static constexpr uint32_t META_SRC_RANK_OFFSET = 0U;
@@ -170,6 +171,7 @@ private:
     LocalTensor<int64_t> ubHitList_;
     LocalTensor<int32_t> ubWaitStatus_;
     LocalTensor<int32_t> ubWaitSum_;
+    LocalTensor<int32_t> ubLocalIndexValue_;
 
     TBuf<QuePosition::VECIN> ubHitCountBuf_;
     TBuf<QuePosition::VECIN> ubRankExpertHitCountBuf_;
@@ -194,6 +196,7 @@ private:
     TBuf<> waitStatusBuf_;
     TBuf<> waitSumBuf_;
     TBuf<> sharedTmpBuf_;
+    TBuf<> ubLocalIndexValueBuf_;
 
     uint32_t expertSum_{0};
     GM_ADDR workspaceGM_{nullptr};
@@ -329,9 +332,11 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     tpipe_->InitBuffer(waitStatusBuf_, totalNotifyCnt_ * UB_ALIGN);
     tpipe_->InitBuffer(waitSumBuf_, UB_ALIGN);
     tpipe_->InitBuffer(sharedTmpBuf_, sharedBytes);
+    tpipe_->InitBuffer(ubLocalIndexValueBuf_, UB_ALIGN);
     ubExpertPfx_ = ubExpertPfxBuf_.Get<int64_t>();
     ubWaitStatus_ = waitStatusBuf_.Get<int32_t>();
     ubWaitSum_ = waitSumBuf_.Get<int32_t>();
+    ubLocalIndexValue_ = ubLocalIndexValueBuf_.Get<int32_t>();
     uint32_t ubRankOffsetsBytes = Ceil((epWorldSize_ + 1U) * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(ubRankOffsetsBuf_, ubRankOffsetsBytes);
     ubRankOffsets_ = ubRankOffsetsBuf_.Get<int32_t>();
@@ -434,14 +439,19 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
 __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::InitLocalRecvIndex()
 {
-    uint32_t start = 0U;
-    uint32_t end = 0U;
-    uint32_t count = 0U;
-    SplitToCore(numTokens_ * axisK_, aivNum_, start, end, count);
-    if (start >= end) {
+    uint32_t totalElements = numTokens_ * axisK_;
+    uint32_t totalBlocks = Ceil(totalElements, INT32_PER_BLOCK);
+    uint32_t startBlock = 0U;
+    uint32_t endBlock = 0U;
+    uint32_t blockCount = 0U;
+    SplitToCore(totalBlocks, aivNum_, startBlock, endBlock, blockCount);
+    if (startBlock >= endBlock) {
         return;
     }
-    InitOutput<int32_t>(localRecvIndexGm_[start], count, -1);
+    uint32_t start = startBlock * INT32_PER_BLOCK;
+    uint32_t end = endBlock * INT32_PER_BLOCK;
+    end = end > totalElements ? totalElements : end;
+    InitOutput<int32_t>(localRecvIndexGm_[start], end - start, -1);
     SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
 
@@ -913,9 +923,12 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
                             ubStageMetaRing_[stageOff + i * ELEM_ALIGN], metaOutParams);
                 if (srcRankMeta == static_cast<int32_t>(epRankId_)) {
                     uint32_t lookupIndex = static_cast<uint32_t>(tokenIdxMeta) * axisK_ + topkIdx;
-                    DataCopyPad(localRecvIndexGm_[lookupIndex],
-                                ubStageMetaRing_[stageOff + i * ELEM_ALIGN + META_RECV_X_IDX_OFFSET],
-                                localIndexOutParams);
+                    // META_RECV_X_IDX_OFFSET is 16 bytes from the aligned row start.  A non-atomic MTE3 copy
+                    // cannot use that address directly, so stage the scalar at a 32-byte-aligned UB address.
+                    ubLocalIndexValue_.SetValue(0, static_cast<int32_t>(recvXRow));
+                    SyncFunc<AscendC::HardEvent::S_MTE3>();
+                    DataCopyPad(localRecvIndexGm_[lookupIndex], ubLocalIndexValue_, localIndexOutParams);
+                    SyncFunc<AscendC::HardEvent::MTE3_S>();
                 }
                 ubRankExpertRowStart_.SetValue(rankExpertIndex, metadataRow + 1);
             }
@@ -1048,9 +1061,12 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
                 tokenIdx < static_cast<int32_t>(numTokens_) && srcTopkIdx >= 0 &&
                 srcTopkIdx < static_cast<int32_t>(axisK_)) {
                 uint32_t lookupIndex = static_cast<uint32_t>(tokenIdx) * axisK_ + static_cast<uint32_t>(srcTopkIdx);
-                SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
-                DataCopyPad(localRecvIndexGm_[lookupIndex], ubStageMeta_[metaBase + META_RECV_X_IDX_OFFSET],
-                            localIndexOutParams);
+                // Cached metadata rows are packed with a 20-byte stride, so the fifth field is not a legal
+                // non-atomic MTE3 source either.  Move the scalar through the aligned staging block.
+                ubLocalIndexValue_.SetValue(0, recvXIdx);
+                SyncFunc<AscendC::HardEvent::S_MTE3>();
+                DataCopyPad(localRecvIndexGm_[lookupIndex], ubLocalIndexValue_, localIndexOutParams);
+                SyncFunc<AscendC::HardEvent::MTE3_S>();
             }
         }
         SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
