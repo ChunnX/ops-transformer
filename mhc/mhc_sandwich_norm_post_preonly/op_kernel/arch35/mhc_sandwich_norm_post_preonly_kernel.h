@@ -145,9 +145,10 @@ public:
             DataCopyPad(bufGamma0Fp32_.Get<float>(), gamma0Gm_[0], gP, gPad);
             DataCopyPad(bufGamma1Fp32_.Get<float>(), gamma1Gm_[0], gP, gPad);
             // gamma_2的形状为[N*D]，在RMSNorm_mid中按head加载
-            SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
-            WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
         }
+        
+        SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+        WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
 
         for (uint32_t t = tokenStart_; t < tokenEnd_; ++t) {
             ProcessTokenSingleAiv(t);
