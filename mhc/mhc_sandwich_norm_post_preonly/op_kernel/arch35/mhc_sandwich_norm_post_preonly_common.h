@@ -28,26 +28,6 @@ constexpr uint32_t SCALAR_BUF_SIZE   = 256;    // 标量计算 UB buffer 大小 
 constexpr uint32_t EXP_DIV_ELEM      = 8;      // sigmoid ExpDiv 计算元素数
 constexpr uint32_t POST_COMB_SIZE    = 8 + 16; // h_post[8] + h_res[16] buffer 大小
 
-// 门控只有8个对齐元素，在一个寄存器函数内完成整条sigmoid链，避免高层短向量逐条同步。
-__simd_vf__ inline void ComputeGateRegVf(__ubuf__ float *gateAddr, float hcEps)
-{
-    AscendC::Reg::RegTensor<float> inputReg;
-    AscendC::Reg::RegTensor<float> expReg;
-    AscendC::Reg::RegTensor<float> denomReg;
-    AscendC::Reg::RegTensor<float> oneReg;
-    AscendC::Reg::RegTensor<float> gateReg;
-    uint32_t elementCount = EXP_DIV_ELEM;
-    AscendC::Reg::MaskReg mask = AscendC::Reg::UpdateMask<float>(elementCount);
-
-    AscendC::Reg::LoadAlign(inputReg, gateAddr);
-    AscendC::Reg::Exp(expReg, inputReg, mask);
-    AscendC::Reg::Adds(denomReg, expReg, 1.0f, mask);
-    AscendC::Reg::Duplicate(oneReg, 1.0f);
-    AscendC::Reg::Div(gateReg, oneReg, denomReg, mask);
-    AscendC::Reg::Adds(gateReg, gateReg, hcEps, mask);
-    AscendC::Reg::StoreAlign<float, AscendC::Reg::StoreDist::DIST_NORM_B32>(gateAddr, gateReg, mask);
-}
-
 // ---------------------------------------------------------------------------
 // Type trait: fp32->half uses CAST_NONE, fp32->bfloat16_t uses CAST_RINT
 // (per CANN RmsNorm reference)

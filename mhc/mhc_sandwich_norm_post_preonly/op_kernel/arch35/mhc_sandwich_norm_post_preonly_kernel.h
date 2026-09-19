@@ -121,8 +121,6 @@ public:
         evtMte3toV_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::MTE3_V>());
         evtVtoMte3_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::V_MTE3>());
         evtMte3toMte2_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::MTE3_MTE2>());
-        evtStoV_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::S_V>());
-        evtVtoS_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::V_S>());
     }
 
     // =====================================================================
@@ -161,8 +159,6 @@ public:
         pipe_.ReleaseEventID<HardEvent::MTE3_V>(evtMte3toV_);
         pipe_.ReleaseEventID<HardEvent::V_MTE3>(evtVtoMte3_);
         pipe_.ReleaseEventID<HardEvent::MTE3_MTE2>(evtMte3toMte2_);
-        pipe_.ReleaseEventID<HardEvent::S_V>(evtStoV_);
-        pipe_.ReleaseEventID<HardEvent::V_S>(evtVtoS_);
     }
 
     // =================================================================
@@ -230,8 +226,6 @@ private:
     int32_t evtMte3toV_ = 0;
     int32_t evtVtoMte3_ = 0;
     int32_t evtMte3toMte2_ = 0;
-    int32_t evtStoV_ = 0;
-    int32_t evtVtoS_ = 0;
 };
 
 // 引入各执行路径的方法实现
