@@ -19,7 +19,9 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     const float (&postVals)[N_MAX], const float (&combVals)[N_MAX * N_MAX])
 {
     LoadHOutAndCast((uint64_t)token * D_ + tOff, tD);
-    LoadGammaInto(bufGamma0Fp32_.Get<float>(), gamma0Gm_, tOff, tD);
+    if (tOff != 0 || dimLoop_ == 1) {
+        LoadGammaInto(bufGamma0Fp32_.Get<float>(), gamma0Gm_, tOff, tD);
+    }
     SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
     WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
     ApplyScaleAndGamma(bufHOutFp32_.Get<float>(), invRms0, bufGamma0Fp32_.Get<float>(), tD);
@@ -219,6 +221,11 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
         LoadHOutAndCast((uint64_t)token * D_ + tOff, tD);
+        if (tile == 0 && dimLoop_ > 1) {
+            // 在首块R1归约期间预取gamma0和gamma1首块，隐藏后续两处MTE2等待。
+            LoadGammaInto(bufGamma0Fp32_.Get<float>(), gamma0Gm_, 0, dimTile_);
+            LoadGammaInto(bufGamma1Fp32_.Get<float>(), gamma1Gm_, 0, dimTile_);
+        }
         sumSq0 += ReduceSumSq(bufHOutFp32_.Get<float>(), tD);
     }
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
@@ -325,7 +332,9 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         const uint32_t tOff = tile * dimTile_;
         LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
         LoadHInCacheTile(tOff, tD, hIn);
-        LoadGammaInto(bufGamma1Fp32_.Get<float>(), gamma1Gm_, tOff, tD);
+        if (tOff != 0 || dimLoop_ == 1) {
+            LoadGammaInto(bufGamma1Fp32_.Get<float>(), gamma1Gm_, tOff, tD);
+        }
         SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
         WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
         ApplyScaleAndGamma(hIn, invRms1, bufGamma1Fp32_.Get<float>(), tD);
