@@ -31,9 +31,12 @@ public:
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
         DefineAttributes();
 
-        this->AICore().AddConfig("ascend910b", Mc2OpDef::BuildCombineAICoreConfig("static_false", "moe_distribute_combine_a2"));
-        this->AICore().AddConfig("ascend910_93", Mc2OpDef::BuildCombineAICoreConfig("static_true", "moe_distribute_combine_a3"));
-        this->AICore().AddConfig("ascend950", Mc2OpDef::BuildCombineAICoreConfig("static_true", "moe_distribute_combine_apt"));
+        auto aicore_config_a2 = Mc2OpDef::BuildCombineAICoreConfig("static_false", "moe_distribute_combine_a2");
+        auto aicore_config_a3 = Mc2OpDef::BuildCombineAICoreConfig("static_true", "moe_distribute_combine_a3");
+        auto aicore_config_apt = Mc2OpDef::BuildCombineAICoreConfig("static_true", "moe_distribute_combine_apt");
+        this->AICore().AddConfig("ascend910b", aicore_config_a2);
+        this->AICore().AddConfig("ascend910_93", aicore_config_a3);
+        this->AICore().AddConfig("ascend950", aicore_config_apt);
         this->MC2().HcclGroup({"group_ep", "group_tp"});
     }
 

@@ -29,11 +29,14 @@ public:
         DefineAttributes();
 
         // A2 (arch22): _a2 entry (opFile -> arch22/..._a2.cpp).
-        this->AICore().AddConfig("ascend910b", Mc2OpDef::BuildCombineAICoreConfig("static_false", "moe_distribute_combine_v2_a2"));
+        auto aicore_config_a2 = Mc2OpDef::BuildCombineAICoreConfig("static_false", "moe_distribute_combine_v2_a2");
         // A3 (arch22): _a3 entry (opFile -> arch22/..._a3.cpp).
-        this->AICore().AddConfig("ascend910_93", Mc2OpDef::BuildCombineAICoreConfig("static_true", "moe_distribute_combine_v2_a3"));
+        auto aicore_config_a3 = Mc2OpDef::BuildCombineAICoreConfig("static_true", "moe_distribute_combine_v2_a3");
         // A5 (arch35): _apt entry (opFile -> arch35/..._apt.cpp).
-        this->AICore().AddConfig("ascend950", Mc2OpDef::BuildCombineAICoreConfig("static_true", "moe_distribute_combine_v2_apt"));
+        auto aicore_config_apt = Mc2OpDef::BuildCombineAICoreConfig("static_true", "moe_distribute_combine_v2_apt");
+        this->AICore().AddConfig("ascend910b", aicore_config_a2);
+        this->AICore().AddConfig("ascend910_93", aicore_config_a3);
+        this->AICore().AddConfig("ascend950", aicore_config_apt);
 
         this->MC2().HcclGroup({"group_ep", "group_tp"});
     }
