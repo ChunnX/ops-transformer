@@ -128,23 +128,27 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
             sumSqHalf[half] += ReduceSumPrecise(out, tD);
 
             for (uint32_t o = 0; o < N_MAX; ++o) {
-                LocalTensor<float> phi = bufPhiFp32_.AllocTensor<float>();
+                // 深度2队列先发出同一half的两条phi搬运，再按原顺序消费，
+                // 保留每块队列同步语义并允许MTE2连续处理两个GM请求。
+                LocalTensor<float> phi0 = bufPhiFp32_.AllocTensor<float>();
                 uint64_t phiOffset = (uint64_t)o * phiCols_ + (uint64_t)h0 * D_ + tOff;
-                DataCopyPad(phi, phiGm_[phiOffset], copyParams, copyPad);
-                bufPhiFp32_.EnQue(phi);
-                phi = bufPhiFp32_.DeQue<float>();
-                Mul(out, x2[h0 * dimTile_], phi, tD);
-                PipeBarrier<PIPE_V>();
-                bufPhiFp32_.FreeTensor(phi);
+                DataCopyPad(phi0, phiGm_[phiOffset], copyParams, copyPad);
+                bufPhiFp32_.EnQue(phi0);
 
-                phi = bufPhiFp32_.AllocTensor<float>();
+                LocalTensor<float> phi1 = bufPhiFp32_.AllocTensor<float>();
                 phiOffset = (uint64_t)o * phiCols_ + (uint64_t)h1 * D_ + tOff;
-                DataCopyPad(phi, phiGm_[phiOffset], copyParams, copyPad);
-                bufPhiFp32_.EnQue(phi);
-                phi = bufPhiFp32_.DeQue<float>();
-                Mul(tmp, x2[h1 * dimTile_], phi, tD);
+                DataCopyPad(phi1, phiGm_[phiOffset], copyParams, copyPad);
+                bufPhiFp32_.EnQue(phi1);
+
+                phi0 = bufPhiFp32_.DeQue<float>();
+                Mul(out, x2[h0 * dimTile_], phi0, tD);
                 PipeBarrier<PIPE_V>();
-                bufPhiFp32_.FreeTensor(phi);
+                bufPhiFp32_.FreeTensor(phi0);
+
+                phi1 = bufPhiFp32_.DeQue<float>();
+                Mul(tmp, x2[h1 * dimTile_], phi1, tD);
+                PipeBarrier<PIPE_V>();
+                bufPhiFp32_.FreeTensor(phi1);
 
                 Add(out, out, tmp, tD);
                 PipeBarrier<PIPE_V>();
@@ -168,23 +172,26 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
 
         for (uint32_t o = 0; o < N_MAX; ++o) {
             LocalTensor<float> dotRow = reduceRows[(o + 1) * dimTile_];
-            LocalTensor<float> phi = bufPhiFp32_.AllocTensor<float>();
+            // 与尾块路径一致，先把同一half的两条phi放入深度2队列。
+            LocalTensor<float> phi0 = bufPhiFp32_.AllocTensor<float>();
             uint64_t phiOffset = (uint64_t)o * phiCols_ + (uint64_t)h0 * D_ + tOff;
-            DataCopyPad(phi, phiGm_[phiOffset], copyParams, copyPad);
-            bufPhiFp32_.EnQue(phi);
-            phi = bufPhiFp32_.DeQue<float>();
-            Mul(dotRow, x2[h0 * dimTile_], phi, tD);
-            PipeBarrier<PIPE_V>();
-            bufPhiFp32_.FreeTensor(phi);
+            DataCopyPad(phi0, phiGm_[phiOffset], copyParams, copyPad);
+            bufPhiFp32_.EnQue(phi0);
 
-            phi = bufPhiFp32_.AllocTensor<float>();
+            LocalTensor<float> phi1 = bufPhiFp32_.AllocTensor<float>();
             phiOffset = (uint64_t)o * phiCols_ + (uint64_t)h1 * D_ + tOff;
-            DataCopyPad(phi, phiGm_[phiOffset], copyParams, copyPad);
-            bufPhiFp32_.EnQue(phi);
-            phi = bufPhiFp32_.DeQue<float>();
-            Mul(tmp, x2[h1 * dimTile_], phi, tD);
+            DataCopyPad(phi1, phiGm_[phiOffset], copyParams, copyPad);
+            bufPhiFp32_.EnQue(phi1);
+
+            phi0 = bufPhiFp32_.DeQue<float>();
+            Mul(dotRow, x2[h0 * dimTile_], phi0, tD);
             PipeBarrier<PIPE_V>();
-            bufPhiFp32_.FreeTensor(phi);
+            bufPhiFp32_.FreeTensor(phi0);
+
+            phi1 = bufPhiFp32_.DeQue<float>();
+            Mul(tmp, x2[h1 * dimTile_], phi1, tD);
+            PipeBarrier<PIPE_V>();
+            bufPhiFp32_.FreeTensor(phi1);
 
             Add(dotRow, dotRow, tmp, tD);
         }
