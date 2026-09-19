@@ -1,7 +1,7 @@
 
 ## TyphoonMLA
 
-TyphoonMLA is a mixed naive-absorb MLA kernel for shared prefix. For more technical details on TyphoonMLA, check out our preprint [paper](arxiv.org/abs/2509.21081).
+TyphoonMLA is a mixed naive-absorb MLA kernel for shared prefix. For more technical details on TyphoonMLA, check out our preprint [paper](https://arxiv.org/abs/2509.21081).
 
 ### Folder structure
 
