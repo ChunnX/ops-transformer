@@ -15,8 +15,6 @@
 #define MHC_SANDWICH_NORM_POST_PREONLY_COMMON_H_
 
 #include "kernel_operator.h"
-#include "simt_api/device_functions.h"
-#include "simt_api/math_functions.h"
 using namespace AscendC;
 
 // ---------------------------------------------------------------------------
@@ -29,14 +27,6 @@ constexpr uint32_t BUFFER_NUM_ONE = 1;
 constexpr uint32_t SCALAR_BUF_SIZE   = 256;    // 标量计算 UB buffer 大小 (bytes)
 constexpr uint32_t EXP_DIV_ELEM      = 8;      // sigmoid ExpDiv 计算元素数
 constexpr uint32_t POST_COMB_SIZE    = 8 + 16; // h_post[8] + h_res[16] buffer 大小
-
-// 门控只有四个元素，使用四个SIMT线程避免多次短Vector指令及流水屏障。
-__simt_vf__ __aicore__ LAUNCH_BOUND(N_MAX) inline void ComputeGateSimt(__ubuf__ float *gateBuf, float hcEps)
-{
-    const uint32_t index = threadIdx.x;
-    const float value = gateBuf[index];
-    gateBuf[index] = 1.0f / (1.0f + expf(-value)) + hcEps;
-}
 
 // ---------------------------------------------------------------------------
 // Type trait: fp32->half uses CAST_NONE, fp32->bfloat16_t uses CAST_RINT
