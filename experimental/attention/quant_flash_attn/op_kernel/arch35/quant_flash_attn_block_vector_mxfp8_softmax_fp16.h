@@ -36,6 +36,7 @@ public:
     static constexpr uint32_t s1BaseSize = S1_BASE_SIZE;        // 256（S1 总宽，V0/V1 各持一半）
     static constexpr uint32_t s2SubLoopSize = S2_SUB_LOOP_SIZE; // 128（每 subLoop 的 mm1Res/P 行数，即 S2 方向每次处理的行数）
     static constexpr uint32_t dVBaseSize = DV_BASE_SIZE;        // 128（V2 输出的 DV 方向行数）
+    static constexpr half MIN_HALF_VALUE = static_cast<half>(-65504.0f);  // fp16 最小有限负值
 
 private:
     // ===== UB 尺寸常量（vector 侧自有；mm1Res/mm2Res 直接用 common_def 跨核契约）=====
@@ -85,6 +86,10 @@ private:
 
     // ===== 外部 pScale（静态 headroom 因子，InitTensorsVec 时 cast half 存成员）=====
     half pScaleHalf_ = static_cast<half>(1.0f);
+
+    // ===== 核内事件 ID（对齐设计 §4 事件表）=====
+    static constexpr uint32_t EVT_P_COPY = 0;  // V↔MTE3：P/pscale MTE3 前后 + 顶部等待
+    static constexpr uint32_t EVT_GM_OUT = 1;  // V→MTE3：GM 输出前
 
 public:
     __aicore__ inline explicit QuantFlashAttnBlockVectorMxfp8SoftmaxFp16(ConstInfo &constInfo)
@@ -153,15 +158,19 @@ public:
         uint32_t mmSlot = runInfo.loop % 2U;                    // 对齐 cube FixpipeMm1 ring
         uint32_t stateSlot = runInfo.softmaxStateSlot;          // mloop % 3
         uint32_t taskSlot = runInfo.loop % 3U;                  // exp/pscale/pSlot 共用
-        (void)taskSlot;  // 批次 3.2 epilogue 使用
 
-        // TODO(批次3.2): Wait MTE3_V → accMax 复位/快照 → VfSoftmaxFp16ToFp8 → MTE3 P → epilogue
-        (void)mmSlot;
-        (void)stateSlot;
-        (void)validRows;
-        (void)subLoopIdx;
-        (void)c1v1Loop;
-        (void)isLastSub;
+        // 上轮任务的 P/pscale MTE3 排空后才允许 vf 覆写 vec1PUb（DN L279 同款）
+        WaitFlag<HardEvent::MTE3_V>(EVT_P_COPY);
+
+        // 行首复位 accMax：新 [bN2,gS1] 行的槽位含 3 行前旧值，必须复位为 MIN
+        if (runInfo.isFirstS2Loop && subLoopIdx == 0U) {
+            Duplicate(softmaxMaxUB_[stateSlot * UB_SMAX_SLOT], MIN_HALF_VALUE, UB_SMAX_SLOT);
+        }
+
+        // 块首快照 m_{k-1}：非首块的 subLoop 0 时拷贝 accMax → blockStartMaxUB
+        if (subLoopIdx == 0U && !runInfo.isFirstS2Loop) {
+            DataCopy(blockStartMaxUB_, softmaxMaxUB_[stateSlot * UB_SMAX_SLOT], UB_SMAX_SLOT);
+        }
     }
 
     __aicore__ inline void ComputeVec2(RunInfoMxfp8SoftmaxFp16 &runInfo)
