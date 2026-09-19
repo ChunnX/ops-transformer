@@ -266,27 +266,24 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
             LoadGammaInto(gammaEven, gamma2Gm_, tOff, tD);
             LoadX2CacheTile(tOff, tD);
             LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
-            // N固定为4，展开双缓冲调度以删除奇偶缓存和尾轮判断。
-            SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
-            WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-            LoadGammaInto(gammaOdd, gamma2Gm_, D_ + tOff, tD);
-            ApplyScaleAndGamma(x2, invRmsMid, gammaEven, tD);
-            FenceVToMte2();
-
-            SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
-            WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-            LoadGammaInto(gammaEven, gamma2Gm_, 2 * D_ + tOff, tD);
-            ApplyScaleAndGamma(x2[dimTile_], invRmsMid, gammaOdd, tD);
-            FenceVToMte2();
-
-            SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
-            WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-            LoadGammaInto(gammaOdd, gamma2Gm_, 3 * D_ + tOff, tD);
-            ApplyScaleAndGamma(x2[2 * dimTile_], invRmsMid, gammaEven, tD);
-
-            SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
-            WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-            ApplyScaleAndGamma(x2[3 * dimTile_], invRmsMid, gammaOdd, tD);
+            for (uint32_t n = 0; n < N_MAX; ++n) {
+                LocalTensor<float> gammaCurrent = gammaEven;
+                LocalTensor<float> gammaNext = gammaOdd;
+                if ((n & 1U) != 0) {
+                    gammaCurrent = gammaOdd;
+                    gammaNext = gammaEven;
+                }
+                SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+                WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
+                if (n + 1 < N_MAX) {
+                    LoadGammaInto(gammaNext, gamma2Gm_, (n + 1) * D_ + tOff, tD);
+                }
+                ApplyScaleAndGamma(x2[n * dimTile_], invRmsMid, gammaCurrent, tD);
+                // 当前缓存会在两轮后再次由MTE2写入，前两轮显式建立V到MTE2依赖。
+                if (n + 2 < N_MAX) {
+                    FenceVToMte2();
+                }
+            }
             CacheX2Tile(token, tOff, tD, true);
             AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf);
         }
