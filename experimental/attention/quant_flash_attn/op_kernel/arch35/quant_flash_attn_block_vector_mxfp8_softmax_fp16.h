@@ -21,6 +21,7 @@
 #include "vf/vf_calc_rescale_factor.h"
 #include "vf/vf_calc_pscale.h"
 #include "vf/vf_flashupdate_acc.h"
+#include "vf/vf_div_cast_bf16.h"
 
 namespace QFA_KERNEL {
 
