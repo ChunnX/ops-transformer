@@ -20,25 +20,13 @@ __aicore__ inline void LoadTokenWeights(uint32_t token, float (&postVals)[N_MAX]
 {
     // Host已固定校验N为4，使用编译期常量便于展开标量循环。
     constexpr uint32_t N = N_MAX;
-    LocalTensor<float> postCombUb = bufPostComb_.Get<float>();
-    LocalTensor<float> hPostUb = postCombUb;
-    LocalTensor<float> hResUb = postCombUb[ALIGN8]; // h_post[N] aligned to 8 elements
-    {
-        DataCopyExtParams pp = {1, 0, 0, 0, 0};
-        pp.blockLen = N * sizeof(float);
-        DataCopyPadExtParams<float> pad = {true, 0, 0, 0};
-        DataCopyPad(hPostUb, hPostGm_[(uint64_t)token * N], pp, pad);
-
-        DataCopyExtParams cp = {1, 0, 0, 0, 0};
-        cp.blockLen = N * N * sizeof(float);
-        DataCopyPadExtParams<float> cpad = {true, 0, 0, 0};
-        DataCopyPad(hResUb, hResGm_[(uint64_t)token * N * N], cp, cpad);
-    }
-    PipeBarrier<PIPE_ALL>();
+    const uint64_t postBase = (uint64_t)token * N;
+    const uint64_t resBase = (uint64_t)token * N * N;
+    // 每个token只有20个权重标量，直接读取可删除两次小搬运和全流水等待。
     for (uint32_t i = 0; i < N; ++i)
-        postVals[i] = hPostUb.GetValue(i);
+        postVals[i] = hPostGm_.GetValue(postBase + i);
     for (uint32_t i = 0; i < N * N; ++i)
-        combVals[i] = hResUb.GetValue(i);
+        combVals[i] = hResGm_.GetValue(resBase + i);
 }
 
 /// 将h_out[token, tOff:tOff+tD]从低精度加载并转换为FP32。
