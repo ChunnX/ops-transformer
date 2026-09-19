@@ -1274,15 +1274,6 @@ __aicore__ inline void SendWaveCombineTokenDedupMerge(const MoeStageCommonConfig
     const uint32_t h = common.tokenHiddenDim;
     const int32_t flags = dedupScratch.descTensor.GetValue(descRowBase);
     const uint32_t memberCount = static_cast<uint32_t>(flags & DEDUP_ROW_MEMBER_COUNT_MASK);
-    // 无效 desc 行防御（2026-09-18 首 launch trap 案）：memberCount=0 时 (memberCount-1U) 无符号
-    // 下溢 0xFFFFFFFF → desc UB 越界读出垃圾行号 → revWeights GM 地址越界 → MTE invalid GM。
-    // 空行直接跳过并留证，不做任何事件武装（入口 Wait 尚未执行，行环状态保持一致）。
-    if (memberCount == 0U) {
-        PRINTF("[DEDUP-DESC0] blk=%d rank=%d descRowBase=%u flags=%d\n",
-               static_cast<int32_t>(AscendC::GetBlockIdx()), static_cast<int32_t>(common.rankId),
-               descRowBase, flags);
-        return;
-    }
     const int32_t minTopkIdx = dedupScratch.descTensor.GetValue(descRowBase + 1U);
     CombineImpl::CombineTokenRoute route = CombineImpl::LoadCombineTokenRoute(tokenMetaInfo, 0U);
     GlobalTensor<bfloat16_t> gmRemoteD;
