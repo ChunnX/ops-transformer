@@ -420,11 +420,12 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
     // -------------------candidate (two-level topk) 校验-------------------
     uint32_t candidateMode = (opParamInfo_.candidateMode != nullptr) ?
                                  static_cast<uint32_t>(*opParamInfo_.candidateMode) : CANDIDATE_MODE_OFF;
-    OP_CHECK_IF((candidateMode != CANDIDATE_MODE_SOURCE) && (candidateMode != CANDIDATE_MODE_CONSUMER) &&
-                    (candidateMode != CANDIDATE_MODE_OFF),
+    OP_CHECK_IF(candidateMode == CANDIDATE_MODE_CONSUMER,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "candidate_mode",
                                                       std::to_string(candidateMode),
-                                                      "Candidate_mode only supports 1(source), 2(consumer) or 3(off)"),
+                                                      "Candidate_mode 2(consumer) has been split into the "
+                                                      "QuantLightningIndexerV2Consumer operator; only 1(source)/3(off) "
+                                                      "are supported here"),
                 return ge::GRAPH_FAILED);
     if (candidateMode != CANDIDATE_MODE_OFF) {
         // candidate 功能当前仅在 arch22 (910b/910_93) 实现
@@ -463,13 +464,6 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
                                                           std::to_string(candBlkSize),
                                                           "Candidate_block_size only supports 8 currently"),
                     return ge::GRAPH_FAILED);
-        if (candidateMode == CANDIDATE_MODE_CONSUMER) {
-            OP_CHECK_IF(opParamInfo_.candidateTopkIndex.tensor == nullptr,
-                        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "candidate_topk_index",
-                                                                 "candidate_topk_index input is required when "
-                                                                 "candidate_mode=2(consumer)"),
-                        return ge::GRAPH_FAILED);
-        }
     }
 
     return ge::GRAPH_SUCCESS;
@@ -1715,27 +1709,8 @@ ge::graphStatus QuantLightningIndexerV2Tiling::DoTiling(QLIV2TilingInfo *tilingI
     workSpaces[0] = workspaceSize;
 
     // -------------set tilingdata-----------------
-    // candidate (two-level topk) 输入校验: mode=2 时 candidate_topk_index 必须为 [B, S1, N2, candBlocks] int32
-    if (tilingInfo->candidateMode == CANDIDATE_MODE_CONSUMER) {
-        OP_CHECK_IF(tilingInfo->opParamInfo.candidateTopkIndex.desc == nullptr ||
-                        tilingInfo->opParamInfo.candidateTopkIndex.desc->GetDataType() != ge::DT_INT32,
-                    OP_LOGE("QuantLightningIndexerV2", "candidate_topk_index dtype only supports int32."),
-                    return ge::GRAPH_FAILED);
-        int64_t expectSize = 0;
-        if (tilingInfo->inputQLayout == DataLayout::TND) {
-            // A12 修正: TND 输出布局为 [T, N2, K], T = query.shape[0], 非 B x s1Size (会双重计数)
-            expectSize = tilingInfo->opParamInfo.query.shape->GetStorageShape().GetDim(0) *
-                         tilingInfo->n2Size * tilingInfo->candidateTopkBlocks;
-        } else {
-            expectSize = static_cast<int64_t>(tilingInfo->bSize) * tilingInfo->s1Size * tilingInfo->n2Size *
-                         tilingInfo->candidateTopkBlocks;
-        }
-        int64_t actualSize = tilingInfo->opParamInfo.candidateTopkIndex.tensor->GetShapeSize();
-        OP_CHECK_IF(actualSize != expectSize,
-                    OP_LOGE("QuantLightningIndexerV2",
-                            "candidate_topk_index shape size must be %ld, but got %ld.", expectSize, actualSize),
-                    return ge::GRAPH_FAILED);
-    }
+    // P13 拆分: mode=2(consumer) 已迁出至 QuantLightningIndexerV2Consumer 算子,
+    // 本算子的 candidate_topk_index 输入已随拆分删除, 无需 shape/dtype 校验。
     tilingData_.set_bSize(tilingInfo->bSize);
     tilingData_.set_s2Size(tilingInfo->s2Size);
     tilingData_.set_s1Size(tilingInfo->s1Size);
