@@ -20,6 +20,7 @@
 #include "vf/vf_common_def.h"
 #include "vf/vf_calc_rescale_factor.h"
 #include "vf/vf_calc_pscale.h"
+#include "vf/vf_flashupdate_acc.h"
 
 namespace QFA_KERNEL {
 
