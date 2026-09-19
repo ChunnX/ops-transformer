@@ -1975,12 +1975,6 @@ void ElasticBuffer::Destroy()
         return;
     }
 
-    try {
-        EngramBarrier(true, true);
-    } catch (const std::exception &e) {
-        ASCEND_LOGE("EngramBarrier in Destroy failed: %s", e.what());
-    }
-
     // HCCL 默认 buffer 由框架管理，无需手动释放
     commBufferSize_ = 0;
 
@@ -1996,6 +1990,11 @@ void ElasticBuffer::Destroy()
     // 注册内存与 host buffer 已按 tag 入进程级共享池(引擎 ctx 的 virtualAddrList[] 引用且无法
     // 反注册)：Destroy 仅解除本实例引用、不释放内存，同 group 重建 ElasticBuffer 时复用。
     if (engramHostBufPtr_ != nullptr) {
+        try {
+            EngramBarrier(true, true);
+        } catch (const std::exception &e) {
+            ASCEND_LOGE("EngramBarrier in Destroy failed: %s", e.what());
+        }
         if (!engramBufferPooled_) {
             if (!engramStorageExternal_ || engramExternalRegisteredByUs_) {
                 aclError ret = aclrtHostUnregister(engramHostBufPtr_);
