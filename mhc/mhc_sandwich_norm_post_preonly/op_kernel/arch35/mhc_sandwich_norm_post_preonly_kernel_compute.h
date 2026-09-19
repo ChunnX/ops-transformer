@@ -174,13 +174,19 @@ __aicore__ inline void ComputeGateValues(float totalSumSqPre, float (&xHatVals)[
 
     LocalTensor<float> scBuf = bufScalar_.Get<float>();
     for (uint32_t i = 0; i < N; ++i)
-        scBuf.SetValue(i, alpha0_ * xHatVals[i] + biasCache_[i]);
+        scBuf.SetValue(i, -(alpha0_ * xHatVals[i] + biasCache_[i]));
     for (uint32_t i = N; i < ALIGN8; ++i)
         scBuf.SetValue(i, 0.0f);
     PipeBarrier<PIPE_V>();
+    Exp(scBuf, scBuf, EXP_DIV_ELEM);
+    PipeBarrier<PIPE_V>();
+    Adds(scBuf, scBuf, 1.0f, EXP_DIV_ELEM); // 1 + exp(-z)
+    PipeBarrier<PIPE_V>();
+    LocalTensor<float> onesBuf = scBuf[EXP_DIV_ELEM * 2];
+    Duplicate(onesBuf, 1.0f, EXP_DIV_ELEM);
+    PipeBarrier<PIPE_V>();
     LocalTensor<float> gateBuf = scBuf[EXP_DIV_ELEM];
-    // 门控只有四个有效元素，直接使用A5原生Sigmoid，减少中间向量和流水屏障。
-    Sigmoid(gateBuf, scBuf, EXP_DIV_ELEM);
+    Div(gateBuf, onesBuf, scBuf, EXP_DIV_ELEM); // 1 / (1+exp(-z))
     PipeBarrier<PIPE_V>();
     Adds(gateBuf, gateBuf, hcEps_, EXP_DIV_ELEM); // + hcEps
     PipeBarrier<PIPE_V>();
