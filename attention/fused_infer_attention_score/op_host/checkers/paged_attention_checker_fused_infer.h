@@ -53,11 +53,11 @@ private:
 
     int64_t GetMaxBlockNumPerBatch(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckMaskShape(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckPseShape(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckPseShape(const FiaTilingInfo &fiaInfo) const;
 
     ge::graphStatus CheckBlockTableShape(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckBlockSizeSupport(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckNonContiguousSupport(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckNonContiguousSupport(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckKVLayout(const FiaTilingInfo &fiaInfo) const;
 
     ge::graphStatus CheckPACacheShape3D(const FiaTilingInfo &fiaInfo, const gert::Shape &tempShape,
@@ -72,9 +72,9 @@ private:
                                                     int64_t tempD0, int64_t tempD1) const;
     ge::graphStatus CheckPACacheShape(const FiaTilingInfo &fiaInfo, const gert::Shape tempShape,
                                       const std::string &inputName) const;
-    ge::graphStatus CheckBlockSizeNonQuant910B(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckBlockSizeNonQuantOther(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckBlockSizeAntiquant(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckBlockSizeNonQuant910B(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckBlockSizeNonQuantOther(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckBlockSizeAntiquant(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckFeatureQueryS(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckFeatureInputLayoutForAntiquant(const FiaTilingInfo &fiaInfo) const;
 };
