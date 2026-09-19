@@ -97,10 +97,10 @@ __aicore__ inline float ReduceSumPrecise(LocalTensor<float> src, uint32_t tD)
 /// 使用ReduceSumPrecise计算平方和。
 __aicore__ inline float ReduceSumSq(LocalTensor<float> src, uint32_t tD)
 {
-    // 当前两个调用点在归约后都不再使用源分片，原地平方可减少一块UB之间的数据流动。
-    Mul(src, src, src, tD);
+    LocalTensor<float> sqBuf = bufSqFp32_.Get<float>();
+    Mul(sqBuf, src, src, tD);
     PipeBarrier<PIPE_V>();
-    return ReduceSumPrecise(src, tD);
+    return ReduceSumPrecise(sqBuf, tD);
 }
 
 /// 使用标量精度计算1/sqrt(sumSq * invCount + eps)。
