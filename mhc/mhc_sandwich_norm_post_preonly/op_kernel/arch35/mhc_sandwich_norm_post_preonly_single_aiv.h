@@ -231,19 +231,28 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::ProcessTokenSingleAi
 
         LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
         if (useRmsMid_) {
-            LocalTensor<float> out = bufResFp32_.Get<float>()[N_MAX * dimTile_];
+            // residual已经消费完，复用其前两行保存两个逻辑half的逐元素平方和，
+            // 再用一次二维归约同时得到两个标量，保持每行归约树不变。
+            LocalTensor<float> midRows = bufResFp32_.Get<float>();
             LocalTensor<float> tmp = bufSqFp32_.Get<float>();
             for (uint32_t half = 0; half < 2; ++half) {
                 const uint32_t h0 = half * 2;
                 const uint32_t h1 = h0 + 1;
-                Mul(out, x2[h0 * dimTile_], x2[h0 * dimTile_], tD);
+                // 尾块也按实际tD紧凑排列，保证二维归约的行跨度正确。
+                LocalTensor<float> row = midRows[half * tD];
+                Mul(row, x2[h0 * dimTile_], x2[h0 * dimTile_], tD);
                 PipeBarrier<PIPE_V>();
                 Mul(tmp, x2[h1 * dimTile_], x2[h1 * dimTile_], tD);
                 PipeBarrier<PIPE_V>();
-                Add(out, out, tmp, tD);
+                Add(row, row, tmp, tD);
                 PipeBarrier<PIPE_V>();
-                midSqHalf[half] += ReduceSumPrecise(out, tD);
             }
+            LocalTensor<float> scBuf = bufScalar_.Get<float>();
+            uint32_t reduceShape[2] = {2, tD};
+            ReduceSum<float, AscendC::Pattern::Reduce::AR, true>(scBuf, midRows, reduceShape, true);
+            PipeBarrier<PIPE_V>();
+            midSqHalf[0] += scBuf.GetValue(0);
+            midSqHalf[1] += scBuf.GetValue(1);
         } else {
             AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf);
         }
