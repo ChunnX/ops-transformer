@@ -1245,13 +1245,6 @@ class ElasticBuffer:
             raise RuntimeError(
                 "engram_fetch_grad must be called after at least one engram_write"
             )
-        expected_dtype = self._engram_dtype
-        if self._engram_sf is not None and grad_fetched.dtype == torch.float32:
-            pass
-        elif grad_fetched.dtype != expected_dtype:
-            raise RuntimeError(
-                f"grad_fetched dtype must match storage dtype ({expected_dtype}), got {grad_fetched.dtype}"
-            )
         if fetch_ctx.perm.dim() != 1:
             raise RuntimeError(
                 f"fetch_ctx.perm must be 1D, got dimensions: {fetch_ctx.perm.dim()}"
