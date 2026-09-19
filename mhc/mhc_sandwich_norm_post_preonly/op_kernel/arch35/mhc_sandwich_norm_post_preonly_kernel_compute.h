@@ -29,8 +29,10 @@ __aicore__ inline void LoadTokenWeights(uint32_t token, float (&postVals)[N_MAX]
         DataCopyPadExtParams<float> pad = {true, 0, 0, 0};
         DataCopyPad(hPostUb, hPostGm_[(uint64_t)token * N], pp, pad);
 
-        // h_res每个token固定为16个FP32，源地址、目的地址和长度均按32字节对齐。
-        DataCopy(hResUb, hResGm_[(uint64_t)token * N * N], N * N);
+        DataCopyExtParams cp = {1, 0, 0, 0, 0};
+        cp.blockLen = N * N * sizeof(float);
+        DataCopyPadExtParams<float> cpad = {true, 0, 0, 0};
+        DataCopyPad(hResUb, hResGm_[(uint64_t)token * N * N], cp, cpad);
     }
     PipeBarrier<PIPE_ALL>();
     for (uint32_t i = 0; i < N; ++i)
