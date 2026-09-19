@@ -1597,16 +1597,16 @@ ge::graphStatus MatmulAllReduceTilingBase::GetAndConvertCommMode(uint8_t &commMo
         commMode = Mc2Comm::COMM_MODE_AICPU;
         OP_LOGI(opName_, "The input attr comm_mode is ai_cpu, commMode will be set to AICPU.");
     } else if (std::strcmp(commModeStr, "ccu") == 0) {
+        if (npuArch_ == Ops::Base::DAV_9201) {
+            // A6(ascend910_96)无CCU引擎，显式ccu直接报错(默认ai_cpu不受影响)
+            OP_LOGE_WITH_INVALID_ATTR(opName_, "comm_mode", commModeStr, "'ai_cpu'");
+            return ge::GRAPH_FAILED;
+        }
         commMode = Mc2Comm::COMM_MODE_CCU;
         OP_LOGI(opName_, "The input attr comm_mode is ccu, commMode will be set to CCU.");
     } else {
         OP_LOGE_WITH_INVALID_ATTR(opName_, "comm_mode", commModeStr, "'ai_cpu' or 'ccu'");
         return ge::GRAPH_FAILED;
-    }
-    if (commMode == Mc2Comm::COMM_MODE_CCU && npuArch_ == Ops::Base::DAV_9201) {
-        // A6(ascend910_96)无CCU引擎，ccu请求统一回退AICPU，保证引擎/核型/tilingKey全链路一致
-        commMode = Mc2Comm::COMM_MODE_AICPU;
-        OP_LOGI(opName_, "A6 has no CCU engine, commMode fallback to AICPU.");
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -1622,8 +1622,8 @@ uint8_t MatmulAllReduceTilingBase::GetCommMode() const
     }
     if (std::strcmp(commModeStr, "ccu") == 0) {
         if (npuArch_ == Ops::Base::DAV_9201) {
-            // A6(ascend910_96)无CCU引擎，回退AICPU，与GetAndConvertCommMode保持一致
-            OP_LOGI(opName_, "A6 has no CCU engine, TilingKey Do AICPU.");
+            // A6(ascend910_96)无CCU引擎；ccu应已被GetAndConvertCommMode拒绝，此处防御性返回AICPU
+            OP_LOGE(opName_, "A6 has no CCU engine, commMode 'ccu' should be rejected before tiling key.");
             return Mc2Comm::COMM_MODE_AICPU;
         }
         OP_LOGI(opName_, "TilingKey Do CCU");
