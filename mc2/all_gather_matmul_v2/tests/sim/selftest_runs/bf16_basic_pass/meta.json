@@ -1,0 +1,27 @@
+{
+ "case_id": "ST-L0-02",
+ "desc": "",
+ "dtype": "bf16",
+ "m": 64,
+ "k": 256,
+ "n": 96,
+ "rank_size": 2,
+ "comm_mode": "ai_cpu",
+ "bias": false,
+ "trans_b": false,
+ "gather_out": true,
+ "value_spec": "clean",
+ "repeat_launch": 1,
+ "tensors": {
+  "x2": {
+   "shape": [
+    256,
+    96
+   ],
+   "strides": [
+    96,
+    1
+   ]
+  }
+ }
+}

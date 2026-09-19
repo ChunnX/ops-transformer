@@ -1,0 +1,27 @@
+{
+ "case_id": "ST-L1-162",
+ "desc": "",
+ "dtype": "fp16",
+ "m": 128,
+ "k": 768,
+ "n": 0,
+ "rank_size": 2,
+ "comm_mode": "ai_cpu",
+ "bias": false,
+ "trans_b": false,
+ "gather_out": true,
+ "value_spec": "clean",
+ "repeat_launch": 1,
+ "tensors": {
+  "x2": {
+   "shape": [
+    768,
+    0
+   ],
+   "strides": [
+    0,
+    1
+   ]
+  }
+ }
+}
