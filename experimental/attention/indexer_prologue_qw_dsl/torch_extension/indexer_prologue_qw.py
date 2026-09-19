@@ -52,7 +52,10 @@ class IndexerPrologueQwOpBuilder(OpBuilder):
             descale_q=None,
             w=None,
         ):
-            t = x.shape[0]
+            # T comes from ``qr``, not ``x``: the kernel lets ``x`` arrive already
+            # grown to whole row tiles, so ``x.shape[0]`` can be larger than the
+            # live row count and would give the outputs the padded height here.
+            t = qr.shape[0]
             n_heads = ww.shape[0]
             d = wqb.shape[0] // n_heads
             groups = (d + 63) // 64
