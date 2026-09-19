@@ -927,7 +927,7 @@ void ElasticBuffer::EnsureEngramContext(void *externalHostPtr, int64_t externalB
     engramContextInitialized_ = true;
 }
 
-// HCCL owns the shared context and window; all four MoE entry points reuse this view.
+// HCCL owns the shared context; its channels expose one registered window shared by all four MoE entry points.
 const at::Tensor &ElasticBuffer::GetMoeExecutionContext(int64_t cclBufferSize)
 {
     TORCH_CHECK(!destroyed_, "ElasticBuffer cannot be used after destroy");
@@ -1136,7 +1136,8 @@ void ElasticBuffer::Destroy()
     // HCCL 默认 buffer 由框架管理，无需手动释放
     commBufferSize_ = 0;
 
-    // Shared MoE resources remain owned by the HCCL communicator.
+    // The HCCL context owns the shared handles; the registered MoE window stays
+    // in the process-lifetime registry because HCCL provides no unregister API.
 
     if (engramHostBufPtr_ != nullptr) {
         if (!engramStorageExternal_ || engramExternalRegisteredByUs_) {

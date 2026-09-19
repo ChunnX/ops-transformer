@@ -962,7 +962,7 @@ class ElasticBuffer:
             ),
         )
         hp_addr = self._prepare_host_counter(args.do_cpu_sync)
-        # Validate the requested window capacity against the HCCL-owned shared buffer.
+        # Size the shared-Jetty registered window from the operator arguments.
         ccl_buffer_size = _get_moe_ep_window_bytes(
             self._ep_world_size,
             args.num_max_tokens_per_rank,
@@ -1075,7 +1075,7 @@ class ElasticBuffer:
             if topk_weights is None
             else torch.empty((num_tokens, topk), dtype=torch.float32, device=x.device)
         )
-        # Validate the requested window capacity against the HCCL-owned shared buffer.
+        # Reuse the dispatch-sized shared-Jetty registered window.
         ccl_buffer_size = _get_moe_ep_window_bytes(
             self._ep_world_size,
             handle.num_max_tokens_per_rank,

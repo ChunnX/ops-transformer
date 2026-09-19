@@ -17,7 +17,10 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <limits>
+#include <mutex>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -26,6 +29,22 @@ namespace {
 constexpr uint32_t SHARED_JETTY_NUM = Mc2Aclnn::MOE_SHARED_JETTY_NUM;
 constexpr size_t SHARED_JETTY_MAX_TAG_SIZE = 255;
 constexpr CommEngine CommEngineUse = CommEngine::COMM_ENGINE_AIV;
+constexpr uint64_t BUFFER_ALIGNMENT = 2ULL * 1024ULL * 1024ULL;
+constexpr uint64_t HUGE1G_SIZE = 1024ULL * 1024ULL * 1024ULL;
+constexpr uint64_t VIRTUAL_ADDRESS_RESERVE_FLAGS = 0ULL;
+
+struct MoeSharedBufferEntry {
+    HcclComm comm = nullptr;
+    void *deviceBuffer = nullptr;
+    aclrtDrvMemHandle physicalMemHandle = nullptr;
+    HcclMemHandle memHandle = nullptr;
+    uint64_t size = 0;
+};
+
+// HCCL has no matching unregister API for channel-visible memory. Keep the
+// buffer alive for as long as its communicator may reference the registration.
+std::mutex gMoeSharedBufferMutex;
+std::unordered_map<std::string, MoeSharedBufferEntry> gMoeSharedBuffers;
 } // namespace
 
 using Mc2Aclnn::MoeSharedJettyContext;
@@ -38,10 +57,149 @@ private:
     MoeSharedJettyContext context_;
     uint64_t requiredBufferSize_ = 0;
     std::vector<HcclChannelDesc> channelDescs_;
+    void *deviceBuffer_ = nullptr;
+    aclrtDrvMemHandle physicalMemHandle_ = nullptr;
+    HcclMemHandle memHandle_ = nullptr;
+    bool bufferRetained_ = false;
 
     static void CheckHccl(HcclResult ret, const char *operation)
     {
         TORCH_CHECK(ret == HCCL_SUCCESS, operation, " failed, ret=", ret);
+    }
+
+    static void LogCleanupFailure(aclError ret, const char *operation)
+    {
+        if (ret != ACL_SUCCESS) {
+            ASCEND_LOGE("%s failed during MoE buffer cleanup, ret=%d", operation, ret);
+        }
+    }
+
+    void ReleaseBuffer()
+    {
+        if (deviceBuffer_ == nullptr) {
+            return;
+        }
+        if (physicalMemHandle_ != nullptr) {
+            LogCleanupFailure(aclrtUnmapMem(deviceBuffer_), "aclrtUnmapMem");
+            LogCleanupFailure(aclrtFreePhysical(physicalMemHandle_), "aclrtFreePhysical");
+            physicalMemHandle_ = nullptr;
+        }
+        LogCleanupFailure(aclrtReleaseMemAddress(deviceBuffer_), "aclrtReleaseMemAddress");
+        deviceBuffer_ = nullptr;
+        memHandle_ = nullptr;
+    }
+
+    static aclError SetBufferAccess(void *address, uint64_t size, uint32_t deviceId)
+    {
+        aclrtMemAccessDesc access = {};
+        access.flags = ACL_RT_MEM_ACCESS_FLAGS_READWRITE;
+        access.location.id = deviceId;
+        access.location.type = ACL_MEM_LOCATION_TYPE_DEVICE;
+        return aclrtMemSetAccess(address, size, &access, 1);
+    }
+
+    bool AllocateHugePageBuffer(uint64_t size, aclrtPhysicalMemProp &property, aclrtMemAttr memoryType,
+                                uint32_t deviceId)
+    {
+        void *address = nullptr;
+        auto ret = aclrtReserveMemAddress(&address, size, 0, nullptr, VIRTUAL_ADDRESS_RESERVE_FLAGS);
+        if (ret != ACL_SUCCESS) {
+            ASCEND_LOGI("aclrtReserveMemAddress(%lu) failed, ret=%d", size, ret);
+            return false;
+        }
+        property.memAttr = memoryType;
+        aclrtDrvMemHandle handle = nullptr;
+        ret = aclrtMallocPhysical(&handle, size, &property, 0);
+        if (ret != ACL_SUCCESS) {
+            ASCEND_LOGI("aclrtMallocPhysical(%lu) failed, ret=%d", size, ret);
+            LogCleanupFailure(aclrtReleaseMemAddress(address), "aclrtReleaseMemAddress");
+            return false;
+        }
+        ret = aclrtMapMem(address, size, 0, handle, 0);
+        if (ret != ACL_SUCCESS) {
+            ASCEND_LOGI("aclrtMapMem(%lu) failed, ret=%d", size, ret);
+            LogCleanupFailure(aclrtFreePhysical(handle), "aclrtFreePhysical");
+            LogCleanupFailure(aclrtReleaseMemAddress(address), "aclrtReleaseMemAddress");
+            return false;
+        }
+        const aclError accessRet = SetBufferAccess(address, size, deviceId);
+        if (accessRet != ACL_SUCCESS) {
+            ASCEND_LOGI("aclrtMemSetAccess(%lu) failed, ret=%d", size, accessRet);
+            LogCleanupFailure(aclrtUnmapMem(address), "aclrtUnmapMem");
+            LogCleanupFailure(aclrtFreePhysical(handle), "aclrtFreePhysical");
+            LogCleanupFailure(aclrtReleaseMemAddress(address), "aclrtReleaseMemAddress");
+            return false;
+        }
+        deviceBuffer_ = address;
+        physicalMemHandle_ = handle;
+        return true;
+    }
+
+    void AllocateDeviceBuffer()
+    {
+        int32_t deviceId = 0;
+        auto ret = aclrtGetDevice(&deviceId);
+        TORCH_CHECK(ret == ACL_SUCCESS, "aclrtGetDevice failed, ret=", ret);
+        aclrtPhysicalMemProp property = {};
+        property.handleType = ACL_MEM_HANDLE_TYPE_NONE;
+        property.allocationType = ACL_MEM_ALLOCATION_TYPE_PINNED;
+        property.location.id = static_cast<uint32_t>(deviceId);
+        property.location.type = ACL_MEM_LOCATION_TYPE_DEVICE;
+        TORCH_CHECK(requiredBufferSize_ <= std::numeric_limits<uint64_t>::max() - (HUGE1G_SIZE - 1),
+                    "MoE communication buffer size overflows 1GB alignment: ", requiredBufferSize_);
+        const uint64_t huge1GBytes = ((requiredBufferSize_ + HUGE1G_SIZE - 1) / HUGE1G_SIZE) * HUGE1G_SIZE;
+        const uint32_t currentDeviceId = static_cast<uint32_t>(deviceId);
+        if (!AllocateHugePageBuffer(huge1GBytes, property, ACL_MEM_HUGE1G, currentDeviceId)) {
+            TORCH_CHECK(AllocateHugePageBuffer(requiredBufferSize_, property, ACL_MEM_HUGE, currentDeviceId),
+                        "Allocate MoE communication buffer failed, size=", requiredBufferSize_);
+        }
+        ret = aclrtMemset(deviceBuffer_, requiredBufferSize_, 0, requiredBufferSize_);
+        TORCH_CHECK(ret == ACL_SUCCESS, "Clear MoE communication buffer failed, ret=", ret);
+    }
+
+    void RegisterDeviceBuffer(const std::string &contextTag, const std::string &bufferTag)
+    {
+        AllocateDeviceBuffer();
+        CommMem memory = {};
+        memory.type = COMM_MEM_TYPE_DEVICE;
+        memory.addr = deviceBuffer_;
+        memory.size = requiredBufferSize_;
+        CheckHccl(HcclCommMemRegFunc(comm_, bufferTag.c_str(), &memory, &memHandle_), "HcclCommMemReg");
+        // There is no HCCL unregister API. From this point onward the communicator
+        // may retain the address even if later channel/context construction fails.
+        bufferRetained_ = true;
+        TORCH_CHECK(memHandle_ != nullptr, "HcclCommMemReg returned a null memory handle");
+        RetainBuffer(contextTag);
+        for (auto &desc : channelDescs_) {
+            desc.memHandles = &memHandle_;
+            desc.memHandleNum = 1;
+        }
+    }
+
+    void RetainBuffer(const std::string &contextTag)
+    {
+        std::lock_guard<std::mutex> lock(gMoeSharedBufferMutex);
+        const MoeSharedBufferEntry entry = {comm_, deviceBuffer_, physicalMemHandle_, memHandle_, requiredBufferSize_};
+        // A new communicator may reuse the group name after the old communicator
+        // and its HCCL context are destroyed. Publish the current generation.
+        gMoeSharedBuffers[contextTag] = entry;
+    }
+
+    void ReuseBuffer(const std::string &contextTag)
+    {
+        std::lock_guard<std::mutex> lock(gMoeSharedBufferMutex);
+        auto entry = gMoeSharedBuffers.find(contextTag);
+        TORCH_CHECK(entry != gMoeSharedBuffers.end(), "MoE shared Jetty context '", contextTag,
+                    "' exists but its registered buffer is missing; use a new communication group");
+        TORCH_CHECK(entry->second.comm == comm_, "MoE shared Jetty context '", contextTag,
+                    "' does not match the current communicator; use a unique HCCL group name");
+        TORCH_CHECK(requiredBufferSize_ <= entry->second.size, "MoE communication buffer exceeds the existing ",
+                    "buffer for this group, requested=", requiredBufferSize_, ", allocated=", entry->second.size,
+                    "; use a new communication group initialized with the larger operator shape");
+        deviceBuffer_ = entry->second.deviceBuffer;
+        physicalMemHandle_ = entry->second.physicalMemHandle;
+        memHandle_ = entry->second.memHandle;
+        bufferRetained_ = true;
     }
 
     void GetRankInfo()
@@ -190,29 +348,36 @@ private:
         return channels;
     }
 
-    void GetHcclBuffers(const std::vector<ChannelHandle> &channels)
+    void PopulateRegisteredBufferAddresses(const std::vector<ChannelHandle> &channels,
+                                           const std::string &bufferTag)
     {
-        void *buffer = nullptr;
-        uint64_t bufferSize = 0;
-        CheckHccl(HcclGetHcclBufferFunc(comm_, &buffer, &bufferSize), "HcclGetHcclBuffer");
-        TORCH_CHECK(buffer != nullptr && bufferSize >= requiredBufferSize_, "HCCL buffer is too small; required=",
-                    requiredBufferSize_, ", available=", bufferSize, "; increase HCCL_BUFFSIZE");
-        context_.epHcclBuffer[context_.epRankId] = reinterpret_cast<uint64_t>(buffer);
+        context_.epHcclBuffer[context_.epRankId] = reinterpret_cast<uint64_t>(deviceBuffer_);
         for (uint32_t peer = 0, index = 0; peer < rankSize_; ++peer) {
             if (peer == context_.epRankId) {
                 continue;
             }
-            uint64_t size = 0;
-            buffer = nullptr;
-            CheckHccl(HcclChannelGetHcclBufferFunc(comm_, channels[index++], &buffer, &size),
-                      "HcclChannelGetHcclBuffer");
-            TORCH_CHECK(buffer != nullptr && size >= requiredBufferSize_, "Invalid remote HCCL buffer, peer=", peer,
-                        ", required=", requiredBufferSize_, ", available=", size);
-            context_.epHcclBuffer[peer] = reinterpret_cast<uint64_t>(buffer);
+            uint32_t memoryCount = 0;
+            CommMem *remoteMemories = nullptr;
+            char **memoryTags = nullptr;
+            CheckHccl(HcclChannelGetRemoteMemsFunc(comm_, channels[index++], &memoryCount, &remoteMemories,
+                                                   &memoryTags),
+                      "HcclChannelGetRemoteMems");
+            bool found = false;
+            for (uint32_t i = 0; i < memoryCount && remoteMemories != nullptr && memoryTags != nullptr; ++i) {
+                if (memoryTags[i] != nullptr && bufferTag == memoryTags[i]) {
+                    TORCH_CHECK(remoteMemories[i].addr != nullptr && remoteMemories[i].size >= requiredBufferSize_,
+                                "Invalid remote MoE buffer, peer=", peer, ", required=", requiredBufferSize_,
+                                ", available=", remoteMemories[i].size);
+                    context_.epHcclBuffer[peer] = reinterpret_cast<uint64_t>(remoteMemories[i].addr);
+                    found = true;
+                    break;
+                }
+            }
+            TORCH_CHECK(found, "Registered MoE buffer '", bufferTag, "' not found for peer ", peer);
         }
     }
 
-    void GetHcclCommResource(const std::string &contextTag)
+    void GetHcclCommResource(const std::string &contextTag, const std::string &bufferTag)
     {
         std::vector<ChannelHandle> channels;
         for (uint32_t jetty = 0; jetty < context_.sharedJettyNum; ++jetty) {
@@ -228,33 +393,25 @@ private:
                       "MakeMultiChannelHandle");
             TORCH_CHECK(context_.multiChannelHandles[jetty] != 0, "Null shared Jetty handle, index=", jetty);
         }
-        GetHcclBuffers(channels);
+        PopulateRegisteredBufferAddresses(channels, bufferTag);
     }
 
-    void ClearHcclBuffer()
-    {
-        void *buffer = nullptr;
-        uint64_t size = 0;
-        CheckHccl(HcclGetHcclBufferFunc(comm_, &buffer, &size), "HcclGetHcclBuffer");
-        // Clear once, before peers can finish the first channel handshake and start sending.
-        // Clear the whole allocation because later calls may request a larger window.
-        auto ret = aclrtMemset(buffer, size, 0, size);
-        TORCH_CHECK(ret == ACL_SUCCESS, "Clear shared Jetty HCCL buffer failed, ret=", ret);
-    }
-
-    void *BuildContext(const std::string &contextTag)
+    void *BuildContext(const std::string &contextTag, const std::string &bufferTag)
     {
         void *ctx = nullptr;
         uint64_t size = 0;
         auto ret = HcclEngineCtxGetFunc(comm_, contextTag.c_str(), CommEngineUse, &ctx, &size);
         if (ret == HCCL_SUCCESS) {
             TORCH_CHECK(ctx != nullptr && size == sizeof(MoeSharedJettyContext), "Invalid shared Jetty context cache");
+            ReuseBuffer(contextTag);
             return ctx;
         }
         // Build resources before publishing the context so failed channel creation
         // cannot leave a partially initialized context in the HCCL cache.
-        ClearHcclBuffer();
-        GetHcclCommResource(contextTag);
+        CommProtocol protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP;
+        GetCommProtocol(protocol);
+        RegisterDeviceBuffer(contextTag, bufferTag);
+        GetHcclCommResource(contextTag, bufferTag);
         CheckHccl(HcclEngineCtxCreateFunc(comm_, contextTag.c_str(), CommEngineUse, sizeof(context_), &ctx),
                   "HcclEngineCtxCreate");
         TORCH_CHECK(ctx != nullptr, "HcclEngineCtxCreate returned a null context");
@@ -272,12 +429,23 @@ private:
         static_assert(sizeof(MoeSharedJettyContext) % sizeof(int32_t) == 0, "Context must fit an int32 tensor");
         const int64_t elements = sizeof(MoeSharedJettyContext) / sizeof(int32_t);
         auto options = at::TensorOptions().dtype(at::kInt).device(c10::DeviceType::PrivateUse1);
-        // HCCL owns the context, multi-channel handles and communication windows.
-        // The communicator must outlive this view and every kernel that uses it.
+        // HCCL owns the context and multi-channel handles. The process-lifetime
+        // registry owns the communication window for the same lifetime as the tag.
         return at_npu::native::from_blob(ctx, {elements}, options);
     }
 
 public:
+    MoeSharedJettyContextBuilder() = default;
+    MoeSharedJettyContextBuilder(const MoeSharedJettyContextBuilder &) = delete;
+    MoeSharedJettyContextBuilder &operator=(const MoeSharedJettyContextBuilder &) = delete;
+
+    ~MoeSharedJettyContextBuilder()
+    {
+        if (!bufferRetained_) {
+            ReleaseBuffer();
+        }
+    }
+
     at::Tensor Build(const std::string &groupName, uint64_t requiredBufferSize)
     {
         // As with ordinary channel construction, callers must serialize builds on
@@ -286,8 +454,12 @@ public:
         // HCCL may still own channels or contexts from the failed attempt.
         TORCH_CHECK(!groupName.empty() && groupName.find('\0') == std::string::npos, "Invalid HCCL group name");
         const std::string contextTag = groupName + "_moe_dispatch_combine_shared_jetty";
+        const std::string bufferTag = contextTag + "_buffer";
         const std::string lastQueueTag = contextTag + "_jetty_" + std::to_string(SHARED_JETTY_NUM - 1);
         TORCH_CHECK(lastQueueTag.size() <= SHARED_JETTY_MAX_TAG_SIZE, "Shared Jetty context tag is too long");
+        TORCH_CHECK(bufferTag.size() <= SHARED_JETTY_MAX_TAG_SIZE, "Shared Jetty buffer tag is too long");
+        TORCH_CHECK(requiredBufferSize > 0 && requiredBufferSize % BUFFER_ALIGNMENT == 0,
+                    "MoE communication buffer must be positive and 2MB aligned, got ", requiredBufferSize);
         InitHcclSharedJettyFunctions();
         CheckHccl(HcomGetCommHandleByGroupFunc(groupName.c_str(), &comm_), "HcomGetCommHandleByGroup");
         TORCH_CHECK(comm_ != nullptr, "Null HCCL communicator");
@@ -295,15 +467,7 @@ public:
         channelDescs_.clear();
         GetRankInfo();
         requiredBufferSize_ = requiredBufferSize;
-        void *buffer = nullptr;
-        uint64_t bufferSize = 0;
-        CheckHccl(HcclGetHcclBufferFunc(comm_, &buffer, &bufferSize), "HcclGetHcclBuffer");
-        TORCH_CHECK(buffer != nullptr && requiredBufferSize > 0 && bufferSize >= requiredBufferSize,
-                    "HCCL buffer is too small; required=", requiredBufferSize, ", available=", bufferSize,
-                    "; increase HCCL_BUFFSIZE before creating the communicator");
-        CommProtocol protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP;
-        GetCommProtocol(protocol);
-        void *ctx = BuildContext(contextTag);
+        void *ctx = BuildContext(contextTag, bufferTag);
         return CreateContextTensor(ctx);
     }
 };

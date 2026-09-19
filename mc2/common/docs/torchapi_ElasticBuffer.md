@@ -516,6 +516,8 @@ ElasticBuffer.get_moe_ep_ccl_buffer_size(world_size, num_max_tokens_per_rank, hi
 
 - **HCCL通信域缓存区大小**：
   - [dispatch](#dispatch) 和 [combine](#combine) 所需的CCL通信buffer由ElasticBuffer内部自动计算并按需申请，无需配置 `HCCL_BUFFSIZE` 环境变量。
+  - 同一通信域的注册窗口容量由首次MoE调用确定，后续调用复用该窗口；若后续算子参数需要更大容量，需使用按更大规格首次初始化的新通信域。
+  - HCCL当前未提供该注册窗口的反注册接口，每个新通信域创建的窗口会保留到进程退出；应避免在同一进程内反复创建临时通信域。
   - Engram训练模式（`with_grad=True`）的a2a收发仍使用HCCL默认通信buffer，`HCCL_BUFFSIZE` 环境变量仅对该路径生效（不配置时默认200MB）。
 
 - **通信域约束**：

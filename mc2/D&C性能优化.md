@@ -144,12 +144,12 @@ per-rank 有效 slot 数也可考虑与最终完成通知合并传递；同样�
 
 本节记录通信接口迁移，与前面的计数优化方案分开实施。当前已完成源码接入，尚未进行 CANN 编译和 NPU 验证；两个计数 Tensor、去重和专家还原逻辑保持原样。
 
-- 四个算子统一使用共享 context，旧普通 MoE context builder、自建窗口池和单对端 kernel 路径已弃用。Python 参数和输出不变。Host 建链与四个 tiling 入口均限定 8P。直接 ACLNN 调用须使用 Direct topology 和 `MoeSharedJettyContext`，旧 context 或 Hybrid topology 会被 tiling 拒绝；本轮不支持旧跨超算法。
+- 四个算子统一使用共享 context，旧普通 MoE context builder、topology 分流和单对端 kernel 路径已弃用。Python 参数和输出不变。Host 建链与四个 tiling 入口均限定 8P。直接 ACLNN 调用须传入 `MoeSharedJettyContext`；topology 属性仅为兼容主线 ACLNN ABI 而保留，tiling 不再据此选择或拒绝路径。本轮不支持旧跨超算法。
 - Host 每个 rank 固定建立 56 个共享 Jetty，每个 Jetty 均包含按 rank 升序跳过自身的 7 个对端。远端句柄索引固定为 `peerIndex * 8 + channelIndex`，不随实际发送组大小变化。64 AIV 时，7 个远端组各 8 核，使用全部 56 个队列，本卡组不占远端 Jetty。保留 dispatch 原有发送核上限和取整规则，combine 保留原余数分组、超过 64 核时远端组优先及剩余本地核的规则，不引入公共调度层。
 - 计数、payload 和空分片通知均使用 `MakeBatchHandle → GetHandleRef → WriteNbi / WriteWithNotifyNbi → BatchCommit`。对端索引按升序跳过本卡；本卡仍走本地拷贝。本版不合并跨对端 batch，也不改成所有核遍历所有对端。
 - epilogue 保留原等待条件与通知清理，只适配共享 context 的窗口访问。低 AIV 时 dispatch 保留连续 rank 分配，combine 保留按核号步进遍历 rank；两者不强行统一。
-- 共享窗口使用 HCCL 内置 buffer，容量由通信域的 `HCCL_BUFFSIZE` 配置决定，首次接入检查本地及远端容量。首次缓存未命中时，在建链前清零整个本地窗口；缓存命中不清零。本轮按各 rank 一致的窗口配置验证；缓存复用后扩大请求时仅复查本地容量，未覆盖各 rank 不同窗口容量的场景。通信域须持续存活，构建失败后沿用现有约定废弃通信域。
-- 四个算子复用同一份 HCCL 共享 context，不再提前建立普通 MoE context。共享内置窗口在算子链完成之前不可被其他通信操作覆盖。Engram 的独立通信实现不在本次删除范围。
+- shared-Jetty builder 按算子参数计算的容量自行申请、清零并通过 `HcclCommMemReg` 注册窗口；channel descriptor 绑定该内存句柄，并通过首个共享 channel 按 tag 获取各 peer 的远端窗口地址。该路径不使用 HCCL 内置 buffer，也不依赖 `HCCL_BUFFSIZE`。同一通信域首次建立的容量固定，后续请求不得超过首建容量；各 rank 的窗口参数须一致。通信域须持续存活，注册后的资源构建失败时沿用现有约定废弃通信域。
+- 四个算子复用同一份 HCCL 共享 context 和独立注册窗口，不再提前建立普通 MoE context。注册窗口在算子链完成之前不可被其他调用覆盖。Engram 的独立通信实现不在本次删除范围。
 - 同步适配 Device 诊断、Host 异常回调和离线 dump 解析，避免将较小的共享 context 当作普通结构读取。
 
 本地 asc-comm 接口核对结果：batch 形式的 `WriteNbi`、`WriteWithNotifyNbi`、`ReadNbi` 支持由 `GetHandleRef` 选择共享 Jetty 内的对端，均包含连续地址和 scatter/gather 重载；`BatchCommit`、`Drain` 有对应 batch 重载。单次 scatter/gather 请求不能跨对端。当前公开的 `WriteValueNbi`、`WriteReduceNbi`、`AtomicFAA`、`AtomicCAS`、`Commit`、`Lock`、`Unlock` 只有普通 `ChannelHandle` 重载，不能直接传入 `MultiChannelHandle`。
