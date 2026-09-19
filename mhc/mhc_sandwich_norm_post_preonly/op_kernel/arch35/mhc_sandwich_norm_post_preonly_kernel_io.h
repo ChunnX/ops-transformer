@@ -29,12 +29,6 @@ __aicore__ inline void CastToIO(LocalTensor<T> dst, LocalTensor<float> src, uint
     }
 }
 
-__aicore__ inline void FenceMte3ToMte2()
-{
-    SetFlag<HardEvent::MTE3_MTE2>(evtMte3toMte2_);
-    WaitFlag<HardEvent::MTE3_MTE2>(evtMte3toMte2_);
-}
-
 __aicore__ inline void FenceMte3ToV()
 {
     SetFlag<HardEvent::MTE3_V>(evtMte3toV_);
