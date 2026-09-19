@@ -26,7 +26,8 @@ mhc_sandwich_norm_post_preonly(GM_ADDR h_out, GM_ADDR residual, GM_ADDR h_post, 
                                         GM_ADDR gamma_2, GM_ADDR h_in_prime, GM_ADDR x_2_out, GM_ADDR h_in_f32,
                                         GM_ADDR workspace, GM_ADDR tiling)
 {
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
+    // 使用A5纯Vector混合任务类型，实测其block和subblock启动语义。
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIV_1_0);
 
     // bit0和bit1选择可选语义分支，bit2保留给双sibling AIV执行方案。
     // 枚举四个单AIV键，并把两个可选语义变为编译期常量，
