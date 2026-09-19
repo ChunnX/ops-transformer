@@ -121,8 +121,9 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
 
             Mul(out, x2[h0 * dimTile_], x2[h0 * dimTile_], tD);
             PipeBarrier<PIPE_V>();
-            // 平方和不依赖phi缓冲，使用原位乘加减少一条Vector指令和一次同步。
-            MulAddDst(out, x2[h1 * dimTile_], x2[h1 * dimTile_], tD);
+            Mul(tmp, x2[h1 * dimTile_], x2[h1 * dimTile_], tD);
+            PipeBarrier<PIPE_V>();
+            Add(out, out, tmp, tD);
             PipeBarrier<PIPE_V>();
             sumSqHalf[half] += ReduceSumPrecise(out, tD);
 
@@ -161,7 +162,9 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         // 避免每个标量结果都单独触发一次Vector到Scalar的等待。
         Mul(reduceRows, x2[h0 * dimTile_], x2[h0 * dimTile_], tD);
         PipeBarrier<PIPE_V>();
-        MulAddDst(reduceRows, x2[h1 * dimTile_], x2[h1 * dimTile_], tD);
+        Mul(tmp, x2[h1 * dimTile_], x2[h1 * dimTile_], tD);
+        PipeBarrier<PIPE_V>();
+        Add(reduceRows, reduceRows, tmp, tD);
 
         for (uint32_t o = 0; o < N_MAX; ++o) {
             LocalTensor<float> dotRow = reduceRows[(o + 1) * dimTile_];
@@ -237,7 +240,9 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
                 const uint32_t h1 = h0 + 1;
                 Mul(out, x2[h0 * dimTile_], x2[h0 * dimTile_], tD);
                 PipeBarrier<PIPE_V>();
-                MulAddDst(out, x2[h1 * dimTile_], x2[h1 * dimTile_], tD);
+                Mul(tmp, x2[h1 * dimTile_], x2[h1 * dimTile_], tD);
+                PipeBarrier<PIPE_V>();
+                Add(out, out, tmp, tD);
                 PipeBarrier<PIPE_V>();
                 midSqHalf[half] += ReduceSumPrecise(out, tD);
             }
