@@ -51,7 +51,7 @@ template <typename CubeBlockType, typename VectorBlockType>
 class QuantFlashAttnKernelMxfp8SoftmaxFp16 {
 public:
     __aicore__ inline QuantFlashAttnKernelMxfp8SoftmaxFp16()
-        : cubeBlock_(constInfo_), vectorBlock_() {}
+        : cubeBlock_(constInfo_), vectorBlock_(constInfo_) {}
 
     ConstInfo constInfo_;
     CubeBlockType cubeBlock_;
