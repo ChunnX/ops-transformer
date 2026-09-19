@@ -100,13 +100,14 @@ public:
         }
 
         // UB空间分配
-        pipe_.InitBuffer(bufHOutBf16_,       1, dimTile_ * sizeof(T));
+        // 首遍R1加载的完整低精度h_out保留到R2，避免同一token重复读取GM。
+        pipe_.InitBuffer(bufHOutBf16_,          D_ * sizeof(T));
         pipe_.InitBuffer(bufHOutFp32_,          dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufGamma0Fp32_,        dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufGamma1Fp32_,        dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufX2Fp32_,            N_ * dimTile_ * sizeof(float));
-        // dimTile=2560时其余固定缓存共194912B；D=7168的完整低精度x2为57344B，
-        // 合计252256B，小于A5的256KiB UB上限。
+        // dimTile=2560时其余固定缓存共189792B；D=7168的完整低精度h_out和x2
+        // 分别为14336B和57344B，合计261472B，小于A5的256KiB UB上限。
         pipe_.InitBuffer(bufX2Cache_,            K_ * sizeof(T));
         pipe_.InitBuffer(bufResidualBf16_,   1, N_ * dimTile_ * sizeof(T));
         // 前四行先保存residual，之后复用为R4/R5的五行归约输入；第五行兼作通用输出暂存。
@@ -189,7 +190,7 @@ private:
     TPipe pipe_;
 
     // UB缓存
-    TQue<TPosition::VECIN, 1>  bufHOutBf16_;
+    TBuf<TPosition::VECCALC>   bufHOutBf16_;
     TBuf<TPosition::VECCALC>   bufHOutFp32_;
     TBuf<TPosition::VECCALC>   bufGamma0Fp32_;
     TBuf<TPosition::VECCALC>   bufGamma1Fp32_;

@@ -18,7 +18,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::ComputeX2PostTile(
     uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
     const float (&postVals)[N_MAX], const float (&combVals)[N_MAX * N_MAX])
 {
-    LoadHOutAndCast((uint64_t)token * D_ + tOff, tD);
+    LoadHOutCacheAndCast(tOff, tD);
     LoadGammaInto(bufGamma0Fp32_.Get<float>(), gamma0Gm_, tOff, tD);
     SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
     WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
@@ -216,7 +216,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::ProcessTokenSingleAi
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        LoadHOutAndCast((uint64_t)token * D_ + tOff, tD);
+        LoadHOutAndCast((uint64_t)token * D_ + tOff, tOff, tD);
         sumSq0 += ReduceSumSq(bufHOutFp32_.Get<float>(), tD);
     }
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
