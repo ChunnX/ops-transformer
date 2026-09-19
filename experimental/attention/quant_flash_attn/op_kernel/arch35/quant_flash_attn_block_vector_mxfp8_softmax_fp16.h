@@ -123,6 +123,15 @@ public:
                                                  L1_P_BUFCNT * L1_PSCALE_V0_SINGLE_SLOT_SIZE);
         pScaleL1V1Tensor_ = LocalTensor<SCALE_T>(TPosition::A1, L1_PSCALE_V1_BASE,
                                                  L1_P_BUFCNT * L1_PSCALE_V1_SINGLE_SLOT_SIZE);
+
+        // ③ Gather 索引表初始化（镜像 mxfp8 quant_flash_attn_block_vec_mxfp8.h:1050-1054）
+        //    idx[i*64+j] = i + (j<<2)：4 路解交织，S1半=128 时 i∈[0,2), j∈[0,64)
+        //    首选无 Gather 两段式（§9.1-③），此表作为回退方案初始化
+        for (int32_t i = 0; i < 2; i++) {
+            for (int32_t j = 0; j < 64; j++) {
+                pNzIdxUB_.SetValue(i * 64 + j, static_cast<uint8_t>(i + (j << 2)));
+            }
+        }
     }
 
     __aicore__ inline void ComputeVec1(RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t subLoopIdx)
