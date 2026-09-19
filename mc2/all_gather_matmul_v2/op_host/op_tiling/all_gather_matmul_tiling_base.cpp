@@ -777,6 +777,7 @@ uint64_t AllGatherMatmulTilingBase::GetTilingKey() const
             commMode = Mc2Comm::COMM_MODE_CCU;
         }
     }
+    // tiling key 6 维（R13：USING_APACE_IMPL 维度删除；量化等路径 key 旧值不变）
     const uint64_t tilingKey = GET_TPL_TILING_KEY(inputIsBf16Fp16_, args_.isBTrans, outputType, TPL_DEFAULT_MODE,
                                                   SCALE_TYPE_NOT_IS_MX, commMode);
     OP_LOGD(opName_, "AllGatherMatmulV2, inputIsBf16Fp16_, args_.isBTrans, outputType, commMode: [%d,%d,%u,%u]",
