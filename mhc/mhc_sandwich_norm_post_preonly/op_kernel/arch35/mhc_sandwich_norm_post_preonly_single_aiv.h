@@ -54,12 +54,13 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
 
     if (writeOutput) {
         // cacheTile已经是x2_out所需的最终低精度位值，直接写GM，
-        // 避免先恢复FP32再重复量化和反复申请输出队列。
+        // 避免先恢复FP32再重复量化和反复申请输出队列。四个head在
+        // UB和GM中的行跨度相同，用一次二维搬运减少MTE3发射次数。
         SetFlag<HardEvent::V_MTE3>(evtVtoMte3_);
         WaitFlag<HardEvent::V_MTE3>(evtVtoMte3_);
-        for (uint32_t n = 0; n < N_MAX; ++n) {
-            DataCopy(x2OutGm_[outBase + (uint64_t)n * D_], x2Cache[n * D_ + tOff], tD);
-        }
+        DataCopyExtParams copyParams = {N_MAX, tD * sizeof(T),
+                                        (D_ - tD) * sizeof(T), (D_ - tD) * sizeof(T), 0};
+        DataCopyPad(x2OutGm_[outBase], x2Cache[tOff], copyParams);
     }
 }
 
