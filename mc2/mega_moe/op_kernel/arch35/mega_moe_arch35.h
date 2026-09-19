@@ -654,7 +654,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert
             // combine 去重：跨 WAVE 的专家等最后一个 slice 完成后按专家粒度独立消费（与量化路径
             // 同构；AIC 被跳过 problem 的情形也会到达本分支，per-expert 标记不漏发）。
             if (tokenStartIndexInExpert + sliceTokenCount >= expertTokenCount) {
-                PRINTF("[W4] b=%d slice-notify e=%u\n", static_cast<int32_t>(AscendC::GetBlockIdx()), state.expertIdx);
                 NotifyWaveGmm2Ready(waveCombineJob_, params_, state.expertIdx);
                 if (isFinalCombine) {
                     if constexpr (g_coreType == AIV) {
