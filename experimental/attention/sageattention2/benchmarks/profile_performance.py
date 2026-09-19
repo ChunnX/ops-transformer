@@ -124,8 +124,8 @@ def main():
     error = (outputs["sage"].float() - outputs["fia"].float()).abs()
     report = {
         "case": args.case,
-        "path": "public PyTorch -> aclnn",
-        "sage_api": "sageattn -> aclnnSageAttention2",
+        "path": "public PyTorch -> dispatcher -> C++/torch_npu -> aclnn",
+        "sage_api": "sageattn -> torch.ops.sageattention2.forward -> aclnnSageAttention2",
         "fia_api": "torch_npu.npu_fused_infer_attention_score",
         "operator_stages": ["Fused"],
         "timing": "torch.npu.Event batch total / repeats; synchronize after warmup and timed batch",

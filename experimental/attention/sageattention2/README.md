@@ -39,7 +39,7 @@ wide 路径将 FP8 P 原位写入已经消费的 FP16 score 条带，再通过�
 
 ## 参数说明
 
-输入 Q/K/V 均为四维、同设备、同 dtype 的 FP16 或 BF16 NPU Tensor，最后一维连续。输出 shape/dtype 与 Q 相同。
+输入 Q/K/V 均为四维、同设备、同 dtype 的 FP16 或 BF16 NPU Tensor，最后一维连续。PyTorch 接口要求基础 ND/NCHW 存储，不支持私有存储格式。输出 shape/dtype 与 Q 相同。
 
 | 参数 | 类型/默认值 | 说明 |
 |---|---|---|
@@ -95,10 +95,11 @@ export ASCEND_RT_VISIBLE_DEVICES=0
 
 bash install_opp.sh
 source build/opp/vendors/custom_transformer/bin/set_env.bash
-export PYTHONPATH="$PWD/python${PYTHONPATH:+:$PYTHONPATH}"
+python -m pip install --no-deps .
+# 源码开发也可使用：export PYTHONPATH="$PWD/python${PYTHONPATH:+:$PYTHONPATH}"
 ```
 
-`install_opp.sh` 调用仓库完整构建流程并安装到本目录的 `build/opp`。PyTorch 使用 ACLNN 后端，`SAGEATTN_ACLNN_LIBRARY` 可指定自定义 API 库路径。
+`install_opp.sh` 调用仓库完整构建流程并安装到本目录的 `build/opp`。PyTorch 使用本目录独立的 C++ 扩展，通过 `torch.ops.sageattention2.forward` 和 torch_npu 的 `EXEC_NPU_CMD_EXT` 调用 ACLNN。首次 NPU 调用仅编译本算子的 C++ bridge，后续使用 PyTorch 编译缓存；需要 C++17 编译器和 Ninja。自定义 OPP 由 `ASCEND_CUSTOM_OPP_PATH` 指定，须在导入 torch_npu 前设置。
 
 测试使用已安装的 ACLNN 融合算子：
 
@@ -110,11 +111,15 @@ SAGEATTN_TEST_STANDALONE=1 \
 
 修改 kernel 后须重新完整构建、安装，再执行 NPU 测试。
 
+接入结构、安装与图模式范围见 [PyTorch 接入说明](docs/PyTorch接入说明.md)。
+
 ## 测试说明
 
 CPU 参考采用 per-token Q/K 与 32-token MXFP8 V 量化，使用上述 FP16 平移 max 定义及 FP8 饱和转换；独立 SDPA 标准未改变。
 
 测试全部通过公开 ACLNN 路径运行，并对照独立 per-token QK / MXFP8 PV CPU 算法、FP32 SDPA 或可解析的常数输入结果。覆盖 dtype/layout/stride/GQA/causal、smooth K、smooth_v warning/ignore、LSE、长序列、模板选择边界、重复调用、并发流和独立 C++ ACLNN 入口。
+
+PyTorch 接入测试另覆盖 Meta/FakeTensor、dispatcher schema、`torch.compile(backend="eager", fullgraph=True)` 和私有存储格式检查；图模式范围见 [PyTorch 接入说明](docs/PyTorch接入说明.md)。
 
 [原始任务用例](tests/data/task_cases_500.json) 包含 486 条功能/精度/参数用例及 14 条性能用例。测试保留原 per-thread/per-warp 参数，由公开 API 告警并回退为 per-token；`pv_accum_dtype` 按 FP32 回退语义检查。
 

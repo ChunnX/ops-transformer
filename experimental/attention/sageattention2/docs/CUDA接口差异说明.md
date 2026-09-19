@@ -96,6 +96,6 @@ out = sageattn_qk_int8_pv_fp8_asc(
 
 NPU 实现对应位置：
 
-- [Python 默认接口](../python/sageattention2/__init__.py)、[Python 参数兼容](../python/sageattention2/aclnn.py)、[ACLNN 参数兼容](../op_api/aclnn_sage_attention2.cpp)
+- [Python 默认接口](../python/sageattention2/__init__.py)、[Dispatcher 与参数兼容](../python/sageattention2/_ops.py)、[C++/torch_npu 接入](../python/sageattention2/csrc/attention.cpp)、[ACLNN 参数兼容](../op_api/aclnn_sage_attention2.cpp)
 - [Cube PV 累加与 FP32 搬运](../op_kernel/attention_block_cube.h)、[Vector 输出累加与归一化](../op_kernel/output_update.h)
 - [Q/K per-token 量化](../op_kernel/quant.h)、[V 每 32-token MXFP8 量化](../op_kernel/quant_v_mx.h)

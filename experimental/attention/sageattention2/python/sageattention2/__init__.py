@@ -8,52 +8,6 @@
 
 """SageAttention2 Ascend 950: per-token INT8 QK, MXFP8 PV, FP32 accumulation."""
 
-import torch
-
-
-def _validate(q, k, v, layout, causal, gran, kwargs):
-    if layout not in ("HND", "NHD"):
-        raise ValueError("tensor_layout must be HND or NHD")
-    if gran not in ("per_token", "per_thread", "per_warp"):
-        raise ValueError("qk_quant_gran must be per_token, per_thread or per_warp")
-    if kwargs.pop("attn_mask", None) is not None:
-        raise ValueError("attn_mask is unsupported")
-    if kwargs.pop("dropout_p", 0.0) != 0:
-        raise ValueError("dropout is unsupported")
-    if kwargs:
-        raise TypeError(f"unsupported arguments: {sorted(kwargs)}")
-    if any(t.ndim != 4 for t in (q, k, v)):
-        raise ValueError("q/k/v must have rank 4")
-    if q.dtype not in (torch.float16, torch.bfloat16) or any(
-        t.dtype != q.dtype for t in (k, v)
-    ):
-        raise ValueError("q/k/v must share FP16 or BF16 dtype")
-    if any(t.device != q.device for t in (k, v)):
-        raise ValueError("q/k/v must share a device")
-    if any(t.stride(-1) != 1 for t in (q, k, v)):
-        raise ValueError("last dimension must be contiguous")
-    if any(any(n <= 0 for n in t.shape) for t in (q, k, v)):
-        raise ValueError("empty dimensions are unsupported")
-    if any(any(n >= 2**32 - 64 for n in t.shape) for t in (q, k, v)):
-        raise ValueError("dimensions exceed the kernel uint32 range")
-    qc, kc, vc = (
-        (q, k, v) if layout == "HND" else tuple(t.transpose(1, 2) for t in (q, k, v))
-    )
-    b, h, s, d = qc.shape
-    if not 0 < d <= 128:
-        raise ValueError("head_dim must be in [1,128]")
-    if kc.shape != vc.shape or kc.shape[0] != b or kc.shape[-1] != d:
-        raise ValueError("incompatible q/k/v shapes")
-    if h % kc.shape[1]:
-        raise ValueError("Hq must be divisible by Hkv")
-    if b * kc.shape[1] >= 2**32:
-        raise ValueError("batch times KV heads exceeds the kernel uint32 range")
-    if causal and s != kc.shape[2]:
-        raise ValueError("causal requires Sq == Sk")
-    if q.requires_grad or k.requires_grad or v.requires_grad:
-        raise ValueError("forward-only operator does not support autograd")
-    return qc, kc, vc
-
 
 def sageattn_qk_int8_pv_fp8_asc(
     q,
