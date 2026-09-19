@@ -178,8 +178,12 @@ __aicore__ inline void ComputeGateValues(float totalSumSqPre, float (&xHatVals)[
     for (uint32_t i = N; i < ALIGN8; ++i)
         scBuf.SetValue(i, 0.0f);
     auto gateAddr = reinterpret_cast<__ubuf__ float *>(scBuf.GetPhyAddr());
+    // 标量写入对VF可见，VF写回对后续标量读取可见。
+    SetFlag<HardEvent::S_V>(evtStoV_);
+    WaitFlag<HardEvent::S_V>(evtStoV_);
     AscendC::VF_CALL<ComputeGateRegVf>(gateAddr, hcEps_);
-    PipeBarrier<PIPE_V>();
+    SetFlag<HardEvent::V_S>(evtVtoS_);
+    WaitFlag<HardEvent::V_S>(evtVtoS_);
     for (uint32_t i = 0; i < N; ++i)
         gate[i] = scBuf.GetValue(i);
 }
