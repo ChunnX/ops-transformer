@@ -39,7 +39,7 @@ public:
 
 private:
     // ===== UB 尺寸常量（vector 侧自有；mm1Res/mm2Res 直接用 common_def 跨核契约）=====
-    static constexpr uint32_t UB_VEC1P_SIZE = s2SubLoopSize * (dVBaseSize / 2); // [128,128] fp8
+    static constexpr uint32_t UB_VEC1P_SIZE = 2 * s2SubLoopSize * (s1BaseSize / 2); // 2 slots × [128,128] fp8
     static constexpr uint32_t UB_STAGE2OUT_SIZE = dVBaseSize * (s1BaseSize / 2); // [128,128] fp32
     static constexpr uint32_t UB_ACCROWSUM_SIZE = s1BaseSize / 2;           // [128] fp32
     static constexpr uint32_t UB_SMAX_SLOT = s1BaseSize / 2;                // [128] half
@@ -136,9 +136,32 @@ public:
 
     __aicore__ inline void ComputeVec1(RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t subLoopIdx)
     {
-        // TODO(批次3.x): 在线 flash softmax（VfSoftmaxFp16ToFp8），P/pscale 经 MTE3 写 AIC L1
-        (void)runInfo;
+        // S1 尾行（actMSize ≤ 128）时本核（V1）没有自己的 S1 列，直接返回：
+        // S1 按 V0=前半 / V1=后半分给两个核，行尾块的 S1 总数不足 256 时 V1 分不到列。
+        // 此时若继续执行，会在上一轮的残留数据（stale mm1Res）上空算一遍，
+        // 产出的 P/pscale 虽无消费者但浪费流水。外层 ExecuteTask 的跨核 flag
+        // 是无条件 Set 的，这里直接 return 不会引起死锁。
+        if (runInfo.actVecS1Size == 0U) {
+            return;
+        }
+
+        uint32_t c1v1Loop = AttentionCommon::CeilDiv(runInfo.actSingleLoopS2Size, s2SubLoopSize);  // ≤2
+        bool isLastSub = (subLoopIdx + 1U == c1v1Loop);
+        uint32_t validRows = isLastSub
+            ? (runInfo.actSingleLoopS2Size - subLoopIdx * s2SubLoopSize)   // 1..128
+            : s2SubLoopSize;
+        uint32_t mmSlot = runInfo.loop % 2U;                    // 对齐 cube FixpipeMm1 ring
+        uint32_t stateSlot = runInfo.softmaxStateSlot;          // mloop % 3
+        uint32_t taskSlot = runInfo.loop % 3U;                  // exp/pscale/pSlot 共用
+        (void)taskSlot;  // 批次 3.2 epilogue 使用
+
+        // TODO(批次3.2): Wait MTE3_V → accMax 复位/快照 → VfSoftmaxFp16ToFp8 → MTE3 P → epilogue
+        (void)mmSlot;
+        (void)stateSlot;
+        (void)validRows;
         (void)subLoopIdx;
+        (void)c1v1Loop;
+        (void)isLastSub;
     }
 
     __aicore__ inline void ComputeVec2(RunInfoMxfp8SoftmaxFp16 &runInfo)
