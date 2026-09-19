@@ -288,8 +288,6 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
             AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf);
         }
     }
-    FenceMte3ToV();
-
     // 固定执行顶层合并，与双sibling方案保持一致。
     const float totalSumSqPre = sumSqHalf[0] + sumSqHalf[1];
     float xHatVals[N_MAX];
@@ -301,6 +299,9 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
 
     // 第三遍：计算R6和h_in低精度边界。在完整D轴的R7标量确定前，
     // 复用已经消费完的x2缓存首段保存低精度h_in。
+    // 门控使用独立标量缓冲，可与x2_out的MTE3写出重叠；
+    // 在R6首次由Vector读取低精度x2缓存前再等待写出完成。
+    FenceMte3ToV();
     float sumSq1 = 0.0f;
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
