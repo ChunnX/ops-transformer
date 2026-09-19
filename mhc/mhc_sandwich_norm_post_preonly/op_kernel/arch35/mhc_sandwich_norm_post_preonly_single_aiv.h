@@ -310,13 +310,10 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
         Muls(hIn, x2, gate[0], tD);
         PipeBarrier<PIPE_V>();
-        // N固定为4，显式展开以删除R6热路径上的循环控制。
-        Axpy(hIn, x2[dimTile_], gate[1], tD);
-        PipeBarrier<PIPE_V>();
-        Axpy(hIn, x2[2 * dimTile_], gate[2], tD);
-        PipeBarrier<PIPE_V>();
-        Axpy(hIn, x2[3 * dimTile_], gate[3], tD);
-        PipeBarrier<PIPE_V>();
+        for (uint32_t n = 1; n < N_MAX; ++n) {
+            Axpy(hIn, x2[n * dimTile_], gate[n], tD);
+            PipeBarrier<PIPE_V>();
+        }
         CacheHInTile(tOff, tD, hIn);
         sumSq1 += ReduceSumSq(hIn, tD);
     }
