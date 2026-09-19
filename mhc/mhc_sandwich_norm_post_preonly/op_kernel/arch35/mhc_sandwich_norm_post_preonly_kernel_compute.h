@@ -34,9 +34,7 @@ __aicore__ inline void LoadTokenWeights(uint32_t token, float (&postVals)[N_MAX]
         DataCopyPadExtParams<float> cpad = {true, 0, 0, 0};
         DataCopyPad(hResUb, hResGm_[(uint64_t)token * N * N], cp, cpad);
     }
-    // 标量只依赖两次GM到UB搬运完成，无需阻塞无关的Vector和MTE3流水。
-    SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
-    WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
+    PipeBarrier<PIPE_ALL>();
     for (uint32_t i = 0; i < N; ++i)
         postVals[i] = hPostUb.GetValue(i);
     for (uint32_t i = 0; i < N * N; ++i)
