@@ -41,23 +41,16 @@ __aicore__ inline void LoadTokenWeights(uint32_t token, float (&postVals)[N_MAX]
         combVals[i] = hResUb.GetValue(i);
 }
 
-/// 将h_out[token, tOff:tOff+tD]加载到完整低精度缓存并转换为FP32。
-__aicore__ inline void LoadHOutAndCast(uint64_t gmOffset, uint32_t cacheOffset, uint32_t tD)
+/// 将h_out[token, tOff:tOff+tD]从低精度加载并转换为FP32。
+__aicore__ inline void LoadHOutAndCast(uint64_t gmOffset, uint32_t tD)
 {
-    LocalTensor<T> hBf16 = bufHOutBf16_.Get<T>()[cacheOffset];
+    LocalTensor<T> hBf16 = bufHOutBf16_.AllocTensor<T>();
     DataCopy(hBf16, hOutGm_[gmOffset], tD);
-    SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
-    WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
+    bufHOutBf16_.EnQue(hBf16);
+    hBf16 = bufHOutBf16_.DeQue<T>();
     Cast(bufHOutFp32_.Get<float>(), hBf16, RoundMode::CAST_NONE, tD);
     PipeBarrier<PIPE_V>();
-}
-
-/// 从首遍保留的低精度缓存恢复h_out，保持原有低精度到FP32边界。
-__aicore__ inline void LoadHOutCacheAndCast(uint32_t cacheOffset, uint32_t tD)
-{
-    LocalTensor<T> hBf16 = bufHOutBf16_.Get<T>()[cacheOffset];
-    Cast(bufHOutFp32_.Get<float>(), hBf16, RoundMode::CAST_NONE, tD);
-    PipeBarrier<PIPE_V>();
+    bufHOutBf16_.FreeTensor(hBf16);
 }
 
 /// 将residual[token, 0:N, tOff:tOff+tD]从低精度加载并转换为FP32。
