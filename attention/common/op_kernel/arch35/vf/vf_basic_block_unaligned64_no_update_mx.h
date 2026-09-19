@@ -288,7 +288,7 @@ __simd_vf__ void ProcessVec1NoUpdateImpl64Mxfp8FullquantVFSubloop1(
     const T minValue, const float deSCaleKValue = 1.0f, const float sinkValue = 0.0f, const float pScale = 1.0f)
 {
     RegTensor<float> vreg_input_tensor;
-    RegTensor<float> vreg_input_max;
+    RegTensor<float> vreg_input_max_u64nou1;
     RegTensor<float> vreg_exp_max;
     RegTensor<float> vreg_max_broadcast;
     RegTensor<float> vreg_exp;
@@ -564,7 +564,7 @@ template <typename T, typename T2, typename pseShiftType, uint32_t s1BaseSize = 
           bool hasAtten = 0, PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE, bool hasDrop = 0, bool isMlaSgd = false,
           bool isMlaFullQuant = false, bool hasSink = false>
 __aicore__ inline void ProcessVec1NoUpdateImpl64Mxfp8Fullquant(
-    const LocalTensor<T2> &dstTensor, const LocalTensor<uint8_t> &indexesTensor, const LocalTensor<T> &expSumTensor,
+    const LocalTensor<T2> &dstTensor_u64noum, const LocalTensor<uint8_t> &indexesTensor, const LocalTensor<T> &expSumTensor,
     const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor,
     const LocalTensor<T> &inExpSumTensor, const LocalTensor<T> &inMaxTensor, const LocalTensor<uint8_t> &maskTensor,
     const LocalTensor<pseShiftType> &pseTensor, const LocalTensor<uint8_t> &dropTensor,
@@ -574,7 +574,7 @@ __aicore__ inline void ProcessVec1NoUpdateImpl64Mxfp8Fullquant(
     const LocalTensor<T> &queryScaleUb = LocalTensor<T>(), const float deSCaleKValue = 1.0f,
     const float sinkValue = 0.0f, const float pScale = 1.0f)
 {
-    __ubuf__ T2 *expUb = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
+    __ubuf__ T2 *expUb = (__ubuf__ T2 *)dstTensor_u64noum.GetPhyAddr();
     __ubuf__ pseShiftType *pseUb = (__ubuf__ pseShiftType *)pseTensor.GetPhyAddr();
     __ubuf__ T *expSumUb = (__ubuf__ T *)expSumTensor.GetPhyAddr();
     __ubuf__ T *inExpSumUb = (__ubuf__ T *)inExpSumTensor.GetPhyAddr();
