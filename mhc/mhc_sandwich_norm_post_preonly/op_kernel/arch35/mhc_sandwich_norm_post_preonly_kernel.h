@@ -111,7 +111,9 @@ public:
         pipe_.InitBuffer(bufResFp32_,     (N_ + 1) * dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufSqFp32_,            dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufPostComb_,          POST_COMB_SIZE * sizeof(float));
-        pipe_.InitBuffer(bufPhiFp32_,  BUFFER_NUM_TWO, dimTile_ * sizeof(float));
+        // R4/R5每次同时使用同一half的两条phi行，合并为连续双行缓存，
+        // 两次MTE2搬运只建立一次到Vector的可见性等待。
+        pipe_.InitBuffer(bufPhiFp32_,      BUFFER_NUM_TWO * dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufHInPrimeBf16_,   1, dimTile_ * sizeof(T));
         pipe_.InitBuffer(bufScalar_,            SCALAR_BUF_SIZE);
         pipe_.InitBuffer(bufGamma2Fp32_,        dimTile_ * sizeof(float));
@@ -198,7 +200,7 @@ private:
     TBuf<TPosition::VECCALC>   bufResFp32_;
     TBuf<TPosition::VECCALC>   bufSqFp32_;
     TBuf<TPosition::VECCALC>   bufPostComb_;
-    TQue<TPosition::VECIN, BUFFER_NUM_TWO>  bufPhiFp32_;
+    TBuf<TPosition::VECCALC> bufPhiFp32_;
     TQue<TPosition::VECOUT, 1> bufHInPrimeBf16_;
     TBuf<TPosition::VECCALC>   bufScalar_;
 
