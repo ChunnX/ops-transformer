@@ -40,9 +40,17 @@ __simd_vf__ inline void VfSoftmaxFp16ToFp8VF(__ubuf__ T2 *pDst, __ubuf__ half *a
                                                __ubuf__ T *x, half pScale, uint32_t validRows,
                                                uint32_t colStride)
 {
-    // TODO(批次3.2): 实现 §7.1 内部流程（归约/量化/exp/打包）
-    (void)pDst; (void)accMax; (void)usedMaxOut; (void)nzIdx; (void)x;
-    (void)pScale; (void)validRows; (void)colStride;
+    // ===== 寄存器声明（一行 128 half = 1 寄存器）=====
+    RegTensor<T> max0, max1, max2, max3;  // 4 路流式 max 累加器（各收行 i%4 == 路号）
+    RegTensor<T> r0, r1, r2, r3;          // 行加载临时
+    RegTensor<T> curMax;                  // 树归并结果（[128] 列 max）
+    RegTensor<T> kCur, kUsed, normMax;    // 量化指数（half 整数）与 P 归一化基准
+    RegTensor<T> accMaxLoad;              // accMax 槽加载
+    MaskReg pregHalf = CreateMask<T, MaskPattern::ALL>();
+
+    // TODO(批次3.2-2): 4 路流式 max 归约
+    (void)curMax; (void)kCur; (void)kUsed; (void)normMax; (void)accMaxLoad;
+    (void)r0; (void)r1; (void)r2; (void)r3; (void)pDst; (void)pScale;
 }
 
 /*
