@@ -235,32 +235,16 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         if constexpr (USE_RMS_MID) {
             LocalTensor<float> out = bufResFp32_.Get<float>()[N_MAX * dimTile_];
             LocalTensor<float> tmp = bufSqFp32_.Get<float>();
-            if (tD == dimTile_) {
-                // 完整分片的四个head在UB中连续；x2已经写入低精度缓存，
-                // 此处可原地平方并一次按四行归约，减少两次逐元素相加和一次归约调用。
-                for (uint32_t n = 0; n < N_MAX; ++n) {
-                    Mul(x2[n * dimTile_], x2[n * dimTile_], x2[n * dimTile_], tD);
-                }
+            for (uint32_t half = 0; half < 2; ++half) {
+                const uint32_t h0 = half * 2;
+                const uint32_t h1 = h0 + 1;
+                Mul(out, x2[h0 * dimTile_], x2[h0 * dimTile_], tD);
                 PipeBarrier<PIPE_V>();
-                LocalTensor<float> scBuf = bufScalar_.Get<float>();
-                uint32_t reduceShape[2] = {N_MAX, tD};
-                ReduceSum<float, AscendC::Pattern::Reduce::AR, true>(scBuf, x2, reduceShape, true);
+                Mul(tmp, x2[h1 * dimTile_], x2[h1 * dimTile_], tD);
                 PipeBarrier<PIPE_V>();
-                midSqHalf[0] += scBuf.GetValue(0) + scBuf.GetValue(1);
-                midSqHalf[1] += scBuf.GetValue(2) + scBuf.GetValue(3);
-            } else {
-                // 尾块的物理行跨度不是tD，继续使用原有逐half归约。
-                for (uint32_t half = 0; half < 2; ++half) {
-                    const uint32_t h0 = half * 2;
-                    const uint32_t h1 = h0 + 1;
-                    Mul(out, x2[h0 * dimTile_], x2[h0 * dimTile_], tD);
-                    PipeBarrier<PIPE_V>();
-                    Mul(tmp, x2[h1 * dimTile_], x2[h1 * dimTile_], tD);
-                    PipeBarrier<PIPE_V>();
-                    Add(out, out, tmp, tD);
-                    PipeBarrier<PIPE_V>();
-                    midSqHalf[half] += ReduceSumPrecise(out, tD);
-                }
+                Add(out, out, tmp, tD);
+                PipeBarrier<PIPE_V>();
+                midSqHalf[half] += ReduceSumPrecise(out, tD);
             }
         } else {
             AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf);
