@@ -169,8 +169,7 @@ public:
 private:
     __aicore__ inline void ProcessTokenSingleAiv(uint32_t token);
     __aicore__ inline void ComputeX2PostTile(uint32_t token, uint32_t tOff, uint32_t tD,
-        float invRms0, bool useHOutCache, const float (&postVals)[N_MAX],
-        const float (&combVals)[N_MAX * N_MAX]);
+        float invRms0, const float (&postVals)[N_MAX], const float (&combVals)[N_MAX * N_MAX]);
     __aicore__ inline void CacheX2Tile(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput);
     __aicore__ inline void LoadX2CacheTile(uint32_t tOff, uint32_t tD);
     __aicore__ inline void CacheHInTile(uint32_t tOff, uint32_t tD, LocalTensor<float> hIn);

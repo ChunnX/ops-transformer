@@ -53,25 +53,6 @@ __aicore__ inline void LoadHOutAndCast(uint64_t gmOffset, uint32_t tD)
     bufHOutBf16_.FreeTensor(hBf16);
 }
 
-/// 将h_out分块加载到暂时空闲的gamma1缓存，并转换为FP32。
-__aicore__ inline void LoadHOutToGamma1CacheAndCast(uint64_t gmOffset, uint32_t cacheOffset, uint32_t tD)
-{
-    LocalTensor<T> hOutCache = bufGamma1Fp32_.Get<T>();
-    DataCopy(hOutCache[cacheOffset], hOutGm_[gmOffset], tD);
-    SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
-    WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-    Cast(bufHOutFp32_.Get<float>(), hOutCache[cacheOffset], RoundMode::CAST_NONE, tD);
-    PipeBarrier<PIPE_V>();
-}
-
-/// 从gamma1缓存恢复h_out分块并转换为FP32。
-__aicore__ inline void LoadHOutFromGamma1CacheAndCast(uint32_t cacheOffset, uint32_t tD)
-{
-    LocalTensor<T> hOutCache = bufGamma1Fp32_.Get<T>();
-    Cast(bufHOutFp32_.Get<float>(), hOutCache[cacheOffset], RoundMode::CAST_NONE, tD);
-    PipeBarrier<PIPE_V>();
-}
-
 /// 将residual[token, 0:N, tOff:tOff+tD]从低精度加载并转换为FP32。
 __aicore__ inline void LoadResidualAndCast(uint64_t gmBaseOffset, uint32_t tD)
 {

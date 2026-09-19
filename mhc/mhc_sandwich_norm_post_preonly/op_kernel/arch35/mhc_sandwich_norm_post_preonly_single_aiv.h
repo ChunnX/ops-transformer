@@ -15,17 +15,11 @@
 // 并显式保留设计规定的两处低精度往返边界。
 template<typename T>
 __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::ComputeX2PostTile(
-    uint32_t token, uint32_t tOff, uint32_t tD, float invRms0, bool useHOutCache,
+    uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
     const float (&postVals)[N_MAX], const float (&combVals)[N_MAX * N_MAX])
 {
-    if (useHOutCache) {
-        // gamma0搬运与h_out缓存恢复分别使用MTE2和Vector流水，可并行执行。
-        LoadGammaInto(bufGamma0Fp32_.Get<float>(), gamma0Gm_, tOff, tD);
-        LoadHOutFromGamma1CacheAndCast(tOff, tD);
-    } else {
-        LoadHOutAndCast((uint64_t)token * D_ + tOff, tD);
-        LoadGammaInto(bufGamma0Fp32_.Get<float>(), gamma0Gm_, tOff, tD);
-    }
+    LoadHOutAndCast((uint64_t)token * D_ + tOff, tD);
+    LoadGammaInto(bufGamma0Fp32_.Get<float>(), gamma0Gm_, tOff, tD);
     SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
     WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
     ApplyScaleAndGamma(bufHOutFp32_.Get<float>(), invRms0, bufGamma0Fp32_.Get<float>(), tD);
@@ -217,20 +211,12 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::ProcessTokenSingleAi
     float midSqHalf[2] = {0.0f, 0.0f};
     LoadTokenWeights(token, postVals, combVals);
 
-    // gamma1缓存按FP32分块分配，可容纳两倍数量的FP16/BF16元素。
-    // D不超过两块时复用该缓存保存完整低精度h_out，更大D保持原有GM重读路径。
-    const bool useHOutCache = D_ <= dimTile_ * 2U;
-
     // 第一遍：沿完整D轴计算R1。
     float sumSq0 = 0.0f;
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        if (useHOutCache) {
-            LoadHOutToGamma1CacheAndCast((uint64_t)token * D_ + tOff, tOff, tD);
-        } else {
-            LoadHOutAndCast((uint64_t)token * D_ + tOff, tD);
-        }
+        LoadHOutAndCast((uint64_t)token * D_ + tOff, tD);
         sumSq0 += ReduceSumSq(bufHOutFp32_.Get<float>(), tD);
     }
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
@@ -240,7 +226,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T>::ProcessTokenSingleAi
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        ComputeX2PostTile(token, tOff, tD, invRms0, useHOutCache, postVals, combVals);
+        ComputeX2PostTile(token, tOff, tD, invRms0, postVals, combVals);
         CacheX2Tile(token, tOff, tD, !useRmsMid_);
 
         LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
