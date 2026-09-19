@@ -215,10 +215,23 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
 
     // 第一遍：沿完整D轴计算R1。
     float sumSq0 = 0.0f;
+    LocalTensor<T> hOutTile = bufHOutBf16_.AllocTensor<T>();
+    DataCopy(hOutTile, hOutGm_[(uint64_t)token * D_], GetTileD(0));
+    bufHOutBf16_.EnQue(hOutTile);
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        LoadHOutAndCast((uint64_t)token * D_ + tOff, tD);
+        hOutTile = bufHOutBf16_.DeQue<T>();
+        Cast(bufHOutFp32_.Get<float>(), hOutTile, RoundMode::CAST_NONE, tD);
+        PipeBarrier<PIPE_V>();
+        bufHOutBf16_.FreeTensor(hOutTile);
+        // 当前片转换完成后立即发射下一片，使其MTE2搬运与当前片平方归约重叠。
+        if (tile + 1 < dimLoop_) {
+            const uint32_t nextD = GetTileD(tile + 1);
+            hOutTile = bufHOutBf16_.AllocTensor<T>();
+            DataCopy(hOutTile, hOutGm_[(uint64_t)token * D_ + tOff + dimTile_], nextD);
+            bufHOutBf16_.EnQue(hOutTile);
+        }
         sumSq0 += ReduceSumSq(bufHOutFp32_.Get<float>(), tD);
     }
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
