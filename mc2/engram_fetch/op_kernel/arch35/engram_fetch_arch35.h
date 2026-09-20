@@ -180,6 +180,7 @@ __aicore__ inline void EngramFetchArch35::Init(GM_ADDR commContext, GM_ADDR indi
     tpipe_->InitBuffer(hcommHandleBuf_, hcommHandleBufSize);
 
     // ScatterByRank 需要: indices + tokenIdxInRank + rankIDs + positions + divisor (各4字节) + mask(每元素1字节近似)
+    constexpr uint64_t ubReserved = 8U * 1024U;
     uint32_t bytesPerIndice = sizeof(int32_t) + sizeof(uint32_t) + sizeof(int32_t) * 3U + 1U;
     uint64_t usedUb = HCOMM_INIT_SIZE + tileBytes_ * RELAY_BUFFER_NUM_INFER + ENGRAM_BATCH_BUFFER_BYTES +
                       countsBufSize + offsetsBufSize + commBufferBufSize + hcommHandleBufSize;
