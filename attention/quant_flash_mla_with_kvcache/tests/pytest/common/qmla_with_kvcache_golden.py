@@ -57,7 +57,7 @@ logger = logging.getLogger(__name__)
 # 配置区
 # ==============================================================================
 # GRAPH_PATH: 0=单算子, 3=静态图, 5=动态图, 6=tiling下沉, 7=aclgraph
-GRAPH_PATH = 7
+GRAPH_PATH = 0
 DEVICE_ID = 0
 
 B = 1
@@ -1153,6 +1153,7 @@ def fia_mla_torch_npu(
             else:
                 logger.info("[NPU] GRAPH_PATH == 6, tiling下沉...")
                 config.experimental_config.tiling_schedule_optimize = True
+            torch._dynamo.reset()
             npu_mode = torch.compile(
                 npu_mode, fullgraph=True, backend=npu_backend, dynamic=True
             )
