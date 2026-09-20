@@ -18,6 +18,10 @@
 #include "aclnn_kernels/contiguous.h"
 #include "opdev/tensor_view_utils.h"
 #include "acl/acl.h"
+#include "aclnnInner_fused_infer_attention_score.h" // 该文件为自动生成，在build/autogen/inner路径下
+
+#include <cstdlib>
+#include <cstring>
 
 using namespace op;
 
@@ -681,6 +685,116 @@ aclnnStatus ProcessCacheForL0Input(const aclTensorList *&key, const aclTensorLis
     return ACLNN_SUCCESS;
 }
 
+// arch22 MLA D512 路由不支持的特征集合（与手写路径路由判定保持一致，仅作只读检查）
+bool HasUnsupportedMlaFeature(const aclTensor *pseShiftOptional, const aclTensor *queryPaddingSizeOptional,
+                              const aclTensor *kvPaddingSizeOptional, const aclTensor *keySharedPrefixOptional,
+                              const aclTensor *valueSharedPrefixOptional, const aclTensor *learnableSinkOptional,
+                              const aclTensor *deqScale1Optional, const aclTensor *quantScale1Optional,
+                              const aclTensor *deqScale2Optional, const aclTensor *quantScale2Optional,
+                              const aclTensor *quantOffset2Optional, const aclTensor *antiquantScaleOptional,
+                              const aclTensor *antiquantOffsetOptional, const aclTensor *keyAntiquantScaleOptional,
+                              const aclTensor *keyAntiquantOffsetOptional,
+                              const aclTensor *valueAntiquantScaleOptional, const aclTensor *valueAntiquantOffsetOptional,
+                              const aclTensor *keyRopeAntiquantScaleOptional,
+                              const aclTensor *dequantScaleQueryOptional, const aclIntArray *qStartIdxOptional,
+                              const aclIntArray *kvStartIdxOptional, int64_t antiquantMode, int64_t keyAntiquantMode,
+                              int64_t valueAntiquantMode, int64_t queryQuantMode)
+{
+    return pseShiftOptional != nullptr || queryPaddingSizeOptional != nullptr || kvPaddingSizeOptional != nullptr ||
+           keySharedPrefixOptional != nullptr || valueSharedPrefixOptional != nullptr ||
+           learnableSinkOptional != nullptr || deqScale1Optional != nullptr || quantScale1Optional != nullptr ||
+           deqScale2Optional != nullptr || quantScale2Optional != nullptr || quantOffset2Optional != nullptr ||
+           antiquantScaleOptional != nullptr || antiquantOffsetOptional != nullptr ||
+           keyAntiquantScaleOptional != nullptr || keyAntiquantOffsetOptional != nullptr ||
+           valueAntiquantScaleOptional != nullptr || valueAntiquantOffsetOptional != nullptr ||
+           keyRopeAntiquantScaleOptional != nullptr || dequantScaleQueryOptional != nullptr ||
+           qStartIdxOptional != nullptr || kvStartIdxOptional != nullptr || antiquantMode != 0 ||
+           keyAntiquantMode != 0 || valueAntiquantMode != 0 || queryQuantMode != 0;
+}
+
+// 手写路径门控：手写框架相对 autogen 直调路径的唯一功能增益是 TensorV2 stride view
+//（paged kv cache 场景下保留 K/V/keyRope 首轴非连续 stride，免 contiguous 拷贝）。
+// 当 opbase 不支持 TensorV2、非 cache 场景、或 FAI/arch22-MLA 路由均不命中时，
+// 手写路径与 autogen 路径功能等价，但固定 host 开销（executor 创建、逐 tensor
+// contiguous、infer shape、launcher 编排等）高一个量级，此时应回退 autogen 快速路径。
+// 判定条件与 DecideCacheStridePolicy 的非 MAKE_CONTIGUOUS 条件语义一致。
+// 逃生开关：环境变量 FIA_FORCE_HANDMADE=1 强制走手写路径，便于 A/B 对照验证。
+bool ShouldUseHandmadePath(const aclTensor *query, const aclTensorList *key, const aclTensorList *value,
+                           const aclTensor *pseShiftOptional, const aclTensor *attenMaskOptional,
+                           const aclTensor *blockTableOptional, const aclTensor *queryPaddingSizeOptional,
+                           const aclTensor *kvPaddingSizeOptional, const aclTensor *keySharedPrefixOptional,
+                           const aclTensor *valueSharedPrefixOptional, const aclTensor *queryRopeOptional,
+                           const aclTensor *keyRopeOptional, const aclTensor *learnableSinkOptional,
+                           const aclTensor *deqScale1Optional, const aclTensor *quantScale1Optional,
+                           const aclTensor *deqScale2Optional, const aclTensor *quantScale2Optional,
+                           const aclTensor *quantOffset2Optional, const aclTensor *antiquantScaleOptional,
+                           const aclTensor *antiquantOffsetOptional, const aclTensor *keyAntiquantScaleOptional,
+                           const aclTensor *keyAntiquantOffsetOptional, const aclTensor *valueAntiquantScaleOptional,
+                           const aclTensor *valueAntiquantOffsetOptional,
+                           const aclTensor *keyRopeAntiquantScaleOptional, const aclTensor *dequantScaleQueryOptional,
+                           const aclIntArray *qStartIdxOptional, const aclIntArray *kvStartIdxOptional,
+                           const char *inputLayout, int64_t numHeads, int64_t numKeyValueHeads, int64_t sparseMode,
+                           int64_t innerPrecise, int64_t blockSize, int64_t antiquantMode, int64_t keyAntiquantMode,
+                           int64_t valueAntiquantMode, int64_t queryQuantMode, bool enableArch22MlaDim0Stride)
+{
+    static const bool forceHandmade = []() {
+        const char *env = std::getenv("FIA_FORCE_HANDMADE");
+        return (env != nullptr) && (env[0] != '\0') && (std::strcmp(env, "0") != 0);
+    }();
+    if (forceHandmade) {
+        OP_LOGD("FIA uses handmade path: forced by FIA_FORCE_HANDMADE.");
+        return true;
+    }
+    // opbase 不支持 TensorV2：手写路径只能退化为 MakeContiguous，与 autogen 等价
+    if (NnopbaseSupportTensorV2 == nullptr) {
+        OP_LOGD("FIA falls back to autogen path: opbase does not support TensorV2.");
+        return false;
+    }
+    // 非 paged cache 场景（无 blockTable）：无 stride view 需求
+    if (!IsCacheScene(blockTableOptional)) {
+        OP_LOGD("FIA falls back to autogen path: non-cache scene without blockTable.");
+        return false;
+    }
+    // FAI 或 arch22 MLA D512 路由命中才需要保留 dim0 stride，否则回退
+    const bool isFaiCandidate =
+        IsFAIRoutingCandidate(query, key, value, attenMaskOptional, blockTableOptional, queryRopeOptional,
+                              keyRopeOptional, learnableSinkOptional, inputLayout, numHeads, numKeyValueHeads,
+                              sparseMode, innerPrecise);
+    const bool hasUnsupportedMlaFeature =
+        HasUnsupportedMlaFeature(pseShiftOptional, queryPaddingSizeOptional, kvPaddingSizeOptional,
+                                 keySharedPrefixOptional, valueSharedPrefixOptional, learnableSinkOptional,
+                                 deqScale1Optional, quantScale1Optional, deqScale2Optional, quantScale2Optional,
+                                 quantOffset2Optional, antiquantScaleOptional, antiquantOffsetOptional,
+                                 keyAntiquantScaleOptional, keyAntiquantOffsetOptional, valueAntiquantScaleOptional,
+                                 valueAntiquantOffsetOptional, keyRopeAntiquantScaleOptional,
+                                 dequantScaleQueryOptional, qStartIdxOptional, kvStartIdxOptional, antiquantMode,
+                                 keyAntiquantMode, valueAntiquantMode, queryQuantMode);
+    const bool isMlaCandidate =
+        enableArch22MlaDim0Stride &&
+        IsArch22MlaD512RoutingCandidate(query, key, value, queryRopeOptional, keyRopeOptional, inputLayout, numHeads,
+                                        numKeyValueHeads, sparseMode, blockSize, hasUnsupportedMlaFeature);
+    if (!isFaiCandidate && !isMlaCandidate) {
+        OP_LOGD("FIA falls back to autogen path: neither FAI nor arch22 MLA routing candidate hits.");
+        return false;
+    }
+    return true;
+}
+
+// 空可选输入净化：上层 binding 可能把 None 物化为空 tensor/空数组（非 nullptr）。
+// 空对象的 storage 无有效设备地址，autogen executor 带空对象构建并被置为 Repeatable 后，
+// opbase 的 RepeatRunWithCache 会对空 storage 指针解引用导致 Run 阶段段错误；
+// nullptr 是 V1 入口已验证的"缺席"语义，故统一净化为 nullptr。仅作用于可选输入，
+// 不作用于 softmaxLse（placeholder 形态为 shape={0}，须原样透传）等输出。
+const aclTensor *FiaSanitizeOptionalTensor(const aclTensor *tensor)
+{
+    return (tensor != nullptr && tensor->IsEmpty()) ? nullptr : tensor;
+}
+
+const aclIntArray *FiaSanitizeOptionalArray(const aclIntArray *array)
+{
+    return (array != nullptr && array->Size() == 0) ? nullptr : array;
+}
+
 } // namespace
 
 #ifdef __cplusplus
@@ -708,6 +822,43 @@ static aclnnStatus InnerFusedInferAttentionScoreGetWorkspaceSizeImpl(
     const aclTensor *attentionOut, const aclTensor *softmaxLse, uint64_t *workspaceSize, aclOpExecutor **executor,
     bool enableArch22MlaDim0Stride)
 {
+    // 手写路径门控：无 TensorV2 stride 增益的场景回退 autogen 快速路径，消除手写框架
+    // 的固定 host 开销（executor 创建、逐 tensor contiguous、infer shape、launcher 编排等）。
+    // 须在 CREATE_EXECUTOR 之前判定，避免先创建 executor 再丢弃。Run 阶段无需门控：
+    // InnerFusedInferAttentionScore 是 CommonOpExecutorRun 的薄包装，对两种路径的 executor 通用。
+    // 回退路径对空可选输入净化为 nullptr（见 FiaSanitizeOptionalTensor 注释），且不做
+    // NnopbaseDisableOptionalInput（与 V5 直调 autogen 的行为保持一致）。
+    if (!ShouldUseHandmadePath(
+            query, key, value, pseShiftOptional, attenMaskOptional, blockTableOptional, queryPaddingSizeOptional,
+            kvPaddingSizeOptional, keySharedPrefixOptional, valueSharedPrefixOptional, queryRopeOptional,
+            keyRopeOptional, learnableSinkOptional, deqScale1Optional, quantScale1Optional, deqScale2Optional,
+            quantScale2Optional, quantOffset2Optional, antiquantScaleOptional, antiquantOffsetOptional,
+            keyAntiquantScaleOptional, keyAntiquantOffsetOptional, valueAntiquantScaleOptional,
+            valueAntiquantOffsetOptional, keyRopeAntiquantScaleOptional, dequantScaleQueryOptional,
+            qStartIdxOptional, kvStartIdxOptional, inputLayout, numHeads, numKeyValueHeads, sparseMode, innerPrecise,
+            blockSize, antiquantMode, keyAntiquantMode, valueAntiquantMode, queryQuantMode,
+            enableArch22MlaDim0Stride)) {
+        return aclnnInnerFusedInferAttentionScoreGetWorkspaceSize(
+            query, key, value, FiaSanitizeOptionalTensor(pseShiftOptional), FiaSanitizeOptionalTensor(attenMaskOptional),
+            FiaSanitizeOptionalArray(actualSeqLengthsOptional), FiaSanitizeOptionalArray(actualSeqLengthsKvOptional),
+            FiaSanitizeOptionalTensor(deqScale1Optional), FiaSanitizeOptionalTensor(quantScale1Optional),
+            FiaSanitizeOptionalTensor(deqScale2Optional), FiaSanitizeOptionalTensor(quantScale2Optional),
+            FiaSanitizeOptionalTensor(quantOffset2Optional), FiaSanitizeOptionalTensor(antiquantScaleOptional),
+            FiaSanitizeOptionalTensor(antiquantOffsetOptional), FiaSanitizeOptionalTensor(blockTableOptional),
+            FiaSanitizeOptionalTensor(queryPaddingSizeOptional), FiaSanitizeOptionalTensor(kvPaddingSizeOptional),
+            FiaSanitizeOptionalTensor(keyAntiquantScaleOptional), FiaSanitizeOptionalTensor(keyAntiquantOffsetOptional),
+            FiaSanitizeOptionalTensor(valueAntiquantScaleOptional),
+            FiaSanitizeOptionalTensor(valueAntiquantOffsetOptional),
+            FiaSanitizeOptionalTensor(keySharedPrefixOptional), FiaSanitizeOptionalTensor(valueSharedPrefixOptional),
+            FiaSanitizeOptionalArray(actualSharedPrefixLenOptional), FiaSanitizeOptionalTensor(queryRopeOptional),
+            FiaSanitizeOptionalTensor(keyRopeOptional), FiaSanitizeOptionalTensor(keyRopeAntiquantScaleOptional),
+            FiaSanitizeOptionalTensor(dequantScaleQueryOptional), FiaSanitizeOptionalTensor(learnableSinkOptional),
+            FiaSanitizeOptionalArray(qStartIdxOptional), FiaSanitizeOptionalArray(kvStartIdxOptional), numHeads,
+            scaleValue, preTokens, nextTokens, inputLayout, numKeyValueHeads, sparseMode, innerPrecise, blockSize,
+            antiquantMode, softmaxLseFlag, keyAntiquantMode, valueAntiquantMode, queryQuantMode, pseType, outDtype,
+            attentionOut, softmaxLse, workspaceSize, executor);
+    }
+
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
@@ -735,16 +886,14 @@ static aclnnStatus InnerFusedInferAttentionScoreGetWorkspaceSizeImpl(
         query, key, value, attenMaskOptional, blockTableOptional, queryRopeOptional, keyRopeOptional,
         learnableSinkOptional, inputLayout, numHeads, numKeyValueHeads, sparseMode, innerPrecise);
     const bool hasUnsupportedMlaFeature =
-        pseShiftOptional != nullptr || queryPaddingSizeOptional != nullptr || kvPaddingSizeOptional != nullptr ||
-        keySharedPrefixOptional != nullptr || valueSharedPrefixOptional != nullptr ||
-        learnableSinkOptional != nullptr || deqScale1Optional != nullptr || quantScale1Optional != nullptr ||
-        deqScale2Optional != nullptr || quantScale2Optional != nullptr || quantOffset2Optional != nullptr ||
-        antiquantScaleOptional != nullptr || antiquantOffsetOptional != nullptr ||
-        keyAntiquantScaleOptional != nullptr || keyAntiquantOffsetOptional != nullptr ||
-        valueAntiquantScaleOptional != nullptr || valueAntiquantOffsetOptional != nullptr ||
-        keyRopeAntiquantScaleOptional != nullptr || dequantScaleQueryOptional != nullptr ||
-        qStartIdxOptional != nullptr || kvStartIdxOptional != nullptr || antiquantMode != 0 || keyAntiquantMode != 0 ||
-        valueAntiquantMode != 0 || queryQuantMode != 0;
+        HasUnsupportedMlaFeature(
+            pseShiftOptional, queryPaddingSizeOptional, kvPaddingSizeOptional, keySharedPrefixOptional,
+            valueSharedPrefixOptional, learnableSinkOptional, deqScale1Optional, quantScale1Optional,
+            deqScale2Optional, quantScale2Optional, quantOffset2Optional, antiquantScaleOptional,
+            antiquantOffsetOptional, keyAntiquantScaleOptional, keyAntiquantOffsetOptional,
+            valueAntiquantScaleOptional, valueAntiquantOffsetOptional, keyRopeAntiquantScaleOptional,
+            dequantScaleQueryOptional, qStartIdxOptional, kvStartIdxOptional, antiquantMode, keyAntiquantMode,
+            valueAntiquantMode, queryQuantMode);
     const bool isArch22MlaRoutingCandidate =
         enableArch22MlaDim0Stride &&
         IsArch22MlaD512RoutingCandidate(query, key, value, queryRopeOptional, keyRopeOptional, inputLayout, numHeads,
