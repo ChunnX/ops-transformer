@@ -50,6 +50,18 @@ template <>
 struct GliTypeTraits<fp8_e4m3fn_t> {
     using weightsType = half;
 };
+template <>
+struct GliTypeTraits<int8_t> {
+    using weightsType = half;
+};
+template <>
+struct GliTypeTraits<fp8_e5m2_t> {
+    using weightsType = half;
+};
+template <>
+struct GliTypeTraits<hifloat8> {
+    using weightsType = bfloat16_t;
+};
 template <typename LIT>
 class GenericLightningIndexerServiceVector {
 public:
@@ -72,6 +84,7 @@ public:
     __aicore__ inline void ProcessVec1(const GliCommon::RunInfo &info);
     __aicore__ inline void ProcessTopK(const GliCommon::RunInfo &info);
     __aicore__ inline void ProcessMaxpoolScore(const GliCommon::RunInfo &info);
+    __aicore__ inline void CastKeyTile(const GliCommon::RunInfo &info);
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void InitParams(const struct GliCommon::ConstInfo &constInfo,
                                       const GenericLightningIndexerTilingData *__restrict tilingData);
@@ -79,6 +92,16 @@ public:
     __aicore__ inline void InitVecInputTensor(GlobalTensor<W_T> weightsGm, GlobalTensor<int32_t> indiceOutGm,
                                               GlobalTensor<float> valueOutGm, GlobalTensor<int32_t> blockTableGm,
                                               GlobalTensor<float> qScaleGm = {}, GlobalTensor<float> kScaleGm = {});
+    __aicore__ inline void InitVecScaleFp16(GlobalTensor<half> qScaleGm, GlobalTensor<half> kScaleGm)
+    {
+        qScaleGmFp16 = qScaleGm;
+        kScaleGmFp16 = kScaleGm;
+    }
+    __aicore__ inline void SetKeyCastTensors(GlobalTensor<K_T> keyI8Gm, GlobalTensor<half> keyCastGm)
+    {
+        keyI8Gm_ = keyI8Gm;
+        keyCastGm_ = keyCastGm;
+    }
     __aicore__ inline void SetOutputIdxOffsetGm(GlobalTensor<int32_t> gm)
     {
         outputIdxOffsetGm = gm;
@@ -87,6 +110,13 @@ public:
     {
         startLocGm = gm;
         hasStartLoc_ = true;
+        startLocI64_ = false;
+    }
+    __aicore__ inline void SetStartLocGmI64(GlobalTensor<int64_t> gm)
+    {
+        startLocGmI64 = gm;
+        hasStartLoc_ = true;
+        startLocI64_ = true;
     }
     __aicore__ inline void CleanInvalidOutput(int64_t invalidS1offset);
     __aicore__ inline void AllocEventID();
@@ -132,9 +162,15 @@ protected:
     // mode=0 (FP8 per-token-head) scale GM(q/k_descale, float)
     GlobalTensor<float> qScaleGm;
     GlobalTensor<float> kScaleGm;
+    GlobalTensor<half> qScaleGmFp16;
+    GlobalTensor<half> kScaleGmFp16;
+    GlobalTensor<K_T> keyI8Gm_;
+    GlobalTensor<half> keyCastGm_;
     GlobalTensor<int32_t> outputIdxOffsetGm;
     GlobalTensor<int32_t> startLocGm;
+    GlobalTensor<int64_t> startLocGmI64;
     bool hasStartLoc_ = false;
+    bool startLocI64_ = false;
     // =================================常量区=================================
     static constexpr uint32_t VEC1_V_MTE2_EVENT = EVENT_ID0;
     static constexpr uint32_t VEC1_MTE2_V_EVENT = EVENT_ID1;
@@ -172,6 +208,10 @@ private:
     LocalTensor<float> qScaleUB_;
     TBuf<TPosition::VECCALC> kScaleBuf_;
     LocalTensor<float> kScaleUB_;
+    TBuf<TPosition::VECCALC> qScaleHalfBuf_;
+    LocalTensor<half> qScaleHalfUB_;
+    TBuf<TPosition::VECCALC> kScaleHalfBuf_;
+    LocalTensor<half> kScaleHalfUB_;
 
     // tmp buff for out
     TBuf<TPosition::VECCALC> outBuf_;
@@ -245,6 +285,12 @@ __aicore__ inline void GenericLightningIndexerServiceVector<LIT>::InitBuffers(TP
         qScaleUB_ = qScaleBuf_.Get<float>();
         pipe->InitBuffer(kScaleBuf_, 2 * 16 * s2BaseSize_ * sizeof(float));
         kScaleUB_ = kScaleBuf_.Get<float>();
+        if constexpr (LIT::isFp16Scale) {
+            pipe->InitBuffer(qScaleHalfBuf_, 2 * CeilDiv(s1BaseSize_, 2) * 128 * sizeof(half));
+            qScaleHalfUB_ = qScaleHalfBuf_.Get<half>();
+            pipe->InitBuffer(kScaleHalfBuf_, 2 * 16 * s2BaseSize_ * sizeof(half));
+            kScaleHalfUB_ = kScaleHalfBuf_.Get<half>();
+        }
         // kScale 铺 0: 尾部未搬运区为垃圾值, 乘入会污染 TopK(0 与无效池语义一致)
         Duplicate(kScaleUB_, 0.0f, 2 * 16 * s2BaseSize_);
         SetFlag<HardEvent::V_MTE2>(KSCALE_S_MTE2_EVENT);
@@ -356,34 +402,126 @@ __aicore__ inline void GenericLightningIndexerServiceVector<LIT>::GetKeyScale(Lo
                                                                               int64_t batchId, int64_t startS2,
                                                                               int64_t getLen, uint32_t dstOffset)
 {
-    AscendC::DataCopyPadExtParams<float> padParams{false, 0, 0, 0};
     AscendC::DataCopyExtParams copyInParams;
     copyInParams.blockCount = 1;
     copyInParams.srcStride = 0;
     copyInParams.dstStride = 0;
     copyInParams.rsv = 0;
-    if constexpr (PAGE_ATTENTION) {
-        // 按池号连续写入 UB 段, GM 源按物理块跳转; 段内偏移用相对本段
-        // 起点的池号, 与块边界解耦
-        int64_t written = 0; // 段内已写池数
-        while (written < getLen) {
-            int64_t absPool = startS2 + written; // batch 内绝对池号
-            int64_t s2BlkId = absPool / kCacheBlockSize_;
-            int64_t s2BlkOffset = absPool % kCacheBlockSize_;
-            int64_t blockId = blockTableGm.GetValue(batchId * maxBlockNumPerBatch_ + s2BlkId);
-            int64_t partLen = Min((int64_t)kCacheBlockSize_ - s2BlkOffset, getLen - written);
-            copyInParams.blockLen = partLen * sizeof(float);
-            SetFlag<HardEvent::S_MTE2>(KSCALE_S_MTE2_EVENT);
-            WaitFlag<HardEvent::S_MTE2>(KSCALE_S_MTE2_EVENT);
-            AscendC::DataCopyPad(kScaleUB[dstOffset + static_cast<uint32_t>(written)],
-                                 kScaleGm[blockId * constInfo_.keyDequantScaleStride0 + s2BlkOffset], copyInParams,
-                                 padParams);
-            written += partLen;
+    if constexpr (LIT::isFp16Scale) {
+        AscendC::DataCopyPadExtParams<half> padParams{false, 0, 0, 0};
+        if constexpr (PAGE_ATTENTION) {
+            int64_t written = 0;
+            while (written < getLen) {
+                int64_t absPool = startS2 + written;
+                int64_t s2BlkId = absPool / kCacheBlockSize_;
+                int64_t s2BlkOffset = absPool % kCacheBlockSize_;
+                int64_t blockId = blockTableGm.GetValue(batchId * maxBlockNumPerBatch_ + s2BlkId);
+                int64_t partLen = Min((int64_t)kCacheBlockSize_ - s2BlkOffset, getLen - written);
+                copyInParams.blockLen = partLen * sizeof(half);
+                SetFlag<HardEvent::S_MTE2>(KSCALE_S_MTE2_EVENT);
+                WaitFlag<HardEvent::S_MTE2>(KSCALE_S_MTE2_EVENT);
+                AscendC::DataCopyPad(kScaleHalfUB_[dstOffset + static_cast<uint32_t>(written)],
+                                     kScaleGmFp16[blockId * constInfo_.keyDequantScaleStride0 + s2BlkOffset],
+                                     copyInParams, padParams);
+                written += partLen;
+            }
+        } else {
+            copyInParams.blockLen = getLen * sizeof(half);
+            AscendC::DataCopyPad(kScaleHalfUB_[dstOffset], kScaleGmFp16[keyScaleGmOffset], copyInParams, padParams);
         }
+        event_t ev = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
+        SetFlag<HardEvent::MTE2_V>(ev);
+        WaitFlag<HardEvent::MTE2_V>(ev);
+        Cast(kScaleUB[dstOffset], kScaleHalfUB_[dstOffset], RoundMode::CAST_NONE, static_cast<uint32_t>(getLen));
+        PipeBarrier<PIPE_V>();
     } else {
-        copyInParams.blockLen = getLen * sizeof(float);
-        AscendC::DataCopyPad(kScaleUB[dstOffset], kScaleGm[keyScaleGmOffset], copyInParams, padParams);
+        AscendC::DataCopyPadExtParams<float> padParams{false, 0, 0, 0};
+        if constexpr (PAGE_ATTENTION) {
+            int64_t written = 0;
+            while (written < getLen) {
+                int64_t absPool = startS2 + written;
+                int64_t s2BlkId = absPool / kCacheBlockSize_;
+                int64_t s2BlkOffset = absPool % kCacheBlockSize_;
+                int64_t blockId = blockTableGm.GetValue(batchId * maxBlockNumPerBatch_ + s2BlkId);
+                int64_t partLen = Min((int64_t)kCacheBlockSize_ - s2BlkOffset, getLen - written);
+                copyInParams.blockLen = partLen * sizeof(float);
+                SetFlag<HardEvent::S_MTE2>(KSCALE_S_MTE2_EVENT);
+                WaitFlag<HardEvent::S_MTE2>(KSCALE_S_MTE2_EVENT);
+                AscendC::DataCopyPad(kScaleUB[dstOffset + static_cast<uint32_t>(written)],
+                                     kScaleGm[blockId * constInfo_.keyDequantScaleStride0 + s2BlkOffset], copyInParams,
+                                     padParams);
+                written += partLen;
+            }
+        } else {
+            copyInParams.blockLen = getLen * sizeof(float);
+            AscendC::DataCopyPad(kScaleUB[dstOffset], kScaleGm[keyScaleGmOffset], copyInParams, padParams);
+        }
     }
+}
+
+template <typename LIT>
+__aicore__ inline void GenericLightningIndexerServiceVector<LIT>::CastKeyTile(const GliCommon::RunInfo &info)
+{
+    if constexpr (!LIT::isMixedInt8Key) {
+        return;
+    }
+    const uint32_t s2Real = info.actualSingleProcessSInnerSize;
+    const uint32_t headDim = constInfo_.headDim;
+    LocalTensor<int8_t> ubI8 = resMm1UB_.template ReinterpretCast<int8_t>();
+    const uint32_t chunkS2 = static_cast<uint32_t>(s2BaseSize_);
+    for (uint32_t s2Off = 0; s2Off < s2Real; s2Off += chunkS2) {
+        uint32_t rows = (s2Off + chunkS2 > s2Real) ? (s2Real - s2Off) : chunkS2;
+        uint32_t nElem = rows * headDim;
+        uint32_t i8Align = GliCommon::Align(nElem, 32U);
+        LocalTensor<half> ubFp =
+            resMm1UB_.template ReinterpretCast<half>()[i8Align / static_cast<uint32_t>(sizeof(half))];
+
+        AscendC::DataCopyExtParams copyIn;
+        copyIn.blockCount = 1;
+        copyIn.srcStride = 0;
+        copyIn.dstStride = 0;
+        copyIn.rsv = 0;
+        AscendC::DataCopyPadExtParams<int8_t> pad{false, 0, 0, 0};
+        if constexpr (PAGE_ATTENTION) {
+            uint32_t written = 0;
+            int64_t startS2 = static_cast<int64_t>(info.s2Idx) * s2BaseSize_ + s2Off;
+            while (written < rows) {
+                int64_t absS2 = startS2 + written;
+                int64_t s2BlkId = absS2 / kCacheBlockSize_;
+                int64_t s2BlkOffset = absS2 % kCacheBlockSize_;
+                int64_t phys = blockTableGm.GetValue(info.bIdx * maxBlockNumPerBatch_ + s2BlkId);
+                uint32_t part = static_cast<uint32_t>(
+                    Min(static_cast<int64_t>(kCacheBlockSize_ - s2BlkOffset), static_cast<int64_t>(rows - written)));
+                copyIn.blockLen = part * headDim * sizeof(int8_t);
+                SetFlag<HardEvent::S_MTE2>(KSCALE_S_MTE2_EVENT);
+                WaitFlag<HardEvent::S_MTE2>(KSCALE_S_MTE2_EVENT);
+                AscendC::DataCopyPad(ubI8[written * headDim],
+                                     keyI8Gm_[phys * constInfo_.keyStride0 + s2BlkOffset * headDim], copyIn, pad);
+                written += part;
+            }
+        } else {
+            copyIn.blockLen = nElem * sizeof(int8_t);
+            AscendC::DataCopyPad(ubI8, keyI8Gm_[info.tensorKeyOffset + s2Off * headDim], copyIn, pad);
+        }
+        event_t evIn = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
+        SetFlag<HardEvent::MTE2_V>(evIn);
+        WaitFlag<HardEvent::MTE2_V>(evIn);
+        Cast(ubFp, ubI8, RoundMode::CAST_NONE, nElem);
+        PipeBarrier<PIPE_V>();
+        event_t evOut = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
+        SetFlag<HardEvent::V_MTE3>(evOut);
+        WaitFlag<HardEvent::V_MTE3>(evOut);
+        AscendC::DataCopyExtParams copyOut;
+        copyOut.blockCount = 1;
+        copyOut.blockLen = nElem * sizeof(half);
+        copyOut.srcStride = 0;
+        copyOut.dstStride = 0;
+        copyOut.rsv = 0;
+        AscendC::DataCopyPad(keyCastGm_[s2Off * headDim], ubFp, copyOut);
+    }
+    event_t evDone = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
+    SetFlag<HardEvent::MTE3_V>(evDone);
+    WaitFlag<HardEvent::MTE3_V>(evDone);
 }
 
 template <typename LIT>
@@ -616,6 +754,14 @@ __aicore__ inline void GenericLightningIndexerServiceVector<LIT>::ProcessVec1(co
     }
     WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + pingpong);
 
+    if constexpr (LIT::isInt8Mmad) {
+        uint32_t mmBase = pingpong * CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_;
+        uint32_t nCast = static_cast<uint32_t>(curAivS1ProcNum * gSize_ * s2BaseSize_);
+        LocalTensor<int32_t> mmI32 = resMm1UB_.template ReinterpretCast<int32_t>();
+        Cast(resMm1UB_[mmBase], mmI32[mmBase], RoundMode::CAST_NONE, nCast);
+        PipeBarrier<PIPE_V>();
+    }
+
     if constexpr (LIT::keepHeads) {
         // MSA: 保留 [S1, N1, S2] 分数，不做 ReLU / head 规约。resMm1 已是 [s1, G, s2Base]。
         SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + pingpong);
@@ -624,6 +770,32 @@ __aicore__ inline void GenericLightningIndexerServiceVector<LIT>::ProcessVec1(co
         uint32_t mmBase = pingpong * CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_;
         if (constInfo_.qkScale != 1.0f) {
             Muls(resMm1UB_[mmBase], resMm1UB_[mmBase], constInfo_.qkScale, nElem);
+            PipeBarrier<PIPE_V>();
+        }
+        if constexpr (LIT::isFp8PerToken) {
+            if ((info.s2Idx - info.s2Start) % 16 == 0) {
+                uint32_t kScalePingpong = (kScaleLoop_ % 2);
+                uint32_t kScaleBlkOff = ((info.s2Idx - info.s2Start) % 16) * s2BaseSize_;
+                uint32_t getLen = 16 * s2BaseSize_ > (info.actS2Size - info.s2Idx * s2BaseSize_) ?
+                                      (info.actS2Size - info.s2Idx * s2BaseSize_) :
+                                      16 * s2BaseSize_;
+                uint32_t capacity = 16 * s2BaseSize_ - kScaleBlkOff;
+                if (getLen > capacity) {
+                    getLen = capacity;
+                }
+                GetKeyScale(kScaleUB_[kScalePingpong * 16 * s2BaseSize_], info.tensorKeyScaleOffset, info.bIdx,
+                            curS2Idx, getLen, kScaleBlkOff);
+                kScaleLoop_++;
+            }
+            uint32_t kScalePingpong = ((kScaleLoop_ - 1) % 2);
+            uint32_t kScaleBlkOff = ((info.s2Idx - info.s2Start) % 16) * s2BaseSize_;
+            for (int64_t s1IdxTmp = 0; s1IdxTmp < curAivS1ProcNum; ++s1IdxTmp) {
+                for (int64_t h = 0; h < static_cast<int64_t>(gSize_); ++h) {
+                    uint32_t off = mmBase + static_cast<uint32_t>((s1IdxTmp * gSize_ + h) * s2BaseSize_);
+                    Mul(resMm1UB_[off], resMm1UB_[off], kScaleUB_[kScalePingpong * 16 * s2BaseSize_ + kScaleBlkOff],
+                        s2BaseSize_);
+                }
+            }
             PipeBarrier<PIPE_V>();
         }
         SetFlag<HardEvent::V_MTE3>(VEC1_V_MTE3_EVENT + pingpong);
@@ -661,16 +833,25 @@ __aicore__ inline void GenericLightningIndexerServiceVector<LIT>::ProcessVec1(co
     }
 
     if constexpr (LIT::isFp8PerToken) {
-        // mode=0: q_descale 与 weights 同 pattern 同 GM 偏移(shape 同构),
-        // dst 行距 128 元素(512B bank 对齐)
-        DataCopyPadExtParams<float> padQScaleParams{true, 0, 0, 0};
-        DataCopyExtParams qScaleDataCopyExtParams;
-        qScaleDataCopyExtParams.blockCount = curAivS1ProcNum;
-        qScaleDataCopyExtParams.blockLen = gSize_ * sizeof(float);
-        qScaleDataCopyExtParams.srcStride = 0;
-        qScaleDataCopyExtParams.dstStride = (128 - gSize_) * sizeof(float) / 32;
-        DataCopyPad(qScaleUB_[pingpong * CeilDiv(s1BaseSize_, 2) * 128], qScaleGm[weightGmOffset],
-                    qScaleDataCopyExtParams, padQScaleParams);
+        if constexpr (LIT::isFp16Scale) {
+            DataCopyPadExtParams<half> padQScaleParams{true, 0, 0, 0};
+            DataCopyExtParams qScaleDataCopyExtParams;
+            qScaleDataCopyExtParams.blockCount = curAivS1ProcNum;
+            qScaleDataCopyExtParams.blockLen = gSize_ * sizeof(half);
+            qScaleDataCopyExtParams.srcStride = 0;
+            qScaleDataCopyExtParams.dstStride = (128 - gSize_) * sizeof(half) / 32;
+            DataCopyPad(qScaleHalfUB_[pingpong * CeilDiv(s1BaseSize_, 2) * 128], qScaleGmFp16[weightGmOffset],
+                        qScaleDataCopyExtParams, padQScaleParams);
+        } else {
+            DataCopyPadExtParams<float> padQScaleParams{true, 0, 0, 0};
+            DataCopyExtParams qScaleDataCopyExtParams;
+            qScaleDataCopyExtParams.blockCount = curAivS1ProcNum;
+            qScaleDataCopyExtParams.blockLen = gSize_ * sizeof(float);
+            qScaleDataCopyExtParams.srcStride = 0;
+            qScaleDataCopyExtParams.dstStride = (128 - gSize_) * sizeof(float) / 32;
+            DataCopyPad(qScaleUB_[pingpong * CeilDiv(s1BaseSize_, 2) * 128], qScaleGm[weightGmOffset],
+                        qScaleDataCopyExtParams, padQScaleParams);
+        }
         // k_descale: 每 16 轮 s2BaseSize 乒乓搬运一次((s2Idx-s2Start)%16==0 时刷新),
         // 写入起点 = 乒乓区头 + 本块段偏移, 与读取位置一致
         if ((info.s2Idx - info.s2Start) % 16 == 0) {
@@ -693,6 +874,12 @@ __aicore__ inline void GenericLightningIndexerServiceVector<LIT>::ProcessVec1(co
     SetFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + pingpong);
     WaitFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + pingpong);
     WaitFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + pingpong);
+
+    if constexpr (LIT::isFp8PerToken && LIT::isFp16Scale) {
+        uint64_t qOff = pingpong * CeilDiv(s1BaseSize_, 2) * 128;
+        Cast(qScaleUB_[qOff], qScaleHalfUB_[qOff], RoundMode::CAST_NONE, static_cast<uint32_t>(curAivS1ProcNum * 128));
+        PipeBarrier<PIPE_V>();
+    }
 
     if constexpr (LIT::isFp8PerToken) {
         // mode=0: weight 半精度 -> fp32 cast × qScale 的 SIMD 向量预乘落 UB,
@@ -1064,7 +1251,7 @@ __aicore__ inline void GenericLightningIndexerServiceVector<LIT>::ProcessMaxpool
 
     int32_t sl = 0;
     if (hasStartLoc_) {
-        sl = startLocGm.GetValue(info.bIdx);
+        sl = startLocI64_ ? static_cast<int32_t>(startLocGmI64.GetValue(info.bIdx)) : startLocGm.GetValue(info.bIdx);
     } else if (poolSize_ > 0) {
         sl = static_cast<int32_t>((info.actS1Size - 1) / poolSize_);
     }
@@ -1150,7 +1337,13 @@ __aicore__ inline void GenericLightningIndexerServiceVector<LIT>::ProcessMaxpool
             copyOut.blockLen = nOut * sizeof(float);
             copyOut.srcStride = 0;
             copyOut.dstStride = 0;
-            uint64_t dst = info.valueOutOffset + (static_cast<uint64_t>(row) * gSize_ + h) * nOut;
+            uint64_t dst = 0;
+            if (constInfo_.msaScoreNT != 0) {
+                uint64_t tIdx = info.valueOutOffset + static_cast<uint64_t>(row);
+                dst = static_cast<uint64_t>(h) * constInfo_.qSeqSize * nOut + tIdx * nOut;
+            } else {
+                dst = info.valueOutOffset + (static_cast<uint64_t>(row) * gSize_ + h) * nOut;
+            }
             DataCopyPad(valueOutGm[dst], valueOutLocal_, copyOut);
             event_t ev3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
             SetFlag<HardEvent::MTE3_V>(ev3);

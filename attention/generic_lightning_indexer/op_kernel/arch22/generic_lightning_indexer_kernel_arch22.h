@@ -17,6 +17,7 @@
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
 #include "../generic_lightning_indexer_common.h"
+#include "../generic_lightning_indexer_tiling_data.h"
 #include "generic_lightning_indexer_service_vector_arch22.h"
 #include "generic_lightning_indexer_service_cube_arch22.h"
 
@@ -119,9 +120,14 @@ protected:
     GlobalTensor<int32_t> blockTableGm;
 
     GlobalTensor<int32_t> actualSeqLengthsGmQ;
+    GlobalTensor<int64_t> actualSeqLengthsGmQI64;
     GlobalTensor<int32_t> actualSeqLengthsGm;
+    GlobalTensor<int64_t> actualSeqLengthsGmI64;
     GlobalTensor<int32_t> poolTailKGm_;
+    GlobalTensor<int64_t> poolTailKGmI64_;
     bool hasPoolTailK_ = false;
+    bool seqQI64_ = false;
+    bool seqKI64_ = false;
     // workspace
     GlobalTensor<MM1_OUT_T> mm1ResGm;  // 存放S
     GlobalTensor<float> vec1ResGm;     // 存放TopK计算中间结果
@@ -140,7 +146,8 @@ protected:
     // ================================Init functions==================================
     __aicore__ inline void InitTilingData(const GenericLightningIndexerTilingData *__restrict tilingData);
     __aicore__ inline void InitBuffers();
-    __aicore__ inline void InitActualSeqLen(__gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths);
+    __aicore__ inline void InitActualSeqLen(__gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
+                                            bool qI64, bool kI64);
     // ================================Split Core================================
     __aicore__ inline void SplitCore(uint32_t curCoreIdx, uint32_t &coreNum, GliCommon::SplitCoreInfo &info);
     __aicore__ inline uint32_t GetS2BaseBlockNumOnMask(uint32_t s1gIdx, uint32_t actS1Size, uint32_t actS2SizeOrig);
@@ -153,8 +160,9 @@ protected:
     // ================================Params Calc=====================================
     __aicore__ inline void CalcGS1LoopParams(uint32_t bN2Idx);
     __aicore__ inline void GetBN2Idx(uint32_t bN2Idx);
-    __aicore__ inline uint32_t GetActualSeqLen(uint32_t bIdx, uint32_t actualLenDims, bool isAccumSeq,
-                                               GlobalTensor<int32_t> &actualSeqLengthsGm, uint32_t defaultSeqLen);
+    __aicore__ inline uint32_t GetActualSeqLen(uint32_t bIdx, uint32_t actualLenDims, bool cuFormat, bool isAccumSeq,
+                                               GlobalTensor<int32_t> &seqI32, GlobalTensor<int64_t> &seqI64,
+                                               bool useI64, uint32_t defaultSeqLen);
     __aicore__ inline void GetS1S2ActualSeqLen(uint32_t bIdx, uint32_t &actS1Size, uint32_t &actS2Size,
                                                uint32_t &actS2SizeOrig);
     __aicore__ inline void CalcS2LoopParams(uint32_t bN2LoopIdx, uint32_t gS1LoopIdx);
@@ -194,7 +202,12 @@ __aicore__ inline void GenericLightningIndexerKernel<LIT>::InitTilingData(
     constInfo.wsOffScore = tilingData->wsOffScore;
     constInfo.wsOffLdScore = tilingData->wsOffLdScore;
     constInfo.wsOffLdIdx = tilingData->wsOffLdIdx;
+    constInfo.wsOffKCast = tilingData->wsOffKCast;
     constInfo.qkScale = tilingData->qkScale;
+    constInfo.seqQCuFormat = tilingData->seqQCuFormat;
+    constInfo.seqKCuFormat = tilingData->seqKCuFormat;
+    constInfo.seqDtypeFlags = tilingData->seqDtypeFlags;
+    constInfo.msaScoreNT = tilingData->msaScoreNT;
 
     constInfo.outputLayout = LAYOUT_T; // 输出和输入形状一致
     if (LAYOUT_T == GliLayout::TND) {
@@ -228,34 +241,41 @@ __aicore__ inline void GenericLightningIndexerKernel<LIT>::InitBuffers()
 
 template <typename LIT>
 __aicore__ inline void GenericLightningIndexerKernel<LIT>::InitActualSeqLen(__gm__ uint8_t *actualSeqLengthsQ,
-                                                                            __gm__ uint8_t *actualSeqLengths)
+                                                                            __gm__ uint8_t *actualSeqLengths, bool qI64,
+                                                                            bool kI64)
 {
     if (actualSeqLengthsQ == nullptr) {
         constInfo.actualLenQDims = 0;
     } else {
-        constInfo.actualLenQDims = constInfo.batchSize;
-        actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ int32_t *)actualSeqLengthsQ, constInfo.actualLenQDims);
+        constInfo.actualLenQDims = constInfo.batchSize + constInfo.seqQCuFormat;
+        seqQI64_ = qI64;
+        if (qI64) {
+            actualSeqLengthsGmQI64.SetGlobalBuffer((__gm__ int64_t *)actualSeqLengthsQ, constInfo.actualLenQDims);
+        } else {
+            actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ int32_t *)actualSeqLengthsQ, constInfo.actualLenQDims);
+        }
     }
     if (actualSeqLengths == nullptr) {
         constInfo.actualLenDims = 0;
     } else {
-        constInfo.actualLenDims = constInfo.batchSize;
-        actualSeqLengthsGm.SetGlobalBuffer((__gm__ int32_t *)actualSeqLengths, constInfo.actualLenDims);
+        constInfo.actualLenDims = constInfo.batchSize + constInfo.seqKCuFormat;
+        seqKI64_ = kI64;
+        if (kI64) {
+            actualSeqLengthsGmI64.SetGlobalBuffer((__gm__ int64_t *)actualSeqLengths, constInfo.actualLenDims);
+        } else {
+            actualSeqLengthsGm.SetGlobalBuffer((__gm__ int32_t *)actualSeqLengths, constInfo.actualLenDims);
+        }
     }
 }
 
 template <typename LIT>
-__aicore__ inline uint32_t GenericLightningIndexerKernel<LIT>::GetActualSeqLen(
-    uint32_t bIdx, uint32_t actualLenDims, bool isAccumSeq, GlobalTensor<int32_t> &actualSeqLengthsGm,
-    uint32_t defaultSeqLen)
+__aicore__ inline uint32_t GenericLightningIndexerKernel<LIT>::GetActualSeqLen(uint32_t bIdx, uint32_t actualLenDims,
+                                                                               bool cuFormat, bool isAccumSeq,
+                                                                               GlobalTensor<int32_t> &seqI32,
+                                                                               GlobalTensor<int64_t> &seqI64,
+                                                                               bool useI64, uint32_t defaultSeqLen)
 {
-    if (actualLenDims == 0) {
-        return defaultSeqLen;
-    } else if (isAccumSeq && bIdx > 0) {
-        return static_cast<uint32_t>(actualSeqLengthsGm.GetValue(bIdx) - actualSeqLengthsGm.GetValue(bIdx - 1));
-    } else {
-        return static_cast<uint32_t>(actualSeqLengthsGm.GetValue(bIdx));
-    }
+    return DecodeActualSeq(bIdx, actualLenDims, cuFormat, isAccumSeq, seqI32, seqI64, useI64, defaultSeqLen);
 }
 
 template <typename LIT>
@@ -263,11 +283,18 @@ __aicore__ inline void GenericLightningIndexerKernel<LIT>::GetS1S2ActualSeqLen(u
                                                                                uint32_t &actS2Size,
                                                                                uint32_t &actS2SizeOrig)
 {
-    actS1Size = GetActualSeqLen(bIdx, constInfo.actualLenQDims, constInfo.isAccumSeqS1, actualSeqLengthsGmQ,
-                                constInfo.qSeqSize);
+    const bool qI64 = seqQI64_;
+    const bool kI64 = seqKI64_;
+    const bool residualI64 = (constInfo.seqDtypeFlags & GLI_RESIDUAL_I64) != 0;
+    actS1Size = GetActualSeqLen(bIdx, constInfo.actualLenQDims, constInfo.seqQCuFormat != 0, constInfo.isAccumSeqS1,
+                                actualSeqLengthsGmQ, actualSeqLengthsGmQI64, qI64, constInfo.qSeqSize);
     uint32_t actS2Pool =
-        GetActualSeqLen(bIdx, constInfo.actualLenDims, constInfo.isAccumSeqS2, actualSeqLengthsGm, constInfo.kSeqSize);
-    uint32_t tailK = hasPoolTailK_ ? static_cast<uint32_t>(poolTailKGm_.GetValue(bIdx)) : 0;
+        GetActualSeqLen(bIdx, constInfo.actualLenDims, constInfo.seqKCuFormat != 0, constInfo.isAccumSeqS2,
+                        actualSeqLengthsGm, actualSeqLengthsGmI64, kI64, constInfo.kSeqSize);
+    uint32_t tailK = 0;
+    if (hasPoolTailK_) {
+        tailK = static_cast<uint32_t>(LoadSeqValue(poolTailKGm_, poolTailKGmI64_, bIdx, residualI64));
+    }
     actS2SizeOrig = actS2Pool * constInfo.poolSize + tailK;
     actS2Size = actS2SizeOrig / constInfo.poolSize;
 }
@@ -481,9 +508,17 @@ __aicore__ inline void GenericLightningIndexerKernel<LIT>::Init(
     InitTilingData(tiling);
     __gm__ uint8_t *actQ = (actualSeqLengthsQ != nullptr) ? actualSeqLengthsQ : sequsedQ;
     __gm__ uint8_t *actK = (actualSeqLengths != nullptr) ? actualSeqLengths : sequsedK;
-    InitActualSeqLen(actQ, actK);
+    const bool qI64 = (actualSeqLengthsQ != nullptr) ? ((constInfo.seqDtypeFlags & GLI_SEQ_Q_I64) != 0) :
+                                                       ((constInfo.seqDtypeFlags & GLI_SEQUSED_Q_I64) != 0);
+    const bool kI64 = (actualSeqLengths != nullptr) ? ((constInfo.seqDtypeFlags & GLI_SEQ_K_I64) != 0) :
+                                                      ((constInfo.seqDtypeFlags & GLI_SEQUSED_K_I64) != 0);
+    InitActualSeqLen(actQ, actK, qI64, kI64);
     if (cmpResidualK != nullptr) {
-        poolTailKGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(cmpResidualK), constInfo.batchSize);
+        if ((constInfo.seqDtypeFlags & GLI_RESIDUAL_I64) != 0) {
+            poolTailKGmI64_.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>(cmpResidualK), constInfo.batchSize);
+        } else {
+            poolTailKGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(cmpResidualK), constInfo.batchSize);
+        }
         hasPoolTailK_ = true;
     }
 
@@ -593,7 +628,10 @@ __aicore__ inline void GenericLightningIndexerKernel<LIT>::CalcRunInfo(uint32_t 
     runInfo.actS2Size = tempLoopInfo.actS2Size;
     runInfo.actS2SizeOrig = tempLoopInfo.actS2SizeOrig;
     // 当前 batch 的尾部 token 数(ExpandAndAppendIndices 尾块追加与 LD 参数均依赖)
-    runInfo.poolTailK = hasPoolTailK_ ? static_cast<int32_t>(poolTailKGm_.GetValue(tempLoopInfo.bIdx)) : 0;
+    runInfo.poolTailK = hasPoolTailK_ ?
+                            static_cast<int32_t>(LoadSeqValue(poolTailKGm_, poolTailKGmI64_, tempLoopInfo.bIdx,
+                                                              (constInfo.seqDtypeFlags & GLI_RESIDUAL_I64) != 0)) :
+                            0;
     // 计算实际基本块size
     runInfo.actMBaseSize = tempLoopInfo.actMBaseSize;
     runInfo.actualSingleProcessSInnerSize = constInfo.s2BaseSize;
@@ -612,15 +650,12 @@ __aicore__ inline void GenericLightningIndexerKernel<LIT>::CalcRunInfo(uint32_t 
     if (runInfo.isFirstS2InnerLoop) {
         uint64_t actualSeqQPrefixSum;
         uint64_t actualSeqKPrefixSum;
-        if constexpr (LAYOUT_T == GliLayout::TND) {
-            actualSeqQPrefixSum =
-                (runInfo.bIdx <= 0) ? 0 : static_cast<uint64_t>(actualSeqLengthsGmQ.GetValue(runInfo.bIdx - 1));
-            actualSeqKPrefixSum =
-                (runInfo.bIdx <= 0) ? 0 : static_cast<uint64_t>(actualSeqLengthsGm.GetValue(runInfo.bIdx - 1));
-        } else { // BSND
-            actualSeqQPrefixSum = (runInfo.bIdx <= 0) ? 0 : runInfo.bIdx * constInfo.qSeqSize;
-            actualSeqKPrefixSum = (runInfo.bIdx <= 0) ? 0 : runInfo.bIdx * constInfo.kSeqSize;
-        }
+        const bool qI64 = seqQI64_;
+        const bool kI64 = seqKI64_;
+        actualSeqQPrefixSum = DecodeSeqPrefix(runInfo.bIdx, LAYOUT_T == GliLayout::TND, constInfo.seqQCuFormat != 0,
+                                              actualSeqLengthsGmQ, actualSeqLengthsGmQI64, qI64, constInfo.qSeqSize);
+        actualSeqKPrefixSum = DecodeSeqPrefix(runInfo.bIdx, K_LAYOUT_T == GliLayout::TND, constInfo.seqKCuFormat != 0,
+                                              actualSeqLengthsGm, actualSeqLengthsGmI64, kI64, constInfo.kSeqSize);
         uint64_t tndBIdxOffset = actualSeqQPrefixSum * constInfo.qHeadNum * constInfo.headDim;
         uint64_t tndKeyBIdxOffset = actualSeqKPrefixSum * constInfo.kHeadNum * constInfo.headDim;
         // B,S1,N1(N2,G),D
