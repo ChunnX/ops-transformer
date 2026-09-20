@@ -280,6 +280,9 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
             AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf);
         }
     }
+    if constexpr (!USE_RMS_MID) {
+        PrefetchGamma1();
+    }
 
     // 可选R3沿完整N*D向量计算，不按head分别归一化。
     if constexpr (USE_RMS_MID) {
@@ -316,6 +319,7 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
             CacheX2Tile(token, tOff, tD, true);
             AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf);
         }
+        PrefetchGamma1();
     }
     FenceMte3ToV();
 
@@ -348,7 +352,7 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
 
     // 第四遍：沿完整D轴计算R7并写最终输出。
     const float invRms1 = ComputeInvRms(sumSq1, invD_);
-    CacheGamma1();
+    WaitGamma1();
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
@@ -360,7 +364,7 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
             SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
             WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
         } else {
-            gamma1 = gamma1[tOff];
+            gamma1 = bufGamma0Fp32_.Get<float>()[tOff];
         }
         ApplyScaleAndGamma(hIn, invRms1, gamma1, tD);
         if (D_ > GAMMA1_CACHE_MAX_D) {

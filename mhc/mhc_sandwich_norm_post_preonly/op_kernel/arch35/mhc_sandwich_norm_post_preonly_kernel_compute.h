@@ -81,18 +81,27 @@ __aicore__ inline void CacheGamma0()
     DataCopyPad(gamma0, gamma0Gm_, params, pad);
 }
 
-/// R7开始前缓存完整gamma1；更大D保持原分块搬运以控制UB上限。
-__aicore__ inline void CacheGamma1()
+/// gamma0缓存结束生命周期后预取完整gamma1，与门控和R6计算重叠。
+__aicore__ inline void PrefetchGamma1()
 {
     if (D_ > GAMMA1_CACHE_MAX_D) {
         return;
     }
-    LocalTensor<float> gamma1 = bufGamma2Fp32_.Get<float>();
+    FenceVToMte2();
+    LocalTensor<float> gamma1 = bufGamma0Fp32_.Get<float>();
     DataCopyExtParams params = {1, 0, 0, 0, 0};
     params.blockLen = D_ * sizeof(float);
     DataCopyPadExtParams<float> pad = {false, 0, 0, 0};
     DataCopyPad(gamma1, gamma1Gm_, params, pad);
     SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+}
+
+/// R7使用gamma1前回收预取事件；更大D仍由R7逐块搬运。
+__aicore__ inline void WaitGamma1()
+{
+    if (D_ > GAMMA1_CACHE_MAX_D) {
+        return;
+    }
     WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
 }
 
