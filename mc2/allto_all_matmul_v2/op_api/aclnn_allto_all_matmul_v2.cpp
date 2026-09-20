@@ -22,6 +22,9 @@
 #include "opdev/op_executor.h"
 #include "mc2_log_compat.h"
 #include "op_host/util/op_const_def.h"
+#include "aclnn_kernels/common/op_error_check.h"
+#include <initializer_list>
+#include "graph/types.h"
 
 #include "aclnnInner_allto_all_matmul_v2.h"
 
@@ -49,6 +52,29 @@ static bool IsTransposeLastTwoDims(const aclTensor *tensor)
         return true;
     }
     return false;
+}
+
+const std::initializer_list<op::DataType> X_DTYPE_SUPPORT_LIST = {
+    op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_FLOAT8_E5M2, op::DataType::DT_FLOAT4_E2M1};
+const std::initializer_list<op::DataType> SCALE_DTYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT8_E8M0};
+
+// CheckDtype: dtype 校验（bitcast 场景校验声明的 dtype，与 op_def 白名单一致）
+aclnnStatus CheckDtype(const aclTensor *x1, const aclTensor *x2, const aclTensor *x1Scale, const aclTensor *x2Scale)
+{
+    OP_CHECK_DTYPE_NOT_SUPPORT(x1, X_DTYPE_SUPPORT_LIST, return ACLNN_ERR_PARAM_INVALID);
+    OP_CHECK_DTYPE_NOT_SUPPORT(x2, X_DTYPE_SUPPORT_LIST, return ACLNN_ERR_PARAM_INVALID);
+    // FP4 要求 x1/x2 同时为 FLOAT4_E2M1（双向拦截）
+    if (x1->GetDataType() == op::DataType::DT_FLOAT4_E2M1 || x2->GetDataType() == op::DataType::DT_FLOAT4_E2M1) {
+        OP_CHECK_DTYPE_NOT_SAME(x1, x2, return ACLNN_ERR_PARAM_INVALID);
+    }
+    // x1Scale/x2Scale 为 OPTIONAL，非空时校验 dtype
+    if (x1Scale != nullptr) {
+        OP_CHECK_DTYPE_NOT_SUPPORT(x1Scale, SCALE_DTYPE_SUPPORT_LIST, return ACLNN_ERR_PARAM_INVALID);
+    }
+    if (x2Scale != nullptr) {
+        OP_CHECK_DTYPE_NOT_SUPPORT(x2Scale, SCALE_DTYPE_SUPPORT_LIST, return ACLNN_ERR_PARAM_INVALID);
+    }
+    return ACLNN_SUCCESS;
 }
 
 static aclTensor *TransX2Tensor(const aclTensor *x2)
@@ -135,19 +161,7 @@ extern "C" aclnnStatus AlltoAllMatmulV2GetWorkspaceSize(
         return ACLNN_ERR_PARAM_INVALID;
     }
 
-    // x1/x2 dtype 校验：仅支持 FP8_E4M3FN/FP8_E5M2/FP4_E2M1，与 op_def DataType 白名单一致。
-    // bitcast 场景（uint8 存 fp4）需在调用侧构造 aclTensor 时声明 FP4，此处校验声明的 dtype。
-    aclDataType x1AclDtype = ACL_DT_UNDEFINED;
-    aclDataType x2AclDtype = ACL_DT_UNDEFINED;
-    (void)aclGetDataType(x1, &x1AclDtype);
-    (void)aclGetDataType(transX2, &x2AclDtype);
-    if ((x1AclDtype != ACL_FLOAT8_E4M3FN && x1AclDtype != ACL_FLOAT8_E5M2 && x1AclDtype != ACL_FLOAT4_E2M1) ||
-        (x2AclDtype != ACL_FLOAT8_E4M3FN && x2AclDtype != ACL_FLOAT8_E5M2 && x2AclDtype != ACL_FLOAT4_E2M1)) {
-        OP_LOGE_WITH_INVALID_INPUT_DTYPE(
-            "AlltoAllMatmulV2", "x1, x2",
-            (std::to_string(static_cast<int64_t>(x1AclDtype)) + "," + std::to_string(static_cast<int64_t>(x2AclDtype)))
-                .c_str(),
-            "FP8_E4M3FN/FP8_E5M2/FP4_E2M1");
+    if (CheckDtype(x1, transX2, x1ScaleOptional, x2ScaleOptional) != ACLNN_SUCCESS) {
         return ACLNN_ERR_PARAM_INVALID;
     }
 
