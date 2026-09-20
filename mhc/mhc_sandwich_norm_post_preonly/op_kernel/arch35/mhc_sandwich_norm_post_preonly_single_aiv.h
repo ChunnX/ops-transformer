@@ -20,12 +20,8 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
                                                                                          const float (&postVals)[N_MAX])
 {
     LoadCachedHOut(tOff, tD);
-    LoadGammaInto(bufGamma0Fp32_.Get<float>(), gamma0Gm_, tOff, tD);
-    SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
-    WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
     LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-    ApplyScaleAndGamma(hOut, invRms0, bufGamma0Fp32_.Get<float>(), tD);
-    FenceVToMte2();
+    ApplyScaleAndGamma(hOut, invRms0, bufGamma0Fp32_.Get<float>()[tOff], tD);
     QuantizeRoundTrip(hOut, tD);
 
     ComputeX2AllHeadsBatched(postVals, (uint64_t)token * N_ * D_ + tOff, tD);
@@ -244,6 +240,7 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
     float dotHalf[2][N_MAX] = {{0.0f, 0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 0.0f}};
     float midSqHalf[2] = {0.0f, 0.0f};
     CacheHOut((uint64_t)token * D_);
+    CacheGamma0();
     LoadTokenWeights(token, postVals);
 
     // 第一遍：沿完整D轴计算R1。

@@ -71,6 +71,16 @@ __aicore__ inline void CacheHOut(uint64_t gmOffset)
     DataCopy(hOutCache, hOutGm_[gmOffset], D_);
 }
 
+/// 每个token一次搬运完整gamma0，与h_out和权重共用初始全流水等待。
+__aicore__ inline void CacheGamma0()
+{
+    LocalTensor<float> gamma0 = bufGamma0Fp32_.Get<float>();
+    DataCopyExtParams params = {1, 0, 0, 0, 0};
+    params.blockLen = D_ * sizeof(float);
+    DataCopyPadExtParams<float> pad = {false, 0, 0, 0};
+    DataCopyPad(gamma0, gamma0Gm_, params, pad);
+}
+
 /// 第二遍R1/R2直接从x2缓存恢复h_out，避免再次从GM读取。
 __aicore__ inline void LoadCachedHOut(uint32_t tOff, uint32_t tD)
 {

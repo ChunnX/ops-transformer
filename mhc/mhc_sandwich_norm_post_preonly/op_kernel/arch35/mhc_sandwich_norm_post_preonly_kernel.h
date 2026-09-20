@@ -104,10 +104,10 @@ public:
 
         // UB空间分配
         pipe_.InitBuffer(bufHOutBf16_, BUFFER_NUM_ONE, dimTile_ * sizeof(T));
-        pipe_.InitBuffer(bufGamma0Fp32_, dimTile_ * sizeof(float));
+        pipe_.InitBuffer(bufGamma0Fp32_, D_ * sizeof(float));
         pipe_.InitBuffer(bufX2Fp32_, N_ * dimTile_ * sizeof(float));
-        // dimTile=2560时其余固定缓存共174432B；D=7168的完整低精度x2为57344B，
-        // 合计231776B，小于A5的256KiB UB上限。
+        // 完整gamma0复用初始同步；D=7168时总UB为250208B，
+        // 小于A5的256KiB上限并保留11936B余量。
         pipe_.InitBuffer(bufX2Cache_, K_ * sizeof(T));
         pipe_.InitBuffer(bufResidualBf16_, 1, N_ * dimTile_ * sizeof(T));
         // 前四行先保存residual，之后复用为R4/R5的五行归约输入；第五行在前半程保存h_out，
