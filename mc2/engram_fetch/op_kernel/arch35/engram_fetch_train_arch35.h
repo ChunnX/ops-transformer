@@ -1288,8 +1288,8 @@ __aicore__ inline void EngramFetchTrainArch35::LocalReadTablePerTokenPipe(int64_
     LocalTensor<uint32_t> tokenIdxUb = tokenIdxInRankBuf_.Get<uint32_t>();
     LocalTensor<uint64_t> dstAddrUb = positionsBuf_.Get<uint64_t>();
     uint32_t sfBytesU32 = static_cast<uint32_t>(sfBytes_);
-    uint32_t rowStrideU32 = static_cast<uint32_t>(rowStride_);
-    uint32_t rowsPerBuf = (rowStrideU32 > 0U) ? (tileBytes_ / rowStrideU32) : (tileBytes_ / hiddenBytesU32);
+    uint32_t sfUbStride = (sfBytesU32 + UB_ALIGN - 1U) / UB_ALIGN * UB_ALIGN;
+    uint32_t rowsPerBuf = tileBytes_ / (hiddenBytesU32 + sfUbStride);
     uint32_t depth = (rowsPerBuf < ENGRAM_LOCAL_PIPE_DEPTH) ? rowsPerBuf : ENGRAM_LOCAL_PIPE_DEPTH;
 
     int64_t chunkStart = 0;
@@ -1317,7 +1317,7 @@ __aicore__ inline void EngramFetchTrainArch35::LocalReadTablePerTokenPipe(int64_
                 DataCopyExtParams sfInParams{1U, sfBytesU32, 0U, 0U, 0U};
                 DataCopyPadExtParams<uint8_t> sfInPad{false, 0, 0, 0};
                 LocalTensor<uint8_t> sfInUb = slotBase.ReinterpretCast<uint8_t>();
-                DataCopyPad(sfInUb[depth * hiddenBytesU32 + n * sfBytesU32], sfSrcGm, sfInParams, sfInPad);
+                DataCopyPad(sfInUb[depth * hiddenBytesU32 + n * sfUbStride], sfSrcGm, sfInParams, sfInPad);
             }
             n++;
             jj++;
@@ -1337,7 +1337,7 @@ __aicore__ inline void EngramFetchTrainArch35::LocalReadTablePerTokenPipe(int64_
                 sfDstGm.SetGlobalBuffer((__gm__ uint8_t *)(fetchedSfGM_ + tokenIdx * sfBytes_));
                 LocalTensor<uint8_t> sfOutUb = slotBase.ReinterpretCast<uint8_t>();
                 DataCopyParams sfOutParams{1U, static_cast<uint16_t>(sfBytesU32), 0U, 0U};
-                DataCopyPad(sfDstGm, sfOutUb[depth * hiddenBytesU32 + m * sfBytesU32], sfOutParams);
+                DataCopyPad(sfDstGm, sfOutUb[depth * hiddenBytesU32 + m * sfUbStride], sfOutParams);
             }
         }
         relayQue_.FreeTensor<uint8_t>(slotBase);
