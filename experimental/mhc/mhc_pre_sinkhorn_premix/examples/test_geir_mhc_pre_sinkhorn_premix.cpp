@@ -160,13 +160,12 @@ void SetOutputDesc(ge::op::MhcPreSinkhornPremix &op, DataType xDtype, bool needB
 
     if (needBackward) {
         op.update_output_desc_hPre(TensorDesc(ge::Shape({BATCH, SEQ_LEN, HC_MULT}), FORMAT_ND, ge::DT_FLOAT));
-        op.update_output_desc_hcBeforeNorm(TensorDesc(ge::Shape({BATCH, SEQ_LEN, HC_MIX}), FORMAT_ND,
-                                                      ge::DT_FLOAT));
+        op.update_output_desc_hcBeforeNorm(TensorDesc(ge::Shape({BATCH, SEQ_LEN, HC_MIX}), FORMAT_ND, ge::DT_FLOAT));
         op.update_output_desc_invRms(TensorDesc(ge::Shape({BATCH, SEQ_LEN, 1}), FORMAT_ND, ge::DT_FLOAT));
-        op.update_output_desc_sumOut(TensorDesc(ge::Shape({NUM_ITERS * 2, BATCH, SEQ_LEN, HC_MULT}), FORMAT_ND,
-                                               ge::DT_FLOAT));
-        op.update_output_desc_normOut(TensorDesc(ge::Shape({NUM_ITERS * 2, BATCH, SEQ_LEN, HC_MULT, HC_MULT}),
-                                                FORMAT_ND, ge::DT_FLOAT));
+        op.update_output_desc_sumOut(
+            TensorDesc(ge::Shape({NUM_ITERS * 2, BATCH, SEQ_LEN, HC_MULT}), FORMAT_ND, ge::DT_FLOAT));
+        op.update_output_desc_normOut(
+            TensorDesc(ge::Shape({NUM_ITERS * 2, BATCH, SEQ_LEN, HC_MULT, HC_MULT}), FORMAT_ND, ge::DT_FLOAT));
     } else {
         op.update_output_desc_hPre(TensorDesc(ge::Shape({0}), FORMAT_ND, ge::DT_FLOAT));
         op.update_output_desc_hcBeforeNorm(TensorDesc(ge::Shape({0}), FORMAT_ND, ge::DT_FLOAT));
@@ -189,10 +188,12 @@ int CreateGraph(std::vector<Tensor> &input_tensors, std::vector<Operator> &input
                      mhc_pre_sinkhorn_premix) != SUCCESS) {
         return FAILED;
     }
-    if (AddDataInput("alpha", 2, ge::DT_FLOAT, {3}, graph, input_tensors, input_ops, mhc_pre_sinkhorn_premix) != SUCCESS) {
+    if (AddDataInput("alpha", 2, ge::DT_FLOAT, {3}, graph, input_tensors, input_ops, mhc_pre_sinkhorn_premix) !=
+        SUCCESS) {
         return FAILED;
     }
-    if (AddDataInput("bias", 3, ge::DT_FLOAT, {HC_MIX}, graph, input_tensors, input_ops, mhc_pre_sinkhorn_premix) != SUCCESS) {
+    if (AddDataInput("bias", 3, ge::DT_FLOAT, {HC_MIX}, graph, input_tensors, input_ops, mhc_pre_sinkhorn_premix) !=
+        SUCCESS) {
         return FAILED;
     }
 
@@ -214,8 +215,8 @@ int RunCase(Session &session, uint32_t graphId, const TestCase &testCase)
     std::vector<Operator> input_ops;
     std::vector<Operator> output_ops;
 
-    printf("%s - INFO - [XIR]: Run case %s, x dtype: %d, need_backward: %d\n",
-           GetTime().c_str(), testCase.name, static_cast<int>(testCase.xDtype), testCase.needBackward);
+    printf("%s - INFO - [XIR]: Run case %s, x dtype: %d, need_backward: %d\n", GetTime().c_str(), testCase.name,
+           static_cast<int>(testCase.xDtype), testCase.needBackward);
     Status ret = CreateGraph(input_tensors, input_ops, output_ops, graph, testCase);
     if (ret != SUCCESS) {
         return FAILED;
@@ -240,8 +241,8 @@ int RunCase(Session &session, uint32_t graphId, const TestCase &testCase)
         return FAILED;
     }
 
-    printf("%s - INFO - [XIR]: Run graph success for case %s, output num: %zu\n",
-           GetTime().c_str(), testCase.name, output_tensors.size());
+    printf("%s - INFO - [XIR]: Run graph success for case %s, output num: %zu\n", GetTime().c_str(), testCase.name,
+           output_tensors.size());
     if (output_tensors.size() != 8) {
         return FAILED;
     }

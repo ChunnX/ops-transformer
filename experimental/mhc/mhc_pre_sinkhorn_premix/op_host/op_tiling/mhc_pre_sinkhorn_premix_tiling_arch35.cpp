@@ -119,9 +119,9 @@ int64_t CalcUbBufferSize(const UbBufferConfig &config, int64_t rowFactor, int64_
     const int64_t hcMixAlign = RoundUp(config.hcMix, floatAlign);
     const int64_t dAlign = RoundUp(dFactor, CUBE_D_ALIGN);
 
-    int64_t totalSize = rowFactor * hcMixAlign * sizeof(float);                   // mixes
+    int64_t totalSize = rowFactor * hcMixAlign * sizeof(float); // mixes
     if (config.hasPremix) {
-        totalSize += rowFactor * hcMixAlign * sizeof(float);                      // premix
+        totalSize += rowFactor * hcMixAlign * sizeof(float); // premix
     }
     totalSize += rowFactor * config.hcMult * dAlign * BF16_BYTES * DOUBLE_BUFFER; // x
     totalSize += rowFactor * dAlign * BF16_BYTES * DOUBLE_BUFFER;                 // y
@@ -219,8 +219,8 @@ bool CalcRowAndDTiling(int64_t d, int64_t maxRowFactor, const FitsInUb &fitsInUb
     return result.rowFactor > 0 && result.dFactor > 0;
 }
 
-void PrintFinalTilingData(gert::TilingContext *context, MhcPreSinkhornPremixRegbaseTilingData &tilingData, uint64_t tilingKey,
-                          uint64_t blockDim, size_t workspaceSize)
+void PrintFinalTilingData(gert::TilingContext *context, MhcPreSinkhornPremixRegbaseTilingData &tilingData,
+                          uint64_t tilingKey, uint64_t blockDim, size_t workspaceSize)
 {
     OP_LOGD(context->GetNodeName(),
             "MhcPreSinkhornPremix regbase final tiling summary: tilingKey=%lu, blockDim=%lu, workspaceSize=%zu, "
@@ -363,10 +363,10 @@ ge::graphStatus MhcPreSinkhornPremixTilingRegbase::GetShapeAttrsInfoInner()
     if (hasPremix_) {
         auto &premixStorageShape = shapePremix->GetStorageShape();
         size_t premixDimNum = premixStorageShape.GetDimNum();
-        OP_CHECK_IF(premixDimNum != xDimNum - 1,
-                    OP_LOGE(context_->GetNodeName(), "premix dim num should be %zu, but is %zu", xDimNum - 1,
-                            premixDimNum),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            premixDimNum != xDimNum - 1,
+            OP_LOGE(context_->GetNodeName(), "premix dim num should be %zu, but is %zu", xDimNum - 1, premixDimNum),
+            return ge::GRAPH_FAILED);
         OP_CHECK_IF(premixStorageShape.GetDim(premixDimNum - 1) != hcMult_,
                     OP_LOGE(context_->GetNodeName(), "premix last dim should be %ld, but is %ld", hcMult_,
                             premixStorageShape.GetDim(premixDimNum - 1)),

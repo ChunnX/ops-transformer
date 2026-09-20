@@ -58,15 +58,14 @@ constexpr int64_t DEFAULT_ITER_TIMES = 20;
 constexpr int64_t BS_SPLIT_THRESHOLD = 128;
 constexpr int64_t MAX_BS_PER_LOOP = 32;
 constexpr int64_t MAX_REDUCE_SIZE = 256;
-}
+} // namespace
 
 ge::graphStatus MhcPreSinkhornPremixTiling::GetPlatformInfo()
 {
     auto platformInfo = context_->GetPlatformInfo();
     if (platformInfo == nullptr) {
         auto compileInfoPtr = context_->GetCompileInfo<MhcPreSinkhornPremixCompileInfo>();
-        OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_, "compile info is null"),
-                      return ge::GRAPH_FAILED);
+        OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_, "compile info is null"), return ge::GRAPH_FAILED);
         aivCoreNum_ = compileInfoPtr->coreNum;
         aicCoreNum_ = compileInfoPtr->aicCoreNum;
         ubSize_ = compileInfoPtr->ubSize;
@@ -80,16 +79,14 @@ ge::graphStatus MhcPreSinkhornPremixTiling::GetPlatformInfo()
         ubSize_ = ubSizePlatForm;
         socVersion_ = ascendcPlatform.GetSocVersion();
     }
-    OP_CHECK_IF(aicCoreNum_ == 0, OP_LOGE(context_, "aicCoreNum is 0, cannot do tiling"),
-                  return ge::GRAPH_FAILED);
-    OP_CHECK_IF(aivCoreNum_ == 0, OP_LOGE(context_, "aivCoreNum_ is 0, cannot do tiling"),
-                  return ge::GRAPH_FAILED);
+    OP_CHECK_IF(aicCoreNum_ == 0, OP_LOGE(context_, "aicCoreNum is 0, cannot do tiling"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(aivCoreNum_ == 0, OP_LOGE(context_, "aivCoreNum_ is 0, cannot do tiling"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus MhcPreSinkhornPremixTiling::GetAttr()
 {
-    auto* attrs = context_->GetAttrs();
+    auto *attrs = context_->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
 
     auto hcMultAttr = attrs->GetAttrPointer<int64_t>(HC_MULT_ATTR_IDX);
@@ -129,23 +126,21 @@ ge::graphStatus MhcPreSinkhornPremixTiling::GetShapeAttrsInfoInner()
     auto shapePhi = context_->GetInputShape(1);
     hcMix_ = shapePhi->GetStorageShape().GetDim(0);
     OP_CHECK_IF(shapePhi->GetStorageShape().GetDim(1) != d_ * hcMult_,
-                    OP_LOGE(context_->GetNodeName(),
-                             "Phi dim 1 should be equal with d_ * hcMult_  %ld, but is %ld", d_ * hcMult_, shapePhi->GetStorageShape().GetDim(1)),
-                    return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "Phi dim 1 should be equal with d_ * hcMult_  %ld, but is %ld",
+                        d_ * hcMult_, shapePhi->GetStorageShape().GetDim(1)),
+                return ge::GRAPH_FAILED);
 
     auto shapeAlpha = context_->GetInputShape(2);
     int64_t scaleFirstDim = shapeAlpha->GetStorageShape().GetDim(0);
     OP_CHECK_IF(scaleFirstDim != 3,
-                    OP_LOGE(context_->GetNodeName(),
-                             "alpha size should be equal with 3, but is %ld", scaleFirstDim),
-                    return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "alpha size should be equal with 3, but is %ld", scaleFirstDim),
+                return ge::GRAPH_FAILED);
 
     auto shapeBias = context_->GetInputShape(3);
     int64_t baseFirstDim = shapeBias->GetStorageShape().GetDim(0);
     OP_CHECK_IF(baseFirstDim != hcMix_,
-                    OP_LOGE(context_->GetNodeName(),
-                             "bias size should be equal with mixhc, but is %ld", baseFirstDim),
-                    return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "bias size should be equal with mixhc, but is %ld", baseFirstDim),
+                return ge::GRAPH_FAILED);
 
     // premix 可选输入仅在 Ascend950 (regbase) 路径支持，membase 平台不支持
     auto shapePremix = context_->GetOptionalInputShape(4);
@@ -154,9 +149,8 @@ ge::graphStatus MhcPreSinkhornPremixTiling::GetShapeAttrsInfoInner()
                         "premix input is only supported on Ascend950, current platform does not support it."),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(GetAttr() != ge::GRAPH_SUCCESS,
-                  OP_LOGE(context_->GetNodeName(), "get attr failed."),
-                  return ge::GRAPH_FAILED);
+    OP_CHECK_IF(GetAttr() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "get attr failed."),
+                return ge::GRAPH_FAILED);
     // hcMult only support 4
     OP_CHECK_IF(hcMult_ != HCMULT_VALUE,
                 OP_LOGE(context_->GetNodeName(), "hcMult should be %ld, but is %ld", HCMULT_VALUE, hcMult_),
@@ -248,9 +242,9 @@ ge::graphStatus MhcPreSinkhornPremixTiling::CalcMKSplitCoreMembasePart2Tiling()
             hcBrcb1Size = RoundUp(rowFactor_ * hcMultAlign_, 8) * BLOCK_SIZE;
             reduceBufSize = rowFactor_ * hcMultAlign_ * sizeof(float);
             maskPatternSize = BLOCK_SIZE;
-            totalSize = mix0Size + mix1Size + mix2Size + squareSumSize + rsqrtSize +
-                        xSize + ySize + postSize + combFragSize + base0Size + base1Size + base2Size + xCastSize + yCastSize +
-                        rowBrcb0Size + hcBrcb1Size + reduceBufSize + maskPatternSize;
+            totalSize = mix0Size + mix1Size + mix2Size + squareSumSize + rsqrtSize + xSize + ySize + postSize +
+                        combFragSize + base0Size + base1Size + base2Size + xCastSize + yCastSize + rowBrcb0Size +
+                        hcBrcb1Size + reduceBufSize + maskPatternSize;
             if (totalSize > ubSize_) {
                 rowFactor_ = rowFactor_ - 1;
                 break;
@@ -263,7 +257,7 @@ ge::graphStatus MhcPreSinkhornPremixTiling::CalcMKSplitCoreMembasePart2Tiling()
     rowLoopOfTailBlock_ = CeilDiv(rowOfTailBlock_, rowFactor_);
     tailRowFactorOfFormerBlock_ = rowOfFormerBlock_ % rowFactor_ == 0 ? rowFactor_ : rowOfFormerBlock_ % rowFactor_;
     tailRowFactorOfTailBlock_ = rowOfTailBlock_ % rowFactor_ == 0 ? rowFactor_ : rowOfTailBlock_ % rowFactor_;
-    
+
     tilingData_.set_bs(bs_);
     tilingData_.set_hcMix(hcMix_);
     tilingData_.set_hcMult(hcMult_);
@@ -304,7 +298,7 @@ ge::graphStatus MhcPreSinkhornPremixTiling::CalcBsSplit()
     tilingData_.set_bsLoop(bsLoop_);
     tilingData_.set_tailBs(tailBs_);
     tilingData_.set_curBsSplit(curBsSplit_);
-    
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -325,29 +319,29 @@ ge::graphStatus MhcPreSinkhornPremixTiling::CalcTailBsTiling()
         tilingData_.set_tailBsCubeBlockDimM(tilingData_.get_cubeBlockDimM());
         return ge::GRAPH_SUCCESS;
     }
-    
+
     uint64_t tailMDimNum = std::min(aicCoreNum_, static_cast<uint64_t>(CeilDiv(tailBs_, M_L1_MAX_SIZE)));
     uint64_t tailSingleCoreM = RoundUp(CeilDiv(tailBs_, tailMDimNum), AscendC::BLOCK_CUBE);
-    
+
     tailBsCubeBlockDimM_ = static_cast<int64_t>(tailMDimNum);
     tailBsMultCoreSplitMSize_ = static_cast<int64_t>(tailSingleCoreM);
     tailBsML1Size_ = std::min(M_L1_MAX_SIZE, tailSingleCoreM);
     tailBsKL1Size_ = std::min(A_L1_SIZE / tailSingleCoreM, static_cast<uint64_t>(K_L1_MAX_SIZE)) / 128 * 128;
-    
+
     tailBsRowOfFormerBlock_ = CeilDiv(tailBs_, static_cast<int64_t>(aivCoreNum_));
     tailBsUsedCoreNum_ = std::min(CeilDiv(tailBs_, tailBsRowOfFormerBlock_), static_cast<int64_t>(aivCoreNum_));
     tailBsRowOfTailBlock_ = tailBs_ - (tailBsUsedCoreNum_ - 1) * tailBsRowOfFormerBlock_;
-    
+
     int64_t minRowPerCore = 1;
     tailBsRowFactor_ = std::min(tailBsRowOfFormerBlock_, minRowPerCore);
-    
+
     tailBsRowLoopOfFormerBlock_ = CeilDiv(tailBsRowOfFormerBlock_, tailBsRowFactor_);
     tailBsRowLoopOfTailBlock_ = CeilDiv(tailBsRowOfTailBlock_, tailBsRowFactor_);
-    tailBsTailRowFactorOfFormerBlock_ = tailBsRowOfFormerBlock_ % tailBsRowFactor_ == 0 ?
-                                         tailBsRowFactor_ : tailBsRowOfFormerBlock_ % tailBsRowFactor_;
-    tailBsTailRowFactorOfTailBlock_ = tailBsRowOfTailBlock_ % tailBsRowFactor_ == 0 ?
-                                       tailBsRowFactor_ : tailBsRowOfTailBlock_ % tailBsRowFactor_;
-    
+    tailBsTailRowFactorOfFormerBlock_ =
+        tailBsRowOfFormerBlock_ % tailBsRowFactor_ == 0 ? tailBsRowFactor_ : tailBsRowOfFormerBlock_ % tailBsRowFactor_;
+    tailBsTailRowFactorOfTailBlock_ =
+        tailBsRowOfTailBlock_ % tailBsRowFactor_ == 0 ? tailBsRowFactor_ : tailBsRowOfTailBlock_ % tailBsRowFactor_;
+
     tilingData_.set_tailBsRowOfFormerBlock(tailBsRowOfFormerBlock_);
     tilingData_.set_tailBsRowOfTailBlock(tailBsRowOfTailBlock_);
     tilingData_.set_tailBsRowLoopOfFormerBlock(tailBsRowLoopOfFormerBlock_);
@@ -360,7 +354,7 @@ ge::graphStatus MhcPreSinkhornPremixTiling::CalcTailBsTiling()
     tilingData_.set_tailBsKL1Size(tailBsKL1Size_);
     tilingData_.set_tailBsMultCoreSplitMSize(tailBsMultCoreSplitMSize_);
     tilingData_.set_tailBsCubeBlockDimM(tailBsCubeBlockDimM_);
-    
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -377,14 +371,14 @@ ge::graphStatus MhcPreSinkhornPremixTiling::CalcOpTiling()
 
     uint64_t kDimNum = aicCoreNum_ / mDimNum;
     uint64_t splitKSize = RoundUp(CeilDiv(kSize, kDimNum), K_MULIT_CORE_SPLIT_BASE_SIZE);
-    
+
     tilingData_.set_cubeBlockDimM(mDimNum);
     tilingData_.set_cubeBlockDimK(CeilDiv(kSize, splitKSize));
     tilingData_.set_multCoreSplitMSize(singleCoreM);
     tilingData_.set_mL1Size(std::min(M_L1_MAX_SIZE, singleCoreM));
     tilingData_.set_multCoreSplitKSize(splitKSize);
     tilingData_.set_kL1Size(std::min(A_L1_SIZE / singleCoreM, static_cast<uint64_t>(K_L1_MAX_SIZE)) / 128 * 128);
-    
+
     tilingData_.set_cvLoopKSize(1024);
 
     tilingData_.set_cubeCoreNum(static_cast<int64_t>(aicCoreNum_));
@@ -423,7 +417,7 @@ ge::graphStatus MhcPreSinkhornPremixTiling::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-static void PrintTilingData(const gert::TilingContext* context, MhcPreSinkhornPremixTilingData& tiling)
+static void PrintTilingData(const gert::TilingContext *context, MhcPreSinkhornPremixTilingData &tiling)
 {
     OP_LOGD(context->GetNodeName(), ">>>>>>>>>> Start to print MhcPreSinkhornPremix tiling data <<<<<<<<<<");
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: bs is %ld.", tiling.get_bs());
@@ -431,13 +425,18 @@ static void PrintTilingData(const gert::TilingContext* context, MhcPreSinkhornPr
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: hcMult is %ld.", tiling.get_hcMult());
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: d is %ld.", tiling.get_d());
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: hcMultAlign is %ld.", tiling.get_hcMultAlign());
-    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: rowOfFormerBlock is %ld.", tiling.get_rowOfFormerBlock());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: rowOfFormerBlock is %ld.",
+            tiling.get_rowOfFormerBlock());
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: rowOfTailBlock is %ld.", tiling.get_rowOfTailBlock());
-    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: rowLoopOfFormerBlock is %ld.", tiling.get_rowLoopOfFormerBlock());
-    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: rowLoopOfTailBlock is %ld.", tiling.get_rowLoopOfTailBlock());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: rowLoopOfFormerBlock is %ld.",
+            tiling.get_rowLoopOfFormerBlock());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: rowLoopOfTailBlock is %ld.",
+            tiling.get_rowLoopOfTailBlock());
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: rowFactor is %ld.", tiling.get_rowFactor());
-    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: tailRowFactorOfFormerBlock is %ld.", tiling.get_tailRowFactorOfFormerBlock());
-    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: tailRowFactorOfTailBlock is %ld.", tiling.get_tailRowFactorOfTailBlock());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: tailRowFactorOfFormerBlock is %ld.",
+            tiling.get_tailRowFactorOfFormerBlock());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: tailRowFactorOfTailBlock is %ld.",
+            tiling.get_tailRowFactorOfTailBlock());
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: dLoop is %ld.", tiling.get_dLoop());
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: dFactor is %ld.", tiling.get_dFactor());
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: tailDFactor is %ld.", tiling.get_tailDFactor());
@@ -448,62 +447,95 @@ static void PrintTilingData(const gert::TilingContext* context, MhcPreSinkhornPr
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: kFactor is %ld.", tiling.get_kFactor());
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: tailKFactor is %ld.", tiling.get_tailKFactor());
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: kLoop is %ld.", tiling.get_kLoop());
-    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: stage2RowFactor is %ld.", tiling.get_stage2RowFactor());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: stage2RowFactor is %ld.",
+            tiling.get_stage2RowFactor());
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: k is %ld.", tiling.get_k());
-    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: kLoopOfFormerBlock is %ld.", tiling.get_kLoopOfFormerBlock());
-    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: kLoopOfTailBlock is %ld.", tiling.get_kLoopOfTailBlock());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: kLoopOfFormerBlock is %ld.",
+            tiling.get_kLoopOfFormerBlock());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: kLoopOfTailBlock is %ld.",
+            tiling.get_kLoopOfTailBlock());
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: stage1KFactor is %ld.", tiling.get_stage1KFactor());
-    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: kFactorOfFormerBlock is %ld.", tiling.get_kFactorOfFormerBlock());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: kFactorOfFormerBlock is %ld.",
+            tiling.get_kFactorOfFormerBlock());
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: kL1Size is %ld.", tiling.get_kL1Size());
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: mL1Size is %ld.", tiling.get_mL1Size());
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: cubeBlockDimM is %ld.", tiling.get_cubeBlockDimM());
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: cubeBlockDimK is %ld.", tiling.get_cubeBlockDimK());
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: kUbSize is %ld.", tiling.get_kUbSize());
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: cvLoopKSize is %ld.", tiling.get_cvLoopKSize());
-    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: multCoreSplitKSize is %ld.", tiling.get_multCoreSplitKSize());
-    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: multCoreSplitMSize is %ld.", tiling.get_multCoreSplitMSize());
-    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: tailKSizeOfFormerBlock is %ld.", tiling.get_tailKSizeOfFormerBlock());
-    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: tailKSizeOfTailBlock is %ld.", tiling.get_tailKSizeOfTailBlock());
-    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: mLoopOfFormerBlock is %ld.", tiling.get_mLoopOfFormerBlock());
-    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: mLoopOfTailBlock is %ld.", tiling.get_mLoopOfTailBlock());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: multCoreSplitKSize is %ld.",
+            tiling.get_multCoreSplitKSize());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: multCoreSplitMSize is %ld.",
+            tiling.get_multCoreSplitMSize());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: tailKSizeOfFormerBlock is %ld.",
+            tiling.get_tailKSizeOfFormerBlock());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: tailKSizeOfTailBlock is %ld.",
+            tiling.get_tailKSizeOfTailBlock());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: mLoopOfFormerBlock is %ld.",
+            tiling.get_mLoopOfFormerBlock());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: mLoopOfTailBlock is %ld.",
+            tiling.get_mLoopOfTailBlock());
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: formerMSize is %ld.", tiling.get_formerMSize());
-    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: tailMSizeOfFormerBlock is %ld.", tiling.get_tailMSizeOfFormerBlock());
-    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: tailMSizeOfTailBlock is %ld.", tiling.get_tailMSizeOfTailBlock());
-    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: firstUsedCoreNum is %ld.", tiling.get_firstUsedCoreNum());
-    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: secondUsedCoreNum is %ld.", tiling.get_secondUsedCoreNum());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: tailMSizeOfFormerBlock is %ld.",
+            tiling.get_tailMSizeOfFormerBlock());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: tailMSizeOfTailBlock is %ld.",
+            tiling.get_tailMSizeOfTailBlock());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: firstUsedCoreNum is %ld.",
+            tiling.get_firstUsedCoreNum());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: secondUsedCoreNum is %ld.",
+            tiling.get_secondUsedCoreNum());
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: rowInnerFactor is %ld.", tiling.get_rowInnerFactor());
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: cubeCoreNum is %ld.", tiling.get_cubeCoreNum());
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: stage1MFactor is %ld.", tiling.get_stage1MFactor());
-    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: bufferPool0Size is %ld.", tiling.get_bufferPool0Size());
-    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: bufferPool1Size is %ld.", tiling.get_bufferPool1Size());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: bufferPool0Size is %ld.",
+            tiling.get_bufferPool0Size());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: bufferPool1Size is %ld.",
+            tiling.get_bufferPool1Size());
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: mUbSize is %ld.", tiling.get_mUbSize());
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: needGrad is %ld.", tiling.get_needGrad());
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: bsLoop is %ld.", tiling.get_bsLoop());
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: tailBs is %ld.", tiling.get_tailBs());
-    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: bsSplitThreshold is %ld.", tiling.get_bsSplitThreshold());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: bsSplitThreshold is %ld.",
+            tiling.get_bsSplitThreshold());
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: curBsSplit is %ld.", tiling.get_curBsSplit());
-    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: tailBsRowOfFormerBlock is %ld.", tiling.get_tailBsRowOfFormerBlock());
-    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: tailBsRowOfTailBlock is %ld.", tiling.get_tailBsRowOfTailBlock());
-    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: tailBsRowLoopOfFormerBlock is %ld.", tiling.get_tailBsRowLoopOfFormerBlock());
-    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: tailBsRowLoopOfTailBlock is %ld.", tiling.get_tailBsRowLoopOfTailBlock());
-    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: tailBsUsedCoreNum is %ld.", tiling.get_tailBsUsedCoreNum());
-    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: tailBsRowFactor is %ld.", tiling.get_tailBsRowFactor());
-    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: tailBsTailRowFactorOfFormerBlock is %ld.", tiling.get_tailBsTailRowFactorOfFormerBlock());
-    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: tailBsTailRowFactorOfTailBlock is %ld.", tiling.get_tailBsTailRowFactorOfTailBlock());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: tailBsRowOfFormerBlock is %ld.",
+            tiling.get_tailBsRowOfFormerBlock());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: tailBsRowOfTailBlock is %ld.",
+            tiling.get_tailBsRowOfTailBlock());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: tailBsRowLoopOfFormerBlock is %ld.",
+            tiling.get_tailBsRowLoopOfFormerBlock());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: tailBsRowLoopOfTailBlock is %ld.",
+            tiling.get_tailBsRowLoopOfTailBlock());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: tailBsUsedCoreNum is %ld.",
+            tiling.get_tailBsUsedCoreNum());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: tailBsRowFactor is %ld.",
+            tiling.get_tailBsRowFactor());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: tailBsTailRowFactorOfFormerBlock is %ld.",
+            tiling.get_tailBsTailRowFactorOfFormerBlock());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: tailBsTailRowFactorOfTailBlock is %ld.",
+            tiling.get_tailBsTailRowFactorOfTailBlock());
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: tailBsML1Size is %ld.", tiling.get_tailBsML1Size());
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: tailBsKL1Size is %ld.", tiling.get_tailBsKL1Size());
-    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: tailBsMultCoreSplitMSize is %ld.", tiling.get_tailBsMultCoreSplitMSize());
-    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: tailBsCubeBlockDimM is %ld.", tiling.get_tailBsCubeBlockDimM());
-    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: stage1VecCoreNum is %ld.", tiling.get_stage1VecCoreNum());
-    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: stage1CubeCoreNum is %ld.", tiling.get_stage1CubeCoreNum());
-    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: stage1BsPerVecCore is %ld.", tiling.get_stage1BsPerVecCore());
-    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: stage1TailBsPerVecCore is %ld.", tiling.get_stage1TailBsPerVecCore());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: tailBsMultCoreSplitMSize is %ld.",
+            tiling.get_tailBsMultCoreSplitMSize());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: tailBsCubeBlockDimM is %ld.",
+            tiling.get_tailBsCubeBlockDimM());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: stage1VecCoreNum is %ld.",
+            tiling.get_stage1VecCoreNum());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: stage1CubeCoreNum is %ld.",
+            tiling.get_stage1CubeCoreNum());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: stage1BsPerVecCore is %ld.",
+            tiling.get_stage1BsPerVecCore());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: stage1TailBsPerVecCore is %ld.",
+            tiling.get_stage1TailBsPerVecCore());
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: stage1BsLoop is %ld.", tiling.get_stage1BsLoop());
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: stage1BsFactor is %ld.", tiling.get_stage1BsFactor());
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: stage1NcLoop is %ld.", tiling.get_stage1NcLoop());
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: stage1NcFactor is %ld.", tiling.get_stage1NcFactor());
-    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: stage1TailNcFactor is %ld.", tiling.get_stage1TailNcFactor());
-    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: stage1XCastWsSize is %ld.", tiling.get_stage1XCastWsSize());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: stage1TailNcFactor is %ld.",
+            tiling.get_stage1TailNcFactor());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: stage1XCastWsSize is %ld.",
+            tiling.get_stage1XCastWsSize());
 }
 
 ge::graphStatus MhcPreSinkhornPremixTiling::CalcStage1Tiling()
@@ -511,27 +543,27 @@ ge::graphStatus MhcPreSinkhornPremixTiling::CalcStage1Tiling()
     // 1. 计算核心数量
     int64_t vecCoreNum = static_cast<int64_t>(aivCoreNum_);
     int64_t cubeCoreNum = static_cast<int64_t>(aicCoreNum_);
-    
+
     tilingData_.set_stage1VecCoreNum(vecCoreNum);
     tilingData_.set_stage1CubeCoreNum(cubeCoreNum);
-    
+
     // 2. 计算 BS 分核
     int64_t bsPerVecCore = CeilDiv(bs_, vecCoreNum);
     int64_t tailBsPerVecCore = bs_ - (vecCoreNum - 1) * bsPerVecCore;
     if (tailBsPerVecCore <= 0) {
         tailBsPerVecCore = bsPerVecCore;
     }
-    
+
     tilingData_.set_stage1BsPerVecCore(bsPerVecCore);
     tilingData_.set_stage1TailBsPerVecCore(tailBsPerVecCore);
-    
+
     // 3. 计算 BS 循环（每轮最多 32 个 BS）
     int64_t bsLoop = CeilDiv(bsPerVecCore, MAX_BS_PER_LOOP);
     int64_t bsFactor = MAX_BS_PER_LOOP;
-    
+
     tilingData_.set_stage1BsLoop(bsLoop);
     tilingData_.set_stage1BsFactor(bsFactor);
-    
+
     // 4. 计算 ReduceSum 切分（每次最多 256 个元素）
     int64_t ncSize = hcMult_ * d_;
     int64_t ncLoop = CeilDiv(ncSize, MAX_REDUCE_SIZE);
@@ -540,7 +572,7 @@ ge::graphStatus MhcPreSinkhornPremixTiling::CalcStage1Tiling()
     if (tailNcFactor == 0) {
         tailNcFactor = MAX_REDUCE_SIZE;
     }
-    
+
     tilingData_.set_stage1NcLoop(ncLoop);
     tilingData_.set_stage1NcFactor(ncFactor);
     tilingData_.set_stage1TailNcFactor(tailNcFactor);
@@ -551,7 +583,7 @@ ge::graphStatus MhcPreSinkhornPremixTiling::CalcStage1Tiling()
 
     auto platformInfo = context_->GetPlatformInfo();
     OP_CHECK_IF(platformInfo == nullptr, OP_LOGE("TilingForMhcPreSinkhornPremix", "Tiling platformInfo is null"),
-               return ge::GRAPH_FAILED);
+                return ge::GRAPH_FAILED);
     auto ascendPlatformInfo = platform_ascendc::PlatformAscendC(platformInfo);
 
     auto featureDataType = matmul_tiling::DataType::DT_FLOAT;
@@ -574,7 +606,7 @@ ge::graphStatus MhcPreSinkhornPremixTiling::CalcStage1Tiling()
     int64_t xCastWsSize = bsFactor * vecCoreNum * 2 * ncSize * sizeof(float);
     workspaceSize_ += xCastWsSize;
     tilingData_.set_stage1XCastWsSize(xCastWsSize);
-    
+
     // 6. 计算额外的 workspace 大小（needGrad=false 时使用）
     if (!needGrad_) {
         // invRms: bs * sizeof(float)
@@ -582,10 +614,10 @@ ge::graphStatus MhcPreSinkhornPremixTiling::CalcStage1Tiling()
         // hcBeforeNorm: bs * hcMix * sizeof(float)
         int64_t hcMix = hcMult_ * hcMult_ + 2 * hcMult_;
         int64_t hcBeforeNormWsSize = bs_ * hcMix * sizeof(float);
-        
+
         workspaceSize_ += invRmsWsSize + hcBeforeNormWsSize;
     }
-    
+
     int64_t kBlockNum = 1;
     tilingData_.set_cubeBlockDimK(kBlockNum);
 
@@ -602,11 +634,11 @@ ge::graphStatus MhcPreSinkhornPremixTiling::PostTiling()
 {
     context_->SetTilingKey(0); // 0: 切M分支；预留1：切M K分支
     context_->SetBlockDim(aicCoreNum_);
-    size_t* workspaces = context_->GetWorkspaceSizes(1);
+    size_t *workspaces = context_->GetWorkspaceSizes(1);
     workspaces[0] = workspaceSize_;
-    
+
     PrintTilingData(context_, tilingData_);
-    
+
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
     return ge::GRAPH_SUCCESS;
@@ -620,12 +652,11 @@ ge::graphStatus TilingPrepareForMhcPreSinkhornPremix(gert::TilingParseContext *c
 
 ge::graphStatus TilingForMhcPreSinkhornPremix(gert::TilingContext *context)
 {
-    OP_CHECK_IF(context == nullptr, OP_LOGE("MhcPreSinkhornPremix", "Tiling context is null"),
-               return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context == nullptr, OP_LOGE("MhcPreSinkhornPremix", "Tiling context is null"), return ge::GRAPH_FAILED);
 
     auto platformInfo = context->GetPlatformInfo();
     OP_CHECK_IF(platformInfo == nullptr, OP_LOGE("TilingForMhcPreSinkhornPremix", "Tiling platformInfo is null"),
-               return ge::GRAPH_FAILED);
+                return ge::GRAPH_FAILED);
     if (Ops::Transformer::OpTiling::IsRegbaseSocVersion(context)) {
         OP_LOGD(context->GetNodeName(), "Using arch35 tiling for regbase soc");
         MhcPreSinkhornPremixTilingRegbase mhcPreSinkhornTiling(context);
@@ -640,4 +671,4 @@ IMPL_OP_OPTILING(MhcPreSinkhornPremix)
     .Tiling(TilingForMhcPreSinkhornPremix)
     .TilingParse<MhcPreSinkhornPremixCompileInfo>(TilingPrepareForMhcPreSinkhornPremix);
 
-}  // namespace optiling
+} // namespace optiling

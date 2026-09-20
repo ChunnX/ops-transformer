@@ -398,11 +398,12 @@ static inline aclnnStatus CheckParams(const aclTensor *x, const aclTensor *phi, 
 }
 
 aclnnStatus aclnnMhcPreSinkhornPremixGetWorkspaceSize(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha,
-                                                 const aclTensor *bias, const aclTensor *premix, int64_t hcMult,
-                                                 int64_t numIters, double hcEps, double normEps, bool needBackward,
-                                                 aclTensor *hin, aclTensor *hPost, aclTensor *hRes, aclTensor *hPre,
-                                                 aclTensor *hcBeforeNorm, aclTensor *invRms, aclTensor *sumOut,
-                                                 aclTensor *normOut, uint64_t *workspaceSize, aclOpExecutor **executor)
+                                                      const aclTensor *bias, const aclTensor *premix, int64_t hcMult,
+                                                      int64_t numIters, double hcEps, double normEps, bool needBackward,
+                                                      aclTensor *hin, aclTensor *hPost, aclTensor *hRes,
+                                                      aclTensor *hPre, aclTensor *hcBeforeNorm, aclTensor *invRms,
+                                                      aclTensor *sumOut, aclTensor *normOut, uint64_t *workspaceSize,
+                                                      aclOpExecutor **executor)
 
 {
     L2_DFX_PHASE_1(aclnnMhcPreSinkhornPremix,
@@ -445,7 +446,8 @@ aclnnStatus aclnnMhcPreSinkhornPremixGetWorkspaceSize(const aclTensor *x, const 
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus aclnnMhcPreSinkhornPremix(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
+aclnnStatus aclnnMhcPreSinkhornPremix(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                      aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnMhcPreSinkhornPremix);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);

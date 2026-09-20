@@ -7,7 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
- 
+
 /*!
  * \file mhc_pre_sinkhorn_premix.cpp
  * \brief mhc_pre_sinkhorn_premix
@@ -29,21 +29,19 @@ namespace l0op {
 OP_TYPE_REGISTER(MhcPreSinkhornPremix);
 
 static const aclTensor *MhcPreSinkhornPremixAiCore(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha,
-                                              const aclTensor *bias, const aclTensor *premix, int64_t hcMult,
-                                              int64_t numIters, double hcEps, double normEps, bool needBackward,
-                                              aclTensor *hin, aclTensor *hPost, aclTensor *hRes,
-                                              aclTensor *hPre, aclTensor *hcBeforeNorm, aclTensor *invRms,
-                                              aclTensor *sumOut, aclTensor *normOut,
-                                              aclOpExecutor *executor)
+                                                   const aclTensor *bias, const aclTensor *premix, int64_t hcMult,
+                                                   int64_t numIters, double hcEps, double normEps, bool needBackward,
+                                                   aclTensor *hin, aclTensor *hPost, aclTensor *hRes, aclTensor *hPre,
+                                                   aclTensor *hcBeforeNorm, aclTensor *invRms, aclTensor *sumOut,
+                                                   aclTensor *normOut, aclOpExecutor *executor)
 {
-    L0_DFX(MhcPreSinkhornPremixAiCore, x, phi, alpha, bias, premix, hcMult, numIters, hcEps, normEps, needBackward,
-           hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut);
+    L0_DFX(MhcPreSinkhornPremixAiCore, x, phi, alpha, bias, premix, hcMult, numIters, hcEps, normEps, needBackward, hin,
+           hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut);
 
     auto ret = ADD_TO_LAUNCHER_LIST_AICORE(
-        MhcPreSinkhornPremix,
-        OP_INPUT(x, phi, alpha, bias, premix),
+        MhcPreSinkhornPremix, OP_INPUT(x, phi, alpha, bias, premix),
         OP_OUTPUT(hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut),
-        OP_ATTR(hcMult, numIters,  static_cast<float>(hcEps),  static_cast<float>(normEps), needBackward));
+        OP_ATTR(hcMult, numIters, static_cast<float>(hcEps), static_cast<float>(normEps), needBackward));
 
     OP_CHECK(ret == ACLNN_SUCCESS,
              OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "MhcPreSinkhornPremix ADD_TO_LAUNCHER_LIST_AICORE failed."),
@@ -52,15 +50,13 @@ static const aclTensor *MhcPreSinkhornPremixAiCore(const aclTensor *x, const acl
 }
 
 const aclTensor *MhcPreSinkhornPremix(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha,
-                                const aclTensor *bias, const aclTensor *premix, int64_t hcMult, int64_t numIters,
-                                double hcEps, double normEps, bool needBackward,
-                                aclTensor *hin, aclTensor *hPost, aclTensor *hRes,
-                                aclTensor *hPre, aclTensor *hcBeforeNorm, aclTensor *invRms,
-                                aclTensor *sumOut, aclTensor *normOut,
-                                aclOpExecutor *executor)
+                                      const aclTensor *bias, const aclTensor *premix, int64_t hcMult, int64_t numIters,
+                                      double hcEps, double normEps, bool needBackward, aclTensor *hin, aclTensor *hPost,
+                                      aclTensor *hRes, aclTensor *hPre, aclTensor *hcBeforeNorm, aclTensor *invRms,
+                                      aclTensor *sumOut, aclTensor *normOut, aclOpExecutor *executor)
 {
-    return MhcPreSinkhornPremixAiCore(x, phi, alpha, bias, premix, hcMult, numIters, hcEps, normEps, needBackward,
-                                hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, executor);
+    return MhcPreSinkhornPremixAiCore(x, phi, alpha, bias, premix, hcMult, numIters, hcEps, normEps, needBackward, hin,
+                                      hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, executor);
 }
 
 } // namespace l0op

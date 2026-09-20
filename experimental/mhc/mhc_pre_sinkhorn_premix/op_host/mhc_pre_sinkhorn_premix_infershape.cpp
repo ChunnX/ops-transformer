@@ -94,9 +94,8 @@ static ge::graphStatus InferShapeForMhcPreSinkhornPremix(gert::InferShapeContext
                     return ge::GRAPH_FAILED);
         for (size_t i = 0; i + 1 < xDimNum; i++) {
             OP_CHECK_IF(premixShape->GetDim(i) != xShape->GetDim(i),
-                        OP_LOGE(context->GetNodeName(),
-                                "premix shape[%zu] must equal x shape[%zu] (%ld), but got %ld.", i, i,
-                                xShape->GetDim(i), premixShape->GetDim(i)),
+                        OP_LOGE(context->GetNodeName(), "premix shape[%zu] must equal x shape[%zu] (%ld), but got %ld.",
+                                i, i, xShape->GetDim(i), premixShape->GetDim(i)),
                         return ge::GRAPH_FAILED);
         }
     }

@@ -26,11 +26,10 @@ using namespace MhcPreSinkhornPremixNs;
 using namespace AscendC;
 
 extern "C" __global__ __aicore__ void mhc_pre_sinkhorn_premix(GM_ADDR x, GM_ADDR phi, GM_ADDR alpha, GM_ADDR bias,
-                                             GM_ADDR premix,
-                                             GM_ADDR hin, GM_ADDR hPost, GM_ADDR hRes,
-                                             GM_ADDR hPre, GM_ADDR hcBeforeNorm, GM_ADDR invRms,
-                                             GM_ADDR sumOut, GM_ADDR normOut,
-                                             GM_ADDR workspace, GM_ADDR tiling)
+                                                              GM_ADDR premix, GM_ADDR hin, GM_ADDR hPost, GM_ADDR hRes,
+                                                              GM_ADDR hPre, GM_ADDR hcBeforeNorm, GM_ADDR invRms,
+                                                              GM_ADDR sumOut, GM_ADDR normOut, GM_ADDR workspace,
+                                                              GM_ADDR tiling)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     if (workspace == nullptr) {
@@ -64,7 +63,7 @@ extern "C" __global__ __aicore__ void mhc_pre_sinkhorn_premix(GM_ADDR x, GM_ADDR
         op.Init(x, phi, alpha, bias, premix, hin, hPost, hRes, tilingData, &pipe);
         op.Process();
 
-    } else if (TILING_KEY_IS(2000)) {  // K分核，Gradout
+    } else if (TILING_KEY_IS(2000)) { // K分核，Gradout
         GET_TILING_DATA_WITH_STRUCT(MhcPreSinkhornPremixRegbaseTilingData, tiling_data_in, tiling);
         const MhcPreSinkhornPremixRegbaseTilingData *__restrict tilingData = &tiling_data_in;
         MhcPreSinkhornPremixNs::MhcPreSinkhornPremixMKSplitCorePart1Gradout<DTYPE_X> op;
@@ -74,8 +73,8 @@ extern "C" __global__ __aicore__ void mhc_pre_sinkhorn_premix(GM_ADDR x, GM_ADDR
 
         TPipe pipeStage2;
         MhcPreSinkhornPremixNs::MhcPreSinkhornPremixMKSplitCorePart2Gradout<DTYPE_X> op2;
-        op2.Init(x, alpha, bias, premix, hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut,
-                 userWs, tilingData, &pipeStage2);
+        op2.Init(x, alpha, bias, premix, hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, userWs,
+                 tilingData, &pipeStage2);
         op2.Process();
         pipeStage2.Destroy();
 
@@ -83,8 +82,8 @@ extern "C" __global__ __aicore__ void mhc_pre_sinkhorn_premix(GM_ADDR x, GM_ADDR
         GET_TILING_DATA_WITH_STRUCT(MhcPreSinkhornPremixRegbaseTilingData, tiling_data_in, tiling);
         const MhcPreSinkhornPremixRegbaseTilingData *__restrict tilingData = &tiling_data_in;
         MhcPreSinkhornPremixNs::MhcPreSinkhornPremixMSplitCorePart1Gradout<DTYPE_X> op;
-        op.Init(x, phi, alpha, bias, premix, hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut,
-              tilingData, &pipe);
+        op.Init(x, phi, alpha, bias, premix, hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, tilingData,
+                &pipe);
         op.Process();
     }
 }

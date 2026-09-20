@@ -43,8 +43,18 @@ def sigmoid(v):
     return 1.0 / (1.0 + np.exp(-np.clip(v, -80.0, 80.0)))
 
 
-def golden(x_np, phi, alpha, bias, premix=None, hc_mult=HC_MULT, num_iters=NUM_ITERS,
-           hc_eps=HC_EPS, norm_eps=NORM_EPS, need_backward=True):
+def golden(
+    x_np,
+    phi,
+    alpha,
+    bias,
+    premix=None,
+    hc_mult=HC_MULT,
+    num_iters=NUM_ITERS,
+    hc_eps=HC_EPS,
+    norm_eps=NORM_EPS,
+    need_backward=True,
+):
     """numpy 参考实现。premix 传入时 hin 使用 premix 作为加权系数，其余输出不变。"""
     # kernel 读入的是 bf16 舍入后的 x，golden 同步舍入
     x_f32 = torch.from_numpy(x_np.astype(np.float32)).to(torch.bfloat16).float().numpy()
@@ -61,10 +71,12 @@ def golden(x_np, phi, alpha, bias, premix=None, hc_mult=HC_MULT, num_iters=NUM_I
 
     h_pre = sigmoid(normalized[..., :hc_mult] * alpha[0] + bias[:hc_mult]) + hc_eps
     h_post = 2.0 * sigmoid(
-        normalized[..., hc_mult:2 * hc_mult] * alpha[1] + bias[hc_mult:2 * hc_mult])
+        normalized[..., hc_mult : 2 * hc_mult] * alpha[1] + bias[hc_mult : 2 * hc_mult]
+    )
 
-    residual_logits = (normalized[..., 2 * hc_mult:] * alpha[2]
-                       + bias[2 * hc_mult:]).reshape(b, s, hc_mult, hc_mult)
+    residual_logits = (
+        normalized[..., 2 * hc_mult :] * alpha[2] + bias[2 * hc_mult :]
+    ).reshape(b, s, hc_mult, hc_mult)
     sum_out = np.empty((2 * num_iters, b, s, hc_mult), dtype=np.float32)
     norm_out = np.empty((2 * num_iters, b, s, hc_mult, hc_mult), dtype=np.float32)
     row_max = np.max(residual_logits, axis=-1, keepdims=True)
@@ -104,10 +116,23 @@ def golden(x_np, phi, alpha, bias, premix=None, hc_mult=HC_MULT, num_iters=NUM_I
 
     if not need_backward:
         empty = np.empty((0,), dtype=np.float32)
-        h_pre, hc_before_norm, inv_rms, sum_out, norm_out = empty, empty, empty, empty, empty
-    return (hin.astype(np.float32), h_post.astype(np.float32), h_res.astype(np.float32),
-            h_pre.astype(np.float32), hc_before_norm.astype(np.float32), inv_rms.astype(np.float32),
-            sum_out, norm_out)
+        h_pre, hc_before_norm, inv_rms, sum_out, norm_out = (
+            empty,
+            empty,
+            empty,
+            empty,
+            empty,
+        )
+    return (
+        hin.astype(np.float32),
+        h_post.astype(np.float32),
+        h_res.astype(np.float32),
+        h_pre.astype(np.float32),
+        hc_before_norm.astype(np.float32),
+        inv_rms.astype(np.float32),
+        sum_out,
+        norm_out,
+    )
 
 
 def make_inputs(t_or_bs, d=4096, is_tnd=True, seed=0, with_premix=False):
@@ -140,16 +165,29 @@ def to_npu(x, phi, alpha, bias, premix):
 
 def run_op(x_t, phi_t, alpha_t, bias_t, premix_t, out_flag):
     return torch.ops.cann_ops_transformer.mhc_pre_sinkhorn_premix(
-        x_t, phi_t, alpha_t, bias_t, premix_t, HC_MULT, NUM_ITERS, HC_EPS, NORM_EPS, out_flag)
+        x_t,
+        phi_t,
+        alpha_t,
+        bias_t,
+        premix_t,
+        HC_MULT,
+        NUM_ITERS,
+        HC_EPS,
+        NORM_EPS,
+        out_flag,
+    )
 
 
 def assert_close(name, actual, expected, rtol, atol):
     actual_np = actual.cpu().float().numpy()
-    assert actual_np.shape == expected.shape, f"{name} shape {actual_np.shape} != {expected.shape}"
+    assert actual_np.shape == expected.shape, (
+        f"{name} shape {actual_np.shape} != {expected.shape}"
+    )
     diff = np.abs(actual_np - expected)
     thresh = atol + rtol * np.abs(expected)
-    assert (diff <= thresh).all(), \
+    assert (diff <= thresh).all(), (
         f"{name} mismatch: max_abs={diff.max()}, max_rel={(diff / np.maximum(np.abs(expected), 1e-6)).max()}"
+    )
 
 
 def check_case(t_or_bs, is_tnd, with_premix, out_flag, seed=0, d=4096):
@@ -157,7 +195,16 @@ def check_case(t_or_bs, is_tnd, with_premix, out_flag, seed=0, d=4096):
     x_t, phi_t, alpha_t, bias_t, premix_t = to_npu(x, phi, alpha, bias, premix)
     outs = run_op(x_t, phi_t, alpha_t, bias_t, premix_t, out_flag)
     expected = golden(x, phi, alpha, bias, premix, need_backward=out_flag)
-    names = ["hin", "h_post", "h_res", "h_pre", "hc_before_norm", "inv_rms", "sum_out", "norm_out"]
+    names = [
+        "hin",
+        "h_post",
+        "h_res",
+        "h_pre",
+        "hc_before_norm",
+        "inv_rms",
+        "sum_out",
+        "norm_out",
+    ]
     check_names = names if out_flag else names[:3]
     for name, act, exp in zip(names, outs, expected):
         if name not in check_names:
@@ -166,7 +213,9 @@ def check_case(t_or_bs, is_tnd, with_premix, out_flag, seed=0, d=4096):
         rtol, atol = TOL_BF16 if name == "hin" else TOL_FP32
         assert_close(name, act, exp, rtol, atol)
     tag = f"t={t_or_bs}" if is_tnd else f"bs={t_or_bs}"
-    print(f"[PASS] single-op {tag} is_tnd={is_tnd} premix={with_premix} out_flag={out_flag}")
+    print(
+        f"[PASS] single-op {tag} is_tnd={is_tnd} premix={with_premix} out_flag={out_flag}"
+    )
 
 
 def test_single_op():
@@ -174,7 +223,13 @@ def test_single_op():
     for t, is_tnd in [(16, True), (8, False), (256, True), (64, False), (8192, True)]:
         for with_premix in (False, True):
             for out_flag in (False, True):
-                check_case(t, is_tnd, with_premix, out_flag, seed=hash((t, is_tnd, with_premix, out_flag)) % 1000)
+                check_case(
+                    t,
+                    is_tnd,
+                    with_premix,
+                    out_flag,
+                    seed=hash((t, is_tnd, with_premix, out_flag)) % 1000,
+                )
 
 
 def test_premix_changes_hin():
@@ -196,7 +251,10 @@ def test_aclgraph():
     x_t, phi_t, alpha_t, bias_t, premix_t = to_npu(x, phi, alpha, bias, premix)
 
     # eager 参考结果
-    ref = [o.cpu().float().numpy() for o in run_op(x_t, phi_t, alpha_t, bias_t, premix_t, True)]
+    ref = [
+        o.cpu().float().numpy()
+        for o in run_op(x_t, phi_t, alpha_t, bias_t, premix_t, True)
+    ]
 
     # aclgraph 捕获-回放
     torch.npu.synchronize()
@@ -212,13 +270,24 @@ def test_aclgraph():
     graph.replay()
     torch.npu.synchronize()
 
-    names = ["hin", "h_post", "h_res", "h_pre", "hc_before_norm", "inv_rms", "sum_out", "norm_out"]
+    names = [
+        "hin",
+        "h_post",
+        "h_res",
+        "h_pre",
+        "hc_before_norm",
+        "inv_rms",
+        "sum_out",
+        "norm_out",
+    ]
     for name, act, exp in zip(names, graph_outs, ref):
         rtol, atol = TOL_BF16 if name == "hin" else TOL_FP32
         assert_close(f"aclgraph:{name}", act, exp, rtol, atol)
 
     # 修改输入后回放，验证结果随输入更新
-    x2, phi2, alpha2, bias2, premix2 = make_inputs(t, is_tnd=True, seed=22, with_premix=True)
+    x2, phi2, alpha2, bias2, premix2 = make_inputs(
+        t, is_tnd=True, seed=22, with_premix=True
+    )
     x_t.copy_(torch.from_numpy(x2).to(torch.bfloat16))
     phi_t.copy_(torch.from_numpy(phi2))
     alpha_t.copy_(torch.from_numpy(alpha2))
@@ -237,7 +306,10 @@ def test_aclgraph_no_premix():
     t = 16
     x, phi, alpha, bias, _ = make_inputs(t, is_tnd=True, seed=33, with_premix=False)
     x_t, phi_t, alpha_t, bias_t, _ = to_npu(x, phi, alpha, bias, None)
-    ref = [o.cpu().float().numpy() for o in run_op(x_t, phi_t, alpha_t, bias_t, None, False)]
+    ref = [
+        o.cpu().float().numpy()
+        for o in run_op(x_t, phi_t, alpha_t, bias_t, None, False)
+    ]
 
     torch.npu.synchronize()
     stream = torch.npu.Stream()

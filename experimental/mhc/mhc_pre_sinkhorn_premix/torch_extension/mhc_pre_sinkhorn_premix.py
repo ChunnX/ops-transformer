@@ -136,7 +136,16 @@ def mhc_pre_sinkhorn_premix(
     op_module = mhc_pre_sinkhorn_premix_op_builder.load()
     hin, h_post, h_res, h_pre, hc_before_norm, inv_rms, sum_out, norm_out = (
         op_module.mhc_pre_sinkhorn_premix(
-            x, phi, alpha, bias, premix, hc_mult, num_iters, hc_eps, norm_eps, need_backward
+            x,
+            phi,
+            alpha,
+            bias,
+            premix,
+            hc_mult,
+            num_iters,
+            hc_eps,
+            norm_eps,
+            need_backward,
         )
     )
     if need_backward:

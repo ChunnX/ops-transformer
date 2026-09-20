@@ -460,8 +460,9 @@ public:
                              curRowFactor, tilingData->hcMult, tilingData->hcMix);
 
                 if (hasPremix_) {
-                    int64_t preMixGmOffset = (curBlockIdx * tilingData->rowOfFormerBlock +
-                                              rowOuterIdx * tilingData->stage2RowFactor) * tilingData->hcMult;
+                    int64_t preMixGmOffset =
+                        (curBlockIdx * tilingData->rowOfFormerBlock + rowOuterIdx * tilingData->stage2RowFactor) *
+                        tilingData->hcMult;
                     preMixLocal = preMixQue.template AllocTensor<float>();
                     CopyInWithUbStride(preMixGm[preMixGmOffset], preMixLocal, curRowFactor, tilingData->hcMult, 0,
                                        UbRowGapBlocks(tilingData->hcMult, tilingData->hcMix));

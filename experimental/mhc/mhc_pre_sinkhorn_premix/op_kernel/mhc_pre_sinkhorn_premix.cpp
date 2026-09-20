@@ -24,11 +24,10 @@ using namespace MhcPreSinkhornPremix;
 using namespace AscendC;
 
 extern "C" __global__ __aicore__ void mhc_pre_sinkhorn_premix(GM_ADDR x, GM_ADDR phi, GM_ADDR alpha, GM_ADDR bias,
-                                             GM_ADDR premix,
-                                             GM_ADDR hin, GM_ADDR hPost, GM_ADDR hRes,
-                                             GM_ADDR hPre, GM_ADDR hcBeforeNorm, GM_ADDR invRms,
-                                             GM_ADDR sumOut, GM_ADDR normOut,
-                                             GM_ADDR workspace, GM_ADDR tiling)
+                                                              GM_ADDR premix, GM_ADDR hin, GM_ADDR hPost, GM_ADDR hRes,
+                                                              GM_ADDR hPre, GM_ADDR hcBeforeNorm, GM_ADDR invRms,
+                                                              GM_ADDR sumOut, GM_ADDR normOut, GM_ADDR workspace,
+                                                              GM_ADDR tiling)
 {
     // premix 仅 Ascend950 (regbase) 支持，membase tiling 已在检测到 premix 时拦截
     (void)premix;
@@ -54,12 +53,11 @@ extern "C" __global__ __aicore__ void mhc_pre_sinkhorn_premix(GM_ADDR x, GM_ADDR
         op1.Init(x, phi, invRms, hcBeforeNorm, userWs, tilingData, &pipe);
         op1.Process();
         pipe.Destroy();
-            
+
         TPipe pipeStage2;
         MhcPreSinkhornPremix::MhcPreSinkhornPremixStage2<DTYPE_X> op2;
-        op2.Init(x, alpha, bias, hin, hPost, hRes,
-                    hPre, hcBeforeNorm, invRms, sumOut, normOut,
-                    userWs, tilingData, &pipeStage2);
+        op2.Init(x, alpha, bias, hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, userWs, tilingData,
+                 &pipeStage2);
         op2.Process(false);
         pipeStage2.Destroy();
     } else if (TILING_KEY_IS(1)) {
@@ -76,9 +74,8 @@ extern "C" __global__ __aicore__ void mhc_pre_sinkhorn_premix(GM_ADDR x, GM_ADDR
 
             TPipe pipeStage2;
             MhcPreSinkhornPremix::MhcPreSinkhornPremixMembaseKSplitCorePart2<DTYPE_X> op2;
-            op2.Init(x, alpha, bias, hin, hPost, hRes,
-                        hPre, hcBeforeNorm, invRms, sumOut, normOut,
-                        userWs, tilingData, &pipeStage2, curBsOffset, isTailBsLoop);
+            op2.Init(x, alpha, bias, hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, userWs, tilingData,
+                     &pipeStage2, curBsOffset, isTailBsLoop);
             op2.Process(curBsOffset, curBs, isTailBsLoop);
             pipeStage2.Destroy();
             SyncAll<false>(); // cv全部同步

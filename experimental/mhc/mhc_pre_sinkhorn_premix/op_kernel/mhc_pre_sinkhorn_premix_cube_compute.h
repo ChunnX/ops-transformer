@@ -147,9 +147,8 @@ private:
 };
 
 MHC_PRE_SINKHORN_PREMIX_CUBE_COMPUTE_SPLIT_K_TEMPLATE_PARAM
-__aicore__ inline void MHC_PRE_SINKHORN_PREMIX_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLASS::Init(const GlobalTensor<float> &xGm,
-                                                                                  const GlobalTensor<float> &phiGm,
-                                                                                  TPipe *tpipe)
+__aicore__ inline void MHC_PRE_SINKHORN_PREMIX_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLASS::Init(
+    const GlobalTensor<float> &xGm, const GlobalTensor<float> &phiGm, TPipe *tpipe)
 {
     phiGm_ = phiGm;
 
@@ -202,9 +201,9 @@ __aicore__ inline void MHC_PRE_SINKHORN_PREMIX_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLA
 
 MHC_PRE_SINKHORN_PREMIX_CUBE_COMPUTE_SPLIT_K_TEMPLATE_PARAM
 __aicore__ inline void MHC_PRE_SINKHORN_PREMIX_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLASS::CopyInB1(uint64_t mGmOffset,
-                                                                                      uint64_t kGmOffset,
-                                                                                      uint64_t kL1Size,
-                                                                                      const MmParams &mmParams)
+                                                                                             uint64_t kGmOffset,
+                                                                                             uint64_t kL1Size,
+                                                                                             const MmParams &mmParams)
 {
     AscendC::Nd2NzParams nd2nzParams;
     nd2nzParams.ndNum = 1;
@@ -361,9 +360,9 @@ __aicore__ inline void MHC_PRE_SINKHORN_PREMIX_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLA
 
 MHC_PRE_SINKHORN_PREMIX_CUBE_COMPUTE_SPLIT_K_TEMPLATE_PARAM
 __aicore__ inline void MHC_PRE_SINKHORN_PREMIX_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLASS::LoadAToL0A(uint64_t kL1Offset,
-                                                                                        uint64_t kL0Size,
-                                                                                        uint64_t l1LoopIdx,
-                                                                                        const MmParams &mmParams)
+                                                                                               uint64_t kL0Size,
+                                                                                               uint64_t l1LoopIdx,
+                                                                                               const MmParams &mmParams)
 {
     static constexpr IsResetLoad3dConfig LOAD3DV2_CONFIG = {true, true};
     LoadData3DParamsV2<float> loadData3DParams;
@@ -401,9 +400,9 @@ __aicore__ inline void MHC_PRE_SINKHORN_PREMIX_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLA
 
 MHC_PRE_SINKHORN_PREMIX_CUBE_COMPUTE_SPLIT_K_TEMPLATE_PARAM
 __aicore__ inline void MHC_PRE_SINKHORN_PREMIX_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLASS::LoadAToL0B(uint64_t kL1Offset,
-                                                                                        uint64_t kL0Size,
-                                                                                        uint64_t l1LoopIdx,
-                                                                                        const MmParams &mmParams)
+                                                                                               uint64_t kL0Size,
+                                                                                               uint64_t l1LoopIdx,
+                                                                                               const MmParams &mmParams)
 {
     // mk nz -> m,k zz
     for (uint64_t mL0Offset = 0; mL0Offset < mmParams.curML1; mL0Offset += BLOCK_CUBE) {
@@ -423,8 +422,9 @@ __aicore__ inline void MHC_PRE_SINKHORN_PREMIX_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLA
 
 MHC_PRE_SINKHORN_PREMIX_CUBE_COMPUTE_SPLIT_K_TEMPLATE_PARAM
 __aicore__ inline void MHC_PRE_SINKHORN_PREMIX_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLASS::MmadA2(uint64_t kGmOffset,
-                                                                                    uint64_t kL0Size, bool isLastK,
-                                                                                    const MmParams &mmParams)
+                                                                                           uint64_t kL0Size,
+                                                                                           bool isLastK,
+                                                                                           const MmParams &mmParams)
 {
     SetFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
     WaitFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
@@ -445,9 +445,9 @@ __aicore__ inline void MHC_PRE_SINKHORN_PREMIX_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLA
 
 MHC_PRE_SINKHORN_PREMIX_CUBE_COMPUTE_SPLIT_K_TEMPLATE_PARAM
 __aicore__ inline void MHC_PRE_SINKHORN_PREMIX_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLASS::LoadBToL0B(uint64_t kL1Offset,
-                                                                                        uint64_t kL0Size,
-                                                                                        uint64_t l1LoopIdx,
-                                                                                        const MmParams &mmParams)
+                                                                                               uint64_t kL0Size,
+                                                                                               uint64_t l1LoopIdx,
+                                                                                               const MmParams &mmParams)
 {
     LoadData2DParams l1ToL0bParams;
     l1ToL0bParams.startIndex = 0;
@@ -464,8 +464,9 @@ __aicore__ inline void MHC_PRE_SINKHORN_PREMIX_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLA
 
 MHC_PRE_SINKHORN_PREMIX_CUBE_COMPUTE_SPLIT_K_TEMPLATE_PARAM
 __aicore__ inline void MHC_PRE_SINKHORN_PREMIX_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLASS::MmadAB(uint64_t kGmOffset,
-                                                                                    uint64_t kL0Size, bool isLastK,
-                                                                                    const MmParams &mmParams)
+                                                                                           uint64_t kL0Size,
+                                                                                           bool isLastK,
+                                                                                           const MmParams &mmParams)
 {
     SetFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
     WaitFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
@@ -513,11 +514,9 @@ public:
 };
 
 MHC_PRE_SINKHORN_PREMIX_CUBE_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void MHC_PRE_SINKHORN_PREMIX_CUBE_COMPUTE_TEMPLATE_CLASS::Init(const GlobalTensor<float> &xGm,
-                                                                          const GlobalTensor<float> &phiGm,
-                                                                          const GlobalTensor<float> &workspaceGlobalAB,
-                                                                          int64_t bs, int64_t n, int64_t c,
-                                                                          int64_t vecCoreNum)
+__aicore__ inline void MHC_PRE_SINKHORN_PREMIX_CUBE_COMPUTE_TEMPLATE_CLASS::Init(
+    const GlobalTensor<float> &xGm, const GlobalTensor<float> &phiGm, const GlobalTensor<float> &workspaceGlobalAB,
+    int64_t bs, int64_t n, int64_t c, int64_t vecCoreNum)
 {
     blockIdx_ = GetBlockIdx();
     xGm_ = xGm;
@@ -534,7 +533,7 @@ __aicore__ inline void MHC_PRE_SINKHORN_PREMIX_CUBE_COMPUTE_TEMPLATE_CLASS::Init
 
 MHC_PRE_SINKHORN_PREMIX_CUBE_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void MHC_PRE_SINKHORN_PREMIX_CUBE_COMPUTE_TEMPLATE_CLASS::ProcessMatmulXPhi(const int32_t taskOffset,
-                                                                                       const int32_t mm1M)
+                                                                                              const int32_t mm1M)
 {
     if (mm1M <= 0)
         return;

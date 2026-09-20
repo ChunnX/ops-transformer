@@ -13,16 +13,16 @@
 #include "acl/acl.h"
 #include "aclnnop/aclnn_mhc_pre_sinkhorn_premix.h"
 
-#define CHECK_RET(cond, return_expr)                                                                                   \
-    do {                                                                                                               \
-        if (!(cond)) {                                                                                                 \
-            return_expr;                                                                                               \
-        }                                                                                                              \
+#define CHECK_RET(cond, return_expr) \
+    do { \
+        if (!(cond)) { \
+            return_expr; \
+        } \
     } while (0)
 
-#define LOG_PRINT(message, ...)                                                                                        \
-    do {                                                                                                               \
-        printf(message, ##__VA_ARGS__);                                                                                \
+#define LOG_PRINT(message, ...) \
+    do { \
+        printf(message, ##__VA_ARGS__); \
     } while (0)
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
@@ -298,21 +298,19 @@ int main()
     ret = CreateInputTensors(x_shape, phi_shape, alpha_shape, bias_shape, premix_shape, tensors);
     CHECK_RET(ret == 0, return -1);
 
-    ret = CreateOutputTensors(hin_shape, h_post_shape, h_res_shape, h_pre_shape, hc_before_norm_shape,
-                              inv_rms_shape, sum_out_shape, norm_out_shape, tensors);
+    ret = CreateOutputTensors(hin_shape, h_post_shape, h_res_shape, h_pre_shape, hc_before_norm_shape, inv_rms_shape,
+                              sum_out_shape, norm_out_shape, tensors);
     CHECK_RET(ret == 0, return -1);
 
     uint64_t workspace_size = 0;
     aclOpExecutor *executor = nullptr;
 
     aclnnStatus aclnn_ret = aclnnMhcPreSinkhornPremixGetWorkspaceSize(
-        tensors.x, tensors.phi, tensors.alpha, tensors.bias, tensors.premix,
-        hc_mult, num_iters, hc_eps, norm_eps, need_backward,
-        tensors.hin, tensors.h_post, tensors.h_res,
-        tensors.h_pre, tensors.hc_before_norm, tensors.inv_rms,
-        tensors.sum_out, tensors.norm_out,
-        &workspace_size, &executor);
-    CHECK_RET(aclnn_ret == ACL_SUCCESS, LOG_PRINT("aclnnMhcPreSinkhornPremixGetWorkspaceSize failed, error: %d\n", aclnn_ret);
+        tensors.x, tensors.phi, tensors.alpha, tensors.bias, tensors.premix, hc_mult, num_iters, hc_eps, norm_eps,
+        need_backward, tensors.hin, tensors.h_post, tensors.h_res, tensors.h_pre, tensors.hc_before_norm,
+        tensors.inv_rms, tensors.sum_out, tensors.norm_out, &workspace_size, &executor);
+    CHECK_RET(aclnn_ret == ACL_SUCCESS,
+              LOG_PRINT("aclnnMhcPreSinkhornPremixGetWorkspaceSize failed, error: %d\n", aclnn_ret);
               return -1);
 
     void *workspace_addr = nullptr;
@@ -322,7 +320,8 @@ int main()
     }
 
     aclnn_ret = aclnnMhcPreSinkhornPremix(workspace_addr, workspace_size, executor, stream);
-    CHECK_RET(aclnn_ret == ACL_SUCCESS, LOG_PRINT("aclnnMhcPreSinkhornPremix failed, error: %d\n", aclnn_ret); return -1);
+    CHECK_RET(aclnn_ret == ACL_SUCCESS, LOG_PRINT("aclnnMhcPreSinkhornPremix failed, error: %d\n", aclnn_ret);
+              return -1);
 
     CHECK_RET(aclrtSynchronizeStream(stream) == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed\n"); return -1);
 

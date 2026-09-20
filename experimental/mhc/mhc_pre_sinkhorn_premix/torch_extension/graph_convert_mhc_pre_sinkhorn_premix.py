@@ -43,7 +43,9 @@ except ImportError:
 
 if _TORCHAIR_AVAILABLE:
 
-    @auto_convert_to_tensor([False, False, False, False, False], [False, False, False, False, False])
+    @auto_convert_to_tensor(
+        [False, False, False, False, False], [False, False, False, False, False]
+    )
     def MhcPreSinkhornPremix(
         x: Tensor,
         phi: Tensor,

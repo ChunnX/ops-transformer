@@ -92,8 +92,7 @@ std::unique_ptr<gert::TilingContextPara> BuildRegbaseTilingContext(const Regbase
         inputs.push_back({{{b, s, HC_MULT}, {b, s, HC_MULT}}, ge::DT_FLOAT, ge::FORMAT_ND});
     }
     std::unique_ptr<gert::TilingContextPara> context(new gert::TilingContextPara(
-        "MhcPreSinkhornPremix",
-        inputs,
+        "MhcPreSinkhornPremix", inputs,
         {
             {{{b, s, baseline.d}, {b, s, baseline.d}}, ge::DT_BF16, ge::FORMAT_ND},
             {{{b, s, HC_MULT}, {b, s, HC_MULT}}, ge::DT_FLOAT, ge::FORMAT_ND},
@@ -126,7 +125,8 @@ T ReadTilingField(const uint8_t *buffer, size_t &offset)
     return value;
 }
 
-void DeserializeRegbaseTilingData(const TilingInfo &tilingInfo, optiling::MhcPreSinkhornPremixRegbaseTilingData &tilingData)
+void DeserializeRegbaseTilingData(const TilingInfo &tilingInfo,
+                                  optiling::MhcPreSinkhornPremixRegbaseTilingData &tilingData)
 {
     size_t offset = 0;
 #define READ_TILING_FIELD(type, field) \
