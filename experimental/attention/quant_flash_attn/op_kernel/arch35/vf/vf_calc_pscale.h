@@ -40,13 +40,13 @@ using namespace AscendC::Reg;
  * 调用层负责（传入前 ReinterpretCast）。
  */
 __simd_vf__ inline void VfCalcPScaleVF(__ubuf__ uint8_t *pscale, __ubuf__ half *subLoopMax,
-                                         __ubuf__ half *finalMax)
+                                         __ubuf__ half *finalMax, __ubuf__ uint8_t *nzIdx)
 {
     RegTensor<half> vreg_sub_loop_max;
     RegTensor<half> vreg_final_max;
-    RegTensor<half> vreg_delta_k;
-    RegTensor<uint8_t> vreg_scale_a;
-    RegTensor<uint8_t> vreg_scale_b;
+    RegTensor<half> vreg_delta_k;       // Δk = k_i - K_final（整数，≤ 0）
+    RegTensor<uint8_t> vreg_scale;      // Cast 产物（偶位 = 值，奇位 = 零）→ Gather 压缩
+    RegTensor<uint8_t> vreg_idx;        // 解交织索引表（与 P 存储共用一张 pNzIdxUB）
     MaskReg preg_half = CreateMask<half, MaskPattern::ALL>();
     MaskReg preg_u8 = CreateMask<uint8_t, MaskPattern::ALL>();
     uint32_t pscale_valid_count = 128;  // 有效数据 128 字节（防 ALL 掩码写 256B 溢出到下一槽位）
@@ -59,14 +59,17 @@ __simd_vf__ inline void VfCalcPScaleVF(__ubuf__ uint8_t *pscale, __ubuf__ half *
     Adds(vreg_delta_k, vreg_delta_k, NUM_127, preg_half);
     Maxs(vreg_delta_k, vreg_delta_k, ZERO_VALUE, preg_half);
 
-    // ② 窄化 half[128] → uint8[128]：双 Cast 各取偶/奇位 + Or 合并（MxFP4 mxscale 同款）
-    Cast<uint8_t, half, castTraitZero>(vreg_scale_a, vreg_delta_k, preg_half);
-    Cast<uint8_t, half, castTraitOne>(vreg_scale_b, vreg_delta_k, preg_half);
-    Or(vreg_scale_a, vreg_scale_a, vreg_scale_b, preg_u8);
+    // ② 窄化 half[128] → uint8[128]（2026-09-20 修正，设计 §7.3 定稿）：
+    //    官方文档证实窄化 Cast 为交织放置——原同源双 Cast+Or 得重复对（后 64 值丢失，bug）。
+    //    改单 Cast：128 个值落偶数位（奇位被清零）→ Gather 取偶位压缩为顺序字节。
+    //    共用表（idx[k]=2k, k<128；idx[128+k]=2k+1）对两消费者都成立：
+    //    P 解交织得 [行i | 行i+1]；pscale 得 [顺序 128 字节 | 零]（奇位源是零）
+    Cast<uint8_t, half, castTraitZero>(vreg_scale, vreg_delta_k, preg_half);
+    LoadAlign(vreg_idx, nzIdx);
+    Gather(vreg_scale, vreg_scale, vreg_idx);
 
-    // ③ 存 e8m0 buffer（uint8 位模式 = 2^Δk 的 e8m0 编码）
-    //    用 128 元素部分掩码（非 ALL 256），只写有效 128 字节，防溢出到 pscaleUB 相邻槽位
-    StoreAlign(pscale, vreg_scale_a, preg_u8_valid);
+    // ③ 存 e8m0 buffer（uint8 位模式 = 2^Δk 的 e8m0 编码；部分掩码只写有效 128 字节）
+    StoreAlign(pscale, vreg_scale, preg_u8_valid);
 }
 
 /*
@@ -76,13 +79,15 @@ __simd_vf__ inline void VfCalcPScaleVF(__ubuf__ uint8_t *pscale, __ubuf__ half *
  * @param [in] pscaleUB        pscale 缓冲（uint8_t 视图，[taskSlot][subLoopIdx][128] 布局）
  * @param [in] usedMaxUB       subLoop k_i 缓冲（[subLoopIdx][128] 布局）
  * @param [in] softmaxMaxUB    accMax 缓冲（[stateSlot][128] 布局）
+ * @param [in] nzIdxUB         解交织索引表（与 P 存储共用 pNzIdxUB，256B）
  * @param [in] taskSlot        任务槽（0..2）
  * @param [in] subLoopIdx      subLoop 序号（0..2）
  * @param [in] stateSlot       accMax 状态槽（0..2）
  */
 __aicore__ inline void VfCalcPScale(const LocalTensor<uint8_t> &pscaleUB,
                                      const LocalTensor<half> &usedMaxUB,
-                                     const LocalTensor<half> &softmaxMaxUB, uint32_t taskSlot,
+                                     const LocalTensor<half> &softmaxMaxUB,
+                                     const LocalTensor<uint8_t> &nzIdxUB, uint32_t taskSlot,
                                      uint32_t subLoopIdx, uint32_t stateSlot)
 {
     constexpr uint32_t pscaleSlot = 128;        // 单 pscale 槽字节数
@@ -93,7 +98,8 @@ __aicore__ inline void VfCalcPScale(const LocalTensor<uint8_t> &pscaleUB,
                                      + subLoopIdx * pscaleSlot;
     __ubuf__ half *finalMaxPtr = reinterpret_cast<__ubuf__ half *>(softmaxMaxUB.GetPhyAddr())
                                    + stateSlot * pscaleSlot;
-    VfCalcPScaleVF(pscalePtr, subLoopMaxPtr, finalMaxPtr);
+    __ubuf__ uint8_t *nzIdxPtr = reinterpret_cast<__ubuf__ uint8_t *>(nzIdxUB.GetPhyAddr());
+    VfCalcPScaleVF(pscalePtr, subLoopMaxPtr, finalMaxPtr, nzIdxPtr);
 }
 
 } // namespace QfaVectorApi

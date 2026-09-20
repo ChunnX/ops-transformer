@@ -153,12 +153,13 @@ public:
         pScaleL1V1Tensor_ = LocalTensor<SCALE_T>(TPosition::A1, L1_PSCALE_V1_BASE,
                                                  L1_P_BUFCNT * L1_PSCALE_V1_SINGLE_SLOT_SIZE);
 
-        // ③ Gather 索引表初始化（镜像 mxfp8 quant_flash_attn_block_vec_mxfp8.h:1050-1054）
-        //    idx[i*64+j] = i + (j<<2)：4 路解交织，S1半=128 时 i∈[0,2), j∈[0,64)
-        //    首选无 Gather 两段式（§9.1-③），此表作为回退方案初始化
+        // ③ Gather 解交织索引表初始化（2026-09-20 定稿，设计 §9.1-③：无 Gather 方案作废，此表转正）
+        //    公式 idx[i*128+j] = i + 2j（i∈{0,1}，j∈[0,128)）——一张表两个消费者：
+        //    P 存储：Cast+Or 交织产物 [a0,b0,a1,b1,…] → Gather → [行i | 行i+1]（解交织）
+        //    pscale：单 Cast 产物（偶位=值，奇位=零）→ Gather → [顺序128字节 | 零]（压缩）
         for (int32_t i = 0; i < 2; i++) {
-            for (int32_t j = 0; j < 64; j++) {
-                pNzIdxUB_.SetValue(i * 64 + j, static_cast<uint8_t>(i + (j << 2)));
+            for (int32_t j = 0; j < 128; j++) {
+                pNzIdxUB_.SetValue(i * 128 + j, static_cast<uint8_t>(i + 2 * j));
             }
         }
     }
@@ -225,7 +226,7 @@ public:
             for (uint32_t i = 0; i < c1v1Loop; i++) {
                 if (i < c1v1Loop - 1) {
                     QfaVectorApi::VfCalcPScale(pscaleU8, subLoopUsedMaxUB_, softmaxMaxUB_,
-                                                taskSlot, i, stateSlot);
+                                               pNzIdxUB_, taskSlot, i, stateSlot);
                 } else {
                     // 末 subLoop pscale 恒为 2^0：e8m0 字节 127（uint8 视图填充，避免 e8m0 标量填充限制）
                     Duplicate(pscaleU8[(taskSlot * UB_PSCALE_SUBLOOPS + i) * UB_PSCALE_SLOT],
