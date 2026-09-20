@@ -37,9 +37,15 @@ using OpAttr = gert::InfershapeContextPara::OpAttr;
 
 class QuantBlockSparseAttnInferShapeTest : public testing::TestWithParam<QuantBlockSparseAttnInferShapeUtParam> {
 protected:
-    static void SetUpTestCase() { std::cout << "QuantBlockSparseAttnInferShapeTest SetUp" << std::endl; }
+    static void SetUpTestCase()
+    {
+        std::cout << "QuantBlockSparseAttnInferShapeTest SetUp" << std::endl;
+    }
 
-    static void TearDownTestCase() { std::cout << "QuantBlockSparseAttnInferShapeTest TearDown" << std::endl; }
+    static void TearDownTestCase()
+    {
+        std::cout << "QuantBlockSparseAttnInferShapeTest TearDown" << std::endl;
+    }
 };
 
 TEST_P(QuantBlockSparseAttnInferShapeTest, param)
@@ -125,8 +131,14 @@ void CheckPaddedLayout()
     }
 }
 
-TEST(QbsaMxQueryLayout, BSND) { CheckPaddedLayout<QBSALayout::BSND>(); }
-TEST(QbsaMxQueryLayout, BNSD) { CheckPaddedLayout<QBSALayout::BNSD>(); }
+TEST(QbsaMxQueryLayout, BSND)
+{
+    CheckPaddedLayout<QBSALayout::BSND>();
+}
+TEST(QbsaMxQueryLayout, BNSD)
+{
+    CheckPaddedLayout<QBSALayout::BNSD>();
+}
 TEST(QbsaMxQueryLayout, PackedTndAndWideOffsets)
 {
     const uint64_t base = uint64_t{1} << 30;

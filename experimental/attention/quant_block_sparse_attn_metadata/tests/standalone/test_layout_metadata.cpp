@@ -1,6 +1,12 @@
+// -----------------------------------------------------------------------------------------------------------
 // Copyright (c) 2026 Huawei Technologies Co., Ltd.
-// Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+// This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+// CANN Open Software License Agreement Version 2.0 (the "License").
+// Please refer to the License for details. You may not use this file except in compliance with the License.
+// THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+// INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 // See LICENSE in the root of the software repository for the full text of the License.
+// -----------------------------------------------------------------------------------------------------------
 #include <algorithm>
 #include <iostream>
 #include <random>
@@ -14,7 +20,9 @@
 namespace {
 void Require(bool condition, const char *message)
 {
-    if (!condition) { throw std::runtime_error(message); }
+    if (!condition) {
+        throw std::runtime_error(message);
+    }
 }
 
 struct Case {
@@ -24,18 +32,30 @@ struct Case {
     aicpu::Tensor sparse, metadata;
     aicpu::CpuKernelContext ctx;
     Case(int64_t b, int64_t n, int64_t qb, int cores, int block)
-        : batch(b), heads(n), rows(qb), counts(b * n * qb),
+        : batch(b),
+          heads(n),
+          rows(qb),
+          counts(b * n * qb),
           output(8 + b * n * 36 * 8 + 72 * 8 + 16, 0xCDCDCDCD),
-          sparse({b, n, qb}, counts.data()), metadata({static_cast<int64_t>(output.size() - 16)}, output.data())
+          sparse({b, n, qb}, counts.data()),
+          metadata({static_cast<int64_t>(output.size() - 16)}, output.data())
     {
         ctx.inputs = {&sparse, nullptr, nullptr, nullptr, nullptr};
         ctx.outputs = {&metadata};
-        ctx.attrs = {{"batch_size", b}, {"num_heads_q", n}, {"num_heads_kv", int64_t{1}},
-                     {"head_dim", int64_t{128}}, {"sparse_block_size_q", int64_t{block}},
-                     {"sparse_block_size_k", int64_t{block}}, {"quant_mode", int64_t{2}},
-                     {"mask_mode", int64_t{3}}, {"layout_q", "TND"}, {"layout_kv", "PA_BNBD"},
-                     {"layout_sparse_indices", "B_N_Qb_Kb"}, {"soc_version", "Ascend950"},
-                     {"aic_core_num", int64_t{cores}}, {"aiv_core_num", int64_t{cores * 2}}};
+        ctx.attrs = {{"batch_size", b},
+                     {"num_heads_q", n},
+                     {"num_heads_kv", int64_t{1}},
+                     {"head_dim", int64_t{128}},
+                     {"sparse_block_size_q", int64_t{block}},
+                     {"sparse_block_size_k", int64_t{block}},
+                     {"quant_mode", int64_t{2}},
+                     {"mask_mode", int64_t{3}},
+                     {"layout_q", "TND"},
+                     {"layout_kv", "PA_BNBD"},
+                     {"layout_sparse_indices", "B_N_Qb_Kb"},
+                     {"soc_version", "Ascend950"},
+                     {"aic_core_num", int64_t{cores}},
+                     {"aiv_core_num", int64_t{cores * 2}}};
     }
     uint32_t Run(const char *layout)
     {
@@ -47,11 +67,11 @@ struct Case {
                 "metadata wrote beyond output capacity");
         return status;
     }
-    aclnnStatus Host(const char *layout, const aclTensor *cu = nullptr, const aclTensor *used = nullptr,
-                     int mode = 2, const char *kv = "PA_BNBD")
+    aclnnStatus Host(const char *layout, const aclTensor *cu = nullptr, const aclTensor *used = nullptr, int mode = 2,
+                     const char *kv = "PA_BNBD")
     {
-        return ParamsCheck(&sparse, cu, nullptr, used, nullptr, batch, heads, 1, 128,
-                           128, 128, mode, 3, layout, kv, "B_N_Qb_Kb", 36, 72, "Ascend950", &metadata);
+        return ParamsCheck(&sparse, cu, nullptr, used, nullptr, batch, heads, 1, 128, 128, 128, mode, 3, layout, kv,
+                           "B_N_Qb_Kb", 36, 72, "Ascend950", &metadata);
     }
 };
 
@@ -66,7 +86,9 @@ void CheckCoverage(const Case &test, uint32_t sq, uint32_t block)
     for (uint32_t sec = 0; sec < data[0]; ++sec) {
         for (uint32_t core = 0; core < 36; ++core) {
             const auto *entry = data.data() + 8 + (sec * 36 + core) * 8;
-            if (entry[0] == 0) { continue; }
+            if (entry[0] == 0) {
+                continue;
+            }
             const uint32_t end = entry[4] + (entry[5] != 0);
             Require(end <= test.batch * test.heads, "metadata BN1 end out of bounds");
             for (uint32_t bn = entry[1]; bn < end; ++bn) {
@@ -94,11 +116,21 @@ void TestScheduling()
                     for (int pattern = 0; pattern < 5; ++pattern) {
                         Case test(2, 4, (sq + block - 1) / block + extraRows, cores, block);
                         for (size_t i = 0; i < test.counts.size(); ++i) {
-                            if (pattern == 0) { test.counts[i] = 0; }
-                            if (pattern == 1) { test.counts[i] = 4; }
-                            if (pattern == 2) { test.counts[i] = rng() % 9; }
-                            if (pattern == 3) { test.counts[i] = i < test.counts.size() / 2 ? 3 : 0; }
-                            if (pattern == 4) { test.counts[i] = i < test.counts.size() / 2 ? 0 : 3; }
+                            if (pattern == 0) {
+                                test.counts[i] = 0;
+                            }
+                            if (pattern == 1) {
+                                test.counts[i] = 4;
+                            }
+                            if (pattern == 2) {
+                                test.counts[i] = rng() % 9;
+                            }
+                            if (pattern == 3) {
+                                test.counts[i] = i < test.counts.size() / 2 ? 3 : 0;
+                            }
+                            if (pattern == 4) {
+                                test.counts[i] = i < test.counts.size() / 2 ? 0 : 3;
+                            }
                         }
                         Require(test.Run("TND") == 0, "TND scheduling failed");
                         const auto baseline = test.output;

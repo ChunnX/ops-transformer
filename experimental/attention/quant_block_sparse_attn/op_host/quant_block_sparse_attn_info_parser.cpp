@@ -52,9 +52,8 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseQuery(QuantBlockSparseAttnT
     } else if (queryDimNum == DIM_NUM_4 && layoutQ == "BNSD") {
         qLayout = QBSALayout::BNSD;
     } else {
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(kOpName, "query",
-                                                 std::to_string(queryDimNum) + "D with layout " + layoutQ,
-                                                 "3D TND/NTD or 4D BSND/BNSD");
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            kOpName, "query", std::to_string(queryDimNum) + "D with layout " + layoutQ, "3D TND/NTD or 4D BSND/BNSD");
         return ge::GRAPH_FAILED;
     }
 
