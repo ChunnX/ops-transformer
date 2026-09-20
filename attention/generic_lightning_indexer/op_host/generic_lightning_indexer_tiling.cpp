@@ -74,11 +74,11 @@ ge::graphStatus GenericLightningIndexerTiling::ParseAndCheckParams(GenericLightn
         info.layoutK = GliDataLayout::BSND;
     } else if (layoutKStr == "TND") {
         info.layoutK = GliDataLayout::TND;
-    } else if (layoutKStr == "PA_BBND") {
+    } else if (layoutKStr == "PA_BBND" || layoutKStr == "PA_BSND") {
         info.layoutK = GliDataLayout::PA_BBND;
         info.pageAttention = true;
     } else {
-        OP_LOGE(context_, "layout_k must be BSND, TND or PA_BBND, got %s", layoutKStr.c_str());
+        OP_LOGE(context_, "layout_k must be BSND, TND, PA_BBND or PA_BSND, got %s", layoutKStr.c_str());
         return ge::GRAPH_FAILED;
     }
     if (!info.pageAttention && info.layoutQ != info.layoutK) {
@@ -120,6 +120,8 @@ ge::graphStatus GenericLightningIndexerTiling::ParseAndCheckParams(GenericLightn
     info.localBlocks = (localBlocksPtr == nullptr) ? 0 : static_cast<uint32_t>(*localBlocksPtr);
     const float *scoreScalePtr = attrs->GetAttrPointer<float>(GLI_ATTR_SCORE_SCALE);
     info.scoreScale = (scoreScalePtr == nullptr) ? 1.0f : *scoreScalePtr;
+    const int64_t *maxSeqQPtr = attrs->GetInt(GLI_ATTR_MAX_SEQLEN_Q);
+    info.maxSeqlenQ = (maxSeqQPtr == nullptr) ? -1 : static_cast<int32_t>(*maxSeqQPtr);
 
     OP_CHECK_IF(info.sparseMode != 0 && info.sparseMode != 3 && info.sparseMode != 4,
                 OP_LOGE(context_, "sparse_mode must be 0/3/4"), return ge::GRAPH_FAILED);
@@ -206,8 +208,15 @@ ge::graphStatus GenericLightningIndexerTiling::ParseAndCheckParams(GenericLightn
         } else {
             info.keyStride0 = info.blockSize * GLI_N2_FIXED * info.headDim;
         }
-        OP_CHECK_IF(context_->GetOptionalInputTensor(GLI_ACTUAL_SEQ_K_INDEX) == nullptr,
-                    OP_LOGE(context_, "PA requires actual_seq_k"), return ge::GRAPH_FAILED);
+        const int64_t *kds0 = attrs->GetAttrPointer<int64_t>(GLI_ATTR_K_DESCALE_STRIDE0);
+        if (kds0 != nullptr && *kds0 >= 0) {
+            info.keyDequantScaleStride0 = static_cast<uint32_t>(*kds0);
+        } else {
+            info.keyDequantScaleStride0 = info.blockSize * GLI_N2_FIXED;
+        }
+        OP_CHECK_IF(context_->GetOptionalInputTensor(GLI_ACTUAL_SEQ_K_INDEX) == nullptr &&
+                        context_->GetOptionalInputTensor(GLI_SEQUSED_K_INDEX) == nullptr,
+                    OP_LOGE(context_, "PA requires actual_seq_k or seqused_k"), return ge::GRAPH_FAILED);
     } else if (info.layoutK == GliDataLayout::BSND) {
         OP_CHECK_IF(kShape->GetStorageShape().GetDimNum() != 4, OP_LOGE(context_, "BSND key must be 4D"),
                     return ge::GRAPH_FAILED);
@@ -236,6 +245,8 @@ ge::graphStatus GenericLightningIndexerTiling::ParseAndCheckParams(GenericLightn
     const gert::Tensor *kScale = context_->GetOptionalInputTensor(GLI_K_DESCALE_INDEX);
     OP_CHECK_IF(needQuantScale && (qScale == nullptr || kScale == nullptr),
                 OP_LOGE(context_, "quant_mode>=0 requires q_descale and k_descale"), return ge::GRAPH_FAILED);
+
+    info.hasOutputIdxOffset = (context_->GetOptionalInputTensor(GLI_OUTPUT_IDX_OFFSET_INDEX) != nullptr) ? 1 : 0;
 
     return ge::GRAPH_SUCCESS;
 }
@@ -327,6 +338,8 @@ void GenericLightningIndexerTiling::SetTilingData(const GenericLightningIndexerT
     tilingData_.set_keyReduceMode(static_cast<uint32_t>(info.keyReduceMode));
     tilingData_.set_initBlocks(info.initBlocks);
     tilingData_.set_localBlocks(info.localBlocks);
+    tilingData_.set_hasOutputIdxOffset(info.hasOutputIdxOffset);
+    tilingData_.set_maxSeqlenQ(info.maxSeqlenQ);
 }
 
 ge::graphStatus GenericLightningIndexerTiling::DoTiling(GenericLightningIndexerTilingInfo *tilingInfo)
@@ -360,6 +373,14 @@ ge::graphStatus GenericLightningIndexerTiling::DoTiling(GenericLightningIndexerT
         tplDtQ = GLI_TPL_BF16;
     } else if (tilingInfo->queryDtype == ge::DT_FLOAT8_E4M3FN) {
         tplDtQ = GLI_TPL_FP8;
+    } else if (tilingInfo->queryDtype == ge::DT_INT8) {
+        tplDtQ = GLI_TPL_INT8;
+    } else if (tilingInfo->queryDtype == ge::DT_HIFLOAT8) {
+        tplDtQ = GLI_TPL_HIFP8;
+    } else if (tilingInfo->queryDtype == ge::DT_FLOAT4_E2M1) {
+        tplDtQ = GLI_TPL_FP4;
+    } else if (tilingInfo->queryDtype == ge::DT_FLOAT8_E5M2) {
+        tplDtQ = GLI_TPL_FP8_E5M2;
     }
     uint32_t headReduce = GLI_TPL_HEAD_WEIGHTED;
     if (tilingInfo->keyReduceMode == 1) {

@@ -52,10 +52,12 @@ public:
     __aicore__ inline GenericLightningIndexerKernel(){};
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *weights,
                                 __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
-                                __gm__ uint8_t *cmpResidualK, __gm__ uint8_t *blockTable, __gm__ uint8_t *qDescale,
-                                __gm__ uint8_t *kDescale, __gm__ uint8_t *metadata, __gm__ uint8_t *sparse_indices,
-                                __gm__ uint8_t *sparse_values, __gm__ uint8_t *workspace,
-                                const GenericLightningIndexerTilingData *__restrict tiling, TPipe *tPipe);
+                                __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedK, __gm__ uint8_t *cmpResidualK,
+                                __gm__ uint8_t *blockTable, __gm__ uint8_t *qDescale, __gm__ uint8_t *kDescale,
+                                __gm__ uint8_t *outputIdxOffset, __gm__ uint8_t *metadata, __gm__ uint8_t *startLoc,
+                                __gm__ uint8_t *sparse_indices, __gm__ uint8_t *sparse_values,
+                                __gm__ uint8_t *workspace, const GenericLightningIndexerTilingData *__restrict tiling,
+                                TPipe *tPipe);
     __aicore__ inline void Process();
 
     // =================================类型定义区=================================
@@ -459,10 +461,10 @@ __aicore__ inline void GenericLightningIndexerKernel<LIT>::DealActSeqLenIsZero(u
 template <typename LIT>
 __aicore__ inline void GenericLightningIndexerKernel<LIT>::Init(
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *weights, __gm__ uint8_t *actualSeqLengthsQ,
-    __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *cmpResidualK, __gm__ uint8_t *blockTable,
-    __gm__ uint8_t *qDescale, __gm__ uint8_t *kDescale, __gm__ uint8_t *metadata, __gm__ uint8_t *sparse_indices,
-    __gm__ uint8_t *sparse_values, __gm__ uint8_t *workspace,
-    const GenericLightningIndexerTilingData *__restrict tiling, TPipe *tPipe)
+    __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedK, __gm__ uint8_t *cmpResidualK,
+    __gm__ uint8_t *blockTable, __gm__ uint8_t *qDescale, __gm__ uint8_t *kDescale, __gm__ uint8_t *outputIdxOffset,
+    __gm__ uint8_t *metadata, __gm__ uint8_t *startLoc, __gm__ uint8_t *sparse_indices, __gm__ uint8_t *sparse_values,
+    __gm__ uint8_t *workspace, const GenericLightningIndexerTilingData *__restrict tiling, TPipe *tPipe)
 {
     if ASCEND_IS_AIV {
         tmpBlockIdx = GetBlockIdx(); // vec:0-47
@@ -473,8 +475,13 @@ __aicore__ inline void GenericLightningIndexerKernel<LIT>::Init(
     }
 
     (void)metadata;
+    (void)startLoc;
+    (void)outputIdxOffset;
+    (void)sequsedK;
     InitTilingData(tiling);
-    InitActualSeqLen(actualSeqLengthsQ, actualSeqLengths);
+    __gm__ uint8_t *actQ = (actualSeqLengthsQ != nullptr) ? actualSeqLengthsQ : sequsedQ;
+    __gm__ uint8_t *actK = (actualSeqLengths != nullptr) ? actualSeqLengths : sequsedK;
+    InitActualSeqLen(actQ, actK);
     if (cmpResidualK != nullptr) {
         poolTailKGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(cmpResidualK), constInfo.batchSize);
         hasPoolTailK_ = true;

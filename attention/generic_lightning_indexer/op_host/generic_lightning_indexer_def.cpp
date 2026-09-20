@@ -16,19 +16,20 @@ class GenericLightningIndexer : public OpDef {
 public:
     explicit GenericLightningIndexer(const char *name) : OpDef(name)
     {
+        // A2/A3: LI FP16/BF16 ± FP32 weights, QLI INT8.
         this->Input("query")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16})
+            .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_INT8})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("key")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16})
+            .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_INT8})
             .FormatList({ge::FORMAT_ND})
             .IgnoreContiguous();
         this->Input("weights")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16})
+            .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("actual_seq_q")
@@ -37,6 +38,16 @@ public:
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("actual_seq_k")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("seqused_q")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("seqused_k")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
@@ -53,14 +64,19 @@ public:
             .AutoContiguous();
         this->Input("q_descale")
             .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_FLOAT})
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("k_descale")
             .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_FLOAT})
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT16})
             .FormatList({ge::FORMAT_ND})
             .IgnoreContiguous();
+        this->Input("output_idx_offset")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Input("metadata")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
@@ -85,16 +101,18 @@ public:
         this->Attr("layout_q").AttrType(OPTIONAL).String("BSND");
         this->Attr("layout_k").AttrType(OPTIONAL).String("BSND");
         this->Attr("sparse_mode").AttrType(OPTIONAL).Int(0);
-        this->Attr("act_type").AttrType(OPTIONAL).Int(0);             // 0 relu, 1 identity
+        this->Attr("act_type").AttrType(OPTIONAL).Int(0); // 0 relu, 1 identity
         this->Attr("has_weighted_sum").AttrType(OPTIONAL).Bool(true);
         this->Attr("expand_indices").AttrType(OPTIONAL).Bool(false);
         this->Attr("append_tail").AttrType(OPTIONAL).Bool(false);
         this->Attr("quant_mode").AttrType(OPTIONAL).Int(-1);
         this->Attr("return_value").AttrType(OPTIONAL).Bool(false);
-        this->Attr("select_mode").AttrType(OPTIONAL).Int(0);          // 0 topk, 1 none (step2)
-        this->Attr("key_reduce_mode").AttrType(OPTIONAL).Int(0);      // 0 none, 1 maxpool (step2)
+        this->Attr("select_mode").AttrType(OPTIONAL).Int(0);     // 0 topk, 1 none (step2)
+        this->Attr("key_reduce_mode").AttrType(OPTIONAL).Int(0); // 0 none, 1 maxpool (step2)
         this->Attr("score_scale").AttrType(OPTIONAL).Float(1.0f);
         this->Attr("key_stride0").AttrType(OPTIONAL).Int(-1);
+        this->Attr("k_descale_stride0").AttrType(OPTIONAL).Int(-1);
+        this->Attr("max_seqlen_q").AttrType(OPTIONAL).Int(-1);
         this->Attr("init_blocks").AttrType(OPTIONAL).Int(0);
         this->Attr("local_blocks").AttrType(OPTIONAL).Int(0);
 
@@ -109,30 +127,43 @@ public:
         this->AICore().AddConfig("ascend910b", aicoreConfig);
         this->AICore().AddConfig("ascend910_93", aicoreConfig);
 
+        // 950 union of LI/LIv2/QLI/QLIv2/PKI/MSA dtype combos. See design §5.6.
         OpAICoreConfig aicoreConfig950;
         aicoreConfig950.Input("query")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN})
+            .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN,
+                       ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,
+                       ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8, ge::DT_HIFLOAT8, ge::DT_INT8, ge::DT_INT8,
+                       ge::DT_FLOAT4_E2M1, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         aicoreConfig950.Input("key")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN})
+            .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN,
+                       ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,
+                       ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8, ge::DT_HIFLOAT8, ge::DT_INT8, ge::DT_INT8,
+                       ge::DT_FLOAT4_E2M1, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2})
             .FormatList({ge::FORMAT_ND})
             .IgnoreContiguous();
         aicoreConfig950.Input("weights")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16})
+            .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16,
+                       ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT,
+                       ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         aicoreConfig950.Input("q_descale")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT,
+                       ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT, ge::DT_FLOAT,
+                       ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT, ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         aicoreConfig950.Input("k_descale")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT,
+                       ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT, ge::DT_FLOAT,
+                       ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT, ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .IgnoreContiguous();
         aicoreConfig950.DynamicCompileStaticFlag(true)

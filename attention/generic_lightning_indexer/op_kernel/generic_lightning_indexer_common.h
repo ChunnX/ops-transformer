@@ -12,6 +12,7 @@
 #define GENERIC_LIGHTNING_INDEXER_COMMON_H
 
 #include <type_traits>
+#include "generic_lightning_indexer_tiling_data.h"
 #include "gli_policy.h"
 
 using namespace AscendC;
@@ -144,6 +145,7 @@ struct ConstInfo {
     uint32_t maxBlockNumPerBatch = 0;
     uint32_t keyStride0 = 0U;
     uint32_t keyDequantScaleStride0 = 0U;
+    uint32_t hasOutputIdxOffset = 0U;
 
     GliLayout outputLayout = GliLayout::BSND;
     bool attenMaskFlag = false;

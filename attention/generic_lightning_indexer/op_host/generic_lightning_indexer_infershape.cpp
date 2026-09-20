@@ -30,7 +30,7 @@ constexpr uint32_t ATTR_RETURN_VALUE = 10;
 constexpr uint32_t ATTR_SELECT_MODE = 11;
 constexpr uint32_t ATTR_KEY_REDUCE_MODE = 12;
 constexpr uint32_t GLI_KEY_INDEX = 1;
-constexpr uint32_t GLI_BLOCK_TABLE_INDEX = 6;
+constexpr uint32_t GLI_BLOCK_TABLE_INDEX = 8;
 constexpr int64_t SCORE_BLOCK_ALIGN = 16;
 
 constexpr int64_t TOPK_MIN = 1;
@@ -118,9 +118,9 @@ static ge::graphStatus InferShapeGenericLightningIndexer(gert::InferShapeContext
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GenericLightningIndexer", "layout_q", layoutQ.c_str(),
                                                       "layout_q should be BSND or TND"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(layoutK != "BSND" && layoutK != "TND" && layoutK != "PA_BBND",
+    OP_CHECK_IF(layoutK != "BSND" && layoutK != "TND" && layoutK != "PA_BBND" && layoutK != "PA_BSND",
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GenericLightningIndexer", "layout_k", layoutK.c_str(),
-                                                      "layout_k should be BSND, TND or PA_BBND"),
+                                                      "layout_k should be BSND, TND, PA_BBND or PA_BSND"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(
         sparseMode != 0 && sparseMode != 3 && sparseMode != 4,
@@ -174,7 +174,7 @@ static ge::graphStatus InferShapeGenericLightningIndexer(gert::InferShapeContext
         const gert::Shape *keyShape = context->GetInputShape(GLI_KEY_INDEX);
         OP_CHECK_NULL_WITH_CONTEXT(context, keyShape);
         int64_t nBlocks = 1;
-        if (layoutK == "PA_BBND") {
+        if (layoutK == "PA_BBND" || layoutK == "PA_BSND") {
             const gert::Shape *btShape = context->GetOptionalInputShape(GLI_BLOCK_TABLE_INDEX);
             OP_CHECK_IF(btShape == nullptr, OP_LOGE(context, "PA_BBND requires block_table for MSA"),
                         return ge::GRAPH_FAILED);
