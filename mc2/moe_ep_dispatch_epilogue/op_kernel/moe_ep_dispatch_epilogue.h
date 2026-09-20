@@ -733,7 +733,6 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
                 uint32_t metaBase = localSlot * paddedMetaElems_;
                 uint32_t slotBufId = localSlot & 1U;
                 uint32_t stageOff = slotBufId * axisK_ * ELEM_ALIGN;
-                MOE_EP_PROFILE_ACCUM_BEGIN(0);
                 uint32_t hitCnt = 0;
                 int32_t srcRankMeta = ubMeta_.GetValue(metaBase + META_TOPK_SECTION * axisKAlign_);
                 int32_t tokenIdxMeta = ubMeta_.GetValue(metaBase + META_TOPK_SECTION * axisKAlign_ + 1);
@@ -752,8 +751,6 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
                     ubHitList_.SetValue(hitCnt * HIT_ENTRY_SIZE + HIT_TOPK_OFFSET, static_cast<int64_t>(topkIdx));
                     hitCnt++;
                 }
-                MOE_EP_PROFILE_ACCUM_END(0, MoeEpProfileOp::DISPATCH_EPILOGUE,
-                    MoeEpDispatchEpilogueProfileStage::EXPAND_HIT_LIST_SUM);
                 if (hitCnt == 0) {
                     if (localSlot >= 2U) {
                         WaitFlag<AscendC::HardEvent::MTE3_S>(ppEvtMte3ToS_[slotBufId]);
@@ -773,7 +770,6 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
                     srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType *>(slotAddr), axisH_);
                 }
 
-                MOE_EP_PROFILE_ACCUM_BEGIN(1);
                 LocalTensor<XType> tokenTensor = tokenQueue_.AllocTensor<XType>();
                 DataCopyPad(tokenTensor, srcTokenTensor, tokenCopyParams, tokenPadParams);
                 if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
@@ -788,11 +784,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
                 }
                 tokenQueue_.EnQue(tokenTensor);
                 LocalTensor<XType> tokenOut = tokenQueue_.DeQue<XType>();
-                MOE_EP_PROFILE_ACCUM_END_SELECT(1, 2, 1, MoeEpProfileOp::DISPATCH_EPILOGUE,
-                    MoeEpDispatchEpilogueProfileStage::LOCAL_INPUT_SUM,
-                    MoeEpDispatchEpilogueProfileStage::WINDOW_INPUT_SUM, isDirectSelfRank_);
 
-                MOE_EP_PROFILE_ACCUM_BEGIN(3);
                 for (uint32_t i = 0; i < hitCnt; i++) {
                     int64_t recvXRow = ubHitList_.GetValue(i * HIT_ENTRY_SIZE + HIT_ROW_OFFSET);
                     uint32_t topkIdx = static_cast<uint32_t>(ubHitList_.GetValue(i * HIT_ENTRY_SIZE + HIT_TOPK_OFFSET));
@@ -839,8 +831,6 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
                     ubRankExpertRowStart_.SetValue(rankExpertIndex, metadataRow + 1);
                 }
                 SetFlag<AscendC::HardEvent::MTE3_S>(ppEvtMte3ToS_[slotBufId]);
-                MOE_EP_PROFILE_ACCUM_END(3, MoeEpProfileOp::DISPATCH_EPILOGUE,
-                    MoeEpDispatchEpilogueProfileStage::OUTPUT_AND_METADATA_SUM);
             }
             if (tileCnt >= 1U) {
                 WaitFlag<AscendC::HardEvent::MTE3_S>(ppEvtMte3ToS_[(tileCnt - 1U) & 1U]);
@@ -920,7 +910,6 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
             } else {
                 srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType *>(slotAddr), axisH_);
             }
-            MOE_EP_PROFILE_ACCUM_BEGIN(4);
             LocalTensor<XType> tokenTensor = tokenQueue_.AllocTensor<XType>();
             DataCopyPad(tokenTensor, srcTokenTensor, tokenCopyParams, tokenPadParams);
 
@@ -947,10 +936,6 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 
             tokenQueue_.EnQue(tokenTensor);
             LocalTensor<XType> tokenOut = tokenQueue_.DeQue<XType>();
-            MOE_EP_PROFILE_ACCUM_END_SELECT(4, 5, 4, MoeEpProfileOp::DISPATCH_EPILOGUE,
-                MoeEpDispatchEpilogueProfileStage::CACHED_LOCAL_INPUT_SUM,
-                MoeEpDispatchEpilogueProfileStage::CACHED_WINDOW_INPUT_SUM, directSelfRank);
-            MOE_EP_PROFILE_ACCUM_BEGIN(6);
             uint32_t recvXRow = static_cast<uint32_t>(recvXIdx);
             DataCopyPad(recvXGm_[(int64_t)recvXRow * axisH_], tokenOut, tokenCopyParams);
             if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
@@ -959,8 +944,6 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
                             tokenOut[scalesStride_].template ReinterpretCast<ScalesType>(), scalesCopyParams);
             }
             tokenQueue_.FreeTensor(tokenOut);
-            MOE_EP_PROFILE_ACCUM_END(6, MoeEpProfileOp::DISPATCH_EPILOGUE,
-                MoeEpDispatchEpilogueProfileStage::CACHED_X_OUTPUT_SUBMIT_SUM);
 
             if constexpr (HasTopkWeights) {
                 SyncFunc<AscendC::HardEvent::S_MTE3>();

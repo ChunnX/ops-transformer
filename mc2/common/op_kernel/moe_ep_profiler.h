@@ -46,7 +46,6 @@ enum class MoeEpProfileEngine : uint32_t {
     MTE3 = 4U,
     URMA = 5U,
     WAIT = 6U,
-    ACCUMULATED = 7U, // One END record: cycle=sum of durations, payload=call count; not a timestamp.
 };
 
 enum class MoeEpProfileBoundary : uint32_t {
@@ -103,22 +102,6 @@ public:
     {
         StoreRecord(eventId, 0U, initBegin_);
         StoreRecord(eventId | 1U, 0U, initEnd_);
-    }
-    __aicore__ inline void AddDuration(uint32_t slot, uint32_t eventId, uint64_t duration)
-    {
-        if (!Enabled()) return;
-        if (slot >= 16U) { ++localDropped_; return; }
-        if (accumCount_[slot] != 0U && accumEvent_[slot] != eventId) { ++localDropped_; return; }
-        accumEvent_[slot] = eventId;
-        accumCycles_[slot] += duration;
-        if (accumCount_[slot] != 0xFFFFFFFFU) ++accumCount_[slot];
-    }
-    // At most one record per counter, irrespective of token/rank/retry counts.
-    __aicore__ inline void PublishAccumulated()
-    {
-        for (uint32_t i = 0U; i < 16U; ++i) {
-            if (accumCount_[i] != 0U) StoreRecord(accumEvent_[i], accumCount_[i], accumCycles_[i]);
-        }
     }
     __aicore__ inline void StoreRecord(uint32_t eventId, uint32_t payload, uint64_t cycle)
     {
@@ -243,29 +226,13 @@ private:
     uint32_t op_{0U};
     uint64_t initBegin_{0U};
     uint64_t initEnd_{0U};
-    uint64_t accumCycles_[16] = {};
-    uint32_t accumCount_[16] = {};
-    uint32_t accumEvent_[16] = {};
     uint32_t actualAivCores_{0U};
     uint32_t maxCores_{0U};
     uint32_t slotsPerCore_{0U};
 };
 
-// Scopes handle early returns without adding any business synchronization.
-class MoeEpAccumScope {
-public:
-    __aicore__ inline MoeEpAccumScope(MoeEpProfiler &prof, uint32_t slot, uint32_t event)
-        : prof_(prof), slot_(slot), event_(event), begin_(prof.Enabled() ? AscendC::GetSystemCycle() : 0U) {}
-    __aicore__ inline ~MoeEpAccumScope()
-    {
-        if (prof_.Enabled()) prof_.AddDuration(slot_, event_, AscendC::GetSystemCycle() - begin_);
-    }
-private:
-    MoeEpProfiler &prof_;
-    uint32_t slot_;
-    uint32_t event_;
-    uint64_t begin_;
-};
+// Function intervals handle early returns without adding business synchronization.
+// Do not place these scopes in functions called from token/rank/retry loops.
 class MoeEpProfileScope {
 public:
     __aicore__ inline MoeEpProfileScope(MoeEpProfiler &prof, uint32_t event) : prof_(prof), event_(event)
@@ -287,24 +254,11 @@ using Mc2Profile::MoeEpProfileOp;
 #define MOE_EP_PROFILE_INIT(context, op, actualAivCores) moeEpProfiler_.Init((context), (op), (actualAivCores))
 #define MOE_EP_PROFILE_MARK(eventId) moeEpProfiler_.Mark((eventId))
 #define MOE_EP_PROFILE_MARK_PAYLOAD(eventId, payload) moeEpProfiler_.Mark((eventId), (payload))
-#define MOE_EP_PROFILE_FLUSH() do { moeEpProfiler_.PublishAccumulated(); moeEpProfiler_.Flush(); } while (0)
-#define MOE_EP_PROFILE_ACCUM_BEGIN(slot) \
-    uint64_t moeEpAccumBegin##slot = moeEpProfiler_.Enabled() ? AscendC::GetSystemCycle() : 0U
-#define MOE_EP_PROFILE_ACCUM_END_TO(timer, slot, op, stage) do { \
-    if (moeEpProfiler_.Enabled()) moeEpProfiler_.AddDuration(slot, \
-        MOE_EP_PROFILE_EVENT(op, MoeEpProfileEngine::ACCUMULATED, stage, MoeEpProfileBoundary::END), \
-        AscendC::GetSystemCycle() - moeEpAccumBegin##timer); } while (0)
-#define MOE_EP_PROFILE_ACCUM_END(slot, op, stage) MOE_EP_PROFILE_ACCUM_END_TO(slot, slot, op, stage)
-#define MOE_EP_PROFILE_ACCUM_END_SELECT(timer, localSlot, remoteSlot, op, localStage, remoteStage, isLocal) do { \
-    if (isLocal) { MOE_EP_PROFILE_ACCUM_END_TO(timer, localSlot, op, localStage); } \
-    else { MOE_EP_PROFILE_ACCUM_END_TO(timer, remoteSlot, op, remoteStage); } } while (0)
+#define MOE_EP_PROFILE_FLUSH() moeEpProfiler_.Flush()
 #define MOE_EP_PROFILE_INIT_BEGIN() moeEpProfiler_.BeginInit()
 #define MOE_EP_PROFILE_INIT_END() moeEpProfiler_.EndInit()
 #define MOE_EP_PROFILE_INIT_PUBLISH(op, stage) \
     moeEpProfiler_.PublishInit(MOE_EP_PROFILE_EVENT(op, MoeEpProfileEngine::SCALAR, stage, MoeEpProfileBoundary::BEGIN))
-#define MOE_EP_PROFILE_ACCUM_SCOPE(slot, op, stage) \
-    Mc2Profile::MoeEpAccumScope moeEpAccumScope##slot(moeEpProfiler_, slot, \
-        MOE_EP_PROFILE_EVENT(op, MoeEpProfileEngine::ACCUMULATED, stage, MoeEpProfileBoundary::END))
 #define MOE_EP_PROFILE_SCOPE(op, engine, stage) \
     Mc2Profile::MoeEpProfileScope moeEpProfileScope(moeEpProfiler_, \
         MOE_EP_PROFILE_EVENT(op, engine, stage, MoeEpProfileBoundary::BEGIN))
@@ -317,14 +271,9 @@ using Mc2Profile::MoeEpProfileOp;
 #define MOE_EP_PROFILE_MARK(eventId) ((void)0)
 #define MOE_EP_PROFILE_MARK_PAYLOAD(eventId, payload) ((void)0)
 #define MOE_EP_PROFILE_FLUSH() ((void)0)
-#define MOE_EP_PROFILE_ACCUM_BEGIN(slot) ((void)0)
-#define MOE_EP_PROFILE_ACCUM_END(slot, op, stage) ((void)0)
-#define MOE_EP_PROFILE_ACCUM_END_TO(timer, slot, op, stage) ((void)0)
-#define MOE_EP_PROFILE_ACCUM_END_SELECT(timer, localSlot, remoteSlot, op, localStage, remoteStage, isLocal) ((void)0)
 #define MOE_EP_PROFILE_INIT_BEGIN() ((void)0)
 #define MOE_EP_PROFILE_INIT_END() ((void)0)
 #define MOE_EP_PROFILE_INIT_PUBLISH(op, stage) ((void)0)
-#define MOE_EP_PROFILE_ACCUM_SCOPE(slot, op, stage) ((void)0)
 #define MOE_EP_PROFILE_SCOPE(op, engine, stage) ((void)0)
 
 #endif // ENABLE_MOE_EP_PROFILING

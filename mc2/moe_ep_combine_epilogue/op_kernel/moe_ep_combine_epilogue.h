@@ -498,7 +498,6 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
 template <TemplateMoeEpCombineEpilogueTypeClass>
 __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc>::ProcessTopKToken(uint32_t tokenIndex)
 {
-    MOE_EP_PROFILE_ACCUM_SCOPE(0, MoeEpProfileOp::COMBINE_EPILOGUE, MoeEpCombineEpilogueProfileStage::TOPK_REDUCE_SUM);
     Duplicate<float>(ubAccFp32_, (float)0, axisH_);
     uint32_t localExpertBegin = rankId_ * tilingData_->cfg.numLocalExperts;
     uint32_t localExpertEnd = localExpertBegin + tilingData_->cfg.numLocalExperts;
@@ -515,7 +514,6 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
             expertId < static_cast<int32_t>(localExpertEnd)) {
             continue;
         }
-        MOE_EP_PROFILE_ACCUM_BEGIN(1);
         LocalTensor<XType> xLocal = xInQue_.AllocTensor<XType>();
         if (localRecvXIdx >= 0) {
             DataCopyPad(xLocal, xGm_[static_cast<uint64_t>(localRecvXIdx) * axisH_], xCopyParams_, padParams_);
@@ -527,18 +525,11 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
         }
         xInQue_.EnQue(xLocal);
         LocalTensor<XType> xIn = xInQue_.DeQue<XType>();
-        MOE_EP_PROFILE_ACCUM_END_SELECT(1, 7, 1, MoeEpProfileOp::COMBINE_EPILOGUE,
-            MoeEpCombineEpilogueProfileStage::LOCAL_X_INPUT_SUM, MoeEpCombineEpilogueProfileStage::X_INPUT_SUM,
-            localRecvXIdx >= 0);
-        MOE_EP_PROFILE_ACCUM_BEGIN(2);
         Cast(ubTmpFp32_, xIn, AscendC::RoundMode::CAST_NONE, axisH_);
         Add(ubAccFp32_, ubAccFp32_, ubTmpFp32_, axisH_);
-        MOE_EP_PROFILE_ACCUM_END(2, MoeEpProfileOp::COMBINE_EPILOGUE,
-            MoeEpCombineEpilogueProfileStage::CAST_ADD_SUBMIT_SUM);
         xInQue_.FreeTensor(xIn);
 
         if constexpr (HasTopkWeight == 1) {
-            MOE_EP_PROFILE_ACCUM_BEGIN(3);
             LocalTensor<float> weightLocal = weightQue_.AllocTensor<float>();
             if (localRecvXIdx >= 0) {
                 DataCopyPad(weightLocal, topkWeightsGm_[localRecvXIdx], weightCopyParams_, padParams_);
@@ -550,21 +541,13 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
             }
             weightQue_.EnQue(weightLocal);
             LocalTensor<float> weightOut = weightQue_.DeQue<float>();
-            MOE_EP_PROFILE_ACCUM_END_SELECT(3, 8, 3, MoeEpProfileOp::COMBINE_EPILOGUE,
-                MoeEpCombineEpilogueProfileStage::LOCAL_WEIGHT_INPUT_SUM,
-                MoeEpCombineEpilogueProfileStage::WEIGHT_INPUT_SUM, localRecvXIdx >= 0);
-            MOE_EP_PROFILE_ACCUM_BEGIN(4);
             DataCopyPad(combinedTopkWeightsGm_[tokenIndex * topK_ + topkId], weightOut, weightCopyParams_);
             weightQue_.FreeTensor(weightOut);
-            MOE_EP_PROFILE_ACCUM_END(4, MoeEpProfileOp::COMBINE_EPILOGUE,
-                MoeEpCombineEpilogueProfileStage::WEIGHT_OUTPUT_SUBMIT_SUM);
         }
     }
     LocalTensor<XType> ubResultBf16 = xOutQue_.AllocTensor<XType>();
-    MOE_EP_PROFILE_ACCUM_BEGIN(6);
     Cast(ubResultBf16, ubAccFp32_, RoundMode::CAST_RINT, axisH_);
     xOutQue_.EnQue(ubResultBf16);
-    MOE_EP_PROFILE_ACCUM_END(6, MoeEpProfileOp::COMBINE_EPILOGUE, MoeEpCombineEpilogueProfileStage::RESULT_CAST_SUM);
 }
 
 template <TemplateMoeEpCombineEpilogueTypeClass>
@@ -628,12 +611,9 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     DataCopyParams xCopyParams = {1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
     for (uint32_t tokenIdx = tStart_; tokenIdx < tEnd_; ++tokenIdx) {
         ProcessTopKToken(tokenIdx);
-        MOE_EP_PROFILE_ACCUM_BEGIN(5);
         LocalTensor<XType> ubResult = xOutQue_.DeQue<XType>();
         DataCopyPad(combinedXGm_[tokenIdx * axisH_], ubResult, xCopyParams);
         xOutQue_.FreeTensor(ubResult);
-        MOE_EP_PROFILE_ACCUM_END(5, MoeEpProfileOp::COMBINE_EPILOGUE,
-            MoeEpCombineEpilogueProfileStage::X_OUTPUT_SUBMIT_SUM);
     }
     diagWriter_.RunPosRecord(MOE_EP_COMBINE_EPILOGUE_RUN_POS_OUTPUT_DONE);
     MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(

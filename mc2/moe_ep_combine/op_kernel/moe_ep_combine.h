@@ -295,7 +295,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR 
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::FlushPreparedWrites(bool keepHandle)
 {
-    MOE_EP_PROFILE_ACCUM_SCOPE(3, MoeEpProfileOp::COMBINE, MoeEpCombineProfileStage::BATCH_COMMIT_SUM);
     if (preparedWriteCount_ != 0) {
         (void)hcomm_.BatchCommit(activeBatchHandle_);
         preparedWriteCount_ = 0;
@@ -311,7 +310,6 @@ template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BeginPreparedWrites(uint32_t dstRank,
                                                                                        uint32_t channelIndex)
 {
-    MOE_EP_PROFILE_ACCUM_SCOPE(6, MoeEpProfileOp::COMBINE, MoeEpCombineProfileStage::BATCH_HANDLE_SUM);
     uint64_t commHandle = GetCommHandle(dstRank, channelIndex);
     if (activeBatchInitialized_ && activeBatchChannel_ == commHandle) {
         return;
@@ -330,7 +328,6 @@ template <TemplateMoeEpCombineTypeClass>
 template <auto const &config>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWrite(GM_ADDR dst, GM_ADDR src, uint64_t len)
 {
-    MOE_EP_PROFILE_ACCUM_SCOPE(4, MoeEpProfileOp::COMBINE, MoeEpCombineProfileStage::SINGLE_WQE_SUM);
     // Single-SGE WQE occupies 1 WQEBB (64 bytes).
     if (preparedWriteCount_ + 1U > HCOMM_BATCH_CAPACITY) {
         FlushPreparedWrites(true);
@@ -345,7 +342,6 @@ template <auto const &config>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareMultiSgeWrite(
     GM_ADDR dst, const AscendC::BufDesc *srcDescs, uint32_t srcNum)
 {
-    MOE_EP_PROFILE_ACCUM_SCOPE(5, MoeEpProfileOp::COMBINE, MoeEpCombineProfileStage::MULTI_WQE_SUM);
     // Multi-SGE WQE: SQE header (48B) + srcNum * SGE (16B each), rounded up to WQEBB boundary (64B).
     constexpr uint32_t sqeHeaderBytes = 48U;
     constexpr uint32_t sgeEntryBytes = 16U;
@@ -364,7 +360,6 @@ template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendChannelFlag(uint32_t dstRank,
                                                                                    uint32_t channelIndex)
 {
-    MOE_EP_PROFILE_ACCUM_SCOPE(7, MoeEpProfileOp::COMBINE, MoeEpCombineProfileStage::CHANNEL_FLAG_SUM);
     uint64_t flagIndex = static_cast<uint64_t>(rankId_) * combineChannelCount_ + channelIndex;
     uint64_t flagOffset =
         static_cast<uint64_t>(numMaxTokensPerRank_) * topK_ * WIN_ADDR_ALIGN + flagIndex * WIN_ADDR_ALIGN;
@@ -423,7 +418,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendRemoteMet
     uint32_t recvXIdx, int32_t srcTokenIdx, int32_t srcTopKIdx, GM_ADDR remoteDataBase, GM_ADDR remoteStateBase,
     uint64_t tokenBytes)
 {
-    MOE_EP_PROFILE_ACCUM_SCOPE(2, MoeEpProfileOp::COMBINE, MoeEpCombineProfileStage::METADATA_WQE_SUM);
     uint64_t dstSlot =
         static_cast<uint64_t>(static_cast<uint32_t>(srcTokenIdx)) * topK_ + static_cast<uint32_t>(srcTopKIdx);
     GM_ADDR tokenAddr = reinterpret_cast<GM_ADDR>(xGm_.GetPhyAddr(static_cast<uint64_t>(recvXIdx) * axisH_));
@@ -458,7 +452,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ProcessRemote
                                                                                               uint64_t rangeEnd,
                                                                                               uint32_t channelIndex)
 {
-    MOE_EP_PROFILE_ACCUM_SCOPE(1, MoeEpProfileOp::COMBINE, MoeEpCombineProfileStage::REMOTE_RANGE_SUM);
     if (rangeBegin >= rangeEnd) {
         return;
     }
@@ -475,10 +468,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ProcessRemote
             (chunkStart + metadataChunkTokens_ > rangeEnd) ? rangeEnd : chunkStart + metadataChunkTokens_;
         uint32_t chunkCount = static_cast<uint32_t>(chunkEnd - chunkStart);
         DataCopyExtParams copyParams{1U, chunkCount * metaBytesPerToken, 0U, 0U, 0U};
-        MOE_EP_PROFILE_ACCUM_BEGIN(0);
         DataCopyPad(metadataLocal, recvSrcMetadataGm_[chunkStart * RECV_META_FIELDS], copyParams, padParams);
         SyncFunc<AscendC::HardEvent::MTE2_S>();
-        MOE_EP_PROFILE_ACCUM_END(0, MoeEpProfileOp::COMBINE, MoeEpCombineProfileStage::METADATA_INPUT_SUM);
 
         for (uint32_t i = 0; i < chunkCount; ++i) {
             uint32_t metaOffset = i * RECV_META_FIELDS;
