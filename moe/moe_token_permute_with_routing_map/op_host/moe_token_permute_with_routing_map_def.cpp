@@ -79,13 +79,14 @@ public:
             .ExtendCfgInfo("opFile.value", "moe_token_permute_with_routing_map");
         this->AICore().AddConfig("ascend910b", membaseCfg);
         this->AICore().AddConfig("ascend910_93", membaseCfg);
-        
+
         OpAICoreConfig regbaseCfg;
         regbaseCfg.DynamicCompileStaticFlag(true)
             .DynamicRankSupportFlag(true)
             .DynamicShapeSupportFlag(true)
             .ExtendCfgInfo("opFile.value", "moe_token_permute_with_routing_map");
         this->AICore().AddConfig("ascend950", regbaseCfg);
+        this->AICore().AddConfig("ascend350", regbaseCfg);
     }
 };
 
