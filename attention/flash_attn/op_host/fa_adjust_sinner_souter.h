@@ -137,7 +137,8 @@ constexpr uint32_t FA_TEMPLATE_ND = 0;
 constexpr uint32_t FA_TEMPLATE_DN = 1;
 constexpr uint32_t FA_TEMPLATE_DN_UNMERGED = 2; // 不合轴 DN(templateId=2), 预埋路由入口默认关闭
 
-// Host and metadata share this gate. Keep disabled until paired validation completes.
+// Host and metadata share this gate. Migration is complete; keep disabled until
+// masked prefill performance satisfies the per-case enablement gate.
 constexpr bool DN_UNMERGED_ROUTE_ENABLED = false;
 
 // Use the original Cube M, not per-AIV rows or actual tail rows. Eligible shapes

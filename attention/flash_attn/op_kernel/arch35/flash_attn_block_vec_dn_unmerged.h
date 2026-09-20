@@ -436,7 +436,7 @@ public:
     __aicore__ inline void InitBuffers()
     {
         /*--------------------------------------------L1--------------------------------------------*/
-        // l1P 三缓冲
+        // P follows the PRELOAD_N + 1 slot ring (four slots for D64, otherwise three).
         uint32_t addrL1 = 0;
         l1PBuffers_ = LocalTensor<uint8_t>(TPosition::A1, addrL1, L1_P_BUFCNT * L1_P_BUF_BYTES);
 
@@ -456,23 +456,23 @@ public:
         ubVec2Res_ = LocalTensor<uint8_t>(TPosition::VECIN, addrUb, UB_VEC2_RES_BUF_BYTES)
                          .template ReinterpretCast<T>(); // 输出BUF: attn_out拷出
         addrUb += UB_VEC2_RES_BUF_BYTES;
-        ubVec1ResBuffers_ = LocalTensor<uint8_t>(
-            TPosition::VECIN, addrUb,
-            UB_VEC1_RES_BUFCNT * UB_VEC1_RES_BUF_BYTES); // 2 * 32.25K = 64.5K, 输出BUF: softmax结果拷贝至L1
+        ubVec1ResBuffers_ =
+            LocalTensor<uint8_t>(TPosition::VECIN, addrUb,
+                                 UB_VEC1_RES_BUFCNT * UB_VEC1_RES_BUF_BYTES); // 按N定容的P槽, softmax结果拷贝至L1
         addrUb += UB_VEC1_RES_BUFCNT * UB_VEC1_RES_BUF_BYTES;
 
-        // softmaxSum×3 + softmaxMax×3 + softmaxExp×3，各 256 bytes
+        // Sum/max/exp each use PRELOAD_N + 1 slots of 256 bytes.
         softmaxSumBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, addrUb,
                                               UB_SOFTMAX_SUM_BUFCNT * UB_SOFTMAX_SUM_BUF_BYTES)
-                             .template ReinterpretCast<T>(); // 3 * 0.25K = 0.75K, 常驻BUF
+                             .template ReinterpretCast<T>(); // 常驻统计槽
         addrUb += UB_SOFTMAX_SUM_BUFCNT * UB_SOFTMAX_SUM_BUF_BYTES;
         softmaxMaxBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, addrUb,
                                               UB_SOFTMAX_MAX_BUFCNT * UB_SOFTMAX_MAX_BUF_BYTES)
-                             .template ReinterpretCast<T>(); // 3 * 0.25K = 0.75K, 常驻BUF
+                             .template ReinterpretCast<T>(); // 常驻统计槽
         addrUb += UB_SOFTMAX_MAX_BUFCNT * UB_SOFTMAX_MAX_BUF_BYTES;
         softmaxExpBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, addrUb,
                                               UB_SOFTMAX_EXP_BUFCNT * UB_SOFTMAX_EXP_BUF_BYTES)
-                             .template ReinterpretCast<T>(); // 3 * 0.25K = 0.75K, 常驻BUF
+                             .template ReinterpretCast<T>(); // 常驻统计槽
         addrUb += UB_SOFTMAX_EXP_BUFCNT * UB_SOFTMAX_EXP_BUF_BYTES;
 
         ubLseOutBuffers_ = LocalTensor<uint8_t>(
