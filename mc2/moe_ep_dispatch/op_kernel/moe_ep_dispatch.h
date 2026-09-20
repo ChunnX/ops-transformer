@@ -25,7 +25,7 @@
 
 // Experimental boundary fences: bit 0 after dedup, bit 1 after per-rank counting.
 #ifndef MOE_EP_DISPATCH_COUNT_SYNC_MASK
-#define MOE_EP_DISPATCH_COUNT_SYNC_MASK 3
+#define MOE_EP_DISPATCH_COUNT_SYNC_MASK 1
 #endif
 
 #if (MOE_EP_DISPATCH_COUNT_CHECK != 0) && (MOE_EP_DISPATCH_COUNT_CHECK != 1)
