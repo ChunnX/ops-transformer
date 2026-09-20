@@ -47,7 +47,8 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
             for (uint32_t half = 0; half < 2; ++half) {
                 const uint32_t h0 = half * 2;
                 const uint32_t h1 = h0 + 1;
-                MhcSandwichRegBase::PairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff], x2Cache[h1 * D_ + tOff], tD);
+                MhcSandwichRegBase::PairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff],
+                                                       x2Cache[h1 * D_ + tOff], tD);
                 PipeBarrier<PIPE_V>();
                 midSqHalf[half] += ReduceSumPrecise(out, tD);
             }
@@ -75,8 +76,8 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
                 if (n + 1 < N_MAX) {
                     LoadGammaInto(gammaNext, gamma2Gm_, (n + 1) * D_ + tOff, tD);
                 }
-                MhcSandwichRegBase::CastB16ScaleAndMulGamma(x2[n * dimTile_], x2Cache[n * D_ + tOff], gammaCurrent,
-                                                            invRmsMid, tD);
+                MhcSandwichRegBase::CastB16ScaleAndMulGamma(x2[n * dimTile_], x2Cache[n * D_ + tOff],
+                                                           gammaCurrent, invRmsMid, tD);
                 PipeBarrier<PIPE_V>();
                 if (n + 2 < N_MAX) {
                     FenceVToMte2();
@@ -113,6 +114,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     DataCopy(partialBuf, partial1Gm_[(uint64_t)token * PARTIAL_SLOT_ELEMS], PARTIAL_SLOT_ELEMS);
     SetFlag<HardEvent::MTE2_S>(evtMte2toS_);
     WaitFlag<HardEvent::MTE2_S>(evtMte2toS_);
+    WaitFlag<HardEvent::MTE3_V>(evtMte3toV_);
     sumSqHalf[1] = partialBuf.GetValue(0);
     for (uint32_t o = 0; o < N_MAX; ++o) {
         dotHalf[1][o] = partialBuf.GetValue(o + 1U);
@@ -124,8 +126,6 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         xHatVals[o] = dotHalf[0][o] + dotHalf[1][o];
     }
     ComputeGateValues(totalSumSqPre, xHatVals);
-    // partial合并和门控不读取x2缓存，延后回收事件以继续隐藏MTE3完成等待。
-    WaitFlag<HardEvent::MTE3_V>(evtMte3toV_);
 
     // 会合后只有leader继续执行R6、R7和最终输出。
     float sumSq1 = 0.0f;
