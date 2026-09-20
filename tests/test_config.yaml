@@ -712,6 +712,23 @@ attention:
     options:
       - kv_quant_sparse_flash_attention
 
+  kda_input_proj:
+    module: True
+    src:
+      - attention/kda_input_proj
+    exclude:
+      - attention/kda_input_proj/docs
+      - attention/kda_input_proj/README.md
+    ut_cov_exclude:
+      - attention/kda_input_proj/tests
+      - attention/kda_input_proj/examples
+      - attention/kda_input_proj/op_kernel
+    test:
+      examples: False
+      ut: True
+    options:
+      - kda_input_proj
+
   kv_quant_sparse_flash_attention_v2:
     module: True
     src:
