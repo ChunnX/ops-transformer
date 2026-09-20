@@ -63,24 +63,19 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
             const uint32_t tD = GetTileD(tile);
             const uint32_t tOff = tile * dimTile_;
-            LocalTensor<float> gammaEven = bufGamma2Fp32_.Get<float>();
-            LocalTensor<float> gammaOdd = bufGamma0Fp32_.Get<float>();
-            LoadGammaInto(gammaEven, gamma2Gm_, tOff, tD);
+            // 两个lane使用相同的二维搬运和head顺序，保持R3冗余执行语义一致。
+            LocalTensor<float> gammaTile = bufX2Fp32_.Get<float>();
+            DataCopyExtParams gammaCopy = {static_cast<uint16_t>(N_MAX), static_cast<uint32_t>(tD * sizeof(float)),
+                                           static_cast<uint32_t>((D_ - tD) * sizeof(float)), 0, 0};
+            DataCopyPadExtParams<float> gammaPad = {false, 0, 0, 0};
+            DataCopyPad(gammaTile, gamma2Gm_[tOff], gammaCopy, gammaPad);
+            SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+            WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
             LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
             for (uint32_t n = 0; n < N_MAX; ++n) {
-                LocalTensor<float> gammaCurrent = ((n & 1U) == 0) ? gammaEven : gammaOdd;
-                LocalTensor<float> gammaNext = ((n & 1U) == 0) ? gammaOdd : gammaEven;
-                SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
-                WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-                if (n + 1 < N_MAX) {
-                    LoadGammaInto(gammaNext, gamma2Gm_, (n + 1) * D_ + tOff, tD);
-                }
                 MhcSandwichRegBase::CastB16ScaleAndMulGammaToB16(
-                    x2Cache[n * D_ + tOff], x2Cache[n * D_ + tOff], gammaCurrent, invRmsMid, tD);
+                    x2Cache[n * D_ + tOff], x2Cache[n * D_ + tOff], gammaTile[n * tD], invRmsMid, tD);
                 PipeBarrier<PIPE_V>();
-                if (n + 2 < N_MAX) {
-                    FenceVToMte2();
-                }
             }
             CacheX2TileForLane(token, tOff, tD, true, false);
             AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, laneId_, laneId_ + 1U);
