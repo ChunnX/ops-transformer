@@ -716,7 +716,7 @@ sym_buffer.update_group(group) -> None
         <td>max_recv_token_num</td>
         <td>int</td>
         <td>可选</td>
-        <td>每个Rank最大可接收Token数，默认值为0表示自动计算。默认值为0。</td>
+        <td>每个Rank最大可接收Token数。默认值为0。取值为0时按该上限自动计算；取值大于0时使用该设置上限值。</td>
     </tr>
     <tr>
         <td>dispatch_quant_mode</td>
@@ -1402,7 +1402,7 @@ sym_buffer.update_group(group) -> None
     - intermediate_hidden表示激活后的中间特征维度，范围[256, 4096]且128对齐；Linear1的完整输出宽度为2 × intermediate_hidden。
     - ep_world_size范围 [2, 1024]。
     - num_experts范围 [ep_world_size, 2048]，且num_experts % ep_world_size == 0。
-    - max_recv_token_num范围 [0, num_max_tokens_per_rank × ep_world_size × min(num_topk, local_moe_expert_num)]；建议保持默认值0，由接口自动计算接收容量。
+    - `max_recv_token_num`范围 [0, `num_max_tokens_per_rank` × `ep_world_size` × min(`num_topk`, `local_moe_expert_num`)]。取值为0时按该上限自动计算；取值大于0时使用用户设置的上限，可根据实际最大接收量设置以减少内存预留，但必须保证所有Rank和所有调用的实际接收量不超过该值。
     - dispatch_quant_out_dtype仅支持torch.float8_e5m2或torch.float8_e4m3fn或torch.float4_e2m1。
     - 当前版本仅支持MXFP量化模式（dispatch_quant_mode = 4），dispatch阶段使用MX逐组量化（group size = 32），量化缩放因子类型为FLOAT8_E8M0。
     - x_active_mask和scales参数当前版本必须传入None，不支持非空输入。
