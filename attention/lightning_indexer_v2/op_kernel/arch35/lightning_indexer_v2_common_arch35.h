@@ -14,13 +14,13 @@
  */
 #ifndef LIGHTNING_INDEXER_V2_COMMON_ARCH35_H
 #define LIGHTNING_INDEXER_V2_COMMON_ARCH35_H
-
 // CVRATIO: 960(1:1)=1, 950(1:2)=2
 #if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
     #define CVRATIO 1
 #else
     #define CVRATIO 2
 #endif
+
 
 using namespace AscendC;
 namespace LIV2Common {
