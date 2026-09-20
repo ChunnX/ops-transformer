@@ -66,7 +66,8 @@ static constexpr uint32_t HCOMM_BATCH_CAPACITY = 256;
 static constexpr uint32_t HCOMM_PLAIN_WRITE_WQE_BYTES = 64;
 static constexpr uint32_t HCOMM_BATCH_BUFFER_BYTES = HCOMM_BATCH_CAPACITY * HCOMM_PLAIN_WRITE_WQE_BYTES;
 constexpr uint64_t UB_ALIGN = 32UL;
-static constexpr uint32_t META_CHUNK_TOKEN_MAX = 2048U;
+// Two 1024-row buffers retain the previous 2048-row maximum metadata UB budget.
+static constexpr uint32_t META_CHUNK_TOKEN_MAX = 1024U;
 static constexpr struct UrmaWqeEntry DEFAULT_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
 // Keep the final flag ordered after payload writes; the epilogue waits for it without a sender-side completion wait.
 static constexpr struct UrmaWqeEntry JETTY_FLAG_WQE_CONFIG = {.odr = 6, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
@@ -83,6 +84,12 @@ public:
     __aicore__ inline void Process();
 
 private:
+    struct MetadataChunk {
+        uint32_t rank;
+        uint64_t begin;
+        uint32_t count;
+        bool last;
+    };
     __aicore__ inline void InitContext(GM_ADDR context);
     __aicore__ inline void InitMetadata(GM_ADDR x, GM_ADDR recvSrcMetadata, GM_ADDR topkWeights);
     __aicore__ inline void SendJettyFlag(uint32_t dstRank, uint32_t jettyIndex);
@@ -96,9 +103,12 @@ private:
     __aicore__ inline void SplitRange(uint64_t rangeBegin, uint64_t rangeEnd, uint32_t coreCount, uint32_t coreIndex,
                                       uint64_t &coreBegin, uint64_t &coreEnd);
     __aicore__ inline void SendRemoteMetadataSlot(uint32_t recvXIdx, int32_t srcTokenIdx, int32_t srcTopKIdx,
-                                                  GM_ADDR remoteDataBase, GM_ADDR remoteStateBase, uint64_t tokenBytes);
-    __aicore__ inline void ProcessRemoteMetadataRange(uint32_t targetRank, uint64_t rangeBegin, uint64_t rangeEnd,
-                                                      uint32_t jettyIndex);
+                                                  GM_ADDR remoteDataBase, uint64_t tokenBytes);
+    __aicore__ inline bool NextMetadataChunk(uint32_t &peerOffset, uint64_t &begin, uint64_t &end,
+                                            MetadataChunk &chunk);
+    __aicore__ inline void PrefetchMetadata(const MetadataChunk &chunk, uint32_t buffer, TEventID event);
+    __aicore__ inline void SendMetadataChunk(const MetadataChunk &chunk, uint32_t buffer, TEventID event);
+    __aicore__ inline void SendMetadataPipeline();
     __aicore__ inline void SendPhaseFromMetadata();
 
     __aicore__ inline uint64_t GetJettyHandle(uint32_t jettyIndex)
@@ -149,7 +159,7 @@ private:
     TBuf<> hcommBuf_;
     TBuf<TPosition::VECOUT> hcommBatchBuf_;
 
-    TBuf<> metadataBuf_; // 发送阶段recvSrcMetadata的UB缓冲，批量搬运避免GetValue
+    TBuf<> metadataBuf_[2]; // One metadata chunk can load while the other builds WQEs.
 
     AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_; // 通信上下文
     using CommHandle = AscendC::MultiChannelHandle;
@@ -167,18 +177,15 @@ private:
 };
 
 template <TemplateMoeEpCombineTypeClass>
-__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkIdx,
+__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR context, GM_ADDR x, GM_ADDR /*topkIdx*/,
                                                                         GM_ADDR recvSrcMetadata,
-                                                                        GM_ADDR numRecvPerExpert, GM_ADDR topkWeights,
-                                                                        GM_ADDR workspace, GM_ADDR /*tilingGM*/,
+                                                                        GM_ADDR /*numRecvPerExpert*/, GM_ADDR topkWeights,
+                                                                        GM_ADDR /*workspace*/, GM_ADDR /*tilingGM*/,
                                                                         TPipe *pipe, const MoeEpCombineInfo *tilingData)
 {
     tpipe_ = pipe;
     tilingData_ = tilingData;
     aivId_ = GetBlockIdx();
-    (void)topkIdx;
-    (void)numRecvPerExpert;
-    (void)workspace;
     epWorldSize_ = tilingData_->cfg.epWorldSize;
     numMaxTokensPerRank_ = tilingData_->cfg.numMaxTokensPerRank;
     topK_ = tilingData_->cfg.topK;
@@ -244,7 +251,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::InitMetadata(
     metadataChunkTokens_ = (metadataChunkTokens_ == 0U) ? 1U : metadataChunkTokens_;
     uint32_t metadataChunkBytes =
         Ceil(static_cast<uint64_t>(metadataChunkTokens_) * RECV_META_FIELDS * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
-    tpipe_->InitBuffer(metadataBuf_, metadataChunkBytes);
+    tpipe_->InitBuffer(metadataBuf_[0], metadataChunkBytes);
+    tpipe_->InitBuffer(metadataBuf_[1], metadataChunkBytes);
     tpipe_->InitBuffer(readStateBuf_, WIN_ADDR_ALIGN);
     statusTensor_ = readStateBuf_.Get<uint32_t>();
 }
@@ -375,8 +383,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SplitRange(ui
 
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendRemoteMetadataSlot(
-    uint32_t recvXIdx, int32_t srcTokenIdx, int32_t srcTopKIdx, GM_ADDR remoteDataBase, GM_ADDR remoteStateBase,
-    uint64_t tokenBytes)
+    uint32_t recvXIdx, int32_t srcTokenIdx, int32_t srcTopKIdx, GM_ADDR remoteDataBase, uint64_t tokenBytes)
 {
     uint64_t dstSlot =
         static_cast<uint64_t>(static_cast<uint32_t>(srcTokenIdx)) * topK_ + static_cast<uint32_t>(srcTopKIdx);
@@ -392,40 +399,97 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendRemoteMet
 }
 
 template <TemplateMoeEpCombineTypeClass>
-__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ProcessRemoteMetadataRange(uint32_t targetRank,
-                                                                                              uint64_t rangeBegin,
-                                                                                              uint64_t rangeEnd,
-                                                                                              uint32_t jettyIndex)
+__aicore__ inline bool MoeEpCombine<TemplateMoeEpCombineTypeFunc>::NextMetadataChunk(
+    uint32_t &peerOffset, uint64_t &begin, uint64_t &end, MetadataChunk &chunk)
 {
-    if (rangeBegin >= rangeEnd) {
+    if (peerOffset == epWorldSize_) {
+        return false;
+    }
+    uint32_t rank = (aivId_ + peerOffset) % epWorldSize_;
+    if (begin == end && rank != rankId_ && actualA_ != 0U) {
+        uint64_t rankBegin = static_cast<uint32_t>(rankOffsetsTensor_.GetValue(rank));
+        uint64_t rankEnd = static_cast<uint32_t>(rankOffsetsTensor_.GetValue(rank + 1U));
+        SplitRange(rankBegin, rankEnd, combineJettyCount_, aivId_, begin, end);
+    }
+    uint64_t remaining = end - begin;
+    uint32_t count = remaining < metadataChunkTokens_ ? static_cast<uint32_t>(remaining) : metadataChunkTokens_;
+    chunk = {rank, begin, count, count == remaining};
+    begin += count;
+    if (chunk.last) {
+        ++peerOffset;
+        begin = 0U;
+        end = 0U;
+    }
+    return true;
+}
+
+template <TemplateMoeEpCombineTypeClass>
+__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrefetchMetadata(
+    const MetadataChunk &chunk, uint32_t buffer, TEventID event)
+{
+    if (chunk.count == 0U) {
         return;
     }
-    BeginPreparedWrites(targetRank, jettyIndex);
+    // The scalar consumer of this buffer has finished; do not overwrite its last UB reads.
+    SyncFunc<AscendC::HardEvent::S_MTE2>();
+    LocalTensor<int32_t> metadataLocal = metadataBuf_[buffer].Get<int32_t>();
     constexpr uint32_t metaBytesPerToken = RECV_META_FIELDS * sizeof(int32_t);
-    LocalTensor<int32_t> metadataLocal = metadataBuf_.Get<int32_t>();
+    DataCopyExtParams copyParams{1U, chunk.count * metaBytesPerToken, 0U, 0U, 0U};
     const DataCopyPadExtParams<int32_t> padParams{false, 0U, 0U, 0U};
-    GM_ADDR remoteDataBase = GetUrmaWinAddrByRankId(targetRank, combineDataWinOffset_);
-    GM_ADDR remoteStateBase = GetUrmaStateAddrByRankId(targetRank, combineStateWinOffset_);
-    uint64_t tokenBytes = static_cast<uint64_t>(axisH_) * sizeof(XType);
+    DataCopyPad(metadataLocal, recvSrcMetadataGm_[chunk.begin * RECV_META_FIELDS], copyParams, padParams);
+    SetFlag<AscendC::HardEvent::MTE2_S>(event);
+}
 
-    for (uint64_t chunkStart = rangeBegin; chunkStart < rangeEnd; chunkStart += metadataChunkTokens_) {
-        uint64_t chunkEnd =
-            (chunkStart + metadataChunkTokens_ > rangeEnd) ? rangeEnd : chunkStart + metadataChunkTokens_;
-        uint32_t chunkCount = static_cast<uint32_t>(chunkEnd - chunkStart);
-        DataCopyExtParams copyParams{1U, chunkCount * metaBytesPerToken, 0U, 0U, 0U};
-        DataCopyPad(metadataLocal, recvSrcMetadataGm_[chunkStart * RECV_META_FIELDS], copyParams, padParams);
-        SyncFunc<AscendC::HardEvent::MTE2_S>();
-
-        for (uint32_t i = 0; i < chunkCount; ++i) {
+template <TemplateMoeEpCombineTypeClass>
+__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendMetadataChunk(
+    const MetadataChunk &chunk, uint32_t buffer, TEventID event)
+{
+    if (chunk.count != 0U) {
+        BeginPreparedWrites(chunk.rank, aivId_);
+        WaitFlag<AscendC::HardEvent::MTE2_S>(event);
+        LocalTensor<int32_t> metadataLocal = metadataBuf_[buffer].Get<int32_t>();
+        GM_ADDR remoteDataBase = GetUrmaWinAddrByRankId(chunk.rank, combineDataWinOffset_);
+        uint64_t tokenBytes = static_cast<uint64_t>(axisH_) * sizeof(XType);
+        for (uint32_t i = 0U; i < chunk.count; ++i) {
             uint32_t metaOffset = i * RECV_META_FIELDS;
             int32_t srcTokenIdx = metadataLocal.GetValue(metaOffset + META_TOKEN_IDX_OFFSET);
             int32_t srcTopKIdx = metadataLocal.GetValue(metaOffset + META_TOPK_IDX_OFFSET);
             int32_t recvXIdx = metadataLocal.GetValue(metaOffset + META_RECV_X_IDX_OFFSET);
-            SendRemoteMetadataSlot(static_cast<uint32_t>(recvXIdx), srcTokenIdx, srcTopKIdx, remoteDataBase,
-                                   remoteStateBase, tokenBytes);
+            SendRemoteMetadataSlot(static_cast<uint32_t>(recvXIdx), srcTokenIdx, srcTopKIdx, remoteDataBase, tokenBytes);
         }
-        SyncFunc<AscendC::HardEvent::S_MTE2>();
     }
+    if (chunk.last) {
+        SendJettyFlag(chunk.rank, aivId_);
+    }
+}
+
+template <TemplateMoeEpCombineTypeClass>
+__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendMetadataPipeline()
+{
+    TEventID ready[2] = {tpipe_->AllocEventID<AscendC::HardEvent::MTE2_S>(),
+                       tpipe_->AllocEventID<AscendC::HardEvent::MTE2_S>()};
+    MetadataChunk chunks[2];
+    uint32_t peerOffset = 0U;
+    uint64_t begin = 0U;
+    uint64_t end = 0U;
+    uint32_t current = 0U;
+    bool hasCurrent = NextMetadataChunk(peerOffset, begin, end, chunks[current]);
+    if (hasCurrent) {
+        PrefetchMetadata(chunks[current], current, ready[current]);
+    }
+    while (hasCurrent) {
+        uint32_t next = current ^ 1U;
+        bool hasNext = NextMetadataChunk(peerOffset, begin, end, chunks[next]);
+        if (hasNext) {
+            PrefetchMetadata(chunks[next], next, ready[next]);
+        }
+        SendMetadataChunk(chunks[current], current, ready[current]);
+        current = next;
+        hasCurrent = hasNext;
+    }
+    // Every nonempty prefetch has been consumed, including the final chunk.
+    tpipe_->ReleaseEventID<AscendC::HardEvent::MTE2_S>(ready[0]);
+    tpipe_->ReleaseEventID<AscendC::HardEvent::MTE2_S>(ready[1]);
 }
 
 template <TemplateMoeEpCombineTypeClass>
@@ -441,19 +505,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseFrom
     preparedWriteCount_ = 0U;
     activeBatchInitialized_ = false;
 
-    // Stagger the first peer so all 32 Jettys do not burst into the same destination at once.
-    for (uint32_t peerOffset = 0U; peerOffset < epWorldSize_; ++peerOffset) {
-        uint32_t dstRank = (aivId_ + peerOffset) % epWorldSize_;
-        if (dstRank != rankId_ && actualA_ != 0U) {
-            uint64_t rankBegin = static_cast<uint32_t>(rankOffsetsTensor_.GetValue(dstRank));
-            uint64_t rankEnd = static_cast<uint32_t>(rankOffsetsTensor_.GetValue(dstRank + 1U));
-            uint64_t entryBegin = 0U;
-            uint64_t entryEnd = 0U;
-            SplitRange(rankBegin, rankEnd, combineJettyCount_, aivId_, entryBegin, entryEnd);
-            ProcessRemoteMetadataRange(dstRank, entryBegin, entryEnd, aivId_);
-        }
-        SendJettyFlag(dstRank, aivId_);
-    }
+    // Prefetch across peer boundaries too; typical peer slices fit in a single metadata chunk.
+    SendMetadataPipeline();
     FlushPreparedWrites();
     DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
 }
