@@ -14,9 +14,6 @@
 #include "kernel_operator.h"
 #include "../common/mega_moe_constants.h"
 #include "../common/mega_moe_utils.h"
-#if defined(MEGA_MOE_ENABLE_COUNT_SIMT)
-#include "simt_api/common_functions.h"
-#endif
 
 namespace MegaMoeImpl {
 
@@ -80,44 +77,6 @@ __aicore__ inline void WaitForCountTable(const AscendC::GlobalTensor<int32_t> &c
     }
 }
 
-#if defined(MEGA_MOE_ENABLE_COUNT_SIMT)
-// 按线程编号步进处理 count；当前项就绪后写入 UB，再处理下一项。
-template <uint32_t ThreadCount>
-__simt_vf__ __launch_bounds__(ThreadCount) inline void WaitForCountTableSimtVF(const __gm__ int32_t *countGm,
-                                                                               __ubuf__ int32_t *counts,
-                                                                               uint32_t elementCount,
-                                                                               uint32_t expectedSyncRoundTag)
-{
-    const volatile __gm__ int32_t *countTable = countGm;
-    for (uint32_t index = threadIdx.x; index < elementCount; index += blockDim.x) {
-        uint32_t value;
-        // volatile 读取远端更新的 GM count，仅重试尚未匹配本轮标签的当前项。
-        do {
-            value = static_cast<uint32_t>(countTable[index]);
-        } while ((value & 0xFF000000U) != expectedSyncRoundTag);
-        counts[index] = static_cast<int32_t>(value & 0x00FFFFFFU);
-    }
-}
-
-// SIMT 实验入口，直接将就绪 count 写入 UB，无需整表检查结果暂存区。
-// 启用前须为 SIMT Data Cache 预留至少 32 KiB，并核对整个 kernel 的 UB 布局及编译配置。
-// 定义 MEGA_MOE_ENABLE_COUNT_SIMT 后调用点自动选择此路径；默认最大 1024 线程。
-// 调用方保证在 AIV 上执行，且 elementCount > 0。
-template <uint32_t ThreadCount = 1024U>
-__aicore__ inline void WaitForCountTableSimt(const __gm__ int32_t *countGm, __ubuf__ int32_t *counts,
-                                             uint32_t elementCount, uint32_t expectedSyncRoundTag)
-{
-    // launch bounds 决定寄存器预算；实际线程数按表长向上对齐到一个 warp，最大为 ThreadCount。
-    const uint32_t alignedThreadCount = (elementCount + 31U) / 32U * 32U;
-    const uint32_t threadCount = alignedThreadCount < ThreadCount ? alignedThreadCount : ThreadCount;
-    // 接上共享计算后的 MTE3_MTE2，确保旧 UB 数据搬出后 SIMT 才能覆盖；也等待先前的 MTE2 写入。
-    AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_EVENT_ID2);
-    AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_EVENT_ID2);
-    asc_vf_call<WaitForCountTableSimtVF<ThreadCount>>(dim3(threadCount), countGm, counts, elementCount,
-                                                      expectedSyncRoundTag);
-}
-#endif
-
 /*
  * MegaMoe count 表的融合版本：先复用 int32 prefix-scan，再在同一次 VF 中提取每个专家的累计尾值
  * 并作差。相比先调用通用前缀和、再启动第二个 VF，融合实现省去一次 asc_vf_call 和外部流水同步。
@@ -126,7 +85,7 @@ __simd_vf__ inline void ComputeExpertCountTablesVF(__ubuf__ int32_t *count, __ub
                                                    uint32_t elementCount, uint32_t expertCount, uint32_t worldSize,
                                                    uint32_t maxOutputSize)
 {
-    // SIMD 快照仍带标签；SIMT 已去标签，两条路径均只累加低 24 位 count。
+    // 去除快照中的高 8 位轮次标签，只累加低 24 位 count。
     InclusivePrefixSumInt32<0x00FFFFFF>(count, elementCount);
 
     // prefix 已写回 UB；后续从同一区域 Gather 前建立 VEC_STORE -> VEC_LOAD 可见性。
