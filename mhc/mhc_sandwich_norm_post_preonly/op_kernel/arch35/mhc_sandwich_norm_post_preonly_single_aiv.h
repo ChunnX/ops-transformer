@@ -42,7 +42,9 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         CastToIO(cacheTile, x2[n * dimTile_], tD);
     }
     PipeBarrier<PIPE_V>();
-    if constexpr (!USE_RMS_MID) {
+    // RMS_mid第一遍直接从低精度缓存计算平方和；R3后必须恢复，
+    // 保证后续R4/R5仍使用低精度往返后的x2。
+    if (!USE_RMS_MID || writeOutput) {
         for (uint32_t n = 0; n < N_MAX; ++n) {
             LocalTensor<T> cacheTile = x2Cache[n * D_ + tOff];
             MhcSandwichRegBase::CastB16ToFp32(x2[n * dimTile_], cacheTile, tD);
@@ -76,7 +78,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         CastToIO(x2Cache[n * D_ + tOff], x2[n * dimTile_], tD);
     }
     PipeBarrier<PIPE_V>();
-    if constexpr (!USE_RMS_MID) {
+    if (!USE_RMS_MID || writeOutput) {
         for (uint32_t n = 0; n < N_MAX; ++n) {
             MhcSandwichRegBase::CastB16ToFp32(x2[n * dimTile_], x2Cache[n * D_ + tOff], tD);
         }
