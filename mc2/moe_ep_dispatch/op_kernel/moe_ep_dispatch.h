@@ -115,6 +115,7 @@ public:
 
 private:
 #if MOE_EP_DISPATCH_COUNT_CHECK
+    __aicore__ inline void CheckDedupResult(uint32_t group, uint32_t calCnt, bool selected);
     __aicore__ inline void CheckPreparedCounts();
     __aicore__ inline void CountReferenceToken(uint32_t token, LocalTensor<int32_t> expected,
                                                LocalTensor<int32_t> lastToken);
@@ -698,12 +699,18 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCntG
         DataCopyPad(dstSlotIdxTensor_, cachedSlotIdxGMTensor_[topkIdxOffset], copyParams, copyPadParams);
     }
     DedupAndSend(tempTensorInt16, calCnt, calCntAlign, tmpOffset);
+#if MOE_EP_DISPATCH_COUNT_CHECK
+    CheckDedupResult(group, calCnt, false);
+#endif
     if constexpr (IsCached) {
         SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
         DataCopyPad(dstSlotIdxGMTensor_[topkIdxOffset], dstSlotIdxTensor_, copyParams);
         SyncFunc<AscendC::HardEvent::MTE3_V>();
     }
     CalSendCntPerRank(calCnt, calCntAlign, tmpOffset);
+#if MOE_EP_DISPATCH_COUNT_CHECK
+    CheckDedupResult(group, calCnt, true);
+#endif
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     DataCopyExtParams dstRankCopyParams = {1U, static_cast<uint32_t>(calCnt * sizeof(int16_t)), 0U, 0U, 0U};
     DataCopyPad(dstRankGMTensor_[topkIdxOffset], dstRankTensor_, dstRankCopyParams);
@@ -1364,6 +1371,51 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendComplet
 }
 
 #if MOE_EP_DISPATCH_COUNT_CHECK
+template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CheckDedupResult(
+    uint32_t group, uint32_t calCnt, bool selected)
+{
+    SyncFunc<AscendC::HardEvent::V_S>();
+    DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(topkIdxGMTensor_);
+    auto lastToken = countCheckBuf_.GetWithOffset<int32_t>(counterCnt_, epWorldSizeAlign_);
+    auto mask = maskBuf_.Get<uint8_t>();
+    for (uint32_t peer = 0U; peer < epWorldSize_; ++peer) {
+        lastToken.SetValue(peer, -1);
+    }
+    uint32_t rankErrors = 0U;
+    uint32_t maskErrors = 0U;
+    uint32_t begin = startTokenId_ + group * perGroupTokenNum_;
+    for (uint32_t i = 0U; i < calCnt; ++i) {
+        uint32_t token = begin + i / axisK_;
+        int32_t expert = topkIdxGMTensor_.GetValue(begin * axisK_ + i);
+        if (expert >= static_cast<int32_t>(moeExpertNum_)) {
+            continue; // INPUT diagnostics report invalid routing separately.
+        }
+        int32_t peer = expert < 0 ? -1 : expert / static_cast<int32_t>(moeExpertNumPerRank_);
+        bool keep = peer >= 0 && lastToken.GetValue(peer) != static_cast<int32_t>(token);
+        if (peer >= 0) {
+            lastToken.SetValue(peer, static_cast<int32_t>(token));
+        }
+        int32_t actualRank = dstRankTensor_.GetValue(i);
+        int32_t actualKeep = selected ? -1 : (mask.GetValue(i / BITS_PER_BYTE) >> (i % BITS_PER_BYTE)) & 1U;
+        int32_t expectedRank = selected && !keep ? -1 : peer;
+        // Cached ranks have not undergone the invalid-expert Select before selected=true.
+        bool rankBad = (selected || peer >= 0 || !IsCached) && actualRank != expectedRank;
+        bool maskBad = !selected && actualKeep != keep;
+        if ((rankBad || maskBad) && rankErrors + maskErrors < 4U) {
+            AscendC::printf("[MoeEpCountCheck] DEDUP rank=%u core=%u group=%u selected=%u i=%u expert=%d actual_rank=%d expected_rank=%d actual_keep=%d expected_keep=%u\n",
+                            epRankId_, aivId_, group, static_cast<uint32_t>(selected), i, expert, actualRank, expectedRank,
+                            actualKeep, static_cast<uint32_t>(keep));
+        }
+        rankErrors += static_cast<uint32_t>(rankBad);
+        maskErrors += static_cast<uint32_t>(maskBad);
+    }
+    AscendC::printf("[MoeEpCountCheck] DEDUP_SUMMARY rank=%u core=%u group=%u selected=%u count=%u cached=%u rank_errors=%u mask_errors=%u\n",
+                    epRankId_, aivId_, group, static_cast<uint32_t>(selected), calCnt,
+                    static_cast<uint32_t>(IsCached), rankErrors, maskErrors);
+    SyncFunc<AscendC::HardEvent::S_V>();
+}
+
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CountReferenceToken(
     uint32_t token, LocalTensor<int32_t> expected, LocalTensor<int32_t> lastToken)

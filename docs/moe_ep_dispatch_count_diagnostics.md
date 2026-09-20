@@ -10,6 +10,21 @@ rank7 的自身 payload 计数为 963，预期 2265；该计数的本地通知�
 本次增加的是**诊断开关，不是已经验证的精度修复**。未改变计数算法、分核、
 32 Jetty/SQ4096/CQ64、窗口布局、公开接口或 Combine。
 
+最新开启诊断的日志中，192 条 `PREPARE_SUMMARY` 全部报告 8 个 peer 不匹配；
+已打印的 `PREPARE` 中 actual 与 published 相等。64 条 SOURCE 的三个值一致，
+跨 rank 对应的 SOURCE.send 与 NOTIFY.count 一致，OUTPUT 的四个值也一致。
+因此已观察到的首个错误在本核计数链，而不是计数通知传输或接收提取。
+这不等于 payload 传输已经验证正确，也尚未区分 rank 映射、去重和 histogram。
+
+为避免重复获得同一层结论，新增 `DEDUP`/`DEDUP_SUMMARY`，分别在去重结束、
+per-rank 统计结束读取仍存活的 rank 表；使用原始 TopK 独立重建 rank 和首个命中位置。
+这仍是定位补丁，不是根因修复。`selected=0` 的 rank_errors 表示 rank 映射不符，
+mask_errors 表示首个命中的保留位不符；`selected=1` 的 rank_errors 表示最终
+去重 rank 表不符，此时 mask 已被统计流程复用，mask_errors 固定为 0、不是 mask 检查通过。
+该阶段的 actual_keep 使用 -1 表示未读取，不应与 expected_keep 比较。
+若两阶段均正确但 PREPARE 错，继续检查 histogram/累加链；若 selected=0 正确而
+selected=1 错，检查 Select 到统计结束期间 rank 表的变化。cached 下需先保证缓存与路由一致。
+
 ## 开启与运行
 
 `mc2/moe_ep_dispatch/op_kernel/moe_ep_dispatch.h` 中：
@@ -34,6 +49,7 @@ rank7 的自身 payload 计数为 963，预期 2265；该计数的本地通知�
 | 标记 | 检查/记录内容 | 定位方式 |
 |---|---|---|
 | `INPUT` | 原始 TopK 中非负但越界的 expert | 先处理输入或参数不一致；本次参考计数跳过该非法项 |
+| `DEDUP` / `DEDUP_SUMMARY` | 每 group、每阶段的 rank 表与保留 mask 检查；每阶段最多 4 条详细错误 | 按上文 selected=0/1 的含义定位；两个阶段和 PREPARE 都应检查 |
 | `PREPARE` | `actual` 为该 prepare 核的向量计数；`published` 为其写入 GM 的计数行；`expected` 为独立标量参考 | actual 错：本核去重/直方图链；actual 正确但 published 错：发布链 |
 | `PREPARE_SUMMARY` | 每个非空 prepare 区间的 mismatch 总数，详细 mismatch 每核最多打印 4 个 | 每个非空 prepare 核都应有一条且 mismatches=0；空分片不执行参考扫描 |
 | `SOURCE` | 每个发送目标的 `row_sum`、全局原子累加值 `aggregate`、编码进通知的 `send` | 三者应相同；row_sum 正确但 aggregate 错：初始化/原子汇总；aggregate 正确但 send 错：读取链 |
