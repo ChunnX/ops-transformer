@@ -341,6 +341,37 @@ __aicore__ inline void ScaleAndMulGamma(const LocalTensor<float> &dst, const Loc
     }
 }
 
+// R7在寄存器内完成缩放和gamma乘法后直接量化，避免最终FP32结果再次写回和读取。
+template <typename T>
+__aicore__ inline void ScaleAndMulGammaToB16(const LocalTensor<T> &dst, const LocalTensor<float> &src,
+                                             const LocalTensor<float> &gamma, float scale, uint32_t count)
+{
+    __local_mem__ T *dstAddr = (__local_mem__ T *)dst.GetPhyAddr();
+    __local_mem__ float *srcAddr = (__local_mem__ float *)src.GetPhyAddr();
+    __local_mem__ float *gammaAddr = (__local_mem__ float *)gamma.GetPhyAddr();
+    uint32_t remain = count;
+    const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
+    __VEC_SCOPE__
+    {
+        RegTensor<T> dstReg;
+        RegTensor<float> srcReg, gammaReg, scaledReg;
+        MaskReg mask;
+        for (uint16_t i = 0; i < loops; ++i) {
+            mask = UpdateMask<float>(remain);
+            DataCopy<float, LoadDist::DIST_NORM>(srcReg, srcAddr + i * VL_FP32);
+            DataCopy<float, LoadDist::DIST_NORM>(gammaReg, gammaAddr + i * VL_FP32);
+            AscendC::Reg::Muls(scaledReg, srcReg, scale, mask);
+            AscendC::Reg::Mul(scaledReg, scaledReg, gammaReg, mask);
+            if constexpr (IsSameT<T, bfloat16_t>::value) {
+                Cast<T, float, CAST_FP32_TO_B16_RINT>(dstReg, scaledReg, mask);
+            } else {
+                Cast<T, float, CAST_FP32_TO_B16_NONE>(dstReg, scaledReg, mask);
+            }
+            DataCopy<T, StoreDist::DIST_PACK_B32>(dstAddr + i * VL_FP32, dstReg, mask);
+        }
+    }
+}
+
 // 在一个VF内完成低精度恢复、标量缩放和gamma缩放，只写回最终FP32结果。
 template <typename T>
 __aicore__ inline void CastB16ScaleAndMulGamma(const LocalTensor<float> &dst, const LocalTensor<T> &src,
