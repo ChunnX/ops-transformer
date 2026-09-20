@@ -73,8 +73,7 @@ constexpr uint64_t UB_ALIGN = 32UL;
 static constexpr uint32_t META_CHUNK_TOKEN_MAX = 2048U;
 static constexpr struct UrmaWqeEntry DEFAULT_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
 static constexpr struct UrmaWqeEntry DEFAULT_CQE_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .cqe = 1, .inlineEn = 0};
-// Request a CQE for the final flag so epilogue can drain all sends on this channel.
-static constexpr struct UrmaWqeEntry CHANNEL_FLAG_WQE_CONFIG = {.odr = 6, .fence = 1, .se = 0, .cqe = 1, .inlineEn = 0};
+static constexpr struct UrmaWqeEntry CHANNEL_FLAG_WQE_CONFIG = {.odr = 6, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
 template <TemplateMoeEpCombineTypeClass>
 class MoeEpCombine {
 public:
@@ -561,9 +560,9 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseDire
             }
         }
     }
-    // Submit the final CQE-enabled writes here; epilogue drains their completions.
+    // Submit pending writes; epilogue drains the token send completions.
     FlushPreparedWrites();
-    // Publish channel CQ counters even when no tokens are sent.
+    // Publish channel CQ counters for epilogue.
     DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
     diagWriter_.RunPosRecord(MOE_EP_COMBINE_RUN_POS_URMA_REQUESTS_ISSUE_DONE);
 }

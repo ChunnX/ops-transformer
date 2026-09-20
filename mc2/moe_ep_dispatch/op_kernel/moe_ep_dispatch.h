@@ -84,7 +84,7 @@ constexpr uint32_t HCOMM_SQE_BYTES = 48U;
 constexpr uint32_t HCOMM_WQE_BYTES = 64U;
 constexpr struct UrmaWqeEntry DATA_CFG = {.odr = 5, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
 constexpr struct UrmaWqeEntry LAST_DATA_CFG = {.odr = 5, .fence = 1, .se = 0, .cqe = 1, .inlineEn = 0};
-constexpr struct UrmaWqeEntry NOTIFY_CFG = {.odr = 6, .fence = 1, .se = 0, .cqe = 1, .inlineEn = 0};
+constexpr struct UrmaWqeEntry NOTIFY_CFG = {.odr = 6, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
 
 template <TemplateMoeEpDispatchTypeClass>
 class MoeEpDispatch {
@@ -1214,8 +1214,8 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteToRemo
         uint32_t cntPerChannel = Ceil(sendTokenNum, groupSize_);
         uint32_t tokenStart = coreIndexInGroup_ * cntPerChannel;
         if (sendTokenNum == 0 || tokenStart >= sendTokenNum) {
-            int32_t ret = hcomm_.WriteNbi<true, PIPE_S, PIPE_MTE3, NOTIFY_CFG>(
-                commHandle, notifyAddr, payloadStashStateWinAddr_, WIN_ADDR_ALIGN);
+            int32_t ret = hcomm_.WriteNbi<true, PIPE_S, PIPE_MTE3, DATA_CFG>(commHandle, notifyAddr,
+                                                                             payloadStashStateWinAddr_, WIN_ADDR_ALIGN);
             ascendc_assert(ret == 0, "WriteToRemote WriteNbi failed, ret=%d, epRank=%u, dstRank=%u, sendTokenNum=%u",
                            ret, epRankId_, dstRankId, sendTokenNum);
             continue;
