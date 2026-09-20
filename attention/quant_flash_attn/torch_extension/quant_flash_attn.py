@@ -148,13 +148,13 @@ def _check_layout_constraint(quant_mode, layout_q, layout_kv, layout_out):
         torch._check(
             layout_q == layout_kv == layout_out,
             lambda: f"When quant_mode is {quant_mode}, layout_q, layout_kv and layout_out must be the same, "
-            f"but got layout_q={layout_q}, layout_kv={layout_kv}, layout_out={layout_out}",
+            f"but got layout_q={layout_q!r}, layout_kv={layout_kv!r}, layout_out={layout_out!r}",
         )
     elif quant_mode in _LAYOUT_REQUIRE_Q_OUT_CONSISTENT:
         torch._check(
             layout_q == layout_out,
             lambda: f"When quant_mode is {quant_mode}, layout_q and layout_out must be the same, "
-            f"but got layout_q={layout_q}, layout_out={layout_out}",
+            f"but got layout_q={layout_q!r}, layout_out={layout_out!r}",
         )
 
 
