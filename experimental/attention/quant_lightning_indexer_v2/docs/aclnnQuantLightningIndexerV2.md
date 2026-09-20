@@ -47,31 +47,38 @@ $$
 
 ```Cpp
 aclnnStatus aclnnQuantLightningIndexerV2GetWorkspaceSize(
-    const aclTensor *query,
-    const aclTensor *key,
-    const aclTensor *weights,
-    const aclTensor *queryDequantScale,
-    const aclTensor *keyDequantScale,
-    const aclTensor *cuSeqLensQOptional,
-    const aclTensor *cuSeqLensKOptional,
+    const aclTensor *q,
+    const aclTensor *k,
+    const aclTensor *w,
+    const aclTensor *qDescale,
+    const aclTensor *kDescale,
+    const aclTensor *cuSeqlensQOptional,
+    const aclTensor *cuSeqlensKOptional,
     const aclTensor *sequsedQOptional,
     const aclTensor *sequsedKOptional,
     const aclTensor *cmpResidualKOptional,
     const aclTensor *blockTableOptional,
-    const aclTensor *outputIdxOffsetOptional,
+  - 支持`outputIdxOffsetOptional`。
     const aclTensor *metadataOptional,
-    int64_t          topk,
-    int64_t          quantMode,
-    int64_t          maxSeqlenQOptional,
-    char            *layoutQOptional,
-    char            *layoutKOptional,
-    int64_t          maskModeOptional,
-    int64_t          cmpRatioOptional,
-    int64_t          returnValueOptional,
+    const aclTensor *candidateTopkIndexOptional,
+    int64_t topk,
+    int64_t quantMode,
+    int64_t maxSeqlenQ,
+    char *layoutQOptional,
+    char *layoutKOptional,
+    int64_t maskMode,
+    int64_t cmpRatio,
+    int64_t returnValue,
+    int64_t candidateMode,
+    int64_t candidateTopkBlocks,
+    int64_t candidateBlockSize,
+    int64_t keyStride0,
+    int64_t keyDequantScaleStride0,
     const aclTensor *sparseIndicesOut,
     const aclTensor *sparseValuesOut,
-    uint64_t        *workspaceSize,
-    aclOpExecutor  **executor)
+    const aclTensor *candidateTopkIndexOutOutOptional,
+    uint64_t *workspaceSize,
+    aclOpExecutor **executor)
 ```
 
 ```Cpp
@@ -115,7 +122,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
     </tr></thead>
   <tbody>
     <tr>
-      <td>query</td>
+      <td>q</td>
       <td>输入</td>
       <td>公式中量化后的 Query。</td>
       <td>不支持空tensor。</td>
@@ -130,7 +137,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>x</td>
     </tr>
     <tr>
-      <td>key</td>
+      <td>k</td>
       <td>输入</td>
       <td>公式中量化后的 Key。</td>
       <td>
@@ -151,7 +158,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>支持0轴非连续</td>
     </tr>
     <tr>
-      <td>weights</td>
+      <td>w</td>
       <td>输入</td>
       <td>公式中的权重系数 W。</td>
       <td>不支持空tensor。</td>
@@ -166,7 +173,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>x</td>
     </tr>
     <tr>
-      <td>queryDequantScale</td>
+      <td>qDescale</td>
       <td>输入</td>
       <td>公式中 Query 的反量化系数。</td>
       <td>不支持空tensor。</td>
@@ -182,7 +189,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>x</td>
     </tr>
     <tr>
-      <td>keyDequantScale</td>
+      <td>kDescale</td>
       <td>输入</td>
       <td>公式中 Key 的反量化系数。</td>
       <td>不支持空tensor。</td>
@@ -198,7 +205,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>支持0轴非连续</td>
     </tr>
     <tr>
-      <td>cuSeqLensQOptional</td>
+      <td>cuSeqlensQOptional</td>
       <td>输入</td>
       <td>每个Batch中，Query的有效token数（TND场景使用cu_seqlens格式）。</td>
       <td>
@@ -212,7 +219,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>x</td>
     </tr>
     <tr>
-      <td>cuSeqLensKOptional</td>
+      <td>cuSeqlensKOptional</td>
       <td>输入</td>
       <td>每个Batch中，Key的有效token数（TND场景使用cu_seqlens格式）。</td>
       <td>
@@ -301,6 +308,27 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>x</td>
     </tr>
     <tr>
+      <td>candidateTopkIndexOptional</td>
+      <td>输入</td>
+      <td>两级TopK（candidate）的候选块索引。</td>
+      <td>
+          <ul>
+                <li>candidateMode为2（consumer）时必须传入；值为batch内相对块号（[0, numBlocks)）或-1（无效槽）。</li>
+                <li>与source层的candidateBlockSize必须一致。</li>
+                <li>候选块索引仅在同一个forward内跨层共享有效。</li>
+          </ul>
+      </td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>
+          <ul>
+                <li>layoutQOptional为BSND时，shape为(B, S1, N2, candidateTopkBlocks)。</li>
+                <li>layoutQOptional为TND时，shape为(T1, N2, candidateTopkBlocks)。</li>
+          </ul>
+      </td>
+      <td>x</td>
+    </tr>
+    <tr>
       <td>topk</td>
       <td>输入</td>
       <td>topK阶段需要保留的Key token索引数量。</td>
@@ -325,7 +353,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>-</td>
     </tr>
     <tr>
-      <td>maxSeqlenQOptional</td>
+      <td>maxSeqlenQ</td>
       <td>输入</td>
       <td>Query的最大序列长度。</td>
       <td>-</td>
@@ -363,7 +391,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>-</td>
     </tr>
     <tr>
-      <td>maskModeOptional</td>
+      <td>maskMode</td>
       <td>输入</td>
       <td>表示sparse的模式。</td>
       <td>
@@ -378,7 +406,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>-</td>
     </tr>
     <tr>
-      <td>cmpRatioOptional</td>
+      <td>cmpRatio</td>
       <td>输入</td>
       <td>key的压缩倍数。</td>
       <td>
@@ -392,12 +420,90 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>-</td>
     </tr>
     <tr>
-      <td>returnValueOptional</td>
+      <td>returnValue</td>
       <td>输入</td>
       <td>表示是否输出sparseValuesOut。</td>
       <td>
           <ul>
                 <li>1表示输出，0表示不输出。</li>
+          </ul>
+      </td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>candidateMode</td>
+      <td>输入</td>
+      <td>两级TopK模式。</td>
+      <td>
+          <ul>
+                <li>1表示source：输出候选块索引candidateTopkIndexOut，同时正常输出sparseIndicesOut。</li>
+                <li>2表示consumer：在候选块内进行TopK。</li>
+                <li>3表示关闭（默认值，现网行为）。</li>
+                <li>仅ascend910b/ascend910_93支持；其他SOC须保持默认值3。</li>
+          </ul>
+      </td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>candidateTopkBlocks</td>
+      <td>输入</td>
+      <td>候选块数量。</td>
+      <td>
+          <ul>
+                <li>默认值2048。</li>
+                <li>支持(0, 2048]内64的倍数。</li>
+          </ul>
+      </td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>candidateBlockSize</td>
+      <td>输入</td>
+      <td>候选块大小（每块包含的位置数）。</td>
+      <td>
+          <ul>
+                <li>默认值8。</li>
+                <li>当前仅支持8。</li>
+                <li>source与consumer调用必须一致。</li>
+          </ul>
+      </td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>keyStride0</td>
+      <td>输入</td>
+      <td>key第0维物理stride。</td>
+      <td>
+          <ul>
+                <li>默认值0表示紧凑存储。</li>
+                <li>key为非连续存储（PA_BBND块间存在间隙）时传入真实stride；torch接口自动传入。</li>
+          </ul>
+      </td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>keyDequantScaleStride0</td>
+      <td>输入</td>
+      <td>kDescale第0维物理stride。</td>
+      <td>
+          <ul>
+                <li>默认值0表示紧凑存储。</li>
+                <li>含义同keyStride0。</li>
           </ul>
       </td>
       <td>INT64</td>
@@ -435,6 +541,22 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>x</td>
     </tr>
     <tr>
+      <td>candidateTopkIndexOutOutOptional</td>
+      <td>输出</td>
+      <td>两级TopK的候选块索引输出。</td>
+      <td>
+          <ul>
+                <li>candidateMode为1（source）时输出有效内容；其他模式为shape(0,)的空tensor。</li>
+                <li>无序；值为batch内相对块号或-1（无效槽），块号×candidateBlockSize为起始位置；不加output_idx_offset。</li>
+                <li>仅支持layoutQOptional为BSND。</li>
+          </ul>
+      </td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>candidateMode为1时shape为(B, S1, N2, candidateTopkBlocks)；其他模式为(0,)。</td>
+      <td>x</td>
+    </tr>
+    <tr>
       <td>workspaceSize</td>
       <td>输出</td>
       <td>返回需要在Device侧申请的workspace大小。</td>
@@ -467,6 +589,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
   - query_dequant_scale 和 key_dequant_scale：`quant_mode` 为 1/4 时支持 FLOAT32，`quant_mode` 为 2 时支持 FLOAT16，`quant_mode` 为 3/5 时支持 FLOAT8_e8m0。
   - weights：`quant_mode` 为 2 时支持 FLOAT16，`quant_mode` 为 1/3/4/5 时支持 FLOAT32。
   - query Q_N 支持 [1, 64]。
+  - 不支持candidate（两级TopK）：`candidateMode`仅支持默认值3。
 <!-- end id10 -->
 <!-- npu="A3,910b" id11 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
@@ -507,7 +630,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
             <tr>
                 <td>ACLNN_ERR_PARAM_INVALID</td>
                 <td>161002</td>
-                <td>query、key、weights、queryDequantScale、keyDequantScale、cuSeqLensQOptional、cuSeqLensKOptional、sequsedQOptional、sequsedKOptional、cmpResidualKOptional、blockTableOptional、metadataOptional、layoutQOptional、layoutKOptional、topk、quantMode、maskModeOptional、cmpRatioOptional、returnValueOptional、sparseIndicesOut、sparseValuesOut的数据类型和数据格式不在支持的范围内。</td>
+                <td>q、k、w、qDescale、kDescale、cuSeqlensQOptional、cuSeqlensKOptional、sequsedQOptional、sequsedKOptional、cmpResidualKOptional、blockTableOptional、metadataOptional、candidateTopkIndexOptional、layoutQOptional、layoutKOptional、topk、quantMode、maxSeqlenQ、maskMode、cmpRatio、returnValue、candidateMode、candidateTopkBlocks、candidateBlockSize、keyStride0、keyDequantScaleStride0、sparseIndicesOut、sparseValuesOut、candidateTopkIndexOut的数据类型和数据格式不在支持的范围内。</td>
             </tr>
         </tbody>
     </table>
@@ -563,6 +686,17 @@ aclnnStatus aclnnQuantLightningIndexerV2(
 - 当 `quant_mode` 为 3/5 时，`queryDequantScale` 和 `keyDequantScale` 的维数分别比 `query` 和 `key` 多 1，前缀维度保持一致，末两维为(D/64, 2)；D必须为64的倍数，每个scale对应D轴上连续32个逻辑元素。
 - 当传入的参数layout_query为TND时，必须传入cuSeqlensQOptional，如果也传入sequsedQOptional，应保证由sequsedQOptional传入的各个batch的query长度不超过根据cuSeqlensQOptional计算出的各个batch的q序列长度。当某个batch由sequsedQOptional传入的q序列长度seqlen1小于由cuSeqlensQOptional计算出的query长度seqlen2时，会启用TND Padding功能，将该batch的seqlen2与seqlen1差值部分的query输出的sparseIndices和sparseValues全部置为无效值。部分长序列场景下，如果需要填充的无效数据过多，由于硬件限制可能会导致aicore执行超时，可以通过(seqlen2 - seqlen1) * topk来计算需要填充的数据量，建议将这个数据量控制在4亿以内。
 - **确定性说明：** aclnnQuantLightningIndexerV2 默认确定性实现。
+
+- 两级TopK（candidate）相关约束（仅ascend910b/ascend910_93支持；Ascend 950须保持candidateMode默认值3）：
+  - `candidateMode`为1时输出`candidateTopkIndexOut`，仅支持`layoutQOptional`为BSND；为2时必须传入`candidateTopkIndexOptional`。
+  - `layoutQOptional`为TND时，`layoutKOptional`必须为PA_BBND且必须传入`cuSeqlensQOptional`。
+  - `candidateBlockSize`当前仅支持8，且source与consumer调用必须一致；`candidateTopkBlocks`支持(0, 2048]内64的倍数。
+  - 候选块索引为batch内相对块号，`outputIdxOffsetOptional`仅作用于sparseIndicesOut。
+  - candidateMode为2时候选块仅降低排序优先级、不取消入选资格：候选内有效位置数不足topk时候选外的可达位置会作为有效索引输出。
+  - candidateMode为1时最新token所在块（pin块）无条件保留在候选输出中。
+  - 候选块索引仅在同一个forward内跨层共享有效，跨step复用无效。
+  - candidate相关属性不参与metadata分核，metadata算子接口不变。
+  - query的N1/N2支持g=32和g=64。
 
 ## 调用示例
 
@@ -895,4 +1029,44 @@ int main() {
     CleanupResources(resources, workspaceAddr, stream, deviceId);
     return 0;
 }
+```
+
+
+上述示例为基础模式（candidate_mode=3，默认）。开启两级TopK（candidate，仅ascend910b/ascend910_93支持）时，两段式接口需额外传入candidate相关参数，调用片段如下：
+
+```Cpp
+  // 两级TopK参数（candidateMode：1=source输出候选块索引 / 2=consumer在候选内选topk / 3=关闭默认）
+  int64_t candidateMode = 1;
+  int64_t candidateTopkBlocks = 2048;  // (0, 2048]内64的倍数
+  int64_t candidateBlockSize = 8;      // 当前仅支持8
+  int64_t keyStride0 = 0;              // key第0维物理stride，0=紧凑存储；非连续存储时传真实stride
+  int64_t keyDequantScaleStride0 = 0;  // k_descale第0维物理stride
+
+  // source模式（candidate_mode=1）：申请候选块索引输出张量
+  //   shape为(B, S1, N2, candidateTopkBlocks)，仅支持layoutQ为BSND
+  std::vector<int64_t> candOutShape = {B, S1, N2, candidateTopkBlocks};
+  std::vector<int32_t> candOutHostData(GetShapeSize(candOutShape), -1);  // -1表示无效槽
+  void *candOutDeviceAddr = nullptr;
+  aclTensor *candOutTensor = nullptr;
+  ret = CreateAclTensor(candOutHostData, candOutShape, &candOutDeviceAddr,
+                        aclDataType::ACL_INT32, &candOutTensor);
+
+  ret = aclnnQuantLightningIndexerV2GetWorkspaceSize(
+      qTensor, kTensor, wTensor, qDescaleTensor, kDescaleTensor,
+      nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+      metadataTensor,
+      nullptr,                 // candidateTopkIndexOptional：source模式不传；consumer模式传source层输出的候选块索引
+      topk, quantMode, -1, layoutQ, layoutK, maskMode, cmpRatio, returnValue,
+      candidateMode, candidateTopkBlocks, candidateBlockSize, keyStride0, keyDequantScaleStride0,
+      sparseIndicesTensor, sparseValuesTensor,
+      candOutTensor,           // candidateTopkIndexOutOutOptional：source模式传入；其他模式传nullptr
+      &workspaceSize, &executor);
+  // 后续workspace申请与aclnnQuantLightningIndexerV2调用与基础模式一致
+
+  // consumer模式（candidate_mode=2）差异：
+  //   1) candidateTopkIndexOptional传入source层输出的候选块索引（batch内相对块号，-1为无效槽）；
+  //   2) candidateTopkIndexOutOutOptional传nullptr；
+  //   3) candidateBlockSize必须与source层一致；
+  //   4) 候选块仅降低排序优先级、不取消入选资格（候选内有效位置数不足topk时候选外可达位置会入选）。
+  // 契约：output_idx_offset仅作用于sparse_indices；候选块索引始终为batch内相对块号。
 ```

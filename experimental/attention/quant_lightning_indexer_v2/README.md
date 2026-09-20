@@ -22,6 +22,8 @@
     2. 相关性结果与`query`和`key`对应的反量化系数`query_dequant_scale`（$Scale_Q$）和`key_dequant_scale`（$Scale_K^T$）相乘，通过激活函数$ReLU$过滤无效负相关信号后，得到当前Token与所有前序Token的相关性分数向量。
     3. 将其与权重系数`weights`（$W$）相乘后，沿g的方向，选取前$Top-k$个索引值得到输出$out$，作为Attention的输入。
 
+- 版本演进：新增两级TopK（候选块选择）能力：source模式输出候选块索引，consumer模式在候选块内进行TopK，支持跨层共享候选块索引以降低稀疏attention计算量。该能力仅910b系列（ascend910b/ascend910_93）支持。
+
 ## 参数说明
 
 | 参数名                     | 输入/输出/属性 | 描述  | 数据类型       | 数据格式   |
@@ -39,6 +41,7 @@
 | block_table                    | 可选输入      | 表示PageAttention中KV存储使用的block映射表。 | INT32       | ND         |
 | output_idx_offset                    | 可选输入      | 输出索引的偏移量 | INT32       | ND         |
 | metadata                    | 可选输入      | QuantLightningIndexerV2Metadata算子传入的分核信息，包含使用核数、分块大小以及每个核处理数据的起始点等内容。 | INT32       | ND         |
+| candidate_topk_index | 可选输入 | 两级TopK的候选块索引。candidate_mode=2（consumer）时必传；值为batch内相对块号（[0, numBlocks)）或-1（无效槽），与source层的candidate_block_size必须一致。layout_q为BSND时shape为[B, S1, N2, candidate_topk_blocks]，TND时为[T, N2, candidate_topk_blocks]。 | INT32 | ND |
 | quant_mode                 | 属性      | 用于标识输入的量化模式。 | INT32          | -         |
 | max_seqlen_q                 | 可选属性| Query的最大序列长度，默认值-1表示任意可能长度 | INT32 | -         |
 | layout_q                 | 可选属性| 用于标识输入`query`的数据排布格式，默认值"BSND"。 | STRING | -         |
@@ -47,8 +50,14 @@
 | mask_mode | 可选属性      | 表示mask的模式，默认值0。 | INT32          | -         |
 | cmp_ratio      | 可选属性      | 用于稀疏计算，表示key的压缩倍数，默认值1。 | INT32          | -         |
 | return_value      |  可选属性     | 表示是否输出`sparse_values`，默认值0。 | INT32          | -         |
+| candidate_mode | 可选属性 | 两级TopK模式：1=source（输出候选块索引，同时正常输出sparse_indices）；2=consumer（在候选块内选topk）；3=关闭（默认值，现网行为）。仅910b系列（ascend910b/ascend910_93）支持。 | INT32 | - |
+| candidate_topk_blocks | 可选属性 | 候选块数量，默认值2048。支持(0, 2048]内64的倍数。 | INT32 | - |
+| candidate_block_size | 可选属性 | 候选块大小（每块包含的位置数），默认值8，当前仅支持8。source与consumer调用必须一致。 | INT32 | - |
+| key_stride0 | 可选属性 | key第0维物理stride，默认值0表示紧凑存储；key为非连续存储（PA_BBND块间存在间隙）时传入真实stride，torch接口自动传入。 | INT32 | - |
+| key_dequant_scale_stride0 | 可选属性 | key_dequant_scale第0维物理stride，默认值0表示紧凑存储。 | INT32 | - |
 | sparse_indices     | 输出      | 公式中的输出Out，参与稀疏attention计算的token索引值。 | INT32          | ND         |
 | sparse_values           | 输出      | 公式中的Indices输出对应的value值。`return_value`为1时shape与`sparse_indices`一致，`return_value`为0时shape为(0,) | BFLOAT16         | ND          |
+| candidate_topk_index_out | 可选输出 | candidate_mode=1时输出候选块索引，其他模式为shape(0,)的空tensor。无序；值为batch内相对块号或-1（无效槽），块号×candidate_block_size为起始位置；不加output_idx_offset。仅支持layout_q=BSND，shape为[B, S1, N2, candidate_topk_blocks]。 | INT32 | ND |
 
 ## 约束说明
 
@@ -66,9 +75,19 @@
   - `query`、`key`支持INT8，不支持FLOAT8_e4m3fn、HIFLOAT8和FLOAT4_e2m1。
   - `query_dequant_scale`和`key_dequant_scale`支持FLOAT16，不支持FLOAT32和FLOAT8_e8m0。
   - `weights`支持FLOAT16，不支持FLOAT32。
-  - 不支持`output_idx_offset`和`return_value`。
+  - 不支持`return_value`；`output_idx_offset`已支持。
   - `query`的N仅支持64，`key`的N仅支持1。
   - `topk`支持[1, 2048]。
+- 两级TopK（candidate）相关约束（仅910b系列ascend910b/ascend910_93支持；950须保持candidate_mode默认值3）：
+  - `candidate_mode`=1时输出`candidate_topk_index_out`，仅支持`layout_q`为BSND；=2时必须传入`candidate_topk_index`。
+  - `layout_q`为TND时，`layout_k`必须为PA_BBND且必须传入`cu_seqlens_q`。
+  - `candidate_block_size`当前仅支持8，且source与consumer调用必须一致。
+  - 候选块索引为batch内相对块号，`output_idx_offset`仅作用于`sparse_indices`。
+  - mode=2时候选块仅降低排序优先级、不取消入选资格：候选内有效位置数不足topk时候选外的可达位置会作为有效索引输出。
+  - mode=1时最新token所在块（pin块）无条件保留在候选输出中。
+  - 候选块索引仅在同一个forward内跨层共享有效，跨step复用无效。
+  - candidate相关属性不参与metadata分核，metadata算子接口不变。
+  - `query`的g（N1/N2）支持32和64。
 
 ## 调用示例
 
@@ -76,3 +95,4 @@
 |----------|----------|------|
 | PyTorch API | - | 通过[torch.ops.cann_ops_transformer.quant_lightning_indexer](../../../attention/quant_lightning_indexer_v2/docs/torchapi_quant_lightning_indexer.md)接口调用QuantLightningIndexerV2算子。 |
 | aclnn API | [test_aclnn_quant_lightning_indexer_v2](examples/test_aclnn_quant_lightning_indexer_v2.cpp) | 通过[aclnnQuantLightningIndexerV2](docs/aclnnQuantLightningIndexerV2.md)两段式接口调用QuantLightningIndexerV2算子。 |
+| PyTorch API（两级TopK） | - | 通过 torch.ops.cann_ops_transformer.quant_lightning_indexer.candidate 变体（返回sparse_indices、sparse_values、candidate_topk_index三元组）或适配入口 quant_lightning_indexer_candidate_source / quant_lightning_indexer_candidate_consumer 调用两级TopK能力。 |
