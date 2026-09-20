@@ -453,7 +453,7 @@ static ge::graphStatus CheckSwiGluOaiActivationParams(const float *activationPar
 }
 
 /*
- * situglu 的 beta 必填：Ascend 950PR/Ascend 950DT 仅支持大于 0 的有限值。
+ * situglu 的 beta 必填：A5 仅支持大于 0 的有限值。
  * linear_beta 选填，给了就切到 LINEAR 子模式，同样仅支持大于 0 的有限值。
  * 注意个数校验必须排在取值之前：一个参数都不传时 activationParams 是空指针，
  * 先取 activationParams[0] 会直接段错误，而不是干净地报错返回。
