@@ -56,7 +56,7 @@ aclnnStatus aclnnGenericBlockSparseAttentionGetWorkspaceSize(
   const aclTensor   *sequsedKvOptional,
   const aclTensor   *blockTableOptional,
   const aclIntArray *blockShape,
-  char              *layoutSparsePattern,
+  int64_t            isPackedGQA,
   char              *layoutQ,
   char              *layoutKv,
   double             scaleValue,
@@ -67,8 +67,6 @@ aclnnStatus aclnnGenericBlockSparseAttentionGetWorkspaceSize(
   int64_t            winLeft,
   int64_t            winRight,
   int64_t            returnSoftmaxlse,
-  int64_t            residualBlockMode,
-  int64_t            isConsistentTopk,
   aclTensor         *attentionOut,
   aclTensor         *softmaxLseOptional,
   uint64_t          *workspaceSize,
@@ -147,7 +145,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>sparseBlockIdx</td>
       <td>输入</td>
       <td>稀疏块索引数组，指定每个Q块选择的KV块索引。</td>
-      <td>当前仅支持TND + layout_sparse_pattern=KVN_TotalQB_KB。取值须为合法KV块索引（按cu存储长度分块）；无效位置可用-1填充，有效值须落在前sparseBlockCount个位置。layout_sparse_pattern及其余shape见<a href="#layout对应关系说明">layout对应关系说明</a>。</td>
+      <td>当前仅支持TND + isPackedGQA=1。取值须为合法KV块索引（按cu存储长度分块）；无效位置可用-1填充，有效值须落在前sparseBlockCount个位置。isPackedGQA及其余shape见<a href="#layout对应关系说明">layout对应关系说明</a>。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>[numKeyValueHeads, totalQBlocks, maxSparseBlockCount]</td>
@@ -157,7 +155,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>sparseBlockCount</td>
       <td>输入</td>
       <td>每个Q块实际选择的KV块数量。</td>
-      <td>当前仅支持TND + layout_sparse_pattern=KVN_TotalQB_KB。is_consistent_topk=0时按该tensor逐Q块读取有效KV块数。其他组合的shape见<a href="#layout对应关系说明">layout对应关系说明</a>。</td>
+      <td>当前仅支持TND + isPackedGQA=1。isPackedGQA含义与sparseBlockIdx相同。其他组合的shape见<a href="#layout对应关系说明">layout对应关系说明</a>。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>[numKeyValueHeads, totalQBlocks]</td>
@@ -314,11 +312,11 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>-</td>
     </tr>
     <tr>
-      <td>layoutSparsePattern</td>
+      <td>isPackedGQA</td>
       <td>输入</td>
-      <td>代表sparseBlockIdx的轴含义及gather方向。</td>
-      <td>默认"KVN_TotalQB_KB"：dim0为KV头数（KVN），dim1为全局Q块数（TotalQB），dim2为每个Q块选出的KV块下标（KB，Q gather KV）。别名"KVN, TotalQB, KB"。当前仅支持该layout；"B_KN_KB_QB"（KV gather Q）暂不支持。</td>
-      <td>String</td>
+      <td>代表进行块状稀疏时，同一个group内的qHead是否共享同样的稀疏pattern<br>（注：不同batch之间不会共享同样的稀疏pattern，该入参仅区分head维度的共享情况）。</td>
+      <td>若取值为0，则代表同一个group内的qHead不共享同样的稀疏pattern；<br>若取值为1，则代表同一个group内的qHead共享同样的稀疏pattern。<br>当前仅支持1。</td>
+      <td>INT64</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -446,38 +444,6 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>-</td>
     </tr>
     <tr>
-      <td>residualBlockMode</td>
-      <td>输入</td>
-      <td>KV序列不能整除blockShapeY时，尾块是否强制参与计算。</td>
-      <td>
-        <ul>
-          <li>0（不选）：只计算sparseBlockIdx里出现的块。</li>
-          <li>1（全选）：即使topK列表未包含尾块，也强制把最后一个不满的KV块纳入计算。</li>
-        </ul>
-        当前默认0。
-      </td>
-      <td>INT64</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>isConsistentTopk</td>
-      <td>输入</td>
-      <td>各个query/Q块的topK是否一致。</td>
-      <td>
-        <ul>
-          <li>0：每个Q块的有效KV块数由sparseBlockCount给出。</li>
-          <li>1：所有Q块使用相同topK，kernel不再按块读取sparseBlockCount。</li>
-        </ul>
-        当前默认0。
-      </td>
-      <td>INT64</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
       <td>attentionOut</td>
       <td>输出</td>
       <td>公式中的attentionOut。</td>
@@ -547,7 +513,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
     <tr>
       <td>ACLNN_ERR_PARAM_INVALID</td>
       <td>161002</td>
-      <td>layoutSparsePattern、layout、maskType、blockShape、softmaxPrecision、quantType、returnSoftmaxlse、residualBlockMode、isConsistentTopk 等与约束不匹配。</td>
+      <td>isPackedGQA、layout、maskType、blockShape、softmaxPrecision、quantType、returnSoftmaxlse 等与约束不匹配。</td>
     </tr>
     <tr>
       <td>ACLNN_ERR_INNER_NULLPTR</td>
@@ -723,18 +689,18 @@ query、attentionOut的shape由layoutQ决定：
   </tbody>
   </table>
 
-sparseBlockIdx、sparseBlockCount的shape由layoutQ与layout_sparse_pattern决定。默认KVN_TotalQB_KB表示GQA/MQA下同group的qHead共享同一套按KV头packed的稀疏pattern。
+sparseBlockIdx、sparseBlockCount的shape由layoutQ与isPackedGQA决定。isPackedGQA=0：每个qHead对应的KV稀疏pattern不一致；isPackedGQA=1：GQA/MQA下同group每个qHead对应的KV稀疏pattern一致。
 
   <table style="undefined;table-layout: fixed; width: 1155px"><colgroup>
   <col style="width: 140px">
-  <col style="width: 220px">
-  <col style="width: 435px">
+  <col style="width: 140px">
+  <col style="width: 515px">
   <col style="width: 360px">
   </colgroup>
   <thead>
     <tr>
       <th>layoutQ</th>
-      <th>layout_sparse_pattern</th>
+      <th>isPackedGQA</th>
       <th>sparseBlockIdx</th>
       <th>sparseBlockCount</th>
     </tr>
@@ -742,27 +708,27 @@ sparseBlockIdx、sparseBlockCount的shape由layoutQ与layout_sparse_pattern决�
   <tbody>
     <tr>
       <td>TND</td>
-      <td>KVN_TotalQB_KB</td>
+      <td>1</td>
       <td>[numKeyValueHeads, totalQBlocks, maxSparseBlockCount]</td>
       <td>[numKeyValueHeads, totalQBlocks]</td>
     </tr>
     <tr>
       <td>TND</td>
-      <td>B_KN_KB_QB</td>
-      <td>按batch、KV头、KV块、Q块排布（KV gather Q，当前不支持）</td>
-      <td>随layout变化（当前不支持）</td>
+      <td>0</td>
+      <td>[headNum, totalQBlocks, maxSparseBlockCount]（当前不支持）</td>
+      <td>[headNum, totalQBlocks]（当前不支持）</td>
     </tr>
     <tr>
       <td>BNSD/BSND</td>
-      <td>KVN_TotalQB_KB</td>
+      <td>1</td>
       <td>[batch, numKeyValueHeads, ceilDiv(maxQSeqLength, blockShapeX), maxSparseBlockCount]（当前不支持）</td>
       <td>[batch, numKeyValueHeads, ceilDiv(maxQSeqLength, blockShapeX)]（当前不支持）</td>
     </tr>
     <tr>
       <td>BNSD/BSND</td>
-      <td>B_KN_KB_QB</td>
-      <td>[batch, numKeyValueHeads, KV块, Q块]（KV gather Q，当前不支持）</td>
-      <td>随layout变化（当前不支持）</td>
+      <td>0</td>
+      <td>[batch, headNum, ceilDiv(maxQSeqLength, blockShapeX), maxSparseBlockCount]（当前不支持）</td>
+      <td>[batch, headNum, ceilDiv(maxQSeqLength, blockShapeX)]（当前不支持）</td>
     </tr>
   </tbody>
   </table>
@@ -996,7 +962,7 @@ key、value的shape由layoutKv及是否使能Paged Cache决定，见<a href="#pa
 - 确定性计算：aclnnGenericBlockSparseAttention默认确定性实现。
 - 调用前须先执行aclnnGenericBlockSparseAttentionMetadata生成metadataOptional，再调用本接口；metadata须与当前输入/属性配套，每次调用须重新生成。
 - query/key/value的headDim(D)当前仅支持128；KV页blockSize当前仅支持128，且须等于blockShapeY。
-- layout_sparse_pattern=KVN_TotalQB_KB时：totalQBlocks按cuSeqLengthsQ差分得到的存储长度分块，即$\sum_i \mathrm{ceilDiv}(qStorageLen_i, blockShapeX)$；sparse分块与QKV寻址均按该存储长度，不以seqused重切分。
+- TND + isPackedGQA=1时：totalQBlocks按cuSeqLengthsQ差分得到的存储长度分块，即$\sum_i \mathrm{ceilDiv}(qStorageLen_i, blockShapeX)$；sparse分块与QKV寻址均按该存储长度，不以seqused重切分。
 - layoutKv为PA_BBND时须传sequsedKvOptional，不传cuSeqLengthsKvOptional。
 - seqused与对应cu前缀和同时传入时（Q侧，及layoutKv为TND时的KV侧）：分核/任务空间按各batch实际有效长度（seqused）累加；各batch的seqused元素须≤对应cu存储长度，且须与Metadata侧完全一致。
 - 输入query、key、value的数据类型必须一致。
@@ -1254,7 +1220,6 @@ int main()
 
   char layoutQ[] = "TND";
   char layoutKv[] = "PA_BBND";
-  char layoutSparse[] = "KVN_TotalQB_KB";
 
   // 3. 先调用 Metadata，再调用主算子
   uint64_t metadataWorkspaceSize = 0;
@@ -1286,8 +1251,8 @@ int main()
   aclOpExecutor* executor = nullptr;
   ret = aclnnGenericBlockSparseAttentionGetWorkspaceSize(
       q, k, v, sparseIdx, sparseCount, metadata, nullptr, nullptr, nullptr, nullptr, nullptr, cuSeqQ, nullptr, nullptr,
-      sequsedKv, blockTable, blockShape, layoutSparse, layoutQ, layoutKv, scaleValue, 1, 0, 0.0, 1, -1, -1, 0, 0, 0,
-      attnOut, nullptr, &workspaceSize, &executor);
+      sequsedKv, blockTable, blockShape, 1, layoutQ, layoutKv, scaleValue, 1, 0, 0.0, 1, -1, -1, 0, attnOut, nullptr,
+      &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS,
             LOG_PRINT("aclnnGenericBlockSparseAttentionGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 
