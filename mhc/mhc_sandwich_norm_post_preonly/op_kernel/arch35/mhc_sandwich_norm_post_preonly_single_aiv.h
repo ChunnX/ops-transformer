@@ -16,8 +16,7 @@
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
                                                         DUAL_SIBLING>::ComputeX2PostTile(uint32_t token, uint32_t tOff,
-                                                                                         uint32_t tD, float invRms0,
-                                                                                         const float (&postVals)[N_MAX])
+                                                                                         uint32_t tD, float invRms0)
 {
     LoadHOutAndCast((uint64_t)token * D_ + tOff, tD);
     LoadGammaInto(bufGamma0Fp32_.Get<float>(), gamma0Gm_, tOff, tD);
@@ -28,7 +27,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     FenceVToMte2();
     QuantizeRoundTrip(hOut, tD);
 
-    ComputeX2AllHeadsBatched(postVals, (uint64_t)token * N_ * D_ + tOff, tD);
+    ComputeX2AllHeadsBatched((uint64_t)token * N_ * D_ + tOff, tD);
 }
 
 // 将完整x2以输出dtype常驻UB，同时完成设计要求的低精度往返；写GM仅用于保留x2_out输出语义。
@@ -239,11 +238,10 @@ template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void
 KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ProcessTokenSingleAiv(uint32_t token)
 {
-    float postVals[N_MAX];
     float sumSqHalf[2] = {0.0f, 0.0f};
     float dotHalf[2][N_MAX] = {{0.0f, 0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 0.0f}};
     float midSqHalf[2] = {0.0f, 0.0f};
-    LoadTokenWeights(token, postVals);
+    LoadTokenWeights(token);
 
     // 第一遍：沿完整D轴计算R1。
     float sumSq0 = 0.0f;
@@ -260,7 +258,7 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        ComputeX2PostTile(token, tOff, tD, invRms0, postVals);
+        ComputeX2PostTile(token, tOff, tD, invRms0);
         CacheX2Tile(token, tOff, tD, !USE_RMS_MID);
 
         LocalTensor<float> x2 = bufX2Fp32_.Get<float>();

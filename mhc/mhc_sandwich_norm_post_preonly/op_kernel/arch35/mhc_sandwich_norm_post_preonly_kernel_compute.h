@@ -16,7 +16,7 @@
 // 数据加载
 
 /// 加载一个token的h_post[N]和h_res[N*N]。
-__aicore__ inline void LoadTokenWeights(uint32_t token, float (&postVals)[N_MAX])
+__aicore__ inline void LoadTokenWeights(uint32_t token)
 {
     // Host已固定校验N为4，使用编译期常量便于展开标量循环。
     constexpr uint32_t N = N_MAX;
@@ -35,8 +35,6 @@ __aicore__ inline void LoadTokenWeights(uint32_t token, float (&postVals)[N_MAX]
         DataCopyPad(hResUb, hResGm_[(uint64_t)token * N * N], cp, cpad);
     }
     PipeBarrier<PIPE_ALL>();
-    for (uint32_t i = 0; i < N; ++i)
-        postVals[i] = hPostUb.GetValue(i);
 }
 
 /// 把一个h_out分块预取到输入队列；双槽允许下一分块MTE2与当前分块Vector重叠。
@@ -115,7 +113,7 @@ __aicore__ inline void ApplyScaleAndGamma(LocalTensor<float> buf, float scale, L
 // MHC_Post计算
 
 /// 批量加载低精度残差，在R2的VF内完成转换并计算全部N个head的x2。
-__aicore__ inline void ComputeX2AllHeadsBatched(const float (&postVals)[N_MAX], uint64_t gmBaseOffset, uint32_t tD)
+__aicore__ inline void ComputeX2AllHeadsBatched(uint64_t gmBaseOffset, uint32_t tD)
 {
     // Host已固定校验N为4，使用编译期常量便于展开标量循环。
     constexpr uint32_t N = N_MAX;
@@ -126,12 +124,10 @@ __aicore__ inline void ComputeX2AllHeadsBatched(const float (&postVals)[N_MAX], 
     residual = bufResidualBf16_.DeQue<T>();
     LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
     LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
+    LocalTensor<float> postWeights = bufPostComb_.Get<float>();
     LocalTensor<float> combWeights = bufPostComb_.Get<float>()[ALIGN8];
 
-    for (uint32_t h = 0; h < N; ++h) {
-        MhcSandwichRegBase::ComputePostHead<T>(x2[h * dimTile_], hOut, residual, combWeights, dimTile_, h, postVals[h],
-                                               tD);
-    }
+    MhcSandwichRegBase::ComputePostAllHeads<T>(x2, hOut, residual, postWeights, combWeights, dimTile_, tD);
     PipeBarrier<PIPE_V>();
     bufResidualBf16_.FreeTensor(residual);
 }
