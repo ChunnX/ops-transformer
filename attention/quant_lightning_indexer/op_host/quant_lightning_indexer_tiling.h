@@ -32,7 +32,7 @@ struct TilingRequiredParaInfo {
     const gert::StorageShape *shape;
 };
 
-struct TilingOptionalParaInfo {
+struct QLITilingOptionalParaInfo {
     const gert::CompileTimeTensorDesc *desc;
     const gert::Tensor *tensor;
 };
@@ -114,9 +114,9 @@ struct QLIParaInfo {
     TilingRequiredParaInfo weights = {nullptr, nullptr};
     TilingRequiredParaInfo query_dequant_scale = {nullptr, nullptr};
     TilingRequiredParaInfo key_dequant_scale = {nullptr, nullptr};
-    TilingOptionalParaInfo actualSeqLengthsQ = {nullptr, nullptr};
-    TilingOptionalParaInfo actualSeqLengthsK = {nullptr, nullptr};
-    TilingOptionalParaInfo blockTable = {nullptr, nullptr};
+    QLITilingOptionalParaInfo actualSeqLengthsQ = {nullptr, nullptr};
+    QLITilingOptionalParaInfo actualSeqLengthsK = {nullptr, nullptr};
+    QLITilingOptionalParaInfo blockTable = {nullptr, nullptr};
     TilingRequiredParaInfo attenOut = {nullptr, nullptr};
 
     const int32_t *queryQuantMode = nullptr;
@@ -189,23 +189,23 @@ public:
     void GetOptionalInputParaInfo();
     void GetInputParaInfo();
     void GetOutputParaInfo();
-    ge::graphStatus GetAttrParaInfo();
     ge::graphStatus CheckAttrParaInfo();
+    ge::graphStatus GetAttrParaInfo();
     ge::graphStatus GetOpParaInfo();
     ge::graphStatus ValidateInputShapesMatch();
     ge::graphStatus CheckScaleShape();
     ge::graphStatus GetAndCheckInOutDataType();
     ge::graphStatus GetBatchSize();
-    ge::graphStatus GetHeadDim();
     ge::graphStatus GetS1Size();
+    ge::graphStatus GetHeadDim();
     ge::graphStatus GetAndCheckOptionalInput();
     ge::graphStatus CheckShapeDim();
     ge::graphStatus GetAndCheckBlockSize();
     ge::graphStatus GetS2SizeForPageAttention();
     ge::graphStatus GetS2SizeForBatchContinuous();
     ge::graphStatus GetS2Size();
-    ge::graphStatus GetQueryKeyAndOutLayout();
     ge::graphStatus GetN1Size();
+    ge::graphStatus GetQueryKeyAndOutLayout();
     ge::graphStatus GetAndCheckN2Size();
     ge::graphStatus GetGSize();
     ge::graphStatus GetAttenMaskInfo();

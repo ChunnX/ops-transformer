@@ -45,10 +45,10 @@ public:
     static constexpr uint64_t L0_BUF_NUM = 2;
 
     static constexpr uint32_t KEY_MTE1_MTE2_EVENT = EVENT_ID2;
-    static constexpr uint32_t QUERY_MTE1_MTE2_EVENT = EVENT_ID5; // KEY_MTE1_MTE2_EVENT + KEY_BUF_NUM;
+    static constexpr uint32_t QLI_QUERY_MTE1_MTE2_EVENT = EVENT_ID5; // KEY_MTE1_MTE2_EVENT + KEY_BUF_NUM;
     static constexpr uint32_t M_MTE1_EVENT = EVENT_ID3;
 
-    static constexpr uint32_t MTE2_MTE1_EVENT = EVENT_ID2;
+    static constexpr uint32_t QLI_MTE2_MTE1_EVENT = EVENT_ID2;
     static constexpr uint32_t MTE1_M_EVENT = EVENT_ID2;
     static constexpr uint32_t FIX_M_EVENT = EVENT_ID2;
     static constexpr uint32_t M_FIX_EVENT = EVENT_ID3;
@@ -87,7 +87,7 @@ protected:
     TBuf<TPosition::A1> bufQL1_;
     LocalTensor<Q_T> queryL1_;
     TBuf<TPosition::B1> bufKeyL1_;
-    LocalTensor<K_T> keyL1_;
+    LocalTensor<K_T> qliKeyL1_;
 
     TBuf<TPosition::A2> bufQL0_;
     LocalTensor<Q_T> queryL0_;
@@ -134,7 +134,7 @@ __aicore__ inline void QLIMatmul<QLIT>::InitBuffers(TPipe *pipe)
     pipe->InitBuffer(bufQL1_, QUERY_BUF_NUM * M_BASIC_BLOCK * D_BASIC_BLOCK * sizeof(Q_T));
     queryL1_ = bufQL1_.Get<Q_T>();
     pipe->InitBuffer(bufKeyL1_, KEY_BUF_NUM * s2BasicBlock_ * D_BASIC_BLOCK * sizeof(K_T));
-    keyL1_ = bufKeyL1_.Get<K_T>();
+    qliKeyL1_ = bufKeyL1_.Get<K_T>();
 
     pipe->InitBuffer(bufQL0_, L0_BUF_NUM * M_BASIC_BLOCK_L0 * D_BASIC_BLOCK_L0 * sizeof(Q_T));
     queryL0_ = bufQL0_.Get<Q_T>();
@@ -176,8 +176,8 @@ __aicore__ inline void QLIMatmul<QLIT>::ComputeMm1(const QLICommon::RunInfo &run
                 KeyNd2Nz(s2L1RealSize, s2GmOffset, runInfo);
             }
 
-            SetFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
-            WaitFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
+                        SetFlag<HardEvent::MTE2_MTE1>(QLI_MTE2_MTE1_EVENT);
+                        WaitFlag<HardEvent::MTE2_MTE1>(QLI_MTE2_MTE1_EVENT);
             // s1gProcessSize当前必定不会超过2倍的s1g basic block
             for (uint64_t s1gGmOffset = 0; s1gGmOffset < s1gProcessSize; s1gGmOffset += constInfo_.mBaseSize) {
                 uint64_t s1gL1RealSize = s1gGmOffset + constInfo_.mBaseSize > s1gProcessSize ?
@@ -187,10 +187,10 @@ __aicore__ inline void QLIMatmul<QLIT>::ComputeMm1(const QLICommon::RunInfo &run
                 if (runInfo.isFirstS2InnerLoop && s2GmOffset == 0) {
                     queryL1Mte2BufIdx_++;
                     queryL1Mte1BufIdx_ = queryL1Mte2BufIdx_;
-                    WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + queryL1Mte2BufIdx_ % QUERY_BUF_NUM);
+                    WaitFlag<HardEvent::MTE1_MTE2>(QLI_QUERY_MTE1_MTE2_EVENT + queryL1Mte2BufIdx_ % QUERY_BUF_NUM);
                     QueryNd2Nz(s1gL1RealSize, s1gGmOffset, runInfo);
-                    SetFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
-                    WaitFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
+            SetFlag<HardEvent::MTE2_MTE1>(QLI_MTE2_MTE1_EVENT);
+            WaitFlag<HardEvent::MTE2_MTE1>(QLI_MTE2_MTE1_EVENT);
                 } else {
                     queryL1Mte1BufIdx_ =
                         queryL1Mte2BufIdx_ - (CeilDiv(s1gProcessSize, constInfo_.mBaseSize) - 1 - (s1gGmOffset > 0));
@@ -220,11 +220,11 @@ __aicore__ inline void QLIMatmul<QLIT>::ComputeMm1(const QLICommon::RunInfo &run
                     }
                 }
                 if (s2GmOffset + s2BasicBlock_ >= s2ProcessSize && runInfo.isLastS2InnerLoop) {
-                    SetFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + queryL1Mte1BufIdx_ % QUERY_BUF_NUM);
+                    SetFlag<HardEvent::MTE1_MTE2>(QLI_QUERY_MTE1_MTE2_EVENT + queryL1Mte1BufIdx_ % QUERY_BUF_NUM);
                 }
             }
             SetFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + keyL1BufIdx_ % KEY_BUF_NUM);
-            keyL1BufIdx_++;
+            ++keyL1BufIdx_;
         }
     } else if (s2BasicBlock_ == 256) {
         // 第一个s2循环 keycache置为false
@@ -233,25 +233,25 @@ __aicore__ inline void QLIMatmul<QLIT>::ComputeMm1(const QLICommon::RunInfo &run
         }
         for (uint64_t s2GmOffset = 0; s2GmOffset < s2ProcessSize; s2GmOffset += s2BasicBlock_) {
             // 缓存命中不需要进行key的搬运
-            bool keyCacheHit = isKeyCacheValid_ && (s2GmBaseOffset >= keyGmStart_) &&
+            bool qliKeyCacheHit = isKeyCacheValid_ && (s2GmBaseOffset >= keyGmStart_) &&
                                (s2GmBaseOffset + s2ProcessSize <= keyGmStart_ + keyLoadedSize_);
-            if (!keyCacheHit) {
+            if (!qliKeyCacheHit) {
                 WaitFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + keyL1BufIdx_ % KEY_BUF_NUM);
                 // 缓存未命中，需要从GM搬到L1 min（256, 剩余s2）
                 uint64_t s2TotalRemainNum = runInfo.actS2Size - s2GmBaseOffset;
-                uint64_t s2L1LoadSize = (s2TotalRemainNum < s2BasicBlock_) ? s2TotalRemainNum : s2BasicBlock_;
+                uint64_t qliS2L1LoadSize = (s2TotalRemainNum < s2BasicBlock_) ? s2TotalRemainNum : s2BasicBlock_;
                 if (PAGE_ATTENTION) {
-                    KeyNd2NzForPA(s2L1LoadSize, s2GmBaseOffset + s2GmOffset, runInfo);
+                    KeyNd2NzForPA(qliS2L1LoadSize, s2GmBaseOffset + s2GmOffset, runInfo);
                 } else {
-                    KeyNd2Nz(s2L1LoadSize, s2GmOffset, runInfo);
+                    KeyNd2Nz(qliS2L1LoadSize, s2GmOffset, runInfo);
                 }
 
-                SetFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
-                WaitFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
+                SetFlag<HardEvent::MTE2_MTE1>(QLI_MTE2_MTE1_EVENT);
+                WaitFlag<HardEvent::MTE2_MTE1>(QLI_MTE2_MTE1_EVENT);
 
                 isKeyCacheValid_ = true;
                 keyGmStart_ = s2GmBaseOffset;
-                keyLoadedSize_ = s2L1LoadSize;
+                keyLoadedSize_ = qliS2L1LoadSize;
             }
             uint64_t l1S2Offset = s2GmBaseOffset - keyGmStart_;
             uint64_t l1TotalSize = keyLoadedSize_;
@@ -264,10 +264,10 @@ __aicore__ inline void QLIMatmul<QLIT>::ComputeMm1(const QLICommon::RunInfo &run
                 if (runInfo.isFirstS2InnerLoop && s2GmOffset == 0) {
                     queryL1Mte2BufIdx_++;
                     queryL1Mte1BufIdx_ = queryL1Mte2BufIdx_;
-                    WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + queryL1Mte2BufIdx_ % QUERY_BUF_NUM);
+                    WaitFlag<HardEvent::MTE1_MTE2>(QLI_QUERY_MTE1_MTE2_EVENT + queryL1Mte2BufIdx_ % QUERY_BUF_NUM);
                     QueryNd2Nz(s1gL1RealSize, s1gGmOffset, runInfo);
-                    SetFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
-                    WaitFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
+                    SetFlag<HardEvent::MTE2_MTE1>(QLI_MTE2_MTE1_EVENT);
+                    WaitFlag<HardEvent::MTE2_MTE1>(QLI_MTE2_MTE1_EVENT);
                 } else {
                     queryL1Mte1BufIdx_ =
                         queryL1Mte2BufIdx_ - (CeilDiv(s1gProcessSize, constInfo_.mBaseSize) - 1 - (s1gGmOffset > 0));
@@ -299,11 +299,11 @@ __aicore__ inline void QLIMatmul<QLIT>::ComputeMm1(const QLICommon::RunInfo &run
                     }
                 }
                 if (s2GmOffset + s2BasicBlock_ >= s2ProcessSize && runInfo.isLastS2InnerLoop) {
-                    SetFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + queryL1Mte1BufIdx_ % QUERY_BUF_NUM);
+                    SetFlag<HardEvent::MTE1_MTE2>(QLI_QUERY_MTE1_MTE2_EVENT + queryL1Mte1BufIdx_ % QUERY_BUF_NUM);
                 }
             }
-            bool l1FullyUsed = (s2GmBaseOffset + s2ProcessSize >= keyGmStart_ + keyLoadedSize_);
-            if (l1FullyUsed || runInfo.isLastS2InnerLoop) {
+            bool qliL1FullyUsed = (s2GmBaseOffset + s2ProcessSize >= keyGmStart_ + keyLoadedSize_);
+            if (qliL1FullyUsed || runInfo.isLastS2InnerLoop) {
                 SetFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + keyL1BufIdx_ % KEY_BUF_NUM);
                 keyL1BufIdx_++;
                 isKeyCacheValid_ = false;
@@ -331,7 +331,7 @@ __aicore__ inline void QLIMatmul<QLIT>::KeyNd2Nz(uint64_t s2L1RealSize, uint64_t
     nd2nzPara.srcNdMatrixStride = 0;
     nd2nzPara.dstNzMatrixStride = 0;
     // 默认一块buf最多放两份
-    DataCopy(keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * keyBufferOffset_],
+    DataCopy(qliKeyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * keyBufferOffset_],
              keyGm_[runInfo.tensorKeyOffset + s2GmOffset * constInfo_.headDim], nd2nzPara);
 }
 
@@ -348,22 +348,22 @@ __aicore__ inline void QLIMatmul<QLIT>::KeyNd2NzForPA(uint64_t s2L1RealSize, uin
             blkTableGm_.GetValue(runInfo.bIdx * constInfo_.maxBlockNumPerBatch + s2BlkId) * constInfo_.keyStride0 +
             s2BlkOffset * constInfo_.headDim;
 
-        uint64_t s2Mte2Size = s2L1RealSize - s2L1Offset;
-        s2Mte2Size = s2BlkOffset + s2Mte2Size >= constInfo_.kCacheBlockSize ? constInfo_.kCacheBlockSize - s2BlkOffset :
-                                                                              s2Mte2Size;
+        uint64_t qliS2Mte2Size = s2L1RealSize - s2L1Offset;
+        qliS2Mte2Size = s2BlkOffset + qliS2Mte2Size >= constInfo_.kCacheBlockSize ?
+                            constInfo_.kCacheBlockSize - s2BlkOffset : qliS2Mte2Size;
         Nd2NzParams nd2nzPara;
         nd2nzPara.ndNum = 1;
-        nd2nzPara.nValue = s2Mte2Size; // 行数
+        nd2nzPara.nValue = qliS2Mte2Size; // 行数
         nd2nzPara.dValue = constInfo_.headDim;
         nd2nzPara.srcDValue = constInfo_.headDim;
         nd2nzPara.dstNzC0Stride = CeilAlign(s2L1RealSize, (uint64_t)BLOCK_CUBE); // 对齐到16 单位block
         nd2nzPara.dstNzNStride = 1;
         nd2nzPara.srcNdMatrixStride = 0;
         nd2nzPara.dstNzMatrixStride = 0;
-        DataCopy(keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * keyBufferOffset_ + s2L1Offset * FP8_BLOCK_CUBE],
+        DataCopy(qliKeyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * keyBufferOffset_ + s2L1Offset * FP8_BLOCK_CUBE],
                  keyGm_[keyGmOffset], nd2nzPara);
 
-        s2L1Offset += s2Mte2Size;
+        s2L1Offset += qliS2Mte2Size;
     }
 }
 
@@ -419,7 +419,7 @@ __aicore__ inline void QLIMatmul<QLIT>::LoadKeyToL0b(uint64_t s2L1Offset, uint64
     loadData2DParamsV2.ifTranspose = false;
 
     LoadData(keyL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET],
-             keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * keyBufferOffset_], loadData2DParamsV2);
+             qliKeyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * keyBufferOffset_], loadData2DParamsV2);
 }
 
 template <typename QLIT>
@@ -483,8 +483,8 @@ __aicore__ inline void QLIMatmul<QLIT>::AllocEventID()
     SetFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + 1);
     SetFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + 2);
 
-    SetFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 0);
-    SetFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 1);
+    SetFlag<HardEvent::MTE1_MTE2>(QLI_QUERY_MTE1_MTE2_EVENT + 0);
+    SetFlag<HardEvent::MTE1_MTE2>(QLI_QUERY_MTE1_MTE2_EVENT + 1);
 
     SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 0);
     SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 1);
@@ -501,8 +501,8 @@ __aicore__ inline void QLIMatmul<QLIT>::FreeEventID()
     WaitFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + 1);
     WaitFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + 2);
 
-    WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 0);
-    WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 1);
+    WaitFlag<HardEvent::MTE1_MTE2>(QLI_QUERY_MTE1_MTE2_EVENT + 0);
+    WaitFlag<HardEvent::MTE1_MTE2>(QLI_QUERY_MTE1_MTE2_EVENT + 1);
 
     WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 0);
     WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 1);
