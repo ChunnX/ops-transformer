@@ -52,8 +52,7 @@ public:
     __aicore__ inline void ProcessLD();
     __aicore__ inline void InitVecWorkspaceTensor(GlobalTensor<half> vec0OutGm, GlobalTensor<MM1_OUT_T> mm1ResGm,
                                                   GlobalTensor<float> vec1ResGm);
-    __aicore__ inline void InitVecCandidateTensor(GlobalTensor<int32_t> candidateTopkIndexInGm,
-                                                  GlobalTensor<int32_t> candidateTopkIndexOutGm,
+    __aicore__ inline void InitVecCandidateTensor(GlobalTensor<int32_t> candidateTopkIndexOutGm,
                                                   GlobalTensor<int32_t> outputIdxOffsetGm,
                                                   bool outputIdxOffsetValid);
     __aicore__ inline void InitVecInputTensor(GlobalTensor<half> weightsGm, GlobalTensor<half> qScaleGm,
@@ -73,7 +72,6 @@ protected:
     GlobalTensor<half> kScaleGm;
     GlobalTensor<half> vec0OutGm;
     GlobalTensor<int32_t> indiceOutGm;
-    GlobalTensor<int32_t> candidateTopkIndexInGm;
     GlobalTensor<int32_t> candidateTopkIndexOutGm;
     GlobalTensor<int32_t> blockTableGm;
     // =================================常量区=================================
@@ -83,8 +81,6 @@ private:
                                        int64_t batchId, int64_t startS2, int64_t getLen);
     // candidate (two-level topk)
     __aicore__ inline int32_t CountGE(const LocalTensor<float> &sortedDesc, int32_t n, float x);
-    __aicore__ inline void BuildCandidateMask(const QLIV2Common::RunInfo &info, int32_t cuS1Idx,
-                                              int32_t cuBaseS2Idx, int32_t innerS1Idx);
     __aicore__ inline void ProcessCandBlockTopk(const QLIV2Common::RunInfo &info, int32_t cuS1Idx, int32_t cuS2Len,
                                                 int32_t cuS2LenVecAlign, int32_t cuRealAcSeq, int32_t innerS1Idx);
     __aicore__ inline void CopyOutCandTopkIndex(const QLIV2Common::RunInfo &info, int32_t cuS1Idx, int32_t innerS1Idx);
@@ -122,14 +118,10 @@ private:
 
     // tmp buff for candidate (two-level topk)
     TBuf<TPosition::VECCALC> blockSortOutBuf_; // mode=1: 块级 topk 累加器 [CeilDiv(s1BaseSize,2), 2048, 2]
-    TBuf<TPosition::VECCALC> candBuf_;         // mode=2: 排序后的候选块索引 [2048, 2] (value+idx)
-    TBuf<TPosition::VECCALC> candConstBuf_;    // mode=1/2: negHuge 常量 [2048]
 
     LocalTensor<int32_t> globalTopkIndice_;
     LocalTensor<float> globalTopkUb_;
     LocalTensor<float> globalBlockTopkUb_;
-    LocalTensor<float> candIsOut_;       // mode=2: position 级 0/1 (1=候选外), 仅用于分数降级 (R11 leak)
-    LocalTensor<float> candNegHuge_;     // -1e30 常量
     GlobalTensor<int32_t> outputIdxOffsetGm_;        // A15: 每行输出索引偏移 (仅 sparse_indices)
     bool isOutputIdxOffsetValid_ = false;            // A15: offset 是否传入 (经 InitVecCandidateTensor 传递)
 
@@ -240,14 +232,6 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
         pipe->InitBuffer(blockSortOutBuf_, CeilDiv(s1BaseSize_, 2) * BASE_TOPK_VALUE_IDX_SIZE * sizeof(float)); // 32KB
         globalBlockTopkUb_ = blockSortOutBuf_.Get<float>();
         InitSortOutBuf(globalBlockTopkUb_, CeilDiv(s1BaseSize_, 2) * BASE_TOPK_VALUE_IDX_SIZE);
-    } else if (constInfo_.candidateMode == CANDIDATE_MODE_CONSUMER) {
-        // R6 修复: candBuf 按行分区 (每 AIV 处理 CeilDiv(s1BaseSize,2)=2 行, 行间 tile0 重排序
-        // 会互相覆盖) — 2 行 x 2048 对 x 8B = 32KB; mode=2 UB 预算 144+32+8=184KB <= 192KB
-        pipe->InitBuffer(candBuf_, CeilDiv(s1BaseSize_, 2) * BASE_TOPK * 2 * sizeof(float));
-        pipe->InitBuffer(candConstBuf_, BASE_TOPK * sizeof(float)); // 8KB: negHuge
-        candNegHuge_ = candConstBuf_.Get<float>();
-        Duplicate(candNegHuge_.template ReinterpretCast<int32_t>(), QLIV2ServiceVec::NEG_HUGE_F32, BASE_TOPK);
-        PipeBarrier<PIPE_V>();
     }
 
     // 基本块执行前初始化UB和GM
@@ -317,12 +301,10 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitVecWorkspaceTensor(GlobalTensor<
 }
 
 template <typename QLIV2T>
-__aicore__ inline void QLIV2Vector<QLIV2T>::InitVecCandidateTensor(GlobalTensor<int32_t> candidateTopkIndexInGm,
-                                                                   GlobalTensor<int32_t> candidateTopkIndexOutGm,
+__aicore__ inline void QLIV2Vector<QLIV2T>::InitVecCandidateTensor(GlobalTensor<int32_t> candidateTopkIndexOutGm,
                                                                    GlobalTensor<int32_t> outputIdxOffsetGm,
                                                                    bool outputIdxOffsetValid)
 {
-    this->candidateTopkIndexInGm = candidateTopkIndexInGm;
     this->candidateTopkIndexOutGm = candidateTopkIndexOutGm;
     this->outputIdxOffsetGm_ = outputIdxOffsetGm;  // A15
     this->isOutputIdxOffsetValid_ = outputIdxOffsetValid;
@@ -461,81 +443,6 @@ __aicore__ inline int32_t QLIV2Vector<QLIV2T>::CountGE(const LocalTensor<float> 
     return lo;
 }
 
-// mode=2 (use_candidate): 加载/排序候选行 (每行首个S2分片), 判定 tile 内块归属,
-// 产出 position 级 isOut (fp32 0/1, 1=候选外) 与其 int32 形式
-template <typename QLIV2T>
-__aicore__ inline void QLIV2Vector<QLIV2T>::BuildCandidateMask(const QLIV2Common::RunInfo &info, int32_t cuS1Idx,
-                                                               int32_t cuBaseS2Idx, int32_t innerS1Idx)
-{
-    int32_t candBlocks = static_cast<int32_t>(constInfo_.candidateTopkBlocks);
-    int32_t blockSize = static_cast<int32_t>(constInfo_.candidateBlockSize);
-    int32_t tileBlkNum = s2BaseSize_ / blockSize;
-    int32_t tileBlockBase = cuBaseS2Idx / blockSize;
-    // R6 修复: 同核多行 (每 AIV 处理 CeilDiv(s1BaseSize,2)=2 行) 共享 candBuf 时,
-    // 后一行的 tile0 重排序会覆盖前行候选 (s2 内层循环按 gS1 块整体推进) — candBuf 按行分区
-    LocalTensor<float> tmp = tmpBuf_.Get<float>();
-    LocalTensor<float> candPairs = candBuf_.Get<float>()[innerS1Idx * candBlocks * 2];
-    if (info.isFirstS2InnerLoop) {
-        // 加载候选行到 tmp 尾部, 转 fp32 后与有序索引组成 [values | idx] 对并降序排序
-        LocalTensor<int32_t> candInt = tmp[12288].template ReinterpretCast<int32_t>();
-        AscendC::DataCopyExtParams copyInParams;
-        copyInParams.blockCount = 1;
-        copyInParams.blockLen = candBlocks * sizeof(int32_t);
-        copyInParams.srcStride = 0;
-        copyInParams.dstStride = 0;
-        copyInParams.rsv = 0;
-        AscendC::DataCopyPadExtParams<int32_t> padParams{true, 0, 0, 0};
-        SetWaitFlag<HardEvent::V_MTE2>(HardEvent::V_MTE2);
-        AscendC::DataCopyPad(candInt,
-                             candidateTopkIndexInGm[info.candidateOutOffset +
-                                                    cuS1Idx * constInfo_.candidateTopkBlocks],
-                             copyInParams, padParams);
-        SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
-        PipeBarrier<PIPE_V>();
-        Cast(candPairs, candInt, RoundMode::CAST_NONE, candBlocks);
-        PipeBarrier<PIPE_V>();
-        DataCopy(candPairs[candBlocks].template ReinterpretCast<int32_t>(), globalTopkIndice_, candBlocks);
-        PipeBarrier<PIPE_V>();
-        LocalTensor<float> candSortTmp = tmp[4096];
-        QLIV2ServiceVec::SortAll(candPairs, candSortTmp, candBlocks);
-        PipeBarrier<PIPE_V>();
-        // V->S 围栏: 排序结果对后续标量 GetValue (CountGE 二分) 可见
-        // (PipeBarrier<PIPE_V> 不足以保证标量读到 V 写数据; 参照 CANN topk_v200 的 SetFlag/WaitFlag<V_S> 模式)
-        SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
-    }
-    // 候选与 tile 块号 [tileBlockBase, tileBlockBase+tileBlkNum) 的最小距离, 0 即命中
-    // (candBuf 按行分区, R6: 同核行间覆盖已修复)
-    LocalTensor<float> candPairs2 = candBuf_.Get<float>()[innerS1Idx * candBlocks * 2];
-    int32_t lo = CountGE(candPairs2, candBlocks, static_cast<float>(tileBlockBase));
-    int32_t hi = CountGE(candPairs2, candBlocks, static_cast<float>(tileBlockBase + tileBlkNum));
-    LocalTensor<float> blkIdxF = tmp[4096];     // [tileBlkNum]
-    LocalTensor<float> acc = tmp[4352];         // [tileBlkNum]
-    LocalTensor<float> diff = tmp[4608];        // [tileBlkNum]
-    Cast(blkIdxF, globalTopkIndice_, RoundMode::CAST_NONE, tileBlkNum);
-    PipeBarrier<PIPE_V>();
-    Adds(blkIdxF, blkIdxF, static_cast<float>(tileBlockBase), tileBlkNum);
-    PipeBarrier<PIPE_V>();
-    Duplicate(acc.ReinterpretCast<int32_t>(), QLIV2ServiceVec::POS_INF_F32, tileBlkNum);
-    PipeBarrier<PIPE_V>();
-    // 降序排序下: 值 >= base+tileBlkNum 占 [0, hi), 落在 tile 内的候选占 [hi, lo), < base (含 -1 pad) 占 [lo, ...)
-    for (int32_t j = hi; j < lo; j++) {
-        float v = candPairs2.GetValue(2 * j);
-        Adds(diff, blkIdxF, -v, tileBlkNum);
-        PipeBarrier<PIPE_V>();
-        VecAbs(diff, diff, tileBlkNum);
-        VecMinPair(acc, acc, diff, tileBlkNum);
-    }
-    // 距离 0 → 候选块; Brcb 展开到位置级; 距离 clamp 到 1 得 isOut (0/1)
-    LocalTensor<float> posDist = tmp[12288]; // candInt 已释放, 可复用
-    Brcb(posDist, acc, tileBlkNum / 8, {1, 8});
-    PipeBarrier<PIPE_V>();
-    VecMinsScalar(posDist, posDist, 1.0f, s2BaseSize_);
-    PipeBarrier<PIPE_V>();
-    candIsOut_ = posDist;
-    // R11 (leak 语义, §1.6): isOut 仅用于分数降级 (pen 链), 索引保留真实位置号 —
-    // 候选外可达位置作为 topk 填充泄漏成有效索引 (对齐模型 where(idxs < compress_lens) 语义),
-    // 不再把候选外索引改 -1 (原 isOutI32/CAST_RINT 链已删)。
-}
 
 // mode=1 (is_candidate_source): 块内 amax (log2(blockSize) 轮 Max 树) + pin 尾块 + 块级排序/归并
 template <typename QLIV2T>
@@ -862,27 +769,6 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
             PipeBarrier<PIPE_V>();
             AscendC::Mul(mmInUb, mmInUb, kScaleUb, cuS2Len);
             PipeBarrier<PIPE_V>();
-            // mode=2 (use_candidate, R11 leak): 候选块外 score 降级 NEG_HUGE (S4a, 纯算术无 NaN);
-            // 仅降级排序资格、不取消入选资格 — 不足 topk 时候选外可达位置作为填充泄漏 (§1.6)
-            // P11: 全候选快路径 — 若该批总块数 ≤ candidateTopkBlocks, 候选覆盖全部
-            // 位置块, isOut 恒 0 (pen 恒 0, score 不降级), 整个 BuildCandidateMask+pen
-            // 链可跳过 (生产 s2=16384: 2048 块 ≤ 2048 候选 → 恒命中)。逐块判定用
-            // info.actS2SizeOrig (压缩前) — 候选块号域即压缩前位置域。
-            // P11 撤销 (2026-09-17): 全候选快路径的前提"候选表覆盖全部块号"是数据属性,
-            // 无法从 shape/attr 判定 (上游候选可含重复/-1, kernel 内严格判定需逐点读候选表,
-            // 成本 ≈ 被跳过的 tile 内命中检测, 无净收益); randint 候选用例证明上游无覆盖契约。
-            // 恢复无条件 BuildCandidateMask+pen 链 (正确性优先)。
-            if (constInfo_.candidateMode == CANDIDATE_MODE_CONSUMER) {
-                BuildCandidateMask(info, cuS1Idx, cuBaseS2Idx, innerS1Idx);
-                PipeBarrier<PIPE_V>();
-                LocalTensor<float> pen = tmpBuf_.Get<float>()[4096]; // blkIdxF/acc/d 已释放, 复用
-                Sub(pen, candNegHuge_, mmInUb, cuS2Len);
-                PipeBarrier<PIPE_V>();
-                Mul(pen, pen, candIsOut_, cuS2Len);
-                PipeBarrier<PIPE_V>();
-                Add(mmInUb, mmInUb, pen, cuS2Len);
-                PipeBarrier<PIPE_V>();
-            }
             LocalTensor<float> sortBuff = tmpBuf_.Get<float>();
             LocalTensor<float> sortScoreUb = sortBuff;
             LocalTensor<float> sortIndiceUb = sortBuff[cuS2LenVecAlign];
