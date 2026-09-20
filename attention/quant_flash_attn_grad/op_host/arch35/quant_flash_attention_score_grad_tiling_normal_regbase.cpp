@@ -232,7 +232,9 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::DoSparse()
         fBaseParams.blockOuter = fBaseParams.aicNum;
         fBaseParams.blockFactor = 1;
         fBaseParams.maxValidBBLen = 1;
-        // deterMaxRound 取保守上界，不读 AICPU 槽0。
+        // Host cannot read cu_seqlens. This conservative ceiling is only a
+        // fallback; the kernel uses metadata layer-2 slot 0 (AICPU roundPrefix[B])
+        // as the real loop_max so empty INTER_BLOCK rounds are not executed.
         const int64_t bSize = fBaseParams.b;
         const int64_t kNum = std::max(static_cast<int64_t>(1), static_cast<int64_t>(fBaseParams.aicNum));
         const int64_t n1 = std::max(static_cast<int64_t>(1), fBaseParams.n1);

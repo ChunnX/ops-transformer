@@ -243,6 +243,20 @@ def meta_get(const_info, tensor_metadata, idx):
     return pl.getval(tensor_metadata, const_info.metadata_len + idx)
 
 
+def resolve_varlen_loop_max(const_info, tensor_metadata):
+    """Varlen 主循环轮数: 优先用 metadata 第二维槽0 (AICPU roundPrefix[B])。
+
+    Host 的 deter_max_round 读不到 cu_seqlens, 只能按 T/max_seqlen 给保守上界。
+    用那个上界做 pl.range 会在真实轮数之后空转, 每轮仍走 4 次 INTER_BLOCK。
+    槽0 是所有核共享的真实总轮数; 0 .. roundPrefix[B) 内的空档仍要同步
+    (本核无块但别的核可能在写 dQ), 之后则不应再进循环。
+    """
+    meta_loop_max = meta_get(const_info, tensor_metadata, META_DETER_MAX_NUM_IDX)
+    if meta_loop_max > 0:
+        return meta_loop_max
+    return const_info.deter_max_round
+
+
 def get_actual_s1_len(const_info, tensor_seq_q, b_idx):
     """batch b_idx 的实际 Q 长度; 非 seqused 场景即定长 s1。"""
     # tensor_seq carries used lengths when present; otherwise TND cu offsets.
@@ -3793,6 +3807,8 @@ def quant_flash_attn_grad(
                       "QuantFAG: metadata batch mismatch")
         pl.pto_assert(pl.getval(tensor_metadata, tiling.metadata_len + META_AIC_CORE_NUM_IDX) == pl.get_block_num(),
                       "QuantFAG: metadata AIC core count mismatch")
+        pl.pto_assert(pl.getval(tensor_metadata, tiling.metadata_len + META_DETER_MAX_NUM_IDX) > 0,
+                      "QuantFAG: metadata deter max round is 0")
         if sparse_type != 0 or layout == 2:
             schedule_kind = pl.getval(tensor_metadata, tiling.metadata_len + META_SCHEDULE_KIND_IDX)
             pl.pto_assert(
@@ -4642,8 +4658,7 @@ def quant_flash_attn_grad(
         gen_band_info(const_info, band_info)
     loop_max = 0
     if is_var_len():
-        # loop_max 必须来自 tiling，不能读 GM。
-        loop_max = const_info.deter_max_round
+        loop_max = resolve_varlen_loop_max(const_info, tensor_metadata)
     else:
         loop_max = cal_deter_max_loop_num(const_info, band_info)
     # with pl.section_cube():
