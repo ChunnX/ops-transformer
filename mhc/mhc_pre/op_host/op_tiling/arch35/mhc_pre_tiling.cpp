@@ -575,7 +575,7 @@ ge::graphStatus MhcPreBaseTiling::InitPlatformMemory()
 
     // 平台指纹：NpuArch::DAV_9201 即 ascend960dt（与 950 的 DAV_3510 同 arch35 指令集，
     // CV 核数比 1:1）。host tiling so 全 soc 共用一份，无法按平台宏隔离，只能运行时区分。
-    // kernel 侧差异（任务类型/AIV 配对折算）由 CMake 注入的 MHC_PRE_SUPPORT_960DT 宏编译期隔离，
+    // kernel 侧差异（任务类型/AIV 配对折算）由 ccec 内置 __NPU_ARCH__ 宏(9201/9202)编译期隔离，
     // 950 kernel 编译路径与原版一致。
     const bool isAscend960DT = ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_9201;
     if (!isAscend960DT) {

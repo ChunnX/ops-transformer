@@ -32,8 +32,8 @@ __global__ __aicore__ void mhc_pre(GM_ADDR x, GM_ADDR phi, GM_ADDR alpha, GM_ADD
 
     // 任务类型声明 AIC:AIV 配对组成，编译期确定，无法经 tiling 运行时切换：
     // ascend950/910b/910_93 为 1:2（原值），ascend960dt 为 1:1。
-    // 由 CMake 在 ascend960dt 编译轮注入 -DMHC_PRE_SUPPORT_960DT 区分。
-#ifdef MHC_PRE_SUPPORT_960DT
+    // 按 ccec 内置 __NPU_ARCH__ 宏区分（960dt 系列 = 9201/9202），无需构建侧传参。
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202)
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
 #else
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);

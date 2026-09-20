@@ -186,7 +186,7 @@ template <class T, class P, int8_t RESI_MODE>
 __aicore__ inline void MhcPreSplitND<T, P, RESI_MODE>::Process()
 {
     if ASCEND_IS_AIV {
-#ifdef MHC_PRE_SUPPORT_960DT
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202)
         // ascend960dt: CV 1:1, AIV 编号即配对 AIC 编号, 比值由 tiling 下发
         vector_.coreIdx_ = GetBlockIdx() / vector_.tiling_->aivPerAic;
 #else
