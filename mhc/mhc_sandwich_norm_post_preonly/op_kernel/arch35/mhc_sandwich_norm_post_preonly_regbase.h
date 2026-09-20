@@ -40,7 +40,7 @@ constexpr AscendC::Reg::CastTrait CAST_FP32_TO_B16_RINT = {
 };
 
 // 低精度输入按FP32寄存器宽度展开，避免先把数据搬入额外FP32临时区。
-template<typename T>
+template <typename T>
 __aicore__ inline void CastB16ToFp32(const LocalTensor<float> &dst, const LocalTensor<T> &src, uint32_t count)
 {
     __local_mem__ T *srcAddr = (__local_mem__ T *)src.GetPhyAddr();
@@ -62,7 +62,7 @@ __aicore__ inline void CastB16ToFp32(const LocalTensor<float> &dst, const LocalT
 }
 
 // 保持原有BF16使用RINT、FP16使用NONE的量化边界。
-template<typename T>
+template <typename T>
 __aicore__ inline void CastFp32ToB16(const LocalTensor<T> &dst, const LocalTensor<float> &src, uint32_t count)
 {
     __local_mem__ float *srcAddr = (__local_mem__ float *)src.GetPhyAddr();
@@ -88,7 +88,7 @@ __aicore__ inline void CastFp32ToB16(const LocalTensor<T> &dst, const LocalTenso
 }
 
 __aicore__ inline void Mul(const LocalTensor<float> &dst, const LocalTensor<float> &src0,
-    const LocalTensor<float> &src1, uint32_t count)
+                           const LocalTensor<float> &src1, uint32_t count)
 {
     __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();
     __local_mem__ float *src0Addr = (__local_mem__ float *)src0.GetPhyAddr();
@@ -110,7 +110,7 @@ __aicore__ inline void Mul(const LocalTensor<float> &dst, const LocalTensor<floa
 }
 
 __aicore__ inline void Add(const LocalTensor<float> &dst, const LocalTensor<float> &src0,
-    const LocalTensor<float> &src1, uint32_t count)
+                           const LocalTensor<float> &src1, uint32_t count)
 {
     __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();
     __local_mem__ float *src0Addr = (__local_mem__ float *)src0.GetPhyAddr();
@@ -131,8 +131,7 @@ __aicore__ inline void Add(const LocalTensor<float> &dst, const LocalTensor<floa
     }
 }
 
-__aicore__ inline void Muls(const LocalTensor<float> &dst, const LocalTensor<float> &src, float scalar,
-    uint32_t count)
+__aicore__ inline void Muls(const LocalTensor<float> &dst, const LocalTensor<float> &src, float scalar, uint32_t count)
 {
     __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();
     __local_mem__ float *srcAddr = (__local_mem__ float *)src.GetPhyAddr();
@@ -151,8 +150,7 @@ __aicore__ inline void Muls(const LocalTensor<float> &dst, const LocalTensor<flo
     }
 }
 
-__aicore__ inline void Axpy(const LocalTensor<float> &dst, const LocalTensor<float> &src, float scalar,
-    uint32_t count)
+__aicore__ inline void Axpy(const LocalTensor<float> &dst, const LocalTensor<float> &src, float scalar, uint32_t count)
 {
     __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();
     __local_mem__ float *srcAddr = (__local_mem__ float *)src.GetPhyAddr();
@@ -194,9 +192,13 @@ __aicore__ inline void ReduceSum(const LocalTensor<float> &dstScalar, const Loca
             AscendC::Reg::Add(sumReg, sumReg, partReg, maskAll);
         }
         DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(dstAddr, sumReg, maskAll);
+        // RegBase写回标量槽后，显式保证后续标量读取可见。
+        LocalMemBar<MemType::VEC_STORE, MemType::SCALAR_LOAD>();
     }
 }
 
-} // MhcSandwichRegBase命名空间
+// clang-format off
+}
+// clang-format on
 
 #endif // MHC_SANDWICH_NORM_POST_PREONLY_REGBASE_H_
