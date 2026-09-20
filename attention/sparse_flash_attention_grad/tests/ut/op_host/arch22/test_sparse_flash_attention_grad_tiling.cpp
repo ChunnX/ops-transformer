@@ -479,3 +479,44 @@ TEST_F(SparseFlashAttentionGradTiling, SparseFlashAttentionGrad_910b_tiling_E7_l
         &compileInfo, "Ascend910B", 20, 196608, 16384);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
+
+// =================== E8: BSND S1=0 (负例) - kernel t1Idx/curS1 除零防护 ===================
+TEST_F(SparseFlashAttentionGradTiling, SparseFlashAttentionGrad_910b_tiling_E8_bsnd_s1_zero)
+{
+    struct SparseFlashAttentionGradCompileInfo {} compileInfo;
+    gert::TilingContextPara tilingContextPara(
+        "SparseFlashAttentionGrad",
+        {
+            {{{1, 0, 8, 128}, {1, 0, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query S1=0
+            {{{1, 128, 1, 128}, {1, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key
+            {{{1, 0, 1, 4}, {1, 0, 1, 4}}, ge::DT_INT32, ge::FORMAT_ND}, // sparse_indices
+            {{{1, 0, 8, 128}, {1, 0, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // d_out
+            {{{1, 0, 8, 128}, {1, 0, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // out
+            {{{1, 8, 0}, {1, 8, 0}}, ge::DT_FLOAT, ge::FORMAT_ND}, // softmax_max
+            {{{1, 8, 0}, {1, 8, 0}}, ge::DT_FLOAT, ge::FORMAT_ND}, // softmax_sum
+            {{{1, 128, 1, 128}, {1, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // actual_seq_q
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // actual_seq_kv
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query_rope
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key_rope
+        },
+        {
+            {{{1, 0, 8, 128}, {1, 0, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, 128, 1, 128}, {1, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, 128, 1, 128}, {1, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}
+        },
+        {
+            {"scale_value",        Ops::Transformer::AnyValue::CreateFrom<float>(0.0883883476f)},
+            {"sparse_block_size",  Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+            {"layout",             Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+            {"sparse_mode",        Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+            {"pre_tokens",         Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"next_tokens",        Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"deterministic",      Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
+        },
+        &compileInfo, "Ascend910B", 20, 196608, 16384);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
