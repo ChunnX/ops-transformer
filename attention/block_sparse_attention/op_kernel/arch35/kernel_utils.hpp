@@ -28,35 +28,38 @@ namespace MXFP4Kernel {
 static constexpr uint32_t TILE_GROUP_N = 16;
 
 struct TaskInfo {
-    uint32_t batchIdx = 0;
-    uint32_t qHeadIdx = 0;
-    uint32_t kvHeadIdx = 0;
-    uint32_t qSTileIdx = 0;
-    uint32_t xBlockIdx = 0;
-    uint64_t gatheredKvSeqlen = 0;
-    uint32_t qsActBaseTile = 0;
-    uint32_t qsBaseTile = 0;
-    uint32_t kvsBaseTile = 0;
-    uint32_t taskTileNum = 0;
+    uint32_t batchIdx;
+    uint32_t qHeadIdx;
+    uint32_t kvHeadIdx;
+    uint32_t qSTileIdx;
+    uint32_t xBlockIdx;
+    uint64_t gatheredKvSeqlen;
+    uint32_t qsActBaseTile;
+    uint32_t qsBaseTile;
+    uint32_t kvsBaseTile;
+    uint32_t taskTileNum;
     // ===== PV 稀疏 gather 所需（mxfp4）=====
-    int64_t gmOffsetV = 0;          // V 数据 batch+head 基址偏移（fp4 元素单位，sizeof=1 即字节）
-    int64_t gmOffsetVScale = 0;     // V-scale batch+head 基址偏移（E8M0 字节单位）
-    uint32_t gmOffsetSparseIdx = 0; // 本 task 的 sparseIdx 起始 = gmOffsetSparseCount * yBlockNumAligned
-    int64_t kvSeqlen = 0;           // 当前 batch 实际 KV 长度
-    uint32_t yBlockNumAval = 0;     // CeilDiv(kvSeqlen, blockShapeY)，实际 Y-block 总数
-    uint32_t yBlockNumRsvd = 0;     // 本 task 选中 Y-block 数（来自 gSparseCount）
+    int64_t gmOffsetV;          // V 数据 batch+head 基址偏移（fp4 元素单位，sizeof=1 即字节）
+    int64_t gmOffsetVScale;     // V-scale batch+head 基址偏移（E8M0 字节单位）
+    uint32_t gmOffsetSparseIdx; // 本 task 的 sparseIdx 起始 = gmOffsetSparseCount * yBlockNumAligned
+    int64_t kvSeqlen;           // 当前 batch 实际 KV 长度
+    uint32_t yBlockNumAval;     // CeilDiv(kvSeqlen, blockShapeY)，实际 Y-block 总数
+    uint32_t yBlockNumRsvd;     // 本 task 选中 Y-block 数（来自 gSparseCount）
     // ===== QK(Mm1) 所需（mxfp4）=====
-    int64_t gmOffsetQ = 0;      // Q 数据偏移（含本 task 的 Q seq 起点，fp4 元素单位）
-    int64_t gmOffsetK = 0;      // K 数据 batch+head 基址（seq 由后续稀疏 gather 处理）
-    int64_t gmOffsetQScale = 0; // Q-scale 偏移（E8M0 字节；Host 沿 D）
-    int64_t gmOffsetKScale = 0; // K-scale batch+head 基址（E8M0 字节；Host 沿 D）
+    int64_t gmOffsetQ;      // Q 数据偏移（含本 task 的 Q seq 起点，fp4 元素单位）
+    int64_t gmOffsetK;      // K 数据 batch+head 基址（seq 由后续稀疏 gather 处理）
+    int64_t gmOffsetQScale; // Q-scale 偏移（E8M0 字节；Host 沿 D）
+    int64_t gmOffsetKScale; // K-scale batch+head 基址（E8M0 字节；Host 沿 D）
     // O GM 偏移
-    int64_t gmOffsetO = 0;
-    uint32_t oShapeCol = 0;
-    uint32_t qsActBaseTileAlign128 = 0;
-    uint32_t qsActBaseTileAlign64 = 0;
-    uint32_t qsActBaseTileAlign16 = 0;
-    uint32_t qsActBaseTileAlign8 = 0;
+    int64_t gmOffsetO;
+    uint32_t oShapeCol;
+    // LSE GM 偏移（mxfp8 OUT_ONLY；mxfp4 不填）
+    int64_t gmOffsetLse;
+    uint32_t lseShapeCol;
+    uint32_t qsActBaseTileAlign128;
+    uint32_t qsActBaseTileAlign64;
+    uint32_t qsActBaseTileAlign16;
+    uint32_t qsActBaseTileAlign8;
 };
 
 // CreateTaskInfo 跨调用持久状态：batch 扫描进度 + 各 GM 的 batch 累积偏移。
@@ -69,6 +72,7 @@ struct BatchOffsetInfo {
     uint32_t curTotalTaskNum = 0; // 含 curBatch 在内的 task 总数（初始化为 firstBatchTaskNum）
     // TND 下各 GM 的 batch 累积偏移（BNSD/BSND 由 curBatch 直接算，不用这些字段）
     int64_t oBOffset = 0;      // O 输出
+    int64_t lseBOffset = 0;    // LSE 输出（TND 累积）
     int64_t qBOffset = 0;      // Q 数据
     int64_t qScaleBOffset = 0; // Q-scale（字节）
     int64_t vBOffset = 0;      // V(=K) 数据
@@ -77,29 +81,38 @@ struct BatchOffsetInfo {
 };
 
 struct TileInfo {
-    uint32_t loop = 0;              // 单核上处理的所有qs对应的第几个kvs基本块(累加递增)
-    uint32_t curKvsTileLoopIdx = 0; // 在当前qs对应的Kvs的循环下标
+    uint32_t loop;              // 单核上处理的所有qs对应的第几个kvs基本块(累加递增)
+    uint32_t curKvsTileLoopIdx; // 在当前qs对应的Kvs的循环下标
 
-    bool isFirstKvsTile = false;      // 当前qs对应的Kvs的第一个循环
-    bool isLastKvsTile = false;       // 当前qs对应的Kvs的最后一个循环
-    bool isLastSecondKvsTile = false; // 当前qs对应的Kvs的倒数第二个循环
-    bool isUpdatePScale = false;      // TileGroup的最后一个
-    bool isTileGoupFirstTile =
-        false; // Kvs上16个softmax是一个TileGroup，这是每一个TileGroup(16个kvs基本块)的第一个softmax 任务，isC2Sync
-    uint32_t kvsFirstTileStartVecCore = 0; // Kvs上第一个softmax分给哪个vec core
-    uint32_t tileMaxIdx = 0;
-    uint32_t updateScaleIdx = 0;
-    bool isKvsFirstTilePerCore = false; // 16个softmax均分在两个core, 当前任务是否是分在当前core上的第一个，
+    bool isFirstKvsTile;      // 当前qs对应的Kvs的第一个循环
+    bool isLastKvsTile;       // 当前qs对应的Kvs的最后一个循环
+    bool isLastSecondKvsTile; // 当前qs对应的Kvs的倒数第二个循环
+    bool isUpdatePScale;      // TileGroup的最后一个
+    bool isTileGoupFirstTile; // Kvs上16个softmax是一个TileGroup，这是每一个TileGroup(16个kvs基本块)的第一个softmax
+                              // 任务，isC2Sync
+    uint32_t kvsFirstTileStartVecCore; // Kvs上第一个softmax分给哪个vec core
+    uint32_t tileBuffIdx;              // 当前 tile 分给哪个 buff（MXFP8 仍写入）
+    uint32_t tileMaxIdx;
+    uint32_t updateScaleIdx;
+    bool isKvsFirstTilePerCore; // 16个softmax均分在两个core, 当前任务是否是分在当前core上的第一个，
 
-    uint32_t kvsActBaseTile = 0;
-    uint32_t kvsActBaseTileAlign16 = 0;
-    uint32_t kvsActBaseTileAlign32 = 0;
-    uint32_t kvsActBaseTileAlign64 = 0;
+    uint32_t kvsActBaseTile;
+    uint32_t kvsActBaseTileAlign16;
+    uint32_t kvsActBaseTileAlign32;
+    uint32_t kvsActBaseTileAlign64;
     // ===== PV 稀疏 gather 所需（mxfp4）=====
-    uint32_t pvGatheredKvSTileIdx = 0; // 当前 tile 在 task 内的 gather 后 KV base tile 序号，供 PV
-    uint16_t pscaleNum = 0;
+    uint32_t pvGatheredKvSTileIdx; // 当前 tile 在 task 内 gather 后的 KV base tile 序号，供 PV
+    uint16_t pscaleNum;
+    uint16_t pSlot; // L1 P 环 0..L1_P_BUF_CNT-1，CreateTileInfo 滚动写入，热路径不再 % 20
 };
 } // namespace MXFP4Kernel
+
+namespace MXFP8Kernel {
+static constexpr uint32_t TILE_GROUP_N = 16; // group window 16*128=2048
+using TaskInfo = MXFP4Kernel::TaskInfo;
+using TileInfo = MXFP4Kernel::TileInfo;
+using BatchOffsetInfo = MXFP4Kernel::BatchOffsetInfo;
+} // namespace MXFP8Kernel
 
 #include "../attn_infra/epilogue/block/bsa_block_epilogue.hpp"
 #include "../attn_infra/epilogue/bsa_epilogue_dispatch_policy.hpp"
