@@ -95,7 +95,9 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         for (uint32_t o = 0; o < N_MAX; ++o) {
             partialBuf.SetValue(o + 1U, dotHalf[1][o]);
         }
-        // 32B槽仅消费前五个FP32，末尾三个对齐元素不参与任何计算，避免逐标量清零进入关键路径。
+        for (uint32_t i = N_MAX + 1U; i < PARTIAL_SLOT_ELEMS; ++i) {
+            partialBuf.SetValue(i, 0.0f);
+        }
         SetFlag<HardEvent::S_MTE3>(evtStoMte3_);
         WaitFlag<HardEvent::S_MTE3>(evtStoMte3_);
         DataCopy(partial1Gm_[(uint64_t)token * PARTIAL_SLOT_ELEMS], partialBuf, PARTIAL_SLOT_ELEMS);
