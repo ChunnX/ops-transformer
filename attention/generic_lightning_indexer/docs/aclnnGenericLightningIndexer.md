@@ -27,7 +27,7 @@
 
 - 接口功能：`aclnnGenericLightningIndexer`对已经完成前处理的 Index Query / Index Key 做 `Matmul → 激活 → 沿 head 规约 → 掩码 → TopK →（可选 Expand / 追加尾 token）`，得到每一个 token 对应的 Top-$k$ 位置。不包含 RoPE、RMSNorm、AvgPool、KeyPool、CSA 压缩。压缩后的 Key 通过 `cmpRatio` 消费。
 
-  该接口用于收编 `lightning_indexer`、`lightning_indexer_v2`、`quant_lightning_indexer`、`quant_lightning_indexer_v2`、`pool_key_indexer` 以及 Qwen Compressed Lightweight Indexer。`MsaIndexScore` 通过 `actType` / `keyReduceMode` / `selectMode` 预留。
+  该接口用于收编 `lightning_indexer`、`lightning_indexer_v2`、`quant_lightning_indexer`、`quant_lightning_indexer_v2`、`pool_key_indexer`、Qwen Compressed Lightweight Indexer 以及 `MsaIndexScore`。MSA 通过 `actType=1` / `keyReduceMode=1` / `selectMode=1` 成套开启 identity + Maxpool，输出 block score、不融合 TopK。
 
 - 计算公式：
 
@@ -121,7 +121,7 @@ aclnnStatus aclnnGenericLightningIndexer(
 | kDescaleOptional | 输入 | Key 反量化系数。quantMode>=0 时必选。PA 下支持 0 轴非连续。 | 同 qDescale | ND |
 | outputIdxOffsetOptional | 输入 | 输出索引逐 batch 偏移。[B] | INT32 | ND |
 | metadataOptional | 输入 | 预留负载均衡表。[1024] | INT32 | ND |
-| startLocOptional | 输入 | MSA 预留。[B] | INT32 | ND |
+| startLocOptional | 输入 | MSA：query 所在逻辑 block，用于 local_mask。[B] | INT32 | ND |
 | topk | 属性 | 打分轴选出的个数。[1,2048] ∪ {3072,4096,5120,6144,7168,8192} | INT64 | - |
 | cmpRatio | 属性 | 压缩比 / pool 大小。[1,128]，1 表示未压缩 | INT64 | - |
 | layoutQOptional | 属性 | BSND / TND，默认 BSND | STRING | - |
@@ -139,10 +139,10 @@ aclnnStatus aclnnGenericLightningIndexer(
 | keyStride0 | 属性 | PA 下 key 0 轴 stride，-1 由 shape 推导 | INT64 | - |
 | kDescaleStride0 | 属性 | PA 下 k_descale 0 轴 stride，-1 由 shape 推导 | INT64 | - |
 | maxSeqlenQ | 属性 | TND 每 batch 最大 Q 长度，-1 未指定 | INT64 | - |
-| initBlocks | 属性 | MSA 预留 | INT64 | - |
-| localBlocks | 属性 | MSA 预留 | INT64 | - |
-| sparseIndicesOut | 输出 | 选中下标，无效填 -1。BSND：[B,S1,L_out]；TND：[T1,L_out] | INT32 | ND |
-| sparseValuesOut | 输出 | returnValue=true 时为 [B,S1,topk] 或 [T1,topk]；false 时 (0,) | FLOAT | ND |
+| initBlocks | 属性 | MSA local_mask sink 块数 | INT64 | - |
+| localBlocks | 属性 | MSA local_mask 窗口块数 | INT64 | - |
+| sparseIndicesOut | 输出 | 选中下标，无效填 -1。BSND：[B,S1,L_out]；TND：[T1,L_out]；MSA 为 (0,) | INT32 | ND |
+| sparseValuesOut | 输出 | returnValue=true 时为 [B,S1,topk] 或 [T1,topk]；false 时 (0,)；MSA 为 [B,S1,N1,Align16(ceil(S2/cmpRatio))] | FLOAT | ND |
 | workspaceSize | 输出 | 需要的 workspace 字节数 | UINT64 | - |
 | executor | 输出 | 算子执行器 | aclOpExecutor* | - |
 

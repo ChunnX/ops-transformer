@@ -83,6 +83,11 @@ public:
     {
         outputIdxOffsetGm = gm;
     }
+    __aicore__ inline void SetStartLocGm(GlobalTensor<int32_t> gm)
+    {
+        startLocGm = gm;
+        hasStartLoc_ = true;
+    }
     __aicore__ inline void CleanInvalidOutput(int64_t invalidS1offset);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
@@ -128,6 +133,8 @@ protected:
     GlobalTensor<float> qScaleGm;
     GlobalTensor<float> kScaleGm;
     GlobalTensor<int32_t> outputIdxOffsetGm;
+    GlobalTensor<int32_t> startLocGm;
+    bool hasStartLoc_ = false;
     // =================================常量区=================================
     static constexpr uint32_t VEC1_V_MTE2_EVENT = EVENT_ID0;
     static constexpr uint32_t VEC1_MTE2_V_EVENT = EVENT_ID1;
@@ -608,6 +615,34 @@ __aicore__ inline void GenericLightningIndexerServiceVector<LIT>::ProcessVec1(co
         return;
     }
     WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + pingpong);
+
+    if constexpr (LIT::keepHeads) {
+        // MSA: 保留 [S1, N1, S2] 分数，不做 ReLU / head 规约。resMm1 已是 [s1, G, s2Base]。
+        SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + pingpong);
+        WaitFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + pingpong);
+        uint32_t nElem = static_cast<uint32_t>(curAivS1ProcNum * gSize_ * s2BaseSize_);
+        uint32_t mmBase = pingpong * CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_;
+        if (constInfo_.qkScale != 1.0f) {
+            Muls(resMm1UB_[mmBase], resMm1UB_[mmBase], constInfo_.qkScale, nElem);
+            PipeBarrier<PIPE_V>();
+        }
+        SetFlag<HardEvent::V_MTE3>(VEC1_V_MTE3_EVENT + pingpong);
+        WaitFlag<HardEvent::V_MTE3>(VEC1_V_MTE3_EVENT + pingpong);
+        uint64_t kSeqSizeAlign = GliCommon::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_);
+        int64_t localS1Base = (blockId_ % 2 == 0) ? 0 : CeilDiv(s1BaseSize_, 2);
+        int64_t vec1OutGmOffset = (localS1Base * gSize_) * static_cast<int64_t>(kSeqSizeAlign) + curS2Idx;
+        DataCopyExtParams copyOutParams;
+        copyOutParams.blockCount = static_cast<uint16_t>(curAivS1ProcNum * gSize_);
+        copyOutParams.blockLen = s2BaseSize_ * sizeof(float);
+        copyOutParams.srcStride = 0;
+        copyOutParams.dstStride = (kSeqSizeAlign - s2BaseSize_) * sizeof(float);
+        LocalTensor<SCORE_T> srcBits = resMm1UB_.ReinterpretCast<SCORE_T>();
+        DataCopyPad(scoreGm[vec1OutGmOffset], srcBits[mmBase], copyOutParams);
+        SetFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + pingpong);
+        CrossCoreSetFlag<GliCommon::ConstInfo::GLI_SYNC_MODE4, PIPE_V>(GliCommon::ConstInfo::CROSS_VC_EVENT + pingpong);
+        return;
+    }
+
     uint64_t gSizeAlign16 = GliCommon::Align((uint64_t)gSize_, (uint64_t)16);
     int64_t weightGmOffset = info.tensorWeightsOffset + curAivS1Idx * kHeadNum_ * gSize_;
     if constexpr (LIT::useWeights) {
@@ -1003,32 +1038,125 @@ __aicore__ inline void GenericLightningIndexerServiceVector<LIT>::ProcessTopK(co
 template <typename LIT>
 __aicore__ inline void GenericLightningIndexerServiceVector<LIT>::ProcessMaxpoolScore(const GliCommon::RunInfo &info)
 {
-    // Step 2: dump window-max of vec1 scores into sparse_values. Windows are cmp_ratio (poolSize_).
+    SetFlag<HardEvent::MTE3_MTE2>(MTE3_MTE2_EVENT);
+    WaitFlag<HardEvent::MTE3_MTE2>(MTE3_MTE2_EVENT);
+
+    int64_t curS1Idx = info.gS1Idx * s1BaseSize_;
+    int64_t curS1ProcNum = curS1Idx + s1BaseSize_ > info.actS1Size ? info.actS1Size % s1BaseSize_ : s1BaseSize_;
+    int64_t curAivS1Idx = curS1Idx + (blockId_ % 2) * CeilDiv(curS1ProcNum, 2);
+    int64_t curAivS1ProcNum = (blockId_ % 2 == 0) ? CeilDiv(curS1ProcNum, 2) : curS1ProcNum / 2;
+    if (curAivS1ProcNum == 0 || poolSize_ == 0) {
+        return;
+    }
+
     uint32_t nBlocks = (info.actS2Size + poolSize_ - 1) / poolSize_;
     if (nBlocks == 0) {
         nBlocks = 1;
     }
-    uint32_t s1 = info.actS1Size;
+    uint32_t nOut = ((nBlocks + 15) / 16) * 16;
     uint64_t kSeqAlign = GliCommon::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_);
-    for (uint32_t row = 0; row < s1; ++row) {
-        for (uint32_t blk = 0; blk < nBlocks; ++blk) {
-            float mx = -3.4e38f;
-            uint32_t begin = blk * poolSize_;
-            uint32_t end = begin + poolSize_;
-            if (end > info.actS2Size) {
-                end = info.actS2Size;
+    union {
+        float f;
+        uint32_t u;
+    } infCvt;
+    infCvt.u = constInfo_.INVALID_VAL;
+    float negInf = infCvt.f;
+
+    int32_t sl = 0;
+    if (hasStartLoc_) {
+        sl = startLocGm.GetValue(info.bIdx);
+    } else if (poolSize_ > 0) {
+        sl = static_cast<int32_t>((info.actS1Size - 1) / poolSize_);
+    }
+
+    LocalTensor<float> winUB = vec1OutUB_.ReinterpretCast<float>();
+
+    for (int64_t i = 0; i < curAivS1ProcNum; ++i) {
+        int64_t row = curAivS1Idx + i;
+        uint32_t vecOffset = blockId_ % 2 * CeilDiv(s1BaseSize_, 2) + static_cast<uint32_t>(i);
+        uint32_t visTokens = info.actS2Size;
+        if (constInfo_.attenMaskFlag) {
+            if (constInfo_.maskMode == 4) {
+                visTokens = static_cast<uint32_t>(row) + 1;
+            } else {
+                visTokens = static_cast<uint32_t>(
+                    (info.actS2SizeOrig >= info.actS1Size) ? (info.actS2SizeOrig - info.actS1Size + row + 1) : 0);
             }
-            for (uint32_t t = begin; t < end; ++t) {
-                uint32_t encoded = scoreGm.GetValue(row * kSeqAlign + t);
-                float v = *reinterpret_cast<float *>(&encoded);
-                if (v > mx) {
-                    mx = v;
+        }
+        if (visTokens > info.actS2Size) {
+            visTokens = info.actS2Size;
+        }
+
+        for (uint32_t h = 0; h < static_cast<uint32_t>(gSize_); ++h) {
+            Duplicate(valueOutLocal_, negInf, nOut);
+            PipeBarrier<PIPE_V>();
+            VToSSync();
+            for (uint32_t blk = 0; blk < nBlocks; ++blk) {
+                uint32_t begin = blk * poolSize_;
+                uint32_t end = begin + poolSize_;
+                if (end > info.actS2Size) {
+                    end = info.actS2Size;
+                }
+                uint32_t visEnd = visTokens < end ? visTokens : end;
+                float mx = negInf;
+                if (visEnd > begin) {
+                    uint32_t winLen = visEnd - begin;
+                    uint64_t gmOff = (static_cast<uint64_t>(vecOffset) * gSize_ + h) * kSeqAlign + begin;
+                    DataCopyExtParams copyIn;
+                    copyIn.blockCount = 1;
+                    copyIn.blockLen = winLen * sizeof(float);
+                    copyIn.srcStride = 0;
+                    copyIn.dstStride = 0;
+                    copyIn.rsv = 0;
+                    DataCopyPadExtParams<SCORE_T> pad{true, 0, 0, infCvt.u};
+                    DataCopyPad(vec1OutUB_, scoreGm[gmOff], copyIn, pad);
+                    event_t ev = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_S));
+                    SetFlag<HardEvent::MTE2_S>(ev);
+                    WaitFlag<HardEvent::MTE2_S>(ev);
+                    for (uint32_t t = 0; t < winLen; ++t) {
+                        float v = winUB.GetValue(t);
+                        if (v > mx) {
+                            mx = v;
+                        }
+                    }
+                    event_t evs = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_MTE2));
+                    SetFlag<HardEvent::S_MTE2>(evs);
+                    WaitFlag<HardEvent::S_MTE2>(evs);
+                }
+                valueOutLocal_.SetValue(blk, mx);
+            }
+            if (constInfo_.initBlocks > 0) {
+                uint32_t nInit = constInfo_.initBlocks < nOut ? constInfo_.initBlocks : nOut;
+                for (uint32_t b = 0; b < nInit; ++b) {
+                    valueOutLocal_.SetValue(b, valueOutLocal_.GetValue(b) + 1.0e30f);
                 }
             }
-            valueOutGm.SetValue(info.valueOutOffset + static_cast<uint64_t>(row) * nBlocks + blk, mx);
+            if (constInfo_.localBlocks > 0) {
+                int32_t lo = sl + 1 - static_cast<int32_t>(constInfo_.localBlocks);
+                if (lo < 0) {
+                    lo = 0;
+                }
+                int32_t hi = sl + 1;
+                if (hi > static_cast<int32_t>(nOut)) {
+                    hi = static_cast<int32_t>(nOut);
+                }
+                for (int32_t b = lo; b < hi; ++b) {
+                    valueOutLocal_.SetValue(b, valueOutLocal_.GetValue(b) + 1.0e29f);
+                }
+            }
+            SToMTE3Sync();
+            DataCopyExtParams copyOut;
+            copyOut.blockCount = 1;
+            copyOut.blockLen = nOut * sizeof(float);
+            copyOut.srcStride = 0;
+            copyOut.dstStride = 0;
+            uint64_t dst = info.valueOutOffset + (static_cast<uint64_t>(row) * gSize_ + h) * nOut;
+            DataCopyPad(valueOutGm[dst], valueOutLocal_, copyOut);
+            event_t ev3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
+            SetFlag<HardEvent::MTE3_V>(ev3);
+            WaitFlag<HardEvent::MTE3_V>(ev3);
         }
     }
-    DataCacheCleanAndInvalid<float, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(valueOutGm);
 }
 } // namespace GliKernel
 #endif

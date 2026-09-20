@@ -99,7 +99,7 @@ cann_ops_transformer.generic_lightning_indexer(
 | k_descale | 量化必选 | K 反量化系数 | 同 q_descale | 随 quant_mode |
 | output_idx_offset | 可选 | 输出索引偏移 | int32 | `[B]` |
 | metadata | 可选 | 预留负载均衡表 | int32 | `[1024]` |
-| start_loc | 可选 | MSA 预留 | int32 | `[B]` |
+| start_loc | 可选 | MSA：query 所在逻辑 block | int32 | `[B]` |
 | topk | 可选 | 打分轴 k | int | 默认 2048 |
 | cmp_ratio | 可选 | 压缩比 | int | 默认 1 |
 | layout_q | 可选 | Query 布局 | str | `BSND` / `TND` |
@@ -117,10 +117,10 @@ cann_ops_transformer.generic_lightning_indexer(
 | key_stride0 | 可选 | PA key 0 轴 stride | int | 默认 -1 |
 | k_descale_stride0 | 可选 | PA k_descale 0 轴 stride | int | 默认 -1 |
 | max_seqlen_q | 可选 | TND 最大 Q 长度 | int | 默认 -1 |
-| init_blocks | 可选 | MSA 预留 | int | 默认 0 |
-| local_blocks | 可选 | MSA 预留 | int | 默认 0 |
-| sparse_indices | 输出 | 选中下标，无效 -1 | int32 | BSND `[B,S1,L_out]`；TND `[T1,L_out]` |
-| sparse_values | 输出 | TopK 分数；return_value=False 时 `(0,)` | float32 | BSND `[B,S1,topk]`；TND `[T1,topk]` |
+| init_blocks | 可选 | MSA local_mask sink 块数 | int | 默认 0 |
+| local_blocks | 可选 | MSA local_mask 窗口块数 | int | 默认 0 |
+| sparse_indices | 输出 | 选中下标，无效 -1；MSA 为 `(0,)` | int32 | BSND `[B,S1,L_out]`；TND `[T1,L_out]` |
+| sparse_values | 输出 | TopK 分数；return_value=False 时 `(0,)`；MSA 为 keep-heads Maxpool | float32 | BSND `[B,S1,topk]`；TND `[T1,topk]`；MSA `[B,S1,N1,Align16(ceil(S2/r))]` |
 
 ## 约束说明
 
