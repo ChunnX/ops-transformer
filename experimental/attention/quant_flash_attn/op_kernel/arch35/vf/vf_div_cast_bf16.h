@@ -63,10 +63,42 @@ __simd_vf__ inline void VfDivAndCastVF(__ubuf__ bfloat16_t *dstT, __ubuf__ float
         // ===== 按行分成 8 块（每块 16 行，覆盖 128 个头维度行）=====
         for (uint32_t block = 0; block < 8; block++) {
             uint32_t blockBase = block * 16 * 128 + colHalf * 64;  // 行距 128（DN 为 64）+ 半区列偏移
-            // TODO(4.1c-1b): 16 条 LoadAlign（跨步 k·128）+ 16 条 Mul ×recip
+            // 装载 16 行 × 本半 64 列（行距 128，DN 为 64——两处刻意差异之一），乘倒数
+            LoadAlign(vreg_src_1, src + blockBase + 0 * 128);
+            LoadAlign(vreg_src_2, src + blockBase + 1 * 128);
+            LoadAlign(vreg_src_3, src + blockBase + 2 * 128);
+            LoadAlign(vreg_src_4, src + blockBase + 3 * 128);
+            LoadAlign(vreg_src_5, src + blockBase + 4 * 128);
+            LoadAlign(vreg_src_6, src + blockBase + 5 * 128);
+            LoadAlign(vreg_src_7, src + blockBase + 6 * 128);
+            LoadAlign(vreg_src_8, src + blockBase + 7 * 128);
+            LoadAlign(vreg_src_9, src + blockBase + 8 * 128);
+            LoadAlign(vreg_src_10, src + blockBase + 9 * 128);
+            LoadAlign(vreg_src_11, src + blockBase + 10 * 128);
+            LoadAlign(vreg_src_12, src + blockBase + 11 * 128);
+            LoadAlign(vreg_src_13, src + blockBase + 12 * 128);
+            LoadAlign(vreg_src_14, src + blockBase + 13 * 128);
+            LoadAlign(vreg_src_15, src + blockBase + 14 * 128);
+            LoadAlign(vreg_src_16, src + blockBase + 15 * 128);
+            Mul(vreg_src_1, vreg_src_1, vreg_recip, preg_f32);
+            Mul(vreg_src_2, vreg_src_2, vreg_recip, preg_f32);
+            Mul(vreg_src_3, vreg_src_3, vreg_recip, preg_f32);
+            Mul(vreg_src_4, vreg_src_4, vreg_recip, preg_f32);
+            Mul(vreg_src_5, vreg_src_5, vreg_recip, preg_f32);
+            Mul(vreg_src_6, vreg_src_6, vreg_recip, preg_f32);
+            Mul(vreg_src_7, vreg_src_7, vreg_recip, preg_f32);
+            Mul(vreg_src_8, vreg_src_8, vreg_recip, preg_f32);
+            Mul(vreg_src_9, vreg_src_9, vreg_recip, preg_f32);
+            Mul(vreg_src_10, vreg_src_10, vreg_recip, preg_f32);
+            Mul(vreg_src_11, vreg_src_11, vreg_recip, preg_f32);
+            Mul(vreg_src_12, vreg_src_12, vreg_recip, preg_f32);
+            Mul(vreg_src_13, vreg_src_13, vreg_recip, preg_f32);
+            Mul(vreg_src_14, vreg_src_14, vreg_recip, preg_f32);
+            Mul(vreg_src_15, vreg_src_15, vreg_recip, preg_f32);
+            Mul(vreg_src_16, vreg_src_16, vreg_recip, preg_f32);
             // TODO(4.1c-2): 8 对跨行 Cast+Or(uint16) 造垂直对
             // TODO(4.1c-3): 12 条 Interleave 级联 + 8 条 StoreAlign(8+1) 散布
-            (void)blockBase; (void)dstT;
+            (void)dstT;
         }
     }
 }
