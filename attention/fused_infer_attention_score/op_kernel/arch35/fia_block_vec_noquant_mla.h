@@ -202,6 +202,7 @@ public:
             if (unlikely(constInfo.isSoftmaxLseEnable)) {
                 InitLseOutputSingleCore();
             }
+            // 等待输出初始化写回完成后，再同步所有核。
             WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
             SyncAll();
         }
