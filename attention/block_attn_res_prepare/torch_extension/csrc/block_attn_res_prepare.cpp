@@ -48,9 +48,8 @@ void CheckOptionalOutput(const c10::optional<at::Tensor> &output, const char *na
     TORCH_CHECK(tensor.scalar_type() == at::kFloat, name, " must have dtype float32, but got ", tensor.scalar_type());
     TORCH_CHECK(tensor.sizes() == expectedShape, name, " must have shape ", expectedShape, ", but got ",
                 tensor.sizes());
-    TORCH_CHECK(tensor.device() == expectedDevice, name,
-                " must be on the same device as inputs, but got ", tensor.device(), " while inputs are on ",
-                expectedDevice);
+    TORCH_CHECK(tensor.device() == expectedDevice, name, " must be on the same device as inputs, but got ",
+                tensor.device(), " while inputs are on ", expectedDevice);
     TORCH_CHECK(tensor.is_contiguous(), name, " must be contiguous");
 }
 
