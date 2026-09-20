@@ -18,6 +18,15 @@
  *   引擎   LoopGroup 本地拷贝（GM → CCU Buffer → GM）、loop 参数位域编码、CalGoSize
  *   资源   CCU 实例创建（跨 DIE 资源池）、P2P 通道获取（host 侧）
  *
+ * 命名规则（词根=功能域；新增函数/类型按此对号，防演化漂移）：
+ *   Ccu      = CCU 传输原语——只碰寄存器/实例/通道语义（wake、轮询 done、写参数区
+ *              槽位、销毁实例），与具体集合通信算法无关；出现第二个 CCU 服务时，
+ *              此类可上提本文件共享
+ *   AllToAll = 服务函数——语义绑定 AllToAll 算法（轮参数布局、轮结构资源、服务
+ *              流程），定义于 all_to_all/ 子目录
+ *   存量类型名未按此对齐（CcuCommTilingData 实为 AllToAll 服务 tiling、
+ *   CcuKernelArgAllToAllMesh1D 双词根混用），待后续统一
+ *
  * 物理本质：Variable = XN 寄存器、Event = CKE 完成事件寄存器（CCU 片上，非 GM 内存）；
  * AIC 经 WriteGmByPassDCache / ReadGmByPassDCache 直写/轮询（MMIO uncached 语义，
  * 寄存器不走 DCache 一致性协议）。预约随 HcommCcuInsDestroy 统一解映射还池。
@@ -213,6 +222,10 @@ struct AllToAllMesh1DContext {
     const CcuKernelArgAllToAllMesh1D *arg;
 
     ccu::Variable input;
+    // TODO(后续重构)：output/token 两表可合并为定长 PeerRouting routing[CCU_MAX_RANK_SIZE]
+    // （output+token 成对字段）——去 vector 堆分配（rankSize≤16 硬上限，kernelArg 的
+    // channels 即定长先例）、消两表对齐；另 LoadArgs 每轮重读 SLOT_OUTPUT/SLOT_TOKEN，
+    // data 类值 r==1 后恒定，可只在轮类切换的 PreSync 读一次
     std::vector<ccu::Variable> output;
     std::vector<ccu::Variable> token;
     ccu::Variable srcOffset;
@@ -253,127 +266,6 @@ static constexpr CcuDefaultRes CCU_DEFAULT_RES[] = {
     {HCOMM_CCU_RES_TYPE_EVENT,      CCU_DEFAULT_RES_FRACTION_EVENT},
     {HCOMM_CCU_RES_TYPE_CCU_THREAD, CCU_DEFAULT_RES_FRACTION_CCU_THREAD},
 };
-
-static HcclResult ConvertCcuToHccl(CcuResult ccuResult)
-{
-    switch (ccuResult) {
-        case CCU_SUCCESS: return HCCL_SUCCESS;
-        case CCU_E_PARA: return HCCL_E_PARA;
-        case CCU_E_PTR: return HCCL_E_PTR;
-        case CCU_E_INTERNAL: return HCCL_E_INTERNAL;
-        case CCU_E_NOT_SUPPORT: return HCCL_E_NOT_SUPPORT;
-        case CCU_E_NOT_FOUND: return HCCL_E_NOT_FOUND;
-        case CCU_E_UNAVAIL: return HCCL_E_UNAVAIL;
-        default: return HCCL_E_INTERNAL;
-    }
-}
-
-static void DestroyAllDescs(std::vector<HcommCcuResDescHandle> &descs)
-{
-    for (auto &desc : descs) {
-        (void)HcommCcuInsResDescDestroy(desc);
-    }
-}
-
-// 创建 CCU 实例（跨 DIE 资源池）
-static HcclResult CreateCcuInsWithEnabledDies(CcuInsHandle &insHandle)
-{
-    std::vector<HcommCcuResDescHandle> resDescs;
-    for (uint32_t dieId = 0; dieId < CCU_DIE_NUM; dieId++) {
-        HcommCcuResDescHandle desc = 0;
-        CcuResult descCreateRet = HcommCcuInsResDescCreate(dieId, &desc);
-        if (descCreateRet != CCU_SUCCESS) {
-            (void)HcommCcuInsResDescDestroy(desc);
-            DestroyAllDescs(resDescs);
-            return ConvertCcuToHccl(descCreateRet);
-        }
-
-        CcuResult probeRet = HcommCcuQueryRemainResDesc(desc);
-        if (probeRet == CCU_E_UNAVAIL) {
-            (void)HcommCcuInsResDescDestroy(desc);
-            continue;
-        }
-        if (probeRet != CCU_SUCCESS) {
-            (void)HcommCcuInsResDescDestroy(desc);
-            DestroyAllDescs(resDescs);
-            return ConvertCcuToHccl(probeRet);
-        }
-
-        for (const auto &res : CCU_DEFAULT_RES) {
-            CcuResult setRet = HcommCcuInsResDescSetNum(desc, res.type, res.num);
-            if (setRet != CCU_SUCCESS) {
-                (void)HcommCcuInsResDescDestroy(desc);
-                DestroyAllDescs(resDescs);
-                return ConvertCcuToHccl(setRet);
-            }
-        }
-        resDescs.push_back(desc);
-    }
-
-    if (resDescs.empty()) {
-        return HCCL_E_INTERNAL;
-    }
-
-    CcuResult createRet = HcommCcuInsCreate(resDescs.data(), static_cast<uint32_t>(resDescs.size()), &insHandle);
-    DestroyAllDescs(resDescs);
-    return ConvertCcuToHccl(createRet);
-}
-
-// 为每个远端 rank 获取一条 CCU 通信 channel；dieId 由首个 channel 的本地端点
-// 查询 ENDPOINT_ATTR_DIE_ID 获得（供资源分配与 schd.phyDieMask 使用）
-static HcclResult AcquireCcuChannels(HcclComm comm, uint32_t rankId, uint32_t rankSize,
-                                     std::vector<ChannelHandle> &kernelChannels, uint32_t &dieId)
-{
-    kernelChannels.resize(rankSize - 1);
-    dieId = 0;
-
-    uint32_t channelIdx = 0;
-    for (uint32_t remoteRank = 0; remoteRank < rankSize; remoteRank++) {
-        if (remoteRank == rankId) {
-            continue;
-        }
-
-        uint32_t netLayer = 0;
-        uint32_t listSize = 0;
-        CommLink *linkList = nullptr;
-        HCCLCHECK(HcclRankGraphGetLinks(comm, netLayer, rankId, remoteRank, &linkList, &listSize));
-
-        HcclChannelDesc desc;
-        HCCLCHECK(HcclChannelDescInit(&desc, 1));
-        CommProtocol protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP;
-        bool protocolExists = false;
-        for (uint32_t idx = 0; idx < listSize; idx++) {
-            CommLink link = linkList[idx];
-            if (link.linkAttr.linkProtocol == protocol) {
-                desc.remoteRank = remoteRank;
-                desc.notifyNum = CHANNEL_NOTIFY_NUM;
-                desc.channelProtocol = link.linkAttr.linkProtocol;
-                desc.localEndpoint.protocol = link.srcEndpointDesc.protocol;
-                desc.localEndpoint.commAddr = link.srcEndpointDesc.commAddr;
-                desc.localEndpoint.loc = link.srcEndpointDesc.loc;
-                desc.remoteEndpoint.protocol = link.dstEndpointDesc.protocol;
-                desc.remoteEndpoint.commAddr = link.dstEndpointDesc.commAddr;
-                desc.remoteEndpoint.loc = link.dstEndpointDesc.loc;
-                protocolExists = true;
-                break;
-            }
-        }
-        if (!protocolExists) {
-            return HCCL_E_NOT_FOUND;
-        }
-        HCCLCHECK(HcclChannelAcquire(comm, CommEngine::COMM_ENGINE_CCU, &desc, 1,
-            &kernelChannels[channelIdx]));
-        if (channelIdx == 0) {
-            EndpointAttrDieId dieIdValue = 0;
-            HCCLCHECK(HcclRankGraphGetEndpointInfo(
-                comm, rankId, &desc.localEndpoint, ENDPOINT_ATTR_DIE_ID, sizeof(EndpointAttrDieId), &dieIdValue));
-            dieId = dieIdValue;
-        }
-        channelIdx++;
-    }
-
-    return HCCL_SUCCESS;
-}
 
 // ---- CCU loop/offset 参数的 64-bit 寄存器位域编码工具 ----
 
@@ -593,4 +485,127 @@ static CcuResult GroupCopy(AllToAllMesh1DContext &ctx, ccu::LocalAddr dst, ccu::
     }
 
     return CCU_SUCCESS;
+}
+
+// ---- host 侧 CCU 资源管理（错误码转换 / 实例创建 / P2P 通道获取）----
+
+static HcclResult ConvertCcuToHccl(CcuResult ccuResult)
+{
+    switch (ccuResult) {
+        case CCU_SUCCESS: return HCCL_SUCCESS;
+        case CCU_E_PARA: return HCCL_E_PARA;
+        case CCU_E_PTR: return HCCL_E_PTR;
+        case CCU_E_INTERNAL: return HCCL_E_INTERNAL;
+        case CCU_E_NOT_SUPPORT: return HCCL_E_NOT_SUPPORT;
+        case CCU_E_NOT_FOUND: return HCCL_E_NOT_FOUND;
+        case CCU_E_UNAVAIL: return HCCL_E_UNAVAIL;
+        default: return HCCL_E_INTERNAL;
+    }
+}
+
+static void DestroyAllDescs(std::vector<HcommCcuResDescHandle> &descs)
+{
+    for (auto &desc : descs) {
+        (void)HcommCcuInsResDescDestroy(desc);
+    }
+}
+
+// 创建 CCU 实例（跨 DIE 资源池）
+static HcclResult CreateCcuInsWithEnabledDies(CcuInsHandle &insHandle)
+{
+    std::vector<HcommCcuResDescHandle> resDescs;
+    for (uint32_t dieId = 0; dieId < CCU_DIE_NUM; dieId++) {
+        HcommCcuResDescHandle desc = 0;
+        CcuResult descCreateRet = HcommCcuInsResDescCreate(dieId, &desc);
+        if (descCreateRet != CCU_SUCCESS) {
+            (void)HcommCcuInsResDescDestroy(desc);
+            DestroyAllDescs(resDescs);
+            return ConvertCcuToHccl(descCreateRet);
+        }
+
+        CcuResult probeRet = HcommCcuQueryRemainResDesc(desc);
+        if (probeRet == CCU_E_UNAVAIL) {
+            (void)HcommCcuInsResDescDestroy(desc);
+            continue;
+        }
+        if (probeRet != CCU_SUCCESS) {
+            (void)HcommCcuInsResDescDestroy(desc);
+            DestroyAllDescs(resDescs);
+            return ConvertCcuToHccl(probeRet);
+        }
+
+        for (const auto &res : CCU_DEFAULT_RES) {
+            CcuResult setRet = HcommCcuInsResDescSetNum(desc, res.type, res.num);
+            if (setRet != CCU_SUCCESS) {
+                (void)HcommCcuInsResDescDestroy(desc);
+                DestroyAllDescs(resDescs);
+                return ConvertCcuToHccl(setRet);
+            }
+        }
+        resDescs.push_back(desc);
+    }
+
+    if (resDescs.empty()) {
+        return HCCL_E_INTERNAL;
+    }
+
+    CcuResult createRet = HcommCcuInsCreate(resDescs.data(), static_cast<uint32_t>(resDescs.size()), &insHandle);
+    DestroyAllDescs(resDescs);
+    return ConvertCcuToHccl(createRet);
+}
+
+// 为每个远端 rank 获取一条 CCU 通信 channel；dieId 由首个 channel 的本地端点
+// 查询 ENDPOINT_ATTR_DIE_ID 获得（供资源分配与 schd.phyDieMask 使用）
+static HcclResult AcquireCcuChannels(HcclComm comm, uint32_t rankId, uint32_t rankSize,
+                                     std::vector<ChannelHandle> &kernelChannels, uint32_t &dieId)
+{
+    kernelChannels.resize(rankSize - 1);
+    dieId = 0;
+
+    uint32_t channelIdx = 0;
+    for (uint32_t remoteRank = 0; remoteRank < rankSize; remoteRank++) {
+        if (remoteRank == rankId) {
+            continue;
+        }
+
+        uint32_t netLayer = 0;
+        uint32_t listSize = 0;
+        CommLink *linkList = nullptr;
+        HCCLCHECK(HcclRankGraphGetLinks(comm, netLayer, rankId, remoteRank, &linkList, &listSize));
+
+        HcclChannelDesc desc;
+        HCCLCHECK(HcclChannelDescInit(&desc, 1));
+        CommProtocol protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP;
+        bool protocolExists = false;
+        for (uint32_t idx = 0; idx < listSize; idx++) {
+            CommLink link = linkList[idx];
+            if (link.linkAttr.linkProtocol == protocol) {
+                desc.remoteRank = remoteRank;
+                desc.notifyNum = CHANNEL_NOTIFY_NUM;
+                desc.channelProtocol = link.linkAttr.linkProtocol;
+                desc.localEndpoint.protocol = link.srcEndpointDesc.protocol;
+                desc.localEndpoint.commAddr = link.srcEndpointDesc.commAddr;
+                desc.localEndpoint.loc = link.srcEndpointDesc.loc;
+                desc.remoteEndpoint.protocol = link.dstEndpointDesc.protocol;
+                desc.remoteEndpoint.commAddr = link.dstEndpointDesc.commAddr;
+                desc.remoteEndpoint.loc = link.dstEndpointDesc.loc;
+                protocolExists = true;
+                break;
+            }
+        }
+        if (!protocolExists) {
+            return HCCL_E_NOT_FOUND;
+        }
+        HCCLCHECK(HcclChannelAcquire(comm, CommEngine::COMM_ENGINE_CCU, &desc, 1,
+            &kernelChannels[channelIdx]));
+        if (channelIdx == 0) {
+            EndpointAttrDieId dieIdValue = 0;
+            HCCLCHECK(HcclRankGraphGetEndpointInfo(
+                comm, rankId, &desc.localEndpoint, ENDPOINT_ATTR_DIE_ID, sizeof(EndpointAttrDieId), &dieIdValue));
+            dieId = dieIdValue;
+        }
+        channelIdx++;
+    }
+
+    return HCCL_SUCCESS;
 }

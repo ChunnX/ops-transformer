@@ -13,18 +13,20 @@
  * \brief AllToAll MX Quant Matmul（CCU 版）host 侧编排
  *
  * 编排函数：ValidateAllToAllMatmulParams（check，不触碰 CCU 资源）→
- * PrepareAllToAllMatmul（prepare，经 core/ccu_comm 分配 CCU 资源并填充 tiling 资源字段）→
+ * PrepareCcuCommResources（prepare，经 core/ccu_comm 分配 CCU 资源并填充 tiling 资源字段）→
  * AllToAllMatmulCustom（见 all_to_all_ccu_kernel_impl.asc，双流 launch）→
  * ReleaseAllToAllMatmulContext（释放，调用方在迭代循环外统一调用一次）。
  * tiling 填充分工：main 构造 comm.tileM + matmul 全部字段 → Validate 填 comm 形状/轮次
  * → Prepare 填 comm 资源字段 → launch 时整体经 <<<>>> 传 kernel。
  *
  * 位置说明：本文件是融合专属 host 编排（形状校验/切分计算/双流 launch 编排），
- * 与 device 侧文件同置于 kernel/fusions/ 目录；通信资源管理与同步原语在
- * core/ccu_comm/（ccu_comm.h + all_to_all/ccu_all_to_all_comm.h），由锚点 .asc 先行引入。
+ * 与 device 侧文件同置于 kernel/fusions/ 目录；通信服务在 core/ccu_comm/
+ * （公共件 + all_to_all/ 的 tiling 契约、AIC 原语、host 装配），由锚点 .asc 先行引入。
  */
 
 #pragma once
+
+#include "apace/core/ccu_comm/all_to_all/ccu_all_to_all_host.h"
 
 // 编排结果：填充后交给 .asc 中的 AllToAllMatmulCustom
 struct AllToAllMatmulContext {
@@ -36,10 +38,6 @@ struct AllToAllMatmulContext {
     std::shared_ptr<CcuKernelArgAllToAllMesh1D> kernelArg;
     // 统一 tiling：matmul 由 Custom 入参拷入；comm 由 Validate（形状）+ Prepare（资源）填充
     ccuAllToAllMatmulTilingData tiling{};
-    // data 轮 per-round 偏移（host 侧中转：拷贝到 device 后仅保留 comm.d_* 地址进 kernel）
-    uint64_t srcOffsets[MAX_COMMTURN];
-    uint64_t dstOffsets[MAX_COMMTURN];
-    uint64_t sliceSizes[MAX_COMMTURN];
     // workspace 布局与 token 获取用的全量尺寸
     uint64_t inputSize{0};      // x1 全量字节 = M*K（workspace data 区大小）
     uint64_t scaleInputSize{0}; // x1Scale 全量字节 = M*scaleKLen（workspace scale 区大小）
@@ -174,50 +172,21 @@ inline HcclResult AcquireCommChannelsAndInstance(HcclComm comm, uint32_t rankId,
     return HCCL_SUCCESS;
 }
 
-// goSize 计算 + per-round offsets 计算 + 拷贝到 device GM
-// （AIC 融合 kernel block 0 预写参数区时经 comm.d_*OffsetsAddr 读 device 偏移表）
-inline HcclResult ComputeCommOffsets(AllToAllMatmulContext &ctx)
+// 计算通信 tiling 的切分参数：goSize（本地拷贝 loop 参数，data/scale 各一）+
+// per-round src/dst/slice 偏移表（直接填入 tiling 数组，随 <<<>>> 传参进 kernel）
+inline HcclResult ComputeCommTiling(AllToAllMatmulContext &ctx)
 {
     const CcuCommTilingData &comm = ctx.tiling.comm;
     ctx.tiling.comm.goSize = CalGoSize(comm.subBytes, MakeLocalCopyConfig());
     ctx.tiling.comm.scaleGoSize = CalGoSize(comm.scaleSliceSize, MakeLocalCopyConfig());
 
     for (uint32_t t = 0; t < comm.dataCommTurn; t++) {
-        ctx.srcOffsets[t] = static_cast<uint64_t>(t) * comm.subBytes;
-        ctx.dstOffsets[t] = static_cast<uint64_t>(comm.rankId) * comm.blockSize
-                          + static_cast<uint64_t>(t) * comm.subBytes;
-        ctx.sliceSizes[t] = comm.subBytes;
+        ctx.tiling.comm.srcOffsets[t] = static_cast<uint64_t>(t) * comm.subBytes;
+        ctx.tiling.comm.dstOffsets[t] = static_cast<uint64_t>(comm.rankId) * comm.blockSize
+                                      + static_cast<uint64_t>(t) * comm.subBytes;
+        ctx.tiling.comm.sliceSizes[t] = comm.subBytes;
     }
-
-    const uint64_t bytes = comm.dataCommTurn * sizeof(uint64_t);
-    void *dSrcOffsets = nullptr;
-    void *dDstOffsets = nullptr;
-    void *dSliceSizes = nullptr;
-    aclError aclRet = aclrtMalloc(&dSrcOffsets, bytes, ACL_MEM_MALLOC_HUGE_ONLY);
-    if (aclRet != ACL_SUCCESS) { return HCCL_E_INTERNAL; }
-    aclRet = aclrtMalloc(&dDstOffsets, bytes, ACL_MEM_MALLOC_HUGE_ONLY);
-    if (aclRet != ACL_SUCCESS) { return HCCL_E_INTERNAL; }
-    aclRet = aclrtMalloc(&dSliceSizes, bytes, ACL_MEM_MALLOC_HUGE_ONLY);
-    if (aclRet != ACL_SUCCESS) { return HCCL_E_INTERNAL; }
-
-    aclRet = aclrtMemcpy(dSrcOffsets, bytes, ctx.srcOffsets, bytes, ACL_MEMCPY_HOST_TO_DEVICE);
-    if (aclRet != ACL_SUCCESS) { return HCCL_E_INTERNAL; }
-    aclRet = aclrtMemcpy(dDstOffsets, bytes, ctx.dstOffsets, bytes, ACL_MEMCPY_HOST_TO_DEVICE);
-    if (aclRet != ACL_SUCCESS) { return HCCL_E_INTERNAL; }
-    aclRet = aclrtMemcpy(dSliceSizes, bytes, ctx.sliceSizes, bytes, ACL_MEMCPY_HOST_TO_DEVICE);
-    if (aclRet != ACL_SUCCESS) { return HCCL_E_INTERNAL; }
-
-    ctx.tiling.comm.d_srcOffsetsAddr = reinterpret_cast<uint64_t>(dSrcOffsets);
-    ctx.tiling.comm.d_dstOffsetsAddr = reinterpret_cast<uint64_t>(dDstOffsets);
-    ctx.tiling.comm.d_sliceSizesAddr = reinterpret_cast<uint64_t>(dSliceSizes);
     return HCCL_SUCCESS;
-}
-
-// 释放 CCU 资源（转发 core/ccu_comm 的 ReleaseCcuContext），与 Prepare 首帧分配配对。
-// 调用时机：迭代循环外统一一次（须在双流 sync 之后——实例销毁后 MMIO 地址失效）
-inline HcclResult ReleaseAllToAllMatmulContext(AllToAllMatmulContext &ctx)
-{
-    return ReleaseCcuContext(ctx.tiling.comm, ctx.insHandle);
 }
 
 // Host 侧 CCU 通信资源准备（prepare 阶段，不做 kernel launch）。
@@ -225,10 +194,10 @@ inline HcclResult ReleaseAllToAllMatmulContext(AllToAllMatmulContext &ctx)
 //   0. 迭代间复用守卫——insHandle 已就绪且资源规模与当前 shape 核对一致 → 直接返回
 //      （shape 变化须先 Release 再以新 ctx 重建；buffer 地址须保持稳定）
 //   1. AcquireCommChannelsAndInstance — CCU channels + CCU 实例
-//   2. AllocCommRegion（core）— Variable/Event 分配 + kernelArg 构造（mappedAddrs 烧入 tiling）
+//   2. AllocAllToAllRegion（core）— Variable/Event 分配 + kernelArg 构造（mappedAddrs 烧入 tiling）
 //   3. token 获取（x1 与 x1Scale 两个 buffer 分别获取）
-//   4. ComputeCommOffsets — goSize + offsets + device 拷贝
-inline HcclResult PrepareAllToAllMatmul(void *x1, void *x1Scale,
+//   4. ComputeCommTiling — goSize + per-round 偏移表（填 tiling 数组）
+inline HcclResult PrepareCcuCommResources(void *x1, void *x1Scale,
                                   HcclComm comm, AllToAllMatmulContext &ctx)
 {
     if (ctx.insHandle != 0) {
@@ -245,20 +214,32 @@ inline HcclResult PrepareAllToAllMatmul(void *x1, void *x1Scale,
     HCCLCHECK(AcquireCommChannelsAndInstance(comm, ctx.tiling.comm.rankId, ctx.tiling.comm.rankSize,
                                     kernelChannels, ctx));
 
-    HCCLCHECK(AllocCommRegion(ctx.insHandle, ctx.dieId, ctx.tiling.comm, kernelChannels, ctx.kernelArg));
+    HCCLCHECK(AllocAllToAllRegion(ctx.insHandle, ctx.dieId, ctx.tiling.comm, kernelChannels, ctx.kernelArg));
 
+    // token 按"一段内存区域(VA+size)"签发，一次调用只覆盖一个 region：x1 与 x1Scale
+    // 独立分配、地址不连续，须各取各的（分别供 data 轮 / scale 轮读源）
     HCCLCHECK(HcommCcuGetMemToken(reinterpret_cast<uint64_t>(x1), ctx.inputSize,
                                   &ctx.tiling.comm.token));
     HCCLCHECK(HcommCcuGetMemToken(reinterpret_cast<uint64_t>(x1Scale), ctx.scaleInputSize,
                                   &ctx.tiling.comm.scaleToken));
 
-    HCCLCHECK(ComputeCommOffsets(ctx));
+    HCCLCHECK(ComputeCommTiling(ctx));
 
     // binaryCacheTag 必须按 rank 区分：缓存是进程级单例，单进程多 rank 线程共享，
     // 同 tag 会让 rank1-3 命中 rank0 的 handle（绑定 rank0 设备）→ launch 报错 →
     // rank0 跨 rank 屏障等不齐 → 挂死。tag = kernel 名哈希 + rankId
+    // TODO(后续修正)："kernel 名哈希 + rankId" 拼缓存键是绕开 asc-comm 进程级缓存
+    // 不按设备隔离的权宜写法；正路是库侧缓存键按 (tag, device) 隔离（或提供按设备
+    // 派生 tag 的 API），短期至少封装成具名 helper 让意图显式
     ctx.schd = {1, 0, ctx.dieMask,
                 HcommCcuGetLaunchHashTag("CcuAllToAllMesh1DKernel") + ctx.tiling.comm.rankId};
 
     return HCCL_SUCCESS;
+}
+
+// 释放 CCU 资源（转发 core/ccu_comm 的 ReleaseCcuContext），与 Prepare 首帧分配配对。
+// 调用时机：迭代循环外统一一次（须在双流 sync 之后——实例销毁后 MMIO 地址失效）
+inline HcclResult ReleaseAllToAllMatmulContext(AllToAllMatmulContext &ctx)
+{
+    return ReleaseCcuContext(ctx.tiling.comm, ctx.insHandle);
 }

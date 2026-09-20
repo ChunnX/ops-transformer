@@ -16,7 +16,8 @@ ccu/
 ├── scripts/
 │   └── parse_prof.py           # msprof op_summary 解析（AIC kernel 后 5 次取平均）
 └── src/
-    └── main.cpp                # 单翻译单元编译源（-xasc）：经 include 引入 .asc 链
+    ├── main.cpp                # 单翻译单元编译源（-xasc）：主干流程（init → 调用 → 校验 → 释放）
+    └── test_data_utils.h       # 测试辅助（数据生成 / 期望值 / 校验 / usage，与调用算子无关）
 ```
 
 device 侧实现：
@@ -25,7 +26,9 @@ device 侧实现：
 apace/core/ccu_comm/                                       # CCU 通信公共件（可复用）
 ├── ccu_comm.h                                             # 槽位/事件契约 + LoopGroup 搬运引擎 + host 资源管理
 └── all_to_all/
-    ├── ccu_all_to_all_comm.h                              # CcuCommTilingData + AIC 原语（prepare/commit/wait）
+    ├── ccu_all_to_all_tiling.h                            # 通信 tiling 契约（kernel 侧入参；host 填写后传入）
+    ├── ccu_all_to_all_aic.h                               # AIC 侧同步原语（prepare/commit/wait，__aicore__）
+    ├── ccu_all_to_all_host.h                              # host 侧资源装配（AllocAllToAllRegion / Release）
     └── ccu_all_to_all_kernel.asc                          # __ccu_host__ CcuAllToAllMesh1DKernel（单锚点，名字冻结）
 
 apace/kernel/fusions/all_to_all_quant_matmul/              # 本融合专属

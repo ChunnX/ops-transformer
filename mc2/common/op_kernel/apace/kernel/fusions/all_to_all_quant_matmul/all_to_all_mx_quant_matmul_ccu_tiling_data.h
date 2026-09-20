@@ -18,8 +18,8 @@
 
 #pragma once
 
-#include "all_to_all_matmul_tiling_data.h"                        // QuantMatmulTilingData（共享件）
-#include "apace/core/ccu_comm/all_to_all/ccu_all_to_all_comm.h"   // CcuCommTilingData（通信契约）
+#include "all_to_all_matmul_tiling_data.h"                             // QuantMatmulTilingData（共享件）
+#include "apace/core/ccu_comm/all_to_all/ccu_all_to_all_tiling.h"     // CcuCommTilingData（通信契约）
 
 // 统一 tiling：通信切分 + 计算切分
 #pragma pack(push, 8)
