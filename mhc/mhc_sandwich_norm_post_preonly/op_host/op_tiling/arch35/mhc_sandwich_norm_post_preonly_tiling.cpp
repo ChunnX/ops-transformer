@@ -18,7 +18,7 @@ namespace optiling {
 
 // Host侧常量，与Kernel公共头文件保持一致
 constexpr uint32_t HOST_N_MAX = 4;
-constexpr uint32_t HOST_D_TILE_MAX = 2560;
+constexpr uint32_t HOST_D_TILE_MAX = 1280;
 constexpr uint32_t HOST_D_ALIGN_ELEM = 16;
 constexpr uint32_t HOST_MAX_TOKENS = 1024 * 1024; // B*S 上限
 constexpr uint32_t NUM_TWO = 2;
@@ -189,8 +189,8 @@ static ge::graphStatus TilingMhcSandwichNormPostPreonly(gert::TilingContext *con
 
     // 首个双sibling候选只覆盖当前固定性能形状；其余组合继续走已验证的单AIV回退。
     // A5的MIX_AIC_1_2以一个物理AI Core为blockDim单位，并展开两个sibling AIV。
-    const bool enableDualSibling = totalTokens == 4U && D == 5120U && useRmsMid && !returnHInF32 &&
-                                   hOutDesc->GetDataType() == ge::DT_BF16;
+    const bool enableDualSibling =
+        totalTokens == 4U && D == 5120U && useRmsMid && !returnHInF32 && hOutDesc->GetDataType() == ge::DT_BF16;
     const uint32_t coresPerToken = enableDualSibling ? 2U : 1U;
     const uint32_t usedCoreNum = std::min(totalTokens, enableDualSibling ? (coreNumAiv / 2U) : coreNumAiv);
     uint32_t rowsPerCore = totalTokens / usedCoreNum;
