@@ -125,8 +125,8 @@ public:
         evtMte3toV_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::MTE3_V>());
         evtVtoMte3_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::V_MTE3>());
         evtMte3toMte2_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::MTE3_MTE2>());
-        evtMte2toS_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::MTE2_S>());
         if constexpr (DUAL_SIBLING) {
+            evtMte2toS_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::MTE2_S>());
             evtStoMte3_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::S_MTE3>());
         }
     }
@@ -170,8 +170,8 @@ public:
         pipe_.ReleaseEventID<HardEvent::MTE3_V>(evtMte3toV_);
         pipe_.ReleaseEventID<HardEvent::V_MTE3>(evtVtoMte3_);
         pipe_.ReleaseEventID<HardEvent::MTE3_MTE2>(evtMte3toMte2_);
-        pipe_.ReleaseEventID<HardEvent::MTE2_S>(evtMte2toS_);
         if constexpr (DUAL_SIBLING) {
+            pipe_.ReleaseEventID<HardEvent::MTE2_S>(evtMte2toS_);
             pipe_.ReleaseEventID<HardEvent::S_MTE3>(evtStoMte3_);
         }
     }

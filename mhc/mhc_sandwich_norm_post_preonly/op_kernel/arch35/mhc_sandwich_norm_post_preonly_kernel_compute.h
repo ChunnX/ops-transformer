@@ -23,19 +23,18 @@ __aicore__ inline void LoadTokenWeights(uint32_t token, float (&postVals)[N_MAX]
     LocalTensor<float> postCombUb = bufPostComb_.Get<float>();
     LocalTensor<float> hPostUb = postCombUb;
     LocalTensor<float> hResUb = postCombUb[ALIGN8]; // h_post[N] aligned to 8 elements
-    DataCopyExtParams pp = {1, 0, 0, 0, 0};
-    pp.blockLen = N * sizeof(float);
-    DataCopyPadExtParams<float> pad = {true, 0, 0, 0};
-    DataCopyPad(hPostUb, hPostGm_[(uint64_t)token * N], pp, pad);
-    // h_post到达后即可开始Scalar读取；排在事件后的h_res继续沿MTE2搬运，
-    // 与当前token的标量处理和R1前段重叠。
-    SetFlag<HardEvent::MTE2_S>(evtMte2toS_);
+    {
+        DataCopyExtParams pp = {1, 0, 0, 0, 0};
+        pp.blockLen = N * sizeof(float);
+        DataCopyPadExtParams<float> pad = {true, 0, 0, 0};
+        DataCopyPad(hPostUb, hPostGm_[(uint64_t)token * N], pp, pad);
 
-    DataCopyExtParams cp = {1, 0, 0, 0, 0};
-    cp.blockLen = N * N * sizeof(float);
-    DataCopyPadExtParams<float> cpad = {true, 0, 0, 0};
-    DataCopyPad(hResUb, hResGm_[(uint64_t)token * N * N], cp, cpad);
-    WaitFlag<HardEvent::MTE2_S>(evtMte2toS_);
+        DataCopyExtParams cp = {1, 0, 0, 0, 0};
+        cp.blockLen = N * N * sizeof(float);
+        DataCopyPadExtParams<float> cpad = {true, 0, 0, 0};
+        DataCopyPad(hResUb, hResGm_[(uint64_t)token * N * N], cp, cpad);
+    }
+    PipeBarrier<PIPE_ALL>();
     for (uint32_t i = 0; i < N; ++i)
         postVals[i] = hPostUb.GetValue(i);
 }
