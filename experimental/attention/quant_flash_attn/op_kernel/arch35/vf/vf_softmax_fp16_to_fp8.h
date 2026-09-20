@@ -74,8 +74,16 @@ __simd_vf__ inline void VfSoftmaxFp16ToFp8VF(__ubuf__ T2 *pDst, __ubuf__ half *a
     Max(max1, max1, max3, pregHalf);
     Max(curMax, max0, max1, pregHalf);
 
-    // TODO(批次3.2-4): 量化合并（Muls INV_LN2 → Truncate CEIL → Max accMax → 存储 → normMax）
-    (void)kCur; (void)kUsed; (void)normMax; (void)accMaxLoad;
+    // ② 量化 + 与 accMax 合并（half 整数域，§3.1；镜像 mxfp8 高精 L1237-1241 的 CEIL 链）
+    Muls(kCur, curMax, INV_LN2, pregHalf);                     // ×1/ln2 → log2 域
+    Truncate<T, RoundMode::CAST_CEIL>(kCur, kCur, pregHalf);   // CEIL → 整数 k_cur
+    LoadAlign(accMaxLoad, accMax);                             // accMax 槽（half 整数）
+    Max(kUsed, kCur, accMaxLoad, pregHalf);                    // 合并保持整数
+    StoreAlign(accMax, kUsed, pregHalf);                       // 写回 accMax（下块用）
+    StoreAlign(usedMaxOut, kUsed, pregHalf);                   // 暂存 k_i（epilogue pscale 用）
+    Muls(normMax, kUsed, LN2, pregHalf);                       // k·ln2 → P 归一化基准
+
+    // TODO(批次3.2-5): P 计算循环（4 路 Sub+Exp+Muls pScale+Cast RintZero/One+Or+存储）
     (void)pDst; (void)pScale;
 }
 
