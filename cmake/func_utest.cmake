@@ -882,10 +882,6 @@ function(op_add_ut_subdirectory OP_UT_LIST OP_UT_DIR_LIST)
     set(_OP_UT_DIR_LIST)
 
     file(GLOB OP_HOST_CMAKE_FILES "${CMAKE_CURRENT_SOURCE_DIR}/**/**/tests/CMakeLists.txt")
-    if(ENABLE_EXPERIMENTAL)
-        file(GLOB EXP_OP_HOST_CMAKE_FILES "${CMAKE_CURRENT_SOURCE_DIR}/experimental/*/*/tests/CMakeLists.txt")
-        list(APPEND OP_HOST_CMAKE_FILES ${EXP_OP_HOST_CMAKE_FILES})
-    endif()
 
     foreach(OP_CMAKE_FILE ${OP_HOST_CMAKE_FILES})
         if ("${OP_CMAKE_FILE}" MATCHES "tests")
