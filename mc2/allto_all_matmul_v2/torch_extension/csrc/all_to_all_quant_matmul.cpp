@@ -72,16 +72,18 @@ static void CheckNpuAlltoAllQuantMatmulInputs(const at::Tensor &x1, const at::Te
                 "x2_dtype=296), but got tensor dtype ",
                 x2.scalar_type(), ". Dtype enum cannot override an unsupported storage dtype.");
     if (x1ScaleOptional.has_value() && x1ScaleOptional.value().defined()) {
-        TORCH_CHECK(x1ScaleOptional.value().scalar_type() == at::kByte,
-                    "x1_scale only supports torch.uint8 (fp8_e8m0 stored as uint8, pass x1_scale_dtype=293), "
-                    "but got tensor dtype ",
+        TORCH_CHECK(x1ScaleOptional.value().scalar_type() == at::kByte ||
+                        x1ScaleOptional.value().scalar_type() == at::ScalarType::Float8_e8m0fnu,
+                    "x1_scale only supports torch.uint8 (packed, pass x1_scale_dtype=293) or "
+                    "torch.float8_e8m0fnu, but got tensor dtype ",
                     x1ScaleOptional.value().scalar_type(),
                     ". Dtype enum cannot override an unsupported storage dtype.");
     }
     if (x2ScaleOptional.has_value() && x2ScaleOptional.value().defined()) {
-        TORCH_CHECK(x2ScaleOptional.value().scalar_type() == at::kByte,
-                    "x2_scale only supports torch.uint8 (fp8_e8m0 stored as uint8, pass x2_scale_dtype=293), "
-                    "but got tensor dtype ",
+        TORCH_CHECK(x2ScaleOptional.value().scalar_type() == at::kByte ||
+                        x2ScaleOptional.value().scalar_type() == at::ScalarType::Float8_e8m0fnu,
+                    "x2_scale only supports torch.uint8 (packed, pass x2_scale_dtype=293) or "
+                    "torch.float8_e8m0fnu, but got tensor dtype ",
                     x2ScaleOptional.value().scalar_type(),
                     ". Dtype enum cannot override an unsupported storage dtype.");
     }
