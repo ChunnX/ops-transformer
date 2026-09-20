@@ -18,6 +18,13 @@
 #include "common/lightning_indexer_v2_base_arch35.h"
 #include "common/lightning_indexer_v2_const_info_common.h"
 
+// CVRATIO: 960(1:1)=1, 950(1:2)=2
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
+    #define CVRATIO 1
+#else
+    #define CVRATIO 2
+#endif
+
 using namespace AscendC;
 namespace LIV2Common {
 
