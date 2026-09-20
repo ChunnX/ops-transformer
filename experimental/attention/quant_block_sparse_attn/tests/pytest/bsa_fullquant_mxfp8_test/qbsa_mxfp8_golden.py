@@ -324,7 +324,9 @@ def _resolve_sparse_mode(case):
 def validate_mxfp8_case(case):
     """只校验实际参与运行的字段；参考字段允许由外部泛化表自由扩展。"""
     if case.get("layout_q") not in ("TND", "BSND", "BNSD"):
-        raise ValueError(f"MXFP8 layout_q must be TND/BSND/BNSD, got {case.get('layout_q')!r}")
+        raise ValueError(
+            f"MXFP8 layout_q must be TND/BSND/BNSD, got {case.get('layout_q')!r}"
+        )
     if case.get("layout_out") != case.get("layout_q"):
         raise ValueError("MXFP8 layout_out must match layout_q")
 
@@ -383,10 +385,14 @@ def _get_sequence_inputs(case):
 
     if case["layout_q"] in ("BSND", "BNSD"):
         if cu_q or seq_q:
-            raise ValueError("BSND/BNSD requires empty cu_seqlens_q and seqused_q (passed as None)")
+            raise ValueError(
+                "BSND/BNSD requires empty cu_seqlens_q and seqused_q (passed as None)"
+            )
         sq = int(case.get("S1_max") or 0)
         if sq <= 0:
-            raise ValueError("BSND/BNSD requires positive S1_max for the physical Q shape")
+            raise ValueError(
+                "BSND/BNSD requires positive S1_max for the physical Q shape"
+            )
         cu_q = [b * sq for b in range(batch + 1)]  # CPU-reference indexing only.
 
     if len(cu_q) != batch + 1 or not cu_q or cu_q[0] != 0:
@@ -439,8 +445,11 @@ def _normalize_case(case):
     )
     sequence_inputs = _get_sequence_inputs(case)
     for name in ("cu_seqlens_q", "cu_seqlens_kv", "seqused_q", "seqused_kv"):
-        case[name] = ([] if name == "cu_seqlens_q" and case["layout_q"] in ("BSND", "BNSD")
-                      else sequence_inputs[name].tolist())
+        case[name] = (
+            []
+            if name == "cu_seqlens_q" and case["layout_q"] in ("BSND", "BNSD")
+            else sequence_inputs[name].tolist()
+        )
     case = _resolve_sparse_mode(case)
     validate_mxfp8_case(case)
     return case
@@ -2449,13 +2458,21 @@ def pack_padded_query(tensor, lengths, layout, sq=None):
         raise ValueError(f"Unsupported padded layout: {layout}")
     sq = max(lengths) if sq is None else int(sq)
     if sq < max(lengths) or sum(lengths) != tensor.shape[0]:
-        raise ValueError("Padded capacity / effective lengths do not match packed tensor")
+        raise ValueError(
+            "Padded capacity / effective lengths do not match packed tensor"
+        )
     # CPU uint8 views preserve E4M3/E8M0 bits and avoid unsupported fill/copy kernels.
-    raw = tensor.detach().cpu().contiguous().view(torch.uint8).reshape(*tensor.shape, tensor.element_size())
+    raw = (
+        tensor.detach()
+        .cpu()
+        .contiguous()
+        .view(torch.uint8)
+        .reshape(*tensor.shape, tensor.element_size())
+    )
     padded = torch.zeros((len(lengths), sq, *raw.shape[1:]), dtype=torch.uint8)
     offset = 0
     for b, length in enumerate(lengths):
-        padded[b, :length] = raw[offset:offset + length]
+        padded[b, :length] = raw[offset : offset + length]
         offset += length
     if layout == "BNSD":
         padded = padded.transpose(1, 2).contiguous()
@@ -2471,7 +2488,12 @@ def unpack_padded_query(tensor, lengths, layout):
     raw = tensor.view(torch.uint8).reshape(*tensor.shape, tensor.element_size())
     if layout == "BNSD":
         raw = raw.transpose(1, 2)
-    return torch.cat([raw[b, :length] for b, length in enumerate(lengths)], dim=0).contiguous().view(dtype).squeeze(-1)
+    return (
+        torch.cat([raw[b, :length] for b, length in enumerate(lengths)], dim=0)
+        .contiguous()
+        .view(dtype)
+        .squeeze(-1)
+    )
 
 
 def check_layout_helpers():
@@ -2485,15 +2507,27 @@ def check_layout_helpers():
             original = (torch.arange(count) % 127).reshape(shape).to(dtype)
             for layout in ("BSND", "BNSD"):
                 padded = pack_padded_query(original, lengths, layout, 129)
-                expected = (3, 129, *tail) if layout == "BSND" else (3, tail[0], 129, *tail[1:])
+                expected = (
+                    (3, 129, *tail)
+                    if layout == "BSND"
+                    else (3, tail[0], 129, *tail[1:])
+                )
                 if tuple(padded.shape) != expected or not padded.is_contiguous():
-                    raise AssertionError(f"{layout}: expected contiguous {expected}, got {tuple(padded.shape)}")
+                    raise AssertionError(
+                        f"{layout}: expected contiguous {expected}, got {tuple(padded.shape)}"
+                    )
                 torch.testing.assert_close(
-                    unpack_padded_query(padded, lengths, layout), original, rtol=0, atol=0
+                    unpack_padded_query(padded, lengths, layout),
+                    original,
+                    rtol=0,
+                    atol=0,
                 )
                 if layout == "BNSD":
                     torch.testing.assert_close(
-                        padded[1, :, :65].transpose(0, 1), original[129:], rtol=0, atol=0
+                        padded[1, :, :65].transpose(0, 1),
+                        original[129:],
+                        rtol=0,
+                        atol=0,
                     )
                 checked += 1
     try:
@@ -2503,19 +2537,37 @@ def check_layout_helpers():
     else:
         raise AssertionError("Packing must reject insufficient sequence capacity")
     for layout in ("BSND", "BNSD"):
-        case = {"B": 2, "layout_q": layout, "S1_max": 129,
-                "cu_seqlens_q": [], "cu_seqlens_kv": [], "seqused_q": [], "seqused_kv": [65, 97]}
+        case = {
+            "B": 2,
+            "layout_q": layout,
+            "S1_max": 129,
+            "cu_seqlens_q": [],
+            "cu_seqlens_kv": [],
+            "seqused_q": [],
+            "seqused_kv": [65, 97],
+        }
         resolved = _get_sequence_inputs(case)
         assert resolved["q_lengths"] == [129, 129]
-        assert resolved["cu_seqlens_q"].tolist() == [0, 129, 258]  # Reference-only prefix.
-        for key, value in (("cu_seqlens_q", [0, 129, 258]), ("seqused_q", [129, 129]), ("S1_max", 0)):
+        assert resolved["cu_seqlens_q"].tolist() == [
+            0,
+            129,
+            258,
+        ]  # Reference-only prefix.
+        for key, value in (
+            ("cu_seqlens_q", [0, 129, 258]),
+            ("seqused_q", [129, 129]),
+            ("S1_max", 0),
+        ):
             try:
                 _get_sequence_inputs(dict(case, **{key: value}))
             except ValueError:
                 pass
             else:
                 raise AssertionError(f"{layout} must reject invalid {key}")
-    logger.info("[Layout self-check] %d roundtrips, capacity and sequence contract validation passed", checked)
+    logger.info(
+        "[Layout self-check] %d roundtrips, capacity and sequence contract validation passed",
+        checked,
+    )
 
 
 def _check_padded_layouts(invoke, q, q_scale, cu_seqlens_q, out_tnd, lse_tn):
@@ -2523,7 +2575,9 @@ def _check_padded_layouts(invoke, q, q_scale, cu_seqlens_q, out_tnd, lse_tn):
     cu = cu_seqlens_q.cpu().tolist()
     lengths = [cu[i + 1] - cu[i] for i in range(len(cu) - 1)]
     if len(set(lengths)) != 1 or not lengths[0]:
-        logger.info("Skip padded equivalence check: BSND/BNSD requires equal positive Q lengths")
+        logger.info(
+            "Skip padded equivalence check: BSND/BNSD requires equal positive Q lengths"
+        )
         return
     sq = lengths[0]
     # Every batch uses the full physical sequence dimension.
@@ -2533,23 +2587,37 @@ def _check_padded_layouts(invoke, q, q_scale, cu_seqlens_q, out_tnd, lse_tn):
     q_bsnd = torch.zeros((batch, sq, heads, dim), dtype=torch.uint8)
     scale_bsnd = torch.zeros((batch, sq, *q_scale.shape[1:]), dtype=torch.uint8)
     for b, length in enumerate(lengths):
-        q_bsnd[b, :length] = q_cpu[cu[b]:cu[b + 1]]
-        scale_bsnd[b, :length] = scale_cpu[cu[b]:cu[b + 1]]
+        q_bsnd[b, :length] = q_cpu[cu[b] : cu[b + 1]]
+        scale_bsnd[b, :length] = scale_cpu[cu[b] : cu[b + 1]]
     for layout in ("BSND", "BNSD"):
         q_bytes = q_bsnd if layout == "BSND" else q_bsnd.transpose(1, 2).contiguous()
-        scale_bytes = scale_bsnd if layout == "BSND" else scale_bsnd.transpose(1, 2).contiguous()
-        out, lse = invoke(q_bytes.view(q.dtype).to(q.device),
-                          scale_bytes.view(q_scale.dtype).to(q_scale.device), layout, layout)
+        scale_bytes = (
+            scale_bsnd if layout == "BSND" else scale_bsnd.transpose(1, 2).contiguous()
+        )
+        out, lse = invoke(
+            q_bytes.view(q.dtype).to(q.device),
+            scale_bytes.view(q_scale.dtype).to(q_scale.device),
+            layout,
+            layout,
+        )
         torch_npu.npu.synchronize()
-        assert tuple(out.shape) == ((batch, sq, heads, dim) if layout == "BSND" else (batch, heads, sq, dim))
+        assert tuple(out.shape) == (
+            (batch, sq, heads, dim) if layout == "BSND" else (batch, heads, sq, dim)
+        )
         out = out.cpu() if layout == "BSND" else out.cpu().transpose(1, 2)
         for b, length in enumerate(lengths):
-            torch.testing.assert_close(out[b, :length], out_tnd.cpu()[cu[b]:cu[b + 1]], rtol=0, atol=0)
+            torch.testing.assert_close(
+                out[b, :length], out_tnd.cpu()[cu[b] : cu[b + 1]], rtol=0, atol=0
+            )
         if ENABLE_LSE:
             assert tuple(lse.shape) == (batch, heads, sq)
             for b, length in enumerate(lengths):
-                torch.testing.assert_close(lse.cpu()[b, :, :length].T,
-                                           lse_tn.cpu()[cu[b]:cu[b + 1]], rtol=0, atol=0)
+                torch.testing.assert_close(
+                    lse.cpu()[b, :, :length].T,
+                    lse_tn.cpu()[cu[b] : cu[b + 1]],
+                    rtol=0,
+                    atol=0,
+                )
         logger.info("[NPU] %s output and BNS LSE match TND", layout)
 
 
@@ -2609,8 +2677,17 @@ def _call_npu_fa_op(
         # Reusing the TND metadata here would hide BSND/BNSD interface regressions.
         if q_layout not in metadata_by_layout:
             metadata_by_layout[q_layout] = _prepare_npu_metadata(
-                cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, block_table,
-                q_n, kv_n, q_layout, layout_kv, sparse_indices, sparse_seq_len,
+                cu_seqlens_q,
+                cu_seqlens_kv,
+                seqused_q,
+                seqused_kv,
+                block_table,
+                q_n,
+                kv_n,
+                q_layout,
+                layout_kv,
+                sparse_indices,
+                sparse_seq_len,
             )[-1]
         return torch.ops.custom.npu_quant_block_sparse_attn(
             query,
@@ -2640,11 +2717,14 @@ def _call_npu_fa_op(
             mask_mode=MASK_MODE,
             return_softmax_lse=ENABLE_LSE,
         )
+
     output = invoke(q, dequant_scale_q, layout_q, OUT_LAYOUT)
     torch_npu.npu.synchronize()
     atten_out, lse_out = output
     if layout_q == "TND" and os.environ.get("QBSA_CHECK_PADDED_LAYOUTS") == "1":
-        _check_padded_layouts(invoke, q, dequant_scale_q, cu_seqlens_q, atten_out, lse_out)
+        _check_padded_layouts(
+            invoke, q, dequant_scale_q, cu_seqlens_q, atten_out, lse_out
+        )
     return atten_out.detach().cpu(), lse_out.detach().cpu()
 
 
@@ -3157,14 +3237,22 @@ def npu_mxfp8_fa(
 
     if q_layout in ("BSND", "BNSD"):
         sq = max(q_lengths)
-        expected_out = (len(q_lengths), sq, N_q, D) if q_layout == "BSND" else (len(q_lengths), N_q, sq, D)
+        expected_out = (
+            (len(q_lengths), sq, N_q, D)
+            if q_layout == "BSND"
+            else (len(q_lengths), N_q, sq, D)
+        )
         if tuple(atten_out.shape) != expected_out:
-            raise AssertionError(f"attention_out: expected {expected_out}, got {tuple(atten_out.shape)}")
+            raise AssertionError(
+                f"attention_out: expected {expected_out}, got {tuple(atten_out.shape)}"
+            )
         npu_output = unpack_padded_query(atten_out, q_lengths, q_layout)
         if ENABLE_LSE:
             if tuple(lse_out.shape) != (len(q_lengths), N_q, sq):
                 raise AssertionError(f"Expected BNS LSE, got {tuple(lse_out.shape)}")
-            npu_lse = torch.cat([lse_out[b, :, :length].T for b, length in enumerate(q_lengths)], dim=0)
+            npu_lse = torch.cat(
+                [lse_out[b, :, :length].T for b, length in enumerate(q_lengths)], dim=0
+            )
         else:
             npu_lse = lse_out
     else:
