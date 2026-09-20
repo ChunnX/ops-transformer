@@ -227,7 +227,7 @@ aclnnStatus aclnnIndexerQuantCache(
     <tr>
       <td>ACLNN_ERR_PARAM_INVALID</td>
       <td>161002</td>
-      <td>cacheRef、x或slotMapping为空Tensor。</td>
+      <td>cacheRef、cacheScaleRef、x或slotMapping为空Tensor。</td>
     </tr>
   </tbody></table>
 
