@@ -112,16 +112,6 @@ __aicore__ inline float KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_
     return ReduceSumPrecise(sqBuf, tD);
 }
 
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
-                                                        DUAL_SIBLING>::LoadHInCacheTile(uint32_t tOff, uint32_t tD,
-                                                                                        LocalTensor<float> hIn)
-{
-    LocalTensor<T> hInCache = bufX2Cache_.Get<T>()[tOff];
-    MhcSandwichRegBase::CastB16ToFp32(hIn, hInCache, tD);
-    PipeBarrier<PIPE_V>();
-}
-
 // 固定的R4/R5归约树将与双sibling AIV路径共用。half0固定覆盖展平区间[0,2D)，
 // half1固定覆盖[2D,4D)，调用方只执行一次顶层合并partial0+partial1。
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
@@ -348,7 +338,7 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
         LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-        LoadHInCacheTile(tOff, tD, hIn);
+        LocalTensor<T> hInCache = bufX2Cache_.Get<T>()[tOff];
         LocalTensor<float> gamma1 = bufGamma2Fp32_.Get<float>();
         if (D_ > GAMMA1_CACHE_MAX_D) {
             LoadGammaInto(gamma1, gamma1Gm_, tOff, tD);
@@ -357,7 +347,8 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
         } else {
             gamma1 = gamma1[tOff];
         }
-        ApplyScaleAndGamma(hIn, invRms1, gamma1, tD);
+        MhcSandwichRegBase::CastB16ScaleAndMulGamma(hIn, hInCache, gamma1, invRms1, tD);
+        PipeBarrier<PIPE_V>();
         if (D_ > GAMMA1_CACHE_MAX_D) {
             FenceVToMte2();
         }
