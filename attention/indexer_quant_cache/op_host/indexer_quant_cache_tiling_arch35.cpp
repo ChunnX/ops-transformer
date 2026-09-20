@@ -14,6 +14,8 @@
  */
 
 #include <sstream>
+#include <limits>
+#include "indexer_quant_cache_contract.h"
 #include "log/log.h"
 #include "err/ops_err.h"
 #include "indexer_quant_cache_tiling_arch35.h"
@@ -25,7 +27,7 @@ constexpr uint64_t WORKSPACE_SIZE = 32;
 int64_t CeilDiv(int64_t x, int64_t y)
 {
     if (y != 0) {
-        return (x + y - 1) / y;
+        return x / y + (x % y != 0);
     }
     return x;
 }
@@ -84,6 +86,8 @@ ge::graphStatus IndexerQuantCacheTiling::GetPlatformInfo()
         ubSize_ = ubSizePlatForm;
         socVersion_ = ascendcPlatform.GetSocVersion();
     }
+    OP_CHECK_IF(coreNum_ == 0 || ubSize_ == 0,
+                OP_LOGE(context_->GetNodeName(), "core count and UB size must be positive"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -155,7 +159,10 @@ ge::graphStatus IndexerQuantCacheTiling::ValidateCache4D(size_t inputIdx, const 
         return ge::GRAPH_FAILED);
     // 连续场景的行宽(headDim)取末维; 分页 view 下随后由 view stride 覆盖, 此处仅作连续默认值。
     const auto &storage = shapePtr->GetStorageShape();
-    lastDim = storage.GetDim(storage.GetDimNum() - 1);
+    OP_CHECK_IF(storage.GetDimNum() == 0 || logical.GetDim(3) <= 0,
+                OP_LOGE(context_->GetNodeName(), "%s has invalid storage or headDim", inputName),
+                return ge::GRAPH_FAILED);
+    lastDim = logical.GetDim(3);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -169,6 +176,7 @@ ge::graphStatus IndexerQuantCacheTiling::GetShapeAttrsInfoInner()
     auto slotMappingShape = shapeSlotMapping->GetStorageShape();
     uint32_t xDims = xStorageShape.GetDimNum();
     uint32_t slotMappingDims = slotMappingShape.GetDimNum();
+    OP_CHECK_IF(xDims < 2, OP_LOGE(context_->GetNodeName(), "x rank must be at least 2"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(xDims - 1 != slotMappingDims,
                 OP_LOGE(context_->GetNodeName(), "slotMappingDims should equal xDims - 1"), return ge::GRAPH_FAILED);
     int64_t bs = 1;
@@ -176,6 +184,9 @@ ge::graphStatus IndexerQuantCacheTiling::GetShapeAttrsInfoInner()
         int64_t temp = xStorageShape.GetDim(i);
         OP_CHECK_IF(temp != slotMappingShape.GetDim(i),
                     OP_LOGE(context_->GetNodeName(), "slotMappingShape should equal xStorageShape in dim %u", i),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(temp <= 0 || bs > std::numeric_limits<int64_t>::max() / temp,
+                    OP_LOGE(context_->GetNodeName(), "x leading dimensions must be positive and fit int64"),
                     return ge::GRAPH_FAILED);
         bs *= temp;
     }
@@ -198,6 +209,14 @@ ge::graphStatus IndexerQuantCacheTiling::GetShapeAttrsInfoInner()
                 OP_LOGE(context_->GetNodeName(), "quant_mode should be in [0,3], got %ld", quantMode_),
                 return ge::GRAPH_FAILED);
 
+    for (size_t idx = 0; idx < 4; ++idx) {
+        OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetInputDesc(idx));
+    }
+    OP_CHECK_IF(!indexer_quant_cache::IsValidQuantTypes(
+                    quantMode_, context_->GetInputDesc(0)->GetDataType(), context_->GetInputDesc(1)->GetDataType(),
+                    context_->GetInputDesc(2)->GetDataType(), context_->GetInputDesc(3)->GetDataType()),
+                OP_LOGE(context_->GetNodeName(), "input dtypes do not match quant_mode"), return ge::GRAPH_FAILED);
+
     // 每行 scale 个数:
     //   mode0 MX-FP8 / mode3 MX-FP4 : 每 32 个元素一个 scale (标准 MX 块)
     //   mode1 Normal (整行量化) / mode2 HiFloat8 : 整行一个 scale
@@ -212,6 +231,8 @@ ge::graphStatus IndexerQuantCacheTiling::GetShapeAttrsInfoInner()
 
 ge::graphStatus IndexerQuantCacheTiling::CalcOpTiling()
 {
+    OP_CHECK_IF(bs_ <= 0 || coreNum_ == 0, OP_LOGE(context_->GetNodeName(), "batch and core count must be positive"),
+                return ge::GRAPH_FAILED);
     rowOfFormerBlock_ = CeilDiv(bs_, static_cast<int64_t>(coreNum_));
     usedCoreNums_ = std::min(CeilDiv(bs_, rowOfFormerBlock_), static_cast<int64_t>(coreNum_));
     rowOfTailBlock_ = bs_ - (usedCoreNums_ - 1) * rowOfFormerBlock_;
@@ -224,24 +245,24 @@ ge::graphStatus IndexerQuantCacheTiling::CalcOpTiling()
     if (quantMode_ == MXFP8_QUANT_MODE || quantMode_ == MXFP4_QUANT_MODE) {
         scaleByteSize = 1; // MX 模式 scale 为 e8m0, 占1字节
     }
-    // MX-FP4 scale rows use 64-byte alignment for DIST_PACK_B16 in the kernel.
     int64_t perBlockScaleElemNum = quantMode_ == MXFP4_QUANT_MODE ? 64 : BLOCK_SIZE / scaleByteSize;
-    int64_t cacheUbCol = quantMode_ == MXFP4_QUANT_MODE ? d_ / 2 : d_;
     int64_t xAlign = (quantMode_ == MXFP8_QUANT_MODE) ? PER_BLOCK_FP16 : 16;
     int64_t lo = rowOnceLoop;
-    int64_t hi = rowOfFormerBlock_;
+    int64_t hi = std::min(rowOfFormerBlock_, static_cast<int64_t>(ubSize_ / BLOCK_SIZE));
     rowFactor_ = lo - 1;
     while (lo <= hi) {
         int64_t mid = lo + (hi - lo) / 2;
         int64_t xSize = mid * RoundUp(d_, xAlign) * 2 * DOUBLE_BUFFER;
-        int64_t ySize = mid * RoundUp(cacheUbCol, BLOCK_SIZE) * DOUBLE_BUFFER;
+        int64_t cacheCols = quantMode_ == MXFP4_QUANT_MODE ? d_ / FP4_PACK_NUM : d_;
+        int64_t ySize = mid * RoundUp(cacheCols, BLOCK_SIZE) * DOUBLE_BUFFER;
         int64_t scaleSize = mid * RoundUp(scaleCol_, perBlockScaleElemNum) * scaleByteSize * DOUBLE_BUFFER;
         int64_t tmpBufferSize = RoundUp(mid, 8) * 4;
         int64_t mxScratchSize = 0;
         if (quantMode_ == MXFP8_QUANT_MODE) {
             mxScratchSize = mid * RoundUp(d_, 8) * 4 + mid * CeilDiv(d_, 128) * 16 * 4;
-        } else if (quantMode_ == MXFP4_QUANT_MODE) {
-            // maxExpBuf and halfScaleBuf each hold one aligned row of uint16_t.
+        }
+        if (quantMode_ == MXFP4_QUANT_MODE) {
+            // Two uint16 scratch buffers, each rounded to a 32-byte block.
             mxScratchSize = 2 * RoundUp(scaleCol_, 16) * sizeof(uint16_t);
         }
         int64_t totalSize = xSize + ySize + scaleSize + tmpBufferSize + mxScratchSize;
@@ -253,6 +274,7 @@ ge::graphStatus IndexerQuantCacheTiling::CalcOpTiling()
         }
     }
 
+    OP_CHECK_IF(rowFactor_ <= 0, OP_LOGE(context_->GetNodeName(), "UB cannot hold one row"), return ge::GRAPH_FAILED);
     rowLoopOfFormerBlock_ = CeilDiv(rowOfFormerBlock_, rowFactor_);
     rowLoopOfTailBlock_ = CeilDiv(rowOfTailBlock_, rowFactor_);
     tailRowFactorOfFormerBlock_ = rowOfFormerBlock_ % rowFactor_ == 0 ? rowFactor_ : rowOfFormerBlock_ % rowFactor_;
@@ -285,9 +307,8 @@ ge::graphStatus IndexerQuantCacheTiling::CalcOpTiling()
     // 转为 kernel 寻址单位: MX-FP4 字节寻址打包 cache (÷2); 其余模式元素==字节, 直接取末维。
     cacheRowStride_ = (quantMode_ == MXFP4_QUANT_MODE) ? (cacheLastDim / FP4_PACK_NUM) : cacheLastDim;
 
-    // cache_scale 校验: 所有量化模式(0/1/2/3)均完整校验, 无例外。kernel 在 mode2(HiFloat8) 下
-    // 仍会为每个 token 无条件散写 1 个 float scale 到 cacheScaleGm(scaleCol=1), 故 cache_scale
-    // 必须是合法 4D 张量 [blockNum, blockSize, 1, headDim] 且行宽 >= scaleCol, 否则散写越界。
+    // Validate both in-place tensors in every mode. HiFloat8 preserves cache_scale.
+    // Its descriptor must still satisfy the shared 4D contract.
     // scale 末维即 kernel 寻址单位(e8m0 1B 或 float)。
     int64_t scaleLastDim = 0;
     if (ValidateCache4D(INPUT_SCALE_IDX, "cache_scale", scaleLastDim) != ge::GRAPH_SUCCESS) {
@@ -345,6 +366,14 @@ ge::graphStatus IndexerQuantCacheTiling::CalcOpTiling()
                         scaleRowStride_, scaleCol_),
                 return ge::GRAPH_FAILED);
 
+    const auto &cacheShape = context_->GetInputShape(INPUT_CACHE_IDX)->GetShape();
+    const auto &scaleShape = context_->GetInputShape(INPUT_SCALE_IDX)->GetShape();
+    const int64_t blocks = cacheShape.GetDim(0);
+    const int64_t slotsPerBlock = cacheShape.GetDim(1);
+    OP_CHECK_IF(blocks <= 0 || slotsPerBlock <= 0 || blocks > std::numeric_limits<int64_t>::max() / slotsPerBlock ||
+                    scaleShape.GetDim(0) != blocks || scaleShape.GetDim(1) != slotsPerBlock,
+                OP_LOGE(context_->GetNodeName(), "cache and scale require matching positive block dimensions"),
+                return ge::GRAPH_FAILED);
     tilingData_.set_bs(bs_);
     tilingData_.set_d(d_);
     tilingData_.set_scaleCol(scaleCol_);

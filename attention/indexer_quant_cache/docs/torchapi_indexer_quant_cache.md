@@ -142,6 +142,7 @@ cann_ops_transformer.indexer_quant_cache(cache, cache_scale, x, slot_mapping, *,
   - 示例：d=128、quant_mode=0 → scaleCol=4 → cache.headDim ≥ 128 且cache_scale.headDim ≥ 4。
 - slot_mapping的维度应等于x的维度减1，即slot_mapping为x除最后一维外的所有维度展平。
 - slot_mapping中值为-1的token会被跳过不处理；其余有效元素取值范围为[0, num_slots - 1]，且元素值应保证不重复，重复时不保证结果正确性。
+- 调用方必须保证 `slot_mapping` 中除 `-1` 外的索引均位于 `[0, blockNum * blockSize - 1]`，且有效索引不重复；算子不提供越界索引检查或安全跳过保证。越界输入可能导致非法访存。
 
 ## 确定性计算
 
@@ -163,7 +164,7 @@ cann_ops_transformer.indexer_quant_cache(cache, cache_scale, x, slot_mapping, *,
     cache = torch.zeros(block_num, block_size, 1, d, dtype=torch.float8_e4m3fn).npu()
     cache_scale = torch.zeros(block_num, block_size, 1, 1, dtype=torch.float32).npu()  # mode1 scaleCol=1
     x = torch.randn(bs, d, dtype=torch.float16).npu()
-    slot_mapping = torch.randint(0, block_num * block_size, (bs,), dtype=torch.int32).npu()
+    slot_mapping = torch.arange(bs, dtype=torch.int32).npu()
 
     indexer_quant_cache(
         cache, cache_scale, x, slot_mapping, quant_mode="fp8", round_scale=True, x_scale=1.0)
