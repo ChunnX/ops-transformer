@@ -253,7 +253,7 @@ FlashAttentionVarLenScore<implMode, layOutType, hasPse, hasAtten, hasDrop, INPUT
     AscendC::SetFlag<HardEvent::V_MTE2>(eventIdVToMte2);
     AscendC::WaitFlag<HardEvent::V_MTE2>(eventIdVToMte2);
     if (this->blockIdx < this->tilingData->multiCoreParams.coreNum) {
-        LocalTensor<half> pseHelpBuffer = this->stage1PingBuf.template Get<half>();
+        LocalTensor<half> pseHelpBuffer = this->pseTBuf.template Get<half>();
         PseInnerAlibiCreate<hasPse>(this->pseAlibiGm, pseHelpBuffer, this->pseInfo);
     }
     prefixNAddr = prefix;
@@ -493,7 +493,9 @@ __aicore__ inline void FlashAttentionVarLenScore<implMode, layOutType, hasPse, h
 
     SplitExtraInfo extraInfo[3];
     int64_t taskId = 0;
-    event_t eventIdMte3ToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
+    event_t eventIdMte3ToMte2[3] = {static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>()),
+                                    static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>()),
+                                    static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>())};
     for (int64_t multiCoreInnerIdx = multiCoreInnerOffset; multiCoreInnerIdx < multiCoreInnerLimit;
          ++multiCoreInnerIdx) {
         this->softMaxCheckRes = SOFTMAX_CHECK_RES_DEFAULT_VALUE;
@@ -519,7 +521,7 @@ __aicore__ inline void FlashAttentionVarLenScore<implMode, layOutType, hasPse, h
 
             if (taskId > 0) {
                 this->ProcessVec1(extraInfo[(taskId + 2) % 3]);
-                SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2);
+                SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2[(taskId + 2) % 3]);
             }
 
             if (taskId > 1) {
@@ -528,7 +530,7 @@ __aicore__ inline void FlashAttentionVarLenScore<implMode, layOutType, hasPse, h
             }
 
             if (taskId > 0) {
-                WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2);
+                WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2[(taskId + 2) % 3]);
                 this->IterateBmm2(extraInfo[(taskId + 2) % 3]);
             }
 
@@ -543,12 +545,12 @@ __aicore__ inline void FlashAttentionVarLenScore<implMode, layOutType, hasPse, h
         this->softMaxCheckRes = SOFTMAX_CHECK_RES_DEFAULT_VALUE;
         this->WaitBmm1Result(extraInfo[(taskId + 2) % 3]);
         this->ProcessVec1(extraInfo[(taskId + 2) % 3]);
-        SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2);
+        SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2[(taskId + 2) % 3]);
         if (taskId > 1) {
             // 对应extraInfo[(i+1)%3]
             this->WaitBmm2Result();
         }
-        WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2);
+        WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2[(taskId + 2) % 3]);
         this->IterateBmm2(extraInfo[(taskId + 2) % 3]);
         if (taskId > 1) {
             this->ProcessVec2(extraInfo[(taskId + 1) % 3]);
@@ -598,7 +600,9 @@ __aicore__ inline void FlashAttentionVarLenScore<implMode, layOutType, hasPse, h
 
     int64_t taskId = 0;
     int64_t pairTaskId = 0;
-    event_t eventIdMte3ToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
+    event_t eventIdMte3ToMte2[3] = {static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>()),
+                                    static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>()),
+                                    static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>())};
     if ASCEND_IS_AIC {
         SetFlag<HardEvent::MTE1_MTE2>(Q_EVENT0);
         SetFlag<HardEvent::MTE1_MTE2>(Q_EVENT0 + 1);
@@ -666,9 +670,9 @@ __aicore__ inline void FlashAttentionVarLenScore<implMode, layOutType, hasPse, h
             if ASCEND_IS_AIV {
                 if (taskId > 0 && needExec) {
                     this->ProcessVec1(extraInfo[(taskId + 2) % 3]);
-                    SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2);
+                    SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2[(taskId + 2) % 3]);
                     CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE3>(SYNC_V1_C2_FLAG[(taskId + 1) & 1][this->blockIdx & 1]);
-                    WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2);
+                    WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2[(taskId + 2) % 3]);
                 }
                 if (pairTaskId > 0 && needPair) {
                     CrossCoreWaitFlag(SYNC_C1_V1_FLAG[(pairTaskId + 1) & 1][!(this->blockIdx & 1)]);
@@ -713,9 +717,9 @@ __aicore__ inline void FlashAttentionVarLenScore<implMode, layOutType, hasPse, h
         if ASCEND_IS_AIV {
             CrossCoreWaitFlag(SYNC_C1_V1_FLAG[(taskId + 1) & 1][this->blockIdx & 1]);
             this->ProcessVec1(extraInfo[(taskId + 2) % 3]);
-            SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2);
+            SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2[(taskId + 2) % 3]);
             CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE3>(SYNC_V1_C2_FLAG[(taskId + 1) & 1][this->blockIdx & 1]);
-            WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2);
+            WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2[(taskId + 2) % 3]);
         }
         if ASCEND_IS_AIC {
             CrossCoreWaitFlag(SYNC_V1_C2_FLAG[(taskId + 1) & 1][0]);

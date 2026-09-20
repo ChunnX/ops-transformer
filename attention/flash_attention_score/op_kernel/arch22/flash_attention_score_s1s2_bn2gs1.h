@@ -353,7 +353,7 @@ __aicore__ inline void FlashAttentionScoreS1s2Bn2gs1<
     LocalTensor<T> apiTmpBuffer = this->commonTBuf.template Get<T>();
     DropOutBitModeInit(apiTmpBuffer);
     if (this->blockIdx < this->tilingData->multiCoreParams.coreNum) {
-        LocalTensor<half> pseHelpBuffer = this->stage1PingBuf.template Get<half>();
+        LocalTensor<half> pseHelpBuffer = this->pseTBuf.template Get<half>();
         PseInnerAlibiCreate<hasPse>(this->pseAlibiGm, pseHelpBuffer, this->pseInfo);
     }
 }
@@ -499,8 +499,8 @@ __aicore__ inline void FlashAttentionScoreS1s2Bn2gs1<implMode, layOutType, hasPs
     if constexpr (hasAtten == true) {
         this->pipe->InitBuffer(this->maskTBufPing, stage1AttenSize); // 可以给attenmask 9k
     }
-    this->pipe->InitBuffer(this->maskTBufPong, maskTBufPongSize); // 可以给dropoutmask 16k
-    this->pipe->InitBuffer(this->pseTBuf, 16384);                 // pse 16k
+    this->pipe->InitBuffer(this->maskTBufPong, maskTBufPongSize);                   // 可以给dropoutmask 16k
+    this->pipe->InitBuffer(this->pseTBuf, stage2Size * sizeof(T) + repeatMaxBytes); // pse 16k/32k
 
     this->pipe->InitBuffer(this->stage1PingBuf, stage2Size * sizeof(T)); // t.a 32k
     this->pipe->InitBuffer(this->stage2TBuf, stage2Size * sizeof(T));    // t.c 32k
@@ -777,7 +777,9 @@ __aicore__ inline void FlashAttentionScoreS1s2Bn2gs1<implMode, layOutType, hasPs
 
     SplitExtraInfo extraInfo[3];
     int64_t taskId = 0;
-    event_t eventIdMte3ToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
+    event_t eventIdMte3ToMte2[3] = {static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>()),
+                                    static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>()),
+                                    static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>())};
 
     if constexpr (enableL1Reuse) {
         GetBNIdx(multiCoreInnerOffset, multiCoreInnerLimit);
@@ -872,7 +874,7 @@ __aicore__ inline void FlashAttentionScoreS1s2Bn2gs1<implMode, layOutType, hasPs
 
                     if (taskId > 0 && notLast) {
                         this->ProcessVec1(extraInfo[(taskId + 2) % 3]);
-                        AscendC::SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2);
+                        AscendC::SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2[(taskId + 2) % 3]);
                     }
 
                     if (taskId > 1) {
@@ -881,7 +883,7 @@ __aicore__ inline void FlashAttentionScoreS1s2Bn2gs1<implMode, layOutType, hasPs
                     }
 
                     if (taskId > 0 && notLast) {
-                        AscendC::WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2);
+                        AscendC::WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2[(taskId + 2) % 3]);
                         this->IterateBmm2(extraInfo[(taskId + 2) % 3]);
                     }
 
@@ -938,7 +940,7 @@ __aicore__ inline void FlashAttentionScoreS1s2Bn2gs1<implMode, layOutType, hasPs
 
                 if (taskId > 0 && notLast) {
                     this->ProcessVec1(extraInfo[(taskId + 2) % 3]);
-                    AscendC::SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2);
+                    AscendC::SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2[(taskId + 2) % 3]);
                 }
 
                 if (taskId > 1) {
@@ -947,7 +949,7 @@ __aicore__ inline void FlashAttentionScoreS1s2Bn2gs1<implMode, layOutType, hasPs
                 }
 
                 if (taskId > 0 && notLast) {
-                    AscendC::WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2);
+                    AscendC::WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2[(taskId + 2) % 3]);
                     this->IterateBmm2(extraInfo[(taskId + 2) % 3]);
                 }
 
@@ -1312,6 +1314,8 @@ FlashAttentionScoreS1s2Bn2gs1<implMode, layOutType, hasPse, hasAtten, hasDrop, I
             this->pseInfo.vec1S1RealSize = extraInfo.vec1S1RealSize;
             this->pseInfo.s2RealSize = extraInfo.s2RealSize;
             this->pseInfo.needCast = true;
+            stage1PingTensor.SetSize(extraInfo.vec1S1RealSize * extraInfo.s2AlignedSize);
+            commonTBuf.SetSize(extraInfo.vec1S1RealSize * extraInfo.s2AlignedSize);
             bool innerAlibiFlag = false; // alibi核内生成相关配置，仅在LAYOUT=TND，SparseMode=8时生效
             if constexpr (layOutType == LayOutTypeEnum::LAYOUT_TND) {
                 if (this->tilingData->inputParams.sparseType ==
