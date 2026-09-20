@@ -211,6 +211,12 @@ void QuantFlashAttnTilingImpl::UpdateTilingKeyInfo()
 
 void QuantFlashAttnTilingImpl::UpdateTilingKeyQuantMode()
 {
+    // SOFTMAX_FP16 (quant_mode=3) 由独立的 mxfp8_fp16 kernel 承载, tilingKey 的 QuantMode 必须为
+    // QFA_MXFP8_FP16(3), 才能分发到 quant_flash_attn_mxfp8_fp16 入口
+    if (qfaInfo_->quantMode == QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP16) {
+        tilingKeyInfo_.quantMode = static_cast<uint64_t>(QFA_MXFP8_FP16);
+        return;
+    }
     tilingKeyInfo_.quantMode =
         decodeS1GMerge_ ? static_cast<uint64_t>(QFA_MXFP8_FP32_DECODE) : static_cast<uint64_t>(QFA_MXFP8_FP32_PREFILL);
 }

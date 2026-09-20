@@ -139,7 +139,7 @@ __aicore__ inline void quant_flash_attn_mxfp8_fp16(
 
     using CubeBlock =
         BaseApi::QuantFlashAttnBlockCubeMxfp8Fp16<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType,
-                                                  dTemplateType, dVTemplateType, KvLayoutType, useDn, isDAligned>;
+                                                  dTemplateType, dVTemplateType, KvLayoutType>;
     using VecFaBlock =
         BaseApi::QuantFlashAttnBlockVecMxfp8Fp16<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
                                                  s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
@@ -147,7 +147,7 @@ __aicore__ inline void quant_flash_attn_mxfp8_fp16(
 
     using CubeBlockDummy =
         BaseApi::QuantFlashAttnBlockCubeMxfp8Fp16Dummy<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType,
-                                                       dTemplateType, dVTemplateType, KvLayoutType, useDn>;
+                                                       dTemplateType, dVTemplateType, KvLayoutType>;
     using VecFaBlockDummy =
         BaseApi::QuantFlashAttnBlockVecMxfp8Fp16Dummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
                                                       s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
