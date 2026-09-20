@@ -64,16 +64,13 @@ __aicore__ inline void LoadHOutAndCast(uint64_t gmOffset, uint32_t tD)
     ConsumeHOutTile(tD);
 }
 
-/// 第一遍R1把h_out原始低精度位值暂存在尚未使用的x2缓存，并完成FP32转换。
-__aicore__ inline void CacheHOutAndCast(uint64_t gmOffset, uint32_t tOff, uint32_t tD)
+/// 第一遍R1一次搬运完整h_out到尚未使用的x2缓存，减少分块搬运和事件开销。
+__aicore__ inline void CacheHOut(uint64_t gmOffset)
 {
-    LocalTensor<T> hOutCache = bufX2Cache_.Get<T>()[tOff];
-    LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-    DataCopy(hOutCache, hOutGm_[gmOffset], tD);
+    LocalTensor<T> hOutCache = bufX2Cache_.Get<T>();
+    DataCopy(hOutCache, hOutGm_[gmOffset], D_);
     SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
     WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-    MhcSandwichRegBase::CastB16ToFp32(hOut, hOutCache, tD);
-    PipeBarrier<PIPE_V>();
 }
 
 /// 第二遍R1/R2直接从x2缓存恢复h_out，避免再次从GM读取。
