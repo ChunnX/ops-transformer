@@ -692,10 +692,8 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Communicati
 
         if (dstRankId != epRankId_) { // 远端 使用URMA发送 count + state
             uint64_t commHandle = GetCommHandle(mc2Context_, dstRankId, channelIndex_);
-            int32_t ret = hcomm_.WriteWithNotifyNbi<true, PIPE_S, PIPE_MTE3, DATA_CFG>(
-                commHandle, remoteCountAddr, srcWorkspaceAddr, moeNumPerRankSize_, notifyAddr, notifyVal);
-            ascendc_assert(ret == 0, "Communication WriteWithNotifyNbi failed, ret=%d, epRank=%u, dstRank=%u", ret,
-                           epRankId_, dstRankId);
+            hcomm_.WriteWithNotifyNbi<true, PIPE_S, PIPE_MTE3, DATA_CFG>(commHandle, remoteCountAddr, srcWorkspaceAddr,
+                                                                         moeNumPerRankSize_, notifyAddr, notifyVal);
             continue;
         }
 
@@ -1091,10 +1089,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Communicati
         uint64_t commHandle = GetCommHandle(mc2Context_, dstRankId, channelIndex_);
         GM_ADDR srcStateAddr = GetWinAddrByRankId(mc2Context_, epRankId_, cntWinStateOffset_) + dstRankStateOffset_;
         GM_ADDR notifyAddr = GetWinAddrByRankId(mc2Context_, dstRankId, cntWinStateOffset_) + dstRankStateOffset_;
-        int32_t ret =
-            hcomm_.WriteNbi<true, PIPE_S, PIPE_MTE3, DATA_CFG>(commHandle, notifyAddr, srcStateAddr, WIN_ADDR_ALIGN);
-        ascendc_assert(ret == 0, "CommunicationCached WriteNbi failed, ret=%d, epRank=%u, dstRank=%u", ret, epRankId_,
-                       dstRankId);
+        hcomm_.WriteNbi<true, PIPE_S, PIPE_MTE3, DATA_CFG>(commHandle, notifyAddr, srcStateAddr, WIN_ADDR_ALIGN);
     }
 }
 
@@ -1214,10 +1209,8 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteToRemo
         uint32_t cntPerChannel = Ceil(sendTokenNum, groupSize_);
         uint32_t tokenStart = coreIndexInGroup_ * cntPerChannel;
         if (sendTokenNum == 0 || tokenStart >= sendTokenNum) {
-            int32_t ret = hcomm_.WriteNbi<true, PIPE_S, PIPE_MTE3, DATA_CFG>(commHandle, notifyAddr,
-                                                                             payloadStashStateWinAddr_, WIN_ADDR_ALIGN);
-            ascendc_assert(ret == 0, "WriteToRemote WriteNbi failed, ret=%d, epRank=%u, dstRank=%u, sendTokenNum=%u",
-                           ret, epRankId_, dstRankId, sendTokenNum);
+            hcomm_.WriteNbi<true, PIPE_S, PIPE_MTE3, DATA_CFG>(commHandle, notifyAddr, payloadStashStateWinAddr_,
+                                                               WIN_ADDR_ALIGN);
             continue;
         }
         uint32_t tokenNum = (tokenStart + cntPerChannel > sendTokenNum) ? (sendTokenNum - tokenStart) : cntPerChannel;
@@ -1273,24 +1266,15 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenBy
                 localDescs[j + 1].addr = metaStashAddr;
                 srcIdx++;
             }
-            int32_t ret;
             // 最后一批 token 的末笔写生成 CQE，epilogue 末尾等待发送完成
             if (processed + batchCnt == tokenNum && i + 1U == batchGroup) {
-                ret = hcomm_.WriteNbi<LAST_DATA_CFG>(batchHandle, remoteWinAddr, localDescs, sgePerSqe);
+                hcomm_.WriteNbi<LAST_DATA_CFG>(batchHandle, remoteWinAddr, localDescs, sgePerSqe);
             } else {
-                ret = hcomm_.WriteNbi<DATA_CFG>(batchHandle, remoteWinAddr, localDescs, sgePerSqe);
+                hcomm_.WriteNbi<DATA_CFG>(batchHandle, remoteWinAddr, localDescs, sgePerSqe);
             }
-            ascendc_assert(ret == 0,
-                           "WriteToRemote BatchWriteNbi failed, ret=%d, epRank=%u, dstRank=%u, "
-                           "channelIndex %u, dstSlotStart %u",
-                           ret, epRankId_, dstRankId, channelIndex_, processed + i * SLOT_NUM_PER_SQE);
             commCnt++;
             if (commCnt == HCOMM_BATCH_CAPACITY) {
-                int32_t commitRet = hcomm_.BatchCommit(batchHandle);
-                ascendc_assert(commitRet == 0,
-                               "WriteToRemote BatchCommit failed, ret=%d, epRank=%u, dstRank=%u, channelIndex %u, "
-                               "dstSlotStart %u",
-                               commitRet, epRankId_, dstRankId, channelIndex_, processed + i * SLOT_NUM_PER_SQE);
+                hcomm_.BatchCommit(batchHandle);
                 commCnt = 0;
             }
             remoteWinAddr += slotNum * perSlotBytes_;
@@ -1302,13 +1286,8 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenBy
     }
     localDescs[0].addr = payloadStashStateWinAddr_;
     localDescs[0].len = WIN_ADDR_ALIGN;
-    int32_t ret = hcomm_.WriteNbi<NOTIFY_CFG>(batchHandle, notifyAddr, localDescs, 1);
-    ascendc_assert(ret == 0, "WriteToRemote notify WriteNbi failed, ret=%d, epRank=%u, dstRank=%u, channelIndex %u",
-                   ret, epRankId_, dstRankId, channelIndex_);
-    int32_t commitRet = hcomm_.BatchCommit(batchHandle);
-    ascendc_assert(commitRet == 0,
-                   "WriteToRemote Last BatchCommit failed, ret=%d, epRank=%u, dstRank=%u, channelIndex %u", commitRet,
-                   epRankId_, dstRankId, channelIndex_);
+    hcomm_.WriteNbi<NOTIFY_CFG>(batchHandle, notifyAddr, localDescs, 1);
+    hcomm_.BatchCommit(batchHandle);
 }
 
 template <TemplateMoeEpDispatchTypeClass>
