@@ -109,17 +109,16 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         return;
     }
 
+    // 发出本核MTE3完成事件，同时读取follower的partial1，用32B搬运隐藏事件等待。
+    SetFlag<HardEvent::MTE3_V>(evtMte3toV_);
     DataCopy(partialBuf, partial1Gm_[(uint64_t)token * PARTIAL_SLOT_ELEMS], PARTIAL_SLOT_ELEMS);
     SetFlag<HardEvent::MTE2_S>(evtMte2toS_);
     WaitFlag<HardEvent::MTE2_S>(evtMte2toS_);
+    WaitFlag<HardEvent::MTE3_V>(evtMte3toV_);
     sumSqHalf[1] = partialBuf.GetValue(0);
     for (uint32_t o = 0; o < N_MAX; ++o) {
         dotHalf[1][o] = partialBuf.GetValue(o + 1U);
     }
-
-    // CrossCore等待只保证两个sibling之间的会合，不能替代本核流水同步。
-    // R6复用x2低精度缓存前，显式等待R3的x2_out写出读取完成。
-    FenceMte3ToV();
 
     const float totalSumSqPre = sumSqHalf[0] + sumSqHalf[1];
     float xHatVals[N_MAX];
