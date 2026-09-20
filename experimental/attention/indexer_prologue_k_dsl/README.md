@@ -79,7 +79,19 @@ assert result is k_cache
 
 ## 构建与测试
 
-先安装提供 DSL kernel 的 net-ops wheel，再构建本仓整包：
+先在 `cannbot-arena-ds41` 的 `ds41` 分支构建并安装包含 Native provider 的
+net-ops wheel：
+
+```bash
+cd net/native_package
+./run-build.sh --operator indexer_prologue_k
+python3 -m pip install \
+  output/operators/indexer_prologue_k/wheels/*.whl \
+  --force-reinstall --no-deps
+```
+
+该构建会打包 4 个 ACLGraph 验证布局的 AOT variant；其他合法 shape 在默认
+Native `prefer` 模式下首次调用 JIT。随后构建本仓整包：
 
 ```bash
 bash build.sh --torch_extension
@@ -91,6 +103,9 @@ python3 -m pip install build_out/*.whl --force-reinstall --no-deps
 ```bash
 bash experimental/attention/indexer_prologue_k_dsl/tests/test.sh
 ```
+
+若要确认 ACLGraph 用例命中已安装的 AOT variant，可在测试前设置
+`CANNBOTDSL_NATIVE_BINARY_MODE=require`；此时未命中不会回退 JIT。
 
 ## ACLGraph
 
