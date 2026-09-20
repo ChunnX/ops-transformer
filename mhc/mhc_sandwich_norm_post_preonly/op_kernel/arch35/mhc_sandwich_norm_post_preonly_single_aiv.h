@@ -139,6 +139,7 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
     LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
     LocalTensor<float> reduceRows = bufResFp32_.Get<float>();
     LocalTensor<float> tmp = bufSqFp32_.Get<float>();
+
     DataCopyExtParams copyParams = {1, 0, 0, 0, 0};
     copyParams.blockLen = tD * sizeof(float);
     DataCopyPadExtParams<float> copyPad = {false, 0, 0, 0};
@@ -151,7 +152,11 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
             const uint32_t h0 = half * 2;
             const uint32_t h1 = h0 + 1;
 
-            MhcSandwichRegBase::PairSquareAdd(out, x2[h0 * dimTile_], x2[h1 * dimTile_], tD);
+            MhcSandwichRegBase::Mul(out, x2[h0 * dimTile_], x2[h0 * dimTile_], tD);
+            PipeBarrier<PIPE_V>();
+            MhcSandwichRegBase::Mul(tmp, x2[h1 * dimTile_], x2[h1 * dimTile_], tD);
+            PipeBarrier<PIPE_V>();
+            MhcSandwichRegBase::Add(out, out, tmp, tD);
             PipeBarrier<PIPE_V>();
             sumSqHalf[half] += ReduceSumPrecise(out, tD);
 
@@ -188,7 +193,11 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
 
         // 五行依次保存{sumSqPre,dot0,dot1,dot2,dot3}，一次按行归约，
         // 避免每个标量结果都单独触发一次Vector到Scalar的等待。
-        MhcSandwichRegBase::PairSquareAdd(reduceRows, x2[h0 * dimTile_], x2[h1 * dimTile_], tD);
+        MhcSandwichRegBase::Mul(reduceRows, x2[h0 * dimTile_], x2[h0 * dimTile_], tD);
+        PipeBarrier<PIPE_V>();
+        MhcSandwichRegBase::Mul(tmp, x2[h1 * dimTile_], x2[h1 * dimTile_], tD);
+        PipeBarrier<PIPE_V>();
+        MhcSandwichRegBase::Add(reduceRows, reduceRows, tmp, tD);
 
         for (uint32_t o = 0; o < N_MAX; ++o) {
             LocalTensor<float> dotRow = reduceRows[(o + 1) * dimTile_];
@@ -257,10 +266,15 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
         LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
         if constexpr (USE_RMS_MID) {
             LocalTensor<float> out = bufResFp32_.Get<float>()[N_MAX * dimTile_];
+            LocalTensor<float> tmp = bufSqFp32_.Get<float>();
             for (uint32_t half = 0; half < 2; ++half) {
                 const uint32_t h0 = half * 2;
                 const uint32_t h1 = h0 + 1;
-                MhcSandwichRegBase::PairSquareAdd(out, x2[h0 * dimTile_], x2[h1 * dimTile_], tD);
+                MhcSandwichRegBase::Mul(out, x2[h0 * dimTile_], x2[h0 * dimTile_], tD);
+                PipeBarrier<PIPE_V>();
+                MhcSandwichRegBase::Mul(tmp, x2[h1 * dimTile_], x2[h1 * dimTile_], tD);
+                PipeBarrier<PIPE_V>();
+                MhcSandwichRegBase::Add(out, out, tmp, tD);
                 PipeBarrier<PIPE_V>();
                 midSqHalf[half] += ReduceSumPrecise(out, tD);
             }
