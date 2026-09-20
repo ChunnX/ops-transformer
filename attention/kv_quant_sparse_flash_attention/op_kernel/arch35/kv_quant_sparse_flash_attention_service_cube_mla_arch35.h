@@ -24,10 +24,28 @@
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
 #include "kv_quant_sparse_flash_attention_common_arch35.h"
-#include "../../../common/op_kernel/offset_calculator.h"
-#include "../../../common/op_kernel/matmul.h"
-#include "../../../common/op_kernel/CopyInL1.h"
-#include "../../../common/op_kernel/FixpipeOut.h"
+
+#if __has_include("../../common/op_kernel/offset_calculator.h")
+#include "../../common/op_kernel/offset_calculator.h"
+#else
+#include "../common/offset_calculator.h"
+#endif
+
+#if __has_include("../../common/op_kernel/matmul.h")
+#include "../../common/op_kernel/matmul.h"
+#else
+#include "../common/matmul.h"
+#endif
+#if __has_include("../../common/op_kernel/CopyInL1.h")
+#include "../../common/op_kernel/CopyInL1.h"
+#else
+#include "../common/CopyInL1.h"
+#endif
+#if __has_include("../../common/op_kernel/FixpipeOut.h")
+#include "../../common/op_kernel/FixpipeOut.h"
+#else
+#include "../common/FixpipeOut.h"
+#endif
 
 using namespace AscendC;
 using namespace AscendC::Impl::Detail;
