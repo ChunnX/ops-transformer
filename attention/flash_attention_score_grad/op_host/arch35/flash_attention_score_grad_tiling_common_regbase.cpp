@@ -1670,6 +1670,13 @@ void SetSplitAxis(const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbas
     bool bnSparseLimit = bnLimit && (fBaseParams.layoutType != INPUT_FORMAT_TND) &&
                          (fBaseParams.sparseMode != static_cast<uint32_t>(SparseMode::PREFIX)) &&
                          (fBaseParams.sparseMode != static_cast<uint32_t>(SparseMode::PREFIX_COMPRESS));
+    bool bn2S2D192Dv128Limit =
+        fBaseParams.layoutType != INPUT_FORMAT_TND && fBaseParams.b == 1 && fBaseParams.n1 == 128 &&
+        fBaseParams.n2 == 128 && fBaseParams.s1 == BN2S2_MAX_S && fBaseParams.s2 == BN2S2_MAX_S &&
+        fBaseParams.d == static_cast<uint32_t>(ConstAxisTemplateNum::NUM192) &&
+        fBaseParams.d1 == static_cast<uint32_t>(ConstAxisTemplateNum::NUM128) && !fBaseParams.isSparse &&
+        !fBaseParams.isDeterministic && fBaseParams.keepProb >= 1 && !fBaseParams.hasRope &&
+        (fBaseParams.queryType == ge::DT_FLOAT16 || fBaseParams.queryType == ge::DT_BF16);
     fBaseParams.isBn2MultiBlk =
         bnSparseLimit && (fBaseParams.s1 > BN2_MAX_S || fBaseParams.s2 > BN2_MAX_S) &&
         (fBaseParams.s1 <= BN2_MULTIBLK_SEQ && fBaseParams.s2 <= BN2_MULTIBLK_SEQ) &&
@@ -1677,7 +1684,7 @@ void SetSplitAxis(const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbas
         (fBaseParams.d == fBaseParams.d1) &&
         !(fBaseParams.queryType == ge::DT_FLOAT8_E5M2 || fBaseParams.queryType == ge::DT_FLOAT8_E4M3FN ||
           fBaseParams.queryType == ge::DT_HIFLOAT8) &&
-        !fBaseParams.hasRope;
+        !fBaseParams.hasRope && !bn2S2D192Dv128Limit;
     fBaseParams.isBn2 = fBaseParams.isBn2MultiBlk ? true : fBaseParams.isBn2; // 多基本块场景是原始bn2的子集
     if (fBaseParams.isBn2 && !fBaseParams.isBn2MultiBlk) {
         fBaseParams.isDeterministic = false;
@@ -1695,9 +1702,10 @@ void SetSplitAxis(const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbas
         }
     }
 
-    bool bn2S2NotTndLimit = (fBaseParams.s1 < fBaseParams.s2) && (fBaseParams.s2 <= BN2S2_MAX_S) &&
-                            (fBaseParams.s2 - fBaseParams.s1 >= BN2_MAX_S) && (fBaseParams.d <= BN2S2_WRITE_UB_D) &&
-                            (!fBaseParams.isSparse) && (!fBaseParams.isDeterministic);
+    bool bn2S2NotTndLimit = ((fBaseParams.s1 < fBaseParams.s2) && (fBaseParams.s2 <= BN2S2_MAX_S) &&
+                             (fBaseParams.s2 - fBaseParams.s1 >= BN2_MAX_S) && (fBaseParams.d <= BN2S2_WRITE_UB_D) &&
+                             (!fBaseParams.isSparse) && (!fBaseParams.isDeterministic)) ||
+                            bn2S2D192Dv128Limit;
     bool bn2S2RouteLimit =
         !fBaseParams.hasRope && fBaseParams.d <= BN2_MAX_D &&
         (fBaseParams.layoutType == INPUT_FORMAT_TND || (fBaseParams.isAllSame && !fBaseParams.isDeterministic) ||
