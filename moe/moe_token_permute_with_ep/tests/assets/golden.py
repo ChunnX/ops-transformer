@@ -57,15 +57,6 @@ _TORCH_DT_MAP = {
 }
 
 
-def _numpy_to_tf(arr):
-    """numpy -> tf.Tensor；ml_dtypes.bfloat16 经 fp32 无损桥接。"""
-    if arr is None:
-        return None
-    if _BF16_NUMPY is not None and arr.dtype == _BF16_NUMPY:
-        return tf.constant(arr.astype("float32"), dtype=tf.bfloat16)
-    return tf.constant(arr)
-
-
 def _tf_to_numpy(tensor):
     """tf.Tensor -> numpy；bfloat16 经 fp32 无损桥接（纯搬运无舍入，往返 bit-exact）。"""
     if tensor is None:
@@ -79,7 +70,8 @@ def _tf_to_numpy(tensor):
 
 
 def _to_tf(t):
-    """框架 Tensor / numpy -> tf.Tensor（兼容 torch.Tensor / tf.Tensor / numpy）。"""
+    """框架 Tensor / numpy -> tf.Tensor（torch.Tensor / tf.Tensor / numpy 统一入口；
+    numpy 输入含 ml_dtypes.bfloat16 时经 fp32 无损桥接——原 _numpy_to_tf 已并入）。"""
     if t is None:
         return None
     if hasattr(t, "detach"):  # torch.Tensor
@@ -208,7 +200,7 @@ def _compute_core(prepared):
 def _run_numpy_flow(tokens, indices, probs, num_out_tokens, range_, padded_mode):
     """golden 流：numpy 入 -> [numpy, numpy, numpy|None] 出。"""
     prepared = _prepare_inputs(
-        _numpy_to_tf(tokens), _numpy_to_tf(indices), _optional_probs(_numpy_to_tf(probs)),
+        _to_tf(tokens), _to_tf(indices), _optional_probs(_to_tf(probs)),
         num_out_tokens, _normalize_range(range_), padded_mode,
     )
     pt, si, pp = _compute_core(prepared)
