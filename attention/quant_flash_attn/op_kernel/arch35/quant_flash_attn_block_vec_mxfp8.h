@@ -392,17 +392,20 @@ public:
                 tailNeedAtten = !isSkipMask_;
             }
             if (unlikely(runInfo.isFirstS2Loop)) {
+                // [修复] pScale传真实pScaleValue_(原硬编码1.0f): p_scale!=1时主task的max状态机
+                // 折叠ln(p_scale), 尾task用1.0导致两套max/exp约定失配 -> 尾窗P错缩放,
+                // SP3下仅最后~tailLen个token可见尾窗恰全错(TTK 000121/000033实测), SP0则大面积错
                 FaVectorApi::ProcessVec1VfDnTailMxfp8<T, bfloat16_t, false>(
                     pTailBf16Ub, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf_, pScaleSubLoop0Tensor,
                     preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, tailM, runInfo.kvTailLen,
-                    static_cast<T>(constInfo_.scaleValue), descaleQK, negativeFloatScalar_, 1.0f, tailNeedAtten,
-                    maskLine);
+                    static_cast<T>(constInfo_.scaleValue), descaleQK, negativeFloatScalar_, pScaleValue_,
+                    tailNeedAtten, maskLine);
             } else {
                 FaVectorApi::ProcessVec1VfDnTailMxfp8<T, bfloat16_t, true>(
                     pTailBf16Ub, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf_, pScaleSubLoop0Tensor,
                     preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, tailM, runInfo.kvTailLen,
-                    static_cast<T>(constInfo_.scaleValue), descaleQK, negativeFloatScalar_, 1.0f, tailNeedAtten,
-                    maskLine);
+                    static_cast<T>(constInfo_.scaleValue), descaleQK, negativeFloatScalar_, pScaleValue_,
+                    tailNeedAtten, maskLine);
             }
             bmm1ResBuf.SetCrossCore();
             this->stage1OutQue_[stage1Offset].template EnQue(stage1CastTensor);
