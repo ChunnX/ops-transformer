@@ -51,18 +51,18 @@ class AclnnEngramFetchTest : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
-        op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
+        op::SetPlatformNpuArch(Ops::Base::DAV_3510);
         std::cout << "EngramFetch AclnnEngramFetchTest SetUp" << std::endl;
     }
 
     static void TearDownTestCase()
     {
-        op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
+        op::SetPlatformNpuArch(Ops::Base::DAV_3510);
         std::cout << "EngramFetch AclnnEngramFetchTest TearDown" << std::endl;
     }
 };
 
-TEST_F(AclnnEngramFetchTest, ascend950_inference_success)
+TEST_F(AclnnEngramFetchTest, dav3510_inference_success)
 {
     auto commContext_desc = TensorDesc({2048}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
     auto indices_desc = TensorDesc({8}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 7);
@@ -84,7 +84,7 @@ TEST_F(AclnnEngramFetchTest, ascend950_inference_success)
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
-TEST_F(AclnnEngramFetchTest, ascend950_training_success)
+TEST_F(AclnnEngramFetchTest, dav3510_training_success)
 {
     auto commContext_desc = TensorDesc({6146}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
     auto indices_desc = TensorDesc({8}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 7);
@@ -115,7 +115,7 @@ TEST_F(AclnnEngramFetchTest, ascend950_training_success)
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
-TEST_F(AclnnEngramFetchTest, ascend950_nullptr_commContext)
+TEST_F(AclnnEngramFetchTest, dav3510_nullptr_commContext)
 {
     auto indices_desc = TensorDesc({8}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 7);
     auto fetched_desc = TensorDesc({8, 512}, ACL_BF16, ACL_FORMAT_ND);
@@ -135,7 +135,7 @@ TEST_F(AclnnEngramFetchTest, ascend950_nullptr_commContext)
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
 
-TEST_F(AclnnEngramFetchTest, ascend950_nullptr_indices)
+TEST_F(AclnnEngramFetchTest, dav3510_nullptr_indices)
 {
     auto commContext_desc = TensorDesc({2048}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
     auto fetched_desc = TensorDesc({8, 512}, ACL_BF16, ACL_FORMAT_ND);
@@ -155,7 +155,7 @@ TEST_F(AclnnEngramFetchTest, ascend950_nullptr_indices)
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
 
-TEST_F(AclnnEngramFetchTest, ascend950_nullptr_fetched)
+TEST_F(AclnnEngramFetchTest, dav3510_nullptr_fetched)
 {
     auto commContext_desc = TensorDesc({2048}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
     auto indices_desc = TensorDesc({8}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 7);
@@ -175,7 +175,7 @@ TEST_F(AclnnEngramFetchTest, ascend950_nullptr_fetched)
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
 
-TEST_F(AclnnEngramFetchTest, ascend950_execute_entry)
+TEST_F(AclnnEngramFetchTest, dav3510_execute_entry)
 {
     aclnnStatus ret = aclnnEngramFetch(nullptr, 0, nullptr, nullptr);
     EXPECT_THAT(ret, testing::AnyOf(testing::Eq(ACLNN_SUCCESS), testing::Eq(ACLNN_ERR_PARAM_NULLPTR),
