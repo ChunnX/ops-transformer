@@ -519,6 +519,11 @@ static aclnnStatus CheckAndHandleCommMode(const char *commMode, uint8_t &commMod
     if (std::strncmp(commMode, "ai_cpu", CMP_MAX_LEN) == 0) {
         commModeEnum = Mc2Comm::COMM_MODE_AICPU;
     } else if (std::strncmp(commMode, "ccu", CMP_MAX_LEN) == 0) {
+        if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_9201) {
+            // A6(ascend910_96)无CCU引擎，commMode为显式入参，直接拒绝
+            OP_LOGE_WITH_INVALID_ATTR("aclnnAllGatherMatmulV2", "commMode", commMode, "'ai_cpu' on A6");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
         commModeEnum = Mc2Comm::COMM_MODE_CCU;
     } else {
         OP_LOGE_WITH_INVALID_ATTR("aclnnAllGatherMatmulV2", "commMode", commMode, "'ccu' or 'ai_cpu'");
