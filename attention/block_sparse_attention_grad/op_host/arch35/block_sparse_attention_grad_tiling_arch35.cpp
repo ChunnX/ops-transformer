@@ -7,6 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
+#pragma once
 #include "err/ops_err.h"
 #include "log/log.h"
 #include "op_host/tiling_base.h"
@@ -14,6 +15,7 @@
 #include "tiling/platform/platform_ascendc.h"
 #include "../block_sparse_attention_grad_tiling.h"
 #include <algorithm>
+#include "non_zero_tiling_arch35.h"
 
 namespace optiling {
 namespace BSA_ARC35 {
@@ -21,6 +23,11 @@ namespace BSA_ARC35 {
 int64_t AlignTo(int64_t x, int64_t align)
 {
     return (x + align - 1) / align * align;
+}
+
+int64_t CeilDiv(int64_t x, int64_t align)
+{
+    return AlignTo(x, align) / align;
 }
 
 template <typename... Args>
@@ -250,6 +257,23 @@ protected:
         uint32_t singleM = AlignTo(2048, baseM_);
         // Keep all Q tiles for the current KV block/head on one cube core when
         // possible so DK/DV can accumulate in L0 and K/V stays cached in L1.
+        x_block_num_ = CeilDiv(q_seq_len_, blockShapeX_);
+        y_block_num_ = CeilDiv(kv_seq_len_, blockShapeY_);
+
+        if (UseNonZeroIndex()) {
+            uint64_t vecCoreNum = ascendcPlatform.GetCoreNumAiv();
+            uint64_t vecRegLen = ascendcPlatform.GetVecRegLen();
+            uint64_t ubSize;
+            ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
+            NonZeroAscendCTilingImpl tilingImpl = NonZeroAscendCTilingImpl(context_);
+
+            if (tilingImpl.DoTiling(vecCoreNum, ubSize, vecRegLen, tilingData_.mNonZeroTilingData) !=
+                ge::GRAPH_SUCCESS) {
+                OP_LOGE(context_->GetNodeName(), "Tiling4NonZero do tiling failed, unsupported shape.");
+                return ge::GRAPH_FAILED;
+            }
+            needNonZeroWorkspace_ = true;
+        }
 
         tilingData_.set_BlockX(blockShapeX_);
         tilingData_.set_BlockY(blockShapeY_);
@@ -298,6 +322,31 @@ protected:
 
         tilingData_.set_dqSize(dq_size);
         tilingData_.set_dkSize(dk_size);
+        if (needNonZeroWorkspace_) {
+            // index workspace：存放 NonZero 预 kernel 输出的有效 block 下标（数量上界 = mask 元素个数）
+            uint64_t block_sparse_mask_size =
+                static_cast<uint64_t>(batch_num_) * q_head_num_ * x_block_num_ * y_block_num_;
+            auto maskShape = context_->GetInputShape(6);
+            if (maskShape != nullptr) {
+                const gert::Shape &shape = maskShape->GetStorageShape();
+                uint64_t maskElemNum = 1;
+                for (size_t i = 0; i < shape.GetDimNum(); i++) {
+                    maskElemNum *= static_cast<uint64_t>(shape.GetDim(i));
+                }
+                block_sparse_mask_size = maskElemNum;
+            }
+            tilingData_.set_indexWorkspaceOffset(usr_workspace_offset);
+            // 按 512B 对齐：index shape workspace 会被主 kernel 以 uint64 标量读取（必须 8B 对齐），
+            // 而 mask 元素个数很少时（例如整个 mask 只有 1 个 block）本段只有 4B，不补齐会触发标量非对齐异常。
+            usr_workspace_offset += AlignTo(static_cast<int64_t>(block_sparse_mask_size) * sizeof(int32_t), 512);
+            // index shape workspace：NonZero 输出的 [dim, dims, count]
+            tilingData_.set_indexShapeWorkspaceOffset(usr_workspace_offset);
+            usr_workspace_offset += NON_ZERO_SHAPE_WORKSPACE_SIZE;
+            // NonZero 预 kernel 的分核计数 workspace：每个 AIV 核 128B
+            uint64_t vecCoreNum = ascendcPlatform.GetCoreNumAiv();
+            tilingData_.set_nonZeroWorkspaceOffset(usr_workspace_offset);
+            usr_workspace_offset += AlignTo(static_cast<int64_t>(vecCoreNum) * NON_ZERO_COUNT_BYTES_PER_CORE, 512);
+        }
         tilingData_.set_sftgWorkspaceOffset(usr_workspace_offset);
         usr_workspace_offset += sftg_size * sizeof(float);
         tilingData_.set_dqWorkspaceOffset(usr_workspace_offset);
@@ -334,6 +383,9 @@ protected:
          *  1011: FP16 BNSD DET
          *  1100: BF16 TND  DET
          *  1101: FP16 TND  DET
+         *
+         *  说明：非确定性 key（0000~0101）在 host 侧预生成 block index、
+         *  kernel 侧按 index 遍历有效块（NonZero 路径），不再读 blockSparseMask 判块。
          */
         default_key = (dataType_ == ge::DT_BF16) ? default_key : default_key + 0b001;
 
@@ -353,6 +405,19 @@ protected:
     }
 
 private:
+    // 非确定性路径统一使用 host 预生成 block index 的 NonZero 遍历；
+    // 确定性路径（latin 轮次遍历）仍需 kernel 内读 mask，保持原实现不变。
+    bool UseNonZeroIndex() const
+    {
+        return !deterministic_;
+    }
+
+    // 是否需要 NonZero 相关的 workspace（index / index shape / 分核计数）
+    bool needNonZeroWorkspace_ = false;
+
+    static constexpr uint64_t NON_ZERO_SHAPE_WORKSPACE_SIZE = 512; // NonZero 输出 shape 占用 24B，留 512B
+    static constexpr uint64_t NON_ZERO_COUNT_BYTES_PER_CORE = 128; // 每个 AIV 在计数 workspace 占 128B
+
     const char *layout_;
     ge::DataType dataType_;
     uint64_t tilingKey_ = 1000; // arc35 默认tilingkey从1000开始
@@ -369,6 +434,8 @@ private:
     int32_t head_dim_ = 0;
     int32_t blockShapeX_ = 0;
     int32_t blockShapeY_ = 0;
+    int32_t x_block_num_ = 0;
+    int32_t y_block_num_ = 0;
     int32_t max_q_seq_len_ = 0;
     int32_t max_kv_seq_len_ = 0;
     bool deterministic_ = false;
