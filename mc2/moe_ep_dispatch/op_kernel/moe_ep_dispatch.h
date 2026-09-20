@@ -1187,7 +1187,6 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Process()
             CommunicationCached();
             SendPhaseCached();
             SetStatus();
-            WaitStatusCached();
         }
         SyncAll<true>();
         WriteToRemoteWindow();
