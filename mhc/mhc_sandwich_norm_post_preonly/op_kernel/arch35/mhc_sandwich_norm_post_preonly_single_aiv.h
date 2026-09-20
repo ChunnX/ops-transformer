@@ -138,6 +138,7 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
 {
     LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
     LocalTensor<float> reduceRows = bufResFp32_.Get<float>();
+    LocalTensor<float> tmp = bufSqFp32_.Get<float>();
     DataCopyExtParams copyParams = {1, 0, 0, 0, 0};
     copyParams.blockLen = tD * sizeof(float);
     DataCopyPadExtParams<float> copyPad = {false, 0, 0, 0};
@@ -155,20 +156,26 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
             sumSqHalf[half] += ReduceSumPrecise(out, tD);
 
             for (uint32_t o = 0; o < N_MAX; ++o) {
-                LocalTensor<float> phi0 = bufPhiFp32_.AllocTensor<float>();
-                LocalTensor<float> phi1 = bufPhiFp32_.AllocTensor<float>();
-                const uint64_t phiOffset0 = (uint64_t)o * phiCols_ + (uint64_t)h0 * D_ + tOff;
-                const uint64_t phiOffset1 = (uint64_t)o * phiCols_ + (uint64_t)h1 * D_ + tOff;
-                DataCopyPad(phi0, phiGm_[phiOffset0], copyParams, copyPad);
-                DataCopyPad(phi1, phiGm_[phiOffset1], copyParams, copyPad);
-                bufPhiFp32_.EnQue(phi0);
-                bufPhiFp32_.EnQue(phi1);
-                phi0 = bufPhiFp32_.DeQue<float>();
-                phi1 = bufPhiFp32_.DeQue<float>();
-                MhcSandwichRegBase::PairMulAdd(out, x2[h0 * dimTile_], phi0, x2[h1 * dimTile_], phi1, tD);
+                LocalTensor<float> phi = bufPhiFp32_.AllocTensor<float>();
+                uint64_t phiOffset = (uint64_t)o * phiCols_ + (uint64_t)h0 * D_ + tOff;
+                DataCopyPad(phi, phiGm_[phiOffset], copyParams, copyPad);
+                bufPhiFp32_.EnQue(phi);
+                phi = bufPhiFp32_.DeQue<float>();
+                MhcSandwichRegBase::Mul(out, x2[h0 * dimTile_], phi, tD);
                 PipeBarrier<PIPE_V>();
-                bufPhiFp32_.FreeTensor(phi0);
-                bufPhiFp32_.FreeTensor(phi1);
+                bufPhiFp32_.FreeTensor(phi);
+
+                phi = bufPhiFp32_.AllocTensor<float>();
+                phiOffset = (uint64_t)o * phiCols_ + (uint64_t)h1 * D_ + tOff;
+                DataCopyPad(phi, phiGm_[phiOffset], copyParams, copyPad);
+                bufPhiFp32_.EnQue(phi);
+                phi = bufPhiFp32_.DeQue<float>();
+                MhcSandwichRegBase::Mul(tmp, x2[h1 * dimTile_], phi, tD);
+                PipeBarrier<PIPE_V>();
+                bufPhiFp32_.FreeTensor(phi);
+
+                MhcSandwichRegBase::Add(out, out, tmp, tD);
+                PipeBarrier<PIPE_V>();
                 dotHalf[half][o] += ReduceSumPrecise(out, tD);
             }
         }
@@ -185,20 +192,25 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
 
         for (uint32_t o = 0; o < N_MAX; ++o) {
             LocalTensor<float> dotRow = reduceRows[(o + 1) * dimTile_];
-            LocalTensor<float> phi0 = bufPhiFp32_.AllocTensor<float>();
-            LocalTensor<float> phi1 = bufPhiFp32_.AllocTensor<float>();
-            const uint64_t phiOffset0 = (uint64_t)o * phiCols_ + (uint64_t)h0 * D_ + tOff;
-            const uint64_t phiOffset1 = (uint64_t)o * phiCols_ + (uint64_t)h1 * D_ + tOff;
-            DataCopyPad(phi0, phiGm_[phiOffset0], copyParams, copyPad);
-            DataCopyPad(phi1, phiGm_[phiOffset1], copyParams, copyPad);
-            bufPhiFp32_.EnQue(phi0);
-            bufPhiFp32_.EnQue(phi1);
-            phi0 = bufPhiFp32_.DeQue<float>();
-            phi1 = bufPhiFp32_.DeQue<float>();
-            MhcSandwichRegBase::PairMulAdd(dotRow, x2[h0 * dimTile_], phi0, x2[h1 * dimTile_], phi1, tD);
+            LocalTensor<float> phi = bufPhiFp32_.AllocTensor<float>();
+            uint64_t phiOffset = (uint64_t)o * phiCols_ + (uint64_t)h0 * D_ + tOff;
+            DataCopyPad(phi, phiGm_[phiOffset], copyParams, copyPad);
+            bufPhiFp32_.EnQue(phi);
+            phi = bufPhiFp32_.DeQue<float>();
+            MhcSandwichRegBase::Mul(dotRow, x2[h0 * dimTile_], phi, tD);
             PipeBarrier<PIPE_V>();
-            bufPhiFp32_.FreeTensor(phi0);
-            bufPhiFp32_.FreeTensor(phi1);
+            bufPhiFp32_.FreeTensor(phi);
+
+            phi = bufPhiFp32_.AllocTensor<float>();
+            phiOffset = (uint64_t)o * phiCols_ + (uint64_t)h1 * D_ + tOff;
+            DataCopyPad(phi, phiGm_[phiOffset], copyParams, copyPad);
+            bufPhiFp32_.EnQue(phi);
+            phi = bufPhiFp32_.DeQue<float>();
+            MhcSandwichRegBase::Mul(tmp, x2[h1 * dimTile_], phi, tD);
+            PipeBarrier<PIPE_V>();
+            bufPhiFp32_.FreeTensor(phi);
+
+            MhcSandwichRegBase::Add(dotRow, dotRow, tmp, tD);
         }
 
         PipeBarrier<PIPE_V>();
