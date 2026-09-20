@@ -73,14 +73,6 @@ __aicore__ inline void LoadGammaInto(LocalTensor<float> dst, GlobalTensor<float>
     DataCopyPad(dst, src[tOff], gP, gPad);
 }
 
-/// 借用尚未进入R4/R5阶段的phi双槽队列预取gamma0分块。
-__aicore__ inline void PrefetchGamma0Tile(uint32_t tOff, uint32_t tD)
-{
-    LocalTensor<float> gamma = bufPhiFp32_.AllocTensor<float>();
-    LoadGammaInto(gamma, gamma0Gm_, tOff, tD);
-    bufPhiFp32_.EnQue(gamma);
-}
-
 // RMSNorm基础计算
 
 /// 使用二叉树累加模式执行高精度ReduceSum。
