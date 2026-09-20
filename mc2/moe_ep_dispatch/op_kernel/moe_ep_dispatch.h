@@ -77,6 +77,10 @@ constexpr uint32_t MAX_BATCH_SIZE = 160 * 1024U;                  // srcTokenIdx
 constexpr uint32_t SGE_PER_SLOT = 2U;                             // 每 slot 两个 SGE: x 与 meta
 constexpr uint32_t SGE_PER_SQE = 12U;                             // 单 SQE 的 SGE 数
 constexpr uint32_t SLOT_NUM_PER_SQE = SGE_PER_SQE / SGE_PER_SLOT; // 单 SQE 的 slot 数
+// Two aligned halves reuse the original 160 KiB source-index allocation. Full chunks end on an SQE boundary.
+constexpr uint32_t SOURCE_INDEX_BUFFER_BYTES = MAX_BATCH_SIZE / 2U;
+constexpr uint32_t SOURCE_INDEX_CHUNK_TOKENS =
+    SOURCE_INDEX_BUFFER_BYTES / sizeof(int32_t) / SLOT_NUM_PER_SQE * SLOT_NUM_PER_SQE;
 constexpr uint32_t HCOMM_BATCH_CAPACITY = 128U;                   // UB capacity in full 12-SGE requests
 // Start DMA after eight full 12-SGE requests; subsequent batches use the existing UB capacity.
 constexpr uint32_t HCOMM_FIRST_BATCH_WQEBB = 32U;
@@ -97,6 +101,13 @@ public:
     __aicore__ inline void Process();
 
 private:
+    struct TokenChunk {
+        uint32_t rank;
+        uint32_t start;
+        uint32_t count;
+        bool first;
+        bool last;
+    };
     __aicore__ inline void InitTilingAndRoles(const MoeEpDispatchInfo &info);
     __aicore__ inline void InitDerivedValues();
     __aicore__ inline void BindInputTensors(GM_ADDR topkIdx, GM_ADDR topkWeights, GM_ADDR scales,
@@ -129,9 +140,13 @@ private:
     __aicore__ inline void WriteToRemoteWindow();
     __aicore__ inline void GetTokenRange(uint32_t dstRank, uint32_t &tokenStart, uint32_t &tokenNum);
     __aicore__ inline void CommBufferInit();
-    __aicore__ inline void SendTokenChunkToPeer(uint32_t dstRankId, GM_ADDR notifyAddr);
-    __aicore__ inline void SendTokenData(uint32_t tokenStart, uint32_t tokenNum, uint32_t dstRankId,
-                                         GM_ADDR remoteWinAddr, BufDesc *localDescs);
+    __aicore__ inline bool NextTokenChunk(uint32_t &peerOffset, uint32_t &start, uint32_t &remaining,
+                                         TokenChunk &chunk);
+    __aicore__ inline void PrefetchTokenIndices(const TokenChunk &chunk, uint32_t buffer, TEventID event);
+    __aicore__ inline void SendTokenChunk(const TokenChunk &chunk, uint32_t buffer, TEventID event,
+                                         BufDesc *localDescs);
+    __aicore__ inline void WriteTokenPayloads(const TokenChunk &chunk, uint32_t buffer, BufDesc *localDescs);
+    __aicore__ inline void SendTokenPipeline();
     __aicore__ inline void WritePayload(GM_ADDR dst, BufDesc *localDescs, uint32_t sgeCount);
     __aicore__ inline void SendCompletion(uint32_t dstRankId, GM_ADDR notifyAddr);
     __aicore__ inline void ReserveBatchSpace(uint32_t wqebbCount);
@@ -1187,78 +1202,126 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteToRemo
     pendingWqebb_ = 0U;
     firstBatchCommitted_ = false;
 
-    // Stagger the first peer so all 32 Jettys do not burst into the same destination at once.
-    for (uint32_t peerOffset = 0; peerOffset < epWorldSize_; ++peerOffset) {
-        uint32_t dstRankId = (aivId_ + peerOffset) % epWorldSize_;
-        GM_ADDR notifyAddr = GetWinAddrByRankId(mc2Context_, dstRankId, slotWinStateOffset_) + dstStateWinOffset_;
-        notifyAddr += aivId_ * WIN_ADDR_ALIGN;
-        if (unlikely(dstRankId == epRankId_)) {
-            SendCompletion(dstRankId, notifyAddr);
-            continue;
-        }
-        const uint32_t peerIndex = dstRankId < epRankId_ ? dstRankId : dstRankId - 1U;
-        // Payload and flags share the peer's single registered MoE window.
-        // Rebind the existing SQ handle once per peer, without copying its cursor.
-        hcomm_.GetHandleRef(payloadBatch_, peerIndex, notifyAddr);
-        SendTokenChunkToPeer(dstRankId, notifyAddr);
-    }
+    SendTokenPipeline();
     CommitBatch(true);
     DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(topkIdxGMTensor_);
 }
 
 template <TemplateMoeEpDispatchTypeClass>
-__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenData(
-    uint32_t tokenStart, uint32_t tokenNum, uint32_t dstRankId, GM_ADDR remoteWinAddr,
-    BufDesc *localDescs)
+__aicore__ inline bool MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::NextTokenChunk(
+    uint32_t &peerOffset, uint32_t &start, uint32_t &remaining, TokenChunk &chunk)
 {
-    uint32_t processed = 0U;
-    uint32_t maxBatchCnt = MAX_BATCH_SIZE / sizeof(int32_t);
-    DataCopyExtParams copyParams = {1U, 0U, 0U, 0U, 0U};
-    DataCopyPadExtParams<int32_t> copyPadParams{false, 0U, 0U, 0U};
-    LocalTensor<int32_t> srcTokenIdxTensor = tempBuf_.Get<int32_t>();
-    GlobalTensor<int32_t> srcTokenIdxGMTensor;
-    srcTokenIdxGMTensor.SetGlobalBuffer(
-        reinterpret_cast<__gm__ int32_t *>(srcTokenTableAddr_ + static_cast<uint64_t>(dstRankId) * srcTokenListBytes_));
-    while (processed < tokenNum) {
-        uint32_t batchCnt = (tokenNum - processed > maxBatchCnt) ? maxBatchCnt : tokenNum - processed;
-        copyParams.blockLen = static_cast<uint32_t>(batchCnt * sizeof(int32_t));
-        DataCopyPad(srcTokenIdxTensor, srcTokenIdxGMTensor[tokenStart + processed], copyParams, copyPadParams);
-        SyncFunc<AscendC::HardEvent::MTE2_S>();
-        uint32_t batchGroup = Ceil(batchCnt, SLOT_NUM_PER_SQE);
-        uint32_t srcIdx = 0U;
-        for (uint32_t i = 0U; i < batchGroup; ++i) {
-            uint32_t slotNum = i == batchGroup - 1U ? batchCnt - i * SLOT_NUM_PER_SQE : SLOT_NUM_PER_SQE;
-            uint32_t sgePerSqe = slotNum * SGE_PER_SLOT;
-            for (uint32_t j = 0U; j < sgePerSqe; j += SGE_PER_SLOT) {
-                uint64_t srcTokenId = static_cast<uint64_t>(srcTokenIdxTensor.GetValue(srcIdx++));
-                localDescs[j].addr = xAddr_ + srcTokenId * tokenSize_;
-                localDescs[j + 1U].addr = payloadStashWinAddr_ + srcTokenId * metaSlotBytes_;
-            }
-            WritePayload(remoteWinAddr, localDescs, sgePerSqe);
-            remoteWinAddr += slotNum * perSlotBytes_;
+    if (peerOffset == epWorldSize_) {
+        return false;
+    }
+    uint32_t rank = (aivId_ + peerOffset) % epWorldSize_;
+    bool first = remaining == 0U;
+    if (first && rank != epRankId_) {
+        GetTokenRange(rank, start, remaining);
+    }
+    uint32_t count = remaining < SOURCE_INDEX_CHUNK_TOKENS ? remaining : SOURCE_INDEX_CHUNK_TOKENS;
+    chunk = {rank, start, count, first, count == remaining};
+    start += count;
+    remaining -= count;
+    if (chunk.last) {
+        ++peerOffset;
+        start = 0U;
+    }
+    return true;
+}
+
+template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::PrefetchTokenIndices(
+    const TokenChunk &chunk, uint32_t buffer, TEventID event)
+{
+    if (chunk.count == 0U) {
+        return;
+    }
+    // Reuse only after the previous scalar descriptor construction has finished reading this half.
+    SyncFunc<AscendC::HardEvent::S_MTE2>();
+    LocalTensor<int32_t> indices = tempBuf_.Get<int32_t>()[buffer * SOURCE_INDEX_BUFFER_BYTES / sizeof(int32_t)];
+    GlobalTensor<int32_t> source;
+    source.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
+        srcTokenTableAddr_ + static_cast<uint64_t>(chunk.rank) * srcTokenListBytes_));
+    DataCopyExtParams params{1U, static_cast<uint32_t>(chunk.count * sizeof(int32_t)), 0U, 0U, 0U};
+    DataCopyPadExtParams<int32_t> pad{false, 0U, 0U, 0U};
+    DataCopyPad(indices, source[chunk.start], params, pad);
+    SetFlag<AscendC::HardEvent::MTE2_S>(event);
+}
+
+template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteTokenPayloads(
+    const TokenChunk &chunk, uint32_t buffer, BufDesc *localDescs)
+{
+    LocalTensor<int32_t> indices = tempBuf_.Get<int32_t>()[buffer * SOURCE_INDEX_BUFFER_BYTES / sizeof(int32_t)];
+    GM_ADDR remote = GetWinAddrByRankId(mc2Context_, chunk.rank, winDataOffset_) + dstRankWinOffset_ +
+                     static_cast<uint64_t>(chunk.start) * perSlotBytes_;
+    for (uint32_t offset = 0U; offset < chunk.count; offset += SLOT_NUM_PER_SQE) {
+        uint32_t slots = chunk.count - offset;
+        slots = slots < SLOT_NUM_PER_SQE ? slots : SLOT_NUM_PER_SQE;
+        for (uint32_t slot = 0U; slot < slots; ++slot) {
+            uint64_t token = static_cast<uint64_t>(indices.GetValue(offset + slot));
+            localDescs[slot * SGE_PER_SLOT].addr = xAddr_ + token * tokenSize_;
+            localDescs[slot * SGE_PER_SLOT + 1U].addr = payloadStashWinAddr_ + token * metaSlotBytes_;
         }
-        processed += batchCnt;
-        // The next peer reuses this UB even when the payload batch has not been committed.
-        SyncFunc<AscendC::HardEvent::S_MTE2>();
+        WritePayload(remote, localDescs, slots * SGE_PER_SLOT);
+        remote += slots * perSlotBytes_;
     }
 }
 
 template <TemplateMoeEpDispatchTypeClass>
-__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenChunkToPeer(
-    uint32_t dstRankId, GM_ADDR notifyAddr)
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenChunk(
+    const TokenChunk &chunk, uint32_t buffer, TEventID event, BufDesc *localDescs)
 {
-    uint32_t tokenStart = 0U;
-    uint32_t tokenNum = 0U;
-    GetTokenRange(dstRankId, tokenStart, tokenNum);
-    BufDesc localDescs[SGE_PER_SQE] = {};
-    for (uint32_t i = 0; i < SGE_PER_SQE; i += SGE_PER_SLOT) { // srcLen 预填
-        localDescs[i].len = tokenSize_;
-        localDescs[i + 1].len = metaSlotBytes_;
+    GM_ADDR notifyAddr = GetWinAddrByRankId(mc2Context_, chunk.rank, slotWinStateOffset_) + dstStateWinOffset_ +
+                         aivId_ * WIN_ADDR_ALIGN;
+    if (chunk.rank != epRankId_) {
+        if (chunk.first) {
+            uint32_t peerIndex = chunk.rank < epRankId_ ? chunk.rank : chunk.rank - 1U;
+            // Rebind only when consuming the first chunk of a peer, never during prefetch.
+            hcomm_.GetHandleRef(payloadBatch_, peerIndex, notifyAddr);
+        }
+        if (chunk.count != 0U) {
+            WaitFlag<AscendC::HardEvent::MTE2_S>(event);
+            WriteTokenPayloads(chunk, buffer, localDescs);
+        }
     }
-    GM_ADDR remoteWinBaseAddr = GetWinAddrByRankId(mc2Context_, dstRankId, winDataOffset_) + dstRankWinOffset_ +
-                                static_cast<uint64_t>(tokenStart) * perSlotBytes_;
-    SendTokenData(tokenStart, tokenNum, dstRankId, remoteWinBaseAddr, localDescs);
-    SendCompletion(dstRankId, notifyAddr);
+    if (chunk.last) {
+        SendCompletion(chunk.rank, notifyAddr);
+    }
+}
+
+template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenPipeline()
+{
+    TEventID ready[2] = {tpipe_->AllocEventID<AscendC::HardEvent::MTE2_S>(),
+                        tpipe_->AllocEventID<AscendC::HardEvent::MTE2_S>()};
+    BufDesc localDescs[SGE_PER_SQE] = {};
+    for (uint32_t i = 0U; i < SGE_PER_SQE; i += SGE_PER_SLOT) {
+        localDescs[i].len = tokenSize_;
+        localDescs[i + 1U].len = metaSlotBytes_;
+    }
+    TokenChunk chunks[2];
+    uint32_t peerOffset = 0U;
+    uint32_t start = 0U;
+    uint32_t remaining = 0U;
+    uint32_t current = 0U;
+    bool hasCurrent = NextTokenChunk(peerOffset, start, remaining, chunks[current]);
+    if (hasCurrent) {
+        PrefetchTokenIndices(chunks[current], current, ready[current]);
+    }
+    while (hasCurrent) {
+        uint32_t next = current ^ 1U;
+        bool hasNext = NextTokenChunk(peerOffset, start, remaining, chunks[next]);
+        if (hasNext) {
+            PrefetchTokenIndices(chunks[next], next, ready[next]);
+        }
+        SendTokenChunk(chunks[current], current, ready[current], localDescs);
+        current = next;
+        hasCurrent = hasNext;
+    }
+    tpipe_->ReleaseEventID<AscendC::HardEvent::MTE2_S>(ready[0]);
+    tpipe_->ReleaseEventID<AscendC::HardEvent::MTE2_S>(ready[1]);
 }
 
 template <TemplateMoeEpDispatchTypeClass>

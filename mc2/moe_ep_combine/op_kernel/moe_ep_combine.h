@@ -63,6 +63,8 @@ static constexpr uint32_t META_TOPK_IDX_OFFSET = 2U;
 static constexpr uint32_t META_RECV_X_IDX_OFFSET = 4U;
 // PR 111 requires each committed batch to contain fewer WQEBBs than the SQ depth.
 static constexpr uint32_t HCOMM_BATCH_CAPACITY = 256;
+// Kick off network reads early, then amortize subsequent doorbells with the original full batch.
+static constexpr uint32_t HCOMM_FIRST_BATCH_WQEBB = 32U;
 static constexpr uint32_t HCOMM_PLAIN_WRITE_WQE_BYTES = 64;
 static constexpr uint32_t HCOMM_BATCH_BUFFER_BYTES = HCOMM_BATCH_CAPACITY * HCOMM_PLAIN_WRITE_WQE_BYTES;
 constexpr uint64_t UB_ALIGN = 32UL;
@@ -100,6 +102,7 @@ private:
     template <auto const &config>
     __aicore__ inline void PrepareMultiSgeWrite(GM_ADDR dst, const AscendC::BufDesc *srcDescs, uint32_t srcNum);
     __aicore__ inline void FlushPreparedWrites(bool keepHandle = false);
+    __aicore__ inline void ReservePreparedWrites(uint32_t wqebbCount);
     __aicore__ inline void SplitRange(uint64_t rangeBegin, uint64_t rangeEnd, uint32_t coreCount, uint32_t coreIndex,
                                       uint64_t &coreBegin, uint64_t &coreEnd);
     __aicore__ inline void SendRemoteMetadataSlot(uint32_t recvXIdx, int32_t srcTokenIdx, int32_t srcTopKIdx,
@@ -174,6 +177,7 @@ private:
     GM_ADDR activeRemoteWindow_{nullptr};
     uint32_t preparedWriteCount_{0};
     bool activeBatchInitialized_{false};
+    bool firstBatchCommitted_{false};
 };
 
 template <TemplateMoeEpCombineTypeClass>
@@ -263,6 +267,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::FlushPrepared
     if (preparedWriteCount_ != 0) {
         hcomm_.BatchCommit(activeBatchHandle_);
         preparedWriteCount_ = 0;
+        firstBatchCommitted_ = true;
     }
     if (!keepHandle) {
         activeBatchHandle_ = {};
@@ -297,13 +302,20 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BeginPrepared
 }
 
 template <TemplateMoeEpCombineTypeClass>
+__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ReservePreparedWrites(uint32_t wqebbCount)
+{
+    uint32_t limit = firstBatchCommitted_ ? HCOMM_BATCH_CAPACITY : HCOMM_FIRST_BATCH_WQEBB;
+    if (preparedWriteCount_ + wqebbCount > limit) {
+        FlushPreparedWrites(true);
+    }
+}
+
+template <TemplateMoeEpCombineTypeClass>
 template <auto const &config>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWrite(GM_ADDR dst, GM_ADDR src, uint64_t len)
 {
     // Single-SGE WQE occupies 1 WQEBB (64 bytes).
-    if (preparedWriteCount_ + 1U > HCOMM_BATCH_CAPACITY) {
-        FlushPreparedWrites(true);
-    }
+    ReservePreparedWrites(1U);
     hcomm_.WriteNbi<config>(activeBatchHandle_.handle, dst, src, len);
     ++preparedWriteCount_;
 }
@@ -319,9 +331,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareMultiS
     constexpr uint32_t wqebbSize = HCOMM_PLAIN_WRITE_WQE_BYTES;
     uint32_t wqeBytes = sqeHeaderBytes + srcNum * sgeEntryBytes;
     uint32_t wqebbCount = (wqeBytes + wqebbSize - 1U) / wqebbSize;
-    if (preparedWriteCount_ + wqebbCount > HCOMM_BATCH_CAPACITY) {
-        FlushPreparedWrites(true);
-    }
+    ReservePreparedWrites(wqebbCount);
     hcomm_.WriteNbi<config>(activeBatchHandle_.handle, dst, srcDescs, srcNum);
     preparedWriteCount_ += wqebbCount;
 }
@@ -504,6 +514,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseFrom
     activeJettyHandle_ = 0U;
     preparedWriteCount_ = 0U;
     activeBatchInitialized_ = false;
+    firstBatchCommitted_ = false;
 
     // Prefetch across peer boundaries too; typical peer slices fit in a single metadata chunk.
     SendMetadataPipeline();

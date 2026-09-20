@@ -123,6 +123,38 @@ void CheckMaskPredicate()
         assert(oldMask == directMask);
     }
 }
+
+void CheckFirstBatch()
+{
+    for (uint32_t payloadWqebb : {1U, 2U}) {
+        for (uint32_t requests : {0U, 1U, 15U, 16U, 17U, 32U, 128U, 129U, 4096U}) {
+            for (uint32_t flagPeriod : {1U, 7U, 33U}) {
+                std::vector<uint32_t> batches;
+                uint32_t pending = 0U;
+                uint32_t total = 0U;
+                auto append = [&](uint32_t count) {
+                    uint32_t limit = batches.empty() ? 32U : 256U;
+                    if (pending + count > limit) { batches.push_back(pending); pending = 0U; }
+                    pending += count;
+                    total += count;
+                };
+                for (uint32_t i = 0U; i < requests; ++i) {
+                    append(payloadWqebb);
+                    if ((i + 1U) % flagPeriod == 0U) { append(1U); }
+                }
+                append(1U); // final completion, including the empty-peer case
+                if (pending != 0U) { batches.push_back(pending); }
+                assert(batches.front() > 0U && batches.front() <= 32U);
+                uint32_t committed = 0U;
+                for (uint32_t batch : batches) {
+                    assert(batch > 0U && batch <= 256U && batch < 4096U);
+                    committed += batch;
+                }
+                assert(committed == total);
+            }
+        }
+    }
+}
 } // namespace
 
 int main()
@@ -147,5 +179,6 @@ int main()
         }
     }
     CheckMaskPredicate();
-    std::cout << "PASS: " << cases << " Combine schedules, ping-pong event balance, completion order, mask sign\n";
+    CheckFirstBatch();
+    std::cout << "PASS: " << cases << " Combine schedules, ping-pong events, completion order, mask, first batch\n";
 }
