@@ -175,9 +175,12 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
                 DataCopyPad(phi, phiGm_[phiOffset], copyParams, copyPad);
                 bufPhiFp32_.EnQue(phi);
                 phi = bufPhiFp32_.DeQue<float>();
-                MhcSandwichRegBase::MulAddInplace(out, x2[h1 * dimTile_], phi, tD);
+                MhcSandwichRegBase::Mul(tmp, x2[h1 * dimTile_], phi, tD);
                 PipeBarrier<PIPE_V>();
                 bufPhiFp32_.FreeTensor(phi);
+
+                MhcSandwichRegBase::Add(out, out, tmp, tD);
+                PipeBarrier<PIPE_V>();
                 dotHalf[half][o] += ReduceSumPrecise(out, tD);
             }
         }
@@ -212,9 +215,11 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
             DataCopyPad(phi, phiGm_[phiOffset], copyParams, copyPad);
             bufPhiFp32_.EnQue(phi);
             phi = bufPhiFp32_.DeQue<float>();
-            MhcSandwichRegBase::MulAddInplace(dotRow, x2[h1 * dimTile_], phi, tD);
+            MhcSandwichRegBase::Mul(tmp, x2[h1 * dimTile_], phi, tD);
             PipeBarrier<PIPE_V>();
             bufPhiFp32_.FreeTensor(phi);
+
+            MhcSandwichRegBase::Add(dotRow, dotRow, tmp, tD);
         }
 
         PipeBarrier<PIPE_V>();
