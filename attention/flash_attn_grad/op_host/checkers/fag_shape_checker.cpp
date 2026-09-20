@@ -133,13 +133,8 @@ ge::graphStatus CheckSinks(const char *opName, gert::TilingContext *context, int
     OP_CHECK_IF(shape.GetDim(0) != qN,
                 OP_LOGE(opName, "sinks shape[0] must equal Q head num N1 (%ld), but got %ld.", qN, shape.GetDim(0)),
                 return ge::GRAPH_PARAM_INVALID);
-    // dsink 的确定性归约在每 AIV 的 [1, SINK_HEADS_MAX] fp32 UB 累加器里按
-    // lane（lane 序号 == head 序号，跨 vreg 段寻址）累加，N1 超过这块静态
-    // UB 容量会越界写。kernel 与这里用同一个常量（见 tiling_info.h）。
-    OP_CHECK_IF(qN > FAG_SINK_HEADS_MAX,
-                OP_LOGE(opName, "sinks requires Q head num N1 <= %ld (deterministic dsink "
-                                "accumulator capacity), but got N1=%ld.", FAG_SINK_HEADS_MAX, qN),
-                return ge::GRAPH_PARAM_INVALID);
+    // dsink 的部分和累加在 GM workspace 槽位区（每 AIV 一行、行宽 N1），
+    // N1 只影响 workspace 大小，不再有 UB 容量上限。
     return ge::GRAPH_SUCCESS;
 }
 

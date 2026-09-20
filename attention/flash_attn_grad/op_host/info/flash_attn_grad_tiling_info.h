@@ -82,11 +82,6 @@ constexpr int64_t LAYOUT_NOT_TND = 0;
 constexpr int64_t LAYOUT_TND = 1;
 
 constexpr int64_t MAX_HEAD_DIM = 768;
-// dsink 每 AIV 的 UB 累加器容量（fp32 lane 数）= 支持的 Q head 数上限，
-// 必须与 kernel 的 fag_common.SINK_HEADS_MAX 保持一致。kernel 按 lane 定位
-// head（lane 序号 == head 序号，跨 vreg 段寻址），故 N1 只受这块静态 UB
-// 限制；超限在 host 侧拒绝而不是越界写。
-constexpr int64_t FAG_SINK_HEADS_MAX = 1024;
 
 // ---------------------------------------------------------------------------
 // L2 解析结果。策略层对它只读。

@@ -39,7 +39,6 @@ from fag_mem import BN2_CAST_W, BN2_V1_ROWS, POST_ELEMS, PRE_ELEMS
 from fag_vector_api import (
     broadcast_sub_mul_cast_vf,
     cast_p_vf,
-    dsink_acc_vf,
     dsink_partial_vf,
     dsink_reduce_add_vf,
     fill_zero_fp16_vf,
@@ -269,7 +268,8 @@ def process_vec3(constInfo, runInfo, subIdx, ds_l1, mm1_ub, mm2_ub, sfmg_ub, nzp
 def process_sink_partial(
     constInfo,
     runInfo,
-    acc_ub,
+    tensor_slots,
+    aiv_idx,
     p_ub,
     dp_ub,
     lse_ub,
@@ -288,10 +288,9 @@ def process_sink_partial(
     那里的 lane m+rowShift 正是同一行（与 muls_sel_simple_softmax_vf 的取值
     口径一致），故不需要额外的 GM 搬运。
 
-    部分和累加到本 AIV 独占的 UB 累加器 acc[headQ]（dsink_acc_vf，
-    select 精确 lane 定向，跨 vreg 段寻址，V 管道程序序 → 逐位确定）。
-    主循环结束后由调用方把 acc 整行普通 store 到槽位区本 AIV 行，
-    post 阶段再由 AIV0 固定次序归约出 dsink。
+    部分和以 fp32 atomicAdd 直接落到槽位区本 AIV 行的 headQ 列
+    （tensor_slots[0, aiv_idx*n1Size + headQ]），post 阶段由 AIV0
+    按固定行序归约出 dsink。槽位区进主循环前已由 pre 清零。
     rows == 0（尾块里第二个子核无行）时整体跳过，不产生任何写。
     调用方必须保证此时 mm1/mm2 尚未放行给 cube（本块还没被覆写）。
     """
@@ -316,7 +315,14 @@ def process_sink_partial(
         tailCols,
         runInfo.rowShift,
     )
-    dsink_acc_vf(acc_ub, sink_part_ub, headQ)
+    pl.set_validshape(sink_part_ub, [1, 1])
+    pl.store(
+        tensor_slots,
+        sink_part_ub,
+        [0, aiv_idx * constInfo.n1Size + headQ],
+        atomic=pl.AtomicType.AtomicAdd,
+    )
+    pl.set_validshape(sink_part_ub, [1, VECTOR_BASEN])
 
 
 def process_sink_reduce(constInfo, tensor_slots, tensor_dsink, acc_ub, row_ub, aiv_count):
@@ -414,6 +420,16 @@ def process_pre_from_meta(meta, fagOff, tensor_dq, tensor_dk, tensor_dv, dQ, dV,
     process_pre(tensor_dq, zt, dqRowStart * dQ, dqNElems)
     process_pre(tensor_dk, zt, dkvRowStart * dQ, dkvNElems)
     process_pre(tensor_dv, zt, dkvRowStart * dV, dvNElems)
+
+
+def process_sink_zero(tensor_slots, constInfo, zt, aiv_idx):
+    """把 dsink 槽位区本 AIV 行清零，作为主循环 atomicAdd 的前置。
+
+    行号 = AIV 全局序号，空闲 AIV 也清（归约会读所有行）。zt 必须是 fp32
+    视图；清完由调用方用 sync_all 与主循环的 atomicAdd 隔开。
+    """
+    fill_zero_vf(zt, (constInfo.n1Size + VF_LANES - 1) // VF_LANES)
+    process_pre(tensor_slots, zt, aiv_idx * constInfo.n1Size, constInfo.n1Size)
 
 
 # ==================================================================

@@ -277,8 +277,8 @@ def flash_attn_grad_preload3(
         [s2ndKVv, d2dKVv, dV, 1],
         dtype=pl.DT_FP32,
     )
-    # dsink 槽位区：每 AIV 一行（行号 = AIV 全局序号），AIV 内 UB 累加后
-    # 整行普通 store；post 阶段 AIV0 按固定行序归约。
+    # dsink 槽位区：每 AIV 一行（行号 = AIV 全局序号），主循环里部分和
+    # atomicAdd 到本行；post 阶段 AIV0 按固定行序归约。
     aivCount = coreNum * AIV_PER_CORE
     tensor_dsink_ws = pl.make_tensor(
         dsink_workspace, [1, aivCount * n1Size], [aivCount * n1Size, 1], dtype=pl.DT_FP32
@@ -337,10 +337,9 @@ def flash_attn_grad_preload3(
     p_t_l1 = make_p_t_l1()
 
     # ==== Pre 阶段：清零 dq/dk/dv workspace ====
-    # 三个 workspace 都用 atomicAdd 累加，进主循环前必须为 0。
+    # 四个 workspace 都用 atomicAdd 累加，进主循环前必须为 0。
     # 清完用 sync_all 隔开：主循环的 atomicAdd 必须看到已清零的 GM。
-    # （dsink 不在此列：部分和在 UB 里累加，主循环末尾整行普通 store 到
-    # 宽输出 dsink 的本 AIV 行，空闲 AIV 也写全 0 行。）
+    # dsink 槽位区每 AIV 清自己那行（行号 = AIV 全局序号），空闲 AIV 也清。
     with pl.section_vector():
         zero_ub = make_pre_zero_buffer_f32()
         process_pre_from_meta(
@@ -353,6 +352,13 @@ def flash_attn_grad_preload3(
             dV,
             zero_ub.current(),
         )
+        if constInfo.sinkOptional == 1:
+            process_sink_zero(
+                tensor_dsink_ws,
+                constInfo,
+                zero_ub.current(),
+                pl.get_block_idx(),
+            )
     pl.system.sync_all()
 
     with pl.section_cube():
@@ -531,18 +537,9 @@ def flash_attn_grad_preload3(
         mask_ub = make_mask_view(v1w)
         mask_pre_ub = make_mask_pre_view(v1w)
 
-        # dsink 的 UB 累加器：本 AIV 独占 [1, VECTOR_BASEN] fp32（复用
-        # sink_red 槽）。V 管道程序序 → 跨 task 累加逐位确定；循环末尾整行
-        # store 到宽输出，host 侧固定次序求和。host 保证 N1<=128。
+        # dsink 部分和直接 atomicAdd 到槽位区本 AIV 行（行号 = AIV 全局序号）。
+        # 该行已在 pre 阶段清零，主循环内无并发写者。
         aivIdx = pl.get_block_idx()
-        sink_acc_ub = make_sink_red_ub(v1w)
-        if constInfo.sinkOptional == 1:
-            # 清零到 ceil(N1 / VF_LANES) 段：head 序号即 lane 序号，跨段由
-            # dsink_acc_vf 寻址，N1 > VECTOR_BASEN 时清零必须跟着放大。
-            fill_zero_vf(
-                sink_acc_ub.current(),
-                (constInfo.n1Size + VF_LANES - 1) // VF_LANES,
-            )
 
         runInfos = make_run_infos()
         # ---------------- Process() 主循环 (AIV 侧) ----------------
@@ -658,17 +655,17 @@ def flash_attn_grad_preload3(
                     pipe=pl.PipeType.MTE3, event_id=SYNC_V3_TO_C3_FLAG
                 )
 
-                # ---- dsink：本块 Σ(P·dP)·exp(sink-lse) 累加到本 AIV 的 UB
-                # 累加器 acc[headQ]（select 精确 lane 定向，逐位确定）。
-                # 读本 task 的 mm2(P)/mm1(dP)，必须排在 mm1/mm2 放行 flag 之前，
-                # 否则 cube 下一轮会把这两块 UB 覆写掉。
+                # ---- dsink：本块 Σ(P·dP)·exp(sink-lse) 原子累加到槽位区本
+                # AIV 行的 headQ 列。读本 task 的 mm2(P)/mm1(dP)，必须排在
+                # mm1/mm2 放行 flag 之前，否则 cube 下一轮会把这两块 UB 覆写掉。
                 if constInfo.sinkOptional == 1:
                     headQ = prevInfo.n2oIdx * constInfo.gSize + prevInfo.goIdx
                     sink_val = pl.getval(tensor_sinks, headQ)
                     process_sink_partial(
                         constInfo,
                         prevInfo,
-                        sink_acc_ub.current(),
+                        tensor_dsink_ws,
+                        aivIdx,
                         mm2_t,
                         mm1_t,
                         lse_ub.previous(),
@@ -690,17 +687,6 @@ def flash_attn_grad_preload3(
                     break
             taskId = taskId + 1
             localIdx = localIdx + 1
-
-        # dsink 收尾：把 UB 累加器整行普通 store 到槽位区本 AIV 行
-        # （含空闲 AIV 的全 0 行 —— 它们也走到这里）。随后 sync_all，
-        # 再由 post 阶段的 AIV0 固定次序归约（写点/读点之间隔着整段
-        # process_post，见 post 段注释）。
-        if constInfo.sinkOptional == 1:
-            pl.set_validshape(sink_acc_ub.current(), [1, constInfo.n1Size])
-            pl.store(
-                tensor_dsink_ws, sink_acc_ub.current(),
-                [0, aivIdx * constInfo.n1Size],
-            )
 
     # ==== Post 阶段：dQ/dK/dV 的 scale + cast fp32->fp16 ====
     # scale 在矩阵乘之后、fp32 结果上施加(而非提前乘进 dS)：先乘会让
@@ -797,10 +783,10 @@ def flash_attn_grad_preload2(
     MultiBlk（is_bn2_multiblk）：dQ 首有效 s2 覆盖 workspace，其余 AtomicAdd，
     vector 只在 isLastS1Outer 从 GM Muls+Cast；dK/dV 在 L0C 累加到换 s2 再写回。
 
-    sinks 存在时（sinkOptional=1）：vector 主循环里按本 task 的块内 P·dP 在
-    本核 UB 里按 head 精确累加部分和（dsink_acc_vf），主循环末尾把整行
-    普通 store 到槽位区本 AIV 行；post 阶段再由 AIV0 按固定行序归约出
-    dsink。不引入额外栅栏。
+    sinks 存在时（sinkOptional=1）：vector 主循环里按本 task 的块内 P·dP 算出
+    部分和，原子累加到槽位区本 AIV 行的 headQ 列；进循环前已由 pre 清零该
+    行（BN2 无 sinks 时 pre 可完全跳过）。post 阶段再由 AIV0 按固定行序归约
+    出 dsink。
     """
     coreNum = pl.get_block_num()
     # swizzle 来自 tilingkey。BN2 is_valid 保证为 0，与原先写死 0 等价。
@@ -999,7 +985,9 @@ def flash_attn_grad_preload2(
         if bn2_need_zero == 1:
             with pl.section_vector():
                 n1Size = constInfo.n2Size * constInfo.gSize
-                dqElems = constInfo.bSize * constInfo.s1Size * n1Size * constInfo.dSize
+                dqElems = (
+                    constInfo.bSize * constInfo.s1Size * n1Size * constInfo.dSize
+                )
                 dkElems = (
                     constInfo.bSize
                     * constInfo.s2Size
@@ -1031,6 +1019,17 @@ def flash_attn_grad_preload2(
                     constInfo.dSize,
                     constInfo.dvSize,
                     zero_ub.current(),
+                )
+            pl.system.sync_all()
+        # sinks 时清 dsink 槽位区本 AIV 行，供主循环 atomicAdd。
+        if constInfo.sinkOptional == 1:
+            with pl.section_vector():
+                sink_zero_ub = make_pre_zero_buffer_f32()
+                process_sink_zero(
+                    tensor_dsink_ws,
+                    constInfo,
+                    sink_zero_ub.current(),
+                    pl.get_block_idx(),
                 )
             pl.system.sync_all()
     else:
@@ -1337,16 +1336,9 @@ def flash_attn_grad_preload2(
             mask_pre_ub = make_mask_pre_view(v1w)
         runInfos = make_run_infos_2()
 
-        # dsink 的 UB 累加器（复用 sink_red 槽，同 GS1S2）。
+        # dsink 部分和直接 atomicAdd 到槽位区本 AIV 行（行号 = AIV 全局序号）。
+        # 该行已在 pre 阶段清零，主循环内无并发写者。
         aivIdx = pl.get_block_idx()
-        sink_acc_ub = make_sink_red_ub(HEAD_DIM_ALIGN)
-        if constInfo.sinkOptional == 1:
-            # 清零到 ceil(N1 / VF_LANES) 段：head 序号即 lane 序号，跨段由
-            # dsink_acc_vf 寻址，N1 > VECTOR_BASEN 时清零必须跟着放大。
-            fill_zero_vf(
-                sink_acc_ub.current(),
-                (constInfo.n1Size + VF_LANES - 1) // VF_LANES,
-            )
         taskId = 0
         localIdx = 0
         denseCursor = blockStart
@@ -1507,8 +1499,8 @@ def flash_attn_grad_preload2(
                         pipe=pl.PipeType.MTE3, event_id=SYNC_V4_TO_C5_FLAG
                     )
 
-                    # ---- dsink：本块 Σ(P·dP)·exp(sink-lse) 累加到本 AIV 的 UB
-                    # 累加器 acc[headQ]（select 精确 lane 定向，逐位确定）。
+                    # ---- dsink：本块 Σ(P·dP)·exp(sink-lse) 原子累加到槽位区
+                    # 本 AIV 行的 headQ 列。
                     # 读本 task 的 mm2(P)/mm1(dP)；BN2 里这两块要到 V5/V6 之后
                     # （SYNC_DETER_FIX）才放行，此处安全。
                     if constInfo.sinkOptional == 1:
@@ -1517,7 +1509,8 @@ def flash_attn_grad_preload2(
                         process_sink_partial(
                             constInfo,
                             prevInfo,
-                            sink_acc_ub.current(),
+                            tensor_dsink_ws,
+                            aivIdx,
                             mm2_t,
                             mm1_t,
                             lse_ub.previous(),
@@ -1589,14 +1582,6 @@ def flash_attn_grad_preload2(
             taskId = taskId + 1
             localIdx = localIdx + 1
 
-        # dsink 收尾（仅 BN2）：UB 累加器整行普通 store 到槽位区本 AIV 行。
-        if template == Tmpl.BN2 and constInfo.sinkOptional == 1:
-            pl.set_validshape(sink_acc_ub.current(), [1, constInfo.n1Size])
-            pl.store(
-                tensor_dsink_ws, sink_acc_ub.current(),
-                [0, aivIdx * constInfo.n1Size],
-            )
-
     if template != Tmpl.BN2:
         pl.system.sync_all()
         with pl.section_vector():
@@ -1646,7 +1631,7 @@ def flash_attn_grad_preload2(
                 (dkvRowEndP - dkvRowStartP) * dV,
             )
     else:
-        # ==== dsink 归约（BN2：槽位 → sync_all → 读侧预热 → 固定次序）====
+        # ==== dsink 归约（BN2：槽位 → sync_all → 固定次序）====
         # BN2 原本没有 sync_all；归约要读所有 AIV 的槽位行，必须加一道全片栅栏。
         # 不带 sinks 时该栅栏只对齐各核收尾，无正确性影响。
         pl.system.sync_all()

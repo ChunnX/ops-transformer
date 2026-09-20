@@ -46,7 +46,6 @@ from fag_common import (
     D_CHUNK_MAXW,
     D_PHYS_W,
     NZP_ROWS,
-    SINK_HEADS_MAX,
     VECTOR_BASEM,
     VECTOR_BASEN,
 )
@@ -483,8 +482,8 @@ def make_lse_ub(v1w):
 def make_sink_part_ub(v1w):
     """dsink 的单任务部分和缓冲：[1, VECTOR_BASEN] fp32，只写 lane 0。
 
-    本 task 的部分和（lane 0）随即被 dsink_acc_vf 精确累加到本 AIV 的 UB
-    累加器 acc[headQ]（select 逐 lane，V 管道程序序 → 逐位确定）。
+    本 task 的部分和（lane 0）随即以 fp32 atomicAdd 直落槽位区本 AIV 行的
+    headQ 列。
     """
     return pl.make_tile_group(
         type=pl.TileType(
@@ -527,26 +526,6 @@ def make_sink_red_post_ub(v1w):
         ),
         addrs=[mem.UB_SINK_RED_POST_A[v1w]],
         mutex_ids=mem.MTX_UB_SINK_RED_POST,
-    )
-
-
-def make_sink_red_ub(v1w):
-    """dsink 的 fp32 累加器：[1, SINK_HEADS_MAX] fp32（每个 AIV 独占）。
-
-    主循环里按 lane（lane 序号 == head 序号）精确累加本 AIV 的部分和
-    （dsink_acc_vf）；循环末尾按 valid_shape=[1, N1] 整行普通 store 到槽位区
-    本 AIV 行，再由 post 阶段的 AIV0 固定次序归约。N1 只受这块静态 UB 的
-    容量限制（SINK_HEADS_MAX），没有 64/128 的 lane 上限。
-    """
-    return pl.make_tile_group(
-        type=pl.TileType(
-            shape=[1, SINK_HEADS_MAX],
-            dtype=pl.DT_FP32,
-            target_memory=pl.MemorySpace.Vec,
-            valid_shape=[-1, -1],
-        ),
-        addrs=[mem.UB_SINK_RED_A[v1w]],
-        mutex_ids=mem.MTX_UB_SINK_RED,
     )
 
 

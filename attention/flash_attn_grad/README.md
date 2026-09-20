@@ -26,14 +26,10 @@ dSink=-\sum_{b,s1,s2} P \cdot dP \cdot \exp(sink-softmax\_lse)
 $$
 
 其中 `dP=dO \cdot V^T`。kernel 按 task（s2 块）在块内把 `P \cdot dP` 逐行乘
-`\exp(sink-softmax\_lse)` 后归约，再经**确定性归约**得到 `dsink`：
-每个 AIV 子核在本核 UB 里按 lane（lane 序号 == head 序号）精确累加自己的
-部分和（V 管道程序序，逐位确定），主循环末尾把整行普通 store 到 workspace
-中自己独占的槽位行（一行一个 AIV，无并发写者、不用原子加）；`sync_all`
-之后由 AIV0 按固定行序（aiv 0..aivCount-1）归约成 `dsink` —— 写点与读点
-之间隔着整段 post 搬运/计算，读前再做一遍读侧预热（load+store 到 scratch）
-消除「紧随栅栏的首次读可能尚未全局可见」的窗口。结果与逐 (b, s1, s2)
-全量归约等价，且**逐次运行逐位可复现**。
+`\exp(sink-softmax\_lse)` 后归约，再归约成 `dsink`：每个 AIV 子核把本 task
+的部分和以 fp32 `atomicAdd` 累加到 workspace 中自己独占的槽位行（一行一个
+AIV，只由本 AIV 写，无跨核竞争；进主循环前该行已由 pre 阶段清零）；`sync_all`
+之后由 AIV0 按固定行序（aiv 0..aivCount-1）归约成 `dsink`。
 
 ## 输入输出
 
@@ -64,8 +60,9 @@ $$
 | dv | BF16/FP16 | Value 梯度 |
 | dsink | FP32 | Sink 梯度，shape 为 (N1,)。`sinks` 为空时为全 0 |
 
-> torch 接口一次性返回 `(dq, dk, dv, dsink)` 四个张量；`dsink` 由 kernel 以
-> fp32 atomicAdd 累加，torch 层用 `at::zeros` 分配，保证接口结果始终有定义。
+> torch 接口一次性返回 `(dq, dk, dv, dsink)` 四个张量；`dsink` 由 kernel 在
+> workspace 槽位区累加后经固定行序归约写出，torch 层用 `at::zeros` 分配，
+> 保证接口结果始终有定义。
 
 ### 属性
 
