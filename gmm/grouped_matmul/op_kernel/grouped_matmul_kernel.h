@@ -613,6 +613,10 @@ __aicore__ inline void GMMCompute<mmType, sync>::MMCompute(uint32_t groupIdx, MN
         }
         uint64_t scaleAddr = 0;
         uint64_t scaleBytes = 0;
+        uint64_t weightBytes = static_cast<uint64_t>(mnConfig.k) * mnConfig.n * sizeof(BT);
+        if constexpr (B::format == CubeFormat::NZ) {
+            weightBytes = static_cast<uint64_t>(AlignUp<16>(mnConfig.k)) * AlignUp<16>(mnConfig.n) * sizeof(BT);
+        }
         uint64_t groupListBytes =
             static_cast<uint64_t>(groupNum) * (groupListType == GROUP_LIST_TYPE_SPARSE ? 2 : 1) * sizeof(int64_t);
 #if defined(GMM_QUANT_INT8)
@@ -627,10 +631,10 @@ __aicore__ inline void GMMCompute<mmType, sync>::MMCompute(uint32_t groupIdx, MN
             "bias=0x%llx/%llu y=0x%llx/%llu group_list=0x%llx/%llu\\n",
             GetBlockIdx(), groupIdx, reinterpret_cast<uint64_t>(xGmAddr),
             static_cast<uint64_t>(mnConfig.m) * mnConfig.k * sizeof(AT), reinterpret_cast<uint64_t>(weightGmAddr),
-            static_cast<uint64_t>(mnConfig.k) * mnConfig.n * sizeof(BT), scaleAddr, scaleBytes,
-            reinterpret_cast<uint64_t>(biasGmAddr), hasBias ? static_cast<uint64_t>(mnConfig.n) * sizeof(BiasT) : 0,
-            reinterpret_cast<uint64_t>(yGmAddr), static_cast<uint64_t>(mnConfig.m) * mnConfig.n * sizeof(CT),
-            reinterpret_cast<uint64_t>(groupListTensorPtr), groupListBytes);
+            weightBytes, scaleAddr, scaleBytes, reinterpret_cast<uint64_t>(biasGmAddr),
+            hasBias ? static_cast<uint64_t>(mnConfig.n) * sizeof(BiasT) : 0, reinterpret_cast<uint64_t>(yGmAddr),
+            static_cast<uint64_t>(mnConfig.m) * mnConfig.n * sizeof(CT), reinterpret_cast<uint64_t>(groupListTensorPtr),
+            groupListBytes);
     }
 #endif
     mm.SetOrgShape(mnConfig.m, mnConfig.n, mnConfig.k);

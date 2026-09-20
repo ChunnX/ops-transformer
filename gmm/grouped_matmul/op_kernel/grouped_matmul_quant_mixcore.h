@@ -213,12 +213,16 @@ __aicore__ inline void GMMQuantMixCoreCompute<mmType, sync>::MMCompute(uint32_t 
             }
             uint64_t groupListBytes = static_cast<uint64_t>(this->groupNum) *
                                       (this->groupListType == GROUP_LIST_TYPE_SPARSE ? 2 : 1) * sizeof(int64_t);
+            uint64_t weightBytes = static_cast<uint64_t>(mnConfig.k) * mnConfig.n * sizeof(BT);
+            if constexpr (B::format == CubeFormat::NZ) {
+                weightBytes = static_cast<uint64_t>(AlignUp<16>(mnConfig.k)) * AlignUp<16>(mnConfig.n) * sizeof(BT);
+            }
             AscendC::printf(
                 "[GMM_A8W8O16][GM] block=%u group=%u x=0x%llx/%llu weight=0x%llx/%llu scale=0x%llx/%llu "
                 "per_token_scale=0x%llx/%llu bias=0x%llx/%llu y=0x%llx/%llu group_list=0x%llx/%llu\\n",
                 GetBlockIdx(), groupIdx, reinterpret_cast<uint64_t>(xGmAddr),
                 static_cast<uint64_t>(mnConfig.m) * mnConfig.k * sizeof(AT), reinterpret_cast<uint64_t>(weightGmAddr),
-                static_cast<uint64_t>(mnConfig.k) * mnConfig.n * sizeof(BT), reinterpret_cast<uint64_t>(scaleGmAddr),
+                weightBytes, reinterpret_cast<uint64_t>(scaleGmAddr),
                 static_cast<uint64_t>(mnConfig.n) * sizeof(DTYPE_SCALE),
                 reinterpret_cast<uint64_t>(perTokenScaleGmAddr),
                 isPerTokenQuant ? static_cast<uint64_t>(mnConfig.m) * sizeof(float) : 0,
