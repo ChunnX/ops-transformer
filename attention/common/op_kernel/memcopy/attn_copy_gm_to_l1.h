@@ -268,8 +268,8 @@ public:
     __aicore__ inline void operator()(FaL1Tensor<Q_T, L1_FORMAT> &dstTensor, FaGmTensorType &srcTensor,
                                       GmCoordS1Only &gmCoord)
     {
-        uint64_t offset =
-            srcTensor.offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gmCoord.gIdx, gmCoord.s1Idx, gmCoord.dIdx);
+        uint64_t offset = srcTensor.offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gmCoord.gIdx, gmCoord.s1Idx,
+                                                               gmCoord.dIdx);
         auto &offsetCalculator = srcTensor.offsetCalculator;
         CopySingleMatrixNDToNZ(dstTensor.tensor, srcTensor.gmTensor[offset], gmCoord.s1DealSize, gmCoord.dDealSize,
                                offsetCalculator.GetStrideS1(), dstTensor.rowCount);

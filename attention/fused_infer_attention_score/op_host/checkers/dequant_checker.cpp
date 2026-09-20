@@ -1890,9 +1890,8 @@ ge::graphStatus DequantChecker::CheckAntiquantModeForAntiquant(const FiaTilingIn
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus DequantChecker::CheckInputKVTypeForAntiquantPerChannel(const FiaTilingInfo &fiaInfo,
-                                                                       ge::DataType inputKvType,
-                                                                       const gert::Tensor *keyAntiquantScaleTensor) const
+ge::graphStatus DequantChecker::CheckInputKVTypeForAntiquantPerChannel(
+    const FiaTilingInfo &fiaInfo, ge::DataType inputKvType, const gert::Tensor *keyAntiquantScaleTensor) const
 {
     // per-tensor模式，仅当key/value的数据类型为INT8时支持
     gert::Shape expectedShape1 = gert::Shape({1});
@@ -2003,7 +2002,7 @@ ge::graphStatus DequantChecker::CheckInputKVTypeForAntiquantPerTokenHead(const F
 }
 
 ge::graphStatus DequantChecker::CheckInputKVTypeForAntiquantPerTokenHeadPA(const FiaTilingInfo &fiaInfo,
-                                                                            ge::DataType inputKvType) const
+                                                                           ge::DataType inputKvType) const
 {
     // per-token-head模式使用page attention管理scale/offset，支持key/value的数据类型为INT8
     OP_CHECK_IF((inputKvType != ge::DT_INT8),
@@ -2268,7 +2267,8 @@ ge::graphStatus DequantChecker::CheckStrideForAntiquant(const FiaTilingInfo &fia
     }
 
     const bool isBBHLayout = (fiaInfo.kvLayout == FiaLayout::BnBsH);
-    auto checkStrideAllowed = [&dimIndex, &isBBHLayout, &fiaInfo, this](const char *tensorName, uint32_t dimNum, const gert::Shape &shape,
+    auto checkStrideAllowed = [&dimIndex, &isBBHLayout, &fiaInfo, this](
+                                  const char *tensorName, uint32_t dimNum, const gert::Shape &shape,
                                   const gert::Stride *strides) -> ge::graphStatus {
         if (strides == nullptr || strides->GetDimNum() == 0) {
             return ge::GRAPH_SUCCESS;
@@ -2290,8 +2290,9 @@ ge::graphStatus DequantChecker::CheckStrideForAntiquant(const FiaTilingInfo &fia
     };
 
     // 非连续约束: 仅 mode4/mode5 支持, mode4 仅 axis0, mode5 允许 axis0+axis1
-    auto checkScaleStrideAllowed = [&dimIndex, &fiaInfo, this](const char *tensorName, uint32_t dimNum, const gert::Shape &shape,
-                                       const gert::Stride *strides, uint32_t antiquantMode) -> ge::graphStatus {
+    auto checkScaleStrideAllowed = [&dimIndex, &fiaInfo, this](const char *tensorName, uint32_t dimNum,
+                                                               const gert::Shape &shape, const gert::Stride *strides,
+                                                               uint32_t antiquantMode) -> ge::graphStatus {
         if (strides == nullptr || strides->GetDimNum() == 0) {
             return ge::GRAPH_SUCCESS;
         }
