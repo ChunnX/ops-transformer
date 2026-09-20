@@ -69,11 +69,6 @@ ACLNN_API aclnnStatus aclnnFlashAttnMetadataGetWorkspaceSize(
     if (aclrtGetResInCurrentThread(ACL_RT_DEV_RES_VECTOR_CORE, &aivCoreNum) != ACL_SUCCESS) {
         aivCoreNum = npuInfo.GetVectorCoreNum();
     }
-    // FlashAttn uses one AIC with two AIVs. Reject invalid limits before AICPU division/scheduling.
-    CHECK_COND(aicCoreNum > 0 && aicCoreNum <= npuInfo.GetCubeCoreNum() && aivCoreNum <= npuInfo.GetVectorCoreNum() &&
-                   aivCoreNum == 2U * aicCoreNum,
-               ACLNN_ERR_PARAM_INVALID, "FlashAttn requires effective AIC/AIV cores in a 1:2 ratio, got %u/%u",
-               aicCoreNum, aivCoreNum);
     const char *socVersion = npuInfo.GetSocLongVersion().c_str();
 
     auto output = l0op::FlashAttnMetadata(cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional, sequsedKvOptional,
