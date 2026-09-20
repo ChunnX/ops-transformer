@@ -1,4 +1,4 @@
-# Compressor算子测试框架
+# CompressorV2算子测试框架
 
 ## 功能说明
 
@@ -17,10 +17,22 @@
 - 支持D为128/512。
 - 支持H为1K~10K，512对齐。
 - 支持cmp_ratio为2、4、8、16、32、64、128。
-- 当cmp_ratio为4/128时，支持如下三种情况：
-    - C4A: D=512, coff=2, cmp_ratio=4;
-    - C4Li: D=128, coff=2, cmp_ratio=4;
-    - C128A: D=512, coff=1, cmp_ratio=128。
+- V2 不提供 APE/coff/cache_mode 参数，固定 coff=1 和循环buffer语义。
+- A2/A3 BSH 要求 block_size >= cmp_ratio + S - 1。TH 不在 Host 读取设备长度值做容量校验。
+
+### A2 迁移回归
+
+安装普通 A2 包及包含本算子 `torch_extension` 的Python包后，在本目录运行：
+
+```bash
+python3 -m pytest -v test_compressor_single.py test_compressor_arch22.py
+```
+
+`test_compressor_arch22.py` 共118项，覆盖FP16/BF16、BSH/TH、两条kernel路径、全部压缩比、跨环及多次回绕、长prefill后decode、Split-K、seqUsed、空batch、连续/非连续state。
+输出沿用现有Golden精度标准；全量FP32 state使用rtol=1e-4/atol=1e-5，未更新区域与padding guard要求精确不变。
+`test_compressor_single.py` 的FullLoad2容量为131，满足ratio128/S4的BSH容量约束；容量不足由Host UT负例单独验证。
+
+本次只验证A2 eager。图模式不在验收范围；MEMCHECK-001尚未解决，详见[验证记录](../../docs/arch22_validation.md)。
 
 ### 环境配置
 
