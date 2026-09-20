@@ -30,7 +30,8 @@ __aicore__ inline constexpr uint32_t MxS1LoopEnd(uint32_t actualS1Size, uint32_t
 // tokenBase is cu_seqlens_q[b] for TND, b * physical Sq for padded layouts.
 // Return the token/head slot; multiply by D, Dv or scale width at the call site.
 template <QBSALayout layout>
-__aicore__ inline constexpr uint64_t MxQuerySlot(uint64_t tokenBase, uint32_t s, uint32_t n, uint32_t heads, uint32_t sq)
+__aicore__ inline constexpr uint64_t MxQuerySlot(uint64_t tokenBase, uint32_t s, uint32_t n, uint32_t heads,
+                                                 uint32_t sq)
 {
     if constexpr (layout == QBSALayout::BNSD) {
         return tokenBase * heads + static_cast<uint64_t>(n) * sq + s;

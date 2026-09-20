@@ -23,8 +23,11 @@ CASE_FILE = Path(__file__).with_name("qbsa_mxfp8_layout_stc.csv")
 
 def _case_names():
     with CASE_FILE.open(encoding="utf-8-sig", newline="") as stream:
-        return [row["name"] for row in csv.DictReader(stream)
-                if row["enable"].strip().lower() in ("true", "1", "yes")]
+        return [
+            row["name"]
+            for row in csv.DictReader(stream)
+            if row["enable"].strip().lower() in ("true", "1", "yes")
+        ]
 
 
 @pytest.mark.ci
@@ -34,7 +37,11 @@ def test_qbsa_mxfp8_layout(case_name, tmp_path):
 
     case = golden.load_test_cases(str(CASE_FILE), use_csv=True)[case_name]
     result = golden.run_one_case(
-        case_name, case, {"gen", "cpu", "npu", "compare"}, case_name, str(tmp_path),
+        case_name,
+        case,
+        {"gen", "cpu", "npu", "compare"},
+        case_name,
+        str(tmp_path),
     )
     if result["status"] != "Pass":
         pytest.fail(f"case failed: {case_name}, result={result}")

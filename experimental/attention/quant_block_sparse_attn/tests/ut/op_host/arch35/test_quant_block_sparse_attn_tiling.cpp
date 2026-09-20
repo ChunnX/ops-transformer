@@ -155,9 +155,15 @@ static bool ExecuteCase(QuantBlockSparseAttnTilingUtParam param, TilingInfo &til
 
 class QuantBlockSparseAttnTilingArch35Test : public testing::TestWithParam<QuantBlockSparseAttnTilingUtParam> {
 protected:
-    static void SetUpTestCase() { std::cout << "QuantBlockSparseAttnTilingArch35Test SetUp" << std::endl; }
+    static void SetUpTestCase()
+    {
+        std::cout << "QuantBlockSparseAttnTilingArch35Test SetUp" << std::endl;
+    }
 
-    static void TearDownTestCase() { std::cout << "QuantBlockSparseAttnTilingArch35Test TearDown" << std::endl; }
+    static void TearDownTestCase()
+    {
+        std::cout << "QuantBlockSparseAttnTilingArch35Test TearDown" << std::endl;
+    }
 };
 
 TEST_P(QuantBlockSparseAttnTilingArch35Test, param)
@@ -181,8 +187,8 @@ INSTANTIATE_TEST_SUITE_P(
     testing::ValuesIn(GetCasesFromCsv<QuantBlockSparseAttnTilingUtParam>(ReplaceFileExtension2Csv(__FILE__))),
     PrintCaseInfoString<QuantBlockSparseAttnTilingUtParam>);
 
-static QuantBlockSparseAttnTilingUtParam MakePaddedStrideCase(
-    const std::string &layout, int64_t batch, int64_t sequence, int64_t heads)
+static QuantBlockSparseAttnTilingUtParam MakePaddedStrideCase(const std::string &layout, int64_t batch,
+                                                              int64_t sequence, int64_t heads)
 {
     const auto cases = GetCasesFromCsv<QuantBlockSparseAttnTilingUtParam>(ReplaceFileExtension2Csv(__FILE__));
     for (auto param : cases) {
@@ -199,18 +205,18 @@ static QuantBlockSparseAttnTilingUtParam MakePaddedStrideCase(
                                  ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND);
         param.qDescale = TensorDesc(gert::StorageShape({batch, dim1, dim2, 2, 2}, {batch, dim1, dim2, 2, 2}),
                                     ge::DT_FLOAT8_E8M0, ge::FORMAT_ND);
-        param.key = TensorDesc(gert::StorageShape({4, heads, 128, 128}, {4, heads, 128, 128}),
-                               ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND);
+        param.key = TensorDesc(gert::StorageShape({4, heads, 128, 128}, {4, heads, 128, 128}), ge::DT_FLOAT8_E4M3FN,
+                               ge::FORMAT_ND);
         param.value = param.key;
         param.kDescale = TensorDesc(gert::StorageShape({4, heads, 128, 2, 2}, {4, heads, 128, 2, 2}),
                                     ge::DT_FLOAT8_E8M0, ge::FORMAT_ND);
         param.vDescale = TensorDesc(gert::StorageShape({4, heads, 2, 128, 2}, {4, heads, 2, 128, 2}),
                                     ge::DT_FLOAT8_E8M0, ge::FORMAT_ND);
         param.sequsedKv = TensorDesc(gert::StorageShape({batch}, {batch}), ge::DT_INT32, ge::FORMAT_ND);
-        param.sparseIndices = TensorDesc(gert::StorageShape({batch, heads, 1, 4}, {batch, heads, 1, 4}),
-                                         ge::DT_INT32, ge::FORMAT_ND);
-        param.sparseSeqLen = TensorDesc(gert::StorageShape({batch, heads, 1}, {batch, heads, 1}),
-                                        ge::DT_INT32, ge::FORMAT_ND);
+        param.sparseIndices =
+            TensorDesc(gert::StorageShape({batch, heads, 1, 4}, {batch, heads, 1, 4}), ge::DT_INT32, ge::FORMAT_ND);
+        param.sparseSeqLen =
+            TensorDesc(gert::StorageShape({batch, heads, 1}, {batch, heads, 1}), ge::DT_INT32, ge::FORMAT_ND);
         param.blockTable = TensorDesc(gert::StorageShape({batch, 8}, {batch, 8}), ge::DT_INT32, ge::FORMAT_ND);
         param.attentionOut = TensorDesc(gert::StorageShape({batch, dim1, dim2, 128}, {batch, dim1, dim2, 128}),
                                         ge::DT_BF16, ge::FORMAT_ND);

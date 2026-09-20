@@ -333,11 +333,12 @@ private:
                 const uint64_t queryTokenOffset = runInfo.queryTokenBase + runInfo.s1Idx;
                 runInfo.queryOffset = queryTokenOffset * static_cast<uint64_t>(constInfo.n2GD) +
                                       static_cast<uint64_t>(runInfo.realN2Idx) * constInfo.dSize;
-                runInfo.queryScaleOffset = queryTokenOffset * static_cast<uint64_t>(constInfo.qScaleN1D) +
+                runInfo.queryScaleOffset =
+                    queryTokenOffset * static_cast<uint64_t>(constInfo.qScaleN1D) +
                     static_cast<uint64_t>(runInfo.realN2Idx) * constInfo.queryScaleDSize * constInfo.scaleLastDim;
             } else {
-                const uint64_t querySlot = MxQuerySlot<LAYOUT>(runInfo.queryTokenBase, runInfo.s1Idx,
-                    runInfo.realN2Idx, constInfo.realN2Size, constInfo.qSeqSize);
+                const uint64_t querySlot = MxQuerySlot<LAYOUT>(runInfo.queryTokenBase, runInfo.s1Idx, runInfo.realN2Idx,
+                                                               constInfo.realN2Size, constInfo.qSeqSize);
                 runInfo.queryOffset = querySlot * constInfo.dSize;
                 runInfo.queryScaleOffset = querySlot * constInfo.queryScaleDSize * constInfo.scaleLastDim;
             }
