@@ -836,6 +836,18 @@ static ge::graphStatus InferShape4MoeInitRoutingV3(gert::InferShapeContext *cont
 
     CalculateOutputDims(xShape, expertIdxShape, activeNum, cols, outNum, xOutNum);
 
+    auto xDtype = context->GetInputDataType(MOE_INIT_ROUTING_V3_INPUT_X);
+    if (quantMode == QuantMode::NON_QUANT && xDtype == ge::DT_FLOAT4_E2M1 && cols >= 0 && scaleShape != nullptr &&
+        scaleShape->GetDimNum() == DIM_THREE) {
+        int64_t scaleBlocks = scaleShape->GetDim(1);
+        int64_t unpackedBlocks = Ops::Base::CeilDiv<int64_t>(cols, SCALE_BLOCK_SIZE);
+        int64_t packedBlocks = Ops::Base::CeilDiv<int64_t>(cols * DIM_TWO, SCALE_BLOCK_SIZE);
+        if (scaleBlocks >= 0 && scaleBlocks != unpackedBlocks && scaleBlocks == packedBlocks) {
+            // Torch graph exposes FP4 x with packed storage columns; infer expanded_x with logical columns.
+            cols *= DIM_TWO;
+        }
+    }
+
     SetExpandedXandRowIdxShape(expandedXShape, expandedRowIdxShape, dropPadMode, xOutNum, outNum, experNum,
                                expertCapacity, cols);
 

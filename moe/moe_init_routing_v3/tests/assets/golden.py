@@ -1025,9 +1025,13 @@ class MoeInitRoutingV3KernelSpec:
         "float32": {"standard": "stat_rel_err"},
     }
 
-    def compare(*outputs, **kwargs):
+    def compare(*outputs, compare_context=None, **kwargs):
         results = []
         half = len(outputs) // 2
+        attributes = (
+            getattr(compare_context, "attributes", {}) if compare_context else {}
+        )
+        is_non_quant = attributes.get("quant_mode") == -1
         for i in range(half):
             npu_out = outputs[i]
             golden_out = outputs[half + i]
@@ -1045,6 +1049,28 @@ class MoeInitRoutingV3KernelSpec:
                 continue
             npu_arr = _torch_to_numpy(npu_out)
             golden_arr = _torch_to_numpy(golden_out)
+            if (
+                is_non_quant
+                and i in (0, 3)
+                and getattr(golden_arr.dtype, "kind", "") == "f"
+            ):
+                npu_dtype_name = str(npu_arr.dtype).lower()
+                if any(name in npu_dtype_name for name in ("e4m3", "e5m2", "e8m0")):
+                    from ttk.utilities.dtypes import (
+                        numpy_float8_e4m3fn,
+                        numpy_float8_e5m2,
+                        numpy_float8_e8m0,
+                    )
+
+                    dtype_map = {
+                        "e4m3": numpy_float8_e4m3fn,
+                        "e5m2": numpy_float8_e5m2,
+                        "e8m0": numpy_float8_e8m0,
+                    }
+                    for name, dtype_fn in dtype_map.items():
+                        if name in npu_dtype_name:
+                            golden_arr = golden_arr.astype(dtype_fn(), copy=False)
+                            break
             npu_flat = numpy.asarray(npu_arr).reshape(-1)
             golden_flat = numpy.asarray(golden_arr).reshape(-1)
             min_len = min(npu_flat.size, golden_flat.size)
@@ -1100,8 +1126,8 @@ class MoeInitRoutingV3KernelSpec:
                         return ((hi << 4) | lo).astype(numpy.uint8)
                     return raw
 
-                npu_raw = _to_raw_uint8(numpy.asarray(npu_arr))
-                golden_raw = _to_raw_uint8(numpy.asarray(golden_arr))
+                npu_raw = _to_raw_uint8(numpy.asarray(npu_cmp))
+                golden_raw = _to_raw_uint8(numpy.asarray(golden_cmp))
                 min_len_raw = min(npu_raw.size, golden_raw.size)
                 is_hifloat8 = (
                     "hifloat8" in dtype_name
