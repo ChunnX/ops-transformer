@@ -178,7 +178,7 @@ public:
     // UB
     static constexpr uint32_t UB_MM1_RES_BUFCNT = 2U;
     static constexpr uint32_t UB_MM1_RES_BUF_BYTES = mBaseSize / CV_RATIO * s2BaseSize * sizeof(MM_T);
-    static constexpr uint32_t UB_MM2_RES_BUFCNT = 1U;
+    static constexpr uint32_t UB_MM2_RES_BUFCNT = dVBaseSize <= 64U ? 2U : 1U;
     static constexpr uint32_t UB_MM2_RES_BUF_BYTES = mBaseSize / CV_RATIO * dVBaseSize * sizeof(MM_T);
     LocalTensor<uint8_t> ubMm1ResBuffers_;
     LocalTensor<uint8_t> ubMm2ResBuffers_;
