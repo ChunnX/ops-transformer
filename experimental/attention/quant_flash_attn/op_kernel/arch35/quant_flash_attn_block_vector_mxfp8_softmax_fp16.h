@@ -202,15 +202,22 @@ public:
                                            mm1ResUB_, pScaleHalf_, validRows, subLoopIdx,
                                            mmSlot, stateSlot);
 
-        // P → AIC L1（MTE3，NZ 块拷贝）
+        // P → AIC L1（MTE3；设计 §9.1 三段链终稿段③——按列组 4 次连续拷贝）
         SetFlag<HardEvent::V_MTE3>(EVT_P_COPY);
         WaitFlag<HardEvent::V_MTE3>(EVT_P_COPY);
-        // TODO(批次3.3): NZ 三段链 MTE3 块参数确定后填充（当前线性占位）
         LocalTensor<QUANT_T> &pL1Target = (constInfo_.subBlockIdx == 0U) ? pL1V0Tensor_ : pL1V1Tensor_;
-        DataCopy(pL1Target[runInfo.pSlot * L1_P_V0_SINGLE_SLOT_SIZE
-                          + subLoopIdx * s2SubLoopSize * (s1BaseSize / 2)],
-                 vec1PUb_[subLoopIdx * s2SubLoopSize * (s1BaseSize / 2)],
-                 s2SubLoopSize * (s1BaseSize / 2));  // 占位：线性拷贝，NZ 布局待批次3.3
+        // L1 布局契约（LoadPToL0B 反推）：单元 (S2 行 r, 列组 j) 地址 = (j×A + r)×32B，
+        // A = actS2SizeAlign64（任务级 S2 64 对齐）。本子循环贡献每列组的行段 [subLoop×128, +128)。
+        // vec1PUb 暂存 = 列组主序 [4 组 × 128 行]，组 j 连续 4KB → 每组一次纯连续拷贝
+        uint32_t s2Align64 = (runInfo.actSingleLoopS2Size + 63U) / 64U * 64U;
+        constexpr uint32_t pSlotSize = s2SubLoopSize * (s1BaseSize / 2);   // 暂存槽 16KB
+        constexpr uint32_t groupBytes = s2SubLoopSize * 32;                // 每列组 128 行 × 32B = 4KB
+        constexpr uint32_t groupCount = (s1BaseSize / 2) / 32;             // 128 列 / 32 列每组 = 4
+        uint32_t l1SlotBase = runInfo.pSlot * L1_P_V0_SINGLE_SLOT_SIZE;
+        for (uint32_t j = 0; j < groupCount; j++) {
+            DataCopy(pL1Target[l1SlotBase + j * s2Align64 * 32 + subLoopIdx * groupBytes],
+                     vec1PUb_[subLoopIdx * pSlotSize + j * groupBytes], groupBytes);
+        }
 
         // ===== 末 subLoop epilogue：跨块因子 + pscale 统一写 =====
         if (isLastSub) {
