@@ -137,10 +137,10 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         LocalTensor<float> gateBuf = bufScalar_.Get<float>()[EXP_DIV_ELEM];
         MhcSandwichRegBase::MulsB16WithUbScalar(hIn, x2Cache, gateBuf, 0U, tD);
         PipeBarrier<PIPE_V>();
-        MhcSandwichRegBase::AxpyB16WithUbScalar(hIn, x2Cache[D_], gateBuf, 1U, tD);
-        PipeBarrier<PIPE_V>();
-        MhcSandwichRegBase::AxpyPairB16WithUbScalar(hIn, x2Cache[2U * D_], x2Cache[3U * D_], gateBuf, 2U, tD);
-        PipeBarrier<PIPE_V>();
+        for (uint32_t n = 1; n < N_MAX; ++n) {
+            MhcSandwichRegBase::AxpyB16WithUbScalar(hIn, x2Cache[n * D_], gateBuf, n, tD);
+            PipeBarrier<PIPE_V>();
+        }
         sumSq1 += CacheHInAndReduceSumSq(tOff, tD, hIn);
     }
 
