@@ -155,16 +155,6 @@ def _check_params(
             f"comm_mode only supports 'aiv_urma', but got '{comm_mode}'. "
             f"Please pass comm_mode='aiv_urma' explicitly."
         )
-    if x1_dtype is not None and not isinstance(x1_dtype, int):
-        raise ValueError(
-            f"x1_dtype must be an int (ACL dtype enum) or None, "
-            f"but got {type(x1_dtype).__name__}."
-        )
-    if x2_dtype is not None and not isinstance(x2_dtype, int):
-        raise ValueError(
-            f"x2_dtype must be an int (ACL dtype enum) or None, "
-            f"but got {type(x2_dtype).__name__}."
-        )
     fp4_dtype_enums = (296,)
     if x1.dtype == torch.uint8 and x1_dtype not in fp4_dtype_enums:
         raise ValueError(
@@ -177,16 +167,6 @@ def _check_params(
             f"is not a valid fp4 enum. Please pass x2_dtype=296 (fp4_e2m1)."
         )
     fp8_e8m0_dtype_enum = 293
-    if x1_scale_dtype is not None and not isinstance(x1_scale_dtype, int):
-        raise ValueError(
-            f"x1_scale_dtype must be an int (ACL dtype enum) or None, "
-            f"but got {type(x1_scale_dtype).__name__}."
-        )
-    if x2_scale_dtype is not None and not isinstance(x2_scale_dtype, int):
-        raise ValueError(
-            f"x2_scale_dtype must be an int (ACL dtype enum) or None, "
-            f"but got {type(x2_scale_dtype).__name__}."
-        )
     if (
         x1_scale is not None
         and x1_scale.dtype == torch.uint8
