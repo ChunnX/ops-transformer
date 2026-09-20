@@ -28,6 +28,7 @@ namespace optiling {
 
 CMP_EXTERN_C ge::graphStatus TilingCompressorArch22(gert::TilingContext *context);
 CMP_EXTERN_C ge::graphStatus TilingCompressorArch35(gert::TilingContext *context);
+CMP_EXTERN_C ge::graphStatus TilingCompressorArch92(gert::TilingContext *context);
 
 struct CompressorCompileInfo {
     int64_t core_num;
@@ -44,6 +45,8 @@ CMP_EXTERN_C ge::graphStatus TilingCompressor(gert::TilingContext *context)
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
     if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
         return TilingCompressorArch35(context);
+    } else if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_9201) {
+        return TilingCompressorArch92(context);
     } else {
         return TilingCompressorArch22(context);
     }
