@@ -3,7 +3,7 @@
 - **算子名**：`GenericLightningIndexer` / `aclnnGenericLightningIndexer`
 - **路径**：`attention/generic_lightning_indexer`
 - **开发分支**：`generic-lightning-indexer`（基于 `cann/master` `12a3dd661`）
-- **阶段**：Step 1（收编 LI / LIv2 / QLI / QLIv2 / PKI + Qwen CLI；MSA 仅预留 IR）
+- **阶段**：Step 2（收编 LI / LIv2 / QLI / QLIv2 / PKI + Qwen CLI；MSA identity + Maxpool + select_mode=none）
 - **日期**：2026-09-20
 
 配套分析：
@@ -42,9 +42,9 @@
    - DeepSeek V4 CSA Indexer（LIv2 / QLIv2，Key **已压缩**）
    - GLM 5.3 Flash Index Pool（PKI：打分后 Expand + 追加尾）
    - Qwen3.8-Flash-Next Compressed Lightweight Indexer（ReLU + **累加和** + 块 TopK + Expand + 追加不完整块）
-2. 接口上预留 MiniMax M3 / `MsaIndexScore` 的扩展点（Step 2 再实现 kernel）：无激活、沿 Key 分段 Maxpool、可选不融合 TopK。
+2. MiniMax M3 / `MsaIndexScore`：无激活、沿 Key 分段 Maxpool、不融合 TopK；保留 N1。成套属性 `act_type=1` ∧ `key_reduce_mode=1` ∧ `select_mode=1`。
 3. Q/K **前处理不做进本算子**（RoPE、RMSNorm、AvgPool、KeyPool、CSA 压缩器均在上游）。本算子必须能消费**已经压缩**的 Key，并用 `cmp_ratio` 做 mask / Expand。
-4. 后处理**必须包含 TopK**（Step 1 主路径）。MSA 的「只出 score」通过 `select_mode=none` 预留 IR；成套属性可过 infershape/tiling，精度与 kernel 对齐放到 Step 2。
+4. 后处理**必须包含 TopK**（Step 1 主路径）。MSA 的「只出 score」通过 `select_mode=none` 落地：kernel 走 keepHeads + 窗 Maxpool，输出 `sparse_values`，`sparse_indices` 为空。
 
 ### 2.2 非目标
 
@@ -190,7 +190,7 @@ $$
 | 0 | `sparse_indices` | INT32 | 选中下标；无效 `-1` |
 | 1 | `sparse_values` | FP32 | `return_value=true` 时为 TopK 分数；否则 shape `(0,)` |
 
-LI / QLI 的 `sparse_values` 原为 FP16/BF16，本算子统一 widen 到 FP32（与 LIv2 / PKI / QLIv2 一致）。`select_mode=none`（Step 2）时：`sparse_indices` 空，`sparse_values` 改为 score 张量。
+LI / QLI 的 `sparse_values` 原为 FP16/BF16，本算子统一 widen 到 FP32（与 LIv2 / PKI / QLIv2 一致）。`select_mode=none` 时：`sparse_indices` 空，`sparse_values` 改为 keep-heads Maxpool score 张量。
 
 ### 5.3 属性
 
@@ -201,20 +201,20 @@ LI / QLI 的 `sparse_values` 原为 FP16/BF16，本算子统一 widen 到 FP32�
 | 2 | `layout_q` | string | `"BSND"` | `BSND` / `TND` |
 | 3 | `layout_k` | string | `"BSND"` | `BSND` / `TND` / `PA_BBND` / `PA_BSND`（`PA_BSND` 视为 `PA_BBND` 别名） |
 | 4 | `sparse_mode` | int | 0 | 0 / 3 / 4 |
-| 5 | `act_type` | int | 0 | 0=`relu`，1=`identity`（Step 2 / MSA） |
+| 5 | `act_type` | int | 0 | 0=`relu`，1=`identity`（MSA） |
 | 6 | `has_weighted_sum` | bool | true | true=乘 $W$ 再沿 head 求和；false=沿 head 累加和 |
 | 7 | `expand_indices` | bool | false | TopK 后是否展开回 token |
 | 8 | `append_tail` | bool | false | 展开后是否追加残余 token；仅 `expand_indices=true` |
 | 9 | `quant_mode` | int | -1 | -1 none；0/1 FP8 PTH（兼容 PKI）；对齐 QLIv2：2 INT8 / 3 MXFP8 / 4 HiFP8 / 5 MXFP4 |
 | 10 | `return_value` | bool | false | 是否输出分数 |
-| 11 | `select_mode` | int | 0 | 0=`topk`；1=`none`（Step 2 预留） |
-| 12 | `key_reduce_mode` | int | 0 | 0=`none`；1=`maxpool`（Step 2 预留） |
+| 11 | `select_mode` | int | 0 | 0=`topk`；1=`none`（MSA） |
+| 12 | `key_reduce_mode` | int | 0 | 0=`none`；1=`maxpool`（MSA） |
 | 13 | `score_scale` | float | 1.0 | QK 缩放；PKI 传 `1/sqrt(128)` |
 | 14 | `key_stride0` | int | -1 | PA 下 K 的 0 轴 stride；-1 由 shape 推导 |
 | 15 | `k_descale_stride0` | int | -1 | PA 下 k_descale 的 0 轴 stride；对齐 PKI |
 | 16 | `max_seqlen_q` | int | -1 | 对齐 LIv2/QLIv2：TND 每 batch 最大 Q 长度 |
-| 17 | `init_blocks` | int | 0 | MSA 预留 |
-| 18 | `local_blocks` | int | 0 | MSA 预留 |
+| 17 | `init_blocks` | int | 0 | MSA local_mask sink 块数 |
+| 18 | `local_blocks` | int | 0 | MSA local_mask 窗口块数 |
 
 约束：
 
@@ -254,7 +254,7 @@ $S_2$ / $T_2$ 始终是**压缩后**长度。
 | k_descale / key_dequant_scale | 同上 | **对齐** → `k_descale` | |
 | output_idx_offset | LIv2 / QLIv2 | **对齐** | 多段拼接时 indices 加偏移，Step 1 原先缺失 |
 | lightning_indexer_metadata | LIv2 / QLIv2 | **可选对齐** → `metadata` | Step 1 可不传；不做独立 metadata 算子，避免再维护一份负载均衡 IR |
-| start_loc | MSA | **预留** | Step 2 |
+| start_loc | MSA | **对齐** | query 所在逻辑 block，生成 local_mask；缺省时按 `(S1-1)/r` |
 | atten_mask | MSA | **不对齐** | MSA 的 2048×2048 模板掩码由 `sparse_mode` 在 kernel 内生成；不把稠密 mask 张量收进 indexer 主路径 |
 | scale（MSA 单 scale） | MSA | **不对齐为独立输入** | 并入 `q_descale`/`k_descale`；MSA INT8 的单一 scale 由调用方广播到 k_descale |
 | layout_query / layout_key | LI | **对齐** → `layout_q`/`layout_k` | |
@@ -270,7 +270,7 @@ $S_2$ / $T_2$ 始终是**压缩后**长度。
 | key_stride0 | PKI / LI PA | **对齐** | |
 | k_descale_stride0 | PKI | **对齐** | Step 1 原先缺失 |
 | max_seqlen_q / max_seqlen_k | LIv2 / QLIv2 | **对齐 max_seqlen_q**；不对齐 max_seqlen_k | max_seqlen_k 可由 key shape / actual_seq_k 推导，LIv2 仅用于 metadata 负载均衡 |
-| init_blocks / local_blocks | MSA | **预留** | Step 2 |
+| init_blocks / local_blocks | MSA | **对齐** | local_mask 的 sink 与窗口；均为 0 时关闭 |
 | sparse_values dtype FP16/BF16 | LI / QLI | **不对齐窄类型** | 统一 FP32，避免量化/非量化双输出 dtype；调用方可再 cast |
 | PKI INT64 序列/残余 | PKI | **不对齐 INT64 GM** | 设备侧统一 INT32；ValueDepend 的 INT64 host 路径由调用方 cast，避免 kernel 再分一叉 |
 
@@ -334,7 +334,7 @@ EVG 适合 **逐元素** 尾处理（Add / Relu / Silu / Bias broadcast）。Ind
 |---|---|---|
 | $\phi$（ReLU / Identity） | 能。对应 `VisitorCompute<Relu>` / 旁路 | Step 1 用 Policy 对齐 EVG 节点语义；后续可换成 `TreeVisitor` |
 | 沿 head 加权和 / 累加和 | 部分。是 $H_I$ 轴规约，不是 elementwise | 自定义 `HeadReduce` Stage；接口按 EVG 三阶段（LOAD W → COMPUTE → 产出 $s$） |
-| 沿 Key 分段 Maxpool | 否（MSA Step 2） | `KeyReduce` Stage，预留 |
+| 沿 Key 分段 Maxpool | 否（MSA） | `KeyReduce` Stage：vec1 keepHeads 写出 `[S1,N1,S2]`，再按 `cmp_ratio` 窗 Maxpool |
 | TopK + Expand + Append | 否。排序 / gather / 标量写尾 | 独立 `Select` + `IndexPost` Stage，复用 LI/PKI 已验证的 `vf_topk_gather` |
 
 Cube 主循环：**不新建 catlass 私有分支**（MSA 那条路已经分叉）。Step 1 沿用 LI/PKI arch35 的 Fixpipe L0C→UB（`CO2Layout::ROW_MAJOR` 直出 UB），这是该家族 950 的默认路径，避免再实现一遍 C2UB。

@@ -486,7 +486,10 @@ __aicore__ inline void GenericLightningIndexerKernel<LIT>::Init(
     __gm__ uint8_t *actK = (actualSeqLengthsK != nullptr) ? actualSeqLengthsK : sequsedK;
     InitActualSeqLen(actQ, actK);
     (void)metadata;
-    (void)startLoc;
+    if (startLoc != nullptr) {
+        startLocGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(startLoc), constInfo.batchSize);
+        vectorService.SetStartLocGm(startLocGm_);
+    }
     if (sequsedQ != nullptr) {
         sequsedQGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(sequsedQ), constInfo.batchSize);
         hasSequsedQ_ = true;
@@ -508,9 +511,12 @@ __aicore__ inline void GenericLightningIndexerKernel<LIT>::Init(
     uint64_t offset = 0;
     // vec 把整个s2的score存储在GM，大小为s1BaseSize * 16K * 4
     GlobalTensor<SCORE_T> scoreGm; // 存放vec核写出的score
-    uint64_t singleCoreScoreSize = constInfo.s1BaseSize *
-                                   GliCommon::Align((uint64_t)constInfo.kSeqSize, (uint64_t)constInfo.s2BaseSize) *
-                                   sizeof(SCORE_T);
+    uint64_t scoreRows = constInfo.s1BaseSize;
+    if constexpr (LIT::keepHeads) {
+        scoreRows *= constInfo.gSize;
+    }
+    uint64_t singleCoreScoreSize =
+        scoreRows * GliCommon::Align((uint64_t)constInfo.kSeqSize, (uint64_t)constInfo.s2BaseSize) * sizeof(SCORE_T);
     scoreGm.SetGlobalBuffer((__gm__ SCORE_T *)(workspace + aiCoreIdx * singleCoreScoreSize));
     offset += GetBlockNum() * singleCoreScoreSize;
 
@@ -667,9 +673,14 @@ __aicore__ inline void GenericLightningIndexerKernel<LIT>::CalcRunInfo(uint32_t 
             constInfo.sparseCount, static_cast<uint32_t>(constInfo.poolSize), constInfo.expandMode);
         indiceOutCoreOffset = actualSeqQPrefixSum * constInfo.kHeadNum * idxOutStride + runInfo.n2Idx * idxOutStride;
         // values 输出行宽恒为 sparseCount(与 indices 的 outputLen 不同),
-        // 不可复用 indiceOutCoreOffset, 否则错位写到相邻 batch
-        valueOutCoreOffset =
-            actualSeqQPrefixSum * constInfo.kHeadNum * constInfo.sparseCount + runInfo.n2Idx * constInfo.sparseCount;
+        // 不可复用 indiceOutCoreOffset, 否则错位写到相邻 batch。
+        // MSA keep-heads: [B,S1,N1,nOut]，行宽 = N1 * nOut，nOut 存在 sparseCount。
+        if constexpr (LIT::keepHeads) {
+            valueOutCoreOffset = actualSeqQPrefixSum * constInfo.gSize * constInfo.sparseCount;
+        } else {
+            valueOutCoreOffset = actualSeqQPrefixSum * constInfo.kHeadNum * constInfo.sparseCount +
+                                 runInfo.n2Idx * constInfo.sparseCount;
+        }
     }
     uint64_t actualSeqKPrefixSum;
     if constexpr (K_LAYOUT_T == GliLayout::TND) { // T N2 D

@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- 算子功能：`generic_lightning_indexer`对**已经完成前处理**的 Index Query / Index Key 做 `Matmul → 激活 → 沿 head 规约 → 掩码 → TopK →（可选 Expand / 追加尾 token）`，得到每一个 token 对应的 Top-$k$ 位置。不包含 RoPE、RMSNorm、AvgPool、KeyPool、CSA 压缩等 Q/K 前处理；压缩后的 Key 通过 `cmp_ratio` 消费。该算子用于收编 `lightning_indexer`、`lightning_indexer_v2`、`quant_lightning_indexer`、`quant_lightning_indexer_v2`、`pool_key_indexer` 以及 Qwen Compressed Lightweight Indexer 的打分与选择路径。`MsaIndexScore` 的 identity + Maxpool 剖面通过 `act_type` / `key_reduce_mode` / `select_mode` 预留，Step 2 再完成精度对齐。
+- 算子功能：`generic_lightning_indexer`对**已经完成前处理**的 Index Query / Index Key 做打分与选择。TopK 路径为 `Matmul → 激活 → 沿 head 规约 → 掩码 → TopK →（可选 Expand / 追加尾 token）`；MSA 路径为 `Matmul → Identity → 保留 head → 沿 Key 分段 Maxpool`，输出 block score、不融合 TopK。不包含 RoPE、RMSNorm、AvgPool、KeyPool、CSA 压缩等 Q/K 前处理。该算子用于收编 `lightning_indexer`、`lightning_indexer_v2`、`quant_lightning_indexer`、`quant_lightning_indexer_v2`、`pool_key_indexer`、Qwen Compressed Lightweight Indexer，以及 `MsaIndexScore`。
 
 - 计算公式：
 
@@ -21,12 +21,13 @@
     idx = \mathrm{Post}\Bigl(\mathrm{Top}\text{-}k\bigl(\mathrm{Reduce}_{h}(\phi(\alpha\, Q K^{\top}))\odot M\bigr)\Bigr)
     $$
 
-    - $\phi$：`act_type=0` 为 $\mathrm{ReLU}$，`act_type=1` 为 Identity（MSA 预留）。
-    - $\mathrm{Reduce}_{h}$：`has_weighted_sum=true` 时为 $W$ 加权和，否则为沿 head 累加和。
+    - $\phi$：`act_type=0` 为 $\mathrm{ReLU}$，`act_type=1` 为 Identity（MSA）。
+    - $\mathrm{Reduce}_{h}$：TopK 路径下 `has_weighted_sum=true` 时为 $W$ 加权和，否则为沿 head 累加和；MSA 路径保留 N1，不做 head 规约。
     - $\alpha$：`score_scale`，PKI 场景传 $1/\sqrt{d}$。
     - $M$：由 `sparse_mode` 与 `cmp_ratio` 决定的可见性掩码。
     - $\mathrm{Post}$：identity / Expand / Expand+AppendTail。
     - $k=\texttt{topk}$ 一律表示**打分轴**选出的个数；旧 PKI 的 token 预算需先除以 `pool_size` 再传入。
+    - MSA：`select_mode=1` 时不做 TopK，对每个 head 沿 Key 做窗宽 `cmp_ratio` 的 Maxpool，输出 `[B,S1,N1,Align16(\lceil S2/r\rceil)]`。
 
     主要计算过程为：
 
@@ -35,7 +36,8 @@
     3. 通过激活函数 $\phi$ 过滤无效负相关信号。
     4. 与权重系数 `weights`（$W$）相乘后沿 $g$ 聚合，或直接沿 head 累加。
     5. 按 `sparse_mode` 做可见性过滤，无效位置置 $-\infty$。
-    6. 在打分轴选取前 $\mathrm{Top}\text{-}k$ 个索引；`expand_indices` 为 true 时展开为原始 token 索引，`append_tail` 为 true 时再追加 `cmp_residual_k` 指定的尾部有效 token。
+    6. TopK 路径：在打分轴选取前 $\mathrm{Top}\text{-}k$ 个索引；`expand_indices` 为 true 时展开为原始 token 索引，`append_tail` 为 true 时再追加 `cmp_residual_k` 指定的尾部有效 token。
+    7. MSA 路径：保留每个 head 的分数，按 `cmp_ratio` 做窗口 Maxpool，可选叠加 `init_blocks` / `local_blocks` 的 local_mask；`sparse_indices` 为空。
 
 ## 参数说明
 
@@ -57,7 +59,7 @@
 | k_descale | 输入 | Key 的反量化系数。仅 quant_mode>=0 时有效。仅 PA 布局下支持 0 轴非连续。 | 同 q_descale | ND |
 | output_idx_offset | 输入 | 输出索引的逐 batch 偏移，写回 sparse_indices 前与选中下标相加。可选。shape 为 [B, ]。 | INT32 | ND |
 | metadata | 输入 | 预留 LIv2 式负载均衡任务表。Step 1 可不传。shape 为 [1024, ]。 | INT32 | ND |
-| start_loc | 输入 | MSA 预留：query 所在逻辑 block。Step 1 可不传。shape 为 [B, ]。 | INT32 | ND |
+| start_loc | 输入 | MSA：query 所在逻辑 block，用于 local_mask。可选。shape 为 [B, ]。 | INT32 | ND |
 | layout_q | 属性 | 用于标识输入 Query 的数据排布格式。支持 BSND、TND，默认值为 BSND。 | STRING | - |
 | layout_k | 属性 | 用于标识输入 key 的数据排布格式。支持 BSND、TND、PA_BBND、PA_BSND（PA_BSND 视为 PA_BBND 别名），默认值为 BSND。 | STRING | - |
 | topk | 属性 | 打分轴需要保留的个数。支持 [1, 2048] 以及 3072、4096、5120、6144、7168、8192。默认值为 2048。 | INT64 | - |
@@ -69,16 +71,16 @@
 | append_tail | 属性 | 展开后是否追加残余 token。仅 `expand_indices=true` 时允许为 true。默认值为 false。 | BOOL | - |
 | quant_mode | 属性 | 量化模式。-1 不量化；0/1 为 FP8 per-token-head（兼容 PKI）；2 INT8；3 MXFP8；4 HiFP8；5 MXFP4。默认值为 -1。 | INT64 | - |
 | return_value | 属性 | 是否输出 sparse_values。True 表示输出，False 表示输出 shape 为 (0,) 的空 tensor。默认值为 False。 | BOOL | - |
-| select_mode | 属性 | 选择模式。0 表示 fused TopK；1 表示 none（MSA 预留，须与 act_type=1、key_reduce_mode=1 成套）。默认值为 0。 | INT64 | - |
-| key_reduce_mode | 属性 | Key 轴规约。0 表示 none；1 表示 maxpool（MSA 预留）。默认值为 0。 | INT64 | - |
+| select_mode | 属性 | 选择模式。0 表示 fused TopK；1 表示 none（MSA，须与 act_type=1、key_reduce_mode=1 成套）。默认值为 0。 | INT64 | - |
+| key_reduce_mode | 属性 | Key 轴规约。0 表示 none；1 表示 maxpool（MSA）。默认值为 0。 | INT64 | - |
 | score_scale | 属性 | QK 缩放系数。默认值为 1.0。PKI 传 1/sqrt(128)。 | FLOAT | - |
 | key_stride0 | 属性 | key 第 0 轴的 stride（元素单位），用于 PA 场景下 0 轴非连续 key 的寻址。-1 表示未指定，按连续输入由 shape 推导。默认值为 -1。 | INT64 | - |
 | k_descale_stride0 | 属性 | k_descale 第 0 轴的 stride（元素单位），用于 PA 场景下 0 轴非连续 k_descale 的寻址。-1 表示未指定。默认值为 -1。 | INT64 | - |
 | max_seqlen_q | 属性 | TND 场景下每个 batch Query 的最大长度，供 tiling / padding 使用。-1 表示未指定。默认值为 -1。 | INT64 | - |
-| init_blocks | 属性 | MSA 预留：local_mask 的 sink 块数。默认值为 0。 | INT64 | - |
-| local_blocks | 属性 | MSA 预留：local_mask 的窗口块数。默认值为 0。 | INT64 | - |
-| sparse_indices | 输出 | 选中的稀疏索引，无效部分填 -1。layout_q 为 BSND 时，shape 为 [B, S1, L_out]；layout_q 为 TND 时，shape 为 [T1, L_out]。L_out 在不展开时为 topk，展开时为 topk * cmp_ratio，再追加尾时为 topk * cmp_ratio + cmp_ratio - 1。 | INT32 | ND |
-| sparse_values | 输出 | 选中位置对应的分数。return_value 为 True 时，layout_q 为 BSND 时 shape 为 [B, S1, topk]，layout_q 为 TND 时 shape 为 [T1, topk]；return_value 为 False 时，shape 为 (0,)。 | FLOAT | ND |
+| init_blocks | 属性 | MSA local_mask 的 sink 块数。默认值为 0。 | INT64 | - |
+| local_blocks | 属性 | MSA local_mask 的窗口块数。默认值为 0。 | INT64 | - |
+| sparse_indices | 输出 | 选中的稀疏索引，无效部分填 -1。layout_q 为 BSND 时，shape 为 [B, S1, L_out]；layout_q 为 TND 时，shape 为 [T1, L_out]。L_out 在不展开时为 topk，展开时为 topk * cmp_ratio，再追加尾时为 topk * cmp_ratio + cmp_ratio - 1。MSA（select_mode=1）时 shape 为 (0,)。 | INT32 | ND |
+| sparse_values | 输出 | 选中位置对应的分数。return_value 为 True 时，layout_q 为 BSND 时 shape 为 [B, S1, topk]，layout_q 为 TND 时 shape 为 [T1, topk]；return_value 为 False 时，shape 为 (0,)。MSA 时 shape 为 [B, S1, N1, Align16(ceil(S2/cmp_ratio))]（TND 去掉 B）。 | FLOAT | ND |
 
 ## 约束说明
 
@@ -94,7 +96,7 @@
 - 当 quant_mode=-1 时，不支持传入 q_descale 和 k_descale。
 - `has_weighted_sum=true` 必须传 weights，反之必须为空。
 - `append_tail=true` 需要 `expand_indices=true`。
-- `act_type=1`、`key_reduce_mode=1`、`select_mode=1` 必须成套出现（MSA）；Step 1 非 MSA 路径拒绝单独打开其中任一开关。
+- `act_type=1`、`key_reduce_mode=1`、`select_mode=1` 必须成套出现（MSA）；非 MSA 路径拒绝单独打开其中任一开关。MSA 要求 `has_weighted_sum=false` 且不得 `expand_indices`。`cmp_ratio` 在此剖面表示 maxpool 窗。
 - sparse_indices 无效部分填 -1；sparse_values 无效部分填 -inf。
 - sparse_mode 所表示的 mask 模式的详细介绍见 [sparse_mode 参数说明](../../docs/zh/context/sparse_mode_introduction.md)。
 - <term>Ascend 950PR/Ascend 950DT</term>：

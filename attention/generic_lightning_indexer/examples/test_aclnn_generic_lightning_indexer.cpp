@@ -69,14 +69,18 @@ template <typename T>
 int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
                     aclDataType dataType, aclTensor **tensor)
 {
-    auto size = GetShapeSize(shape) * sizeof(T);
-    auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
+    auto nElem = GetShapeSize(shape);
+    auto copySize = nElem * sizeof(T);
+    auto allocSize = (copySize == 0) ? sizeof(T) : copySize;
+    auto ret = aclrtMalloc(deviceAddr, allocSize, ACL_MEM_MALLOC_HUGE_FIRST);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }
-    ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        return ret;
+    if (copySize > 0) {
+        ret = aclrtMemcpy(*deviceAddr, allocSize, hostData.data(), copySize, ACL_MEMCPY_HOST_TO_DEVICE);
+        if (!CHECK_RET(ret == ACL_SUCCESS)) {
+            return ret;
+        }
     }
     std::vector<int64_t> strides(shape.size(), 1);
     for (int64_t i = static_cast<int64_t>(shape.size()) - 2; i >= 0; --i) {
@@ -86,17 +90,9 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
                               shape.data(), shape.size(), *deviceAddr);
     return 0;
 }
-} // namespace
 
-int main()
+int RunLiWeightedTopk(aclrtStream stream)
 {
-    int32_t deviceId = 0;
-    aclrtStream stream = nullptr;
-    int ret = Init(deviceId, &stream);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        return ret;
-    }
-
     std::vector<int64_t> qShape = {1, 2, 8, 128};
     std::vector<int64_t> kShape = {1, 16, 1, 128};
     std::vector<int64_t> wShape = {1, 2, 8};
@@ -127,10 +123,10 @@ int main()
     char layoutK[] = "BSND";
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
-    ret = aclnnGenericLightningIndexerGetWorkspaceSize(q, k, w, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-                                                       nullptr, nullptr, nullptr, nullptr, nullptr, 8, 1, layoutQ,
-                                                       layoutK, 3, 0, true, false, false, -1, true, 0, 0, 1.0f, -1, -1,
-                                                       -1, 0, 0, idx, val, &workspaceSize, &executor);
+    auto ret = aclnnGenericLightningIndexerGetWorkspaceSize(
+        q, k, w, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 8,
+        1, layoutQ, layoutK, 3, 0, true, false, false, -1, true, 0, 0, 1.0f, -1, -1, -1, 0, 0, idx, val, &workspaceSize,
+        &executor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         LOG_PRINT("aclnnGenericLightningIndexerGetWorkspaceSize failed. ERROR: %d\n", ret);
         return ret;
@@ -180,12 +176,6 @@ int main()
             LOG_PRINT("out[%ld] idx=%d val=%f\n", i, idxOut[i], valOut[i]);
         }
     }
-    if (badIdx > 0 || nanVal > 0 || badVal > 0) {
-        LOG_PRINT("precision check failed: badIdx=%d nanVal=%d badVal=%d expect=%f\n", badIdx, nanVal, badVal,
-                  expectVal);
-        return -1;
-    }
-    LOG_PRINT("GenericLightningIndexer example finished. indices in [0, %ld), values ~%f.\n", kShape[1], expectVal);
     aclDestroyTensor(q);
     aclDestroyTensor(k);
     aclDestroyTensor(w);
@@ -199,8 +189,124 @@ int main()
     if (workspace) {
         aclrtFree(workspace);
     }
+    if (badIdx > 0 || nanVal > 0 || badVal > 0) {
+        LOG_PRINT("LI precision check failed: badIdx=%d nanVal=%d badVal=%d expect=%f\n", badIdx, nanVal, badVal,
+                  expectVal);
+        return -1;
+    }
+    LOG_PRINT("LI example passed. indices in [0, %ld), values ~%f.\n", kShape[1], expectVal);
+    return 0;
+}
+
+int RunMsaMaxpool(aclrtStream stream)
+{
+    std::vector<int64_t> qShape = {1, 2, 8, 128};
+    std::vector<int64_t> kShape = {1, 32, 1, 128};
+    std::vector<int64_t> idxShape = {0};
+    std::vector<int64_t> valShape = {1, 2, 8, 16};
+    const uint16_t fp16One = FloatToFp16(1.0f);
+    std::vector<uint16_t> qHost(GetShapeSize(qShape), fp16One);
+    std::vector<uint16_t> kHost(GetShapeSize(kShape), fp16One);
+    std::vector<int32_t> idxHost(1, 0);
+    std::vector<float> valHost(GetShapeSize(valShape), 0.0f);
+    void *qAddr = nullptr;
+    void *kAddr = nullptr;
+    void *idxAddr = nullptr;
+    void *valAddr = nullptr;
+    aclTensor *q = nullptr;
+    aclTensor *k = nullptr;
+    aclTensor *idx = nullptr;
+    aclTensor *val = nullptr;
+    if (CreateAclTensor(qHost, qShape, &qAddr, aclDataType::ACL_FLOAT16, &q) != 0 ||
+        CreateAclTensor(kHost, kShape, &kAddr, aclDataType::ACL_FLOAT16, &k) != 0 ||
+        CreateAclTensor(idxHost, idxShape, &idxAddr, aclDataType::ACL_INT32, &idx) != 0 ||
+        CreateAclTensor(valHost, valShape, &valAddr, aclDataType::ACL_FLOAT, &val) != 0) {
+        LOG_PRINT("MSA CreateAclTensor failed\n");
+        return -1;
+    }
+
+    char layoutQ[] = "BSND";
+    char layoutK[] = "BSND";
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    auto ret = aclnnGenericLightningIndexerGetWorkspaceSize(
+        q, k, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+        nullptr, 16, 16, layoutQ, layoutK, 0, 1, false, false, false, -1, true, 1, 1, 1.0f, -1, -1, -1, 0, 0, idx, val,
+        &workspaceSize, &executor);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        LOG_PRINT("MSA GetWorkspaceSize failed. ERROR: %d\n", ret);
+        return ret;
+    }
+    void *workspace = nullptr;
+    if (workspaceSize > 0) {
+        aclrtMalloc(&workspace, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+    }
+    ret = aclnnGenericLightningIndexer(workspace, workspaceSize, executor, stream);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        LOG_PRINT("MSA execute failed. ERROR: %d\n", ret);
+        return ret;
+    }
+    aclrtSynchronizeStream(stream);
+
+    const int64_t outNum = GetShapeSize(valShape);
+    std::vector<float> valOut(outNum, 0.0f);
+    ret =
+        aclrtMemcpy(valOut.data(), outNum * sizeof(float), valAddr, outNum * sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        LOG_PRINT("copy MSA sparse_values failed. ERROR: %d\n", ret);
+        return ret;
+    }
+    int32_t badVal = 0;
+    const float expectBlk = 128.0f;
+    const float atol = 4.0f;
+    for (int64_t i = 0; i < outNum; ++i) {
+        const int64_t blk = i % 16;
+        const float v = valOut[i];
+        if (i < 32) {
+            LOG_PRINT("msa[%ld] val=%f\n", i, v);
+        }
+        if (blk < 2) {
+            if (!(v == v) || fabsf(v - expectBlk) > atol) {
+                ++badVal;
+            }
+        } else if (v > -1.0e30f) {
+            ++badVal;
+        }
+    }
+    aclDestroyTensor(q);
+    aclDestroyTensor(k);
+    aclDestroyTensor(idx);
+    aclDestroyTensor(val);
+    aclrtFree(qAddr);
+    aclrtFree(kAddr);
+    aclrtFree(idxAddr);
+    aclrtFree(valAddr);
+    if (workspace) {
+        aclrtFree(workspace);
+    }
+    if (badVal > 0) {
+        LOG_PRINT("MSA precision check failed: badVal=%d expectBlk=%f\n", badVal, expectBlk);
+        return -1;
+    }
+    LOG_PRINT("MSA example passed. valid blocks ~%f, pad -inf.\n", expectBlk);
+    return 0;
+}
+} // namespace
+
+int main()
+{
+    int32_t deviceId = 0;
+    aclrtStream stream = nullptr;
+    int ret = Init(deviceId, &stream);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        return ret;
+    }
+    ret = RunLiWeightedTopk(stream);
+    if (ret == 0) {
+        ret = RunMsaMaxpool(stream);
+    }
     aclrtDestroyStream(stream);
     aclrtResetDevice(deviceId);
     aclFinalize();
-    return 0;
+    return ret;
 }

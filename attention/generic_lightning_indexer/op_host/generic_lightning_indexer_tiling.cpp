@@ -248,6 +248,20 @@ ge::graphStatus GenericLightningIndexerTiling::ParseAndCheckParams(GenericLightn
 
     info.hasOutputIdxOffset = (context_->GetOptionalInputTensor(GLI_OUTPUT_IDX_OFFSET_INDEX) != nullptr) ? 1 : 0;
 
+    if (isMsa) {
+        int64_t nBlocks = 1;
+        if (info.pageAttention) {
+            nBlocks = static_cast<int64_t>(info.maxBlockNumPerBatch);
+        } else if (info.cmpRatio > 0) {
+            nBlocks = (info.s2Size + static_cast<int64_t>(info.cmpRatio) - 1) / static_cast<int64_t>(info.cmpRatio);
+        }
+        if (nBlocks <= 0) {
+            nBlocks = 1;
+        }
+        // sparseCount 复用为 MSA 输出末维 Align16(ceil(S2/r))，供 kernel 写 sparse_values 行宽
+        info.sparseCount = static_cast<uint32_t>(((nBlocks + 15) / 16) * 16);
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -285,8 +299,10 @@ ge::graphStatus GenericLightningIndexerTiling::CalcWorkspaceSize(GenericLightnin
     uint64_t s2Size35Align =
         (static_cast<uint64_t>(std::max(info.s2Size, static_cast<int64_t>(1))) + GLI_S2_BASE_SIZE - 1) /
         GLI_S2_BASE_SIZE * GLI_S2_BASE_SIZE;
+    uint64_t scoreHeads = (info.keyReduceMode == 1) ? static_cast<uint64_t>(std::max(info.gSize, 1u)) : 1ULL;
     uint64_t scoreGmSize35 =
-        RoundUp64(static_cast<uint64_t>(aicNum) * s1BaseSize35 * s2Size35Align * GLI_SCORE_T_SIZE, GLI_GM_ALIGN_BYTES);
+        RoundUp64(static_cast<uint64_t>(aicNum) * s1BaseSize35 * scoreHeads * s2Size35Align * GLI_SCORE_T_SIZE,
+                  GLI_GM_ALIGN_BYTES);
     scoreGmSize = std::max(scoreGmSize, scoreGmSize35);
     tilingData_.set_wsOffScore(offset);
     offset += scoreGmSize;
