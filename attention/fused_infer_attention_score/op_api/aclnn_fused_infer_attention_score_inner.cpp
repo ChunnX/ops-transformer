@@ -464,6 +464,15 @@ bool ShouldFallbackToAutogen(const aclTensor *query, const aclTensorList *key, c
         OP_LOGD("FIA falls back to autogen path: disabled by FIA_HANDMADE_PATH_DISABLE.");
         return true;
     }
+    // 诊断开关：FIA_FORCE_HANDMADE=1 强制走手写路径（等价门控前行为），用于 A/B 对照
+    static const bool forceHandmade = []() {
+        const char *env = std::getenv("FIA_FORCE_HANDMADE");
+        return (env != nullptr) && (env[0] != '\0') && (std::strcmp(env, "0") != 0);
+    }();
+    if (forceHandmade) {
+        OP_LOGD("FIA uses handmade path: forced by FIA_FORCE_HANDMADE.");
+        return false;
+    }
     // opbase 不支持 TensorV2：手写路径只能退化为 MakeContiguous，与 autogen 等价
     if (NnopbaseSupportTensorV2 == nullptr) {
         OP_LOGD("FIA falls back to autogen path: opbase does not support TensorV2.");
@@ -836,11 +845,17 @@ static aclnnStatus InnerFusedInferAttentionScoreGetWorkspaceSizeImpl(
             kvStartIdxOptional, numHeads, scaleValue, preTokens, nextTokens, inputLayout, numKeyValueHeads, sparseMode,
             innerPrecise, blockSize, antiquantMode, softmaxLseFlag, keyAntiquantMode, valueAntiquantMode,
             queryQuantMode, pseType, outDtype, attentionOut, softmaxLse, workspaceSize, executor);
-        // 与 pass 版本 autogen 调用方保持一致：对传入 nullptr 的后增 optional 输入显式禁用，
-        // 否则 opbase 在 infer/tiling 阶段访问 null 输入描述符导致段错误。
-        // irIndex 27~30 依次为 dequantScaleQuery/learnableSink/qStartIdx/kvStartIdx。
-        if (ret == ACLNN_SUCCESS && NnopbaseDisableOptionalInput != nullptr && executor != nullptr &&
-            *executor != nullptr) {
+        // 默认不再对 irIndex 27~30 做 NnopbaseDisableOptionalInput：
+        // V5 直调 autogen（不做 disable）在同版本 opbase 上正常，而崩溃栈显示
+        // Run 阶段 opbase RepeatRunWithCache 崩溃——GWS 返回后变更 executor
+        // 输入表与 9.2 opbase 的重复运行缓存机制存在兼容性风险。
+        // 诊断开关：FIA_FALLBACK_DISABLE_OPTIONAL=1 重新启用（复现对照用）。
+        static const bool disableOptional = []() {
+            const char *env = std::getenv("FIA_FALLBACK_DISABLE_OPTIONAL");
+            return (env != nullptr) && (env[0] != '\0') && (std::strcmp(env, "0") != 0);
+        }();
+        if (disableOptional && ret == ACLNN_SUCCESS && NnopbaseDisableOptionalInput != nullptr &&
+            executor != nullptr && *executor != nullptr) {
             if (dequantScaleQueryOptional == nullptr) {
                 NnopbaseDisableOptionalInput(*executor, 27U); // 27 is input irIndex
             }
