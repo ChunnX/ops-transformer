@@ -409,7 +409,7 @@ __aicore__ inline void ProcessVec1DnNoUpdate(const LocalTensor<T2> &dstTensor, c
         deScaleQK, minValue, keepProb, needAtten, dScale, blockStride, repeatStride, pScale, sinkValue);
 }
 
-// Transform scores in registers in both softmax passes. The mask sentinel and
+// Transform scores in registers in the exp pass. The mask sentinel and
 // padding are selected AFTER scaling, including zero and negative scales.
 template <bool applyMask, bool fullColumns>
 __simd_callee__ inline void TransformDnScore(RegTensor<float> &score, RegTensor<uint32_t> &words,
@@ -435,44 +435,80 @@ __simd_callee__ inline void TransformDnScore(RegTensor<float> &score, RegTensor<
     }
 }
 
-// Reduce one four-column group. Only the final incomplete group needs padding selection.
-template <bool applyMask, bool fullColumns>
+// Reduce unscaled visible scores. Scaling is monotone for a fixed sign, so
+// positive scales use max and negative scales use min. Zero scales reduce
+// visibility only. Mask/padding sentinels must never be divided by scale.
+template <bool applyMask, bool fullColumns, int scaleSign>
+__simd_callee__ inline void ReduceDnRawScore(RegTensor<float> &value, RegTensor<float> &extreme,
+                                             RegTensor<uint32_t> &words, RegTensor<uint32_t> &byteMask,
+                                             RegTensor<float> &excluded, RegTensor<uint32_t> &columnBase,
+                                             uint32_t columnOffset, uint32_t originN, MaskReg &active)
+{
+    if constexpr (scaleSign == 0) {
+        Duplicate(value, 0.0F);
+    }
+    if constexpr (applyMask) {
+        RegTensor<uint32_t> bytes;
+        MaskReg visible;
+        ShiftRights(bytes, words, static_cast<int16_t>(columnOffset * 8U), active);
+        And(bytes, bytes, byteMask, active);
+        Compares<uint32_t, CMPMODE::EQ>(visible, bytes, 0U, active);
+        Select(value, value, excluded, visible);
+    }
+    if constexpr (!fullColumns) {
+        RegTensor<uint32_t> column;
+        MaskReg valid;
+        Adds(column, columnBase, columnOffset, active);
+        Compares<uint32_t, CMPMODE::LT>(valid, column, originN, active);
+        Select(value, value, excluded, valid);
+    }
+    if constexpr (scaleSign < 0) {
+        Min(extreme, extreme, value, active);
+    } else {
+        Max(extreme, extreme, value, active);
+    }
+}
+
+template <bool applyMask, bool fullColumns, int scaleSign>
 __simd_callee__ inline void ReduceDnScoreGroup(__ubuf__ float *scores, __ubuf__ uint32_t *mask, uint32_t group,
-                                               uint32_t pitch, uint32_t originN, float scale,
-                                               RegTensor<uint32_t> &indices, RegTensor<uint32_t> &byteMask,
-                                               RegTensor<float> &maskedValue, RegTensor<float> &paddingValue,
-                                               MaskReg &active, RegTensor<float> &max0, RegTensor<float> &max1,
-                                               RegTensor<float> &max2, RegTensor<float> &max3)
+                                               uint32_t pitch, uint32_t originN, RegTensor<uint32_t> &indices,
+                                               RegTensor<uint32_t> &byteMask, RegTensor<uint32_t> &seenMask,
+                                               RegTensor<float> &excluded, MaskReg &active, RegTensor<float> &max0,
+                                               RegTensor<float> &max1, RegTensor<float> &max2, RegTensor<float> &max3)
 {
     RegTensor<float> value0, value1, value2, value3;
     RegTensor<uint32_t> words, columnBase;
     if constexpr (applyMask) {
         Gather(words, mask + group, indices, active);
+        if constexpr (!fullColumns) {
+            RegTensor<uint32_t> validBytes;
+            Duplicate(validBytes, (1U << ((originN % 4U) * 8U)) - 1U);
+            And(words, words, validBytes, active);
+        }
+        Or(seenMask, seenMask, words, active);
     }
     if constexpr (!fullColumns) {
         Duplicate(columnBase, group * 4U);
     }
-    LoadAlign(value0, scores + (group * 4U + 0U) * pitch);
-    LoadAlign(value1, scores + (group * 4U + 1U) * pitch);
-    LoadAlign(value2, scores + (group * 4U + 2U) * pitch);
-    LoadAlign(value3, scores + (group * 4U + 3U) * pitch);
-    TransformDnScore<applyMask, fullColumns>(value0, words, byteMask, maskedValue, paddingValue, columnBase, 0U,
-                                             originN, scale, active);
-    Max(max0, max0, value0, active);
-    TransformDnScore<applyMask, fullColumns>(value1, words, byteMask, maskedValue, paddingValue, columnBase, 1U,
-                                             originN, scale, active);
-    Max(max1, max1, value1, active);
-    TransformDnScore<applyMask, fullColumns>(value2, words, byteMask, maskedValue, paddingValue, columnBase, 2U,
-                                             originN, scale, active);
-    Max(max2, max2, value2, active);
-    TransformDnScore<applyMask, fullColumns>(value3, words, byteMask, maskedValue, paddingValue, columnBase, 3U,
-                                             originN, scale, active);
-    Max(max3, max3, value3, active);
+    if constexpr (scaleSign != 0) {
+        LoadAlign(value0, scores + (group * 4U + 0U) * pitch);
+        LoadAlign(value1, scores + (group * 4U + 1U) * pitch);
+        LoadAlign(value2, scores + (group * 4U + 2U) * pitch);
+        LoadAlign(value3, scores + (group * 4U + 3U) * pitch);
+    }
+    ReduceDnRawScore<applyMask, fullColumns, scaleSign>(value0, max0, words, byteMask, excluded, columnBase, 0U,
+                                                        originN, active);
+    ReduceDnRawScore<applyMask, fullColumns, scaleSign>(value1, max1, words, byteMask, excluded, columnBase, 1U,
+                                                        originN, active);
+    ReduceDnRawScore<applyMask, fullColumns, scaleSign>(value2, max2, words, byteMask, excluded, columnBase, 2U,
+                                                        originN, active);
+    ReduceDnRawScore<applyMask, fullColumns, scaleSign>(value3, max3, words, byteMask, excluded, columnBase, 3U,
+                                                        originN, active);
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128, bool hasSink = false,
           bool fullRows64 = false, bool unitPScale = false, bool expUnrollTwo = false, bool fuseScores = false,
-          uint16_t scoreMaskPitch = 0, bool fullColumns = false>
+          uint16_t scoreMaskPitch = 0, bool fullColumns = false, int maxScaleSign = 1>
 __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB,
                                               __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
                                               __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb,
@@ -595,10 +631,19 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
     __ubuf__ uint32_t *mask_ub2 = maskUb + 32;
     __ubuf__ uint32_t *mask_ub3 = maskUb + 48;
 
-    Duplicate(max0, minValue);
-    Duplicate(max1, minValue);
-    Duplicate(max2, minValue);
-    Duplicate(max3, minValue);
+    RegTensor<float> rawExcluded;
+    RegTensor<uint32_t> seenScoreMask;
+    constexpr float rawInitial = maxScaleSign < 0 ? __builtin_inff() : -__builtin_inff();
+    Duplicate(max0, fuseScores ? rawInitial : minValue);
+    Duplicate(max1, fuseScores ? rawInitial : minValue);
+    Duplicate(max2, fuseScores ? rawInitial : minValue);
+    Duplicate(max3, fuseScores ? rawInitial : minValue);
+    if constexpr (fuseScores) {
+        Duplicate(rawExcluded, rawInitial);
+        if constexpr (scoreMaskPitch != 0) {
+            Duplicate(seenScoreMask, 0U);
+        }
+    }
     Duplicate(vreg_min, minValue);
     if constexpr (hasSink) {
         Duplicate(vreg_sink_input, sinkValue);
@@ -655,16 +700,15 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
     } else if constexpr (fuseScores) {
         const uint16_t fullGroups = SCORE_FULL_COLUMNS ? ubN / 4U : originN / 4U;
         for (uint16_t group = 0; group < fullGroups; ++group) {
-            ReduceDnScoreGroup<(scoreMaskPitch != 0), true>(input_x_local_UB, maskUb, group, m, originN, scale,
-                                                            reinterpret_cast<RegTensor<uint32_t> &>(scoreIndices),
-                                                            scoreByteMask, scoreMaskedValue, vreg_min, scoreActive,
-                                                            max0, max1, max2, max3);
+            ReduceDnScoreGroup<(scoreMaskPitch != 0), true, maxScaleSign>(
+                input_x_local_UB, maskUb, group, m, originN, reinterpret_cast<RegTensor<uint32_t> &>(scoreIndices),
+                scoreByteMask, seenScoreMask, rawExcluded, scoreActive, max0, max1, max2, max3);
         }
         if constexpr (!SCORE_FULL_COLUMNS) {
             if (originN % 4U != 0) {
-                ReduceDnScoreGroup<(scoreMaskPitch != 0), false>(
-                    input_x_local_UB, maskUb, fullGroups, m, originN, scale,
-                    reinterpret_cast<RegTensor<uint32_t> &>(scoreIndices), scoreByteMask, scoreMaskedValue, vreg_min,
+                ReduceDnScoreGroup<(scoreMaskPitch != 0), false, maxScaleSign>(
+                    input_x_local_UB, maskUb, fullGroups, m, originN,
+                    reinterpret_cast<RegTensor<uint32_t> &>(scoreIndices), scoreByteMask, seenScoreMask, rawExcluded,
                     scoreActive, max0, max1, max2, max3);
             }
         }
@@ -682,10 +726,29 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
     }
 
     LoadAlign(vreg_x_max_f32_b, new_global_max);
-    Max(max0, max0, max2, preg_108);
-    Max(max1, max1, max3, preg_108);
-    Max(max0, max0, max1, preg_108);
-    if constexpr (!fuseScores) {
+    if constexpr (fuseScores && maxScaleSign < 0) {
+        Min(max0, max0, max2, preg_108);
+        Min(max1, max1, max3, preg_108);
+        Min(max0, max0, max1, preg_108);
+    } else {
+        Max(max0, max0, max2, preg_108);
+        Max(max1, max1, max3, preg_108);
+        Max(max0, max0, max1, preg_108);
+    }
+    if constexpr (fuseScores) {
+        if constexpr (maxScaleSign != 0) {
+            Muls(max0, max0, scale, scoreActive);
+        }
+        // Preserve the original reduction seed, including an entirely padded tile.
+        Max(max0, max0, vreg_min, scoreActive);
+        if constexpr (scoreMaskPitch != 0) {
+            MaskReg noMaskedScore;
+            RegTensor<float> maskBound;
+            Compares<uint32_t, CMPMODE::EQ>(noMaskedScore, seenScoreMask, 0U, scoreActive);
+            Select(maskBound, vreg_min, scoreMaskedValue, noMaskedScore);
+            Max(max0, max0, maskBound, scoreActive);
+        }
+    } else {
         Muls(max0, max0, dScale, preg_108);
     }
     if constexpr (hasSink) {
@@ -1004,7 +1067,7 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128, bool hasSink = false,
           bool fullRows64 = false, bool unitPScale = false, bool expUnrollTwo = false, bool fuseScores = false,
-          uint16_t scoreMaskPitch = 0, bool fullColumns = false>
+          uint16_t scoreMaskPitch = 0, bool fullColumns = false, int maxScaleSign = 1>
 __aicore__ inline void ProcessVec1DnUpdate(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor,
                                            const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
                                            const LocalTensor<T> &expMaxTensor,
@@ -1037,7 +1100,7 @@ __aicore__ inline void ProcessVec1DnUpdate(const LocalTensor<T2> &dstTensor, con
     }
 
     ProcessVec1DnUpdateVF<T, T2, hasAtten, ubN, hasSink, fullRows64, unitPScale, expUnrollTwo, fuseScores,
-                          scoreMaskPitch, fullColumns>(
+                          scoreMaskPitch, fullColumns, maxScaleSign>(
         x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, indexesUb, m, n, originN, scale,
         deScaleQK, minValue, keepProb, needAtten, dScale, blockStride, repeatStride, pScale, sinkValue);
 }
@@ -2165,7 +2228,7 @@ __aicore__ inline void ProcessVec1DnCausal(
 
 template <typename T, typename T2, bool isUpdate = false, bool hasAtten = false, uint16_t ubN = 256,
           bool hasSink = false, bool fullRows64 = false, bool unitPScale = false, bool expUnrollTwo = false,
-          bool fuseScores = false, uint16_t scoreMaskPitch = 0, bool fullColumns = false>
+          bool fuseScores = false, uint16_t scoreMaskPitch = 0, bool fullColumns = false, int maxScaleSign = 1>
 __aicore__ inline void ProcessVec1VfDn(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor,
                                        const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
                                        const LocalTensor<T> &expMaxTensor, TBuf<> *vselrIndexesBuf,
@@ -2199,9 +2262,9 @@ __aicore__ inline void ProcessVec1VfDn(const LocalTensor<T2> &dstTensor, const L
             indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::DN_INDEX)].template Get<uint8_t>();
         }
         ProcessVec1DnUpdate<T, T2, hasAtten, ubN, hasSink, fullRows64, unitPScale, expUnrollTwo, fuseScores,
-                            scoreMaskPitch, fullColumns>(dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor,
-                                                         indexesTensor, maskTensor, m, n, originN, scale, deScaleQK,
-                                                         minValue, keepProb, needAtten, pScale, sinkValue);
+                            scoreMaskPitch, fullColumns, maxScaleSign>(
+            dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, indexesTensor, maskTensor, m, n, originN,
+            scale, deScaleQK, minValue, keepProb, needAtten, pScale, sinkValue);
     }
 }
 template <typename T, typename T2, bool isUpdate = false, bool hasAtten = false, uint16_t ubN = 256,

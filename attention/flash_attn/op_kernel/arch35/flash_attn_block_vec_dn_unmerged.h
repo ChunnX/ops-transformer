@@ -572,7 +572,7 @@ public:
         lseOutUbBufId_ = (lseOutUbBufId_ + 1) % UB_LSE_OUT_BUFCNT;
     }
 
-    template <bool ApplyMask, bool FullColumns>
+    template <bool ApplyMask, bool FullColumns, int ScaleSign>
     __aicore__ inline void SoftmaxDnTile(LocalTensor<INPUT_T> &dst, LocalTensor<T> &sum, LocalTensor<T> &max,
                                          LocalTensor<T> &scores, LocalTensor<T> &exp, LocalTensor<uint8_t> &mask,
                                          const RunInfo &info)
@@ -581,14 +581,29 @@ public:
         const float scale = static_cast<float>(constInfo_.scaleValue);
         if (FullColumns && info.actVecMSize == 64U && (info.actMSizeAlign32 >> 1) == 64U) {
             FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize, false, true, true, true, true,
-                                         scoreMaskPitch, FullColumns>(
+                                         scoreMaskPitch, FullColumns, ScaleSign>(
                 dst, sum, max, scores, exp, nullptr, mask, info.actMSizeAlign32 >> 1, info.actSingleLoopS2SizeAlign,
                 info.actSingleLoopS2Size, scale, 1.0F, negativeFloatScalar_, 0.0F, false, 1.0F);
         } else {
             FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize, false, false, true, true, true,
-                                         scoreMaskPitch, FullColumns>(
+                                         scoreMaskPitch, FullColumns, ScaleSign>(
                 dst, sum, max, scores, exp, nullptr, mask, info.actMSizeAlign32 >> 1, info.actSingleLoopS2SizeAlign,
                 info.actSingleLoopS2Size, scale, 1.0F, negativeFloatScalar_, 0.0F, false, 1.0F);
+        }
+    }
+
+    template <bool ApplyMask, bool FullColumns>
+    __aicore__ inline void SoftmaxDnScale(LocalTensor<INPUT_T> &dst, LocalTensor<T> &sum, LocalTensor<T> &max,
+                                          LocalTensor<T> &scores, LocalTensor<T> &exp, LocalTensor<uint8_t> &mask,
+                                          const RunInfo &info)
+    {
+        // Dispatch outside the VF hardware loops; both mask modes share this policy.
+        if (constInfo_.scaleValue > 0.0F) {
+            SoftmaxDnTile<ApplyMask, FullColumns, 1>(dst, sum, max, scores, exp, mask, info);
+        } else if (constInfo_.scaleValue < 0.0F) {
+            SoftmaxDnTile<ApplyMask, FullColumns, -1>(dst, sum, max, scores, exp, mask, info);
+        } else {
+            SoftmaxDnTile<ApplyMask, FullColumns, 0>(dst, sum, max, scores, exp, mask, info);
         }
     }
 
@@ -599,9 +614,9 @@ public:
     {
         // A Q tail can still have a full KV tile. Its score lanes need no KV padding.
         if (info.actSingleLoopS2Size == s2BaseSize && info.actSingleLoopS2SizeAlign == s2BaseSize) {
-            SoftmaxDnTile<ApplyMask, true>(dst, sum, max, scores, exp, mask, info);
+            SoftmaxDnScale<ApplyMask, true>(dst, sum, max, scores, exp, mask, info);
         } else {
-            SoftmaxDnTile<ApplyMask, false>(dst, sum, max, scores, exp, mask, info);
+            SoftmaxDnScale<ApplyMask, false>(dst, sum, max, scores, exp, mask, info);
         }
     }
 
