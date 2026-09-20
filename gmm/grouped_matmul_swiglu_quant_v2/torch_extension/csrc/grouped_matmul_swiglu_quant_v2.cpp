@@ -39,37 +39,6 @@ int64_t CeilDiv(int64_t value, int64_t divisor)
     return (value + divisor - 1) / divisor;
 }
 
-bool IsTransposeWeight(const at::Tensor &tensor, int64_t k)
-{
-    if (tensor.dim() < 2) {
-        return false;
-    }
-    const auto sizes = tensor.sizes();
-    const auto strides = tensor.strides();
-    const int64_t lastDim = tensor.dim() - 1;
-    const int64_t penultimateDim = tensor.dim() - 2;
-    // An explicit (E, N, K) logical view identifies ZN even when it is a
-    // contiguous FRACTAL_NZ tensor.  For K == N, retain the stride check
-    // used by the existing WeightNZ Torch interfaces.
-    if (sizes[lastDim] == k && sizes[penultimateDim] != k) {
-        return true;
-    }
-    if (sizes[penultimateDim] == k && sizes[lastDim] != k) {
-        return false;
-    }
-    if (strides[penultimateDim] != 1 || strides[lastDim] != sizes[penultimateDim]) {
-        return false;
-    }
-    int64_t expectedStride = sizes[lastDim] * sizes[penultimateDim];
-    for (int64_t dim = tensor.dim() - 3; dim >= 0; --dim) {
-        if (strides[dim] != expectedStride) {
-            return false;
-        }
-        expectedStride *= sizes[dim];
-    }
-    return true;
-}
-
 bool IsNzWeight(const at::Tensor &weight)
 {
     const aclFormat format = static_cast<aclFormat>(at_npu::native::get_npu_format(weight));
@@ -116,11 +85,13 @@ void CheckList(const std::vector<at::Tensor> &tensors, const char *name)
     TORCH_CHECK(tensors[0].defined(), name, "[0] must be defined.");
 }
 
-int64_t InferLogicalN(const at::Tensor &weightScale, bool transposeWeight)
+int64_t InferLogicalN(const at::Tensor &weightScale)
 {
     TORCH_CHECK(weightScale.dim() == 4, "weight_scale[0] must be 4D in the V3 MXFP8 scenario, but got ",
                 weightScale.dim(), ".");
-    return weightScale.size(transposeWeight ? kDim1 : kDim2);
+    // Both the non-transposed scale and the view produced by
+    // weightScaleSource.transpose(-3, -2) are [E, ceil(K / 64), N, 2].
+    return weightScale.size(kDim2);
 }
 
 void CheckV3Args(const at::Tensor &x, const std::vector<at::Tensor> &weight,
@@ -207,9 +178,8 @@ std::tuple<at::Tensor, at::Tensor> grouped_matmul_swiglu_quant_v2(
                     GetAclDtypeFromValue(quantDtype.value()) == ACL_FLOAT8_E4M3FN,
                 "swiglu_mode=2 only supports torch.float8_e4m3fn output.");
 
-    const bool transposeWeight = IsTransposeWeight(weight[0], x.size(kDim1));
     const int64_t m = x.size(kDim0);
-    const int64_t n = InferLogicalN(weightScale[0], transposeWeight);
+    const int64_t n = InferLogicalN(weightScale[0]);
     TORCH_CHECK(n > 0 && n % 2 == 0, "The logical N dimension must be positive and even, but got ", n, ".");
 
     at::Tensor output;

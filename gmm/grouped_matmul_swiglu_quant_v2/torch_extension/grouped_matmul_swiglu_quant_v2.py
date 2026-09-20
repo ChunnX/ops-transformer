@@ -71,21 +71,10 @@ def _normalize_wrapper_dtype(dtype):
     return None if dtype is None else dtype + ACL_DTYPE_OFFSET
 
 
-def _is_transposed_weight(tensor, k):
-    if tensor.dim() < 2:
-        return False
-    sizes, strides = tensor.shape, tensor.stride()
-    if sizes[-1] == k and sizes[-2] != k:
-        return True
-    if sizes[-2] == k and sizes[-1] != k:
-        return False
-    return strides[-2] == 1 and strides[-1] == sizes[-2]
-
-
-def _infer_v3_n(weight_scale, transpose_weight):
+def _infer_v3_n(weight_scale):
     if weight_scale.dim() != 4:
         raise ValueError("weight_scale[0] must be 4D in the V3 MXFP8 scenario.")
-    return weight_scale.shape[1] if transpose_weight else weight_scale.shape[2]
+    return weight_scale.shape[2]
 
 
 class GroupedMatmulSwigluQuantV2OpBuilder(OpBuilder):
@@ -128,7 +117,7 @@ class GroupedMatmulSwigluQuantV2OpBuilder(OpBuilder):
                 raise ValueError("swiglu_mode=2 supports exactly one weight and one weight_scale tensor.")
             if x.dtype != torch.float8_e4m3fn or weight[0].dtype != torch.float8_e4m3fn:
                 raise TypeError("swiglu_mode=2 requires x and weight to use torch.float8_e4m3fn.")
-            n = _infer_v3_n(weight_scale[0], _is_transposed_weight(weight[0], x.shape[-1]))
+            n = _infer_v3_n(weight_scale[0])
             m = x.shape[0]
             return (
                 torch.empty((m, n // 2), dtype=torch.float8_e4m3fn, device="meta"),
