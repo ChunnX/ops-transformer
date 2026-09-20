@@ -12,8 +12,8 @@
  * \file matmul_arch38.h
  * \brief
  */
-#ifndef MATMUL_H
-#define MATMUL_H
+#ifndef MATMUL_ARCH38_H
+#define MATMUL_ARCH38_H
 #include "../buffers_policy.h"
 using namespace AscendC;
 
@@ -471,7 +471,7 @@ __aicore__ inline void MatmulFullMX(const LocalTensor<A> &aL1Tensor, const Local
                                     L0AType &aL0BuffsDb, L0BType &bL0BuffsDb, const LocalTensor<C> &cL0Tensor,
                                     struct MMParam &param,
                                     const LocalTensor<AScaleType> &aScaleL1Tensor = LocalTensor<AScaleType>(),
-                                    const LocalTensor<BScaleType> &bScaleL1Tensor = LocalTensor<AScaleType>())
+                                    const LocalTensor<BScaleType> &bScaleL1Tensor = LocalTensor<BScaleType>())
 {
     auto l0aBuffer = aL0BuffsDb.Get();
     l0aBuffer.template Wait<HardEvent::M_MTE1>();
@@ -665,7 +665,7 @@ template <typename A, typename B, typename C, uint32_t baseM, uint32_t baseN, ui
 __aicore__ inline void MatmulFull(const LocalTensor<A> &aL1Tensor, const LocalTensor<B> &bL1Tensor, L0AType &aL0BuffsDb,
                                   L0BType &bL0BuffsDb, const LocalTensor<C> &cL0Tensor, struct MMParam &param,
                                   const LocalTensor<AScaleType> &aScaleL1Tensor = LocalTensor<AScaleType>(),
-                                  const LocalTensor<BScaleType> &bScaleL1Tensor = LocalTensor<AScaleType>())
+                                  const LocalTensor<BScaleType> &bScaleL1Tensor = LocalTensor<BScaleType>())
 {
     auto l0aBuffer = aL0BuffsDb.Get();
     l0aBuffer.template Wait<HardEvent::M_MTE1>();
@@ -722,7 +722,7 @@ template <typename A, typename B, typename C, uint32_t baseM, uint32_t baseN, ui
 __aicore__ inline void MatmulK(const LocalTensor<A> &aL1Tensor, const LocalTensor<B> &bL1Tensor, L0AType &aL0BuffsDb,
                                L0BType &bL0BuffsDb, const LocalTensor<C> &cL0Tensor, const MMParam &param,
                                const LocalTensor<AScaleType> &aScaleL1Tensor = LocalTensor<AScaleType>(),
-                               const LocalTensor<BScaleType> &bScaleL1Tensor = LocalTensor<AScaleType>())
+                               const LocalTensor<BScaleType> &bScaleL1Tensor = LocalTensor<BScaleType>())
 {
     uint32_t kLoops = (param.singleK + baseK - 1) / baseK;
     uint32_t tailSize = param.singleK % baseK;
@@ -884,7 +884,7 @@ template <typename A, typename B, typename C, uint32_t baseM, uint32_t baseN, ui
 __aicore__ inline void MatmulN(const LocalTensor<A> &aL1Tensor, const LocalTensor<B> &bL1Tensor, L0AType &aL0BuffsDb,
                                L0BType &bL0BuffsDb, const LocalTensor<C> &cL0Tensor, const MMParam &param,
                                const LocalTensor<AScaleType> &aScaleL1Tensor = LocalTensor<AScaleType>(),
-                               const LocalTensor<BScaleType> &bScaleL1Tensor = LocalTensor<AScaleType>())
+                               const LocalTensor<BScaleType> &bScaleL1Tensor = LocalTensor<BScaleType>())
 {
     uint32_t nLoops = (param.singleN + baseN - 1) / baseN; // 尾块处理
     uint32_t tailSize = param.singleN % baseN;
