@@ -36,7 +36,7 @@
 #include "adv_api/hcomm/hcomm.h"
 #endif
 
-#include "../../../common/op_kernel/sortlib/sort_lib.h"
+#include "../../../engram_fetch_grad/op_kernel/arch35/sortlib/sort_lib.h"
 
 namespace Mc2Kernel {
 
