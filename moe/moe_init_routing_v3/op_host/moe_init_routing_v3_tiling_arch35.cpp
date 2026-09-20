@@ -676,7 +676,7 @@ MoeInitRoutingV3TilingArch35::ScaleShapeCheckInfo MoeInitRoutingV3TilingArch35::
         if (scaleDtype_ == ge::DataType::DT_FLOAT8_E8M0) {
             expected.rank = RANK_THREE;
             expected.dim0 = expertIdxShape_.GetDim(0);
-            expected.dim1 = Ops::Base::CeilDiv(xShape_.GetDim(1), MXFPX_SCALE_BLOCK_SIZE);
+            expected.dim1 = Ops::Base::CeilDiv(cols_, MXFPX_SCALE_BLOCK_SIZE);
             expected.dim2 = NUM_TWO;
         } else {
             expected.rank = RANK_ONE;
@@ -828,6 +828,11 @@ ge::graphStatus MoeInitRoutingV3TilingArch35::CheckSetInputs()
     MIRV3_CHECK_GE_RET(CheckInputExpertIdx());
     n_ = xShape_.GetDim(0);
     k_ = expertIdxShape_.GetDim(1);
+    // The graph path may expose MXFP4 storage as packed bytes, while the kernel and scale use logical elements.
+    cols_ = xShape_.GetDim(1);
+    if (IsPackedMXFP4Input()) {
+        cols_ *= NUM_TWO;
+    }
     MIRV3_CHECK_GE_RET(CheckInputScale());
     MIRV3_CHECK_GE_RET(CheckInputOffset());
     MIRV3_CHECK_GE_RET(CheckInputTopkWeight());
@@ -835,7 +840,6 @@ ge::graphStatus MoeInitRoutingV3TilingArch35::CheckSetInputs()
         k_ < 0,
         OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "k", std::to_string(k_), "greater than or equal to 0"),
         return ge::GRAPH_FAILED);
-    cols_ = xShape_.GetDim(1);
     totalLength_ = n_ * k_;
     tilingDataPtr_->n = n_;
     tilingDataPtr_->k = k_;
@@ -901,9 +905,9 @@ ge::graphStatus MoeInitRoutingV3TilingArch35::ValidateExpandedXShapeDropPad()
                 return ge::GRAPH_FAILED);
 
     int64_t dim2 = expandedXShape_.GetDim(2);
-    OP_CHECK_IF(dim2 != cols_,
+    OP_CHECK_IF(dim2 != xShape_.GetDim(1),
                 OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "The dim2 of output expanded_x",
-                                             std::to_string(dim2), std::to_string(cols_)),
+                                             std::to_string(dim2), std::to_string(xShape_.GetDim(1))),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -923,9 +927,9 @@ ge::graphStatus MoeInitRoutingV3TilingArch35::ValidateExpandedXShapeDropless()
                 return ge::GRAPH_FAILED);
 
     int64_t dim1 = expandedXShape_.GetDim(1);
-    OP_CHECK_IF(dim1 != cols_,
+    OP_CHECK_IF(dim1 != xShape_.GetDim(1),
                 OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "expanded_x dim[1]", std::to_string(dim1),
-                                          std::to_string(cols_)),
+                                          std::to_string(xShape_.GetDim(1))),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -1063,7 +1067,7 @@ void MoeInitRoutingV3TilingArch35::CalculateExpectedScaleShape(int64_t &expected
         if (IsMXFPXNoQuantCase(quantMode_, xDtype_)) {
             expectedRank = RANK_THREE;
             expectedDim0 = totalLength_;
-            expectedDim1 = Ops::Base::CeilDiv(xShape_.GetDim(1), MXFPX_SCALE_BLOCK_SIZE);
+            expectedDim1 = Ops::Base::CeilDiv(cols_, MXFPX_SCALE_BLOCK_SIZE);
             expectedDim2 = NUM_TWO;
         } else {
             expectedRank = RANK_ONE;

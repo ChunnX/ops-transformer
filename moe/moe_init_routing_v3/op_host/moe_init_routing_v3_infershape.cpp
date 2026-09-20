@@ -745,8 +745,14 @@ static void SetExpandedScaleShape(gert::Shape *expandedScaleShape, const gert::S
         expandedScaleShape->SetDimNum(DIM_THREE);
         expandedScaleShape->SetDim(0U, xOutNum);
         int64_t dim1 = (cols == NEG_ONE) ? NEG_ONE : Ops::Base::CeilDiv<int64_t>(cols, SCALE_BLOCK_SIZE);
+        int64_t dim2 = SCALE_THIRD_DIM_SIZE;
+        if (QuantMode::NON_QUANT == quantMode) {
+            // Routing only reorders the per-token scales; keep their packed block layout unchanged.
+            dim1 = scaleShape->GetDim(1);
+            dim2 = scaleShape->GetDim(DIM_TWO);
+        }
         expandedScaleShape->SetDim(1U, dim1);
-        expandedScaleShape->SetDim(DIM_TWO, SCALE_THIRD_DIM_SIZE);
+        expandedScaleShape->SetDim(DIM_TWO, dim2);
     } else if (QuantMode::NON_QUANT == quantMode || QuantMode::DYNAMIC_QUANT == quantMode ||
                QuantMode::INT4_DYNAMIC_QUANT == quantMode) {
         expandedScaleShape->SetDimNum(DIM_ONE);

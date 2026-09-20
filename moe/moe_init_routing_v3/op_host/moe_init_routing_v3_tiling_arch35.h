@@ -457,6 +457,26 @@ private:
                 xDtype == ge::DataType::DT_FLOAT4_E2M1);
     }
 
+    bool IsMXFP4NoQuantCase() const
+    {
+        return quantMode_ == QUANT_MODE_UNQUANT && xDtype_ == ge::DataType::DT_FLOAT4_E2M1;
+    }
+
+    bool IsPackedMXFP4Input() const
+    {
+        if (!IsMXFP4NoQuantCase() || isInputScale_ == 0 || scaleShape_.GetDimNum() != RANK_THREE) {
+            return false;
+        }
+        int64_t storageCols = xShape_.GetDim(1);
+        int64_t scaleBlocks = scaleShape_.GetDim(1);
+        if (storageCols < 0 || scaleBlocks < 0) {
+            return false;
+        }
+        int64_t unpackedBlocks = Ops::Base::CeilDiv(storageCols, MXFPX_SCALE_BLOCK_SIZE);
+        int64_t packedBlocks = Ops::Base::CeilDiv(storageCols * NUM_TWO, MXFPX_SCALE_BLOCK_SIZE);
+        return scaleBlocks != unpackedBlocks && scaleBlocks == packedBlocks;
+    }
+
     bool IsSupportFullloadQuantMode() const
     {
         return (quantMode_ == QUANT_MODE_UNQUANT && !IsMXFPXNoQuantCase(quantMode_, xDtype_)) ||
