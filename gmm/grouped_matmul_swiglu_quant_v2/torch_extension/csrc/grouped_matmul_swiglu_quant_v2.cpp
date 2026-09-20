@@ -159,7 +159,12 @@ void CheckV3Args(const at::Tensor &x, const std::vector<at::Tensor> &weight,
     TORCH_CHECK(!tuningConfig.has_value() || tuningConfig->empty(), "swiglu_mode=2 does not support tuning_config.");
     TORCH_CHECK(!dequantMode.has_value() || dequantMode.value() == 2,
                 "swiglu_mode=2 requires dequant_mode=2.");
-    TORCH_CHECK(!dequantDtype.has_value() || dequantDtype.value() == 0,
+    // The public Torch API accepts torch.float32, whose ScalarType value is
+    // different from the ACL/GE DT_FLOAT value (0).  The dispatcher schema
+    // also historically used 0 as its default.  Accept both representations
+    // here, then always pass the ACL/GE representation to ACLNN below.
+    TORCH_CHECK(!dequantDtype.has_value() || dequantDtype.value() == static_cast<int64_t>(ACL_FLOAT) ||
+                    dequantDtype.value() == static_cast<int64_t>(at::ScalarType::Float),
                 "swiglu_mode=2 requires dequant_dtype=torch.float32.");
     TORCH_CHECK(!quantMode.has_value() || quantMode.value() == 2,
                 "swiglu_mode=2 requires quant_mode=2.");
@@ -239,7 +244,10 @@ std::tuple<at::Tensor, at::Tensor> grouped_matmul_swiglu_quant_v2(
     // interface takes non-const lvalue references.  Keep the scalar attributes
     // in named variables instead of passing value_or() / temporary expressions.
     int64_t dequantModeValue = dequantMode.value_or(2);
-    int64_t dequantDtypeValue = dequantDtype.value_or(0);
+    // ACLNN takes a GE/ACL dtype enum rather than an at::ScalarType enum.
+    // V3 only permits FP32, so normalize both accepted Torch representations
+    // to DT_FLOAT instead of forwarding the raw optional value.
+    int64_t dequantDtypeValue = static_cast<int64_t>(ACL_FLOAT);
     int64_t quantModeValue = quantMode.value_or(2);
     int64_t groupListTypeValue = groupListType.value_or(0);
     int64_t swigluModeValue = swigluMode.value();
