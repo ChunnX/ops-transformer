@@ -60,9 +60,9 @@ __simd_callee__ inline void ComputeSwiGluOaiRegFlow(
     AscendC::Reg::Maxs(upFp32Reg, upFp32Reg, -clampLimit, computeMask);
     AscendC::Reg::Adds(upFp32Reg, upFp32Reg, beta, computeMask);
     AscendC::Reg::Muls(negReg, gateFp32Reg, -alpha, computeMask);
-    AscendC::Reg::Exp(expReg, negReg, computeMask);
+    AscendC::Reg::Exp<float, &REG_EXP_MODE>(expReg, negReg, computeMask);
     AscendC::Reg::Adds(denominatorReg, expReg, 1.0F, computeMask);
-    AscendC::Reg::Div(sigmoidReg, gateFp32Reg, denominatorReg, computeMask);
+    AscendC::Reg::Div<float, &REG_DIV_MODE>(sigmoidReg, gateFp32Reg, denominatorReg, computeMask);
     AscendC::Reg::Mul(outputFp32Reg, sigmoidReg, upFp32Reg, computeMask);
 }
 

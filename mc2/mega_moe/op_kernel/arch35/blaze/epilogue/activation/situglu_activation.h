@@ -67,9 +67,9 @@ __simd_callee__ inline void ComputeSituGluTanhPiecewiseApprox(
     AscendC::Reg::MulDstAdd(polynomialReg, zReg, zReg, computeMask);
 
     AscendC::Reg::Muls(expReg, zReg, -2.0F, computeMask);
-    AscendC::Reg::Exp(expReg, expReg, computeMask);
+    AscendC::Reg::Exp<float, &REG_EXP_MODE>(expReg, expReg, computeMask);
     AscendC::Reg::Adds(expReg, expReg, 1.0F, computeMask);
-    AscendC::Reg::Div(temporaryReg, oneReg, expReg, computeMask);
+    AscendC::Reg::Div<float, &REG_DIV_MODE>(temporaryReg, oneReg, expReg, computeMask);
     AscendC::Reg::Muls(temporaryReg, temporaryReg, 2.0F, computeMask);
     AscendC::Reg::Adds(temporaryReg, temporaryReg, -1.0F, computeMask);
 
@@ -98,10 +98,10 @@ __simd_callee__ inline void ComputeSituGluRegFlow(
     ComputeSituGluTanhPiecewiseApprox(sigmoidReg, zReg, oneReg, absReg, squareReg, polynomialReg, tanhTemporaryReg,
                                       expReg, c1Reg, c2Reg, compareMask, computeMask);
     AscendC::Reg::Muls(negReg, gateFp32Reg, -1.0F, computeMask);
-    AscendC::Reg::Exp(expReg, negReg, computeMask);
+    AscendC::Reg::Exp<float, &REG_EXP_MODE>(expReg, negReg, computeMask);
     AscendC::Reg::Adds(denominatorReg, expReg, 1.0F, computeMask);
     AscendC::Reg::Duplicate(betaReg, beta, computeMask);
-    AscendC::Reg::Div(expReg, betaReg, denominatorReg, computeMask);
+    AscendC::Reg::Div<float, &REG_DIV_MODE>(expReg, betaReg, denominatorReg, computeMask);
     AscendC::Reg::Mul(outputFp32Reg, sigmoidReg, expReg, computeMask);
 
     if constexpr (IsLinear) {
