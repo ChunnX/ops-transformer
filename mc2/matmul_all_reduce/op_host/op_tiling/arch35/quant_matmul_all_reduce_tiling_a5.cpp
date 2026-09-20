@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file quant_matmul_all_reduce_tiling_950.cc
+ * \file quant_matmul_all_reduce_tiling_a5.cc
  * \brief
  */
-#ifndef _QUANT_MATMUL_ALL_REDUCE_TILING_950_CC_
-#define _QUANT_MATMUL_ALL_REDUCE_TILING_950_CC_
-#include "quant_matmul_all_reduce_tiling_950.h"
+#ifndef _QUANT_MATMUL_ALL_REDUCE_TILING_A5_CC_
+#define _QUANT_MATMUL_ALL_REDUCE_TILING_A5_CC_
+#include "quant_matmul_all_reduce_tiling_a5.h"
 #include "common/utils/op_mc2.h"
 #include "mc2_log.h"
 #include "util/math_util.h"
@@ -1025,4 +1025,4 @@ REGISTER_TILING_TEMPLATE_WITH_ARCH(MatmulAllReduce, QuantMatmulAllReduceTilingA5
                                    static_cast<int32_t>(Ops::Base::DAV_3510), 0);
 } // namespace optiling
 
-#endif //_QUANT_MATMUL_ALL_REDUCE_TILING_950_CC_
+#endif //_QUANT_MATMUL_ALL_REDUCE_TILING_A5_CC_
