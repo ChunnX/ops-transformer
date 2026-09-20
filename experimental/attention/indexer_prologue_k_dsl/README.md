@@ -14,8 +14,8 @@
 MXFP4 量化和分页 cache 写入。算子原地更新 `k_cache`，mode 0 可同时原地更新
 独立的 `k_scale_cache`，并返回传入的 `k_cache`。
 
-Kernel 由 `cannbot-arena-ds41` 的 net-ops wheel 提供，本目录只负责 PyTorch
-schema、Meta/FakeTensor 和 PrivateUse1 dispatcher 适配。调用前必须安装包含
+Kernel 由配套的 net-ops wheel 提供，本目录只负责 PyTorch schema、
+Meta/FakeTensor 和 PrivateUse1 dispatcher 适配。调用前必须安装包含
 `ops.indexer_prologue_k` 的 net-ops wheel。
 
 ## 接口
@@ -79,7 +79,19 @@ assert result is k_cache
 
 ## 构建与测试
 
-先安装提供 DSL kernel 的 net-ops wheel，再构建本仓整包：
+先在 net-ops 工程的 `net/native_package` 目录构建并安装包含 Native provider
+的 wheel：
+
+```bash
+cd net/native_package
+./run-build.sh --operator indexer_prologue_k
+python3 -m pip install \
+  output/operators/indexer_prologue_k/wheels/*.whl \
+  --force-reinstall --no-deps
+```
+
+该构建会打包 4 个 ACLGraph 验证布局的 AOT variant；其他合法 shape 在默认
+Native `prefer` 模式下首次调用 JIT。随后构建本仓整包：
 
 ```bash
 bash build.sh --torch_extension
@@ -91,6 +103,9 @@ python3 -m pip install build_out/*.whl --force-reinstall --no-deps
 ```bash
 bash experimental/attention/indexer_prologue_k_dsl/tests/test.sh
 ```
+
+若要确认 ACLGraph 用例命中已安装的 AOT variant，可在测试前设置
+`CANNBOTDSL_NATIVE_BINARY_MODE=require`；此时未命中不会回退 JIT。
 
 ## ACLGraph
 
