@@ -87,7 +87,7 @@ cann_ops_transformer.grouped_matmul_swiglu_quant_v2(
 | `group_list` | Tensor | 必选 | 分组信息，长度为expert数E，其语义由`group_list_type`决定。 | `torch.int64` | `(E,)` |
 | `smooth_scale` | Tensor | 可选 | 平滑量化因子，默认值为`None`。当前场景不支持，必须传`None`。 | - | - |
 | `weight_assist_matrix` | List[Tensor] | 可选 | 权重辅助矩阵，默认值为`None`。当前场景不支持，仅支持`None`或空List。 | - | - |
-| `bias` | Tensor | 可选 | 矩阵乘偏置，默认值为`None`。当前场景不支持，必须传`None`。 | - | - |
+| `bias` | List[Tensor] | 可选 | 矩阵乘偏置列表，默认值为`None`。接口与GroupedMatmul保持一致；当前V3场景不支持有效bias，仅支持`None`或空List。 | - | - |
 | `dequant_mode` | int | 可选 | 反量化模式，默认值为2，当前仅支持2，表示MX反量化。 | int | - |
 | `dequant_dtype` | torch.dtype/int | 可选 | GroupedMatmul中间结果类型，默认值为`torch.float32`，当前仅支持`torch.float32`或0。 | `torch.float32` | - |
 | `quant_mode` | int | 可选 | 输出量化模式，默认值为2，当前仅支持2，表示MX量化。 | int | - |
