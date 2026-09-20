@@ -133,19 +133,31 @@ _LAYOUT_REQUIRE_CONSISTENT = {
     int(QuantMode.A8C8_QKV_HIF8_PER_TENSOR_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32),
 }
 
+# layout_q 与 layout_out 必须一致的 quant_mode (但 layout_kv 可以不同)
+_LAYOUT_REQUIRE_Q_OUT_CONSISTENT = {
+    # MxFP8: layout_q=TND, layout_out=TND, 但 layout_kv 可为 PA 场景
+    int(QuantMode.A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32),
+}
+
 
 def _check_layout_constraint(
     quant_mode, layout_q, layout_q_descale, layout_kv, layout_out
 ):
     """校验 layout 一致性
-    HIF8 场景下 layout_q、layout_kv、layout_out 三者必须相同。"""
-    if quant_mode not in _LAYOUT_REQUIRE_CONSISTENT:
-        return
-    torch._check(
-        layout_q == layout_kv == layout_out,
-        lambda: f"When quant_mode is {quant_mode}, layout_q, layout_kv and layout_out must be the same, "
-        f"but got layout_q={layout_q}, layout_kv={layout_kv}, layout_out={layout_out}",
-    )
+    - HIF8: layout_q、layout_kv、layout_out 三者必须相同
+    - MxFP8: layout_q 与 layout_out 必须相同(layout_kv 可不同, 支持 PA 场景)"""
+    if quant_mode in _LAYOUT_REQUIRE_CONSISTENT:
+        torch._check(
+            layout_q == layout_kv == layout_out,
+            lambda: f"When quant_mode is {quant_mode}, layout_q, layout_kv and layout_out must be the same, "
+            f"but got layout_q={layout_q}, layout_kv={layout_kv}, layout_out={layout_out}",
+        )
+    elif quant_mode in _LAYOUT_REQUIRE_Q_OUT_CONSISTENT:
+        torch._check(
+            layout_q == layout_out,
+            lambda: f"When quant_mode is {quant_mode}, layout_q and layout_out must be the same, "
+            f"but got layout_q={layout_q}, layout_out={layout_out}",
+        )
 
 
 def _get_output_shape_sizes(q, v, layout_q, layout_kv):
