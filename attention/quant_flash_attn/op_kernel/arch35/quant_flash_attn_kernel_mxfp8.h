@@ -772,11 +772,9 @@ public:
         // FD静态Tensor业务区起始偏移: 跨核bmm区 + FA保留区, 落在FA瞬态区内分时复用
         vecFdBlock_.template InitBuffers<GetMmUbTotalSize() + VecFaBlockType::GetPersistUbSize()>();
         AscendC::ICachePreLoad(2);
-        vecFdBlock_.AllocEventID();
         SyncAll();
         vecFdBlock_.FlashDecode(fdParams_);
         SyncAll(); // 多section场景: 保证所有核FD读workspace完成后, 才能进入下一section FA覆写
-        vecFdBlock_.FreeEventID();
     }
 
     __aicore__ inline void GetFASectionInfo(uint32_t sectionIdx)

@@ -1102,14 +1102,14 @@ public:
 
     // FA保留区字节数(紧跟kernel侧ubBufferManager_的跨核bmm区之后):
     // softmax状态(12*256) + preLoop(3*256) + brdcst(FLASH_DECODE时2*2048) + commonTBuf(512)
-    // + softmaxLseQueue(512, 常开) + vselr索引表(isFp8时)
+    // + softmaxLseQueue(2048, 常开) + vselr索引表(isFp8时, 按256上界对齐)
     static __aicore__ inline constexpr uint32_t GetPersistUbSize()
     {
         constexpr uint32_t softmaxSize = (12U + 3U) * 256U;
         constexpr uint32_t brdcstSize = FLASH_DECODE ? (2U * 2048U) : 0U;
         constexpr uint32_t commonSize = 512U;
-        constexpr uint32_t lseSize = 512U;
-        constexpr uint32_t vselrSize = isFp8 ? (USE_DN ? 256U : (128U + 64U)) : 0U;
+        constexpr uint32_t lseSize = (mBaseSize >> 1U) * sizeof(float) * 8U;
+        constexpr uint32_t vselrSize = isFp8 ? 256U : 0U;
         return softmaxSize + brdcstSize + commonSize + lseSize + vselrSize;
     }
 

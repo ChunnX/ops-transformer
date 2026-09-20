@@ -84,12 +84,14 @@ private:
     // =================================常量区=================================
     static constexpr int64_t BYTE_BLOCK = 32UL;
     static constexpr int64_t REPEAT_BLOCK_BYTE = 256U;
-    static constexpr uint64_t SYNC_LSE_MAX_SUM_BUF1_FLAG = 0;
-    static constexpr uint64_t SYNC_LSE_MAX_SUM_BUF2_FLAG = 1;
-    static constexpr uint64_t SYNC_MM2RES_BUF1_FLAG = 2;
-    static constexpr uint64_t SYNC_MM2RES_BUF2_FLAG = 3;
-    static constexpr uint64_t SYNC_FDOUTPUT_BUF_FLAG = 4;
-    static constexpr uint64_t SYNC_LSEOUTPUT_BUF_FLAG = 5;
+    // 同步flag id参照flash_attn nd版FD: 避开TPipe AllocEventID分配的低段id,
+    // 全部改用Mutex Lock/Unlock硬件信号量协议(无需初始化, flag初始态0)
+    static constexpr uint64_t SYNC_LSE_MAX_SUM_BUF1_FLAG = 8;
+    static constexpr uint64_t SYNC_LSE_MAX_SUM_BUF2_FLAG = 9;
+    static constexpr uint64_t SYNC_MM2RES_BUF1_FLAG = 10;
+    static constexpr uint64_t SYNC_MM2RES_BUF2_FLAG = 11;
+    static constexpr uint64_t SYNC_FDOUTPUT_BUF_FLAG = 2;
+    static constexpr uint64_t SYNC_LSEOUTPUT_BUF_FLAG = 4;
 
     static constexpr uint32_t BUFFER_SIZE_BYTE_256B = 256;
     static constexpr uint32_t BUFFER_SIZE_BYTE_1K = 1024;
@@ -102,9 +104,11 @@ private:
 
     // dV按64对齐后的元素数(与FA侧dTemplateAlign64推导一致, 不依赖头文件)
     static constexpr uint32_t FD_DV_ALIGN64 = ((static_cast<uint32_t>(dVTemplateType) + 63U) / 64U) * 64U;
-    // lse系buffer(sum/max/exp)字节尺寸; mm2系buffer 16行*dAlign*fp32为上界
+    // mm2系buffer实际最大行数(fdBalanceMBaseSize=8, 见FlashDecode主循环)
+    static constexpr uint32_t FD_BALANCE_M_BASE = 8U;
+    // lse系buffer(sum/max/exp)字节尺寸; mm2系buffer 8行*dAlign*fp32
     static constexpr uint32_t FD_LSE_BUF_BYTES = BUFFER_SIZE_BYTE_4K + BUFFER_SIZE_BYTE_2K; // 6144
-    static constexpr uint32_t FD_MM2_BUF_BYTES = 16U * FD_DV_ALIGN64 * sizeof(float);
+    static constexpr uint32_t FD_MM2_BUF_BYTES = FD_BALANCE_M_BASE * FD_DV_ALIGN64 * sizeof(float);
 
     static constexpr float FLOAT_INF = 3e+99;
     static constexpr bool HAS_MASK = hasAtten;
@@ -252,7 +256,8 @@ public:
         }
     }
 
-    // TPipe兼容版: 供尚未切换静态布局的kernel(fp8/hif8)使用, 保持原Reset+分配语义
+    // TPipe兼容版: 供尚未切换静态布局的kernel(fp8/hif8)使用, 保持原Reset+分配语义,
+    // buffer尺寸与静态版保持一致
     __aicore__ inline void InitBuffers(TPipe *pipe)
     {
         if ASCEND_IS_AIV {
@@ -293,24 +298,10 @@ public:
             fdMinCheckBuf_ = tmpBuf.Get<float>();
         }
     }
-    __aicore__ inline void AllocEventID()
-    {
-        SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_MAX_SUM_BUF1_FLAG);
-        SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_MAX_SUM_BUF2_FLAG);
-        SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG);
-        SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF2_FLAG);
-        SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_FDOUTPUT_BUF_FLAG);
-        SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_LSEOUTPUT_BUF_FLAG);
-    }
-    __aicore__ inline void FreeEventID()
-    {
-        WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_MAX_SUM_BUF1_FLAG);
-        WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_MAX_SUM_BUF2_FLAG);
-        WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG);
-        WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF2_FLAG);
-        WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_FDOUTPUT_BUF_FLAG);
-        WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_LSEOUTPUT_BUF_FLAG);
-    }
+    // Mutex Lock/Unlock协议无需事件初始化/释放(flag初始态0, Lock等0置1, Unlock清0)。
+    // 保留空实现仅为fp8/hif8 kernel的既有调用点编译通过。
+    __aicore__ inline void AllocEventID() {}
+    __aicore__ inline void FreeEventID() {}
 
 protected:
     __aicore__ inline void CopyAccumOutIn(LocalTensor<T> &accumOutLocal, uint32_t splitKVIndex, uint32_t startRow,
@@ -436,7 +427,7 @@ protected:
         AscendC::PipeBarrier<PIPE_V>();
         DealInvalidRows(accumOutLocal, startRow, dealRowCount, this->dSizeV_Align_);
         DealInvalidMaskRows(accumOutLocal, startRow, dealRowCount, this->dSizeV_Align_, cntM);
-        WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_FDOUTPUT_BUF_FLAG);
+        Mutex::Lock<PIPE_V>(SYNC_FDOUTPUT_BUF_FLAG);
         uint32_t shapeArray[] = {dealRowCount, (uint32_t)constInfo_.dSizeV};
         tmpBmm2ResCastTensor.SetShapeInfo(ShapeInfo(2, shapeArray, DataFormat::ND));
         if constexpr (IsSameType<OUTPUT_T, bfloat16_t>::value) {
@@ -446,10 +437,10 @@ protected:
             Cast(tmpBmm2ResCastTensor, accumOutLocal, AscendC::RoundMode::CAST_ROUND,
                  dealRowCount * this->dSizeV_Align_);
         }
-        SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_FDOUTPUT_BUF_FLAG);
-        WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_FDOUTPUT_BUF_FLAG);
+        Mutex::Unlock<PIPE_V>(SYNC_FDOUTPUT_BUF_FLAG);
+        Mutex::Lock<PIPE_MTE3>(SYNC_FDOUTPUT_BUF_FLAG);
         Bmm2DataCopyOutTrans(tmpBmm2ResCastTensor, startRow, dealRowCount, this->dSizeV_Align_);
-        SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_FDOUTPUT_BUF_FLAG);
+        Mutex::Unlock<PIPE_MTE3>(SYNC_FDOUTPUT_BUF_FLAG);
     }
     __aicore__ inline void CalcPreNextTokens()
     {
@@ -552,24 +543,25 @@ public:
 
             LocalTensor<T> lseExp = fdLseExpBuf_;
             LocalTensor<T> reduceOut = fdReduceBuf_;
-            WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_MAX_SUM_BUF1_FLAG + (reduceMLoop & 1));
+            Mutex::Lock<PIPE_MTE2>(SYNC_LSE_MAX_SUM_BUF1_FLAG + (reduceMLoop & 1));
             CopyLseIn(startRow, actualGSplitSize, taskOffset, reduceMLoop);
-            SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_LSE_MAX_SUM_BUF1_FLAG + (reduceMLoop & 1));
-            WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_LSE_MAX_SUM_BUF1_FLAG + (reduceMLoop & 1));
+            Mutex::Unlock<PIPE_MTE2>(SYNC_LSE_MAX_SUM_BUF1_FLAG + (reduceMLoop & 1));
             for (uint32_t preLoadIdx = 0; preLoadIdx < preLoadNum_; ++preLoadIdx) {
                 LocalTensor<T> mm2Res = ((reduceGlobaLoop + preLoadIdx) & 1) == 0 ? fdMm2ResBuf1_ : fdMm2ResBuf2_;
-                WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + ((reduceGlobaLoop + preLoadIdx) & 1));
+                Mutex::Lock<PIPE_MTE2>(SYNC_MM2RES_BUF1_FLAG + ((reduceGlobaLoop + preLoadIdx) & 1));
                 CopyAccumOutIn(mm2Res, preLoadIdx, taskOffset + startRow, actualGSplitSize);
-                SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + ((reduceGlobaLoop + preLoadIdx) & 1));
+                Mutex::Unlock<PIPE_MTE2>(SYNC_MM2RES_BUF1_FLAG + ((reduceGlobaLoop + preLoadIdx) & 1));
             }
+            Mutex::Lock<PIPE_V>(SYNC_LSE_MAX_SUM_BUF1_FLAG + (reduceMLoop & 1));
+            Mutex::Lock<PIPE_V>(SYNC_LSEOUTPUT_BUF_FLAG);
             ComputeScaleValue(lseExp, actualGSplitSize, taskInfo_.actualCombineLoopSize, reduceMLoop, startRow);
+            Mutex::Unlock<PIPE_V>(SYNC_LSEOUTPUT_BUF_FLAG);
+            Mutex::Unlock<PIPE_V>(SYNC_LSE_MAX_SUM_BUF1_FLAG + (reduceMLoop & 1));
             CalcPreNextTokens();
             if (constInfo_.isSoftmaxLseEnable) {
                 // lse行无效在ComputeScaleValue的VF计算时已经进行了赋值inf处理
                 LocalTensor<T> maxLseUb = fdLseUbBuf_;
-                // 判断是否行无效
-                SetFlag<HardEvent::V_MTE3>(SYNC_LSEOUTPUT_BUF_FLAG);
-                WaitFlag<HardEvent::V_MTE3>(SYNC_LSEOUTPUT_BUF_FLAG);
+                Mutex::Lock<PIPE_MTE3>(SYNC_LSEOUTPUT_BUF_FLAG);
                 uint32_t mOffset = taskInfo_.gS1Idx + startRow;
                 if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
                     // LSE 输出改为 N-major 排布 [N2*G, T]: N 在外, T 在内
@@ -602,19 +594,19 @@ public:
                                                                 actualGSplitSize, constInfo_, qActSeqLens,
                                                                 s1LeftPaddingSize);
                 }
+                Mutex::Unlock<PIPE_MTE3>(SYNC_LSEOUTPUT_BUF_FLAG);
             }
-            SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_MAX_SUM_BUF1_FLAG + (reduceMLoop & 1));
 
             for (uint32_t i = 0; i < taskInfo_.actualCombineLoopSize; ++i) {
                 LocalTensor<T> mm2Res = (reduceGlobaLoop & 1) == 0 ? fdMm2ResBuf1_ : fdMm2ResBuf2_;
                 if (i >= preLoadNum_) {
-                    WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + (reduceGlobaLoop & 1));
+                    Mutex::Lock<PIPE_MTE2>(SYNC_MM2RES_BUF1_FLAG + (reduceGlobaLoop & 1));
                     CopyAccumOutIn(mm2Res, i, taskOffset + startRow, actualGSplitSize);
-                    SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + (reduceGlobaLoop & 1));
+                    Mutex::Unlock<PIPE_MTE2>(SYNC_MM2RES_BUF1_FLAG + (reduceGlobaLoop & 1));
                 }
-                WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + (reduceGlobaLoop & 1));
+                Mutex::Lock<PIPE_V>(SYNC_MM2RES_BUF1_FLAG + (reduceGlobaLoop & 1));
                 ReduceFinalRes(reduceOut, mm2Res, lseExp, i, actualGSplitSize);
-                SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + (reduceGlobaLoop & 1));
+                Mutex::Unlock<PIPE_V>(SYNC_MM2RES_BUF1_FLAG + (reduceGlobaLoop & 1));
                 reduceGlobaLoop += 1;
             }
             CopyFinalResOut(reduceOut, startRow, actualGSplitSize, reduceMLoop);
