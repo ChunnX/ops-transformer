@@ -353,11 +353,11 @@ __aicore__ inline void ProcessVec1NoUpdateGeneralImpl512(
     const T minValue, float keepProb)
 {
     const uint32_t repeatStride = 1;
-    const uint32_t blockStride = s1BaseSize >> 1 | 0x1;
+    const uint32_t blockStride = (s1BaseSize / ArchInfo::CV_RATIO) | 0x1;
     __ubuf__ T2 *expUb1 = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
-    __ubuf__ T2 *expUb2 = (__ubuf__ T2 *)dstTensor.GetPhyAddr() + ((s1BaseSize >> 1) + 1) * (128);
-    __ubuf__ T2 *expUb3 = (__ubuf__ T2 *)dstTensor.GetPhyAddr() + 2 * ((s1BaseSize >> 1) + 1) * (128);
-    __ubuf__ T2 *expUb4 = (__ubuf__ T2 *)dstTensor.GetPhyAddr() + 3 * ((s1BaseSize >> 1) + 1) * (128);
+    __ubuf__ T2 *expUb2 = (__ubuf__ T2 *)dstTensor.GetPhyAddr() + ((s1BaseSize / ArchInfo::CV_RATIO) + 1) * (128);
+    __ubuf__ T2 *expUb3 = (__ubuf__ T2 *)dstTensor.GetPhyAddr() + 2 * ((s1BaseSize / ArchInfo::CV_RATIO) + 1) * (128);
+    __ubuf__ T2 *expUb4 = (__ubuf__ T2 *)dstTensor.GetPhyAddr() + 3 * ((s1BaseSize / ArchInfo::CV_RATIO) + 1) * (128);
 
     __ubuf__ T *srcUb = (__ubuf__ T *)srcTensor.GetPhyAddr();
     __ubuf__ OUTPUT_T *pseUb = (__ubuf__ OUTPUT_T *)pseTensor.GetPhyAddr();
