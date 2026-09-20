@@ -795,6 +795,34 @@ aclnnStatus ProcessCacheForL0Input(const aclTensorList *&key, const aclTensorLis
 
 } // namespace
 
+// 回退路径诊断辅助：tensor 状态 0=null 1=empty 2=real；array 状态 -1=null，否则为元素个数
+static int64_t FiaTensorState(const aclTensor *tensor)
+{
+    if (tensor == nullptr) {
+        return 0;
+    }
+    return tensor->IsEmpty() ? 1 : 2;
+}
+
+static int64_t FiaArrayState(const aclIntArray *array)
+{
+    return (array == nullptr) ? -1 : static_cast<int64_t>(array->Size());
+}
+
+// 空可选输入净化：binding 可能把 None 物化为空 tensor/空数组（非 nullptr）。空对象的 storage
+// 无有效设备地址，opbase aclnn cache（RepeatRunWithCache）路径下对其解引用会引发段错误；
+// nullptr 是 v1 入口已验证的"缺席"语义，故统一净化为 nullptr。仅作用于可选输入，
+// 不作用于 softmaxLse（placeholder 形态为 shape={0}，须原样透传）等输出。
+static const aclTensor *FiaSanitizeOptionalTensor(const aclTensor *tensor)
+{
+    return (tensor != nullptr && tensor->IsEmpty()) ? nullptr : tensor;
+}
+
+static const aclIntArray *FiaSanitizeOptionalArray(const aclIntArray *array)
+{
+    return (array != nullptr && array->Size() == 0) ? nullptr : array;
+}
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -834,17 +862,55 @@ static aclnnStatus InnerFusedInferAttentionScoreGetWorkspaceSizeImpl(
             qStartIdxOptional, kvStartIdxOptional, inputLayout, numHeads, numKeyValueHeads, sparseMode, innerPrecise,
             blockSize, antiquantMode, keyAntiquantMode, valueAntiquantMode, queryQuantMode,
             enableArch22MlaDim0Stride)) {
+        // 诊断开关：FIA_FALLBACK_TRACE=1 打印回退路径输入画像（0=null 1=empty 2=real；数组同
+        // FiaArrayState 语义），用于定位 binding 物化出的空对象。生产默认关闭。
+        static const bool fallbackTrace = []() {
+            const char *env = std::getenv("FIA_FALLBACK_TRACE");
+            return (env != nullptr) && (env[0] != '\0') && (std::strcmp(env, "0") != 0);
+        }();
+        if (fallbackTrace) {
+            OP_LOGI("FIA fallback trace: disableSym=%p pse=%ld mask=%ld blkTbl=%ld qPad=%ld kvPad=%ld "
+                    "kAS=%ld kAO=%ld vAS=%ld vAO=%ld kSP=%ld vSP=%ld qRope=%ld kRope=%ld kRopeAQ=%ld "
+                    "deqQ=%ld sink=%ld sharedLen=%ld qIdx=%ld kvIdx=%ld aSeqQ=%ld aSeqKV=%ld "
+                    "out=%ld lse=%ld lseFlag=%d antiMode=%ld kAnti=%ld vAnti=%ld qQuant=%ld pseType=%ld",
+                    reinterpret_cast<void *>(NnopbaseDisableOptionalInput),
+                    FiaTensorState(pseShiftOptional), FiaTensorState(attenMaskOptional),
+                    FiaTensorState(blockTableOptional), FiaTensorState(queryPaddingSizeOptional),
+                    FiaTensorState(kvPaddingSizeOptional), FiaTensorState(keyAntiquantScaleOptional),
+                    FiaTensorState(keyAntiquantOffsetOptional), FiaTensorState(valueAntiquantScaleOptional),
+                    FiaTensorState(valueAntiquantOffsetOptional), FiaTensorState(keySharedPrefixOptional),
+                    FiaTensorState(valueSharedPrefixOptional), FiaTensorState(queryRopeOptional),
+                    FiaTensorState(keyRopeOptional), FiaTensorState(keyRopeAntiquantScaleOptional),
+                    FiaTensorState(dequantScaleQueryOptional), FiaTensorState(learnableSinkOptional),
+                    FiaArrayState(actualSharedPrefixLenOptional), FiaArrayState(qStartIdxOptional),
+                    FiaArrayState(kvStartIdxOptional), FiaArrayState(actualSeqLengthsOptional),
+                    FiaArrayState(actualSeqLengthsKvOptional), FiaTensorState(attentionOut),
+                    FiaTensorState(softmaxLse), static_cast<int>(softmaxLseFlag), antiquantMode,
+                    keyAntiquantMode, valueAntiquantMode, queryQuantMode, pseType);
+        }
         aclnnStatus ret = aclnnInnerFusedInferAttentionScoreGetWorkspaceSize(
-            query, key, value, pseShiftOptional, attenMaskOptional, actualSeqLengthsOptional,
-            actualSeqLengthsKvOptional, deqScale1Optional, quantScale1Optional, deqScale2Optional, quantScale2Optional,
-            quantOffset2Optional, antiquantScaleOptional, antiquantOffsetOptional, blockTableOptional,
-            queryPaddingSizeOptional, kvPaddingSizeOptional, keyAntiquantScaleOptional, keyAntiquantOffsetOptional,
-            valueAntiquantScaleOptional, valueAntiquantOffsetOptional, keySharedPrefixOptional,
-            valueSharedPrefixOptional, actualSharedPrefixLenOptional, queryRopeOptional, keyRopeOptional,
-            keyRopeAntiquantScaleOptional, dequantScaleQueryOptional, learnableSinkOptional, qStartIdxOptional,
-            kvStartIdxOptional, numHeads, scaleValue, preTokens, nextTokens, inputLayout, numKeyValueHeads, sparseMode,
-            innerPrecise, blockSize, antiquantMode, softmaxLseFlag, keyAntiquantMode, valueAntiquantMode,
-            queryQuantMode, pseType, outDtype, attentionOut, softmaxLse, workspaceSize, executor);
+            query, key, value, FiaSanitizeOptionalTensor(pseShiftOptional),
+            FiaSanitizeOptionalTensor(attenMaskOptional), FiaSanitizeOptionalArray(actualSeqLengthsOptional),
+            FiaSanitizeOptionalArray(actualSeqLengthsKvOptional), FiaSanitizeOptionalTensor(deqScale1Optional),
+            FiaSanitizeOptionalTensor(quantScale1Optional), FiaSanitizeOptionalTensor(deqScale2Optional),
+            FiaSanitizeOptionalTensor(quantScale2Optional), FiaSanitizeOptionalTensor(quantOffset2Optional),
+            FiaSanitizeOptionalTensor(antiquantScaleOptional), FiaSanitizeOptionalTensor(antiquantOffsetOptional),
+            FiaSanitizeOptionalTensor(blockTableOptional), FiaSanitizeOptionalTensor(queryPaddingSizeOptional),
+            FiaSanitizeOptionalTensor(kvPaddingSizeOptional), FiaSanitizeOptionalTensor(keyAntiquantScaleOptional),
+            FiaSanitizeOptionalTensor(keyAntiquantOffsetOptional), FiaSanitizeOptionalTensor(valueAntiquantScaleOptional),
+            FiaSanitizeOptionalTensor(valueAntiquantOffsetOptional), FiaSanitizeOptionalTensor(keySharedPrefixOptional),
+            FiaSanitizeOptionalTensor(valueSharedPrefixOptional),
+            FiaSanitizeOptionalArray(actualSharedPrefixLenOptional), FiaSanitizeOptionalTensor(queryRopeOptional),
+            FiaSanitizeOptionalTensor(keyRopeOptional), FiaSanitizeOptionalTensor(keyRopeAntiquantScaleOptional),
+            FiaSanitizeOptionalTensor(dequantScaleQueryOptional), FiaSanitizeOptionalTensor(learnableSinkOptional),
+            FiaSanitizeOptionalArray(qStartIdxOptional), FiaSanitizeOptionalArray(kvStartIdxOptional), numHeads,
+            scaleValue, preTokens, nextTokens, inputLayout, numKeyValueHeads, sparseMode, innerPrecise, blockSize,
+            antiquantMode, softmaxLseFlag, keyAntiquantMode, valueAntiquantMode, queryQuantMode, pseType, outDtype,
+            attentionOut, softmaxLse, workspaceSize, executor);
+        if (fallbackTrace && workspaceSize != nullptr) {
+            OP_LOGI("FIA fallback trace: autogen ret=%d, workspaceSize=%lu.", static_cast<int>(ret),
+                    static_cast<unsigned long>(*workspaceSize));
+        }
         // 默认不再对 irIndex 27~30 做 NnopbaseDisableOptionalInput：
         // V5 直调 autogen（不做 disable）在同版本 opbase 上正常，而崩溃栈显示
         // Run 阶段 opbase RepeatRunWithCache 崩溃——GWS 返回后变更 executor
