@@ -18,6 +18,11 @@
 
 #include <cstddef>
 
+// Correctness-only diagnostics enabled for the current failure. Disable before performance measurements.
+#ifndef MOE_EP_DISPATCH_COUNT_CHECK
+#define MOE_EP_DISPATCH_COUNT_CHECK 1
+#endif
+
 #if __has_include("version/asc_devkit_version.h") && __has_include("version/hcomm_version.h")
 #include "version/asc_devkit_version.h"
 #include "version/hcomm_version.h"
@@ -109,6 +114,15 @@ public:
     __aicore__ inline void Process();
 
 private:
+#if MOE_EP_DISPATCH_COUNT_CHECK
+    __aicore__ inline void CheckPreparedCounts();
+    __aicore__ inline void CountReferenceToken(uint32_t token, LocalTensor<int32_t> expected,
+                                               LocalTensor<int32_t> lastToken);
+    __aicore__ inline void TraceCountSource(uint32_t peer, int32_t sendCount);
+    __aicore__ inline void SnapshotReceivedCounts(LocalTensor<int32_t> received);
+    __aicore__ inline void TraceReceivedCounts(LocalTensor<int32_t> received);
+    TBuf<> countCheckBuf_;
+#endif
     __aicore__ inline void InitTilingAndRoles(const MoeEpDispatchInfo &info);
     __aicore__ inline void InitDerivedValues();
     __aicore__ inline void BindInputTensors(GM_ADDR topkIdx, GM_ADDR topkWeights, GM_ADDR scales,
@@ -480,6 +494,9 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::BufferInit(
     tpipe_->InitBuffer(sendCntExpertBuf_, moeExpertNumAlign_);
     tpipe_->InitBuffer(numRecvPerExpertBuf_, 2 * moeNumPerRankAlign_);
     tpipe_->InitBuffer(numRecvPerRankBuf_, epWorldSizeAlign_);
+#if MOE_EP_DISPATCH_COUNT_CHECK
+    tpipe_->InitBuffer(countCheckBuf_, 2U * epWorldSizeAlign_);
+#endif
     numRecvPerRankTensor_ = numRecvPerRankBuf_.Get<int32_t>();
     sendCntPerRankTensor_ = sendCntRankBuf_.Get<int32_t>();
     sendCntPerExpertTensor_ = sendCntExpertBuf_.Get<int32_t>();
@@ -724,6 +741,9 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCnt(
         CalSendCntGroup(group, groupCnt, calCnt, topkIdsGroupTensor, tempTensorInt16, topkIdsCntCopyPadParams);
     }
     PublishSendCounts();
+#if MOE_EP_DISPATCH_COUNT_CHECK
+    CheckPreparedCounts();
+#endif
 }
 
 template <TemplateMoeEpDispatchTypeClass>
@@ -755,6 +775,9 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Communicati
     SyncFunc<AscendC::HardEvent::MTE2_S>();
     for (uint32_t dstRankId = aivId_; dstRankId < epWorldSize_; dstRankId += sendCoreCount_) {
         int32_t sendCnt = sendCntPerRankTensor_.GetValue(dstRankId);
+#if MOE_EP_DISPATCH_COUNT_CHECK
+        TraceCountSource(dstRankId, sendCnt);
+#endif
         uint64_t notifyVal = (static_cast<uint64_t>(sendCnt) << NOTIFY_VAL_SHIFT) | 1U;
         uint32_t srcStride = dstRankId * moeExpertNumPerRank_;
         // 计算目标窗口地址:
@@ -809,8 +832,14 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetRecvCoun
         SyncFunc<AscendC::HardEvent::V_S>();
         sumOfFlag = numRecvPerRankTensor_.GetValue(0);
     }
+#if MOE_EP_DISPATCH_COUNT_CHECK
+    SnapshotReceivedCounts(recvCounterTensor);
+#endif
     SetRecvNumPerExpert();                // 计算本卡上各专家接收的token总数
     SetRecvNumPerRank(recvCounterTensor); // 计算本端接收来自各卡的token总数
+#if MOE_EP_DISPATCH_COUNT_CHECK
+    TraceReceivedCounts(recvCounterTensor);
+#endif
     // status clear
     Duplicate<int32_t>(recvCounterTensor, 0, epWorldSize_ * UB_STRIDE);
     SyncFunc<AscendC::HardEvent::V_MTE3>();
@@ -1333,6 +1362,106 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendComplet
     pendingWqebb_ += flagWqebb;
     CommitBatch(false);
 }
+
+#if MOE_EP_DISPATCH_COUNT_CHECK
+template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CountReferenceToken(
+    uint32_t token, LocalTensor<int32_t> expected, LocalTensor<int32_t> lastToken)
+{
+    for (uint32_t k = 0U; k < axisK_; ++k) {
+        int32_t expert = topkIdxGMTensor_.GetValue(token * axisK_ + k);
+        if (expert < 0) {
+            continue;
+        }
+        if (static_cast<uint32_t>(expert) >= moeExpertNum_) {
+            AscendC::printf("[MoeEpCountCheck] INPUT rank=%u token=%u k=%u expert=%d\n",
+                            epRankId_, token, k, expert);
+            continue;
+        }
+        uint32_t peer = static_cast<uint32_t>(expert) / moeExpertNumPerRank_;
+        if (lastToken.GetValue(peer) != static_cast<int32_t>(token)) {
+            expected.SetValue(peer, expected.GetValue(peer) + 1);
+            lastToken.SetValue(peer, static_cast<int32_t>(token));
+        }
+    }
+}
+
+template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CheckPreparedCounts()
+{
+    // Separate UB and a scalar oracle: do not reuse the histogram's scratch or mask.
+    SyncFunc<AscendC::HardEvent::V_S>();
+    SyncFunc<AscendC::HardEvent::MTE3_S>();
+    DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(topkIdxGMTensor_);
+    auto expected = countCheckBuf_.GetWithOffset<int32_t>(counterCnt_, 0U);
+    auto lastToken = countCheckBuf_.GetWithOffset<int32_t>(counterCnt_, epWorldSizeAlign_);
+    for (uint32_t peer = 0U; peer < epWorldSize_; ++peer) {
+        expected.SetValue(peer, 0);
+        lastToken.SetValue(peer, -1);
+    }
+    for (uint32_t token = startTokenId_; token < endTokenId_; ++token) {
+        CountReferenceToken(token, expected, lastToken);
+    }
+    uint32_t mismatches = 0U;
+    for (uint32_t peer = 0U; peer < epWorldSize_; ++peer) {
+        int32_t actual = sendCntPerRankTensor_.GetValue(peer);
+        int32_t reference = expected.GetValue(peer);
+        int32_t published = sendCounterGMTensor_.GetValue(prepareCoreId_ * counterAlign512_ + peer);
+        if (actual != reference || published != reference) {
+            if (mismatches < 4U) {
+                AscendC::printf("[MoeEpCountCheck] PREPARE rank=%u core=%u peer=%u actual=%d published=%d expected=%d\n",
+                                epRankId_, aivId_, peer, actual, published, reference);
+            }
+            ++mismatches;
+        }
+    }
+    AscendC::printf("[MoeEpCountCheck] PREPARE_SUMMARY rank=%u core=%u begin=%u end=%u cached=%u mismatches=%u\n",
+                    epRankId_, aivId_, startTokenId_, endTokenId_, static_cast<uint32_t>(IsCached), mismatches);
+}
+
+template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::TraceCountSource(
+    uint32_t peer, int32_t sendCount)
+{
+    DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(sendCounterGMTensor_);
+    int32_t rowSum = 0;
+    for (uint32_t row = 0U; row < prepareCoreCount_; ++row) {
+        rowSum += sendCounterGMTensor_.GetValue(row * counterAlign512_ + peer);
+    }
+    int32_t aggregate = sendCntPerRankGMTensor_.GetValue(peer);
+    AscendC::printf("[MoeEpCountCheck] SOURCE rank=%u peer=%u aiv=%u prepare=%u row_sum=%d aggregate=%d send=%d\n",
+                    epRankId_, peer, aivNum_, prepareCoreCount_, rowSum, aggregate, sendCount);
+}
+
+template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SnapshotReceivedCounts(
+    LocalTensor<int32_t> received)
+{
+    SyncFunc<AscendC::HardEvent::MTE2_S>();
+    auto snapshot = countCheckBuf_.Get<int32_t>();
+    for (uint32_t source = 0U; source < epWorldSize_; ++source) {
+        int32_t count = received.GetValue(source * UB_STRIDE + 1U);
+        snapshot.SetValue(source, count);
+        AscendC::printf("[MoeEpCountCheck] NOTIFY rank=%u source=%u flag=%d count=%d\n",
+                        epRankId_, source, received.GetValue(source * UB_STRIDE), count);
+    }
+}
+
+template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::TraceReceivedCounts(
+    LocalTensor<int32_t> received)
+{
+    SyncFunc<AscendC::HardEvent::V_S>();
+    SyncFunc<AscendC::HardEvent::MTE3_S>();
+    DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(numRecvPerRankGMTensor_);
+    auto snapshot = countCheckBuf_.Get<int32_t>();
+    for (uint32_t source = 0U; source < epWorldSize_; ++source) {
+        AscendC::printf("[MoeEpCountCheck] OUTPUT rank=%u source=%u before=%d after=%d extracted=%d gm=%d\n",
+                        epRankId_, source, snapshot.GetValue(source), received.GetValue(source * UB_STRIDE + 1U),
+                        numRecvPerRankTensor_.GetValue(source), numRecvPerRankGMTensor_.GetValue(source));
+    }
+}
+#endif
 
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Process()
