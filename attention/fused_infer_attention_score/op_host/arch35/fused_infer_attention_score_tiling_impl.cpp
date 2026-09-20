@@ -214,9 +214,13 @@ static inline int64_t ParseSeqLength(const gert::Tensor *tensor, uint32_t dims, 
 void FusedInferAttentionScoreTilingImpl::InitImplParam(const FiaTilingInfo &fiaInfo)
 {
     const auto &params = fiaInfo.opParamInfo;
-    uint32_t qDims = params.actualSeqLengthsQ.tensor ? static_cast<uint32_t>(params.actualSeqLengthsQ.tensor->GetShapeSize()) : 0;
-    uint32_t kvDims = params.actualSeqLengths.tensor ? static_cast<uint32_t>(params.actualSeqLengths.tensor->GetShapeSize()) : 0;
-    uint32_t prefixDims = params.actualSharedPrefixLen.tensor ? static_cast<uint32_t>(params.actualSharedPrefixLen.tensor->GetShapeSize()) : 0;
+    uint32_t qDims =
+        params.actualSeqLengthsQ.tensor ? static_cast<uint32_t>(params.actualSeqLengthsQ.tensor->GetShapeSize()) : 0;
+    uint32_t kvDims =
+        params.actualSeqLengths.tensor ? static_cast<uint32_t>(params.actualSeqLengths.tensor->GetShapeSize()) : 0;
+    uint32_t prefixDims = params.actualSharedPrefixLen.tensor ?
+                              static_cast<uint32_t>(params.actualSharedPrefixLen.tensor->GetShapeSize()) :
+                              0;
 
     InitTilingFlags(fiaInfo, params.actualSeqLengthsQ.tensor, qDims, params.actualSeqLengths.tensor, kvDims,
                     params.actualSharedPrefixLen.tensor, prefixDims);
@@ -345,7 +349,7 @@ bool FusedInferAttentionScoreTilingImpl::CheckSmallHeadOptimization(const FiaTil
 }
 
 ge::graphStatus FusedInferAttentionScoreTilingImpl::AdjustSinnerAndSouter(gert::TilingContext *context,
-                                                                           const FiaTilingInfo &fiaInfo)
+                                                                          const FiaTilingInfo &fiaInfo)
 {
     (void)context;
     sOuterFactor_ = SOUTER_64;
