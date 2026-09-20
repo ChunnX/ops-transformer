@@ -96,7 +96,7 @@ cann_ops_transformer.indexer_quant_cache(cache, cache_scale, x, slot_mapping, *,
         <td>可选</td>
         <td>量化模式（字符串，大小写不敏感；TorchNPU内部经枚举映射为算子侧int）。默认值<code>"fp8"</code>。可选值与含义：
             <ul>
-                <li><code>"mxfp8"</code>(内部0)：MX-FP8 微缩放量化，x每32 个元素一组，输出FP8(e4m3/e5m2)，每组一个e8m0(2 的幂指数) scale，cache_scale为float8_e8m0。</li>
+                <li><code>"mxfp8"</code>(内部0)：MX-FP8 微缩放量化，x每32 个元素一组，输出FP8(e4m3)，每组一个e8m0(2 的幂指数) scale，cache_scale为float8_e8m0。</li>
                 <li><code>"fp8"</code>(内部1)：逐token动态FP8 量化，整行（headDim）一组，输出FP8(e4m3/e5m2)，每行一个float32 scale（scaleCol=1），cache_scale为float。</li>
                 <li><code>"hifloat8"</code>(内部2)：HiFloat8 静态量化（按x_scale缩放后取HiFloat8），整行一组，cache_scale为float。</li>
                 <li><code>"mxfp4"</code>(内部3)：MX-FP4 微缩放量化，x每32 个元素一组，输出FP4(每字节打包2 个值)，每组一个e8m0 scale，cache_scale为float8_e8m0。</li>
@@ -132,6 +132,7 @@ cann_ops_transformer.indexer_quant_cache(cache, cache_scale, x, slot_mapping, *,
 
 - 该接口支持推理场景下使用。
 - 该接口支持单算子模式调用。
+- 当前Torch接口的`mxfp8`模式仅支持`cache`为`torch.float8_e4m3fn`，或使用`torch.uint8`承载E4M3编码；暂不支持`torch.float8_e5m2`。`fp8`模式支持E4M3和E5M2。
 - cache与cache_scale的数据类型组合需与quant_mode匹配：fp8/hifloat8 模式cache_scale为float；mxfp8/mxfp4 模式cache_scale为float8_e8m0；mxfp4 模式cache为FP4（uint8打包）。
 - cache与cache_scale（所有量化模式，含HiFloat8）均仅支持四维shape `[blockNum, blockSize, 1, headDim]`，倒数第二维固定为1（每token一个量化向量）；num_slots = blockNum × blockSize。
 - cache/cache_scale仅在blockNum维支持非连续：各block可不紧密排布，但block内须连续。
@@ -141,6 +142,7 @@ cann_ops_transformer.indexer_quant_cache(cache, cache_scale, x, slot_mapping, *,
   - 示例：d=128、quant_mode=0 → scaleCol=4 → cache.headDim ≥ 128 且cache_scale.headDim ≥ 4。
 - slot_mapping的维度应等于x的维度减1，即slot_mapping为x除最后一维外的所有维度展平。
 - slot_mapping中值为-1的token会被跳过不处理；其余有效元素取值范围为[0, num_slots - 1]，且元素值应保证不重复，重复时不保证结果正确性。
+- 调用方必须保证 `slot_mapping` 中除 `-1` 外的索引均位于 `[0, blockNum * blockSize - 1]`，且有效索引不重复；算子不提供越界索引检查或安全跳过保证。越界输入可能导致非法访存。
 
 ## 确定性计算
 
@@ -162,7 +164,7 @@ cann_ops_transformer.indexer_quant_cache(cache, cache_scale, x, slot_mapping, *,
     cache = torch.zeros(block_num, block_size, 1, d, dtype=torch.float8_e4m3fn).npu()
     cache_scale = torch.zeros(block_num, block_size, 1, 1, dtype=torch.float32).npu()  # mode1 scaleCol=1
     x = torch.randn(bs, d, dtype=torch.float16).npu()
-    slot_mapping = torch.randint(0, block_num * block_size, (bs,), dtype=torch.int32).npu()
+    slot_mapping = torch.arange(bs, dtype=torch.int32).npu()
 
     indexer_quant_cache(
         cache, cache_scale, x, slot_mapping, quant_mode="fp8", round_scale=True, x_scale=1.0)
