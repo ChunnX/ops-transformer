@@ -125,35 +125,41 @@ struct DnUnmergedVecRunInfo {
     int64_t nextTokensLeftUp = 0;
 };
 
-// QK 在 UB 中为 [S2, S1], 而 bool mask 在 UB 中为 [S1, S2];
-// 逐 QK 行(s2)按列 gather 对应 mask 字节, 同时天然处理 M 尾块 padding。
-// mask 字节语义: 0=可见(保留 score), 非0=掩蔽(置 -1e12); score 预乘 scale 后 softmax 走 scale=1。
-template <uint32_t S2_BASE>
-__simd_vf__ inline void ApplyDnMaskVF(__ubuf__ float *scores, __ubuf__ uint32_t *mask, uint32_t rows, uint32_t pitch,
-                                      uint32_t cols, float scale)
+// Scores are [KV, Q]; mask bytes are [Q, KV]. Both mask modes use the
+// same scale-before-padding order, including zero and negative scales.
+template <bool HasMask, uint32_t MaskPitch>
+__simd_vf__ inline void PrepareDnScoresVF(__ubuf__ float *scores, __ubuf__ uint32_t *mask, uint32_t rows,
+                                          uint32_t pitch, uint32_t cols, uint32_t alignedCols, float scale,
+                                          float paddingValue, bool needMask)
 {
     Reg::RegTensor<int32_t> indices;
     Reg::RegTensor<uint32_t> words, bytes, byteMask;
-    Reg::RegTensor<float> values, minimum;
+    Reg::RegTensor<float> values, minimum, padding;
     Reg::MaskReg active = Reg::UpdateMask<float>(rows);
     Reg::MaskReg keep;
-    Reg::Arange(indices, 0);
-    Reg::Muls(indices, indices, static_cast<int32_t>(S2_BASE / 4U), active);
-    Reg::Duplicate(minimum, -1000000000000.0F);
-    Reg::Duplicate(byteMask, 255U);
-    for (uint16_t col = 0; col < cols; col += 4) {
-        Reg::Gather(words, mask + col / 4U, reinterpret_cast<Reg::RegTensor<uint32_t> &>(indices), active);
-#pragma unroll
-        for (uint16_t byte = 0; byte < 4; ++byte) {
-            // softmax VF 使用前会重置 [cols, S2_BASE) 的 padding 区, 此处越界字节不影响结果
-            Reg::ShiftRights(bytes, words, static_cast<int16_t>(byte * 8U), active);
-            Reg::And(bytes, bytes, byteMask, active);
-            Reg::Compares<uint32_t, CMPMODE::EQ>(keep, bytes, 0U, active);
-            Reg::LoadAlign(values, scores + (col + byte) * pitch);
-            Reg::Muls(values, values, scale, active);
-            Reg::Select(values, values, minimum, keep);
-            Reg::StoreAlign(scores + (col + byte) * pitch, values, active);
+    if constexpr (HasMask) {
+        Reg::Arange(indices, 0);
+        Reg::Muls(indices, indices, static_cast<int32_t>(MaskPitch / 4U), active);
+        Reg::Duplicate(minimum, -1000000000000.0F);
+        Reg::Duplicate(byteMask, 255U);
+    }
+    for (uint16_t col = 0; col < cols; ++col) {
+        Reg::LoadAlign(values, scores + col * pitch);
+        Reg::Muls(values, values, scale, active);
+        if constexpr (HasMask) {
+            if (needMask) {
+                Reg::Gather(words, mask + col / 4U, reinterpret_cast<Reg::RegTensor<uint32_t> &>(indices), active);
+                Reg::ShiftRights(bytes, words, static_cast<int16_t>((col % 4U) * 8U), active);
+                Reg::And(bytes, bytes, byteMask, active);
+                Reg::Compares<uint32_t, CMPMODE::EQ>(keep, bytes, 0U, active);
+                Reg::Select(values, values, minimum, keep);
+            }
         }
+        Reg::StoreAlign(scores + col * pitch, values, active);
+    }
+    Reg::Duplicate(padding, paddingValue);
+    for (uint16_t col = cols; col < alignedCols; ++col) {
+        Reg::StoreAlign(scores + col * pitch, padding, active);
     }
 }
 
@@ -638,18 +644,16 @@ public:
 
         LocalTensor<INPUT_T> stage1CastTensor =
             ubVec1ResBuffers_[vec1ResUbBufId_ * UB_VEC1_RES_BUF_BYTES].template ReinterpretCast<INPUT_T>();
-        if (needMask) {
-            // mask 预施加: 真实 score 乘 scale, 掩蔽位置 -1e12; softmax VF 改走 scale=1
-            ApplyDnMaskVF<MASK_PITCH>((__ubuf__ float *)mm1ResUbTensor.GetPhyAddr(),
-                                      (__ubuf__ uint32_t *)attenMaskUb.GetPhyAddr(), runInfo.actVecMSize,
-                                      runInfo.actMSizeAlign32 / CV_RATIO, runInfo.actSingleLoopS2Size,
-                                      static_cast<float>(constInfo_.scaleValue));
-            AscendC::PipeBarrier<PIPE_V>();
-        }
+        PrepareDnScoresVF<HAS_MASK, MASK_PITCH>(
+            (__ubuf__ float *)mm1ResUbTensor.GetPhyAddr(), (__ubuf__ uint32_t *)attenMaskUb.GetPhyAddr(),
+            runInfo.actVecMSize, runInfo.actMSizeAlign32 / CV_RATIO, runInfo.actSingleLoopS2Size,
+            runInfo.actSingleLoopS2SizeAlign, static_cast<float>(constInfo_.scaleValue), negativeFloatScalar_,
+            needMask);
+        AscendC::PipeBarrier<PIPE_V>();
         FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize>(
             stage1CastTensor, sumUb, maxUb, mm1ResUbTensor, expUb, nullptr, attenMaskUb, runInfo.actMSizeAlign32 >> 1,
-            runInfo.actSingleLoopS2SizeAlign, runInfo.actSingleLoopS2Size,
-            needMask ? 1.0F : static_cast<T>(constInfo_.scaleValue), descaleQK, negativeFloatScalar_, 0.0F, false);
+            runInfo.actSingleLoopS2SizeAlign, runInfo.actSingleLoopS2Size, 1.0F, descaleQK, negativeFloatScalar_, 0.0F,
+            false);
 
         if (needMask) {
             Mutex::Unlock<PIPE_V>(UB_IN_MASK_EVENT0 + maskBufId);
