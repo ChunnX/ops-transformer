@@ -391,10 +391,8 @@ __aicore__ inline auto BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::CopyMxScaleGmToL1(co
     uint64_t scaleKL1RealSize = (kbL1Offset + param.scaleKL1Size) > param.kSize ?
                                     CeilDiv(param.kSize - kbL1Offset, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE :
                                     scaleKL1StandardLen;
-    uint64_t scaleAL1Offset = SCALE_AL1_OFFSET + slot * L1_BUF_OFFSET;
-    uint64_t scaleBL1Offset = SCALE_BL1_OFFSET + slot * L1_BUF_OFFSET;
-    scaleAL1Offset = layout_.scaleAOffsets[slot];
-        scaleBL1Offset = layout_.scaleBOffsets[slot];
+    const uint64_t scaleAL1Offset = layout_.scaleAOffsets[slot];
+    const uint64_t scaleBL1Offset = layout_.scaleBOffsets[slot];
     auto CopyScaleGM2L1 = asc::te::make_copy(asc::te::copy_gm_to_l1{});
     auto layoutScaleAL1 = MakeLayoutScaleAL1{}(param.mL1Size, scaleKL1RealSize);
     auto destinationA = asc::te::make_tensor(
