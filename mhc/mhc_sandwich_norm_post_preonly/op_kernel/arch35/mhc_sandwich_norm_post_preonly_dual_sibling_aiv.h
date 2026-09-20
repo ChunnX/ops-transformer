@@ -117,10 +117,6 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         dotHalf[1][o] = partialBuf.GetValue(o + 1U);
     }
 
-    // CrossCore等待只保证两个sibling之间的会合，不能替代本核流水同步。
-    // R6复用x2低精度缓存前，显式等待R3的x2_out写出读取完成。
-    FenceMte3ToV();
-
     const float totalSumSqPre = sumSqHalf[0] + sumSqHalf[1];
     float xHatVals[N_MAX];
     for (uint32_t o = 0; o < N_MAX; ++o) {
