@@ -51,7 +51,8 @@ __aicore__ inline void PrefetchHOutTile(uint64_t gmOffset, uint32_t tD)
 __aicore__ inline void ConsumeHOutTile(uint32_t tD)
 {
     LocalTensor<T> hBf16 = bufHOutBf16_.DeQue<T>();
-    MhcSandwichRegBase::CastB16ToFp32(bufHOutFp32_.Get<float>(), hBf16, tD);
+    LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
+    MhcSandwichRegBase::CastB16ToFp32(hOut, hBf16, tD);
     PipeBarrier<PIPE_V>();
     bufHOutBf16_.FreeTensor(hBf16);
 }
@@ -136,7 +137,7 @@ __aicore__ inline void ComputeX2AllHeadsBatched(const float (&postVals)[N_MAX], 
     // Host已固定校验N为4，使用编译期常量便于展开标量循环。
     constexpr uint32_t N = N_MAX;
     LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
-    LocalTensor<float> hOut = bufHOutFp32_.Get<float>();
+    LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
     LocalTensor<float> res = bufResFp32_.Get<float>();
     LocalTensor<float> combWeights = bufPostComb_.Get<float>()[ALIGN8];
 
@@ -152,7 +153,7 @@ __aicore__ inline void ComputeX2AllHeadsSerial(const float (&postVals)[N_MAX], u
     // Host已固定校验N为4，使用编译期常量便于展开标量循环。
     constexpr uint32_t N = N_MAX;
     LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
-    LocalTensor<float> hOut = bufHOutFp32_.Get<float>();
+    LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
     LocalTensor<float> res = bufResFp32_.Get<float>();
     LocalTensor<float> combWeights = bufPostComb_.Get<float>()[ALIGN8];
 

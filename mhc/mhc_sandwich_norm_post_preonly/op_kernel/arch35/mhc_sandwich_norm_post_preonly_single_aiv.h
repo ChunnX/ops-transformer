@@ -23,9 +23,10 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     LoadGammaInto(bufGamma0Fp32_.Get<float>(), gamma0Gm_, tOff, tD);
     SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
     WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-    ApplyScaleAndGamma(bufHOutFp32_.Get<float>(), invRms0, bufGamma0Fp32_.Get<float>(), tD);
+    LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
+    ApplyScaleAndGamma(hOut, invRms0, bufGamma0Fp32_.Get<float>(), tD);
     FenceVToMte2();
-    QuantizeRoundTrip(bufHOutFp32_.Get<float>(), tD);
+    QuantizeRoundTrip(hOut, tD);
 
     LoadResidualAndCast((uint64_t)token * N_ * D_ + tOff, tD);
     ComputeX2AllHeadsBatched(postVals, tD);
@@ -251,7 +252,7 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
         LoadHOutAndCast((uint64_t)token * D_ + tOff, tD);
-        sumSq0 += ReduceSumSq(bufHOutFp32_.Get<float>(), tD);
+        sumSq0 += ReduceSumSq(bufResFp32_.Get<float>()[N_MAX * dimTile_], tD);
     }
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
 
