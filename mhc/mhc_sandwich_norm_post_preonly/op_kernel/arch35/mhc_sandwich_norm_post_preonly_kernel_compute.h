@@ -112,7 +112,7 @@ __aicore__ inline __attribute__((always_inline)) float ComputeInvRms(float sumSq
 /// 原地依次执行标量缩放和gamma缩放。
 __aicore__ inline void ApplyScaleAndGamma(LocalTensor<float> buf, float scale, LocalTensor<float> gamma, uint32_t tD)
 {
-    // TODO：完成多VF融合和双缓冲后，复测改回高层接口的消融性能。
+    // TODO：完成多VF融合和双缓冲后，执行Membase回退消融，复测改回高层接口的组合收益。
     MhcSandwichRegBase::ScaleAndMulGamma(buf, buf, gamma, scale, tD);
     PipeBarrier<PIPE_V>();
 }
@@ -134,8 +134,7 @@ __aicore__ inline void ComputeX2AllHeadsBatched(const float (&postVals)[N_MAX], 
         for (uint32_t j = 0; j < N; ++j) {
             headComb[j] = combVals[j * N + h];
         }
-        MhcSandwichRegBase::ComputePostHead(
-            x2[h * dimTile_], hOut, res, dimTile_, postVals[h], headComb, tD);
+        MhcSandwichRegBase::ComputePostHead(x2[h * dimTile_], hOut, res, dimTile_, postVals[h], headComb, tD);
     }
     PipeBarrier<PIPE_V>();
 }
@@ -155,8 +154,7 @@ __aicore__ inline void ComputeX2AllHeadsSerial(const float (&postVals)[N_MAX], c
         for (uint32_t j = 0; j < N; ++j) {
             headComb[j] = combVals[j * N + h];
         }
-        MhcSandwichRegBase::ComputePostHead(
-            x2[h * dimTile_], hOut, res, dimTile_, postVals[h], headComb, tD);
+        MhcSandwichRegBase::ComputePostHead(x2[h * dimTile_], hOut, res, dimTile_, postVals[h], headComb, tD);
         PipeBarrier<PIPE_V>();
     }
 }

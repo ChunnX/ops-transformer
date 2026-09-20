@@ -180,8 +180,8 @@ __aicore__ inline void ScaleAndMulGamma(const LocalTensor<float> &dst, const Loc
 }
 
 // 将sigmoid和epsilon补偿合并到同一个VF，输入保存-z，输出保存sigmoid(z)+epsilon。
-__aicore__ inline void SigmoidAddEps(const LocalTensor<float> &dst, const LocalTensor<float> &src,
-                                     float epsilon, uint32_t count)
+__aicore__ inline void SigmoidAddEps(const LocalTensor<float> &dst, const LocalTensor<float> &src, float epsilon,
+                                     uint32_t count)
 {
     __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();
     __local_mem__ float *srcAddr = (__local_mem__ float *)src.GetPhyAddr();
@@ -223,12 +223,44 @@ __aicore__ inline void ComputePostHead(const LocalTensor<float> &dst, const Loca
             DataCopy<float, LoadDist::DIST_NORM>(hOutReg, hOutAddr + i * VL_FP32);
             AscendC::Reg::Muls(dstReg, hOutReg, postWeight, mask);
             for (uint32_t j = 0; j < N_MAX; ++j) {
-                DataCopy<float, LoadDist::DIST_NORM>(residualReg,
-                    residualAddr + j * rowStride + i * VL_FP32);
+                DataCopy<float, LoadDist::DIST_NORM>(residualReg, residualAddr + j * rowStride + i * VL_FP32);
                 AscendC::Reg::Duplicate(weightReg, combWeights[j], mask);
                 AscendC::Reg::MulAddDst(dstReg, residualReg, weightReg, mask);
             }
             DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
+        }
+    }
+}
+
+// R6在一个VF内完成四路低精度读取、FP32转换和门控累加，不生成四行FP32中间张量。
+template <typename T>
+__aicore__ inline void GateWeightedSum(const LocalTensor<float> &dst, const LocalTensor<T> &src, uint32_t headStride,
+                                       const float (&gate)[N_MAX], uint32_t count)
+{
+    __local_mem__ T *srcAddr = (__local_mem__ T *)src.GetPhyAddr();
+    __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();
+    uint32_t remain = count;
+    const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
+    __VEC_SCOPE__
+    {
+        RegTensor<T> srcReg;
+        RegTensor<float> srcFp32Reg, weightReg, accReg;
+        MaskReg mask;
+        for (uint16_t i = 0; i < loops; ++i) {
+            mask = UpdateMask<float>(remain);
+            const uint32_t offset = static_cast<uint32_t>(i) * VL_FP32;
+            // TODO：组合优化稳定后，单独评估固定四路循环展开，避免混入本轮性能结论。
+            for (uint32_t n = 0; n < N_MAX; ++n) {
+                DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + n * headStride + offset);
+                Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
+                AscendC::Reg::Duplicate(weightReg, gate[n], mask);
+                if (n == 0U) {
+                    AscendC::Reg::Mul(accReg, srcFp32Reg, weightReg, mask);
+                } else {
+                    AscendC::Reg::MulAddDst(accReg, srcFp32Reg, weightReg, mask);
+                }
+            }
+            DataCopy(dstAddr + offset, accReg, mask);
         }
     }
 }

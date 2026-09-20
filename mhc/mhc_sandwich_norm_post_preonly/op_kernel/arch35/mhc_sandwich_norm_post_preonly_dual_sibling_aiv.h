@@ -11,9 +11,9 @@
 #ifndef MHC_SANDWICH_NORM_POST_PREONLY_DUAL_SIBLING_AIV_H_
 #define MHC_SANDWICH_NORM_POST_PREONLY_DUAL_SIBLING_AIV_H_
 
-template<typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
-    DUAL_SIBLING>::ProcessTokenDualSiblingAiv(uint32_t token)
+                                                        DUAL_SIBLING>::ProcessTokenDualSiblingAiv(uint32_t token)
 {
     float postVals[N_MAX];
     float combVals[N_MAX * N_MAX];
@@ -131,15 +131,10 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        LoadX2CacheTile(tOff, tD);
-        LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
         LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-        MhcSandwichRegBase::Muls(hIn, x2, gate[0], tD);
+        LocalTensor<T> x2Cache = bufX2Cache_.Get<T>()[tOff];
+        MhcSandwichRegBase::GateWeightedSum(hIn, x2Cache, D_, gate, tD);
         PipeBarrier<PIPE_V>();
-        for (uint32_t n = 1; n < N_MAX; ++n) {
-            MhcSandwichRegBase::Axpy(hIn, x2[n * dimTile_], gate[n], tD);
-            PipeBarrier<PIPE_V>();
-        }
         CacheHInTile(tOff, tD, hIn);
         sumSq1 += ReduceSumSq(hIn, tD);
     }
