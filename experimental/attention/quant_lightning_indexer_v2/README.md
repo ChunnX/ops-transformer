@@ -51,7 +51,7 @@
 | cmp_ratio      | 可选属性      | 用于稀疏计算，表示key的压缩倍数，默认值1。 | INT32          | -         |
 | return_value      |  可选属性     | 表示是否输出`sparse_values`，默认值0。 | INT32          | -         |
 | candidate_mode | 可选属性 | 两级TopK模式：1=source（输出候选块索引，同时正常输出sparse_indices）；2=consumer（在候选块内选topk）；3=关闭（默认值，现网行为）。仅910b系列（ascend910b/ascend910_93）支持。 | INT32 | - |
-| candidate_topk_blocks | 可选属性 | 候选块数量，默认值2048。支持(0, 2048]内64的倍数。 | INT32 | - |
+| candidate_topk_blocks | 可选属性 | 候选块数量，默认值2048。当前仅支持2048。 | INT32 | - |
 | candidate_block_size | 可选属性 | 候选块大小（每块包含的位置数），默认值8，当前仅支持8。source与consumer调用必须一致。 | INT32 | - |
 | key_stride0 | 可选属性 | key第0维物理stride，默认值0表示紧凑存储；key为非连续存储（PA_BBND块间存在间隙）时传入真实stride，torch接口自动传入。 | INT32 | - |
 | key_dequant_scale_stride0 | 可选属性 | key_dequant_scale第0维物理stride，默认值0表示紧凑存储。 | INT32 | - |
@@ -76,7 +76,7 @@
   - `query_dequant_scale`和`key_dequant_scale`支持FLOAT16，不支持FLOAT32和FLOAT8_e8m0。
   - `weights`支持FLOAT16，不支持FLOAT32。
   - 不支持`return_value`；`output_idx_offset`已支持。
-  - `query`的N仅支持64，`key`的N仅支持1。
+  - `query`的N支持64或32，`key`的N仅支持1。
   - `topk`支持[1, 2048]。
 - 两级TopK（candidate）相关约束（仅910b系列ascend910b/ascend910_93支持；950须保持candidate_mode默认值3）：
   - `candidate_mode`=1时输出`candidate_topk_index_out`，仅支持`layout_q`为BSND；=2时必须传入`candidate_topk_index`。

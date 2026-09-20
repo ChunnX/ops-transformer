@@ -457,7 +457,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>
           <ul>
                 <li>默认值2048。</li>
-                <li>支持(0, 2048]内64的倍数。</li>
+                <li>当前仅支持2048。</li>
           </ul>
       </td>
       <td>INT64</td>
@@ -601,7 +601,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
   - query 和 key：支持 INT8，不支持 FLOAT8_e4m3fn、HIFLOAT8 和 FLOAT4_e2m1。
   - query_dequant_scale 和 key_dequant_scale：支持 FLOAT16，不支持 FLOAT32 和 FLOAT8_e8m0。
   - weights：支持 FLOAT16，不支持 FLOAT32。
-  - query Q_N 仅支持 64。
+  - query Q_N支持64或32。
   - topk 仅支持 [1, 2048]。
 <!-- end id11 -->
 
@@ -690,7 +690,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
 - 两级TopK（candidate）相关约束（仅ascend910b/ascend910_93支持；Ascend 950须保持candidateMode默认值3）：
   - `candidateMode`为1时输出`candidateTopkIndexOut`，仅支持`layoutQOptional`为BSND；为2时必须传入`candidateTopkIndexOptional`。
   - `layoutQOptional`为TND时，`layoutKOptional`必须为PA_BBND且必须传入`cuSeqlensQOptional`。
-  - `candidateBlockSize`当前仅支持8，且source与consumer调用必须一致；`candidateTopkBlocks`支持(0, 2048]内64的倍数。
+  - `candidateBlockSize`当前仅支持8，且source与consumer调用必须一致；`candidateTopkBlocks`当前仅支持2048。
   - 候选块索引为batch内相对块号，`outputIdxOffsetOptional`仅作用于sparseIndicesOut。
   - candidateMode为2时候选块仅降低排序优先级、不取消入选资格：候选内有效位置数不足topk时候选外的可达位置会作为有效索引输出。
   - candidateMode为1时最新token所在块（pin块）无条件保留在候选输出中。
@@ -1037,7 +1037,7 @@ int main() {
 ```Cpp
   // 两级TopK参数（candidateMode：1=source输出候选块索引 / 2=consumer在候选内选topk / 3=关闭默认）
   int64_t candidateMode = 1;
-  int64_t candidateTopkBlocks = 2048;  // (0, 2048]内64的倍数
+  int64_t candidateTopkBlocks = 2048;  // 当前仅支持2048
   int64_t candidateBlockSize = 8;      // 当前仅支持8
   int64_t keyStride0 = 0;              // key第0维物理stride，0=紧凑存储；非连续存储时传真实stride
   int64_t keyDequantScaleStride0 = 0;  // k_descale第0维物理stride
