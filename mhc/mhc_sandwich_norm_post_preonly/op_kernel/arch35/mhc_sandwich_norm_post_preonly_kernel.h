@@ -115,7 +115,8 @@ public:
         pipe_.InitBuffer(bufResFp32_, (N_ + 1) * dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufSqFp32_, dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufPostComb_, POST_COMB_SIZE * sizeof(float));
-        pipe_.InitBuffer(bufPhiFp32_, BUFFER_NUM_TWO, dimTile_ * sizeof(float));
+        // 当前phi按块串行搬运和消费，任意时刻只存活一块，单槽即可释放一块UB空间。
+        pipe_.InitBuffer(bufPhiFp32_, BUFFER_NUM_ONE, dimTile_ * sizeof(float));
         // TODO: 后续重新设计流水并单独验证输入、输出双缓冲收益。
         pipe_.InitBuffer(bufHInPrimeBf16_, BUFFER_NUM_ONE, dimTile_ * sizeof(T));
         pipe_.InitBuffer(bufScalar_, SCALAR_BUF_SIZE);
@@ -216,7 +217,7 @@ private:
     TBuf<TPosition::VECCALC> bufResFp32_;
     TBuf<TPosition::VECCALC> bufSqFp32_;
     TBuf<TPosition::VECCALC> bufPostComb_;
-    TQue<TPosition::VECIN, BUFFER_NUM_TWO> bufPhiFp32_;
+    TQue<TPosition::VECIN, BUFFER_NUM_ONE> bufPhiFp32_;
     TQue<TPosition::VECOUT, BUFFER_NUM_ONE> bufHInPrimeBf16_;
     TBuf<TPosition::VECCALC> bufScalar_;
 
