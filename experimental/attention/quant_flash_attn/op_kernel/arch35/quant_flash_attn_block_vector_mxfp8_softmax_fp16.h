@@ -261,13 +261,24 @@ public:
                                                   softmaxExpUB_, taskSlot);
         }
 
-        // ===== (2) 末块：除 + cast + 转置写（设计 §6.2 步骤(2)；GM 输出留 4.1e）=====
+        // ===== (2) 末块：除 + cast + 转置写 + GM 输出（设计 §6.2 步骤(2)）=====
         if (runInfo.isLastS2Loop) {
             // 踩踏闸：累积步骤读尽 mm2ResUB 后，才允许转置写以别名区覆写它
             PipeBarrier<PIPE_V>();
             // 转置带 pad 输出（T 后缀 = Transposed），别名落 mm2Res 区 [0, ~36KB)
             LocalTensor<bfloat16_t> outputT = mm2ResUB_.template ReinterpretCast<bfloat16_t>();
             QfaVectorApi::VfDivAndCast(outputT, stage2OutUB_, accRowsumUB_);
+
+            // ===== GM 输出（V 管道写尽 outputT 后才允许 MTE3 搬运）=====
+            SetFlag<HardEvent::V_MTE3>(EVT_GM_OUT);
+            WaitFlag<HardEvent::V_MTE3>(EVT_GM_OUT);
+            // colCount=144 = 128 数据 + 16 pad：助手 srcStride 公式算得 1 个 32B 单位，
+            // 每行末尾恰好跳过填充块（无需压实拷贝）
+            FaUbTensor<OUT_T> ubTensor{outputT, runInfo.actVecS1Size, 144U};
+            GmCoordS1Only gmCoord{runInfo.bIdx, runInfo.realN2Idx, 0U,
+                                  runInfo.gS1Idx + runInfo.vecS1BaseIdx, 0U,
+                                  runInfo.actVecS1Size, constInfo_.dSizeV};
+            attenOutUbToGm_(outGmTensor_, ubTensor, gmCoord);
         }
     }
 
