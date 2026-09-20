@@ -270,6 +270,17 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::CopyAGmToL1SingleBuffer(const B
 }
 
 WQBMM_CUBE_COMPUTE_TEMPLATE_PARAM
+__aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::FillWithZero(LocalTensor<xType> l1Tensor, uint64_t blockCount)
+{
+    AscendC::InitConstValueParams<T> initParams;
+    initParams.repeatTimes = 1;
+    initParams.dstGap = 0;
+    initParams.initValue = 0;
+    initParams.blockNum = blockCount;
+    Fill(l1Tensor, initParams);
+}
+
+WQBMM_CUBE_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::CopyAAndBiasGmToL1(const BasicBlockOffsetParam &param,
                                                                     int64_t kaGmOffset, uint64_t cvLoopIdx)
 {
@@ -282,6 +293,10 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::CopyAAndBiasGmToL1(const BasicB
         aGmOffset = param.mOffset * param.kSize + kaGmOffset;
     } else {
         aGmOffset = kaGmOffset * param.mSize + param.mOffset;
+    }
+    if (kaL1RealSize % MX_K_ALIGN != 0) {
+        uint64_t offset = CeilAlign(param.mL1Size, BLOCK_CUBE) * CeilAlign(kaL1RealSize, ONE_BLK_SIZE);
+        FillL1WithZero(aL1_[(aL1BufIdx_ & 1) * aL1DbOffset_ + offset].template ReinterpretCast<uint32_t>(), param.mL1Size);
     }
 
     if (aL1DbNum_ > SINGLE_BUFFER_NUM) {

@@ -90,6 +90,7 @@ static constexpr uint32_t FP32_BLOCK_SIZE = 8;
 static constexpr uint32_t FP16_BLOCK_SIZE = 16;
 static constexpr int32_t C0_SIZE_B8 = 32;
 static constexpr uint32_t SCALE_FACTOR_B_BIT = 8;
+static constexpr uint32_t MX_K_ALIGN = 8;
 
 // 同步定义
 static constexpr uint64_t SYNC_AIV_AIC_FLAG = 8;
