@@ -138,11 +138,13 @@ def _prepare_inputs(
     if padded_mode:
         raise ValueError("padded_mode=true is not supported (SE 5.4: tiling 报错 561002)")
 
-    # range 语义（SE 5.2）：range 提供时 [start, end)；为空时 start=0、end=num_out_tokens
+    # range 语义：range 提供时 [start, end)；为空时 start=0、end=0（[0,0] 环绕公式
+    # 得全量输出，与 tiling/910 实际行为一致——num_out_tokens 在真实链路中不生效，
+    # 见 def.cpp num_out_tokens 属性注释）
     if range_value is not None:
         start, end = int(range_value[0]), int(range_value[1])
     else:
-        start, end = 0, int(num_out_tokens)
+        start, end = 0, 0
 
     return _Prepared(tokens, indices, probs, start, end)
 
