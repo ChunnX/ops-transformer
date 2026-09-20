@@ -44,10 +44,10 @@ namespace optiling { // 与本目录其他 op_tiling 文件一致(2026-09-17 裁
 static const FitBalanceCalibration CALIBRATION = {
     /* aicpu（commMode != "ccu"）*/
     {
-        /* rows: {卡数, 斜率(us/MB), 截距(us)} */
+        /* rows: {卡数, k 带宽斜率(us/MB), b 每轮启动开销(us), c 一次性固定开销(us)} */
         {
-            {4, 5.841842, 8.590666}, // 950 AllGather 标卡 4P: R²=1.0000
-            // 8P 未标定(留空, miss 走平台默认行 + rankDim 折算缩放); 标定后追加 {8, 斜率, 截距}
+            {4, 5.841842, 8.590666, 0.0}, // 950 AllGather 标卡 4P: R²=1.0000; c 待标定暂填 0(§4.37 阶段1)
+            // 8P 未标定(留空, miss 走 COF 分派); 标定后追加 {8, k, b, c}
         },
         // platformDefault: 平台默认回退行, 用公共层默认值(勿动)
     },
@@ -55,7 +55,7 @@ static const FitBalanceCalibration CALIBRATION = {
     {
         /* rows */
         {
-            {4, 5.841842, 8.590666}, // TODO(CCU 重标): 当前沿用历史共用值(旧表无引擎维度)
+            {4, 5.841842, 8.590666, 0.0}, // TODO(CCU 重标): 当前沿用历史共用值(旧表无引擎维度)
         },
     },
     /* mmFit: matmul 性能拟合(算力档位/基本块) */
@@ -134,6 +134,9 @@ inline CutResult ScheduleFitBalance(const mc2tiling::TilingArgs &args, TilingCom
               ctx.matmulPerf.mmShapeInfo_.mValue, ctx.matmulPerf.mmShapeInfo_.nValue,
               ctx.matmulPerf.mmShapeInfo_.kValue, cut.shortTileAtBack, cut.longTileLen, cut.numLongTile,
               cut.shortTileLen, cut.numShortTile);
+    // §4.37 诊断: 实际切分 N 轮 vs 不切的总通信时(含每轮启动开销 b 与一次性 c), 差值=切分启动税
+    OPS_LOG_D("AllGatherMatmul", "Comm total time: %lu rounds actual %.3fus vs no-cut %.3fus (round tax %.3fus)",
+              cut.totalTileCnt, ctx.commTimeActualUs, ctx.commTimeNoCutUs, ctx.commTimeActualUs - ctx.commTimeNoCutUs);
     if (baseMOut != nullptr) {
         *baseMOut = ctx.matmulPerf.GetBaseM();
     }

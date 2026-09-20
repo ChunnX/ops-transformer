@@ -122,11 +122,15 @@ struct CommModelInfo {
     uint64_t commDtypeSizeExpansionFraction;
 };
 
-// 通信时间线性拟合参数(2 字段, §4.29 分派落地后 miss 回退路径整体废弃——标定命中是
-// 引擎唯一入口, 拟合模型收敛为纯线性 y = slope·x + offset; 12→8→2 两轮裁剪史见 §4.28/§4.29)
+// 通信时间线性拟合参数(3 字段): 总量公式 y = k·x + N·b + c(§4.37 专家裁定)——
+// k=带宽斜率, b=每轮启动开销(单轮全款), c=一次性固定开销(只进总量口径, 不进单轮/反解)。
+// 阶段1 结构先行: 现有标定行填 b=旧截距、c=0 → 与旧 y=k·x+offset 逐位等价(bit 锁保持);
+// 阶段2 真实 b/c 标定数据到位后激活行为变化(与开销补丁删除同批, 独立性能验证)。
+// 字段演进史 12→8→2→3 见 §4.28/§4.29/§4.37。
 struct CommFitParams {
-    double linearSlopeUsPerMb; // 斜率 (us/MB), 带宽项
-    double linearOffsetUs;     // 截距 (us), 每轮同步固定开销
+    double slopeUsPerMb;    // 带宽斜率 k (us/MB)
+    double roundOverheadUs; // 每轮启动开销 b (us)——单轮通信全款, 反解时从目标时间中扣除
+    double fixedOverheadUs; // 一次性固定开销 c (us)——整个算子只付一次, 仅进总量口径
 };
 
 // 引擎切分结果(M 轴 1短+N长 的切分方案; 算子侧边界处转换为旧全局 CommCutResult)
@@ -249,11 +253,10 @@ enum class CommComputeOrder {
 // 机制随引擎键控分支下沉, 阈值留标定——同键算子将来分叉只改各自 CALIBRATION(§4.22 裁定)
 struct FitTunables {
     // E9(AG 键): 短块减半鼓励门——通算平衡且半块双耗时均超阈, 才减半对齐长度(鼓励多切)
+    // [§4.37 阶段2 废弃] 该门属启动开销的经验防御(b 已入模型), 真实 b/c 数据激活时随补丁批次删除
     double halveEncourageMmUs = 40;   // 半块 matmul 耗时下限 (us)
     double halveEncourageCommUs = 40; // 半块通信耗时下限 (us)
-    // E10(AR 键, P2-MMAR 接线): 切分开销绝对值反解 minLen 的双耗时下限
-    double minCutCommUs = 100; // 通信耗时下限 (us)
-    double minCutMmUs = 60;    // matmul 耗时下限 (us)
+    // E10(AR 键)的 minCutCommUs/minCutMmUs(100/60μs)已删除——E10 属启动开销补偿, §4.37 裁定废弃
 };
 
 // fp4 子字节建模分母: 1 字节打包 2 个 fp4 元素(D6, dtype 键控)
@@ -356,22 +359,36 @@ public:
                                                                               commTypeInfo_.rankDim);
     }
 
-    // 性能拟合函数: 纯线性 y = slope·x + offset (x=通信数据量 MB), 再除时间折算因子
+    // 单轮通信耗时: y = k·x + b(§4.37)——本轮数据量按带宽线性计, 外加该轮启动开销 b;
+    // 一次性开销 c 不进单轮口径。配平(E18/E19 反解)消费的就是这个单轮语义。
     double CommTime(uint64_t mSize) const
     {
         const double commDataSize =
             static_cast<double>(mSize) * commTypeInfo_.commMatrixLen * commRankCnt_ * GetRealDtypeSizes();
         const double tmpSize = commDataSize / BYTES_PER_MB;
-        return (commEstimatePar_.linearSlopeUsPerMb * tmpSize + commEstimatePar_.linearOffsetUs) / commTimeFactor_;
+        return (commEstimatePar_.slopeUsPerMb * tmpSize + commEstimatePar_.roundOverheadUs) / commTimeFactor_;
     }
 
-    // 纯线性反解: x = (t·factor - offset) / slope, 再换算回 M 行数
+    // 纯线性反解: x = (t·factor − b) / k, 再换算回 M 行数——b 是每轮全款, 从目标时间整额扣除
     uint64_t InverseCommTime(double targetTime) const
     {
         const double tmpSize =
-            (targetTime * commTimeFactor_ - commEstimatePar_.linearOffsetUs) / commEstimatePar_.linearSlopeUsPerMb;
+            (targetTime * commTimeFactor_ - commEstimatePar_.roundOverheadUs) / commEstimatePar_.slopeUsPerMb;
         return static_cast<uint64_t>(tmpSize * BYTES_PER_MB /
                                      (commTypeInfo_.commMatrixLen * commRankCnt_ * GetRealDtypeSizes()));
+    }
+
+    // 总通信耗时(N 轮求和口径): y = k·X + N·b + c(§4.37)——X 为切分域总数据量, 每轮各付
+    // 一份启动开销 b, c 整个算子只付一次。切分完成后按实际轮数精算, 与 NoCut 候选(N=1)
+    // 之差 = (N−1)·b, 即切分多付的启动税; Estimate 阶段轮数未知, 按 N=1 保守估(§4.37 拍板)。
+    double TotalCommTime(uint64_t totalLen, uint64_t numRounds) const
+    {
+        const double commDataSize =
+            static_cast<double>(totalLen) * commTypeInfo_.commMatrixLen * commRankCnt_ * GetRealDtypeSizes();
+        const double tmpSize = commDataSize / BYTES_PER_MB;
+        return (commEstimatePar_.slopeUsPerMb * tmpSize +
+                commEstimatePar_.roundOverheadUs * static_cast<double>(numRounds) + commEstimatePar_.fixedOverheadUs) /
+               commTimeFactor_;
     }
 };
 
@@ -783,6 +800,10 @@ struct FitBasedBalanceCtx {
     uint64_t mmRankMul = 1;     // 派生: MmRankMul(ctx)(本卡 mm 总行数的 rank 倍数, 见该函数注释)
     double ratioCalcComm = 1.0; // 过程量: Estimate 骨干设置的通算比(键控分支消费)
     double frontMMTime = 0; // 过程量(AG 键): 本地首轮计算耗时(本卡 A 块已在手, 首块无通信依赖)
+    // 诊断量(§4.37, Schedule 尾部写入): 切分完成后按实际轮数精算的总通信时, 与 NoCut 候单轮
+    // 之差 = (N−1)·b 启动税。仅供 op 侧日志消费, 不参与引擎决策(机制与日志分离, §4.24 裁定)
+    double commTimeActualUs = 0; // 实际切分(N 轮)的总通信时
+    double commTimeNoCutUs = 0;  // 不切候选(1 轮)的总通信时
 };
 
 // 本卡 mm 总行数的 rank 倍数(通信原语语义派生; InitCtx 单次赋值进 ctx.mmRankMul, 消费方读字段。
@@ -812,7 +833,7 @@ inline uint64_t MmRankMul(const FitBasedBalanceCtx &ctx)
 // 填写规则:
 //   - 通信行按 rankDim 匹配(未标定形态由 op 层分派走核利用率优先, §4.29——引擎不设回退);
 //   - matmul 行按 (calcType, A/B/C 字节数) 匹配, 未填字段取 NSDMI 默认; 行按前缀填, 0 值行=未填;
-//   - 通信行为纯线性拟合(客户标定产出即 斜率+截距 两个数)。
+//   - 通信拟合公式 y = k·x + N·b + c(§4.37): 客户标定产出 k/b/c 三个数。
 // ============================================================================
 
 struct FitBalanceCalibration {
@@ -823,9 +844,10 @@ struct FitBalanceCalibration {
     // —— 通信拟合（单引擎）——
     struct CommFit {
         struct Row {
-            uint32_t rankDim;    // 卡数(4=标卡4P, 8=8P, ...)
-            double linearSlope;  // 线性段斜率 (us/MB)
-            double linearOffset; // 线性段截距 (us), 含每轮同步固定开销
+            uint32_t rankDim;             // 卡数(4=标卡4P, 8=8P, ...)
+            double slopeUsPerMb;          // 带宽斜率 k (us/MB)
+            double roundOverheadUs;       // 每轮启动开销 b (us)
+            double fixedOverheadUs = 0.0; // 一次性固定开销 c (us)——未标定填 0(阶段1 兼容旧截距口径)
         };
         Row rows[MAX_COMM_FIT_ROWS] = {}; // 已标定行, rankDim=0 表示未填(哨兵截断)
     };
@@ -865,7 +887,7 @@ inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, CommPrimitiv
             break;
         }
         if (commRows[i].rankDim == args.rankDim) {
-            commFitParams = {commRows[i].linearSlope, commRows[i].linearOffset};
+            commFitParams = {commRows[i].slopeUsPerMb, commRows[i].roundOverheadUs, commRows[i].fixedOverheadUs};
             break;
         }
     }
@@ -937,7 +959,7 @@ inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, CommPrimitiv
     // §4.29 分派后引擎不设回退模型: 标定未命中(零值行 slope=0)时置 minLen=mValue——
     // NoCut 门控即输出单块不切(防御行为, 正常分派下 op 层已引走 COF, 不可达;
     // 同时避免 InverseCommTime 除零斜率的 float→uint UB)
-    if (ctx.commPerf.commEstimatePar_.linearSlopeUsPerMb == 0.0) {
+    if (ctx.commPerf.commEstimatePar_.slopeUsPerMb == 0.0) {
         ctx.tilingM.SetMinLenByMax(ctx.matmulPerf.mmShapeInfo_.mValue);
     }
     // D7 离散对齐粒度初始化: baseM
@@ -1004,7 +1026,9 @@ inline EstimateTimesResult EstimateTotalTimes(FitBasedBalanceCtx &ctx)
     ctx.matmulPerf.GetMatmulGradient();
     EstimateTimesResult r;
     r.totalMatmulTime = ctx.matmulPerf.MatmulTime(ctx.matmulPerf.mmShapeInfo_.mValue, ctx.mmRankMul);
-    r.totalTpTime = ctx.commPerf.CommTime(ctx.matmulPerf.mmShapeInfo_.mValue);
+    // N=1(NoCut 候选口径, §4.37): Estimate 发生在切分前、轮数未知, 按不切保守估通信总量;
+    // 切分完成后由 Schedule 尾部按实际轮数精算(ctx.commTimeActualUs)供日志/观察
+    r.totalTpTime = ctx.commPerf.TotalCommTime(ctx.matmulPerf.mmShapeInfo_.mValue, 1);
     ctx.ratioCalcComm = (std::max(r.totalTpTime, r.totalMatmulTime) / std::min(r.totalTpTime, r.totalMatmulTime));
     return r;
 }
@@ -1097,6 +1121,11 @@ inline CommCutResult Schedule(FitBasedBalanceCtx &ctx)
     const bool goodLin = isAg ? true : IsGoodLinearityShape(ctx.matmulPerf.mmShapeInfo_);
     ctx.tilingM.FitTileLengthDiscrete(goodLin, isAg); // localAtFront: AG 前端有本地块
     MergeEqualTiles(ctx.tilingM);
+    // §4.37: 按最终切分的实际轮数精算总通信时(N 轮 vs NoCut 候选 1 轮), 差值即切分
+    // 多付的启动税 (N−1)·b——诊断输出供 op 侧日志, 引擎不做再决策
+    ctx.commTimeActualUs =
+        ctx.commPerf.TotalCommTime(ctx.matmulPerf.mmShapeInfo_.mValue, ctx.tilingM.cutRes.totalTileCnt);
+    ctx.commTimeNoCutUs = ctx.commPerf.TotalCommTime(ctx.matmulPerf.mmShapeInfo_.mValue, 1);
     return ctx.tilingM.cutRes;
 }
 
