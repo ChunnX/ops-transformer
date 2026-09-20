@@ -1,5 +1,11 @@
 # Shared-Jetty 的 BS 分组、32/56 Jetty 对照与优化判断
 
+2026-09-20 补充：用户明确32 Jetty只约束发送 owner，epilogue 保持全部可用计算核，
+本轮不实施本文后续历史实验建议中的计算核数缩减。最新核内优化见
+[metadata 批处理与 Combine 输入预取](moe_ep_pipeline_optimization_pass1.md)。
+下文初版的运行时深度检查已在此前清理中删除，32/SQ4096/CQ64配置本身不变；
+下文“尚未采集性能”属于历史状态，不覆盖用户已报告的最新性能数据。
+
 日期：2026-09-19。此文补充并修订 [原优化方案](moe_ep_shared_jetty_bandwidth_optimization.md)。当前工作区已实现首版 32-Jetty 调度；尚未在 NPU 上编译、运行或采集性能数据，下面的带宽数字仍是容量估算和实验设计。
 
 ### 当前首版实现边界

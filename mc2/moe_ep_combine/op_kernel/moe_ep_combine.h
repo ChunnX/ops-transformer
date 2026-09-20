@@ -267,19 +267,25 @@ template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BeginPreparedWrites(uint32_t dstRank,
                                                                                        uint32_t jettyIndex)
 {
-    activePeerIndex_ = dstRank < rankId_ ? dstRank : dstRank - 1U;
-    activeRemoteWindow_ = winRankAddr_[dstRank];
+    uint32_t peerIndex = dstRank < rankId_ ? dstRank : dstRank - 1U;
     uint64_t commHandle = GetJettyHandle(jettyIndex);
-    if (activeBatchInitialized_ && activeJettyHandle_ == commHandle) {
+    if (activeBatchInitialized_ && activeJettyHandle_ == commHandle && activePeerIndex_ == peerIndex &&
+        activeRemoteWindow_ == winRankAddr_[dstRank]) {
         return;
     }
-    if (activeBatchInitialized_) {
-        FlushPreparedWrites();
+    if (!activeBatchInitialized_ || activeJettyHandle_ != commHandle) {
+        if (activeBatchInitialized_) {
+            FlushPreparedWrites();
+        }
+        activeBatchHandle_ = hcomm_.MakeBatchHandle(static_cast<CommHandle>(commHandle), hcommBatchTensor_,
+                                                  HCOMM_BATCH_BUFFER_BYTES, winRankAddr_[dstRank]);
+        activeJettyHandle_ = commHandle;
+        activeBatchInitialized_ = true;
     }
-    activeBatchHandle_ = hcomm_.MakeBatchHandle(static_cast<CommHandle>(commHandle), hcommBatchTensor_,
-                                                HCOMM_BATCH_BUFFER_BYTES, winRankAddr_[dstRank]);
-    activeJettyHandle_ = commHandle;
-    activeBatchInitialized_ = true;
+    activePeerIndex_ = peerIndex;
+    activeRemoteWindow_ = winRankAddr_[dstRank];
+    // All payload/flag addresses for this peer belong to the same registered MoE window.
+    hcomm_.GetHandleRef(activeBatchHandle_, activePeerIndex_, activeRemoteWindow_);
 }
 
 template <TemplateMoeEpCombineTypeClass>
@@ -290,8 +296,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWrite(
     if (preparedWriteCount_ + 1U > HCOMM_BATCH_CAPACITY) {
         FlushPreparedWrites(true);
     }
-    auto &handle = hcomm_.GetHandleRef(activeBatchHandle_, activePeerIndex_, activeRemoteWindow_);
-    hcomm_.WriteNbi<config>(handle, dst, src, len);
+    hcomm_.WriteNbi<config>(activeBatchHandle_.handle, dst, src, len);
     ++preparedWriteCount_;
 }
 
@@ -309,8 +314,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareMultiS
     if (preparedWriteCount_ + wqebbCount > HCOMM_BATCH_CAPACITY) {
         FlushPreparedWrites(true);
     }
-    auto &handle = hcomm_.GetHandleRef(activeBatchHandle_, activePeerIndex_, activeRemoteWindow_);
-    hcomm_.WriteNbi<config>(handle, dst, srcDescs, srcNum);
+    hcomm_.WriteNbi<config>(activeBatchHandle_.handle, dst, srcDescs, srcNum);
     preparedWriteCount_ += wqebbCount;
 }
 

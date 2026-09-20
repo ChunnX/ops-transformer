@@ -87,6 +87,8 @@ private:
     __aicore__ inline void ClearCompletionFlags();
     __aicore__ inline void BuildLocalRecvIndex();
     __aicore__ inline void ProcessTopKToken(uint32_t tokenIndex);
+    __aicore__ inline bool PrefetchTopKInput(uint32_t tokenIndex, uint32_t topkId);
+    __aicore__ inline void ConsumeTopKInput(uint32_t tokenIndex, uint32_t topkId);
     __aicore__ inline uint32_t CalcBufferNum();
     __aicore__ inline void RecvPhaseReduce();
     __aicore__ inline GM_ADDR GetUrmaWinAddrByRankId(uint32_t rankId, uint64_t offset)
@@ -120,6 +122,7 @@ private:
     uint64_t localMetadataBegin_{0};
     uint64_t localMetadataEnd_{0};
     uint32_t metadataChunkTokens_{1};
+    uint32_t inputPrefetchDepth_{1};
 
     uint32_t tStart_{0};
     uint32_t tEnd_{0};
@@ -144,9 +147,9 @@ private:
     LocalTensor<bool> maskStrideTensor_;
     LocalTensor<half> tokenTargetTensor_;
 
-    TQue<QuePosition::VECIN, 1> xInQue_;
+    TQue<QuePosition::VECIN, 2> xInQue_;
     TQue<QuePosition::VECOUT, 1> xOutQue_;
-    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> weightQue_;
+    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 2> weightQue_;
     TBuf<QuePosition::VECIN> ubAccFp32Buf_;
     TBuf<QuePosition::VECIN> ubTmpFp32Buf_;
     TBuf<> stateBuf_;
@@ -443,53 +446,85 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
 }
 
 template <TemplateMoeEpCombineEpilogueTypeClass>
+__aicore__ inline bool MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc>::PrefetchTopKInput(
+    uint32_t tokenIndex, uint32_t topkId)
+{
+    uint32_t lookupIndex = (tokenIndex - tStart_) * topK_ + topkId;
+    if (!maskGenerateTensor_.GetValue(lookupIndex)) {
+        return false;
+    }
+    int32_t expertId = topkIdsTensor_.GetValue(lookupIndex);
+    int32_t localRecvXIdx = localRecvIdxTensor_.GetValue(lookupIndex);
+    uint32_t localExpertBegin = rankId_ * tilingData_->cfg.numLocalExperts;
+    uint32_t localExpertEnd = localExpertBegin + tilingData_->cfg.numLocalExperts;
+    if (localRecvXIdx < 0 && expertId >= static_cast<int32_t>(localExpertBegin) &&
+        expertId < static_cast<int32_t>(localExpertEnd)) {
+        return false;
+    }
+    uint64_t slotOffset = (static_cast<uint64_t>(tokenIndex) * topK_ + topkId) * tilingData_->cfg.perSlotBytes;
+    GM_ADDR slotAddr = GetUrmaWinAddrByRankId(rankId_, combineDataWinOffset_) + slotOffset;
+    GlobalTensor<XType> source;
+    if (localRecvXIdx >= 0) {
+        source = xGm_[static_cast<uint64_t>(localRecvXIdx) * axisH_];
+    } else {
+        source.SetGlobalBuffer(reinterpret_cast<__gm__ XType *>(slotAddr));
+    }
+    LocalTensor<XType> xLocal = xInQue_.AllocTensor<XType>();
+    DataCopyPad(xLocal, source, xCopyParams_, padParams_);
+    xInQue_.EnQue(xLocal);
+    if constexpr (HasTopkWeight == 1) {
+        GlobalTensor<float> weightSource;
+        if (localRecvXIdx >= 0) {
+            weightSource = topkWeightsGm_[localRecvXIdx];
+        } else {
+            weightSource.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(slotAddr + hAlignSize_));
+        }
+        LocalTensor<float> weightLocal = weightQue_.AllocTensor<float>();
+        DataCopyPad(weightLocal, weightSource, weightCopyParams_, padParams_);
+        weightQue_.EnQue(weightLocal);
+    }
+    return true;
+}
+
+template <TemplateMoeEpCombineEpilogueTypeClass>
+__aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc>::ConsumeTopKInput(
+    uint32_t tokenIndex, uint32_t topkId)
+{
+    LocalTensor<XType> xIn = xInQue_.DeQue<XType>();
+    Cast(ubTmpFp32_, xIn, AscendC::RoundMode::CAST_NONE, axisH_);
+    Add(ubAccFp32_, ubAccFp32_, ubTmpFp32_, axisH_);
+    xInQue_.FreeTensor(xIn);
+    if constexpr (HasTopkWeight == 1) {
+        LocalTensor<float> weightOut = weightQue_.DeQue<float>();
+        DataCopyPad(combinedTopkWeightsGm_[tokenIndex * topK_ + topkId], weightOut, weightCopyParams_);
+        weightQue_.FreeTensor(weightOut);
+    }
+}
+
+template <TemplateMoeEpCombineEpilogueTypeClass>
 __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc>::ProcessTopKToken(uint32_t tokenIndex)
 {
     Duplicate<float>(ubAccFp32_, (float)0, axisH_);
-    uint32_t localExpertBegin = rankId_ * tilingData_->cfg.numLocalExperts;
-    uint32_t localExpertEnd = localExpertBegin + tilingData_->cfg.numLocalExperts;
-    for (uint32_t topkId = 0U; topkId < topK_; topkId++) {
-        uint64_t slotOffset = (static_cast<uint64_t>(tokenIndex) * topK_ + topkId) * tilingData_->cfg.perSlotBytes;
-        uint32_t lookupIndex = (tokenIndex - tStart_) * topK_ + topkId;
-        bool maskExpertFlag = maskGenerateTensor_.GetValue(lookupIndex);
-        if (!maskExpertFlag) {
-            continue;
-        }
-        int32_t expertId = topkIdsTensor_.GetValue(lookupIndex);
-        int32_t localRecvXIdx = localRecvIdxTensor_.GetValue(lookupIndex);
-        if (localRecvXIdx < 0 && expertId >= static_cast<int32_t>(localExpertBegin) &&
-            expertId < static_cast<int32_t>(localExpertEnd)) {
-            continue;
-        }
-        LocalTensor<XType> xLocal = xInQue_.AllocTensor<XType>();
-        if (localRecvXIdx >= 0) {
-            DataCopyPad(xLocal, xGm_[static_cast<uint64_t>(localRecvXIdx) * axisH_], xCopyParams_, padParams_);
-        } else {
-            GM_ADDR tokenAddr = GetUrmaWinAddrByRankId(rankId_, combineDataWinOffset_) + slotOffset;
-            GlobalTensor<XType> srcTokenTensor;
-            srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType *>(tokenAddr));
-            DataCopyPad(xLocal, srcTokenTensor, xCopyParams_, padParams_);
-        }
-        xInQue_.EnQue(xLocal);
-        LocalTensor<XType> xIn = xInQue_.DeQue<XType>();
-        Cast(ubTmpFp32_, xIn, AscendC::RoundMode::CAST_NONE, axisH_);
-        Add(ubAccFp32_, ubAccFp32_, ubTmpFp32_, axisH_);
-        xInQue_.FreeTensor(xIn);
-
-        if constexpr (HasTopkWeight == 1) {
-            LocalTensor<float> weightLocal = weightQue_.AllocTensor<float>();
-            if (localRecvXIdx >= 0) {
-                DataCopyPad(weightLocal, topkWeightsGm_[localRecvXIdx], weightCopyParams_, padParams_);
-            } else {
-                GM_ADDR weightAddr = GetUrmaWinAddrByRankId(rankId_, combineDataWinOffset_) + slotOffset + hAlignSize_;
-                GlobalTensor<float> srcWeightTensor;
-                srcWeightTensor.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(weightAddr));
-                DataCopyPad(weightLocal, srcWeightTensor, weightCopyParams_, padParams_);
+    uint32_t pendingTopk[2];
+    uint32_t read = 0U;
+    uint32_t write = 0U;
+    uint32_t pending = 0U;
+    uint32_t nextTopk = 0U;
+    // Keep one input ahead without changing TopK accumulation order or UB allocation.
+    // A one-buffer shape follows the same path with no outstanding prefetch.
+    while (nextTopk < topK_ || pending != 0U) {
+        while (nextTopk < topK_ && pending < inputPrefetchDepth_) {
+            uint32_t topkId = nextTopk++;
+            if (PrefetchTopKInput(tokenIndex, topkId)) {
+                pendingTopk[write] = topkId;
+                write = (write + 1U) & 1U;
+                ++pending;
             }
-            weightQue_.EnQue(weightLocal);
-            LocalTensor<float> weightOut = weightQue_.DeQue<float>();
-            DataCopyPad(combinedTopkWeightsGm_[tokenIndex * topK_ + topkId], weightOut, weightCopyParams_);
-            weightQue_.FreeTensor(weightOut);
+        }
+        if (pending != 0U) {
+            ConsumeTopKInput(tokenIndex, pendingTopk[read]);
+            read = (read + 1U) & 1U;
+            --pending;
         }
     }
     LocalTensor<XType> ubResultBf16 = xOutQue_.AllocTensor<XType>();
@@ -537,6 +572,7 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     }
 
     uint32_t bufferNum = CalcBufferNum();
+    inputPrefetchDepth_ = bufferNum > 1U ? 2U : 1U;
     tpipe_->InitBuffer(xInQue_, bufferNum, hAlignSize_);
     tpipe_->InitBuffer(xOutQue_, bufferNum, hAlignSize_);
     if constexpr (HasTopkWeight == 1) {

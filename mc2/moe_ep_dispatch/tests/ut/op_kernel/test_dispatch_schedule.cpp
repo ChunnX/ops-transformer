@@ -68,6 +68,26 @@ uint32_t Boundary(uint32_t bs, uint32_t prepareCount, uint32_t token,
     return static_cast<uint32_t>(std::lower_bound(first, first + counts[prepare], token) - indices.begin());
 }
 
+MoeEpDispatchSchedule::Range SharedPrefixRange(uint32_t bs, uint32_t prepareCount,
+    MoeEpDispatchSchedule::Range range, const std::vector<uint32_t> &indices,
+    const std::vector<uint32_t> &counts, MoeEpDispatchSchedule::Range ready)
+{
+    uint32_t first = range.begin == bs ? prepareCount : Owner(bs, prepareCount, range.begin);
+    uint32_t last = range.end == bs ? prepareCount : Owner(bs, prepareCount, range.end);
+    uint32_t base = 0;
+    for (uint32_t row = 0; row < first; ++row) { base += counts[row]; }
+    auto boundary = [&](uint32_t token, uint32_t prepare, uint32_t prefix) {
+        if (token == bs || token == Partition(bs, prepareCount, prepare).begin) { return prefix; }
+        assert(prepare >= ready.begin && prepare < ready.end);
+        auto begin = indices.begin() + prefix;
+        return static_cast<uint32_t>(std::lower_bound(begin, begin + counts[prepare], token) - indices.begin());
+    };
+    uint32_t begin = boundary(range.begin, first, base);
+    if (range.begin == range.end) { return {begin, begin}; }
+    for (uint32_t row = first; row < last; ++row) { base += counts[row]; }
+    return {begin, boundary(range.end, last, base)};
+}
+
 void CheckRouting(uint32_t bs, uint32_t prepareCount, uint32_t peers, std::mt19937 &rng)
 {
     std::vector<std::vector<uint32_t>> indices(peers);
@@ -89,6 +109,8 @@ void CheckRouting(uint32_t bs, uint32_t prepareCount, uint32_t peers, std::mt199
             auto ready = Overlap(bs, prepareCount, range.begin, range.end);
             uint32_t begin = Boundary(bs, prepareCount, range.begin, peer, counts, ready);
             uint32_t end = Boundary(bs, prepareCount, range.end, peer, counts, ready);
+            auto merged = SharedPrefixRange(bs, prepareCount, range, peer, counts, ready);
+            assert(merged.begin == begin && merged.end == end);
             assert(begin == static_cast<uint32_t>(std::lower_bound(peer.begin(), peer.end(), range.begin) - peer.begin()));
             assert(end == static_cast<uint32_t>(std::lower_bound(peer.begin(), peer.end(), range.end) - peer.begin()));
             assert(begin == previous);
