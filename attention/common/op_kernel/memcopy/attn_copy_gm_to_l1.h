@@ -586,13 +586,13 @@ private:
         uint64_t offset = offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gIdxStart, s1IdxStart, gmCoord.dIdx);
 #if (__NPU_ARCH__ == 9201)
         if (std::is_same_v<Q_SCALE_T, hif4_scale>) {
-            CopySingleHIScaleDNToNZ(dstTensor.tensor, srcTensor.gmTensor[offset], gmCoord.dDealSize, gmCoord.gS1DealSize,
-                                    offsetCalculator.GetDimD(), gmCoord.dDealSize);
+            CopySingleHIScaleDNToNZ(dstTensor.tensor, srcTensor.gmTensor[offset], gmCoord.dDealSize,
+                                    gmCoord.gS1DealSize, offsetCalculator.GetDimD(), gmCoord.dDealSize);
         } else
 #endif
         {
-            CopySingleMXScaleDNToNZ(dstTensor.tensor, srcTensor.gmTensor[offset], gmCoord.dDealSize, gmCoord.gS1DealSize,
-                                offsetCalculator.GetDimD(), gmCoord.dDealSize);
+            CopySingleMXScaleDNToNZ(dstTensor.tensor, srcTensor.gmTensor[offset], gmCoord.dDealSize,
+                                    gmCoord.gS1DealSize, offsetCalculator.GetDimD(), gmCoord.dDealSize);
         }
     }
 
@@ -701,8 +701,7 @@ private:
     }
 
     template <typename FaGmTensorType>
-    __aicore__ inline void ProcessPageAttention(FaL1Tensor<K_SCALE_T, L1_FORMAT> &dstTensor,
-                                                FaGmTensorType &srcTensor,
+    __aicore__ inline void ProcessPageAttention(FaL1Tensor<K_SCALE_T, L1_FORMAT> &dstTensor, FaGmTensorType &srcTensor,
                                                 GmKvCoord &gmCoord)
     {
         auto &offsetCalculator = srcTensor.offsetCalculator;
@@ -719,18 +718,18 @@ private:
 
             if constexpr (GM_FORMAT == GmFormat::PA_NZ_K_SCALE) {
                 DataCopyParams intriParams;
-		        intriParams.dstStride = 0;
+                intriParams.dstStride = 0;
                 intriParams.srcStride = 0;
                 intriParams.blockCount = 1;
 #if (__NPU_ARCH__ == 9201)
                 if constexpr (std::is_same_v<K_SCALE_T, hif4_scale>) {
-                    intriParams.blockLen = ((copyRowCnt + 15) >> 4) * gmCoord.dDealSize * 2; // 每个最小分型组64B 要 * 2 
+                    intriParams.blockLen = ((copyRowCnt + 15) >> 4) * gmCoord.dDealSize * 2; // 每个最小分型组64B 要 * 2
                 } else
 #endif
                 {
                     // for mxfp4
                     intriParams.blockLen = ((copyRowCnt + 15) >> 4) * gmCoord.dDealSize / 2;
-                }     
+                }
                 DataCopy(dstTensor.tensor[l1Offset], srcTensor.gmTensor[gmOffset], intriParams);
                 l1Offset += intriParams.blockCount * intriParams.blockLen * 32 / sizeof(K_SCALE_T);
             } else {
@@ -738,12 +737,12 @@ private:
                 // 拷贝数据
                 if constexpr (std::is_same_v<K_SCALE_T, fp8_e8m0_t>) {
                     CopySingleMXScaleDNToNZ(dstTensor.tensor[l1Offset], srcTensor.gmTensor[gmOffset], gmCoord.dDealSize,
-                                        copyRowCnt, offsetCalculator.GetStrideBlockSize(), gmCoord.dDealSize);
+                                            copyRowCnt, offsetCalculator.GetStrideBlockSize(), gmCoord.dDealSize);
                 }
 #if (__NPU_ARCH__ == 9201)
                 else if constexpr (std::is_same_v<K_SCALE_T, hif4_scale>) {
                     CopySingleHIScaleDNToNZ(dstTensor.tensor[l1Offset], srcTensor.gmTensor[gmOffset], gmCoord.dDealSize,
-                                        copyRowCnt, offsetCalculator.GetStrideBlockSize(), gmCoord.dDealSize);
+                                            copyRowCnt, offsetCalculator.GetStrideBlockSize(), gmCoord.dDealSize);
                 }
 #endif
             }
@@ -868,8 +867,8 @@ private:
                                             gmCoord.dDealSize, offsetCalculator.GetStrideBlockSize(),
                                             dstTensor.rowCount);
                 } else if (SCALE_TRANS == ScaleTrans::DN2NZ) {
-                    l1Offset = copyFinishRowCnt * 16;   // 16: [32B/sizeof(BF16)]
-                    if constexpr(std::is_same_v<V_SCALE_T, fp8_e8m0_t>) {
+                    l1Offset = copyFinishRowCnt * 16; // 16: [32B/sizeof(BF16)]
+                    if constexpr (std::is_same_v<V_SCALE_T, fp8_e8m0_t>) {
                         CopySingleMXScaleDNToNZ(dstTensor.tensor[l1Offset], srcTensor.gmTensor[gmOffset], copyRowCnt,
                                                 gmCoord.dDealSize, offsetCalculator.GetBlockSize(), gmCoord.s2DealSize);
                     }
