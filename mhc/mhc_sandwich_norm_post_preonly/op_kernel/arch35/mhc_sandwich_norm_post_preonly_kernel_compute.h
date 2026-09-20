@@ -177,9 +177,9 @@ __aicore__ inline void ComputeX2AllHeadsBatched(const float (&postVals)[N_MAX], 
     LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
     LocalTensor<float> combWeights = bufPostComb_.Get<float>()[ALIGN8];
 
-    for (uint32_t h = 0; h < N; ++h) {
-        MhcSandwichRegBase::ComputePostHead<T>(x2[h * dimTile_], hOut, residual, combWeights, dimTile_, h, postVals[h],
-                                               tD);
+    for (uint32_t h = 0; h < N; h += 2U) {
+        MhcSandwichRegBase::ComputePostHeadPair<T>(x2[h * dimTile_], x2[(h + 1U) * dimTile_], hOut, residual,
+                                                   combWeights, dimTile_, h, postVals[h], postVals[h + 1U], tD);
     }
     PipeBarrier<PIPE_V>();
     bufResidualBf16_.FreeTensor(residual);

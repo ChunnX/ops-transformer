@@ -365,6 +365,45 @@ __aicore__ inline void ComputePostHead(const LocalTensor<float> &dst, const Loca
     }
 }
 
+// 一个VF同时计算相邻两个head，共用h_out与residual的寄存器加载，并保持各自四路累加顺序不变。
+template <typename T>
+__aicore__ inline void ComputePostHeadPair(const LocalTensor<float> &dst0, const LocalTensor<float> &dst1,
+                                           const LocalTensor<float> &hOut, const LocalTensor<T> &residual,
+                                           const LocalTensor<float> &combWeights, uint32_t rowStride,
+                                           uint32_t headIndex, float postWeight0, float postWeight1, uint32_t count)
+{
+    __local_mem__ float *dst0Addr = (__local_mem__ float *)dst0.GetPhyAddr();
+    __local_mem__ float *dst1Addr = (__local_mem__ float *)dst1.GetPhyAddr();
+    __local_mem__ float *hOutAddr = (__local_mem__ float *)hOut.GetPhyAddr();
+    __local_mem__ T *residualAddr = (__local_mem__ T *)residual.GetPhyAddr();
+    __local_mem__ float *combAddr = (__local_mem__ float *)combWeights.GetPhyAddr();
+    uint32_t remain = count;
+    const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
+    __VEC_SCOPE__
+    {
+        RegTensor<T> residualB16Reg;
+        RegTensor<float> hOutReg, residualReg, weight0Reg, weight1Reg, dst0Reg, dst1Reg;
+        MaskReg mask;
+        for (uint16_t i = 0; i < loops; ++i) {
+            mask = UpdateMask<float>(remain);
+            DataCopy<float, LoadDist::DIST_NORM>(hOutReg, hOutAddr + i * VL_FP32);
+            AscendC::Reg::Muls(dst0Reg, hOutReg, postWeight0, mask);
+            AscendC::Reg::Muls(dst1Reg, hOutReg, postWeight1, mask);
+            for (uint16_t j = 0; j < static_cast<uint16_t>(N_MAX); ++j) {
+                const uint32_t row = static_cast<uint32_t>(j);
+                DataCopy<T, LoadDist::DIST_UNPACK_B16>(residualB16Reg, residualAddr + row * rowStride + i * VL_FP32);
+                Cast<float, T, CAST_B16_TO_FP32>(residualReg, residualB16Reg, mask);
+                DataCopy<float, LoadDist::DIST_BRC_B32>(weight0Reg, combAddr + row * N_MAX + headIndex);
+                DataCopy<float, LoadDist::DIST_BRC_B32>(weight1Reg, combAddr + row * N_MAX + headIndex + 1U);
+                AscendC::Reg::MulAddDst(dst0Reg, residualReg, weight0Reg, mask);
+                AscendC::Reg::MulAddDst(dst1Reg, residualReg, weight1Reg, mask);
+            }
+            DataCopy(dst0Addr + i * VL_FP32, dst0Reg, mask);
+            DataCopy(dst1Addr + i * VL_FP32, dst1Reg, mask);
+        }
+    }
+}
+
 // R6在一个VF内完成四路低精度读取、FP32转换和门控累加，不生成四行FP32中间张量。
 template <typename T>
 __aicore__ inline void GateWeightedSum(const LocalTensor<float> &dst, const LocalTensor<T> &src, uint32_t headStride,
