@@ -79,7 +79,7 @@ extern "C" void *NnopbaseGetUserHandle(void *executor);
 extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId &dfxId);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
-static inline bool IsAscend950(void)
+static inline bool IsA5(void)
 {
     return op::GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510;
 }
