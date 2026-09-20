@@ -836,6 +836,22 @@ static ge::graphStatus InferShape4MoeInitRoutingV3(gert::InferShapeContext *cont
 
     CalculateOutputDims(xShape, expertIdxShape, activeNum, cols, outNum, xOutNum);
 
+    const auto *xDesc = context->GetInputDesc(MOE_INIT_ROUTING_V3_INPUT_X);
+    OP_CHECK_NULL_WITH_CONTEXT(context, xDesc);
+    auto xDtype = xDesc->GetDataType();
+    // Torch graph represents two FP4 values with one storage element, so cols may be half of the logical H.
+    // Use the scale block count to distinguish a packed width from an already-logical width.
+    if (quantMode == QuantMode::NON_QUANT && xDtype == ge::DT_FLOAT4_E2M1 && cols >= 0 && scaleShape != nullptr &&
+        scaleShape->GetDimNum() == DIM_THREE) {
+        int64_t scaleBlocks = scaleShape->GetDim(1);
+        int64_t unpackedBlocks = Ops::Base::CeilDiv<int64_t>(cols, SCALE_BLOCK_SIZE);
+        int64_t packedBlocks = Ops::Base::CeilDiv<int64_t>(cols * DIM_TWO, SCALE_BLOCK_SIZE);
+        if (scaleBlocks >= 0 && scaleBlocks != unpackedBlocks && scaleBlocks == packedBlocks) {
+            // The scale matches 2 * cols only; restore logical H before inferring expanded_x.
+            cols *= DIM_TWO;
+        }
+    }
+
     SetExpandedXandRowIdxShape(expandedXShape, expandedRowIdxShape, dropPadMode, xOutNum, outNum, experNum,
                                expertCapacity, cols);
 
