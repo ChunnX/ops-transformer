@@ -440,16 +440,10 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
     const uint32_t expectedSyncRoundTag = GetSyncRoundTag(syncCount);
     GlobalTensor<int32_t> expertCountGlobal;
     expertCountGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.peermemInfo.expertCountRecvPtr));
-#if defined(MEGA_MOE_ENABLE_COUNT_SIMT)
-    WaitForCountTableSimt<>(expertCountGlobal.GetPhyAddr(),
-                            reinterpret_cast<__ubuf__ int32_t *>(scratch.cumsumInfoTensor.GetPhyAddr()),
-                            rawCountElementCount, expectedSyncRoundTag);
-#else
     // 共享计算之后已有 MTE3_MTE2，保护此处 MTE2 对同一 UB 的复用。
     // expertTokenNumsOutTensor 尚未保存输出，首项暂存整表检查结果，不增加 UB 分配。
     WaitForCountTable(expertCountGlobal, scratch.cumsumInfoTensor, scratch.expertTokenNumsOutTensor,
                       rawCountElementCount, expectedSyncRoundTag);
-#endif
     ComputeExpertCountTables(scratch.cumsumInfoTensor, scratch.expertTokenNumsOutTensor, common.moeExpertPerRank,
                              common.worldSize, params.tilingData->maxOutputSize);
     SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();
