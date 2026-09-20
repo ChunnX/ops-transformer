@@ -41,22 +41,6 @@ struct A8W4BlockContext {
     Block *block = nullptr;
 };
 
-// Own one block for a complete expert loop. Destruction drains its events before
-// the next Dispatch/quantization/shared stage reuses the same local resources.
-template <typename Config, typename Callback>
-__aicore__ inline void RunWithA8W4Block(const Params &params, Callback &&run)
-{
-    if constexpr (g_coreType == AscendC::AIC) {
-        typename Config::BlockMmad block(params.tilingData->a8w4L1Layout);
-        run(typename Config::BlockContext{&block});
-    } else if (GetSubBlockIdx() == 0U) {
-        typename Config::BlockPrologue block(params.tilingData->a8w4L1Layout);
-        run(typename Config::BlockContext{&block});
-    } else {
-        run(typename Config::BlockContext{});
-    }
-}
-
 // 根据数据类型路径选择对应的 BlockMmad 实现。
 template <bool IsA8W4, typename C>
 struct BlockMmadSelector;
