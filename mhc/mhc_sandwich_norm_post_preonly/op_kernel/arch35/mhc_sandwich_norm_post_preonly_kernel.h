@@ -123,6 +123,7 @@ public:
 
         evtMte2toV_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::MTE2_V>());
         evtVtoMte2_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::V_MTE2>());
+        evtMte3toV_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::MTE3_V>());
         evtVtoMte3_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::V_MTE3>());
         evtMte3toMte2_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::MTE3_MTE2>());
         if constexpr (DUAL_SIBLING) {
@@ -167,6 +168,7 @@ public:
 
         pipe_.ReleaseEventID<HardEvent::MTE2_V>(evtMte2toV_);
         pipe_.ReleaseEventID<HardEvent::V_MTE2>(evtVtoMte2_);
+        pipe_.ReleaseEventID<HardEvent::MTE3_V>(evtMte3toV_);
         pipe_.ReleaseEventID<HardEvent::V_MTE3>(evtVtoMte3_);
         pipe_.ReleaseEventID<HardEvent::MTE3_MTE2>(evtMte3toMte2_);
         if constexpr (DUAL_SIBLING) {
@@ -238,8 +240,7 @@ private:
 
     int32_t evtMte2toV_ = 0;
     int32_t evtVtoMte2_ = 0;
-    // 本Kernel同一时刻只使用一个MTE3到Vector事件，固定使用事件0，避免重复申请和释放。
-    static constexpr int32_t evtMte3toV_ = 0;
+    int32_t evtMte3toV_ = 0;
     int32_t evtVtoMte3_ = 0;
     int32_t evtMte3toMte2_ = 0;
     int32_t evtMte2toS_ = 0;
