@@ -12,7 +12,10 @@
  * \file mhc_pre_apt.cpp
  * \brief
  */
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
+// arch35 kernel 实现：ascend950(__CCE_AICORE__==310)与 ascend960dt(__NPU_ARCH__==9201/9202, 该平台
+// __CCE_AICORE__ 值非 310, 需按 __NPU_ARCH__ 放行, 否则 kernel 入口被整体裁掉导致编译报
+// "kernel entry not implement")
+#if (defined(__CCE_AICORE__) && __CCE_AICORE__ == 310) || (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202))
 #include "arch35/mhc_pre_common.h"
 #include "arch35/mhc_pre_split_bs.h"
 #include "arch35/mhc_pre_m_k_split.h"

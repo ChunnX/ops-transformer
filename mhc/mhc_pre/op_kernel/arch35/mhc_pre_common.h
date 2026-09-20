@@ -127,7 +127,8 @@ __aicore__ inline uint64_t MhcPreAlign(uint64_t value, uint64_t align)
 
 __aicore__ inline constexpr uint32_t MhcPreGetVRegSize()
 {
-#if __CCE_AICORE__ == 310
+// ascend960dt 与 ascend950 同 arch35 指令集, 向量寄存器宽度同取 VECTOR_REG_WIDTH
+#if __CCE_AICORE__ == 310 || (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202))
     return AscendC::VECTOR_REG_WIDTH;
 #else
     return 256U;
