@@ -307,6 +307,38 @@ __aicore__ inline void CastB16ScaleAndMulGamma(const LocalTensor<float> &dst, co
     }
 }
 
+// 在寄存器内完成缩放、gamma和低精度往返，只把量化恢复后的FP32结果写回UB。
+template <typename T>
+__aicore__ inline void ScaleMulGammaQuantizeRoundTrip(const LocalTensor<float> &dst, const LocalTensor<float> &src,
+                                                      const LocalTensor<float> &gamma, float scale, uint32_t count)
+{
+    __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();
+    __local_mem__ float *srcAddr = (__local_mem__ float *)src.GetPhyAddr();
+    __local_mem__ float *gammaAddr = (__local_mem__ float *)gamma.GetPhyAddr();
+    uint32_t remain = count;
+    const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
+    __VEC_SCOPE__
+    {
+        RegTensor<float> srcReg, gammaReg, scaledReg, restoredReg;
+        RegTensor<T> quantizedReg;
+        MaskReg mask;
+        for (uint16_t i = 0; i < loops; ++i) {
+            mask = UpdateMask<float>(remain);
+            DataCopy<float, LoadDist::DIST_NORM>(srcReg, srcAddr + i * VL_FP32);
+            DataCopy<float, LoadDist::DIST_NORM>(gammaReg, gammaAddr + i * VL_FP32);
+            AscendC::Reg::Muls(scaledReg, srcReg, scale, mask);
+            AscendC::Reg::Mul(scaledReg, scaledReg, gammaReg, mask);
+            if constexpr (IsSameT<T, bfloat16_t>::value) {
+                Cast<T, float, CAST_FP32_TO_B16_RINT>(quantizedReg, scaledReg, mask);
+            } else {
+                Cast<T, float, CAST_FP32_TO_B16_NONE>(quantizedReg, scaledReg, mask);
+            }
+            Cast<float, T, CAST_B16_TO_FP32>(restoredReg, quantizedReg, mask);
+            DataCopy(dstAddr + i * VL_FP32, restoredReg, mask);
+        }
+    }
+}
+
 // 将sigmoid和epsilon补偿合并到同一个VF，输入保存-z，输出保存sigmoid(z)+epsilon。
 __aicore__ inline void SigmoidAddEps(const LocalTensor<float> &dst, const LocalTensor<float> &src, float epsilon,
                                      uint32_t count)
