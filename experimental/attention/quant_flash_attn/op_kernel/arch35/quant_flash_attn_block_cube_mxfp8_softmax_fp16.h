@@ -794,7 +794,10 @@ public:
                                      uint32_t subKSize, bool isFirstSubK)
     {
         MmadParams mmadParams;
-        mmadParams.m = dVBaseSize;
+        // m = 144 = dVBaseSize(128) + ROWSUM_ROWS(16)：V_ext 完整行数——
+        // 误写 128 时全 1 行不参与乘法，rowsum 从未计算，分母为 L0C 陈旧值（2026-09-20 全 1 用例定位，
+        // DN 参考 L920 铁证 dSize+16）
+        mmadParams.m = dVBaseSize + ROWSUM_ROWS;
         // 本 V 核的 S1 半（与 LoadPToL0B 固定满宽 kStep=4 的加载范围一致，杜绝读 L0B 越界；
         // L0B 垃圾列 ≥ actVecS1Size 不参与计算）
         uint32_t actVecS1Size = (vCore == 0U)
