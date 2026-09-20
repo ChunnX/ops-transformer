@@ -39,6 +39,103 @@ static uint32_t QuantModeToTpl(int32_t hostQuant)
     return static_cast<uint32_t>(hostQuant + 1);
 }
 
+static uint32_t DtypeToTpl(ge::DataType dt)
+{
+    if (dt == ge::DT_BF16) {
+        return GLI_TPL_BF16;
+    }
+    if (dt == ge::DT_FLOAT8_E4M3FN) {
+        return GLI_TPL_FP8;
+    }
+    if (dt == ge::DT_INT8) {
+        return GLI_TPL_INT8;
+    }
+    if (dt == ge::DT_HIFLOAT8) {
+        return GLI_TPL_HIFP8;
+    }
+    if (dt == ge::DT_FLOAT4_E2M1) {
+        return GLI_TPL_FP4;
+    }
+    if (dt == ge::DT_FLOAT8_E5M2) {
+        return GLI_TPL_FP8_E5M2;
+    }
+    return GLI_TPL_FP16;
+}
+
+static bool IsPaLayoutK(const std::string &layoutK)
+{
+    return layoutK == "PA_BBND" || layoutK == "PA_BSND" || layoutK == "BBND" || layoutK == "BNBD";
+}
+
+static bool IsHostVisibleValue(const gert::Tensor *tensor)
+{
+    if (tensor == nullptr) {
+        return false;
+    }
+    const auto placement = tensor->GetPlacement();
+    return (placement == gert::kOnHost) || (placement == gert::kFollowing);
+}
+
+static int64_t SeqElem(const gert::Tensor *tensor, int64_t idx)
+{
+    if (!IsHostVisibleValue(tensor) || idx < 0) {
+        return -1;
+    }
+    if (tensor->GetDataType() == ge::DT_INT64) {
+        const int64_t *data = tensor->GetData<int64_t>();
+        return (data == nullptr) ? -1 : data[idx];
+    }
+    const int32_t *data = tensor->GetData<int32_t>();
+    return (data == nullptr) ? -1 : static_cast<int64_t>(data[idx]);
+}
+
+static uint32_t SeqDtypeBit(const gert::Tensor *tensor, uint32_t bit)
+{
+    return (tensor != nullptr && tensor->GetDataType() == ge::DT_INT64) ? bit : 0U;
+}
+
+// seqused / start_loc / block_table 给出 B；否则读 ValueDepend：首元素为 0 且末元素等于 T 视为 cu_seqlens [B+1]。
+static void InferSeqBatch(const gert::Tensor *act, const gert::Tensor *seqused, const gert::Tensor *startLoc,
+                          const gert::StorageShape *btShape, int64_t tLen, uint32_t &bSize, uint32_t &cuFormat)
+{
+    cuFormat = 0;
+    auto dim0 = [](const gert::Tensor *t) -> int64_t { return t->GetStorageShape().GetDim(0); };
+    if (seqused != nullptr) {
+        bSize = static_cast<uint32_t>(dim0(seqused));
+        if (act != nullptr && dim0(act) == static_cast<int64_t>(bSize) + 1) {
+            cuFormat = 1;
+        }
+        return;
+    }
+    if (startLoc != nullptr) {
+        bSize = static_cast<uint32_t>(dim0(startLoc));
+        if (act != nullptr && dim0(act) == static_cast<int64_t>(bSize) + 1) {
+            cuFormat = 1;
+        }
+        return;
+    }
+    if (btShape != nullptr) {
+        bSize = static_cast<uint32_t>(btShape->GetStorageShape().GetDim(0));
+        if (act != nullptr && act->GetStorageShape().GetDim(0) == static_cast<int64_t>(bSize) + 1) {
+            cuFormat = 1;
+        }
+        return;
+    }
+    if (act == nullptr) {
+        bSize = 1;
+        return;
+    }
+    const int64_t n = dim0(act);
+    const int64_t v0 = SeqElem(act, 0);
+    const int64_t vlast = (n > 0) ? SeqElem(act, n - 1) : -1;
+    if (n >= 2 && v0 == 0 && (tLen <= 0 || vlast == tLen)) {
+        cuFormat = 1;
+        bSize = static_cast<uint32_t>(n - 1);
+        return;
+    }
+    bSize = static_cast<uint32_t>(n);
+}
+
 ge::graphStatus GenericLightningIndexerTiling::ParseAndCheckParams(GenericLightningIndexerTilingInfo &info)
 {
     auto attrs = context_->GetAttrs();
@@ -74,11 +171,12 @@ ge::graphStatus GenericLightningIndexerTiling::ParseAndCheckParams(GenericLightn
         info.layoutK = GliDataLayout::BSND;
     } else if (layoutKStr == "TND") {
         info.layoutK = GliDataLayout::TND;
-    } else if (layoutKStr == "PA_BBND" || layoutKStr == "PA_BSND") {
+    } else if (IsPaLayoutK(layoutKStr)) {
         info.layoutK = GliDataLayout::PA_BBND;
         info.pageAttention = true;
+        info.paBnbd = (layoutKStr == "BNBD");
     } else {
-        OP_LOGE(context_, "layout_k must be BSND, TND, PA_BBND or PA_BSND, got %s", layoutKStr.c_str());
+        OP_LOGE(context_, "layout_k must be BSND, TND, PA_BBND, PA_BSND, BBND or BNBD, got %s", layoutKStr.c_str());
         return ge::GRAPH_FAILED;
     }
     if (!info.pageAttention && info.layoutQ != info.layoutK) {
@@ -166,6 +264,28 @@ ge::graphStatus GenericLightningIndexerTiling::ParseAndCheckParams(GenericLightn
     auto qDesc = context_->GetInputDesc(GLI_QUERY_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, qDesc);
     info.queryDtype = qDesc->GetDataType();
+    auto kDesc = context_->GetInputDesc(GLI_KEY_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, kDesc);
+    info.keyDtype = kDesc->GetDataType();
+    const bool mixedFp16Int8 = isMsa && info.queryDtype == ge::DT_FLOAT16 && info.keyDtype == ge::DT_INT8;
+    OP_CHECK_IF(info.keyDtype != info.queryDtype && !mixedFp16Int8,
+                OP_LOGE(context_, "query and key dtype must match, except MSA FP16×INT8"), return ge::GRAPH_FAILED);
+    if (info.quantMode < 0 && (info.queryDtype == ge::DT_INT8 || info.keyDtype == ge::DT_INT8)) {
+        info.quantMode = 2;
+    }
+    if (info.quantMode < 0 && info.queryDtype == ge::DT_HIFLOAT8 && !isMsa) {
+        info.quantMode = 4;
+    }
+    if (info.quantMode < 0 && info.queryDtype == ge::DT_FLOAT4_E2M1) {
+        info.quantMode = 5;
+    }
+
+    const gert::Tensor *actQ = context_->GetOptionalInputTensor(GLI_ACTUAL_SEQ_Q_INDEX);
+    const gert::Tensor *actK = context_->GetOptionalInputTensor(GLI_ACTUAL_SEQ_K_INDEX);
+    const gert::Tensor *sequsedQ = context_->GetOptionalInputTensor(GLI_SEQUSED_Q_INDEX);
+    const gert::Tensor *sequsedK = context_->GetOptionalInputTensor(GLI_SEQUSED_K_INDEX);
+    const gert::Tensor *startLoc = context_->GetOptionalInputTensor(GLI_START_LOC_INDEX);
+    const gert::Tensor *residualTensor = context_->GetOptionalInputTensor(GLI_CMP_RESIDUAL_K_INDEX);
 
     if (info.layoutQ == GliDataLayout::BSND) {
         OP_CHECK_IF(qShape->GetStorageShape().GetDimNum() != 4, OP_LOGE(context_, "BSND query must be 4D"),
@@ -180,10 +300,14 @@ ge::graphStatus GenericLightningIndexerTiling::ParseAndCheckParams(GenericLightn
         info.s1Size = static_cast<uint32_t>(qShape->GetStorageShape().GetDim(0));
         info.n1Size = static_cast<uint32_t>(qShape->GetStorageShape().GetDim(1));
         info.headDim = static_cast<uint32_t>(qShape->GetStorageShape().GetDim(2));
-        const gert::Tensor *actQ = context_->GetOptionalInputTensor(GLI_ACTUAL_SEQ_Q_INDEX);
         OP_CHECK_IF(actQ == nullptr, OP_LOGE(context_, "TND requires actual_seq_q"), return ge::GRAPH_FAILED);
-        info.bSize = static_cast<uint32_t>(actQ->GetStorageShape().GetDim(0));
+        InferSeqBatch(actQ, sequsedQ, startLoc, nullptr, static_cast<int64_t>(info.s1Size), info.bSize,
+                      info.seqQCuFormat);
     }
+    info.msaScoreNT = (isMsa && info.layoutQ == GliDataLayout::TND) ? 1 : 0;
+    info.seqDtypeFlags = SeqDtypeBit(actQ, GLI_SEQ_Q_I64) | SeqDtypeBit(actK, GLI_SEQ_K_I64) |
+                         SeqDtypeBit(sequsedQ, GLI_SEQUSED_Q_I64) | SeqDtypeBit(sequsedK, GLI_SEQUSED_K_I64) |
+                         SeqDtypeBit(residualTensor, GLI_RESIDUAL_I64) | SeqDtypeBit(startLoc, GLI_START_LOC_I64);
     OP_CHECK_IF(info.headDim != GLI_HEAD_DIM, OP_LOGE(context_, "headDim must be 128"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(info.n1Size == 0 || info.n1Size > GLI_N1_LIMIT, OP_LOGE(context_, "N1 must be in [1,64]"),
                 return ge::GRAPH_FAILED);
@@ -192,31 +316,48 @@ ge::graphStatus GenericLightningIndexerTiling::ParseAndCheckParams(GenericLightn
     if (info.pageAttention) {
         OP_CHECK_IF(kShape->GetStorageShape().GetDimNum() != 4, OP_LOGE(context_, "PA key must be 4D"),
                     return ge::GRAPH_FAILED);
-        info.blockSize = static_cast<uint32_t>(kShape->GetStorageShape().GetDim(1));
+        uint32_t n2 = 0;
+        if (info.paBnbd) {
+            n2 = static_cast<uint32_t>(kShape->GetStorageShape().GetDim(1));
+            info.blockSize = static_cast<uint32_t>(kShape->GetStorageShape().GetDim(2));
+        } else {
+            info.blockSize = static_cast<uint32_t>(kShape->GetStorageShape().GetDim(1));
+            n2 = static_cast<uint32_t>(kShape->GetStorageShape().GetDim(2));
+        }
         OP_CHECK_IF(info.blockSize == 0 || (info.blockSize % GLI_BLOCK_SIZE_FACTOR) != 0 ||
                         info.blockSize > GLI_BLOCK_SIZE_LIMIT,
                     OP_LOGE(context_, "PA block_size invalid"), return ge::GRAPH_FAILED);
-        OP_CHECK_IF(static_cast<uint32_t>(kShape->GetStorageShape().GetDim(2)) != GLI_N2_FIXED,
-                    OP_LOGE(context_, "key N2 must be 1"), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(n2 != GLI_N2_FIXED, OP_LOGE(context_, "key N2 must be 1"), return ge::GRAPH_FAILED);
         const gert::StorageShape *btShape = context_->GetOptionalInputShape(GLI_BLOCK_TABLE_INDEX);
         OP_CHECK_IF(btShape == nullptr, OP_LOGE(context_, "PA requires block_table"), return ge::GRAPH_FAILED);
         info.maxBlockNumPerBatch = static_cast<uint32_t>(btShape->GetStorageShape().GetDim(1));
         info.s2Size = static_cast<int64_t>(info.maxBlockNumPerBatch) * info.blockSize;
+        uint32_t bFromPa = 0;
+        uint32_t seqKCu = 0;
+        InferSeqBatch(actK, sequsedK, nullptr, btShape, -1, bFromPa, seqKCu);
+        info.seqKCuFormat = seqKCu;
+        if (info.layoutQ == GliDataLayout::BSND) {
+            OP_CHECK_IF(bFromPa != info.bSize, OP_LOGE(context_, "PA batch from block_table/seq must match query B"),
+                        return ge::GRAPH_FAILED);
+        }
         const int64_t *ks0 = attrs->GetAttrPointer<int64_t>(GLI_ATTR_KEY_STRIDE0);
         if (ks0 != nullptr && *ks0 >= 0) {
             info.keyStride0 = static_cast<uint32_t>(*ks0);
+        } else if (info.paBnbd) {
+            info.keyStride0 = n2 * info.blockSize * info.headDim;
         } else {
             info.keyStride0 = info.blockSize * GLI_N2_FIXED * info.headDim;
         }
         const int64_t *kds0 = attrs->GetAttrPointer<int64_t>(GLI_ATTR_K_DESCALE_STRIDE0);
         if (kds0 != nullptr && *kds0 >= 0) {
             info.keyDequantScaleStride0 = static_cast<uint32_t>(*kds0);
+        } else if (info.paBnbd) {
+            info.keyDequantScaleStride0 = n2 * info.blockSize;
         } else {
             info.keyDequantScaleStride0 = info.blockSize * GLI_N2_FIXED;
         }
-        OP_CHECK_IF(context_->GetOptionalInputTensor(GLI_ACTUAL_SEQ_K_INDEX) == nullptr &&
-                        context_->GetOptionalInputTensor(GLI_SEQUSED_K_INDEX) == nullptr,
-                    OP_LOGE(context_, "PA requires actual_seq_k or seqused_k"), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(actK == nullptr && sequsedK == nullptr, OP_LOGE(context_, "PA requires actual_seq_k or seqused_k"),
+                    return ge::GRAPH_FAILED);
     } else if (info.layoutK == GliDataLayout::BSND) {
         OP_CHECK_IF(kShape->GetStorageShape().GetDimNum() != 4, OP_LOGE(context_, "BSND key must be 4D"),
                     return ge::GRAPH_FAILED);
@@ -227,24 +368,29 @@ ge::graphStatus GenericLightningIndexerTiling::ParseAndCheckParams(GenericLightn
         OP_CHECK_IF(kShape->GetStorageShape().GetDimNum() != 3, OP_LOGE(context_, "TND key must be 3D"),
                     return ge::GRAPH_FAILED);
         info.s2Size = kShape->GetStorageShape().GetDim(0);
-        OP_CHECK_IF(context_->GetOptionalInputTensor(GLI_ACTUAL_SEQ_K_INDEX) == nullptr,
-                    OP_LOGE(context_, "TND requires actual_seq_k"), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(actK == nullptr, OP_LOGE(context_, "TND requires actual_seq_k"), return ge::GRAPH_FAILED);
+        uint32_t bFromK = 0;
+        InferSeqBatch(actK, sequsedK, nullptr, nullptr, info.s2Size, bFromK, info.seqKCuFormat);
+        OP_CHECK_IF(bFromK != info.bSize, OP_LOGE(context_, "TND actual_seq_q/k batch mismatch"),
+                    return ge::GRAPH_FAILED);
     }
 
     const bool needResidual = (info.cmpRatio > 1 && info.sparseMode != 0 && info.keyReduceMode == 0);
-    const gert::Tensor *residual = context_->GetOptionalInputTensor(GLI_CMP_RESIDUAL_K_INDEX);
-    OP_CHECK_IF(needResidual && residual == nullptr,
+    OP_CHECK_IF(needResidual && residualTensor == nullptr,
                 OP_LOGE(context_, "cmp_residual_k required when cmp_ratio!=1 and sparse_mode!=0"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!needResidual && residual != nullptr,
+    OP_CHECK_IF(!needResidual && residualTensor != nullptr,
                 OP_LOGE(context_, "cmp_residual_k must be omitted unless cmp_ratio!=1 and sparse_mode!=0"),
                 return ge::GRAPH_FAILED);
 
     const bool needQuantScale = (info.quantMode >= 0);
     const gert::Tensor *qScale = context_->GetOptionalInputTensor(GLI_Q_DESCALE_INDEX);
     const gert::Tensor *kScale = context_->GetOptionalInputTensor(GLI_K_DESCALE_INDEX);
-    OP_CHECK_IF(needQuantScale && (qScale == nullptr || kScale == nullptr),
-                OP_LOGE(context_, "quant_mode>=0 requires q_descale and k_descale"), return ge::GRAPH_FAILED);
+    if (needQuantScale) {
+        OP_CHECK_IF(kScale == nullptr, OP_LOGE(context_, "quant_mode>=0 requires k_descale"), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(!mixedFp16Int8 && qScale == nullptr, OP_LOGE(context_, "quant_mode>=0 requires q_descale"),
+                    return ge::GRAPH_FAILED);
+    }
 
     info.hasOutputIdxOffset = (context_->GetOptionalInputTensor(GLI_OUTPUT_IDX_OFFSET_INDEX) != nullptr) ? 1 : 0;
 
@@ -317,6 +463,14 @@ ge::graphStatus GenericLightningIndexerTiling::CalcWorkspaceSize(GenericLightnin
     tilingData_.set_wsOffLdIdx(offset);
     offset += ldIdxSize;
 
+    uint64_t kCastSize = 0;
+    if (info.queryDtype == ge::DT_FLOAT16 && info.keyDtype == ge::DT_INT8) {
+        kCastSize = RoundUp64(static_cast<uint64_t>(aicNum) * GLI_S2_BASE_SIZE * GLI_HEAD_DIM * sizeof(uint16_t),
+                              GLI_GM_ALIGN_BYTES);
+    }
+    tilingData_.set_wsOffKCast(offset);
+    offset += kCastSize;
+
     workspaceSize = offset;
     return ge::GRAPH_SUCCESS;
 }
@@ -356,6 +510,10 @@ void GenericLightningIndexerTiling::SetTilingData(const GenericLightningIndexerT
     tilingData_.set_localBlocks(info.localBlocks);
     tilingData_.set_hasOutputIdxOffset(info.hasOutputIdxOffset);
     tilingData_.set_maxSeqlenQ(info.maxSeqlenQ);
+    tilingData_.set_seqQCuFormat(info.seqQCuFormat);
+    tilingData_.set_seqKCuFormat(info.seqKCuFormat);
+    tilingData_.set_seqDtypeFlags(info.seqDtypeFlags);
+    tilingData_.set_msaScoreNT(info.msaScoreNT);
 }
 
 ge::graphStatus GenericLightningIndexerTiling::DoTiling(GenericLightningIndexerTilingInfo *tilingInfo)
@@ -384,20 +542,8 @@ ge::graphStatus GenericLightningIndexerTiling::DoTiling(GenericLightningIndexerT
     OP_CHECK_IF(workspaces == nullptr, OP_LOGE(context_, "workspace sizes is nullptr"), return ge::GRAPH_FAILED);
     workspaces[0] = static_cast<size_t>(workspaceSize);
 
-    uint32_t tplDtQ = GLI_TPL_FP16;
-    if (tilingInfo->queryDtype == ge::DT_BF16) {
-        tplDtQ = GLI_TPL_BF16;
-    } else if (tilingInfo->queryDtype == ge::DT_FLOAT8_E4M3FN) {
-        tplDtQ = GLI_TPL_FP8;
-    } else if (tilingInfo->queryDtype == ge::DT_INT8) {
-        tplDtQ = GLI_TPL_INT8;
-    } else if (tilingInfo->queryDtype == ge::DT_HIFLOAT8) {
-        tplDtQ = GLI_TPL_HIFP8;
-    } else if (tilingInfo->queryDtype == ge::DT_FLOAT4_E2M1) {
-        tplDtQ = GLI_TPL_FP4;
-    } else if (tilingInfo->queryDtype == ge::DT_FLOAT8_E5M2) {
-        tplDtQ = GLI_TPL_FP8_E5M2;
-    }
+    uint32_t tplDtQ = DtypeToTpl(tilingInfo->queryDtype);
+    uint32_t tplDtK = DtypeToTpl(tilingInfo->keyDtype);
     uint32_t headReduce = GLI_TPL_HEAD_WEIGHTED;
     if (tilingInfo->keyReduceMode == 1) {
         headReduce = GLI_TPL_HEAD_NONE;
@@ -405,7 +551,7 @@ ge::graphStatus GenericLightningIndexerTiling::DoTiling(GenericLightningIndexerT
         headReduce = GLI_TPL_HEAD_SUM;
     }
     uint64_t tilingKey =
-        GET_TPL_TILING_KEY(tplDtQ, tplDtQ, static_cast<uint32_t>(GLI_TPL_INT32),
+        GET_TPL_TILING_KEY(tplDtQ, tplDtK, static_cast<uint32_t>(GLI_TPL_INT32),
                            static_cast<uint32_t>(tilingInfo->layoutQ), static_cast<uint32_t>(tilingInfo->layoutK),
                            static_cast<uint32_t>(tilingInfo->sparseMode), QuantModeToTpl(tilingInfo->quantMode),
                            static_cast<uint32_t>(tilingInfo->returnValue ? 1 : 0), headReduce, tilingInfo->expandMode);

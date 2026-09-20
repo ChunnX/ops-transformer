@@ -77,6 +77,13 @@ constexpr uint32_t GLI_SCORE_T_SIZE = 4;
 constexpr uint32_t GLI_BLOCK_SIZE_FACTOR = 16;
 constexpr uint32_t GLI_BLOCK_SIZE_LIMIT = 2048;
 
+constexpr uint32_t GLI_SEQ_Q_I64 = 1U;
+constexpr uint32_t GLI_SEQ_K_I64 = 2U;
+constexpr uint32_t GLI_SEQUSED_Q_I64 = 4U;
+constexpr uint32_t GLI_SEQUSED_K_I64 = 8U;
+constexpr uint32_t GLI_RESIDUAL_I64 = 16U;
+constexpr uint32_t GLI_START_LOC_I64 = 32U;
+
 // Kernel 侧沿用 PKI 字段名: poolSize=cmp_ratio, maskMode=sparse_mode, sparseCount=打分轴 topk
 BEGIN_TILING_DATA_DEF(GenericLightningIndexerTilingData)
 TILING_DATA_FIELD_DEF(uint32_t, bSize)
@@ -114,6 +121,11 @@ TILING_DATA_FIELD_DEF(uint32_t, initBlocks)
 TILING_DATA_FIELD_DEF(uint32_t, localBlocks)
 TILING_DATA_FIELD_DEF(uint32_t, hasOutputIdxOffset)
 TILING_DATA_FIELD_DEF(int32_t, maxSeqlenQ)
+TILING_DATA_FIELD_DEF(uint32_t, seqQCuFormat)
+TILING_DATA_FIELD_DEF(uint32_t, seqKCuFormat)
+TILING_DATA_FIELD_DEF(uint32_t, seqDtypeFlags)
+TILING_DATA_FIELD_DEF(uint32_t, msaScoreNT)
+TILING_DATA_FIELD_DEF(uint64_t, wsOffKCast)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(GenericLightningIndexer, GenericLightningIndexerTilingData)
 
@@ -151,10 +163,15 @@ struct GenericLightningIndexerTilingInfo {
     uint32_t localBlocks = 0;
     uint32_t hasOutputIdxOffset = 0;
     int32_t maxSeqlenQ = -1;
+    uint32_t seqQCuFormat = 0;
+    uint32_t seqKCuFormat = 0;
+    uint32_t seqDtypeFlags = 0;
+    uint32_t msaScoreNT = 0;
     float scoreScale = 1.0f;
     GliDataLayout layoutQ = GliDataLayout::BSND;
     GliDataLayout layoutK = GliDataLayout::BSND;
     bool pageAttention = false;
+    bool paBnbd = false;
     uint32_t blockSize = 0;
     uint32_t maxBlockNumPerBatch = 0;
     uint32_t keyStride0 = 0;
@@ -164,6 +181,7 @@ struct GenericLightningIndexerTilingInfo {
     uint32_t aivNum = 0;
     uint64_t ubSize = 0;
     ge::DataType queryDtype = ge::DT_FLOAT16;
+    ge::DataType keyDtype = ge::DT_FLOAT16;
 };
 
 class GenericLightningIndexerTiling {

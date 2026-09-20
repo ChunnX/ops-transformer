@@ -47,21 +47,21 @@
 | 参数名 | 输入/输出/属性 | 描述 | 数据类型 | 数据格式 |
 |--------|---------------|------|----------|----------|
 | query | 输入 | 公式中的输入 Q。不支持空 tensor。layout_q 为 BSND 时，shape 为 [B, S1, N1, D]；layout_q 为 TND 时，shape 为 [T1, N1, D]。 | FLOAT16、BFLOAT16、INT8、FLOAT8_E4M3FN、HIFLOAT8、FLOAT4_E2M1、FLOAT8_E5M2 | ND |
-| key | 输入 | 公式中的输入 K（已压缩或未压缩）。不支持空 tensor。layout_k 为 PA_BBND / PA_BSND 时，shape 为 [block_num, block_size, N2, D]，支持 0 轴非连续；layout_k 为 BSND 时，shape 为 [B, S2, N2, D]；layout_k 为 TND 时，shape 为 [T2, N2, D]。数据类型需与 query 保持一致。 | 同 query | ND |
+| key | 输入 | 公式中的输入 K（已压缩或未压缩）。不支持空 tensor。layout_k 为 PA_BBND / PA_BSND / BBND 时，shape 为 [block_num, block_size, N2, D]；BNBD 为 [block_num, N2, block_size, D]（N2=1 时与 BBND 等价），支持 0 轴非连续；layout_k 为 BSND 时，shape 为 [B, S2, N2, D]；layout_k 为 TND 时，shape 为 [T2, N2, D]。默认与 query 同 dtype；MSA 额外支持 query=FLOAT16 且 key=INT8。 | 同 query，以及 MSA 的 INT8 | ND |
 | weights | 输入 | 公式中的输入 W。`has_weighted_sum=true` 时必传且不支持空 tensor；`has_weighted_sum=false` 时必须为空。layout_q 为 BSND 时，shape 为 [B, S1, N1]；layout_q 为 TND 时，shape 为 [T1, N1]。 | FLOAT16、BFLOAT16、FLOAT | ND |
-| actual_seq_q | 输入 | 每个 Batch 中 Query 的有效长度。layout_q 为 TND 时必传，每个元素表示当前 batch 与之前所有 batch 的 token 数总和（前缀和）。shape 为 [B, ]。 | INT32 | ND |
-| actual_seq_k | 输入 | 每个 Batch 中 key 的有效压缩长度。layout_k 为 TND 时必传（前缀和）；layout_k 为 PA_BBND / PA_BSND 时必传（非前缀和）。shape 为 [B, ]。 | INT32 | ND |
-| seqused_q | 输入 | 每个 Batch 中 Query 的真实有效 token 数（非前缀和），用于 TND padding。可选。shape 为 [B, ]。 | INT32 | ND |
-| seqused_k | 输入 | 每个 Batch 中 Key 的真实有效长度（非前缀和）。layout_k 为 PA 时建议传入。shape 为 [B, ]。 | INT32 | ND |
-| cmp_residual_k | 输入 | 每个 Batch 中压缩残余（尾部不完整块）的有效 token 数。$cmp\_ratio>1$ 且 `sparse_mode!=0` 时必传。取值范围 [0, cmp_ratio-1]。shape 为 [B, ]。 | INT32 | ND |
+| actual_seq_q | 输入 | 每个 Batch 中 Query 的有效长度。layout_q 为 TND 时必传。支持 LI exclusive prefix `[B]`（元素 i 为 batch 0..i 的 token 总和）以及 LIv2/MSA cu_seqlens `[B+1]`（首元素为 0，长度 = v[i+1]-v[i]）。 | INT32、INT64 | ND |
+| actual_seq_k | 输入 | 每个 Batch 中 key 的有效压缩长度。layout_k 为 TND 时必传（同上两种格式）；layout_k 为 PA 时必传（非前缀和 `[B]`，若配合 seqused 也可为 cu `[B+1]`）。 | INT32、INT64 | ND |
+| seqused_q | 输入 | 每个 Batch 中 Query 的真实有效 token 数（非前缀和），用于 TND padding。可选。shape 为 [B, ]。 | INT32、INT64 | ND |
+| seqused_k | 输入 | 每个 Batch 中 Key 的真实有效长度（非前缀和）。layout_k 为 PA 时建议传入。shape 为 [B, ]。 | INT32、INT64 | ND |
+| cmp_residual_k | 输入 | 每个 Batch 中压缩残余（尾部不完整块）的有效 token 数。$cmp\_ratio>1$ 且 `sparse_mode!=0` 时必传。取值范围 [0, cmp_ratio-1]。shape 为 [B, ]。 | INT32、INT64 | ND |
 | block_table | 输入 | PageAttention 中 KV 存储使用的 block 映射表。layout_k 为 PA_BBND / PA_BSND 时必传，shape 为 [B, maxBlockNumPerSeq]。 | INT32 | ND |
 | q_descale | 输入 | Query 的反量化系数。仅 quant_mode>=0 时有效。 | FLOAT、FLOAT16、FLOAT8_E8M0 | ND |
-| k_descale | 输入 | Key 的反量化系数。仅 quant_mode>=0 时有效。仅 PA 布局下支持 0 轴非连续。 | 同 q_descale | ND |
+| k_descale | 输入 | Key 的反量化系数。quant_mode>=0 或 INT8 key 时有效。MSA FP16×INT8 只要求 k_descale。仅 PA 布局下支持 0 轴非连续。 | 同 q_descale | ND |
 | output_idx_offset | 输入 | 输出索引的逐 batch 偏移，写回 sparse_indices 前与选中下标相加。可选。shape 为 [B, ]。 | INT32 | ND |
 | metadata | 输入 | 预留 LIv2 式负载均衡任务表。Step 1 可不传。shape 为 [1024, ]。 | INT32 | ND |
-| start_loc | 输入 | MSA：query 所在逻辑 block，用于 local_mask。可选。shape 为 [B, ]。 | INT32 | ND |
+| start_loc | 输入 | MSA：query 所在逻辑 block，用于 local_mask。可选。shape 为 [B, ]。 | INT32、INT64 | ND |
 | layout_q | 属性 | 用于标识输入 Query 的数据排布格式。支持 BSND、TND，默认值为 BSND。 | STRING | - |
-| layout_k | 属性 | 用于标识输入 key 的数据排布格式。支持 BSND、TND、PA_BBND、PA_BSND（PA_BSND 视为 PA_BBND 别名），默认值为 BSND。 | STRING | - |
+| layout_k | 属性 | 用于标识输入 key 的数据排布格式。支持 BSND、TND、PA_BBND、PA_BSND、BBND、BNBD（前四个 PA 别名中 PA_BSND/BBND 视为 PA_BBND；BNBD 为 [BN,N2,BS,D]），默认值为 BSND。 | STRING | - |
 | topk | 属性 | 打分轴需要保留的个数。支持 [1, 2048] 以及 3072、4096、5120、6144、7168、8192。默认值为 2048。 | INT64 | - |
 | cmp_ratio | 属性 | 压缩比 / pool 大小。支持 [1, 128]，默认值为 1。取值为 1 时表示未压缩。 | INT64 | - |
 | sparse_mode | 属性 | 表示 mask 的模式。0 表示 defaultMask，3 表示 rightDownCausal，4 表示 blockCompleteCausal（Qwen）。默认值为 0。 | INT64 | - |
@@ -80,7 +80,7 @@
 | init_blocks | 属性 | MSA local_mask 的 sink 块数。默认值为 0。 | INT64 | - |
 | local_blocks | 属性 | MSA local_mask 的窗口块数。默认值为 0。 | INT64 | - |
 | sparse_indices | 输出 | 选中的稀疏索引，无效部分填 -1。layout_q 为 BSND 时，shape 为 [B, S1, L_out]；layout_q 为 TND 时，shape 为 [T1, L_out]。L_out 在不展开时为 topk，展开时为 topk * cmp_ratio，再追加尾时为 topk * cmp_ratio + cmp_ratio - 1。MSA（select_mode=1）时 shape 为 (0,)。 | INT32 | ND |
-| sparse_values | 输出 | 选中位置对应的分数。return_value 为 True 时，layout_q 为 BSND 时 shape 为 [B, S1, topk]，layout_q 为 TND 时 shape 为 [T1, topk]；return_value 为 False 时，shape 为 (0,)。MSA 时 shape 为 [B, S1, N1, Align16(ceil(S2/cmp_ratio))]（TND 去掉 B）。 | FLOAT | ND |
+| sparse_values | 输出 | 选中位置对应的分数。return_value 为 True 时，layout_q 为 BSND 时 shape 为 [B, S1, topk]，layout_q 为 TND 时 shape 为 [T1, topk]；return_value 为 False 时，shape 为 (0,)。MSA 时 BSND 为 [B, S1, N1, Align16(ceil(S2/cmp_ratio))]，TND 为 [N1, T1, nOut]（对齐 MsaIndexScore）。 | FLOAT | ND |
 
 ## 约束说明
 
@@ -89,7 +89,7 @@
 - 参数 query、key 的数据类型应保持一致。非量化场景下，weights 可为 FLOAT16 / BFLOAT16 / FLOAT；量化场景下 weights 为 FLOAT16 / BFLOAT16 / FLOAT（对齐各 indexer 组合，见设计文档数据类型表）。
 - topk 支持 [1, 2048] 以及 3072、4096、5120、6144、7168、8192；cmp_ratio 支持 [1, 128]。
 - 当 cmp_ratio=1 且 expand_indices=false 时，退化为 lightning_indexer 行为，输出维度为 topk。
-- 当 layout_k 为 PA_BBND / PA_BSND 时，必须传入 block_table 和 actual_seq_k；当 layout_k 不为 PA 时，不支持传入 block_table。
+- 当 layout_k 为 PA_BBND / PA_BSND / BBND / BNBD 时，必须传入 block_table 和 actual_seq_k（或 seqused_k）；当 layout_k 不为 PA 时，不支持传入 block_table。
 - 当 layout_q 为 TND 时，必须传入 actual_seq_q；当 layout_k 为 TND 时，必须传入 actual_seq_k。
 - PA 场景下，block_size 取值为 16 的倍数，最大支持 2048。
 - key、k_descale 仅支持在 PA 布局下 0 轴非连续（需配合 key_stride0 / k_descale_stride0），BSND / TND 布局要求连续输入。
@@ -106,8 +106,6 @@
   - query、key 支持 FLOAT16、BFLOAT16、INT8。
   - 不支持 FLOAT8_E4M3FN、HIFLOAT8、FLOAT4_E2M1、FLOAT8_E5M2 与 FLOAT8_E8M0。
   - quant_mode 支持 -1（不量化）与 2（INT8）。
-
-完整需求、收编映射与参数对齐分析见 [generic_lightning_indexer_design.md](generic_lightning_indexer_design.md)。
 
 ## 调用说明
 

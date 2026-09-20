@@ -85,8 +85,14 @@ class GenericLightningIndexerOpBuilder(OpBuilder):
             local_blocks=0,
         ):
             if select_mode == 1:
-                s2 = key.shape[0] if layout_k == "TND" else key.shape[1]
-                n_blocks = ((s2 + cmp_ratio - 1) // cmp_ratio + 15) // 16 * 16
+                pa_layouts = ("PA_BBND", "PA_BSND", "BBND", "BNBD")
+                if layout_k in pa_layouts and block_table is not None:
+                    n_raw = block_table.shape[1]
+                elif layout_k == "TND":
+                    n_raw = (key.shape[0] + cmp_ratio - 1) // cmp_ratio
+                else:
+                    n_raw = (key.shape[1] + cmp_ratio - 1) // cmp_ratio
+                n_blocks = ((n_raw + 15) // 16) * 16
                 if layout_q == "BSND":
                     val_shape = [
                         query.shape[0],
@@ -95,7 +101,7 @@ class GenericLightningIndexerOpBuilder(OpBuilder):
                         n_blocks,
                     ]
                 else:
-                    val_shape = [query.shape[0], query.shape[1], n_blocks]
+                    val_shape = [query.shape[1], query.shape[0], n_blocks]
                 return (
                     torch.empty([0], dtype=torch.int32, device="meta"),
                     torch.empty(val_shape, dtype=torch.float32, device="meta"),

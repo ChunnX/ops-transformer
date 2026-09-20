@@ -87,23 +87,23 @@ cann_ops_transformer.generic_lightning_indexer(
 | 参数名 | 可选/必选 | 描述 | dtype | shape |
 |--------|-----------|------|-------|-------|
 | query | 必选 | Indexer Q | fp16 / bf16；950 另支持 int8 / fp8_e4m3fn / hifloat8 / fp4_e2m1 / fp8_e5m2 | BSND `[B,S1,N1,D]`；TND `[T1,N1,D]` |
-| key | 必选 | 已压缩或未压缩的 Indexer K | 同 query | BSND `[B,S2,1,D]`；TND `[T2,1,D]`；PA `[BN,BS,1,D]` |
+| key | 必选 | 已压缩或未压缩的 Indexer K | 同 query；MSA 可为 int8（query=fp16） | BSND `[B,S2,1,D]`；TND `[T2,1,D]`；PA `[BN,BS,1,D]` |
 | weights | has_weighted_sum=true 必选 | 多头权重 | fp16 / bf16 / fp32 | BSND `[B,S1,N1]`；TND `[T1,N1]` |
-| actual_seq_q | TND 必选 | Query 前缀和 | int32 | `[B]` |
-| actual_seq_k | TND / PA 必选 | Key 压缩轴长度 | int32 | `[B]` |
-| seqused_q | 可选 | Query 真实长度（非前缀和） | int32 | `[B]` |
-| seqused_k | 可选 | Key 真实长度 | int32 | `[B]` |
-| cmp_residual_k | r>1 且 sparse_mode!=0 必选 | 压缩残余 | int32 | `[B]` |
+| actual_seq_q | TND 必选 | Query 有效长度 | int32 / int64 | `[B]` exclusive 或 `[B+1]` cu_seqlens |
+| actual_seq_k | TND / PA 必选 | Key 压缩轴长度 | int32 / int64 | 同上 |
+| seqused_q | 可选 | Query 真实长度（非前缀和） | int32 / int64 | `[B]` |
+| seqused_k | 可选 | Key 真实长度 | int32 / int64 | `[B]` |
+| cmp_residual_k | r>1 且 sparse_mode!=0 必选 | 压缩残余 | int32 / int64 | `[B]` |
 | block_table | PA 必选 | page 映射 | int32 | `[B, maxBlockNum]` |
 | q_descale | 量化必选 | Q 反量化系数 | fp32 / fp16 / fp8_e8m0 | 随 quant_mode |
-| k_descale | 量化必选 | K 反量化系数 | 同 q_descale | 随 quant_mode |
+| k_descale | 量化或 INT8 key 必选 | K 反量化系数 | 同 q_descale；MSA FP16×INT8 只要求本输入 | 随 quant_mode |
 | output_idx_offset | 可选 | 输出索引偏移 | int32 | `[B]` |
 | metadata | 可选 | 预留负载均衡表 | int32 | `[1024]` |
-| start_loc | 可选 | MSA：query 所在逻辑 block | int32 | `[B]` |
+| start_loc | 可选 | MSA：query 所在逻辑 block | int32 / int64 | `[B]` |
 | topk | 可选 | 打分轴 k | int | 默认 2048 |
 | cmp_ratio | 可选 | 压缩比 | int | 默认 1 |
 | layout_q | 可选 | Query 布局 | str | `BSND` / `TND` |
-| layout_k | 可选 | Key 布局 | str | `BSND` / `TND` / `PA_BBND` / `PA_BSND` |
+| layout_k | 可选 | Key 布局 | str | `BSND` / `TND` / `PA_BBND` / `PA_BSND` / `BBND` / `BNBD` |
 | sparse_mode | 可选 | mask | int | 0 / 3 / 4 |
 | act_type | 可选 | 激活 | int | 0 ReLU / 1 Identity |
 | has_weighted_sum | 可选 | 是否加权和 | bool | 默认 True |
@@ -120,13 +120,11 @@ cann_ops_transformer.generic_lightning_indexer(
 | init_blocks | 可选 | MSA local_mask sink 块数 | int | 默认 0 |
 | local_blocks | 可选 | MSA local_mask 窗口块数 | int | 默认 0 |
 | sparse_indices | 输出 | 选中下标，无效 -1；MSA 为 `(0,)` | int32 | BSND `[B,S1,L_out]`；TND `[T1,L_out]` |
-| sparse_values | 输出 | TopK 分数；return_value=False 时 `(0,)`；MSA 为 keep-heads Maxpool | float32 | BSND `[B,S1,topk]`；TND `[T1,topk]`；MSA `[B,S1,N1,Align16(ceil(S2/r))]` |
+| sparse_values | 输出 | TopK 分数；return_value=False 时 `(0,)`；MSA 为 keep-heads Maxpool | float32 | BSND `[B,S1,topk]`；TND `[T1,topk]`；MSA BSND `[B,S1,N1,nOut]`；MSA TND `[N1,T1,nOut]` |
 
 ## 约束说明
 
-与 [aclnnGenericLightningIndexer](./aclnnGenericLightningIndexer.md) 相同。`PA_BSND` 视为 `PA_BBND` 别名。设备侧序列张量统一 int32；PKI 的 int64 host 路径需调用方先转为 int32。
-
-完整设计见 [generic_lightning_indexer_design.md](../generic_lightning_indexer_design.md)。
+与 [aclnnGenericLightningIndexer](./aclnnGenericLightningIndexer.md) 相同。`PA_BSND` / `BBND` 视为 `PA_BBND` 别名；`BNBD` 为 `[BN,N2,BS,D]`（N2=1 时与 BBND 等价）。序列张量支持 int32 与 int64。
 
 ## 调用示例
 

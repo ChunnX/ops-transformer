@@ -292,3 +292,117 @@ TEST_F(GenericLightningIndexerTilingArch35, TilingDataClassRegistered)
     auto &factory = optiling::CTilingDataClassFactory::GetInstance();
     EXPECT_NE(factory.CreateTilingDataInstance("GenericLightningIndexer"), nullptr);
 }
+
+TEST_F(GenericLightningIndexerTilingArch35, TND_cu_seqlens_Bplus1)
+{
+    optiling::GenericLightningIndexerCompileInfo compileInfo;
+    int32_t actQ[] = {0, 8, 16};
+    int32_t actK[] = {0, 32, 64};
+    gert::TilingContextPara para("GenericLightningIndexer",
+                                 GliInputs({{{16, 8, 128}, {16, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                           {{{64, 1, 128}, {64, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                           {{{16, 8}, {16, 8}}, ge::DT_FLOAT16, ge::FORMAT_ND}, NullIn(),
+                                           {{{3}, {3}}, ge::DT_INT32, ge::FORMAT_ND, true, actQ},
+                                           {{{3}, {3}}, ge::DT_INT32, ge::FORMAT_ND, true, actK}),
+                                 {
+                                     {{{16, 512}, {16, 512}}, ge::DT_INT32, ge::FORMAT_ND},
+                                     {{{0}, {0}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                 },
+                                 MakeAttrs(512, 1, "TND", "TND", 0, true, false, false, -1, false), &compileInfo,
+                                 "Ascend950", 56, 262144, 16384);
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, SKIP_TILING_KEY);
+}
+
+TEST_F(GenericLightningIndexerTilingArch35, TND_exclusive_prefix_B)
+{
+    optiling::GenericLightningIndexerCompileInfo compileInfo;
+    int32_t actQ[] = {8, 16};
+    int32_t actK[] = {32, 64};
+    gert::TilingContextPara para("GenericLightningIndexer",
+                                 GliInputs({{{16, 8, 128}, {16, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                           {{{64, 1, 128}, {64, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                           {{{16, 8}, {16, 8}}, ge::DT_FLOAT16, ge::FORMAT_ND}, NullIn(),
+                                           {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actQ},
+                                           {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actK}),
+                                 {
+                                     {{{16, 512}, {16, 512}}, ge::DT_INT32, ge::FORMAT_ND},
+                                     {{{0}, {0}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                 },
+                                 MakeAttrs(512, 1, "TND", "TND", 0, true, false, false, -1, false), &compileInfo,
+                                 "Ascend950", 56, 262144, 16384);
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, SKIP_TILING_KEY);
+}
+
+TEST_F(GenericLightningIndexerTilingArch35, P_PKI_int64_residual)
+{
+    optiling::GenericLightningIndexerCompileInfo compileInfo;
+    int64_t residual[] = {3};
+    gert::TilingContextPara para(
+        "GenericLightningIndexer",
+        GliInputs({{{1, 32, 8, 128}, {1, 32, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                  {{{1, 64, 1, 128}, {1, 64, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                  {{{1, 32, 8}, {1, 32, 8}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                  {{{1}, {1}}, ge::DT_INT64, ge::FORMAT_ND, true, residual}),
+        {
+            {{{1, 32, 128 * 16 + 15}, {1, 32, 128 * 16 + 15}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{0}, {0}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        MakeAttrs(128, 16, "BSND", "BSND", 3, true, true, true, -1, false, 0, 0, 0, 0.088388347f), &compileInfo,
+        "Ascend950", 56, 262144, 16384);
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, SKIP_TILING_KEY);
+}
+
+TEST_F(GenericLightningIndexerTilingArch35, P_LI_BNBD)
+{
+    optiling::GenericLightningIndexerCompileInfo compileInfo;
+    int64_t actK[] = {256};
+    gert::TilingContextPara para("GenericLightningIndexer",
+                                 GliInputs({{{1, 8, 8, 128}, {1, 8, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                           {{{8, 1, 128, 128}, {8, 1, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                           {{{1, 8, 8}, {1, 8, 8}}, ge::DT_FLOAT16, ge::FORMAT_ND}, NullIn(), NullIn(),
+                                           {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actK}, NullIn(ge::DT_FLOAT),
+                                           NullIn(ge::DT_FLOAT), {{{1, 8}, {1, 8}}, ge::DT_INT32, ge::FORMAT_ND}),
+                                 {
+                                     {{{1, 8, 128}, {1, 8, 128}}, ge::DT_INT32, ge::FORMAT_ND},
+                                     {{{0}, {0}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                 },
+                                 MakeAttrs(128, 1, "BSND", "BNBD", 3, true, false, false, -1, false), &compileInfo,
+                                 "Ascend950", 56, 262144, 16384);
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, SKIP_TILING_KEY);
+}
+
+TEST_F(GenericLightningIndexerTilingArch35, P_QLI_fp8_fp16_descale)
+{
+    optiling::GenericLightningIndexerCompileInfo compileInfo;
+    gert::TilingContextPara para(
+        "GenericLightningIndexer",
+        GliInputs({{{1, 8, 16, 128}, {1, 8, 16, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+                  {{{1, 256, 1, 128}, {1, 256, 1, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+                  {{{1, 8, 16}, {1, 8, 16}}, ge::DT_FLOAT16, ge::FORMAT_ND}, NullIn(), NullIn(), NullIn(),
+                  {{{1, 8, 16}, {1, 8, 16}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                  {{{1, 256, 1}, {1, 256, 1}}, ge::DT_FLOAT16, ge::FORMAT_ND}),
+        {
+            {{{1, 8, 1024}, {1, 8, 1024}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{0}, {0}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        MakeAttrs(1024, 1, "BSND", "BSND", 3, true, false, false, 0, false), &compileInfo, "Ascend950", 56, 262144,
+        16384);
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, SKIP_TILING_KEY);
+}
+
+TEST_F(GenericLightningIndexerTilingArch35, P_MSA_mixed_fp16_int8)
+{
+    optiling::GenericLightningIndexerCompileInfo compileInfo;
+    gert::TilingContextPara para(
+        "GenericLightningIndexer",
+        GliInputs({{{1, 8, 8, 128}, {1, 8, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                  {{{1, 32, 1, 128}, {1, 32, 1, 128}}, ge::DT_INT8, ge::FORMAT_ND}, NullIn(ge::DT_FLOAT16), NullIn(),
+                  NullIn(), NullIn(), NullIn(ge::DT_FLOAT), {{{1, 1, 32}, {1, 1, 32}}, ge::DT_FLOAT, ge::FORMAT_ND}),
+        {
+            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{1, 8, 8, 16}, {1, 8, 8, 16}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        MakeAttrs(16, 16, "BSND", "BSND", 3, false, false, false, -1, true, 1, 1, 1), &compileInfo, "Ascend950", 56,
+        262144, 16384);
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, SKIP_TILING_KEY);
+}

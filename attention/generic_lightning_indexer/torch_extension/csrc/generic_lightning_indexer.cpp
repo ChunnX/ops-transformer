@@ -93,12 +93,13 @@ std::tuple<at::Tensor, at::Tensor> GenericLightningIndexer(
     float scoreScaleF = static_cast<float>(scoreScale);
 
     int64_t keyStride0Attr = keyStride0;
-    if (keyStride0Attr < 0 && !key.is_contiguous() && (keyLayoutStr == "PA_BBND" || keyLayoutStr == "PA_BSND")) {
+    if (keyStride0Attr < 0 && !key.is_contiguous() &&
+        (keyLayoutStr == "PA_BBND" || keyLayoutStr == "PA_BSND" || keyLayoutStr == "BBND" || keyLayoutStr == "BNBD")) {
         keyStride0Attr = key.stride(0);
     }
     int64_t kDescaleStride0Attr = kDescaleStride0;
     if (kDescale.has_value() && kDescaleStride0Attr < 0 && !kDescale.value().is_contiguous() &&
-        (keyLayoutStr == "PA_BBND" || keyLayoutStr == "PA_BSND")) {
+        (keyLayoutStr == "PA_BBND" || keyLayoutStr == "PA_BSND" || keyLayoutStr == "BBND" || keyLayoutStr == "BNBD")) {
         kDescaleStride0Attr = kDescale.value().stride(0);
     }
 

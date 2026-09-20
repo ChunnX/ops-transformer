@@ -79,6 +79,11 @@ void SetTilingData(GenericLightningIndexerTilingData *td, uint32_t b, uint32_t n
     td->localBlocks = 0;
     td->hasOutputIdxOffset = 0;
     td->maxSeqlenQ = -1;
+    td->seqQCuFormat = 0;
+    td->seqKCuFormat = 0;
+    td->seqDtypeFlags = 0;
+    td->msaScoreNT = 0;
+    td->wsOffKCast = 0;
 }
 } // namespace
 
