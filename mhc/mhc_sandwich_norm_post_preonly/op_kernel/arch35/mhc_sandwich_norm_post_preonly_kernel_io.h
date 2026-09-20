@@ -43,18 +43,6 @@ __aicore__ inline void FenceVToMte2()
     WaitFlag<HardEvent::V_MTE2>(evtVtoMte2_);
 }
 
-__aicore__ inline void LoadLowPrecisionTile(GlobalTensor<T> &src, uint64_t gmOffset, LocalTensor<float> dst,
-                                            uint32_t count)
-{
-    LocalTensor<T> tmp = bufHOutBf16_.AllocTensor<T>();
-    DataCopy(tmp, src[gmOffset], count);
-    bufHOutBf16_.EnQue(tmp);
-    tmp = bufHOutBf16_.DeQue<T>();
-    MhcSandwichRegBase::CastB16ToFp32(dst, tmp, count);
-    PipeBarrier<PIPE_V>();
-    bufHOutBf16_.FreeTensor(tmp);
-}
-
 __aicore__ inline void WriteLowPrecisionTile(GlobalTensor<T> &dst, uint64_t gmOffset, LocalTensor<float> src,
                                              uint32_t count)
 {

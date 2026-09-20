@@ -39,31 +39,6 @@ __aicore__ inline void LoadTokenWeights(uint32_t token, float (&postVals)[N_MAX]
         postVals[i] = hPostUb.GetValue(i);
 }
 
-/// 把一个h_out分块预取到输入队列；双槽允许下一分块MTE2与当前分块Vector重叠。
-__aicore__ inline void PrefetchHOutTile(uint64_t gmOffset, uint32_t tD)
-{
-    LocalTensor<T> hBf16 = bufHOutBf16_.AllocTensor<T>();
-    DataCopy(hBf16, hOutGm_[gmOffset], tD);
-    bufHOutBf16_.EnQue(hBf16);
-}
-
-/// 按队列顺序取出已经预取的h_out分块并转换为FP32。
-__aicore__ inline void ConsumeHOutTile(uint32_t tD)
-{
-    LocalTensor<T> hBf16 = bufHOutBf16_.DeQue<T>();
-    LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-    MhcSandwichRegBase::CastB16ToFp32(hOut, hBf16, tD);
-    PipeBarrier<PIPE_V>();
-    bufHOutBf16_.FreeTensor(hBf16);
-}
-
-/// 非流水调用点仍使用成对的预取与消费。
-__aicore__ inline void LoadHOutAndCast(uint64_t gmOffset, uint32_t tD)
-{
-    PrefetchHOutTile(gmOffset, tD);
-    ConsumeHOutTile(tD);
-}
-
 /// 第一遍R1把h_out原始低精度位值暂存在尚未使用的x2缓存，并完成FP32转换。
 __aicore__ inline void CacheHOutAndCast(uint64_t gmOffset, uint32_t tOff, uint32_t tD)
 {
