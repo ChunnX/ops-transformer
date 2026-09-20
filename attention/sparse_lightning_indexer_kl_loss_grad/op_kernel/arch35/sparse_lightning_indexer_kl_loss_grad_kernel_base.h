@@ -738,15 +738,23 @@ __aicore__ inline void SparseLightningIndexerKLLossGradKernelBase<CubeBlockType,
         softmaxOutPreBlockTotal = tilingData->multiCoreParams.softmaxOutPreBlockTotal;
         softmaxOutPreBlockTail = tilingData->multiCoreParams.softmaxOutPreBlockTail;
 
-        initdqSize = vBlockIdx == qPreBlockTotal - 1 ? qPreBlockTail : qPreBlockFactor;
+        // Zero-fill only the AIVs that own a slice: the host partition can use fewer cores
+        // than are launched, and an AIV outside it would zero past the output tensor's end.
+        initdqSize = vBlockIdx >= qPreBlockTotal - 1 ? qPreBlockTail : qPreBlockFactor;
         dqOffset = (uint64_t)vBlockIdx * qPreBlockFactor;
-        initdweightSize = vBlockIdx == weightPreBlockTotal - 1 ? weightPreBlockTail : weightPreBlockFactor;
+        initdweightSize = vBlockIdx >= weightPreBlockTotal - 1 ? weightPreBlockTail : weightPreBlockFactor;
         dweightOffset = (uint64_t)vBlockIdx * weightPreBlockFactor;
-        initsoftMaxSize = vBlockIdx == softmaxOutPreBlockTotal - 1 ? softmaxOutPreBlockTail : softmaxOutPreBlockFactor;
+        initsoftMaxSize = vBlockIdx >= softmaxOutPreBlockTotal - 1 ? softmaxOutPreBlockTail : softmaxOutPreBlockFactor;
         softMaxOffset = (uint64_t)vBlockIdx * softmaxOutPreBlockFactor;
-        InitOutput<float>(softmaxOutGm[softMaxOffset], initsoftMaxSize, 0);
-        InitOutput<float>(dWeightGm[dweightOffset], initdweightSize, 0);
-        InitOutput<OUT_T>(dqGm[dqOffset], initdqSize, 0);
+        if (vBlockIdx < softmaxOutPreBlockTotal) {
+            InitOutput<float>(softmaxOutGm[softMaxOffset], initsoftMaxSize, 0);
+        }
+        if (vBlockIdx < weightPreBlockTotal) {
+            InitOutput<float>(dWeightGm[dweightOffset], initdweightSize, 0);
+        }
+        if (vBlockIdx < qPreBlockTotal) {
+            InitOutput<OUT_T>(dqGm[dqOffset], initdqSize, 0);
+        }
     }
     SyncAll<false>();
 }
