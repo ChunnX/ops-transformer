@@ -222,12 +222,12 @@ aclnnStatus aclnnIndexerQuantCache(
     <tr>
       <td>ACLNN_ERR_PARAM_NULLPTR</td>
       <td>161001</td>
-      <td>cacheRef、cacheScaleRef、x、slotMapping存在空指针。</td>
+      <td>cacheRef、cacheScaleRef、x、slotMapping或workspaceSize、executor存在空指针。</td>
     </tr>
     <tr>
       <td>ACLNN_ERR_PARAM_INVALID</td>
       <td>161002</td>
-      <td>cacheRef、x或slotMapping为空Tensor。</td>
+      <td>cacheRef、cacheScaleRef、x或slotMapping为空Tensor。</td>
     </tr>
   </tbody></table>
 
@@ -417,3 +417,9 @@ int main() {
     return 0;
 }
 ```
+
+
+## 输入校验
+
+- quantMode 与 dtype 必须匹配：0=FP8+E8M0，1=FP8/UINT8+FLOAT，2=FP8/UINT8+FLOAT（cache 承载 HiFloat8 位编码），3=FP4+E8M0；x 为 FLOAT16/BF16，slotMapping 为 INT32。不匹配返回 ACLNN_ERR_PARAM_INVALID。
+- cache 与 cacheScale 的 blockNum、blockSize 必须相同且为正。运行时 batch 维度必须为正、维度乘积不得溢出。非法 shape、布局或 UB 容量不足会在 Tiling 阶段失败；调用方须检查两阶段接口返回值。
