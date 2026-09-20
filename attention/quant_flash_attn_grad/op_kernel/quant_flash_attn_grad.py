@@ -243,20 +243,6 @@ def meta_get(const_info, tensor_metadata, idx):
     return pl.getval(tensor_metadata, const_info.metadata_len + idx)
 
 
-def resolve_varlen_loop_max(const_info, tensor_metadata):
-    """Varlen 主循环轮数: 优先用 metadata 第二维槽0 (AICPU roundPrefix[B])。
-
-    Host 的 deter_max_round 读不到 cu_seqlens, 只能按 T/max_seqlen 给保守上界。
-    用那个上界做 pl.range 会在真实轮数之后空转, 每轮仍走 4 次 INTER_BLOCK。
-    槽0 是所有核共享的真实总轮数; 0 .. roundPrefix[B) 内的空档仍要同步
-    (本核无块但别的核可能在写 dQ), 之后则不应再进循环。
-    """
-    meta_loop_max = meta_get(const_info, tensor_metadata, META_DETER_MAX_NUM_IDX)
-    if meta_loop_max > 0:
-        return meta_loop_max
-    return const_info.deter_max_round
-
-
 def get_actual_s1_len(const_info, tensor_seq_q, b_idx):
     """batch b_idx 的实际 Q 长度; 非 seqused 场景即定长 s1。"""
     # tensor_seq carries used lengths when present; otherwise TND cu offsets.
@@ -1844,6 +1830,10 @@ def cal_deter_index(
         schedule_kind = meta_get(const_info, tensor_metadata, META_SCHEDULE_KIND_IDX)
     for current_round_id in pl.range(round_id, max_loop_num, 1):
         if is_var_len():
+            # pl.range 上界必须是 tiling; 真实轮数只做提前退出, 避免扫完保守上界.
+            deter_rounds = meta_get(const_info, tensor_metadata, META_DETER_MAX_NUM_IDX)
+            if deter_rounds > 0 and current_round_id >= deter_rounds:
+                break
             if schedule_kind == META_TND_LINE_SWIZZLE:
                 next_valid_index = cal_tnd_line_swizzle_deter_index(
                     current_round_id,
@@ -4672,9 +4662,12 @@ def quant_flash_attn_grad(
     alloc_event_id()
     if sparse_type == 4 and not is_var_len():
         gen_band_info(const_info, band_info)
+    # pl.range / cal_deter_index 的上界必须来自 tiling (host 标量).
+    # metadata 槽0 是 GM, 赋给 loop_max 会让 CCE 报「定义前使用」.
     loop_max = 0
     if is_var_len():
-        loop_max = resolve_varlen_loop_max(const_info, tensor_metadata)
+        loop_max = const_info.deter_max_round
+        meta_rounds = meta_get(const_info, tensor_metadata, META_DETER_MAX_NUM_IDX)
     else:
         loop_max = cal_deter_max_loop_num(const_info, band_info)
     # with pl.section_cube():
@@ -4729,6 +4722,9 @@ def quant_flash_attn_grad(
     # with pl.section_cube():
     #     pl.printf("wenyu check2 next_valid_loop_idx : %d next_block_idx : %d \n", next_valid_loop_idx, next_block_idx)
     for loop_idx in pl.range(loop_max):
+        if is_var_len():
+            if meta_rounds > 0 and loop_idx >= meta_rounds:
+                break
         block_inner_idx = next_block_idx
         if loop_idx >= next_valid_loop_idx:
             block_inner_idx = next_block_idx
