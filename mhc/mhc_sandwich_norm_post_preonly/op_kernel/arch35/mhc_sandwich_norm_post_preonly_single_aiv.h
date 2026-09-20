@@ -102,17 +102,21 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     PipeBarrier<PIPE_V>();
 }
 
-// R6读取完当前x2分块后，首个head的对应缓存区已经不会再被使用，
-// 将其复用为低精度h_in缓存，保留量化往返边界并避免GM临时写回。
+// R6读取完当前x2分块后，复用首个head缓存保留低精度h_in。
+// 恢复FP32与平方在同一VF内完成，保留量化往返边界并减少UB中间写读。
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::CacheHInTile(
-    uint32_t tOff, uint32_t tD, LocalTensor<float> hIn)
+__aicore__ inline float KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
+                                                         DUAL_SIBLING>::CacheHInAndReduceSumSq(uint32_t tOff,
+                                                                                               uint32_t tD,
+                                                                                               LocalTensor<float> hIn)
 {
     LocalTensor<T> hInCache = bufX2Cache_.Get<T>()[tOff];
     CastToIO(hInCache, hIn, tD);
     PipeBarrier<PIPE_V>();
-    MhcSandwichRegBase::CastB16ToFp32(hIn, hInCache, tD);
+    LocalTensor<float> sqBuf = bufGamma2Fp32_.Get<float>();
+    MhcSandwichRegBase::CastB16ToFp32Square(sqBuf, hInCache, tD);
     PipeBarrier<PIPE_V>();
+    return ReduceSumPrecise(sqBuf, tD);
 }
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
@@ -342,8 +346,7 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
             MhcSandwichRegBase::AxpyB16WithUbScalar(hIn, x2Cache[n * D_], gateBuf, n, tD);
             PipeBarrier<PIPE_V>();
         }
-        CacheHInTile(tOff, tD, hIn);
-        sumSq1 += ReduceSumSq(hIn, tD);
+        sumSq1 += CacheHInAndReduceSumSq(tOff, tD, hIn);
     }
 
     // 第四遍：沿完整D轴计算R7并写最终输出。

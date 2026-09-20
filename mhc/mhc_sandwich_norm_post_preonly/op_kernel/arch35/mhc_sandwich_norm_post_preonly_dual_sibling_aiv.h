@@ -140,8 +140,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
             MhcSandwichRegBase::AxpyB16WithUbScalar(hIn, x2Cache[n * D_], gateBuf, n, tD);
             PipeBarrier<PIPE_V>();
         }
-        CacheHInTile(tOff, tD, hIn);
-        sumSq1 += ReduceSumSq(hIn, tD);
+        sumSq1 += CacheHInAndReduceSumSq(tOff, tD, hIn);
     }
 
     StartCacheGamma1();
