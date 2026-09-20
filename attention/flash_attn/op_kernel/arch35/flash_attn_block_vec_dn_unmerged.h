@@ -231,8 +231,9 @@ public:
     LocalTensor<T> ubVec2Res_; // 存放vec2阶段VEC的中间处理结果, 并且作为attn_out的输出buffer, 需配对的MTE3和V的同步ID
 
     static constexpr uint32_t UB_VEC1_RES_BUFCNT = dVBaseSize <= 64U ? 2U : 1U;
-    // DN VF 按 64 lanes 打包 P, 逻辑 Vector M 为 32(mBase=64) 时也按实际打包宽度定容
-    static constexpr uint32_t UB_VEC1_RES_BUF_BYTES = (64U + 1U) * s2BaseSize * sizeof(INPUT_T);
+    // DN packs 64 query lanes; align each slot before the next UB region.
+    static constexpr uint32_t UB_VEC1_RES_BUF_BYTES =
+        AttentionCommon::Align((64U + 1U) * s2BaseSize * static_cast<uint32_t>(sizeof(INPUT_T)), 256U);
     LocalTensor<uint8_t> ubVec1ResBuffers_;
     uint32_t vec1ResUbBufId_ = 0;
 

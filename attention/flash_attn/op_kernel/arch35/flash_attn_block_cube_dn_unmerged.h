@@ -189,9 +189,9 @@ public:
     static constexpr uint32_t L1_P_BUF_BYTES = mBaseSize * s2BaseSize * sizeof(INPUT_T);
     static constexpr uint32_t L1_Q_BUFCNT = 2U;
     static constexpr uint32_t L1_Q_BUF_BYTES = mBaseSize * dBaseSize * sizeof(Q_T);
-    static constexpr uint32_t L1_KV_BUFCNT = (s2BaseSize == 256 && dBaseSize > 128) ? 2U : 4U;
+    static constexpr uint32_t L1_KV_BUFCNT = dBaseSize > 128U ? 2U : 4U;
     static constexpr uint32_t L1_KV_BUF_BYTES =
-        (s2BaseSize == 256 && dBaseSize > 128) ? s2BaseSize * dBaseSize * sizeof(KV_T) : 64U * 1024U;
+        s2BaseSize * (dBaseSize > dVBaseSize ? dBaseSize : dVBaseSize) * sizeof(KV_T);
     static_assert(L1_P_BUFCNT * L1_P_BUF_BYTES + L1_Q_BUFCNT * L1_Q_BUF_BYTES + L1_KV_BUFCNT * L1_KV_BUF_BYTES <=
                       512U * 1024U,
                   "DN L1 buffers exceed device capacity");

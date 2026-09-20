@@ -90,6 +90,8 @@ enum class inferS2TemplateType {
     Aligned32 = 32,
     Aligned64 = 64,
     Aligned128 = 128,
+    Aligned208 = 208,
+    Aligned224 = 224,
     Aligned256 = 256,
     Aligned512 = 512,
     Aligned1024 = 1024,

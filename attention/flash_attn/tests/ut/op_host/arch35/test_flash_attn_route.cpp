@@ -74,6 +74,15 @@ TEST(FlashAttnRoute, CoreCapUsesUnmergedHeadTasksOnlyForTemplate2)
     }
 }
 
+TEST(FlashAttnRoute, DnUnmergedBlocksReserveMaskStorageOnlyWhenNeeded)
+{
+    for (uint32_t d : {64U, 72U, 128U, 192U}) {
+        EXPECT_EQ(FlashAttnPolicy::DnUnmergedS2(d, false), 256U);
+        EXPECT_EQ(FlashAttnPolicy::DnUnmergedS2(d, true), d == 64U ? 208U : 224U);
+        EXPECT_EQ(FlashAttnPolicy::DnUnmergedS2(d, true) % 16U, 0U);
+    }
+}
+
 struct RouteCase {
     uint32_t d;
     uint32_t dv;
