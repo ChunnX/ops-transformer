@@ -60,30 +60,60 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     if constexpr (USE_RMS_MID) {
         const float totalMidSq = midSqHalf[0] + midSqHalf[1];
         const float invRmsMid = 1.0f / sqrt(totalMidSq * invK_ + normEps_);
-        for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
-            const uint32_t tD = GetTileD(tile);
-            const uint32_t tOff = tile * dimTile_;
-            LocalTensor<float> gammaEven = bufGamma2Fp32_.Get<float>();
-            LocalTensor<float> gammaOdd = bufGamma0Fp32_.Get<float>();
-            LoadGammaInto(gammaEven, gamma2Gm_, tOff, tD);
-            LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
-            for (uint32_t n = 0; n < N_MAX; ++n) {
-                LocalTensor<float> gammaCurrent = ((n & 1U) == 0) ? gammaEven : gammaOdd;
-                LocalTensor<float> gammaNext = ((n & 1U) == 0) ? gammaOdd : gammaEven;
+        LocalTensor<float> gammaEven = bufGamma2Fp32_.Get<float>();
+        LocalTensor<float> gammaOdd = bufGamma0Fp32_.Get<float>();
+        LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
+        if (D_ <= GAMMA1_CACHE_MAX_D && dimLoop_ > 1U) {
+            // 双lane采用完全相同的完整gamma2缓存和head顺序，保持冗余R3一致。
+            FenceVToMte2();
+            for (uint32_t pair = 0; pair < N_MAX; pair += 2U) {
+                LoadGammaInto(gammaEven, gamma2Gm_, pair * D_, D_);
+                LoadGammaInto(gammaOdd, gamma2Gm_, (pair + 1U) * D_, D_);
                 SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
                 WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-                if (n + 1 < N_MAX) {
-                    LoadGammaInto(gammaNext, gamma2Gm_, (n + 1) * D_ + tOff, tD);
+                for (uint32_t n = pair; n < pair + 2U; ++n) {
+                    LocalTensor<float> gammaCurrent = ((n & 1U) == 0U) ? gammaEven : gammaOdd;
+                    for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
+                        const uint32_t tD = GetTileD(tile);
+                        const uint32_t tOff = tile * dimTile_;
+                        MhcSandwichRegBase::CastB16ScaleAndMulGammaToB16(
+                            x2Cache[n * D_ + tOff], x2Cache[n * D_ + tOff], gammaCurrent[tOff], invRmsMid, tD);
+                        PipeBarrier<PIPE_V>();
+                    }
                 }
-                MhcSandwichRegBase::CastB16ScaleAndMulGammaToB16(
-                    x2Cache[n * D_ + tOff], x2Cache[n * D_ + tOff], gammaCurrent, invRmsMid, tD);
-                PipeBarrier<PIPE_V>();
-                if (n + 2 < N_MAX) {
+                if (pair + 2U < N_MAX) {
                     FenceVToMte2();
                 }
             }
-            CacheX2TileForLane(token, tOff, tD, true, false);
-            AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, laneId_, laneId_ + 1U);
+            for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
+                const uint32_t tD = GetTileD(tile);
+                const uint32_t tOff = tile * dimTile_;
+                CacheX2TileForLane(token, tOff, tD, true, false);
+                AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, laneId_, laneId_ + 1U);
+            }
+        } else {
+            for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
+                const uint32_t tD = GetTileD(tile);
+                const uint32_t tOff = tile * dimTile_;
+                LoadGammaInto(gammaEven, gamma2Gm_, tOff, tD);
+                for (uint32_t n = 0; n < N_MAX; ++n) {
+                    LocalTensor<float> gammaCurrent = ((n & 1U) == 0U) ? gammaEven : gammaOdd;
+                    LocalTensor<float> gammaNext = ((n & 1U) == 0U) ? gammaOdd : gammaEven;
+                    SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+                    WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
+                    if (n + 1U < N_MAX) {
+                        LoadGammaInto(gammaNext, gamma2Gm_, (n + 1U) * D_ + tOff, tD);
+                    }
+                    MhcSandwichRegBase::CastB16ScaleAndMulGammaToB16(
+                        x2Cache[n * D_ + tOff], x2Cache[n * D_ + tOff], gammaCurrent, invRmsMid, tD);
+                    PipeBarrier<PIPE_V>();
+                    if (n + 2U < N_MAX) {
+                        FenceVToMte2();
+                    }
+                }
+                CacheX2TileForLane(token, tOff, tD, true, false);
+                AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, laneId_, laneId_ + 1U);
+            }
         }
     }
 
