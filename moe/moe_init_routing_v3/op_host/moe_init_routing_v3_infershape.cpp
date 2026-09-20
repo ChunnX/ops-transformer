@@ -745,14 +745,8 @@ static void SetExpandedScaleShape(gert::Shape *expandedScaleShape, const gert::S
         expandedScaleShape->SetDimNum(DIM_THREE);
         expandedScaleShape->SetDim(0U, xOutNum);
         int64_t dim1 = (cols == NEG_ONE) ? NEG_ONE : Ops::Base::CeilDiv<int64_t>(cols, SCALE_BLOCK_SIZE);
-        int64_t dim2 = SCALE_THIRD_DIM_SIZE;
-        if (QuantMode::NON_QUANT == quantMode) {
-            // Routing only reorders the per-token scales; keep their packed block layout unchanged.
-            dim1 = scaleShape->GetDim(1);
-            dim2 = scaleShape->GetDim(DIM_TWO);
-        }
         expandedScaleShape->SetDim(1U, dim1);
-        expandedScaleShape->SetDim(DIM_TWO, dim2);
+        expandedScaleShape->SetDim(DIM_TWO, SCALE_THIRD_DIM_SIZE);
     } else if (QuantMode::NON_QUANT == quantMode || QuantMode::DYNAMIC_QUANT == quantMode ||
                QuantMode::INT4_DYNAMIC_QUANT == quantMode) {
         expandedScaleShape->SetDimNum(DIM_ONE);
@@ -835,22 +829,6 @@ static ge::graphStatus InferShape4MoeInitRoutingV3(gert::InferShapeContext *cont
     int64_t xOutNum = 0;
 
     CalculateOutputDims(xShape, expertIdxShape, activeNum, cols, outNum, xOutNum);
-
-    const auto *xDesc = context->GetInputDesc(MOE_INIT_ROUTING_V3_INPUT_X);
-    OP_CHECK_NULL_WITH_CONTEXT(context, xDesc);
-    auto xDtype = xDesc->GetDataType();
-    // Torch graph represents two FP4 values with one storage element, so cols may be half of the logical H.
-    // Use the scale block count to distinguish a packed width from an already-logical width.
-    if (quantMode == QuantMode::NON_QUANT && xDtype == ge::DT_FLOAT4_E2M1 && cols >= 0 && scaleShape != nullptr &&
-        scaleShape->GetDimNum() == DIM_THREE) {
-        int64_t scaleBlocks = scaleShape->GetDim(1);
-        int64_t unpackedBlocks = Ops::Base::CeilDiv<int64_t>(cols, SCALE_BLOCK_SIZE);
-        int64_t packedBlocks = Ops::Base::CeilDiv<int64_t>(cols * DIM_TWO, SCALE_BLOCK_SIZE);
-        if (scaleBlocks >= 0 && scaleBlocks != unpackedBlocks && scaleBlocks == packedBlocks) {
-            // The scale matches 2 * cols only; restore logical H before inferring expanded_x.
-            cols *= DIM_TWO;
-        }
-    }
 
     SetExpandedXandRowIdxShape(expandedXShape, expandedRowIdxShape, dropPadMode, xOutNum, outNum, experNum,
                                expertCapacity, cols);

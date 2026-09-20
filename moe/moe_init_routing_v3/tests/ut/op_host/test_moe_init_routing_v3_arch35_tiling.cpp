@@ -305,13 +305,8 @@ gert::TilingContextPara MakeArch35ExtendedTilingContextPara(
     int64_t expertRange = aciveExpertRange[1] - aciveExpertRange[0];
     int64_t totalLength = n * k;
     ge::DataType expandedXDtype = GetExpandedXDtype(quantMode, xDataType, expandedXDtypeOverride);
-    int64_t logicalH = h;
-    if (quantMode == QUANT_MODE_UNQUANT && xDataType == ge::DT_FLOAT4_E2M1 && scaleShape.size() == 3 &&
-        CeilDiv(h, 64) != scaleShape[1] && CeilDiv(h * 2, 64) == scaleShape[1]) {
-        logicalH *= 2;
-    }
     ExpandedScaleDesc expandedScale =
-        GetExpandedScaleDesc(quantMode, totalLength, logicalH, n, !scaleShape.empty(), xDataType, expandedXDtype);
+        GetExpandedScaleDesc(quantMode, totalLength, h, n, !scaleShape.empty(), xDataType, expandedXDtype);
     std::vector<int64_t> expertTokensShape = GetExpertTokensShape(expertTokensNumType, expertNum, expertRange);
     auto inputDesc = BuildArch35ExtendedInputs(n, h, k, xDataType, scaleShape, scaleDtype, offsetShape, offsetDtype);
     auto outputDesc = BuildArch35ExtendedOutputs(totalLength, h, expandedXDtype, expertTokensShape, expandedScale);
@@ -809,24 +804,6 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_unquant_fp8_sc
     RunArch35ExtendedTestcase(1, h, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_UNQUANT, ge::DT_FLOAT8_E5M2,
                               {180, 192}, ROW_IDX_TYPE_GATHER, {1, 2, 2}, ge::DT_FLOAT8_E8M0, {}, ge::DT_FLOAT,
                               kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
-}
-
-// UNQUANT + packed FP4 x + E8M0 scale. The FP4 storage width is half of logical H.
-TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_unquant_fp4_packed_scale)
-{
-    int64_t packedH = 64;
-    RunArch35ExtendedTestcase(1, packedH, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_UNQUANT,
-                              ge::DT_FLOAT4_E2M1, {180, 192}, ROW_IDX_TYPE_GATHER, {1, 2, 2}, ge::DT_FLOAT8_E8M0, {},
-                              ge::DT_FLOAT, kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
-}
-
-// UNQUANT + logical FP4 x used by direct ACLNN calls must not be unpacked again.
-TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_unquant_fp4_logical_scale)
-{
-    int64_t logicalH = 128;
-    RunArch35ExtendedTestcase(1, logicalH, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_UNQUANT,
-                              ge::DT_FLOAT4_E2M1, {180, 192}, ROW_IDX_TYPE_GATHER, {1, 2, 2}, ge::DT_FLOAT8_E8M0, {},
-                              ge::DT_FLOAT, kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
 }
 
 TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_unquant_fp8_gather_copy_min_k)
