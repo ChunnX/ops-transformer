@@ -26,21 +26,21 @@ using namespace std;
 
 // 950-specific test suite (MUST run before the V2 test suite to cache 950 platform via const static)
 namespace MoeDistributeDispatchV2950 {
-class L2AclnnMoeDistributeDispatchV2950Test : public testing::Test {
+class L2AclnnMoeDistributeDispatchV2Dav3510Test : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
-        op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
-        cout << "L2AclnnMoeDistributeDispatchV2950Test SetUp" << endl;
+        op::SetPlatformNpuArch(Ops::Base::DAV_3510);
+        cout << "L2AclnnMoeDistributeDispatchV2Dav3510Test SetUp" << endl;
     }
 
     static void TearDownTestCase()
     {
-        cout << "L2AclnnMoeDistributeDispatchV2950Test TearDown" << endl;
+        cout << "L2AclnnMoeDistributeDispatchV2Dav3510Test TearDown" << endl;
     }
 };
 
-TEST_F(L2AclnnMoeDistributeDispatchV2950Test, TestGetWorkspaceSize950NonCcu)
+TEST_F(L2AclnnMoeDistributeDispatchV2Dav3510Test, TestGetWorkspaceSizeDav3510NonCcu)
 {
     TensorDesc x = TensorDesc({8, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc expertIds = TensorDesc({8, 8}, ACL_INT32, ACL_FORMAT_ND);
@@ -80,7 +80,7 @@ TEST_F(L2AclnnMoeDistributeDispatchV2950Test, TestGetWorkspaceSize950NonCcu)
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
-TEST_F(L2AclnnMoeDistributeDispatchV2950Test, TestGetWorkspaceSize950Ccu)
+TEST_F(L2AclnnMoeDistributeDispatchV2Dav3510Test, TestGetWorkspaceSizeDav3510Ccu)
 {
     TensorDesc x = TensorDesc({8, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc expertIds = TensorDesc({8, 8}, ACL_INT32, ACL_FORMAT_ND);
@@ -120,7 +120,7 @@ TEST_F(L2AclnnMoeDistributeDispatchV2950Test, TestGetWorkspaceSize950Ccu)
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
-TEST_F(L2AclnnMoeDistributeDispatchV2950Test, TestExecuteEntry950)
+TEST_F(L2AclnnMoeDistributeDispatchV2Dav3510Test, TestExecuteEntryDav3510)
 {
     aclnnStatus st = aclnnMoeDistributeDispatchV2(nullptr, 0U, nullptr, nullptr);
     EXPECT_THAT(st, testing::AnyOf(testing::Eq(ACLNN_SUCCESS), testing::Eq(ACLNN_ERR_PARAM_NULLPTR),
@@ -356,7 +356,7 @@ TEST_F(L2AclnnMoeDistributeDispatchV2Test, TestAclnnMoeDistributeDispatchV2Execu
                                    testing::Eq(ACLNN_ERR_PARAM_INVALID)));
 }
 
-TEST_F(L2AclnnMoeDistributeDispatchV2Test, TestAclnnMoeDistributeDispatchV2GetWorkspaceAscend950NonCcu)
+TEST_F(L2AclnnMoeDistributeDispatchV2Test, TestAclnnMoeDistributeDispatchV2GetWorkspaceDav3510NonCcu)
 {
     struct PlatformGuard {
         PlatformGuard(op::SocVersion target)
