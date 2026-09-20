@@ -92,6 +92,43 @@ __aicore__ inline void CastFp32ToB16(const LocalTensor<T> &dst, const LocalTenso
     }
 }
 
+// R7在一个VF内完成低精度读取、FP32归一化、gamma缩放和低精度输出。
+template <typename T, bool WRITE_FP32>
+__aicore__ inline void RmsNorm1ToB16(const LocalTensor<T> &dstB16, const LocalTensor<float> &dstFp32,
+                                     const LocalTensor<T> &srcB16, const LocalTensor<float> &gamma, float scale,
+                                     uint32_t count)
+{
+    __local_mem__ T *srcAddr = (__local_mem__ T *)srcB16.GetPhyAddr();
+    __local_mem__ T *dstB16Addr = (__local_mem__ T *)dstB16.GetPhyAddr();
+    __local_mem__ float *dstFp32Addr = (__local_mem__ float *)dstFp32.GetPhyAddr();
+    __local_mem__ float *gammaAddr = (__local_mem__ float *)gamma.GetPhyAddr();
+    uint32_t remain = count;
+    const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
+    __VEC_SCOPE__
+    {
+        RegTensor<T> srcReg, dstB16Reg;
+        RegTensor<float> valueReg, gammaReg;
+        MaskReg mask;
+        for (uint16_t i = 0; i < loops; ++i) {
+            mask = UpdateMask<float>(remain);
+            DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + i * VL_FP32);
+            Cast<float, T, CAST_B16_TO_FP32>(valueReg, srcReg, mask);
+            AscendC::Reg::Muls(valueReg, valueReg, scale, mask);
+            DataCopy<float, LoadDist::DIST_NORM>(gammaReg, gammaAddr + i * VL_FP32);
+            AscendC::Reg::Mul(valueReg, valueReg, gammaReg, mask);
+            if constexpr (WRITE_FP32) {
+                DataCopy(dstFp32Addr + i * VL_FP32, valueReg, mask);
+            }
+            if constexpr (IsSameT<T, bfloat16_t>::value) {
+                Cast<T, float, CAST_FP32_TO_B16_RINT>(dstB16Reg, valueReg, mask);
+            } else {
+                Cast<T, float, CAST_FP32_TO_B16_NONE>(dstB16Reg, valueReg, mask);
+            }
+            DataCopy<T, StoreDist::DIST_PACK_B32>(dstB16Addr + i * VL_FP32, dstB16Reg, mask);
+        }
+    }
+}
+
 __aicore__ inline void Mul(const LocalTensor<float> &dst, const LocalTensor<float> &src0,
                            const LocalTensor<float> &src1, uint32_t count)
 {
