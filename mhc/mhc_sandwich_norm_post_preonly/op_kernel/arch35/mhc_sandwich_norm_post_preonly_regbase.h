@@ -473,6 +473,39 @@ __aicore__ inline void AxpyB16WithUbScalar(const LocalTensor<float> &dst, const 
     }
 }
 
+// R6首两路在一个VF内完成初始化和累加，只写回一次hIn，后两路仍保持独立VF。
+template <typename T>
+__aicore__ inline void InitWeightedPairB16WithUbScalar(const LocalTensor<float> &dst, const LocalTensor<T> &src0,
+                                                       const LocalTensor<T> &src1,
+                                                       const LocalTensor<float> &scalars, uint32_t count)
+{
+    __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();
+    __local_mem__ T *src0Addr = (__local_mem__ T *)src0.GetPhyAddr();
+    __local_mem__ T *src1Addr = (__local_mem__ T *)src1.GetPhyAddr();
+    __local_mem__ float *scalarAddr = (__local_mem__ float *)scalars.GetPhyAddr();
+    uint32_t remain = count;
+    const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
+    __VEC_SCOPE__
+    {
+        RegTensor<T> srcB16Reg;
+        RegTensor<float> srcFp32Reg, dstReg, scalar0Reg, scalar1Reg;
+        MaskReg mask;
+        DataCopy<float, LoadDist::DIST_BRC_B32>(scalar0Reg, scalarAddr);
+        DataCopy<float, LoadDist::DIST_BRC_B32>(scalar1Reg, scalarAddr + 1U);
+        for (uint16_t i = 0; i < loops; ++i) {
+            mask = UpdateMask<float>(remain);
+            const uint32_t offset = static_cast<uint32_t>(i) * VL_FP32;
+            DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcB16Reg, src0Addr + offset);
+            Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcB16Reg, mask);
+            AscendC::Reg::Mul(dstReg, srcFp32Reg, scalar0Reg, mask);
+            DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcB16Reg, src1Addr + offset);
+            Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcB16Reg, mask);
+            AscendC::Reg::MulAddDst(dstReg, srcFp32Reg, scalar1Reg, mask);
+            DataCopy(dstAddr + offset, dstReg, mask);
+        }
+    }
+}
+
 // clang-format off
 }
 // clang-format on
