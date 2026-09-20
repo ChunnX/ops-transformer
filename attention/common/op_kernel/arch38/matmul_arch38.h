@@ -12,8 +12,8 @@
  * \file matmul_arch38.h
  * \brief
  */
-#ifndef MATMUL_H
-#define MATMUL_H
+#ifndef MATMUL_ARCH38_H
+#define MATMUL_ARCH38_H
 #include "../buffers_policy.h"
 using namespace AscendC;
 
