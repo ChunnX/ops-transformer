@@ -135,6 +135,22 @@ extern "C" aclnnStatus AlltoAllMatmulV2GetWorkspaceSize(
         return ACLNN_ERR_PARAM_INVALID;
     }
 
+    // x1/x2 dtype 校验：仅支持 FP8_E4M3FN/FP8_E5M2/FP4_E2M1，与 op_def DataType 白名单一致。
+    // bitcast 场景（uint8 存 fp4）需在调用侧构造 aclTensor 时声明 FP4，此处校验声明的 dtype。
+    aclDataType x1AclDtype = ACL_DT_UNDEFINED;
+    aclDataType x2AclDtype = ACL_DT_UNDEFINED;
+    (void)aclGetDataType(x1, &x1AclDtype);
+    (void)aclGetDataType(transX2, &x2AclDtype);
+    if ((x1AclDtype != ACL_FLOAT8_E4M3FN && x1AclDtype != ACL_FLOAT8_E5M2 && x1AclDtype != ACL_FLOAT4_E2M1) ||
+        (x2AclDtype != ACL_FLOAT8_E4M3FN && x2AclDtype != ACL_FLOAT8_E5M2 && x2AclDtype != ACL_FLOAT4_E2M1)) {
+        OP_LOGE_WITH_INVALID_INPUT_DTYPE(
+            "AlltoAllMatmulV2", "x1, x2",
+            (std::to_string(static_cast<int64_t>(x1AclDtype)) + "," + std::to_string(static_cast<int64_t>(x2AclDtype)))
+                .c_str(),
+            "FP8_E4M3FN/FP8_E5M2/FP4_E2M1");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+
     // y_dtype 从 output 的 tensor dtype 推导（acl 枚举与 ge 枚举一致），
     // 未显式指定 BF16/FP16（默认 fp32）时由 tiling 侧校验拒绝。
     aclDataType outputAclDtype = ACL_DT_UNDEFINED;
