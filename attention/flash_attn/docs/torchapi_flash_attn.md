@@ -794,27 +794,3 @@ mask_mode参数解释
     assert attn_out.dtype == q.dtype
     assert torch.isfinite(attn_out.float()).all().item()
     ```
-
-## Stream 控核与 metadata
-
-`flash_attn_metadata` 使用当前线程绑定的 stream 有效 AIC/AIV 核数生成任务划分，
-与 `flash_attn` 的 ACLNN tiling 保持一致。当前 FlashAttn 要求有效核数为正、
-不超过设备物理核数，且 AIC:AIV 为 1:2，例如 1/2、8/16。
-
-metadata Tensor 可以继续按物理核数分配容量；实际布局的核数记录在 metadata 头部。
-生成 metadata 和执行主算子（包括 ACLGraph capture/replay）必须使用相同的有效核数。
-改变控核配置后需要重新生成 metadata，不能复用另一核数下的任务划分。
-
-可在安装匹配的算子包及 torch 扩展后，运行独立回归脚本：
-
-```bash
-python attention/flash_attn/tests/pytests/test_stream_core_limit.py --cores 0 1 8 --mode aclgraph
-```
-
-其中 `0` 表示默认硬件核数；脚本校验 metadata 头部、CPU 参考精度和图重放结果。
-可使用 `--mode eager` 验证直调，使用 `--profile /tmp/flash_attn_core_profile` 导出实际 launch 核数。
-
-`--mode scope` 将 metadata 和主算子都放入 `scope.limit_core_num` 后编译。
-`--mode aclgraph` 在图外生成 metadata，并在图内用同核数 scope 执行主算子；
-不能仅依赖外层 stream 控核，因为后端可能使用另一个 stream 进行 capture。
-可用 `--q-len 1 --kv-len 8192` 额外覆盖 FlashDecode 任务划分。
