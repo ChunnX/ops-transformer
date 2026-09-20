@@ -103,7 +103,7 @@ public:
         }
 
         // UB空间分配
-        pipe_.InitBuffer(bufHOutBf16_, BUFFER_NUM_TWO, dimTile_ * sizeof(T));
+        pipe_.InitBuffer(bufHOutBf16_, BUFFER_NUM_ONE, dimTile_ * sizeof(T));
         pipe_.InitBuffer(bufHOutFp32_, dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufGamma0Fp32_, dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufX2Fp32_, N_ * dimTile_ * sizeof(float));
@@ -205,7 +205,7 @@ private:
     TPipe pipe_;
 
     // UB缓存
-    TQue<TPosition::VECIN, BUFFER_NUM_TWO> bufHOutBf16_;
+    TQue<TPosition::VECIN, BUFFER_NUM_ONE> bufHOutBf16_;
     TBuf<TPosition::VECCALC> bufHOutFp32_;
     TBuf<TPosition::VECCALC> bufGamma0Fp32_;
     TBuf<TPosition::VECCALC> bufGamma2Fp32_;
