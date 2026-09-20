@@ -213,6 +213,25 @@ def all_to_all_quant_matmul(
         ``(BS/world_size, N)``. all2all_out is a reserved output and is not
         supported yet (returned as an empty tensor).
     """
+    if x1_dtype is not None and not isinstance(x1_dtype, int):
+        raise ValueError(
+            f"x1_dtype must be an int (ACL dtype enum) or None, but got {type(x1_dtype).__name__}."
+        )
+    if x2_dtype is not None and not isinstance(x2_dtype, int):
+        raise ValueError(
+            f"x2_dtype must be an int (ACL dtype enum) or None, but got {type(x2_dtype).__name__}."
+        )
+    if x1_scale_dtype is not None and not isinstance(x1_scale_dtype, int):
+        raise ValueError(
+            f"x1_scale_dtype must be an int (ACL dtype enum) or None, "
+            f"but got {type(x1_scale_dtype).__name__}."
+        )
+    if x2_scale_dtype is not None and not isinstance(x2_scale_dtype, int):
+        raise ValueError(
+            f"x2_scale_dtype must be an int (ACL dtype enum) or None, "
+            f"but got {type(x2_scale_dtype).__name__}."
+        )
+
     rank_id = torch.distributed.get_rank(group)
     world_size, group_name, context, hccl_buffer_size = _prepare_comm_context(
         group, rank_id

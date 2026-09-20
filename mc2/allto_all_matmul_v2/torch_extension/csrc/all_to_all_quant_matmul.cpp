@@ -47,7 +47,9 @@ int64_t CheckAndGetGroupSize(at::IntArrayRef groupSizeList)
     return groups;
 }
 
-static void CheckNpuAlltoAllQuantMatmulInputs(const at::Tensor &x1, const at::Tensor &x2, int64_t worldSize)
+static void CheckNpuAlltoAllQuantMatmulInputs(const at::Tensor &x1, const at::Tensor &x2, int64_t worldSize,
+                                              const c10::optional<at::Tensor> &x1ScaleOptional,
+                                              const c10::optional<at::Tensor> &x2ScaleOptional)
 {
     TORCH_CHECK(x1.dim() == DIM_TWO,
                 "The x1 input of alltoallquantmatmul is required to be 2D, but the actual x1 input is ", x1.dim(),
@@ -57,6 +59,32 @@ static void CheckNpuAlltoAllQuantMatmulInputs(const at::Tensor &x1, const at::Te
                 "D.");
     TORCH_CHECK(SUPPORT_WORLD_SIZE_LIST.find(worldSize) != SUPPORT_WORLD_SIZE_LIST.end(),
                 "The world_size should be in [2, 4, 8, 16], but the actual value is ", worldSize, ".");
+    // x1/x2 原始 dtype 校验：仅支持原生 fp8 (e4m3fn/e5m2) 或 uint8 (fp4 packed, 搭配 296 枚举)。
+    // 必须在使用 dtype 枚举覆盖之前校验，防止 fp16 等非法 dtype 用枚举掩盖后放行。
+    TORCH_CHECK(x1.scalar_type() == at::ScalarType::Float8_e4m3fn || x1.scalar_type() == at::ScalarType::Float8_e5m2 ||
+                    x1.scalar_type() == at::kByte,
+                "x1 only supports torch.float8_e4m3fn, torch.float8_e5m2 or torch.uint8 (fp4 packed, pass "
+                "x1_dtype=296), but got tensor dtype ",
+                x1.scalar_type(), ". Dtype enum cannot override an unsupported storage dtype.");
+    TORCH_CHECK(x2.scalar_type() == at::ScalarType::Float8_e4m3fn || x2.scalar_type() == at::ScalarType::Float8_e5m2 ||
+                    x2.scalar_type() == at::kByte,
+                "x2 only supports torch.float8_e4m3fn, torch.float8_e5m2 or torch.uint8 (fp4 packed, pass "
+                "x2_dtype=296), but got tensor dtype ",
+                x2.scalar_type(), ". Dtype enum cannot override an unsupported storage dtype.");
+    if (x1ScaleOptional.has_value() && x1ScaleOptional.value().defined()) {
+        TORCH_CHECK(x1ScaleOptional.value().scalar_type() == at::kByte,
+                    "x1_scale only supports torch.uint8 (fp8_e8m0 stored as uint8, pass x1_scale_dtype=293), "
+                    "but got tensor dtype ",
+                    x1ScaleOptional.value().scalar_type(),
+                    ". Dtype enum cannot override an unsupported storage dtype.");
+    }
+    if (x2ScaleOptional.has_value() && x2ScaleOptional.value().defined()) {
+        TORCH_CHECK(x2ScaleOptional.value().scalar_type() == at::kByte,
+                    "x2_scale only supports torch.uint8 (fp8_e8m0 stored as uint8, pass x2_scale_dtype=293), "
+                    "but got tensor dtype ",
+                    x2ScaleOptional.value().scalar_type(),
+                    ". Dtype enum cannot override an unsupported storage dtype.");
+    }
 }
 
 static at::ScalarType GetOutputScalarType(c10::optional<int64_t> yDtype)
@@ -91,7 +119,7 @@ std::tuple<at::Tensor, at::Tensor> NpuAlltoAllQuantMatmul(
     c10::optional<int64_t> x2Dtype, c10::optional<int64_t> x1ScaleDtype, c10::optional<int64_t> x2ScaleDtype,
     c10::optional<int64_t> yDtype, std::string commMode, c10::optional<int64_t> precisionMode)
 {
-    CheckNpuAlltoAllQuantMatmulInputs(x1, x2, worldSize);
+    CheckNpuAlltoAllQuantMatmulInputs(x1, x2, worldSize, x1ScaleOptional, x2ScaleOptional);
 
     bool is_w4 = x2.dtype() == at::kInt;
     auto x1Size = x1.sizes();
