@@ -193,11 +193,14 @@ __simd_vf__ void ProcessVec1UpdateImpl128VF(
         StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb), vreg_input_max, ureg_max, 1);
     }
     StoreUnAlignPost<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb), ureg_max, 0);
-    LoadAlign(vreg_in_max, inMaxUb);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
-    LoadAlign(vreg_input_max, tmpMaxUb2);                     // 获取新的max[s1, 1]
-    Max(vreg_max_new, vreg_input_max, vreg_in_max, preg_all); // 计算新、旧max的最大值
-    StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)tmpMaxUb2, vreg_max_new, preg_all);
+    uint16_t cnt = CeilDivision(m, 64);
+    for(int i = 0, i < cnt; i++){
+        LoadAlign(vreg_in_max, inMaxUb + i * 64);
+        LoadAlign(vreg_input_max, tmpMaxUb2 + i * 64);            // 获取新的max[s1, 1]
+        Max(vreg_max_new, vreg_input_max, vreg_in_max, preg_all); // 计算新、旧max的最大值
+        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)tmpMaxUb2 + i * 64, vreg_max_new, preg_all);
+    }
     if constexpr (isMlaFullQuant) {
         ExpSub(vreg_rowmax_p, vreg_input_max, vreg_max_new, preg_all);
         Adds(vreg_rowmax_p, vreg_rowmax_p, floatEps, preg_all);
