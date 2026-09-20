@@ -426,7 +426,7 @@ __aicore__ inline ExpertTokenRange PlanNextExpertTokenRangeInWave(GM_ADDR expert
     return {plannedPosition, plannedPosition};
 }
 
-// 出口跨卡握手：物理 AIV 分别推进自己的 sequence，入口已在 MoE 量化后推进一次。
+// 跨卡握手：每个物理 AIV 推进自己的 sequence；诊断路径在入口清零后及出口各调用一次。
 __aicore__ inline int32_t CrossRankHandshakeInWorldSize(GM_ADDR rankSyncInWorldPtr, uint32_t rankId, uint32_t worldSize,
                                                         const AivJobContext &syncJob, __gm__ int32_t *syncCount)
 {
