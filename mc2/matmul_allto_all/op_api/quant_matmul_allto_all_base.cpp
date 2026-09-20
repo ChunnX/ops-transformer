@@ -242,7 +242,7 @@ static bool CheckKCBiasDtypesValid(const aclTensor *x1, const aclTensor *x2, con
     return true;
 }
 
-// 950数据类型校验
+// A5数据类型校验
 // 量化模式下X支持的FP8数据类型（PerToken量化、PerChannel量化）(A5)
 static const std::initializer_list<op::DataType> X_DTYPE_FP8_SUPPORT_LIST_A5 = {op::DataType::DT_FLOAT8_E4M3FN,
                                                                                 op::DataType::DT_FLOAT8_E5M2};
