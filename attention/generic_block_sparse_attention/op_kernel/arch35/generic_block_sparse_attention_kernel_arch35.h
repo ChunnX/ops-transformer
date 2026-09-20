@@ -75,6 +75,8 @@ public:
         gV.SetGlobalBuffer((__gm__ ElementK *)params.v);
         AscendC::GlobalTensor<int32_t> gSparseBlockIdx;
         gSparseBlockIdx.SetGlobalBuffer((__gm__ int32_t *)params.sparseBlockIdx);
+        AscendC::GlobalTensor<int32_t> gSparseBlockCount;
+        gSparseBlockCount.SetGlobalBuffer((__gm__ int32_t *)params.sparseBlockCount);
         AscendC::GlobalTensor<int32_t> gBlockTable;
         gBlockTable.SetGlobalBuffer((__gm__ int32_t *)params.blockTable);
         AscendC::GlobalTensor<int64_t> gCuSeqLengths;
@@ -252,11 +254,17 @@ public:
             globalQBlock += qTokenInBatch / blockShapeX_;
             int64_t sparseIdxBase =
                 static_cast<int64_t>(kvHeadIdx) * qBlockNum_ * topK_ + static_cast<int64_t>(globalQBlock) * topK_;
+            uint32_t validTopK = topK_;
+            if (params.sparseBlockCount != nullptr) {
+                // sparseBlockCount 2D: [N_kv, totalQBlocks]
+                int64_t countOffset = static_cast<int64_t>(kvHeadIdx) * qBlockNum_ + static_cast<int64_t>(globalQBlock);
+                validTopK = static_cast<uint32_t>(gSparseBlockCount.GetValue(countOffset));
+            }
             if (fdEnabled) {
-                rawBegin = rawBegin < topK_ ? rawBegin : topK_;
-                rawEnd = rawEnd < topK_ ? rawEnd : topK_;
+                rawBegin = rawBegin < validTopK ? rawBegin : validTopK;
+                rawEnd = rawEnd < validTopK ? rawEnd : validTopK;
             } else {
-                rawEnd = topK_;
+                rawEnd = validTopK;
             }
 
             uint32_t historyLen = kvSeqlen - qSeqlen;

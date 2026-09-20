@@ -131,7 +131,7 @@ private:
     uint32_t groupSize_ = 0;
     float scaleValue_ = 0.0f;
     uint32_t softmaxPrecision_ = 0;
-    int64_t residualBlockMode_ = 1;
+    int64_t residualBlockMode_ = 0;
     bool isConsistentTopk_ = false;
     int64_t softmaxLseFlag_ = 0;
     bool returnSoftmaxlse_ = false;

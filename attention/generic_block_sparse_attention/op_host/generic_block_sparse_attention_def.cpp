@@ -118,7 +118,7 @@ public:
         this->Attr("win_left").AttrType(OPTIONAL).Int(-1);
         this->Attr("win_right").AttrType(OPTIONAL).Int(-1);
         this->Attr("return_softmax_lse").AttrType(OPTIONAL).Int(0);
-        this->Attr("residual_block_mode").AttrType(OPTIONAL).Int(1);
+        this->Attr("residual_block_mode").AttrType(OPTIONAL).Int(0);
         this->Attr("is_consistent_topk").AttrType(OPTIONAL).Bool(false);
         this->AICore().AddConfig("ascend910b");
         this->AICore().AddConfig("ascend910_93");

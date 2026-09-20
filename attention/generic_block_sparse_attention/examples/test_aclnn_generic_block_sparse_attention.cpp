@@ -268,8 +268,8 @@ int main()
     uint64_t metadataWorkspaceSize = 0;
     aclOpExecutor *metadataExecutor = nullptr;
     ret = aclnnGenericBlockSparseAttentionMetadataGetWorkspaceSize(
-        sparseIdx, sparseCount, cuSeqQ, nullptr, nullptr, sequsedKv, S1, S2, N1, N2, D, blockShape, layoutQ,
-        layoutKv, 4, 1, 0, 1, -1, -1, 1, false, metadata, &metadataWorkspaceSize, &metadataExecutor);
+        sparseIdx, sparseCount, cuSeqQ, nullptr, nullptr, sequsedKv, S1, S2, N1, N2, D, blockShape, layoutQ, layoutKv,
+        4, 1, 0, 1, -1, -1, 0, false, metadata, &metadataWorkspaceSize, &metadataExecutor);
     CHECK_RET(ret == ACL_SUCCESS,
               LOG_PRINT("aclnnGenericBlockSparseAttentionMetadataGetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);
@@ -295,7 +295,7 @@ int main()
     ret = aclnnGenericBlockSparseAttentionGetWorkspaceSize(
         q, k, v, sparseIdx, sparseCount, metadata, nullptr, nullptr, nullptr, nullptr, nullptr, cuSeqQ, nullptr,
         nullptr, sequsedKv, blockTable, blockShape, layoutQ, layoutKv, layoutSparse, scaleValue, 1, 0, 0.0, 1, -1, -1,
-        0, 1, false, attnOut, nullptr, &workspaceSize, &executor);
+        0, 0, false, attnOut, nullptr, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS,
               LOG_PRINT("aclnnGenericBlockSparseAttentionGetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);

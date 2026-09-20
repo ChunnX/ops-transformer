@@ -86,7 +86,7 @@ std::vector<gert::InfershapeContextPara::OpAttr> MakeAttrs(int64_t returnLse, co
         {"win_left", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
         {"win_right", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<int64_t>(returnLse)},
-        {"residual_block_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+        {"residual_block_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         {"is_consistent_topk", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
     };
 }

@@ -43,7 +43,7 @@ struct ScheduleInput {
     int64_t blockIndexStride = 0;
     int64_t qBlockStorageNum = 0;
     int64_t isPackedGQA = 1;
-    int64_t residualBlockMode = 1;
+    int64_t residualBlockMode = 0;
     int64_t isConsistentTopk = 0;
     int64_t aicCoreNum = 0;
     std::vector<int64_t> qSeqLens; // seqUsed/cuQLens/maxQLen

@@ -81,7 +81,6 @@ constexpr int ATTR_RESIDUAL_BLOCK_MODE_INDEX = 12;
 constexpr int ATTR_IS_CONSISTENT_TOPK_INDEX = 13;
 
 constexpr int64_t GBSA_RESIDUAL_BLOCK_MODE_NONE = 0;
-constexpr int64_t GBSA_RESIDUAL_BLOCK_MODE_ALL = 1;
 constexpr int64_t GBSA_LAYOUT_SPARSE_KVN_TOTALQB_KB = 4;
 
 constexpr uint32_t SOC_VER_950_CODE = 4;
@@ -204,8 +203,7 @@ ge::graphStatus GBSATiling::ParseCapabilityAttrs(gert::TilingContext *context)
         layoutSparsePattern_ = *layoutSparsePtr;
     }
     if (layoutSparsePattern_ != GBSA_LAYOUT_SPARSE_KVN_TOTALQB_KB) {
-        OP_LOGE(context->GetNodeName(),
-                "Unsupported layout_sparse_pattern=%ld, only 4 (KVN_TotalQB_KB) is supported.",
+        OP_LOGE(context->GetNodeName(), "Unsupported layout_sparse_pattern=%ld, only 4 (KVN_TotalQB_KB) is supported.",
                 layoutSparsePattern_);
         return ge::GRAPH_FAILED;
     }
@@ -214,9 +212,8 @@ ge::graphStatus GBSATiling::ParseCapabilityAttrs(gert::TilingContext *context)
     if (residualModePtr != nullptr) {
         residualBlockMode_ = *residualModePtr;
     }
-    if (residualBlockMode_ != GBSA_RESIDUAL_BLOCK_MODE_NONE && residualBlockMode_ != GBSA_RESIDUAL_BLOCK_MODE_ALL) {
-        OP_LOGE(context->GetNodeName(),
-                "Unsupported residual_block_mode=%ld, only 0 (none) or 1 (select all residual tokens) are supported.",
+    if (residualBlockMode_ != GBSA_RESIDUAL_BLOCK_MODE_NONE) {
+        OP_LOGE(context->GetNodeName(), "Unsupported residual_block_mode=%ld, only 0 is supported.",
                 residualBlockMode_);
         return ge::GRAPH_FAILED;
     }

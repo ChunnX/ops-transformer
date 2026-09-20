@@ -35,7 +35,6 @@ constexpr int64_t GBSA_CURRENT_BLOCK_SHAPE_X = 1;
 constexpr int64_t GBSA_CURRENT_BLOCK_SHAPE_Y = 128;
 constexpr int64_t GBSA_LAYOUT_SPARSE_KVN_TOTALQB_KB = 4;
 constexpr int64_t GBSA_RESIDUAL_BLOCK_MODE_NONE = 0;
-constexpr int64_t GBSA_RESIDUAL_BLOCK_MODE_ALL = 1;
 constexpr int64_t GBSA_CURRENT_MAX_SPARSE_BLOCK_COUNT = 256;
 constexpr int64_t GBSA_QUANT_TYPE_NONE = 0;
 constexpr int64_t GBSA_QUANT_TYPE_FLOAT8 = 5;
@@ -265,8 +264,7 @@ aclnnStatus CheckGbsaSparseTensorShapes(const aclTensor *sparseBlockIdx, const a
                                         int64_t maxQSeqLen, int64_t numQHeads, int64_t numKvHeads, int64_t blockShapeX,
                                         int64_t layoutSparsePattern, const char *qInputLayout, int64_t batch)
 {
-    const int64_t sparseHeads =
-        layoutSparsePattern == GBSA_LAYOUT_SPARSE_KVN_TOTALQB_KB ? numKvHeads : numQHeads;
+    const int64_t sparseHeads = layoutSparsePattern == GBSA_LAYOUT_SPARSE_KVN_TOTALQB_KB ? numKvHeads : numQHeads;
     if (GbsaIsLayout(qInputLayout, "TND")) {
         if (CheckGbsaTensorDim(sparseBlockIdx, GBSA_TND_SPARSE_BLOCK_IDX_DIM_NUM, "sparseBlockIdx") != ACLNN_SUCCESS ||
             CheckGbsaTensorDim(sparseBlockCount, GBSA_TND_SPARSE_BLOCK_COUNT_DIM_NUM, "SparseBlockCount") !=
@@ -385,10 +383,9 @@ aclnnStatus CheckGbsaPlatformAttrs(int64_t quantType, int64_t softmaxPrecision, 
 
 aclnnStatus CheckGbsaResidualBlockMode(int64_t residualBlockMode)
 {
-    if (residualBlockMode != GBSA_RESIDUAL_BLOCK_MODE_NONE && residualBlockMode != GBSA_RESIDUAL_BLOCK_MODE_ALL) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "residual_block_mode only supports %lld (none) or %lld (select all residual tokens), but got %lld.",
-                GBSA_RESIDUAL_BLOCK_MODE_NONE, GBSA_RESIDUAL_BLOCK_MODE_ALL, residualBlockMode);
+    if (residualBlockMode != GBSA_RESIDUAL_BLOCK_MODE_NONE) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "residual_block_mode only supports %lld, but got %lld.",
+                GBSA_RESIDUAL_BLOCK_MODE_NONE, residualBlockMode);
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
@@ -426,11 +423,11 @@ aclnnStatus CheckGbsaMetadataParams(const aclTensor *sparseBlockIdx, const aclTe
                                     const aclTensor *cuSeqLengthsOptional, const aclTensor *cuSeqLengthsKvOptional,
                                     const aclTensor *seqUsedQOptional, const aclTensor *seqUsedKvOptional,
                                     int64_t maxQSeqLen, int64_t maxKvSeqLen, int64_t numQHeads, int64_t numKvHeads,
-                                    int64_t headDim, int64_t blockShapeX, int64_t blockShapeY,
-                                    const char *qInputLayout, const char *kvInputLayout, int64_t layoutSparsePattern,
-                                    int64_t maskType, int64_t quantType, int64_t softmaxPrecision,
-                                    int64_t windowSizeLeft, int64_t windowSizeRight, int64_t residualBlockMode,
-                                    bool isArch35, const aclTensor *metadata)
+                                    int64_t headDim, int64_t blockShapeX, int64_t blockShapeY, const char *qInputLayout,
+                                    const char *kvInputLayout, int64_t layoutSparsePattern, int64_t maskType,
+                                    int64_t quantType, int64_t softmaxPrecision, int64_t windowSizeLeft,
+                                    int64_t windowSizeRight, int64_t residualBlockMode, bool isArch35,
+                                    const aclTensor *metadata)
 {
     aclnnStatus status = CheckGbsaRequiredInputs(sparseBlockIdx, sparseBlockCount, metadata);
     if (status != ACLNN_SUCCESS) {

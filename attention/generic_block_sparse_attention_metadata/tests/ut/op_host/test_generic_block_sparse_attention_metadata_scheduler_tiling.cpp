@@ -435,7 +435,7 @@ TEST_F(GenericBlockSparseAttentionMetadataSchedulerTest, MetadataEncoding)
 TEST_F(GenericBlockSparseAttentionMetadataSchedulerTest, ScheduleInputDefaultsMatchInterface)
 {
     ScheduleInput input;
-    EXPECT_EQ(input.residualBlockMode, 1);
+    EXPECT_EQ(input.residualBlockMode, 0);
     EXPECT_EQ(input.isConsistentTopk, 0);
 }
 
@@ -448,21 +448,22 @@ TEST_F(GenericBlockSparseAttentionMetadataSchedulerTest, ConfigSignatureTracksRe
     EXPECT_EQ(baseSignature, CalculateConfigSignature(base));
 
     ScheduleInput residualChanged = MakeDecodeInput();
-    residualChanged.residualBlockMode = 0;
+    residualChanged.residualBlockMode = 1;
     EXPECT_NE(CalculateConfigSignature(residualChanged), baseSignature);
 
     ScheduleInput topkChanged = MakeDecodeInput();
     topkChanged.isConsistentTopk = 1;
     EXPECT_NE(CalculateConfigSignature(topkChanged), baseSignature);
 
-    // The two fields only participate in the signature; the schedule itself must stay identical.
-    ScheduleResult residualResult;
-    ASSERT_EQ(BuildSchedule(residualChanged, residualResult), BSAScheduleStatus::BSA_SUCCESS);
-    EXPECT_EQ(residualResult.saUsedCoreNum, baseResult.saUsedCoreNum);
-    EXPECT_EQ(residualResult.saTotalTaskNum, baseResult.saTotalTaskNum);
-    EXPECT_EQ(residualResult.fdPartialTaskNum, baseResult.fdPartialTaskNum);
-    EXPECT_EQ(residualResult.combineTaskNum, baseResult.combineTaskNum);
-    EXPECT_NE(residualResult.configSignature, baseSignature);
+    // The reserved topk flag affects the signature, but not scheduling.
+    ScheduleResult topkResult;
+    ASSERT_EQ(BuildSchedule(topkChanged, topkResult), BSAScheduleStatus::BSA_SUCCESS);
+    EXPECT_EQ(topkResult.blockPrefix, baseResult.blockPrefix);
+    EXPECT_EQ(topkResult.saUsedCoreNum, baseResult.saUsedCoreNum);
+    EXPECT_EQ(topkResult.saTotalTaskNum, baseResult.saTotalTaskNum);
+    EXPECT_EQ(topkResult.fdPartialTaskNum, baseResult.fdPartialTaskNum);
+    EXPECT_EQ(topkResult.combineTaskNum, baseResult.combineTaskNum);
+    EXPECT_NE(topkResult.configSignature, baseSignature);
 }
 
 } // namespace
