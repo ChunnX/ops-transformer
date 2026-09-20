@@ -1864,8 +1864,8 @@ TEST_F(MoeDistributeCombineV2Arch22TilingTest, A3_Hierarchy)
          {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
         &compileInfo, "Ascend910_93", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 32}};
-    // ep=32跨超场景: hierarchy窗口需求超过默认HCCL_BUFFSIZE, 期望失败
-    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
+    // 窗口大小由kernel校验，tiling仅计算理论需求。
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, 28UL);
 }
 
 TEST_F(MoeDistributeCombineV2Arch22TilingTest, A3HierarchyVariableBsSuccess)
