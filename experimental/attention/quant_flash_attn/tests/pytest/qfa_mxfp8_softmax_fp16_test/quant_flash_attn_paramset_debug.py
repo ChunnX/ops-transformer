@@ -15,6 +15,32 @@ from quant_flash_attn_paramset_common import expand_paramset_to_cases
 # 调度覆盖验证用例（kernel 层核间流水，32 AIC + 64 AIV，S1/S2 base=256）
 # 命名沿用主线 QS<seqused_q>_KVS<seqused_kv> 惯例
 TEST_PARAMS = {
+    # 全 1 调试：Q/K/V 恒为 1（offset=1, range=0 → 上下限都是 1）。
+    # 期望输出精确全 1：score 全等 → softmax 均匀 → 输出 = V 均值 = 1（bf16/fp8/e8m0 全精确）。
+    # 任何偏离 1 的输出直接暴露错误环节（带结构性偏差可定位到具体段）
+    "BNSD_B1_QS256_KVS256_Nq1_Nkv1_D128_qm3_ones": {
+        "B": [1],
+        "N_q": [1],
+        "N_kv": [1],
+        "D": [128],
+        "cu_seqlens_q": [None],
+        "cu_seqlens_kv": [None],
+        "seqused_q": [[256]],
+        "seqused_kv": [[256]],
+        "enable_pa": [False],
+        "kv_cache_layout": [None],
+        "block_size": [None],
+        "mask_mode": [0],
+        "q_scale_layout": ["BNSD"],
+        "p_scale": [1.0],
+        "enable_lse": [False],
+        "data_range_q": [0.0],
+        "data_range_k": [0.0],
+        "data_range_v": [0.0],
+        "data_offset_q": [1.0],
+        "data_offset_k": [1.0],
+        "data_offset_v": [1.0],
+    },
     # smoke：单行单块，S1/S2 各 256（恰好一个 base 块）
     "BNSD_B1_QS256_KVS256_Nq1_Nkv1_D128_qm3": {
         "B": [1],

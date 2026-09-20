@@ -70,6 +70,12 @@ DATA_RANGE_V = 1.0
 DATA_RANGE_QR = 1.0
 DATA_RANGE_KR = 1.0
 
+# 数据偏置：value = offset + (rand*2-1)*range，上下限 = [offset-range, offset+range]。
+# offset=1 且 range=0 → 恒为 1（全 1 调试用例：score 全等 → softmax 均匀 → 输出精确全 1）
+DATA_OFFSET_Q = 0.0
+DATA_OFFSET_K = 0.0
+DATA_OFFSET_V = 0.0
+
 ENABLE_LSE = False
 DEVICE_ID = 0
 IS_CONTIGUOUS = True
@@ -168,11 +174,11 @@ def generate_data():
     max_skv = MAX_SEQLEN_KV if (MAX_SEQLEN_KV is not None and MAX_SEQLEN_KV > 0) else max(_get_seqused_kv())
 
     torch.manual_seed(SEED_Q)
-    q_fp16 = (torch.rand(B, N_q, max_sq, D, dtype=torch.float16) * 2 - 1) * DATA_RANGE_Q
+    q_fp16 = DATA_OFFSET_Q + (torch.rand(B, N_q, max_sq, D, dtype=torch.float16) * 2 - 1) * DATA_RANGE_Q
     torch.manual_seed(SEED_K)
-    k_fp16 = (torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1) * DATA_RANGE_K
+    k_fp16 = DATA_OFFSET_K + (torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1) * DATA_RANGE_K
     torch.manual_seed(SEED_V)
-    v_fp16 = (torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1) * DATA_RANGE_V
+    v_fp16 = DATA_OFFSET_V + (torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1) * DATA_RANGE_V
 
     q_scale = _get_qk_block_scale(q_fp16.float())
     k_scale = _get_qk_block_scale(k_fp16.float())
