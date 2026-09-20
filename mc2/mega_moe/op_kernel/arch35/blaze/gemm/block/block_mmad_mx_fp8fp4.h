@@ -19,7 +19,7 @@
 #include "kernel_basic_intf.h"
 #include "blaze/gemm/block/block_mmad.h"
 #include "tensor_api/tensor.h"
-#include "blaze/gemm/utils/common_utils_mega_moe.h"
+#include "../utils/common_utils_mega_moe.h"
 #include "mega_moe_tiling.h"
 
 namespace Blaze {

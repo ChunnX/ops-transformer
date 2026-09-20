@@ -94,7 +94,7 @@
 #include "blaze/gemm/tile/shift_w4_to_w8.h"
 #include "blaze/gemm/tile/copy_weight_ub_to_l1.h"
 #include "block_prologue.h"
-#include "blaze/gemm/utils/common_utils_mega_moe.h"
+#include "../gemm/utils/common_utils_mega_moe.h"
 #include "mega_moe_tiling.h"
 
 namespace Blaze {
