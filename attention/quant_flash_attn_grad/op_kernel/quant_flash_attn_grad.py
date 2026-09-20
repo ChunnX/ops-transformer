@@ -681,6 +681,26 @@ def free_event_id():
         )
 
 
+def deter_empty_round_barrier():
+    """Pass through one dQ uniqueness barrier without writing.
+
+    Swizzle uniqueness is per outer 512 tile (s1o), not per inner 128 slice.
+    FAG does one INTER_BLOCK wait+set per round; matching that keeps idle
+    cores in lockstep without 4x bubbles on every 128 writeback.
+    """
+    with pl.section_vector():
+        pl.system.wait_cross_core(
+            pipe=pl.PipeType.MTE3,
+            event_id=SYNC_DETER_FLAG,
+            sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
+        )
+        pl.system.set_cross_core(
+            pipe=pl.PipeType.MTE3,
+            event_id=SYNC_DETER_FLAG,
+            sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
+        )
+
+
 def cal_dense_index_for_single_n(k, m, b, j, r, R, coordinate):
     n = 1
     id_ = (j - 1) * R + r
@@ -3471,19 +3491,24 @@ def process_first_s2(
     with pl.section_vector():
         if not last_run_info.is_dq_completed:
             set_quant_run_info(last_run_info, kv_inner_id, 2)
-            pl.system.wait_cross_core(
-                pipe=pl.PipeType.MTE3,
-                event_id=SYNC_DETER_FLAG,
-                sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
-            )
+            # One INTER_BLOCK per outer tile: wait before the first 128 dQ
+            # writeback, set after the last. Inner slices belong to the same
+            # s1o and the same core, so they do not need extra uniqueness.
+            if kv_inner_id == 0:
+                pl.system.wait_cross_core(
+                    pipe=pl.PipeType.MTE3,
+                    event_id=SYNC_DETER_FLAG,
+                    sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
+                )
 
             if last_run_info.s1_idx < last_run_info.inner_s1_loop_num:
                 copy_dqkv2gm(False, last_run_info, const_info, tensor_info)
-            pl.system.set_cross_core(
-                pipe=pl.PipeType.MTE3,
-                event_id=SYNC_DETER_FLAG,
-                sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
-            )
+            if kv_inner_id == 3:
+                pl.system.set_cross_core(
+                    pipe=pl.PipeType.MTE3,
+                    event_id=SYNC_DETER_FLAG,
+                    sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
+                )
             pl.system.set_cross_core(
                 pipe=pl.PipeType.MTE3,
                 event_id=SYNC_TRANSFER_DQ_FLAG,
@@ -3556,6 +3581,12 @@ def drain_pending_task(run_info, const_info, tensor_info, tmp_info):
             )
 
     if not run_info.is_dq_completed:
+        with pl.section_vector():
+            pl.system.wait_cross_core(
+                pipe=pl.PipeType.MTE3,
+                event_id=SYNC_DETER_FLAG,
+                sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
+            )
         for i in pl.range(4):
             set_quant_run_info(run_info, i, 0)
             process_dq(
@@ -3567,11 +3598,6 @@ def drain_pending_task(run_info, const_info, tensor_info, tmp_info):
             )
             compute_dq(run_info, const_info, tensor_info)
             with pl.section_vector():
-                pl.system.wait_cross_core(
-                    pipe=pl.PipeType.MTE3,
-                    event_id=SYNC_DETER_FLAG,
-                    sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
-                )
                 if (
                     run_info.s1_idx
                     < run_info.inner_s1_loop_num
@@ -3581,27 +3607,17 @@ def drain_pending_task(run_info, const_info, tensor_info, tmp_info):
                     )
                 pl.system.set_cross_core(
                     pipe=pl.PipeType.MTE3,
-                    event_id=SYNC_DETER_FLAG,
-                    sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
-                )
-                pl.system.set_cross_core(
-                    pipe=pl.PipeType.MTE3,
                     event_id=SYNC_TRANSFER_DQ_FLAG,
                     sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK,
                 )
-    else:
         with pl.section_vector():
-            for i in pl.range(4):
-                pl.system.wait_cross_core(
-                    pipe=pl.PipeType.MTE3,
-                    event_id=SYNC_DETER_FLAG,
-                    sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
-                )
-                pl.system.set_cross_core(
-                    pipe=pl.PipeType.MTE3,
-                    event_id=SYNC_DETER_FLAG,
-                    sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
-                )
+            pl.system.set_cross_core(
+                pipe=pl.PipeType.MTE3,
+                event_id=SYNC_DETER_FLAG,
+                sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
+            )
+    else:
+        deter_empty_round_barrier()
     run_info.is_dkv_completed = True
     run_info.is_dq_completed = True
 
@@ -4737,21 +4753,10 @@ def quant_flash_attn_grad(
         # with pl.section_cube():
         #     pl.printf("wenyu check3 next_valid_loop_idx : %d next_block_idx : %d is_valid_block : %d \n", next_valid_loop_idx, next_block_idx, is_valid_block)
         if is_valid_block:
-            # A gap may have already drained the previous task. Match the four
-            # writeback slots even when this core has no pending dQ.
+            # A gap may have already drained the previous task. Match the
+            # single dQ uniqueness barrier even when this core has no pending dQ.
             if loop_idx > 0 and run_infos[(task_id + 1) % 2].is_dq_completed:
-                with pl.section_vector():
-                    for j in pl.range(4):
-                        pl.system.wait_cross_core(
-                            pipe=pl.PipeType.MTE3,
-                            event_id=SYNC_DETER_FLAG,
-                            sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
-                        )
-                        pl.system.set_cross_core(
-                            pipe=pl.PipeType.MTE3,
-                            event_id=SYNC_DETER_FLAG,
-                            sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
-                        )
+                deter_empty_round_barrier()
             set_run_info(
                 run_infos[task_id % 2],
                 run_infos[(task_id + 1) % 2],
@@ -4783,19 +4788,8 @@ def quant_flash_attn_grad(
                         const_info, tensor_info, tmp_info[0],
                     )
             else:
-                with pl.section_vector():
-                    if loop_idx > 0:
-                        for j in pl.range(4):
-                            pl.system.wait_cross_core(
-                                pipe=pl.PipeType.MTE3,
-                                event_id=SYNC_DETER_FLAG,
-                                sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
-                            )
-                            pl.system.set_cross_core(
-                                pipe=pl.PipeType.MTE3,
-                                event_id=SYNC_DETER_FLAG,
-                                sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
-                            )
+                if loop_idx > 0:
+                    deter_empty_round_barrier()
         if is_valid_block:
             task_id += 1
 
