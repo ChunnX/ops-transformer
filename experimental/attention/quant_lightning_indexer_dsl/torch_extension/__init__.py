@@ -26,4 +26,8 @@ ds41.quant_lightning_indexer = (
     torch.ops.cann_ops_transformer.ds41.quant_lightning_indexer
 )
 
+ds41.quant_lightning_indexer_metadata = (
+    torch.ops.cann_ops_transformer.ds41.quant_lightning_indexer_metadata
+)
+
 __all__ = ["ds41"]

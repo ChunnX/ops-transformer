@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import copy
 import gc
 import sys
 from itertools import product
 from pathlib import Path
 
 import pytest
+from qsli_test_utils import generate_qsli_test_data, run_qsli_case, compare_qsli_case
+from quant_sparse_lightning_indexer_golden import pack_candidate_k
 import torch
 import torch_npu
 
@@ -378,9 +381,18 @@ def _flatten_full_golden(golden: dict[str, torch.Tensor]) -> dict[str, torch.Ten
 def _invoke_operator(
     npu: dict[str, torch.Tensor], query_length: int, cmp_ratio: int
 ):
+    metadata = torch.ops.cann_ops_transformer.ds41.quant_sparse_lightning_indexer_metadata(
+        npu["candidate_length"],
+        cu_seqlens_q=npu["cu"], seqused_q=npu["used_q"], seqused_k=npu["used_k"],
+        cmp_residual_k=npu["residual"], max_seqlen_q=query_length,
+        max_seqlen_k=npu["block_table"].shape[1] * npu["k"].shape[1],
+        num_heads_q=N1, num_heads_k=N2, head_dim=PACKED_D * 2,
+        topk=TOPK, mask_mode=3, cmp_ratio=cmp_ratio, quant_mode=1,
+        candidate_block_size=CANDIDATE_BLOCK_SIZE, layout_k="PA_BBND",
+    )
     return quant_sparse_lightning_indexer(
-        npu["q"], npu["k"], npu["weights"],
-        npu["descale_q"], npu["descale_k"],
+        npu["q"], pack_candidate_k(npu["k"], npu["descale_k"]), npu["weights"],
+        npu["descale_q"],
         npu["candidate"], npu["candidate_length"],
         TOPK, 1, CANDIDATE_BLOCK_SIZE,
         cu_seqlens_q=npu["cu"],
@@ -389,6 +401,8 @@ def _invoke_operator(
         cmp_residual_k=npu["residual"],
         block_table=npu["block_table"],
         output_idx_offset=npu["offset"],
+        metadata=metadata,
+        layout_k="PA_BBND",
         max_seqlen_q=query_length,
         mask_mode=3,
         cmp_ratio=cmp_ratio,
@@ -431,8 +445,8 @@ def test_qsli_decode_cross_precision(
         batch, s2, cmp_ratio, query_length=1, storage_mode=storage_mode
     )
     golden = quant_sparse_lightning_indexer_golden(
-        case["q"], case["k"], case["weights"],
-        case["descale_q"], case["descale_k"],
+        case["q"], pack_candidate_k(case["k"], case["descale_k"]), case["weights"],
+        case["descale_q"],
         case["candidate"], case["candidate_length"],
         cu_seqlens_q=case["cu"], seqused_q=case["used_q"],
         seqused_k=case["used_k"], cmp_residual_k=case["residual"],
@@ -469,8 +483,8 @@ def test_qsli_prefill_cross_precision(
             (begin, begin + PREFILL_QUERY_LENGTH // 2, begin + PREFILL_QUERY_LENGTH - 1)
         )
     golden = quant_sparse_lightning_indexer_golden_selected(
-        case["q"], case["k"], case["weights"],
-        case["descale_q"], case["descale_k"],
+        case["q"], pack_candidate_k(case["k"], case["descale_k"]), case["weights"],
+        case["descale_q"],
         case["candidate"], case["candidate_length"], selected_rows,
         cu_seqlens_q=case["cu"], seqused_q=case["used_q"],
         seqused_k=case["used_k"], cmp_residual_k=case["residual"],
@@ -521,8 +535,8 @@ def test_qsli_requested_shape_precision(
                 for offset in _selected_query_offsets(query_length, s2)
             )
     golden = quant_sparse_lightning_indexer_golden_selected(
-        case["q"], case["k"], case["weights"],
-        case["descale_q"], case["descale_k"],
+        case["q"], pack_candidate_k(case["k"], case["descale_k"]), case["weights"],
+        case["descale_q"],
         case["candidate"], case["candidate_length"], selected_rows,
         cu_seqlens_q=case["cu"], seqused_q=case["used_q"],
         seqused_k=case["used_k"], cmp_residual_k=None,
@@ -567,8 +581,8 @@ def test_qsli_invalid_query_and_minus_one_precision():
     case["candidate_length"][candidate_empty_row, 0] = 0
 
     golden = quant_sparse_lightning_indexer_golden(
-        case["q"], case["k"], case["weights"],
-        case["descale_q"], case["descale_k"],
+        case["q"], pack_candidate_k(case["k"], case["descale_k"]), case["weights"],
+        case["descale_q"],
         case["candidate"], case["candidate_length"],
         cu_seqlens_q=case["cu"], seqused_q=case["used_q"],
         seqused_k=case["used_k"], cmp_residual_k=None,
@@ -599,8 +613,8 @@ def test_qsli_invalid_query_and_minus_one_precision():
 def test_qsli_independent_dim0_stride_precision(storage_mode: str):
     case = _make_case(2, 1024, 2, query_length=1, storage_mode=storage_mode)
     golden = quant_sparse_lightning_indexer_golden(
-        case["q"], case["k"], case["weights"],
-        case["descale_q"], case["descale_k"],
+        case["q"], pack_candidate_k(case["k"], case["descale_k"]), case["weights"],
+        case["descale_q"],
         case["candidate"], case["candidate_length"],
         cu_seqlens_q=case["cu"], seqused_q=case["used_q"],
         seqused_k=case["used_k"], cmp_residual_k=case["residual"],
@@ -634,8 +648,8 @@ def test_qsli_partial_s2_tail_precision(
         case["residual"] if mask_mode == 3 and cmp_ratio != 1 else None
     )
     golden = quant_sparse_lightning_indexer_golden(
-        case["q"], case["k"], case["weights"],
-        case["descale_q"], case["descale_k"],
+        case["q"], pack_candidate_k(case["k"], case["descale_k"]), case["weights"],
+        case["descale_q"],
         case["candidate"], case["candidate_length"],
         cu_seqlens_q=case["cu"], seqused_q=case["used_q"],
         seqused_k=case["used_k"], cmp_residual_k=residual,
@@ -646,8 +660,8 @@ def test_qsli_partial_s2_tail_precision(
     )
     npu = _npu_arguments(case)
     actual_outputs = quant_sparse_lightning_indexer(
-        npu["q"], npu["k"], npu["weights"],
-        npu["descale_q"], npu["descale_k"],
+        npu["q"], pack_candidate_k(npu["k"], npu["descale_k"]), npu["weights"],
+        npu["descale_q"],
         npu["candidate"], npu["candidate_length"],
         TOPK, 1, CANDIDATE_BLOCK_SIZE,
         cu_seqlens_q=npu["cu"], seqused_q=npu["used_q"],
@@ -706,3 +720,83 @@ def test_qsli_rejects_inner_axis_noncontiguous(input_name: str):
         npu["descale_k"] = storage[..., ::2]
     with pytest.raises(ValueError, match="only supports non-contiguous storage on axis 0"):
         _invoke_operator(npu, query_length=1, cmp_ratio=1)
+
+
+@pytest.mark.npu
+@pytest.mark.parametrize("page", [64, 128])
+@pytest.mark.parametrize("mask", [0, 3])
+@pytest.mark.parametrize("ratio", [1, 2])
+@pytest.mark.parametrize("offset", [False, True])
+def test_packed_k_static_combinations(page, mask, ratio, offset):
+    case = generate_qsli_test_data(dict(
+        batch_size=1, query_length=4, sequence_length=8191,
+        block_size=page, block_num=(8191 + page - 1) // page,
+        mask_mode=mask, cmp_ratio=ratio, topk=512,
+        candidate_block_length=[[0], [1], [17], [1024]],
+        cmp_residual_k=[0] if mask == 3 and ratio != 1 else None,
+        output_idx_offset=offset,
+        storage_mode="dim0_noncontiguous" if offset else "contiguous",
+        return_value=True, seed=20260917,
+    ))
+    assert case["tensors"]["k"].shape[1:] == (page // 8, 544)
+    assert "descale_k" not in case["tensors"]
+    for return_value in (True, False):
+        case["params"]["return_value"] = return_value
+        for _ in range(2):
+            actual = run_qsli_case(case)
+            compare_qsli_case(case, actual)
+
+
+@pytest.fixture(scope="module")
+def batch_level():
+    previous = torch_npu.npu._get_deterministic_level()
+    try:
+        try:
+            torch_npu.npu.set_deterministic_level(3)
+            torch.ones(1, device="npu")
+            torch.npu.synchronize()
+        except RuntimeError as error:
+            if "deterministic" not in str(error).lower():
+                raise
+            pytest.skip("The installed runtime does not support deterministic level 3")
+        yield
+    finally:
+        torch_npu.npu.set_deterministic_level(previous)
+
+
+@pytest.mark.npu
+@pytest.mark.parametrize("page", [64, 128])
+def test_batch_consistency(page, batch_level):
+    torch_npu.npu.set_deterministic_level(3)
+    import ops.quant_sparse_lightning_indexer_dsl as impl
+    case = generate_qsli_test_data(dict(
+        batch_size=1, query_length=6, sequence_length=8192,
+        block_size=page, block_num=8192 // page, mask_mode=3, cmp_ratio=2,
+        topk=512, cmp_residual_k=[0], return_value=True, seed=20260918,
+    ))
+    reference = run_qsli_case(case)
+    compare_qsli_case(case, reference)
+    compiled = dict(impl._COMPILED_KERNEL)
+    for batch in (1, 2, 12, 32):
+        expanded = copy.deepcopy(case)
+        expanded["params"].update(batch_size=batch, q_t_size=batch * 6)
+        for name in ("q", "weights", "descale_q", "candidate", "candidate_length",
+                     "used_q", "used_k", "residual", "block_table", "offset"):
+            value = expanded["tensors"].get(name)
+            if value is not None:
+                expanded["tensors"][name] = value.repeat((batch,) + (1,) * (value.ndim - 1))
+        expanded["tensors"]["cu"] = torch.arange(batch + 1, dtype=torch.int32) * 6
+        expanded["tensors"]["cu_k"] = torch.arange(batch + 1, dtype=torch.int32) * 8192
+        actual = run_qsli_case(expanded)
+        for name in ("sparse_indices", "sparse_values"):
+            expected = reference[name].repeat((batch,) + (1,) * (reference[name].ndim - 1))
+            assert torch.equal(actual[name].view(torch.uint8), expected.view(torch.uint8)), (page, batch, name)
+        assert compiled.keys() == impl._COMPILED_KERNEL.keys()
+        assert all(impl._COMPILED_KERNEL[key] is value for key, value in compiled.items())
+    # Both runtime branches must reuse exactly the same compiled executable.
+    torch_npu.npu.set_deterministic_level(0)
+    ordinary = run_qsli_case(case)
+    for name in reference:
+        assert torch.equal(ordinary[name].view(torch.uint8), reference[name].view(torch.uint8))
+    assert compiled.keys() == impl._COMPILED_KERNEL.keys()
+    assert all(impl._COMPILED_KERNEL[key] is value for key, value in compiled.items())
