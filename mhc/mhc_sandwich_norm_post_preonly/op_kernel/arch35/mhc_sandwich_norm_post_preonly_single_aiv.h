@@ -13,8 +13,8 @@
 
 // 构造一个低精度x2_post分块。R1使用normEps_，R2保持h_res的[j,n]索引顺序，
 // 并显式保留设计规定的两处低精度往返边界。
-template<typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32>
-__aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32>::ComputeX2PostTile(
+template<typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
+__aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ComputeX2PostTile(
     uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
     const float (&postVals)[N_MAX], const float (&combVals)[N_MAX * N_MAX])
 {
@@ -31,8 +31,8 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
 }
 
 // 将完整x2以输出dtype常驻UB，同时完成设计要求的低精度往返；写GM仅用于保留x2_out输出语义。
-template<typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32>
-__aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32>::CacheX2Tile(
+template<typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
+__aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::CacheX2Tile(
     uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput)
 {
     LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
@@ -63,8 +63,37 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     }
 }
 
-template<typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32>
-__aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32>::LoadX2CacheTile(
+// 双sibling路径仍在每个lane的私有UB中保留完整x2，便于两个lane按同一顺序执行R1/R2/R3；
+// 写回x2_out时每个lane只写自己负责的两个head，避免任何输出竞争。
+template<typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
+__aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::CacheX2TileForLane(
+    uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput)
+{
+    LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
+    LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
+    const uint64_t outBase = (uint64_t)token * N_ * D_ + tOff;
+
+    for (uint32_t n = 0; n < N_MAX; ++n) {
+        CastToIO(x2Cache[n * D_ + tOff], x2[n * dimTile_], tD);
+    }
+    PipeBarrier<PIPE_V>();
+    for (uint32_t n = 0; n < N_MAX; ++n) {
+        Cast(x2[n * dimTile_], x2Cache[n * D_ + tOff], RoundMode::CAST_NONE, tD);
+    }
+    PipeBarrier<PIPE_V>();
+
+    if (writeOutput) {
+        SetFlag<HardEvent::V_MTE3>(evtVtoMte3_);
+        WaitFlag<HardEvent::V_MTE3>(evtVtoMte3_);
+        const uint32_t headBegin = laneId_ * 2U;
+        for (uint32_t n = headBegin; n < headBegin + 2U; ++n) {
+            DataCopy(x2OutGm_[outBase + (uint64_t)n * D_], x2Cache[n * D_ + tOff], tD);
+        }
+    }
+}
+
+template<typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
+__aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::LoadX2CacheTile(
     uint32_t tOff, uint32_t tD)
 {
     LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
@@ -77,8 +106,8 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
 
 // R6读取完当前x2分块后，首个head的对应缓存区已经不会再被使用，
 // 将其复用为低精度h_in缓存，保留量化往返边界并避免GM临时写回。
-template<typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32>
-__aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32>::CacheHInTile(
+template<typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
+__aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::CacheHInTile(
     uint32_t tOff, uint32_t tD, LocalTensor<float> hIn)
 {
     LocalTensor<T> hInCache = bufX2Cache_.Get<T>()[tOff];
@@ -88,8 +117,8 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     PipeBarrier<PIPE_V>();
 }
 
-template<typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32>
-__aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32>::LoadHInCacheTile(
+template<typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
+__aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::LoadHInCacheTile(
     uint32_t tOff, uint32_t tD, LocalTensor<float> hIn)
 {
     LocalTensor<T> hInCache = bufX2Cache_.Get<T>()[tOff];
@@ -99,9 +128,10 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
 
 // 固定的R4/R5归约树将与双sibling AIV路径共用。half0固定覆盖展平区间[0,2D)，
 // half1固定覆盖[2D,4D)，调用方只执行一次顶层合并partial0+partial1。
-template<typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32>
-__aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32>::AccumulateHalfPartials(
-    uint32_t tOff, uint32_t tD, float (&sumSqHalf)[2], float (&dotHalf)[2][N_MAX])
+template<typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
+__aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::AccumulateHalfPartials(
+    uint32_t tOff, uint32_t tD, float (&sumSqHalf)[2], float (&dotHalf)[2][N_MAX],
+    uint32_t halfBegin, uint32_t halfEnd)
 {
     LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
     LocalTensor<float> reduceRows = bufResFp32_.Get<float>();
@@ -115,7 +145,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     // 尾块保持逐行归约，完整分块才使用五行批量归约。
     if (tD != dimTile_) {
         LocalTensor<float> out = reduceRows[N_MAX * dimTile_];
-        for (uint32_t half = 0; half < 2; ++half) {
+        for (uint32_t half = halfBegin; half < halfEnd; ++half) {
             const uint32_t h0 = half * 2;
             const uint32_t h1 = h0 + 1;
 
@@ -154,7 +184,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         return;
     }
 
-    for (uint32_t half = 0; half < 2; ++half) {
+    for (uint32_t half = halfBegin; half < halfEnd; ++half) {
         const uint32_t h0 = half * 2;
         const uint32_t h1 = h0 + 1;
 
@@ -202,8 +232,8 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     }
 }
 
-template<typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32>
-__aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32>::ProcessTokenSingleAiv(
+template<typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
+__aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ProcessTokenSingleAiv(
     uint32_t token)
 {
     float postVals[N_MAX];
