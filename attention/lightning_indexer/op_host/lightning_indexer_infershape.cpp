@@ -42,13 +42,13 @@ static ge::graphStatus InferShapeLightningIndexer(gert::InferShapeContext *conte
     gert::Shape *sparseValuesShape = context->GetOutputShape(1);
     OP_CHECK_NULL_WITH_CONTEXT(context, sparseValuesShape);
 
-    auto attrs = context->GetAttrs();
-    OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
-    const char *inputLayoutQueryPtr = attrs->GetAttrPointer<char>(ATTR_QUERY_LAYOUT_INDEX);
+    auto liAttrs = context->GetAttrs();
+    OP_CHECK_NULL_WITH_CONTEXT(context, liAttrs);
+    const char *inputLayoutQueryPtr = liAttrs->GetAttrPointer<char>(ATTR_QUERY_LAYOUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, inputLayoutQueryPtr);
-    const char *inputLayoutKeyPtr = attrs->GetAttrPointer<char>(ATTR_KEY_LAYOUT_INDEX);
+    const char *inputLayoutKeyPtr = liAttrs->GetAttrPointer<char>(ATTR_KEY_LAYOUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, inputLayoutKeyPtr);
-    const int64_t *seleced_count = attrs->GetInt(ATTR_SPARSE_COUNT_INDEX);
+    const int64_t *seleced_count = liAttrs->GetInt(ATTR_SPARSE_COUNT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, seleced_count);
     std::string inputLayoutQueryPtrStr = std::string(inputLayoutQueryPtr);
     std::string inputLayoutKeyPtrStr = std::string(inputLayoutKeyPtr);
@@ -81,8 +81,8 @@ static ge::graphStatus InferShapeLightningIndexer(gert::InferShapeContext *conte
 
     const bool *return_value = attrs->GetAttrPointer<bool>(ATTR_RETURN_VALUE_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, return_value);
-    bool returnValueFlag = (return_value != nullptr) ? *return_value : false;
-    if (returnValueFlag) {
+    bool liReturnValueFlag = (return_value != nullptr) ? *return_value : false;
+    if (liReturnValueFlag) {
         *sparseValuesShape = *sparseIndicesShape;
     } else {
         sparseValuesShape->SetDimNum(1);

@@ -242,7 +242,7 @@ __aicore__ inline uint32_t QuantLightningIndexerKernel<QLIT>::GetTotalBaseBlockN
             totalBlockNum += s1GBaseNum * s2BaseNum * constInfo.kHeadNum;
             continue;
         }
-        for (uint32_t s1gIdx = 0; s1gIdx < s1GBaseNum; s1gIdx++) {
+        for (uint32_t s1gIdx = 0; s1gIdx < s1GBaseNum; ++s1gIdx) {
             s2BaseNum = constInfo.isLDOpen ? GetS2BaseBlockNumOnMask(s1gIdx, actS1Size, actS2SizeOrig) :
                                              (actS2Size > 0 ? 1 : 0);
             totalBlockNum += s2BaseNum * constInfo.kHeadNum;
@@ -534,7 +534,7 @@ __aicore__ inline void QuantLightningIndexerKernel<QLIT>::ProcessMain()
 
     QLICommon::RunInfo runInfo;
     uint32_t gloop = 0;
-    uint32_t qScaleLoop = 0;
+    uint32_t qScaleLoop = 0U;
     for (uint32_t bN2LoopIdx = splitCoreInfo.bN2Start; bN2LoopIdx <= splitCoreInfo.bN2End; bN2LoopIdx++) {
         CalcGS1LoopParams(bN2LoopIdx);
         if (tempLoopInfo.curActSeqLenIsZero) {
@@ -552,7 +552,7 @@ __aicore__ inline void QuantLightningIndexerKernel<QLIT>::ProcessMain()
                 ++gloop;
             }
             ++qScaleLoop;
-            splitCoreInfo.s2Start = 0;
+            splitCoreInfo.s2Start = 0U;
         }
         if (tempLoopInfo.needDealActS1LessThanS1) {
             DealActSeqLenIsZero(tempLoopInfo.bIdx, tempLoopInfo.n2Idx, tempLoopInfo.actS1Size);
