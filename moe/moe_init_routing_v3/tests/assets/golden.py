@@ -852,6 +852,23 @@ def _torch_to_numpy(tensor):
         except (TypeError, RuntimeError):
             import torch
 
+            dtype_name = str(getattr(tensor, "dtype", "")).lower()
+            if any(name in dtype_name for name in ("e4m3", "e5m2", "e8m0")):
+                from ttk.utilities.dtypes import (
+                    numpy_float8_e4m3fn,
+                    numpy_float8_e5m2,
+                    numpy_float8_e8m0,
+                )
+
+                dtype_map = {
+                    "e4m3": numpy_float8_e4m3fn,
+                    "e5m2": numpy_float8_e5m2,
+                    "e8m0": numpy_float8_e8m0,
+                }
+                for name, dtype_fn in dtype_map.items():
+                    if name in dtype_name:
+                        raw = tensor.view(dtype=torch.uint8).numpy().copy()
+                        return raw.view(dtype_fn()).reshape(tuple(tensor.shape))
             return tensor.to(torch.float32).numpy()
     return numpy.asarray(tensor)
 
