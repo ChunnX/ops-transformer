@@ -184,8 +184,13 @@ public:
         uint32_t stateSlot = runInfo.softmaxStateSlot;          // mloop % 3
         uint32_t taskSlot = runInfo.loop % 3U;                  // exp/pscale/pSlot 共用
 
-        // 上轮任务的 P/pscale MTE3 排空后才允许 vf 覆写 vec1PUb（DN L279 同款）
-        WaitFlag<HardEvent::MTE3_V>(EVT_P_COPY);
+        // 上轮任务的 P/pscale MTE3 排空后才允许 vf 覆写 vec1PUb（DN L279 同款）。
+        // ⚠️ 仅任务首（subLoop 0）等待：Set 在每任务末 subLoop 的 epilogue 才发一次，
+        //    若每个 subLoop 都等，子循环 1 将无 Set 可消费 → 死锁（2026-09-20 审计发现）。
+        //    子循环 1 写槽 1 与上任务子循环 0 的 MTE3（槽 0）不同槽，且队列有序已传递保护。
+        if (subLoopIdx == 0U) {
+            WaitFlag<HardEvent::MTE3_V>(EVT_P_COPY);
+        }
 
         // 行首复位 accMax：新 [bN2,gS1] 行的槽位含 3 行前旧值，必须复位为 MIN
         if (runInfo.isFirstS2Loop && subLoopIdx == 0U) {
