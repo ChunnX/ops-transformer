@@ -39,7 +39,7 @@ __aicore__ inline void LoadTokenWeights(uint32_t token, float (&postVals)[N_MAX]
         postVals[i] = hPostUb.GetValue(i);
 }
 
-/// 把一个h_out分块预取到输入队列；双槽允许下一分块MTE2与当前分块Vector重叠。
+/// 把一个h_out分块搬入输入队列。
 __aicore__ inline void PrefetchHOutTile(uint64_t gmOffset, uint32_t tD)
 {
     LocalTensor<T> hBf16 = bufHOutBf16_.AllocTensor<T>();
@@ -69,16 +69,17 @@ __aicore__ inline void LoadResidualAndCast(uint64_t gmBaseOffset, uint32_t tD)
 {
     // Host已固定校验N为4，使用编译期常量便于展开标量循环。
     constexpr uint32_t N = N_MAX;
-    LocalTensor<T> resBf16 = bufResidualBf16_.AllocTensor<T>();
-    for (uint32_t n = 0; n < N; ++n)
-        DataCopy(resBf16[n * dimTile_], residualGm_[gmBaseOffset + (uint64_t)n * D_], tD);
-    bufResidualBf16_.EnQue(resBf16);
-    resBf16 = bufResidualBf16_.DeQue<T>();
     LocalTensor<float> resFp32 = bufResFp32_.Get<float>();
-    for (uint32_t n = 0; n < N; ++n)
-        MhcSandwichRegBase::CastB16ToFp32(resFp32[n * dimTile_], resBf16[n * dimTile_], tD);
-    PipeBarrier<PIPE_V>();
-    bufResidualBf16_.FreeTensor(resBf16);
+    // h_out已经消费完毕，逐head复用其低精度输入队列，避免常驻四行residual低精度缓存。
+    for (uint32_t n = 0; n < N; ++n) {
+        LocalTensor<T> resBf16 = bufHOutBf16_.AllocTensor<T>();
+        DataCopy(resBf16, residualGm_[gmBaseOffset + (uint64_t)n * D_], tD);
+        bufHOutBf16_.EnQue(resBf16);
+        resBf16 = bufHOutBf16_.DeQue<T>();
+        MhcSandwichRegBase::CastB16ToFp32(resFp32[n * dimTile_], resBf16, tD);
+        PipeBarrier<PIPE_V>();
+        bufHOutBf16_.FreeTensor(resBf16);
+    }
 }
 
 /// 将gamma的[tOff, tOff+tD)分块加载到指定缓存。
