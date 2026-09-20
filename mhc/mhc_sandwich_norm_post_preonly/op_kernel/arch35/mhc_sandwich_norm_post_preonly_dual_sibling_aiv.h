@@ -47,7 +47,8 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
             for (uint32_t half = 0; half < 2; ++half) {
                 const uint32_t h0 = half * 2;
                 const uint32_t h1 = h0 + 1;
-                MhcSandwichRegBase::PairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff], x2Cache[h1 * D_ + tOff], tD);
+                MhcSandwichRegBase::PairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff],
+                                                       x2Cache[h1 * D_ + tOff], tD);
                 PipeBarrier<PIPE_V>();
                 midSqHalf[half] += ReduceSumPrecise(out, tD);
             }
@@ -75,8 +76,8 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
                 if (n + 1 < N_MAX) {
                     LoadGammaInto(gammaNext, gamma2Gm_, (n + 1) * D_ + tOff, tD);
                 }
-                MhcSandwichRegBase::CastB16ScaleAndMulGamma(x2[n * dimTile_], x2Cache[n * D_ + tOff], gammaCurrent,
-                                                            invRmsMid, tD);
+                MhcSandwichRegBase::CastB16ScaleAndMulGamma(x2[n * dimTile_], x2Cache[n * D_ + tOff],
+                                                           gammaCurrent, invRmsMid, tD);
                 PipeBarrier<PIPE_V>();
                 if (n + 2 < N_MAX) {
                     FenceVToMte2();
@@ -133,11 +134,11 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         LocalTensor<float> gateBuf = bufScalar_.Get<float>()[EXP_DIV_ELEM];
         MhcSandwichRegBase::MulsB16WithUbScalar(hIn, x2Cache, gateBuf, 0U, tD);
         PipeBarrier<PIPE_V>();
-        for (uint32_t n = 1; n + 1U < N_MAX; ++n) {
+        for (uint32_t n = 1; n < N_MAX; ++n) {
             MhcSandwichRegBase::AxpyB16WithUbScalar(hIn, x2Cache[n * D_], gateBuf, n, tD);
             PipeBarrier<PIPE_V>();
         }
-        sumSq1 += CacheHInAndReduceSumSq(tOff, tD, hIn, x2Cache[(N_MAX - 1U) * D_], gateBuf);
+        sumSq1 += CacheHInAndReduceSumSq(tOff, tD, hIn);
     }
 
     StartCacheGamma1();
