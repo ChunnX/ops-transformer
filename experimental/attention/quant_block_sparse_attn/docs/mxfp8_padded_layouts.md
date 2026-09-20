@@ -56,10 +56,11 @@ reference generates its own packed prefix [0,Sq,2*Sq,...] solely for internal
 indexing. Both runners compare the full output sequence dimension.
 
 The 36 rows include deterministic mixed-empty-sparse-row coverage. In addition to
-the CSV cases, `test_layout_metadata.py` covers invalid padded layout dimensions,
-Q descale shape, invalid sparse Qb length, and non-null padded-Q length inputs.
-It verifies those main-operator checks after a valid metadata call so metadata
-interception cannot mask duplicate validation.
+the CSV cases, `test_layout_metadata.py` covers five negative categories for both
+BSND and BNSD: invalid padded-Q axis order, Q descale shape, too-short sparse Qb,
+non-null `cu_seqlens_q`, and non-null `seqused_q`. It verifies those main-operator
+checks after a valid metadata call so metadata interception cannot mask duplicate
+validation.
 
 Run the new pytest STC cases on the Ascend test machine, for example:
 
