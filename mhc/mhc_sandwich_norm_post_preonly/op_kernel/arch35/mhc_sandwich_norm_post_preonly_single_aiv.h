@@ -243,11 +243,11 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
     float sumSqHalf[2] = {0.0f, 0.0f};
     float dotHalf[2][N_MAX] = {{0.0f, 0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 0.0f}};
     float midSqHalf[2] = {0.0f, 0.0f};
+    CacheHOut((uint64_t)token * D_);
     LoadTokenWeights(token, postVals);
 
     // 第一遍：沿完整D轴计算R1。
     float sumSq0 = 0.0f;
-    CacheHOut((uint64_t)token * D_);
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
