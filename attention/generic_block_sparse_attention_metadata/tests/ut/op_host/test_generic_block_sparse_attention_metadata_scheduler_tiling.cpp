@@ -204,6 +204,7 @@ TEST_F(GenericBlockSparseAttentionMetadataSchedulerTest, DecodeShapeConstraints)
 TEST_F(GenericBlockSparseAttentionMetadataSchedulerTest, ZeroCountsAndRepeatedPrefix)
 {
     ScheduleInput input = MakeInput();
+    input.residualBlockMode = 0;
     input.batchSize = 1;
     input.maxQSeqLen = DEFAULT_MAX_Q_SEQ_LEN;
     input.numQHeads = 1;
@@ -218,6 +219,20 @@ TEST_F(GenericBlockSparseAttentionMetadataSchedulerTest, ZeroCountsAndRepeatedPr
     ASSERT_EQ(result.blockPrefix[DECODE_Q_BLOCK_STORAGE_NUM], DECODE_FIRST_BLOCK_NUM);
     ASSERT_EQ(result.blockPrefix[DEFAULT_MAX_Q_SEQ_LEN], DECODE_TOTAL_VALID_BLOCK_NUM);
     ASSERT_EQ(result.decodeSchedules[0].baseTaskStart, 1);
+}
+
+TEST_F(GenericBlockSparseAttentionMetadataSchedulerTest, ResidualBlockKeepsZeroCountTaskInFdSchedule)
+{
+    ScheduleInput input = MakeDecodeInput();
+    input.validBlockNums = {0, DECODE_FIRST_BLOCK_NUM};
+
+    ScheduleResult result;
+    ASSERT_EQ(BuildSchedule(input, result), BSAScheduleStatus::BSA_SUCCESS);
+    ASSERT_EQ(result.blockPrefix[0], 0);
+    ASSERT_EQ(result.blockPrefix[1], 1);
+    ASSERT_EQ(result.blockPrefix[2], DECODE_FIRST_BLOCK_NUM + 1);
+    ASSERT_TRUE((static_cast<uint32_t>(result.fdScheduleFlags) & FD_SCHEDULE_ENABLED) != 0U);
+    ASSERT_EQ(result.decodeSchedules[0].baseTaskStart, 0);
 }
 
 TEST_F(GenericBlockSparseAttentionMetadataSchedulerTest, SparseBlockCapacityUpTo256)

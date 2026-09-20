@@ -264,10 +264,13 @@ inline BSAScheduleStatus BuildBlockPrefix(const ScheduleInput &input, ScheduleRe
     const int64_t qHeadCount = input.isPackedGQA == 1 ? result.groupSize : 1;
     const int64_t m16 = CeilDiv(qHeadCount, 16);
     for (int64_t task = 0; task < result.saTotalTaskNum; ++task) {
-        const int64_t validBlockNum = input.validBlockNums[static_cast<size_t>(task)];
-        if (validBlockNum < 0 || validBlockNum > input.blockIndexStride) {
+        const int64_t sparseBlockNum = input.validBlockNums[static_cast<size_t>(task)];
+        if (sparseBlockNum < 0 || sparseBlockNum > input.blockIndexStride) {
             return BSAScheduleStatus::BSA_INVALID_PARAM;
         }
+        // residualBlockMode=1 adds one block even when sparseBlockCount is zero. Keep one
+        // schedulable unit for that task so FD does not drop it at a repeated block prefix.
+        const int64_t validBlockNum = input.residualBlockMode == 1 && sparseBlockNum == 0 ? 1 : sparseBlockNum;
         int64_t prefix = 0;
         if (AddOverflow(result.blockPrefix[static_cast<size_t>(task)], validBlockNum, prefix) ||
             !FitsMetadataType(prefix)) {
