@@ -777,11 +777,15 @@ public:
         dataParams.ifTranspose = true;
 
         LoadData2DMxParams scaleParams;
-        scaleParams.xStartPosition = subKIdx * (MM2_SUB_K_SIZE / 16U);
-        scaleParams.yStartPosition = 0U;
+        // 轴约定（2026-09-20 勘误，DN LoadVToL0 L900-908 判别验证）：缩放 x/y 按操作数朝向
+        // 取轴（x=D 即 Mmad m、y=S2 即 Mmad k），不随 L1 存储朝向 [S2,D] 与 transpose 改变——
+        // 与数据参数 m/k（按 L1 源朝向）轴不一致。subK 切 S2 → 偏移归 y 轴（原误放 x 轴）；
+        // srcStride 为源布局 x 相邻分形间距 = 整 S2 的 y 范围（原误用 subK 局部值）。
+        scaleParams.xStartPosition = 0U;
+        scaleParams.yStartPosition = subKIdx * (MM2_SUB_K_SIZE / 64U);
         scaleParams.xStep = (dBaseSize + 15U) / 16U;
         scaleParams.yStep = (actSubKSizeAlign + 63U) / 64U;
-        scaleParams.srcStride = scaleParams.yStep;
+        scaleParams.srcStride = (runInfo.actSingleLoopS2Size + 63U) / 64U * 64U / 64U;
         scaleParams.dstStride = scaleParams.yStep;
 
         uint32_t kvL1Offset      = kvBufId_ * L1_KV_SINGLE_SLOT_SIZE;
