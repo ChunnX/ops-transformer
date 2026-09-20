@@ -93,8 +93,7 @@ int64_t CheckedAdd(int64_t lhs, int64_t rhs)
 } // namespace
 
 int64_t GetFFNToAttentionCclBufferSize(const std::vector<int64_t> &tokenInfoTableShape,
-                                       const std::vector<int64_t> &tokenDataShape, int64_t worldSize,
-                                       int64_t maxTokenNum)
+                                       const std::vector<int64_t> &tokenDataShape, int64_t worldSize)
 {
     TORCH_CHECK(tokenInfoTableShape.size() == 3, "token_info_table_shape should have 3 elements, but got ",
                 tokenInfoTableShape.size());
@@ -108,14 +107,13 @@ int64_t GetFFNToAttentionCclBufferSize(const std::vector<int64_t> &tokenInfoTabl
     TORCH_CHECK(microBatchNum > 0 && bs > 0 && expertNumPerToken > 0 && hs > 0, "Token dimensions must be positive");
     TORCH_CHECK(std::equal(tokenInfoTableShape.begin(), tokenInfoTableShape.end(), tokenDataShape.begin()),
                 "Token info/data dimensions must match");
-    TORCH_CHECK(worldSize > 0 && worldSize <= 1024 && maxTokenNum >= -1,
-                "Complete window sizing requires world_size in [1, 1024] and max_token_num >= -1");
+    TORCH_CHECK(worldSize > 0 && worldSize <= 1024, "Complete window sizing requires world_size in [1, 1024]");
     int64_t tokenSlots = CheckedMul(CheckedMul(microBatchNum, bs), expertNumPerToken);
     int64_t tokenDataSize = CheckedMul(CheckedMul(tokenSlots, hs), BYTES_PER_FP16);
     int64_t tokenInfoSize = CeilAlign(CheckedMul(tokenSlots, BYTES_PER_INT32), 512);
     int64_t rawSize = CeilAlign(CheckedAdd(tokenInfoSize, tokenDataSize), 32);
     rawSize = CeilAlign(CheckedAdd(rawSize, FLAG_SOURCE_RESERVE_BYTES), 512);
-    const int64_t tokenCapacity = maxTokenNum == -1 ? CheckedMul(worldSize, tokenSlots) : maxTokenNum;
+    const int64_t tokenCapacity = CheckedMul(worldSize, tokenSlots);
     const int64_t rankTableStride = CeilAlign(CheckedMul(tokenCapacity, 16), 512);
     const int64_t countRowStride = CeilAlign(CheckedMul(worldSize, BYTES_PER_INT32), 512);
     const int64_t tableBytes =
@@ -130,7 +128,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("npu_ffn_to_attention", &NpuFFNToAttention, "npu_ffn_to_attention");
     m.def("get_ffn_to_attention_ccl_buffer_size", &GetFFNToAttentionCclBufferSize,
           pybind11::arg("token_info_table_shape"), pybind11::arg("token_data_shape"), pybind11::arg("world_size"),
-          pybind11::arg("max_token_num") = -1,
           "URMA window size including flag sources, rank address tables and count rows");
 }
 } // namespace op_api
