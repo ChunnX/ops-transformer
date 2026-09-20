@@ -21,34 +21,34 @@ namespace ge {
  *        Q/K preprocess is out of this op; compressed keys are consumed via cmp_ratio.
  *
  * @par Inputs:
- * @li query: Indexer query. FP16/BF16 (950 also FP8_e4m3fn). format ND.
- * @li key: Indexer key already compressed or not. Same compute family as query.
- * @li weights: Optional. Required iff has_weighted_sum=true.
- * @li actual_seq_q: Optional. TND prefix-sum or BSND seqused.
- * @li actual_seq_k: Optional. Compressed-axis lengths.
- * @li cmp_residual_k: Optional. Residual tokens not scored. Required when cmp_ratio!=1 and sparse_mode!=0.
- * @li block_table: Optional. Required for layout_k=PA_BBND.
- * @li q_descale / k_descale: Optional. Quant scales.
- * @li metadata: Optional. Reserved.
+ * @li query / key / weights / actual_seq_q / actual_seq_k / seqused_q / seqused_k /
+ *     cmp_residual_k / block_table / q_descale / k_descale / output_idx_offset /
+ *     metadata / start_loc.
  *
  * @par Attributes: topk, cmp_ratio, layout_q, layout_k, sparse_mode, act_type,
  *        has_weighted_sum, expand_indices, append_tail, quant_mode, return_value,
- *        select_mode, key_reduce_mode, score_scale, key_stride0.
+ *        select_mode, key_reduce_mode, score_scale, key_stride0, k_descale_stride0,
+ *        max_seqlen_q, init_blocks, local_blocks.
  *
  * @par Outputs:
  * @li sparse_indices: int32 selected indices. Invalid slots are -1.
  * @li sparse_values: float scores when return_value=true, else shape (0,).
  */
 REG_OP(GenericLightningIndexer)
-    .INPUT(query, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT8_E4M3FN}))
-    .INPUT(key, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT8_E4M3FN}))
-    .OPTIONAL_INPUT(weights, TensorType({DT_FLOAT16, DT_BF16}))
+    .INPUT(query,
+           TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT8_E4M3FN, DT_INT8, DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT8_E5M2}))
+    .INPUT(key,
+           TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT8_E4M3FN, DT_INT8, DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT8_E5M2}))
+    .OPTIONAL_INPUT(weights, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT}))
     .OPTIONAL_INPUT(actual_seq_q, TensorType({DT_INT32}))
     .OPTIONAL_INPUT(actual_seq_k, TensorType({DT_INT32}))
+    .OPTIONAL_INPUT(seqused_q, TensorType({DT_INT32}))
+    .OPTIONAL_INPUT(seqused_k, TensorType({DT_INT32}))
     .OPTIONAL_INPUT(cmp_residual_k, TensorType({DT_INT32}))
     .OPTIONAL_INPUT(block_table, TensorType({DT_INT32}))
-    .OPTIONAL_INPUT(q_descale, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))
-    .OPTIONAL_INPUT(k_descale, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))
+    .OPTIONAL_INPUT(q_descale, TensorType({DT_FLOAT, DT_FLOAT16, DT_FLOAT8_E8M0}))
+    .OPTIONAL_INPUT(k_descale, TensorType({DT_FLOAT, DT_FLOAT16, DT_FLOAT8_E8M0}))
+    .OPTIONAL_INPUT(output_idx_offset, TensorType({DT_INT32}))
     .OPTIONAL_INPUT(metadata, TensorType({DT_INT32}))
     .OPTIONAL_INPUT(start_loc, TensorType({DT_INT32}))
     .OUTPUT(sparse_indices, TensorType({DT_INT32}))
@@ -68,6 +68,8 @@ REG_OP(GenericLightningIndexer)
     .ATTR(key_reduce_mode, Int, 0)
     .ATTR(score_scale, Float, 1.0)
     .ATTR(key_stride0, Int, -1)
+    .ATTR(k_descale_stride0, Int, -1)
+    .ATTR(max_seqlen_q, Int, -1)
     .ATTR(init_blocks, Int, 0)
     .ATTR(local_blocks, Int, 0)
     .OP_END_FACTORY_REG(GenericLightningIndexer)

@@ -33,12 +33,15 @@ constexpr uint32_t GLI_KEY_INDEX = 1;
 constexpr uint32_t GLI_WEIGHTS_INDEX = 2;
 constexpr uint32_t GLI_ACTUAL_SEQ_Q_INDEX = 3;
 constexpr uint32_t GLI_ACTUAL_SEQ_K_INDEX = 4;
-constexpr uint32_t GLI_CMP_RESIDUAL_K_INDEX = 5;
-constexpr uint32_t GLI_BLOCK_TABLE_INDEX = 6;
-constexpr uint32_t GLI_Q_DESCALE_INDEX = 7;
-constexpr uint32_t GLI_K_DESCALE_INDEX = 8;
-constexpr uint32_t GLI_METADATA_INDEX = 9;
-constexpr uint32_t GLI_START_LOC_INDEX = 10;
+constexpr uint32_t GLI_SEQUSED_Q_INDEX = 5;
+constexpr uint32_t GLI_SEQUSED_K_INDEX = 6;
+constexpr uint32_t GLI_CMP_RESIDUAL_K_INDEX = 7;
+constexpr uint32_t GLI_BLOCK_TABLE_INDEX = 8;
+constexpr uint32_t GLI_Q_DESCALE_INDEX = 9;
+constexpr uint32_t GLI_K_DESCALE_INDEX = 10;
+constexpr uint32_t GLI_OUTPUT_IDX_OFFSET_INDEX = 11;
+constexpr uint32_t GLI_METADATA_INDEX = 12;
+constexpr uint32_t GLI_START_LOC_INDEX = 13;
 
 constexpr uint32_t GLI_ATTR_TOPK = 0;
 constexpr uint32_t GLI_ATTR_CMP_RATIO = 1;
@@ -55,8 +58,10 @@ constexpr uint32_t GLI_ATTR_SELECT_MODE = 11;
 constexpr uint32_t GLI_ATTR_KEY_REDUCE_MODE = 12;
 constexpr uint32_t GLI_ATTR_SCORE_SCALE = 13;
 constexpr uint32_t GLI_ATTR_KEY_STRIDE0 = 14;
-constexpr uint32_t GLI_ATTR_INIT_BLOCKS = 15;
-constexpr uint32_t GLI_ATTR_LOCAL_BLOCKS = 16;
+constexpr uint32_t GLI_ATTR_K_DESCALE_STRIDE0 = 15;
+constexpr uint32_t GLI_ATTR_MAX_SEQLEN_Q = 16;
+constexpr uint32_t GLI_ATTR_INIT_BLOCKS = 17;
+constexpr uint32_t GLI_ATTR_LOCAL_BLOCKS = 18;
 
 constexpr uint32_t GLI_HEAD_DIM = 128;
 constexpr uint32_t GLI_N2_FIXED = 1;
@@ -107,6 +112,8 @@ TILING_DATA_FIELD_DEF(uint32_t, selectMode)
 TILING_DATA_FIELD_DEF(uint32_t, keyReduceMode)
 TILING_DATA_FIELD_DEF(uint32_t, initBlocks)
 TILING_DATA_FIELD_DEF(uint32_t, localBlocks)
+TILING_DATA_FIELD_DEF(uint32_t, hasOutputIdxOffset)
+TILING_DATA_FIELD_DEF(int32_t, maxSeqlenQ)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(GenericLightningIndexer, GenericLightningIndexerTilingData)
 
@@ -142,6 +149,8 @@ struct GenericLightningIndexerTilingInfo {
     int32_t keyReduceMode = 0;
     uint32_t initBlocks = 0;
     uint32_t localBlocks = 0;
+    uint32_t hasOutputIdxOffset = 0;
+    int32_t maxSeqlenQ = -1;
     float scoreScale = 1.0f;
     GliDataLayout layoutQ = GliDataLayout::BSND;
     GliDataLayout layoutK = GliDataLayout::BSND;

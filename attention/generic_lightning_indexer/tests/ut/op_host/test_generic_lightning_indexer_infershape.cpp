@@ -18,6 +18,7 @@
 
 namespace {
 using AttrList = std::vector<gert::InfershapeContextPara::OpAttr>;
+using Td = gert::InfershapeContextPara::TensorDescription;
 
 AttrList MakeAttrs(int64_t topk, int64_t cmpRatio, const char *layoutQ, const char *layoutK, int64_t sparseMode,
                    int64_t actType, bool hasWeighted, bool expand, bool append, int64_t quantMode, bool returnValue,
@@ -39,14 +40,24 @@ AttrList MakeAttrs(int64_t topk, int64_t cmpRatio, const char *layoutQ, const ch
         {"key_reduce_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(keyReduce)},
         {"score_scale", Ops::Transformer::AnyValue::CreateFrom<float>(scoreScale)},
         {"key_stride0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
+        {"k_descale_stride0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
+        {"max_seqlen_q", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
         {"init_blocks", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         {"local_blocks", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
     };
 }
 
-gert::InfershapeContextPara::TensorDescription NullIn(ge::DataType dt = ge::DT_INT32)
+Td NullIn(ge::DataType dt = ge::DT_INT32)
 {
     return {{{}, {}}, dt, ge::FORMAT_ND};
+}
+
+std::vector<Td> GliInputs(Td query, Td key, Td weights, Td residual = NullIn(), Td actQ = NullIn(), Td actK = NullIn(),
+                          Td qDescale = NullIn(ge::DT_FLOAT), Td kDescale = NullIn(ge::DT_FLOAT),
+                          Td blockTable = NullIn())
+{
+    return {query,    key,        weights,  actQ,     actK,     NullIn(), NullIn(),
+            residual, blockTable, qDescale, kDescale, NullIn(), NullIn(), NullIn()};
 }
 } // namespace
 
@@ -62,216 +73,120 @@ protected:
     }
 };
 
-// P-LI: r=1, relu, weighted, sparse=3, expand off, return_value
 TEST_F(GenericLightningIndexerProto, P_LI_BSND)
 {
     gert::InfershapeContextPara para("GenericLightningIndexer",
-                                     {
-                                         {{{1, 32, 8, 128}, {1, 32, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                         {{{1, 1024, 1, 128}, {1, 1024, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                         {{{1, 32, 8}, {1, 32, 8}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                         NullIn(),
-                                         NullIn(),
-                                         NullIn(),
-                                         NullIn(),
-                                         NullIn(ge::DT_FLOAT),
-                                         NullIn(ge::DT_FLOAT),
-                                         NullIn(),
-                                     },
+                                     GliInputs({{{1, 32, 8, 128}, {1, 32, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                               {{{1, 1024, 1, 128}, {1, 1024, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                               {{{1, 32, 8}, {1, 32, 8}}, ge::DT_FLOAT16, ge::FORMAT_ND}),
                                      {NullIn(), NullIn(ge::DT_FLOAT)},
                                      MakeAttrs(2048, 1, "BSND", "BSND", 3, 0, true, false, false, -1, true));
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, {{1, 32, 2048}, {1, 32, 2048}});
 }
 
-// P-LIv2: compressed key, no expand
 TEST_F(GenericLightningIndexerProto, P_LIv2_cmp_ratio4)
 {
-    gert::InfershapeContextPara para("GenericLightningIndexer",
-                                     {
-                                         {{{2, 16, 64, 128}, {2, 16, 64, 128}}, ge::DT_BF16, ge::FORMAT_ND},
-                                         {{{2, 256, 1, 128}, {2, 256, 1, 128}}, ge::DT_BF16, ge::FORMAT_ND},
-                                         {{{2, 16, 64}, {2, 16, 64}}, ge::DT_BF16, ge::FORMAT_ND},
-                                         NullIn(),
-                                         NullIn(),
-                                         {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND},
-                                         NullIn(),
-                                         NullIn(ge::DT_FLOAT),
-                                         NullIn(ge::DT_FLOAT),
-                                         NullIn(),
-                                     },
-                                     {NullIn(), NullIn(ge::DT_FLOAT)},
-                                     MakeAttrs(2048, 4, "BSND", "BSND", 3, 0, true, false, false, -1, false));
+    gert::InfershapeContextPara para(
+        "GenericLightningIndexer",
+        GliInputs({{{2, 16, 64, 128}, {2, 16, 64, 128}}, ge::DT_BF16, ge::FORMAT_ND},
+                  {{{2, 256, 1, 128}, {2, 256, 1, 128}}, ge::DT_BF16, ge::FORMAT_ND},
+                  {{{2, 16, 64}, {2, 16, 64}}, ge::DT_BF16, ge::FORMAT_ND}, {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND}),
+        {NullIn(), NullIn(ge::DT_FLOAT)}, MakeAttrs(2048, 4, "BSND", "BSND", 3, 0, true, false, false, -1, false));
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, {{2, 16, 2048}, {0}});
 }
 
-// P-QLI: quant_mode INT8 does not change indices last dim
 TEST_F(GenericLightningIndexerProto, P_QLI_quant_int8)
 {
-    gert::InfershapeContextPara para("GenericLightningIndexer",
-                                     {
-                                         {{{1, 8, 16, 128}, {1, 8, 16, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                         {{{1, 512, 1, 128}, {1, 512, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                         {{{1, 8, 16}, {1, 8, 16}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                         NullIn(),
-                                         NullIn(),
-                                         NullIn(),
-                                         NullIn(),
-                                         {{{1, 8, 16}, {1, 8, 16}}, ge::DT_FLOAT, ge::FORMAT_ND},
-                                         {{{1, 512, 1}, {1, 512, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
-                                         NullIn(),
-                                     },
-                                     {NullIn(), NullIn(ge::DT_FLOAT)},
-                                     MakeAttrs(1024, 1, "BSND", "BSND", 0, 0, true, false, false, 2, false));
+    gert::InfershapeContextPara para(
+        "GenericLightningIndexer",
+        GliInputs({{{1, 8, 16, 128}, {1, 8, 16, 128}}, ge::DT_INT8, ge::FORMAT_ND},
+                  {{{1, 512, 1, 128}, {1, 512, 1, 128}}, ge::DT_INT8, ge::FORMAT_ND},
+                  {{{1, 8, 16}, {1, 8, 16}}, ge::DT_FLOAT16, ge::FORMAT_ND}, NullIn(), NullIn(), NullIn(),
+                  {{{1, 8, 16}, {1, 8, 16}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                  {{{1, 512, 1}, {1, 512, 1}}, ge::DT_FLOAT16, ge::FORMAT_ND}),
+        {NullIn(), NullIn(ge::DT_FLOAT)}, MakeAttrs(1024, 1, "BSND", "BSND", 0, 0, true, false, false, 2, false));
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, {{1, 8, 1024}, {0}});
 }
 
-// P-QLIv2: MXFP8 + cmp_ratio
 TEST_F(GenericLightningIndexerProto, P_QLIv2_mxfp8)
 {
-    gert::InfershapeContextPara para("GenericLightningIndexer",
-                                     {
-                                         {{{1, 8, 16, 128}, {1, 8, 16, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-                                         {{{1, 128, 1, 128}, {1, 128, 1, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-                                         {{{1, 8, 16}, {1, 8, 16}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                         NullIn(),
-                                         NullIn(),
-                                         {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
-                                         NullIn(),
-                                         NullIn(ge::DT_FLOAT),
-                                         NullIn(ge::DT_FLOAT),
-                                         NullIn(),
-                                     },
-                                     {NullIn(), NullIn(ge::DT_FLOAT)},
-                                     MakeAttrs(2048, 4, "BSND", "BSND", 3, 0, true, false, false, 3, true));
+    gert::InfershapeContextPara para(
+        "GenericLightningIndexer",
+        GliInputs({{{1, 8, 16, 128}, {1, 8, 16, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+                  {{{1, 128, 1, 128}, {1, 128, 1, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+                  {{{1, 8, 16}, {1, 8, 16}}, ge::DT_FLOAT16, ge::FORMAT_ND}, {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND}),
+        {NullIn(), NullIn(ge::DT_FLOAT)}, MakeAttrs(2048, 4, "BSND", "BSND", 3, 0, true, false, false, 3, true));
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, {{1, 8, 2048}, {1, 8, 2048}});
 }
 
-// P-PKI: expand+append, L_out = topk*r+(r-1)
 TEST_F(GenericLightningIndexerProto, P_PKI_expand_append)
 {
     const int64_t topk = 128;
     const int64_t r = 16;
     gert::InfershapeContextPara para(
         "GenericLightningIndexer",
-        {
-            {{{1, 64, 8, 128}, {1, 64, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{1, 64, 1, 128}, {1, 64, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{1, 64, 8}, {1, 64, 8}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            NullIn(),
-            NullIn(),
-            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
-            NullIn(),
-            NullIn(ge::DT_FLOAT),
-            NullIn(ge::DT_FLOAT),
-            NullIn(),
-        },
+        GliInputs({{{1, 64, 8, 128}, {1, 64, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                  {{{1, 64, 1, 128}, {1, 64, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                  {{{1, 64, 8}, {1, 64, 8}}, ge::DT_FLOAT16, ge::FORMAT_ND}, {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND}),
         {NullIn(), NullIn(ge::DT_FLOAT)},
         MakeAttrs(topk, r, "BSND", "BSND", 3, 0, true, true, true, -1, false, 0, 0, 1.0f / 11.313708f));
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, {{1, 64, topk * r + (r - 1)}, {0}});
 }
 
-// P-QWEN: sum, sparse_mode=4, expand+append
 TEST_F(GenericLightningIndexerProto, P_QWEN_sum_block_causal)
 {
     const int64_t topk = 64;
     const int64_t r = 4;
     gert::InfershapeContextPara para("GenericLightningIndexer",
-                                     {
-                                         {{{1, 32, 8, 128}, {1, 32, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                         {{{1, 8, 1, 128}, {1, 8, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                         NullIn(ge::DT_FLOAT16),
-                                         NullIn(),
-                                         NullIn(),
-                                         {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
-                                         NullIn(),
-                                         NullIn(ge::DT_FLOAT),
-                                         NullIn(ge::DT_FLOAT),
-                                         NullIn(),
-                                     },
+                                     GliInputs({{{1, 32, 8, 128}, {1, 32, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                               {{{1, 8, 1, 128}, {1, 8, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                               NullIn(ge::DT_FLOAT16), {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND}),
                                      {NullIn(), NullIn(ge::DT_FLOAT)},
                                      MakeAttrs(topk, r, "BSND", "BSND", 4, 0, false, true, true, -1, true));
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, {{1, 32, topk * r + (r - 1)}, {1, 32, topk}});
 }
 
-// TND layout
 TEST_F(GenericLightningIndexerProto, TND_LIv2)
 {
     int64_t actualQ[] = {8, 16};
     int64_t actualK[] = {32, 64};
     gert::InfershapeContextPara para("GenericLightningIndexer",
-                                     {
-                                         {{{16, 8, 128}, {16, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                         {{{64, 1, 128}, {64, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                         {{{16, 8}, {16, 8}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                         {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualQ},
-                                         {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualK},
-                                         NullIn(),
-                                         NullIn(),
-                                         NullIn(ge::DT_FLOAT),
-                                         NullIn(ge::DT_FLOAT),
-                                         NullIn(),
-                                     },
+                                     GliInputs({{{16, 8, 128}, {16, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                               {{{64, 1, 128}, {64, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                               {{{16, 8}, {16, 8}}, ge::DT_FLOAT16, ge::FORMAT_ND}, NullIn(),
+                                               {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualQ},
+                                               {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualK}),
                                      {NullIn(), NullIn(ge::DT_FLOAT)},
                                      MakeAttrs(512, 1, "TND", "TND", 0, 0, true, false, false, -1, false));
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, {{16, 512}, {0}});
 }
 
-// P-MSA-REJ: select_mode reserved
 TEST_F(GenericLightningIndexerProto, P_MSA_identity_maxpool)
 {
-    gert::InfershapeContextPara para("GenericLightningIndexer",
-                                     {
-                                         {{{1, 8, 8, 128}, {1, 8, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                         {{{1, 32, 1, 128}, {1, 32, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                         NullIn(ge::DT_FLOAT16),
-                                         NullIn(),
-                                         NullIn(),
-                                         NullIn(),
-                                         NullIn(),
-                                         NullIn(ge::DT_FLOAT),
-                                         NullIn(ge::DT_FLOAT),
-                                         NullIn(),
-                                     },
-                                     {NullIn(), NullIn(ge::DT_FLOAT)},
-                                     MakeAttrs(16, 16, "BSND", "BSND", 3, 1, false, false, false, -1, true, 1, 1));
+    gert::InfershapeContextPara para(
+        "GenericLightningIndexer",
+        GliInputs({{{1, 8, 8, 128}, {1, 8, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                  {{{1, 32, 1, 128}, {1, 32, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, NullIn(ge::DT_FLOAT16)),
+        {NullIn(), NullIn(ge::DT_FLOAT)}, MakeAttrs(16, 16, "BSND", "BSND", 3, 1, false, false, false, -1, true, 1, 1));
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, {{0}, {1, 8, 8, 16}});
 }
 
 TEST_F(GenericLightningIndexerProto, P_MSA_REJ_incomplete_combo)
 {
-    gert::InfershapeContextPara para("GenericLightningIndexer",
-                                     {
-                                         {{{1, 8, 8, 128}, {1, 8, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                         {{{1, 32, 1, 128}, {1, 32, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                         NullIn(ge::DT_FLOAT16),
-                                         NullIn(),
-                                         NullIn(),
-                                         NullIn(),
-                                         NullIn(),
-                                         NullIn(ge::DT_FLOAT),
-                                         NullIn(ge::DT_FLOAT),
-                                         NullIn(),
-                                     },
-                                     {NullIn(), NullIn(ge::DT_FLOAT)},
-                                     MakeAttrs(32, 1, "BSND", "BSND", 0, 1, false, false, false, -1, false, 0, 0));
+    gert::InfershapeContextPara para(
+        "GenericLightningIndexer",
+        GliInputs({{{1, 8, 8, 128}, {1, 8, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                  {{{1, 32, 1, 128}, {1, 32, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, NullIn(ge::DT_FLOAT16)),
+        {NullIn(), NullIn(ge::DT_FLOAT)}, MakeAttrs(32, 1, "BSND", "BSND", 0, 1, false, false, false, -1, false, 0, 0));
     ExecuteTestCase(para, ge::GRAPH_FAILED, {});
 }
 
 TEST_F(GenericLightningIndexerProto, Reject_append_without_expand)
 {
     gert::InfershapeContextPara para("GenericLightningIndexer",
-                                     {
-                                         {{{1, 8, 8, 128}, {1, 8, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                         {{{1, 32, 1, 128}, {1, 32, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                         {{{1, 8, 8}, {1, 8, 8}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                         NullIn(),
-                                         NullIn(),
-                                         NullIn(),
-                                         NullIn(),
-                                         NullIn(ge::DT_FLOAT),
-                                         NullIn(ge::DT_FLOAT),
-                                         NullIn(),
-                                     },
+                                     GliInputs({{{1, 8, 8, 128}, {1, 8, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                               {{{1, 32, 1, 128}, {1, 32, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                               {{{1, 8, 8}, {1, 8, 8}}, ge::DT_FLOAT16, ge::FORMAT_ND}),
                                      {NullIn(), NullIn(ge::DT_FLOAT)},
                                      MakeAttrs(32, 4, "BSND", "BSND", 0, 0, true, false, true, -1, false));
     ExecuteTestCase(para, ge::GRAPH_FAILED, {});
@@ -280,21 +195,25 @@ TEST_F(GenericLightningIndexerProto, Reject_append_without_expand)
 TEST_F(GenericLightningIndexerProto, Reject_identity_act_step1)
 {
     gert::InfershapeContextPara para("GenericLightningIndexer",
-                                     {
-                                         {{{1, 8, 8, 128}, {1, 8, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                         {{{1, 32, 1, 128}, {1, 32, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                         {{{1, 8, 8}, {1, 8, 8}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                         NullIn(),
-                                         NullIn(),
-                                         NullIn(),
-                                         NullIn(),
-                                         NullIn(ge::DT_FLOAT),
-                                         NullIn(ge::DT_FLOAT),
-                                         NullIn(),
-                                     },
+                                     GliInputs({{{1, 8, 8, 128}, {1, 8, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                               {{{1, 32, 1, 128}, {1, 32, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                               {{{1, 8, 8}, {1, 8, 8}}, ge::DT_FLOAT16, ge::FORMAT_ND}),
                                      {NullIn(), NullIn(ge::DT_FLOAT)},
                                      MakeAttrs(32, 1, "BSND", "BSND", 0, 1, true, false, false, -1, false));
     ExecuteTestCase(para, ge::GRAPH_FAILED, {});
+}
+
+TEST_F(GenericLightningIndexerProto, PA_BSND_alias)
+{
+    gert::InfershapeContextPara para(
+        "GenericLightningIndexer",
+        GliInputs({{{1, 8, 8, 128}, {1, 8, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                  {{{8, 128, 1, 128}, {8, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                  {{{1, 8, 8}, {1, 8, 8}}, ge::DT_FLOAT16, ge::FORMAT_ND}, NullIn(), NullIn(),
+                  {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND}, NullIn(ge::DT_FLOAT), NullIn(ge::DT_FLOAT),
+                  {{{1, 8}, {1, 8}}, ge::DT_INT32, ge::FORMAT_ND}),
+        {NullIn(), NullIn(ge::DT_FLOAT)}, MakeAttrs(128, 1, "BSND", "PA_BSND", 3, 0, true, false, false, -1, false));
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, {{1, 8, 128}, {0}});
 }
 
 TEST_F(GenericLightningIndexerProto, InferDataType)
@@ -322,16 +241,19 @@ TEST_F(GenericLightningIndexerProto, InferDataType)
         {"key_reduce_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         {"score_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
         {"key_stride0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
+        {"k_descale_stride0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
+        {"max_seqlen_q", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
         {"init_blocks", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         {"local_blocks", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
     };
-    auto holder = gert::InferDataTypeContextFaker()
-                      .NodeIoNum(11, 2)
-                      .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .InputDataTypes({&fp16, &fp16, &fp16, &i32, &i32, &i32, &i32, &f32, &f32, &i32, &i32})
-                      .NodeAttrs(dtypeAttrs)
-                      .Build();
+    auto holder =
+        gert::InferDataTypeContextFaker()
+            .NodeIoNum(14, 2)
+            .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+            .InputDataTypes({&fp16, &fp16, &fp16, &i32, &i32, &i32, &i32, &i32, &i32, &f32, &f32, &i32, &i32, &i32})
+            .NodeAttrs(dtypeAttrs)
+            .Build();
     auto ctx = holder.GetContext<gert::InferDataTypeContext>();
     EXPECT_EQ(dataTypeFunc(ctx), ge::GRAPH_SUCCESS);
     EXPECT_EQ(ctx->GetOutputDataType(0), ge::DT_INT32);

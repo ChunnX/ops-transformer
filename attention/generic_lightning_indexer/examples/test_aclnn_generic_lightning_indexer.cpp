@@ -10,6 +10,7 @@
 
 #include <iostream>
 #include <vector>
+#include <cmath>
 #include <cstring>
 #include "securec.h"
 #include "acl/acl.h"
@@ -23,6 +24,22 @@ namespace {
     do { \
         (void)printf(message, ##__VA_ARGS__); \
     } while (0)
+
+uint16_t FloatToFp16(float value)
+{
+    uint32_t bits = 0;
+    (void)memcpy(&bits, &value, sizeof(bits));
+    uint32_t sign = (bits >> 16) & 0x8000U;
+    int32_t exp = static_cast<int32_t>((bits >> 23) & 0xFFU) - 127 + 15;
+    uint32_t man = bits & 0x7FFFFFU;
+    if (exp <= 0) {
+        return static_cast<uint16_t>(sign);
+    }
+    if (exp >= 31) {
+        return static_cast<uint16_t>(sign | 0x7C00U);
+    }
+    return static_cast<uint16_t>(sign | (static_cast<uint32_t>(exp) << 10) | (man >> 13));
+}
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
 {
@@ -84,9 +101,10 @@ int main()
     std::vector<int64_t> kShape = {1, 16, 1, 128};
     std::vector<int64_t> wShape = {1, 2, 8};
     std::vector<int64_t> idxShape = {1, 2, 8};
-    std::vector<float> qHost(GetShapeSize(qShape), 1.0f);
-    std::vector<float> kHost(GetShapeSize(kShape), 1.0f);
-    std::vector<float> wHost(GetShapeSize(wShape), 1.0f);
+    const uint16_t fp16One = FloatToFp16(1.0f);
+    std::vector<uint16_t> qHost(GetShapeSize(qShape), fp16One);
+    std::vector<uint16_t> kHost(GetShapeSize(kShape), fp16One);
+    std::vector<uint16_t> wHost(GetShapeSize(wShape), fp16One);
     std::vector<int32_t> idxHost(GetShapeSize(idxShape), 0);
     void *qAddr = nullptr;
     void *kAddr = nullptr;
@@ -109,9 +127,10 @@ int main()
     char layoutK[] = "BSND";
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
-    ret = aclnnGenericLightningIndexerGetWorkspaceSize(
-        q, k, w, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 8, 1, layoutQ, layoutK, 3, 0,
-        true, false, false, -1, true, 0, 0, 1.0f, -1, 0, 0, idx, val, &workspaceSize, &executor);
+    ret = aclnnGenericLightningIndexerGetWorkspaceSize(q, k, w, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+                                                       nullptr, nullptr, nullptr, nullptr, nullptr, 8, 1, layoutQ,
+                                                       layoutK, 3, 0, true, false, false, -1, true, 0, 0, 1.0f, -1, -1,
+                                                       -1, 0, 0, idx, val, &workspaceSize, &executor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         LOG_PRINT("aclnnGenericLightningIndexerGetWorkspaceSize failed. ERROR: %d\n", ret);
         return ret;
@@ -126,7 +145,47 @@ int main()
         return ret;
     }
     aclrtSynchronizeStream(stream);
-    LOG_PRINT("GenericLightningIndexer example finished.\n");
+
+    const int64_t outNum = GetShapeSize(idxShape);
+    std::vector<int32_t> idxOut(outNum, -1);
+    std::vector<float> valOut(outNum, 0.0f);
+    ret = aclrtMemcpy(idxOut.data(), outNum * sizeof(int32_t), idxAddr, outNum * sizeof(int32_t),
+                      ACL_MEMCPY_DEVICE_TO_HOST);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        LOG_PRINT("copy sparse_indices failed. ERROR: %d\n", ret);
+        return ret;
+    }
+    ret =
+        aclrtMemcpy(valOut.data(), outNum * sizeof(float), valAddr, outNum * sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        LOG_PRINT("copy sparse_values failed. ERROR: %d\n", ret);
+        return ret;
+    }
+    int32_t badIdx = 0;
+    int32_t nanVal = 0;
+    int32_t badVal = 0;
+    const float expectVal = 1024.0f;
+    const float atol = 8.0f;
+    for (int64_t i = 0; i < outNum; ++i) {
+        if (idxOut[i] < 0 || idxOut[i] >= kShape[1]) {
+            ++badIdx;
+        }
+        if (valOut[i] != valOut[i]) {
+            ++nanVal;
+        }
+        if (fabsf(valOut[i] - expectVal) > atol) {
+            ++badVal;
+        }
+        if (i < 16) {
+            LOG_PRINT("out[%ld] idx=%d val=%f\n", i, idxOut[i], valOut[i]);
+        }
+    }
+    if (badIdx > 0 || nanVal > 0 || badVal > 0) {
+        LOG_PRINT("precision check failed: badIdx=%d nanVal=%d badVal=%d expect=%f\n", badIdx, nanVal, badVal,
+                  expectVal);
+        return -1;
+    }
+    LOG_PRINT("GenericLightningIndexer example finished. indices in [0, %ld), values ~%f.\n", kShape[1], expectVal);
     aclDestroyTensor(q);
     aclDestroyTensor(k);
     aclDestroyTensor(w);

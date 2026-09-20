@@ -3,8 +3,8 @@
 - **算子名**：`GenericLightningIndexer` / `aclnnGenericLightningIndexer`
 - **路径**：`attention/generic_lightning_indexer`
 - **开发分支**：`generic-lightning-indexer`（基于 `cann/master` `12a3dd661`）
-- **阶段**：Step 2（收编前 5 个 indexer + Qwen CLI + MsaIndexScore）
-- **日期**：2026-09-18
+- **阶段**：Step 1（收编 LI / LIv2 / QLI / QLIv2 / PKI + Qwen CLI；MSA 仅预留 IR）
+- **日期**：2026-09-20
 
 配套分析：
 
@@ -44,7 +44,7 @@
    - Qwen3.8-Flash-Next Compressed Lightweight Indexer（ReLU + **累加和** + 块 TopK + Expand + 追加不完整块）
 2. 接口上预留 MiniMax M3 / `MsaIndexScore` 的扩展点（Step 2 再实现 kernel）：无激活、沿 Key 分段 Maxpool、可选不融合 TopK。
 3. Q/K **前处理不做进本算子**（RoPE、RMSNorm、AvgPool、KeyPool、CSA 压缩器均在上游）。本算子必须能消费**已经压缩**的 Key，并用 `cmp_ratio` 做 mask / Expand。
-4. 后处理**必须包含 TopK**（Step 1）。MSA 的「只出 score」通过 `select_mode=none` 预留，Step 1 tiling 拒绝该取值。
+4. 后处理**必须包含 TopK**（Step 1 主路径）。MSA 的「只出 score」通过 `select_mode=none` 预留 IR；成套属性可过 infershape/tiling，精度与 kernel 对齐放到 Step 2。
 
 ### 2.2 非目标
 
@@ -166,25 +166,31 @@ $$
 
 | 序号 | 名称 | 必选 | dtype | 说明 |
 |---|---|---|---|---|
-| 0 | `query` | 是 | FP16/BF16；950 另支持 FP8_e4m3fn / HiFP8 / FP4_e2m1 / INT8 | Indexer Q |
+| 0 | `query` | 是 | 见 5.6 | Indexer Q |
 | 1 | `key` | 是 | 与 Q 同计算族 | **压缩后或未压缩**的 Indexer K；PA 时 0 轴可非连续 |
 | 2 | `weights` | 否 | FP16/BF16/FP32 | `has_weighted_sum=true` 时必选；false 时必须为空 |
-| 3 | `actual_seq_q` | 否 | INT32/INT64 | TND：Q 前缀和；BSND：可选 per-batch 真实长度（`seqused_q`） |
-| 4 | `actual_seq_k` | 否 | INT32/INT64 | TND：压缩轴前缀和；PA/BSND：压缩轴真实长度 |
-| 5 | `cmp_residual_k` | 否 | INT32/INT64 | 压缩残余；$r>1$ 且 `sparse_mode!=0` 时必选 |
-| 6 | `block_table` | 否 | INT32 | `layout_k=PA_BBND` 时必选 |
-| 7 | `q_descale` | 否 | FP16/FP32/FP8_e8m0 | 量化时必选 |
-| 8 | `k_descale` | 否 | 同 Q scale | 量化时必选 |
-| 9 | `metadata` | 否 | INT32 `[1024]` | 预留 LIv2 式负载均衡；Step 1 可不传 |
+| 3 | `actual_seq_q` | 否 | INT32 | TND：Q 前缀和 |
+| 4 | `actual_seq_k` | 否 | INT32 | TND：压缩轴前缀和；PA：压缩轴真实长度 |
+| 5 | `seqused_q` | 否 | INT32 | 对齐 LIv2/QLIv2：per-batch 真实 Q 长度（非前缀和），用于 padding |
+| 6 | `seqused_k` | 否 | INT32 | 对齐 LIv2/QLIv2/PA：per-batch 真实 K 长度 |
+| 7 | `cmp_residual_k` | 否 | INT32 | 压缩残余；$r>1$ 且 `sparse_mode!=0` 时必选 |
+| 8 | `block_table` | 否 | INT32 | `layout_k=PA_BBND` / `PA_BSND` 时必选 |
+| 9 | `q_descale` | 否 | FP16/FP32/FP8_e8m0 | 量化时必选 |
+| 10 | `k_descale` | 否 | 同 Q scale | 量化时必选 |
+| 11 | `output_idx_offset` | 否 | INT32 `[B]` | 对齐 LIv2/QLIv2：写回 indices 前逐 batch 加偏移 |
+| 12 | `metadata` | 否 | INT32 `[1024]` | 预留 LIv2 式负载均衡；Step 1 可不传 |
+| 13 | `start_loc` | 否 | INT32 `[B]` | MSA 预留；Step 1 可不传 |
+
+设备侧序列张量统一为 INT32。PKI 的 INT64 `pool_tail_k` / `actual_seq_*` 由调用方在 host 转为 INT32 再传入（见 5.5）。
 
 ### 5.2 输出
 
 | 序号 | 名称 | dtype | 说明 |
 |---|---|---|---|
 | 0 | `sparse_indices` | INT32 | 选中下标；无效 `-1` |
-| 1 | `sparse_values` | FP32（量化路径可 BF16） | `return_value=true` 时为 TopK 分数；否则 shape `(0,)` |
+| 1 | `sparse_values` | FP32 | `return_value=true` 时为 TopK 分数；否则 shape `(0,)` |
 
-`select_mode=none`（Step 2）时：`sparse_indices` 空，`sparse_values` 改为 score 张量（MSA 的 `score`）。
+LI / QLI 的 `sparse_values` 原为 FP16/BF16，本算子统一 widen 到 FP32（与 LIv2 / PKI / QLIv2 一致）。`select_mode=none`（Step 2）时：`sparse_indices` 空，`sparse_values` 改为 score 张量。
 
 ### 5.3 属性
 
@@ -193,18 +199,22 @@ $$
 | 0 | `topk` | int | 2048 | 打分轴选出的个数；`[1,2048]` ∪ `{3072,4096,5120,6144,7168,8192}` |
 | 1 | `cmp_ratio` | int | 1 | $[1,128]$；1 = 未压缩 |
 | 2 | `layout_q` | string | `"BSND"` | `BSND` / `TND` |
-| 3 | `layout_k` | string | `"BSND"` | `BSND` / `TND` / `PA_BBND` |
+| 3 | `layout_k` | string | `"BSND"` | `BSND` / `TND` / `PA_BBND` / `PA_BSND`（`PA_BSND` 视为 `PA_BBND` 别名） |
 | 4 | `sparse_mode` | int | 0 | 0 / 3 / 4 |
 | 5 | `act_type` | int | 0 | 0=`relu`，1=`identity`（Step 2 / MSA） |
 | 6 | `has_weighted_sum` | bool | true | true=乘 $W$ 再沿 head 求和；false=沿 head 累加和 |
 | 7 | `expand_indices` | bool | false | TopK 后是否展开回 token |
 | 8 | `append_tail` | bool | false | 展开后是否追加残余 token；仅 `expand_indices=true` |
-| 9 | `quant_mode` | int | -1 | -1 none；对齐 QLIv2：1 FP8 PTH / 2 INT8 / 3 MXFP8 / 4 HiFP8 / 5 MXFP4 |
+| 9 | `quant_mode` | int | -1 | -1 none；0/1 FP8 PTH（兼容 PKI）；对齐 QLIv2：2 INT8 / 3 MXFP8 / 4 HiFP8 / 5 MXFP4 |
 | 10 | `return_value` | bool | false | 是否输出分数 |
-| 11 | `select_mode` | int | 0 | 0=`topk`；1=`none`（Step 2 预留，Step 1 拒绝） |
-| 12 | `key_reduce_mode` | int | 0 | 0=`none`；1=`maxpool`（Step 2 预留，Step 1 拒绝） |
+| 11 | `select_mode` | int | 0 | 0=`topk`；1=`none`（Step 2 预留） |
+| 12 | `key_reduce_mode` | int | 0 | 0=`none`；1=`maxpool`（Step 2 预留） |
 | 13 | `score_scale` | float | 1.0 | QK 缩放；PKI 传 `1/sqrt(128)` |
 | 14 | `key_stride0` | int | -1 | PA 下 K 的 0 轴 stride；-1 由 shape 推导 |
+| 15 | `k_descale_stride0` | int | -1 | PA 下 k_descale 的 0 轴 stride；对齐 PKI |
+| 16 | `max_seqlen_q` | int | -1 | 对齐 LIv2/QLIv2：TND 每 batch 最大 Q 长度 |
+| 17 | `init_blocks` | int | 0 | MSA 预留 |
+| 18 | `local_blocks` | int | 0 | MSA 预留 |
 
 约束：
 
@@ -227,6 +237,76 @@ $$
 - Q: `[T1, N1, D]`；indices: `[T1, L_out]`
 
 $S_2$ / $T_2$ 始终是**压缩后**长度。
+
+### 5.5 与六个 indexer 的参数对齐
+
+对 LI / LIv2 / QLI / QLIv2 / PKI / MSA 的每一个输入与属性逐项对照。需要对齐的已并入 5.1 / 5.3；不并入的列出原因。
+
+| 来源参数 | 来源算子 | 对齐决策 | 原因 |
+|---|---|---|---|
+| query / key / weights | 全部 | **对齐** | 统一命名为 query/key/weights；PKI 的 `pool_key` 即压缩后 key |
+| actual_seq_lengths_query / cu_seqlens_q | LI/LIv2/QLI/QLIv2 | **对齐** → `actual_seq_q` | TND 前缀和 |
+| actual_seq_lengths_key / cu_seqlens_k | 同上 | **对齐** → `actual_seq_k` | |
+| seqused_q / seqused_k | LIv2 / QLIv2 | **对齐** | TND padding 与 PA 真实长度，Step 1 原先缺失 |
+| cmp_residual_k / pool_tail_k | LIv2 / QLIv2 / PKI / Qwen | **对齐** → `cmp_residual_k` | PKI 的 pool 残余即压缩残余 |
+| block_table | LI/LIv2/QLI/QLIv2/PKI/MSA | **对齐** | PA 必选 |
+| q_descale / query_dequant_scale | QLI/QLIv2/PKI | **对齐** → `q_descale` | |
+| k_descale / key_dequant_scale | 同上 | **对齐** → `k_descale` | |
+| output_idx_offset | LIv2 / QLIv2 | **对齐** | 多段拼接时 indices 加偏移，Step 1 原先缺失 |
+| lightning_indexer_metadata | LIv2 / QLIv2 | **可选对齐** → `metadata` | Step 1 可不传；不做独立 metadata 算子，避免再维护一份负载均衡 IR |
+| start_loc | MSA | **预留** | Step 2 |
+| atten_mask | MSA | **不对齐** | MSA 的 2048×2048 模板掩码由 `sparse_mode` 在 kernel 内生成；不把稠密 mask 张量收进 indexer 主路径 |
+| scale（MSA 单 scale） | MSA | **不对齐为独立输入** | 并入 `q_descale`/`k_descale`；MSA INT8 的单一 scale 由调用方广播到 k_descale |
+| layout_query / layout_key | LI | **对齐** → `layout_q`/`layout_k` | |
+| PA_BSND | LI / LIv2 | **对齐为别名** | 与 `PA_BBND` 同义，host 接受后按 PA_BBND 处理 |
+| sparse_count / sparseCount | LI / QLI | **对齐** → `topk` | 打分轴 k |
+| topk（PKI token 预算） | PKI | **语义对齐、取值换算** | GLI 的 topk 是打分轴个数 = PKI_topk / pool_size |
+| pool_size | PKI | **对齐** → `cmp_ratio` | |
+| mask_mode | LIv2 / PKI | **对齐** → `sparse_mode` | |
+| pre_tokens / next_tokens | LI | **不对齐** | 仓内实现恒为默认值且不参与计算；接入无效果 |
+| query_quant_mode / key_quant_mode | QLI | **不对齐为两个 attr** | QLI 两端恒为 0；统一为 `quant_mode` |
+| quant_mode（PKI 0/1 vs QLIv2 1..5） | PKI / QLIv2 | **对齐并兼容** | host 0 与 1 均映射 FP8 PTH；2..5 跟 QLIv2 |
+| return_value | LIv2 / PKI / QLIv2 | **对齐** | |
+| key_stride0 | PKI / LI PA | **对齐** | |
+| k_descale_stride0 | PKI | **对齐** | Step 1 原先缺失 |
+| max_seqlen_q / max_seqlen_k | LIv2 / QLIv2 | **对齐 max_seqlen_q**；不对齐 max_seqlen_k | max_seqlen_k 可由 key shape / actual_seq_k 推导，LIv2 仅用于 metadata 负载均衡 |
+| init_blocks / local_blocks | MSA | **预留** | Step 2 |
+| sparse_values dtype FP16/BF16 | LI / QLI | **不对齐窄类型** | 统一 FP32，避免量化/非量化双输出 dtype；调用方可再 cast |
+| PKI INT64 序列/残余 | PKI | **不对齐 INT64 GM** | 设备侧统一 INT32；ValueDepend 的 INT64 host 路径由调用方 cast，避免 kernel 再分一叉 |
+
+### 5.6 数据类型组合
+
+A2 / A3（query / key / weights / q_descale / k_descale）：
+
+| idx | query | key | weights | q_descale | k_descale | 覆盖 |
+|---|---|---|---|---|---|---|
+| 0 | FP16 | FP16 | FP16 | FLOAT | FLOAT | LI / PKI |
+| 1 | BF16 | BF16 | BF16 | FLOAT | FLOAT | LI / PKI |
+| 2 | FP16 | FP16 | FP32 | FLOAT | FLOAT | LI A2 weights float |
+| 3 | BF16 | BF16 | FP32 | FLOAT | FLOAT | LI A2 |
+| 4 | INT8 | INT8 | FP16 | FP16 | FP16 | QLI A2 |
+
+Ascend 950：
+
+| idx | query | key | weights | q_descale | k_descale | 覆盖 |
+|---|---|---|---|---|---|---|
+| 0 | FP16 | FP16 | FP16 | FLOAT | FLOAT | LI / PKI |
+| 1 | BF16 | BF16 | BF16 | FLOAT | FLOAT | LI / PKI |
+| 2 | FP16 | FP16 | FP32 | FLOAT | FLOAT | LIv2 |
+| 3 | BF16 | BF16 | FP32 | FLOAT | FLOAT | LIv2 |
+| 4 | FP8_E4M3FN | FP8_E4M3FN | FP16 | FLOAT | FLOAT | PKI / QLI PTH |
+| 5 | FP8_E4M3FN | FP8_E4M3FN | BF16 | FLOAT | FLOAT | PKI / QLI PTH |
+| 6 | FP8_E4M3FN | FP8_E4M3FN | FP32 | FLOAT | FLOAT | QLIv2 PTH |
+| 7 | FP8_E4M3FN | FP8_E4M3FN | FP16 | E8M0 | E8M0 | PKI mxFP8 |
+| 8 | FP8_E4M3FN | FP8_E4M3FN | BF16 | E8M0 | E8M0 | PKI mxFP8 |
+| 9 | FP8_E4M3FN | FP8_E4M3FN | FP32 | E8M0 | E8M0 | QLIv2 mxFP8 |
+| 10 | HIFLOAT8 | HIFLOAT8 | BF16 | FLOAT | FLOAT | QLI HiFP8 |
+| 11 | HIFLOAT8 | HIFLOAT8 | FP32 | FLOAT | FLOAT | QLIv2 HiFP8 |
+| 12 | INT8 | INT8 | FP16 | FP16 | FP16 | QLI INT8 |
+| 13 | INT8 | INT8 | FP32 | FP16 | FP16 | QLIv2 INT8 |
+| 14 | FLOAT4_E2M1 | FLOAT4_E2M1 | FP32 | E8M0 | E8M0 | QLIv2 mxFP4 |
+| 15 | FP8_E5M2 | FP8_E5M2 | FP16 | FLOAT | FLOAT | MSA（Step 2 dtype 先注册） |
+| 16 | FP8_E5M2 | FP8_E5M2 | BF16 | FLOAT | FLOAT | MSA |
 
 ---
 

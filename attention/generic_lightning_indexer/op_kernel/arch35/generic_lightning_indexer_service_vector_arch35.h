@@ -16,6 +16,7 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
+#include "../generic_lightning_indexer_tiling_data.h"
 #include "../generic_lightning_indexer_common.h"
 #include "../arch35/vf/generic_lightning_indexer_vector1.h"
 #include "../arch35/vf/generic_lightning_indexer_topk.h"
@@ -78,6 +79,10 @@ public:
     __aicore__ inline void InitVecInputTensor(GlobalTensor<W_T> weightsGm, GlobalTensor<int32_t> indiceOutGm,
                                               GlobalTensor<float> valueOutGm, GlobalTensor<int32_t> blockTableGm,
                                               GlobalTensor<float> qScaleGm = {}, GlobalTensor<float> kScaleGm = {});
+    __aicore__ inline void SetOutputIdxOffsetGm(GlobalTensor<int32_t> gm)
+    {
+        outputIdxOffsetGm = gm;
+    }
     __aicore__ inline void CleanInvalidOutput(int64_t invalidS1offset);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
@@ -122,6 +127,7 @@ protected:
     // mode=0 (FP8 per-token-head) scale GM(q/k_descale, float)
     GlobalTensor<float> qScaleGm;
     GlobalTensor<float> kScaleGm;
+    GlobalTensor<int32_t> outputIdxOffsetGm;
     // =================================常量区=================================
     static constexpr uint32_t VEC1_V_MTE2_EVENT = EVENT_ID0;
     static constexpr uint32_t VEC1_MTE2_V_EVENT = EVENT_ID1;
@@ -935,6 +941,22 @@ __aicore__ inline void GenericLightningIndexerServiceVector<LIT>::ProcessTopK(co
         SetFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
         SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
         WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+        if (constInfo_.hasOutputIdxOffset) {
+            int32_t off = outputIdxOffsetGm.GetValue(info.bIdx);
+            event_t eventID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
+            SetFlag<HardEvent::S_V>(eventID);
+            WaitFlag<HardEvent::S_V>(eventID);
+            if (off != 0) {
+                if (expandMode_ != 0) {
+                    Adds(expandOutLocal_, expandOutLocal_, off, outputLen_);
+                } else {
+                    Adds(indicesOutLocal_.ReinterpretCast<int32_t>(), indicesOutLocal_.ReinterpretCast<int32_t>(), off,
+                         topkCount_);
+                }
+                SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+                WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+            }
+        }
         if (expandMode_ != 0) {
             AscendC::DataCopyPad(indiceOutGm[info.indiceOutOffset + (curS1Idx + rowIdx) * outputLen_], expandOutLocal_,
                                  copyOutParams);

@@ -16,6 +16,7 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
+#include "../generic_lightning_indexer_tiling_data.h"
 #include "../generic_lightning_indexer_common.h"
 #include "generic_lightning_indexer_service_vector_arch35.h"
 #include "generic_lightning_indexer_service_cube_arch35.h"
@@ -51,9 +52,10 @@ public:
     __aicore__ inline GenericLightningIndexerKernel(){};
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *weights,
                                 __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengthsK,
-                                __gm__ uint8_t *cmpResidualK, __gm__ uint8_t *blockTable, __gm__ uint8_t *qDescale,
-                                __gm__ uint8_t *kDescale, __gm__ uint8_t *metadata, __gm__ uint8_t *sparseIndices,
-                                __gm__ uint8_t *sparseValues, __gm__ uint8_t *workspace,
+                                __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedK, __gm__ uint8_t *cmpResidualK,
+                                __gm__ uint8_t *blockTable, __gm__ uint8_t *qDescale, __gm__ uint8_t *kDescale,
+                                __gm__ uint8_t *outputIdxOffset, __gm__ uint8_t *metadata, __gm__ uint8_t *startLoc,
+                                __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseValues, __gm__ uint8_t *workspace,
                                 const GenericLightningIndexerTilingData *__restrict tiling, TPipe *tPipe);
     __aicore__ inline void Process();
 
@@ -118,7 +120,11 @@ protected:
     GlobalTensor<int32_t> actualSeqLengthsGmQ;
     GlobalTensor<int32_t> actualSeqLengthsGmKv;
     GlobalTensor<int32_t> poolTailKGm_;
+    GlobalTensor<int32_t> sequsedQGm_;
+    GlobalTensor<int32_t> outputIdxOffsetGm_;
+    GlobalTensor<int32_t> startLocGm_;
     bool hasPoolTailK_ = false;
+    bool hasSequsedQ_ = false;
 
     // ================================类成员变量====================================
     // aic、aiv核信息
@@ -224,6 +230,7 @@ __aicore__ inline void GenericLightningIndexerKernel<LIT>::InitTilingData(
     constInfo.keyReduceMode = tilingData->keyReduceMode;
     constInfo.initBlocks = tilingData->initBlocks;
     constInfo.localBlocks = tilingData->localBlocks;
+    constInfo.hasOutputIdxOffset = tilingData->hasOutputIdxOffset;
     constInfo.trunkLen = tilingData->trunkLen;
     constInfo.mBaseSizeMax = tilingData->mBaseSizeMax;
     constInfo.keyDequantScaleStride0 = tilingData->keyDequantScaleStride0;
@@ -283,6 +290,9 @@ __aicore__ inline void GenericLightningIndexerKernel<LIT>::GetS1S2ActualSeqLen(u
 {
     actS1Size = GetActualSeqLen(bIdx, constInfo.actualLenQDims, constInfo.isAccumSeqS1, actualSeqLengthsGmQ,
                                 constInfo.qSeqSize);
+    if (hasSequsedQ_) {
+        actS1Size = Min(actS1Size, static_cast<uint32_t>(sequsedQGm_.GetValue(bIdx)));
+    }
     uint32_t actS2Pool = GetActualSeqLen(bIdx, constInfo.actualLenDims, constInfo.isAccumSeqS2, actualSeqLengthsGmKv,
                                          constInfo.kSeqSize);
     uint32_t tailK = hasPoolTailK_ ? static_cast<uint32_t>(poolTailKGm_.GetValue(bIdx)) : 0;
@@ -458,10 +468,10 @@ __aicore__ inline void GenericLightningIndexerKernel<LIT>::DealActSeqLenIsZero(u
 template <typename LIT>
 __aicore__ inline void GenericLightningIndexerKernel<LIT>::Init(
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *weights, __gm__ uint8_t *actualSeqLengthsQ,
-    __gm__ uint8_t *actualSeqLengthsK, __gm__ uint8_t *cmpResidualK, __gm__ uint8_t *blockTable,
-    __gm__ uint8_t *qDescale, __gm__ uint8_t *kDescale, __gm__ uint8_t *metadata, __gm__ uint8_t *sparseIndices,
-    __gm__ uint8_t *sparseValues, __gm__ uint8_t *workspace, const GenericLightningIndexerTilingData *__restrict tiling,
-    TPipe *tPipe)
+    __gm__ uint8_t *actualSeqLengthsK, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedK, __gm__ uint8_t *cmpResidualK,
+    __gm__ uint8_t *blockTable, __gm__ uint8_t *qDescale, __gm__ uint8_t *kDescale, __gm__ uint8_t *outputIdxOffset,
+    __gm__ uint8_t *metadata, __gm__ uint8_t *startLoc, __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseValues,
+    __gm__ uint8_t *workspace, const GenericLightningIndexerTilingData *__restrict tiling, TPipe *tPipe)
 {
     if ASCEND_IS_AIV {
         tmpBlockIdx = GetBlockIdx(); // vec:0-47
@@ -472,11 +482,22 @@ __aicore__ inline void GenericLightningIndexerKernel<LIT>::Init(
     }
 
     InitTilingData(tiling);
-    InitActualSeqLen(actualSeqLengthsQ, actualSeqLengthsK);
+    __gm__ uint8_t *actQ = (actualSeqLengthsQ != nullptr) ? actualSeqLengthsQ : sequsedQ;
+    __gm__ uint8_t *actK = (actualSeqLengthsK != nullptr) ? actualSeqLengthsK : sequsedK;
+    InitActualSeqLen(actQ, actK);
     (void)metadata;
+    (void)startLoc;
+    if (sequsedQ != nullptr) {
+        sequsedQGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(sequsedQ), constInfo.batchSize);
+        hasSequsedQ_ = true;
+    }
     if (cmpResidualK != nullptr) {
         poolTailKGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(cmpResidualK), constInfo.batchSize);
         hasPoolTailK_ = true;
+    }
+    if (outputIdxOffset != nullptr) {
+        outputIdxOffsetGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(outputIdxOffset), constInfo.batchSize);
+        vectorService.SetOutputIdxOffsetGm(outputIdxOffsetGm_);
     }
 
     // 获取分核信息

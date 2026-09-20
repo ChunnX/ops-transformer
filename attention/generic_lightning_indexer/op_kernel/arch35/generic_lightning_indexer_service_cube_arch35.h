@@ -20,6 +20,7 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
+#include "../generic_lightning_indexer_tiling_data.h"
 #include "../generic_lightning_indexer_common.h"
 #include <type_traits>
 
@@ -585,7 +586,8 @@ __aicore__ inline void GenericLightningIndexerServiceCube<LIT>::Fixp(uint64_t s1
     WaitFlag<HardEvent::M_FIX>(M_FIX_EVENT + l0BufIdx_ % L0_BUF_NUM);
 
     if constexpr (std::is_same<SCORE_T, uint32_t>::value) {
-        FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
+        // 参数类型必须是 FixpipeParamsArch3510<config.format>，不能写死 ROW_MAJOR，否则 tikicpulib 无法匹配重载。
+        FixpipeParamsArch3510<LI_CFG_ROW_MAJOR_UB.format> fixpipeParams;
         // L0C上的bmm1结果矩阵N方向的size大小；同mmadParams.n；8个元素（32B)对齐
         fixpipeParams.nSize = (s2L0RealSize + 7) >> 3 << 3;
         // 有效数据不足16行，只需输出部分行即可;L0C上的bmm1结果矩阵M方向的size大小必须是偶数
