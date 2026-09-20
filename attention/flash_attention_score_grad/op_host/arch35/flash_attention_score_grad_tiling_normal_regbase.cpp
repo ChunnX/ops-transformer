@@ -957,6 +957,12 @@ bool FlashAttentionScoreGradTilingNormalRegbase::DoBn2s2Sparse()
         return false;
     }
     if (fBaseParams.isSparse || fBaseParams.layoutType == INPUT_FORMAT_TND) {
+        // GetBlockInfoOfBNS4TND uses actual sequence lengths to balance sparse blocks. For fixed-shape layouts,
+        // actualSeqQlen and actualSeqKvlen are not populated during input parsing, so use the static S1/S2 lengths.
+        if (fBaseParams.layoutType != INPUT_FORMAT_TND) {
+            fBaseParams.actualSeqQlen.assign(static_cast<size_t>(fBaseParams.b), fBaseParams.s1);
+            fBaseParams.actualSeqKvlen.assign(static_cast<size_t>(fBaseParams.b), fBaseParams.s2);
+        }
         return GetBlockInfoOfBNS4TND();
     } else {
         int64_t blockStarts[CORE_LIST_NUM];
