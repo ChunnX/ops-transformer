@@ -38,7 +38,7 @@ template <
     AscendC::TPosition Position
 >
 struct LocalTensorBuffer {
-    static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported local tensor buffer, can not find the specialization.");
+    static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported local tensor buffer, cannot find the specialization.");
 };
 
 /// Partial specialization for TPosition::A1
