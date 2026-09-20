@@ -373,10 +373,25 @@ def quant_block_sparse_attn(
     num_heads_q: int = 0,
     num_heads_kv: int = 0,
     head_dim: int = 0,
+    sparse_pattern: str = "",
 ):
     """Adapt the shared CSV inputs and call the installed QBSA operator."""
     del quant_matmul  # MXFP8 golden-only switch; never forward it to the operator.
     _ensure_cann_ops()
+    if sparse_pattern == "mixed_empty_rows":
+        # The layout STC has a directed scenario with empty rows inside the
+        # physical Q range.  Make the pattern deterministic after TTK input
+        # generation, so metadata and the main op consume identical data.
+        sparse_indices = sparse_indices.clone()
+        sparse_seq_len = sparse_seq_len.clone()
+        for batch_idx in range(sparse_seq_len.shape[0]):
+            for head_idx in range(sparse_seq_len.shape[1]):
+                for qb_idx in range(sparse_seq_len.shape[2]):
+                    if (batch_idx + head_idx + qb_idx) % 3 == 0:
+                        sparse_seq_len[batch_idx, head_idx, qb_idx] = 0
+                        sparse_indices[batch_idx, head_idx, qb_idx].fill_(-1)
+    elif sparse_pattern:
+        raise ValueError(f"Unsupported sparse_pattern: {sparse_pattern!r}")
     key, value, k_descale, p_scale, metadata = _prepare_operator_inputs(
         query,
         key,
