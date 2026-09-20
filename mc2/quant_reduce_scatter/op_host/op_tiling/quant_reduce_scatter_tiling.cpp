@@ -53,7 +53,6 @@ static void SetTilingData(gert::TilingContext *context, QuantReduceScatterTiling
     context->SetBlockDim(ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum));
     tilingData.quantReduceScatterTilingInfo.aivNum = aivNum;
     size_t xDimNum = context->GetInputShape(X_INDEX)->GetStorageShape().GetDimNum();
-    size_t scalesDimNum = context->GetInputShape(SCALES_INDEX)->GetStorageShape().GetDimNum();
     uint64_t xValueBS = 1UL;
     uint64_t scalesValueH = 0UL;
     // 3d场景，context->GetInputShape在函数CheckInputTensorDim中已经校验
@@ -129,9 +128,9 @@ static ge::graphStatus QuantReduceScatterTilingFunc(gert::TilingContext *context
                         ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "tiling check failed in quant_reduce_scatter."), return ge::GRAPH_FAILED);
 
-    SetTilingData(context, *tilingData);
     tilingData->quantReduceScatterTilingInfo.hcclBufferSize = runInfo.hcclBufferSize;
     tilingData->quantReduceScatterTilingInfo.quantMode = runInfo.quantMode;
+    SetTilingData(context, *tilingData);
     SetXPerBlock(*tilingData, runInfo);
     SetTilingKey(context);
     PrintTilingDataInfo(context, *tilingData);
