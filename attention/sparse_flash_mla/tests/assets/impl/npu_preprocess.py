@@ -237,7 +237,7 @@ def move_to_device(value, target):
 
 
 def run_metadata(arguments, metadata):
-    import cann_ops_transformer
+    import cann_ops_transformer  # noqa: F401
 
     return torch.ops.cann_ops_transformer.sparse_flash_mla_metadata(
         int(arguments["num_heads_q"]),
@@ -271,9 +271,7 @@ def run_metadata(arguments, metadata):
 
 
 def run(q, *, ori_kv=None, cmp_kv=None, metadata=None, **kwargs):
-    """Generate and copy metadata for a main SparseFlashMla invocation."""
-    if metadata is None:
-        raise ValueError("SparseFlashMla npu_preprocess requires metadata")
+    """Generate metadata dynamically, or fill an existing static placeholder."""
     protocol = load_metadata_protocol()
     testcase_name = kwargs.get("testcase_name")
     force_metadata_refresh = bool(get_attribute(kwargs, "metadata_refresh", False))
@@ -293,7 +291,9 @@ def run(q, *, ori_kv=None, cmp_kv=None, metadata=None, **kwargs):
         source,
         force_metadata_refresh,
     )
-    generated = run_metadata(arguments, metadata)
+    generated = run_metadata(arguments, metadata if metadata is not None else q)
+    if metadata is None:
+        return {"metadata": generated}
     if tuple(metadata.shape) != tuple(generated.shape):
         raise ValueError(
             "SMLA metadata shape mismatch: "

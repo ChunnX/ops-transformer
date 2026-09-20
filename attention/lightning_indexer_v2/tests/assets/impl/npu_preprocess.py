@@ -175,7 +175,7 @@ def move_to_device(value, target):
 
 
 def run_metadata(arguments, metadata):
-    import cann_ops_transformer
+    import cann_ops_transformer  # noqa: F401
 
     return torch.ops.cann_ops_transformer.lightning_indexer_metadata(
         int(arguments["num_heads_q"]),
@@ -216,10 +216,8 @@ def run(
     cmp_ratio=1,
     **kwargs,
 ):
-    """Generate metadata once, or reuse a nonzero manual-data input."""
+    """Generate metadata dynamically, or fill an existing static placeholder."""
     del w
-    if metadata is None:
-        raise ValueError("LightningIndexer V2 npu_preprocess requires metadata")
     arguments_kwargs = dict(kwargs)
     arguments_kwargs.update(
         {
@@ -258,7 +256,9 @@ def run(
         source,
         force_metadata_refresh,
     )
-    generated = run_metadata(arguments, metadata)
+    generated = run_metadata(arguments, metadata if metadata is not None else q)
+    if metadata is None:
+        return {"metadata": generated}
     if tuple(metadata.shape) != tuple(generated.shape):
         raise ValueError(
             "LI_V2 metadata shape mismatch: "

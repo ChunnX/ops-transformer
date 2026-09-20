@@ -231,6 +231,13 @@ class SparseFlashAttentionInputAdapter:
         golden_module.CASE_DATA.put(testcase_name, entry)
 
 
+def expect_error(kwargs):
+    value = kwargs.get("expect_error", False)
+    if isinstance(value, str):
+        return value.strip().lower() in ("1", "true", "yes", "on")
+    return bool(value)
+
+
 def generate_sfa_inputs(
     query,
     key,
@@ -254,6 +261,8 @@ def generate_sfa_inputs(
     input_ranges=None,
     **kwargs,
 ):
+    if expect_error(kwargs):
+        return None
     return INPUT_ADAPTER.generate(
         query,
         key,
@@ -306,6 +315,8 @@ def generate_sfa_inputs_aclnn_v2(
     **kwargs,
 ):
     # 10 个输入 tensor → 9 个 others → 3 个输出 tensor。
+    if expect_error(kwargs):
+        return None
     return INPUT_ADAPTER.generate(
         query,
         key,
@@ -357,6 +368,8 @@ def generate_sfa_inputs_aclnn(
     **kwargs,
 ):
     # V1（aclnnSparseFlashAttention）无 sinks：9 个输入 tensor → 9 个 others → 3 个输出 tensor。
+    if expect_error(kwargs):
+        return None
     return INPUT_ADAPTER.generate(
         query,
         key,

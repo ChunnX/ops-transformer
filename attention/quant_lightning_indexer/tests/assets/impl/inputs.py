@@ -427,6 +427,13 @@ class QuantLightningIndexerInputAdapter:
 INPUT_ADAPTER = QuantLightningIndexerInputAdapter()
 
 
+def expect_error(kwargs):
+    value = kwargs.get("expect_error", False)
+    if isinstance(value, str):
+        return value.strip().lower() in ("1", "true", "yes", "on")
+    return bool(value)
+
+
 def rebuild_qli_compare_data(compare_context):
     return INPUT_ADAPTER.rebuild_compare_data(compare_context)
 
@@ -448,6 +455,8 @@ def generate_qli_inputs(
     **kwargs,
 ):
     """Generate the exact canonical pytest inputs and CPU golden for a TTK case."""
+    if expect_error(kwargs):
+        return None
     INPUT_ADAPTER.customize(
         query,
         key,

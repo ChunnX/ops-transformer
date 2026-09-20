@@ -232,7 +232,7 @@ def move_to_device(value, target, empty_if_none=False):
 
 
 def run_metadata(arguments, metadata):
-    import cann_ops_transformer
+    import cann_ops_transformer  # noqa: F401
 
     return torch.ops.cann_ops_transformer.quant_sparse_flash_mla_metadata(
         int(arguments["num_heads_q"]),
@@ -271,9 +271,7 @@ def run_metadata(arguments, metadata):
 
 
 def run(q, *, ori_kv=None, cmp_kv=None, metadata=None, quant_mode=None, **kwargs):
-    """Generate metadata once, or reuse a nonzero manual-data slot."""
-    if metadata is None:
-        raise ValueError("QuantSparseFlashMla npu_preprocess requires metadata")
+    """Generate metadata dynamically, or fill an existing static placeholder."""
     if quant_mode is None:
         raise ValueError("QuantSparseFlashMla npu_preprocess requires quant_mode")
     protocol = load_metadata_protocol()
@@ -294,7 +292,9 @@ def run(q, *, ori_kv=None, cmp_kv=None, metadata=None, quant_mode=None, **kwargs
         source,
         force_metadata_refresh,
     )
-    generated = run_metadata(arguments, metadata)
+    generated = run_metadata(arguments, metadata if metadata is not None else q)
+    if metadata is None:
+        return {"metadata": generated}
     if tuple(metadata.shape) != tuple(generated.shape):
         raise ValueError(
             "QSMLA metadata shape mismatch: "

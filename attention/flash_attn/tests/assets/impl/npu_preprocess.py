@@ -13,8 +13,8 @@
 
 This module is intentionally independent from TTK.  The framework passes the
 main API arguments after H2D; this hook invokes the companion torch operator
-``flash_attn_metadata`` and updates ``metadata`` in place.  Profiling and
-result handling remain in TTK, and the hook always returns ``None``.
+``flash_attn_metadata``.  A static placeholder is updated in place, while a
+dynamic TTK slot is returned to the framework for argument patching.
 """
 
 import importlib.util
@@ -254,9 +254,7 @@ def run(
     metadata=None,
     **kwargs,
 ):
-    """Generate and copy metadata for a main FlashAttn invocation."""
-    if metadata is None:
-        raise ValueError("FlashAttn npu_preprocess requires metadata")
+    """Generate metadata dynamically, or fill an existing static placeholder."""
     protocol = load_metadata_protocol()
     testcase_name = kwargs.get("testcase_name")
     if protocol.metadata_is_materialized(metadata):
@@ -278,7 +276,9 @@ def run(
                 "[%s] saved FlashAttn metadata sidecar: %s", testcase_name, saved
             )
     logging.info("[%s] build FlashAttn metadata from %s", testcase_name, source)
-    generated = run_metadata(arguments, metadata)
+    generated = run_metadata(arguments, metadata if metadata is not None else q)
+    if metadata is None:
+        return {"metadata": generated}
     if tuple(metadata.shape) != tuple(generated.shape):
         raise ValueError(
             "FlashAttn metadata shape mismatch: "
