@@ -52,6 +52,28 @@ TEST(FlashAttnRoute, DefaultGateRemainsDisabled)
     EXPECT_EQ(tiling::GetFlashAttnTemplateId(64, 64, 128, true), 0U);
 }
 
+TEST(FlashAttnRoute, CoreCapUsesUnmergedHeadTasksOnlyForTemplate2)
+{
+    EXPECT_EQ(tiling::GetMaxUsedAicCores(28, 1, 1, 8, 65, 256, 128, 256), 5U);
+    EXPECT_EQ(tiling::GetMaxUsedAicCores(28, 1, 1, 8, 65, 256, 128, 256, true), 8U);
+    for (bool unmerged : {false, true}) {
+        EXPECT_EQ(tiling::GetMaxUsedAicCores(28, 1, 1, UINT32_MAX, INT64_MAX, INT64_MAX, 128, 256, unmerged), 28U);
+        EXPECT_EQ(tiling::GetMaxUsedAicCores(28, 1, 1, 8, -1, 256, 128, 256, unmerged), 28U);
+        EXPECT_EQ(tiling::GetMaxUsedAicCores(28, 1, 1, 8, 0, 256, 128, 256, unmerged), 28U);
+    }
+    for (uint32_t g : {1U, 4U, 8U, 32U}) {
+        for (int64_t q : {1, 64, 65, 128, 129, 4096}) {
+            for (int64_t kv : {1, 207, 208, 209, 223, 224, 225, 256, 257, 4096}) {
+                for (uint32_t n : {128U, 208U, 224U, 256U}) {
+                    const uint64_t expected = 2U * 3U * g * ((q + 127U) / 128U) * ((kv + n - 1U) / n);
+                    EXPECT_EQ(tiling::GetMaxUsedAicCores(28, 2, 3, g, q, kv, 128, n, true),
+                              expected < 28 ? expected : 28U);
+                }
+            }
+        }
+    }
+}
+
 struct RouteCase {
     uint32_t d;
     uint32_t dv;

@@ -202,7 +202,7 @@ void FlashAttnMetadataCpuKernel::InitDeviceInfo()
     // Keep aicCoreNum_/aivCoreNum_ unchanged: they define metadata strides and the FAG layout.
     uint32_t maxUsedAicCores = optiling::flash_attn::fa_tiling_util::GetMaxUsedAicCores(
         aicCoreNum_, baseInfo.batchSize, numHeadsKv_, numHeadsQ_ / numHeadsKv_, maxSeqlenQ_, maxSeqlenKv_, mBaseSize_,
-        s2BaseSize_);
+        s2BaseSize_, param.outputLayout == load_balance::OutputLayout::BN1_S1);
     uint32_t maxUsedAivCores = maxUsedAicCores * (aivCoreNum_ / aicCoreNum_);
     deviceInfo.aicCoreMaxNum = maxUsedAicCores;
     deviceInfo.aivCoreMaxNum = maxUsedAivCores;
