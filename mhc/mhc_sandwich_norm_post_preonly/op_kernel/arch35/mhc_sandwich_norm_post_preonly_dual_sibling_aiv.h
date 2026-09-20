@@ -37,14 +37,9 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
 
     // 两个lane冗余构造完整x2，但只写各自负责的展平半片。
-    PrefetchHOutTile((uint64_t)token * D_, GetTileD(0));
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        if (tile + 1U < dimLoop_) {
-            const uint32_t nextOff = tOff + dimTile_;
-            PrefetchHOutTile((uint64_t)token * D_ + nextOff, GetTileD(tile + 1U));
-        }
         ComputeX2PostTile(token, tOff, tD, invRms0, postVals);
         CacheX2TileForLane(token, tOff, tD, !USE_RMS_MID);
 

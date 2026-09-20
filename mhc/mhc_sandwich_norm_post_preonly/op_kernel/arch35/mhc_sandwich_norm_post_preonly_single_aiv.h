@@ -18,7 +18,7 @@ __aicore__ inline void
 KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ComputeX2PostTile(
     uint32_t token, uint32_t tOff, uint32_t tD, float invRms0, const float (&postVals)[N_MAX])
 {
-    ConsumeHOutTile(tD);
+    LoadHOutAndCast((uint64_t)token * D_ + tOff, tD);
     LoadGammaInto(bufGamma0Fp32_.Get<float>(), gamma0Gm_, tOff, tD);
     SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
     WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
@@ -261,14 +261,9 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
 
     // 第二遍：计算R1/R2和第一处x2低精度边界。完整x2以输出dtype常驻UB，
     // 避免后续两遍从GM回读，同时不分配完整FP32 x2工作空间。
-    PrefetchHOutTile((uint64_t)token * D_, GetTileD(0));
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        if (tile + 1U < dimLoop_) {
-            const uint32_t nextOff = tOff + dimTile_;
-            PrefetchHOutTile((uint64_t)token * D_ + nextOff, GetTileD(tile + 1U));
-        }
         ComputeX2PostTile(token, tOff, tD, invRms0, postVals);
         CacheX2Tile(token, tOff, tD, !USE_RMS_MID);
 
