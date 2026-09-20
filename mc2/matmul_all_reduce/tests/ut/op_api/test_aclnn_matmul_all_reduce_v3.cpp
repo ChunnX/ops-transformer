@@ -116,9 +116,9 @@ TEST_F(AclnnMatmulAllReduceV3ExtraTest, InvalidNonContiguousX2)
     RunMatmulAllReduceV3Ut(op::SocVersion::ASCEND910B, x1, x2, nullptr, nullptr, output, "", ACLNN_ERR_PARAM_INVALID);
 }
 
-TEST_F(AclnnMatmulAllReduceV3ExtraTest, Ascend950NullCommMode)
+TEST_F(AclnnMatmulAllReduceV3ExtraTest, Dav3510NullCommMode)
 {
-    op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
+    op::SetPlatformNpuArch(Ops::Base::DAV_3510);
     TensorDesc x1 = {{16, 32}, ACL_FLOAT16, ACL_FORMAT_ND};
     TensorDesc x2 = {{32, 16}, ACL_FLOAT16, ACL_FORMAT_ND};
     TensorDesc output = {{16, 16}, ACL_FLOAT16, ACL_FORMAT_ND};

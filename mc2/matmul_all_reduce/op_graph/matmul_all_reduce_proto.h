@@ -117,8 +117,8 @@ x1 is small.
 *  this case). If  output is of BFLOAT16 type, the types of dequantScaleand x3 both are BFLOAT16.
 * @li The value of reduce_op must be within the available range. Currently, only sum is supported.
 * @li The x2 matrix can be transposed or not transposed. The x1 matrix cannot be transposed.
-* @li The Ascend 950 AI processor newly suported hifloat8, float8_e5m2, float8_e4m3, float4_e2m1,
-*  output suport float32 when input datatype is hifloat8, float8_e5m2, float8_e4m3, float4_e2m1.
+* @li The Atlas A5 processor newly supports hifloat8, float8_e5m2, float8_e4m3, float4_e2m1,
+*  output supports float32 when input datatype is hifloat8, float8_e5m2, float8_e4m3, float4_e2m1.
 * @li The Atlas A2 Training Series Product/Atlas 800I A2 Inference Product/A200I A2 Box Heterogeneous Component support
 1, 2, 4, and 8 cards.
 */
