@@ -86,15 +86,11 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     }
 
     if (writeOutput) {
+        SetFlag<HardEvent::V_MTE3>(evtVtoMte3_);
+        WaitFlag<HardEvent::V_MTE3>(evtVtoMte3_);
         const uint32_t headBegin = laneId_ * 2U;
         for (uint32_t n = headBegin; n < headBegin + 2U; ++n) {
-            // MTE3从独立输出暂存读取，避免与R6复用x2常驻缓存形成同址写后读依赖。
-            LocalTensor<T> outTile = bufHInPrimeBf16_.AllocTensor<T>();
-            DataCopy(outTile, x2Cache[n * D_ + tOff], tD);
-            bufHInPrimeBf16_.EnQue(outTile);
-            outTile = bufHInPrimeBf16_.DeQue<T>();
-            DataCopy(x2OutGm_[outBase + (uint64_t)n * D_], outTile, tD);
-            bufHInPrimeBf16_.FreeTensor(outTile);
+            DataCopy(x2OutGm_[outBase + (uint64_t)n * D_], x2Cache[n * D_ + tOff], tD);
         }
     }
 }
