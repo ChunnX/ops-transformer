@@ -212,7 +212,7 @@ __aicore__ inline void FlashAttentionVarLenScoreSameAB<
     LocalTensor<T> apiTmpBuffer = this->commonTBuf.template Get<T>();
     DropOutBitModeInit(apiTmpBuffer);
     if (this->vecBlockIdx < this->tilingData->multiCoreParams.coreNum) {
-        LocalTensor<half> pseHelpBuffer = this->stage1PingBuf.template Get<half>();
+        LocalTensor<half> pseHelpBuffer = this->pseTBuf.template Get<half>();
         PseInnerAlibiCreate<hasPse>(this->pseAlibiGm, pseHelpBuffer, this->pseInfo);
     }
     prefixNAddr = prefix;

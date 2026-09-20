@@ -253,7 +253,7 @@ FlashAttentionVarLenScore<implMode, layOutType, hasPse, hasAtten, hasDrop, INPUT
     AscendC::SetFlag<HardEvent::V_MTE2>(eventIdVToMte2);
     AscendC::WaitFlag<HardEvent::V_MTE2>(eventIdVToMte2);
     if (this->blockIdx < this->tilingData->multiCoreParams.coreNum) {
-        LocalTensor<half> pseHelpBuffer = this->stage1PingBuf.template Get<half>();
+        LocalTensor<half> pseHelpBuffer = this->pseTBuf.template Get<half>();
         PseInnerAlibiCreate<hasPse>(this->pseAlibiGm, pseHelpBuffer, this->pseInfo);
     }
     prefixNAddr = prefix;

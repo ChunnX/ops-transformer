@@ -499,8 +499,8 @@ __aicore__ inline void FlashAttentionScoreS1s2Bn2gs1<implMode, layOutType, hasPs
     if constexpr (hasAtten == true) {
         this->pipe->InitBuffer(this->maskTBufPing, stage1AttenSize); // 可以给attenmask 9k
     }
-    this->pipe->InitBuffer(this->maskTBufPong, maskTBufPongSize); // 可以给dropoutmask 16k
-    this->pipe->InitBuffer(this->pseTBuf, 16384);                 // pse 16k
+    this->pipe->InitBuffer(this->maskTBufPong, maskTBufPongSize);                   // 可以给dropoutmask 16k
+    this->pipe->InitBuffer(this->pseTBuf, stage2Size * sizeof(T) + repeatMaxBytes); // pse 16k/32k
 
     this->pipe->InitBuffer(this->stage1PingBuf, stage2Size * sizeof(T)); // t.a 32k
     this->pipe->InitBuffer(this->stage2TBuf, stage2Size * sizeof(T));    // t.c 32k

@@ -343,7 +343,7 @@ __aicore__ inline void FlashAttentionScoreS1Bn2gs1<FA_S1BN2GS1_FUNCTION_PARAMS_T
     LocalTensor<T> apiTmpBuffer = this->commonTBuf.template Get<T>();
     DropOutBitModeInit(apiTmpBuffer);
     if (this->blockIdx < this->tilingData->multiCoreParams.coreNum) {
-        LocalTensor<half> pseHelpBuffer = this->stage1PingBuf.template Get<half>();
+        LocalTensor<half> pseHelpBuffer = this->pseTBuf.template Get<half>();
         PseInnerAlibiCreate<hasPse>(this->pseAlibiGm, pseHelpBuffer, this->pseInfo);
     }
 }
@@ -482,7 +482,7 @@ __aicore__ inline void FlashAttentionScoreS1Bn2gs1<FA_S1BN2GS1_FUNCTION_PARAMS_T
     this->pipe->InitBuffer(this->maskTBufPong, 11264); // dropoutmask 11k
 
     // 8 * 1024 * 2 = 16k
-    this->pipe->InitBuffer(this->pseTBuf, 16384); // pse 16k
+    this->pipe->InitBuffer(this->pseTBuf, 8192 * sizeof(T) + repeatMaxBytes); // pse 16k/32k
 
     // 8 * 1024 * 4 = 32k
     this->pipe->InitBuffer(this->stage1PingBuf, 8192 * sizeof(T)); // t.a 32k

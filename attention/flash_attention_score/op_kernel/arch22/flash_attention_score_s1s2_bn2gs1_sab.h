@@ -423,7 +423,7 @@ __aicore__ inline void FlashAttentionScoreS1s2Bn2gs1SameAB<
     }
     if constexpr (hasPse == true) {
         if (this->vecBlockIdx < this->tilingData->multiCoreParams.coreNum) {
-            LocalTensor<half> pseHelpBuffer = this->stage1PingBuf.template Get<half>();
+            LocalTensor<half> pseHelpBuffer = this->pseTBuf.template Get<half>();
             PseInnerAlibiCreate<hasPse>(this->pseAlibiGm, pseHelpBuffer, this->pseInfo);
         }
     }
@@ -573,9 +573,9 @@ __aicore__ inline void FlashAttentionScoreS1s2Bn2gs1SameAB<implMode, layOutType,
     uint64_t maskTBufPongSize = 16 * 1024;
 
     // 可选输入的buffer空间，保持和stage1处理的size一致
-    this->pipe->InitBuffer(this->maskTBufPing, stage1AttenSize);  // 可以给attenmask 9k
-    this->pipe->InitBuffer(this->maskTBufPong, maskTBufPongSize); // 可以给dropoutmask 16k
-    this->pipe->InitBuffer(this->pseTBuf, 16384);                 // pse 16k
+    this->pipe->InitBuffer(this->maskTBufPing, stage1AttenSize);                    // 可以给attenmask 9k
+    this->pipe->InitBuffer(this->maskTBufPong, maskTBufPongSize);                   // 可以给dropoutmask 16k
+    this->pipe->InitBuffer(this->pseTBuf, stage2Size * sizeof(T) + repeatMaxBytes); // pse 16k/32k
 
     this->pipe->InitBuffer(this->stage1PingBuf, stage2Size * sizeof(T)); // t.a 32k
     this->pipe->InitBuffer(this->stage2TBuf, stage2Size * sizeof(T));    // t.c 32k
