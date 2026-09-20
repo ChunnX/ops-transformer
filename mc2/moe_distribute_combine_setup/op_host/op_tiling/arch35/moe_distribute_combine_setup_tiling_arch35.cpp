@@ -101,6 +101,7 @@ ge::graphStatus MoeDistributeCombineSetupTilingA5::CheckMoeExpertNum()
 ge::graphStatus MoeDistributeCombineSetupTilingA5::CheckSharedExpertAttr()
 {
     auto attrs = context_->GetAttrs();
+    auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
     auto expertShardTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_EXPERT_SHARD_TYPE_INDEX);
     auto sharedExpertNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_SHARED_EXPERT_NUM_INDEX);
     auto sharedExpertRankNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_SHARED_EXPERT_RANK_NUM_INDEX);
@@ -116,6 +117,11 @@ ge::graphStatus MoeDistributeCombineSetupTilingA5::CheckSharedExpertAttr()
     OP_TILING_CHECK((*sharedExpertRankNumPtr != 0),
                     OP_LOGE_WITH_INVALID_ATTR(nodeName_, "sharedExpertRankNum",
                                               std::to_string(*sharedExpertRankNumPtr).c_str(), "0"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((*sharedExpertRankNumPtr < 0) || (*sharedExpertRankNumPtr >= *epWorldSizePtr),
+                    OP_LOGE_WITH_INVALID_ATTR(
+                        nodeName_, "sharedExpertRankNum", std::to_string(*sharedExpertRankNumPtr).c_str(),
+                        (std::string("[0, ") + std::to_string(*epWorldSizePtr) + ")").c_str()),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;

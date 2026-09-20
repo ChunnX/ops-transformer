@@ -130,6 +130,12 @@ ge::graphStatus MoeDistributeCombineTeardownTilingA5::CheckAttrsComplex()
                                               std::to_string(*sharedExpertRankNumPtr).c_str(), "0"),
                     return ge::GRAPH_FAILED);
 
+    OP_TILING_CHECK((*sharedExpertRankNumPtr < 0) || (*sharedExpertRankNumPtr >= *epWorldSizePtr),
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName_, "sharedExpertRankNum",
+                                              std::to_string(*sharedExpertRankNumPtr).c_str(),
+                                              (std::string("[0, ") + std::to_string(*epWorldSizePtr) + ")").c_str()),
+                    return ge::GRAPH_FAILED);
+
     OP_TILING_CHECK((*moeExpertNumPtr % (*epWorldSizePtr - *sharedExpertRankNumPtr) != 0),
                     OP_LOGE_FOR_INVALID_VALUE(nodeName_, "moeExpertNum", std::to_string(*moeExpertNumPtr).c_str(),
                                               "moeExpertNum % (epWorldSize - sharedExpertRankNum) == 0"),
