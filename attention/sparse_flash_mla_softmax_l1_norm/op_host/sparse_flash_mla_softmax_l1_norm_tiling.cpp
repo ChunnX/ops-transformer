@@ -38,6 +38,7 @@ constexpr int64_t METADATA_IDX = 10;
 constexpr int64_t SOFTMAX_L1_NORM_IDX = 0;
 
 constexpr int64_t DIM_LIMIT = 512;
+constexpr int64_t METADATA_SIZE = 64;
 constexpr int64_t N1_MIN = 1;
 constexpr int64_t N1_MAX = 128;
 constexpr int64_t N2_VALUE = 1;
@@ -233,11 +234,18 @@ static ge::graphStatus ValidateInputDims(gert::TilingContext *context, const str
         metadataTensor->GetStorageShape().GetDimNum() != DIM_NUM_ONE,
         OP_LOGE(opName, "metadata dim num must be 1, but got %zu.", metadataTensor->GetStorageShape().GetDimNum()),
         return ge::GRAPH_FAILED);
+    OP_CHECK_IF(metadataTensor->GetStorageShape().GetDim(0) != METADATA_SIZE,
+                OP_LOGE(opName, "metadata shape[0] must be %lld, but got %lld.", METADATA_SIZE,
+                        metadataTensor->GetStorageShape().GetDim(0)),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus ValidateAttrRanges(int64_t cmpRatio, int64_t maskMode, const string &opName)
+static ge::graphStatus ValidateAttrRanges(int64_t maxSeqlenK, int64_t cmpRatio, int64_t maskMode, const string &opName)
 {
+    OP_CHECK_IF(maxSeqlenK < 0,
+                OP_LOGE(opName, "maxSeqlenK must be greater than or equal to 0, but got %lld.", maxSeqlenK),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(cmpRatio < CMP_RATIO_MIN || cmpRatio > CMP_RATIO_MAX,
                 OP_LOGE(opName, "cmpRatio must be in [1, 128], but got %lld.", cmpRatio), return ge::GRAPH_FAILED);
     OP_CHECK_IF(maskMode != 0 && maskMode != 3,
@@ -252,6 +260,8 @@ static ge::graphStatus ValidateAndExtractShapesTnd(gert::TilingContext *context,
     auto keyShape = context->GetInputShape(KEY_IDX);
 
     info.t1 = queryShape->GetStorageShape().GetDim(0);
+    OP_CHECK_IF(info.t1 <= 0, OP_LOGE(opName, "query T1 must be greater than 0, but got %lld.", info.t1),
+                return ge::GRAPH_FAILED);
     info.gSize = queryShape->GetStorageShape().GetDim(1);
     info.dSize = queryShape->GetStorageShape().GetDim(2);
     info.t2 = keyShape->GetStorageShape().GetDim(0);
@@ -281,9 +291,10 @@ static ge::graphStatus ValidateAndExtractShapesTnd(gert::TilingContext *context,
         OP_LOGE(opName, "cuSeqlensK dim num must be 1, but got %zu.", cuSeqKShape->GetStorageShape().GetDimNum()),
         return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(cuSeqQShape->GetStorageShape().GetDim(0) < B_ADD_ONE,
-                OP_LOGE(opName, "cuSeqlensQ dim[0](%lld) must be >= 1.", cuSeqQShape->GetStorageShape().GetDim(0)),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        cuSeqQShape->GetStorageShape().GetDim(0) <= B_ADD_ONE,
+        OP_LOGE(opName, "cuSeqlensQ dim[0](%lld) must be greater than 1.", cuSeqQShape->GetStorageShape().GetDim(0)),
+        return ge::GRAPH_FAILED);
     info.bSize = cuSeqQShape->GetStorageShape().GetDim(0) - B_ADD_ONE;
 
     OP_CHECK_IF(cuSeqKShape->GetStorageShape().GetDim(0) < B_ADD_ONE,
@@ -307,6 +318,11 @@ static ge::graphStatus ValidateAndExtractShapesBsnd(gert::TilingContext *context
     info.gSize = queryShape->GetStorageShape().GetDim(2);
     info.dSize = queryShape->GetStorageShape().GetDim(3);
     info.skSize = keyShape->GetStorageShape().GetDim(1);
+
+    OP_CHECK_IF(info.bSize <= 0, OP_LOGE(opName, "query B must be greater than 0, but got %lld.", info.bSize),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(info.sqSize <= 0, OP_LOGE(opName, "query S1 must be greater than 0, but got %lld.", info.sqSize),
+                return ge::GRAPH_FAILED);
 
     int64_t keyBSize = keyShape->GetStorageShape().GetDim(0);
     int64_t keyN2Size = keyShape->GetStorageShape().GetDim(2);
@@ -425,8 +441,9 @@ static ge::graphStatus ValidateOptionalShapeInputs(gert::TilingContext *context,
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus ValidateSparseInfo(gert::TilingContext *context, int64_t maskMode, bool isTnd,
-                                          const string &layoutQ, const string &opName, bool &isSparse, int64_t &kLength)
+static ge::graphStatus ValidateSparseInfo(gert::TilingContext *context, const TilingShapeInfo &info, int64_t maskMode,
+                                          bool isTnd, const string &layoutQ, const string &opName, bool &isSparse,
+                                          int64_t &kLength)
 {
     auto sparseIndicesInput = context->GetOptionalInputTensor(SPARSE_INDICES_IDX);
     isSparse = (sparseIndicesInput != nullptr);
@@ -440,6 +457,27 @@ static ge::graphStatus ValidateSparseInfo(gert::TilingContext *context, int64_t 
                     OP_LOGE(opName, "sparseIndices dim num must be %zu when layout is %s, but got %zu.",
                             expectedSparseDim, layoutQ.c_str(), sparseDimNum),
                     return ge::GRAPH_FAILED);
+        if (isTnd) {
+            OP_CHECK_IF(
+                sparseShape->GetStorageShape().GetDim(0) != info.t1 ||
+                    sparseShape->GetStorageShape().GetDim(1) != N2_VALUE,
+                OP_LOGE(opName,
+                        "sparseIndices shape[0](%lld) must be equal to T1(%lld), and shape[1](%lld) "
+                        "must be 1.",
+                        sparseShape->GetStorageShape().GetDim(0), info.t1, sparseShape->GetStorageShape().GetDim(1)),
+                return ge::GRAPH_FAILED);
+        } else {
+            OP_CHECK_IF(
+                sparseShape->GetStorageShape().GetDim(0) != info.bSize ||
+                    sparseShape->GetStorageShape().GetDim(1) != info.sqSize ||
+                    sparseShape->GetStorageShape().GetDim(2) != N2_VALUE,
+                OP_LOGE(opName,
+                        "sparseIndices shape[0](%lld) must be equal to B(%lld), shape[1](%lld) must be "
+                        "equal to S1(%lld), and shape[2](%lld) must be 1.",
+                        sparseShape->GetStorageShape().GetDim(0), info.bSize, sparseShape->GetStorageShape().GetDim(1),
+                        info.sqSize, sparseShape->GetStorageShape().GetDim(2)),
+                return ge::GRAPH_FAILED);
+        }
         kLength = sparseShape->GetStorageShape().GetDim(sparseDimNum - 1);
 
         auto topkLengthInput = context->GetOptionalInputTensor(TOPK_LENGTH_IDX);
@@ -447,11 +485,34 @@ static ge::graphStatus ValidateSparseInfo(gert::TilingContext *context, int64_t 
             OP_CHECK_IF(topkLengthInput == nullptr,
                         OP_LOGE(opName, "topkLength must be provided when maskMode is 0 and sparseIndices exists."),
                         return ge::GRAPH_FAILED);
+        }
+        if (topkLengthInput != nullptr) {
             size_t expectedTopkDim = isTnd ? DIM_NUM_TWO : DIM_NUM_THREE;
             OP_CHECK_IF(topkLengthInput->GetStorageShape().GetDimNum() != expectedTopkDim,
                         OP_LOGE(opName, "topkLength dim num must be %zu when layout is %s, but got %zu.",
                                 expectedTopkDim, layoutQ.c_str(), topkLengthInput->GetStorageShape().GetDimNum()),
                         return ge::GRAPH_FAILED);
+            if (isTnd) {
+                OP_CHECK_IF(topkLengthInput->GetStorageShape().GetDim(0) != info.t1 ||
+                                topkLengthInput->GetStorageShape().GetDim(1) != N2_VALUE,
+                            OP_LOGE(opName,
+                                    "topkLength shape[0](%lld) must be equal to T1(%lld), and shape[1](%lld) "
+                                    "must be 1.",
+                                    topkLengthInput->GetStorageShape().GetDim(0), info.t1,
+                                    topkLengthInput->GetStorageShape().GetDim(1)),
+                            return ge::GRAPH_FAILED);
+            } else {
+                OP_CHECK_IF(topkLengthInput->GetStorageShape().GetDim(0) != info.bSize ||
+                                topkLengthInput->GetStorageShape().GetDim(1) != info.sqSize ||
+                                topkLengthInput->GetStorageShape().GetDim(2) != N2_VALUE,
+                            OP_LOGE(opName,
+                                    "topkLength shape[0](%lld) must be equal to B(%lld), shape[1](%lld) must be "
+                                    "equal to S1(%lld), and shape[2](%lld) must be 1.",
+                                    topkLengthInput->GetStorageShape().GetDim(0), info.bSize,
+                                    topkLengthInput->GetStorageShape().GetDim(1), info.sqSize,
+                                    topkLengthInput->GetStorageShape().GetDim(2)),
+                            return ge::GRAPH_FAILED);
+            }
         }
     }
     return ge::GRAPH_SUCCESS;
@@ -515,6 +576,12 @@ static ge::graphStatus SparseFlashMlaSoftmaxL1NormTilingFunc(gert::TilingContext
         return ge::GRAPH_FAILED;
     }
     auto opName = context->GetNodeName();
+    auto queryShapeForEmptyCheck = context->GetInputShape(QUERY_IDX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, queryShapeForEmptyCheck);
+    if (queryShapeForEmptyCheck->GetStorageShape().GetShapeSize() == 0) {
+        OP_LOGI(opName, "query is empty, skip tiling.");
+        return ge::GRAPH_SUCCESS;
+    }
     if (ValidateRequiredInputs(context, opName) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
@@ -530,7 +597,7 @@ static ge::graphStatus SparseFlashMlaSoftmaxL1NormTilingFunc(gert::TilingContext
     if (ValidateInputDims(context, layoutQ, layoutK, isTnd, opName) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    if (ValidateAttrRanges(cmpRatio, maskMode, opName) != ge::GRAPH_SUCCESS) {
+    if (ValidateAttrRanges(maxSeqlenK, cmpRatio, maskMode, opName) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
@@ -556,7 +623,7 @@ static ge::graphStatus SparseFlashMlaSoftmaxL1NormTilingFunc(gert::TilingContext
 
     bool isSparse = false;
     int64_t kLength = 0;
-    if (ValidateSparseInfo(context, maskMode, isTnd, layoutQ, opName, isSparse, kLength) != ge::GRAPH_SUCCESS) {
+    if (ValidateSparseInfo(context, info, maskMode, isTnd, layoutQ, opName, isSparse, kLength) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
