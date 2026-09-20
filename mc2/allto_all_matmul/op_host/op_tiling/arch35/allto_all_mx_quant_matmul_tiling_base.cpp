@@ -409,8 +409,8 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::InitTilingContextParameters()
         opName_, MatmulAlltoAllTilingUtil::SetAttrsInfo(context_, opName_, contextInfo_, ALLTOALL_MATMUL_INDEX_SCHEMA));
     MC2_CHECK_LOG_RET(opName_, SetMxDataTypeInfo(context_, opName_, contextInfo_));
     MC2_CHECK_LOG_RET(opName_, SetAlltoAllMatmulShapeInfo(context_, contextInfo_));
-    // 判断是否使用apace实现: all2all_out为空且卡数<=8
-    constexpr uint64_t APACE_IMPL_MAX_RANK_DIM = 8;
+    // 判断是否使用apace实现: all2all_out为空且卡数<=16
+    constexpr uint64_t APACE_IMPL_MAX_RANK_DIM = 16;
     usingApaceImpl_ = (!contextInfo_.allToAllOutFlag) && (contextInfo_.args_.rankDim <= APACE_IMPL_MAX_RANK_DIM);
     return ge::GRAPH_SUCCESS;
 }
@@ -544,6 +544,7 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::SetHcclTiling()
                                                         hcclServerEngine) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
+    hcclServerType_ = hcclServerEngine;
     std::string algoName = Mc2Tiling::SelectAllToAllAlgoName(
         opName_, contextInfo_.group, hcclServerEngine, inferredInfo_.tileM, contextInfo_.args_.kValue,
         contextInfo_.args_.inputDtypeSize, contextInfo_.args_.rankDim);
@@ -952,12 +953,7 @@ uint64_t AllToAllMxQuantMatmulTilingBase::GetTilingKey() const
     bool x2TransposeFlag = contextInfo_.args_.isBTrans ? true : false;
     uint8_t biasDType = DTYPE_BIAS_FP32;
     // 获取commMode
-    uint8_t hcclServerType = 0;
-    if (MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo_, ALLTOALL_MATMUL_INDEX_SCHEMA,
-                                                        hcclServerType) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
-    uint8_t commMode = (hcclServerType == mc2tiling::A5_CCU_ENGINE) ? ALL2ALL_COMM_TYPE_CCU : ALL2ALL_COMM_TYPE_AICPU;
+    uint8_t commMode = (hcclServerType_ == mc2tiling::A5_CCU_ENGINE) ? ALL2ALL_COMM_TYPE_CCU : ALL2ALL_COMM_TYPE_AICPU;
     const uint64_t tilingKey =
         GET_TPL_TILING_KEY(MX_QUANT_MODE, x2TransposeFlag, biasDType, false, commMode, usingApaceImpl_, ADDBIAS_OFF);
     OP_LOGD(opName_,
