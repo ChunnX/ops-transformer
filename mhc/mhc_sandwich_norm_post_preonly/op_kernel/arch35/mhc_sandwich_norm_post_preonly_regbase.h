@@ -612,40 +612,6 @@ __aicore__ inline void AxpyB16WithUbScalar(const LocalTensor<float> &dst, const 
     }
 }
 
-// R6最后一路累加后直接量化写入低精度h_in缓存，避免FP32结果再次写回和读取。
-template <typename T>
-__aicore__ inline void AxpyB16WithUbScalarToB16(const LocalTensor<T> &dst, const LocalTensor<float> &acc,
-                                                const LocalTensor<T> &src, const LocalTensor<float> &scalarUb,
-                                                uint32_t scalarIndex, uint32_t count)
-{
-    __local_mem__ T *dstAddr = (__local_mem__ T *)dst.GetPhyAddr();
-    __local_mem__ float *accAddr = (__local_mem__ float *)acc.GetPhyAddr();
-    __local_mem__ T *srcAddr = (__local_mem__ T *)src.GetPhyAddr();
-    __local_mem__ float *scalarAddr = (__local_mem__ float *)scalarUb.GetPhyAddr();
-    uint32_t remain = count;
-    const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
-    __VEC_SCOPE__
-    {
-        RegTensor<T> srcReg, dstReg;
-        RegTensor<float> srcFp32Reg, accReg, scalarReg;
-        MaskReg mask;
-        DataCopy<float, LoadDist::DIST_BRC_B32>(scalarReg, scalarAddr + scalarIndex);
-        for (uint16_t i = 0; i < loops; ++i) {
-            mask = UpdateMask<float>(remain);
-            DataCopy<float, LoadDist::DIST_NORM>(accReg, accAddr + i * VL_FP32);
-            DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + i * VL_FP32);
-            Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
-            AscendC::Reg::MulAddDst(accReg, srcFp32Reg, scalarReg, mask);
-            if constexpr (IsSameT<T, bfloat16_t>::value) {
-                Cast<T, float, CAST_FP32_TO_B16_RINT>(dstReg, accReg, mask);
-            } else {
-                Cast<T, float, CAST_FP32_TO_B16_NONE>(dstReg, accReg, mask);
-            }
-            DataCopy<T, StoreDist::DIST_PACK_B32>(dstAddr + i * VL_FP32, dstReg, mask);
-        }
-    }
-}
-
 // clang-format off
 }
 // clang-format on

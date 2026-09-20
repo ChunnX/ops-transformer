@@ -189,8 +189,7 @@ private:
                                       bool quantizeInput = true);
     __aicore__ inline void CacheX2TileForLane(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput,
                                              bool quantizeInput = true);
-    __aicore__ inline float CacheHInAndReduceSumSq(uint32_t tOff, uint32_t tD, LocalTensor<float> hIn,
-                                                  bool quantizeInput = true);
+    __aicore__ inline float CacheHInAndReduceSumSq(uint32_t tOff, uint32_t tD, LocalTensor<float> hIn);
     __aicore__ inline void LoadHInCacheTile(uint32_t tOff, uint32_t tD, LocalTensor<float> hIn);
     __aicore__ inline void AccumulateHalfPartials(uint32_t tOff, uint32_t tD, float (&sumSqHalf)[2],
                                                   float (&dotHalf)[2][N_MAX], uint32_t halfBegin = 0,
