@@ -99,7 +99,9 @@ constexpr int32_t BASE_RECV_ROUTE_ITEMS_PER_BATCH = 12288;
  *
  * Send route batch 基准用于先选择 mask buffer 数量，再固定 buffer 数反推最终 batch。
  * Bsend 表示基准 batch 的 route item 数，N 表示 mask buffer 数：
- *   sendVariableBytes(Bsend, N) = 2 * Bsend * sizeof(int32_t) + N * CalcTopkValidIndexRingSlotBytes(Bsend, topK)；
+ *   indexBytes 为路由下标宽度（2 或 4 字节），topkIds 中的专家号仍为 int32；
+ *   sendVariableBytes(Bsend, N) = Bsend * (4 + indexBytes)
+ *                               + N * CalcTopkValidIndexRingSlotBytes(Bsend, topK, indexBytes)；
  *   sendFixedBytes = resetBytes + quantScratchBytes + sendCntAccBytes；
  *   sendFixedBytes + sendVariableBytes(Bsend, N) <= availableUbBytes。
  *
@@ -108,7 +110,7 @@ constexpr int32_t BASE_RECV_ROUTE_ITEMS_PER_BATCH = 12288;
  * count 阶段复用累计表之前已结束使用的量化/下标/ring 区；输入双缓冲至少 4096B，
  * 足以容纳一张卡最多 1024 个专家的 count 重排，无需额外预留重排区。
  * 基准 batch 保持 10240，host 将共享输出计入固定占用后选择 ring 深度并扩大 batch。
- * ring 槽含 mask 和筛选下标：Bsend / 8 + Align32(CeilDiv(Bsend + topK - 1, topK) * 4)。
+ * ring 槽含 mask 和筛选下标：Bsend / 8 + Align32(CeilDiv(Bsend + topK - 1, topK) * indexBytes)。
  * 此配置由 MTE 发送路径使用；URMA Layered 在 kernel 中单独计算发送布局。
  *
  * CalcTopkValidIndexBufferConfig 固定选中的 buffer 数后，用剩余 UB 扩大 batch，并向下对齐到 ALIGN_256。

@@ -769,7 +769,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessInputPreparation
         QuantizeInputTokens();
     } else {
         PackPreQuantizedLocalTokens<XType, ActivationType, TopkWeightsType, TopkWeightsPrefetch>(
-            aivJob_, commonConfig_, params_, quantProcessConfig_, params_.peermemInfo.quantTokenScalePtr, quantScratch_);
+            aivJob_, commonConfig_, params_, quantProcessConfig_, params_.peermemInfo.quantTokenScalePtr,
+            quantScratch_);
         if constexpr (!SHARED_INPUT_REUSES_MOE_QUANT) {
             if (sharedExpertNum_ > 0U) {
                 PackPreQuantizedLocalTokens<XType, SharedActivationType, TopkWeightsType, false>(
