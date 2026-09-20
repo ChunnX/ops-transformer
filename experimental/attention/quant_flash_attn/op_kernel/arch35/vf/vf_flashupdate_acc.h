@@ -46,32 +46,32 @@ __simd_vf__ inline void VfFlashUpdateAcc(__ubuf__ float *dstOut, __ubuf__ float 
                                          __ubuf__ float *cur, __ubuf__ float *rowsum,
                                          __ubuf__ float *factor)
 {
-    RegTensor<float> vregFactorA;    // factor[0..63]，列前半，全程复用
-    RegTensor<float> vregFactorB;    // factor[64..127]，列后半，全程复用
-    RegTensor<float> vregSumAcc;     // dstSum 累积值（Mul+Add 中间结果）
-    RegTensor<float> vregSumNew;     // rowsum 新值
-    RegTensor<float> vregOut0, vregOut1, vregOut2, vregOut3;  // 4 路行展开
-    RegTensor<float> vregCur0, vregCur1, vregCur2, vregCur3;
-    MaskReg pregF32 = CreateMask<float, MaskPattern::ALL>();   // 64 lanes fp32
+    RegTensor<float> vreg_factor_a;    // factor[0..63]，列前半，全程复用
+    RegTensor<float> vreg_factor_b;    // factor[64..127]，列后半，全程复用
+    RegTensor<float> vreg_sum_acc;     // dstSum 累积值（Mul+Add 中间结果）
+    RegTensor<float> vreg_sum_new;     // rowsum 新值
+    RegTensor<float> vreg_out_0, vreg_out_1, vreg_out_2, vreg_out_3;  // 4 路行展开
+    RegTensor<float> vreg_cur_0, vreg_cur_1, vreg_cur_2, vreg_cur_3;
+    MaskReg preg_f32 = CreateMask<float, MaskPattern::ALL>();   // 64 lanes fp32
 
     // ① factor 载入（2 regs，全程复用）
-    LoadAlign(vregFactorA, factor);
-    LoadAlign(vregFactorB, factor + 64);
+    LoadAlign(vreg_factor_a, factor);
+    LoadAlign(vreg_factor_b, factor + 64);
 
     // ② dstSum 更新：dstSum = dstSum × factor + rowsum（镜像 DN processUpdateVF L38-44）
     //    列前半 [0..63]
-    LoadAlign(vregSumAcc, dstSum);
-    Mul(vregSumAcc, vregSumAcc, vregFactorA, pregF32);
-    LoadAlign(vregSumNew, rowsum);
-    Add(vregSumAcc, vregSumAcc, vregSumNew, pregF32);
-    StoreAlign(dstSum, vregSumAcc, pregF32);
+    LoadAlign(vreg_sum_acc, dstSum);
+    Mul(vreg_sum_acc, vreg_sum_acc, vreg_factor_a, preg_f32);
+    LoadAlign(vreg_sum_new, rowsum);
+    Add(vreg_sum_acc, vreg_sum_acc, vreg_sum_new, preg_f32);
+    StoreAlign(dstSum, vreg_sum_acc, preg_f32);
 
     //    列后半 [64..127]
-    LoadAlign(vregSumAcc, dstSum + 64);
-    Mul(vregSumAcc, vregSumAcc, vregFactorB, pregF32);
-    LoadAlign(vregSumNew, rowsum + 64);
-    Add(vregSumAcc, vregSumAcc, vregSumNew, pregF32);
-    StoreAlign(dstSum + 64, vregSumAcc, pregF32);
+    LoadAlign(vreg_sum_acc, dstSum + 64);
+    Mul(vreg_sum_acc, vreg_sum_acc, vreg_factor_b, preg_f32);
+    LoadAlign(vreg_sum_new, rowsum + 64);
+    Add(vreg_sum_acc, vreg_sum_acc, vreg_sum_new, preg_f32);
+    StoreAlign(dstSum + 64, vreg_sum_acc, preg_f32);
 
     // ③ dstOut 更新：128 行 × 2 列半，4 路行展开（32 迭代 × 2 列半）
     //    [DV,S1] 行主序，行 stride = 128 fp32；列前半 offset+0 用 factorA，后半 +64 用 factorB
@@ -82,48 +82,48 @@ __simd_vf__ inline void VfFlashUpdateAcc(__ubuf__ float *dstOut, __ubuf__ float 
         uint32_t base3 = (row + 3) * 128;
 
         // ===== 列前半 [0..63]（factorA）=====
-        LoadAlign(vregOut0, dstOut + base0);
-        LoadAlign(vregOut1, dstOut + base1);
-        LoadAlign(vregOut2, dstOut + base2);
-        LoadAlign(vregOut3, dstOut + base3);
-        Mul(vregOut0, vregOut0, vregFactorA, pregF32);
-        Mul(vregOut1, vregOut1, vregFactorA, pregF32);
-        Mul(vregOut2, vregOut2, vregFactorA, pregF32);
-        Mul(vregOut3, vregOut3, vregFactorA, pregF32);
-        LoadAlign(vregCur0, cur + base0);
-        LoadAlign(vregCur1, cur + base1);
-        LoadAlign(vregCur2, cur + base2);
-        LoadAlign(vregCur3, cur + base3);
-        Add(vregOut0, vregOut0, vregCur0, pregF32);
-        Add(vregOut1, vregOut1, vregCur1, pregF32);
-        Add(vregOut2, vregOut2, vregCur2, pregF32);
-        Add(vregOut3, vregOut3, vregCur3, pregF32);
-        StoreAlign(dstOut + base0, vregOut0, pregF32);
-        StoreAlign(dstOut + base1, vregOut1, pregF32);
-        StoreAlign(dstOut + base2, vregOut2, pregF32);
-        StoreAlign(dstOut + base3, vregOut3, pregF32);
+        LoadAlign(vreg_out_0, dstOut + base0);
+        LoadAlign(vreg_out_1, dstOut + base1);
+        LoadAlign(vreg_out_2, dstOut + base2);
+        LoadAlign(vreg_out_3, dstOut + base3);
+        Mul(vreg_out_0, vreg_out_0, vreg_factor_a, preg_f32);
+        Mul(vreg_out_1, vreg_out_1, vreg_factor_a, preg_f32);
+        Mul(vreg_out_2, vreg_out_2, vreg_factor_a, preg_f32);
+        Mul(vreg_out_3, vreg_out_3, vreg_factor_a, preg_f32);
+        LoadAlign(vreg_cur_0, cur + base0);
+        LoadAlign(vreg_cur_1, cur + base1);
+        LoadAlign(vreg_cur_2, cur + base2);
+        LoadAlign(vreg_cur_3, cur + base3);
+        Add(vreg_out_0, vreg_out_0, vreg_cur_0, preg_f32);
+        Add(vreg_out_1, vreg_out_1, vreg_cur_1, preg_f32);
+        Add(vreg_out_2, vreg_out_2, vreg_cur_2, preg_f32);
+        Add(vreg_out_3, vreg_out_3, vreg_cur_3, preg_f32);
+        StoreAlign(dstOut + base0, vreg_out_0, preg_f32);
+        StoreAlign(dstOut + base1, vreg_out_1, preg_f32);
+        StoreAlign(dstOut + base2, vreg_out_2, preg_f32);
+        StoreAlign(dstOut + base3, vreg_out_3, preg_f32);
 
         // ===== 列后半 [64..127]（factorB）=====
-        LoadAlign(vregOut0, dstOut + base0 + 64);
-        LoadAlign(vregOut1, dstOut + base1 + 64);
-        LoadAlign(vregOut2, dstOut + base2 + 64);
-        LoadAlign(vregOut3, dstOut + base3 + 64);
-        Mul(vregOut0, vregOut0, vregFactorB, pregF32);
-        Mul(vregOut1, vregOut1, vregFactorB, pregF32);
-        Mul(vregOut2, vregOut2, vregFactorB, pregF32);
-        Mul(vregOut3, vregOut3, vregFactorB, pregF32);
-        LoadAlign(vregCur0, cur + base0 + 64);
-        LoadAlign(vregCur1, cur + base1 + 64);
-        LoadAlign(vregCur2, cur + base2 + 64);
-        LoadAlign(vregCur3, cur + base3 + 64);
-        Add(vregOut0, vregOut0, vregCur0, pregF32);
-        Add(vregOut1, vregOut1, vregCur1, pregF32);
-        Add(vregOut2, vregOut2, vregCur2, pregF32);
-        Add(vregOut3, vregOut3, vregCur3, pregF32);
-        StoreAlign(dstOut + base0 + 64, vregOut0, pregF32);
-        StoreAlign(dstOut + base1 + 64, vregOut1, pregF32);
-        StoreAlign(dstOut + base2 + 64, vregOut2, pregF32);
-        StoreAlign(dstOut + base3 + 64, vregOut3, pregF32);
+        LoadAlign(vreg_out_0, dstOut + base0 + 64);
+        LoadAlign(vreg_out_1, dstOut + base1 + 64);
+        LoadAlign(vreg_out_2, dstOut + base2 + 64);
+        LoadAlign(vreg_out_3, dstOut + base3 + 64);
+        Mul(vreg_out_0, vreg_out_0, vreg_factor_b, preg_f32);
+        Mul(vreg_out_1, vreg_out_1, vreg_factor_b, preg_f32);
+        Mul(vreg_out_2, vreg_out_2, vreg_factor_b, preg_f32);
+        Mul(vreg_out_3, vreg_out_3, vreg_factor_b, preg_f32);
+        LoadAlign(vreg_cur_0, cur + base0 + 64);
+        LoadAlign(vreg_cur_1, cur + base1 + 64);
+        LoadAlign(vreg_cur_2, cur + base2 + 64);
+        LoadAlign(vreg_cur_3, cur + base3 + 64);
+        Add(vreg_out_0, vreg_out_0, vreg_cur_0, preg_f32);
+        Add(vreg_out_1, vreg_out_1, vreg_cur_1, preg_f32);
+        Add(vreg_out_2, vreg_out_2, vreg_cur_2, preg_f32);
+        Add(vreg_out_3, vreg_out_3, vreg_cur_3, preg_f32);
+        StoreAlign(dstOut + base0 + 64, vreg_out_0, preg_f32);
+        StoreAlign(dstOut + base1 + 64, vreg_out_1, preg_f32);
+        StoreAlign(dstOut + base2 + 64, vreg_out_2, preg_f32);
+        StoreAlign(dstOut + base3 + 64, vreg_out_3, preg_f32);
     }
 }
 

@@ -42,31 +42,31 @@ using namespace AscendC::Reg;
 __simd_vf__ inline void VfCalcPScaleVF(__ubuf__ uint8_t *pscale, __ubuf__ half *subLoopMax,
                                          __ubuf__ half *finalMax)
 {
-    RegTensor<half> vregSubLoopMax;
-    RegTensor<half> vregFinalMax;
-    RegTensor<half> vregDeltaK;
-    RegTensor<uint8_t> vregScaleA;
-    RegTensor<uint8_t> vregScaleB;
-    MaskReg pregHalf = CreateMask<half, MaskPattern::ALL>();
-    MaskReg pregU8 = CreateMask<uint8_t, MaskPattern::ALL>();
-    uint32_t pscaleValidCount = 128;  // 有效数据 128 字节（防 ALL 掩码写 256B 溢出到下一槽位）
-    MaskReg pregU8Valid = UpdateMask<uint8_t>(pscaleValidCount);
+    RegTensor<half> vreg_sub_loop_max;
+    RegTensor<half> vreg_final_max;
+    RegTensor<half> vreg_delta_k;
+    RegTensor<uint8_t> vreg_scale_a;
+    RegTensor<uint8_t> vreg_scale_b;
+    MaskReg preg_half = CreateMask<half, MaskPattern::ALL>();
+    MaskReg preg_u8 = CreateMask<uint8_t, MaskPattern::ALL>();
+    uint32_t pscale_valid_count = 128;  // 有效数据 128 字节（防 ALL 掩码写 256B 溢出到下一槽位）
+    MaskReg preg_u8_valid = UpdateMask<uint8_t>(pscale_valid_count);
 
     // ① half 域整数运算：Δk = k_i - K_final，+127 → e8m0 字节值
-    LoadAlign(vregSubLoopMax, subLoopMax);
-    LoadAlign(vregFinalMax, finalMax);
-    Sub(vregDeltaK, vregSubLoopMax, vregFinalMax, pregHalf);
-    Adds(vregDeltaK, vregDeltaK, NUM_127, pregHalf);
-    Maxs(vregDeltaK, vregDeltaK, ZERO_VALUE, pregHalf);
+    LoadAlign(vreg_sub_loop_max, subLoopMax);
+    LoadAlign(vreg_final_max, finalMax);
+    Sub(vreg_delta_k, vreg_sub_loop_max, vreg_final_max, preg_half);
+    Adds(vreg_delta_k, vreg_delta_k, NUM_127, preg_half);
+    Maxs(vreg_delta_k, vreg_delta_k, ZERO_VALUE, preg_half);
 
     // ② 窄化 half[128] → uint8[128]：双 Cast 各取偶/奇位 + Or 合并（MxFP4 mxscale 同款）
-    Cast<uint8_t, half, castTraitZero>(vregScaleA, vregDeltaK, pregHalf);
-    Cast<uint8_t, half, castTraitOne>(vregScaleB, vregDeltaK, pregHalf);
-    Or(vregScaleA, vregScaleA, vregScaleB, pregU8);
+    Cast<uint8_t, half, castTraitZero>(vreg_scale_a, vreg_delta_k, preg_half);
+    Cast<uint8_t, half, castTraitOne>(vreg_scale_b, vreg_delta_k, preg_half);
+    Or(vreg_scale_a, vreg_scale_a, vreg_scale_b, preg_u8);
 
     // ③ 存 e8m0 buffer（uint8 位模式 = 2^Δk 的 e8m0 编码）
     //    用 128 元素部分掩码（非 ALL 256），只写有效 128 字节，防溢出到 pscaleUB 相邻槽位
-    StoreAlign(pscale, vregScaleA, pregU8Valid);
+    StoreAlign(pscale, vreg_scale_a, preg_u8_valid);
 }
 
 /*

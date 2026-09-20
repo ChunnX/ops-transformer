@@ -40,13 +40,15 @@ __simd_vf__ inline void VfSoftmaxFp16ToFp8VF(__ubuf__ T2 *pDst, __ubuf__ half *a
                                                __ubuf__ T *x, half pScale, uint32_t validRows,
                                                uint32_t colStride)
 {
-    // ===== 寄存器声明（一行 128 half = 1 寄存器）=====
-    RegTensor<T> max0, max1, max2, max3;  // 4 路流式 max 累加器（各收行 i%4 == 路号）
-    RegTensor<T> r0, r1, r2, r3;          // 行加载临时
-    RegTensor<T> curMax;                  // 树归并结果（[128] 列 max）
-    RegTensor<T> kCur, kUsed, normMax;    // 量化指数（half 整数）与 P 归一化基准
-    RegTensor<T> accMaxLoad;              // accMax 槽加载
-    MaskReg pregHalf = CreateMask<T, MaskPattern::ALL>();
+    // ===== 寄存器声明（一行 128 half = 1 寄存器；命名对齐参考下划线风格）=====
+    RegTensor<T> max0, max1, max2, max3;  // 4 路流式 max 累加器（各收行 i%4 == 路号；镜像 mxfp8 裸名）
+    RegTensor<T> r0, r1, r2, r3;          // 行加载临时（归约与 P 循环复用）
+    RegTensor<T> vreg_cur_max;            // 树归并结果（[128] 列 max）
+    RegTensor<T> vreg_k_cur, vreg_k_used, vreg_norm_max;  // 量化指数（half 整数）与 P 归一化基准
+    RegTensor<T> vreg_acc_max_load;       // accMax 槽加载
+    RegTensor<T2> vreg_quant_a, vreg_quant_b;  // fp8 打包寄存器（各含 2 行 × 128B）
+    MaskReg preg_half = CreateMask<T, MaskPattern::ALL>();
+    MaskReg preg_u8 = CreateMask<uint8_t, MaskPattern::ALL>();
 
     // ① 4 路流式 max 归约（镜像 mxfp8 高精 L1225-1231：max_k 累积行号 ≡ k (mod 4)）
     Duplicate(max0, MIN_VALUE);
@@ -58,30 +60,30 @@ __simd_vf__ inline void VfSoftmaxFp16ToFp8VF(__ubuf__ T2 *pDst, __ubuf__ half *a
         LoadAlign(r1, x + (i + 1) * colStride);
         LoadAlign(r2, x + (i + 2) * colStride);
         LoadAlign(r3, x + (i + 3) * colStride);
-        Max(max0, max0, r0, pregHalf);
-        Max(max1, max1, r1, pregHalf);
-        Max(max2, max2, r2, pregHalf);
-        Max(max3, max3, r3, pregHalf);
+        Max(max0, max0, r0, preg_half);
+        Max(max1, max1, r1, preg_half);
+        Max(max2, max2, r2, preg_half);
+        Max(max3, max3, r3, preg_half);
     }
 
     // 尾行（validRows % 4 余量）逐行并入 max0——max 交换结合律，不破坏归并树
     for (uint32_t i = validRows & ~3U; i < validRows; i++) {
         LoadAlign(r0, x + i * colStride);
-        Max(max0, max0, r0, pregHalf);
+        Max(max0, max0, r0, preg_half);
     }
     // 树归并（镜像 mxfp8 高精 L1233-1235）：max0⊕max2, max1⊕max3 → 终归并
-    Max(max0, max0, max2, pregHalf);
-    Max(max1, max1, max3, pregHalf);
-    Max(curMax, max0, max1, pregHalf);
+    Max(max0, max0, max2, preg_half);
+    Max(max1, max1, max3, preg_half);
+    Max(vreg_cur_max, max0, max1, preg_half);
 
     // ② 量化 + 与 accMax 合并（half 整数域，§3.1；镜像 mxfp8 高精 L1237-1241 的 CEIL 链）
-    Muls(kCur, curMax, INV_LN2, pregHalf);                     // ×1/ln2 → log2 域
-    Truncate<T, RoundMode::CAST_CEIL>(kCur, kCur, pregHalf);   // CEIL → 整数 k_cur
-    LoadAlign(accMaxLoad, accMax);                             // accMax 槽（half 整数）
-    Max(kUsed, kCur, accMaxLoad, pregHalf);                    // 合并保持整数
-    StoreAlign(accMax, kUsed, pregHalf);                       // 写回 accMax（下块用）
-    StoreAlign(usedMaxOut, kUsed, pregHalf);                   // 暂存 k_i（epilogue pscale 用）
-    Muls(normMax, kUsed, LN2, pregHalf);                       // k·ln2 → P 归一化基准
+    Muls(vreg_k_cur, vreg_cur_max, INV_LN2, preg_half);                     // ×1/ln2 → log2 域
+    Truncate<T, RoundMode::CAST_CEIL>(vreg_k_cur, vreg_k_cur, preg_half);   // CEIL → 整数 k_cur
+    LoadAlign(vreg_acc_max_load, accMax);                             // accMax 槽（half 整数）
+    Max(vreg_k_used, vreg_k_cur, vreg_acc_max_load, preg_half);            // 合并保持整数
+    StoreAlign(accMax, vreg_k_used, preg_half);                       // 写回 accMax（下块用）
+    StoreAlign(usedMaxOut, vreg_k_used, preg_half);                   // 暂存 k_i（epilogue pscale 用）
+    Muls(vreg_norm_max, vreg_k_used, LN2, preg_half);                       // k·ln2 → P 归一化基准
 
     // ③ P 计算循环（4 路展开，镜像 MxFP4 DN L111-131 的 Sub+Exp 模式）
     //    无 dScale——softmaxScale 已在 FixpipeMm1 随路乘（设计 §7.1 注）
@@ -90,22 +92,32 @@ __simd_vf__ inline void VfSoftmaxFp16ToFp8VF(__ubuf__ T2 *pDst, __ubuf__ half *a
         LoadAlign(r1, x + (i + 1) * colStride);
         LoadAlign(r2, x + (i + 2) * colStride);
         LoadAlign(r3, x + (i + 3) * colStride);
-        Sub(r0, r0, normMax, pregHalf);   // 减 normMax 向量：[S2,S1] 行主序，normMax 恰 [128] 列向量，形状天然对齐
-        Sub(r1, r1, normMax, pregHalf);
-        Sub(r2, r2, normMax, pregHalf);
-        Sub(r3, r3, normMax, pregHalf);
-        Exp(r0, r0, pregHalf);         // 原地 exp（省寄存器，mxfp4 同款）
-        Exp(r1, r1, pregHalf);
-        Exp(r2, r2, pregHalf);
-        Exp(r3, r3, pregHalf);
-        Muls(r0, r0, pScale, pregHalf);  // × 外部 headroom（默认 1.0 时 no-op；分子分母同乘自消）
-        Muls(r1, r1, pScale, pregHalf);
-        Muls(r2, r2, pScale, pregHalf);
-        Muls(r3, r3, pScale, pregHalf);
-        // TODO(批次3.2-5c): Cast RintZero/RintOne 成对 + Or 合并 + 存储占位
+        Sub(r0, r0, vreg_norm_max, preg_half);   // 减 norm_max 向量：[S2,S1] 行主序，norm_max 恰 [128] 列向量，形状天然对齐
+        Sub(r1, r1, vreg_norm_max, preg_half);
+        Sub(r2, r2, vreg_norm_max, preg_half);
+        Sub(r3, r3, vreg_norm_max, preg_half);
+        Exp(r0, r0, preg_half);         // 原地 exp（省寄存器，mxfp4 同款）
+        Exp(r1, r1, preg_half);
+        Exp(r2, r2, preg_half);
+        Exp(r3, r3, preg_half);
+        Muls(r0, r0, pScale, preg_half);  // × 外部 headroom（默认 1.0 时 no-op；分子分母同乘自消）
+        Muls(r1, r1, pScale, preg_half);
+        Muls(r2, r2, pScale, preg_half);
+        Muls(r3, r3, pScale, preg_half);
+        // fp8 成对窄化（异源配对：RintZero 取 r0 → 低半，RintOne 取 r1 → 高半，Or 拼满 [行i|行i+1]）
+        // 原理与满寄存器必要性见设计 §7.1"Cast+Or 异源配对原理"
+        Cast<T2, T, castTraitRintZero>(vreg_quant_a, r0, preg_half);
+        Cast<T2, T, castTraitRintOne>(vreg_quant_b, r1, preg_half);
+        Or((RegTensor<uint8_t> &)vreg_quant_a, (RegTensor<uint8_t> &)vreg_quant_a,
+           (RegTensor<uint8_t> &)vreg_quant_b, preg_u8);
+        Cast<T2, T, castTraitRintZero>(vreg_quant_b, r2, preg_half);
+        Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)r0, r3, preg_half);  // r0 已消费，复用为 fp8 目标
+        Or((RegTensor<uint8_t> &)vreg_quant_b, (RegTensor<uint8_t> &)vreg_quant_b,
+           (RegTensor<uint8_t> &)r0, preg_u8);
+        // 存储占位（ND 线性；NZ 三段链批次 3.3 替换；Zero/One 放置语义待 dump 核定 §9.1-④，当前按假设 a）
+        StoreAlign(pDst + i * colStride, vreg_quant_a, preg_u8);
+        StoreAlign(pDst + (i + 2) * colStride, vreg_quant_b, preg_u8);
     }
-
-    (void)pDst; (void)pScale;
 }
 
 /*

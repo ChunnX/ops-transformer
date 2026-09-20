@@ -42,16 +42,16 @@ using namespace AscendC::Reg;
 __simd_vf__ inline void VfDivAndCast(__ubuf__ bfloat16_t *dst, __ubuf__ float *src,
                                      __ubuf__ float *rowsum)
 {
-    RegTensor<float> vregRowsumA;
-    RegTensor<float> vregRowsumB;
-    RegTensor<float> vregSrc0, vregSrc1, vregSrc2, vregSrc3;
-    RegTensor<bfloat16_t> vregCast0, vregCast1, vregCast2, vregCast3;
-    MaskReg pregF32 = CreateMask<float, MaskPattern::ALL>();
-    MaskReg pregBf16 = CreateMask<bfloat16_t, MaskPattern::ALL>();
+    RegTensor<float> vreg_rowsum_a;
+    RegTensor<float> vreg_rowsum_b;
+    RegTensor<float> vreg_src_0, vreg_src_1, vreg_src_2, vreg_src_3;
+    RegTensor<bfloat16_t> vreg_cast_0, vreg_cast_1, vreg_cast_2, vreg_cast_3;
+    MaskReg preg_f32 = CreateMask<float, MaskPattern::ALL>();
+    MaskReg preg_bf16 = CreateMask<bfloat16_t, MaskPattern::ALL>();
 
     // ① rowsum 载入（2 regs，全程复用）
-    LoadAlign(vregRowsumA, rowsum);
-    LoadAlign(vregRowsumB, rowsum + 64);
+    LoadAlign(vreg_rowsum_a, rowsum);
+    LoadAlign(vreg_rowsum_b, rowsum + 64);
 
     // ② 128 行 × 2 段（前 64 列 rowsumA / 后 64 列 rowsumB），4 路行展开
     //    src 和 dst 的行偏移数值相同（均为 128 元素/行），指针类型自动处理字节宽度差异
@@ -62,40 +62,40 @@ __simd_vf__ inline void VfDivAndCast(__ubuf__ bfloat16_t *dst, __ubuf__ float *s
         uint32_t base3 = (row + 3) * 128;
 
         // ===== 前 64 列（rowsumA）=====
-        LoadAlign(vregSrc0, src + base0);
-        LoadAlign(vregSrc1, src + base1);
-        LoadAlign(vregSrc2, src + base2);
-        LoadAlign(vregSrc3, src + base3);
-        Div(vregSrc0, vregSrc0, vregRowsumA, pregF32);
-        Div(vregSrc1, vregSrc1, vregRowsumA, pregF32);
-        Div(vregSrc2, vregSrc2, vregRowsumA, pregF32);
-        Div(vregSrc3, vregSrc3, vregRowsumA, pregF32);
-        Cast<bfloat16_t, float, castTraitZero>(vregCast0, vregSrc0, pregF32);
-        Cast<bfloat16_t, float, castTraitZero>(vregCast1, vregSrc1, pregF32);
-        Cast<bfloat16_t, float, castTraitZero>(vregCast2, vregSrc2, pregF32);
-        Cast<bfloat16_t, float, castTraitZero>(vregCast3, vregSrc3, pregF32);
-        StoreAlign(dst + base0, vregCast0, pregBf16);
-        StoreAlign(dst + base1, vregCast1, pregBf16);
-        StoreAlign(dst + base2, vregCast2, pregBf16);
-        StoreAlign(dst + base3, vregCast3, pregBf16);
+        LoadAlign(vreg_src_0, src + base0);
+        LoadAlign(vreg_src_1, src + base1);
+        LoadAlign(vreg_src_2, src + base2);
+        LoadAlign(vreg_src_3, src + base3);
+        Div(vreg_src_0, vreg_src_0, vreg_rowsum_a, preg_f32);
+        Div(vreg_src_1, vreg_src_1, vreg_rowsum_a, preg_f32);
+        Div(vreg_src_2, vreg_src_2, vreg_rowsum_a, preg_f32);
+        Div(vreg_src_3, vreg_src_3, vreg_rowsum_a, preg_f32);
+        Cast<bfloat16_t, float, castTraitZero>(vreg_cast_0, vreg_src_0, preg_f32);
+        Cast<bfloat16_t, float, castTraitZero>(vreg_cast_1, vreg_src_1, preg_f32);
+        Cast<bfloat16_t, float, castTraitZero>(vreg_cast_2, vreg_src_2, preg_f32);
+        Cast<bfloat16_t, float, castTraitZero>(vreg_cast_3, vreg_src_3, preg_f32);
+        StoreAlign(dst + base0, vreg_cast_0, preg_bf16);
+        StoreAlign(dst + base1, vreg_cast_1, preg_bf16);
+        StoreAlign(dst + base2, vreg_cast_2, preg_bf16);
+        StoreAlign(dst + base3, vreg_cast_3, preg_bf16);
 
         // ===== 后 64 列（rowsumB）=====
-        LoadAlign(vregSrc0, src + base0 + 64);
-        LoadAlign(vregSrc1, src + base1 + 64);
-        LoadAlign(vregSrc2, src + base2 + 64);
-        LoadAlign(vregSrc3, src + base3 + 64);
-        Div(vregSrc0, vregSrc0, vregRowsumB, pregF32);
-        Div(vregSrc1, vregSrc1, vregRowsumB, pregF32);
-        Div(vregSrc2, vregSrc2, vregRowsumB, pregF32);
-        Div(vregSrc3, vregSrc3, vregRowsumB, pregF32);
-        Cast<bfloat16_t, float, castTraitZero>(vregCast0, vregSrc0, pregF32);
-        Cast<bfloat16_t, float, castTraitZero>(vregCast1, vregSrc1, pregF32);
-        Cast<bfloat16_t, float, castTraitZero>(vregCast2, vregSrc2, pregF32);
-        Cast<bfloat16_t, float, castTraitZero>(vregCast3, vregSrc3, pregF32);
-        StoreAlign(dst + base0 + 64, vregCast0, pregBf16);
-        StoreAlign(dst + base1 + 64, vregCast1, pregBf16);
-        StoreAlign(dst + base2 + 64, vregCast2, pregBf16);
-        StoreAlign(dst + base3 + 64, vregCast3, pregBf16);
+        LoadAlign(vreg_src_0, src + base0 + 64);
+        LoadAlign(vreg_src_1, src + base1 + 64);
+        LoadAlign(vreg_src_2, src + base2 + 64);
+        LoadAlign(vreg_src_3, src + base3 + 64);
+        Div(vreg_src_0, vreg_src_0, vreg_rowsum_b, preg_f32);
+        Div(vreg_src_1, vreg_src_1, vreg_rowsum_b, preg_f32);
+        Div(vreg_src_2, vreg_src_2, vreg_rowsum_b, preg_f32);
+        Div(vreg_src_3, vreg_src_3, vreg_rowsum_b, preg_f32);
+        Cast<bfloat16_t, float, castTraitZero>(vreg_cast_0, vreg_src_0, preg_f32);
+        Cast<bfloat16_t, float, castTraitZero>(vreg_cast_1, vreg_src_1, preg_f32);
+        Cast<bfloat16_t, float, castTraitZero>(vreg_cast_2, vreg_src_2, preg_f32);
+        Cast<bfloat16_t, float, castTraitZero>(vreg_cast_3, vreg_src_3, preg_f32);
+        StoreAlign(dst + base0 + 64, vreg_cast_0, preg_bf16);
+        StoreAlign(dst + base1 + 64, vreg_cast_1, preg_bf16);
+        StoreAlign(dst + base2 + 64, vreg_cast_2, preg_bf16);
+        StoreAlign(dst + base3 + 64, vreg_cast_3, preg_bf16);
     }
 }
 
