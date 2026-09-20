@@ -42,9 +42,9 @@ using namespace AscendC::Reg;
  * @param [in]     rowsum   mm2ResUB[128] fp32（当前分块 rowsum）
  * @param [in]     factor   softmaxExpUB[loop%3] fp32（VfCalcRescaleFactor 输出）
  */
-__simd_vf__ inline void VfFlashUpdateAcc(__ubuf__ float *dstOut, __ubuf__ float *dstSum,
-                                         __ubuf__ float *cur, __ubuf__ float *rowsum,
-                                         __ubuf__ float *factor)
+__simd_vf__ inline void VfFlashUpdateAccVF(__ubuf__ float *dstOut, __ubuf__ float *dstSum,
+                                             __ubuf__ float *cur, __ubuf__ float *rowsum,
+                                             __ubuf__ float *factor)
 {
     RegTensor<float> vreg_factor_a;    // factor[0..63]，列前半，全程复用
     RegTensor<float> vreg_factor_b;    // factor[64..127]，列后半，全程复用
@@ -125,6 +125,32 @@ __simd_vf__ inline void VfFlashUpdateAcc(__ubuf__ float *dstOut, __ubuf__ float 
         StoreAlign(dstOut + base2 + 64, vreg_out_2, preg_f32);
         StoreAlign(dstOut + base3 + 64, vreg_out_3, preg_f32);
     }
+}
+
+/*
+ * @ingroup VfaVectorApi
+ * @brief VfFlashUpdateAcc 的 __aicore__ wrapper：接收 LocalTensor，内部转指针调 vf
+ *
+ * @param [in,out] stage2OutUB  跨 S2 分块累积分子（[128,128] fp32）
+ * @param [in,out] accRowsumUB  累积分母（[128] per S1 列）
+ * @param [in]     mm2ResUB     本块 PV 结果（[129,128]——前 128 行 cur + 第 128 行 rowsum）
+ * @param [in]     softmaxExpUB 跨块 rescale 因子 ring（[taskSlot][128] 布局）
+ * @param [in]     taskSlot     任务槽（runInfo.loop % 3）
+ */
+__aicore__ inline void VfFlashUpdateAcc(const LocalTensor<float> &stage2OutUB,
+                                         const LocalTensor<float> &accRowsumUB,
+                                         const LocalTensor<float> &mm2ResUB,
+                                         const LocalTensor<float> &softmaxExpUB, uint32_t taskSlot)
+{
+    constexpr uint32_t rowsumOff = 128 * 128;  // rowsum = mm2Res 第 128 行
+    constexpr uint32_t expSlot = 128;          // softmaxExpUB 每 task 槽 128 float
+    __ubuf__ float *dstOutPtr = reinterpret_cast<__ubuf__ float *>(stage2OutUB.GetPhyAddr());
+    __ubuf__ float *dstSumPtr = reinterpret_cast<__ubuf__ float *>(accRowsumUB.GetPhyAddr());
+    __ubuf__ float *curPtr = reinterpret_cast<__ubuf__ float *>(mm2ResUB.GetPhyAddr());
+    __ubuf__ float *rowsumPtr = curPtr + rowsumOff;
+    __ubuf__ float *factorPtr =
+        reinterpret_cast<__ubuf__ float *>(softmaxExpUB.GetPhyAddr()) + taskSlot * expSlot;
+    VfFlashUpdateAccVF(dstOutPtr, dstSumPtr, curPtr, rowsumPtr, factorPtr);
 }
 
 } // namespace QfaVectorApi
