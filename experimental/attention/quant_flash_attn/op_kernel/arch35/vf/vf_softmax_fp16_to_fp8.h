@@ -47,8 +47,17 @@ __simd_vf__ inline void VfSoftmaxFp16ToFp8VF(__ubuf__ T2 *pDst, __ubuf__ half *a
     RegTensor<T> vreg_k_cur, vreg_k_used, vreg_norm_max;  // 量化指数（half 整数）与 P 归一化基准
     RegTensor<T> vreg_acc_max_load;       // accMax 槽加载
     RegTensor<T2> vreg_quant_a, vreg_quant_b;  // fp8 打包寄存器（各含 2 行 × 128B）
+    RegTensor<uint8_t> vreg_idx;          // 解交织索引表（循环外载入一次，全程复用）
     MaskReg preg_half = CreateMask<T, MaskPattern::ALL>();
     MaskReg preg_u8 = CreateMask<uint8_t, MaskPattern::ALL>();
+    // 半掩码对（前半 = 行 i 的 4 单元，后半 = 行 i+1；MxFP4 preg_vl128/_not 同款）
+    uint32_t halfLaneCount = 128;                    // UpdateMask 收左值引用，须用变量
+    MaskReg preg_u8_first = UpdateMask<uint8_t>(halfLaneCount);
+    MaskReg preg_u8_second;
+    MaskNot(preg_u8_second, preg_u8_first, preg_u8);
+
+    // 解交织表载入（循环外一次，全程复用；表由 InitTensorsVec 初始化 idx[i*128+j]=i+2j）
+    LoadAlign(vreg_idx, nzIdx);
 
     // ① 4 路流式 max 归约（镜像 mxfp8 高精 L1225-1231：max_k 累积行号 ≡ k (mod 4)）
     Duplicate(max0, MIN_VALUE);
@@ -104,19 +113,27 @@ __simd_vf__ inline void VfSoftmaxFp16ToFp8VF(__ubuf__ T2 *pDst, __ubuf__ half *a
         Muls(r1, r1, pScale, preg_half);
         Muls(r2, r2, pScale, preg_half);
         Muls(r3, r3, pScale, preg_half);
-        // fp8 成对窄化（异源配对：RintZero 取 r0 → 低半，RintOne 取 r1 → 高半，Or 拼满 [行i|行i+1]）
-        // 原理与满寄存器必要性见设计 §7.1"Cast+Or 异源配对原理"
+        // fp8 成对窄化（异源配对，官方文档证实交织放置）→ Gather 解交织 → 半掩码双散布
+        // 原理见设计 §7.1"Cast+Or 异源配对原理" + "5c 存储段修正方案定稿"（含基址勘误）
         Cast<T2, T, castTraitRintZero>(vreg_quant_a, r0, preg_half);
         Cast<T2, T, castTraitRintOne>(vreg_quant_b, r1, preg_half);
         Or((RegTensor<uint8_t> &)vreg_quant_a, (RegTensor<uint8_t> &)vreg_quant_a,
            (RegTensor<uint8_t> &)vreg_quant_b, preg_u8);
+        // 解交织：[a0,b0,a1,b1,…] → [行i | 行i+1]（各 128B 顺序，前半行 i、后半行 i+1）
+        Gather((RegTensor<uint8_t> &)vreg_quant_a, (RegTensor<uint8_t> &)vreg_quant_a, vreg_idx);
+        // 存 A：行 i 的 4 个列组单元（寄存器前半）→ [j×4096B + i×32B]，j=0..3
+        StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY>(
+            pDst + i * 32, (RegTensor<T2> &)vreg_quant_a, 128, preg_u8_first);
+        // 存 B：行 i+1（寄存器后半）——基址回退 4 组距（掩码不改子块序号位置，见 §7.1 勘误；
+        //        被掩子块 0-3 名义指向槽前，官方文档明示越界不报错）
+        StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY>(
+            pDst - 4 * 4096 + (i + 1) * 32, (RegTensor<T2> &)vreg_quant_a, 128, preg_u8_second);
         Cast<T2, T, castTraitRintZero>(vreg_quant_b, r2, preg_half);
         Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)r0, r3, preg_half);  // r0 已消费，复用为 fp8 目标
         Or((RegTensor<uint8_t> &)vreg_quant_b, (RegTensor<uint8_t> &)vreg_quant_b,
            (RegTensor<uint8_t> &)r0, preg_u8);
-        // 存储占位（ND 线性；NZ 三段链批次 3.3 替换；Zero/One 放置语义待 dump 核定 §9.1-④，当前按假设 a）
-        StoreAlign(pDst + i * colStride, vreg_quant_a, preg_u8);
-        StoreAlign(pDst + (i + 2) * colStride, vreg_quant_b, preg_u8);
+        // TODO(3.3-b2): 第二对 Gather 解交织 + 半掩码双散布（行 i+2 / i+3，与第一对同构）
+        (void)colStride;
     }
 }
 
