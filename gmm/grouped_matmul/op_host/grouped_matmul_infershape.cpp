@@ -58,16 +58,13 @@ static const GmmPlatformCache &GetGmmPlatformCache(const bool initialize = false
     if (initialize) {
         fe::PlatFormInfos platformInfo;
         fe::OptionalInfos optionalInfo;
-        cache.ret = fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(
-            platformInfo, optionalInfo);
+        cache.ret = fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(platformInfo, optionalInfo);
         if (cache.ret == GRAPH_SUCCESS) {
-            platformInfo.GetPlatformRes(
-                "version", "Short_SoC_version", cache.shortSocVersion);
+            platformInfo.GetPlatformRes("version", "Short_SoC_version", cache.shortSocVersion);
             OP_LOGD("GetGmmPlatformCache", "Platform cache initialized, short_soc_version=%s.",
-                cache.shortSocVersion.c_str());
+                    cache.shortSocVersion.c_str());
         } else {
-            OP_LOGD("GetGmmPlatformCache", "Platform cache initialization failed, platform_ret=%d.",
-                cache.ret);
+            OP_LOGD("GetGmmPlatformCache", "Platform cache initialization failed, platform_ret=%d.", cache.ret);
             cache.ret = GRAPH_FAILED;
             cache.shortSocVersion.clear();
         }
@@ -994,9 +991,10 @@ static ge::graphStatus CheckFunctionParamsForShape(gert::InferShapeContext *cont
         OP_LOGW(context->GetNodeName(), "Cannot get platform info!");
         return GRAPH_SUCCESS;
     } else {
-        paramsInfo.platform = (platformInfo.shortSocVersion.find("310P") != std::string::npos) ? PlatformID::ASCEND310P :
-                              (platformInfo.shortSocVersion.find("950") != std::string::npos)  ? PlatformID::ASCEND950 :
-                                                                                             PlatformID::ASCEND910B;
+        paramsInfo.platform = (platformInfo.shortSocVersion.find("310P") != std::string::npos) ?
+                                  PlatformID::ASCEND310P :
+                              (platformInfo.shortSocVersion.find("950") != std::string::npos) ? PlatformID::ASCEND950 :
+                                                                                                PlatformID::ASCEND910B;
     }
     OP_CHECK_IF(CheckQuantParams(context, gmmAttrs, paramsInfo) != GRAPH_SUCCESS,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "input", "CheckQuantParams failed"),
@@ -2152,7 +2150,7 @@ static graphStatus CheckFunctionParamsForDtype(gert::InferDataTypeContext *conte
     } else {
         platform = (platformInfo.shortSocVersion.find("310P") != std::string::npos) ? PlatformID::ASCEND310P :
                    (platformInfo.shortSocVersion.find("950") != std::string::npos)  ? PlatformID::ASCEND950 :
-                                                                                  PlatformID::ASCEND910B;
+                                                                                      PlatformID::ASCEND910B;
     }
     DataType xDtype = context->GetDynamicInputDataType(GMM_INDEX_IN_X, 0);
     DataType weightDtype = context->GetDynamicInputDataType(GMM_INDEX_IN_WEIGHT, 0);
