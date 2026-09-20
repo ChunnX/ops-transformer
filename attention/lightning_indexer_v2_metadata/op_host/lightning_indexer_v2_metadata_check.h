@@ -36,8 +36,6 @@ inline constexpr int64_t LI_V2_NUM_HEADS_Q_UPPER_BOUND = 64;
 inline constexpr int64_t LI_V2_TOPK_LOWER_BOUND = 1;
 inline constexpr int64_t LI_V2_TOPK_UPPER_BOUND = 8192;
 
-// host侧无法识别kernel侧的__NPU_ARCH__宏，metadata布局常量按soc版本本地定义
-// 960dt(A6/DAV_9201): AIC/AIV各80, metadata总大小2048; 910B/950: AIC 36, AIV 72, metadata总大小1024
 inline bool IsLiV2Ascend960Soc(const std::string &socVersion)
 {
     return socVersion.find("Ascend960") != std::string::npos;
