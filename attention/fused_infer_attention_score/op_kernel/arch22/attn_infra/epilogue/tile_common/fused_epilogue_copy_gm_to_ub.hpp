@@ -24,7 +24,7 @@ template <
     class GmType
 >
 struct CopyGm2Ub {
-    static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported copy gm to ub, can not find the specialization.");
+    static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported copy gm to ub, cannot find the specialization.");
 };
 
 template <typename Element>
@@ -135,7 +135,7 @@ template <
     class GmType
 >
 struct CopyGm2UbAligned {
-    static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported copy gm to ub aligned, can not find the specialization.");
+    static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported copy gm to ub aligned, cannot find the specialization.");
 };
 
 template <typename Element>
