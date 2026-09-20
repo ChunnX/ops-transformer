@@ -256,21 +256,13 @@ __aicore__ inline void PackPreQuantizedTokenRange(const WorkRange &tokenRange, c
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
 }
 
-// 将调用方已量化的 x 和逐 32 元素 scale 按 dispatch 布局拼接，按需附加 topK 权重。
+// 仅由 AIV 调用，tokenRange 非空；将已量化的 x 和逐 32 元素 scale 按 dispatch 布局拼接，按需附加 topK 权重。
 // 不对 x/scales 做数值转换。
 template <typename XType, typename ActivationType, typename TopkWeightsType, bool TopkWeightsPrefetch>
-__aicore__ inline void PackPreQuantizedLocalTokens(const AivJobContext &job, const MoeStageCommonConfig &common,
+__aicore__ inline void PackPreQuantizedLocalTokens(const WorkRange &tokenRange, const MoeStageCommonConfig &common,
                                                    const Params &params, const QuantProcessConfig &config,
                                                    GM_ADDR outputAddr, QuantProcessScratch<ActivationType> &scratch)
 {
-    if constexpr (g_coreType == AIC) {
-        return;
-    }
-    WorkRange tokenRange = TilingByJobContext(common.tokenNum, job.jobIndex, job.totalJobs, 1U);
-    if (tokenRange.count == 0U) {
-        return;
-    }
-
     constexpr uint32_t X_ELEMS_PER_BYTE = PackedElementTraits<XType>::ELEMENTS_PER_BYTE;
     PreQuantizedCopyContext copyContext;
     copyContext.dataValidBytes = common.tokenHiddenDim / X_ELEMS_PER_BYTE;
