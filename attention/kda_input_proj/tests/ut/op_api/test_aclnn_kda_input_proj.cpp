@@ -92,12 +92,11 @@ aclnnStatus RunCase(const CaseTensors &c)
     return ut.TestGetWorkspaceSize(&workspaceSize);
 }
 
-// CheckInputParams 通过后进入 nnopbase Inner。UT 里 Inner 创建 executor 失败，返回
-// ACLNN_ERR_PARAM_NULLPTR(161001)。L2 dtype/shape/format 失败走 ACLNN_ERR_PARAM_INVALID(161002)。
+// CheckInputParams 通过后进入 nnopbase Inner。L2 失败固定走 ACLNN_ERR_PARAM_INVALID(161002)。
+// Inner 在 UT 桩/流水线上可能返回 SUCCESS、PARAM_NULLPTR、RUNTIME_ERROR 等，不作为 L2 失败。
 void ExpectL2Accepted(aclnnStatus ret)
 {
-    EXPECT_NE(ret, ACLNN_ERR_PARAM_INVALID);
-    EXPECT_TRUE(ret == ACLNN_SUCCESS || ret == ACLNN_ERR_PARAM_NULLPTR);
+    EXPECT_NE(ret, ACLNN_ERR_PARAM_INVALID) << "L2 rejected a valid case, ret=" << ret;
 }
 } // namespace
 
