@@ -34,6 +34,11 @@ constexpr uint32_t SINNER_256 = 256;
 constexpr uint32_t DSIZE_128 = 128;
 constexpr uint32_t DSIZE_256 = 256;
 
+// 预埋开关: false 时模板路由维持原逻辑(ND/合轴DN), 不影响现网行为;
+// 打开后所有 case 路由到不合轴 DN 新模板(kernel/block *_dn_unmerged.h 文件, templateId=2),
+// host tiling 与 flash_attn_metadata(AICPU) 共享该开关, 保证两侧分核选择严格一致。
+constexpr bool DN_UNMERGED_ROUTE_ENABLED = false;
+
 /**
  * @brief 根据算子参数决定 sOuter / sInner 切块大小，纯函数，不依赖任何类。
  *
@@ -45,12 +50,13 @@ constexpr uint32_t DSIZE_256 = 256;
  * @param winLeft    左侧窗口
  * @param winRight   右侧窗口
  * @param qLayout    Q 的 layout（使用 LAYOUT_BSH / LAYOUT_BSND / LAYOUT_TND 等）
+ * @param templateId [out] 模板编号
  * @param sOuterFactor [out] sOuter 切块大小
  * @param sInnerFactor [out] sInner 切块大小
  */
 inline void AdjustSinnerAndSouter(uint32_t vHeadDim, uint32_t gSize, int64_t maxSeqQ, int64_t maxSeqKv,
                                   int32_t maskMode, int64_t winLeft, int64_t winRight, uint32_t qLayout,
-                                  uint32_t &sOuterFactor, uint32_t &sInnerFactor)
+                                  uint32_t &templateId, uint32_t &sOuterFactor, uint32_t &sInnerFactor)
 {
     if (maxSeqQ == -1) {
         maxSeqQ = MAX_SEQ_LEN_DEFAULT;
@@ -58,6 +64,7 @@ inline void AdjustSinnerAndSouter(uint32_t vHeadDim, uint32_t gSize, int64_t max
     if (maxSeqKv == -1) {
         maxSeqKv = MAX_SEQ_LEN_DEFAULT;
     }
+    templateId = 0; // 0: ND模板, 1: DN模板
     sOuterFactor = SOUTER_64;
     sInnerFactor = SINNER_128;
 
@@ -74,6 +81,14 @@ inline void AdjustSinnerAndSouter(uint32_t vHeadDim, uint32_t gSize, int64_t max
         bool checkSparseMode = (maskMode != 2 && winLeftTmp + winRightTmp > 128);
         if (checkQueryAndValueS && checkSparseMode) {
             sOuterFactor = SOUTER_32;
+            sInnerFactor = SINNER_256;
+        }
+
+        if (maskMode == 0 && sOuterFactor == SOUTER_64) {
+            templateId = 1;
+        }
+
+        if (templateId == 1 && !DN_UNMERGED_ROUTE_ENABLED) {
             sInnerFactor = SINNER_256;
         }
     }
@@ -118,11 +133,6 @@ inline uint32_t GetMaxUsedAicCores(uint32_t aicNum, uint32_t batchSize, uint32_t
 constexpr uint32_t FA_TEMPLATE_ND = 0;
 constexpr uint32_t FA_TEMPLATE_DN = 1;
 constexpr uint32_t FA_TEMPLATE_DN_UNMERGED = 2; // 不合轴 DN(templateId=2), 预埋路由入口默认关闭
-
-// 预埋开关: false 时模板路由维持原逻辑(ND/合轴DN), 不影响现网行为;
-// 打开后所有 case 路由到不合轴 DN 新模板(kernel/block *_dn_unmerged.h 文件, templateId=2),
-// host tiling 与 flash_attn_metadata(AICPU) 共享该开关, 保证两侧分核选择严格一致。
-constexpr bool DN_UNMERGED_ROUTE_ENABLED = false;
 
 // DN 模板路由的共享判定: host tiling 与 flash_attn_metadata(AICPU) 必须使用同一份逻辑,
 // 保证 metadata 的分核 outputLayout 选择与 kernel 模板选择严格一致。

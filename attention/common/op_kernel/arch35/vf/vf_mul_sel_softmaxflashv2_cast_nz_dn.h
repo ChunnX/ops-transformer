@@ -409,16 +409,25 @@ __aicore__ inline void ProcessVec1DnNoUpdate(const LocalTensor<T2> &dstTensor, c
         deScaleQK, minValue, keepProb, needAtten, dScale, blockStride, repeatStride, pScale, sinkValue);
 }
 
-template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128, bool hasSink = false>
+template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128, bool hasSink = false,
+          bool fullM64N256 = false, bool unitPScale = false>
 __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB,
                                               __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
                                               __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb,
-                                              __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n,
+                                              __ubuf__ uint8_t *indexesUb, const uint32_t runtimeM, const uint32_t n,
                                               const uint32_t originN, const T scale, float deScaleQK, const T minValue,
                                               float keepProb, bool needAtten, const float dScale,
                                               const uint32_t blockStride, const uint32_t repeatStride,
                                               const float pScale = 1.0f, const float sinkValue = 0.0f)
 {
+    static_assert(
+        !unitPScale || (IsSameType<T, float>::value &&
+                        (IsSameType<T2, half>::value || IsSameType<T2, bfloat16_t>::value) && !hasAtten && !hasSink),
+        "unitPScale requires an unquantized update without VF mask or sink");
+    static_assert(!fullM64N256 || (ubN == 256 && !hasAtten && !hasSink && IsSameType<T, float>::value &&
+                                   (IsSameType<T2, half>::value || IsSameType<T2, bfloat16_t>::value)),
+                  "Full DN VF requires an unmasked 64x256 FP16/BF16 tile");
+    const uint32_t m = fullM64N256 ? 64U : runtimeM;
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
     RegTensor<float> vreg_x_sum_2;
@@ -513,13 +522,15 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
     if constexpr (hasSink) {
         Duplicate(vreg_sink_input, sinkValue);
     }
-    uint32_t paddingRows = m;
-    MaskReg paddingMask = UpdateMask<T>(paddingRows);
-    for (uint16_t i = originN; i < ubN; ++i) {
-        // 仅写实际 pitch 对应的 M lanes, 避免全宽写入越过相邻通信缓冲
-        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, paddingMask);
+    if constexpr (!fullM64N256) {
+        uint32_t paddingRows = m;
+        MaskReg paddingMask = UpdateMask<T>(paddingRows);
+        for (uint16_t i = originN; i < ubN; ++i) {
+            // 仅写实际 pitch 对应的 M lanes, 避免全宽写入越过相邻通信缓冲
+            StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, paddingMask);
+        }
+        mem_bar(VST_VLD);
     }
-    mem_bar(VST_VLD);
 
     if constexpr ((IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
                    IsSameType<T2, hifloat8_t>::value) &&
@@ -581,8 +592,12 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
         Max(max0, max0, vreg_sink_input, preg_108);
     }
 
-    Duplicate(vreg_p_scale, pScale);
-    Ln(vreg_ln_p_scale, vreg_p_scale, preg_108);
+    if constexpr (unitPScale) {
+        Duplicate(vreg_ln_p_scale, 0.0f);
+    } else {
+        Duplicate(vreg_p_scale, pScale);
+        Ln(vreg_ln_p_scale, vreg_p_scale, preg_108);
+    }
     Sub(max0, max0, vreg_ln_p_scale, preg_108);
     Max(max0, max0, vreg_x_max_f32_b, preg_108);
 
@@ -595,6 +610,8 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
     Duplicate<T, Reg::MaskMergeMode::ZEROING, float>(vreg_x_sum_2, 0, preg_134);
     Duplicate<T, Reg::MaskMergeMode::ZEROING, float>(vreg_x_sum_3, 0, preg_134);
     RegTensor<uint8_t> idx_nd2nz;
+    constexpr bool EXP_UNROLL_TWO =
+        (IsSameType<T2, bfloat16_t>::value || IsSameType<T2, half>::value) && (ubN % 8 == 0);
     uint16_t loopNum;
     if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
                   IsSameType<T2, hifloat8_t>::value) {
@@ -605,7 +622,7 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
         LoadAlign(idx_nd2nz, indexesUb);
         loopNum = ubN / 8;
     } else {
-        loopNum = ubN / 4;
+        loopNum = EXP_UNROLL_TWO ? ubN / 8 : ubN / 4;
     }
 
     for (uint16_t i0 = 0; i0 < loopNum; ++i0) {
@@ -621,10 +638,18 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
             LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN * m / 2 + i0 * m * 2 + 64);
             LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + i0 * m * 2 + 64);
         } else {
-            LoadAlign(vreg_x_f32_0, input_x_local_UB + i0 * m);
-            LoadAlign(vreg_x_f32_1, input_x_local_UB + ubN * m / 4 + i0 * m);
-            LoadAlign(vreg_x_f32_2, input_x_local_UB + ubN * m / 2 + i0 * m);
-            LoadAlign(vreg_x_f32_3, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + i0 * m);
+            uint32_t row = i0 * (EXP_UNROLL_TWO ? 2U : 1U);
+            LoadAlign(vreg_x_f32_0, input_x_local_UB + row * m);
+            LoadAlign(vreg_x_f32_1, input_x_local_UB + ubN * m / 4 + row * m);
+            LoadAlign(vreg_x_f32_2, input_x_local_UB + ubN * m / 2 + row * m);
+            LoadAlign(vreg_x_f32_3, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + row * m);
+            if constexpr (EXP_UNROLL_TWO) {
+                // The next iteration uses independent inputs; sum and Store order stay unchanged.
+                LoadAlign(vreg_x_f32_4, input_x_local_UB + (row + 1U) * m);
+                LoadAlign(vreg_x_f32_5, input_x_local_UB + ubN * m / 4 + (row + 1U) * m);
+                LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN * m / 2 + (row + 1U) * m);
+                LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + (row + 1U) * m);
+            }
         }
 
         Muls(vreg_x_f32_0, vreg_x_f32_0, dScale, preg_108);
@@ -632,17 +657,26 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
         Muls(vreg_x_f32_2, vreg_x_f32_2, dScale, preg_108);
         Muls(vreg_x_f32_3, vreg_x_f32_3, dScale, preg_108);
 
+        if constexpr (EXP_UNROLL_TWO) {
+            Muls(vreg_x_f32_4, vreg_x_f32_4, dScale, preg_108);
+            Muls(vreg_x_f32_5, vreg_x_f32_5, dScale, preg_108);
+            Muls(vreg_x_f32_6, vreg_x_f32_6, dScale, preg_108);
+            Muls(vreg_x_f32_7, vreg_x_f32_7, dScale, preg_108);
+        }
+
         FusedExpSub(vreg_x_exp_0, vreg_x_f32_0, max0, preg_134);
         FusedExpSub(vreg_x_exp_1, vreg_x_f32_1, max0, preg_134);
         FusedExpSub(vreg_x_exp_2, vreg_x_f32_2, max0, preg_134);
         FusedExpSub(vreg_x_exp_3, vreg_x_f32_3, max0, preg_134);
 
-        if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
+        if constexpr (EXP_UNROLL_TWO || IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
                       IsSameType<T2, hifloat8_t>::value) {
-            Muls(vreg_x_f32_4, vreg_x_f32_4, dScale, preg_108);
-            Muls(vreg_x_f32_5, vreg_x_f32_5, dScale, preg_108);
-            Muls(vreg_x_f32_6, vreg_x_f32_6, dScale, preg_108);
-            Muls(vreg_x_f32_7, vreg_x_f32_7, dScale, preg_108);
+            if constexpr (!EXP_UNROLL_TWO) {
+                Muls(vreg_x_f32_4, vreg_x_f32_4, dScale, preg_108);
+                Muls(vreg_x_f32_5, vreg_x_f32_5, dScale, preg_108);
+                Muls(vreg_x_f32_6, vreg_x_f32_6, dScale, preg_108);
+                Muls(vreg_x_f32_7, vreg_x_f32_7, dScale, preg_108);
+            }
 
             FusedExpSub(vreg_x_exp_4, vreg_x_f32_4, max0, preg_134);
             FusedExpSub(vreg_x_exp_5, vreg_x_f32_5, max0, preg_134);
@@ -668,6 +702,25 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
                 ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_bf16_1_pack, blockStride, repeatStride, preg_136);
             Add(vreg_x_sum_1, vreg_x_exp_1, vreg_x_sum_1, preg_134);
             Add(vreg_x_sum_3, vreg_x_exp_3, vreg_x_sum_3, preg_134);
+            if constexpr (EXP_UNROLL_TWO) {
+                Cast<T2, T, castTraitZero>(vreg_x_exp_even_bf16, vreg_x_exp_4, preg_135);
+                Cast<T2, T, castTraitZero>(vreg_x_exp_odd_bf16, vreg_x_exp_6, preg_135);
+                DeInterleave(vreg_x_exp_bf16_pack, vreg_x_exp_bf16_packa, vreg_x_exp_even_bf16, vreg_x_exp_odd_bf16);
+
+                Cast<T2, T, castTraitZero>(vreg_x_exp_even_bf16_1, vreg_x_exp_5, preg_135);
+                Cast<T2, T, castTraitZero>(vreg_x_exp_odd_bf16_1, vreg_x_exp_7, preg_135);
+                DeInterleave(vreg_x_exp_bf16_1_pack, vreg_x_exp_bf16_1_packa, vreg_x_exp_even_bf16_1,
+                             vreg_x_exp_odd_bf16_1);
+
+                StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
+                    ((__ubuf__ T2 *&)x_exp), vreg_x_exp_bf16_pack, blockStride, repeatStride, preg_136);
+                Add(vreg_x_sum_0, vreg_x_exp_4, vreg_x_sum_0, preg_134);
+                Add(vreg_x_sum_2, vreg_x_exp_6, vreg_x_sum_2, preg_134);
+                StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
+                    ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_bf16_1_pack, blockStride, repeatStride, preg_136);
+                Add(vreg_x_sum_1, vreg_x_exp_5, vreg_x_sum_1, preg_134);
+                Add(vreg_x_sum_3, vreg_x_exp_7, vreg_x_sum_3, preg_134);
+            }
         } else if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
                              IsSameType<T2, hifloat8_t>::value) {
             Add(vreg_x_sum_0, vreg_x_exp_0, vreg_x_sum_0, preg_134);
@@ -743,6 +796,27 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
                 ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_f16_1_pack, blockStride, repeatStride, preg_136);
             Add(vreg_x_sum_1, vreg_x_exp_1, vreg_x_sum_1, preg_134);
             Add(vreg_x_sum_3, vreg_x_exp_3, vreg_x_sum_3, preg_134);
+            if constexpr (EXP_UNROLL_TWO) {
+                Cast<T2, T, castTraitZero>(vreg_x_exp_even_f16, vreg_x_exp_4, preg_135);
+                Cast<T2, T, castTraitZero>(vreg_x_exp_odd_f16, vreg_x_exp_6, preg_135);
+                DeInterleave(vreg_x_exp_f16_pack, vreg_x_exp_f16_packa, vreg_x_exp_even_f16, vreg_x_exp_odd_f16);
+
+                Cast<T2, T, castTraitZero>(vreg_x_exp_even_f16_1, vreg_x_exp_5, preg_135);
+                Cast<T2, T, castTraitZero>(vreg_x_exp_odd_f16_1, vreg_x_exp_7, preg_135);
+
+                DeInterleave(vreg_x_exp_f16_1_pack, vreg_x_exp_f16_1_packa, vreg_x_exp_even_f16_1,
+                             vreg_x_exp_odd_f16_1);
+
+                StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
+                    ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f16_pack, blockStride, repeatStride, preg_136);
+                Add(vreg_x_sum_0, vreg_x_exp_4, vreg_x_sum_0, preg_134);
+                Add(vreg_x_sum_2, vreg_x_exp_6, vreg_x_sum_2, preg_134);
+
+                StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
+                    ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_f16_1_pack, blockStride, repeatStride, preg_136);
+                Add(vreg_x_sum_1, vreg_x_exp_5, vreg_x_sum_1, preg_134);
+                Add(vreg_x_sum_3, vreg_x_exp_7, vreg_x_sum_3, preg_134);
+            }
         }
     }
     Add(vreg_x_sum0, vreg_x_sum_2, vreg_x_sum_0, preg_134);
@@ -765,7 +839,8 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
     StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)new_global_sum, vreg_l0, preg_134);
 }
 
-template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128, bool hasSink = false>
+template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128, bool hasSink = false,
+          bool fullM64N256 = false, bool unitPScale = false>
 __aicore__ inline void ProcessVec1DnUpdate(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor,
                                            const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
                                            const LocalTensor<T> &expMaxTensor,
@@ -797,7 +872,7 @@ __aicore__ inline void ProcessVec1DnUpdate(const LocalTensor<T2> &dstTensor, con
         repeatStride = 1;
     }
 
-    ProcessVec1DnUpdateVF<T, T2, hasAtten, ubN, hasSink>(
+    ProcessVec1DnUpdateVF<T, T2, hasAtten, ubN, hasSink, fullM64N256, unitPScale>(
         x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, indexesUb, m, n, originN, scale,
         deScaleQK, minValue, keepProb, needAtten, dScale, blockStride, repeatStride, pScale, sinkValue);
 }
@@ -1924,7 +1999,7 @@ __aicore__ inline void ProcessVec1DnCausal(
  */
 
 template <typename T, typename T2, bool isUpdate = false, bool hasAtten = false, uint16_t ubN = 256,
-          bool hasSink = false>
+          bool hasSink = false, bool fullM64N256 = false, bool unitPScale = false>
 __aicore__ inline void ProcessVec1VfDn(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor,
                                        const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
                                        const LocalTensor<T> &expMaxTensor, TBuf<> *vselrIndexesBuf,
@@ -1933,6 +2008,11 @@ __aicore__ inline void ProcessVec1VfDn(const LocalTensor<T2> &dstTensor, const L
                                        float keepProb, bool needAtten, const float pScale = 1.0f,
                                        const float sinkValue = 0.0f)
 {
+    // unitPScale is a caller contract: pScale must remain exactly +1.
+    static_assert(!unitPScale || isUpdate, "unitPScale is supported by the update path only");
+    static_assert(!fullM64N256 || (isUpdate && !hasAtten && !hasSink && ubN == 256 && IsSameType<T, float>::value &&
+                                   (IsSameType<T2, half>::value || IsSameType<T2, bfloat16_t>::value)),
+                  "Full DN VF requires update and an unmasked 64x256 FP16/BF16 tile");
     if constexpr (!isUpdate) {
         // 索引序列，用于在VF代码中量化cast后的gather指令
         // 在对计算结果进行cast之后，数据从fp32转换成了fp8，可能会得到一个乱序的非紧密排布的结果，需要定义一个索引序列来把结果调整正确
@@ -1950,9 +2030,9 @@ __aicore__ inline void ProcessVec1VfDn(const LocalTensor<T2> &dstTensor, const L
                       IsSameType<T2, hifloat8_t>::value) {
             indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::DN_INDEX)].template Get<uint8_t>();
         }
-        ProcessVec1DnUpdate<T, T2, hasAtten, ubN, hasSink>(dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor,
-                                                           indexesTensor, maskTensor, m, n, originN, scale, deScaleQK,
-                                                           minValue, keepProb, needAtten, pScale, sinkValue);
+        ProcessVec1DnUpdate<T, T2, hasAtten, ubN, hasSink, fullM64N256, unitPScale>(
+            dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, indexesTensor, maskTensor, m, n, originN,
+            scale, deScaleQK, minValue, keepProb, needAtten, pScale, sinkValue);
     }
 }
 template <typename T, typename T2, bool isUpdate = false, bool hasAtten = false, uint16_t ubN = 256,

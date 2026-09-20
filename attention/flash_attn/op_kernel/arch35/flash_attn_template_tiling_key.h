@@ -83,13 +83,13 @@ ASCENDC_TPL_SEL(
                          ASCENDC_TPL_UINT_SEL(TemplateId, ASCENDC_TPL_UI_LIST, 0),
                          ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, 0, 1, 2, 3, 4, 5, 6, 7),
                          ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttnTilingData)),
-    // DN模板（templateId=1）：仅无attenMask且config=0/2/6（sOuter=64, D=64/128, QK D=192/DV=128）
+    // DN模板（templateId=1）：仅无attenMask且config=8/9/10（sOuter=64, S2=256, D=64/128或QK D=192/DV=128）
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BSND,
                                               InOutLayoutType_BNSD, InOutLayoutType_TND, InOutLayoutType_BNSD_BSND),
                          ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, 0, 1, 2, 3),
                          ASCENDC_TPL_BOOL_SEL(HasAttenMask, false),
                          ASCENDC_TPL_UINT_SEL(TemplateId, ASCENDC_TPL_UI_LIST, 1),
-                         ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, 0, 2, 6),
+                         ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, 8, 9, 10),
                          ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttnTilingData)),
     // DN不合轴模板（templateId=2, 预埋）：kernel 侧为独立文件(*_dn_unmerged.h),
     // 全部已注册 D/DV config(0-7) 与有无 attenMask 全量实例化; 路由入口默认关闭,

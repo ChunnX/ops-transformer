@@ -127,10 +127,10 @@ void FlashAttnTilingImpl::SplitPolicy()
     if (winRight == -1) {
         winRight = MASK_MODE_INT_MAX;
     }
-    fa_tiling_util::AdjustSinnerAndSouter(static_cast<uint32_t>(faInfo_->vHeadDim),
-                                          static_cast<uint32_t>(faInfo_->gSize), faInfo_->maxSeqQ, faInfo_->maxSeqKv,
-                                          static_cast<int32_t>(faInfo_->maskMode), winLeft, winRight,
-                                          static_cast<uint32_t>(faInfo_->qLayout), sOuterFactor_, sInnerFactor_);
+    fa_tiling_util::AdjustSinnerAndSouter(
+        static_cast<uint32_t>(faInfo_->vHeadDim), static_cast<uint32_t>(faInfo_->gSize), faInfo_->maxSeqQ,
+        faInfo_->maxSeqKv, static_cast<int32_t>(faInfo_->maskMode), winLeft, winRight,
+        static_cast<uint32_t>(faInfo_->qLayout), templateId_, sOuterFactor_, sInnerFactor_);
     // 不合轴 DN(预埋): 模板判定需在 CalcWorkspaceSize 之前完成(templateId 影响 workspace 分配),
     // 判定仅依赖 D/DV 维度; 开关关闭时不执行, 保持原行为不变
     if (fa_tiling_util::DN_UNMERGED_ROUTE_ENABLED) {
@@ -153,10 +153,21 @@ void FlashAttnTilingImpl::UpdateTilingKeyConfig()
         //   config=3: Dk=128, Dv=128, sOuter=32,  sInner=256 (Dk=72 复用, kernel 内 pad 到 128)
         //   config=4: Dk=256, Dv=256, sOuter=64, sInner=128
         //   config=5: Dk=256, Dv=256, sOuter=32, sInner=256
+        //   config=8: Dk=64, Dv=64, sOuter=64, sInner=256
+        //   config=9: Dk=128, Dv=128, sOuter=64,  sInner=256 (Dk=72 复用, kernel 内 pad 到 128)
         if (faInfo_->qkHeadDim == 64) {
-            tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 0 : 1;
+            if (templateId_ == 0 || fa_tiling_util::DN_UNMERGED_ROUTE_ENABLED) {
+                tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 0 : 1;
+            } else if (templateId_ == 1) {
+                tilingKeyInfo_.config = 8;
+            }
         } else if (faInfo_->qkHeadDim == 128 || faInfo_->qkHeadDim == 72) {
-            tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 2 : 3;
+            if (templateId_ == 0 || fa_tiling_util::DN_UNMERGED_ROUTE_ENABLED) {
+                tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 2 : 3;
+            } else if (templateId_ == 1) {
+                tilingKeyInfo_.config = 9;
+            }
+
         } else if (faInfo_->qkHeadDim == 256) {
             tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 4 : 5;
         }
@@ -166,7 +177,12 @@ void FlashAttnTilingImpl::UpdateTilingKeyConfig()
             // QK D=192 且 V DV=128 (MLA 非吸收形态) 进入此分支:
             //   config=6: Dk=192, Dv=128, sOuter=64, sInner=128
             //   config=7: Dk=192, Dv=128, sOuter=32, sInner=256
-            tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 6 : 7;
+            //   config=10: Dk=192, Dv=128, sOuter=64, sInner=256
+            if (templateId_ == 0 || fa_tiling_util::DN_UNMERGED_ROUTE_ENABLED) {
+                tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 6 : 7;
+            } else if (templateId_ == 1) {
+                tilingKeyInfo_.config = 10;
+            }
         }
     }
 }
@@ -201,18 +217,13 @@ void FlashAttnTilingImpl::UpdateTilingKeyTemplateId()
 {
     if (fa_tiling_util::DN_UNMERGED_ROUTE_ENABLED) {
         // 不合轴 DN(预埋): 全量路由, 判定与 flash_attn_metadata(AICPU) 共享
-        // fa_tiling_util::GetFlashAttnTemplateId, 两侧严格一致; dnFlag_ 仍表示旧合轴 DN 模板
+        // fa_tiling_util::GetFlashAttnTemplateId, 两侧严格一致
         tilingKeyInfo_.templateId = fa_tiling_util::GetFlashAttnTemplateId(static_cast<uint32_t>(faInfo_->qkHeadDim),
                                                                            static_cast<uint32_t>(faInfo_->vHeadDim));
-        dnFlag_ = false;
         return;
     }
     // templateId: 0=ND模板, 1=DN模板
-    // DN模板仅支持无attenMask且config=0/2/6（sOuter=64, D=64/128, QK
-    // D=192/DV=128）场景，与kernel侧模板实例化范围保持一致
-    dnFlag_ = (!tilingKeyInfo_.hasAttenMask) &&
-              ((tilingKeyInfo_.config == 0) || (tilingKeyInfo_.config == 2) || (tilingKeyInfo_.config == 6));
-    tilingKeyInfo_.templateId = dnFlag_ ? 1 : 0;
+    tilingKeyInfo_.templateId = templateId_;
 }
 
 void FlashAttnTilingImpl::UpdateTilingKeyInfo()
@@ -251,33 +262,8 @@ void FlashAttnTilingImpl::CalcWorkspaceSize()
     size_t sysWorkspaceSize = platformInfo_.defaultSysWorkspaceSize;
     uint32_t mSize = sOuterFactor_ * platformInfo_.cvRatio;
     uint32_t dSize = faInfo_->vHeadDim;
-    uint32_t dVBasicBlock = 0;
-    if (dSize <= arch35FA::DSIZE_64) {
-        dVBasicBlock = arch35FA::DSIZE_64;
-    } else if (dSize <= arch35FA::DSIZE_128) {
-        dVBasicBlock = arch35FA::DSIZE_128;
-    } else if (dSize <= arch35FA::DSIZE_256) {
-        dVBasicBlock = arch35FA::DSIZE_256;
-    } else if (dSize <= arch35FA::DSIZE_512) {
-        dVBasicBlock = arch35FA::DSIZE_512;
-    }
 
     workspaceSize_ = sysWorkspaceSize;
-
-    // TODO，确认这段workspace分配逻辑
-    int64_t bmm2Bytes = 0;
-    int64_t vec2Bytes = 0;
-    int64_t bmm2ResBlockSize = dVBasicBlock;
-    if (dVBasicBlock > arch35FA::DSIZE_256) {
-        bmm2ResBlockSize = arch35FA::DSIZE_512;
-    }
-    if ((!dnFlag_ && dSize > arch35FA::DSIZE_128) || (dnFlag_ && dSize > arch35FA::DSIZE_192)) {
-        bmm2Bytes = mSize * bmm2ResBlockSize * sizeof(float);
-        if (dVBasicBlock > arch35FA::DSIZE_256) {
-            vec2Bytes = mSize * dVBasicBlock * sizeof(float);
-        }
-    }
-    workspaceSize_ += (bmm2Bytes + vec2Bytes) * 3 * platformInfo_.coreNum; // 3: perload 2次 需要2+1
 
     if (faInfo_->pageAttentionFlag) {
         // 2 bmm, db, ensure alignment of each structure 64B, dcci cacheline needs
