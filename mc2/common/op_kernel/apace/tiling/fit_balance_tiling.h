@@ -932,7 +932,9 @@ inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, CommPrimitiv
             break;
         }
     }
-    // matmul 行: 按通信引擎无关的 dtype 五元组匹配算力行与 L2 档行(键推导与模型 SetCalcType 一致)
+    // matmul 行: 按"计算形态"匹配算力行与 L2 档行——形态键 = (量化类别, fp4 打包, A/B/C 字节数)
+    // 五个维度合起来才确定一种计算形态(只看 dtype 无法区分 fp4/fp8 的 1/1/2 同宽), 键推导与模型
+    // SetCalcType 同源
     const auto isQuant = (args.aType == matmul_tiling::DataType::DT_HIFLOAT8) ||
                          (args.aType == matmul_tiling::DataType::DT_FLOAT8_E4M3FN) ||
                          (args.aType == matmul_tiling::DataType::DT_FLOAT8_E5M2) ||
@@ -940,7 +942,7 @@ inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, CommPrimitiv
                          (args.geAType == ge::DataType::DT_FLOAT4_E2M1);
     const MatmulDtypeKind calcType = isQuant ? MatmulDtypeKind::QUANT : MatmulDtypeKind::FP16;
     const bool isFp4 = (args.geAType == ge::DataType::DT_FLOAT4_E2M1);
-    const auto matchesDtype = [&](const auto &row) {
+    const auto matchesCalcProfile = [&](const auto &row) {
         return (row.calcType == calcType) && (row.isFp4 == isFp4) && (row.aBytes == args.inputDtypeSize) &&
                (row.bBytes == args.inputDtypeSize) && (row.cBytes == args.outputDtypeSize);
     };
@@ -949,7 +951,7 @@ inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, CommPrimitiv
         if (calib.mmFit.cubeCalc[i].aBytes == 0) { // 哨兵截断
             break;
         }
-        if (matchesDtype(calib.mmFit.cubeCalc[i])) {
+        if (matchesCalcProfile(calib.mmFit.cubeCalc[i])) {
             computesPerCycle = calib.mmFit.cubeCalc[i].computesPerCycle;
             break;
         }
@@ -959,7 +961,7 @@ inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, CommPrimitiv
         if (calib.mmFit.l2Param[i].aBytes == 0) { // 哨兵截断
             break;
         }
-        if (matchesDtype(calib.mmFit.l2Param[i])) {
+        if (matchesCalcProfile(calib.mmFit.l2Param[i])) {
             l2Params = calib.mmFit.l2Param[i].params;
             break;
         }
