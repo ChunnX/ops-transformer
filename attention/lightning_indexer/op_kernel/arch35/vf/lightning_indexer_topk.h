@@ -23,8 +23,8 @@ namespace topk {
 template <typename T>
 class LITopk {
 public:
-    __aicore__ inline void operator()(LocalTensor<uint32_t> &outputIdxLocal, LocalTensor<T> &inputLocal,
-                                      uint32_t s2SeqLen)
+    __aicore__ inline void operator()(LocalTensor<uint32_t> &outputIdxLocal,
+                                      LocalTensor<T> &inputLocal, uint32_t s2SeqLen)
     {}
 };
 template <>
@@ -32,7 +32,8 @@ class LITopk<uint32_t> {
 public:
     __aicore__ inline uint32_t GetSharedTmpBufferSize()
     {
-        return liV2TopkCommon::GetGatherTmpBufferSize<uint32_t, liV2TopkCommon::B32_RADIX_BUFFER_NUM>(topK, trunkLen);
+        return liV2TopkCommon::GetGatherTmpBufferSize<uint32_t, liV2TopkCommon::B32_RADIX_BUFFER_NUM>(
+            topK, trunkLen);
     }
 
     __aicore__ inline void Init(uint32_t topK, uint32_t trunkLen)
@@ -41,7 +42,8 @@ public:
         this->trunkLen = trunkLen;
     }
 
-    __aicore__ inline void InitBuffers(LocalTensor<uint32_t> &sharedTmpBuffer, LocalTensor<uint32_t> &indicesOutLocal)
+    __aicore__ inline void InitBuffers(LocalTensor<uint32_t> &sharedTmpBuffer,
+                                       LocalTensor<uint32_t> &indicesOutLocal)
     {
         LocalTensor<uint32_t> hisIndexLocal1 = indicesOutLocal;
         LocalTensor<uint32_t> hisIndexLocal2 = sharedTmpBuffer[0];
