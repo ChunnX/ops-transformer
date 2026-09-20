@@ -126,76 +126,6 @@ struct DnUnmergedVecRunInfo {
     int64_t nextTokensLeftUp = 0;
 };
 
-// Both modes scale the same score lanes before optional mask selection and
-// KV padding. Dispatch mask presence before entering the VF hardware loops.
-template <bool ApplyMask, uint32_t MaskPitch>
-__simd_vf__ inline void PrepareDnScoresVF(__ubuf__ float *scores, __ubuf__ uint32_t *mask, uint32_t rows,
-                                          uint32_t pitch, uint32_t cols, uint16_t groups, uint16_t paddingCols,
-                                          float scale, float paddingValue)
-{
-    Reg::RegTensor<int32_t> indices;
-    Reg::RegTensor<uint32_t> words, byteMask;
-    Reg::RegTensor<float> minimum, padding;
-    Reg::MaskReg active = Reg::UpdateMask<float>(rows);
-    Reg::RegTensor<float> value0;
-    Reg::RegTensor<uint32_t> byte0;
-    Reg::MaskReg keep0;
-    Reg::RegTensor<float> value1;
-    Reg::RegTensor<uint32_t> byte1;
-    Reg::MaskReg keep1;
-    Reg::RegTensor<float> value2;
-    Reg::RegTensor<uint32_t> byte2;
-    Reg::MaskReg keep2;
-    Reg::RegTensor<float> value3;
-    Reg::RegTensor<uint32_t> byte3;
-    Reg::MaskReg keep3;
-    if constexpr (ApplyMask) {
-        Reg::Arange(indices, 0);
-        Reg::Muls(indices, indices, static_cast<int32_t>(MaskPitch / 4U), active);
-        Reg::Duplicate(minimum, -1000000000000.0F);
-        Reg::Duplicate(byteMask, 255U);
-    }
-    for (uint16_t group = 0; group < groups; ++group) {
-        if constexpr (ApplyMask) {
-            Reg::Gather(words, mask + group, reinterpret_cast<Reg::RegTensor<uint32_t> &>(indices), active);
-        }
-        Reg::LoadAlign(value0, scores + (group * 4U + 0U) * pitch);
-        Reg::LoadAlign(value1, scores + (group * 4U + 1U) * pitch);
-        Reg::LoadAlign(value2, scores + (group * 4U + 2U) * pitch);
-        Reg::LoadAlign(value3, scores + (group * 4U + 3U) * pitch);
-        Reg::Muls(value0, value0, scale, active);
-        Reg::Muls(value1, value1, scale, active);
-        Reg::Muls(value2, value2, scale, active);
-        Reg::Muls(value3, value3, scale, active);
-        if constexpr (ApplyMask) {
-            Reg::ShiftRights(byte0, words, static_cast<int16_t>(0), active);
-            Reg::And(byte0, byte0, byteMask, active);
-            Reg::Compares<uint32_t, CMPMODE::EQ>(keep0, byte0, 0U, active);
-            Reg::Select(value0, value0, minimum, keep0);
-            Reg::ShiftRights(byte1, words, static_cast<int16_t>(8), active);
-            Reg::And(byte1, byte1, byteMask, active);
-            Reg::Compares<uint32_t, CMPMODE::EQ>(keep1, byte1, 0U, active);
-            Reg::Select(value1, value1, minimum, keep1);
-            Reg::ShiftRights(byte2, words, static_cast<int16_t>(16), active);
-            Reg::And(byte2, byte2, byteMask, active);
-            Reg::Compares<uint32_t, CMPMODE::EQ>(keep2, byte2, 0U, active);
-            Reg::Select(value2, value2, minimum, keep2);
-            Reg::ShiftRights(byte3, words, static_cast<int16_t>(24), active);
-            Reg::And(byte3, byte3, byteMask, active);
-            Reg::Compares<uint32_t, CMPMODE::EQ>(keep3, byte3, 0U, active);
-            Reg::Select(value3, value3, minimum, keep3);
-        }
-        Reg::StoreAlign(scores + (group * 4U + 0U) * pitch, value0, active);
-        Reg::StoreAlign(scores + (group * 4U + 1U) * pitch, value1, active);
-        Reg::StoreAlign(scores + (group * 4U + 2U) * pitch, value2, active);
-        Reg::StoreAlign(scores + (group * 4U + 3U) * pitch, value3, active);
-    }
-    Reg::Duplicate(padding, paddingValue);
-    for (uint16_t i = 0; i < paddingCols; ++i) {
-        Reg::StoreAlign(scores + (cols + i) * pitch, padding, active);
-    }
-}
-
 template <typename FA_T>
 class FANoQuantGqaBlockVecDnUnmerged {
 public:
@@ -289,8 +219,9 @@ public:
     uint32_t lseOutUbBufId_ = 0;
 
     static constexpr uint32_t UB_MASK_BUFCNT = 2U;
-    // 32 字节错峰, 避免整列 mask 从同一 UB bank 连续 gather 造成 bank 冲突
-    static constexpr uint32_t MASK_PITCH = AttentionCommon::Align(s2BaseSize, 32U) + 32U;
+    // An odd number of 32-byte blocks distributes column gathers across UB banks.
+    // N208/N224 already align to seven blocks; blindly adding one made the pitch 256.
+    static constexpr uint32_t MASK_PITCH = (AttentionCommon::Align(s2BaseSize, 32U) / 32U | 1U) * 32U;
     static constexpr uint32_t UB_MASK_BUF_BYTES = mBaseSize / CV_RATIO * MASK_PITCH;
     LocalTensor<uint8_t> ubMaskBuffers_;
 
@@ -641,24 +572,37 @@ public:
         lseOutUbBufId_ = (lseOutUbBufId_ + 1) % UB_LSE_OUT_BUFCNT;
     }
 
-    __aicore__ inline void PrepareScores(LocalTensor<T> &scores, LocalTensor<uint8_t> &mask, const RunInfo &info,
-                                         bool needMask)
+    template <bool ApplyMask, bool FullColumns>
+    __aicore__ inline void SoftmaxDnTile(LocalTensor<INPUT_T> &dst, LocalTensor<T> &sum, LocalTensor<T> &max,
+                                         LocalTensor<T> &scores, LocalTensor<T> &exp, LocalTensor<uint8_t> &mask,
+                                         const RunInfo &info)
     {
-        const uint16_t groups = (info.actSingleLoopS2Size + 3U) / 4U;
-        const uint16_t paddingCols = info.actSingleLoopS2SizeAlign - info.actSingleLoopS2Size;
-        if constexpr (HAS_MASK) {
-            if (needMask) {
-                PrepareDnScoresVF<true, MASK_PITCH>(
-                    (__ubuf__ float *)scores.GetPhyAddr(), (__ubuf__ uint32_t *)mask.GetPhyAddr(), info.actVecMSize,
-                    info.actMSizeAlign32 / CV_RATIO, info.actSingleLoopS2Size, groups, paddingCols,
-                    static_cast<float>(constInfo_.scaleValue), negativeFloatScalar_);
-                return;
-            }
+        constexpr uint16_t scoreMaskPitch = ApplyMask ? MASK_PITCH : 0;
+        const float scale = static_cast<float>(constInfo_.scaleValue);
+        if (FullColumns && info.actVecMSize == 64U && (info.actMSizeAlign32 >> 1) == 64U) {
+            FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize, false, true, true, true, true,
+                                         scoreMaskPitch, FullColumns>(
+                dst, sum, max, scores, exp, nullptr, mask, info.actMSizeAlign32 >> 1, info.actSingleLoopS2SizeAlign,
+                info.actSingleLoopS2Size, scale, 1.0F, negativeFloatScalar_, 0.0F, false, 1.0F);
+        } else {
+            FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize, false, false, true, true, true,
+                                         scoreMaskPitch, FullColumns>(
+                dst, sum, max, scores, exp, nullptr, mask, info.actMSizeAlign32 >> 1, info.actSingleLoopS2SizeAlign,
+                info.actSingleLoopS2Size, scale, 1.0F, negativeFloatScalar_, 0.0F, false, 1.0F);
         }
-        PrepareDnScoresVF<false, MASK_PITCH>((__ubuf__ float *)scores.GetPhyAddr(), nullptr, info.actVecMSize,
-                                             info.actMSizeAlign32 / CV_RATIO, info.actSingleLoopS2Size, groups,
-                                             paddingCols, static_cast<float>(constInfo_.scaleValue),
-                                             negativeFloatScalar_);
+    }
+
+    template <bool ApplyMask>
+    __aicore__ inline void SoftmaxDn(LocalTensor<INPUT_T> &dst, LocalTensor<T> &sum, LocalTensor<T> &max,
+                                     LocalTensor<T> &scores, LocalTensor<T> &exp, LocalTensor<uint8_t> &mask,
+                                     const RunInfo &info)
+    {
+        // A Q tail can still have a full KV tile. Its score lanes need no KV padding.
+        if (info.actSingleLoopS2Size == s2BaseSize && info.actSingleLoopS2SizeAlign == s2BaseSize) {
+            SoftmaxDnTile<ApplyMask, true>(dst, sum, max, scores, exp, mask, info);
+        } else {
+            SoftmaxDnTile<ApplyMask, false>(dst, sum, max, scores, exp, mask, info);
+        }
     }
 
     __aicore__ inline void ProcessVec1Dn(LocalTensor<INPUT_T> &pL1Tensor, LocalTensor<T> &mm1ResUbTensor,
@@ -701,23 +645,18 @@ public:
 
         Mutex::Lock<PIPE_V>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
 
-        float descaleQK = 1.0;
-
         LocalTensor<INPUT_T> stage1CastTensor =
             ubVec1ResBuffers_[vec1ResUbBufId_ * UB_VEC1_RES_BUF_BYTES].template ReinterpretCast<INPUT_T>();
-        PrepareScores(mm1ResUbTensor, attenMaskUb, runInfo, needMask);
-        AscendC::PipeBarrier<PIPE_V>();
-        if (runInfo.actVecMSize == 64U && (runInfo.actMSizeAlign32 >> 1) == 64U &&
-            runInfo.actSingleLoopS2Size == s2BaseSize && runInfo.actSingleLoopS2SizeAlign == s2BaseSize) {
-            FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize, false, true, true, true>(
-                stage1CastTensor, sumUb, maxUb, mm1ResUbTensor, expUb, nullptr, attenMaskUb,
-                runInfo.actMSizeAlign32 >> 1, runInfo.actSingleLoopS2SizeAlign, runInfo.actSingleLoopS2Size, 1.0F,
-                descaleQK, negativeFloatScalar_, 0.0F, false, 1.0F);
+        // Runtime mask dispatch stays outside VF loops. Both modes transform raw
+        // MM1 scores inside softmax; no intermediate score store or V barrier.
+        if constexpr (HAS_MASK) {
+            if (needMask) {
+                SoftmaxDn<true>(stage1CastTensor, sumUb, maxUb, mm1ResUbTensor, expUb, attenMaskUb, runInfo);
+            } else {
+                SoftmaxDn<false>(stage1CastTensor, sumUb, maxUb, mm1ResUbTensor, expUb, attenMaskUb, runInfo);
+            }
         } else {
-            FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize, false, false, true, true>(
-                stage1CastTensor, sumUb, maxUb, mm1ResUbTensor, expUb, nullptr, attenMaskUb,
-                runInfo.actMSizeAlign32 >> 1, runInfo.actSingleLoopS2SizeAlign, runInfo.actSingleLoopS2Size, 1.0F,
-                descaleQK, negativeFloatScalar_, 0.0F, false, 1.0F);
+            SoftmaxDn<false>(stage1CastTensor, sumUb, maxUb, mm1ResUbTensor, expUb, attenMaskUb, runInfo);
         }
 
         if (needMask) {
