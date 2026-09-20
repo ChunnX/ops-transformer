@@ -194,14 +194,11 @@ __aicore__ inline void ComputeGateValues(float totalSumSqPre, float (&xHatVals)[
     // Host已固定校验N为4，使用编译期常量便于展开标量循环。
     constexpr uint32_t N = N_MAX;
     float invRmsPre = 1.0f / sqrt(totalSumSqPre * invK_ + mhcPreNormEps_);
-    for (uint32_t o = 0; o < N; ++o)
-        xHatVals[o] *= invRmsPre;
-
-    LocalTensor<float> scBuf = bufScalar_.Get<float>();
-    for (uint32_t i = 0; i < N; ++i)
-        scBuf.SetValue(i, -(alpha0_ * xHatVals[i] + biasCache_[i]));
-    LocalTensor<float> gateBuf = scBuf[EXP_DIV_ELEM];
-    // TODO：后续单独评估固定四元素循环展开，本轮保持通用VF循环。
-    MhcSandwichRegBase::SigmoidAddEps(gateBuf, scBuf, hcEps_, N);
-    PipeBarrier<PIPE_V>();
+    LocalTensor<float> gateBuf = bufScalar_.Get<float>()[EXP_DIV_ELEM];
+    // 门控只有固定四个元素，直接按原FP32顺序计算，避免为短向量启动VF和写入中间-z。
+    for (uint32_t i = 0; i < N; ++i) {
+        xHatVals[i] *= invRmsPre;
+        float z = alpha0_ * xHatVals[i] + biasCache_[i];
+        gateBuf.SetValue(i, 1.0f / (1.0f + exp(-z)) + hcEps_);
+    }
 }
