@@ -19,7 +19,9 @@
 #include <vector>
 #include <string>
 #include <map>
+#include <memory>
 #include "assert.h"
+#include "securec.h"
 
 #include "graph.h"
 #include "types.h"
@@ -164,20 +166,62 @@ uint32_t GetDataTypeSize(DataType dt)
     return dilation;
 }
 
+uint8_t FloatToFp8E4M3Bits(float value)
+{
+    uint32_t floatBits = 0;
+    if (memcpy_s(&floatBits, sizeof(floatBits), &value, sizeof(floatBits)) != EOK) {
+        return 0;
+    }
+    uint32_t sign = (floatBits >> 24) & 0x80U;
+    uint32_t mant = floatBits & 0x7FFFFFU;
+    int32_t exp = static_cast<int32_t>((floatBits >> 23) & 0xFFU) - 127 + 7;
+    if (exp <= 0) {
+        return static_cast<uint8_t>(sign);
+    }
+    uint32_t mant3 = mant >> 20;
+    uint32_t remainder = mant & 0xFFFFFU;
+    uint32_t roundUp = (remainder > 0x80000U || (remainder == 0x80000U && (mant3 & 1U) == 1U)) ? 1U : 0U;
+    uint32_t bits = (static_cast<uint32_t>(exp) << 3) + mant3 + roundUp;
+    return static_cast<uint8_t>(sign | ((bits > 0x7EU) ? 0x7EU : bits));
+}
+
 int32_t GenOnesData(
     vector<int64_t> shapes, Tensor &input_tensor, TensorDesc &input_tensor_desc, DataType data_type, int value)
 {
     input_tensor_desc.SetRealDimCnt(shapes.size());
     size_t size = 1;
-    for (uint32_t i = 0; i < shapes.size(); i++) {
-        size *= shapes[i];
+    for (size_t i = 0; i < shapes.size(); ++i) {
+        if (shapes[i] <= 0) {
+            return FAILED;
+        }
+        size *= static_cast<size_t>(shapes[i]);
     }
-    uint32_t data_len = size * GetDataTypeSize(data_type);
-    int32_t *pData = new (std::nothrow) int32_t[data_len];
-    for (size_t i = 0; i < size; ++i) {
-        *(pData + i) = value;
+    size_t data_len = size * GetDataTypeSize(data_type);
+    auto buf = std::make_shared<std::vector<uint8_t>>(data_len);
+    uint8_t* pData = buf->data();
+    if (data_type == ge::DT_FLOAT8_E4M3FN) {
+        uint8_t fp8 = FloatToFp8E4M3Bits(static_cast<float>(value));
+        for (size_t i = 0; i < size; i++) {
+            pData[i] = fp8;
+        }
+    } else if (data_type == ge::DT_FLOAT) {
+        float fv = static_cast<float>(value);
+        for (size_t i = 0; i < size; i++) {
+            if (memcpy_s(pData + i * sizeof(float), sizeof(float), &fv, sizeof(fv)) != EOK) {
+                printf("%s - ERROR - [XIR]: Fill float data failed at %zu\n", GetTime().c_str(), i);
+                return FAILED;
+            }
+        }
+    } else {
+        uint8_t byteValue =
+            (data_type == ge::DT_BOOL) ? static_cast<uint8_t>(value != 0 ? 1 : 0) : static_cast<uint8_t>(value);
+        (void)memset(pData, static_cast<int>(byteValue), data_len);
     }
-    input_tensor = Tensor(input_tensor_desc, reinterpret_cast<uint8_t *>(pData), data_len);
+    input_tensor = Tensor(input_tensor_desc);
+    if (input_tensor.SetData(pData, data_len, [buf](uint8_t*) {}) != SUCCESS) {
+        printf("%s - ERROR - [XIR]: SetData failed in GenOnesData\n", GetTime().c_str());
+        return FAILED;
+    }
     return SUCCESS;
 }
 
@@ -319,9 +363,15 @@ int main(int argc, char *argv[])
         std::cout << "this is " << i << "th output, output shape size =" << output_shape << std::endl;
         uint32_t data_size = output_shape * GetDataTypeSize(output[i].GetTensorDesc().GetDataType());
         WriteDataToFile((const char *)output_file.c_str(), data_size, output_data_i);
-        float *resultData = (float *)output_data_i;
+        auto resultData = reinterpret_cast<uint16_t*>(output_data_i);
         for (int64_t j = 0; j < output_shape && j < 10; j++) {
-            LOG_PRINT("result[%ld] is: %f\n", j, resultData[j]);
+            uint32_t resultBits = static_cast<uint32_t>(resultData[j]) << 16;
+            float resultValue = 0.0F;
+            if (memcpy_s(&resultValue, sizeof(resultValue), &resultBits, sizeof(resultBits)) != EOK) {
+                LOG_PRINT("%s - ERROR - [XIR]: Decode result[%ld] failed\n", GetTime().c_str(), j);
+                continue;
+            }
+            LOG_PRINT("result[%ld] is: %f\n", j, resultValue);
         }
     }
 
