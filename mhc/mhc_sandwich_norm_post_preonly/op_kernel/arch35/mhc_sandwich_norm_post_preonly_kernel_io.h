@@ -10,14 +10,14 @@
 
 // A5单AIV与双sibling AIV路径共用的输入输出辅助函数。
 
-__aicore__ inline void QuantizeRoundTrip(LocalTensor<float> buf, uint32_t count)
+__aicore__ inline void QuantizeRoundTrip(LocalTensor<float> buf, uint32_t cacheOffset, uint32_t count)
 {
-    LocalTensor<T> tmp = bufHInPrimeBf16_.AllocTensor<T>();
+    // 当前分块的x2缓存尚未写入，复用对应片段保存低精度往返值。
+    LocalTensor<T> tmp = bufX2Cache_.Get<T>()[cacheOffset];
     CastToIO(tmp, buf, count);
     PipeBarrier<PIPE_V>();
     MhcSandwichRegBase::CastB16ToFp32(buf, tmp, count);
     PipeBarrier<PIPE_V>();
-    bufHInPrimeBf16_.FreeTensor(tmp);
 }
 
 __aicore__ inline void CastToIO(LocalTensor<T> dst, LocalTensor<float> src, uint32_t count)
@@ -55,31 +55,18 @@ __aicore__ inline void LoadLowPrecisionTile(GlobalTensor<T> &src, uint64_t gmOff
     bufHOutBf16_.FreeTensor(tmp);
 }
 
-__aicore__ inline void WriteLowPrecisionTile(GlobalTensor<T> &dst, uint64_t gmOffset, LocalTensor<float> src,
-                                             uint32_t count)
+__aicore__ inline void WriteHInPrimeTile(LocalTensor<float> src, uint64_t gmOffset, uint32_t cacheOffset,
+                                         uint32_t count)
 {
-    LocalTensor<T> tmp = bufHInPrimeBf16_.AllocTensor<T>();
+    // 当前h_in缓存已读取完毕，原位复用对应低精度片段作为输出暂存。
+    LocalTensor<T> tmp = bufX2Cache_.Get<T>()[cacheOffset];
     CastToIO(tmp, src, count);
-    bufHInPrimeBf16_.EnQue(tmp);
-    tmp = bufHInPrimeBf16_.DeQue<T>();
-    DataCopy(dst[gmOffset], tmp, count);
-    bufHInPrimeBf16_.FreeTensor(tmp);
-}
-
-__aicore__ inline void WriteHInPrimeTile(LocalTensor<float> src, uint64_t gmOffset, uint32_t count)
-{
-    WriteLowPrecisionTile(hInPrimeGm_, gmOffset, src, count);
+    SetFlag<HardEvent::V_MTE3>(evtVtoMte3_);
+    WaitFlag<HardEvent::V_MTE3>(evtVtoMte3_);
+    DataCopy(hInPrimeGm_[gmOffset], tmp, count);
     if constexpr (RETURN_H_IN_F32) {
-        SetFlag<HardEvent::V_MTE3>(evtVtoMte3_);
-        WaitFlag<HardEvent::V_MTE3>(evtVtoMte3_);
         DataCopy(hInF32Gm_[gmOffset], src, count);
-        FenceMte3ToV();
     }
-}
-
-__aicore__ inline void WriteX2OutTile(LocalTensor<float> src, uint64_t gmOffset, uint32_t count)
-{
-    WriteLowPrecisionTile(x2OutGm_, gmOffset, src, count);
 }
 
 __aicore__ inline uint32_t GetTileD(uint32_t tile) const

@@ -107,16 +107,15 @@ public:
         pipe_.InitBuffer(bufHOutFp32_, dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufGamma0Fp32_, dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufX2Fp32_, N_ * dimTile_ * sizeof(float));
-        // dimTile=2560时其余固定缓存共184672B；D=7168的完整低精度x2为57344B，
-        // 合计242016B，小于A5的256KiB UB上限。
+        // dimTile=2560时其余固定缓存共179552B；D=7168的完整低精度x2为57344B，
+        // 合计236896B，小于A5的256KiB UB上限。
         pipe_.InitBuffer(bufX2Cache_, K_ * sizeof(T));
         pipe_.InitBuffer(bufResidualBf16_, 1, N_ * dimTile_ * sizeof(T));
         // 前四行先保存residual，之后复用为R4/R5的五行归约输入；第五行兼作通用输出暂存。
         pipe_.InitBuffer(bufResFp32_, (N_ + 1) * dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufPostComb_, POST_COMB_SIZE * sizeof(float));
         pipe_.InitBuffer(bufPhiFp32_, BUFFER_NUM_TWO, dimTile_ * sizeof(float));
-        // TODO: 后续重新设计流水并单独验证输入、输出双缓冲收益。
-        pipe_.InitBuffer(bufHInPrimeBf16_, BUFFER_NUM_ONE, dimTile_ * sizeof(T));
+        // TODO: 后续重新设计流水并单独验证输入双缓冲收益。
         pipe_.InitBuffer(bufScalar_, SCALAR_BUF_SIZE);
         pipe_.InitBuffer(bufGamma2Fp32_, dimTile_ * sizeof(float));
 
@@ -215,7 +214,6 @@ private:
     TBuf<TPosition::VECCALC> bufResFp32_;
     TBuf<TPosition::VECCALC> bufPostComb_;
     TQue<TPosition::VECIN, BUFFER_NUM_TWO> bufPhiFp32_;
-    TQue<TPosition::VECOUT, BUFFER_NUM_ONE> bufHInPrimeBf16_;
     TBuf<TPosition::VECCALC> bufScalar_;
 
     // GM张量

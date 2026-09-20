@@ -25,7 +25,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
     ApplyScaleAndGamma(bufHOutFp32_.Get<float>(), invRms0, bufGamma0Fp32_.Get<float>(), tD);
     FenceVToMte2();
-    QuantizeRoundTrip(bufHOutFp32_.Get<float>(), tD);
+    QuantizeRoundTrip(bufHOutFp32_.Get<float>(), tOff, tD);
 
     LoadResidualAndCast((uint64_t)token * N_ * D_ + tOff, tD);
     ComputeX2AllHeadsBatched(postVals, tD);
@@ -361,8 +361,9 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
         WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
         ApplyScaleAndGamma(hIn, invRms1, bufGamma2Fp32_.Get<float>(), tD);
         FenceVToMte2();
-        WriteHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tD);
+        WriteHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tOff, tD);
     }
+    FenceMte3ToV();
 }
 
 #endif // MHC_SANDWICH_NORM_POST_PREONLY_SINGLE_AIV_H_

@@ -154,8 +154,9 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
         ApplyScaleAndGamma(hIn, invRms1, bufGamma2Fp32_.Get<float>(), tD);
         FenceVToMte2();
-        WriteHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tD);
+        WriteHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tOff, tD);
     }
+    FenceMte3ToV();
 }
 
 #endif // MHC_SANDWICH_NORM_POST_PREONLY_DUAL_SIBLING_AIV_H_
