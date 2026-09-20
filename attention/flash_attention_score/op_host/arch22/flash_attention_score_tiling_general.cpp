@@ -3607,14 +3607,15 @@ protected:
         bmm2.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmmDtype, false);
         bmm2.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmmDtype, false);
         bmm2.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmm2OutDtype);
-        bmm2.SetShape(singleM, dSize, std::min(tmpS2BasicBlock * tilingData->coreParams.get_nRatio(), s2Size));
-        bmm2.SetOrgShape(s1Size, s2StrideSize, std::min(tmpS2BasicBlock * tilingData->coreParams.get_nRatio(), s2Size),
-                         s2StrideSize);
+        // MLA D不等长(d != dv): bmm2 的N轴为 d2Size，B矩阵(V)的K轴步长为 vs2StrideSize
+        bmm2.SetShape(singleM, d2Size, std::min(tmpS2BasicBlock * tilingData->coreParams.get_nRatio(), s2Size));
+        bmm2.SetOrgShape(s1Size, vs2StrideSize, std::min(tmpS2BasicBlock * tilingData->coreParams.get_nRatio(), s2Size),
+                         vs2StrideSize);
         bmm2.SetBias(false);
         if (bmm2.SetBufferSpace(aicoreParams_.l1Size, aicoreParams_.l0cSize) != 0) {
             return false;
         }
-        if (dSize == D_SPECIFIC_SIZE && tilingData->inputParams.get_layoutType() == LAYOUT_BNSD &&
+        if (d2Size == D_SPECIFIC_SIZE && tilingData->inputParams.get_layoutType() == LAYOUT_BNSD &&
             tilingData->inputParams.get_sparseType() == static_cast<uint8_t>(SparseEnum::ALL) &&
             singleM >= BMM2_BASICBLOCK_M_64) {
             if (bmm2.SetFixSplit(BMM2_BASICBLOCK_M_64, BMM2_BASICBLOCK_M_64, BMM2_BASICBLOCK_K_256) != 0) {
@@ -3684,20 +3685,20 @@ protected:
 
         // 切D场景，stage1占用2倍的空间，stage2占用4倍空间
         workspaces[0] = static_cast<size_t>((bmm1Bytes * SPACE_NUM_2 +
-                                             SPACE_NUM_4 * coreParams.get_s1BaseSize() * alignedD * calcTypeSize) *
+                                             SPACE_NUM_4 * coreParams.get_s1BaseSize() * alignedD2 * calcTypeSize) *
                                             aivNum) +
                         WORK_SPACE_RESERVE_SIZE;
         // NZND场景，stage1占用3倍的空间，stage2占用4倍空间
         if (s2Size % S2_NZTOND_SIZE_64 != 0) {
             workspaces[0] = static_cast<size_t>((bmm1Bytes * SPACE_NUM_3 +
-                                                 SPACE_NUM_4 * coreParams.get_s1BaseSize() * alignedD * calcTypeSize) *
+                                                 SPACE_NUM_4 * coreParams.get_s1BaseSize() * alignedD2 * calcTypeSize) *
                                                 aivNum) +
                             WORK_SPACE_RESERVE_SIZE;
         }
         // FP32场景，stage1占用4倍的空间，stage2占用4倍空间
         if (inputDtypeBytes == DATA_TYPE_FP32) {
             workspaces[0] = static_cast<size_t>((bmm1Bytes * SPACE_NUM_4 +
-                                                 SPACE_NUM_4 * coreParams.get_s1BaseSize() * alignedD * calcTypeSize) *
+                                                 SPACE_NUM_4 * coreParams.get_s1BaseSize() * alignedD2 * calcTypeSize) *
                                                 aivNum) +
                             WORK_SPACE_RESERVE_SIZE;
         }
@@ -4160,10 +4161,11 @@ protected:
         bmm2.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmmDtype, false);
         bmm2.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmmDtype, false);
         bmm2.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmm2OutDtype);
-        bmm2.SetShape(std::min(tmpS1BasicBlock, s1Size), dSize,
+        // MLA D不等长(d != dv): bmm2 的N轴为 d2Size，B矩阵(V)的K轴步长为 vs2StrideSize
+        bmm2.SetShape(std::min(tmpS1BasicBlock, s1Size), d2Size,
                       std::min(tmpS2BasicBlock * tilingData->coreParams.get_nRatio(), s2Size));
-        bmm2.SetOrgShape(s1Size, s2StrideSize, std::min(tmpS2BasicBlock * tilingData->coreParams.get_nRatio(), s2Size),
-                         s2StrideSize);
+        bmm2.SetOrgShape(s1Size, vs2StrideSize, std::min(tmpS2BasicBlock * tilingData->coreParams.get_nRatio(), s2Size),
+                         vs2StrideSize);
         bmm2.SetBias(false);
         if (!isSameAB && inputDtypeBytes != DATA_TYPE_FP32 && !hasRope && s1BasicBlock <= S1_BASIC_BLOCK_L1CARRY_MAX &&
             dSize <= D_SIZE_L1CARRY_MAX && d2Size <= D2_SIZE_L1CARRY_MAX) {
@@ -4389,12 +4391,12 @@ protected:
         if (isMaxWorkspace) {
             auto actualSplitAiCoreNumMax = std::max(aicNum, aivNum);
             workspaces[0] = static_cast<size_t>((bmm1Byetes * SPACE_NUM_3 + stage1Bytes * SPACE_NUM_2 +
-                                                 SPACE_NUM_4 * 512 * alignedD * calcTypeSize + (512 * 1024 * 2)) *
+                                                 SPACE_NUM_4 * 512 * alignedD2 * calcTypeSize + (512 * 1024 * 2)) *
                                                 actualSplitAiCoreNumMax) +
                             WORK_SPACE_RESERVE_SIZE;
         } else {
             workspaces[0] = static_cast<size_t>((bmm1Byetes * SPACE_NUM_3 + stage1Bytes * SPACE_NUM_2 +
-                                                 SPACE_NUM_4 * coreParams.get_s1BaseSize() * alignedD * calcTypeSize +
+                                                 SPACE_NUM_4 * coreParams.get_s1BaseSize() * alignedD2 * calcTypeSize +
                                                  pseAlignSize) *
                                                 actualSplitAiCoreNum) +
                             WORK_SPACE_RESERVE_SIZE;
