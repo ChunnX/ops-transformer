@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file matmul_all_reduce_tiling_910.cc
@@ -183,11 +183,11 @@ ge::graphStatus MatmulAllReduceTiling910::CheckInputDtype()
 {
     // x2 shape 为 2 维
     size_t x2DimNum = mmrCtxInfo_.x2_shape->GetStorageShape().GetDimNum();
-    OP_TILING_CHECK(x2DimNum != DIM_NUM_TWO,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "x2",
-                                                             (std::to_string(x2DimNum) + "D").c_str(),
-                                                             "The shape dim of x2 must be 2"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        x2DimNum != DIM_NUM_TWO,
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            context_->GetNodeName(), "x2", (std::to_string(x2DimNum) + "D").c_str(), "The shape dim of x2 must be 2"),
+        return ge::GRAPH_FAILED);
     auto x1Type = mmrCtxInfo_.x1->GetDataType();
     //  x1 为fp16 或者bf16
     OP_TILING_CHECK(!((x1Type == ge::DT_FLOAT16) || (x1Type == ge::DT_BF16)),
@@ -260,7 +260,7 @@ ge::graphStatus MatmulAllReduceTiling910::CheckInput()
     MC2_CHECK_LOG_RET(opName_, CheckInputDtype());
 
     //  非量化场景不支持B矩阵Nz格式 除了310P
-    if (npuArch_ != NpuArch::DAV_2002) {
+    if (npuArch_ != Ops::Base::DAV_2002) {
         MC2_CHECK_LOG_RET(opName_, CheckInputFormat());
     }
 
@@ -270,15 +270,15 @@ ge::graphStatus MatmulAllReduceTiling910::CheckInput()
 }
 
 MatmulAllReduceTiling910::MatmulAllReduceTiling910(gert::TilingContext *context)
-    : MatmulAllReduceTilingBase(context), matmulAllReduce910TilingData_(matmulAllReduce910TilingDataSelf_)
-{
-}
+    : MatmulAllReduceTilingBase(context),
+      matmulAllReduce910TilingData_(matmulAllReduce910TilingDataSelf_)
+{}
 
 MatmulAllReduceTiling910::MatmulAllReduceTiling910(gert::TilingContext *context, MMRCtxInfo *mmrCtxInfo,
                                                    MatmulAllReduce910TilingData *out)
-    : MatmulAllReduceTilingBase(context, mmrCtxInfo), matmulAllReduce910TilingData_(*out)
-{
-}
+    : MatmulAllReduceTilingBase(context, mmrCtxInfo),
+      matmulAllReduce910TilingData_(*out)
+{}
 
 ge::graphStatus TilingTransferHelper::GetShapeAttrsInfo()
 {
@@ -320,30 +320,31 @@ MatmulTPLParam TilingTransferHelper::GetMatmulTPLParam()
 
 TilingTransferHelper::TilingTransferHelper(MatmulAllReduceTiling910 &matmulAllReduceTiling910,
                                            Mc2MatmulV3TilingData &data)
-    : Mc2MatmulV3BaseTiling(matmulAllReduceTiling910.context_, &data), tilingProcesser_(matmulAllReduceTiling910)
-{
-}
+    : Mc2MatmulV3BaseTiling(matmulAllReduceTiling910.context_, &data),
+      tilingProcesser_(matmulAllReduceTiling910)
+{}
 
 CutResult MatmulAllReduceTiling910::GetTilingResult()
 {
     CutResult mCutAllreduce;
-    SocVersion inputSocVersion = SocVersion::SOC910_B;
-    SetMCutSocVersion(inputSocVersion);
+    SocVersion_2201 socVersion_2201 = SocVersion_2201::SOC910_B;
+    SetMCutSocVersion(socVersion_2201);
     const gert::StorageShape *commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
     const gert::StorageShape *commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
     if ((commQuantScaleShape1 != nullptr) && (commQuantScaleShape2 != nullptr)) { // low-bit comm
         OP_LOGD(opName_, "TileCnt enter comm quant.");
-        MMPlusQuantAllReduce quantAllReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion);
+        MMPlusQuantAllReduce quantAllReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, npuArch_,
+                                                      socVersion_2201);
         quantAllReduceTilingHccl.GetTiling();
         mCutAllreduce = quantAllReduceTilingHccl.tilingM_.cutRes;
     } else {
-        MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_);
+        MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, Ops::Base::DAV_2201,
+                                            isPerBlock_, socVersion_2201);
         allReduceTilingHccl.GetTiling();
         mCutAllreduce = allReduceTilingHccl.tilingM_.cutRes;
     }
     return mCutAllreduce;
 }
-
 
 // 注册Tiling类
 REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(MatmulAllReduce, MatmulAllReduceTiling910,

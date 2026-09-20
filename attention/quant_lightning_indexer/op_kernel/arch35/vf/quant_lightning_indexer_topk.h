@@ -16,21 +16,10 @@
 #define QUANT_LIGHTNING_INDEXER_TOPK_H
 
 #include "kernel_operator.h"
-#if __has_include("../../../lightning_indexer/lightning_indexer_common.h")
-#include "../../../lightning_indexer/lightning_indexer_common.h"
-#else
 #include "../../../../lightning_indexer/op_kernel/lightning_indexer_common.h"
-#endif
-#if __has_include("../../../lightning_indexer/arch35/vf/vf_topk_gather.h")
-#include "../../../lightning_indexer/arch35/vf/vf_topk_gather.h"
-#else
+#include "../../../../lightning_indexer_v2/op_kernel/arch35/common/vf/lightning_indexer_v2_topk_base.h"
 #include "../../../../lightning_indexer/op_kernel/arch35/vf/vf_topk_gather.h"
-#endif
-#if __has_include("../../../lightning_indexer/arch35/vf/common/vf_topk_16_gather.h")
-#include "../../../lightning_indexer/arch35/vf/common/vf_topk_16_gather.h"
-#else
 #include "../../../../lightning_indexer/op_kernel/arch35/vf/common/vf_topk_16_gather.h"
-#endif
 
 namespace topk {
 template <typename T>
@@ -45,14 +34,7 @@ class LITopk<uint32_t> {
 public:
     __aicore__ inline uint32_t GetSharedTmpBufferSize()
     {
-        // 2 * QLICommon::Align(topK, (uint32_t)256): 两块hisIndexLocal
-        // 5 * 256：histogramsLocal + idxLocal[0-3]
-        // 64：nkValueLocal
-        uint64_t bufferSize1 = (2 * QLICommon::Align(topK, (uint32_t)256) + 5 * 256 + 64) * sizeof(uint32_t);
-        // QLICommon::Align(topK, (uint32_t)256) + trunkLen：tmpIndexLocal
-        uint64_t bufferSize2 = (QLICommon::Align(topK, (uint32_t)256) + trunkLen) * sizeof(uint32_t);
-        uint64_t reuseBufferSize = QLICommon::Align(topK, (uint32_t)256) * sizeof(uint32_t);
-        return bufferSize1 + bufferSize2 - reuseBufferSize;
+        return liV2TopkCommon::GetGatherTmpBufferSize<uint32_t, liV2TopkCommon::B32_RADIX_BUFFER_NUM>(topK, trunkLen);
     }
 
     __aicore__ inline void Init(uint32_t topK, uint32_t trunkLen)
@@ -130,13 +112,7 @@ class LITopk<uint16_t> {
 public:
     __aicore__ inline uint32_t GetSharedTmpBufferSize()
     {
-        // 2 * QLICommon::Align(topK, (uint32_t)256):两块hisIndexLocal；3 * 256：histogramsLocal idxHighLocal
-        // idxLowLocal；64：nkValueLocal
-        uint64_t bufferSize1 = (2 * QLICommon::Align(topK, (uint32_t)256) + 3 * 256 + 64) * sizeof(uint32_t);
-        // QLICommon::Align(topK, (uint32_t)256) + trunkLen：tmpIndexLocal
-        uint64_t bufferSize2 = (QLICommon::Align(topK, (uint32_t)256) + trunkLen) * sizeof(uint16_t);
-        uint64_t reUseBufferSize = QLICommon::Align(topK, (uint32_t)256) * sizeof(uint32_t);
-        return bufferSize1 + bufferSize2 - reUseBufferSize;
+        return liV2TopkCommon::GetGatherTmpBufferSize<uint16_t, liV2TopkCommon::B16_RADIX_BUFFER_NUM>(topK, trunkLen);
     }
 
     __aicore__ inline void Init(uint32_t topK, uint32_t trunkLen)

@@ -15,6 +15,7 @@
 
 #include "lightning_indexer_v2_tiling.h"
 #include "../op_kernel/lightning_indexer_v2_template_tiling_key.h"
+#include "lightning_indexer_v2_tiling_info_parser.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -707,20 +708,20 @@ ge::graphStatus LIV2InfoParser::CheckKeyContiguous() const
 ge::graphStatus LIV2InfoParser::GetN1Size()
 {
     if (qLayout_ == DataLayout::BSND) {
-        n1Size_ = static_cast<uint32_t>(opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_TWO));
+        n1Size_ = opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_TWO);
     } else {
         // TND
-        n1Size_ = static_cast<uint32_t>(opParamInfo_.query.shape->GetStorageShape().GetDim(1));
+        n1Size_ = opParamInfo_.query.shape->GetStorageShape().GetDim(1);
     }
     OP_LOGI(context_->GetNodeName(), "n1Size is %d", n1Size_);
 
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LIV2InfoParser::GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
+ge::graphStatus LIV2InfoParser::GetActualSeqLenSize(int64_t &size, const gert::Tensor *tensor,
                                                     const std::string &actualSeqLenName) const
 {
-    size = static_cast<uint32_t>(tensor->GetShapeSize() - 1);
+    size = tensor->GetShapeSize() - 1;
     if (size <= 0) {
         OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
             opName_, actualSeqLenName.c_str(), std::to_string(size).c_str(),
@@ -733,7 +734,7 @@ ge::graphStatus LIV2InfoParser::GetActualSeqLenSize(uint32_t &size, const gert::
 ge::graphStatus LIV2InfoParser::GetAndCheckN2Size()
 {
     uint32_t n2Index = (kLayout_ == DataLayout::TND) ? DIM_IDX_ONE : DIM_IDX_TWO;
-    n2Size_ = static_cast<uint32_t>(opParamInfo_.key.shape->GetStorageShape().GetDim(n2Index));
+    n2Size_ = opParamInfo_.key.shape->GetStorageShape().GetDim(n2Index);
     OP_LOGI(context_->GetNodeName(), "n2Size_ is %d", n2Size_);
     OP_CHECK_IF(n2Size_ != 1,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "k",
@@ -776,10 +777,10 @@ ge::graphStatus LIV2InfoParser::GetBatchSize()
         return ge::GRAPH_SUCCESS;
     } else {
         // TND
-        uint32_t bSizeQuery;
+        int64_t bSizeQuery;
         GetActualSeqLenSize(bSizeQuery, opParamInfo_.cuSeqlensQ.tensor, "input cu_seqlens_q");
         if (kLayout_ == DataLayout::TND) {
-            uint32_t bSizeKey;
+            int64_t bSizeKey;
             GetActualSeqLenSize(bSizeKey, opParamInfo_.cuSeqlensK.tensor, "input cu_seqlens_k");
             OP_CHECK_IF(bSizeQuery != bSizeKey,
                         OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(
@@ -831,7 +832,7 @@ ge::graphStatus LIV2InfoParser::GetS1Size()
 
 ge::graphStatus LIV2InfoParser::GetAndCheckBlockSize()
 {
-    blockSize_ = static_cast<uint32_t>(opParamInfo_.key.shape->GetStorageShape().GetDim(1));
+    blockSize_ = opParamInfo_.key.shape->GetStorageShape().GetDim(1);
     OP_LOGI(context_->GetNodeName(), "blockSize_ is %d", blockSize_);
 
     OP_CHECK_IF(((blockSize_ % 16 != 0) || (blockSize_ == 0) || (blockSize_ > 1024)),
@@ -1272,8 +1273,14 @@ ge::graphStatus TilingForLightningIndexerV2(gert::TilingContext *context)
     OP_CHECK_IF(context == nullptr, OPS_REPORT_VECTOR_INNER_ERR("LightningIndexerV2", "Tiling context is null."),
                 return ge::GRAPH_FAILED);
     LIV2TilingInfo liV2Info;
-    LIV2InfoParser LIV2InfoParser(context);
-    if (LIV2InfoParser.ParseAndCheck(liV2Info) != ge::GRAPH_SUCCESS) {
+    auto platformInfoPtr = context->GetPlatformInfo();
+    OP_CHECK_IF(platformInfoPtr == nullptr, OP_LOGE(context, "platformInfoPtr is null"), return ge::GRAPH_FAILED);
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
+    const bool useArch35Checker = ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510;
+    LIV2InfoParser liV2InfoParser(context);
+    const ge::graphStatus parseStatus =
+        useArch35Checker ? ParseAndCheckLIV2Arch35(context, liV2Info) : liV2InfoParser.ParseAndCheck(liV2Info);
+    if (parseStatus != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     LightningIndexerV2Tiling liTiling(context);

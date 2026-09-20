@@ -194,6 +194,7 @@ function(op_add_subdirectory OP_LIST OP_DIR_LIST)
         file(GLOB OP_HOST_CMAKE_FILES
         "${CMAKE_CURRENT_SOURCE_DIR}/experimental/ffn/**/op_host/CMakeLists.txt"
         "${CMAKE_CURRENT_SOURCE_DIR}/experimental/gmm/**/op_host/CMakeLists.txt"
+        "${CMAKE_CURRENT_SOURCE_DIR}/experimental/mhc/**/op_host/CMakeLists.txt"
         "${CMAKE_CURRENT_SOURCE_DIR}/experimental/moe/**/op_host/CMakeLists.txt"
         "${CMAKE_CURRENT_SOURCE_DIR}/experimental/posembedding/**/op_host/CMakeLists.txt"
         )
@@ -530,8 +531,12 @@ function(add_opc_config)
     endif()
 
     if(ENABLE_MSSANITIZER)
+        # 注意:此处必须写 -sanitizer(单横线)。
+        # adapt py/算子工程层消费的是 -sanitizer(CANN is_enable_sanitizer 按 list 元素精确匹配),
+        # bisheng 编译器层的 --cce-enable-sanitizer 由 CANN 侧检测到 -sanitizer 后统一追加,
+        # 直接透传双横线形式会导致 stub 库不链接、插桩失效。
         list(APPEND _OPC_CONFIG "-g")
-        list(APPEND _OPC_CONFIG "--cce-enable-sanitizer")
+        list(APPEND _OPC_CONFIG "-sanitizer")
     endif()
 
     if(ENABLE_DUMP_CCE)
@@ -693,7 +698,7 @@ function(enable_pypto_kernel op_file)
     execute_process(
         COMMAND ${HI_PYTHON} ${OPS_ADV_DIR}/cmake/scripts/pypto_codegen.py
                 --py-file "${_py}" --out-dir "${_gen}"
-                --op-file "${op_file}" --soc "${_soc_unit}"
+                --op-file "${op_file}"
         RESULT_VARIABLE _rc
     )
     if (NOT _rc EQUAL 0)

@@ -16,13 +16,13 @@
 #ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_W4A8_POST_PER_TOKEN_V2_HPP
 #define CATLASS_EPILOGUE_BLOCK_EPILOGUE_W4A8_POST_PER_TOKEN_V2_HPP
 
-#include "../template_linear_algebra_v2/mega_moe_catlass.hpp"
-#include "../template_linear_algebra_v2/arch/mega_moe_resource.hpp"
-#include "../template_linear_algebra_v2/epilogue/mega_moe_epilogue_dispatch_policy.hpp"
-#include "../template_linear_algebra_v2/mega_moe_gemm_coord.hpp"
-#include "../template_linear_algebra_v2/mega_moe_matrix_coord.hpp"
-#include "../template_linear_algebra_v2/layout/mega_moe_layout.hpp"
-#include "../template_linear_algebra_v2/detail/tla_v2_callback.hpp"
+#include "catlass/catlass.hpp"
+#include "catlass/arch/resource.hpp"
+#include "catlass/epilogue/dispatch_policy.hpp"
+#include "catlass/gemm_coord.hpp"
+#include "catlass/matrix_coord.hpp"
+#include "catlass/layout/layout.hpp"
+#include "catlass/detail/callback.hpp"
 
 #include "dispatch_policy_custom.hpp"
 #include "block_epilogue_pertoken_v2.hpp"
@@ -75,6 +75,10 @@ public:
         int64_t offsetD;
         int64_t offsetWinOutD;
         Layout3D tokenPerExpertLayout;
+        bool useUbRouteCache{false};
+        int32_t ubRouteStride{0};
+        AscendC::LocalTensor<int32_t> ubTokenPerExpert;
+        AscendC::LocalTensor<int32_t> ubPreSumBeforeRank;
 
         CATLASS_DEVICE
         Params() {};
@@ -158,6 +162,24 @@ public:
     }
     CATLASS_DEVICE
     ~BlockEpilogue() {}
+
+    CATLASS_DEVICE int32_t GetLenRankInExpert(int32_t dstEpIdx, int32_t groupIdx) const
+    {
+        if (params.useUbRouteCache) {
+            int32_t stride = params.ubRouteStride > 0 ? params.ubRouteStride : params.expertPerRank;
+            return params.ubTokenPerExpert.GetValue(dstEpIdx * stride + groupIdx);
+        }
+        return tokenPerExpert(tokenPerExpertLayout(dstEpIdx, params.rank, groupIdx));
+    }
+
+    CATLASS_DEVICE int32_t GetDstExpertOffset(int32_t dstEpIdx, int32_t groupIdx,
+                                              AscendC::GlobalTensor<int32_t> const &preSumBeforeRank) const
+    {
+        if (params.useUbRouteCache) {
+            return params.ubPreSumBeforeRank.GetValue(dstEpIdx * params.expertPerRank + groupIdx);
+        }
+        return preSumBeforeRank(dstEpIdx * params.expertPerRank + groupIdx);
+    }
 
     CATLASS_DEVICE
     void operator()(AscendC::GlobalTensor<ElementC> const &gmC,
@@ -248,8 +270,8 @@ public:
         int32_t tileOffset = 0;
 
         for (int32_t dstEpIdx = 0; dstEpIdx < params.EP; dstEpIdx++) {
-            int32_t lenRankInExpert = tokenPerExpert(tokenPerExpertLayout(dstEpIdx, params.rank, groupIdx));
-            int32_t dstExpertOffset = preSumBeforeRank(dstEpIdx * params.expertPerRank + groupIdx);
+            int32_t lenRankInExpert = GetLenRankInExpert(dstEpIdx, groupIdx);
+            int32_t dstExpertOffset = GetDstExpertOffset(dstEpIdx, groupIdx, preSumBeforeRank);
             int32_t stRankInExpert = preSumRankInExpert;
             int32_t edRankInExpert = stRankInExpert + lenRankInExpert;
             preSumRankInExpert += lenRankInExpert;

@@ -74,6 +74,7 @@ public:
     static constexpr uint32_t STAGE1_OUT_UB_SIZE = VEC_M_BASE * STAGE1_CAST_ROW_STRIDE * sizeof(INPUT_T);
     static constexpr uint32_t PSCALE_SUB_LOOP_UB_SIZE = VEC_M_BASE * S2_SPLIT / MX_SCALE_GROUP * sizeof(SCALE_T);
     static constexpr uint32_t SOFTMAX_STATE_UB_SIZE = VEC_M_BASE * sizeof(float);
+    static constexpr float MX_EMPTY_LSE_VALUE = -3e+99; // 与 CUDA 空 softmax 行的 LSE=-Inf 语义一致。
 
     __aicore__ inline void Init(TPipe *pipe, __gm__ uint8_t *pScale, __gm__ uint8_t *softmaxLse,
                                 __gm__ uint8_t *attentionOut, __gm__ uint8_t *attenMask, uint32_t attenMaskS2Size,
@@ -203,7 +204,7 @@ public:
                 LocalTensor<float> emptyLse = softmaxLseQueue_.template AllocTensor<float>();
                 // UB->GM 以 4B block 搬运时，每行源数据占一个 32B data block。
                 // 与 ComputeLseOutputVF 的 E2B 布局保持一致，避免第 2 行起读取未初始化的 32B 槽位。
-                Duplicate<float>(emptyLse, QBSA_EMPTY_LSE_VALUE, actVecMSize * 8U);
+                Duplicate<float>(emptyLse, MX_EMPTY_LSE_VALUE, actVecMSize * 8U);
                 softmaxLseQueue_.template EnQue(emptyLse);
                 emptyLse = softmaxLseQueue_.template DeQue<float>();
                 DataCopyPad(softmaxLseGm_[lseOffset], emptyLse, lseCopyParams);
@@ -275,7 +276,7 @@ public:
         pScaleSubLoop0Que_.template FreeTensor(pScaleSubLoopTensor);
 
         stage1OutQue_[stage1Offset].template EnQue(stage1CastTensor);
-        stage1OutQue_[stage1Offset].template DeQue<INPUT_T>();
+        stage1CastTensor = stage1OutQue_[stage1Offset].template DeQue<INPUT_T>();
         CopyPToL1<SUB_LOOP>(outputBuf, stage1CastTensor, constInfo);
         stage1OutQue_[stage1Offset].template FreeTensor(stage1CastTensor);
 
@@ -497,7 +498,7 @@ private:
         constexpr uint64_t pScaleL1Offset = static_cast<uint64_t>(M_BASE) * S2_BASE;
         LocalTensor<SCALE_T> pScaleL1Tensor = outputBuf.GetTensor<SCALE_T>(pScaleL1Offset);
         pScaleSubLoop0Que_.template EnQue(pScaleSubLoopTensor);
-        pScaleSubLoop0Que_.template DeQue<SCALE_T>();
+        pScaleSubLoopTensor = pScaleSubLoop0Que_.template DeQue<SCALE_T>();
         // 两个 AIV 各处理 VEC_M_BASE 行；PScale 每 MX_SCALE_GROUP 个 P 元素生成一个 scale，
         // 因此一个 subBlock 的 PScale 长度为 VEC_M_BASE * S2_SPLIT / MX_SCALE_GROUP。
         constexpr uint64_t pScaleDataLen = VEC_M_BASE * S2_SPLIT / MX_SCALE_GROUP;
@@ -567,9 +568,9 @@ private:
                                              LocalTensor<float> &sumUb, LocalTensor<float> &maxUb)
     {
         LocalTensor<float> lseUb = softmaxLseQueue_.template AllocTensor<float>();
-        ComputeLseOutputVF(lseUb, sumUb, maxUb, runInfo.actVecMSize);
+        ComputeLseOutputVF<float, true>(lseUb, sumUb, maxUb, runInfo.actVecMSize);
         softmaxLseQueue_.template EnQue(lseUb);
-        softmaxLseQueue_.template DeQue<float>();
+        lseUb = softmaxLseQueue_.template DeQue<float>();
         DataCopyExtParams dataCopyParams;
         dataCopyParams.blockLen = sizeof(float);
         dataCopyParams.blockCount = runInfo.actVecMSize;

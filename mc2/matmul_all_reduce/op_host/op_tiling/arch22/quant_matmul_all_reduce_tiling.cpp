@@ -254,9 +254,9 @@ ge::graphStatus QuantMatmulAllReduceTiling::CheckInput()
     return CheckAxisSize();
 }
 QuantMatmulAllReduceTiling::QuantMatmulAllReduceTiling(gert::TilingContext *context)
-    : MatmulAllReduceTilingBase(context), quantMatmulAllReduceTilingData_(quantMatmulAllReduceTilingDataSelf_)
-{
-}
+    : MatmulAllReduceTilingBase(context),
+      quantMatmulAllReduceTilingData_(quantMatmulAllReduceTilingDataSelf_)
+{}
 const gert::Shape QuantTilingTransferHelper::GetX1Shape(const size_t index)
 {
     (void)index;
@@ -280,9 +280,9 @@ const gert::Shape QuantTilingTransferHelper::GetX2Shape(const size_t index)
 // 使用外部传入的tilingdata和ctxinfo
 QuantMatmulAllReduceTiling::QuantMatmulAllReduceTiling(gert::TilingContext *context, MMRCtxInfo *mmrCtxInfo,
                                                        QuantMatmulAllReduceTilingData *out)
-    : MatmulAllReduceTilingBase(context, mmrCtxInfo), quantMatmulAllReduceTilingData_(*out)
-{
-}
+    : MatmulAllReduceTilingBase(context, mmrCtxInfo),
+      quantMatmulAllReduceTilingData_(*out)
+{}
 const gert::Shape &QuantTilingTransferHelper::GetScaleShape(const size_t index)
 {
     (void)index;
@@ -370,29 +370,28 @@ QuantTilingTransferHelper::QuantTilingTransferHelper(QuantMatmulAllReduceTiling 
                                                      Mc2QuantBatchMatmulV3TilingData &data)
     : Mc2QuantBatchMatmulV3Tiling(quantMatmulAllReduceTiling.context_, &data),
       tilingProcesser_(quantMatmulAllReduceTiling)
-{
-}
+{}
 
 CutResult QuantMatmulAllReduceTiling::GetTilingResult()
 {
     CutResult mCutAllreduceRes;
-    SocVersion socVersion = SocVersion::SOC910_B;
+    SocVersion_2201 socVersion = SocVersion_2201::SOC910_B;
     SetMCutSocVersion(socVersion);
     const gert::StorageShape *commQuantScaleA = mmrCtxInfo_.comm_quant_scale_1_shape;
     const gert::StorageShape *commQuantScaleB = mmrCtxInfo_.comm_quant_scale_2_shape;
     if ((commQuantScaleA != nullptr) && (commQuantScaleB != nullptr)) { // low-bit comm
         OP_LOGD(opName_, "TileCnt enter comm quant.");
-        MMPlusQuantAllReduce quantAllReduceTiling(args_, args_.rankDim, KernelType::ALL_REDUCE, socVersion);
+        MMPlusQuantAllReduce quantAllReduceTiling(args_, args_.rankDim, KernelType::ALL_REDUCE, npuArch_, socVersion);
         quantAllReduceTiling.GetTiling();
         mCutAllreduceRes = quantAllReduceTiling.tilingM_.cutRes;
     } else {
-        MMPlusAllReduce allReduceTiling(args_, args_.rankDim, KernelType::ALL_REDUCE, socVersion, isPerBlock_);
+        MMPlusAllReduce allReduceTiling(args_, args_.rankDim, KernelType::ALL_REDUCE, Ops::Base::DAV_2201, isPerBlock_,
+                                        socVersion);
         allReduceTiling.GetTiling();
         mCutAllreduceRes = allReduceTiling.tilingM_.cutRes;
     }
     return mCutAllreduceRes;
 }
-
 
 // 注册带SOC版本Tiling的类
 REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(MatmulAllReduce, QuantMatmulAllReduceTiling,

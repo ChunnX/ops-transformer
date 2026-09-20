@@ -18,6 +18,8 @@
 #include "kernel_operator.h"
 #include "vf_topk_gather_v2.h"
 
+#include "../common/vf/lightning_indexer_v2_topk_base.h"
+
 namespace liV2Topk {
 template <typename T>
 class LIV2Topk {
@@ -32,14 +34,7 @@ class LIV2Topk<uint32_t> {
 public:
     __aicore__ inline uint32_t GetSharedTmpBufferSize()
     {
-        // 2 * LIV2Common::Align(topK, (uint32_t)256): 两块hisIndexLocal
-        // 5 * 256：histogramsLocal + idxLocal[0-3]
-        // 64：nkValueLocal
-        uint64_t bufferSize1 = (2 * LIV2Common::Align(topK, (uint32_t)256) + 5 * 256 + 64) * sizeof(uint32_t);
-        // LIV2Common::Align(topK, (uint32_t)256) + trunkLen：tmpIndexLocal
-        uint64_t bufferSize2 = (LIV2Common::Align(topK, (uint32_t)256) + trunkLen) * sizeof(uint32_t);
-        uint64_t reuseBufferSize = LIV2Common::Align(topK, (uint32_t)256) * sizeof(uint32_t);
-        return bufferSize1 + bufferSize2 - reuseBufferSize;
+        return liV2TopkCommon::GetGatherTmpBufferSize<uint32_t, liV2TopkCommon::B32_RADIX_BUFFER_NUM>(topK, trunkLen);
     }
 
     __aicore__ inline void Init(uint32_t topK, uint32_t trunkLen)
@@ -78,30 +73,33 @@ public:
                                                    s2SeqLen);
             }
             PipeBarrier<PIPE_V>();
-            AscendC::DataCopy(indicesOutLocal, tmpIndexLocal, LIV2Common::Align(topK, (uint32_t)256));
+            AscendC::DataCopy(indicesOutLocal, tmpIndexLocal,
+                              LIV2Common::Align(topK, (uint32_t)256)); // 256：拷贝长度对齐大小
         } else {
             if (loopIdx == 0) {
                 liV2Topkb32gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal,
                                                   idx0Local, idx1Local, idx2Local, idx3Local, nkValueLocal, topK,
                                                   s2SeqLen);
                 PipeBarrier<PIPE_V>();
-                AscendC::DataCopy(hisIndexLocal[(loopIdx + 1) % 2], tmpIndexLocal,
-                                  LIV2Common::Align(topK, (uint32_t)256));
+                AscendC::DataCopy(
+                    hisIndexLocal[(loopIdx + 1) % 2], tmpIndexLocal, // 2：使用两个本地存储单元进行循环交替存储
+                    LIV2Common::Align(topK, (uint32_t)256)); // 对复制的数据量进行对齐处理，确保其为256的倍数
             } else if (loopIdx != 0) {
                 liV2Topkb32gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal,
                                                   idx0Local, idx1Local, idx2Local, idx3Local, nkValueLocal, topK,
                                                   s2SeqLen);
                 PipeBarrier<PIPE_V>();
-                uint32_t loopBasicIdx = topK < trunkLen ? loopIdx * trunkLen - LIV2Common::Align(topK, (uint32_t)256) :
-                                                          (loopIdx - 1) * trunkLen;
+                uint32_t loopBasicIdx = liV2TopkCommon::GetGatherLoopOffset(topK, trunkLen, loopIdx);
                 liV2Topkb32gather::LiTopKGatherVF(hisIndexLocal[(loopIdx + 1) % 2], hisValueLocal, mrgValueLocal,
                                                   tmpIndexLocal, hisIndexLocal[loopIdx % 2], topK, loopBasicIdx,
                                                   s2SeqLen);
                 if (loopIdx == s2LoopNum - 1) {
                     PipeBarrier<PIPE_V>();
-                    if ((loopIdx + 1) % 2 == 1) {
-                        AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2],
-                                          LIV2Common::Align(topK, (uint32_t)256));
+                    if ((loopIdx + 1) % 2 == 1) { // 2：使用两个本地存储单元进行循环交替存储
+                        AscendC::DataCopy(
+                            indicesOutLocal,
+                            hisIndexLocal[(loopIdx + 1) % 2], // 2：使用两个本地存储单元进行循环交替存储
+                            LIV2Common::Align(topK, (uint32_t)256)); // 对复制的数据量进行对齐处理，确保其为256的倍数
                     }
                 }
             }

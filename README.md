@@ -1,7 +1,21 @@
+<div align="center">
+
 # ops-transformer
+
+[![CANNcommunity](https://img.shields.io/badge/docs-社区全量算子-brightgreen.svg?style=flat)](https://www.hiascend.com/document/redirect/CannCommunityOplist)
+[![repo](https://img.shields.io/badge/docs-项目文档-green.svg?style=flat)](docs)
+[![license](https://img.shields.io/badge/license-CANN_Open_2.0-blue.svg)](LICENSE)
+[![contributing](https://img.shields.io/badge/贡献指南-teal)](CONTRIBUTING.md)
+[![SIG](https://img.shields.io/badge/SIG-ops_transformer-yellow)](https://gitcode.com/cann/community/blob/master/CANN/sigs/ops-transformer/README.md)
+[![Zread](https://img.shields.io/badge/Zread-Ask_AI-_.svg?style=flat&color=0052D9&labelColor=000000&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTQuOTYxNTYgMS42MDAxSDIuMjQxNTZDMS44ODgxIDEuNjAwMSAxLjYwMTU2IDEuODg2NjQgMS42MDE1NiAyLjI0MDFWNC45NjAxQzEuNjAxNTYgNS4zMTM1NiAxLjg4ODEgNS42MDAxIDIuMjQxNTYgNS42MDAxSDQuOTYxNTZDNS4zMTUwMiA1LjYwMDEgNS42MDE1NiA1LjMxMzU2IDUuNjAxNTYgNC45NjAxVjIuMjQwMUM1LjYwMTU2IDEuODg2NjQgNS4zMTUwMiAxLjYwMDEgNC45NjE1NiAxLjYwMDFaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00Ljk2MTU2IDEwLjM5OTlIMi4yNDE1NkMxLjg4ODEgMTAuMzk5OSAxLjYwMTU2IDEwLjY4NjQgMS42MDE1NiAxMS4wMzk5VjEzLjc1OTlDMS42MDE1NiAxNC4xMTM0IDEuODg4MSAxNC4zOTk5IDIuMjQxNTYgMTQuMzk5OUg0Ljk2MTU2QzUuMzE1MDIgMTQuMzk5OSA1LjYwMTU2IDE0LjExMzQgNS42MDE1NiAxMy43NTk5VjExLjAzOTlDNS42MDE1NiAxMC42ODY0IDUuMzE1MDIgMTAuMzk5OSA0Ljk2MTU2IDEwLjM5OTlaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik0xMy43NTg0IDEuNjAwMUgxMS4wMzg0QzEwLjY4NSAxLjYwMDEgMTAuMzk4NCAxLjg4NjY0IDEwLjM5ODQgMi4yNDAxVjQuOTYwMUMxMC4zOTg0IDUuMzEzNTYgMTAuNjg1IDUuNjAwMSAxMS4wMzg0IDUuNjAwMUgxMy43NTg0QzE0LjExMTkgNS42MDAxIDE0LjM5ODQgNS4zMTM1NiAxNC4zOTg0IDQuOTYwMVYyLjI0MDFDMTQuMzk4NCAxLjg4NjY0IDE0LjExMTkgMS42MDAxIDEzLjc1ODQgMS42MDAxWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNNCAxMkwxMiA0TDQgMTJaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00IDEyTDEyIDQiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K&logoColor=ffffff)](https://zread.ai/hicann/ops-transformer)
+
+</div>
+
+---
 
 ## 🔥Latest News
 
+- [2026/08] 仓内集成[pre-commit代码检查框架](docs/zh/develop/pre-commit_guide.md)，配置后`git commit`时自动检查并修复格式问题，将规范问题拦截在提交阶段、提升代码合入效率，详见[pre-commit配置指导书](docs/zh/develop/pre-commit_guide.md)。
 - [2026/07] A5上新支持算子[quant_flash_attn](attention/quant_flash_attn)，Dense Attention全量化场景专用，以及experimental目录新增[同名算子](experimental/attention/quant_flash_attn)支持A5的MxFP4全量化；[chunk_gated_delta_rule](attention/chunk_gated_delta_rule)算子支持A5；A5新增DSV4 dense训练阶段TopK筛选反向算子[dense_lightning_indexer_grad_kl_loss](attention/dense_lightning_indexer_grad_kl_loss)、[dense_lightning_indexer_softmax_lse](attention/dense_lightning_indexer_softmax_lse)；mc2新支持算子[engram_fetch_grad](mc2/engram_fetch_grad)。
 - [2026/06] A5上新增支持[sparse_flash_mla](attention/sparse_flash_mla)、[mixed_quant_sparse_flash_mla](attention/mixed_quant_sparse_flash_mla)以及对应的metadata算子，用于DSV4场景稀疏Attention计算。新增[lightning_indexer_v2](attention/lightning_indexer_v2)、[quant_lightning_indexer_v2](attention/quant_lightning_indexer_v2)以及对应的metadata算子，用于DSV4场景TopK筛选。A5新增DSV4 sparse训练阶段Attention反向算子[sparse_flash_mla_grad](attention/sparse_flash_mla_grad)、[sparse_lightning_indexer_kl_loss_grad](attention/sparse_lightning_indexer_kl_loss_grad)；mc2新支持算子[engram_fetch](mc2/engram_fetch)、[engram_fetch_wait](mc2/engram_fetch_wait)。
 - [2026/05] [fused_infer_attention_score](attention/fused_infer_attention_score)算子A5上支持MxFP8全量化；A5上新支持算子[flash_attn](attention/flash_attn)，Dense Attention非量化场景专用。
@@ -56,6 +70,9 @@ git clone -b 9.0.0 https://gitcode.com/cann/ops-transformer.git
 ## 💬相关信息
 
 - [目录结构](docs/zh/install/dir_structure.md)
+- [算子索引](docs/zh/op_list.md)
+- [aclnn接口索引](docs/zh/op_api_list.md)
+- [torch接口索引](docs/zh/torch_api_list.md)
 - [贡献指南](CONTRIBUTING.md)
 - [安全声明](SECURITY.md)
 - [许可证](LICENSE)

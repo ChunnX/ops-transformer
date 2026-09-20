@@ -8,7 +8,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-"""NPU 后端 — 按 flash_attn.md 参数组调用，支持 eager / graph 两种模式。"""
+"""NPU 后端 — 按 torchapi_flash_attn.md 参数组调用，支持 eager / graph 两种模式。"""
 
 import numpy as np
 import torch
@@ -41,6 +41,7 @@ class FlashAttnGraphNetwork(torch.nn.Module):
         k,
         v,
         block_table,
+        sinks,
         attn_mask,
         metadata,
         cu_seqlens_q,
@@ -63,7 +64,7 @@ class FlashAttnGraphNetwork(torch.nn.Module):
             k,
             v,
             block_table=block_table,
-            sinks=None,
+            sinks=sinks,
             attn_mask=attn_mask,
             metadata=metadata,
             cu_seqlens_q=cu_seqlens_q,
@@ -247,6 +248,7 @@ class NPUBackend(Backend):
                 inputs["k"],
                 inputs["v"],
                 kernel_kwargs.get("block_table"),
+                kernel_kwargs.get("sinks"),
                 kernel_kwargs.get("attn_mask"),
                 metadata,
                 kernel_kwargs.get("cu_seqlens_q"),
