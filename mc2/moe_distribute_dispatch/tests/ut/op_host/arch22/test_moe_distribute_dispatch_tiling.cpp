@@ -1181,7 +1181,7 @@ TEST_F(MoeDistributeDispatchArch22TilingTest, CheckWinSizeTooSmall)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_FAILED);
 }
 
-// Success on Ascend950 (A5 path through base tiling)
+// Success on A5 (DAV_3510 path through base tiling)
 TEST_F(MoeDistributeDispatchArch22TilingTest, A5GlobalBsNonZero)
 {
     struct MoeDistributeDispatchCompileInfo {};
