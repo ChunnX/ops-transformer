@@ -368,44 +368,6 @@ __aicore__ inline void CastB16ScaleAndMulGamma(const LocalTensor<float> &dst, co
     }
 }
 
-// 在一个VF内完成相邻两路低精度恢复、标量缩放和gamma缩放。
-template <typename T>
-__aicore__ inline void CastB16PairScaleAndMulGamma(const LocalTensor<float> &dst0, const LocalTensor<float> &dst1,
-                                                   const LocalTensor<T> &src0, const LocalTensor<T> &src1,
-                                                   const LocalTensor<float> &gamma0,
-                                                   const LocalTensor<float> &gamma1, float scale, uint32_t count)
-{
-    __local_mem__ float *dst0Addr = (__local_mem__ float *)dst0.GetPhyAddr();
-    __local_mem__ float *dst1Addr = (__local_mem__ float *)dst1.GetPhyAddr();
-    __local_mem__ T *src0Addr = (__local_mem__ T *)src0.GetPhyAddr();
-    __local_mem__ T *src1Addr = (__local_mem__ T *)src1.GetPhyAddr();
-    __local_mem__ float *gamma0Addr = (__local_mem__ float *)gamma0.GetPhyAddr();
-    __local_mem__ float *gamma1Addr = (__local_mem__ float *)gamma1.GetPhyAddr();
-    uint32_t remain = count;
-    const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
-    __VEC_SCOPE__
-    {
-        RegTensor<T> src0Reg, src1Reg;
-        RegTensor<float> src0Fp32Reg, src1Fp32Reg, gamma0Reg, gamma1Reg, dst0Reg, dst1Reg;
-        MaskReg mask;
-        for (uint16_t i = 0; i < loops; ++i) {
-            mask = UpdateMask<float>(remain);
-            DataCopy<T, LoadDist::DIST_UNPACK_B16>(src0Reg, src0Addr + i * VL_FP32);
-            DataCopy<T, LoadDist::DIST_UNPACK_B16>(src1Reg, src1Addr + i * VL_FP32);
-            Cast<float, T, CAST_B16_TO_FP32>(src0Fp32Reg, src0Reg, mask);
-            Cast<float, T, CAST_B16_TO_FP32>(src1Fp32Reg, src1Reg, mask);
-            DataCopy<float, LoadDist::DIST_NORM>(gamma0Reg, gamma0Addr + i * VL_FP32);
-            DataCopy<float, LoadDist::DIST_NORM>(gamma1Reg, gamma1Addr + i * VL_FP32);
-            AscendC::Reg::Muls(dst0Reg, src0Fp32Reg, scale, mask);
-            AscendC::Reg::Muls(dst1Reg, src1Fp32Reg, scale, mask);
-            AscendC::Reg::Mul(dst0Reg, dst0Reg, gamma0Reg, mask);
-            AscendC::Reg::Mul(dst1Reg, dst1Reg, gamma1Reg, mask);
-            DataCopy(dst0Addr + i * VL_FP32, dst0Reg, mask);
-            DataCopy(dst1Addr + i * VL_FP32, dst1Reg, mask);
-        }
-    }
-}
-
 // 将sigmoid和epsilon补偿合并到同一个VF，输入保存-z，输出保存sigmoid(z)+epsilon。
 __aicore__ inline void SigmoidAddEps(const LocalTensor<float> &dst, const LocalTensor<float> &src, float epsilon,
                                      uint32_t count)
