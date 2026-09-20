@@ -116,7 +116,7 @@ class FANoQuantGqaBlockCubeDnUnmerged {
 public:
     using RunInfo = DnUnmergedCubeRunInfo;
     using ConstInfo = DnUnmergedCubeConstInfo;
-    static constexpr uint32_t PRELOAD_N = 2;
+    static constexpr uint32_t PRELOAD_N = static_cast<uint32_t>(FA_T::dBaseSize) == 64U ? 3U : 2U;
     using INPUT_T = typename FA_T::inputType;
     using OUTPUT_T = typename FA_T::outputType;
     static constexpr uint32_t mBaseSize = (uint32_t)FA_T::mBaseSize;
@@ -185,7 +185,7 @@ public:
     uint32_t mm1ResUbBufId_ = 0U;
     uint32_t mm2ResUbBufId_ = 0U;
     // L1
-    static constexpr uint32_t L1_P_BUFCNT = 3U;
+    static constexpr uint32_t L1_P_BUFCNT = PRELOAD_N + 1U;
     static constexpr uint32_t L1_P_BUF_BYTES = mBaseSize * s2BaseSize * sizeof(INPUT_T);
     static constexpr uint32_t L1_Q_BUFCNT = 2U;
     static constexpr uint32_t L1_Q_BUF_BYTES = mBaseSize * dBaseSize * sizeof(Q_T);

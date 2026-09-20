@@ -169,7 +169,7 @@ class FANoQuantGqaBlockVecDnUnmerged {
 public:
     using RunInfo = DnUnmergedVecRunInfo;
     using ConstInfo = DnUnmergedVecConstInfo;
-    static constexpr uint32_t PRELOAD_N = 2;
+    static constexpr uint32_t PRELOAD_N = static_cast<uint32_t>(FA_T::dBaseSize) == 64U ? 3U : 2U;
     using INPUT_T = typename FA_T::inputType;
     using OUTPUT_T = typename FA_T::outputType;
     static constexpr uint32_t mBaseSize = (uint32_t)FA_T::mBaseSize;
@@ -208,7 +208,7 @@ public:
     static constexpr uint32_t UB_IN_MASK_EVENT0 = 6;
 
     // L1
-    static constexpr uint32_t L1_P_BUFCNT = 3U;
+    static constexpr uint32_t L1_P_BUFCNT = PRELOAD_N + 1U;
     static constexpr uint32_t L1_P_BUF_BYTES = mBaseSize * s2BaseSize * sizeof(INPUT_T);
     LocalTensor<uint8_t> l1PBuffers_;
 
@@ -237,15 +237,15 @@ public:
     LocalTensor<uint8_t> ubVec1ResBuffers_;
     uint32_t vec1ResUbBufId_ = 0;
 
-    static constexpr uint32_t UB_SOFTMAX_MAX_BUFCNT = 3U;
+    static constexpr uint32_t UB_SOFTMAX_MAX_BUFCNT = PRELOAD_N + 1U;
     static constexpr uint32_t UB_SOFTMAX_MAX_BUF_BYTES =
         AttentionCommon::Align(mBaseSize / CV_RATIO * static_cast<uint32_t>(sizeof(T)), 256U);
     LocalTensor<T> softmaxSumBuf_;
-    static constexpr uint32_t UB_SOFTMAX_SUM_BUFCNT = 3U;
+    static constexpr uint32_t UB_SOFTMAX_SUM_BUFCNT = PRELOAD_N + 1U;
     static constexpr uint32_t UB_SOFTMAX_SUM_BUF_BYTES =
         AttentionCommon::Align(mBaseSize / CV_RATIO * static_cast<uint32_t>(sizeof(T)), 256U);
     LocalTensor<T> softmaxMaxBuf_;
-    static constexpr uint32_t UB_SOFTMAX_EXP_BUFCNT = 3U;
+    static constexpr uint32_t UB_SOFTMAX_EXP_BUFCNT = PRELOAD_N + 1U;
     static constexpr uint32_t UB_SOFTMAX_EXP_BUF_BYTES =
         AttentionCommon::Align(mBaseSize / CV_RATIO * static_cast<uint32_t>(sizeof(T)), 256U);
     LocalTensor<T> softmaxExpBuf_;
