@@ -123,6 +123,7 @@ _legacy_map = {
     "generic_block_sparse_attention": "attention.generic_block_sparse_attention",
     "ffn_to_attention": "mc2.ffn_to_attention_v2",
     "grouped_matmul_activation_quant": "gmm.grouped_matmul_activation_quant",
+    "indexer_prologue_k": "attention.indexer_prologue_k_dsl",
     "indexer_prologue_qw": "attention.indexer_prologue_qw_dsl",
     "indexer_quant_cache": "attention.indexer_quant_cache",
     "inplace_partial_rotary_mul": "posembedding.inplace_partial_rotary_mul",
