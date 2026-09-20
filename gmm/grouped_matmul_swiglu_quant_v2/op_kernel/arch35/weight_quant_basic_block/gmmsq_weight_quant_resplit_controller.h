@@ -55,6 +55,7 @@ private:
                                              BasicBlockControlParam &ctrlParam, uint64_t basicBlockCount,
                                              uint64_t basicBlockSize);
     __aicore__ inline uint64_t GetSplitValueFromGroupList(uint64_t groupIdx);
+    __aicore__ inline void PrintGmAddressAndSize(uint64_t groupIdx, uint64_t mSize, uint64_t kSize, uint64_t nSize);
     __aicore__ inline void UpdateGmAddr(uint64_t groupIdx, uint64_t mSize, uint64_t kSize, uint64_t nSize);
     __aicore__ inline uint64_t GetSwitchedProcessId(const BasicBlockControlParam &ctrlParam);
 
@@ -73,6 +74,7 @@ private:
     __gm__ yType *yGm_;
     __gm__ xScaleType *xScaleGm_;
     __gm__ yScaleType *yScaleGm_;
+    GM_ADDR groupListTensorPtr_;
     GM_ADDR weightTensorPtr_;
     GM_ADDR weightScaleTensorPtr_;
     GlobalTensor<int64_t> groupListGm_;
@@ -107,6 +109,7 @@ __aicore__ inline void GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::Init(GM_ADDR x, GM_ADD
     xScaleGm_ = reinterpret_cast<__gm__ xScaleType *>(xScale);
     yGm_ = reinterpret_cast<__gm__ yType *>(y);
     yScaleGm_ = reinterpret_cast<__gm__ yScaleType *>(yScale);
+    groupListTensorPtr_ = groupList;
     groupListGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>(groupList));
     basicBlock_.Init();
 }
@@ -134,6 +137,7 @@ __aicore__ inline void GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::Process()
     for (uint32_t groupIdx = 0, startBasicBlockId = 0; groupIdx < tiling_->groupNum; ++groupIdx) {
         // 根据groupListType切分M轴
         ctrlParam.mSize = GetSplitValueFromGroupList(groupIdx);
+        PrintGmAddressAndSize(groupIdx, ctrlParam.mSize, offsetParam[0].kSize, offsetParam[0].nSize);
         if (ctrlParam.mSize > 0 && offsetParam[ctrlParam.processId].nSize > 0) {
             uint64_t mBlkNum = CeilDivide(ctrlParam.mSize, M_L1);
             ctrlParam.mL1Size = CeilDivide(ctrlParam.mSize, mBlkNum);
@@ -221,6 +225,40 @@ __aicore__ inline void GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::SplitNByMultiCore(
     ctrlParam.nOffset += basicBlockSize * basicBlockCount;
 }
 
+GMMSQ_WQ_RESPLIT_CONTROLLER_TEMPLATE_PARAM
+__aicore__ inline void GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::PrintGmAddressAndSize(uint64_t groupIdx, uint64_t mSize,
+                                                                                uint64_t kSize, uint64_t nSize)
+{
+    if ASCEND_IS_AIC {
+        if (GetBlockIdx() != 0) {
+            return;
+        }
+        uint64_t kAlignSize = CeilAlign(kSize, K_ALIGNMENT64);
+        uint64_t xBytes = mSize * kSize * sizeof(xType);
+        uint64_t weightBytes = nSize * kSize * sizeof(wType);
+        if constexpr (IsSameType<wType, int4b_t>::value || IsSameType<wType, fp4x2_e2m1_t>::value ||
+                      IsSameType<wType, fp4x2_e1m2_t>::value) {
+            weightBytes >>= 1;
+        }
+        uint64_t weightScaleBytes =
+            nSize * CeilDivide(kAlignSize, static_cast<uint64_t>(tiling_->groupSize)) * sizeof(weightScaleType);
+        uint64_t xScaleBytes =
+            mSize * CeilDivide(kAlignSize, static_cast<uint64_t>(tiling_->groupSize)) * sizeof(xScaleType);
+        uint64_t yBytes = mSize * (nSize / 2) * sizeof(yType);
+        uint64_t yScaleBytes =
+            mSize *
+            CeilDivide(CeilAlign(nSize / 2, static_cast<uint64_t>(64)), static_cast<uint64_t>(tiling_->groupSize)) *
+            sizeof(yScaleType);
+        uint64_t groupListBytes = tiling_->groupNum * sizeof(int64_t);
+        AscendC::printf("[GMMSQ][GM] group=%llu x=0x%llx/%llu weight=0x%llx/%llu weight_scale=0x%llx/%llu "
+                        "x_scale=0x%llx/%llu y=0x%llx/%llu y_scale=0x%llx/%llu group_list=0x%llx/%llu\\n",
+                        groupIdx, reinterpret_cast<uint64_t>(xGm_), xBytes, reinterpret_cast<uint64_t>(weightGm_),
+                        weightBytes, reinterpret_cast<uint64_t>(weightScaleGm_), weightScaleBytes,
+                        reinterpret_cast<uint64_t>(xScaleGm_), xScaleBytes, reinterpret_cast<uint64_t>(yGm_), yBytes,
+                        reinterpret_cast<uint64_t>(yScaleGm_), yScaleBytes,
+                        reinterpret_cast<uint64_t>(groupListTensorPtr_), groupListBytes);
+    }
+}
 GMMSQ_WQ_RESPLIT_CONTROLLER_TEMPLATE_PARAM
 __aicore__ inline void GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::UpdateGmAddr(uint64_t groupIdx, uint64_t mSize,
                                                                        uint64_t kSize, uint64_t nSize)
