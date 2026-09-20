@@ -156,13 +156,13 @@ void FlashAttnTilingImpl::UpdateTilingKeyConfig()
         //   config=8: Dk=64, Dv=64, sOuter=64, sInner=256
         //   config=9: Dk=128, Dv=128, sOuter=64,  sInner=256 (Dk=72 复用, kernel 内 pad 到 128)
         if (faInfo_->qkHeadDim == 64) {
-            if (templateId_ == 0) {
+            if (templateId_ == 0 || fa_tiling_util::DN_UNMERGED_ROUTE_ENABLED) {
                 tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 0 : 1;
             } else if (templateId_ == 1) {
                 tilingKeyInfo_.config = 8;
             }
         } else if (faInfo_->qkHeadDim == 128 || faInfo_->qkHeadDim == 72) {
-            if (templateId_ == 0) {
+            if (templateId_ == 0 || fa_tiling_util::DN_UNMERGED_ROUTE_ENABLED) {
                 tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 2 : 3;
             } else if (templateId_ == 1) {
                 tilingKeyInfo_.config = 9;
@@ -178,7 +178,7 @@ void FlashAttnTilingImpl::UpdateTilingKeyConfig()
             //   config=6: Dk=192, Dv=128, sOuter=64, sInner=128
             //   config=7: Dk=192, Dv=128, sOuter=32, sInner=256
             //   config=10: Dk=192, Dv=128, sOuter=64, sInner=256
-            if (templateId_ == 0) {
+            if (templateId_ == 0 || fa_tiling_util::DN_UNMERGED_ROUTE_ENABLED) {
                 tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 6 : 7;
             } else if (templateId_ == 1) {
                 tilingKeyInfo_.config = 10;
@@ -217,10 +217,9 @@ void FlashAttnTilingImpl::UpdateTilingKeyTemplateId()
 {
     if (fa_tiling_util::DN_UNMERGED_ROUTE_ENABLED) {
         // 不合轴 DN(预埋): 全量路由, 判定与 flash_attn_metadata(AICPU) 共享
-        // fa_tiling_util::GetFlashAttnTemplateId, 两侧严格一致; dnFlag_ 仍表示旧合轴 DN 模板
+        // fa_tiling_util::GetFlashAttnTemplateId, 两侧严格一致
         tilingKeyInfo_.templateId = fa_tiling_util::GetFlashAttnTemplateId(static_cast<uint32_t>(faInfo_->qkHeadDim),
                                                                            static_cast<uint32_t>(faInfo_->vHeadDim));
-        dnFlag_ = false;
         return;
     }
     // templateId: 0=ND模板, 1=DN模板
