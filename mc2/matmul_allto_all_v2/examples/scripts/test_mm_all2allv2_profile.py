@@ -40,7 +40,10 @@ aiv_core_num = 64
 # {profiling_path}_m{m}_k{k}_n{n}
 # 约束：ceil(k/64) 须为偶数；n 须被 world_size 整除
 m_list = [2048]
-kn_list = [(2048, 3072), (3584, 3072)]  # (K, N) 组合列表
+kn_list = [(2048, 3072), (3584, 6144), (3072, 8192)]  # (K, N) 组合列表
+# buffer 复用case
+# m_list = [6144]
+# kn_list = [(4096, 37376)]  # (K, N) 组合列表
 # profiling 配置
 loop_time = 50
 repeat_time = 1

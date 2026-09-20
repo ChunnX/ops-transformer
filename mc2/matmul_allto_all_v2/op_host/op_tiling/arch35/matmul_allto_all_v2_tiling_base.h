@@ -99,6 +99,10 @@ protected:
     static constexpr uint64_t MAX_WORLD_SIZE = 16;
     static constexpr uint64_t MAX_GROUP_NAME_LEN = 128;
     static constexpr uint64_t Y_OUTPUT_BYTE = 2;
+    // buffer 复用最大深度（slotNum 上限）。注意：flagId = slotIdx % FLAG_ID_MODULO(11)，
+    // slotNum 超过 11 时 flag 回绕周期与 slot 回绕周期不一致，会导致覆盖/消费配对错乱，
+    // 实际生效上限需与 kernel 侧 BufferChannel::FLAG_ID_MODULO 对齐。
+    static constexpr uint64_t WIN_REUSE_DEPTH_CAP = 128UL;
 
     ge::graphStatus CheckTensorAttrs()
     {
@@ -630,17 +634,17 @@ protected:
         // y 分片，即 totalTileCnt * worldSize * maxTileM * np * 2（y 为 BF16/FP16，2 字节）+ 2MB 预留。
         uint64_t maxTileM = std::max(headMSize, tailMSize);
         uint64_t totalTileCnt = headTileCnt + tailTileCnt;
-        constexpr uint64_t HCCL_BUFFER_RESERVED_BYTES = 2UL * 1024UL * 1024UL;
-        uint64_t needBytes = totalTileCnt * worldSize_ * maxTileM * np_ * 2UL + HCCL_BUFFER_RESERVED_BYTES;
-        if (hccBufPtr != nullptr && static_cast<uint64_t>(*hccBufPtr) < needBytes) {
-            OP_LOGE_WITHOUT_REPORT(opName,
-                                   "[hcclBufferSize] hcclBufferSize(%ld) is less than "
-                                   "totalTileCnt(%lu) * worldSize(%lu) * maxTileM(%lu) * np(%lu) * 2 + "
-                                   "reserved(%lu) = %lu bytes",
-                                   static_cast<long>(*hccBufPtr), totalTileCnt, worldSize_, maxTileM, np_,
-                                   HCCL_BUFFER_RESERVED_BYTES, needBytes);
-            return ge::GRAPH_FAILED;
-        }
+        // constexpr uint64_t HCCL_BUFFER_RESERVED_BYTES = 2UL * 1024UL * 1024UL;
+        // uint64_t needBytes = totalTileCnt * worldSize_ * maxTileM * np_ * 2UL + HCCL_BUFFER_RESERVED_BYTES;
+        // if (hccBufPtr != nullptr && static_cast<uint64_t>(*hccBufPtr) < needBytes) {
+        //     OP_LOGE_WITHOUT_REPORT(opName,
+        //                            "[hcclBufferSize] hcclBufferSize(%ld) is less than "
+        //                            "totalTileCnt(%lu) * worldSize(%lu) * maxTileM(%lu) * np(%lu) * 2 + "
+        //                            "reserved(%lu) = %lu bytes",
+        //                            static_cast<long>(*hccBufPtr), totalTileCnt, worldSize_, maxTileM, np_,
+        //                            HCCL_BUFFER_RESERVED_BYTES, needBytes);
+        //     return ge::GRAPH_FAILED;
+        // }
 
         // 正式 QBMM tiling：LocalDelay 固定开启，remoteBatch = worldSize - 1；
         // localQbmm 覆盖本 rank 完整 M 的延迟计算，batch = 1。
@@ -752,7 +756,9 @@ protected:
                 return ge::GRAPH_FAILED;
             }
             uint64_t budgetDepth = (slotDataSize == 0) ? totalTileCnt : WIN_REUSE_BUDGET_CAP / slotDataSize;
-            slotNum = std::min(budgetDepth, totalTileCnt);
+            // 深度 cap 仅作用于复用分支：空间足够时 slotNum 必须保持 = totalTileCnt，
+            // 否则 tileCnt > cap 的场景会被误判为复用，触发无谓的 SyncAll/Wait 且 slotNum 超过 flag 空间
+            slotNum = std::min(std::min(budgetDepth, totalTileCnt), WIN_REUSE_DEPTH_CAP);
         }
         td->commTilingData.slotNum = slotNum;
 

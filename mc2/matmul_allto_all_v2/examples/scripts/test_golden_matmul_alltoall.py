@@ -80,6 +80,9 @@ MX_GROUP_SIZE = 32  # 每个 e8m0 scale 覆盖连续 32 个 K 元素 (64 元素�
 # 约束与单 shape 模式一致: m > 0; ceil(k/64) 为偶数; n % world_size == 0.
 M_LIST = [2048]
 KN_LIST = [(3584, 4096)]  # (K, N) 组合列表
+# buffer 复用case
+# M_LIST = [6144]
+# KN_LIST = [(4096, 37376)]  # (K, N) 组合列表
 
 # MXFP 量化输入 + BF16/FP16 输出精度标准 (与 ST verify_result.py 一致)
 ERROR_TOL_RTOL = 0.02  # 2% 相对误差
