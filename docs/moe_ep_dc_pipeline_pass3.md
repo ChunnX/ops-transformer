@@ -24,6 +24,7 @@ BS4096/K6 的一张 int32 表是98304 B（96 KiB），该大小随 BS/K 变化�
 这是本地索引构建优化，不减少 URMA payload。实现需要初始化无效项、跨核发布、避免同 cache line 的
 并发写回覆盖、以及 standalone/cached 路径一致性；额外 workspace 和同步也有成本。
 可以放在 epilogue 私有 workspace 内，不必修改 Hcomm 或远端窗口。本轮尚未实现该索引重构。
+后续已实现，具体布局、同步与验证边界见[共享本地逆向索引](moe_ep_combine_shared_local_index.md)。
 
 ## 二、按 BS/chunk 就绪归约需要修改什么协议
 

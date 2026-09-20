@@ -390,8 +390,8 @@ static ge::graphStatus MoeEpCombineEpilogueTilingFunc(gert::TilingContext *conte
 
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(nodeName, "workSpaces is nullptr."), return ge::GRAPH_FAILED);
-    // The expert-id sign is consumed directly from UB; no GM mask workspace is used.
-    workSpaces[0] = SYSTEM_NEED_WORKSPACE;
+    uint64_t localIndexBytes = AlignMoeEpWin(static_cast<uint64_t>(info.cfg.numTokens) * info.cfg.topK * sizeof(int32_t));
+    workSpaces[0] = SYSTEM_NEED_WORKSPACE + localIndexBytes;
 
     uint32_t tplHasTopkWeights = info.hasTopkWeights ? 1 : 0;
     uint64_t tilingKey = GET_TPL_TILING_KEY(tplHasTopkWeights, TILINGKEY_TPL_A5);
