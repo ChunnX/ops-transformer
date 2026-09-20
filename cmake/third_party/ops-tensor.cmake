@@ -13,6 +13,25 @@ if(EXISTS "${PROJECT_SOURCE_DIR}/../ops-tensor")
   get_filename_component(OPTENSOR_SOURCE_PATH
                          ${PROJECT_SOURCE_DIR}/../ops-tensor REALPATH)
   message(STATUS "Find ops-tensor source dir: ${OPTENSOR_SOURCE_PATH}")
+
+  # A jointly checked-out ops-tensor repository contains Tensor API as a git
+  # submodule. CI may only check out the two top-level PR repositories, so
+  # initialize the submodule before the kernel headers are copied.
+  if(NOT EXISTS "${OPTENSOR_SOURCE_PATH}/include/tensor_api/impl/tensor_api")
+    execute_process(
+      COMMAND git submodule update --init --recursive include/tensor_api
+      WORKING_DIRECTORY ${OPTENSOR_SOURCE_PATH}
+      TIMEOUT 60
+      RESULT_VARIABLE SUBMODULE_RESULT
+      ERROR_VARIABLE SUBMODULE_ERROR
+      OUTPUT_QUIET
+    )
+    if(NOT SUBMODULE_RESULT EQUAL 0)
+      message(FATAL_ERROR
+              "Failed to initialize ops-tensor Tensor API submodule: ${SUBMODULE_ERROR}")
+    endif()
+  endif()
+
   get_filename_component(TENSOR_API
                          ${OPTENSOR_SOURCE_PATH}/include/tensor_api REALPATH)
 elseif(EXISTS "${CANN_3RD_LIB_PATH}/ops-tensor")
