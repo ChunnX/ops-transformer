@@ -81,6 +81,21 @@ __aicore__ inline void CacheGamma0()
     DataCopyPad(gamma0, gamma0Gm_, params, pad);
 }
 
+/// R7开始前缓存完整gamma1；更大D保持原分块搬运以控制UB上限。
+__aicore__ inline void CacheGamma1()
+{
+    if (D_ > GAMMA1_CACHE_MAX_D) {
+        return;
+    }
+    LocalTensor<float> gamma1 = bufGamma2Fp32_.Get<float>();
+    DataCopyExtParams params = {1, 0, 0, 0, 0};
+    params.blockLen = D_ * sizeof(float);
+    DataCopyPadExtParams<float> pad = {false, 0, 0, 0};
+    DataCopyPad(gamma1, gamma1Gm_, params, pad);
+    SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+    WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
+}
+
 /// 第二遍R1/R2直接从x2缓存恢复h_out，避免再次从GM读取。
 __aicore__ inline void LoadCachedHOut(uint32_t tOff, uint32_t tD)
 {

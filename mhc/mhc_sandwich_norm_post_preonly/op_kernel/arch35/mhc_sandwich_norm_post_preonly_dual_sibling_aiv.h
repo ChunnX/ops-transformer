@@ -145,17 +145,24 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     }
 
     const float invRms1 = ComputeInvRms(sumSq1, invD_);
+    CacheGamma1();
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
         LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
         LoadHInCacheTile(tOff, tD, hIn);
-        // R7开始时gamma2缓存已经死亡，复用它释放一整块gamma UB供输入输出双缓冲。
-        LoadGammaInto(bufGamma2Fp32_.Get<float>(), gamma1Gm_, tOff, tD);
-        SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
-        WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-        ApplyScaleAndGamma(hIn, invRms1, bufGamma2Fp32_.Get<float>(), tD);
-        FenceVToMte2();
+        LocalTensor<float> gamma1 = bufGamma2Fp32_.Get<float>();
+        if (D_ > GAMMA1_CACHE_MAX_D) {
+            LoadGammaInto(gamma1, gamma1Gm_, tOff, tD);
+            SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+            WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
+        } else {
+            gamma1 = gamma1[tOff];
+        }
+        ApplyScaleAndGamma(hIn, invRms1, gamma1, tD);
+        if (D_ > GAMMA1_CACHE_MAX_D) {
+            FenceVToMte2();
+        }
         WriteHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tD);
     }
 }
