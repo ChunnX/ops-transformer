@@ -46,7 +46,8 @@ __global__ __aicore__ void moe_distribute_combine_v2(GM_ADDR expandX, GM_ADDR ex
         const uint64_t minWinSize = tilingData.moeDistributeCombineV2Info.totalWinSizeEp;
         assert(realWinSize >= minWinSize,
                "HCCL_BUFFSIZE_EP is too SMALL, NEEDED_HCCL_BUFFSIZE=%lu Bytes, "
-               "actual CCL_BUFFSIZE=%lu Bytes.\n", minWinSize, realWinSize);
+               "actual CCL_BUFFSIZE=%lu Bytes.\n",
+               minWinSize, realWinSize);
     }
 #if ((ORIG_DTYPE_EXPAND_X == DT_BF16) || (ORIG_DTYPE_EXPAND_X == DT_FLOAT16))
     if constexpr ((ArchTag == TILINGKEY_TPL_A3) && (LayeredMode == TILINGKEY_TPL_MTE)) {

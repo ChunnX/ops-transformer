@@ -51,7 +51,7 @@ struct CheckWinSizeData {
 };
 
 inline uint64_t CalcMinWinSize(const CheckWinSizeData &winSizeData, uint64_t &tokenNeedSizeDispatch,
-                                uint64_t &tokenNeedSizeCombine, uint64_t combineDataAlign = WIN_ADDR_ALIGN)
+                               uint64_t &tokenNeedSizeCombine, uint64_t combineDataAlign = WIN_ADDR_ALIGN)
 {
     const uint64_t h = winSizeData.h;
     const uint64_t k = winSizeData.k;
@@ -65,12 +65,12 @@ inline uint64_t CalcMinWinSize(const CheckWinSizeData &winSizeData, uint64_t &to
     // 跨超win区计算，3代表token里拼的topK、expert_scale、实际有效token数量，32B对齐，64代表scale和flag， 404是400MB
     // win区和4MB RDMA状态区
     return winSizeData.isLayered ?
-            (static_cast<uint64_t>(winSizeData.moeExpertNum) * maxBs *
-                 (h * MAX_OUT_DTYPE_SIZE + (3 * (k + 7) / 8 * 8) * sizeof(uint32_t) + 64) +
-             404 * MB_SIZE) :
-            ((maxBs * tokenNeedSizeDispatch * winSizeData.epWorldSize * winSizeData.localMoeExpertNum) +
-             (maxBs * tokenNeedSizeCombine * (k + winSizeData.sharedExpertNum))) *
-                DOUBLE_DATA_BUFFER;
+               (static_cast<uint64_t>(winSizeData.moeExpertNum) * maxBs *
+                    (h * MAX_OUT_DTYPE_SIZE + (3 * (k + 7) / 8 * 8) * sizeof(uint32_t) + 64) +
+                404 * MB_SIZE) :
+               ((maxBs * tokenNeedSizeDispatch * winSizeData.epWorldSize * winSizeData.localMoeExpertNum) +
+                (maxBs * tokenNeedSizeCombine * (k + winSizeData.sharedExpertNum))) *
+                   DOUBLE_DATA_BUFFER;
 }
 
 inline ge::graphStatus CheckLayeredWinSizeParams(const gert::TilingContext *context, const char *nodeName,
@@ -95,11 +95,10 @@ inline ge::graphStatus CheckLayeredWinSizeParams(const gert::TilingContext *cont
 }
 
 inline ge::graphStatus CalcMinWinSizeA3(const gert::TilingContext *context, const char *nodeName,
-                                       CheckWinSizeData &winSizeData)
+                                        CheckWinSizeData &winSizeData)
 {
     OP_TILING_CHECK(CheckLayeredWinSizeParams(context, nodeName, winSizeData) != ge::GRAPH_SUCCESS,
-                    OP_LOGE_WITHOUT_REPORT(nodeName, "Invalid hierarchy window parameters."),
-                    return ge::GRAPH_FAILED);
+                    OP_LOGE_WITHOUT_REPORT(nodeName, "Invalid hierarchy window parameters."), return ge::GRAPH_FAILED);
     uint64_t tokenNeedSizeDispatch = 0;
     uint64_t tokenNeedSizeCombine = 0;
     winSizeData.totalWinSizeEp = CalcMinWinSize(winSizeData, tokenNeedSizeDispatch, tokenNeedSizeCombine);
@@ -122,8 +121,7 @@ inline ge::graphStatus CheckActualWinSize(const gert::TilingContext *context, co
     const uint64_t combineDataAlign = socVersion == "Ascend950" ? FULL_MESH_DATA_ALIGN : WIN_ADDR_ALIGN;
     uint64_t actualSize = CalcMinWinSize(winSizeData, tokenNeedSizeDispatch, tokenNeedSizeCombine, combineDataAlign);
     OP_TILING_CHECK(CheckLayeredWinSizeParams(context, nodeName, winSizeData) != ge::GRAPH_SUCCESS,
-                    OP_LOGE_WITHOUT_REPORT(nodeName, "Invalid hierarchy window parameters."),
-                    return ge::GRAPH_FAILED);
+                    OP_LOGE_WITHOUT_REPORT(nodeName, "Invalid hierarchy window parameters."), return ge::GRAPH_FAILED);
     if (winSizeData.isLayered) {
         // 校验buffersize
         OP_TILING_CHECK((actualSize > maxWindowSizeEp),
@@ -198,10 +196,9 @@ inline ge::graphStatus CheckWinSize(const gert::TilingContext *context, const ch
         maxWindowSizeEp = *cclBuffSizePtr - MB_SIZE;
         hcclBufferSizeEp = *cclBuffSizePtr;
     }
-    OP_TILING_CHECK(CheckActualWinSize(context, nodeName, winSizeData, maxWindowSizeEp, hcclBufferSizeEp) !=
-                        ge::GRAPH_SUCCESS,
-                    OP_LOGE_WITHOUT_REPORT(nodeName, "Tiling check actual window size failed."),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        CheckActualWinSize(context, nodeName, winSizeData, maxWindowSizeEp, hcclBufferSizeEp) != ge::GRAPH_SUCCESS,
+        OP_LOGE_WITHOUT_REPORT(nodeName, "Tiling check actual window size failed."), return ge::GRAPH_FAILED);
     uint64_t rankOffsetSize = winSizeData.epWorldSize * EP_RANK_OFFSET_STEP;
     OP_TILING_CHECK(maxWindowSizeEp < rankOffsetSize,
                     OP_LOGE_WITHOUT_REPORT(nodeName, "maxWindowSizeEp is too small: %lu B < %lu B (epWorldSize=%lu).",
