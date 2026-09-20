@@ -287,7 +287,9 @@ def _call_public(kwargs, mode, t1, *, omit_ori_length=False, omit_cmp_length=Fal
                 python_metadata = _make_metadata_python(
                     t1, kwargs["cu_seqlens_q"], kwargs["q"].device)
                 torch.testing.assert_close(
-                    python_metadata, aicpu_metadata.cpu(), rtol=0, atol=0)
+                    python_metadata[:C.FD_USED_VEC_NUM_WORD + 1],
+                    aicpu_metadata.cpu()[:C.FD_USED_VEC_NUM_WORD + 1],
+                    rtol=0, atol=0)
                 print("[mqsmla metadata] aicpu/python partition match")
     # Metadata keeps its required length inputs; attention can omit either side.
     if omit_ori_length:

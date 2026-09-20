@@ -22,7 +22,13 @@ KV_PAGE_PADDING_BYTES = 64  # Both KV sides use the same fixed axis-0 gap.
 # for a uniform whole-row partition; the FD section stays all-zero.
 MQSMLA_METADATA_TOTAL_SIZE = 1024
 AIC_CORE_MAX_NUM = 36
+AIV_CORE_MAX_NUM = 72
 FA_METADATA_SIZE = 9
+FD_METADATA_SIZE = 8
+# FA[36][9](324) + FD[72][8](576) = 900 words; index 900 holds fdUsedVecNum.
+# Words 901..1023 are unused layout padding and are excluded from the
+# metadata-backend bit-equal comparison.
+FD_USED_VEC_NUM_WORD = AIC_CORE_MAX_NUM * FA_METADATA_SIZE + AIV_CORE_MAX_NUM * FD_METADATA_SIZE
 FA_CORE_ENABLE_INDEX = 0
 FA_BN2_START_INDEX = 1
 FA_M_START_INDEX = 2
