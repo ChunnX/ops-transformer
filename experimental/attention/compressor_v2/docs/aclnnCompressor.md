@@ -25,7 +25,7 @@
 
 ## 功能说明
 
-arch22 支持 A2/A3，本次仅验证 A2，未执行 A3/A5 上板。PyTorch 非连续 state 的 memcheck ERROR 仍未解决，不代表安全验收通过，详见[验证记录](./arch22_validation.md)。V2 无 APE，固定 coff=1、cacheMode=2，不提供训练输出。
+arch22 支持 A2/A3，本次仅验证 A2，未执行 A3/A5 上板。已定位的非连续 state memcheck ERROR 属于 CANN DFX 边界描述误报，原生 ACLNN 启用 lite_exception 后也可复现；不代表原始工具链检测全部通过，详见[验证记录](./arch22_validation.md)。V2 无 APE，固定 coff=1、cacheMode=2，不提供训练输出。
 
 - 接口功能：CompressorV2是推理场景下SMLA和QLI的前处理算子，用于将每cmp_ratio个token的KV cache压缩成一个，然后每个token与这些压缩的KV cache进行DSA计算。在长序列的情况下，可以有效减少计算开销。主要计算过程为：
     1. 将输入$X$与$W^{KV}$做Matmul运算得到$kv\_state$，将输入$X$与$W^{Gate}$做Matmul运算得到$score\_state$，$kv\_state$与$score\_state$根据输入的start_pos及cu_seqlens写入state_cache（循环buffer，写本次序列末尾min(seqused, block_size)个token）。

@@ -14,7 +14,7 @@
 ## 功能说明
 
 - V2 不提供 APE 参数，固定 coff=1、cacheMode=2，仅支持推理。A2/A3 使用 arch22，Ascend 950 使用原 arch35 实现。
-- 本次迁移仅完成 A2 上板精度验证，未执行 A3/A5 上板及图模式验证。PyTorch 非连续 state 的 memcheck ERROR 尚在跟踪，安全验收未完成，见[验证记录](./docs/arch22_validation.md)。
+- 本次迁移仅验证 A2，未执行 A3/A5 上板及图模式验证。已定位的非连续 state memcheck ERROR 属于 CANN DFX 边界描述误报，不代表原始工具链检测全部通过，适用范围和证据见[验证记录](./docs/arch22_validation.md)。
 
 - 算子功能：CompressorV2是推理场景下SMLA和QLI的前处理算子，用于将每cmp_ratio个token的KV cache压缩成一个，然后每个token与这些压缩的KV cache进行DSA计算。在长序列的情况下，可以有效减少计算开销。主要计算过程为：
     1. 将输入$X$与$W^{KV}$做Matmul运算得到$kv\_state$，将输入$X$与$W^{Gate}$做Matmul运算得到$score\_state$，$kv\_state$与$score\_state$根据输入的start_pos及cu_seqlens写入state_cache（循环buffer，写本次序列末尾min(seqused, block_size)个token）。

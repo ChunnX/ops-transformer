@@ -32,7 +32,7 @@ python3 -m pytest -v test_compressor_single.py test_compressor_arch22.py
 输出沿用现有Golden精度标准；全量FP32 state使用rtol=1e-4/atol=1e-5，未更新区域与padding guard要求精确不变。
 `test_compressor_single.py` 的FullLoad2容量为131，满足ratio128/S4的BSH容量约束；容量不足由Host UT负例单独验证。
 
-本次只验证A2 eager。图模式不在验收范围；MEMCHECK-001尚未解决，详见[验证记录](../../docs/arch22_validation.md)。
+本次只验证A2 eager。图模式不在验收范围；MEMCHECK-001已定位为CANN DFX非连续state边界描述误报，不能将此结论外推到其他ERROR，详见[验证记录](../../docs/arch22_validation.md)。
 
 ### 环境配置
 

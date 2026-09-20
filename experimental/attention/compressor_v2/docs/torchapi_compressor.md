@@ -25,7 +25,7 @@
 
 ## 功能说明
 
-本次 arch22 迁移仅在 A2 验证 eager 精度，未验证 A3/A5 或图模式。非连续 state 的 memcheck ERROR 尚未解决，详见[验证记录](./arch22_validation.md)。V2 无 APE 参数，固定 coff=1、cacheMode=2。
+本次 arch22 迁移仅在 A2 验证 eager，未验证 A3/A5 或图模式。已定位的非连续 state memcheck ERROR 属于 CANN DFX 边界描述误报，不是 PyTorch 专属问题；原始工具链检测仍有 ERROR，详见[验证记录](./arch22_validation.md)。V2 无 APE 参数，固定 coff=1、cacheMode=2。
 
 - 接口功能：compressor 是 CompressorV2 压缩算子的 PyTorch（PTA）接口，通过 `cann_ops_transformer.ops.ds41` 子模块对外提供。用于将每 `cmp_ratio` 个 token 的 KV cache 压缩成一个，同时将 `kv_state`/`score_state` 原位更新到 `state_cache`（循环 buffer）。主要计算过程为：
     1. 将输入 $X$ 与 $W^{KV}$ 做 Matmul 运算得到 $kv\_state$，将输入 $X$ 与 $W^{Gate}$ 做 Matmul 运算得到 $score\_state$，$kv\_state$ 与 $score\_state$ 根据输入的 start_pos 及 cu_seqlens 写入 state_cache（循环 buffer，写本次序列末尾 min(seqused, block_size) 个 token）。
