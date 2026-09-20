@@ -419,11 +419,11 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
 
     // -------------------candidate (two-level topk) 校验-------------------
     uint32_t candidateMode = (opParamInfo_.candidateMode != nullptr) ?
-                                 static_cast<uint32_t>(*opParamInfo_.candidateMode) : CANDIDATE_MODE_OFF;
+                                 static_cast<uint32_t>(*opParamInfo_.candidateMode) :
+                                 CANDIDATE_MODE_OFF;
     OP_CHECK_IF((candidateMode != CANDIDATE_MODE_SOURCE) && (candidateMode != CANDIDATE_MODE_CONSUMER) &&
                     (candidateMode != CANDIDATE_MODE_OFF),
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "candidate_mode",
-                                                      std::to_string(candidateMode),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "candidate_mode", std::to_string(candidateMode),
                                                       "Candidate_mode only supports 1(source), 2(consumer) or 3(off)"),
                 return ge::GRAPH_FAILED);
     if (candidateMode != CANDIDATE_MODE_OFF) {
@@ -432,10 +432,10 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
                     OP_LOGE(opName_, "candidate_mode only supported on ascend910b/ascend910_93."),
                     return ge::GRAPH_FAILED);
         // A12: layout_q 支持 BSND 与 TND (TND 需 cu_seqlens_q; layout_k 固定 PA_BBND — K 仅支持分页布局)
-        OP_CHECK_IF(std::string(opParamInfo_.layOutQuery) != "BSND" && std::string(opParamInfo_.layOutQuery) != "TND",
-                    OP_LOGE(opName_, "candidate_mode only supports layout_q=BSND/TND, but got %s.",
-                            layout_query.c_str()),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            std::string(opParamInfo_.layOutQuery) != "BSND" && std::string(opParamInfo_.layOutQuery) != "TND",
+            OP_LOGE(opName_, "candidate_mode only supports layout_q=BSND/TND, but got %s.", layout_query.c_str()),
+            return ge::GRAPH_FAILED);
         if (std::string(opParamInfo_.layOutQuery) == "TND") {
             OP_CHECK_IF(std::string(opParamInfo_.layOutKey) != "PA_BBND",
                         OP_LOGE(opName_, "candidate_mode with layout_q=TND requires layout_k=PA_BBND, but got %s.",
@@ -449,18 +449,17 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
                                   static_cast<uint32_t>(*opParamInfo_.candidateTopkBlocks) :
                                   CANDIDATE_TOPK_BLOCKS_FIX;
         // 放宽为 (0, 2048] 内 64 的倍数: 累加器/抽取/拷出逻辑均按 64 对齐设计
-        OP_CHECK_IF(candBlocks == 0 || candBlocks > CANDIDATE_TOPK_BLOCKS_FIX || (candBlocks % 64) != 0,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "candidate_topk_blocks",
-                                                          std::to_string(candBlocks),
-                                                          "Candidate_topk_blocks must be a multiple of 64 in (0, 2048]"),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            candBlocks == 0 || candBlocks > CANDIDATE_TOPK_BLOCKS_FIX || (candBlocks % 64) != 0,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "candidate_topk_blocks", std::to_string(candBlocks),
+                                                  "Candidate_topk_blocks must be a multiple of 64 in (0, 2048]"),
+            return ge::GRAPH_FAILED);
         uint32_t candBlkSize = (opParamInfo_.candidateBlockSize != nullptr) ?
                                    static_cast<uint32_t>(*opParamInfo_.candidateBlockSize) :
                                    CANDIDATE_BLOCK_SIZE_DEFAULT;
         // 当前仅支持 8: BlockReduceMax 以 32B 块 (8 fp32) 为归约粒度
         OP_CHECK_IF(candBlkSize != CANDIDATE_BLOCK_SIZE_DEFAULT,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "candidate_block_size",
-                                                          std::to_string(candBlkSize),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "candidate_block_size", std::to_string(candBlkSize),
                                                           "Candidate_block_size only supports 8 currently"),
                     return ge::GRAPH_FAILED);
         if (candidateMode == CANDIDATE_MODE_CONSUMER) {
@@ -1518,7 +1517,7 @@ ge::graphStatus QLIV2InfoParser::CheckKeyContiguous() const
                                 opName_, "k",
                                 "When layout_k is PA_BBND, key stride0 must be positive, but got " +
                                     std::to_string(keyStridesVec_[0])),
-                    return ge::GRAPH_FAILED);
+                            return ge::GRAPH_FAILED);
             }
         }
         // A11 校验: 显式属性 stride0 不得小于紧凑值 (0 轴只允许 padding 型非连续)
@@ -1589,7 +1588,8 @@ void QLIV2InfoParser::GenerateInfo(QLIV2TilingInfo &QLIV2Info)
     QLIV2Info.returnValue = *opParamInfo_.returnValue;
     QLIV2Info.maxSeqlenQ = (opParamInfo_.maxSeqlenQ != nullptr) ? *opParamInfo_.maxSeqlenQ : -1;
     QLIV2Info.candidateMode = (opParamInfo_.candidateMode != nullptr) ?
-                                  static_cast<uint32_t>(*opParamInfo_.candidateMode) : CANDIDATE_MODE_OFF;
+                                  static_cast<uint32_t>(*opParamInfo_.candidateMode) :
+                                  CANDIDATE_MODE_OFF;
     QLIV2Info.candidateTopkBlocks = (opParamInfo_.candidateTopkBlocks != nullptr) ?
                                         static_cast<uint32_t>(*opParamInfo_.candidateTopkBlocks) :
                                         CANDIDATE_TOPK_BLOCKS_FIX;
@@ -1614,8 +1614,7 @@ void QLIV2InfoParser::GenerateInfo(QLIV2TilingInfo &QLIV2Info)
     }
     if (!keyDequantScaleStridesVec_.empty()) {
         QLIV2Info.keyDequantScaleStride0 = static_cast<uint32_t>(keyDequantScaleStridesVec_[0]);
-    } else if (opParamInfo_.keyDequantScaleStride0Attr != nullptr &&
-               *opParamInfo_.keyDequantScaleStride0Attr > 0) {
+    } else if (opParamInfo_.keyDequantScaleStride0Attr != nullptr && *opParamInfo_.keyDequantScaleStride0Attr > 0) {
         QLIV2Info.keyDequantScaleStride0 = static_cast<uint32_t>(*opParamInfo_.keyDequantScaleStride0Attr);
     } else if ((*opParamInfo_.quantMode == QUANT_MODE_MXFP8) || (*opParamInfo_.quantMode == QUANT_MODE_MXFP4)) {
         QLIV2Info.keyDequantScaleStride0 = static_cast<uint32_t>(blockSize_) * (headDim_ / MX_SCALE_GROUP_SIZE);
@@ -1724,16 +1723,16 @@ ge::graphStatus QuantLightningIndexerV2Tiling::DoTiling(QLIV2TilingInfo *tilingI
         int64_t expectSize = 0;
         if (tilingInfo->inputQLayout == DataLayout::TND) {
             // A12 修正: TND 输出布局为 [T, N2, K], T = query.shape[0], 非 B x s1Size (会双重计数)
-            expectSize = tilingInfo->opParamInfo.query.shape->GetStorageShape().GetDim(0) *
-                         tilingInfo->n2Size * tilingInfo->candidateTopkBlocks;
+            expectSize = tilingInfo->opParamInfo.query.shape->GetStorageShape().GetDim(0) * tilingInfo->n2Size *
+                         tilingInfo->candidateTopkBlocks;
         } else {
             expectSize = static_cast<int64_t>(tilingInfo->bSize) * tilingInfo->s1Size * tilingInfo->n2Size *
                          tilingInfo->candidateTopkBlocks;
         }
         int64_t actualSize = tilingInfo->opParamInfo.candidateTopkIndex.tensor->GetShapeSize();
         OP_CHECK_IF(actualSize != expectSize,
-                    OP_LOGE("QuantLightningIndexerV2",
-                            "candidate_topk_index shape size must be %ld, but got %ld.", expectSize, actualSize),
+                    OP_LOGE("QuantLightningIndexerV2", "candidate_topk_index shape size must be %ld, but got %ld.",
+                            expectSize, actualSize),
                     return ge::GRAPH_FAILED);
     }
     tilingData_.set_bSize(tilingInfo->bSize);

@@ -95,8 +95,7 @@ static ge::graphStatus InferShapeQuantLightningIndexerV2(gert::InferShapeContext
     uint32_t candidateMode = (candidate_mode != nullptr) ? static_cast<uint32_t>(*candidate_mode) : 3U;
     if (candidateMode == CANDIDATE_MODE_SOURCE) {
         OP_CHECK_IF(inputLayoutQueryPtrStr != "BSND",
-                    OP_LOGE("QuantLightningIndexerV2",
-                            "candidate_mode=1 only supports layout_q=BSND, but got %s.",
+                    OP_LOGE("QuantLightningIndexerV2", "candidate_mode=1 only supports layout_q=BSND, but got %s.",
                             inputLayoutQueryPtrStr.c_str()),
                     return GRAPH_FAILED);
         const int64_t *candidate_topk_blocks = attrs->GetAttrPointer<int64_t>(ATTR_CANDIDATE_TOPK_BLOCKS_INDEX);

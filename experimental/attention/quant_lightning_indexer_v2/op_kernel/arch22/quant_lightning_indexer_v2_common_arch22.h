@@ -62,7 +62,7 @@ struct RunInfo {
     uint64_t tensorWeightsOffset;
     uint64_t indiceOutOffset;
     uint64_t candidateOutOffset;
-    uint64_t outputIdxOffsetCoreOffset;  // A15: output_idx_offset 的 batch 级前缀 (行 x kHeadNum 布局)
+    uint64_t outputIdxOffsetCoreOffset; // A15: output_idx_offset 的 batch 级前缀 (行 x kHeadNum 布局)
 
     bool isFirstS2InnerLoop;
     bool isLastS2InnerLoop;
@@ -111,7 +111,7 @@ struct ConstInfo {
     uint32_t maxBlockNumPerBatch = 0; // PA场景的最大单batch block number
     uint32_t keyStride0 = 0;          // key 第0维真实 stride (0=非PA/旧调用, 紧凑兜底; 对齐 arch35 A11)
     uint32_t keyDequantScaleStride0 = 0; // k_scale 第0维真实 stride (同上)
-    LI_LAYOUT outputLayout;           // 输出的格式
+    LI_LAYOUT outputLayout;              // 输出的格式
     bool attenMaskFlag = false;
     uint32_t cmpRatio = 1; // 压缩率
 
@@ -122,7 +122,7 @@ struct ConstInfo {
     bool isAccumSeqS2 = false;        // 是否累加模式
 
     // candidate (two-level topk)
-    uint32_t candidateMode = 3U;        // 1=source 2=consumer 3=off
+    uint32_t candidateMode = 3U; // 1=source 2=consumer 3=off
     uint32_t candidateTopkBlocks = 2048U;
     uint32_t candidateBlockSize = 8U;
 

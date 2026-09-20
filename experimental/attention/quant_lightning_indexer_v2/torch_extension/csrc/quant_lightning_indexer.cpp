@@ -24,9 +24,15 @@ inline TensorWrapper MakeWrapper(const at::Tensor &tensor)
     return {tensor, ConvertToAclDataType(tensor.scalar_type())};
 }
 
-inline bool IsMxQuantMode(int64_t quantMode) { return quantMode == 3 || quantMode == 5; }
+inline bool IsMxQuantMode(int64_t quantMode)
+{
+    return quantMode == 3 || quantMode == 5;
+}
 
-inline bool IsE8M0Tensor(const at::Tensor &tensor) { return tensor.scalar_type() == at::kFloat8_e8m0fnu; }
+inline bool IsE8M0Tensor(const at::Tensor &tensor)
+{
+    return tensor.scalar_type() == at::kFloat8_e8m0fnu;
+}
 
 inline bool IsFp4CompatibleTensor(const at::Tensor &tensor)
 {
@@ -191,13 +197,12 @@ std::tuple<at::Tensor, at::Tensor> QuantLightningIndexer(
     auto keyScaleWrapper = MakeWrapper(keyDequantScale);
     FixQLIV2AclDtypes(quantMode, queryWrapper, keyWrapper, queryScaleWrapper, keyScaleWrapper);
 
-    int64_t keyStride0Disabled = 0;   // A11: 旧入口不启用 stride 显式属性 (保持现网行为)
+    int64_t keyStride0Disabled = 0; // A11: 旧入口不启用 stride 显式属性 (保持现网行为)
     int64_t keyScaleStride0Disabled = 0;
     ACLNN_CMD(aclnnQuantLightningIndexerV2, queryWrapper, keyWrapper, weights, queryScaleWrapper, keyScaleWrapper,
               cuSeqlensQ, cuSeqlensK, sequsedQ, sequsedK, cmpResidualK, blockTable, outputIdxOffset, metadata, topk,
-              quantMode, maxSeqlenQ, queryLayoutPtr, keyLayoutPtr, maskMode, cmpRatio, returnValue,
-              keyStride0Disabled, keyScaleStride0Disabled, sparseIndicesOut,
-              sparseValuesOut);
+              quantMode, maxSeqlenQ, queryLayoutPtr, keyLayoutPtr, maskMode, cmpRatio, returnValue, keyStride0Disabled,
+              keyScaleStride0Disabled, sparseIndicesOut, sparseValuesOut);
 
     return std::tuple<at::Tensor, at::Tensor>(sparseIndicesOut, sparseValuesOut);
 }
@@ -211,9 +216,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> QuantLightningIndexerCandidate(
     const c10::optional<at::Tensor> &cuSeqlensK, const c10::optional<at::Tensor> &sequsedQ,
     const c10::optional<at::Tensor> &sequsedK, const c10::optional<at::Tensor> &cmpResidualK,
     const c10::optional<at::Tensor> &blockTable, const c10::optional<at::Tensor> &outputIdxOffset,
-    const c10::optional<at::Tensor> &metadata, int64_t maxSeqlenQ, c10::string_view layoutQ,
-    c10::string_view layoutK, int64_t maskMode, int64_t cmpRatio, int64_t candidateMode,
-    int64_t candidateTopkBlocks, int64_t candidateBlockSize)
+    const c10::optional<at::Tensor> &metadata, int64_t maxSeqlenQ, c10::string_view layoutQ, c10::string_view layoutK,
+    int64_t maskMode, int64_t cmpRatio, int64_t candidateMode, int64_t candidateTopkBlocks, int64_t candidateBlockSize)
 {
     TORCH_CHECK(query.numel() > 0, "Tensor query is empty.")
     TORCH_CHECK(key.numel() > 0, "Tensor key is empty.")
@@ -256,10 +260,10 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> QuantLightningIndexerCandidate(
     int64_t keyScaleStride0 = keyDequantScale.stride(0);
 
     ACLNN_CMD(aclnnQuantLightningIndexerV2, queryWrapper, keyWrapper, weights, queryScaleWrapper, keyScaleWrapper,
-              cuSeqlensQ, cuSeqlensK, sequsedQ, sequsedK, cmpResidualK, blockTable, outputIdxOffset,
-              metadata, candidateTopkIndexIn, topk, quantMode, maxSeqlenQ, queryLayoutPtr, keyLayoutPtr, maskMode,
-              cmpRatio, returnValue, candidateMode, candidateTopkBlocks, candidateBlockSize, keyStride0,
-              keyScaleStride0, sparseIndicesOut, sparseValuesOut, candidateTopkIndexOut);
+              cuSeqlensQ, cuSeqlensK, sequsedQ, sequsedK, cmpResidualK, blockTable, outputIdxOffset, metadata,
+              candidateTopkIndexIn, topk, quantMode, maxSeqlenQ, queryLayoutPtr, keyLayoutPtr, maskMode, cmpRatio,
+              returnValue, candidateMode, candidateTopkBlocks, candidateBlockSize, keyStride0, keyScaleStride0,
+              sparseIndicesOut, sparseValuesOut, candidateTopkIndexOut);
 
     return std::tuple<at::Tensor, at::Tensor, at::Tensor>(sparseIndicesOut, sparseValuesOut, candidateTopkIndexOut);
 }
@@ -268,7 +272,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("quant_lightning_indexer_metadata", &QuantLightningIndexerMetadata, "quant_lightning_indexer_metadata");
     m.def("quant_lightning_indexer", &QuantLightningIndexer, "quant_lightning_indexer");
-    m.def("quant_lightning_indexer_candidate", &QuantLightningIndexerCandidate,
-          "quant_lightning_indexer_candidate");
+    m.def("quant_lightning_indexer_candidate", &QuantLightningIndexerCandidate, "quant_lightning_indexer_candidate");
 }
 } // namespace op_api

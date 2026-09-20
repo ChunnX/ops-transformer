@@ -38,7 +38,7 @@ class QuantLightningIndexerOpBuilder(OpBuilder):
             "Tensor key_dequant_scale, int topk, int quant_mode, *, Tensor? cu_seqlens_q=None, "
             "Tensor? cu_seqlens_k=None, Tensor? seqused_q=None, Tensor? seqused_k=None, Tensor? "
             "cmp_residual_k = None, Tensor? block_table=None, Tensor? output_idx_offset=None, Tensor? metadata=None, "
-            "int max_seqlen_q=-1, str layout_q=\"BSND\", str layout_k=\"BSND\", int mask_mode=0, "
+            'int max_seqlen_q=-1, str layout_q="BSND", str layout_k="BSND", int mask_mode=0, '
             "int cmp_ratio=1, int return_value=0) -> (Tensor, Tensor)",
             # O1 方案b: candidate 两级TopK 新入口 (三元组), 旧 schema 保持不变
             "quant_lightning_indexer_candidate(Tensor query, Tensor key, Tensor weights, "
@@ -46,7 +46,7 @@ class QuantLightningIndexerOpBuilder(OpBuilder):
             "Tensor? candidate_topk_index=None, Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_k=None, "
             "Tensor? seqused_q=None, Tensor? seqused_k=None, Tensor? cmp_residual_k=None, "
             "Tensor? block_table=None, Tensor? output_idx_offset=None, Tensor? metadata=None, "
-            "int max_seqlen_q=-1, str layout_q=\"BSND\", str layout_k=\"BSND\", int mask_mode=0, "
+            'int max_seqlen_q=-1, str layout_q="BSND", str layout_k="BSND", int mask_mode=0, '
             "int cmp_ratio=1, int candidate_mode=3, int candidate_topk_blocks=2048, "
             "int candidate_block_size=8) -> (Tensor, Tensor, Tensor)",
         ]
@@ -137,7 +137,9 @@ class QuantLightningIndexerOpBuilder(OpBuilder):
                 )
             return (sparse_indices_out, sparse_values_out)
 
-        @torch.library.register_fake("cann_ops_transformer::quant_lightning_indexer_candidate")
+        @torch.library.register_fake(
+            "cann_ops_transformer::quant_lightning_indexer_candidate"
+        )
         def quant_lightning_indexer_candidate_meta(
             query,
             key,
@@ -182,7 +184,12 @@ class QuantLightningIndexerOpBuilder(OpBuilder):
             if candidate_mode == 1:
                 if layout_q == "BSND":
                     cand_out = torch.empty(
-                        [query.shape[0], query.shape[1], key_head_num, candidate_topk_blocks],
+                        [
+                            query.shape[0],
+                            query.shape[1],
+                            key_head_num,
+                            candidate_topk_blocks,
+                        ],
                         dtype=torch.int32,
                         device="meta",
                     )
@@ -444,12 +451,25 @@ def _qli_newapi_layout(cu_seqlens_q):
     return ("TND", True) if cu_seqlens_q is not None else ("BSND", False)
 
 
-def _qli_newapi_build_metadata(q, k, layout_q, layout_k, cu_seqlens_q, seqused_k, cmp_residual_k,
-                               topk, quant_mode, mask_mode, cmp_ratio):
+def _qli_newapi_build_metadata(
+    q,
+    k,
+    layout_q,
+    layout_k,
+    cu_seqlens_q,
+    seqused_k,
+    cmp_residual_k,
+    topk,
+    quant_mode,
+    mask_mode,
+    cmp_ratio,
+):
     # 本后端主算子 metadata 必传; 新规范调用方不传时按 shape 自动推导。
     # 注: max_seqlen_q/k 需要标量, 此处 .item() 触发一次主机同步 (调用方可自行预生成 metadata 传入绕过)。
     num_heads_q = int(q.shape[1])  # N1 (q 恒 3 维)
-    num_heads_k = int(k.shape[2])  # N2 (k 为 PA 物理池布局 (block_num, block_size, N2, D))
+    num_heads_k = int(
+        k.shape[2]
+    )  # N2 (k 为 PA 物理池布局 (block_num, block_size, N2, D))
     head_dim = int(q.shape[2])
     if layout_q == "TND":
         batch_size = int(cu_seqlens_q.numel()) - 1
@@ -459,14 +479,29 @@ def _qli_newapi_build_metadata(q, k, layout_q, layout_k, cu_seqlens_q, seqused_k
         max_seqlen_q = int(q.shape[0])
     max_seqlen_k = int(seqused_k.max().item())
     return quant_lightning_indexer_metadata(
-        num_heads_q, num_heads_k, head_dim, topk, quant_mode,
-        cu_seqlens_q=cu_seqlens_q, cu_seqlens_k=None, seqused_q=None, seqused_k=seqused_k,
-        cmp_residual_k=cmp_residual_k, batch_size=batch_size,
-        max_seqlen_q=max_seqlen_q, max_seqlen_k=max_seqlen_k,
-        layout_q=layout_q, layout_k=layout_k, mask_mode=mask_mode, cmp_ratio=cmp_ratio)
+        num_heads_q,
+        num_heads_k,
+        head_dim,
+        topk,
+        quant_mode,
+        cu_seqlens_q=cu_seqlens_q,
+        cu_seqlens_k=None,
+        seqused_q=None,
+        seqused_k=seqused_k,
+        cmp_residual_k=cmp_residual_k,
+        batch_size=batch_size,
+        max_seqlen_q=max_seqlen_q,
+        max_seqlen_k=max_seqlen_k,
+        layout_q=layout_q,
+        layout_k=layout_k,
+        mask_mode=mask_mode,
+        cmp_ratio=cmp_ratio,
+    )
 
 
-def _qli_newapi_block_length(q, k, cu_seqlens_q, seqused_k, cmp_residual_k, cmp_ratio, mask_mode):
+def _qli_newapi_block_length(
+    q, k, cu_seqlens_q, seqused_k, cmp_residual_k, cmp_ratio, mask_mode
+):
     # source 第 4 输出 (T1, N2): 每行实际参与搜索的 key 长度 (mask 规则与 key 长度取小)。
     # mask_mode=3 (causal): vl(i) = clamp((act_k - S1 + i + 1) // cmp_ratio, 0, K),
     #   act_k = K * cmp_ratio + residual 为未压缩原始 key 长度, i 为 batch 内行号 (与 golden 同公式);
@@ -475,11 +510,17 @@ def _qli_newapi_block_length(q, k, cu_seqlens_q, seqused_k, cmp_residual_k, cmp_
     t1 = int(q.shape[0])
     n2 = int(k.shape[2])
     s2_t = seqused_k.to(torch.int64)  # (B,) 每 batch key 有效长度
-    res_t = cmp_residual_k.to(torch.int64) if cmp_residual_k is not None else torch.zeros_like(s2_t)
+    res_t = (
+        cmp_residual_k.to(torch.int64)
+        if cmp_residual_k is not None
+        else torch.zeros_like(s2_t)
+    )
     act_k_t = s2_t * int(cmp_ratio) + res_t
     if cu_seqlens_q is not None:  # TND 变长拼接
         cu_q = cu_seqlens_q.to(torch.int64)
-        row_b = torch.repeat_interleave(torch.arange(s2_t.numel(), device=device), cu_q[1:] - cu_q[:-1])
+        row_b = torch.repeat_interleave(
+            torch.arange(s2_t.numel(), device=device), cu_q[1:] - cu_q[:-1]
+        )
         i_in_b = torch.arange(t1, device=device) - cu_q[row_b]  # batch 内行号
         s1_row = (cu_q[1:] - cu_q[:-1])[row_b]  # 所在 batch 的 query 行数
     else:  # B=1 BSND
@@ -496,10 +537,26 @@ def _qli_newapi_block_length(q, k, cu_seqlens_q, seqused_k, cmp_residual_k, cmp_
 
 
 def quant_lightning_indexer_candidate_source(
-    q, k, w, q_descale, k_descale, topk, quant_mode, *,
-    cu_seqlens_q=None, seqused_q=None, cmp_residual_k=None, block_table=None,
-    metadata=None, max_seqlen_q=-1, mask_mode=0, cmp_ratio=1, return_value=False,
-    candidate_topk_blocks=-1, candidate_block_size=-1):
+    q,
+    k,
+    w,
+    q_descale,
+    k_descale,
+    topk,
+    quant_mode,
+    *,
+    cu_seqlens_q=None,
+    seqused_q=None,
+    cmp_residual_k=None,
+    block_table=None,
+    metadata=None,
+    max_seqlen_q=-1,
+    mask_mode=0,
+    cmp_ratio=1,
+    return_value=False,
+    candidate_topk_blocks=-1,
+    candidate_block_size=-1,
+):
     """新规范接口1 (source, 内部 candidate_mode=1): 输出候选块索引, 照常输出 sparse topk。
 
     q: (T1, N1, D); k: PA 物理池 (block_num, block_size, N2, D), 经 block_table 寻址;
@@ -509,46 +566,108 @@ def quant_lightning_indexer_candidate_source(
     本后端限制: block_table 必传 (key 仅支持 PA_BBND 分页布局); return_value=True 不支持
     (内部入口恒 False); candidate_topk_blocks / candidate_block_size 传 -1 (默认) 时取 2048 / 8。
     """
-    _qli_newapi_check(block_table is not None,
-                      "block_table is required on this backend (key only supports PA_BBND paged layout).")
-    _qli_newapi_check(not return_value, "return_value=True is not supported on this backend.")
-    _qli_newapi_check(seqused_q is not None,
-                      "seqused_q (per-batch key valid length) is required: candidate_block_length "
-                      "computation and varlen dispatch both depend on it.")
-    _qli_newapi_check(cu_seqlens_q is not None or int(seqused_q.numel()) == 1,
-                      "batch > 1 requires cu_seqlens_q (TND varlen layout); without it q is treated "
-                      "as B=1 BSND and the batch dimension would be lost.")
-    topk_blocks = 2048 if candidate_topk_blocks in (-1, None) else int(candidate_topk_blocks)
+    _qli_newapi_check(
+        block_table is not None,
+        "block_table is required on this backend (key only supports PA_BBND paged layout).",
+    )
+    _qli_newapi_check(
+        not return_value, "return_value=True is not supported on this backend."
+    )
+    _qli_newapi_check(
+        seqused_q is not None,
+        "seqused_q (per-batch key valid length) is required: candidate_block_length "
+        "computation and varlen dispatch both depend on it.",
+    )
+    _qli_newapi_check(
+        cu_seqlens_q is not None or int(seqused_q.numel()) == 1,
+        "batch > 1 requires cu_seqlens_q (TND varlen layout); without it q is treated "
+        "as B=1 BSND and the batch dimension would be lost.",
+    )
+    topk_blocks = (
+        2048 if candidate_topk_blocks in (-1, None) else int(candidate_topk_blocks)
+    )
     block_size = 8 if candidate_block_size in (-1, None) else int(candidate_block_size)
     layout_q, is_tnd = _qli_newapi_layout(cu_seqlens_q)
     if is_tnd:  # TND: q/w/q_descale 均无 batch 维, 直传
         q_in, w_in, q_descale_in = q, w, q_descale
     else:  # B=1 BSND: 内部入口需要 batch 维
         _qli_newapi_check(q.dim() == 3, "q must be 3-D (T1, N1, D).")
-        q_in, w_in, q_descale_in = q.unsqueeze(0), w.unsqueeze(0), q_descale.unsqueeze(0)
+        q_in, w_in, q_descale_in = (
+            q.unsqueeze(0),
+            w.unsqueeze(0),
+            q_descale.unsqueeze(0),
+        )
     if metadata is None:  # 本后端主算子 metadata 必传, 自动推导
-        metadata = _qli_newapi_build_metadata(q, k, layout_q, "PA_BBND", cu_seqlens_q, seqused_q,
-                                              cmp_residual_k, topk, quant_mode, mask_mode, cmp_ratio)
+        metadata = _qli_newapi_build_metadata(
+            q,
+            k,
+            layout_q,
+            "PA_BBND",
+            cu_seqlens_q,
+            seqused_q,
+            cmp_residual_k,
+            topk,
+            quant_mode,
+            mask_mode,
+            cmp_ratio,
+        )
     idx, vals, cand = quant_lightning_indexer_candidate(
-        q_in, k, w_in, q_descale_in, k_descale, topk, quant_mode,
+        q_in,
+        k,
+        w_in,
+        q_descale_in,
+        k_descale,
+        topk,
+        quant_mode,
         candidate_topk_index=None,
-        cu_seqlens_q=cu_seqlens_q, cu_seqlens_k=None, seqused_q=None, seqused_k=seqused_q,
-        cmp_residual_k=cmp_residual_k, block_table=block_table, output_idx_offset=None,
-        metadata=metadata, max_seqlen_q=max_seqlen_q, layout_q=layout_q, layout_k="PA_BBND",
-        mask_mode=mask_mode, cmp_ratio=cmp_ratio,
-        candidate_mode=1, candidate_topk_blocks=topk_blocks, candidate_block_size=block_size)
+        cu_seqlens_q=cu_seqlens_q,
+        cu_seqlens_k=None,
+        seqused_q=None,
+        seqused_k=seqused_q,
+        cmp_residual_k=cmp_residual_k,
+        block_table=block_table,
+        output_idx_offset=None,
+        metadata=metadata,
+        max_seqlen_q=max_seqlen_q,
+        layout_q=layout_q,
+        layout_k="PA_BBND",
+        mask_mode=mask_mode,
+        cmp_ratio=cmp_ratio,
+        candidate_mode=1,
+        candidate_topk_blocks=topk_blocks,
+        candidate_block_size=block_size,
+    )
     if not is_tnd:
         idx, cand = idx.squeeze(0), cand.squeeze(0)  # (1,T1,N2,*) -> (T1,N2,*)
-    block_length = _qli_newapi_block_length(q, k, cu_seqlens_q, seqused_q, cmp_residual_k,
-                                            cmp_ratio, mask_mode)
+    block_length = _qli_newapi_block_length(
+        q, k, cu_seqlens_q, seqused_q, cmp_residual_k, cmp_ratio, mask_mode
+    )
     return idx, vals, cand, block_length
 
 
 def quant_lightning_indexer_candidate_consumer(
-    q, k, w, q_descale, k_descale, candidate_block_indices, candidate_block_length, topk, quant_mode, *,
-    cu_seqlens_q=None, seqused_q=None, cmp_residual_k=None, block_table=None,
-    output_idx_offset=None, metadata=None, max_seqlen_q=-1, mask_mode=0, cmp_ratio=1,
-    return_value=False, candidate_block_size=8):
+    q,
+    k,
+    w,
+    q_descale,
+    k_descale,
+    candidate_block_indices,
+    candidate_block_length,
+    topk,
+    quant_mode,
+    *,
+    cu_seqlens_q=None,
+    seqused_q=None,
+    cmp_residual_k=None,
+    block_table=None,
+    output_idx_offset=None,
+    metadata=None,
+    max_seqlen_q=-1,
+    mask_mode=0,
+    cmp_ratio=1,
+    return_value=False,
+    candidate_block_size=8,
+):
     """新规范接口2 (consumer, 内部 candidate_mode=2): 在候选块内选 topk。
 
     candidate_block_indices: (T1, N2, cb) source 侧输出的候选块索引 (块级, 相对块号);
@@ -556,35 +675,80 @@ def quant_lightning_indexer_candidate_consumer(
     candidate_topk_blocks 由 candidate_block_indices.shape[-1] 推导 (新规范无此属性)。
     返回 (sparse_indices, sparse_values); 布局与内部一致: B=1 BSND (B,S1,N2,topk) / TND (T1,N2,topk)。
     """
-    _qli_newapi_check(block_table is not None,
-                      "block_table is required on this backend (key only supports PA_BBND paged layout).")
-    _qli_newapi_check(not return_value, "return_value=True is not supported on this backend.")
-    _qli_newapi_check(candidate_block_indices is not None,
-                      "candidate_block_indices is required (consumer input).")
-    _qli_newapi_check(candidate_block_indices.dim() == 3,
-                      "candidate_block_indices must be 3-D (T1, N2, candidate_topk_blocks).")
-    _qli_newapi_check(seqused_q is not None,
-                      "seqused_q (per-batch key valid length) is required: varlen dispatch depends on it.")
-    _qli_newapi_check(cu_seqlens_q is not None or int(seqused_q.numel()) == 1,
-                      "batch > 1 requires cu_seqlens_q (TND varlen layout); without it q is treated "
-                      "as B=1 BSND and the batch dimension would be lost.")
+    _qli_newapi_check(
+        block_table is not None,
+        "block_table is required on this backend (key only supports PA_BBND paged layout).",
+    )
+    _qli_newapi_check(
+        not return_value, "return_value=True is not supported on this backend."
+    )
+    _qli_newapi_check(
+        candidate_block_indices is not None,
+        "candidate_block_indices is required (consumer input).",
+    )
+    _qli_newapi_check(
+        candidate_block_indices.dim() == 3,
+        "candidate_block_indices must be 3-D (T1, N2, candidate_topk_blocks).",
+    )
+    _qli_newapi_check(
+        seqused_q is not None,
+        "seqused_q (per-batch key valid length) is required: varlen dispatch depends on it.",
+    )
+    _qli_newapi_check(
+        cu_seqlens_q is not None or int(seqused_q.numel()) == 1,
+        "batch > 1 requires cu_seqlens_q (TND varlen layout); without it q is treated "
+        "as B=1 BSND and the batch dimension would be lost.",
+    )
     topk_blocks = int(candidate_block_indices.shape[-1])
     layout_q, is_tnd = _qli_newapi_layout(cu_seqlens_q)
     if is_tnd:
         q_in, w_in, q_descale_in, cand_in = q, w, q_descale, candidate_block_indices
     else:
         _qli_newapi_check(q.dim() == 3, "q must be 3-D (T1, N1, D).")
-        q_in, w_in, q_descale_in = q.unsqueeze(0), w.unsqueeze(0), q_descale.unsqueeze(0)
+        q_in, w_in, q_descale_in = (
+            q.unsqueeze(0),
+            w.unsqueeze(0),
+            q_descale.unsqueeze(0),
+        )
         cand_in = candidate_block_indices.unsqueeze(0)  # (1, T1, N2, cb)
     if metadata is None:
-        metadata = _qli_newapi_build_metadata(q, k, layout_q, "PA_BBND", cu_seqlens_q, seqused_q,
-                                              cmp_residual_k, topk, quant_mode, mask_mode, cmp_ratio)
+        metadata = _qli_newapi_build_metadata(
+            q,
+            k,
+            layout_q,
+            "PA_BBND",
+            cu_seqlens_q,
+            seqused_q,
+            cmp_residual_k,
+            topk,
+            quant_mode,
+            mask_mode,
+            cmp_ratio,
+        )
     idx, vals, _ = quant_lightning_indexer_candidate(
-        q_in, k, w_in, q_descale_in, k_descale, topk, quant_mode,
+        q_in,
+        k,
+        w_in,
+        q_descale_in,
+        k_descale,
+        topk,
+        quant_mode,
         candidate_topk_index=cand_in,
-        cu_seqlens_q=cu_seqlens_q, cu_seqlens_k=None, seqused_q=None, seqused_k=seqused_q,
-        cmp_residual_k=cmp_residual_k, block_table=block_table, output_idx_offset=output_idx_offset,
-        metadata=metadata, max_seqlen_q=max_seqlen_q, layout_q=layout_q, layout_k="PA_BBND",
-        mask_mode=mask_mode, cmp_ratio=cmp_ratio,
-        candidate_mode=2, candidate_topk_blocks=topk_blocks, candidate_block_size=int(candidate_block_size))
+        cu_seqlens_q=cu_seqlens_q,
+        cu_seqlens_k=None,
+        seqused_q=None,
+        seqused_k=seqused_q,
+        cmp_residual_k=cmp_residual_k,
+        block_table=block_table,
+        output_idx_offset=output_idx_offset,
+        metadata=metadata,
+        max_seqlen_q=max_seqlen_q,
+        layout_q=layout_q,
+        layout_k="PA_BBND",
+        mask_mode=mask_mode,
+        cmp_ratio=cmp_ratio,
+        candidate_mode=2,
+        candidate_topk_blocks=topk_blocks,
+        candidate_block_size=int(candidate_block_size),
+    )
     return idx, vals

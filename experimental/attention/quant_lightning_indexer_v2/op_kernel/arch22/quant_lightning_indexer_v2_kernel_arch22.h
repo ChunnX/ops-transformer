@@ -112,7 +112,7 @@ protected:
     uint64_t weightsCoreOffset = 0ULL;
     uint64_t indiceOutCoreOffset = 0ULL;
     uint64_t candidateOutCoreOffset = 0ULL;
-    uint64_t outputIdxOffsetCoreOffset = 0ULL;  // A15
+    uint64_t outputIdxOffsetCoreOffset = 0ULL; // A15
     uint32_t coreZeroEnable = 1U;
 
     // ================================Global Buffer区=================================
@@ -124,7 +124,7 @@ protected:
     GlobalTensor<int32_t> candidateTopkIndexInGm;
     GlobalTensor<int32_t> candidateTopkIndexOutGm;
     GlobalTensor<int32_t> blockTableGm;
-    GlobalTensor<int32_t> outputIdxOffsetGm;  // A15: 每行输出索引偏移
+    GlobalTensor<int32_t> outputIdxOffsetGm; // A15: 每行输出索引偏移
 
     GlobalTensor<uint32_t> actualSeqLengthsGmQ;
     GlobalTensor<uint32_t> actualSeqLengthsGm;
@@ -182,7 +182,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::InitTilingData(const QLIV2TilingDat
     constInfo.attenMaskFlag = (tilingData->sparseMode == 3);
     constInfo.kCacheBlockSize = tilingData->blockSize;
     constInfo.maxBlockNumPerBatch = tilingData->maxBlockNumPerBatch;
-    constInfo.keyStride0 = tilingData->keyStride0;                     // A11: key 0轴非连续
+    constInfo.keyStride0 = tilingData->keyStride0; // A11: key 0轴非连续
     constInfo.keyDequantScaleStride0 = tilingData->keyDequantScaleStride0;
     constInfo.sparseCount = tilingData->sparseCount;
     constInfo.cmpRatio = tilingData->cmpRatio;
@@ -507,7 +507,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::Init(
         if (constInfo.candidateMode == CANDIDATE_MODE_SOURCE && candidateTopkIndexOut != nullptr) {
             candidateTopkIndexOutGm.SetGlobalBuffer((__gm__ int32_t *)candidateTopkIndexOut);
         }
-        if (outputIdxOffset != nullptr) {  // A15: 使能 output_idx_offset (参照 arch35)
+        if (outputIdxOffset != nullptr) { // A15: 使能 output_idx_offset (参照 arch35)
             outputIdxOffsetGm.SetGlobalBuffer((__gm__ int32_t *)outputIdxOffset);
         }
         // A15: 有效标志须与 tensor 一并传给 vector (InitParams 已先值拷贝 constInfo, 此处再改标志不生效)

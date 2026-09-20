@@ -189,8 +189,8 @@ __aicore__ inline void ExtractIndex(const LocalTensor<uint32_t> &idxULocal, cons
   跨 tile/跨行对累加器的下一次 MrgSort 读存在调度敏感竞态 (实测多 tile 场景 tile1 读到 tile0 stale
   数据, 累加器出现 -inf 位型+8k 垃圾且 tile1 块整段缺失)。纯 V 回拷全程受 PipeBarrier 约束。
  */
-__aicore__ inline void MergeSortVecCopy(const LocalTensor<float> &mrgDst, int32_t mrgDstNum,
-                                        LocalTensor<float> &mrgSrc, int32_t mrgSrcNum, LocalTensor<float> &tmpTensor)
+__aicore__ inline void MergeSortVecCopy(const LocalTensor<float> &mrgDst, int32_t mrgDstNum, LocalTensor<float> &mrgSrc,
+                                        int32_t mrgSrcNum, LocalTensor<float> &tmpTensor)
 {
     AscendC::MrgSort4Info params;
     params.elementLengths[0] = mrgSrcNum;
