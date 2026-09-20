@@ -65,6 +65,8 @@ constexpr int32_t IDX_B_LOW = 6;
 
 constexpr uint32_t X1_INDEX = 0;
 constexpr uint32_t X2_INDEX = 1;
+constexpr uint64_t APACE_KERNEL_ALIGN_M = 256;
+constexpr uint32_t APACE_TAIL_ALIGN = 16;
 } // namespace
 
 static constexpr int64_t CMP_MAX_LEN = 7;
@@ -311,7 +313,7 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckMXFPScaleInput()
                     .c_str()),
             return ge::GRAPH_FAILED);
     }
-    scale1kSpaceSize_ = args_.rankDim * scale1FirstDim * scale1SecondDim * sizeof(ge::DT_FLOAT8_E8M0);
+    scale1kSpaceSize_ = args_.rankDim * scale1FirstDim * scale1SecondDim * scale1ThirdDim * sizeof(uint8_t);
     OP_LOGI(opName_, "scale1kSpaceSize_=%lu.", scale1kSpaceSize_);
     return ge::GRAPH_SUCCESS;
 }
@@ -369,6 +371,7 @@ ge::graphStatus AllGatherQuantBmmTiling::SetQuantScene()
                (scaleInv2Shape->GetStorageShape().GetDimNum() == DIM_NUM_IS_THREE) &&
                (scaleInv1Desc->GetDataType() == ge::DataType::DT_FLOAT8_E8M0)) {
         quantMmMode_ = mc2tiling::Mc2QuantMode::PERTENSOR_MODE;
+        isMxScene_ = true;
         return ge::GRAPH_SUCCESS;
     } else if ((scaleInv1Shape->GetStorageShape().GetDimNum() == DIM_NUM_IS_TWO) &&
                (scaleInv2Shape->GetStorageShape().GetDimNum() == DIM_NUM_IS_TWO) &&
@@ -554,15 +557,125 @@ ge::graphStatus AllGatherQuantBmmTiling::DoOpTiling()
     if (quantMmMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE) {
         PostDoSplitMTiling(MutableRCSTilingDataA5(), GetQuantScene());
     }
+    DoAllGatherTiling(MutableRCSTilingDataA5(), MutableTCubeTileTilingData(), MutableTCubeTailTilingData(),
+                      allGatherMatmulTilingDataFp8_->debugMode, allGatherMatmulTilingDataFp8_->dataType);
     // 通信配置放在切分之后：单轮通信量依赖切分结果 tileMValue_（对齐 alltoall 先切分后配置的时序）
     OP_TILING_CHECK(SetMc2Hcomm() != ge::GRAPH_SUCCESS, OP_LOGE(opName_, "Tiling SetHcommCfg failed."),
                     return ge::GRAPH_FAILED);
-    if (args_.nValue != 0) {
-        MC2_CHECK_LOG_RET(opName_, DoAdaptSlidWindowTiling());
+    if (isMxScene_) {
+        MC2_CHECK_LOG_RET(opName_, DoApaceMatmulTiling());
+    } else {
+        if (args_.nValue != 0) {
+            MC2_CHECK_LOG_RET(opName_, DoAdaptSlidWindowTiling());
+        }
     }
-    DoAllGatherTiling(MutableRCSTilingDataA5(), MutableTCubeTileTilingData(), MutableTCubeTailTilingData(),
-                      allGatherMatmulTilingDataFp8_->debugMode, allGatherMatmulTilingDataFp8_->dataType);
     return ge::GRAPH_SUCCESS;
+}
+
+void AllGatherQuantBmmTiling::SetHcommTilingInfo()
+{
+    auto &param = MutableRCSTilingDataA5();
+    hcommTilingData_.commTile.splitAxisTileSize = tileMValue_;
+    hcommTilingData_.commTile.splitAxisTileCnt = param.tileCnt;
+    hcommTilingData_.commTile.splitAxisTailSize = param.tailM;
+    hcommTilingData_.commTile.splitAxisTailCnt = param.tailCnt;
+    hcommTilingData_.commTile.nonSplitAxisSize = args_.kValue;
+}
+
+ge::graphStatus AllGatherQuantBmmTiling::DoApaceMatmulTiling()
+{
+    auto &param = MutableRCSTilingDataA5();
+
+    CutResult cutRes{};
+    cutRes.longTileLen = (tileMValue_ > 0) ? tileMValue_ : args_.mValue;
+    cutRes.numLongTile = param.tileCnt;
+    cutRes.shortTileLen = param.tailM;
+    cutRes.numShortTile = param.tailCnt;
+    AlignApaceCutResForKernel(cutRes, args_.mValue);
+
+    param.tileCnt = static_cast<uint32_t>(cutRes.numLongTile);
+    tileMValue_ = cutRes.longTileLen;
+    param.tailM = static_cast<uint32_t>(cutRes.shortTileLen);
+    param.tailCnt = static_cast<uint32_t>(cutRes.numShortTile);
+
+    uint32_t tileM = static_cast<uint32_t>(tileMValue_);
+    uint32_t paddedTailM =
+        (param.tailM > 0) ?
+            static_cast<uint32_t>((param.tailM + APACE_TAIL_ALIGN - 1) / APACE_TAIL_ALIGN * APACE_TAIL_ALIGN) :
+            0U;
+    uint32_t totalLogicalM =
+        static_cast<uint32_t>(args_.rankDim) * (param.tileCnt * tileM + param.tailCnt * paddedTailM);
+
+    // bias 与 A/B/scale 同样驻留 L1（kernel 侧 mmadFrag 按 params.isBias 接线 bias），tiling 预算须同步计入；
+    // hasBias 与 kernel 侧 isBias 同源（optional bias 输入的存在性，见 CheckBiasInput），bias dtype 与
+    // kernel 侧 BiasType 实例化一致（当前为 float），经类模板第三参数显式声明
+    bool hasBias = args_.isBias;
+
+    if (isFp4_) {
+        QuantMatmulTilingSwat<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1, mm::BiasDataType::DT_FLOAT>
+            tilingEngine;
+        tilingEngine.SetOptimizeEnable(false);
+        tilingEngine.SetMTailAlignEnable(true);
+        tilingEngine.SetAdjustBasicBlockEnable(false);
+        tilingEngine.SetBiasInfo(hasBias);
+        tilingEngine.GetTilingData(static_cast<uint64_t>(totalLogicalM), args_.nValue, args_.kValue, false,
+                                   args_.isBTrans, hcommTilingData_.mmTile);
+    } else {
+        QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN,
+                              mm::BiasDataType::DT_FLOAT>
+            tilingEngine;
+        tilingEngine.SetOptimizeEnable(false);
+        tilingEngine.SetMTailAlignEnable(true);
+        tilingEngine.SetAdjustBasicBlockEnable(false);
+        tilingEngine.SetBiasInfo(hasBias);
+        tilingEngine.GetTilingData(static_cast<uint64_t>(totalLogicalM), args_.nValue, args_.kValue, false,
+                                   args_.isBTrans, hcommTilingData_.mmTile);
+    }
+
+    OP_LOGI(opName_,
+            "DoApaceMatmulTiling: isFp4=%d, tileM=%u, tileCnt=%u, tailM=%u, tailCnt=%u, totalLogicalM=%u, "
+            "n=%lu, k=%lu, isBTrans=%d, usedCoreNum=%u",
+            isFp4_, tileM, param.tileCnt, param.tailM, param.tailCnt, totalLogicalM, args_.nValue, args_.kValue,
+            args_.isBTrans, hcommTilingData_.mmTile.usedCoreNum);
+    return ge::GRAPH_SUCCESS;
+}
+
+void AllGatherQuantBmmTiling::AlignApaceCutResForKernel(CutResult &cutRes, uint64_t mValue) const
+{
+    if (cutRes.longTileLen == 0 || mValue == 0) {
+        OP_LOGD(opName_, "AlignApaceCutResForKernel skip: longTileLen=%lu mValue=%lu", cutRes.longTileLen, mValue);
+        return;
+    }
+    uint64_t longTile = mc2tiling::AlignUp(cutRes.longTileLen, APACE_KERNEL_ALIGN_M);
+    if (longTile >= mValue) {
+        if (mValue >= APACE_KERNEL_ALIGN_M) {
+            // 保持 tileM 256 对齐（区域边界契约）：最大 256 对齐头块，余量走 tail（paddedTailM 16 对齐）
+            cutRes.longTileLen = mc2tiling::AlignDown(mValue, APACE_KERNEL_ALIGN_M);
+            cutRes.numLongTile = 1;
+            cutRes.shortTileLen = mValue - cutRes.longTileLen;
+            cutRes.numShortTile = (cutRes.shortTileLen > 0) ? 1 : 0;
+        } else {
+            // mValue < 256：无 256 对齐头块可用，整块走纯尾块路径（tileCnt=0，全 TAIL 区域）
+            cutRes.longTileLen = 0;
+            cutRes.numLongTile = 0;
+            cutRes.shortTileLen = mValue;
+            cutRes.numShortTile = 1;
+        }
+    } else {
+        cutRes.longTileLen = longTile;
+        cutRes.numLongTile = mValue / longTile;
+        uint64_t remainder = mValue % longTile;
+        if (remainder > 0) {
+            cutRes.shortTileLen = remainder;
+            cutRes.numShortTile = 1;
+        } else {
+            cutRes.shortTileLen = 0;
+            cutRes.numShortTile = 0;
+        }
+    }
+    cutRes.shortTileAtBack = true;
+    OP_LOGD(opName_, "AlignApaceCutResForKernel: longTile=%lu numLong=%lu shortTile=%lu numShort=%lu atBack=%d",
+            cutRes.longTileLen, cutRes.numLongTile, cutRes.shortTileLen, cutRes.numShortTile, cutRes.shortTileAtBack);
 }
 
 void AllGatherQuantBmmTiling::SetTilingKeyParams()
@@ -613,10 +726,11 @@ void AllGatherQuantBmmTiling::BuildWorkspaceLayout()
 ge::graphStatus AllGatherQuantBmmTiling::GetWorkspaceSize()
 {
     MC2_CHECK_LOG_RET(opName_, AllGatherMatmulTilingBase::GetWorkspaceSize());
-    // 当N=0时，Helper不执行，myWorkSpaceSize_未被设置，需要手动赋值
     // workspaceSize_包含：libApiWorkSpaceSize_ + storageA_(含gatherLen) + biasLen_
     // scale1kSpaceSize_为scale1通信所需空间
-    if (args_.nValue == 0) {
+    // MX场景不走DoAdaptSlidWindowTiling，myWorkSpaceSize_未被PostTiling设置，
+    // 需用workspaceSize_作为基线（含libApiWS+gatherLen），与非MX的N==0路径一致
+    if (isMxScene_ || args_.nValue == 0) {
         myWorkSpaceSize_ = workspaceSize_ + scale1kSpaceSize_;
     } else {
         myWorkSpaceSize_ = myWorkSpaceSize_ + MutableRCSTilingDataA5().gatherLen + scale1kSpaceSize_;
@@ -734,6 +848,31 @@ ge::graphStatus AllGatherQuantBmmTiling::PostTiling()
 #if MC2_DFX_ENABLE
     allGatherMatmulTilingDataFp8_->dumpInfo.workspaceLayout = workspaceLayout_;
 #endif
+    if (isMxScene_) {
+        // Hcomm 路径: 填充 hcommAllGatherMatmulTilingData 并输出
+        SetHcommTilingInfo();
+        hcommTilingData_.mc2InitTiling = allGatherMatmulTilingDataFp8_->mc2InitTiling;
+        hcommTilingData_.mc2CcTiling = allGatherMatmulTilingDataFp8_->mc2CcTiling;
+        hcommTilingData_.gatherLen = MutableRCSTilingDataA5().gatherLen;
+        Apace::hcommAllGatherMatmulTilingData *outTilingData =
+            context_->GetTilingData<Apace::hcommAllGatherMatmulTilingData>();
+        OP_TILING_CHECK(outTilingData == nullptr, OP_LOGE(opName_, "Fail to get hcomm tiling data from context"),
+                        return ge::GRAPH_FAILED);
+        size_t tilingBufCap = context_->GetRawTilingData()->GetCapacity();
+        OP_TILING_CHECK(tilingBufCap < sizeof(hcommTilingData_),
+                        OP_LOGE(opName_, "TilingBuffer capacity is too small, capacity = %zu, need = %zu.",
+                                tilingBufCap, sizeof(hcommTilingData_)),
+                        return ge::GRAPH_FAILED);
+        errno_t ret = memcpy_s(outTilingData, tilingBufCap, &hcommTilingData_, sizeof(hcommTilingData_));
+        OP_TILING_CHECK(ret != EOK, OP_LOGE(opName_, "PostTiling: memcpy_s hcomm tiling data failed, ret=%d.", ret),
+                        return ge::GRAPH_FAILED);
+        context_->GetRawTilingData()->SetDataSize(sizeof(Apace::hcommAllGatherMatmulTilingData));
+        context_->SetBlockDim(args_.aicCoreNum);
+        context_->SetScheduleMode(1);
+        OP_LOGI(opName_, "PostTiling: output hcommAllGatherMatmulTilingData, size=%zu.", sizeof(hcommTilingData_));
+        return ge::GRAPH_SUCCESS;
+    }
+
     OP_LOGD(opName_, "The final tiling data size=%zu and context capacity size=%zu ",
             sizeof(AllGatherMatmulTilingDataFp8), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(sizeof(AllGatherMatmulTilingDataFp8));
