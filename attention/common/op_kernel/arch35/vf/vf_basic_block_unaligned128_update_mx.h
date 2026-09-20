@@ -376,10 +376,10 @@ template <typename T, typename T2, typename pseShiftType, uint32_t s1BaseSize = 
           bool hasAtten = 0, PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE, bool hasDrop = 0, bool isMlaSgd = false,
           bool isMlaFullQuant = false, bool hasSink = false>
 __simd_vf__ void ProcessVec1UpdateGeneralImpl128Mxfp8FullquantVFSubloop1(
-    __ubuf__ T2 *expUb_u128u1, __ubuf__ T2 *x_expUb, __ubuf__ pseShiftType *pseUb, __ubuf__ T *maxUb, __ubuf__ T *maxUbStart,
-    __ubuf__ T *srcUb, __ubuf__ T *expMaxUb, __ubuf__ T *inMaxUb, __ubuf__ T *expSumUb, __ubuf__ T *inExpSumUb,
-    __ubuf__ T *tmpExpSumUb, __ubuf__ T *tmpExpSumUb2, __ubuf__ T *tmpMaxUb, __ubuf__ T *tmpMaxUb2,
-    __ubuf__ uint8_t *indexesUb, __ubuf__ uint32_t *maskUb, __ubuf__ uint32_t *maskUbUnroll,
+    __ubuf__ T2 *expUb_u128u1, __ubuf__ T2 *x_expUb, __ubuf__ pseShiftType *pseUb, __ubuf__ T *maxUb,
+    __ubuf__ T *maxUbStart, __ubuf__ T *srcUb, __ubuf__ T *expMaxUb, __ubuf__ T *inMaxUb, __ubuf__ T *expSumUb,
+    __ubuf__ T *inExpSumUb, __ubuf__ T *tmpExpSumUb, __ubuf__ T *tmpExpSumUb2, __ubuf__ T *tmpMaxUb,
+    __ubuf__ T *tmpMaxUb2, __ubuf__ uint8_t *indexesUb, __ubuf__ uint32_t *maskUb, __ubuf__ uint32_t *maskUbUnroll,
     __ubuf__ uint32_t *dropMaskUb, __ubuf__ fp8_e8m0_t *pScaleSubLoop0, __ubuf__ float *preLoopMaxUb,
     __ubuf__ float *preLoopSumUb, __ubuf__ float *firstLoopSumUb, const uint32_t nPadding, const uint32_t blockStride,
     const uint32_t dupStride, const uint32_t oriTailN, const uint32_t tailN, const float dScale, uint32_t pltOriTailN,
@@ -688,8 +688,9 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl128Mxfp8FullquantVFSubloop1(
                                                       (Reg::RegTensor<uint16_t> &)vreg_exp_even_f16,
                                                       (Reg::RegTensor<uint16_t> &)vreg_exp_odd_f16, preg_all_b16);
             Cast<T2, half, castTrait0>(vreg_exp_merge_tmp_int8_u128u1, vreg_exp_f16, preg_all_b16);
-            Reg::Pack<uint8_t, uint16_t, Reg::HighLowPart::LOWEST>((Reg::RegTensor<uint8_t> &)vreg_exp_merge_int8,
-                                                                   (Reg::RegTensor<uint16_t> &)vreg_exp_merge_tmp_int8_u128u1);
+            Reg::Pack<uint8_t, uint16_t, Reg::HighLowPart::LOWEST>(
+                (Reg::RegTensor<uint8_t> &)vreg_exp_merge_int8,
+                (Reg::RegTensor<uint16_t> &)vreg_exp_merge_tmp_int8_u128u1);
             StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
                 ((__ubuf__ int8_t *&)expUb_u128u1), vreg_exp_merge_int8, blockStride, dupStride, preg_all_b8_128);
         } else if constexpr (IsSameType<T2, hifloat8_t>::value) {
@@ -752,16 +753,17 @@ template <typename T, typename T2, typename pseShiftType, uint32_t s1BaseSize = 
           bool hasAtten = 0, PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE, bool hasDrop = 0, bool isMlaSgd = false,
           bool isMlaFullQuant = false, bool hasSink = false>
 __aicore__ inline void ProcessVec1UpdateGeneralImpl128Mxfp8Fullquant(
-    const LocalTensor<T2> &dstTensor_u128um, const LocalTensor<uint8_t> &indexesTensor, const LocalTensor<T> &expSumTensor,
-    const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor,
-    const LocalTensor<T> &inExpSumTensor, const LocalTensor<T> &inMaxTensor, const LocalTensor<uint8_t> &maskTensor,
-    const LocalTensor<pseShiftType> &pseTensor, const LocalTensor<uint8_t> &dropTensor,
-    const LocalTensor<fp8_e8m0_t> &pScaleSubLoop0Tensor, const LocalTensor<uint8_t> &sharedTmpBuffer,
-    const LocalTensor<float> &preLoopMaxTensor, const LocalTensor<float> &preLoopSumTensor,
-    const LocalTensor<float> &firstLoopSumTensor, uint32_t subLoop, const uint16_t m, const uint32_t originN,
-    const uint32_t pseStride, const float slopes, const float posShift, const T scale, const float dScaleQK,
-    const T minValue, float keepProb, const LocalTensor<T> &queryScaleUb = LocalTensor<T>(),
-    const float deSCaleKValue = 1.0f, const float sinkValue = 0.0f, const float pScale = 1.0f)
+    const LocalTensor<T2> &dstTensor_u128um, const LocalTensor<uint8_t> &indexesTensor,
+    const LocalTensor<T> &expSumTensor, const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
+    const LocalTensor<T> &expMaxTensor, const LocalTensor<T> &inExpSumTensor, const LocalTensor<T> &inMaxTensor,
+    const LocalTensor<uint8_t> &maskTensor, const LocalTensor<pseShiftType> &pseTensor,
+    const LocalTensor<uint8_t> &dropTensor, const LocalTensor<fp8_e8m0_t> &pScaleSubLoop0Tensor,
+    const LocalTensor<uint8_t> &sharedTmpBuffer, const LocalTensor<float> &preLoopMaxTensor,
+    const LocalTensor<float> &preLoopSumTensor, const LocalTensor<float> &firstLoopSumTensor, uint32_t subLoop,
+    const uint16_t m, const uint32_t originN, const uint32_t pseStride, const float slopes, const float posShift,
+    const T scale, const float dScaleQK, const T minValue, float keepProb,
+    const LocalTensor<T> &queryScaleUb = LocalTensor<T>(), const float deSCaleKValue = 1.0f,
+    const float sinkValue = 0.0f, const float pScale = 1.0f)
 {
     const uint32_t nPadding = (s2BaseSize + blockBytesU8 - 1) / blockBytesU8 * blockBytesU8;
     const uint32_t blockStride = s1BaseSize >> 1 | 0x1;

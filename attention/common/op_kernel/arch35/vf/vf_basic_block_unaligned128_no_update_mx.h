@@ -223,8 +223,8 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop0(
         Add(vreg_exp_sum, vreg_exp_even, vreg_exp_odd, preg_all_float);
         Reduce<Reg::ReduceType::SUM, float, float, Reg::MaskMergeMode::ZEROING>(vreg_exp_sum, vreg_exp_sum,
                                                                                 preg_all_float);
-        StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)expSumUb), vreg_exp_sum, ureg_exp_sum_u128nou0,
-                                                                1);
+        StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)expSumUb), vreg_exp_sum,
+                                                                ureg_exp_sum_u128nou0, 1);
         // dropmask compute
         if constexpr (hasDrop == 1) {
             LoadAlign<uint32_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::MaskDist::DIST_US>(
@@ -510,8 +510,8 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop1(
             StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)srcUb + floatRepSize + i * s2BaseSize,
                                                          vreg_sel_unroll_new, preg_tail_n);
             Max(vreg_max_tmp, vreg_sel, vreg_sel_unroll_new, preg_all);
-            Reduce<Reg::ReduceType::MAX, float, float, Reg::MaskMergeMode::ZEROING>(vreg_input_max_u128nou1, vreg_max_tmp,
-                                                                                    preg_all);
+            Reduce<Reg::ReduceType::MAX, float, float, Reg::MaskMergeMode::ZEROING>(vreg_input_max_u128nou1,
+                                                                                    vreg_max_tmp, preg_all);
         } else {
             Select(vreg_src_x_unroll_new, vreg_src_x_unroll, vreg_min_u128nou1, preg_ori_tail_n);
             StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)srcUb + i * s2BaseSize, vreg_src_x, preg_all);
@@ -519,8 +519,8 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop1(
                                                          vreg_src_x_unroll_new, preg_tail_n);
 
             Max(vreg_max_tmp, vreg_src_x, vreg_src_x_unroll_new, preg_all);
-            Reduce<Reg::ReduceType::MAX, float, float, Reg::MaskMergeMode::ZEROING>(vreg_input_max_u128nou1, vreg_max_tmp,
-                                                                                    preg_all);
+            Reduce<Reg::ReduceType::MAX, float, float, Reg::MaskMergeMode::ZEROING>(vreg_input_max_u128nou1,
+                                                                                    vreg_max_tmp, preg_all);
         }
         if constexpr (hasSink) {
             Max(vreg_input_max_u128nou1, vreg_input_max_u128nou1, vreg_sink_input_u128nou1, preg_all);
@@ -531,7 +531,8 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop1(
         Sub(vreg_input_max_u128nou1, vreg_input_max_u128nou1, vreg_ln_p_scale, preg_all);
         Compare<float, CMPMODE::LE>(preg_compare_max, vreg_input_max_u128nou1, vreg_min_u128nou1, preg_all);
         Select(vreg_input_max_u128nou1, vreg_min_u128nou1, vreg_input_max_u128nou1, preg_compare_max);
-        StoreUnAlign<T, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb), vreg_input_max_u128nou1, ureg_max, 1);
+        StoreUnAlign<T, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb), vreg_input_max_u128nou1,
+                                                            ureg_max, 1);
     }
     StoreUnAlignPost<T, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb), ureg_max, 0);
     RegTensor<float> vreg_in_max;
@@ -693,7 +694,8 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop1(
     Or((RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_0, (RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_0,
        (RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_1, preg_all_b8);
     Duplicate(vreg_p_scale_f8e8m0_1, 0x7f, preg_all_b8);
-    DeInterleave(vreg_p_scale_f8e8m0_dst0_u128nou1, vreg_p_scale_f8e8m0_dst1, vreg_p_scale_f8e8m0_0, vreg_p_scale_f8e8m0_1);
+    DeInterleave(vreg_p_scale_f8e8m0_dst0_u128nou1, vreg_p_scale_f8e8m0_dst1, vreg_p_scale_f8e8m0_0,
+                 vreg_p_scale_f8e8m0_1);
     StoreAlign<fp8_e8m0_t, Reg::StoreDist::DIST_NORM_B8>(((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0),
                                                          vreg_p_scale_f8e8m0_dst0_u128nou1, preg_all_b8);
 }
@@ -703,15 +705,15 @@ template <typename T, typename T2, typename pseShiftType, uint32_t s1BaseSize = 
           bool hasAtten = 0, PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE, bool hasDrop = 0, bool isMlaSgd = false,
           bool isMlaFullQuant = false, bool hasSink = false>
 __aicore__ inline void ProcessVec1NoUpdateGeneralImpl128Mxfp8Fullquant(
-    const LocalTensor<T2> &dstTensor_u128noum, const LocalTensor<uint8_t> &indexesTensor, const LocalTensor<T> &expSumTensor,
-    const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor,
-    const LocalTensor<T> &inExpSumTensor, const LocalTensor<T> &inMaxTensor, const LocalTensor<uint8_t> &maskTensor,
-    const LocalTensor<pseShiftType> &pseTensor, const LocalTensor<uint8_t> &dropTensor,
-    const LocalTensor<fp8_e8m0_t> &pScaleSubLoop0Tensor, const LocalTensor<uint8_t> &sharedTmpBuffer, uint32_t subLoop,
-    const uint16_t m, const uint32_t originN, const uint32_t pseStride, const float slopes, const float posShift,
-    const T scale, const float dScaleQK, const T minValue, float keepProb,
-    const LocalTensor<T> &queryScaleUb = LocalTensor<T>(), const float deSCaleKValue = 1.0f,
-    const float sinkValue = 0.0f, const float pScale = 1.0f)
+    const LocalTensor<T2> &dstTensor_u128noum, const LocalTensor<uint8_t> &indexesTensor,
+    const LocalTensor<T> &expSumTensor, const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
+    const LocalTensor<T> &expMaxTensor, const LocalTensor<T> &inExpSumTensor, const LocalTensor<T> &inMaxTensor,
+    const LocalTensor<uint8_t> &maskTensor, const LocalTensor<pseShiftType> &pseTensor,
+    const LocalTensor<uint8_t> &dropTensor, const LocalTensor<fp8_e8m0_t> &pScaleSubLoop0Tensor,
+    const LocalTensor<uint8_t> &sharedTmpBuffer, uint32_t subLoop, const uint16_t m, const uint32_t originN,
+    const uint32_t pseStride, const float slopes, const float posShift, const T scale, const float dScaleQK,
+    const T minValue, float keepProb, const LocalTensor<T> &queryScaleUb = LocalTensor<T>(),
+    const float deSCaleKValue = 1.0f, const float sinkValue = 0.0f, const float pScale = 1.0f)
 {
     // 写的时候固定用65或者33的stride去写，因为正向目前使能settail之后mm2的s1方向必须算满128或者64行
     // stride, high 16bits: blockStride (65*16*2/32)，单位block, low 16bits: repeatStride (1)
