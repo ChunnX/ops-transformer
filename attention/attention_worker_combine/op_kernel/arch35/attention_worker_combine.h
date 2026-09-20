@@ -68,6 +68,24 @@ public:
         dstGm.SetGlobalBuffer((__gm__ T *)y);
         dstNextLayerIdGm.SetGlobalBuffer((__gm__ int32_t *)next_layer_id);
 
+        // Debug branch: print the metadata actually consumed by the kernel.
+        if (GetBlockIdx() == 0) {
+            PRINTF("[AWC_DEBUG][kernel] layer=%d R=%lld K=%lld H=%lld schedule=%lld "
+                   "split=%d(0=BS,1=K,2=H) cores=%lld microSelected=%u\n",
+                   srcLayerIdGm.GetValue(0), static_cast<long long>(tilingData->BS),
+                   static_cast<long long>(tilingData->K), static_cast<long long>(tilingData->H),
+                   static_cast<long long>(tilingData->needSchedule), static_cast<int>(Split),
+                   static_cast<long long>(tilingData->usedCoreNum), micro_batch_id);
+            PRINTF("[AWC_DEBUG][address] tokenBase=0x%llx flagBase=0x%llx "
+                   "tokenOffsetBytes=%llu flagOffsetBytes=%llu\n",
+                   static_cast<unsigned long long>(token_data_addr),
+                   static_cast<unsigned long long>(token_info_addr),
+                   static_cast<unsigned long long>(micro_batch_id * tilingData->BS *
+                       (tilingData->K + 1) * tilingData->H * sizeof(T)),
+                   static_cast<unsigned long long>(micro_batch_id * tilingData->BS *
+                       (tilingData->K + 1) * sizeof(int32_t)));
+        }
+
         const int64_t inputRows = Split == NonquantSplit::BS ? tilingData->K + 1 :
                                   (Split == NonquantSplit::K ? tilingData->KSplitFactor : 1);
         pipe->InitBuffer(tokenDataQue, DOUBLE_BUFFER, inputRows * tilingData->HSplitFactor * sizeof(T));
@@ -87,6 +105,14 @@ public:
         const int64_t flagStart = bsStart * (tilingData->K + 1);
         const int64_t flagCount = bsCount * (tilingData->K + 1);
 
+        // Token ranges are half-open: [tokenBegin, tokenEnd).
+        PRINTF("[AWC_DEBUG][range] core=%lld bsCore=%lld hCore=%lld tokenBegin=%lld tokenEnd=%lld "
+               "flagBegin=%lld flagCount=%lld hTile=%lld kTile=%lld\n",
+               static_cast<long long>(blockId), static_cast<long long>(bsCore), static_cast<long long>(hCore),
+               static_cast<long long>(bsStart), static_cast<long long>(bsStart + bsCount),
+               static_cast<long long>(flagStart), static_cast<long long>(flagCount),
+               static_cast<long long>(tilingData->HSplitFactor), static_cast<long long>(tilingData->KSplitFactor));
+
         if (blockId == 0) {
             dstNextLayerIdGm.SetValue(0, srcLayerIdGm.GetValue(0) + 1);
             DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_ALL>(dstNextLayerIdGm);
@@ -94,6 +120,8 @@ public:
         if (tilingData->needSchedule == 1) {
             WaitForTokensReady(flagStart, flagCount);
         }
+        PRINTF("[AWC_DEBUG][ready] core=%lld microSelected=%u\n",
+               static_cast<long long>(blockId), micro_batch_id);
 
         for (int64_t row = bsStart; row < bsStart + bsCount; ++row) {
             if constexpr (Split == NonquantSplit::H) {
@@ -110,6 +138,10 @@ public:
                 ComputeTile(row, 0, tilingData->H);
             }
         }
+
+        PRINTF("[AWC_DEBUG][submitted] core=%lld tokenBegin=%lld tokenEnd=%lld\n",
+               static_cast<long long>(blockId), static_cast<long long>(bsStart),
+               static_cast<long long>(bsStart + bsCount));
 
         if (tilingData->needSchedule == 1) {
             PipeBarrier<PIPE_ALL>();
