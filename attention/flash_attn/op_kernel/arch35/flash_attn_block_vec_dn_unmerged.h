@@ -659,10 +659,18 @@ public:
             runInfo.actSingleLoopS2SizeAlign, static_cast<float>(constInfo_.scaleValue), negativeFloatScalar_,
             needMask);
         AscendC::PipeBarrier<PIPE_V>();
-        FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize, false, false, false, true>(
-            stage1CastTensor, sumUb, maxUb, mm1ResUbTensor, expUb, nullptr, attenMaskUb, runInfo.actMSizeAlign32 >> 1,
-            runInfo.actSingleLoopS2SizeAlign, runInfo.actSingleLoopS2Size, 1.0F, descaleQK, negativeFloatScalar_, 0.0F,
-            false);
+        if (runInfo.actVecMSize == 64U && (runInfo.actMSizeAlign32 >> 1) == 64U &&
+            runInfo.actSingleLoopS2Size == s2BaseSize && runInfo.actSingleLoopS2SizeAlign == s2BaseSize) {
+            FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize, false, true, false, true>(
+                stage1CastTensor, sumUb, maxUb, mm1ResUbTensor, expUb, nullptr, attenMaskUb,
+                runInfo.actMSizeAlign32 >> 1, runInfo.actSingleLoopS2SizeAlign, runInfo.actSingleLoopS2Size, 1.0F,
+                descaleQK, negativeFloatScalar_, 0.0F, false);
+        } else {
+            FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize, false, false, false, true>(
+                stage1CastTensor, sumUb, maxUb, mm1ResUbTensor, expUb, nullptr, attenMaskUb,
+                runInfo.actMSizeAlign32 >> 1, runInfo.actSingleLoopS2SizeAlign, runInfo.actSingleLoopS2Size, 1.0F,
+                descaleQK, negativeFloatScalar_, 0.0F, false);
+        }
 
         if (needMask) {
             Mutex::Unlock<PIPE_V>(UB_IN_MASK_EVENT0 + maskBufId);
