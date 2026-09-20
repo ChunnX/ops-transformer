@@ -89,6 +89,45 @@ __aicore__ inline void CastB16ToFp32Square(const LocalTensor<float> &dst, const 
     }
 }
 
+// 融合R6最后一路门控累加、低精度量化恢复和平方，只将低精度h_in与平方归约输入写回UB。
+template <typename T>
+__aicore__ inline void AxpyB16QuantizeAndSquare(const LocalTensor<T> &hInCache, const LocalTensor<float> &sqDst,
+                                                const LocalTensor<float> &acc, const LocalTensor<T> &src,
+                                                const LocalTensor<float> &scalars, uint32_t scalarIndex, uint32_t count)
+{
+    __local_mem__ T *hInCacheAddr = (__local_mem__ T *)hInCache.GetPhyAddr();
+    __local_mem__ float *sqDstAddr = (__local_mem__ float *)sqDst.GetPhyAddr();
+    __local_mem__ float *accAddr = (__local_mem__ float *)acc.GetPhyAddr();
+    __local_mem__ T *srcAddr = (__local_mem__ T *)src.GetPhyAddr();
+    __local_mem__ float *scalarAddr = (__local_mem__ float *)scalars.GetPhyAddr();
+    uint32_t remain = count;
+    const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
+    __VEC_SCOPE__
+    {
+        RegTensor<T> srcReg, quantizedReg;
+        RegTensor<float> srcFp32Reg, accReg, scalarReg, restoredReg, squareReg;
+        MaskReg mask;
+        DataCopy<float, LoadDist::DIST_BRC_B32>(scalarReg, scalarAddr + scalarIndex);
+        for (uint16_t i = 0; i < loops; ++i) {
+            mask = UpdateMask<float>(remain);
+            const uint32_t offset = static_cast<uint32_t>(i) * VL_FP32;
+            DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + offset);
+            Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
+            DataCopy<float, LoadDist::DIST_NORM>(accReg, accAddr + offset);
+            AscendC::Reg::MulAddDst(accReg, srcFp32Reg, scalarReg, mask);
+            if constexpr (IsSameT<T, bfloat16_t>::value) {
+                Cast<T, float, CAST_FP32_TO_B16_RINT>(quantizedReg, accReg, mask);
+            } else {
+                Cast<T, float, CAST_FP32_TO_B16_NONE>(quantizedReg, accReg, mask);
+            }
+            DataCopy<T, StoreDist::DIST_PACK_B32>(hInCacheAddr + offset, quantizedReg, mask);
+            Cast<float, T, CAST_B16_TO_FP32>(restoredReg, quantizedReg, mask);
+            AscendC::Reg::Mul(squareReg, restoredReg, restoredReg, mask);
+            DataCopy(sqDstAddr + offset, squareReg, mask);
+        }
+    }
+}
+
 // 在一个VF内恢复两路低精度数据并计算平方和，避免中间FP32结果写回UB。
 template <typename T>
 __aicore__ inline void PairSquareB16ToFp32(const LocalTensor<float> &dst, const LocalTensor<T> &src0,

@@ -98,16 +98,13 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
 // R6读取完当前x2分块后，复用首个head缓存保留低精度h_in。
 // 恢复FP32与平方在同一VF内完成，保留量化往返边界并减少UB中间写读。
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline float KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
-                                                         DUAL_SIBLING>::CacheHInAndReduceSumSq(uint32_t tOff,
-                                                                                               uint32_t tD,
-                                                                                               LocalTensor<float> hIn)
+__aicore__ inline float
+KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::CacheHInAndReduceSumSq(
+    uint32_t tOff, uint32_t tD, LocalTensor<float> hIn, LocalTensor<T> lastX2, LocalTensor<float> gateBuf)
 {
     LocalTensor<T> hInCache = bufX2Cache_.Get<T>()[tOff];
-    CastToIO(hInCache, hIn, tD);
-    PipeBarrier<PIPE_V>();
     LocalTensor<float> sqBuf = bufGamma2Fp32_.Get<float>();
-    MhcSandwichRegBase::CastB16ToFp32Square(sqBuf, hInCache, tD);
+    MhcSandwichRegBase::AxpyB16QuantizeAndSquare(hInCache, sqBuf, hIn, lastX2, gateBuf, N_MAX - 1U, tD);
     PipeBarrier<PIPE_V>();
     return ReduceSumPrecise(sqBuf, tD);
 }
@@ -264,8 +261,7 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
             for (uint32_t half = 0; half < 2; ++half) {
                 const uint32_t h0 = half * 2;
                 const uint32_t h1 = h0 + 1;
-                MhcSandwichRegBase::PairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff],
-                                                       x2Cache[h1 * D_ + tOff], tD);
+                MhcSandwichRegBase::PairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff], x2Cache[h1 * D_ + tOff], tD);
                 PipeBarrier<PIPE_V>();
                 midSqHalf[half] += ReduceSumPrecise(out, tD);
             }
@@ -300,8 +296,8 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
                 if (n + 1 < N_MAX) {
                     LoadGammaInto(gammaNext, gamma2Gm_, (n + 1) * D_ + tOff, tD);
                 }
-                MhcSandwichRegBase::CastB16ScaleAndMulGamma(x2[n * dimTile_], x2Cache[n * D_ + tOff],
-                                                           gammaCurrent, invRmsMid, tD);
+                MhcSandwichRegBase::CastB16ScaleAndMulGamma(x2[n * dimTile_], x2Cache[n * D_ + tOff], gammaCurrent,
+                                                            invRmsMid, tD);
                 PipeBarrier<PIPE_V>();
                 // 当前缓存会在两轮后再次由MTE2写入，前两轮显式建立V到MTE2依赖。
                 if (n + 2 < N_MAX) {
@@ -333,11 +329,11 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
         LocalTensor<float> gateBuf = bufScalar_.Get<float>()[EXP_DIV_ELEM];
         MhcSandwichRegBase::MulsB16WithUbScalar(hIn, x2Cache, gateBuf, 0U, tD);
         PipeBarrier<PIPE_V>();
-        for (uint32_t n = 1; n < N_MAX; ++n) {
+        for (uint32_t n = 1; n + 1U < N_MAX; ++n) {
             MhcSandwichRegBase::AxpyB16WithUbScalar(hIn, x2Cache[n * D_], gateBuf, n, tD);
             PipeBarrier<PIPE_V>();
         }
-        sumSq1 += CacheHInAndReduceSumSq(tOff, tD, hIn);
+        sumSq1 += CacheHInAndReduceSumSq(tOff, tD, hIn, x2Cache[(N_MAX - 1U) * D_], gateBuf);
     }
 
     // 第四遍：沿完整D轴计算R7并写最终输出。
