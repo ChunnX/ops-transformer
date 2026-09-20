@@ -285,64 +285,37 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
     if constexpr (USE_RMS_MID) {
         const float totalMidSq = midSqHalf[0] + midSqHalf[1];
         const float invRmsMid = 1.0f / sqrt(totalMidSq * invK_ + normEps_);
-        LocalTensor<float> gammaEven = bufGamma2Fp32_.Get<float>();
-        LocalTensor<float> gammaOdd = bufGamma0Fp32_.Get<float>();
-        LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
-        if (D_ <= GAMMA1_CACHE_MAX_D && dimLoop_ > 1U) {
-            // 两块现有gamma缓存分别容纳一个完整head，按head对处理全部D分块，
-            // 减少分块搬运的发射与事件次数，不增加UB占用。
-            FenceVToMte2();
-            for (uint32_t pair = 0; pair < N_MAX; pair += 2U) {
-                LoadGammaInto(gammaEven, gamma2Gm_, pair * D_, D_);
-                LoadGammaInto(gammaOdd, gamma2Gm_, (pair + 1U) * D_, D_);
+        for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
+            const uint32_t tD = GetTileD(tile);
+            const uint32_t tOff = tile * dimTile_;
+            // R3阶段gamma0缓存已经空闲，与gamma2缓存组成双缓冲；
+            // 首个gamma2搬运和x2缓存恢复重叠，后续搬运与前一head的Vector计算重叠。
+            LocalTensor<float> gammaEven = bufGamma2Fp32_.Get<float>();
+            LocalTensor<float> gammaOdd = bufGamma0Fp32_.Get<float>();
+            LoadGammaInto(gammaEven, gamma2Gm_, tOff, tD);
+            LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
+            for (uint32_t n = 0; n < N_MAX; ++n) {
+                LocalTensor<float> gammaCurrent = gammaEven;
+                LocalTensor<float> gammaNext = gammaOdd;
+                if ((n & 1U) != 0) {
+                    gammaCurrent = gammaOdd;
+                    gammaNext = gammaEven;
+                }
                 SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
                 WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-                for (uint32_t n = pair; n < pair + 2U; ++n) {
-                    LocalTensor<float> gammaCurrent = ((n & 1U) == 0U) ? gammaEven : gammaOdd;
-                    for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
-                        const uint32_t tD = GetTileD(tile);
-                        const uint32_t tOff = tile * dimTile_;
-                        MhcSandwichRegBase::CastB16ScaleAndMulGammaToB16(
-                            x2Cache[n * D_ + tOff], x2Cache[n * D_ + tOff], gammaCurrent[tOff], invRmsMid, tD);
-                        PipeBarrier<PIPE_V>();
-                    }
+                if (n + 1 < N_MAX) {
+                    LoadGammaInto(gammaNext, gamma2Gm_, (n + 1) * D_ + tOff, tD);
                 }
-                if (pair + 2U < N_MAX) {
+                MhcSandwichRegBase::CastB16ScaleAndMulGammaToB16(
+                    x2Cache[n * D_ + tOff], x2Cache[n * D_ + tOff], gammaCurrent, invRmsMid, tD);
+                PipeBarrier<PIPE_V>();
+                // 当前缓存会在两轮后再次由MTE2写入，前两轮显式建立V到MTE2依赖。
+                if (n + 2 < N_MAX) {
                     FenceVToMte2();
                 }
             }
-            for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
-                const uint32_t tD = GetTileD(tile);
-                const uint32_t tOff = tile * dimTile_;
-                CacheX2Tile(token, tOff, tD, true, false);
-                AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf);
-            }
-        } else {
-            for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
-                const uint32_t tD = GetTileD(tile);
-                const uint32_t tOff = tile * dimTile_;
-                // R3阶段gamma0缓存已经空闲，与gamma2缓存组成双缓冲；
-                // 首个gamma2搬运和x2缓存恢复重叠，后续搬运与前一head的Vector计算重叠。
-                LoadGammaInto(gammaEven, gamma2Gm_, tOff, tD);
-                for (uint32_t n = 0; n < N_MAX; ++n) {
-                    LocalTensor<float> gammaCurrent = ((n & 1U) == 0U) ? gammaEven : gammaOdd;
-                    LocalTensor<float> gammaNext = ((n & 1U) == 0U) ? gammaOdd : gammaEven;
-                    SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
-                    WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-                    if (n + 1U < N_MAX) {
-                        LoadGammaInto(gammaNext, gamma2Gm_, (n + 1U) * D_ + tOff, tD);
-                    }
-                    MhcSandwichRegBase::CastB16ScaleAndMulGammaToB16(
-                        x2Cache[n * D_ + tOff], x2Cache[n * D_ + tOff], gammaCurrent, invRmsMid, tD);
-                    PipeBarrier<PIPE_V>();
-                    // 当前缓存会在两轮后再次由MTE2写入，前两轮显式建立V到MTE2依赖。
-                    if (n + 2U < N_MAX) {
-                        FenceVToMte2();
-                    }
-                }
-                CacheX2Tile(token, tOff, tD, true, false);
-                AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf);
-            }
+            CacheX2Tile(token, tOff, tD, true, false);
+            AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf);
         }
     }
     FenceMte3ToV();
