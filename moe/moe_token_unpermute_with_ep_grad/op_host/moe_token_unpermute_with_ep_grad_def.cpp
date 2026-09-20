@@ -82,6 +82,7 @@ public:
             .NeedCheckSupportFlag(false)
             .ExtendCfgInfo("opFile.value", "moe_token_unpermute_with_ep_grad");
         this->AICore().AddConfig("ascend950", aicore_config);
+        this->AICore().AddConfig("ascend350", aicore_config);
     }
 };
 OP_ADD(MoeTokenUnpermuteWithEpGrad);
