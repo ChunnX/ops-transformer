@@ -13,7 +13,9 @@ if (BUILD_OPEN_PROJECT)
         mhc_pre_def.cpp
     )
 
-    if("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend950")
+    if("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend950" OR "${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend960dt")
+        # ascend960dt 与 ascend950 同属 arch35 指令集, 编译选项一致; kernel 侧 CV 核数比差异
+        # (950 为 1:2, 960dt 为 1:1)由 ccec 内置 __NPU_ARCH__ 宏(9201/9202)在代码内区分, 无需传参
         add_ops_compile_options(
             OP_NAME MhcPre
             COMPUTE_UNIT Ascend950PR_9599

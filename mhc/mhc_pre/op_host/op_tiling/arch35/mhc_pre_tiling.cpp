@@ -66,6 +66,7 @@ const constexpr size_t SYSTEM_WORKSPACE = 20 * 1024 * 1024;
 
 // Runtime scheduling configuration.
 const constexpr uint32_t SCHEDULE_MODE = 1;
+// AIC:AIV = 1:2 的既有平台核数比（ascend950/910b/910_93）；ascend960dt 为 1:1。
 const constexpr uint32_t AIV_AIC_RATIO = 2U;
 
 // Attributes and their accepted values.
@@ -572,11 +573,30 @@ ge::graphStatus MhcPreBaseTiling::InitPlatformMemory()
     blockDim_ = static_cast<uint32_t>(ascendcPlatform.GetCoreNumAic());
     aivBlockDim_ = static_cast<uint32_t>(ascendcPlatform.GetCoreNumAiv());
 
-    OP_CHECK_IF(
-        aivBlockDim_ != blockDim_ * AIV_AIC_RATIO,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "aivNum", std::to_string(aivBlockDim_).c_str(),
-                                              "MhcPre only support aivNum == aicNum * 2"),
-        return ge::GRAPH_FAILED);
+    // 平台指纹：NpuArch::DAV_9201 即 ascend960dt（与 950 的 DAV_3510 同 arch35 指令集，
+    // CV 核数比 1:1）。host tiling so 全 soc 共用一份，无法按平台宏隔离，只能运行时区分。
+    // kernel 侧差异（任务类型/AIV 配对折算）由 ccec 内置 __NPU_ARCH__ 宏(9201/9202)编译期隔离，
+    // 950 kernel 编译路径与原版一致。
+    const bool isAscend960DT = ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_9201;
+    if (!isAscend960DT) {
+        // 非 ascend960dt 平台保持原有校验：仅支持 AIC:AIV = 1:2
+        OP_CHECK_IF(
+            aivBlockDim_ != blockDim_ * AIV_AIC_RATIO,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "aivNum",
+                                                  std::to_string(aivBlockDim_).c_str(),
+                                                  "MhcPre only support aivNum == aicNum * 2"),
+            return ge::GRAPH_FAILED);
+        aivPerAic_ = AIV_AIC_RATIO;
+    } else {
+        // ascend960dt: CV 核数比 1:1，放开原 1:2 核数比校验
+        OP_CHECK_IF(
+            aivBlockDim_ != blockDim_,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "aivNum",
+                                                  std::to_string(aivBlockDim_).c_str(),
+                                                  "MhcPre only support aivNum == aicNum on ascend960dt"),
+            return ge::GRAPH_FAILED);
+        aivPerAic_ = 1U;
+    }
 
     ubSize_ = ubSize; // Save UB size for later validation
 
@@ -641,7 +661,7 @@ ge::graphStatus MhcPreBaseTiling::ParseEpsAttributes()
 bool MhcPreBaseTiling::CanUseMk() const
 {
     bool supportedN = N_ == N_VALID_VALUES[0] || N_ == N_VALID_VALUES[1] || N_ == N_VALID_VALUES[2];
-    uint64_t activeCoreNum = std::min<uint64_t>(blockDim_, aivBlockDim_ / 2U);
+    uint64_t activeCoreNum = std::min<uint64_t>(blockDim_, aivBlockDim_ / aivPerAic_);
     // Each M-K AIC owns one M tile; reject shapes that cannot be covered by all active AICs.
     uint64_t maxCoveredM = activeCoreNum * M_K_M_L1_MAX_SIZE;
     return supportedN && totalLength_ <= M_K_MAX_VALIDATED_TOTAL_LENGTH && totalLength_ <= maxCoveredM &&
@@ -691,7 +711,7 @@ ge::graphStatus MhcPreBaseTiling::CalculateMkTiling()
     auto ceilDiv = [](uint64_t value, uint64_t divisor) -> uint64_t { return (value + divisor - 1U) / divisor; };
     auto roundUp = [&ceilDiv](uint64_t value, uint64_t align) -> uint64_t { return ceilDiv(value, align) * align; };
 
-    uint64_t activeCoreNum = std::min<uint64_t>(blockDim_, aivBlockDim_ / 2U);
+    uint64_t activeCoreNum = std::min<uint64_t>(blockDim_, aivBlockDim_ / aivPerAic_);
     usedCoreNum_ = static_cast<uint32_t>(activeCoreNum);
     scaleMean_ = 1.0f / static_cast<float>(matK_);
     uint64_t minMDim = std::min<uint64_t>(activeCoreNum, ceilDiv(totalLength_, M_K_M_L1_MAX_SIZE));
@@ -804,6 +824,7 @@ void MhcPreBaseTiling::FillTilingData()
     tilingData_.set_hasGamma(hasGamma_);
     tilingData_.set_hasResi(hasResi_);
     tilingData_.set_implMode(implMode_);
+    tilingData_.set_aivPerAic(aivPerAic_);
 
     tilingData_.set_scaleMean(scaleMean_);
 }

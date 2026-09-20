@@ -89,7 +89,10 @@ public:
             .NeedCheckSupportFlag(false)
             .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
             .ExtendCfgInfo("opFile.value", "mhc_pre_apt");
+        // AICore().AddConfig 为 per-soc 注册点：ascend960dt 复用 ascend950 的同一份配置（同 arch35 指令集，
+        // CV 核数比差异 1:2/1:1 由 tiling 的 aivPerAic 参数化适配）
         this->AICore().AddConfig("ascend950", aicConfig);
+        this->AICore().AddConfig("ascend960dt", aicConfig);
 
         this->Attr("out_flag").AttrType(OPTIONAL).Int(0);
         this->Attr("norm_eps").AttrType(OPTIONAL).Float(1e-6f);

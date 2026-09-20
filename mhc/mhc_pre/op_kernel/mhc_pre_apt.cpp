@@ -12,7 +12,10 @@
  * \file mhc_pre_apt.cpp
  * \brief
  */
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
+// arch35 kernel 实现：ascend950(__CCE_AICORE__==310)与 ascend960dt(__NPU_ARCH__==9201/9202, 该平台
+// __CCE_AICORE__ 值非 310, 需按 __NPU_ARCH__ 放行, 否则 kernel 入口被整体裁掉导致编译报
+// "kernel entry not implement")
+#if (defined(__CCE_AICORE__) && __CCE_AICORE__ == 310) || (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202))
 #include "arch35/mhc_pre_common.h"
 #include "arch35/mhc_pre_split_bs.h"
 #include "arch35/mhc_pre_m_k_split.h"
@@ -30,7 +33,14 @@ __global__ __aicore__ void mhc_pre(GM_ADDR x, GM_ADDR phi, GM_ADDR alpha, GM_ADD
     GET_TILING_DATA(tilingData, tilingGM);
     __gm__ uint8_t *user = GetUserWorkspace(workspaceGM);
 
+    // 任务类型声明 AIC:AIV 配对组成，编译期确定，无法经 tiling 运行时切换：
+    // ascend950/910b/910_93 为 1:2（原值），ascend960dt 为 1:1。
+    // 按 ccec 内置 __NPU_ARCH__ 宏区分（960dt 系列 = 9201/9202），无需构建侧传参。
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202)
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
+#else
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+#endif
     TPipe pipe;
     if constexpr (TILING_MODE == MHC_PRE_SPLIT_BS) {
         InitParams initParams{x, phi, alpha, bias, gamma, hin, h_post,

@@ -13,7 +13,10 @@
  * \brief
  */
 
-#if !defined(__CCE_AICORE__) || __CCE_AICORE__ != 310
+// 非 arch35 平台(910b/910_93)的老 kernel 路径。ascend960dt(__NPU_ARCH__==9201/9202)的
+// __CCE_AICORE__ 值非 310, 但其 arch35 实现在 mhc_pre_apt.cpp, 此处须一并排除,
+// 否则 960dt 编译会误入老路径。
+#if !defined(__CCE_AICORE__) || (__CCE_AICORE__ != 310 && (!defined(__NPU_ARCH__) || (__NPU_ARCH__ != 9201 && __NPU_ARCH__ != 9202)))
 
 #include "kernel_operator.h"
 #include "kernel_operator_intf.h"
