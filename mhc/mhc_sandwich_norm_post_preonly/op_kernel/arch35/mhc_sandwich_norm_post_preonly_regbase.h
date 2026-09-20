@@ -66,29 +66,6 @@ __aicore__ inline void CastB16ToFp32(const LocalTensor<float> &dst, const LocalT
     }
 }
 
-// 第一遍R1在寄存器内完成低精度转FP32和平方，只把平方结果写回UB。
-template <typename T>
-__aicore__ inline void CastSquareB16ToFp32(const LocalTensor<float> &dst, const LocalTensor<T> &src, uint32_t count)
-{
-    __local_mem__ T *srcAddr = (__local_mem__ T *)src.GetPhyAddr();
-    __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();
-    uint32_t remain = count;
-    const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
-    __VEC_SCOPE__
-    {
-        RegTensor<T> srcReg;
-        RegTensor<float> srcFp32Reg, dstReg;
-        MaskReg mask;
-        for (uint16_t i = 0; i < loops; ++i) {
-            mask = UpdateMask<float>(remain);
-            DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + i * VL_FP32);
-            Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
-            AscendC::Reg::Mul(dstReg, srcFp32Reg, srcFp32Reg, mask);
-            DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
-        }
-    }
-}
-
 // 保持原有BF16使用RINT、FP16使用NONE的量化边界。
 template <typename T>
 __aicore__ inline void CastFp32ToB16(const LocalTensor<T> &dst, const LocalTensor<float> &src, uint32_t count)

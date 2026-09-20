@@ -250,8 +250,8 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        LoadHOutAndSquare((uint64_t)token * D_ + tOff, tD);
-        sumSq0 += ReduceSumPrecise(bufSqFp32_.Get<float>(), tD);
+        LoadHOutAndCast((uint64_t)token * D_ + tOff, tD);
+        sumSq0 += ReduceSumSq(bufHOutFp32_.Get<float>(), tD);
     }
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
 
