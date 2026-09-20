@@ -102,7 +102,7 @@ private:
     uint32_t channelsPerRank_{1};
     uint64_t ubSize_{0};
     uint32_t indicesBatchSize_{0};
-    uint32_t tileBytes_{TILE_BYTES};
+    uint32_t tileBytes_{TILE_BYTES_INFER_MAX};
     int64_t numTokens_{0};
     int64_t hiddenBytes_{0};
 
@@ -156,8 +156,8 @@ __aicore__ inline void EngramFetchArch35::Init(GM_ADDR commContext, GM_ADDR indi
     ubSize_ = tilingData->ubSize;
 
     tileBytes_ = AscendC::Ceil(static_cast<uint32_t>(hiddenBytes_), UB_ALIGN) * UB_ALIGN;
-    if (tileBytes_ > TILE_BYTES) {
-        tileBytes_ = TILE_BYTES;
+    if (tileBytes_ > TILE_BYTES_INFER_MAX) {
+        tileBytes_ = TILE_BYTES_INFER_MAX;
     }
 
     tpipe_->InitBuffer(hcommBuf_, HCOMM_INIT_SIZE);
@@ -179,7 +179,6 @@ __aicore__ inline void EngramFetchArch35::Init(GM_ADDR commContext, GM_ADDR indi
     uint32_t hcommHandleBufSize = AscendC::Ceil(numRanks_ * channelsPerRank_ * sizeof(uint64_t), UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(hcommHandleBuf_, hcommHandleBufSize);
 
-    constexpr uint64_t ubReserved = 8U * 1024U;
     // ScatterByRank 需要: indices + tokenIdxInRank + rankIDs + positions + divisor (各4字节) + mask(每元素1字节近似)
     uint32_t bytesPerIndice = sizeof(int32_t) + sizeof(uint32_t) + sizeof(int32_t) * 3U + 1U;
     uint64_t usedUb = HCOMM_INIT_SIZE + tileBytes_ * RELAY_BUFFER_NUM_INFER + ENGRAM_BATCH_BUFFER_BYTES +
