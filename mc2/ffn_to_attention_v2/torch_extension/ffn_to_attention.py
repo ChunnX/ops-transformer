@@ -126,13 +126,11 @@ def _get_hccl_comm_name(group, rank_id):
     return get_backend(torch.device("npu")).get_hccl_comm_name(rank_id, init_comm=False)
 
 
-def _calc_window_size(
-    token_info_table_shape, token_data_shape, world_size, max_token_num=-1
-):
+def _calc_window_size(token_info_table_shape, token_data_shape, world_size):
     """Calculate window capacity including flag sources, address tables and count rows."""
     _op_module = _ffn_to_attention_op_builder.load()
     return _op_module.get_ffn_to_attention_ccl_buffer_size(
-        token_info_table_shape, token_data_shape, world_size, max_token_num
+        token_info_table_shape, token_data_shape, world_size
     )
 
 
@@ -149,17 +147,9 @@ class FFNToAttentionBuffer:
         world_size: int,
         token_info_table_shape: List[int],
         token_data_shape: List[int],
-        *,
-        max_token_num: int = -1,
     ):
         if world_size != torch.distributed.get_world_size(group):
             raise ValueError("world_size must match the communication group size")
-        if (
-            not isinstance(max_token_num, int)
-            or isinstance(max_token_num, bool)
-            or max_token_num < -1
-        ):
-            raise ValueError("max_token_num must be an integer >= -1")
         self.group = group
         self.rank_id = torch.distributed.get_rank(group)
         self.group_name = _get_hccl_comm_name(group, self.rank_id)
@@ -167,16 +157,8 @@ class FFNToAttentionBuffer:
         self.token_info_table_shape = list(token_info_table_shape)
         self.token_data_shape = list(token_data_shape)
 
-        self.max_token_num = (
-            world_size
-            * self.token_info_table_shape[0]
-            * self.token_info_table_shape[1]
-            * self.token_info_table_shape[2]
-            if max_token_num == -1
-            else max_token_num
-        )
         required_buffer_size = _calc_window_size(
-            token_info_table_shape, token_data_shape, world_size, self.max_token_num
+            token_info_table_shape, token_data_shape, world_size
         )
         self.required_buffer_size = required_buffer_size
         self._capacity_shapes = (
@@ -231,8 +213,6 @@ def get_buffer_for_ffn_to_attention(
     world_size: int,
     token_info_table_shape: List[int],
     token_data_shape: List[int],
-    *,
-    max_token_num: int = -1,
 ) -> FFNToAttentionBuffer:
     """Create a communication buffer for ffn_to_attention.
 
@@ -245,9 +225,6 @@ def get_buffer_for_ffn_to_attention(
         world_size (int): Communication domain size.
         token_info_table_shape (List[int]): 3-element list [microBatchNum, BS, expertNumPerToken].
         token_data_shape (List[int]): 4-element list [microBatchNum, BS, expertNumPerToken, HS].
-        max_token_num (int): Capacity for x.shape[0], used to reserve rank address tables
-            in the window. Defaults to world_size * microBatchNum * BS * expertNumPerToken
-            when -1. Set this explicitly if a larger input capacity is needed.
 
     Returns:
         FFNToAttentionBuffer: Buffer holding the communication context, group
@@ -258,7 +235,6 @@ def get_buffer_for_ffn_to_attention(
         world_size,
         token_info_table_shape,
         token_data_shape,
-        max_token_num=max_token_num,
     )
 
 
