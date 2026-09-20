@@ -286,11 +286,11 @@ FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType, AntiquantVecBlockType
             if ASCEND_IS_AIV {
                 constInfo.attentionOutStride = (constInfo.n2G - 1) * constInfo.dSizeV * sizeof(OUTPUT_T);
                 if constexpr (isInfer) {
-                    if (inputParamsRegbase.isGqa && inputParamsRegbase.s1Size > 1) {
+                    if (inputParamsRegbase.isGqa) {
+                        constInfo.attentionOutStride = 0;
+                    } else if (inputParamsRegbase.isGqa && inputParamsRegbase.s1Size > 1) {
                         constInfo.attentionOutStride =
                             (constInfo.n2G - constInfo.gSize) * constInfo.dSizeV * sizeof(OUTPUT_T);
-                    } else if (inputParamsRegbase.isGqa) {
-                        constInfo.attentionOutStride = 0;
                     }
                 }
             }
