@@ -48,9 +48,35 @@ __simd_vf__ inline void VfSoftmaxFp16ToFp8VF(__ubuf__ T2 *pDst, __ubuf__ half *a
     RegTensor<T> accMaxLoad;              // accMax 槽加载
     MaskReg pregHalf = CreateMask<T, MaskPattern::ALL>();
 
-    // TODO(批次3.2-2): 4 路流式 max 归约
-    (void)curMax; (void)kCur; (void)kUsed; (void)normMax; (void)accMaxLoad;
-    (void)r0; (void)r1; (void)r2; (void)r3; (void)pDst; (void)pScale;
+    // ① 4 路流式 max 归约（镜像 mxfp8 高精 L1225-1231：max_k 累积行号 ≡ k (mod 4)）
+    Duplicate(max0, MIN_VALUE);
+    Duplicate(max1, MIN_VALUE);
+    Duplicate(max2, MIN_VALUE);
+    Duplicate(max3, MIN_VALUE);
+    for (uint32_t i = 0; i + 3 < validRows; i += 4) {
+        LoadAlign(r0, x + i * colStride);
+        LoadAlign(r1, x + (i + 1) * colStride);
+        LoadAlign(r2, x + (i + 2) * colStride);
+        LoadAlign(r3, x + (i + 3) * colStride);
+        Max(max0, max0, r0, pregHalf);
+        Max(max1, max1, r1, pregHalf);
+        Max(max2, max2, r2, pregHalf);
+        Max(max3, max3, r3, pregHalf);
+    }
+
+    // 尾行（validRows % 4 余量）逐行并入 max0——max 交换结合律，不破坏归并树
+    for (uint32_t i = validRows & ~3U; i < validRows; i++) {
+        LoadAlign(r0, x + i * colStride);
+        Max(max0, max0, r0, pregHalf);
+    }
+    // 树归并（镜像 mxfp8 高精 L1233-1235）：max0⊕max2, max1⊕max3 → 终归并
+    Max(max0, max0, max2, pregHalf);
+    Max(max1, max1, max3, pregHalf);
+    Max(curMax, max0, max1, pregHalf);
+
+    // TODO(批次3.2-4): 量化合并（Muls INV_LN2 → Truncate CEIL → Max accMax → 存储 → normMax）
+    (void)kCur; (void)kUsed; (void)normMax; (void)accMaxLoad;
+    (void)pDst; (void)pScale;
 }
 
 /*
