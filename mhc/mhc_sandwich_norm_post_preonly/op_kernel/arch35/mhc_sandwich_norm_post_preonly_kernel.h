@@ -106,9 +106,10 @@ public:
         pipe_.InitBuffer(bufHOutBf16_, BUFFER_NUM_ONE, dimTile_ * sizeof(T));
         pipe_.InitBuffer(bufGamma0Fp32_, dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufX2Fp32_, N_ * dimTile_ * sizeof(float));
-        // dimTile=2560时其余固定缓存共153952B；D=7168的完整低精度x2为57344B，
-        // 合计211296B，小于A5的256KiB UB上限。
+        // dimTile=2560时其余固定缓存共174432B；D=7168的完整低精度x2为57344B，
+        // 合计231776B，小于A5的256KiB UB上限。
         pipe_.InitBuffer(bufX2Cache_, K_ * sizeof(T));
+        pipe_.InitBuffer(bufResidualBf16_, 1, N_ * dimTile_ * sizeof(T));
         // 前四行先保存residual，之后复用为R4/R5的五行归约输入；第五行在前半程保存h_out，
         // h_out失效后再复用为R6/R7的h_in和通用输出暂存。
         pipe_.InitBuffer(bufResFp32_, (N_ + 1) * dimTile_ * sizeof(float));
@@ -209,6 +210,7 @@ private:
     TBuf<TPosition::VECCALC> bufGamma2Fp32_;
     TBuf<TPosition::VECCALC> bufX2Fp32_;
     TBuf<TPosition::VECCALC> bufX2Cache_;
+    TQue<TPosition::VECIN, 1> bufResidualBf16_;
     TBuf<TPosition::VECCALC> bufResFp32_;
     TBuf<TPosition::VECCALC> bufPostComb_;
     TQue<TPosition::VECIN, BUFFER_NUM_TWO> bufPhiFp32_;
