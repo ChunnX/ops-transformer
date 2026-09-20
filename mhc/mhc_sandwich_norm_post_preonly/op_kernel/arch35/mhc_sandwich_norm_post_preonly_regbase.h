@@ -172,59 +172,6 @@ __aicore__ inline void Axpy(const LocalTensor<float> &dst, const LocalTensor<flo
     }
 }
 
-// 在一个VF中完成一对head的点积归约；首个输出同时计算同一对head的平方和。
-template <bool CALC_SUM_SQ>
-__aicore__ inline void ReduceHalfDot(const LocalTensor<float> &sumSqOut, const LocalTensor<float> &dotOut,
-                                     const LocalTensor<float> &x0, const LocalTensor<float> &x1,
-                                     const LocalTensor<float> &phi0, const LocalTensor<float> &phi1, uint32_t count)
-{
-    __local_mem__ float *sumSqOutAddr = (__local_mem__ float *)sumSqOut.GetPhyAddr();
-    __local_mem__ float *dotOutAddr = (__local_mem__ float *)dotOut.GetPhyAddr();
-    __local_mem__ float *x0Addr = (__local_mem__ float *)x0.GetPhyAddr();
-    __local_mem__ float *x1Addr = (__local_mem__ float *)x1.GetPhyAddr();
-    __local_mem__ float *phi0Addr = (__local_mem__ float *)phi0.GetPhyAddr();
-    __local_mem__ float *phi1Addr = (__local_mem__ float *)phi1.GetPhyAddr();
-    uint32_t remain = count;
-    const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
-    __VEC_SCOPE__
-    {
-        RegTensor<float> x0Reg, x1Reg, phi0Reg, phi1Reg;
-        RegTensor<float> value0Reg, value1Reg, pairReg, partialReg;
-        RegTensor<float> sumSqReg, dotReg;
-        MaskReg maskAll = CreateMask<float, MaskPattern::ALL>();
-        Duplicate(dotReg, 0.0f, maskAll);
-        if constexpr (CALC_SUM_SQ) {
-            Duplicate(sumSqReg, 0.0f, maskAll);
-        }
-        for (uint16_t i = 0; i < loops; ++i) {
-            MaskReg mask = UpdateMask<float>(remain);
-            const uint32_t offset = static_cast<uint32_t>(i) * VL_FP32;
-            DataCopy<float, LoadDist::DIST_NORM>(x0Reg, x0Addr + offset);
-            DataCopy<float, LoadDist::DIST_NORM>(x1Reg, x1Addr + offset);
-            DataCopy<float, LoadDist::DIST_NORM>(phi0Reg, phi0Addr + offset);
-            DataCopy<float, LoadDist::DIST_NORM>(phi1Reg, phi1Addr + offset);
-
-            AscendC::Reg::Mul(value0Reg, x0Reg, phi0Reg, mask);
-            AscendC::Reg::Mul(value1Reg, x1Reg, phi1Reg, mask);
-            AscendC::Reg::Add(pairReg, value0Reg, value1Reg, mask);
-            Reduce<ReduceType::SUM>(partialReg, pairReg, mask);
-            AscendC::Reg::Add(dotReg, dotReg, partialReg, mask);
-
-            if constexpr (CALC_SUM_SQ) {
-                AscendC::Reg::Mul(value0Reg, x0Reg, x0Reg, mask);
-                AscendC::Reg::Mul(value1Reg, x1Reg, x1Reg, mask);
-                AscendC::Reg::Add(pairReg, value0Reg, value1Reg, mask);
-                Reduce<ReduceType::SUM>(partialReg, pairReg, mask);
-                AscendC::Reg::Add(sumSqReg, sumSqReg, partialReg, mask);
-            }
-        }
-        Store(dotOutAddr, dotReg, 1U);
-        if constexpr (CALC_SUM_SQ) {
-            Store(sumSqOutAddr, sumSqReg, 1U);
-        }
-    }
-}
-
 // clang-format off
 }
 // clang-format on
