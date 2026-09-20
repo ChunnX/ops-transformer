@@ -167,20 +167,23 @@ __simd_vf__ inline void UpdateExpSumAndExpMaxImplVF(__ubuf__ T *maxUb, __ubuf__ 
         RegTensor<float> vreg_exp_sum_update;
         MaskReg preg_all = CreateMask<half, MaskPattern::ALL>();
         // 注意：当m大于64的时候需要开启循环
-        LoadAlign(vreg_max, tmpMaxUb);
-        LoadAlign(vreg_in_max, inMaxUb);
-        ExpSub<float, half, RegLayout::ZERO>(vreg_exp_max_even_fp32, vreg_in_max, vreg_max, preg_all);
-        ExpSub<float, half, RegLayout::ONE>(vreg_exp_max_odd_fp32, vreg_in_max, vreg_max, preg_all);
-        Interleave(vreg_exp_max, vreg_exp_max_tmp, vreg_exp_max_even_fp32, vreg_exp_max_odd_fp32);
-        StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ float *&)expMaxUb, vreg_exp_max, preg_all);
-        StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>((__ubuf__ T *&)maxUb, vreg_max, preg_all);
+        uint16_t cnt = CeilDivision(m, 64);
+        for(int i = 0, i < cnt; i++){
+            LoadAlign(vreg_max, tmpMaxUb + i * 64);
+            LoadAlign(vreg_in_max, inMaxUb + i * 64);
+            ExpSub<float, half, RegLayout::ZERO>(vreg_exp_max_even_fp32, vreg_in_max, vreg_max, preg_all);
+            ExpSub<float, half, RegLayout::ONE>(vreg_exp_max_odd_fp32, vreg_in_max, vreg_max, preg_all);
+            Interleave(vreg_exp_max, vreg_exp_max_tmp, vreg_exp_max_even_fp32, vreg_exp_max_odd_fp32);
+            StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ float *&)expMaxUb + i * 64, vreg_exp_max, preg_all);
+            StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>((__ubuf__ T *&)maxUb + i * 64, vreg_max, preg_all);
 
-        // x_sum = exp_max * insum + x_sum
-        LoadAlign(vreg_in_exp_sum, (__ubuf__ float *&)inExpSumUb);
-        LoadAlign(vreg_exp_sum_brc, (__ubuf__ float *&)tmpExpSumUb);
-        Mul(vreg_exp_sum_update, vreg_exp_max, vreg_in_exp_sum, preg_all);
-        Add(vreg_exp_sum_update, vreg_exp_sum_update, vreg_exp_sum_brc, preg_all);
-        StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ float *&)expSumUb, vreg_exp_sum_update, preg_all);
+            // x_sum = exp_max * insum + x_sum
+            LoadAlign(vreg_in_exp_sum, (__ubuf__ float *&)inExpSumUb + i * 64);
+            LoadAlign(vreg_exp_sum_brc, (__ubuf__ float *&)tmpExpSumUb + i * 64);
+            Mul(vreg_exp_sum_update, vreg_exp_max, vreg_in_exp_sum, preg_all);
+            Add(vreg_exp_sum_update, vreg_exp_sum_update, vreg_exp_sum_brc, preg_all);
+            StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ float *&)expSumUb + i * 64, vreg_exp_sum_update, preg_all);
+        }
     } else {
         RegTensor<float> vreg_max;
         RegTensor<float> vreg_in_max;
@@ -191,18 +194,21 @@ __simd_vf__ inline void UpdateExpSumAndExpMaxImplVF(__ubuf__ T *maxUb, __ubuf__ 
         RegTensor<float> vreg_exp_sum_update;
         MaskReg preg_all = CreateMask<float, MaskPattern::ALL>();
         // 注意：当m大于64的时候需要开启循环
-        LoadAlign(vreg_max, tmpMaxUb);
-        LoadAlign(vreg_in_max, inMaxUb);
-        ExpSub(vreg_exp_max, vreg_in_max, vreg_max, preg_all);
-        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)expMaxUb, vreg_exp_max, preg_all);
-        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)maxUb, vreg_max, preg_all);
+        uint16_t cnt = CeilDivision(m, 64);
+        for(int i = 0, i < cnt; i++){
+            LoadAlign(vreg_max, tmpMaxUb + i * 64);
+            LoadAlign(vreg_in_max, inMaxUb + i * 64);
+            ExpSub(vreg_exp_max, vreg_in_max, vreg_max, preg_all);
+            StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)expMaxUb + i * 64, vreg_exp_max, preg_all);
+            StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)maxUb + i * 64, vreg_max, preg_all);
 
-        // x_sum = exp_max * insum + x_sum
-        LoadAlign(vreg_in_exp_sum, inExpSumUb);
-        LoadAlign(vreg_exp_sum_brc, tmpExpSumUb);
-        Mul(vreg_exp_sum_update, vreg_exp_max, vreg_in_exp_sum, preg_all);
-        Add(vreg_exp_sum_update, vreg_exp_sum_update, vreg_exp_sum_brc, preg_all);
-        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)expSumUb, vreg_exp_sum_update, preg_all);
+            // x_sum = exp_max * insum + x_sum
+            LoadAlign(vreg_in_exp_sum, inExpSumUb + i * 64);
+            LoadAlign(vreg_exp_sum_brc, tmpExpSumUb + i * 64);
+            Mul(vreg_exp_sum_update, vreg_exp_max, vreg_in_exp_sum, preg_all);
+            Add(vreg_exp_sum_update, vreg_exp_sum_update, vreg_exp_sum_brc, preg_all);
+            StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)expSumUb + i * 64, vreg_exp_sum_update, preg_all);
+        }
     }
 }
 
@@ -221,7 +227,7 @@ __aicore__ inline void UpdateExpSumAndExpMaxImpl(const LocalTensor<T> &expSumTen
     __ubuf__ T *inExpSumUb = (__ubuf__ T *)inExpSumTensor.GetPhyAddr();
 
     __ubuf__ T *tmpExpSumUb = (__ubuf__ T *)sharedTmpBuffer.GetPhyAddr();
-    uint32_t repSize = floatRepSize;
+    uint32_t repSize = (s1BaseSize + 63) >> 6 << 6;
     if constexpr (useNz) {
         repSize = halfRepSize;
     }
@@ -580,11 +586,14 @@ __simd_vf__ inline void SoftmaxSumUpdateVF(__ubuf__ T *sumUb, __ubuf__ T *maxUb,
 
     Duplicate(vreg_max_value, maxValue);
     // 注意：当m大于64的时候需要开启循环
-    LoadAlign(vreg_max, maxUb);
-    LoadAlign(vreg_sum, sumUb);
-    Compares<T, CMPMODE::EQ>(preg_compare, vreg_max, minValue, preg_all);
-    Select(vreg_sum_new, vreg_max_value, vreg_sum, preg_compare);
-    StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)sumUb, vreg_sum_new, preg_all);
+    uint16_t cnt = CeilDivision(m, 64);
+    for(int i = 0, i < cnt; i++){
+        LoadAlign(vreg_max, maxUb + i * 64);
+        LoadAlign(vreg_sum, sumUb + i * 64);
+        Compares<T, CMPMODE::EQ>(preg_compare, vreg_max, minValue, preg_all);
+        Select(vreg_sum_new, vreg_max_value, vreg_sum, preg_compare);
+        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)sumUb + i * 64, vreg_sum_new, preg_all);
+    }
 }
 
 template <typename T>
