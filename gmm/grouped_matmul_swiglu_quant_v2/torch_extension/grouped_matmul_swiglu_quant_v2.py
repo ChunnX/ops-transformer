@@ -54,6 +54,12 @@ def _normalize_optional_tensor_list(value, name):
     return _normalize_tensor_list(value, name)
 
 
+def _normalize_bias(bias):
+    if bias is None:
+        return []
+    return _normalize_tensor_list(bias, "bias")
+
+
 def _normalize_dtype(dtype):
     if dtype is None:
         return None
@@ -88,7 +94,7 @@ class GroupedMatmulSwigluQuantV2OpBuilder(OpBuilder):
         return (
             "grouped_matmul_swiglu_quant_v2("
             "Tensor x, Tensor[] weight, Tensor[] weight_scale, Tensor x_scale, Tensor group_list, "
-            "*, Tensor? smooth_scale=None, Tensor[]? weight_assist_matrix=None, Tensor? bias=None, "
+            "*, Tensor? smooth_scale=None, Tensor[]? weight_assist_matrix=None, Tensor[]? bias=None, "
             "int? dequant_mode=2, int? dequant_dtype=0, int? quant_mode=2, int? quant_dtype=36, "
             "int? group_list_type=0, int[]? tuning_config=None, int? x_dtype=None, int? weight_dtype=None, "
             "int? weight_scale_dtype=None, int? x_scale_dtype=None, int? swiglu_mode=None, "
@@ -158,7 +164,7 @@ def grouped_matmul_swiglu_quant_v2(
     *,
     smooth_scale: Optional[torch.Tensor] = None,
     weight_assist_matrix: Optional[List[torch.Tensor]] = None,
-    bias: Optional[torch.Tensor] = None,
+    bias: Optional[List[torch.Tensor]] = None,
     dequant_mode: Optional[int] = 2,
     dequant_dtype: Optional[Union[int, torch.dtype]] = torch.float32,
     quant_mode: Optional[int] = 2,
@@ -186,6 +192,7 @@ def grouped_matmul_swiglu_quant_v2(
     weight = _normalize_tensor_list(weight, "weight")
     weight_scale = _normalize_tensor_list(weight_scale, "weight_scale")
     weight_assist_matrix = _normalize_optional_tensor_list(weight_assist_matrix, "weight_assist_matrix")
+    bias = _normalize_bias(bias)
     if swiglu_mode is None:
         raise ValueError(
             "cann_ops_transformer.grouped_matmul_swiglu_quant_v2 currently requires swiglu_mode=2; "
