@@ -93,7 +93,7 @@ TEST_F(AclnnMatmulAllReduceV2ExtraTest, TransposedX2)
     RunMatmulAllReduceV2Ut(op::SocVersion::ASCEND910B, x1, x2, nullptr, x3.ToAclTypeRawPtr(), output, ACLNN_SUCCESS);
 }
 
-TEST_F(AclnnMatmulAllReduceV2ExtraTest, Ascend950GetWorkspaceSize)
+TEST_F(AclnnMatmulAllReduceV2ExtraTest, Dav3510GetWorkspaceSize)
 {
     TensorDesc x1 = {{16, 32}, ACL_FLOAT16, ACL_FORMAT_ND};
     TensorDesc x2 = {{32, 16}, ACL_FLOAT16, ACL_FORMAT_ND};
@@ -137,7 +137,7 @@ TEST_F(AclnnMatmulAllReduceV2ExtraTest, LaunchApiCoverage)
     (void)aclnnMatmulAllReduceV2(nullptr, 0, nullptr, nullptr);
 }
 
-TEST_F(AclnnMatmulAllReduceV2ExtraTest, Ascend950LaunchCcuCommMode)
+TEST_F(AclnnMatmulAllReduceV2ExtraTest, Dav3510LaunchCcuCommMode)
 {
     op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
     (void)aclnnMatmulAllReduceV2(nullptr, 0, nullptr, nullptr);
