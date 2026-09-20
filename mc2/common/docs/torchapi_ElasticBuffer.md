@@ -380,12 +380,12 @@ ElasticBuffer.dispatch(
 - **num_max_tokens_per_rank** (`int`)：可选参数，表示每张卡上的最大token数量上限，传入时覆盖ElasticBuffer初始化的值。默认使用初始化时传入的值。cached模式下使用 `handle` 中的值，传入参数被忽略。
 - **expert_alignment** (`int`)：可选参数，表示专家对齐数。当前仅支持取值1；cached模式使用 `handle` 中的值。
 - **do_cpu_sync** (`bool`)：可选参数，表示是否进行CPU同步等待。非cached模式默认为 `True`，cached模式下不能为 `True`。
-- **async_with_compute_stream** (`bool`)：可选参数，表示是否延后提交Dispatch Epilogue，默认为 `False`。设为 `True` 时返回event对象，应在插入独立计算后调用 `event.current_stream_wait()`，提交Epilogue并获取dispatch结果。
+- **async_with_compute_stream** (`bool`)：可选参数，表示是否启用异步调用，默认为 `False`。设为 `True` 时返回event对象，可在执行独立计算后调用 `event.current_stream_wait()` 获取dispatch结果。
 
 **输出说明**：
 
 - `async_with_compute_stream=False`：接口直接返回最终结果。
-- `async_with_compute_stream=True`：主阶段提交后，接口返回 **event** (`object`)，用于保存本次延后操作。调用 `event.current_stream_wait()` 提交Epilogue并获取最终结果。
+- `async_with_compute_stream=True`：主阶段提交后，接口返回 **event** (`object`)，用于管理本次异步调用。调用 `event.current_stream_wait()` 获取最终结果。
 
 两种方式的最终结果内容、顺序和类型一致，各项说明如下：
 
@@ -438,12 +438,12 @@ ElasticBuffer.combine(
 - <strong>*</strong>：其之前的变量是位置相关的；之后的变量是可选参数，需要使用键值对赋值，不赋值会使用默认值。
 - **topk_weights** (`Tensor`)：可选参数，表示每个token对应的topK专家权重，用于加权聚合。要求为1 维张量，shape为 `(A,)`，数据类型支持 `float32`，数据格式为 $ND$，对应 [dispatch](#dispatch) 的 `recv_topk_weights` 输出。若不提供，则进行纯累加combine，输出 `combined_topk_weights` 为 `None`。
 - **bias** (`Tensor` 或 `Tuple[Tensor, Tensor]`)：可选参数，当前版本不支持bias，传入 `None` 即可。预留支持单个bias张量或 `bias_0`、`bias_1` 双张量模式。
-- **async_with_compute_stream** (`bool`)：可选参数，表示是否延后提交Combine Epilogue，默认为 `False`。设为 `True` 时返回event对象，应在插入独立计算后调用 `event.current_stream_wait()`，提交Epilogue并获取combine结果。
+- **async_with_compute_stream** (`bool`)：可选参数，表示是否启用异步调用，默认为 `False`。设为 `True` 时返回event对象，可在执行独立计算后调用 `event.current_stream_wait()` 获取combine结果。
 
 **输出说明**：
 
 - `async_with_compute_stream=False`：接口直接返回最终结果。
-- `async_with_compute_stream=True`：主阶段提交后，接口返回 **event** (`object`)，用于保存本次延后操作。调用 `event.current_stream_wait()` 提交Epilogue并获取最终结果。
+- `async_with_compute_stream=True`：主阶段提交后，接口返回 **event** (`object`)，用于管理本次异步调用。调用 `event.current_stream_wait()` 获取最终结果。
 
 两种方式的最终结果内容、顺序和类型一致，各项说明如下：
 
@@ -524,12 +524,9 @@ ElasticBuffer.get_moe_ep_ccl_buffer_size(world_size, num_max_tokens_per_rank, hi
   - 当前版本不支持bias参数，`bias` 必须传入 `None`。
   - cached模式下，`topk_idx` 和 `topk_weights` 必须为 `None`，`do_cpu_sync` 必须为 `False`；非cached模式下，`topk_idx` 为必选参数，`topk_weights` 为可选参数。
 
-- **Dispatch/Combine延后调用约束**：
-  - 延后调用需要使用eager模式，暂不支持图捕获。同一通信组需要由一个host线程顺序调用，各rank保持相同的dispatch/combine顺序。
-  - 发起操作、插入计算和调用 `event.current_stream_wait()` 需要使用同一NPU stream；切换stream前，需要等待之前的操作完成。
-  - 发起同一通信组的下一次dispatch/combine或销毁Buffer前，需要先调用 `event.current_stream_wait()`，不可直接丢弃event。
-  - 中间插入的计算需要使用独立数据，不可读取通信输出，也不可修改本次通信使用的输入或handle。
-  - 由CPU读取结果或修改通信输入前，需要先调用 `event.current_stream_wait()`，再进行设备同步。不可把 `event.current_stream_wait()` 当作设备同步，也不可在插入计算的位置调用全设备同步。
+- **Dispatch/Combine异步调用约束**：
+  - 同一通信组的各rank需要保持相同的dispatch/combine调用顺序。
+  - 启用异步调用时，每次dispatch/combine都需要配套调用其返回event的 `event.current_stream_wait()` 方法。
 
 - **Dispatch/Combine Shape变量说明**：
   - `A`：表示本卡接收的最大token数量，`A = ep_world_size * num_max_tokens_per_rank * MIN(K, num_local_experts)`。
