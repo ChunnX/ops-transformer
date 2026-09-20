@@ -89,6 +89,35 @@ __aicore__ inline void CastB16ToFp32Square(const LocalTensor<float> &dst, const 
     }
 }
 
+// 在一个VF内恢复两路低精度数据并计算平方和，避免中间FP32结果写回UB。
+template <typename T>
+__aicore__ inline void PairSquareB16ToFp32(const LocalTensor<float> &dst, const LocalTensor<T> &src0,
+                                           const LocalTensor<T> &src1, uint32_t count)
+{
+    __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();
+    __local_mem__ T *src0Addr = (__local_mem__ T *)src0.GetPhyAddr();
+    __local_mem__ T *src1Addr = (__local_mem__ T *)src1.GetPhyAddr();
+    uint32_t remain = count;
+    const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
+    __VEC_SCOPE__
+    {
+        RegTensor<T> src0Reg, src1Reg;
+        RegTensor<float> src0Fp32Reg, src1Fp32Reg, src0SqReg, src1SqReg, dstReg;
+        MaskReg mask;
+        for (uint16_t i = 0; i < loops; ++i) {
+            mask = UpdateMask<float>(remain);
+            DataCopy<T, LoadDist::DIST_UNPACK_B16>(src0Reg, src0Addr + i * VL_FP32);
+            DataCopy<T, LoadDist::DIST_UNPACK_B16>(src1Reg, src1Addr + i * VL_FP32);
+            Cast<float, T, CAST_B16_TO_FP32>(src0Fp32Reg, src0Reg, mask);
+            Cast<float, T, CAST_B16_TO_FP32>(src1Fp32Reg, src1Reg, mask);
+            AscendC::Reg::Mul(src0SqReg, src0Fp32Reg, src0Fp32Reg, mask);
+            AscendC::Reg::Mul(src1SqReg, src1Fp32Reg, src1Fp32Reg, mask);
+            AscendC::Reg::Add(dstReg, src0SqReg, src1SqReg, mask);
+            DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
+        }
+    }
+}
+
 // 保持原有BF16使用RINT、FP16使用NONE的量化边界。
 template <typename T>
 __aicore__ inline void CastFp32ToB16(const LocalTensor<T> &dst, const LocalTensor<float> &src, uint32_t count)

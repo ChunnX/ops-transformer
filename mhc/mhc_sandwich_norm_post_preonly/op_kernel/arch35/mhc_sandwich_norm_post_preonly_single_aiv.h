@@ -36,18 +36,19 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
     const uint64_t outBase = (uint64_t)token * N_ * D_ + tOff;
 
-    // 四个head写入互不重叠的低精度缓存，统一等待后再恢复FP32，
-    // 保留逐元素量化边界并减少重复的Vector流水屏障。
+    // 四个head写入互不重叠的低精度缓存，保留逐元素量化边界。
     for (uint32_t n = 0; n < N_MAX; ++n) {
         LocalTensor<T> cacheTile = x2Cache[n * D_ + tOff];
         CastToIO(cacheTile, x2[n * dimTile_], tD);
     }
     PipeBarrier<PIPE_V>();
-    for (uint32_t n = 0; n < N_MAX; ++n) {
-        LocalTensor<T> cacheTile = x2Cache[n * D_ + tOff];
-        MhcSandwichRegBase::CastB16ToFp32(x2[n * dimTile_], cacheTile, tD);
+    if constexpr (!USE_RMS_MID) {
+        for (uint32_t n = 0; n < N_MAX; ++n) {
+            LocalTensor<T> cacheTile = x2Cache[n * D_ + tOff];
+            MhcSandwichRegBase::CastB16ToFp32(x2[n * dimTile_], cacheTile, tD);
+        }
+        PipeBarrier<PIPE_V>();
     }
-    PipeBarrier<PIPE_V>();
 
     if (writeOutput) {
         // cacheTile已经是x2_out所需的最终低精度位值，直接写GM，
@@ -75,10 +76,12 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         CastToIO(x2Cache[n * D_ + tOff], x2[n * dimTile_], tD);
     }
     PipeBarrier<PIPE_V>();
-    for (uint32_t n = 0; n < N_MAX; ++n) {
-        MhcSandwichRegBase::CastB16ToFp32(x2[n * dimTile_], x2Cache[n * D_ + tOff], tD);
+    if constexpr (!USE_RMS_MID) {
+        for (uint32_t n = 0; n < N_MAX; ++n) {
+            MhcSandwichRegBase::CastB16ToFp32(x2[n * dimTile_], x2Cache[n * D_ + tOff], tD);
+        }
+        PipeBarrier<PIPE_V>();
     }
-    PipeBarrier<PIPE_V>();
 
     if (writeOutput) {
         SetFlag<HardEvent::V_MTE3>(evtVtoMte3_);
@@ -265,18 +268,14 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
         ComputeX2PostTile(token, tOff, tD, invRms0, postVals);
         CacheX2Tile(token, tOff, tD, !USE_RMS_MID);
 
-        LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
         if constexpr (USE_RMS_MID) {
             LocalTensor<float> out = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-            LocalTensor<float> tmp = bufGamma2Fp32_.Get<float>();
+            LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
             for (uint32_t half = 0; half < 2; ++half) {
                 const uint32_t h0 = half * 2;
                 const uint32_t h1 = h0 + 1;
-                MhcSandwichRegBase::Mul(out, x2[h0 * dimTile_], x2[h0 * dimTile_], tD);
-                PipeBarrier<PIPE_V>();
-                MhcSandwichRegBase::Mul(tmp, x2[h1 * dimTile_], x2[h1 * dimTile_], tD);
-                PipeBarrier<PIPE_V>();
-                MhcSandwichRegBase::Add(out, out, tmp, tD);
+                MhcSandwichRegBase::PairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff],
+                                                       x2Cache[h1 * D_ + tOff], tD);
                 PipeBarrier<PIPE_V>();
                 midSqHalf[half] += ReduceSumPrecise(out, tD);
             }

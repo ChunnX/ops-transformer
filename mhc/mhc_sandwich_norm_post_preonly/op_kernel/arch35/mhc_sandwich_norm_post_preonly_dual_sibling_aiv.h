@@ -40,19 +40,15 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         ComputeX2PostTile(token, tOff, tD, invRms0, postVals);
         CacheX2TileForLane(token, tOff, tD, !USE_RMS_MID);
 
-        LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
         if constexpr (USE_RMS_MID) {
             // R3的归一化范围是完整N*D，因此该标量也在两个lane上按相同树冗余计算。
             LocalTensor<float> out = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-            LocalTensor<float> tmp = bufGamma2Fp32_.Get<float>();
+            LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
             for (uint32_t half = 0; half < 2; ++half) {
                 const uint32_t h0 = half * 2;
                 const uint32_t h1 = h0 + 1;
-                MhcSandwichRegBase::Mul(out, x2[h0 * dimTile_], x2[h0 * dimTile_], tD);
-                PipeBarrier<PIPE_V>();
-                MhcSandwichRegBase::Mul(tmp, x2[h1 * dimTile_], x2[h1 * dimTile_], tD);
-                PipeBarrier<PIPE_V>();
-                MhcSandwichRegBase::Add(out, out, tmp, tD);
+                MhcSandwichRegBase::PairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff],
+                                                       x2Cache[h1 * D_ + tOff], tD);
                 PipeBarrier<PIPE_V>();
                 midSqHalf[half] += ReduceSumPrecise(out, tD);
             }
