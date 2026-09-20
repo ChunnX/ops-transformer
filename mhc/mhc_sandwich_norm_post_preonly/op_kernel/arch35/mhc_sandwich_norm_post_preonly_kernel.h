@@ -115,8 +115,8 @@ public:
         pipe_.InitBuffer(bufResFp32_, (N_ + 1) * dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufPostComb_, POST_COMB_SIZE * sizeof(float));
         pipe_.InitBuffer(bufPhiFp32_, BUFFER_NUM_TWO, dimTile_ * sizeof(float));
-        // TODO: 后续重新设计流水并单独验证输入、输出双缓冲收益。
-        pipe_.InitBuffer(bufHInPrimeBf16_, BUFFER_NUM_ONE, dimTile_ * sizeof(T));
+        // h_out已完整缓存，不再需要输入队列双缓冲；本轮独立验证输出队列双缓冲。
+        pipe_.InitBuffer(bufHInPrimeBf16_, BUFFER_NUM_TWO, dimTile_ * sizeof(T));
         pipe_.InitBuffer(bufScalar_, SCALAR_BUF_SIZE);
         pipe_.InitBuffer(bufGamma2Fp32_, dimTile_ * sizeof(float));
 
@@ -214,7 +214,7 @@ private:
     TBuf<TPosition::VECCALC> bufResFp32_;
     TBuf<TPosition::VECCALC> bufPostComb_;
     TQue<TPosition::VECIN, BUFFER_NUM_TWO> bufPhiFp32_;
-    TQue<TPosition::VECOUT, BUFFER_NUM_ONE> bufHInPrimeBf16_;
+    TQue<TPosition::VECOUT, BUFFER_NUM_TWO> bufHInPrimeBf16_;
     TBuf<TPosition::VECCALC> bufScalar_;
 
     // GM张量
