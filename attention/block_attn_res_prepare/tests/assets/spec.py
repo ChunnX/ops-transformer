@@ -115,7 +115,9 @@ def _numpy_golden(block_res, valid_blocks, pseudo_query, eps):
     residual = numpy.asarray(block_res, dtype=numpy.float32)
     query = numpy.asarray(pseudo_query, dtype=numpy.float32)
     valid = int(
-        numpy.asarray(valid_blocks, dtype=numpy.uint64).reshape(FLATTENED_SIZE)[0].item()
+        numpy.asarray(valid_blocks, dtype=numpy.uint64)
+        .reshape(FLATTENED_SIZE)[0]
+        .item()
     )
     valid = min(valid, residual.shape[N_DIM_INDEX])
 
