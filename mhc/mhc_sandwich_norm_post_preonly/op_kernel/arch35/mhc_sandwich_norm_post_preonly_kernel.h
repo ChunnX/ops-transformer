@@ -106,8 +106,8 @@ public:
         pipe_.InitBuffer(bufHOutBf16_, BUFFER_NUM_ONE, dimTile_ * sizeof(T));
         pipe_.InitBuffer(bufGamma0Fp32_, D_ * sizeof(float));
         pipe_.InitBuffer(bufX2Fp32_, N_ * dimTile_ * sizeof(float));
-        // 完整gamma0复用初始同步；其生命周期结束后原地预取gamma1。
-        // gamma2仅保留单分块，D=7168时总UB为250208B。
+        // 完整gamma0复用初始同步；gamma1在D不超过5120时完整缓存。
+        // D=7168时总UB为260448B，小于A5的256KiB上限并保留1696B余量。
         pipe_.InitBuffer(bufX2Cache_, K_ * sizeof(T));
         pipe_.InitBuffer(bufResidualBf16_, 1, N_ * dimTile_ * sizeof(T));
         // 前四行先保存residual，之后复用为R4/R5的五行归约输入；第五行在前半程保存h_out，
@@ -115,10 +115,11 @@ public:
         pipe_.InitBuffer(bufResFp32_, (N_ + 1) * dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufPostComb_, POST_COMB_SIZE * sizeof(float));
         pipe_.InitBuffer(bufPhiFp32_, BUFFER_NUM_TWO, dimTile_ * sizeof(float));
-        // TODO：后续重新设计流水并单独验证输入、输出双缓冲收益。
+        // TODO: 后续重新设计流水并单独验证输入、输出双缓冲收益。
         pipe_.InitBuffer(bufHInPrimeBf16_, BUFFER_NUM_ONE, dimTile_ * sizeof(T));
         pipe_.InitBuffer(bufScalar_, SCALAR_BUF_SIZE);
-        pipe_.InitBuffer(bufGamma2Fp32_, dimTile_ * sizeof(float));
+        const uint32_t gamma1CacheElems = D_ <= GAMMA1_CACHE_MAX_D ? D_ : dimTile_;
+        pipe_.InitBuffer(bufGamma2Fp32_, gamma1CacheElems * sizeof(float));
 
         evtMte2toV_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::MTE2_V>());
         evtVtoMte2_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::V_MTE2>());
