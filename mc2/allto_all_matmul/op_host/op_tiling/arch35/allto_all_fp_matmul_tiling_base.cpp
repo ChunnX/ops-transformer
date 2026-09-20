@@ -210,6 +210,7 @@ ge::graphStatus AllToAllFpMatmulTilingBase::SetHcclTiling()
                                                         hcclServerEngine) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
+    hcclServerType_ = hcclServerEngine;
     std::string algoName = Mc2Tiling::SelectAllToAllAlgoName(
         opName_, contextInfo_.group, hcclServerEngine, inferredInfo_.tileM, contextInfo_.args_.kValue,
         contextInfo_.args_.inputDtypeSize, contextInfo_.args_.rankDim);
@@ -246,12 +247,7 @@ uint64_t AllToAllFpMatmulTilingBase::GetTilingKey() const
         biasDType = DTYPE_BIAS_FP32;
     }
     bool x2TransposeFlag = contextInfo_.args_.isBTrans ? true : false;
-    uint8_t hcclServerType = 0;
-    if (MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo_, ALLTOALL_MATMUL_INDEX_SCHEMA,
-                                                        hcclServerType) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
-    uint8_t commMode = (hcclServerType == mc2tiling::A5_CCU_ENGINE) ? ALL2ALL_COMM_TYPE_CCU : ALL2ALL_COMM_TYPE_AICPU;
+    uint8_t commMode = (hcclServerType_ == mc2tiling::A5_CCU_ENGINE) ? ALL2ALL_COMM_TYPE_CCU : ALL2ALL_COMM_TYPE_AICPU;
     // 非量化+有bias: 按M/N规模选择分核策略; 否则关闭
     uint8_t addBiasSplitMode = contextInfo_.args_.isBias ? ChooseAddBiasSplitMode() : ADDBIAS_OFF;
     const uint64_t tilingKey =
