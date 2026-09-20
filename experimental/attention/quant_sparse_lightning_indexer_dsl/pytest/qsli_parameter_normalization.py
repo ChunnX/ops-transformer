@@ -51,7 +51,7 @@ def normalize_qsli_params(params):
         "candidate_block_size": int(values.get("candidate_block_size", 8)),
         "max_seqlen_q": int(values.get("max_seqlen_q", q_seq)),
         "layout_q": str(values.get("layout_query", values.get("layout_q", "TND"))),
-        "layout_kv": str(values.get("layout_key", values.get("layout_kv", "PA_BBND"))),
+        "layout_k": str(values.get("layout_key", values.get("layout_k", values.get("layout_kv", "PA_BBND")))),
         "return_value": bool(values.get("return_value", True)),
         "qk_dtype": str(values.get("qk_dtype", "FLOAT4_E2M1")),
         "weight_dtype": str(values.get("weight_dtype", "FP32")),

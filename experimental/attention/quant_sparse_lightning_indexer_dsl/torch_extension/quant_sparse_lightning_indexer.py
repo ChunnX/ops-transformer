@@ -24,39 +24,73 @@ class QuantSparseLightningIndexerOpBuilder(OpBuilder):
         return []
 
     def schema(self):
-        """PyTorch operator signature."""
+        """PyTorch signatures aligned with the interface workbooks."""
         return [
             (
-                "ds41.quant_sparse_lightning_indexer(Tensor q, Tensor k, Tensor w, "
-                "Tensor descale_q, Tensor descale_k, Tensor candidate_block_indices, "
-                "Tensor candidate_block_length, int topk, int quant_mode, "
-                "int candidate_block_size, *, Tensor? cu_seqlens_q=None, "
-                "Tensor? seqused_q=None, Tensor? seqused_k=None, "
-                "Tensor? cmp_residual_k=None, Tensor? block_table=None, "
-                "Tensor? output_idx_offset=None, Tensor? metadata=None, "
-                "int max_seqlen_q=-1, "
-                "int mask_mode=0, int cmp_ratio=1, "
-                'str layout_q="TND", str layout_kv="PA_BBND", '
-                "bool return_value=False) -> (Tensor, Tensor)"
+                'ds41.quant_sparse_lightning_indexer_metadata(Tensor candidate_block_length, Tensor? '
+                'cu_seqlens_q=None, Tensor? cu_seqlens_k=None, Tensor? seqused_q=None, Tensor? '
+                'seqused_k=None, Tensor? cmp_residual_k=None, *, int? batch_size=None, int '
+                'max_seqlen_q=-1, int max_seqlen_k=-1, int num_heads_q, int num_heads_k, int head_dim, '
+                'int topk, int quant_mode, int candidate_block_size, int mask_mode=0, int cmp_ratio=1, '
+                'str layout_q="TND", str layout_k="TND") -> Tensor'
+            ),
+            (
+                'ds41.quant_sparse_lightning_indexer(Tensor q, Tensor k, Tensor w, Tensor descale_q, '
+                'Tensor candidate_block_indices, Tensor candidate_block_length, int topk, int quant_mode, '
+                'int candidate_block_size, *, Tensor? descale_k=None, Tensor? cu_seqlens_q=None, Tensor? '
+                'cu_seqlens_k=None, Tensor? seqused_q=None, Tensor? seqused_k=None, Tensor? '
+                'cmp_residual_k=None, Tensor? block_table=None, Tensor? output_idx_offset=None, Tensor? '
+                'metadata=None, int max_seqlen_q=-1, int mask_mode=0, int cmp_ratio=1, str '
+                'layout_q="TND", str layout_k="TND", bool return_value=False) -> (Tensor, Tensor)'
             ),
         ]
 
     def register_meta(self):
         """Register the FakeTensor/Meta output implementation."""
+
+        @torch.library.register_fake("cann_ops_transformer::ds41.quant_sparse_lightning_indexer_metadata")
+        def quant_sparse_lightning_indexer_metadata_meta(
+            candidate_block_length,
+            cu_seqlens_q=None,
+            cu_seqlens_k=None,
+            seqused_q=None,
+            seqused_k=None,
+            cmp_residual_k=None,
+            *,
+            batch_size=None,
+            max_seqlen_q=-1,
+            max_seqlen_k=-1,
+            num_heads_q,
+            num_heads_k,
+            head_dim,
+            topk,
+            quant_mode,
+            candidate_block_size,
+            mask_mode=0,
+            cmp_ratio=1,
+            layout_q="TND",
+            layout_k="TND",
+        ):
+            if layout_q != "TND" or layout_k != "PA_BBND":
+                raise ValueError("current layouts must be TND and PA_BBND")
+            device = candidate_block_length.device
+            return torch.empty((1024,), dtype=torch.int32, device=device)
+
         @impl(get_as_library(), self.name, "Meta")
         def quant_sparse_lightning_indexer_meta(
             q,
             k,
             w,
             descale_q,
-            descale_k,
             candidate_block_indices,
             candidate_block_length,
             topk,
             quant_mode,
             candidate_block_size,
             *,
+            descale_k=None,
             cu_seqlens_q=None,
+            cu_seqlens_k=None,
             seqused_q=None,
             seqused_k=None,
             cmp_residual_k=None,
@@ -67,10 +101,12 @@ class QuantSparseLightningIndexerOpBuilder(OpBuilder):
             mask_mode=0,
             cmp_ratio=1,
             layout_q="TND",
-            layout_kv="PA_BBND",
+            layout_k="TND",
             return_value=False,
         ):
-            output_shape = (q.shape[0], k.shape[2], topk)
+            if layout_q != "TND" or layout_k != "PA_BBND":
+                raise ValueError("current layouts must be TND and PA_BBND")
+            output_shape = (q.shape[0], 1, topk)
             sparse_indices = torch.empty(
                 output_shape, dtype=torch.int32, device="meta"
             )
@@ -91,14 +127,15 @@ def quant_sparse_lightning_indexer(
     k,
     w,
     descale_q,
-    descale_k,
     candidate_block_indices,
     candidate_block_length,
     topk,
     quant_mode,
     candidate_block_size,
     *,
+    descale_k=None,
     cu_seqlens_q=None,
+    cu_seqlens_k=None,
     seqused_q=None,
     seqused_k=None,
     cmp_residual_k=None,
@@ -109,7 +146,7 @@ def quant_sparse_lightning_indexer(
     mask_mode=0,
     cmp_ratio=1,
     layout_q="TND",
-    layout_kv="PA_BBND",
+    layout_k="TND",
     return_value=False,
 ):
     """Run the CANNBotDSL QSLI kernel through the Torch NPU dispatcher."""
@@ -122,10 +159,11 @@ def quant_sparse_lightning_indexer(
         k,
         w,
         descale_q,
-        descale_k,
         candidate_block_indices,
         candidate_block_length,
+        descale_k=descale_k,
         cu_seqlens_q=cu_seqlens_q,
+        cu_seqlens_k=cu_seqlens_k,
         seqused_q=seqused_q,
         seqused_k=seqused_k,
         cmp_residual_k=cmp_residual_k,
@@ -139,6 +177,105 @@ def quant_sparse_lightning_indexer(
         mask_mode=mask_mode,
         cmp_ratio=cmp_ratio,
         layout_q=layout_q,
-        layout_kv=layout_kv,
+        layout_k=layout_k,
         return_value=return_value,
     )
+
+
+@impl(get_as_library(), "ds41.quant_sparse_lightning_indexer_metadata", "PrivateUse1")
+def quant_sparse_lightning_indexer_metadata(
+    candidate_block_length,
+    cu_seqlens_q=None,
+    cu_seqlens_k=None,
+    seqused_q=None,
+    seqused_k=None,
+    cmp_residual_k=None,
+    *,
+    batch_size=None,
+    max_seqlen_q=-1,
+    max_seqlen_k=-1,
+    num_heads_q,
+    num_heads_k,
+    head_dim,
+    topk,
+    quant_mode,
+    candidate_block_size,
+    mask_mode=0,
+    cmp_ratio=1,
+    layout_q="TND",
+    layout_k="TND",
+):
+    from ops.quant_sparse_lightning_indexer_metadata_dsl import (
+        quant_sparse_lightning_indexer_metadata as dsl_metadata,
+    )
+    return dsl_metadata(
+        candidate_block_length,
+        cu_seqlens_q,
+        cu_seqlens_k,
+        seqused_q,
+        seqused_k,
+        cmp_residual_k,
+        batch_size=batch_size,
+        max_seqlen_q=max_seqlen_q,
+        max_seqlen_k=max_seqlen_k,
+        num_heads_q=num_heads_q,
+        num_heads_k=num_heads_k,
+        head_dim=head_dim,
+        topk=topk,
+        quant_mode=quant_mode,
+        candidate_block_size=candidate_block_size,
+        mask_mode=mask_mode,
+        cmp_ratio=cmp_ratio,
+        layout_q=layout_q,
+        layout_k=layout_k,
+    )
+
+
+@torch.library.register_kernel("cann_ops_transformer::ds41.quant_sparse_lightning_indexer_metadata", None)
+def quant_sparse_lightning_indexer_metadata_fallback(
+    candidate_block_length,
+    cu_seqlens_q=None,
+    cu_seqlens_k=None,
+    seqused_q=None,
+    seqused_k=None,
+    cmp_residual_k=None,
+    *,
+    batch_size=None,
+    max_seqlen_q=-1,
+    max_seqlen_k=-1,
+    num_heads_q,
+    num_heads_k,
+    head_dim,
+    topk,
+    quant_mode,
+    candidate_block_size,
+    mask_mode=0,
+    cmp_ratio=1,
+    layout_q="TND",
+    layout_k="TND",
+):
+    """Route calls without a backend Tensor to the NPU implementation."""
+    return quant_sparse_lightning_indexer_metadata(
+        candidate_block_length,
+        cu_seqlens_q,
+        cu_seqlens_k,
+        seqused_q,
+        seqused_k,
+        cmp_residual_k,
+        batch_size=batch_size,
+        max_seqlen_q=max_seqlen_q,
+        max_seqlen_k=max_seqlen_k,
+        num_heads_q=num_heads_q,
+        num_heads_k=num_heads_k,
+        head_dim=head_dim,
+        topk=topk,
+        quant_mode=quant_mode,
+        candidate_block_size=candidate_block_size,
+        mask_mode=mask_mode,
+        cmp_ratio=cmp_ratio,
+        layout_q=layout_q,
+        layout_k=layout_k,
+    )
+
+
+torch.compiler.allow_in_graph(quant_sparse_lightning_indexer_metadata)

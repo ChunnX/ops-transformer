@@ -442,7 +442,7 @@ def validate_quant_lightning_indexer_contract(
     mask_mode: int = 0,
     cmp_ratio: int = 1,
     layout_q: str = "TND",
-    layout_kv: str = "PA_BBND",
+    layout_k: str = "PA_BBND",
 ) -> None:
     """Validate the public qli shape contract from ``算子接口.xlsx``.
 
@@ -475,8 +475,8 @@ def validate_quant_lightning_indexer_contract(
             raise ValueError("k_descale must follow the xlsx shape (block_num,block_size,N2,ceil(D/64),2)")
     if layout_q != "TND":
         raise ValueError("layout_q must be TND under the current xlsx contract")
-    if layout_kv != "PA_BBND":
-        raise ValueError("layout_kv must be PA_BBND under the current xlsx contract")
+    if layout_k != "PA_BBND":
+        raise ValueError("layout_k must be PA_BBND under the current xlsx contract")
     _cpu_page_plan(
         query, key, cu_seqlens_q, seqused_q, seqused_k,
         cmp_residual_k, block_table,
@@ -526,8 +526,8 @@ def _cpu_page_plan(
         used = _cpu_int_list(seqused_q, "seqused_q")
         if any(v < 0 or v > q_lengths[b] for b, v in enumerate(used)):
             raise ValueError("seqused_q values must be within each cu_seqlens_q interval")
-    if int(max_seqlen_q) != -1 and (int(max_seqlen_q) < 0 or max(q_lengths, default=0) > int(max_seqlen_q)):
-        raise ValueError("max_seqlen_q must be -1 or cover every query sequence")
+    if int(max_seqlen_q) != -1 and (int(max_seqlen_q) < 0 or max(used, default=0) > int(max_seqlen_q)):
+        raise ValueError("max_seqlen_q must be -1 or cover every valid query length")
 
     if block_table is None:
         page_ids = [list(range(physical_blocks)) for _ in range(batch)]
@@ -607,7 +607,7 @@ def quant_lightning_indexer_golden(
     mask_mode: int = 0,
     cmp_ratio: int = 1,
     layout_q: str = "TND",
-    layout_kv: str = "PA_BBND",
+    layout_k: str = "PA_BBND",
     return_value: bool = False,
 ) -> dict[str, torch.Tensor]:
     """Independent CPU golden for xlsx TND query plus PA_BBND key.
@@ -637,7 +637,7 @@ def quant_lightning_indexer_golden(
         cu_seqlens_q, seqused_q, seqused_k, cmp_residual_k,
         block_table, metadata, max_seqlen_q=max_seqlen_q,
         mask_mode=mask_mode, cmp_ratio=cmp_ratio,
-        layout_q=layout_q, layout_kv=layout_kv,
+        layout_q=layout_q, layout_k=layout_k,
     )
     cu, used, used_k, page_ids, residual = _cpu_page_plan(
         query, key, cu_seqlens_q, seqused_q, seqused_k,
@@ -699,7 +699,7 @@ def quant_lightning_indexer_golden(
                 mask_mode=mask_mode,
                 cmp_ratio=cmp_ratio,
                 layout_q=layout_q,
-                layout_kv=layout_kv,
+                layout_k=layout_k,
                 return_value=return_value,
             )
             return batch, row_begin, row_end, result
