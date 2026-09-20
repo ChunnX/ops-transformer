@@ -10,7 +10,7 @@
 
 /*!
  * \file quant_flash_attn_block_vector_mxfp8_softmax_fp16.h
- * \brief MxFP8 Softmax FP16 Vector Block 最小桩（阶段二占位）
+ * \brief MxFP8 Softmax FP16 Vector Block：V1（softmax→fp8）+ V2（累积→除→转置→GM 输出）
  */
 
 #ifndef QUANT_FLASH_ATTN_BLOCK_VECTOR_MXFP8_SOFTMAX_FP16_H_
@@ -284,7 +284,8 @@ public:
 
     __aicore__ inline void ReleaseTensorsVec()
     {
-        // TODO(批次2.3): 跨核 flag 配平（kernel 层负责）
+        // 空壳即最终形态：UB 用裸 LocalTensor 寻址（无 TPipe 队列需释放）、事件用固定 ID（无需回收）；
+        // 跨核 flag 配平归 kernel 层（架构裁决，corrections #4/#8 链路）
     }
 };
 

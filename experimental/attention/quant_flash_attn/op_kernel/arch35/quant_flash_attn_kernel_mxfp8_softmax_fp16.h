@@ -11,7 +11,8 @@
 /*!
  * \file quant_flash_attn_kernel_mxfp8_softmax_fp16.h
  * \brief MxFP8 Softmax FP16 kernel 主框架：三层任务调度（参考主线 MxFP8）+ C1/V1/C2/V2 核间流水
- *        item 级 flag 编排（参考 MxFP4 DN）。计算函数为空壳（printf + TODO），阶段二下沉 block 层。
+ *        item 级 flag 编排（参考 MxFP4 DN）。计算已全部下沉 block 层（cube/vector），
+ *        本层只负责任务调度、跨核同步与 GM 指针接线。
  */
 
 #ifndef QUANT_FLASH_ATTN_KERNEL_MXFP8_SOFTMAX_FP16_H_
