@@ -134,6 +134,8 @@ public:
 
         // seqlen 解析（BNSD：seqUsed 按 batch 索引，未传入时回退 shape）
         qSeqUsedParser_.Init(sequsedQ, static_cast<uint32_t>(constInfo_.seqUsedQSize), constInfo_.s1Size);
+        // 向量块 GM 输出初始化（必须在 parser Init 之后：OffsetCalculator 内部为拷贝语义）
+        vectorBlock_.InitInput(attnOut, qSeqUsedParser_);
         kvSeqUsedParser_.Init(sequsedKv, static_cast<uint32_t>(constInfo_.seqUsedKvSize), constInfo_.s2Size);
 
 #if QFA_SF16_DEBUG_PRINTF

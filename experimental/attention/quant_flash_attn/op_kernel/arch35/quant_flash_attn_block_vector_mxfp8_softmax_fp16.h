@@ -23,6 +23,10 @@
 #include "vf/vf_flashupdate_acc.h"
 #include "vf/vf_div_cast_bf16.h"
 #include "vf/vf_softmax_fp16_to_fp8.h"
+// ===== GM 输出公共助手（镜像 cube 侧引用方式；copy_ub_to_gm.h 传递引入 fa_ub_tensor/gm_coord 等）=====
+#include "../../../common/op_kernel/memcopy/copy_ub_to_gm.h"
+#include "../../../common/op_kernel/memcopy/fa_gm_tensor.h"
+#include "../../../common/op_kernel/memcopy/parser.h"
 
 namespace QFA_KERNEL {
 
@@ -85,6 +89,11 @@ private:
     // ===== 依赖注入 =====
     const ConstInfo &constInfo_;          // 核信息（subBlockIdx、scaleValue 等）
 
+    // ===== GM 输出（设计 §6.2；BNSD 布局 + S1_ONLY 行拷贝——realGSize=1 语义下 GS1 退化为 S1）=====
+    GlobalTensor<OUT_T> attentionOutGm_;                                            // GM 输出 tensor
+    FaGmTensor<OUT_T, GmFormat::BNGSD, int32_t> outGmTensor_;                       // + 偏移计算器
+    CopyAttenOutUbToGm<OUT_T, GmFormat::BNGSD, UbFormat::S1_ONLY> attenOutUbToGm_;  // UB→GM 拷贝仿函数
+
     // ===== 外部 pScale（静态 headroom 因子，InitTensorsVec 时 cast half 存成员）=====
     half pScaleHalf_ = static_cast<half>(1.0f);
 
@@ -95,6 +104,20 @@ private:
 public:
     __aicore__ inline explicit QuantFlashAttnBlockVectorMxfp8SoftmaxFp16(ConstInfo &constInfo)
         : constInfo_(constInfo) {}
+
+    /*
+     * GM 输出初始化（kernel InitInput 阶段调用）
+     * 注意：parser 必须已 Init 完成后再调用（OffsetCalculator 内部为拷贝语义，早调会拷到空 parser）
+     */
+    __aicore__ inline void
+    InitInput(__gm__ uint8_t *attentionOut,
+              const ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, int32_t> &parser)
+    {
+        attentionOutGm_.SetGlobalBuffer(reinterpret_cast<__gm__ OUT_T *>(attentionOut));
+        outGmTensor_.gmTensor = attentionOutGm_;
+        outGmTensor_.offsetCalculator.Init(constInfo_.bSize, constInfo_.realN2Size, constInfo_.realGSize,
+                                           constInfo_.s1Size, constInfo_.dSizeV, parser);
+    }
 
     __aicore__ inline void InitTensorsVec()
     {
