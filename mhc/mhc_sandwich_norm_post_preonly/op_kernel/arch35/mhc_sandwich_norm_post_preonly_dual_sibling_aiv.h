@@ -40,7 +40,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         ComputeX2PostTile(token, tOff, tD, invRms0, postVals);
         CacheX2TileForLane(token, tOff, tD, !USE_RMS_MID);
         if constexpr (!USE_RMS_MID) {
-            if (tile + 1U == dimLoop_) {
+            if (laneId_ == 0U && tile + 1U == dimLoop_) {
                 // 提前发出MTE3到Vector事件，与最后一次R4/R5归约和跨核会合重叠。
                 SetFlag<HardEvent::MTE3_V>(evtMte3toV_);
             }
@@ -90,7 +90,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
                 }
             }
             CacheX2TileForLane(token, tOff, tD, true);
-            if (tile + 1U == dimLoop_) {
+            if (laneId_ == 0U && tile + 1U == dimLoop_) {
                 // 提前发出MTE3到Vector事件，与最后一次R4/R5归约和跨核会合重叠。
                 SetFlag<HardEvent::MTE3_V>(evtMte3toV_);
             }
@@ -115,9 +115,8 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
 
     // 两个lane均无条件执行一次mode1 Set/Wait；该等待不替代本核流水事件。
     MhcPairReadySync();
-    // 两个lane都回收本核MTE3到Vector事件，follower随后才能安全结束当前token。
-    WaitFlag<HardEvent::MTE3_V>(evtMte3toV_);
     if (laneId_ == 1U) {
+        // follower的partial1写位于同一MTE3流水，CrossCore会合前已保证此前x2写出完成。
         return;
     }
 
@@ -135,6 +134,8 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         xHatVals[o] = dotHalf[0][o] + dotHalf[1][o];
     }
     ComputeGateValues(totalSumSqPre, xHatVals);
+    // leader在R6复用x2低精度缓存前回收事件，标量门控阶段继续隐藏MTE3尾延迟。
+    WaitFlag<HardEvent::MTE3_V>(evtMte3toV_);
 
     // 会合后只有leader继续执行R6、R7和最终输出。
     float sumSq1 = 0.0f;
