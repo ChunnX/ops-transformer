@@ -105,9 +105,8 @@ void SetupPlatformForCase(const string &socVersion)
     map<string, string> versions = {{"Short_SoC_version", socVersion}};
     platformInfos.SetPlatformRes("version", versions);
     optionalInfos.SetSocVersion(socVersion);
-    auto &manager = fe::PlatformInfoManager::Instance();
-    manager.platform_infos_map_[socVersion] = platformInfos;
-    manager.SetOptionalCompilationInfo(optionalInfos);
+    fe::PlatformInfoManager::Instance().platform_infos_map_[socVersion] = platformInfos;
+    fe::PlatformInfoManager::Instance().SetOptionalCompilationInfo(optionalInfos);
 }
 
 struct GroupedMatmulInfershapeCase {
@@ -157,7 +156,7 @@ struct GroupedMatmulInfershapeCase {
 
     void RunInferShape() const
     {
-        ASSERT_NO_FATAL_FAILURE(SetupPlatformForCase(socVersion));
+        SetupPlatformForCase(socVersion);
         vector<int64_t> groupListValues = ParseInt64List(groupListData);
         void *groupListValuePtr = groupListValues.empty() ? nullptr : static_cast<void *>(groupListValues.data());
         vector<gert::InfershapeContextPara::TensorDescription> inputTensorDescs;
@@ -218,7 +217,7 @@ struct GroupedMatmulInfershapeCase {
 
     void RunInferDtype() const
     {
-        ASSERT_NO_FATAL_FAILURE(SetupPlatformForCase(socVersion));
+        SetupPlatformForCase(socVersion);
         auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
         ASSERT_NE(spaceRegistry, nullptr);
         auto opImpl = spaceRegistry->GetOpImpl("GroupedMatmul");
