@@ -82,17 +82,14 @@ def _to_tf(t):
     """框架 Tensor / numpy -> tf.Tensor（兼容 torch.Tensor / tf.Tensor / numpy）。"""
     if t is None:
         return None
-    if hasattr(t, "detach"):  # torch.Tensor：保留原始 dtype 到 tf
+    if hasattr(t, "detach"):  # torch.Tensor
         arr = t.detach().to("cpu")
-        np_arr = (
-            arr.float().numpy()
-            if str(arr.dtype) in ("torch.bfloat16", "torch.float16")
-            else arr.numpy()
-        )
-        return tf.constant(np_arr, dtype=_TORCH_DT_MAP.get(str(arr.dtype), tf.float32))
-    if hasattr(t, "numpy"):  # tf.Tensor
-        return tf.constant(t.numpy())
-    # numpy（ml_dtypes.bfloat16 桥接回 fp32 再标 bf16 dtype）
+        if str(arr.dtype) == "torch.bfloat16":
+            # numpy 无原生 bf16，经 fp32 无损桥接（fp16 numpy 原生支持，无需中转）
+            return tf.constant(arr.float().numpy(), dtype=tf.bfloat16)
+        return tf.constant(arr.numpy(), dtype=_TORCH_DT_MAP.get(str(arr.dtype), tf.float32))
+    if hasattr(t, "numpy"):  # tf.Tensor：已是目标形态，直接返回（避免 tf→numpy→tf 往返拷贝）
+        return t
     if _BF16_NUMPY is not None and hasattr(t, "dtype") and t.dtype == _BF16_NUMPY:
         return tf.constant(t.astype("float32"), dtype=tf.bfloat16)
     return tf.constant(t)
@@ -118,18 +115,13 @@ def _normalize_range(range_value):
 
 
 def _optional_probs(probs):
-    """可选 probs 输入归一化：空 tensor / 0 元素 / None 统一为 None（缺席语义）。"""
+    """可选 probs 归一化：None / 空 tensor 统一为 None（缺席语义）。
+
+    调用点均已前置转换为 tf.Tensor（_numpy_to_tf / _to_tf），无需 numpy 分支。
+    """
     if probs is None:
         return None
-    if (
-        hasattr(probs, "shape")
-        and hasattr(probs.shape, "num_elements")
-        and probs.shape.num_elements() == 0
-    ):
-        return None
-    if hasattr(probs, "numpy") and probs.numpy().size == 0:
-        return None
-    if hasattr(probs, "size") and probs.size == 0:
+    if probs.shape.num_elements() == 0:
         return None
     return probs
 
