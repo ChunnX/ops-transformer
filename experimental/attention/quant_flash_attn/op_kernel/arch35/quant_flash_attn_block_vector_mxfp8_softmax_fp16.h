@@ -284,6 +284,27 @@ public:
         if (runInfo.isLastS2Loop) {
             // 踩踏闸：累积步骤读尽 mm2ResUB 后，才允许转置写以别名区覆写它
             PipeBarrier<PIPE_V>();
+#if QFA_SF16_DEBUG_PRINTF
+            if (runInfo.isFirstS2Loop) {
+                // 中间量 dump（临时调试）：V≡1 用例判定——分子[d][n] 应逐元素 == 分母[n]
+                //   相等但输出乱 → 后半链（除/转置/GM）坏；不等且随 d 变 → 前半链（V数据/缩放/Mmad）坏
+                // 注：AscendC printf 不支持 %.4f 精度格式，用 %f
+                AscendC::printf("[V2DUMP AIV%u] rs %f %f %f %f\n", constInfo_.aivIdx,
+                    accRowsumUB_.GetValue(0), accRowsumUB_.GetValue(1),
+                    accRowsumUB_.GetValue(2), accRowsumUB_.GetValue(3));
+                AscendC::printf("[V2DUMP AIV%u] rs43 %f rs52 %f\n", constInfo_.aivIdx,
+                    accRowsumUB_.GetValue(43), accRowsumUB_.GetValue(52));
+                AscendC::printf("[V2DUMP AIV%u] d0 %f %f %f %f\n", constInfo_.aivIdx,
+                    stage2OutUB_.GetValue(0), stage2OutUB_.GetValue(1),
+                    stage2OutUB_.GetValue(2), stage2OutUB_.GetValue(3));
+                AscendC::printf("[V2DUMP AIV%u] d043 %f d052 %f\n", constInfo_.aivIdx,
+                    stage2OutUB_.GetValue(43), stage2OutUB_.GetValue(52));
+                AscendC::printf("[V2DUMP AIV%u] d1 %f %f\n", constInfo_.aivIdx,
+                    stage2OutUB_.GetValue(128), stage2OutUB_.GetValue(129));
+                AscendC::printf("[V2DUMP AIV%u] d43 %f %f\n", constInfo_.aivIdx,
+                    stage2OutUB_.GetValue(43 * 128), stage2OutUB_.GetValue(43 * 128 + 1));
+            }
+#endif
             // 转置带 pad 输出（T 后缀 = Transposed），别名落 mm2Res 区 [0, ~36KB)
             LocalTensor<bfloat16_t> outputT = mm2ResUB_.template ReinterpretCast<bfloat16_t>();
             QfaVectorApi::VfDivAndCast(outputT, stage2OutUB_, accRowsumUB_);

@@ -94,9 +94,12 @@ private:
     const ConstInfo &constInfo_;
 
     CopyQueryGmToL1<QUANT_T, GmFormat::BNGSD, L1Format::NZ> copyQueryGmToL1_;
-    CopyQueryScaleGmToL1<SCALE_T, GmFormat::BNGSD> copyQueryScaleGmToL1_; 
+    CopyQueryScaleGmToL1<SCALE_T, GmFormat::BNGSD> copyQueryScaleGmToL1_;
     CopyKvGmToL1<QUANT_T, GmFormat::BNSD> copyKvGmToL1_;
     CopyKeyScaleGmToL1<SCALE_T, GmFormat::BNSD> copyKeyScaleGmToL1_;
+    // V 缩放专用（ND2NZ 转置方向，与 K 的 DN2NZ 相反——V 缩放 GM 沿 S2 分组 [S2/64, D, 2]，
+    // K 缩放沿 D 分组 [S, D/64, 2]，轴向互为转置故需两个方向相反的 helper；2026-09-20 修正）
+    CopyValueScaleGmToL1<SCALE_T, GmFormat::BNSD> copyValueScaleGmToL1_;
 
     // ===== GM 输入（BNSD 单模板，直接 GlobalTensor）=====
     FaGmTensor<QUANT_T, GmFormat::BNGSD, int32_t> queryGm_;
@@ -268,8 +271,13 @@ public:
                         keyScaleGm_, dequantScaleKey, kvSeqParser);
         InitVBuffer(constInfo_.bSize, constInfo_.n2Size, constInfo_.s2Size, constInfo_.dSize,
                     valueGm_, value, kvSeqParser);
-        InitVScaleBuffer(constInfo_.bSize, constInfo_.n2Size, constInfo_.s2Size, constInfo_.dSize,
-                        valueScaleGm_, dequantScaleValue, kvSeqParser);
+        // V 缩放张量 shape = [B, N, S2/64 组行, 2×D]（golden 布局 [S2/64, D, 2] 的 d 轴展平；
+        // V 沿 S2 组大小 = 2×MXFP_GROUP_SIZE = 64（MXFP_GROUP_SIZE=32 是 Q/K 沿 D 的组大小）；
+        // 2026-09-20 勘误：原误传 V 数据的 [s2Size 元素, dSize]，s2 轴单位与 d 轴尺寸全错）
+        InitVScaleBuffer(constInfo_.bSize, constInfo_.n2Size,
+                         ((constInfo_.s2Size + 63U) / 64U * 64U) / (2U * MXFP_GROUP_SIZE),  // S2/64 组行
+                         2U * constInfo_.dSize,                                              // 2×D 字节/行
+                         valueScaleGm_, dequantScaleValue, kvSeqParser);
         (void)kvSeqParser;
     }
 
@@ -639,18 +647,22 @@ public:
 
     __aicore__ inline void CopyVScaleGmToL1(const RunInfoMxfp8SoftmaxFp16 &runInfo)
     {
+        // 2026-09-20 勘误（镜像 DN L842-856）：V 缩放 GM = [S2/64 组行, D, 2]，
+        // 拷贝参数以组行为单位（s2Idx/s2DealSize 均为 S2/64），d 轴 = 2×D 字节；
+        // helper 用 V 专用的 copyValueScaleGmToL1_（ND2NZ 方向，与 K 的 DN2NZ 相反）。
+        // 原误用 K 的 helper + 元素单位参数，L1 缩放区内容整体错位。
         uint32_t l1BaseOffset = kvBufId_ * L1_KVSCALE_SINGLE_SLOT_SIZE;
-        uint32_t dstStride = (runInfo.actSingleLoopS2Size + 63U) / 64U * 64U;
-        uint32_t dDealSize = dBaseSize / MXFP_GROUP_SIZE;
-        FaL1Tensor<SCALE_T, L1Format::NZ> l1Tensor{.tensor = kvScaleL1Tensor_[l1BaseOffset], .rowCount = dstStride};
+        uint32_t s2GroupCount = (runInfo.actSingleLoopS2Size + 63U) / 64U;  // S2/64 组行数
+        FaL1Tensor<SCALE_T, L1Format::NZ> l1Tensor{.tensor = kvScaleL1Tensor_[l1BaseOffset],
+                                                    .rowCount = s2GroupCount};
 
         GmKvCoord gmCoord{.bIdx = runInfo.bIdx,
                           .n2Idx = runInfo.n2Idx,
-                          .s2Idx = runInfo.s2Idx,
+                          .s2Idx = runInfo.s2Idx / 64U,
                           .dIdx = 0U,
-                          .s2DealSize = runInfo.actSingleLoopS2Size,
-                          .dDealSize = dDealSize};
-        copyKeyScaleGmToL1_(l1Tensor, valueScaleGm_, gmCoord);
+                          .s2DealSize = s2GroupCount,
+                          .dDealSize = 2U * dBaseSize};
+        copyValueScaleGmToL1_(l1Tensor, valueScaleGm_, gmCoord);
     }
 
     __aicore__ inline void LoadQToL0B(const RunInfoMxfp8SoftmaxFp16 &runInfo)
