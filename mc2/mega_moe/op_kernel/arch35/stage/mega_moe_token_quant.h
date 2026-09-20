@@ -22,6 +22,19 @@ namespace MegaMoeImpl {
 
 using namespace AscendC;
 
+// 聚合预量化搬运的 GM 视图和参数，不负责申请 GM 或 UB 空间。
+struct PreQuantizedCopyContext {
+    uint32_t dataValidBytes;
+    uint32_t scaleValidBytes;
+    GlobalTensor<uint8_t> dataSrcGlobalTensor;
+    GlobalTensor<uint8_t> scaleSrcGlobalTensor;
+    GlobalTensor<uint8_t> tokenScaleDstGlobalTensor;
+    DataCopyExtParams dataCopyInParams;
+    DataCopyExtParams scaleCopyInParams;
+    DataCopyPadExtParams<uint8_t> copyInPadParams;
+    DataCopyExtParams tokenScaleCopyOutParams;
+};
+
 struct QuantProcessConfig {
     uint32_t quantTokenAlignBytes;
     uint32_t quantScaleAlignBytes;
@@ -167,19 +180,6 @@ __aicore__ inline void QuantizeLocalTokens(const AivJobContext &job, const MoeSt
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
 }
-
-// 聚合预量化搬运的 GM 视图和参数，不负责申请 GM 或 UB 空间。
-struct PreQuantizedCopyContext {
-    uint32_t dataValidBytes;
-    uint32_t scaleValidBytes;
-    GlobalTensor<uint8_t> dataSrcGlobalTensor;
-    GlobalTensor<uint8_t> scaleSrcGlobalTensor;
-    GlobalTensor<uint8_t> tokenScaleDstGlobalTensor;
-    DataCopyExtParams dataCopyInParams;
-    DataCopyExtParams scaleCopyInParams;
-    DataCopyPadExtParams<uint8_t> copyInPadParams;
-    DataCopyExtParams tokenScaleCopyOutParams;
-};
 
 // 执行一个任务范围内的双 buffer 搬运，flag 初始化、复用同步和收尾等待集中在此处。
 template <typename ActivationType, typename TopkWeightsType, bool TopkWeightsPrefetch>

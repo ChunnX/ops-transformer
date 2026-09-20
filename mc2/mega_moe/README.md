@@ -762,7 +762,7 @@
   <tr>
    <td>maxRecvTokenNum</td>
    <td>可选属性</td>
-   <td>每个Rank最大可接收Token数。默认值为0。该值为0时，会按最大值bs*epWorldSize*min(topK,localMoeExpertNum)预留内存大小；不为0时，将按照输入值大小预留内存，该场景下需用户保证填入值大于等于每个rank最大可接收的Token数。</td>
+   <td>每个Rank最大可接收Token数。默认值为0。取值为0时按该上限自动计算；取值大于0时使用该设置上限值。</td>
    <td>INT64</td>
    <td></td>
   </tr>
@@ -919,7 +919,7 @@
     - `intermediateHidden`表示激活后的中间特征维度，范围[256, 4096]且128对齐；`weight1`的完整输出宽度为2 × `intermediateHidden`。
     - `epWorldSize`范围 [2, 1024]。
     - `moeExpertNum`范围 [`epWorldSize`, 2048]，且`moeExpertNum` % `epWorldSize` == 0。
-    - `maxRecvTokenNum`范围 [0, `numMaxTokensPerRank` × `epWorldSize` × min(`topK`, `localMoeExpertNum`)]，建议保持默认值0，由接口自动计算接收容量。
+    - `maxRecvTokenNum`范围 [0, `numMaxTokensPerRank` × `epWorldSize` × min(`topK`, `localMoeExpertNum`)]。取值为0时按该上限自动计算；取值大于0时使用该设置上限值，可根据实际最大接收量设置以减少内存预留，但必须保证所有Rank和所有调用的实际接收量不超过该值。
     - `dispatchQuantOutDtype`仅支持23（FLOAT8_E5M2）或24（FLOAT8_E4M3FN）或296（FLOAT4_E2M1）。
     - 当前版本仅支持MXFP量化模式（`dispatchQuantMode` = 4），dispatch阶段使用MX逐组量化（group size = 32），量化缩放因子类型为FLOAT8_E8M0。
     - `combineQuantMode`取值为0、3、4，0表示非量化，3表示MXFP float8_e5m2类型，4表示MXFP float8_e4m3类型
