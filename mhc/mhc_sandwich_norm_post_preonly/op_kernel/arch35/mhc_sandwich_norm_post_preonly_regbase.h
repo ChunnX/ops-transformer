@@ -204,6 +204,35 @@ __aicore__ inline void SigmoidAddEps(const LocalTensor<float> &dst, const LocalT
     }
 }
 
+// 一个VF内完成单个head的主分支和四路残差累加，保持残差索引与累加顺序不变。
+__aicore__ inline void ComputePostHead(const LocalTensor<float> &dst, const LocalTensor<float> &hOut,
+                                       const LocalTensor<float> &residual, uint32_t rowStride, float postWeight,
+                                       const float (&combWeights)[N_MAX], uint32_t count)
+{
+    __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();
+    __local_mem__ float *hOutAddr = (__local_mem__ float *)hOut.GetPhyAddr();
+    __local_mem__ float *residualAddr = (__local_mem__ float *)residual.GetPhyAddr();
+    uint32_t remain = count;
+    const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
+    __VEC_SCOPE__
+    {
+        RegTensor<float> hOutReg, residualReg, weightReg, dstReg;
+        MaskReg mask;
+        for (uint16_t i = 0; i < loops; ++i) {
+            mask = UpdateMask<float>(remain);
+            DataCopy<float, LoadDist::DIST_NORM>(hOutReg, hOutAddr + i * VL_FP32);
+            AscendC::Reg::Muls(dstReg, hOutReg, postWeight, mask);
+            for (uint32_t j = 0; j < N_MAX; ++j) {
+                DataCopy<float, LoadDist::DIST_NORM>(residualReg,
+                    residualAddr + j * rowStride + i * VL_FP32);
+                AscendC::Reg::Duplicate(weightReg, combWeights[j], mask);
+                AscendC::Reg::MulAddDst(dstReg, residualReg, weightReg, mask);
+            }
+            DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
+        }
+    }
+}
+
 __aicore__ inline void Axpy(const LocalTensor<float> &dst, const LocalTensor<float> &src, float scalar, uint32_t count)
 {
     __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();

@@ -129,14 +129,15 @@ __aicore__ inline void ComputeX2AllHeadsBatched(const float (&postVals)[N_MAX], 
     LocalTensor<float> hOut = bufHOutFp32_.Get<float>();
     LocalTensor<float> res = bufResFp32_.Get<float>();
 
-    for (uint32_t h = 0; h < N; ++h)
-        MhcSandwichRegBase::Muls(x2[h * dimTile_], hOut, postVals[h], tD);
-    PipeBarrier<PIPE_V>();
-    for (uint32_t j = 0; j < N; ++j) {
-        for (uint32_t h = 0; h < N; ++h)
-            MhcSandwichRegBase::Axpy(x2[h * dimTile_], res[j * dimTile_], combVals[j * N + h], tD);
-        PipeBarrier<PIPE_V>();
+    for (uint32_t h = 0; h < N; ++h) {
+        float headComb[N_MAX];
+        for (uint32_t j = 0; j < N; ++j) {
+            headComb[j] = combVals[j * N + h];
+        }
+        MhcSandwichRegBase::ComputePostHead(
+            x2[h * dimTile_], hOut, res, dimTile_, postVals[h], headComb, tD);
     }
+    PipeBarrier<PIPE_V>();
 }
 
 /// 单核多分块路径按head串行计算全部x2。
@@ -150,12 +151,13 @@ __aicore__ inline void ComputeX2AllHeadsSerial(const float (&postVals)[N_MAX], c
     LocalTensor<float> res = bufResFp32_.Get<float>();
 
     for (uint32_t h = 0; h < N; ++h) {
-        MhcSandwichRegBase::Muls(x2[h * dimTile_], hOut, postVals[h], tD);
-        PipeBarrier<PIPE_V>();
+        float headComb[N_MAX];
         for (uint32_t j = 0; j < N; ++j) {
-            MhcSandwichRegBase::Axpy(x2[h * dimTile_], res[j * dimTile_], combVals[j * N + h], tD);
-            PipeBarrier<PIPE_V>();
+            headComb[j] = combVals[j * N + h];
         }
+        MhcSandwichRegBase::ComputePostHead(
+            x2[h * dimTile_], hOut, res, dimTile_, postVals[h], headComb, tD);
+        PipeBarrier<PIPE_V>();
     }
 }
 
