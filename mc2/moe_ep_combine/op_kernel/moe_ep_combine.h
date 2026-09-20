@@ -15,8 +15,6 @@
 #ifndef MOE_EP_COMBINE_H
 #define MOE_EP_COMBINE_H
 
-#include <cstddef>
-
 #if __has_include("version/asc_devkit_version.h") && __has_include("version/hcomm_version.h")
 #include "version/asc_devkit_version.h"
 #include "version/hcomm_version.h"
@@ -43,8 +41,7 @@
 #include "moe_ep_combine_tiling_key.h"
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
-#include "../../common/op_kernel/moe_ep_exception_dump_writer.h"
-#include "../../common/op_kernel/moe_shared_jetty_kernel_utils.h"
+#include "../../common/op_kernel/moe_shared_jetty_context.h"
 
 #include "moe_ep_combine_base.h"
 #include "moe_ep_combine_tiling.h"
@@ -74,27 +71,19 @@ static constexpr struct UrmaWqeEntry DEFAULT_WQE_CONFIG = {.odr = 5, .fence = 1,
 // Keep the final flag ordered after payload writes; the epilogue waits for it without a sender-side completion wait.
 static constexpr struct UrmaWqeEntry JETTY_FLAG_WQE_CONFIG = {.odr = 6, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
 
-__aicore__ inline void CheckCommResult(int32_t ret)
-{
-    if (ret != 0) {
-        AscendC::printf("MoE combine batch failed, ret=%d\n", ret);
-        AscendC::Trap();
-    }
-}
-
 template <TemplateMoeEpCombineTypeClass>
 class MoeEpCombine {
 public:
     __aicore__ inline MoeEpCombine(){};
 
     __aicore__ inline void Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkIdx, GM_ADDR recvSrcMetadata,
-                                GM_ADDR numRecvPerExpert, GM_ADDR topkWeights, GM_ADDR workspace, GM_ADDR tilingGM,
+                                GM_ADDR numRecvPerExpert, GM_ADDR topkWeights, GM_ADDR workspace, GM_ADDR /*tilingGM*/,
                                 TPipe *pipe, const MoeEpCombineInfo *tilingData);
 
     __aicore__ inline void Process();
 
 private:
-    __aicore__ inline void InitContext(GM_ADDR context, GM_ADDR tilingGM);
+    __aicore__ inline void InitContext(GM_ADDR context);
     __aicore__ inline void InitMetadata(GM_ADDR x, GM_ADDR recvSrcMetadata, GM_ADDR topkWeights);
     __aicore__ inline void SendJettyFlag(uint32_t dstRank, uint32_t jettyIndex);
     __aicore__ inline void BeginPreparedWrites(uint32_t dstRank, uint32_t jettyIndex);
@@ -129,7 +118,6 @@ private:
     const MoeEpCombineInfo *tilingData_{nullptr};
     using ContextType = Mc2Aclnn::MoeSharedJettyContext;
     __gm__ ContextType *mc2Context_{nullptr};
-    MoeEpExceptionDump::MoeEpCoreDiagWriter diagWriter_;
 
     uint32_t rankId_{0};
     uint32_t epWorldSize_{0};
@@ -144,7 +132,6 @@ private:
     uint32_t perSlotBytes_{0};
     uint64_t actualA_{0};
     uint64_t recvCapacity_{0};
-    uint32_t aivNum_{0};
     uint32_t metadataChunkTokens_{1};
 
     GlobalTensor<XType> xGm_;
@@ -183,7 +170,7 @@ template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkIdx,
                                                                         GM_ADDR recvSrcMetadata,
                                                                         GM_ADDR numRecvPerExpert, GM_ADDR topkWeights,
-                                                                        GM_ADDR workspace, GM_ADDR tilingGM,
+                                                                        GM_ADDR workspace, GM_ADDR /*tilingGM*/,
                                                                         TPipe *pipe, const MoeEpCombineInfo *tilingData)
 {
     tpipe_ = pipe;
@@ -198,7 +185,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR 
     axisH_ = tilingData_->cfg.hidden;
     hAlignSize_ = Ceil(axisH_ * sizeof(XType), UB_ALIGN) * UB_ALIGN;
     perSlotBytes_ = tilingData_->cfg.perSlotBytes;
-    aivNum_ = tilingData_->aivNum;
     recvCapacity_ = tilingData_->recvCapacity;
     tpipe_->InitBuffer(hcommBuf_, HCOMM_INIT_SIZE);
     hcommTensor_ = hcommBuf_.Get<uint8_t>();
@@ -208,35 +194,20 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR 
     Duplicate<uint8_t>(hcommBatchTensor_, 0U, HCOMM_BATCH_BUFFER_BYTES);
     SyncFunc<AscendC::HardEvent::V_S>();
 
-    InitContext(context, tilingGM);
+    InitContext(context);
 
     combineStateWinOffset_ = tilingData->combineStateWinOffset;
     combineDataWinOffset_ = tilingData->combineDataWinOffset;
     flagSourceWinAddr_ = GetUrmaStateAddrByRankId(rankId_, tilingData->combineFlagSourceWinOffset);
 
     InitMetadata(x, recvSrcMetadata, topkWeights);
-    diagWriter_.RunPosRecord(MOE_EP_COMBINE_RUN_POS_INIT_DONE);
 }
 
 template <TemplateMoeEpCombineTypeClass>
-__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::InitContext(GM_ADDR context, GM_ADDR tilingGM)
+__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::InitContext(GM_ADDR context)
 {
     mc2Context_ = reinterpret_cast<__gm__ ContextType *>(context);
-    if (mc2Context_->sharedJettyNum != Mc2Aclnn::MOE_SHARED_JETTY_NUM) {
-        AscendC::printf("MoE shared Jetty count mismatch, got=%u\n", mc2Context_->sharedJettyNum);
-        AscendC::Trap();
-    }
     rankId_ = mc2Context_->epRankId;
-    if (mc2Context_->epRankSize != epWorldSize_ || rankId_ >= epWorldSize_ ||
-        rankId_ != tilingData_->cfg.epRankId) {
-        AscendC::printf("MoE shared Jetty rank mismatch, context=%u/%u, tiling world=%u\n", rankId_,
-                        mc2Context_->epRankSize, epWorldSize_);
-        AscendC::Trap();
-    }
-    constexpr size_t metadataOffset =
-        offsetof(MoeEpCombineTilingData, moeEpCombineInfo) + offsetof(MoeEpCombineInfo, dumpMetadata);
-    MoeEpExceptionDump::WriteMetadata<ContextType>(context, tilingGM + metadataOffset);
-    diagWriter_.Init<ContextType>(context, MOE_EP_CORE_DIAG_COMBINE, tpipe_);
     combineJettyCount_ = Mc2Aclnn::MOE_SHARED_JETTY_NUM;
     for (uint32_t i = 0; i < epWorldSize_; ++i) {
         winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer[i];
@@ -282,7 +253,7 @@ template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::FlushPreparedWrites(bool keepHandle)
 {
     if (preparedWriteCount_ != 0) {
-        CheckCommResult(hcomm_.BatchCommit(activeBatchHandle_));
+        hcomm_.BatchCommit(activeBatchHandle_);
         preparedWriteCount_ = 0;
     }
     if (!keepHandle) {
@@ -307,7 +278,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BeginPrepared
     }
     activeBatchHandle_ = hcomm_.MakeBatchHandle(static_cast<CommHandle>(commHandle), hcommBatchTensor_,
                                                 HCOMM_BATCH_BUFFER_BYTES, winRankAddr_[dstRank]);
-    Mc2Kernel::CheckSharedJettyQueueDepth(activeBatchHandle_);
     activeJettyHandle_ = commHandle;
     activeBatchInitialized_ = true;
 }
@@ -321,7 +291,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWrite(
         FlushPreparedWrites(true);
     }
     auto &handle = hcomm_.GetHandleRef(activeBatchHandle_, activePeerIndex_, activeRemoteWindow_);
-    CheckCommResult(hcomm_.WriteNbi<config>(handle, dst, src, len));
+    hcomm_.WriteNbi<config>(handle, dst, src, len);
     ++preparedWriteCount_;
 }
 
@@ -340,7 +310,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareMultiS
         FlushPreparedWrites(true);
     }
     auto &handle = hcomm_.GetHandleRef(activeBatchHandle_, activePeerIndex_, activeRemoteWindow_);
-    CheckCommResult(hcomm_.WriteNbi<config>(handle, dst, srcDescs, srcNum));
+    hcomm_.WriteNbi<config>(handle, dst, srcDescs, srcNum);
     preparedWriteCount_ += wqebbCount;
 }
 
@@ -457,9 +427,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ProcessRemote
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseFromMetadata()
 {
-    if (epWorldSize_ == 0U || aivNum_ < combineJettyCount_) {
-        return;
-    }
     InitFlagSource();
     SyncAll<true>();
     if (aivId_ >= combineJettyCount_) {
@@ -485,7 +452,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseFrom
     }
     FlushPreparedWrites();
     DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
-    diagWriter_.RunPosRecord(MOE_EP_COMBINE_RUN_POS_URMA_REQUESTS_ISSUE_DONE);
 }
 
 template <TemplateMoeEpCombineTypeClass>
@@ -495,7 +461,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Process()
 }
 
 #endif
-
 } // namespace MoeEpCombineImpl
 
 #endif // MOE_EP_COMBINE_H

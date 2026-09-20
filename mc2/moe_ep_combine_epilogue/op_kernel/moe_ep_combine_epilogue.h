@@ -37,11 +37,9 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "adv_api/reduce/reduce.h"
 #include "adv_api/reduce/sum.h"
-#include <cstddef>
 #include "../../common/op_kernel/moe_shared_jetty_context.h"
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
-#include "../../common/op_kernel/moe_ep_exception_dump_writer.h"
 
 #include "moe_ep_combine_epilogue_tiling_key.h"
 #include "moe_ep_combine_epilogue_tiling.h"
@@ -74,12 +72,12 @@ public:
 
     __aicore__ inline void Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkIdx, GM_ADDR recvSrcMetadata,
                                 GM_ADDR topkWeights, GM_ADDR combinedX, GM_ADDR combinedTopkWeights, GM_ADDR workspace,
-                                GM_ADDR tilingGM, TPipe *pipe, const MoeEpCombineEpilogueInfo *tilingData);
+                                GM_ADDR /*tilingGM*/, TPipe *pipe, const MoeEpCombineEpilogueInfo *tilingData);
 
     __aicore__ inline void Process();
 
 private:
-    __aicore__ inline void InitContext(GM_ADDR context, GM_ADDR tilingGM);
+    __aicore__ inline void InitContext(GM_ADDR context);
     __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startTokenId,
                                        uint32_t &endTokenId, uint32_t &tokenPerAivNum);
     __aicore__ inline void BuffInit();
@@ -103,7 +101,6 @@ private:
 
     TPipe *tpipe_{nullptr};
     const MoeEpCombineEpilogueInfo *tilingData_{nullptr};
-    MoeEpExceptionDump::MoeEpCoreDiagWriter diagWriter_;
 
     uint32_t rankId_{0};
     uint32_t epWorldSize_{0};
@@ -177,7 +174,7 @@ private:
 template <TemplateMoeEpCombineEpilogueTypeClass>
 __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc>::Init(
     GM_ADDR context, GM_ADDR x, GM_ADDR topkIdx, GM_ADDR recvSrcMetadata, GM_ADDR topkWeights, GM_ADDR combinedX,
-    GM_ADDR combinedTopkWeights, GM_ADDR workspace, GM_ADDR tilingGM, TPipe *pipe,
+    GM_ADDR combinedTopkWeights, GM_ADDR workspace, GM_ADDR /*tilingGM*/, TPipe *pipe,
     const MoeEpCombineEpilogueInfo *tilingData)
 {
     tpipe_ = pipe;
@@ -195,7 +192,7 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     recvCapacity_ = tilingData->recvCapacity;
     hAlignSize_ = Ceil(axisH_ * sizeof(XType), UB_ALIGN) * UB_ALIGN;
     xCopyParams_ = {1U, static_cast<uint16_t>(hAlignSize_), 0U, 0U};
-    InitContext(context, tilingGM);
+    InitContext(context);
 
     combineStateWinOffset_ = tilingData->combineStateWinOffset;
     combineDataWinOffset_ = tilingData->combineDataWinOffset;
@@ -213,31 +210,19 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     if constexpr (HasTopkWeight == 1) {
         combinedTopkWeightsGm_.SetGlobalBuffer((__gm__ float *)combinedTopkWeights);
     }
-
-    diagWriter_.RunPosRecord(MOE_EP_COMBINE_EPILOGUE_RUN_POS_INIT_DONE);
 }
 
 template <TemplateMoeEpCombineEpilogueTypeClass>
 __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc>::InitContext(
-    GM_ADDR context, GM_ADDR tilingGM)
+    GM_ADDR context)
 {
     using ContextType = Mc2Aclnn::MoeSharedJettyContext;
     auto *ctx = reinterpret_cast<__gm__ ContextType *>(context);
     rankId_ = ctx->epRankId;
-    if (ctx->epRankSize != epWorldSize_ || rankId_ >= epWorldSize_ || rankId_ != tilingData_->cfg.epRankId ||
-        ctx->sharedJettyNum != Mc2Aclnn::MOE_SHARED_JETTY_NUM) {
-        AscendC::printf("MoE shared Jetty context mismatch, rank=%u, size=%u, tiling=%u, jettys=%u\n", rankId_,
-                        ctx->epRankSize, epWorldSize_, ctx->sharedJettyNum);
-        AscendC::Trap();
-    }
     combineJettyCount_ = Mc2Aclnn::MOE_SHARED_JETTY_NUM;
     for (uint32_t i = 0; i < epWorldSize_; ++i) {
         winRankAddr_[i] = (GM_ADDR)ctx->epHcclBuffer[i];
     }
-    constexpr size_t metadataOffset = offsetof(MoeEpCombineEpilogueTilingData, moeEpCombineEpilogueInfo) +
-                                      offsetof(MoeEpCombineEpilogueInfo, dumpMetadata);
-    MoeEpExceptionDump::WriteMetadata<ContextType>(context, tilingGM + metadataOffset);
-    diagWriter_.Init<ContextType>(context, MOE_EP_CORE_DIAG_COMBINE_EPILOGUE, tpipe_);
 }
 
 template <TemplateMoeEpCombineEpilogueTypeClass>
@@ -546,7 +531,6 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
         ClearCompletionFlags();
     }
     SyncAll<true>();
-    diagWriter_.RunPosRecord(MOE_EP_COMBINE_EPILOGUE_RUN_POS_WAIT_DONE);
 
     if (tPerCore_ == 0) {
         return;
@@ -566,7 +550,6 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
         DataCopyPad(combinedXGm_[tokenIdx * axisH_], ubResult, xCopyParams);
         xOutQue_.FreeTensor(ubResult);
     }
-    diagWriter_.RunPosRecord(MOE_EP_COMBINE_EPILOGUE_RUN_POS_OUTPUT_DONE);
 }
 
 template <TemplateMoeEpCombineEpilogueTypeClass>
@@ -579,7 +562,6 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
 }
 
 #endif
-
 } // namespace MoeEpCombineEpilogueImpl
 
 #endif // MOE_EP_COMBINE_EPILOGUE_H

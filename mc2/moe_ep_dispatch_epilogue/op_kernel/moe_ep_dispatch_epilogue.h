@@ -16,8 +16,6 @@
 #ifndef MOE_EP_DISPATCH_EPILOGUE_H
 #define MOE_EP_DISPATCH_EPILOGUE_H
 
-#include <cstddef>
-
 #if __has_include("version/asc_devkit_version.h") && __has_include("version/hcomm_version.h")
 #include "version/asc_devkit_version.h"
 #include "version/hcomm_version.h"
@@ -42,7 +40,6 @@
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #include "../../common/op_kernel/mc2_moe_context.h"
 #include "../../common/op_kernel/moe_shared_jetty_context.h"
-#include "../../common/op_kernel/moe_ep_exception_dump_writer.h"
 
 namespace MoeEpDispatchEpilogueImpl {
 
@@ -80,11 +77,11 @@ public:
     __aicore__ inline void Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkIdx, GM_ADDR numRecvPerRank,
                                 GM_ADDR numRecvPerExpert, GM_ADDR cachedRecvSrcMetadata, GM_ADDR recvX,
                                 GM_ADDR recvSrcMetadata, GM_ADDR recvTopkWeights, GM_ADDR recvScales, GM_ADDR workspace,
-                                GM_ADDR tilingGM, TPipe *pipe, const MoeEpDispatchEpilogueInfo *tilingData);
+                                GM_ADDR /*tilingGM*/, TPipe *pipe, const MoeEpDispatchEpilogueInfo *tilingData);
     __aicore__ inline void Process();
 
 private:
-    __aicore__ inline void InitContext(GM_ADDR context, GM_ADDR tilingGM);
+    __aicore__ inline void InitContext(GM_ADDR context);
     __aicore__ inline void InitGm(GM_ADDR x, GM_ADDR numRecvPerRank, GM_ADDR numRecvPerExpert, GM_ADDR cachedRecvSrcMetadata,
                                   GM_ADDR recvX, GM_ADDR recvSrcMetadata, GM_ADDR recvTopkWeights,
                                   const MoeEpDispatchEpilogueInfo *tilingData);
@@ -113,9 +110,7 @@ private:
     }
 
     TPipe *tpipe_{nullptr};
-    MoeEpExceptionDump::MoeEpCoreDiagWriter diagWriter_;
     uint32_t epRankId_{0};
-    uint32_t tilingRankId_{0};
     bool isLocalRank_{false};
     uint32_t aivId_{0};
     GlobalTensor<int32_t> numRecvPerRankGm_;
@@ -225,7 +220,7 @@ template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWe
 __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::Init(
     GM_ADDR context, GM_ADDR x, GM_ADDR topkIdx, GM_ADDR numRecvPerRank, GM_ADDR numRecvPerExpert,
     GM_ADDR cachedRecvSrcMetadata, GM_ADDR recvX, GM_ADDR recvSrcMetadata, GM_ADDR recvTopkWeights, GM_ADDR recvScales,
-    GM_ADDR workspace, GM_ADDR tilingGM, TPipe *pipe, const MoeEpDispatchEpilogueInfo *tilingData)
+    GM_ADDR workspace, GM_ADDR /*tilingGM*/, TPipe *pipe, const MoeEpDispatchEpilogueInfo *tilingData)
 {
     tpipe_ = pipe;
     aivId_ = GetBlockIdx();
@@ -235,39 +230,27 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     axisK_ = tilingData->cfg.topK;
     axisH_ = tilingData->cfg.hidden;
     epWorldSize_ = tilingData->cfg.epWorldSize;
-    tilingRankId_ = tilingData->cfg.epRankId;
     numMaxTokensPerRank_ = tilingData->cfg.numMaxTokensPerRank;
     perSlotBytes_ = tilingData->cfg.perSlotBytes;
     dispatchNotifyCount_ = tilingData->dispatchNotifyCount;
     winDataOffset_ = tilingData->winDataOffset;
     slotWinStateOffset_ = tilingData->slotWinStateOffset;
 
-    InitContext(context, tilingGM);
+    InitContext(context);
     InitGm(x, numRecvPerRank, numRecvPerExpert, cachedRecvSrcMetadata, recvX, recvSrcMetadata,
            recvTopkWeights, tilingData);
     InitBuffers(recvScales, tilingData);
     InitExpertCounts();
-    diagWriter_.RunPosRecord(MOE_EP_DISPATCH_EPILOGUE_RUN_POS_INIT_DONE);
 }
 
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
 __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::InitContext(
-    GM_ADDR context, GM_ADDR tilingGM)
+    GM_ADDR context)
 {
-    constexpr size_t metadataOffset = offsetof(MoeEpDispatchEpilogueTilingData, moeEpDispatchEpilogueInfo) +
-                                      offsetof(MoeEpDispatchEpilogueInfo, dumpMetadata);
     GM_ADDR localWindow = nullptr;
     auto *ctx = reinterpret_cast<__gm__ Mc2Aclnn::MoeSharedJettyContext *>(context);
     epRankId_ = ctx->epRankId;
-    if (ctx->epRankSize != epWorldSize_ || epRankId_ >= epWorldSize_ || epRankId_ != tilingRankId_ ||
-        ctx->sharedJettyNum != Mc2Aclnn::MOE_SHARED_JETTY_NUM) {
-        AscendC::printf("MoE shared Jetty context mismatch, rank=%u, size=%u, tiling=%u, jettys=%u\n", epRankId_,
-                        ctx->epRankSize, epWorldSize_, ctx->sharedJettyNum);
-        AscendC::Trap();
-    }
     localWindow = reinterpret_cast<GM_ADDR>(ctx->epHcclBuffer[epRankId_]);
-    MoeEpExceptionDump::WriteMetadata<Mc2Aclnn::MoeSharedJettyContext>(context, tilingGM + metadataOffset);
-    diagWriter_.Init<Mc2Aclnn::MoeSharedJettyContext>(context, MOE_EP_CORE_DIAG_DISPATCH_EPILOGUE, tpipe_);
     localSlotStateWinAddr_ = localWindow + slotWinStateOffset_;
     localWinAddr_ = localWindow + winDataOffset_;
 }
@@ -426,7 +409,6 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         ComputePrefixSums();
         WaitDispatch();
         SyncAll<true>();
-        diagWriter_.RunPosRecord(MOE_EP_DISPATCH_EPILOGUE_RUN_POS_WAIT_DONE);
         CountHits();
         SyncAll<true>();
 
@@ -443,19 +425,16 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
             CopyFromWindowByExpert();
         }
         // recv_x/metadata/weights are consumed immediately by MoeEpCombine in continue mode.  Do not rely on the
-        // diagnostic write below (or on kernel-tail draining) to complete preceding MTE3 writes.
+        // kernel-tail draining to complete preceding MTE3 writes.
         SyncFunc<AscendC::HardEvent::MTE3_S>();
-        diagWriter_.RunPosRecord(MOE_EP_DISPATCH_EPILOGUE_RUN_POS_OUTPUT_DONE);
     } else {
         WaitDispatch();
         SyncAll<true>();
-        diagWriter_.RunPosRecord(MOE_EP_DISPATCH_EPILOGUE_RUN_POS_WAIT_DONE);
         CopyCachedRankOffsets();
         CopyFromWindowByCachedMeta();
         // The cached metadata path ends with MTE3_MTE2 for UB reuse.  Add an explicit producer-completion edge for
         // the following combine kernel, which consumes all five metadata fields and recv_rank_offsets.
         SyncFunc<AscendC::HardEvent::MTE3_S>();
-        diagWriter_.RunPosRecord(MOE_EP_DISPATCH_EPILOGUE_RUN_POS_OUTPUT_DONE);
     }
 }
 
@@ -961,7 +940,6 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     }
 }
 #endif
-
 } // namespace MoeEpDispatchEpilogueImpl
 
 #endif // MOE_EP_DISPATCH_EPILOGUE_H
