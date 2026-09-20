@@ -113,8 +113,8 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     SetFlag<HardEvent::MTE3_V>(evtMte3toV_);
     DataCopy(partialBuf, partial1Gm_[(uint64_t)token * PARTIAL_SLOT_ELEMS], PARTIAL_SLOT_ELEMS);
     SetFlag<HardEvent::MTE2_S>(evtMte2toS_);
-    WaitFlag<HardEvent::MTE2_S>(evtMte2toS_);
     WaitFlag<HardEvent::MTE3_V>(evtMte3toV_);
+    WaitFlag<HardEvent::MTE2_S>(evtMte2toS_);
     sumSqHalf[1] = partialBuf.GetValue(0);
     for (uint32_t o = 0; o < N_MAX; ++o) {
         dotHalf[1][o] = partialBuf.GetValue(o + 1U);
