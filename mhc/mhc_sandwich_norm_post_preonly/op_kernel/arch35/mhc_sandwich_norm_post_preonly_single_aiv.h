@@ -21,9 +21,8 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
 {
     LoadCachedHOut(tOff, tD);
     LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-    MhcSandwichRegBase::ScaleMulGammaQuantizeRoundTrip<T>(hOut, hOut, bufGamma0Fp32_.Get<float>()[tOff], invRms0,
-                                                         tD);
-    PipeBarrier<PIPE_V>();
+    ApplyScaleAndGamma(hOut, invRms0, bufGamma0Fp32_.Get<float>()[tOff], tD);
+    QuantizeRoundTrip(hOut, tD);
 
     ComputeX2AllHeadsBatched(postVals, (uint64_t)token * N_ * D_ + tOff, tD);
 }
