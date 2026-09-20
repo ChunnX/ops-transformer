@@ -152,7 +152,7 @@ TEST_F(AclnnWeightQuantMatmulAllReduceExtraTest, Ascend310PInvalidBf16)
                                     output, 0, ACLNN_ERR_PARAM_INVALID);
 }
 
-TEST_F(AclnnWeightQuantMatmulAllReduceExtraTest, Ascend950LaunchCcuCommMode)
+TEST_F(AclnnWeightQuantMatmulAllReduceExtraTest, Dav3510LaunchCcuCommMode)
 {
     TensorDesc x1 = {{32, 64}, ACL_FLOAT16, ACL_FORMAT_ND};
     TensorDesc x2 = {{64, 128}, ACL_INT8, ACL_FORMAT_ND};
@@ -203,7 +203,7 @@ TEST_F(AclnnWeightQuantMatmulAllReduceExtraTest, InvalidPertensorScaleShape)
                                     output, 0, ACLNN_ERR_PARAM_INVALID);
 }
 
-TEST_F(AclnnWeightQuantMatmulAllReduceExtraTest, Ascend950Int4Weight)
+TEST_F(AclnnWeightQuantMatmulAllReduceExtraTest, Dav3510Int4Weight)
 {
     TensorDesc x1 = {{32, 64}, ACL_FLOAT16, ACL_FORMAT_ND};
     TensorDesc x2 = {{64, 128}, ACL_INT4, ACL_FORMAT_ND};

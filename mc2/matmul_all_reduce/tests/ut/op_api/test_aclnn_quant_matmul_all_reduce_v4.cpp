@@ -100,7 +100,7 @@ TEST_F(AclnnQuantMatmulAllReduceV4ExtraTest, NzFormatWeightX2)
                                 nullptr, output, 0, ACLNN_SUCCESS);
 }
 
-TEST_F(AclnnQuantMatmulAllReduceV4ExtraTest, Ascend950LaunchCcuCommMode)
+TEST_F(AclnnQuantMatmulAllReduceV4ExtraTest, Dav3510LaunchCcuCommMode)
 {
     TensorDesc x1 = {{32, 64}, ACL_INT8, ACL_FORMAT_ND};
     TensorDesc x2 = {{64, 128}, ACL_INT8, ACL_FORMAT_ND};
