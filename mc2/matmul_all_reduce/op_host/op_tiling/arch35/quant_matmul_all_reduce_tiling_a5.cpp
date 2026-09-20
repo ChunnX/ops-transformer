@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file quant_matmul_all_reduce_tiling_950.cc
+ * \file quant_matmul_all_reduce_tiling_a5.cc
  * \brief
  */
-#ifndef _QUANT_MATMUL_ALL_REDUCE_TILING_950_CC_
-#define _QUANT_MATMUL_ALL_REDUCE_TILING_950_CC_
-#include "quant_matmul_all_reduce_tiling_950.h"
+#ifndef _QUANT_MATMUL_ALL_REDUCE_TILING_A5_CC_
+#define _QUANT_MATMUL_ALL_REDUCE_TILING_A5_CC_
+#include "quant_matmul_all_reduce_tiling_a5.h"
 #include "common/utils/op_mc2.h"
 #include "mc2_log.h"
 #include "util/math_util.h"
@@ -55,10 +55,10 @@ bool QuantMatmulAllReduceTilingA5::IsCapable()
 {
     if (isA8W8_ || (scenario_ == AllReduceScenario::FP8HIF8) || (scenario_ == AllReduceScenario::MXFP4) ||
         (scenario_ == AllReduceScenario::MXFP8)) {
-        OP_LOGI(opName_, "Start with matmulAllReduce 950 quant tiling.");
+        OP_LOGI(opName_, "Start with matmulAllReduce A5 quant tiling.");
         return true;
     }
-    OP_LOGI(opName_, "Skip matmulAllReduce 950 quant tiling as dtype not support.");
+    OP_LOGI(opName_, "Skip matmulAllReduce A5 quant tiling as dtype not support.");
     return false;
 }
 
@@ -1025,4 +1025,4 @@ REGISTER_TILING_TEMPLATE_WITH_ARCH(MatmulAllReduce, QuantMatmulAllReduceTilingA5
                                    static_cast<int32_t>(Ops::Base::DAV_3510), 0);
 } // namespace optiling
 
-#endif //_QUANT_MATMUL_ALL_REDUCE_TILING_950_CC_
+#endif //_QUANT_MATMUL_ALL_REDUCE_TILING_A5_CC_

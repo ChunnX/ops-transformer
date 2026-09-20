@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file matmul_all_reduce_tiling_950.h
+ * \file matmul_all_reduce_tiling_a5.h
  * \brief
  */
-#ifndef MATMUL_ALL_REDUCE_TILING_950_H
-#define MATMUL_ALL_REDUCE_TILING_950_H
+#ifndef MATMUL_ALL_REDUCE_TILING_A5_H
+#define MATMUL_ALL_REDUCE_TILING_A5_H
 
 #include "../matmul_all_reduce_tiling_base.h"
 #include "mat_mul_v3/op_host/op_tiling/matmul_v3_base_tiling.h"
@@ -92,4 +92,4 @@ private:
 };
 
 } // namespace optiling
-#endif // MATMUL_ALL_REDUCE_TILING_950_H
+#endif // MATMUL_ALL_REDUCE_TILING_A5_H
