@@ -437,7 +437,7 @@ __simd_vf__ void FindKthVFImpl(__ubuf__ uint32_t *kValue, __ubuf__ uint32_t *his
 
     Reg::ClearSpr<AscendC::SpecialPurposeReg::AR>();
 
-    Reg::UnalignRegForStore alignIdx3;
+    Reg::UnalignRegForStore liAlignIdx3;
 
     Reg::RegTensor<uint32_t> btmK3;
     Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_NORM>(btmK3, kValue);
@@ -453,9 +453,9 @@ __simd_vf__ void FindKthVFImpl(__ubuf__ uint32_t *kValue, __ubuf__ uint32_t *his
         Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_NORM>(cout, histogramsBuf + i * 64);
         Reg::Compare<uint32_t, CMPMODE::GE>(pregGE, cout, btmK3, pregB32Reg7);
         Reg::Squeeze<uint32_t, Reg::GatherMaskMode::STORE_REG>(sqzIdx3, (Reg::RegTensor<uint32_t> &)idxC, pregGE);
-        Reg::StoreUnAlign<uint32_t, Reg::PostLiteral::POST_MODE_UPDATE>(idx3Buf, sqzIdx3, alignIdx3);
+        Reg::StoreUnAlign<uint32_t, Reg::PostLiteral::POST_MODE_UPDATE>(idx3Buf, sqzIdx3, liAlignIdx3);
     }
-    Reg::StoreUnAlignPost(idx3Buf, alignIdx3);
+    Reg::StoreUnAlignPost(idx3Buf, liAlignIdx3);
 
     Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
 
@@ -492,18 +492,18 @@ __simd_vf__ void FindIdxGTOutputVFImpl(__ubuf__ uint32_t *outputIdxBuf, __ubuf__
     Reg::RegTensor<uint32_t> kthValue;
     Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_NORM>(kthValue, kValue);
 
-    Reg::RegTensor<uint32_t> vregInput;
+    Reg::RegTensor<uint32_t> liVregInput;
 
     for (uint16_t i = 0; i < (uint16_t)(vfLoop); ++i) {
         Reg::RegTensor<int32_t> idxC;
         Reg::Arange(idxC, beginIdx + i * 64);
 
-        Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_NORM>(vregInput, inputBuf + i * 64);
+        Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_NORM>(liVregInput, inputBuf + i * 64);
 
         Reg::MaskReg poutGT = Reg::CreateMask<uint32_t, Reg::MaskPattern::ALL>();
 
         Reg::RegTensor<uint32_t> sqzIdxOut;
-        Reg::Compare<uint32_t, CMPMODE::GT>(poutGT, vregInput, kthValue, pregB32Reg8);
+        Reg::Compare<uint32_t, CMPMODE::GT>(poutGT, liVregInput, kthValue, pregB32Reg8);
 
         Reg::Squeeze<uint32_t, Reg::GatherMaskMode::STORE_REG>(sqzIdxOut, (Reg::RegTensor<uint32_t> &)idxC, poutGT);
         Reg::StoreUnAlign<uint32_t, Reg::PostLiteral::POST_MODE_UPDATE>(outputIdxBuf, sqzIdxOut, alignIdx);
@@ -625,13 +625,13 @@ __aicore__ inline void LiTopKVF(const LocalTensor<uint32_t> &tmpIdxLocal, const 
                                 const LocalTensor<uint32_t> &idx3Local, const LocalTensor<uint32_t> &nkValueLocal,
                                 uint32_t topK, uint32_t validLen)
 {
-    __ubuf__ uint32_t *tmpIdxBuf = (__ubuf__ uint32_t *)tmpIdxLocal.GetPhyAddr();
-    __ubuf__ uint32_t *outputValueBuf = (__ubuf__ uint32_t *)outputValueLocal.GetPhyAddr();
+    __ubuf__ uint32_t *liTmpIdxBuf = (__ubuf__ uint32_t *)tmpIdxLocal.GetPhyAddr();
+    __ubuf__ uint32_t *liOutputValueBuf = (__ubuf__ uint32_t *)outputValueLocal.GetPhyAddr();
     __ubuf__ uint32_t *inputValueBuf = (__ubuf__ uint32_t *)inputValueLocal.GetPhyAddr();
     __ubuf__ uint32_t *histogramsBuf = (__ubuf__ uint32_t *)histogramsLocal.GetPhyAddr();
     __ubuf__ uint32_t *idx0Buf = (__ubuf__ uint32_t *)idx0Local.GetPhyAddr();
     __ubuf__ uint32_t *idx1Buf = (__ubuf__ uint32_t *)idx1Local.GetPhyAddr();
-    __ubuf__ uint32_t *idx2Buf = (__ubuf__ uint32_t *)idx2Local.GetPhyAddr();
+    __ubuf__ uint32_t *liTopkIdx2Buf = (__ubuf__ uint32_t *)idx2Local.GetPhyAddr();
     __ubuf__ uint32_t *idx3Buf = (__ubuf__ uint32_t *)idx3Local.GetPhyAddr();
     __ubuf__ uint32_t *nkValueBuf = (__ubuf__ uint32_t *)nkValueLocal.GetPhyAddr();
 
@@ -642,30 +642,31 @@ __aicore__ inline void LiTopKVF(const LocalTensor<uint32_t> &tmpIdxLocal, const 
     const uint16_t repeatSize8 = 256;
     const uint16_t repeatSize32 = 64;
 
-    uint16_t histogramsLoopNum = (validLen + repeatSize8 - 1) / repeatSize8;
+    uint16_t liHistogramLoops = (validLen + repeatSize8 - 1) / repeatSize8;
     uint16_t inputLoopNum = (validLen + repeatSize32 - 1) / repeatSize32;
     uint16_t topkLoopNum = (topK + 64 - 1) / 64;
 
     // find kth-value
-    HistogramsFirstVFImpl<uint32_t>(histogramsBuf, inputValueBuf, histogramsLoopNum, flag);
+    HistogramsFirstVFImpl<uint32_t>(histogramsBuf, inputValueBuf, liHistogramLoops, flag);
     FindFirstTargetBinVFImpl(idx0Buf, nkValueBuf, histogramsBuf, bottomK);
-    HistogramsSecondVFImpl<uint32_t>(histogramsBuf, inputValueBuf, idx0Buf, histogramsLoopNum, flag);
+    HistogramsSecondVFImpl<uint32_t>(histogramsBuf, inputValueBuf, idx0Buf, liHistogramLoops, flag);
     FindSecondTargetBinVFImpl(idx1Buf, nkValueBuf, nkValueBuf, histogramsBuf);
-    HistogramsThirdVFImpl<uint32_t>(histogramsBuf, inputValueBuf, idx0Buf, idx1Buf, histogramsLoopNum, flag);
-    FindThirdTargetBinVFImpl(idx2Buf, nkValueBuf, nkValueBuf, histogramsBuf);
-    HistogramsLastVFImpl<uint32_t>(histogramsBuf, inputValueBuf, idx0Buf, idx1Buf, idx2Buf, histogramsLoopNum, flag);
-    FindKthVFImpl(nkValueBuf, histogramsBuf, idx0Buf, idx1Buf, idx2Buf, idx3Buf);
+    HistogramsThirdVFImpl<uint32_t>(histogramsBuf, inputValueBuf, idx0Buf, idx1Buf, liHistogramLoops, flag);
+    FindThirdTargetBinVFImpl(liTopkIdx2Buf, nkValueBuf, nkValueBuf, histogramsBuf);
+    HistogramsLastVFImpl<uint32_t>(
+        histogramsBuf, inputValueBuf, idx0Buf, idx1Buf, liTopkIdx2Buf, liHistogramLoops, flag);
+    FindKthVFImpl(nkValueBuf, histogramsBuf, idx0Buf, idx1Buf, liTopkIdx2Buf, idx3Buf);
 
     // filter
     int32_t count = LICommon::Align(topK, (uint32_t)64) - topK / 64 * 64;
     AscendC::Duplicate(tmpIdxLocal[topK / 64 * 64], (uint32_t)(0), count);
     // 输出大于k-value的值idx
-    FindIdxGTOutputVFImpl(tmpIdxBuf, inputValueBuf, (uint32_t)(0), nkValueBuf, inputLoopNum);
+    FindIdxGTOutputVFImpl(liTmpIdxBuf, inputValueBuf, (uint32_t)(0), nkValueBuf, inputLoopNum);
     // 输出等于k-value的值idx
-    FindIdxEQOutputVFImpl(tmpIdxBuf, inputValueBuf, (uint32_t)(0), nkValueBuf, inputLoopNum);
+    FindIdxEQOutputVFImpl(liTmpIdxBuf, inputValueBuf, (uint32_t)(0), nkValueBuf, inputLoopNum);
 
     if constexpr (ISOUTVALUE) {
-        FindValueOutputVFImpl(outputValueBuf, inputValueBuf, tmpIdxBuf, topkLoopNum);
+        FindValueOutputVFImpl(liOutputValueBuf, inputValueBuf, liTmpIdxBuf, topkLoopNum);
     }
 }
 
@@ -684,19 +685,20 @@ __aicore__ inline void LiTopKGatherVF(const LocalTensor<uint32_t> &outputIdxLoca
                                       const LocalTensor<uint32_t> &outputValueLocal,
                                       const LocalTensor<uint32_t> &inputValueLocal,
                                       const LocalTensor<uint32_t> &tmpIdxLocal,
-                                      const LocalTensor<uint32_t> &hisIdxLocal, uint32_t topK, uint32_t loopBasicIdx,
+                                      const LocalTensor<uint32_t> &liHistoryIdxLocal, uint32_t topK,
+                                      uint32_t loopBasicIdx,
                                       uint32_t validLen)
 {
     __ubuf__ uint32_t *outputIdxBuf = (__ubuf__ uint32_t *)outputIdxLocal.GetPhyAddr();
     __ubuf__ uint32_t *outputValueBuf = (__ubuf__ uint32_t *)outputValueLocal.GetPhyAddr();
     __ubuf__ uint32_t *inputValueBuf = (__ubuf__ uint32_t *)inputValueLocal.GetPhyAddr();
     __ubuf__ uint32_t *tmpIdxBuf = (__ubuf__ uint32_t *)tmpIdxLocal.GetPhyAddr();
-    __ubuf__ uint32_t *hisIdxBuf = (__ubuf__ uint32_t *)hisIdxLocal.GetPhyAddr();
+    __ubuf__ uint32_t *historyIdxBuf = (__ubuf__ uint32_t *)liHistoryIdxLocal.GetPhyAddr();
 
     const uint16_t repeatSize32 = 64;
     uint16_t topkLoopNum32 = (topK + repeatSize32 - 1) / repeatSize32;
 
-    FindRealIndexVFImpl(outputIdxBuf, tmpIdxBuf, hisIdxBuf, topK, loopBasicIdx, topkLoopNum32);
+    FindRealIndexVFImpl(outputIdxBuf, tmpIdxBuf, historyIdxBuf, topK, loopBasicIdx, topkLoopNum32);
 }
 
 __aicore__ inline void IndicesAddOffset(const LocalTensor<uint32_t> &indicesOutLocal, uint32_t outputIdxOffset,
