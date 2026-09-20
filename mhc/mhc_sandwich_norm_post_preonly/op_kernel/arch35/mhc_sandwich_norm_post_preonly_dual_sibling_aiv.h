@@ -66,7 +66,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
             const uint32_t tD = GetTileD(tile);
             const uint32_t tOff = tile * dimTile_;
             LocalTensor<float> gammaEven = bufGamma2Fp32_.Get<float>();
-            LocalTensor<float> gammaOdd = bufGamma0Fp32_.Get<float>();
+            LocalTensor<float> gammaOdd = bufResFp32_.Get<float>();
             LoadGammaInto(gammaEven, gamma2Gm_, tOff, tD);
             LoadX2CacheTile(tOff, tD);
             LocalTensor<float> x2 = bufX2Fp32_.Get<float>();

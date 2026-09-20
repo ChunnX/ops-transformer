@@ -20,11 +20,12 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
                                                                                          const float (&postVals)[N_MAX])
 {
     LoadHOutAndCast((uint64_t)token * D_ + tOff, tD);
-    LoadGammaInto(bufGamma0Fp32_.Get<float>(), gamma0Gm_, tOff, tD);
+    LocalTensor<float> gamma0 = bufResFp32_.Get<float>();
+    LoadGammaInto(gamma0, gamma0Gm_, tOff, tD);
     SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
     WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
     LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-    ApplyScaleAndGamma(hOut, invRms0, bufGamma0Fp32_.Get<float>(), tD);
+    ApplyScaleAndGamma(hOut, invRms0, gamma0, tD);
     FenceVToMte2();
     QuantizeRoundTrip(hOut, tD);
 
@@ -294,7 +295,7 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
             // R3阶段gamma0缓存已经空闲，与gamma2缓存组成双缓冲；
             // 首个gamma2搬运和x2缓存恢复重叠，后续搬运与前一head的Vector计算重叠。
             LocalTensor<float> gammaEven = bufGamma2Fp32_.Get<float>();
-            LocalTensor<float> gammaOdd = bufGamma0Fp32_.Get<float>();
+            LocalTensor<float> gammaOdd = bufResFp32_.Get<float>();
             LoadGammaInto(gammaEven, gamma2Gm_, tOff, tD);
             LoadX2CacheTile(tOff, tD);
             LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
