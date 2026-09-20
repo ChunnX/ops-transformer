@@ -126,41 +126,73 @@ struct DnUnmergedVecRunInfo {
     int64_t nextTokensLeftUp = 0;
 };
 
-// Scores are [KV, Q]; mask bytes are [Q, KV]. Both mask modes use the
-// same scale-before-padding order, including zero and negative scales.
-template <bool HasMask, uint32_t MaskPitch>
+// Both modes scale the same score lanes before optional mask selection and
+// KV padding. Dispatch mask presence before entering the VF hardware loops.
+template <bool ApplyMask, uint32_t MaskPitch>
 __simd_vf__ inline void PrepareDnScoresVF(__ubuf__ float *scores, __ubuf__ uint32_t *mask, uint32_t rows,
-                                          uint32_t pitch, uint32_t cols, uint32_t alignedCols, float scale,
-                                          float paddingValue, bool needMask)
+                                          uint32_t pitch, uint32_t cols, uint16_t groups, uint16_t paddingCols,
+                                          float scale, float paddingValue)
 {
     Reg::RegTensor<int32_t> indices;
-    Reg::RegTensor<uint32_t> words, bytes, byteMask;
-    Reg::RegTensor<float> values, minimum, padding;
+    Reg::RegTensor<uint32_t> words, byteMask;
+    Reg::RegTensor<float> minimum, padding;
     Reg::MaskReg active = Reg::UpdateMask<float>(rows);
-    Reg::MaskReg keep;
-    if constexpr (HasMask) {
+    Reg::RegTensor<float> value0;
+    Reg::RegTensor<uint32_t> byte0;
+    Reg::MaskReg keep0;
+    Reg::RegTensor<float> value1;
+    Reg::RegTensor<uint32_t> byte1;
+    Reg::MaskReg keep1;
+    Reg::RegTensor<float> value2;
+    Reg::RegTensor<uint32_t> byte2;
+    Reg::MaskReg keep2;
+    Reg::RegTensor<float> value3;
+    Reg::RegTensor<uint32_t> byte3;
+    Reg::MaskReg keep3;
+    if constexpr (ApplyMask) {
         Reg::Arange(indices, 0);
         Reg::Muls(indices, indices, static_cast<int32_t>(MaskPitch / 4U), active);
         Reg::Duplicate(minimum, -1000000000000.0F);
         Reg::Duplicate(byteMask, 255U);
     }
-    for (uint16_t col = 0; col < cols; ++col) {
-        Reg::LoadAlign(values, scores + col * pitch);
-        Reg::Muls(values, values, scale, active);
-        if constexpr (HasMask) {
-            if (needMask) {
-                Reg::Gather(words, mask + col / 4U, reinterpret_cast<Reg::RegTensor<uint32_t> &>(indices), active);
-                Reg::ShiftRights(bytes, words, static_cast<int16_t>((col % 4U) * 8U), active);
-                Reg::And(bytes, bytes, byteMask, active);
-                Reg::Compares<uint32_t, CMPMODE::EQ>(keep, bytes, 0U, active);
-                Reg::Select(values, values, minimum, keep);
-            }
+    for (uint16_t group = 0; group < groups; ++group) {
+        if constexpr (ApplyMask) {
+            Reg::Gather(words, mask + group, reinterpret_cast<Reg::RegTensor<uint32_t> &>(indices), active);
         }
-        Reg::StoreAlign(scores + col * pitch, values, active);
+        Reg::LoadAlign(value0, scores + (group * 4U + 0U) * pitch);
+        Reg::LoadAlign(value1, scores + (group * 4U + 1U) * pitch);
+        Reg::LoadAlign(value2, scores + (group * 4U + 2U) * pitch);
+        Reg::LoadAlign(value3, scores + (group * 4U + 3U) * pitch);
+        Reg::Muls(value0, value0, scale, active);
+        Reg::Muls(value1, value1, scale, active);
+        Reg::Muls(value2, value2, scale, active);
+        Reg::Muls(value3, value3, scale, active);
+        if constexpr (ApplyMask) {
+            Reg::ShiftRights(byte0, words, static_cast<int16_t>(0), active);
+            Reg::And(byte0, byte0, byteMask, active);
+            Reg::Compares<uint32_t, CMPMODE::EQ>(keep0, byte0, 0U, active);
+            Reg::Select(value0, value0, minimum, keep0);
+            Reg::ShiftRights(byte1, words, static_cast<int16_t>(8), active);
+            Reg::And(byte1, byte1, byteMask, active);
+            Reg::Compares<uint32_t, CMPMODE::EQ>(keep1, byte1, 0U, active);
+            Reg::Select(value1, value1, minimum, keep1);
+            Reg::ShiftRights(byte2, words, static_cast<int16_t>(16), active);
+            Reg::And(byte2, byte2, byteMask, active);
+            Reg::Compares<uint32_t, CMPMODE::EQ>(keep2, byte2, 0U, active);
+            Reg::Select(value2, value2, minimum, keep2);
+            Reg::ShiftRights(byte3, words, static_cast<int16_t>(24), active);
+            Reg::And(byte3, byte3, byteMask, active);
+            Reg::Compares<uint32_t, CMPMODE::EQ>(keep3, byte3, 0U, active);
+            Reg::Select(value3, value3, minimum, keep3);
+        }
+        Reg::StoreAlign(scores + (group * 4U + 0U) * pitch, value0, active);
+        Reg::StoreAlign(scores + (group * 4U + 1U) * pitch, value1, active);
+        Reg::StoreAlign(scores + (group * 4U + 2U) * pitch, value2, active);
+        Reg::StoreAlign(scores + (group * 4U + 3U) * pitch, value3, active);
     }
     Reg::Duplicate(padding, paddingValue);
-    for (uint16_t col = cols; col < alignedCols; ++col) {
-        Reg::StoreAlign(scores + col * pitch, padding, active);
+    for (uint16_t i = 0; i < paddingCols; ++i) {
+        Reg::StoreAlign(scores + (cols + i) * pitch, padding, active);
     }
 }
 
@@ -609,6 +641,26 @@ public:
         lseOutUbBufId_ = (lseOutUbBufId_ + 1) % UB_LSE_OUT_BUFCNT;
     }
 
+    __aicore__ inline void PrepareScores(LocalTensor<T> &scores, LocalTensor<uint8_t> &mask, const RunInfo &info,
+                                         bool needMask)
+    {
+        const uint16_t groups = (info.actSingleLoopS2Size + 3U) / 4U;
+        const uint16_t paddingCols = info.actSingleLoopS2SizeAlign - info.actSingleLoopS2Size;
+        if constexpr (HAS_MASK) {
+            if (needMask) {
+                PrepareDnScoresVF<true, MASK_PITCH>(
+                    (__ubuf__ float *)scores.GetPhyAddr(), (__ubuf__ uint32_t *)mask.GetPhyAddr(), info.actVecMSize,
+                    info.actMSizeAlign32 / CV_RATIO, info.actSingleLoopS2Size, groups, paddingCols,
+                    static_cast<float>(constInfo_.scaleValue), negativeFloatScalar_);
+                return;
+            }
+        }
+        PrepareDnScoresVF<false, MASK_PITCH>((__ubuf__ float *)scores.GetPhyAddr(), nullptr, info.actVecMSize,
+                                             info.actMSizeAlign32 / CV_RATIO, info.actSingleLoopS2Size, groups,
+                                             paddingCols, static_cast<float>(constInfo_.scaleValue),
+                                             negativeFloatScalar_);
+    }
+
     __aicore__ inline void ProcessVec1Dn(LocalTensor<INPUT_T> &pL1Tensor, LocalTensor<T> &mm1ResUbTensor,
                                          RunInfo runInfo)
     {
@@ -653,11 +705,7 @@ public:
 
         LocalTensor<INPUT_T> stage1CastTensor =
             ubVec1ResBuffers_[vec1ResUbBufId_ * UB_VEC1_RES_BUF_BYTES].template ReinterpretCast<INPUT_T>();
-        PrepareDnScoresVF<HAS_MASK, MASK_PITCH>(
-            (__ubuf__ float *)mm1ResUbTensor.GetPhyAddr(), (__ubuf__ uint32_t *)attenMaskUb.GetPhyAddr(),
-            runInfo.actVecMSize, runInfo.actMSizeAlign32 / CV_RATIO, runInfo.actSingleLoopS2Size,
-            runInfo.actSingleLoopS2SizeAlign, static_cast<float>(constInfo_.scaleValue), negativeFloatScalar_,
-            needMask);
+        PrepareScores(mm1ResUbTensor, attenMaskUb, runInfo, needMask);
         AscendC::PipeBarrier<PIPE_V>();
         if (runInfo.actVecMSize == 64U && (runInfo.actMSizeAlign32 >> 1) == 64U &&
             runInfo.actSingleLoopS2Size == s2BaseSize && runInfo.actSingleLoopS2SizeAlign == s2BaseSize) {
