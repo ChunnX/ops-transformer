@@ -133,8 +133,48 @@ __simd_vf__ inline void VfDivAndCastVF(__ubuf__ bfloat16_t *dstT, __ubuf__ float
             Cast<bfloat16_t, float, castTraitOne>(vreg_bf16_2, vreg_src_16, preg_f32);
             Or((RegTensor<uint16_t> &)vreg_src_8, (RegTensor<uint16_t> &)vreg_bf16_1,
                (RegTensor<uint16_t> &)vreg_bf16_2, preg_bf16);
-            // TODO(4.1c-3): 12 条 Interleave 级联 + 8 条 StoreAlign(8+1) 散布
-            (void)dstT;
+            // Interleave 三轮蝶形（寄存器间距 4→2→1，逐条照抄 DN L115-149——转置网络核心，
+            // 8×8 单元网格转置：寄存器号与单元组号互换）
+            Interleave(vreg_src_1, vreg_src_5, vreg_src_1, vreg_src_5);
+            Interleave(vreg_src_2, vreg_src_6, vreg_src_2, vreg_src_6);
+            Interleave(vreg_src_3, vreg_src_7, vreg_src_3, vreg_src_7);
+            Interleave(vreg_src_4, vreg_src_8, vreg_src_4, vreg_src_8);
+            Interleave(vreg_src_1, vreg_src_3, vreg_src_1, vreg_src_3);
+            Interleave(vreg_src_5, vreg_src_7, vreg_src_5, vreg_src_7);
+            Interleave(vreg_src_2, vreg_src_4, vreg_src_2, vreg_src_4);
+            Interleave(vreg_src_6, vreg_src_8, vreg_src_6, vreg_src_8);
+            Interleave(vreg_src_1, vreg_src_2, vreg_src_1, vreg_src_2);
+            Interleave(vreg_src_3, vreg_src_4, vreg_src_3, vreg_src_4);
+            Interleave(vreg_src_5, vreg_src_6, vreg_src_5, vreg_src_6);
+            Interleave(vreg_src_7, vreg_src_8, vreg_src_7, vreg_src_8);
+            // 散布存储（块间距 8+1=9，镜像 DN L151-160）：寄存器 q 的 8 个 32B 子块分别落到
+            // 目标第 8q+k 行（k=子块号），行内槽位 = 块号；行周期 288B = 8×32B 数据 + 32B pad。
+            // 落位（float 单位）：列分组基址 colHalf·4608 + 块内 8·block + 寄存器跨度 576·q
+            // （576=(8+1)·8·8 个 float=2304B；4608 float=18432B=一组 64 行×288B）
+            StoreAlign<float, Reg::DataCopyMode::DATA_BLOCK_COPY>(
+                (__ubuf__ float *)dstT + colHalf * 4608 + 8 * block + 576 * 0,
+                (RegTensor<float> &)vreg_src_1, 8 + 1, preg_f32);
+            StoreAlign<float, Reg::DataCopyMode::DATA_BLOCK_COPY>(
+                (__ubuf__ float *)dstT + colHalf * 4608 + 8 * block + 576 * 1,
+                (RegTensor<float> &)vreg_src_2, 8 + 1, preg_f32);
+            StoreAlign<float, Reg::DataCopyMode::DATA_BLOCK_COPY>(
+                (__ubuf__ float *)dstT + colHalf * 4608 + 8 * block + 576 * 2,
+                (RegTensor<float> &)vreg_src_3, 8 + 1, preg_f32);
+            StoreAlign<float, Reg::DataCopyMode::DATA_BLOCK_COPY>(
+                (__ubuf__ float *)dstT + colHalf * 4608 + 8 * block + 576 * 3,
+                (RegTensor<float> &)vreg_src_4, 8 + 1, preg_f32);
+            StoreAlign<float, Reg::DataCopyMode::DATA_BLOCK_COPY>(
+                (__ubuf__ float *)dstT + colHalf * 4608 + 8 * block + 576 * 4,
+                (RegTensor<float> &)vreg_src_5, 8 + 1, preg_f32);
+            StoreAlign<float, Reg::DataCopyMode::DATA_BLOCK_COPY>(
+                (__ubuf__ float *)dstT + colHalf * 4608 + 8 * block + 576 * 5,
+                (RegTensor<float> &)vreg_src_6, 8 + 1, preg_f32);
+            StoreAlign<float, Reg::DataCopyMode::DATA_BLOCK_COPY>(
+                (__ubuf__ float *)dstT + colHalf * 4608 + 8 * block + 576 * 6,
+                (RegTensor<float> &)vreg_src_7, 8 + 1, preg_f32);
+            StoreAlign<float, Reg::DataCopyMode::DATA_BLOCK_COPY>(
+                (__ubuf__ float *)dstT + colHalf * 4608 + 8 * block + 576 * 7,
+                (RegTensor<float> &)vreg_src_8, 8 + 1, preg_f32);
         }
     }
 }
