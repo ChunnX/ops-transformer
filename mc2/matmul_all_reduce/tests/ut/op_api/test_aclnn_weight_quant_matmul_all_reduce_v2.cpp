@@ -141,7 +141,7 @@ TEST_F(AclnnWeightQuantMatmulAllReduceV2ExtraTest, Ascend310PInvalidBf16)
                                       output, "", 0, ACLNN_ERR_PARAM_INVALID);
 }
 
-TEST_F(AclnnWeightQuantMatmulAllReduceV2ExtraTest, Ascend950LaunchCcuCommMode)
+TEST_F(AclnnWeightQuantMatmulAllReduceV2ExtraTest, Dav3510LaunchCcuCommMode)
 {
     TensorDesc x1 = {{32, 64}, ACL_FLOAT16, ACL_FORMAT_ND};
     TensorDesc x2 = {{64, 128}, ACL_INT8, ACL_FORMAT_ND};
@@ -161,7 +161,7 @@ TEST_F(AclnnWeightQuantMatmulAllReduceV2ExtraTest, InvalidScaleContiguousWithTra
                                       output, "", 32, ACLNN_ERR_PARAM_INVALID);
 }
 
-TEST_F(AclnnWeightQuantMatmulAllReduceV2ExtraTest, Ascend950LaunchAicpuCommMode)
+TEST_F(AclnnWeightQuantMatmulAllReduceV2ExtraTest, Dav3510LaunchAicpuCommMode)
 {
     TensorDesc x1 = {{32, 64}, ACL_FLOAT16, ACL_FORMAT_ND};
     TensorDesc x2 = {{64, 128}, ACL_INT8, ACL_FORMAT_ND};

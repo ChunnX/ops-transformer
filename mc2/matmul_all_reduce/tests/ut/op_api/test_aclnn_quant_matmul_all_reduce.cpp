@@ -120,7 +120,7 @@ TEST_F(AclnnQuantMatmulAllReduceExtraTest, LaunchApiCoverage)
     (void)aclnnQuantMatmulAllReduce(nullptr, 0, nullptr, nullptr);
 }
 
-TEST_F(AclnnQuantMatmulAllReduceExtraTest, Ascend950LaunchCcuCommMode)
+TEST_F(AclnnQuantMatmulAllReduceExtraTest, Dav3510LaunchCcuCommMode)
 {
     op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
     (void)aclnnQuantMatmulAllReduce(nullptr, 0, nullptr, nullptr);
