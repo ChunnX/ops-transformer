@@ -18,7 +18,7 @@ namespace optiling {
 
 // Host侧常量，与Kernel公共头文件保持一致
 constexpr uint32_t HOST_N_MAX = 4;
-constexpr uint32_t HOST_D_TILE_MAX = 1280;
+constexpr uint32_t HOST_D_TILE_MAX = 2560;
 constexpr uint32_t HOST_D_ALIGN_ELEM = 16;
 constexpr uint32_t HOST_MAX_TOKENS = 1024 * 1024; // B*S 上限
 constexpr uint32_t NUM_TWO = 2;
