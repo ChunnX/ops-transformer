@@ -307,45 +307,6 @@ __aicore__ inline void CastB16ScaleAndMulGamma(const LocalTensor<float> &dst, co
     }
 }
 
-// R3直接生成最终低精度缓存与量化恢复后的FP32结果，避免随后再次启动量化和恢复VF。
-template <typename T>
-__aicore__ inline void CastB16ScaleMulGammaQuantizeRoundTrip(const LocalTensor<float> &dstFp32,
-                                                             const LocalTensor<T> &dstCache,
-                                                             const LocalTensor<T> &srcCache,
-                                                             const LocalTensor<float> &gamma, float scale,
-                                                             uint32_t count)
-{
-    __local_mem__ float *dstFp32Addr = (__local_mem__ float *)dstFp32.GetPhyAddr();
-    __local_mem__ T *dstCacheAddr = (__local_mem__ T *)dstCache.GetPhyAddr();
-    __local_mem__ T *srcCacheAddr = (__local_mem__ T *)srcCache.GetPhyAddr();
-    __local_mem__ float *gammaAddr = (__local_mem__ float *)gamma.GetPhyAddr();
-    uint32_t remain = count;
-    const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
-    __VEC_SCOPE__
-    {
-        RegTensor<T> srcReg, quantizedReg;
-        RegTensor<float> valueReg, gammaReg, restoredReg;
-        MaskReg mask;
-        for (uint16_t i = 0; i < loops; ++i) {
-            mask = UpdateMask<float>(remain);
-            const uint32_t offset = static_cast<uint32_t>(i) * VL_FP32;
-            DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcCacheAddr + offset);
-            Cast<float, T, CAST_B16_TO_FP32>(valueReg, srcReg, mask);
-            DataCopy<float, LoadDist::DIST_NORM>(gammaReg, gammaAddr + offset);
-            AscendC::Reg::Muls(valueReg, valueReg, scale, mask);
-            AscendC::Reg::Mul(valueReg, valueReg, gammaReg, mask);
-            if constexpr (IsSameT<T, bfloat16_t>::value) {
-                Cast<T, float, CAST_FP32_TO_B16_RINT>(quantizedReg, valueReg, mask);
-            } else {
-                Cast<T, float, CAST_FP32_TO_B16_NONE>(quantizedReg, valueReg, mask);
-            }
-            DataCopy<T, StoreDist::DIST_PACK_B32>(dstCacheAddr + offset, quantizedReg, mask);
-            Cast<float, T, CAST_B16_TO_FP32>(restoredReg, quantizedReg, mask);
-            DataCopy(dstFp32Addr + offset, restoredReg, mask);
-        }
-    }
-}
-
 // 将sigmoid和epsilon补偿合并到同一个VF，输入保存-z，输出保存sigmoid(z)+epsilon。
 __aicore__ inline void SigmoidAddEps(const LocalTensor<float> &dst, const LocalTensor<float> &src, float epsilon,
                                      uint32_t count)
