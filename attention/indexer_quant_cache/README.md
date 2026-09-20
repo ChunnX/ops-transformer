@@ -56,3 +56,7 @@
 | aclnn接口 | [test_aclnn_indexer_quant_cache](./examples/test_aclnn_indexer_quant_cache.cpp)    | 通过[aclnnIndexerQuantCache](./docs/aclnnIndexerQuantCache.md)调用IndexerQuantCache算子。 |
 | 图模式    | -                                                                                 | 通过[算子IR](./op_graph/indexer_quant_cache_proto.h)接入GE图模式调用IndexerQuantCache算子。 |
 | PyTorch API | - | 通过[indexer_quant_cache](../../attention/indexer_quant_cache/docs/torchapi_indexer_quant_cache.md)接口调用indexer_quant_cache算子。 |
+
+## GEIR 示例
+
+`test_geir_indexer_quant_cache` 接受可选参数 `0|1|2|3`（默认 `1`），分别使用 MX-FP8、Normal、HiFloat8、MX-FP4 对应的 cache/scale dtype 和 shape。示例为各 Data 节点设置独立 index，输入 x 填充 FP16 的 1，slot 使用唯一合法索引并保留一个 `-1` 跳过项。
