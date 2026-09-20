@@ -228,6 +228,8 @@ private:
         TEventID evnet_id = event_ping_pong_flag ? event_ping_ : event_pong_;
 
         if (first) {
+            SET_FLAG(MTE1, MTE2, EVENT_ID1);
+            WAIT_FLAG(MTE1, MTE2, EVENT_ID1);
             load_data_gm_2_l1(l1_a_tensor, leftGm[runTimeInfo.queryGmOffset], mProcess, head_dim_, mProcessAlign,
                               head_dim_align_, q_stride_);
             load_data_gm_2_l1(l1_b_tensor, rightGm[runTimeInfo.keyGmOffset], nProcess, head_dim_, nProcessAlign,

@@ -259,7 +259,7 @@ protected:
         y_block_num_ = CeilDiv(kv_seq_len_, blockShapeY_);
 
         if (!deterministic_) {
-            uint64_t vecCoreNum = ascendcPlatform.GetCoreNumAiv();
+            uint64_t vecCoreNum = cubeCoreNum_ * 2;
             uint64_t vecRegLen = ascendcPlatform.GetVecRegLen();
             uint64_t ubSize;
             ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
@@ -320,27 +320,23 @@ protected:
         tilingData_.set_dqSize(dq_size);
         tilingData_.set_dkSize(dk_size);
         if (!deterministic_) {
-            // index workspace：存放 NonZero 预 kernel 输出的有效 block 下标（数量上界 = mask 元素个数）
-            uint64_t block_sparse_mask_size =
-                static_cast<uint64_t>(batch_num_) * q_head_num_ * x_block_num_ * y_block_num_;
+            // 存放 NonZero 预 kernel 输出的有效 block 下标（数量上界 = mask 元素个数）
             auto maskShape = context_->GetInputShape(6);
-            if (maskShape != nullptr) {
-                const gert::Shape &shape = maskShape->GetStorageShape();
-                uint64_t maskElemNum = 1;
-                for (size_t i = 0; i < shape.GetDimNum(); i++) {
-                    maskElemNum *= static_cast<uint64_t>(shape.GetDim(i));
-                }
-                block_sparse_mask_size = maskElemNum;
+            if (maskShape == nullptr) {
+                OP_LOGE(context_->GetNodeName(),
+                        "BlockSparseAttentionGrad only support blockSparseMask is not nullptr.");
+                return ge::GRAPH_FAILED;
+            }
+            const gert::Shape &shape = maskShape->GetStorageShape();
+            uint64_t block_sparse_mask_size = 1;
+            for (size_t i = 0; i < shape.GetDimNum(); i++) {
+                block_sparse_mask_size *= static_cast<uint64_t>(shape.GetDim(i));
             }
             tilingData_.set_indexWorkspaceOffset(usr_workspace_offset);
-            // 按 512B 对齐：index shape workspace 会被主 kernel 以 uint64 标量读取（必须 8B 对齐），
-            // 而 mask 元素个数很少时（例如整个 mask 只有 1 个 block）本段只有 4B，不补齐会触发标量非对齐异常。
             usr_workspace_offset += AlignTo(static_cast<int64_t>(block_sparse_mask_size) * sizeof(int32_t), 512);
-            // index shape workspace：NonZero 输出的 [dim, dims, count]
             tilingData_.set_indexShapeWorkspaceOffset(usr_workspace_offset);
             usr_workspace_offset += NON_ZERO_SHAPE_WORKSPACE_SIZE;
-            // NonZero 预 kernel 的分核计数 workspace：每个 AIV 核 128B
-            uint64_t vecCoreNum = ascendcPlatform.GetCoreNumAiv();
+            uint64_t vecCoreNum = cubeCoreNum_ * 2;
             tilingData_.set_nonZeroWorkspaceOffset(usr_workspace_offset);
             usr_workspace_offset += AlignTo(static_cast<int64_t>(vecCoreNum) * NON_ZERO_COUNT_BYTES_PER_CORE, 512);
         }
