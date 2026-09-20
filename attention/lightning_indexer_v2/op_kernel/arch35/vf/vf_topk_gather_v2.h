@@ -254,16 +254,17 @@ __simd_vf__ void HistogramsLastVFImpl(__ubuf__ uint32_t *histogramsBuf, __ubuf__
         Reg::And(pregEQ0And1, pregEQ0, pregEQ1, pregB8);
         Reg::And(pregEQAll, pregEQ0And1, pregEQ2, pregB8);
 
-        Reg::Histograms<uint8_t, uint16_t, Reg::HistogramsBinType::BIN0, Reg::HistogramsType::ACCUMULATE>(cout0, vreg3,
-                                                                                                          pregEQAll);
-        Reg::Histograms<uint8_t, uint16_t, Reg::HistogramsBinType::BIN1, Reg::HistogramsType::ACCUMULATE>(cout1, vreg3,
-                                                                                                          pregEQAll);
+        Reg::Histograms<uint8_t, uint16_t, Reg::HistogramsBinType::BIN0, Reg::HistogramsType::ACCUMULATE>(
+            cout0, vreg3, pregEQAll);
+        Reg::Histograms<uint8_t, uint16_t, Reg::HistogramsBinType::BIN1, Reg::HistogramsType::ACCUMULATE>(
+            cout1, vreg3, pregEQAll);
     }
 
     liV2TopkCommon::StoreHistogramResult(histogramsBuf, cout0, cout1, pregB16, pregB32);
 }
 
-__simd_vf__ void FindKthVFImpl(__ubuf__ uint32_t *kValue, __ubuf__ uint32_t *histogramsBuf, __ubuf__ uint32_t *idx0Buf,
+__simd_vf__ void FindKthVFImpl(__ubuf__ uint32_t *kValue, __ubuf__ uint32_t *histogramsBuf,
+                               __ubuf__ uint32_t *idx0Buf,
                                __ubuf__ uint32_t *idx1Buf, __ubuf__ uint32_t *idx2Buf, __ubuf__ uint32_t *idx3Buf)
 {
     Reg::MaskReg pregB32 = Reg::CreateMask<uint32_t, Reg::MaskPattern::ALL>();
@@ -285,8 +286,10 @@ __simd_vf__ void FindKthVFImpl(__ubuf__ uint32_t *kValue, __ubuf__ uint32_t *his
         Reg::Arange(idxC, i * 64);
         Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_NORM>(cout, histogramsBuf + i * 64);
         Reg::Compare<uint32_t, CMPMODE::GE>(pregGE, cout, btmK3, pregB32);
-        Reg::Squeeze<uint32_t, Reg::GatherMaskMode::STORE_REG>(sqzIdx3, (Reg::RegTensor<uint32_t> &)idxC, pregGE);
-        Reg::StoreUnAlign<uint32_t, Reg::PostLiteral::POST_MODE_UPDATE>(idx3Buf, sqzIdx3, alignIdx3);
+        Reg::Squeeze<uint32_t, Reg::GatherMaskMode::STORE_REG>(
+            sqzIdx3, (Reg::RegTensor<uint32_t> &)idxC, pregGE);
+        Reg::StoreUnAlign<uint32_t, Reg::PostLiteral::POST_MODE_UPDATE>(
+            idx3Buf, sqzIdx3, alignIdx3);
     }
     Reg::StoreUnAlignPost(idx3Buf, alignIdx3);
 
@@ -313,8 +316,8 @@ __simd_vf__ void FindKthVFImpl(__ubuf__ uint32_t *kValue, __ubuf__ uint32_t *his
     Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_NORM>(kValue, idx0, pregB32);
 }
 
-__simd_vf__ void FindIdxGTOutputVFImpl(__ubuf__ uint32_t *outputIdxBuf, __ubuf__ uint32_t *inputBuf, uint32_t beginIdx,
-                                       __ubuf__ uint32_t *kValue, uint16_t vfLoop)
+__simd_vf__ void FindIdxGTOutputVFImpl(__ubuf__ uint32_t *outputIdxBuf, __ubuf__ uint32_t *inputBuf,
+                                       uint32_t beginIdx, __ubuf__ uint32_t *kValue, uint16_t vfLoop)
 {
     Reg::MaskReg pregB32 = Reg::CreateMask<uint32_t, Reg::MaskPattern::ALL>();
 
@@ -338,8 +341,10 @@ __simd_vf__ void FindIdxGTOutputVFImpl(__ubuf__ uint32_t *outputIdxBuf, __ubuf__
         Reg::RegTensor<uint32_t> sqzIdxOut;
         Reg::Compare<uint32_t, CMPMODE::GT>(poutGT, vregInput, kthValue, pregB32);
 
-        Reg::Squeeze<uint32_t, Reg::GatherMaskMode::STORE_REG>(sqzIdxOut, (Reg::RegTensor<uint32_t> &)idxC, poutGT);
-        Reg::StoreUnAlign<uint32_t, Reg::PostLiteral::POST_MODE_UPDATE>(outputIdxBuf, sqzIdxOut, alignIdx);
+        Reg::Squeeze<uint32_t, Reg::GatherMaskMode::STORE_REG>(
+            sqzIdxOut, (Reg::RegTensor<uint32_t> &)idxC, poutGT);
+        Reg::StoreUnAlign<uint32_t, Reg::PostLiteral::POST_MODE_UPDATE>(
+            outputIdxBuf, sqzIdxOut, alignIdx);
     }
     Reg::StoreUnAlignPost(outputIdxBuf, alignIdx);
 }
