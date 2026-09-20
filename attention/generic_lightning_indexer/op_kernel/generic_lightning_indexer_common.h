@@ -54,9 +54,16 @@ struct GliType {
     // FP8 输入 + float scale => per-token-head vector 融合路径
     static constexpr bool isMxFp8 = std::is_same<Q_T, fp8_e4m3fn_t>::value && std::is_same<K_T, fp8_e4m3fn_t>::value &&
                                     std::is_same<SCALE_T, fp8_e8m0_t>::value;
-    static constexpr bool isFp8PerToken = std::is_same<Q_T, fp8_e4m3fn_t>::value &&
-                                          std::is_same<K_T, fp8_e4m3fn_t>::value && std::is_same<SCALE_T, float>::value;
+    static constexpr bool isFp16Scale = std::is_same<SCALE_T, half>::value;
+    // 1 字节 Q 或 K + 非 MX scale：vector 反量化。覆盖 FP8/HiFP8/E5M2+float、QLI INT8、MSA FP16×INT8。
+    static constexpr bool isFp8PerToken = (sizeof(Q_T) == 1 || sizeof(K_T) == 1) &&
+                                          !std::is_same<SCALE_T, void>::value &&
+                                          !std::is_same<SCALE_T, fp8_e8m0_t>::value;
     static constexpr bool isQuant = isMxFp8 || isFp8PerToken;
+    // 950 不支持 half×int8 Mmad：AIV 先 Cast K 到 fp16 workspace，再走 half×half cube。
+    static constexpr bool isMixedInt8Key = (sizeof(Q_T) == 2) && (sizeof(K_T) == 1);
+    // 950 Mmad(float, int8, int8) 非法，同构 INT8 走 int32 累加再 vector Cast。
+    static constexpr bool isInt8Mmad = std::is_same<Q_T, int8_t>::value && std::is_same<K_T, int8_t>::value;
 };
 
 struct RunInfo {
@@ -97,6 +104,7 @@ struct ConstInfo {
     static constexpr uint32_t AIV0_AIV1_OFFSET = 16;
     static constexpr uint32_t CROSS_VC_EVENT = 0;
     static constexpr uint32_t CROSS_CV_EVENT = 2;
+    static constexpr uint32_t CAST_READY_EVENT = 4;
     static constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32;
     static constexpr uint32_t BUFFER_SIZE_BYTE_64B = 64;
     static constexpr uint32_t BUFFER_SIZE_BYTE_256B = 256;
@@ -160,11 +168,16 @@ struct ConstInfo {
     uint32_t actualLenDims = 0U;
     bool isAccumSeqS1 = false;
     bool isAccumSeqS2 = false;
+    uint32_t seqQCuFormat = 0U; // 1: LIv2/MSA cu_seqlens [B+1], 0: LI exclusive prefix [B]
+    uint32_t seqKCuFormat = 0U;
+    uint32_t seqDtypeFlags = 0U;
+    uint32_t msaScoreNT = 0U; // TND MSA sparse_values [N1,T1,nOut]
 
     // workspace offsets
     uint64_t wsOffScore = 0;
     uint64_t wsOffLdScore = 0;
     uint64_t wsOffLdIdx = 0;
+    uint64_t wsOffKCast = 0;
 };
 
 struct SplitCoreInfo {
@@ -209,6 +222,47 @@ __aicore__ inline uint32_t IndicesOutLen(uint32_t sparseCount, uint32_t cmpRatio
     }
     uint32_t expanded = sparseCount * cmpRatio;
     return (expandMode >= 2) ? (expanded + cmpRatio - 1) : expanded;
+}
+
+constexpr uint32_t GLI_SEQ_Q_I64 = 1U;
+constexpr uint32_t GLI_SEQ_K_I64 = 2U;
+constexpr uint32_t GLI_SEQUSED_Q_I64 = 4U;
+constexpr uint32_t GLI_SEQUSED_K_I64 = 8U;
+constexpr uint32_t GLI_RESIDUAL_I64 = 16U;
+constexpr uint32_t GLI_START_LOC_I64 = 32U;
+
+__aicore__ inline int64_t LoadSeqValue(const GlobalTensor<int32_t> &i32, const GlobalTensor<int64_t> &i64, uint32_t idx,
+                                       bool useI64)
+{
+    return useI64 ? i64.GetValue(idx) : static_cast<int64_t>(i32.GetValue(idx));
+}
+
+__aicore__ inline uint32_t DecodeActualSeq(uint32_t bIdx, uint32_t actualLenDims, bool cuFormat, bool isAccumSeq,
+                                           const GlobalTensor<int32_t> &i32, const GlobalTensor<int64_t> &i64,
+                                           bool useI64, uint32_t defaultSeqLen)
+{
+    if (actualLenDims == 0) {
+        return defaultSeqLen;
+    }
+    if (cuFormat) {
+        return static_cast<uint32_t>(LoadSeqValue(i32, i64, bIdx + 1, useI64) - LoadSeqValue(i32, i64, bIdx, useI64));
+    }
+    if (isAccumSeq && bIdx > 0) {
+        return static_cast<uint32_t>(LoadSeqValue(i32, i64, bIdx, useI64) - LoadSeqValue(i32, i64, bIdx - 1, useI64));
+    }
+    return static_cast<uint32_t>(LoadSeqValue(i32, i64, bIdx, useI64));
+}
+
+__aicore__ inline uint64_t DecodeSeqPrefix(uint32_t bIdx, bool isTnd, bool cuFormat, const GlobalTensor<int32_t> &i32,
+                                           const GlobalTensor<int64_t> &i64, bool useI64, uint64_t seqSize)
+{
+    if (!isTnd) {
+        return (bIdx == 0) ? 0 : static_cast<uint64_t>(bIdx) * seqSize;
+    }
+    if (cuFormat) {
+        return static_cast<uint64_t>(LoadSeqValue(i32, i64, bIdx, useI64));
+    }
+    return (bIdx == 0) ? 0 : static_cast<uint64_t>(LoadSeqValue(i32, i64, bIdx - 1, useI64));
 }
 } // namespace GliCommon
 

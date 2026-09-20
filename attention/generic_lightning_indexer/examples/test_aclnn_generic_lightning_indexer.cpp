@@ -291,6 +291,107 @@ int RunMsaMaxpool(aclrtStream stream)
     LOG_PRINT("MSA example passed. valid blocks ~%f, pad -inf.\n", expectBlk);
     return 0;
 }
+
+int RunMsaMixedFp16Int8(aclrtStream stream)
+{
+    std::vector<int64_t> qShape = {1, 2, 8, 128};
+    std::vector<int64_t> kShape = {1, 32, 1, 128};
+    std::vector<int64_t> scaleShape = {1, 32};
+    std::vector<int64_t> idxShape = {0};
+    std::vector<int64_t> valShape = {1, 2, 8, 16};
+    const uint16_t fp16One = FloatToFp16(1.0f);
+    std::vector<uint16_t> qHost(GetShapeSize(qShape), fp16One);
+    std::vector<int8_t> kHost(GetShapeSize(kShape), static_cast<int8_t>(1));
+    std::vector<float> scaleHost(GetShapeSize(scaleShape), 1.0f);
+    std::vector<int32_t> idxHost(1, 0);
+    std::vector<float> valHost(GetShapeSize(valShape), 0.0f);
+    void *qAddr = nullptr;
+    void *kAddr = nullptr;
+    void *scaleAddr = nullptr;
+    void *idxAddr = nullptr;
+    void *valAddr = nullptr;
+    aclTensor *q = nullptr;
+    aclTensor *k = nullptr;
+    aclTensor *kDescale = nullptr;
+    aclTensor *idx = nullptr;
+    aclTensor *val = nullptr;
+    if (CreateAclTensor(qHost, qShape, &qAddr, aclDataType::ACL_FLOAT16, &q) != 0 ||
+        CreateAclTensor(kHost, kShape, &kAddr, aclDataType::ACL_INT8, &k) != 0 ||
+        CreateAclTensor(scaleHost, scaleShape, &scaleAddr, aclDataType::ACL_FLOAT, &kDescale) != 0 ||
+        CreateAclTensor(idxHost, idxShape, &idxAddr, aclDataType::ACL_INT32, &idx) != 0 ||
+        CreateAclTensor(valHost, valShape, &valAddr, aclDataType::ACL_FLOAT, &val) != 0) {
+        LOG_PRINT("MSA mixed CreateAclTensor failed\n");
+        return -1;
+    }
+
+    char layoutQ[] = "BSND";
+    char layoutK[] = "BSND";
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    auto ret = aclnnGenericLightningIndexerGetWorkspaceSize(
+        q, k, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, kDescale, nullptr, nullptr,
+        nullptr, 16, 16, layoutQ, layoutK, 0, 1, false, false, false, -1, true, 1, 1, 1.0f, -1, -1, -1, 0, 0, idx, val,
+        &workspaceSize, &executor);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        LOG_PRINT("MSA mixed GetWorkspaceSize failed. ERROR: %d\n", ret);
+        return ret;
+    }
+    void *workspace = nullptr;
+    if (workspaceSize > 0) {
+        aclrtMalloc(&workspace, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+    }
+    ret = aclnnGenericLightningIndexer(workspace, workspaceSize, executor, stream);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        LOG_PRINT("MSA mixed execute failed. ERROR: %d\n", ret);
+        return ret;
+    }
+    aclrtSynchronizeStream(stream);
+
+    const int64_t outNum = GetShapeSize(valShape);
+    std::vector<float> valOut(outNum, 0.0f);
+    ret =
+        aclrtMemcpy(valOut.data(), outNum * sizeof(float), valAddr, outNum * sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        LOG_PRINT("copy MSA mixed sparse_values failed. ERROR: %d\n", ret);
+        return ret;
+    }
+    int32_t badVal = 0;
+    const float expectBlk = 128.0f;
+    const float atol = 4.0f;
+    for (int64_t i = 0; i < outNum; ++i) {
+        const int64_t blk = i % 16;
+        const float v = valOut[i];
+        if (i < 32) {
+            LOG_PRINT("msa_mixed[%ld] val=%f\n", i, v);
+        }
+        if (blk < 2) {
+            if (!(v == v) || fabsf(v - expectBlk) > atol) {
+                ++badVal;
+            }
+        } else if (v > -1.0e30f) {
+            ++badVal;
+        }
+    }
+    aclDestroyTensor(q);
+    aclDestroyTensor(k);
+    aclDestroyTensor(kDescale);
+    aclDestroyTensor(idx);
+    aclDestroyTensor(val);
+    aclrtFree(qAddr);
+    aclrtFree(kAddr);
+    aclrtFree(scaleAddr);
+    aclrtFree(idxAddr);
+    aclrtFree(valAddr);
+    if (workspace) {
+        aclrtFree(workspace);
+    }
+    if (badVal > 0) {
+        LOG_PRINT("MSA mixed precision check failed: badVal=%d expectBlk=%f\n", badVal, expectBlk);
+        return -1;
+    }
+    LOG_PRINT("MSA mixed FP16xINT8 example passed. valid blocks ~%f, pad -inf.\n", expectBlk);
+    return 0;
+}
 } // namespace
 
 int main()
@@ -304,6 +405,9 @@ int main()
     ret = RunLiWeightedTopk(stream);
     if (ret == 0) {
         ret = RunMsaMaxpool(stream);
+    }
+    if (ret == 0) {
+        ret = RunMsaMixedFp16Int8(stream);
     }
     aclrtDestroyStream(stream);
     aclrtResetDevice(deviceId);

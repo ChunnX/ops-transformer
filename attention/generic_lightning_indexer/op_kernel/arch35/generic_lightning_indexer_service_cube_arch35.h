@@ -39,7 +39,9 @@ public:
     // mode=1 (mxFP8): LoadData-Mx 要求 fp8_e4m3fn 源操作数的 L0 dst 为
     // mx_fp8_e4m3_t; 其他模式 L0 类型与源一致
     using L0_Q_T = std::conditional_t<LIT::isMxFp8, mx_fp8_e4m3_t, Q_T>;
-    using L0_K_T = std::conditional_t<LIT::isMxFp8, mx_fp8_e4m3_t, K_T>;
+    using L1_K_T = std::conditional_t<LIT::isMixedInt8Key, Q_T, K_T>;
+    using L0_K_T = std::conditional_t<LIT::isMxFp8, mx_fp8_e4m3_t, L1_K_T>;
+    using L0C_T = std::conditional_t<LIT::isInt8Mmad, int32_t, float>;
 
     __aicore__ inline GenericLightningIndexerServiceCube(){};
     __aicore__ inline void InitBuffers(TPipe *pipe);
@@ -47,6 +49,7 @@ public:
                                                const GlobalTensor<Q_T> &queryGm,
                                                const GlobalTensor<bfloat16_t> &keyScaleGmBf16 = {},
                                                const GlobalTensor<bfloat16_t> &queryScaleGmBf16 = {});
+    __aicore__ inline void SetKeyCastGm(const GlobalTensor<Q_T> &keyCastGm);
     __aicore__ inline void InitParams(const ConstInfo &constInfo);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
@@ -85,8 +88,9 @@ public:
     // mxFP8: 每 32 个 D 元素一个 E8M0 scale, 2 个 E8M0 打包 1 个 bf16
     static constexpr uint64_t MX_SCALE_GROUP_SIZE = 32;
     static constexpr uint64_t FP8_TWO = 2;
-    // L1 NZ 布局块因子: fp8 为 32, fp16 为 16(按类型选择)
-    static constexpr uint64_t QK_BLOCK_CUBE = (sizeof(Q_T) == 1) ? FP8_BLOCK_CUBE : FP16_BLOCK_CUBE;
+    // L1 NZ 布局块因子: 1 字节类型为 32, fp16 为 16
+    static constexpr uint64_t Q_BLOCK_CUBE = (sizeof(Q_T) == 1) ? FP8_BLOCK_CUBE : FP16_BLOCK_CUBE;
+    static constexpr uint64_t K_BLOCK_CUBE = (sizeof(L1_K_T) == 1) ? FP8_BLOCK_CUBE : FP16_BLOCK_CUBE;
     // mxFP8 scale 单行元素数(e8m0 个数) = D基本块/32
     static constexpr uint64_t MX_SCALE_PER_TOKEN = D_BASIC_BLOCK / MX_SCALE_GROUP_SIZE;
 
@@ -108,6 +112,7 @@ protected:
                                           const GliCommon::RunInfo &runInfo);
     GlobalTensor<int32_t> blkTableGm_;
     GlobalTensor<K_T> keyGm_;
+    GlobalTensor<Q_T> keyCastGm_;
     GlobalTensor<Q_T> queryGm_;
     // mxFP8: E8M0 scale GM(按 bf16 打包视角寻址)
     GlobalTensor<bfloat16_t> mxKeyScaleGmBf16_;
@@ -116,7 +121,7 @@ protected:
     TBuf<TPosition::A1> bufQL1_;
     LocalTensor<Q_T> queryL1_;
     TBuf<TPosition::B1> bufKeyL1_;
-    LocalTensor<K_T> keyL1_;
+    LocalTensor<L1_K_T> keyL1_;
     // mxFP8: scale L1 乒乓缓冲
     TBuf<TPosition::A1> bufQScaleL1_;
     LocalTensor<SCALE_T> queryScaleL1_;
@@ -129,7 +134,7 @@ protected:
     LocalTensor<L0_K_T> keyL0_;
 
     TBuf<TPosition::CO1> bufL0C_;
-    LocalTensor<float> cL0_;
+    LocalTensor<L0C_T> cL0_;
 
     TBuf<TPosition::VECCALC> bufUB_;
     LocalTensor<float> mm1ResUB_;
@@ -166,8 +171,8 @@ __aicore__ inline void GenericLightningIndexerServiceCube<LIT>::InitBuffers(TPip
     mm1ResUB_ = bufUB_.Get<float>();
     pipe->InitBuffer(bufQL1_, QUERY_BUF_NUM * M_BASIC_BLOCK * D_BASIC_BLOCK * sizeof(Q_T));
     queryL1_ = bufQL1_.Get<Q_T>();
-    pipe->InitBuffer(bufKeyL1_, KEY_BUF_NUM * S2_BASIC_BLOCK * D_BASIC_BLOCK * sizeof(K_T));
-    keyL1_ = bufKeyL1_.Get<K_T>();
+    pipe->InitBuffer(bufKeyL1_, KEY_BUF_NUM * S2_BASIC_BLOCK * D_BASIC_BLOCK * sizeof(L1_K_T));
+    keyL1_ = bufKeyL1_.Get<L1_K_T>();
     if constexpr (LIT::isMxFp8) {
         // mxFP8 scale L1 乒乓(以 e8m0 元素计; Dn2Nz 搬运按 2*e8m0=1bf16 视图)
         pipe->InitBuffer(bufQScaleL1_, QUERY_BUF_NUM * queryScaleBufferOffset_ * sizeof(SCALE_T));
@@ -181,8 +186,8 @@ __aicore__ inline void GenericLightningIndexerServiceCube<LIT>::InitBuffers(TPip
     pipe->InitBuffer(bufKeyL0_, L0_BUF_NUM * D_BASIC_BLOCK_L0 * S2_BASIC_BLOCK_L0 * sizeof(L0_K_T));
     keyL0_ = bufKeyL0_.Get<L0_K_T>();
 
-    pipe->InitBuffer(bufL0C_, L0_BUF_NUM * M_BASIC_BLOCK_L0 * S2_BASIC_BLOCK_L0 * sizeof(float));
-    cL0_ = bufL0C_.Get<float>();
+    pipe->InitBuffer(bufL0C_, L0_BUF_NUM * M_BASIC_BLOCK_L0 * S2_BASIC_BLOCK_L0 * sizeof(L0C_T));
+    cL0_ = bufL0C_.Get<L0C_T>();
 }
 
 template <typename LIT>
@@ -200,8 +205,18 @@ __aicore__ inline void GenericLightningIndexerServiceCube<LIT>::InitMm1GlobalTen
 }
 
 template <typename LIT>
+__aicore__ inline void GenericLightningIndexerServiceCube<LIT>::SetKeyCastGm(const GlobalTensor<Q_T> &keyCastGm)
+{
+    keyCastGm_ = keyCastGm;
+}
+
+template <typename LIT>
 __aicore__ inline void GenericLightningIndexerServiceCube<LIT>::ComputeMm1(const GliCommon::RunInfo &runInfo)
 {
+    if constexpr (LIT::isMixedInt8Key) {
+        CrossCoreWaitFlag<GliCommon::ConstInfo::GLI_SYNC_MODE4, PIPE_MTE2>(GliCommon::ConstInfo::CAST_READY_EVENT +
+                                                                           runInfo.loop % 2);
+    }
     CrossCoreWaitFlag<GliCommon::ConstInfo::GLI_SYNC_MODE4, PIPE_FIX>(GliCommon::ConstInfo::CROSS_VC_EVENT +
                                                                       runInfo.loop % 2);
     CrossCoreWaitFlag<GliCommon::ConstInfo::GLI_SYNC_MODE4, PIPE_FIX>(
@@ -213,7 +228,11 @@ __aicore__ inline void GenericLightningIndexerServiceCube<LIT>::ComputeMm1(const
         WaitFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + keyL1BufIdx_ % KEY_BUF_NUM);
         uint64_t s2L1RealSize =
             s2GmOffset + S2_BASIC_BLOCK > s2ProcessSize ? s2ProcessSize - s2GmOffset : S2_BASIC_BLOCK;
-        if (PAGE_ATTENTION) {
+        // 必须 if constexpr：runtime if 仍会实例化 KeyNd2NzForPA，mixed 下
+        // keyL1_ 是 half、keyGm_ 是 int8，DataCopy 无法匹配。
+        if constexpr (LIT::isMixedInt8Key) {
+            KeyNd2Nz(s2L1RealSize, s2GmOffset, runInfo);
+        } else if constexpr (PAGE_ATTENTION) {
             KeyNd2NzForPA(s2L1RealSize, s2GmBaseOffset + s2GmOffset, runInfo);
         } else {
             KeyNd2Nz(s2L1RealSize, s2GmOffset, runInfo);
@@ -319,9 +338,13 @@ __aicore__ inline void GenericLightningIndexerServiceCube<LIT>::KeyNd2Nz(uint64_
     nd2nzPara.dstNzNStride = 1;
     nd2nzPara.srcNdMatrixStride = 0;
     nd2nzPara.dstNzMatrixStride = 0;
-    // 默认一块buf最多放两份
-    DataCopy(keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * KEY_BUFFER_OFFSET],
-             keyGm_[runInfo.tensorKeyOffset + s2GmOffset * constInfo_.headDim], nd2nzPara);
+    if constexpr (LIT::isMixedInt8Key) {
+        DataCopy(keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * KEY_BUFFER_OFFSET], keyCastGm_[s2GmOffset * constInfo_.headDim],
+                 nd2nzPara);
+    } else {
+        DataCopy(keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * KEY_BUFFER_OFFSET],
+                 keyGm_[runInfo.tensorKeyOffset + s2GmOffset * constInfo_.headDim], nd2nzPara);
+    }
 }
 
 // blkNum, blkSize, N2, D
@@ -330,32 +353,35 @@ __aicore__ inline void GenericLightningIndexerServiceCube<LIT>::KeyNd2NzForPA(ui
                                                                               uint64_t s2GmOffset,
                                                                               const GliCommon::RunInfo &runInfo)
 {
-    uint64_t s2L1Offset = 0;
-    while (s2L1Offset < s2L1RealSize) {
-        uint64_t s2BlkId = (s2L1Offset + s2GmOffset) / constInfo_.kCacheBlockSize;
-        uint64_t s2BlkOffset = (s2L1Offset + s2GmOffset) % constInfo_.kCacheBlockSize;
-        uint64_t keyGmOffset =
-            blkTableGm_.GetValue(runInfo.bIdx * constInfo_.maxBlockNumPerBatch + s2BlkId) * constInfo_.keyStride0 +
-            s2BlkOffset * constInfo_.headDim;
+    if constexpr (!LIT::isMixedInt8Key) {
+        uint64_t s2L1Offset = 0;
+        while (s2L1Offset < s2L1RealSize) {
+            uint64_t s2BlkId = (s2L1Offset + s2GmOffset) / constInfo_.kCacheBlockSize;
+            uint64_t s2BlkOffset = (s2L1Offset + s2GmOffset) % constInfo_.kCacheBlockSize;
+            uint64_t keyGmOffset =
+                blkTableGm_.GetValue(runInfo.bIdx * constInfo_.maxBlockNumPerBatch + s2BlkId) * constInfo_.keyStride0 +
+                s2BlkOffset * constInfo_.headDim;
 
-        uint64_t s2Mte2Size = s2L1RealSize - s2L1Offset;
-        s2Mte2Size = s2BlkOffset + s2Mte2Size >= constInfo_.kCacheBlockSize ? constInfo_.kCacheBlockSize - s2BlkOffset :
-                                                                              s2Mte2Size;
-        Nd2NzParams nd2nzPara;
-        nd2nzPara.ndNum = 1;
-        nd2nzPara.nValue = s2Mte2Size; // 行数
-        nd2nzPara.dValue = constInfo_.headDim;
-        nd2nzPara.srcDValue = constInfo_.headDim;
-        nd2nzPara.dstNzC0Stride = CeilAlign(s2L1RealSize, (uint64_t)BLOCK_CUBE); // 对齐到16 单位block
-        nd2nzPara.dstNzNStride = 1;
-        nd2nzPara.srcNdMatrixStride = 0;
-        nd2nzPara.dstNzMatrixStride = 0;
-        // NZ 布局偏移因子按数据类型选择(fp8: 32, fp16: 16), 与 dstNzC0Stride 的
-        // 对齐粒度联动(dstNzC0Stride 对齐 16 时 fp8 须取 32)
-        DataCopy(keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * KEY_BUFFER_OFFSET + s2L1Offset * QK_BLOCK_CUBE],
-                 keyGm_[keyGmOffset], nd2nzPara);
+            uint64_t s2Mte2Size = s2L1RealSize - s2L1Offset;
+            s2Mte2Size = s2BlkOffset + s2Mte2Size >= constInfo_.kCacheBlockSize ?
+                             constInfo_.kCacheBlockSize - s2BlkOffset :
+                             s2Mte2Size;
+            Nd2NzParams nd2nzPara;
+            nd2nzPara.ndNum = 1;
+            nd2nzPara.nValue = s2Mte2Size; // 行数
+            nd2nzPara.dValue = constInfo_.headDim;
+            nd2nzPara.srcDValue = constInfo_.headDim;
+            nd2nzPara.dstNzC0Stride = CeilAlign(s2L1RealSize, (uint64_t)BLOCK_CUBE); // 对齐到16 单位block
+            nd2nzPara.dstNzNStride = 1;
+            nd2nzPara.srcNdMatrixStride = 0;
+            nd2nzPara.dstNzMatrixStride = 0;
+            // NZ 布局偏移因子按数据类型选择(fp8: 32, fp16: 16), 与 dstNzC0Stride 的
+            // 对齐粒度联动(dstNzC0Stride 对齐 16 时 fp8 须取 32)
+            DataCopy(keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * KEY_BUFFER_OFFSET + s2L1Offset * K_BLOCK_CUBE],
+                     keyGm_[keyGmOffset], nd2nzPara);
 
-        s2L1Offset += s2Mte2Size;
+            s2L1Offset += s2Mte2Size;
+        }
     }
 }
 
@@ -466,7 +492,7 @@ __aicore__ inline void GenericLightningIndexerServiceCube<LIT>::LoadQueryToL0a(u
         uint64_t dstOffset = 0;
         loadData2DParamsV2.kStartPosition = 0;
         loadData2DParamsV2.mStep = CeilDiv(64, BLOCK_CUBE);
-        loadData2DParamsV2.kStep = CeilDiv(constInfo_.headDim, QK_BLOCK_CUBE);
+        loadData2DParamsV2.kStep = CeilDiv(constInfo_.headDim, Q_BLOCK_CUBE);
         loadData2DParamsV2.srcStride = CeilDiv(s1gL1RealSize, BLOCK_CUBE);
         loadData2DParamsV2.dstStride = CeilDiv(s1gL0RealSize, BLOCK_CUBE);
         loadData2DParamsV2.ifTranspose = false;
@@ -499,7 +525,7 @@ __aicore__ inline void GenericLightningIndexerServiceCube<LIT>::LoadQueryToL0a(u
         loadData2DParamsV2.mStartPosition = CeilDiv(s1gL1Offset, BLOCK_CUBE);
         loadData2DParamsV2.kStartPosition = 0;
         loadData2DParamsV2.mStep = CeilDiv(s1gL0RealSize, BLOCK_CUBE);
-        loadData2DParamsV2.kStep = CeilDiv(constInfo_.headDim, QK_BLOCK_CUBE);
+        loadData2DParamsV2.kStep = CeilDiv(constInfo_.headDim, Q_BLOCK_CUBE);
         loadData2DParamsV2.srcStride = CeilDiv(s1gL1RealSize, BLOCK_CUBE);
         loadData2DParamsV2.dstStride = CeilDiv(s1gL0RealSize, BLOCK_CUBE);
         loadData2DParamsV2.ifTranspose = false;
@@ -535,7 +561,7 @@ __aicore__ inline void GenericLightningIndexerServiceCube<LIT>::LoadKeyToL0b(uin
     loadData2DParamsV2.mStartPosition = CeilDiv(s2L1Offset, BLOCK_CUBE);
     loadData2DParamsV2.kStartPosition = 0;
     loadData2DParamsV2.mStep = CeilDiv(s2L0RealSize, BLOCK_CUBE);
-    loadData2DParamsV2.kStep = CeilDiv(constInfo_.headDim, QK_BLOCK_CUBE);
+    loadData2DParamsV2.kStep = CeilDiv(constInfo_.headDim, K_BLOCK_CUBE);
     loadData2DParamsV2.srcStride = CeilDiv(s2L1RealSize, BLOCK_CUBE);
     loadData2DParamsV2.dstStride = CeilDiv(s2L0RealSize, BLOCK_CUBE);
     loadData2DParamsV2.ifTranspose = false;
@@ -602,10 +628,16 @@ __aicore__ inline void GenericLightningIndexerServiceCube<LIT>::Fixp(uint64_t s1
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
-        Fixpipe<float, float, LI_CFG_ROW_MAJOR_UB>(
-            mm1ResUB_[(runInfo.loop % 2) * CeilDiv(constInfo_.mBaseSize, 2) * constInfo_.s2BaseSize +
-                      CeilDiv(s1gGmOffset, 2) * fixpipeParams.dstStride + s2GmOffset],
-            cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET], fixpipeParams);
+        const uint64_t ubOff = (runInfo.loop % 2) * CeilDiv(constInfo_.mBaseSize, 2) * constInfo_.s2BaseSize +
+                               CeilDiv(s1gGmOffset, 2) * fixpipeParams.dstStride + s2GmOffset;
+        if constexpr (LIT::isInt8Mmad) {
+            Fixpipe<int32_t, int32_t, LI_CFG_ROW_MAJOR_UB>(mm1ResUB_.template ReinterpretCast<int32_t>()[ubOff],
+                                                           cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET],
+                                                           fixpipeParams);
+        } else {
+            Fixpipe<float, float, LI_CFG_ROW_MAJOR_UB>(
+                mm1ResUB_[ubOff], cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET], fixpipeParams);
+        }
     }
 }
 

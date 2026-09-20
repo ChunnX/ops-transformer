@@ -104,28 +104,28 @@ aclnnStatus aclnnGenericLightningIndexer(
   > [!NOTE]
   >
   > - 参数维度含义：B 表示 Batch Size、S1 / S2 表示 query / key 的 Sequence Length（S2 为压缩后长度）、N1 / N2 表示 Head Num、D 表示 Head Dim（仅支持 128）、T1 / T2 表示 Total Tokens。N2 仅支持 1。
-  > - 序列类可选输入（actualSeq*、seqused*、cmpResidualK、outputIdxOffset、startLoc）为 device 侧 INT32 tensor，shape 为 [B]。
+  > - 序列类可选输入（actualSeq*、seqused*、cmpResidualK、startLoc）为 INT32 或 INT64 tensor。TND 的 actualSeq 同时支持 LI 式 exclusive prefix `[B]` 与 LIv2/MSA 式 cu_seqlens `[B+1]`（首元素为 0）。seqused / startLoc / block_table 为 `[B]`。
 
 | 参数名 | 输入/输出/属性 | 描述 | 数据类型 | 数据格式 |
 |--------|---------------|------|----------|----------|
 | query | 输入 | 公式中的 Q。不支持空 tensor。BSND：[B,S1,N1,D]；TND：[T1,N1,D]。 | FLOAT16、BFLOAT16、INT8、FLOAT8_E4M3FN、HIFLOAT8、FLOAT4_E2M1、FLOAT8_E5M2 | ND |
-| key | 输入 | 公式中的 K（已压缩或未压缩）。PA_BBND / PA_BSND：[block_num, block_size, N2, D]，支持 0 轴非连续；BSND：[B,S2,N2,D]；TND：[T2,N2,D]。 | 同 query | ND |
+| key | 输入 | 公式中的 K（已压缩或未压缩）。PA_BBND / PA_BSND / BBND：[block_num, block_size, N2, D]；BNBD：[block_num, N2, block_size, D]（N2=1 时与 BBND 等价）；支持 0 轴非连续；BSND：[B,S2,N2,D]；TND：[T2,N2,D]。默认与 query 同 dtype；MSA 额外支持 FP16×INT8。 | 同 query，MSA 可为 INT8 | ND |
 | weightsOptional | 输入 | 公式中的 W。hasWeightedSum=true 时必选；false 时必须为空。BSND：[B,S1,N1]；TND：[T1,N1]。 | FLOAT16、BFLOAT16、FLOAT | ND |
-| actualSeqQOptional | 输入 | TND 时必选，Query 前缀和。[B] | INT32 | ND |
-| actualSeqKOptional | 输入 | TND / PA 时必选，压缩轴长度。[B] | INT32 | ND |
-| sequsedQOptional | 输入 | 每 batch Query 真实长度（非前缀和），用于 padding。[B] | INT32 | ND |
-| sequsedKOptional | 输入 | 每 batch Key 真实长度。[B] | INT32 | ND |
-| cmpResidualKOptional | 输入 | 压缩残余 token 数。cmpRatio>1 且 sparseMode!=0 时必选。[B] | INT32 | ND |
+| actualSeqQOptional | 输入 | TND 时必选。LI exclusive prefix `[B]` 或 cu_seqlens `[B+1]`。 | INT32、INT64 | ND |
+| actualSeqKOptional | 输入 | TND / PA 时必选。TND 同上；PA 为每 batch 压缩长度 `[B]` 或 cu `[B+1]`。 | INT32、INT64 | ND |
+| sequsedQOptional | 输入 | 每 batch Query 真实长度（非前缀和），用于 padding。[B] | INT32、INT64 | ND |
+| sequsedKOptional | 输入 | 每 batch Key 真实长度。[B] | INT32、INT64 | ND |
+| cmpResidualKOptional | 输入 | 压缩残余 token 数。cmpRatio>1 且 sparseMode!=0 时必选。[B] | INT32、INT64 | ND |
 | blockTableOptional | 输入 | PA 时必选。[B, maxBlockNumPerSeq] | INT32 | ND |
-| qDescaleOptional | 输入 | Query 反量化系数。quantMode>=0 时必选。 | FLOAT、FLOAT16、FLOAT8_E8M0 | ND |
-| kDescaleOptional | 输入 | Key 反量化系数。quantMode>=0 时必选。PA 下支持 0 轴非连续。 | 同 qDescale | ND |
+| qDescaleOptional | 输入 | Query 反量化系数。quantMode>=0 时必选（MSA FP16×INT8 可省略）。含 QLI FP8+FP16 scale。 | FLOAT、FLOAT16、FLOAT8_E8M0 | ND |
+| kDescaleOptional | 输入 | Key 反量化系数。quantMode>=0 或 INT8 key 时必选。PA 下支持 0 轴非连续。 | 同 qDescale | ND |
 | outputIdxOffsetOptional | 输入 | 输出索引逐 batch 偏移。[B] | INT32 | ND |
 | metadataOptional | 输入 | 预留负载均衡表。[1024] | INT32 | ND |
-| startLocOptional | 输入 | MSA：query 所在逻辑 block，用于 local_mask。[B] | INT32 | ND |
+| startLocOptional | 输入 | MSA：query 所在逻辑 block，用于 local_mask。[B] | INT32、INT64 | ND |
 | topk | 属性 | 打分轴选出的个数。[1,2048] ∪ {3072,4096,5120,6144,7168,8192} | INT64 | - |
 | cmpRatio | 属性 | 压缩比 / pool 大小。[1,128]，1 表示未压缩 | INT64 | - |
 | layoutQOptional | 属性 | BSND / TND，默认 BSND | STRING | - |
-| layoutKOptional | 属性 | BSND / TND / PA_BBND / PA_BSND | STRING | - |
+| layoutKOptional | 属性 | BSND / TND / PA_BBND / PA_BSND / BBND / BNBD | STRING | - |
 | sparseMode | 属性 | 0 default / 3 rightDownCausal / 4 blockCompleteCausal | INT64 | - |
 | actType | 属性 | 0 ReLU / 1 Identity | INT64 | - |
 | hasWeightedSum | 属性 | true 乘 W 再求和 | BOOL | - |
@@ -142,7 +142,7 @@ aclnnStatus aclnnGenericLightningIndexer(
 | initBlocks | 属性 | MSA local_mask sink 块数 | INT64 | - |
 | localBlocks | 属性 | MSA local_mask 窗口块数 | INT64 | - |
 | sparseIndicesOut | 输出 | 选中下标，无效填 -1。BSND：[B,S1,L_out]；TND：[T1,L_out]；MSA 为 (0,) | INT32 | ND |
-| sparseValuesOut | 输出 | returnValue=true 时为 [B,S1,topk] 或 [T1,topk]；false 时 (0,)；MSA 为 [B,S1,N1,Align16(ceil(S2/cmpRatio))] | FLOAT | ND |
+| sparseValuesOut | 输出 | returnValue=true 时为 [B,S1,topk] 或 [T1,topk]；false 时 (0,)；MSA BSND 为 [B,S1,N1,Align16(ceil(S2/cmpRatio))]，MSA TND 为 [N1,T1,nOut] | FLOAT | ND |
 | workspaceSize | 输出 | 需要的 workspace 字节数 | UINT64 | - |
 | executor | 输出 | 算子执行器 | aclOpExecutor* | - |
 
@@ -167,13 +167,11 @@ aclnnStatus aclnnGenericLightningIndexer(
 - `appendTail=true` 需要 `expandIndices=true`。
 - `hasWeightedSum=true` 必须传 weights，反之必须为空。
 - `actType=1`、`keyReduceMode=1`、`selectMode=1` 必须成套（MSA）。
-- layout_k 为 PA 时必须传 blockTable 与 actualSeqK（或 sequsedK）；非 PA 不支持 blockTable。
+- layout_k 为 PA（PA_BBND / PA_BSND / BBND / BNBD）时必须传 blockTable 与 actualSeqK（或 sequsedK）；非 PA 不支持 blockTable。
 - layout_q / layout_k 为 TND 时必须传对应 actualSeq。
 - quantMode=-1 时不支持传入 qDescale / kDescale。
 - <term>Ascend 950PR/Ascend 950DT</term>：支持 FLOAT16 / BFLOAT16 / INT8 / FLOAT8_E4M3FN / HIFLOAT8 / FLOAT4_E2M1 / FLOAT8_E5M2。
 - <term>Atlas A2 / A3</term>：支持 FLOAT16 / BFLOAT16 / INT8；quantMode 支持 -1 与 2。
-
-完整收编映射与参数对齐见 [generic_lightning_indexer_design.md](../generic_lightning_indexer_design.md)。
 
 ## 调用示例
 

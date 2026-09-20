@@ -60,7 +60,7 @@ def generic_lightning_indexer_golden(
     local_blocks=0,
     **kwargs,
 ):
-    """NumPy golden matching generic_lightning_indexer_design.md §3."""
+    """NumPy golden"""
     del kwargs
     q = _to_np(query)
     k = _to_np(key)

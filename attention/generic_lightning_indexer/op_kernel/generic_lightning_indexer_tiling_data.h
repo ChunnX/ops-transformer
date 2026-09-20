@@ -53,6 +53,11 @@ struct GenericLightningIndexerTilingData {
     uint32_t localBlocks;
     uint32_t hasOutputIdxOffset;
     int32_t maxSeqlenQ;
+    uint32_t seqQCuFormat;
+    uint32_t seqKCuFormat;
+    uint32_t seqDtypeFlags;
+    uint32_t msaScoreNT;
+    uint64_t wsOffKCast;
 };
 #pragma pack(pop)
 #endif

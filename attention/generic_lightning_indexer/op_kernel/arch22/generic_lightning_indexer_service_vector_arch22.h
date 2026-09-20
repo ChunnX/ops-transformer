@@ -60,6 +60,10 @@ template <>
 struct GliTypeTraits<fp8_e4m3fn_t> {
     using weightsType = half;
 };
+template <>
+struct GliTypeTraits<int8_t> {
+    using weightsType = half;
+};
 
 template <typename LIT>
 class GenericLightningIndexerServiceVector {

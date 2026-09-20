@@ -118,9 +118,10 @@ static ge::graphStatus InferShapeGenericLightningIndexer(gert::InferShapeContext
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GenericLightningIndexer", "layout_q", layoutQ.c_str(),
                                                       "layout_q should be BSND or TND"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(layoutK != "BSND" && layoutK != "TND" && layoutK != "PA_BBND" && layoutK != "PA_BSND",
+    OP_CHECK_IF(layoutK != "BSND" && layoutK != "TND" && layoutK != "PA_BBND" && layoutK != "PA_BSND" &&
+                    layoutK != "BBND" && layoutK != "BNBD",
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GenericLightningIndexer", "layout_k", layoutK.c_str(),
-                                                      "layout_k should be BSND, TND, PA_BBND or PA_BSND"),
+                                                      "layout_k should be BSND, TND, PA_BBND, PA_BSND, BBND or BNBD"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(
         sparseMode != 0 && sparseMode != 3 && sparseMode != 4,
@@ -174,9 +175,9 @@ static ge::graphStatus InferShapeGenericLightningIndexer(gert::InferShapeContext
         const gert::Shape *keyShape = context->GetInputShape(GLI_KEY_INDEX);
         OP_CHECK_NULL_WITH_CONTEXT(context, keyShape);
         int64_t nBlocks = 1;
-        if (layoutK == "PA_BBND" || layoutK == "PA_BSND") {
+        if (layoutK == "PA_BBND" || layoutK == "PA_BSND" || layoutK == "BBND" || layoutK == "BNBD") {
             const gert::Shape *btShape = context->GetOptionalInputShape(GLI_BLOCK_TABLE_INDEX);
-            OP_CHECK_IF(btShape == nullptr, OP_LOGE(context, "PA_BBND requires block_table for MSA"),
+            OP_CHECK_IF(btShape == nullptr, OP_LOGE(context, "PA layout requires block_table for MSA"),
                         return ge::GRAPH_FAILED);
             nBlocks = btShape->GetDim(1);
         } else if (layoutK == "TND") {
@@ -203,9 +204,10 @@ static ge::graphStatus InferShapeGenericLightningIndexer(gert::InferShapeContext
             OP_CHECK_IF(queryShape->GetDimNum() != 3,
                         OP_LOGE(context, "Layout TND, queryDims (%zu) must be 3!", queryShape->GetDimNum()),
                         return ge::GRAPH_FAILED);
+            // 对齐 MsaIndexScore：TND 输出 [N1, T1, nOut]
             sparseValuesShape->SetDimNum(3);
-            sparseValuesShape->SetDim(0, queryShape->GetDim(0));
-            sparseValuesShape->SetDim(1, queryShape->GetDim(1));
+            sparseValuesShape->SetDim(0, queryShape->GetDim(1));
+            sparseValuesShape->SetDim(1, queryShape->GetDim(0));
             sparseValuesShape->SetDim(2, nBlocks);
         }
         OP_LOGI(context->GetNodeName(), "GenericLightningIndexer InferShape MSA nBlocks=%ld", nBlocks);
