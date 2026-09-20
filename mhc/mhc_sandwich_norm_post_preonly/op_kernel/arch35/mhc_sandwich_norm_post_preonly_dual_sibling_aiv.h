@@ -115,12 +115,15 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     SetFlag<HardEvent::MTE2_S>(evtMte2toS_);
     WaitFlag<HardEvent::MTE2_S>(evtMte2toS_);
     WaitFlag<HardEvent::MTE3_V>(evtMte3toV_);
+    sumSqHalf[1] = partialBuf.GetValue(0);
+    for (uint32_t o = 0; o < N_MAX; ++o) {
+        dotHalf[1][o] = partialBuf.GetValue(o + 1U);
+    }
 
-    // follower的partial只消费一次，直接与leader结果合并，避免写回中间标量数组后再次读取。
-    const float totalSumSqPre = sumSqHalf[0] + partialBuf.GetValue(0);
+    const float totalSumSqPre = sumSqHalf[0] + sumSqHalf[1];
     float xHatVals[N_MAX];
     for (uint32_t o = 0; o < N_MAX; ++o) {
-        xHatVals[o] = dotHalf[0][o] + partialBuf.GetValue(o + 1U);
+        xHatVals[o] = dotHalf[0][o] + dotHalf[1][o];
     }
     ComputeGateValues(totalSumSqPre, xHatVals);
 
