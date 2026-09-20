@@ -32,6 +32,7 @@
 #include "../../../common/op_kernel/mc2_kernel_utils.h"
 #include "../hccl_context_holder.h"
 #include "../mc2_moe_context_holder.h"
+#include "../moe_distribute_dispatch_wait_debug.h" // 等待超时看门狗 + 远端写入前对端打印（排障，可编译剔除）
 namespace Mc2Kernel {
 constexpr uint64_t FLAG_FIELD_OFFSET = 768UL * 1024UL;  // 384 * 2，0/1标识区偏移
 constexpr uint64_t CUMSUM_CAL_OFFSET = 868UL * 1024UL;  // 768 + 100
@@ -135,6 +136,10 @@ private:
     __aicore__ inline void TokenToExpert(GlobalTensor<XOutType> dstWinGMTensor, TQue<QuePosition::VECIN, 1> inQueue,
                                          uint32_t srcTokenIndex, uint32_t toExpertIndex, bool writeExpertScale);
     __aicore__ inline void RecordRankCommDuration(LocalTensor<int32_t> &performanceInfoTensor, uint64_t startTime);
+#if DISPATCH_WAIT_DEBUG_ON
+    // 等待看门狗：打印 WaitDispatch 阶段缺失的对端 rank 列表
+    __aicore__ inline void PrintWaitDispatchMissingRanks(uint64_t waitedUs);
+#endif
     __aicore__ inline GM_ADDR GetExpertWinAddr(uint32_t dstExpertId, uint32_t tokenOffset);
     __aicore__ inline GM_ADDR GetWindAddrByRankId(const int32_t rankId)
     {
@@ -219,6 +224,9 @@ private:
 
     // tiling侧已确保数据上限，相乘不会越界，因此统一采用uint32_t进行处理
     uint8_t sendTokenBufNum_{0};
+#if DISPATCH_WAIT_DEBUG_ON
+    uint64_t sendPeerPrintMask_{0}; // 发送侧对端打印去重位图：每 aiv 每 dstRank 仅打印一次
+#endif
     uint32_t axisBS_{0};
     uint32_t axisMaxBS_{0};
     uint32_t axisH_{0};
@@ -436,7 +444,6 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     expandIdxGMTensor_.SetGlobalBuffer((__gm__ int32_t *)(expandIdxOut));
     elasticInfoGMTensor_.SetGlobalBuffer((__gm__ int32_t *)(elasticInfo));
     scalesGMTensor_.SetGlobalBuffer((__gm__ float *)scales);
-    quantInst_.dynamicScalesOutGMTensor_ = dynamicScalesOutGMTensor_;
     SetTilingDataAndCal(tilingData);
     if (hasExpertScalesFlag_) {
         expertScalesGMTensor_.SetGlobalBuffer((__gm__ float *)expertScales);
@@ -593,6 +600,16 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
         if (isExpertMaskFlag_) {
             srcTokenIndex = validBsIndexTensor_.GetValue(sendTokenIndex);
         }
+#if DISPATCH_WAIT_DEBUG_ON
+        // 远端写入前打印对端信息（每 aiv 每 dstRank 仅打印一次）
+        if (!(sendPeerPrintMask_ >> static_cast<uint32_t>(toRankId) & 1ULL)) {
+            sendPeerPrintMask_ |= 1ULL << static_cast<uint32_t>(toRankId);
+            DISPATCH_WAIT_PRINT("[DispatchV2][SEND_PEER] rank=%d aiv=%u -> dstRank=%d sharedIdx=%u "
+                                "srcWinSlot=%u token=%u (write shared expert window)\n",
+                                epRankId_, aivId_, toRankId, toSharedExpertIndex, static_cast<uint32_t>(epRankId_),
+                                srcTokenIndex);
+        }
+#endif
         if constexpr ((QuantMode > UNQUANT) || (QuantMode == UNQUANT && !Std::IsSame<ExpandXOutType, XType>::value)) {
             uint32_t fillExpertIdx = axisK_ + toSharedExpertIndex;
             uint32_t quantExpertIdx = toSharedExpertIndex;
@@ -693,6 +710,19 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
                 int32_t srcTokenIndex = calExpertIdsIdx / axisK_;
                 // 旋转源rank槽 (epRankId_+toRankId)%W；弹性回退非旋转
                 dstWinGMTensor.SetGlobalBuffer((__gm__ XOutType *)GetExpertWinAddr(dstExpertId, dstTokenPreCnt));
+#if DISPATCH_WAIT_DEBUG_ON
+                // 远端写入前打印对端信息（每 aiv 每 dstRank 仅打印一次），rank 映射与 GetExpertWinAddr 保持一致
+                int32_t peerRankId = dstExpertId / moeExpertNumPerRank_ + sharedExpertRankNum_;
+                if (isScalingDownFlag_) {
+                    peerRankId = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + peerRankId);
+                }
+                if (!(sendPeerPrintMask_ >> static_cast<uint32_t>(peerRankId) & 1ULL)) {
+                    sendPeerPrintMask_ |= 1ULL << static_cast<uint32_t>(peerRankId);
+                    DISPATCH_WAIT_PRINT("[DispatchV2][SEND_PEER] rank=%d aiv=%u -> dstRank=%d expert=%d "
+                                        "expertTokenIdx=%d token=%u (write moe expert window)\n",
+                                        epRankId_, aivId_, peerRankId, dstExpertId, dstTokenPreCnt, srcTokenIndex);
+                }
+#endif
                 if constexpr ((QuantMode > UNQUANT) ||
                               (QuantMode == UNQUANT && !Std::IsSame<ExpandXOutType, XType>::value)) {
                     uint32_t quantExpertIdx = dstExpertId + sharedExpertNum_;
@@ -800,6 +830,19 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
 
             // 旋转源rank槽 (epRankId_+toRankId)%W；弹性回退非旋转
             dstWinGMTensor.SetGlobalBuffer((__gm__ XOutType *)GetExpertWinAddr(dstExpertId, curExpertCnt));
+#if DISPATCH_WAIT_DEBUG_ON
+            // 远端写入前打印对端信息（每 aiv 每 dstRank 仅打印一次），rank 映射与 GetExpertWinAddr 保持一致
+            int32_t peerRankId = dstExpertId / moeExpertNumPerRank_ + sharedExpertRankNum_;
+            if (isScalingDownFlag_) {
+                peerRankId = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + peerRankId);
+            }
+            if (!(sendPeerPrintMask_ >> static_cast<uint32_t>(peerRankId) & 1ULL)) {
+                sendPeerPrintMask_ |= 1ULL << static_cast<uint32_t>(peerRankId);
+                DISPATCH_WAIT_PRINT("[DispatchV2][SEND_PEER] rank=%d aiv=%u -> dstRank=%d expert=%d "
+                                    "expertTokenIdx=%d token=%u (write moe expert window BS mode)\n",
+                                    epRankId_, aivId_, peerRankId, dstExpertId, curExpertCnt, tokenIdx);
+            }
+#endif
 
             // Copy stride: srcTensor → outTensor_[slot]，slot 在批次内循环复用
             uint32_t slotOffInt32 = (ki - batchStart) * hCommuSize_ / sizeof(int32_t);
@@ -1166,6 +1209,11 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     int32_t cumSumFlag = 0;
     gatherSumPattern.SetValue(0, 2);
     SyncFunc<AscendC::HardEvent::S_V>();
+#if DISPATCH_WAIT_DEBUG_ON
+    // 等待看门狗：卡内软同步（等本卡前序 aiv 写 recvCnt 计数）超时打印，节流为每超时周期一次
+    uint64_t waitStartCycle = static_cast<uint64_t>(GetSystemCycle());
+    uint64_t lastWaitPrintCycle = waitStartCycle;
+#endif
 
     // 获取状态区中每个核的recvCnt
     while (true) {
@@ -1181,6 +1229,16 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
         if (cumSumFlag == aivUsedCumSum_) {
             break;
         }
+#if DISPATCH_WAIT_DEBUG_ON
+        uint64_t waitNowCycle = static_cast<uint64_t>(GetSystemCycle());
+        if (DISPATCH_WAIT_TIMEOUT_HIT(waitStartCycle, lastWaitPrintCycle, waitNowCycle)) {
+            lastWaitPrintCycle = waitNowCycle;
+            DISPATCH_WAIT_PRINT("[DispatchV2][WAIT_TIMEOUT] rank=%d aiv=%u stage=GetCumSum waitedUs=%llu "
+                                "newAivId=%u flagVal=%d target=%u (wait local recvCnt cal flags)\n",
+                                epRankId_, aivId_, static_cast<unsigned long long>((waitNowCycle - waitStartCycle) / CYCLES_PER_US),
+                                newAivId, cumSumFlag, aivUsedCumSum_);
+        }
+#endif
     }
 
     // 0核前面所有核recv cnt总和是0
@@ -1226,6 +1284,11 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     DataCopyParams intriParams{static_cast<uint16_t>(recStatusNumPerCore_), 1, 0, 0};
     SyncFunc<AscendC::HardEvent::S_V>();
     uint64_t performanceTimeStart = static_cast<uint64_t>(GetSystemCycle());
+#if DISPATCH_WAIT_DEBUG_ON
+    // 等待看门狗：超时（默认10s）打印在等哪些对端 rank 的状态位，随后继续等待，节流为每超时周期一次
+    uint64_t waitStartCycle = performanceTimeStart;
+    uint64_t lastWaitPrintCycle = waitStartCycle;
+#endif
     while (sumOfFlag != compareTarget) {
         DataCopy(statusFp32Tensor_, windowInstatusFp32Tensor_[startStatusIndex_ * STATE_OFFSET / sizeof(float)],
                  intriParams);
@@ -1236,6 +1299,13 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
         ReduceSum(statusSumOutTensor, statusFp32Tensor_, gatherMaskOutTensor, mask, recStatusNumPerCore_, 1);
         SyncFunc<AscendC::HardEvent::V_S>();
         sumOfFlag = statusSumOutTensor.GetValue(0);
+#if DISPATCH_WAIT_DEBUG_ON
+        uint64_t waitNowCycle = static_cast<uint64_t>(GetSystemCycle());
+        if (DISPATCH_WAIT_TIMEOUT_HIT(waitStartCycle, lastWaitPrintCycle, waitNowCycle)) {
+            lastWaitPrintCycle = waitNowCycle;
+            PrintWaitDispatchMissingRanks((waitNowCycle - waitStartCycle) / CYCLES_PER_US);
+        }
+#endif
     }
     RunPosRecord(RUNPOS_CALCUMSUM); // 维测打点
     if (isPerformanceFlag_) {
@@ -1250,6 +1320,40 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     WaitDispatchClearStatus();
     GatherSumRecvCnt(gatherMaskOutTensor, gatherTmpTensor, statusSumOutTensor);
 }
+
+#if DISPATCH_WAIT_DEBUG_ON
+template <TemplateMC2TypeFullmeshClass>
+__aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::PrintWaitDispatchMissingRanks(
+    uint64_t waitedUs)
+{
+    // 遍历本核负责的状态块，flag 未置位的即在对端未完成写入的 rank
+    uint32_t missCnt = 0;
+    for (uint32_t i = 0; i < recStatusNumPerCore_; i++) {
+        float statusFp32 = statusFp32Tensor_.GetValue(i * FLAG_OFFSET);
+        if (statusFp32 > float(0.5)) {
+            continue;
+        }
+        uint32_t fromLocalRankId = (startStatusIndex_ + i) % epWorldSize_;
+        uint32_t fromRankId = isScalingDownFlag_ ?
+            static_cast<uint32_t>(elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + fromLocalRankId)) :
+            fromLocalRankId;
+        DISPATCH_WAIT_PRINT("[DispatchV2][WAIT_TIMEOUT] rank=%d aiv=%u stage=WaitDispatch waitedUs=%llu "
+                            "missingFromRank=%u flagIdx=%u/%u (peer dispatch status not written)\n",
+                            epRankId_, aivId_, static_cast<unsigned long long>(waitedUs), fromRankId, i,
+                            recStatusNumPerCore_);
+        if (++missCnt >= 16U) { // 单次最多列 16 个，防止刷屏
+            DISPATCH_WAIT_PRINT("[DispatchV2][WAIT_TIMEOUT] rank=%d aiv=%u stage=WaitDispatch ...more missing flags "
+                                "omitted (missCnt>=%u)\n", epRankId_, aivId_, missCnt);
+            break;
+        }
+    }
+    if (missCnt == 0) { // flag 之和未达标但逐块检查全部置位：状态异常，打印提示
+        DISPATCH_WAIT_PRINT("[DispatchV2][WAIT_TIMEOUT] rank=%d aiv=%u stage=WaitDispatch waitedUs=%llu "
+                            "flagAbnormal sumOfFlag!=%u but no missing flag found\n",
+                            epRankId_, aivId_, static_cast<unsigned long long>(waitedUs), recStatusNumPerCore_);
+    }
+}
+#endif
 
 template <TemplateMC2TypeFullmeshClass>
 __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::CalRecvAndSetFlag()
@@ -1390,6 +1494,11 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     uint32_t innerSumParams = aivUsedCumSum_ * UB_ALIGN / sizeof(float);
     SumParams sumFlagParams{1, innerSumParams, aivUsedCumSum_ * UB_ALIGN_DATA_COUNT};
     LocalTensor<float> statusSumOutTensor = scalarBuf_.Get<float>();
+#if DISPATCH_WAIT_DEBUG_ON
+    // 等待看门狗：卡内软同步（等本卡各 aiv 的 cumsum 完成）超时打印，节流为每超时周期一次
+    uint64_t waitStartCycle = static_cast<uint64_t>(GetSystemCycle());
+    uint64_t lastWaitPrintCycle = waitStartCycle;
+#endif
 
     while (true) {
         DataCopy(statusFp32Tensor_, selfRankWinInGMTensor_[cumSumFlagOffset], aivUsedCumSum_ * UB_ALIGN_DATA_COUNT);
@@ -1400,6 +1509,16 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
         if (cumSumFlag == targetFlag) {
             break;
         }
+#if DISPATCH_WAIT_DEBUG_ON
+        uint64_t waitNowCycle = static_cast<uint64_t>(GetSystemCycle());
+        if (DISPATCH_WAIT_TIMEOUT_HIT(waitStartCycle, lastWaitPrintCycle, waitNowCycle)) {
+            lastWaitPrintCycle = waitNowCycle;
+            DISPATCH_WAIT_PRINT("[DispatchV2][WAIT_TIMEOUT] rank=%d aiv=%u stage=WaitCumSumFlag waitedUs=%llu "
+                                "flagVal=%d target=%d (wait local aiv cumsum flags)\n",
+                                epRankId_, aivId_, static_cast<unsigned long long>((waitNowCycle - waitStartCycle) / CYCLES_PER_US),
+                                cumSumFlag, targetFlag);
+        }
+#endif
     }
     RunPosRecord(RUNPOS_CUMSUMFLAG); // 维测打点
     // Clean flag for next round
@@ -1623,6 +1742,12 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     flagRecvTensor_ = tBuf.GetWithOffset<float>(flagRecvSize / sizeof(float), flagWorkOffset + reduceWorkSize);
 
     uint32_t copyBatchId = 0;
+#if DISPATCH_WAIT_DEBUG_ON
+    // 进度看门狗：以"最后一次成功搬运数据"为基准计时，持续无进展超过阈值（默认10s）
+    // 打印当前在等哪个对端专家的数据，随后继续轮询，节流为每超时周期一次
+    uint64_t lastProgressCycle = static_cast<uint64_t>(GetSystemCycle());
+    uint64_t lastWaitPrintCycle = lastProgressCycle;
+#endif
     while (true) {
         if (expertLeftNumTensor_(index) == 0) { // 当前核负责的不需要收集
             index = (index + 1) % validNum;     // 轮询查询每个有效的index
@@ -1650,12 +1775,26 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
             if (expertLeftNumTensor_(index) == 0) {
                 finishNum++;
             }
+#if DISPATCH_WAIT_DEBUG_ON
+            lastProgressCycle = static_cast<uint64_t>(GetSystemCycle()); // 有进展，刷新看门狗基准
+#endif
         } else {
             index = (index + 1) % validNum;
         }
         if (validNum == finishNum) {
             break;
         }
+#if DISPATCH_WAIT_DEBUG_ON
+        uint64_t waitNowCycle = static_cast<uint64_t>(GetSystemCycle());
+        if (DISPATCH_WAIT_TIMEOUT_HIT(lastProgressCycle, lastWaitPrintCycle, waitNowCycle)) {
+            lastWaitPrintCycle = waitNowCycle;
+            DISPATCH_WAIT_PRINT("[DispatchV2][WAIT_TIMEOUT] rank=%d aiv=%u stage=WaitAndFormatOutput "
+                                "stalledUs=%llu waitingSrcExpertId=%u finished=%u left=%u (peer tokens not arrived)\n",
+                                epRankId_, aivId_,
+                                static_cast<unsigned long long>((waitNowCycle - lastProgressCycle) / CYCLES_PER_US),
+                                srcExpertId, expertFinishNumTensor_(index), expertLeftNumTensor_(index));
+        }
+#endif
     }
 
     uint32_t usedDataBufferNum = copyBatchId > LOCAL_COPY_BUFFER_NUM ? LOCAL_COPY_BUFFER_NUM : copyBatchId;
