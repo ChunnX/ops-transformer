@@ -295,7 +295,7 @@ ge::graphStatus ParseAndCheck(gert::TilingContext *context, MsaIndexScoreInfo &i
     info.platformInfo = context->GetPlatformInfo();
     OP_CHECK_IF(info.platformInfo == nullptr, OP_LOGE(context, "GetPlatformInfo is nullptr."), return ge::GRAPH_FAILED);
     auto ascendcPlatformEarly = platform_ascendc::PlatformAscendC(info.platformInfo);
-    info.isAscend950 = (ascendcPlatformEarly.GetSocVersion() == platform_ascendc::SocVersion::ASCEND950);
+    info.isAscend950 = (ascendcPlatformEarly.GetCurNpuArch() == NpuArch::DAV_3510);
 
     const gert::StorageShape *queryShape = context->GetInputShape(MSA_IDX_QUERY);
     OP_CHECK_NULL_WITH_CONTEXT(context, queryShape);
