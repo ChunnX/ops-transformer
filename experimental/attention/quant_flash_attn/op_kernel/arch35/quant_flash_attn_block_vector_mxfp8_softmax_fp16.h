@@ -162,6 +162,12 @@ public:
                 pNzIdxUB_.SetValue(i * 128 + j, static_cast<uint8_t>(i + 2 * j));
             }
         }
+
+        // ④ 核内事件初始置位：EVT_P_COPY 的首次消费保护（镜像 DN L1082 惯用法）。
+        //    ComputeVec1 顶部 Wait<MTE3_V> 先于任何 Set 执行（Set 在首任务末 subLoop 的
+        //    epilogue 才发）——不预置则首任务挂死（2026-09-20 首跑发现）。
+        //    跨核 flag 的初始释放由 kernel 层 Process() 负责（分层约定），此处只管核内事件。
+        SetFlag<HardEvent::MTE3_V>(EVT_P_COPY);
     }
 
     __aicore__ inline void ComputeVec1(RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t subLoopIdx)
