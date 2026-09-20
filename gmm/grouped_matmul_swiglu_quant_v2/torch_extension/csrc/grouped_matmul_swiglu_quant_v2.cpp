@@ -143,12 +143,15 @@ void CheckV3Args(const at::Tensor &x, const std::vector<at::Tensor> &weight,
     TORCH_CHECK(weight[0].scalar_type() == at::ScalarType::Float8_e4m3fn,
                 "swiglu_mode=2 requires weight dtype torch.float8_e4m3fn.");
     TORCH_CHECK(IsNzWeight(weight[0]), "swiglu_mode=2 requires weight in FRACTAL_NZ format.");
-    // E8M0 is carried by an int8 Tensor in Torch and interpreted through the
-    // explicit wrapper dtype, exactly as the MXFP8 Torch API documents.
-    TORCH_CHECK(xScale.scalar_type() == at::ScalarType::Char,
-                "swiglu_mode=2 requires x_scale to use torch.int8 storage for torch_npu.float8_e8m0fnu.");
-    TORCH_CHECK(weightScale[0].scalar_type() == at::ScalarType::Char,
-                "swiglu_mode=2 requires weight_scale to use torch.int8 storage for torch_npu.float8_e8m0fnu.");
+    // E8M0 is interpreted from its 8-bit bit pattern by the explicit wrapper
+    // dtype. Both signed and unsigned 8-bit Torch storage preserve that pattern.
+    TORCH_CHECK(xScale.scalar_type() == at::ScalarType::Char || xScale.scalar_type() == at::ScalarType::Byte,
+                "swiglu_mode=2 requires x_scale to use torch.int8 or torch.uint8 storage for "
+                "torch_npu.float8_e8m0fnu.");
+    TORCH_CHECK(weightScale[0].scalar_type() == at::ScalarType::Char ||
+                    weightScale[0].scalar_type() == at::ScalarType::Byte,
+                "swiglu_mode=2 requires weight_scale to use torch.int8 or torch.uint8 storage for "
+                "torch_npu.float8_e8m0fnu.");
     TORCH_CHECK(!weightAssistMatrix.has_value() || weightAssistMatrix->empty(),
                 "swiglu_mode=2 does not support weight_assist_matrix.");
     TORCH_CHECK(!bias.has_value() || !bias->defined(), "swiglu_mode=2 does not support bias.");
