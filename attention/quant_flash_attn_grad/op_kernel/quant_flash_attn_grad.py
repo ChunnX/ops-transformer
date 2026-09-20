@@ -8,7 +8,13 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-"""QuantFlashAttnGrad kernel (pypto-pro)."""
+"""QuantFlashAttnGrad kernel (pypto-pro).
+
+Pipeline variant:
+- original: 0Requirement/quant_fag_snapshots/quant_flash_attn_grad.original.py (outside this git repo)
+- A: TND/varlen only; issue QK(i), QK(i+1) before p_ds(i), p_ds(i+1);
+  skip dS L1 wait/set (P L1 wait kept). BSND/BNSD still compile original.
+"""
 
 from dataclasses import dataclass
 
@@ -3220,11 +3226,14 @@ def process_p_ds(run_info, const_info, sdp_id, tensor_info, tmp_info):
                 event_id=SYNC_UB2L1_P_FLAG,
                 sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK,
             )
-            pl.system.wait_cross_core(
-                pipe=pl.PipeType.MTE3,
-                event_id=SYNC_UB2L1_DS_FLAG,
-                sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK,
-            )
+            # A-test (TND/varlen): dS has 16 L1 slots, do not stall Vector on
+            # cube releasing a different dS tile. BSND/BNSD keep the wait.
+            if not is_var_len():
+                pl.system.wait_cross_core(
+                    pipe=pl.PipeType.MTE3,
+                    event_id=SYNC_UB2L1_DS_FLAG,
+                    sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK,
+                )
         p_l1_bit8_tmp = tensor_info.p_l1_bit8
         p_l1_bit8 = p_l1_bit8_tmp.next()
         if (
@@ -3288,7 +3297,7 @@ def process_dq(run_info, sdp_id, const_info, tensor_info, tmp_info):
                 tmp_info,
             )
 
-        if not (sdp_id == 2 and run_info.s1_idx == 0):
+        if not is_var_len() and not (sdp_id == 2 and run_info.s1_idx == 0):
             pl.system.set_cross_core(
                 pipe=pl.PipeType.MTE1,
                 event_id=SYNC_UB2L1_DS_FLAG,
@@ -3376,7 +3385,7 @@ def process_dkv(is_dk, run_info, sdp_id, const_info, tensor_info, tmp_info):
                     tmp_info,
                 )
 
-            if sdp_id == 0 and run_info.s2_idx == 3:
+            if not is_var_len() and sdp_id == 0 and run_info.s2_idx == 3:
                 pl.system.set_cross_core(
                     pipe=pl.PipeType.MTE1,
                     event_id=SYNC_UB2L1_DS_FLAG,
@@ -3414,9 +3423,10 @@ def process_dkv(is_dk, run_info, sdp_id, const_info, tensor_info, tmp_info):
                 )
 
 
-def process_first_s2(
+def process_first_s2_original(
     const_info, run_info, last_run_info, kv_inner_id, tensor_info, tmp_info
 ):
+    """BSND/BNSD handshake: QK then p_ds of the same 128 tile."""
     set_quant_run_info(run_info, 0, kv_inner_id)
     process_sp(run_info, const_info, 0, tensor_info)
     process_p_ds(run_info, const_info, 0, tensor_info, tmp_info)
@@ -3481,9 +3491,6 @@ def process_first_s2(
     with pl.section_vector():
         if not last_run_info.is_dq_completed:
             set_quant_run_info(last_run_info, kv_inner_id, 2)
-            # One INTER_BLOCK per outer tile: wait before the first 128 dQ
-            # writeback, set after the last. Inner slices belong to the same
-            # s1o and the same core, so they do not need extra uniqueness.
             if kv_inner_id == 0:
                 pl.system.wait_cross_core(
                     pipe=pl.PipeType.MTE3,
@@ -3516,6 +3523,127 @@ def process_first_s2(
         process_dkv(True, last_run_info, 0, const_info, tensor_info, tmp_info)
         set_quant_run_info(last_run_info, 2, 3)
         process_dkv(True, last_run_info, 2, const_info, tensor_info, tmp_info)
+
+
+def process_first_s2_pipe_a(
+    const_info, run_info, last_run_info, kv_inner_id, tensor_info, tmp_info
+):
+    """A-test for TND/varlen: fire two QKs, then two p_ds, so Cube/Vector overlap."""
+    set_quant_run_info(run_info, 0, kv_inner_id)
+    process_sp(run_info, const_info, 0, tensor_info)
+    set_quant_run_info(run_info, 1, kv_inner_id)
+    process_sp(run_info, const_info, 1, tensor_info)
+
+    set_quant_run_info(run_info, 0, kv_inner_id)
+    process_p_ds(run_info, const_info, 0, tensor_info, tmp_info)
+    with pl.section_cube():
+        if not last_run_info.is_dq_completed:
+            set_quant_run_info(last_run_info, kv_inner_id, 0)
+            process_dq(last_run_info, 0, const_info, tensor_info, tmp_info)
+
+    set_quant_run_info(run_info, 1, kv_inner_id)
+    process_p_ds(run_info, const_info, 1, tensor_info, tmp_info)
+    with pl.section_cube():
+        if not last_run_info.is_dq_completed:
+            set_quant_run_info(last_run_info, kv_inner_id, 2)
+            process_dq(last_run_info, 2, const_info, tensor_info, tmp_info)
+
+    with pl.section_vector():
+        if kv_inner_id > 1:
+            set_quant_run_info(run_info, 0, kv_inner_id - 2)
+            if run_info.s2_idx < run_info.inner_s2_loop_num:
+                copy_dqkv2gm(True, run_info, const_info, tensor_info)
+            pl.system.set_cross_core(
+                pipe=pl.PipeType.MTE3,
+                event_id=SYNC_TRANSFER_DKV_FLAG,
+                sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK,
+            )
+        elif not last_run_info.is_dkv_completed:
+            set_quant_run_info(last_run_info, 0, kv_inner_id + 2)
+            if last_run_info.s2_idx < last_run_info.inner_s2_loop_num:
+                copy_dqkv2gm(True, last_run_info, const_info, tensor_info)
+            pl.system.set_cross_core(
+                pipe=pl.PipeType.MTE3,
+                event_id=SYNC_TRANSFER_DKV_FLAG,
+                sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK,
+            )
+            last_run_info.is_dkv_completed = (kv_inner_id + 2) == 3
+        if not last_run_info.is_dq_completed:
+            set_quant_run_info(last_run_info, kv_inner_id, 2)
+            compute_dq(last_run_info, const_info, tensor_info)
+
+    if kv_inner_id > 0:
+        set_quant_run_info(run_info, 0, kv_inner_id - 1)
+        process_dkv(False, run_info, 0, const_info, tensor_info, tmp_info)
+    elif not last_run_info.is_dkv_completed and kv_inner_id == 0:
+        set_quant_run_info(last_run_info, 0, 3)
+        process_dkv(False, last_run_info, 0, const_info, tensor_info, tmp_info)
+
+    set_quant_run_info(run_info, 2, kv_inner_id)
+    process_sp(run_info, const_info, 0, tensor_info)
+    set_quant_run_info(run_info, 3, kv_inner_id)
+    process_sp(run_info, const_info, 1, tensor_info)
+
+    set_quant_run_info(run_info, 2, kv_inner_id)
+    process_p_ds(run_info, const_info, 0, tensor_info, tmp_info)
+    if kv_inner_id > 0:
+        set_quant_run_info(run_info, 2, kv_inner_id - 1)
+        process_dkv(False, run_info, 2, const_info, tensor_info, tmp_info)
+    elif not last_run_info.is_dkv_completed and kv_inner_id == 0:
+        set_quant_run_info(last_run_info, 2, 3)
+        process_dkv(False, last_run_info, 2, const_info, tensor_info, tmp_info)
+
+    set_quant_run_info(run_info, 3, kv_inner_id)
+    process_p_ds(run_info, const_info, 1, tensor_info, tmp_info)
+
+    with pl.section_vector():
+        if not last_run_info.is_dq_completed:
+            set_quant_run_info(last_run_info, kv_inner_id, 2)
+            if kv_inner_id == 0:
+                pl.system.wait_cross_core(
+                    pipe=pl.PipeType.MTE3,
+                    event_id=SYNC_DETER_FLAG,
+                    sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
+                )
+
+            if last_run_info.s1_idx < last_run_info.inner_s1_loop_num:
+                copy_dqkv2gm(False, last_run_info, const_info, tensor_info)
+            if kv_inner_id == 3:
+                pl.system.set_cross_core(
+                    pipe=pl.PipeType.MTE3,
+                    event_id=SYNC_DETER_FLAG,
+                    sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
+                )
+            pl.system.set_cross_core(
+                pipe=pl.PipeType.MTE3,
+                event_id=SYNC_TRANSFER_DQ_FLAG,
+                sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK,
+            )
+            last_run_info.is_dq_completed = kv_inner_id == 3
+
+    if kv_inner_id > 0:
+        set_quant_run_info(run_info, 0, kv_inner_id - 1)
+        process_dkv(True, run_info, 0, const_info, tensor_info, tmp_info)
+        set_quant_run_info(run_info, 2, kv_inner_id - 1)
+        process_dkv(True, run_info, 2, const_info, tensor_info, tmp_info)
+    elif not last_run_info.is_dkv_completed and kv_inner_id == 0:
+        set_quant_run_info(last_run_info, 0, 3)
+        process_dkv(True, last_run_info, 0, const_info, tensor_info, tmp_info)
+        set_quant_run_info(last_run_info, 2, 3)
+        process_dkv(True, last_run_info, 2, const_info, tensor_info, tmp_info)
+
+
+def process_first_s2(
+    const_info, run_info, last_run_info, kv_inner_id, tensor_info, tmp_info
+):
+    if is_var_len():
+        process_first_s2_pipe_a(
+            const_info, run_info, last_run_info, kv_inner_id, tensor_info, tmp_info
+        )
+        return
+    process_first_s2_original(
+        const_info, run_info, last_run_info, kv_inner_id, tensor_info, tmp_info
+    )
 
 
 def drain_pending_task(run_info, const_info, tensor_info, tmp_info):
