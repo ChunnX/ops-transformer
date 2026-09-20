@@ -90,13 +90,14 @@ __aicore__ inline void MatmulKStatic(const LocalTensor<A> &aL1Tensor, const Loca
 
 // 切N
 template <typename A, typename B, typename C, uint32_t baseM, uint32_t baseN, uint32_t baseK, ABLayout AL, ABLayout BL,
-          typename L0AType, typename L0BType, typename AScaleType = fp8_e8m0_t, typename BScaleType = fp8_e8m0_t,
+          bool USE_RESIDENT_A = false, typename L0AType, typename L0BType, typename AScaleType = fp8_e8m0_t, typename BScaleType = fp8_e8m0_t,
           typename L0ADType = A, typename L0BDType = B>
 __aicore__ inline void MatmulNStatic(const LocalTensor<A> &aL1Tensor, const LocalTensor<B> &bL1Tensor,
                                      RingBuffer<L0AType> &l0A, RingBuffer<L0BType> &l0B,
                                      const LocalTensor<C> &cL0Tensor, const MMParam &param,
                                      const LocalTensor<AScaleType> &aScaleL1Tensor = LocalTensor<AScaleType>(),
-                                     const LocalTensor<BScaleType> &bScaleL1Tensor = LocalTensor<AScaleType>())
+                                     const LocalTensor<BScaleType> &bScaleL1Tensor = LocalTensor<AScaleType>(),
+                                     const LocalTensor<L0AType> &residentA = LocalTensor<L0AType>())
 {
     uint32_t nLoops = (param.singleN + baseN - 1) / baseN;
     uint32_t tailSize = param.singleN % baseN;
@@ -128,8 +129,14 @@ __aicore__ inline void MatmulNStatic(const LocalTensor<A> &aL1Tensor, const Loca
         StaticBuffer<L0BType> &bBuf = l0B.GetNext();
 
         WaitFlag<HardEvent::M_MTE1>(MATMUL_STATIC_L0AB_ID(aBuf.idx)); // 等 M 用完该 AB 槽
-        if (n == 0 || n == 1) { // 每个 ping-pong slot 首次访问各装一份 A, 之后复用不再覆盖
-            LocalTensor<L0ADType> L0ATensor = aBuf.tensor.template ReinterpretCast<L0ADType>();
+        // A dedicated resident slot must not overlap the QK ping/pong slots.
+        // Its owner waits for the preceding PV M pipe before reusing it.
+        LocalTensor<L0AType> currentA = aBuf.tensor;
+        if constexpr (USE_RESIDENT_A) {
+            currentA = residentA;
+        }
+        if (n == 0 || (!USE_RESIDENT_A && n == 1)) {
+            LocalTensor<L0ADType> L0ATensor = currentA.template ReinterpretCast<L0ADType>();
             LoadDataToL0A(L0ATensor, aL1Tensor, param, 0, param.singleK, param.singleM);
         }
 
@@ -140,7 +147,7 @@ __aicore__ inline void MatmulNStatic(const LocalTensor<A> &aL1Tensor, const Loca
         SetFlag<HardEvent::MTE1_M>(MATMUL_STATIC_L0AB_ID(aBuf.idx));  // MTE1 搬运完，通知 M
         WaitFlag<HardEvent::MTE1_M>(MATMUL_STATIC_L0AB_ID(aBuf.idx)); // M 等数据就绪
 
-        Mmad(cL0Tensor[n * L0Coffset], aBuf.tensor, bBuf.tensor, mmadParams);
+        Mmad(cL0Tensor[n * L0Coffset], currentA, bBuf.tensor, mmadParams);
 
         SetFlag<HardEvent::M_MTE1>(MATMUL_STATIC_L0AB_ID(aBuf.idx)); // M 用完，释放该 AB 槽
     }

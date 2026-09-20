@@ -71,6 +71,7 @@ public:
     static constexpr uint32_t rightBufTotalSize = rightBufSingleSize * rightBufNum;
     static constexpr uint32_t l1QBufNum = 3;                // L1 Q 三缓冲
     static constexpr uint32_t l1KBufNum = 3;                // L1 K 三缓冲
+    static constexpr uint32_t l0ResidentPEventId = 2;      // M_MTE1: 0/1 belong to QK/PV AB slots
     static constexpr uint32_t qHalfNum = 2;                 // Q 沿 d 轴切半
     static constexpr uint32_t crossCoreMte2SyncFlagId = 15; // IS_SPLIT_G 核间 MTE2 同步 flag ID
 
@@ -138,6 +139,7 @@ private:
     StaticBuffer<Q_T> l1RightBufs[3];
     StaticBuffer<Q_T> l0ABufs[2];
     RingBuffer<Q_T> l0A;
+    LocalTensor<Q_T> l0ResidentP;
     StaticBuffer<Q_T> l0BBufs[2];
     RingBuffer<Q_T> l0B;
     StaticBuffer<T> l0CBufs[2];
@@ -149,6 +151,12 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::InitLocalBuffer(uint32_t l1B
 {
     AttentionCommon::InitCubeLocalBuffer<Q_T, T>(l1QBufs, l1RightBufs, l0ABufs, l0A, l0BBufs, l0B, l0CBufs, l0C,
                                                  l1BaseAddr);
+    if ASCEND_IS_AIC {
+        // QK uses [0,32KiB); reserve [32,48KiB) for one PV P tile.
+        static_assert(3 * L0A_ELEM_PER_BUF * sizeof(Q_T) <= 64 * 1024);
+        l0ResidentP = LocalTensor<Q_T>(TPosition::A2, 2 * L0A_ELEM_PER_BUF * sizeof(Q_T), L0A_ELEM_PER_BUF);
+        SetFlag<HardEvent::M_MTE1>(l0ResidentPEventId);
+    }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -183,6 +191,7 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::FreeEvent()
 {
     WaitFlag<HardEvent::M_MTE1>(INNERCORE_L0AB(0));
     WaitFlag<HardEvent::M_MTE1>(INNERCORE_L0AB(1));
+    WaitFlag<HardEvent::M_MTE1>(l0ResidentPEventId);
     WaitFlag<HardEvent::FIX_M>(INNERCORE_L0C(0));
     WaitFlag<HardEvent::FIX_M>(INNERCORE_L0C(1));
     WaitFlag<HardEvent::MTE1_MTE2>(INNERCORE_L1Q(0));
@@ -476,8 +485,12 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm2Impl(StaticBuffer
         0,                                         // isLeftTranspose
         0                                          // isRightTranspose
     };
-    MatmulNStatic<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN>(
-        l1PBuffer.tensor, curL1RightTensor, l0A, l0B, smlaCBuf.tensor, smlaParam);
+    // M_FIX orders FIX only. A separate M_MTE1 event protects resident P
+    // across PV calls while QK continues to use its independent lower slots.
+    WaitFlag<HardEvent::M_MTE1>(l0ResidentPEventId);
+    MatmulNStatic<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN, true>(
+        l1PBuffer.tensor, curL1RightTensor, l0A, l0B, smlaCBuf.tensor, smlaParam, {}, {}, l0ResidentP);
+    SetFlag<HardEvent::M_MTE1>(l0ResidentPEventId);
 
     SetFlag<HardEvent::M_FIX>(INNERCORE_L0C(smlaCBuf.idx));
     WaitFlag<HardEvent::M_FIX>(INNERCORE_L0C(smlaCBuf.idx));
