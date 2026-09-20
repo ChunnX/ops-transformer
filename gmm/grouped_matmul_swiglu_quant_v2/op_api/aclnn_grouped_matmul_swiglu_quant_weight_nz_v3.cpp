@@ -57,37 +57,20 @@ bool IsNzFormat(const aclTensor *tensor)
            ge::GetPrimaryFormat(tensor->GetStorageFormat()) == op::Format::FORMAT_FRACTAL_NZ;
 }
 
-bool IsTransposedWeight(const aclTensor *tensor, int64_t k)
+bool IsTransposedWeight(const aclTensor *tensor)
 {
     if (tensor == nullptr || tensor->GetViewShape().GetDimNum() != gmm_swiglu_quant_v3::WEIGHT_VIEW_DIM_NUM ||
         tensor->GetStorageShape().GetDimNum() != gmm_swiglu_quant_v3::WEIGHT_STORAGE_DIM_NUM) {
         return false;
     }
     const auto &viewShape = tensor->GetViewShape();
-    const int64_t dim1 = viewShape.GetDim(1);
-    const int64_t dim2 = viewShape.GetDim(2);
-
-    // When K and N differ, the logical view itself is unambiguous: K is the
-    // second dimension for a normal (E, K, N) view and the third dimension
-    // for a transposed (E, N, K) view.  This is more reliable than using the
-    // NZ storage shape, whose two outer tile axes are expressed relative to
-    // the view and therefore do not encode the transpose state.
-    if (dim2 == k && dim1 != k) {
-        return true;
-    }
-    if (dim1 == k && dim2 != k) {
-        return false;
-    }
-
     const auto strides = tensor->GetViewStrides();
     const int64_t lastDim = static_cast<int64_t>(viewShape.GetDimNum()) - 1;
     const int64_t penultimateDim = lastDim - 1;
 
-    // FRACTAL_NZ storage shape alone cannot distinguish (E, K, N) from
-    // (E, N, K): both are described by the same two physical tile axes when
-    // expressed in terms of their own view dimensions.  Use the view stride,
-    // which is the same convention used by the V2/NZ APIs, to identify a
-    // transposed view: the penultimate logical dimension is contiguous.
+    // Match GMMAQ and GMM WeightNZ: the transposed view is identified by
+    // stride (K * N, 1, K), rather than by dimensions whose values can be
+    // equal or whose order is normalized by the Torch/NPU descriptor.
     if (strides[penultimateDim] != 1 || strides[lastDim] != viewShape.GetDim(penultimateDim)) {
         return false;
     }
@@ -383,7 +366,7 @@ aclnnStatus CheckShape(const aclTensor *x, const aclTensorList *weight, const ac
     const aclTensor *weightScaleTensor = (*weightScale)[gmm_swiglu_quant_v3::FIRST_TENSOR_INDEX];
     const int64_t m = x->GetViewShape().GetDim(0);
     const int64_t k = x->GetViewShape().GetDim(1);
-    const bool transposeWeight = IsTransposedWeight(weightTensor, k);
+    const bool transposeWeight = IsTransposedWeight(weightTensor);
     const int64_t e = groupList->GetViewShape().GetDim(0);
     const int64_t weightE = weightTensor->GetViewShape().GetDim(0);
     const int64_t n = transposeWeight ? weightTensor->GetViewShape().GetDim(1) : weightTensor->GetViewShape().GetDim(2);
@@ -636,8 +619,8 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize(
     CHECK_RET(CreateEmptyWeightAssistTensorList(weightAssistForOp, uniqueExecutor.get()) == ACLNN_SUCCESS,
               ACLNN_ERR_INNER_NULLPTR);
 
-    const bool transposeWeight = IsTransposedWeight((*weight)[gmm_swiglu_quant_v3::FIRST_TENSOR_INDEX],
-                                                    x->GetViewShape().GetDim(1));
+    const bool transposeWeight =
+        IsTransposedWeight((*weight)[gmm_swiglu_quant_v3::FIRST_TENSOR_INDEX]);
     const char *effectiveRoundMode = (roundMode == nullptr || roundMode[0] == '\0') ?
                                           gmm_swiglu_quant_v3::DEFAULT_ROUND_MODE :
                                           roundMode;
