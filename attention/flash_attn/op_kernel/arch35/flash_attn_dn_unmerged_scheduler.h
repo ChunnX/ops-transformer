@@ -1,80 +1,42 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
-
-/*!
- * \file flash_attn_kernel_dn.h
- * \brief FlashAttentionNoQuantGqaKernelDnUnmerged —— Dn 路径专用 kernel 模板（独立类）。
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef FLASH_ATTN_KERNEL_DN_UNMERGED_H_
-#define FLASH_ATTN_KERNEL_DN_UNMERGED_H_
-
-#include "../utils/flash_attn_common_def.h"
-
-#include "flash_attn_block_cube_dn_unmerged.h"
-#include "flash_attn_block_vec_dn_unmerged.h"
-#include "memory_copy_arch35.h"
-#include "flash_attn_block_vec_flashdecode.h"
-
-#if ASC_DEVKIT_MAJOR >= 9
-#include "kernel_basic_intf.h"
-#else
-#include "kernel_operator.h"
-#endif
-
+#ifndef FLASH_ATTN_DN_UNMERGED_SCHEDULER_H_
+#define FLASH_ATTN_DN_UNMERGED_SCHEDULER_H_
+#include "../utils/flash_attn_type.h"
 #include "flash_attn_tiling_data.h"
+#include "memory_copy_arch35.h"
+#include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
 #include "../../../common/op_kernel/arch_info.h"
-
-using namespace AscendC;
-using namespace optiling;
-using namespace AscendC::Impl::Detail;
+#include "../../../common/op_kernel/vector_common.h"
 
 namespace FlashAttnKernel {
+using namespace optiling;
 using ArchInfo::CV_RATIO;
-template <typename FA_T, typename CubeBlockType, typename VecFaBlockType, typename VecFdBlockType>
-class FlashAttentionNoQuantGqaKernelDnUnmerged {
+template <typename FA_T, typename ConstInfo, typename RunInfo>
+class DnUnmergedSchedulerHooks {
 public:
-    using T = float;
-    using SEQLEN_T = uint32_t;
     using INPUT_T = typename FA_T::inputType;
-    static constexpr uint32_t mBaseSize = (uint32_t)FA_T::mBaseSize;
-    static constexpr uint32_t s2BaseSize = (uint32_t)FA_T::s2BaseSize;
+    using SEQLEN_T = uint32_t;
+    static constexpr uint32_t mBaseSize = static_cast<uint32_t>(FA_T::mBaseSize);
+    static constexpr uint32_t s2BaseSize = static_cast<uint32_t>(FA_T::s2BaseSize);
     static constexpr FA_LAYOUT LAYOUT_T = FA_T::qLayout;
     static constexpr FA_LAYOUT LAYOUT_KV = FA_T::kvLayout;
     static constexpr bool PAGE_ATTENTION = FA_T::pageAttention;
     static constexpr bool HAS_MASK = FA_T::hasMask;
-
-    static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C1 C2
-    // task ring buffer 至少需要 PRELOAD_N+1(=3) 个slot；为了用位掩码(loop & MASK)代替取模(loop % SIZE)，
-    // 将容量向上取整到最近的2的幂(=4)。代价仅为多1个RunInfo slot，换取消除内层循环的取模scalar bound。
-    static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = 4;
-    static constexpr uint32_t PRELOAD_TASK_CACHE_MASK = PRELOAD_TASK_CACHE_SIZE - 1;
-    static_assert(PRELOAD_TASK_CACHE_SIZE >= PRELOAD_N + 1, "PRELOAD_TASK_CACHE_SIZE must be at least PRELOAD_N + 1");
-    static_assert((PRELOAD_TASK_CACHE_SIZE & PRELOAD_TASK_CACHE_MASK) == 0,
-                  "PRELOAD_TASK_CACHE_SIZE must be a power of two for bitmask indexing");
-
-    ConstInfo_t constInfo_;
-
-    SeqLensTool<LAYOUT_T, SEQLEN_T> qSeqLensTool_;
-    SeqLensTool<LAYOUT_KV, SEQLEN_T> kvSeqLensTool_;
-
+    ConstInfo &constInfo_;
+    SeqLensTool<LAYOUT_T, SEQLEN_T> &qSeqLensTool_;
+    SeqLensTool<LAYOUT_KV, SEQLEN_T> &kvSeqLensTool_;
     __tiling_data_ptr__ FlashAttnNoQuantTilingArch35 *tilingData_;
-
-    // block define
-    CubeBlockType cubeBlock_;
-    VecFaBlockType vecFaBlock_;
-    VecFdBlockType vecFdBlock_;
-
     // 分核信息
     GlobalTensor<uint32_t> faMetaDataGm_;
-    GlobalTensor<uint32_t> fdMetaDataGm_;
     // metadata
     uint32_t sectionNum_;
     uint32_t metadata_aic_num_;
@@ -87,8 +49,6 @@ public:
     uint32_t s2OStart_;
     uint32_t s2OEnd_;
     uint32_t coreFirstTmpOutWsPos_;
-    // fd metadata
-    FDparams fdParams_;
 
     // schduler params
     uint64_t actSeqLensKv_ = 0;
@@ -103,55 +63,58 @@ public:
     bool tailS2Split_ = false;
     uint32_t s2FirstToken_ = 0;
 
-    // ==============================fuction=======================================================
-    __aicore__ inline FlashAttentionNoQuantGqaKernelDnUnmerged()
-        : cubeBlock_(constInfo_, qSeqLensTool_, kvSeqLensTool_),
-          vecFaBlock_(constInfo_, qSeqLensTool_, kvSeqLensTool_),
-          vecFdBlock_(constInfo_, qSeqLensTool_, kvSeqLensTool_){};
-
-    __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                                __gm__ uint8_t *blockTable, __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv,
-                                __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKv, __gm__ uint8_t *learnableSink,
-                                __gm__ uint8_t *attenMask, __gm__ uint8_t *fiaMetaData, __gm__ uint8_t *attentionOut,
-                                __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
+    uint32_t bn1Cur_ = 0;
+    uint32_t s1Cur_ = 0;
+    uint32_t s2Cur_ = 0;
+    __aicore__ inline DnUnmergedSchedulerHooks(ConstInfo &info, SeqLensTool<LAYOUT_T, SEQLEN_T> &q,
+                                               SeqLensTool<LAYOUT_KV, SEQLEN_T> &kv)
+        : constInfo_(info),
+          qSeqLensTool_(q),
+          kvSeqLensTool_(kv)
+    {}
+    __aicore__ inline void Init(__gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv, __gm__ uint8_t *seqUsedQ,
+                                __gm__ uint8_t *seqUsedKv, __gm__ uint8_t *learnableSink, __gm__ uint8_t *metadata,
                                 __tiling_data_ptr__ FlashAttnNoQuantTilingArch35 *tiling)
     {
         tilingData_ = tiling;
-
         InitConstInfo();
-
-        sectionNum_ = ((__gm__ uint32_t *)fiaMetaData)[METADATA_HEADER_SECTION_NUM_INDEX];
-        metadata_aic_num_ = ((__gm__ uint32_t *)fiaMetaData)[METADATA_HEADER_AIC_NUM_INDEX];
-        metadata_aiv_num_ = ((__gm__ uint32_t *)fiaMetaData)[METADATA_HEADER_AIV_NUM_INDEX];
-        constInfo_.enableFlashDecode =
-            static_cast<bool>(((__gm__ uint32_t *)fiaMetaData)[METADATA_HEADER_HAS_FD_INDEX]);
-        constInfo_.learnableSinkFlag = (learnableSink != nullptr);
-
-        faMetaDataGm_.SetGlobalBuffer((__gm__ uint32_t *)(fiaMetaData + METADATA_HEADER_OFFSET),
+        sectionNum_ = ((__gm__ uint32_t *)metadata)[METADATA_HEADER_SECTION_NUM_INDEX];
+        metadata_aic_num_ = ((__gm__ uint32_t *)metadata)[METADATA_HEADER_AIC_NUM_INDEX];
+        metadata_aiv_num_ = ((__gm__ uint32_t *)metadata)[METADATA_HEADER_AIV_NUM_INDEX];
+        constInfo_.enableFlashDecode = ((__gm__ uint32_t *)metadata)[METADATA_HEADER_HAS_FD_INDEX] != 0;
+        constInfo_.learnableSinkFlag = learnableSink != nullptr;
+        faMetaDataGm_.SetGlobalBuffer((__gm__ uint32_t *)(metadata + METADATA_HEADER_OFFSET),
                                       sectionNum_ * metadata_aic_num_ * METADATA_STRIDE);
-
         qSeqLensTool_.Init(cuSeqLensQ, constInfo_.cuSeqLensQSize, seqUsedQ, constInfo_.seqUsedQSize, constInfo_.s1Size);
         kvSeqLensTool_.Init(cuSeqLensKv, constInfo_.cuSeqLensKVSize, seqUsedKv, constInfo_.seqUsedKvSize,
                             constInfo_.s2Size);
-
-        if ASCEND_IS_AIC {
-            cubeBlock_.InitBlock(query, key, value, blockTable);
-        }
-        if ASCEND_IS_AIV {
-            vecFaBlock_.InitBlock(attenMask, learnableSink, softmaxLse, attentionOut, workspace);
-            vecFaBlock_.ClearOutput();
-            if (constInfo_.enableFlashDecode) {
-                fdMetaDataGm_.SetGlobalBuffer(
-                    (__gm__ uint32_t *)(fiaMetaData + METADATA_HEADER_OFFSET +
-                                        sectionNum_ * metadata_aic_num_ * METADATA_STRIDE * sizeof(uint32_t)),
-                    sectionNum_ * metadata_aiv_num_ * METADATA_STRIDE);
-                vecFdBlock_.InitBlock(learnableSink, softmaxLse, attentionOut);
-                vecFdBlock_.InitGlobalTensor(vecFaBlock_.softmaxFDMaxGm_, vecFaBlock_.softmaxFDSumGm_,
-                                             vecFaBlock_.accumOutGm_);
-            }
-        }
     }
-
+    __aicore__ inline void BeginSection(uint32_t section)
+    {
+        GetFASectionInfo(section);
+        mloop_ = 0;
+        headS2Split_ = false;
+        tailS2Split_ = false;
+        bn1Cur_ = bn1Start_;
+        s1Cur_ = s1OStart_ * mBaseSize;
+        s2Cur_ = s2OStart_;
+        prevBn1Idx_ = bn1Cur_;
+        prevS1Idx_ = s1Cur_;
+    }
+    __aicore__ inline bool NextTask(uint32_t loop, RunInfo &task)
+    {
+        while (ShouldDispatchTask(bn1Cur_, s1Cur_, s2Cur_)) {
+            TASK_DEAL_MODE mode = GetTaskDealMode(bn1Cur_, s1Cur_, s2Cur_);
+            if (mode == TASK_DEAL_MODE::CREATE_TASK) {
+                CalcParams(loop, bn1Cur_, s1Cur_, s2Cur_, task);
+                task.isValid = true;
+                UpdateAxisInfo(mode, bn1Cur_, s1Cur_, s2Cur_);
+                return true;
+            }
+            UpdateAxisInfo(mode, bn1Cur_, s1Cur_, s2Cur_);
+        }
+        return false;
+    }
     __aicore__ inline void InitConstInfo()
     {
         if ASCEND_IS_AIC {
@@ -214,65 +177,6 @@ public:
         // Kernel field constants ( FLASH_ATTN_BN2_START_INDEX=1, etc.) are 1-based, so subtract 1.
         return METADATA_STRIDE * metadata_aic_num_ * sectionIdx + METADATA_STRIDE * coreIdx + metaIdx;
     }
-    __aicore__ inline uint32_t GetFDMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
-    {
-        return METADATA_STRIDE * metadata_aiv_num_ * sectionIdx + METADATA_STRIDE * coreIdx + metaIdx;
-    }
-
-    __aicore__ inline void FlashAttention(uint32_t sectionIdx)
-    {
-        if (constInfo_.aicIdx >= constInfo_.coreNum) {
-            return;
-        }
-
-        GetFASectionInfo(sectionIdx);
-        RunInfo taskRunInfo[PRELOAD_TASK_CACHE_SIZE] = {};
-
-        // Reset pipeline state for each section to avoid cross-section deadlock
-        uint32_t createdTaskCount = 0;
-        uint32_t executedTaskCount = 0;
-        mloop_ = 0;
-        headS2Split_ = false;
-        tailS2Split_ = false;
-
-        uint32_t bn1Cur = bn1Start_;
-        // s1Cur 语义为纯 s1 轴坐标(元素粒度); metadata 的 M_START/M_END 为 mBaseSize 块序号, 此处换算
-        uint32_t s1Cur = s1OStart_ * mBaseSize;
-        uint32_t s2Cur = s2OStart_;
-        prevBn1Idx_ = bn1Cur;
-        prevS1Idx_ = s1Cur;
-
-        bool shouldDispatchTask = true;
-        uint32_t validTaskCount = 0; // 未执行(有效)的任务数
-        while (shouldDispatchTask || validTaskCount) {
-            // 分发任务
-            shouldDispatchTask = ShouldDispatchTask(bn1Cur, s1Cur, s2Cur);
-            if (shouldDispatchTask) {
-                TASK_DEAL_MODE taskDealMode = GetTaskDealMode(bn1Cur, s1Cur, s2Cur);
-                if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK) {
-                    // 创建任务
-                    CreateTask(createdTaskCount, bn1Cur, s1Cur, s2Cur, taskRunInfo);
-                    createdTaskCount++;
-                    validTaskCount++;
-                    UpdateAxisInfo(taskDealMode, bn1Cur, s1Cur, s2Cur);
-                } else if (taskDealMode == TASK_DEAL_MODE::DEAL_ZERO) {
-                    UpdateAxisInfo(taskDealMode, bn1Cur, s1Cur, s2Cur);
-                    continue;
-                } else {
-                    UpdateAxisInfo(taskDealMode, bn1Cur, s1Cur, s2Cur);
-                    continue;
-                }
-            }
-            // 执行任务
-            if (validTaskCount) {
-                ExecuteTask(executedTaskCount, taskRunInfo);
-                executedTaskCount++;
-                if (executedTaskCount > PRELOAD_N) {
-                    validTaskCount--;
-                }
-            }
-        }
-    }
 
     __aicore__ inline bool ShouldDispatchTask(uint32_t bn1Cur, uint32_t s1Cur, uint32_t s2Cur)
     {
@@ -286,7 +190,6 @@ public:
         return s2Cur < s2OEnd_;
     }
 
-    // 纯 s1 轴步进: 每任务为一个 query 头(n1)的 [s1Cur, min(s1Cur+mBaseSize, actSeqLensQ_)) 块
     __aicore__ inline uint32_t GetS1Step(uint32_t s1Cur)
     {
         uint32_t step = mBaseSize;
@@ -426,58 +329,6 @@ public:
         return;
     }
 
-    __aicore__ inline void ExecuteTask(uint64_t loop, RunInfo taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
-    {
-        RunInfo &runInfo0 = taskRunInfo[loop & PRELOAD_TASK_CACHE_MASK]; // 本轮任务
-
-        if (runInfo0.isValid) {
-            if ASCEND_IS_AIC {
-                ComputeMm1(runInfo0);
-            } else {
-                ComputeVec1(runInfo0);
-            }
-        }
-        if (loop >= PRELOAD_N) {
-            RunInfo &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) & PRELOAD_TASK_CACHE_MASK]; // 上PRELOAD_N轮任务
-            if (runInfoNegN.isValid) {
-                if ASCEND_IS_AIC {
-                    ComputeMm2(runInfoNegN);
-                } else {
-                    ComputeVec2(runInfoNegN);
-                }
-                runInfoNegN.isValid = false;
-            }
-        }
-    }
-
-    __aicore__ inline void ComputeMm1(RunInfo &runInfo)
-    {
-        cubeBlock_.IterateBmm1(runInfo);
-    }
-
-    __aicore__ inline void ComputeMm2(RunInfo &runInfo)
-    {
-        cubeBlock_.IterateBmm2(runInfo);
-    }
-
-    __aicore__ inline void ComputeVec1(RunInfo &runInfo)
-    {
-        vecFaBlock_.ProcessVec1(runInfo);
-    }
-
-    __aicore__ inline void ComputeVec2(RunInfo &runInfo)
-    {
-        vecFaBlock_.ProcessVec2(runInfo);
-    }
-
-    __aicore__ inline void CreateTask(uint64_t loop, uint32_t bn1Cur, uint32_t s1Cur, uint32_t s2Cur,
-                                      RunInfo taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
-    {
-        RunInfo &runInfo = taskRunInfo[loop & PRELOAD_TASK_CACHE_MASK]; // 本轮任务
-        CalcParams(loop, bn1Cur, s1Cur, s2Cur, runInfo);
-        runInfo.isValid = true;
-    }
-
     __aicore__ inline void CalcParams(uint64_t loop, uint32_t bn1Cur, uint32_t s1Cur, uint32_t s2Cur, RunInfo &info)
     {
         info.loop = loop;
@@ -562,19 +413,6 @@ public:
         bn1Cur++;
     }
 
-    __aicore__ inline void FlashDecode(uint32_t sectionIdx)
-    {
-        if (!constInfo_.enableFlashDecode) {
-            return;
-        }
-        GetFDSectionInfo(sectionIdx);
-        vecFdBlock_.template InitBuffers<VecFaBlockType::GetFdBaseOffset()>();
-        AscendC::ICachePreLoad(2);
-        AscendC::SyncAll();
-        vecFdBlock_.FlashDecode(fdParams_);
-        AscendC::SyncAll();
-    }
-
     __aicore__ inline void GetFASectionInfo(uint32_t sectionIdx)
     {
         bn1Start_ =
@@ -588,54 +426,6 @@ public:
         coreFirstTmpOutWsPos_ = faMetaDataGm_.GetValue(
             GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, sectionIdx));
     }
-
-    __aicore__ inline void GetFDSectionInfo(uint32_t sectionIdx)
-    {
-        fdParams_.mLen = fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_M_NUM_INDEX, sectionIdx));
-        fdParams_.fdCoreEnable = fdParams_.mLen > 0 ? 1U : 0U;
-        if (!fdParams_.fdCoreEnable) {
-            return;
-        }
-        fdParams_.fdBN1Idx =
-            fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_BN1_IDX_INDEX, sectionIdx));
-        fdParams_.fdMIdx = fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_M_IDX_INDEX, sectionIdx));
-        fdParams_.fdWorkspaceIdx =
-            fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_WORKSPACE_IDX_INDEX, sectionIdx));
-        fdParams_.fdS2SplitNum =
-            fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_WORKSPACE_NUM_INDEX, sectionIdx));
-        fdParams_.mStart =
-            fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_M_START_INDEX, sectionIdx));
-    }
-
-    __aicore__ inline void Process()
-    {
-        if ASCEND_IS_AIV {
-            vecFaBlock_.InitBuffers();
-            vecFaBlock_.InitCrossCoreSync();
-            vecFaBlock_.AllocEventID();
-        } else {
-            cubeBlock_.InitBuffers();
-            cubeBlock_.InitCrossCoreSync();
-            cubeBlock_.AllocEventID();
-        }
-        for (uint32_t sectionIdx = 0; sectionIdx < sectionNum_; sectionIdx++) {
-            if (constInfo_.aicIdx < constInfo_.coreNum) {
-                FlashAttention(sectionIdx);
-            }
-            if ASCEND_IS_AIV {
-                FlashDecode(sectionIdx);
-            }
-        }
-        if ASCEND_IS_AIV {
-            vecFaBlock_.FreeEventID();
-            vecFaBlock_.UnInitCrossCoreSync();
-        } else {
-            cubeBlock_.FreeEventID();
-            cubeBlock_.UnInitCrossCoreSync();
-        }
-    }
-}; // FlashAttentionNoQuantGqaKernelDnUnmerged
-
+};
 } // namespace FlashAttnKernel
-
-#endif // FLASH_ATTN_KERNEL_DN_UNMERGED_H_
+#endif

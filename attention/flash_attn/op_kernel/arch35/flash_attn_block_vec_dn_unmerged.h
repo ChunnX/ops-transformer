@@ -34,8 +34,96 @@ using namespace AscendC;
 using namespace FaVectorApi;
 using namespace AscendC::Impl::Detail;
 
+#include "flash_attn_dn_unmerged_scheduler.h"
+#include "../utils/cv_task_scheduler.h"
+#include "flash_attn_block_vec_flashdecode.h"
+
 namespace FlashAttnKernel {
 using ArchInfo::CV_RATIO;
+
+struct DnUnmergedVecConstInfo {
+    /* 轴长度 */
+    uint32_t bSize;
+    uint64_t t1Size;
+    uint64_t t2Size;
+    uint32_t dSize;
+    uint32_t dSizeV;
+    uint32_t dBasicBlock;
+    uint32_t gSize; /* g轴的大小 */
+    uint32_t n2Size;
+    uint32_t n1Size = 0;      /* N1(query头)轴的大小, 不合轴 DN 预埋使用, 原 ND/合轴 DN 未使用 */
+    uint64_t s1Size;          /* s1总大小 */
+    uint64_t s2Size;          /* s2总大小 */
+    uint64_t cuSeqLensQSize;  /* 用户输入的actualseq的长度 */
+    uint64_t cuSeqLensKVSize; /* 用户输入的actualseq_kv的长度 */
+    uint64_t seqUsedQSize;    /* 用户输入的seq used q的长度 */
+    uint64_t seqUsedKvSize;   /* 用户输入的seq used kv的长度 */
+
+    /* FA kernel meta */
+
+    uint32_t sparseMode; // sparse
+    uint32_t attenMaskBatch;
+    uint32_t attenMaskS1Size;
+    uint32_t attenMaskS2Size;
+    int64_t preTokens;
+    int64_t nextTokens;
+    bool isExistRowInvalid;
+    float scaleValue;
+
+    /* 核信息 */
+    uint32_t aicIdx;
+    uint32_t aivIdx;
+    uint8_t subBlockIdx;
+    uint32_t coreNum;
+
+    /* FA中间结果写出workspace信息 */
+    uint32_t accumOutSize;
+    uint32_t logSumExpSize;
+
+    /* 输出shape */
+    FA_LAYOUT outputLayout;
+    bool needInitOutput;
+    bool enableFlashDecode;
+    uint32_t blockSize;
+    uint32_t maxBlockNumPerBatch;
+    uint32_t paLayoutType;
+    /* kvcache非连续场景的strides, 0表示连续 */
+    uint64_t keyBnStride = 0;
+    uint64_t keyN2Stride = 0;
+    uint64_t valueBnStride = 0;
+    uint64_t valueN2Stride = 0;
+    bool isSoftmaxLseEnable;
+    bool learnableSinkFlag = false;
+};
+struct DnUnmergedVecRunInfo {
+    uint32_t loop = 0;
+    uint32_t mloop = 0;
+    bool isValid = false;
+    bool isFirstS2Loop = false;
+    bool isLastS2Loop = false;
+
+    uint32_t bIdx = 0;
+    uint32_t n2Idx = 0;
+    uint32_t n1Idx = 0; // 不合轴 DN 预埋: 当前 query 头(b*n1 空间), 原 ND/合轴 DN 未使用
+    uint32_t gIdx = 0;
+    uint32_t s1Idx = 0;
+    uint32_t s2Idx = 0;
+    uint64_t actS1Size = 1;   // 当前处理head的S1轴实际大小
+    uint64_t actS2Size = 1;   // 当前处理head的S2轴实际大小
+    uint32_t actMSize = 0;    // GS1方向上的长度
+    uint32_t actMSizeAlign32; // GS1 方向上长度对齐
+    uint32_t actVecMSize;     // VEC 视角, 基本块GS1方向长度
+    uint32_t vecMbaseIdx;     // VEC 对应的M 轴起始位置,V0 为0， V1 为 V0的actVecMSize
+
+    uint32_t actSingleLoopS2Size = 0; // S2方向长度
+    uint32_t actSingleLoopS2SizeAlign;
+    bool isS2SplitCore = false;
+    uint32_t faTmpOutWsPos = 0; // FA阶段，S2外切，需要写到workspace时，写出到第几块M*D的GM块
+    bool isFirstFdBlock = false;
+
+    int64_t preTokensLeftUp = 0;
+    int64_t nextTokensLeftUp = 0;
+};
 
 // QK 在 UB 中为 [S2, S1], 而 bool mask 在 UB 中为 [S1, S2];
 // 逐 QK 行(s2)按列 gather 对应 mask 字节, 同时天然处理 M 尾块 padding。
@@ -72,6 +160,9 @@ __simd_vf__ inline void ApplyDnMaskVF(__ubuf__ float *scores, __ubuf__ uint32_t 
 template <typename FA_T>
 class FANoQuantGqaBlockVecDnUnmerged {
 public:
+    using RunInfo = DnUnmergedVecRunInfo;
+    using ConstInfo = DnUnmergedVecConstInfo;
+    static constexpr uint32_t PRELOAD_N = 2;
     using INPUT_T = typename FA_T::inputType;
     using OUTPUT_T = typename FA_T::outputType;
     static constexpr uint32_t mBaseSize = (uint32_t)FA_T::mBaseSize;
@@ -164,11 +255,11 @@ public:
     static constexpr uint32_t UB_MASK_BUF_BYTES = mBaseSize / CV_RATIO * MASK_PITCH;
     LocalTensor<uint8_t> ubMaskBuffers_;
 
-    const ConstInfo_t &constInfo_;
+    ConstInfo constInfo_{};
 
     using SEQLEN_T = uint32_t;
-    SeqLensTool<LAYOUT_T, SEQLEN_T> &qSeqLensTool_;
-    SeqLensTool<LAYOUT_KV, SEQLEN_T> &kvSeqLensTool_;
+    SeqLensTool<LAYOUT_T, SEQLEN_T> qSeqLensTool_;
+    SeqLensTool<LAYOUT_KV, SEQLEN_T> kvSeqLensTool_;
 
     // GM
     static constexpr GmFormat OUT_FORMAT = GetAttentionOutGmFormat<LAYOUT_OUT>();
@@ -192,13 +283,87 @@ public:
     uint32_t negativeIntScalar_ = *((uint32_t *)&BOOL_ATTEN_MASK_SCALAR_VALUE);
 
     // ==================== Functions ======================
-    __aicore__ inline FANoQuantGqaBlockVecDnUnmerged(ConstInfo_t &constInfo,
-                                                     SeqLensTool<LAYOUT_T, SEQLEN_T> &qSeqLensTool,
-                                                     SeqLensTool<LAYOUT_KV, SEQLEN_T> &kvSeqLensTool)
-        : constInfo_(constInfo),
-          qSeqLensTool_(qSeqLensTool),
-          kvSeqLensTool_(kvSeqLensTool){};
-
+    using Hooks = DnUnmergedSchedulerHooks<FA_T, ConstInfo, RunInfo>;
+    Hooks scheduler_{constInfo_, qSeqLensTool_, kvSeqLensTool_};
+    using VecFdBlock = FiaBlockVecFlashDecode<FA_T, true, ConstInfo>;
+    VecFdBlock vecFdBlock_{constInfo_, qSeqLensTool_, kvSeqLensTool_};
+    GlobalTensor<uint32_t> fdMetaDataGm_;
+    FDparams fdParams_;
+    __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
+                                __gm__ uint8_t *blockTable, __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv,
+                                __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKv, __gm__ uint8_t *learnableSink,
+                                __gm__ uint8_t *attenMask, __gm__ uint8_t *fiaMetaData, __gm__ uint8_t *attentionOut,
+                                __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
+                                __tiling_data_ptr__ FlashAttnNoQuantTilingArch35 *tiling)
+    {
+        scheduler_.Init(cuSeqLensQ, cuSeqLensKv, seqUsedQ, seqUsedKv, learnableSink, fiaMetaData, tiling);
+        InitBlock(attenMask, learnableSink, softmaxLse, attentionOut, workspace);
+        ClearOutput();
+        if (constInfo_.enableFlashDecode) {
+            fdMetaDataGm_.SetGlobalBuffer((__gm__ uint32_t *)(fiaMetaData + METADATA_HEADER_OFFSET +
+                                                              scheduler_.sectionNum_ * scheduler_.metadata_aic_num_ *
+                                                                  METADATA_STRIDE * sizeof(uint32_t)),
+                                          scheduler_.sectionNum_ * scheduler_.metadata_aiv_num_ * METADATA_STRIDE);
+            vecFdBlock_.InitBlock(learnableSink, softmaxLse, attentionOut);
+            vecFdBlock_.InitGlobalTensor(softmaxFDMaxGm_, softmaxFDSumGm_, accumOutGm_);
+        }
+    }
+    __aicore__ inline void Process()
+    {
+        InitBuffers();
+        InitCrossCoreSync();
+        AllocEventID();
+        for (uint32_t section = 0; section < scheduler_.sectionNum_; ++section) {
+            if (constInfo_.aicIdx < constInfo_.coreNum) {
+                scheduler_.BeginSection(section);
+                AttentionTask::CvTaskScheduler<PRELOAD_N, 4, RunInfo>::Run(scheduler_, *this);
+            }
+            FlashDecode(section);
+        }
+        FreeEventID();
+        UnInitCrossCoreSync();
+    }
+    __aicore__ inline void ComputeFirst(RunInfo &info)
+    {
+        ProcessVec1(info);
+    }
+    __aicore__ inline void ComputeSecond(RunInfo &info)
+    {
+        ProcessVec2(info);
+    }
+    __aicore__ inline uint32_t GetFDMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
+    {
+        return METADATA_STRIDE * scheduler_.metadata_aiv_num_ * sectionIdx + METADATA_STRIDE * coreIdx + metaIdx;
+    }
+    __aicore__ inline void GetFDSectionInfo(uint32_t sectionIdx)
+    {
+        fdParams_.mLen = fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_M_NUM_INDEX, sectionIdx));
+        fdParams_.fdCoreEnable = fdParams_.mLen > 0 ? 1U : 0U;
+        if (!fdParams_.fdCoreEnable) {
+            return;
+        }
+        fdParams_.fdBN1Idx =
+            fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_BN1_IDX_INDEX, sectionIdx));
+        fdParams_.fdMIdx = fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_M_IDX_INDEX, sectionIdx));
+        fdParams_.fdWorkspaceIdx =
+            fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_WORKSPACE_IDX_INDEX, sectionIdx));
+        fdParams_.fdS2SplitNum =
+            fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_WORKSPACE_NUM_INDEX, sectionIdx));
+        fdParams_.mStart =
+            fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_M_START_INDEX, sectionIdx));
+    }
+    __aicore__ inline void FlashDecode(uint32_t sectionIdx)
+    {
+        if (!constInfo_.enableFlashDecode) {
+            return;
+        }
+        GetFDSectionInfo(sectionIdx);
+        vecFdBlock_.template InitBuffers<GetFdBaseOffset()>();
+        AscendC::ICachePreLoad(2);
+        AscendC::SyncAll();
+        vecFdBlock_.FlashDecode(fdParams_);
+        AscendC::SyncAll();
+    }
     __aicore__ inline void InitBlock(__gm__ uint8_t *attenMask, __gm__ uint8_t *learnableSink,
                                      __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
                                      __gm__ uint8_t *workspace)
@@ -742,17 +907,6 @@ public:
 };
 
 // AIC/AIV 分编译占位（Mix kernel 在 AIC 侧重编译时使用）
-template <typename FA_T>
-class FANoQuantGqaBlockVecDummyDnUnmerged {
-public:
-    static constexpr FA_LAYOUT LAYOUT_T = FA_T::qLayout;
-    static constexpr FA_LAYOUT LAYOUT_KV = FA_T::kvLayout;
-    using SEQLEN_T = uint32_t;
-
-    __aicore__ inline FANoQuantGqaBlockVecDummyDnUnmerged(ConstInfo_t &constInfo,
-                                                          SeqLensTool<LAYOUT_T, SEQLEN_T> &qSeqLensTool,
-                                                          SeqLensTool<LAYOUT_KV, SEQLEN_T> &kvSeqLensTool){};
-};
 
 } // namespace FlashAttnKernel
-#endif // FLASH_ATTN_BLOCK_VEC_DN_UNMERGED_H_
+#endif
