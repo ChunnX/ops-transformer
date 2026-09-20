@@ -24,24 +24,26 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     ApplyScaleAndGamma(hOut, invRms0, bufGamma0Fp32_.Get<float>()[tOff], tD);
     QuantizeRoundTrip(hOut, tD);
 
-    ComputeX2AllHeadsBatched(postVals, (uint64_t)token * N_ * D_ + tOff, tD);
+    ComputeX2AllHeadsBatched(postVals, (uint64_t)token * N_ * D_ + tOff, tOff, tD);
 }
 
 // 将完整x2以输出dtype常驻UB，同时完成设计要求的低精度往返；写GM仅用于保留x2_out输出语义。
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::CacheX2Tile(
-    uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput)
+    uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput, bool quantizeInput)
 {
     LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
     LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
     const uint64_t outBase = (uint64_t)token * N_ * D_ + tOff;
 
-    // 四个head写入互不重叠的低精度缓存，保留逐元素量化边界。
-    for (uint32_t n = 0; n < N_MAX; n += 2U) {
-        MhcSandwichRegBase::CastFp32PairToB16(x2Cache[n * D_ + tOff], x2Cache[(n + 1U) * D_ + tOff],
-                                              x2[n * dimTile_], x2[(n + 1U) * dimTile_], tD);
+    // R2已在成对VF尾部完成首次量化；R3后的第二次量化仍使用该路径。
+    if (quantizeInput) {
+        for (uint32_t n = 0; n < N_MAX; n += 2U) {
+            MhcSandwichRegBase::CastFp32PairToB16(x2Cache[n * D_ + tOff], x2Cache[(n + 1U) * D_ + tOff],
+                                                  x2[n * dimTile_], x2[(n + 1U) * dimTile_], tD);
+        }
+        PipeBarrier<PIPE_V>();
     }
-    PipeBarrier<PIPE_V>();
     // RMS_mid第一遍直接从低精度缓存计算平方和；R3后必须恢复，
     // 保证后续R4/R5仍使用低精度往返后的x2。
     if (!USE_RMS_MID || writeOutput) {
@@ -68,17 +70,20 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
                                                         DUAL_SIBLING>::CacheX2TileForLane(uint32_t token, uint32_t tOff,
-                                                                                          uint32_t tD, bool writeOutput)
+                                                                                          uint32_t tD, bool writeOutput,
+                                                                                          bool quantizeInput)
 {
     LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
     LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
     const uint64_t outBase = (uint64_t)token * N_ * D_ + tOff;
 
-    for (uint32_t n = 0; n < N_MAX; n += 2U) {
-        MhcSandwichRegBase::CastFp32PairToB16(x2Cache[n * D_ + tOff], x2Cache[(n + 1U) * D_ + tOff],
-                                              x2[n * dimTile_], x2[(n + 1U) * dimTile_], tD);
+    if (quantizeInput) {
+        for (uint32_t n = 0; n < N_MAX; n += 2U) {
+            MhcSandwichRegBase::CastFp32PairToB16(x2Cache[n * D_ + tOff], x2Cache[(n + 1U) * D_ + tOff],
+                                                  x2[n * dimTile_], x2[(n + 1U) * dimTile_], tD);
+        }
+        PipeBarrier<PIPE_V>();
     }
-    PipeBarrier<PIPE_V>();
     if (!USE_RMS_MID || writeOutput) {
         for (uint32_t n = 0; n < N_MAX; n += 2U) {
             MhcSandwichRegBase::CastB16PairToFp32(x2[n * dimTile_], x2[(n + 1U) * dimTile_],
@@ -258,7 +263,7 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
         ComputeX2PostTile(token, tOff, tD, invRms0, postVals);
-        CacheX2Tile(token, tOff, tD, !USE_RMS_MID);
+        CacheX2Tile(token, tOff, tD, !USE_RMS_MID, false);
 
         if constexpr (USE_RMS_MID) {
             LocalTensor<float> out = bufResFp32_.Get<float>()[N_MAX * dimTile_];

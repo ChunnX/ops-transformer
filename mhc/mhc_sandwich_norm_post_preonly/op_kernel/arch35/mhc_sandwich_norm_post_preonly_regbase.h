@@ -428,13 +428,13 @@ __aicore__ inline void ComputePostHead(const LocalTensor<float> &dst, const Loca
 
 // 一个VF同时计算相邻两个head，共用h_out与residual的寄存器加载，并保持各自四路累加顺序不变。
 template <typename T>
-__aicore__ inline void ComputePostHeadPair(const LocalTensor<float> &dst0, const LocalTensor<float> &dst1,
+__aicore__ inline void ComputePostHeadPair(const LocalTensor<T> &dst0, const LocalTensor<T> &dst1,
                                            const LocalTensor<float> &hOut, const LocalTensor<T> &residual,
                                            const LocalTensor<float> &combWeights, uint32_t rowStride,
                                            uint32_t headIndex, float postWeight0, float postWeight1, uint32_t count)
 {
-    __local_mem__ float *dst0Addr = (__local_mem__ float *)dst0.GetPhyAddr();
-    __local_mem__ float *dst1Addr = (__local_mem__ float *)dst1.GetPhyAddr();
+    __local_mem__ T *dst0Addr = (__local_mem__ T *)dst0.GetPhyAddr();
+    __local_mem__ T *dst1Addr = (__local_mem__ T *)dst1.GetPhyAddr();
     __local_mem__ float *hOutAddr = (__local_mem__ float *)hOut.GetPhyAddr();
     __local_mem__ T *residualAddr = (__local_mem__ T *)residual.GetPhyAddr();
     __local_mem__ float *combAddr = (__local_mem__ float *)combWeights.GetPhyAddr();
@@ -442,7 +442,7 @@ __aicore__ inline void ComputePostHeadPair(const LocalTensor<float> &dst0, const
     const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
     __VEC_SCOPE__
     {
-        RegTensor<T> residualB16Reg;
+        RegTensor<T> residualB16Reg, dst0B16Reg, dst1B16Reg;
         RegTensor<float> hOutReg, residualReg, weight0Reg, weight1Reg, dst0Reg, dst1Reg;
         MaskReg mask;
         for (uint16_t i = 0; i < loops; ++i) {
@@ -459,8 +459,15 @@ __aicore__ inline void ComputePostHeadPair(const LocalTensor<float> &dst0, const
                 AscendC::Reg::MulAddDst(dst0Reg, residualReg, weight0Reg, mask);
                 AscendC::Reg::MulAddDst(dst1Reg, residualReg, weight1Reg, mask);
             }
-            DataCopy(dst0Addr + i * VL_FP32, dst0Reg, mask);
-            DataCopy(dst1Addr + i * VL_FP32, dst1Reg, mask);
+            if constexpr (IsSameT<T, bfloat16_t>::value) {
+                Cast<T, float, CAST_FP32_TO_B16_RINT>(dst0B16Reg, dst0Reg, mask);
+                Cast<T, float, CAST_FP32_TO_B16_RINT>(dst1B16Reg, dst1Reg, mask);
+            } else {
+                Cast<T, float, CAST_FP32_TO_B16_NONE>(dst0B16Reg, dst0Reg, mask);
+                Cast<T, float, CAST_FP32_TO_B16_NONE>(dst1B16Reg, dst1Reg, mask);
+            }
+            DataCopy<T, StoreDist::DIST_PACK_B32>(dst0Addr + i * VL_FP32, dst0B16Reg, mask);
+            DataCopy<T, StoreDist::DIST_PACK_B32>(dst1Addr + i * VL_FP32, dst1B16Reg, mask);
         }
     }
 }

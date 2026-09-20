@@ -38,7 +38,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
         ComputeX2PostTile(token, tOff, tD, invRms0, postVals);
-        CacheX2TileForLane(token, tOff, tD, !USE_RMS_MID);
+        CacheX2TileForLane(token, tOff, tD, !USE_RMS_MID, false);
 
         if constexpr (USE_RMS_MID) {
             // R3的归一化范围是完整N*D，因此该标量也在两个lane上按相同树冗余计算。

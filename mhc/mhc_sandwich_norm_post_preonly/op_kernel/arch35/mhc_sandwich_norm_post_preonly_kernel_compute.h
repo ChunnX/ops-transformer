@@ -164,7 +164,8 @@ __aicore__ inline void ApplyScaleAndGamma(LocalTensor<float> buf, float scale, L
 // MHC_Post计算
 
 /// 批量加载低精度残差，在R2的VF内完成转换并计算全部N个head的x2。
-__aicore__ inline void ComputeX2AllHeadsBatched(const float (&postVals)[N_MAX], uint64_t gmBaseOffset, uint32_t tD)
+__aicore__ inline void ComputeX2AllHeadsBatched(const float (&postVals)[N_MAX], uint64_t gmBaseOffset, uint32_t tOff,
+                                                uint32_t tD)
 {
     // Host已固定校验N为4，使用编译期常量便于展开标量循环。
     constexpr uint32_t N = N_MAX;
@@ -173,13 +174,14 @@ __aicore__ inline void ComputeX2AllHeadsBatched(const float (&postVals)[N_MAX], 
         DataCopy(residual[n * dimTile_], residualGm_[gmBaseOffset + (uint64_t)n * D_], tD);
     bufResidualBf16_.EnQue(residual);
     residual = bufResidualBf16_.DeQue<T>();
-    LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
+    LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
     LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
     LocalTensor<float> combWeights = bufPostComb_.Get<float>()[ALIGN8];
 
     for (uint32_t h = 0; h < N; h += 2U) {
-        MhcSandwichRegBase::ComputePostHeadPair<T>(x2[h * dimTile_], x2[(h + 1U) * dimTile_], hOut, residual,
-                                                   combWeights, dimTile_, h, postVals[h], postVals[h + 1U], tD);
+        MhcSandwichRegBase::ComputePostHeadPair<T>(x2Cache[h * D_ + tOff], x2Cache[(h + 1U) * D_ + tOff], hOut,
+                                                   residual, combWeights, dimTile_, h, postVals[h], postVals[h + 1U],
+                                                   tD);
     }
     PipeBarrier<PIPE_V>();
     bufResidualBf16_.FreeTensor(residual);
