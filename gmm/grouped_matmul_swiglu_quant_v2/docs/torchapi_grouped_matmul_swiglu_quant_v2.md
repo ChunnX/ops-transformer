@@ -171,11 +171,12 @@ cann_ops_transformer.grouped_matmul_swiglu_quant_v2(
   print(y.shape, y.dtype, y_scale.shape, y_scale.dtype)
   ```
 
-- weight 转置（ZN）输入时，必须先以逻辑 shape `(E, N, K)` 创建源 Tensor，再执行
-  `npu_format_cast(..., 29)`；`weightScale` 的 shape 相应为
-  `(E, N, ceil(K / 64), 2)`。不要对已转换为 `FRACTAL_NZ` 格式的 `(E, K, N)`
-  Tensor 再调用 `transpose(1, 2)`：该操作只改变 view，底层 NZ storage 仍是非转置布局，
-  无法满足转置输入的 storage shape 约束。例如：
+- weight 转置（ZN）输入时，必须先以 `(E, N, K)` 创建源 Tensor，再执行
+  `npu_format_cast(..., 29).transpose(-1, -2)`。其中 format cast 前的源 Tensor 决定 ZN
+  物理 storage，末两维转置则创建 GMM 入口统一使用的 `(E, K, N)` 转置 view；两者缺一不可。
+  `weightScale` 同样先创建 `(E, N, ceil(K / 64), 2)`，再执行
+  `transpose(-3, -2)`。不要先以 `(E, K, N)` 创建并 format cast 后再转置，否则底层 NZ storage
+  仍是非转置布局，无法满足转置输入的 storage shape 约束。例如：
 
   ```python
   weight_source = torch.randint(
@@ -183,8 +184,9 @@ cann_ops_transformer.grouped_matmul_swiglu_quant_v2(
   ).to(torch.float8_e4m3fn).npu()
   weight = torch_npu.npu_format_cast(
       weight_source, 29, customize_dtype=torch.float8_e4m3fn
-  )
-  weight_scale = torch.randint(
+  ).transpose(-1, -2)
+  weight_scale_source = torch.randint(
       120, 127, (E, N, math.ceil(K / 64), 2), dtype=torch.int8
   ).npu()
+  weight_scale = weight_scale_source.transpose(-3, -2)
   ```
