@@ -184,6 +184,12 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
         const uint32_t h0 = half * 2;
         const uint32_t h1 = h0 + 1;
 
+        // 先发起首块phi搬运，使其与平方和计算重叠；后续始终在当前块Vector计算前预取下一块。
+        LocalTensor<float> phiCurrent = bufPhiFp32_.AllocTensor<float>();
+        uint64_t phiOffset = (uint64_t)h0 * D_ + tOff;
+        DataCopyPad(phiCurrent, phiGm_[phiOffset], copyParams, copyPad);
+        bufPhiFp32_.EnQue(phiCurrent);
+
         // 五行依次保存{sumSqPre,dot0,dot1,dot2,dot3}，一次按行归约，
         // 避免每个标量结果都单独触发一次Vector到Scalar的等待。
         MhcSandwichRegBase::Mul(reduceRows, x2[h0 * dimTile_], x2[h0 * dimTile_], tD);
@@ -192,27 +198,33 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
         PipeBarrier<PIPE_V>();
         MhcSandwichRegBase::Add(reduceRows, reduceRows, tmp, tD);
 
+        phiCurrent = bufPhiFp32_.DeQue<float>();
         for (uint32_t o = 0; o < N_MAX; ++o) {
             LocalTensor<float> dotRow = reduceRows[(o + 1) * dimTile_];
-            LocalTensor<float> phi = bufPhiFp32_.AllocTensor<float>();
-            uint64_t phiOffset = (uint64_t)o * phiCols_ + (uint64_t)h0 * D_ + tOff;
-            DataCopyPad(phi, phiGm_[phiOffset], copyParams, copyPad);
-            bufPhiFp32_.EnQue(phi);
-            phi = bufPhiFp32_.DeQue<float>();
-            MhcSandwichRegBase::Mul(dotRow, x2[h0 * dimTile_], phi, tD);
-            PipeBarrier<PIPE_V>();
-            bufPhiFp32_.FreeTensor(phi);
 
-            phi = bufPhiFp32_.AllocTensor<float>();
+            LocalTensor<float> phiNext = bufPhiFp32_.AllocTensor<float>();
             phiOffset = (uint64_t)o * phiCols_ + (uint64_t)h1 * D_ + tOff;
-            DataCopyPad(phi, phiGm_[phiOffset], copyParams, copyPad);
-            bufPhiFp32_.EnQue(phi);
-            phi = bufPhiFp32_.DeQue<float>();
-            MhcSandwichRegBase::Mul(tmp, x2[h1 * dimTile_], phi, tD);
+            DataCopyPad(phiNext, phiGm_[phiOffset], copyParams, copyPad);
+            bufPhiFp32_.EnQue(phiNext);
+            MhcSandwichRegBase::Mul(dotRow, x2[h0 * dimTile_], phiCurrent, tD);
             PipeBarrier<PIPE_V>();
-            bufPhiFp32_.FreeTensor(phi);
+            bufPhiFp32_.FreeTensor(phiCurrent);
+
+            phiCurrent = bufPhiFp32_.DeQue<float>();
+            if (o + 1U < N_MAX) {
+                phiNext = bufPhiFp32_.AllocTensor<float>();
+                phiOffset = (uint64_t)(o + 1U) * phiCols_ + (uint64_t)h0 * D_ + tOff;
+                DataCopyPad(phiNext, phiGm_[phiOffset], copyParams, copyPad);
+                bufPhiFp32_.EnQue(phiNext);
+            }
+            MhcSandwichRegBase::Mul(tmp, x2[h1 * dimTile_], phiCurrent, tD);
+            PipeBarrier<PIPE_V>();
+            bufPhiFp32_.FreeTensor(phiCurrent);
 
             MhcSandwichRegBase::Add(dotRow, dotRow, tmp, tD);
+            if (o + 1U < N_MAX) {
+                phiCurrent = bufPhiFp32_.DeQue<float>();
+            }
         }
 
         PipeBarrier<PIPE_V>();
@@ -264,8 +276,7 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
             for (uint32_t half = 0; half < 2; ++half) {
                 const uint32_t h0 = half * 2;
                 const uint32_t h1 = h0 + 1;
-                MhcSandwichRegBase::PairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff],
-                                                       x2Cache[h1 * D_ + tOff], tD);
+                MhcSandwichRegBase::PairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff], x2Cache[h1 * D_ + tOff], tD);
                 PipeBarrier<PIPE_V>();
                 midSqHalf[half] += ReduceSumPrecise(out, tD);
             }
@@ -300,8 +311,8 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
                 if (n + 1 < N_MAX) {
                     LoadGammaInto(gammaNext, gamma2Gm_, (n + 1) * D_ + tOff, tD);
                 }
-                MhcSandwichRegBase::CastB16ScaleAndMulGamma(x2[n * dimTile_], x2Cache[n * D_ + tOff],
-                                                           gammaCurrent, invRmsMid, tD);
+                MhcSandwichRegBase::CastB16ScaleAndMulGamma(x2[n * dimTile_], x2Cache[n * D_ + tOff], gammaCurrent,
+                                                            invRmsMid, tD);
                 PipeBarrier<PIPE_V>();
                 // 当前缓存会在两轮后再次由MTE2写入，前两轮显式建立V到MTE2依赖。
                 if (n + 2 < N_MAX) {
