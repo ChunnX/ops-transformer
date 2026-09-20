@@ -140,9 +140,7 @@ _LAYOUT_REQUIRE_Q_OUT_CONSISTENT = {
 }
 
 
-def _check_layout_constraint(
-    quant_mode, layout_q, layout_q_descale, layout_kv, layout_out
-):
+def _check_layout_constraint(quant_mode, layout_q, layout_kv, layout_out):
     """校验 layout 一致性
     - HIF8: layout_q、layout_kv、layout_out 三者必须相同
     - MxFP8: layout_q 与 layout_out 必须相同(layout_kv 可不同, 支持 PA 场景)"""
@@ -391,9 +389,7 @@ def quant_flash_attn_metadata(
     layout_out = "BSND" if layout_out is None else layout_out
     head_dim_v = head_dim if head_dim_v is None else head_dim_v
 
-    _check_layout_constraint(
-        quant_mode, layout_q, layout_q_descale, layout_kv, layout_out
-    )
+    _check_layout_constraint(quant_mode, layout_q, layout_kv, layout_out)
 
     max_schedule_size = _calculate_max_schedule_size(batch_size, num_heads_kv)
     output = torch.empty((2, max_schedule_size), dtype=torch.int32, device="npu")
@@ -516,9 +512,7 @@ def quant_flash_attn(
     quant_mode = _resolve_quant_mode(quant_mode)
     mask_mode = _resolve_mask_mode(mask_mode)
 
-    _check_layout_constraint(
-        quant_mode, layout_q, layout_q_descale, layout_kv, layout_out
-    )
+    _check_layout_constraint(quant_mode, layout_q, layout_kv, layout_out)
 
     # 取 shape 前校验 q/v 非空及维度, 避免 None 或维度不足导致 AttributeError/IndexError
     torch._check(q is not None, lambda: "q must not be None")
