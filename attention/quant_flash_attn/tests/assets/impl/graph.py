@@ -335,6 +335,10 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
         layout_kv = inputs["layout_kv"]
         is_tnd_q = layout_q == "TND"
         is_tnd_kv = layout_kv == "TND"
+        # TND 与 NTD (GQA FP8, quant_mode=6) 均为 varlen 布局, metadata/主算子都需要
+        # cu_seqlens_q 推导 batch (golden eager 路径无条件传 cu_seqlens_q);
+        # 仅 cu_seqlens_q=None 时 _calculate_batch_size 兜底返回 0 → AICPU 拦截。
+        is_varlen_q = is_tnd_q or layout_q == "NTD"
 
         # cu_seqlens/seqused 直接用入参 _t（NPU tensor，inputs.py 已 in-place 写入真实值，
         # 保留 CSV tensor_dtypes：空/异常 dtype 原样传给算子被拦截）。
@@ -364,13 +368,13 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
             int(inputs["kv_n"]),
             int(D),
             int(quant_mode),
-            cu_seqlens_q=cu_seqlens_q_t if is_tnd_q else None,
+            cu_seqlens_q=cu_seqlens_q_t if is_varlen_q else None,
             cu_seqlens_kv=cu_seqlens_kv_t if is_tnd_kv else None,
             seqused_q=seqused_q_t,
             seqused_kv=seqused_kv_t,
-            batch_size=(batch_size if batch_size is not None else q_shape[0])
-            if not is_tnd_q
-            else None,
+            batch_size=None
+            if is_varlen_q
+            else (batch_size if batch_size is not None else q_shape[0]),
             max_seqlen_q=int(inputs["max_seqlen_q"]),
             max_seqlen_kv=int(inputs["max_seqlen_kv"]),
             head_dim_v=head_dim_v,
@@ -386,15 +390,24 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
 
         # ---- 6. 存所有 forward 需要的入参为 self. 属性 ----
         self.q = inputs["q"]
-        self.k = inputs["k"]
-        self.v = inputs["v"]
+        if int(quant_mode) == 6:
+            # GQA FP8: kernel 的 blockSize = k.dim2 (硬性要求 128), 且 deq_k 从独立的
+            # k_descale 张量读取 — 主算子的 k/v 只能传纯数据行 (前 block_size 行),
+            # cache 末 K_SCALE_ROWS 行 (嵌入 deq_k/占位) 不能传入, 否则被当数据读。
+            # 与 eager 路径 fa_run_npu 的 strip 逻辑对齐。
+            _bs = int(inputs["block_size"])
+            self.k = inputs["k"][:, :, :_bs, :]
+            self.v = inputs["v"][:, :, :_bs, :]
+        else:
+            self.k = inputs["k"]
+            self.v = inputs["v"]
         self.q_descale = inputs["dequant_scale_q"]
         self.k_descale = inputs["dequant_scale_k"]
         self.v_descale = inputs["dequant_scale_v"]
         self.quant_mode = int(quant_mode)
         self.block_table = inputs["block_table"]
         self.p_scale = inputs["p_scale"]
-        self.cu_seqlens_q = cu_seqlens_q_t if is_tnd_q else None
+        self.cu_seqlens_q = cu_seqlens_q_t if is_varlen_q else None
         self.cu_seqlens_kv = cu_seqlens_kv_t if is_tnd_kv else None
         self.seqused_q = seqused_q_t
         self.seqused_kv = seqused_kv_t
