@@ -225,6 +225,30 @@ private:
         CalScaleFactors(args_, platformInfo_, runInfo_, baseASize, baseBSize, baseScaleASize, baseScaleBSize);
     }
 
+    void AdjustTileCnt(uint64_t &mCnt, uint64_t &nCnt, uint64_t &tempBaseM, uint64_t &tempBaseN)
+    {
+        uint64_t baseMAlignNum = args_.transA ? GetShapeWithDataType<aDataType>(L2_ALIGN_SIZE) : CUBE_BLOCK;
+        uint64_t baseNAlignNum = args_.transB ? CUBE_BLOCK : GetShapeWithDataType<bDataType>(L2_ALIGN_SIZE);
+        while (tempBaseN > tempBaseM * BASEM_BASEN_RATIO && nCnt < platformInfo_.aicNum / NUM_TWO &&
+               tempBaseN != baseNAlignNum) {
+            nCnt = nCnt * NUM_TWO;
+            mCnt = platformInfo_.aicNum / nCnt;
+            tempBaseM = Align(CeilDiv(args_.m, mCnt), baseMAlignNum);
+            tempBaseN = Align(CeilDiv(args_.n, nCnt), baseNAlignNum);
+            mCnt = CeilDiv(args_.m, tempBaseM);
+            nCnt = CeilDiv(args_.n, tempBaseN);
+        }
+        while (tempBaseM >= tempBaseN * BASEM_BASEN_RATIO && mCnt < platformInfo_.aicNum / NUM_TWO &&
+               tempBaseM != baseMAlignNum) {
+            mCnt = mCnt * NUM_TWO;
+            nCnt = platformInfo_.aicNum / mCnt;
+            tempBaseM = Align(CeilDiv(args_.m, mCnt), baseMAlignNum);
+            tempBaseN = Align(CeilDiv(args_.n, nCnt), baseNAlignNum);
+            mCnt = CeilDiv(args_.m, tempBaseM);
+            nCnt = CeilDiv(args_.n, tempBaseN);
+        }
+    }
+
     void AdjustBasicBlock()
     {
         // Re-balance the initial M/N split when the first guess underutilizes
@@ -258,25 +282,7 @@ private:
                 tempBaseN = Align(CeilDiv(args_.n, nCnt), baseNAlignNum);
             }
 
-            while (tempBaseN > tempBaseM * BASEM_BASEN_RATIO && nCnt < platformInfo_.aicNum / NUM_TWO &&
-                   tempBaseN != baseNAlignNum) {
-                nCnt = nCnt * NUM_TWO;
-                mCnt = platformInfo_.aicNum / nCnt;
-                tempBaseM = Align(CeilDiv(args_.m, mCnt), baseMAlignNum);
-                tempBaseN = Align(CeilDiv(args_.n, nCnt), baseNAlignNum);
-                mCnt = CeilDiv(args_.m, tempBaseM);
-                nCnt = CeilDiv(args_.n, tempBaseN);
-            }
-            while (tempBaseM >= tempBaseN * BASEM_BASEN_RATIO && mCnt < platformInfo_.aicNum / NUM_TWO &&
-                   tempBaseM != baseMAlignNum) {
-                mCnt = mCnt * NUM_TWO;
-                nCnt = platformInfo_.aicNum / mCnt;
-                tempBaseM = Align(CeilDiv(args_.m, mCnt), baseMAlignNum);
-                tempBaseN = Align(CeilDiv(args_.n, nCnt), baseNAlignNum);
-                mCnt = CeilDiv(args_.m, tempBaseM);
-                nCnt = CeilDiv(args_.n, tempBaseN);
-            }
-
+            AdjustTileCnt(mCnt, nCnt, tempBaseM, tempBaseN);
             uint64_t kAlignValue = Align(args_.k, baseKAlignNum);
             uint64_t kMaxValue =
                 GetShapeWithDataType<aDataType>(platformInfo_.l0aSize / DB_SIZE) / std::max(tempBaseM, tempBaseN);
