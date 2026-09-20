@@ -58,18 +58,12 @@ static const FitBalanceCalibration CALIBRATION = {
             {4, 5.841842, 8.590666}, // TODO(CCU 重标): 当前沿用历史共用值(旧表无引擎维度)
         },
     },
-    /* mmFit: matmul 性能拟合(算力档位/L2 档位/基本块) */
+    /* mmFit: matmul 性能拟合(算力档位/基本块) */
     {
         /* cubeCalc: {计算类型, isFp4, A/B/C 字节数, 有效算力(MACs/cycle)} */
         {
             {MatmulDtypeKind::QUANT, false, 1, 1, 2, 8192}, // fp8 量化(1B/1B/2B)
             {MatmulDtypeKind::QUANT, true, 1, 1, 2, 16384}, // fp4 量化(打包 1B/1B/2B, 算力约为 fp8 的 2×)
-        },
-        /* l2Param: {计算类型, isFp4, A/B/C 字节数, L2 档位参数} */
-        {
-            {MatmulDtypeKind::FP16, false, 2, 2, 2, {80, 128, 0.95, 0.85, 0.75}},  // 半精度
-            {MatmulDtypeKind::QUANT, false, 1, 1, 2, {80, 128, 0.95, 0.85, 0.75}}, // fp8 量化
-            {MatmulDtypeKind::QUANT, true, 1, 1, 2, {80, 128, 0.95, 0.85, 0.75}},  // fp4 量化(共用 fp8 档位)
         },
         /* baseBlock: matmul 最优基本块(单值; 未填用默认 {128,256,64}) */
         {256, 256, 128},

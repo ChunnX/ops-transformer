@@ -102,14 +102,6 @@ struct MatmulShapeInfo {
     double cyclePerMicroSec; // frequency
 };
 
-struct L2UtilTiers {
-    uint64_t sizePartL2;
-    uint64_t sizeFullL2;
-    double utilPartL2;
-    double utilFullL2;
-    double utilOutL2;
-};
-
 enum class CommMeshType {
     FULL_MESH, // 950 仅全互联一种通信形态(旧芯片环网形态随旧芯片逻辑剥离)
 };
@@ -386,7 +378,7 @@ public:
 // ---- 1.2 matmul 模型（HCCL 算力/梯度模型, 自由长度分支专用, 950）----
 // 由旧 MatmulPerformanceModel + MatmulPerformanceArch35 合并精简(2026-09-15, 类名已去 arch35),
 // 剥离 310P/910_B4 分支与 4 参 FindCubeUtil(含其独占的 K 对齐修正链)——
-// 5 个消费算子经 grep 证实仅用 1 参 FindCubeUtil/FindCubeUtilByL2Usage。
+// 5 个消费算子经 grep 证实仅用 FindCubeUtil(§4.34 合并为单一参数化函数)。
 
 namespace MatmulPerfConst {
 constexpr double COMPUTES_PER_CYCLE = 4096; // 基础算力(查表未命中回退, 标定头回填同值)
@@ -411,9 +403,7 @@ public:
     double matmulGradient_ = 1.0;
 
     // Constructor(soc 恒 950, 频率 1689.6 cycle/us; 选行参数由 InitCtx 按 dtype 五元组从标定选定)
-    MatmulPerfModel(const FitBalanceTilingArgs &args, double computesPerCycle, L2UtilTiers l2Params,
-                    MatmulBaseBlock baseBlock)
-        : l2Params_(l2Params)
+    MatmulPerfModel(const FitBalanceTilingArgs &args, double computesPerCycle, MatmulBaseBlock baseBlock)
     {
         mmShapeInfo_.socType = TilingSocVersion::SOC950;
         mmShapeInfo_.coreNum = args.aicCoreNum; // 每die核数
@@ -445,72 +435,32 @@ public:
             calcType_ = MatmulDtypeKind::QUANT;
         }
     }
-    // L2 档位利用率 + 950 调和平均公式(950 专用模型, 调和分支无条件执行)
-    double FindCubeUtilByL2Usage(uint64_t mSize, uint64_t commRankCntForMm, uint64_t *maxTileLen = nullptr)
+    // cube 利用率(950 调和平均公式; §4.34 由 FindCubeUtil/FindCubeUtilByL2Usage 两函数合并而来——
+    // 老代码 L2 三档+核占用比在 950 上被本公式无条件覆盖、maxTileLen 出参无人请求, 全系死代码,
+    // 随 L2 标定链一并删除):
+    //   util = min(0.95, 0.75 × (K/1280)^0.7 × (调和平均/820)^mnExp)
+    //   调和平均 = (mSize × commRankCntForMm × n) / (mSize × commRankCntForMm + n)
+    // mnExponent: MN 因子指数, 两种口径——聚合稳态 0.7(数据齐/流水满, 增长快)、
+    //   AG 本地首块(front) 0.6(只有本卡份/流水未满, 增长平缓), 是两个口径的真实物理差别
+    double FindCubeUtil(uint64_t mSize, uint64_t commRankCntForMm, double mnExponent)
     {
-        const L2UtilTiers &l2EstimatePar = l2Params_; // InitCtx 构造期已按 dtype 选定
-        uint64_t tmpBaseM = std::min(mmShapeInfo_.baseM, mSize);
-        uint64_t tmpBaseN = mmShapeInfo_.baseN;
-        uint64_t mBlockNum = (mSize + tmpBaseM - 1) / tmpBaseM * commRankCntForMm;
-        uint64_t nBlockNum = (mmShapeInfo_.nValue + tmpBaseN - 1) / tmpBaseN;
-        uint64_t memUsage =
-            std::min(mBlockNum, mmShapeInfo_.coreNum) * tmpBaseM + std::min(nBlockNum, mmShapeInfo_.coreNum) * tmpBaseN;
-        memUsage = memUsage * mmShapeInfo_.kValue * mmShapeInfo_.inMatrixADtypeSize / BYTES_PER_MB;
-        double tmpUtil;
-        double diff = 0;
-        if (memUsage <= l2EstimatePar.sizePartL2) {
-            tmpUtil = l2EstimatePar.utilPartL2; // 0.85x cube utilization rate
-            diff = l2EstimatePar.sizePartL2 - memUsage;
-        } else if (memUsage <= l2EstimatePar.sizeFullL2) {
-            tmpUtil = l2EstimatePar.utilFullL2; // 0.75x cube utilization rate
-            diff = l2EstimatePar.sizeFullL2 - memUsage;
-        } else {
-            tmpUtil = l2EstimatePar.utilOutL2; // 0.65x cube utilization rate
-        }
-        tmpUtil *= static_cast<double>(std::min(mBlockNum * nBlockNum, mmShapeInfo_.coreNum) /
-                                       static_cast<double>(mmShapeInfo_.coreNum));
-
-        /*950 cube利用率计算公式：两个输入为M、N的调和平均数和K。MN调和平均数的阈值为820，K阈值为1280，
-        小于这个阈值认为提供负增益，大于这个阈值认为提供正增益，但正增益最高不超过1.4倍。*/
         double mnharmonicMean = static_cast<double>(mSize * commRankCntForMm * mmShapeInfo_.nValue) /
                                 static_cast<double>(mSize * commRankCntForMm + mmShapeInfo_.nValue);
         double kExponentiated = std::min(
             MatmulPerfConst::MAX_PARTICAL_ENHANCEMENT_FACTOR_CUBE_UTIL,
             std::pow(static_cast<double>(mmShapeInfo_.kValue), MatmulPerfConst::CUBE_UTIL_EXPONENT_COEFFICIENT) /
                 std::pow(MatmulPerfConst::KVALUE_THRESHOLD, MatmulPerfConst::CUBE_UTIL_EXPONENT_COEFFICIENT));
-        double mnExponentiated = std::min(
-            MatmulPerfConst::MAX_PARTICAL_ENHANCEMENT_FACTOR_CUBE_UTIL,
-            std::pow(mnharmonicMean, MatmulPerfConst::FRONT_UTIL_EXPONENT_COEFFICIENT) /
-                std::pow(MatmulPerfConst::MNVALUE_THRESHOLD, MatmulPerfConst::FRONT_UTIL_EXPONENT_COEFFICIENT));
-        double result = MatmulPerfConst::AVERAGE_CUBE_UTIL * kExponentiated * mnExponentiated;
-        tmpUtil = std::min(MatmulPerfConst::MAX_CUBE_UTIL, result);
-
-        if (maxTileLen != nullptr) {
-            *maxTileLen = mmShapeInfo_.mValue;
-            uint64_t tmpSize = std::min(mBlockNum + commRankCntForMm, mmShapeInfo_.coreNum) -
-                               std::min(mBlockNum, mmShapeInfo_.coreNum);
-            tmpSize = tmpSize * mmShapeInfo_.inMatrixADtypeSize * tmpBaseM * mmShapeInfo_.kValue / BYTES_PER_MB;
-            if (tmpSize > diff && memUsage <= l2EstimatePar.sizeFullL2 && nBlockNum > mmShapeInfo_.coreNum) {
-                *maxTileLen = (mSize + mmShapeInfo_.baseM - 1) / mmShapeInfo_.baseM * mmShapeInfo_.baseM;
-            }
-        }
-        return tmpUtil;
-    }
-    // 单参版本(消费算子钩子唯一使用的入口)
-    void FindCubeUtil(uint64_t commRankCntForMm)
-    {
-        double mnharmonicMean = static_cast<double>(mmShapeInfo_.mValue * commRankCntForMm * mmShapeInfo_.nValue) /
-                                static_cast<double>(mmShapeInfo_.mValue * commRankCntForMm + mmShapeInfo_.nValue);
-        double kExponentiated = std::min(
-            MatmulPerfConst::MAX_PARTICAL_ENHANCEMENT_FACTOR_CUBE_UTIL,
-            std::pow(static_cast<double>(mmShapeInfo_.kValue), MatmulPerfConst::CUBE_UTIL_EXPONENT_COEFFICIENT) /
-                std::pow(MatmulPerfConst::KVALUE_THRESHOLD, MatmulPerfConst::CUBE_UTIL_EXPONENT_COEFFICIENT));
         double mnExponentiated =
             std::min(MatmulPerfConst::MAX_PARTICAL_ENHANCEMENT_FACTOR_CUBE_UTIL,
-                     std::pow(mnharmonicMean, MatmulPerfConst::CUBE_UTIL_EXPONENT_COEFFICIENT) /
-                         std::pow(MatmulPerfConst::MNVALUE_THRESHOLD, MatmulPerfConst::CUBE_UTIL_EXPONENT_COEFFICIENT));
+                     std::pow(mnharmonicMean, mnExponent) / std::pow(MatmulPerfConst::MNVALUE_THRESHOLD, mnExponent));
         double result = MatmulPerfConst::AVERAGE_CUBE_UTIL * kExponentiated * mnExponentiated;
-        cubeUtil_ = std::min(MatmulPerfConst::MAX_CUBE_UTIL, result);
+        return std::min(MatmulPerfConst::MAX_CUBE_UTIL, result);
+    }
+    // 聚合稳态口径(整 m + 全部流转份数, 设 cubeUtil_ 供 GetMatmulGradient 消费)
+    void FindCubeUtil(uint64_t commRankCntForMm)
+    {
+        cubeUtil_ =
+            FindCubeUtil(mmShapeInfo_.mValue, commRankCntForMm, MatmulPerfConst::CUBE_UTIL_EXPONENT_COEFFICIENT);
     }
     void GetMatmulGradient()
     {
@@ -539,9 +489,6 @@ public:
         tileSize = std::max(mmShapeInfo_.baseM, tileSize);
         return tileSize;
     }
-
-private:
-    L2UtilTiers l2Params_; // InitCtx 构造期按 dtype 五元组选定的 L2 档位(实例内恒定, 免逐次查表)
 };
 
 // ============================================================================
@@ -870,7 +817,6 @@ inline uint64_t MmRankMul(const FitBasedBalanceCtx &ctx)
 struct FitBalanceCalibration {
     static constexpr size_t MAX_COMM_FIT_ROWS = 4;   // 已标定通信形态数上限
     static constexpr size_t MAX_CUBE_CALC_ROWS = 4;  // matmul 算力档位数上限
-    static constexpr size_t MAX_L2_PARAM_ROWS = 4;   // L2 档位数上限
     static constexpr size_t MAX_BASE_BLOCK_ROWS = 2; // 最优基本块档位数上限
 
     // —— 通信拟合（单引擎）——
@@ -896,19 +842,9 @@ struct FitBalanceCalibration {
             uint64_t cBytes;         // 输出 C 每元素字节数
             double computesPerCycle; // 有效算力 (MACs/cycle, 含 cube 利用率)
         };
-        struct L2Param {
-            MatmulDtypeKind calcType;
-            bool isFp4;
-            uint64_t aBytes;
-            uint64_t bBytes;
-            uint64_t cBytes;
-            L2UtilTiers params;
-        };
         CubeCalc cubeCalc[MAX_CUBE_CALC_ROWS] = {};
-        L2Param l2Param[MAX_L2_PARAM_ROWS] = {};
-        MatmulBaseBlock baseBlock = {128, 256, 64};                // matmul 最优基本块(单值)
-        double defaultComputesPerCycle = 4096.0;                   // 算力档回退(通常勿动)
-        L2UtilTiers defaultL2Param = {128, 192, 0.85, 0.75, 0.65}; // L2 档回退(通常勿动)
+        MatmulBaseBlock baseBlock = {128, 256, 64}; // matmul 最优基本块(单值)
+        double defaultComputesPerCycle = 4096.0;    // 算力档回退(通常勿动)
     };
     MatmulFit mmFit;
     FitTunables tunables; // 键控分支阈值(缺省=现网值, 通常勿动; 尾部可整段省略)
@@ -956,17 +892,7 @@ inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, CommPrimitiv
             break;
         }
     }
-    L2UtilTiers l2Params = calib.mmFit.defaultL2Param;
-    for (size_t i = 0; i < FitBalanceCalibration::MAX_L2_PARAM_ROWS; ++i) {
-        if (calib.mmFit.l2Param[i].aBytes == 0) { // 哨兵截断
-            break;
-        }
-        if (matchesCalcProfile(calib.mmFit.l2Param[i])) {
-            l2Params = calib.mmFit.l2Param[i].params;
-            break;
-        }
-    }
-    FitBasedBalanceCtx ctx{MatmulPerfModel(args, computesPerCycle, l2Params, calib.mmFit.baseBlock),
+    FitBasedBalanceCtx ctx{MatmulPerfModel(args, computesPerCycle, calib.mmFit.baseBlock),
                            HCCLCommModel(args.rankDim, commPrimitive, commFitParams, topoType),
                            CutPlanner(args),
                            commPrimitive,
@@ -1123,7 +1049,8 @@ inline CommCutResult Schedule(FitBasedBalanceCtx &ctx)
     const auto est = EstimateTotalTimes(ctx);
     if (isAg) {
         // E5: 首轮独立计算的 L2 利用率与聚合后不同(frontUtil 修正)
-        const double frontUtil = ctx.matmulPerf.FindCubeUtilByL2Usage(ctx.matmulPerf.mmShapeInfo_.mValue, 1);
+        const double frontUtil = ctx.matmulPerf.FindCubeUtil(ctx.matmulPerf.mmShapeInfo_.mValue, 1,
+                                                             MatmulPerfConst::FRONT_UTIL_EXPONENT_COEFFICIENT);
         if (std::abs(frontUtil) > 1e-10) {
             ctx.frontMMTime = ctx.matmulPerf.MatmulTime(ctx.matmulPerf.mmShapeInfo_.mValue, 1) / frontUtil;
         } else {
