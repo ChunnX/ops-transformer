@@ -105,7 +105,7 @@ static ge::graphStatus SetRankSize(const gert::TilingContext *context, TilingRun
  * @param runInfo: 封装的doTiling所需要的参数
  * @return
  */
-static bool SetQuantMode(const gert::TilingContext *context, TilingRunInfo &runInfo)
+static bool SetQuantMode(const gert::TilingContext *context, TilingRunInfo &runInfo, const OpType opType)
 {
     const char *nodeName = context->GetNodeName();
     // context->GetInputDesc在函数CheckTensorDataType中已经校验
@@ -131,6 +131,8 @@ static bool SetQuantMode(const gert::TilingContext *context, TilingRunInfo &runI
                                                   .c_str(),
                                               "The value of quantMode must match a known quantization mode (TG/MX/PT)"),
         return false);
+    OP_TILING_CHECK(runInfo.quantMode == TG_QUANT_MOD && opType != OpType::OP_QUANT_REDUCE_SCATTER,
+                    OP_LOGE(nodeName, "Only QuantReduceScatter support quantMode pertensor(PT)."), return false);
     // 设置quantMode
     runInfo.quantMode = quantMode;
     return true;
@@ -142,7 +144,7 @@ static bool SetQuantMode(const gert::TilingContext *context, TilingRunInfo &runI
  * @param runInfo: 封装的doTiling所需要的参数
  * @return
  */
-static bool CheckTensorDataType(const gert::TilingContext *context, TilingRunInfo &runInfo)
+static bool CheckTensorDataType(const gert::TilingContext *context, TilingRunInfo &runInfo, const OpType opType)
 {
     const char *nodeName = context->GetNodeName();
     // 校验x的dtype
@@ -173,7 +175,7 @@ static bool CheckTensorDataType(const gert::TilingContext *context, TilingRunInf
                                               "float16/bfloat16/float"),
                     return false);
     // 设置量化模式
-    OP_TILING_CHECK(!SetQuantMode(context, runInfo), OP_LOGE(nodeName, "get quantMode error."), return false);
+    OP_TILING_CHECK(!SetQuantMode(context, runInfo, opType), OP_LOGE(nodeName, "get quantMode error."), return false);
     return true;
 }
 
