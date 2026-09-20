@@ -57,6 +57,7 @@ private:
     static constexpr uint32_t EPILOGUE_TILE_M = MegaMoeBase::EPILOGUE_TILE_M;
 
     using MegaMoeBase::DispatchBuffInit;
+    using MegaMoeBase::EnterSteadyDispatch;
     using MegaMoeBase::commonConfig_;
     using MegaMoeBase::countWorkspace_;
     using MegaMoeBase::epilogueOp_;
@@ -598,6 +599,10 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         if constexpr (g_coreType == AIV) {
             if (GetSubBlockIdx() == 1U) {
                 waveEndPosition = PrepareDispatchWave(waveBeginPosition, dispatchState);
+                if (gmm1Count == 0U) {
+                    // Startup W0/W1 have drained before reducing the dispatch ring depth.
+                    EnterSteadyDispatch();
+                }
             }
         }
         UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM1, ++gmm1Count);
