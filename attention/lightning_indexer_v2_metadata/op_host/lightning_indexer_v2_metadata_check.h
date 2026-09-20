@@ -18,7 +18,6 @@
 #include "opdev/op_log.h"
 #include "opdev/data_type_utils.h"
 #include "opdev/tensor_view_utils.h"
-#include "../../lightning_indexer_v2/op_kernel/lightning_indexer_v2_metadata.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -36,6 +35,28 @@ inline constexpr int64_t LI_V2_NUM_HEADS_Q_LOWER_BOUND = 1;
 inline constexpr int64_t LI_V2_NUM_HEADS_Q_UPPER_BOUND = 64;
 inline constexpr int64_t LI_V2_TOPK_LOWER_BOUND = 1;
 inline constexpr int64_t LI_V2_TOPK_UPPER_BOUND = 8192;
+
+// host侧无法识别kernel侧的__NPU_ARCH__宏，metadata布局常量按soc版本本地定义
+// 960dt(A6/DAV_9201): AIC/AIV各80, metadata总大小2048; 910B/950: AIC 36, AIV 72, metadata总大小1024
+inline bool IsLiV2Ascend960Soc(const std::string &socVersion)
+{
+    return socVersion.find("Ascend960") != std::string::npos;
+}
+
+inline uint32_t GetLiV2AicCoreMaxNum(const std::string &socVersion)
+{
+    return IsLiV2Ascend960Soc(socVersion) ? 80 : 36;
+}
+
+inline uint32_t GetLiV2AivCoreMaxNum(const std::string &socVersion)
+{
+    return IsLiV2Ascend960Soc(socVersion) ? 80 : 72;
+}
+
+inline uint32_t GetLiV2MetadataTotalSize(const std::string &socVersion)
+{
+    return IsLiV2Ascend960Soc(socVersion) ? 2048 : 1024;
+}
 
 inline bool IsTensorExistLiV2(const aclTensor *tensor)
 {
@@ -222,11 +243,11 @@ aclnnStatus CheckSingleParamLiV2(int64_t numHeadsQ, int64_t numHeadsK, int64_t h
     }
     // 核心数校验
     CHECK_COND(aicCoreNum > 0, ACLNN_ERR_PARAM_INVALID, "AIC num should be larger than 0, but got %u", aicCoreNum);
-    CHECK_COND(aicCoreNum <= optiling::AIC_CORE_MAX_NUM, ACLNN_ERR_PARAM_INVALID,
-               "The maximum supported AIC num is %u, but got %u", optiling::AIC_CORE_MAX_NUM, aicCoreNum);
+    CHECK_COND(aicCoreNum <= GetLiV2AicCoreMaxNum(socVersion), ACLNN_ERR_PARAM_INVALID,
+               "The maximum supported AIC num is %u, but got %u", GetLiV2AicCoreMaxNum(socVersion), aicCoreNum);
     CHECK_COND(aivCoreNum > 0, ACLNN_ERR_PARAM_INVALID, "AIV num should be larger than 0, but got %u", aivCoreNum);
-    CHECK_COND(aivCoreNum <= optiling::AIV_CORE_MAX_NUM, ACLNN_ERR_PARAM_INVALID,
-               "The maximum supported AIV num is %u, but got %u", optiling::AIV_CORE_MAX_NUM, aivCoreNum);
+    CHECK_COND(aivCoreNum <= GetLiV2AivCoreMaxNum(socVersion), ACLNN_ERR_PARAM_INVALID,
+               "The maximum supported AIV num is %u, but got %u", GetLiV2AivCoreMaxNum(socVersion), aivCoreNum);
     return ACLNN_SUCCESS;
 }
 
@@ -287,7 +308,8 @@ aclnnStatus CheckExistenceLiV2(int64_t maskMode, int64_t cmpRatio, const aclTens
 aclnnStatus CheckConsistencyLiV2(int64_t batchSize, const aclTensor *cuSeqlensQOptional,
                                  const aclTensor *cuSeqlensKOptional, const aclTensor *sequsedQOptional,
                                  const aclTensor *sequsedKOptional, const aclTensor *cmpResidualKOptional,
-                                 const char *layoutQOptional, const char *layoutKOptional, const aclTensor *metadata)
+                                 const char *layoutQOptional, const char *layoutKOptional, const aclTensor *metadata,
+                                 const std::string &socVersion)
 {
     int64_t dimNum = -1;
     aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
@@ -376,9 +398,10 @@ aclnnStatus CheckConsistencyLiV2(int64_t batchSize, const aclTensor *cuSeqlensQO
             return ACLNN_ERR_PARAM_INVALID;
         }
         // 校验 metadata 元素数
-        if (metadata->GetViewShape().GetDim(0) != optiling::LI_V2_METADATA_TOTAL_SIZE) {
+        uint32_t metadataTotalSize = GetLiV2MetadataTotalSize(socVersion);
+        if (metadata->GetViewShape().GetDim(0) != metadataTotalSize) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The element num of metadata must be %u, but got %lld",
-                    optiling::LI_V2_METADATA_TOTAL_SIZE, metadata->GetViewShape().GetDim(0));
+                    metadataTotalSize, metadata->GetViewShape().GetDim(0));
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -478,7 +501,7 @@ aclnnStatus ParamsCheckLiV2(const aclTensor *cuSeqlensQOptional, const aclTensor
     CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     ret = CheckConsistencyLiV2(batchSize, cuSeqlensQOptional, cuSeqlensKOptional, sequsedQOptional, sequsedKOptional,
-                               cmpResidualKOptional, layoutQOptional, layoutKOptional, metadata);
+                               cmpResidualKOptional, layoutQOptional, layoutKOptional, metadata, socVersion);
     CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     return ACLNN_SUCCESS;
