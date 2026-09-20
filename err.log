@@ -1,0 +1,937 @@
+============================= test session starts ==============================
+platform linux -- Python 3.11.14, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda3/envs/swl_311/bin/python3.11
+cachedir: .pytest_cache
+rootdir: /home/s00456726/code/ops-transformer-fd/attention/quant_flash_attn/tests/pytest/qfa_mxfp8_test
+configfile: pytest.ini
+plugins: repeat-0.9.4
+collecting ... collected 2240 items / 2235 deselected / 5 selected
+
+test_quant_flash_attn_func_rdv.py::test_quant_flash_attn_mxfp8[PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3-1-5] FAILED [ 20%]
+test_quant_flash_attn_func_rdv.py::test_quant_flash_attn_mxfp8[PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3-2-5] FAILED [ 40%]
+test_quant_flash_attn_func_rdv.py::test_quant_flash_attn_mxfp8[PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3-3-5] FAILED [ 60%]
+test_quant_flash_attn_func_rdv.py::test_quant_flash_attn_mxfp8[PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3-4-5] FAILED [ 80%]
+test_quant_flash_attn_func_rdv.py::test_quant_flash_attn_mxfp8[PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3-5-5] FAILED [100%]
+
+=================================== FAILURES ===================================
+__ test_quant_flash_attn_mxfp8[PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3-1-5] ___
+
+params = {'name': 'PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3', 'B': 1, 'N_q': 48, 'N_kv': 8, ...}
+golden_mode = {'compare', 'npu'}, cache_dir = None
+
+    @pytest.mark.func_rdv
+    @pytest.mark.ci
+    @pytest.mark.parametrize("params", _build_parametrize_args(), ids=CASE_IDS)
+    def test_quant_flash_attn_mxfp8(params, golden_mode, cache_dir):
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(
+                test_runner.execute_test, params, golden_mode, cache_dir
+            )
+            atten_result, lse_result = future.result()
+>       test_runner.check_results(atten_result, lse_result)
+
+test_quant_flash_attn_func_rdv.py:46: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+atten_result = ('Failed', 3.564453125, 1.2097711563110352), lse_result = None
+
+    def check_results(atten_result, lse_result):
+        if atten_result is None:
+            return
+    
+        atten_status = atten_result[0] if isinstance(atten_result, tuple) else atten_result
+        if atten_status != "Pass":
+            pct = (
+                atten_result[1]
+                if isinstance(atten_result, tuple) and len(atten_result) > 1
+                else "N/A"
+            )
+>           pytest.fail(
+                f"Attention output compare failed: result={atten_status}, PctRlt={pct}"
+            )
+E           Failed: Attention output compare failed: result=Failed, PctRlt=3.564453125
+
+common/test_runner.py:206: Failed
+----------------------------- Captured stdout call -----------------------------
+ninja: no work to do.
+
+=== DEBUG metadata === head[0:8] (sectionNum,isFD,mBase,s2Base,aicNum,aivNum,needInit,?): [1, 0, 128, 512, 32, 64, 0, 0]
+----------------------------- Captured stderr call -----------------------------
+[CACHE] load input ← /home/s00456726/code/ops-transformer-fd/attention/quant_flash_attn/tests/pytest/qfa_mxfp8_test/common/golden_cache/PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3_input.pt
+[CACHE] load CPU output ← /home/s00456726/code/ops-transformer-fd/attention/quant_flash_attn/tests/pytest/qfa_mxfp8_test/common/golden_cache/PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3_cpu_output.pt
+[NPU] Q layout: q_layout=N2TGD, G=6
+[NPU TND] q=torch.Size([10, 48, 128])
+[NPU] Q scale layout=N2TGD, shape=torch.Size([8, 10, 6, 2, 2])
+[NPU PA] kv_layout=PA_NZ
+[NPU PA] k=torch.Size([8, 8, 4, 512, 32]), v=torch.Size([8, 8, 4, 512, 32])
+[NPU PA] deq_k=torch.Size([8, 8, 32, 2, 16, 2]), deq_v=torch.Size([8, 8, 8, 8, 16, 2])
+[NPU] prepare PA inputs done.
+[NPU] 调用 PA 模式 (GRAPH_PATH=0)...
+[NPU] 调用 QFA 单算子模式...
+[NPU] output=torch.Size([10, 48, 128])
+[CACHE] save NPU output → /home/s00456726/code/ops-transformer-fd/attention/quant_flash_attn/tests/pytest/qfa_mxfp8_test/common/golden_cache/PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3_npu_output.pt
+split_count:61440.0; max_diff_hd:10;
+---------------------------------------------------------------------------------------
+Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+---------------------------------------------------------------------------------------
+00000001 	 0.0099649 	 0.0119629 	 0.0019980 	 0.2005062
+00000002 	 -0.0112059 	 -0.0105591 	 0.0006468 	 0.0577177
+00000003 	 0.0070416 	 0.0074463 	 0.0004047 	 0.0574712
+00000004 	 -0.0050382 	 -0.0060120 	 0.0009738 	 0.1932871
+00000005 	 0.0033573 	 -0.0006409 	 0.0039981 	 1.1908909
+00000006 	 -0.0058845 	 -0.0098877 	 0.0040032 	 0.6802903
+00000007 	 -0.0026220 	 -0.0025635 	 0.0000585 	 0.0223192
+00000008 	 0.0035041 	 0.0012436 	 0.0022605 	 0.6451031
+00000009 	 0.0218652 	 0.0186768 	 0.0031885 	 0.1458239
+00000010 	 0.0081643 	 0.0125732 	 0.0044089 	 0.5400175
+...   	   ...   	   ...   	   ...    	   ...
+00061431 	 0.0030385 	 0.0004406 	 0.0025979 	 0.8549964
+00061432 	 0.0078851 	 0.0076904 	 0.0001947 	 0.0246899
+00061433 	 0.0237829 	 0.0207520 	 0.0030310 	 0.1274427
+00061434 	 0.0033191 	 0.0002995 	 0.0030197 	 0.9097789
+00061435 	 -0.0001018 	 -0.0035400 	 0.0034382 	 33.7630439
+00061436 	 -0.0006528 	 -0.0069580 	 0.0063052 	 9.6592947
+00061437 	 -0.0034170 	 0.0002337 	 0.0036506 	 1.0683795
+00061438 	 0.0046554 	 0.0071716 	 0.0025163 	 0.5405055
+00061439 	 -0.0045162 	 -0.0079346 	 0.0034184 	 0.7569210
+00061440 	 0.0084181 	 0.0076599 	 0.0007582 	 0.0900696
+---------------------------------------------------------------------------------------
+Rtol   	 Atol   	 PctThd   	 PctRlt   	 Result
+---------------------------------------------------------------------------------------
+0.0078    	 0.000100  	 99.50%   	 3.564453%   	 Failed
+Max-RelativeError is: 1.2097711563110352. Threshold is: 10.
+Error Line-----------------------------------------------------------------------------
+Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+---------------------------------------------------------------------------------------
+00000000 	 0.0099649 	 0.0119629 	 0.0019980 	 0.1636777
+00000001 	 -0.0112059 	 -0.0105591 	 0.0006468 	 0.0529839
+00000002 	 0.0070416 	 0.0074463 	 0.0004047 	 0.0331522
+00000003 	 -0.0050382 	 -0.0060120 	 0.0009738 	 0.0797745
+00000004 	 0.0033573 	 -0.0006409 	 0.0039981 	 0.3275261
+00000005 	 -0.0058845 	 -0.0098877 	 0.0040032 	 0.3279404
+00000007 	 0.0035041 	 0.0012436 	 0.0022605 	 0.1851802
+00000008 	 0.0218652 	 0.0186768 	 0.0031885 	 0.1458239
+00000009 	 0.0081643 	 0.0125732 	 0.0044089 	 0.3506567
+     ... 	     ... 	     ... 	     ... 	     ...
+00000093 	 -0.0163295 	 -0.0135498 	 0.0027797 	 0.1702235
+00000094 	 0.0029955 	 0.0092773 	 0.0062819 	 0.5146099
+00000095 	 0.0122705 	 0.0071716 	 0.0050989 	 0.4155397
+00000096 	 -0.0055105 	 -0.0072021 	 0.0016916 	 0.1385782
+00000097 	 -0.0008340 	 0.0016251 	 0.0024590 	 0.2014434
+00000098 	 0.0085470 	 0.0070801 	 0.0014669 	 0.1201696
+00000099 	 0.0145647 	 0.0104980 	 0.0040667 	 0.2792141
+00000100 	 0.0134325 	 0.0081787 	 0.0052537 	 0.3911231
+00000101 	 -0.0017666 	 0.0005302 	 0.0022968 	 0.1881556
+     ... 	     ... 	     ... 	     ... 	     ...
+Max-RE line:---------------------------------------------------------------------------
+00040647 	 0.0104037 	 -0.0043640 	 0.0147677 	 1.2097712
+---------------------------------------------------------------------------------------
+------------------------------ Captured log call -------------------------------
+INFO     common.golden_cache:golden_cache.py:46 [CACHE] load input ← /home/s00456726/code/ops-transformer-fd/attention/quant_flash_attn/tests/pytest/qfa_mxfp8_test/common/golden_cache/PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3_input.pt
+INFO     common.golden_cache:golden_cache.py:76 [CACHE] load CPU output ← /home/s00456726/code/ops-transformer-fd/attention/quant_flash_attn/tests/pytest/qfa_mxfp8_test/common/golden_cache/PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3_cpu_output.pt
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1517 [NPU] Q layout: q_layout=N2TGD, G=6
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1530 [NPU TND] q=torch.Size([10, 48, 128])
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1539 [NPU] Q scale layout=N2TGD, shape=torch.Size([8, 10, 6, 2, 2])
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1642 [NPU PA] kv_layout=PA_NZ
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1643 [NPU PA] k=torch.Size([8, 8, 4, 512, 32]), v=torch.Size([8, 8, 4, 512, 32])
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1648 [NPU PA] deq_k=torch.Size([8, 8, 32, 2, 16, 2]), deq_v=torch.Size([8, 8, 8, 8, 16, 2])
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1663 [NPU] prepare PA inputs done.
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1816 [NPU] 调用 PA 模式 (GRAPH_PATH=0)...
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1864 [NPU] 调用 QFA 单算子模式...
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1829 [NPU] output=torch.Size([10, 48, 128])
+INFO     common.golden_cache:golden_cache.py:87 [CACHE] save NPU output → /home/s00456726/code/ops-transformer-fd/attention/quant_flash_attn/tests/pytest/qfa_mxfp8_test/common/golden_cache/PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3_npu_output.pt
+INFO     common.result_compare_method:result_compare_method.py:266 split_count:61440.0; max_diff_hd:10;
+INFO     common.result_compare_method:result_compare_method.py:35 ---------------------------------------------------------------------------------------
+INFO     common.result_compare_method:result_compare_method.py:38 Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+INFO     common.result_compare_method:result_compare_method.py:43 ---------------------------------------------------------------------------------------
+INFO     common.result_compare_method:result_compare_method.py:90 00000001 	 0.0099649 	 0.0119629 	 0.0019980 	 0.2005062
+INFO     common.result_compare_method:result_compare_method.py:90 00000002 	 -0.0112059 	 -0.0105591 	 0.0006468 	 0.0577177
+INFO     common.result_compare_method:result_compare_method.py:90 00000003 	 0.0070416 	 0.0074463 	 0.0004047 	 0.0574712
+INFO     common.result_compare_method:result_compare_method.py:90 00000004 	 -0.0050382 	 -0.0060120 	 0.0009738 	 0.1932871
+INFO     common.result_compare_method:result_compare_method.py:90 00000005 	 0.0033573 	 -0.0006409 	 0.0039981 	 1.1908909
+INFO     common.result_compare_method:result_compare_method.py:90 00000006 	 -0.0058845 	 -0.0098877 	 0.0040032 	 0.6802903
+INFO     common.result_compare_method:result_compare_method.py:90 00000007 	 -0.0026220 	 -0.0025635 	 0.0000585 	 0.0223192
+INFO     common.result_compare_method:result_compare_method.py:90 00000008 	 0.0035041 	 0.0012436 	 0.0022605 	 0.6451031
+INFO     common.result_compare_method:result_compare_method.py:90 00000009 	 0.0218652 	 0.0186768 	 0.0031885 	 0.1458239
+INFO     common.result_compare_method:result_compare_method.py:90 00000010 	 0.0081643 	 0.0125732 	 0.0044089 	 0.5400175
+INFO     common.result_compare_method:result_compare_method.py:105 ...   	   ...   	   ...   	   ...    	   ...
+INFO     common.result_compare_method:result_compare_method.py:90 00061431 	 0.0030385 	 0.0004406 	 0.0025979 	 0.8549964
+INFO     common.result_compare_method:result_compare_method.py:90 00061432 	 0.0078851 	 0.0076904 	 0.0001947 	 0.0246899
+INFO     common.result_compare_method:result_compare_method.py:90 00061433 	 0.0237829 	 0.0207520 	 0.0030310 	 0.1274427
+INFO     common.result_compare_method:result_compare_method.py:90 00061434 	 0.0033191 	 0.0002995 	 0.0030197 	 0.9097789
+INFO     common.result_compare_method:result_compare_method.py:90 00061435 	 -0.0001018 	 -0.0035400 	 0.0034382 	 33.7630439
+INFO     common.result_compare_method:result_compare_method.py:90 00061436 	 -0.0006528 	 -0.0069580 	 0.0063052 	 9.6592947
+INFO     common.result_compare_method:result_compare_method.py:90 00061437 	 -0.0034170 	 0.0002337 	 0.0036506 	 1.0683795
+INFO     common.result_compare_method:result_compare_method.py:90 00061438 	 0.0046554 	 0.0071716 	 0.0025163 	 0.5405055
+INFO     common.result_compare_method:result_compare_method.py:90 00061439 	 -0.0045162 	 -0.0079346 	 0.0034184 	 0.7569210
+INFO     common.result_compare_method:result_compare_method.py:90 00061440 	 0.0084181 	 0.0076599 	 0.0007582 	 0.0900696
+INFO     common.result_compare_method:result_compare_method.py:309 ---------------------------------------------------------------------------------------
+INFO     common.result_compare_method:result_compare_method.py:312 Rtol   	 Atol   	 PctThd   	 PctRlt   	 Result
+INFO     common.result_compare_method:result_compare_method.py:313 ---------------------------------------------------------------------------------------
+INFO     common.result_compare_method:result_compare_method.py:316 0.0078    	 0.000100  	 99.50%   	 3.564453%   	 Failed
+INFO     common.result_compare_method:result_compare_method.py:326 Max-RelativeError is: 1.2097711563110352. Threshold is: 10.
+INFO     common.result_compare_method:result_compare_method.py:111 Error Line-----------------------------------------------------------------------------
+INFO     common.result_compare_method:result_compare_method.py:114 Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+INFO     common.result_compare_method:result_compare_method.py:115 ---------------------------------------------------------------------------------------
+INFO     common.result_compare_method:result_compare_method.py:124 00000000 	 0.0099649 	 0.0119629 	 0.0019980 	 0.1636777
+INFO     common.result_compare_method:result_compare_method.py:124 00000001 	 -0.0112059 	 -0.0105591 	 0.0006468 	 0.0529839
+INFO     common.result_compare_method:result_compare_method.py:124 00000002 	 0.0070416 	 0.0074463 	 0.0004047 	 0.0331522
+INFO     common.result_compare_method:result_compare_method.py:124 00000003 	 -0.0050382 	 -0.0060120 	 0.0009738 	 0.0797745
+INFO     common.result_compare_method:result_compare_method.py:124 00000004 	 0.0033573 	 -0.0006409 	 0.0039981 	 0.3275261
+INFO     common.result_compare_method:result_compare_method.py:124 00000005 	 -0.0058845 	 -0.0098877 	 0.0040032 	 0.3279404
+INFO     common.result_compare_method:result_compare_method.py:124 00000007 	 0.0035041 	 0.0012436 	 0.0022605 	 0.1851802
+INFO     common.result_compare_method:result_compare_method.py:124 00000008 	 0.0218652 	 0.0186768 	 0.0031885 	 0.1458239
+INFO     common.result_compare_method:result_compare_method.py:124 00000009 	 0.0081643 	 0.0125732 	 0.0044089 	 0.3506567
+INFO     common.result_compare_method:result_compare_method.py:133      ... 	     ... 	     ... 	     ... 	     ...
+INFO     common.result_compare_method:result_compare_method.py:124 00000093 	 -0.0163295 	 -0.0135498 	 0.0027797 	 0.1702235
+INFO     common.result_compare_method:result_compare_method.py:124 00000094 	 0.0029955 	 0.0092773 	 0.0062819 	 0.5146099
+INFO     common.result_compare_method:result_compare_method.py:124 00000095 	 0.0122705 	 0.0071716 	 0.0050989 	 0.4155397
+INFO     common.result_compare_method:result_compare_method.py:124 00000096 	 -0.0055105 	 -0.0072021 	 0.0016916 	 0.1385782
+INFO     common.result_compare_method:result_compare_method.py:124 00000097 	 -0.0008340 	 0.0016251 	 0.0024590 	 0.2014434
+INFO     common.result_compare_method:result_compare_method.py:124 00000098 	 0.0085470 	 0.0070801 	 0.0014669 	 0.1201696
+INFO     common.result_compare_method:result_compare_method.py:124 00000099 	 0.0145647 	 0.0104980 	 0.0040667 	 0.2792141
+INFO     common.result_compare_method:result_compare_method.py:124 00000100 	 0.0134325 	 0.0081787 	 0.0052537 	 0.3911231
+INFO     common.result_compare_method:result_compare_method.py:124 00000101 	 -0.0017666 	 0.0005302 	 0.0022968 	 0.1881556
+INFO     common.result_compare_method:result_compare_method.py:133      ... 	     ... 	     ... 	     ... 	     ...
+INFO     common.result_compare_method:result_compare_method.py:144 Max-RE line:---------------------------------------------------------------------------
+INFO     common.result_compare_method:result_compare_method.py:156 00040647 	 0.0104037 	 -0.0043640 	 0.0147677 	 1.2097712
+INFO     common.result_compare_method:result_compare_method.py:164 ---------------------------------------------------------------------------------------
+__ test_quant_flash_attn_mxfp8[PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3-2-5] ___
+
+params = {'name': 'PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3', 'B': 1, 'N_q': 48, 'N_kv': 8, ...}
+golden_mode = {'compare', 'npu'}, cache_dir = None
+
+    @pytest.mark.func_rdv
+    @pytest.mark.ci
+    @pytest.mark.parametrize("params", _build_parametrize_args(), ids=CASE_IDS)
+    def test_quant_flash_attn_mxfp8(params, golden_mode, cache_dir):
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(
+                test_runner.execute_test, params, golden_mode, cache_dir
+            )
+            atten_result, lse_result = future.result()
+>       test_runner.check_results(atten_result, lse_result)
+
+test_quant_flash_attn_func_rdv.py:46: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+atten_result = ('Failed', 22.890625, 1.2097711563110352), lse_result = None
+
+    def check_results(atten_result, lse_result):
+        if atten_result is None:
+            return
+    
+        atten_status = atten_result[0] if isinstance(atten_result, tuple) else atten_result
+        if atten_status != "Pass":
+            pct = (
+                atten_result[1]
+                if isinstance(atten_result, tuple) and len(atten_result) > 1
+                else "N/A"
+            )
+>           pytest.fail(
+                f"Attention output compare failed: result={atten_status}, PctRlt={pct}"
+            )
+E           Failed: Attention output compare failed: result=Failed, PctRlt=22.890625
+
+common/test_runner.py:206: Failed
+----------------------------- Captured stdout call -----------------------------
+
+=== DEBUG metadata === head[0:8] (sectionNum,isFD,mBase,s2Base,aicNum,aivNum,needInit,?): [1, 0, 128, 512, 32, 64, 0, 0]
+----------------------------- Captured stderr call -----------------------------
+[CACHE] load input ← /home/s00456726/code/ops-transformer-fd/attention/quant_flash_attn/tests/pytest/qfa_mxfp8_test/common/golden_cache/PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3_input.pt
+[CACHE] load CPU output ← /home/s00456726/code/ops-transformer-fd/attention/quant_flash_attn/tests/pytest/qfa_mxfp8_test/common/golden_cache/PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3_cpu_output.pt
+[NPU] Q layout: q_layout=N2TGD, G=6
+[NPU TND] q=torch.Size([10, 48, 128])
+[NPU] Q scale layout=N2TGD, shape=torch.Size([8, 10, 6, 2, 2])
+[NPU PA] kv_layout=PA_NZ
+[NPU PA] k=torch.Size([8, 8, 4, 512, 32]), v=torch.Size([8, 8, 4, 512, 32])
+[NPU PA] deq_k=torch.Size([8, 8, 32, 2, 16, 2]), deq_v=torch.Size([8, 8, 8, 8, 16, 2])
+[NPU] prepare PA inputs done.
+[NPU] 调用 PA 模式 (GRAPH_PATH=0)...
+[NPU] 调用 QFA 单算子模式...
+[NPU] output=torch.Size([10, 48, 128])
+[CACHE] save NPU output → /home/s00456726/code/ops-transformer-fd/attention/quant_flash_attn/tests/pytest/qfa_mxfp8_test/common/golden_cache/PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3_npu_output.pt
+split_count:61440.0; max_diff_hd:10;
+---------------------------------------------------------------------------------------
+Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+---------------------------------------------------------------------------------------
+00000001 	 0.0099649 	 0.0119629 	 0.0019980 	 0.2005062
+00000002 	 -0.0112059 	 -0.0105591 	 0.0006468 	 0.0577177
+00000003 	 0.0070416 	 0.0074463 	 0.0004047 	 0.0574712
+00000004 	 -0.0050382 	 -0.0060120 	 0.0009738 	 0.1932871
+00000005 	 0.0033573 	 -0.0006409 	 0.0039981 	 1.1908909
+00000006 	 -0.0058845 	 -0.0098877 	 0.0040032 	 0.6802903
+00000007 	 -0.0026220 	 -0.0025635 	 0.0000585 	 0.0223192
+00000008 	 0.0035041 	 0.0012436 	 0.0022605 	 0.6451031
+00000009 	 0.0218652 	 0.0186768 	 0.0031885 	 0.1458239
+00000010 	 0.0081643 	 0.0125732 	 0.0044089 	 0.5400175
+...   	   ...   	   ...   	   ...    	   ...
+00061431 	 0.0030385 	 0.0004406 	 0.0025979 	 0.8549964
+00061432 	 0.0078851 	 0.0076904 	 0.0001947 	 0.0246899
+00061433 	 0.0237829 	 0.0207520 	 0.0030310 	 0.1274427
+00061434 	 0.0033191 	 0.0002995 	 0.0030197 	 0.9097789
+00061435 	 -0.0001018 	 -0.0035400 	 0.0034382 	 33.7630439
+00061436 	 -0.0006528 	 -0.0069580 	 0.0063052 	 9.6592947
+00061437 	 -0.0034170 	 0.0002337 	 0.0036506 	 1.0683795
+00061438 	 0.0046554 	 0.0071716 	 0.0025163 	 0.5405055
+00061439 	 -0.0045162 	 -0.0079346 	 0.0034184 	 0.7569210
+00061440 	 0.0084181 	 0.0076599 	 0.0007582 	 0.0900696
+---------------------------------------------------------------------------------------
+Rtol   	 Atol   	 PctThd   	 PctRlt   	 Result
+---------------------------------------------------------------------------------------
+0.0078    	 0.000100  	 99.50%   	 22.890625%   	 Failed
+Max-RelativeError is: 1.2097711563110352. Threshold is: 10.
+Error Line-----------------------------------------------------------------------------
+Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+---------------------------------------------------------------------------------------
+00000000 	 0.0099649 	 0.0119629 	 0.0019980 	 0.1636777
+00000001 	 -0.0112059 	 -0.0105591 	 0.0006468 	 0.0529839
+00000002 	 0.0070416 	 0.0074463 	 0.0004047 	 0.0331522
+00000003 	 -0.0050382 	 -0.0060120 	 0.0009738 	 0.0797745
+00000004 	 0.0033573 	 -0.0006409 	 0.0039981 	 0.3275261
+00000005 	 -0.0058845 	 -0.0098877 	 0.0040032 	 0.3279404
+00000007 	 0.0035041 	 0.0012436 	 0.0022605 	 0.1851802
+00000008 	 0.0218652 	 0.0186768 	 0.0031885 	 0.1458239
+00000009 	 0.0081643 	 0.0125732 	 0.0044089 	 0.3506567
+     ... 	     ... 	     ... 	     ... 	     ...
+00000093 	 -0.0163295 	 -0.0135498 	 0.0027797 	 0.1702235
+00000094 	 0.0029955 	 0.0092773 	 0.0062819 	 0.5146099
+00000095 	 0.0122705 	 0.0071716 	 0.0050989 	 0.4155397
+00000096 	 -0.0055105 	 -0.0072021 	 0.0016916 	 0.1385782
+00000097 	 -0.0008340 	 0.0016251 	 0.0024590 	 0.2014434
+00000098 	 0.0085470 	 0.0070801 	 0.0014669 	 0.1201696
+00000099 	 0.0145647 	 0.0104980 	 0.0040667 	 0.2792141
+00000100 	 0.0134325 	 0.0081787 	 0.0052537 	 0.3911231
+00000101 	 -0.0017666 	 0.0005302 	 0.0022968 	 0.1881556
+     ... 	     ... 	     ... 	     ... 	     ...
+Max-RE line:---------------------------------------------------------------------------
+00040647 	 0.0104037 	 -0.0043640 	 0.0147677 	 1.2097712
+---------------------------------------------------------------------------------------
+------------------------------ Captured log call -------------------------------
+INFO     common.golden_cache:golden_cache.py:46 [CACHE] load input ← /home/s00456726/code/ops-transformer-fd/attention/quant_flash_attn/tests/pytest/qfa_mxfp8_test/common/golden_cache/PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3_input.pt
+INFO     common.golden_cache:golden_cache.py:76 [CACHE] load CPU output ← /home/s00456726/code/ops-transformer-fd/attention/quant_flash_attn/tests/pytest/qfa_mxfp8_test/common/golden_cache/PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3_cpu_output.pt
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1517 [NPU] Q layout: q_layout=N2TGD, G=6
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1530 [NPU TND] q=torch.Size([10, 48, 128])
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1539 [NPU] Q scale layout=N2TGD, shape=torch.Size([8, 10, 6, 2, 2])
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1642 [NPU PA] kv_layout=PA_NZ
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1643 [NPU PA] k=torch.Size([8, 8, 4, 512, 32]), v=torch.Size([8, 8, 4, 512, 32])
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1648 [NPU PA] deq_k=torch.Size([8, 8, 32, 2, 16, 2]), deq_v=torch.Size([8, 8, 8, 8, 16, 2])
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1663 [NPU] prepare PA inputs done.
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1816 [NPU] 调用 PA 模式 (GRAPH_PATH=0)...
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1864 [NPU] 调用 QFA 单算子模式...
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1829 [NPU] output=torch.Size([10, 48, 128])
+INFO     common.golden_cache:golden_cache.py:87 [CACHE] save NPU output → /home/s00456726/code/ops-transformer-fd/attention/quant_flash_attn/tests/pytest/qfa_mxfp8_test/common/golden_cache/PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3_npu_output.pt
+INFO     common.result_compare_method:result_compare_method.py:266 split_count:61440.0; max_diff_hd:10;
+INFO     common.result_compare_method:result_compare_method.py:35 ---------------------------------------------------------------------------------------
+INFO     common.result_compare_method:result_compare_method.py:38 Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+INFO     common.result_compare_method:result_compare_method.py:43 ---------------------------------------------------------------------------------------
+INFO     common.result_compare_method:result_compare_method.py:90 00000001 	 0.0099649 	 0.0119629 	 0.0019980 	 0.2005062
+INFO     common.result_compare_method:result_compare_method.py:90 00000002 	 -0.0112059 	 -0.0105591 	 0.0006468 	 0.0577177
+INFO     common.result_compare_method:result_compare_method.py:90 00000003 	 0.0070416 	 0.0074463 	 0.0004047 	 0.0574712
+INFO     common.result_compare_method:result_compare_method.py:90 00000004 	 -0.0050382 	 -0.0060120 	 0.0009738 	 0.1932871
+INFO     common.result_compare_method:result_compare_method.py:90 00000005 	 0.0033573 	 -0.0006409 	 0.0039981 	 1.1908909
+INFO     common.result_compare_method:result_compare_method.py:90 00000006 	 -0.0058845 	 -0.0098877 	 0.0040032 	 0.6802903
+INFO     common.result_compare_method:result_compare_method.py:90 00000007 	 -0.0026220 	 -0.0025635 	 0.0000585 	 0.0223192
+INFO     common.result_compare_method:result_compare_method.py:90 00000008 	 0.0035041 	 0.0012436 	 0.0022605 	 0.6451031
+INFO     common.result_compare_method:result_compare_method.py:90 00000009 	 0.0218652 	 0.0186768 	 0.0031885 	 0.1458239
+INFO     common.result_compare_method:result_compare_method.py:90 00000010 	 0.0081643 	 0.0125732 	 0.0044089 	 0.5400175
+INFO     common.result_compare_method:result_compare_method.py:105 ...   	   ...   	   ...   	   ...    	   ...
+INFO     common.result_compare_method:result_compare_method.py:90 00061431 	 0.0030385 	 0.0004406 	 0.0025979 	 0.8549964
+INFO     common.result_compare_method:result_compare_method.py:90 00061432 	 0.0078851 	 0.0076904 	 0.0001947 	 0.0246899
+INFO     common.result_compare_method:result_compare_method.py:90 00061433 	 0.0237829 	 0.0207520 	 0.0030310 	 0.1274427
+INFO     common.result_compare_method:result_compare_method.py:90 00061434 	 0.0033191 	 0.0002995 	 0.0030197 	 0.9097789
+INFO     common.result_compare_method:result_compare_method.py:90 00061435 	 -0.0001018 	 -0.0035400 	 0.0034382 	 33.7630439
+INFO     common.result_compare_method:result_compare_method.py:90 00061436 	 -0.0006528 	 -0.0069580 	 0.0063052 	 9.6592947
+INFO     common.result_compare_method:result_compare_method.py:90 00061437 	 -0.0034170 	 0.0002337 	 0.0036506 	 1.0683795
+INFO     common.result_compare_method:result_compare_method.py:90 00061438 	 0.0046554 	 0.0071716 	 0.0025163 	 0.5405055
+INFO     common.result_compare_method:result_compare_method.py:90 00061439 	 -0.0045162 	 -0.0079346 	 0.0034184 	 0.7569210
+INFO     common.result_compare_method:result_compare_method.py:90 00061440 	 0.0084181 	 0.0076599 	 0.0007582 	 0.0900696
+INFO     common.result_compare_method:result_compare_method.py:309 ---------------------------------------------------------------------------------------
+INFO     common.result_compare_method:result_compare_method.py:312 Rtol   	 Atol   	 PctThd   	 PctRlt   	 Result
+INFO     common.result_compare_method:result_compare_method.py:313 ---------------------------------------------------------------------------------------
+INFO     common.result_compare_method:result_compare_method.py:316 0.0078    	 0.000100  	 99.50%   	 22.890625%   	 Failed
+INFO     common.result_compare_method:result_compare_method.py:326 Max-RelativeError is: 1.2097711563110352. Threshold is: 10.
+INFO     common.result_compare_method:result_compare_method.py:111 Error Line-----------------------------------------------------------------------------
+INFO     common.result_compare_method:result_compare_method.py:114 Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+INFO     common.result_compare_method:result_compare_method.py:115 ---------------------------------------------------------------------------------------
+INFO     common.result_compare_method:result_compare_method.py:124 00000000 	 0.0099649 	 0.0119629 	 0.0019980 	 0.1636777
+INFO     common.result_compare_method:result_compare_method.py:124 00000001 	 -0.0112059 	 -0.0105591 	 0.0006468 	 0.0529839
+INFO     common.result_compare_method:result_compare_method.py:124 00000002 	 0.0070416 	 0.0074463 	 0.0004047 	 0.0331522
+INFO     common.result_compare_method:result_compare_method.py:124 00000003 	 -0.0050382 	 -0.0060120 	 0.0009738 	 0.0797745
+INFO     common.result_compare_method:result_compare_method.py:124 00000004 	 0.0033573 	 -0.0006409 	 0.0039981 	 0.3275261
+INFO     common.result_compare_method:result_compare_method.py:124 00000005 	 -0.0058845 	 -0.0098877 	 0.0040032 	 0.3279404
+INFO     common.result_compare_method:result_compare_method.py:124 00000007 	 0.0035041 	 0.0012436 	 0.0022605 	 0.1851802
+INFO     common.result_compare_method:result_compare_method.py:124 00000008 	 0.0218652 	 0.0186768 	 0.0031885 	 0.1458239
+INFO     common.result_compare_method:result_compare_method.py:124 00000009 	 0.0081643 	 0.0125732 	 0.0044089 	 0.3506567
+INFO     common.result_compare_method:result_compare_method.py:133      ... 	     ... 	     ... 	     ... 	     ...
+INFO     common.result_compare_method:result_compare_method.py:124 00000093 	 -0.0163295 	 -0.0135498 	 0.0027797 	 0.1702235
+INFO     common.result_compare_method:result_compare_method.py:124 00000094 	 0.0029955 	 0.0092773 	 0.0062819 	 0.5146099
+INFO     common.result_compare_method:result_compare_method.py:124 00000095 	 0.0122705 	 0.0071716 	 0.0050989 	 0.4155397
+INFO     common.result_compare_method:result_compare_method.py:124 00000096 	 -0.0055105 	 -0.0072021 	 0.0016916 	 0.1385782
+INFO     common.result_compare_method:result_compare_method.py:124 00000097 	 -0.0008340 	 0.0016251 	 0.0024590 	 0.2014434
+INFO     common.result_compare_method:result_compare_method.py:124 00000098 	 0.0085470 	 0.0070801 	 0.0014669 	 0.1201696
+INFO     common.result_compare_method:result_compare_method.py:124 00000099 	 0.0145647 	 0.0104980 	 0.0040667 	 0.2792141
+INFO     common.result_compare_method:result_compare_method.py:124 00000100 	 0.0134325 	 0.0081787 	 0.0052537 	 0.3911231
+INFO     common.result_compare_method:result_compare_method.py:124 00000101 	 -0.0017666 	 0.0005302 	 0.0022968 	 0.1881556
+INFO     common.result_compare_method:result_compare_method.py:133      ... 	     ... 	     ... 	     ... 	     ...
+INFO     common.result_compare_method:result_compare_method.py:144 Max-RE line:---------------------------------------------------------------------------
+INFO     common.result_compare_method:result_compare_method.py:156 00040647 	 0.0104037 	 -0.0043640 	 0.0147677 	 1.2097712
+INFO     common.result_compare_method:result_compare_method.py:164 ---------------------------------------------------------------------------------------
+__ test_quant_flash_attn_mxfp8[PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3-3-5] ___
+
+params = {'name': 'PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3', 'B': 1, 'N_q': 48, 'N_kv': 8, ...}
+golden_mode = {'compare', 'npu'}, cache_dir = None
+
+    @pytest.mark.func_rdv
+    @pytest.mark.ci
+    @pytest.mark.parametrize("params", _build_parametrize_args(), ids=CASE_IDS)
+    def test_quant_flash_attn_mxfp8(params, golden_mode, cache_dir):
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(
+                test_runner.execute_test, params, golden_mode, cache_dir
+            )
+            atten_result, lse_result = future.result()
+>       test_runner.check_results(atten_result, lse_result)
+
+test_quant_flash_attn_func_rdv.py:46: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+atten_result = ('Failed', 21.985677083333332, 1.2097711563110352)
+lse_result = None
+
+    def check_results(atten_result, lse_result):
+        if atten_result is None:
+            return
+    
+        atten_status = atten_result[0] if isinstance(atten_result, tuple) else atten_result
+        if atten_status != "Pass":
+            pct = (
+                atten_result[1]
+                if isinstance(atten_result, tuple) and len(atten_result) > 1
+                else "N/A"
+            )
+>           pytest.fail(
+                f"Attention output compare failed: result={atten_status}, PctRlt={pct}"
+            )
+E           Failed: Attention output compare failed: result=Failed, PctRlt=21.985677083333332
+
+common/test_runner.py:206: Failed
+----------------------------- Captured stdout call -----------------------------
+
+=== DEBUG metadata === head[0:8] (sectionNum,isFD,mBase,s2Base,aicNum,aivNum,needInit,?): [1, 0, 128, 512, 32, 64, 0, 0]
+----------------------------- Captured stderr call -----------------------------
+[CACHE] load input ← /home/s00456726/code/ops-transformer-fd/attention/quant_flash_attn/tests/pytest/qfa_mxfp8_test/common/golden_cache/PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3_input.pt
+[CACHE] load CPU output ← /home/s00456726/code/ops-transformer-fd/attention/quant_flash_attn/tests/pytest/qfa_mxfp8_test/common/golden_cache/PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3_cpu_output.pt
+[NPU] Q layout: q_layout=N2TGD, G=6
+[NPU TND] q=torch.Size([10, 48, 128])
+[NPU] Q scale layout=N2TGD, shape=torch.Size([8, 10, 6, 2, 2])
+[NPU PA] kv_layout=PA_NZ
+[NPU PA] k=torch.Size([8, 8, 4, 512, 32]), v=torch.Size([8, 8, 4, 512, 32])
+[NPU PA] deq_k=torch.Size([8, 8, 32, 2, 16, 2]), deq_v=torch.Size([8, 8, 8, 8, 16, 2])
+[NPU] prepare PA inputs done.
+[NPU] 调用 PA 模式 (GRAPH_PATH=0)...
+[NPU] 调用 QFA 单算子模式...
+[NPU] output=torch.Size([10, 48, 128])
+[CACHE] save NPU output → /home/s00456726/code/ops-transformer-fd/attention/quant_flash_attn/tests/pytest/qfa_mxfp8_test/common/golden_cache/PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3_npu_output.pt
+split_count:61440.0; max_diff_hd:10;
+---------------------------------------------------------------------------------------
+Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+---------------------------------------------------------------------------------------
+00000001 	 0.0099649 	 0.0119629 	 0.0019980 	 0.2005062
+00000002 	 -0.0112059 	 -0.0105591 	 0.0006468 	 0.0577177
+00000003 	 0.0070416 	 0.0074463 	 0.0004047 	 0.0574712
+00000004 	 -0.0050382 	 -0.0060120 	 0.0009738 	 0.1932871
+00000005 	 0.0033573 	 -0.0006409 	 0.0039981 	 1.1908909
+00000006 	 -0.0058845 	 -0.0098877 	 0.0040032 	 0.6802903
+00000007 	 -0.0026220 	 -0.0025635 	 0.0000585 	 0.0223192
+00000008 	 0.0035041 	 0.0012436 	 0.0022605 	 0.6451031
+00000009 	 0.0218652 	 0.0186768 	 0.0031885 	 0.1458239
+00000010 	 0.0081643 	 0.0125732 	 0.0044089 	 0.5400175
+...   	   ...   	   ...   	   ...    	   ...
+00061431 	 0.0030385 	 0.0004406 	 0.0025979 	 0.8549964
+00061432 	 0.0078851 	 0.0076904 	 0.0001947 	 0.0246899
+00061433 	 0.0237829 	 0.0207520 	 0.0030310 	 0.1274427
+00061434 	 0.0033191 	 0.0002995 	 0.0030197 	 0.9097789
+00061435 	 -0.0001018 	 -0.0035400 	 0.0034382 	 33.7630439
+00061436 	 -0.0006528 	 -0.0069580 	 0.0063052 	 9.6592947
+00061437 	 -0.0034170 	 0.0002337 	 0.0036506 	 1.0683795
+00061438 	 0.0046554 	 0.0071716 	 0.0025163 	 0.5405055
+00061439 	 -0.0045162 	 -0.0079346 	 0.0034184 	 0.7569210
+00061440 	 0.0084181 	 0.0076599 	 0.0007582 	 0.0900696
+---------------------------------------------------------------------------------------
+Rtol   	 Atol   	 PctThd   	 PctRlt   	 Result
+---------------------------------------------------------------------------------------
+0.0078    	 0.000100  	 99.50%   	 21.985677%   	 Failed
+Max-RelativeError is: 1.2097711563110352. Threshold is: 10.
+Error Line-----------------------------------------------------------------------------
+Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+---------------------------------------------------------------------------------------
+00000000 	 0.0099649 	 0.0119629 	 0.0019980 	 0.1636777
+00000001 	 -0.0112059 	 -0.0105591 	 0.0006468 	 0.0529839
+00000002 	 0.0070416 	 0.0074463 	 0.0004047 	 0.0331522
+00000003 	 -0.0050382 	 -0.0060120 	 0.0009738 	 0.0797745
+00000004 	 0.0033573 	 -0.0006409 	 0.0039981 	 0.3275261
+00000005 	 -0.0058845 	 -0.0098877 	 0.0040032 	 0.3279404
+00000007 	 0.0035041 	 0.0012436 	 0.0022605 	 0.1851802
+00000008 	 0.0218652 	 0.0186768 	 0.0031885 	 0.1458239
+00000009 	 0.0081643 	 0.0125732 	 0.0044089 	 0.3506567
+     ... 	     ... 	     ... 	     ... 	     ...
+00000093 	 -0.0163295 	 -0.0135498 	 0.0027797 	 0.1702235
+00000094 	 0.0029955 	 0.0092773 	 0.0062819 	 0.5146099
+00000095 	 0.0122705 	 0.0071716 	 0.0050989 	 0.4155397
+00000096 	 -0.0055105 	 -0.0072021 	 0.0016916 	 0.1385782
+00000097 	 -0.0008340 	 0.0016251 	 0.0024590 	 0.2014434
+00000098 	 0.0085470 	 0.0070801 	 0.0014669 	 0.1201696
+00000099 	 0.0145647 	 0.0104980 	 0.0040667 	 0.2792141
+00000100 	 0.0134325 	 0.0081787 	 0.0052537 	 0.3911231
+00000101 	 -0.0017666 	 0.0005302 	 0.0022968 	 0.1881556
+     ... 	     ... 	     ... 	     ... 	     ...
+Max-RE line:---------------------------------------------------------------------------
+00040647 	 0.0104037 	 -0.0043640 	 0.0147677 	 1.2097712
+---------------------------------------------------------------------------------------
+------------------------------ Captured log call -------------------------------
+INFO     common.golden_cache:golden_cache.py:46 [CACHE] load input ← /home/s00456726/code/ops-transformer-fd/attention/quant_flash_attn/tests/pytest/qfa_mxfp8_test/common/golden_cache/PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3_input.pt
+INFO     common.golden_cache:golden_cache.py:76 [CACHE] load CPU output ← /home/s00456726/code/ops-transformer-fd/attention/quant_flash_attn/tests/pytest/qfa_mxfp8_test/common/golden_cache/PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3_cpu_output.pt
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1517 [NPU] Q layout: q_layout=N2TGD, G=6
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1530 [NPU TND] q=torch.Size([10, 48, 128])
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1539 [NPU] Q scale layout=N2TGD, shape=torch.Size([8, 10, 6, 2, 2])
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1642 [NPU PA] kv_layout=PA_NZ
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1643 [NPU PA] k=torch.Size([8, 8, 4, 512, 32]), v=torch.Size([8, 8, 4, 512, 32])
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1648 [NPU PA] deq_k=torch.Size([8, 8, 32, 2, 16, 2]), deq_v=torch.Size([8, 8, 8, 8, 16, 2])
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1663 [NPU] prepare PA inputs done.
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1816 [NPU] 调用 PA 模式 (GRAPH_PATH=0)...
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1864 [NPU] 调用 QFA 单算子模式...
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1829 [NPU] output=torch.Size([10, 48, 128])
+INFO     common.golden_cache:golden_cache.py:87 [CACHE] save NPU output → /home/s00456726/code/ops-transformer-fd/attention/quant_flash_attn/tests/pytest/qfa_mxfp8_test/common/golden_cache/PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3_npu_output.pt
+INFO     common.result_compare_method:result_compare_method.py:266 split_count:61440.0; max_diff_hd:10;
+INFO     common.result_compare_method:result_compare_method.py:35 ---------------------------------------------------------------------------------------
+INFO     common.result_compare_method:result_compare_method.py:38 Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+INFO     common.result_compare_method:result_compare_method.py:43 ---------------------------------------------------------------------------------------
+INFO     common.result_compare_method:result_compare_method.py:90 00000001 	 0.0099649 	 0.0119629 	 0.0019980 	 0.2005062
+INFO     common.result_compare_method:result_compare_method.py:90 00000002 	 -0.0112059 	 -0.0105591 	 0.0006468 	 0.0577177
+INFO     common.result_compare_method:result_compare_method.py:90 00000003 	 0.0070416 	 0.0074463 	 0.0004047 	 0.0574712
+INFO     common.result_compare_method:result_compare_method.py:90 00000004 	 -0.0050382 	 -0.0060120 	 0.0009738 	 0.1932871
+INFO     common.result_compare_method:result_compare_method.py:90 00000005 	 0.0033573 	 -0.0006409 	 0.0039981 	 1.1908909
+INFO     common.result_compare_method:result_compare_method.py:90 00000006 	 -0.0058845 	 -0.0098877 	 0.0040032 	 0.6802903
+INFO     common.result_compare_method:result_compare_method.py:90 00000007 	 -0.0026220 	 -0.0025635 	 0.0000585 	 0.0223192
+INFO     common.result_compare_method:result_compare_method.py:90 00000008 	 0.0035041 	 0.0012436 	 0.0022605 	 0.6451031
+INFO     common.result_compare_method:result_compare_method.py:90 00000009 	 0.0218652 	 0.0186768 	 0.0031885 	 0.1458239
+INFO     common.result_compare_method:result_compare_method.py:90 00000010 	 0.0081643 	 0.0125732 	 0.0044089 	 0.5400175
+INFO     common.result_compare_method:result_compare_method.py:105 ...   	   ...   	   ...   	   ...    	   ...
+INFO     common.result_compare_method:result_compare_method.py:90 00061431 	 0.0030385 	 0.0004406 	 0.0025979 	 0.8549964
+INFO     common.result_compare_method:result_compare_method.py:90 00061432 	 0.0078851 	 0.0076904 	 0.0001947 	 0.0246899
+INFO     common.result_compare_method:result_compare_method.py:90 00061433 	 0.0237829 	 0.0207520 	 0.0030310 	 0.1274427
+INFO     common.result_compare_method:result_compare_method.py:90 00061434 	 0.0033191 	 0.0002995 	 0.0030197 	 0.9097789
+INFO     common.result_compare_method:result_compare_method.py:90 00061435 	 -0.0001018 	 -0.0035400 	 0.0034382 	 33.7630439
+INFO     common.result_compare_method:result_compare_method.py:90 00061436 	 -0.0006528 	 -0.0069580 	 0.0063052 	 9.6592947
+INFO     common.result_compare_method:result_compare_method.py:90 00061437 	 -0.0034170 	 0.0002337 	 0.0036506 	 1.0683795
+INFO     common.result_compare_method:result_compare_method.py:90 00061438 	 0.0046554 	 0.0071716 	 0.0025163 	 0.5405055
+INFO     common.result_compare_method:result_compare_method.py:90 00061439 	 -0.0045162 	 -0.0079346 	 0.0034184 	 0.7569210
+INFO     common.result_compare_method:result_compare_method.py:90 00061440 	 0.0084181 	 0.0076599 	 0.0007582 	 0.0900696
+INFO     common.result_compare_method:result_compare_method.py:309 ---------------------------------------------------------------------------------------
+INFO     common.result_compare_method:result_compare_method.py:312 Rtol   	 Atol   	 PctThd   	 PctRlt   	 Result
+INFO     common.result_compare_method:result_compare_method.py:313 ---------------------------------------------------------------------------------------
+INFO     common.result_compare_method:result_compare_method.py:316 0.0078    	 0.000100  	 99.50%   	 21.985677%   	 Failed
+INFO     common.result_compare_method:result_compare_method.py:326 Max-RelativeError is: 1.2097711563110352. Threshold is: 10.
+INFO     common.result_compare_method:result_compare_method.py:111 Error Line-----------------------------------------------------------------------------
+INFO     common.result_compare_method:result_compare_method.py:114 Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+INFO     common.result_compare_method:result_compare_method.py:115 ---------------------------------------------------------------------------------------
+INFO     common.result_compare_method:result_compare_method.py:124 00000000 	 0.0099649 	 0.0119629 	 0.0019980 	 0.1636777
+INFO     common.result_compare_method:result_compare_method.py:124 00000001 	 -0.0112059 	 -0.0105591 	 0.0006468 	 0.0529839
+INFO     common.result_compare_method:result_compare_method.py:124 00000002 	 0.0070416 	 0.0074463 	 0.0004047 	 0.0331522
+INFO     common.result_compare_method:result_compare_method.py:124 00000003 	 -0.0050382 	 -0.0060120 	 0.0009738 	 0.0797745
+INFO     common.result_compare_method:result_compare_method.py:124 00000004 	 0.0033573 	 -0.0006409 	 0.0039981 	 0.3275261
+INFO     common.result_compare_method:result_compare_method.py:124 00000005 	 -0.0058845 	 -0.0098877 	 0.0040032 	 0.3279404
+INFO     common.result_compare_method:result_compare_method.py:124 00000007 	 0.0035041 	 0.0012436 	 0.0022605 	 0.1851802
+INFO     common.result_compare_method:result_compare_method.py:124 00000008 	 0.0218652 	 0.0186768 	 0.0031885 	 0.1458239
+INFO     common.result_compare_method:result_compare_method.py:124 00000009 	 0.0081643 	 0.0125732 	 0.0044089 	 0.3506567
+INFO     common.result_compare_method:result_compare_method.py:133      ... 	     ... 	     ... 	     ... 	     ...
+INFO     common.result_compare_method:result_compare_method.py:124 00000093 	 -0.0163295 	 -0.0135498 	 0.0027797 	 0.1702235
+INFO     common.result_compare_method:result_compare_method.py:124 00000094 	 0.0029955 	 0.0092773 	 0.0062819 	 0.5146099
+INFO     common.result_compare_method:result_compare_method.py:124 00000095 	 0.0122705 	 0.0071716 	 0.0050989 	 0.4155397
+INFO     common.result_compare_method:result_compare_method.py:124 00000096 	 -0.0055105 	 -0.0072021 	 0.0016916 	 0.1385782
+INFO     common.result_compare_method:result_compare_method.py:124 00000097 	 -0.0008340 	 0.0016251 	 0.0024590 	 0.2014434
+INFO     common.result_compare_method:result_compare_method.py:124 00000098 	 0.0085470 	 0.0070801 	 0.0014669 	 0.1201696
+INFO     common.result_compare_method:result_compare_method.py:124 00000099 	 0.0145647 	 0.0104980 	 0.0040667 	 0.2792141
+INFO     common.result_compare_method:result_compare_method.py:124 00000100 	 0.0134325 	 0.0081787 	 0.0052537 	 0.3911231
+INFO     common.result_compare_method:result_compare_method.py:124 00000101 	 -0.0017666 	 0.0005302 	 0.0022968 	 0.1881556
+INFO     common.result_compare_method:result_compare_method.py:133      ... 	     ... 	     ... 	     ... 	     ...
+INFO     common.result_compare_method:result_compare_method.py:144 Max-RE line:---------------------------------------------------------------------------
+INFO     common.result_compare_method:result_compare_method.py:156 00040647 	 0.0104037 	 -0.0043640 	 0.0147677 	 1.2097712
+INFO     common.result_compare_method:result_compare_method.py:164 ---------------------------------------------------------------------------------------
+__ test_quant_flash_attn_mxfp8[PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3-4-5] ___
+
+params = {'name': 'PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3', 'B': 1, 'N_q': 48, 'N_kv': 8, ...}
+golden_mode = {'compare', 'npu'}, cache_dir = None
+
+    @pytest.mark.func_rdv
+    @pytest.mark.ci
+    @pytest.mark.parametrize("params", _build_parametrize_args(), ids=CASE_IDS)
+    def test_quant_flash_attn_mxfp8(params, golden_mode, cache_dir):
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(
+                test_runner.execute_test, params, golden_mode, cache_dir
+            )
+            atten_result, lse_result = future.result()
+>       test_runner.check_results(atten_result, lse_result)
+
+test_quant_flash_attn_func_rdv.py:46: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+atten_result = ('Failed', 15.621744791666666, 1.2097711563110352)
+lse_result = None
+
+    def check_results(atten_result, lse_result):
+        if atten_result is None:
+            return
+    
+        atten_status = atten_result[0] if isinstance(atten_result, tuple) else atten_result
+        if atten_status != "Pass":
+            pct = (
+                atten_result[1]
+                if isinstance(atten_result, tuple) and len(atten_result) > 1
+                else "N/A"
+            )
+>           pytest.fail(
+                f"Attention output compare failed: result={atten_status}, PctRlt={pct}"
+            )
+E           Failed: Attention output compare failed: result=Failed, PctRlt=15.621744791666666
+
+common/test_runner.py:206: Failed
+----------------------------- Captured stdout call -----------------------------
+
+=== DEBUG metadata === head[0:8] (sectionNum,isFD,mBase,s2Base,aicNum,aivNum,needInit,?): [1, 0, 128, 512, 32, 64, 0, 0]
+----------------------------- Captured stderr call -----------------------------
+[CACHE] load input ← /home/s00456726/code/ops-transformer-fd/attention/quant_flash_attn/tests/pytest/qfa_mxfp8_test/common/golden_cache/PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3_input.pt
+[CACHE] load CPU output ← /home/s00456726/code/ops-transformer-fd/attention/quant_flash_attn/tests/pytest/qfa_mxfp8_test/common/golden_cache/PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3_cpu_output.pt
+[NPU] Q layout: q_layout=N2TGD, G=6
+[NPU TND] q=torch.Size([10, 48, 128])
+[NPU] Q scale layout=N2TGD, shape=torch.Size([8, 10, 6, 2, 2])
+[NPU PA] kv_layout=PA_NZ
+[NPU PA] k=torch.Size([8, 8, 4, 512, 32]), v=torch.Size([8, 8, 4, 512, 32])
+[NPU PA] deq_k=torch.Size([8, 8, 32, 2, 16, 2]), deq_v=torch.Size([8, 8, 8, 8, 16, 2])
+[NPU] prepare PA inputs done.
+[NPU] 调用 PA 模式 (GRAPH_PATH=0)...
+[NPU] 调用 QFA 单算子模式...
+[NPU] output=torch.Size([10, 48, 128])
+[CACHE] save NPU output → /home/s00456726/code/ops-transformer-fd/attention/quant_flash_attn/tests/pytest/qfa_mxfp8_test/common/golden_cache/PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3_npu_output.pt
+split_count:61440.0; max_diff_hd:10;
+---------------------------------------------------------------------------------------
+Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+---------------------------------------------------------------------------------------
+00000001 	 0.0099649 	 0.0119629 	 0.0019980 	 0.2005062
+00000002 	 -0.0112059 	 -0.0105591 	 0.0006468 	 0.0577177
+00000003 	 0.0070416 	 0.0074463 	 0.0004047 	 0.0574712
+00000004 	 -0.0050382 	 -0.0060120 	 0.0009738 	 0.1932871
+00000005 	 0.0033573 	 -0.0006409 	 0.0039981 	 1.1908909
+00000006 	 -0.0058845 	 -0.0098877 	 0.0040032 	 0.6802903
+00000007 	 -0.0026220 	 -0.0025635 	 0.0000585 	 0.0223192
+00000008 	 0.0035041 	 0.0012436 	 0.0022605 	 0.6451031
+00000009 	 0.0218652 	 0.0186768 	 0.0031885 	 0.1458239
+00000010 	 0.0081643 	 0.0125732 	 0.0044089 	 0.5400175
+...   	   ...   	   ...   	   ...    	   ...
+00061431 	 0.0030385 	 0.0004406 	 0.0025979 	 0.8549964
+00061432 	 0.0078851 	 0.0076904 	 0.0001947 	 0.0246899
+00061433 	 0.0237829 	 0.0207520 	 0.0030310 	 0.1274427
+00061434 	 0.0033191 	 0.0002995 	 0.0030197 	 0.9097789
+00061435 	 -0.0001018 	 -0.0035400 	 0.0034382 	 33.7630439
+00061436 	 -0.0006528 	 -0.0069580 	 0.0063052 	 9.6592947
+00061437 	 -0.0034170 	 0.0002337 	 0.0036506 	 1.0683795
+00061438 	 0.0046554 	 0.0071716 	 0.0025163 	 0.5405055
+00061439 	 -0.0045162 	 -0.0079346 	 0.0034184 	 0.7569210
+00061440 	 0.0084181 	 0.0076599 	 0.0007582 	 0.0900696
+---------------------------------------------------------------------------------------
+Rtol   	 Atol   	 PctThd   	 PctRlt   	 Result
+---------------------------------------------------------------------------------------
+0.0078    	 0.000100  	 99.50%   	 15.621745%   	 Failed
+Max-RelativeError is: 1.2097711563110352. Threshold is: 10.
+Error Line-----------------------------------------------------------------------------
+Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+---------------------------------------------------------------------------------------
+00000000 	 0.0099649 	 0.0119629 	 0.0019980 	 0.1636777
+00000001 	 -0.0112059 	 -0.0105591 	 0.0006468 	 0.0529839
+00000002 	 0.0070416 	 0.0074463 	 0.0004047 	 0.0331522
+00000003 	 -0.0050382 	 -0.0060120 	 0.0009738 	 0.0797745
+00000004 	 0.0033573 	 -0.0006409 	 0.0039981 	 0.3275261
+00000005 	 -0.0058845 	 -0.0098877 	 0.0040032 	 0.3279404
+00000007 	 0.0035041 	 0.0012436 	 0.0022605 	 0.1851802
+00000008 	 0.0218652 	 0.0186768 	 0.0031885 	 0.1458239
+00000009 	 0.0081643 	 0.0125732 	 0.0044089 	 0.3506567
+     ... 	     ... 	     ... 	     ... 	     ...
+00000093 	 -0.0163295 	 -0.0135498 	 0.0027797 	 0.1702235
+00000094 	 0.0029955 	 0.0092773 	 0.0062819 	 0.5146099
+00000095 	 0.0122705 	 0.0071716 	 0.0050989 	 0.4155397
+00000096 	 -0.0055105 	 -0.0072021 	 0.0016916 	 0.1385782
+00000097 	 -0.0008340 	 0.0016251 	 0.0024590 	 0.2014434
+00000098 	 0.0085470 	 0.0070801 	 0.0014669 	 0.1201696
+00000099 	 0.0145647 	 0.0104980 	 0.0040667 	 0.2792141
+00000100 	 0.0134325 	 0.0081787 	 0.0052537 	 0.3911231
+00000101 	 -0.0017666 	 0.0005302 	 0.0022968 	 0.1881556
+     ... 	     ... 	     ... 	     ... 	     ...
+Max-RE line:---------------------------------------------------------------------------
+00040647 	 0.0104037 	 -0.0043640 	 0.0147677 	 1.2097712
+---------------------------------------------------------------------------------------
+------------------------------ Captured log call -------------------------------
+INFO     common.golden_cache:golden_cache.py:46 [CACHE] load input ← /home/s00456726/code/ops-transformer-fd/attention/quant_flash_attn/tests/pytest/qfa_mxfp8_test/common/golden_cache/PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3_input.pt
+INFO     common.golden_cache:golden_cache.py:76 [CACHE] load CPU output ← /home/s00456726/code/ops-transformer-fd/attention/quant_flash_attn/tests/pytest/qfa_mxfp8_test/common/golden_cache/PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3_cpu_output.pt
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1517 [NPU] Q layout: q_layout=N2TGD, G=6
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1530 [NPU TND] q=torch.Size([10, 48, 128])
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1539 [NPU] Q scale layout=N2TGD, shape=torch.Size([8, 10, 6, 2, 2])
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1642 [NPU PA] kv_layout=PA_NZ
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1643 [NPU PA] k=torch.Size([8, 8, 4, 512, 32]), v=torch.Size([8, 8, 4, 512, 32])
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1648 [NPU PA] deq_k=torch.Size([8, 8, 32, 2, 16, 2]), deq_v=torch.Size([8, 8, 8, 8, 16, 2])
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1663 [NPU] prepare PA inputs done.
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1816 [NPU] 调用 PA 模式 (GRAPH_PATH=0)...
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1864 [NPU] 调用 QFA 单算子模式...
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1829 [NPU] output=torch.Size([10, 48, 128])
+INFO     common.golden_cache:golden_cache.py:87 [CACHE] save NPU output → /home/s00456726/code/ops-transformer-fd/attention/quant_flash_attn/tests/pytest/qfa_mxfp8_test/common/golden_cache/PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3_npu_output.pt
+INFO     common.result_compare_method:result_compare_method.py:266 split_count:61440.0; max_diff_hd:10;
+INFO     common.result_compare_method:result_compare_method.py:35 ---------------------------------------------------------------------------------------
+INFO     common.result_compare_method:result_compare_method.py:38 Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+INFO     common.result_compare_method:result_compare_method.py:43 ---------------------------------------------------------------------------------------
+INFO     common.result_compare_method:result_compare_method.py:90 00000001 	 0.0099649 	 0.0119629 	 0.0019980 	 0.2005062
+INFO     common.result_compare_method:result_compare_method.py:90 00000002 	 -0.0112059 	 -0.0105591 	 0.0006468 	 0.0577177
+INFO     common.result_compare_method:result_compare_method.py:90 00000003 	 0.0070416 	 0.0074463 	 0.0004047 	 0.0574712
+INFO     common.result_compare_method:result_compare_method.py:90 00000004 	 -0.0050382 	 -0.0060120 	 0.0009738 	 0.1932871
+INFO     common.result_compare_method:result_compare_method.py:90 00000005 	 0.0033573 	 -0.0006409 	 0.0039981 	 1.1908909
+INFO     common.result_compare_method:result_compare_method.py:90 00000006 	 -0.0058845 	 -0.0098877 	 0.0040032 	 0.6802903
+INFO     common.result_compare_method:result_compare_method.py:90 00000007 	 -0.0026220 	 -0.0025635 	 0.0000585 	 0.0223192
+INFO     common.result_compare_method:result_compare_method.py:90 00000008 	 0.0035041 	 0.0012436 	 0.0022605 	 0.6451031
+INFO     common.result_compare_method:result_compare_method.py:90 00000009 	 0.0218652 	 0.0186768 	 0.0031885 	 0.1458239
+INFO     common.result_compare_method:result_compare_method.py:90 00000010 	 0.0081643 	 0.0125732 	 0.0044089 	 0.5400175
+INFO     common.result_compare_method:result_compare_method.py:105 ...   	   ...   	   ...   	   ...    	   ...
+INFO     common.result_compare_method:result_compare_method.py:90 00061431 	 0.0030385 	 0.0004406 	 0.0025979 	 0.8549964
+INFO     common.result_compare_method:result_compare_method.py:90 00061432 	 0.0078851 	 0.0076904 	 0.0001947 	 0.0246899
+INFO     common.result_compare_method:result_compare_method.py:90 00061433 	 0.0237829 	 0.0207520 	 0.0030310 	 0.1274427
+INFO     common.result_compare_method:result_compare_method.py:90 00061434 	 0.0033191 	 0.0002995 	 0.0030197 	 0.9097789
+INFO     common.result_compare_method:result_compare_method.py:90 00061435 	 -0.0001018 	 -0.0035400 	 0.0034382 	 33.7630439
+INFO     common.result_compare_method:result_compare_method.py:90 00061436 	 -0.0006528 	 -0.0069580 	 0.0063052 	 9.6592947
+INFO     common.result_compare_method:result_compare_method.py:90 00061437 	 -0.0034170 	 0.0002337 	 0.0036506 	 1.0683795
+INFO     common.result_compare_method:result_compare_method.py:90 00061438 	 0.0046554 	 0.0071716 	 0.0025163 	 0.5405055
+INFO     common.result_compare_method:result_compare_method.py:90 00061439 	 -0.0045162 	 -0.0079346 	 0.0034184 	 0.7569210
+INFO     common.result_compare_method:result_compare_method.py:90 00061440 	 0.0084181 	 0.0076599 	 0.0007582 	 0.0900696
+INFO     common.result_compare_method:result_compare_method.py:309 ---------------------------------------------------------------------------------------
+INFO     common.result_compare_method:result_compare_method.py:312 Rtol   	 Atol   	 PctThd   	 PctRlt   	 Result
+INFO     common.result_compare_method:result_compare_method.py:313 ---------------------------------------------------------------------------------------
+INFO     common.result_compare_method:result_compare_method.py:316 0.0078    	 0.000100  	 99.50%   	 15.621745%   	 Failed
+INFO     common.result_compare_method:result_compare_method.py:326 Max-RelativeError is: 1.2097711563110352. Threshold is: 10.
+INFO     common.result_compare_method:result_compare_method.py:111 Error Line-----------------------------------------------------------------------------
+INFO     common.result_compare_method:result_compare_method.py:114 Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+INFO     common.result_compare_method:result_compare_method.py:115 ---------------------------------------------------------------------------------------
+INFO     common.result_compare_method:result_compare_method.py:124 00000000 	 0.0099649 	 0.0119629 	 0.0019980 	 0.1636777
+INFO     common.result_compare_method:result_compare_method.py:124 00000001 	 -0.0112059 	 -0.0105591 	 0.0006468 	 0.0529839
+INFO     common.result_compare_method:result_compare_method.py:124 00000002 	 0.0070416 	 0.0074463 	 0.0004047 	 0.0331522
+INFO     common.result_compare_method:result_compare_method.py:124 00000003 	 -0.0050382 	 -0.0060120 	 0.0009738 	 0.0797745
+INFO     common.result_compare_method:result_compare_method.py:124 00000004 	 0.0033573 	 -0.0006409 	 0.0039981 	 0.3275261
+INFO     common.result_compare_method:result_compare_method.py:124 00000005 	 -0.0058845 	 -0.0098877 	 0.0040032 	 0.3279404
+INFO     common.result_compare_method:result_compare_method.py:124 00000007 	 0.0035041 	 0.0012436 	 0.0022605 	 0.1851802
+INFO     common.result_compare_method:result_compare_method.py:124 00000008 	 0.0218652 	 0.0186768 	 0.0031885 	 0.1458239
+INFO     common.result_compare_method:result_compare_method.py:124 00000009 	 0.0081643 	 0.0125732 	 0.0044089 	 0.3506567
+INFO     common.result_compare_method:result_compare_method.py:133      ... 	     ... 	     ... 	     ... 	     ...
+INFO     common.result_compare_method:result_compare_method.py:124 00000093 	 -0.0163295 	 -0.0135498 	 0.0027797 	 0.1702235
+INFO     common.result_compare_method:result_compare_method.py:124 00000094 	 0.0029955 	 0.0092773 	 0.0062819 	 0.5146099
+INFO     common.result_compare_method:result_compare_method.py:124 00000095 	 0.0122705 	 0.0071716 	 0.0050989 	 0.4155397
+INFO     common.result_compare_method:result_compare_method.py:124 00000096 	 -0.0055105 	 -0.0072021 	 0.0016916 	 0.1385782
+INFO     common.result_compare_method:result_compare_method.py:124 00000097 	 -0.0008340 	 0.0016251 	 0.0024590 	 0.2014434
+INFO     common.result_compare_method:result_compare_method.py:124 00000098 	 0.0085470 	 0.0070801 	 0.0014669 	 0.1201696
+INFO     common.result_compare_method:result_compare_method.py:124 00000099 	 0.0145647 	 0.0104980 	 0.0040667 	 0.2792141
+INFO     common.result_compare_method:result_compare_method.py:124 00000100 	 0.0134325 	 0.0081787 	 0.0052537 	 0.3911231
+INFO     common.result_compare_method:result_compare_method.py:124 00000101 	 -0.0017666 	 0.0005302 	 0.0022968 	 0.1881556
+INFO     common.result_compare_method:result_compare_method.py:133      ... 	     ... 	     ... 	     ... 	     ...
+INFO     common.result_compare_method:result_compare_method.py:144 Max-RE line:---------------------------------------------------------------------------
+INFO     common.result_compare_method:result_compare_method.py:156 00040647 	 0.0104037 	 -0.0043640 	 0.0147677 	 1.2097712
+INFO     common.result_compare_method:result_compare_method.py:164 ---------------------------------------------------------------------------------------
+__ test_quant_flash_attn_mxfp8[PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3-5-5] ___
+
+params = {'name': 'PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3', 'B': 1, 'N_q': 48, 'N_kv': 8, ...}
+golden_mode = {'compare', 'npu'}, cache_dir = None
+
+    @pytest.mark.func_rdv
+    @pytest.mark.ci
+    @pytest.mark.parametrize("params", _build_parametrize_args(), ids=CASE_IDS)
+    def test_quant_flash_attn_mxfp8(params, golden_mode, cache_dir):
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(
+                test_runner.execute_test, params, golden_mode, cache_dir
+            )
+            atten_result, lse_result = future.result()
+>       test_runner.check_results(atten_result, lse_result)
+
+test_quant_flash_attn_func_rdv.py:46: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+atten_result = ('Failed', 22.111002604166664, 1.2097711563110352)
+lse_result = None
+
+    def check_results(atten_result, lse_result):
+        if atten_result is None:
+            return
+    
+        atten_status = atten_result[0] if isinstance(atten_result, tuple) else atten_result
+        if atten_status != "Pass":
+            pct = (
+                atten_result[1]
+                if isinstance(atten_result, tuple) and len(atten_result) > 1
+                else "N/A"
+            )
+>           pytest.fail(
+                f"Attention output compare failed: result={atten_status}, PctRlt={pct}"
+            )
+E           Failed: Attention output compare failed: result=Failed, PctRlt=22.111002604166664
+
+common/test_runner.py:206: Failed
+----------------------------- Captured stdout call -----------------------------
+
+=== DEBUG metadata === head[0:8] (sectionNum,isFD,mBase,s2Base,aicNum,aivNum,needInit,?): [1, 0, 128, 512, 32, 64, 0, 0]
+----------------------------- Captured stderr call -----------------------------
+[CACHE] load input ← /home/s00456726/code/ops-transformer-fd/attention/quant_flash_attn/tests/pytest/qfa_mxfp8_test/common/golden_cache/PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3_input.pt
+[CACHE] load CPU output ← /home/s00456726/code/ops-transformer-fd/attention/quant_flash_attn/tests/pytest/qfa_mxfp8_test/common/golden_cache/PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3_cpu_output.pt
+[NPU] Q layout: q_layout=N2TGD, G=6
+[NPU TND] q=torch.Size([10, 48, 128])
+[NPU] Q scale layout=N2TGD, shape=torch.Size([8, 10, 6, 2, 2])
+[NPU PA] kv_layout=PA_NZ
+[NPU PA] k=torch.Size([8, 8, 4, 512, 32]), v=torch.Size([8, 8, 4, 512, 32])
+[NPU PA] deq_k=torch.Size([8, 8, 32, 2, 16, 2]), deq_v=torch.Size([8, 8, 8, 8, 16, 2])
+[NPU] prepare PA inputs done.
+[NPU] 调用 PA 模式 (GRAPH_PATH=0)...
+[NPU] 调用 QFA 单算子模式...
+[NPU] output=torch.Size([10, 48, 128])
+[CACHE] save NPU output → /home/s00456726/code/ops-transformer-fd/attention/quant_flash_attn/tests/pytest/qfa_mxfp8_test/common/golden_cache/PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3_npu_output.pt
+split_count:61440.0; max_diff_hd:10;
+---------------------------------------------------------------------------------------
+Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+---------------------------------------------------------------------------------------
+00000001 	 0.0099649 	 0.0119629 	 0.0019980 	 0.2005062
+00000002 	 -0.0112059 	 -0.0105591 	 0.0006468 	 0.0577177
+00000003 	 0.0070416 	 0.0074463 	 0.0004047 	 0.0574712
+00000004 	 -0.0050382 	 -0.0060120 	 0.0009738 	 0.1932871
+00000005 	 0.0033573 	 -0.0006409 	 0.0039981 	 1.1908909
+00000006 	 -0.0058845 	 -0.0098877 	 0.0040032 	 0.6802903
+00000007 	 -0.0026220 	 -0.0025635 	 0.0000585 	 0.0223192
+00000008 	 0.0035041 	 0.0012436 	 0.0022605 	 0.6451031
+00000009 	 0.0218652 	 0.0186768 	 0.0031885 	 0.1458239
+00000010 	 0.0081643 	 0.0125732 	 0.0044089 	 0.5400175
+...   	   ...   	   ...   	   ...    	   ...
+00061431 	 0.0030385 	 0.0004406 	 0.0025979 	 0.8549964
+00061432 	 0.0078851 	 0.0076904 	 0.0001947 	 0.0246899
+00061433 	 0.0237829 	 0.0207520 	 0.0030310 	 0.1274427
+00061434 	 0.0033191 	 0.0002995 	 0.0030197 	 0.9097789
+00061435 	 -0.0001018 	 -0.0035400 	 0.0034382 	 33.7630439
+00061436 	 -0.0006528 	 -0.0069580 	 0.0063052 	 9.6592947
+00061437 	 -0.0034170 	 0.0002337 	 0.0036506 	 1.0683795
+00061438 	 0.0046554 	 0.0071716 	 0.0025163 	 0.5405055
+00061439 	 -0.0045162 	 -0.0079346 	 0.0034184 	 0.7569210
+00061440 	 0.0084181 	 0.0076599 	 0.0007582 	 0.0900696
+---------------------------------------------------------------------------------------
+Rtol   	 Atol   	 PctThd   	 PctRlt   	 Result
+---------------------------------------------------------------------------------------
+0.0078    	 0.000100  	 99.50%   	 22.111003%   	 Failed
+Max-RelativeError is: 1.2097711563110352. Threshold is: 10.
+Error Line-----------------------------------------------------------------------------
+Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+---------------------------------------------------------------------------------------
+00000000 	 0.0099649 	 0.0119629 	 0.0019980 	 0.1636777
+00000001 	 -0.0112059 	 -0.0105591 	 0.0006468 	 0.0529839
+00000002 	 0.0070416 	 0.0074463 	 0.0004047 	 0.0331522
+00000003 	 -0.0050382 	 -0.0060120 	 0.0009738 	 0.0797745
+00000004 	 0.0033573 	 -0.0006409 	 0.0039981 	 0.3275261
+00000005 	 -0.0058845 	 -0.0098877 	 0.0040032 	 0.3279404
+00000007 	 0.0035041 	 0.0012436 	 0.0022605 	 0.1851802
+00000008 	 0.0218652 	 0.0186768 	 0.0031885 	 0.1458239
+00000009 	 0.0081643 	 0.0125732 	 0.0044089 	 0.3506567
+     ... 	     ... 	     ... 	     ... 	     ...
+00000093 	 -0.0163295 	 -0.0135498 	 0.0027797 	 0.1702235
+00000094 	 0.0029955 	 0.0092773 	 0.0062819 	 0.5146099
+00000095 	 0.0122705 	 0.0071716 	 0.0050989 	 0.4155397
+00000096 	 -0.0055105 	 -0.0072021 	 0.0016916 	 0.1385782
+00000097 	 -0.0008340 	 0.0016251 	 0.0024590 	 0.2014434
+00000098 	 0.0085470 	 0.0070801 	 0.0014669 	 0.1201696
+00000099 	 0.0145647 	 0.0104980 	 0.0040667 	 0.2792141
+00000100 	 0.0134325 	 0.0081787 	 0.0052537 	 0.3911231
+00000101 	 -0.0017666 	 0.0005302 	 0.0022968 	 0.1881556
+     ... 	     ... 	     ... 	     ... 	     ...
+Max-RE line:---------------------------------------------------------------------------
+00040647 	 0.0104037 	 -0.0043640 	 0.0147677 	 1.2097712
+---------------------------------------------------------------------------------------
+------------------------------ Captured log call -------------------------------
+INFO     common.golden_cache:golden_cache.py:46 [CACHE] load input ← /home/s00456726/code/ops-transformer-fd/attention/quant_flash_attn/tests/pytest/qfa_mxfp8_test/common/golden_cache/PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3_input.pt
+INFO     common.golden_cache:golden_cache.py:76 [CACHE] load CPU output ← /home/s00456726/code/ops-transformer-fd/attention/quant_flash_attn/tests/pytest/qfa_mxfp8_test/common/golden_cache/PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3_cpu_output.pt
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1517 [NPU] Q layout: q_layout=N2TGD, G=6
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1530 [NPU TND] q=torch.Size([10, 48, 128])
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1539 [NPU] Q scale layout=N2TGD, shape=torch.Size([8, 10, 6, 2, 2])
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1642 [NPU PA] kv_layout=PA_NZ
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1643 [NPU PA] k=torch.Size([8, 8, 4, 512, 32]), v=torch.Size([8, 8, 4, 512, 32])
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1648 [NPU PA] deq_k=torch.Size([8, 8, 32, 2, 16, 2]), deq_v=torch.Size([8, 8, 8, 8, 16, 2])
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1663 [NPU] prepare PA inputs done.
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1816 [NPU] 调用 PA 模式 (GRAPH_PATH=0)...
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1864 [NPU] 调用 QFA 单算子模式...
+INFO     common.quant_flash_attn_golden:quant_flash_attn_golden.py:1829 [NPU] output=torch.Size([10, 48, 128])
+INFO     common.golden_cache:golden_cache.py:87 [CACHE] save NPU output → /home/s00456726/code/ops-transformer-fd/attention/quant_flash_attn/tests/pytest/qfa_mxfp8_test/common/golden_cache/PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3_npu_output.pt
+INFO     common.result_compare_method:result_compare_method.py:266 split_count:61440.0; max_diff_hd:10;
+INFO     common.result_compare_method:result_compare_method.py:35 ---------------------------------------------------------------------------------------
+INFO     common.result_compare_method:result_compare_method.py:38 Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+INFO     common.result_compare_method:result_compare_method.py:43 ---------------------------------------------------------------------------------------
+INFO     common.result_compare_method:result_compare_method.py:90 00000001 	 0.0099649 	 0.0119629 	 0.0019980 	 0.2005062
+INFO     common.result_compare_method:result_compare_method.py:90 00000002 	 -0.0112059 	 -0.0105591 	 0.0006468 	 0.0577177
+INFO     common.result_compare_method:result_compare_method.py:90 00000003 	 0.0070416 	 0.0074463 	 0.0004047 	 0.0574712
+INFO     common.result_compare_method:result_compare_method.py:90 00000004 	 -0.0050382 	 -0.0060120 	 0.0009738 	 0.1932871
+INFO     common.result_compare_method:result_compare_method.py:90 00000005 	 0.0033573 	 -0.0006409 	 0.0039981 	 1.1908909
+INFO     common.result_compare_method:result_compare_method.py:90 00000006 	 -0.0058845 	 -0.0098877 	 0.0040032 	 0.6802903
+INFO     common.result_compare_method:result_compare_method.py:90 00000007 	 -0.0026220 	 -0.0025635 	 0.0000585 	 0.0223192
+INFO     common.result_compare_method:result_compare_method.py:90 00000008 	 0.0035041 	 0.0012436 	 0.0022605 	 0.6451031
+INFO     common.result_compare_method:result_compare_method.py:90 00000009 	 0.0218652 	 0.0186768 	 0.0031885 	 0.1458239
+INFO     common.result_compare_method:result_compare_method.py:90 00000010 	 0.0081643 	 0.0125732 	 0.0044089 	 0.5400175
+INFO     common.result_compare_method:result_compare_method.py:105 ...   	   ...   	   ...   	   ...    	   ...
+INFO     common.result_compare_method:result_compare_method.py:90 00061431 	 0.0030385 	 0.0004406 	 0.0025979 	 0.8549964
+INFO     common.result_compare_method:result_compare_method.py:90 00061432 	 0.0078851 	 0.0076904 	 0.0001947 	 0.0246899
+INFO     common.result_compare_method:result_compare_method.py:90 00061433 	 0.0237829 	 0.0207520 	 0.0030310 	 0.1274427
+INFO     common.result_compare_method:result_compare_method.py:90 00061434 	 0.0033191 	 0.0002995 	 0.0030197 	 0.9097789
+INFO     common.result_compare_method:result_compare_method.py:90 00061435 	 -0.0001018 	 -0.0035400 	 0.0034382 	 33.7630439
+INFO     common.result_compare_method:result_compare_method.py:90 00061436 	 -0.0006528 	 -0.0069580 	 0.0063052 	 9.6592947
+INFO     common.result_compare_method:result_compare_method.py:90 00061437 	 -0.0034170 	 0.0002337 	 0.0036506 	 1.0683795
+INFO     common.result_compare_method:result_compare_method.py:90 00061438 	 0.0046554 	 0.0071716 	 0.0025163 	 0.5405055
+INFO     common.result_compare_method:result_compare_method.py:90 00061439 	 -0.0045162 	 -0.0079346 	 0.0034184 	 0.7569210
+INFO     common.result_compare_method:result_compare_method.py:90 00061440 	 0.0084181 	 0.0076599 	 0.0007582 	 0.0900696
+INFO     common.result_compare_method:result_compare_method.py:309 ---------------------------------------------------------------------------------------
+INFO     common.result_compare_method:result_compare_method.py:312 Rtol   	 Atol   	 PctThd   	 PctRlt   	 Result
+INFO     common.result_compare_method:result_compare_method.py:313 ---------------------------------------------------------------------------------------
+INFO     common.result_compare_method:result_compare_method.py:316 0.0078    	 0.000100  	 99.50%   	 22.111003%   	 Failed
+INFO     common.result_compare_method:result_compare_method.py:326 Max-RelativeError is: 1.2097711563110352. Threshold is: 10.
+INFO     common.result_compare_method:result_compare_method.py:111 Error Line-----------------------------------------------------------------------------
+INFO     common.result_compare_method:result_compare_method.py:114 Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+INFO     common.result_compare_method:result_compare_method.py:115 ---------------------------------------------------------------------------------------
+INFO     common.result_compare_method:result_compare_method.py:124 00000000 	 0.0099649 	 0.0119629 	 0.0019980 	 0.1636777
+INFO     common.result_compare_method:result_compare_method.py:124 00000001 	 -0.0112059 	 -0.0105591 	 0.0006468 	 0.0529839
+INFO     common.result_compare_method:result_compare_method.py:124 00000002 	 0.0070416 	 0.0074463 	 0.0004047 	 0.0331522
+INFO     common.result_compare_method:result_compare_method.py:124 00000003 	 -0.0050382 	 -0.0060120 	 0.0009738 	 0.0797745
+INFO     common.result_compare_method:result_compare_method.py:124 00000004 	 0.0033573 	 -0.0006409 	 0.0039981 	 0.3275261
+INFO     common.result_compare_method:result_compare_method.py:124 00000005 	 -0.0058845 	 -0.0098877 	 0.0040032 	 0.3279404
+INFO     common.result_compare_method:result_compare_method.py:124 00000007 	 0.0035041 	 0.0012436 	 0.0022605 	 0.1851802
+INFO     common.result_compare_method:result_compare_method.py:124 00000008 	 0.0218652 	 0.0186768 	 0.0031885 	 0.1458239
+INFO     common.result_compare_method:result_compare_method.py:124 00000009 	 0.0081643 	 0.0125732 	 0.0044089 	 0.3506567
+INFO     common.result_compare_method:result_compare_method.py:133      ... 	     ... 	     ... 	     ... 	     ...
+INFO     common.result_compare_method:result_compare_method.py:124 00000093 	 -0.0163295 	 -0.0135498 	 0.0027797 	 0.1702235
+INFO     common.result_compare_method:result_compare_method.py:124 00000094 	 0.0029955 	 0.0092773 	 0.0062819 	 0.5146099
+INFO     common.result_compare_method:result_compare_method.py:124 00000095 	 0.0122705 	 0.0071716 	 0.0050989 	 0.4155397
+INFO     common.result_compare_method:result_compare_method.py:124 00000096 	 -0.0055105 	 -0.0072021 	 0.0016916 	 0.1385782
+INFO     common.result_compare_method:result_compare_method.py:124 00000097 	 -0.0008340 	 0.0016251 	 0.0024590 	 0.2014434
+INFO     common.result_compare_method:result_compare_method.py:124 00000098 	 0.0085470 	 0.0070801 	 0.0014669 	 0.1201696
+INFO     common.result_compare_method:result_compare_method.py:124 00000099 	 0.0145647 	 0.0104980 	 0.0040667 	 0.2792141
+INFO     common.result_compare_method:result_compare_method.py:124 00000100 	 0.0134325 	 0.0081787 	 0.0052537 	 0.3911231
+INFO     common.result_compare_method:result_compare_method.py:124 00000101 	 -0.0017666 	 0.0005302 	 0.0022968 	 0.1881556
+INFO     common.result_compare_method:result_compare_method.py:133      ... 	     ... 	     ... 	     ... 	     ...
+INFO     common.result_compare_method:result_compare_method.py:144 Max-RE line:---------------------------------------------------------------------------
+INFO     common.result_compare_method:result_compare_method.py:156 00040647 	 0.0104037 	 -0.0043640 	 0.0147677 	 1.2097712
+INFO     common.result_compare_method:result_compare_method.py:164 ---------------------------------------------------------------------------------------
+=============================== warnings summary ===============================
+../../../../../../../../../root/miniconda3/envs/swl_311/lib/python3.11/site-packages/torch/jit/_script.py:365: 14 warnings
+  /root/miniconda3/envs/swl_311/lib/python3.11/site-packages/torch/jit/_script.py:365: DeprecationWarning: `torch.jit.script_method` is deprecated. Please switch to `torch.compile` or `torch.export`.
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED test_quant_flash_attn_func_rdv.py::test_quant_flash_attn_mxfp8[PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3-1-5]
+FAILED test_quant_flash_attn_func_rdv.py::test_quant_flash_attn_mxfp8[PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3-2-5]
+FAILED test_quant_flash_attn_func_rdv.py::test_quant_flash_attn_mxfp8[PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3-3-5]
+FAILED test_quant_flash_attn_func_rdv.py::test_quant_flash_attn_mxfp8[PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3-4-5]
+FAILED test_quant_flash_attn_func_rdv.py::test_quant_flash_attn_mxfp8[PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3-5-5]
+=============== 5 failed, 2235 deselected, 14 warnings in 16.11s ===============
