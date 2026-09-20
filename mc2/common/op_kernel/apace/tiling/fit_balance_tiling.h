@@ -546,7 +546,7 @@ public:
     };
 
     // TilingMethods
-    void GenerateInitialPartition(bool smallDimAlignUp = false);
+    void GenerateInitialPartition();
     bool SetShortTileLen(bool noCutFlag = false);
     void NoCutTiling();
     void MaxTileCntUniform();
@@ -554,7 +554,7 @@ public:
     // 离散切分对齐 (A 家族全部算子的 Adjust 阶段使用)
     void AlignTileSmall();
     void AlignTileLarge();
-    void FitTileLengthDiscrete(bool smallDimAlignUp, bool goodLinearityShape, bool localAtFront = false);
+    void FitTileLengthDiscrete(bool goodLinearityShape, bool localAtFront = false);
     void CalcShortTile();
     void CalcBackTile();
     void RedistributeTile();
@@ -612,18 +612,19 @@ inline void CutPlanner::AlignTileSmall()
     }
 }
 
-inline void CutPlanner::GenerateInitialPartition(bool smallDimAlignUp)
+// 对齐容差取整: 计算bound(短块后置) 0.5 中性舍入, 通信bound(短块前置) 0.75 消极进位
+// (小形态强制对齐开关 smallDimAlignUp 系 B 家族/A2AMM 专属——引擎消费者恒 false, §4.35 删)
+inline void CutPlanner::GenerateInitialPartition()
 {
     cutRes.longTileLen = std::max(cutRes.longTileLen, cutRes.shortTileLen);
     cutRes.longTileLen = std::min(cutRes.longTileLen, totalLen - cutRes.shortTileLen);
     uint64_t newTileLen = cutRes.longTileLen / tileArgs.mAlignLen * tileArgs.mAlignLen;
-    // 0.5 is half of mAlignLen
     double alignRatio = ALIGN_TOL_CALC_BOUND;
     if (!cutRes.shortTileAtBack) {
         alignRatio = ALIGN_TOL_COMM_BOUND;
     }
 
-    bool alignUpFlag = ((cutRes.longTileLen - newTileLen) > (tileArgs.mAlignLen * alignRatio)) || smallDimAlignUp;
+    bool alignUpFlag = (cutRes.longTileLen - newTileLen) > (tileArgs.mAlignLen * alignRatio);
     if (alignUpFlag) {
         cutRes.longTileLen = newTileLen + tileArgs.mAlignLen;
     } else {
@@ -637,10 +638,10 @@ inline void CutPlanner::GenerateInitialPartition(bool smallDimAlignUp)
     cutRes.totalTileCnt = cutRes.numShortTile + cutRes.numLongTile;
 }
 
-inline void CutPlanner::FitTileLengthDiscrete(bool smallDimAlignUp, bool goodLinearityShape, bool localAtFront)
+inline void CutPlanner::FitTileLengthDiscrete(bool goodLinearityShape, bool localAtFront)
 {
     // 流水配平，找到初始切分长度和个数
-    GenerateInitialPartition(smallDimAlignUp);
+    GenerateInitialPartition();
 
     // 处理剩余长度
     uint64_t resLen = totalLen - cutRes.numLongTile * cutRes.longTileLen - cutRes.numShortTile * cutRes.shortTileLen;
@@ -1095,7 +1096,7 @@ inline CommCutResult Schedule(FitBasedBalanceCtx &ctx)
 
     // ---- ④ Adjust: E24(goodLinearity: AG 恒 true) + 离散化 + E25 等长归一 ----
     const bool goodLin = isAg ? true : IsGoodLinearityShape(ctx.matmulPerf.mmShapeInfo_);
-    ctx.tilingM.FitTileLengthDiscrete(false, goodLin, isAg); // localAtFront: AG 前端有本地块
+    ctx.tilingM.FitTileLengthDiscrete(goodLin, isAg); // localAtFront: AG 前端有本地块
     MergeEqualTiles(ctx.tilingM);
     return ctx.tilingM.cutRes;
 }
