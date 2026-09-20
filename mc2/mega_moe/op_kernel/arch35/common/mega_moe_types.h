@@ -234,7 +234,8 @@ struct MoeStageCommonConfig {
 struct GmmExecutionConfig {
     BlockJobContext blockJob;
     bool isPerExpertWeightTensor;
-    StridedAConfig inputLayout;
+    StridedAConfig inputLayout{};
+    bool useStridedInput = false;
 };
 
 // 各流水阶段在同步 workspace 中为每个专家预留的 slot 数量。
