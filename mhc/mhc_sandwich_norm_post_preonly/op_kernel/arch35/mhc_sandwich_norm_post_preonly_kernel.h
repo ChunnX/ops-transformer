@@ -104,13 +104,13 @@ public:
 
         // UB空间分配
         pipe_.InitBuffer(bufHOutBf16_, BUFFER_NUM_ONE, dimTile_ * sizeof(T));
+        pipe_.InitBuffer(bufGamma0Fp32_, dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufX2Fp32_, N_ * dimTile_ * sizeof(float));
-        // dimTile=2560时其余固定缓存共164192B；D=7168的完整低精度x2为57344B，
-        // 合计221536B，小于A5的256KiB UB上限。
+        // dimTile=2560时其余固定缓存共174432B；D=7168的完整低精度x2为57344B，
+        // 合计231776B，小于A5的256KiB UB上限。
         pipe_.InitBuffer(bufX2Cache_, K_ * sizeof(T));
         pipe_.InitBuffer(bufResidualBf16_, 1, N_ * dimTile_ * sizeof(T));
-        // 第一行在residual写入前保存gamma0，R3时复用为奇数head的gamma2；
-        // 前四行随后保存residual并复用为R4/R5的归约输入。第五行在前半程保存h_out，
+        // 前四行先保存residual，之后复用为R4/R5的五行归约输入；第五行在前半程保存h_out，
         // h_out失效后再复用为R6/R7的h_in和通用输出暂存。
         pipe_.InitBuffer(bufResFp32_, (N_ + 1) * dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufPostComb_, POST_COMB_SIZE * sizeof(float));
@@ -150,7 +150,7 @@ public:
             DataCopyExtParams gP = {1, 0, 0, 0, 0};
             gP.blockLen = dimTile_ * sizeof(float);
             DataCopyPadExtParams<float> gPad = {false, 0, 0, 0};
-            DataCopyPad(bufResFp32_.Get<float>(), gamma0Gm_[0], gP, gPad);
+            DataCopyPad(bufGamma0Fp32_.Get<float>(), gamma0Gm_[0], gP, gPad);
             // gamma_2的形状为[N*D]，在RMSNorm_mid中按head加载
         }
 
@@ -206,6 +206,7 @@ private:
 
     // UB缓存
     TQue<TPosition::VECIN, BUFFER_NUM_ONE> bufHOutBf16_;
+    TBuf<TPosition::VECCALC> bufGamma0Fp32_;
     TBuf<TPosition::VECCALC> bufGamma2Fp32_;
     TBuf<TPosition::VECCALC> bufX2Fp32_;
     TBuf<TPosition::VECCALC> bufX2Cache_;
