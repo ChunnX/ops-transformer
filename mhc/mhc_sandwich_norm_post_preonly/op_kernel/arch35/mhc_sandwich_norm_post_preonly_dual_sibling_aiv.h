@@ -144,8 +144,9 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         sumSq1 += ReduceSumSq(hIn, tD);
     }
 
+    StartCacheGamma1();
     const float invRms1 = ComputeInvRms(sumSq1, invD_);
-    CacheGamma1();
+    WaitCacheGamma1();
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;

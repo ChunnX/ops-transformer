@@ -81,8 +81,8 @@ __aicore__ inline void CacheGamma0()
     DataCopyPad(gamma0, gamma0Gm_, params, pad);
 }
 
-/// R7开始前缓存完整gamma1；更大D保持原分块搬运以控制UB上限。
-__aicore__ inline void CacheGamma1()
+/// R6归约完成后发起完整gamma1搬运，与invRms1标量计算重叠。
+__aicore__ inline void StartCacheGamma1()
 {
     if (D_ > GAMMA1_CACHE_MAX_D) {
         return;
@@ -93,6 +93,14 @@ __aicore__ inline void CacheGamma1()
     DataCopyPadExtParams<float> pad = {false, 0, 0, 0};
     DataCopyPad(gamma1, gamma1Gm_, params, pad);
     SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+}
+
+/// R7读取完整gamma1前回收MTE2到Vector事件。
+__aicore__ inline void WaitCacheGamma1()
+{
+    if (D_ > GAMMA1_CACHE_MAX_D) {
+        return;
+    }
     WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
 }
 

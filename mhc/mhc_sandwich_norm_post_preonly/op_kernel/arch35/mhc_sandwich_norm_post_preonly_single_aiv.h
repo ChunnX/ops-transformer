@@ -347,8 +347,9 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
     }
 
     // 第四遍：沿完整D轴计算R7并写最终输出。
+    StartCacheGamma1();
     const float invRms1 = ComputeInvRms(sumSq1, invD_);
-    CacheGamma1();
+    WaitCacheGamma1();
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
