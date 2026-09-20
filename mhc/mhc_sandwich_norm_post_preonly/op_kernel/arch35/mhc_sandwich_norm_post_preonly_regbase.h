@@ -178,6 +178,32 @@ __aicore__ inline void MulsWithUbScalar(const LocalTensor<float> &dst, const Loc
     }
 }
 
+// 单个head在一个VF内完成低精度读取、FP32转换和门控乘法，避免生成中间FP32张量。
+template <typename T>
+__aicore__ inline void MulsB16WithUbScalar(const LocalTensor<float> &dst, const LocalTensor<T> &src,
+                                           const LocalTensor<float> &scalars, uint32_t scalarIndex, uint32_t count)
+{
+    __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();
+    __local_mem__ T *srcAddr = (__local_mem__ T *)src.GetPhyAddr();
+    __local_mem__ float *scalarAddr = (__local_mem__ float *)scalars.GetPhyAddr();
+    uint32_t remain = count;
+    const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
+    __VEC_SCOPE__
+    {
+        RegTensor<T> srcReg;
+        RegTensor<float> srcFp32Reg, dstReg, scalarReg;
+        MaskReg mask;
+        DataCopy<float, LoadDist::DIST_BRC_B32>(scalarReg, scalarAddr + scalarIndex);
+        for (uint16_t i = 0; i < loops; ++i) {
+            mask = UpdateMask<float>(remain);
+            DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + i * VL_FP32);
+            Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
+            AscendC::Reg::Mul(dstReg, srcFp32Reg, scalarReg, mask);
+            DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
+        }
+    }
+}
+
 // 在寄存器内依次完成标量缩放和gamma缩放，只把最终结果写回UB。
 __aicore__ inline void ScaleAndMulGamma(const LocalTensor<float> &dst, const LocalTensor<float> &src,
                                         const LocalTensor<float> &gamma, float scale, uint32_t count)
@@ -333,6 +359,33 @@ __aicore__ inline void AxpyWithUbScalar(const LocalTensor<float> &dst, const Loc
             DataCopy<float, LoadDist::DIST_NORM>(srcReg, srcAddr + i * VL_FP32);
             DataCopy<float, LoadDist::DIST_NORM>(dstReg, dstAddr + i * VL_FP32);
             AscendC::Reg::MulAddDst(dstReg, srcReg, scalarReg, mask);
+            DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
+        }
+    }
+}
+
+// 单个head在一个VF内完成低精度读取、FP32转换和门控累加。
+template <typename T>
+__aicore__ inline void AxpyB16WithUbScalar(const LocalTensor<float> &dst, const LocalTensor<T> &src,
+                                           const LocalTensor<float> &scalars, uint32_t scalarIndex, uint32_t count)
+{
+    __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();
+    __local_mem__ T *srcAddr = (__local_mem__ T *)src.GetPhyAddr();
+    __local_mem__ float *scalarAddr = (__local_mem__ float *)scalars.GetPhyAddr();
+    uint32_t remain = count;
+    const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
+    __VEC_SCOPE__
+    {
+        RegTensor<T> srcReg;
+        RegTensor<float> srcFp32Reg, dstReg, scalarReg;
+        MaskReg mask;
+        DataCopy<float, LoadDist::DIST_BRC_B32>(scalarReg, scalarAddr + scalarIndex);
+        for (uint16_t i = 0; i < loops; ++i) {
+            mask = UpdateMask<float>(remain);
+            DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + i * VL_FP32);
+            Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
+            DataCopy<float, LoadDist::DIST_NORM>(dstReg, dstAddr + i * VL_FP32);
+            AscendC::Reg::MulAddDst(dstReg, srcFp32Reg, scalarReg, mask);
             DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
         }
     }

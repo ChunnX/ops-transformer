@@ -129,14 +129,13 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        LoadX2CacheTile(tOff, tD);
-        LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
         LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
+        LocalTensor<T> x2Cache = bufX2Cache_.Get<T>()[tOff];
         LocalTensor<float> gateBuf = bufScalar_.Get<float>()[EXP_DIV_ELEM];
-        MhcSandwichRegBase::MulsWithUbScalar(hIn, x2, gateBuf, 0U, tD);
+        MhcSandwichRegBase::MulsB16WithUbScalar(hIn, x2Cache, gateBuf, 0U, tD);
         PipeBarrier<PIPE_V>();
         for (uint32_t n = 1; n < N_MAX; ++n) {
-            MhcSandwichRegBase::AxpyWithUbScalar(hIn, x2[n * dimTile_], gateBuf, n, tD);
+            MhcSandwichRegBase::AxpyB16WithUbScalar(hIn, x2Cache[n * D_], gateBuf, n, tD);
             PipeBarrier<PIPE_V>();
         }
         CacheHInTile(tOff, tD, hIn);
