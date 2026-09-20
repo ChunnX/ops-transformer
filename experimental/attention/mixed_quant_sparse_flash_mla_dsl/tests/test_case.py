@@ -215,24 +215,47 @@ def _get_metadata_cube_core_num(device):
     return int(blocks)
 
 
-def _make_metadata_python(rows, device):
-    """Build the same [starts..., counts...] partition on CPU.
+def _make_metadata_python(rows, cu_seqlens_q, device):
+    """Build the same int32[1024] uniform whole-row partition on the host CPU.
 
-    device is only used for the ACL core-count query; all torch tensors stay on CPU.
+    Bit-exact reference of the AICPU ``_mqsmla_metadata_kernel``: the TND rows
+    are split evenly across the cube cores; each core's contiguous [m_start,
+    m_end) range is written into the FA section as (batch, row-within-batch) via
+    cu_seqlens_q.  The FD section stays all-zero (fd_used_vec_num=0).  ``device``
+    is only used for the core-count query; all torch tensors stay on CPU.
     """
     blocks = _get_metadata_cube_core_num(device)
-    if not 0 < blocks <= 2147483647 or rows > 2147483647:
+    if not 0 < blocks <= C.AIC_CORE_MAX_NUM or rows > 2147483647:
         raise ValueError("rows and core count must fit positive int32 metadata")
+    cu = ([0, rows] if cu_seqlens_q is None
+          else [int(x) for x in cu_seqlens_q.detach().cpu().tolist()])
 
-    core_ids = torch.arange(blocks, dtype=torch.int32)
+    def decompose(r):
+        bn2 = 0
+        for b in range(len(cu)):
+            if cu[b] <= r:
+                bn2 = b
+        return bn2, r - cu[bn2]
+
+    metadata = [0] * C.MQSMLA_METADATA_TOTAL_SIZE
     rows_per_core = rows // blocks
-    extra_rows = rows % blocks
-    starts = core_ids * rows_per_core + torch.clamp(core_ids, max=extra_rows)
-    counts = torch.full_like(core_ids, rows_per_core)
-    counts[:extra_rows] += 1
-    metadata = torch.cat((starts, counts)).contiguous()
+    extra = rows % blocks
+    start = 0
+    for core in range(blocks):
+        count = rows_per_core + (1 if core < extra else 0)
+        end = start + count
+        if count > 0:
+            bn2_s, m_s = decompose(start)
+            bn2_e, m_e = decompose(end)
+            fa = C.FA_METADATA_SIZE * core
+            metadata[fa + C.FA_CORE_ENABLE_INDEX] = 1
+            metadata[fa + C.FA_BN2_START_INDEX] = bn2_s
+            metadata[fa + C.FA_M_START_INDEX] = m_s
+            metadata[fa + C.FA_BN2_END_INDEX] = bn2_e
+            metadata[fa + C.FA_M_END_INDEX] = m_e
+        start = end
     print(f"[mqsmla metadata] backend=python rows={rows} blocks={blocks}")
-    return metadata
+    return torch.tensor(metadata, dtype=torch.int32)
 
 
 def _call_public(kwargs, mode, t1, *, omit_ori_length=False, omit_cmp_length=False,
@@ -251,7 +274,8 @@ def _call_public(kwargs, mode, t1, *, omit_ori_length=False, omit_cmp_length=Fal
         if mode == "ORI_SPARSE":
             cmp_lengths = torch.zeros((t1, 1), dtype=torch.int32).npu()
         if metadata_backend == "python":
-            kwargs["metadata"] = _make_metadata_python(t1, kwargs["q"].device).npu()
+            kwargs["metadata"] = _make_metadata_python(
+                t1, kwargs["cu_seqlens_q"], kwargs["q"].device).npu()
         else:
             aicpu_metadata = mixed_quant_sparse_flash_mla_metadata(
                 kwargs["ori_topk_length"], cmp_lengths,
@@ -260,7 +284,8 @@ def _call_public(kwargs, mode, t1, *, omit_ori_length=False, omit_cmp_length=Fal
                 quant_mode=kwargs["quant_mode"], has_cmp_kv=(mode == "ORI_CMP_SPARSE"))
             kwargs["metadata"] = aicpu_metadata
             if verify_metadata_backends:
-                python_metadata = _make_metadata_python(t1, kwargs["q"].device)
+                python_metadata = _make_metadata_python(
+                    t1, kwargs["cu_seqlens_q"], kwargs["q"].device)
                 torch.testing.assert_close(
                     python_metadata, aicpu_metadata.cpu(), rtol=0, atol=0)
                 print("[mqsmla metadata] aicpu/python partition match")
