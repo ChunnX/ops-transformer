@@ -95,7 +95,7 @@
 #include "blaze/gemm/tile/copy_weight_ub_to_l1.h"
 #include "block_prologue.h"
 #include "../gemm/utils/common_utils_mega_moe.h"
-#include "mega_moe_tiling.h"
+#include "../../mega_moe_tiling.h"
 
 namespace Blaze {
 namespace Gemm {
