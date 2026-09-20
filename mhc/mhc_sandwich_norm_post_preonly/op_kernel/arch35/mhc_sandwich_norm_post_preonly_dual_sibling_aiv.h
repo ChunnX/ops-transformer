@@ -39,6 +39,12 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         const uint32_t tOff = tile * dimTile_;
         ComputeX2PostTile(token, tOff, tD, invRms0, postVals);
         CacheX2TileForLane(token, tOff, tD, !USE_RMS_MID);
+        if constexpr (!USE_RMS_MID) {
+            if (tile + 1U == dimLoop_) {
+                // 提前发出MTE3到Vector事件，与最后一次R4/R5归约和跨核会合重叠。
+                SetFlag<HardEvent::MTE3_V>(evtMte3toV_);
+            }
+        }
 
         if constexpr (USE_RMS_MID) {
             // R3的归一化范围是完整N*D，因此该标量也在两个lane上按相同树冗余计算。
@@ -84,6 +90,10 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
                 }
             }
             CacheX2TileForLane(token, tOff, tD, true);
+            if (tile + 1U == dimLoop_) {
+                // 提前发出MTE3到Vector事件，与最后一次R4/R5归约和跨核会合重叠。
+                SetFlag<HardEvent::MTE3_V>(evtMte3toV_);
+            }
             AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, laneId_, laneId_ + 1U);
         }
     }
@@ -105,6 +115,8 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
 
     // 两个lane均无条件执行一次mode1 Set/Wait；该等待不替代本核流水事件。
     MhcPairReadySync();
+    // 两个lane都回收本核MTE3到Vector事件，follower随后才能安全结束当前token。
+    WaitFlag<HardEvent::MTE3_V>(evtMte3toV_);
     if (laneId_ == 1U) {
         return;
     }
@@ -116,10 +128,6 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     for (uint32_t o = 0; o < N_MAX; ++o) {
         dotHalf[1][o] = partialBuf.GetValue(o + 1U);
     }
-
-    // CrossCore等待只保证两个sibling之间的会合，不能替代本核流水同步。
-    // R6复用x2低精度缓存前，显式等待R3的x2_out写出读取完成。
-    FenceMte3ToV();
 
     const float totalSumSqPre = sumSqHalf[0] + sumSqHalf[1];
     float xHatVals[N_MAX];
