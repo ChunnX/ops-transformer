@@ -44,7 +44,7 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl512GqaFullquantVF(
     RegTensor<half> vreg_max;
     RegTensor<half> vreg_max_2;
     RegTensor<float> vreg_exp_sum_1_fq512uv; // 前8行的 和
-    RegTensor<float> vreg_exp_sum_2; // 接着的后8行
+    RegTensor<float> vreg_exp_sum_2;         // 接着的后8行
     RegTensor<float> vreg_exp_0_2_fq512uv;
     RegTensor<float> vreg_exp_1_2;
     RegTensor<float> vreg_exp_2_2;
@@ -80,16 +80,18 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl512GqaFullquantVF(
     Ln(vreg_ln_p_scale, vreg_p_scale, preg_all);
     for (uint16_t i = 0; i < 4; ++i) {
         // 一次循环处理 [32, 16, 16]
-        LoadAlign(vreg_input_x_1_fq512uv, srcUb1 + i * 16 * 16);                 // 第一个256中第一个[64, 16]的前8行
+        LoadAlign(vreg_input_x_1_fq512uv, srcUb1 + i * 16 * 16);         // 第一个256中第一个[64, 16]的前8行
         LoadAlign(vreg_input_x_unroll_1, srcUb1 + i * 16 * 16 + 8 * 16); // 第一个[64, 16]接下来的8行
         LoadAlign(vreg_input_x_2, srcUb2 + i * 16 * 16);                 // 第二个256
         LoadAlign(vreg_input_x_unroll_2, srcUb2 + i * 16 * 16 + 8 * 16);
 
-        Max(vreg_max_tmp, vreg_input_x_1_fq512uv, vreg_input_x_2, preg_all); // 第 1/2 个256的第一个[64, 16]前8行的最大值
+        Max(vreg_max_tmp, vreg_input_x_1_fq512uv, vreg_input_x_2,
+            preg_all); // 第 1/2 个256的第一个[64, 16]前8行的最大值
         Max(vreg_max_tmp_unroll, vreg_input_x_unroll_1, vreg_input_x_unroll_2, preg_all);
 
         for (uint16_t j = 1; j < n / 16; ++j) { // 每个256内部，第j个[64, 16]，n / 16为NZ shape的第一个维度
-            LoadAlign(vreg_input_x_1_fq512uv, srcUb1 + i * 16 * 16 + j * 64 * 16); // 第一个256，搬入第j个[64, 16]的两个8行
+            LoadAlign(vreg_input_x_1_fq512uv,
+                      srcUb1 + i * 16 * 16 + j * 64 * 16); // 第一个256，搬入第j个[64, 16]的两个8行
             LoadAlign(vreg_input_x_unroll_1, srcUb1 + i * 16 * 16 + j * 64 * 16 + 8 * 16);
             LoadAlign(vreg_input_x_2, srcUb2 + i * 16 * 16 + j * 64 * 16); // 第二个256
             LoadAlign(vreg_input_x_unroll_2, srcUb2 + i * 16 * 16 + j * 64 * 16 + 8 * 16);
@@ -255,8 +257,8 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl512GqaFullquantVF(
         }
         ReduceDataBlock<AscendC::Reg::ReduceType::SUM>(vreg_exp_sum_1_fq512uv, vreg_exp_sum_1_fq512uv, preg_all);
         ReduceDataBlock<AscendC::Reg::ReduceType::SUM>(vreg_exp_sum_2, vreg_exp_sum_2, preg_all);
-        StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ float *&)tmpExpSumUb), vreg_exp_sum_1_fq512uv,
-                                                                ureg_exp_sum, 8);
+        StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ float *&)tmpExpSumUb),
+                                                                vreg_exp_sum_1_fq512uv, ureg_exp_sum, 8);
         StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ float *&)tmpExpSumUb), vreg_exp_sum_2,
                                                                 ureg_exp_sum, 8);
     }

@@ -323,8 +323,9 @@ __simd_vf__ void ProcessVec1UpdateImpl128Mxfp8FullquantVFSubloop0(
                                                       (Reg::RegTensor<uint16_t> &)vreg_exp_f16_even,
                                                       (Reg::RegTensor<uint16_t> &)vreg_exp_f16_odd, preg_all_f16);
             Cast<T2, half, castTrait0>(vreg_exp_merge_tmp_int8_algu0, vreg_exp_f16, preg_all_f16);
-            Reg::Pack<uint8_t, uint16_t, Reg::HighLowPart::LOWEST>((Reg::RegTensor<uint8_t> &)vreg_exp_merge_int8,
-                                                                   (Reg::RegTensor<uint16_t> &)vreg_exp_merge_tmp_int8_algu0);
+            Reg::Pack<uint8_t, uint16_t, Reg::HighLowPart::LOWEST>(
+                (Reg::RegTensor<uint8_t> &)vreg_exp_merge_int8,
+                (Reg::RegTensor<uint16_t> &)vreg_exp_merge_tmp_int8_algu0);
             StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
                 ((__ubuf__ int8_t *&)expUb), vreg_exp_merge_int8, blockStride, repeatStride, preg_all_b8_128);
         } else if constexpr (IsSameType<T2, hifloat8_t>::value) {
@@ -590,7 +591,8 @@ __simd_vf__ void ProcessVec1UpdateImpl128Mxfp8FullquantVFSubloop1(
         ExpSub(vreg_exp_even, vreg_x_src, vreg_max, preg_all);
         ExpSub(vreg_exp_odd, vreg_x_src_unroll, vreg_max, preg_all);
         Add(vreg_exp_sum_algu1, vreg_exp_even, vreg_exp_odd, preg_all);
-        Reduce<Reg::ReduceType::SUM, float, float, Reg::MaskMergeMode::ZEROING>(vreg_exp_sum_algu1, vreg_exp_sum_algu1, preg_all);
+        Reduce<Reg::ReduceType::SUM, float, float, Reg::MaskMergeMode::ZEROING>(vreg_exp_sum_algu1, vreg_exp_sum_algu1,
+                                                                                preg_all);
         StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpExpSumUb), vreg_exp_sum_algu1,
                                                                 ureg_exp_sum, 1);
 

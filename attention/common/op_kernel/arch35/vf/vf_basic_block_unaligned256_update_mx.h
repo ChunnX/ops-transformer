@@ -300,7 +300,8 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl256Mxfp8FullquantVFSubloop0(
         ExpSub(vreg_exp_even1, vreg_src_x3, vreg_max, preg_all_float_u256u0);
         ExpSub(vreg_exp_odd1, vreg_src_x4, vreg_max, preg_all_float_u256u0);
 
-        Add(vreg_exp_sum1, vreg_exp_even0, vreg_exp_odd0, preg_all_float_u256u0); // x_sum = sum(x_exp, axis=-1, keepdims=True)
+        Add(vreg_exp_sum1, vreg_exp_even0, vreg_exp_odd0,
+            preg_all_float_u256u0); // x_sum = sum(x_exp, axis=-1, keepdims=True)
         Add(vreg_exp_sum2, vreg_exp_even1, vreg_exp_odd1, preg_all_float_u256u0);
         Add(vreg_exp_sum3, vreg_exp_sum1, vreg_exp_sum2, preg_all_float_u256u0);
         Reduce<Reg::ReduceType::SUM, float, float, Reg::MaskMergeMode::ZEROING>(vreg_exp_sum3, vreg_exp_sum3,
@@ -403,17 +404,17 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl256Mxfp8FullquantVFSubloop0(
 template <typename T, typename T2, typename pseShiftType, uint32_t s1BaseSize = 64, uint32_t s2BaseSize = 256,
           bool hasAtten = 0, PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE, bool hasDrop = 0, bool hasSink = false>
 __simd_vf__ void ProcessVec1UpdateGeneralImpl256Mxfp8FullquantVFSubloop1(
-    __ubuf__ T2 *expUb1_u256u1, __ubuf__ T2 *expUb2, __ubuf__ pseShiftType *pseUb, __ubuf__ T *maxUb, __ubuf__ T *maxUbStart,
-    __ubuf__ T *srcUb, __ubuf__ T *expMaxUb, __ubuf__ T *inMaxUb, __ubuf__ T *expSumUb, __ubuf__ T *inExpSumUb,
-    __ubuf__ T *tmpExpSumUb, __ubuf__ T *tmpExpSumUb2, __ubuf__ T *tmpMaxUb, __ubuf__ T *tmpMaxUb2,
-    __ubuf__ uint8_t *indexesUb, __ubuf__ uint32_t *maskUb1, __ubuf__ uint32_t *maskUb2, __ubuf__ uint32_t *maskUb3,
-    __ubuf__ uint32_t *maskUb4, __ubuf__ uint32_t *dropMaskUb1, __ubuf__ uint32_t *dropMaskUb2,
-    __ubuf__ fp8_e8m0_t *pScaleSubLoop0, __ubuf__ float *preLoopMaxUb, __ubuf__ float *preLoopSumUb,
-    __ubuf__ float *firstLoopSumUb, const uint32_t nPadding, const uint32_t blockStride, const uint32_t repeatStride,
-    const uint32_t oriTailN1, const uint32_t oriTailN2, const uint32_t tailN1, const uint32_t tailN2,
-    uint32_t pltOriTailN1, uint32_t pltOriTailN2, uint32_t pltTailN1, uint32_t pltTailN2, float divValue, uint32_t pltN,
-    const uint16_t m, const uint32_t pseStride, const float slopes, const float posShift, const T scale,
-    const float dScaleQK, const T minValue, const float sinkValue = 0.0f, const float pScale = 1.0f)
+    __ubuf__ T2 *expUb1_u256u1, __ubuf__ T2 *expUb2, __ubuf__ pseShiftType *pseUb, __ubuf__ T *maxUb,
+    __ubuf__ T *maxUbStart, __ubuf__ T *srcUb, __ubuf__ T *expMaxUb, __ubuf__ T *inMaxUb, __ubuf__ T *expSumUb,
+    __ubuf__ T *inExpSumUb, __ubuf__ T *tmpExpSumUb, __ubuf__ T *tmpExpSumUb2, __ubuf__ T *tmpMaxUb,
+    __ubuf__ T *tmpMaxUb2, __ubuf__ uint8_t *indexesUb, __ubuf__ uint32_t *maskUb1, __ubuf__ uint32_t *maskUb2,
+    __ubuf__ uint32_t *maskUb3, __ubuf__ uint32_t *maskUb4, __ubuf__ uint32_t *dropMaskUb1,
+    __ubuf__ uint32_t *dropMaskUb2, __ubuf__ fp8_e8m0_t *pScaleSubLoop0, __ubuf__ float *preLoopMaxUb,
+    __ubuf__ float *preLoopSumUb, __ubuf__ float *firstLoopSumUb, const uint32_t nPadding, const uint32_t blockStride,
+    const uint32_t repeatStride, const uint32_t oriTailN1, const uint32_t oriTailN2, const uint32_t tailN1,
+    const uint32_t tailN2, uint32_t pltOriTailN1, uint32_t pltOriTailN2, uint32_t pltTailN1, uint32_t pltTailN2,
+    float divValue, uint32_t pltN, const uint16_t m, const uint32_t pseStride, const float slopes, const float posShift,
+    const T scale, const float dScaleQK, const T minValue, const float sinkValue = 0.0f, const float pScale = 1.0f)
 {
     RegTensor<float> vreg_src_x1;
     RegTensor<float> vreg_src_x2;
@@ -798,23 +799,25 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl256Mxfp8FullquantVFSubloop1(
 template <typename T, typename T2, typename pseShiftType, uint32_t s1BaseSize = 64, uint32_t s2BaseSize = 256,
           bool hasAtten = 0, PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE, bool hasDrop = 0, bool hasSink = false>
 __aicore__ inline void ProcessVec1UpdateGeneralImpl256Mxfp8Fullquant(
-    const LocalTensor<T2> &dstTensor, const LocalTensor<uint8_t> &indexesTensor, const LocalTensor<T> &expSumTensor_u256um,
-    const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor,
-    const LocalTensor<T> &inExpSumTensor, const LocalTensor<T> &inMaxTensor, const LocalTensor<uint8_t> &maskTensor,
-    const LocalTensor<pseShiftType> &pseTensor, const LocalTensor<uint8_t> &dropTensor,
-    const LocalTensor<fp8_e8m0_t> &pScaleSubLoop0Tensor, const LocalTensor<uint8_t> &sharedTmpBuffer,
-    const LocalTensor<float> &preLoopMaxTensor, const LocalTensor<float> &preLoopSumTensor,
-    const LocalTensor<float> &firstLoopSumTensor, uint32_t subLoop, const uint16_t m, const uint32_t originN_u256um,
-    const uint32_t pseStride, const float slopes, const float posShift, const T scale, const float dScaleQK,
-    const T minValue, float keepProb, const float sinkValue, const float pScale)
+    const LocalTensor<T2> &dstTensor, const LocalTensor<uint8_t> &indexesTensor,
+    const LocalTensor<T> &expSumTensor_u256um, const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
+    const LocalTensor<T> &expMaxTensor, const LocalTensor<T> &inExpSumTensor, const LocalTensor<T> &inMaxTensor,
+    const LocalTensor<uint8_t> &maskTensor, const LocalTensor<pseShiftType> &pseTensor,
+    const LocalTensor<uint8_t> &dropTensor, const LocalTensor<fp8_e8m0_t> &pScaleSubLoop0Tensor,
+    const LocalTensor<uint8_t> &sharedTmpBuffer, const LocalTensor<float> &preLoopMaxTensor,
+    const LocalTensor<float> &preLoopSumTensor, const LocalTensor<float> &firstLoopSumTensor, uint32_t subLoop,
+    const uint16_t m, const uint32_t originN_u256um, const uint32_t pseStride, const float slopes, const float posShift,
+    const T scale, const float dScaleQK, const T minValue, float keepProb, const float sinkValue, const float pScale)
 {
     const uint32_t nPadding = (s2BaseSize + blockBytesU8 - 1) / blockBytesU8 * blockBytesU8;
     // 写的时候固定用65或者33的stride去写，因为正向目前使能settail之后mm2的s1方向必须算满128或者64行
     // stride, high 16bits: blockStride (m*16*2/32), low 16bits: repeatStride (1)
     const uint32_t blockStride = s1BaseSize >> 1 | 0x1;
     const uint32_t repeatStride = 1;
-    const uint32_t oriTailN1 = originN_u256um - floatRepSize * 2 < floatRepSize ? originN_u256um - floatRepSize * 2 : floatRepSize;
-    const uint32_t oriTailN2 = static_cast<int32_t>(originN_u256um - floatRepSize * 3) <= 0 ? 0 : originN_u256um - floatRepSize * 3;
+    const uint32_t oriTailN1 =
+        originN_u256um - floatRepSize * 2 < floatRepSize ? originN_u256um - floatRepSize * 2 : floatRepSize;
+    const uint32_t oriTailN2 =
+        static_cast<int32_t>(originN_u256um - floatRepSize * 3) <= 0 ? 0 : originN_u256um - floatRepSize * 3;
     const uint32_t tailN1 = s2BaseSize - floatRepSize * 2;
     const uint32_t tailN2 = s2BaseSize - floatRepSize * 3;
     uint32_t pltOriTailN1 = oriTailN1;
