@@ -722,9 +722,12 @@ private:
 		        intriParams.dstStride = 0;
                 intriParams.srcStride = 0;
                 intriParams.blockCount = 1;
+#if (__NPU_ARCH__ == 9201)
                 if constexpr (std::is_same_v<K_SCALE_T, hif4_scale>) {
                     intriParams.blockLen = ((copyRowCnt + 15) >> 4) * gmCoord.dDealSize * 2; // 每个最小分型组64B 要 * 2 
-                } else {
+                } else
+#endif
+                {
                     // for mxfp4
                     intriParams.blockLen = ((copyRowCnt + 15) >> 4) * gmCoord.dDealSize / 2;
                 }     
@@ -736,10 +739,13 @@ private:
                 if constexpr (std::is_same_v<K_SCALE_T, fp8_e8m0_t>) {
                     CopySingleMXScaleDNToNZ(dstTensor.tensor[l1Offset], srcTensor.gmTensor[gmOffset], gmCoord.dDealSize,
                                         copyRowCnt, offsetCalculator.GetStrideBlockSize(), gmCoord.dDealSize);
-                } else if constexpr (std::is_same_v<K_SCALE_T, hif4_scale>) {
+                }
+#if (__NPU_ARCH__ == 9201)
+                else if constexpr (std::is_same_v<K_SCALE_T, hif4_scale>) {
                     CopySingleHIScaleDNToNZ(dstTensor.tensor[l1Offset], srcTensor.gmTensor[gmOffset], gmCoord.dDealSize,
                                         copyRowCnt, offsetCalculator.GetStrideBlockSize(), gmCoord.dDealSize);
                 }
+#endif
             }
             // 更新完成拷贝的行数和s2Idx
             copyFinishRowCnt += copyRowCnt;
