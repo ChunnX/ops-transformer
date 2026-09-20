@@ -50,7 +50,10 @@ __simd_vf__ inline void VfDivAndCastVF(__ubuf__ bfloat16_t *dstT, __ubuf__ float
     RegTensor<float> vreg_src_13, vreg_src_14, vreg_src_15, vreg_src_16;  //   Cast/转置载体）
     RegTensor<float> vreg_recip;   // 当前一半列的 1/rowsum（先算倒数再乘，替代逐行 Div）
     RegTensor<float> vreg_ones;    // 全 1（倒数分子）
-    MaskReg preg_f32 = CreateMask<float, MaskPattern::ALL>();   // 64 lanes fp32
+    RegTensor<bfloat16_t> vreg_bf16_1;  // Cast 临时（成对转换的中间产物，随取随弃）
+    RegTensor<bfloat16_t> vreg_bf16_2;  // Cast 临时
+    MaskReg preg_f32 = CreateMask<float, MaskPattern::ALL>();    // 64 lanes fp32
+    MaskReg preg_bf16 = CreateMask<bfloat16_t, MaskPattern::ALL>();  // 128 lanes bf16
 
     Duplicate(vreg_ones, 1.0f);
 
@@ -96,7 +99,40 @@ __simd_vf__ inline void VfDivAndCastVF(__ubuf__ bfloat16_t *dstT, __ubuf__ float
             Mul(vreg_src_14, vreg_src_14, vreg_recip, preg_f32);
             Mul(vreg_src_15, vreg_src_15, vreg_recip, preg_f32);
             Mul(vreg_src_16, vreg_src_16, vreg_recip, preg_f32);
-            // TODO(4.1c-2): 8 对跨行 Cast+Or(uint16) 造垂直对
+            // 8 对跨行 Cast+Or：第 2t 行（Zero 放偶数位）与第 2t+1 行（One 放奇数位）交织进
+            // vreg_src_1..8——垂直对是转置蝶形网络的原子（镜像 DN L76-113；Or 用 uint16 视图）
+            Cast<bfloat16_t, float, castTraitZero>(vreg_bf16_1, vreg_src_1, preg_f32);
+            Cast<bfloat16_t, float, castTraitOne>(vreg_bf16_2, vreg_src_2, preg_f32);
+            Or((RegTensor<uint16_t> &)vreg_src_1, (RegTensor<uint16_t> &)vreg_bf16_1,
+               (RegTensor<uint16_t> &)vreg_bf16_2, preg_bf16);
+            Cast<bfloat16_t, float, castTraitZero>(vreg_bf16_1, vreg_src_3, preg_f32);
+            Cast<bfloat16_t, float, castTraitOne>(vreg_bf16_2, vreg_src_4, preg_f32);
+            Or((RegTensor<uint16_t> &)vreg_src_2, (RegTensor<uint16_t> &)vreg_bf16_1,
+               (RegTensor<uint16_t> &)vreg_bf16_2, preg_bf16);
+            Cast<bfloat16_t, float, castTraitZero>(vreg_bf16_1, vreg_src_5, preg_f32);
+            Cast<bfloat16_t, float, castTraitOne>(vreg_bf16_2, vreg_src_6, preg_f32);
+            Or((RegTensor<uint16_t> &)vreg_src_3, (RegTensor<uint16_t> &)vreg_bf16_1,
+               (RegTensor<uint16_t> &)vreg_bf16_2, preg_bf16);
+            Cast<bfloat16_t, float, castTraitZero>(vreg_bf16_1, vreg_src_7, preg_f32);
+            Cast<bfloat16_t, float, castTraitOne>(vreg_bf16_2, vreg_src_8, preg_f32);
+            Or((RegTensor<uint16_t> &)vreg_src_4, (RegTensor<uint16_t> &)vreg_bf16_1,
+               (RegTensor<uint16_t> &)vreg_bf16_2, preg_bf16);
+            Cast<bfloat16_t, float, castTraitZero>(vreg_bf16_1, vreg_src_9, preg_f32);
+            Cast<bfloat16_t, float, castTraitOne>(vreg_bf16_2, vreg_src_10, preg_f32);
+            Or((RegTensor<uint16_t> &)vreg_src_5, (RegTensor<uint16_t> &)vreg_bf16_1,
+               (RegTensor<uint16_t> &)vreg_bf16_2, preg_bf16);
+            Cast<bfloat16_t, float, castTraitZero>(vreg_bf16_1, vreg_src_11, preg_f32);
+            Cast<bfloat16_t, float, castTraitOne>(vreg_bf16_2, vreg_src_12, preg_f32);
+            Or((RegTensor<uint16_t> &)vreg_src_6, (RegTensor<uint16_t> &)vreg_bf16_1,
+               (RegTensor<uint16_t> &)vreg_bf16_2, preg_bf16);
+            Cast<bfloat16_t, float, castTraitZero>(vreg_bf16_1, vreg_src_13, preg_f32);
+            Cast<bfloat16_t, float, castTraitOne>(vreg_bf16_2, vreg_src_14, preg_f32);
+            Or((RegTensor<uint16_t> &)vreg_src_7, (RegTensor<uint16_t> &)vreg_bf16_1,
+               (RegTensor<uint16_t> &)vreg_bf16_2, preg_bf16);
+            Cast<bfloat16_t, float, castTraitZero>(vreg_bf16_1, vreg_src_15, preg_f32);
+            Cast<bfloat16_t, float, castTraitOne>(vreg_bf16_2, vreg_src_16, preg_f32);
+            Or((RegTensor<uint16_t> &)vreg_src_8, (RegTensor<uint16_t> &)vreg_bf16_1,
+               (RegTensor<uint16_t> &)vreg_bf16_2, preg_bf16);
             // TODO(4.1c-3): 12 条 Interleave 级联 + 8 条 StoreAlign(8+1) 散布
             (void)dstT;
         }
