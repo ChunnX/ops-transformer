@@ -12,6 +12,7 @@
  * \file attention_worker_combine_tiling_arch35.cpp
  * \brief
  */
+#include <cstdio>
 #include <string>
 #include "attention_worker_combine_tiling_base.h"
 #include "../op_kernel/arch35/attention_worker_combine_tiling_struct.h"
@@ -360,7 +361,19 @@ ge::graphStatus AttentionWorkerCombineTilingArch35::CalcTilingKey()
 
 void AttentionWorkerCombineTilingArch35::DoPostTiling()
 {
-    return;
+    // Debug branch: stderr remains visible without enabling CANN debug logging.
+    std::fprintf(stderr,
+        "[AWC_DEBUG][host] R=%lld K=%lld H=%lld dtype=%lld schedule=%lld key=%llu blockDim=%lld "
+        "bsCores=%lld bsMain=%lld bsTail=%lld hCores=%lld hTile=%lld hMain=%lld hTail=%lld kTile=%lld\n",
+        static_cast<long long>(tilingData->BS), static_cast<long long>(tilingData->K),
+        static_cast<long long>(tilingData->H), static_cast<long long>(tokenDtype_),
+        static_cast<long long>(tilingData->needSchedule), static_cast<unsigned long long>(tilingKey_),
+        static_cast<long long>(tilingData->usedCoreNum), static_cast<long long>(tilingData->BsSplitCoreNum),
+        static_cast<long long>(tilingData->mainCoreBsLoopNum), static_cast<long long>(tilingData->tailCoreBsLoopNum),
+        static_cast<long long>(tilingData->HSplitCoreNum), static_cast<long long>(tilingData->HSplitFactor),
+        static_cast<long long>(tilingData->mainCoreHLoopNum), static_cast<long long>(tilingData->tailCoreHLoopNum),
+        static_cast<long long>(tilingData->KSplitFactor));
+    std::fflush(stderr);
 }
 
 REGISTER_OPS_TILING_TEMPLATE(AttentionWorkerCombine, AttentionWorkerCombineTilingArch35, 1000);
