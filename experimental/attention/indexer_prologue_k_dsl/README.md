@@ -14,8 +14,8 @@
 MXFP4 量化和分页 cache 写入。算子原地更新 `k_cache`，mode 0 可同时原地更新
 独立的 `k_scale_cache`，并返回传入的 `k_cache`。
 
-Kernel 由 `cannbot-arena-ds41` 的 net-ops wheel 提供，本目录只负责 PyTorch
-schema、Meta/FakeTensor 和 PrivateUse1 dispatcher 适配。调用前必须安装包含
+Kernel 由配套的 net-ops wheel 提供，本目录只负责 PyTorch schema、
+Meta/FakeTensor 和 PrivateUse1 dispatcher 适配。调用前必须安装包含
 `ops.indexer_prologue_k` 的 net-ops wheel。
 
 ## 接口
@@ -79,8 +79,8 @@ assert result is k_cache
 
 ## 构建与测试
 
-先在 `cannbot-arena-ds41` 的 `ds41` 分支构建并安装包含 Native provider 的
-net-ops wheel：
+先在 net-ops 工程的 `net/native_package` 目录构建并安装包含 Native provider
+的 wheel：
 
 ```bash
 cd net/native_package
