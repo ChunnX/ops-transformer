@@ -394,12 +394,47 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::InitQuantTokenBufferCon
 }
 
 // ======================================================================================
-// InitQuantScratchTensors：量化 scratch（mxTemp、xOut 双 buffer、xIn 双 buffer）的地址排布；
-//   MoE/shared 量化分时复用同一组 buffer；返回量化区之后的空闲地址。
+// InitQuantScratchTensors：动态量化使用 mxTemp/xOut/xIn，预量化使用两个 tile 搬运 stage；
+//   MoE/shared 输入准备分时复用同一组地址；返回量化区之后的空闲地址。
 // ======================================================================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline uint32_t MegaMoe<TemplateMegaMoeTypeFunc>::InitQuantScratchTensors(uint32_t mxTempTensorAddr)
 {
+    // 预量化输入已经是 dispatch 需要的 FP8/FP4 格式，不实例化动态量化的 mxTemp/xIn/xOut
+    // 布局。两个大 slot 分阶段复用给 x、scale 和可选 weight，地址预算由 host 写入 tilingData。
+    if constexpr (!Std::IsSame<XType, bfloat16_t>::value) {
+        uint32_t stageBytes = params_.tilingData->preQuantStageBytes;
+        // 新版 host tiling 一定会写入非零预算。旧 tiling 数据或异常输入下仍按一个 token
+        // 计算真实最小 stage，不能用固定 512B 兜底，否则 H=8K 时会与 route ring 重叠。
+        if (stageBytes == 0U) {
+            uint32_t dataBytes = Ops::Base::CeilAlign(
+                k_ / MoeQuantConfig::A_ELEMS_PER_BYTE, static_cast<uint32_t>(ALIGN_32));
+            uint32_t scaleBytes = Ops::Base::CeilAlign(
+                Ops::Base::CeilDiv(k_, static_cast<uint32_t>(ALIGN_32)), static_cast<uint32_t>(ALIGN_32));
+            stageBytes = dataBytes > scaleBytes ? dataBytes : scaleBytes;
+            if constexpr (TopkWeightsPrefetch) {
+                uint32_t weightSrcBytes = Ops::Base::CeilAlign(
+                    params_.tilingData->topK * static_cast<uint32_t>(sizeof(TopkWeightsType)),
+                    static_cast<uint32_t>(ALIGN_32));
+                uint32_t weightDstBytes = Ops::Base::CeilAlign(
+                    params_.tilingData->topK * static_cast<uint32_t>(sizeof(float)),
+                    static_cast<uint32_t>(ALIGN_32));
+                uint32_t weightBytes = weightDstBytes;
+                if constexpr (Std::IsSame<TopkWeightsType, bfloat16_t>::value) {
+                    weightBytes = weightSrcBytes + weightDstBytes;
+                }
+                stageBytes = stageBytes > weightBytes ? stageBytes : weightBytes;
+            }
+            stageBytes = Ops::Base::CeilAlign(stageBytes, static_cast<uint32_t>(ALIGN_512));
+        }
+        quantScratch_.preQuantStage0 = LocalTensor<uint8_t>(TPosition::VECCALC, mxTempTensorAddr, stageBytes);
+        quantScratch_.preQuantStage1 =
+            LocalTensor<uint8_t>(TPosition::VECCALC, mxTempTensorAddr + stageBytes, stageBytes);
+        sharedQuantScratch_.preQuantStage0 = quantScratch_.preQuantStage0;
+        sharedQuantScratch_.preQuantStage1 = quantScratch_.preQuantStage1;
+        return mxTempTensorAddr + 2U * stageBytes;
+    }
+
     uint32_t mxTempTensorSize = 2 * 1024;
     // 单个 xOutTensor 槽位与 dispatch 的 token-scale-weight 通信记录使用相同布局。
     uint32_t xOutTensorSize = quantProcessConfig_.quantTokenScaleAlignBytes;

@@ -211,5 +211,8 @@ struct MegaMoeTilingData {
     uint32_t rankNumPerServer;
     // MTE 下 MoE/shared 量化输出类型不同时，需要为共享专家准备独立的 token/scale 拼接数据。
     bool isSharedQuantIndependent;
+    // 预量化输入搬运 tile 配置。动态量化路径保持旧的 scratch 布局，这两个字段为 0。
+    uint32_t preQuantTileTokens;
+    uint32_t preQuantStageBytes;
 };
 #endif
