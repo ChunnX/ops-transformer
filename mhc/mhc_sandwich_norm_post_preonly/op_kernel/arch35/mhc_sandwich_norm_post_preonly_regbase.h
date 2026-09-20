@@ -253,19 +253,21 @@ __aicore__ inline void SigmoidAddEps(const LocalTensor<float> &dst, const LocalT
     }
 }
 
-// 一个VF内完成单个head的主分支和四路残差累加，保持残差索引与累加顺序不变。
+// 一个VF内完成单个head的主分支、残差转换和四路累加，保持残差索引与累加顺序不变。
+template <typename T>
 __aicore__ inline void ComputePostHead(const LocalTensor<float> &dst, const LocalTensor<float> &hOut,
-                                       const LocalTensor<float> &residual, const LocalTensor<float> &combWeights,
+                                       const LocalTensor<T> &residual, const LocalTensor<float> &combWeights,
                                        uint32_t rowStride, uint32_t headIndex, float postWeight, uint32_t count)
 {
     __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();
     __local_mem__ float *hOutAddr = (__local_mem__ float *)hOut.GetPhyAddr();
-    __local_mem__ float *residualAddr = (__local_mem__ float *)residual.GetPhyAddr();
+    __local_mem__ T *residualAddr = (__local_mem__ T *)residual.GetPhyAddr();
     __local_mem__ float *combAddr = (__local_mem__ float *)combWeights.GetPhyAddr();
     uint32_t remain = count;
     const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
     __VEC_SCOPE__
     {
+        RegTensor<T> residualB16Reg;
         RegTensor<float> hOutReg, residualReg, weightReg, dstReg;
         MaskReg mask;
         for (uint16_t i = 0; i < loops; ++i) {
@@ -274,7 +276,8 @@ __aicore__ inline void ComputePostHead(const LocalTensor<float> &dst, const Loca
             AscendC::Reg::Muls(dstReg, hOutReg, postWeight, mask);
             for (uint16_t j = 0; j < static_cast<uint16_t>(N_MAX); ++j) {
                 const uint32_t row = static_cast<uint32_t>(j);
-                DataCopy<float, LoadDist::DIST_NORM>(residualReg, residualAddr + row * rowStride + i * VL_FP32);
+                DataCopy<T, LoadDist::DIST_UNPACK_B16>(residualB16Reg, residualAddr + row * rowStride + i * VL_FP32);
+                Cast<float, T, CAST_B16_TO_FP32>(residualReg, residualB16Reg, mask);
                 DataCopy<float, LoadDist::DIST_BRC_B32>(weightReg, combAddr + row * N_MAX + headIndex);
                 AscendC::Reg::MulAddDst(dstReg, residualReg, weightReg, mask);
             }

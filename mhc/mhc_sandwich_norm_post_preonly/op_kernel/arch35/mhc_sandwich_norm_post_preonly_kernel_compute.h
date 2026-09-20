@@ -64,23 +64,6 @@ __aicore__ inline void LoadHOutAndCast(uint64_t gmOffset, uint32_t tD)
     ConsumeHOutTile(tD);
 }
 
-/// 将residual[token, 0:N, tOff:tOff+tD]从低精度加载并转换为FP32。
-__aicore__ inline void LoadResidualAndCast(uint64_t gmBaseOffset, uint32_t tD)
-{
-    // Host已固定校验N为4，使用编译期常量便于展开标量循环。
-    constexpr uint32_t N = N_MAX;
-    LocalTensor<T> resBf16 = bufResidualBf16_.AllocTensor<T>();
-    for (uint32_t n = 0; n < N; ++n)
-        DataCopy(resBf16[n * dimTile_], residualGm_[gmBaseOffset + (uint64_t)n * D_], tD);
-    bufResidualBf16_.EnQue(resBf16);
-    resBf16 = bufResidualBf16_.DeQue<T>();
-    LocalTensor<float> resFp32 = bufResFp32_.Get<float>();
-    for (uint32_t n = 0; n < N; ++n)
-        MhcSandwichRegBase::CastB16ToFp32(resFp32[n * dimTile_], resBf16[n * dimTile_], tD);
-    PipeBarrier<PIPE_V>();
-    bufResidualBf16_.FreeTensor(resBf16);
-}
-
 /// 将gamma的[tOff, tOff+tD)分块加载到指定缓存。
 __aicore__ inline void LoadGammaInto(LocalTensor<float> dst, GlobalTensor<float> &src, uint32_t tOff, uint32_t tD)
 {
@@ -131,36 +114,26 @@ __aicore__ inline void ApplyScaleAndGamma(LocalTensor<float> buf, float scale, L
 
 // MHC_Post计算
 
-/// 单核批量计算全部N个head的x2，并写入bufX2Fp32_。
-__aicore__ inline void ComputeX2AllHeadsBatched(const float (&postVals)[N_MAX], uint32_t tD)
+/// 批量加载低精度残差，在R2的VF内完成转换并计算全部N个head的x2。
+__aicore__ inline void ComputeX2AllHeadsBatched(const float (&postVals)[N_MAX], uint64_t gmBaseOffset, uint32_t tD)
 {
     // Host已固定校验N为4，使用编译期常量便于展开标量循环。
     constexpr uint32_t N = N_MAX;
+    LocalTensor<T> residual = bufResidualBf16_.AllocTensor<T>();
+    for (uint32_t n = 0; n < N; ++n)
+        DataCopy(residual[n * dimTile_], residualGm_[gmBaseOffset + (uint64_t)n * D_], tD);
+    bufResidualBf16_.EnQue(residual);
+    residual = bufResidualBf16_.DeQue<T>();
     LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
     LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-    LocalTensor<float> res = bufResFp32_.Get<float>();
     LocalTensor<float> combWeights = bufPostComb_.Get<float>()[ALIGN8];
 
     for (uint32_t h = 0; h < N; ++h) {
-        MhcSandwichRegBase::ComputePostHead(x2[h * dimTile_], hOut, res, combWeights, dimTile_, h, postVals[h], tD);
+        MhcSandwichRegBase::ComputePostHead<T>(x2[h * dimTile_], hOut, residual, combWeights, dimTile_, h, postVals[h],
+                                               tD);
     }
     PipeBarrier<PIPE_V>();
-}
-
-/// 单核多分块路径按head串行计算全部x2。
-__aicore__ inline void ComputeX2AllHeadsSerial(const float (&postVals)[N_MAX], uint32_t tD)
-{
-    // Host已固定校验N为4，使用编译期常量便于展开标量循环。
-    constexpr uint32_t N = N_MAX;
-    LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
-    LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-    LocalTensor<float> res = bufResFp32_.Get<float>();
-    LocalTensor<float> combWeights = bufPostComb_.Get<float>()[ALIGN8];
-
-    for (uint32_t h = 0; h < N; ++h) {
-        MhcSandwichRegBase::ComputePostHead(x2[h * dimTile_], hOut, res, combWeights, dimTile_, h, postVals[h], tD);
-        PipeBarrier<PIPE_V>();
-    }
+    bufResidualBf16_.FreeTensor(residual);
 }
 
 // 门控计算

@@ -28,8 +28,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     FenceVToMte2();
     QuantizeRoundTrip(hOut, tD);
 
-    LoadResidualAndCast((uint64_t)token * N_ * D_ + tOff, tD);
-    ComputeX2AllHeadsBatched(postVals, tD);
+    ComputeX2AllHeadsBatched(postVals, (uint64_t)token * N_ * D_ + tOff, tD);
 }
 
 // 将完整x2以输出dtype常驻UB，同时完成设计要求的低精度往返；写GM仅用于保留x2_out输出语义。
