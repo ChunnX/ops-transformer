@@ -43,7 +43,7 @@ class QuantLightningIndexerOpBuilder(OpBuilder):
             # O1 方案b: candidate 两级TopK 新入口 (三元组), 旧 schema 保持不变
             "quant_lightning_indexer_candidate(Tensor query, Tensor key, Tensor weights, "
             "Tensor query_dequant_scale, Tensor key_dequant_scale, int topk, int quant_mode, *, "
-            "Tensor? candidate_topk_index=None, Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_k=None, "
+            "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_k=None, "
             "Tensor? seqused_q=None, Tensor? seqused_k=None, Tensor? cmp_residual_k=None, "
             "Tensor? block_table=None, Tensor? output_idx_offset=None, Tensor? metadata=None, "
             "int max_seqlen_q=-1, str layout_q=\"BSND\", str layout_k=\"BSND\", int mask_mode=0, "
@@ -147,7 +147,6 @@ class QuantLightningIndexerOpBuilder(OpBuilder):
             topk,
             quant_mode,
             *,
-            candidate_topk_index=None,
             cu_seqlens_q=None,
             cu_seqlens_k=None,
             seqused_q=None,
@@ -312,7 +311,6 @@ def quant_lightning_indexer_candidate(
     topk,
     quant_mode,
     *,
-    candidate_topk_index=None,
     cu_seqlens_q=None,
     cu_seqlens_k=None,
     seqused_q=None,
@@ -330,7 +328,7 @@ def quant_lightning_indexer_candidate(
     candidate_topk_blocks=2048,
     candidate_block_size=8,
 ):
-    """两级TopK candidate 入口: mode=1(source)/2(consumer)/3(关闭)"""
+    """两级TopK candidate 入口: mode=1(source)/3(关闭); mode=2 见 QuantLightningIndexerV2Consumer"""
     op_module = quant_lightning_indexer_op_builder.load()
     return op_module.quant_lightning_indexer_candidate(
         query,
@@ -340,7 +338,6 @@ def quant_lightning_indexer_candidate(
         key_dequant_scale,
         topk,
         quant_mode,
-        candidate_topk_index,
         cu_seqlens_q,
         cu_seqlens_k,
         seqused_q,
@@ -531,7 +528,6 @@ def quant_lightning_indexer_candidate_source(
                                               cmp_residual_k, topk, quant_mode, mask_mode, cmp_ratio)
     idx, vals, cand = quant_lightning_indexer_candidate(
         q_in, k, w_in, q_descale_in, k_descale, topk, quant_mode,
-        candidate_topk_index=None,
         cu_seqlens_q=cu_seqlens_q, cu_seqlens_k=None, seqused_q=None, seqused_k=seqused_q,
         cmp_residual_k=cmp_residual_k, block_table=block_table, output_idx_offset=None,
         metadata=metadata, max_seqlen_q=max_seqlen_q, layout_q=layout_q, layout_k="PA_BBND",
@@ -549,42 +545,19 @@ def quant_lightning_indexer_candidate_consumer(
     cu_seqlens_q=None, seqused_q=None, cmp_residual_k=None, block_table=None,
     output_idx_offset=None, metadata=None, max_seqlen_q=-1, mask_mode=0, cmp_ratio=1,
     return_value=False, candidate_block_size=8):
-    """新规范接口2 (consumer, 内部 candidate_mode=2): 在候选块内选 topk。
+    """新规范接口2 (consumer, mode=2): P13 拆分后转发至 QuantLightningIndexerV2Consumer 算子。
 
-    candidate_block_indices: (T1, N2, cb) source 侧输出的候选块索引 (块级, 相对块号);
-    candidate_block_length: 本后端忽略 (算子内部已按 mask 规则与 key 长度取小截断, 该输入语义冗余);
-    candidate_topk_blocks 由 candidate_block_indices.shape[-1] 推导 (新规范无此属性)。
-    返回 (sparse_indices, sparse_values); 布局与内部一致: B=1 BSND (B,S1,N2,topk) / TND (T1,N2,topk)。
+    本算子已不含 mode2 实现 — 由 quant_lightning_indexer_consumer 扩展提供
+    quant_lightning_indexer_v2_consumer (consumer 专属入口, 见
+    experimental/attention/quant_lightning_indexer_v2_consumer/torch_extension/)。
     """
-    _qli_newapi_check(block_table is not None,
-                      "block_table is required on this backend (key only supports PA_BBND paged layout).")
-    _qli_newapi_check(not return_value, "return_value=True is not supported on this backend.")
-    _qli_newapi_check(candidate_block_indices is not None,
-                      "candidate_block_indices is required (consumer input).")
-    _qli_newapi_check(candidate_block_indices.dim() == 3,
-                      "candidate_block_indices must be 3-D (T1, N2, candidate_topk_blocks).")
-    _qli_newapi_check(seqused_q is not None,
-                      "seqused_q (per-batch key valid length) is required: varlen dispatch depends on it.")
-    _qli_newapi_check(cu_seqlens_q is not None or int(seqused_q.numel()) == 1,
-                      "batch > 1 requires cu_seqlens_q (TND varlen layout); without it q is treated "
-                      "as B=1 BSND and the batch dimension would be lost.")
-    topk_blocks = int(candidate_block_indices.shape[-1])
-    layout_q, is_tnd = _qli_newapi_layout(cu_seqlens_q)
-    if is_tnd:
-        q_in, w_in, q_descale_in, cand_in = q, w, q_descale, candidate_block_indices
-    else:
-        _qli_newapi_check(q.dim() == 3, "q must be 3-D (T1, N1, D).")
-        q_in, w_in, q_descale_in = q.unsqueeze(0), w.unsqueeze(0), q_descale.unsqueeze(0)
-        cand_in = candidate_block_indices.unsqueeze(0)  # (1, T1, N2, cb)
-    if metadata is None:
-        metadata = _qli_newapi_build_metadata(q, k, layout_q, "PA_BBND", cu_seqlens_q, seqused_q,
-                                              cmp_residual_k, topk, quant_mode, mask_mode, cmp_ratio)
-    idx, vals, _ = quant_lightning_indexer_candidate(
-        q_in, k, w_in, q_descale_in, k_descale, topk, quant_mode,
-        candidate_topk_index=cand_in,
-        cu_seqlens_q=cu_seqlens_q, cu_seqlens_k=None, seqused_q=None, seqused_k=seqused_q,
-        cmp_residual_k=cmp_residual_k, block_table=block_table, output_idx_offset=output_idx_offset,
-        metadata=metadata, max_seqlen_q=max_seqlen_q, layout_q=layout_q, layout_k="PA_BBND",
-        mask_mode=mask_mode, cmp_ratio=cmp_ratio,
-        candidate_mode=2, candidate_topk_blocks=topk_blocks, candidate_block_size=int(candidate_block_size))
-    return idx, vals
+    from cann_ops_transformer.ops.attention.quant_lightning_indexer_v2_consumer import (
+        quant_lightning_indexer_consumer as _consumer_mod,
+    )
+    return _consumer_mod.quant_lightning_indexer_v2_consumer(
+        q, k, w, q_descale, k_descale, candidate_block_indices, candidate_block_length,
+        topk, quant_mode,
+        cu_seqlens_q=cu_seqlens_q, seqused_q=seqused_q, cmp_residual_k=cmp_residual_k,
+        block_table=block_table, output_idx_offset=output_idx_offset, metadata=metadata,
+        max_seqlen_q=max_seqlen_q, mask_mode=mask_mode, cmp_ratio=cmp_ratio,
+        return_value=return_value, candidate_block_size=candidate_block_size)
