@@ -165,7 +165,7 @@ def flash_attn_grad_preload3(
     # dq/dk/dv 三段 + 128 行对齐垫之后是 dsink 槽位段（与 host
     # BuildWorkspacePlan 的 dsink 段对齐）：[aivCount x N1]，每 AIV 独占
     # 一行写部分和。
-    dsink_ws = pl.addptr(
+    dsink_workspace = pl.addptr(
         dv_workspace,
         wsRowsKV * tiling.dv + 128 * pl.max(tiling.d, tiling.dv),
     )
@@ -250,14 +250,6 @@ def flash_attn_grad_preload3(
     # sinks : [N1] fp32 —— 每个 Q head 一个 sink logit，索引口径与 lse 的
     # head 一致（headQ = n2oIdx*gSize + goIdx）。仅在 sinkOptional=1 时才被读。
     tensor_sinks = pl.make_tensor(sinks, [n1Size], [1], dtype=pl.DT_FP32)
-    # dsink : [N1] fp32，post 阶段由 AIV0 固定次序归约后全量写出。
-    tensor_dsink = pl.make_tensor(dsink, [1, n1Size], [n1Size, 1], dtype=pl.DT_FP32)
-    # dsink 槽位区：每 AIV 一行（行号 = AIV 全局序号），AIV 内 UB 累加后
-    # 整行普通 store；post 阶段 AIV0 按固定行序归约。
-    aivCount = coreNum * AIV_PER_CORE
-    tensor_sink_slots = pl.make_tensor(
-        dsink_ws, [1, aivCount * n1Size], [aivCount * n1Size, 1], dtype=pl.DT_FP32
-    )
     if mask_mode != 0:
         tensor_mask = pl.make_tensor(
             attn_mask,
@@ -285,6 +277,12 @@ def flash_attn_grad_preload3(
         [s2ndKVv, d2dKVv, dV, 1],
         dtype=pl.DT_FP32,
     )
+    # dsink 槽位区：每 AIV 一行（行号 = AIV 全局序号），AIV 内 UB 累加后
+    # 整行普通 store；post 阶段 AIV0 按固定行序归约。
+    aivCount = coreNum * AIV_PER_CORE
+    tensor_dsink_ws = pl.make_tensor(
+        dsink_workspace, [1, aivCount * n1Size], [aivCount * n1Size, 1], dtype=pl.DT_FP32
+    )
 
     # ---- pre/post：一维视图 ----
     # InitOutput / Muls+Cast 都按 B*S*N*D 个元素线性切，不看行宽。
@@ -306,6 +304,8 @@ def flash_attn_grad_preload3(
     tensor_dq_out = pl.make_tensor(dq, [1, dqElems], [dqElems, 1], dtype=pl.DT_FP16)
     tensor_dk_out = pl.make_tensor(dk, [1, dkElems], [dkElems, 1], dtype=pl.DT_FP16)
     tensor_dv_out = pl.make_tensor(dv, [1, dvElems], [dvElems, 1], dtype=pl.DT_FP16)
+    # dsink : [N1] fp32，post 阶段由 AIV0 固定次序归约后全量写出。
+    tensor_dsink_out = pl.make_tensor(dsink, [1, n1Size], [n1Size, 1], dtype=pl.DT_FP32)
     # V1 列宽就是 dv_align。D=256 不进本函数。
     v1w = dv_align
 
@@ -698,7 +698,7 @@ def flash_attn_grad_preload3(
         if constInfo.sinkOptional == 1:
             pl.set_validshape(sink_acc_ub.current(), [1, constInfo.n1Size])
             pl.store(
-                tensor_sink_slots, sink_acc_ub.current(),
+                tensor_dsink_ws, sink_acc_ub.current(),
                 [0, aivIdx * constInfo.n1Size],
             )
 
@@ -759,7 +759,7 @@ def flash_attn_grad_preload3(
         if constInfo.sinkOptional == 1:
             if pl.get_block_idx() == 0:
                 process_sink_reduce(
-                    constInfo, tensor_sink_slots, tensor_dsink,
+                    constInfo, tensor_dsink_ws, tensor_dsink_out,
                     sink_red_ub.current(), sink_row_ub.current(), aivCount,
                 )
 
@@ -946,8 +946,6 @@ def flash_attn_grad_preload2(
     # 仍按 n1Size 口径建视图，与 GS1S2 保持同一套索引。
     n1Size = constInfo.n2Size * constInfo.gSize
     tensor_sinks = pl.make_tensor(sinks, [n1Size], [1], dtype=pl.DT_FP32)
-    # dsink : [N1] fp32，尾部 AIV0 固定次序归约后全量写出。
-    tensor_dsink = pl.make_tensor(dsink, [1, n1Size], [n1Size, 1], dtype=pl.DT_FP32)
     if mask_mode != 0:
         tensor_mask = pl.make_tensor(
             attn_mask,
@@ -963,17 +961,19 @@ def flash_attn_grad_preload2(
     n1SizeBn2 = constInfo.n2Size * constInfo.gSize
     wsRowsQBn2 = constInfo.bSize * constInfo.s1Size * n1SizeBn2
     wsRowsKVBn2 = constInfo.bSize * constInfo.s2Size * constInfo.n2Size
-    dsink_ws = pl.addptr(
+    dsink_workspace = pl.addptr(
         ws_ptr,
         wsRowsQBn2 * dQ + wsRowsKVBn2 * dQ
         + wsRowsKVBn2 * constInfo.dvSize
         + 128 * pl.max(dQ, constInfo.dvSize),
     )
     aivCount = coreNum * AIV_PER_CORE
-    tensor_sink_slots = pl.make_tensor(
-        dsink_ws, [1, aivCount * n1SizeBn2], [aivCount * n1SizeBn2, 1],
+    tensor_dsink_ws = pl.make_tensor(
+        dsink_workspace, [1, aivCount * n1SizeBn2], [aivCount * n1SizeBn2, 1],
         dtype=pl.DT_FP32,
     )
+    # dsink : [N1] fp32，尾部 AIV0 固定次序归约后全量写出。
+    tensor_dsink_out = pl.make_tensor(dsink, [1, n1Size], [n1Size, 1], dtype=pl.DT_FP32)
     coreNum = constInfo.coreNum
     meta = pl.make_tensor(metadata, [META_VIEW_LEN], [1], dtype=pl.DT_INT32)
     fagOff = pl.astype(pl.getval(meta, META_HEAD_FAG_START_INDEX), pl.DT_INT64)
@@ -1593,7 +1593,7 @@ def flash_attn_grad_preload2(
         if template == Tmpl.BN2 and constInfo.sinkOptional == 1:
             pl.set_validshape(sink_acc_ub.current(), [1, constInfo.n1Size])
             pl.store(
-                tensor_sink_slots, sink_acc_ub.current(),
+                tensor_dsink_ws, sink_acc_ub.current(),
                 [0, aivIdx * constInfo.n1Size],
             )
 
@@ -1656,6 +1656,6 @@ def flash_attn_grad_preload2(
             if constInfo.sinkOptional == 1:
                 if pl.get_block_idx() == 0:
                     process_sink_reduce(
-                        constInfo, tensor_sink_slots, tensor_dsink,
+                        constInfo, tensor_dsink_ws, tensor_dsink_out,
                         sink_red_ub.current(), sink_row_ub.current(), aivCount,
                     )
