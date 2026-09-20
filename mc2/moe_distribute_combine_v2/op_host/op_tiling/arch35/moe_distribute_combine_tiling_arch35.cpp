@@ -781,7 +781,7 @@ static void SetTilingKey(gert::TilingContext *context)
     OP_LOGD(nodeName, "tilingKey is %lu", tilingKey);
 }
 
-static ge::graphStatus CheckAndSetXActiveMask(const gert::TilingContext *context,
+static ge::graphStatus CheckAndSetXActiveMask(gert::TilingContext *context,
                                               MoeDistributeCombineV2TilingData &tilingData, const char *nodeName)
 {
     // X active mask

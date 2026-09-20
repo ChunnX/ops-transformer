@@ -246,6 +246,7 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
         moeExpertNum, tpWorldSize, tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs, outDtype,
         commQuantMode, groupListType, zeroExpertNum, copyExpertNum, constExpertNum, is950, xOut, workspaceSize,
         executor);
+    CHECK_RET(getWorkspaceSizesRes == ACLNN_SUCCESS, getWorkspaceSizesRes);
     SetCommArgs(executor, is910B, is950, commAlg);
     return getWorkspaceSizesRes;
 }
