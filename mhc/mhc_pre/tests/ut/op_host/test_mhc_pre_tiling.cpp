@@ -1867,7 +1867,7 @@ TEST_F(MhcPreTiling, Ut_Check_BatchConsistency_ForceSplitBs)
  * 以下用例使用在1:2比例下能够tiling成功的形状(B=2,S=4096,n=4,d=1536)，
  * 仅改变cube/vector核数比，验证不满足1:2时返回GRAPH_FAILED。
  */
-static void CheckCoreRatioTiling(uint32_t cubeCoreCnt, uint32_t vectorCoreCnt, ge::graphStatus expected)
+static void CheckCoreRatioFailure(uint32_t cubeCoreCnt, uint32_t vectorCoreCnt)
 {
     constexpr uint32_t B = 2;
     constexpr uint32_t S = 4096;
@@ -1900,31 +1900,29 @@ static void CheckCoreRatioTiling(uint32_t cubeCoreCnt, uint32_t vectorCoreCnt, g
                                               &compileInfo, "Ascend950", cubeCoreCnt, 262144, 4096,
                                               MakeAscend950SocInfo(cubeCoreCnt, vectorCoreCnt));
 
-    ExecuteTestCase(tilingContextPara, expected);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-// aicNum:aivNum = 1:1，非 1:2 核数比。UT 平台(MakeAscend950SocInfo 的 socVersion 为
-// Ascend950，非 DAV_9201)保持原有 1:2 校验，预期失败；ascend960dt(DAV_9201) 的 1:1
-// 放开由 960dt 环境覆盖，UT 无法构造 960dt 平台。
+// aicNum:aivNum = 1:1，不满足1:2，预期失败
 TEST_F(MhcPreTiling, Ut_Check_CoreRatio_1to1_Fail)
 {
-    CheckCoreRatioTiling(32, 32, ge::GRAPH_FAILED);
+    CheckCoreRatioFailure(32, 32);
 }
 
 // aicNum:aivNum = 1:3，不满足1:2，预期失败
 TEST_F(MhcPreTiling, Ut_Check_CoreRatio_1to3_Fail)
 {
-    CheckCoreRatioTiling(16, 48, ge::GRAPH_FAILED);
+    CheckCoreRatioFailure(16, 48);
 }
 
 // aicNum:aivNum = 1:4，不满足1:2，预期失败
 TEST_F(MhcPreTiling, Ut_Check_CoreRatio_1to4_Fail)
 {
-    CheckCoreRatioTiling(32, 128, ge::GRAPH_FAILED);
+    CheckCoreRatioFailure(32, 128);
 }
 
 // aicNum:aivNum = 2:1，vector核数不足，预期失败
 TEST_F(MhcPreTiling, Ut_Check_CoreRatio_2to1_Fail)
 {
-    CheckCoreRatioTiling(64, 32, ge::GRAPH_FAILED);
+    CheckCoreRatioFailure(64, 32);
 }
