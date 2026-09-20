@@ -1070,7 +1070,8 @@ static inline aclnnStatus CheckWeightNzFormat(const aclTensor *x1, const aclTens
 }
 
 static inline aclnnStatus CheckSupportScene(const CheckSupportSceneParams &params, bool transposeX, bool transposeW,
-                                            const char *opName = "GroupedMatmulFinalizeRoutingWeightNz")
+                                            const char *opName = "GroupedMatmulFinalizeRoutingWeightNz",
+                                            bool supportBfloat16 = false)
 {
     // 支持sharedInput输入为空, 不支持logit为空
     auto scene = params.x != nullptr && params.w != nullptr && params.scaleOptional != nullptr &&
@@ -1082,8 +1083,9 @@ static inline aclnnStatus CheckSupportScene(const CheckSupportSceneParams &param
         return ACLNN_ERR_PARAM_NULLPTR;
     }
 
-    if (params.dtype != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s dtype must be 0 (FLOAT32), but is %lld.", opName, params.dtype);
+    if (params.dtype != 0 && !(supportBfloat16 && params.dtype == 2)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s dtype must be 0 (FLOAT32) or 2 (BFLOAT16), but is %lld.", opName,
+                params.dtype);
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -1196,11 +1198,6 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(
                    DFX_OUT(out));
     auto checkInputRet = CheckInputParamsForWeightNzV2(x1, x2, antiquantScaleOptional, antiquantOffsetOptional);
     CHECK_RET(checkInputRet == ACLNN_SUCCESS, checkInputRet);
-    if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 && dtype != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "GroupedMatmulFinalizeRoutingWeightNzV2 dtype must be 0 (FLOAT32), but is %lld.", dtype);
-        return ACLNN_ERR_PARAM_INVALID;
-    }
     auto viewShape = x2->GetViewShape();
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
@@ -1257,7 +1254,8 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(
 
         CheckSupportSceneParams sceneParams{x1,    tmpWeight, scale, pertokenScaleOptional, groupList, sharedInput,
                                             logit, rowIndex,  dtype};
-        auto ret0 = CheckSupportScene(sceneParams, transposeX1, transposeX2, "GroupedMatmulFinalizeRoutingWeightNzV2");
+        auto ret0 = CheckSupportScene(sceneParams, transposeX1, transposeX2, "GroupedMatmulFinalizeRoutingWeightNzV2",
+                                      true);
         CHECK_RET(ret0 == ACLNN_SUCCESS, ret0);
         finalWeight = tmpWeight;
     }

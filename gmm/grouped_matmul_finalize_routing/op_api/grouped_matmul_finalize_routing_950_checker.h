@@ -490,6 +490,19 @@ public:
                 "the dtypes of x and weight must be within the range {both MXFP4 or both MXFP8}");
             return false;
         }
+        bool isWeightNz = gmmParams_.x2->GetStorageFormat() == Format::FORMAT_FRACTAL_NZ;
+        bool isMxA8W8 = gmm::CheckDTypeInVector(gmmParams_.x1->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX_FP8) &&
+                        gmm::CheckDTypeInVector(gmmParams_.x2->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX_FP8);
+        if (isWeightNz && isMxA8W8 &&
+            (gmmParams_.x1->GetDataType() != DataType::DT_FLOAT8_E4M3FN ||
+             gmmParams_.x2->GetDataType() != DataType::DT_FLOAT8_E4M3FN)) {
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                GMMFR_ACLNN_OP_NAME, "x and weight",
+                "x=" + std::string(op::ToString(gmmParams_.x1->GetDataType()).GetString()) +
+                    ", weight=" + op::ToString(gmmParams_.x2->GetDataType()).GetString(),
+                "in MX A8W8 weight NZ mode, x and weight must both be FLOAT8_E4M3FN");
+            return false;
+        }
         return true;
     }
 
@@ -560,9 +573,17 @@ public:
             return false;
         }
         if (quantMode_ == QuantMode::MX) {
-            if (op::IsPrivateFormat(gmmParams_.x2->GetStorageFormat())) {
+            bool isBf16Output =
+                gmmParams_.dtype == OUT_DTYPE_BF16 || gmmParams_.out->GetDataType() == DataType::DT_BF16;
+            bool weightFormatInvalid = isBf16Output ?
+                                           gmmParams_.x2->GetStorageFormat() != Format::FORMAT_FRACTAL_NZ :
+                                           (op::IsPrivateFormat(gmmParams_.x2->GetStorageFormat()) &&
+                                            gmmParams_.x2->GetStorageFormat() != Format::FORMAT_FRACTAL_NZ);
+            if (weightFormatInvalid) {
+                const char *expectedFormatStr = isBf16Output ? "FRACTAL_NZ" : "ND or FRACTAL_NZ";
                 OP_LOGE_FOR_INVALID_FORMAT(GMMFR_ACLNN_OP_NAME, "weight",
-                                           op::ToString(gmmParams_.x2->GetStorageFormat()).GetString(), "ND");
+                                           op::ToString(gmmParams_.x2->GetStorageFormat()).GetString(),
+                                           expectedFormatStr);
                 return false;
             }
         } else {
