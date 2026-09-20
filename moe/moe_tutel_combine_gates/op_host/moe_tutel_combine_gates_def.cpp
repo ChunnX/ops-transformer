@@ -57,9 +57,9 @@ public:
         // --- Input: x ---
         // Token embedding matrix [S, H]. REQUIRED.
         // 3 dtypes: BF16, FP16, FP32 — each with FORMAT_ND (N-dimensional) layout.
-        // .AutoContiguous()：算子按连续语义取行，非连续输入必须由
-        // 框架先转连续（op_def.h:198 提供该声明；op_build 据此在 aclnn 桩里插入
-        // aclnnContiguous 视图拷贝），否则会静默算错。此前无任何声明也无显式拒绝。
+        // .AutoContiguous()：算子按连续语义取行，声明「进入 kernel 的输入必须连续」。
+        // 本算子仅保留 GE 图模式（aclnn 调用方式及其自动生成桩已删除）：图输入由
+        // 框架喂入 / 分配，`.AutoContiguous()` 作为契约声明保留。
         this->Input("x")
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT})
@@ -100,21 +100,11 @@ public:
         // Per-task gate gradient, shape = indices.shape (proto.md §4).
         // REQUIRED. dtype always equals the floating-point input dtype.
         //
-        // .AutoContiguous() 在本输出上是**惰性**的，必须如实理解：
-        // 本 CANN 版本（9.2.0 / Ascend950PR）的 op_build aclnn 生成器不实现通用的输出侧
-        // 连续化。生成器里那套输出侧机制（`NnopbaseGetRefUnContiguousTensors` +
-        // `aclnnViewCopyGetWorkspaceSize` + `NnopbaseSetViewCopyExecutor` / `aclnnViewCopy`）
-        // 只在**某个输出参数名与某个输入同名**（即 in-place / Ref 输出）时才被生成。本算子的
-        // `gates_grad` 与任何输入都不同名，也不得改成 in-place（shape 与 `x` / `y_grad` 都
-        // 不同，且与其 IR 冲突），故该生成分支不可达。
-        // 输入侧的 `.AutoContiguous()` 是有效的（去掉会真实改变生成桩、整段 `aclnnContiguous`
-        // 通路消失）；输出侧则删掉、换成 `.IgnoreContiguous()`、或追加
-        // `.OutputShapeDependOnCompute()`，生成桩里都不会出现任何输出侧连续化 / 回拷代码。
-        // ⇒ 保留本行的 `.AutoContiguous()` 只是为了与四输入的声明形式一致，
-        //   **不代表输出侧非连续已获支持**：调用方必须传入连续的 `gates_grad`。
-        // kernel / tiling 层同样无法感知输出 stride —— aclnn 通路喂给 tiling 的输出描述符是
-        // kTensorV1（无 stride / offset，storage 维等于视图维），能拒绝的层只有生成桩，
-        // 而本仓库不修改 op_build 的生成结果。非连续输出的行为因此不在支持范围内。
+        // .AutoContiguous()：本算子仅保留 GE 图模式（aclnn 调用方式及其自动生成桩
+        // 已删除）。图模式下输出 gates_grad 由 GE 按 InferShape 推导出的 shape 分配，
+        // 天然连续，调用方不自行分配输出内存；kernel / tiling 层不感知输出 stride，
+        // 按连续语义写回。该声明与四输入的声明形式保持一致，作为「输出按连续语义
+        // 写回」的契约登记。
         this->Output("gates_grad")
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT})

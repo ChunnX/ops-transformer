@@ -295,9 +295,9 @@ static ge::graphStatus InferShape4MoeTutelCombineGates(gert::InferShapeContext *
 //   3) 预置/声明的输出 dtype 若本身已是受支持浮点类型却 ≠ x.dtype ⇒ 拒绝，
 //      不静默覆盖。
 //
-// 图模式（GE）与单算子（aclnn）两条通路共用本注册：注册表按 OpType 合并后
-// `OP_IMPL` 上同时带 [Tiling][TilingParse][InferShape][InferDataType]，
-// 两条通路的判决口径因此天然一致。
+// 图模式（GE）通路使用本注册（本算子的 aclnn 单算子调用方式已删除）：注册表按
+// OpType 合并后 `OP_IMPL` 上同时带 [Tiling][TilingParse][InferShape][InferDataType]，
+// 推理与 tiling 的判决口径因此天然一致。
 //
 // 返回：ge::GRAPH_SUCCESS（gates_grad dtype 已写入）/ ge::GRAPH_FAILED（dtype 组合非法）。
 // ---------------------------------------------------------------------------

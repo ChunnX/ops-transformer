@@ -478,7 +478,7 @@ ge::graphStatus MoeTutelCombineGatesTiling::GetPlatformInfo()
 // content of indices / locations **only when the framework supplies them as host
 // tensors** (kOnHost / kFollowing) and logs + passes on the device path — see its
 // comment block for the measured reason (no stride/offset/version information
-// reaches tiling on the aclnn path, so a linear read cannot be proved correct).
+// reaches tiling on the device path, so a linear read cannot be proved correct).
 // The HostTiling §2.1 declaration is therefore NOT true of this implementation as
 // a whole.
 // ---------------------------------------------------------------------------
@@ -816,20 +816,21 @@ ge::graphStatus MoeTutelCombineGatesTiling::CheckNumericRange()
 //   * REQUIREMENTS §7.5 B1 与 §5.9.5：越界必须前置拦截，不得静默越界访存。
 //
 // 为什么落在 Tiling 层（本工程内「值可读层」的唯一落点，如实登记）：
-//   接口设计把该拒绝指派给「aclnn 单算子模式的 GetWorkspaceSize 参数校验阶段」，但本仓库的
-//   ACLNN 实现是 op_build 的**自动生成桩**（aclnn_*.cpp 由 op_build 生成、本仓库不覆盖），
-//   没有可插入校验的钩子；tiling 回调是 aclnn 通路里本算子自有代码中唯一可返回失败的一段。
+//   接口设计把该拒绝指派给「aclnn 单算子模式的 GetWorkspaceSize 参数校验阶段」；本算子的
+//   aclnn 调用方式已删除（仅保留 GE 图模式），历史上由 op_build 自动生成的 aclnn 桩
+//   （aclnn_*.cpp）本就没有可插入校验的钩子，如今该通路整体不再生成；tiling 回调是
+//   本算子自有代码中唯一可返回失败的一段，拒绝继续落在这里。
 //
 // ★ 读值口径：设备张量**不读取、也不作为拒绝依据**，只保留 host 侧张量的直读拒绝。
 //   理由是本层拿不到判定「线性缓冲 == 逻辑元素序列」所需的任何信息：
-//     a) aclnn 通路喂给 tiling 的描述符一律是 `gert::kTensorV1`（`GetVersion()==0`，即
+//     a) 设备通路喂给 tiling 的描述符不携带非连续描述信息（`GetVersion()==0`，即
 //        「不携带非连续描述信息」）：`InputIsView(2/3)==false`、`GetInputStride(2/3)==nullptr`、
 //        `GetInputOffset(2/3)==-1`，对**连续与非连续输入给出完全相同的结果**；
 //     b) `GetInputShape(i)` 的 cur/storage/origin 三份 shape 全部等于**逻辑（视图）维**，
 //        真实的 storage 维被丢弃；
 //     c) `GetTensorData().GetSize()` 也恒为逻辑字节数；
-//     d) 数据地址仍是**原始 storage 基址**（连续化发生在桩的 `aclnnContiguous` 里、在本次
-//        tiling 之后），故按线性缓冲读 `S*B` 个元素读到的是**视图跳过的 storage 元素**
+//     d) 数据地址仍是**原始 storage 基址**（连续化发生在框架侧、在本次 tiling 之后），
+//        故按线性缓冲读 `S*B` 个元素读到的是**视图跳过的 storage 元素**
 //        ⇒ 一个完全合法的非连续视图会被误拒，而误拒合法输入比漏检更严重。
 //   于是这里取「宁可放行、不误拒」。放行是安全的：kernel 两侧分支都用四条件
 //   `ok = (e>=0) && (e<B) && (p>=0) && (p<C)` 掩码，非法 task `continue` 且**不发起任何 DMA**，
@@ -1159,8 +1160,8 @@ ge::graphStatus MoeTutelCombineGatesTiling::RunTiling()
 // .TilingInputsDataDependency() is registered below, yet RunTiling() ->
 // ValidateInputs() -> CheckIndexValueRange() DOES read the content of indices and
 // locations whenever the framework hands them over as host tensors (kOnHost /
-// kFollowing); on the device path (the aclnn thread) it logs and
-// passes because tiling receives no stride / offset / kTensorV2 information there.
+// kFollowing); on the device path it logs and passes because tiling receives no
+// stride / offset / kTensorV2 information there.
 // The framework therefore owes nothing about data readiness at this point: the
 // check is best-effort, and whenever a value cannot be read (device tensor, no data
 // pointer, no tensor description) it logs at INFO and passes, leaving the kernel's

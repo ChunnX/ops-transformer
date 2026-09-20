@@ -931,7 +931,7 @@ Ascend 950支持的算子分类和算子列表如下：
     <td><a href="../../moe/moe_tutel_combine_gates/README.md">moe_tutel_combine_gates</a></td>
     <td>✓</td>
     <td>✓</td>
-    <td>✓</td>
+    <td>✗</td>
     <td>✓</td>
     <td>AI Core</td>
     <td>计算Tutel MoE门控权重的反向梯度：按路由下标从dispatch缓冲的回传梯度中取出槽位行，与token行做hidden维内积，得到逐task的门控梯度。</td>

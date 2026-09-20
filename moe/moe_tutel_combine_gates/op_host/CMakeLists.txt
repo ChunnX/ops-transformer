@@ -12,7 +12,9 @@ message(STATUS "=== Debug: start ops.moe.moe_tutel_combine_gates.op_host.CMakeLi
 set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
 if (BUILD_OPEN_PROJECT)
     message(STATUS "=== Debug: BUILD is BUILD_OPEN_PROJECT")
-    target_sources(op_host_aclnn PRIVATE
+    # aclnn 调用方式已删除：def.cpp 挂到 op_host_aclnnExc、ACLNNTYPE 用 aclnn_exclude，
+    # op_build 只生成本算子的 proto（GE 图模式 IR 注册），不再生成 aclnn_*.cpp/.h 桩。
+    target_sources(op_host_aclnnExc PRIVATE
         moe_tutel_combine_gates_def.cpp
     )
     if(CONDITION_UNIT STREQUAL "ascend950")
@@ -34,5 +36,5 @@ endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)
     message(STATUS "=== Debug: BUILD is NOT BUILD_OPS_RTY_KERNEL")
-    add_modules_sources(OPTYPE moe_tutel_combine_gates ACLNNTYPE aclnn)
+    add_modules_sources(OPTYPE moe_tutel_combine_gates ACLNNTYPE aclnn_exclude)
 endif()

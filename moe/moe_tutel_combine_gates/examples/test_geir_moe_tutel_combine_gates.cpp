@@ -9,29 +9,41 @@
  */
 
 /*!
- * \file test_aclnn_moe_tutel_combine_gates.cpp
- * \brief MoeTutelCombineGates aclnn end-to-end example.
+ * \file test_geir_moe_tutel_combine_gates.cpp
+ * \brief MoeTutelCombineGates GE graph-mode (GEIR) end-to-end example.
  *
- *        Drives the public two-phase ACLNN chain
- *            aclnnMoeTutelCombineGatesGetWorkspaceSize -> aclnnMoeTutelCombineGates
- *        for all three supported dtype combinations (bfloat16 / float16 / float32)
- *        and compares every element against an independent CPU float64 oracle of
+ *        Builds a single-operator compute graph through the operator IR
+ *            REG_OP(MoeTutelCombineGates)  (op_graph/moe_tutel_combine_gates_proto.h)
+ *        feeds x / y_grad / indices / locations through ge::Session::RunGraph and
+ *        compares gates_grad with an independent CPU float64 oracle of
  *            gates_grad[b, s] = sum_h x[s, h] * y_grad[e * C + p, h],
  *            e = indices[b, s], p = locations[b, s],
  *        with the out-of-range routing rule (e < 0 / e >= B / p < 0 / p >= C -> exactly 0).
+ *        Cases cover all three supported dtype combinations (bfloat16 / float16 / float32).
  *
  *        Build and run with:
- *            bash build.sh --run_example moe_tutel_combine_gates eager --soc=ascend950
+ *            bash build.sh --run_example moe_tutel_combine_gates graph --soc=ascend950
  */
 
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <map>
+#include <string>
 #include <vector>
 
-#include "acl/acl.h"
-#include "aclnnop/aclnn_moe_tutel_combine_gates.h"
+#include "graph.h"
+#include "types.h"
+#include "tensor.h"
+#include "ge_api_types.h"
+#include "ge_api.h"
+// ops_proto_legacy.h declares the ge::op::Data operator (successor of the
+// deprecated array_ops.h); moe_tutel_combine_gates_proto.h is included next and
+// registers MoeTutelCombineGates in the same ge::op namespace.
+#include "ops_proto_legacy.h"
+
+#include "../op_graph/moe_tutel_combine_gates_proto.h"
 
 #define CHECK_RET(cond, return_expr) \
     do { \
@@ -63,15 +75,15 @@ size_t ElemSize(DType dt)
     return (dt == DType::FP32) ? sizeof(float) : sizeof(uint16_t);
 }
 
-aclDataType AclType(DType dt)
+ge::DataType GeType(DType dt)
 {
     switch (dt) {
         case DType::BF16:
-            return ACL_BF16;
+            return ge::DT_BF16;
         case DType::FP16:
-            return ACL_FLOAT16;
+            return ge::DT_FLOAT16;
         default:
-            return ACL_FLOAT;
+            return ge::DT_FLOAT;
     }
 }
 
@@ -139,7 +151,7 @@ double LoadElem(DType dt, const std::vector<uint8_t> &buf, size_t idx)
 {
     if (dt == DType::FP32) {
         float f = 0.0f;
-        std::memcpy(&f, buf.data() + idx * sizeof(float), sizeof(float));
+        std::memcpy(&f, buf.data() + idx * sizeof(float), sizeof(f));
         return static_cast<double>(f);
     }
     uint16_t bits = 0;
@@ -269,7 +281,7 @@ HostInputs BuildInputs(const Shape &sh, DType dt, uint64_t seed, const std::vect
     return in;
 }
 
-// Independent CPU float64 oracle; it never touches aclnn, the tiling or the kernel.
+// Independent CPU float64 oracle; it never touches GE, the tiling or the kernel.
 void ComputeGolden(const Shape &sh, DType dt, const HostInputs &in, std::vector<double> &golden)
 {
     const int64_t taskNum = sh.TaskNum();
@@ -294,120 +306,100 @@ void ComputeGolden(const Shape &sh, DType dt, const HostInputs &in, std::vector<
     }
 }
 
-void *MallocDevice(size_t bytes)
+// Wrap host bytes in a ge::Tensor whose desc matches the Data node of the graph.
+ge::Tensor MakeGeTensor(const std::vector<int64_t> &dims, ge::DataType dt, const uint8_t *data, size_t bytes)
 {
-    void *p = nullptr;
-    const size_t allocBytes = (bytes > 0) ? bytes : 32u; // aclrtMalloc(0) is invalid
-    if (aclrtMalloc(&p, allocBytes, ACL_MEM_MALLOC_HUGE_FIRST) != ACL_SUCCESS) {
-        return nullptr;
-    }
-    return p;
-}
-
-aclTensor *MakeTensor(const std::vector<int64_t> &dims, aclDataType dtype, void *deviceData)
-{
-    std::vector<int64_t> strides(dims.size(), 1);
-    for (size_t d = dims.size(); d-- > 1;) {
-        strides[d - 1] = strides[d] * dims[d];
-    }
-    return aclCreateTensor(dims.data(), dims.size(), dtype, strides.data(), 0, ACL_FORMAT_ND, dims.data(), dims.size(),
-                           deviceData);
-}
-
-bool Upload(void *device, size_t bytes, const void *host)
-{
-    if (bytes == 0) {
-        return true;
-    }
-    return aclrtMemcpy(device, bytes, host, bytes, ACL_MEMCPY_HOST_TO_DEVICE) == ACL_SUCCESS;
+    ge::TensorDesc desc(ge::Shape(dims), ge::FORMAT_ND, dt);
+    desc.SetRealDimCnt(dims.size());
+    // Keep the placement aligned with the Data node desc (kPlacementHost): GE
+    // inserts the host-to-device transfer itself before the kernel runs.
+    desc.SetPlacement(ge::kPlacementHost);
+    return ge::Tensor(desc, const_cast<uint8_t *>(data), bytes);
 }
 
 // ---------------------------------------------------------------------------
-// RunCase — one end-to-end case: upload, run both phases, compare with the oracle.
+// RunCase — one end-to-end case: build the single-op graph, feed the four
+// inputs, run the graph and compare gates_grad with the oracle.
 // ---------------------------------------------------------------------------
-int RunCase(const char *name, const Shape &sh, DType dt, uint64_t seed, const std::vector<int32_t> &illegal,
-            double rtol, double atol)
+int RunCase(ge::Session &session, uint32_t graphId, const char *name, const Shape &sh, DType dt, uint64_t seed,
+            const std::vector<int32_t> &illegal, double rtol, double atol)
 {
-    const size_t esz = ElemSize(dt);
     const HostInputs in = BuildInputs(sh, dt, seed, illegal);
     std::vector<double> golden;
     ComputeGolden(sh, dt, in, golden);
 
-    const size_t xBytes = in.x.size();
-    const size_t yBytes = in.y.size();
-    const size_t iBytes = in.idx.size() * sizeof(int32_t);
-    const size_t oBytes = static_cast<size_t>(sh.TaskNum()) * esz;
+    // --- build the graph: Data(x) Data(y_grad) Data(indices) Data(locations)
+    //     -> MoeTutelCombineGates -> gates_grad (order strictly matches proto.h)
+    ge::Graph graph(name);
+    auto dataX = ge::op::Data("x").set_attr_index(0);
+    auto dataY = ge::op::Data("y_grad").set_attr_index(1);
+    auto dataIdx = ge::op::Data("indices").set_attr_index(2);
+    auto dataLoc = ge::op::Data("locations").set_attr_index(3);
 
-    void *devX = MallocDevice(xBytes);
-    void *devY = MallocDevice(yBytes);
-    void *devIdx = MallocDevice(iBytes);
-    void *devLoc = MallocDevice(iBytes);
-    void *devOut = MallocDevice(oBytes);
-    if (devX == nullptr || devY == nullptr || devIdx == nullptr || devLoc == nullptr || devOut == nullptr) {
-        LOG_PRINT("[%s] FAILED: aclrtMalloc returned nullptr\n", name);
-        return -1;
-    }
+    ge::TensorDesc descX(ge::Shape({sh.S, sh.H}), ge::FORMAT_ND, GeType(dt));
+    ge::TensorDesc descY(ge::Shape({sh.B, sh.C, sh.H}), ge::FORMAT_ND, GeType(dt));
+    ge::TensorDesc descIdx(ge::Shape({sh.B, sh.S}), ge::FORMAT_ND, ge::DT_INT32);
+    descX.SetPlacement(ge::kPlacementHost);
+    descY.SetPlacement(ge::kPlacementHost);
+    descIdx.SetPlacement(ge::kPlacementHost);
+    dataX.update_input_desc_x(descX);
+    dataY.update_input_desc_x(descY);
+    dataIdx.update_input_desc_x(descIdx);
+    dataLoc.update_input_desc_x(descIdx);
 
-    // Target outputs are pre-filled with the dtype's 1.0 so that an unwritten
-    // element can never be mistaken for a correct one.
-    std::vector<uint8_t> outHost(oBytes, 0);
-    for (int64_t t = 0; t < sh.TaskNum(); ++t) {
-        StoreElem(dt, outHost, static_cast<size_t>(t), 1.0);
-    }
+    auto op = ge::op::MoeTutelCombineGates(name);
+    op.set_input_x(dataX);
+    op.set_input_y_grad(dataY);
+    op.set_input_indices(dataIdx);
+    op.set_input_locations(dataLoc);
 
-    bool ok = Upload(devX, xBytes, in.x.data()) && Upload(devY, yBytes, in.y.data()) &&
-              Upload(devIdx, iBytes, in.idx.data()) && Upload(devLoc, iBytes, in.loc.data()) &&
-              Upload(devOut, oBytes, outHost.data());
-    CHECK_RET(ok, LOG_PRINT("[%s] FAILED: host to device copy\n", name); return -1);
+    ge::TensorDesc descOut(ge::Shape({sh.B, sh.S}), ge::FORMAT_ND, GeType(dt));
+    op.update_output_desc_gates_grad(descOut);
 
-    aclrtStream stream = nullptr;
-    CHECK_RET(aclrtCreateStream(&stream) == ACL_SUCCESS, LOG_PRINT("[%s] FAILED: aclrtCreateStream\n", name);
+    graph.AddOp(dataX);
+    graph.AddOp(dataY);
+    graph.AddOp(dataIdx);
+    graph.AddOp(dataLoc);
+    std::vector<ge::Operator> graphInputs = {dataX, dataY, dataIdx, dataLoc};
+    std::vector<ge::Operator> graphOutputs = {op};
+    graph.SetInputs(graphInputs).SetOutputs(graphOutputs);
+
+    CHECK_RET(session.AddGraph(graphId, graph) == ge::GRAPH_SUCCESS,
+              LOG_PRINT("[%s] FAILED: session AddGraph\n", name);
               return -1);
 
-    const int64_t xDims[] = {sh.S, sh.H};
-    const int64_t yDims[] = {sh.B, sh.C, sh.H};
-    const int64_t iDims[] = {sh.B, sh.S};
-    aclTensor *tensorX = MakeTensor({sh.S, sh.H}, AclType(dt), devX);
-    aclTensor *tensorY = MakeTensor({sh.B, sh.C, sh.H}, AclType(dt), devY);
-    aclTensor *tensorIdx = MakeTensor({sh.B, sh.S}, ACL_INT32, devIdx);
-    aclTensor *tensorLoc = MakeTensor({sh.B, sh.S}, ACL_INT32, devLoc);
-    aclTensor *tensorOut = MakeTensor({sh.B, sh.S}, AclType(dt), devOut);
-    (void)xDims;
-    (void)yDims;
-    (void)iDims;
-    CHECK_RET(tensorX != nullptr && tensorY != nullptr && tensorIdx != nullptr && tensorLoc != nullptr &&
-                  tensorOut != nullptr,
-              LOG_PRINT("[%s] FAILED: aclCreateTensor\n", name);
+    // --- feed the four inputs (order strictly matches the graph inputs)
+    const size_t idxBytes = in.idx.size() * sizeof(int32_t);
+    std::vector<ge::Tensor> inputs;
+    inputs.push_back(MakeGeTensor({sh.S, sh.H}, GeType(dt), in.x.data(), in.x.size()));
+    inputs.push_back(MakeGeTensor({sh.B, sh.C, sh.H}, GeType(dt), in.y.data(), in.y.size()));
+    inputs.push_back(MakeGeTensor({sh.B, sh.S}, ge::DT_INT32, reinterpret_cast<const uint8_t *>(in.idx.data()),
+                                   idxBytes));
+    inputs.push_back(MakeGeTensor({sh.B, sh.S}, ge::DT_INT32, reinterpret_cast<const uint8_t *>(in.loc.data()),
+                                   idxBytes));
+
+    std::vector<ge::Tensor> outputs;
+    CHECK_RET(session.RunGraph(graphId, inputs, outputs) == ge::GRAPH_SUCCESS,
+              LOG_PRINT("[%s] FAILED: RunGraph (tiling/kernel error)\n", name);
+              return -1);
+    CHECK_RET(outputs.size() == 1, LOG_PRINT("[%s] FAILED: unexpected output count %zu\n", name, outputs.size());
               return -1);
 
-    uint64_t workspaceSize = 0;
-    aclOpExecutor *executor = nullptr;
-    aclnnStatus ret = aclnnMoeTutelCombineGatesGetWorkspaceSize(tensorX, tensorY, tensorIdx, tensorLoc, tensorOut,
-                                                                &workspaceSize, &executor);
-    CHECK_RET(ret == 0, LOG_PRINT("[%s] FAILED: GetWorkspaceSize ret=%d\n", name, ret); return -1);
-    CHECK_RET(executor != nullptr, LOG_PRINT("[%s] FAILED: null executor\n", name); return -1);
-
-    void *workspace = nullptr;
-    if (workspaceSize > 0) {
-        CHECK_RET(aclrtMalloc(&workspace, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST) == ACL_SUCCESS,
-                  LOG_PRINT("[%s] FAILED: workspace malloc\n", name);
-                  return -1);
-    }
-    ret = aclnnMoeTutelCombineGates(workspace, workspaceSize, executor, stream);
-    CHECK_RET(ret == 0, LOG_PRINT("[%s] FAILED: aclnn call ret=%d\n", name, ret); return -1);
-    CHECK_RET(aclrtSynchronizeStream(stream) == ACL_SUCCESS, LOG_PRINT("[%s] FAILED: synchronize stream\n", name);
-              return -1);
-
-    if (oBytes > 0) {
-        CHECK_RET(aclrtMemcpy(outHost.data(), oBytes, devOut, oBytes, ACL_MEMCPY_DEVICE_TO_HOST) == ACL_SUCCESS,
-                  LOG_PRINT("[%s] FAILED: device to host copy\n", name);
-                  return -1);
+    // --- compare every task against the oracle
+    const int64_t taskNum = sh.TaskNum();
+    const size_t esz = ElemSize(dt);
+    const uint8_t *outData = outputs[0].GetData();
+    CHECK_RET(taskNum == 0 || outData != nullptr, LOG_PRINT("[%s] FAILED: null output data\n", name); return -1);
+    // Copy into a byte vector so the same LoadElem comparator serves all dtypes.
+    std::vector<uint8_t> outBytes;
+    if (outData != nullptr) {
+        outBytes.assign(outData, outData + static_cast<size_t>(taskNum) * esz);
     }
 
     int failed = 0;
     double worst = 0.0;
-    for (int64_t t = 0; t < sh.TaskNum(); ++t) {
-        const double got = LoadElem(dt, outHost, static_cast<size_t>(t));
+    for (int64_t t = 0; t < taskNum; ++t) {
+        const double got = LoadElem(dt, outBytes, static_cast<size_t>(t));
         const double want = golden[static_cast<size_t>(t)];
         const double diff = std::fabs(got - want);
         worst = (diff > worst) ? diff : worst;
@@ -419,21 +411,6 @@ int RunCase(const char *name, const Shape &sh, DType dt, uint64_t seed, const st
         }
     }
 
-    if (workspace != nullptr) {
-        aclrtFree(workspace);
-    }
-    aclDestroyTensor(tensorX);
-    aclDestroyTensor(tensorY);
-    aclDestroyTensor(tensorIdx);
-    aclDestroyTensor(tensorLoc);
-    aclDestroyTensor(tensorOut);
-    aclrtDestroyStream(stream);
-    aclrtFree(devX);
-    aclrtFree(devY);
-    aclrtFree(devIdx);
-    aclrtFree(devLoc);
-    aclrtFree(devOut);
-
     if (failed > 0) {
         LOG_PRINT("[%s] FAILED (S=%ld H=%ld B=%ld C=%ld, worst |diff| = %.6g)\n", name, static_cast<long>(sh.S),
                   static_cast<long>(sh.H), static_cast<long>(sh.B), static_cast<long>(sh.C), worst);
@@ -441,7 +418,7 @@ int RunCase(const char *name, const Shape &sh, DType dt, uint64_t seed, const st
     }
     LOG_PRINT("[%s] PASSED (S=%ld H=%ld B=%ld C=%ld taskNum=%ld, worst |diff| = %.6g)\n", name, static_cast<long>(sh.S),
               static_cast<long>(sh.H), static_cast<long>(sh.B), static_cast<long>(sh.C),
-              static_cast<long>(sh.TaskNum()), worst);
+              static_cast<long>(taskNum), worst);
     return 0;
 }
 
@@ -449,28 +426,41 @@ int RunCase(const char *name, const Shape &sh, DType dt, uint64_t seed, const st
 
 int main()
 {
-    CHECK_RET(aclInit(nullptr) == ACL_SUCCESS, LOG_PRINT("aclInit failed\n"); return -1);
-    CHECK_RET(aclrtSetDevice(0) == ACL_SUCCESS, LOG_PRINT("aclrtSetDevice failed\n"); return -1);
-
-    const std::vector<int32_t> legal;
-    const std::vector<int32_t> allIllegal = {0, 1, 2, 3}; // e<0 / e>=B / p<0 / p>=C, cycled
+    LOG_PRINT("Initialize ge using ge global options\n");
+    std::map<ge::AscendString, ge::AscendString> globalOptions = {{"ge.exec.deviceId", "0"},
+                                                                  {"ge.graphRunMode", "1"}};
+    CHECK_RET(ge::GEInitialize(globalOptions) == ge::GRAPH_SUCCESS, LOG_PRINT("GEInitialize failed\n"); return -1);
 
     int ret = 0;
-    // float32 (tilingKey 1): rtol = atol = 1e-6 — the reduction is a compensated fp32 sum.
-    ret |= RunCase("fp32_TC01", {500, 64, 2, 500}, DType::FP32, 0x5A5A1234ULL, legal, 1e-6, 1e-6);
-    ret |= RunCase("fp32_TC06_illegal", {353, 512, 3, 64}, DType::FP32, 0x12345678ULL, allIllegal, 1e-6, 1e-6);
-    ret |= RunCase("fp32_H1", {4, 1, 2, 3}, DType::FP32, 0x0F0F0F0FULL, legal, 1e-6, 1e-6);
-    ret |= RunCase("fp32_H0_zero", {4, 0, 2, 3}, DType::FP32, 0x2468ACE0ULL, legal, 1e-6, 1e-6);
-    // bfloat16 (tilingKey 0): rtol = atol = 1e-2.
-    ret |= RunCase("bf16_TC03", {1024, 1024, 8, 256}, DType::BF16, 0x11112222ULL, legal, 1e-2, 1e-2);
-    ret |= RunCase("bf16_TC19_unaligned", {128, 513, 2, 64}, DType::BF16, 0x33334444ULL, legal, 1e-2, 1e-2);
-    // float16 (tilingKey 2): rtol = atol = 1e-3.
-    ret |= RunCase("fp16_unaligned", {96, 130, 3, 17}, DType::FP16, 0x55556666ULL, legal, 1e-3, 1e-3);
-    ret |= RunCase("fp16_S0_empty", {0, 8, 2, 3}, DType::FP16, 0x77778888ULL, legal, 1e-3, 1e-3);
+    {
+        const std::map<ge::AscendString, ge::AscendString> buildOptions = {};
+        ge::Session session(buildOptions);
 
-    CHECK_RET(aclrtResetDevice(0) == ACL_SUCCESS, LOG_PRINT("aclrtResetDevice failed\n"); return -1);
-    CHECK_RET(aclFinalize() == ACL_SUCCESS, LOG_PRINT("aclFinalize failed\n"); return -1);
+        const std::vector<int32_t> legal;
+        const std::vector<int32_t> allIllegal = {0, 1, 2, 3}; // e<0 / e>=B / p<0 / p>=C, cycled
+        uint32_t graphId = 0;
 
-    LOG_PRINT("test_aclnn_moe_tutel_combine_gates %s\n", (ret == 0) ? "PASSED" : "FAILED");
+        // float32 (tilingKey 1): rtol = atol = 1e-6 — the reduction is a compensated fp32 sum.
+        ret |= RunCase(session, graphId++, "fp32_TC01", {500, 64, 2, 500}, DType::FP32, 0x5A5A1234ULL, legal, 1e-6,
+                       1e-6);
+        ret |= RunCase(session, graphId++, "fp32_TC06_illegal", {353, 512, 3, 64}, DType::FP32, 0x12345678ULL,
+                       allIllegal, 1e-6, 1e-6);
+        ret |= RunCase(session, graphId++, "fp32_H1", {4, 1, 2, 3}, DType::FP32, 0x0F0F0F0FULL, legal, 1e-6, 1e-6);
+        ret |= RunCase(session, graphId++, "fp32_H0_zero", {4, 0, 2, 3}, DType::FP32, 0x2468ACE0ULL, legal, 1e-6,
+                       1e-6);
+        // bfloat16 (tilingKey 0): rtol = atol = 1e-2.
+        ret |= RunCase(session, graphId++, "bf16_TC03", {1024, 1024, 8, 256}, DType::BF16, 0x11112222ULL, legal, 1e-2,
+                       1e-2);
+        ret |= RunCase(session, graphId++, "bf16_TC19_unaligned", {128, 513, 2, 64}, DType::BF16, 0x33334444ULL,
+                       legal, 1e-2, 1e-2);
+        // float16 (tilingKey 2): rtol = atol = 1e-3.
+        ret |= RunCase(session, graphId++, "fp16_unaligned", {96, 130, 3, 17}, DType::FP16, 0x55556666ULL, legal,
+                       1e-3, 1e-3);
+        ret |= RunCase(session, graphId++, "fp16_S0_empty", {0, 8, 2, 3}, DType::FP16, 0x77778888ULL, legal, 1e-3,
+                       1e-3);
+    }
+
+    CHECK_RET(ge::GEFinalize() == ge::GRAPH_SUCCESS, LOG_PRINT("GEFinalize failed\n"); return -1);
+    LOG_PRINT("test_geir_moe_tutel_combine_gates %s\n", (ret == 0) ? "PASSED" : "FAILED");
     return ret;
 }
