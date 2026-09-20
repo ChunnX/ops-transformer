@@ -82,16 +82,6 @@ __aicore__ inline void LoadCachedHOut(uint32_t tOff, uint32_t tD)
     PipeBarrier<PIPE_V>();
 }
 
-/// 首轮R1从低精度h_out缓存直接生成平方归约输入。
-__aicore__ inline float ReduceCachedHOutSumSq(uint32_t tOff, uint32_t tD)
-{
-    LocalTensor<T> hOutCache = bufX2Cache_.Get<T>()[tOff];
-    LocalTensor<float> sqBuf = bufGamma2Fp32_.Get<float>();
-    MhcSandwichRegBase::CastSquareB16ToFp32(sqBuf, hOutCache, tD);
-    PipeBarrier<PIPE_V>();
-    return ReduceSumPrecise(sqBuf, tD);
-}
-
 /// 将gamma的[tOff, tOff+tD)分块加载到指定缓存。
 __aicore__ inline void LoadGammaInto(LocalTensor<float> dst, GlobalTensor<float> &src, uint32_t tOff, uint32_t tD)
 {
