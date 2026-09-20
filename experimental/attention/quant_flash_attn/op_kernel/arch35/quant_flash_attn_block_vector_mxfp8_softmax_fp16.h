@@ -238,7 +238,14 @@ public:
                                                   softmaxExpUB_, taskSlot);
         }
 
-        // TODO(批次4.1d): 末块 PipeBarrier + outputT 别名 + VfDivAndCast（融合转置写）
+        // ===== (2) 末块：除 + cast + 转置写（设计 §6.2 步骤(2)；GM 输出留 4.1e）=====
+        if (runInfo.isLastS2Loop) {
+            // 踩踏闸：累积步骤读尽 mm2ResUB 后，才允许转置写以别名区覆写它
+            PipeBarrier<PIPE_V>();
+            // 转置带 pad 输出（T 后缀 = Transposed），别名落 mm2Res 区 [0, ~36KB)
+            LocalTensor<bfloat16_t> outputT = mm2ResUB_.template ReinterpretCast<bfloat16_t>();
+            QfaVectorApi::VfDivAndCast(outputT, stage2OutUB_, accRowsumUB_);
+        }
     }
 
     __aicore__ inline void ReleaseTensorsVec()
