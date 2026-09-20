@@ -1017,8 +1017,8 @@ public:
         uint32_t attenMaskSize = mBaseSize / CV_RATIO * (s2BaseSize >> 1U);
         SoftmaxInitBuffer();
         tPipe_->InitBuffer(stage2OutBuf_, 64 * dTemplateAlign64 * sizeof(T));
-        tPipe_->InitBuffer(stage1OutQue_[0], 1, 16640); // (32 + 1) * (256 / 32) * 64
-        tPipe_->InitBuffer(stage1OutQue_[1], 1, 16640);
+        tPipe_->InitBuffer(stage1OutQue_[0], 1, 16896);
+        tPipe_->InitBuffer(stage1OutQue_[1], 1, 16896);
         tPipe_->InitBuffer(commonTBuf_, 512);
         if constexpr (HAS_MASK) {
             tPipe_->InitBuffer(attenMaskInQue_[0], 1, attenMaskSize); // 256 * 64
