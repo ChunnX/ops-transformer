@@ -354,13 +354,14 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
         LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
+        LoadHInCacheTile(tOff, tD, hIn);
         // R7开始时gamma2缓存已经死亡，复用它释放一整块gamma UB供输入输出双缓冲。
         LoadGammaInto(bufGamma2Fp32_.Get<float>(), gamma1Gm_, tOff, tD);
         SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
         WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-        LocalTensor<T> hInCache = bufX2Cache_.Get<T>()[tOff];
-        WriteR7Tile(hInCache, bufGamma2Fp32_.Get<float>(), hIn, invRms1, (uint64_t)token * D_ + tOff, tD);
+        ApplyScaleAndGamma(hIn, invRms1, bufGamma2Fp32_.Get<float>(), tD);
         FenceVToMte2();
+        WriteHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tD);
     }
 }
 
