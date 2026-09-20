@@ -56,27 +56,9 @@ public:
 
     template <const auto &MM_CFG, typename Impl, typename InputAType, typename InputBType, typename OutputCType,
               typename InputBiasType>
-    struct MatmulPolicyNew
-        : public AscendC::Impl::Detail::MatmulWithScalePolicy<MM_CFG, Impl, InputAType, InputBType, OutputCType,
-                                                              InputBiasType> {
-    private:
-        using Base = AscendC::Impl::Detail::MatmulWithScalePolicy<MM_CFG, Impl, InputAType, InputBType, OutputCType,
-                                                                 InputBiasType>;
-        struct AdaptedCopyInB {
-            using CopyInBType = AscendC::Impl::Detail::CopyCubeIn<
-                Impl, AscendC::MatmulInputBType<InputBType, typename InputAType::T>, MM_CFG, void,
-                TileCopy::template CopyGmToB1>;
-        };
-        struct BaseCopyInB {
-            using CopyInBType = typename Base::CopyCubeInB;
-        };
-
+    struct MatmulPolicyNew : public AscendC::Impl::Detail::MatmulWithScalePolicy<MM_CFG, Impl, InputAType, InputBType,
+                                                                                 OutputCType, InputBiasType> {
     public:
-        // V2's default policy resolves to the ordinary NZ copy.  V3 mode 1
-        // supplies a stride-based copy that packs the even/odd streams.
-        using CopyCubeInB = typename AscendC::Std::conditional_t<
-            Tile::HasCopyGmToB1V<TileCopy>, AdaptedCopyInB, BaseCopyInB>::CopyInBType;
-
         template <class InputType, class OutputType, typename T = void>
         using AdaptedCubeOut = typename TileCopy::template CopyCo1ToOut<InputType, OutputType>;
         using CopyCubeOut =
