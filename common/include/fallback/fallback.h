@@ -224,7 +224,7 @@ inline aclTensor *ConvertType(const gert::Tensor *ge_tensor)
 
     // 计算连续tensor的strides
     std::vector<int64_t> strides(shape.size(), 1);
-    for (int64_t i = shape.size() - 2; i >= 0; i--) {
+    for (int64_t i = static_cast<int64_t>(shape.size()) - 2; i >= 0; i--) {
         strides[i] = shape[i + 1] * strides[i + 1];
     }
 
@@ -294,7 +294,7 @@ inline aclTensor *ConvertMmType(const gert::Tensor *ge_tensor, bool transpose, b
     }
     // 计算连续tensor的strides
     std::vector<int64_t> strides(shape.size(), 1);
-    for (int64_t i = shape.size() - 2; i >= 0; i--) {
+    for (int64_t i = static_cast<int64_t>(shape.size()) - 2; i >= 0; i--) {
         strides[i] = shape[i + 1] * strides[i + 1];
     }
 
@@ -302,8 +302,8 @@ inline aclTensor *ConvertMmType(const gert::Tensor *ge_tensor, bool transpose, b
     // 对于transpose后的tensor对后两维度进行strides, viewShape转换
     if (transpose) {
         // dimM 为倒数第二维， dimN 为倒数第一维度
-        auto dimM = shape.size() - 2;
-        auto dimN = shape.size() - 1;
+        auto dimM = static_cast<int64_t>(shape.size()) - 2;
+        auto dimN = static_cast<int64_t>(shape.size()) - 1;
         auto swap = strides[dimN];
         strides[dimN] = strides[dimM];
         strides[dimM] = swap;

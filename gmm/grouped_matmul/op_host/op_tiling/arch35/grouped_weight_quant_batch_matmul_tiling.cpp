@@ -1370,8 +1370,7 @@ bool GroupedWeightQuantBatchMatmulTiling::SetShapeListSplitMSingleXSingleWeightS
         // 非转置NZ排布(N1, K1, K0, N0), 转置NZ排布(K1, N1, N0, K0)
         // -3含义：转置N1索引；-2含义：转置N0索引
         nSize_ = transB_ ? wShape.GetDim(wDimNum - 3) * wShape.GetDim(wDimNum - 2)
-                           // -4含义：非转置N1索引；-1含义：非转置N0索引
-                           :
+                           :// -4含义：非转置N1索引；-1含义：非转置N0索引
                            wShape.GetDim(wDimNum - 4) * wShape.GetDim(wDimNum - 1);
         const gert::StorageShape *yShapePtr = context->GetOutputShape(0);
         OP_CHECK_IF(yShapePtr == nullptr, OP_LOGE(context->GetNodeName(), "yShapePtr is nullptr."), return false);
@@ -1441,8 +1440,7 @@ bool GroupedWeightQuantBatchMatmulTiling::SetShapeListSplitMSingleXMultiWeightSi
             // 非转置NZ排布(N1, K1, K0, N0), 转置NZ排布(K1, N1, N0, K0)
             // -3含义：转置N1索引；-2含义：转置N0索引
             nSize = transB_ ? wShape.GetDim(wDimNum - 3) * wShape.GetDim(wDimNum - 2)
-                              // -4含义：非转置N1索引；-1含义：非转置N0索引
-                              :
+                              :// -4含义：非转置N1索引；-1含义：非转置N0索引
                               wShape.GetDim(wDimNum - 4) * wShape.GetDim(wDimNum - 1);
         }
         if (isFp4PackType && !transB_) {
