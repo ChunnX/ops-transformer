@@ -26,7 +26,7 @@ template <
     class L1Type = void
 >
 struct CopyGmToL1 {
-    static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported copy gm to l1, can not find the specialization.");
+    static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported copy gm to l1, cannot find the specialization.");
 };
 
 template <
@@ -36,7 +36,7 @@ template <
     class L1Type = void
 >
 struct CopyGmToL1IntervalDataCopy {
-    static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported copy gm to l1, can not find the specialization.");
+    static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported copy gm to l1, cannot find the specialization.");
 };
 
 ////////////////////////////////////////

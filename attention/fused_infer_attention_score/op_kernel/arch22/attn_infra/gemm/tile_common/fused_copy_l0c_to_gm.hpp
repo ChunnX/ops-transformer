@@ -31,7 +31,7 @@ template <
     ScaleGranularity DEQUANT_GRANULARITY = ScaleGranularity::NO_QUANT
 >
 struct CopyL0CToGmQuantMode {
-    static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported copy l0c to gm, can not find the specialization.");
+    static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported copy l0c to gm, cannot find the specialization.");
 };
 
 // CopyL0CToGm cast fp32 to fp16
@@ -101,7 +101,7 @@ template <
     bool ReluEnable = false
 >
 struct CopyL0CToGm {
-    static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported copy l0c to gm, can not find the specialization.");
+    static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported copy l0c to gm, cannot find the specialization.");
 };
 
 template <
@@ -198,7 +198,7 @@ template <
     class Enable = void
 >
 struct CopyL0CToGmTla {
-    static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported copy l0c to gm, can not find the specialization.");
+    static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported copy l0c to gm, cannot find the specialization.");
 };
 
 

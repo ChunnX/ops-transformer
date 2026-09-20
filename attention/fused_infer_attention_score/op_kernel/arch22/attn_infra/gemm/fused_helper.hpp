@@ -20,7 +20,7 @@ namespace NpuArch::Gemm::helper
 
 template<class Element, class Layout>
 struct L1AlignHelper {
-    static_assert(DEPENDENT_FALSE<Element>, "Unsupported align helper, can not find the specialization.");
+    static_assert(DEPENDENT_FALSE<Element>, "Unsupported align helper, cannot find the specialization.");
 };
 
 template<class Element>
@@ -74,7 +74,7 @@ struct L1AlignHelper<Element, layout::nZ> {
 template<class ElementA, class ElementB>
 struct ElementAccumulatorSelector {
     static_assert(DEPENDENT_FALSE<ElementA>,
-        "Unsupported element accumulator selector, can not find the specialization.");
+        "Unsupported element accumulator selector, cannot find the specialization.");
 };
 
 template<>
@@ -100,7 +100,7 @@ struct ElementAccumulatorSelector<bfloat16_t, bfloat16_t> {
 template<class GmAType>
 struct L1ATypeSelector {
     static_assert(DEPENDENT_FALSE<GmAType>,
-        "Unsupported layout selector, can not find the specialization.");
+        "Unsupported layout selector, cannot find the specialization.");
 };
 
 template<class Element>
@@ -126,7 +126,7 @@ struct L1ATypeSelector<Gemm::GemmType<Element, layout::PaddingColumnMajor>> {
 template<class GmBType>
 struct L1BTypeSelector {
     static_assert(DEPENDENT_FALSE<GmBType>,
-        "Unsupported layout selector, can not find the specialization.");
+        "Unsupported layout selector, cannot find the specialization.");
 };
 
 template<class Element>
@@ -162,7 +162,7 @@ struct L1BTypeSelector<Gemm::GemmType<Element, layout::PaddingColumnMajor>> {
 template<class GmBiasType, class ElementAccumulator>
 struct L1BiasTypeSelector {
     static_assert(DEPENDENT_FALSE<GmBiasType>,
-        "Unsupported layout selector, can not find the specialization.");
+        "Unsupported layout selector, cannot find the specialization.");
 };
 
 template<class ElementAccumulator>
@@ -189,9 +189,9 @@ struct ElementAccumulatorSelector<int32_t, int32_t> {
 template<class GmAType, class GmBType>
 struct L1AndL0TypeSelectorGemm{
     static_assert(DEPENDENT_FALSE<GmAType>,
-        "Unsupported layout selector, can not find the specialization.");
+        "Unsupported layout selector, cannot find the specialization.");
     static_assert(DEPENDENT_FALSE<GmBType>,
-        "Unsupported layout selector, can not find the specialization.");
+        "Unsupported layout selector, cannot find the specialization.");
 };
 
 template<class Element>

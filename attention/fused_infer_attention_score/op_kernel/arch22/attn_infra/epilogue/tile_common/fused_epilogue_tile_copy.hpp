@@ -25,7 +25,7 @@ template <
     class... Args
 >
 struct TileCopy {
-    static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported tile_common copy, can not find the specialization.");
+    static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported tile_common copy, cannot find the specialization.");
 };
 
 template <
