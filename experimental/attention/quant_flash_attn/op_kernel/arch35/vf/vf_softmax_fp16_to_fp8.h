@@ -132,8 +132,12 @@ __simd_vf__ inline void VfSoftmaxFp16ToFp8VF(__ubuf__ T2 *pDst, __ubuf__ half *a
         Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)r0, r3, preg_half);  // r0 已消费，复用为 fp8 目标
         Or((RegTensor<uint8_t> &)vreg_quant_b, (RegTensor<uint8_t> &)vreg_quant_b,
            (RegTensor<uint8_t> &)r0, preg_u8);
-        // TODO(3.3-b2): 第二对 Gather 解交织 + 半掩码双散布（行 i+2 / i+3，与第一对同构）
-        (void)colStride;
+        // 第二对同构：解交织 → 行 i+2 / i+3 半掩码双散布
+        Gather((RegTensor<uint8_t> &)vreg_quant_b, (RegTensor<uint8_t> &)vreg_quant_b, vreg_idx);
+        StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY>(
+            pDst + (i + 2) * 32, (RegTensor<T2> &)vreg_quant_b, 128, preg_u8_first);
+        StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY>(
+            pDst - 4 * 4096 + (i + 3) * 32, (RegTensor<T2> &)vreg_quant_b, 128, preg_u8_second);
     }
 }
 
