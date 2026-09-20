@@ -938,32 +938,38 @@ template <bool IsShared>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::GroupMatmulWithCombine(
     const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state)
 {
-    if constexpr (ENABLE_A8W4 || ENABLE_A4W4) {
-        if constexpr (ENABLE_A4W4) {
-            // A4W4 GMM1 uses a different block and event protocol; scope the FP8/W4 block to GMM2.
-            if constexpr (g_coreType == AscendC::AIC) {
-                typename A8W4Config::BlockMmad block(params_.tilingData->a8w4L1Layout);
-                RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
-                    L1_TILE_M_256, TopkWeightsPrefetch, IsShared, true, false, false>(typename A8W4Config::BlockContext{&block}, state.problemShape, gmmAddrInfo,
-                        startBlockIdx_, BlockJobContext{static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
-                            static_cast<uint32_t>(GetBlockNum())}, static_cast<uint32_t>(Get<M_VALUE>(state.problemShape)), 0U);
-            } else if (GetSubBlockIdx() == 0U) {
+    if constexpr (ENABLE_A8W4) {
+        RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
+            L1_TILE_M_256, TopkWeightsPrefetch, IsShared, true, false, false>(
+            blockContext_, state.problemShape, gmmAddrInfo, startBlockIdx_,
+            BlockJobContext{static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
+                static_cast<uint32_t>(GetBlockNum())}, static_cast<uint32_t>(Get<M_VALUE>(state.problemShape)), 0U);
+    } else if constexpr (ENABLE_A4W4) {
+        // A4W4 GMM1 uses a different block; keep the FP8/W4 objects local to GMM2.
+        if constexpr (g_coreType == AscendC::AIC) {
+            typename A8W4Config::BlockMmad block(params_.tilingData->a8w4L1Layout);
+            typename A8W4Config::BlockContext context{&block};
+            RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
+                L1_TILE_M_256, TopkWeightsPrefetch, IsShared, true, false, false>(
+                context, state.problemShape, gmmAddrInfo, startBlockIdx_,
+                BlockJobContext{static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
+                    static_cast<uint32_t>(GetBlockNum())}, static_cast<uint32_t>(Get<M_VALUE>(state.problemShape)), 0U);
+        } else {
+            if (GetSubBlockIdx() == 0U) {
                 typename A8W4Config::BlockPrologue block(params_.tilingData->a8w4L1Layout);
+                typename A8W4Config::BlockContext context{&block};
                 RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
-                    L1_TILE_M_256, TopkWeightsPrefetch, IsShared, true, false, false>(typename A8W4Config::BlockContext{&block}, state.problemShape, gmmAddrInfo,
-                        startBlockIdx_, BlockJobContext{static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
-                            static_cast<uint32_t>(GetBlockNum())}, static_cast<uint32_t>(Get<M_VALUE>(state.problemShape)), 0U);
+                    L1_TILE_M_256, TopkWeightsPrefetch, IsShared, true, false, false>(
+                    context, state.problemShape, gmmAddrInfo, startBlockIdx_,
+                    BlockJobContext{static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
+                        static_cast<uint32_t>(GetBlockNum())}, static_cast<uint32_t>(Get<M_VALUE>(state.problemShape)), 0U);
             } else {
                 RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
-                    L1_TILE_M_256, TopkWeightsPrefetch, IsShared, true, false, false>(typename A8W4Config::BlockContext{}, state.problemShape, gmmAddrInfo,
-                        startBlockIdx_, BlockJobContext{static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
-                            static_cast<uint32_t>(GetBlockNum())}, static_cast<uint32_t>(Get<M_VALUE>(state.problemShape)), 0U);
-            }
-        } else {
-            RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
-                L1_TILE_M_256, TopkWeightsPrefetch, IsShared, true, false, false>(blockContext_, state.problemShape, gmmAddrInfo,
-                    startBlockIdx_, BlockJobContext{static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
+                    L1_TILE_M_256, TopkWeightsPrefetch, IsShared, true, false, false>(
+                    typename A8W4Config::BlockContext{}, state.problemShape, gmmAddrInfo, startBlockIdx_,
+                    BlockJobContext{static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
                         static_cast<uint32_t>(GetBlockNum())}, static_cast<uint32_t>(Get<M_VALUE>(state.problemShape)), 0U);
+            }
         }
     } else {
         // A8W8_NZ / Generic 共用 RunGmm2Generic，仅 LayoutB 不同（ZN/ND）。
