@@ -133,10 +133,15 @@ int32_t GenOnesData(
     }
     uint32_t data_len = size * GetDataTypeSize(data_type);
     int32_t *pData = new (std::nothrow) int32_t[data_len];
+    if (pData == nullptr) {
+        printf("%s - ERROR - [XIR]: Allocate input data failed\n", GetTime().c_str());
+        return FAILED;
+    }
     for (size_t i = 0; i < size; ++i) {
         *(pData + i) = value;
     }
     input_tensor = Tensor(input_tensor_desc, reinterpret_cast<uint8_t *>(pData), data_len);
+    delete[] pData;
     return SUCCESS;
 }
 
