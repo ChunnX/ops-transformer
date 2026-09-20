@@ -222,8 +222,23 @@ public:
 
     __aicore__ inline void ComputeVec2(RunInfoMxfp8SoftmaxFp16 &runInfo)
     {
-        // TODO(批次4.x): VfFlashUpdateAcc 累积 + VfDivAndCast + 转置 + GM 输出
-        (void)runInfo;
+        // V1 半无有效列（actVecS1Size==0）：C2 由 cube 侧防御跳过，V2 同步早退
+        //（外层 C2_V2 flag 无条件 Set，早退不破坏跨核配平）
+        if (runInfo.actVecS1Size == 0U) {
+            return;
+        }
+
+        // ===== (1) 跨 S2 分块累积（设计 §6.2：首块 = vf 纯拷贝起步，消费者统一 V 管道）=====
+        uint32_t taskSlot = runInfo.loop % 3;
+        if (runInfo.isFirstS2Loop) {
+            QfaVectorApi::VfFlashUpdateAcc<false>(stage2OutUB_, accRowsumUB_, mm2ResUB_,
+                                                   softmaxExpUB_, taskSlot);
+        } else {
+            QfaVectorApi::VfFlashUpdateAcc<true>(stage2OutUB_, accRowsumUB_, mm2ResUB_,
+                                                  softmaxExpUB_, taskSlot);
+        }
+
+        // TODO(批次4.1d): 末块 PipeBarrier + outputT 别名 + VfDivAndCast（融合转置写）
     }
 
     __aicore__ inline void ReleaseTensorsVec()

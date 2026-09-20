@@ -42,18 +42,43 @@ using namespace AscendC::Reg;
  * @param [in]     rowsum   mm2ResUB[128] fp32（当前分块 rowsum）
  * @param [in]     factor   softmaxExpUB[loop%3] fp32（VfCalcRescaleFactor 输出）
  */
+template <bool isUpdate>
 __simd_vf__ inline void VfFlashUpdateAccVF(__ubuf__ float *dstOut, __ubuf__ float *dstSum,
                                              __ubuf__ float *cur, __ubuf__ float *rowsum,
                                              __ubuf__ float *factor)
 {
-    RegTensor<float> vreg_factor_a;    // factor[0..63]，列前半，全程复用
-    RegTensor<float> vreg_factor_b;    // factor[64..127]，列后半，全程复用
+    RegTensor<float> vreg_factor_a;    // factor[0..63]，列前半，全程复用（仅 isUpdate）
+    RegTensor<float> vreg_factor_b;    // factor[64..127]，列后半，全程复用（仅 isUpdate）
     RegTensor<float> vreg_sum_acc;     // dstSum 累积值（Mul+Add 中间结果）
     RegTensor<float> vreg_sum_new;     // rowsum 新值
     RegTensor<float> vreg_out_0, vreg_out_1, vreg_out_2, vreg_out_3;  // 4 路行展开
     RegTensor<float> vreg_cur_0, vreg_cur_1, vreg_cur_2, vreg_cur_3;
     MaskReg preg_f32 = CreateMask<float, MaskPattern::ALL>();   // 64 lanes fp32
 
+    // ===== 首块：纯 Load→Store 拷贝起步（设计 §7.4 模板裁决；消费者统一 V 管道）=====
+    if constexpr (!isUpdate) {
+        LoadAlign(vreg_sum_new, rowsum);
+        StoreAlign(dstSum, vreg_sum_new, preg_f32);
+        LoadAlign(vreg_sum_new, rowsum + 64);
+        StoreAlign(dstSum + 64, vreg_sum_new, preg_f32);
+        for (uint32_t row = 0; row < 128; row += 4) {
+            uint32_t base0 = row * 128;
+            uint32_t base1 = (row + 1) * 128;
+            uint32_t base2 = (row + 2) * 128;
+            uint32_t base3 = (row + 3) * 128;
+            LoadAlign(vreg_out_0, cur + base0);
+            LoadAlign(vreg_out_1, cur + base1);
+            LoadAlign(vreg_out_2, cur + base2);
+            LoadAlign(vreg_out_3, cur + base3);
+            StoreAlign(dstOut + base0, vreg_out_0, preg_f32);
+            StoreAlign(dstOut + base1, vreg_out_1, preg_f32);
+            StoreAlign(dstOut + base2, vreg_out_2, preg_f32);
+            StoreAlign(dstOut + base3, vreg_out_3, preg_f32);
+        }
+        return;
+    }
+
+    // ===== 非首块：乘加累积 =====
     // ① factor 载入（2 regs，全程复用）
     LoadAlign(vreg_factor_a, factor);
     LoadAlign(vreg_factor_b, factor + 64);
@@ -137,6 +162,7 @@ __simd_vf__ inline void VfFlashUpdateAccVF(__ubuf__ float *dstOut, __ubuf__ floa
  * @param [in]     softmaxExpUB 跨块 rescale 因子 ring（[taskSlot][128] 布局）
  * @param [in]     taskSlot     任务槽（runInfo.loop % 3）
  */
+template <bool isUpdate>
 __aicore__ inline void VfFlashUpdateAcc(const LocalTensor<float> &stage2OutUB,
                                          const LocalTensor<float> &accRowsumUB,
                                          const LocalTensor<float> &mm2ResUB,
@@ -150,7 +176,7 @@ __aicore__ inline void VfFlashUpdateAcc(const LocalTensor<float> &stage2OutUB,
     __ubuf__ float *rowsumPtr = curPtr + rowsumOff;
     __ubuf__ float *factorPtr =
         reinterpret_cast<__ubuf__ float *>(softmaxExpUB.GetPhyAddr()) + taskSlot * expSlot;
-    VfFlashUpdateAccVF(dstOutPtr, dstSumPtr, curPtr, rowsumPtr, factorPtr);
+    VfFlashUpdateAccVF<isUpdate>(dstOutPtr, dstSumPtr, curPtr, rowsumPtr, factorPtr);
 }
 
 } // namespace QfaVectorApi
