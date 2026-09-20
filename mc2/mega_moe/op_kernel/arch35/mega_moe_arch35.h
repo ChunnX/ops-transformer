@@ -94,6 +94,7 @@ protected:
     __aicore__ inline UnpermuteBufferConfig InitTokenUnpermuteBuffers();
     __aicore__ inline void SendTopkIdsIndexAndCount(const WorkRange &ownedExpertRange);
     __aicore__ inline void QuantizeInputTokens(const WorkRange &tokenRange);
+    __aicore__ inline void ResetCountTableAndSync();
     __aicore__ inline void ProcessInputPreparationStage();
     __aicore__ inline void RunGmm2CombineForExpert(ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo,
                                                    uint32_t &startBlockIdx, uint32_t tokenStartIndexInExpert,
@@ -826,12 +827,29 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::QuantizeInputTokens(con
     }
 }
 
+// 诊断路径：清除通信窗口复用留下的 count，确认所有卡清零后才允许本轮发布。
+// 仅由全部 AIV 调用；入口握手负责推进计数，后续量化完成时不再重复递增。
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetCountTableAndSync()
+{
+    const int32_t countElementCount = static_cast<int32_t>(commonConfig_.worldSize * commonConfig_.moeExpertPerRank);
+    SyncFuncStatic<HardEvent::V_MTE3, SYNC_EVENT_ID2>();
+    ResetWorkspaceRegion<INT32_PER_256B>(aivJob_, params_.peermemInfo.expertCountRecvPtr, countElementCount,
+                                         resetBatchElementCount_, resetTensor_);
+    // 负责跨卡握手的 AIV 必须等本卡所有 count 段清零，不能只等待自己的搬出。
+    PipeBarrier<PIPE_ALL>();
+    SyncAll<true>();
+    // 对端也在本卡清零完成后握手，防止其后续 reset 覆盖本轮已发送的 count。
+    CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
+}
+
 // 仅由 AIV 调用，AIC 在 ProcessWave 中等待输入就绪。
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessInputPreparationStage()
 {
     SendAndQuantBuffInit();
     ResetSyncStatus<TopkWeightsPrefetch>(aivJob_, params_, resetBatchElementCount_, resetTensor_);
+    ResetCountTableAndSync();
     const WorkRange tokenRange = GetBalancedWorkRange(commonConfig_.tokenNum, aivJob_);
     if (tokenRange.count > 0U) {
         if constexpr (Std::IsSame<XType, bfloat16_t>::value) {
@@ -844,8 +862,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessInputPreparation
             // 否则复用这里的 MoE 拼接结果，无需独立打包共享输入。
         }
     }
-    // 每个物理 AIV 推进入口轮次一次，空 token 核也参与。
-    IncrementSyncCount(params_.peermemInfo.rankSyncInWorldPtr, aivCoreIdx_);
+    // 入口轮次已由 count 清零后的握手推进；这里仅发布实际输入写回完成事件。
     // 同一 MTE3 流水先完成 reset、MoE 量化及可选共享量化写回，再发布完成通知。
     // 空 token 核也必须报告，保证全 AIV 事件配对。
     CrossCoreSetFlag<ALL_AICORE_SYNC_MODE, PIPE_MTE3>(MTE_QUANT_READY_FLAG);
