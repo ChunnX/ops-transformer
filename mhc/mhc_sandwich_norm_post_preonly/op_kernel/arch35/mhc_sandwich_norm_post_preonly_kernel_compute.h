@@ -16,7 +16,7 @@
 // 数据加载
 
 /// 加载一个token的h_post[N]和h_res[N*N]。
-__aicore__ inline void LoadTokenWeights(uint32_t token, float (&postVals)[N_MAX], float (&combVals)[N_MAX * N_MAX])
+__aicore__ inline void LoadTokenWeights(uint32_t token, float (&postVals)[N_MAX])
 {
     // Host已固定校验N为4，使用编译期常量便于展开标量循环。
     constexpr uint32_t N = N_MAX;
@@ -37,20 +37,30 @@ __aicore__ inline void LoadTokenWeights(uint32_t token, float (&postVals)[N_MAX]
     PipeBarrier<PIPE_ALL>();
     for (uint32_t i = 0; i < N; ++i)
         postVals[i] = hPostUb.GetValue(i);
-    for (uint32_t i = 0; i < N * N; ++i)
-        combVals[i] = hResUb.GetValue(i);
 }
 
-/// 将h_out[token, tOff:tOff+tD]从低精度加载并转换为FP32。
-__aicore__ inline void LoadHOutAndCast(uint64_t gmOffset, uint32_t tD)
+/// 把一个h_out分块预取到输入队列；双槽允许下一分块MTE2与当前分块Vector重叠。
+__aicore__ inline void PrefetchHOutTile(uint64_t gmOffset, uint32_t tD)
 {
     LocalTensor<T> hBf16 = bufHOutBf16_.AllocTensor<T>();
     DataCopy(hBf16, hOutGm_[gmOffset], tD);
     bufHOutBf16_.EnQue(hBf16);
-    hBf16 = bufHOutBf16_.DeQue<T>();
+}
+
+/// 按队列顺序取出已经预取的h_out分块并转换为FP32。
+__aicore__ inline void ConsumeHOutTile(uint32_t tD)
+{
+    LocalTensor<T> hBf16 = bufHOutBf16_.DeQue<T>();
     MhcSandwichRegBase::CastB16ToFp32(bufHOutFp32_.Get<float>(), hBf16, tD);
     PipeBarrier<PIPE_V>();
     bufHOutBf16_.FreeTensor(hBf16);
+}
+
+/// 非流水调用点仍使用成对的预取与消费。
+__aicore__ inline void LoadHOutAndCast(uint64_t gmOffset, uint32_t tD)
+{
+    PrefetchHOutTile(gmOffset, tD);
+    ConsumeHOutTile(tD);
 }
 
 /// 将residual[token, 0:N, tOff:tOff+tD]从低精度加载并转换为FP32。
@@ -120,41 +130,33 @@ __aicore__ inline void ApplyScaleAndGamma(LocalTensor<float> buf, float scale, L
 // MHC_Post计算
 
 /// 单核批量计算全部N个head的x2，并写入bufX2Fp32_。
-__aicore__ inline void ComputeX2AllHeadsBatched(const float (&postVals)[N_MAX], const float (&combVals)[N_MAX * N_MAX],
-                                                uint32_t tD)
+__aicore__ inline void ComputeX2AllHeadsBatched(const float (&postVals)[N_MAX], uint32_t tD)
 {
     // Host已固定校验N为4，使用编译期常量便于展开标量循环。
     constexpr uint32_t N = N_MAX;
     LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
     LocalTensor<float> hOut = bufHOutFp32_.Get<float>();
     LocalTensor<float> res = bufResFp32_.Get<float>();
+    LocalTensor<float> combWeights = bufPostComb_.Get<float>()[ALIGN8];
 
     for (uint32_t h = 0; h < N; ++h) {
-        float headComb[N_MAX];
-        for (uint32_t j = 0; j < N; ++j) {
-            headComb[j] = combVals[j * N + h];
-        }
-        MhcSandwichRegBase::ComputePostHead(x2[h * dimTile_], hOut, res, dimTile_, postVals[h], headComb, tD);
+        MhcSandwichRegBase::ComputePostHead(x2[h * dimTile_], hOut, res, combWeights, dimTile_, h, postVals[h], tD);
     }
     PipeBarrier<PIPE_V>();
 }
 
 /// 单核多分块路径按head串行计算全部x2。
-__aicore__ inline void ComputeX2AllHeadsSerial(const float (&postVals)[N_MAX], const float (&combVals)[N_MAX * N_MAX],
-                                               uint32_t tD)
+__aicore__ inline void ComputeX2AllHeadsSerial(const float (&postVals)[N_MAX], uint32_t tD)
 {
     // Host已固定校验N为4，使用编译期常量便于展开标量循环。
     constexpr uint32_t N = N_MAX;
     LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
     LocalTensor<float> hOut = bufHOutFp32_.Get<float>();
     LocalTensor<float> res = bufResFp32_.Get<float>();
+    LocalTensor<float> combWeights = bufPostComb_.Get<float>()[ALIGN8];
 
     for (uint32_t h = 0; h < N; ++h) {
-        float headComb[N_MAX];
-        for (uint32_t j = 0; j < N; ++j) {
-            headComb[j] = combVals[j * N + h];
-        }
-        MhcSandwichRegBase::ComputePostHead(x2[h * dimTile_], hOut, res, dimTile_, postVals[h], headComb, tD);
+        MhcSandwichRegBase::ComputePostHead(x2[h * dimTile_], hOut, res, combWeights, dimTile_, h, postVals[h], tD);
         PipeBarrier<PIPE_V>();
     }
 }
@@ -163,7 +165,7 @@ __aicore__ inline void ComputeX2AllHeadsSerial(const float (&postVals)[N_MAX], c
 
 /// 由xHatVals计算gate[0..N-1]，其中包含invRmsPre缩放：
 ///   gate[i] = sigmoid(alpha0 * xHat[i] + bias[i]) + hcEps
-__aicore__ inline void ComputeGateValues(float totalSumSqPre, float (&xHatVals)[N_MAX], float (&gate)[N_MAX])
+__aicore__ inline void ComputeGateValues(float totalSumSqPre, float (&xHatVals)[N_MAX])
 {
     // Host已固定校验N为4，使用编译期常量便于展开标量循环。
     constexpr uint32_t N = N_MAX;
@@ -178,6 +180,4 @@ __aicore__ inline void ComputeGateValues(float totalSumSqPre, float (&xHatVals)[
     // TODO：后续单独评估固定四元素循环展开，本轮保持通用VF循环。
     MhcSandwichRegBase::SigmoidAddEps(gateBuf, scBuf, hcEps_, N);
     PipeBarrier<PIPE_V>();
-    for (uint32_t i = 0; i < N; ++i)
-        gate[i] = gateBuf.GetValue(i);
 }

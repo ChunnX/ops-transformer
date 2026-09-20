@@ -106,10 +106,9 @@ public:
         }
 
         // UB空间分配
-        pipe_.InitBuffer(bufHOutBf16_,       1, dimTile_ * sizeof(T));
+        pipe_.InitBuffer(bufHOutBf16_, BUFFER_NUM_TWO, dimTile_ * sizeof(T));
         pipe_.InitBuffer(bufHOutFp32_,          dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufGamma0Fp32_,        dimTile_ * sizeof(float));
-        pipe_.InitBuffer(bufGamma1Fp32_,        dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufX2Fp32_,            N_ * dimTile_ * sizeof(float));
         // dimTile=2560时其余固定缓存共194912B；D=7168的完整低精度x2为57344B，
         // 合计252256B，小于A5的256KiB UB上限。
@@ -120,7 +119,7 @@ public:
         pipe_.InitBuffer(bufSqFp32_,            dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufPostComb_,          POST_COMB_SIZE * sizeof(float));
         pipe_.InitBuffer(bufPhiFp32_,  BUFFER_NUM_TWO, dimTile_ * sizeof(float));
-        pipe_.InitBuffer(bufHInPrimeBf16_,   1, dimTile_ * sizeof(T));
+        pipe_.InitBuffer(bufHInPrimeBf16_, BUFFER_NUM_TWO, dimTile_ * sizeof(T));
         pipe_.InitBuffer(bufScalar_,            SCALAR_BUF_SIZE);
         pipe_.InitBuffer(bufGamma2Fp32_,        dimTile_ * sizeof(float));
 
@@ -155,7 +154,6 @@ public:
             gP.blockLen = dimTile_ * sizeof(float);
             DataCopyPadExtParams<float> gPad = {false, 0, 0, 0};
             DataCopyPad(bufGamma0Fp32_.Get<float>(), gamma0Gm_[0], gP, gPad);
-            DataCopyPad(bufGamma1Fp32_.Get<float>(), gamma1Gm_[0], gP, gPad);
             // gamma_2的形状为[N*D]，在RMSNorm_mid中按head加载
         }
         
@@ -188,7 +186,7 @@ private:
     __aicore__ inline void ProcessTokenSingleAiv(uint32_t token);
     __aicore__ inline void ProcessTokenDualSiblingAiv(uint32_t token);
     __aicore__ inline void ComputeX2PostTile(uint32_t token, uint32_t tOff, uint32_t tD,
-        float invRms0, const float (&postVals)[N_MAX], const float (&combVals)[N_MAX * N_MAX]);
+        float invRms0, const float (&postVals)[N_MAX]);
     __aicore__ inline void CacheX2Tile(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput);
     __aicore__ inline void CacheX2TileForLane(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput);
     __aicore__ inline void LoadX2CacheTile(uint32_t tOff, uint32_t tD);
@@ -209,10 +207,9 @@ private:
     TPipe pipe_;
 
     // UB缓存
-    TQue<TPosition::VECIN, 1>  bufHOutBf16_;
+    TQue<TPosition::VECIN, BUFFER_NUM_TWO> bufHOutBf16_;
     TBuf<TPosition::VECCALC>   bufHOutFp32_;
     TBuf<TPosition::VECCALC>   bufGamma0Fp32_;
-    TBuf<TPosition::VECCALC>   bufGamma1Fp32_;
     TBuf<TPosition::VECCALC>   bufGamma2Fp32_;
     TBuf<TPosition::VECCALC>   bufX2Fp32_;
     TBuf<TPosition::VECCALC>   bufX2Cache_;
@@ -221,7 +218,7 @@ private:
     TBuf<TPosition::VECCALC>   bufSqFp32_;
     TBuf<TPosition::VECCALC>   bufPostComb_;
     TQue<TPosition::VECIN, BUFFER_NUM_TWO>  bufPhiFp32_;
-    TQue<TPosition::VECOUT, 1> bufHInPrimeBf16_;
+    TQue<TPosition::VECOUT, BUFFER_NUM_TWO> bufHInPrimeBf16_;
     TBuf<TPosition::VECCALC>   bufScalar_;
 
     // GM张量

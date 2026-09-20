@@ -16,27 +16,36 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
                                                         DUAL_SIBLING>::ProcessTokenDualSiblingAiv(uint32_t token)
 {
     float postVals[N_MAX];
-    float combVals[N_MAX * N_MAX];
     float sumSqHalf[2] = {0.0f, 0.0f};
     float dotHalf[2][N_MAX] = {{0.0f, 0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 0.0f}};
     float midSqHalf[2] = {0.0f, 0.0f};
-    LoadTokenWeights(token, postVals, combVals);
+    LoadTokenWeights(token, postVals);
 
     // 两个lane按完全相同的分块和顺序冗余执行R1。
     float sumSq0 = 0.0f;
+    PrefetchHOutTile((uint64_t)token * D_, GetTileD(0));
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        LoadHOutAndCast((uint64_t)token * D_ + tOff, tD);
+        if (tile + 1U < dimLoop_) {
+            const uint32_t nextOff = tOff + dimTile_;
+            PrefetchHOutTile((uint64_t)token * D_ + nextOff, GetTileD(tile + 1U));
+        }
+        ConsumeHOutTile(tD);
         sumSq0 += ReduceSumSq(bufHOutFp32_.Get<float>(), tD);
     }
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
 
     // 两个lane冗余构造完整x2，但只写各自负责的展平半片。
+    PrefetchHOutTile((uint64_t)token * D_, GetTileD(0));
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        ComputeX2PostTile(token, tOff, tD, invRms0, postVals, combVals);
+        if (tile + 1U < dimLoop_) {
+            const uint32_t nextOff = tOff + dimTile_;
+            PrefetchHOutTile((uint64_t)token * D_ + nextOff, GetTileD(tile + 1U));
+        }
+        ComputeX2PostTile(token, tOff, tD, invRms0, postVals);
         CacheX2TileForLane(token, tOff, tD, !USE_RMS_MID);
 
         LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
@@ -123,8 +132,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     for (uint32_t o = 0; o < N_MAX; ++o) {
         xHatVals[o] = dotHalf[0][o] + dotHalf[1][o];
     }
-    float gate[N_MAX];
-    ComputeGateValues(totalSumSqPre, xHatVals, gate);
+    ComputeGateValues(totalSumSqPre, xHatVals);
 
     // 会合后只有leader继续执行R6、R7和最终输出。
     float sumSq1 = 0.0f;
@@ -133,7 +141,8 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         const uint32_t tOff = tile * dimTile_;
         LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
         LocalTensor<T> x2Cache = bufX2Cache_.Get<T>()[tOff];
-        MhcSandwichRegBase::GateWeightedSum(hIn, x2Cache, D_, gate, tD);
+        LocalTensor<float> gateBuf = bufScalar_.Get<float>()[EXP_DIV_ELEM];
+        MhcSandwichRegBase::GateWeightedSum(hIn, x2Cache, D_, gateBuf, tD);
         PipeBarrier<PIPE_V>();
         CacheHInTile(tOff, tD, hIn);
         sumSq1 += ReduceSumSq(hIn, tD);
@@ -143,14 +152,30 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
+        if constexpr (!RETURN_H_IN_F32) {
+            if (tile > 0U) {
+                const uint32_t prevOff = tOff - dimTile_;
+                DequeueHInPrimeTile((uint64_t)token * D_ + prevOff, GetTileD(tile - 1U));
+            }
+        }
         LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
         LoadHInCacheTile(tOff, tD, hIn);
-        LoadGammaInto(bufGamma1Fp32_.Get<float>(), gamma1Gm_, tOff, tD);
+        // R7开始时gamma2缓存已经死亡，复用它释放一整块gamma UB供输入输出双缓冲。
+        LoadGammaInto(bufGamma2Fp32_.Get<float>(), gamma1Gm_, tOff, tD);
         SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
         WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-        ApplyScaleAndGamma(hIn, invRms1, bufGamma1Fp32_.Get<float>(), tD);
+        ApplyScaleAndGamma(hIn, invRms1, bufGamma2Fp32_.Get<float>(), tD);
         FenceVToMte2();
-        WriteHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tD);
+        if constexpr (RETURN_H_IN_F32) {
+            WriteHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tD);
+        } else {
+            EnqueueHInPrimeTile(hIn, tD);
+        }
+    }
+    if constexpr (!RETURN_H_IN_F32) {
+        const uint32_t lastTile = dimLoop_ - 1U;
+        const uint32_t lastOff = lastTile * dimTile_;
+        DequeueHInPrimeTile((uint64_t)token * D_ + lastOff, GetTileD(lastTile));
     }
 }
 

@@ -16,10 +16,9 @@
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void
 KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ComputeX2PostTile(
-    uint32_t token, uint32_t tOff, uint32_t tD, float invRms0, const float (&postVals)[N_MAX],
-    const float (&combVals)[N_MAX * N_MAX])
+    uint32_t token, uint32_t tOff, uint32_t tD, float invRms0, const float (&postVals)[N_MAX])
 {
-    LoadHOutAndCast((uint64_t)token * D_ + tOff, tD);
+    ConsumeHOutTile(tD);
     LoadGammaInto(bufGamma0Fp32_.Get<float>(), gamma0Gm_, tOff, tD);
     SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
     WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
@@ -28,7 +27,7 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
     QuantizeRoundTrip(bufHOutFp32_.Get<float>(), tD);
 
     LoadResidualAndCast((uint64_t)token * N_ * D_ + tOff, tD);
-    ComputeX2AllHeadsBatched(postVals, combVals, tD);
+    ComputeX2AllHeadsBatched(postVals, tD);
 }
 
 // 将完整x2以输出dtype常驻UB，同时完成设计要求的低精度往返；写GM仅用于保留x2_out输出语义。
@@ -240,28 +239,37 @@ __aicore__ inline void
 KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ProcessTokenSingleAiv(uint32_t token)
 {
     float postVals[N_MAX];
-    float combVals[N_MAX * N_MAX];
     float sumSqHalf[2] = {0.0f, 0.0f};
     float dotHalf[2][N_MAX] = {{0.0f, 0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 0.0f}};
     float midSqHalf[2] = {0.0f, 0.0f};
-    LoadTokenWeights(token, postVals, combVals);
+    LoadTokenWeights(token, postVals);
 
     // 第一遍：沿完整D轴计算R1。
     float sumSq0 = 0.0f;
+    PrefetchHOutTile((uint64_t)token * D_, GetTileD(0));
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        LoadHOutAndCast((uint64_t)token * D_ + tOff, tD);
+        if (tile + 1U < dimLoop_) {
+            const uint32_t nextOff = tOff + dimTile_;
+            PrefetchHOutTile((uint64_t)token * D_ + nextOff, GetTileD(tile + 1U));
+        }
+        ConsumeHOutTile(tD);
         sumSq0 += ReduceSumSq(bufHOutFp32_.Get<float>(), tD);
     }
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
 
     // 第二遍：计算R1/R2和第一处x2低精度边界。完整x2以输出dtype常驻UB，
     // 避免后续两遍从GM回读，同时不分配完整FP32 x2工作空间。
+    PrefetchHOutTile((uint64_t)token * D_, GetTileD(0));
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        ComputeX2PostTile(token, tOff, tD, invRms0, postVals, combVals);
+        if (tile + 1U < dimLoop_) {
+            const uint32_t nextOff = tOff + dimTile_;
+            PrefetchHOutTile((uint64_t)token * D_ + nextOff, GetTileD(tile + 1U));
+        }
+        ComputeX2PostTile(token, tOff, tD, invRms0, postVals);
         CacheX2Tile(token, tOff, tD, !USE_RMS_MID);
 
         LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
@@ -328,8 +336,7 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
     for (uint32_t o = 0; o < N_MAX; ++o) {
         xHatVals[o] = dotHalf[0][o] + dotHalf[1][o];
     }
-    float gate[N_MAX];
-    ComputeGateValues(totalSumSqPre, xHatVals, gate);
+    ComputeGateValues(totalSumSqPre, xHatVals);
 
     // 第三遍：计算R6和h_in低精度边界。在完整D轴的R7标量确定前，
     // 复用已经消费完的x2缓存首段保存低精度h_in。
@@ -339,7 +346,8 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
         const uint32_t tOff = tile * dimTile_;
         LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
         LocalTensor<T> x2Cache = bufX2Cache_.Get<T>()[tOff];
-        MhcSandwichRegBase::GateWeightedSum(hIn, x2Cache, D_, gate, tD);
+        LocalTensor<float> gateBuf = bufScalar_.Get<float>()[EXP_DIV_ELEM];
+        MhcSandwichRegBase::GateWeightedSum(hIn, x2Cache, D_, gateBuf, tD);
         PipeBarrier<PIPE_V>();
         CacheHInTile(tOff, tD, hIn);
         sumSq1 += ReduceSumSq(hIn, tD);
@@ -350,14 +358,30 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
+        if constexpr (!RETURN_H_IN_F32) {
+            if (tile > 0U) {
+                const uint32_t prevOff = tOff - dimTile_;
+                DequeueHInPrimeTile((uint64_t)token * D_ + prevOff, GetTileD(tile - 1U));
+            }
+        }
         LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
         LoadHInCacheTile(tOff, tD, hIn);
-        LoadGammaInto(bufGamma1Fp32_.Get<float>(), gamma1Gm_, tOff, tD);
+        // R7开始时gamma2缓存已经死亡，复用它释放一整块gamma UB供输入输出双缓冲。
+        LoadGammaInto(bufGamma2Fp32_.Get<float>(), gamma1Gm_, tOff, tD);
         SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
         WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-        ApplyScaleAndGamma(hIn, invRms1, bufGamma1Fp32_.Get<float>(), tD);
+        ApplyScaleAndGamma(hIn, invRms1, bufGamma2Fp32_.Get<float>(), tD);
         FenceVToMte2();
-        WriteHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tD);
+        if constexpr (RETURN_H_IN_F32) {
+            WriteHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tD);
+        } else {
+            EnqueueHInPrimeTile(hIn, tD);
+        }
+    }
+    if constexpr (!RETURN_H_IN_F32) {
+        const uint32_t lastTile = dimLoop_ - 1U;
+        const uint32_t lastOff = lastTile * dimTile_;
+        DequeueHInPrimeTile((uint64_t)token * D_ + lastOff, GetTileD(lastTile));
     }
 }
 
