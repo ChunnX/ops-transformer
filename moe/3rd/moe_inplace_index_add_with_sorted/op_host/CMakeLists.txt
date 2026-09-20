@@ -12,7 +12,7 @@ if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnnExc PRIVATE
         moe_inplace_index_add_with_sorted_def.cpp
     )
-    if(CONDITION_UNIT STREQUAL "ascend950")
+    if(CONDITION_UNIT STREQUAL "ascend950" OR CONDITION_UNIT STREQUAL "ascend350")
         add_ops_compile_options(
             OP_NAME MoeInplaceIndexAddWithSorted
             OPTIONS --cce-auto-sync=off
