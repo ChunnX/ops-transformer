@@ -129,9 +129,9 @@ static ge::graphStatus QuantReduceScatterTilingFunc(gert::TilingContext *context
                         ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "tiling check failed in quant_reduce_scatter."), return ge::GRAPH_FAILED);
 
-    SetTilingData(context, *tilingData);
     tilingData->quantReduceScatterTilingInfo.hcclBufferSize = runInfo.hcclBufferSize;
     tilingData->quantReduceScatterTilingInfo.quantMode = runInfo.quantMode;
+    SetTilingData(context, *tilingData);
     SetXPerBlock(*tilingData, runInfo);
     SetTilingKey(context);
     PrintTilingDataInfo(context, *tilingData);
