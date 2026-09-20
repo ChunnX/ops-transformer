@@ -152,8 +152,8 @@ struct MatmulBaseBlock {
     uint32_t baseK = 128; // 128: init value for baseK
 };
 
-// 通信轮次硬上限（来源: hccl_formulaic_tiling.h 的 MAX_COMM_ROUNDS, 受 FFTS 队列大小限制）
-constexpr uint64_t MAX_COMM_ROUNDS = 16;
+// 通信轮次硬上限（通信 API 的 FFTS 队列大小限制; 2026-09-17 随 API 上限放宽 16→63）
+constexpr uint64_t MAX_COMM_ROUNDS = 63;
 
 // 旧基类头文件里的通算比阈值（E9 减半鼓励门消费）
 constexpr double CALC_COMM_BALANCE_RATIO = 2.0;
@@ -902,8 +902,7 @@ inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, CommPrimitiv
                            1,
                            1,
                            1.0};
-    ctx.tilingM.SetMaxTileCnt(
-        MAX_COMM_ROUNDS); // Due to the limited FFTS queue size, a maximum of 16 rounds can be cut.
+    ctx.tilingM.SetMaxTileCnt(MAX_COMM_ROUNDS); // 通信 API FFTS 队列轮次上限(2026-09-17: 63)
     ctx.commRankCntForMm = ctx.commPerf.commRankCntForMm_;
     ctx.mmRankMul = MmRankMul(ctx);
 
