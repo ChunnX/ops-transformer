@@ -83,7 +83,28 @@ __simd_vf__ inline void VfSoftmaxFp16ToFp8VF(__ubuf__ T2 *pDst, __ubuf__ half *a
     StoreAlign(usedMaxOut, kUsed, pregHalf);                   // 暂存 k_i（epilogue pscale 用）
     Muls(normMax, kUsed, LN2, pregHalf);                       // k·ln2 → P 归一化基准
 
-    // TODO(批次3.2-5): P 计算循环（4 路 Sub+Exp+Muls pScale+Cast RintZero/One+Or+存储）
+    // ③ P 计算循环（4 路展开，镜像 MxFP4 DN L111-131 的 Sub+Exp 模式）
+    //    无 dScale——softmaxScale 已在 FixpipeMm1 随路乘（设计 §7.1 注）
+    for (uint32_t i = 0; i + 3 < validRows; i += 4) {
+        LoadAlign(r0, x + i * colStride);
+        LoadAlign(r1, x + (i + 1) * colStride);
+        LoadAlign(r2, x + (i + 2) * colStride);
+        LoadAlign(r3, x + (i + 3) * colStride);
+        Sub(r0, r0, normMax, pregHalf);   // 减 normMax 向量：[S2,S1] 行主序，normMax 恰 [128] 列向量，形状天然对齐
+        Sub(r1, r1, normMax, pregHalf);
+        Sub(r2, r2, normMax, pregHalf);
+        Sub(r3, r3, normMax, pregHalf);
+        Exp(r0, r0, pregHalf);         // 原地 exp（省寄存器，mxfp4 同款）
+        Exp(r1, r1, pregHalf);
+        Exp(r2, r2, pregHalf);
+        Exp(r3, r3, pregHalf);
+        Muls(r0, r0, pScale, pregHalf);  // × 外部 headroom（默认 1.0 时 no-op；分子分母同乘自消）
+        Muls(r1, r1, pScale, pregHalf);
+        Muls(r2, r2, pScale, pregHalf);
+        Muls(r3, r3, pScale, pregHalf);
+        // TODO(批次3.2-5c): Cast RintZero/RintOne 成对 + Or 合并 + 存储占位
+    }
+
     (void)pDst; (void)pScale;
 }
 

@@ -55,11 +55,30 @@ constexpr static AscendC::Reg::CastTrait castTraitZero = {
 };
 
 // 窄化 Cast（half→uint8）：取奇数位元素（1, 3, 5, ...），饱和到 [0,255]
+// 注意：RoundMode 在 AscendC 顶层命名空间（非 AscendC::Reg——RegLayout/SatMode/MaskMergeMode 才在 Reg）
 constexpr static AscendC::Reg::CastTrait castTraitOne = {
     AscendC::Reg::RegLayout::ONE,
     AscendC::Reg::SatMode::SAT,
     AscendC::Reg::MaskMergeMode::ZEROING,
     AscendC::RoundMode::CAST_ROUND,
+};
+
+// ===== fp8 窄化 CastTrait（half→fp8_e4m3fn，CAST_RINT 舍入——mxfp8 高精 L292-295 同款） =====
+
+// fp8 窄化：偶数位元素（0, 2, 4, ...），饱和（e4m3 max=448 防溢出）
+constexpr static AscendC::Reg::CastTrait castTraitRintZero = {
+    AscendC::Reg::RegLayout::ZERO,
+    AscendC::Reg::SatMode::SAT,
+    AscendC::Reg::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::CAST_RINT,
+};
+
+// fp8 窄化：奇数位元素（1, 3, 5, ...），饱和
+constexpr static AscendC::Reg::CastTrait castTraitRintOne = {
+    AscendC::Reg::RegLayout::ONE,
+    AscendC::Reg::SatMode::SAT,
+    AscendC::Reg::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::CAST_RINT,
 };
 
 // ===== 数学常量（log2 整数域量化用） =====
