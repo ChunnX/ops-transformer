@@ -13,14 +13,11 @@
 
 Use system Python after sourcing CANN and the desired custom operator package.
 No TTK or PYTHONPATH setup is needed. Metadata is prepared before capture/timing.
-MFU uses useful QK/PV FLOPs; MBU uses logical Q + shared KV + Out/LSE bytes,
-excluding metadata, page tables, mask, workspace, padding and repeated reads.
-With --profile-dir, MFU/MBU use summed MLA kernel durations per invocation.
-Otherwise NPU event intervals include dispatch gaps. MBU is a logical estimate,
-not a hardware bandwidth counter. Replays use warm inputs/caches.
+Event intervals include dispatch gaps; --profile-dir additionally measures
+MLA kernel durations. Metadata is excluded. Replays use warm inputs/caches.
 Online static kernel compilation is opt-in and distinct from graph capture.
-Default peaks (378 TFLOPS, 1.6 TB/s) are reference values for the current machine;
-override them for other devices or core limits. Ratios are not capped at 100%.
+Use --output result.csv to export timings and shapes for calculate_mfu_mbu.py;
+other output suffixes produce JSON. Utilization is calculated separately.
 """
 
 import argparse
@@ -38,25 +35,6 @@ def positive_int(value):
     if value <= 0:
         raise argparse.ArgumentTypeError("expected a positive integer")
     return value
-
-
-def positive_float(value):
-    import math
-
-    value = float(value)
-    if not math.isfinite(value) or value <= 0:
-        raise argparse.ArgumentTypeError("expected a finite positive number")
-    return value
-
-
-def logical_cost(batch, heads, q_len, kv_len, causal, return_lse):
-    pairs = q_len * kv_len - (q_len * (q_len - 1) // 2 if causal else 0)
-    flops = 2 * batch * heads * pairs * (576 + 512)
-    # MLA V aliases the first 512 lanes of K: count the shared KV once.
-    byte_count = 2 * batch * (heads * q_len * (576 + 512) + kv_len * 576)
-    if return_lse:
-        byte_count += 4 * batch * heads * q_len
-    return flops, byte_count
 
 
 def benchmark(torch, call, warmup, iters, repeats):
@@ -152,8 +130,6 @@ def main():
     parser.add_argument("--iters", type=positive_int, default=50)
     parser.add_argument("--repeats", type=positive_int, default=5)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--peak-tflops", type=positive_float, default=378.0)
-    parser.add_argument("--peak-bandwidth-tb-s", type=positive_float, default=1.6)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--profile-dir", type=Path)
     args = parser.parse_args()
@@ -248,18 +224,8 @@ def main():
             core_limits=limits,
             metadata_shape=list(aux["metadata"].shape),
             timing="median NPU event interval per call; warm cache; metadata excluded",
-            cost_model="useful QK+PV FLOPs; logical Q/shared-KV/Out/LSE bytes, no workspace",
             results={},
         )
-        flops, byte_count = logical_cost(
-            args.batch,
-            args.q_heads,
-            args.q_len,
-            args.kv_len,
-            args.mask_mode == 3,
-            args.return_lse,
-        )
-        result.update(flops=flops, logical_bytes=byte_count)
         eager_cpu = None
         for name, runner in (("eager", model), ("aclgraph", compiled)):
 
@@ -290,30 +256,62 @@ def main():
                 )
             if us <= 0:
                 raise RuntimeError(f"invalid event duration: {samples}")
-            tflops, tb_s = flops / us / 1e6, byte_count / us / 1e6
             row = dict(
                 precision="PASS",
                 event_median_us=event_us,
-                utilization_duration_us=us,
-                utilization_timing="kernel" if args.profile_dir else "event",
+                duration_us=us,
+                timing_source="kernel" if args.profile_dir else "event",
                 kernels=kernels,
                 profile_csv=profile_csv,
                 samples_us=samples,
-                achieved_tflops=tflops,
-                logical_bandwidth_tb_s=tb_s,
-                mfu=tflops / args.peak_tflops,
-                mbu=tb_s / args.peak_bandwidth_tb_s,
             )
             result["results"][name] = row
             print(
-                f"{name}: PASS, {row['utilization_timing']}={us:.3f} us "
-                f"(event={event_us:.3f} us), {tflops:.3f} TFLOPS, {tb_s:.4f} TB/s, "
-                f"MFU={row['mfu']:.2%}, MBU={row['mbu']:.2%}",
+                f"{name}: PASS, {row['timing_source']}={us:.3f} us "
+                f"(event={event_us:.3f} us)",
                 flush=True,
             )
         if args.output:
             args.output.parent.mkdir(parents=True, exist_ok=True)
-            args.output.write_text(json.dumps(result, indent=2) + "\n")
+            if args.output.suffix.lower() == ".csv":
+                case_attrs = dict(attrs)
+                for key in ("cache_seqlens", "cu_seqlens_q", "seqused_q"):
+                    case_attrs[f"{key}_values"] = aux_cpu[key].tolist()
+                tensors = (q_cpu, kv_cpu, *aux_cpu.values())
+                common = dict(
+                    api_name="torch.ops.cann_ops_transformer.flash_mla_with_kvcache",
+                    tensor_view_shapes=repr(
+                        tuple(
+                            tuple(t.shape) if t is not None else None for t in tensors
+                        )
+                    ),
+                    tensor_dtypes=repr(
+                        tuple(
+                            str(t.dtype).removeprefix("torch.")
+                            if t is not None
+                            else None
+                            for t in tensors
+                        )
+                    ),
+                    attributes=repr(case_attrs),
+                )
+                rows = [
+                    dict(
+                        common,
+                        testcase_name=f"mla_{mode}",
+                        precision_status=value["precision"],
+                        duration_us=value["duration_us"],
+                        timing_source=value["timing_source"],
+                        event_median_us=value["event_median_us"],
+                    )
+                    for mode, value in result["results"].items()
+                ]
+                with args.output.open("w", encoding="utf-8", newline="") as stream:
+                    writer = csv.DictWriter(stream, fieldnames=list(rows[0]))
+                    writer.writeheader()
+                    writer.writerows(rows)
+            else:
+                args.output.write_text(json.dumps(result, indent=2) + "\n")
             print(f"results: {args.output}", flush=True)
     if args.static_kernel_compile:
         print(
