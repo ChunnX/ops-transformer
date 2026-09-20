@@ -68,19 +68,17 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
             LoadGammaInto(gammaEven, gamma2Gm_, tOff, tD);
             LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
             LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
-            for (uint32_t n = 0; n < N_MAX; ++n) {
-                LocalTensor<float> gammaCurrent = ((n & 1U) == 0) ? gammaEven : gammaOdd;
-                LocalTensor<float> gammaNext = ((n & 1U) == 0) ? gammaOdd : gammaEven;
+            for (uint32_t n = 0; n < N_MAX; n += 2U) {
+                LoadGammaInto(gammaOdd, gamma2Gm_, (n + 1U) * D_ + tOff, tD);
                 SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
                 WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-                if (n + 1 < N_MAX) {
-                    LoadGammaInto(gammaNext, gamma2Gm_, (n + 1) * D_ + tOff, tD);
-                }
-                MhcSandwichRegBase::CastB16ScaleAndMulGamma(x2[n * dimTile_], x2Cache[n * D_ + tOff],
-                                                           gammaCurrent, invRmsMid, tD);
+                MhcSandwichRegBase::CastB16PairScaleAndMulGamma(
+                    x2[n * dimTile_], x2[(n + 1U) * dimTile_], x2Cache[n * D_ + tOff],
+                    x2Cache[(n + 1U) * D_ + tOff], gammaEven, gammaOdd, invRmsMid, tD);
                 PipeBarrier<PIPE_V>();
                 if (n + 2 < N_MAX) {
                     FenceVToMte2();
+                    LoadGammaInto(gammaEven, gamma2Gm_, (n + 2U) * D_ + tOff, tD);
                 }
             }
             CacheX2TileForLane(token, tOff, tD, true);
