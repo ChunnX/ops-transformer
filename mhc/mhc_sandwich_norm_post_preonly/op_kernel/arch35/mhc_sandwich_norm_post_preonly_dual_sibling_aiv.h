@@ -26,8 +26,8 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        LoadHOutAndCast((uint64_t)token * D_ + tOff, tD);
-        sumSq0 += ReduceSumSq(bufHOutFp32_.Get<float>(), tD);
+        LoadHOutAndSquare((uint64_t)token * D_ + tOff, tD);
+        sumSq0 += ReduceSumPrecise(bufSqFp32_.Get<float>(), tD);
     }
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
 

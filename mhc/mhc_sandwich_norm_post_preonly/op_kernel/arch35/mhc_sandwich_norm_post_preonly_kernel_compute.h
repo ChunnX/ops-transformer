@@ -63,6 +63,16 @@ __aicore__ inline void LoadHOutAndCast(uint64_t gmOffset, uint32_t tD)
     ConsumeHOutTile(tD);
 }
 
+/// 第一遍R1直接生成h_out平方结果，避免中间FP32 h_out写回和再次读取。
+__aicore__ inline void LoadHOutAndSquare(uint64_t gmOffset, uint32_t tD)
+{
+    PrefetchHOutTile(gmOffset, tD);
+    LocalTensor<T> hBf16 = bufHOutBf16_.DeQue<T>();
+    MhcSandwichRegBase::CastSquareB16ToFp32(bufSqFp32_.Get<float>(), hBf16, tD);
+    PipeBarrier<PIPE_V>();
+    bufHOutBf16_.FreeTensor(hBf16);
+}
+
 /// 将residual[token, 0:N, tOff:tOff+tD]从低精度加载并转换为FP32。
 __aicore__ inline void LoadResidualAndCast(uint64_t gmBaseOffset, uint32_t tD)
 {
