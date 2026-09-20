@@ -47,16 +47,6 @@ try:
 except ImportError:  # pragma: no cover - TTK 环境必然提供
     _BF16_NUMPY = None
 
-_TORCH_DT_MAP = {
-    "torch.bfloat16": tf.bfloat16,
-    "torch.float16": tf.float16,
-    "torch.float32": tf.float32,
-    "torch.float64": tf.float64,
-    "torch.int32": tf.int32,
-    "torch.int64": tf.int64,
-}
-
-
 def _tf_to_numpy(tensor):
     """tf.Tensor -> numpy；bfloat16 经 fp32 无损桥接（纯搬运无舍入，往返 bit-exact）。"""
     if tensor is None:
@@ -70,8 +60,10 @@ def _tf_to_numpy(tensor):
 
 
 def _to_tf(t):
-    """框架 Tensor / numpy -> tf.Tensor（torch.Tensor / tf.Tensor / numpy 统一入口；
-    numpy 输入含 ml_dtypes.bfloat16 时经 fp32 无损桥接——原 _numpy_to_tf 已并入）。"""
+    """框架 Tensor / numpy -> tf.Tensor（torch.Tensor / tf.Tensor / numpy 统一入口）。
+
+    torch/numpy 的 dtype 与 tf dtype 同名对齐，tf.constant 自动推断；
+    numpy 无原生 bf16，torch.bfloat16 / ml_dtypes.bfloat16 经 fp32 无损桥接。"""
     if t is None:
         return None
     if hasattr(t, "detach"):  # torch.Tensor
@@ -79,7 +71,7 @@ def _to_tf(t):
         if str(arr.dtype) == "torch.bfloat16":
             # numpy 无原生 bf16，经 fp32 无损桥接（fp16 numpy 原生支持，无需中转）
             return tf.constant(arr.float().numpy(), dtype=tf.bfloat16)
-        return tf.constant(arr.numpy(), dtype=_TORCH_DT_MAP.get(str(arr.dtype), tf.float32))
+        return tf.constant(arr.numpy())  # dtype 由 numpy 自动推断，无需映射表
     if hasattr(t, "numpy"):  # tf.Tensor：已是目标形态，直接返回（避免 tf→numpy→tf 往返拷贝）
         return t
     if _BF16_NUMPY is not None and hasattr(t, "dtype") and t.dtype == _BF16_NUMPY:
