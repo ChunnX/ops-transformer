@@ -620,6 +620,9 @@ public:
         }
         for (uint32_t sectionIdx = 0; sectionIdx < sectionNum_; sectionIdx++) {
             if (constInfo_.aicIdx < constInfo_.coreNum) {
+                if ASCEND_IS_AIV {
+                    vecFaBlock_.InitTriangleMasks();
+                }
                 FlashAttention(sectionIdx);
             }
             if ASCEND_IS_AIV {

@@ -509,14 +509,12 @@ __simd_callee__ inline void ReduceDnScoreGroup(__ubuf__ float *scores, __ubuf__ 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128, bool hasSink = false,
           bool fullRows64 = false, bool unitPScale = false, bool expUnrollTwo = false, bool fuseScores = false,
           uint16_t scoreMaskPitch = 0, bool fullColumns = false, int maxScaleSign = 1>
-__simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB,
-                                              __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
-                                              __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb,
-                                              __ubuf__ uint8_t *indexesUb, const uint32_t runtimeM, const uint32_t n,
-                                              const uint32_t originN, const T scale, float deScaleQK, const T minValue,
-                                              float keepProb, bool needAtten, const float dScale,
-                                              const uint32_t blockStride, const uint32_t repeatStride,
-                                              const float pScale = 1.0f, const float sinkValue = 0.0f)
+__simd_vf__ inline void ProcessVec1DnUpdateVF(
+    __ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
+    __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb, __ubuf__ uint8_t *indexesUb, const uint32_t runtimeM,
+    const uint32_t n, const uint32_t originN, const T scale, float deScaleQK, const T minValue, float keepProb,
+    bool needAtten, const float dScale, const uint32_t blockStride, const uint32_t repeatStride,
+    const float pScale = 1.0f, const float sinkValue = 0.0f, const uint16_t scoreTailGroups = 0)
 {
     static_assert(
         !unitPScale || (IsSameType<T, float>::value &&
@@ -705,7 +703,7 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
                 scoreByteMask, seenScoreMask, rawExcluded, scoreActive, max0, max1, max2, max3);
         }
         if constexpr (!SCORE_FULL_COLUMNS) {
-            if (originN % 4U != 0) {
+            for (uint16_t tail = 0; tail < scoreTailGroups; ++tail) {
                 ReduceDnScoreGroup<(scoreMaskPitch != 0), false, maxScaleSign>(
                     input_x_local_UB, maskUb, fullGroups, m, originN,
                     reinterpret_cast<RegTensor<uint32_t> &>(scoreIndices), scoreByteMask, seenScoreMask, rawExcluded,
@@ -1102,7 +1100,8 @@ __aicore__ inline void ProcessVec1DnUpdate(const LocalTensor<T2> &dstTensor, con
     ProcessVec1DnUpdateVF<T, T2, hasAtten, ubN, hasSink, fullRows64, unitPScale, expUnrollTwo, fuseScores,
                           scoreMaskPitch, fullColumns, maxScaleSign>(
         x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, indexesUb, m, n, originN, scale,
-        deScaleQK, minValue, keepProb, needAtten, dScale, blockStride, repeatStride, pScale, sinkValue);
+        deScaleQK, minValue, keepProb, needAtten, dScale, blockStride, repeatStride, pScale, sinkValue,
+        static_cast<uint16_t>(originN % 4U != 0));
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128>

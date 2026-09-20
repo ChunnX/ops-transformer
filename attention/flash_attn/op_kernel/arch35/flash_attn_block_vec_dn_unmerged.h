@@ -21,6 +21,7 @@
 #include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_dn.h"
 #include "../../../common/op_kernel/arch35/vf/vf_flashupdate_new.h"
 #include "vf_flashupdate_dn.h"
+#include "vf_softmax_dn_segmented.h"
 #include "../../../common/op_kernel/arch35/vf/vf_div_cast_arch35.h"
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
 #include "../../../common/op_kernel/const_def.h"
@@ -28,7 +29,6 @@
 #include "../../../common/op_kernel/init_output.h"
 #include "memory_copy_arch35.h"
 #include "../utils/attn_sink_gs1.h"
-#include "../utils/attenmask_gs1.h"
 #include "../../../common/op_kernel/arch_info.h"
 
 using namespace AscendC;
@@ -77,8 +77,6 @@ public:
     static constexpr uint32_t UB_OUT_VEC1_RES_EVENT1 = 3;
     static constexpr uint32_t UB_OUT_LSE_OUT_EVENT0 = 4;
     static constexpr uint32_t UB_OUT_LSE_OUT_EVENT1 = 5;
-    // MTE2<->V, mask 拷入buffer(FD block 占用 2/4/8/9/10/11, 6/7 空闲)
-    static constexpr uint32_t UB_IN_MASK_EVENT0 = 6;
 
     // L1
     static constexpr uint32_t L1_P_BUFCNT = PRELOAD_N + 1U;
@@ -129,12 +127,8 @@ public:
     LocalTensor<uint8_t> ubLseOutBuffers_;
     uint32_t lseOutUbBufId_ = 0;
 
-    static constexpr uint32_t UB_MASK_BUFCNT = 2U;
-    // An odd number of 32-byte blocks distributes column gathers across UB banks.
-    // N208/N224 already align to seven blocks; blindly adding one made the pitch 256.
-    static constexpr uint32_t MASK_PITCH = (AttentionCommon::Align(s2BaseSize, 32U) / 32U | 1U) * 32U;
-    static constexpr uint32_t UB_MASK_BUF_BYTES = mBaseSize / CV_RATIO * MASK_PITCH;
-    LocalTensor<uint8_t> ubMaskBuffers_;
+    static constexpr uint32_t UB_TRIANGLE_BYTES = 2U * 64U * 64U;
+    LocalTensor<int8_t> ubTriangleMask_;
 
     const ConstInfo &constInfo_;
 
@@ -150,16 +144,12 @@ public:
     CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, UbFormat::S1_ONLY> copyAttenOutUbToGm_;
     GlobalTensor<OUTPUT_T> attentionOutGm_;
     GlobalTensor<float> softmaxLseGm_;
-    GlobalTensor<uint8_t> attenMaskGmInt_;
     GlobalTensor<float> accumOutGm_;
     GlobalTensor<float> softmaxFDSumGm_;
     GlobalTensor<float> softmaxFDMaxGm_;
     GlobalTensor<float> sinkGm_;
 
     T negativeFloatScalar_;
-    // DN 每个任务只处理一个 G 头, M 轴为该头的连续 S1; mask 按单 G 的 GS 形态搬入,
-    // BSND/TND 不能沿用 ND 的 S1G 展开, 否则会把相邻 G 的 mask 行搬进当前 M 块。
-    static constexpr MaskFormat MASK_LAYOUT = MaskFormat::GS;
     static constexpr T BOOL_ATTEN_MASK_SCALAR_VALUE = -1000000000000.0;
     uint32_t negativeIntScalar_ = *((uint32_t *)&BOOL_ATTEN_MASK_SCALAR_VALUE);
 
@@ -186,10 +176,6 @@ public:
             softmaxLseGm_.SetGlobalBuffer((__gm__ float *)softmaxLse);
         }
 
-        if constexpr (HAS_MASK) {
-            attenMaskGmInt_.SetGlobalBuffer((__gm__ uint8_t *)attenMask);
-        }
-
         if (constInfo_.enableFlashDecode) {
             accumOutGm_.SetGlobalBuffer((__gm__ float *)workspace);
             softmaxFDSumGm_.SetGlobalBuffer((__gm__ float *)workspace + constInfo_.accumOutSize);
@@ -212,7 +198,7 @@ public:
                               UB_SOFTMAX_MAX_BUFCNT * UB_SOFTMAX_MAX_BUF_BYTES +
                               UB_SOFTMAX_SUM_BUFCNT * UB_SOFTMAX_SUM_BUF_BYTES +
                               UB_SOFTMAX_EXP_BUFCNT * UB_SOFTMAX_EXP_BUF_BYTES +
-                              UB_LSE_OUT_BUFCNT * UB_LSE_OUT_BUF_BYTES + (HAS_MASK ? DB * UB_MASK_BUF_BYTES : 0U) <=
+                              UB_LSE_OUT_BUFCNT * UB_LSE_OUT_BUF_BYTES + (HAS_MASK ? UB_TRIANGLE_BYTES : 0U) <=
                           248U * 1024U,
                       "DN UB capacity exceeded");
         /*--------------------------------------------UB--------------------------------------------*/
@@ -249,7 +235,19 @@ public:
                 UB_LSE_OUT_BUF_BYTES); // 输出BUF:
                                        // FD中间结果SUM和MAX拷出至GM，或者LSE结果拷出；按actVecMSize*8(fp32块对齐)定容
         addrUb += UB_LSE_OUT_BUFCNT * UB_LSE_OUT_BUF_BYTES;
-        ubMaskBuffers_ = LocalTensor<uint8_t>(TPosition::VECIN, addrUb, UB_MASK_BUFCNT * UB_MASK_BUF_BYTES);
+        if constexpr (HAS_MASK) {
+            ubTriangleMask_ = LocalTensor<int8_t>(TPosition::VECIN, addrUb, UB_TRIANGLE_BYTES);
+        }
+    }
+
+    // FD may overwrite FA scratch between sections. Initialize once per
+    // FA section, then keep the two templates resident across all its tiles.
+    __aicore__ inline void InitTriangleMasks()
+    {
+        if constexpr (HAS_MASK) {
+            FaVectorApi::InitDnTriangleMaskVF((__ubuf__ int8_t *)ubTriangleMask_.GetPhyAddr());
+            AscendC::PipeBarrier<PIPE_V>();
+        }
     }
 
     __aicore__ inline void ResetSoftmaxBuffer(uint32_t slotIdx, const RunInfo &runInfo)
@@ -414,18 +412,32 @@ public:
                                          LocalTensor<T> &scores, LocalTensor<T> &exp, LocalTensor<uint8_t> &mask,
                                          const RunInfo &info)
     {
-        constexpr uint16_t scoreMaskPitch = ApplyMask ? MASK_PITCH : 0;
         const float scale = static_cast<float>(constInfo_.scaleValue);
-        if (FullColumns && info.actVecMSize == 64U && (info.actMSizeAlign32 >> 1) == 64U) {
-            FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize, false, true, true, true, true,
-                                         scoreMaskPitch, FullColumns, ScaleSign>(
-                dst, sum, max, scores, exp, nullptr, mask, info.actMSizeAlign32 >> 1, info.actSingleLoopS2SizeAlign,
-                info.actSingleLoopS2Size, scale, 1.0F, negativeFloatScalar_, 0.0F, false, 1.0F);
+        if constexpr (ApplyMask) {
+            const int64_t row = static_cast<int64_t>(info.s1Idx) + info.vecMbaseIdx;
+            const int64_t lower = row - info.preTokensLeftUp - static_cast<int64_t>(info.s2Idx);
+            const int64_t upper = row + info.nextTokensLeftUp - static_cast<int64_t>(info.s2Idx);
+            if (FullColumns && info.actVecMSize == 64U && (info.actMSizeAlign32 >> 1) == 64U) {
+                FaVectorApi::DnSegmentedSoftmax<INPUT_T, s2BaseSize, ScaleSign, true, FullColumns>(
+                    dst, scores, sum, max, exp, mask, info.actMSizeAlign32 >> 1, info.actSingleLoopS2Size, scale,
+                    negativeFloatScalar_, lower, upper);
+            } else {
+                FaVectorApi::DnSegmentedSoftmax<INPUT_T, s2BaseSize, ScaleSign, false, FullColumns>(
+                    dst, scores, sum, max, exp, mask, info.actMSizeAlign32 >> 1, info.actSingleLoopS2Size, scale,
+                    negativeFloatScalar_, lower, upper);
+            }
         } else {
-            FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize, false, false, true, true, true,
-                                         scoreMaskPitch, FullColumns, ScaleSign>(
-                dst, sum, max, scores, exp, nullptr, mask, info.actMSizeAlign32 >> 1, info.actSingleLoopS2SizeAlign,
-                info.actSingleLoopS2Size, scale, 1.0F, negativeFloatScalar_, 0.0F, false, 1.0F);
+            if (FullColumns && info.actVecMSize == 64U && (info.actMSizeAlign32 >> 1) == 64U) {
+                FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize, false, true, true, true, true, 0,
+                                             FullColumns, ScaleSign>(
+                    dst, sum, max, scores, exp, nullptr, mask, info.actMSizeAlign32 >> 1, info.actSingleLoopS2SizeAlign,
+                    info.actSingleLoopS2Size, scale, 1.0F, negativeFloatScalar_, 0.0F, false);
+            } else {
+                FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize, false, false, true, true, true, 0,
+                                             FullColumns, ScaleSign>(
+                    dst, sum, max, scores, exp, nullptr, mask, info.actMSizeAlign32 >> 1, info.actSingleLoopS2SizeAlign,
+                    info.actSingleLoopS2Size, scale, 1.0F, negativeFloatScalar_, 0.0F, false);
+            }
         }
     }
 
@@ -471,6 +483,9 @@ public:
         static constexpr uint32_t vec1ResOffsetDn = s2BaseSize * 32 + 64;
 
         LocalTensor<uint8_t> attenMaskUb;
+        if constexpr (HAS_MASK) {
+            attenMaskUb = ubTriangleMask_.template ReinterpretCast<uint8_t>();
+        }
         LocalTensor<T> sumUb =
             softmaxSumBuf_[(runInfo.mloop % UB_SOFTMAX_SUM_BUFCNT) * (UB_SOFTMAX_SUM_BUF_BYTES / sizeof(T))];
         LocalTensor<T> maxUb =
@@ -478,21 +493,15 @@ public:
         LocalTensor<T> expUb =
             softmaxExpBuf_[(runInfo.loop % UB_SOFTMAX_EXP_BUFCNT) * (UB_SOFTMAX_EXP_BUF_BYTES / sizeof(T))];
 
-        // 块级粗筛: 本 S2 块可能存在被掩蔽的列才搬 mask; 全可见块直接跳过
-        const uint32_t maskBufId = runInfo.loop & (DB - 1);
+        // Only boundary tiles generate causal/band predicates. Fully visible
+        // tiles use the exact same VF specialization as the no-mask route.
         bool needMask = false;
         if constexpr (HAS_MASK) {
-            const int64_t firstQ = runInfo.s1Idx + runInfo.vecMbaseIdx;
+            const int64_t firstQ = static_cast<int64_t>(runInfo.s1Idx) + runInfo.vecMbaseIdx;
             const int64_t lastQ = firstQ + runInfo.actVecMSize - 1;
-            const int64_t lastKv = runInfo.s2Idx + runInfo.actSingleLoopS2Size - 1;
-            if (constInfo_.scaleValue <= 0 || firstQ + runInfo.nextTokensLeftUp < lastKv ||
-                lastQ - runInfo.preTokensLeftUp > runInfo.s2Idx) {
-                attenMaskUb = ubMaskBuffers_[maskBufId * UB_MASK_BUF_BYTES];
-                needMask = AttenMaskCopyIn(attenMaskUb, runInfo);
-                if (needMask) {
-                    Mutex::Lock<PIPE_V>(UB_IN_MASK_EVENT0 + maskBufId);
-                }
-            }
+            const int64_t lastKv = static_cast<int64_t>(runInfo.s2Idx) + runInfo.actSingleLoopS2Size - 1;
+            needMask = firstQ + runInfo.nextTokensLeftUp < lastKv ||
+                       lastQ - runInfo.preTokensLeftUp > static_cast<int64_t>(runInfo.s2Idx);
         }
 
         Mutex::Lock<PIPE_V>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
@@ -509,10 +518,6 @@ public:
             }
         } else {
             SoftmaxDn<false>(stage1CastTensor, sumUb, maxUb, mm1ResUbTensor, expUb, attenMaskUb, runInfo);
-        }
-
-        if (needMask) {
-            Mutex::Unlock<PIPE_V>(UB_IN_MASK_EVENT0 + maskBufId);
         }
 
         Mutex::Unlock<PIPE_V>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
@@ -540,69 +545,6 @@ public:
 
         Mutex::Unlock<PIPE_MTE3>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
         vec1ResUbBufId_ = (vec1ResUbBufId_ + 1U) % UB_VEC1_RES_BUFCNT;
-    }
-
-    __aicore__ inline bool AttenMaskCopyIn(LocalTensor<uint8_t> attenMaskUb, RunInfo &runInfo)
-    {
-        MaskInfo maskInfo;
-        // mask 工具按单 G 的 GS 线性坐标搬入, G 已在 BN1 轴展开; gs1StartIdx 即本头纯 s1 起始
-        const uint32_t maskS1Start = runInfo.s1Idx + runInfo.vecMbaseIdx;
-        maskInfo.gs1StartIdx = maskS1Start;
-        maskInfo.gs1dealNum = runInfo.actVecMSize;
-        maskInfo.s1Size = runInfo.actS1Size;
-        maskInfo.gSize = constInfo_.gSize;
-        maskInfo.s2StartIdx = runInfo.s2Idx;
-        maskInfo.s2dealNum = runInfo.actSingleLoopS2Size;
-        maskInfo.s2Size = runInfo.actS2Size;
-        maskInfo.nBaseSize = s2BaseSize;
-        maskInfo.preToken = constInfo_.preTokens;
-        maskInfo.nextToken = constInfo_.nextTokens;
-        maskInfo.sparseMode = static_cast<SparseMode>(constInfo_.sparseMode);
-        maskInfo.batchIdx = (constInfo_.attenMaskBatch == 1) ? 0 : runInfo.bIdx;
-        maskInfo.attenMaskBatchStride = constInfo_.attenMaskS1Size * constInfo_.attenMaskS2Size;
-        maskInfo.attenMaskS1Stride = constInfo_.attenMaskS2Size;
-        maskInfo.attenMaskDstStride = (MASK_PITCH - AttentionCommon::Align(maskInfo.s2dealNum, 32U)) / 32;
-        maskInfo.maskValue = negativeIntScalar_;
-        maskInfo.s1LeftPaddingSize = 0;
-        maskInfo.s2LeftPaddingSize = 0;
-        maskInfo.maskFormat = MASK_LAYOUT;
-        maskInfo.attenMaskType = MASK_BOOL;
-
-        const uint32_t bufIdx = runInfo.loop & (DB - 1);
-        const bool skipMask = IsSkipAttentionmask(maskInfo);
-        const bool skipMaskForPre = IsSkipAttentionmaskForPre(maskInfo);
-        if (skipMask && skipMaskForPre) {
-            if (constInfo_.scaleValue > 0) {
-                return false;
-            }
-            // 零/负 scale 必须先于 softmax VF 的负 padding 哨兵写入施加, 否则 padding 被乘为 0/正数污染分母
-            Mutex::Lock<PIPE_V>(UB_IN_MASK_EVENT0 + bufIdx);
-            Duplicate(attenMaskUb, static_cast<uint8_t>(0U), maskInfo.gs1dealNum * MASK_PITCH);
-            Mutex::Unlock<PIPE_V>(UB_IN_MASK_EVENT0 + bufIdx);
-            return true;
-        }
-        if (!skipMask) {
-            AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSize>(attenMaskUb, attenMaskGmInt_, maskInfo, false,
-                                                                        UB_IN_MASK_EVENT0 + bufIdx);
-        } else {
-            Mutex::Lock<PIPE_V>(UB_IN_MASK_EVENT0 + bufIdx);
-            Duplicate(attenMaskUb, static_cast<uint8_t>(0U), maskInfo.gs1dealNum * MASK_PITCH);
-            Mutex::Unlock<PIPE_V>(UB_IN_MASK_EVENT0 + bufIdx);
-        }
-        if (!skipMaskForPre) {
-            // BAND 窗口: pre 半带与 next 半带分别拷入后按位合并, 可见 = next | !pre
-            const uint32_t preBufId = bufIdx ^ 1U;
-            LocalTensor<uint8_t> attenMaskUbPre = ubMaskBuffers_[preBufId * UB_MASK_BUF_BYTES];
-            AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSize>(attenMaskUbPre, attenMaskGmInt_, maskInfo, true,
-                                                                        UB_IN_MASK_EVENT0 + preBufId);
-            Mutex::Lock<PIPE_V>(UB_IN_MASK_EVENT0 + preBufId);
-            Mutex::Lock<PIPE_V>(UB_IN_MASK_EVENT0 + bufIdx);
-            MergeBand(attenMaskUb.GetPhyAddr(), attenMaskUbPre.GetPhyAddr(),
-                      (maskInfo.gs1dealNum * MASK_PITCH + 255U) / 256U);
-            Mutex::Unlock<PIPE_V>(UB_IN_MASK_EVENT0 + bufIdx);
-            Mutex::Unlock<PIPE_V>(UB_IN_MASK_EVENT0 + preBufId);
-        }
-        return true;
     }
 
     __aicore__ inline void Bmm2DataCopyOutTrans(const RunInfo &info, LocalTensor<OUTPUT_T> &attenOutUb,
