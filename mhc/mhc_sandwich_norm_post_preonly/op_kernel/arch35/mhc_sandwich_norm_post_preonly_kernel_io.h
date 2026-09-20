@@ -43,8 +43,8 @@ __aicore__ inline void FenceVToMte2()
     WaitFlag<HardEvent::V_MTE2>(evtVtoMte2_);
 }
 
-__aicore__ inline void LoadLowPrecisionTile(
-    GlobalTensor<T> &src, uint64_t gmOffset, LocalTensor<float> dst, uint32_t count)
+__aicore__ inline void LoadLowPrecisionTile(GlobalTensor<T> &src, uint64_t gmOffset, LocalTensor<float> dst,
+                                            uint32_t count)
 {
     LocalTensor<T> tmp = bufHOutBf16_.AllocTensor<T>();
     DataCopy(tmp, src[gmOffset], count);
@@ -55,8 +55,8 @@ __aicore__ inline void LoadLowPrecisionTile(
     bufHOutBf16_.FreeTensor(tmp);
 }
 
-__aicore__ inline void WriteLowPrecisionTile(
-    GlobalTensor<T> &dst, uint64_t gmOffset, LocalTensor<float> src, uint32_t count)
+__aicore__ inline void WriteLowPrecisionTile(GlobalTensor<T> &dst, uint64_t gmOffset, LocalTensor<float> src,
+                                             uint32_t count)
 {
     LocalTensor<T> tmp = bufHInPrimeBf16_.AllocTensor<T>();
     CastToIO(tmp, src, count);
@@ -75,6 +75,22 @@ __aicore__ inline void WriteHInPrimeTile(LocalTensor<float> src, uint64_t gmOffs
         DataCopy(hInF32Gm_[gmOffset], src, count);
         FenceMte3ToV();
     }
+}
+
+/// 把R7结果转换后放入双槽输出队列，供下一分块计算期间异步写回。
+__aicore__ inline void EnqueueHInPrimeTile(LocalTensor<float> src, uint32_t count)
+{
+    LocalTensor<T> tmp = bufHInPrimeBf16_.AllocTensor<T>();
+    CastToIO(tmp, src, count);
+    bufHInPrimeBf16_.EnQue(tmp);
+}
+
+/// 按队列顺序启动一个R7低精度结果的MTE3写回。
+__aicore__ inline void DequeueHInPrimeTile(uint64_t gmOffset, uint32_t count)
+{
+    LocalTensor<T> tmp = bufHInPrimeBf16_.DeQue<T>();
+    DataCopy(hInPrimeGm_[gmOffset], tmp, count);
+    bufHInPrimeBf16_.FreeTensor(tmp);
 }
 
 __aicore__ inline void WriteX2OutTile(LocalTensor<float> src, uint64_t gmOffset, uint32_t count)

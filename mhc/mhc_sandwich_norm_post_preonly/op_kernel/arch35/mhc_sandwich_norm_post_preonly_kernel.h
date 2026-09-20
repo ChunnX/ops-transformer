@@ -23,7 +23,7 @@
 #include "mhc_sandwich_norm_post_preonly_common.h"
 #include "mhc_sandwich_norm_post_preonly_regbase.h"
 
-template<typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING = false>
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING = false>
 class KernelMhcSandwichNormPostPreonly {
 public:
     __aicore__ inline KernelMhcSandwichNormPostPreonly() {}
@@ -31,35 +31,32 @@ public:
     // =====================================================================
     //  Init: 解析 tiling, 设置 GM buffer, 分配 UB
     // =====================================================================
-    __aicore__ inline void Init(
-        GM_ADDR h_out_gm, GM_ADDR residual_gm,
-        GM_ADDR h_post_gm, GM_ADDR h_res_gm,
-        GM_ADDR phi_gm, GM_ADDR alpha_0_gm, GM_ADDR bias_gm,
-        GM_ADDR gamma_0_gm, GM_ADDR gamma_1_gm, GM_ADDR gamma_2_gm,
-        GM_ADDR h_in_prime_gm, GM_ADDR x_2_out_gm, GM_ADDR h_in_f32_gm,
-        GM_ADDR workspace, GM_ADDR tiling)
+    __aicore__ inline void Init(GM_ADDR h_out_gm, GM_ADDR residual_gm, GM_ADDR h_post_gm, GM_ADDR h_res_gm,
+                                GM_ADDR phi_gm, GM_ADDR alpha_0_gm, GM_ADDR bias_gm, GM_ADDR gamma_0_gm,
+                                GM_ADDR gamma_1_gm, GM_ADDR gamma_2_gm, GM_ADDR h_in_prime_gm, GM_ADDR x_2_out_gm,
+                                GM_ADDR h_in_f32_gm, GM_ADDR workspace, GM_ADDR tiling)
     {
         GET_TILING_DATA(td, tiling);
 
-        totalTokens_    = td.totalTokens;
-        N_              = td.headCount;
-        D_              = td.embedDim;
-        usedCoreNum_    = td.usedCoreNum;
-        rowsPerCore_    = td.rowsPerCore;
-        rowsPerCoreSp_  = td.rowsPerCoreSp;
-        blockPivot_     = td.blockPivot;
-        dimTile_        = td.dimTile;
-        dimLoop_        = td.dimLoop;
-        lastDimTile_    = td.lastDimTile;
-        phiRows_        = td.phiRows;
-        phiCols_        = td.phiCols;
-        normEps_        = td.normEps;
-        mhcPreNormEps_  = td.mhcPreNormEps;
-        hcEps_          = td.hcEps;
-        K_              = N_ * D_;
-        invD_           = td.invD;
-        invK_           = td.invK;
-        coresPerToken_  = td.coresPerToken;
+        totalTokens_ = td.totalTokens;
+        N_ = td.headCount;
+        D_ = td.embedDim;
+        usedCoreNum_ = td.usedCoreNum;
+        rowsPerCore_ = td.rowsPerCore;
+        rowsPerCoreSp_ = td.rowsPerCoreSp;
+        blockPivot_ = td.blockPivot;
+        dimTile_ = td.dimTile;
+        dimLoop_ = td.dimLoop;
+        lastDimTile_ = td.lastDimTile;
+        phiRows_ = td.phiRows;
+        phiCols_ = td.phiCols;
+        normEps_ = td.normEps;
+        mhcPreNormEps_ = td.mhcPreNormEps;
+        hcEps_ = td.hcEps;
+        K_ = N_ * D_;
+        invD_ = td.invD;
+        invK_ = td.invK;
+        coresPerToken_ = td.coresPerToken;
 
         const uint32_t aivIdx = GetBlockIdx();
         // MIX_AIC_1_2在A5上按每个物理AI Core展开两个连续AIV。
@@ -84,20 +81,20 @@ public:
             tokenEnd_ = totalTokens_;
 
         // GM张量
-        hOutGm_.SetGlobalBuffer((__gm__ T *)h_out_gm,         (uint64_t)totalTokens_ * D_);
-        residualGm_.SetGlobalBuffer((__gm__ T *)residual_gm,  (uint64_t)totalTokens_ * N_ * D_);
+        hOutGm_.SetGlobalBuffer((__gm__ T *)h_out_gm, (uint64_t)totalTokens_ * D_);
+        residualGm_.SetGlobalBuffer((__gm__ T *)residual_gm, (uint64_t)totalTokens_ * N_ * D_);
         hPostGm_.SetGlobalBuffer((__gm__ float *)h_post_gm, (uint64_t)totalTokens_ * N_);
         hResGm_.SetGlobalBuffer((__gm__ float *)h_res_gm, (uint64_t)totalTokens_ * N_ * N_);
-        phiGm_.SetGlobalBuffer((__gm__ float *)phi_gm,        (uint64_t)phiRows_ * phiCols_);
+        phiGm_.SetGlobalBuffer((__gm__ float *)phi_gm, (uint64_t)phiRows_ * phiCols_);
         alpha0Gm_.SetGlobalBuffer((__gm__ float *)alpha_0_gm, ALIGN8);
-        biasGm_.SetGlobalBuffer((__gm__ float *)bias_gm,      ALIGN8);
+        biasGm_.SetGlobalBuffer((__gm__ float *)bias_gm, ALIGN8);
         gamma0Gm_.SetGlobalBuffer((__gm__ float *)gamma_0_gm, D_);
         gamma1Gm_.SetGlobalBuffer((__gm__ float *)gamma_1_gm, D_);
         if constexpr (USE_RMS_MID) {
             gamma2Gm_.SetGlobalBuffer((__gm__ float *)gamma_2_gm, K_);
         }
         hInPrimeGm_.SetGlobalBuffer((__gm__ T *)h_in_prime_gm, (uint64_t)totalTokens_ * D_);
-        x2OutGm_.SetGlobalBuffer((__gm__ T *)x_2_out_gm,      (uint64_t)totalTokens_ * N_ * D_);
+        x2OutGm_.SetGlobalBuffer((__gm__ T *)x_2_out_gm, (uint64_t)totalTokens_ * N_ * D_);
         if (h_in_f32_gm != nullptr) {
             hInF32Gm_.SetGlobalBuffer((__gm__ float *)h_in_f32_gm, (uint64_t)totalTokens_ * D_);
         }
@@ -106,22 +103,22 @@ public:
         }
 
         // UB空间分配
-        pipe_.InitBuffer(bufHOutBf16_, BUFFER_NUM_TWO, dimTile_ * sizeof(T));
-        pipe_.InitBuffer(bufHOutFp32_,          dimTile_ * sizeof(float));
-        pipe_.InitBuffer(bufGamma0Fp32_,        dimTile_ * sizeof(float));
-        pipe_.InitBuffer(bufX2Fp32_,            N_ * dimTile_ * sizeof(float));
+        pipe_.InitBuffer(bufHOutBf16_, 1, dimTile_ * sizeof(T));
+        pipe_.InitBuffer(bufHOutFp32_, dimTile_ * sizeof(float));
+        pipe_.InitBuffer(bufGamma0Fp32_, dimTile_ * sizeof(float));
+        pipe_.InitBuffer(bufX2Fp32_, N_ * dimTile_ * sizeof(float));
         // dimTile=2560时其余固定缓存共194912B；D=7168的完整低精度x2为57344B，
         // 合计252256B，小于A5的256KiB UB上限。
-        pipe_.InitBuffer(bufX2Cache_,            K_ * sizeof(T));
-        pipe_.InitBuffer(bufResidualBf16_,   1, N_ * dimTile_ * sizeof(T));
+        pipe_.InitBuffer(bufX2Cache_, K_ * sizeof(T));
+        pipe_.InitBuffer(bufResidualBf16_, 1, N_ * dimTile_ * sizeof(T));
         // 前四行先保存residual，之后复用为R4/R5的五行归约输入；第五行兼作通用输出暂存。
-        pipe_.InitBuffer(bufResFp32_,     (N_ + 1) * dimTile_ * sizeof(float));
-        pipe_.InitBuffer(bufSqFp32_,            dimTile_ * sizeof(float));
-        pipe_.InitBuffer(bufPostComb_,          POST_COMB_SIZE * sizeof(float));
-        pipe_.InitBuffer(bufPhiFp32_,  BUFFER_NUM_TWO, dimTile_ * sizeof(float));
-        pipe_.InitBuffer(bufHInPrimeBf16_, 1, dimTile_ * sizeof(T));
-        pipe_.InitBuffer(bufScalar_,            SCALAR_BUF_SIZE);
-        pipe_.InitBuffer(bufGamma2Fp32_,        dimTile_ * sizeof(float));
+        pipe_.InitBuffer(bufResFp32_, (N_ + 1) * dimTile_ * sizeof(float));
+        pipe_.InitBuffer(bufSqFp32_, dimTile_ * sizeof(float));
+        pipe_.InitBuffer(bufPostComb_, POST_COMB_SIZE * sizeof(float));
+        pipe_.InitBuffer(bufPhiFp32_, BUFFER_NUM_TWO, dimTile_ * sizeof(float));
+        pipe_.InitBuffer(bufHInPrimeBf16_, BUFFER_NUM_TWO, dimTile_ * sizeof(T));
+        pipe_.InitBuffer(bufScalar_, SCALAR_BUF_SIZE);
+        pipe_.InitBuffer(bufGamma2Fp32_, dimTile_ * sizeof(float));
 
         evtMte2toV_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::MTE2_V>());
         evtVtoMte2_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::V_MTE2>());
@@ -156,7 +153,7 @@ public:
             DataCopyPad(bufGamma0Fp32_.Get<float>(), gamma0Gm_[0], gP, gPad);
             // gamma_2的形状为[N*D]，在RMSNorm_mid中按head加载
         }
-        
+
         SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
         WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
 
@@ -185,15 +182,16 @@ public:
 private:
     __aicore__ inline void ProcessTokenSingleAiv(uint32_t token);
     __aicore__ inline void ProcessTokenDualSiblingAiv(uint32_t token);
-    __aicore__ inline void ComputeX2PostTile(uint32_t token, uint32_t tOff, uint32_t tD,
-        float invRms0, const float (&postVals)[N_MAX]);
+    __aicore__ inline void ComputeX2PostTile(uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
+                                             const float (&postVals)[N_MAX]);
     __aicore__ inline void CacheX2Tile(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput);
     __aicore__ inline void CacheX2TileForLane(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput);
     __aicore__ inline void LoadX2CacheTile(uint32_t tOff, uint32_t tD);
     __aicore__ inline void CacheHInTile(uint32_t tOff, uint32_t tD, LocalTensor<float> hIn);
     __aicore__ inline void LoadHInCacheTile(uint32_t tOff, uint32_t tD, LocalTensor<float> hIn);
-    __aicore__ inline void AccumulateHalfPartials(uint32_t tOff, uint32_t tD,
-        float (&sumSqHalf)[2], float (&dotHalf)[2][N_MAX], uint32_t halfBegin = 0, uint32_t halfEnd = 2);
+    __aicore__ inline void AccumulateHalfPartials(uint32_t tOff, uint32_t tD, float (&sumSqHalf)[2],
+                                                  float (&dotHalf)[2][N_MAX], uint32_t halfBegin = 0,
+                                                  uint32_t halfEnd = 2);
 
     // =================================================================
     //  共享计算模块
@@ -207,22 +205,22 @@ private:
     TPipe pipe_;
 
     // UB缓存
-    TQue<TPosition::VECIN, BUFFER_NUM_TWO> bufHOutBf16_;
-    TBuf<TPosition::VECCALC>   bufHOutFp32_;
-    TBuf<TPosition::VECCALC>   bufGamma0Fp32_;
-    TBuf<TPosition::VECCALC>   bufGamma2Fp32_;
-    TBuf<TPosition::VECCALC>   bufX2Fp32_;
-    TBuf<TPosition::VECCALC>   bufX2Cache_;
-    TQue<TPosition::VECIN, 1>  bufResidualBf16_;
-    TBuf<TPosition::VECCALC>   bufResFp32_;
-    TBuf<TPosition::VECCALC>   bufSqFp32_;
-    TBuf<TPosition::VECCALC>   bufPostComb_;
-    TQue<TPosition::VECIN, BUFFER_NUM_TWO>  bufPhiFp32_;
-    TQue<TPosition::VECOUT, 1> bufHInPrimeBf16_;
-    TBuf<TPosition::VECCALC>   bufScalar_;
+    TQue<TPosition::VECIN, 1> bufHOutBf16_;
+    TBuf<TPosition::VECCALC> bufHOutFp32_;
+    TBuf<TPosition::VECCALC> bufGamma0Fp32_;
+    TBuf<TPosition::VECCALC> bufGamma2Fp32_;
+    TBuf<TPosition::VECCALC> bufX2Fp32_;
+    TBuf<TPosition::VECCALC> bufX2Cache_;
+    TQue<TPosition::VECIN, 1> bufResidualBf16_;
+    TBuf<TPosition::VECCALC> bufResFp32_;
+    TBuf<TPosition::VECCALC> bufSqFp32_;
+    TBuf<TPosition::VECCALC> bufPostComb_;
+    TQue<TPosition::VECIN, BUFFER_NUM_TWO> bufPhiFp32_;
+    TQue<TPosition::VECOUT, BUFFER_NUM_TWO> bufHInPrimeBf16_;
+    TBuf<TPosition::VECCALC> bufScalar_;
 
     // GM张量
-    GlobalTensor<T>     hOutGm_, residualGm_, hInPrimeGm_, x2OutGm_;
+    GlobalTensor<T> hOutGm_, residualGm_, hInPrimeGm_, x2OutGm_;
     GlobalTensor<float> hPostGm_, hResGm_, phiGm_;
     GlobalTensor<float> alpha0Gm_, biasGm_;
     GlobalTensor<float> gamma0Gm_, gamma1Gm_, gamma2Gm_;
