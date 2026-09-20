@@ -172,50 +172,6 @@ __aicore__ inline void Axpy(const LocalTensor<float> &dst, const LocalTensor<flo
     }
 }
 
-// R6在一个VF中完成四路低精度读取、FP32转换和门控累加，避免生成四行FP32中间张量。
-template <typename T>
-__aicore__ inline void GateWeightedSum4(const LocalTensor<float> &dst, const LocalTensor<T> &src,
-                                        uint32_t headStride, const float (&gate)[4], uint32_t count)
-{
-    __local_mem__ T *srcAddr = (__local_mem__ T *)src.GetPhyAddr();
-    __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();
-    uint32_t remain = count;
-    const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
-    __VEC_SCOPE__
-    {
-        RegTensor<T> srcReg;
-        RegTensor<float> srcFp32Reg, accReg;
-        RegTensor<float> gate0Reg, gate1Reg, gate2Reg, gate3Reg;
-        MaskReg mask;
-        MaskReg maskAll = CreateMask<float, MaskPattern::ALL>();
-        Duplicate(gate0Reg, gate[0], maskAll);
-        Duplicate(gate1Reg, gate[1], maskAll);
-        Duplicate(gate2Reg, gate[2], maskAll);
-        Duplicate(gate3Reg, gate[3], maskAll);
-        // TODO：后续结合编译结果评估该分块循环是否值得展开，本轮保持通用循环结构。
-        for (uint16_t i = 0; i < loops; ++i) {
-            mask = UpdateMask<float>(remain);
-            const uint32_t offset = static_cast<uint32_t>(i) * VL_FP32;
-            DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + offset);
-            Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
-            AscendC::Reg::Mul(accReg, srcFp32Reg, gate0Reg, mask);
-
-            DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + headStride + offset);
-            Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
-            MulAddDst(accReg, srcFp32Reg, gate1Reg, mask);
-
-            DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + 2U * headStride + offset);
-            Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
-            MulAddDst(accReg, srcFp32Reg, gate2Reg, mask);
-
-            DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + 3U * headStride + offset);
-            Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
-            MulAddDst(accReg, srcFp32Reg, gate3Reg, mask);
-            DataCopy(dstAddr + offset, accReg, mask);
-        }
-    }
-}
-
 // clang-format off
 }
 // clang-format on
