@@ -57,7 +57,40 @@
 #include "../../common/op_kernel/moe_ep_exception_dump_writer.h"
 #endif
 
+#if __has_include("../common/moe_ep_profiler.h")
+#include "../common/moe_ep_profiler.h"
+#else
+#include "../../common/op_kernel/moe_ep_profiler.h"
+#endif
+
 namespace MoeEpDispatchHybridImpl {
+
+enum class MoeEpDispatchHybridProfileStage : uint32_t {
+    KERNEL = 0U,
+    INIT = 9U,
+    HYBRID_COUNT_BUILD = 30U,
+    HYBRID_COUNT_ISSUE = 31U,
+    HYBRID_COUNT_WAIT_OUTPUT = 32U,
+    HYBRID_PAYLOAD_PREP = 33U,
+    HYBRID_SCALEOUT_SEND = 34U,
+    HYBRID_SCALEUP_SEND = 35U,
+    HYBRID_COUNT_EXPERT_SUM = 36U,
+    HYBRID_COUNT_RANK_SUM = 37U,
+    HYBRID_COUNT_SCALEOUT_SUM = 38U,
+    HYBRID_REMOTE_COUNT_SUM = 39U,
+    HYBRID_LOCAL_COUNT_SUM = 40U,
+    HYBRID_RECV_EXPERT_SUM = 41U,
+    HYBRID_RECV_RANK_SUM = 42U,
+    HYBRID_SLOT_START_SUM = 43U,
+    HYBRID_TOKEN_PREP_SUM = 44U,
+    HYBRID_DEDUP_ROUTES_SUM = 45U,
+    HYBRID_CACHED_ROUTES_SUM = 46U,
+    HYBRID_PROXY_SUBMIT_SUM = 47U,
+    HYBRID_FANOUT_SUBMIT_SUM = 48U,
+    HYBRID_ENTRIES_SEND_SUM = 49U,
+    HYBRID_READY_FLAG_SUM = 50U,
+    HYBRID_LOCAL_PAYLOAD_SUM = 51U,
+};
 
 #if defined(ENABLE_MOE_EP_KERNEL)
 
@@ -101,6 +134,7 @@ public:
     __aicore__ inline void Process();
 
 private:
+    MOE_EP_PROFILE_DECLARE();
     __aicore__ inline void PrepareDispatchPayloads();
     __aicore__ inline void TransferDispatchPayloads();
     __aicore__ inline void InitTilingFields(const MoeEpDispatchTilingData *tilingData);
@@ -346,6 +380,9 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     GM_ADDR routeScaleoutSlot, GM_ADDR workspaceGM, GM_ADDR tilingGM, TPipe *pipe,
     const MoeEpDispatchTilingData *tilingData)
 {
+    MOE_EP_PROFILE_INIT(reinterpret_cast<__gm__ Mc2Aclnn::MoeCommContext *>(context), MoeEpProfileOp::DISPATCH,
+        tilingData->moeEpDispatchInfo.aivNum);
+    MOE_EP_PROFILE_INIT_BEGIN();
     tpipe_ = pipe;
     aivId_ = GetBlockIdx();
     workspaceGM_ = workspaceGM;
@@ -363,6 +400,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     InitCopyParams();
     InitGlobalAddresses(tilingData);
     diagWriter_.RunPosRecord(MOE_EP_DISPATCH_RUN_POS_INIT_DONE);
+    MOE_EP_PROFILE_INIT_END();
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
@@ -537,6 +575,7 @@ template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::CalSendCntPerRank(
     LocalTensor<int16_t> expertIdsTensor, uint32_t calCnt)
 {
+    MOE_EP_PROFILE_ACCUM_SCOPE(1, MoeEpProfileOp::DISPATCH, MoeEpDispatchHybridProfileStage::HYBRID_COUNT_RANK_SUM);
     uint32_t tmpOffset = Ceil(calCnt * sizeof(int16_t), ALIGNED_LEN_256) * ALIGNED_LEN_256;
     uint32_t tokenCnt = calCnt / axisK_;
     uint32_t calCntAlign = tmpOffset / sizeof(int16_t);
@@ -579,6 +618,7 @@ template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::CalSendCntPerExpert(
     LocalTensor<int16_t> expertIdsTensor, uint32_t calCnt)
 {
+    MOE_EP_PROFILE_ACCUM_SCOPE(0, MoeEpProfileOp::DISPATCH, MoeEpDispatchHybridProfileStage::HYBRID_COUNT_EXPERT_SUM);
     // 使用 GetExpertFreq 硬件向量化统计 expert 频率，替代逐 expert scalar 循环
     uint32_t tmpOffset = Ceil(calCnt * sizeof(int16_t), ALIGNED_LEN_256) * ALIGNED_LEN_256;
     uint32_t calCntAlign = tmpOffset / sizeof(int16_t);
@@ -623,6 +663,7 @@ template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::CalSendCntPerScaleout(
     LocalTensor<int16_t> rankIdsTensor, uint32_t calCnt, LocalTensor<int32_t> scaleoutCounterTensor)
 {
+    MOE_EP_PROFILE_ACCUM_SCOPE(2, MoeEpProfileOp::DISPATCH, MoeEpDispatchHybridProfileStage::HYBRID_COUNT_SCALEOUT_SUM);
     if (serverNum_ == 0U) {
         return;
     }
@@ -735,6 +776,8 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
 template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::CalSendCnt()
 {
+    MOE_EP_PROFILE_SCOPE(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR,
+        MoeEpDispatchHybridProfileStage::HYBRID_COUNT_BUILD);
     SplitToCore(axisBS_, aivNum_, startTokenId_, endTokenId_, sendTokenNum_);
     uint32_t groupCnt = Ceil(sendTokenNum_, perGroupTokenNum_);
     uint32_t calCnt = perGroupTokenNum_ * axisK_;
@@ -777,6 +820,7 @@ template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::SendCountToRemoteRank(
     uint32_t dstRankId, uint64_t notifyValue)
 {
+    MOE_EP_PROFILE_ACCUM_SCOPE(3, MoeEpProfileOp::DISPATCH, MoeEpDispatchHybridProfileStage::HYBRID_REMOTE_COUNT_SUM);
     // 计算目标窗口地址:
     GM_ADDR remoteStateAddr = MoeEpDispatchBase::GetWindowAddrByRankId(mc2Context_, dstRankId, cntWinStateOffset_);
     GM_ADDR notifyAddr = remoteStateAddr + epRankId_ * WIN_ADDR_ALIGN;
@@ -795,6 +839,7 @@ template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::CopyLocalCountToWindow(
     uint32_t dstRankId, uint64_t notifyVal)
 {
+    MOE_EP_PROFILE_ACCUM_SCOPE(4, MoeEpProfileOp::DISPATCH, MoeEpDispatchHybridProfileStage::HYBRID_LOCAL_COUNT_SUM);
     // 本端
     // 计算目标窗口地址:
     GM_ADDR remoteStateAddr = MoeEpDispatchBase::GetWindowAddrByRankId(mc2Context_, dstRankId, cntWinStateOffset_);
@@ -877,6 +922,8 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
 template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::ExchangeCount()
 {
+    MOE_EP_PROFILE_SCOPE(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR,
+        MoeEpDispatchHybridProfileStage::HYBRID_COUNT_ISSUE);
     // 计数发送规则：
     // 1. 需要发数据的卡（本节点卡、跨节点代理卡）由负责发数据的核一并发送计数，
     //    保证每个通道每轮只由一个核使用；
@@ -923,6 +970,8 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     if (aivId_ != 0U) {
         return;
     }
+    MOE_EP_PROFILE_SCOPE(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::WAIT,
+        MoeEpDispatchHybridProfileStage::HYBRID_COUNT_WAIT_OUTPUT);
 
     uint32_t serverRankCount = epWorldSize_;
     uint32_t mask = 1U;
@@ -953,6 +1002,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
 template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::SetRecvNumPerExpert()
 {
+    MOE_EP_PROFILE_ACCUM_SCOPE(5, MoeEpProfileOp::DISPATCH, MoeEpDispatchHybridProfileStage::HYBRID_RECV_EXPERT_SUM);
     uint32_t recvExpertSizeAlign = moeNumPerRankAlign_;
     uint32_t recvExpertAlign = recvExpertSizeAlign / sizeof(int32_t);
     uint32_t serverRankCount = epWorldSize_;
@@ -1012,6 +1062,7 @@ template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::SetRecvNumPerRank(
     LocalTensor<int32_t> recvTmpTensor)
 {
+    MOE_EP_PROFILE_ACCUM_SCOPE(6, MoeEpProfileOp::DISPATCH, MoeEpDispatchHybridProfileStage::HYBRID_RECV_RANK_SUM);
     LocalTensor<uint32_t> gatherIndexTensor = topkIdsBuf_.GetWithOffset<uint32_t>(UB_STRIDE, epWorldSize_ * UB_ALIGN);
     gatherIndexTensor.SetValue(0, 2U); // 源操作数每个datablock取下标为1的元素
     uint32_t compactMask = 2U;
@@ -1060,6 +1111,7 @@ template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::GetSlotStartNum(
     uint32_t tokenRangeIndex)
 {
+    MOE_EP_PROFILE_ACCUM_SCOPE(7, MoeEpProfileOp::DISPATCH, MoeEpDispatchHybridProfileStage::HYBRID_SLOT_START_SUM);
     // 预聚合当前token范围之前的counter，保持接管范围后的slot编号与count行一致。
     Duplicate<int32_t>(slotIdxPerRankTensor_, 0, epWorldSize_);
     SyncFunc<AscendC::HardEvent::MTE3_MTE2>(); // 各核 counter 写入完成后再由 MTE2 读取前缀
@@ -1186,6 +1238,7 @@ template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline uint32_t MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::DedupAndBuildSendEntries(
     uint32_t tokenId)
 {
+    MOE_EP_PROFILE_ACCUM_SCOPE(9, MoeEpProfileOp::DISPATCH, MoeEpDispatchHybridProfileStage::HYBRID_DEDUP_ROUTES_SUM);
     uint32_t routeEntryCount = 0U;
     for (uint32_t topkIndex = 0; topkIndex < axisK_; topkIndex++) {
         int32_t expertId = topkIdxTensor_.GetValue(topkIndex);
@@ -1365,6 +1418,7 @@ template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::SendScaleoutPayloadToProxy(
     uint32_t remoteServerOrdinal, uint32_t dstScaleoutIndex, uint32_t proxyRankId, uint32_t scaleoutSlotCount)
 {
+    MOE_EP_PROFILE_ACCUM_SCOPE(11, MoeEpProfileOp::DISPATCH, MoeEpDispatchHybridProfileStage::HYBRID_PROXY_SUBMIT_SUM);
     uint64_t commHandle = MoeEpDispatchBase::GetCommHandle(mc2Context_, proxyRankId);
     GM_ADDR remoteScaleoutBase =
         MoeEpDispatchBase::GetWindowAddrByRankId(mc2Context_, proxyRankId, scaleoutRecvDataOffset_);
@@ -1389,6 +1443,8 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
 template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::SendScaleoutPayloadsToProxy()
 {
+    MOE_EP_PROFILE_SCOPE(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR,
+        MoeEpDispatchHybridProfileStage::HYBRID_SCALEOUT_SEND);
     if (remoteServerCount_ == 0U || numScaleoutSendAiv_ == 0U) {
         return;
     }
@@ -1467,6 +1523,7 @@ template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::SendFanoutPayloadToRank(
     GM_ADDR sourcePayloadAddr, uint32_t srcRankId, uint32_t dstRankId, uint32_t destinationSlot)
 {
+    MOE_EP_PROFILE_ACCUM_SCOPE(12, MoeEpProfileOp::DISPATCH, MoeEpDispatchHybridProfileStage::HYBRID_FANOUT_SUBMIT_SUM);
     GM_ADDR destinationPayloadAddr = MoeEpDispatchBase::GetWindowAddrByRankId(mc2Context_, dstRankId, winDataOffset_) +
                                      (static_cast<uint64_t>(srcRankId) * axisMaxBS_ + destinationSlot) * perSlotBytes_;
     if (dstRankId == epRankId_) {
@@ -1614,6 +1671,7 @@ template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::CopyPayloadToLocal(
     GM_ADDR sourcePayloadAddr, GM_ADDR destinationPayloadAddr)
 {
+    MOE_EP_PROFILE_ACCUM_SCOPE(15, MoeEpProfileOp::DISPATCH, MoeEpDispatchHybridProfileStage::HYBRID_LOCAL_PAYLOAD_SUM);
     GlobalTensor<XType> sourcePayloadTensor;
     GlobalTensor<XType> destinationPayloadTensor;
     sourcePayloadTensor.SetGlobalBuffer((__gm__ XType *)sourcePayloadAddr);
@@ -1631,6 +1689,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     GM_ADDR sendEntryBaseAddr, uint32_t sendEntryCount, GM_ADDR sourceDataBaseAddr, uint32_t sourceSlotBytes,
     uint32_t srcRankId, uint32_t dstRankId, uint64_t commHandle)
 {
+    MOE_EP_PROFILE_ACCUM_SCOPE(13, MoeEpProfileOp::DISPATCH, MoeEpDispatchHybridProfileStage::HYBRID_ENTRIES_SEND_SUM);
     GM_ADDR destinationDataBase = MoeEpDispatchBase::GetWindowAddrByRankId(mc2Context_, dstRankId, winDataOffset_) +
                                   static_cast<uint64_t>(srcRankId) * axisMaxBS_ * perSlotBytes_;
     GM_ADDR unusedNotifyAddr = MoeEpDispatchBase::GetWindowAddrByRankId(mc2Context_, dstRankId, slotWinStateOffset_) +
@@ -1701,6 +1760,8 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
 template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::SendScaleupPayloads()
 {
+    MOE_EP_PROFILE_SCOPE(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR,
+        MoeEpDispatchHybridProfileStage::HYBRID_SCALEUP_SEND);
     uint32_t destinationScaleupStart = 0U;
     uint32_t destinationScaleupEnd = 0U;
     if (numNodeLocalAiv_ == 0U) {
@@ -1722,6 +1783,7 @@ template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::WriteFinalReadyStatusToRank(
     uint32_t srcRankId, uint32_t dstRankId)
 {
+    MOE_EP_PROFILE_ACCUM_SCOPE(14, MoeEpProfileOp::DISPATCH, MoeEpDispatchHybridProfileStage::HYBRID_READY_FLAG_SUM);
     GM_ADDR notifyBase = MoeEpDispatchBase::GetWindowAddrByRankId(mc2Context_, dstRankId, slotWinStateOffset_) +
                          static_cast<uint64_t>(srcRankId) * dispatchNotifyCount_ * WIN_ADDR_ALIGN;
     if (dstRankId == epRankId_) {
@@ -1862,6 +1924,7 @@ template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::PrepareTokenPayload(
     uint32_t tokenId, uint32_t topkOffset)
 {
+    MOE_EP_PROFILE_ACCUM_SCOPE(8, MoeEpProfileOp::DISPATCH, MoeEpDispatchHybridProfileStage::HYBRID_TOKEN_PREP_SUM);
     xLocalTensor_ = perSlotQueue_.AllocTensor<XType>();
     metaLocalTensor_ = xLocalTensor_[metaOffset_ / sizeof(XType)].template ReinterpretCast<int32_t>();
     DataCopyPad(xLocalTensor_, xGMTensor_[tokenId * axisH_], xCopyParams_, padParams_);
@@ -1889,6 +1952,7 @@ template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline uint32_t MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::ProcessCachedTokenRoutes(
     uint32_t tokenId, uint32_t topkOffset)
 {
+    MOE_EP_PROFILE_ACCUM_SCOPE(10, MoeEpProfileOp::DISPATCH, MoeEpDispatchHybridProfileStage::HYBRID_CACHED_ROUTES_SUM);
     DataCopyPad(dstSlotIdxTensor_, cachedSlotIdxGMTensor_[topkOffset], topkCopyParams_, padParams_);
     uint32_t routeEntryCount = CopyCachedRouteForToken(tokenId);
     dstSlotQueue_.EnQue(dstSlotIdxTensor_);
@@ -1916,6 +1980,8 @@ __aicore__ inline uint32_t MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFu
 template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::PreparePayloads()
 {
+    MOE_EP_PROFILE_SCOPE(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR,
+        MoeEpDispatchHybridProfileStage::HYBRID_PAYLOAD_PREP);
     InitPreparePayloadsBuffers();
 
     uint32_t tokenRangeIndexStart = 0U;
@@ -2015,11 +2081,19 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
 template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::Process()
 {
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(
+        MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR,
+        MoeEpDispatchHybridProfileStage::KERNEL, MoeEpProfileBoundary::BEGIN));
+    MOE_EP_PROFILE_INIT_PUBLISH(MoeEpProfileOp::DISPATCH, MoeEpDispatchHybridProfileStage::INIT);
     if ASCEND_IS_AIV { // 全aiv处理
         PrepareDispatchPayloads();
         TransferDispatchPayloads();
         diagWriter_.RunPosRecord(MOE_EP_DISPATCH_RUN_POS_URMA_REQUESTS_ISSUE_DONE);
     }
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(
+        MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR,
+        MoeEpDispatchHybridProfileStage::KERNEL, MoeEpProfileBoundary::END));
+    MOE_EP_PROFILE_FLUSH();
 }
 
 #endif

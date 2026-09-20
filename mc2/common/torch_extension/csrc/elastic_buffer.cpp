@@ -25,6 +25,7 @@
 #include <cstring>
 #include <atomic>
 #include <cstdint>
+#include <cstddef>
 #include <algorithm>
 #include <array>
 #include <mutex>
@@ -160,7 +161,18 @@ struct MoeCommContext {
     uint64_t epHcclBuffer[HCCL_MAX_RANK_SIZE] = {};
     ChannelHandle hcommHandle[HCCL_MAX_RANK_SIZE] = {};
     uint32_t channelsPerRank = 1;
+#ifdef ENABLE_MOE_EP_PROFILING
+    uint64_t moeEpProfilerBuffers[4] = {};
+    uint32_t moeEpProfilerMaxCores = 0;
+    uint32_t moeEpProfilerSlotsPerCore = 0;
+#endif
 };
+#ifdef ENABLE_MOE_EP_PROFILING
+static_assert(offsetof(MoeCommContext, moeEpProfilerBuffers) % sizeof(uint64_t) == 0U,
+              "MoE profiler tail alignment mismatch");
+static_assert(sizeof(MoeCommContext) - offsetof(MoeCommContext, moeEpProfilerBuffers) == 40U,
+              "MoE profiler tail must be 40 bytes");
+#endif
 
 struct RankLinkInfo {
     CommProtocol protocol;
@@ -198,9 +210,18 @@ struct MoeSharedBufferEntry {
     aclrtDrvMemHandle physicalMemHandle = nullptr;
     HcclMemHandle memHandle = nullptr;
     int64_t cclBufferSize = 0; // 实际已申请的物理内存字节数
+#ifdef ENABLE_MOE_EP_PROFILING
+    uint32_t profilerOwners = 0;
+    bool profilerEnabled = false;
+#endif
 };
 static std::mutex gMoeSharedBufferMutex;
 static std::unordered_map<std::string, MoeSharedBufferEntry> gMoeSharedBuffers;
+#ifdef ENABLE_MOE_EP_PROFILING
+static std::mutex gMoeProfilerContextMutex;
+static_assert(sizeof(ChannelHandle) == sizeof(uint64_t) && alignof(ChannelHandle) == alignof(uint64_t),
+              "Host/device channel ABI mismatch");
+#endif
 
 struct EngramContextResources {
     HcclComm hcclComm = nullptr;
@@ -537,6 +558,10 @@ public:
             guard.Release();
             return resources;
         }
+#ifdef ENABLE_MOE_EP_PROFILING
+        TORCH_CHECK(ctx != nullptr && ctxSize >= sizeof(MoeCommContext),
+                    "Cached MoE context ABI mismatch; restart with matching profiling packages");
+#endif
         // ctx 已存在(同 group 曾创建过，含 destroy 后重建)：注册内存与 channel 均无反注册接口，
         // 由进程级共享池按 tag 复用，Destroy 不释放。
         EngramSharedBufferEntry entry;
@@ -941,8 +966,16 @@ public:
     MoeContextBuilder(const MoeContextBuilder &) = delete;
     MoeContextBuilder &operator=(const MoeContextBuilder &) = delete;
 
-    MoeContextResources Build(const std::string &groupName, int64_t customCclBufferSize)
+    MoeContextResources Build(const std::string &groupName, int64_t customCclBufferSize
+#ifdef ENABLE_MOE_EP_PROFILING
+                              , const std::array<uint64_t, 4> &profilerBuffers,
+                              uint32_t profilerMaxCores, uint32_t profilerSlotsPerCore
+#endif
+    )
     {
+#ifdef ENABLE_MOE_EP_PROFILING
+        std::lock_guard<std::mutex> profilerLock(gMoeProfilerContextMutex);
+#endif
         ASCEND_LOGI("start build");
         InitHcclEngineCtxFunctions();
 
@@ -962,6 +995,11 @@ public:
         rankNumPerServer_ = rankNumPerUbDomain_;
         TORCH_CHECK(rankNumPerServer_ > 0, "rank_num_per_server must be positive after resolving MoE topology");
         context.rankSizePerServer = rankNumPerServer_;
+#ifdef ENABLE_MOE_EP_PROFILING
+        std::copy(profilerBuffers.begin(), profilerBuffers.end(), context.moeEpProfilerBuffers);
+        context.moeEpProfilerMaxCores = profilerMaxCores;
+        context.moeEpProfilerSlotsPerCore = profilerSlotsPerCore;
+#endif
 
         CheckIsMixLayered(hcclComm);
 
@@ -987,6 +1025,10 @@ public:
             entry.physicalMemHandle = physicalMemHandle_;
             entry.memHandle = memHandle_;
             entry.cclBufferSize = cclBufferSize_;
+#ifdef ENABLE_MOE_EP_PROFILING
+            entry.profilerOwners = 1U;
+            entry.profilerEnabled = profilerSlotsPerCore != 0U;
+#endif
         }
         ownershipReleased_ = true; // 所有权已转移(共享池/既有持有者)，builder 析构不释放
         return resources;
@@ -1313,6 +1355,19 @@ private:
                         ", allocated ", iter->second.cclBufferSize,
                         "; the shared comm buffer is sized by the first ElasticBuffer created on this group, "
                         "destroy and recreate with a larger size is not supported, please use a new comm group");
+#ifdef ENABLE_MOE_EP_PROFILING
+            TORCH_CHECK(iter->second.profilerOwners == 0U ||
+                            (context.moeEpProfilerSlotsPerCore == 0U && !iter->second.profilerEnabled),
+                        "Cycle profiling requires exclusive ElasticBuffer ownership of this group");
+            constexpr size_t offset = offsetof(MoeCommContext, moeEpProfilerBuffers);
+            constexpr size_t bytes = sizeof(MoeCommContext) - offset;
+            aclError ret = aclrtMemcpy(reinterpret_cast<uint8_t *>(ctx) + offset, bytes,
+                                      reinterpret_cast<const uint8_t *>(&context) + offset, bytes,
+                                      ACL_MEMCPY_HOST_TO_DEVICE);
+            TORCH_CHECK(ret == ACL_SUCCESS, "Refresh profiler context tail failed: ", ret);
+            ++iter->second.profilerOwners;
+            iter->second.profilerEnabled = context.moeEpProfilerSlotsPerCore != 0U;
+#endif
             entry = iter->second;
         }
         deviceBufPtr_ = entry.deviceBufPtr;
@@ -1650,6 +1705,11 @@ public:
                                                    int64_t cclBufferSize, at::Tensor &combinedX,
                                                    const c10::optional<at::Tensor> &combinedTopkWeightsOpt);
 
+#ifdef ENABLE_MOE_EP_PROFILING
+    void EnableMoeEpProfiler(int64_t slotsPerCore);
+    std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> GetMoeEpProfilerBuffers() const;
+#endif
+
 private:
     void EnsureEngramContext(void *externalHostPtr = nullptr, int64_t externalBytes = 0);
     void EnsureMoeContext(int64_t cclBufferSize);
@@ -1684,6 +1744,18 @@ private:
     HcclMemHandle moeMemHandle_ = nullptr;
     std::string moeContextTag_; // 共享池 key（group + opName），复用/入池时使用
     bool moeContextInitialized_ = false;
+#ifdef ENABLE_MOE_EP_PROFILING
+    static constexpr uint32_t MOE_EP_PROFILER_OP_COUNT = 4U;
+    static constexpr uint32_t MOE_EP_PROFILER_MAX_CORES = 128U;
+    static constexpr uint32_t MOE_EP_PROFILER_HEADER_BYTES = 64U;
+    static constexpr uint32_t MOE_EP_PROFILER_CORE_CONTROL_BYTES = 64U;
+    static constexpr uint32_t MOE_EP_PROFILER_RECORD_BYTES = 16U;
+    static constexpr uint32_t MOE_EP_PROFILER_DEFAULT_SLOTS = 4096U;
+    static constexpr uint32_t MOE_EP_PROFILER_MAX_SLOTS = 16384U;
+    std::array<at::Tensor, MOE_EP_PROFILER_OP_COUNT> moeEpProfilerBuffers_;
+    uint32_t moeEpProfilerSlotsPerCore_ = 0U;
+    bool moeEpProfilerEnabled_ = false;
+#endif
 
     int64_t engramHiddenSize_ = 0;
     int64_t engramNumEntries_ = 0;
@@ -1766,7 +1838,18 @@ void ElasticBuffer::EnsureMoeContext(int64_t cclBufferSize)
         return;
     }
     MoeContextBuilder builder;
+#ifdef ENABLE_MOE_EP_PROFILING
+    std::array<uint64_t, MOE_EP_PROFILER_OP_COUNT> addresses{};
+    if (moeEpProfilerEnabled_) {
+        for (uint32_t i = 0; i < MOE_EP_PROFILER_OP_COUNT; ++i) {
+            addresses[i] = reinterpret_cast<uint64_t>(moeEpProfilerBuffers_[i].data_ptr());
+        }
+    }
+    MoeContextResources resources = builder.Build(groupName_, cclBufferSize, addresses,
+                                                  MOE_EP_PROFILER_MAX_CORES, moeEpProfilerSlotsPerCore_);
+#else
     MoeContextResources resources = builder.Build(groupName_, cclBufferSize);
+#endif
     moeContextTensor_ = resources.contextTensor;
     moeCclBufferSize_ = resources.cclBufferSize;
     moeRankSizePerServer_ = resources.rankSizePerServer;
@@ -1776,6 +1859,40 @@ void ElasticBuffer::EnsureMoeContext(int64_t cclBufferSize)
     moeContextTag_ = resources.contextTag;
     moeContextInitialized_ = true;
 }
+
+#ifdef ENABLE_MOE_EP_PROFILING
+void ElasticBuffer::EnableMoeEpProfiler(int64_t slotsPerCore)
+{
+    TORCH_CHECK(!destroyed_, "ElasticBuffer cannot be used after destroy");
+    TORCH_CHECK(!moeContextInitialized_, "enable_cycle_profiler must be called before the first MoE EP operation");
+    TORCH_CHECK(!moeEpProfilerEnabled_, "MoE EP cycle profiler is already enabled");
+    if (slotsPerCore == 0) {
+        slotsPerCore = MOE_EP_PROFILER_DEFAULT_SLOTS;
+    }
+    TORCH_CHECK(slotsPerCore > 0 && slotsPerCore <= MOE_EP_PROFILER_MAX_SLOTS && slotsPerCore % 4 == 0,
+                "slots_per_core must be a multiple of 4 in [4, ", MOE_EP_PROFILER_MAX_SLOTS, "], got ", slotsPerCore);
+    uint64_t coreStride = static_cast<uint64_t>(MOE_EP_PROFILER_CORE_CONTROL_BYTES) +
+                          static_cast<uint64_t>(slotsPerCore) * MOE_EP_PROFILER_RECORD_BYTES;
+    uint64_t bufferBytes = static_cast<uint64_t>(MOE_EP_PROFILER_HEADER_BYTES) +
+                           static_cast<uint64_t>(MOE_EP_PROFILER_MAX_CORES) * coreStride;
+    TORCH_CHECK(bufferBytes <= static_cast<uint64_t>(INT64_MAX), "MoE EP profiler buffer size overflow");
+    auto options = at::TensorOptions().dtype(at::kByte).device(c10::DeviceType::PrivateUse1);
+    for (auto &buffer : moeEpProfilerBuffers_) {
+        // Initialize each independent ring once, before the first profiled operation.
+        buffer = at::zeros({static_cast<int64_t>(bufferBytes)}, options);
+    }
+    moeEpProfilerSlotsPerCore_ = static_cast<uint32_t>(slotsPerCore);
+    moeEpProfilerEnabled_ = true;
+}
+
+std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> ElasticBuffer::GetMoeEpProfilerBuffers() const
+{
+    TORCH_CHECK(!destroyed_, "ElasticBuffer cannot be used after destroy");
+    TORCH_CHECK(moeEpProfilerEnabled_, "MoE EP cycle profiler is not enabled");
+    return std::make_tuple(moeEpProfilerBuffers_[0], moeEpProfilerBuffers_[1], moeEpProfilerBuffers_[2],
+                           moeEpProfilerBuffers_[3]);
+}
+#endif
 
 int64_t ElasticBuffer::ResolveRankNumPerServer(int64_t epWorldSize) const
 {
@@ -1987,6 +2104,21 @@ void ElasticBuffer::Destroy()
     // MoE 通信 buffer 已按 tag 注册进 HCCL 通信域(HcclCommMemReg 无反注册接口)，其地址被
     // 引擎 ctx(含其他 rank 缓存的 epHcclBuffer[])引用且无法销毁：Destroy 仅解除本实例引用，
     // 物理内存由共享池按 tag 保留，同 group 重建 ElasticBuffer 时复用(容量以首建为准)。
+#ifdef ENABLE_MOE_EP_PROFILING
+    if (moeContextInitialized_) {
+        aclError ret = aclrtSynchronizeDevice();
+        TORCH_CHECK(ret == ACL_SUCCESS, "Synchronize profiler before Destroy failed: ", ret);
+        std::lock_guard<std::mutex> profilerLock(gMoeProfilerContextMutex);
+        std::lock_guard<std::mutex> poolLock(gMoeSharedBufferMutex);
+        auto iter = gMoeSharedBuffers.find(moeContextTag_);
+        TORCH_CHECK(iter != gMoeSharedBuffers.end() && iter->second.profilerOwners > 0U,
+                    "Missing profiler context owner");
+        --iter->second.profilerOwners;
+        if (iter->second.profilerOwners == 0U) {
+            iter->second.profilerEnabled = false;
+        }
+    }
+#endif
     moeDeviceBufPtr_ = nullptr;
     moePhysicalMemHandle_ = nullptr;
     moeMemHandle_ = nullptr;
@@ -2018,6 +2150,13 @@ void ElasticBuffer::Destroy()
     engramContextTensor_ = at::Tensor();
     localStorageAddrTensor_ = at::Tensor();
     moeContextTensor_ = at::Tensor();
+#ifdef ENABLE_MOE_EP_PROFILING
+    for (auto &buffer : moeEpProfilerBuffers_) {
+        buffer = at::Tensor();
+    }
+    moeEpProfilerEnabled_ = false;
+    moeEpProfilerSlotsPerCore_ = 0U;
+#endif
 
     destroyed_ = true;
 }
@@ -2311,6 +2450,11 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         .def("get_local_storage_addr", &Mc2Api::ElasticBuffer::GetLocalStorageAddrTensor)
         .def("get_comm_buffer_size", &Mc2Api::ElasticBuffer::GetCommBufferSize)
         .def("get_rank_size", &Mc2Api::ElasticBuffer::GetRankSize)
+#ifdef ENABLE_MOE_EP_PROFILING
+        .def("enable_moe_ep_profiler", &Mc2Api::ElasticBuffer::EnableMoeEpProfiler,
+             pybind11::arg("slots_per_core") = 4096)
+        .def("get_moe_ep_profiler_buffers", &Mc2Api::ElasticBuffer::GetMoeEpProfilerBuffers)
+#endif
         .def("moe_ep_dispatch", &Mc2Api::ElasticBuffer::MoeEpDispatch)
         .def("moe_ep_dispatch_epilogue", &Mc2Api::ElasticBuffer::MoeEpDispatchEpilogue)
         .def("moe_ep_combine", &Mc2Api::ElasticBuffer::MoeEpCombine)

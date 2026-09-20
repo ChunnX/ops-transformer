@@ -57,7 +57,43 @@
 #include "../../common/op_kernel/moe_ep_exception_dump_writer.h"
 #endif
 
+#if __has_include("../common/moe_ep_profiler.h")
+#include "../common/moe_ep_profiler.h"
+#else
+#include "../../common/op_kernel/moe_ep_profiler.h"
+#endif
+
 namespace MoeEpDispatchImpl {
+
+enum class MoeEpDispatchProfileStage : uint32_t {
+    KERNEL = 0U,
+    BUFFER_INIT = 1U,
+    COUNT_BUILD = 2U,
+    COUNT_ISSUE = 3U,
+    COUNT_WAIT = 4U,
+    SLOT_PREFIX = 6U,
+    PAYLOAD_PREP = 7U,
+    PAYLOAD_ISSUE = 8U,
+    INIT = 9U,
+    COUNT_EXPERT_SUM = 10U,
+    DEDUP_SUM = 11U,
+    COUNT_RANK_SUM = 12U,
+    SOURCE_INDEX_SUM = 13U,
+    META_SLOT_SUM = 14U,
+    RECV_EXPERT_SUM = 15U,
+    RECV_RANK_SUM = 16U,
+    CACHED_PAYLOAD_PREP = 17U,
+    CACHED_COUNT_ISSUE = 18U,
+    CACHED_COUNT_WAIT = 19U,
+    SEND_TOKEN_CHANNEL_SUM = 20U,
+    CACHED_COUNT_URMA_WRITENBI_SUM = 21U,
+    URMA_BATCHCOMMIT_SUM = 22U,
+    URMA_MAKEBATCHHANDLE_SUM = 23U,
+    CACHED_SLOT_START_SUM = 24U,
+    EMPTY_PAYLOAD_WRITENBI_SUM = 25U,
+    TOKEN_PAYLOAD_WRITENBI_SUM = 26U,
+    COUNT_WRITE_WITH_NOTIFY_SUM = 27U,
+};
 
 #define TemplateMoeEpDispatchTypeClass \
     typename XType, typename ScalesType, bool DoCpuSync, bool IsCached, bool IsTopkWeights, uint8_t NetworkMode
@@ -103,6 +139,7 @@ public:
     __aicore__ inline void Process();
 
 private:
+    MOE_EP_PROFILE_DECLARE();
     __aicore__ inline void BufferInit();
     __aicore__ inline void ResetCounters();
     __aicore__ inline void CalSendCntHistograms(LocalTensor<int16_t> dstTensor, LocalTensor<int16_t> &tempTensor,
@@ -274,6 +311,9 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     GM_ADDR numRecvPerRank, GM_ADDR numRecvPerExpert, GM_ADDR dstBufferSlotIdx, GM_ADDR workspaceGM, GM_ADDR tilingGM,
     TPipe *pipe, const MoeEpDispatchTilingData *tilingData)
 {
+    MOE_EP_PROFILE_INIT(reinterpret_cast<__gm__ Mc2Aclnn::MoeCommContext *>(context), MoeEpProfileOp::DISPATCH,
+        tilingData->moeEpDispatchInfo.aivNum);
+    MOE_EP_PROFILE_INIT_BEGIN();
     tpipe_ = pipe;
     aivId_ = GetBlockIdx();
     workspaceGM_ = workspaceGM;
@@ -378,6 +418,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     sendCntPerExpertGMTensor_.SetGlobalBuffer((__gm__ int32_t *)(sendCntWorkspaceAddr_ + epWorldSizeAlign512_));
     dstRankGMTensor_.SetGlobalBuffer((__gm__ int16_t *)dstRankInfoAddr_);
     diagWriter_.RunPosRecord(MOE_EP_DISPATCH_RUN_POS_INIT_DONE);
+    MOE_EP_PROFILE_INIT_END();
 }
 
 template <TemplateMoeEpDispatchTypeClass>
@@ -447,6 +488,7 @@ __aicore__ inline bool MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetCoreAssi
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::BufferInit()
 {
+    MOE_EP_PROFILE_SCOPE(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR, MoeEpDispatchProfileStage::BUFFER_INIT);
     tpipe_->InitBuffer(metaSlotQueue_, BUFFER_NUM, metaSlotBytes_);
     tpipe_->InitBuffer(topkIdsBuf_, 2 * perGroupSizeAlign_);
     tpipe_->InitBuffer(tempBuf_, perGroupSizeAlign_);
@@ -501,6 +543,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::DedupAndSen
     uint32_t calCnt, uint32_t calCntAlign, uint32_t tmpOffset, LocalTensor<int16_t> expertIdsTensor,
     LocalTensor<uint8_t> &selectMaskTensor)
 {
+    MOE_EP_PROFILE_ACCUM_SCOPE(1, MoeEpProfileOp::DISPATCH, MoeEpDispatchProfileStage::DEDUP_SUM);
     uint32_t maskCnt = Ceil(calCntAlign, BITS_PER_BYTE);
     LocalTensor<int16_t> internalIndexTensor = dstExpBuf_.GetWithOffset<int16_t>(calCntAlign, tmpOffset);
     LocalTensor<int16_t> tempTensorInt16 = tempBuf_.Get<int16_t>();
@@ -543,6 +586,7 @@ template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCntPerRank(
     uint32_t calCnt, uint32_t calCntAlign, uint32_t tmpOffset, LocalTensor<uint8_t> &compareMaskTensor)
 {
+    MOE_EP_PROFILE_ACCUM_SCOPE(2, MoeEpProfileOp::DISPATCH, MoeEpDispatchProfileStage::COUNT_RANK_SUM);
     LocalTensor<int16_t> tempTensor = topkIdsBuf_.GetWithOffset<int16_t>(calCntAlign, 0);
     LocalTensor<uint32_t> sendCntTensor = dstExpBuf_.GetWithOffset<uint32_t>(tmpOffset / sizeof(uint32_t), tmpOffset);
     Select(dstRankTensor_, compareMaskTensor, dstRankTensor_, static_cast<int16_t>(-1),
@@ -578,6 +622,7 @@ template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCntPerExpert(
     LocalTensor<int16_t> expertIdsTensor, uint32_t calCnt, uint32_t calCntAlign, uint32_t tmpOffset)
 {
+    MOE_EP_PROFILE_ACCUM_SCOPE(0, MoeEpProfileOp::DISPATCH, MoeEpDispatchProfileStage::COUNT_EXPERT_SUM);
     LocalTensor<int16_t> tempTensor = topkIdsBuf_.GetWithOffset<int16_t>(calCntAlign, 0);
     LocalTensor<uint32_t> sendCntTensor = dstExpBuf_.GetWithOffset<uint32_t>(tmpOffset / sizeof(uint32_t), tmpOffset);
     LocalTensor<uint8_t> compareMaskTensor = maskBuf_.GetWithOffset<uint8_t>(maskBytesAlign_, 0);
@@ -610,6 +655,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCntP
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCnt()
 {
+    MOE_EP_PROFILE_SCOPE(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR, MoeEpDispatchProfileStage::COUNT_BUILD);
     SplitToCore(axisBS_, aivNum_, startTokenId_, endTokenId_, sendTokenNum_); // 按token数量分核
     if (startTokenId_ >= axisBS_) {
         return;
@@ -661,6 +707,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCnt(
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Communication()
 {
+    MOE_EP_PROFILE_SCOPE(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR, MoeEpDispatchProfileStage::COUNT_ISSUE);
     // 通信初始化
     tpipe_->InitBuffer(hcommBuf_, HCOMM_INIT_SIZE);
     hcommTensor_ = hcommBuf_.Get<uint8_t>();
@@ -698,8 +745,11 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Communicati
 
         if (dstRankId != epRankId_) { // 远端 使用URMA发送 count + state
             uint64_t commHandle = GetCommHandle(mc2Context_, dstRankId, channelIndex_);
+            MOE_EP_PROFILE_ACCUM_BEGIN(14);
             int32_t ret = hcomm_.WriteWithNotifyNbi<true, PIPE_S, PIPE_MTE3, DATA_CFG>(
                 commHandle, remoteCountAddr, srcWorkspaceAddr, moeNumPerRankSize_, notifyAddr, notifyVal);
+            MOE_EP_PROFILE_ACCUM_END(14, MoeEpProfileOp::DISPATCH,
+                MoeEpDispatchProfileStage::COUNT_WRITE_WITH_NOTIFY_SUM);
             ascendc_assert(ret == 0, "Communication WriteWithNotifyNbi failed, ret=%d, epRank=%u, dstRank=%u", ret,
                            epRankId_, dstRankId);
             continue;
@@ -731,6 +781,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetRecvCoun
     if (aivId_ != aivNum_ - 1) { // 最后一个核处理recvCount
         return;
     }
+    MOE_EP_PROFILE_SCOPE(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::WAIT, MoeEpDispatchProfileStage::COUNT_WAIT);
 
     uint32_t mask = 1;
     int32_t sumOfFlag = -1;
@@ -762,6 +813,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetRecvCoun
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SetRecvNumPerExpert()
 {
+    MOE_EP_PROFILE_ACCUM_SCOPE(5, MoeEpProfileOp::DISPATCH, MoeEpDispatchProfileStage::RECV_EXPERT_SUM);
     uint32_t recvNumAlign = epWorldSize_ * expertPerRankAlign_;
     GlobalTensor<int32_t> localExpertRecvGMTensor;
     localExpertRecvGMTensor.SetGlobalBuffer((__gm__ int32_t *)(localCntStateWinAddr_ + cntFlagWinSize_));
@@ -798,6 +850,7 @@ template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SetRecvNumPerRank(
     LocalTensor<int32_t> recvTmpTensor)
 {
+    MOE_EP_PROFILE_ACCUM_SCOPE(6, MoeEpProfileOp::DISPATCH, MoeEpDispatchProfileStage::RECV_RANK_SUM);
     LocalTensor<uint32_t> gatherTmpTensor = topkIdsBuf_.GetWithOffset<uint32_t>(UB_STRIDE, epWorldSize_ * UB_ALIGN);
     SyncFunc<AscendC::HardEvent::V_S>();
     gatherTmpTensor.SetValue(0, 2); // 设置掩码，取源操作数每个datablock中的第2个元素
@@ -814,6 +867,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SetRecvNumP
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetSlotStartNum()
 {
+    MOE_EP_PROFILE_SCOPE(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR, MoeEpDispatchProfileStage::SLOT_PREFIX);
     slotIdxPerRankTensor_ = sendCntExpertBuf_.GetWithOffset<int32_t>(counterCnt_, 0);
     Duplicate<int32_t>(slotIdxPerRankTensor_, 0, epWorldSize_);
     if (aivId_ == 0) { // 0核起始id 均为0
@@ -845,6 +899,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SetSrcToken
     uint32_t topkOffset, uint32_t calCnt, uint32_t calCntAlign, uint32_t &sendLocalCnt,
     LocalTensor<int32_t> &cntLocalTensor)
 {
+    MOE_EP_PROFILE_ACCUM_SCOPE(3, MoeEpProfileOp::DISPATCH, MoeEpDispatchProfileStage::SOURCE_INDEX_SUM);
     // 非 cache：按对端卡分组提取命中项
     uint64_t rsvdCnt = 0;
     LocalTensor<int32_t> internalIndexTensor = dstExpBuf_.Get<int32_t>();
@@ -911,6 +966,7 @@ template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::ProcessMetaSlot(
     uint32_t startId, uint32_t tokenCnt, uint32_t sendLocalCnt, uint32_t &topkOffset, uint32_t &curLocalSlot)
 {
+    MOE_EP_PROFILE_ACCUM_SCOPE(4, MoeEpProfileOp::DISPATCH, MoeEpDispatchProfileStage::META_SLOT_SUM);
     // meta 流水写 stash + 本端命中内联写本地窗 meta 区
     // srcTokenTensor: 非cache=SetSrcTokenIdx gather的本端token表(topkIdsBuf_), cache=cached表(topkIdsBuf_)
     LocalTensor<int32_t> srcTokenTensor = topkIdsBuf_.Get<int32_t>();
@@ -946,6 +1002,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::ProcessMeta
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendPhase()
 {
+    MOE_EP_PROFILE_SCOPE(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR, MoeEpDispatchProfileStage::PAYLOAD_PREP);
     if (startTokenId_ >= axisBS_) {
         return;
     }
@@ -987,6 +1044,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetLocalSlo
     uint32_t sendCount, uint32_t maxBatchCnt, uint32_t alignStride, uint32_t &curLocalSlot,
     DataCopyExtParams &srcTokenIdxCopyParams)
 {
+    MOE_EP_PROFILE_ACCUM_SCOPE(8, MoeEpProfileOp::DISPATCH, MoeEpDispatchProfileStage::CACHED_SLOT_START_SUM);
     if (aivId_ == 0) {
         return;
     }
@@ -1020,6 +1078,8 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetLocalSlo
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendPhaseCached()
 {
+    MOE_EP_PROFILE_SCOPE(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR,
+        MoeEpDispatchProfileStage::CACHED_PAYLOAD_PREP);
     // cache 模式：直接以 cached_dst_slot_idx 输入表驱动发送（本端提取 + x/meta 写入）
     SplitToCore(axisBS_, aivNum_, startTokenId_, endTokenId_, sendTokenNum_); // 按token数量分核
     if (startTokenId_ >= axisBS_) {
@@ -1084,6 +1144,8 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SetLocalSta
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CommunicationCached()
 {
+    MOE_EP_PROFILE_SCOPE(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR,
+        MoeEpDispatchProfileStage::CACHED_COUNT_ISSUE);
     SplitToCore(epWorldSize_, aivNum_, startRankId_, endRankId_, rankNumPerCore_); // 按卡分核
     coreAssigned_ = GetCoreAssignment(copyRankStart_, copyRankNum_, channelIndex_, coreIndexInGroup_, groupSize_);
     if (!coreAssigned_) {
@@ -1097,8 +1159,11 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Communicati
         uint64_t commHandle = GetCommHandle(mc2Context_, dstRankId, channelIndex_);
         GM_ADDR srcStateAddr = GetWinAddrByRankId(mc2Context_, epRankId_, cntWinStateOffset_) + dstRankStateOffset_;
         GM_ADDR notifyAddr = GetWinAddrByRankId(mc2Context_, dstRankId, cntWinStateOffset_) + dstRankStateOffset_;
+        MOE_EP_PROFILE_ACCUM_BEGIN(9);
         int32_t ret =
             hcomm_.WriteNbi<true, PIPE_S, PIPE_MTE3, DATA_CFG>(commHandle, notifyAddr, srcStateAddr, WIN_ADDR_ALIGN);
+        MOE_EP_PROFILE_ACCUM_END(9, MoeEpProfileOp::DISPATCH,
+            MoeEpDispatchProfileStage::CACHED_COUNT_URMA_WRITENBI_SUM);
         ascendc_assert(ret == 0, "CommunicationCached WriteNbi failed, ret=%d, epRank=%u, dstRank=%u", ret, epRankId_,
                        dstRankId);
     }
@@ -1110,6 +1175,8 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WaitStatusC
     if (aivId_ != aivNum_ - 1) {
         return;
     }
+    MOE_EP_PROFILE_SCOPE(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::WAIT,
+        MoeEpDispatchProfileStage::CACHED_COUNT_WAIT);
 
     uint32_t tmpOffset = epWorldSize_ * UB_ALIGN;
     uint32_t mask = 1;
@@ -1178,6 +1245,8 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CommBufferI
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteToRemoteWindow()
 {
+    MOE_EP_PROFILE_SCOPE(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR,
+        MoeEpDispatchProfileStage::PAYLOAD_ISSUE);
     CommBufferInit();
     if (!coreAssigned_) {
         return;
@@ -1220,8 +1289,11 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteToRemo
         uint32_t cntPerChannel = Ceil(sendTokenNum, groupSize_);
         uint32_t tokenStart = coreIndexInGroup_ * cntPerChannel;
         if (sendTokenNum == 0 || tokenStart >= sendTokenNum) {
+            MOE_EP_PROFILE_ACCUM_BEGIN(12);
             int32_t ret = hcomm_.WriteNbi<true, PIPE_S, PIPE_MTE3, DATA_CFG>(commHandle, notifyAddr,
                                                                              payloadStashStateWinAddr_, WIN_ADDR_ALIGN);
+            MOE_EP_PROFILE_ACCUM_END(12, MoeEpProfileOp::DISPATCH,
+                MoeEpDispatchProfileStage::EMPTY_PAYLOAD_WRITENBI_SUM);
             ascendc_assert(ret == 0, "WriteToRemote WriteNbi failed, ret=%d, epRank=%u, dstRank=%u, sendTokenNum=%u",
                            ret, epRankId_, dstRankId, sendTokenNum);
             continue;
@@ -1236,6 +1308,7 @@ template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenByChannel(
     uint32_t tokenStart, uint32_t tokenNum, uint32_t dstRankId, uint64_t commHandle, GM_ADDR notifyAddr)
 {
+    MOE_EP_PROFILE_ACCUM_SCOPE(7, MoeEpProfileOp::DISPATCH, MoeEpDispatchProfileStage::SEND_TOKEN_CHANNEL_SUM);
     uint32_t processed = 0;
     uint32_t commCnt = 0;
     uint32_t maxBatchCnt = MAX_BATCH_SIZE / sizeof(int32_t);
@@ -1255,7 +1328,9 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenBy
                                 static_cast<uint64_t>(tokenStart) * perSlotBytes_;
     SyncFunc<AscendC::HardEvent::V_S>(); // hcommBatchTensor_ init
 
+    MOE_EP_PROFILE_ACCUM_BEGIN(11);
     auto batchHandle = hcomm_.MakeBatchHandle(commHandle, hcommBatchTensor_, hcommBatchBufferBytes_, remoteWinBaseAddr);
+    MOE_EP_PROFILE_ACCUM_END(11, MoeEpProfileOp::DISPATCH, MoeEpDispatchProfileStage::URMA_MAKEBATCHHANDLE_SUM);
     GM_ADDR remoteWinAddr = remoteWinBaseAddr;
     while (processed < tokenNum) {
         uint32_t batchCnt = (tokenNum - processed > maxBatchCnt) ? maxBatchCnt : tokenNum - processed;
@@ -1279,14 +1354,19 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenBy
                 localDescs[j + 1].addr = metaStashAddr;
                 srcIdx++;
             }
+            MOE_EP_PROFILE_ACCUM_BEGIN(13);
             int32_t ret = hcomm_.WriteNbi<DATA_CFG>(batchHandle, remoteWinAddr, localDescs, sgePerSqe);
+            MOE_EP_PROFILE_ACCUM_END(13, MoeEpProfileOp::DISPATCH,
+                MoeEpDispatchProfileStage::TOKEN_PAYLOAD_WRITENBI_SUM);
             ascendc_assert(ret == 0,
                            "WriteToRemote BatchWriteNbi failed, ret=%d, epRank=%u, dstRank=%u, "
                            "channelIndex %u, dstSlotStart %u",
                            ret, epRankId_, dstRankId, channelIndex_, processed + i * SLOT_NUM_PER_SQE);
             commCnt++;
             if (commCnt == HCOMM_BATCH_CAPACITY) {
+                MOE_EP_PROFILE_ACCUM_BEGIN(10);
                 int32_t commitRet = hcomm_.BatchCommit(batchHandle);
+                MOE_EP_PROFILE_ACCUM_END(10, MoeEpProfileOp::DISPATCH, MoeEpDispatchProfileStage::URMA_BATCHCOMMIT_SUM);
                 ascendc_assert(commitRet == 0,
                                "WriteToRemote BatchCommit failed, ret=%d, epRank=%u, dstRank=%u, channelIndex %u, "
                                "dstSlotStart %u",
@@ -1302,10 +1382,14 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenBy
     }
     localDescs[0].addr = payloadStashStateWinAddr_;
     localDescs[0].len = WIN_ADDR_ALIGN;
+    MOE_EP_PROFILE_ACCUM_BEGIN(13);
     int32_t ret = hcomm_.WriteNbi<NOTIFY_CFG>(batchHandle, notifyAddr, localDescs, 1);
+    MOE_EP_PROFILE_ACCUM_END(13, MoeEpProfileOp::DISPATCH, MoeEpDispatchProfileStage::TOKEN_PAYLOAD_WRITENBI_SUM);
     ascendc_assert(ret == 0, "WriteToRemote notify WriteNbi failed, ret=%d, epRank=%u, dstRank=%u, channelIndex %u",
                    ret, epRankId_, dstRankId, channelIndex_);
+    MOE_EP_PROFILE_ACCUM_BEGIN(10);
     int32_t commitRet = hcomm_.BatchCommit(batchHandle);
+    MOE_EP_PROFILE_ACCUM_END(10, MoeEpProfileOp::DISPATCH, MoeEpDispatchProfileStage::URMA_BATCHCOMMIT_SUM);
     ascendc_assert(commitRet == 0,
                    "WriteToRemote Last BatchCommit failed, ret=%d, epRank=%u, dstRank=%u, channelIndex %u", commitRet,
                    epRankId_, dstRankId, channelIndex_);
@@ -1314,6 +1398,10 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenBy
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Process()
 {
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(
+        MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR,
+        MoeEpDispatchProfileStage::KERNEL, MoeEpProfileBoundary::BEGIN));
+    MOE_EP_PROFILE_INIT_PUBLISH(MoeEpProfileOp::DISPATCH, MoeEpDispatchProfileStage::INIT);
     if ASCEND_IS_AIV { // 全aiv处理
         if constexpr (!IsCached) {
             BufferInit();
@@ -1334,6 +1422,10 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Process()
         WriteToRemoteWindow();
         diagWriter_.RunPosRecord(MOE_EP_DISPATCH_RUN_POS_URMA_REQUESTS_ISSUE_DONE);
     }
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(
+        MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR,
+        MoeEpDispatchProfileStage::KERNEL, MoeEpProfileBoundary::END));
+    MOE_EP_PROFILE_FLUSH();
 }
 
 #endif
