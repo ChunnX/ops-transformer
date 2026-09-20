@@ -899,8 +899,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::RunGmm1Wi
         RunGmm1A8W4<QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType, GMM1_TILE_M,
                     epilogueTileM, prefetchWeights, IsShared, false>(blockContext_, epilogue, params_, state.problemShape, gmmAddrInfo,
                                                                      startBlockIdx_, gmTileSequence,
-                                                                     BlockJobContext{static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
-                                                                         static_cast<uint32_t>(GetBlockNum())}, state.expertBeforeCnt, expertIdx);
+                                                                     state.expertBeforeCnt, expertIdx);
     } else {
         if (params_.tilingData->moeGmmMode == GMM_MODE_A8W8_NZ || params_.tilingData->moeGmmMode == GMM_MODE_A4W4_NZ) {
             RunGmm1Generic<QuantOutType, ActivationQuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
@@ -941,9 +940,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::GroupMatm
     if constexpr (ENABLE_A8W4) {
         RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
             L1_TILE_M_256, TopkWeightsPrefetch, IsShared, true, false, false>(
-            blockContext_, state.problemShape, gmmAddrInfo, startBlockIdx_,
-            BlockJobContext{static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
-                static_cast<uint32_t>(GetBlockNum())}, static_cast<uint32_t>(Get<M_VALUE>(state.problemShape)), 0U);
+            blockContext_, state.problemShape, gmmAddrInfo, startBlockIdx_);
     } else if constexpr (ENABLE_A4W4) {
         // A4W4 GMM1 uses a different block; keep the FP8/W4 objects local to GMM2.
         if constexpr (g_coreType == AscendC::AIC) {
@@ -951,24 +948,18 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::GroupMatm
             typename A8W4Config::BlockContext context{&block};
             RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
                 L1_TILE_M_256, TopkWeightsPrefetch, IsShared, true, false, false>(
-                context, state.problemShape, gmmAddrInfo, startBlockIdx_,
-                BlockJobContext{static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
-                    static_cast<uint32_t>(GetBlockNum())}, static_cast<uint32_t>(Get<M_VALUE>(state.problemShape)), 0U);
+                context, state.problemShape, gmmAddrInfo, startBlockIdx_);
         } else {
             if (GetSubBlockIdx() == 0U) {
                 typename A8W4Config::BlockPrologue block(params_.tilingData->a8w4L1Layout);
                 typename A8W4Config::BlockContext context{&block};
                 RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
                     L1_TILE_M_256, TopkWeightsPrefetch, IsShared, true, false, false>(
-                    context, state.problemShape, gmmAddrInfo, startBlockIdx_,
-                    BlockJobContext{static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
-                        static_cast<uint32_t>(GetBlockNum())}, static_cast<uint32_t>(Get<M_VALUE>(state.problemShape)), 0U);
+                    context, state.problemShape, gmmAddrInfo, startBlockIdx_);
             } else {
                 RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
                     L1_TILE_M_256, TopkWeightsPrefetch, IsShared, true, false, false>(
-                    typename A8W4Config::BlockContext{}, state.problemShape, gmmAddrInfo, startBlockIdx_,
-                    BlockJobContext{static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
-                        static_cast<uint32_t>(GetBlockNum())}, static_cast<uint32_t>(Get<M_VALUE>(state.problemShape)), 0U);
+                    typename A8W4Config::BlockContext{}, state.problemShape, gmmAddrInfo, startBlockIdx_);
             }
         }
     } else {

@@ -719,6 +719,25 @@ __aicore__ inline void RunGmm1A8W4(
     startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
 }
 
+template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB,
+          uint32_t Gmm1TileM = L1_TILE_M_256, uint32_t EpilogueTileM = Gmm1TileM, bool TopkWeightsPrefetch = false,
+          bool IsShared = false, bool IsWaveFlagGrained = false, typename BlockContext>
+__aicore__ inline void RunGmm1A8W4(const BlockContext &pipeline,
+                                   BlockEpilogueActivationMxQuant<ElementA, ElementC, EpilogueTileM, L1_TILE_N,
+                                                                  TopkWeightsPrefetch> &activationQuantOp,
+                                   const Params &params,
+                                   const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
+                                   const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx,
+                                   int32_t &gmm1TileReadySequence, uint32_t expertBeforeCnt, uint32_t expertIdx = 0)
+{
+    BlockJobContext blockJob{static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
+                             static_cast<uint32_t>(GetBlockNum())};
+    RunGmm1A8W4<ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, Gmm1TileM, EpilogueTileM,
+                TopkWeightsPrefetch, IsShared, IsWaveFlagGrained>(pipeline, activationQuantOp, params, problemShape, gmmAddrInfo,
+                                                                  startBlockIdx, gmm1TileReadySequence, blockJob,
+                                                                  expertBeforeCnt, expertIdx);
+}
+
 template <typename ActivationType, typename WeightType, typename ActivationOutType, typename QuantScaleType,
           uint32_t ActivationElementsPerByte, bool UseA8W4Gmm1, bool TopkWeightsPrefetch, typename BlockEpilogue>
 __aicore__ inline void UpdateMoeExpertGmm1GlobalBuffer(
