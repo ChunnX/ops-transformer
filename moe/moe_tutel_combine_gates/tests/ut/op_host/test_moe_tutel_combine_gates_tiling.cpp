@@ -228,6 +228,26 @@ TEST_F(MoeTutelCombineGatesTiling, tiling_empty_batch)
     ExpectTilingOk(para, s, h, b, c, kKeyBf16, false);
 }
 
+// C = 0 with S, B > 0 is not an empty tensor: taskNum stays S*B, every task
+// fails the routing mask and the kernel writes exactly 0 (real-machine case
+// mtcg_bf16_c0 pins the kernel side of this contract).
+TEST_F(MoeTutelCombineGatesTiling, tiling_capacity_zero_not_empty)
+{
+    const int64_t s = 4, h = 8, b = 2, c = 0;
+    auto para = MakePara(MakeInputs(s, h, b, c, ge::DT_BF16, ge::DT_INT32), MakeOutputs(s, b, ge::DT_BF16));
+    ExpectTilingOk(para, s, h, b, c, kKeyBf16, false);
+}
+
+// Multi-axis empty: S = 0 and H = 0 together. taskNum == 0 still wins over the
+// H rules (the empty-task short circuit owns the launch), while the two H-long
+// route tiers fall back to their one-element floor.
+TEST_F(MoeTutelCombineGatesTiling, tiling_empty_task_multi_axis)
+{
+    const int64_t s = 0, h = 0, b = 2, c = 3;
+    auto para = MakePara(MakeInputs(s, h, b, c, ge::DT_FLOAT16, ge::DT_INT32), MakeOutputs(s, b, ge::DT_FLOAT16));
+    ExpectTilingOk(para, s, h, b, c, kKeyFp16, false);
+}
+
 // taskNum exactly on a core boundary, and one task below it (core tail).
 TEST_F(MoeTutelCombineGatesTiling, tiling_core_quota_boundary)
 {
@@ -350,6 +370,38 @@ TEST_F(MoeTutelCombineGatesTiling, tiling_fail_hidden_above_ub_bound)
     }
     h += 128; // first H the budget cannot hold
     const int64_t s = 8, b = 2, c = 4;
+    auto para = MakePara(MakeInputs(s, h, b, c, ge::DT_BF16, ge::DT_INT32), MakeOutputs(s, b, ge::DT_BF16));
+    ExpectTilingFail(para);
+}
+
+// An unresolved (negative) dim is rejected by the numeric-range check: it would
+// reach the kernel as a ~4.29e9 uint32 count (CheckNumericRange lower bound).
+TEST_F(MoeTutelCombineGatesTiling, tiling_fail_unresolved_dim)
+{
+    const int64_t s = 8, b = 2, c = 4;
+    auto inputs = MakeInputs(s, 64, b, c, ge::DT_BF16, ge::DT_INT32);
+    // H unresolved in both x and y_grad so the binding check stays consistent;
+    // the indices element count does not involve H, so the rejection can only
+    // come from the "resolved non-negative dimension required" gate.
+    inputs[0] = {gert::StorageShape({s, -1}, {s, -1}), ge::DT_BF16, ge::FORMAT_ND};
+    inputs[1] = {gert::StorageShape({b, c, -1}, {b, c, -1}), ge::DT_BF16, ge::FORMAT_ND};
+    ExpectTilingFail(MakePara(inputs, MakeOutputs(s, b, ge::DT_BF16)));
+}
+
+// A dim above INT32_MAX cannot round-trip the int32 TilingData fields.
+TEST_F(MoeTutelCombineGatesTiling, tiling_fail_dim_above_int32_max)
+{
+    const int64_t s = 8, b = 2, c = 4;
+    const int64_t h = static_cast<int64_t>(INT32_MAX) + 1;
+    auto para = MakePara(MakeInputs(s, h, b, c, ge::DT_BF16, ge::DT_INT32), MakeOutputs(s, b, ge::DT_BF16));
+    ExpectTilingFail(para);
+}
+
+// taskNum above INT32_MAX - 256 would overflow the per-core task offsets
+// (MultiCoreSplit's OFFSET = 256 bound).
+TEST_F(MoeTutelCombineGatesTiling, tiling_fail_tasknum_above_bound)
+{
+    const int64_t s = 1LL << 30, h = 64, b = 3, c = 4; // taskNum = 3 * 2^30 > INT32_MAX - 256
     auto para = MakePara(MakeInputs(s, h, b, c, ge::DT_BF16, ge::DT_INT32), MakeOutputs(s, b, ge::DT_BF16));
     ExpectTilingFail(para);
 }

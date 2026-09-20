@@ -4,7 +4,7 @@
 
 基于 ops-test-kit（TTK）测试框架，完成 MoeTutelCombineGates 算子的 **Kernel（AscendC）精度验证**：
 
-- 用例文件：`tests/st/arch35/ttk_kernel_moe_tutel_combine_gates.csv`（10 条，仅 Ascend 950 / arch35）
+- 用例文件：`tests/st/arch35/ttk_kernel_moe_tutel_combine_gates.csv`（13 条，仅 Ascend 950 / arch35）
 - TestSpec：`tests/assets/moe_tutel_combine_gates.py`，同时提供 golden 与输入定制
 - 每条用例都会走 **动态 shape（dyn）** 与 **静态 shape（cst）** 两条编译/执行通路，逐元素与 CPU golden 比对
 
@@ -22,7 +22,7 @@ tolerance = {
 }
 ```
 
-数值口径与 kernel 的累加契约对齐：hidden 维乘积先按 float32 舍入（16b 输入先精确转换到 float32），再以 float64 精确求和（等价于 kernel 的补偿归约结果），最后一次性舍入到输出 dtype。实测各用例与 golden 的最大绝对误差均在输出 dtype 的 1 个 ulp 量级，`matched_ratio` 恒为 `1.0`。
+数值口径与 kernel 的累加契约对齐：hidden 维乘积以 float64 精确计算（float32/bfloat16/float16 操作数的 float64 乘积即精确乘积，对应 kernel fp32 路径的 TwoProduct 误差通道与 16b 路径的精确 fp32 乘积），再以 float64 求和、一次性舍入到输出 dtype（等价于 kernel 补偿归约的正确舍入结果）。实测各用例与 golden 的最大绝对误差均在输出 dtype 的 1 个 ulp 量级，`matched_ratio` 恒为 `1.0`。
 
 ## golden 与输入定制
 
@@ -52,6 +52,9 @@ tolerance = {
 | `mtcg_bf16_c0` | bfloat16 | 4 × 8 × 2 × 0 | C=0 使所有 task 非法，整表精确 0 |
 | `mtcg_fp16_unaligned` | float16 | 96 × 130 × 3 × 17 | fp16 分支（tilingKey 2）；H 与 C 均非对齐 |
 | `mtcg_fp16_s0` | float16 | 0 × 8 × 2 × 3 | S=0 空张量，输出元素数为 0 |
+| `mtcg_fp32_b0` | float32 | 4 × 8 × 0 × 3 | B=0 空张量，输出元素数为 0 |
+| `mtcg_fp16_s0h0` | float16 | 0 × 0 × 2 × 3 | S=0 与 H=0 同时成立：taskNum==0 优先于 H 规则，输出为空张量 |
+| `mtcg_bf16_b0c0` | bfloat16 | 4 × 8 × 0 × 0 | B=0 与 C=0 同时成立：taskNum==0 优先于 C 规则，输出为空张量 |
 
 ## 执行方式
 

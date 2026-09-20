@@ -13,7 +13,7 @@
  * \brief MoeTutelCombineGates operator definition (OpDef).
  */
 
-#include "register/op_def_registry.h"  // OpDef base class, OP_ADD macro
+#include "register/op_def_registry.h" // OpDef base class, OP_ADD macro
 
 namespace ops {
 
@@ -51,7 +51,8 @@ namespace ops {
 // ---------------------------------------------------------------------------
 class MoeTutelCombineGates : public OpDef {
 public:
-    explicit MoeTutelCombineGates(const char* name) : OpDef(name)
+    explicit MoeTutelCombineGates(const char *name)
+        : OpDef(name)
     {
         // --- Input: x ---
         // Token embedding matrix [S, H]. REQUIRED.
@@ -131,25 +132,32 @@ public:
         // (register/op_def.h accepts only gert::OpImplRegisterV2 kernels), so the two
         // callbacks are registered through the operator-impl macros instead — same
         // functions, same signatures, different registration entry point:
-        //   InferShape    → IMPL_OP_INFERSHAPE(MoeTutelCombineGates).InferShape(...)    in op_host/moe_tutel_combine_gates_infershape.cpp
-        //   InferDataType → IMPL_OP_INFERSHAPE(MoeTutelCombineGates).InferDataType(...) in op_host/moe_tutel_combine_gates_infershape.cpp
+        // register/op_def.h accepts only gert::OpImplRegisterV2 kernels), so the two
+        // callbacks are registered through the operator-impl macros instead — same
+        // functions, same signatures, different registration entry point:
+        //   InferShape    → IMPL_OP_INFERSHAPE(MoeTutelCombineGates).InferShape(...)
+        //                   in op_host/moe_tutel_combine_gates_infershape.cpp
+        //   InferDataType → IMPL_OP_INFERSHAPE(MoeTutelCombineGates).InferDataType(...)
+        //                   in op_host/moe_tutel_combine_gates_infershape.cpp
         // 两个回调挂在同一个 OpImplRegisterV2 上，即「infershape 双挂」：只挂 InferShape 会让
         // GE 在本注册面上拿不到输出 dtype 推导。
 
         // --- AICore Configuration for Ascend 950 ---
         OpAICoreConfig aiCoreConfig;
-        aiCoreConfig.DynamicCompileStaticFlag(true)          // JIT compile for static shapes
-            .DynamicFormatFlag(false)                        // Fixed format (no dynamic selection)
-            .DynamicRankSupportFlag(true)                    // Support variable ranks at runtime
-            .DynamicShapeSupportFlag(true)                   // Support variable shapes at runtime
-            .NeedCheckSupportFlag(false)                     // Skip chip support check
+        aiCoreConfig
+            .DynamicCompileStaticFlag(true) // JIT compile for static shapes
+            .DynamicFormatFlag(false)       // Fixed format (no dynamic selection)
+            .DynamicRankSupportFlag(true)   // Support variable ranks at runtime
+            .DynamicShapeSupportFlag(true)  // Support variable shapes at runtime
+            .NeedCheckSupportFlag(false)    // Skip chip support check
             // PrecisionReduceFlag is deliberately NOT set (Interface.md OpAICoreConfig section):
             // it lets the compiler reduce intermediate precision (fp32 -> fp16), which is
             // opposite to the A9 fp32-intermediate-accumulation requirement; no trusted source
             // confirms its effect on this operator, and the reference implementation never sets
             // it either. A9 is guaranteed by the kernel's explicit Cast -> Mul(fp32) ->
             // compensated-reduction chain (Kernel.md §9.1/§9.2/§9.4), not by this flag.
-            .ExtendCfgInfo("opFile.value", "moe_tutel_combine_gates_apt");  // Links to kernel file moe_tutel_combine_gates_apt.cpp
+            .ExtendCfgInfo("opFile.value",
+                           "moe_tutel_combine_gates_apt"); // Links to kernel file moe_tutel_combine_gates_apt.cpp
         // AddConfig associates the AICore config with the "ascend950" chip.
         // The tiling callbacks are registered by IMPL_OP_OPTILING(MoeTutelCombineGates)
         // in op_host/moe_tutel_combine_gates_tiling_arch35.cpp.

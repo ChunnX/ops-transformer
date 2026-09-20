@@ -23,8 +23,10 @@ The golden is an independent CPU implementation of
 
 with the out-of-range routing rule ``e < 0`` / ``e >= B`` / ``p < 0`` / ``p >= C``
 evaluating to exactly 0. It mirrors the kernel's accumulation contract: the
-hidden-dimension products are rounded to float32 first and then summed exactly
-(float64 accumulation), and the sum is rounded once to the output dtype.
+hidden-dimension products are computed exactly (a float64 product of two
+float32/bfloat16/float16 values is exact, matching the kernel's TwoProduct
+channel on the fp32 path and its exact fp32 products on the 16b paths), summed
+in float64, and the sum is rounded once to the output dtype.
 """
 
 from __future__ import annotations
@@ -77,16 +79,18 @@ def _golden(x, y_grad, indices, locations):
 
     result = np.zeros(task_num, dtype=np.float64)
     if task_num > 0 and hidden > 0 and batch > 0 and capacity > 0:
-        xf = x_arr.astype(np.float32).reshape(samples, hidden)
-        yf = y_arr.astype(np.float32).reshape(batch * capacity, hidden)
+        # float64 holds the exact product of two fp32/bf16/fp16 values, so the
+        # products feeding the sum are the kernel's exact products (TwoProduct
+        # channel on the fp32 path, exact fp32 products on the 16b paths).
+        xf = x_arr.astype(np.float64).reshape(samples, hidden)
+        yf = y_arr.astype(np.float64).reshape(batch * capacity, hidden)
         valid = np.nonzero((idx >= 0) & (idx < batch) & (loc >= 0) & (loc < capacity))[
             0
         ]
         if valid.size > 0:
             slot = idx[valid] * capacity + loc[valid]
             token = valid % samples  # samples > 0 holds whenever task_num > 0
-            # float32 products (the kernel's accumulator dtype), exact in float64
-            products = (xf[token] * yf[slot]).astype(np.float64)
+            products = xf[token] * yf[slot]
             result[valid] = products.sum(axis=1, dtype=np.float64)
 
     return result.astype(x_arr.dtype).reshape(indices.shape)

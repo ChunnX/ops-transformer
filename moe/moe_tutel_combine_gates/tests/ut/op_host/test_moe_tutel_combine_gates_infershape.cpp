@@ -85,15 +85,30 @@ TEST(MoeTutelCombineGatesInferShape, infershape_ok_empty_samples)
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, std::vector<std::vector<int64_t>>{{2, 0}});
 }
 
+// B = 0 is the other empty task axis: the output mirrors the empty indices
+// shape ({0, S}) instead of failing.
+TEST(MoeTutelCombineGatesInferShape, infershape_ok_empty_batch)
+{
+    gert::InfershapeContextPara para("MoeTutelCombineGates", MakeInputs({4, 8}, {0, 3, 8}, {0, 4}), MakeOutputs({}));
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, std::vector<std::vector<int64_t>>{{0, 4}});
+}
+
 // ---------------------------------------------------------------------------
 // Rejection: rank, format, shape binding and element count.
 //
-// NOTE: the "a fully-known declared gates_grad shape that contradicts
-// indices.shape is rejected instead of being overwritten" branch of
-// InferShape4MoeTutelCombineGates cannot be driven from here: this framework
-// feeds TensorDescription.shape_ only for INPUTS and leaves the output shape
-// buffer untouched (InferShapeContextFaker::OutputShapes is a no-op), so
-// GetOutputShape(0) is never a caller-declared shape.
+// NOTE: two branches of InferShape4MoeTutelCombineGates cannot be driven from
+// here:
+//   * the "a fully-known declared gates_grad shape that contradicts
+//     indices.shape is rejected instead of being overwritten" branch — this
+//     framework feeds TensorDescription.shape_ only for INPUTS and leaves the
+//     output shape buffer untouched (InferShapeContextFaker::OutputShapes is a
+//     no-op), so GetOutputShape(0) is never a caller-declared shape;
+//   * the "unknown rank (dim_num == 0xFFFFFFFF, DynamicRankSupportFlag)
+//     propagates as unknown rank" branch — every copy of a gert::Shape walks
+//     dim_num_ entries (Shape::operator= and the copy constructor in
+//     exe_graph/runtime/shape.h), so a shape whose dim_num_ is 0xFFFFFFFF
+//     cannot even be placed into a TensorDescription / gert::Tensor; feeding
+//     one segfaults inside the context build.
 // ---------------------------------------------------------------------------
 TEST(MoeTutelCombineGatesInferShape, infershape_fail_rank_x)
 {

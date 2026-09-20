@@ -242,6 +242,8 @@ aclnnStatus aclnnMoeTutelCombineGates(
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
+  > **第二段接口的 161002**：`workspaceSize` 小于第一段接口 `aclnnMoeTutelCombineGatesGetWorkspaceSize` 返回值（即输入侧连续化视图拷贝所需的空间）时，第二段接口返回 `161002`（生成桩的结构化上报 `EZ1010`）。正常按第一段返回值申请 workspace 的调用不会命中；`dtype` / `format` 类违规最终以 `161002` 还是 `561002` 上抛取决于框架侧支持列表比对与 tiling 校验的执行顺序，以框架实际返回为准。
+
 ## 约束说明
 
 > **范围声明**：本节全部约束描述的是**本仓库 Ascend 950（`arch35`）实现**的实际行为。其中 rank / shape 契约、元素数、dtype / format、int32 上界、取值域与 UB 容量等校验，以及非法路由置 `0`、空 Tensor 语义，均为该实现的行为口径。本接口与图模式接口 `MoeTutelCombineGates`（`op_graph/moe_tutel_combine_gates_proto.h`）是同一算子的两种调用方式，两者的 shape / dtype 契约一致；产品级支持情况见上方「产品支持情况」。
