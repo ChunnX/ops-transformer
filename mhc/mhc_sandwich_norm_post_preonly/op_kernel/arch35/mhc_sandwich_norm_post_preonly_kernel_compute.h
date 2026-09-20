@@ -81,11 +81,15 @@ __aicore__ inline void LoadGammaInto(LocalTensor<float> dst, GlobalTensor<float>
 
 // RMSNorm基础计算
 
-/// 使用RegBase固定VL顺序执行FP32 ReduceSum。
+/// 使用二叉树累加模式执行高精度ReduceSum。
 __aicore__ inline float ReduceSumPrecise(LocalTensor<float> src, uint32_t tD)
 {
     LocalTensor<float> scBuf = bufScalar_.Get<float>();
-    MhcSandwichRegBase::ReduceSum(scBuf, src, tD);
+    constexpr uint32_t REDUCE_ALIGN = 16; // ReduceSum要求16个元素对齐
+    uint32_t tDAligned = (tD + REDUCE_ALIGN - 1) / REDUCE_ALIGN * REDUCE_ALIGN;
+    uint32_t srcShape[2] = {1, tDAligned};
+    // 输入在归约后不再使用，允许归约过程复用输入缓冲，减少内部UB与标量调度开销。
+    ReduceSum<float, AscendC::Pattern::Reduce::AR, true>(scBuf, src, srcShape, true);
     PipeBarrier<PIPE_V>();
     return scBuf.GetValue(0);
 }
