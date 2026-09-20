@@ -105,7 +105,10 @@ public:
         }
 
         // UB空间分配
-        pipe_.InitBuffer(bufHOutBf16_,       1, dimTile_ * sizeof(T));
+        // 双sibling模板为R1保留两块h_out输入缓存；单AIV仍只分配一块，
+        // 避免D=7168时突破256KiB UB上限。
+        pipe_.InitBuffer(bufHOutBf16_, DUAL_SIBLING ? BUFFER_NUM_TWO : BUFFER_NUM_ONE,
+                         dimTile_ * sizeof(T));
         pipe_.InitBuffer(bufHOutFp32_,          dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufGamma0Fp32_,        dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufGamma1Fp32_,        dimTile_ * sizeof(float));
@@ -208,7 +211,7 @@ private:
     TPipe pipe_;
 
     // UB缓存
-    TQue<TPosition::VECIN, 1>  bufHOutBf16_;
+    TQue<TPosition::VECIN, BUFFER_NUM_TWO>  bufHOutBf16_;
     TBuf<TPosition::VECCALC>   bufHOutFp32_;
     TBuf<TPosition::VECCALC>   bufGamma0Fp32_;
     TBuf<TPosition::VECCALC>   bufGamma1Fp32_;

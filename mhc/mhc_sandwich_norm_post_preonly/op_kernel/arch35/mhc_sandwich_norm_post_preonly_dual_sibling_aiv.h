@@ -22,12 +22,25 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     float midSqHalf[2] = {0.0f, 0.0f};
     LoadTokenWeights(token, postVals, combVals);
 
-    // 两个lane按完全相同的分块和顺序冗余执行R1。
+    // 两个lane按完全相同的分块和顺序冗余执行R1。当前分块出队后立即发起
+    // 下一分块搬运，使下一块MTE2与当前块Cast、平方和归约重叠。
     float sumSq0 = 0.0f;
+    LocalTensor<T> hOutTile = bufHOutBf16_.AllocTensor<T>();
+    DataCopy(hOutTile, hOutGm_[(uint64_t)token * D_], GetTileD(0));
+    bufHOutBf16_.EnQue(hOutTile);
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
-        const uint32_t tOff = tile * dimTile_;
-        LoadHOutAndCast((uint64_t)token * D_ + tOff, tD);
+        hOutTile = bufHOutBf16_.DeQue<T>();
+        if (tile + 1U < dimLoop_) {
+            const uint32_t nextTile = tile + 1U;
+            const uint32_t nextD = GetTileD(nextTile);
+            LocalTensor<T> nextHOutTile = bufHOutBf16_.AllocTensor<T>();
+            DataCopy(nextHOutTile, hOutGm_[(uint64_t)token * D_ + nextTile * dimTile_], nextD);
+            bufHOutBf16_.EnQue(nextHOutTile);
+        }
+        Cast(bufHOutFp32_.Get<float>(), hOutTile, RoundMode::CAST_NONE, tD);
+        PipeBarrier<PIPE_V>();
+        bufHOutBf16_.FreeTensor(hOutTile);
         sumSq0 += ReduceSumSq(bufHOutFp32_.Get<float>(), tD);
     }
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
