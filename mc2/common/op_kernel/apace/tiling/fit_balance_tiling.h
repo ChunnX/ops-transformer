@@ -985,20 +985,28 @@ inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, CommPrimitiv
     const bool commOnKAxis = (commPrimitive == CommPrimitive::ALL_GATHER) ||
                              ((commPrimitive == CommPrimitive::ALL_TO_ALL) && (order == CommComputeOrder::COMM_FIRST));
     ctx.commPerf.SetCommShapeLen(commOnKAxis ? ctx.matmulPerf.mmShapeInfo_.kValue : ctx.matmulPerf.mmShapeInfo_.nValue);
-    // D5 通信承载 dtype: AG/A2A-in 传 A 侧数据, 其余传 C 侧;
-    // D6 A 侧 fp4 无 0.5 字节表达, 按"1 字节打包 2 元素"建模(复用 HCCL 子字节机制)
+    // D5+D6 通信承载 dtype 与 fp4 子字节建模(两件独立的事, 原耦合在 AG 构造函数单分支内, §4.33 解耦):
+    // ① 通信 dtype 按承载侧: AG/A2A-in 传 A 侧数据, 其余传 C 侧——fp4 只可能是输入 A 的 dtype,
+    //    C 侧(计算输出)永远不是 fp4, 故子字节建模仅 A 侧承载时需要;
+    // ② fp4(0.5B/元素)无法用 uint64 表达: 通信侧按"1 字节打包 2 元素"建模(dtypeSize=1+
+    //    fraction=2 → GetRealDtypeSizes()=0.5, 复用 HCCL 子字节机制)
+    const bool isFp4Input = (args.geAType == ge::DataType::DT_FLOAT4_E2M1);
     if (commOnKAxis) {
-        if (args.geAType == ge::DataType::DT_FLOAT4_E2M1) {
+        if (isFp4Input) {
             ctx.commPerf.SetCommDTypeSize(1);
             ctx.commPerf.SetCommDtypeSizeExpansionFraction(FP4_PACK_RATIO);
-            ctx.matmulPerf.mmShapeInfo_.inMatrixADtypeSize = 1; // L2 占用按 2x 高估, 避免 0 退化
-            ctx.matmulPerf.mmShapeInfo_.inMatrixBDtypeSize = 1;
         } else {
             ctx.commPerf.SetCommDTypeSize(ctx.matmulPerf.mmShapeInfo_.inMatrixADtypeSize);
         }
     } else {
-        // [P2 接线] RS 的 A&&B 双 fp4 mm 侧建模变体在 RSMM 迁移时接入
         ctx.commPerf.SetCommDTypeSize(ctx.matmulPerf.mmShapeInfo_.outMatrixCDtypeSize);
+    }
+    // ③ mm 侧 fp4 口径(与通信承载哪侧无关, 故独立于上分支): L2 工作集估算按 1B/元素保守取值
+    //    (真实 0.5B 无法表达, 2x 高估防 memUsage 退化); 算力查表已由 matchesCalcProfile 的
+    //    isFp4 维度接管(§4.17), 不在此处理。op 侧对 fp4 传 inputDtypeSize=1 时此两行为防御冗余
+    if (isFp4Input) {
+        ctx.matmulPerf.mmShapeInfo_.inMatrixADtypeSize = 1;
+        ctx.matmulPerf.mmShapeInfo_.inMatrixBDtypeSize = 1;
     }
     // §4.29 分派后引擎不设回退模型: 标定未命中(零值行 slope=0)时置 minLen=mValue——
     // NoCut 门控即输出单块不切(防御行为, 正常分派下 op 层已引走 COF, 不可达;
