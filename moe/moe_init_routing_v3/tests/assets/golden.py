@@ -920,6 +920,29 @@ def _fp8_quant_ulp_result(npu_arr, golden_arr):
     return _quant_ulp_result(_to_raw_int16(npu_arr), _to_raw_int16(golden_arr))
 
 
+def _restore_fp8_golden_dtype(npu_arr, golden_arr):
+    if getattr(golden_arr.dtype, "kind", "") != "f":
+        return golden_arr
+    npu_dtype_name = str(npu_arr.dtype).lower()
+    if not any(name in npu_dtype_name for name in ("e4m3", "e5m2", "e8m0")):
+        return golden_arr
+    from ttk.utilities.dtypes import (
+        numpy_float8_e4m3fn,
+        numpy_float8_e5m2,
+        numpy_float8_e8m0,
+    )
+
+    dtype_map = {
+        "e4m3": numpy_float8_e4m3fn,
+        "e5m2": numpy_float8_e5m2,
+        "e8m0": numpy_float8_e8m0,
+    }
+    for name, dtype_fn in dtype_map.items():
+        if name in npu_dtype_name:
+            return golden_arr.astype(dtype_fn(), copy=False)
+    return golden_arr
+
+
 def _to_list(val):
     if val is None:
         return None
@@ -1066,28 +1089,8 @@ class MoeInitRoutingV3KernelSpec:
                 continue
             npu_arr = _torch_to_numpy(npu_out)
             golden_arr = _torch_to_numpy(golden_out)
-            if (
-                is_non_quant
-                and i in (0, 3)
-                and getattr(golden_arr.dtype, "kind", "") == "f"
-            ):
-                npu_dtype_name = str(npu_arr.dtype).lower()
-                if any(name in npu_dtype_name for name in ("e4m3", "e5m2", "e8m0")):
-                    from ttk.utilities.dtypes import (
-                        numpy_float8_e4m3fn,
-                        numpy_float8_e5m2,
-                        numpy_float8_e8m0,
-                    )
-
-                    dtype_map = {
-                        "e4m3": numpy_float8_e4m3fn,
-                        "e5m2": numpy_float8_e5m2,
-                        "e8m0": numpy_float8_e8m0,
-                    }
-                    for name, dtype_fn in dtype_map.items():
-                        if name in npu_dtype_name:
-                            golden_arr = golden_arr.astype(dtype_fn(), copy=False)
-                            break
+            if is_non_quant and i in (0, 3):
+                golden_arr = _restore_fp8_golden_dtype(npu_arr, golden_arr)
             npu_flat = numpy.asarray(npu_arr).reshape(-1)
             golden_flat = numpy.asarray(golden_arr).reshape(-1)
             min_len = min(npu_flat.size, golden_flat.size)
@@ -1624,6 +1627,7 @@ class AclnnMoeInitRoutingV3Spec:
             getattr(compare_context, "attributes", {}) if compare_context else {}
         )
         quant_mode = attributes.get("quant_mode", attributes.get("quantMode"))
+        is_non_quant = quant_mode == -1
         for i in range(half):
             npu_out = outputs[i]
             golden_out = outputs[half + i]
@@ -1641,6 +1645,8 @@ class AclnnMoeInitRoutingV3Spec:
                 continue
             npu_arr = _torch_to_numpy(npu_out)
             golden_arr = _torch_to_numpy(golden_out)
+            if is_non_quant and i in (0, 3):
+                golden_arr = _restore_fp8_golden_dtype(npu_arr, golden_arr)
             npu_flat = numpy.asarray(npu_arr).reshape(-1)
             golden_flat = numpy.asarray(golden_arr).reshape(-1)
             min_len = min(npu_flat.size, golden_flat.size)
