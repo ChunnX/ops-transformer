@@ -43,13 +43,23 @@ enable LSE to exercise its output. Performance must be checked on device separat
 
 ## STC
 
-Both `tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_stc.csv` and the matching
-`tests/ttk` CSV contain 12 added layout cases (six per layout). The existing
-`layout_q` and `layout_out` fields select the layout. BSND/BNSD rows have empty
-`cu_seqlens_q` and `seqused_q` values; adapters pass them as None. Pytest uses
-`S1_max` to construct the physical Q shape, and TTK reads Sq from its tensor shape.
-The CPU reference generates its own packed prefix [0,Sq,2*Sq,...] solely for
-internal indexing. Both runners compare the full output sequence dimension.
+The source of truth is `QBSA_MXFP8_STC_layout_increment_and_D_cross.xlsx`,
+rows 146--181 in `STC_80`. Both
+`tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_layout_stc.csv` and the matching
+`tests/ttk` CSV contain those 36 independent layout cases: 18 BSND and 18 BNSD,
+all with D=128. The STC D-cross rows 182--213 remain part of the design document,
+but are intentionally not generated or run by this PR. The existing `layout_q` and
+`layout_out` fields select the layout. BSND/BNSD rows have empty `cu_seqlens_q`
+and `seqused_q` values; adapters pass them as None. Pytest uses `S1_max` to
+construct the physical Q shape, and TTK reads Sq from its tensor shape. The CPU
+reference generates its own packed prefix [0,Sq,2*Sq,...] solely for internal
+indexing. Both runners compare the full output sequence dimension.
+
+The 36 rows include deterministic mixed-empty-sparse-row coverage. In addition to
+the CSV cases, `test_layout_metadata.py` covers invalid padded layout dimensions,
+Q descale shape, invalid sparse Qb length, and non-null padded-Q length inputs.
+It verifies those main-operator checks after a valid metadata call so metadata
+interception cannot mask duplicate validation.
 
 Run the new pytest STC cases on the Ascend test machine, for example:
 

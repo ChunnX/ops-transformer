@@ -310,12 +310,13 @@ def _resolve_dtype(value, field_name):
 
 
 def _resolve_sparse_mode(case):
-    """Validate the shared dense/random sparse mode."""
+    """Validate the sparse-selection pattern used by a layout test case."""
     resolved = dict(case)
     sparse_mode = resolved.get("sparse_mode")
-    if sparse_mode not in ("dense", "random"):
+    if sparse_mode not in ("dense", "random", "mixed_empty_rows"):
         raise ValueError(
-            f"sparse_mode must be 'dense' or 'random', got {sparse_mode!r}"
+            "sparse_mode must be 'dense', 'random', or 'mixed_empty_rows', "
+            f"got {sparse_mode!r}"
         )
     resolved["sparse_mode"] = sparse_mode
     return resolved
@@ -965,6 +966,8 @@ def _select_blocks(blocks, sparse_mode, rng):
         return selected[:random_count]
     if sparse_mode == "dense":
         return blocks[:]
+    if sparse_mode == "mixed_empty_rows":
+        return blocks[:]
     raise ValueError(f"Unsupported sparse_mode: {sparse_mode!r}")
 
 
@@ -991,6 +994,15 @@ def _make_reference_sparse_indices(case, q_lengths, kv_lengths, rng):
             )
             for head_idx in range(n1):
                 if qb_idx >= qb_batch:
+                    selected = []
+                elif (
+                    case["sparse_mode"] == "mixed_empty_rows"
+                    and (batch_idx + head_idx + qb_idx) % 3 == 0
+                ):
+                    # The STC's directed empty-row scenario requires real empty
+                    # sparse rows inside the physical Q range.  Keep other rows
+                    # dense so both empty and non-empty metadata sections are
+                    # exercised in one operator invocation.
                     selected = []
                 else:
                     selected = _select_blocks(allowed, case["sparse_mode"], rng)
