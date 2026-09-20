@@ -39,63 +39,35 @@ using namespace AscendC::Reg;
  * @param [in]  src     stage2OutUB（[DV,S1] fp32，V2 末块累积分子）
  * @param [in]  rowsum  accRowsumUB（[128] fp32，per S1，累积分母）
  */
-__simd_vf__ inline void VfDivAndCast(__ubuf__ bfloat16_t *dst, __ubuf__ float *src,
-                                     __ubuf__ float *rowsum)
+__simd_vf__ inline void VfDivAndCastVF(__ubuf__ bfloat16_t *dstT, __ubuf__ float *src,
+                                         __ubuf__ float *rowsum)
 {
-    RegTensor<float> vreg_rowsum_a;
-    RegTensor<float> vreg_rowsum_b;
-    RegTensor<float> vreg_src_0, vreg_src_1, vreg_src_2, vreg_src_3;
-    RegTensor<bfloat16_t> vreg_cast_0, vreg_cast_1, vreg_cast_2, vreg_cast_3;
-    MaskReg preg_f32 = CreateMask<float, MaskPattern::ALL>();
-    MaskReg preg_bf16 = CreateMask<bfloat16_t, MaskPattern::ALL>();
+    // ===== 融合转置写（设计 §7.5，DN processOutVF 镜像）=====
+    // src [DV,S1] fp32 → dstT 转置带 pad [S1,DV] bf16（mm2Res 别名区）
+    RegTensor<float> vreg_src_1, vreg_src_2, vreg_src_3, vreg_src_4;      // 16 寄存器块
+    RegTensor<float> vreg_src_5, vreg_src_6, vreg_src_7, vreg_src_8;      // = 16 行 × 64 列
+    RegTensor<float> vreg_src_9, vreg_src_10, vreg_src_11, vreg_src_12;   // （倒数乘后复用为
+    RegTensor<float> vreg_src_13, vreg_src_14, vreg_src_15, vreg_src_16;  //   Cast/转置载体）
+    RegTensor<float> vreg_recip;   // 当前一半列的 1/rowsum（先算倒数再乘，替代逐行 Div）
+    RegTensor<float> vreg_ones;    // 全 1（倒数分子）
+    MaskReg preg_f32 = CreateMask<float, MaskPattern::ALL>();   // 64 lanes fp32
 
-    // ① rowsum 载入（2 regs，全程复用）
-    LoadAlign(vreg_rowsum_a, rowsum);
-    LoadAlign(vreg_rowsum_b, rowsum + 64);
+    Duplicate(vreg_ones, 1.0f);
 
-    // ② 128 行 × 2 段（前 64 列 rowsumA / 后 64 列 rowsumB），4 路行展开
-    //    src 和 dst 的行偏移数值相同（均为 128 元素/行），指针类型自动处理字节宽度差异
-    for (uint32_t row = 0; row < 128; row += 4) {
-        uint32_t base0 = row * 128;
-        uint32_t base1 = (row + 1) * 128;
-        uint32_t base2 = (row + 2) * 128;
-        uint32_t base3 = (row + 3) * 128;
+    // ===== 按列分成前后两半处理（每半 64 列；DN 由调用方调用两次，我们单函数内循环）=====
+    for (uint32_t colHalf = 0; colHalf < 2; colHalf++) {
+        // 倒数：recip = 1/rowsum[本半的 64 个分母]（DN L36-38 同款；每半算一次，各行复用）
+        LoadAlign(vreg_recip, rowsum + colHalf * 64);
+        Div(vreg_recip, vreg_ones, vreg_recip, preg_f32);
 
-        // ===== 前 64 列（rowsumA）=====
-        LoadAlign(vreg_src_0, src + base0);
-        LoadAlign(vreg_src_1, src + base1);
-        LoadAlign(vreg_src_2, src + base2);
-        LoadAlign(vreg_src_3, src + base3);
-        Div(vreg_src_0, vreg_src_0, vreg_rowsum_a, preg_f32);
-        Div(vreg_src_1, vreg_src_1, vreg_rowsum_a, preg_f32);
-        Div(vreg_src_2, vreg_src_2, vreg_rowsum_a, preg_f32);
-        Div(vreg_src_3, vreg_src_3, vreg_rowsum_a, preg_f32);
-        Cast<bfloat16_t, float, castTraitZero>(vreg_cast_0, vreg_src_0, preg_f32);
-        Cast<bfloat16_t, float, castTraitZero>(vreg_cast_1, vreg_src_1, preg_f32);
-        Cast<bfloat16_t, float, castTraitZero>(vreg_cast_2, vreg_src_2, preg_f32);
-        Cast<bfloat16_t, float, castTraitZero>(vreg_cast_3, vreg_src_3, preg_f32);
-        StoreAlign(dst + base0, vreg_cast_0, preg_bf16);
-        StoreAlign(dst + base1, vreg_cast_1, preg_bf16);
-        StoreAlign(dst + base2, vreg_cast_2, preg_bf16);
-        StoreAlign(dst + base3, vreg_cast_3, preg_bf16);
-
-        // ===== 后 64 列（rowsumB）=====
-        LoadAlign(vreg_src_0, src + base0 + 64);
-        LoadAlign(vreg_src_1, src + base1 + 64);
-        LoadAlign(vreg_src_2, src + base2 + 64);
-        LoadAlign(vreg_src_3, src + base3 + 64);
-        Div(vreg_src_0, vreg_src_0, vreg_rowsum_b, preg_f32);
-        Div(vreg_src_1, vreg_src_1, vreg_rowsum_b, preg_f32);
-        Div(vreg_src_2, vreg_src_2, vreg_rowsum_b, preg_f32);
-        Div(vreg_src_3, vreg_src_3, vreg_rowsum_b, preg_f32);
-        Cast<bfloat16_t, float, castTraitZero>(vreg_cast_0, vreg_src_0, preg_f32);
-        Cast<bfloat16_t, float, castTraitZero>(vreg_cast_1, vreg_src_1, preg_f32);
-        Cast<bfloat16_t, float, castTraitZero>(vreg_cast_2, vreg_src_2, preg_f32);
-        Cast<bfloat16_t, float, castTraitZero>(vreg_cast_3, vreg_src_3, preg_f32);
-        StoreAlign(dst + base0 + 64, vreg_cast_0, preg_bf16);
-        StoreAlign(dst + base1 + 64, vreg_cast_1, preg_bf16);
-        StoreAlign(dst + base2 + 64, vreg_cast_2, preg_bf16);
-        StoreAlign(dst + base3 + 64, vreg_cast_3, preg_bf16);
+        // ===== 按行分成 8 块（每块 16 行，覆盖 128 个头维度行）=====
+        for (uint32_t block = 0; block < 8; block++) {
+            uint32_t blockBase = block * 16 * 128 + colHalf * 64;  // 行距 128（DN 为 64）+ 半区列偏移
+            // TODO(4.1c-1b): 16 条 LoadAlign（跨步 k·128）+ 16 条 Mul ×recip
+            // TODO(4.1c-2): 8 对跨行 Cast+Or(uint16) 造垂直对
+            // TODO(4.1c-3): 12 条 Interleave 级联 + 8 条 StoreAlign(8+1) 散布
+            (void)blockBase; (void)dstT;
+        }
     }
 }
 
