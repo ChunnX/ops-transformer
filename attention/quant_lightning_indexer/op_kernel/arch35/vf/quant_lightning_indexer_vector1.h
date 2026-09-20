@@ -42,10 +42,10 @@ __simd_callee__ inline void CastFP32ToFP16ToFP32(AscendC::Reg::RegTensor<float> 
                                                            Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
     constexpr static Reg::CastTrait castTraitFP16ToFP32 = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
                                                            Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
-    float mulsScalar = 1.0 / 1024;
+    float qliMulsScalar = 1.0 / 1024;
 
-    Reg::Muls(regQK0[0], regQK0[0], mulsScalar, maskAllB32);
-    Reg::Muls(regQK0[1], regQK0[1], mulsScalar, maskAllB32);
+    Reg::Muls(regQK0[0], regQK0[0], qliMulsScalar, maskAllB32);
+    Reg::Muls(regQK0[1], regQK0[1], qliMulsScalar, maskAllB32);
 
     Reg::Cast<half, float, castTraitFP32ToFP16>(regQK0Half[0], regQK0[0], maskAllB32);
     Reg::Cast<half, float, castTraitFP32ToFP16>(regQK0Half[1], regQK0[1], maskAllB32);
@@ -245,14 +245,14 @@ __simd_callee__ inline void ReduceSum2Finalize(AscendC::Reg::RegTensor<float> (&
 
 __simd_callee__ inline void LoadKScaleFP16(AscendC::Reg::RegTensor<half> (&regKScaleFP16)[2],
                                            AscendC::Reg::RegTensor<float> (&regKScale)[2],
-                                           AscendC::Reg::MaskReg &maskAllB16, __ubuf__ half *kScale_)
+                                           AscendC::Reg::MaskReg &qliMaskAllB16, __ubuf__ half *kScale_)
 {
     constexpr static Reg::CastTrait castTraitFP16ToFP32 = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
                                                            Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
     AscendC::Reg::LoadAlign<half, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(regKScaleFP16[0], kScale_);
     AscendC::Reg::LoadAlign<half, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(regKScaleFP16[1], kScale_ + 64);
-    AscendC::Reg::Cast<float, half, castTraitFP16ToFP32>(regKScale[0], regKScaleFP16[0], maskAllB16);
-    AscendC::Reg::Cast<float, half, castTraitFP16ToFP32>(regKScale[1], regKScaleFP16[1], maskAllB16);
+    AscendC::Reg::Cast<float, half, castTraitFP16ToFP32>(regKScale[0], regKScaleFP16[0], qliMaskAllB16);
+    AscendC::Reg::Cast<float, half, castTraitFP16ToFP32>(regKScale[1], regKScaleFP16[1], qliMaskAllB16);
 }
 
 // float in uint16 out

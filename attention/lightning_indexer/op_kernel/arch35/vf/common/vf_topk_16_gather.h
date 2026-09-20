@@ -81,7 +81,7 @@ __simd_vf__ void FindHighTargetBinVFImpl(__ubuf__ uint32_t *idxHighBuf, __ubuf__
 
     Reg::ClearSpr<AscendC::SpecialPurposeReg::AR>();
 
-    Reg::UnalignRegForStore alignIdxHigh;
+    Reg::UnalignRegForStore liAlignIdxHigh;
 
     Reg::RegTensor<uint32_t> btmK;
     Reg::Duplicate(btmK, bottomK);
@@ -98,9 +98,9 @@ __simd_vf__ void FindHighTargetBinVFImpl(__ubuf__ uint32_t *idxHighBuf, __ubuf__
         Reg::Compare<uint32_t, CMPMODE::GE>(pregGE, cout, btmK, maskRegB32);
 
         Reg::Squeeze<uint32_t, Reg::GatherMaskMode::STORE_REG>(sqzIdxHigh, (Reg::RegTensor<uint32_t> &)idxC, pregGE);
-        Reg::StoreUnAlign<uint32_t, Reg::PostLiteral::POST_MODE_UPDATE>(idxHighBuf, sqzIdxHigh, alignIdxHigh);
+        Reg::StoreUnAlign<uint32_t, Reg::PostLiteral::POST_MODE_UPDATE>(idxHighBuf, sqzIdxHigh, liAlignIdxHigh);
     }
-    Reg::StoreUnAlignPost(idxHighBuf, alignIdxHigh);
+    Reg::StoreUnAlignPost(idxHighBuf, liAlignIdxHigh);
 
     Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
 
@@ -194,7 +194,7 @@ __simd_vf__ void FindKthVFImpl(__ubuf__ uint32_t *kValue, __ubuf__ uint32_t *his
 
     Reg::ClearSpr<AscendC::SpecialPurposeReg::AR>();
 
-    Reg::UnalignRegForStore alignIdxLow;
+    Reg::UnalignRegForStore liAlignIdxLow;
 
     Reg::RegTensor<uint32_t> btmK;
     Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_NORM>(btmK, kValue);
@@ -211,24 +211,24 @@ __simd_vf__ void FindKthVFImpl(__ubuf__ uint32_t *kValue, __ubuf__ uint32_t *his
         Reg::Compare<uint32_t, CMPMODE::GE>(pregGE, cout, btmK, maskRegB32);
 
         Reg::Squeeze<uint32_t, Reg::GatherMaskMode::STORE_REG>(sqzIdxLow, (Reg::RegTensor<uint32_t> &)idxC, pregGE);
-        Reg::StoreUnAlign<uint32_t, Reg::PostLiteral::POST_MODE_UPDATE>(idxLowBuf, sqzIdxLow, alignIdxLow);
+        Reg::StoreUnAlign<uint32_t, Reg::PostLiteral::POST_MODE_UPDATE>(idxLowBuf, sqzIdxLow, liAlignIdxLow);
     }
-    Reg::StoreUnAlignPost(idxLowBuf, alignIdxLow);
+    Reg::StoreUnAlignPost(idxLowBuf, liAlignIdxLow);
 
     Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
 
-    Reg::RegTensor<uint32_t> idxHigh;
+    Reg::RegTensor<uint32_t> liIdxHigh;
     Reg::RegTensor<uint32_t> idxLow;
-    Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_BRC_B8>(idxHigh, idxHighBuf);
+    Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_BRC_B8>(liIdxHigh, idxHighBuf);
     Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_BRC_B16>(idxLow, idxLowBuf);
 
     Reg::RegTensor<uint16_t> idxTmp;
     Reg::Duplicate(idxTmp, 0xff00);
 
-    Reg::And(idxHigh, idxHigh, (Reg::RegTensor<uint32_t> &)idxTmp, maskRegB32);
+    Reg::And(liIdxHigh, liIdxHigh, (Reg::RegTensor<uint32_t> &)idxTmp, maskRegB32);
 
     Reg::RegTensor<uint32_t> idxK;
-    Reg::Add(idxK, idxHigh, idxLow, maskRegB16);
+    Reg::Add(idxK, liIdxHigh, idxLow, maskRegB16);
 
     Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_NORM_B16>(kValue, idxK, maskRegB32);
 }
@@ -368,12 +368,12 @@ __aicore__ inline void LiTopKVF(const LocalTensor<uint16_t> &tmpIdxLocal, const 
                                 const LocalTensor<uint32_t> &idxLowLocal, const LocalTensor<uint32_t> &nkValueLocal,
                                 uint32_t topK, uint32_t validLen)
 {
-    __ubuf__ uint16_t *tmpIdxBuf = (__ubuf__ uint16_t *)tmpIdxLocal.GetPhyAddr();
+    __ubuf__ uint16_t *liTmpIdxBuf = (__ubuf__ uint16_t *)tmpIdxLocal.GetPhyAddr();
     __ubuf__ uint16_t *outputValueBuf = (__ubuf__ uint16_t *)outputValueLocal.GetPhyAddr();
     __ubuf__ uint16_t *inputValueBuf = (__ubuf__ uint16_t *)inputValueLocal.GetPhyAddr();
     __ubuf__ uint32_t *histogramsBuf = (__ubuf__ uint32_t *)histogramsLocal.GetPhyAddr();
     __ubuf__ uint32_t *idxHighBuf = (__ubuf__ uint32_t *)idxHighLocal.GetPhyAddr();
-    __ubuf__ uint32_t *idxLowBuf = (__ubuf__ uint32_t *)idxLowLocal.GetPhyAddr();
+    __ubuf__ uint32_t *liIdxLowBuf = (__ubuf__ uint32_t *)idxLowLocal.GetPhyAddr();
     __ubuf__ uint32_t *nkValueBuf = (__ubuf__ uint32_t *)nkValueLocal.GetPhyAddr();
 
     uint32_t bottomK = validLen - topK + 1;
@@ -384,29 +384,29 @@ __aicore__ inline void LiTopKVF(const LocalTensor<uint16_t> &tmpIdxLocal, const 
     const uint16_t repeatSize16 = 128;
     const uint16_t repeatSize32 = 64;
 
-    uint16_t histogramsLoopNum = (validLen + repeatSize8 - 1) / repeatSize8;
-    uint16_t inputLoopNum = (validLen + repeatSize16 - 1) / repeatSize16;
+    uint16_t liHistogramsLoopNum = (validLen + repeatSize8 - 1) / repeatSize8;
+    uint16_t liInputLoopNum = (validLen + repeatSize16 - 1) / repeatSize16;
     uint16_t topkLoopNum = (topK + repeatSize32 - 1) / repeatSize32;
     uint16_t topkLoopNum16 = (topK + repeatSize16 - 1) / repeatSize16;
 
     // find kth-value
-    HistogramsHighVFImpl<uint16_t>(histogramsBuf, inputValueBuf, histogramsLoopNum, flag);
+    HistogramsHighVFImpl<uint16_t>(histogramsBuf, inputValueBuf, liHistogramsLoopNum, flag);
     FindHighTargetBinVFImpl(idxHighBuf, nkValueBuf, histogramsBuf, bottomK);
 
-    HistogramsLowVFImpl<uint16_t>(histogramsBuf, inputValueBuf, idxHighBuf, histogramsLoopNum, flag);
-    FindKthVFImpl(nkValueBuf, histogramsBuf, idxHighBuf, idxLowBuf);
+    HistogramsLowVFImpl<uint16_t>(histogramsBuf, inputValueBuf, idxHighBuf, liHistogramsLoopNum, flag);
+    FindKthVFImpl(nkValueBuf, histogramsBuf, idxHighBuf, liIdxLowBuf);
 
     // filter
     int32_t count = TopKGatherAlign(topK, (uint32_t)128) - topK / 128 * 128;
     AscendC::Duplicate(tmpIdxLocal[topK / 128 * 128], (uint16_t)(0), count);
     // 输出大于k-value的值idx
-    FindIdxGTOutputVFImpl(tmpIdxBuf, inputValueBuf, (uint32_t)(0), nkValueBuf, inputLoopNum);
+    FindIdxGTOutputVFImpl(liTmpIdxBuf, inputValueBuf, (uint32_t)(0), nkValueBuf, liInputLoopNum);
     // 输出等于k-value的值idx
-    FindIdxEQOutputVFImpl(tmpIdxBuf, inputValueBuf, (uint32_t)(0), nkValueBuf, inputLoopNum);
+    FindIdxEQOutputVFImpl(liTmpIdxBuf, inputValueBuf, (uint32_t)(0), nkValueBuf, liInputLoopNum);
 
     // 是否输出Value
     if constexpr (ISOUTVALUE) {
-        FindValueOutputVFImpl(outputValueBuf, inputValueBuf, tmpIdxBuf, topkLoopNum16);
+        FindValueOutputVFImpl(outputValueBuf, inputValueBuf, liTmpIdxBuf, topkLoopNum16);
     }
 }
 
@@ -423,23 +423,23 @@ __aicore__ inline void LiTopKVF(const LocalTensor<uint16_t> &tmpIdxLocal, const 
  */
 __aicore__ inline void LiTopKGatherVF(const LocalTensor<uint32_t> &outputIdxLocal,
                                       const LocalTensor<uint16_t> &outputValueLocal,
-                                      const LocalTensor<uint16_t> &inputValueLocal,
+                                      const LocalTensor<uint16_t> &liInputValueLocal,
                                       const LocalTensor<uint16_t> &tmpIdxLocal,
                                       const LocalTensor<uint32_t> &hisIdxLocal, uint32_t topK, uint32_t loopBasicIdx,
                                       uint32_t validLen)
 {
     __ubuf__ uint32_t *outputIdxBuf = (__ubuf__ uint32_t *)outputIdxLocal.GetPhyAddr();
     __ubuf__ uint16_t *outputValueBuf = (__ubuf__ uint16_t *)outputValueLocal.GetPhyAddr();
-    __ubuf__ uint16_t *inputValueBuf = (__ubuf__ uint16_t *)inputValueLocal.GetPhyAddr();
+    __ubuf__ uint16_t *inputValueBuf = (__ubuf__ uint16_t *)liInputValueLocal.GetPhyAddr();
     __ubuf__ uint16_t *tmpIdxBuf = (__ubuf__ uint16_t *)tmpIdxLocal.GetPhyAddr();
-    __ubuf__ uint32_t *hisIdxBuf = (__ubuf__ uint32_t *)hisIdxLocal.GetPhyAddr();
+    __ubuf__ uint32_t *liHisIdxBuf = (__ubuf__ uint32_t *)hisIdxLocal.GetPhyAddr();
 
     const uint16_t repeatSize32 = 64;
     const uint16_t repeatSize16 = 128;
     uint16_t topkLoopNum16 = (topK + repeatSize16 - 1) / repeatSize16;
     uint16_t topkLoopNum32 = (topK + repeatSize32 - 1) / repeatSize32;
 
-    FindRealIndexVFImpl(outputIdxBuf, tmpIdxBuf, hisIdxBuf, topK, loopBasicIdx, topkLoopNum32);
+    FindRealIndexVFImpl(outputIdxBuf, tmpIdxBuf, liHisIdxBuf, topK, loopBasicIdx, topkLoopNum32);
 }
 } // namespace topkb16gather
 #endif
