@@ -97,7 +97,7 @@ int64_t InferLogicalN(const at::Tensor &weightScale)
 void CheckV3Args(const at::Tensor &x, const std::vector<at::Tensor> &weight,
                  const std::vector<at::Tensor> &weightScale, const at::Tensor &xScale,
                  const c10::optional<std::vector<at::Tensor>> &weightAssistMatrix,
-                 const c10::optional<at::Tensor> &bias, const c10::optional<at::Tensor> &smoothScale,
+                 const c10::optional<std::vector<at::Tensor>> &bias, const c10::optional<at::Tensor> &smoothScale,
                  const c10::optional<std::vector<int64_t>> &tuningConfig, const c10::optional<int64_t> &dequantMode,
                  const c10::optional<int64_t> &dequantDtype, const c10::optional<int64_t> &quantMode,
                  const c10::optional<int64_t> &groupListType, const c10::optional<int64_t> &xDtype,
@@ -125,7 +125,7 @@ void CheckV3Args(const at::Tensor &x, const std::vector<at::Tensor> &weight,
                 "torch_npu.float8_e8m0fnu.");
     TORCH_CHECK(!weightAssistMatrix.has_value() || weightAssistMatrix->empty(),
                 "swiglu_mode=2 does not support weight_assist_matrix.");
-    TORCH_CHECK(!bias.has_value() || !bias->defined(), "swiglu_mode=2 does not support bias.");
+    TORCH_CHECK(!bias.has_value() || bias->empty(), "swiglu_mode=2 does not support a non-empty bias TensorList.");
     TORCH_CHECK(!smoothScale.has_value() || !smoothScale->defined(), "swiglu_mode=2 does not support smooth_scale.");
     TORCH_CHECK(!tuningConfig.has_value() || tuningConfig->empty(), "swiglu_mode=2 does not support tuning_config.");
     TORCH_CHECK(!dequantMode.has_value() || dequantMode.value() == 2,
@@ -160,7 +160,8 @@ void CheckV3Args(const at::Tensor &x, const std::vector<at::Tensor> &weight,
 std::tuple<at::Tensor, at::Tensor> grouped_matmul_swiglu_quant_v2(
     const at::Tensor &x, const std::vector<at::Tensor> &weight, const std::vector<at::Tensor> &weightScale,
     const at::Tensor &xScale, const at::Tensor &groupList, const c10::optional<at::Tensor> &smoothScale,
-    const c10::optional<std::vector<at::Tensor>> &weightAssistMatrix, const c10::optional<at::Tensor> &bias,
+    const c10::optional<std::vector<at::Tensor>> &weightAssistMatrix,
+    const c10::optional<std::vector<at::Tensor>> &bias,
     c10::optional<int64_t> dequantMode, c10::optional<int64_t> dequantDtype, c10::optional<int64_t> quantMode,
     c10::optional<int64_t> quantDtype, c10::optional<int64_t> groupListType,
     const c10::optional<std::vector<int64_t>> &tuningConfig, c10::optional<int64_t> xDtype,
@@ -187,8 +188,14 @@ std::tuple<at::Tensor, at::Tensor> grouped_matmul_swiglu_quant_v2(
     {
         const c10::OptionalDeviceGuard deviceGuard(c10::Device(x.device()));
         output = at::empty({m, n / 2}, x.options().dtype(at::ScalarType::Float8_e4m3fn));
-        outputScale = at::empty({m, CeilDiv(n / 2, kMxGroupSize), 2},
-                                x.options().dtype(at::ScalarType::Float8_e8m0fnu));
+        // The MX scale writer can leave padding/empty lanes untouched. Clear
+        // the output tensor first so every externally visible lane is
+        // deterministic.
+        // ZerosLike does not support float8_e8m0fnu. Allocate byte storage,
+        // initialize it, then reinterpret the one-byte elements as E8M0.
+        outputScale = at::zeros({m, CeilDiv(n / 2, kMxGroupSize), 2},
+                                x.options().dtype(at::ScalarType::Byte))
+                          .view(at::ScalarType::Float8_e8m0fnu);
     }
 
     at::TensorList weightRef = weight;
@@ -196,7 +203,9 @@ std::tuple<at::Tensor, at::Tensor> grouped_matmul_swiglu_quant_v2(
     const std::vector<at::Tensor> emptyAssist;
     const std::vector<at::Tensor> &assist = weightAssistMatrix.has_value() ? weightAssistMatrix.value() : emptyAssist;
     at::TensorList assistRef = assist;
-    const at::Tensor biasRef = bias.value_or(at::Tensor());
+    // V3 currently accepts only an empty bias TensorList. ACLNN V3 keeps its
+    // optional single-tensor ABI, so pass an undefined tensor.
+    const at::Tensor biasRef = at::Tensor();
     const at::Tensor smoothScaleRef = smoothScale.value_or(at::Tensor());
     c10::optional<at::IntArrayRef> tuningConfigRef = c10::nullopt;
     if (tuningConfig.has_value()) {
