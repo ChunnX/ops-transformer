@@ -40,7 +40,7 @@ struct GMMNoQuantBaseParams {
     uint32_t mTailCnt = 0;
     uint32_t nTailCnt = 0;
     uint32_t weightNoL2Cache = 0;
-    uint32_t placeHolder = 0;
+    uint32_t activeType = 0; // 0: none, 2: gelu tanh, same as GMMActType
 };
 #pragma pack(pop)
 
