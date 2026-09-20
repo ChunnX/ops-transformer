@@ -15,7 +15,7 @@
 
 #include <iostream>
 #include <fstream>
-#include <string.h>
+#include <cstring>
 #include <stdint.h>
 #include <vector>
 #include <string>
@@ -46,14 +46,14 @@ using std::vector;
 // clang-format off
 #define ADD_INPUT(intputIndex, intputName, intputDtype, inputShape)                                                    \
     vector<int64_t> placeholder##intputIndex##_shape = inputShape;                                                     \
-    auto placeholder##intputIndex = op::Data("placeholder" + intputIndex).set_attr_index(0);                           \
+    auto placeholder##intputIndex = op::Data((std::string("placeholder") + std::to_string(intputIndex)).c_str()).set_attr_index(intputIndex - 1);                           \
     TensorDesc placeholder##intputIndex##_desc =                                                                       \
         TensorDesc(ge::Shape(placeholder##intputIndex##_shape), FORMAT_ND, intputDtype);                               \
     placeholder##intputIndex##_desc.SetPlacement(ge::kPlacementHost);                                                  \
     placeholder##intputIndex##_desc.SetFormat(FORMAT_ND);                                                              \
     Tensor tensor_placeholder##intputIndex;                                                                            \
-    ret = GenOnesData(placeholder##intputIndex##_shape, tensor_placeholder##intputIndex,                               \
-                      placeholder##intputIndex##_desc, intputDtype, 2);                                                \
+    ret = GenInputData(placeholder##intputIndex##_shape, tensor_placeholder##intputIndex,                               \
+                      placeholder##intputIndex##_desc, intputDtype);                                                \
     if (ret != SUCCESS) {                                                                                              \
         printf("%s - ERROR - [XIR]: Generate input data failed\n", GetTime().c_str());                                 \
         return FAILED;                                                                                                 \
@@ -146,25 +146,29 @@ int32_t GenOnesDataFloat32(vector<int64_t> shapes, Tensor &input_tensor, TensorD
     return SUCCESS;
 }
 
-int32_t GenOnesData(vector<int64_t> shapes, Tensor &input_tensor, TensorDesc &input_tensor_desc, DataType data_type,
-                    int value)
+int32_t GenInputData(vector<int64_t> shapes, Tensor &input_tensor, TensorDesc &input_tensor_desc, DataType data_type)
 {
     input_tensor_desc.SetRealDimCnt(shapes.size());
     size_t size = 1;
     for (uint32_t i = 0; i < shapes.size(); i++) {
         size *= shapes[i];
     }
-    size_t data_len = size * GetDataTypeSize(data_type);
-    // Preserve the int32_t fill pattern while allocating only the required storage.
-    size_t data_count = data_len / sizeof(int32_t) + (data_len % sizeof(int32_t) != 0);
-    std::unique_ptr<int32_t[]> pData(new (std::nothrow) int32_t[data_count]);
-    if (pData == nullptr) {
+    const bool packedFp4 = data_type == DT_FLOAT4_E2M1 || data_type == DT_FLOAT4_E1M2;
+    size_t data_len = packedFp4 ? (size + 1) / 2 : size * GetDataTypeSize(data_type);
+    std::unique_ptr<uint8_t[]> data(new (std::nothrow) uint8_t[data_len]());
+    if (data == nullptr) {
         return FAILED;
     }
-    for (size_t i = 0; i < data_count; ++i) {
-        pData[i] = value;
+    for (size_t i = 0; i < size; ++i) {
+        if (data_type == DT_INT32) {
+            const int32_t slot = i + 1 == size ? -1 : static_cast<int32_t>(i);
+            std::memcpy(data.get() + i * sizeof(slot), &slot, sizeof(slot));
+        } else if (data_type == DT_FLOAT16 || data_type == DT_BF16) {
+            const uint16_t one = data_type == DT_FLOAT16 ? 0x3C00 : 0x3F80;
+            std::memcpy(data.get() + i * sizeof(one), &one, sizeof(one));
+        }
     }
-    input_tensor = Tensor(input_tensor_desc, reinterpret_cast<uint8_t *>(pData.get()), data_len);
+    input_tensor = Tensor(input_tensor_desc, data.get(), data_len);
     return SUCCESS;
 }
 
@@ -177,14 +181,14 @@ int32_t WriteDataToFile(string bin_file, uint64_t data_size, uint8_t *inputData)
     return SUCCESS;
 }
 
-int CreateOppInGraph(DataType inDtype, std::vector<ge::Tensor> &input, std::vector<Operator> &inputs,
+int CreateOppInGraph(int64_t quantMode, std::vector<ge::Tensor> &input, std::vector<Operator> &inputs,
                      std::vector<Operator> &outputs, Graph &graph)
 {
     Status ret = SUCCESS;
     // 自定义代码：添加单算子定义到图中
     auto indexer_quant_cache_op = op::IndexerQuantCache("test_geir_indexer_quant_cache");
 
-    // shape 定义（quant_mode=1, Normal block-wise quant）
+    // Four modes share the paged cache shape; scale dtype/width depends on quantMode.
     // x: [tokenNum, d]
     // cache: 4D [blockNum, blockSize, 1, headDim] (FLOAT8_E4M3FN), num_slots = blockNum*blockSize
     //        mode1 headDim=d=128 >= d
@@ -195,22 +199,25 @@ int CreateOppInGraph(DataType inDtype, std::vector<ge::Tensor> &input, std::vect
     const int64_t blockNum = 128;
     const int64_t blockSizeDim = 16; // num_slots = 128*16 = 2048
     std::vector<int64_t> cacheShape = {blockNum, blockSizeDim, 1, d};
-    std::vector<int64_t> cacheScaleShape = {blockNum, blockSizeDim, 1, 1};
+    const bool mx = quantMode == 0 || quantMode == 3;
+    const DataType cacheType = quantMode == 3 ? DT_FLOAT4_E2M1 : (quantMode == 2 ? DT_UINT8 : DT_FLOAT8_E4M3FN);
+    const DataType scaleType = mx ? DT_FLOAT8_E8M0 : DT_FLOAT;
+    std::vector<int64_t> cacheScaleShape = {blockNum, blockSizeDim, 1, mx ? d / 32 : 1};
     std::vector<int64_t> xShape = {tokenNum, d};
     std::vector<int64_t> slotMappingShape = {tokenNum};
 
     // 添加输入（顺序严格匹配 proto.h: cache, cache_scale, x, slot_mapping）
-    ADD_INPUT(1, cache, DT_FLOAT8_E4M3FN, cacheShape);
-    ADD_INPUT(2, cache_scale, DT_FLOAT, cacheScaleShape);
+    ADD_INPUT(1, cache, cacheType, cacheShape);
+    ADD_INPUT(2, cache_scale, scaleType, cacheScaleShape);
     ADD_INPUT(3, x, DT_FLOAT16, xShape);
     ADD_INPUT(4, slot_mapping, DT_INT32, slotMappingShape);
 
     // 添加输出（cache / cache_scale 原地更新）
-    ADD_OUTPUT(1, cache, DT_FLOAT8_E4M3FN, cacheShape);
-    ADD_OUTPUT(2, cache_scale, DT_FLOAT, cacheScaleShape);
+    ADD_OUTPUT(1, cache, cacheType, cacheShape);
+    ADD_OUTPUT(2, cache_scale, scaleType, cacheScaleShape);
 
-    // 添加属性（quant_mode=1: Normal block-wise quant, scale 存为 float32）
-    ADD_INPUT_ATTR(quant_mode, (int64_t)1);
+    // Select the mode requested on the command line.
+    ADD_INPUT_ATTR(quant_mode, quantMode);
     ADD_INPUT_ATTR(round_scale, true);
     ADD_INPUT_ATTR(x_scale, 1.0f);
 
@@ -221,6 +228,11 @@ int CreateOppInGraph(DataType inDtype, std::vector<ge::Tensor> &input, std::vect
 
 int main(int argc, char *argv[])
 {
+    if (argc > 2 || (argc == 2 && (std::strlen(argv[1]) != 1 || argv[1][0] < '0' || argv[1][0] > '3'))) {
+        LOG_PRINT("Usage: %s [quant_mode: 0|1|2|3]\n", argv[0]);
+        return FAILED;
+    }
+    const int64_t quantMode = argc == 2 ? argv[1][0] - '0' : 1;
     const char *graph_name = "tc_ge_irrun_test";
     Graph graph(graph_name);
     std::vector<ge::Tensor> input;
@@ -237,10 +249,7 @@ int main(int argc, char *argv[])
     std::vector<Operator> inputs{};
     std::vector<Operator> outputs{};
 
-    DataType inDtype = DT_FLOAT16;
-    std::cout << inDtype << std::endl;
-
-    ret = CreateOppInGraph(inDtype, input, inputs, outputs, graph);
+    ret = CreateOppInGraph(quantMode, input, inputs, outputs, graph);
     if (ret != SUCCESS) {
         printf("%s - ERROR - [XIR]: Create ir session using build options failed\n", GetTime().c_str());
         return FAILED;
@@ -291,7 +300,7 @@ int main(int argc, char *argv[])
         uint8_t *input_data_i = input[i].GetData();
         int64_t input_shape = input[i].GetTensorDesc().GetShape().GetShapeSize();
         std::cout << "this is " << i << "th input, input shape size =" << input_shape << std::endl;
-        uint32_t data_size = input_shape * GetDataTypeSize(input[i].GetTensorDesc().GetDataType());
+        size_t data_size = input[i].GetSize();
         WriteDataToFile((const char *)input_file.c_str(), data_size, input_data_i);
     }
 
@@ -302,7 +311,7 @@ int main(int argc, char *argv[])
         uint8_t *output_data_i = output[i].GetData();
         int64_t output_shape = output[i].GetTensorDesc().GetShape().GetShapeSize();
         std::cout << "this is " << i << "th output, output shape size =" << output_shape << std::endl;
-        uint32_t data_size = output_shape * GetDataTypeSize(output[i].GetTensorDesc().GetDataType());
+        size_t data_size = output[i].GetSize();
         WriteDataToFile((const char *)output_file.c_str(), data_size, output_data_i);
         for (int64_t j = 0; j < 16 && j < (int64_t)data_size; j++) {
             LOG_PRINT("output[%d] byte[%ld] is: %u\n", i, j, (uint32_t)output_data_i[j]);
