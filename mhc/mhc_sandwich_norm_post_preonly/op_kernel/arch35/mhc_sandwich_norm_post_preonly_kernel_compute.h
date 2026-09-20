@@ -156,10 +156,8 @@ __aicore__ inline __attribute__((always_inline)) float ComputeInvRms(float sumSq
 /// 原地依次执行标量缩放和gamma缩放。
 __aicore__ inline void ApplyScaleAndGamma(LocalTensor<float> buf, float scale, LocalTensor<float> gamma, uint32_t tD)
 {
-    // 多项VF融合完成后单独消融剩余缩放路径，避免寄存器融合拉长R1/R7关键路径。
-    AscendC::Muls(buf, buf, scale, tD);
-    PipeBarrier<PIPE_V>();
-    AscendC::Mul(buf, buf, gamma, tD);
+    // TODO：完成多VF融合和双缓冲后，执行Membase回退消融，复测改回高层接口的组合收益。
+    MhcSandwichRegBase::ScaleAndMulGamma(buf, buf, gamma, scale, tD);
     PipeBarrier<PIPE_V>();
 }
 
