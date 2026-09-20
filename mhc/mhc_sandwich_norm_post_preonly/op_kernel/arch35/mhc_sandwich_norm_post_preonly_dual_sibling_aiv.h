@@ -32,10 +32,30 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
 
     // 两个lane冗余构造完整x2，但只写各自负责的展平半片。
+    if constexpr (USE_RMS_MID) {
+        if (dimLoop_ > 1U) {
+            PrefetchGamma0Tile(0U, GetTileD(0U));
+        }
+    }
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        ComputeX2PostTile(token, tOff, tD, invRms0, postVals);
+        const bool useGammaQueue = USE_RMS_MID && dimLoop_ > 1U;
+        LocalTensor<float> gamma0 = bufGamma0Fp32_.Get<float>();
+        if (useGammaQueue) {
+            gamma0 = bufPhiFp32_.DeQue<float>();
+            if (tile + 1U < dimLoop_) {
+                PrefetchGamma0Tile(tOff + dimTile_, GetTileD(tile + 1U));
+            }
+        } else if (dimLoop_ > 1U) {
+            LoadGammaInto(gamma0, gamma0Gm_, tOff, tD);
+            SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+            WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
+        }
+        ComputeX2PostTile(token, tOff, tD, invRms0, postVals, gamma0);
+        if (useGammaQueue) {
+            bufPhiFp32_.FreeTensor(gamma0);
+        }
         CacheX2TileForLane(token, tOff, tD, !USE_RMS_MID);
 
         LocalTensor<float> x2 = bufX2Fp32_.Get<float>();

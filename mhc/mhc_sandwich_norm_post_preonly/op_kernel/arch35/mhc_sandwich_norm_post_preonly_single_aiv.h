@@ -17,14 +17,12 @@ template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
                                                         DUAL_SIBLING>::ComputeX2PostTile(uint32_t token, uint32_t tOff,
                                                                                          uint32_t tD, float invRms0,
-                                                                                         const float (&postVals)[N_MAX])
+                                                                                         const float (&postVals)[N_MAX],
+                                                                                         LocalTensor<float> gamma0)
 {
     LoadHOutAndCast((uint64_t)token * D_ + tOff, tD);
-    LoadGammaInto(bufGamma0Fp32_.Get<float>(), gamma0Gm_, tOff, tD);
-    SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
-    WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
     LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-    ApplyScaleAndGamma(hOut, invRms0, bufGamma0Fp32_.Get<float>(), tD);
+    ApplyScaleAndGamma(hOut, invRms0, gamma0, tD);
     FenceVToMte2();
     QuantizeRoundTrip(hOut, tD);
 
@@ -257,10 +255,30 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
 
     // 第二遍：计算R1/R2和第一处x2低精度边界。完整x2以输出dtype常驻UB，
     // 避免后续两遍从GM回读，同时不分配完整FP32 x2工作空间。
+    if constexpr (USE_RMS_MID) {
+        if (dimLoop_ > 1U) {
+            PrefetchGamma0Tile(0U, GetTileD(0U));
+        }
+    }
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        ComputeX2PostTile(token, tOff, tD, invRms0, postVals);
+        const bool useGammaQueue = USE_RMS_MID && dimLoop_ > 1U;
+        LocalTensor<float> gamma0 = bufGamma0Fp32_.Get<float>();
+        if (useGammaQueue) {
+            gamma0 = bufPhiFp32_.DeQue<float>();
+            if (tile + 1U < dimLoop_) {
+                PrefetchGamma0Tile(tOff + dimTile_, GetTileD(tile + 1U));
+            }
+        } else if (dimLoop_ > 1U) {
+            LoadGammaInto(gamma0, gamma0Gm_, tOff, tD);
+            SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+            WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
+        }
+        ComputeX2PostTile(token, tOff, tD, invRms0, postVals, gamma0);
+        if (useGammaQueue) {
+            bufPhiFp32_.FreeTensor(gamma0);
+        }
         CacheX2Tile(token, tOff, tD, !USE_RMS_MID);
 
         LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
