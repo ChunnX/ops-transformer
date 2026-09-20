@@ -247,15 +247,10 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
 
     // 第一遍：沿完整D轴计算R1。
     float sumSq0 = 0.0f;
-    PrefetchHOutTile((uint64_t)token * D_, GetTileD(0));
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        if (tile + 1U < dimLoop_) {
-            const uint32_t nextOff = tOff + dimTile_;
-            PrefetchHOutTile((uint64_t)token * D_ + nextOff, GetTileD(tile + 1U));
-        }
-        ConsumeHOutTile(tD);
+        LoadHOutAndCast((uint64_t)token * D_ + tOff, tD);
         sumSq0 += ReduceSumSq(bufHOutFp32_.Get<float>(), tD);
     }
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
@@ -354,12 +349,6 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        if constexpr (!RETURN_H_IN_F32) {
-            if (tile > 0U) {
-                const uint32_t prevOff = tOff - dimTile_;
-                DequeueHInPrimeTile((uint64_t)token * D_ + prevOff, GetTileD(tile - 1U));
-            }
-        }
         LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
         LoadHInCacheTile(tOff, tD, hIn);
         // R7开始时gamma2缓存已经死亡，复用它释放一整块gamma UB供输入输出双缓冲。
@@ -368,16 +357,7 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
         WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
         ApplyScaleAndGamma(hIn, invRms1, bufGamma2Fp32_.Get<float>(), tD);
         FenceVToMte2();
-        if constexpr (RETURN_H_IN_F32) {
-            WriteHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tD);
-        } else {
-            EnqueueHInPrimeTile(hIn, tD);
-        }
-    }
-    if constexpr (!RETURN_H_IN_F32) {
-        const uint32_t lastTile = dimLoop_ - 1U;
-        const uint32_t lastOff = lastTile * dimTile_;
-        DequeueHInPrimeTile((uint64_t)token * D_ + lastOff, GetTileD(lastTile));
+        WriteHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tD);
     }
 }
 
