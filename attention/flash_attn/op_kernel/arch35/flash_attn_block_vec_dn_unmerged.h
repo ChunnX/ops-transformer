@@ -728,7 +728,9 @@ public:
         Mutex::Lock<PIPE_MTE3>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
         LocalTensor<INPUT_T> mm2AL1Tensor = pL1Tensor;
 
-        if (runInfo.actSingleLoopS2Size > vec1S2CopyLenDn) {
+        // N208 has a 104-column half; a 97..104-column tail occupies 112
+        // physical columns and must copy both packed banks.
+        if (runInfo.actSingleLoopS2SizeAlign > vec1S2CopyLenDn) {
             DataCopy(mm2AL1Tensor[constInfo_.subBlockIdx * vec1HalfS1BaseSize * runInfo.actSingleLoopS2SizeAlign],
                      stage1CastTensor,
                      {vec1S2CopyCountDn, vec1S2CopyLenDn, 1,
