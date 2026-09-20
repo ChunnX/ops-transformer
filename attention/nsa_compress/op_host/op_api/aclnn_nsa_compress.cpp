@@ -38,6 +38,7 @@ extern "C" {
 
 namespace {
 
+static const uint64_t DIM_NUM_3 = 3;
 static const uint64_t DIM_NUM_2 = 2;
 static const uint64_t DIM_NUM_1 = 1;
 static const uint64_t DIM_NUM_0 = 0;
@@ -101,6 +102,11 @@ static aclnnStatus AnalysisAxis(const aclTensor *input, const aclTensor *weight,
 {
     Shape inputShape = input->GetViewShape();
     Shape weightShape = weight->GetViewShape();
+    if (inputShape.GetDimNum() != DIM_NUM_3 || weightShape.GetDimNum() != DIM_NUM_2) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "input must be 3D and weight must be 2D, but got inputDim=%zu, weightDim=%zu",
+                inputShape.GetDimNum(), weightShape.GetDimNum());
+        return ACLNN_ERR_PARAM_INVALID;
+    }
 
     shapeInfo.compressBlockSize = compressBlockSize;
     shapeInfo.compressStride = compressStride;

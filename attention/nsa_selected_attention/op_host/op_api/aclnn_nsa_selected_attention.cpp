@@ -240,18 +240,18 @@ aclnnStatus CheckNsaParam(const aclTensor *query, const aclTensor *key, const ac
     const aclTensor *attentionOut, const uint64_t *workspaceSize, aclOpExecutor ** const executor)
 {
     // 必须的参数指针判空
-    CHECK_RET(query != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(key != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(value != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(topkIndices != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(actualSeqQLenOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(actualSeqKvLenOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(inputLayout != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(executor != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(workspaceSize != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(softmaxMaxOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(softmaxSumOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(attentionOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(query != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(key != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(value != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(topkIndices != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(actualSeqQLenOptional != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(actualSeqKvLenOptional != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(inputLayout != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(executor != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(workspaceSize != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(softmaxMaxOut != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(softmaxSumOut != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(attentionOut != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     return ACLNN_SUCCESS;
 }
 
@@ -278,7 +278,7 @@ aclnnStatus aclnnNsaSelectedAttentionGetWorkspaceSize(
 {
     CHECK_RET(CheckNsaParam(query, key, value, topkIndices, actualSeqQLenOptional, actualSeqKvLenOptional, 
     inputLayout, softmaxMaxOut, softmaxSumOut, attentionOut, 
-    workspaceSize, executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
+    workspaceSize, executor) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
     L2_DFX_PHASE_1(aclnnNsaSelectedAttention,
                    DFX_IN(query, key, value, topkIndices, attenMaskOptional, actualSeqQLenOptional, 
                           actualSeqKvLenOptional, scaleValue, headNum, inputLayout,

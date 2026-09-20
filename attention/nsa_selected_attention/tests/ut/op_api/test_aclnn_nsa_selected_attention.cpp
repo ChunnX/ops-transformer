@@ -22,6 +22,7 @@
 #include "op_api_ut_common/array_desc.h"
 #include "op_api_ut_common/op_api_ut.h"
 #include "opdev/platform.h"
+#include "opdev/op_errno.h"
 
 using namespace std;
 using namespace op;
@@ -254,5 +255,28 @@ TEST_F(nsa_selected_attention_opapi_ut, nsa_selected_attention_aclnn_null_actual
 
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
-    EXPECT_NE(aclRet, ACL_SUCCESS);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
+}
+
+TEST_F(nsa_selected_attention_opapi_ut, required_null_parameters_return_param_nullptr)
+{
+    auto tensor = TensorDesc({kT, kN1, kQueryD}, ACL_FLOAT16, ACL_FORMAT_ND).ToAclType();
+    auto seq = IntArrayDesc(vector<int64_t>{kT}).ToAclType();
+    for (size_t i = 0; i < 12; ++i) {
+        SCOPED_TRACE(i);
+        array<const aclTensor *, 7> tensors;
+        tensors.fill(tensor.get());
+        if (i < tensors.size()) {
+            tensors[i] = nullptr;
+        }
+        char layout[] = "TND";
+        uint64_t workspaceSize = 0;
+        aclOpExecutor *executor = nullptr;
+        EXPECT_EQ(aclnnNsaSelectedAttentionGetWorkspaceSize(
+                      tensors[0], tensors[1], tensors[2], tensors[3], nullptr,
+                      i == 7 ? nullptr : seq.get(), i == 8 ? nullptr : seq.get(),
+                      0.088388, kN1, i == 9 ? nullptr : layout, 0, kSelectedBlockSize, kSelectedBlockCount,
+                      tensors[4], tensors[5], tensors[6], i == 10 ? nullptr : &workspaceSize,
+                      i == 11 ? nullptr : &executor), ACLNN_ERR_PARAM_NULLPTR);
+    }
 }

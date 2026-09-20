@@ -33,20 +33,42 @@ static const uint64_t DIM_1 = 1;
 static const uint64_t DIM_2 = 2;
 
 aclnnStatus CheckNsaCmpAttnParam(const aclTensor *query, const aclTensor *key, const aclTensor *value, const char *inputLayout,
-    const aclTensor *softmaxMaxOut, const aclTensor *softmaxSumOut, const aclTensor *attentionOutOut, 
+    const aclTensor *softmaxMaxOut, const aclTensor *softmaxSumOut, const aclTensor *attentionOutOut,
     const aclTensor *topkIndicesOut, const uint64_t *workspaceSize, aclOpExecutor ** const executor)
 {
     // 必须的参数指针判空
-    CHECK_RET(query != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(key != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(value != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(inputLayout != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(executor != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(workspaceSize != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(softmaxMaxOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(softmaxSumOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(attentionOutOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(topkIndicesOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(query != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(key != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(value != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(inputLayout != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(executor != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(workspaceSize != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(softmaxMaxOut != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(softmaxSumOut != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(attentionOutOut != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(topkIndicesOut != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    return ACLNN_SUCCESS;
+}
+
+aclnnStatus CheckNsaCmpAttnShape(const aclTensor *query, const aclTensor *key, const aclTensor *value)
+{
+    Shape qShape = query->GetViewShape();
+    Shape kShape = key->GetViewShape();
+    Shape vShape = value->GetViewShape();
+    auto qDim = qShape.GetDimNum();
+    auto kDim = kShape.GetDimNum();
+    auto vDim = vShape.GetDimNum();
+    if (qDim != DIM_NUM_3 || kDim != DIM_NUM_3 || vDim != DIM_NUM_3) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "input shape error: expected all shapes to be 3D, but got qDim=%zu, kDim=%zu, vDim=%zu",
+                qDim, kDim, vDim);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (qShape[0] == 0 || kShape[0] == 0 || qShape[1] == 0 || kShape[1] == 0 || qShape[2] == 0 || vShape[2] == 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,  "input shape error, got 0 in Tq Tkv Nq Nkv Dqk Dv (%ld, %ld, %ld, %ld, %ld, %ld)",
+        qShape[0], kShape[0], qShape[1], kShape[1], qShape[2], vShape[2]);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     return ACLNN_SUCCESS;
 }
 
@@ -133,7 +155,7 @@ aclnnStatus Postprocess(const aclTensor *&attenOut, const aclTensor *&topkIndice
 
 aclnnStatus aclnnNsaCompressAttentionVarLenScoreGetWorkspaceSize(
     const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *attenMaskOptional,
-    const aclTensor *topkMaskOptional, const aclIntArray *actualSeqQLenOptional, 
+    const aclTensor *topkMaskOptional, const aclIntArray *actualSeqQLenOptional,
     const aclIntArray *actualCmpSeqKvLenOptional, const aclIntArray *actualSelSeqKvLenOptional,
     double scaleValue, int64_t headNum, char *inputLayout, int64_t sparseMode,
     int64_t compressBlockSize, int64_t compressStride, int64_t selectBlockSize, int64_t selectBlockCount,
@@ -141,7 +163,7 @@ aclnnStatus aclnnNsaCompressAttentionVarLenScoreGetWorkspaceSize(
     const aclTensor *topkIndicesOut, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     CHECK_RET(CheckNsaCmpAttnParam(query, key, value, inputLayout, softmaxMaxOut, softmaxSumOut, attentionOutOut,
-        topkIndicesOut, workspaceSize, executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
+        topkIndicesOut, workspaceSize, executor) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
     L2_DFX_PHASE_1(aclnnNsaCompressAttentionVarLenScore,
                    DFX_IN(query, key, value, attenMaskOptional, topkMaskOptional, actualSeqQLenOptional,
                           actualCmpSeqKvLenOptional, actualSelSeqKvLenOptional, scaleValue, headNum, inputLayout,
@@ -151,7 +173,7 @@ aclnnStatus aclnnNsaCompressAttentionVarLenScoreGetWorkspaceSize(
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
-    if (softmaxMaxOut->IsEmpty() && softmaxSumOut->IsEmpty() && topkIndicesOut->IsEmpty() 
+    if (softmaxMaxOut->IsEmpty() && softmaxSumOut->IsEmpty() && topkIndicesOut->IsEmpty()
             && attentionOutOut->IsEmpty()) {
         *workspaceSize = 0;
         uniqueExecutor.ReleaseTo(executor);
@@ -163,6 +185,8 @@ aclnnStatus aclnnNsaCompressAttentionVarLenScoreGetWorkspaceSize(
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_ERR_PARAM_INVALID;
     }
+
+    CHECK_RET(CheckNsaCmpAttnShape(query, key, value) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     aclOpExecutor *l0Executor = uniqueExecutor.get();
     CHECK_RET(NsaCmpAttnContiguous(query, key, value, attenMaskOptional, topkMaskOptional, l0Executor) == ACLNN_SUCCESS,
@@ -180,17 +204,17 @@ aclnnStatus aclnnNsaCompressAttentionVarLenScoreGetWorkspaceSize(
     auto l0AttentionOutOut = l0NsaCompressAttentionOuts[2];
     auto l0TopkIndicesOutOut = l0NsaCompressAttentionOuts[3];
 
-    CHECK_RET(
-        Postprocess(l0AttentionOutOut, l0TopkIndicesOutOut, l0Executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
-
     if (l0SoftmaxMaxOut == nullptr || l0SoftmaxSumOut == nullptr || l0AttentionOutOut == nullptr ||
         l0TopkIndicesOutOut == nullptr) {
-        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, 
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR,
                 "l0SoftmaxMaxOut or l0SoftmaxSumOut or l0AttentionOutOut or l0TopkIndicesOutOut is null");
         *workspaceSize = 0;
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_ERR_INNER_NULLPTR;
     }
+    CHECK_RET(
+        Postprocess(l0AttentionOutOut, l0TopkIndicesOutOut, l0Executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
+
     auto viewCopyResult0 = l0op::ViewCopy(l0SoftmaxMaxOut, softmaxMaxOut, l0Executor);
     CHECK_RET(viewCopyResult0 != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto viewCopyResult1 = l0op::ViewCopy(l0SoftmaxSumOut, softmaxSumOut, l0Executor);
@@ -207,7 +231,7 @@ aclnnStatus aclnnNsaCompressAttentionVarLenScoreGetWorkspaceSize(
 
 aclnnStatus aclnnNsaCompressAttentionGetWorkspaceSize(
     const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *attenMaskOptional,
-    const aclTensor *topkMaskOptional, const aclIntArray *actualSeqQLenOptional, 
+    const aclTensor *topkMaskOptional, const aclIntArray *actualSeqQLenOptional,
     const aclIntArray *actualCmpSeqKvLenOptional, const aclIntArray *actualSelSeqKvLenOptional,
     double scaleValue, int64_t headNum, char *inputLayout, int64_t sparseMode,
     int64_t compressBlockSize, int64_t compressStride, int64_t selectBlockSize, int64_t selectBlockCount,
@@ -215,7 +239,7 @@ aclnnStatus aclnnNsaCompressAttentionGetWorkspaceSize(
     const aclTensor *topkIndicesOut, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     CHECK_RET(CheckNsaCmpAttnParam(query, key, value, inputLayout, softmaxMaxOut, softmaxSumOut, attentionOutOut,
-        topkIndicesOut, workspaceSize, executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
+        topkIndicesOut, workspaceSize, executor) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
     L2_DFX_PHASE_1(aclnnNsaCompressAttention,
                    DFX_IN(query, key, value, attenMaskOptional, topkMaskOptional, actualSeqQLenOptional,
                           actualCmpSeqKvLenOptional, actualSelSeqKvLenOptional, scaleValue, headNum, inputLayout,
@@ -225,7 +249,7 @@ aclnnStatus aclnnNsaCompressAttentionGetWorkspaceSize(
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
-    if (softmaxMaxOut->IsEmpty() && softmaxSumOut->IsEmpty() && topkIndicesOut->IsEmpty() 
+    if (softmaxMaxOut->IsEmpty() && softmaxSumOut->IsEmpty() && topkIndicesOut->IsEmpty()
             && attentionOutOut->IsEmpty()) {
         *workspaceSize = 0;
         uniqueExecutor.ReleaseTo(executor);
@@ -237,23 +261,8 @@ aclnnStatus aclnnNsaCompressAttentionGetWorkspaceSize(
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_ERR_PARAM_INVALID;
     }
-    Shape qShape = query->GetViewShape();
-    Shape kShape = key->GetViewShape();
-    Shape vShape = value->GetViewShape();
-    auto qDim = qShape.GetDimNum();
-    auto kDim = kShape.GetDimNum();
-    auto vDim = vShape.GetDimNum();
-    if (qDim != DIM_NUM_3 || kDim != DIM_NUM_3 || vDim != DIM_NUM_3) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "input shape error: expected all shapes to be %dD, but got qDim=%ld, kDim=%ld, vDim=%ld",
-                DIM_NUM_3, qDim, kDim, vDim);
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    if (qShape[0] == 0 || kShape[0] == 0 || qShape[1] == 0 || kShape[1] == 0 || qShape[2] == 0 || vShape[2] == 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,  "input shape error, got 0 in Tq Tkv Nq Nkv Dqk Dv (%ld, %ld, %ld, %ld, %ld, %ld)", 
-        qShape[0], kShape[0], qShape[1], kShape[1], qShape[2], vShape[2]);
-        return ACLNN_ERR_PARAM_INVALID;
-    }
+
+    CHECK_RET(CheckNsaCmpAttnShape(query, key, value) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     aclOpExecutor *l0Executor = uniqueExecutor.get();
     CHECK_RET(NsaCmpAttnContiguous(query, key, value, attenMaskOptional, topkMaskOptional, l0Executor) == ACLNN_SUCCESS,
@@ -271,17 +280,17 @@ aclnnStatus aclnnNsaCompressAttentionGetWorkspaceSize(
     auto l0AttentionOutOut = l0NsaCompressAttentionOuts[2];
     auto l0TopkIndicesOutOut = l0NsaCompressAttentionOuts[3];
 
-    CHECK_RET(
-        Postprocess(l0AttentionOutOut, l0TopkIndicesOutOut, l0Executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
-
     if (l0SoftmaxMaxOut == nullptr || l0SoftmaxSumOut == nullptr || l0AttentionOutOut == nullptr ||
         l0TopkIndicesOutOut == nullptr) {
-        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, 
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR,
                 "l0SoftmaxMaxOut or l0SoftmaxSumOut or l0AttentionOutOut or l0TopkIndicesOutOut is null");
         *workspaceSize = 0;
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_ERR_INNER_NULLPTR;
     }
+    CHECK_RET(
+        Postprocess(l0AttentionOutOut, l0TopkIndicesOutOut, l0Executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
+
     auto viewCopyResult0 = l0op::ViewCopy(l0SoftmaxMaxOut, softmaxMaxOut, l0Executor);
     CHECK_RET(viewCopyResult0 != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto viewCopyResult1 = l0op::ViewCopy(l0SoftmaxSumOut, softmaxSumOut, l0Executor);
