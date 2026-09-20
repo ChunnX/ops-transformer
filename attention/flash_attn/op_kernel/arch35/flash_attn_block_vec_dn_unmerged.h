@@ -661,15 +661,15 @@ public:
         AscendC::PipeBarrier<PIPE_V>();
         if (runInfo.actVecMSize == 64U && (runInfo.actMSizeAlign32 >> 1) == 64U &&
             runInfo.actSingleLoopS2Size == s2BaseSize && runInfo.actSingleLoopS2SizeAlign == s2BaseSize) {
-            FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize, false, true, false, true>(
+            FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize, false, true, true, true>(
                 stage1CastTensor, sumUb, maxUb, mm1ResUbTensor, expUb, nullptr, attenMaskUb,
                 runInfo.actMSizeAlign32 >> 1, runInfo.actSingleLoopS2SizeAlign, runInfo.actSingleLoopS2Size, 1.0F,
-                descaleQK, negativeFloatScalar_, 0.0F, false);
+                descaleQK, negativeFloatScalar_, 0.0F, false, 1.0F);
         } else {
-            FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize, false, false, false, true>(
+            FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize, false, false, true, true>(
                 stage1CastTensor, sumUb, maxUb, mm1ResUbTensor, expUb, nullptr, attenMaskUb,
                 runInfo.actMSizeAlign32 >> 1, runInfo.actSingleLoopS2SizeAlign, runInfo.actSingleLoopS2Size, 1.0F,
-                descaleQK, negativeFloatScalar_, 0.0F, false);
+                descaleQK, negativeFloatScalar_, 0.0F, false, 1.0F);
         }
 
         if (needMask) {
