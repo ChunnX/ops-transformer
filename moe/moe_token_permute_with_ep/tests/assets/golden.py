@@ -197,28 +197,19 @@ def _compute_core(prepared):
     return permute_tokens, tf.cast(rank, tf.int32), permute_probs
 
 
-def _run_numpy_flow(tokens, indices, probs, num_out_tokens, range_, padded_mode):
-    """golden 流：numpy 入 -> [numpy, numpy, numpy|None] 出。"""
-    prepared = _prepare_inputs(
-        _to_tf(tokens), _to_tf(indices), _optional_probs(_to_tf(probs)),
-        num_out_tokens, _normalize_range(range_), padded_mode,
-    )
-    pt, si, pp = _compute_core(prepared)
-    return [_tf_to_numpy(pt), _tf_to_numpy(si), _tf_to_numpy(pp)]
-
-
-def _prepare_framework_inputs(tokens, indices, probs, num_out_tokens, range_, padded_mode):
-    """third_party 流前置转换：框架 Tensor/numpy 入 -> _Prepared（TTK 绑定约定在 __init__ 完成）。"""
+def _prepare_typed(tokens, indices, probs, num_out_tokens, range_, padded_mode):
+    """统一输入管线：duck-typed 转换（_to_tf）-> _prepare_inputs。"""
     return _prepare_inputs(
         _to_tf(tokens), _to_tf(indices), _optional_probs(_to_tf(probs)),
         num_out_tokens, _normalize_range(range_), padded_mode,
     )
 
 
-def _run_framework_flow(tokens, indices, probs, num_out_tokens, range_, padded_mode):
-    """third_party 流：框架 Tensor 入 -> [tf, tf, tf|None] 出。"""
-    prepared = _prepare_framework_inputs(tokens, indices, probs, num_out_tokens, range_, padded_mode)
-    return list(_compute_core(prepared))
+def _run_golden_flow(tokens, indices, probs, num_out_tokens, range_, padded_mode):
+    """golden 流：numpy/framework Tensor 入 -> [numpy, numpy, numpy|None] 出。"""
+    pt, si, pp = _compute_core(_prepare_typed(
+        tokens, indices, probs, num_out_tokens, range_, padded_mode))
+    return [_tf_to_numpy(pt), _tf_to_numpy(si), _tf_to_numpy(pp)]
 
 
 class MoeTokenPermuteWithEpTfTestSpec:
@@ -240,7 +231,7 @@ class MoeTokenPermuteWithEpTfTestSpec:
         padded_mode=False,
         **kwargs,
     ):
-        return _run_numpy_flow(tokens, indices, probs, num_out_tokens, range, padded_mode)
+        return _run_golden_flow(tokens, indices, probs, num_out_tokens, range, padded_mode)
 
     class ThirdPartyImpl:
         """tf provider：输入转换前置 __init__，__call__ 链内零转换。"""
@@ -255,7 +246,7 @@ class MoeTokenPermuteWithEpTfTestSpec:
             padded_mode=False,
             **kwargs,
         ):
-            self._prepared = _prepare_framework_inputs(
+            self._prepared = _prepare_typed(
                 tokens, indices, probs, num_out_tokens, range, padded_mode
             )
 
@@ -288,8 +279,8 @@ class AclnnMoeTokenPermuteWithEpTfTestSpec:
         permuteProbsOut=None,
         **kwargs,
     ):
-        return [_tf_to_numpy(r) for r in _run_framework_flow(
-            tokens, indices, probsOptional, numOutTokens, rangeOptional, paddedMode)]
+        return _run_golden_flow(
+            tokens, indices, probsOptional, numOutTokens, rangeOptional, paddedMode)
 
     class ThirdPartyImpl:
         """tf provider：输入转换前置 __init__，__call__ 链内零转换。"""
@@ -304,7 +295,7 @@ class AclnnMoeTokenPermuteWithEpTfTestSpec:
             paddedMode=False,
             **kwargs,
         ):
-            self._prepared = _prepare_framework_inputs(
+            self._prepared = _prepare_typed(
                 tokens, indices, probsOptional, numOutTokens, rangeOptional, paddedMode
             )
 
