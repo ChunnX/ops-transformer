@@ -23,6 +23,11 @@
 #include <cstdlib>
 #include <cstring>
 
+// opbase 弱符号：禁用 executor 中指定 irIndex 的 optional 输入。
+// autogen 路径对传 nullptr 的后增 optional 输入（irIndex 27~30）不会自动跳过，
+// 须由调用方显式禁用，否则 opbase 在 infer/tiling 阶段访问 null 输入导致段错误。
+extern "C" aclnnStatus __attribute__((weak)) NnopbaseDisableOptionalInput(void *executor, const size_t irIndex);
+
 using namespace op;
 
 #ifdef __cplusplus
@@ -820,7 +825,7 @@ static aclnnStatus InnerFusedInferAttentionScoreGetWorkspaceSizeImpl(
             qStartIdxOptional, kvStartIdxOptional, inputLayout, numHeads, numKeyValueHeads, sparseMode, innerPrecise,
             blockSize, antiquantMode, keyAntiquantMode, valueAntiquantMode, queryQuantMode,
             enableArch22MlaDim0Stride)) {
-        return aclnnInnerFusedInferAttentionScoreGetWorkspaceSize(
+        aclnnStatus ret = aclnnInnerFusedInferAttentionScoreGetWorkspaceSize(
             query, key, value, pseShiftOptional, attenMaskOptional, actualSeqLengthsOptional,
             actualSeqLengthsKvOptional, deqScale1Optional, quantScale1Optional, deqScale2Optional, quantScale2Optional,
             quantOffset2Optional, antiquantScaleOptional, antiquantOffsetOptional, blockTableOptional,
@@ -831,6 +836,25 @@ static aclnnStatus InnerFusedInferAttentionScoreGetWorkspaceSizeImpl(
             kvStartIdxOptional, numHeads, scaleValue, preTokens, nextTokens, inputLayout, numKeyValueHeads, sparseMode,
             innerPrecise, blockSize, antiquantMode, softmaxLseFlag, keyAntiquantMode, valueAntiquantMode,
             queryQuantMode, pseType, outDtype, attentionOut, softmaxLse, workspaceSize, executor);
+        // 与 pass 版本 autogen 调用方保持一致：对传入 nullptr 的后增 optional 输入显式禁用，
+        // 否则 opbase 在 infer/tiling 阶段访问 null 输入描述符导致段错误。
+        // irIndex 27~30 依次为 dequantScaleQuery/learnableSink/qStartIdx/kvStartIdx。
+        if (ret == ACLNN_SUCCESS && NnopbaseDisableOptionalInput != nullptr && executor != nullptr &&
+            *executor != nullptr) {
+            if (dequantScaleQueryOptional == nullptr) {
+                NnopbaseDisableOptionalInput(*executor, 27U); // 27 is input irIndex
+            }
+            if (learnableSinkOptional == nullptr) {
+                NnopbaseDisableOptionalInput(*executor, 28U); // 28 is input irIndex
+            }
+            if (qStartIdxOptional == nullptr) {
+                NnopbaseDisableOptionalInput(*executor, 29U); // 29 is input irIndex，占位符
+            }
+            if (kvStartIdxOptional == nullptr) {
+                NnopbaseDisableOptionalInput(*executor, 30U); // 30 is input irIndex
+            }
+        }
+        return ret;
     }
 
     auto uniqueExecutor = CREATE_EXECUTOR();
