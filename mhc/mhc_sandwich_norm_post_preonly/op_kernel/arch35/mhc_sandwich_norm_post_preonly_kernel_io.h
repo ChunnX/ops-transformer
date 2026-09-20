@@ -77,22 +77,6 @@ __aicore__ inline void WriteHInPrimeTile(LocalTensor<float> src, uint64_t gmOffs
     }
 }
 
-__aicore__ inline void WriteScaledHInPrimeTile(LocalTensor<float> src, LocalTensor<float> gamma, float scale,
-                                               uint64_t gmOffset, uint32_t count)
-{
-    if constexpr (RETURN_H_IN_F32) {
-        ApplyScaleAndGamma(src, scale, gamma, count);
-        WriteHInPrimeTile(src, gmOffset, count);
-    } else {
-        LocalTensor<T> tmp = bufHInPrimeBf16_.AllocTensor<T>();
-        MhcSandwichRegBase::ScaleAndMulGammaToB16(tmp, src, gamma, scale, count);
-        bufHInPrimeBf16_.EnQue(tmp);
-        tmp = bufHInPrimeBf16_.DeQue<T>();
-        DataCopy(hInPrimeGm_[gmOffset], tmp, count);
-        bufHInPrimeBf16_.FreeTensor(tmp);
-    }
-}
-
 __aicore__ inline void WriteX2OutTile(LocalTensor<float> src, uint64_t gmOffset, uint32_t count)
 {
     WriteLowPrecisionTile(x2OutGm_, gmOffset, src, count);

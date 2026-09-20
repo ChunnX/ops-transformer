@@ -363,10 +363,11 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
         } else {
             gamma1 = gamma1[tOff];
         }
-        WriteScaledHInPrimeTile(hIn, gamma1, invRms1, (uint64_t)token * D_ + tOff, tD);
+        ApplyScaleAndGamma(hIn, invRms1, gamma1, tD);
         if (D_ > GAMMA1_CACHE_MAX_D) {
             FenceVToMte2();
         }
+        WriteHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tD);
     }
 }
 
