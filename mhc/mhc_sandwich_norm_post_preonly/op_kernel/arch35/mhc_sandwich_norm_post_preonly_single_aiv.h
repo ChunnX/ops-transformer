@@ -19,7 +19,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
                                                                                          uint32_t tD, float invRms0,
                                                                                          const float (&postVals)[N_MAX])
 {
-    LoadHOutAndCast((uint64_t)token * D_ + tOff, tD);
+    LoadCachedHOut(tOff, tD);
     LoadGammaInto(bufGamma0Fp32_.Get<float>(), gamma0Gm_, tOff, tD);
     SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
     WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
@@ -250,7 +250,7 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        LoadHOutAndCast((uint64_t)token * D_ + tOff, tD);
+        CacheHOutAndCast((uint64_t)token * D_ + tOff, tOff, tD);
         sumSq0 += ReduceSumSq(bufResFp32_.Get<float>()[N_MAX * dimTile_], tD);
     }
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
