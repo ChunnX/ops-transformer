@@ -17,6 +17,7 @@
 #include "platform/platform_infos_def.h"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
+#include "op_host/op_tiling/mc2_matmul_aiv_mode_common.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "register/op_def_registry.h"
 #include "mc2_log.h"
@@ -44,51 +45,34 @@ constexpr uint32_t X2_SCALE_INDEX = 4;
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16 * 1024 * 1024;
 constexpr uint32_t USER_WORKSPACE_A2 = 1 * 1024 * 1024; // moeExpertNum_ * sizeof(uint32_t) + epWorldSize_ * 2 * 32
 constexpr uint64_t CCL_BUFFER_MIN_BYTES = 200ULL * 1024 * 1024; // 校验HCCL BUFF空间大小
-constexpr uint64_t MB_BYTES = 1024ULL * 1024;
 } // namespace
 
 namespace optiling {
 
 void AllGatherV2DecodeTilingData(int32_t code, CoCTiling &tilingData)
 {
+    auto &aivModeTiling = tilingData.aivModeTiling;
     uint32_t packedCode = static_cast<uint32_t>(code);
-    tilingData.commDataSplit = packedCode & COMMDATASPLIT_MASK;
-    packedCode >>= COMMDATASPLIT_BNUM;
-    tilingData.commNpuSplit = packedCode & COMMNPUSPLIT_MASK;
-    packedCode >>= COMMNPUSPLIT_BNUM;
-    tilingData.commDirect = packedCode & COMMDIRECT_MASK;
-    packedCode >>= COMMDIRECT_BNUM;
-    tilingData.ubMoveNum = (packedCode & UBMOVENUM_MASK) * HALF_KBYTE;
-    packedCode >>= UBMOVENUM_BNUM;
-    tilingData.pValue = packedCode & PVALUE_MASK;
-    packedCode >>= PVALUE_BNUM;
-    tilingData.swizzlCount = packedCode & SWIZZLCOUNT_MASK;
-    packedCode >>= SWIZZLCOUNT_BNUM;
-    tilingData.swizzlDirect = packedCode & SWIZZLDIRECT_MASK;
-    packedCode >>= SWIZZLDIRECT_BNUM;
-    tilingData.m0 = (packedCode & M0_MASK) * DEFAULT_ROW + DEFAULT_ROW;
-    tilingData.k0 = DEFAULT_COL;
-    tilingData.n0 = tilingData.m0 == DEFAULT_ROW ? DEFAULT_COL : DEFAULT_ROW;
-    tilingData.mLoop = CeilDev(tilingData.m, tilingData.m0);
-    tilingData.nLoop = CeilDev(tilingData.n, tilingData.n0);
-    tilingData.kLoop = CeilDev(tilingData.k, tilingData.k0);
-}
-
-int32_t GetValueFromMKNConditionMapAllGather(int32_t m, int32_t k, int32_t n, int32_t defaultValue,
-                                             std::map<int, std::vector<std::vector<int>>> conditionMap)
-{
-    int32_t value = defaultValue;
-    for (auto &item : conditionMap) {
-        for (auto &condition : item.second) {
-            bool inRange = m > condition[CONDITION_M_ST] && m <= condition[CONDITION_M_END] &&
-                           k > condition[CONDITION_K_ST] && k <= condition[CONDITION_K_END] &&
-                           n > condition[CONDITION_N_ST] && n <= condition[CONDITION_N_END];
-            if (inRange) {
-                return item.first;
-            }
-        }
-    }
-    return value;
+    aivModeTiling.commDataSplit = packedCode & COMM_DATA_SPLIT_FIELD.mask;
+    packedCode >>= COMM_DATA_SPLIT_FIELD.bitCount;
+    aivModeTiling.commNpuSplit = packedCode & COMM_NPU_SPLIT_FIELD.mask;
+    packedCode >>= COMM_NPU_SPLIT_FIELD.bitCount;
+    tilingData.commDirect = packedCode & COMM_DIRECT_FIELD.mask;
+    packedCode >>= COMM_DIRECT_FIELD.bitCount;
+    aivModeTiling.ubMoveNum = (packedCode & UB_MOVE_NUM_FIELD.mask) * HALF_KBYTE;
+    packedCode >>= UB_MOVE_NUM_FIELD.bitCount;
+    aivModeTiling.pValue = packedCode & P_VALUE_FIELD.mask;
+    packedCode >>= P_VALUE_FIELD.bitCount;
+    aivModeTiling.swizzlCount = packedCode & SWIZZLE_COUNT_FIELD.mask;
+    packedCode >>= SWIZZLE_COUNT_FIELD.bitCount;
+    aivModeTiling.swizzlDirect = packedCode & SWIZZLE_DIRECT_FIELD.mask;
+    packedCode >>= SWIZZLE_DIRECT_FIELD.bitCount;
+    aivModeTiling.m0 = (packedCode & M0_FIELD.mask) * DEFAULT_ROW + DEFAULT_ROW;
+    aivModeTiling.k0 = DEFAULT_COL;
+    aivModeTiling.n0 = aivModeTiling.m0 == DEFAULT_ROW ? DEFAULT_COL : DEFAULT_ROW;
+    aivModeTiling.mLoop = CeilDev(tilingData.m, aivModeTiling.m0);
+    aivModeTiling.nLoop = CeilDev(tilingData.n, aivModeTiling.n0);
+    aivModeTiling.kLoop = CeilDev(tilingData.k, aivModeTiling.k0);
 }
 
 static void GetTilingKey(uint64_t &tilingKey, const AllGatherMatmulAIVModeInfo &info,
@@ -101,44 +85,46 @@ static void GetTilingKey(uint64_t &tilingKey, const AllGatherMatmulAIVModeInfo &
 
 void SetTilingParam(CoCTiling &cocTilingData, const std::map<int *, TilingValue> &TilingParamMap)
 {
+    auto &aivModeTiling = cocTilingData.aivModeTiling;
     int32_t m = cocTilingData.m;
     int32_t k = cocTilingData.k;
     int32_t n = cocTilingData.n;
 
     for (auto &item : TilingParamMap) {
         auto value = item.second.value;
-        auto conditionMap = item.second.conditionMap;
+        const auto &conditionMap = item.second.conditionMap;
         if (!conditionMap.empty()) {
-            *item.first = GetValueFromMKNConditionMapAllGather(m, k, n, value, conditionMap);
+            *item.first = mc2tiling::GetValueFromMknConditionMap(m, k, n, value, conditionMap);
         } else if (value != -1) {
             *item.first = value;
         }
     }
 
-    cocTilingData.ubMoveNum = cocTilingData.ubMoveNum * HALF_KBYTE;
-    if (cocTilingData.m0 >= DEFAULT_ROW) {
-        cocTilingData.k0 = DEFAULT_COL;
-        cocTilingData.n0 = cocTilingData.m0 == DEFAULT_ROW ? DEFAULT_COL : DEFAULT_ROW;
-        cocTilingData.mLoop = CeilDev(cocTilingData.m, cocTilingData.m0);
-        cocTilingData.nLoop = CeilDev(cocTilingData.n, cocTilingData.n0);
-        cocTilingData.kLoop = CeilDev(cocTilingData.k, cocTilingData.k0);
+    aivModeTiling.ubMoveNum *= HALF_KBYTE;
+    if (aivModeTiling.m0 >= DEFAULT_ROW) {
+        aivModeTiling.k0 = DEFAULT_COL;
+        aivModeTiling.n0 = aivModeTiling.m0 == DEFAULT_ROW ? DEFAULT_COL : DEFAULT_ROW;
+        aivModeTiling.mLoop = CeilDev(cocTilingData.m, aivModeTiling.m0);
+        aivModeTiling.nLoop = CeilDev(cocTilingData.n, aivModeTiling.n0);
+        aivModeTiling.kLoop = CeilDev(cocTilingData.k, aivModeTiling.k0);
     }
 }
 
 void DealTilingParamByBuffSize(CoCTiling &cocTilingData)
 {
+    auto &aivModeTiling = cocTilingData.aivModeTiling;
     auto blockCount = MAX_BLOCK_COUNT;
     int64_t maxPeerMemPerRank = (LCAL_BUFF_BYTES - FLAG_BUFF_BYTES) / INPUT_DTYPE / cocTilingData.rankSize / blockCount;
-    int64_t maxPValue = maxPeerMemPerRank / cocTilingData.m0 / cocTilingData.k0 / cocTilingData.kLoop;
-    cocTilingData.pValue = ClampValue(cocTilingData.pValue, MIN_P_VALUE, maxPValue);
+    int64_t maxPValue = maxPeerMemPerRank / aivModeTiling.m0 / aivModeTiling.k0 / aivModeTiling.kLoop;
+    aivModeTiling.pValue = ClampValue(aivModeTiling.pValue, MIN_P_VALUE, maxPValue);
 
-    if (cocTilingData.m0 == DEFAULT_COL &&
-        static_cast<int64_t>(cocTilingData.pValue) * cocTilingData.m0 * cocTilingData.k0 * cocTilingData.kLoop >=
+    if (aivModeTiling.m0 == DEFAULT_COL &&
+        static_cast<int64_t>(aivModeTiling.pValue) * aivModeTiling.m0 * aivModeTiling.k0 * aivModeTiling.kLoop >=
             maxPeerMemPerRank) {
-        cocTilingData.m0 = DEFAULT_ROW;
-        cocTilingData.n0 = DEFAULT_COL;
-        cocTilingData.mLoop = CeilDev(cocTilingData.m, cocTilingData.m0);
-        cocTilingData.nLoop = CeilDev(cocTilingData.n, cocTilingData.n0);
+        aivModeTiling.m0 = DEFAULT_ROW;
+        aivModeTiling.n0 = DEFAULT_COL;
+        aivModeTiling.mLoop = CeilDev(cocTilingData.m, aivModeTiling.m0);
+        aivModeTiling.nLoop = CeilDev(cocTilingData.n, aivModeTiling.n0);
     }
 }
 
@@ -152,7 +138,7 @@ void AllGatherV2MatmulNPU910BTwoRankINT8Tiling(CoCTiling &cocTilingData)
 
     AllGatherV2DecodeTilingData(code, cocTilingData);
 
-    cocTilingData.lenPerLoop = cocTilingData.ubMoveNum * cocTilingData.commDataSplit;
+    cocTilingData.lenPerLoop = cocTilingData.aivModeTiling.ubMoveNum * cocTilingData.aivModeTiling.commDataSplit;
     DealTilingParamByBuffSize(cocTilingData);
 }
 
@@ -166,7 +152,7 @@ void AllGatherV2MatmulNPU910BEightRankINT4Tiling(CoCTiling &cocTilingData)
 
     AllGatherV2DecodeTilingData(code, cocTilingData);
 
-    cocTilingData.lenPerLoop = cocTilingData.ubMoveNum * cocTilingData.commDataSplit;
+    cocTilingData.lenPerLoop = cocTilingData.aivModeTiling.ubMoveNum * cocTilingData.aivModeTiling.commDataSplit;
     DealTilingParamByBuffSize(cocTilingData);
 }
 
@@ -180,7 +166,7 @@ void AllGatherV2MatmulNPU910BFourRankINT8Tiling(CoCTiling &cocTilingData)
 
     AllGatherV2DecodeTilingData(code, cocTilingData);
 
-    cocTilingData.lenPerLoop = cocTilingData.ubMoveNum * cocTilingData.commDataSplit;
+    cocTilingData.lenPerLoop = cocTilingData.aivModeTiling.ubMoveNum * cocTilingData.aivModeTiling.commDataSplit;
     DealTilingParamByBuffSize(cocTilingData);
 }
 
@@ -194,7 +180,7 @@ void AllGatherV2MatmulNPU910BFourRankFP16Tiling(CoCTiling &cocTilingData)
 
     AllGatherV2DecodeTilingData(code, cocTilingData);
 
-    cocTilingData.lenPerLoop = cocTilingData.ubMoveNum * cocTilingData.commDataSplit;
+    cocTilingData.lenPerLoop = cocTilingData.aivModeTiling.ubMoveNum * cocTilingData.aivModeTiling.commDataSplit;
     DealTilingParamByBuffSize(cocTilingData);
 }
 
@@ -208,7 +194,7 @@ void AllGatherV2MatmulNPU910BEightRankINT8Tiling(CoCTiling &cocTilingData)
 
     AllGatherV2DecodeTilingData(code, cocTilingData);
 
-    cocTilingData.lenPerLoop = cocTilingData.ubMoveNum * cocTilingData.commDataSplit;
+    cocTilingData.lenPerLoop = cocTilingData.aivModeTiling.ubMoveNum * cocTilingData.aivModeTiling.commDataSplit;
     DealTilingParamByBuffSize(cocTilingData);
 }
 
@@ -222,7 +208,7 @@ void AllGatherV2MatmulNPU910BEightRankFP16Tiling(CoCTiling &cocTilingData)
 
     AllGatherV2DecodeTilingData(code, cocTilingData);
 
-    cocTilingData.lenPerLoop = cocTilingData.ubMoveNum * cocTilingData.commDataSplit;
+    cocTilingData.lenPerLoop = cocTilingData.aivModeTiling.ubMoveNum * cocTilingData.aivModeTiling.commDataSplit;
     DealTilingParamByBuffSize(cocTilingData);
 }
 
@@ -236,7 +222,7 @@ void AllGatherV2MatmulNPU91093FourRankINT8Tiling(CoCTiling &cocTilingData)
 
     AllGatherV2DecodeTilingData(code, cocTilingData);
 
-    cocTilingData.lenPerLoop = cocTilingData.ubMoveNum * cocTilingData.commDataSplit;
+    cocTilingData.lenPerLoop = cocTilingData.aivModeTiling.ubMoveNum * cocTilingData.aivModeTiling.commDataSplit;
     DealTilingParamByBuffSize(cocTilingData);
 }
 
@@ -250,7 +236,7 @@ void AllGatherV2MatmulNPU91093EightRankINT8Tiling(CoCTiling &cocTilingData)
 
     AllGatherV2DecodeTilingData(code, cocTilingData);
 
-    cocTilingData.lenPerLoop = cocTilingData.ubMoveNum * cocTilingData.commDataSplit;
+    cocTilingData.lenPerLoop = cocTilingData.aivModeTiling.ubMoveNum * cocTilingData.aivModeTiling.commDataSplit;
     DealTilingParamByBuffSize(cocTilingData);
 }
 
@@ -264,7 +250,7 @@ void AllGatherV2MatmulNPU91093FourRankFP16Tiling(CoCTiling &cocTilingData)
 
     AllGatherV2DecodeTilingData(code, cocTilingData);
 
-    cocTilingData.lenPerLoop = cocTilingData.ubMoveNum * cocTilingData.commDataSplit;
+    cocTilingData.lenPerLoop = cocTilingData.aivModeTiling.ubMoveNum * cocTilingData.aivModeTiling.commDataSplit;
     DealTilingParamByBuffSize(cocTilingData);
 }
 
@@ -278,7 +264,7 @@ void AllGatherV2MatmulNPU91093EightRankFP16Tiling(CoCTiling &cocTilingData)
 
     AllGatherV2DecodeTilingData(code, cocTilingData);
 
-    cocTilingData.lenPerLoop = cocTilingData.ubMoveNum * cocTilingData.commDataSplit;
+    cocTilingData.lenPerLoop = cocTilingData.aivModeTiling.ubMoveNum * cocTilingData.aivModeTiling.commDataSplit;
     DealTilingParamByBuffSize(cocTilingData);
 }
 
@@ -371,12 +357,9 @@ static ge::graphStatus AllGatherMatmulAIVModeGetPlatformInfoAndSetTiling(const g
                                                                          AllGatherMatmulAIVModeInfo &info,
                                                                          CoCTiling &coctiling)
 {
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
-    uint64_t ubSize = 0U;
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
-    info.aivNum = aivNum;
-    info.totalUbSize = ubSize;
+    const auto platformInfo = mc2tiling::GetAivPlatformInfo(context);
+    info.aivNum = platformInfo.aivNum;
+    info.totalUbSize = platformInfo.ubSize;
     OP_LOGD(K_INNER_DEBUG, "aivNum=%d", info.aivNum);
     OP_LOGD(K_INNER_DEBUG, "ubSize=%lu", info.totalUbSize);
 
@@ -392,13 +375,14 @@ static ge::graphStatus PrintfTilingData(AllGatherMatmulAIVModeInfo &info, CoCTil
     OP_LOGD("AllgatherMatmulV2AIVMode", "TilingData info.totalUbSize=%u", info.totalUbSize);
     OP_LOGD("AllgatherMatmulV2AIVMode", "TilingData info.isTransposeX2=%d", info.isTransposeX2);
 
-    OP_LOGD("AllgatherMatmulV2AIVMode", "TilingData coctiling.k0=%u", coctiling.k0);
-    OP_LOGD("AllgatherMatmulV2AIVMode", "TilingData coctiling.n0=%u", coctiling.n0);
-    OP_LOGD("AllgatherMatmulV2AIVMode", "TilingData coctiling.mLoop=%u", coctiling.mLoop);
-    OP_LOGD("AllgatherMatmulV2AIVMode", "TilingData coctiling.nLoop=%u", coctiling.nLoop);
-    OP_LOGD("AllgatherMatmulV2AIVMode", "TilingData coctiling.swizzlCount=%d", coctiling.swizzlCount);
-    OP_LOGD("AllgatherMatmulV2AIVMode", "TilingData coctiling.swizzlDirect=%d", coctiling.swizzlDirect);
-    OP_LOGD("AllgatherMatmulV2AIVMode", "TilingData coctiling.pValue=%d", coctiling.pValue);
+    const auto &aivModeTiling = coctiling.aivModeTiling;
+    OP_LOGD("AllgatherMatmulV2AIVMode", "TilingData coctiling.k0=%u", aivModeTiling.k0);
+    OP_LOGD("AllgatherMatmulV2AIVMode", "TilingData coctiling.n0=%u", aivModeTiling.n0);
+    OP_LOGD("AllgatherMatmulV2AIVMode", "TilingData coctiling.mLoop=%u", aivModeTiling.mLoop);
+    OP_LOGD("AllgatherMatmulV2AIVMode", "TilingData coctiling.nLoop=%u", aivModeTiling.nLoop);
+    OP_LOGD("AllgatherMatmulV2AIVMode", "TilingData coctiling.swizzlCount=%d", aivModeTiling.swizzlCount);
+    OP_LOGD("AllgatherMatmulV2AIVMode", "TilingData coctiling.swizzlDirect=%d", aivModeTiling.swizzlDirect);
+    OP_LOGD("AllgatherMatmulV2AIVMode", "TilingData coctiling.pValue=%d", aivModeTiling.pValue);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -444,8 +428,10 @@ void GetUsrWorkSpaceSize(uint32_t nElemAlign, uint32_t elementSize, uint64_t &us
 
     info.accumWorkSpacePingPong = false;
     if (info.quantFlag) {
-        info.accumWorkSpacePingPong = (info.M >= MAX_BLOCK_COUNT * cocTiling.m0 * cocTiling.pValue);
-        uint32_t workspaceM = info.accumWorkSpacePingPong ? MAX_BLOCK_COUNT * cocTiling.m0 * cocTiling.pValue : info.M;
+        const auto &aivModeTiling = cocTiling.aivModeTiling;
+        info.accumWorkSpacePingPong = (info.M >= MAX_BLOCK_COUNT * aivModeTiling.m0 * aivModeTiling.pValue);
+        uint32_t workspaceM =
+            info.accumWorkSpacePingPong ? MAX_BLOCK_COUNT * aivModeTiling.m0 * aivModeTiling.pValue : info.M;
         userWorkSpaceSize += static_cast<uint64_t>(workspaceM) * info.N * rankSize * sizeof(int32_t);
     }
     if (info.dequantType == DequantType::PER_TOKEN) {
@@ -453,35 +439,17 @@ void GetUsrWorkSpaceSize(uint32_t nElemAlign, uint32_t elementSize, uint64_t &us
     }
 }
 
-static bool CheckDtypeX1(gert::TilingContext *context)
+static bool CheckDtypeX1(const gert::TilingContext *context)
 {
-    const gert::Tensor *x1Scale = context->GetInputTensor(X1_SCALE_INDEX);
-    if (x1Scale == nullptr) {
-        return false;
-    }
-    auto x1Type = x1Scale->GetDataType();
-    if (x1Type != ge::DT_FLOAT) {
-        return false;
-    }
-    return true;
+    const auto *x1Scale = context->GetInputTensor(X1_SCALE_INDEX);
+    return x1Scale != nullptr && x1Scale->GetDataType() == ge::DT_FLOAT;
 }
 
 static bool CheckDtypeX2(const gert::TilingContext *context, AllGatherMatmulAIVModeInfo &info, ge::DataType yType)
 {
-    const gert::Tensor *x2Scale = context->GetInputTensor(X2_SCALE_INDEX);
-    if (x2Scale == nullptr) {
-        return false;
-    }
-    auto x2ScaleType = x2Scale->GetDataType();
-    info.isX2ScaleTypeInt64 = false;
-    if (x2ScaleType == ge::DT_FLOAT) {
-        return true;
-    }
-    if (yType == ge::DT_FLOAT16 && x2ScaleType == ge::DT_INT64) {
-        info.isX2ScaleTypeInt64 = true;
-        return true;
-    }
-    return false;
+    const auto result = mc2tiling::CheckAivMatmulScaleDtype(context->GetInputTensor(X2_SCALE_INDEX), yType);
+    info.isX2ScaleTypeInt64 = result.isInt64;
+    return result.valid;
 }
 
 bool SetTilingDataA3(CoCTiling &cocTilingData, const AllGatherMatmulAIVModeInfo &info, int64_t rankSize)
@@ -570,17 +538,9 @@ ge::graphStatus AllGatherMatmulTilingAIVModeFunc(gert::TilingContext *context)
     auto attrs = context->GetAttrs();
     auto group = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_GROUP_INDEX));
     const char *opName = context->GetNodeName();
-    // 校验HCCL BUFF空间大小
-    uint64_t hcclBuffSize = 0ULL;
-    auto cclRet = mc2tiling::GetCclBufferSize(group, &hcclBuffSize, opName);
-    if (cclRet == ge::GRAPH_SUCCESS) {
-        OP_TILING_CHECK(hcclBuffSize < CCL_BUFFER_MIN_BYTES,
-                        OP_LOGE(opName, "HCCL_BUFFSIZE (%lu Bytes) too small, min required %lu Bytes (%dMB)",
-                                hcclBuffSize, CCL_BUFFER_MIN_BYTES, CCL_BUFFER_MIN_BYTES / MB_BYTES),
-                        return ge::GRAPH_FAILED);
-    } else {
-        OP_LOGW(opName, "Can't get HCCL_BUFFSIZE, skip CCL buffer size validation.");
-    }
+    OP_TILING_CHECK(
+        mc2tiling::ValidateCclBufferSizeIfAvailable(group, opName, CCL_BUFFER_MIN_BYTES) != ge::GRAPH_SUCCESS,
+        OP_LOGE(opName, "Check CCL buffer size failed"), return ge::GRAPH_FAILED);
     int64_t rankSize = 0;
     mc2tiling::GetRankSize(opName, group, rankSize);
     coctiling.rankSize = rankSize;
