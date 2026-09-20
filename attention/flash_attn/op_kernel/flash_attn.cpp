@@ -129,8 +129,9 @@ __global__ __aicore__ void flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key
                                          s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask>;
 
     if constexpr (templateId == FA_Template_DN_Unmerged) {
-        // 不合轴 DN(预埋): BN1_S1 分核, 独立文件(*_dn_unmerged.h), 全部注册维度/有无 mask 实例化;
-        // 路由入口 DN_UNMERGED_ROUTE_ENABLED 默认关闭, 打开后由 host tiling 产生 templateId=2
+        // BN1_S1 scheduling for Cube M=128 and D/DV=64/64, 128/128 or 192/128.
+        // Actual D=72 uses config=2. Both mask variants share the same routing gate.
+        static_assert(config == 0 || config == 2 || config == 6, "DN unmerged excludes M64 and D256");
         using CubeBlock = FlashAttnKernel::FANoQuantGqaBlockCubeDnUnmerged<FA_T>;
         using VecFaBlock = FlashAttnKernel::FANoQuantGqaBlockVecDnUnmerged<FA_T>;
         using VecFdBlock = FlashAttnKernel::FiaBlockVecFlashDecode<FA_T, true>;

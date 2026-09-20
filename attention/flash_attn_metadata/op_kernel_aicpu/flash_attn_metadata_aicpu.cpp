@@ -234,16 +234,12 @@ void FlashAttnMetadataCpuKernel::InitLoadBalanceParams()
     }
     uint32_t gSize = static_cast<uint32_t>(numHeadsQ_ / numHeadsKv_);
     optiling::flash_attn::fa_tiling_util::AdjustSinnerAndSouter(headDimV_, gSize, maxSeqlenQ_, maxSeqlenKv_, maskMode_,
-                                                                baseInfo.preToken, baseInfo.nextToken, qlayout,
-                                                                mBaseSize_, s2BaseSize_);
-    // 不合轴 DN(预埋): 路由开关打开时按 BN1_S1 分核(B轴*N1轴, M轴=纯S1); 判定逻辑与 host
-    // 侧 UpdateTilingKeyTemplateId 共享 fa_tiling_util::GetFlashAttnTemplateId, 保证 metadata
-    // 分核模式与 kernel 模板选择严格一致; 开关关闭时维持原 BN2_S1G 分核, 不影响现网行为。
-    bool dnUnmergedRouted = optiling::flash_attn::fa_tiling_util::DN_UNMERGED_ROUTE_ENABLED &&
-                            optiling::flash_attn::fa_tiling_util::GetFlashAttnTemplateId(
-                                static_cast<uint32_t>(headDim_), static_cast<uint32_t>(headDimV_)) ==
-                                optiling::flash_attn::fa_tiling_util::FA_TEMPLATE_DN_UNMERGED;
+                                                                winLeft_, winRight_, qlayout, mBaseSize_, s2BaseSize_);
+    // Route after converting per-AIV rows to the original Cube M, exactly as host tiling does.
     mBaseSize_ *= (aivCoreNum_ / aicCoreNum_);
+    const bool dnUnmergedRouted = optiling::flash_attn::fa_tiling_util::GetFlashAttnTemplateId(
+                                      static_cast<uint32_t>(headDim_), static_cast<uint32_t>(headDimV_), mBaseSize_,
+                                      maskMode_ != 0) == optiling::flash_attn::fa_tiling_util::FA_TEMPLATE_DN_UNMERGED;
     param.mBaseSize = mBaseSize_;
     param.s2BaseSize = s2BaseSize_;
     param.l2Byte = 96U * 1024U * 1024U; // 96: 96MB, 1024: Mb2Kb, 1024:Kb2Mb
