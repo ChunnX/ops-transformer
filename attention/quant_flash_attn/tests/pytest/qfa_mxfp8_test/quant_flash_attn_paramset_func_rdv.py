@@ -16,6 +16,52 @@ TEST_PARAMS = {
     # [二期PREFILL/DN] v_tail尾task强制ND范式执行(q_scale_layout=TND路由DN); TND的v_tail=(B,N2,64,D)直存
     # 四形状: 纯尾31 / 拆分kMain128 / 拆分kMain192 / 拆分kMain448双subLoop+大尾48
     # [PA prefill] v_tail=尾块从主cache剥离直存(布局跟主KV): 三变体×纯尾/混合尾
+    # [泛化] prefill PA尾扩展: s2多核切分/D64/D256NZ/B2混尾/大GQA/causal mask
+    "PA_BnNBsD_VTAIL_B1_QS8_KVS8223_T31_Nq1_Nkv1_D128_SP0": {
+        "B": [1], "N_q": [1], "N_kv": [1], "D": [128],
+        "cu_seqlens_q": [[0, 8]], "cu_seqlens_kv": [None],
+        "seqused_q": [[8]], "seqused_kv": [[8223]],
+        "max_seqlen_q": [8], "max_seqlen_kv": [8223],
+        "enable_pa": [True], "kv_cache_layout": ["BnNBsD"], "block_size": [512],
+        "mask_mode": [0], "q_scale_layout": ["N2TGD"], "p_scale": [1.0],
+        "enable_lse": [False], "enable_v_tail": [True],
+    },
+    "PA_BnNBsD_VTAIL_B1_QS8_KVS1075_T51_Nq8_Nkv1_D64_SP0": {
+        "B": [1], "N_q": [8], "N_kv": [1], "D": [64],
+        "cu_seqlens_q": [[0, 8]], "cu_seqlens_kv": [None],
+        "seqused_q": [[8]], "seqused_kv": [[1075]],
+        "max_seqlen_q": [8], "max_seqlen_kv": [1075],
+        "enable_pa": [True], "kv_cache_layout": ["BnNBsD"], "block_size": [512],
+        "mask_mode": [0], "q_scale_layout": ["N2TGD"], "p_scale": [1.0],
+        "enable_lse": [False], "enable_v_tail": [True],
+    },
+    "PA_NZ_VTAIL_B1_QS8_KVS2079_T31_Nq8_Nkv1_D256_SP0": {
+        "B": [1], "N_q": [8], "N_kv": [1], "D": [256],
+        "cu_seqlens_q": [[0, 8]], "cu_seqlens_kv": [None],
+        "seqused_q": [[8]], "seqused_kv": [[2079]],
+        "max_seqlen_q": [8], "max_seqlen_kv": [2079],
+        "enable_pa": [True], "kv_cache_layout": ["PA_NZ"], "block_size": [512],
+        "mask_mode": [0], "q_scale_layout": ["N2TGD"], "p_scale": [1.0],
+        "enable_lse": [False], "enable_v_tail": [True],
+    },
+    "PA_BnNBsD_VTAIL_B2_QS8_KVS1075_642_T51_T2_Nq4_Nkv2_D128_SP0": {
+        "B": [2], "N_q": [4], "N_kv": [2], "D": [128],
+        "cu_seqlens_q": [[0, 8, 16]], "cu_seqlens_kv": [None],
+        "seqused_q": [[8, 8]], "seqused_kv": [[1075, 642]],
+        "max_seqlen_q": [8], "max_seqlen_kv": [1075],
+        "enable_pa": [True], "kv_cache_layout": ["BnNBsD"], "block_size": [512],
+        "mask_mode": [0], "q_scale_layout": ["N2TGD"], "p_scale": [1.0],
+        "enable_lse": [False], "enable_v_tail": [True],
+    },
+    "PA_BnBsND_VTAIL_B1_QS8_KVS1567_T31_Nq64_Nkv8_D128_SP0": {
+        "B": [1], "N_q": [64], "N_kv": [8], "D": [128],
+        "cu_seqlens_q": [[0, 8]], "cu_seqlens_kv": [None],
+        "seqused_q": [[8]], "seqused_kv": [[1567]],
+        "max_seqlen_q": [8], "max_seqlen_kv": [1567],
+        "enable_pa": [True], "kv_cache_layout": ["BnBsND"], "block_size": [512],
+        "mask_mode": [0], "q_scale_layout": ["N2TGD"], "p_scale": [1.0],
+        "enable_lse": [False], "enable_v_tail": [True],
+    },
     "PA_BnNBsD_VTAIL_B1_QS8_KVS31_T31_Nq16_Nkv1_D128_SP0": {
         "B": [1], "N_q": [16], "N_kv": [1], "D": [128],
         "cu_seqlens_q": [[0, 8]], "cu_seqlens_kv": [[0, 31]],

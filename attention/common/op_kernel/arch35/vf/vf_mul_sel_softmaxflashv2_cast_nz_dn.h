@@ -2050,7 +2050,7 @@ __simd_vf__ inline void ProcessVec1DnTailNoUpdateMxfp8VF(
     __ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32,
     __ubuf__ float *new_global_sum, __ubuf__ float *new_global_max, __ubuf__ fp8_e8m0_t *pScaleSubLoop0,
     const uint32_t m, const uint32_t originN, const T scale, const float deScaleQK, const T minValue,
-    const float pScale)
+    const T pScale, const bool needAtten = false, const int64_t maskLine = 0)
 {
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
@@ -2108,15 +2108,55 @@ __simd_vf__ inline void ProcessVec1DnTailNoUpdateMxfp8VF(
     mem_bar(VST_VLD);
 
     // [非量化DN bf16同款] 4路Load: 步进m*4铺满全部s2行{4i+k}(生产参考: 非量化NoUpdate/Mxfp8主路径)
-    for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
-        LoadAlign(src0, src_ub0 + iter_m * m * 4);
-        LoadAlign(src1, src_ub1 + iter_m * m * 4);
-        LoadAlign(src2, src_ub2 + iter_m * m * 4);
-        LoadAlign(src3, src_ub3 + iter_m * m * 4);
-        Max(max0, max0, src0, preg_108);
-        Max(max1, max1, src1, preg_108);
-        Max(max2, max2, src2, preg_108);
-        Max(max3, max3, src3, preg_108);
+    // [VTAIL+MASK] 尾窗causal掩码与主路径同款(车道Arange(maskLine)+s2行阈值递增
+    // Compare/Select, 掩码位写minValue并回存, 参与后续max/exp): 此前尾VF无mask输入,
+    // prefill+causal(sparse_mode=3)尾窗softmax未掩码致数值错(实测28%超差)
+    RegTensor<float> vreg_chunk0;
+    RegTensor<float> vreg_thresh;
+    MaskReg preg_compare0;
+    MaskReg preg_compare1;
+    MaskReg preg_compare2;
+    MaskReg preg_compare3;
+    if (needAtten) {
+        Arange(vreg_chunk0, (float)maskLine);
+        Duplicate(vreg_thresh, 0.0f);
+        for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
+            LoadAlign(src0, src_ub0 + iter_m * m * 4);
+            LoadAlign(src1, src_ub1 + iter_m * m * 4);
+            LoadAlign(src2, src_ub2 + iter_m * m * 4);
+            LoadAlign(src3, src_ub3 + iter_m * m * 4);
+            Compare<T, CMPMODE::GE>(preg_compare0, vreg_chunk0, vreg_thresh, preg_135);
+            Adds(vreg_thresh, vreg_thresh, 1.0f, preg_135);
+            Compare<T, CMPMODE::GE>(preg_compare1, vreg_chunk0, vreg_thresh, preg_135);
+            Adds(vreg_thresh, vreg_thresh, 1.0f, preg_135);
+            Compare<T, CMPMODE::GE>(preg_compare2, vreg_chunk0, vreg_thresh, preg_135);
+            Adds(vreg_thresh, vreg_thresh, 1.0f, preg_135);
+            Compare<T, CMPMODE::GE>(preg_compare3, vreg_chunk0, vreg_thresh, preg_135);
+            Adds(vreg_thresh, vreg_thresh, 1.0f, preg_135);
+            Select(src0, src0, vreg_min, preg_compare0);
+            Select(src1, src1, vreg_min, preg_compare1);
+            Select(src2, src2, vreg_min, preg_compare2);
+            Select(src3, src3, vreg_min, preg_compare3);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub0 + iter_m * m * 4, src0, preg_108);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub1 + iter_m * m * 4, src1, preg_108);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub2 + iter_m * m * 4, src2, preg_108);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub3 + iter_m * m * 4, src3, preg_108);
+            Max(max0, max0, src0, preg_108);
+            Max(max1, max1, src1, preg_108);
+            Max(max2, max2, src2, preg_108);
+            Max(max3, max3, src3, preg_108);
+        }
+    } else {
+        for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
+            LoadAlign(src0, src_ub0 + iter_m * m * 4);
+            LoadAlign(src1, src_ub1 + iter_m * m * 4);
+            LoadAlign(src2, src_ub2 + iter_m * m * 4);
+            LoadAlign(src3, src_ub3 + iter_m * m * 4);
+            Max(max0, max0, src0, preg_108);
+            Max(max1, max1, src1, preg_108);
+            Max(max2, max2, src2, preg_108);
+            Max(max3, max3, src3, preg_108);
+        }
     }
 
     Max(max0, max0, max2, preg_108);
@@ -2190,7 +2230,7 @@ __simd_vf__ inline void ProcessVec1DnTailUpdateMxfp8VF(
     __ubuf__ float *new_global_sum, __ubuf__ float *new_global_max, __ubuf__ fp8_e8m0_t *pScaleSubLoop0,
     __ubuf__ float *pre_loop_max, __ubuf__ float *pre_loop_sum, __ubuf__ float *first_loop_sum, int32_t subLoop,
     const uint32_t m, const uint32_t originN, const T scale, const float deScaleQK, const T minValue,
-    const float pScale)
+    const T pScale, const bool needAtten = false, const int64_t maskLine = 0)
 {
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
@@ -2251,15 +2291,53 @@ __simd_vf__ inline void ProcessVec1DnTailUpdateMxfp8VF(
     mem_bar(VST_VLD);
 
     // [修复] 同NoUpdate: 步进m*4铺满全部s2行(原漏*4只读行[0,34])
-    for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
-        LoadAlign(src0, src_ub0 + iter_m * m * 4);
-        LoadAlign(src1, src_ub1 + iter_m * m * 4);
-        LoadAlign(src2, src_ub2 + iter_m * m * 4);
-        LoadAlign(src3, src_ub3 + iter_m * m * 4);
-        Max(max0, max0, src0, preg_108);
-        Max(max1, max1, src1, preg_108);
-        Max(max2, max2, src2, preg_108);
-        Max(max3, max3, src3, preg_108);
+    // [VTAIL+MASK] 尾窗causal掩码同NoUpdate尾(主路径同款Arange/Compare/Select)
+    RegTensor<float> vreg_chunk0;
+    RegTensor<float> vreg_thresh;
+    MaskReg preg_compare0;
+    MaskReg preg_compare1;
+    MaskReg preg_compare2;
+    MaskReg preg_compare3;
+    if (needAtten) {
+        Arange(vreg_chunk0, (float)maskLine);
+        Duplicate(vreg_thresh, 0.0f);
+        for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
+            LoadAlign(src0, src_ub0 + iter_m * m * 4);
+            LoadAlign(src1, src_ub1 + iter_m * m * 4);
+            LoadAlign(src2, src_ub2 + iter_m * m * 4);
+            LoadAlign(src3, src_ub3 + iter_m * m * 4);
+            Compare<T, CMPMODE::GE>(preg_compare0, vreg_chunk0, vreg_thresh, preg_135);
+            Adds(vreg_thresh, vreg_thresh, 1.0f, preg_135);
+            Compare<T, CMPMODE::GE>(preg_compare1, vreg_chunk0, vreg_thresh, preg_135);
+            Adds(vreg_thresh, vreg_thresh, 1.0f, preg_135);
+            Compare<T, CMPMODE::GE>(preg_compare2, vreg_chunk0, vreg_thresh, preg_135);
+            Adds(vreg_thresh, vreg_thresh, 1.0f, preg_135);
+            Compare<T, CMPMODE::GE>(preg_compare3, vreg_chunk0, vreg_thresh, preg_135);
+            Adds(vreg_thresh, vreg_thresh, 1.0f, preg_135);
+            Select(src0, src0, vreg_min, preg_compare0);
+            Select(src1, src1, vreg_min, preg_compare1);
+            Select(src2, src2, vreg_min, preg_compare2);
+            Select(src3, src3, vreg_min, preg_compare3);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub0 + iter_m * m * 4, src0, preg_108);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub1 + iter_m * m * 4, src1, preg_108);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub2 + iter_m * m * 4, src2, preg_108);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub3 + iter_m * m * 4, src3, preg_108);
+            Max(max0, max0, src0, preg_108);
+            Max(max1, max1, src1, preg_108);
+            Max(max2, max2, src2, preg_108);
+            Max(max3, max3, src3, preg_108);
+        }
+    } else {
+        for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
+            LoadAlign(src0, src_ub0 + iter_m * m * 4);
+            LoadAlign(src1, src_ub1 + iter_m * m * 4);
+            LoadAlign(src2, src_ub2 + iter_m * m * 4);
+            LoadAlign(src3, src_ub3 + iter_m * m * 4);
+            Max(max0, max0, src0, preg_108);
+            Max(max1, max1, src1, preg_108);
+            Max(max2, max2, src2, preg_108);
+            Max(max3, max3, src3, preg_108);
+        }
     }
 
     // [Mxfp8状态机] 跨task max接力 + ln2格点化 + preLoop三件套
@@ -2350,7 +2428,7 @@ __aicore__ inline void ProcessVec1VfDnTailMxfp8(
     const LocalTensor<fp8_e8m0_t> &pScaleSubLoop0Tensor, const LocalTensor<float> &preLoopMaxTensor,
     const LocalTensor<float> &preLoopSumTensor, const LocalTensor<float> &firstLoopSumTensor, uint32_t subLoop,
     const uint16_t m, const uint32_t originN, const float scale, const float deScaleQK, const T minValue,
-    const float pScale)
+    const float pScale, const bool needAtten = false, const int64_t maskLine = 0)
 {
     __ubuf__ T2 *x_exp = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
     __ubuf__ float *input_x_local_UB = (__ubuf__ T *)srcTensor.GetPhyAddr();
@@ -2364,12 +2442,12 @@ __aicore__ inline void ProcessVec1VfDnTailMxfp8(
     if constexpr (!isUpdate) {
         ProcessVec1DnTailNoUpdateMxfp8VF<T, T2, 128>(x_exp, input_x_local_UB, exp_max_fp32, new_global_sum,
                                                       new_global_max, pScaleSubLoop0Ub, m, originN, scale, deScaleQK,
-                                                      minValue, pScale);
+                                                      minValue, pScale, needAtten, maskLine);
     } else {
         ProcessVec1DnTailUpdateMxfp8VF<T, T2, 128>(x_exp, input_x_local_UB, exp_max_fp32, new_global_sum,
                                                     new_global_max, pScaleSubLoop0Ub, pre_loop_max, pre_loop_sum,
                                                     first_loop_sum, subLoop, m, originN, scale, deScaleQK, minValue,
-                                                    pScale);
+                                                    pScale, needAtten, maskLine);
     }
 }
 

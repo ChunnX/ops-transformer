@@ -167,7 +167,6 @@ public:
     TQue<QuePosition::VECOUT, 1> sumBrdcst_;
 
     TBuf<> lseTmpBuff_;
-    TBuf<> vTailPCastBuf_; // 尾列P的bf16 cast暂存区(mBase/2 x 64 x 2B)
     TQue<QuePosition::VECOUT, 1> softmaxLseQueue_;
     TQue<QuePosition::VECOUT, 1> FDResOutputQue_;
     TQue<QuePosition::VECIN, 1> accumOutInputQue_;
@@ -385,16 +384,25 @@ public:
             // [干净组合] m=行距=dstStride=nSize/2=16; 垃圾列[actM,16)无害(主路径同布局验证:
             // L0C未写≈0, exp(0-max)≈0不污染) — 无需任何清理
             uint16_t tailM = (uint16_t)(runInfo.actMSizeAlign32 >> 1);
+            // [VTAIL+MASK] 尾task补causal掩码: maskLine已由ComputeMaskLineDN按尾窗起点
+            // (纯尾task s2Idx=尾块起点)算好, isFullMask_改写-256的逻辑在函数头已生效;
+            // isSkipMask_时整窗免掩码(与主路径isSkipMask_分支语义一致)
+            bool tailNeedAtten = false;
+            if constexpr (HAS_MASK) {
+                tailNeedAtten = !isSkipMask_;
+            }
             if (unlikely(runInfo.isFirstS2Loop)) {
                 FaVectorApi::ProcessVec1VfDnTailMxfp8<T, bfloat16_t, false>(
                     pTailBf16Ub, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf_, pScaleSubLoop0Tensor,
                     preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, tailM, runInfo.kvTailLen,
-                    static_cast<T>(constInfo_.scaleValue), descaleQK, negativeFloatScalar_, 1.0f);
+                    static_cast<T>(constInfo_.scaleValue), descaleQK, negativeFloatScalar_, 1.0f, tailNeedAtten,
+                    maskLine);
             } else {
                 FaVectorApi::ProcessVec1VfDnTailMxfp8<T, bfloat16_t, true>(
                     pTailBf16Ub, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf_, pScaleSubLoop0Tensor,
                     preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, tailM, runInfo.kvTailLen,
-                    static_cast<T>(constInfo_.scaleValue), descaleQK, negativeFloatScalar_, 1.0f);
+                    static_cast<T>(constInfo_.scaleValue), descaleQK, negativeFloatScalar_, 1.0f, tailNeedAtten,
+                    maskLine);
             }
             bmm1ResBuf.SetCrossCore();
             this->stage1OutQue_[stage1Offset].template EnQue(stage1CastTensor);
@@ -411,10 +419,9 @@ public:
                 // dualDstCtl=2按M半区拆(sub0=M[0,64), sub1=M[64,128)), sub偏移=M半区行*64列;
                 // 直搬源=VF bf16段式(65块段距x4段), dst行距64列(4块, k=64对齐)
                 if (likely(runInfo.actVecMSize != 0)) {
-                    // [decode几何配套] A尾区固定64列(k=MXFP8_V_TAIL_BOUNDARY): 块长64单位(2048B)=
-                    // [16M][64 s2行]恰好一段数据(65行段含1行gap, 不读gap), flash s2Align=64同款{4,64,1,0};
-                    // stage1行[tail,64)=0(VF originN掩码, dump实证) → C2 k=64的pad列贡献0。
-                    // dst偏移=sub*64*64(A尾区[64M半区][64列], 两sub共[128M][64]恰占满预留16384B)
+                    // [C2匹配] A尾区行距固定64 = C2 LoadDataToL0A mStep*16=64(k=MXFP8_V_TAIL_BOUNDARY固定)
+                    // flash用动态s2Align是因为flash的C2 k也是动态s2Size(两边匹配)
+                    // quant的C2 k固定64 → A尾区行距也必须固定64
                     uint64_t tailDstOffset =
                         static_cast<uint64_t>(constInfo_.subBlockIdx) * (mBaseSize >> 1) * 64U;
                     DataCopy(mm2ATailL1Tensor[tailDstOffset], pTailBf16Ub,
@@ -838,17 +845,23 @@ __aicore__ inline void SoftmaxDataCopyOut(RunInfoX runInfo, LocalTensor<float> &
                     // (=mBase/2*16元素)。原公式256*actVecM按decode几何(actVecM<=16, 且QS1用例sub1恒
                     // 早退从未执行)写死, actVecM=64(PREFILL大actM)时偏移越界4倍踩B尾区(sub1全废+sub0
                     // 被踩出1e-3噪声, KVS31实测)。与actVecM无关, 按GS1半区固定几何。
-                    uint64_t dstOffset = static_cast<uint64_t>(constInfo_.subBlockIdx) * (mBaseSize >> 1) * 16U;
+                    // [修复] 固定几何仅满块actM==mBaseSize成立; C2尾乘realM=actM只消费行[0,actM),
+                    // 16<actM<=64时sub1实际覆盖行[actVecMAlign16,actM), 固定偏移64行会落到消费区外
+                    // -> M行后半读L1脏数据(全乱值, KVS1075_T51_Nq8_D64实测50%挂)。改为按实际行覆盖
+                    // 偏移: 满块时与原值一致(64*16), 半块时sub1紧接sub0之后。
+                    uint64_t dstOffset = static_cast<uint64_t>(constInfo_.subBlockIdx) * actVecMSizeAlign16 * 16U;
                     if (likely(runInfo.actVecMSize != 0)) {
                         DataCopy(mm2ATailL1Tensor[dstOffset], pTailBf16Ub,
                                  {(uint16_t)(MXFP8_V_TAIL_BOUNDARY / 16), (uint16_t)actVecMSizeAlign16,
                                   (uint16_t)(vec1Srcstride - actVecMSizeAlign16),
                                   (uint16_t)(mBaseSize - actVecMSizeAlign16)});
                     } else {
-                        // 无效subblock半区清零(镜像cast版): L1残留inf/nan会进Mmad k=64累加
+                        // 无效subblock半区清零(镜像cast版): L1残留inf/nan会进Mmad k=64累加。
+                        // [UB预算] 零源借用stage2OutBuf_前8KB(仅本AIV vec1阶段使用, 与vec2同核串行
+                        // 无冲突): 原vTailPCastBuf_独立16KB分配使HAS_V_TAIL+HAS_MASK叠加时UB溢出
+                        // (SP3+vtail全D≥72崩, 实测aicore exception), 删除该分配腾出预算。
                         constexpr uint32_t aTailHalfElems = (mBaseSize >> 1) * MXFP8_V_TAIL_BOUNDARY;
-                        LocalTensor<uint32_t> zeroSrc =
-                            vTailPCastBuf_.template Get<uint32_t>()[constInfo_.subBlockIdx * (aTailHalfElems / 2)];
+                        LocalTensor<uint32_t> zeroSrc = this->stage2OutBuf_.template Get<uint32_t>();
                         for (uint32_t i = 0; i < aTailHalfElems / 2; i++) {
                             zeroSrc.SetValue(i, 0);
                         }
@@ -1190,10 +1203,6 @@ __aicore__ inline void SoftmaxDataCopyOut(RunInfoX runInfo, LocalTensor<float> &
         // VF每subLoop向该地址写128~256B(踩TPipe池后续内存, 靠分配间隔兜底); 收编为显式TBuf,
         // VF公共代码零改动(只往传入指针写, [128]相对偏移语义不变)
         tPipe_->InitBuffer(pScaleBuf_, 512);
-        if constexpr (HAS_V_TAIL) {
-            // 尾列P bf16暂存: 双subblock并发各占半区, 2 x (mBaseSize/2)行 x 64列 x 2B
-            tPipe_->InitBuffer(vTailPCastBuf_, 2 * (mBaseSize >> 1U) * MXFP8_V_TAIL_BOUNDARY * sizeof(bfloat16_t));
-        }
         if constexpr (HAS_MASK) {
             tPipe_->InitBuffer(attenMaskInQue_[0], 1, attenMaskSize); // 256 * 64
         }
