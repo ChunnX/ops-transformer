@@ -37,9 +37,9 @@ public:
         return liV2TopkCommon::GetGatherTmpBufferSize<uint32_t, liV2TopkCommon::B32_RADIX_BUFFER_NUM>(topK, trunkLen);
     }
 
-    __aicore__ inline void Init(uint32_t topK, uint32_t trunkLen)
+    __aicore__ inline void Init(uint32_t liV2TopK, uint32_t trunkLen)
     {
-        this->topK = topK;
+        this->topK = liV2TopK;
         this->trunkLen = trunkLen;
     }
 
