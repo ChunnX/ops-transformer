@@ -151,7 +151,7 @@ private:
     GM_ADDR commOutGM_;
 
     // 是否为 HiF4 scale 场景(影响 4-bit 数据 2:1 打包与 scale 单元长度)
-    static constexpr bool isHiF4Scale_ = AscendC::IsSameType<ScaleType, hif4_scale>::value;
+    static constexpr bool isHiF4Scale_ = Blaze::Gemm::IsHif4<X1Type>();
     // Scale 通信数据类型: MX 为 E8M0; HiF4 的 hif4_scale 为完整 4 字节元数据(E6M2+E1_8+E1_16),
     // HCCL 未提供专用类型, 按 UINT32 传输
     static constexpr uint64_t mxScaleHcclDataType_ =
@@ -226,7 +226,7 @@ AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, ScaleType,
     opStateDump_.DoDump(DUMP_FIELD_STEP, POS_COMM_BEFORE, static_cast<uint8_t>(Utils::RT_PHASE_COMM_PREPARE));
     // DoDump不统计scale commit次数
     commState_.scaleHandle_ = commState_.hccl_.template AlltoAll<true>(
-        x1Scale_, commX1ScaleGM1_, static_cast<uint64_t>(scaleSendCount * sizeof(ScaleType)),
+        x1Scale_, commX1ScaleGM1_, scaleSendCount,
         static_cast<AscendC::HcclDataType>(mxScaleHcclDataType_), scaleSendCount, 1);
     if (commTiling.splitAxisTileCnt > 0) {
         uint64_t headSendCount = static_cast<uint64_t>(commTiling.splitAxisTileSize) * rankForComm;
