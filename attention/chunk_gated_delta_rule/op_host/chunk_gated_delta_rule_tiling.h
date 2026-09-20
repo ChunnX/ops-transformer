@@ -97,6 +97,7 @@ protected:
     ChunkGatedDeltaRule::ChunkGatedDeltaRuleTilingData tilingData_;
     ChunkGatedDeltaRuleInfo inputParams_;
     platform_ascendc::SocVersion socVersion_;
+    NpuArch npuArch_; // 950平台判断走arch, socVersion_保留原获取
 };
 
 } // namespace optiling
