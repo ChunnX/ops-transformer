@@ -247,10 +247,15 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
 
     // 第一遍：沿完整D轴计算R1。
     float sumSq0 = 0.0f;
+    PrefetchHOutTile((uint64_t)token * D_, GetTileD(0));
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        LoadHOutAndCast((uint64_t)token * D_ + tOff, tD);
+        if (tile + 1U < dimLoop_) {
+            const uint32_t nextOff = tOff + dimTile_;
+            PrefetchHOutTile((uint64_t)token * D_ + nextOff, GetTileD(tile + 1U));
+        }
+        ConsumeHOutTile(tD);
         sumSq0 += ReduceSumSq(bufHOutFp32_.Get<float>(), tD);
     }
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
