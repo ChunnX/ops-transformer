@@ -179,6 +179,24 @@ __simd_vf__ inline void VfDivAndCastVF(__ubuf__ bfloat16_t *dstT, __ubuf__ float
     }
 }
 
+/*
+ * @ingroup VfaVectorApi
+ * @brief VfDivAndCast 的 __aicore__ 包装函数：接收 LocalTensor，内部转指针调 vf
+ *
+ * @param [in] outputT     转置带 pad 输出（[S1,DV] bf16 语义，mm2ResUB 别名视图，~36KB）
+ * @param [in] stage2OutUB 累积分子（[DV,S1] fp32）
+ * @param [in] accRowsumUB 累积分母（[128] per 查询位置，fp32）
+ */
+__aicore__ inline void VfDivAndCast(const LocalTensor<bfloat16_t> &outputT,
+                                     const LocalTensor<float> &stage2OutUB,
+                                     const LocalTensor<float> &accRowsumUB)
+{
+    __ubuf__ bfloat16_t *dstTPtr = reinterpret_cast<__ubuf__ bfloat16_t *>(outputT.GetPhyAddr());
+    __ubuf__ float *srcPtr = reinterpret_cast<__ubuf__ float *>(stage2OutUB.GetPhyAddr());
+    __ubuf__ float *rowsumPtr = reinterpret_cast<__ubuf__ float *>(accRowsumUB.GetPhyAddr());
+    VfDivAndCastVF(dstTPtr, srcPtr, rowsumPtr);
+}
+
 } // namespace QfaVectorApi
 } // namespace QFA_KERNEL
 
