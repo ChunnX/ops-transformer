@@ -107,7 +107,8 @@ __aicore__ inline float ReduceSumPrecise(LocalTensor<float> src, uint32_t tD)
 /// 使用ReduceSumPrecise计算平方和。
 __aicore__ inline float ReduceSumSq(LocalTensor<float> src, uint32_t tD)
 {
-    LocalTensor<float> sqBuf = bufSqFp32_.Get<float>();
+    // gamma2缓存与平方归约不同时存活，复用同一块UB作为平方临时区。
+    LocalTensor<float> sqBuf = bufGamma2Fp32_.Get<float>();
     MhcSandwichRegBase::Mul(sqBuf, src, src, tD);
     PipeBarrier<PIPE_V>();
     return ReduceSumPrecise(sqBuf, tD);

@@ -138,7 +138,7 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
 {
     LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
     LocalTensor<float> reduceRows = bufResFp32_.Get<float>();
-    LocalTensor<float> tmp = bufSqFp32_.Get<float>();
+    LocalTensor<float> tmp = bufGamma2Fp32_.Get<float>();
 
     DataCopyExtParams copyParams = {1, 0, 0, 0, 0};
     copyParams.blockLen = tD * sizeof(float);
@@ -266,7 +266,7 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
         LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
         if constexpr (USE_RMS_MID) {
             LocalTensor<float> out = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-            LocalTensor<float> tmp = bufSqFp32_.Get<float>();
+            LocalTensor<float> tmp = bufGamma2Fp32_.Get<float>();
             for (uint32_t half = 0; half < 2; ++half) {
                 const uint32_t h0 = half * 2;
                 const uint32_t h1 = h0 + 1;

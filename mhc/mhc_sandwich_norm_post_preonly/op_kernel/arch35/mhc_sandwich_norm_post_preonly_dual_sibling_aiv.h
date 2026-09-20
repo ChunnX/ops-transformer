@@ -42,7 +42,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         if constexpr (USE_RMS_MID) {
             // R3的归一化范围是完整N*D，因此该标量也在两个lane上按相同树冗余计算。
             LocalTensor<float> out = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-            LocalTensor<float> tmp = bufSqFp32_.Get<float>();
+            LocalTensor<float> tmp = bufGamma2Fp32_.Get<float>();
             for (uint32_t half = 0; half < 2; ++half) {
                 const uint32_t h0 = half * 2;
                 const uint32_t h1 = h0 + 1;
