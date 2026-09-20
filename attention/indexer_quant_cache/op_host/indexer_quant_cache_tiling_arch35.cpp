@@ -104,8 +104,8 @@ ge::graphStatus IndexerQuantCacheTiling::GetAttr()
     return ge::GRAPH_SUCCESS;
 }
 
-bool IndexerQuantCacheTiling::GetCacheViewLayout(
-    size_t inputIdx, int64_t &blockSize, int64_t &rowStride, int64_t &blockStride)
+bool IndexerQuantCacheTiling::GetCacheViewLayout(size_t inputIdx, int64_t &blockSize, int64_t &rowStride,
+                                                 int64_t &blockStride)
 {
     if (!context_->InputIsView(inputIdx)) {
         return false;
@@ -145,15 +145,14 @@ ge::graphStatus IndexerQuantCacheTiling::ValidateCache4D(size_t inputIdx, const 
     OP_CHECK_NULL_WITH_CONTEXT(context_, shapePtr);
     const auto &logical = shapePtr->GetShape();
     OP_CHECK_IF(logical.GetDimNum() != CACHE_VIEW_DIM_NUM,
-                OP_LOGE(context_->GetNodeName(),
-                        "%s must be 4D [blockNum, blockSize, 1, headDim], got dimNum=%zu",
+                OP_LOGE(context_->GetNodeName(), "%s must be 4D [blockNum, blockSize, 1, headDim], got dimNum=%zu",
                         inputName, logical.GetDimNum()),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(logical.GetDim(CACHE_ONE_DIM) != CACHE_ONE_DIM_VALUE,
-                OP_LOGE(context_->GetNodeName(),
-                        "%s dim2 (second-to-last) must be 1 (one quantized vector per token), got %ld",
-                        inputName, logical.GetDim(CACHE_ONE_DIM)),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        logical.GetDim(CACHE_ONE_DIM) != CACHE_ONE_DIM_VALUE,
+        OP_LOGE(context_->GetNodeName(), "%s dim2 (second-to-last) must be 1 (one quantized vector per token), got %ld",
+                inputName, logical.GetDim(CACHE_ONE_DIM)),
+        return ge::GRAPH_FAILED);
     // 连续场景的行宽(headDim)取末维; 分页 view 下随后由 view stride 覆盖, 此处仅作连续默认值。
     const auto &storage = shapePtr->GetStorageShape();
     lastDim = storage.GetDim(storage.GetDimNum() - 1);
@@ -186,16 +185,14 @@ ge::graphStatus IndexerQuantCacheTiling::GetShapeAttrsInfoInner()
     // x 尾轴 d 必须 32 对齐: MX 模式每 32 个元素一个 scale, 且各量化分支按 32 元素块对齐处理,
     // 非 32 对齐会导致尾块读越界/scale 错位。
     OP_CHECK_IF(d_ <= 0 || d_ % BLOCK_SIZE != 0,
-                OP_LOGE(context_->GetNodeName(),
-                        "the last dim (d) of x should be 32-aligned, got %ld", d_),
+                OP_LOGE(context_->GetNodeName(), "the last dim (d) of x should be 32-aligned, got %ld", d_),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(d_ > D_LENGTH_FULL_LOAD,
                 OP_LOGE(context_->GetNodeName(), "input x tail dimension must be less than 8192, got %ld", d_),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(GetAttr() != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_->GetNodeName(), "get attr failed."),
+    OP_CHECK_IF(GetAttr() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "get attr failed."),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(quantMode_ < 0 || quantMode_ > MXFP4_QUANT_MODE,
                 OP_LOGE(context_->GetNodeName(), "quant_mode should be in [0,3], got %ld", quantMode_),
@@ -227,7 +224,9 @@ ge::graphStatus IndexerQuantCacheTiling::CalcOpTiling()
     if (quantMode_ == MXFP8_QUANT_MODE || quantMode_ == MXFP4_QUANT_MODE) {
         scaleByteSize = 1; // MX 模式 scale 为 e8m0, 占1字节
     }
-    int64_t perBlockScaleElemNum = BLOCK_SIZE / scaleByteSize;
+    // MX-FP4 scale rows use 64-byte alignment for DIST_PACK_B16 in the kernel.
+    int64_t perBlockScaleElemNum = quantMode_ == MXFP4_QUANT_MODE ? 64 : BLOCK_SIZE / scaleByteSize;
+    int64_t cacheUbCol = quantMode_ == MXFP4_QUANT_MODE ? d_ / 2 : d_;
     int64_t xAlign = (quantMode_ == MXFP8_QUANT_MODE) ? PER_BLOCK_FP16 : 16;
     int64_t lo = rowOnceLoop;
     int64_t hi = rowOfFormerBlock_;
@@ -235,12 +234,15 @@ ge::graphStatus IndexerQuantCacheTiling::CalcOpTiling()
     while (lo <= hi) {
         int64_t mid = lo + (hi - lo) / 2;
         int64_t xSize = mid * RoundUp(d_, xAlign) * 2 * DOUBLE_BUFFER;
-        int64_t ySize = mid * RoundUp(d_, BLOCK_SIZE) * 1 * DOUBLE_BUFFER;
+        int64_t ySize = mid * RoundUp(cacheUbCol, BLOCK_SIZE) * DOUBLE_BUFFER;
         int64_t scaleSize = mid * RoundUp(scaleCol_, perBlockScaleElemNum) * scaleByteSize * DOUBLE_BUFFER;
         int64_t tmpBufferSize = RoundUp(mid, 8) * 4;
         int64_t mxScratchSize = 0;
         if (quantMode_ == MXFP8_QUANT_MODE) {
             mxScratchSize = mid * RoundUp(d_, 8) * 4 + mid * CeilDiv(d_, 128) * 16 * 4;
+        } else if (quantMode_ == MXFP4_QUANT_MODE) {
+            // maxExpBuf and halfScaleBuf each hold one aligned row of uint16_t.
+            mxScratchSize = 2 * RoundUp(scaleCol_, 16) * sizeof(uint16_t);
         }
         int64_t totalSize = xSize + ySize + scaleSize + tmpBufferSize + mxScratchSize;
         if (totalSize <= static_cast<int64_t>(ubSize_)) {
@@ -339,8 +341,7 @@ ge::graphStatus IndexerQuantCacheTiling::CalcOpTiling()
                 return ge::GRAPH_FAILED);
     // cache_scale 行宽必须能容纳每行写出的 scaleCol(mode2: scaleCol=1), 否则散写越界到下一行。
     OP_CHECK_IF(scaleRowStride_ < scaleCol_,
-                OP_LOGE(context_->GetNodeName(),
-                        "cache_scale last dim(row stride)=%ld must be >= scaleCol=%ld",
+                OP_LOGE(context_->GetNodeName(), "cache_scale last dim(row stride)=%ld must be >= scaleCol=%ld",
                         scaleRowStride_, scaleCol_),
                 return ge::GRAPH_FAILED);
 
