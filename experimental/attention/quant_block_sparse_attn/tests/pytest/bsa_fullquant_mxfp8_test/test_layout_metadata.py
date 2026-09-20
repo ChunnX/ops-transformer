@@ -84,7 +84,13 @@ class LayoutMetadataTest(unittest.TestCase):
 
                 valid_metadata = metadata(sparse, layout)
 
-                def invoke(query=q, q_scale=scale, **kwargs):
+                def invoke(
+                    query=q,
+                    q_scale=scale,
+                    sparse_indices=indices,
+                    sparse_seq_len=sparse,
+                    **kwargs,
+                ):
                     options = dict(
                         block_table=table,
                         metadata=valid_metadata,
@@ -102,8 +108,8 @@ class LayoutMetadataTest(unittest.TestCase):
                         kv_scale,
                         value_scale,
                         None,
-                        indices,
-                        sparse,
+                        sparse_indices,
+                        sparse_seq_len,
                         None,
                         0.125,
                         128,
@@ -117,24 +123,56 @@ class LayoutMetadataTest(unittest.TestCase):
                 self.assertEqual(tuple(out.shape), shape)
                 self.assertEqual(tuple(lse.shape), (0,))
 
-                with self.assertRaisesRegex(RuntimeError, "requires.*None"):
-                    invoke(
-                        cu_seqlens_q=torch.empty((0,), dtype=torch.int32, device="meta")
-                    )
-                with self.assertRaisesRegex(RuntimeError, "requires.*None"):
-                    invoke(
-                        seqused_q=torch.empty((2,), dtype=torch.int32, device="meta")
-                    )
-                with self.assertRaisesRegex(RuntimeError, "q_descale"):
-                    invoke(
-                        q_scale=torch.empty(
-                            (*shape[:-1], 3, 2), dtype=scale.dtype, device="meta"
+                # Five negative scenario categories are exercised for both
+                # BSND and BNSD.  The first one uses the other padded layout's
+                # axis order, so rank=4 alone cannot accidentally pass.
+                wrong_query_shape = (
+                    (2, 4, 129, 128) if layout == "BSND" else (2, 129, 4, 128)
+                )
+                with self.subTest(layout=layout, scenario="query_axis_order"):
+                    with self.assertRaises(RuntimeError):
+                        invoke(
+                            query=torch.empty(
+                                wrong_query_shape, dtype=q.dtype, device="meta"
+                            )
                         )
-                    )
-                with self.assertRaises(RuntimeError):
-                    invoke(
-                        query=torch.empty((2, 129, 128), dtype=q.dtype, device="meta")
-                    )
+
+                with self.subTest(layout=layout, scenario="q_descale_shape"):
+                    with self.assertRaisesRegex(RuntimeError, "q_descale"):
+                        invoke(
+                            q_scale=torch.empty(
+                                (*shape[:-1], 3, 2), dtype=scale.dtype, device="meta"
+                            )
+                        )
+
+                with self.subTest(layout=layout, scenario="sparse_qb_too_short"):
+                    # Sq=129 with a 128-token sparse block requires Qb=2.
+                    # Qb=1 is positive but cannot cover the final query block.
+                    with self.assertRaises(RuntimeError):
+                        invoke(
+                            sparse_indices=torch.empty(
+                                (2, 4, 1, 2), dtype=torch.int32, device="meta"
+                            ),
+                            sparse_seq_len=torch.empty(
+                                (2, 4, 1), dtype=torch.int32, device="meta"
+                            ),
+                        )
+
+                with self.subTest(layout=layout, scenario="non_null_cu_seqlens_q"):
+                    with self.assertRaisesRegex(RuntimeError, "requires.*None"):
+                        invoke(
+                            cu_seqlens_q=torch.empty(
+                                (0,), dtype=torch.int32, device="meta"
+                            )
+                        )
+
+                with self.subTest(layout=layout, scenario="non_null_seqused_q"):
+                    with self.assertRaisesRegex(RuntimeError, "requires.*None"):
+                        invoke(
+                            seqused_q=torch.empty(
+                                (2,), dtype=torch.int32, device="meta"
+                            )
+                        )
 
     def test_npu_metadata_optional_inputs(self):
         """Exercise the af49ad74f None fix without launching the attention kernel."""
