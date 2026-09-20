@@ -31,7 +31,7 @@ HEADER = [
     "precision_tolerances",
     "absolute_precision",
 ]
-API = "flash_mla_with_kvcache_ttk_ops.flash_mla_with_kvcache_ttk"
+API = "torch.ops.cann_ops_transformer.flash_mla_with_kvcache"
 DTYPES = ("float16", "bfloat16")
 COVERAGE_HEADER = HEADER + [
     "tensor_storage_shapes",
@@ -82,7 +82,7 @@ def coverage_row(
         (batch + 1,),
         None if no_seqused else (batch,),
         (2048, 2048) if mask else None,
-        (0,),
+        (0,),  # Device-independent placeholder; npu_preprocess fills it after H2D.
     )
     dtypes = (
         dtype,
@@ -296,7 +296,7 @@ def cases():
             (3,) if layout_q == "TND" else None,
             (2,),
             (2048, 2048) if mask == 3 else None,
-            (0,),
+            (0,),  # Device-independent placeholder; npu_preprocess fills it after H2D.
         )
         dtypes = (
             dtype,
