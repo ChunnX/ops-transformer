@@ -42,6 +42,7 @@
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #include "../../common/op_kernel/mc2_moe_context.h"
 #include "../../common/op_kernel/moe_ep_exception_dump_writer.h"
+#include "../../common/op_kernel/moe_ep_send_completion.h"
 
 namespace MoeEpDispatchEpilogueImpl {
 
@@ -462,6 +463,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         SyncFunc<AscendC::HardEvent::MTE3_S>();
         diagWriter_.RunPosRecord(MOE_EP_DISPATCH_EPILOGUE_RUN_POS_OUTPUT_DONE);
     }
+    MoeEpCompletion::DrainChannels(mc2Context_, epWorldSize_, tpipe_);
 }
 
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
