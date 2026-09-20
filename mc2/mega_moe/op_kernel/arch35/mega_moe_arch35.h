@@ -87,7 +87,7 @@ protected:
     __aicore__ inline void InitQuantTokenBufferConfig();
     __aicore__ inline UnpermuteBufferConfig InitTokenUnpermuteBuffers();
     __aicore__ inline void SendTopkIdsIndexAndCount(const WorkRange &ownedExpertRange);
-    __aicore__ inline void QuantizeInputTokens();
+    __aicore__ inline void QuantizeInputTokens(const WorkRange &tokenRange);
     __aicore__ inline void ProcessInputPreparationStage();
     __aicore__ inline void RunGmm2CombineForExpert(ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo,
                                                    uint32_t &startBlockIdx, uint32_t tokenStartIndexInExpert,
@@ -96,6 +96,8 @@ protected:
                                                    uint32_t &combineRowSequence, bool isFinalCombine);
     template <bool WaitForTokenCountReady>
     __aicore__ inline void PrepareGmmExpertState(ExpertLoopState &state, uint32_t expertIdx);
+    __aicore__ inline void ConfigureSharedGmm1Input(GMMAddrInfo &gmmAddrInfo, GmmExecutionConfig &gmmConfig,
+                                                    Gmm1ActivationSync &sharedGmm1ActivationSync) const;
     __aicore__ inline void RunSharedExpertGmm1Activation(const GMMAddrInfo &gmmAddrInfo,
                                                          const ProblemShape &problemShape,
                                                          const GmmExecutionConfig &gmmConfig,
@@ -522,23 +524,56 @@ MegaMoe<TemplateMegaMoeTypeFunc>::InitTokenUnpermuteBuffers()
 }
 
 template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ConfigureSharedGmm1Input(
+    GMMAddrInfo &gmmAddrInfo, GmmExecutionConfig &gmmConfig, Gmm1ActivationSync &sharedGmm1ActivationSync) const
+{
+    const bool useInputDirectly =
+        !Std::IsSame<XType, bfloat16_t>::value && commonConfig_.tokenHiddenDim % MXFP_DIVISOR_SIZE == 0U;
+    gmmConfig.useStridedInput = !useInputDirectly;
+    if (useInputDirectly) {
+        gmmAddrInfo.aGlobal = params_.aGmAddr;
+        gmmAddrInfo.aScaleGlobal = params_.xScaleGmAddr;
+    } else {
+        GM_ADDR sharedInputBase = SHARED_INPUT_REUSES_MOE_QUANT ? params_.peermemInfo.quantTokenScalePtr :
+                                                                  params_.workspaceInfo.sharedExpertInputPtr;
+        gmmAddrInfo.aGlobal = sharedInputBase;
+        gmmAddrInfo.aScaleGlobal = sharedInputBase + sharedQuantProcessConfig_.quantTokenAlignBytes;
+        gmmConfig.inputLayout = {
+            sharedQuantProcessConfig_.quantTokenScaleAlignBytes * SharedQuantConfig::A_ELEMS_PER_BYTE,
+            sharedQuantProcessConfig_.quantTokenScaleAlignBytes / static_cast<uint32_t>(sizeof(SharedQuantScaleType))};
+    }
+    if constexpr (SharedQuantConfig::AXW_MODE == AxWMode::A8W4) {
+        gmmAddrInfo.gmm1ActivationSync = &sharedGmm1ActivationSync;
+    }
+}
+
+template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunSharedExpertGmm1Activation(
     const GMMAddrInfo &gmmAddrInfo, const ProblemShape &problemShape, const GmmExecutionConfig &gmmConfig,
     GmmRuntimeState &runtimeState, uint32_t sharedExpertIdx)
 {
     uint32_t expertBeforeCnt = sharedExpertIdx * commonConfig_.tokenNum;
-    if constexpr (SharedQuantConfig::AXW_MODE == AxWMode::A8W4) {
-        RunGmm1A8W4<typename SharedQuantConfig::QuantOutType, SharedWeightType, bfloat16_t, SharedQuantScaleType,
-                    SharedQuantScaleType, GMM1_TILE_M, L1_TILE_M_256, false, true, true>(
-            sharedEpilogueOp_, params_, problemShape, gmmAddrInfo, runtimeState.startBlockIdx, gmmTileSequence_,
-            gmmConfig.blockJob, expertBeforeCnt, sharedExpertIdx, gmmConfig.inputLayout);
+    auto runGmm = [&](const auto &...layoutArgs) __attribute__((cce_aicore))
+    {
+        if constexpr (SharedQuantConfig::AXW_MODE == AxWMode::A8W4) {
+            RunGmm1A8W4<typename SharedQuantConfig::QuantOutType, SharedWeightType, bfloat16_t, SharedQuantScaleType,
+                        SharedQuantScaleType, GMM1_TILE_M, L1_TILE_M_256, false, true, true>(
+                sharedEpilogueOp_, params_, problemShape, gmmAddrInfo, runtimeState.startBlockIdx, gmmTileSequence_,
+                gmmConfig.blockJob, expertBeforeCnt, sharedExpertIdx, layoutArgs...);
+        } else {
+            RunGmm1Generic<typename SharedQuantConfig::QuantOutType, SharedActivationOutType,
+                           typename SharedQuantConfig::QuantOutType, bfloat16_t, SharedQuantScaleType,
+                           SharedQuantScaleType, SharedWeight1Format != FORMAT_ND, GMM1_TILE_M, L1_TILE_M_256, false,
+                           true, true>(sharedEpilogueOp_, params_, problemShape, gmmAddrInfo,
+                                       runtimeState.startBlockIdx, runtimeState.vecSetSyncCom, gmmConfig.blockJob,
+                                       expertBeforeCnt, sharedExpertIdx, runtimeState.pingpongIdx, nullptr,
+                                       SharedQuantConfig::AXW_MODE == AxWMode::A8W8, layoutArgs...);
+        }
+    };
+    if (gmmConfig.useStridedInput) {
+        runGmm(gmmConfig.inputLayout);
     } else {
-        RunGmm1Generic<typename SharedQuantConfig::QuantOutType, SharedActivationOutType,
-                       typename SharedQuantConfig::QuantOutType, bfloat16_t, SharedQuantScaleType, SharedQuantScaleType,
-                       SharedWeight1Format != FORMAT_ND, GMM1_TILE_M, L1_TILE_M_256, false, true, true>(
-            sharedEpilogueOp_, params_, problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
-            runtimeState.vecSetSyncCom, gmmConfig.blockJob, expertBeforeCnt, sharedExpertIdx, runtimeState.pingpongIdx,
-            nullptr, SharedQuantConfig::AXW_MODE == AxWMode::A8W8, gmmConfig.inputLayout);
+        runGmm();
     }
 }
 
@@ -564,23 +599,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm1
     Get<M_VALUE>(problemShape) = commonConfig_.tokenNum;
     Get<N_VALUE>(problemShape) = commonConfig_.gmm1OutputDim;
     Get<K_VALUE>(problemShape) = commonConfig_.tokenHiddenDim;
-    GM_ADDR sharedInputBase = params_.workspaceInfo.sharedExpertInputPtr;
-    if constexpr (SHARED_INPUT_REUSES_MOE_QUANT) {
-        sharedInputBase = params_.peermemInfo.quantTokenScalePtr;
-    }
-    GMMAddrInfo gmmAddrInfo{
-        .aGlobal = sharedInputBase,
-        .aScaleGlobal = sharedInputBase + sharedQuantProcessConfig_.quantTokenAlignBytes,
-    };
-    if constexpr (SharedQuantConfig::AXW_MODE == AxWMode::A8W4) {
-        gmmAddrInfo.gmm1ActivationSync = &sharedGmm1ActivationSync;
-    }
+    GMMAddrInfo gmmAddrInfo{};
+    GmmExecutionConfig sharedGmmConfig = gmmExecutionConfig_;
+    ConfigureSharedGmm1Input(gmmAddrInfo, sharedGmmConfig, sharedGmm1ActivationSync);
     int32_t vecSetSyncCom = 0;
     GmmRuntimeState runtimeState{startBlockIdx_, vecSetSyncCom, gmm1PingPongIdx_};
-    GmmExecutionConfig sharedGmmConfig = gmmExecutionConfig_;
-    sharedGmmConfig.inputLayout = {
-        sharedQuantProcessConfig_.quantTokenScaleAlignBytes * SharedQuantConfig::A_ELEMS_PER_BYTE,
-        sharedQuantProcessConfig_.quantTokenScaleAlignBytes / static_cast<uint32_t>(sizeof(SharedQuantScaleType))};
     for (uint32_t sharedExpertIdx = 0U; sharedExpertIdx < sharedExpertNum_; ++sharedExpertIdx) {
         UpdateSharedExpertGmm1GlobalBuffer<SharedWeightType, SharedActivationOutType, SharedQuantScaleType,
                                            SharedQuantConfig::AXW_MODE == AxWMode::A8W4>(
@@ -737,12 +760,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendTopkIdsIndexAndCoun
 
 // 只有量化类型不同且启用了共享专家，才传入独立共享量化参数。
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::QuantizeInputTokens()
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::QuantizeInputTokens(const WorkRange &tokenRange)
 {
-    const WorkRange tokenRange = GetBalancedWorkRange(commonConfig_.tokenNum, aivJob_);
-    if (tokenRange.count == 0U) {
-        return;
-    }
     const TokenQuantParams<MoeQuantMode, QuantOutType, ActivationType> moeQuant{quantProcessConfig_, quantScratch_};
     auto quantize = [&](const auto &moeQuant, const auto &...sharedQuant) __attribute__((cce_aicore))
     {
@@ -765,18 +784,16 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessInputPreparation
 {
     SendAndQuantBuffInit();
     ResetSyncStatus<TopkWeightsPrefetch>(aivJob_, params_, resetBatchElementCount_, resetTensor_);
-    if constexpr (Std::IsSame<XType, bfloat16_t>::value) {
-        QuantizeInputTokens();
-    } else {
-        PackPreQuantizedLocalTokens<XType, ActivationType, TopkWeightsType, TopkWeightsPrefetch>(
-            aivJob_, commonConfig_, params_, quantProcessConfig_, params_.peermemInfo.quantTokenScalePtr,
-            quantScratch_);
-        if constexpr (!SHARED_INPUT_REUSES_MOE_QUANT) {
-            if (sharedExpertNum_ > 0U) {
-                PackPreQuantizedLocalTokens<XType, SharedActivationType, TopkWeightsType, false>(
-                    aivJob_, commonConfig_, params_, sharedQuantProcessConfig_,
-                    params_.workspaceInfo.sharedExpertInputPtr, sharedQuantScratch_);
-            }
+    const WorkRange tokenRange = GetBalancedWorkRange(commonConfig_.tokenNum, aivJob_);
+    if (tokenRange.count > 0U) {
+        if constexpr (Std::IsSame<XType, bfloat16_t>::value) {
+            QuantizeInputTokens(tokenRange);
+        } else {
+            PackPreQuantizedLocalTokens<XType, ActivationType, TopkWeightsType, TopkWeightsPrefetch>(
+                tokenRange, commonConfig_, params_, quantProcessConfig_, params_.peermemInfo.quantTokenScalePtr,
+                quantScratch_);
+            // 预量化共享专家与 MoE 类型一致；64 对齐时直接读取原始输入，
+            // 否则复用这里的 MoE 拼接结果，无需独立打包共享输入。
         }
     }
     // 每个物理 AIV 推进入口轮次一次，空 token 核也参与。
