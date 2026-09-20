@@ -37,7 +37,7 @@ static ge::graphStatus InferShapeLightningIndexerV2(gert::InferShapeContext *con
 
     gert::Shape *sparseIndicesShape = context->GetOutputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, sparseIndicesShape);
-    gert::Shape *sparseValuesShape = context->GetOutputShape(1);
+    auto *sparseValuesShape = context->GetOutputShape(1);
     OP_CHECK_NULL_WITH_CONTEXT(context, sparseValuesShape);
 
     auto attrs = context->GetAttrs();
