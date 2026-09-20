@@ -112,9 +112,8 @@ __aicore__ inline __attribute__((always_inline)) float ComputeInvRms(float sumSq
 /// 原地依次执行标量缩放和gamma缩放。
 __aicore__ inline void ApplyScaleAndGamma(LocalTensor<float> buf, float scale, LocalTensor<float> gamma, uint32_t tD)
 {
-    MhcSandwichRegBase::Muls(buf, buf, scale, tD);
-    PipeBarrier<PIPE_V>();
-    MhcSandwichRegBase::Mul(buf, buf, gamma, tD);
+    // TODO：完成多VF融合和双缓冲后，复测改回高层接口的消融性能。
+    MhcSandwichRegBase::ScaleAndMulGamma(buf, buf, gamma, scale, tD);
     PipeBarrier<PIPE_V>();
 }
 
