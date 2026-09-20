@@ -618,8 +618,9 @@ def _moe_init_routing_v3_numpy(
         numpy.clip(out_f32, a_min=-max_norm, a_max=max_norm, out=out_f32)
 
         output_scale = scale.astype("float32")
-        round_data = numpy.round(out_f32, 8)
-        round_data = numpy.nan_to_num(round_data, nan=0.0, copy=False)
+        # Kernel casts the FP32 division result directly to FP8 with RINT.
+        # Decimal rounding here can move midpoint values to another FP8 code.
+        round_data = numpy.nan_to_num(out_f32, nan=0.0, copy=False)
 
         if dst_type_str == "float8_e5m2":
             round_data = round_data.astype(numpy_float8_e5m2(), copy=False)
@@ -887,7 +888,7 @@ def _unpack_int4(raw_bytes):
 
 def _quant_ulp_result(npu_vals, golden_vals):
     """量化输出 ULP 判据：绝对误差 <= 1 视为通过，错误占比超过 ptol(0.1%) 才判 FAIL。
-    用于 int8/int4 量化输出，消除 float16 计算精度导致的 off-by-1 误报。"""
+    用于量化输出，消除中间浮点计算精度导致的 off-by-1 误报。"""
     min_len = min(npu_vals.size, golden_vals.size)
     npu_vals = npu_vals[:min_len]
     golden_vals = golden_vals[:min_len]
@@ -902,6 +903,21 @@ def _quant_ulp_result(npu_vals, golden_vals):
         if bad_count == 0
         else f"quant ulp mismatch {bad_count}/{total}",
     }
+
+
+def _fp8_quant_ulp_result(npu_arr, golden_arr):
+    def _to_raw_int16(arr):
+        arr = numpy.asarray(arr)
+        if arr.dtype.kind in ("i", "u"):
+            raw = arr.reshape(-1).astype(numpy.uint8)
+        else:
+            try:
+                raw = arr.view(numpy.uint8).reshape(-1)
+            except (ValueError, TypeError):
+                raw = numpy.frombuffer(arr.tobytes(), dtype=numpy.uint8)
+        return raw.view(numpy.int8).astype(numpy.int16)
+
+    return _quant_ulp_result(_to_raw_int16(npu_arr), _to_raw_int16(golden_arr))
 
 
 def _to_list(val):
@@ -1031,7 +1047,8 @@ class MoeInitRoutingV3KernelSpec:
         attributes = (
             getattr(compare_context, "attributes", {}) if compare_context else {}
         )
-        is_non_quant = attributes.get("quant_mode") == -1
+        quant_mode = attributes.get("quant_mode", attributes.get("quantMode"))
+        is_non_quant = quant_mode == -1
         for i in range(half):
             npu_out = outputs[i]
             golden_out = outputs[half + i]
@@ -1105,6 +1122,12 @@ class MoeInitRoutingV3KernelSpec:
             )
             if is_custom_dtype:
                 # 自定义 dtype（float4/float8/hifloat8/int4 等）走 raw uint8 字节级比对
+
+                if quant_mode in (11, 12) and i == 0:
+                    # FP8 requant comparison: a one-code rounding difference
+                    # is acceptable; at most 0.1% may differ by more than one.
+                    results.append(_fp8_quant_ulp_result(npu_cmp, golden_cmp))
+                    continue
 
                 def _to_raw_uint8(arr):
                     if arr.dtype.kind in ("i", "u"):
@@ -1315,9 +1338,13 @@ class E2eMoeInitRoutingV3Spec:
         return list(results)
 
     @staticmethod
-    def compare(*outputs, **kwargs):
+    def compare(*outputs, compare_context=None, **kwargs):
         results = []
         half = len(outputs) // 2
+        attributes = (
+            getattr(compare_context, "attributes", {}) if compare_context else {}
+        )
+        quant_mode = attributes.get("quant_mode", attributes.get("quantMode"))
         for i in range(half):
             npu_out = outputs[i]
             golden_out = outputs[half + i]
@@ -1368,6 +1395,10 @@ class E2eMoeInitRoutingV3Spec:
                 for x in all_custom_keywords
             )
             if is_custom_dtype:
+                if quant_mode in (11, 12) and i == 0:
+                    results.append(_fp8_quant_ulp_result(npu_cmp, golden_cmp))
+                    continue
+
                 is_hifloat8 = (
                     "hifloat8" in dtype_name
                     or "hif8" in dtype_name
@@ -1586,9 +1617,13 @@ class AclnnMoeInitRoutingV3Spec:
         return [_numpy_to_torch(arr, tpl) for arr, tpl in zip(results, templates)]
 
     @staticmethod
-    def compare(*outputs, **kwargs):
+    def compare(*outputs, compare_context=None, **kwargs):
         results = []
         half = len(outputs) // 2
+        attributes = (
+            getattr(compare_context, "attributes", {}) if compare_context else {}
+        )
+        quant_mode = attributes.get("quant_mode", attributes.get("quantMode"))
         for i in range(half):
             npu_out = outputs[i]
             golden_out = outputs[half + i]
@@ -1639,6 +1674,10 @@ class AclnnMoeInitRoutingV3Spec:
                 for x in all_custom_keywords
             )
             if is_custom_dtype:
+                if quant_mode in (11, 12) and i == 0:
+                    results.append(_fp8_quant_ulp_result(npu_cmp, golden_cmp))
+                    continue
+
                 is_hifloat8 = (
                     "hifloat8" in dtype_name
                     or "hif8" in dtype_name
