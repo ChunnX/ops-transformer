@@ -66,6 +66,34 @@ __aicore__ inline void CastB16ToFp32(const LocalTensor<float> &dst, const LocalT
     }
 }
 
+// 在一个VF内恢复相邻两路低精度数据，减少相同分块上的VF启动次数。
+template <typename T>
+__aicore__ inline void CastB16PairToFp32(const LocalTensor<float> &dst0, const LocalTensor<float> &dst1,
+                                         const LocalTensor<T> &src0, const LocalTensor<T> &src1, uint32_t count)
+{
+    __local_mem__ T *src0Addr = (__local_mem__ T *)src0.GetPhyAddr();
+    __local_mem__ T *src1Addr = (__local_mem__ T *)src1.GetPhyAddr();
+    __local_mem__ float *dst0Addr = (__local_mem__ float *)dst0.GetPhyAddr();
+    __local_mem__ float *dst1Addr = (__local_mem__ float *)dst1.GetPhyAddr();
+    uint32_t remain = count;
+    const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
+    __VEC_SCOPE__
+    {
+        RegTensor<T> src0Reg, src1Reg;
+        RegTensor<float> dst0Reg, dst1Reg;
+        MaskReg mask;
+        for (uint16_t i = 0; i < loops; ++i) {
+            mask = UpdateMask<float>(remain);
+            DataCopy<T, LoadDist::DIST_UNPACK_B16>(src0Reg, src0Addr + i * VL_FP32);
+            DataCopy<T, LoadDist::DIST_UNPACK_B16>(src1Reg, src1Addr + i * VL_FP32);
+            Cast<float, T, CAST_B16_TO_FP32>(dst0Reg, src0Reg, mask);
+            Cast<float, T, CAST_B16_TO_FP32>(dst1Reg, src1Reg, mask);
+            DataCopy(dst0Addr + i * VL_FP32, dst0Reg, mask);
+            DataCopy(dst1Addr + i * VL_FP32, dst1Reg, mask);
+        }
+    }
+}
+
 // 在一个VF内完成低精度恢复和平方，直接生成平方和归约输入。
 template <typename T>
 __aicore__ inline void CastB16ToFp32Square(const LocalTensor<float> &dst, const LocalTensor<T> &src, uint32_t count)
@@ -140,6 +168,39 @@ __aicore__ inline void CastFp32ToB16(const LocalTensor<T> &dst, const LocalTenso
                 Cast<T, float, CAST_FP32_TO_B16_NONE>(dstReg, srcReg, mask);
             }
             DataCopy<T, StoreDist::DIST_PACK_B32>(dstAddr + i * VL_FP32, dstReg, mask);
+        }
+    }
+}
+
+// 在一个VF内量化相邻两路FP32数据，保持BF16和FP16各自原有舍入模式。
+template <typename T>
+__aicore__ inline void CastFp32PairToB16(const LocalTensor<T> &dst0, const LocalTensor<T> &dst1,
+                                         const LocalTensor<float> &src0, const LocalTensor<float> &src1, uint32_t count)
+{
+    __local_mem__ float *src0Addr = (__local_mem__ float *)src0.GetPhyAddr();
+    __local_mem__ float *src1Addr = (__local_mem__ float *)src1.GetPhyAddr();
+    __local_mem__ T *dst0Addr = (__local_mem__ T *)dst0.GetPhyAddr();
+    __local_mem__ T *dst1Addr = (__local_mem__ T *)dst1.GetPhyAddr();
+    uint32_t remain = count;
+    const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
+    __VEC_SCOPE__
+    {
+        RegTensor<float> src0Reg, src1Reg;
+        RegTensor<T> dst0Reg, dst1Reg;
+        MaskReg mask;
+        for (uint16_t i = 0; i < loops; ++i) {
+            mask = UpdateMask<float>(remain);
+            DataCopy<float, LoadDist::DIST_NORM>(src0Reg, src0Addr + i * VL_FP32);
+            DataCopy<float, LoadDist::DIST_NORM>(src1Reg, src1Addr + i * VL_FP32);
+            if constexpr (IsSameT<T, bfloat16_t>::value) {
+                Cast<T, float, CAST_FP32_TO_B16_RINT>(dst0Reg, src0Reg, mask);
+                Cast<T, float, CAST_FP32_TO_B16_RINT>(dst1Reg, src1Reg, mask);
+            } else {
+                Cast<T, float, CAST_FP32_TO_B16_NONE>(dst0Reg, src0Reg, mask);
+                Cast<T, float, CAST_FP32_TO_B16_NONE>(dst1Reg, src1Reg, mask);
+            }
+            DataCopy<T, StoreDist::DIST_PACK_B32>(dst0Addr + i * VL_FP32, dst0Reg, mask);
+            DataCopy<T, StoreDist::DIST_PACK_B32>(dst1Addr + i * VL_FP32, dst1Reg, mask);
         }
     }
 }

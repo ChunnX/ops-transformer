@@ -37,17 +37,17 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     const uint64_t outBase = (uint64_t)token * N_ * D_ + tOff;
 
     // 四个head写入互不重叠的低精度缓存，保留逐元素量化边界。
-    for (uint32_t n = 0; n < N_MAX; ++n) {
-        LocalTensor<T> cacheTile = x2Cache[n * D_ + tOff];
-        CastToIO(cacheTile, x2[n * dimTile_], tD);
+    for (uint32_t n = 0; n < N_MAX; n += 2U) {
+        MhcSandwichRegBase::CastFp32PairToB16(x2Cache[n * D_ + tOff], x2Cache[(n + 1U) * D_ + tOff],
+                                              x2[n * dimTile_], x2[(n + 1U) * dimTile_], tD);
     }
     PipeBarrier<PIPE_V>();
     // RMS_mid第一遍直接从低精度缓存计算平方和；R3后必须恢复，
     // 保证后续R4/R5仍使用低精度往返后的x2。
     if (!USE_RMS_MID || writeOutput) {
-        for (uint32_t n = 0; n < N_MAX; ++n) {
-            LocalTensor<T> cacheTile = x2Cache[n * D_ + tOff];
-            MhcSandwichRegBase::CastB16ToFp32(x2[n * dimTile_], cacheTile, tD);
+        for (uint32_t n = 0; n < N_MAX; n += 2U) {
+            MhcSandwichRegBase::CastB16PairToFp32(x2[n * dimTile_], x2[(n + 1U) * dimTile_],
+                                                  x2Cache[n * D_ + tOff], x2Cache[(n + 1U) * D_ + tOff], tD);
         }
         PipeBarrier<PIPE_V>();
     }
@@ -74,13 +74,15 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
     const uint64_t outBase = (uint64_t)token * N_ * D_ + tOff;
 
-    for (uint32_t n = 0; n < N_MAX; ++n) {
-        CastToIO(x2Cache[n * D_ + tOff], x2[n * dimTile_], tD);
+    for (uint32_t n = 0; n < N_MAX; n += 2U) {
+        MhcSandwichRegBase::CastFp32PairToB16(x2Cache[n * D_ + tOff], x2Cache[(n + 1U) * D_ + tOff],
+                                              x2[n * dimTile_], x2[(n + 1U) * dimTile_], tD);
     }
     PipeBarrier<PIPE_V>();
     if (!USE_RMS_MID || writeOutput) {
-        for (uint32_t n = 0; n < N_MAX; ++n) {
-            MhcSandwichRegBase::CastB16ToFp32(x2[n * dimTile_], x2Cache[n * D_ + tOff], tD);
+        for (uint32_t n = 0; n < N_MAX; n += 2U) {
+            MhcSandwichRegBase::CastB16PairToFp32(x2[n * dimTile_], x2[(n + 1U) * dimTile_],
+                                                  x2Cache[n * D_ + tOff], x2Cache[(n + 1U) * D_ + tOff], tD);
         }
         PipeBarrier<PIPE_V>();
     }
