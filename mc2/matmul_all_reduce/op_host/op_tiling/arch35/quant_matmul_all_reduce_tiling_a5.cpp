@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file quant_matmul_all_reduce_tiling_950.cc
+ * \file quant_matmul_all_reduce_tiling_a5.cc
  * \brief
  */
 #ifndef _QUANT_MATMUL_ALL_REDUCE_TILING_950_CC_
 #define _QUANT_MATMUL_ALL_REDUCE_TILING_950_CC_
-#include "quant_matmul_all_reduce_tiling_950.h"
+#include "quant_matmul_all_reduce_tiling_a5.h"
 #include "common/utils/op_mc2.h"
 #include "mc2_log.h"
 #include "util/math_util.h"
