@@ -18,9 +18,24 @@
 
 #include <cstddef>
 
-// Correctness-only diagnostics enabled for the current failure. Disable before performance measurements.
+// Isolate the diagnostic's ordering effect without scalar scans, DCCI or printf.
 #ifndef MOE_EP_DISPATCH_COUNT_CHECK
-#define MOE_EP_DISPATCH_COUNT_CHECK 1
+#define MOE_EP_DISPATCH_COUNT_CHECK 0
+#endif
+
+// Experimental boundary fences: bit 0 after dedup, bit 1 after per-rank counting.
+#ifndef MOE_EP_DISPATCH_COUNT_SYNC_MASK
+#define MOE_EP_DISPATCH_COUNT_SYNC_MASK 3
+#endif
+
+#if (MOE_EP_DISPATCH_COUNT_CHECK != 0) && (MOE_EP_DISPATCH_COUNT_CHECK != 1)
+#error "MOE_EP_DISPATCH_COUNT_CHECK must be 0 or 1"
+#endif
+#if (MOE_EP_DISPATCH_COUNT_SYNC_MASK < 0) || (MOE_EP_DISPATCH_COUNT_SYNC_MASK > 3)
+#error "MOE_EP_DISPATCH_COUNT_SYNC_MASK must be in [0, 3]"
+#endif
+#if MOE_EP_DISPATCH_COUNT_CHECK && MOE_EP_DISPATCH_COUNT_SYNC_MASK
+#error "Disable COUNT_SYNC_MASK when enabling COUNT_CHECK to keep experiments separate"
 #endif
 
 #if __has_include("version/asc_devkit_version.h") && __has_include("version/hcomm_version.h")
@@ -699,6 +714,10 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCntG
         DataCopyPad(dstSlotIdxTensor_, cachedSlotIdxGMTensor_[topkIdxOffset], copyParams, copyPadParams);
     }
     DedupAndSend(tempTensorInt16, calCnt, calCntAlign, tmpOffset);
+#if (MOE_EP_DISPATCH_COUNT_SYNC_MASK & 1)
+    SyncFunc<AscendC::HardEvent::V_S>();
+    SyncFunc<AscendC::HardEvent::S_V>();
+#endif
 #if MOE_EP_DISPATCH_COUNT_CHECK
     CheckDedupResult(group, calCnt, false);
 #endif
@@ -708,6 +727,10 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCntG
         SyncFunc<AscendC::HardEvent::MTE3_V>();
     }
     CalSendCntPerRank(calCnt, calCntAlign, tmpOffset);
+#if (MOE_EP_DISPATCH_COUNT_SYNC_MASK & 2)
+    SyncFunc<AscendC::HardEvent::V_S>();
+    SyncFunc<AscendC::HardEvent::S_V>();
+#endif
 #if MOE_EP_DISPATCH_COUNT_CHECK
     CheckDedupResult(group, calCnt, true);
 #endif
