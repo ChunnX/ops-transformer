@@ -174,6 +174,29 @@ __aicore__ inline void Axpy(const LocalTensor<float> &dst, const LocalTensor<flo
     }
 }
 
+// 每个VL先在寄存器内归约，再按固定顺序累加各VL的局部和。
+__aicore__ inline void ReduceSum(const LocalTensor<float> &dstScalar, const LocalTensor<float> &src, uint32_t count)
+{
+    __local_mem__ float *dstAddr = (__local_mem__ float *)dstScalar.GetPhyAddr();
+    __local_mem__ float *srcAddr = (__local_mem__ float *)src.GetPhyAddr();
+    uint32_t remain = count;
+    const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
+    __VEC_SCOPE__
+    {
+        RegTensor<float> srcReg, partReg, sumReg;
+        MaskReg mask;
+        MaskReg maskAll = CreateMask<float, MaskPattern::ALL>();
+        Duplicate(sumReg, 0.0f, maskAll);
+        for (uint16_t i = 0; i < loops; ++i) {
+            mask = UpdateMask<float>(remain);
+            DataCopy<float, LoadDist::DIST_NORM>(srcReg, srcAddr + i * VL_FP32);
+            AscendC::Reg::ReduceSum(partReg, srcReg, mask);
+            AscendC::Reg::Add(sumReg, sumReg, partReg, maskAll);
+        }
+        DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(dstAddr, sumReg, maskAll);
+    }
+}
+
 } // MhcSandwichRegBase命名空间
 
 #endif // MHC_SANDWICH_NORM_POST_PREONLY_REGBASE_H_
