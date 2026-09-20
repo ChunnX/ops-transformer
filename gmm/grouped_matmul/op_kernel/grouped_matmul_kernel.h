@@ -436,6 +436,8 @@ protected:
     GM_ADDR weightTensorPtr;
     GM_ADDR biasTensorPtr;
     GM_ADDR yTensorPtr;
+    GM_ADDR groupListTensorPtr;
+    uint32_t groupNum;
     GlobalTensor<AT> xGm;
     GlobalTensor<BT> weightGm;
     GlobalTensor<BiasT> biasGm;
@@ -469,6 +471,8 @@ __aicore__ inline void GMMCompute<mmType, sync>::Init(GM_ADDR x, GM_ADDR weight,
     weightTensorPtr = weight;
     biasTensorPtr = bias;
     yTensorPtr = y;
+    groupListTensorPtr = groupList;
+    groupNum = gmmBaseParams->groupNum;
     pipe = tPipe;
     ubBaseN = gmmBaseParams->ubBaseN;
     ubBaseK = gmmBaseParams->ubBaseK;
@@ -593,6 +597,42 @@ __aicore__ inline void GMMCompute<mmType, sync>::MMCompute(uint32_t groupIdx, MN
         xGm.SetGlobalBuffer(GetTensorAddr<AT>(0, xTensorPtr) + mnConfig.xBaseOffset);
     }
     GlobalTensor<BT> weightGmLocal = SetGlobalBufferW(groupIdx, tailN, mnConfig);
+#if defined(GMM_QUANT_INT8) || defined(GMM_QUANT_INT32)
+    if (mnConfig.mIdx == 0 && mnConfig.nIdx == 0) {
+        uint32_t tensorIdx = groupListType == GROUP_LIST_TYPE_SPARSE && groupType == 0 ? listIndex : groupIdx;
+        __gm__ AT *xGmAddr = singleX == 0 ? GetTensorAddr<AT>(tensorIdx, xTensorPtr) :
+                                            GetTensorAddr<AT>(0, xTensorPtr) + mnConfig.xBaseOffset;
+        __gm__ BT *weightGmAddr = singleWeight == 0 ? GetTensorAddr<BT>(groupIdx, weightTensorPtr) :
+                                                      GetTensorAddr<BT>(0, weightTensorPtr) + mnConfig.wBaseOffset;
+        __gm__ CT *yGmAddr = singleY == 0 ? GetTensorAddr<CT>(tensorIdx, yTensorPtr) :
+                                            GetTensorAddr<CT>(0, yTensorPtr) + mnConfig.yBaseOffset;
+        __gm__ BiasT *biasGmAddr = nullptr;
+        if (hasBias) {
+            biasGmAddr = singleWeight == 0 ? GetTensorAddr<BiasT>(groupIdx, biasTensorPtr) :
+                                             GetTensorAddr<BiasT>(0, biasTensorPtr) + mnConfig.nAxisBaseOffset;
+        }
+        uint64_t scaleAddr = 0;
+        uint64_t scaleBytes = 0;
+        uint64_t groupListBytes =
+            static_cast<uint64_t>(groupNum) * (groupListType == GROUP_LIST_TYPE_SPARSE ? 2 : 1) * sizeof(int64_t);
+#if defined(GMM_QUANT_INT8)
+        __gm__ DTYPE_SCALE *scaleGmAddr = singleWeight == 0 ?
+                                              GetTensorAddr<DTYPE_SCALE>(groupIdx, scaleTensorPtr) :
+                                              GetTensorAddr<DTYPE_SCALE>(0, scaleTensorPtr) + mnConfig.nAxisBaseOffset;
+        scaleAddr = reinterpret_cast<uint64_t>(scaleGmAddr);
+        scaleBytes = mnConfig.n * sizeof(DTYPE_SCALE);
+#endif
+        AscendC::printf(
+            "[GMM_A8W8][GM] block=%u group=%u x=0x%llx/%llu weight=0x%llx/%llu scale=0x%llx/%llu "
+            "bias=0x%llx/%llu y=0x%llx/%llu group_list=0x%llx/%llu\\n",
+            GetBlockIdx(), groupIdx, reinterpret_cast<uint64_t>(xGmAddr),
+            static_cast<uint64_t>(mnConfig.m) * mnConfig.k * sizeof(AT), reinterpret_cast<uint64_t>(weightGmAddr),
+            static_cast<uint64_t>(mnConfig.k) * mnConfig.n * sizeof(BT), scaleAddr, scaleBytes,
+            reinterpret_cast<uint64_t>(biasGmAddr), hasBias ? static_cast<uint64_t>(mnConfig.n) * sizeof(BiasT) : 0,
+            reinterpret_cast<uint64_t>(yGmAddr), static_cast<uint64_t>(mnConfig.m) * mnConfig.n * sizeof(CT),
+            reinterpret_cast<uint64_t>(groupListTensorPtr), groupListBytes);
+    }
+#endif
     mm.SetOrgShape(mnConfig.m, mnConfig.n, mnConfig.k);
     mm.SetSingleShape(curSingleM, curSingleN, mnConfig.k);
     mm.SetTensorA(xGm[xOffset], transposeX);
