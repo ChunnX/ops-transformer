@@ -91,3 +91,31 @@ python3 -m pip install build_out/*.whl --force-reinstall --no-deps
 ```bash
 bash experimental/attention/indexer_prologue_k_dsl/tests/test.sh
 ```
+
+## ACLGraph
+
+公开 Python 接口支持 `npugraph_ex` capture/replay。算子内部使用一个无
+alias 返回值的 mutation-only schema，以满足 PyTorch AOT functionalization；
+公开接口仍返回原地更新后的 `k_cache`。
+
+`wk` 使用 FRACTAL_NZ 私有格式，ACLGraph 必须关闭输入 clone，否则
+`empty_like` 生成的捕获输入会退化为 ND：
+
+```python
+import torchair
+from torchair.configs.compiler_config import CompilerConfig
+
+config = CompilerConfig()
+config.mode = "npugraph_ex"
+config.debug.aclgraph.clone_input = False
+backend = torchair.get_npu_backend(compiler_config=config)
+
+compiled_model = torch.compile(
+    model.npu(), fullgraph=True, backend=backend, dynamic=False
+)
+```
+
+图模式应调用 `cann_ops_transformer.ops.ds41.indexer_prologue_k` Python
+接口。直接调用带 alias 返回值的底层
+`torch.ops.cann_ops_transformer.ds41.indexer_prologue_k` 仅保留用于 eager
+兼容，不适合 AOT functionalization。

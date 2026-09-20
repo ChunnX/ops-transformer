@@ -12,4 +12,5 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
 cd "$ROOT"
 exec "${PYTHON:-python3}" -m pytest -q \
-    experimental/attention/indexer_prologue_k_dsl/tests/test_npu_precision.py "$@"
+    experimental/attention/indexer_prologue_k_dsl/tests/test_npu_precision.py \
+    experimental/attention/indexer_prologue_k_dsl/tests/test_aclgraph.py "$@"

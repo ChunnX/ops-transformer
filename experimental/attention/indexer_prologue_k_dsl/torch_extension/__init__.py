@@ -8,10 +8,13 @@
 
 import sys
 import types
+from typing import Optional
 
 import torch
 
-from .indexer_prologue_k import indexer_prologue_k as _indexer_prologue_k_impl  # noqa: F401
+from .indexer_prologue_k import (  # noqa: F401
+    indexer_prologue_k as _indexer_prologue_k_impl,
+)
 
 # The on-disk directory has a _dsl suffix. Attach the public operator to the
 # shared ds41 module and to cann_ops_transformer.ops explicitly.
@@ -34,7 +37,52 @@ if ds41 is None:
     ds41.__package__ = parent_pkg
     sys.modules[module_name] = ds41
 
-indexer_prologue_k = torch.ops.cann_ops_transformer.ds41.indexer_prologue_k
+
+def indexer_prologue_k(
+    latent: torch.Tensor,
+    wk: torch.Tensor,
+    norm_weight: torch.Tensor,
+    rope_sin: torch.Tensor,
+    rope_cos: torch.Tensor,
+    k_cache: torch.Tensor,
+    k_scale_cache: Optional[torch.Tensor] = None,
+    *,
+    cache_index: torch.Tensor,
+    storage_mode: int,
+    norm_eps: float,
+    combined_block_size: int = -1,
+) -> torch.Tensor:
+    """Run the eager alias ABI or its graph-safe mutation-only counterpart."""
+    if torch.compiler.is_compiling():
+        torch.ops.cann_ops_transformer.ds41._indexer_prologue_k_inplace(
+            latent,
+            wk,
+            norm_weight,
+            rope_sin,
+            rope_cos,
+            k_cache,
+            k_scale_cache,
+            cache_index=cache_index,
+            storage_mode=storage_mode,
+            norm_eps=norm_eps,
+            combined_block_size=combined_block_size,
+        )
+        return k_cache
+    return torch.ops.cann_ops_transformer.ds41.indexer_prologue_k(
+        latent,
+        wk,
+        norm_weight,
+        rope_sin,
+        rope_cos,
+        k_cache,
+        k_scale_cache,
+        cache_index=cache_index,
+        storage_mode=storage_mode,
+        norm_eps=norm_eps,
+        combined_block_size=combined_block_size,
+    )
+
+
 # Single-op custom wheels generate ``attention/__init__.py`` with an import
 # matching the on-disk directory name. Keep that packaging-only alias valid.
 indexer_prologue_k_dsl = indexer_prologue_k

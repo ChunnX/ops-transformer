@@ -17,6 +17,9 @@ from torch.library import impl
 from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
 
+_INPLACE_OP_NAME = "ds41._indexer_prologue_k_inplace"
+
+
 class IndexerPrologueKOpBuilder(OpBuilder):
     def __init__(self):
         super(IndexerPrologueKOpBuilder, self).__init__(
@@ -28,7 +31,7 @@ class IndexerPrologueKOpBuilder(OpBuilder):
         return []
 
     def schema(self):
-        """Register cache mutations and the alias returned for ``k_cache``."""
+        """Register eager and functionalization-safe graph schemas."""
         return [
             (
                 "ds41.indexer_prologue_k("
@@ -36,6 +39,13 @@ class IndexerPrologueKOpBuilder(OpBuilder):
                 "Tensor rope_cos, Tensor(a!) k_cache, Tensor(b!)? k_scale_cache=None, "
                 "*, Tensor cache_index, int storage_mode, float norm_eps, "
                 "int combined_block_size=-1) -> Tensor(a!)"
+            ),
+            (
+                "ds41._indexer_prologue_k_inplace("
+                "Tensor latent, Tensor wk, Tensor norm_weight, Tensor rope_sin, "
+                "Tensor rope_cos, Tensor(a!) k_cache, Tensor(b!)? k_scale_cache=None, "
+                "*, Tensor cache_index, int storage_mode, float norm_eps, "
+                "int combined_block_size=-1) -> ()"
             ),
         ]
 
@@ -59,9 +69,58 @@ class IndexerPrologueKOpBuilder(OpBuilder):
         ) -> torch.Tensor:
             return k_cache
 
+        @impl(get_as_library(), _INPLACE_OP_NAME, "Meta")
+        def indexer_prologue_k_inplace_meta(
+            latent: torch.Tensor,
+            wk: torch.Tensor,
+            norm_weight: torch.Tensor,
+            rope_sin: torch.Tensor,
+            rope_cos: torch.Tensor,
+            k_cache: torch.Tensor,
+            k_scale_cache: Optional[torch.Tensor] = None,
+            *,
+            cache_index: torch.Tensor,
+            storage_mode: int,
+            norm_eps: float,
+            combined_block_size: int = -1,
+        ) -> None:
+            return None
+
 
 indexer_prologue_k_op_builder = IndexerPrologueKOpBuilder()
 indexer_prologue_k_op_builder._ensure_initialized()
+
+
+def _run_indexer_prologue_k(
+    latent: torch.Tensor,
+    wk: torch.Tensor,
+    norm_weight: torch.Tensor,
+    rope_sin: torch.Tensor,
+    rope_cos: torch.Tensor,
+    k_cache: torch.Tensor,
+    k_scale_cache: Optional[torch.Tensor] = None,
+    *,
+    cache_index: torch.Tensor,
+    storage_mode: int,
+    norm_eps: float,
+    combined_block_size: int = -1,
+) -> torch.Tensor:
+    """Run the packaged CANNBotDSL kernel shared by both dispatcher schemas."""
+    from ops.indexer_prologue_k import indexer_prologue_k as dsl_indexer_prologue_k
+
+    return dsl_indexer_prologue_k(
+        latent,
+        wk,
+        norm_weight,
+        rope_sin,
+        rope_cos,
+        k_cache,
+        k_scale_cache,
+        cache_index=cache_index,
+        storage_mode=storage_mode,
+        norm_eps=norm_eps,
+        combined_block_size=combined_block_size,
+    )
 
 
 @impl(get_as_library(), indexer_prologue_k_op_builder.name, "PrivateUse1")
@@ -79,10 +138,8 @@ def indexer_prologue_k(
     norm_eps: float,
     combined_block_size: int = -1,
 ) -> torch.Tensor:
-    """Run the packaged CANNBotDSL kernel through the Torch NPU dispatcher."""
-    from ops.indexer_prologue_k import indexer_prologue_k as dsl_indexer_prologue_k
-
-    return dsl_indexer_prologue_k(
+    """Eager dispatcher ABI that returns the mutated ``k_cache`` alias."""
+    return _run_indexer_prologue_k(
         latent,
         wk,
         norm_weight,
@@ -95,3 +152,35 @@ def indexer_prologue_k(
         norm_eps=norm_eps,
         combined_block_size=combined_block_size,
     )
+
+
+@impl(get_as_library(), _INPLACE_OP_NAME, "PrivateUse1")
+def indexer_prologue_k_inplace(
+    latent: torch.Tensor,
+    wk: torch.Tensor,
+    norm_weight: torch.Tensor,
+    rope_sin: torch.Tensor,
+    rope_cos: torch.Tensor,
+    k_cache: torch.Tensor,
+    k_scale_cache: Optional[torch.Tensor] = None,
+    *,
+    cache_index: torch.Tensor,
+    storage_mode: int,
+    norm_eps: float,
+    combined_block_size: int = -1,
+) -> None:
+    """Graph ABI without an aliasing output, for AOT functionalization."""
+    _run_indexer_prologue_k(
+        latent,
+        wk,
+        norm_weight,
+        rope_sin,
+        rope_cos,
+        k_cache,
+        k_scale_cache,
+        cache_index=cache_index,
+        storage_mode=storage_mode,
+        norm_eps=norm_eps,
+        combined_block_size=combined_block_size,
+    )
+    return None
