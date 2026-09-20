@@ -202,8 +202,11 @@ public:
     uint32_t qL1BufId_ = 0U;
     uint32_t kvL1BufId_ = 0U;
     // L0C
-    static constexpr uint32_t L0C_BUFCNT = 4U;
-    static constexpr uint32_t L0C_BUF_BYTES = 64U * 1024U;
+    static constexpr uint32_t L0C_BUFCNT = dBaseSize == 64U ? 4U : 2U;
+    static constexpr uint32_t MM1_S2_SPLIT_SIZE = dBaseSize == 64U ? 128U : s2BaseSize;
+    static constexpr uint32_t MM1_K_SPLIT_SIZE = dBaseSize == 64U ? 128U : 64U;
+    static constexpr uint32_t L0C_BUF_BYTES =
+        mBaseSize * (MM1_S2_SPLIT_SIZE > dVBaseSize ? MM1_S2_SPLIT_SIZE : dVBaseSize) * sizeof(MM_T);
     LocalTensor<uint8_t> l0CBuffers_;
     uint32_t l0cBufId_ = 0U;
     // L0A/B
@@ -267,6 +270,10 @@ public:
 
     __aicore__ inline void InitBuffers()
     {
+        static_assert(L1_P_BUFCNT * L1_P_BUF_BYTES + L1_Q_BUFCNT * L1_Q_BUF_BYTES + L1_KV_BUFCNT * L1_KV_BUF_BYTES <=
+                          512U * 1024U,
+                      "DN L1 capacity exceeded");
+        static_assert(L0C_BUFCNT * L0C_BUF_BYTES <= 256U * 1024U, "DN L0C capacity exceeded");
         /*--------------------------------------------UB--------------------------------------------*/
         uint32_t addrUb = 0;
         ubMm1ResBuffers_ = LocalTensor<uint8_t>(TPosition::VECIN, addrUb, UB_MM1_RES_BUFCNT * UB_MM1_RES_BUF_BYTES);
@@ -413,14 +420,15 @@ public:
     }
 
     __aicore__ inline void FixpipeMm1Dn(const LocalTensor<MM_T> &dstTensor, const LocalTensor<MM_T> &l0C,
-                                        RunInfo &runInfo)
+                                        RunInfo &runInfo, uint32_t s2Size)
     {
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
         fixpipeParams.nSize = (runInfo.actMSize + 31) >> 5 << 5;
-        fixpipeParams.mSize = runInfo.actSingleLoopS2Size;
+        fixpipeParams.mSize = s2Size;
         fixpipeParams.srcStride = (fixpipeParams.mSize + 15) >> 4 << 4;
         fixpipeParams.dstStride = fixpipeParams.nSize / 2;
         fixpipeParams.dualDstCtl = 2;
+        fixpipeParams.unitFlag = 0;
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
@@ -442,29 +450,22 @@ public:
         CopyKeySlice(kL1Tensor, 0, constInfo_.dSize, runInfo);
         Mutex::Unlock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvL1BufId_);
         Mutex::Lock<PIPE_MTE1>(KV_L1_BUFFER_ID0 + kvL1BufId_);
-        {
+        for (uint32_t s2Offset = 0; s2Offset < runInfo.actSingleLoopS2Size; s2Offset += MM1_S2_SPLIT_SIZE) {
+            uint32_t s2Size =
+                AttentionCommon::Min(MM1_S2_SPLIT_SIZE, static_cast<uint32_t>(runInfo.actSingleLoopS2Size) - s2Offset);
             Mutex::Lock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
             LocalTensor<MM_T> l0CSubTensor = l0CBuffers_[l0cBufId_ * L0C_BUF_BYTES].template ReinterpretCast<MM_T>();
             // Mmad K=D 精确累加; LoadData 搬运宽度按分形粒度对齐(对齐D=原值, D=72→80与Nd2Nz写入组数一致)
             uint32_t ldK = ((constInfo_.dSize + 15) >> 4) << 4;
-            MMParam param = MakeMMParam((uint32_t)runInfo.actSingleLoopS2Size, (uint32_t)runInfo.actMSize,
-                                        constInfo_.dSize, false, true, true, true, 0, 0, ldK, 0);
-            if constexpr (s2BaseSize == 256) {
-                // L0A 双缓冲单槽 32KiB: 256 行 S2 时 K 分块收缩到 64, 保证单分形不越槽
-                MatmulK<KV_T, Q_T, MM_T, 256, 64, 64, ABLayout::MK, ABLayout::KN>(kL1Tensor, qL1Tensor, mmL0APolicy_,
-                                                                                  mmL0BPolicy_, l0CSubTensor, param);
-            } else if constexpr (dBaseSize > 128) {
-                MatmulK<KV_T, Q_T, MM_T, 128, 128, 128, ABLayout::MK, ABLayout::KN>(kL1Tensor, qL1Tensor, mmL0APolicy_,
-                                                                                    mmL0BPolicy_, l0CSubTensor, param);
-            } else {
-                MatmulBase<KV_T, Q_T, MM_T, 128, 128, dBaseSize, ABLayout::MK, ABLayout::KN>(
-                    kL1Tensor, qL1Tensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, param);
-            }
+            MMParam param = MakeMMParam((uint32_t)runInfo.actSingleLoopS2Size, static_cast<uint32_t>(runInfo.actMSize),
+                                        constInfo_.dSize, false, true, true, true, 0, s2Size, ldK, 0);
+            MatmulK<KV_T, Q_T, MM_T, MM1_S2_SPLIT_SIZE, mBaseSize, MM1_K_SPLIT_SIZE, ABLayout::MK, ABLayout::KN>(
+                kL1Tensor[s2Offset * 16U], qL1Tensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, param);
             Mutex::Unlock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
             Mutex::Lock<PIPE_FIX>(L0C_BUFFER_ID0 + l0cBufId_);
-
-            FixpipeMm1Dn(mm1ResUbTensor, l0CSubTensor, runInfo);
-
+            // singleM keeps the full L1 row stride; realM limits each L0/MMAD tile.
+            uint32_t ubRowStride = ((runInfo.actMSize + 31U) >> 5U << 5U) / CV_RATIO;
+            FixpipeMm1Dn(mm1ResUbTensor[s2Offset * ubRowStride], l0CSubTensor, runInfo, s2Size);
             Mutex::Unlock<PIPE_FIX>(L0C_BUFFER_ID0 + l0cBufId_);
             l0cBufId_ = (l0cBufId_ + 1) % L0C_BUFCNT;
         }

@@ -230,7 +230,7 @@ public:
     static constexpr uint32_t UB_VEC2_RES_BUF_BYTES = mBaseSize / CV_RATIO * dTemplateAlign64 * sizeof(T);
     LocalTensor<T> ubVec2Res_; // 存放vec2阶段VEC的中间处理结果, 并且作为attn_out的输出buffer, 需配对的MTE3和V的同步ID
 
-    static constexpr uint32_t UB_VEC1_RES_BUFCNT = 2U;
+    static constexpr uint32_t UB_VEC1_RES_BUFCNT = dVBaseSize <= 64U ? 2U : 1U;
     // DN VF 按 64 lanes 打包 P, 逻辑 Vector M 为 32(mBase=64) 时也按实际打包宽度定容
     static constexpr uint32_t UB_VEC1_RES_BUF_BYTES = (64U + 1U) * s2BaseSize * sizeof(INPUT_T);
     LocalTensor<uint8_t> ubVec1ResBuffers_;
@@ -257,7 +257,7 @@ public:
 
     static constexpr uint32_t UB_MASK_BUFCNT = 2U;
     // 32 字节错峰, 避免整列 mask 从同一 UB bank 连续 gather 造成 bank 冲突
-    static constexpr uint32_t MASK_PITCH = s2BaseSize + 32U;
+    static constexpr uint32_t MASK_PITCH = AttentionCommon::Align(s2BaseSize, 32U) + 32U;
     static constexpr uint32_t UB_MASK_BUF_BYTES = mBaseSize / CV_RATIO * MASK_PITCH;
     LocalTensor<uint8_t> ubMaskBuffers_;
 
@@ -291,7 +291,7 @@ public:
     // ==================== Functions ======================
     using Hooks = DnUnmergedSchedulerHooks<FA_T, ConstInfo, RunInfo>;
     Hooks scheduler_{constInfo_, qSeqLensTool_, kvSeqLensTool_};
-    using VecFdBlock = FiaBlockVecFlashDecode<FA_T, true, ConstInfo>;
+    using VecFdBlock = FiaBlockVecFlashDecode<FA_T, true, ConstInfo, true>;
     VecFdBlock vecFdBlock_{constInfo_, qSeqLensTool_, kvSeqLensTool_};
     GlobalTensor<uint32_t> fdMetaDataGm_;
     FDparams fdParams_;
@@ -407,6 +407,13 @@ public:
         uint32_t addrL1 = 0;
         l1PBuffers_ = LocalTensor<uint8_t>(TPosition::A1, addrL1, L1_P_BUFCNT * L1_P_BUF_BYTES);
 
+        static_assert(UB_MM_RES_TOTAL_BYTES + UB_VEC2_RES_BUF_BYTES + UB_VEC1_RES_BUFCNT * UB_VEC1_RES_BUF_BYTES +
+                              UB_SOFTMAX_MAX_BUFCNT * UB_SOFTMAX_MAX_BUF_BYTES +
+                              UB_SOFTMAX_SUM_BUFCNT * UB_SOFTMAX_SUM_BUF_BYTES +
+                              UB_SOFTMAX_EXP_BUFCNT * UB_SOFTMAX_EXP_BUF_BYTES +
+                              UB_LSE_OUT_BUFCNT * UB_LSE_OUT_BUF_BYTES + (HAS_MASK ? DB * UB_MASK_BUF_BYTES : 0U) <=
+                          248U * 1024U,
+                      "DN UB capacity exceeded");
         /*--------------------------------------------UB--------------------------------------------*/
         uint32_t addrUb = 0;
         ubMm1ResBuffers_ = LocalTensor<uint8_t>(TPosition::VECIN, addrUb, UB_MM1_RES_BUFCNT * UB_MM1_RES_BUF_BYTES);

@@ -112,10 +112,11 @@ __global__ __aicore__ void flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key
     constexpr FA_LAYOUT kvLayout = GetKvLayout<inOutLayoutType, KvLayoutType>();
     constexpr bool pageAttention = IsPageAttention<KvLayoutType>();
 
-    constexpr S1TemplateType s1TemplateType = static_cast<S1TemplateType>(ConfigValue[config].s1);
-    constexpr S2TemplateType s2TemplateType = static_cast<S2TemplateType>(ConfigValue[config].s2);
-    constexpr DTemplateType dTemplateType = static_cast<DTemplateType>(ConfigValue[config].d);
-    constexpr DTemplateType dVTemplateType = static_cast<DTemplateType>(ConfigValue[config].dv);
+    constexpr ConfigParams blockConfig = FlashAttnConfig<templateId, config, hasAttenMask>::value;
+    constexpr S1TemplateType s1TemplateType = static_cast<S1TemplateType>(blockConfig.s1);
+    constexpr S2TemplateType s2TemplateType = static_cast<S2TemplateType>(blockConfig.s2);
+    constexpr DTemplateType dTemplateType = static_cast<DTemplateType>(blockConfig.d);
+    constexpr DTemplateType dVTemplateType = static_cast<DTemplateType>(blockConfig.dv);
 
     // 根因（静态图）：固定 shape 下 tiling 是编译期常量字节数组而非 __gm__ buffer，
     // 不能直接 reinterpret_cast 成结构体指针访问，必须先拷贝到栈局部结构体对象再取指针。

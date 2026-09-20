@@ -123,6 +123,9 @@ void FlashAttnTilingImpl::SplitPolicy()
     if (fa_tiling_util::DN_UNMERGED_ROUTE_ENABLED) {
         UpdateTilingKeyTemplateId();
     }
+    if (tilingKeyInfo_.templateId == fa_tiling_util::FA_TEMPLATE_DN_UNMERGED) {
+        sInnerFactor_ = FlashAttnPolicy::DnUnmergedS2(faInfo_->qkHeadDim, faInfo_->maskMode != 0);
+    }
     uint32_t maxUsedAicCores = fa_tiling_util::GetMaxUsedAicCores(
         platformInfo_.aicNum, faInfo_->bSize, faInfo_->n2Size, faInfo_->gSize, faInfo_->maxSeqQ, faInfo_->maxSeqKv,
         sOuterFactor_ * platformInfo_.cvRatio, sInnerFactor_,

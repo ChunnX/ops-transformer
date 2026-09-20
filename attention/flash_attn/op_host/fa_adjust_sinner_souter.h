@@ -13,6 +13,7 @@
 
 #include <cstdint>
 #include <initializer_list>
+#include "../op_kernel/utils/dn_unmerged_policy.h"
 
 namespace optiling {
 namespace flash_attn {

@@ -16,6 +16,8 @@
 #ifndef FLASH_ATTN_COMMON_DEF_H_
 #define FLASH_ATTN_COMMON_DEF_H_
 
+#include "dn_unmerged_policy.h"
+
 // 提供flash_attn算子tiling和kernel共用的相关定义
 
 // BUFFER的字节数
@@ -176,6 +178,20 @@ static constexpr ConfigParams ConfigValue[] = {
      inferDTemplateType::Aligned128}, // config=6
     {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned192,
      inferDTemplateType::Aligned128}, // config=7
+};
+
+// Only template2 changes basic blocks; the legacy config table is unchanged.
+template <uint8_t TemplateId, uint8_t Config, bool HasMask>
+struct FlashAttnConfig {
+    static_assert(TemplateId != FA_Template_DN_Unmerged || Config == 0 || Config == 2 || Config == 6,
+                  "Unsupported DN unmerged config");
+    static constexpr uint32_t dnN =
+        HasMask ? (Config == 0 ? FlashAttnPolicy::DN_MASK_D64_N : FlashAttnPolicy::DN_MASK_OTHER_N) :
+                  FlashAttnPolicy::DN_NO_MASK_N;
+    static constexpr ConfigParams value = {
+        ConfigValue[Config].s1,
+        TemplateId == FA_Template_DN_Unmerged ? static_cast<inferS2TemplateType>(dnN) : ConfigValue[Config].s2,
+        ConfigValue[Config].d, ConfigValue[Config].dv};
 };
 
 // Config macro definitions for D=64

@@ -240,6 +240,9 @@ void FlashAttnMetadataCpuKernel::InitLoadBalanceParams()
     const bool dnUnmergedRouted = optiling::flash_attn::fa_tiling_util::GetFlashAttnTemplateId(
                                       static_cast<uint32_t>(headDim_), static_cast<uint32_t>(headDimV_), mBaseSize_,
                                       maskMode_ != 0) == optiling::flash_attn::fa_tiling_util::FA_TEMPLATE_DN_UNMERGED;
+    if (dnUnmergedRouted) {
+        s2BaseSize_ = FlashAttnPolicy::DnUnmergedS2(headDim_, maskMode_ != 0);
+    }
     param.mBaseSize = mBaseSize_;
     param.s2BaseSize = s2BaseSize_;
     param.l2Byte = 96U * 1024U * 1024U; // 96: 96MB, 1024: Mb2Kb, 1024:Kb2Mb
