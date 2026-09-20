@@ -174,19 +174,9 @@ __aicore__ inline void ComputeGateValues(float totalSumSqPre, float (&xHatVals)[
     LocalTensor<float> scBuf = bufScalar_.Get<float>();
     for (uint32_t i = 0; i < N; ++i)
         scBuf.SetValue(i, -(alpha0_ * xHatVals[i] + biasCache_[i]));
-    PipeBarrier<PIPE_V>();
-    // 三个缓冲仍按32B错开，只计算真实存在的四个head。
-    Exp(scBuf, scBuf, N);
-    PipeBarrier<PIPE_V>();
-    Adds(scBuf, scBuf, 1.0f, N); // 1 + exp(-z)
-    PipeBarrier<PIPE_V>();
-    LocalTensor<float> onesBuf = scBuf[EXP_DIV_ELEM * 2];
-    Duplicate(onesBuf, 1.0f, N);
-    PipeBarrier<PIPE_V>();
     LocalTensor<float> gateBuf = scBuf[EXP_DIV_ELEM];
-    Div(gateBuf, onesBuf, scBuf, N); // 1 / (1+exp(-z))
-    PipeBarrier<PIPE_V>();
-    Adds(gateBuf, gateBuf, hcEps_, N); // + hcEps
+    // TODO：后续单独评估固定四元素循环展开，本轮保持通用VF循环。
+    MhcSandwichRegBase::SigmoidAddEps(gateBuf, scBuf, hcEps_, N);
     PipeBarrier<PIPE_V>();
     for (uint32_t i = 0; i < N; ++i)
         gate[i] = gateBuf.GetValue(i);

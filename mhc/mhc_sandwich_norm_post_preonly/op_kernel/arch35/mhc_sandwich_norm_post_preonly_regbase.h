@@ -39,6 +39,11 @@ constexpr AscendC::Reg::CastTrait CAST_FP32_TO_B16_RINT = {
     AscendC::RoundMode::CAST_RINT,
 };
 
+constexpr AscendC::Reg::DivSpecificMode DIV_ZEROING_MODE = {
+    AscendC::Reg::MaskMergeMode::ZEROING,
+    true,
+};
+
 // 低精度输入按FP32寄存器宽度展开，避免先把数据搬入额外FP32临时区。
 template <typename T>
 __aicore__ inline void CastB16ToFp32(const LocalTensor<float> &dst, const LocalTensor<T> &src, uint32_t count)
@@ -169,6 +174,31 @@ __aicore__ inline void ScaleAndMulGamma(const LocalTensor<float> &dst, const Loc
             DataCopy<float, LoadDist::DIST_NORM>(gammaReg, gammaAddr + i * VL_FP32);
             AscendC::Reg::Muls(dstReg, srcReg, scale, mask);
             AscendC::Reg::Mul(dstReg, dstReg, gammaReg, mask);
+            DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
+        }
+    }
+}
+
+// 将sigmoid和epsilon补偿合并到同一个VF，输入保存-z，输出保存sigmoid(z)+epsilon。
+__aicore__ inline void SigmoidAddEps(const LocalTensor<float> &dst, const LocalTensor<float> &src,
+                                     float epsilon, uint32_t count)
+{
+    __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();
+    __local_mem__ float *srcAddr = (__local_mem__ float *)src.GetPhyAddr();
+    uint32_t remain = count;
+    const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
+    __VEC_SCOPE__
+    {
+        RegTensor<float> srcReg, expReg, denomReg, oneReg, dstReg;
+        MaskReg mask;
+        for (uint16_t i = 0; i < loops; ++i) {
+            mask = UpdateMask<float>(remain);
+            DataCopy<float, LoadDist::DIST_NORM>(srcReg, srcAddr + i * VL_FP32);
+            AscendC::Reg::Exp(expReg, srcReg, mask);
+            AscendC::Reg::Adds(denomReg, expReg, 1.0f, mask);
+            AscendC::Reg::Duplicate(oneReg, 1.0f, mask);
+            AscendC::Reg::Div<float, &DIV_ZEROING_MODE>(dstReg, oneReg, denomReg, mask);
+            AscendC::Reg::Adds(dstReg, dstReg, epsilon, mask);
             DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
         }
     }
