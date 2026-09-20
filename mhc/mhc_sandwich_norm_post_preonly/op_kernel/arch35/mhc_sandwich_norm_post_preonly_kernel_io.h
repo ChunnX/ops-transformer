@@ -15,18 +15,14 @@ __aicore__ inline void QuantizeRoundTrip(LocalTensor<float> buf, uint32_t count)
     LocalTensor<T> tmp = bufHInPrimeBf16_.AllocTensor<T>();
     CastToIO(tmp, buf, count);
     PipeBarrier<PIPE_V>();
-    Cast(buf, tmp, RoundMode::CAST_NONE, count);
+    MhcSandwichRegBase::CastB16ToFp32(buf, tmp, count);
     PipeBarrier<PIPE_V>();
     bufHInPrimeBf16_.FreeTensor(tmp);
 }
 
 __aicore__ inline void CastToIO(LocalTensor<T> dst, LocalTensor<float> src, uint32_t count)
 {
-    if constexpr (IsSameT<T, half>::value) {
-        Cast(dst, src, RoundMode::CAST_NONE, count);
-    } else {
-        Cast(dst, src, RoundMode::CAST_RINT, count);
-    }
+    MhcSandwichRegBase::CastFp32ToB16(dst, src, count);
 }
 
 __aicore__ inline void FenceMte3ToMte2()
@@ -54,7 +50,7 @@ __aicore__ inline void LoadLowPrecisionTile(
     DataCopy(tmp, src[gmOffset], count);
     bufHOutBf16_.EnQue(tmp);
     tmp = bufHOutBf16_.DeQue<T>();
-    Cast(dst, tmp, RoundMode::CAST_NONE, count);
+    MhcSandwichRegBase::CastB16ToFp32(dst, tmp, count);
     PipeBarrier<PIPE_V>();
     bufHOutBf16_.FreeTensor(tmp);
 }

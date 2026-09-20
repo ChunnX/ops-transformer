@@ -47,11 +47,11 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
             for (uint32_t half = 0; half < 2; ++half) {
                 const uint32_t h0 = half * 2;
                 const uint32_t h1 = h0 + 1;
-                Mul(out, x2[h0 * dimTile_], x2[h0 * dimTile_], tD);
+                MhcSandwichRegBase::Mul(out, x2[h0 * dimTile_], x2[h0 * dimTile_], tD);
                 PipeBarrier<PIPE_V>();
-                Mul(tmp, x2[h1 * dimTile_], x2[h1 * dimTile_], tD);
+                MhcSandwichRegBase::Mul(tmp, x2[h1 * dimTile_], x2[h1 * dimTile_], tD);
                 PipeBarrier<PIPE_V>();
-                Add(out, out, tmp, tD);
+                MhcSandwichRegBase::Add(out, out, tmp, tD);
                 PipeBarrier<PIPE_V>();
                 midSqHalf[half] += ReduceSumPrecise(out, tD);
             }
@@ -134,10 +134,10 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         LoadX2CacheTile(tOff, tD);
         LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
         LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-        Muls(hIn, x2, gate[0], tD);
+        MhcSandwichRegBase::Muls(hIn, x2, gate[0], tD);
         PipeBarrier<PIPE_V>();
         for (uint32_t n = 1; n < N_MAX; ++n) {
-            Axpy(hIn, x2[n * dimTile_], gate[n], tD);
+            MhcSandwichRegBase::Axpy(hIn, x2[n * dimTile_], gate[n], tD);
             PipeBarrier<PIPE_V>();
         }
         CacheHInTile(tOff, tD, hIn);

@@ -21,6 +21,7 @@
 #define MHC_SANDWICH_NORM_POST_PREONLY_KERNEL_H_
 
 #include "mhc_sandwich_norm_post_preonly_common.h"
+#include "mhc_sandwich_norm_post_preonly_regbase.h"
 
 template<typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING = false>
 class KernelMhcSandwichNormPostPreonly {

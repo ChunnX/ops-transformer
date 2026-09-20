@@ -48,7 +48,7 @@ __aicore__ inline void LoadHOutAndCast(uint64_t gmOffset, uint32_t tD)
     DataCopy(hBf16, hOutGm_[gmOffset], tD);
     bufHOutBf16_.EnQue(hBf16);
     hBf16 = bufHOutBf16_.DeQue<T>();
-    Cast(bufHOutFp32_.Get<float>(), hBf16, RoundMode::CAST_NONE, tD);
+    MhcSandwichRegBase::CastB16ToFp32(bufHOutFp32_.Get<float>(), hBf16, tD);
     PipeBarrier<PIPE_V>();
     bufHOutBf16_.FreeTensor(hBf16);
 }
@@ -65,7 +65,7 @@ __aicore__ inline void LoadResidualAndCast(uint64_t gmBaseOffset, uint32_t tD)
     resBf16 = bufResidualBf16_.DeQue<T>();
     LocalTensor<float> resFp32 = bufResFp32_.Get<float>();
     for (uint32_t n = 0; n < N; ++n)
-        Cast(resFp32[n * dimTile_], resBf16[n * dimTile_], RoundMode::CAST_NONE, tD);
+        MhcSandwichRegBase::CastB16ToFp32(resFp32[n * dimTile_], resBf16[n * dimTile_], tD);
     PipeBarrier<PIPE_V>();
     bufResidualBf16_.FreeTensor(resBf16);
 }
@@ -98,7 +98,7 @@ __aicore__ inline float ReduceSumPrecise(LocalTensor<float> src, uint32_t tD)
 __aicore__ inline float ReduceSumSq(LocalTensor<float> src, uint32_t tD)
 {
     LocalTensor<float> sqBuf = bufSqFp32_.Get<float>();
-    Mul(sqBuf, src, src, tD);
+    MhcSandwichRegBase::Mul(sqBuf, src, src, tD);
     PipeBarrier<PIPE_V>();
     return ReduceSumPrecise(sqBuf, tD);
 }
@@ -112,9 +112,9 @@ __aicore__ inline __attribute__((always_inline)) float ComputeInvRms(float sumSq
 /// 原地依次执行标量缩放和gamma缩放。
 __aicore__ inline void ApplyScaleAndGamma(LocalTensor<float> buf, float scale, LocalTensor<float> gamma, uint32_t tD)
 {
-    Muls(buf, buf, scale, tD);
+    MhcSandwichRegBase::Muls(buf, buf, scale, tD);
     PipeBarrier<PIPE_V>();
-    Mul(buf, buf, gamma, tD);
+    MhcSandwichRegBase::Mul(buf, buf, gamma, tD);
     PipeBarrier<PIPE_V>();
 }
 
@@ -131,11 +131,11 @@ __aicore__ inline void ComputeX2AllHeadsBatched(const float (&postVals)[N_MAX], 
     LocalTensor<float> res = bufResFp32_.Get<float>();
 
     for (uint32_t h = 0; h < N; ++h)
-        Muls(x2[h * dimTile_], hOut, postVals[h], tD);
+        MhcSandwichRegBase::Muls(x2[h * dimTile_], hOut, postVals[h], tD);
     PipeBarrier<PIPE_V>();
     for (uint32_t j = 0; j < N; ++j) {
         for (uint32_t h = 0; h < N; ++h)
-            Axpy(x2[h * dimTile_], res[j * dimTile_], combVals[j * N + h], tD);
+            MhcSandwichRegBase::Axpy(x2[h * dimTile_], res[j * dimTile_], combVals[j * N + h], tD);
         PipeBarrier<PIPE_V>();
     }
 }
@@ -151,10 +151,10 @@ __aicore__ inline void ComputeX2AllHeadsSerial(const float (&postVals)[N_MAX], c
     LocalTensor<float> res = bufResFp32_.Get<float>();
 
     for (uint32_t h = 0; h < N; ++h) {
-        Muls(x2[h * dimTile_], hOut, postVals[h], tD);
+        MhcSandwichRegBase::Muls(x2[h * dimTile_], hOut, postVals[h], tD);
         PipeBarrier<PIPE_V>();
         for (uint32_t j = 0; j < N; ++j) {
-            Axpy(x2[h * dimTile_], res[j * dimTile_], combVals[j * N + h], tD);
+            MhcSandwichRegBase::Axpy(x2[h * dimTile_], res[j * dimTile_], combVals[j * N + h], tD);
             PipeBarrier<PIPE_V>();
         }
     }
