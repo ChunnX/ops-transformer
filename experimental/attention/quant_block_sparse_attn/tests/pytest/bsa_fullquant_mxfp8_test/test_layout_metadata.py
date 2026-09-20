@@ -38,6 +38,104 @@ def metadata(sparse, layout, block=128, **kwargs):
 
 
 class LayoutMetadataTest(unittest.TestCase):
+    def test_padded_layout_validation_is_not_hidden_by_metadata(self):
+        """Metadata and the main op must reject their own padded-layout inputs.
+
+        The metadata API deliberately rejects Q-length tensors for BSND/BNSD.
+        A valid metadata tensor must not mask equivalent invalid inputs when the
+        main operator is called directly, because the two APIs can be invoked
+        independently by eager and graph callers.
+        """
+        sparse = torch.empty((2, 4, 2), dtype=torch.int32, device="meta")
+        kv = torch.empty((4, 2, 128, 128), dtype=torch.float8_e4m3fn, device="meta")
+        kv_scale = torch.empty(
+            (4, 2, 128, 2, 2), dtype=torch.float8_e8m0fnu, device="meta"
+        )
+        value_scale = torch.empty(
+            (4, 2, 2, 128, 2), dtype=torch.float8_e8m0fnu, device="meta"
+        )
+        indices = torch.empty((2, 4, 2, 2), dtype=torch.int32, device="meta")
+        table = torch.empty((2, 2), dtype=torch.int32, device="meta")
+
+        for layout in ("BSND", "BNSD"):
+            with self.subTest(layout=layout):
+                shape = (2, 129, 4, 128) if layout == "BSND" else (2, 4, 129, 128)
+                q = torch.empty(shape, dtype=torch.float8_e4m3fn, device="meta")
+                scale = torch.empty(
+                    (*shape[:-1], 2, 2), dtype=torch.float8_e8m0fnu, device="meta"
+                )
+
+                # Metadata owns validation of the sparse metadata contract.
+                for field in ("cu_seqlens_q", "seqused_q"):
+                    with self.assertRaisesRegex(RuntimeError, "requires.*None"):
+                        metadata(
+                            sparse,
+                            layout,
+                            **{
+                                field: torch.empty(
+                                    (0,), dtype=torch.int32, device="meta"
+                                )
+                            },
+                        )
+                with self.assertRaises(RuntimeError):
+                    metadata(
+                        torch.empty((2, 4, 0), dtype=torch.int32, device="meta"), layout
+                    )
+
+                valid_metadata = metadata(sparse, layout)
+
+                def invoke(query=q, q_scale=scale, **kwargs):
+                    options = dict(
+                        block_table=table,
+                        metadata=valid_metadata,
+                        layout_q=layout,
+                        layout_out=layout,
+                        quant_mode=2,
+                        mask_mode=0,
+                    )
+                    options.update(kwargs)
+                    return torch.ops.custom.npu_quant_block_sparse_attn(
+                        query,
+                        kv,
+                        kv,
+                        q_scale,
+                        kv_scale,
+                        value_scale,
+                        None,
+                        indices,
+                        sparse,
+                        None,
+                        0.125,
+                        128,
+                        128,
+                        **options,
+                    )
+
+                # A valid metadata value proves that later failures come from
+                # the main-op checks, not from the metadata builder.
+                out, lse = invoke()
+                self.assertEqual(tuple(out.shape), shape)
+                self.assertEqual(tuple(lse.shape), (0,))
+
+                with self.assertRaisesRegex(RuntimeError, "requires.*None"):
+                    invoke(
+                        cu_seqlens_q=torch.empty((0,), dtype=torch.int32, device="meta")
+                    )
+                with self.assertRaisesRegex(RuntimeError, "requires.*None"):
+                    invoke(
+                        seqused_q=torch.empty((2,), dtype=torch.int32, device="meta")
+                    )
+                with self.assertRaisesRegex(RuntimeError, "q_descale"):
+                    invoke(
+                        q_scale=torch.empty(
+                            (*shape[:-1], 3, 2), dtype=scale.dtype, device="meta"
+                        )
+                    )
+                with self.assertRaises(RuntimeError):
+                    invoke(
+                        query=torch.empty((2, 129, 128), dtype=q.dtype, device="meta")
+                    )
+
     def test_npu_metadata_optional_inputs(self):
         """Exercise the af49ad74f None fix without launching the attention kernel."""
         if not torch_npu.npu.is_available():
