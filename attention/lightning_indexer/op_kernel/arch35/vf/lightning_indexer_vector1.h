@@ -68,8 +68,8 @@ __simd_callee__ inline void UIntToSortableKey(AscendC::Reg::RegTensor<FloatT> &o
     using Traits = UIntSortTraits<FloatT>;
     using UInt = typename Traits::UInt;
 
-    AscendC::Reg::RegTensor<UInt> regTemp;
     AscendC::Reg::RegTensor<UInt> regMask;
+    AscendC::Reg::RegTensor<UInt> regTemp;
     AscendC::Reg::MaskReg regSelectZero;
     AscendC::Reg::MaskReg regSelectSign;
 
