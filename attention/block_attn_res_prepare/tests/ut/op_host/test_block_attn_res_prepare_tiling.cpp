@@ -125,6 +125,22 @@ struct BlockAttnResPrepareTilingCase {
                 SYSTEM_WORKSPACE_SIZE};
     }
 
+    std::string MakeSocInfoString() const
+    {
+        return std::string("{\"hardware_info\":{") + "\"BT_SIZE\":0," + "\"load3d_constraints\":\"1\"," +
+               "\"Intrinsic_fix_pipe_l0c2out\":false," + "\"Intrinsic_data_move_l12ub\":true," +
+               "\"Intrinsic_data_move_l0c2ub\":true," + "\"Intrinsic_data_move_out2l1_nd2nz\":false," +
+               "\"UB_SIZE\":" + std::to_string(ASCEND_950_UB_SIZE) + "," + "\"L2_SIZE\":33554432," +
+               "\"L1_SIZE\":" + std::to_string(ASCEND_950_L1_SIZE) + "," +
+               "\"L0A_SIZE\":" + std::to_string(ASCEND_950_L0A_SIZE) + "," +
+               "\"L0B_SIZE\":" + std::to_string(ASCEND_950_L0B_SIZE) + "," +
+               "\"L0C_SIZE\":" + std::to_string(ASCEND_950_L0C_SIZE) + "," +
+               "\"CORE_NUM\":" + std::to_string(contextCoreNum) + "," +
+               "\"cube_core_cnt\":" + std::to_string(aicCoreNum) + "," +
+               "\"vector_core_cnt\":" + std::to_string(aivCoreNum) + "," +
+               "\"socVersion\":\"" + socVersion + "\"}}";
+    }
+
     gert::TilingContextPara MakeContext(optiling::BlockAttnResPrepareCompileInfo &compileInfo) const
     {
         const std::vector<int64_t> blockDims = ops::ut::ParseDims(blockResShape);
@@ -147,7 +163,7 @@ struct BlockAttnResPrepareTilingCase {
                 {ops::ut::MakeGertStorageShape(std::vector<int64_t>{totalS, totalT}), ge::DT_FLOAT, ge::FORMAT_ND},
             },
             {{"eps", Ops::Transformer::AnyValue::CreateFrom<float>(eps)}}, &compileInfo, socVersion,
-            static_cast<uint64_t>(contextCoreNum), ASCEND_950_UB_SIZE, FAKE_L2_SIZE);
+            static_cast<uint64_t>(contextCoreNum), ASCEND_950_UB_SIZE, FAKE_L2_SIZE, MakeSocInfoString());
     }
 
     void CheckVectorTiling(const TilingInfo &tilingInfo) const
