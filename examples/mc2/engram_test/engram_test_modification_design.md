@@ -56,9 +56,7 @@
 2. 整除校验：sliced 模式要求 `total % world_size == 0`，否则报错退出（data.md 六档 vocab 均可被 4 整除，已核对：5138000/4=1284500 … 82208000/4=20552000，1024/4=256 ✓）。
 3. `write_golden = storage.chunk(world_size)` 逻辑不变（本来就按 total 切）；local 写全量 `storage` 不变。`get_engram_storage_size_hint` 按 write_inputs.shape[0] 推导，自动适配。
 4. 迁移兼容：新增 `--shape_semantics {total,per_rank}`，默认 `total`；旧 xlsx 表若按 per_rank 语义构造，需在表上加列或转换（README 注明 breaking change）。
-5. **data.md 连带修正（需你拍板）**：语义修正后 small(5.14M)/medium(10.3M) 的 16,777,216 档位超过 vocab（有放回采样，功能合法但语义存疑）。两个选项：
-   - A（推荐）：每个 case 的扫描序列裁剪至 ≤ vocab（如 small 扫到 4M 为止）；
-   - B：保留 21 档全扫，用例在 `num_token > vocab` 时打 WARNING 并在报告注明"重复采样"。
+5. **data.md 连带修正（已拍板 2026-09-21）**：语义修正后 small(5.14M)/medium(10.3M) 的 16,777,216 档位超过 vocab。**决策：保留大档位，不判失败**。依据：numTokens > vocab 是真实 LLM 场景——Prefill 阶段 embedding 取数行数 = batch×seq_len，长上下文（128K ctx）batch≥2 即超 vocab（主流模型 vocab 128K~152K）；token 分布服从 Zipf，重复 token 天然大量存在；算子侧对 numTokens 仅校验 ≥0（tiling:188-190），训练路径的去重输出（grad_unique/unique_local_entry）正为重复 index 设计。**约束是 index 值域 ∈ [0, vocab)，而非数量 ≤ vocab**。实现：indices 有放回采样自 [0, vocab)；`num_token > vocab` 时打 WARNING 注明"重复采样，对应 prefill 长上下文/大 batch 场景"，报告记录该档位为 repeated-sampling。
 
 ---
 
@@ -179,9 +177,9 @@ oom.md 实测：16x（[[321125,9216]]）token=8,388,608 时单次 `fetched` = 8,
 - 按 91.75GB 卡预估各新用例可测档位（M5 落地后自动 SKIP 生效）：1x(H=576) 全 21 档可测；4x(H=2304) 全 21 档可测（16M 档单次 38.7GiB）；16x(H=9216) 仅到 4M 档（36GiB），8M/16M 档必 SKIP。
 - M1 语义修正后，超 vocab 的档位按 §2.2-5 处理。
 
-**L2 C++ 层（采纳 oom.md §4.1，落点从 Python 改为 csrc，单一权威点）**：
+**L2 C++ 层（采纳 oom.md §4.1，落点从 Python 改为 csrc，单一权威点，已拍板）**：
 - `mc2/common/torch_extension/csrc/elastic_buffer.cpp`：在 :1894（infer `fetched`）、:1915（train `fetched`）、:1960-1961（train `gradUnique`/`uniqueLocalEntry`）各分配点之前，`aclrtGetMemInfo(ACL_HBM_MEM)` 取 free，`TORCH_CHECK(need < free×0.8)`，错误信息含 need/free/numTokens/hidden/dtype 与"减小 numTokens/hiddenSize"建议；
-- 开关：环境变量 `ENGRAM_FETCH_MEM_GUARD`（默认 `1`=ERROR；`warn`=仅告警；`0`=关闭）；
+- **无开关，直接拦截**（拍板结论：不增加环境变量，检查始终生效）；
 - 不在 elastic_buffer.py 重复实现（oom.md §4.2 的 Python 版与 §4.1 的 C++ 版二选一即可，C++ 层同时覆盖 PTA 全部调用方与训练分配点）。
 
 **L3 op host 侧（可选，低优先级）**：tiling 无法感知空闲 HBM 且输出非其分配；可选加"numTokens×hiddenBytes ≤ 设备 HBM 总量"静态荒谬值上限。默认不做。
@@ -192,7 +190,7 @@ oom.md 实测：16x（[[321125,9216]]）token=8,388,608 时单次 `fetched` = 8,
 
 ### 5.4 数据修正项（新发现，与 M1 关联）
 
-1. **321125 不能被 4 整除**：sliced 模式的 `num_entries_per_rank` 是全局→owner 均匀映射的单一属性（tiling:509-510 已核实），非整除分片会导致映射错误 → `perf_sliced__16x_tensor` 建议改 `[[321128, 9216]]`（÷4=80282，总量 2.96GB 不变）；local 模式不受影响。engram_test_cases.xlsx 暂保留原值，待拍板后更新。
+1. **321125 不能被 4 整除**：sliced 模式的 `num_entries_per_rank` 是全局→owner 均匀映射的单一属性（tiling:509-510 已核实），非整除分片会导致映射错误 → 已拍板改为 `[[321128, 9216]]`（÷4=80282，总量 2.96GB 不变）；local 16x 一并改为 321128 以维持 local/sliced 同 shape 缓存配对复用。**engram_test_cases.xlsx 已更新并重跑自检通过**。
 2. oom.md 历史 OOM 项处置：HCCL 端口冲突 → 已由 M6 `--master_port` 按 case 递增覆盖；ninja 编译 OOM（exit 137）与多用户 stream 耗尽（507899）→ 列入 README 运维提示（预编译、清残留进程、清 stale lock），非代码改动。
 
 ---
@@ -276,9 +274,9 @@ CLI 新增：`--shape_semantics`、`--prep_cache_dir`、`--purge_prep_cache`、`
 
 ---
 
-**待你审核确认的 5 个决策点**：
-1. 修改基线采纳"当前 worktree"（§1）？
-2. `--shape_semantics` 默认值取 `total`（§2.2-4）？
-3. 超 vocab 档位处理选 A（裁剪扫描序列）还是 B（保留+告警）（§2.2-5）？
-4. C++ 侧 L2 拦截默认 `ENGRAM_FETCH_MEM_GUARD=1`（ERROR）还是 `warn`（§5.3）？
-5. `perf_sliced__16x_tensor` 的 321125 改为 321128（÷4 整除，§5.4）？
+**决策点（已全部拍板，2026-09-21）**：
+1. 修改基线采纳"当前 worktree"（§1）—— **OK**；
+2. `--shape_semantics` 默认值取 `total`（§2.2-4）—— **OK**；
+3. 超 vocab 档位 —— **保留 + 告警，不判失败**。结论依据（已核实）：numTokens > vocab 是真实 LLM 场景——Prefill 阶段 embedding 取数行数 = batch×seq_len，长上下文 batch≥2 即超 vocab（如 128K ctx、vocab 100M~129K 级，句子由词表组合、允许重复 token）；算子侧对 numTokens 仅校验 ≥0（tiling:188-190），训练路径的去重输出（grad_unique/unique_local_entry）正为重复 index 设计。**约束是 index 值域 ∈ [0, vocab)，而非数量 ≤ vocab**。实现：indices 有放回采样自 [0, vocab)；`num_token > vocab` 时打 WARNING"重复采样，对应 prefill 长上下文/大 batch 场景"，报告标注 repeated-sampling（§2.2-5）；
+4. L2 拦截 —— **无开关直接拦截**（不增加环境变量，TORCH_CHECK 始终生效，§5.3）；
+5. 321125 → 321128 —— **OK**（engram_test_cases.xlsx 已同步更新；local 16x 一并改为 321128，以维持 local/sliced 同 shape 缓存配对复用，local 模式功能不受影响）。
