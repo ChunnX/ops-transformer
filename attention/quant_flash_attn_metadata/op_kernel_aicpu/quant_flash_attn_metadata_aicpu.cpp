@@ -191,8 +191,8 @@ bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
             return false;
         }
         for (int64_t i = 1; i < count; ++i) {
-            if (qSeq[i] <= qSeq[i - 1] || kvSeq[i] <= kvSeq[i - 1]) {
-                KERNEL_LOG_ERROR("QuantFAG TND requires positive sequence lengths");
+            if (qSeq[i] < qSeq[i - 1] || kvSeq[i] < kvSeq[i - 1]) {
+                KERNEL_LOG_ERROR("QuantFAG TND cumulative sequences must be nondecreasing");
                 return false;
             }
         }
@@ -201,9 +201,9 @@ bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
                 static_cast<const int32_t *>(sequsedQ_->GetData())[i];
             const int64_t kvUsed = sequsedKv_ == nullptr || sequsedKv_->GetData() == nullptr ? kvSeq[i + 1] - kvSeq[i] :
                 static_cast<const int32_t *>(sequsedKv_->GetData())[i];
-            if (qUsed <= 0 || qUsed > qSeq[i + 1] - qSeq[i] ||
-                kvUsed <= 0 || kvUsed > kvSeq[i + 1] - kvSeq[i]) {
-                KERNEL_LOG_ERROR("QuantFAG TND seqused must be positive and within each cu_seqlens segment");
+            if (qUsed < 0 || qUsed > qSeq[i + 1] - qSeq[i] ||
+                kvUsed < 0 || kvUsed > kvSeq[i + 1] - kvSeq[i]) {
+                KERNEL_LOG_ERROR("QuantFAG TND seqused must be nonnegative and within each cu_seqlens segment");
                 return false;
             }
         }
@@ -336,6 +336,9 @@ int64_t QuantFlashAttnMetadataCpuKernel::CalDeterMaxRound()
     int64_t n = CeilDiv<int64_t>(s2Size_, 512);
     int64_t k = aicCoreNum_;
 
+    if (m == 0 || n == 0 || b == 0) {
+        return 0;
+    }
     if (n == 1) {
         return std::max(CeilDiv<int64_t>(m * b, k), m);
     } else {
@@ -554,8 +557,8 @@ bool QuantFlashAttnMetadataCpuKernel::PreferTndLineSwizzle()
     for (int64_t bIdx = 0; bIdx < bSize; ++bIdx) {
         const int64_t s1Len = static_cast<int64_t>(GetS1SeqSize(static_cast<uint32_t>(bIdx)));
         const int64_t s2Len = static_cast<int64_t>(GetS2SeqSize(static_cast<uint32_t>(bIdx)));
-        if (s1Len <= 0 || s2Len <= 0) {
-            return false;
+        if (s1Len == 0 || s2Len == 0) {
+            continue;
         }
         if (!isBand && s1Len != s2Len) {
             return false;
@@ -578,7 +581,8 @@ bool QuantFlashAttnMetadataCpuKernel::PreferTndLineSwizzle()
             int64_t virtM = 0;
             int64_t virtN = 0;
             GetRightDownVirt(shape.m, shape.n, virtM, virtN);
-            worthy = TndLineRunIsWorthy(k, virtM, virtN, total / 2);
+            worthy = (shape.m == shape.n && total / 2 > 0) ||
+                      TndLineRunIsWorthy(k, virtM, virtN, total / 2);
             if (worthy && (total % 2 == 1) && shape.m < std::min(k, shape.n)) {
                 worthy = false;
             }
@@ -735,12 +739,15 @@ bool QuantFlashAttnMetadataCpuKernel::CalDeterSwizzleSchedule(std::vector<int64_
     for (int64_t bIdx = 0; bIdx < bSize; ++bIdx) {
         const int64_t s1Len = static_cast<int64_t>(GetS1SeqSize(static_cast<uint32_t>(bIdx)));
         const int64_t s2Len = static_cast<int64_t>(GetS2SeqSize(static_cast<uint32_t>(bIdx)));
-        if (s1Len <= 0 || s2Len <= 0 || (maxSeqlenQ_ >= 0 && s1Len > maxSeqlenQ_) ||
+        if (s1Len < 0 || s2Len < 0 || (maxSeqlenQ_ >= 0 && s1Len > maxSeqlenQ_) ||
             (maxSeqlenKv_ >= 0 && s2Len > maxSeqlenKv_)) {
-            KERNEL_LOG_ERROR("QuantFAG grad schedule: batch %ld has empty seq (s1 %ld, s2 %ld), swizzle schedule "
-                             "requires all batches non-empty",
+            KERNEL_LOG_ERROR("QuantFAG grad schedule: batch %ld has invalid sequence lengths (s1 %ld, s2 %ld)",
                              bIdx, s1Len, s2Len);
             return false;
+        }
+        if (s1Len == 0 || s2Len == 0) {
+            roundPrefix[bIdx + 1] = roundPrefix[bIdx];
+            continue;
         }
         const int64_t m = CeilDiv<int64_t>(s1Len, static_cast<int64_t>(optiling::QUANT_FAG_CUBE_BASE_M));
         const int64_t n = CeilDiv<int64_t>(s2Len, static_cast<int64_t>(optiling::QUANT_FAG_CUBE_BASE_N));

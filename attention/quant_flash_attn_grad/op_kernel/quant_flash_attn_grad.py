@@ -1850,7 +1850,7 @@ def cal_deter_index(
         if is_var_len():
             # pl.range 上界必须是 tiling; 真实轮数只做提前退出, 避免扫完保守上界.
             deter_rounds = meta_get(const_info, tensor_metadata, META_DETER_MAX_NUM_IDX)
-            if deter_rounds > 0 and current_round_id >= deter_rounds:
+            if current_round_id >= deter_rounds:
                 break
             if schedule_kind == META_TND_LINE_SWIZZLE:
                 next_valid_index = cal_tnd_line_swizzle_deter_index(
@@ -4042,8 +4042,8 @@ def quant_flash_attn_grad(
                       "QuantFAG: metadata batch mismatch")
         pl.pto_assert(pl.getval(tensor_metadata, tiling.metadata_len + META_AIC_CORE_NUM_IDX) == pl.get_block_num(),
                       "QuantFAG: metadata AIC core count mismatch")
-        pl.pto_assert(pl.getval(tensor_metadata, tiling.metadata_len + META_DETER_MAX_NUM_IDX) > 0,
-                      "QuantFAG: metadata deter max round is 0")
+        pl.pto_assert(pl.getval(tensor_metadata, tiling.metadata_len + META_DETER_MAX_NUM_IDX) >= 0,
+                      "QuantFAG: metadata deter max round is negative")
         if sparse_type != 0 or layout == 2:
             schedule_kind = pl.getval(tensor_metadata, tiling.metadata_len + META_SCHEDULE_KIND_IDX)
             pl.pto_assert(
@@ -4955,7 +4955,7 @@ def quant_flash_attn_grad(
     #     pl.printf("wenyu check2 next_valid_loop_idx : %d next_block_idx : %d \n", next_valid_loop_idx, next_block_idx)
     for loop_idx in pl.range(loop_max):
         if is_var_len():
-            if meta_rounds > 0 and loop_idx >= meta_rounds:
+            if loop_idx >= meta_rounds:
                 break
         block_inner_idx = next_block_idx
         if loop_idx >= next_valid_loop_idx:
