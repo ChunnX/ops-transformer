@@ -563,15 +563,21 @@ static bool IsMxA8W4(const GroupedMatmulParams &params)
            params.x2->GetDataType() == DataType::DT_FLOAT4_E2M1;
 }
 
-static bool IsMxFullQuant(const GroupedMatmulParams &params)
+static bool IsMxBf16OutputSupported(const GroupedMatmulParams &params)
 {
-    return CheckType(params.x1->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX) &&
-           CheckType(params.x2->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX);
+    if (params.x1 == nullptr || params.x2 == nullptr) {
+        return false;
+    }
+    const auto xDtype = params.x1->GetDataType();
+    const auto weightDtype = params.x2->GetDataType();
+    const bool isMxFp4 = xDtype == DataType::DT_FLOAT4_E2M1 && weightDtype == DataType::DT_FLOAT4_E2M1;
+    const bool isMxFp8E4M3 = xDtype == DataType::DT_FLOAT8_E4M3FN && weightDtype == DataType::DT_FLOAT8_E4M3FN;
+    return params.x2->GetStorageFormat() == Format::FORMAT_FRACTAL_NZ && (isMxFp4 || isMxFp8E4M3);
 }
 
 static int64_t GetL0OutputDtype(const GroupedMatmulParams &params)
 {
-    if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 && IsMxFullQuant(params) &&
+    if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 && IsMxBf16OutputSupported(params) &&
         params.out->GetDataType() == DataType::DT_BF16) {
         return ACLNN_OUT_DTYPE_BF16;
     }
