@@ -83,7 +83,15 @@ class _AllToAllQuantMatmulOpBuilder(OpBuilder):
             h = x1.size(1)
             n = x2.size(1)
             local_bs = bs // world_size
-            out_dtype = torch.float32
+            if y_dtype is None:
+                out_dtype = torch.bfloat16
+            else:
+                torch._check(
+                    y_dtype in _ACL_DTYPE_TO_TORCH_DTYPE,
+                    lambda: f"y_dtype only supports 15 (BF16) / 5 (FP16) ACL dtype enum, "
+                    f"but got {y_dtype}, {ops_error(ErrCode.VALUE)}.",
+                )
+                out_dtype = _ACL_DTYPE_TO_TORCH_DTYPE[y_dtype]
             y = x1.new_empty(tuple([local_bs, n]), dtype=out_dtype)
             all2all_out = x1.new_empty(
                 tuple([local_bs, h * world_size]), dtype=x1.dtype
@@ -135,7 +143,7 @@ def _npu_all_to_all_quant_matmul(
         x2_dtype,
         x1_scale_dtype,
         x2_scale_dtype,
-        y_dtype if y_dtype is not None else torch.bfloat16,
+        y_dtype if y_dtype is not None else 15,  # ACL BF16
         comm_mode if comm_mode is not None else "aiv_urma",
         precision_mode,
     )
@@ -268,7 +276,7 @@ def all_to_all_quant_matmul(
         x2_dtype=x2_dtype,
         x1_scale_dtype=x1_scale_dtype,
         x2_scale_dtype=x2_scale_dtype,
-        y_dtype=y_dtype if y_dtype is not None else torch.bfloat16,
+        y_dtype=y_dtype if y_dtype is not None else 15,  # ACL BF16
         comm_mode=comm_mode if comm_mode is not None else "aiv_urma",
         precision_mode=precision_mode,
     )
