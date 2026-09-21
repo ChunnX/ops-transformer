@@ -484,7 +484,7 @@ __aicore__ inline void EngramFetchArch35::GatherSf(int32_t globalIdx, uint64_t g
     AscendC::DataCopyPad(sfTmp, sfSrcGm, sfCopyIn, sfPadIn);
     relayQue_.EnQue<uint8_t>(sfTmp);
     sfTmp = relayQue_.DeQue<uint8_t>();
-    AscendC::DataCopyExtParams sfCopyOut{1U, sfBytes, 0U, 0U, 0U};
+    AscendC::DataCopyParams sfCopyOut{1U, static_cast<uint16_t>(sfBytes), 0U, 0U};
     AscendC::DataCopyPad(sfDstGm, sfTmp, sfCopyOut);
     relayQue_.FreeTensor<uint8_t>(sfTmp);
 }
