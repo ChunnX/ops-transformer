@@ -186,6 +186,9 @@ function(gen_opapi_symbol)
     opapi_math
     dl
   )
+  if(COMMAND cannbotdsl_attach_aclnn)
+    cannbotdsl_attach_aclnn(${OPAPI_NAME})
+  endif()
 endfunction()
 
 function(gen_built_in_opapi_symbol)

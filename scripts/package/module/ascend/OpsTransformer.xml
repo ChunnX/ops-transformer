@@ -10,6 +10,10 @@
         dst_path="opp/built-in/op_impl" install_path="opp/built-in/op_impl" install_type="all">
         <file value="cannbotdsl" install_mod="550"/>
     </file_info>
+    <file_info value="cannbotdsl_aclnn" copy_type="delivery" src_path=""
+        dst_path="opp/built-in" install_path="opp/built-in" install_type="all">
+        <file value="op_api" optional="true" install_mod="550"/>
+    </file_info>
     <file_info value="opapi_transformer_lib" copy_type="delivery" src_path=""
         dst_path="$(TARGET_ENV)/lib64/"
         install_path="$(TARGET_ENV)/lib64/">
