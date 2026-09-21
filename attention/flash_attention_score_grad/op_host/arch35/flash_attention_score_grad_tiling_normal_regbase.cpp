@@ -890,9 +890,9 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoOpTiling()
          (isLongSeqTndSwizzle || isShortSeqTndSwizzle) &&
          (fBaseParams.sparseType != static_cast<uint8_t>(SparseType::UNSUPPORTED)));
     tndBaseInfo.isTndSwizzle = fBaseParams.tndLineDeter == 0 && fBaseParams.enableSwizzle &&
-                               fBaseParams.layoutType == INPUT_FORMAT_TND &&
-                               templateSupportCond && fBaseParams.b < TND_SWIZZLE_PREFIX_NUM &&
-                               !tndBaseInfo.isSeqExistZero && fBaseParams.tailZeroCount == 0;
+                               fBaseParams.layoutType == INPUT_FORMAT_TND && templateSupportCond &&
+                               fBaseParams.b < TND_SWIZZLE_PREFIX_NUM && !tndBaseInfo.isSeqExistZero &&
+                               fBaseParams.tailZeroCount == 0;
     if (fBaseParams.isDeterministic && fBaseParams.splitAxis == SplitAxisEnum::BN2S2 && tndBaseInfo.isTndSwizzle) {
         ConfigureTndDeterBn2S2Swizzle(fBaseParams, tndBaseInfo);
     }
