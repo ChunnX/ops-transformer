@@ -46,6 +46,17 @@ constexpr uint32_t DTYPE_ENUM_INDEX_4 = 4;
 constexpr uint32_t DTYPE_ENUM_INDEX_5 = 5;
 constexpr uint32_t DTYPE_ENUM_INDEX_6 = 6;
 constexpr uint32_t MAX_BASIC_BLOCK_SIZE = 1024;
+constexpr uint32_t QUANT_BLOCK_S1_SIZE = 512;
+constexpr uint32_t QUANT_BLOCK_S2_SIZE = 512;
+constexpr uint32_t DEQUANT_SCALE_SHAPE_DIM = 4;
+constexpr int64_t HIFP8_ADMIT_SEQ1 = 54000;
+constexpr int64_t HIFP8_ADMIT_SEQ2 = 57600;
+constexpr int64_t HIFP8_ADMIT_SEQ3 = 9360;
+constexpr int64_t HIFP8_ADMIT_SEQ4 = 7200;
+constexpr int64_t HIFP8_ADMIT_N1 = 5;
+constexpr int64_t HIFP8_ADMIT_N2 = 10;
+constexpr int64_t HIFP8_ADMIT_N3 = 40;
+constexpr int64_t HIFP8_ADMIT_N4 = 80;
 
 // pse
 constexpr uint32_t PSE_DIM_NUM_1 = 1;
@@ -575,6 +586,11 @@ ge::graphStatus CheckSoftmaxMaxShape(const gert::TilingContext *context, int64_t
                                      bool isQuant);
 ge::graphStatus CheckSoftmaxSumShape(const gert::TilingContext *context, int64_t b, int64_t n1, int64_t s1,
                                      bool isQuant);
+ge::graphStatus QuantShapeValidCheck(const gert::TilingContext *context, const FuzzyBaseInfoParamsRegbase &fBaseParams);
+ge::graphStatus QuantScaleShapeValidCheck(const gert::TilingContext *context,
+                                          const FuzzyBaseInfoParamsRegbase &fBaseParams);
+ge::graphStatus QuantScaleDtypeValidCheck(const gert::TilingContext *context,
+                                          const FuzzyBaseInfoParamsRegbase &fBaseParams);
 ge::graphStatus CheckAttentionInShape(const gert::TilingContext *context);
 ge::graphStatus CheckSoftmaxDtype(const gert::TilingContext *context);
 ge::graphStatus CheckAttentionInDtype(const gert::TilingContext *context);

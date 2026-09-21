@@ -48,11 +48,13 @@ public:
     __aicore__ inline void CalculateSoftmaxGrad(uint64_t taskId, uint64_t sfmgOutputOffset, uint64_t curNBurst,
                                                 uint64_t deqScaleIdx = 0);
     __aicore__ inline void DoSoftmaxGrad();
+    __aicore__ inline void DoSoftmaxGradFp8();
     template <uint8_t GM_IDX>
     __aicore__ inline void CopyDqkvToGm(const uint64_t &loopIdx);
 
     constexpr static uint32_t HEAD_DIM_ALIGN = static_cast<uint32_t>(dTemplateType);
     constexpr static uint64_t BLOCK_BYTE_SIZE = 32;
+    constexpr static uint64_t QUANT_BLOCK_SIZE = 512;
 
     TPipe *pipe;
     GlobalTensor<float> dqWorkSpaceGm, dkWorkSpaceGm, dvWorkSpaceGm, deqScaleDyGm, sfmgWorkspaceGm;
@@ -101,6 +103,9 @@ public:
     uint64_t s1d = 0;
     uint64_t nd = 0;
     uint64_t bnd = 0;
+    uint64_t ns1o = 0;
+    uint64_t s1o = 0;
+    uint64_t soIdx = 0;
 
     uint64_t dAlignToBlock;
     uint64_t dAlignToBlockB16;
@@ -154,6 +159,10 @@ __aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_T
         s1d = s1 * d;
         nd = n1 * d;
         bnd = b * n1 * d;
+        if constexpr (IsSameType<T1, hifloat8_t>::value) {
+            ns1o = n1 * Ceil(s1, QUANT_BLOCK_SIZE);
+            s1o = Ceil(s1, QUANT_BLOCK_SIZE);
+        }
 
         usedCoreNum = tilingData->preTilingData.sfmgUsedCoreNum;
         layout = tilingData->s1s2BNGS1S2BaseParams.layout;
@@ -186,33 +195,36 @@ __aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_T
         dkOffset = ((uint64_t)vBlockIdx) * kPreBlockFactor;
         initdvSize = vBlockIdx == vPreBlockTotal - 1 ? vPreBlockTail : vPreBlockFactor;
         dvOffset = ((uint64_t)vBlockIdx) * vPreBlockFactor;
-        if (SPLIT_AXIS == BN2S2 && !(tilingData->preTilingData.sValueZeroUnderTND ||
-                                     (IS_DETER_NEW(DETER_SPARSE_TYPE) && tilingData->preTilingData.hasInvalidCol))) {
-            singleInitSize = PRE_INIT_UB_SIZE * NUM_THREE / sizeof(T2);
-            dqLoopNum = Ceil(initdqSize, singleInitSize);
-            dkLoopNum = 0;
-            dvLoopNum = 0;
-            dqBlockTail = initdqSize % singleInitSize == 0 ? singleInitSize : initdqSize % singleInitSize;
-            dkBlockTail = 0;
-            dvBlockTail = 0;
-            pipe->InitBuffer(dqInitBuf, PRE_INIT_UB_SIZE * NUM_THREE);
-            dqTensor = dqInitBuf.template Get<T2>();
-        } else {
-            singleInitSize = PRE_INIT_UB_SIZE / sizeof(T2);
-            dqLoopNum = Ceil(initdqSize, singleInitSize);
-            dkLoopNum = Ceil(initdkSize, singleInitSize);
-            dvLoopNum = Ceil(initdvSize, singleInitSize);
-            dqBlockTail = initdqSize % singleInitSize == 0 ? singleInitSize : initdqSize % singleInitSize;
-            dkBlockTail = initdkSize % singleInitSize == 0 ? singleInitSize : initdkSize % singleInitSize;
-            dvBlockTail = initdvSize % singleInitSize == 0 ? singleInitSize : initdvSize % singleInitSize;
-            pipe->InitBuffer(dqInitBuf, PRE_INIT_UB_SIZE);
-            pipe->InitBuffer(dkInitBuf, PRE_INIT_UB_SIZE);
-            pipe->InitBuffer(dvInitBuf, PRE_INIT_UB_SIZE);
-            dqTensor = dqInitBuf.template Get<T2>();
-            dkTensor = dkInitBuf.template Get<T2>();
-            dvTensor = dvInitBuf.template Get<T2>();
+        if constexpr (!IsSameType<T1, hifloat8_t>::value) {
+            if (SPLIT_AXIS == BN2S2 &&
+                !(tilingData->preTilingData.sValueZeroUnderTND ||
+                  (IS_DETER_NEW(DETER_SPARSE_TYPE) && tilingData->preTilingData.hasInvalidCol))) {
+                singleInitSize = PRE_INIT_UB_SIZE * NUM_THREE / sizeof(T2);
+                dqLoopNum = Ceil(initdqSize, singleInitSize);
+                dkLoopNum = 0;
+                dvLoopNum = 0;
+                dqBlockTail = initdqSize % singleInitSize == 0 ? singleInitSize : initdqSize % singleInitSize;
+                dkBlockTail = 0;
+                dvBlockTail = 0;
+                pipe->InitBuffer(dqInitBuf, PRE_INIT_UB_SIZE * NUM_THREE);
+                dqTensor = dqInitBuf.template Get<T2>();
+            } else {
+                singleInitSize = PRE_INIT_UB_SIZE / sizeof(T2);
+                dqLoopNum = Ceil(initdqSize, singleInitSize);
+                dkLoopNum = Ceil(initdkSize, singleInitSize);
+                dvLoopNum = Ceil(initdvSize, singleInitSize);
+                dqBlockTail = initdqSize % singleInitSize == 0 ? singleInitSize : initdqSize % singleInitSize;
+                dkBlockTail = initdkSize % singleInitSize == 0 ? singleInitSize : initdkSize % singleInitSize;
+                dvBlockTail = initdvSize % singleInitSize == 0 ? singleInitSize : initdvSize % singleInitSize;
+                pipe->InitBuffer(dqInitBuf, PRE_INIT_UB_SIZE);
+                pipe->InitBuffer(dkInitBuf, PRE_INIT_UB_SIZE);
+                pipe->InitBuffer(dvInitBuf, PRE_INIT_UB_SIZE);
+                dqTensor = dqInitBuf.template Get<T2>();
+                dkTensor = dkInitBuf.template Get<T2>();
+                dvTensor = dvInitBuf.template Get<T2>();
+            }
+            eventIDVToMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
         }
-        eventIDVToMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
         pipe->InitBuffer(input1Que[0], 1, tilingData->preTilingData.sfmgYBufferLen);
         pipe->InitBuffer(input1Que[1], 1, tilingData->preTilingData.sfmgYBufferLen);
         pipe->InitBuffer(input2Que[0], 1, tilingData->preTilingData.sfmgDyBufferLen);
@@ -249,9 +261,13 @@ __aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_T
                 InitOutput<float>(dqWorkSpaceGm[dqOffset], initdqSize, 0);
             }
         }
-        SetFlag<HardEvent::V_MTE3>(eventIDVToMte3);
         CalTempDimAlign();
-        DoSoftmaxGrad();
+        if constexpr (IsSameType<T1, hifloat8_t>::value) {
+            DoSoftmaxGradFp8();
+        } else {
+            SetFlag<HardEvent::V_MTE3>(eventIDVToMte3);
+            DoSoftmaxGrad();
+        }
     }
 }
 
@@ -278,6 +294,9 @@ __aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_T
                 nIdx = bTail / (curS * d);
                 uint64_t nTail = bTail % (curS * d);
                 sIdx = nTail / d;
+                if constexpr (IsSameType<T1, hifloat8_t>::value) {
+                    soIdx = sIdx / QUANT_BLOCK_SIZE;
+                }
                 break;
             }
         }
@@ -287,6 +306,9 @@ __aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_T
         nIdx = bTail / s1d;
         uint64_t nTail = bTail % s1d;
         sIdx = nTail / d;
+        if constexpr (IsSameType<T1, hifloat8_t>::value) {
+            soIdx = sIdx / QUANT_BLOCK_SIZE;
+        }
     }
 }
 
@@ -377,7 +399,12 @@ __aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_T
     LocalTensor<T1> dxInTensor = input2Que[taskId & 1].DeQue<T1>();
     auto output1Buf = out1Que.AllocTensor<T2>();
 
-    if constexpr (HEAD_DIM_ALIGN <= 256) {
+    if constexpr (IsSameType<T1, hifloat8_t>::value) {
+        float deqScaleDxValue = deqScaleDyGm.GetValue(deqScaleIdx);
+        AscendC::MyAntiQuantSoftmaxGradFrontCast<T1, T2, OUTDTYPE, HEAD_DIM_ALIGN>(
+            output1Buf, yInTensor, dxInTensor, deqScaleDxValue, static_cast<uint32_t>(curNBurst),
+            static_cast<uint32_t>(dAlignToBlockB16));
+    } else if constexpr (HEAD_DIM_ALIGN <= 256) {
         AscendC::MySoftmaxGradFrontCast<T1, T2, HEAD_DIM_ALIGN, HEAD_DIM_ALIGN>(
             output1Buf, yInTensor, dxInTensor, static_cast<uint32_t>(curNBurst),
             static_cast<uint32_t>(dAlignToBlockB16));
@@ -558,6 +585,62 @@ __aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_T
         }
         for (uint64_t i = commonLoopTimes; i < dvLoopNum; i++) {
             CopyDqkvToGm<DV_IDX>(i);
+        }
+    }
+}
+
+PRE_FUNCTION_TEMPLATE
+__aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_TEMPLATE>::DoSoftmaxGradFp8()
+{
+    if (vBlockIdx < usedCoreNum) {
+        uint64_t normalAxisSize = tilingData->preTilingData.normalAxisSize;
+        uint64_t nBurst = tilingData->preTilingData.singleLoopNBurstNum;
+        uint64_t curS = s1;
+        uint64_t taskId = 0;
+        int64_t dataBlockIdx = static_cast<int64_t>(vBlockIdx) - static_cast<int64_t>(usedCoreNum);
+        uint64_t numOf128InS1 = (s1 + nBurst - 1) / nBurst;
+        uint64_t s1Residual = s1 % nBurst == 0 ? nBurst : s1 % nBurst;
+
+        if constexpr (IS_D_NO_EQUAL) {
+            LocalTensor<uint8_t> input1Bufb8 = input1Que[0].AllocTensor<uint8_t>();
+            LocalTensor<uint8_t> input2Bufb8 = input2Que[0].AllocTensor<uint8_t>();
+            Duplicate<uint8_t>(input1Bufb8, 0, nBurst * tempDimAlign);
+            Duplicate<uint8_t>(input2Bufb8, 0, nBurst * tempDimAlign);
+            input1Que[0].FreeTensor(input1Bufb8);
+            input2Que[0].FreeTensor(input2Bufb8);
+
+            input1Bufb8 = input1Que[1].AllocTensor<uint8_t>();
+            input2Bufb8 = input2Que[1].AllocTensor<uint8_t>();
+            Duplicate<uint8_t>(input1Bufb8, 0, nBurst * tempDimAlign);
+            Duplicate<uint8_t>(input2Bufb8, 0, nBurst * tempDimAlign);
+            input1Que[1].FreeTensor(input1Bufb8);
+            input2Que[1].FreeTensor(input2Bufb8);
+        }
+        while (true) {
+            dataBlockIdx += usedCoreNum;
+            uint64_t sfmgOutputOffset = static_cast<uint64_t>(dataBlockIdx) * nBurst -
+                                        (static_cast<uint64_t>(dataBlockIdx) / numOf128InS1) * (nBurst - s1Residual);
+            if (sfmgOutputOffset >= normalAxisSize) {
+                break;
+            }
+
+            input1Buf = input1Que[taskId & 1].AllocTensor<OUTDTYPE>();
+            input2Buf = input2Que[taskId & 1].AllocTensor<T1>();
+            uint64_t curNBurst = (static_cast<uint64_t>(dataBlockIdx + 1) % numOf128InS1 == 0) ? s1Residual : nBurst;
+            InitIndex(sfmgOutputOffset * d, curS);
+            CopyInSfmg(curNBurst, curS);
+
+            input1Que[taskId & 1].EnQue(input1Buf);
+            input2Que[taskId & 1].EnQue(input2Buf);
+            uint64_t deqDyScaleIdx = bIdx * ns1o + nIdx * s1o + soIdx;
+            CalculateSoftmaxGrad(taskId, sfmgOutputOffset, curNBurst, deqDyScaleIdx);
+            if constexpr (IS_D_NO_EQUAL) {
+                Duplicate<uint8_t>(reinterpret_cast<LocalTensor<uint8_t> &>(input1Buf), 0, nBurst * tempDimAlign);
+                Duplicate<uint8_t>(reinterpret_cast<LocalTensor<uint8_t> &>(input2Buf), 0, nBurst * tempDimAlign);
+            }
+            input1Que[taskId & 1].FreeTensor(input1Buf);
+            input2Que[taskId & 1].FreeTensor(input2Buf);
+            taskId++;
         }
     }
 }
