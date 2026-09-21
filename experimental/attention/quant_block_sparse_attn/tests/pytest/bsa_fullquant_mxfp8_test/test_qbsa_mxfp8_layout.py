@@ -18,13 +18,15 @@ from pathlib import Path
 import pytest
 
 
-CASE_FILE = Path(__file__).with_name("qbsa_mxfp8_layout_stc.csv")
+CASE_FILE = Path(__file__).with_name("qbsa_mxfp8_stc.csv")
+CASE_GROUP = "layout_feature"
 
 
 def _case_names():
     with CASE_FILE.open(encoding="utf-8-sig", newline="") as stream:
         return [row["name"] for row in csv.DictReader(stream)
-                if row["enable"].strip().lower() in ("true", "1", "yes")]
+                if row["enable"].strip().lower() in ("true", "1", "yes")
+                and row.get("case_group") == CASE_GROUP]
 
 
 @pytest.mark.ci
