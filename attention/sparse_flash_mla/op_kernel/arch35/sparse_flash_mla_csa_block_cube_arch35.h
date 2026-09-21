@@ -62,6 +62,9 @@ TEMPLATES_DEF
 class CSABlockCube {
 public:
     /* =================编译期常量的基本块信息================= */
+    static constexpr bool DIRECT_SPARSE_KV_L1 =
+        TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE &&
+        KV_LAYOUT_T == SMLA_LAYOUT::TND && !IS_SPLIT_G && !IS_BATCH_CONSISTENCY;
     static constexpr uint32_t s1BaseSize = 64;
     static constexpr uint32_t s2BaseSize = 128;
     static constexpr uint32_t dBaseSize = 512;
@@ -158,6 +161,12 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::InitLocalBuffer(uint32_t l1B
         l0ResidentP = LocalTensor<Q_T>(TPosition::A2, 2 * L0A_ELEM_PER_BUF * sizeof(Q_T), L0A_ELEM_PER_BUF);
         l0ResidentQ = LocalTensor<Q_T>(TPosition::A2, 3 * L0A_ELEM_PER_BUF * sizeof(Q_T), L0A_ELEM_PER_BUF);
         SetFlag<HardEvent::M_MTE1>(l0ResidentPEventId);
+        if constexpr (DIRECT_SPARSE_KV_L1) {
+            for (uint32_t slot = 0; slot < 3; ++slot) {
+                CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(CROSSCORE_L1KV_FREE(slot));
+                CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(CROSSCORE_L1KV_FREE(slot) + AIV0_AIV1_OFFSET);
+            }
+        }
     }
 }
 
@@ -354,7 +363,11 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateLoadQK(
         isSparse = runInfo.isCmp ? true : false;
     }
 
-    WaitFlag<HardEvent::MTE1_MTE2>(INNERCORE_L1KV(l1KLoadBufId));
+    if constexpr (!DIRECT_SPARSE_KV_L1) {
+        WaitFlag<HardEvent::MTE1_MTE2>(INNERCORE_L1KV(l1KLoadBufId));
+    } else if (runInfo.s2RealSize != s2BaseSize) {
+        WaitFlag<HardEvent::MTE1_MTE2>(INNERCORE_L1KV(l1KLoadBufId));
+    }
     LocalTensor<Q_T> dst = l1RightBufs[runInfo.taskIdMod3].tensor;
     if (!isSparse) {
         if constexpr (IS_SPLIT_G) {
@@ -365,15 +378,30 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateLoadQK(
         CalcS2Coord(runInfo, constInfo);
         LoadKGmToL1(dst, runInfo, constInfo);
     } else {
-        v0ResGm.WaitCrossCore();
+        if constexpr (!DIRECT_SPARSE_KV_L1) {
+            v0ResGm.WaitCrossCore();
+        } else if (runInfo.s2RealSize != s2BaseSize) {
+            v0ResGm.WaitCrossCore();
+        }
         if constexpr (IS_SPLIT_G) {
             CrossCoreSetFlag<0, PIPE_MTE2>(crossCoreMte2SyncFlagId);
             CrossCoreWaitFlag<0, PIPE_MTE2>(crossCoreMte2SyncFlagId);
         }
         GlobalTensor<Q_T> v0ResGmTensor = v0ResGm.template GetTensor<Q_T>();
-        CopyToL1Nd2Nz<Q_T>(dst, v0ResGmTensor, runInfo.s2RealSize, constInfo.dSize, constInfo.mm1Kb);
+        if constexpr (DIRECT_SPARSE_KV_L1) {
+            // Full tiles are already in this L1 slot after the AIV MTE3 ready flag.
+            if (runInfo.s2RealSize != s2BaseSize) {
+                CopyToL1Nd2Nz<Q_T>(dst, v0ResGmTensor, runInfo.s2RealSize, constInfo.dSize, constInfo.mm1Kb);
+            }
+        } else {
+            CopyToL1Nd2Nz<Q_T>(dst, v0ResGmTensor, runInfo.s2RealSize, constInfo.dSize, constInfo.mm1Kb);
+        }
     }
-    SetFlag<HardEvent::MTE2_MTE1>(INNERCORE_L1KV(l1KLoadBufId));
+    if constexpr (!DIRECT_SPARSE_KV_L1) {
+        SetFlag<HardEvent::MTE2_MTE1>(INNERCORE_L1KV(l1KLoadBufId));
+    } else if (runInfo.s2RealSize != s2BaseSize) {
+        SetFlag<HardEvent::MTE2_MTE1>(INNERCORE_L1KV(l1KLoadBufId));
+    }
     l1KLoadBufId = (l1KLoadBufId + 1) % l1KBufNum;
 }
 
@@ -399,7 +427,17 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm1Impl(StaticBuffer
                                                                     ConstInfo &constInfo)
 {
     LocalTensor<Q_T> curL1RightTensor = l1RightBufs[runInfo.taskIdMod3].tensor;
-    WaitFlag<HardEvent::MTE2_MTE1>(INNERCORE_L1KV(l1KMatmul1BufId));
+    if constexpr (DIRECT_SPARSE_KV_L1) {
+        if (runInfo.s2RealSize == s2BaseSize) {
+            // Full tiles are produced directly in L1 by AIV MTE3; MTE1 is the consumer.
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(CROSSCORE_V0RES(runInfo.taskIdMod3));
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(CROSSCORE_V0RES(runInfo.taskIdMod3) + AIV0_AIV1_OFFSET);
+        } else {
+            WaitFlag<HardEvent::MTE2_MTE1>(INNERCORE_L1KV(l1KMatmul1BufId));
+        }
+    } else {
+        WaitFlag<HardEvent::MTE2_MTE1>(INNERCORE_L1KV(l1KMatmul1BufId));
+    }
     l1KMatmul1BufId = (l1KMatmul1BufId + 1) % l1KBufNum;
 
     StaticBuffer<T> &smlaCBuf = l0C.GetNext();
@@ -504,9 +542,18 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm2Impl(StaticBuffer
         l1PBuffer.tensor, curL1RightTensor, l0A, l0B, smlaCBuf.tensor, smlaParam, {}, {}, l0ResidentP);
     SetFlag<HardEvent::M_MTE1>(l0ResidentPEventId);
 
+    if constexpr (DIRECT_SPARSE_KV_L1) {
+        // Both QK and PV have finished loading this slot into L0.
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(CROSSCORE_L1KV_FREE(runInfo.taskIdMod3));
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(CROSSCORE_L1KV_FREE(runInfo.taskIdMod3) + AIV0_AIV1_OFFSET);
+    }
     SetFlag<HardEvent::M_FIX>(INNERCORE_L0C(smlaCBuf.idx));
     WaitFlag<HardEvent::M_FIX>(INNERCORE_L0C(smlaCBuf.idx));
-    SetFlag<HardEvent::MTE1_MTE2>(INNERCORE_L1KV(l1KMatmul2BufId));
+    if constexpr (!DIRECT_SPARSE_KV_L1) {
+        SetFlag<HardEvent::MTE1_MTE2>(INNERCORE_L1KV(l1KMatmul2BufId));
+    } else if (runInfo.s2RealSize != s2BaseSize) {
+        SetFlag<HardEvent::MTE1_MTE2>(INNERCORE_L1KV(l1KMatmul2BufId));
+    }
     l1KMatmul2BufId = (l1KMatmul2BufId + 1) % l1KBufNum;
 
     CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_BMM2);

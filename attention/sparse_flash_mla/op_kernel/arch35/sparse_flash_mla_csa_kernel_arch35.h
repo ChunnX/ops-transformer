@@ -161,6 +161,31 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Ini
 
     this->ParseTilingData(cuSeqlensQ, sequsedQ, cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedOriKV, seqUsedCmpKV,
                           cmpResidualKV);
+    if constexpr (TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE &&
+                  LAYOUT_T == SMLA_LAYOUT::TND && KV_LAYOUT_T == SMLA_LAYOUT::TND &&
+                  !IS_SPLIT_G && !IS_BATCH_CONSISTENCY && IS_VEC_S2PHYADDR) {
+        if (constInfo.gSize == 64 && constInfo.n2Size == 1 && hasCuSeqlensQ &&
+            oriTopkLength == nullptr && constInfo.oriSparseBlockCount > 0 &&
+            constInfo.oriMaskMode == 4 && constInfo.oriWinLeft == -1 && constInfo.oriWinRight == -1) {
+            bool allRowsWritten = true;
+            for (uint32_t batch = 0; batch < constInfo.bSize; ++batch) {
+                int64_t allocatedQ = cuSeqlensQGm.GetValue(batch + 1) - cuSeqlensQGm.GetValue(batch);
+                int64_t actualQ = GetSeqLen(batch, hasActualSeqQlen, hasCuSeqlensQ,
+                    actualSeqQlenGm, cuSeqlensQGm, constInfo.s1Size);
+                int64_t actualOri = GetSeqLen(batch, hasActualSeqOriKvlen, hasCuSeqlensOriKv,
+                    actualSeqOriKvlenGm, cuSeqlensOriKvGm, constInfo.s2Size);
+                if (actualQ != allocatedQ || actualOri <= 0) {
+                    allRowsWritten = false;
+                    break;
+                }
+            }
+            // Every allocated query has nonempty unbounded ORI attention, so the
+            // normal output/LSE stores cover every row. IS_VEC_S2PHYADDR keeps SyncAll.
+            if (allRowsWritten) {
+                constInfo.needInit = 0;
+            }
+        }
+    }
     vecBlock.InitVecBlock(cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedOriKV, seqUsedCmpKV, cmpResidualKV);
     vecBlock.CleanOutput(attentionOut, softmaxLse, constInfo);
 
