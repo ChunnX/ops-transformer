@@ -19,7 +19,12 @@
 #include "sparse_flash_mla_kvcache.h"
 #include "sparse_flash_mla_csa_block_cube_arch35.h"
 #include "sparse_flash_mla_csa_block_vector_arch35.h"
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_vec_intf.h"
+#include "kernel_cube_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 #include "../sparse_flash_mla_kernel_metadata.h"
 
 #include "../../../common/op_kernel/matmul.h"
@@ -105,6 +110,7 @@ private:
     bool hasActualSeqQlen = false;
     bool hasActualSeqOriKvlen = false;
     bool hasActualSeqCmpKvlen = false;
+    bool isInitialized = false;
     /* workspace 空间 */
     BuffersPolicy3buffSFA<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> v0ResGmBuffers;
     BufferManager<BufferType::GM> fdStagingBufferManager;
@@ -151,7 +157,62 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Ini
         this->tilingData = tiling;
     }
 
-    if (metadata == nullptr) {
+    if (query == nullptr || oriKV == nullptr || metadata == nullptr || attentionOut == nullptr) {
+        return;
+    }
+    if constexpr (LAYOUT_T == SMLA_LAYOUT::TND) {
+        if (cuSeqlensQ == nullptr) {
+            return;
+        }
+    }
+    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::TND) {
+        if (cuSeqlensOriKv == nullptr) {
+            return;
+        }
+    } else if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
+        if (oriBlockTable == nullptr) {
+            return;
+        }
+        if constexpr (TEMPLATE_MODE != SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE &&
+                      TEMPLATE_MODE != SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+            if (seqUsedOriKV == nullptr) {
+                return;
+            }
+        }
+    }
+    if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE &&
+                  TEMPLATE_MODE != SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
+        if (cmpKV == nullptr) {
+            return;
+        }
+        if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::TND) {
+            if (cuSeqlensCmpKv == nullptr) {
+                return;
+            }
+        } else if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
+            if (cmpBlockTable == nullptr) {
+                return;
+            }
+            if constexpr (TEMPLATE_MODE != SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+                if (seqUsedCmpKV == nullptr) {
+                    return;
+                }
+            }
+        }
+    }
+    if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE ||
+                  TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+        if (cmpSparseIndices == nullptr) {
+            return;
+        }
+    }
+    if constexpr (TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+                  TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+        if (oriSparseIndices == nullptr) {
+            return;
+        }
+    }
+    if (workspace == nullptr) {
         return;
     }
     this->metadataGm.SetGlobalBuffer((__gm__ uint32_t *)metadata);
@@ -161,6 +222,37 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Ini
 
     this->ParseTilingData(cuSeqlensQ, sequsedQ, cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedOriKV, seqUsedCmpKV,
                           cmpResidualKV);
+    if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE &&
+                  TEMPLATE_MODE != SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
+        if (constInfo.cmpMaskMode != 0 && constInfo.cmpRatio != 1 && cmpResidualKV == nullptr) {
+            return;
+        }
+    }
+    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND &&
+                  (TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+                   TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE)) {
+        if (constInfo.oriMaskMode != 0 && seqUsedOriKV == nullptr) {
+            return;
+        }
+    }
+    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND &&
+                  TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+        if (constInfo.cmpMaskMode != 0 && seqUsedCmpKV == nullptr) {
+            return;
+        }
+    }
+    if constexpr (TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+                  TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+        if (constInfo.oriMaskMode == 0 && oriTopkLength == nullptr) {
+            return;
+        }
+    }
+    if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE ||
+                  TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+        if (constInfo.cmpMaskMode == 0 && cmpTopkLength == nullptr) {
+            return;
+        }
+    }
     vecBlock.InitVecBlock(cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedOriKV, seqUsedCmpKV, cmpResidualKV);
     vecBlock.CleanOutput(attentionOut, softmaxLse, constInfo);
 
@@ -199,6 +291,7 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Ini
     }
     ComputeConstexpr<TEMPLATE_INTF_ARGS>(this->constInfo);
     InitLocalBuffer(this->vecBlock, this->cubeBlock, this->constInfo, this->vUbBase, this->l1CubeBase);
+    this->isInitialized = true;
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -293,13 +386,9 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Par
     if (TEMPLATE_MODE != SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE &&
         TEMPLATE_MODE != SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE && constInfo.oriMaskMode != 0) {
         for (uint32_t bIdx = 0; bIdx < constInfo.bSize; bIdx++) {
-            int64_t s2Size;
-            if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
-                s2Size = actualSeqOriKvlenGm.GetValue(bIdx);
-            } else {
-                s2Size = GetSeqLen(bIdx, hasActualSeqOriKvlen, hasCuSeqlensOriKv, actualSeqOriKvlenGm, cuSeqlensOriKvGm,
-                                   constInfo.s2Size);
-            }
+            int64_t s2Size =
+                GetSeqLen(bIdx, hasActualSeqOriKvlen, hasCuSeqlensOriKv, actualSeqOriKvlenGm, cuSeqlensOriKvGm,
+                          constInfo.s2Size);
             int64_t s1Size =
                 GetSeqLen(bIdx, hasActualSeqQlen, hasCuSeqlensQ, actualSeqQlenGm, cuSeqlensQGm, constInfo.s1Size);
             int64_t expectQs;
@@ -438,6 +527,9 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Ini
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Process()
 {
+    if (!this->isInitialized) {
+        return;
+    }
     // SyncAll Cube和Vector都需要调用
     if constexpr (IS_VEC_S2PHYADDR) {
         SyncAll<false>();
@@ -449,8 +541,8 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Pro
         ParseFdRunInfo(fdRunInfo, this->constInfo, this->metadataGm);
     }
     ProcessMainLoop();
+    SyncAll();
     if ASCEND_IS_AIV {
-        SyncAll();
         if (fdRunInfo.coreEnable) {
             this->vecBlock.ProcessFlashDecode(fdRunInfo, this->constInfo);
         }
@@ -509,7 +601,8 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Pro
         ComputeParamBatch<TEMPLATE_INTF_ARGS>(
             runParam, this->constInfo, this->cuSeqlensQGm, this->cuSeqlensOriKvGm, this->cuSeqlensCmpKvGm,
             this->actualSeqQlenGm, this->actualSeqOriKvlenGm, this->actualSeqCmpKvlenGm, this->cmpResidualKvGm,
-            this->hasActualSeqQlen, this->hasActualSeqOriKvlen, this->hasActualSeqCmpKvlen, this->hasCuSeqlensCmpKv);
+            this->hasCuSeqlensOriKv, this->hasCuSeqlensCmpKv, this->hasActualSeqQlen,
+            this->hasActualSeqOriKvlen, this->hasActualSeqCmpKvlen);
         ComputeS1LoopInfo<TEMPLATE_INTF_ARGS>(runParam, this->constInfo, lastBN, nextGs1Idx, gS1StartIdx, s2EndIdx);
 
         int64_t gS1LoopEnd = lastBN ? (runParam.gs1LoopEndIdx + PRELOAD_NUM) : runParam.gs1LoopEndIdx;

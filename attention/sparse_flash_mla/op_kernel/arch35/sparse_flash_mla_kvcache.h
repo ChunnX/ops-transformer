@@ -15,7 +15,12 @@
 #ifndef SPARSE_FLASH_MLA_KVCACHE_H
 #define SPARSE_FLASH_MLA_KVCACHE_H
 
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_vec_intf.h"
+#include "kernel_cube_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 #include "kernel_operator_list_tensor_intf.h"
 #include "sparse_flash_mla_common_arch35.h"
 #include "util_regbase.h"
@@ -33,8 +38,9 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr &runParam, const ConstInfo
                                           GlobalTensor<int32_t> &actualSeqQlenGm,
                                           GlobalTensor<int32_t> &actualSeqOriKvlenGm,
                                           GlobalTensor<int32_t> &actualSeqCmpKvlenGm,
-                                          GlobalTensor<int32_t> &cmpResidualKvGm, bool hasActualSeqQlen,
-                                          bool hasActualSeqOriKvlen, bool hasActualSeqCmpKvlen, bool hasCuSeqlensCmpKv)
+                                          GlobalTensor<int32_t> &cmpResidualKvGm, bool hasCuSeqlensOriKv,
+                                          bool hasCuSeqlensCmpKv, bool hasActualSeqQlen, bool hasActualSeqOriKvlen,
+                                          bool hasActualSeqCmpKvlen)
 {
     int32_t actualS1Size = 0;
     int32_t actualS2OriSize = 0;
@@ -47,18 +53,16 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr &runParam, const ConstInfo
         actualS1Size = (!hasActualSeqQlen) ? constInfo.s1Size : actualSeqQlenGm.GetValue(bIdx);
     }
 
-    if (constInfo.isActualLenDimsOriKVNull) {
-        actualS2OriSize = constInfo.s2Size;
-    } else {
-        if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::TND) {
-            if (hasActualSeqOriKvlen) {
-                actualS2OriSize = actualSeqOriKvlenGm.GetValue(bIdx);
-            } else {
-                actualS2OriSize = cuSeqlensOriKvGm.GetValue(bIdx + 1) - cuSeqlensOriKvGm.GetValue(bIdx);
-            }
-        } else {
+    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::TND) {
+        if (hasActualSeqOriKvlen) {
             actualS2OriSize = actualSeqOriKvlenGm.GetValue(bIdx);
+        } else if (hasCuSeqlensOriKv) {
+            actualS2OriSize = cuSeqlensOriKvGm.GetValue(bIdx + 1) - cuSeqlensOriKvGm.GetValue(bIdx);
+        } else {
+            actualS2OriSize = constInfo.s2Size;
         }
+    } else {
+        actualS2OriSize = (!hasActualSeqOriKvlen) ? constInfo.s2Size : actualSeqOriKvlenGm.GetValue(bIdx);
     }
 
     if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE &&
@@ -118,13 +122,14 @@ __aicore__ inline void ComputeParamBatch(RunParamStr &runParam, const ConstInfo 
                                          GlobalTensor<int32_t> &actualSeqQlenGm,
                                          GlobalTensor<int32_t> &actualSeqOriKvlenGm,
                                          GlobalTensor<int32_t> &actualSeqCmpKvlenGm,
-                                         GlobalTensor<int32_t> &cmpResidualKvGm, bool hasActualSeqQlen,
-                                         bool hasActualSeqOriKvlen, bool hasActualSeqCmpKvlen, bool hasCuSeqlensCmpKv)
+                                         GlobalTensor<int32_t> &cmpResidualKvGm, bool hasCuSeqlensOriKv,
+                                         bool hasCuSeqlensCmpKv, bool hasActualSeqQlen, bool hasActualSeqOriKvlen,
+                                         bool hasActualSeqCmpKvlen)
 {
     GetSingleCoreParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, cuSeqlensQGm, cuSeqlensOriKvGm, cuSeqlensCmpKvGm,
                                            actualSeqQlenGm, actualSeqOriKvlenGm, actualSeqCmpKvlenGm, cmpResidualKvGm,
-                                           hasActualSeqQlen, hasActualSeqOriKvlen, hasActualSeqCmpKvlen,
-                                           hasCuSeqlensCmpKv);
+                                           hasCuSeqlensOriKv, hasCuSeqlensCmpKv, hasActualSeqQlen,
+                                           hasActualSeqOriKvlen, hasActualSeqCmpKvlen);
 }
 
 TEMPLATE_INTF

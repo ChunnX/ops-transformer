@@ -16,7 +16,12 @@
 #ifndef SPARSE_ATTN_SHAREDKV_COMMON_H
 #define SPARSE_ATTN_SHAREDKV_COMMON_H
 
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_vec_intf.h"
+#include "kernel_cube_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
 
@@ -37,7 +42,7 @@ enum class SMLA_LAYOUT {
     PA_BBND = 2
 };
 
-#if (__CCE_AICORE__ != 310)
+#if (__CCE_AICORE__ != 310) && !defined(__DAV_C310_CUBE__) && !defined(__DAV_C310_VEC__)
 // 将isCheckTiling设置为false, 输入输出的max&sum&exp的shape为(m, 1)
 constexpr SoftmaxConfig SMLA_SOFTMAX_FLASHV2_CFG_WITHOUT_BRC = {false, 0, 0, SoftmaxMode::SOFTMAX_OUTPUT_WITHOUT_BRC};
 
