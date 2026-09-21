@@ -104,9 +104,10 @@ public:
     static constexpr uint32_t CROSSCORE_MM_0 = 0U;  // bmm1 result slot 0
     static constexpr uint32_t CROSSCORE_MM_1 = 1U;  // bmm1 result slot 1
     static constexpr uint32_t CROSSCORE_MM_2 = 2U;  // bmm2 result slot 0
-    static constexpr uint32_t CROSSCORE_L1P_0 = 3U; // L1 P slot 0 (AIV→AIC)
-    static constexpr uint32_t CROSSCORE_L1P_1 = 4U;
-    static constexpr uint32_t CROSSCORE_L1P_2 = 5U;
+    static constexpr uint32_t CROSSCORE_MM_3 = 3U;  // bmm2 result slot 1
+    static constexpr uint32_t CROSSCORE_L1P_0 = 4U; // L1 P slot 0 (AIV→AIC)
+    static constexpr uint32_t CROSSCORE_L1P_1 = 5U;
+    static constexpr uint32_t CROSSCORE_L1P_2 = 6U;
 
     // Cube internal Mutex IDs
     static constexpr uint32_t Q_L1_BUFFER_ID0 = 0U;
@@ -126,6 +127,7 @@ public:
     // UB (shared between AIC cube and AIV vec)
     static constexpr uint32_t UB_MM1_RES_BUFCNT = 2U;
     static constexpr uint32_t UB_MM1_RES_BUF_BYTES = mBaseSize / CV_RATIO * s2BaseSize * sizeof(T);
+    static constexpr uint32_t UB_MM2_RES_BUFCNT = 2U;
     static constexpr uint32_t UB_MM2_RES_BUF_BYTES = mBaseSize / CV_RATIO * dVBaseSize * sizeof(T);
 
     // L1 (shared between AIC cube and AIV vec)
@@ -203,7 +205,7 @@ public:
         /*--------------------------------------------UB--------------------------------------------*/
         struct UbLayout {
             uint8_t bmm1Res[UB_MM1_RES_BUFCNT][UB_MM1_RES_BUF_BYTES];
-            uint8_t bmm2Res[UB_MM2_RES_BUF_BYTES];
+            uint8_t bmm2Res[UB_MM2_RES_BUFCNT][UB_MM2_RES_BUF_BYTES];
         };
         ubMmResBuffers_ = LocalTensor<uint8_t>(TPosition::VECIN, 0, sizeof(UbLayout));
 
@@ -295,6 +297,8 @@ public:
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_MM_1 + AIV0_AIV1_OFFSET);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_MM_2);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_MM_2 + AIV0_AIV1_OFFSET);
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_MM_3);
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_MM_3 + AIV0_AIV1_OFFSET);
     }
 
     __aicore__ inline void AllocEventID()
@@ -445,6 +449,13 @@ public:
     {
         // MLA全量化bmm2: P @ V_nope, V复用K的nope部分(MLA中V=K_nope)
 
+        // bmm2 result UB双buffer轮转: 写slot n时vec并行消费slot n^1
+        uint32_t mm2ResUbBufId = 0U;
+        if constexpr (BMM2_TOUB) {
+            mm2ResUbBufId = runInfo.loop % UB_MM2_RES_BUFCNT;
+        }
+        uint32_t mm2SyncIdx = CROSSCORE_MM_2 + mm2ResUbBufId;
+
         // a. 等待AIV vec1通知L1 P就绪
         uint32_t pL1BufId = runInfo.loop % L1_P_BUFCNT;
         uint32_t v1c2CrossCoreSyncIdx = CROSSCORE_L1P_0 + pL1BufId;
@@ -452,10 +463,10 @@ public:
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(v1c2CrossCoreSyncIdx + AIV0_AIV1_OFFSET);
         LocalTensor<INPUT_T> pL1Tensor = l1PBuffers_[pL1BufId * L1_P_BUF_BYTES].template ReinterpretCast<INPUT_T>();
 
-        // b. 如果bmm2写UB: 等待AIV vec2释放UB bmm2 result slot
+        // b. 如果bmm2写UB: 等待AIV vec2释放UB bmm2 result对应slot
         if constexpr (BMM2_TOUB) {
-            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_MM_2);
-            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_MM_2 + AIV0_AIV1_OFFSET);
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(mm2SyncIdx);
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(mm2SyncIdx + AIV0_AIV1_OFFSET);
         }
 
         // c. K复用: MLA中V = K_nope, bmm2复用bmm1加载的K buffer
@@ -479,19 +490,20 @@ public:
         // e. 释放K的MTE1锁, 允许下一轮bmm1复用加载K
         Mutex::Unlock<PIPE_MTE1>(KV_L1_BUFFER_ID0 + kvReuseBufId);
 
-        // f. Fixpipe: 写bmm2 result到UB
+        // f. Fixpipe: 写bmm2 result到UB对应slot
         LocalTensor<MLA_FULLQUANT_MM2_T> mm2ResUbTensor =
-            ubMmResBuffers_[UB_MM1_RES_BUFCNT * UB_MM1_RES_BUF_BYTES].template ReinterpretCast<MLA_FULLQUANT_MM2_T>();
+            ubMmResBuffers_[UB_MM1_RES_BUFCNT * UB_MM1_RES_BUF_BYTES + mm2ResUbBufId * UB_MM2_RES_BUF_BYTES]
+                .template ReinterpretCast<MLA_FULLQUANT_MM2_T>();
         FixpipeMm2(mm2ResUbTensor, l0CSubTensor, runInfo);
 
         // g. 释放L0C
         Mutex::Unlock<PIPE_FIX>(L0C_BUFFER_ID0 + l0cBufId_);
         l0cBufId_ = (l0cBufId_ + 1) % L0C_BUFCNT;
 
-        // h. 通知AIV bmm2 result已就绪
+        // h. 通知AIV bmm2 result对应slot已就绪
         if constexpr (BMM2_TOUB) {
-            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_MM_2);
-            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_MM_2 + AIV0_AIV1_OFFSET);
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(mm2SyncIdx);
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(mm2SyncIdx + AIV0_AIV1_OFFSET);
         }
     }
 

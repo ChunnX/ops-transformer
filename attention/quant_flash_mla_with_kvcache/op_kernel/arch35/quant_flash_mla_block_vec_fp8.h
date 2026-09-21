@@ -111,9 +111,10 @@ public:
     static constexpr uint32_t CC_MM_0 = 0U;   // bmm1 result slot 0
     static constexpr uint32_t CC_MM_1 = 1U;   // bmm1 result slot 1
     static constexpr uint32_t CC_MM_2 = 2U;   // bmm2 result slot 0
-    static constexpr uint32_t CC_L1P_0 = 3U;  // L1 P slot 0 (AIV→AIC)
-    static constexpr uint32_t CC_L1P_1 = 4U;
-    static constexpr uint32_t CC_L1P_2 = 5U;
+    static constexpr uint32_t CC_MM_3 = 3U;   // bmm2 result slot 1
+    static constexpr uint32_t CC_L1P_0 = 4U;  // L1 P slot 0 (AIV→AIC)
+    static constexpr uint32_t CC_L1P_1 = 5U;
+    static constexpr uint32_t CC_L1P_2 = 6U;
 
     // Vec internal Mutex/Event IDs
     // Mutex ID 和 SetFlag/WaitFlag Event ID 共享同一硬件池(0-27)
@@ -132,6 +133,7 @@ public:
     // UB cross-core region (same as cube block)
     static constexpr uint32_t UB_MM1_RES_BUFCNT = 2U;
     static constexpr uint32_t UB_MM1_RES_BUF_BYTES = mBaseSize / CV_RATIO * s2BaseSize * sizeof(T);
+    static constexpr uint32_t UB_MM2_RES_BUFCNT = 2U;
     static constexpr uint32_t UB_MM2_RES_BUF_BYTES = mBaseSize / CV_RATIO * dVBaseSize * sizeof(T);
 
     // L1 (shared with cube, same offsets)
@@ -307,7 +309,7 @@ public:
         struct UbLayout {
             /* Cross-core region (same as cube block) */
             uint8_t bmm1Res[UB_MM1_RES_BUFCNT][UB_MM1_RES_BUF_BYTES]; // 2 * 16384 = 32768
-            uint8_t bmm2Res[UB_MM2_RES_BUF_BYTES];                    // 65536
+            uint8_t bmm2Res[UB_MM2_RES_BUFCNT][UB_MM2_RES_BUF_BYTES]; // 2 * 65536 = 131072
             /* Vec-specific region */
             uint8_t stage2Out[UB_STAGE2_OUT_BUF_BYTES];                            // 65536
             uint8_t stage1Out[UB_STAGE1_OUT_BUFCNT][UB_STAGE1_OUT_BUF_BYTES];     // 2 * 4224 = 8448
@@ -325,7 +327,7 @@ public:
             uint8_t maxBrdcst[UB_BRDCST_BUF_BYTES];                              // 2048
             uint8_t sumBrdcst[UB_BRDCST_BUF_BYTES];                              // 2048
         };
-        static_assert(sizeof(UbLayout) <= 192 * 1024, "UB buffer too large");
+        static_assert(sizeof(UbLayout) <= 256 * 1024, "UB buffer too large");
 
         // Cross-core region
         ubMmResBuffers_ = LocalTensor<uint8_t>(TPosition::VECIN, 0,
@@ -416,6 +418,7 @@ public:
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_1);
         if constexpr (BMM2_TOUB) {
             CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_2);
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_3);
         }
     }
 
@@ -799,16 +802,19 @@ public:
 
     __aicore__ inline void ProcessVec2(RunInfoX runInfo)
     {
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_2);
+        // bmm2 result UB双buffer: 消费slot n时cube并行写slot n^1
+        uint32_t mm2ResUbBufId = runInfo.loop % UB_MM2_RES_BUFCNT;
+        uint32_t mmSyncIdx = CC_MM_2 + mm2ResUbBufId;
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(mmSyncIdx);
         if constexpr (BMM2_TOUB) {
-            ProcessVec2OnUb(runInfo);
+            ProcessVec2OnUb(runInfo, mmSyncIdx, mm2ResUbBufId);
         }
     }
 
-    __aicore__ inline void ProcessVec2OnUb(RunInfoX runInfo)
+    __aicore__ inline void ProcessVec2OnUb(RunInfoX runInfo, uint32_t mmSyncIdx, uint32_t mm2ResUbBufId)
     {
         if (unlikely(runInfo.actVecMSize == 0)) {
-            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_2);
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(mmSyncIdx);
             return;
         }
         uint32_t vecMSize = runInfo.actVecMSize;
@@ -816,7 +822,8 @@ public:
 
         LocalTensor<T> vec2ResUb = stage2OutBuf_;
         LocalTensor<T> mmRes =
-            ubMmResBuffers_[UB_MM1_RES_BUFCNT * UB_MM1_RES_BUF_BYTES].template ReinterpretCast<T>();
+            ubMmResBuffers_[UB_MM1_RES_BUFCNT * UB_MM1_RES_BUF_BYTES + mm2ResUbBufId * UB_MM2_RES_BUF_BYTES]
+                .template ReinterpretCast<T>();
 
         Mutex::Lock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
         if (unlikely(runInfo.isFirstS2Loop)) {
@@ -856,7 +863,7 @@ public:
 
         Mutex::Unlock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
 
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_2);
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(mmSyncIdx);
 
         if (unlikely(runInfo.isLastS2Loop)) {
             if (unlikely(runInfo.isFirstS2Loop)) {

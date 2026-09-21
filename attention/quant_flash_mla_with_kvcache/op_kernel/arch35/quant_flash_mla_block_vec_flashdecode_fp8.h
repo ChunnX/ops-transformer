@@ -86,12 +86,12 @@ private:
 
     // ================================UB绝对偏移布局区=================================
     // 跨核bmm通信区位于UB起始（kernel InitMMResBuf最先经ubBufferManager分配）:
-    // bmm2单buffer + bmm1双buffer = (s1BaseSize/2)*(dVBaseSize + 2*s2BaseSize)*sizeof(T) = 96K
+    // bmm1/bmm2均双buffer = (s1BaseSize/2) * (2*dVBaseSize + 2*s2BaseSize) * sizeof(T) = 160K
     // FD工作区紧随其后，覆盖FA vec block死区（同核上FA/FD阶段串行，FD前后SyncAll保证流水排空）
     static constexpr uint32_t mm1ResSize = (s1BaseSize / 2U) * s2FdBaseSize * sizeof(T); // 16K
     static constexpr uint32_t mm2ResSize = (s1BaseSize / 2U) * dVFdBaseSize * sizeof(T); // 64K
-    static constexpr uint32_t FD_BASE = mm2ResSize + mm1ResSize * 2U;                    // 96K
-    // FD终点 = FD_BASE + 5*6144 + 4*16K + 4*256 = 195584B < 196608B(arch35 MAX_UB_SIZE = 192K)
+    static constexpr uint32_t FD_BASE = mm2ResSize * 2U + mm1ResSize * 2U;               // 160K
+    // FD终点 = FD_BASE + 5*6144 + 4*16K + 4*256 = 261120B < 262144B(256K UB)
     static constexpr uint32_t LSE_STRIDE = BUFFER_SIZE_BYTE_4K + BUFFER_SIZE_BYTE_2K; // 6144
     static constexpr uint32_t OFF_FD_SUM1 = FD_BASE;
     static constexpr uint32_t OFF_FD_SUM2 = FD_BASE + LSE_STRIDE;
