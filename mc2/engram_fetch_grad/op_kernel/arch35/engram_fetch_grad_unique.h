@@ -223,6 +223,12 @@ private:
     uint32_t runCnt_{0};      // 本批 direct-run 数
     uint32_t accumCnt_{0};    // 本批 accum 行数(≤ENTRY_BATCH_CAP)
     uint32_t accumRowCnt_{0}; // 当前 accum 组已累加行数
+
+    // ===== scatter 细分耗时累计（printf 打点；标量视角口径，不插 PipeBarrier 以保持 ping-pong 流水） =====
+    uint64_t dbgUniqCyc_{0};   // ProcessBatchUnique: 读排序 entry 分析产列表
+    uint64_t dbgMte2Cyc_{0};   // V2 gather: 逐行随机读 recvGrad(含 MTE2_V 同步)
+    uint64_t dbgAccumCyc_{0};  // AccumulateDupListWalk: dup 行累加(含 MTE2_MTE3 同步)
+    uint64_t dbgEmitCyc_{0};   // EmitRunsFromDupList: direct run 写出(MTE3 发射)
 };
 
 __aicore__ inline void EngramFetchGradUnique::Init(uint32_t aivId, uint32_t totalBlocks, uint32_t rankId,
@@ -272,6 +278,10 @@ __aicore__ inline void EngramFetchGradUnique::RunScatterCast(uint32_t numRecv, G
     accumIdx_ = 0;
     flushPending_[0] = false;
     flushPending_[1] = false;
+    dbgUniqCyc_ = 0;
+    dbgMte2Cyc_ = 0;
+    dbgAccumCyc_ = 0;
+    dbgEmitCyc_ = 0;
 
     ScatterAccumulateParallel(numRecv, recvLocalEntryOutGM, uniqueLocalEntryOutGM, gradUniqueOutGM, recvGradGM,
                               coreStartGM, segCountGM, sortCompanionGM);
@@ -289,6 +299,13 @@ __aicore__ inline void EngramFetchGradUnique::RunScatterCast(uint32_t numRecv, G
     }
 
     WriteNumUnique(segCountGM, numUniqueOutGM);
+
+    // scatter 细分耗时汇总（仅核0 printf；四项之和 + count + WriteNumUnique ≈ Process 里的 scatter_add 段）
+    if (aivId_ == 0U) {
+        printf("[ENGDBG] rank %u scatter_det: uniq %u | mte2 %u | accum %u | emit %u us\n", rankId_,
+               static_cast<uint32_t>(dbgUniqCyc_ / 1000U), static_cast<uint32_t>(dbgMte2Cyc_ / 1000U),
+               static_cast<uint32_t>(dbgAccumCyc_ / 1000U), static_cast<uint32_t>(dbgEmitCyc_ / 1000U));
+    }
 
     pipe_->ReleaseEventID<AscendC::HardEvent::V_MTE3>(flushEvtVMte3Arr_[0]);
     pipe_->ReleaseEventID<AscendC::HardEvent::V_MTE3>(flushEvtVMte3Arr_[1]);
@@ -1387,6 +1404,7 @@ __aicore__ inline void EngramFetchGradUnique::ProcessDirectSubBatchLoopV2(uint32
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(evtMte3Mte2[b]);
         }
 
+        uint64_t dbgT0 = static_cast<uint64_t>(AscendC::GetSystemCycle());
         for (uint32_t j = 0; j < subLen; j++) {
             int32_t recvIdx = CompUb().GetValue(subStart + j);
             if (recvIdx < 0 || static_cast<uint32_t>(recvIdx) >= numRecv_) {
@@ -1402,11 +1420,17 @@ __aicore__ inline void EngramFetchGradUnique::ProcessDirectSubBatchLoopV2(uint32
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(evtMte2Mte3[b]);
 
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(evtMte2V[b]);
+        dbgMte2Cyc_ += static_cast<uint64_t>(AscendC::GetSystemCycle()) - dbgT0;
 
+        dbgT0 = static_cast<uint64_t>(AscendC::GetSystemCycle());
         AccumulateDupListWalk(subStart, subLen, accumCursor, gradRaw, castRow, gradUniqueOutGM);
 
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(evtMte2Mte3[b]);
+        dbgAccumCyc_ += static_cast<uint64_t>(AscendC::GetSystemCycle()) - dbgT0;
+
+        dbgT0 = static_cast<uint64_t>(AscendC::GetSystemCycle());
         EmitRunsFromDupList(subStart, subLen, runCursor, gradRaw, gradUniqueOutGM);
+        dbgEmitCyc_ += static_cast<uint64_t>(AscendC::GetSystemCycle()) - dbgT0;
         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(evtMte3Mte2[b]);
         AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(evtVMte2[b]);
         tileIdx++;
@@ -1441,8 +1465,10 @@ __aicore__ inline uint32_t EngramFetchGradUnique::ProcessScatterBatch(
     bool canDirectCopy = (inputDtype_ == outputDtype_);
     bool packedRows = (inRowStride_ == static_cast<uint32_t>(hiddenBytes_));
     bool useListPath = canDirectCopy && !singleRowMode && packedRows && inRowStride_ <= Mc2Kernel::GRAD_PING_BYTES / 2U;
+    uint64_t dbgT0 = static_cast<uint64_t>(AscendC::GetSystemCycle());
     uint32_t tileUniqueCnt = ProcessBatchUnique(cur, batchLen, runningOffset, prevEntry, isFirstElement, inclusiveSum,
                                                 recvLocalEntryOutGM, sortCompanionGM, useListPath);
+    dbgUniqCyc_ += static_cast<uint64_t>(AscendC::GetSystemCycle()) - dbgT0;
 
     uint32_t maxGradPerBatch = Mc2Kernel::GRAD_PING_BYTES / inRowStride_;
     if (maxGradPerBatch < 1U) {
