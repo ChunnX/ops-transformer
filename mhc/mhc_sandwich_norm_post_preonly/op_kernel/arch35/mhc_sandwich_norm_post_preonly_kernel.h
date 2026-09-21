@@ -32,11 +32,16 @@ public:
     //  Init: 解析 tiling, 设置 GM buffer, 分配 UB
     // =====================================================================
     __aicore__ inline void Init(GM_ADDR h_out_gm, GM_ADDR residual_gm, GM_ADDR h_post_gm, GM_ADDR h_res_gm,
-                                GM_ADDR phi_gm, GM_ADDR alpha_0_gm, GM_ADDR bias_gm, GM_ADDR gamma_0_gm,
-                                GM_ADDR gamma_1_gm, GM_ADDR gamma_2_gm, GM_ADDR h_in_prime_gm, GM_ADDR x_2_out_gm,
-                                GM_ADDR h_in_f32_gm, GM_ADDR workspace, GM_ADDR tiling)
+                                GM_ADDR phi_gm, GM_ADDR alpha_gm, GM_ADDR bias_gm, GM_ADDR pre_mix_gm,
+                                GM_ADDR gamma_0_gm, GM_ADDR gamma_1_gm, GM_ADDR gamma_2_gm, GM_ADDR h_in_prime_gm,
+                                GM_ADDR x_2_out_gm, GM_ADDR h_in_f32_gm, GM_ADDR h_pre_gm, GM_ADDR workspace,
+                                GM_ADDR tiling)
     {
         GET_TILING_DATA(td, tiling);
+
+        // pre_mix 为接口预留的可选输入，h_pre 为接口预留的可选输出，当前版本均不参与计算。
+        (void)pre_mix_gm;
+        (void)h_pre_gm;
 
         totalTokens_ = td.totalTokens;
         N_ = td.headCount;
@@ -86,7 +91,7 @@ public:
         hPostGm_.SetGlobalBuffer((__gm__ float *)h_post_gm, (uint64_t)totalTokens_ * N_);
         hResGm_.SetGlobalBuffer((__gm__ float *)h_res_gm, (uint64_t)totalTokens_ * N_ * N_);
         phiGm_.SetGlobalBuffer((__gm__ float *)phi_gm, (uint64_t)phiRows_ * phiCols_);
-        alpha0Gm_.SetGlobalBuffer((__gm__ float *)alpha_0_gm, ALIGN8);
+        alpha0Gm_.SetGlobalBuffer((__gm__ float *)alpha_gm, ALIGN8);
         biasGm_.SetGlobalBuffer((__gm__ float *)bias_gm, ALIGN8);
         gamma0Gm_.SetGlobalBuffer((__gm__ float *)gamma_0_gm, D_);
         gamma1Gm_.SetGlobalBuffer((__gm__ float *)gamma_1_gm, D_);
@@ -99,8 +104,7 @@ public:
             hInF32Gm_.SetGlobalBuffer((__gm__ float *)h_in_f32_gm, (uint64_t)totalTokens_ * D_);
         }
         if constexpr (DUAL_SIBLING) {
-            partial1Gm_.SetGlobalBuffer((__gm__ float *)workspace,
-                                        (uint64_t)totalTokens_ * 2U * PARTIAL_SLOT_ELEMS);
+            partial1Gm_.SetGlobalBuffer((__gm__ float *)workspace, (uint64_t)totalTokens_ * 2U * PARTIAL_SLOT_ELEMS);
         }
 
         // UB空间分配
@@ -198,9 +202,9 @@ private:
     __aicore__ inline void ComputeX2PostTileForLane(uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
                                                     const float (&postVals)[N_MAX]);
     __aicore__ inline void CacheX2Tile(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput,
-                                      bool quantizeInput = true);
+                                       bool quantizeInput = true);
     __aicore__ inline void CacheX2TileForLane(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput,
-                                             bool quantizeInput = true);
+                                              bool quantizeInput = true);
     __aicore__ inline float CacheHInAndReduceSumSq(uint32_t tOff, uint32_t tD, LocalTensor<float> hIn);
     __aicore__ inline void LoadHInCacheTile(uint32_t tOff, uint32_t tD, LocalTensor<float> hIn);
     __aicore__ inline void AccumulateHalfPartials(uint32_t tOff, uint32_t tD, float (&sumSqHalf)[2],
