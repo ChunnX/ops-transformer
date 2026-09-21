@@ -7,6 +7,8 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
+#pragma once
+using namespace AscendC;
 
 namespace BSA_ARC35 {
 
@@ -29,6 +31,7 @@ static constexpr uint32_t FLAG_C2_V2 = 1;     // cube(dyV) -> vec(softmaxGrad)
 static constexpr uint32_t FLAG_V1_C3 = 2;     // vec(softmax) -> cube(dv)
 static constexpr uint32_t FLAG_V2_C45 = 3;    // vec(softmaxGrad) -> cube(dq\dk)
 static constexpr uint32_t FLAG_CUBE_POST = 4; // vec(softmaxGrad) -> cube(dq\dk)
+static constexpr uint32_t FLAG_DETER_FIX = 5; // AIC mode-0: order mm345 waves
 
 struct ConstInfo {
     int32_t q_head_num{0};
@@ -41,6 +44,10 @@ struct ConstInfo {
 };
 
 struct RunTimeInfo {
+    int64_t queryGmOffset{0}; // query gm offset
+    int64_t keyGmOffset{0};   // key gm offset
+    int64_t lseGmOffset{0};   // lse gm offset
+    int64_t sftgGmOffset{0};  // softmaxGradFront gm offset
     int32_t taskId{0};
     int32_t bIdx{0};  // 当前计算的batch的idx
     int32_t n1Idx{0}; // 当前计算的q_head的idx
@@ -48,26 +55,44 @@ struct RunTimeInfo {
     int32_t s1Idx{0}; // 当前计算的q_seq的起始idx
     int32_t s2Idx{0}; // 当前计算的kv_seq的起始idx
     int32_t last_q_seq_sum{0};
-    int32_t last_kv_seq_sum{0};
     int32_t cur_q_seq_len{0};
-    int32_t cur_kv_seq_len{0};
-    int32_t need_compute{0};     // 是否存在任务需要计算
-    int32_t need_copy_kv{0};     // 是否需要copy kv
+    int32_t need_compute{0}; // 是否存在任务需要计算
+    int32_t is_kv_end{0};
+    int32_t is_kv_change{0};
     int32_t kv_ping_pong_idx{0}; // kv的ping pong idx
+    int32_t last_kv_seq_sum{0};
+    int32_t cur_kv_seq_len{0};
+    int32_t need_copy_kv{0}; // 是否需要copy kv
     int32_t is_singlekv_last{0};
-    int64_t s1Len{0};         // 当前计算的q_seq的长度
-    int64_t s2Len{0};         // 当前计算的kv_seq的长度
-    int64_t s1LenAlign{0};    // 当前计算的q_seq的16对齐的长度
-    int64_t s2LenAlign{0};    // 当前计算的kv_seq的16对齐的长度
-    int64_t queryGmOffset{0}; // query gm offset
-    int64_t keyGmOffset{0};   // key gm offset
-    int64_t lseGmOffset{0};   // lse gm offset
-    int64_t sftgGmOffset{0};  // softmaxGradFront gm offset
+    int64_t s1Len{0};      // 当前计算的q_seq的长度
+    int64_t s2Len{0};      // 当前计算的kv_seq的长度
+    int64_t s1LenAlign{0}; // 当前计算的q_seq的16对齐的长度
+    int64_t s2LenAlign{0}; // 当前计算的kv_seq的16对齐的长度
 };
 
-inline __aicore__ uint32_t max(const uint32_t a, const uint32_t b)
+__aicore__ inline int64_t IMin(int64_t a, int64_t b)
+{
+    return a < b ? a : b;
+}
+
+__aicore__ inline int64_t IMax(int64_t a, int64_t b)
 {
     return a > b ? a : b;
+}
+
+__aicore__ inline int64_t ICeil(int64_t n, int64_t d)
+{
+    return d == 0 ? 0 : (n + d - 1) / d;
+}
+
+__aicore__ inline int64_t IGcd(int64_t a, int64_t b)
+{
+    while (b > 0) {
+        int64_t r = a % b;
+        a = b;
+        b = r;
+    }
+    return a;
 }
 
 template <typename T>

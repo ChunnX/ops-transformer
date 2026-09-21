@@ -241,8 +241,10 @@ aclnnStatus aclnnMoeInitRoutingV4(
         <li>HIF8直转和HIF8 PERTOKEN量化场景下（quantMode为6、8）不输入。</li>
         <li>HIF8 PERTENSOR量化场景下（quantMode为7）必须输入,输入要求为1D的Tensor，shape为[1, ]。</li>
         <li>MXFP4量化场景下（quantMode为9）不输入。</li>
+        <li>FP8 PerGroup量化场景下（quantMode为4、5、14、15）不输入。</li>
         <li>FP8 PerBlock量化场景下（quantMode为11、12）不输入。</li>
-        </ul></td>
+        <li>MXFP8 RoundScale+Amax量化场景下（quantMode为16、17）不输入。</li>
+      </ul></td>
       <td>FLOAT32、FLOAT8_E8M0</td>
       <td>ND</td>
       <td>1-3</td>
@@ -254,7 +256,7 @@ aclnnStatus aclnnMoeInitRoutingV4(
       <td>表示用于计算quant结果的偏移值</td>
       <td><ul>
         <li>在非量化场景下不输入;</li><li>静态量化场景必须输入，输入要求为1D的Tensor，shape为[1, ]；</li>
-        <li>动态量化、MXFP8量化、HIF8量化、MXFP4量化场景下不输入。</li>
+        <li>动态量化（quantMode为1）、MXFP8量化（quantMode为2、3）、HIF8量化（quantMode为6、7、8）、MXFP4量化（quantMode为9）、FP8 PerGroup量化（quantMode为4、5、14、15）、FP8 PerBlock量化（quantMode为11、12）、INT4动态量化（quantMode为13）、MXFP8 RoundScale+Amax量化场景下（quantMode为16、17）不输入。</li>
       </ul></td>
       <td>FLOAT32</td>
       <td>ND</td>
@@ -606,7 +608,7 @@ aclnnStatus aclnnMoeInitRoutingV4(
   - rowIdxType仅支持0（gather索引）。
   - activeExpertRangeOptional必须为[0, expertNum]。
 
-- quantMode为13的INT4动态量化场景，需同时满足：x数据类型为FLOAT32或BFLOAT16；H为偶数。
+- quantMode为9或13的MXFP4/INT4动态量化场景，以及quantMode为-1且x数据类型为FLOAT4_E2M1的非量化透传场景，H要求为偶数。quantMode为13的INT4动态量化场景还需满足：x数据类型为FLOAT32或BFLOAT16，dropPadMode为0，offsetOptional不输入。
 
 - 空tensor处理：
   - <term>Ascend 950PR/Ascend 950DT</term>：NUM_ROWS=0或K=0时没有路由元素，进入空Tensor处理路径，专家计数为0；输出shape仍需满足相应模式的约束。
@@ -623,13 +625,13 @@ aclnnStatus aclnnMoeInitRoutingV4(
 #include "aclnnop/aclnn_moe_init_routing_v4.h"
 
 #define CHECK_RET(cond, return_expr) \
-    do {                             \
-        if (!(cond)) {               \
-            return_expr;             \
-        }                            \
+    do { \
+        if (!(cond)) { \
+            return_expr; \
+        } \
     } while (0)
-#define LOG_PRINT(message, ...)         \
-    do {                                \
+#define LOG_PRINT(message, ...) \
+    do { \
         printf(message, ##__VA_ARGS__); \
     } while (0)
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
@@ -653,7 +655,7 @@ int Init(int32_t deviceId, aclrtStream *stream)
 }
 template <typename T>
 int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
-    aclDataType dataType, aclTensor **tensor)
+                    aclDataType dataType, aclTensor **tensor)
 {
     auto size = GetShapeSize(shape) * sizeof(T);
     // 调用aclrtMalloc申请device侧内存
@@ -668,15 +670,8 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
         strides[i] = shape[i + 1] * strides[i + 1];
     }
     // 调用aclCreateTensor接口创建aclTensor
-    *tensor = aclCreateTensor(shape.data(),
-        shape.size(),
-        dataType,
-        strides.data(),
-        0,
-        aclFormat::ACL_FORMAT_ND,
-        shape.data(),
-        shape.size(),
-        *deviceAddr);
+    *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
+                              shape.data(), shape.size(), *deviceAddr);
     return 0;
 }
 int main()
@@ -699,7 +694,7 @@ int main()
     std::vector<int64_t> expandedXOutShape = {12, 2};
     std::vector<int64_t> expandedRowIdxOutShape = {12};
     std::vector<int64_t> expertTokensCountOrCumsumOutOptionalShape = {4};
-    std::vector<int64_t> expandedScaleOutOptionalShape = {};
+    std::vector<int64_t> expandedScaleOutOptionalShape = {12};
     std::vector<int64_t> expandedTopkWeightOutShape = {12, 1};
 
     std::vector<int64_t> activeExpertRangeArray = {0, 4};
@@ -724,12 +719,12 @@ int main()
     aclTensor *activeNumOptional = nullptr;
     aclTensor *topkWeightOptional = nullptr;
 
-    int64_t expertCapacity = 0;
+    int64_t expertCapacity = 4;
     int64_t expertNum = 256;
     int64_t dropPadMode = 0;
     int64_t expertTokensNumType = 1;
     bool expertTokensNumFlag = true;
-    int64_t quantMode = 0;
+    int64_t quantMode = -1;
     aclIntArray *activeExpertRange = aclCreateIntArray(activeExpertRangeArray.data(), activeExpertRangeArray.size());
     int64_t rowIdxType = 1;
 
@@ -746,11 +741,12 @@ int main()
     std::vector<int64_t> activeNumHostData = {12};
     std::vector<float> topkWeightHostData = {0.5, 0.3, 0.2, 0.1, 0.4, 0.6, 0.15, 0.25, 0.35, 0.45, 0.55, 0.65};
 
-    std::vector<int8_t> expandedXOutHostData = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    std::vector<float> expandedXOutHostData = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     std::vector<int> expandedRowIdxOutHostData = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     std::vector<int64_t> expertTokensCountOrCumsumOutOptionalHostData = {0, 0, 0, 0};
-    std::vector<float> expandedScaleOutOptionalHostData = {};
-    std::vector<float> expandedTopkWeightOutHostData(expandedTopkWeightOutShape[0] * expandedTopkWeightOutShape[1], 0.0f);
+    std::vector<float> expandedScaleOutOptionalHostData = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    std::vector<float> expandedTopkWeightOutHostData(expandedTopkWeightOutShape[0] * expandedTopkWeightOutShape[1],
+                                                     0.0f);
 
     // 创建self aclTensor
     ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_FLOAT, &x);
@@ -761,59 +757,38 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(offsetHostData, offsetShape, &offsetDeviceAddr, aclDataType::ACL_FLOAT, &offset);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(activeNumHostData, activeNumShape, &activeNumDeviceAddr, aclDataType::ACL_INT64, &activeNumOptional);
+    ret = CreateAclTensor(activeNumHostData, activeNumShape, &activeNumDeviceAddr, aclDataType::ACL_INT64,
+                          &activeNumOptional);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(topkWeightHostData, topkWeightShape, &topkWeightDeviceAddr, aclDataType::ACL_FLOAT, &topkWeightOptional);
+    ret = CreateAclTensor(topkWeightHostData, topkWeightShape, &topkWeightDeviceAddr, aclDataType::ACL_FLOAT,
+                          &topkWeightOptional);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 创建out aclTensor
-    ret = CreateAclTensor(
-        expandedXOutHostData, expandedXOutShape, &expandedXOutDeviceAddr, aclDataType::ACL_INT8, &expandedXOut);
+    ret = CreateAclTensor(expandedXOutHostData, expandedXOutShape, &expandedXOutDeviceAddr, aclDataType::ACL_FLOAT,
+                          &expandedXOut);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(expandedRowIdxOutHostData,
-        expandedRowIdxOutShape,
-        &expandedRowIdxOutDeviceAddr,
-        aclDataType::ACL_INT32,
-        &expandedRowIdxOut);
+    ret = CreateAclTensor(expandedRowIdxOutHostData, expandedRowIdxOutShape, &expandedRowIdxOutDeviceAddr,
+                          aclDataType::ACL_INT32, &expandedRowIdxOut);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(expertTokensCountOrCumsumOutOptionalHostData,
-        expertTokensCountOrCumsumOutOptionalShape,
-        &expertTokensCountOrCumsumOutOptionalDeviceAddr,
-        aclDataType::ACL_INT64,
-        &expertTokensCountOrCumsumOutOptional);
+    ret = CreateAclTensor(expertTokensCountOrCumsumOutOptionalHostData, expertTokensCountOrCumsumOutOptionalShape,
+                          &expertTokensCountOrCumsumOutOptionalDeviceAddr, aclDataType::ACL_INT64,
+                          &expertTokensCountOrCumsumOutOptional);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(expandedScaleOutOptionalHostData,
-        expandedScaleOutOptionalShape,
-        &expandedScaleOutOptionalDeviceAddr,
-        aclDataType::ACL_FLOAT,
-        &expandedScaleOutOptional);
+    ret = CreateAclTensor(expandedScaleOutOptionalHostData, expandedScaleOutOptionalShape,
+                          &expandedScaleOutOptionalDeviceAddr, aclDataType::ACL_FLOAT, &expandedScaleOutOptional);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(expandedTopkWeightOutHostData, expandedTopkWeightOutShape, &expandedTopkWeightOutDeviceAddr, aclDataType::ACL_FLOAT, &expandedTopkWeightOut);
+    ret = CreateAclTensor(expandedTopkWeightOutHostData, expandedTopkWeightOutShape, &expandedTopkWeightOutDeviceAddr,
+                          aclDataType::ACL_FLOAT, &expandedTopkWeightOut);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 3. 调用CANN算子库API，需要修改为具体的API
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor;
     // 调用aclnnMoeInitRoutingV4第一段接口
-    ret = aclnnMoeInitRoutingV4GetWorkspaceSize(x,
-        expertIdx,
-        scale,
-        offset,
-        activeNumOptional,
-        topkWeightOptional,
-        expertCapacity,
-        expertNum,
-        dropPadMode,
-        expertTokensNumType,
-        expertTokensNumFlag,
-        quantMode,
-        activeExpertRange,
-        rowIdxType,
-        expandedXOut,
-        expandedRowIdxOut,
-        expertTokensCountOrCumsumOutOptional,
-        expandedScaleOutOptional,
-        expandedTopkWeightOut,
-        &workspaceSize,
-        &executor);
+    ret = aclnnMoeInitRoutingV4GetWorkspaceSize(
+        x, expertIdx, scale, offset, activeNumOptional, topkWeightOptional, expertCapacity, expertNum, dropPadMode,
+        expertTokensNumType, expertTokensNumFlag, quantMode, activeExpertRange, rowIdxType, expandedXOut,
+        expandedRowIdxOut, expertTokensCountOrCumsumOutOptional, expandedScaleOutOptional, expandedTopkWeightOut,
+        &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeInitRoutingV4GetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);
     // 根据第一段接口计算出的workspaceSize申请device内存
@@ -831,56 +806,44 @@ int main()
     // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
     auto expandedXSize = GetShapeSize(expandedXOutShape);
     std::vector<float> expandedXData(expandedXSize, 0);
-    ret = aclrtMemcpy(expandedXData.data(),
-        expandedXData.size() * sizeof(expandedXData[0]),
-        expandedXOutDeviceAddr,
-        expandedXSize * sizeof(float),
-        ACL_MEMCPY_DEVICE_TO_HOST);
+    ret = aclrtMemcpy(expandedXData.data(), expandedXData.size() * sizeof(expandedXData[0]), expandedXOutDeviceAddr,
+                      expandedXSize * sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
     for (int64_t i = 0; i < expandedXSize; i++) {
         LOG_PRINT("expandedXData[%ld] is: %f\n", i, expandedXData[i]);
     }
     auto expandedRowIdxSize = GetShapeSize(expandedRowIdxOutShape);
     std::vector<int> expandedRowIdxData(expandedRowIdxSize, 0);
-    ret = aclrtMemcpy(expandedRowIdxData.data(),
-        expandedRowIdxData.size() * sizeof(expandedRowIdxData[0]),
-        expandedRowIdxOutDeviceAddr,
-        expandedRowIdxSize * sizeof(int32_t),
-        ACL_MEMCPY_DEVICE_TO_HOST);
+    ret = aclrtMemcpy(expandedRowIdxData.data(), expandedRowIdxData.size() * sizeof(expandedRowIdxData[0]),
+                      expandedRowIdxOutDeviceAddr, expandedRowIdxSize * sizeof(int32_t), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
     for (int64_t i = 0; i < expandedRowIdxSize; i++) {
         LOG_PRINT("expandedRowIdxData[%ld] is: %d\n", i, expandedRowIdxData[i]);
     }
-    auto expertTokensBeforeCapacitySize = GetShapeSize(expertTokensCountOrCumsumOutOptionalShape);
-    std::vector<int64_t> expertTokenIdxData(expertTokensBeforeCapacitySize, 0);
-    ret = aclrtMemcpy(expertTokenIdxData.data(),
-        expertTokenIdxData.size() * sizeof(expertTokenIdxData[0]),
-        expertTokensCountOrCumsumOutOptionalDeviceAddr,
-        expertTokensBeforeCapacitySize * sizeof(int64_t),
-        ACL_MEMCPY_DEVICE_TO_HOST);
+    auto expertTokensCountSize = GetShapeSize(expertTokensCountOrCumsumOutOptionalShape);
+    std::vector<int64_t> expertTokensCountData(expertTokensCountSize, 0);
+    ret = aclrtMemcpy(expertTokensCountData.data(), expertTokensCountData.size() * sizeof(expertTokensCountData[0]),
+                      expertTokensCountOrCumsumOutOptionalDeviceAddr, expertTokensCountSize * sizeof(int64_t),
+                      ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
-    for (int64_t i = 0; i < expertTokensBeforeCapacitySize; i++) {
-        LOG_PRINT("expertTokenIdxData[%ld] is: %ld\n", i, expertTokenIdxData[i]);
+    for (int64_t i = 0; i < expertTokensCountSize; i++) {
+        LOG_PRINT("expertTokensCountData[%ld] is: %ld\n", i, expertTokensCountData[i]);
     }
 
-    auto dynamicQuantScaleSize = GetShapeSize(expandedScaleOutOptionalShape);
-    std::vector<float> dynamicQuantScaleData(dynamicQuantScaleSize, 0);
-    ret = aclrtMemcpy(dynamicQuantScaleData.data(),
-        dynamicQuantScaleData.size() * sizeof(dynamicQuantScaleData[0]),
-        expandedScaleOutOptionalDeviceAddr,
-        dynamicQuantScaleSize * sizeof(float),
-        ACL_MEMCPY_DEVICE_TO_HOST);
+    auto expandedScaleSize = GetShapeSize(expandedScaleOutOptionalShape);
+    std::vector<float> expandedScaleData(expandedScaleSize, 0);
+    ret = aclrtMemcpy(expandedScaleData.data(), expandedScaleData.size() * sizeof(expandedScaleData[0]),
+                      expandedScaleOutOptionalDeviceAddr, expandedScaleSize * sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
-    for (int64_t i = 0; i < dynamicQuantScaleSize; i++) {
-        LOG_PRINT("dynamicQuantScaleData[%ld] is: %f\n", i, dynamicQuantScaleData[i]);
+    for (int64_t i = 0; i < expandedScaleSize; i++) {
+        LOG_PRINT("expandedScaleData[%ld] is: %f\n", i, expandedScaleData[i]);
     }
+
     auto expandedTopkWeightSize = GetShapeSize(expandedTopkWeightOutShape);
     std::vector<float> expandedTopkWeightData(expandedTopkWeightSize, 0);
-    ret = aclrtMemcpy(expandedTopkWeightData.data(),
-        expandedTopkWeightData.size() * sizeof(float),
-        expandedTopkWeightOutDeviceAddr,
-        expandedTopkWeightSize * sizeof(float),
-        ACL_MEMCPY_DEVICE_TO_HOST);
+    ret =
+        aclrtMemcpy(expandedTopkWeightData.data(), expandedTopkWeightData.size() * sizeof(expandedTopkWeightData[0]),
+                    expandedTopkWeightOutDeviceAddr, expandedTopkWeightSize * sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
     for (int64_t i = 0; i < expandedTopkWeightSize; i++) {
         LOG_PRINT("expandedTopkWeightData[%ld] is: %f\n", i, expandedTopkWeightData[i]);
@@ -897,6 +860,7 @@ int main()
     aclDestroyTensor(expertTokensCountOrCumsumOutOptional);
     aclDestroyTensor(expandedScaleOutOptional);
     aclDestroyTensor(expandedTopkWeightOut);
+    aclDestroyIntArray(activeExpertRange);
 
     // 7. 释放device资源，需要根据具体API的接口定义修改
     aclrtFree(xDeviceAddr);
