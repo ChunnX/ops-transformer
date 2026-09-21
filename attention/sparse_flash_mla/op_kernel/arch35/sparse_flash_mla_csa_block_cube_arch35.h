@@ -216,7 +216,8 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::InitGmTensor(__gm__ uint8_t 
     if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
         this->oriKvGm.offsetCalculator.Init(constInfo.n2Size, constInfo.oriBlockSize, constInfo.dSize,
                                             this->oriBlockTableGm, constInfo.oriMaxBlockNumPerBatch);
-        if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE) {
+        if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE &&
+                      TEMPLATE_MODE != SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
             this->cmpKvGm.offsetCalculator.Init(constInfo.n2Size, constInfo.cmpBlockSize, constInfo.dSize,
                                                 this->cmpBlockTableGm, constInfo.cmpMaxBlockNumPerBatch);
         }
@@ -235,7 +236,8 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::InitGmTensor(__gm__ uint8_t 
     } else {
         // BSND不需要初始化
         this->oriKvGm.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.s2Size, constInfo.dSize);
-        if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE) {
+        if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE &&
+                      TEMPLATE_MODE != SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
             this->cmpKvGm.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.cmpS2Size,
                                                 constInfo.dSize); // 替换constInfo.s2Size / constInfo.cmpRatio
         }

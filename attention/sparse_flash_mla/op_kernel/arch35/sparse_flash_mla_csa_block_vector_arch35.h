@@ -312,6 +312,7 @@ private:
     GlobalTensor<float> crossCoreCombineGm;
 
     T negativeFloatScalar;
+    bool isSoftmaxLseGmValid = false;
     bool isSinks = false;
     uint32_t maxBlockNumPerBatch;
     uint32_t blockSize;
@@ -423,7 +424,7 @@ __aicore__ inline int64_t CSABlockVec<TEMPLATE_ARGS>::GetkeyOffset(int64_t s2Idx
         int64_t paBlockStride = runInfo.isCmp ? constInfo.cmpKvStride : constInfo.oriKvStride;
         smlaRealkeyOffset = blockTableGm.GetValue(runInfo.boIdx * maxBlockNumPerBatch + blkTableIdx) * paBlockStride +
                             blkTableOffset * constInfo.dSizeVInput; // BlockNum, BlockSize, N(1), D
-    } else if constexpr (LAYOUT_T == SMLA_LAYOUT::BSND) {
+    } else if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::BSND) {
         if (runInfo.isCmp) {
             smlaRealkeyOffset = runInfo.boIdx * constInfo.n2Size * constInfo.cmpS2Size * constInfo.dSize +
                                 runInfo.n2oIdx * constInfo.cmpS2Size * constInfo.dSize +
@@ -433,7 +434,7 @@ __aicore__ inline int64_t CSABlockVec<TEMPLATE_ARGS>::GetkeyOffset(int64_t s2Idx
                                 runInfo.n2oIdx * constInfo.s2Size * constInfo.dSize +
                                 s2Idx * constInfo.dSize; // BSN(1)D
         }
-    } else if constexpr (LAYOUT_T == SMLA_LAYOUT::TND) {
+    } else if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::TND) {
         smlaRealkeyOffset = (cuSeqlensKvGm.GetValue(runInfo.boIdx) + s2Idx) * constInfo.n2Size * constInfo.dSize +
                             runInfo.n2oIdx * constInfo.dSize; // TN(1)D
     }
@@ -847,8 +848,8 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyOutVec1Lse(LocalTensor<float> &maxUb, LocalTensor<float> &sumUb,
                                                                   RunInfo &runInfo, ConstInfo &constInfo)
 {
-    bool copyOutLse =
-        constInfo.isSoftmaxLseEnable && runInfo.halfMRealSize > 0 && runInfo.s2LoopCount == runInfo.s2LoopLimit;
+    bool copyOutLse = constInfo.isSoftmaxLseEnable && this->isSoftmaxLseGmValid && runInfo.halfMRealSize > 0 &&
+                      runInfo.s2LoopCount == runInfo.s2LoopLimit;
     if constexpr (IS_BATCH_CONSISTENCY) {
         copyOutLse = copyOutLse && !runInfo.isCrossCoreSplit && !runInfo.needReduce;
     }
@@ -939,8 +940,8 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ReduceIntraBlockAndStage(RunI
     LocalTensor<float> sumBroadcastUb = tmpUb[640];
     LocalTensor<float> maxUb = this->softmaxFinalMaxBufs[runInfo.taskIdMod2].tensor;
     LocalTensor<float> sumUb = this->softmaxFinalSumBufs[runInfo.taskIdMod2].tensor;
-    bool copyOutMergedLse =
-        constInfo.isSoftmaxLseEnable && !runInfo.isCrossCoreSplit && runInfo.s2LoopCount == runInfo.s2LoopLimit;
+    bool copyOutMergedLse = constInfo.isSoftmaxLseEnable && this->isSoftmaxLseGmValid &&
+                            !runInfo.isCrossCoreSplit && runInfo.s2LoopCount == runInfo.s2LoopLimit;
 
     WaitFlag<HardEvent::MTE3_MTE2>(INNERCORE_INTRALSE_MTE3_MTE2(runInfo.multiCoreIdxMod2));
     WaitFlag<HardEvent::MTE3_MTE2>(INNERCORE_INTRAATTN_MTE3_MTE2(runInfo.multiCoreIdxMod2));
@@ -1124,10 +1125,10 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(StaticBuffer<T> &
                 AttentionCommon::FD_REDUCE_CHUNK_ROWS};
             uint32_t smlaWorkspaceIdx = GetCrossCoreWorkspaceIdx(runInfo);
             int64_t smlaStagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
-            AttentionCommon::StageVec2PartialO<T>(stagingLayout, stagingOutGm, smlaWorkspaceIdx, smlaStagingMOffset,
-                                                  static_cast<uint32_t>(runInfo.vec2MRealSize),
-                                                  static_cast<uint32_t>(constInfo.dSizeV), smlaVec2ResUb,
-                                                  INNERCORE_STAGE2, INNERCORE_STAGE_FD_MTE3_V);
+            AttentionCommon::StageVec2PartialOAndWait<T>(
+                stagingLayout, stagingOutGm, smlaWorkspaceIdx, smlaStagingMOffset, runInfo.vec2MRealSize,
+                static_cast<uint32_t>(constInfo.dSizeV), smlaVec2ResUb, INNERCORE_STAGE2,
+                INNERCORE_STAGE_FD_MTE3_V);
         } else {
             this->CopyOutAttentionOut(runInfo, constInfo, smlaVec2ResUb, 0, smlaVec2CalcSize);
         }
@@ -1188,7 +1189,8 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(FdRunInfo 
                 stagingLayout, fdStagingBase, fdRunInfo.workspaceIdx, fdRunInfo.workspaceNum,
                 static_cast<uint32_t>(fdRunInfo.mStartIdx + startRow), smlaDealRowCount,
                 static_cast<uint32_t>(constInfo.dSizeV), smlaAccumulatedO, smlaLseExpUb, smlaBlockMaxUb, smlaBlockSumUb,
-                smlaPartialOFp32, constInfo.isSoftmaxLseEnable, softmaxLseGm, softmaxLseOffset + startRow,
+                smlaPartialOFp32, constInfo.isSoftmaxLseEnable && this->isSoftmaxLseGmValid, softmaxLseGm,
+                softmaxLseOffset + startRow,
                 INNERCORE_FD_V_MTE2(0), INNERCORE_FD_V_MTE2(1), INNERCORE_FD_MTE2_V, INNERCORE_LSE_V_MTE3,
                 INNERCORE_LSE_MTE3_V);
         } else {
@@ -1196,7 +1198,8 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(FdRunInfo 
                 stagingLayout, fdStagingBase, fdRunInfo.workspaceIdx, fdRunInfo.workspaceNum,
                 static_cast<uint32_t>(fdRunInfo.mStartIdx + startRow), smlaDealRowCount,
                 static_cast<uint32_t>(constInfo.dSizeV), smlaAccumulatedO, smlaLseExpUb, smlaBlockMaxUb, smlaBlockSumUb,
-                smlaPartialOFp32, constInfo.isSoftmaxLseEnable, softmaxLseGm, softmaxLseOffset + startRow,
+                smlaPartialOFp32, constInfo.isSoftmaxLseEnable && this->isSoftmaxLseGmValid, softmaxLseGm,
+                softmaxLseOffset + startRow,
                 INNERCORE_FD_V_MTE2(0), INNERCORE_FD_V_MTE2(1), INNERCORE_FD_MTE2_V, INNERCORE_LSE_V_MTE3,
                 INNERCORE_LSE_MTE3_V);
         }
@@ -1267,7 +1270,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitOutputSingleCore(ConstInf
                                     ATTEN_OUT_POP_BUF_ELE_SIZE, false>(this->attentionOutGm, totalOutputSize,
                                                                        vecCoreNum, static_cast<OUTPUT_T>(0));
     }
-    if (constInfo.isSoftmaxLseEnable) {
+    if (constInfo.isSoftmaxLseEnable && this->isSoftmaxLseGmValid) {
         uint64_t totalReturnSoftmaxSize = 0;
         if constexpr (LAYOUT_T == SMLA_LAYOUT::BSND) {
             totalReturnSoftmaxSize = constInfo.bSize * constInfo.n2Size * constInfo.s1Size * constInfo.gSize;
@@ -1289,7 +1292,10 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CleanOutput(__gm__ uint8_t *a
 {
     if ASCEND_IS_AIV {
         this->attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
-        this->softmaxLseGm.SetGlobalBuffer((__gm__ T *)softmaxLse);
+        if (constInfo.isSoftmaxLseEnable && softmaxLse != nullptr) {
+            this->softmaxLseGm.SetGlobalBuffer((__gm__ T *)softmaxLse);
+            this->isSoftmaxLseGmValid = true;
+        }
         if (constInfo.needInit == 1) {
             InitOutputSingleCore(constInfo);
         }
@@ -1538,10 +1544,14 @@ __aicore__ inline int32_t CSABlockVec<TEMPLATE_ARGS>::CalcCurValidS2(uint32_t bI
         }
     }
     if (smlaTopkMode) {
-        uint64_t topkIdx =
-            (LAYOUT_T == SMLA_LAYOUT::TND) ? (cuSeqlensQGm.GetValue(bIdx) + s1Idx) : (bIdx * constInfo.s1Size + s1Idx);
-        int32_t topkLen = smlaHasTopk ? topkLengthGm.GetValue(topkIdx) : sparseBlockCount;
-        return Min(topkLen, sparseBlockCount);
+        if (!smlaHasTopk) {
+            return sparseBlockCount;
+        }
+        uint64_t topkIdx = bIdx * constInfo.s1Size + s1Idx;
+        if constexpr (LAYOUT_T == SMLA_LAYOUT::TND) {
+            topkIdx = cuSeqlensQGm.GetValue(bIdx) + s1Idx;
+        }
+        return Min(topkLengthGm.GetValue(topkIdx), sparseBlockCount);
     }
 
     if constexpr (TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
@@ -1681,9 +1691,9 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddrForKvType(
         uint32_t kvPrefix = 0;
         uint32_t bS2BaseLow = 0;
         uint32_t bS2BaseHigh = 0;
-        if constexpr (LAYOUT_T == SMLA_LAYOUT::TND) {
+        if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::TND) {
             kvPrefix = static_cast<uint32_t>(cuSeqlensKvGm.GetValue(bIdx));
-        } else {
+        } else if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::BSND) {
             uint32_t s2Size =
                 isOriKv ? static_cast<uint32_t>(constInfo.s2Size) : static_cast<uint32_t>(constInfo.cmpS2Size);
             uint64_t bS2Base = static_cast<uint64_t>(bIdx) * s2Size * static_cast<uint64_t>(constInfo.dSize);

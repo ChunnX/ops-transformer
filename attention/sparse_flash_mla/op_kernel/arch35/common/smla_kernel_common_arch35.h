@@ -18,7 +18,12 @@
 #ifndef SMLA_KERNEL_COMMON_ARCH35_H
 #define SMLA_KERNEL_COMMON_ARCH35_H
 
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_vec_intf.h"
+#include "kernel_cube_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 #include "kernel_operator_list_tensor_intf.h"
 #include "../sparse_flash_mla_common_arch35.h"
 #include "../sparse_flash_mla_kvcache.h"
