@@ -149,10 +149,10 @@ private:
                     "MoE communication buffer size overflows 1GB alignment: ", requiredBufferSize_);
         const uint64_t huge1GBytes = ((requiredBufferSize_ + HUGE1G_SIZE - 1) / HUGE1G_SIZE) * HUGE1G_SIZE;
         const uint32_t currentDeviceId = static_cast<uint32_t>(deviceId);
-        if (!AllocateHugePageBuffer(huge1GBytes, property, ACL_MEM_HUGE1G, currentDeviceId)) {
-            TORCH_CHECK(AllocateHugePageBuffer(requiredBufferSize_, property, ACL_MEM_HUGE, currentDeviceId),
-                        "Allocate MoE communication buffer failed, size=", requiredBufferSize_);
-        }
+        // Keep the physical page size deterministic; do not fall back to 2 MiB pages.
+        TORCH_CHECK(AllocateHugePageBuffer(huge1GBytes, property, ACL_MEM_HUGE1G, currentDeviceId),
+                    "Allocate MoE communication buffer with 1 GiB huge pages failed, requested=",
+                    requiredBufferSize_, ", aligned=", huge1GBytes);
         ret = aclrtMemset(deviceBuffer_, requiredBufferSize_, 0, requiredBufferSize_);
         TORCH_CHECK(ret == ACL_SUCCESS, "Clear MoE communication buffer failed, ret=", ret);
     }
