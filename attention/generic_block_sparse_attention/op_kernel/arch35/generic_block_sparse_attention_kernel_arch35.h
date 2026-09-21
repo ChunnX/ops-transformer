@@ -75,10 +75,10 @@ public:
         gV.SetGlobalBuffer((__gm__ ElementK *)params.v);
         AscendC::GlobalTensor<int32_t> gSparseBlockIdx;
         gSparseBlockIdx.SetGlobalBuffer((__gm__ int32_t *)params.sparseBlockIdx);
-        AscendC::GlobalTensor<int32_t> gSparseBlockCount;
-        gSparseBlockCount.SetGlobalBuffer((__gm__ int32_t *)params.sparseBlockCount);
         AscendC::GlobalTensor<int32_t> gBlockTable;
         gBlockTable.SetGlobalBuffer((__gm__ int32_t *)params.blockTable);
+        AscendC::GlobalTensor<int32_t> gSparseBlockCount;
+        gSparseBlockCount.SetGlobalBuffer((__gm__ int32_t *)params.sparseBlockCount);
         AscendC::GlobalTensor<int64_t> gCuSeqLengths;
         if (params.cuSeqLengths != nullptr) {
             gCuSeqLengths.SetGlobalBuffer((__gm__ int64_t *)params.cuSeqLengths);
