@@ -19,9 +19,9 @@
 #include "../../../../3rd/grouped_matmul/op_kernel/grouped_matmul_tiling_data_apt.h"
 
 namespace MC2KernelTemplate {
-static constexpr uint32_t MAX_EP_RANK_SIZE = 128U;
 static constexpr uint32_t MAX_EXPERT_PER_EP = 1U;
 static constexpr uint32_t MAX_EXPERT_SIZE = 256U;
+static constexpr uint32_t MAX_EP_RANK_SIZE = MAX_EXPERT_SIZE;
 static constexpr uint32_t MAX_EXPERT_PER_RANK = 32U;
 static constexpr uint32_t TENSOR_LIST_SIZE = 512U;
 static constexpr uint32_t SCALE_COMM_BATCH_THRESHOLD = 32U;
