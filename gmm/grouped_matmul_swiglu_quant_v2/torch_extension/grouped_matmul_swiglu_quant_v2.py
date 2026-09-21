@@ -41,10 +41,14 @@ _TORCH_DTYPE_TO_GE_DTYPE = {
 
 def _normalize_tensor_list(value, name):
     if not isinstance(value, list):
-        raise TypeError(f"{name} must be a TensorList (list of Tensor), but got {type(value)}.")
+        raise TypeError(
+            f"{name} must be a TensorList (list of Tensor), but got {type(value)}."
+        )
     for index, tensor in enumerate(value):
         if not isinstance(tensor, torch.Tensor):
-            raise TypeError(f"{name}[{index}] must be a Tensor, but got {type(tensor)}.")
+            raise TypeError(
+                f"{name}[{index}] must be a Tensor, but got {type(tensor)}."
+            )
     return value
 
 
@@ -99,18 +103,37 @@ class GroupedMatmulSwigluQuantV2OpBuilder(OpBuilder):
             "int? group_list_type=0, int[]? tuning_config=None, int? x_dtype=None, int? weight_dtype=None, "
             "int? weight_scale_dtype=None, int? x_scale_dtype=None, int? swiglu_mode=None, "
             "float? clamp_limit=None, float? glu_alpha=None, float? glu_bias=None, "
-            "str round_mode=\"rint\", int scale_alg=0, float dst_type_max=0.0) -> (Tensor, Tensor)"
+            'str round_mode="rint", int scale_alg=0, float dst_type_max=0.0) -> (Tensor, Tensor)'
         )
 
     def register_meta(self):
         @impl(get_as_library(), self.name, "Meta")
         def grouped_matmul_swiglu_quant_v2_meta(
-            x, weight, weight_scale, x_scale, group_list, smooth_scale=None,
-            weight_assist_matrix=None, bias=None, dequant_mode=2, dequant_dtype=0,
-            quant_mode=2, quant_dtype=36, group_list_type=0, tuning_config=None,
-            x_dtype=None, weight_dtype=None, weight_scale_dtype=None, x_scale_dtype=None,
-            swiglu_mode=None, clamp_limit=None, glu_alpha=None, glu_bias=None,
-            round_mode="rint", scale_alg=0, dst_type_max=0.0,
+            x,
+            weight,
+            weight_scale,
+            x_scale,
+            group_list,
+            smooth_scale=None,
+            weight_assist_matrix=None,
+            bias=None,
+            dequant_mode=2,
+            dequant_dtype=0,
+            quant_mode=2,
+            quant_dtype=36,
+            group_list_type=0,
+            tuning_config=None,
+            x_dtype=None,
+            weight_dtype=None,
+            weight_scale_dtype=None,
+            x_scale_dtype=None,
+            swiglu_mode=None,
+            clamp_limit=None,
+            glu_alpha=None,
+            glu_bias=None,
+            round_mode="rint",
+            scale_alg=0,
+            dst_type_max=0.0,
         ):
             if swiglu_mode is None:
                 raise ValueError(
@@ -118,17 +141,26 @@ class GroupedMatmulSwigluQuantV2OpBuilder(OpBuilder):
                     "legacy V2 calls remain available through torch_npu."
                 )
             if swiglu_mode != 2:
-                raise ValueError("When swiglu_mode is specified, only swiglu_mode=2 is supported.")
+                raise ValueError(
+                    "When swiglu_mode is specified, only swiglu_mode=2 is supported."
+                )
             if len(weight) != 1 or len(weight_scale) != 1:
-                raise ValueError("swiglu_mode=2 supports exactly one weight and one weight_scale tensor.")
+                raise ValueError(
+                    "swiglu_mode=2 supports exactly one weight and one weight_scale tensor."
+                )
             if x.dtype != torch.float8_e4m3fn or weight[0].dtype != torch.float8_e4m3fn:
-                raise TypeError("swiglu_mode=2 requires x and weight to use torch.float8_e4m3fn.")
+                raise TypeError(
+                    "swiglu_mode=2 requires x and weight to use torch.float8_e4m3fn."
+                )
             n = _infer_v3_n(weight_scale[0])
             m = x.shape[0]
             return (
                 torch.empty((m, n // 2), dtype=torch.float8_e4m3fn, device="meta"),
-                torch.empty((m, math.ceil((n // 2) / MX_GROUP_SIZE), 2),
-                            dtype=getattr(torch, "float8_e8m0fnu", torch.uint8), device="meta"),
+                torch.empty(
+                    (m, math.ceil((n // 2) / MX_GROUP_SIZE), 2),
+                    dtype=getattr(torch, "float8_e8m0fnu", torch.uint8),
+                    device="meta",
+                ),
             )
 
 
@@ -138,20 +170,59 @@ _op_builder._ensure_initialized()
 
 @impl(get_as_library(), _op_builder.name, "PrivateUse1")
 def _grouped_matmul_swiglu_quant_v2(
-    x, weight, weight_scale, x_scale, group_list, smooth_scale=None,
-    weight_assist_matrix=None, bias=None, dequant_mode=2, dequant_dtype=0,
-    quant_mode=2, quant_dtype=36, group_list_type=0, tuning_config=None,
-    x_dtype=None, weight_dtype=None, weight_scale_dtype=None, x_scale_dtype=None,
-    swiglu_mode=None, clamp_limit=None, glu_alpha=None, glu_bias=None,
-    round_mode="rint", scale_alg=0, dst_type_max=0.0,
+    x,
+    weight,
+    weight_scale,
+    x_scale,
+    group_list,
+    smooth_scale=None,
+    weight_assist_matrix=None,
+    bias=None,
+    dequant_mode=2,
+    dequant_dtype=0,
+    quant_mode=2,
+    quant_dtype=36,
+    group_list_type=0,
+    tuning_config=None,
+    x_dtype=None,
+    weight_dtype=None,
+    weight_scale_dtype=None,
+    x_scale_dtype=None,
+    swiglu_mode=None,
+    clamp_limit=None,
+    glu_alpha=None,
+    glu_bias=None,
+    round_mode="rint",
+    scale_alg=0,
+    dst_type_max=0.0,
 ):
     module = _op_builder.load()
     return module.grouped_matmul_swiglu_quant_v2(
-        x, weight, weight_scale, x_scale, group_list, smooth_scale,
-        weight_assist_matrix, bias, dequant_mode, dequant_dtype, quant_mode,
-        quant_dtype, group_list_type, tuning_config, x_dtype, weight_dtype,
-        weight_scale_dtype, x_scale_dtype, swiglu_mode, clamp_limit, glu_alpha,
-        glu_bias, round_mode, scale_alg, dst_type_max,
+        x,
+        weight,
+        weight_scale,
+        x_scale,
+        group_list,
+        smooth_scale,
+        weight_assist_matrix,
+        bias,
+        dequant_mode,
+        dequant_dtype,
+        quant_mode,
+        quant_dtype,
+        group_list_type,
+        tuning_config,
+        x_dtype,
+        weight_dtype,
+        weight_scale_dtype,
+        x_scale_dtype,
+        swiglu_mode,
+        clamp_limit,
+        glu_alpha,
+        glu_bias,
+        round_mode,
+        scale_alg,
+        dst_type_max,
     )
 
 
@@ -191,7 +262,9 @@ def grouped_matmul_swiglu_quant_v2(
     """
     weight = _normalize_tensor_list(weight, "weight")
     weight_scale = _normalize_tensor_list(weight_scale, "weight_scale")
-    weight_assist_matrix = _normalize_optional_tensor_list(weight_assist_matrix, "weight_assist_matrix")
+    weight_assist_matrix = _normalize_optional_tensor_list(
+        weight_assist_matrix, "weight_assist_matrix"
+    )
     bias = _normalize_bias(bias)
     if swiglu_mode is None:
         raise ValueError(
@@ -201,9 +274,13 @@ def grouped_matmul_swiglu_quant_v2(
     if swiglu_mode != 2:
         raise ValueError(f"Only swiglu_mode=2 is supported, but got {swiglu_mode}.")
     if len(weight) != 1 or len(weight_scale) != 1:
-        raise ValueError("swiglu_mode=2 supports exactly one weight and one weight_scale tensor.")
+        raise ValueError(
+            "swiglu_mode=2 supports exactly one weight and one weight_scale tensor."
+        )
     if x.dtype != torch.float8_e4m3fn or weight[0].dtype != torch.float8_e4m3fn:
-        raise TypeError("swiglu_mode=2 requires x and weight to use torch.float8_e4m3fn.")
+        raise TypeError(
+            "swiglu_mode=2 requires x and weight to use torch.float8_e4m3fn."
+        )
     if clamp_limit is not None and (not math.isfinite(clamp_limit) or clamp_limit <= 0):
         raise ValueError("clamp_limit must be a finite positive number.")
     if round_mode != "rint":
@@ -214,7 +291,11 @@ def grouped_matmul_swiglu_quant_v2(
         raise ValueError("MXFP8 only supports dst_type_max=0.0.")
 
     return torch.ops.cann_ops_transformer.grouped_matmul_swiglu_quant_v2(
-        x, weight, weight_scale, x_scale, group_list,
+        x,
+        weight,
+        weight_scale,
+        x_scale,
+        group_list,
         smooth_scale=smooth_scale,
         weight_assist_matrix=weight_assist_matrix,
         bias=bias,
