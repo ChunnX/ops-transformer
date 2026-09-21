@@ -20,7 +20,6 @@ _logger = logging.getLogger(__name__)
 
 _ACL_DTYPE_TO_TORCH_DTYPE = {
     5: torch.float16,
-    6: torch.float32,
     15: torch.bfloat16,
 }
 
@@ -161,14 +160,14 @@ def _check_params(
             f"comm_mode only supports 'aiv_urma', but got '{comm_mode}'. "
             f"Please pass comm_mode='aiv_urma' explicitly."
         )
-    if x1_dtype is not None and not isinstance(x1_dtype, int):
+    if x1_dtype is not None and not isinstance(x1_dtype, (int, torch.dtype)):
         raise ValueError(
-            f"x1_dtype must be an int (ACL dtype enum) or None, "
+            f"x1_dtype must be an int (ACL dtype enum), a torch.dtype, or None, "
             f"but got {type(x1_dtype).__name__}."
         )
-    if x2_dtype is not None and not isinstance(x2_dtype, int):
+    if x2_dtype is not None and not isinstance(x2_dtype, (int, torch.dtype)):
         raise ValueError(
-            f"x2_dtype must be an int (ACL dtype enum) or None, "
+            f"x2_dtype must be an int (ACL dtype enum), a torch.dtype, or None, "
             f"but got {type(x2_dtype).__name__}."
         )
     fp4_dtype_enums = (296,)
@@ -183,14 +182,18 @@ def _check_params(
             f"is not a valid fp4 enum. Please pass x2_dtype=296 (fp4_e2m1)."
         )
     fp8_e8m0_dtype_enum = 293
-    if x1_scale_dtype is not None and not isinstance(x1_scale_dtype, int):
+    if x1_scale_dtype is not None and not isinstance(
+        x1_scale_dtype, (int, torch.dtype)
+    ):
         raise ValueError(
-            f"x1_scale_dtype must be an int (ACL dtype enum) or None, "
+            f"x1_scale_dtype must be an int (ACL dtype enum), a torch.dtype, or None, "
             f"but got {type(x1_scale_dtype).__name__}."
         )
-    if x2_scale_dtype is not None and not isinstance(x2_scale_dtype, int):
+    if x2_scale_dtype is not None and not isinstance(
+        x2_scale_dtype, (int, torch.dtype)
+    ):
         raise ValueError(
-            f"x2_scale_dtype must be an int (ACL dtype enum) or None, "
+            f"x2_scale_dtype must be an int (ACL dtype enum), a torch.dtype, or None, "
             f"but got {type(x2_scale_dtype).__name__}."
         )
     if x1_quant_mode is not None and not isinstance(x1_quant_mode, int):
@@ -201,9 +204,10 @@ def _check_params(
         raise ValueError(
             f"x2_quant_mode must be an int or None, but got {type(x2_quant_mode).__name__}."
         )
-    if y_dtype is not None and not isinstance(y_dtype, int):
+    if y_dtype is not None and not isinstance(y_dtype, (int, torch.dtype)):
         raise ValueError(
-            f"y_dtype must be an int (ACL dtype enum) or None, but got {type(y_dtype).__name__}."
+            f"y_dtype must be an int (ACL dtype enum), a torch.dtype, or None, "
+            f"but got {type(y_dtype).__name__}."
         )
     if precision_mode is not None and not isinstance(precision_mode, int):
         raise ValueError(
