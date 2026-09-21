@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file weight_quant_matmul_all_reduce_tiling_950.h
+ * \file weight_quant_matmul_all_reduce_tiling_a5.h
  * \brief
  */
-#ifndef WEIGHT_QUANT_MATMUL_ALL_REDUCE_TILING_950_H
-#define WEIGHT_QUANT_MATMUL_ALL_REDUCE_TILING_950_H
+#ifndef WEIGHT_QUANT_MATMUL_ALL_REDUCE_TILING_A5_H
+#define WEIGHT_QUANT_MATMUL_ALL_REDUCE_TILING_A5_H
 #include "../matmul_all_reduce_tiling_base.h"
 #include "weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_custom.h"
 #include "../../../op_kernel/arch35/matmul_all_reduce_tiling_struct_ar35.h"
@@ -245,4 +245,4 @@ private:
 };
 
 } // namespace optiling
-#endif // WEIGHT_QUANT_MATMUL_ALL_REDUCE_TILING_950_H
+#endif // WEIGHT_QUANT_MATMUL_ALL_REDUCE_TILING_A5_H

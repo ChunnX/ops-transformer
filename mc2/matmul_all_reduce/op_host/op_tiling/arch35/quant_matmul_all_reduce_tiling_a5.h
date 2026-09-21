@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file quant_matmul_all_reduce_tiling_950.h
+ * \file quant_matmul_all_reduce_tiling_a5.h
  * \brief
  */
-#ifndef QUANT_MATMUL_ALL_REDUCE_TILING_950_H
-#define QUANT_MATMUL_ALL_REDUCE_TILING_950_H
+#ifndef QUANT_MATMUL_ALL_REDUCE_TILING_A5_H
+#define QUANT_MATMUL_ALL_REDUCE_TILING_A5_H
 
 #include "../matmul_all_reduce_tiling_base.h"
 #include "../../../op_kernel/arch35/matmul_all_reduce_tiling_struct_ar35.h"
@@ -114,4 +114,4 @@ private:
 };
 
 } // namespace optiling
-#endif // QUANT_MATMUL_ALL_REDUCE_TILING_950_H
+#endif // QUANT_MATMUL_ALL_REDUCE_TILING_A5_H
