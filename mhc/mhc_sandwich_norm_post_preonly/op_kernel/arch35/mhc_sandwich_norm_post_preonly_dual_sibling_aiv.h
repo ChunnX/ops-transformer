@@ -178,8 +178,6 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-        LoadHInCacheTile(tOff, tD, hIn);
         LocalTensor<float> gamma1 = bufGamma2Fp32_.Get<float>();
         if (D_ > GAMMA1_CACHE_MAX_D) {
             LoadGammaInto(gamma1, gamma1Gm_, tOff, tD);
@@ -188,11 +186,10 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         } else {
             gamma1 = gamma1[tOff];
         }
-        ApplyScaleAndGamma(hIn, invRms1, gamma1, tD);
+        WriteHInPrimeFromCache(token, tOff, tD, invRms1, gamma1);
         if (D_ > GAMMA1_CACHE_MAX_D) {
             FenceVToMte2();
         }
-        WriteHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tD);
     }
 }
 
