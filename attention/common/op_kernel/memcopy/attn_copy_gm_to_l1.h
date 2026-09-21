@@ -584,8 +584,16 @@ private:
         uint32_t s1IdxStart = gmCoord.gS1Idx % offsetCalculator.GetDimS1();
 
         uint64_t offset = offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gIdxStart, s1IdxStart, gmCoord.dIdx);
-        CopySingleMXScaleDNToNZ(dstTensor.tensor, srcTensor.gmTensor[offset], gmCoord.dDealSize, gmCoord.gS1DealSize,
-                                offsetCalculator.GetDimD(), gmCoord.dDealSize);
+#if (__NPU_ARCH__ == 9201)
+        if (std::is_same_v<Q_SCALE_T, hif4_scale>) {
+            CopySingleHIScaleDNToNZ(dstTensor.tensor, srcTensor.gmTensor[offset], gmCoord.dDealSize,
+                                    gmCoord.gS1DealSize, offsetCalculator.GetDimD(), gmCoord.dDealSize);
+        } else
+#endif
+        {
+            CopySingleMXScaleDNToNZ(dstTensor.tensor, srcTensor.gmTensor[offset], gmCoord.dDealSize,
+                                    gmCoord.gS1DealSize, offsetCalculator.GetDimD(), gmCoord.dDealSize);
+        }
     }
 
     template <typename FaGmTensorType>
@@ -622,8 +630,16 @@ private:
         }
 
         uint64_t offset = queryScaleGmbaseOffset + s1IdxStart * offsetCalculator.GetDimD();
-        CopySingleMXScaleDNToNZ(dstTensor.tensor, srcTensor.gmTensor[offset], gmCoord.dDealSize, headSize,
-                                offsetCalculator.GetStrideS1(), gmCoord.dDealSize);
+#if (__NPU_ARCH__ == 9201)
+        if (std::is_same_v<Q_SCALE_T, hif4_scale>) {
+            CopySingleHIScaleDNToNZ(dstTensor.tensor, srcTensor.gmTensor[offset], gmCoord.dDealSize, headSize,
+                                    offsetCalculator.GetStrideS1(), gmCoord.dDealSize);
+        } else
+#endif
+        {
+            CopySingleMXScaleDNToNZ(dstTensor.tensor, srcTensor.gmTensor[offset], gmCoord.dDealSize, headSize,
+                                    offsetCalculator.GetStrideS1(), gmCoord.dDealSize);
+        }
 
         if (gIdxEnd - gIdxStart >= 1) {
             // 处理中间块
@@ -691,45 +707,48 @@ private:
         auto &offsetCalculator = srcTensor.offsetCalculator;
         uint32_t curS2Idx = gmCoord.s2Idx;
         uint32_t copyFinishRowCnt = 0;
-        if constexpr (GM_FORMAT == GmFormat::PA_NZ_K_SCALE) {
-            while (copyFinishRowCnt < gmCoord.s2DealSize) {
-                // 获取需要拷贝的行数
-                uint32_t copyRowCnt = offsetCalculator.GetBlockSize() - curS2Idx % offsetCalculator.GetBlockSize();
-                if (copyFinishRowCnt + copyRowCnt > gmCoord.s2DealSize) {
-                    copyRowCnt = gmCoord.s2DealSize - copyFinishRowCnt; // 一个block未拷满
-                }
-                uint64_t gmOffset = offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, curS2Idx, gmCoord.dIdx);
-                uint64_t l1Offset = copyFinishRowCnt * gmCoord.dDealSize;
+        uint64_t l1Offset = 0;
+        while (copyFinishRowCnt < gmCoord.s2DealSize) {
+            // 获取需要拷贝的行数
+            uint32_t copyRowCnt = offsetCalculator.GetBlockSize() - curS2Idx % offsetCalculator.GetBlockSize();
+            if (copyFinishRowCnt + copyRowCnt > gmCoord.s2DealSize) {
+                copyRowCnt = gmCoord.s2DealSize - copyFinishRowCnt; // 一个block未拷满
+            }
+            uint64_t gmOffset = offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, curS2Idx, gmCoord.dIdx);
 
-                // 拷贝数据
+            if constexpr (GM_FORMAT == GmFormat::PA_NZ_K_SCALE) {
                 DataCopyParams intriParams;
-                intriParams.blockCount = (copyRowCnt + 15) >> 4;
-                intriParams.blockLen = gmCoord.dDealSize / 2;
                 intriParams.dstStride = 0;
                 intriParams.srcStride = 0;
-                DataCopy(dstTensor.tensor[l1Offset], srcTensor.gmTensor[gmOffset], intriParams);
-                // 更新完成拷贝的行数和s2Idx
-                copyFinishRowCnt += copyRowCnt;
-                curS2Idx += copyRowCnt;
-            }
-        } else {
-            while (copyFinishRowCnt < gmCoord.s2DealSize) {
-                // 获取需要拷贝的行数
-                uint32_t copyRowCnt = offsetCalculator.GetBlockSize() - curS2Idx % offsetCalculator.GetBlockSize();
-                if (copyFinishRowCnt + copyRowCnt > gmCoord.s2DealSize) {
-                    copyRowCnt = gmCoord.s2DealSize - copyFinishRowCnt; // 一个block未拷满
+                intriParams.blockCount = 1;
+#if (__NPU_ARCH__ == 9201)
+                if constexpr (std::is_same_v<K_SCALE_T, hif4_scale>) {
+                    intriParams.blockLen = ((copyRowCnt + 15) >> 4) * gmCoord.dDealSize * 2; // 每个最小分型组64B 要 * 2
+                } else
+#endif
+                {
+                    // for mxfp4
+                    intriParams.blockLen = ((copyRowCnt + 15) >> 4) * gmCoord.dDealSize / 2;
                 }
-                uint64_t gmOffset = offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, curS2Idx, gmCoord.dIdx);
-                uint64_t l1Offset = copyFinishRowCnt * gmCoord.dDealSize;
-
+                DataCopy(dstTensor.tensor[l1Offset], srcTensor.gmTensor[gmOffset], intriParams);
+                l1Offset += intriParams.blockCount * intriParams.blockLen * 32 / sizeof(K_SCALE_T);
+            } else {
+                l1Offset = copyFinishRowCnt * gmCoord.dDealSize;
                 // 拷贝数据
-                CopySingleMXScaleDNToNZ(dstTensor.tensor[l1Offset], srcTensor.gmTensor[gmOffset], gmCoord.dDealSize,
-                                        copyRowCnt, offsetCalculator.GetStrideBlockSize(), gmCoord.dDealSize);
-
-                // 更新完成拷贝的行数和s2Idx
-                copyFinishRowCnt += copyRowCnt;
-                curS2Idx += copyRowCnt;
+                if constexpr (std::is_same_v<K_SCALE_T, fp8_e8m0_t>) {
+                    CopySingleMXScaleDNToNZ(dstTensor.tensor[l1Offset], srcTensor.gmTensor[gmOffset], gmCoord.dDealSize,
+                                            copyRowCnt, offsetCalculator.GetStrideBlockSize(), gmCoord.dDealSize);
+                }
+#if (__NPU_ARCH__ == 9201)
+                else if constexpr (std::is_same_v<K_SCALE_T, hif4_scale>) {
+                    CopySingleHIScaleDNToNZ(dstTensor.tensor[l1Offset], srcTensor.gmTensor[gmOffset], gmCoord.dDealSize,
+                                            copyRowCnt, offsetCalculator.GetStrideBlockSize(), gmCoord.dDealSize);
+                }
+#endif
             }
+            // 更新完成拷贝的行数和s2Idx
+            copyFinishRowCnt += copyRowCnt;
+            curS2Idx += copyRowCnt;
         }
     }
 };
@@ -788,7 +807,7 @@ private:
                                         gmCoord.dDealSize, offsetCalculator.GetStrideD(), gmCoord.s2DealSize);
             }
 #if (__NPU_ARCH__ == 9201)
-            else if (std::is_same_v<V_SCALE_T, hif4_scale>) {
+            else if constexpr (std::is_same_v<V_SCALE_T, hif4_scale>) {
                 CopySingleHIScaleDNToNZ(dstTensor.tensor, srcTensor.gmTensor[offset], gmCoord.s2DealSize,
                                         gmCoord.dDealSize, offsetCalculator.GetStrideD(), gmCoord.s2DealSize);
             }
@@ -803,6 +822,7 @@ private:
         auto &offsetCalculator = srcTensor.offsetCalculator;
         uint32_t curS2Idx = gmCoord.s2Idx;
         uint32_t copyFinishRowCnt = 0;
+        uint64_t l1Offset = 0;
         uint32_t blockElementCnt = 32 / sizeof(V_SCALE_T);
         while (copyFinishRowCnt < gmCoord.s2DealSize) {
             // 获取需要拷贝的行数
@@ -812,7 +832,6 @@ private:
             }
 
             uint64_t gmOffset = offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, curS2Idx, gmCoord.dIdx);
-            uint64_t l1Offset = copyFinishRowCnt * blockElementCnt;
 
             // 拷贝数据
             if constexpr (GM_FORMAT == GmFormat::PA_NZ_V_SCALE) {
@@ -834,6 +853,7 @@ private:
                 DataCopy(dstTensor.tensor[l1Offset], srcTensor.gmTensor[gmOffset], intriParams);
                 l1Offset += intriParams.blockLen * 32 / sizeof(V_SCALE_T);
             } else if constexpr (GM_FORMAT == GmFormat::PA_NZ) {
+                l1Offset = copyFinishRowCnt * blockElementCnt;
                 DataCopyParams intriParams;
                 intriParams.blockCount = gmCoord.dDealSize / blockElementCnt;
                 intriParams.blockLen = copyRowCnt;
@@ -842,12 +862,22 @@ private:
                 DataCopy(dstTensor.tensor[l1Offset], srcTensor.gmTensor[gmOffset], intriParams);
             } else {
                 if (SCALE_TRANS == ScaleTrans::ND2NZ) {
+                    l1Offset = copyFinishRowCnt * blockElementCnt;
                     CopySingleMXScaleNDToNZ(dstTensor.tensor[l1Offset], srcTensor.gmTensor[gmOffset], copyRowCnt,
                                             gmCoord.dDealSize, offsetCalculator.GetStrideBlockSize(),
                                             dstTensor.rowCount);
                 } else if (SCALE_TRANS == ScaleTrans::DN2NZ) {
-                    CopySingleMXScaleDNToNZ(dstTensor.tensor[l1Offset], srcTensor.gmTensor[gmOffset], gmCoord.dDealSize,
-                                            copyRowCnt, offsetCalculator.GetStrideBlockSize(), gmCoord.dDealSize);
+                    l1Offset = copyFinishRowCnt * 16; // 16: [32B/sizeof(BF16)]
+                    if constexpr (std::is_same_v<V_SCALE_T, fp8_e8m0_t>) {
+                        CopySingleMXScaleDNToNZ(dstTensor.tensor[l1Offset], srcTensor.gmTensor[gmOffset], copyRowCnt,
+                                                gmCoord.dDealSize, offsetCalculator.GetBlockSize(), gmCoord.s2DealSize);
+                    }
+#if (__NPU_ARCH__ == 9201)
+                    else if constexpr (std::is_same_v<V_SCALE_T, hif4_scale>) {
+                        CopySingleHIScaleDNToNZ(dstTensor.tensor[l1Offset], srcTensor.gmTensor[gmOffset], copyRowCnt,
+                                                gmCoord.dDealSize, offsetCalculator.GetBlockSize(), gmCoord.s2DealSize);
+                    }
+#endif
                 }
             }
 
