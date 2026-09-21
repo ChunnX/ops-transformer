@@ -46,7 +46,7 @@ void CheckPaddedQueryInputs(const at::Tensor &query, const at::Tensor &qDescale,
 }
 
 // 工具函数，推导输出 attention_out / softmax_lse 的 shape 与 dtype
-//   - attention_out: BF16，TND 保持原布局，NTD 转为 TND
+//   - attention_out: BF16，保持 Q 布局（NTD 转为 TND），末维取 Value 的 Dv
 //   - softmax_lse: FLOAT32，FP8 为 (N1,T)，MXFP8 TND 为 (T,N1)，BSND/BNSD 为 (B,N1,S)
 std::tuple<at::Tensor, at::Tensor> construct_bsa_output_tensors(const at::Tensor &query, const at::Tensor &value,
                                                                 c10::string_view layout_q, c10::string_view layout_out,
@@ -55,6 +55,7 @@ std::tuple<at::Tensor, at::Tensor> construct_bsa_output_tensors(const at::Tensor
 {
     TORCH_CHECK(value.dim() == DIM_FOUR,
                 "value should be 4D PA_BNBD [blockNum, Nkv, blockSize, headDim], but got ", value.dim(), "D.");
+    const int64_t valueHeadDim = value.size(-1);
     const std::string layout_q_str(layout_q);
     const bool padded = layout_q_str == "BSND" || layout_q_str == "BNSD";
     if (padded) {
@@ -63,7 +64,7 @@ std::tuple<at::Tensor, at::Tensor> construct_bsa_output_tensors(const at::Tensor
         TORCH_CHECK(query.dim() == 4, "BSND/BNSD query must be 4D");
         TORCH_CHECK(query.is_contiguous(), "BSND/BNSD query must be contiguous");
         const bool bsnd = layout_q_str == "BSND";
-        at::SmallVector<int64_t, SIZE> out_size = {query.size(0), query.size(1), query.size(2), value.size(-1)};
+        at::SmallVector<int64_t, SIZE> out_size = {query.size(0), query.size(1), query.size(2), valueHeadDim};
         at::SmallVector<int64_t, SIZE> lse_size = {query.size(0), query.size(bsnd ? 2 : 1), query.size(bsnd ? 1 : 2)};
         if (!return_softmax_lse) {
             lse_size = {0};
@@ -86,8 +87,7 @@ std::tuple<at::Tensor, at::Tensor> construct_bsa_output_tensors(const at::Tensor
     const bool is_ntd = layout_q_str == "NTD";
     int64_t t_size = is_ntd ? query.size(1) : query.size(0);
     int64_t n1_size = is_ntd ? query.size(0) : query.size(1);
-    int64_t d_size = query.size(2);
-    at::SmallVector<int64_t, SIZE> atten_out_size = {t_size, n1_size, d_size};
+    at::SmallVector<int64_t, SIZE> atten_out_size = {t_size, n1_size, valueHeadDim};
     at::SmallVector<int64_t, SIZE> softmax_lse_size;
     if (quant_mode == QBSA_MXFP8_FULL_QUANT_MODE) {
         softmax_lse_size = {t_size, n1_size};

@@ -20,10 +20,10 @@
 
 // Template tiling key macros: values match QBSALayout enum (in quant_block_sparse_attn_const.h)
 // for ASCENDC_TPL_ARGS compile-time dispatch.
-#define QBSA_LAYOUT_TND 2 // == QBSALayout::TND
-#define QBSA_LAYOUT_BSND 6
-#define QBSA_LAYOUT_BNSD 7
-#define QBSA_LAYOUT_NTD 5 // == QBSALayout::NTD
+#define QBSA_LAYOUT_TND 2  // == QBSALayout::TND
+#define QBSA_LAYOUT_NTD 5  // == QBSALayout::NTD
+#define QBSA_LAYOUT_BSND 6 // == QBSALayout::BSND
+#define QBSA_LAYOUT_BNSD 7 // == QBSALayout::BNSD
 
 #define QBSA_KV_LAYOUT_CONTIGUOUS 0
 #define QBSA_KV_LAYOUT_PA_BNSD 3 // == QBSALayout::PA_BNBD
