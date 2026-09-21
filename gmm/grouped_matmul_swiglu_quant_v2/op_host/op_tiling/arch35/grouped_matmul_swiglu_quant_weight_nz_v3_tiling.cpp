@@ -433,27 +433,6 @@ ge::graphStatus GroupedMatmulSwigluQuantV3Tiling950::DoLibApiTiling()
         GroupedMatmulSwigluQuantTensorApiTiling::RestoreBasicBlockAfterL1(basicTiling_);
     }
 
-    // The common QGMM helper historically derives the MX scale factor with
-    // integer division.  That is sufficient when K is an exact multiple of
-    // the L1 K window, but underestimates the final scale window for cases
-    // such as K=160 with a 128-element L1 window.  V3 must also support the
-    // CGMCT fallback for these K values, so cover its tail scale groups with
-    // ceil-division before exporting TCubeTiling.  The Tensor API must keep
-    // the factors selected by CalL1Tiling: increasing them afterwards would
-    // invalidate the L1 budget.
-    const uint64_t scaleWindowA = static_cast<uint64_t>(basicTiling_.stepKa) * basicTiling_.baseK;
-    const uint64_t scaleWindowB = static_cast<uint64_t>(basicTiling_.stepKb) * basicTiling_.baseK;
-    if (!useTensorApi_) {
-        if (inputParams_.kSize % scaleWindowA != 0) {
-            basicTiling_.scaleFactorA = static_cast<uint32_t>(std::max<uint64_t>(
-                1U, GroupedMatmul::CeilDiv(inputParams_.kSize, scaleWindowA)));
-        }
-        if (inputParams_.kSize % scaleWindowB != 0) {
-            basicTiling_.scaleFactorB = static_cast<uint32_t>(std::max<uint64_t>(
-                1U, GroupedMatmul::CeilDiv(inputParams_.kSize, scaleWindowB)));
-        }
-    }
-
     auto &mm = tilingData_.mmTilingData;
     mm.set_M(inputParams_.mSize);
     mm.set_N(inputParams_.nSize);
@@ -480,10 +459,9 @@ ge::graphStatus GroupedMatmulSwigluQuantV3Tiling950::DoLibApiTiling()
     mm.set_dbL0A(2);
     mm.set_dbL0B(2);
     mm.set_dbL0C(basicTiling_.dbL0c);
-    // Preserve the scale-window factors selected by the common MX tiler.
-    // Using the default factor (1) for every K size only works for K=128;
-    // larger 128-aligned K values make the Tensor API consume an incorrect
-    // L1 scale window and can fail during device execution.
+    // The factors are bounded by CalL1Tiling's L1 budget. Matmul's K loop
+    // handles the residual scale groups, so a K tail must not enlarge these
+    // factors after the L1 depth and buffer sizes have been fixed.
     mm.set_mxTypePara((SCALER_FACTOR_DEFAULT << SCALER_FACTOR_N_BIT) +
                       (SCALER_FACTOR_DEFAULT << SCALER_FACTOR_M_BIT) +
                       (basicTiling_.scaleFactorB << SCALER_FACTOR_B_BIT) + basicTiling_.scaleFactorA);
