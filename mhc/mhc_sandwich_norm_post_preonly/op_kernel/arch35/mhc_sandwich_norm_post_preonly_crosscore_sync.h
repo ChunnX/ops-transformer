@@ -12,12 +12,6 @@
 #define MHC_SANDWICH_NORM_POST_PREONLY_CROSSCORE_SYNC_H_
 
 // mode1只在同一物理AI Core的两个sibling AIV之间握手。
-__aicore__ inline void MhcPairR1ReadySync()
-{
-    CrossCoreSetFlag<0x1, PIPE_MTE3>(R1_READY_FLAG);
-    CrossCoreWaitFlag<0x1, PIPE_MTE2>(R1_READY_FLAG);
-}
-
 __aicore__ inline void MhcPairMidReadySync()
 {
     CrossCoreSetFlag<0x1, PIPE_MTE3>(MID_READY_FLAG);
