@@ -81,8 +81,8 @@ cann_ops_transformer.grouped_matmul_swiglu_quant_v2(
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 | --- | --- | --- | --- | --- | --- |
 | `x` | Tensor | 必选 | 左矩阵，仅支持非转置输入。 | `torch.float8_e4m3fn` | `(M, K)` |
-| `weight` | List[Tensor] | 必选 | 右矩阵TensorList，长度必须为1，且唯一Tensor必须为FRACTAL_NZ格式。支持非转置和转置weight。 | `torch.float8_e4m3fn` | 非转置：`(E, K, N)`<br>转置：`(E, N, K)` |
-| `weight_scale` | List[Tensor] | 必选 | `weight`的MX量化scale，TensorList长度必须为1。Tensor使用`torch.int8`或`torch.uint8`承载，通过`weight_scale_dtype`按E8M0解析；转置属性需与`weight`一致。 | `torch.int8`或`torch.uint8`（逻辑类型为`torch_npu.float8_e8m0fnu`） | 非转置：`(E, ceil(K / 64), N, 2)`<br>转置：`(E, N, ceil(K / 64), 2)` |
+| `weight` | List[Tensor] | 必选 | 右矩阵TensorList，长度必须为1，且唯一Tensor必须为FRACTAL_NZ格式。非转置和转置的API入口view均为`(E, K, N)`；转置场景由`(E, N, K)` source执行末两轴转置得到。仅支持约束说明中的NZ/ZN stride和storage shape。 | `torch.float8_e4m3fn` | API入口view：`(E, K, N)` |
+| `weight_scale` | List[Tensor] | 必选 | `weight`的MX量化scale，TensorList长度必须为1。Tensor使用`torch.int8`或`torch.uint8`承载，通过`weight_scale_dtype`按E8M0解析；转置属性需与`weight`一致。转置场景由`(E, N, ceil(K / 64), 2)` source交换中间两轴得到入口view。 | `torch.int8`或`torch.uint8`（逻辑类型为`torch_npu.float8_e8m0fnu`） | API入口view：`(E, ceil(K / 64), N, 2)` |
 | `x_scale` | Tensor | 必选 | `x`的MX量化scale。Tensor使用`torch.int8`或`torch.uint8`承载，通过`x_scale_dtype`按E8M0解析。 | `torch.int8`或`torch.uint8`（逻辑类型为`torch_npu.float8_e8m0fnu`） | `(M, ceil(K / 64), 2)` |
 | `group_list` | Tensor | 必选 | 分组信息，长度为expert数E，其语义由`group_list_type`决定。 | `torch.int64` | `(E,)` |
 | `smooth_scale` | Tensor | 可选 | 平滑量化因子，默认值为`None`。当前场景不支持，必须传`None`。 | - | - |
@@ -119,12 +119,14 @@ cann_ops_transformer.grouped_matmul_swiglu_quant_v2(
 - 调用方式：支持单算子模式调用。
 - 仅支持MXFP8 weight FRACTAL_NZ场景，`x`和`weight`仅支持`torch.float8_e4m3fn`；`weight_scale`和`x_scale`使用`torch.int8`或`torch.uint8`承载`torch_npu.float8_e8m0fnu`数据。
 - `weight`和`weight_scale`的List长度必须均为1；唯一Tensor的第一维包含全部E个expert，不要将各expert拆成多个Tensor。
-- `E`取值范围为[1, 1024]。`M`支持大于等于0的值；当`M>0`时`K`必须大于0，当`M=0`时`K`可以为0。`N`必须大于0且为64的整数倍。
-- 非转置`weight`的shape为`(E, K, N)`，转置`weight`的shape为`(E, N, K)`；两种场景均要求`weight`为FRACTAL_NZ格式。
-- 转置场景中，`weight`和`weight_scale`的转置属性必须一致；当`K=N`时，转置属性通过Tensor的view stride识别。
+- `E`取值范围为[1, 1024]。`M`和`K`必须大于0。`N`必须大于0且为64的整数倍。
+- 非转置和转置`weight`的API入口view shape均为`(E, K, N)`。非转置使用连续stride `(K * N, N, 1)`，storage shape为`(E, ceil(N / 32), ceil(K / 16), 16, 32)`；转置场景先构造`(E, N, K)` source并转换为FRACTAL_NZ，再交换末两轴形成stride `(K * N, 1, K)`的入口view，storage shape为`(E, ceil(K / 32), ceil(N / 16), 16, 32)`。
+- 非转置和转置`weight_scale`的API入口view shape均为`(E, ceil(K / 64), N, 2)`。非转置source/storage与入口view相同，stride为`(ceil(K / 64) * N * 2, N * 2, 2, 1)`；转置场景先构造`(E, N, ceil(K / 64), 2)` source/storage，再交换中间两轴形成stride `(N * ceil(K / 64) * 2, 2, ceil(K / 64) * 2, 1)` 的入口view。
+- 转置场景中，`weight`和`weight_scale`的转置属性必须一致；即使`K=N`，也通过Tensor的view stride识别。`weight`不支持规定NZ/ZN布局之外的任意非连续view。
 - `group_list_type=0`时，`group_list`表示每个group在M轴上的累计结束位置，数值必须非负、单调不递减且不大于M；`group_list_type=1`时，`group_list`表示每个group的M轴长度，数值必须非负且总和不大于M。`group_list`未指定的输出区域不会被更新。
 - `dequant_mode=2`、`dequant_dtype=torch.float32`、`quant_mode=2`、`quant_dtype=torch.float8_e4m3fn`、`swiglu_mode=2`。
 - `weight_assist_matrix`、`bias`、`smooth_scale`和`tuning_config`当前不支持有效数据。
+- `round_mode`仅支持`"rint"`；底层ACLNN接口传入`nullptr`或空字符串时等效于`"rint"`。
 
 ## 确定性计算
 

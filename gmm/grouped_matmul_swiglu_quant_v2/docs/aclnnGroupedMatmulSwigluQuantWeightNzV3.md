@@ -126,9 +126,9 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
     </thead>
     <tbody>
       <tr><td>x</td><td>输入</td><td>激活矩阵。</td><td>MXFP8 输入；当前仅支持 FLOAT8_E4M3FN。</td><td>FLOAT8_E4M3FN</td><td>ND</td><td>2 维，(M, K)</td><td>√</td></tr>
-      <tr><td>weight</td><td>输入</td><td>分组权重矩阵。</td><td>TensorList长度必须为1；非转置shape为(E, K, N)，转置shape为(E, N, K)。</td><td>FLOAT8_E4M3FN</td><td>FRACTAL_NZ</td><td>3维</td><td>√</td></tr>
-      <tr><td>weightScale</td><td>输入</td><td>权重量化因子。</td><td>TensorList 长度必须为 1，与 weight 的唯一 Tensor 对应；非转置 shape 为 (E, ceil(K / 64), N, 2)，转置 shape 为 (E, N, ceil(K / 64), 2)。</td><td>FLOAT8_E8M0</td><td>ND</td><td>4 维</td><td>√</td></tr>
-      <tr><td>weightAssistMatrix</td><td>可选输入</td><td>权重辅助矩阵。</td><td>当前不支持，必须传nullptr或空TensorList。</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
+      <tr><td>weight</td><td>输入</td><td>分组权重矩阵。</td><td>TensorList长度必须为1；非转置和转置的API入口view shape均为(E, K, N)。仅支持下文规定的NZ/ZN stride和storage shape，不支持任意非连续view。</td><td>FLOAT8_E4M3FN</td><td>FRACTAL_NZ</td><td>3维</td><td>参见约束说明</td></tr>
+      <tr><td>weightScale</td><td>输入</td><td>权重量化因子。</td><td>TensorList 长度必须为 1，与 weight 的唯一 Tensor 对应；非转置和转置的API入口view shape均为(E, ceil(K / 64), N, 2)，转置属性必须与weight一致。</td><td>FLOAT8_E8M0</td><td>ND</td><td>4 维</td><td>√</td></tr>
+      <tr><td>weightAssistMatrix</td><td>可选输入</td><td>权重辅助矩阵。</td><td>当前不支持有效数据；可传nullptr、长度为0的TensorList，或长度为1且唯一元素为nullptr/shape (0)的TensorList。</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
       <tr><td>bias</td><td>可选输入</td><td>矩阵乘偏置。</td><td>当前不支持，必须传 nullptr。</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
       <tr><td>xScale</td><td>输入</td><td>激活量化因子。</td><td>按 K 方向每 64 个元素对应两个 E8M0 scale。</td><td>FLOAT8_E8M0</td><td>ND</td><td>3 维，(M, ceil(K / 64), 2)</td><td>√</td></tr>
       <tr><td>smoothScale</td><td>可选输入</td><td>平滑量化因子。</td><td>当前不支持，必须传 nullptr。</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
@@ -287,12 +287,12 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
             <tr>
               <td>MXFP8</td>
               <td>(M, K)</td>
-              <td><ul>
-              <li>非转置：(E, K, N)</li>
-              <li>转置：(E, N, K)</li></ul></td>
-              <td><ul>
-              <li>非转置：(E, ceil(K / 64), N, 2)</li>
-              <li>转置：(E, N, ceil(K / 64), 2)</li></ul></td>
+              <td>API入口view：(E, K, N)<br>
+              非转置storage：(E, ceil(N / 32), ceil(K / 16), 16, 32)<br>
+              转置storage：(E, ceil(K / 32), ceil(N / 16), 16, 32)</td>
+              <td>API入口view：(E, ceil(K / 64), N, 2)<br>
+              非转置source/storage与入口view相同<br>
+              转置source/storage：(E, N, ceil(K / 64), 2)</td>
               <td>(M, ceil(K / 64), 2)</td>
               <td>(M, N / 2)</td>
               <td>(M, ceil((N / 2) / 64), 2)</td>
@@ -301,20 +301,20 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
           </table>
 
         - 当前接口要求 `weight` 和 `weightScale` 的 TensorList 长度均为 1；每个唯一 Tensor 内包含 E 个 expert，weight 的逻辑首维和 `groupList` 长度必须均为 E。因此“单 Tensor”表示单个 Tensor 承载全部 expert，并不限制 E 必须为 1。
-        - `E`是expert数量，取值范围为[1, 1024]。`M`是token数量，支持大于等于0的值；`K`是输入特征维度，当`M>0`时`K`必须大于0，当`M=0`时`K`可以为0；`N`是SwiGLU拆分前的输出维度。
+        - `E`是expert数量，取值范围为[1, 1024]。`M`是token数量，必须大于0；`K`是输入特征维度，必须大于0；`N`是SwiGLU拆分前的输出维度。
         - `N` 必须大于 0 且为 64 的整数倍；SwiGLU 输出维度为 `N / 2`。
         - `weightScale` 的最后一维固定为 2，表示每个 MX block 的 scale 数据。
-        - x shape为(M, K)，非转置weight shape为(E, K, N)，转置weight shape为(E, N, K)。
-        - 非转置weightScale shape为(E, ceil(K / 64), N, 2)，转置weightScale shape为(E, N, ceil(K / 64), 2)；xScale shape为(M, ceil(K / 64), 2)。
+        - x shape为(M, K)。非转置和转置weight的API入口view shape均为(E, K, N)。非转置使用连续stride `(K * N, N, 1)`，storage shape为(E, ceil(N / 32), ceil(K / 16), 16, 32)。转置场景先构造(E, N, K)的source，再交换末两轴；API入口view stride为`(K * N, 1, K)`，storage shape为(E, ceil(K / 32), ceil(N / 16), 16, 32)。
+        - 非转置和转置weightScale的API入口view shape均为(E, ceil(K / 64), N, 2)。非转置source/storage与入口view相同，stride为`(ceil(K / 64) * N * 2, N * 2, 2, 1)`；转置场景先构造(E, N, ceil(K / 64), 2)的source/storage，再交换中间两轴形成stride `(N * ceil(K / 64) * 2, 2, ceil(K / 64) * 2, 1)` 的入口view。
         - output shape为(M, N / 2)，outputScale shape为(M, ceil((N / 2) / 64), 2)。
-        - 支持非连续Tensor，但Tensor的dtype、shape和format必须满足上述约束。
+        - x、xScale、weightScale、groupList、output和outputScale支持满足约束的非连续Tensor。weight仅支持上述规定的NZ/ZN view、stride和storage shape，不支持任意非连续view。
         - `dequantMode=2`、`quantMode=2`，且二者必须匹配。
         - `dequantDtype=0`，表示中间计算使用 `DT_FLOAT`。
         - `groupListType=0`时，`groupList[i]`表示累计token数，数值必须非负、单调不递减且不大于`M`；`groupListType=1`时，`groupList[i]`表示当前group的token数，数值必须非负且所有值之和不大于`M`。`groupList`未指定的输出区域不会被更新。
-        - `weightAssistMatrix`、`bias`、`smoothScale` 和 `tuningConfigOptional` 当前必须为空或 `nullptr`；其中 `weightAssistMatrix` 允许传空 TensorList，`tuningConfigOptional` 允许传空数组。
+        - `weightAssistMatrix`、`bias`、`smoothScale` 和 `tuningConfigOptional` 当前必须为空或 `nullptr`；其中 `weightAssistMatrix` 允许传长度为0的 TensorList，或长度为1且唯一元素为 `nullptr`/shape (0) 的 TensorList；`tuningConfigOptional` 允许传空数组。
         - `swigluMode` 当前仅支持 `2`。
         - `clampLimit` 必须为有限、可表示为 `float32` 且大于 0 的值；`gluAlpha` 和 `gluBias` 必须为可表示为 `float32` 的有限值。
-        - `roundMode` 仅支持 `"rint"`。
+        - `roundMode` 仅支持 `"rint"`；传入 `nullptr` 或空字符串时等效于 `"rint"`。
         - `scaleAlg=0` 表示 OCP MX 量化，`scaleAlg=1` 表示 cuBLAS MX 量化；本接口不支持 `scaleAlg=2` 或其他值，传入会报错。
         - 对于本接口固定的MXFP8输出，`scaleAlg`只能取0或1；`dstTypeMax`必须为有限值，且只能取0.0。
   <!-- end id7 -->
@@ -327,10 +327,12 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
 #include "acl/acl.h"
 #include "aclnnop/aclnn_grouped_matmul_swiglu_quant_weight_nz_v3.h"
 
-// 示例场景：E=1，M=2048，K=128，N=128。
+// 示例场景：E=1，M=2048，K=64，N=128。
 // x:            [M, K]，FLOAT8_E4M3FN，ND
-// weight:       TensorList{[E, K, N]}，FLOAT8_E4M3FN，FRACTAL_NZ
-// weightScale:  TensorList{[E, ceil(K/64), N, 2]}，FLOAT8_E8M0，ND
+// weight:       入口view为TensorList{[E, K, N]}，FLOAT8_E4M3FN，FRACTAL_NZ；
+//               转置场景由[E, N, K] source交换末两轴得到该入口view。
+// weightScale:  入口view为TensorList{[E, ceil(K/64), N, 2]}，FLOAT8_E8M0，ND；
+//               转置场景由[E, N, ceil(K/64), 2] source交换中间两轴得到该入口view。
 // xScale:       [M, ceil(K/64), 2]，FLOAT8_E8M0，ND
 // output:       [M, N/2]，FLOAT8_E4M3FN，ND
 // outputScale:  [M, ceil((N/2)/64), 2]，FLOAT8_E8M0，ND
