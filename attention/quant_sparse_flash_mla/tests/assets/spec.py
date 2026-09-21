@@ -60,6 +60,13 @@ class QuantSparseFlashMlaSpec:
     compare = staticmethod(compare_module.compare)
 
 
+class KernelQuantSparseFlashMlaSpec:
+    golden = golden_module.kernel_quant_sparse_flash_mla_golden
+    customize_inputs = inputs_module.kernel_quant_sparse_flash_mla_input
+    tolerance = QuantSparseFlashMlaSpec.tolerance
+    compare = staticmethod(compare_module.compare)
+
+
 class AclnnQuantSparseFlashMlaSpec(QuantSparseFlashMlaSpec):
     golden = golden_module.cpu_aclnn_quant_sparse_flash_mla
     customize_inputs = inputs_module.generate_aclnn_quant_sparse_flash_mla_inputs
@@ -73,6 +80,7 @@ class QuantSparseFlashMlaMetadataSpec:
 
 
 __spec__ = {
+    "quant_sparse_flash_mla": "KernelQuantSparseFlashMlaSpec",
     "torch.ops.cann_ops_transformer.quant_sparse_flash_mla": "QuantSparseFlashMlaSpec",
     "torch.ops.cann_ops_transformer.quant_sparse_flash_mla_metadata": (
         "QuantSparseFlashMlaMetadataSpec"

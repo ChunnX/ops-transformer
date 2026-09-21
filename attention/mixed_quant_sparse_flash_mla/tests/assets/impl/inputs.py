@@ -16,6 +16,7 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import numpy as np
 import torch
 
 
@@ -536,3 +537,112 @@ def generate_aclnn_mixed_quant_sparse_flash_mla_inputs(
         return_softmax_lse=return_softmax_lse,
         **kwargs,
     )
+
+
+def _kernel_tensor(value):
+    if value is None or torch.is_tensor(value):
+        return value
+    array = np.ascontiguousarray(value)
+    dtype_name = str(array.dtype)
+    if dtype_name == "bfloat16":
+        return torch.from_numpy(array.view(np.uint16)).view(torch.bfloat16)
+    if dtype_name in ("float8_e4m3fn", "float8_e5m2"):
+        return torch.from_numpy(array.view(np.uint8)).view(getattr(torch, dtype_name))
+    return torch.from_numpy(array)
+
+
+def _kernel_array(value, template):
+    if value is None:
+        return None
+    value = value.detach().cpu().contiguous()
+    dtype_name = str(template.dtype)
+    if dtype_name == "bfloat16":
+        return value.view(torch.uint16).numpy().view(template.dtype)
+    if dtype_name in ("float8_e4m3fn", "float8_e5m2"):
+        return value.view(torch.uint8).numpy().view(template.dtype)
+    return value.numpy().astype(template.dtype, copy=False)
+
+
+def kernel_mixed_quant_sparse_flash_mla_input(
+    q,
+    ori_kv=None,
+    cmp_kv=None,
+    ori_sparse_indices=None,
+    cmp_sparse_indices=None,
+    ori_block_table=None,
+    cmp_block_table=None,
+    cu_seqlens_q=None,
+    cu_seqlens_ori_kv=None,
+    cu_seqlens_cmp_kv=None,
+    seqused_q=None,
+    seqused_ori_kv=None,
+    seqused_cmp_kv=None,
+    cmp_residual_kv=None,
+    ori_topk_length=None,
+    cmp_topk_length=None,
+    sinks=None,
+    metadata=None,
+    **kwargs,
+):
+    """Adapt Kernel numpy inputs to the existing pytest-backed generator."""
+    inputs = (
+        q,
+        ori_kv,
+        cmp_kv,
+        ori_sparse_indices,
+        cmp_sparse_indices,
+        ori_block_table,
+        cmp_block_table,
+        cu_seqlens_q,
+        cu_seqlens_ori_kv,
+        cu_seqlens_cmp_kv,
+        seqused_q,
+        seqused_ori_kv,
+        seqused_cmp_kv,
+        cmp_residual_kv,
+        ori_topk_length,
+        cmp_topk_length,
+        sinks,
+        metadata,
+    )
+    tensors = tuple(_kernel_tensor(value) for value in inputs)
+    attributes = dict(kwargs)
+    generate_mixed_quant_sparse_flash_mla_inputs(
+        tensors[0],
+        ori_kv=tensors[1],
+        cmp_kv=tensors[2],
+        ori_sparse_indices=tensors[3],
+        cmp_sparse_indices=tensors[4],
+        ori_block_table=tensors[5],
+        cmp_block_table=tensors[6],
+        cu_seqlens_q=tensors[7],
+        cu_seqlens_ori_kv=tensors[8],
+        cu_seqlens_cmp_kv=tensors[9],
+        seqused_q=tensors[10],
+        seqused_ori_kv=tensors[11],
+        seqused_cmp_kv=tensors[12],
+        cmp_residual_kv=tensors[13],
+        ori_topk_length=tensors[14],
+        cmp_topk_length=tensors[15],
+        sinks=tensors[16],
+        metadata=None,
+        quant_mode=attributes.pop("quant_mode", None),
+        rope_head_dim=attributes.pop("rope_head_dim", None),
+        softmax_scale=attributes.pop("softmax_scale", None),
+        cmp_ratio=attributes.pop("cmp_ratio", None),
+        ori_mask_mode=attributes.pop("ori_mask_mode", 0),
+        cmp_mask_mode=attributes.pop("cmp_mask_mode", 0),
+        ori_win_left=attributes.pop("ori_win_left", -1),
+        ori_win_right=attributes.pop("ori_win_right", -1),
+        layout_q=attributes.pop("layout_q", "BSND"),
+        layout_kv=attributes.pop("layout_kv", "BSND"),
+        topk_value_mode=attributes.pop("topk_value_mode", 1),
+        return_softmax_lse=attributes.pop("return_softmax_lse", False),
+        **attributes,
+    )
+    result = [
+        _kernel_array(value, template) for value, template in zip(tensors, inputs)
+    ]
+    if metadata is not None:
+        result[-1] = np.array(metadata, copy=True)
+    return tuple(result)

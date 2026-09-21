@@ -86,6 +86,27 @@ def get_attribute(kwargs, name, default=None):
     return default if value is None else value
 
 
+def expect_error(kwargs):
+    value = kwargs.get("expect_error", False)
+    if isinstance(value, str):
+        return value.strip().lower() in ("1", "true", "yes", "on")
+    return bool(value)
+
+
+def zero_metadata_for_expected_error(metadata, target, testcase_name):
+    if metadata is None:
+        generated = torch.zeros(1024, dtype=torch.int32, device=target.device)
+        logging.info(
+            "[%s] created zero SMLA metadata for dynamic error case", testcase_name
+        )
+        return {"metadata": generated}
+    metadata.zero_()
+    logging.info(
+        "[%s] zeroed SMLA metadata for main-operator error case", testcase_name
+    )
+    return None
+
+
 def get_values(kwargs, name):
     value = kwargs.get(f"{name}_values")
     if value is None:
@@ -272,8 +293,16 @@ def run_metadata(arguments, metadata):
 
 def run(q, *, ori_kv=None, cmp_kv=None, metadata=None, _metadata_target=None, **kwargs):
     """Generate metadata dynamically, or fill an existing static placeholder."""
-    protocol = load_metadata_protocol()
     testcase_name = kwargs.get("testcase_name")
+    if expect_error(kwargs):
+        target = (
+            metadata
+            if metadata is not None
+            else (_metadata_target if _metadata_target is not None else q)
+        )
+        return zero_metadata_for_expected_error(metadata, target, testcase_name)
+
+    protocol = load_metadata_protocol()
     force_metadata_refresh = bool(get_attribute(kwargs, "metadata_refresh", False))
     if protocol.metadata_is_materialized(metadata) and not force_metadata_refresh:
         logging.info("[%s] reuse nonzero SMLA metadata input", testcase_name)

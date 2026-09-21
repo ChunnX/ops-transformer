@@ -71,6 +71,27 @@ def get_attribute(kwargs, name, default=None, aliases=()):
     return default
 
 
+def expect_error(kwargs):
+    value = kwargs.get("expect_error", False)
+    if isinstance(value, str):
+        return value.strip().lower() in ("1", "true", "yes", "on")
+    return bool(value)
+
+
+def zero_metadata_for_expected_error(metadata, target, testcase_name):
+    if metadata is None:
+        generated = torch.zeros(1024, dtype=torch.int32, device=target.device)
+        logging.info(
+            "[%s] created zero LI_V2 metadata for dynamic error case", testcase_name
+        )
+        return {"metadata": generated}
+    metadata.zero_()
+    logging.info(
+        "[%s] zeroed LI_V2 metadata for main-operator error case", testcase_name
+    )
+    return None
+
+
 def get_values(kwargs, name, tensor):
     value = kwargs.get(f"{name}_values")
     if value is None:
@@ -218,6 +239,15 @@ def run(
     **kwargs,
 ):
     """Generate metadata dynamically, or fill an existing static placeholder."""
+    testcase_name = kwargs.get("testcase_name")
+    if expect_error(kwargs):
+        target = (
+            metadata
+            if metadata is not None
+            else (_metadata_target if _metadata_target is not None else q)
+        )
+        return zero_metadata_for_expected_error(metadata, target, testcase_name)
+
     del w
     arguments_kwargs = dict(kwargs)
     arguments_kwargs.update(
@@ -230,7 +260,6 @@ def run(
         }
     )
     protocol = load_metadata_protocol()
-    testcase_name = kwargs.get("testcase_name")
     force_metadata_refresh = bool(get_attribute(kwargs, "metadata_refresh", False))
     if protocol.metadata_is_materialized(metadata) and not force_metadata_refresh:
         logging.info("[%s] reuse nonzero LI_V2 metadata input", testcase_name)

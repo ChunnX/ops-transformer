@@ -81,6 +81,13 @@ class QuantLightningIndexerV2Spec:
             golden_module.discard_compare_data(data)
 
 
+class KernelQuantLightningIndexerV2Spec:
+    golden = golden_module.kernel_quant_lightning_indexer_v2_golden
+    customize_inputs = inputs_module.kernel_quant_lightning_indexer_v2_input
+    tolerance = QuantLightningIndexerV2Spec.tolerance
+    compare = staticmethod(QuantLightningIndexerV2Spec.compare)
+
+
 class AclnnQuantLightningIndexerV2Spec(QuantLightningIndexerV2Spec):
     golden = golden_module.cpu_aclnn_qli_v2
     customize_inputs = inputs_module.generate_aclnn_qli_v2_inputs
@@ -94,6 +101,7 @@ class QuantLightningIndexerMetadataSpec:
 
 
 __spec__ = {
+    "quant_lightning_indexer_v2": "KernelQuantLightningIndexerV2Spec",
     "torch.ops.cann_ops_transformer.quant_lightning_indexer": "QuantLightningIndexerV2Spec",
     "torch.ops.cann_ops_transformer.quant_lightning_indexer_metadata": (
         "QuantLightningIndexerMetadataSpec"
