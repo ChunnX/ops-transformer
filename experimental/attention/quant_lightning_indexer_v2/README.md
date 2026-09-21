@@ -93,5 +93,5 @@
 
 | 调用方式 | 调用样例 | 说明 |
 |----------|----------|------|
-| PyTorch API | - | 通过[torch.ops.cann_ops_transformer.quant_lightning_indexer](../../../attention/quant_lightning_indexer_v2/docs/torchapi_quant_lightning_indexer.md)接口调用QuantLightningIndexerV2算子。 |
+| PyTorch API | - | 通过[torch.ops.cann_ops_transformer.quant_lightning_indexer](docs/torchapi_quant_lightning_indexer.md)接口调用QuantLightningIndexerV2算子。 |
 | aclnn API | [test_aclnn_quant_lightning_indexer_v2](examples/test_aclnn_quant_lightning_indexer_v2.cpp) | 通过[aclnnQuantLightningIndexerV2](docs/aclnnQuantLightningIndexerV2.md)两段式接口调用QuantLightningIndexerV2算子。 |
