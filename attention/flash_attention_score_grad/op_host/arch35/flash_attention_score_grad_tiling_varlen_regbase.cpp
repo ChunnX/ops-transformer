@@ -296,7 +296,12 @@ inline bool PreferTNDLineDeter(FuzzyBaseInfoParamsRegbase &p)
             } else {
                 GetTNDRightDownVirt(shape.m, shape.n, virtM, virtN);
             }
-            if (!TNDRunIsLineWorthy(k, virtM, virtN, runPairs)) {
+            // Equal-length right-down pairs remain row/column-disjoint after
+            // folding into separate heads, even when the virtual rectangle
+            // fails the generic dense-line shape constraint.
+            const bool equalLengthRightDownPairs =
+                !leftUp && p.isS1S2Same && shape.m == shape.n && !runHasSingle && runPairs > 0 && k > 0;
+            if (!equalLengthRightDownPairs && !TNDRunIsLineWorthy(k, virtM, virtN, runPairs)) {
                 return false;
             }
             if (!leftUp && runHasSingle && shape.m < std::min(k, shape.n)) {
