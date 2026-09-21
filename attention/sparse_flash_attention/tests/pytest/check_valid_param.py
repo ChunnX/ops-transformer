@@ -21,6 +21,16 @@ SUPPORTED_Q_TYPE = {torch.float16, torch.bfloat16}
 SUPPORTED_G = {1, 2, 4, 8, 16, 32, 64, 128}
 
 
+def _is_a5():
+    # A5 = Ascend 950PR/950DT；A2(910B)/A3(910_93) 保留 PA_BSND 场景 return_softmax_lse 限制
+    try:
+        import torch_npu  # noqa: F401
+
+        return "Ascend950" in torch.npu.get_device_properties().name
+    except Exception:
+        return False
+
+
 def _check_actual_seq(actual_seq, B, upper_bound, name):
     # TND/动态有效长场景下，需要保证 actual_seq 与 batch 和长度约束一致。
     if actual_seq is None:
@@ -161,8 +171,10 @@ def check_valid_param(params):
             raise ValueError(
                 f"PA_BSND 场景 block_size({block_size}) 必须被 sparse_block_size({sparse_block_size}) 整除"
             )
-        if return_softmax_lse:
-            raise ValueError("PA_BSND 场景下 return_softmax_lse 不支持为 True")
+        if return_softmax_lse and not _is_a5():
+            raise ValueError(
+                "PA_BSND 场景下 return_softmax_lse 仅在 Ascend 950PR/Ascend 950DT 支持"
+            )
         if block_num is None or int(block_num) <= 0:
             raise ValueError("PA_BSND 场景必须提供正整数 block_num")
         if actual_seq_kv is not None:
