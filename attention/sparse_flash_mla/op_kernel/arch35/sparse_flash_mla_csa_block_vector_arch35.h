@@ -423,7 +423,7 @@ __aicore__ inline int64_t CSABlockVec<TEMPLATE_ARGS>::GetkeyOffset(int64_t s2Idx
         int64_t paBlockStride = runInfo.isCmp ? constInfo.cmpKvStride : constInfo.oriKvStride;
         smlaRealkeyOffset = blockTableGm.GetValue(runInfo.boIdx * maxBlockNumPerBatch + blkTableIdx) * paBlockStride +
                             blkTableOffset * constInfo.dSizeVInput; // BlockNum, BlockSize, N(1), D
-    } else if constexpr (LAYOUT_T == SMLA_LAYOUT::BSND) {
+    } else if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::BSND) {
         if (runInfo.isCmp) {
             smlaRealkeyOffset = runInfo.boIdx * constInfo.n2Size * constInfo.cmpS2Size * constInfo.dSize +
                                 runInfo.n2oIdx * constInfo.cmpS2Size * constInfo.dSize +
@@ -433,7 +433,7 @@ __aicore__ inline int64_t CSABlockVec<TEMPLATE_ARGS>::GetkeyOffset(int64_t s2Idx
                                 runInfo.n2oIdx * constInfo.s2Size * constInfo.dSize +
                                 s2Idx * constInfo.dSize; // BSN(1)D
         }
-    } else if constexpr (LAYOUT_T == SMLA_LAYOUT::TND) {
+    } else if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::TND) {
         smlaRealkeyOffset = (cuSeqlensKvGm.GetValue(runInfo.boIdx) + s2Idx) * constInfo.n2Size * constInfo.dSize +
                             runInfo.n2oIdx * constInfo.dSize; // TN(1)D
     }
@@ -1124,10 +1124,10 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(StaticBuffer<T> &
                 AttentionCommon::FD_REDUCE_CHUNK_ROWS};
             uint32_t smlaWorkspaceIdx = GetCrossCoreWorkspaceIdx(runInfo);
             int64_t smlaStagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
-            AttentionCommon::StageVec2PartialO<T>(stagingLayout, stagingOutGm, smlaWorkspaceIdx, smlaStagingMOffset,
-                                                  static_cast<uint32_t>(runInfo.vec2MRealSize),
-                                                  static_cast<uint32_t>(constInfo.dSizeV), smlaVec2ResUb,
-                                                  INNERCORE_STAGE2, INNERCORE_STAGE_FD_MTE3_V);
+            AttentionCommon::StageVec2PartialOAndWait<T>(
+                stagingLayout, stagingOutGm, smlaWorkspaceIdx, smlaStagingMOffset, runInfo.vec2MRealSize,
+                static_cast<uint32_t>(constInfo.dSizeV), smlaVec2ResUb, INNERCORE_STAGE2,
+                INNERCORE_STAGE_FD_MTE3_V);
         } else {
             this->CopyOutAttentionOut(runInfo, constInfo, smlaVec2ResUb, 0, smlaVec2CalcSize);
         }
@@ -1681,9 +1681,9 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddrForKvType(
         uint32_t kvPrefix = 0;
         uint32_t bS2BaseLow = 0;
         uint32_t bS2BaseHigh = 0;
-        if constexpr (LAYOUT_T == SMLA_LAYOUT::TND) {
+        if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::TND) {
             kvPrefix = static_cast<uint32_t>(cuSeqlensKvGm.GetValue(bIdx));
-        } else {
+        } else if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::BSND) {
             uint32_t s2Size =
                 isOriKv ? static_cast<uint32_t>(constInfo.s2Size) : static_cast<uint32_t>(constInfo.cmpS2Size);
             uint64_t bS2Base = static_cast<uint64_t>(bIdx) * s2Size * static_cast<uint64_t>(constInfo.dSize);
