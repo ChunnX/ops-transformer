@@ -13,6 +13,7 @@
 
 #include "op_host/tiling_base.h"
 #include "tiling/tiling_api.h"
+#include "grouped_matmul_swiglu_quant_v2_tiling.h"
 #include "../../../grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.h"
 
 namespace optiling {
@@ -42,19 +43,10 @@ TILING_DATA_FIELD_DEF_STRUCT(GMMSwigluQuantV3Params, gmmSwigluQuantParams);
 TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, mmTilingData);
 END_TILING_DATA_DEF;
 
-// The AscendC compiler expects a distinct registered type for the operator
-// name and for each tiling-key name.  Keep this layout identical to the
-// key-specific type while using a different C++ name, as V2 does.
-BEGIN_TILING_DATA_DEF(GMMSwigluQuantV3TilingData)
-TILING_DATA_FIELD_DEF_STRUCT(GMMSwigluQuantV3Params, gmmSwigluQuantParams);
-TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, mmTilingData);
-END_TILING_DATA_DEF;
-
-REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV3_0, GMMSwigluQuantV3TilingDataParams)
-REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV3_1, GMMSwigluQuantV3TilingDataParams)
-REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV3_2, GMMSwigluQuantV3TilingDataParams)
-REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV3_3, GMMSwigluQuantV3TilingDataParams)
-REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV3, GMMSwigluQuantV3TilingData)
+REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV2_32, GMMSwigluQuantV3TilingDataParams)
+REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV2_33, GMMSwigluQuantV3TilingDataParams)
+REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV2_48, GMMSwigluQuantV3TilingDataParams)
+REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV2_49, GMMSwigluQuantV3TilingDataParams)
 
 namespace GroupedMatmulSwigluQuantV3Tiling {
 constexpr uint32_t X_INDEX = 0;
@@ -123,9 +115,10 @@ public:
     }
 
 protected:
+    ge::graphStatus GetPlatformInfo() override;
     const char *GetOpType() const override
     {
-        return "GroupedMatmulSwigluQuantV3";
+        return "GroupedMatmulSwigluQuantV2";
     }
     ge::graphStatus GetShapeAttrsInfo() override;
     ge::graphStatus DoOpTiling() override;
@@ -159,6 +152,7 @@ private:
     uint8_t scaleAlg_ = SCALE_ALG_OCP;
     float dstTypeMax_ = DEFAULT_DST_TYPE_MAX;
     uint8_t roundMode_ = 0;
+    uint32_t aivNum_ = 0;
     bool useTensorApi_ = false;
 };
 

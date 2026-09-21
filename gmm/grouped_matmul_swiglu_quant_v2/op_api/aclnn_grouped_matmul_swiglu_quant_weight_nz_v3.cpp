@@ -19,7 +19,7 @@
 
 #include "aclnn_kernels/common/op_error_check.h"
 #include "aclnn_kernels/contiguous.h"
-#include "grouped_matmul_swiglu_quant_v3.h"
+#include "grouped_matmul_swiglu_quant_v2.h"
 #include "grouped_matmul_swiglu_quant_v3_common.h"
 #include "mc2_log_compat.h"
 #include "opdev/data_type_utils.h"
@@ -705,7 +705,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize(
     const char *effectiveRoundMode = (roundMode == nullptr || roundMode[0] == '\0') ?
                                           gmm_swiglu_quant_v3::DEFAULT_ROUND_MODE :
                                           roundMode;
-    auto result = l0op::GroupedMatmulSwigluQuantV3(
+    auto result = l0op::GroupedMatmulSwigluQuantV2(
         xForOp, weightForOp, weightScaleForOp, xScaleForOp, weightAssistForOp, bias, smoothScale, groupListForOp,
         dequantMode, dequantDtype, quantMode, static_cast<int64_t>(output->GetDataType()), transposeWeight, groupListType,
         nullptr, swigluMode, static_cast<float>(clampLimit), static_cast<float>(gluAlpha), static_cast<float>(gluBias),
