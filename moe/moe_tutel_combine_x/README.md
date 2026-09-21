@@ -102,4 +102,10 @@
 
 | 调用方式 | 样例代码 | 说明 |
 | :--- | :--- | :--- |
-| GE图模式 | - | 通过[算子IR](op_graph/moe_tutel_combine_x_proto.h)构图方式调用MoeTutelCombineX算子。 |
+| GE图模式 | [test_geir_moe_tutel_combine_x](examples/test_geir_moe_tutel_combine_x.cpp) | 通过[算子IR](op_graph/moe_tutel_combine_x_proto.h)构图方式调用MoeTutelCombineX算子。 |
+
+```bash
+# 在ops-transformer仓库根目录执行：先完成算子包构建并安装到运行环境，再编译运行GE图模式样例
+bash build.sh --pkg --soc=ascend950 --ops=moe_tutel_combine_x
+bash build.sh --run_example moe_tutel_combine_x graph --soc=ascend950
+```
