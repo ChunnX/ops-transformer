@@ -149,6 +149,16 @@ __aicore__ inline float ReduceSumSq(LocalTensor<float> src, uint32_t tD)
     return ReduceSumPrecise(sqBuf, tD);
 }
 
+/// R1直接从低精度h_out缓存计算平方和，省去先恢复完整FP32 h_out再平方的中间UB写读。
+__aicore__ inline float ReduceSumSqFromCache(uint32_t tOff, uint32_t tD)
+{
+    LocalTensor<T> hOutCache = bufX2Cache_.Get<T>()[tOff];
+    LocalTensor<float> sqBuf = bufGamma2Fp32_.Get<float>();
+    MhcSandwichRegBase::CastB16ToFp32Square(sqBuf, hOutCache, tD);
+    PipeBarrier<PIPE_V>();
+    return ReduceSumPrecise(sqBuf, tD);
+}
+
 /// 使用标量精度计算1/sqrt(sumSq * invCount + eps)。
 __aicore__ inline __attribute__((always_inline)) float ComputeInvRms(float sumSq, float invCount)
 {
@@ -172,8 +182,14 @@ __aicore__ inline void ComputeX2AllHeadsBatched(const float (&postVals)[N_MAX], 
     // Host已固定校验N为4，使用编译期常量便于展开标量循环。
     constexpr uint32_t N = N_MAX;
     LocalTensor<T> residual = bufResidualBf16_.AllocTensor<T>();
-    for (uint32_t n = 0; n < N; ++n)
-        DataCopy(residual[n * dimTile_], residualGm_[gmBaseOffset + (uint64_t)n * D_], tD);
+    // 四行residual在GM和UB中均按固定跨度连续，合并为一次二维搬运，减少MTE2 issue次数。
+    DataCopyExtParams rp = {1, 0, 0, 0, 0};
+    rp.blockCount = N;
+    rp.blockLen = tD * sizeof(T);
+    rp.srcStride = D_ * sizeof(T);
+    rp.dstStride = dimTile_ * sizeof(T);
+    DataCopyPadExtParams<T> rpad = {false, 0, 0, 0};
+    DataCopyPad(residual, residualGm_[gmBaseOffset], rp, rpad);
     bufResidualBf16_.EnQue(residual);
     residual = bufResidualBf16_.DeQue<T>();
     LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();

@@ -41,9 +41,14 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     const uint32_t headBegin = laneId_ * 2U;
     const uint64_t gmBaseOffset = (uint64_t)token * N_ * D_ + tOff;
     LocalTensor<T> residual = bufResidualBf16_.AllocTensor<T>();
-    for (uint32_t n = 0; n < N_MAX; ++n) {
-        DataCopy(residual[n * dimTile_], residualGm_[gmBaseOffset + (uint64_t)n * D_], tD);
-    }
+    // 四行residual在GM和UB中均按固定跨度连续，合并为一次二维搬运，减少MTE2 issue次数。
+    DataCopyExtParams rp = {1, 0, 0, 0, 0};
+    rp.blockCount = N_MAX;
+    rp.blockLen = tD * sizeof(T);
+    rp.srcStride = D_ * sizeof(T);
+    rp.dstStride = dimTile_ * sizeof(T);
+    DataCopyPadExtParams<T> rpad = {false, 0, 0, 0};
+    DataCopyPad(residual, residualGm_[gmBaseOffset], rp, rpad);
     bufResidualBf16_.EnQue(residual);
     residual = bufResidualBf16_.DeQue<T>();
     LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
@@ -284,8 +289,7 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        LoadCachedHOut(tOff, tD);
-        sumSq0 += ReduceSumSq(bufResFp32_.Get<float>()[N_MAX * dimTile_], tD);
+        sumSq0 += ReduceSumSqFromCache(tOff, tD);
     }
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
 
