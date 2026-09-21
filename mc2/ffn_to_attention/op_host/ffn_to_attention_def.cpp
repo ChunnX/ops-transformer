@@ -14,6 +14,7 @@
  */
 
 #include "register/op_def_registry.h"
+#include "../../common/op_host/attention_ffn_op_def.h"
 
 namespace ops {
 class FFNToAttention : public OpDef {
@@ -29,28 +30,14 @@ public:
             .AutoContiguous();
         DefineAttributes();
 
-        OpAICoreConfig aicore_config;
-        aicore_config.DynamicCompileStaticFlag(true)
-            .DynamicFormatFlag(true)
-            .DynamicRankSupportFlag(true)
-            .DynamicShapeSupportFlag(true)
-            .NeedCheckSupportFlag(false)
-            .PrecisionReduceFlag(true)
-            .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
-            .ExtendCfgInfo("jitCompile.flag", "static_true")
-            .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
-        this->AICore().AddConfig("ascend910_93", aicore_config);
+        AttentionFfnOpDef::AddAICoreConfig(*this, "ascend910_93");
         this->MC2().HcclGroup({"group"});
     }
 
 private:
     void DefineRequiredInputs()
     {
-        this->Input("x")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
+        AttentionFfnOpDef::DefineXInput(*this);
         this->Input("session_ids")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_INT32})
