@@ -32,13 +32,13 @@ using namespace AscendC;
         using CubeBlockType = \
             typename std::conditional<g_coreType == AscendC::AIC, BaseApi::QSFAMatmulService<__VA_ARGS__>, \
                                       BaseApi::QSFAMatmulServiceDummy<__VA_ARGS__>>::type; \
-        using VecBlockType = \
+        using VecBlockTypeV2 = \
             typename std::conditional<g_coreType == AscendC::AIC, BaseApi::QSFAVectorServiceDummy<__VA_ARGS__>, \
                                       BaseApi::QSFAVectorService<__VA_ARGS__>>::type; \
-        templateClass<CubeBlockType, VecBlockType> op; \
-        op.Init(query, key, value, sparseIndices, keyScale, valueScale, blocktable, actualSeqLengthsQuery, \
-                actualSeqLengthsKV, sinks, attentionOut, softmaxMax, softmaxSum, user, nullptr, &tPipe); \
-        op.Process(); \
+        templateClass<CubeBlockType, VecBlockTypeV2> opV2; \
+        opV2.Init(query, key, value, sparseIndices, keyScale, valueScale, blocktable, actualSeqLengthsQuery, \
+                  actualSeqLengthsKV, sinks, attentionOut, softmaxMax, softmaxSum, user, nullptr, &tPipe); \
+        opV2.Process(); \
     } while (0)
 #else
 #define QSFA_OP_IMPL(templateClass, tilingdataClass, ...) \
@@ -46,15 +46,15 @@ using namespace AscendC;
         using CubeBlockType = \
             typename std::conditional<g_coreType == AscendC::AIC, BaseApi::QSFAMatmulService<__VA_ARGS__>, \
                                       BaseApi::QSFAMatmulServiceDummy<__VA_ARGS__>>::type; \
-        using VecBlockType = \
+        using VecBlockTypeV2 = \
             typename std::conditional<g_coreType == AscendC::AIC, BaseApi::QSFAVectorServiceDummy<__VA_ARGS__>, \
                                       BaseApi::QSFAVectorService<__VA_ARGS__>>::type; \
-        templateClass<CubeBlockType, VecBlockType> op; \
-        GET_TILING_DATA_WITH_STRUCT(tilingdataClass, tilingDataIn, tiling); \
-        const tilingdataClass *__restrict tilingData = &tilingDataIn; \
-        op.Init(query, key, value, sparseIndices, keyScale, valueScale, blocktable, actualSeqLengthsQuery, \
-                actualSeqLengthsKV, sinks, attentionOut, softmaxMax, softmaxSum, user, tilingData, &tPipe); \
-        op.Process(); \
+        templateClass<CubeBlockType, VecBlockTypeV2> opV2; \
+        GET_TILING_DATA_WITH_STRUCT(tilingdataClass, tilingDataInV2, tiling); \
+        const tilingdataClass *__restrict tilingDataV2 = &tilingDataInV2; \
+        opV2.Init(query, key, value, sparseIndices, keyScale, valueScale, blocktable, actualSeqLengthsQuery, \
+                  actualSeqLengthsKV, sinks, attentionOut, softmaxMax, softmaxSum, user, tilingDataV2, &tPipe); \
+        opV2.Process(); \
     } while (0)
 #endif
 
