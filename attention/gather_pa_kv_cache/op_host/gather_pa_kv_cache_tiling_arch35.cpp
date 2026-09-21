@@ -776,8 +776,8 @@ ge::graphStatus TilingPrepareForGatherPaKvCache(gert::TilingParseContext *contex
 }
 
 // register tiling interface of the GatherPaKvCache op.
-IMPL_OP_OPTILING(GatherPaKvCache)
-    .Tiling(TilingForGatherPaKvCache)
-    .TilingParse<GatherPaKvCacheCompileInfo>(TilingPrepareForGatherPaKvCache);
+// IMPL_OP_OPTILING(GatherPaKvCache)
+//     .Tiling(TilingForGatherPaKvCache)
+//     .TilingParse<GatherPaKvCacheCompileInfo>(TilingPrepareForGatherPaKvCache);
 
 } // namespace optiling
