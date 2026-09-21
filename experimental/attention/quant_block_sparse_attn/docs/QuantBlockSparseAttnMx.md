@@ -73,9 +73,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
 
 ## BSND / BNSD 布局与 metadata
 
-`quant_mode=2` 的完整布局约定见 [padded layout 说明](mxfp8_padded_layouts.md)，
-接口检查、调度边界与验证状态见 [layout 与 metadata 设计和验证说明](QBSA_LAYOUT_METADATA_REVIEW.md)。
-metadata 与主算子必须使用相同的 `layout_q` 和稀疏输入；新布局的两处调用均传
+`quant_mode=2` 下 metadata 与主算子必须使用相同的 `layout_q` 和稀疏输入；BSND/BNSD 的两处调用均传
 `cu_seqlens_q=None`、`seqused_q=None`。metadata 调度格式仍为逻辑 `(B,Nq,Qb)` 分核范围。
 
 ## 参数说明
@@ -598,7 +596,7 @@ QuantBlockSparseAttnMx 算子约束分为 4 个档位，按约束复杂程度递
   - `attention_out` 数据类型为 `BFLOAT16`，数据格式为 ND。输出布局与 Q 相同，最后一维为 D_v。
   - `sparse_q_block_size` 和 `sparse_kv_block_size` 各支持 64 或 128，且二者必须相等。
   - `layout_q` 支持 `TND`、`BSND`、`BNSD`。
-  - `layout_out` 必须显式设置为与 `layout_q` 相同的布局。
+  - `layout_out` 必须与 `layout_q` 相同。二者默认值均为 `TND`，因此 TND 调用可使用默认值；BSND/BNSD 调用必须显式将 `layout_out` 设置为对应布局，否则默认的 `TND` 会被 Host 拒绝。
   - `quant_mode` 支持1 和 2，1表示`FP8`量化，2表示 `MXFP8`量化。
   - `softmax_scale` 为 float 属性，取值范围必须为 `(0, 1]`，常用值为 `1 / sqrt(D)`。
 
@@ -664,7 +662,7 @@ QuantBlockSparseAttnMx 算子约束分为 4 个档位，按约束复杂程度递
 
 - 一致性约束
 
-  - `sparse_indices` 和 `sparse_seq_len` 的 shape 必须与 `BatchSize`、`N1`、`max_Qb` 语义保持一致；当前主算子 host 默认这两个 Tensor 的 shape 正确，不在 host 中对 max_Qb 和 max_Kb 的正确性进行校验，输入正确性由用户外部保证。
+  - Host 校验 `sparse_indices` 为 4D、`sparse_seq_len` 为 3D，二者的 BatchSize/N1 维与 Query 一致，且 `sparse_seq_len` 的 max_Qb 必须等于 `sparse_indices` 的 max_Qb。BSND/BNSD 还要求 max_Qb 至少为 `ceil(Sq/sparse_q_block_size)`。Host 不校验 max_Kb 的业务合理性及稀疏索引内容，输入数值正确性由用户外部保证。
   - `sparse_seq_len[B,N1,max_Qb]` 表示对应 Query block 的有效 KV block 数；值为 0 时对应稀疏任务输出置零，LSE 置为 `-FLT_MAX`。
   - `sparse_indices` 的有效元素表示逻辑 KV block id；逻辑块索引不能重复，并且有效的在前，-1在后，表示不使用。
 
