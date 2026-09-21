@@ -208,7 +208,7 @@ def quant_lightning_indexer(
 
 
 @impl(get_as_library(), "ds41.quant_lightning_indexer_metadata", "PrivateUse1")
-def quant_lightning_indexer_metadata(
+def _quant_lightning_indexer_metadata_impl(
     cu_seqlens_q=None,
     cu_seqlens_k=None,
     seqused_q=None,
@@ -277,7 +277,7 @@ def quant_lightning_indexer_metadata_fallback(
     candidate_block_size=-1,
 ):
     """Route calls without a backend Tensor to the NPU implementation."""
-    return quant_lightning_indexer_metadata(
+    return _quant_lightning_indexer_metadata_impl(
         cu_seqlens_q,
         cu_seqlens_k,
         seqused_q,
@@ -299,4 +299,45 @@ def quant_lightning_indexer_metadata_fallback(
     )
 
 
-torch.compiler.allow_in_graph(quant_lightning_indexer_metadata)
+def quant_lightning_indexer_metadata(
+    cu_seqlens_q=None,
+    cu_seqlens_k=None,
+    seqused_q=None,
+    seqused_k=None,
+    cmp_residual_k=None,
+    *,
+    batch_size=None,
+    max_seqlen_q=-1,
+    max_seqlen_k=-1,
+    num_heads_q,
+    num_heads_k,
+    head_dim,
+    topk,
+    mask_mode=0,
+    cmp_ratio=1,
+    layout_q="TND",
+    layout_k="TND",
+    candidate_topk_blocks=-1,
+    candidate_block_size=-1,
+):
+    """Dispatch through the registered operator for eager and graph execution."""
+    return torch.ops.cann_ops_transformer.ds41.quant_lightning_indexer_metadata(
+        cu_seqlens_q,
+        cu_seqlens_k,
+        seqused_q,
+        seqused_k,
+        cmp_residual_k,
+        batch_size=batch_size,
+        max_seqlen_q=max_seqlen_q,
+        max_seqlen_k=max_seqlen_k,
+        num_heads_q=num_heads_q,
+        num_heads_k=num_heads_k,
+        head_dim=head_dim,
+        topk=topk,
+        mask_mode=mask_mode,
+        cmp_ratio=cmp_ratio,
+        layout_q=layout_q,
+        layout_k=layout_k,
+        candidate_topk_blocks=candidate_topk_blocks,
+        candidate_block_size=candidate_block_size,
+    )
