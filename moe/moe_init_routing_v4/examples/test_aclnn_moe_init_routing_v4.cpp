@@ -249,7 +249,6 @@ int main()
     aclDestroyTensor(expertTokensCountOrCumsumOutOptional);
     aclDestroyTensor(expandedScaleOutOptional);
     aclDestroyTensor(expandedTopkWeightOut);
-    aclDestroyIntArray(activeExpertRange);
 
     // 7. 释放device资源，需要根据具体API的接口定义修改
     aclrtFree(xDeviceAddr);
