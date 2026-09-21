@@ -1124,10 +1124,10 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(StaticBuffer<T> &
                 AttentionCommon::FD_REDUCE_CHUNK_ROWS};
             uint32_t smlaWorkspaceIdx = GetCrossCoreWorkspaceIdx(runInfo);
             int64_t smlaStagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
-            AttentionCommon::StageVec2PartialO<T>(stagingLayout, stagingOutGm, smlaWorkspaceIdx, smlaStagingMOffset,
-                                                  static_cast<uint32_t>(runInfo.vec2MRealSize),
-                                                  static_cast<uint32_t>(constInfo.dSizeV), smlaVec2ResUb,
-                                                  INNERCORE_STAGE2, INNERCORE_STAGE_FD_MTE3_V);
+            AttentionCommon::StageVec2PartialOAndWait<T>(
+                stagingLayout, stagingOutGm, smlaWorkspaceIdx, smlaStagingMOffset, runInfo.vec2MRealSize,
+                static_cast<uint32_t>(constInfo.dSizeV), smlaVec2ResUb, INNERCORE_STAGE2,
+                INNERCORE_STAGE_FD_MTE3_V);
         } else {
             this->CopyOutAttentionOut(runInfo, constInfo, smlaVec2ResUb, 0, smlaVec2CalcSize);
         }
