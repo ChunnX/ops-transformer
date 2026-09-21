@@ -203,7 +203,7 @@ aclnnStatus aclnnMoeTokenPermuteGetWorkspaceSize(const aclTensor *tokens, const 
     }
 
     bool isRegbaseCalled =
-        GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND950 && tokens->GetDataType() == DataType::DT_INT8;
+        GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 && tokens->GetDataType() == DataType::DT_INT8;
     if (isRegbaseCalled) {
         CHECK_RET(MoeTokenPermuteCheck::CheckDtypeValidInt8Regbase(tokens, indices, permuteTokensOut, sortedIndicesOut),
                   ACLNN_ERR_PARAM_INVALID);

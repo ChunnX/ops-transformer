@@ -138,7 +138,7 @@ void ExecuteTilingCase(const std::vector<TensorDescription> &inputs, const std::
 {
     FFNToAttentionV2CompileInfo compileInfo;
     gert::TilingContextPara tilingContextPara("FFNToAttentionV2", inputs, {{{}, ge::DT_INT64, ge::FORMAT_ND}}, attrs,
-                                              &compileInfo, "Ascend950");
+                                              &compileInfo, "3510");
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     if (expectedStatus == ge::GRAPH_SUCCESS) {
         Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, expectedStatus, expectedTilingKey);
