@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
-*/
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file matmul_reduce_scatter_v2_tiling.cpp
@@ -18,15 +18,18 @@
 #include <sys/types.h>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <vector>
 
 #include "mc2_hcom_topo_info.h"
 #include "mc2_log.h"
+#include "reduce_scatter_comm_algo_table.h"
 #include "op_host/op_tiling/matmul_formulaic_tiling.h"
 #include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "mc2_tiling_utils.h"
+#include "mc2_comm_algo_selector.h"
 #include "op_host/op_tiling/new_mc2_tiling_utils.h"
 #include "op_host/tiling_templates_registry.h"
 #include "reduce_scatter_fit_balance_tiling.h"
@@ -39,12 +42,18 @@ using namespace Mc2Log;
 using namespace Mc2Tiling;
 
 namespace optiling {
+namespace {
+constexpr char ACLNN_CCU_PEER_ONLY_MODE[] = "ccu_peer_only";
+}
+
 constexpr uint32_t X1SCALE_INDEX = 3;
 constexpr uint32_t X2SCALE_INDEX = 4;
+constexpr uint32_t COMMMODE_INDEX = 10;
+constexpr uint32_t ALG_CONFIG_RANK_SIZE = 16U;
 // 新功能从这里开始
 bool MatmulReduceScatterV2Tiling::IsCapable()
 {
-    if ((npuArch_ == NpuArch::DAV_3510) && ((args_.geAType == ge::DT_BF16) || (args_.geAType == ge::DT_FLOAT16))) {
+    if ((npuArch_ == Ops::Base::DAV_3510) && ((args_.geAType == ge::DT_BF16) || (args_.geAType == ge::DT_FLOAT16))) {
         OP_LOGI(opName_, "start with MatmulReduceScatterV2Tiling tiling.");
         return true;
     }
@@ -111,9 +120,34 @@ ge::graphStatus MatmulReduceScatterV2Tiling::SetMc2Hcomm()
     if (commMode_ == TPL_AICPU_COMM_MODE) {
         mc2CcTilingConfig.SetCommEngine(mc2tiling::A5_AICPU_TS_ENGINE);
         OP_LOGD(opName_, "[SetCommEngine] Set CommEngine to AiCPU for matmul_reduce_scatter_v2_tiling.");
+        // 16p跨机场景，根据通信api benchmark，使用InsReduceScatterParallelMesh1DNHR算法速度更快
+        if (args_.rankDim == ALG_CONFIG_RANK_SIZE) {
+            mc2CcTilingConfig.SetAlgConfig("InsReduceScatterParallelMesh1DNHR");
+            OP_LOGD(opName_, "[SetAlgConfig] Set AlgConfig to InsReduceScatterParallelMesh1DNHR.");
+        }
     } else {
         mc2CcTilingConfig.SetCommEngine(mc2tiling::A5_CCU_ENGINE);
         OP_LOGD(opName_, "[SetCommEngine] Set CommEngine to CCU for matmul_reduce_scatter_v2_tiling.");
+    }
+    const auto commMode = context_->GetAttrs()->GetAttrPointer<char>(COMMMODE_INDEX);
+    const bool enablePeerOnly = std::strcmp(commMode, ACLNN_CCU_PEER_ONLY_MODE) == 0;
+    isPeerOnly_ = enablePeerOnly && !isA2APath_ && commMode_ == TPL_CCU_COMM_MODE &&
+                  args_.rankDim == PEER_ONLY_RANK_SIZE && mc2tiling::Mc2TilingUtils::GetDebugMode() == 0;
+    if (isPeerOnly_) {
+        mc2CcTilingConfig.SetAlgConfig(PEER_ONLY_ALGORITHM);
+    } else {
+        uint64_t commDataBytes = args_.orgMValue * args_.orgNValue * args_.outputDtypeSize;
+        uint32_t algoCount = 0;
+        uint8_t commEngine =
+            (commMode_ == TPL_CCU_COMM_MODE) ? mc2tiling::A5_CCU_ENGINE : mc2tiling::A5_AICPU_TS_ENGINE;
+        const Mc2Hcom::CommAlgoEntry *algoEntries = GetReduceScatterCommAlgoTable(algoCount);
+        std::string algoName = Mc2Hcom::Mc2CommAlgoSelector::SelectAlgoName(
+            opName_, group, commEngine, commDataBytes, static_cast<uint32_t>(args_.rankDim), algoEntries, algoCount,
+            REDUCE_SCATTER_DEFAULT_ALGO_NAME);
+        // 当前版本暂不生效，仍旧使用原算法
+        algoName = rsConfig;
+        OP_LOGI(opName_, "[SetMc2Hcomm] selected algoName=%s, group=%s", algoName.c_str(), group);
+        mc2CcTilingConfig.SetAlgConfig(algoName);
     }
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(matmulReduceScatterV2TilingData_->mc2InitTiling) != 0,
                     OP_LOGE(opName_, "mc2CcTilingConfig GetTiling mc2InitTiling failed"), return ge::GRAPH_FAILED);
@@ -189,6 +223,9 @@ ge::graphStatus MatmulReduceScatterV2Tiling::DoOpTiling()
 
 ge::graphStatus MatmulReduceScatterV2Tiling::PostTiling()
 {
+#if MC2_DFX_ENABLE
+    matmulReduceScatterV2TilingData_->dumpInfo.workspaceLayout = workspaceLayout_;
+#endif
     auto rawTilingDataPtr = context_->GetRawTilingData();
     OP_TILING_CHECK((rawTilingDataPtr == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName_, "rawTilingDataPtr"),
                     return ge::GRAPH_FAILED);
@@ -210,16 +247,14 @@ CutResult MatmulReduceScatterV2Tiling::GetTilingResult()
 {
     if (mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_)) {
         MMReduceScatterFitBalanceTiling scatterTiling(args_, KernelType::REDUCE_SCATTER_VIA_ALL_TO_ALL,
-                                                      TopoType::STANDARD_CARD);
+                                                      TopoType::STANDARD_CARD, (commMode_ == TPL_AICPU_COMM_MODE));
         return scatterTiling.GetTiling();
     } else if (mc2tiling::Is8P(args_.rankDim, npuArch_)) {
         MMReduceScatterFitBalanceTiling scatterTiling(args_, KernelType::REDUCE_SCATTER_VIA_ALL_TO_ALL,
-                                                      TopoType::EIGHT_P, SocVersion::SOC950,
-                                                      (commMode_ == TPL_AICPU_COMM_MODE));
+                                                      TopoType::EIGHT_P, (commMode_ == TPL_AICPU_COMM_MODE));
         return scatterTiling.GetTiling();
     } else {
-        SocVersion inputSocVersion = (npuArch_ == NpuArch::DAV_3510) ? SocVersion::SOC950 : SocVersion::SOC910_B;
-        MMPlusReduceScatter scatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER, inputSocVersion, false,
+        MMPlusReduceScatter scatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER, npuArch_, false,
                                           (commMode_ == TPL_AICPU_COMM_MODE));
         scatterTiling.GetTiling();
         return scatterTiling.tilingM_.cutRes;
@@ -228,6 +263,6 @@ CutResult MatmulReduceScatterV2Tiling::GetTilingResult()
 
 // 注册Tiling类
 REGISTER_TILING_TEMPLATE_WITH_ARCH(MatmulReduceScatterV2, MatmulReduceScatterV2Tiling,
-                                   static_cast<int32_t>(NpuArch::DAV_3510), 0);
+                                   static_cast<int32_t>(Ops::Base::DAV_3510), 0);
 
 } // namespace optiling

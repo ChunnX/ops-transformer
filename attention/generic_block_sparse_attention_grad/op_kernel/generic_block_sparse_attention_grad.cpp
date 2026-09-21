@@ -10,24 +10,29 @@
 
 #include "kernel_operator.h"
 #include "kernel_operator_list_tensor_intf.h"
-#include "arc35/generic_block_sparse_attention_grad.h"
+#if __CCE_AICORE__ == 310
+#include "arc35/generic_block_sparse_attention_grad_kernel.h"
+#else
+#include "arc22/generic_block_sparse_attention_grad_interface.h"
+#endif
 
 // ============================================================================
 // Kernel Entry Point — GenericBlockSparseAttentionGrad (design §1 / IR)
-// Inputs: query,key,value,dout,out,lse,rsvd_block_idx,rsvd_block_count,metadata,
-//         atten_mask?, cu_seq_lengths?, cu_seq_lengths_kv?, seqused_q?, seqused_kv?
+// Inputs: query,key,value,dout,out,lse,sparse_block_idx,sparse_block_count,metadata,
+//         atten_mask?, cu_seq_lengths_q?, cu_seq_lengths_kv?, seqused_q?, seqused_kv?
 // Outputs: dQuery, dKey, dValue
 // ============================================================================
 
 extern "C" __global__ __aicore__ void generic_block_sparse_attention_grad(
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *dout, __gm__ uint8_t *out,
-    __gm__ uint8_t *softmaxLse, __gm__ uint8_t *rsvdBlockIdx, __gm__ uint8_t *rsvdBlockCount, __gm__ uint8_t *metadata,
-    __gm__ uint8_t *attenMask, __gm__ uint8_t *cuSeqLengthsQ, __gm__ uint8_t *cuSeqLengthsKv, __gm__ uint8_t *sequsedQ,
-    __gm__ uint8_t *sequsedKv, __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv, __gm__ uint8_t *workspace,
-    __gm__ uint8_t *tiling)
+    __gm__ uint8_t *softmaxLse, __gm__ uint8_t *sparseBlockIdx, __gm__ uint8_t *sparseBlockCount,
+    __gm__ uint8_t *metadata, __gm__ uint8_t *attenMask, __gm__ uint8_t *cuSeqLengthsQ, __gm__ uint8_t *cuSeqLengthsKv,
+    __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv, __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv,
+    __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
     __gm__ uint8_t *user = AscendC::GetUserWorkspace(workspace);
 
+#if __CCE_AICORE__ == 310
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     GET_TILING_DATA_WITH_STRUCT(GenericBlockSparseAttentionGradTilingDataArch35, tiling_data_in, tiling);
     const GenericBlockSparseAttentionGradTilingDataArch35 *__restrict tilingDataPtr = &tiling_data_in;
@@ -38,32 +43,59 @@ extern "C" __global__ __aicore__ void generic_block_sparse_attention_grad(
     if (TILING_KEY_IS(1000)) {
         using gsag_type = GSAG_ARC35::GSAG_TYPE<bfloat16_t, GSAG_ARC35::BSND, ARC35_TILING_CLASS, false>;
         GSAG_ARC35::GenericBlockSparseAttentionGradArch35<gsag_type> op;
-        op.Process(query, key, value, dout, out, softmaxLse, rsvdBlockIdx, rsvdBlockCount, metadata, attenMask,
+        op.Process(query, key, value, dout, out, softmaxLse, sparseBlockIdx, sparseBlockCount, metadata, attenMask,
                    cuSeqLengthsQ, cuSeqLengthsKv, sequsedQ, sequsedKv, dq, dk, dv, user, tilingDataPtr, &tPipe);
     } else if (TILING_KEY_IS(1001)) {
         using gsag_type = GSAG_ARC35::GSAG_TYPE<half, GSAG_ARC35::BSND, ARC35_TILING_CLASS, false>;
         GSAG_ARC35::GenericBlockSparseAttentionGradArch35<gsag_type> op;
-        op.Process(query, key, value, dout, out, softmaxLse, rsvdBlockIdx, rsvdBlockCount, metadata, attenMask,
+        op.Process(query, key, value, dout, out, softmaxLse, sparseBlockIdx, sparseBlockCount, metadata, attenMask,
                    cuSeqLengthsQ, cuSeqLengthsKv, sequsedQ, sequsedKv, dq, dk, dv, user, tilingDataPtr, &tPipe);
     } else if (TILING_KEY_IS(1002)) {
         using gsag_type = GSAG_ARC35::GSAG_TYPE<bfloat16_t, GSAG_ARC35::BNSD, ARC35_TILING_CLASS, false>;
         GSAG_ARC35::GenericBlockSparseAttentionGradArch35<gsag_type> op;
-        op.Process(query, key, value, dout, out, softmaxLse, rsvdBlockIdx, rsvdBlockCount, metadata, attenMask,
+        op.Process(query, key, value, dout, out, softmaxLse, sparseBlockIdx, sparseBlockCount, metadata, attenMask,
                    cuSeqLengthsQ, cuSeqLengthsKv, sequsedQ, sequsedKv, dq, dk, dv, user, tilingDataPtr, &tPipe);
     } else if (TILING_KEY_IS(1003)) {
         using gsag_type = GSAG_ARC35::GSAG_TYPE<half, GSAG_ARC35::BNSD, ARC35_TILING_CLASS, false>;
         GSAG_ARC35::GenericBlockSparseAttentionGradArch35<gsag_type> op;
-        op.Process(query, key, value, dout, out, softmaxLse, rsvdBlockIdx, rsvdBlockCount, metadata, attenMask,
+        op.Process(query, key, value, dout, out, softmaxLse, sparseBlockIdx, sparseBlockCount, metadata, attenMask,
                    cuSeqLengthsQ, cuSeqLengthsKv, sequsedQ, sequsedKv, dq, dk, dv, user, tilingDataPtr, &tPipe);
     } else if (TILING_KEY_IS(1004)) {
         using gsag_type = GSAG_ARC35::GSAG_TYPE<bfloat16_t, GSAG_ARC35::TND, ARC35_TILING_CLASS, false>;
         GSAG_ARC35::GenericBlockSparseAttentionGradArch35<gsag_type> op;
-        op.Process(query, key, value, dout, out, softmaxLse, rsvdBlockIdx, rsvdBlockCount, metadata, attenMask,
+        op.Process(query, key, value, dout, out, softmaxLse, sparseBlockIdx, sparseBlockCount, metadata, attenMask,
                    cuSeqLengthsQ, cuSeqLengthsKv, sequsedQ, sequsedKv, dq, dk, dv, user, tilingDataPtr, &tPipe);
     } else if (TILING_KEY_IS(1005)) {
         using gsag_type = GSAG_ARC35::GSAG_TYPE<half, GSAG_ARC35::TND, ARC35_TILING_CLASS, false>;
         GSAG_ARC35::GenericBlockSparseAttentionGradArch35<gsag_type> op;
-        op.Process(query, key, value, dout, out, softmaxLse, rsvdBlockIdx, rsvdBlockCount, metadata, attenMask,
+        op.Process(query, key, value, dout, out, softmaxLse, sparseBlockIdx, sparseBlockCount, metadata, attenMask,
                    cuSeqLengthsQ, cuSeqLengthsKv, sequsedQ, sequsedKv, dq, dk, dv, user, tilingDataPtr, &tPipe);
     }
+#else
+    if (TILING_KEY_IS(100)) {
+        GBSAG::GenericBlockSparseAttentionGradInfer<half, 0>(
+            query, key, value, dout, out, softmaxLse, sparseBlockIdx, sparseBlockCount, metadata, attenMask,
+            cuSeqLengthsQ, cuSeqLengthsKv, sequsedQ, sequsedKv, dq, dk, dv, user, tiling);
+    } else if (TILING_KEY_IS(101)) {
+        GBSAG::GenericBlockSparseAttentionGradInfer<half, 1>(
+            query, key, value, dout, out, softmaxLse, sparseBlockIdx, sparseBlockCount, metadata, attenMask,
+            cuSeqLengthsQ, cuSeqLengthsKv, sequsedQ, sequsedKv, dq, dk, dv, user, tiling);
+    } else if (TILING_KEY_IS(102)) {
+        GBSAG::GenericBlockSparseAttentionGradInfer<half, 2>(
+            query, key, value, dout, out, softmaxLse, sparseBlockIdx, sparseBlockCount, metadata, attenMask,
+            cuSeqLengthsQ, cuSeqLengthsKv, sequsedQ, sequsedKv, dq, dk, dv, user, tiling);
+    } else if (TILING_KEY_IS(110)) {
+        GBSAG::GenericBlockSparseAttentionGradInfer<bfloat16_t, 0>(
+            query, key, value, dout, out, softmaxLse, sparseBlockIdx, sparseBlockCount, metadata, attenMask,
+            cuSeqLengthsQ, cuSeqLengthsKv, sequsedQ, sequsedKv, dq, dk, dv, user, tiling);
+    } else if (TILING_KEY_IS(111)) {
+        GBSAG::GenericBlockSparseAttentionGradInfer<bfloat16_t, 1>(
+            query, key, value, dout, out, softmaxLse, sparseBlockIdx, sparseBlockCount, metadata, attenMask,
+            cuSeqLengthsQ, cuSeqLengthsKv, sequsedQ, sequsedKv, dq, dk, dv, user, tiling);
+    } else if (TILING_KEY_IS(112)) {
+        GBSAG::GenericBlockSparseAttentionGradInfer<bfloat16_t, 2>(
+            query, key, value, dout, out, softmaxLse, sparseBlockIdx, sparseBlockCount, metadata, attenMask,
+            cuSeqLengthsQ, cuSeqLengthsKv, sequsedQ, sequsedKv, dq, dk, dv, user, tiling);
+    }
+#endif
 }

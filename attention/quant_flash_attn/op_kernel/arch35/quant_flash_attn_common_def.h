@@ -31,7 +31,6 @@ static constexpr float FLOAT_ZERO = 0;
 static constexpr float FLOAT_MAX = 3.402823466e+38F;
 static constexpr float FLOAT_INF = 3e+99;
 
-static constexpr uint32_t FA_METADATA_HEADER_OFFSET = 16U * sizeof(uint32_t);
 static constexpr uint32_t QFA_HEAD_NEED_INIT_OUTPUT_INDEX = 15U;
 
 #define ASCENDC_TPL_5_BW 5
@@ -39,7 +38,6 @@ static constexpr uint32_t QFA_HEAD_NEED_INIT_OUTPUT_INDEX = 15U;
 #define ASCENDC_TPL_3_BW 3
 
 enum class FA_LAYOUT : uint32_t {
-    BSH = 0,
     BSND = 0,
     BNSD = 1,
     NZ = 2,
@@ -50,8 +48,8 @@ enum class FA_LAYOUT : uint32_t {
 
 enum class inferFaLayOutTypeEnum {
     None = 0,
-    LAYOUT_BSH = 1,
-    LAYOUT_SBH = 2,
+    LAYOUT_BSND = 1,
+    LAYOUT_SBND = 2,
     LAYOUT_BNSD = 3,
     LAYOUT_TND = 4,
     LAYOUT_NTD_TND = 5,
@@ -96,19 +94,19 @@ enum class inferS2TemplateType {
 };
 
 // q_out layout → (inputLayout, outputLayout)
-//   0=BSND → (BSH, BSH)
+//   0=BSND → (BSND, BSND)
 //   1=BNSD → (BNSD, BNSD)
 //   2=TND  → (TND, TND)
 //   3=NTD  → (NTD, TND)
 static constexpr inferFaLayOutTypeEnum InOutLayoutTypeValue[4][2] = {
-    {inferFaLayOutTypeEnum::LAYOUT_BSH, inferFaLayOutTypeEnum::LAYOUT_BSH},
+    {inferFaLayOutTypeEnum::LAYOUT_BSND, inferFaLayOutTypeEnum::LAYOUT_BSND},
     {inferFaLayOutTypeEnum::LAYOUT_BNSD, inferFaLayOutTypeEnum::LAYOUT_BNSD},
     {inferFaLayOutTypeEnum::LAYOUT_TND, inferFaLayOutTypeEnum::LAYOUT_TND},
     {inferFaLayOutTypeEnum::LAYOUT_NTD, inferFaLayOutTypeEnum::LAYOUT_TND},
 };
 
 // q_out layout
-//   0: BSND (BSND排布与BSH一样)
+//   0: BSND
 //   1: BNSD
 //   2: TND
 //   3: NTD
@@ -246,6 +244,7 @@ struct CommonConstInfo {
 
     FA_LAYOUT outputLayout;
     bool needInitOutput;
+    bool enableFlashDecode;
 
     StridesConstInfo keyStrides;
     StridesConstInfo valueStrides;
@@ -267,10 +266,6 @@ struct SinkConstInfo {
     bool learnableSinkFlag = false;
 };
 
-struct TensorListConstInfo {
-    bool isKvContinuous;
-};
-
-struct ConstInfo_t : CommonConstInfo, PAConstInfo, LseConstInfo, SinkConstInfo, TensorListConstInfo {};
+struct ConstInfo_t : CommonConstInfo, PAConstInfo, LseConstInfo, SinkConstInfo {};
 
 #endif // QUANT_FLASH_ATTN_COMMON_DEF_H_

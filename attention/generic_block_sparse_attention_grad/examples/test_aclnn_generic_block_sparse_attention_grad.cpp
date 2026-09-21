@@ -109,7 +109,6 @@ int main()
     auto ret = Init(deviceId, &context, &stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
-    // 2. BNSD smoke 参数（对齐 GSAG 约束：D=128, blockShape=[1,128]）
     const int64_t B = 1;
     const int64_t N1 = 1;
     const int64_t N2 = 1;
@@ -120,12 +119,11 @@ int main()
     const int64_t blockY = 128;
     const int64_t J = (S2 + blockY - 1) / blockY;
     const int64_t maskType = 1;
-    const int64_t isPackedGqa = 1;
+    const int64_t isPackedGQA = 1;
     const int64_t softmaxPrecision = 0;
     const int64_t windowLeft = -1;
     const int64_t windowRight = -1;
     const double scaleValue = 1.0 / std::sqrt(static_cast<double>(D));
-    // metadata elems = TASK_LIST_OFFSET(80) + B * N1 * J * TASK_ENTRY_SIZE(4)
     const int64_t metaSize = 80 + B * N1 * J * 4;
 
     std::vector<int64_t> qShape = {B, N1, S1, D};
@@ -135,7 +133,6 @@ int main()
     std::vector<int64_t> cntShape = {B, N2, J};
     std::vector<int64_t> metaShape = {metaSize};
 
-    // 3. Host 数据：小常数输入 + 单 KV 块全选 Q
     std::vector<uint16_t> qHost(static_cast<size_t>(GetShapeSize(qShape)), 0x2E66); // ~0.1
     std::vector<uint16_t> kHost(static_cast<size_t>(GetShapeSize(kvShape)), 0x2E66);
     std::vector<uint16_t> vHost(static_cast<size_t>(GetShapeSize(kvShape)), 0x2E66);
@@ -144,7 +141,7 @@ int main()
     std::vector<float> lseHost(static_cast<size_t>(GetShapeSize(lseShape)), 5.0f);
     std::vector<int32_t> idxHost(static_cast<size_t>(GetShapeSize(idxShape)), -1);
     std::vector<int32_t> cntHost(static_cast<size_t>(GetShapeSize(cntShape)), 0);
-    std::vector<int64_t> metaHost(static_cast<size_t>(metaSize), 0);
+    std::vector<int32_t> metaHost(static_cast<size_t>(metaSize), 0);
     std::vector<uint16_t> dqHost(static_cast<size_t>(GetShapeSize(qShape)), 0);
     std::vector<uint16_t> dkHost(static_cast<size_t>(GetShapeSize(kvShape)), 0);
     std::vector<uint16_t> dvHost(static_cast<size_t>(GetShapeSize(kvShape)), 0);
@@ -196,7 +193,7 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(cntHost, cntShape, &cntAddr, aclDataType::ACL_INT32, &cnt);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(metaHost, metaShape, &metaAddr, aclDataType::ACL_INT64, &metadata);
+    ret = CreateAclTensor(metaHost, metaShape, &metaAddr, aclDataType::ACL_INT32, &metadata);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(dqHost, qShape, &dqAddr, aclDataType::ACL_FLOAT16, &dq);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -217,7 +214,7 @@ int main()
     aclOpExecutor *metaExecutor = nullptr;
     LOG_PRINT("Calling aclnnGenericBlockSparseAttentionGradMetadataGetWorkspaceSize...\n");
     ret = aclnnGenericBlockSparseAttentionGradMetadataGetWorkspaceSize(
-        idx, cnt, nullptr, nullptr, nullptr, nullptr, S1, S2, N1, N2, D, blockShape, isPackedGqa, qLayout, kvLayout,
+        idx, cnt, nullptr, nullptr, nullptr, nullptr, S1, S2, N1, N2, D, blockShape, isPackedGQA, qLayout, kvLayout,
         maskType, softmaxPrecision, windowLeft, windowRight, metadata, &metaWsSize, &metaExecutor);
     CHECK_RET(ret == ACL_SUCCESS,
               LOG_PRINT("aclnnGenericBlockSparseAttentionGradMetadataGetWorkspaceSize failed. ERROR: %d\n", ret);
@@ -238,7 +235,7 @@ int main()
     LOG_PRINT("Calling aclnnGenericBlockSparseAttentionGradGetWorkspaceSize...\n");
     ret = aclnnGenericBlockSparseAttentionGradGetWorkspaceSize(
         q, k, v, dout, out, lse, idx, cnt, metadata, nullptr /*attenMask*/, nullptr /*cuQ*/, nullptr /*cuKv*/,
-        nullptr /*sequsedQ*/, nullptr /*sequsedKv*/, blockShape, isPackedGqa, qLayout, kvLayout, scaleValue, maskType,
+        nullptr /*sequsedQ*/, nullptr /*sequsedKv*/, blockShape, isPackedGQA, qLayout, kvLayout, scaleValue, maskType,
         softmaxPrecision, windowLeft, windowRight, dq, dk, dv, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS,
               LOG_PRINT("aclnnGenericBlockSparseAttentionGradGetWorkspaceSize failed. ERROR: %d\n", ret);

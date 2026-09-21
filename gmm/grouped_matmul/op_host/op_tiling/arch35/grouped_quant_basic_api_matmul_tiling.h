@@ -39,7 +39,7 @@ protected:
     ge::graphStatus GetShapeAttrsInfo() override;
     // 3、计算数据切分TilingData
     ge::graphStatus DoOpTiling() override;
-    // 4、计算高阶API的TilingData
+    // 4、计算低阶API的TilingData
     ge::graphStatus DoLibApiTiling() override;
     // 7、保存Tiling数据
     ge::graphStatus PostTiling() override;
@@ -47,6 +47,12 @@ protected:
     ge::graphStatus CalL1Tiling();
 
 private:
+    bool IsCubeBasicApi() const;
+    // Selected in IsCapable; reused by computation and serialization until Reset.
+    bool useCubeBasicApi_ = false;
+    ge::graphStatus CalCubeL1Tiling();
+    GroupedMatmulTilingData::GMMQuantCubeBasicApiTilingData cubeTilingData_;
+
     struct L1SearchResult {
         uint64_t depthA1 = 0UL;
         uint64_t depthB1 = 0UL;
@@ -118,20 +124,23 @@ protected:
     ge::graphStatus PostTiling() override;
     virtual void Reset();
 
-    // S4S4-specific (hide base's same-named; call base then sync s4s4Tiling_)
-    bool SetMKN(const gert::Shape &xShape, const gert::Shape &wShape);
-    bool SetGroupNum(uint32_t groupListIndex);
-    bool SetMKNList();
+    // S4S4-specific (call base then sync s4s4Tiling_)
+    bool SetMKNForS4S4(const gert::Shape &xShape, const gert::Shape &wShape);
+    bool SetGroupNumForS4S4(uint32_t groupListIndex);
+    bool SetMKNListForS4S4();
     bool AnalyzeS4S4();
-    bool CheckS4S4Params();
+    bool CheckS4S4Params() const;
     void CalBasicBlockS4S4();
     ge::graphStatus CalUbDivideS4S4();
     ge::graphStatus CalWorkspaceS4S4();
     uint32_t FindBestSingleN() const;
-    void InitCommonL1TilingFields();
-    ge::graphStatus CalcLeftL1Size(uint64_t &leftL1Size) const;
+    void InitS4S4CommonL1TilingFields();
+    ge::graphStatus CalcS4S4LeftL1Size(uint64_t &leftL1Size) const;
     ge::graphStatus CalL1Tiling();
     ge::graphStatus CalL1Depth(uint64_t leftL1Size);
+    void SetS4S4Params();
+    ge::graphStatus SetArrayParams();
+    void SetMmTilingData();
 
 private:
     struct S4S4BasicTiling {

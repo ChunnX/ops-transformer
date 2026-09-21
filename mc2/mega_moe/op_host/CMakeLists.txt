@@ -20,7 +20,7 @@ if (BUILD_OPEN_PROJECT)  # custom
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
     set(MC2_OPT ON PARENT_SCOPE)
     set(mega_moe_depends mc2/common mc2/3rd  PARENT_SCOPE)
-    set(mega_moe_apt_depends mc2/common mc2/3rd mc2/moe_distribute_dispatch_v2 mc2/moe_distribute_dispatch_v3 PARENT_SCOPE)
+    set(mega_moe_apt_depends mc2/common mc2/3rd PARENT_SCOPE)
 
     set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
     if ("${CONDITION_UNIT}" STREQUAL "ascend950")
@@ -33,7 +33,7 @@ if (BUILD_OPEN_PROJECT)  # custom
             OP_NAME MegaMoe
             OPTIONS --cce-auto-sync=on
             OPTIONS -I${CMAKE_SOURCE_DIR}/mc2/common/op_kernel
-            OPTIONS -I${CMAKE_SOURCE_DIR}/mc2/common/inc/kernel
+            OPTIONS -DCATLASS_ARCH=2201
         )
     endif()
 

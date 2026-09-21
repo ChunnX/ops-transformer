@@ -24,7 +24,7 @@
 #include "cpu_context.h"
 #include "cpu_kernel.h"
 #include "cpu_tensor.h"
-#include "../op_kernel/generic_block_sparse_attention_grad_metadata.h"
+#include "../op_kernel/generic_block_sparse_attention_grad_metadata_kernel.h"
 #include "../../common/op_kernel/aicpu_common.h"
 
 namespace aicpu {
@@ -53,10 +53,10 @@ inline T CeilDiv(T num, T rnd)
     return ((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd));
 }
 
-class GenericBlockSparseAttentionGradMetadataCpuKernel : public CpuKernel {
+class GenericBlockSparseAttentionGradMetadataCpuKernelArch35 : public CpuKernel {
 public:
-    GenericBlockSparseAttentionGradMetadataCpuKernel() = default;
-    ~GenericBlockSparseAttentionGradMetadataCpuKernel() override = default;
+    GenericBlockSparseAttentionGradMetadataCpuKernelArch35() = default;
+    ~GenericBlockSparseAttentionGradMetadataCpuKernelArch35() override = default;
     uint32_t Compute(CpuKernelContext &ctx) override;
 
 private:
@@ -72,8 +72,8 @@ private:
     bool GenMetadata();
 
 private:
-    Tensor *rsvdBlockIdx_ = nullptr;
-    Tensor *rsvdBlockCount_ = nullptr;
+    Tensor *sparseBlockIdx_ = nullptr;
+    Tensor *sparseBlockCount_ = nullptr;
     Tensor *cuSeqLengthsQ_ = nullptr;
     Tensor *cuSeqLengthsKv_ = nullptr;
     Tensor *sequsedQ_ = nullptr;
@@ -118,8 +118,8 @@ private:
 
 private:
     enum class ParamId : uint32_t {
-        rsvdBlockIdx = 0,
-        rsvdBlockCount = 1,
+        sparseBlockIdx = 0,
+        sparseBlockCount = 1,
         cuSeqLengthsQ = 2,
         cuSeqLengthsKv = 3,
         sequsedQ = 4,

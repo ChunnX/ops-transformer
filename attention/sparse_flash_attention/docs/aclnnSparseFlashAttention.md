@@ -59,7 +59,7 @@ aclnnStatus aclnnSparseFlashAttentionGetWorkspaceSize(
     int64_t             nextTokens,
     int64_t             attentionMode,
     bool                returnSoftmaxLse,
-    const aclTensor     *attentionOutOut,
+    const aclTensor     *attentionOut,
     const aclTensor     *softmaxMaxOut,
     const aclTensor     *softmaxSumOut,
     uint64_t            *workspaceSize,
@@ -225,7 +225,12 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>queryRope（aclTensor）</td>
       <td>输入</td>
       <td>表示MLA结构中的query的rope信息。</td>
-      <td>不支持空tensor。</td>
+      <td>
+          <ul>
+                <li>可选项。须与keyRope成对为空指针（不使用rope），或成对传入非空tensor（使用rope，Dr为64）。</li>
+                <li>不支持空tensor。</li>
+          </ul>
+      </td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>
@@ -240,7 +245,12 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>keyRope（aclTensor）</td>
       <td>输入</td>
       <td>表示MLA结构中的key的rope信息。</td>
-      <td>不支持空tensor。</td>
+      <td>
+          <ul>
+                <li>可选项。须与queryRope成对为空指针（不使用rope），或成对传入非空tensor（使用rope，Dr为64）。</li>
+                <li>不支持空tensor。</li>
+          </ul>
+      </td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>
@@ -257,7 +267,7 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>输入</td>
       <td>代表缩放系数。</td>
       <td>-</td>
-      <td>FLOAT16</td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -514,7 +524,8 @@ aclnnStatus aclnnSparseFlashAttention(
 - 该接口支持推理场景下使用。
 - N2仅支持1。
 - blockSize为一个block的token数，blockSize取值为16的倍数，且最大支持1024。
-- 参数query中的D和key、value的D值相等为512，参数queryRope中的Dr和keyRope的Dr值相等为64。
+- 参数query中的D和key、value的D值相等为512。
+- queryRope与keyRope须成对为空指针或成对传入非空tensor：均为空指针时表示不使用rope，仅对512维nope部分做注意力计算；均传入非空tensor时Dr相等为64。不支持空tensor。
 - 参数query、key、value的数据类型必须保持一致。
 - <term>Ascend 950PR/Ascend 950DT</term>：
   - N1支持1~128。
@@ -644,8 +655,8 @@ int InitializeTensors(TensorResources& resources) {
     std::vector<int64_t> valueShape = {1, 2, 1, 512};
     std::vector<int64_t> sparseIndicesShape = {1, 2, 1, 2};
     std::vector<int64_t> attentionOutShape = {1, 2, 1, 512};
-    std::vector<int64_t> softmaxMaxShape = {1, 2, 1, 16};
-    std::vector<int64_t> softmaxSumShape = {1, 2, 1, 16};
+    std::vector<int64_t> softmaxMaxShape = {1, 1, 2, 1};
+    std::vector<int64_t> softmaxSumShape = {1, 1, 2, 1};
     std::vector<int64_t> queryRopeShape = {1, 2, 1, 64};
     std::vector<int64_t> keyRopeShape = {1, 2, 1, 64};
 
@@ -659,15 +670,15 @@ int InitializeTensors(TensorResources& resources) {
     int64_t queryRopeShapeSize = GetShapeSize(queryRopeShape);
     int64_t keyRopeShapeSize = GetShapeSize(keyRopeShape);
 
-    std::vector<float> queryHostData(queryShapeSize, 1);
-    std::vector<float> keyHostData(keyShapeSize, 1);
-    std::vector<float> valueHostData(valueShapeSize, 1);
+    std::vector<aclFloat16> queryHostData(queryShapeSize, 1);
+    std::vector<aclFloat16> keyHostData(keyShapeSize, 1);
+    std::vector<aclFloat16> valueHostData(valueShapeSize, 1);
     std::vector<int32_t> sparseIndicesHostData(sparseIndicesShapeSize, 1);
-    std::vector<float> attentionOutHostData(attentionOutShapeSize, 1);
+    std::vector<aclFloat16> attentionOutHostData(attentionOutShapeSize, 1);
     std::vector<float> softmaxMaxHostData(softmaxMaxShapeSize, 1);
     std::vector<float> softmaxSumHostData(softmaxSumShapeSize, 1);
-    std::vector<float> queryRopeHostData(queryRopeShapeSize, 1);
-    std::vector<float> keyRopeHostData(keyRopeShapeSize, 1);
+    std::vector<aclFloat16> queryRopeHostData(queryRopeShapeSize, 1);
+    std::vector<aclFloat16> keyRopeHostData(keyRopeShapeSize, 1);
 
     // Create query aclTensor.
     int ret = CreateAclTensor(queryHostData, queryShape, &resources.queryDeviceAddr,
@@ -880,9 +891,9 @@ int main() {
     TensorResources resources = {};
     void* workspaceAddr = nullptr;
     uint64_t workspaceSize = 0;
-    std::vector<int64_t> attentionOutShape = {1, 2, 1, 16};
-    std::vector<int64_t> softmaxMaxShape = {1, 2, 1, 16};
-    std::vector<int64_t> softmaxSumShape = {1, 2, 1, 16};
+    std::vector<int64_t> attentionOutShape = {1, 2, 1, 512};
+    std::vector<int64_t> softmaxMaxShape = {1, 1, 2, 1};
+    std::vector<int64_t> softmaxSumShape = {1, 1, 2, 1};
     int ret = ACL_SUCCESS;
 
     // 1. Initialize device and stream

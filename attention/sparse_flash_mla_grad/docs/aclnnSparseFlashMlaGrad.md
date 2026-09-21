@@ -27,21 +27,21 @@
 
 - **计算公式**：
 
-    阶段一：根据不同cmp_ratio场景，对输入ori_kv与cmp_kv进行选择
+    阶段一：根据cmp_kv与cmp_sparse_indices是否传入选择计算场景，并对输入ori_kv与cmp_kv进行选择。
 
-    * 当cmp_ratio = 1 (SWA)：
+    * SWA（cmp_kv为空）：
 
     $$
     selectedKv\text{ }=\text{ }orikv
     $$
 
-    * 当cmp_ratio = 4 (SCFA)：
+    * SCFA（cmp_kv与cmp_sparse_indices均非空）：
 
     $$
     selectedKv\text{ }=concat(oriKv, \text{ }Gather \left( cmpkv,topkIndices \left[ i \left]  \left)) ,\text{ }0\text{ } < =i < \text{ }selectBlockCount\right. \right. \right. \right.
     $$
 
-    * else (CFA):
+    * CFA（cmp_kv非空且cmp_sparse_indices为空）：
 
     $$
     selectedKv\text{ }=concat(oriKv, \text{ }cmpkv)
@@ -439,7 +439,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>输入</td>
             <td>表示对oriKvOptional的压缩率。</td>
             <td>
-            取值范围：1~128。
+            取值范围：0~128。
             </td>
             <td>INT64</td>
             <td>N/A</td>
@@ -608,7 +608,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
     </table>
 
     <!-- npu="A3,910b" id7 -->
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：暂不支持sequsedQOptional、sequsedOriKvOptional、sequsedCmpKvOptional、oriTopkLengthOptional、cmpTopkLengthOptional、metadataOptional字段。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：暂不支持oriTopkLengthOptional、cmpTopkLengthOptional、metadataOptional字段。
 
     <!-- end id7 -->
 
@@ -708,6 +708,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
     <!-- end id9 -->
 
 - 公共约束
+    - 本接口不支持非连续输出。
     - 入参为空的场景处理：
         - query为空Tensor：直接返回。
 
@@ -765,7 +766,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
         <tr>
             <td>S1、S2</td>
             <td>支持泛化</td>
-            <td>支持S1、S2支持不等长</td>
+            <td>支持S1、S2不等长</td>
         </tr>
         <tr>
             <td>N1</td>

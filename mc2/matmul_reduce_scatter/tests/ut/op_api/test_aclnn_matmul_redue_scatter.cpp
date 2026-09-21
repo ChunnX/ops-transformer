@@ -82,7 +82,7 @@ TEST_F(L2AclnnMatmulReduceScatterTest, TestAclnnMatmulReduceScatterFirstApi3)
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
-TEST_F(L2AclnnMatmulReduceScatterTest, TestSixApi950)
+TEST_F(L2AclnnMatmulReduceScatterTest, TestSixApiA5)
 {
     TensorDesc x1Desc = TensorDesc({16, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc x2Desc = TensorDesc({256, 16}, ACL_FLOAT16, ACL_FORMAT_ND);

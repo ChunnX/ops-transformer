@@ -22,13 +22,8 @@
 #include "arch35/quant_flash_attn_kernel_hif8.h"
 #include "arch35/quant_flash_attn_template_tiling_key.h"
 #include "arch35/quant_flash_attn_tiling_data.h"
-#if __has_include("../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h")
 #include "../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
 #include "../../common/op_kernel/vector_common.h"
-#else
-#include "../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
-#include "../common/op_kernel/vector_common.h"
-#endif
 
 using namespace AscendC;
 using namespace optiling;
@@ -59,7 +54,6 @@ __aicore__ inline void quant_flash_attn_mxfp8(
     constexpr bool isDAligned = ConfigValue[config].d != inferDTemplateType::NotAligned &&
                                 static_cast<int32_t>(ConfigValue[config].d) % 64 == 0;
 
-    constexpr bool isFdConst = false;
     constexpr bool useDn = (quantMode == QFA_MXFP8_FP32_PREFILL);
 
     using CubeBlock =
@@ -68,7 +62,7 @@ __aicore__ inline void quant_flash_attn_mxfp8(
     using VecFaBlock =
         BaseApi::QuantFlashAttnBlockVecMxfp8<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType,
                                              s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType,
-                                             isFdConst, useDn, isDAligned>;
+                                             isFd, useDn, isDAligned>;
     using VecFdBlock =
         BaseApi::QuantFlashAttnBlockVecFlashDecode<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
                                                    s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
@@ -80,7 +74,7 @@ __aicore__ inline void quant_flash_attn_mxfp8(
     using VecFaBlockDummy =
         BaseApi::QuantFlashAttnBlockVecMxfp8Dummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
                                                   s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-                                                  hasAttenMask, KvLayoutType, isFdConst, useDn>;
+                                                  hasAttenMask, KvLayoutType, isFd, useDn>;
     using VecFdBlockDummy =
         BaseApi::QuantFlashAttnBlockVecFlashDecodeDummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
                                                         s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,

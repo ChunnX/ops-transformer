@@ -39,7 +39,7 @@ constexpr uint32_t X1_SCALE_INDEX = 3;
 constexpr uint32_t X2_SCALE_INDEX = 4;
 constexpr uint32_t C_INDEX = 0;
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16 * 1024 * 1024;
-constexpr uint32_t USER_WORKSPACE_A2 = 1 * 1024 * 1024;         // moeExpertNum_ * sizeof(uint32_t) + epWorldSize_ * 2 * 32
+constexpr uint32_t USER_WORKSPACE_A2 = 1 * 1024 * 1024; // moeExpertNum_ * sizeof(uint32_t) + epWorldSize_ * 2 * 32
 constexpr uint64_t CCL_BUFFER_MIN_BYTES = 200ULL * 1024 * 1024; // 校验HCCL BUFF空间大小
 constexpr uint32_t MB_BYTES = 1024 * 1024;
 constexpr uint64_t TILINGKEY_BIAS = 1U;
@@ -682,23 +682,6 @@ static void GetTilingKey(uint64_t &tilingKey, const MatmulReduceScatterV2AivMode
     return;
 }
 
-int32_t GetValueFromMKNConditionMap(int32_t m, int32_t k, int32_t n, int32_t defaultValue,
-                                    std::map<int, std::vector<std::vector<int>>> conditionMap)
-{
-    int32_t value = defaultValue;
-    for (auto &item : conditionMap) {
-        for (auto &condition : item.second) {
-            bool inRange = m > condition[CONDITION_M_ST] && m <= condition[CONDITION_M_END] &&
-                           k > condition[CONDITION_K_ST] && k <= condition[CONDITION_K_END] &&
-                           n > condition[CONDITION_N_ST] && n <= condition[CONDITION_N_END];
-            if (inRange) {
-                return item.first;
-            }
-        }
-    }
-    return value;
-}
-
 int32_t CeilDev(int32_t num, int32_t div)
 {
     if (div == 0) {
@@ -719,7 +702,7 @@ void CalTilingParam(CoCTiling &cocTilingData,
         auto value = item.second.value;
         auto conditionMap = item.second.conditionMap;
         if (!conditionMap.empty()) {
-            *item.first = GetValueFromMKNConditionMap(m, k, n, value, conditionMap);
+            *item.first = mc2tiling::GetValueFromMKNConditionMap(m, k, n, value, conditionMap);
         } else if (value != -1) {
             *item.first = value;
         }
@@ -1051,33 +1034,35 @@ void GetUsrWorkSpaceSize(uint32_t elementSize, uint32_t numBlocks, uint64_t &use
     userWorkSpaceSize += info.dequantSize;
     if (needCastBias) {
         const uint64_t biasBytes = static_cast<uint64_t>(info.N) * sizeof(float);
-        info.biasCastSize =
-            (biasBytes + HALF_KBYTE - 1) & ~(static_cast<uint64_t>(HALF_KBYTE) - 1);
+        info.biasCastSize = (biasBytes + HALF_KBYTE - 1) & ~(static_cast<uint64_t>(HALF_KBYTE) - 1);
         userWorkSpaceSize += info.biasCastSize;
     }
 }
 
+// 获取 scale 张量的数据类型；张量不存在时返回 false（X1/X2 校验共用）
+static bool GetScaleDType(const gert::TilingContext *context, int32_t index, ge::DataType &dtype)
+{
+    const gert::Tensor *scaleTensor = context->GetInputTensor(index);
+    if (scaleTensor == nullptr) {
+        return false;
+    }
+    dtype = scaleTensor->GetDataType();
+    return true;
+}
+
 static bool CheckDtype_X1(const gert::TilingContext *context)
 {
-    const gert::Tensor *x1Scale = context->GetInputTensor(X1_SCALE_INDEX);
-    if (x1Scale == nullptr) {
-        return false;
-    }
-    auto x1Type = x1Scale->GetDataType();
-    if (x1Type != ge::DT_FLOAT) {
-        return false;
-    }
-    return true;
+    ge::DataType x1Type = ge::DT_UNDEFINED;
+    return GetScaleDType(context, X1_SCALE_INDEX, x1Type) && x1Type == ge::DT_FLOAT;
 }
 
 static bool CheckDtype_X2(const gert::TilingContext *context, MatmulReduceScatterV2AivModeInfo &info,
                           ge::DataType cType)
 {
-    const gert::Tensor *x2Scale = context->GetInputTensor(X2_SCALE_INDEX);
-    if (x2Scale == nullptr) {
+    ge::DataType x2ScaleType = ge::DT_UNDEFINED;
+    if (!GetScaleDType(context, X2_SCALE_INDEX, x2ScaleType)) {
         return false;
     }
-    auto x2ScaleType = x2Scale->GetDataType();
     info.isX2ScaleTypeInt64 = false;
     /* x2ScaleType支持float类型 */
     if (x2ScaleType == ge::DT_FLOAT) {
@@ -1180,8 +1165,8 @@ ge::graphStatus MatmulReduceScatterTilingV2AivModeFunc(gert::TilingContext *cont
     info.quantFlag =
         (aType == ge::DT_INT8) && (bType == ge::DT_INT8) && (cType == ge::DT_BF16 || cType == ge::DT_FLOAT16);
     const auto biasDesc = context->GetOptionalInputDesc(BIAS_INDEX);
-    const bool needCastBias = !info.quantFlag && aType == ge::DT_BF16 && bType == ge::DT_BF16 &&
-                              biasDesc != nullptr && biasDesc->GetDataType() == ge::DT_BF16;
+    const bool needCastBias = !info.quantFlag && aType == ge::DT_BF16 && bType == ge::DT_BF16 && biasDesc != nullptr &&
+                              biasDesc->GetDataType() == ge::DT_BF16;
 
     // 3. 配置平台信息，GetTilingKey
     info.is910C = false;

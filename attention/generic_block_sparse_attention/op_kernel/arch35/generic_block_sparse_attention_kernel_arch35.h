@@ -83,18 +83,13 @@ public:
         if (params.cuSeqLengths != nullptr) {
             gCuSeqLengths.SetGlobalBuffer((__gm__ int64_t *)params.cuSeqLengths);
         }
-        AscendC::GlobalTensor<int64_t> gCuSeqLengthsKv;
-        if (params.cuSeqLengthsKv != nullptr) {
-            gCuSeqLengthsKv.SetGlobalBuffer((__gm__ int64_t *)params.cuSeqLengthsKv);
-        }
         AscendC::GlobalTensor<int32_t> gSequsedQ;
         const bool hasSequsedQ = (params.sequsedQ != nullptr);
         if (hasSequsedQ) {
             gSequsedQ.SetGlobalBuffer((__gm__ int32_t *)params.sequsedQ);
         }
         AscendC::GlobalTensor<int32_t> gSequsedKv;
-        const bool hasSequsedKv = (params.sequsedKv != nullptr);
-        if (hasSequsedKv) {
+        if (params.sequsedKv != nullptr) {
             gSequsedKv.SetGlobalBuffer((__gm__ int32_t *)params.sequsedKv);
         }
         AscendC::GlobalTensor<ElementO> gO;
@@ -217,13 +212,10 @@ public:
                 accum += batchLen;
             }
 
-            uint32_t kvStorageLen = static_cast<uint32_t>(gCuSeqLengthsKv.GetValue(static_cast<int64_t>(batchIdx + 1)) -
-                                                          gCuSeqLengthsKv.GetValue(static_cast<int64_t>(batchIdx)));
             uint32_t qStorageLen = static_cast<uint32_t>(gCuSeqLengths.GetValue(static_cast<int64_t>(batchIdx + 1)) -
                                                          gCuSeqLengths.GetValue(static_cast<int64_t>(batchIdx)));
-            uint32_t kvSeqlen = hasSequsedKv ?
-                                    static_cast<uint32_t>(gSequsedKv.GetValue(static_cast<int64_t>(batchIdx))) :
-                                    kvStorageLen;
+            // PA_BBND requires sequsedKv (host-enforced).
+            uint32_t kvSeqlen = static_cast<uint32_t>(gSequsedKv.GetValue(static_cast<int64_t>(batchIdx)));
             uint32_t qSeqlen =
                 hasSequsedQ ? static_cast<uint32_t>(gSequsedQ.GetValue(static_cast<int64_t>(batchIdx))) : qStorageLen;
             int64_t qStorageToken =
@@ -251,7 +243,7 @@ public:
                 continue;
             }
 
-            // TND + isPackedGQA=1: sparseBlockIdx 3D [N_kv, totalQBlocks, topK]
+            // layout_sparse_pattern=KVN_TotalQB_KB: sparseBlockIdx 3D [N_kv, totalQBlocks, topK]
             // totalQBlocks spans storage (cu) blocks; align with metadata qStorageBlockStarts.
             uint32_t globalQBlock = 0;
             for (uint32_t b = 0; b < batchIdx; ++b) {
@@ -444,6 +436,8 @@ private:
         kvBaseTile_ = tilingData->kvBaseTile;
         kStride0_ = tilingData->kStride0;
         vStride0_ = tilingData->vStride0;
+        residualBlockMode_ = tilingData->residualBlockMode;
+        isConsistentTopk_ = tilingData->isConsistentTopk;
     }
 
     __aicore__ inline void CalcOnChipBufTileInfo(
@@ -632,6 +626,8 @@ private:
     // PA_BBND page base strides (elements); may exceed blockSize*Nkv*D when dim0 is strided.
     uint64_t kStride0_;
     uint64_t vStride0_;
+    uint32_t residualBlockMode_;
+    uint32_t isConsistentTopk_;
     // base tile info
     uint32_t qBaseTile_;
     uint32_t kvBaseTile_;

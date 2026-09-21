@@ -56,9 +56,9 @@ aclnnStatus aclnnGenericBlockSparseAttentionGetWorkspaceSize(
   const aclTensor   *sequsedKvOptional,
   const aclTensor   *blockTableOptional,
   const aclIntArray *blockShape,
-  int64_t            isPackedGQA,
   char              *layoutQ,
   char              *layoutKv,
+  int64_t            layoutSparsePattern,
   double             scaleValue,
   int64_t            maskType,
   int64_t            quantType,
@@ -67,6 +67,8 @@ aclnnStatus aclnnGenericBlockSparseAttentionGetWorkspaceSize(
   int64_t            winLeft,
   int64_t            winRight,
   int64_t            returnSoftmaxlse,
+  int64_t            residualBlockMode,
+  bool               isConsistentTopK,
   aclTensor         *attentionOut,
   aclTensor         *softmaxLseOptional,
   uint64_t          *workspaceSize,
@@ -145,17 +147,17 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>sparseBlockIdx</td>
       <td>输入</td>
       <td>稀疏块索引数组，指定每个Q块选择的KV块索引。</td>
-      <td>当前仅支持TND + isPackedGQA=1。取值须为合法KV块索引（按cu存储长度分块）；无效位置可用-1填充，有效值须落在前sparseBlockCount个位置。isPackedGQA及其余shape见<a href="#layout对应关系说明">layout对应关系说明</a>。</td>
+      <td>取值须为合法KV块索引（按cu存储长度分块）；无效位置可用-1填充，有效值须落在前sparseBlockCount个位置。详细参考<a href="#layout对应关系说明">layout对应关系说明</a>。</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>[numKeyValueHeads, totalQBlocks, maxSparseBlockCount]</td>
+      <td>[numKeyValueHeads, totalQBlocks, maxKvBlockCount]</td>
       <td>×</td>
     </tr>
     <tr>
       <td>sparseBlockCount</td>
       <td>输入</td>
       <td>每个Q块实际选择的KV块数量。</td>
-      <td>当前仅支持TND + isPackedGQA=1。isPackedGQA含义与sparseBlockIdx相同。其他组合的shape见<a href="#layout对应关系说明">layout对应关系说明</a>。</td>
+      <td>详细参考<a href="#layout对应关系说明">layout对应关系说明</a>。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>[numKeyValueHeads, totalQBlocks]</td>
@@ -250,7 +252,8 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>
         可选输入，用于变长序列场景。
         <ul>
-          <li>layoutKv为TND/PA_BBND/PA_BNBD时必须传入。当前仅支持PA_BBND。</li>
+          <li>layoutKv为TND时必须传入。</li>
+          <li>layoutKv非TND时不传（须为nullptr）。当前仅支持PA_BBND。</li>
           <li>layoutKv为BNSD/BSND时：如传入，算子内按该输入指定的实际序列长度处理；如传入nullptr，按key/value的shape中的S处理（当前不支持）。</li>
           <li>元素为前缀和：第0个元素为0，最后一个元素等于各batch KV存储长度之和，后一个元素须≥前一个元素。</li>
         </ul>
@@ -281,8 +284,8 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>各batch中kv的实际序列长度。</td>
       <td>
         <ul>
-          <li>不指定实际长度可传入nullptr，表示与cuSeqLengthsKvOptional差分得到的存储长度相同。</li>
-          <li>传入时shape为(B,)，每个元素须≥0且≤对应batch的cu存储长度。与cu并存时的双长度语义见<a href="#其他约束">其他约束</a>。</li>
+          <li>layoutKv为PA_BBND时必须传入，shape为(B,)，每个元素须≥0。</li>
+          <li>layoutKv为TND时：不指定实际长度可传入nullptr，表示与cuSeqLengthsKvOptional差分得到的存储长度相同；传入时shape为(B,)，每个元素须≥0且≤对应batch的cu存储长度。与cu并存时的双长度语义见<a href="#其他约束">其他约束</a>。</li>
         </ul>
       </td>
       <td>INT32</td>
@@ -311,16 +314,6 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>-</td>
     </tr>
     <tr>
-      <td>isPackedGQA</td>
-      <td>输入</td>
-      <td>代表进行块状稀疏时，同一个group内的qHead是否共享同样的稀疏pattern<br>（注：不同batch之间不会共享同样的稀疏pattern，该入参仅区分head维度的共享情况）。</td>
-      <td>若取值为0，则代表同一个group内的qHead不共享同样的稀疏pattern；<br>若取值为1，则代表同一个group内的qHead共享同样的稀疏pattern。<br>当前仅支持1。</td>
-      <td>INT64</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
       <td>layoutQ</td>
       <td>输入</td>
       <td>代表输入query的数据排布格式。</td>
@@ -336,6 +329,16 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>代表输入key、value的数据排布格式。</td>
       <td>目标支持"TND""BNSD""BSND""PA_BBND""PA_BNBD"，详见<a href="#layout对应关系说明">layout对应关系说明</a>。当前仅支持"PA_BBND"。</td>
       <td>String</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>layoutSparsePattern</td>
+      <td>输入</td>
+      <td>代表输入的sparseBlockIdx、sparseBlockCount的数据排布格式。</td>
+      <td>当前仅支持取"4"，详细参考<a href="#layout对应关系说明">layout对应关系说明</a>。</td>
+      <td>INT64</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -443,6 +446,25 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>-</td>
     </tr>
     <tr>
+      <td>residualBlockMode</td>
+      <td>输入</td>
+      <td>表示KV序列以blockShapeY为单位进行稀疏后，尾部不完整块的状态。</td>
+      <td>当前仅支持取0或1。0代表尾部不完整块是否参与运算由sparseBlockIdx传入的值决定，1表示尾部不完整块必定参与运算，但必定不包含在sparseBlockIdx中。</td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>isConsistentTopK</td>
+      <td>输入</td>
+      <td>前置算子进行稀疏块选择时，同一batch同一head内每个Q块选择的KV块最大数量是否一致。</td>
+      <td>仅支持0或1。0代表不一致，1代表一致。</td>
+      <td>BOOL</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
       <td>attentionOut</td>
       <td>输出</td>
       <td>公式中的attentionOut。</td>
@@ -512,7 +534,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
     <tr>
       <td>ACLNN_ERR_PARAM_INVALID</td>
       <td>161002</td>
-      <td>isPackedGQA、layout、maskType、blockShape、softmaxPrecision、quantType、returnSoftmaxlse 等与约束不匹配。</td>
+      <td>layout、maskType、blockShape、softmaxPrecision、quantType、returnSoftmaxlse、layoutSparsePattern、residualBlockMode、isConsistentTopK 等与约束不匹配。</td>
     </tr>
     <tr>
       <td>ACLNN_ERR_INNER_NULLPTR</td>
@@ -593,7 +615,8 @@ aclnnStatus aclnnGenericBlockSparseAttention(
 | maxNumBlocksPerBatch | blockTable第二维，须≥ceilDiv(maxKvSeqLength, blockSize) |
 | qStorageLen_i | cuSeqLengthsQ前缀和差分得到的各batch存储长度 |
 | totalQBlocks | 按存储长度分块后的Q块总数，即$\sum_i \mathrm{ceilDiv}(qStorageLen_i, blockShapeX)$ |
-| maxSparseBlockCount | 也称topK，sparseBlockIdx最后一维，须不小于sparseBlockCount中所有元素的最大值，当前上限为256 |
+| totalKBlocks | 按存储长度分块后的KV块总数，即$\sum_i \mathrm{ceilDiv}(kvStorageLen_i, blockShapeY)$ |
+| maxKvBlockCount | sparseBlockIdx最后一维，须不小于sparseBlockCount中所有元素的最大值，当前上限为256 |
 | blockShapeX / blockShapeY | 稀疏块在Q方向、KV方向的块大小 |
 
 ### layout对应关系说明
@@ -688,46 +711,70 @@ query、attentionOut的shape由layoutQ决定：
   </tbody>
   </table>
 
-sparseBlockIdx、sparseBlockCount的shape由layoutQ与isPackedGQA决定。isPackedGQA=0：每个qHead对应的KV稀疏pattern不一致；isPackedGQA=1：GQA/MQA下同group每个qHead对应的KV稀疏pattern一致。
+sparseBlockIdx、sparseBlockCount的shape由layoutSparsePattern决定，当前layoutSparsePattern值仅支持传4。
 
   <table style="undefined;table-layout: fixed; width: 1155px"><colgroup>
   <col style="width: 140px">
-  <col style="width: 140px">
-  <col style="width: 515px">
-  <col style="width: 360px">
+  <col style="width: 380px">
+  <col style="width: 260px">
+  <col style="width: 375px">
   </colgroup>
   <thead>
     <tr>
-      <th>layoutQ</th>
-      <th>isPackedGQA</th>
+      <th>layoutSparsePattern</th>
       <th>sparseBlockIdx</th>
       <th>sparseBlockCount</th>
+      <th>描述</th>
     </tr>
   </thead>
   <tbody>
     <tr>
-      <td>TND</td>
+      <td>0</td>
+      <td>[batch, numKeyValueHeads, maxQBlockCount, maxKvBlockCount]</td>
+      <td>[batch, numKeyValueHeads, maxQBlockCount]</td>
+      <td><ul><li>同一个Group中的qHead共享sparsePattern</li><li>表示每个Q块选择了哪些KV块</li></ul></td>
+    </tr>
+    <tr>
       <td>1</td>
-      <td>[numKeyValueHeads, totalQBlocks, maxSparseBlockCount]</td>
+      <td>[batch, numKeyValueHeads, maxKvBlockCount, maxQBlockCount]</td>
+      <td>[batch, numKeyValueHeads, maxKvBlockCount]</td>
+      <td><ul><li>同一个Group中的qHead共享sparsePattern</li><li>表示每个KV块选择了哪些Q块</li></ul></td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>[batch, headNum, maxQBlockCount, maxKvBlockCount]</td>
+      <td>[batch, headNum, maxQBlockCount]</td>
+      <td><ul><li>同一个Group中的qHead有独立的sparsePattern</li><li>表示每个Q块选择了哪些KV块</li></ul></td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>[batch, headNum, maxKvBlockCount, maxQBlockCount]</td>
+      <td>[batch, headNum, maxKvBlockCount]</td>
+      <td><ul><li>同一个Group中的qHead有独立的sparsePattern</li><li>表示每个KV块选择了哪些Q块</li></ul></td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>[numKeyValueHeads, totalQBlocks, maxKvBlockCount]</td>
       <td>[numKeyValueHeads, totalQBlocks]</td>
+      <td><ul><li>同一个Group中的qHead共享sparsePattern</li><li>表示每个Q块选择了哪些KV块</li></ul></td>
     </tr>
     <tr>
-      <td>TND</td>
-      <td>0</td>
-      <td>[headNum, totalQBlocks, maxSparseBlockCount]（当前不支持）</td>
-      <td>[headNum, totalQBlocks]（当前不支持）</td>
+      <td>5</td>
+      <td>[numKeyValueHeads, totalKBlocks, maxQBlockCount]</td>
+      <td>[numKeyValueHeads, totalKBlocks]</td>
+      <td><ul><li>同一个Group中的qHead共享sparsePattern</li><li>表示每个KV块选择了哪些Q块</li></ul></td>
     </tr>
     <tr>
-      <td>BNSD/BSND</td>
-      <td>1</td>
-      <td>[batch, numKeyValueHeads, ceilDiv(maxQSeqLength, blockShapeX), maxSparseBlockCount]（当前不支持）</td>
-      <td>[batch, numKeyValueHeads, ceilDiv(maxQSeqLength, blockShapeX)]（当前不支持）</td>
+      <td>6</td>
+      <td>[headNum, totalQBlocks, maxKvBlockCount]</td>
+      <td>[headNum, totalQBlocks]</td>
+      <td><ul><li>同一个Group中的qHead有独立的sparsePattern</li><li>表示每个Q块选择了哪些KV块</li></ul></td>
     </tr>
     <tr>
-      <td>BNSD/BSND</td>
-      <td>0</td>
-      <td>[batch, headNum, ceilDiv(maxQSeqLength, blockShapeX), maxSparseBlockCount]（当前不支持）</td>
-      <td>[batch, headNum, ceilDiv(maxQSeqLength, blockShapeX)]（当前不支持）</td>
+      <td>7</td>
+      <td>[headNum, totalKBlocks, maxQBlockCount]</td>
+      <td>[headNum, totalKBlocks]</td>
+      <td><ul><li>同一个Group中的qHead有独立的sparsePattern</li><li>表示每个KV块选择了哪些Q块</li></ul></td>
     </tr>
   </tbody>
   </table>
@@ -961,8 +1008,9 @@ key、value的shape由layoutKv及是否使能Paged Cache决定，见<a href="#pa
 - 确定性计算：aclnnGenericBlockSparseAttention默认确定性实现。
 - 调用前须先执行aclnnGenericBlockSparseAttentionMetadata生成metadataOptional，再调用本接口；metadata须与当前输入/属性配套，每次调用须重新生成。
 - query/key/value的headDim(D)当前仅支持128；KV页blockSize当前仅支持128，且须等于blockShapeY。
-- TND + isPackedGQA=1时：totalQBlocks按cuSeqLengthsQ差分得到的存储长度分块，即$\sum_i \mathrm{ceilDiv}(qStorageLen_i, blockShapeX)$；sparse分块与QKV寻址均按该存储长度，不以seqused重切分。
-- sequsedQOptional/sequsedKvOptional与cu前缀和同时传入时：分核/任务空间按各batch实际有效长度（seqused）累加；各batch的seqused元素须≤对应cu存储长度，且须与Metadata侧完全一致。
+- TND时：totalQBlocks按cuSeqLengthsQ差分得到的存储长度分块，即$\sum_i \mathrm{ceilDiv}(qStorageLen_i, blockShapeX)$；sparse分块与QKV寻址均按该存储长度，不以seqused重切分。
+- layoutKv为PA_BBND时须传sequsedKvOptional，不传cuSeqLengthsKvOptional。
+- seqused与对应cu前缀和同时传入时（Q侧，及layoutKv为TND时的KV侧）：分核/任务空间按各batch实际有效长度（seqused）累加；各batch的seqused元素须≤对应cu存储长度，且须与Metadata侧完全一致。
 - 输入query、key、value的数据类型必须一致。
 - PA_BBND下key/value仅dim0（物理页轴）可非连续；页内blockSize×numKeyValueHeads×headDim须连续；stride0 ≥ blockSize×numKeyValueHeads×headDim且按numKeyValueHeads×headDim对齐。
 
@@ -1131,7 +1179,7 @@ int main()
   std::vector<int64_t> sparseCountShape = {N2, totalQBlocks};
   std::vector<int64_t> blockTableShape = {B, maxBlocks};
   std::vector<int64_t> cuSeqQShape = {B + 1};
-  std::vector<int64_t> cuSeqKvShape = {B + 1};
+  std::vector<int64_t> sequsedKvShape = {B};
   std::vector<int64_t> metadataShape = {1024};
   std::vector<int64_t> attnOutShape = {T, N1, D};
 
@@ -1142,7 +1190,7 @@ int main()
   void* sparseCountDeviceAddr = nullptr;
   void* metadataDeviceAddr = nullptr;
   void* cuSeqQDeviceAddr = nullptr;
-  void* cuSeqKvDeviceAddr = nullptr;
+  void* sequsedKvDeviceAddr = nullptr;
   void* blockTableDeviceAddr = nullptr;
   void* attnOutDeviceAddr = nullptr;
 
@@ -1153,7 +1201,7 @@ int main()
   aclTensor* sparseCount = nullptr;
   aclTensor* metadata = nullptr;
   aclTensor* cuSeqQ = nullptr;
-  aclTensor* cuSeqKv = nullptr;
+  aclTensor* sequsedKv = nullptr;
   aclTensor* blockTable = nullptr;
   aclTensor* attnOut = nullptr;
 
@@ -1172,7 +1220,7 @@ int main()
   std::vector<int32_t> blockTableHostData(blockTableSize);
   std::iota(blockTableHostData.begin(), blockTableHostData.end(), 0);
   std::vector<int64_t> cuSeqQHostData = {0, S1};
-  std::vector<int64_t> cuSeqKvHostData = {0, S2};
+  std::vector<int32_t> sequsedKvHostData = {static_cast<int32_t>(S2)};
   std::vector<int32_t> metadataHostData(1024, 0);
   std::vector<uint16_t> attnOutHostData = MakeFp16Data(attnOutSize, 0.0f);
 
@@ -1204,7 +1252,7 @@ int main()
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(cuSeqQHostData, cuSeqQShape, &cuSeqQDeviceAddr, aclDataType::ACL_INT64, &cuSeqQ);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(cuSeqKvHostData, cuSeqKvShape, &cuSeqKvDeviceAddr, aclDataType::ACL_INT64, &cuSeqKv);
+  ret = CreateAclTensor(sequsedKvHostData, sequsedKvShape, &sequsedKvDeviceAddr, aclDataType::ACL_INT32, &sequsedKv);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(blockTableHostData, blockTableShape, &blockTableDeviceAddr, aclDataType::ACL_INT32,
                         &blockTable);
@@ -1223,8 +1271,8 @@ int main()
   uint64_t metadataWorkspaceSize = 0;
   aclOpExecutor* metadataExecutor = nullptr;
   ret = aclnnGenericBlockSparseAttentionMetadataGetWorkspaceSize(
-      sparseIdx, sparseCount, cuSeqQ, cuSeqKv, nullptr, nullptr, S1, S2, N1, N2, D, blockShape, 1, layoutQ, layoutKv, 1,
-      0, 1, -1, -1, metadata, &metadataWorkspaceSize, &metadataExecutor);
+      sparseIdx, sparseCount, cuSeqQ, nullptr, nullptr, sequsedKv, S1, S2, N1, N2, D, blockShape, layoutQ, layoutKv, 4, 1,
+      0, 1, -1, -1, 0, 0, metadata, &metadataWorkspaceSize, &metadataExecutor);
   CHECK_RET(ret == ACL_SUCCESS,
             LOG_PRINT("aclnnGenericBlockSparseAttentionMetadataGetWorkspaceSize failed. ERROR: %d\n", ret);
             return ret);
@@ -1248,8 +1296,8 @@ int main()
   uint64_t workspaceSize = 0;
   aclOpExecutor* executor = nullptr;
   ret = aclnnGenericBlockSparseAttentionGetWorkspaceSize(
-      q, k, v, sparseIdx, sparseCount, metadata, nullptr, nullptr, nullptr, nullptr, nullptr, cuSeqQ, cuSeqKv, nullptr,
-      nullptr, blockTable, blockShape, 1, layoutQ, layoutKv, scaleValue, 1, 0, 0.0, 1, -1, -1, 0, attnOut, nullptr,
+      q, k, v, sparseIdx, sparseCount, metadata, nullptr, nullptr, nullptr, nullptr, nullptr, cuSeqQ, nullptr, nullptr,
+      sequsedKv, blockTable, blockShape, layoutQ, layoutKv, 4, scaleValue, 1, 0, 0.0, 1, -1, -1, 0, 0, 0, attnOut, nullptr,
       &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS,
             LOG_PRINT("aclnnGenericBlockSparseAttentionGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
@@ -1278,7 +1326,7 @@ int main()
   aclDestroyTensor(sparseCount);
   aclDestroyTensor(metadata);
   aclDestroyTensor(cuSeqQ);
-  aclDestroyTensor(cuSeqKv);
+  aclDestroyTensor(sequsedKv);
   aclDestroyTensor(blockTable);
   aclDestroyTensor(attnOut);
 
@@ -1290,7 +1338,7 @@ int main()
   aclrtFree(sparseCountDeviceAddr);
   aclrtFree(metadataDeviceAddr);
   aclrtFree(cuSeqQDeviceAddr);
-  aclrtFree(cuSeqKvDeviceAddr);
+  aclrtFree(sequsedKvDeviceAddr);
   aclrtFree(blockTableDeviceAddr);
   aclrtFree(attnOutDeviceAddr);
   if (metadataWorkspaceSize > 0) {

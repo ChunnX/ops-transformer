@@ -1,12 +1,12 @@
-/* *
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
-  */
+/**
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file all_gather_matmul_tiling_base.cpp
@@ -526,9 +526,8 @@ uint32_t AllGatherMatmulTilingBase::AllGatherSplitM(mc2tiling::TilingArgs &args,
 
 CutResult AllGatherMatmulTilingBase::GetTilingResult()
 {
-    SocVersion inputSocVersion = (npuArch_ == NpuArch::DAV_3510) ? SocVersion::SOC950 : SocVersion::SOC910_B;
     OP_LOGD(opName_, "Start to find proper tileCnt by formulaic tiling.");
-    AllGatherPlusMMV2 tileFormulate(args_, args_.rankDim, KernelType::ALL_GATHER, inputSocVersion);
+    AllGatherPlusMMV2 tileFormulate(args_, args_.rankDim, KernelType::ALL_GATHER, npuArch_);
     tileFormulate.GetTiling();
     return tileFormulate.tilingM_.cutRes;
 }
@@ -613,6 +612,7 @@ bool AllGatherMatmulTilingBase::AnalyzeAttrs()
     auto attrs = context_->GetAttrs();
     OP_TILING_CHECK((attrs == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName_, "attrs"), return false);
     group_ = attrs->GetAttrPointer<char>(GROUP);
+    OP_TILING_CHECK(group_ == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "group"), return false);
     commMode_ = attrs->GetAttrPointer<char>(COMM_MODE_INDEX);
     auto isTransA = attrs->GetAttrPointer<bool>(IS_TRANS_A);
     auto isTransB = attrs->GetAttrPointer<bool>(IS_TRANS_B);
@@ -654,7 +654,8 @@ bool AllGatherMatmulTilingBase::AnalyzeAttrs()
     //   packed - PerBlock 量化 (M | N<<16 | K<<32, FLOAT scale)
     // 仅对非 fp8 输入硬拒非零值; fp8 路径由子类 IsCapable +
     // AllGatherQuantBmmHelper::GetShapeAttrsInfo 区分校验, base 不拒 (否则 MX/PerBlock 不可达)。
-    auto blockSize = *context_->GetAttrs()->GetAttrPointer<int64_t>(BLOCK_SIZE_INDEX);
+    auto blockSizePtr = attrs->GetAttrPointer<int64_t>(BLOCK_SIZE_INDEX);
+    const int64_t blockSize = blockSizePtr != nullptr ? *blockSizePtr : 0;
     bool x1IsFp8 = CheckSupportDtype(context_->GetInputDesc(INPUT_X1)->GetDataType(), FP8_DTYPE_SUPPORT_LIST);
     OP_TILING_CHECK(!x1IsFp8 && blockSize != 0,
                     OP_LOGE_WITH_INVALID_ATTR(opName_, "blockSize", std::to_string(blockSize).c_str(), "0"),
@@ -705,7 +706,7 @@ uint64_t AllGatherMatmulTilingBase::GetStorageA(Mc2Tiling::RCSTiling &rcsCfg)
     uint64_t storageA = 0;
 
     // DAV_3510 全场景未使用nd2nzLen这个空间，无需申请
-    if (npuArch_ != NpuArch::DAV_3510) {
+    if (npuArch_ != Ops::Base::DAV_3510) {
         // step1: ND2NZ
         if (gatherIndex == 0U) { // 转置B
             // 计算ND2NZ需使用空间方法保持与MMV3 tiling计算逻辑一致
@@ -759,7 +760,7 @@ uint64_t AllGatherMatmulTilingBase::GetTilingKey() const
 
     // Non-A5 platform must use AICPU mode
     uint8_t commMode = Mc2Comm::COMM_MODE_AICPU;
-    if (npuArch_ == NpuArch::DAV_3510) {
+    if (npuArch_ == Ops::Base::DAV_3510) {
         if (std::strncmp(commMode_, "ccu", CMP_MAX_LEN) == 0) {
             commMode = Mc2Comm::COMM_MODE_CCU;
         }

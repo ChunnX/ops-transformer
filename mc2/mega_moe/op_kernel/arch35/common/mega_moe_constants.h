@@ -15,6 +15,11 @@
 
 namespace MegaMoeImpl {
 
+constexpr uint32_t RANK_SYNC_COUNTER_OFFSET_BYTES = 48U * 1024U;
+constexpr uint32_t RANK_SYNC_COUNTER_SLOT_BYTES = 64U;
+
+constexpr int64_t MAX_INT16_TOPK_INDEX_COUNT = 1LL << 15;
+
 enum class MegaMoeActMode : uint8_t {
     SWIGLU = 0U,
     SITU = 1U,
@@ -26,6 +31,20 @@ enum class MegaMoeActSubMode : uint8_t {
     DEFAULT = 0U,
     LINEAR = 1U,
 };
+
+enum class MegaMoeGmmMode : uint8_t {
+    A8W8_ND = 0U,
+    A8W4_NZ = 1U,
+    A8W8_NZ = 2U,
+    A4W4_ND = 3U,
+    A4W4_NZ = 4U,
+};
+
+constexpr uint8_t GMM_MODE_A8W8_ND = static_cast<uint8_t>(MegaMoeGmmMode::A8W8_ND);
+constexpr uint8_t GMM_MODE_A8W4_NZ = static_cast<uint8_t>(MegaMoeGmmMode::A8W4_NZ);
+constexpr uint8_t GMM_MODE_A8W8_NZ = static_cast<uint8_t>(MegaMoeGmmMode::A8W8_NZ);
+constexpr uint8_t GMM_MODE_A4W4_ND = static_cast<uint8_t>(MegaMoeGmmMode::A4W4_ND);
+constexpr uint8_t GMM_MODE_A4W4_NZ = static_cast<uint8_t>(MegaMoeGmmMode::A4W4_NZ);
 
 constexpr uint64_t M_VALUE = 0UL;
 constexpr uint64_t N_VALUE = 1UL;
@@ -67,8 +86,6 @@ constexpr uint32_t SYNC_EVENT_ID3 = 3;
 constexpr uint32_t SYNC_EVENT_ID4 = 4;
 constexpr uint32_t SYNC_EVENT_ID5 = 5;
 constexpr int64_t GM_FLAG_POLL_BACKOFF_CYCLES = 200;
-constexpr int64_t E5M2_QUANT = 3U;
-constexpr int64_t E2M1_QUANT = 5U;
 constexpr int64_t OVERFLOW_MODE_CTRL = 60U;
 constexpr uint8_t COMBINE_NO_QUANT = 0;
 constexpr uint8_t MXFP8_E4M3_COMM_QUANT = 4;

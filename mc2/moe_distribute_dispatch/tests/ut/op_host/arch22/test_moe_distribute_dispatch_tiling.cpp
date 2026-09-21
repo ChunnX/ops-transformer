@@ -613,7 +613,6 @@ TEST_F(MoeDistributeDispatchArch22TilingTest, A2ShapeAndEpRankId)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-
 // 背景：4机 每机器8卡  每卡8个专家  由于deepseek 总共256 专家
 // 可选传入默认值   除了ep_rank_id = 33  quant_mode = 2 同时x的shape{16,7160} 异常
 TEST_F(MoeDistributeDispatchArch22TilingTest, A2MoeExpertNum)
@@ -693,7 +692,6 @@ TEST_F(MoeDistributeDispatchArch22TilingTest, EpWorldSize384)
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
-
 
 TEST_F(MoeDistributeDispatchArch22TilingTest, EpWorldSize72)
 {
@@ -1183,7 +1181,7 @@ TEST_F(MoeDistributeDispatchArch22TilingTest, CheckWinSizeTooSmall)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_FAILED);
 }
 
-// Success on Ascend950 (A5 path through base tiling)
+// Success on A5 (DAV_3510 path through base tiling)
 TEST_F(MoeDistributeDispatchArch22TilingTest, A5GlobalBsNonZero)
 {
     struct MoeDistributeDispatchCompileInfo {};
@@ -1218,7 +1216,7 @@ TEST_F(MoeDistributeDispatchArch22TilingTest, A5GlobalBsNonZero)
          {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
          {"expert_token_nums_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}},
-        &compileInfo, "Ascend950", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, kSkipTilingKeyCheck);
 }

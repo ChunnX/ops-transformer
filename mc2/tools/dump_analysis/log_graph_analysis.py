@@ -37,7 +37,7 @@ def get_log_path(log_path_func):
 
 def get_graph_path(graph_path_func):
     graph_path_dict_func = {}
-    pattern = re.compile("graph_.*_device(\d+)\.json$", re.I)
+    pattern = re.compile(r"graph_.*_device(\d+)\.json$", re.I)
     for file in Path(graph_path_func).rglob("graph_*.json"):
         match = pattern.match(file.name)
         if match:
@@ -105,7 +105,13 @@ def compare_graph_info(graph_info_func):
 
 def get_plog_error(log_path_list_func):
     # 新增ras_code存储键
-    result = {"error1": [], "error2": [], "error3": [], "error4": [], "ras_code_0x81b18603": []}
+    result = {
+        "error1": [],
+        "error2": [],
+        "error3": [],
+        "error4": [],
+        "ras_code_0x81b18603": [],
+    }
 
     # 遍历所有日志文件
     for log_path in log_path_list_func:
@@ -250,7 +256,7 @@ def handle_ras_code(result):
     if total_cnt > 0:
         logging.info(
             "检测到 ras_code=0x81b18603 全日志匹配记录:%d个,该类报错通常为UB链路问题,下列为前10条内容",
-            total_cnt
+            total_cnt,
         )
         # 控制台仅展示前10条
         for idx, content in enumerate(ras_list[:10], 1):

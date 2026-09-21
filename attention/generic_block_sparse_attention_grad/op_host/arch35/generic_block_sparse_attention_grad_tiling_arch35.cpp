@@ -59,16 +59,11 @@ protected:
             return false;
         }
         if (blockShapeY_ < 128 || blockShapeY_ % 64 != 0) {
-            OP_LOGE(context_->GetNodeName(), "block_shape[1] must be >= 128 and 64-aligned.");
+            OP_LOGE(context_->GetNodeName(), "block_shape[1] must be >= 128 and 64-aligned, got blockShapeY=%ld.",
+                    static_cast<int64_t>(blockShapeY_));
             return false;
         }
-        // Cube tile baseN shares UB/L1 with baseM; current layout budgets baseN<=128.
-        if (blockShapeY_ > BASE_M) {
-            OP_LOGE(context_->GetNodeName(), "block_shape[1]=%ld exceeds supported cube baseN=%ld (UB/L1 budget).",
-                    blockShapeY_, BASE_M);
-            return false;
-        }
-        if (isPackedGqa_ != 1) {
+        if (isPackedGQA_ != 1) {
             OP_LOGE(context_->GetNodeName(), "only support is_packed_gqa == 1.");
             return false;
         }
@@ -89,52 +84,58 @@ protected:
 
     ge::graphStatus GetShapeAttrsInfo() override
     {
-        // Inputs: query=0, key=1, value=2, ..., rsvd_block_idx=6, rsvd_block_count=7, metadata=8
-        // Optional: atten_mask=9, cu_seq_lengths=10, cu_seq_lengths_kv=11, seqused_q=12, seqused_kv=13.
+        // Inputs: query=0, key=1, value=2, ..., sparse_block_idx=6, sparse_block_count=7
+        // Optional: metadata=8, atten_mask=9, cu_seq_lengths_q=10, cu_seq_lengths_kv=11, seqused_q=12, seqused_kv=13.
         auto qInputDesc = context_->GetInputDesc(0);
         const gert::StorageShape *queryShape = context_->GetInputShape(0);
         const gert::StorageShape *keyShape = context_->GetInputShape(1);
         const gert::StorageShape *valueShape = context_->GetInputShape(2);
         const gert::StorageShape *idxShape = context_->GetInputShape(6);
         const gert::StorageShape *cntShape = context_->GetInputShape(7);
-        const gert::StorageShape *metaShape = context_->GetInputShape(8);
+        const gert::StorageShape *metaShape = context_->GetOptionalInputShape(8);
 
         const auto *attrs = context_->GetAttrs();
         if (attrs == nullptr || qInputDesc == nullptr || queryShape == nullptr || keyShape == nullptr ||
-            valueShape == nullptr || idxShape == nullptr || cntShape == nullptr || metaShape == nullptr) {
+            valueShape == nullptr || idxShape == nullptr || cntShape == nullptr) {
             OP_LOGE(context_->GetNodeName(), "required inputs/attrs are null.");
+            return ge::GRAPH_FAILED;
+        }
+        if (metaShape == nullptr) {
+            OP_LOGE(context_->GetNodeName(), "metadata must be provided.");
             return ge::GRAPH_FAILED;
         }
 
         dataType_ = qInputDesc->GetDataType();
 
-        // Attrs: block_shape, is_packed_gqa, q_input_layout, kv_input_layout, scale_value,
-        //        mask_type, softmax_precision, window_size_left, window_size_right
         const auto *blockShapeList = attrs->GetListInt(0);
-        isPackedGqa_ = static_cast<int32_t>(*attrs->GetAttrPointer<int64_t>(1));
+        isPackedGQA_ = static_cast<int32_t>(*attrs->GetAttrPointer<int64_t>(1));
         qLayout_ = attrs->GetAttrPointer<char>(2);
         kvLayout_ = attrs->GetAttrPointer<char>(3);
         softmaxScale_ = *attrs->GetAttrPointer<float>(4);
         maskType_ = static_cast<uint32_t>(*attrs->GetAttrPointer<int64_t>(5));
-        windowSizeLeft_ = static_cast<int32_t>(*attrs->GetAttrPointer<int64_t>(7));
-        windowSizeRight_ = static_cast<int32_t>(*attrs->GetAttrPointer<int64_t>(8));
+        winLeft_ = static_cast<int32_t>(*attrs->GetAttrPointer<int64_t>(7));
+        winRight_ = static_cast<int32_t>(*attrs->GetAttrPointer<int64_t>(8));
 
         if (qLayout_ == nullptr || kvLayout_ == nullptr || strcmp(qLayout_, kvLayout_) != 0) {
-            OP_LOGE(context_->GetNodeName(), "q_input_layout must equal kv_input_layout.");
+            OP_LOGE(context_->GetNodeName(), "layout_q must equal layout_kv.");
             return ge::GRAPH_FAILED;
         }
 
-        if (blockShapeList != nullptr && blockShapeList->GetSize() >= 2) {
-            const int64_t *data = blockShapeList->GetData();
-            blockShapeX_ = static_cast<int32_t>(data[0]);
-            blockShapeY_ = static_cast<int32_t>(data[1]);
-        } else {
-            blockShapeX_ = 1;
-            blockShapeY_ = 128;
+        if (blockShapeList == nullptr) {
+            OP_LOGE(context_->GetNodeName(), "block_shape attr is missing.");
+            return ge::GRAPH_FAILED;
         }
+        if (blockShapeList->GetSize() != 2) {
+            OP_LOGE(context_->GetNodeName(), "block_shape must contain two elements [x, y], got size %zu.",
+                    blockShapeList->GetSize());
+            return ge::GRAPH_FAILED;
+        }
+        const int64_t *data = blockShapeList->GetData();
+        blockShapeX_ = static_cast<int32_t>(data[0]);
+        blockShapeY_ = static_cast<int32_t>(data[1]);
 
         if (idxShape->GetOriginShape().GetDimNum() != 4 || cntShape->GetOriginShape().GetDimNum() != 3) {
-            OP_LOGE(context_->GetNodeName(), "rsvd_block_idx must be 4D and rsvd_block_count must be 3D.");
+            OP_LOGE(context_->GetNodeName(), "sparse_block_idx must be 4D and sparse_block_count must be 3D.");
             return ge::GRAPH_FAILED;
         }
         batchNum_ = idxShape->GetStorageShape().GetDim(0);
@@ -150,7 +151,7 @@ protected:
             auto cuQ = context_->GetOptionalInputTensor(10);
             auto cuKv = context_->GetOptionalInputTensor(11);
             if (cuQ == nullptr || cuKv == nullptr) {
-                OP_LOGE(context_->GetNodeName(), "TND requires cu_seq_lengths and cu_seq_lengths_kv.");
+                OP_LOGE(context_->GetNodeName(), "TND requires cu_seq_lengths_q and cu_seq_lengths_kv.");
                 return ge::GRAPH_FAILED;
             }
             // seqused_q/kv (inputs 12/13) are dynamic device values. They are
@@ -160,7 +161,7 @@ protected:
             headDim_ = queryShape->GetStorageShape().GetDim(2);
             kvSeqLen_ = keyShape->GetStorageShape().GetDim(0);
             if (static_cast<int64_t>(keyShape->GetStorageShape().GetDim(1)) != kvHeadNum_) {
-                OP_LOGE(context_->GetNodeName(), "key N2 mismatch with rsvd_block_idx.");
+                OP_LOGE(context_->GetNodeName(), "key N2 mismatch with sparse_block_idx.");
                 return ge::GRAPH_FAILED;
             }
         } else if (strcmp(qLayout_, BSND_STR) == 0) {
@@ -199,9 +200,9 @@ protected:
         tilingData_.set_maxS1(maxS1_);
         tilingData_.set_numJ(numJ_);
         tilingData_.set_maskType(maskType_);
-        tilingData_.set_isPackedGqa(static_cast<uint32_t>(isPackedGqa_));
-        tilingData_.set_windowSizeLeft(windowSizeLeft_);
-        tilingData_.set_windowSizeRight(windowSizeRight_);
+        tilingData_.set_isPackedGQA(static_cast<uint32_t>(isPackedGQA_));
+        tilingData_.set_winLeft(winLeft_);
+        tilingData_.set_winRight(winRight_);
         return ge::GRAPH_SUCCESS;
     }
 
@@ -215,7 +216,7 @@ protected:
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
         auto cubeCoreNum = ascendcPlatform.GetCoreNumAic();
         uint32_t baseM = BASE_M;
-        uint32_t baseN = static_cast<uint32_t>(blockShapeY_);
+        uint32_t baseN = BASE_M;
 
         tilingData_.set_BlockX(static_cast<uint32_t>(blockShapeX_));
         tilingData_.set_BlockY(static_cast<uint32_t>(blockShapeY_));
@@ -241,7 +242,6 @@ protected:
 
     ge::graphStatus GetWorkspaceSize() override
     {
-        // Design §4.7: sftg → dq → dk → dv (fp32 user workspace)
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
         uint64_t sysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
         uint64_t usrOffset = 0;
@@ -252,8 +252,6 @@ protected:
         if (strcmp(qLayout_, TND_STR) == 0) {
             dqSize = static_cast<uint64_t>(qSeqLen_) * qHeadNum_ * headDim_;
             dkSize = static_cast<uint64_t>(kvSeqLen_) * kvHeadNum_ * headDim_;
-            // Pad sftg so DataCopy of last EvenCore tail cannot write past the buffer
-            // (T=1024 / 56 AIVs leaves a non-16-aligned tail that may round up).
             sftgSize = static_cast<uint64_t>(AlignTo(static_cast<int64_t>(qSeqLen_) * qHeadNum_ * 8, 256));
         } else {
             dqSize = static_cast<uint64_t>(batchNum_) * qSeqLen_ * qHeadNum_ * headDim_;
@@ -271,7 +269,6 @@ protected:
         usrOffset += dkSize * sizeof(float);
         tilingData_.set_dvWorkspaceOffset(usrOffset);
         usrOffset += dkSize * sizeof(float);
-        // Per-cube dQ_sel scratch (2 ping-pong slots): Fixpipe [baseM, D] then Vector scatter.
         tilingData_.set_dqSelWorkspaceOffset(usrOffset);
         usrOffset += tilingData_.get_cubeCoreNum() * 2 * tilingData_.get_baseM() * headDim_ * sizeof(float);
 
@@ -288,7 +285,6 @@ protected:
 
     uint64_t GetTilingKey() const override
     {
-        // 1000 BF16 BSND, 1001 FP16 BSND, 1002 BF16 BNSD, 1003 FP16 BNSD, 1004 BF16 TND, 1005 FP16 TND
         uint64_t key = 1000;
         key = (dataType_ == ge::DT_BF16) ? key : key + 0b001;
         if (strcmp(qLayout_, BSND_STR) == 0) {
@@ -320,11 +316,11 @@ private:
     int64_t numJ_{0};
     int32_t blockShapeX_{1};
     int32_t blockShapeY_{128};
-    int32_t isPackedGqa_{1};
+    int32_t isPackedGQA_{1};
     uint32_t maskType_{0};
     float softmaxScale_{1.0f};
-    int32_t windowSizeLeft_{-1};
-    int32_t windowSizeRight_{-1};
+    int32_t winLeft_{-1};
+    int32_t winRight_{-1};
 };
 
 REGISTER_TILING_TEMPLATE_WITH_ARCH(GenericBlockSparseAttentionGrad, GenericBlockSparseAttentionGradArch35Tiling,

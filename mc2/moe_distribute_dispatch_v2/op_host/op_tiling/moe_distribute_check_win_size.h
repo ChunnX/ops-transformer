@@ -95,7 +95,7 @@ inline ge::graphStatus CheckActualWinSize(const gert::TilingContext *context, co
                             maxBs, h, actualSize / MB_SIZE + 1UL, hcclBufferSizeEp / MB_SIZE),
                         return ge::GRAPH_FAILED);
     } else {
-        if (socVersion == "Ascend950") {
+        if (mc2tiling::GetNpuArch(context) == Ops::Base::DAV_3510) {
             actualSize += epWorldSize * EP_RANK_OFFSET_STEP;
             OP_TILING_CHECK(
                 (actualSize > maxWindowSizeEp),
@@ -151,16 +151,22 @@ inline ge::graphStatus CheckWinSize(const gert::TilingContext *context, const ch
             OP_LOGE_WITH_INVALID_INPUT(nodeName, "cclBuffSizePtr");
             return ge::GRAPH_FAILED;
         }
-        OP_TILING_CHECK(*cclBuffSizePtr < 0,
-                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "cclBuffSizePtr", std::to_string(*cclBuffSizePtr).c_str(),
-                                                  "should be >= 0"),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            *cclBuffSizePtr < static_cast<int64_t>(MB_SIZE),
+            OP_LOGE_WITHOUT_REPORT(nodeName, "ccl_buffer_size is too small: %ld B < %lu B.", *cclBuffSizePtr, MB_SIZE),
+            return ge::GRAPH_FAILED);
         maxWindowSizeEp = *cclBuffSizePtr - MB_SIZE;
         hcclBufferSizeEp = *cclBuffSizePtr;
     }
     uint64_t h = static_cast<uint64_t>(winSizeData.h);
     // combine数据区 token首地址对齐512
-    uint64_t tokenNeedSizeCombine = ((h * MAX_OUT_DTYPE_SIZE + WIN_ADDR_ALIGN - 1UL) / WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
+    uint64_t tokenNeedSizeCombine = 0;
+    if (mc2tiling::GetSocVersion(context) == "Ascend950") {
+        tokenNeedSizeCombine =
+            ((h * MAX_OUT_DTYPE_SIZE + FULL_MESH_DATA_ALIGN - 1UL) / FULL_MESH_DATA_ALIGN) * WIN_ADDR_ALIGN;
+    } else {
+        tokenNeedSizeCombine = ((h * MAX_OUT_DTYPE_SIZE + WIN_ADDR_ALIGN - 1UL) / WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
+    }
     // dispatch数据区 token首对齐512；expertScale复用三元组后的对齐空间，不增加窗口占用
     uint64_t tokenActualLen =
         ((h * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN + SCALE_EXPAND_IDX_BUFFER;
@@ -173,7 +179,12 @@ inline ge::graphStatus CheckWinSize(const gert::TilingContext *context, const ch
                                        tokenNeedSizeDispatch, tokenNeedSizeCombine) != ge::GRAPH_SUCCESS,
                     OP_LOGE_WITHOUT_REPORT(nodeName, "Tiling check actual window size failed."),
                     return ge::GRAPH_FAILED);
-    winSizeData.totalWinSizeEp = (maxWindowSizeEp - winSizeData.epWorldSize * EP_RANK_OFFSET_STEP);
+    uint64_t rankOffsetSize = winSizeData.epWorldSize * EP_RANK_OFFSET_STEP;
+    OP_TILING_CHECK(maxWindowSizeEp < rankOffsetSize,
+                    OP_LOGE_WITHOUT_REPORT(nodeName, "maxWindowSizeEp is too small: %lu B < %lu B (epWorldSize=%lu).",
+                                           maxWindowSizeEp, rankOffsetSize, winSizeData.epWorldSize),
+                    return ge::GRAPH_FAILED);
+    winSizeData.totalWinSizeEp = maxWindowSizeEp - rankOffsetSize;
     OP_LOGD(nodeName, "windowSize = %lu", maxWindowSizeEp);
     return ge::GRAPH_SUCCESS;
 }

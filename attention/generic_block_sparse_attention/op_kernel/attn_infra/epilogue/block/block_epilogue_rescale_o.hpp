@@ -12,12 +12,12 @@
 #define BLOCK_EPILOGUE_RESCALE_O_HPP
 
 #include <limits>
-#include "../../../attn_infra/base_defs.hpp"
-#include "../../../attn_infra/arch/resource.hpp"
-#include "../../../attn_infra/epilogue/dispatch_policy.hpp"
-#include "../../../attn_infra/epilogue/tile_common/tile_copy.hpp"
-#include "../../../attn_infra/gemm_coord.hpp"
-#include "../../../attn_infra/matrix_coord.hpp"
+#include "../../../attn_infra/gbsa_base_defs.hpp"
+#include "../../../attn_infra/arch/gbsa_resource.hpp"
+#include "../../../attn_infra/epilogue/gbsa_epilogue_dispatch_policy.hpp"
+#include "../../../attn_infra/epilogue/tile_common/gbsa_epilogue_tile_copy.hpp"
+#include "../../../attn_infra/gbsa_gemm_coord.hpp"
+#include "../../../attn_infra/gbsa_matrix_coord.hpp"
 
 namespace NpuArch::Epilogue::Block {
 
@@ -436,6 +436,9 @@ public:
         if (rowNum == 0) {
             return;
         }
+        // A previous task may still be copying from the shared output UB.
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID3);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID3);
         AscendC::Duplicate(goUbTensor32, 0.0f, rowNum * colNum);
         AscendC::Duplicate(lse32_ubuf_tensor, std::numeric_limits<float>::lowest(), RoundUp(rowNum, FLOAT_BLOCK_SIZE));
         AscendC::PipeBarrier<PIPE_V>();
@@ -463,6 +466,9 @@ public:
         if (rowNum == 0U) {
             return;
         }
+        // A previous task may still be copying from the shared output UB.
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID3);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID3);
         AscendC::Duplicate(goUbTensor16, static_cast<ElementOutput>(0), rowNum * embed);
         if constexpr (LSE_MODE == LseMode::OUT_ONLY) {
             AscendC::Duplicate(lse32_ubuf_tensor, -3.402823466e+38F, RoundUp(rowNum, FLOAT_BLOCK_SIZE));
