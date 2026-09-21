@@ -749,25 +749,36 @@ mask_mode参数解释
 - 两级TopK（candidate）调用：
 
   ```python
-  from cann_ops_transformer.ops import (
-      quant_lightning_indexer_candidate_source,
-      quant_lightning_indexer_candidate_consumer,
+  from cann_ops_transformer.ops import quant_lightning_indexer_candidate
+
+  # source层（candidate_mode=1）：输出候选块索引candidate_topk_index
+  sparse_indices, sparse_values, candidate_topk_index = quant_lightning_indexer_candidate(
+      query, key, weights, query_dequant_scale, key_dequant_scale,
+      topk=topk,
+      quant_mode=1,
+      block_table=block_table,
+      metadata=metadata,
+      seqused_k=seqused_k,
+      layout_q=BSND,
+      layout_k=PA_BBND,
+      mask_mode=0,
+      cmp_ratio=1,
+      candidate_mode=1,
   )
 
-  # source层（candidate_mode=1）：输出候选块索引candidate_block_indices与每行有效块数candidate_block_length
-  sparse_indices, sparse_values, candidate_block_indices, candidate_block_length = quant_lightning_indexer_candidate_source(
-      q, k, w, q_descale, k_descale, topk, quant_mode,
-      cu_seqlens_q=cu_seqlens_q, seqused_q=seqused_q,
-      block_table=block_table, metadata=metadata,
-      mask_mode=mask_mode, cmp_ratio=cmp_ratio, cmp_residual_k=cmp_residual_k,
-  )
-
-  # consumer层（candidate_mode=2）：在候选块内选topk；候选块索引来自source层，同一forward内有效
-  sparse_indices, sparse_values = quant_lightning_indexer_candidate_consumer(
-      q, k, w, q_descale, k_descale,
-      candidate_block_indices, candidate_block_length, topk, quant_mode,
-      cu_seqlens_q=cu_seqlens_q, seqused_q=seqused_q,
-      block_table=block_table, output_idx_offset=output_idx_offset, metadata=metadata,
-      mask_mode=mask_mode, cmp_ratio=cmp_ratio, candidate_block_size=candidate_block_size,
+  # consumer层（candidate_mode=2）：在候选块内选topk；candidate_topk_index来自source层，同一forward内有效
+  sparse_indices, sparse_values, candidate_topk_index = quant_lightning_indexer_candidate(
+      query, key, weights, query_dequant_scale, key_dequant_scale,
+      topk=topk,
+      quant_mode=1,
+      candidate_topk_index=candidate_topk_index,
+      block_table=block_table,
+      metadata=metadata,
+      seqused_k=seqused_k,
+      layout_q=BSND,
+      layout_k=PA_BBND,
+      mask_mode=0,
+      cmp_ratio=1,
+      candidate_mode=2,
   )
   ```
