@@ -362,7 +362,7 @@ attention_to_ffn(buffer, x, session_id, micro_batch_id, layer_id, expert_ids, ex
 
 - `ccl_buffer_size`为HBM上分配的CCL通信缓冲区**总大小**（Bytes），由`get_buffer_for_attention_to_ffn`内部自动计算，需满足：
 
-$$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{tokenInfoSize} + \mathrm{tokenDataSize},\ 2\,\mathrm{MB})$$
+$$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{CeilAlign}(\mathrm{tokenInfoSize},\ 512) + \mathrm{CeilAlign}(\mathrm{tokenDataSize},\ 512) + \mathrm{CeilAlign}(\mathrm{stagingSize},\ 512) + \mathrm{flagStagingSize},\ 2\,\mathrm{MB})$$
 
 其中：
 
@@ -370,6 +370,8 @@ $$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{tokenInfoSize} + \mathrm{toke
   - 非量化模式：`tokenDataSize = attnWorkerNum × microBatchNum × BS × (K+shared) × HS × 2B`
   - INT8/FP8量化模式：`tokenDataSize = attnWorkerNum × microBatchNum × BS × (K+shared) × HS × 1B`
   - FP4量化模式：`HS`已按打包字节计算，`tokenDataSize = attnWorkerNum × microBatchNum × BS × (K+shared) × HS × 1B`
+  - `stagingSize = BS × (K+shared) × CeilAlign(HS × bytesPerElem, 32B)`，为窗口内token数据区之后的紧凑连续staging区（每token一个staging槽，槽步长按32B向上对齐；`bytesPerElem`与`tokenDataSize`一致，非量化为2B，量化为1B）
+  - `flagStagingSize = (BS × (K+shared) + 1) × 32B`，为staging区之后的URMA flag常驻区（每token一个32B flag槽 + 1个layer flag槽）
 
 该大小由`get_buffer_for_attention_to_ffn`内部自动计算，用户无需自行计算或设置`ccl_buffer_size`。`ccl_buffer_size`描述对端FFN卡通信窗口大小；本卡（attention侧）通信窗口大小由`window_size`指定。
 
