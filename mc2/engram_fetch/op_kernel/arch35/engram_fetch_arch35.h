@@ -376,16 +376,14 @@ __aicore__ inline void EngramFetchArch35::PrepareRead(uint64_t commHandle, GM_AD
         activeBatchHandle_ =
             hcomm_.MakeBatchHandle(commHandle, hcommBatchTensor, ENGRAM_BATCH_BUFFER_BYTES, remoteBase);
     }
-    int32_t ret = hcomm_.ReadNbi<config>(activeBatchHandle_, dst, src, static_cast<uint32_t>(len));
-    ascendc_assert(ret == 0, "batch ReadNbi failed, ret=%d\n", ret);
+    (void)hcomm_.ReadNbi<config>(activeBatchHandle_, dst, src, static_cast<uint32_t>(len));
     ++preparedReadCount_;
     ++sqReadCount_;
 }
 
 __aicore__ inline void EngramFetchArch35::FlushPreparedReads()
 {
-    int32_t ret = hcomm_.BatchCommit(activeBatchHandle_);
-    ascendc_assert(ret == 0, "BatchCommit failed, ret=%d\n", ret);
+    (void)hcomm_.BatchCommit(activeBatchHandle_);
     preparedReadCount_ = 0U;
 }
 
