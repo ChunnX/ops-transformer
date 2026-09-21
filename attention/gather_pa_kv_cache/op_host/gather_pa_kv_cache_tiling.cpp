@@ -205,5 +205,7 @@ ge::graphStatus TilingPrepare4GatherPaKvCache(gert::TilingParseContext *context)
     OP_LOGD(context, "TilingPrepare4GatherPaKvCache exit.");
     return ge::GRAPH_SUCCESS;
 }
-
+IMPL_OP_OPTILING(GatherPaKvCache)
+    .Tiling(Tiling4GatherPaKvCache)
+    .TilingParse<Tiling4GatherPaKvCacheCompileInfo>(TilingPrepare4GatherPaKvCache);
 } // namespace optiling
