@@ -117,7 +117,7 @@ public:
 
     __aicore__ inline void getKVOffset(uint64_t &kOffset, uint32_t nIdx, uint32_t &strideKV)
     {
-        kOffset = nIdx * maxKVStackLen * strideKV;
+        kOffset = static_cast<uint64_t>(nIdx) * maxKVStackLen * strideKV;
     }
 
     __aicore__ inline void getKVOffset(AscendC::GlobalTensor<int32_t> &gBlockTable, uint64_t &kOffset,

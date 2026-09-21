@@ -151,7 +151,8 @@ public:
                 }
             }
         } else {
-            kOffset = nowNIdx * blockSize * strideKV + nL1Idx * l1NDynamic * strideKV;
+            kOffset = static_cast<uint64_t>(nowNIdx) * blockSize * strideKV +
+                      static_cast<uint64_t>(nL1Idx) * l1NDynamic * strideKV;
         }
     }
 

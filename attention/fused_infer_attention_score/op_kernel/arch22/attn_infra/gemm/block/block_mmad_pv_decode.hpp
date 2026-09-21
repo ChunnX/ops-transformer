@@ -127,7 +127,7 @@ public:
                 kOffset = blockTableId * blockSize * strideKV;
             }
         } else {
-            kOffset = nowNIdx * blockSize * strideKV;
+            kOffset = static_cast<uint64_t>(nowNIdx) * blockSize * strideKV;
         }
     }
 
