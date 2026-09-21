@@ -20,7 +20,6 @@ _logger = logging.getLogger(__name__)
 
 _ACL_DTYPE_TO_TORCH_DTYPE = {
     5: torch.float16,
-    6: torch.float32,
     15: torch.bfloat16,
 }
 
