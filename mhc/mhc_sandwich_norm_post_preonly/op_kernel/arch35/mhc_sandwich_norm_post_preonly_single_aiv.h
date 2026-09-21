@@ -223,6 +223,16 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
         const uint32_t x2h0 = DUAL_SIBLING ? 0U : h0;
         const uint32_t x2h1 = DUAL_SIBLING ? 1U : h1;
 
+        // prologue：预取 o=0 的两路 phi，使其 MTE2 搬运与下方 x2 平方和计算重叠。
+        {
+            LocalTensor<float> p0 = bufPhiFp32_.AllocTensor<float>();
+            LocalTensor<float> p1 = bufPhiFp32_.AllocTensor<float>();
+            DataCopyPad(p0, phiGm_[(uint64_t)h0 * D_ + tOff], copyParams, copyPad);
+            DataCopyPad(p1, phiGm_[(uint64_t)h1 * D_ + tOff], copyParams, copyPad);
+            bufPhiFp32_.EnQue(p0);
+            bufPhiFp32_.EnQue(p1);
+        }
+
         // 五行依次保存{sumSqPre,dot0,dot1,dot2,dot3}，一次按行归约，
         // 避免每个标量结果都单独触发一次Vector到Scalar的等待。
         MhcSandwichRegBase::Mul(reduceRows, x2[x2h0 * dimTile_], x2[x2h0 * dimTile_], tD);
@@ -233,25 +243,25 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
 
         for (uint32_t o = 0; o < N_MAX; ++o) {
             LocalTensor<float> dotRow = reduceRows[(o + 1) * dimTile_];
-            LocalTensor<float> phi = bufPhiFp32_.AllocTensor<float>();
-            uint64_t phiOffset = (uint64_t)o * phiCols_ + (uint64_t)h0 * D_ + tOff;
-            DataCopyPad(phi, phiGm_[phiOffset], copyParams, copyPad);
-            bufPhiFp32_.EnQue(phi);
-            phi = bufPhiFp32_.DeQue<float>();
-            MhcSandwichRegBase::Mul(dotRow, x2[x2h0 * dimTile_], phi, tD);
+            LocalTensor<float> phi0 = bufPhiFp32_.DeQue<float>();
+            LocalTensor<float> phi1 = bufPhiFp32_.DeQue<float>();
+            MhcSandwichRegBase::Mul(dotRow, x2[x2h0 * dimTile_], phi0, tD);
             PipeBarrier<PIPE_V>();
-            bufPhiFp32_.FreeTensor(phi);
-
-            phi = bufPhiFp32_.AllocTensor<float>();
-            phiOffset = (uint64_t)o * phiCols_ + (uint64_t)h1 * D_ + tOff;
-            DataCopyPad(phi, phiGm_[phiOffset], copyParams, copyPad);
-            bufPhiFp32_.EnQue(phi);
-            phi = bufPhiFp32_.DeQue<float>();
-            MhcSandwichRegBase::Mul(tmp, x2[x2h1 * dimTile_], phi, tD);
+            MhcSandwichRegBase::Mul(tmp, x2[x2h1 * dimTile_], phi1, tD);
             PipeBarrier<PIPE_V>();
-            bufPhiFp32_.FreeTensor(phi);
-
             MhcSandwichRegBase::Add(dotRow, dotRow, tmp, tD);
+            bufPhiFp32_.FreeTensor(phi0);
+            bufPhiFp32_.FreeTensor(phi1);
+
+            // 预取下一对 phi，与当前 dot 的 Vector 计算重叠。
+            if (o + 1U < N_MAX) {
+                LocalTensor<float> p0 = bufPhiFp32_.AllocTensor<float>();
+                LocalTensor<float> p1 = bufPhiFp32_.AllocTensor<float>();
+                DataCopyPad(p0, phiGm_[(uint64_t)(o + 1U) * phiCols_ + (uint64_t)h0 * D_ + tOff], copyParams, copyPad);
+                DataCopyPad(p1, phiGm_[(uint64_t)(o + 1U) * phiCols_ + (uint64_t)h1 * D_ + tOff], copyParams, copyPad);
+                bufPhiFp32_.EnQue(p0);
+                bufPhiFp32_.EnQue(p1);
+            }
         }
 
         PipeBarrier<PIPE_V>();
