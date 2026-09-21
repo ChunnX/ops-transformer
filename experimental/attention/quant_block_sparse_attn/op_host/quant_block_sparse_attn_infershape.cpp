@@ -13,14 +13,78 @@
  * \brief QuantBlockSparseAttn infer shape and data type.
  */
 
+#include <cstdint>
+#include <limits>
+#include <string>
+
 #include <graph/utils/type_utils.h>
 #include <register/op_impl_registry.h>
-#include "quant_block_sparse_attn_tiling.h"
+#include "tiling_common/qbsa_op_contract.h"
 #include "log/log.h"
 
 namespace ops {
 namespace {
 constexpr const char *kOpName = "QuantBlockSparseAttn";
+
+struct QbsaQueryShapeFacts {
+    int64_t tokenNum = 0;
+    int64_t headNum = 0;
+};
+
+ge::graphStatus ParseQueryShape(const gert::Shape &queryShape, const std::string &layoutQ,
+                                QbsaQueryShapeFacts &shapeFacts)
+{
+    if (queryShape.GetDimNum() != 3U || (layoutQ != "TND" && layoutQ != "NTD")) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(kOpName, "query",
+                                                 std::to_string(queryShape.GetDimNum()) + "D with layout " + layoutQ,
+                                                 "3D with layout TND or 3D with layout NTD");
+        return ge::GRAPH_FAILED;
+    }
+    const size_t tokenAxis = layoutQ == "TND" ? 0U : 1U;
+    const size_t headAxis = layoutQ == "TND" ? 1U : 0U;
+    shapeFacts.tokenNum = queryShape.GetDim(tokenAxis);
+    shapeFacts.headNum = queryShape.GetDim(headAxis);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus InferAttentionOutShape(const QbsaQueryShapeFacts &shapeFacts, const gert::Shape &valueShape,
+                                       const std::string &layoutOut, gert::Shape &attentionOutShape)
+{
+    if (layoutOut != "TND") {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "layout_out", layoutOut,
+                                              "Only the TND output contract is currently supported");
+        return ge::GRAPH_FAILED;
+    }
+    if (valueShape.GetDimNum() != 4U) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(kOpName, "value", std::to_string(valueShape.GetDimNum()) + "D",
+                                                 "4D PA_BNBD [blockNum, kvHeadNum, blockSize, headDim]");
+        return ge::GRAPH_FAILED;
+    }
+    attentionOutShape.SetDimNum(3U);
+    attentionOutShape.SetDim(0U, shapeFacts.tokenNum);
+    attentionOutShape.SetDim(1U, shapeFacts.headNum);
+    attentionOutShape.SetDim(2U, valueShape.GetDim(3U));
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus InferSoftmaxLseShape(const QbsaQueryShapeFacts &shapeFacts, uint32_t quantMode,
+                                     gert::Shape &softmaxLseShape)
+{
+    softmaxLseShape.SetDimNum(2U);
+    if (quantMode == optiling::QBSA_QUANT_MODE_FP8) {
+        softmaxLseShape.SetDim(0U, shapeFacts.headNum);
+        softmaxLseShape.SetDim(1U, shapeFacts.tokenNum);
+        return ge::GRAPH_SUCCESS;
+    }
+    if (quantMode == optiling::QBSA_QUANT_MODE_MXFP8_FULL_QUANT) {
+        softmaxLseShape.SetDim(0U, shapeFacts.tokenNum);
+        softmaxLseShape.SetDim(1U, shapeFacts.headNum);
+        return ge::GRAPH_SUCCESS;
+    }
+    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "quant_mode", std::to_string(quantMode),
+                                          "No softmax_lse output contract is defined for this quant_mode");
+    return ge::GRAPH_FAILED;
+}
 } // namespace
 
 ge::graphStatus InferShapeQuantBlockSparseAttn(gert::InferShapeContext *context)
@@ -30,8 +94,9 @@ ge::graphStatus InferShapeQuantBlockSparseAttn(gert::InferShapeContext *context)
         return ge::GRAPH_FAILED;
     }
     const gert::Shape *queryShape = context->GetInputShape(optiling::QBSA_QUERY_INDEX);
-    if (queryShape == nullptr) {
-        OP_LOGE(kOpName, "InferShape: query shape is nullptr");
+    const gert::Shape *valueShape = context->GetInputShape(optiling::QBSA_VALUE_INDEX);
+    if (queryShape == nullptr || valueShape == nullptr) {
+        OP_LOGE(kOpName, "InferShape: query or value shape is nullptr");
         return ge::GRAPH_FAILED;
     }
 
@@ -46,19 +111,13 @@ ge::graphStatus InferShapeQuantBlockSparseAttn(gert::InferShapeContext *context)
         return ge::GRAPH_FAILED;
     }
     const std::string layoutQ = optiling::QBSAGetStringAttr(attrs, optiling::QBSA_LAYOUT_Q_ATTR_INDEX, "TND");
-    if ((queryShape->GetDimNum() != 3U) || (layoutQ != "TND" && layoutQ != "NTD")) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(kOpName, "query",
-                                                 std::to_string(queryShape->GetDimNum()) + "D with layout " + layoutQ,
-                                                 "3D with layout TND or 3D with layout NTD");
+    QbsaQueryShapeFacts queryShapeFacts;
+    if (ParseQueryShape(*queryShape, layoutQ, queryShapeFacts) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    if (layoutQ == "NTD") {
-        attentionOutShape->SetDimNum(3);
-        attentionOutShape->SetDim(0, queryShape->GetDim(1)); // T
-        attentionOutShape->SetDim(1, queryShape->GetDim(0)); // N
-        attentionOutShape->SetDim(2, queryShape->GetDim(2)); // D
-    } else {
-        *attentionOutShape = *queryShape;
+    const std::string layoutOut = optiling::QBSAGetStringAttr(attrs, optiling::QBSA_LAYOUT_OUT_ATTR_INDEX, "TND");
+    if (InferAttentionOutShape(queryShapeFacts, *valueShape, layoutOut, *attentionOutShape) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
     }
 
     gert::Shape *softmaxLseShape = context->GetOutputShape(optiling::QBSA_SOFTMAX_LSE_INDEX);
@@ -69,26 +128,20 @@ ge::graphStatus InferShapeQuantBlockSparseAttn(gert::InferShapeContext *context)
     const bool *returnSoftmaxLsePtr = attrs->GetAttrPointer<bool>(optiling::QBSA_RETURN_SOFTMAX_LSE_ATTR_INDEX);
     const bool returnSoftmaxLse = (returnSoftmaxLsePtr != nullptr) ? *returnSoftmaxLsePtr : false;
     if (!returnSoftmaxLse) {
-        softmaxLseShape->SetDimNum(1);
-        softmaxLseShape->SetDim(0, 0);
+        softmaxLseShape->SetDimNum(1U);
+        softmaxLseShape->SetDim(0U, 0);
         return ge::GRAPH_SUCCESS;
     }
     const int64_t *quantModePtr = attrs->GetAttrPointer<int64_t>(optiling::QBSA_QUANT_MODE_ATTR_INDEX);
-    const uint32_t quantMode =
-        (quantModePtr != nullptr) ? static_cast<uint32_t>(*quantModePtr) : optiling::QBSA_QUANT_MODE_FP8;
-
-    softmaxLseShape->SetDimNum(2);
-    if (quantMode == optiling::QBSA_QUANT_MODE_MXFP8_FULL_QUANT) {
-        softmaxLseShape->SetDim(0, queryShape->GetDim(0)); // T
-        softmaxLseShape->SetDim(1, queryShape->GetDim(1)); // N1
-    } else if (layoutQ == "NTD") {
-        softmaxLseShape->SetDim(0, queryShape->GetDim(0)); // N1
-        softmaxLseShape->SetDim(1, queryShape->GetDim(1)); // T
-    } else {
-        softmaxLseShape->SetDim(0, queryShape->GetDim(1)); // N1
-        softmaxLseShape->SetDim(1, queryShape->GetDim(0)); // T
+    if (quantModePtr != nullptr &&
+        (*quantModePtr < 0 || *quantModePtr > static_cast<int64_t>(std::numeric_limits<uint32_t>::max()))) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "quant_mode", std::to_string(*quantModePtr),
+                                              "Must be representable as uint32_t");
+        return ge::GRAPH_FAILED;
     }
-    return ge::GRAPH_SUCCESS;
+    const uint32_t quantMode =
+        quantModePtr == nullptr ? optiling::QBSA_QUANT_MODE_FP8 : static_cast<uint32_t>(*quantModePtr);
+    return InferSoftmaxLseShape(queryShapeFacts, quantMode, *softmaxLseShape);
 }
 
 ge::graphStatus InferDataTypeQuantBlockSparseAttn(gert::InferDataTypeContext *context)

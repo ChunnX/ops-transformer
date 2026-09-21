@@ -65,7 +65,7 @@ attn_out, softmax_lse = torch.ops.custom.npu_quant_block_sparse_attn(
 
 ### 与 QBSA pytest 集成
 
-`tests/pytest/custom_ops.py` 通过 `QBSA_CUSTOM_OPS_PATH` 检索本扩展，既支持 glob
+`tests/pytest/common_utils/custom_ops.py` 通过 `QBSA_CUSTOM_OPS_PATH` 检索本扩展，既支持 glob
 `custom_ops_lib*.so`（`torch.ops.load_library`），也支持 exec `custom_ops/__init__.py`：
 
 ```sh

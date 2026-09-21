@@ -29,10 +29,8 @@
  * 4. RegBase kernel: Uses regbaseutil namespace, ARGS_TRAITS, CHILD_SPEC_TEMPLATE_ARGS
  *    and complex template traits that are not compatible with CPU simulation.
  *
- * 5. Complex tiling data: QuantBlockSparseAttnTilingData has 7 nested structures
- *    (attrParams, paParams, sparseParams, inputParamsRegbase, multiCoreParamsRegbase,
- *    dropmaskParamsRegbase, initOutputParams) with array fields, making manual
- *    construction extremely difficult.
+ * 5. Mode-specific tiling data: FP8 and MXFP8 use independent host/kernel structures.
+ *    Their serialization and size checks are covered by host tiling tests.
  *
  * 6. GM metadata dependency: ProcessMainLoop reads task scheduling metadata from
  *    GM via GetBsaAttrMetadata(metadataGm, ...), which is prepared by the host

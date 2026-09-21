@@ -246,16 +246,14 @@ def _mxfp8_load_golden_module():
     if _MXFP8_MODULE_NAME in sys.modules:
         return sys.modules[_MXFP8_MODULE_NAME]
 
-    pytest_dir = (
-        Path(__file__).resolve().parents[2] / "pytest" / "bsa_fullquant_mxfp8_test"
-    )
-    module_path = pytest_dir / "qbsa_mxfp8_golden.py"
+    pytest_root = Path(__file__).resolve().parents[2] / "pytest"
+    module_path = pytest_root / "qbsa_mxfp8" / "qbsa_mxfp8_golden.py"
     spec = importlib.util.spec_from_file_location(_MXFP8_MODULE_NAME, module_path)
     if spec is None or spec.loader is None:
         raise ImportError(f"cannot load MXFP8 golden module from {module_path}")
     module = importlib.util.module_from_spec(spec)
     sys.modules[_MXFP8_MODULE_NAME] = module
-    sys.path.insert(0, str(pytest_dir))
+    sys.path.insert(0, str(pytest_root))
     try:
         spec.loader.exec_module(module)
     except Exception:
@@ -263,7 +261,7 @@ def _mxfp8_load_golden_module():
         raise
     finally:
         try:
-            sys.path.remove(str(pytest_dir))
+            sys.path.remove(str(pytest_root))
         except ValueError:
             pass
     return module
@@ -506,14 +504,14 @@ def _fp8_load_golden_module():
     if _FP8_MODULE_NAME in sys.modules:
         return sys.modules[_FP8_MODULE_NAME]
 
-    pytest_dir = Path(__file__).resolve().parents[2] / "pytest"
-    module_path = pytest_dir / "quant_block_sparse_attn_golden.py"
+    pytest_root = Path(__file__).resolve().parents[2] / "pytest"
+    module_path = pytest_root / "qbsa_fp8" / "quant_block_sparse_attn_golden.py"
     spec = importlib.util.spec_from_file_location(_FP8_MODULE_NAME, module_path)
     if spec is None or spec.loader is None:
         raise ImportError(f"cannot load FP8 golden module from {module_path}")
     module = importlib.util.module_from_spec(spec)
     sys.modules[_FP8_MODULE_NAME] = module
-    sys.path.insert(0, str(pytest_dir))
+    sys.path.insert(0, str(pytest_root))
     try:
         spec.loader.exec_module(module)
     except Exception:
@@ -521,7 +519,7 @@ def _fp8_load_golden_module():
         raise
     finally:
         try:
-            sys.path.remove(str(pytest_dir))
+            sys.path.remove(str(pytest_root))
         except ValueError:
             pass
     return module
