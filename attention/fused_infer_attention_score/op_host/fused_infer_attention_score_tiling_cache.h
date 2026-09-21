@@ -20,12 +20,16 @@
  * 命中时直接恢复，跳过 tiling 计算。
  *
  * 键内容（影响 tiling 分支与结果的全部要素）：
- *   - npu 架构、缓存格式版本号
+ *   - npu 架构、缓存格式版本号、平台可用核数（AIV/AIC，limit core 场景下各 graph 不同）
  *   - 全部 31 个输入的 storage/origin shape、dtype、format、stride（含动态 kv tensor 展开与
  *     非连续 kv cache stride、keyRope 的 view 属性）
  *   - 全部 16 个属性（含 outDtype）
  *   - 输出 shape/dtype
  *   - tiling 过程中会读取内容的 host tensor：actualSeqLengths/actualSeqLengthsKv/actualSharedPrefixLen
+ *
+ * 恢复保护：
+ *   - fail-closed：未捕获到 schedule mode 的 tiling 结果不入缓存（防埋点遗漏）
+ *   - Restore 兜底：缓存 blockDim 超出当前平台 AIV 核数时拒绝恢复，退化为真实 tiling
  *
  * 生效范围：仅 arch22 路由（else 分支）启用缓存，
  * arch35（DAV_3510）与 arch38（DAV_5102）路径不启用，
@@ -46,6 +50,7 @@
 #include <utility>
 
 #include "exe_graph/runtime/tiling_context.h"
+#include "tiling/platform/platform_ascendc.h"
 
 #include "fused_infer_attention_score_tiling_index.h"
 #include "../../common/op_host/fia_tiling_schedule_recorder.h"
@@ -90,6 +95,19 @@ public:
         key.clear();
         Append(key, kCacheKeyVersion);
         Append(key, npuArch);
+
+        // tiling 结果（blockDim/workspaceSize/split 计划等）与可用核数强相关：
+        // IFA 子路径的 workspaceSize 各项均正比于 actCoreNum（见 CalcWorkSpaceForBmmAll），
+        // limit core（核限制）场景下同 shape 不同核数的 tiling 结果互不兼容。核数必须参与
+        // 缓存键，否则恢复到错误核数的 tiling 会导致内核按更大的 workspace 布局访问实际
+        // 分配更小的 buffer，产生越界 coredump。
+        auto *platformInfo = context->GetPlatformInfo();
+        if (platformInfo == nullptr) {
+            return false;
+        }
+        auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+        Append<uint32_t>(key, ascendcPlatform.GetCoreNumAiv());
+        Append<uint32_t>(key, ascendcPlatform.GetCoreNumAic());
 
         auto *attrs = context->GetAttrs();
         AppendAttr<int64_t>(key, attrs, ATTR_N_INDEX);
@@ -167,6 +185,17 @@ public:
         if (context == nullptr) {
             return ge::GRAPH_FAILED;
         }
+        // 一致性兜底：缓存的 blockDim 超出当前平台可用 AIV 核数时，说明该缓存项是在核数更多
+        // 的上下文（如未限核/不同限核配置）下生成的，与当前执行上下文不兼容，直接拒绝恢复，
+        // 退化为真实 tiling，避免内核按不匹配的核布局执行。
+        auto *platformInfo = context->GetPlatformInfo();
+        if (platformInfo != nullptr) {
+            auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+            const uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
+            if (aivNum != 0 && result.blockDim > aivNum) {
+                return ge::GRAPH_FAILED;
+            }
+        }
         auto *rawTilingData = context->GetRawTilingData();
         size_t *workSpaces = context->GetWorkspaceSizes(1);
         if (rawTilingData == nullptr || rawTilingData->GetData() == nullptr ||
@@ -208,7 +237,7 @@ public:
     }
 
 private:
-    static constexpr uint32_t kCacheKeyVersion = 1; // 键序列化格式变化时递增
+    static constexpr uint32_t kCacheKeyVersion = 2; // 键序列化格式变化时递增（v2: 追加 AIV/AIC 核数）
     static constexpr size_t kMaxCacheEntryNum = 128;
     static constexpr uint32_t kMaxDynamicTensorNum = 1024; // 动态输入数量防御上限
     static constexpr uint64_t kMaxHostTensorElems = 65536; // host tensor 元素数防御上限

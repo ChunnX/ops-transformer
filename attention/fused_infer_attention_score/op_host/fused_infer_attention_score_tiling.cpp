@@ -1983,7 +1983,14 @@ static ge::graphStatus TilingProcess4IFA(gert::TilingContext *context)
         return ret;
     }
     IFATiling ifaTiling(context);
-    return ifaTiling.DoSubOpTiling(ifaContext);
+    ret = ifaTiling.DoSubOpTiling(ifaContext);
+    // IFA 子路径在 DoSubOpTiling 内部直接对 context 设置 batch mode（不经 fia_tiling_base.h
+    // 的 SetScheduleMode 包装），此处补记 schedule mode，供 tiling 结果缓存快照/恢复使用
+    if (ret == ge::GRAPH_SUCCESS) {
+        constexpr uint32_t BATCH_MODE_SCHEDULE = 1;
+        FiaTilingScheduleRecorder::Record(BATCH_MODE_SCHEDULE);
+    }
+    return ret;
 }
 
 static ge::graphStatus CheckQKV(gert::TilingContext &context)
@@ -2564,6 +2571,13 @@ FIA_EXTERN_C ge::graphStatus DoOpTilingFusedInferAttentionScore(gert::TilingCont
         FusedInferAttentionScoreTilingCache::TilingResult cachedResult;
         if (FusedInferAttentionScoreTilingCache::GetInstance().Get(cacheKey, cachedResult) &&
             (FusedInferAttentionScoreTilingCache::Restore(context, cachedResult) == ge::GRAPH_SUCCESS)) {
+            // 命中日志用于验证缓存生效与排查：恢复的 scheduleMode 与当前平台核数随命中一起打印
+            OP_LOGI(context->GetNodeName(),
+                    "FIA tiling cache hit, skip tiling, tilingKey=%lu, blockDim=%u, scheduleMode=%u, "
+                    "coreNumAiv=%u, coreNumAic=%u.",
+                    cachedResult.tilingKey, cachedResult.blockDim,
+                    cachedResult.scheduleModeSet ? cachedResult.scheduleMode : 0U,
+                    ascendcPlatform.GetCoreNumAiv(), ascendcPlatform.GetCoreNumAic());
             return ge::GRAPH_SUCCESS;
         }
     }
@@ -2584,7 +2598,10 @@ FIA_EXTERN_C ge::graphStatus DoOpTilingFusedInferAttentionScore(gert::TilingCont
     }
     if (tilingRet == ge::GRAPH_SUCCESS && cacheKeyValid) {
         FusedInferAttentionScoreTilingCache::TilingResult newResult;
-        if (FusedInferAttentionScoreTilingCache::Snapshot(context, newResult)) {
+        // fail-closed：仅当成功捕获到 schedule mode 时才允许入缓存。若 tiling 子路径设置了
+        // schedule mode 但未被 recorder 记录（埋点遗漏），此处不入缓存，下次调用退化为执行
+        // 真实 tiling，保证正确性；代价仅为该场景不享受缓存收益。
+        if (FusedInferAttentionScoreTilingCache::Snapshot(context, newResult) && newResult.scheduleModeSet) {
             FusedInferAttentionScoreTilingCache::GetInstance().Add(cacheKey, newResult);
         }
     }
