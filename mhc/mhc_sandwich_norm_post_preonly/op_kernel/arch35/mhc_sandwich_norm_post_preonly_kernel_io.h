@@ -77,27 +77,6 @@ __aicore__ inline void WriteHInPrimeTile(LocalTensor<float> src, uint64_t gmOffs
     }
 }
 
-// R7 直接从低精度缓存完成 scale+gamma+量化并写 h_in_prime，跳过“恢复FP32→缩放→再量化”
-// 的两次中间UB读写。RETURN_H_IN_F32 时仍需恢复FP32以额外输出，走恢复路径。
-__aicore__ inline void WriteHInPrimeFromCache(uint32_t token, uint32_t tOff, uint32_t tD, float invRms1,
-                                              LocalTensor<float> gamma1)
-{
-    LocalTensor<T> hInCache = bufX2Cache_.Get<T>()[tOff];
-    if constexpr (RETURN_H_IN_F32) {
-        LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-        MhcSandwichRegBase::CastB16ScaleAndMulGamma(hIn, hInCache, gamma1, invRms1, tD);
-        PipeBarrier<PIPE_V>();
-        WriteHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tD);
-    } else {
-        LocalTensor<T> tmp = bufHInPrimeBf16_.AllocTensor<T>();
-        MhcSandwichRegBase::CastB16ScaleAndMulGammaToB16(tmp, hInCache, gamma1, invRms1, tD);
-        bufHInPrimeBf16_.EnQue(tmp);
-        tmp = bufHInPrimeBf16_.DeQue<T>();
-        DataCopy(hInPrimeGm_[(uint64_t)token * D_ + tOff], tmp, tD);
-        bufHInPrimeBf16_.FreeTensor(tmp);
-    }
-}
-
 __aicore__ inline void WriteX2OutTile(LocalTensor<float> src, uint64_t gmOffset, uint32_t count)
 {
     WriteLowPrecisionTile(x2OutGm_, gmOffset, src, count);
