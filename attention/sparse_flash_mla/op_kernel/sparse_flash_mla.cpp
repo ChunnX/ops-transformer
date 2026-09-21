@@ -13,17 +13,27 @@
  * \brief
  */
 
-#if (__CCE_AICORE__ == 310)
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_vec_intf.h"
+#include "kernel_cube_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 #include "lib/matmul_intf.h"
 #include "sparse_flash_mla_template_tiling_key.h"
+
+// SuperKernel compiles AIC and AIV separately and exposes the per-core C310
+// macros. Keep the architecture selection valid in both standalone and SK
+// compilation modes.
+#if (__CCE_AICORE__ == 310) || defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
+#define SMLA_ARCH35
+#endif
+
+#if defined(SMLA_ARCH35)
 #include "arch35/sparse_flash_mla_csa_kernel_arch35.h"
 #include "arch35/sparse_flash_mla_swa_kernel_arch35.h"
 #include "sparse_flash_mla_kernel_metadata.h"
 #else
-#include "kernel_operator.h"
-#include "lib/matmul_intf.h"
-#include "sparse_flash_mla_template_tiling_key.h"
 #include "arch22/sparse_flash_mla_csa_kernel.h"
 #include "arch22/sparse_flash_mla_swa_kernel.h"
 #include "arch22/sparse_flash_mla_arch22_metadata.h"
@@ -33,7 +43,7 @@ using namespace AscendC;
 using namespace optiling::detail;
 using namespace SMLAKernel;
 
-#if (__CCE_AICORE__ == 310)
+#if defined(SMLA_ARCH35)
 #define SMLA_OP_IMPL(templateClass, tilingdataClass, ...) \
     do { \
         using CubeBlockType = \
@@ -76,7 +86,7 @@ __global__ __aicore__ void sparse_flash_mla(
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
 
-#if (__CCE_AICORE__ == 310)
+#if defined(SMLA_ARCH35)
     if constexpr (ORIG_DTYPE_Q == DT_FLOAT16 && ORIG_DTYPE_ORI_KV == DT_FLOAT16 && ORIG_DTYPE_ATTN_OUT == DT_FLOAT16) {
         if constexpr (TEMPLATE_MODE == CSA_TEMPLATE || TEMPLATE_MODE == ORI_SPARSE_TEMPLATE ||
                       TEMPLATE_MODE == ORI_CMP_SPARSE_TEMPLATE) {
@@ -129,3 +139,5 @@ __global__ __aicore__ void sparse_flash_mla(
     }
 #endif
 }
+
+#undef SMLA_ARCH35

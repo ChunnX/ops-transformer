@@ -19,7 +19,12 @@
 #include "sparse_flash_mla_kvcache.h"
 #include "sparse_flash_mla_csa_block_cube_arch35.h"
 #include "sparse_flash_mla_csa_block_vector_arch35.h"
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_vec_intf.h"
+#include "kernel_cube_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 #include "../sparse_flash_mla_kernel_metadata.h"
 
 #include "../../../common/op_kernel/matmul.h"
@@ -101,6 +106,7 @@ private:
     bool hasActualSeqQlen = false;
     bool hasActualSeqOriKvlen = false;
     bool hasActualSeqCmpKvlen = false;
+    bool isInitialized = false;
     BufferManager<BufferType::GM> fdStagingBufferManager;
     BuffersPolicySingleBuffer<BufferType::GM, SyncType::NO_SYNC> fdStagingBuffer;
     BuffersPolicySingleBuffer<BufferType::GM, SyncType::NO_SYNC> intraCoreCombineBuffer;
@@ -138,18 +144,59 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Ini
         this->tilingData = tiling;
     }
 
-    if (metadata == nullptr) {
+    if (query == nullptr || oriKV == nullptr || metadata == nullptr || attentionOut == nullptr) {
+        return;
+    }
+    if constexpr (LAYOUT_T == SMLA_LAYOUT::TND) {
+        if (cuSeqlensQ == nullptr) {
+            return;
+        }
+    }
+    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::TND) {
+        if (cuSeqlensOriKv == nullptr) {
+            return;
+        }
+    } else if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
+        if (oriBlockTable == nullptr || seqUsedOriKv == nullptr) {
+            return;
+        }
+    }
+    if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE) {
+        if (cmpKV == nullptr) {
+            return;
+        }
+        if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::TND) {
+            if (cuSeqlensCmpKv == nullptr) {
+                return;
+            }
+        } else if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
+            if (cmpBlockTable == nullptr || seqUsedCmpKv == nullptr) {
+                return;
+            }
+        }
+    }
+    if (workspace == nullptr) {
         return;
     }
     this->metadataGm.SetGlobalBuffer((__gm__ uint32_t *)metadata);
 
     constInfo.s1BaseSize = 64;
     constInfo.s2BaseSize = 128;
-    constInfo.hasOriTopkLength = (oriTopkLength != nullptr);
-    constInfo.hasCmpTopkLength = (cmpTopkLength != nullptr);
+    // SWA/HCA do not consume top-k length tensors. Keep the flags disabled
+    // because ProcessMainLoop passes unbound placeholder GlobalTensors to the
+    // shared S2 calculation helper.
+    (void)oriTopkLength;
+    (void)cmpTopkLength;
+    constInfo.hasOriTopkLength = false;
+    constInfo.hasCmpTopkLength = false;
 
     this->ParseTilingData(cuSeqlensQ, sequsedQ, cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedOriKv, seqUsedCmpKv,
                           cmpResidualKV);
+    if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE) {
+        if (constInfo.cmpMaskMode != 0 && constInfo.cmpRatio != 1 && cmpResidualKV == nullptr) {
+            return;
+        }
+    }
     vecBlock.InitVecBlock(cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedOriKv, seqUsedCmpKv, cmpResidualKV);
     vecBlock.CleanOutput(attentionOut, softmaxLse, constInfo);
     InitMMResBuf(workspace);
@@ -163,6 +210,7 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Ini
                            cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, sequsedQ, seqUsedOriKv, seqUsedCmpKv,
                            cmpResidualKV, sinks, workspace, tiling); // gm设置
     InitLocalBuffer(this->vecBlock, this->cubeBlock, this->constInfo, this->vUbBase, this->l1CubeBase);
+    this->isInitialized = true;
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -241,13 +289,9 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Par
     constInfo.needInit = 0;
     if (constInfo.oriMaskMode != 0) {
         for (uint32_t bIdx = 0; bIdx < constInfo.bSize; bIdx++) {
-            int64_t s2Size;
-            if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
-                s2Size = actualSeqOriKvlenGm.GetValue(bIdx);
-            } else {
-                s2Size = GetSeqLen(bIdx, hasActualSeqOriKvlen, hasCuSeqlensOriKv, actualSeqOriKvlenGm, cuSeqlensOriKvGm,
-                                   constInfo.s2Size);
-            }
+            int64_t s2Size =
+                GetSeqLen(bIdx, hasActualSeqOriKvlen, hasCuSeqlensOriKv, actualSeqOriKvlenGm, cuSeqlensOriKvGm,
+                          constInfo.s2Size);
             int64_t s1Size =
                 GetSeqLen(bIdx, hasActualSeqQlen, hasCuSeqlensQ, actualSeqQlenGm, cuSeqlensQGm, constInfo.s1Size);
             int64_t expectQs;
@@ -341,6 +385,9 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Ini
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Process()
 {
+    if (!this->isInitialized) {
+        return;
+    }
     // SyncAll Cube和Vector都需要调用
     if (this->constInfo.needInit) {
         SyncAll<false>();
@@ -350,8 +397,8 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Pro
         ParseFdRunInfo(fdRunInfo, this->constInfo, this->metadataGm);
     }
     ProcessMainLoop();
+    SyncAll();
     if ASCEND_IS_AIV {
-        SyncAll();
         if (fdRunInfo.coreEnable) {
             this->vecBlock.ProcessFlashDecode(fdRunInfo, this->constInfo);
         }
@@ -396,7 +443,8 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Pro
         ComputeParamBatch<TEMPLATE_INTF_ARGS>(
             runParam, this->constInfo, this->cuSeqlensQGm, this->cuSeqlensOriKvGm, this->cuSeqlensCmpKvGm,
             this->actualSeqQlenGm, this->actualSeqOriKvlenGm, this->actualSeqCmpKvlenGm, this->cmpResidualKvGm,
-            this->hasActualSeqQlen, this->hasActualSeqOriKvlen, this->hasActualSeqCmpKvlen, this->hasCuSeqlensCmpKv);
+            this->hasCuSeqlensOriKv, this->hasCuSeqlensCmpKv, this->hasActualSeqQlen,
+            this->hasActualSeqOriKvlen, this->hasActualSeqCmpKvlen);
         ComputeS1LoopInfo<TEMPLATE_INTF_ARGS>(runParam, this->constInfo, lastBN, nextGs1Idx, gS1StartIdx, s2EndIdx);
 
         int64_t gS1LoopEnd = lastBN ? (runParam.gs1LoopEndIdx + PRELOAD_NUM) : runParam.gs1LoopEndIdx;
