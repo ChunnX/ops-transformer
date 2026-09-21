@@ -1,5 +1,22 @@
 # Pre-commit 配置指导书
 
+## 快速使用
+
+```bash
+# 1. 安装 pre-commit
+pip3 install pre-commit
+
+# 2. 安装 Git Hooks（此后 git commit 自动触发检查）
+cd /path/to/ops-transformer
+pre-commit install        # 取消：pre-commit uninstall
+
+# 3. 配置 git pc 别名（对指定范围提交运行检查，每个环境执行一次）
+git config --global alias.pc '!f() { pre-commit run --files $(git diff --name-only "$@"); }; f'
+git pc HEAD~x        # 检查最近x笔提交
+```
+
+装好之后 `git commit` 时自动检查，无需额外操作；以下为完整介绍。
+
 ## 一、概述
 
 pre-commit 是一个 Git Hooks 框架，在 `git commit` 时自动运行代码检查和格式化，提前拦截规范问题，避免远程 CI 门禁失败。
