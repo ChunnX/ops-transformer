@@ -18,7 +18,6 @@
 #include <math.h>
 #include "log/log.h"
 
-
 namespace optiling {
 
 uint32_t GetS1SeqSize(uint32_t bIdx, const BaseInfo &baseInfo)
