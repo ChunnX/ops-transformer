@@ -1,0 +1,305 @@
+#!/bin/bash
+set -euo pipefail
+
+# 1、Profiler后台单线程上报，降低多进程锁竞争
+export PROF_WORKER_NUM=1
+# 2、限制Profiler上报队列最大长度，避免埋点堆积触发ACL接口限流报错
+export PROF_MAX_QUEUE_LEN=1024
+# 3、禁用多进程硬件指标并发上报，等价代码SingleProcess效果，环境变量全局生效
+export PROF_AIC_METRICS_SINGLE_PROCESS=1
+
+# 定义脚本需要的必填列（使用完整带括号的列名，统一只在这里维护）
+REQUIRED_COLS=(
+    "case_name"
+    "input_tensor_shape"
+    "input_tensor_dtype"
+    "input_tensor_range"
+    "fetch_indicies"
+    "world_size"
+)
+# 新增3个可选列，连同原有num_cpu_bytes统一管理
+OPT_COLS=(
+    "num_cpu_bytes"
+    "is_graph"
+    "is_profiling"
+    "use_fp8"
+    "sf_dtype"
+    "seed"
+    "fetch_mode"
+)
+
+# 命令行参数解析
+xlsx_file=""
+sheet_name=""
+num_start=""
+num_end=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --xlsx)
+            xlsx_file="$2"
+            shift 2
+            ;;
+        --sheet)
+            sheet_name="$2"
+            shift 2
+            ;;
+        --num)
+            # 支持传1个或2个正整数
+            if [[ $# -ge 3 && "$2" =~ ^[0-9]+$ && "$3" =~ ^[0-9]+$ ]]; then
+                num_start="$2"
+                num_end="$3"
+                shift 3
+            else
+                num_start="$2"
+                num_end="$2"
+                shift 2
+            fi
+            ;;
+        *)
+            echo "[ERROR] 未知参数: $1"
+            echo "用法1: bash run_engram.sh --xlsx engram_new.xlsx --sheet test --num 1"
+            echo "用法2: bash run_engram.sh --xlsx engram_new.xlsx --sheet test --num 1 20"
+            exit 1
+            ;;
+    esac
+done
+
+# 必选参数校验
+if [[ -z "$xlsx_file" || -z "$sheet_name" || -z "$num_start" || -z "$num_end" ]]; then
+    echo "[ERROR] 缺少必选参数"
+    echo "用法1: bash run_engram.sh --xlsx engram_new.xlsx --sheet test --num 1"
+    echo "用法2: bash run_engram.sh --xlsx engram_new.xlsx --sheet test --num 1 20"
+    exit 1
+fi
+
+# 行号数字校验
+if ! [[ "$num_start" =~ ^[1-9][0-9]*$ && "$num_end" =~ ^[1-9][0-9]*$ ]]; then
+    echo "[ERROR] --num 必须传入正整数"
+    exit 1
+fi
+
+# 行号范围校验
+if [[ "$num_start" -gt "$num_end" ]]; then
+    echo "[ERROR] 起始序号不能大于结束序号"
+    exit 1
+fi
+
+# 文件存在校验
+if [[ ! -f "$xlsx_file" ]]; then
+    echo "[ERROR] xlsx文件不存在: $xlsx_file"
+    exit 1
+fi
+
+# 计算pandas索引（Excel第2行对应index 0）
+start_idx=$((num_start - 1))
+end_idx=$((num_end - 1))
+
+# 把列名用换行分隔存入环境变量，避免空格分割错乱
+export COLS_ENV=$(printf "%s\n" "${REQUIRED_COLS[@]}")
+export OPT_COLS_ENV=$(printf "%s\n" "${OPT_COLS[@]}")
+
+read_data() {
+    python - <<EOF
+import pandas as pd
+import sys
+import os
+
+# 按换行分割还原每一个原始列名
+cols_list = os.environ["COLS_ENV"].splitlines()
+opt_cols = os.environ["OPT_COLS_ENV"].splitlines()
+
+df = pd.read_excel(
+    "$xlsx_file",
+    sheet_name="$sheet_name",
+    header=0
+)
+
+# 校验必填列是否全部存在
+missing_cols = [col for col in cols_list if col not in df.columns]
+if missing_cols:
+    print(f"[ERROR] Excel表缺少必填列: {', '.join(missing_cols)}", file=sys.stderr)
+    sys.exit(1)
+
+# 校验行号是否超出数据范围
+if $end_idx >= len(df):
+    print(f"[ERROR] 行号超出范围，表格中共有 {len(df)} 条有效数据", file=sys.stderr)
+    sys.exit(1)
+
+int_cols = ["world_size", "num_cpu_bytes", "is_graph", "is_profiling", "use_fp8", "seed"]  # fetch_mode is string, not int
+
+# 读取必填列
+df_required = df[cols_list].copy()
+
+# 遍历所有可选列，存在则读取，不存在默认填充0，空值也填充0
+for col in opt_cols:
+    if col in df.columns:
+        df_required[col] = df[col].fillna(0)
+    else:
+        df_required[col] = 0
+
+# 强制将数值列转为int整数
+for col in int_cols:
+    if col in df_required.columns:
+        df_required[col] = df_required[col].apply(lambda x: int(float(x)) if x != "" and x is not None else 0)
+
+# 按行输出参数，用|分隔，顺序：必填列 + 所有可选列
+for idx in range($start_idx, $end_idx + 1):
+    row = df_required.iloc[idx]
+    # sf_dtype归一化: 空/NaN/0/0.0 视为未设置(输出"0", 不传给脚本); 仅真dtype字符串才透传
+    sf_val = row["sf_dtype"]
+    if pd.isna(sf_val) or str(sf_val).strip() in ("", "0", "0.0"):
+        sf_str = "0"
+    else:
+        sf_str = str(sf_val)
+    # fetch_mode 归一化: 空/NaN/0/0.0 视为默认 sliced; 接受 sliced/local/0/1
+    fm_val = row["fetch_mode"]
+    if pd.isna(fm_val) or str(fm_val).strip() in ("", "0", "0.0"):
+        fm_str = "sliced"
+    else:
+        fm_str = str(fm_val).strip()
+
+    # 去除所有字段中的换行符，避免 | 分隔的按行解析被截断
+    def _clean(v):
+        return str(v).replace(chr(10), ' ').replace(chr(13), '')
+
+    fields = [
+        _clean(row["case_name"]),
+        _clean(row["input_tensor_shape"]),
+        _clean(row["input_tensor_dtype"]),
+        _clean(row["input_tensor_range"]),
+        _clean(row["fetch_indicies"]),
+        str(int(row["world_size"])),
+        str(int(row["num_cpu_bytes"])),
+        str(int(row["is_graph"])),
+        str(int(row["is_profiling"])),
+        str(int(row["use_fp8"])),
+        sf_str,
+        str(int(row["seed"])),
+        fm_str
+    ]
+    print("|".join(fields))
+EOF
+}
+
+# 执行读取，捕获错误
+data_output=$(read_data)
+if [[ $? -ne 0 ]]; then
+    echo "$data_output"
+    exit 1
+fi
+
+# 循环执行用例
+total_cases=$((num_end - num_start + 1))
+current_case=0
+echo "[INFO] 共读取到 $total_cases 条测试用例，开始执行..."
+echo "================================================================"
+
+# 新增三个可选字段接收
+while IFS="|" read -r case_name input_tensor_shape input_tensor_dtype input_tensor_range fetch_indicies world_size num_cpu_bytes is_graph is_profiling use_fp8 sf_dtype seed fetch_mode; do
+    current_case=$((current_case + 1))
+    # ==========新增：仅开启profiling时创建独立临时目录==========
+    if [[ "${is_profiling}" -eq 1 ]]; then
+        export PROF_TMP_DIR=$(mktemp -d)
+        echo "[INFO] 已开启Profiling，当前用例独立临时目录: ${PROF_TMP_DIR}"
+    else
+        unset PROF_TMP_DIR
+        echo "[INFO] 未开启Profiling，不配置Profiler临时目录"
+    fi
+    # 执行前完整打印读取到的参数
+    echo "------------------------------------------------"
+    echo "[CASE $current_case/$total_cases] 读取到当前用例参数："
+    echo "  case_name:             $case_name"
+    echo "  input_tensor_shape:    $input_tensor_shape"
+    echo "  input_tensor_dtype:    $input_tensor_dtype"
+    echo "  input_tensor_range:    $input_tensor_range"
+    echo "  fetch_indicies:        $fetch_indicies"
+    echo "  world_size:            $world_size"
+    echo "  num_cpu_bytes:         $num_cpu_bytes"
+    echo "  is_graph:              $is_graph"
+    echo "  is_profiling:          $is_profiling"
+    echo "  use_fp8:               $use_fp8"
+    echo "  sf_dtype:              $sf_dtype"
+    echo "  seed:                  $seed"
+    echo "  fetch_mode:            $fetch_mode"
+    echo "------------------------------------------------"
+
+    # 组装命令参数
+    cmd_args=(
+        python engram_test.py
+        --case_name "$case_name"
+        --input_tensor_shape "$input_tensor_shape"
+        --input_tensor_dtype "$input_tensor_dtype"
+        --input_tensor_range "$input_tensor_range"
+        --fetch_indicies "$fetch_indicies"
+        --world_size "$world_size"
+    )
+    # 原有可选参数
+    if [[ "$num_cpu_bytes" != "0" ]]; then
+        cmd_args+=(--num_cpu_bytes "$num_cpu_bytes")
+    fi
+    # 新增三个可选参数
+    if [[ "$is_graph" != "0" ]]; then
+        cmd_args+=(--is_graph "$is_graph")
+    fi
+    if [[ "$is_profiling" != "0" ]]; then
+        cmd_args+=(--is_profiling "$is_profiling")
+    fi
+    if [[ "$use_fp8" != "0" ]]; then
+        cmd_args+=(--use_fp8 "$use_fp8")
+    fi
+    if [[ "$sf_dtype" != "0" && -n "$sf_dtype" ]]; then
+        cmd_args+=(--sf_dtype "$sf_dtype")
+    fi
+    if [[ "$seed" != "0" ]]; then
+        cmd_args+=(--seed "$seed")
+    fi
+    if [[ -n "$fetch_mode" ]]; then
+        cmd_args+=(--fetch_mode "$fetch_mode")
+    fi
+
+    # 打印即将执行的完整命令
+    echo "执行命令："
+    echo "${cmd_args[@]}"
+    echo "------------------------------------------------"
+
+    # ===== Phase 1: 数据准备 (不排队) =====
+    echo "[PREP] 开始数据准备: $case_name"
+    "${cmd_args[@]}" --prep_only
+    prep_ret=$?
+    if [[ $prep_ret -ne 0 ]]; then
+        echo "[ERROR] 数据准备失败: $case_name, 返回码: $prep_ret"
+        exec_ret=$prep_ret
+    else
+        echo "[PREP] 数据准备完成: $case_name"
+
+        # ===== Phase 2: NPU执行 (qrun排队) =====
+        echo "[RUN] 排队等待NPU执行: $case_name"
+        qrun --emp q00983190 -n "${case_name}" "${cmd_args[@]}" --run_only
+        exec_ret=$?
+    fi
+
+    # 清理预准备数据文件
+    prep_data_file="./${case_name}_prep_data.pt"
+    if [[ -f "$prep_data_file" ]]; then
+        rm -f "$prep_data_file"
+        echo "[INFO] 已清理预准备数据文件: $prep_data_file"
+    fi
+    echo "------------------------------------------------"
+
+    # 执行结果校验
+    if [[ $exec_ret -ne 0 ]]; then
+        echo "[ERROR] 用例 $case_name 执行失败，返回码: $exec_ret"
+    else
+        echo "[SUCCESS] 用例 $case_name 执行完成"
+    fi
+    
+    if [[ -n "${PROF_TMP_DIR:-}" && -d "${PROF_TMP_DIR}" ]]; then
+    rm -rf "${PROF_TMP_DIR}"
+    echo "[INFO] 已清理当前用例Profiler临时目录"
+    fi
+    echo "[INFO] 当前测试用例【${case_name}】性能数据存放路径：./profiling_data/${case_name}_profiling"
+    echo "================================================================"
+done <<< "$data_output"
+
+echo "[FINISH] 全部 $total_cases 条测试用例执行完毕" 
