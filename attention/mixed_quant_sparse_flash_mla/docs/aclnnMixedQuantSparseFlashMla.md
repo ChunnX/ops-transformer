@@ -6,10 +6,10 @@
 - <term>Ascend 950PR/Ascend 950DT</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持（仅 `quantMode=3`）
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持（仅 `quantMode=3`）
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
 - <term>Atlas 200I/500 A2 推理产品</term>：不支持
@@ -22,6 +22,8 @@
 <!-- end id6 -->
 
 ## 功能说明
+
+> A5仅支持`quantMode=1/2`，A2/A3 TurboQuant TQ4仅支持`quantMode=3`和CSA场景，公开接口签名不变。
 
 - 接口功能：
 
@@ -176,8 +178,8 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>q（aclTensor*）</td>
       <td>输入</td>
       <td>Query输入张量。</td>
-      <td>不支持空Tensor。qN支持1-128；D仅支持512。</td>
-      <td>BFLOAT16</td>
+      <td>A5不支持空Tensor；A2/A3 TurboQuant允许qT为0。qN支持1-128，TurboQuant还要求为4的倍数；D仅支持512。</td>
+      <td>A5：BFLOAT16；A2/A3 TurboQuant：FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>
         <ul>
@@ -191,7 +193,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>oriKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>原始KV输入张量，Key与Value共享同一份数据。</td>
-      <td>SWA/CSA/HCA场景必须传入。量化KV布局由quantMode决定：quant_mode为1时，依次由rope（64，bfloat16）、nope（448，FLOAT8_E4M3FN）、scale（7，bfloat16）、pad（18B）拼接而成；quant_mode为2时，依次由nope（448，FLOAT8_E4M3FN）、rope（64，bfloat16）、scale（7，FLOAT8_E8M0）、pad（1B）拼接而成。当前仅支持1和2，量化模式2仅支持layout_kv为PA_BBND。各量化模式均支持使用UINT8、FLOAT8_E4M3FN作为单字节存储视图，底层字节内容保持不变。</td>
+      <td>必须传入。A5的quantMode=1/2保持原量化KV布局：模式1依次拼接rope（64，bfloat16）、nope（448，FLOAT8_E4M3FN）、scale（7，bfloat16）、pad（18B）；模式2依次拼接nope（448，FLOAT8_E4M3FN）、rope（64，bfloat16）、scale（7，FLOAT8_E8M0）、pad（1B）。A2/A3的quantMode=3使用与q相同的FLOAT16或BFLOAT16原始KV，kvD=512。</td>
       <td>详见quantMode</td>
       <td>ND</td>
       <td>
@@ -208,7 +210,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>cmpKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>压缩KV输入张量，Key与Value共享同一份数据。</td>
-      <td>CSA/HCA场景必须传入，SWA场景不传入。量化KV布局由quantMode决定，同oriKvOptional。</td>
+      <td>A5的CSA/HCA场景必须传入，SWA场景不传入，布局同oriKvOptional。A2/A3的quantMode=3必须传入UINT8 TQ4压缩KV，kvD=258。</td>
       <td>详见quantMode</td>
       <td>ND</td>
       <td>
@@ -241,7 +243,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>cmpSparseIndicesOptional（aclTensor*）</td>
       <td>输入</td>
       <td>代表离散取cmpKvCache的TopK索引。</td>
-      <td>cmpKv稀疏场景必须传入，其他不传入。无效位置填-1，其余为非负整数。</td>
+      <td>cmpKv稀疏场景必须传入，其他不传入。无效位置填-1，其余为非负整数；A2/A3 TurboQuant固定为TND三维输入，cmpKvK仅支持512或1024。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>
@@ -249,7 +251,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
           <li>layoutQ为BSND时：(b, qS, kvN, cmpKvK)</li>
           <li>layoutQ为TND时：(qT, kvN, cmpKvK)</li>
         </ul>
-        其中cmpKvK为对cmpKvOptional的TopK稀疏选择数，范围支持大于0。
+        其中cmpKvK为对cmpKvOptional的TopK稀疏选择数；A5要求大于0，A2/A3 TurboQuant仅支持512或1024。
       </td>
       <td>√</td>
     </tr>
@@ -337,7 +339,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>cmpResidualKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>压缩KV余数，用于恢复cmp侧mask使用的压缩前KV长度。</td>
-      <td>可选输入。传入时shape必须为(B,)，第b个batch按cmp_len * cmpRatio + cmpResidualKvOptional[b]恢复压缩前KV长度；在cmpMaskMode为3且cmpRatio不等于1场景必传，cmpMaskMode为0或cmpRatio等于1时不允许传入。</td>
+      <td>A5可选输入。传入时shape必须为(B,)，第b个batch按cmp_len * cmpRatio + cmpResidualKvOptional[b]恢复压缩前KV长度；在cmpMaskMode为3且cmpRatio不等于1场景必传，cmpMaskMode为0或cmpRatio等于1时不允许传入。A2/A3 TurboQuant不支持传入。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(b,)</td>
@@ -397,7 +399,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>quantMode（int64_t）</td>
       <td>输入</td>
       <td>表示量化模式。</td>
-      <td>表示量化模式。量化模式1表示K、V nope为per-token-group量化，scale类型为bfloat16，量化模式2表示K、V nope为per-token-group量化，scale类型为FLOAT8_E8M0。当前仅支持1和2，量化模式2仅支持layout_kv为PA_BBND。</td>
+      <td>表示量化模式。A5仅支持1和2：模式1的scale类型为bfloat16，模式2的scale类型为FLOAT8_E8M0且仅支持layoutKv为PA_BBND。A2/A3仅支持3，表示融合TQ4反量化的TurboQuant路径。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -518,7 +520,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>输出</td>
       <td>注意力计算输出。</td>
       <td>-</td>
-      <td>BFLOAT16</td>
+      <td>与q的数据类型一致</td>
       <td>ND</td>
       <td>与q的shape一致</td>
       <td>×</td>
@@ -673,12 +675,26 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
   - aclnnMixedQuantSparseFlashMlaMetadata和aclnnMixedQuantSparseFlashMla的入参在调用时应该保持一致。由于算子分为两个接口分段调用，算子无法自行校验，正确性需要由用户自行保证。若接口传入参数不一致，会发生未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
   - oriTopkLengthOptional、cmpTopkLengthOptional表示ori/cmp sparseIndices实际参与计算的长度。其值不能大于sparseIndicesOptional的最后一维大小，且当sequsedQOptional传入时，topkLength对应有效部分的值需要大于等于0。
   - 当oriMaskMode/cmpMaskMode为0时，oriKvK/cmpKvK需要大于等于oriTopkLengthOptional/cmpTopkLengthOptional的最大值。
-  - cmpResidualKvOptional配合cmpRatio使用，可恢复压缩前KV长度。且每个batch的值需要小于cmpRatio。仅当cmpMaskMode为3且cmpRatio不等于1时允许传入；cmpMaskMode为0或cmpRatio等于1时不允许传入。
-  - attnOutOut：tensor类型，公式中的输出，数据类型支持BFLOAT16。数据格式支持ND。限制：该输出参数的shape与入参q的shape保持一致，dtype与q一致。
+  - A5上cmpResidualKvOptional配合cmpRatio使用，可恢复压缩前KV长度。且每个batch的值需要小于cmpRatio。仅当cmpMaskMode为3且cmpRatio不等于1时允许传入；cmpMaskMode为0或cmpRatio等于1时不允许传入。
+  - attnOutOut：tensor类型，公式中的输出。A5支持BFLOAT16；A2/A3 TurboQuant支持FLOAT16、BFLOAT16。数据格式支持ND，shape和dtype与q一致。
   - returnSoftmaxLse=False时返回shape为[1]的值为0的tensor；returnSoftmaxLse=True时返回FLOAT32的log-sum-exp结果。
   - cuSeqlensQOptional、cuSeqlensOriKvOptional、cuSeqlensCmpKvOptional须满足首元素为0，且序列整体呈非递减排列，即任一元素不小于其前一个元素。
   - 当layoutKv为PA_BBND时，oriKvOptional和cmpKvOptional支持0轴非连续。
   - 各参数shape中以相同符号表示的维度，其对应轴的实际数值需保持一致。
+
+### TurboQuant参数约束
+
+`quantMode=3`时仅支持A2/A3，参数约束如下：
+
+| 参数 | 约束 |
+| :--- | :--- |
+| q、attnOutOut | `layoutQOptional`为TND；数据类型为FLOAT16或BFLOAT16且保持一致；qN为4到128的4的倍数，qD为512，qT允许为0。 |
+| oriKvOptional、cmpKvOptional | 均必须传入，`layoutKvOptional`为PA_BBND。oriKvOptional的数据类型与q一致且kvD为512；cmpKvOptional的数据类型为UINT8且kvD为258。两者blockSize均为16到1024的16的倍数。 |
+| 稀疏与PA参数 | cmpSparseIndicesOptional、oriBlockTableOptional、cmpBlockTableOptional必须传入；cmpSparseIndicesOptional的shape为(qT, 1, 512)或(qT, 1, 1024)。oriSparseIndicesOptional、oriTopkLengthOptional、cmpTopkLengthOptional不支持传入。 |
+| 序列参数 | cuSeqlensQOptional、sequsedOriKvOptional必须传入；cuSeqlensOriKvOptional、cuSeqlensCmpKvOptional、sequsedQOptional、sequsedCmpKvOptional不支持传入。 |
+| Mask与压缩参数 | `oriMaskMode=4`、`cmpMaskMode=3`、`oriWinLeft>=0`、`oriWinRight=0`，`cmpRatio`仅支持4或128；cmpResidualKvOptional不支持传入。 |
+
+下文参数组约束未特别说明时适用于A5的`quantMode=1/2`场景，TurboQuant以本节为准。
 
 ### 特性参数组
 
@@ -731,7 +747,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
         <td>q</td>
         <td>
             <ul>
-                <li>dtype支持BFLOAT16</li>
+                <li>A5的dtype支持BFLOAT16；A2/A3 TurboQuant支持FLOAT16、BFLOAT16</li>
                 <li>layoutQ为BSND时，q的shape为(b, qS, qN, qD)</li>
                 <li>layoutQ为TND时，q的shape为(qT, qN, qD)</li>
             </ul>
@@ -742,7 +758,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
         <td rowspan="4">
             <ul>
                 <li>q、attnOutOut的dtype、shape需相同</li>
-                <li>若cmpKvOptional传入，oriKvOptional与cmpKvOptional的dtype需一致</li>
+                <li>A5上若cmpKvOptional传入，oriKvOptional与cmpKvOptional的dtype需一致；A2/A3 TurboQuant要求q、oriKvOptional、attnOutOut的dtype一致，cmpKvOptional为UINT8</li>
                 <li>layoutKv不为PA_BBND时，layoutQ和layoutKv需保持一致</li>
                 <li>layoutKv为PA_BBND时，layoutQ可为BSND或TND</li>
             </ul>
@@ -754,17 +770,16 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
                 <li>qS > 0</li>
                 <li>0 < qN <= 128</li>
                 <li>qD = 512</li>
-                <li>qT > 0</li>
+                <li>A5要求qT > 0；A2/A3 TurboQuant允许qT >= 0</li>
                 <li>oriKvS > 0</li>
                 <li>cmpKvS > 0</li>
                 <li>kvN = 1</li>
-                <li>quantMode=1时kvD=608，quantMode=2时kvD=584</li>
+                <li>A5上quantMode=1时kvD=608，quantMode=2时kvD=584；A2/A3上quantMode=3时oriKv的kvD=512、cmpKv的kvD=258</li>
                 <li>oriKvT > 0</li>
                 <li>cmpKvT > 0</li>
                 <li>oriKvBlockNums > 0</li>
                 <li>cmpKvBlockNums > 0</li>
-                <li>1 <= oriKvBlockSize <= 1024</li>
-                <li>1 <= cmpKvBlockSize <= 1024</li>
+                <li>A5上1 <= oriKvBlockSize、cmpKvBlockSize <= 1024；A2/A3 TurboQuant还要求blockSize为16的倍数</li>
             </ul>
         </td>
     </tr>
@@ -772,7 +787,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
         <td>oriKvOptional</td>
         <td>
             <ul>
-                <li>dtype支持FLOAT8_E4M3FN</li>
+                <li>A5的dtype支持FLOAT8_E4M3FN；A2/A3 TurboQuant支持FLOAT16、BFLOAT16且与q一致</li>
                 <li>layoutKv为BSND时，oriKvOptional的shape为(b, oriKvS, kvN, kvD)</li>
                 <li>layoutKv为TND时，oriKvOptional的shape为(oriKvT, kvN, kvD)</li>
                 <li>layoutKv为PA_BBND时，oriKvOptional的shape为(oriKvBlockNums, oriKvBlockSize, kvN, kvD)</li>
@@ -786,7 +801,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
         <td>attnOutOut</td>
         <td>
             <ul>
-                <li>dtype支持BFLOAT16</li>
+                <li>A5的dtype支持BFLOAT16；A2/A3 TurboQuant支持FLOAT16、BFLOAT16且与q一致</li>
                 <li>layoutQ为BSND时，attnOutOut的shape为(b, qS, qN, qD)</li>
                 <li>layoutQ为TND时，attnOutOut的shape为(qT, qN, qD)</li>
             </ul>
@@ -799,7 +814,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
         <td>cmpKvOptional</td>
         <td>
             <ul>
-                <li>dtype支持FLOAT8_E4M3FN</li>
+                <li>A5的dtype支持FLOAT8_E4M3FN；A2/A3 TurboQuant固定为UINT8</li>
                 <li>layoutKv为BSND时，cmpKvOptional的shape为(b, cmpKvS, kvN, kvD)</li>
                 <li>layoutKv为TND时，cmpKvOptional的shape为(cmpKvT, kvN, kvD)</li>
                 <li>layoutKv为PA_BBND时，cmpKvOptional的shape为(cmpKvBlockNums, cmpKvBlockSize, kvN, kvD)</li>
@@ -1192,6 +1207,7 @@ metadataOptional校验
                     <li>dtype支持INT32</li>
                     <li>shape为(qT, kvN, cmpKvK)或(b, qS, kvN, cmpKvK)</li>
                     <li>无效位置填-1，其余为非负整数</li>
+                    <li>A2/A3 TurboQuant仅支持(qT, 1, 512)或(qT, 1, 1024)</li>
                 </ul>
             </td>
             <td>

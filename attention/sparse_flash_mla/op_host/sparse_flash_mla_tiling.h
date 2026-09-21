@@ -16,6 +16,7 @@
 #define SPARSE_FLASH_MLA_TILING_H
 
 #include <exe_graph/runtime/tiling_context.h>
+#include "mc2_log_compat.h"
 #include "tiling/tiling_api.h"
 #include "err/ops_err.h"
 #include "common/smla_host_common_defs.h"

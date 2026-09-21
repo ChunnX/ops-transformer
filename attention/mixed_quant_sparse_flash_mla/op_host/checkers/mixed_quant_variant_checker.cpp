@@ -9,7 +9,7 @@
  */
 
 #include "mixed_quant_variant_checker.h"
-#include "log/log.h"
+#include "mc2_log_compat.h"
 
 namespace optiling {
 namespace sparse_mla_checker {
@@ -22,13 +22,56 @@ const char *Op(const CheckContext &context)
 
 ge::graphStatus MixedQuantVariantChecker::CheckSinglePara(const CheckContext &context) const
 {
-    OP_CHECK_IF(context.quantMode != 1 && context.quantMode != 2,
-                OP_LOGE_FOR_INVALID_VALUE(Op(context), "quant_mode", std::to_string(context.quantMode).c_str(),
-                                          "1 or 2"),
+    OP_CHECK_IF(
+        context.quantMode != 1 && context.quantMode != 2 && context.quantMode != 3,
+        OP_LOGE_FOR_INVALID_VALUE(Op(context), "quant_mode", std::to_string(context.quantMode).c_str(), "1, 2 or 3"),
+        return ge::GRAPH_FAILED);
+    const bool turboQuant = context.quantMode == 3;
+    OP_CHECK_IF((turboQuant && context.npuArch != NpuArch::DAV_2201) ||
+                    (!turboQuant && context.npuArch != NpuArch::DAV_3510),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    Op(context), "quant_mode", std::to_string(context.quantMode).c_str(),
+                    "quant_mode 3 is supported only on arch22; quant_mode 1/2 are supported only on arch35"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context.ropeHeadDim != 64,
-                OP_LOGE_FOR_INVALID_VALUE(Op(context), "rope_head_dim",
-                                          std::to_string(context.ropeHeadDim).c_str(), "64"),
+    OP_CHECK_IF(
+        context.ropeHeadDim != 64,
+        OP_LOGE_FOR_INVALID_VALUE(Op(context), "rope_head_dim", std::to_string(context.ropeHeadDim).c_str(), "64"),
+        return ge::GRAPH_FAILED);
+    if (!turboQuant) {
+        return ge::GRAPH_SUCCESS;
+    }
+    OP_CHECK_IF(
+        context.qLayout != Layout::TND || context.kvLayout != Layout::PA_BBND,
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(Op(context), "layout_q/layout_kv", "TurboQuant requires TND/PA_BBND"),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context.qNumHeads % 4 != 0,
+                OP_LOGE_FOR_INVALID_VALUE(Op(context), "q head count", std::to_string(context.qNumHeads).c_str(),
+                                          "a multiple of 4"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context.cmpTopk != 512 && context.cmpTopk != 1024,
+                OP_LOGE_FOR_INVALID_VALUE(Op(context), "cmp_sparse_indices K", std::to_string(context.cmpTopk).c_str(),
+                                          "512 or 1024"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        context.oriMaskMode != 4 || context.cmpMaskMode != 3 || context.oriWinRight != 0,
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+            Op(context), "mask attributes", "TurboQuant requires ori_mask_mode=4, cmp_mask_mode=3 and ori_win_right=0"),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        context.oriWinLeft < 0 || (context.cmpRatio != 4 && context.cmpRatio != 128),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(Op(context), "TurboQuant attributes",
+                                                 "ori_win_left must be non-negative and cmp_ratio must be 4 or 128"),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context.oriBlockSize <= 0 || context.oriBlockSize > 1024 || context.oriBlockSize % 16 != 0 ||
+                    context.cmpBlockSize <= 0 || context.cmpBlockSize > 1024 || context.cmpBlockSize % 16 != 0,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                    Op(context), "KV block size", "TurboQuant block sizes must be in [16, 1024] and aligned to 16"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context.oriKvStrides.empty() || context.cmpKvStrides.empty() ||
+                    context.oriKvStrides[0] < context.oriBlockSize * 512 ||
+                    context.cmpKvStrides[0] < context.cmpBlockSize * 258,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                    Op(context), "KV stride", "The first-axis stride must cover one physical TurboQuant cache block"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
