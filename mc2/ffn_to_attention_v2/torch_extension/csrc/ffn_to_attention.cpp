@@ -107,7 +107,8 @@ int64_t GetFFNToAttentionCclBufferSize(const std::vector<int64_t> &tokenInfoTabl
     TORCH_CHECK(microBatchNum > 0 && bs > 0 && expertNumPerToken > 0 && hs > 0, "Token dimensions must be positive");
     TORCH_CHECK(std::equal(tokenInfoTableShape.begin(), tokenInfoTableShape.end(), tokenDataShape.begin()),
                 "Token info/data dimensions must match");
-    TORCH_CHECK(worldSize > 0 && worldSize <= 1024, "Complete window sizing requires world_size in [1, 1024]");
+    TORCH_CHECK(worldSize > 0 && worldSize <= 1024,
+                "Complete window sizing requires world_size in [1, 1024]");
     int64_t tokenSlots = CheckedMul(CheckedMul(microBatchNum, bs), expertNumPerToken);
     int64_t tokenDataSize = CheckedMul(CheckedMul(tokenSlots, hs), BYTES_PER_FP16);
     int64_t tokenInfoSize = CeilAlign(CheckedMul(tokenSlots, BYTES_PER_INT32), 512);

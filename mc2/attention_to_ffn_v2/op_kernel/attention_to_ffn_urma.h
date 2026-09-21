@@ -390,13 +390,6 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::I
         (static_cast<uint64_t>(sessionId_) * microBatchNum_ * axisBS_ * (axisK_ + sharedExpertNum_) * axisHS_) +
         (static_cast<uint64_t>(microBatchId_) * axisBS_ * (axisK_ + sharedExpertNum_) * axisHS_);
 
-    // All URMA staging sources live in the rank's own window (persistent across op invocations):
-    // fire-and-forget WQEs may still be in flight after this kernel exits, so the per-call
-    // workspace cannot back them. Token data is staged into a compact contiguous area, physically
-    // separated from the session-slot receiving area to avoid HBM bank conflicts between local
-    // URMA reads (staging) and remote URMA writes (receiving). Token/layer flags use a dedicated
-    // area after the staging region, clear of the info-table region that SetFlagInAttn's die
-    // writes touch while WQEs are in flight.
     const uint64_t elementSize = (QuantMode != 0) ? sizeof(XOutType) : sizeof(XType);
     const uint64_t dataRegionSize = static_cast<uint64_t>(attentionWorkerNum_) * microBatchNum_ * axisBS_ *
                                     (axisK_ + sharedExpertNum_) * axisHS_ * elementSize;
@@ -409,11 +402,6 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::I
     localFlagAddr_ = stagingBaseAddr_ + stagingRegionAlignSize;
     layerFlagAddr_ = localFlagAddr_ + static_cast<uint64_t>(expertIdsCnt_) * URMA_FLAG_SLOT_SIZE;
 
-    // Rank tables live in the per-call workspace right after the isSync status region:
-    // [aivNum_ per-AIV count rows | compact per-rank token-offset tables]. Phase 1 publishes each
-    // AIV's per-rank remote counts (UB->GM via MTE3, GM->UB via MTE2, no cache coherency issue);
-    // the scatter pass buckets token offsets into the compact tables; the relay then reads only
-    // the tables of the destinations it serves instead of rescanning the full token list.
     const uint64_t countMatrixOffset = static_cast<uint64_t>(aivNum_) * aivWorkspaceOffset_;
     countMatrixBase_ = workspaceGM + countMatrixOffset;
     countRowStride_ = static_cast<uint32_t>(Ceil(rankCountElements_ * sizeof(int32_t), WORKSPACE_ELEMENT_OFFSET) *
@@ -867,9 +855,6 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::S
     bucketTablesGM.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(bucketTablesBase_));
     const uint64_t roundNum = Ceil(static_cast<uint64_t>(totalSendNum_), static_cast<uint64_t>(aivNum_));
 
-    // Bucket this AIV's remote token offsets by rank in UB, then batch-copy each bucket into the
-    // rank's compact GM table at (tableStart + writePrefix). Each UB bucket starts on a 32B
-    // boundary; GM entries remain tightly packed 4B offsets.
     for (uint64_t roundStart = 0U; roundStart < roundNum; roundStart += groupTokenMax_) {
         uint64_t roundEnd = (roundStart + groupTokenMax_ > roundNum) ? roundNum : roundStart + groupTokenMax_;
         Duplicate<int32_t>(rankCounts, 0, rankCountElements_);
@@ -931,8 +916,6 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::R
     GlobalTensor<int32_t> bucketTablesGM;
     bucketTablesGM.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(bucketTablesBase_));
 
-    // Data phase: an entry whose index within dstRank (rankEntryIdx) is congruent to channelIdx
-    // is sent on this channel. All data WQEs of the channel are appended first.
     for (uint32_t chunkStart = 0U; chunkStart < entryCount; chunkStart += entryChunkMax) {
         uint32_t curEntries = (chunkStart + entryChunkMax > entryCount) ? entryCount - chunkStart : entryChunkMax;
         DataCopyExtParams copyParams{1U, static_cast<uint32_t>(curEntries * sizeof(int32_t)), 0U, 0U, 0U};
@@ -964,8 +947,6 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::R
         }
     }
 
-    // Flag phase: the same entries on the same channel, appended after the data WQEs so each
-    // per-token flag lands after its data via in-channel WQE ordering.
     for (uint32_t chunkStart = 0U; chunkStart < entryCount; chunkStart += entryChunkMax) {
         uint32_t curEntries = (chunkStart + entryChunkMax > entryCount) ? entryCount - chunkStart : entryChunkMax;
         DataCopyExtParams copyParams{1U, static_cast<uint32_t>(curEntries * sizeof(int32_t)), 0U, 0U, 0U};
@@ -1096,10 +1077,6 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::S
             DataCopyPad(tableFlagGMTensor, statusTensor_, statusParams);
             PipeBarrier<PIPE_MTE3>();
         } else {
-            // Multi-channel relay: the layer flag WQE is only ordered after WQEs on its own
-            // channel (channel 0), so drain the extra channels first to guarantee the flag
-            // lands after every channel's data and per-token flags. With channelsPerRank_ == 1
-            // the loop body never runs and the flag keeps pure in-channel ordering.
             for (uint32_t channelIdx = 1U; channelIdx < channelsPerRank_; ++channelIdx) {
                 int32_t drainRet = hcomm_.Drain(GetUrmaCommHandle(ffnIdx, channelIdx));
                 ascendc_assert(drainRet == 0, "Urma drain before layer flag failed, ret=%d, rankId=%u, dstRank=%u",
@@ -1144,8 +1121,6 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::P
         DataCopyExtParams xCopyParams = {1U, static_cast<uint32_t>(hSize_), 0U, 0U, 0U};
         remoteFlagCnt_ = 0;
 
-        // Phase 1: metadata + staging. Each AIV also counts its remote records per rank and
-        // keeps its own toRankId stash in UB for the scatter pass.
         for (uint64_t round = 0; round < roundNum; ++round) {
             const uint32_t tokenOffset = static_cast<uint32_t>(static_cast<uint64_t>(aivId_) + round * aivNum_);
             if (tokenOffset < totalSendNum_) {
@@ -1195,8 +1170,6 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::P
         }
         PipeBarrier<PIPE_MTE3>();
 
-        // Publish this AIV's per-rank remote counts to the GM count matrix via MTE3 (bypasses
-        // L1 cache, no cache flush needed). Each AIV writes its own row, no false sharing.
         {
             GlobalTensor<int32_t> countRowGM;
             GM_ADDR countRowAddr = countMatrixBase_ + static_cast<uint64_t>(aivId_) * countRowStride_;
@@ -1207,20 +1180,10 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::P
         }
         SyncAll<true>();
 
-        // Phase 2: derive the compact-table offsets, then bucket this AIV's remote token
-        // offsets into the per-rank GM tables. The SyncAll guarantees every AIV's counts are
-        // visible before the prefix sums, and the second SyncAll guarantees every table is
-        // complete before any AIV starts relaying.
         BuildRankTableOffsets();
         ScatterTokensToRankTables();
         SyncAll<true>();
 
-        // Multi-channel relay phase: every AIV relays the (dstRank, channel) slots assigned to
-        // it (slot = dstRank * channelsPerRank_ + channelIdx, slot % aivNum_ == aivId_),
-        // reading only the compact table of the rank it serves. An entry's index within the
-        // rank decides its channel, and its data WQE and flag WQE share that channel, so
-        // per-token flag ordering is preserved while multiple AIVs and channels submit in
-        // parallel.
         for (uint32_t dstRank = 0U; dstRank < worldSize_; ++dstRank) {
             if (dstRank == rankId_) {
                 continue;

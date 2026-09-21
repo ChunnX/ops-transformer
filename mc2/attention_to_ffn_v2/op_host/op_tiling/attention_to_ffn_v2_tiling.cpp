@@ -79,6 +79,7 @@ AttentionToFFNTilingConfig MakeTilingConfig(bool allowMxQuantMode)
     config.attrCclBufferSizeIndex = ATTR_CCL_BUFFER_SIZE_INDEX;
     config.isMc2Context = true;
     config.allowMxQuantMode = allowMxQuantMode;
+    config.allowMultiLayer = true;
     return config;
 }
 

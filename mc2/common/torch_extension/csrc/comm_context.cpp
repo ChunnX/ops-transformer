@@ -219,12 +219,13 @@ class HcclChannelContextBuilder {
 public:
     void Build(const std::string &group, int64_t worldSize, int64_t &cclBufferSize, at::Tensor &contextTensor,
                const std::string &commAlg, const std::string &opName, int64_t customCclBufferSize = 0,
-               const py::object &customCclBufferSizeResolver = py::none(), void **customDeviceBuffer = nullptr,
-               HcclMemHandle *customMemHandle = nullptr, bool multiChannel = false)
+               const py::object &customCclBufferSizeResolver = py::none(), void *userDeviceBuffer = nullptr,
+               void **customDeviceBuffer = nullptr, HcclMemHandle *customMemHandle = nullptr, bool multiChannel = false)
     {
         ASCEND_LOGI("Start to get CommContext Tensor, group: %s", group.c_str());
         InitHcclEngineCtxFunctions();
         customCclBufferSize_ = customCclBufferSize;
+        userDeviceBuffer_ = userDeviceBuffer;
         customDeviceBuffer_ = customDeviceBuffer;
         customMemHandle_ = customMemHandle;
         multiChannel_ = multiChannel;
@@ -631,10 +632,16 @@ public:
 
         uint64_t bufferSizeBytes = static_cast<uint64_t>(customCclBufferSize_);
         if (*customDeviceBuffer_ == nullptr) {
-            aclError ar = aclrtMalloc(customDeviceBuffer_, bufferSizeBytes, ACL_MEM_MALLOC_HUGE_FIRST);
-            TORCH_CHECK(ar == ACL_SUCCESS, "aclrtMalloc(", bufferSizeBytes, " ) failed, ret=", ar);
-            ar = aclrtMemset(*customDeviceBuffer_, bufferSizeBytes, 0, bufferSizeBytes);
-            TORCH_CHECK(ar == ACL_SUCCESS, "aclrtMemset(customDeviceBuffer_) failed, ret=", ar);
+            if (userDeviceBuffer_ != nullptr) {
+                aclError ar = aclrtMemset(userDeviceBuffer_, bufferSizeBytes, 0, bufferSizeBytes);
+                TORCH_CHECK(ar == ACL_SUCCESS, "aclrtMemset(customDeviceBuffer_) failed, ret=", ar);
+                *customDeviceBuffer_ = userDeviceBuffer_;
+            } else {
+                aclError ar = aclrtMalloc(customDeviceBuffer_, bufferSizeBytes, ACL_MEM_MALLOC_HUGE_FIRST);
+                TORCH_CHECK(ar == ACL_SUCCESS, "aclrtMalloc(", bufferSizeBytes, " ) failed, ret=", ar);
+                ar = aclrtMemset(*customDeviceBuffer_, bufferSizeBytes, 0, bufferSizeBytes);
+                TORCH_CHECK(ar == ACL_SUCCESS, "aclrtMemset(customDeviceBuffer_) failed, ret=", ar);
+            }
         }
         if (*customMemHandle_ == nullptr) {
             CommMem mem;
@@ -790,6 +797,7 @@ public:
     TopoType topoType_ = TopoType::INTRA_SUPER_NODE;
     int64_t rankNumPerServer_ = DEFAULT_RANK_NUM_PER_SERVER;
     int64_t customCclBufferSize_ = 0;
+    void *userDeviceBuffer_ = nullptr;
     void **customDeviceBuffer_ = nullptr;
     HcclMemHandle *customMemHandle_ = nullptr;
     bool multiChannel_ = false;
@@ -802,7 +810,7 @@ public:
     CommContextManager(const std::string &group, int64_t worldSize, const py::object &backend = py::str("kfc"),
                        const std::string &commAlg = "ub-mem", const std::string &opName = "moe_dispatch_ffn_combine",
                        int64_t customCclBufferSize = 0, const py::object &customCclBufferSizeResolver = py::none(),
-                       bool multiChannel = false)
+                       int64_t customDeviceBufferAddr = 0, bool multiChannel = false)
         : group_(group),
           commAlg_(commAlg),
           opName_(opName),
@@ -814,6 +822,7 @@ public:
           rankNumPerServer_(DEFAULT_RANK_NUM_PER_SERVER),
           customCclBufferSize_(customCclBufferSize),
           customCclBufferSizeResolver_(customCclBufferSizeResolver),
+          customDeviceBufferAddr_(customDeviceBufferAddr),
           multiChannel_(multiChannel)
     {}
 
@@ -858,11 +867,11 @@ public:
         if (customMemHandle_ != nullptr) {
             customMemHandle_ = nullptr;
         }
-        if (customDeviceBuffer_ != nullptr) {
+        if (customDeviceBuffer_ != nullptr && ownsDeviceBuffer_) {
             aclError aclRet = aclrtFree(customDeviceBuffer_);
             TORCH_CHECK(aclRet == ACL_SUCCESS, "aclrtFree(customDeviceBuffer_) failed, ret=", aclRet);
-            customDeviceBuffer_ = nullptr;
         }
+        customDeviceBuffer_ = nullptr;
         localDeviceBuffer_ = nullptr;
     }
 
@@ -912,6 +921,15 @@ private:
 
     void DispatchBuild(at::Tensor &tensor)
     {
+        void *userDeviceBuffer = nullptr;
+        if (customDeviceBufferAddr_ > 0) {
+            TORCH_CHECK(customCclBufferSizeResolver_.is_none(),
+                        "customDeviceBufferAddr and customCclBufferSizeResolver cannot be used together");
+            TORCH_CHECK(mode_ == BackendMode::CHANNEL,
+                        "customDeviceBufferAddr is only supported with the channel backend");
+            userDeviceBuffer = ResolveUserDeviceBuffer();
+        }
+        ownsDeviceBuffer_ = (userDeviceBuffer == nullptr);
         switch (mode_) {
             case BackendMode::KFC: {
                 KfcContextBuilder builder;
@@ -921,7 +939,13 @@ private:
             case BackendMode::CHANNEL: {
                 HcclChannelContextBuilder builder;
                 builder.Build(group_, worldSize_, cclBufferSize_, tensor, commAlg_, opName_, customCclBufferSize_,
-                              customCclBufferSizeResolver_, &customDeviceBuffer_, &customMemHandle_, multiChannel_);
+                              customCclBufferSizeResolver_, userDeviceBuffer, &customDeviceBuffer_, &customMemHandle_, multiChannel_);
+                if (userDeviceBuffer != nullptr) {
+                    TORCH_CHECK(customDeviceBuffer_ == userDeviceBuffer,
+                                "customDeviceBuffer was not adopted: a context for this group/opName already "
+                                "exists in this process; create only one buffer per group and pass window_addr "
+                                "and window_size to that single creation");
+                }
                 localDeviceBuffer_ = customDeviceBuffer_;
                 topoType_ = builder.GetTopoType();
                 rankNumPerServer_ = builder.GetRankNumPerServer();
@@ -930,6 +954,13 @@ private:
             default:
                 TORCH_CHECK(false, "Unknown backend mode: ", static_cast<int>(mode_));
         }
+    }
+
+    void *ResolveUserDeviceBuffer() const
+    {
+        TORCH_CHECK(customDeviceBufferAddr_ > 0, "customDeviceBufferAddr must be a positive device address, got ",
+                    customDeviceBufferAddr_);
+        return reinterpret_cast<void *>(static_cast<uintptr_t>(customDeviceBufferAddr_));
     }
 
     std::string group_;
@@ -943,6 +974,8 @@ private:
     int64_t rankNumPerServer_ = DEFAULT_RANK_NUM_PER_SERVER;
     int64_t customCclBufferSize_ = 0;
     py::object customCclBufferSizeResolver_;
+    int64_t customDeviceBufferAddr_ = 0;
+    bool ownsDeviceBuffer_ = true;
     bool multiChannel_ = false;
     void *customDeviceBuffer_ = nullptr;
     void *localDeviceBuffer_ = nullptr;
@@ -954,11 +987,11 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     py::class_<CommContextManager>(m, "CommContextManager")
         .def(py::init<const std::string &, int64_t, const py::object &, const std::string &, const std::string &,
-                      int64_t, const py::object &, bool>(),
+                      int64_t, const py::object &, int64_t, bool>(),
              py::arg("group"), py::arg("worldSize"), py::arg("backend") = std::string("kfc"),
              py::arg("commAlg") = std::string("ub-mem"), py::arg("opName") = std::string("moe_dispatch_ffn_combine"),
              py::arg("customCclBufferSize") = 0, py::arg("customCclBufferSizeResolver") = py::none(),
-             py::arg("multiChannel") = false)
+             py::arg("customDeviceBufferAddr") = 0, py::arg("multiChannel") = false)
         .def("create_context", &CommContextManager::CreateContext)
         .def("update_group", &CommContextManager::UpdateGroup, py::arg("group"), py::arg("contextTensor").noconvert())
         .def("destroy", &CommContextManager::Destroy)
