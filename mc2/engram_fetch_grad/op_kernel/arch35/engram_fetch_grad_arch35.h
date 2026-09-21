@@ -694,7 +694,11 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     if (tempBufSize < entryBatchBytes) {
         tempBufSize = entryBatchBytes;
     }
-    uint32_t coreArrayBytes = Ceil(static_cast<uint64_t>(totalBlocks_) * sizeof(int32_t) * 2U, UB_ALIGN) * UB_ALIGN;
+    // LoadCoreRange 两段读入(coreStart+segCount)实际占用 = align32(T)+T：第二段起点为满足
+    // DataCopyPad 目的地址 32B 对齐放在 align32(T) 处(T=totalBlocks_*4B)。
+    // 旧算法 align32(2T) 在 totalBlocks_%8 为 1..4 时少算 4~16B，多 die 大核数下越界踩 tempBuf 尾部
+    uint32_t coreArrayBytes = Ceil(Ceil(static_cast<uint64_t>(totalBlocks_) * sizeof(int32_t), UB_ALIGN) +
+                                   static_cast<uint64_t>(totalBlocks_) * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
     if (tempBufSize < coreArrayBytes) {
         tempBufSize = coreArrayBytes;
     }
