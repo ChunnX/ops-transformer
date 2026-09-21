@@ -14,6 +14,7 @@
  */
 
 #include "register/op_def_registry.h"
+#include "../../common/op_host/attention_ffn_op_def.h"
 
 namespace ops {
 class AttentionToFFN : public OpDef {
@@ -22,83 +23,18 @@ public:
         : OpDef(name)
     {
         DefineRequiredInputs();
-        DefineOptionalInputs();
-        DefineAttributes();
+        AttentionFfnOpDef::DefineOptionalInputs(*this);
+        AttentionFfnOpDef::DefineAttributes(*this);
 
-        OpAICoreConfig aicore_config;
-        aicore_config.DynamicCompileStaticFlag(true)
-            .DynamicFormatFlag(true)
-            .DynamicRankSupportFlag(true)
-            .DynamicShapeSupportFlag(true)
-            .NeedCheckSupportFlag(false)
-            .PrecisionReduceFlag(true)
-            .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
-            .ExtendCfgInfo("jitCompile.flag", "static_true")
-            .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
-        this->AICore().AddConfig("ascend910_93", aicore_config);
+        AttentionFfnOpDef::AddAICoreConfig(*this, "ascend910_93");
         this->MC2().HcclGroup({"group"});
     }
 
 private:
     void DefineRequiredInputs()
     {
-        this->Input("x")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("session_id")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("micro_batch_id")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("layer_id")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("expert_ids")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("expert_rank_table")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-    }
-
-    void DefineOptionalInputs()
-    {
-        this->Input("scales")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_FLOAT})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("active_mask")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_BOOL})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-    }
-
-    void DefineAttributes()
-    {
-        this->Attr("group").AttrType(REQUIRED).String();
-        this->Attr("world_size").AttrType(REQUIRED).Int();
-        this->Attr("ffn_token_info_table_shape").AttrType(REQUIRED).ListInt();
-        this->Attr("ffn_token_data_shape").AttrType(REQUIRED).ListInt();
-        this->Attr("attn_token_info_table_shape").AttrType(REQUIRED).ListInt();
-        this->Attr("moe_expert_num").AttrType(REQUIRED).Int();
-        this->Attr("quant_mode").AttrType(OPTIONAL).Int();
-        this->Attr("sync_flag").AttrType(OPTIONAL).Int();
-        this->Attr("ffn_start_rank_id").AttrType(OPTIONAL).Int();
+        AttentionFfnOpDef::DefineXInput(*this);
+        AttentionFfnOpDef::DefineAttentionFfRequiredInput(*this);
     }
 };
 

@@ -672,26 +672,10 @@ static void SetPlatformTilingData(gert::TilingContext *context, const char *node
     OP_LOGD(nodeName, "numBlocks=%u, aivNum=%u, ubSize=%lu", numBlocks, aivNum, ubSize);
 }
 
-ge::graphStatus FFNToAttentionTilingFuncBase(gert::TilingContext *context, const FFNToAttentionTilingConfig &config)
+static ge::graphStatus CheckFFNWindowSize(gert::TilingContext *context, const char *nodeName,
+                                          FFNToAttentionTilingData *tilingData,
+                                          const FFNToAttentionTilingConfig &config)
 {
-    FFNToAttentionTilingData *tilingData = context->GetTilingData<FFNToAttentionTilingData>();
-    std::string group = "";
-    const char *nodeName = context->GetNodeName();
-    OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "tilingData"), return ge::GRAPH_FAILED);
-
-    if (config.isMc2Context) {
-        OP_TILING_CHECK(CheckMc2Context(context, nodeName, config) != ge::GRAPH_SUCCESS,
-                        OP_LOGE(nodeName, "Tiling check context failed."), return ge::GRAPH_FAILED);
-    }
-
-    // Function that get check and set Attrs
-    OP_TILING_CHECK(!CheckAndSetAttrs(context, nodeName, *tilingData, group, config),
-                    OP_LOGE(nodeName, "Check and set attributes failed!"), return ge::GRAPH_FAILED);
-
-    // Function that check input dim 、format、datatype
-    OP_TILING_CHECK(!CheckInputAndSetTilingData(context, nodeName, *tilingData, config),
-                    OP_LOGE(nodeName, "Check Inputs and Outputs failed!"), return ge::GRAPH_FAILED);
-
     // Check window Size
     uint64_t neededSize = 0;
     uint64_t viableWindowSize = 0;
@@ -712,6 +696,31 @@ ge::graphStatus FFNToAttentionTilingFuncBase(gert::TilingContext *context, const
     OP_TILING_CHECK(
         CheckCclBufferSize(context, nodeName, config.attrCclBufferSizeIndex, neededSize) != ge::GRAPH_SUCCESS,
         static_cast<void>(0), return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus FFNToAttentionTilingFuncBase(gert::TilingContext *context, const FFNToAttentionTilingConfig &config)
+{
+    FFNToAttentionTilingData *tilingData = context->GetTilingData<FFNToAttentionTilingData>();
+    std::string group = "";
+    const char *nodeName = context->GetNodeName();
+    OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "tilingData"), return ge::GRAPH_FAILED);
+
+    if (config.isMc2Context) {
+        OP_TILING_CHECK(CheckMc2Context(context, nodeName, config) != ge::GRAPH_SUCCESS,
+                        OP_LOGE(nodeName, "Tiling check context failed."), return ge::GRAPH_FAILED);
+    }
+
+    // Function that get check and set Attrs
+    OP_TILING_CHECK(!CheckAndSetAttrs(context, nodeName, *tilingData, group, config),
+                    OP_LOGE(nodeName, "Check and set attributes failed!"), return ge::GRAPH_FAILED);
+
+    // Function that check input dim 、format、datatype
+    OP_TILING_CHECK(!CheckInputAndSetTilingData(context, nodeName, *tilingData, config),
+                    OP_LOGE(nodeName, "Check Inputs and Outputs failed!"), return ge::GRAPH_FAILED);
+
+    OP_TILING_CHECK(CheckFFNWindowSize(context, nodeName, tilingData, config) != ge::GRAPH_SUCCESS,
+                    static_cast<void>(0), return ge::GRAPH_FAILED);
 
     // Set WorkSpace
     OP_TILING_CHECK(SetWorkSpace(context, nodeName) != ge::GRAPH_SUCCESS,
