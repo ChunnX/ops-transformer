@@ -132,19 +132,21 @@ __global__ __aicore__ void flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key
                                          s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask>;
 
     if constexpr (templateId == FA_Template_DN_Unmerged) {
+        using DN_T = FlashAttnKernel::DnCausalType<FA_T, (config == 8 || config == 9)>;
         // BN1_S1 scheduling for Cube M=128 and D/DV=64/64, 128/128 or 192/128.
         // Actual D=72 uses config=2. Both mask variants share the same routing gate.
-        static_assert(config == 0 || config == 2 || config == 6, "DN unmerged excludes M64 and D256");
-        using CubeBlock = FlashAttnKernel::FANoQuantGqaBlockCubeDnUnmerged<FA_T>;
-        using VecFaBlock = FlashAttnKernel::FANoQuantGqaBlockVecDnUnmerged<FA_T>;
-        using VecFdBlock = FlashAttnKernel::FiaBlockVecFlashDecode<FA_T, true, true>;
-        using VecDummy = FlashAttnKernel::FANoQuantGqaBlockVecDummyDnUnmerged<FA_T>;
-        using CubeDummy = FlashAttnKernel::FANoQuantGqaBlockCubeDummyDnUnmerged<FA_T>;
+        static_assert(config == 0 || config == 2 || config == 6 || config == 8 || config == 9,
+                      "DN unmerged excludes M64 and D256");
+        using CubeBlock = FlashAttnKernel::FANoQuantGqaBlockCubeDnUnmerged<DN_T>;
+        using VecFaBlock = FlashAttnKernel::FANoQuantGqaBlockVecDnUnmerged<DN_T>;
+        using VecFdBlock = FlashAttnKernel::FiaBlockVecFlashDecode<DN_T, true, true>;
+        using VecDummy = FlashAttnKernel::FANoQuantGqaBlockVecDummyDnUnmerged<DN_T>;
+        using CubeDummy = FlashAttnKernel::FANoQuantGqaBlockCubeDummyDnUnmerged<DN_T>;
 #ifdef __DAV_CUBE__
-        using Kernel = FlashAttnKernel::FlashAttentionNoQuantGqaKernelDnUnmerged<FA_T, CubeBlock, VecDummy, VecDummy>;
+        using Kernel = FlashAttnKernel::FlashAttentionNoQuantGqaKernelDnUnmerged<DN_T, CubeBlock, VecDummy, VecDummy>;
 #else
         using Kernel =
-            FlashAttnKernel::FlashAttentionNoQuantGqaKernelDnUnmerged<FA_T, CubeDummy, VecFaBlock, VecFdBlock>;
+            FlashAttnKernel::FlashAttentionNoQuantGqaKernelDnUnmerged<DN_T, CubeDummy, VecFaBlock, VecFdBlock>;
 #endif
         Kernel op;
         op.Init(query, key, value, blockTable, cuSeqLensQ, cuSeqLensKv, sequsedQ, sequsedKv, sinks, attnMask, metadata,
@@ -185,3 +187,11 @@ __global__ __aicore__ void flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key
 
     AscendC::PipeBarrier<PIPE_ALL>();
 }
+
+// Diagnostic section placement for the generated wrapper that follows this source.
+// Keep the unified kernel and normal CANN metadata/relocations; the new mixed
+// entries request a distinct input section together, preserving Cube-before-Vector order. Verify final linker placement
+// before use.
+#if defined(TILING_KEY_VAR) && (((TILING_KEY_VAR >> 25U) == 8U) || ((TILING_KEY_VAR >> 25U) == 9U))
+#pragma clang section text = ".text.fa_causal"
+#endif

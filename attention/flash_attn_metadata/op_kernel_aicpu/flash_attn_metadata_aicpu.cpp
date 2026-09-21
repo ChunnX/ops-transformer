@@ -241,13 +241,20 @@ void FlashAttnMetadataCpuKernel::InitLoadBalanceParams()
                                       static_cast<uint32_t>(headDim_), static_cast<uint32_t>(headDimV_), mBaseSize_,
                                       maskMode_ != 0) == optiling::flash_attn::fa_tiling_util::FA_TEMPLATE_DN_UNMERGED;
     if (dnUnmergedRouted) {
-        s2BaseSize_ = FlashAttnPolicy::DnUnmergedS2(headDim_, maskMode_ != 0);
+        s2BaseSize_ = FlashAttnPolicy::DnCausalOptimized(headDim_, headDimV_, maskMode_) ?
+                          FlashAttnPolicy::DnCausalTileN(headDim_) :
+                          FlashAttnPolicy::DnUnmergedS2(headDim_, maskMode_ != 0);
     }
     param.mBaseSize = mBaseSize_;
     param.s2BaseSize = s2BaseSize_;
     param.l2Byte = 96U * 1024U * 1024U; // 96: 96MB, 1024: Mb2Kb, 1024:Kb2Mb
-    param.fdTolerance = 10;             // 10: tolerance block
-    param.fdLeastBlock = 3;             // 3: least block
+    // Diagnostic section working-set budget, not a hardware L2 capacity claim.
+    // The splitter counts complete Q/O tensors, although their active rows stream.
+    if (dnUnmergedRouted && FlashAttnPolicy::DnCausalOptimized(headDim_, headDimV_, maskMode_)) {
+        param.l2Byte = headDim_ == 64U ? 0U : 144U * 1024U * 1024U;
+    }
+    param.fdTolerance = 10; // 10: tolerance block
+    param.fdLeastBlock = 3; // 3: least block
     param.fdOn = true;
     param.costFunc = FlashAttnMetadataCpuKernel::CostFunc;
     param.outputLayout = dnUnmergedRouted ? load_balance::OutputLayout::BN1_S1 : load_balance::OutputLayout::BN2_S1G;

@@ -64,8 +64,7 @@ __aicore__ inline void DnSetPairCount(DnSegmentPlan &plan, const int32_t *ends)
 template <uint16_t N, bool Narrow = false, uint16_t BoundaryMode = 0, bool FullColumns = false>
 __aicore__ inline DnSegmentPlan MakeDnSegmentPlan(int64_t lower, int64_t upper, uint16_t validN)
 {
-    static_assert(N >= 128 && N < 256 && N % 16 == 0,
-                  "Segment descriptors use byte counts for current masked DN tiles");
+    static_assert(N >= 128 && N <= 512 && N % 16 == 0, "Segment descriptors support masked DN tiles up to 512 columns");
     DnSegmentPlan plan;
     plan.lower = DnClip(lower, -64, N);
     plan.upper = DnClip(upper, -64, N);
@@ -93,7 +92,7 @@ __aicore__ inline DnSegmentPlan MakeDnSegmentPlan(int64_t lower, int64_t upper, 
     ends[4] = validN;
     ends[5] = N;
     for (uint32_t i = 0; i < 4; ++i) {
-        plan.boundaries |= static_cast<uint64_t>(ends[i]) << (8U * i);
+        plan.boundaries |= static_cast<uint64_t>(ends[i]) << ((N < 256 ? 8U : 16U) * i);
     }
     for (uint32_t lane = 0; lane < 4; ++lane) {
         for (uint32_t kind = 1; kind <= 3; ++kind) {
@@ -429,7 +428,8 @@ __simd_vf__ inline void DnSegmentedSoftmaxVF(__ubuf__ T *output, __ubuf__ float 
             max0, max1, max2, max3, scores, table, common, DnSegmentCount<KIND - 1>(maxCounts0, maxCounts1), \
             DnSegmentCount<KIND + 2>(maxCounts0, maxCounts1), DnSegmentCount<KIND + 5>(maxCounts0, maxCounts1), \
             DnSegmentCount<KIND + 8>(maxCounts0, maxCounts1), \
-            static_cast<uint16_t>((boundaries >> ((KIND - 1U) * 8U)) & 255U), pitch, lower, upper, excluded, active); \
+            static_cast<uint16_t>((boundaries >> ((KIND - 1U) * (N < 256 ? 8U : 16U))) & (N < 256 ? 255U : 65535U)), \
+            pitch, lower, upper, excluded, active); \
     }
     DN_MAX_SEGMENT(1);
     DN_MAX_SEGMENT(2);
@@ -494,7 +494,7 @@ __simd_vf__ inline void DnSegmentedSoftmaxVF(__ubuf__ T *output, __ubuf__ float 
     StoreAlign(sumUb, oldSum, all);
 }
 
-template <typename T, uint16_t N, int ScaleSign, bool Rows64, bool FullColumns>
+template <typename T, uint16_t N, int ScaleSign, bool Rows64, bool FullColumns, bool CausalOnly = false>
 __aicore__ inline void DnSegmentedSoftmax(const LocalTensor<T> &output, const LocalTensor<float> &scores,
                                           const LocalTensor<float> &sum, const LocalTensor<float> &maximum,
                                           const LocalTensor<float> &exp, const LocalTensor<uint8_t> &table,
@@ -512,16 +512,23 @@ __aicore__ inline void DnSegmentedSoftmax(const LocalTensor<T> &output, const Lo
         (__ubuf__ int8_t *)table.GetPhyAddr(), pitch, validN, scale, minValue, plan.lower, plan.upper, \
         plan.boundaries, plan.maxCounts[0], plan.maxCounts[1], plan.pairCounts[0][0], plan.pairCounts[0][1], \
         plan.pairCounts[0][2], plan.pairCounts[1][0], plan.pairCounts[1][1], plan.pairCounts[1][2])
-    if (lower > upper) {
-        DN_SEGMENTED_SOFTMAX(false, 3);
-    } else if (clippedLower <= -64) {
+    if constexpr (CausalOnly) {
+        // Dedicated causal keys require win_left=-1. Only the upper boundary exists.
+        // Pin the unused lower boundary outside all 64 query lanes, including short tails.
+        lower = -64;
         DN_SEGMENTED_SOFTMAX(false, 1);
-    } else if (clippedUpper >= static_cast<int32_t>(validN) - 1) {
-        DN_SEGMENTED_SOFTMAX(false, 2);
-    } else if (upper - lower + 1 < 64) {
-        DN_SEGMENTED_SOFTMAX(true, 3);
     } else {
-        DN_SEGMENTED_SOFTMAX(false, 3);
+        if (lower > upper) {
+            DN_SEGMENTED_SOFTMAX(false, 3);
+        } else if (clippedLower <= -64) {
+            DN_SEGMENTED_SOFTMAX(false, 1);
+        } else if (clippedUpper >= static_cast<int32_t>(validN) - 1) {
+            DN_SEGMENTED_SOFTMAX(false, 2);
+        } else if (upper - lower + 1 < 64) {
+            DN_SEGMENTED_SOFTMAX(true, 3);
+        } else {
+            DN_SEGMENTED_SOFTMAX(false, 3);
+        }
     }
 #undef DN_SEGMENTED_SOFTMAX
 }

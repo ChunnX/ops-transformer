@@ -15,6 +15,16 @@ namespace FlashAttnPolicy {
 constexpr uint32_t DN_NO_MASK_N = 256U;
 constexpr uint32_t DN_MASK_D64_N = 208U;
 constexpr uint32_t DN_MASK_OTHER_N = 224U;
+// Dedicated configurations keep the existing DN tiles unchanged.
+constexpr uint32_t DN_CAUSAL_N = 256U;
+constexpr uint32_t DnCausalTileN(uint32_t qkDim)
+{
+    return qkDim == 72U ? 224U : DN_CAUSAL_N;
+}
+constexpr bool DnCausalOptimized(uint32_t qkDim, uint32_t vDim, int32_t maskMode)
+{
+    return maskMode == 3 && qkDim == vDim && (qkDim == 64U || qkDim == 72U);
+}
 constexpr uint32_t DnUnmergedS2(uint32_t qkDim, bool hasMask)
 {
     return hasMask ? (qkDim == 64U ? DN_MASK_D64_N : DN_MASK_OTHER_N) : DN_NO_MASK_N;

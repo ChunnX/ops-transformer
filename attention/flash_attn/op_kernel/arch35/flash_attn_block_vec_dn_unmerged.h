@@ -42,7 +42,8 @@ template <typename FA_T>
 class FANoQuantGqaBlockVecDnUnmerged {
 public:
     using ConstInfo = ConstInfo_t;
-    static constexpr uint32_t PRELOAD_N = static_cast<uint32_t>(FA_T::dBaseSize) == 64U ? 3U : 2U;
+    static constexpr uint32_t PRELOAD_N =
+        FA_T::causalOpt ? 3U : (static_cast<uint32_t>(FA_T::dBaseSize) == 64U ? 3U : 2U);
     using INPUT_T = typename FA_T::inputType;
     using OUTPUT_T = typename FA_T::outputType;
     static constexpr uint32_t mBaseSize = (uint32_t)FA_T::mBaseSize;
@@ -86,7 +87,8 @@ public:
     // UB
     static constexpr uint32_t UB_MM1_RES_BUFCNT = 2U;
     static constexpr uint32_t UB_MM1_RES_BUF_BYTES = mBaseSize / CV_RATIO * s2BaseSize * sizeof(T);
-    static constexpr uint32_t UB_MM2_RES_BUFCNT = dVBaseSize <= 64U ? 2U : 1U;
+    static constexpr uint32_t UB_MM2_RES_BUFCNT =
+        FA_T::causalOpt ? (dBaseSize == 80U ? 2U : 1U) : (dVBaseSize <= 64U ? 2U : 1U);
     static constexpr uint32_t UB_MM2_RES_BUF_BYTES = mBaseSize / CV_RATIO * dVBaseSize * sizeof(T);
     LocalTensor<uint8_t> ubMm1ResBuffers_;
     LocalTensor<uint8_t> ubMm2ResBuffers_;
@@ -98,10 +100,11 @@ public:
     {
         return UB_MM_RES_TOTAL_BYTES;
     }
-    static constexpr uint32_t UB_VEC2_RES_BUF_BYTES = mBaseSize / CV_RATIO * dTemplateAlign64 * sizeof(T);
+    static constexpr uint32_t UB_VEC2_RES_BUF_BYTES =
+        mBaseSize / CV_RATIO * (FA_T::causalOpt ? dVBaseSize : dTemplateAlign64) * sizeof(T);
     LocalTensor<T> ubVec2Res_; // 存放vec2阶段VEC的中间处理结果, 并且作为attn_out的输出buffer, 需配对的MTE3和V的同步ID
 
-    static constexpr uint32_t UB_VEC1_RES_BUFCNT = dVBaseSize <= 64U ? 2U : 1U;
+    static constexpr uint32_t UB_VEC1_RES_BUFCNT = FA_T::causalOpt ? 2U : (dVBaseSize <= 64U ? 2U : 1U);
     // DN packs 64 query lanes; align each slot before the next UB region.
     static constexpr uint32_t UB_VEC1_RES_BUF_BYTES =
         AttentionCommon::Align((64U + 1U) * s2BaseSize * static_cast<uint32_t>(sizeof(INPUT_T)), 256U);
@@ -121,7 +124,7 @@ public:
         AttentionCommon::Align(mBaseSize / CV_RATIO * static_cast<uint32_t>(sizeof(T)), 256U);
     LocalTensor<T> softmaxExpBuf_;
 
-    static constexpr uint32_t UB_LSE_OUT_BUFCNT = 2U;
+    static constexpr uint32_t UB_LSE_OUT_BUFCNT = FA_T::causalOpt && dVBaseSize == 80U ? 1U : 2U;
     static constexpr uint32_t UB_LSE_OUT_BUF_BYTES =
         AttentionCommon::Align(mBaseSize / CV_RATIO * 8 * static_cast<uint32_t>(sizeof(T)), 256U);
     LocalTensor<uint8_t> ubLseOutBuffers_;
@@ -171,6 +174,10 @@ public:
         this->attentionOutGm_.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
         InitAttenOutBuffer(constInfo_.bSize, constInfo_.n2Size, constInfo_.gSize, constInfo_.s1Size, constInfo_.dSizeV,
                            outGmTensor_, attentionOut);
+        if constexpr (FA_T::causalOpt && dBaseSize == 80U) {
+            attentionOutGm_.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
+            outGmTensor_.gmTensor.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
+        }
 
         if (constInfo_.isSoftmaxLseEnable) {
             softmaxLseGm_.SetGlobalBuffer((__gm__ float *)softmaxLse);
@@ -191,7 +198,7 @@ public:
     {
         /*--------------------------------------------L1--------------------------------------------*/
         // P follows the PRELOAD_N + 1 slot ring (four slots for D64, otherwise three).
-        uint32_t addrL1 = 0;
+        uint32_t addrL1 = FA_T::causalOpt && dBaseSize == 80U ? 2U * mBaseSize * dBaseSize * sizeof(INPUT_T) : 0U;
         l1PBuffers_ = LocalTensor<uint8_t>(TPosition::A1, addrL1, L1_P_BUFCNT * L1_P_BUF_BYTES);
 
         static_assert(UB_MM_RES_TOTAL_BYTES + UB_VEC2_RES_BUF_BYTES + UB_VEC1_RES_BUFCNT * UB_VEC1_RES_BUF_BYTES +
@@ -418,11 +425,11 @@ public:
             const int64_t lower = row - info.preTokensLeftUp - static_cast<int64_t>(info.s2Idx);
             const int64_t upper = row + info.nextTokensLeftUp - static_cast<int64_t>(info.s2Idx);
             if (FullColumns && info.actVecMSize == 64U && (info.actMSizeAlign32 >> 1) == 64U) {
-                FaVectorApi::DnSegmentedSoftmax<INPUT_T, s2BaseSize, ScaleSign, true, FullColumns>(
+                FaVectorApi::DnSegmentedSoftmax<INPUT_T, s2BaseSize, ScaleSign, true, FullColumns, FA_T::causalOpt>(
                     dst, scores, sum, max, exp, mask, info.actMSizeAlign32 >> 1, info.actSingleLoopS2Size, scale,
                     negativeFloatScalar_, lower, upper);
             } else {
-                FaVectorApi::DnSegmentedSoftmax<INPUT_T, s2BaseSize, ScaleSign, false, FullColumns>(
+                FaVectorApi::DnSegmentedSoftmax<INPUT_T, s2BaseSize, ScaleSign, false, FullColumns, FA_T::causalOpt>(
                     dst, scores, sum, max, exp, mask, info.actMSizeAlign32 >> 1, info.actSingleLoopS2Size, scale,
                     negativeFloatScalar_, lower, upper);
             }
@@ -600,7 +607,8 @@ public:
     __aicore__ inline void Bmm2ResForFDCopyOut(const RunInfo &runInfo, LocalTensor<T> &ubVec2Res, uint32_t mStartVec,
                                                uint32_t mDealSize)
     {
-        int64_t dSizeAligned64 = (int64_t)dVBaseSize;
+        // FlashOutputDnWorkspaceVF writes rows with the 64-aligned workspace pitch.
+        int64_t dSizeAligned64 = (int64_t)dTemplateAlign64;
         uint64_t gmOffset = runInfo.faTmpOutWsPos * mBaseSize * constInfo_.dSizeV +
                             (runInfo.vecMbaseIdx + mStartVec) * constInfo_.dSizeV;
 

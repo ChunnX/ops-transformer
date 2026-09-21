@@ -124,7 +124,9 @@ void FlashAttnTilingImpl::SplitPolicy()
         UpdateTilingKeyTemplateId();
     }
     if (tilingKeyInfo_.templateId == fa_tiling_util::FA_TEMPLATE_DN_UNMERGED) {
-        sInnerFactor_ = FlashAttnPolicy::DnUnmergedS2(faInfo_->qkHeadDim, faInfo_->maskMode != 0);
+        sInnerFactor_ = FlashAttnPolicy::DnCausalOptimized(faInfo_->qkHeadDim, faInfo_->vHeadDim, faInfo_->maskMode) ?
+                            FlashAttnPolicy::DnCausalTileN(faInfo_->qkHeadDim) :
+                            FlashAttnPolicy::DnUnmergedS2(faInfo_->qkHeadDim, faInfo_->maskMode != 0);
     }
     uint32_t maxUsedAicCores = fa_tiling_util::GetMaxUsedAicCores(
         platformInfo_.aicNum, faInfo_->bSize, faInfo_->n2Size, faInfo_->gSize, faInfo_->maxSeqQ, faInfo_->maxSeqKv,
@@ -136,6 +138,11 @@ void FlashAttnTilingImpl::SplitPolicy()
 
 void FlashAttnTilingImpl::UpdateTilingKeyConfig()
 {
+    if (tilingKeyInfo_.templateId == fa_tiling_util::FA_TEMPLATE_DN_UNMERGED &&
+        FlashAttnPolicy::DnCausalOptimized(faInfo_->qkHeadDim, faInfo_->vHeadDim, faInfo_->maskMode)) {
+        tilingKeyInfo_.config = faInfo_->qkHeadDim == 64 ? 8 : 9;
+        return;
+    }
     if (faInfo_->qkHeadDim == faInfo_->vHeadDim) {
         // 等长 (QK D == V DV) 按 D 值映射:
         //   config=0: Dk=64,  Dv=64,  sOuter=64,  sInner=128

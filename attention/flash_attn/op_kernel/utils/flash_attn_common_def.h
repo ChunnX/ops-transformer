@@ -185,15 +185,19 @@ static constexpr ConfigParams ConfigValue[] = {
 // Only template2 changes basic blocks; the legacy config table is unchanged.
 template <uint8_t TemplateId, uint8_t Config, bool HasMask>
 struct FlashAttnConfig {
-    static_assert(TemplateId != FA_Template_DN_Unmerged || Config == 0 || Config == 2 || Config == 6,
+    static_assert(TemplateId != FA_Template_DN_Unmerged || Config == 0 || Config == 2 || Config == 6 || Config == 8 ||
+                      Config == 9,
                   "Unsupported DN unmerged config");
+    static constexpr uint8_t baseConfig = Config == 8 ? 0 : (Config == 9 ? 2 : Config);
     static constexpr uint32_t dnN =
-        HasMask ? (Config == 0 ? FlashAttnPolicy::DN_MASK_D64_N : FlashAttnPolicy::DN_MASK_OTHER_N) :
-                  FlashAttnPolicy::DN_NO_MASK_N;
+        Config >= 8 ? FlashAttnPolicy::DnCausalTileN(Config == 9 ? 72U : 64U) :
+        HasMask     ? (Config == 0 ? FlashAttnPolicy::DN_MASK_D64_N : FlashAttnPolicy::DN_MASK_OTHER_N) :
+                      FlashAttnPolicy::DN_NO_MASK_N;
     static constexpr ConfigParams value = {
-        ConfigValue[Config].s1,
-        TemplateId == FA_Template_DN_Unmerged ? static_cast<inferS2TemplateType>(dnN) : ConfigValue[Config].s2,
-        ConfigValue[Config].d, ConfigValue[Config].dv};
+        ConfigValue[baseConfig].s1,
+        TemplateId == FA_Template_DN_Unmerged ? static_cast<inferS2TemplateType>(dnN) : ConfigValue[baseConfig].s2,
+        Config == 9 ? static_cast<inferDTemplateType>(80) : ConfigValue[baseConfig].d,
+        Config == 9 ? static_cast<inferDTemplateType>(80) : ConfigValue[baseConfig].dv};
 };
 
 // Config macro definitions for D=64

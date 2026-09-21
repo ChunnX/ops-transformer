@@ -116,6 +116,11 @@ struct FAType {
     static constexpr bool hasMask = HAS_MASK;
 };
 
+template <typename Base, bool Enabled>
+struct DnCausalType : Base {
+    static constexpr bool causalOpt = Enabled;
+};
+
 template <FA_LAYOUT LAYOUT_T, typename SEQLEN_T>
 class SeqLensTool {
 public:
