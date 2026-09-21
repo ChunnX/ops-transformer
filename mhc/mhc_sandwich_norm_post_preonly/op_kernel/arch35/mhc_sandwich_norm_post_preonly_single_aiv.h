@@ -85,12 +85,9 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         PipeBarrier<PIPE_V>();
     }
     if (!USE_RMS_MID || writeOutput) {
-        // 使用静态head地址，避免lane动态偏移影响VF地址生成和调度。
-        if (laneId_ == 0U) {
-            MhcSandwichRegBase::CastB16PairToFp32(x2, x2[dimTile_], x2Cache[tOff], x2Cache[D_ + tOff], tD);
-        } else {
-            MhcSandwichRegBase::CastB16PairToFp32(x2[2U * dimTile_], x2[3U * dimTile_], x2Cache[2U * D_ + tOff],
-                                                  x2Cache[3U * D_ + tOff], tD);
+        for (uint32_t n = 0; n < N_MAX; n += 2U) {
+            MhcSandwichRegBase::CastB16PairToFp32(x2[n * dimTile_], x2[(n + 1U) * dimTile_],
+                                                  x2Cache[n * D_ + tOff], x2Cache[(n + 1U) * D_ + tOff], tD);
         }
         PipeBarrier<PIPE_V>();
     }
