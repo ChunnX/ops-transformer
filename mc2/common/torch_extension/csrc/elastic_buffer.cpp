@@ -56,10 +56,10 @@ constexpr uint32_t HCCL_COMM_LAYERS_UB_MEM = 0;
 constexpr uint32_t GET_LOCAL_SERVER_RANK_SIZE_LAYER = 0;
 constexpr int64_t NETWORK_DIRECT = 0;
 constexpr int64_t NETWORK_HYBRID = 1;
-// engram fetch 模式(独立编译包无法 include op 侧头文件, 与 op 包共享头
-// mc2/engram_fetch/op_api/engram_fetch_mode_def.h 及 Python 侧 FETCH_MODE_* 保持值契约, 修改需同步)
-constexpr int64_t ENGRAM_FETCH_MODE_SLICED = 0; // 切片分存 + 跨NPU通信(默认)
-constexpr int64_t ENGRAM_FETCH_MODE_LOCAL = 1;  // 全量表冗余到每个 NPU, 取数纯本地
+// engram fetch modes (this standalone package cannot include op-side headers; values must stay in
+// sync with mc2/engram_fetch/op_api/engram_fetch_mode_def.h and the Python FETCH_MODE_* constants)
+constexpr int64_t ENGRAM_FETCH_MODE_SLICED = 0; // sliced sharding + cross-NPU comm (default)
+constexpr int64_t ENGRAM_FETCH_MODE_LOCAL = 1;  // full table replicated per NPU, local gather only
 constexpr int64_t BUFFER_ALIGNMENT = 2 * 1024 * 1024;
 constexpr int64_t MB_SIZE = 1024LL * 1024LL;
 constexpr int64_t HUGE1G_SIZE = 1024ULL * 1024ULL * 1024ULL;
@@ -917,8 +917,8 @@ private:
                                   externalBytes);
 
         if (fetchMode_ == ENGRAM_FETCH_MODE_LOCAL) {
-            // 全量本NPU模式(仅推理): 不获取任何跨卡通道/远端地址(不依赖卡间 RDMA 链路),
-            // 仅记录本 rank 表基址
+            // Local mode (infer only): acquire no cross-card channels or remote addresses
+            // (no inter-NPU RDMA dependency); record only this rank's table base address.
             resources.context.virtualAddrList[resources.context.rankId] =
                 reinterpret_cast<uint64_t>(resources.deviceBufPtr);
         } else {
@@ -1704,7 +1704,7 @@ private:
 
     bool destroyed_ = false;
     bool engramWriteCalled_ = false;
-    int64_t fetchMode_ = ENGRAM_FETCH_MODE_SLICED; // 0=切片跨NPU通信(默认), 1=全量本NPU
+    int64_t fetchMode_ = ENGRAM_FETCH_MODE_SLICED; // 0 = sliced cross-NPU (default), 1 = local full table
     aclrtStream commStream_ = nullptr;
 };
 
@@ -1847,7 +1847,7 @@ void ElasticBuffer::EngramWrite(const at::Tensor &storage, const c10::optional<a
 
     constexpr int64_t int32Max = static_cast<int64_t>(INT32_MAX);
     if (fetchMode_ == ENGRAM_FETCH_MODE_LOCAL) {
-        // 全量本NPU模式: storage 即全局全量表, 全局 entry 数即 storage 行数
+        // Local mode: storage is the full global table, its row count is the global entry count.
         TORCH_CHECK(storage.size(0) <= int32Max,
                     "num_entries must not exceed INT32_MAX in local fetch_mode, got num_entries=", storage.size(0));
     } else {

@@ -30,10 +30,10 @@ _ENGRAM_INT_TO_DTYPE = {v: k for k, v in _ENGRAM_DTYPE_TO_INT.items()}
 _ENGRAM_SF_DTYPES = (torch.float32, torch.float8_e8m0fnu)
 _MOE_EP_METADATA_FIELDS = 5
 
-# engram fetch 模式: 0=切片分存+跨NPU通信(默认, 行为与历史版本一致, 推理/训练均支持);
-# 1=全量表冗余到每个NPU, 取数纯本地(仅推理, 不支持 with_grad=True)
-# 值契约与 op 侧 mc2/engram_fetch/op_api/engram_fetch_mode_def.h 及
-# PTA C++ 侧 elastic_buffer.cpp 的 ENGRAM_FETCH_MODE_* 常量保持同步, 修改需同步
+# engram fetch modes: 0 = sliced sharding + cross-NPU comm (default, same as before, train/infer);
+# 1 = full table replicated on every NPU, purely local gather (infer only, not with with_grad=True).
+# Values must stay in sync with op-side mc2/engram_fetch/op_api/engram_fetch_mode_def.h and the
+# ENGRAM_FETCH_MODE_* constants in elastic_buffer.cpp.
 FETCH_MODE_SLICED = 0
 FETCH_MODE_LOCAL = 1
 _FETCH_MODES = (FETCH_MODE_SLICED, FETCH_MODE_LOCAL)
@@ -812,7 +812,7 @@ class ElasticBuffer:
                 lambda: f"sf must be on NPU, got device: {sf.device}",
             )
             if self._fetch_mode == FETCH_MODE_LOCAL:
-                # local 模式: storage 即全局全量表, sf 同为全量表(行数一致)
+                # Local mode: storage is the full global table, sf is full-table too (same rows).
                 torch._check(
                     sf.size(0) == storage.size(0),
                     lambda: f"sf dim0 ({sf.size(0)}) must match full-table storage dim0 "
@@ -910,7 +910,8 @@ class ElasticBuffer:
         )
 
         def _wait():
-            # 全量本NPU模式: 无 RDMA 在途读, kernel 完成即数据可见, 短路 wait
+            # Local mode: no in-flight RDMA reads, data is visible once the kernel completes;
+            # skip the cross-NPU wait.
             if self._fetch_mode == FETCH_MODE_LOCAL:
                 result = fetched
             else:
