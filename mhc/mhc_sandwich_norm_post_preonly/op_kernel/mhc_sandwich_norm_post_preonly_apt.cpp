@@ -30,11 +30,6 @@ mhc_sandwich_norm_post_preonly(GM_ADDR h_out, GM_ADDR residual, GM_ADDR h_post, 
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
 
-    // 双sibling模板只使用两个AIV，MIX任务附带的AIC不参与计算，直接退出以避免执行tiling分支判断。
-    if ASCEND_IS_AIC {
-        return;
-    }
-
     // bit0和bit1选择可选语义分支，bit2保留给双sibling AIV执行方案。
     // 枚举四个单AIV键，并把两个可选语义变为编译期常量，
     // 使每个二进制只保留实际需要的执行分支。
