@@ -137,8 +137,7 @@ struct BlockAttnResPrepareTilingCase {
                "\"L0C_SIZE\":" + std::to_string(ASCEND_950_L0C_SIZE) + "," +
                "\"CORE_NUM\":" + std::to_string(contextCoreNum) + "," +
                "\"cube_core_cnt\":" + std::to_string(aicCoreNum) + "," +
-               "\"vector_core_cnt\":" + std::to_string(aivCoreNum) + "," +
-               "\"socVersion\":\"" + socVersion + "\"}}";
+               "\"vector_core_cnt\":" + std::to_string(aivCoreNum) + "," + "\"socVersion\":\"" + socVersion + "\"}}";
     }
 
     gert::TilingContextPara MakeContext(optiling::BlockAttnResPrepareCompileInfo &compileInfo) const
