@@ -60,23 +60,20 @@ ge::graphStatus InferShapeQuantBlockSparseAttn(gert::InferShapeContext *context)
                                                  "3D TND/NTD or 4D BSND/BNSD");
         return ge::GRAPH_FAILED;
     }
+    const gert::Shape *valueShape = context->GetInputShape(optiling::QBSA_VALUE_INDEX);
+    if (valueShape == nullptr || valueShape->GetDimNum() != 4U) {
+        OP_LOGE(kOpName, "InferShape requires 4D PA_BNBD value");
+        return ge::GRAPH_FAILED;
+    }
     if (layoutQ == "NTD") {
         attentionOutShape->SetDimNum(3);
         attentionOutShape->SetDim(0, queryShape->GetDim(1)); // T
         attentionOutShape->SetDim(1, queryShape->GetDim(0)); // N
-        attentionOutShape->SetDim(2, queryShape->GetDim(2)); // D
     } else {
         *attentionOutShape = *queryShape;
     }
 
-    if (padded) {
-        const gert::Shape *valueShape = context->GetInputShape(optiling::QBSA_VALUE_INDEX);
-        if (valueShape == nullptr || valueShape->GetDimNum() != 4U) {
-            OP_LOGE(kOpName, "Padded MXFP8 requires 4D PA_BNBD value");
-            return ge::GRAPH_FAILED;
-        }
-        attentionOutShape->SetDim(3, valueShape->GetDim(3));
-    }
+    attentionOutShape->SetDim(attentionOutShape->GetDimNum() - 1, valueShape->GetDim(3)); // Dv
 
     gert::Shape *softmaxLseShape = context->GetOutputShape(optiling::QBSA_SOFTMAX_LSE_INDEX);
     if (softmaxLseShape == nullptr) {

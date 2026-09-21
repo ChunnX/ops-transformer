@@ -185,9 +185,10 @@ public:
             outCopyParams.blockCount = actVecMSize;
             outCopyParams.srcStride = 0U;
             outCopyParams.dstStride = constInfo.attentionOutStride;
-            const uint32_t s = s1Idx + vecMbaseIdx;
-            const uint64_t outOffset = MxQuerySlot<LAYOUT>(queryTokenBase, s, n1Idx,
-                constInfo.realN2Size, constInfo.qSeqSize) * constInfo.dSizeV;
+            const uint32_t querySequenceOffset = s1Idx + vecMbaseIdx;
+            const uint64_t outOffset = MxQuerySlot<LAYOUT>(queryTokenBase, querySequenceOffset, n1Idx,
+                                                           constInfo.realN2Size, constInfo.qSeqSize) *
+                                       constInfo.dSizeV;
             // 空行是冷路径，复用 V1 queue 作为临时零块，避免常驻占用 16 KiB UB。
             LocalTensor<OUTPUT_T> emptyOut = stage1OutQue_[0].template AllocTensor<OUTPUT_T>();
             Duplicate<OUTPUT_T>(emptyOut, 0.0F, actVecMSize * constInfo.dSizeV);
@@ -202,8 +203,8 @@ public:
                 lseCopyParams.blockCount = actVecMSize;
                 lseCopyParams.srcStride = 0U;
                 lseCopyParams.dstStride = constInfo.softmaxLseStride;
-                const uint64_t lseOffset = MxLseSlot<LAYOUT>(queryTokenBase, s, n1Idx,
-                    constInfo.realN2Size, constInfo.qSeqSize);
+                const uint64_t lseOffset = MxLseSlot<LAYOUT>(queryTokenBase, querySequenceOffset, n1Idx,
+                                                             constInfo.realN2Size, constInfo.qSeqSize);
                 LocalTensor<float> emptyLse = softmaxLseQueue_.template AllocTensor<float>();
                 // UB->GM 以 4B block 搬运时，每行源数据占一个 32B data block。
                 // 与 ComputeLseOutputVF 的 E2B 布局保持一致，避免第 2 行起读取未初始化的 32B 槽位。

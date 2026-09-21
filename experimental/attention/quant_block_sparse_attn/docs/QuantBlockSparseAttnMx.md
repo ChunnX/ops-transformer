@@ -71,11 +71,6 @@ torch.ops.custom.npu_quant_block_sparse_attn(
 ) -> Tuple[Tensor, Tensor]
 ```
 
-## BSND / BNSD 布局与 metadata
-
-`quant_mode=2` 下 metadata 与主算子必须使用相同的 `layout_q` 和稀疏输入；BSND/BNSD 的两处调用均传
-`cu_seqlens_q=None`、`seqused_q=None`。metadata 调度格式仍为逻辑 `(B,Nq,Qb)` 分核范围。
-
 ## 参数说明
 
 维度符号说明：
@@ -124,7 +119,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>query</td>
       <td>输入</td>
       <td>Query 输入。</td>
-      <td>不支持空 Tensor。MXFP8 支持 TND、BSND、BNSD；BSND/BNSD 要求调用者传入连续 Q 和 q_descale。</td>
+      <td>不支持空 Tensor。MXFP8 支持 TND、BSND、BNSD。</td>
       <td>FLOAT8_E4M3FN</td>
       <td>ND</td>
       <td>TND:(T1,N1,D)；BSND:(B,Sq,N1,D)；BNSD:(B,N1,Sq,D)</td>
@@ -322,7 +317,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>layout_out</td>
       <td>输入属性</td>
       <td>输出布局。</td>
-      <td>必须与 layout_q 相同："TND"、"BSND" 或 "BNSD"。</td>
+      <td>必须与 layout_q 相同：当 layout_q 为 "TND" 时可省略，默认值 "TND"；当 layout_q 为 "BSND" 或 "BNSD" 时，必须显式设置为对应布局。</td>
       <td>STRING</td>
       <td>-</td>
       <td>-</td>
@@ -662,7 +657,7 @@ QuantBlockSparseAttnMx 算子约束分为 4 个档位，按约束复杂程度递
 
 - 一致性约束
 
-  - Host 校验 `sparse_indices` 为 4D、`sparse_seq_len` 为 3D，二者的 BatchSize/N1 维与 Query 一致，且 `sparse_seq_len` 的 max_Qb 必须等于 `sparse_indices` 的 max_Qb。BSND/BNSD 还要求 max_Qb 至少为 `ceil(Sq/sparse_q_block_size)`。Host 不校验 max_Kb 的业务合理性及稀疏索引内容，输入数值正确性由用户外部保证。
+  - Host 校验 `sparse_indices` 为 4D、`sparse_seq_len` 为 3D，二者的 BatchSize/N1 维与 Query 一致，且 `sparse_seq_len` 的 max_Qb 必须等于 `sparse_indices` 的 max_Qb；`max_Qb`、`max_Kb` 均必须大于 0。BSND/BNSD 还要求 max_Qb 至少为 `ceil(Sq/sparse_q_block_size)`。Host 不校验 max_Kb 的业务合理性及稀疏索引内容，输入数值正确性由用户外部保证。
   - `sparse_seq_len[B,N1,max_Qb]` 表示对应 Query block 的有效 KV block 数；值为 0 时对应稀疏任务输出置零，LSE 置为 `-FLT_MAX`。
   - `sparse_indices` 的有效元素表示逻辑 KV block id；逻辑块索引不能重复，并且有效的在前，-1在后，表示不使用。
 
@@ -755,6 +750,7 @@ QuantBlockSparseAttnMx 算子约束分为 4 个档位，按约束复杂程度递
   - `metadata` 数据类型仅支持 `INT32`，数据格式仅支持 ND。
   - 有效 `metadata` 为一维 Tensor，shape 为 `(metadata_size)`。
   - `metadata_size = 8 + section_num * AIC_NUM * 8 + AIV_NUM * 8`，其中第一个 8 为 head metadata 区长度，`section_num` 为实时分 section 数，生成后记录在 `metadata[0]`。
+  - TND、BSND、BNSD 场景下，`metadata` 调度格式均为逻辑 `(B,Nq,Qb)` 分核范围。
 
 - 存在性约束
 
@@ -764,6 +760,7 @@ QuantBlockSparseAttnMx 算子约束分为 4 个档位，按约束复杂程度递
 
   - 如传入 `metadata`，则必须由与主算子相同的 `sparse_seq_len`、`num_heads_q`、`num_heads_kv`、`head_dim`、`sparse_block_size_q`、`sparse_block_size_k`、`quant_mode`、`mask_mode`、`layout_q`、`layout_kv`、`layout_sparse_indices` 生成。
   - 用于主算子的 metadata 生成参数中，`head_dim` 应为 128，`sparse_block_size_q`、`sparse_block_size_k` 均应为 64 或 128，`quant_mode` 应为 2，`mask_mode` 应为 0 或 3，`layout_sparse_indices` 应为 `B_N_Qb_Kb`。
+  - BSND/BNSD 场景下，metadata 生成接口与主算子的两处调用均须传入 `cu_seqlens_q=None`、`seqused_q=None`。
 
 - 特性交叉约束
 
