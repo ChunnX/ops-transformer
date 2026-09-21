@@ -372,13 +372,19 @@ __aicore__ inline void BuildDedupRowDescTable(const DedupConfig &dedup, const Mo
                 LocalTensor<int32_t> asmHalf = descAsmTensor[descHalf * DESC_ASM_HALF_INT32];
                 WaitFlag<AscendC::HardEvent::MTE3_S>(evt);
                 asmHalf.SetValue(0U, flags);
-                asmHalf.SetValue(1U, fullMinK);
-                for (int32_t j = 0; j < survivorCount; ++j) {
-                    const uint32_t srcBase = memberBase + static_cast<uint32_t>(j) * 3U;
-                    const uint32_t dstBase = DEDUP_ROW_DESC_HEADER_INT32 + static_cast<uint32_t>(j) * 3U;
-                    asmHalf.SetValue(dstBase, memberTensor.GetValue(srcBase));
-                    asmHalf.SetValue(dstBase + 1U, memberTensor.GetValue(srcBase + 1U));
-                    asmHalf.SetValue(dstBase + 2U, memberTensor.GetValue(srcBase + 2U));
+                // 同一 token 的各成员行共享同一份 [minK | 成员三元组]，只有 word0 的 FIRST/LAST 位不同。
+                // 两个半区严格交替，故本 token 内每个半区只在首次使用（m<2）时拼整表，之后复用只改 word0；
+                // 改写前的 WaitFlag 已保证该半区上一次 GM 写完成。标量拼装从每 token s 次降到至多 2 次
+                // （KTS 实测 k16/bs3359：rowDesc 落盘段 796us 占 prepass 989us 的 80%，主要耗在这里）。
+                if (m < 2) {
+                    asmHalf.SetValue(1U, fullMinK);
+                    for (int32_t j = 0; j < survivorCount; ++j) {
+                        const uint32_t srcBase = memberBase + static_cast<uint32_t>(j) * 3U;
+                        const uint32_t dstBase = DEDUP_ROW_DESC_HEADER_INT32 + static_cast<uint32_t>(j) * 3U;
+                        asmHalf.SetValue(dstBase, memberTensor.GetValue(srcBase));
+                        asmHalf.SetValue(dstBase + 1U, memberTensor.GetValue(srcBase + 1U));
+                        asmHalf.SetValue(dstBase + 2U, memberTensor.GetValue(srcBase + 2U));
+                    }
                 }
                 const int32_t row = memberTensor.GetValue(memberBase + static_cast<uint32_t>(m) * 3U);
                 SetFlag<AscendC::HardEvent::S_MTE3>(evt);
