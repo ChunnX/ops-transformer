@@ -2245,7 +2245,7 @@ def compute_p_ds_vf(
     vreg_lse_h = vreg_lse
     vreg_d_h = vreg_d
     vreg_dps_h = vreg_dps
-    if qk_s1_fuse():
+    if ((layout == 2 or has_seq_used_q == 1 or has_seq_used_kv == 1) and sparse_type != 4):
         vreg_lse_h = vf.load_align(lse_tile, 64)
         vreg_d_h = vf.load_align(d_tile, 64)
         vreg_lse_h = vf.add(vreg_lse_h, vreg_ps, preg_all)
@@ -2267,7 +2267,7 @@ def compute_p_ds_vf(
         vreg_dps2h = vreg_sp2
         vreg_dps3h = vreg_sp3
         vreg_dps4h = vreg_sp4
-        if qk_s1_fuse() and src_n > 64:
+        if ((layout == 2 or has_seq_used_q == 1 or has_seq_used_kv == 1) and sparse_type != 4) and src_n > 64:
             vreg_sp1h = vf.load_align(sp_tile, i * 128 + 64)
             vreg_sp2h = vf.load_align(sp_tile, (i + 1) * 128 + 64)
             vreg_sp3h = vf.load_align(sp_tile, (i + 2) * 128 + 64)
@@ -2437,7 +2437,7 @@ def compute_p_ds_vf(
             vreg_perm,
             preg_all_8,
         )
-        if qk_s1_fuse() and src_n > 64:
+        if ((layout == 2 or has_seq_used_q == 1 or has_seq_used_kv == 1) and sparse_type != 4) and src_n > 64:
             vreg_sp1h = vf.muls(vreg_sp1h, ss, preg_all)
             vreg_sp2h = vf.muls(vreg_sp2h, ss, preg_all)
             vreg_sp3h = vf.muls(vreg_sp3h, ss, preg_all)
@@ -2496,7 +2496,7 @@ def compute_p_ds_vf(
         vreg_dps2h = vreg_sp2
         vreg_dps3h = vreg_sp3
         vreg_dps4h = vreg_sp4
-        if qk_s1_fuse() and src_n > 64:
+        if ((layout == 2 or has_seq_used_q == 1 or has_seq_used_kv == 1) and sparse_type != 4) and src_n > 64:
             vreg_sp1h = vf.load_align(sp_tile, (i + 4) * 128 + 64)
             vreg_sp2h = vf.load_align(sp_tile, (i + 5) * 128 + 64)
             vreg_sp3h = vf.load_align(sp_tile, (i + 6) * 128 + 64)
@@ -2666,7 +2666,7 @@ def compute_p_ds_vf(
             vreg_perm,
             preg_all_8,
         )
-        if qk_s1_fuse() and src_n > 64:
+        if ((layout == 2 or has_seq_used_q == 1 or has_seq_used_kv == 1) and sparse_type != 4) and src_n > 64:
             vreg_sp1h = vf.muls(vreg_sp1h, ss, preg_all)
             vreg_sp2h = vf.muls(vreg_sp2h, ss, preg_all)
             vreg_sp3h = vf.muls(vreg_sp3h, ss, preg_all)
