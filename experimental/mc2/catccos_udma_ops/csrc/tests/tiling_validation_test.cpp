@@ -104,12 +104,47 @@ int main()
     Check(V::ValidateGroupedMatMul(g, 256, 8, 32, 262144) != nullptr,
           "reject GMM workspace overflow");
     grouped[0] = 256;
-    Check(V::ParseGroupedMatMul(grouped, 5, g) != nullptr, "reject uncompiled GMM square shape");
+    Check(V::ParseGroupedMatMul(grouped, 5, g) == nullptr, "select restored GMM square shape");
     grouped[1] = 128;
     grouped[4] = 8;
     Check(V::ParseGroupedMatMul(grouped, 5, g) == nullptr, "select GMM second shape");
     Check(V::ValidateGroupedMatMul(g, 2048, 8, 32, 262144) == nullptr,
           "valid second GMM shape");
+
+    for (int64_t stages : {2, 3}) {
+        int64_t physical[]{256, 256, 256, 8, 8, 2048, stages, 8};
+        Check(V::ParseGroupedMatMul(physical, 8, g) == nullptr, "parse EP4 physical tiling");
+        Check(V::ValidateGroupedMatMul(g, 3584, 4, 32, 248 * 1024) == nullptr,
+              "EP4 physical tiling fits deployment resources");
+        g.commInterval = 1;
+        Check(V::ValidateGroupedMatMul(g, 3584, 4, 30, 248 * 1024) == nullptr,
+              "physical staging is independent of the legacy interval and divisibility");
+        g.selfCopyCores = 30;
+        Check(V::ValidateGroupedMatMul(g, 3584, 4, 32, 248 * 1024) != nullptr,
+              "reject too many self-copy workers");
+        g.selfCopyCores = 8;
+        g.stageRows = 8192;
+        Check(V::ValidateGroupedMatMul(g, 3584, 4, 32, 248 * 1024) != nullptr,
+              "reject physical workspace overflow");
+        g.stageRows = 2048;
+        g.localCopyTileRows = 18;
+        Check(V::ValidateGroupedMatMul(g, 3584, 4, 32, 248 * 1024) != nullptr,
+              "reject physical copy tiles beyond deployment UB");
+        physical[5] = 2049;
+        Check(V::ParseGroupedMatMul(physical, 8, g) != nullptr, "reject unaligned physical staging");
+        physical[5] = 2048;
+        physical[6] = 4;
+        Check(V::ParseGroupedMatMul(physical, 8, g) != nullptr, "reject uncompiled workspace depth");
+        physical[6] = stages;
+        physical[7] = 0;
+        Check(V::ParseGroupedMatMul(physical, 8, g) != nullptr, "reject zero self-copy workers");
+        Check(V::ParseGroupedMatMul(physical, 7, g) != nullptr, "reject incomplete physical wire");
+    }
+    // Reusing the parser output cannot leak a prior physical profile into an
+    // old caller's five-field override.
+    Check(V::ParseGroupedMatMul(grouped, 5, g) == nullptr, "parse legacy after physical tiling");
+    Check(g.stageRows == 0 && g.workspaceStages == 2 && g.selfCopyCores == 1,
+          "legacy wire resets physical controls");
     std::puts("Native tiling validation: compiled variants and boundary checks passed");
     return 0;
 }

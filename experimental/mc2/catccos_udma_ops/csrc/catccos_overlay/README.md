@@ -36,3 +36,11 @@ device route tensors do not force a synchronous host round trip per invocation.
 Repository-local fixes layered after the CatCCOS branch—dynamic output extents,
 UDMA completion publication after queue quiet, and guarded workspace-loop
 subtraction—remain applied on top of this delivery update.
+
+The GroupedMatMul-AllToAllV physical staging and parallel self-copy delta from
+`54522865d82ecf988d306fa42329d77cca9a179e` is restored for the EP4/28-expert
+profiles. Each remote peer still has one completion owner; only the primary
+self worker publishes the self-receive completion. All self workers complete
+their MTE block loops and join the existing AIV barrier before workspace reuse.
+The SHMEM 1.6.0 adaptation uses `aclshmemx_mte_quiet()` before software signals
+instead of restoring the reference branch's `aclshmem_fence()` calls.

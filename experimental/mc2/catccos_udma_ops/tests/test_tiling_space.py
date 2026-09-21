@@ -9,7 +9,8 @@ import pytest
 
 from validation.tiling_space import (
     ALL_TO_ALLV, GROUPED_MATMUL, MMAD_SHAPES, TILING_FIELDS,
-    candidate_id, candidates_for_case, default_tiling, refinement_candidates_for_case, validate_tiling,
+    candidate_id, candidates_for_case, default_search_space, default_tiling,
+    refinement_candidates_for_case, validate_tiling,
 )
 
 
@@ -63,6 +64,72 @@ def test_ep4_profiles_require_exact_export_shape_and_topology(n, override):
 def test_inverse_profiles_use_searched_local_copy_rows(k, expected):
     profile = default_tiling(case(GROUPED_MATMUL, False, 2048, k))
     assert tuple(profile[key] for key in ("m0", "n0", "comm_interval", "local_copy_tile_rows")) == expected
+
+
+@pytest.mark.parametrize("k,stages", [(3072, 3), (6144, 2)])
+@pytest.mark.parametrize("m", [1, 131072, 131084, 131091])
+def test_ep4_inverse_profiles_are_rank_invariant_and_match_measured_tilings(k, stages, m):
+    workload = dict(case(GROUPED_MATMUL, False, 3584, k), world_size=4, expert_num=28)
+    workload["shape"]["m"] = m
+    profile = default_tiling(workload)
+    assert list(profile.values()) == [256, 256, 256, 8, 8, 2048, stages, 8]
+    validate_tiling(GROUPED_MATMUL, profile, m=m, n=3584, k=k,
+                    world_size=4, aic_cores=32, ub_bytes=248 * 1024)
+
+
+@pytest.mark.parametrize("override", [
+    {"world_size": 2}, {"expert_num": 32}, {"k": 3073}, {"n": 3585},
+])
+def test_ep4_inverse_profiles_require_matching_topology_and_kn(override):
+    workload = dict(case(GROUPED_MATMUL, False, 3584, 3072), world_size=4, expert_num=28)
+    for name, value in override.items():
+        if name in workload["shape"]:
+            workload["shape"][name] = value
+        else:
+            workload[name] = value
+    profile = default_tiling(workload)
+    assert (profile["m0"], profile["stage_rows"], profile["workspace_stages"],
+            profile["self_copy_cores"]) == (128, 0, 2, 1)
+
+
+def test_inverse_legacy_mapping_keeps_original_execution_controls():
+    legacy = dict(zip(TILING_FIELDS[GROUPED_MATMUL][:5], (128, 256, 256, 8, 8)))
+    profile = validate_tiling(GROUPED_MATMUL, legacy, n=3584, world_size=4, aic_cores=32)
+    assert list(profile.values()) == [128, 256, 256, 8, 8, 0, 2, 1]
+    assert len(legacy) == 5
+
+
+@pytest.mark.parametrize("override,match", [
+    ({"stage_rows": 2049}, "divisible"), ({"workspace_stages": 4}, "2 or 3"),
+    ({"stage_rows": -256}, "must be in"), ({"self_copy_cores": 0}, "must be in"),
+    ({"self_copy_cores": 30}, "worker pool"), ({"stage_rows": 8192}, "workspace"),
+    ({"local_copy_tile_rows": 18}, "UB capacity"),
+])
+def test_inverse_physical_profiles_reject_resource_overflows(override, match):
+    workload = dict(case(GROUPED_MATMUL, False, 3584, 3072), world_size=4, expert_num=28)
+    profile = dict(default_tiling(workload), **override)
+    with pytest.raises(ValueError, match=match):
+        validate_tiling(GROUPED_MATMUL, profile, n=3584, world_size=4,
+                        aic_cores=32, ub_bytes=248 * 1024)
+
+
+def test_inverse_search_deduplicates_physical_and_derived_staging():
+    workload = dict(case(GROUPED_MATMUL, False, 3584, 3072), world_size=4, expert_num=28)
+    baseline = default_tiling(workload)
+    space = default_search_space(workload)
+    assert space["stage_rows"] == [2048]
+    assert space["workspace_stages"] == [3]
+    assert space["self_copy_cores"] == [8]
+    result = candidates_for_case(workload, {
+        "mmad": [[256, 256, 256]], "local_copy_tile_rows": [8],
+        "comm_interval": [1, 8, 14, 15], "stage_rows": [0, 2048],
+    }, strategy="exhaustive", max_candidates=None, aic_cores=32)
+    # Derived intervals 14/15 both give 2048 rows; explicit intervals are unused.
+    assert len(result) == 2  # Baseline plus interval8's derived 1024 rows.
+    assert result[0] == baseline
+    assert result[1]["stage_rows"] == 0 and result[1]["comm_interval"] == 8
+    seeds = [dict(baseline, comm_interval=1), dict(baseline, comm_interval=16)]
+    assert refinement_candidates_for_case(workload, seeds, aic_cores=32) == [baseline]
 
 
 def test_validate_does_not_mutate_input_and_preserves_wire_order():
@@ -238,6 +305,8 @@ def test_unsafe_old_hardware_profile_does_not_prevent_search():
     (ALL_TO_ALLV, 3072, 3584, 4, 28, "kM131072K3584N3072ExportTiling"),
     (GROUPED_MATMUL, 2048, 1024, 8, 256, "kK1024N2048Tiling"),
     (GROUPED_MATMUL, 2048, 512, 8, 256, "kK512N2048Tiling"),
+    (GROUPED_MATMUL, 3584, 3072, 4, 28, "kEp4K3072N3584Tiling"),
+    (GROUPED_MATMUL, 3584, 6144, 4, 28, "kEp4K6144N3584Tiling"),
 ])
 def test_native_model_profiles_match_search_baselines_and_fit_deployment_ub(
     operator, n, k, world_size, expert_num, native_name,
@@ -268,7 +337,9 @@ def test_native_model_profiles_match_search_baselines_and_fit_deployment_ub(
         assert native["commInterval"] == native["stageRows"] // native["m0"]
     else:
         assert native["commTileM"] % 2 == 0
-        wire.update(comm_interval=native["commInterval"], local_copy_tile_rows=native["commTileM"] // 2)
+        wire.update(comm_interval=native["commInterval"], local_copy_tile_rows=native["localCopyTileRows"],
+                    stage_rows=native["stageRows"], workspace_stages=native["workspaceStages"],
+                    self_copy_cores=native["selfCopyCores"])
     workload = case(operator, operator == ALL_TO_ALLV, n, k)
     workload.update(world_size=world_size, expert_num=expert_num)
     baseline = default_tiling(workload)

@@ -9,15 +9,20 @@ from test_all_to_allv_export import _load_ops
 from validation.tiling_space import TILING_FIELDS, default_tiling
 
 
-@pytest.mark.parametrize("operator,export,reuse,schema", [
-    ("all_to_allv_grouped_mat_mul", False, False, "all_to_allv_grouped_mat_mul_udma"),
-    ("all_to_allv_grouped_mat_mul", False, True, "all_to_allv_grouped_mat_mul_udma_out"),
-    ("all_to_allv_grouped_mat_mul", True, False, "all_to_allv_grouped_mat_mul_udma_export"),
-    ("all_to_allv_grouped_mat_mul", True, True, "all_to_allv_grouped_mat_mul_udma_out_export"),
-    ("grouped_mat_mul_all_to_allv", False, False, "grouped_mat_mul_all_to_allv_udma"),
-    ("grouped_mat_mul_all_to_allv", False, True, "grouped_mat_mul_all_to_allv_udma_out"),
+@pytest.mark.parametrize("operator,export,reuse,schema,physical_stages", [
+    ("all_to_allv_grouped_mat_mul", False, False, "all_to_allv_grouped_mat_mul_udma", None),
+    ("all_to_allv_grouped_mat_mul", False, True, "all_to_allv_grouped_mat_mul_udma_out", None),
+    ("all_to_allv_grouped_mat_mul", True, False, "all_to_allv_grouped_mat_mul_udma_export", None),
+    ("all_to_allv_grouped_mat_mul", True, True, "all_to_allv_grouped_mat_mul_udma_out_export", None),
+    ("grouped_mat_mul_all_to_allv", False, False, "grouped_mat_mul_all_to_allv_udma", None),
+    ("grouped_mat_mul_all_to_allv", False, True, "grouped_mat_mul_all_to_allv_udma_out", None),
+    ("grouped_mat_mul_all_to_allv", False, False, "grouped_mat_mul_all_to_allv_udma", 2),
+    ("grouped_mat_mul_all_to_allv", False, True, "grouped_mat_mul_all_to_allv_udma_out", 3),
+    ("grouped_mat_mul_all_to_allv", False, True, "grouped_mat_mul_all_to_allv_udma_out", 0),
 ])
-def test_explicit_tiling_reaches_every_native_entry_in_stable_wire_order(monkeypatch, operator, export, reuse, schema):
+def test_explicit_tiling_reaches_every_native_entry_in_stable_wire_order(
+    monkeypatch, operator, export, reuse, schema, physical_stages,
+):
     calls = []
     invoke, tensor = _load_ops(monkeypatch, calls, operator_name=operator)
     sentinel = object()
@@ -37,7 +42,13 @@ def test_explicit_tiling_reaches_every_native_entry_in_stable_wire_order(monkeyp
     workload = dict(operator=operator, output_all_to_allv=export, world_size=2, expert_num=4,
                     shape={"m": 4, "k": 256, "n": 512})
     profile = default_tiling(workload)
+    if physical_stages:
+        profile.update(m0=256, n0=256, stage_rows=2048, workspace_stages=physical_stages,
+                       self_copy_cores=8)
     options = dict(ep_size=2, expert_num=4, tiling=dict(reversed(list(profile.items()))))
+    if physical_stages == 0:
+        for key in ("stage_rows", "workspace_stages", "self_copy_cores"):
+            options["tiling"].pop(key)  # Old saved mappings keep legacy defaults.
     if reuse:
         options["out"] = tensor(shape=(4, 512), device=device)
     if operator == "all_to_allv_grouped_mat_mul":

@@ -21,9 +21,10 @@ and is recorded in the package's `_build_versions.py` together with
 Builds stay pinned to this commit when the upstream branch advances.
 The operator-local `csrc/catccos_overlay` directory contains only the
 UDMA all-to-all-v headers that have not yet landed in that official revision.
-The GroupedMatMul-AllToAllV configuration is migrated from CatCCOS commit
-`ee01c5181c50ce2aeb5feb05d603b568eb31a61a`; the fork is a source reference,
-not a build dependency. The optional AllToAllV output and its pipelined export
+The GroupedMatMul-AllToAllV physical staging, workspace templates and parallel
+self-copy follow CatCCOS commit `54522865d82ecf988d306fa42329d77cca9a179e`,
+with this integration's SHMEM completion and workspace-loop guards retained.
+The fork is a source reference, not a build dependency. The optional AllToAllV output and its pipelined export
 follow CatCCOS commits `1d96ae736f1054a28b0ddf3cbb96cd0c64c81a21` and
 `2444c7ee5acee145c8a296e3462b4bcf487571b8` respectively.
 
@@ -454,11 +455,20 @@ bash scripts/search_tiling.sh \
 |---|---|
 | AllToAllV → GroupedMatMul | `mmad`: 128×256×256, 256×128×256 or 256×256×256; `comm_block_m`, `stage_rows`, `local_copy_tile_rows`, `self_copy_cores` |
 | AllToAllV → GroupedMatMul with export | All the above, plus `workspace_stages` 2/3, `m_split` 1/2/4 and `export_core_count` (0 means all AI cores) |
-| GroupedMatMul → AllToAllV | `mmad`: 128×256×256 or 256×128×256; `comm_interval`, `local_copy_tile_rows` |
+| GroupedMatMul → AllToAllV | `mmad`: 128×256×256, 256×128×256 or 256×256×256; `comm_interval`, `local_copy_tile_rows`, `stage_rows`, `workspace_stages` 2/3, `self_copy_cores` |
 
 Non-export AllToAllV uses two workspace stages, `m_split=1` and
-`export_core_count=0`. The current inverse operator always uses two workspace
-stages. Historical NPU/data split fields, the inverse operator's comm block M,
+`export_core_count=0`. For the inverse operator, `stage_rows=0` derives staging
+from `comm_interval`; a positive value selects explicit M0-aligned staging and
+makes `comm_interval` inactive. Equivalent staging candidates are deduplicated.
+The inverse search keeps `stage_rows`, `workspace_stages`, and `self_copy_cores`
+at the case's built-in defaults unless a custom search space expands them.
+Older five-field inverse mappings remain accepted and use derived staging,
+two workspace stages and one self-copy worker. The native positional order is
+`m0, n0, k0, comm_interval, local_copy_tile_rows, stage_rows, workspace_stages,
+self_copy_cores`; the native API also accepts the original first five fields.
+Rebuild the extension when using the new eight-field wire format.
+Historical NPU/data split fields, the inverse operator's comm block M,
 and AllToAllV's legacy interval are not search dimensions because the selected
 kernel paths do not consume them independently.
 
@@ -625,20 +635,42 @@ same `world_size=8`, `expert_num=256` topology. Because imbalanced routing can
 give every Rank a different `x.shape[0]`, profile selection uses only K and N;
 all peers therefore keep the same M0 and communication schedule. The M column
 below records the balanced workload used for tuning and is not a runtime
-selection predicate. Other K/N shapes and topologies retain the default profile.
+selection predicate. The four-rank profiles below are also selected by topology
+and K/N; other K/N shapes and topologies retain the default profile.
 
 | Tuning M | K | N | M0 | N0 | K0 | comm interval | local-copy rows |
 |---:|---:|---:|---:|---:|---:|---:|---:|
 | 131072 | 1024 | 2048 | 128 | 256 | 256 | 10 | 4 |
 | 131072 | 512 | 2048 | 128 | 256 | 256 | 16 | 16 |
 
+The eight-rank profiles retain derived staging (`stageRows=0`), two workspace
+stages and one self-copy worker. Their explicit `localCopyTileRows` values match
+the earlier `commTileM / 2` values and fit the search machine's 248 KiB UB.
+
+For `world_size=4`, `expert_num=28` (seven experts per rank), GMM-AllToAllV uses
+the following supplied CatCCOS search winners. Both use MMAD config 2
+(`M0/N0/K0=256/256/256`), `commInterval=8`, `commTileM=commBlockM=16`,
+`commNpuSplit/commDataSplit=1/16`, `stageRows=2048`, `localCopyTileRows=8`,
+and `selfCopyCores=8`.
+
+| Measured local M | K | N | Workspace stages | Reported time (us) |
+|---:|---:|---:|---:|---:|
+| 131084 | 3072 | 3584 | 3 | 7132.271416666667 |
+| 131084 | 6144 | 3584 | 2 | 13937.895666666664 |
+
+M=131084 records the measured local input size and is not a selection predicate:
+imbalanced routing can give peers different local M. Rebuild and reinstall the
+Wheel on every rank to select these profiles without an explicit `tiling`.
+The reported times come from the supplied CSV; this integration has not yet
+been timed or numerically validated on an NPU for these profiles.
+
 The grouped-matmul host forwards both split values through `commCoreSplit` for
-ABI compatibility. The target-order scheduler currently does
-not use them or `commBlockM` to partition transfers. The active parameters are
-the compiled MMAD shape, `commInterval`, and the local copy rows derived from
-`commTileM / 2` (capped by UB capacity for the built-in fallback). The two
-new records therefore store `commTileM=8` and `commTileM=32`, respectively;
-their local-copy rows both fit the search machine's 248 KiB available UB.
+ABI compatibility. The target-order scheduler does not use them or `commBlockM`
+to partition transfers. Explicit `stageRows` supersedes `commInterval`, and
+`localCopyTileRows` controls local MTE tiles (UB-capped for the generic fallback).
+The CSV's `mSplit=1`, `exportCoreCount=0`, and `executionMode=1` add no runtime
+controls in this direction. The workspace depth and self-copy worker count are
+effective kernel controls, including for the two four-rank profiles.
 The Python search baselines use the same effective parameters as these
 native defaults, so subsequent searches include and measure them as default
 candidates when the deployment hardware passes validation.

@@ -62,9 +62,18 @@ def test_completed_gets_and_self_copies_do_not_poll_udma_again():
     get_kernel = _without_comments(get_kernel)
     completed_get = re.compile(
         r"blockRemoteCopy\.FinalizeBlockLoop\(\);\s*"
+        r"(?:if \(srcRankIdx != rankIdx \|\| selfWorkerIdx == 0\) \{\s*)?"
         r"aclshmemx_mte_quiet\(\);\s*aclshmemx_signal_op\("
     )
     assert len(completed_get.findall(get_kernel)) == 2
+    # Extra self workers finish their row slices but do not duplicate the
+    # source-rank completion count or publish the AIC-ready signal.
+    target_order = get_kernel.split("void RunTargetOrderAiv", 1)[1]
+    assert "isSyncCore = isSyncCore && isPrimaryPeerCore;" in target_order
+    assert "if (srcRankIdx != rankIdx || selfWorkerIdx == 0)" in target_order
+    assert target_order.index("AscendC::SyncAll<true>();", target_order.index(
+        "blockRemoteCopy.FinalizeBlockLoop();")) < target_order.index(
+            "Catlass::Arch::CrossCoreSetFlag<0x2, PIPE_MTE3>")
 
     put_kernel = (kernel_dir / "ascend950_alltoallv_grouped_matmul.hpp").read_text(
         encoding="utf-8"

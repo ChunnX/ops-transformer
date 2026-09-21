@@ -191,7 +191,12 @@ def test_tuned_profile_drives_kernel_and_all_runtime_tiling_fields():
     assert "256, 128, 256>;" in device
     assert "TypeTag<GroupedMatMulAllToAllVUdmaM0_256Config>" in host
     assert "tiling.commInterval" in host
-    assert "tiling.commTileM / 2" in host
+    assert "tiling.localCopyTileRows" in host
+    assert "static_cast<uint32_t>(stageRows)" in host
+    assert "tiling.selfCopyCores" in host
+    assert "tiling.workspaceStages == SelectedConfig::kWorkspaceStages" in host
+    assert "TypeTag<GroupedMatMulAllToAllVUdmaM0_256N0_256Config>" in host
+    assert "TypeTag<GroupedMatMulAllToAllVUdmaM0_256N0_256WS3Config>" in host
     assert "tiling.commBlockM" in host
     assert "tiling.commDataSplit, tiling.commNpuSplit" in host
     assert "tiling.n0" in host
