@@ -239,14 +239,7 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::DoGmmTiling(uint64_t gmmxMSzie)
     // gmm group matmul tiling
     if (gmmxMSzie != 0) {
         AlltoAllvMXQuantGmmTilingHelper gmmHelper(*this);
-        // The helper only produces base tile parameters for APACE. Its tensor-list capacity is 128,
-        // while the device GMM receives the actual rank-sized group count from APACE tiling.
-        uint32_t helperGroupNum = gmmGroupNum;
-        if (usingApaceImpl_) {
-            helperGroupNum =
-                std::min(helperGroupNum, static_cast<uint32_t>(optiling::Mc2GroupedMatmul::MAX_TENSOR_CONT));
-        }
-        gmmHelper.SetGroupNum(helperGroupNum);
+        gmmHelper.SetGroupNum(gmmGroupNum);
         MC2_CHECK_LOG_RET(context_->GetNodeName(), gmmHelper.SetInputParams(gmmxMSzie, n1_, h1_, transGmmWeight_));
         MC2_CHECK_LOG_RET(context_->GetNodeName(), gmmHelper.Process());
         tilingData->gmmQuantTilingData = gmmHelper.GetAlltoAllvQuantHelperData();

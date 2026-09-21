@@ -20,8 +20,8 @@
 
 namespace Apace {
 
+constexpr uint32_t A2AV_GMM_MAX_RANK_NUM = 128U;
 constexpr uint32_t A2AV_GMM_MAX_SEG_NUM = 256U;
-constexpr uint32_t A2AV_GMM_MAX_RANK_NUM = A2AV_GMM_MAX_SEG_NUM;
 
 struct A2avGmmMxTiling {
     uint32_t baseM{0};
