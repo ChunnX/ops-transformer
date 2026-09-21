@@ -74,7 +74,6 @@ def coverage_row(
     counts = [(length + 127) // 128 for length in kv_lengths]
     pages = sum(counts) if num_blocks is None else num_blocks
     assert pages > 0
-    assert page_order == "shared" or pages >= sum(counts)
     kshape = (pages, 128, 1, 576) if layout == "PA_BBND" else (pages, 1, 36, 128, 16)
     assert num_heads_q in (64, 96)
     shapes = (
@@ -276,7 +275,6 @@ def coverage_cases():
                 [3, 1],
                 layout=layout,
                 mask=3,
-                page_order="shared",
                 num_blocks=pages,
             )
         )

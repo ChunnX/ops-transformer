@@ -63,18 +63,17 @@ def customize_inputs(
             raise ValueError("cache_seqlens exceeds block_table capacity")
         table = torch.full_like(block_table, -1)
         page_order = kwargs.get("page_order", "sequential")
-        if page_order not in ("sequential", "reverse", "shared"):
+        if page_order not in ("sequential", "reverse"):
             raise ValueError(f"Unknown page_order: {page_order}")
         physical_pages = k_cache.shape[0]
         if sum(counts) and physical_pages == 0:
             raise ValueError("nonempty cache sequences require physical pages")
-        if page_order != "shared" and sum(counts) > physical_pages:
-            raise ValueError("unique page mapping requires more physical pages")
         page_ids = torch.arange(sum(counts), device=table.device)
+        # Reuse physical pages when logical pages across batches exceed storage.
+        if page_ids.numel() > physical_pages:
+            page_ids = page_ids.remainder(physical_pages)
         if page_order == "reverse":
             page_ids = page_ids.flip(0)
-        elif page_order == "shared" and page_ids.numel():
-            page_ids = page_ids.remainder(physical_pages)
         offset = 0
         for batch, count in enumerate(counts):
             table[batch, :count] = page_ids[offset : offset + count]
