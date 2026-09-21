@@ -149,6 +149,16 @@ __aicore__ inline float ReduceSumSq(LocalTensor<float> src, uint32_t tD)
     return ReduceSumPrecise(sqBuf, tD);
 }
 
+/// R1直接从低精度h_out缓存计算平方和，省去先恢复完整FP32 h_out再平方的中间UB写读。
+__aicore__ inline float ReduceSumSqFromCache(uint32_t tOff, uint32_t tD)
+{
+    LocalTensor<T> hOutCache = bufX2Cache_.Get<T>()[tOff];
+    LocalTensor<float> sqBuf = bufGamma2Fp32_.Get<float>();
+    MhcSandwichRegBase::CastB16ToFp32Square(sqBuf, hOutCache, tD);
+    PipeBarrier<PIPE_V>();
+    return ReduceSumPrecise(sqBuf, tD);
+}
+
 /// 使用标量精度计算1/sqrt(sumSq * invCount + eps)。
 __aicore__ inline __attribute__((always_inline)) float ComputeInvRms(float sumSq, float invCount)
 {
