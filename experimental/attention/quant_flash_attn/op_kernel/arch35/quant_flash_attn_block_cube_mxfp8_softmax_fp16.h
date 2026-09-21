@@ -29,6 +29,8 @@ using namespace AscendC;
 
 namespace QFA_KERNEL {
 
+static constexpr AscendC::FixpipeConfig CFG_ROW_MAJOR_UB{AscendC::CO2Layout::ROW_MAJOR, true};
+
 template <typename QUANT_T, typename SCALE_T>
 class QuantFlashAttnBlockCubeMxfp8SoftmaxFp16 {
 public:
@@ -127,10 +129,10 @@ private:
     LocalTensor<SCALE_T> oneFillVScaleL1Tensor_;
 
     // ===== L0 Buffer =====
-    LocalTensor<QUANT_T>  mm1L0ATensor_;  // L0A, K 左矩阵双缓冲 [128,128]×2
-    LocalTensor<QUANT_T>  mm2L0ATensor_;  // L0A, V_ext [144,128]（前 128 行 V + 后 16 行全 1）
-    LocalTensor<QUANT_T>  qL0BTensor_;    // L0B, Q 常驻槽 [128,256]
-    LocalTensor<QUANT_T>  pL0BTensor_;    // L0B, P 单块 [128,128]（C2 串行无 buffering）
+    LocalTensor<mx_fp8_e4m3_t>  mm1L0ATensor_;  // L0A, K 左矩阵双缓冲 [128,128]×2
+    LocalTensor<mx_fp8_e4m3_t>  mm2L0ATensor_;  // L0A, V_ext [144,128]（前 128 行 V + 后 16 行全 1）
+    LocalTensor<mx_fp8_e4m3_t>  qL0BTensor_;    // L0B, Q 常驻槽 [128,256]
+    LocalTensor<mx_fp8_e4m3_t>  pL0BTensor_;    // L0B, P 单块 [128,128]（C2 串行无 buffering）
     LocalTensor<MM_OUT_T> mmL0CTensor_;   // L0C, C1[128,256]+C2[144,128] ring 双槽 [128,256]×2
 
     // ===== UB（Fixpipe 目标，TOTAL ≤ 256KB）=====
@@ -310,12 +312,12 @@ public:
                                                       L1_ONEFILL_VSCALE_SIZE);
 
         // ===== L0A =====
-        mm1L0ATensor_ = LocalTensor<QUANT_T>(TPosition::A2, L0A_MM1_BASE, L0A_MM1_SIZE);
-        mm2L0ATensor_ = LocalTensor<QUANT_T>(TPosition::A2, L0A_MM2_BASE, L0A_MM2_SIZE);
+        mm1L0ATensor_ = LocalTensor<mx_fp8_e4m3_t>(TPosition::A2, L0A_MM1_BASE, L0A_MM1_SIZE);
+        mm2L0ATensor_ = LocalTensor<mx_fp8_e4m3_t>(TPosition::A2, L0A_MM2_BASE, L0A_MM2_SIZE);
 
         // ===== L0B =====
-        qL0BTensor_ = LocalTensor<QUANT_T>(TPosition::B2, L0B_Q_BASE, L0B_Q_SIZE);
-        pL0BTensor_ = LocalTensor<QUANT_T>(TPosition::B2, L0B_P_BASE, L0B_P_SIZE);
+        qL0BTensor_ = LocalTensor<mx_fp8_e4m3_t>(TPosition::B2, L0B_Q_BASE, L0B_Q_SIZE);
+        pL0BTensor_ = LocalTensor<mx_fp8_e4m3_t>(TPosition::B2, L0B_P_BASE, L0B_P_SIZE);
 
         // ===== L0C =====
         mmL0CTensor_ = LocalTensor<MM_OUT_T>(TPosition::CO1, 0U, L0C_SIZE);
@@ -340,6 +342,8 @@ public:
         InitConstValueParams<uint16_t> scaleParams(1U, ONE_FILL_SCALE_BLOCK_CNT, 0U, E8M0_ONE_U16);
         Fill(oneFillVScaleL1Tensor_.template ReinterpretCast<uint16_t>(), scaleParams);
         PipeBarrier<PIPE_MTE2>();
+        SetFlag<HardEvent::MTE2_MTE1>(EVENT_ID0);
+        WaitFlag<HardEvent::MTE2_MTE1>(EVENT_ID0);
     }
 
     __aicore__ inline void InitL0BufferForReduceSum()
@@ -357,7 +361,7 @@ public:
         scaleParams.xStartPosition = 0U;
         scaleParams.yStartPosition = 0U;
         scaleParams.xStep = MM2_L0A_M / 16U;
-        scaleParams.yStep = MM2_L0A_K / 32U;
+        scaleParams.yStep = MM2_L0A_K / 64U; // y 方向上分形的个数
         scaleParams.srcStride = scaleParams.yStep;
         scaleParams.dstStride = scaleParams.yStep;
 
@@ -464,7 +468,7 @@ public:
         uint32_t ubRingSlot = runInfo.loop % UB_MM1RES_BUFCNT;
         uint32_t ubBase     = ubRingSlot * UB_MM1RES_SLOT;
 
-        Fixpipe<SOFTMAX_T, MM_OUT_T, CFG_ROW_MAJOR>(
+        Fixpipe<SOFTMAX_T, MM_OUT_T, CFG_ROW_MAJOR_UB>(
             mm1ResUB_[ubBase],
             mmL0CTensor_[l0cSlotOff + l0cHalfOff],
             fixpipeParams);
@@ -559,7 +563,7 @@ public:
         fixpipeParams.params.srcNdStride = fixpipeParams.mSize;
         fixpipeParams.params.dstNdStride = fixpipeParams.dstStride;
 
-        Fixpipe<MM_OUT_T, MM_OUT_T, CFG_ROW_MAJOR>(mm2ResUB_, mmL0CTensor_[l0cOffset], fixpipeParams);
+        Fixpipe<MM_OUT_T, MM_OUT_T, CFG_ROW_MAJOR_UB>(mm2ResUB_, mmL0CTensor_[l0cOffset], fixpipeParams);
 
         SetFlag<HardEvent::FIX_M>(L0C_EVENT0 + l0cBufId_);
         l0cBufId_ = (l0cBufId_ + 1U) % 2U;
@@ -823,7 +827,7 @@ public:
         mmadParams.n = actVecS1SizeAlign32;
         mmadParams.k = subKSize;
         mmadParams.cmatrixInitVal = isFirstSubK;
-        mmadParams.cmatrixSource   = !isFirstSubK;
+        mmadParams.cmatrixSource   = false;
         mmadParams.disableGemv = true;
 
         uint32_t l0cOffset = l0cBufId_ * 128U * 256U;
