@@ -467,6 +467,7 @@ static ge::graphStatus BuildAndCheckWindowLayout(const gert::TilingContext *cont
     info.dumpMetadata = BuildMoeEpDumpMetadata(params, layout, aivNum);
     info.winDataOffset = layout.winDataOffset;
     info.slotWinStateOffset = layout.slotWinStateOffset;
+    info.expertCountWinOffset = layout.expertCountWinOffset;
     info.dispatchNotifyCount = layout.dispatchNotifyCount;
     return ge::GRAPH_SUCCESS;
 }
