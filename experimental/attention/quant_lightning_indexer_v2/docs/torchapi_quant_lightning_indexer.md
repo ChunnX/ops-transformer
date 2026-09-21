@@ -93,6 +93,38 @@ cann_ops_transformer.quant_lightning_indexer(
 ) -> (Tensor, Tensor)
 ```
 
+两级TopK（candidate，仅910b系列ascend910b/ascend910_93支持）接口：
+
+```python
+cann_ops_transformer.quant_lightning_indexer_candidate(
+  q,
+  k,
+  w,
+  q_descale,
+  k_descale,
+  topk,
+  quant_mode,
+  *,
+  candidate_topk_index=None,
+  cu_seqlens_q=None,
+  cu_seqlens_k=None,
+  seqused_q=None,
+  seqused_k=None,
+  cmp_residual_k=None,
+  block_table=None,
+  output_idx_offset=None,
+  metadata=None,
+  max_seqlen_q=-1,
+  layout_q=BSND,
+  layout_k=BSND,
+  mask_mode=0,
+  cmp_ratio=1,
+  candidate_mode=3,
+  candidate_topk_blocks=2048,
+  candidate_block_size=8
+) -> (Tensor, Tensor, Tensor)
+```
+
 ## 参数说明
 
 >**说明：**
@@ -147,6 +179,18 @@ cann_ops_transformer.quant_lightning_indexer(
 | cmp_ratio | int | 可选 | 用于稀疏计算，表示k的压缩倍数。默认值为1，表示无压缩。 | int64 | - |
 | return_value | int | 可选 | 代表是否需要返回sparseIndices对应的sparseValues值。0代表不返回，1代表返回值，默认值为0。 | int64 | - |
 
+
+### quant_lightning_indexer_candidate
+
+除下述参数外，其余参数与quant_lightning_indexer一致（不支持return_value）。
+
+| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
+|--------|----------|-----------|------|----------|-------------|
+| candidate_topk_index | Tensor | 可选 | 两级TopK的候选块索引。candidate_mode为2（consumer）时必传；值为batch内相对块号（[0, num_blocks)）或-1（无效槽），与source层的candidate_block_size必须一致。数据格式为ND。 | int32 | layout_q为BSND时shape为(b,q_s,k_n,candidate_topk_blocks)；layout_q为TND时shape为(q_t,k_n,candidate_topk_blocks) |
+| candidate_mode | int | 可选 | 两级TopK模式：1=source（输出候选块索引，同时正常输出sparse_indices）；2=consumer（在候选块内选topk）；3=关闭（默认值，现网行为）。仅910b系列（ascend910b/ascend910_93）支持。 | int64 | - |
+| candidate_topk_blocks | int | 可选 | 候选块数量，默认值2048。当前仅支持2048。 | int64 | - |
+| candidate_block_size | int | 可选 | 候选块大小（每块包含的位置数），默认值8，当前仅支持8。source与consumer调用必须一致。 | int64 | - |
+
 ## 返回值说明
 
 ### quant_lightning_indexer_metadata
@@ -161,6 +205,15 @@ cann_ops_transformer.quant_lightning_indexer(
 |--------|----------|-----------|------|----------|-------------|
 | sparse_indices | Tensor | 必选 | 公式中的Indices输出。不支持空tensor。无效部分填-1。数据格式为ND。 | int32 | layout_q为BSND时shape为(b,q_s,k_n,topk)；layout_q为TND时shape为(q_t,k_n,topk) |
 | sparse_values | Tensor | 条件输出 | 公式中的Indices对应的Values输出。当return_value为1时输出对应值；当return_value为0时输出shape为[0]的空tensor。无效部分填-inf。数据格式为ND。 | bfloat16 | layout_q为BSND时shape为(b,q_s,k_n,topk)；layout_q为TND时shape为(q_t,k_n,topk)；return_value为0时shape为(0,) |
+
+
+### quant_lightning_indexer_candidate
+
+| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
+|--------|----------|-----------|------|----------|-------------|
+| sparse_indices | Tensor | 必选 | 同quant_lightning_indexer的sparse_indices；candidate_mode为2时在候选块展开的候选位置中选topk。数据格式为ND。 | int32 | layout_q为BSND时shape为(b,q_s,k_n,topk)；layout_q为TND时shape为(q_t,k_n,topk) |
+| sparse_values | Tensor | 必选 | 同quant_lightning_indexer的sparse_values；candidate接口不支持return_value，恒为shape(0,)的空tensor。数据格式为ND。 | bfloat16 | (0,) |
+| candidate_topk_index | Tensor | 必选 | 两级TopK的候选块索引输出。candidate_mode为1（source）时输出有效内容，其他模式为shape(0,)的空tensor。无序；值为batch内相对块号或-1（无效槽），块号×candidate_block_size为起始位置；不加output_idx_offset。仅支持layout_q为BSND。数据格式为ND。 | int32 | candidate_mode为1时shape为(b,q_s,k_n,candidate_topk_blocks)；其他模式为(0,) |
 
 ## 约束说明
 
@@ -178,12 +231,23 @@ cann_ops_transformer.quant_lightning_indexer(
 - 当layout_q为BSND时，不支持传入cu_seqlens_q；当layout_k为BSND或PA_BBND时，不支持传入cu_seqlens_k。
 - 当传入的cmp_ratio > 1且mask_mode = 3时，必须传入cmp_residual_k，其余情况不传入。
 - sparse_indices无效部分填-1；sparse_values无效部分填-inf。
+- 两级TopK（candidate）相关约束（仅ascend910b/ascend910_93支持；Ascend 950须保持candidate_mode默认值3）：
+  - candidate_mode为1时输出candidate_topk_index，仅支持layout_q为BSND；为2时必须传入candidate_topk_index。
+  - layout_q为TND时，layout_k必须为PA_BBND且必须传入cu_seqlens_q。
+  - candidate_block_size当前仅支持8，且source与consumer调用必须一致；candidate_topk_blocks当前仅支持2048。
+  - 候选块索引为batch内相对块号，output_idx_offset仅作用于sparse_indices。
+  - candidate_mode为2时候选块仅降低排序优先级、不取消入选资格：候选内有效位置数不足topk时候选外的可达位置会作为有效索引输出。
+  - candidate_mode为1时最新token所在块（pin块）无条件保留在候选输出中。
+  - 候选块索引仅在同一个forward内跨层共享有效，跨step复用无效。
+  - candidate相关属性不参与metadata分核，metadata算子接口不变。
+  - candidate接口不支持return_value。
+
 <!-- npu="A3,910b" id7 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
   - topk取值范围当前仅支持[1, 2048]。
   - 当layout_k为TND时，不支持传入seqused_k。
-  - 不支持output_idx_offset。
-  - 仅支持num_heads_q = 64、q_n = 64。
+  - output_idx_offset已支持。
+  - num_heads_q（q_n）支持64或32。
   - 仅支持quant_mode = 2。
   - q、k仅支持int8，不支持float8_e4m3fn、HIfloat8和float4_e2m1。
   - q_descale和k_descale支持float16，不支持float32和float8_e8m0。
@@ -210,6 +274,7 @@ cann_ops_transformer.quant_lightning_indexer(
 |      特性参数组      |     参数字段名称     |
 | :-------------------: | :-------------------: |
 |      公共参数组      | q、k、w、q_descale、k_descale、metadata、output_idx_offset、topk、quant_mode、layout_q、layout_k、sparse_indices、sparse_values |
+|      两级TopK参数组      | candidate_topk_index、candidate_mode、candidate_topk_blocks、candidate_block_size |
 |      Mask参数组      | mask_mode |
 |   SeqLens参数组   | cu_seqlens_q、cu_seqlens_k、seqused_q、seqused_k、max_seqlen_q |
 |   稀疏压缩参数组    | cmp_ratio、cmp_residual_k |
@@ -679,4 +744,30 @@ mask_mode参数解释
   sparse_indices, sparse_values = npu_mode(query, key, weights, query_dequant_scale, key_dequant_scale)
   print(f"sparse_indices shape: {sparse_indices.shape}")
   print(f"sparse_values shape: {sparse_values.shape}")
+  ```
+
+- 两级TopK（candidate）调用：
+
+  ```python
+  from cann_ops_transformer.ops import (
+      quant_lightning_indexer_candidate_source,
+      quant_lightning_indexer_candidate_consumer,
+  )
+
+  # source层（candidate_mode=1）：输出候选块索引candidate_block_indices与每行有效块数candidate_block_length
+  sparse_indices, sparse_values, candidate_block_indices, candidate_block_length = quant_lightning_indexer_candidate_source(
+      q, k, w, q_descale, k_descale, topk, quant_mode,
+      cu_seqlens_q=cu_seqlens_q, seqused_q=seqused_q,
+      block_table=block_table, metadata=metadata,
+      mask_mode=mask_mode, cmp_ratio=cmp_ratio, cmp_residual_k=cmp_residual_k,
+  )
+
+  # consumer层（candidate_mode=2）：在候选块内选topk；候选块索引来自source层，同一forward内有效
+  sparse_indices, sparse_values = quant_lightning_indexer_candidate_consumer(
+      q, k, w, q_descale, k_descale,
+      candidate_block_indices, candidate_block_length, topk, quant_mode,
+      cu_seqlens_q=cu_seqlens_q, seqused_q=seqused_q,
+      block_table=block_table, output_idx_offset=output_idx_offset, metadata=metadata,
+      mask_mode=mask_mode, cmp_ratio=cmp_ratio, candidate_block_size=candidate_block_size,
+  )
   ```
