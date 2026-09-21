@@ -4,7 +4,7 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>Atlas A2训练系列产品</term>                                         | 是       |
+| <term>Atlas A2训练系列产品</term>                         | 是       |
 
 ## 功能说明
 
@@ -146,3 +146,4 @@
       7. `Mins`和`Maxs`：将值截断到`[-128.0, 127.0]`的INT8表示范围。
       8. `Cast(in_one_local, infloat_local, CAST_NONE)`和`Cast(out_local, in_one_local, CAST_RINT)`：将结果从FP32经FP16转换为最终INT8输出。
     - **CopyOut**：将INT8计算结果从UB搬回GM，输出偏移量：`offset = (i * blockNum_ + blockIdx_) * bkW_ + j * tlW_`。
+    
