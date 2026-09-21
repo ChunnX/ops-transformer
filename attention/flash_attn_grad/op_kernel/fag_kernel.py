@@ -1054,6 +1054,14 @@ def flash_attn_grad_preload2(
                 dV,
                 zero_ub.current(),
             )
+            # sinks 时清 dsink 槽位区本 AIV 行，供主循环 atomicAdd（与 BN2 同）。
+            if constInfo.sinkOptional == 1:
+                process_sink_zero(
+                    tensor_dsink_ws,
+                    constInfo,
+                    zero_ub.current(),
+                    pl.get_block_idx(),
+                )
         pl.system.sync_all()
 
     with pl.section_cube():
@@ -1341,6 +1349,8 @@ def flash_attn_grad_preload2(
             nzp_ub = make_nzp_ub(v1w)
             sfmg_ub = make_sfmg_ub(v1w)
             lse_ub = make_lse_ub(v1w)
+            # sink 反向专用 tile：与 BN2 一样用 HEAD_DIM_ALIGN 那张 UB 图。
+            sink_part_ub = make_sink_part_ub(HEAD_DIM_ALIGN)
             mask_ub = make_mask_view(v1w)
             mask_pre_ub = make_mask_pre_view(v1w)
         runInfos = make_run_infos_2()
@@ -1471,6 +1481,23 @@ def flash_attn_grad_preload2(
                         sfmg_ub.current(),
                         nzp_ub.current(),
                     )
+                    # ---- dsink：本块 Σ(P·dP)·exp(sink-lse) 原子累加到槽位区
+                    # 本 AIV 行的 headQ 列。读本 task 的 mm2(P)/mm1(dP)，必须排在
+                    # 放行 cube（SYNC_V3_TO_C3 / V4_TO_C5）之前。
+                    if constInfo.sinkOptional == 1:
+                        headQ = prevInfo.n2oIdx * constInfo.gSize + prevInfo.goIdx
+                        sink_val = pl.getval(tensor_sinks, headQ)
+                        process_sink_partial(
+                            constInfo,
+                            prevInfo,
+                            tensor_dsink_ws,
+                            aivIdx,
+                            mm2_t,
+                            mm1_t,
+                            lse_ub.previous(),
+                            sink_part_ub.current(),
+                            sink_val,
+                        )
                     pl.system.set_cross_core(
                         pipe=pl.PipeType.MTE3, event_id=SYNC_V3_TO_C3_FLAG
                     )
@@ -1639,6 +1666,16 @@ def flash_attn_grad_preload2(
                 dkvRowStartP * dV,
                 (dkvRowEndP - dkvRowStartP) * dV,
             )
+            # ---- dsink 归约（GS1S2 wide-D，与 BN2 同构）：sync_all 已在段首，
+            # 中间隔着整段 process_post，AIV0 在末尾按固定行序归约出 dsink。
+            sink_row_ub = make_sink_row_post_ub(HEAD_DIM_ALIGN)
+            sink_red_ub = make_sink_red_post_ub(HEAD_DIM_ALIGN)
+            if constInfo.sinkOptional == 1:
+                if pl.get_block_idx() == 0:
+                    process_sink_reduce(
+                        constInfo, tensor_dsink_ws, tensor_dsink_out,
+                        sink_red_ub.current(), sink_row_ub.current(), aivCount,
+                    )
     else:
         # BN2 无 sink 时不能有 post / sync_all（与 ASC 一致：只有
         # sinkOptional 才 Pre + SyncALL + Post）。归约要读所有 AIV 槽位，
