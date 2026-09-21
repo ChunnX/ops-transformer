@@ -593,7 +593,7 @@ static ge::graphStatus CheckAndSetEpWorldSizeAttr(const gert::TilingContext *con
 /*
  * 校验去重请求属性（终态）：combine_comm_mode 只收 0/1；comm_alg 仅调试旁路白名单
  * （空/"off"/dedup 族）。显式请求（ccm=1 或 comm_alg dedup 族）撞上能力约束
- * （非 MTE 拓扑、量化 combine）直接报错不静默降级；自动请求的 dispatch 位不在此拦——
+ * （非 MTE 拓扑、量化 combine、预量化 x 配 tkw=0 的 combine 去重）直接报错不静默降级；自动请求的 dispatch 位不在此拦——
  * 非 MTE 时由 GetDedupMode 关位回落。
  */
 static ge::graphStatus CheckDedupRequestAttrs(const gert::TilingContext *context, const MegaMoeConfig &config,
@@ -630,6 +630,15 @@ static ge::graphStatus CheckDedupRequestAttrs(const gert::TilingContext *context
     OP_TILING_CHECK((dedupMode & DEDUP_MODE_COMBINE) != 0 && combineQuantMode != COMBINE_QUANT_OUT_TYPE_NO_QUANT,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "commAlg", commAlgPtr,
                                               "combine dedup requires combineQuantMode=0 (no-quant) for now"),
+                    return ge::GRAPH_FAILED);
+    // 预量化 x 的打包路径（PackPreQuantizedTokenRange）只在 tkw=1 时随记录下发 topk 权重；tkw=0 的
+    // combine 去重要靠记录尾段的权重在发送端乘权，该路径尚未接入——放行会得到权重全 0 的静默错误结果。
+    int64_t topkWeightsType = *attrs->GetAttrPointer<int64_t>((config.attrTopkWeightsTypeIndex));
+    const bool isPreQuantizedX = IsPreQuantizedXType(context->GetInputDesc(config.xIndex)->GetDataType());
+    OP_TILING_CHECK((dedupMode & DEDUP_MODE_COMBINE) != 0 && topkWeightsType == 0 && isPreQuantizedX,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "dedup request",
+                                              commAlgExplicit ? commAlgPtr : "combine_comm_mode=1",
+                                              "combine dedup with topk_weights_type=0 does not support pre-quantized x"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
