@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -9,8 +9,8 @@
  */
 
 /*!
- * \file flash_attn_infershape.cpp
- * \brief FlashAttn算子InferShape实现
+ * \file quant_flash_attn_infershape.cpp
+ * \brief QuantFlashAttn算子InferShape实现
  */
 
 #include <graph/utils/type_utils.h>
@@ -21,7 +21,6 @@ using namespace ge;
 
 namespace ops {
 
-// 属性索引 对其def注册索引
 static constexpr size_t ATTR_IDX_QUANT_MODE = 0;
 static constexpr size_t ATTR_IDX_SOFTMAX_SCALE = 1;
 static constexpr size_t ATTR_IDX_MASK_MODE = 2;
@@ -35,19 +34,24 @@ static constexpr size_t ATTR_IDX_LAYOUT_KV = 9;
 static constexpr size_t ATTR_IDX_LAYOUT_OUT = 10;
 static constexpr size_t ATTR_IDX_RETURN_SOFTMAX_LSE = 11;
 
-// 输入索引
 static constexpr size_t INPUT_IDX_Q = 0;
 static constexpr size_t INPUT_IDX_K = 1;
 static constexpr size_t INPUT_IDX_V = 2;
-// 输出索引
+
 static constexpr size_t OUTPUT_IDX_ATTN_OUT = 0;
 static constexpr size_t OUTPUT_IDX_SOFTMAX_LSE = 1;
 
-static constexpr int FA_SOFTMAX_LSE_LAST_DIM = 1; // softmax_lse最后一维元素数（每head一个float）
-
-ge::graphStatus InferShapeFlashAttn(gert::InferShapeContext *context)
+static std::string ToUpper(std::string s)
 {
-    OP_LOGI(context, "FlashAttn InferShape start.");
+    for (auto &c : s) {
+        c = static_cast<char>(toupper(static_cast<unsigned char>(c)));
+    }
+    return s;
+}
+
+ge::graphStatus InferShapeQuantFlashAttn(gert::InferShapeContext *context)
+{
+    OP_LOGI(context, "QuantFlashAttn InferShape start.");
     if (context == nullptr) {
         return ge::GRAPH_FAILED;
     }
@@ -71,22 +75,14 @@ ge::graphStatus InferShapeFlashAttn(gert::InferShapeContext *context)
 
     auto returnSoftmaxLsePtr = attrs->GetAttrPointer<bool>(ATTR_IDX_RETURN_SOFTMAX_LSE);
     OP_CHECK_NULL_WITH_CONTEXT(context, returnSoftmaxLsePtr);
-    int64_t returnSoftmaxLse = *returnSoftmaxLsePtr ? 1 : 0;
+    bool returnSoftmaxLse = *returnSoftmaxLsePtr;
 
-    std::string layoutQStr = std::string(layoutQ);
-    std::string layoutKvStr = std::string(layoutKv);
-    std::string layoutOutStr = std::string(layoutOut);
+    std::string layoutQStr = ToUpper(std::string(layoutQ));
+    std::string layoutKvStr = ToUpper(std::string(layoutKv));
+    std::string layoutOutStr = ToUpper(std::string(layoutOut));
 
-    // 转为大写以便统一比较
-    for (auto &c : layoutQStr) {
-        c = static_cast<char>(toupper(static_cast<unsigned char>(c)));
-    }
-    for (auto &c : layoutOutStr) {
-        c = static_cast<char>(toupper(static_cast<unsigned char>(c)));
-    }
-
-    OP_LOGI(context, "FlashAttn InferShape: layoutQ=%s, layoutKv=%s, layoutOut=%s, returnLSE=%ld.", layoutQStr.c_str(),
-            layoutKvStr.c_str(), layoutOutStr.c_str(), returnSoftmaxLse);
+    OP_LOGI(context, "QuantFlashAttn InferShape: layoutQ=%s, layoutKv=%s, layoutOut=%s, returnLSE=%d.",
+            layoutQStr.c_str(), layoutKvStr.c_str(), layoutOutStr.c_str(), returnSoftmaxLse);
 
     int64_t batchSize = 1;
     int64_t numHeadsQ = 0;
@@ -95,8 +91,10 @@ ge::graphStatus InferShapeFlashAttn(gert::InferShapeContext *context)
     bool isTND = false;
 
     if (layoutQStr == "BSND") {
-        if (qShape->GetDimNum() < 4) {
-            OP_LOGE(context, "q BSND layout requires 4-dim, got %zu.", qShape->GetDimNum());
+        if (qShape->GetDimNum() != 4) {
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context->GetNodeName(), "q",
+                                                     std::to_string(qShape->GetDimNum()).c_str(),
+                                                     "The shape dim of q must be 4 when layout_q is BSND");
             return ge::GRAPH_FAILED;
         }
         batchSize = qShape->GetDim(0);
@@ -104,8 +102,10 @@ ge::graphStatus InferShapeFlashAttn(gert::InferShapeContext *context)
         numHeadsQ = qShape->GetDim(2);
         headDim = qShape->GetDim(3);
     } else if (layoutQStr == "BNSD") {
-        if (qShape->GetDimNum() < 4) {
-            OP_LOGE(context, "q BNSD layout requires 4-dim, got %zu.", qShape->GetDimNum());
+        if (qShape->GetDimNum() != 4) {
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context->GetNodeName(), "q",
+                                                     std::to_string(qShape->GetDimNum()).c_str(),
+                                                     "The shape dim of q must be 4 when layout_q is BNSD");
             return ge::GRAPH_FAILED;
         }
         batchSize = qShape->GetDim(0);
@@ -113,26 +113,46 @@ ge::graphStatus InferShapeFlashAttn(gert::InferShapeContext *context)
         seqLenQ = qShape->GetDim(2);
         headDim = qShape->GetDim(3);
     } else if (layoutQStr == "TND") {
-        if (qShape->GetDimNum() < 3) {
-            OP_LOGE(context, "q TND layout requires 3-dim, got %zu.", qShape->GetDimNum());
+        if (qShape->GetDimNum() != 3) {
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context->GetNodeName(), "q",
+                                                     std::to_string(qShape->GetDimNum()).c_str(),
+                                                     "The shape dim of q must be 3 when layout_q is TND");
             return ge::GRAPH_FAILED;
         }
-        seqLenQ = qShape->GetDim(0); // T = total tokens
+        seqLenQ = qShape->GetDim(0);
         numHeadsQ = qShape->GetDim(1);
         headDim = qShape->GetDim(2);
         isTND = true;
+    } else if (layoutQStr == "NTD") {
+        if (qShape->GetDimNum() != 3) {
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context->GetNodeName(), "q",
+                std::to_string(qShape->GetDimNum()).c_str(),
+                "The shape dim of q must be 3 when layout_q is NTD");
+            return ge::GRAPH_FAILED;
+        }
+        numHeadsQ = qShape->GetDim(0);
+        seqLenQ   = qShape->GetDim(1);
+        headDim   = qShape->GetDim(2);
+        isTND     = true;
     } else {
-        OP_LOGE(context, "Unsupported layoutQ: %s.", layoutQStr.c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "layout_q", layoutQStr.c_str(),
+                                              "The value of layout_q must be in BSND/BNSD/TND/NTD");
         return ge::GRAPH_FAILED;
     }
 
     int64_t headDimV = headDim;
     if (layoutKvStr == "BSND" && vShape->GetDimNum() >= 4) {
         headDimV = vShape->GetDim(3);
+    } else if (layoutKvStr == "BNSD" && vShape->GetDimNum() >= 4) {
+        headDimV = vShape->GetDim(3);
     } else if (layoutKvStr == "TND" && vShape->GetDimNum() >= 3) {
         headDimV = vShape->GetDim(2);
-    } else if (layoutKvStr == "PA_ND" && vShape->GetDimNum() >= 4) {
+    } else if (layoutKvStr == "PA_BBND" && vShape->GetDimNum() >= 4) {
         headDimV = vShape->GetDim(3);
+    } else if (layoutKvStr == "PA_BNBD" && vShape->GetDimNum() >= 4) {
+        headDimV = vShape->GetDim(3);
+    } else if (layoutKvStr == "PA_NZ" && vShape->GetDimNum() >= 5) {
+        headDimV = vShape->GetDim(2) * vShape->GetDim(4);
     }
 
     gert::Shape *attnOutShape = context->GetOutputShape(OUTPUT_IDX_ATTN_OUT);
@@ -143,30 +163,33 @@ ge::graphStatus InferShapeFlashAttn(gert::InferShapeContext *context)
         attnOutShape->SetDim(0, batchSize);
         attnOutShape->SetDim(1, seqLenQ);
         attnOutShape->SetDim(2, numHeadsQ);
-        attnOutShape->SetDim(3, 2 * headDimV);
+        attnOutShape->SetDim(3, headDimV);
     } else if (layoutOutStr == "BNSD") {
         attnOutShape->SetDimNum(4);
         attnOutShape->SetDim(0, batchSize);
         attnOutShape->SetDim(1, numHeadsQ);
         attnOutShape->SetDim(2, seqLenQ);
-        attnOutShape->SetDim(3, 2 * headDimV);
+        attnOutShape->SetDim(3, headDimV);
     } else if (layoutOutStr == "TND") {
         attnOutShape->SetDimNum(3);
-        attnOutShape->SetDim(0, seqLenQ); // T总token数
+        attnOutShape->SetDim(0, seqLenQ);
         attnOutShape->SetDim(1, numHeadsQ);
-        attnOutShape->SetDim(2, 2 * headDimV);
+        attnOutShape->SetDim(2, headDimV);
     } else {
-        OP_LOGE(context, "Unsupported layoutOut: %s.", layoutOutStr.c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "layout_out", layoutOutStr.c_str(),
+                                              "The value of layout_out must be in BSND/BNSD/TND");
         return ge::GRAPH_FAILED;
     }
 
     gert::Shape *lseShape = context->GetOutputShape(OUTPUT_IDX_SOFTMAX_LSE);
     if (lseShape != nullptr) {
-        if (returnSoftmaxLse != 0) {
+        if (returnSoftmaxLse) {
             if (isTND) {
+                // LSE 输出改为 N-major 排布: (N, T), N 在外, T 在内
+                // 与 kernel 的 DataCopySoftmaxLseTNDtoNTArch35* 写入顺序对齐
                 lseShape->SetDimNum(2);
-                lseShape->SetDim(0, seqLenQ);
-                lseShape->SetDim(1, numHeadsQ);
+                lseShape->SetDim(0, numHeadsQ);
+                lseShape->SetDim(1, seqLenQ);
             } else {
                 lseShape->SetDimNum(3);
                 lseShape->SetDim(0, batchSize);
@@ -174,28 +197,25 @@ ge::graphStatus InferShapeFlashAttn(gert::InferShapeContext *context)
                 lseShape->SetDim(2, seqLenQ);
             }
         } else {
-            // 不输出softmax_lse时设置为空shape
             lseShape->SetDimNum(1);
             lseShape->SetDim(0, 0);
         }
     }
 
-    OP_LOGI(context, "FlashAttn InferShape done. attnOut dims=%zu.", attnOutShape->GetDimNum());
+    OP_LOGI(context, "QuantFlashAttn InferShape done. attnOut dims=%zu.", attnOutShape->GetDimNum());
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus InferDataTypeFlashAttn(gert::InferDataTypeContext *context)
+ge::graphStatus InferDataTypeQuantFlashAttn(gert::InferDataTypeContext *context)
 {
     if (context == nullptr) {
         return ge::GRAPH_FAILED;
     }
-    // attn_out固定为BF16
     context->SetOutputDataType(OUTPUT_IDX_ATTN_OUT, ge::DT_BF16);
-    // softmax_lse固定为FLOAT32
     context->SetOutputDataType(OUTPUT_IDX_SOFTMAX_LSE, ge::DT_FLOAT);
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP_INFERSHAPE(QuantFlashAttn).InferShape(InferShapeFlashAttn).InferDataType(InferDataTypeFlashAttn);
+IMPL_OP_INFERSHAPE(QuantFlashAttn).InferShape(InferShapeQuantFlashAttn).InferDataType(InferDataTypeQuantFlashAttn);
 
 } // namespace ops
