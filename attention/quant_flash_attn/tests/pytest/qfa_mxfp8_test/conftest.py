@@ -211,6 +211,10 @@ def npu_device_limit(request):
         kwargs["cube_num"] = cube
     if vector is not None:
         kwargs["vector_num"] = vector
+    # set_device_limit 内部的 _lazy_init 只完成进程级初始化，_npu_set_device_res_limit
+    # 还要求目标设备已完成设备级初始化，否则报 "NPU device has not been initialized"；
+    # 先 set_device 再设限。后续 golden 内部会再次 set_device 同一设备，幂等无副作用。
+    torch.npu.set_device(int(device))
     torch.npu.set_device_limit(int(device), **kwargs)
     print(f"\n[device-limit] device={device} cube_num={cube} vector_num={vector}")
 
