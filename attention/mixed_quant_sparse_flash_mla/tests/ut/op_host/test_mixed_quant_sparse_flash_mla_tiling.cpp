@@ -213,6 +213,23 @@ TEST_F(MixedQuantSparseFlashMlaTiling, test_tiling_arch35_quant_mode3_failed)
     RunMQSmlaTilingCase(c, ge::GRAPH_FAILED);
 }
 
+// arch22 must not enter the original arch35 quant_mode=1/2 path.
+TEST_F(MixedQuantSparseFlashMlaTiling, test_tiling_arch22_quant_mode1_failed)
+{
+    MQSmlaCase c;
+    c.socVersion = "Ascend910B";
+    c.coreNum = 64;
+    RunMQSmlaTilingCase(c, ge::GRAPH_FAILED);
+}
+
+// Empty TND query is allowed only by the TurboQuant contract.
+TEST_F(MixedQuantSparseFlashMlaTiling, test_tiling_arch35_empty_query_failed)
+{
+    MQSmlaCase c;
+    c.qShape = {0, 64, 512};
+    RunMQSmlaTilingCase(c, ge::GRAPH_FAILED);
+}
+
 // arch22 supports the TurboQuant SCFA contract through quant_mode=3.
 TEST_F(MixedQuantSparseFlashMlaTiling, test_tiling_arch22_turbo_quant_success)
 {

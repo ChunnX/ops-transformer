@@ -27,7 +27,8 @@ ge::graphStatus MixedQuantVariantChecker::CheckSinglePara(const CheckContext &co
         OP_LOGE_FOR_INVALID_VALUE(Op(context), "quant_mode", std::to_string(context.quantMode).c_str(), "1, 2 or 3"),
         return ge::GRAPH_FAILED);
     const bool turboQuant = context.quantMode == 3;
-    OP_CHECK_IF((context.npuArch == NpuArch::DAV_2201) != turboQuant,
+    OP_CHECK_IF((turboQuant && context.npuArch != NpuArch::DAV_2201) ||
+                    (!turboQuant && context.npuArch != NpuArch::DAV_3510),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     Op(context), "quant_mode", std::to_string(context.quantMode).c_str(),
                     "quant_mode 3 is supported only on arch22; quant_mode 1/2 are supported only on arch35"),
