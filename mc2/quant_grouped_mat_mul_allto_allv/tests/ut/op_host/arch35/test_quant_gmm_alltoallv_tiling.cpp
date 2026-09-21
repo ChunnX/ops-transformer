@@ -184,7 +184,7 @@ TEST_P(QuantGmmAlltoAllvTilingTest, test_grouped_quant_mat_mul_allto_allv_tiling
             {"comm_quant_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.commMode)},
         },
-        &compileInfo, "Ascend950", coreNum, ubSize, tilingDataSize);
+        &compileInfo, "3510", coreNum, ubSize, tilingDataSize);
 
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
