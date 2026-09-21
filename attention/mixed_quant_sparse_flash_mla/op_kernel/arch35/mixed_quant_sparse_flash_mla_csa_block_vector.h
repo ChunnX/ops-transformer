@@ -2223,8 +2223,13 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(ConstInfo<HIG
 
     commonUb = {LocalTensor<T>(TPosition::VECIN, mqsmlaUbAddr, 512 / sizeof(T)), 0}; // 512：缓冲区大小，单位是字节
     mqsmlaUbAddr += 512;                                                             // 512：同上
+<<<<<<< Updated upstream
     sinksUb = {LocalTensor<T>(TPosition::VECIN, mqsmlaUbAddr, 512 / sizeof(T)), 0};  // 512：同上
     mqsmlaUbAddr += 512;                                                             // 512：同上
+=======
+    sinksUb = {LocalTensor<T>(TPosition::VECIN, mqsmlaUbAddr, 512 / sizeof(T)), 0}; // 512：同上
+    mqsmlaUbAddr += 512;                                                            // 512：同上
+>>>>>>> Stashed changes
     if constexpr (!HIGH_PERF) {
         if (constInfo.isSoftmaxLseEnable) {
             outLseUbs[0] = {LocalTensor<float>(TPosition::VECIN, mqsmlaUbAddr, 256 / sizeof(float)),
@@ -2236,7 +2241,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(ConstInfo<HIG
     }
 
     stage0InBufs[0] = {LocalTensor<KV_T>(TPosition::VECIN, mqsmlaUbAddr, v0BufferDSize * 16),
-                       0};                       // 16：每个v0缓冲区块中存储的向量数量
+                       0};                             // 16：每个v0缓冲区块中存储的向量数量
     mqsmlaUbAddr += v0BufferDSize * 16 * sizeof(KV_T); // 16：同上
     stage0InBufs[1] = {LocalTensor<KV_T>(TPosition::VECIN, mqsmlaUbAddr, v0BufferDSize * 16), 1}; // 16：同上
     mqsmlaUbAddr += v0BufferDSize * 16 * sizeof(KV_T);                                            // 16：同上
