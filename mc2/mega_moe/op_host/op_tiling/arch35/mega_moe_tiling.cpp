@@ -2584,12 +2584,92 @@ static ge::graphStatus CheckAndSetPlatformParams(gert::TilingContext *context, M
 }
 
 /*
+ * A8W4 L1 allocation (512 KiB), computed once on host for all AIC/AIV consumers.
+ * M=N=KTile=256: each A/W8-B slot is 64 KiB. Every 32 K elements share one scale
+ * byte; A/B scales cover the SAME K window, with two buffers for each matrix.
+ * Full tiles determine capacity; M/N/K tails use the same slots and smaller copies.
+ *
+ * Physical layout, increasing addresses:
+ * [ A0 ... A(a-1) ][ B physical slots 0 ... b-1 ][ scA0 ][ scB0 ][ scA1 ][ scB1 ]
+ * | a * 64 KiB   | b * 64 KiB                  | 2 * (scaleABytes+scaleBBytes) |
+ * A rotates linearly. B alternates between two halves: b=4 -> physical 0,2,1,3.
+ *
+ * Example max(GMM1 K, GMM2 K)=7168, all offsets below in KiB:
+ * [0] A0 [64] A1 [128] A2 [192] B0 [256] B2 [320] B1 [384] B3
+ * [448] scA0 [464] scB0 [480] scA1 [496] scB1 [512]
+ * a=3, b=4, each scale slot=16 KiB, common scale K window=2048.
+ *
+ * 1. Reserve one full-K scale pair to estimate equal A/B counts, then retain A count.
+ * 2. Reserve only two minimal scale pairs (one KTile each); give remaining slots to B.
+ * 3. Allocate remaining space to two scale pairs, rounding coverage DOWN to KTile.
+ *    The full-K budget in step 1 does not mean all K scales stay resident.
+ * 4. Write every offset here; the device only reads the resulting layout.
+ */
+static MegaMoeL1Layout CalcMegaMoeL1Layout(uint64_t maxGmmK)
+{
+    constexpr uint64_t L1_BYTES = 512 * 1024;
+    constexpr uint64_t TILE_M = 256;
+    constexpr uint64_t TILE_N = 256;
+    constexpr uint64_t TILE_K = 256;
+    constexpr uint64_t SCALE_BUFFER_NUM = 2;
+    constexpr uint64_t K_PER_SCALE_BYTE = 32;
+    constexpr uint64_t A_BYTES = TILE_M * TILE_K;
+    constexpr uint64_t B_BYTES = TILE_N * TILE_K;
+    constexpr uint64_t MIN_SCALE_A_BYTES = TILE_M * (TILE_K / K_PER_SCALE_BYTE);
+    constexpr uint64_t MIN_SCALE_B_BYTES = TILE_N * (TILE_K / K_PER_SCALE_BYTE);
+    constexpr uint64_t MIN_SCALE_TOTAL_BYTES = SCALE_BUFFER_NUM * (MIN_SCALE_A_BYTES + MIN_SCALE_B_BYTES);
+
+    // Step 1: scale hardware stores K64 pairs (two scale bytes per row).
+    // M/N and tile byte sizes are already aligned; no padding calculations are needed.
+    const uint64_t fullKScaleBytesPerRow = (maxGmmK + 63) / 64 * 2;
+    const uint64_t fullKScalePairBytes = (TILE_M + TILE_N) * fullKScaleBytesPerRow;
+    MegaMoeL1Layout layout{};
+    layout.aBufferNum = fullKScalePairBytes < L1_BYTES ? (L1_BYTES - fullKScalePairBytes) / (A_BYTES + B_BYTES) : 1;
+    layout.aBufferNum = std::max(uint64_t{1}, std::min(layout.aBufferNum, MegaMoeL1Layout::MAX_A_BUFFER_NUM));
+
+    // Step 2: A count is fixed; reserve two minimal scale pairs before assigning B.
+    layout.bBufferNum = (L1_BYTES - layout.aBufferNum * A_BYTES - MIN_SCALE_TOTAL_BYTES) / B_BYTES;
+    layout.bBufferNum = std::min(layout.bBufferNum, MegaMoeL1Layout::MAX_B_BUFFER_NUM);
+
+    // Step 3: both scale matrices cover the same number of K tiles; each has two slots.
+    const uint64_t scaleBudgetBytes = L1_BYTES - layout.aBufferNum * A_BYTES - layout.bBufferNum * B_BYTES;
+    const uint64_t requiredKTiles = std::max(uint64_t{1}, (maxGmmK + TILE_K - 1) / TILE_K);
+    const uint64_t scaleKTiles = std::min(scaleBudgetBytes / MIN_SCALE_TOTAL_BYTES, requiredKTiles);
+    layout.tileK = TILE_K;
+    layout.scaleK = scaleKTiles * TILE_K;
+    layout.aSlotBytes = A_BYTES;
+    layout.bSlotBytes = B_BYTES;
+    layout.scaleASlotBytes = scaleKTiles * MIN_SCALE_A_BYTES;
+    layout.scaleBSlotBytes = scaleKTiles * MIN_SCALE_B_BYTES;
+
+    // Step 4: pack A, interleaved B and the two scale pairs without overlap.
+    for (uint64_t slot = 0; slot < layout.aBufferNum; ++slot) {
+        layout.aOffsets[slot] = slot * A_BYTES;
+    }
+    const uint64_t bBase = layout.aBufferNum * A_BYTES;
+    for (uint64_t slot = 0; slot < layout.bBufferNum; ++slot) {
+        const uint64_t physicalSlot = (slot & 1) * ((layout.bBufferNum + 1) / 2) + slot / 2;
+        layout.bOffsets[slot] = bBase + physicalSlot * B_BYTES;
+    }
+    const uint64_t scaleBase = bBase + layout.bBufferNum * B_BYTES;
+    for (uint64_t slot = 0; slot < SCALE_BUFFER_NUM; ++slot) {
+        layout.scaleAOffsets[slot] = scaleBase + slot * (layout.scaleASlotBytes + layout.scaleBSlotBytes);
+        layout.scaleBOffsets[slot] = layout.scaleAOffsets[slot] + layout.scaleASlotBytes;
+    }
+    return layout;
+}
+
+/*
  * 在所有校验和资源规划完成后，统一提交 workspace、block dim、tiling key 及诊断信息。
  */
 static ge::graphStatus CommitTilingResult(gert::TilingContext *context, const MegaMoeConfig &config,
                                           const MegaMoeExpertParams &expertParams, MegaMoeTilingData *tilingData,
                                           const char *nodeName)
 {
+    // Shared and routed experts have the same validated H/hiddenDim dimensions.
+    tilingData->a8w4L1Layout =
+        CalcMegaMoeL1Layout(std::max(uint64_t{tilingData->h}, uint64_t{tilingData->hiddenDim / 2U}));
+
     WorkspaceLayout workspaceLayout(tilingData);
     OP_TILING_CHECK(SetWorkspace(context, workspaceLayout, nodeName) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Tiling set workspace failed."), return ge::GRAPH_FAILED);
