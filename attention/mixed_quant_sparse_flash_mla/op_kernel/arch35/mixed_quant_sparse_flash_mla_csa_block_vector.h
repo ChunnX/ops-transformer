@@ -27,7 +27,7 @@
 #include "lib/matrix/matmul/tiling.h"
 #include "../../../common/op_kernel/init_output.h"
 #include "util_regbase.h"
-#include "mixed_quant_sparse_flash_mla_common_arch35.h"
+#include "mixed_quant_sparse_flash_mla_csa_common.h"
 using AscendC::Reg::StoreDist;
 #include "../../../sparse_flash_mla/op_kernel/arch35/common/flash_decode.h"
 #include "../../../sparse_flash_mla/op_kernel/arch35/common/get_kv_phy_addr_vf.h"

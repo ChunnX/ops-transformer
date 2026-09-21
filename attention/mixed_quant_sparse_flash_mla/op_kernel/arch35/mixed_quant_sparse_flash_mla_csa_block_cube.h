@@ -21,7 +21,7 @@
 #include "../../common/op_kernel/CopyInL1.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "util_regbase.h"
-#include "mixed_quant_sparse_flash_mla_common_arch35.h"
+#include "mixed_quant_sparse_flash_mla_csa_common.h"
 #include "../../../sparse_flash_mla/op_kernel/arch35/common/static_matmul.h"
 #include "../../../sparse_flash_mla/op_kernel/arch35/common/cube_local_buffer.h"
 

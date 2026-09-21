@@ -23,7 +23,7 @@
 #include "lib/matmul_intf.h"
 #include "mixed_quant_sparse_flash_mla_template_tiling_key.h"
 #include "arch35/mixed_quant_sparse_flash_mla_csa_kernel.h"
-#include "mixed_quant_sparse_flash_mla_common.h"
+#include "arch35/mixed_quant_sparse_flash_mla_common.h"
 #else
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"

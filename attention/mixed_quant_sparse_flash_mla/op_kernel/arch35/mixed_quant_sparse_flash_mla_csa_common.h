@@ -9,14 +9,14 @@
 */
 
 /*!
- * \file mixed_quant_sparse_flash_mla_common_arch35.h
+ * \file mixed_quant_sparse_flash_mla_csa_common.h
  * \brief
  */
-#ifndef MIXED_QUANT_SPARSE_FLASH_MLA_COMMON_ARCH35_H
-#define MIXED_QUANT_SPARSE_FLASH_MLA_COMMON_ARCH35_H
+#ifndef MIXED_QUANT_SPARSE_FLASH_MLA_CSA_COMMON_H
+#define MIXED_QUANT_SPARSE_FLASH_MLA_CSA_COMMON_H
 #include <type_traits>
 #include "kernel_tiling/kernel_tiling.h"
-#include "../mixed_quant_sparse_flash_mla_common.h"
+#include "mixed_quant_sparse_flash_mla_common.h"
 #include "../../../sparse_flash_mla/op_kernel/arch35/common/static_buffer.h"
 #include "../../../sparse_flash_mla/op_kernel/arch35/common/smla_common_defs.h"
 
