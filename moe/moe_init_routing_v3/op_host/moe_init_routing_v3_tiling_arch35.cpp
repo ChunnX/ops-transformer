@@ -2024,8 +2024,10 @@ int64_t MoeInitRoutingV3TilingArch35::EstimateArch35CountingSortFullLoadUB(int64
     // allCoreExpertCount（Phase B）
     total +=
         Ops::Base::CeilAlign(aivCoreNum_ * expertCountStride * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE);
-    // expertTokens
-    total += Ops::Base::CeilAlign((expertEnd_ - expertStart_) * static_cast<int64_t>(sizeof(int64_t)), UB_BLOCK_SIZE);
+    // expertTokens：KEY_VALUE 模式 kernel 按 expertNum*2 申请（输出 shape 固定 [expertNum, 2]）
+    int64_t expertTokensElems = (expertTokensNumType_ == EXPERT_TOKENS_TYPE_KEY_VALUE) ? expertNum_ * DIM_VALUE_TWO :
+                                                                                         (expertEnd_ - expertStart_);
+    total += Ops::Base::CeilAlign(expertTokensElems * static_cast<int64_t>(sizeof(int64_t)), UB_BLOCK_SIZE);
     // prefixSum
     total += Ops::Base::CeilAlign(expertCountStride * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE);
     // filteredPairs (pairs)
@@ -2161,13 +2163,24 @@ void MoeInitRoutingV3TilingArch35::ComputeArch35CountingSortCutOriginTiling()
     int64_t allCoresBufSize =
         Ops::Base::CeilAlign(needCoreNum * expertCountStride * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE);
     int64_t batchBufSize = std::min(allCoresBufSize, std::max(maxBatchBufSize, expertCountAlign));
+    // expertTokensLocal 复用 prefixSum+batchBuf 区，可用容量 = expertCountAlign + batchBufSize；
+    // KEY_VALUE 模式需容纳 expertNum*2 个 int64，故给 batchBufSize 追加下界
+    // （kernel ComputeGlobalOffset 已把 batchCores clamp 到 filterNeedCoreNum，放大 batchBuf 安全）
+    int64_t expertTokensElems =
+        (expertTokensNumType_ == EXPERT_TOKENS_TYPE_KEY_VALUE) ? expertNum_ * DIM_VALUE_TWO : actualExpertNum;
+    int64_t expertTokensBytes =
+        Ops::Base::CeilAlign(expertTokensElems * static_cast<int64_t>(sizeof(int64_t)), UB_BLOCK_SIZE);
+    int64_t minBatchBufSize = std::max(
+        expertCountAlign, Ops::Base::CeilAlign(std::max(expertTokensBytes - expertCountAlign, static_cast<int64_t>(0)),
+                                               expertCountAlign));
+    batchBufSize = std::max(batchBufSize, minBatchBufSize);
     // Phase B scatter 临时区：与 scatterFlatIdx/scatterExpertIdx/scatterIdxBuf（HALF_COUTSORT_FILTER_CHUNK_SIZE-pair
     // batch ×2 + idxBuf）严格对齐
     int64_t pairsBatchSlot =
         Ops::Base::CeilAlign(HALF_COUTSORT_FILTER_CHUNK_SIZE * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE);
     int64_t scatterTempSize = pairsBatchSlot * NUM_TWO + UB_BLOCK_SIZE;
     // expertTokensLocal 复用 prefixSum+batchBuf 区（kernel 偏移 = prefixSumLocalOffset_），
-    // 落在 2*expertCountAlign+batchBufSize 区域内，不额外占 UB
+    // 落在 2*expertCountAlign+batchBufSize 区域内，不额外占 UB（batchBufSize 已含其容量下界）
     int64_t phaseBSize = NUM_TWO * expertCountAlign + batchBufSize + scatterTempSize;
 
     int64_t totalUB = persistentSize + std::max(phaseASize, phaseBSize);

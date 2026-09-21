@@ -374,7 +374,7 @@ __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::InitCommon(
     filteredCount_ = 0;
 
     if (expertTokensNumType_ == EXERPT_TOKENS_KEY_VALUE) {
-        expertTokensBufElems_ = Min(actualExpertNum_ + 1, expertNum_) * EXPERT_ID_VALUE_NUM;
+        expertTokensBufElems_ = expertNum_ * EXPERT_ID_VALUE_NUM;
     } else {
         expertTokensBufElems_ = actualExpertNum_;
     }
