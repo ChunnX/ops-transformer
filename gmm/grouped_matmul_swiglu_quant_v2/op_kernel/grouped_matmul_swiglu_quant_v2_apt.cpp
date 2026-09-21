@@ -20,6 +20,7 @@
 #include "kernel_operator.h"
 #endif
 #include "lib/matmul_intf.h"
+#include "arch35/grouped_matmul_swiglu_quant_v2_tiling_data.h"
 
 #if ORIG_DTYPE_X_SCALE == DT_FLOAT8_E8M0
 
@@ -35,9 +36,15 @@
 #include "arch35/grouped_matmul_tensor_api_swiglu_quant_v2_mxfp8_kernel.h"
 #include "arch35/grouped_matmul_swiglu_quant_v2_mxfp4_weight_nz.h"
 #include "arch35/grouped_matmul_swiglu_quant_v2_tiling_key.h"
+#if GMM_SWIGLU_QUANT_V3_WEIGHT_NZ_ENABLED
+#include "arch35/grouped_matmul_swiglu_quant_weight_nz_v3_tiling_data.h"
+#include "arch35/grouped_matmul_swiglu_quant_weight_nz_v3_mxquant.h"
+#include "arch35/grouped_matmul_tensor_api_swiglu_quant_weight_nz_v3_mxfp8_kernel.h"
+#endif
 #endif
 
 #elif ORIG_DTYPE_X_SCALE == DT_FLOAT
+#include "arch35/grouped_matmul_swiglu_quant_v2_tensor_api_tiling_data.h"
 #include "arch35/grouped_matmul_swiglu_quant_v2_pertoken_quant.h"
 #include "arch35/grouped_matmul_swiglu_quant_v2_tiling_key.h"
 #endif
@@ -93,11 +100,47 @@ __global__ __aicore__ void grouped_matmul_swiglu_quant_v2(GM_ADDR x, GM_ADDR xSc
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(oriOverflowMode);
 #else
     TPipe tPipe;
+    REGISTER_TILING_DEFAULT(GMMSwigluQuantV2TilingDataParams);
+#if ORIG_DTYPE_X_SCALE == DT_FLOAT8_E8M0
+    REGISTER_TILING_FOR_TILINGKEY("(TILING_KEY_VAR == 16) || (TILING_KEY_VAR == 17)",
+                                  GroupedMatmulSwigluQuantV2TensorApi::GMMSwigluQuantV2TensorApiTilingData);
+#if GMM_SWIGLU_QUANT_V3_WEIGHT_NZ_ENABLED
+    REGISTER_TILING_FOR_TILINGKEY(
+        "(TILING_KEY_VAR == 32) || (TILING_KEY_VAR == 33) || (TILING_KEY_VAR == 48) || (TILING_KEY_VAR == 49)",
+        GMMSwigluQuantV3TilingDataParams);
+#endif
+#endif
     GM_ADDR userWorkspace = GetUserWorkspace(workspace);
     int64_t oriOverflowMode = AscendC::GetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>();
     // enable overflow mode to avoid nan/inf value
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
 #if ORIG_DTYPE_X_SCALE == DT_FLOAT8_E8M0
+#if GMM_SWIGLU_QUANT_V3_WEIGHT_NZ_ENABLED
+    if constexpr (KERNEL_TYPE == GMM_SWIGLU_QUANT_V3_CGMCT_KERNEL_TYPE ||
+                  KERNEL_TYPE == GMM_SWIGLU_QUANT_V3_TENSOR_LEVEL_KERNEL_TYPE) {
+        if constexpr (KERNEL_TYPE == GMM_SWIGLU_QUANT_V3_TENSOR_LEVEL_KERNEL_TYPE) {
+            if constexpr (QUANT_B_TRANS == GMM_SWIGLU_QUANT_NO_TRANS) {
+                GroupedMatmulSwigluQuantV3::GmmTensorApiSwigluQuantV3MxFp8Kernel<AscendC::Te::NZLayoutPtn>(
+                    x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale,
+                    workspace, tiling);
+            } else {
+                GroupedMatmulSwigluQuantV3::GmmTensorApiSwigluQuantV3MxFp8Kernel<AscendC::Te::ZNLayoutPtn>(
+                    x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale,
+                    workspace, tiling);
+            }
+        } else if constexpr (QUANT_B_TRANS == GMM_SWIGLU_QUANT_NO_TRANS) {
+            GroupedMatmulSwigluQuantV3::GmmSwigluAswtV3<Cgmct::Gemm::layout::RowMajor,
+                                                        Cgmct::Gemm::layout::Nz>(
+                x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
+                tiling);
+        } else {
+            GroupedMatmulSwigluQuantV3::GmmSwigluAswtV3<Cgmct::Gemm::layout::RowMajor,
+                                                        Cgmct::Gemm::layout::Zn>(
+                x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
+                tiling);
+        }
+    } else
+#endif
     if constexpr (weightFormat == CubeFormat::NZ && isMxFp4Input) {
         if (QUANT_B_TRANS == GMM_SWIGLU_QUANT_NO_TRANS && QUANT_A_TRANS == GMM_SWIGLU_QUANT_NO_TRANS) {
             GmmSwigluMxFp4WeightNz<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz>(

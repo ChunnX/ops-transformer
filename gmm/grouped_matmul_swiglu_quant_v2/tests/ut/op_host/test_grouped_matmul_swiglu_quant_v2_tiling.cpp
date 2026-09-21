@@ -130,6 +130,13 @@ struct GroupedMatmulSwigluQuantV2TilingCase {
                 {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transposeWeight)},
                 {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)},
                 {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(tuningConfigVec)},
+                {"swiglu_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                {"clamp_limit", Ops::Transformer::AnyValue::CreateFrom<float>(7.0F)},
+                {"glu_alpha", Ops::Transformer::AnyValue::CreateFrom<float>(1.702F)},
+                {"glu_bias", Ops::Transformer::AnyValue::CreateFrom<float>(1.0F)},
+                {"round_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("rint")},
+                {"scale_alg", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                {"dst_type_max", Ops::Transformer::AnyValue::CreateFrom<float>(0.0F)},
             },
             inputInstanceNum, outputInstanceNum, compileInfoForRun, socVersion, compileInfoForRun->aicNum_,
             compileInfoForRun->ubSize_);

@@ -55,6 +55,9 @@ constexpr int64_t GMMSQ_TENSOR_API_TILING_TEMPLATE = 4;
 REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuantV2BasicApiTiling950,
                              GMMSQ_TENSOR_API_TILING_TEMPLATE);
 
+constexpr int64_t GMMSQ_WEIGHT_NZ_V3_TILING_TEMPLATE = 5;
+constexpr int64_t SWIGLU_MODE_V3 = 2;
+
 static ge::graphStatus CheckRequiredTilingInputs(const gert::TilingContext *context)
 {
     constexpr char OP_NAME[] = "GroupedMatmulSwigluQuantV2";
@@ -67,9 +70,9 @@ static ge::graphStatus CheckRequiredTilingInputs(const gert::TilingContext *cont
         const gert::StorageShape *shape;
         const char *name;
     } inputs[] = {
-        {context->GetInputDesc(X_INDEX), context->GetInputShape(X_INDEX), "x"},
-        {context->GetInputDesc(X_SCALE_INDEX), context->GetInputShape(X_SCALE_INDEX), "xScale"},
-        {context->GetInputDesc(GROUPLIST_INDEX), context->GetInputShape(GROUPLIST_INDEX), "groupList"},
+        {context->GetRequiredInputDesc(X_INDEX), context->GetRequiredInputShape(X_INDEX), "x"},
+        {context->GetRequiredInputDesc(X_SCALE_INDEX), context->GetRequiredInputShape(X_SCALE_INDEX), "xScale"},
+        {context->GetRequiredInputDesc(GROUPLIST_INDEX), context->GetRequiredInputShape(GROUPLIST_INDEX), "groupList"},
         {context->GetDynamicInputDesc(WEIGHT_INDEX, 0), context->GetDynamicInputShape(WEIGHT_INDEX, 0), "weight[0]"},
         {context->GetDynamicInputDesc(WEIGHT_SCALE_INDEX, 0), context->GetDynamicInputShape(WEIGHT_SCALE_INDEX, 0),
          "weightScale[0]"}};
@@ -90,6 +93,18 @@ static ge::graphStatus GroupedMatmulSwigluQuantV2TilingFunc(gert::TilingContext 
     OP_CHECK_IF(compileInfoPtr == nullptr,
                 OPS_REPORT_CUBE_INNER_ERR("GroupedMatmulSwigluQuantV2TilingFunc", "compileInfo is null"),
                 return ge::GRAPH_FAILED);
+    const auto *attrs = context->GetAttrs();
+    const auto *swigluMode = attrs == nullptr ? nullptr : attrs->GetAttrPointer<int64_t>(ATTR_INDEX_SWIGLU_MODE);
+    if (swigluMode != nullptr && *swigluMode != 0) {
+        OP_CHECK_IF(*swigluMode != SWIGLU_MODE_V3,
+                    OP_LOGE(context->GetNodeName(), "swiglu_mode only supports 0 or 2, but got %ld", *swigluMode),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(compileInfoPtr->npuArch_ != static_cast<int32_t>(NpuArch::DAV_3510),
+                    OP_LOGE(context->GetNodeName(), "swiglu_mode=2 only supports Ascend 950"),
+                    return ge::GRAPH_FAILED);
+        OP_LOGD("GroupedMatmulSwigluQuantV2TilingFunc", "Using the MXFP8 weight-NZ V3 tiling");
+        return TilingRegistry::GetInstance().DoTilingImpl(context, {GMMSQ_WEIGHT_NZ_V3_TILING_TEMPLATE});
+    }
     if (compileInfoPtr->supportL12BtBf16) {
         std::vector<int32_t> registerList = {GMMSQ_950_TILING_TEMPLATE};
         auto xDesc = context->GetInputDesc(GroupedMatmulSwigluQuantV2Tiling::X_INDEX);
@@ -139,10 +154,16 @@ ASCENDC_EXTERN_C graphStatus TilingPrepareForGMMSwigluQuantV2(gert::TilingParseC
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
     compileInfoPtr->aicNum_ = ascendcPlatform.GetCoreNumAic();
     compileInfoPtr->aivNum_ = ascendcPlatform.GetCoreNumAiv();
+    compileInfoPtr->npuArch_ = static_cast<int32_t>(ascendcPlatform.GetCurNpuArch());
     std::string platformRes;
     platformInfoPtr->GetPlatformRes("AICoreintrinsicDtypeMap", "Intrinsic_data_move_l12bt", platformRes);
     compileInfoPtr->supportL12BtBf16 = (platformRes.find("bf16") != std::string::npos);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, compileInfoPtr->ubSize_);
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, compileInfoPtr->l1Size_);
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, compileInfoPtr->l2Size_);
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_A, compileInfoPtr->l0ASize_);
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_B, compileInfoPtr->l0BSize_);
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, compileInfoPtr->l0CSize_);
     OP_LOGD(context->GetNodeName(), "ubSize is %lu, aicNum is %u.", compileInfoPtr->ubSize_, compileInfoPtr->aicNum_);
     return GRAPH_SUCCESS;
 }

@@ -136,8 +136,8 @@ __aicore__ inline void GmmSwigluMxFp4WeightNz(GM_ADDR x, GM_ADDR weight, GM_ADDR
                                               GM_ADDR weightAssistanceMatrix, GM_ADDR smoothScale, GM_ADDR groupList,
                                               GM_ADDR y, GM_ADDR yScale, GM_ADDR workspace, GM_ADDR tiling)
 {
-    GET_TILING_DATA_MEMBER(GMMSwigluQuantTilingDataParams, gmmSwigluQuantParams, gmmSwigluQuantParams_, tiling);
-    GET_TILING_DATA_MEMBER(GMMSwigluQuantTilingDataParams, mmTilingData, mmTilingData_, tiling);
+    GET_TILING_DATA_MEMBER(GMMSwigluQuantV2TilingDataParams, gmmSwigluQuantParams, gmmSwigluQuantParams_, tiling);
+    GET_TILING_DATA_MEMBER(GMMSwigluQuantV2TilingDataParams, mmTilingData, mmTilingData_, tiling);
     using L1TileShape = AscendC::Shape<_0, _0, _0>;
     using L0TileShape = AscendC::Shape<_0, _0, _0>;
     using AType = DTYPE_X;
