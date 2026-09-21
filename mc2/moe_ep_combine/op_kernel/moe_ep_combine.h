@@ -63,16 +63,16 @@ static constexpr uint32_t META_TOPK_IDX_OFFSET = 2U;
 static constexpr uint32_t META_RECV_X_IDX_OFFSET = 4U;
 // PR 111 requires each committed batch to contain fewer WQEBBs than the SQ depth.
 static constexpr uint32_t HCOMM_BATCH_CAPACITY = 256;
-// Kick off network reads early, then amortize subsequent doorbells with the original full batch.
-static constexpr uint32_t HCOMM_FIRST_BATCH_WQEBB = 32U;
+// Benchmark mode: every WQE produces a CQE; drain each batch before reusing CQ entries.
+static constexpr uint32_t HCOMM_DRAIN_BATCH_WQEBB = Mc2Aclnn::MOE_SHARED_JETTY_CQ_DEPTH / 2U;
 static constexpr uint32_t HCOMM_PLAIN_WRITE_WQE_BYTES = 64;
 static constexpr uint32_t HCOMM_BATCH_BUFFER_BYTES = HCOMM_BATCH_CAPACITY * HCOMM_PLAIN_WRITE_WQE_BYTES;
 constexpr uint64_t UB_ALIGN = 32UL;
 // Two 1024-row buffers retain the previous 2048-row maximum metadata UB budget.
 static constexpr uint32_t META_CHUNK_TOKEN_MAX = 1024U;
-static constexpr struct UrmaWqeEntry DEFAULT_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
-// Keep the final flag ordered after payload writes; the epilogue waits for it without a sender-side completion wait.
-static constexpr struct UrmaWqeEntry JETTY_FLAG_WQE_CONFIG = {.odr = 6, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
+static constexpr struct UrmaWqeEntry DEFAULT_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .cqe = 1, .inlineEn = 0};
+// Keep peer flags ordered after payload writes for the receiver's completion wait.
+static constexpr struct UrmaWqeEntry JETTY_FLAG_WQE_CONFIG = {.odr = 6, .fence = 1, .se = 0, .cqe = 1, .inlineEn = 0};
 
 template <TemplateMoeEpCombineTypeClass>
 class MoeEpCombine {
@@ -113,6 +113,7 @@ private:
     __aicore__ inline void SendMetadataChunk(const MetadataChunk &chunk, uint32_t buffer, TEventID event);
     __aicore__ inline void SendMetadataPipeline();
     __aicore__ inline void SendPhaseFromMetadata();
+    __aicore__ inline void WaitIncomingCompletion();
 
     __aicore__ inline uint64_t GetJettyHandle(uint32_t jettyIndex)
     {
@@ -177,7 +178,6 @@ private:
     GM_ADDR activeRemoteWindow_{nullptr};
     uint32_t preparedWriteCount_{0};
     bool activeBatchInitialized_{false};
-    bool firstBatchCommitted_{false};
 };
 
 template <TemplateMoeEpCombineTypeClass>
@@ -266,8 +266,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::FlushPrepared
 {
     if (preparedWriteCount_ != 0) {
         hcomm_.BatchCommit(activeBatchHandle_);
+        hcomm_.Drain(activeBatchHandle_);
         preparedWriteCount_ = 0;
-        firstBatchCommitted_ = true;
     }
     if (!keepHandle) {
         activeBatchHandle_ = {};
@@ -304,8 +304,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BeginPrepared
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ReservePreparedWrites(uint32_t wqebbCount)
 {
-    uint32_t limit = firstBatchCommitted_ ? HCOMM_BATCH_CAPACITY : HCOMM_FIRST_BATCH_WQEBB;
-    if (preparedWriteCount_ + wqebbCount > limit) {
+    if (preparedWriteCount_ + wqebbCount > HCOMM_DRAIN_BATCH_WQEBB) {
         FlushPreparedWrites(true);
     }
 }
@@ -514,12 +513,33 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseFrom
     activeJettyHandle_ = 0U;
     preparedWriteCount_ = 0U;
     activeBatchInitialized_ = false;
-    firstBatchCommitted_ = false;
 
     // Prefetch across peer boundaries too; typical peer slices fit in a single metadata chunk.
     SendMetadataPipeline();
     FlushPreparedWrites();
+    WaitIncomingCompletion();
     DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
+}
+
+template <TemplateMoeEpCombineTypeClass>
+__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::WaitIncomingCompletion()
+{
+    uint64_t flagOffset = static_cast<uint64_t>(numMaxTokensPerRank_) * topK_ * WIN_ADDR_ALIGN;
+    GM_ADDR state = GetUrmaStateAddrByRankId(rankId_, combineStateWinOffset_) + flagOffset;
+    // All owners must finish their receive lane before this kernel can return, including empty peer slices.
+    for (uint32_t srcRank = 0U; srcRank < epWorldSize_; ++srcRank) {
+        uint64_t flagIndex = static_cast<uint64_t>(srcRank) * combineJettyCount_ + aivId_;
+        GlobalTensor<uint32_t> flag;
+        flag.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(state + flagIndex * WIN_ADDR_ALIGN));
+        uint32_t ready = 0U;
+        while (ready != 1U) {
+            SyncFunc<AscendC::HardEvent::S_MTE2>();
+            DataCopy(statusTensor_, flag, UB_ALIGN / sizeof(uint32_t));
+            SyncFunc<AscendC::HardEvent::MTE2_S>();
+            ready = statusTensor_.GetValue(0);
+        }
+    }
+    // Do not clear flags here: the unchanged epilogue consumes and clears them once.
 }
 
 template <TemplateMoeEpCombineTypeClass>

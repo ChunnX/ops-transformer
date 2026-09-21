@@ -82,13 +82,13 @@ constexpr uint32_t SOURCE_INDEX_BUFFER_BYTES = MAX_BATCH_SIZE / 2U;
 constexpr uint32_t SOURCE_INDEX_CHUNK_TOKENS =
     SOURCE_INDEX_BUFFER_BYTES / sizeof(int32_t) / SLOT_NUM_PER_SQE * SLOT_NUM_PER_SQE;
 constexpr uint32_t HCOMM_BATCH_CAPACITY = 128U;                   // UB capacity in full 12-SGE requests
-// Start DMA after eight full 12-SGE requests; subsequent batches use the existing UB capacity.
-constexpr uint32_t HCOMM_FIRST_BATCH_WQEBB = 32U;
+// Benchmark mode: every WQE produces a CQE; drain each batch before reusing CQ entries.
+constexpr uint32_t HCOMM_DRAIN_BATCH_WQEBB = Mc2Aclnn::MOE_SHARED_JETTY_CQ_DEPTH / 2U;
 constexpr uint32_t HCOMM_SGE_BYTES = 16U;
 constexpr uint32_t HCOMM_SQE_BYTES = 48U;
 constexpr uint32_t HCOMM_WQE_BYTES = 64U;
-constexpr struct UrmaWqeEntry DATA_CFG = {.odr = 5, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
-constexpr struct UrmaWqeEntry NOTIFY_CFG = {.odr = 6, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
+constexpr struct UrmaWqeEntry DATA_CFG = {.odr = 5, .fence = 1, .se = 0, .cqe = 1, .inlineEn = 0};
+constexpr struct UrmaWqeEntry NOTIFY_CFG = {.odr = 6, .fence = 1, .se = 0, .cqe = 1, .inlineEn = 0};
 
 template <TemplateMoeEpDispatchTypeClass>
 class MoeEpDispatch {
@@ -138,6 +138,7 @@ private:
     __aicore__ inline void SetRecvNumPerExpert();
     __aicore__ inline void SetRecvNumPerRank(LocalTensor<int32_t> recvTmpTensor);
     __aicore__ inline void WriteToRemoteWindow();
+    __aicore__ inline void WaitIncomingCompletion();
     __aicore__ inline void GetTokenRange(uint32_t dstRank, uint32_t &tokenStart, uint32_t &tokenNum);
     __aicore__ inline void CommBufferInit();
     __aicore__ inline bool NextTokenChunk(uint32_t &peerOffset, uint32_t &start, uint32_t &remaining,
@@ -253,7 +254,6 @@ private:
     uint32_t prepareCoreId_{0};
     uint32_t hcommBatchBufferBytes_{0};
     uint32_t pendingWqebb_{0};
-    bool firstBatchCommitted_{false};
     uint32_t tokenSize_{0};
     uint32_t kAlignSize_{0};
     uint32_t axisKAlign_{0};
@@ -717,6 +717,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendCountTo
     hcomm_.WriteWithNotifyNbi<DATA_CFG>(handle, dst, src,
                                                            moeNumPerRankSize_, notifyAddr, notifyVal);
     hcomm_.BatchCommit(batch);
+    hcomm_.Drain(batch);
 }
 
 template <TemplateMoeEpDispatchTypeClass>
@@ -1200,11 +1201,32 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteToRemo
     payloadBatch_ = hcomm_.MakeBatchHandle(static_cast<MultiChannelHandle>(GetOwnedJettyHandle()),
                                           hcommBatchTensor_, hcommBatchBufferBytes_);
     pendingWqebb_ = 0U;
-    firstBatchCommitted_ = false;
 
     SendTokenPipeline();
     CommitBatch(true);
+    WaitIncomingCompletion();
     DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(topkIdxGMTensor_);
+}
+
+template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WaitIncomingCompletion()
+{
+    // Drain covers this SQ's outgoing writes, not this rank's incoming data. Each owner waits its receive lane.
+    LocalTensor<uint32_t> status = maskBuf_.Get<uint32_t>();
+    for (uint32_t srcRank = 0U; srcRank < epWorldSize_; ++srcRank) {
+        uint64_t flagIndex = static_cast<uint64_t>(srcRank) * dispatchNotifyCount_ + aivId_;
+        GlobalTensor<uint32_t> flag;
+        flag.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(
+            localSlotStateWinAddr_ + flagIndex * WIN_ADDR_ALIGN));
+        uint32_t ready = 0U;
+        while (ready != 1U) {
+            SyncFunc<AscendC::HardEvent::S_MTE2>();
+            DataCopy(status, flag, UB_ALIGN / sizeof(uint32_t));
+            SyncFunc<AscendC::HardEvent::MTE2_S>();
+            ready = status.GetValue(0);
+        }
+    }
+    // The epilogue still owns flag clearing; leave every completion visible to it.
 }
 
 template <TemplateMoeEpDispatchTypeClass>
@@ -1327,8 +1349,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenPi
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::ReserveBatchSpace(uint32_t wqebbCount)
 {
-    uint32_t limit = firstBatchCommitted_ ? hcommBatchBufferBytes_ / HCOMM_WQE_BYTES : HCOMM_FIRST_BATCH_WQEBB;
-    if (pendingWqebb_ + wqebbCount > limit) {
+    if (pendingWqebb_ + wqebbCount > HCOMM_DRAIN_BATCH_WQEBB) {
         CommitBatch(true);
     }
 }
@@ -1336,11 +1357,10 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::ReserveBatc
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CommitBatch(bool force)
 {
-    uint32_t limit = firstBatchCommitted_ ? hcommBatchBufferBytes_ / HCOMM_WQE_BYTES : HCOMM_FIRST_BATCH_WQEBB;
-    if (pendingWqebb_ != 0U && (force || pendingWqebb_ >= limit)) {
+    if (pendingWqebb_ != 0U && (force || pendingWqebb_ >= HCOMM_DRAIN_BATCH_WQEBB)) {
         hcomm_.BatchCommit(payloadBatch_);
+        hcomm_.Drain(payloadBatch_);
         pendingWqebb_ = 0U;
-        firstBatchCommitted_ = true;
     }
 }
 
