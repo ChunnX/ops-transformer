@@ -17,7 +17,7 @@
 #define GROUPED_MATMUL_FINALIZE_ROUTING_ARCH35_H
 
 #include "blaze/gemm/block/block_mmad_qgmm_mx.h"
-#include "blaze/gemm/block/block_prologue_qgmm_mx_finalize_routing.h"
+#include "blaze/gemm/kernel/block_prologue_qgmm_mx_finalize_routing.h"
 #include "blaze/gemm/block/block_scheduler_gmm_swat_with_tail_split.h"
 #include "blaze/gemm/kernel/kernel_qgmm_mx_finalize_routing.h"
 #include "blaze/gemm/policy/dispatch_policy.h"
@@ -71,7 +71,7 @@ __aicore__ inline void grouped_matmul_finalize_routing_mx(GM_ADDR x, GM_ADDR w, 
     using BlockMmadPolicy = Blaze::Gemm::GroupedMatmulWithScaleMx<0, false, Blaze::Gemm::KernelQGmmMxFinalizeRouting>;
     using BlockMmad = Blaze::Gemm::Block::BlockMmad<BlockMmadPolicy, AType, LayoutA, BType, LayoutB, C1Type, LayoutC,
                                                     BiasType, LayoutBias>;
-    using BlockPrologue = Blaze::Gemm::Block::BlockPrologueFinalizeRouting<CType, BiasType>;
+    using BlockPrologue = Blaze::Gemm::Kernel::BlockPrologueFinalizeRouting<CType, BiasType>;
     using BlockEpilogue =
         Blaze::Epilogue::Block::BlockEpilogueQGmmMxFinalizeRouting<CType, C1Type, LogitType, RowIndexType>;
     using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerGmmSwatWithTailSplit;
