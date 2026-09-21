@@ -23,14 +23,29 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     CacheGamma0();
     LoadTokenWeights(token, postVals);
 
-    // 两个lane按完全相同的分块和顺序冗余执行R1。
-    float sumSq0 = 0.0f;
-    for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
+    // 两个lane交错归约R1分块，再交换各自的部分平方和。
+    float sumSq0Local = 0.0f;
+    for (uint32_t tile = laneId_; tile < dimLoop_; tile += 2U) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
         LoadCachedHOut(tOff, tD);
-        sumSq0 += ReduceSumSq(bufResFp32_.Get<float>()[N_MAX * dimTile_], tD);
+        sumSq0Local += ReduceSumSq(bufResFp32_.Get<float>()[N_MAX * dimTile_], tD);
     }
+    LocalTensor<float> r1Buf = bufScalar_.Get<float>();
+    r1Buf.SetValue(0, sumSq0Local);
+    for (uint32_t i = 1U; i < PARTIAL_SLOT_ELEMS; ++i) {
+        r1Buf.SetValue(i, 0.0f);
+    }
+    SetFlag<HardEvent::S_MTE3>(evtStoMte3_);
+    WaitFlag<HardEvent::S_MTE3>(evtStoMte3_);
+    const uint64_t r1OwnSlot = ((uint64_t)token * 2U + laneId_) * PARTIAL_SLOT_ELEMS;
+    DataCopy(partial1Gm_[r1OwnSlot], r1Buf, PARTIAL_SLOT_ELEMS);
+    MhcPairR1ReadySync();
+    const uint64_t r1SiblingSlot = ((uint64_t)token * 2U + (1U - laneId_)) * PARTIAL_SLOT_ELEMS;
+    DataCopy(r1Buf, partial1Gm_[r1SiblingSlot], PARTIAL_SLOT_ELEMS);
+    SetFlag<HardEvent::MTE2_S>(evtMte2toS_);
+    WaitFlag<HardEvent::MTE2_S>(evtMte2toS_);
+    const float sumSq0 = sumSq0Local + r1Buf.GetValue(0);
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
 
     // 两个lane分别构造自己负责的两个x2 head。
