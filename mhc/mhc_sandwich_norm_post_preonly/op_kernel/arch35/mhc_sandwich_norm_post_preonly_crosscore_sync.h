@@ -25,10 +25,4 @@ __aicore__ inline void MhcPairReadySync()
     CrossCoreWaitFlag<0x1, PIPE_MTE2>(PAIR_READY_FLAG);
 }
 
-__aicore__ inline void MhcPairR6ReadySync()
-{
-    CrossCoreSetFlag<0x1, PIPE_MTE3>(R6_READY_FLAG);
-    CrossCoreWaitFlag<0x1, PIPE_MTE2>(R6_READY_FLAG);
-}
-
 #endif // MHC_SANDWICH_NORM_POST_PREONLY_CROSSCORE_SYNC_H_
