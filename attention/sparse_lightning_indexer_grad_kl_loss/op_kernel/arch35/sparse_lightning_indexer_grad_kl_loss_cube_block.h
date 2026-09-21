@@ -84,7 +84,7 @@ public:
                                        BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &sYL1Buf,
                                        SLIGradKLLossRunInfo &runInfo, SLIGradKLLossConstInfo &constInfo,
                                        SLIGradKLLossKRunInfo &syRunInfo);
-    __aicore__ inline void ComputeMm3(BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm3Buf,
+    __aicore__ inline void ComputeMm3(BuffersPolicySingleBuffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm3Buf,
                                       Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &reluGradResL1Buf,
                                       SLIGradKLLossRunInfo &runInfo, SLIGradKLLossConstInfo &constInfo,
                                       SLIGradKLLossKRunInfo &pRunInfo);
@@ -258,8 +258,7 @@ __aicore__ inline void SligKlLossBlockCube<TEMPLATE_ARGS>::ComputeMmP(
     fixpipe2UbParams.srcStride = AlignTo(fixpipe2UbParams.mSize, static_cast<uint16_t>(C0_SIZE));
     // mmResUb上两行之间的间隔，单位：element。
     fixpipe2UbParams.dstStride = AlignTo(constInfo.pKBaseSize, static_cast<int32_t>(C0_SIZE));
-    // 双目标模式，按M维度拆分，M / 2 * N写入每个UB, M必须为2的倍数
-    fixpipe2UbParams.dualDstCtl = 1;
+    fixpipe2UbParams.dualDstCtl = 0;
     fixpipe2UbParams.params.ndNum = 1;
     fixpipe2UbParams.params.srcNdStride = 0;
     fixpipe2UbParams.params.dstNdStride = 0;
@@ -314,8 +313,7 @@ __aicore__ inline void SligKlLossBlockCube<TEMPLATE_ARGS>::ComputeMmSy(
     fixpipe2UbParams.srcStride = AlignTo(fixpipe2UbParams.mSize, static_cast<uint16_t>(C0_SIZE));
     // mmResUb上两行之间的间隔，单位：element。
     fixpipe2UbParams.dstStride = AlignTo(constInfo.syKBaseSize, static_cast<int32_t>(C0_SIZE));
-    // 双目标模式，按M维度拆分，M / 2 * N写入每个UB, M必须为2的倍数
-    fixpipe2UbParams.dualDstCtl = 1;
+    fixpipe2UbParams.dualDstCtl = 0;
     fixpipe2UbParams.params.ndNum = 1;
     fixpipe2UbParams.params.srcNdStride = 0;
     fixpipe2UbParams.params.dstNdStride = 0;
@@ -338,7 +336,7 @@ __aicore__ inline void SligKlLossBlockCube<TEMPLATE_ARGS>::ComputeMmSy(
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SligKlLossBlockCube<TEMPLATE_ARGS>::ComputeMm3(
-    BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm3Buf,
+    BuffersPolicySingleBuffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm3Buf,
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &reluGradResL1Buf, SLIGradKLLossRunInfo &runInfo,
     SLIGradKLLossConstInfo &constInfo, SLIGradKLLossKRunInfo &pRunInfo)
 {
@@ -374,8 +372,8 @@ __aicore__ inline void SligKlLossBlockCube<TEMPLATE_ARGS>::ComputeMm3(
             fixpipe2UbParams.srcStride = AlignTo(fixpipe2UbParams.mSize, static_cast<uint16_t>(C0_SIZE));
             // mmResUb上两行之间的间隔，单位：element。
             fixpipe2UbParams.dstStride = AlignTo(constInfo.dSizeQueryIndex, static_cast<uint32_t>(C0_SIZE));
-            // 双目标模式，按M维度拆分，M / 2 * N写入每个UB, M必须为2的倍数
-            fixpipe2UbParams.dualDstCtl = 1;
+            // 单目标模式，整块M写入当前UB
+            fixpipe2UbParams.dualDstCtl = 0;
             fixpipe2UbParams.params.ndNum = 1;
             fixpipe2UbParams.params.srcNdStride = 0;
             fixpipe2UbParams.params.dstNdStride = 0;

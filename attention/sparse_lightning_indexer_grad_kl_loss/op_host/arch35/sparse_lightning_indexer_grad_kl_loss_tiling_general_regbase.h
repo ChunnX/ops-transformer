@@ -63,7 +63,7 @@ protected:
         scaleValue = 1.0f;
         t1Size = 0;
         t2Size = 0;
-        totalAivNum = 40;
+        totalAivNum = 80;
         dQueryRopeSize = 0;
         dKeyRopeSize = 0;
 
