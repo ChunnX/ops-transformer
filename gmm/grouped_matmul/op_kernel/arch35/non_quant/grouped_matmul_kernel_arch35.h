@@ -17,8 +17,8 @@
 
 #include "blaze/epilogue/block/block_epilogue_empty.h"
 #include "blaze/epilogue/block/block_epilogue_gelu_fixpipe.h"
+#include "blaze/gemm/block/block_mmad_gmm_gelu_fixpipe_opti.h"
 #include "blaze/gemm/block/block_mmad_matmul_basic.h"
-#include "blaze/gemm/block/block_mmad_matmul_fixpipe_opti.h"
 #include "blaze/gemm/block/block_scheduler_grouped_matmul.h"
 #include "blaze/gemm/kernel/kernel_grouped_matmul.h"
 #include "../grouped_matmul_tiling_data_apt.h"
@@ -46,8 +46,7 @@ __aicore__ inline void GroupedMatMulKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bi
         Blaze::Gemm::MatmulMultiBlockBasic<0, Blaze::Gemm::OP_TYPE_EMPTY, Blaze::Gemm::KernelGroupedMmadNoQuant, 0,
                                            Blaze::Gemm::MatmulOutputMode::OVERWRITE>;
     using GeluDispatchPolicy =
-        Blaze::Gemm::MatmulMultiBlockFixpipeOpti<0, Blaze::Gemm::OP_TYPE_GELU,
-                                                 Blaze::Gemm::KernelGroupedMmadNoQuant>;
+        Blaze::Gemm::MatmulMultiBlockGmmGeluFixpipeOpti<Blaze::Gemm::KernelGroupedMmadNoQuant>;
     using DispatchPolicy = AscendC::Std::conditional_t<EnableGelu, GeluDispatchPolicy, BasicDispatchPolicy>;
     using BlockMmad = Blaze::Gemm::Block::BlockMmad<DispatchPolicy, AType, LayoutA, BType, LayoutB, CType, LayoutC,
                                                     BiasType, LayoutBias>;
@@ -90,8 +89,7 @@ __aicore__ inline void GroupedMatMulKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bi
                                           gmmBaseParams.singleY == 1,
                                           BlockMmad::TRANS_B,
                                           BlockMmad::WEIGHT_NZ_FORMAT,
-                                          static_cast<uint32_t>(sizeof(BType)),
-                                          static_cast<uint32_t>(gmmBaseParams.groupListType)};
+                                          static_cast<uint32_t>(sizeof(BType))};
 
     typename BlockMmad::Params mmParams;
     mmParams.aGmAddr = x;
