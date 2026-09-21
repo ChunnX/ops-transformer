@@ -1911,10 +1911,20 @@ def mxfp8_fa_torch_npu(
         )
 
         # aclgraph: 直接使用 npugraph_ex backend
+        # [Super-Kernel] QFA_SUPER_KERNEL=1 时叠加静态内核编译(SK) — 生产同款最小配置,
+        # 不带 debug_per_op_max_core_num(限单核→多核协同kernel死等→aicore timeout元凶)
+        use_sk = (_os.environ.get("QFA_SUPER_KERNEL", "0") == "1")
+        compile_kwargs = {}
+        if use_sk:
+            compile_kwargs["options"] = {
+                "static_kernel_compile": True,
+                "super_kernel_optimize": True,
+            }
+            logger.info("[SK] SuperKernel enabled (static_kernel_compile + super_kernel_optimize)")
         logger.info("[NPU] 调用 aclgraph (npugraph_ex)...")
         npu_backend = "npugraph_ex"
         npu_mode = torch.compile(
-            npu_mode, fullgraph=False, backend=npu_backend, dynamic=False
+            npu_mode, fullgraph=False, backend=npu_backend, dynamic=False, **compile_kwargs
         )
         # mark_static 标记所有 tensor 输入
         for t in (
@@ -1936,7 +1946,14 @@ def mxfp8_fa_torch_npu(
         ):
             if t is not None:
                 torch._dynamo.mark_static(t)
+        # [SK] scope标定(生产/TTK同款): 必须包住被捕获的forward调用
+        if use_sk:
+            torch.npu.super_kernel_scope_begin("pytest_qfa_sk")
         atten_out, lse_out = npu_mode(*fa_args)
+        if use_sk:
+            torch.npu.super_kernel_scope_end("pytest_qfa_sk")
+            logger.info("[SK] SuperKernel scope executed — 鉴别真假SK: 日志须有 "
+                        "'static kernel compile success'(失败会静默回退普通aclgraph)")
 
         atten_out = atten_out.cpu().detach()
         lse_out = lse_out.cpu().detach()
