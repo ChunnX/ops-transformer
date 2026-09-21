@@ -521,3 +521,56 @@ TEST_F(aclnn_block_sparse_attention_v1_ut, unsupported_innerPrecise)
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
+// ============================================================================
+// 用例 12: BSND 布局（q/kv 一致）—— V1 已支持 BSND，应通过参数校验
+// 补齐 BSND 覆盖空白：原 11 个用例无一使用 BSND，"报 BSND 却不支持 BSND"
+// 的矛盾因此从未被触发
+// ============================================================================
+TEST_F(aclnn_block_sparse_attention_v1_ut, bsnd_layout_consistent)
+{
+    // BSND 语义为 [batch, seq, head, dim]，按 BSND 顺序构造 shape
+    auto query = TensorDesc({batch, qSeqlen, numHeads, headDim}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto key = TensorDesc({batch, kvSeqlen, numKvHeads, headDim}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto value = TensorDesc({batch, kvSeqlen, numKvHeads, headDim}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto blockSparseMask =
+        TensorDesc({batch, numHeads, qBlockNum, kvBlockNum}, ACL_INT8, ACL_FORMAT_ND).Value(vector<int8_t>{1});
+    auto blockShape = IntArrayDesc(vector<int64_t>{blockShapeX, blockShapeY});
+    char qInputLayout[] = "BSND";
+    char kvInputLayout[] = "BSND";
+    auto attentionOut = TensorDesc({batch, qSeqlen, numHeads, headDim}, ACL_FLOAT16, ACL_FORMAT_ND);
+
+    auto ut = OP_API_UT(aclnnBlockSparseAttention,
+                        INPUT(query,             // query
+                              key,               // key
+                              value,             // value
+                              blockSparseMask,   // blockSparseMask
+                              nullptr,           // attenMask
+                              blockShape,        // blockShape
+                              nullptr,           // actualSeqLengths
+                              nullptr,           // actualSeqLengthsKv
+                              nullptr,           // blockTable
+                              qInputLayout,      // qInputLayout
+                              kvInputLayout,     // kvInputLayout
+                              numKvHeads,        // numKeyValueHeads
+                              0,                 // maskType
+                              scaleValue,        // scaleValue
+                              0,                 // innerPrecise
+                              0,                 // blockSize
+                              2147483647,        // preTokens
+                              2147483647,        // nextTokens
+                              0                  // softmaxLseFlag
+                              ),
+                        OUTPUT(attentionOut, nullptr));
+
+    uint64_t workspaceSize = 0;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
+    EXPECT_EQ(aclRet, ACLNN_SUCCESS);
+}
+
+// 关于「区分 kv 白名单分支(:117) 与一致性分支(:123)」的用例：
+// 二者返回码同为 ACLNN_ERR_PARAM_INVALID（修正 :117 前后亦然，仅报错文案不同），
+// 故只断言返回码的用例无法区分，需断言 OP_LOGE 输出。当前 OP_LOGE 写往 CANN dlog，
+// gtest 无法捕获；op_log.h 在定义 NNOPBASE_UT 时会将 OP_LOGE 落到 stdout（可捕获
+// 且带 __FILE__:__LINE__，可精确断言 :118 而非 :124），该宏由被测目标
+// ${OPHOST_NAME}_opapi_obj 的编译宏控制，定义在 cmake/obj_func.cmake 的
+// add_opapi_modules()，属全仓共享配置，需维护侧确认后再补。
