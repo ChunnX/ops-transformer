@@ -15,6 +15,7 @@
 
 #include "grouped_matmul_swiglu_quant_v2_tiling.h"
 #include <climits>
+#include <string>
 #include <graph/utils/type_utils.h>
 #include "register/op_impl_registry.h"
 #include "log/log.h"
@@ -58,7 +59,25 @@ REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuan
 constexpr int64_t GMMSQ_WEIGHT_NZ_V3_TILING_TEMPLATE = 5;
 constexpr int64_t SWIGLU_MODE_V3 = 2;
 
-static ge::graphStatus CheckRequiredTilingInputs(const gert::TilingContext *context)
+static ge::graphStatus CheckRequiredDynamicInput(const gert::TilingContext *context, size_t irIndex,
+                                                 const char *inputName)
+{
+    constexpr char OP_NAME[] = "GroupedMatmulSwigluQuantV2";
+    const auto *instanceInfo = context->GetIrInputInstanceInfo(irIndex);
+    OP_CHECK_IF(instanceInfo == nullptr || instanceInfo->GetInstanceNum() == 0U,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(OP_NAME, inputName, "requires at least one instance"),
+                return ge::GRAPH_FAILED);
+    for (size_t i = 0; i < instanceInfo->GetInstanceNum(); ++i) {
+        const std::string instanceName = std::string(inputName) + "[" + std::to_string(i) + "]";
+        OP_CHECK_IF(
+            context->GetDynamicInputDesc(irIndex, i) == nullptr || context->GetDynamicInputShape(irIndex, i) == nullptr,
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(OP_NAME, instanceName.c_str(), "does not support nullptr"),
+            return ge::GRAPH_FAILED);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckRequiredTilingContext(gert::TilingContext *context)
 {
     constexpr char OP_NAME[] = "GroupedMatmulSwigluQuantV2";
     OP_CHECK_IF(context == nullptr,
@@ -73,20 +92,50 @@ static ge::graphStatus CheckRequiredTilingInputs(const gert::TilingContext *cont
         {context->GetRequiredInputDesc(X_INDEX), context->GetRequiredInputShape(X_INDEX), "x"},
         {context->GetRequiredInputDesc(X_SCALE_INDEX), context->GetRequiredInputShape(X_SCALE_INDEX), "xScale"},
         {context->GetRequiredInputDesc(GROUPLIST_INDEX), context->GetRequiredInputShape(GROUPLIST_INDEX), "groupList"},
-        {context->GetDynamicInputDesc(WEIGHT_INDEX, 0), context->GetDynamicInputShape(WEIGHT_INDEX, 0), "weight[0]"},
-        {context->GetDynamicInputDesc(WEIGHT_SCALE_INDEX, 0), context->GetDynamicInputShape(WEIGHT_SCALE_INDEX, 0),
-         "weightScale[0]"}};
+    };
     for (const auto &input : inputs) {
         OP_CHECK_IF(input.desc == nullptr || input.shape == nullptr,
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(OP_NAME, input.name, "does not support nullptr"),
                     return ge::GRAPH_FAILED);
     }
+    if (CheckRequiredDynamicInput(context, WEIGHT_INDEX, "weight") != ge::GRAPH_SUCCESS ||
+        CheckRequiredDynamicInput(context, WEIGHT_SCALE_INDEX, "weightScale") != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    const auto *attrs = context->GetAttrs();
+    OP_CHECK_IF(attrs == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(OP_NAME, "attrs", "does not support nullptr"),
+                return ge::GRAPH_FAILED);
+
+    // Legacy V2 tiling does not consume output metadata. Both outputs are mandatory for the V3 interface.
+    const auto *swigluMode = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_SWIGLU_MODE);
+    if (swigluMode != nullptr && *swigluMode == SWIGLU_MODE_V3) {
+        OP_CHECK_IF(context->GetOutputDesc(Y_INDEX) == nullptr || context->GetOutputShape(Y_INDEX) == nullptr,
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(OP_NAME, "y", "does not support nullptr"),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            context->GetOutputDesc(Y_SCALE_INDEX) == nullptr || context->GetOutputShape(Y_SCALE_INDEX) == nullptr,
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(OP_NAME, "yScale", "does not support nullptr"),
+            return ge::GRAPH_FAILED);
+    }
+
+    OP_CHECK_IF(context->GetWorkspaceSizes(1) == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(OP_NAME, "workspace", "does not support nullptr"),
+                return ge::GRAPH_FAILED);
+    auto *rawTilingData = context->GetRawTilingData();
+    OP_CHECK_IF(rawTilingData == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(OP_NAME, "tilingData", "does not support nullptr"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(rawTilingData->GetData() == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(OP_NAME, "tilingData.data", "does not support nullptr"),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 static ge::graphStatus GroupedMatmulSwigluQuantV2TilingFunc(gert::TilingContext *context)
 {
-    if (CheckRequiredTilingInputs(context) != ge::GRAPH_SUCCESS) {
+    if (CheckRequiredTilingContext(context) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     auto compileInfoPtr = context->GetCompileInfo<GMMSwigluV2CompileInfo>();
@@ -100,8 +149,7 @@ static ge::graphStatus GroupedMatmulSwigluQuantV2TilingFunc(gert::TilingContext 
                     OP_LOGE(context->GetNodeName(), "swiglu_mode only supports 0 or 2, but got %ld", *swigluMode),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(compileInfoPtr->npuArch_ != static_cast<int32_t>(NpuArch::DAV_3510),
-                    OP_LOGE(context->GetNodeName(), "swiglu_mode=2 only supports Ascend 950"),
-                    return ge::GRAPH_FAILED);
+                    OP_LOGE(context->GetNodeName(), "swiglu_mode=2 only supports Ascend 950"), return ge::GRAPH_FAILED);
         OP_LOGD("GroupedMatmulSwigluQuantV2TilingFunc", "Using the MXFP8 weight-NZ V3 tiling");
         return TilingRegistry::GetInstance().DoTilingImpl(context, {GMMSQ_WEIGHT_NZ_V3_TILING_TEMPLATE});
     }

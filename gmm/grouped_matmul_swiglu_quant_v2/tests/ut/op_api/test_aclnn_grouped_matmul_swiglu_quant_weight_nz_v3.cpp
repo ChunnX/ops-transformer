@@ -1,7 +1,11 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software; you can redistribute it and/or modify it under the terms and conditions of
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 
 /*! \file test_aclnn_grouped_matmul_swiglu_quant_weight_nz_v3.cpp
@@ -10,6 +14,7 @@
 
 #include <cmath>
 #include <fstream>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -19,6 +24,7 @@
 #include "gmm_csv_acl_parse_utils.h"
 #include "op_api_ut_common/op_api_ut.h"
 #include "op_api_ut_common/tensor_desc.h"
+#include "opdev/make_op_executor.h"
 #include "opdev/platform.h"
 
 using namespace std;
@@ -40,6 +46,77 @@ constexpr size_t kColumnCount = 31;
 void SetupAscend950()
 {
     op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
+}
+
+enum class Phase1NullPointerTarget {
+    kWorkspaceSize,
+    kExecutor,
+    kWeightElement,
+    kWeightScaleElement,
+    kWeightElementWithInvalidCount,
+};
+
+aclnnStatus RunPhase1NullPointerCase(Phase1NullPointerTarget target)
+{
+    SetupAscend950();
+    auto x = BuildAclTensorDescFromSpec("32:128", "FLOAT8_E4M3FN", "ND").ToAclType();
+    auto weightTensor =
+        BuildAclTensorDescFromSpec("1:128:128#16384:128:1#1:4:8:16:32", "FLOAT8_E4M3FN", "FRACTAL_NZ").ToAclType();
+    auto weightScaleTensor = BuildAclTensorDescFromSpec("1:2:128:2", "FLOAT8_E8M0", "ND").ToAclType();
+    auto xScale = BuildAclTensorDescFromSpec("32:2:2", "FLOAT8_E8M0", "ND").ToAclType();
+    auto groupList = BuildAclTensorDescFromSpec("1", "INT64", "ND").ToAclType();
+    auto output = BuildAclTensorDescFromSpec("32:64", "FLOAT8_E4M3FN", "ND").ToAclType();
+    auto outputScale = BuildAclTensorDescFromSpec("32:1:2", "FLOAT8_E8M0", "ND").ToAclType();
+
+    vector<aclTensor *> weightElements = {weightTensor.get()};
+    vector<aclTensor *> weightScaleElements = {weightScaleTensor.get()};
+    if (target == Phase1NullPointerTarget::kWeightElement) {
+        weightElements = {nullptr};
+    } else if (target == Phase1NullPointerTarget::kWeightScaleElement) {
+        weightScaleElements = {nullptr};
+    } else if (target == Phase1NullPointerTarget::kWeightElementWithInvalidCount) {
+        weightElements.emplace_back(nullptr);
+    }
+    unique_ptr<aclTensorList, decltype(&aclDestroyTensorList)> weight(
+        aclCreateTensorList(weightElements.data(), weightElements.size()), aclDestroyTensorList);
+    if (weight == nullptr) {
+        return ACLNN_ERR_INNER_NULLPTR;
+    }
+    if (target != Phase1NullPointerTarget::kWeightElement) {
+        (void)weightTensor.release();
+    }
+
+    unique_ptr<aclTensorList, decltype(&aclDestroyTensorList)> weightScale(
+        aclCreateTensorList(weightScaleElements.data(), weightScaleElements.size()), aclDestroyTensorList);
+    if (weightScale == nullptr) {
+        return ACLNN_ERR_INNER_NULLPTR;
+    }
+    if (target != Phase1NullPointerTarget::kWeightScaleElement) {
+        (void)weightScaleTensor.release();
+    }
+
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    uint64_t *workspaceSizeArg = target == Phase1NullPointerTarget::kWorkspaceSize ? nullptr : &workspaceSize;
+    aclOpExecutor **executorArg = target == Phase1NullPointerTarget::kExecutor ? nullptr : &executor;
+    const aclnnStatus ret = aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize(
+        x.get(), weight.get(), weightScale.get(), nullptr, nullptr, xScale.get(), nullptr, groupList.get(), 2, 0, 2, 0,
+        nullptr, 2, 7.0, 1.702, 1.0, "rint", 0, 0.0, output.get(), outputScale.get(), workspaceSizeArg, executorArg);
+    if (executor != nullptr) {
+        (void)aclDestroyAclOpExecutor(executor);
+    }
+    return ret;
+}
+
+aclOpExecutor *CreateTestExecutor()
+{
+    auto uniqueExecutor = CREATE_EXECUTOR();
+    if (uniqueExecutor.get() == nullptr) {
+        return nullptr;
+    }
+    aclOpExecutor *executor = nullptr;
+    uniqueExecutor.ReleaseTo(&executor);
+    return executor;
 }
 
 struct V3Case {
@@ -87,19 +164,19 @@ struct V3Case {
         auto outputScaleDesc = BuildAclTensorDescFromSpec(outputScaleSpec, "FLOAT8_E8M0", "ND");
 
         vector<int64_t> tuningValues = ParseI64List(tuningConfig, "|");
-        aclIntArray *tuningArray = tuningValues.empty() ? nullptr : aclCreateIntArray(tuningValues.data(), tuningValues.size());
+        aclIntArray *tuningArray =
+            tuningValues.empty() ? nullptr : aclCreateIntArray(tuningValues.data(), tuningValues.size());
         const char *roundModePtr = roundMode == "NULL" ? nullptr : roundMode.c_str();
         uint64_t workspaceSize = 0;
         aclnnStatus ret = ACLNN_SUCCESS;
 
         auto invoke = [&](auto xArg, auto weightArg, auto weightScaleArg, auto assistArg, auto biasArg, auto xScaleArg,
                           auto smoothArg, auto groupArg, auto outputArg, auto outputScaleArg) {
-            auto ut = OP_API_UT(
-                aclnnGroupedMatmulSwigluQuantWeightNzV3,
-                INPUT(xArg, weightArg, weightScaleArg, assistArg, biasArg, xScaleArg, smoothArg, groupArg,
-                      dequantMode, dequantDtype, quantMode, groupListType, tuningArray, swigluMode, clampLimit,
-                      gluAlpha, gluBias, roundModePtr, scaleAlg, dstTypeMax),
-                OUTPUT(outputArg, outputScaleArg));
+            auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV3,
+                                INPUT(xArg, weightArg, weightScaleArg, assistArg, biasArg, xScaleArg, smoothArg,
+                                      groupArg, dequantMode, dequantDtype, quantMode, groupListType, tuningArray,
+                                      swigluMode, clampLimit, gluAlpha, gluBias, roundModePtr, scaleAlg, dstTypeMax),
+                                OUTPUT(outputArg, outputScaleArg));
             return ut.TestGetWorkspaceSize(&workspaceSize);
         };
 
@@ -170,18 +247,35 @@ vector<V3Case> LoadCases(const string &csvPath)
             size_t i = 0;
             item.caseName = Trim(cols[i++]);
             item.expected = ParseAclnnStatus(cols[i++]);
-            item.xSpec = Trim(cols[i++]); item.xDtype = Trim(cols[i++]); item.xFormat = Trim(cols[i++]);
-            item.weightSpecs = Trim(cols[i++]); item.weightDtype = Trim(cols[i++]); item.weightFormat = Trim(cols[i++]);
-            item.weightScaleSpecs = Trim(cols[i++]); item.weightScaleDtype = Trim(cols[i++]); item.weightScaleFormat = Trim(cols[i++]);
-            item.xScaleSpec = Trim(cols[i++]); item.xScaleDtype = Trim(cols[i++]);
-            item.groupListSpec = Trim(cols[i++]); item.groupListDtype = Trim(cols[i++]);
-            item.outputSpec = Trim(cols[i++]); item.outputScaleSpec = Trim(cols[i++]);
-            item.dequantMode = stoll(Trim(cols[i++])); item.dequantDtype = stoll(Trim(cols[i++]));
-            item.quantMode = stoll(Trim(cols[i++])); item.groupListType = stoll(Trim(cols[i++]));
-            item.swigluMode = stoll(Trim(cols[i++])); item.clampLimit = stod(Trim(cols[i++]));
-            item.gluAlpha = stod(Trim(cols[i++])); item.gluBias = stod(Trim(cols[i++]));
-            item.roundMode = Trim(cols[i++]); item.scaleAlg = stoll(Trim(cols[i++])); item.dstTypeMax = stod(Trim(cols[i++]));
-            item.optionalInput = Trim(cols[i++]); item.tuningConfig = Trim(cols[i++]); item.nullArg = Trim(cols[i++]);
+            item.xSpec = Trim(cols[i++]);
+            item.xDtype = Trim(cols[i++]);
+            item.xFormat = Trim(cols[i++]);
+            item.weightSpecs = Trim(cols[i++]);
+            item.weightDtype = Trim(cols[i++]);
+            item.weightFormat = Trim(cols[i++]);
+            item.weightScaleSpecs = Trim(cols[i++]);
+            item.weightScaleDtype = Trim(cols[i++]);
+            item.weightScaleFormat = Trim(cols[i++]);
+            item.xScaleSpec = Trim(cols[i++]);
+            item.xScaleDtype = Trim(cols[i++]);
+            item.groupListSpec = Trim(cols[i++]);
+            item.groupListDtype = Trim(cols[i++]);
+            item.outputSpec = Trim(cols[i++]);
+            item.outputScaleSpec = Trim(cols[i++]);
+            item.dequantMode = stoll(Trim(cols[i++]));
+            item.dequantDtype = stoll(Trim(cols[i++]));
+            item.quantMode = stoll(Trim(cols[i++]));
+            item.groupListType = stoll(Trim(cols[i++]));
+            item.swigluMode = stoll(Trim(cols[i++]));
+            item.clampLimit = stod(Trim(cols[i++]));
+            item.gluAlpha = stod(Trim(cols[i++]));
+            item.gluBias = stod(Trim(cols[i++]));
+            item.roundMode = Trim(cols[i++]);
+            item.scaleAlg = stoll(Trim(cols[i++]));
+            item.dstTypeMax = stod(Trim(cols[i++]));
+            item.optionalInput = Trim(cols[i++]);
+            item.tuningConfig = Trim(cols[i++]);
+            item.nullArg = Trim(cols[i++]);
             cases.emplace_back(std::move(item));
         } catch (const exception &error) {
             ADD_FAILURE() << ops::ut::BuildCsvParseErrorMessage(csvPath, lineNo, "", error);
@@ -203,16 +297,37 @@ TEST_P(grouped_matmul_swiglu_quant_weight_nz_v3_opapi_csv_test, get_workspace_si
     EXPECT_EQ(GetParam().Run(), GetParam().expected);
 }
 
-TEST(grouped_matmul_swiglu_quant_weight_nz_v3_opapi, direct_launch_rejects_null_executor)
+TEST(grouped_matmul_swiglu_quant_weight_nz_v3_opapi, phase1_output_pointers_return_param_nullptr)
 {
-    EXPECT_NE(aclnnGroupedMatmulSwigluQuantWeightNzV3(nullptr, 0, nullptr, nullptr), ACL_SUCCESS);
+    EXPECT_EQ(RunPhase1NullPointerCase(Phase1NullPointerTarget::kWorkspaceSize), ACLNN_ERR_PARAM_NULLPTR);
+    EXPECT_EQ(RunPhase1NullPointerCase(Phase1NullPointerTarget::kExecutor), ACLNN_ERR_PARAM_NULLPTR);
 }
 
-INSTANTIATE_TEST_SUITE_P(
-    grouped_matmul_swiglu_quant_weight_nz_v3_opapi_csv,
-    grouped_matmul_swiglu_quant_weight_nz_v3_opapi_csv_test,
-    testing::ValuesIn(LoadCases(ops::ut::ResolveCsvPath(
-        "test_aclnn_grouped_matmul_swiglu_quant_weight_nz_v3.csv",
-        "gmm/grouped_matmul_swiglu_quant_v2/tests/ut/op_api", __FILE__))),
-    BuildCaseName);
+TEST(grouped_matmul_swiglu_quant_weight_nz_v3_opapi, tensor_list_elements_return_param_nullptr)
+{
+    EXPECT_EQ(RunPhase1NullPointerCase(Phase1NullPointerTarget::kWeightElement), ACLNN_ERR_PARAM_NULLPTR);
+    EXPECT_EQ(RunPhase1NullPointerCase(Phase1NullPointerTarget::kWeightScaleElement), ACLNN_ERR_PARAM_NULLPTR);
+    EXPECT_EQ(RunPhase1NullPointerCase(Phase1NullPointerTarget::kWeightElementWithInvalidCount),
+              ACLNN_ERR_PARAM_NULLPTR);
+}
+
+TEST(grouped_matmul_swiglu_quant_weight_nz_v3_opapi, phase2_executor_returns_param_nullptr)
+{
+    EXPECT_EQ(aclnnGroupedMatmulSwigluQuantWeightNzV3(nullptr, 0, nullptr, nullptr), ACLNN_ERR_PARAM_NULLPTR);
+}
+
+TEST(grouped_matmul_swiglu_quant_weight_nz_v3_opapi, phase2_required_workspace_returns_param_nullptr)
+{
+    unique_ptr<aclOpExecutor, decltype(&aclDestroyAclOpExecutor)> executor(CreateTestExecutor(),
+                                                                           aclDestroyAclOpExecutor);
+    ASSERT_NE(executor.get(), nullptr);
+    EXPECT_EQ(aclnnGroupedMatmulSwigluQuantWeightNzV3(nullptr, 1, executor.get(), nullptr), ACLNN_ERR_PARAM_NULLPTR);
+}
+
+INSTANTIATE_TEST_SUITE_P(grouped_matmul_swiglu_quant_weight_nz_v3_opapi_csv,
+                         grouped_matmul_swiglu_quant_weight_nz_v3_opapi_csv_test,
+                         testing::ValuesIn(LoadCases(
+                             ops::ut::ResolveCsvPath("test_aclnn_grouped_matmul_swiglu_quant_weight_nz_v3.csv",
+                                                     "gmm/grouped_matmul_swiglu_quant_v2/tests/ut/op_api", __FILE__))),
+                         BuildCaseName);
 } // namespace
