@@ -971,15 +971,17 @@ template <typename T>
 bool AclnnGroupedMatmulDAV3510Checker<T>::IsSpecialMXCase(const T *tensorList) const
 {
     // 已校验mx场景scale的shape大于或等于3维度，不存在越界取值问题
-    // mx特殊场景 (m,k,2) -> shape(1,1,2), stride(2,2,1); (k,m,2) -> shape(1,1,2), stride(2,2,1),
-    // 无法通过stride识别转置
+    // mx场景下，scale/perTokenScale为特殊取值(K = 64)时，无法通过stride识别转置
+    // K = 64时，正常情况下(m, 1, 2) -> shape(m, 1, 2), stride(2, 2, 1)，
+    // (1, m, 2)转置得来的(m, 1, 2) -> shape(m, 1, 2), stride(2, m*2, 1)，
+    // 转置得来的(m, 1, 2)底层仍为连续排布，即使调用contiguous()也不会改变stride
     for (size_t i = 0; i < GetInputTensorSize(tensorList); i++) {
         auto tensorDimNum = GetInputTensor(tensorList, i)->GetViewShape().GetDimNum();
         auto secondLastDimValue =
             GetInputTensor(tensorList, i)->GetViewShape().GetDim(tensorDimNum - LAST_SECOND_DIM_INDEX);
         auto thirdLastDimValue =
             GetInputTensor(tensorList, i)->GetViewShape().GetDim(tensorDimNum - LAST_THIRD_DIM_INDEX);
-        if (secondLastDimValue == 1 && thirdLastDimValue == 1) {
+        if (secondLastDimValue == 1 || thirdLastDimValue == 1) {
             return true;
         }
     }
