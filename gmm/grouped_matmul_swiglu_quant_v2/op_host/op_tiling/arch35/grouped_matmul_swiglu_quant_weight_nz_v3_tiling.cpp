@@ -11,7 +11,7 @@
 #include "op_host/tiling_templates_registry.h"
 #include "register/op_impl_registry.h"
 #include "../grouped_matmul_swiglu_quant_weight_nz_v3_tiling.h"
-#include "../../../op_kernel/arch35/grouped_matmul_swiglu_quant_weight_nz_v3_tiling_key.h"
+#include "../../../op_kernel/arch35/grouped_matmul_swiglu_quant_v2_tiling_key.h"
 #include "grouped_matmul_swiglu_quant_tensor_api_tiling_common.h"
 
 using namespace ge;
@@ -54,7 +54,33 @@ void GroupedMatmulSwigluQuantV3Tiling950::Reset()
     scaleAlg_ = SCALE_ALG_OCP;
     dstTypeMax_ = DEFAULT_DST_TYPE_MAX;
     roundMode_ = 0;
+    aivNum_ = 0;
     useTensorApi_ = false;
+}
+
+ge::graphStatus GroupedMatmulSwigluQuantV3Tiling950::GetPlatformInfo()
+{
+    if (context_->GetPlatformInfo() != nullptr) {
+        auto status = GroupedQmmTiling::GetPlatformInfo();
+        if (status != ge::GRAPH_SUCCESS) {
+            return status;
+        }
+        auto platform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
+        aivNum_ = platform.GetCoreNumAiv();
+        return ge::GRAPH_SUCCESS;
+    }
+
+    const auto *compileInfo = context_->GetCompileInfo<GMMSwigluV2CompileInfo>();
+    OP_CHECK_IF(compileInfo == nullptr, OP_LOGE(context_->GetNodeName(), "compileInfo is nullptr"),
+                return ge::GRAPH_FAILED);
+    aicoreParams_.aicNum = compileInfo->aicNum_;
+    aicoreParams_.ubSize = compileInfo->ubSize_;
+    aicoreParams_.l1Size = compileInfo->l1Size_;
+    aicoreParams_.l0aSize = compileInfo->l0ASize_;
+    aicoreParams_.l0bSize = compileInfo->l0BSize_;
+    aicoreParams_.l0cSize = compileInfo->l0CSize_;
+    aivNum_ = compileInfo->aivNum_;
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus GroupedMatmulSwigluQuantV3Tiling950::GetShapeAttrsInfo()
@@ -349,23 +375,19 @@ bool GroupedMatmulSwigluQuantV3Tiling950::AnalyzeInputs()
 bool GroupedMatmulSwigluQuantV3Tiling950::IsTensorApiCapable() const
 {
     // Match V2 BasicApiTiling950::IsCapable after the V3-specific FP8/NZ,
-    // single-tensor and MX scale shape checks above. As in V2, compile-info
-    // alone is insufficient for the Tensor API memory/platform contract.
-    auto platformInfo = context_->GetPlatformInfo();
-    if (platformInfo == nullptr || aicoreParams_.l1Size == 0 || aicoreParams_.l0cSize == 0) {
+    // single-tensor and MX scale shape checks above.
+    if (aicoreParams_.l1Size == 0 || aicoreParams_.l0cSize == 0 || aivNum_ == 0) {
         return false;
     }
-    auto platform = platform_ascendc::PlatformAscendC(platformInfo);
-    const uint64_t aivNum = platform.GetCoreNumAiv();
     const uint64_t averageM = inputParams_.mSize / inputParams_.groupNum;
     const bool capable = GroupedMatmulSwigluQuantTensorApiTiling::IsShapeAndPlatformCapable(
         {inputParams_.mSize, inputParams_.nSize, inputParams_.kSize, inputParams_.groupNum,
-         aicoreParams_.aicNum, aivNum, transposeWeight_, true});
+         aicoreParams_.aicNum, aivNum_, transposeWeight_, true});
     OP_LOGD(context_->GetNodeName(),
             "V3 Tensor API capability: M=%lu, N=%lu, K=%lu, groups=%lu, averageM=%lu, "
             "transB=%d, cores=%lu:%lu, capable=%d",
             inputParams_.mSize, inputParams_.nSize, inputParams_.kSize, inputParams_.groupNum,
-            averageM, transposeWeight_, aicoreParams_.aicNum, aivNum, capable);
+            averageM, transposeWeight_, aicoreParams_.aicNum, aivNum_, capable);
     return capable;
 }
 
@@ -470,10 +492,9 @@ ge::graphStatus GroupedMatmulSwigluQuantV3Tiling950::DoLibApiTiling()
 
 uint64_t GroupedMatmulSwigluQuantV3Tiling950::GetTilingKey() const
 {
-    if (useTensorApi_) {
-        return transposeWeight_ ? GMM_SWIGLU_QUANT_V3_TENSOR_API_ZN : GMM_SWIGLU_QUANT_V3_TENSOR_API_NZ;
-    }
-    return transposeWeight_ ? GMM_SWIGLU_QUANT_V3_CGMCT_ZN : GMM_SWIGLU_QUANT_V3_CGMCT_NZ;
+    const uint64_t kernelType = useTensorApi_ ? GMM_SWIGLU_QUANT_V3_TENSOR_LEVEL_KERNEL_TYPE :
+                                               GMM_SWIGLU_QUANT_V3_CGMCT_KERNEL_TYPE;
+    return GET_TPL_TILING_KEY(static_cast<uint64_t>(transposeWeight_), GMM_SWIGLU_QUANT_NO_TRANS, kernelType);
 }
 
 ge::graphStatus GroupedMatmulSwigluQuantV3Tiling950::GetWorkspaceSize()
