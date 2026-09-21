@@ -395,11 +395,6 @@ __aicore__ inline void ProcessVec1DnNoUpdate(const LocalTensor<T2> &dstTensor, c
         blockStride = ubN >> 2 | 0x1;
         repeatStride = 2;
         indexesUb = (__ubuf__ uint8_t *)vselrIndexesBuf.GetPhyAddr();
-    } else if constexpr (IsSameType<T2, bfloat16_t>::value) {
-        // [v_tail高精窗口] bf16直出: dScale同Mxfp8语义(量化QK反量化), 段式blockStride同非量化DN
-        dScale = scale * deScaleQK;
-        blockStride = ubN >> 1 | 0x1;
-        repeatStride = 1;
     } else {
         dScale = scale;
         blockStride = ubN >> 1 | 0x1;
@@ -790,11 +785,6 @@ __aicore__ inline void ProcessVec1DnUpdate(const LocalTensor<T2> &dstTensor, con
         blockStride = ubN >> 2 | 0x1;
         repeatStride = 2;
         indexesUb = (__ubuf__ uint8_t *)vselrIndexesBuf.GetPhyAddr();
-    } else if constexpr (IsSameType<T2, bfloat16_t>::value) {
-        // [v_tail高精窗口] bf16直出: dScale同Mxfp8语义(量化QK反量化), 段式blockStride同非量化DN
-        dScale = scale * deScaleQK;
-        blockStride = ubN >> 1 | 0x1;
-        repeatStride = 1;
     } else {
         dScale = scale;
         blockStride = ubN >> 1 | 0x1;
@@ -1899,11 +1889,6 @@ __aicore__ inline void ProcessVec1DnCausal(
         blockStride = ubN >> 2 | 0x1;
         repeatStride = 2;
         indexesUb = (__ubuf__ uint8_t *)vselrIndexesBuf.GetPhyAddr();
-    } else if constexpr (IsSameType<T2, bfloat16_t>::value) {
-        // [v_tail高精窗口] bf16直出: dScale同Mxfp8语义(量化QK反量化), 段式blockStride同非量化DN
-        dScale = scale * deScaleQK;
-        blockStride = ubN >> 1 | 0x1;
-        repeatStride = 1;
     } else {
         dScale = scale;
         blockStride = ubN >> 1 | 0x1;
