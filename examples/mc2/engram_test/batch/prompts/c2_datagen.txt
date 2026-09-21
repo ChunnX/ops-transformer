@@ -1,0 +1,128 @@
+【任务 C2：数据生成重构（mmap 分块直写）与 local/sliced 缓存复用 —— 设计文档 M2+M3】
+
+你是仓库 ops-transformer（worktree 分支 engram-fetch-local-mode）的自动化代码任务，工作目录即仓库根。
+前置任务 C1（框架修复+total-vocab 语义）已完成并提交（git log 可见 "C1:" 前缀提交）。本任务在其上实施
+设计文档 M2（数据生成重构）与 M3（缓存复用）。严格按清单实施，不要自由发挥、不要扩大范围。
+
+═══════════ 第 0 步：环境恢复 ═══════════
+1. 先执行：git checkout -- examples/mc2/engram_test/
+   （清除上次失败尝试的半成品；bench_prep.py/prep_cache.py 若为未跟踪半成品，rm -f 删除后重写）
+2. 检查 git log -3 --format=%s：若 HEAD 已有 "C2:" 前缀提交（上次尝试中断遗留），在其上继续完整实现并新建提交，严禁 amend/rebase/reset。
+3. 阅读 C1 提交后的 examples/mc2/engram_test/engram_test.py 与 run_engram.sh（本任务的改造基线）。
+
+═══════════ 第 1 步：必读文件 ═══════════
+1. examples/mc2/engram_test/engram_test_modification_design.md —— §3（M2：根因与分块直写方案）、§4（M3：缓存键与复用安全性论证）、§2.2-5（决策 3：numTokens>vocab 保留+告警）、§7（接口变化）
+2. examples/mc2/engram_test/engram_test.py（C1 版）与 run_engram.sh（C1 版）
+3. examples/mc2/engram_test/oom.md —— 大规格数据背景（1x/4x/16x 张量族）
+
+═══════════ 第 2 步：新增 prep_cache.py（独立模块） ═══════════
+文件：examples/mc2/engram_test/prep_cache.py
+硬性约束：只允许 import 标准库 + numpy + torch；严禁 import torch_npu / cann_ops_transformer /
+psutil（保证无 NPU 机器可运行与被 bench_prep 复用）。模块导入零副作用。
+
+核心设计（务必逐条落实）：
+1. GEN_VERSION = 1（生成算法变化时递增，旧缓存自动失效）。
+2. cache_key(total, hidden, dtype_name, use_fp8, sf_dtype_name, seed) → sha1 十六进制；
+   键要素：总行数/hidden/dtype/use_fp8/sf_dtype/seed/GEN_VERSION——注意 fetch_mode 不参与（local/sliced 配对复用）。
+3. 目录布局：{cache_dir}/{key}.storage.bin、{key}.sf.bin（use_fp8=0 时不存在）、{key}.meta.json。
+   meta.json 字段：total/hidden/dtype/use_fp8/sf_dtype/seed/gen_version/pattern/created/host/elapsed_s/workers。
+4. generate(cache_dir, total, hidden, dtype, use_fp8, sf_dtype, seed, pattern="random",
+           num_workers=None, block_rows=8192, val_min=None, val_max=None) -> dict：
+   - 命中判定：三文件齐全（sf 按需）且 meta 全字段匹配 → 返回 {"cache_hit": True, "key":..., "path":...}，不重生成。
+   - 未命中：np.memmap(mode="w+", shape=(total, hidden), dtype=存储宽度) 直接按最终 dtype 字节落盘
+     （fp8 系按 uint1 宽度即 "|u1" 落盘；bf16/fp16 按 "|u2"；fp32 "|u4"；int 按 np 对应宽度）。
+   - 生成前先把行空间切成固定 block_rows 的块（块 i 覆盖 [i*block_rows, min((i+1)*block_rows, total))），
+     再把块按 round-robin 分给 worker 进程（mp.get_context("fork").Pool）。
+   - 【确定性关键】每块的 rng = np.random.default_rng(np.random.SeedSequence(entropy=seed,
+     spawn_key=(kind_id, block_idx)))，kind_id：storage=0、sf=1。数据只依赖 (seed, kind, block_idx)，
+     与 worker 数无关 → 任意机器任意并行度生成结果逐字节一致（bench 抽样校验依赖此性质）。
+   - worker 内部逐块生成小块临时数组（fp32 ≈ block_rows×hidden×4B ≈ 18MB 常驻缓存）后立即转换写入
+     memmap 切片，禁止整表 fp32、禁止 clone、禁止 /dev/shm：
+     · 浮点 dtype（fp8_e4m3fn/fp8_e5m2/bf16/fp16/fp32）：rng.standard_normal((br,hidden),dtype=np.float32)
+       → torch.from_numpy(...).to(torch dtype).numpy() → 写入（有 val_min/val_max 时改用 rng.random 线性缩放）。
+     · int dtype：rng.integers(low, high, (br,hidden), dtype=...) 直写。
+     · pattern="arange"：确定性行号派生模式（如 (row_idx*2654435761 + col_idx) 混合后截断到 dtype 宽度），
+       不用 rng，近零成本，供冒烟。
+   - sf 表（use_fp8=1）：shape=(total, ceil(hidden/32))；e8m0：rng.random 块→fp32 位运算
+     (bits>>23)&0xFF → uint8 写入；sf_dtype=float32：fp32 直写。
+   - 每 worker 打开自己的 np.memmap(mode="r+")；主进程完成后 mm.flush()。
+   - num_workers 默认 min(32, os.cpu_count()//2)。
+   - 结束写 meta.json（含耗时）并返回 {"cache_hit": False, "elapsed_s":..., "key":...}。
+5. load(cache_dir, total, hidden, dtype, use_fp8, sf_dtype, seed, pattern="random") ->
+   (storage_tensor, sf_tensor|None)：np.memmap(mode="r") → torch.from_numpy → fp8 系 .view(torch dtype)；
+   返回的是 memmap 视图张量（零拷贝，不 clone）；meta 不匹配/缺失时抛 RuntimeError（含 key 与期望 meta）。
+6. drop_page_cache(tensor)：基于 numpy memmap 的 offset/长度用 ctypes 调 madvise(MADV_DONTNEED)，
+   任何异常打 WARNING 后忽略（可选开关用）。
+7. purge(cache_dir, keys=None)：删除全部或指定 key 的缓存文件。
+8. 模块自带 `python prep_cache.py --selftest` 自测：生成 (4096, 576) fp8+e8m0 → load → 抽样 3 块重算比对
+   逐字节一致 → 删除缓存 → 打印 "SELFTEST PASS"。
+
+═══════════ 第 3 步：engram_test.py 接入（在 C1 版基础上 Edit，保持 C1 全部行为不回退） ═══════════
+1. 删除 _parallel_randn/_parallel_rand/_fill_*_worker/gen_storage_write_golden 的旧实现与
+   multiprocessing.shared_memory import（被 prep_cache 取代）。
+2. 新增 CLI：--prep_cache_dir（默认 ./prep_cache）、--data_pattern {random,arange}（默认 random）、
+   --drop_page_cache（默认开，store_false 关闭；默认 True 的 add_argument 用法注意写对）、
+   --purge_prep_cache（action=store_true，仅 prep 阶段先清空缓存目录再生成）。
+3. prep_only：调用 prep_cache.generate(...)；打印 [PREP] cache hit 或 [PREP] generated in X.XXs
+   （含 storage/sf 文件大小）；不再 torch.save .pt；生成完退出 0。
+4. run_only 与默认整跑：prep_cache.load(...) 得 storage/sf 视图 → write_golden = storage.chunk(world_size)；
+   engram_write 完成后若 --drop_page_cache 开启则对 storage/sf 调 drop_page_cache（local 模式 4 份窗口
+   + mmap 叠加时释放 page cache）。
+5. num_token > vocab 的 WARNING 与 per-rank 确定性索引保持 C1 行为（本任务只换数据来源，不动索引逻辑）。
+6. 保留：fork 启动、显存无关、退出码、queue 超时、CPU map、master_port 等全部 C1 修复。
+
+═══════════ 第 4 步：run_engram.sh 接入 ═══════════
+1. cmd_args 增加 --prep_cache_dir ./prep_cache 透传（默认值即可，保持显式）。
+2. 删除旧的 "${case_name}_prep_data.pt" 清理逻辑（.pt 流程已废弃）；改为批跑结束后打印 prep_cache 目录
+   大小（du -sh）与提示（缓存保留供 local/sliced 配对与重跑复用，手动清理用 --purge_prep_cache）。
+3. 其余 C1 修复保持不变。
+
+═══════════ 第 5 步：新增 bench_prep.py（数据生成基准，本机无 NPU 可跑） ═══════════
+文件：examples/mc2/engram_test/bench_prep.py（只依赖 numpy/torch/prep_cache，禁 torch_npu）
+1. 规格清单（name, total, hidden, seed；全部 dtype=fp8_e4m3fn、use_fp8=1、sf_dtype=e8m0、world_size=4）：
+   - functional: (1024, 576, 11001)
+   - vocab_small: (5138000, 576, 11001)
+   - vocab_medium: (10276000, 576, 11002)
+   - vocab_medium2: (20552000, 576, 11003)
+   - vocab_large1: (41104000, 576, 11004)
+   - vocab_large2: (82208000, 576, 11005)
+   - tensor_1x: (5138000, 576, 11001)   ← 与 vocab_small 同 key，用于验证缓存复用命中
+   - tensor_4x: (12845000, 2304, 11003)
+   - tensor_16x: (321128, 9216, 11005)
+2. 每规格执行与记录：
+   - 冷生成（或本就命中则标注）：generate() 计时、返回 cache_hit、storage/sf 文件字节数（GB 保留 2 位）；
+   - 二次 generate()：应 cache_hit=True，计时（应≈0）；
+   - load() 计时；校验：shape/dtype 断言（storage: (total,hidden) fp8 视图；sf: (total,ceil(hidden/32)) e8m0）；
+     抽样校验：首块、末块、中部随机 1 块（每块 ≤8192 行）用独立 rng 重算并逐字节比对；
+   - 记录 total % 4 整除性（sliced 分组信息，仅报告）。
+3. 环境记录：platform.node()、os.cpu_count()、cache 目录所在文件系统与 df 可用量、/dev/shm 前后占用
+   （shutil.disk_usage，应基本不变）、resource.getrusage(RUSAGE_SELF).ru_maxrss 峰值 RSS（GB）。
+4. 输出 markdown 报告（--report 路径参数；--specs {all,functional,vocab,tensor} 过滤；--cache_dir 默认取
+   本脚本所在目录/prep_cache，用 __file__ 解析，勿依赖 cwd）：
+   - 表头：规格 | total | hidden | 存储GB | sfGB | 冷生成s | 命中s | load s | 抽样校验 | total%4
+   - 环境小节、结论小节（生成速度 GB/s、复用命中情况、shm/RSS 观察）
+   - 全部规格校验通过时报告末尾单独一行输出：ALL SPECS PASS（有任何失败输出：SOME SPECS FAILED 并列原因）。
+
+═══════════ 第 6 步：验证（全部通过才能提交） ═══════════
+1. python3 -m py_compile examples/mc2/engram_test/prep_cache.py examples/mc2/engram_test/bench_prep.py examples/mc2/engram_test/engram_test.py
+2. bash -n examples/mc2/engram_test/run_engram.sh
+3. python3 examples/mc2/engram_test/prep_cache.py --selftest   → 输出 SELFTEST PASS
+4. python3 examples/mc2/engram_test/bench_prep.py --specs functional --report /tmp/c2_smoke.md
+   → 报告含 ALL SPECS PASS（本机能跑：仅 numpy+torch，无 NPU 依赖）
+5. grep 检查：prep_cache.py 含 "memmap"、"SeedSequence"、"GEN_VERSION"；engram_test.py 含 "prep_cache"、
+   "--data_pattern"；run_engram.sh 含 "prep_cache_dir" 且不再含 "_prep_data.pt"。
+
+═══════════ 第 7 步：提交 ═══════════
+git add examples/mc2/engram_test/prep_cache.py examples/mc2/engram_test/bench_prep.py \
+        examples/mc2/engram_test/engram_test.py examples/mc2/engram_test/run_engram.sh
+git commit -m "C2: mmap-based chunked prep cache with local/sliced reuse (M2+M3)"
+git push qianlong engram-fetch-local-mode
+（push 被拒则 pull --rebase 后重推；严禁 force push）
+注意：不要 git add prep_cache/ 数据目录与 prep_bench_report.md（报告由后续 bench 任务生成）。
+
+═══════════ 红线（违反即任务失败） ═══════════
+- 禁止修改 mc2/ 下任何代码；禁止修改 *.md 文档、engram_test_cases.xlsx、data.md、batch/ 目录、engram_fetch_e2e/
+- prep_cache.py / bench_prep.py 严禁 import torch_npu（本机无 NPU 必须可跑）
+- 禁止实施 M5（显存预检，C3 任务）
+- 不得回退 C1 的任何修复（fork/退出码/queue 超时/确定性索引/total 语义等）
+- 大文件（prep_cache/ 下数据、.pt）严禁入库

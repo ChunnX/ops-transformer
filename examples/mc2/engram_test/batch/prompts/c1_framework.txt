@@ -1,0 +1,136 @@
+【任务 C1：engram_test 框架修复与 total-vocab 语义修正】
+
+你是仓库 ops-transformer（worktree 分支 engram-fetch-local-mode）的自动化代码任务，工作目录即仓库根。本任务设计已由人工评审定稿，严格按清单实施，不要自由发挥、不要扩大范围。
+
+═══════════ 第 0 步：环境恢复 ═══════════
+1. 目标文件可能在任务开始前被断点重试机制清理。先执行：
+   git checkout -- examples/mc2/engram_test/engram_test.py examples/mc2/engram_test/run_engram.sh
+   （若文件存在此命令也无害；用于清除上次失败尝试的半成品改动）
+2. 检查 git log -3 --format=%s：若 HEAD 已有 "C1:" 前缀提交（上次尝试中断后遗留），在其上继续完整重写并新建提交，严禁 amend/rebase/reset。
+3. 确认 git status --short 无其他异常改动。
+
+═══════════ 第 1 步：必读文件（全部读完再动手） ═══════════
+1. examples/mc2/engram_test/engram_test_modification_design.md —— 权威设计（§2=M1 语义、§3.4=M4 索引、§6=M6 框架修复、文末 5 条已拍板决策）
+2. examples/mc2/engram_test/engram_test_review.md —— 问题编号 F1-F6/H1-H7/M1-M9
+3. examples/mc2/engram_test/engram_test.py —— 当前实现（938 行）
+4. examples/mc2/engram_test/run_engram.sh —— 当前 runner（305 行）
+5. examples/mc2/engram_fetch_e2e/test_engram_fetch_e2e.py —— e2e 参考（ElasticBuffer 正确用法：engram_write/engram_fetch/fetch_mode/get_engram_storage_size_hint）
+
+═══════════ 第 2 步：改动清单 ═══════════
+
+【A. engram_test.py —— 用 Write 工具一次性完整重写，禁止分段追加】
+1.（H2）import 改为：from cann_ops_transformer import ElasticBuffer
+2.（M1 语义，决策 2）parse_cli_args：
+   - 新增 --shape_semantics {total,per_rank}，默认 total。
+   - total 语义：input_tensor_shape[0][0] = 全局 vocab 总行数（num_entries_total），hidden = shape[0][1]；
+     per_rank 语义：保留旧行为 num_entries_total = n * world_size（兼容旧表）。
+   - 变量统一改名 num_entries_per_rank → num_entries_total，函数 gen_storage_write_golden 相应调整
+     （total 语义下直接 total=n；本任务保留现有 torch.randn/并行生成逻辑不动，只改语义入口）。
+   - sliced 模式（fetch_mode=sliced）校验 num_entries_total % world_size == 0，不整除则打印明确错误
+     （含 total/world_size/建议值）并以非零码退出；local 模式不校验。
+3.（M4 索引链路）：
+   - gen_balanced_indices(num_token, all_num_token, indices_type, world_size, rng)：world_size 与 rng 均为显式参数
+     （修复 F5：不再读全局）；返回 np.ndarray(dtype=int32)，删除 .tolist()。
+   - 索引确定性：每个 (rank, size_idx) 用独立 rng =
+     np.random.default_rng(np.random.SeedSequence(entropy=seed, spawn_key=(rank, size_idx)))，
+     使同 seed 的 local/sliced 配对用例生成完全相同的 indices（性能可直接对比），且跨 run 可复现。
+   - indices_npu = torch.from_numpy(indices_arr).to(device)（不再走 Python list）；
+     golden 用 torch.from_numpy(indices_arr.astype(np.int64)) 做 index_select。
+   - num_token > all_num_token 时：不失败，打印一次 WARNING（含 num_token、vocab、
+     "repeated sampling, prefill long-context/large-batch scenario"），继续执行（决策 3）。
+4.（F5/M6-3）多进程启动：mp.set_start_method 改默认 "fork"，新增 --start_method {fork,forkserver}；
+   fork 前若 torch.npu.is_initialized() 为 True 则报错拒绝（父进程必须不初始化 NPU）。
+   子进程所需的一切（world_size、rank_per_dev、master_ip、master_port、loop_time、repeat_time、warmup_time、
+   seed、cpu_map 等）全部通过 egram_npu 显式参数传递，子进程内不得依赖模块级全局变量。
+5.（F1）__main__ 末尾：sys.exit(0 if all_success else 1)。
+6.（F2）父进程收集结果：result_queue.get(timeout=600)，queue.Empty 时将缺失 rank 标记为 "crashed"
+   并计入失败；proc.join() 后检查 proc.exitcode（非 0 记入日志与失败原因）。
+   子进程保证恰好 put 2 条消息（正常/异常路径都算），异常时 finally 中补齐缺失的第二条（哨兵去重）。
+   消息格式 [rank, phase, detail]，phase ∈ {"write", "fetch", "error"}；父进程按 phase 分类打印，
+   未知 phase 不得静默丢弃。
+7.（M8）回移 CPU 亲和性：新增 --cpu_map（格式 "0-3:288-383;4-7:96-191"，默认空=关闭）；
+   psutil 用 try/except ImportError 导入，缺失时打 WARNING 跳过；子进程内按 rank 应用。
+8.（H3/H4）删除 egram_cpu 中永真式 "Golden verification" 自检；新增 --verify_write 开关（默认关），
+   开启时在 engram_write 后调用现有 compare_write(buffer._runtime.get_host_buf_ptr(), write_cpu)
+   （try/except 包裹，私有接口异常时打 WARNING 并跳过）。
+9.（M6 端口）新增 --master_port（默认 50008）；init_hccl_comm 改为显式接收 master_ip/master_port 参数。
+10. 新增 --loop_time/--repeat_time/--warmup_time CLI（默认 50/1/0），替换模块级常量。
+11.（H5）profiling 输出根目录：os.environ.get("PROF_TMP_DIR") 优先，默认 ./profiling_data/{case_name}_profiling，
+    并 os.path.abspath 绝对路径化（runner 会为每条用例建独立 mktemp 目录并通过环境变量传入）。
+12. 清理：删除未用 import（pandas、time 等）、死代码（num_token_per_rank、gen_indices、注释掉的旧
+    gen_balanced_indices）；compare_fetch/compare_fetch_sf 的 mismatch 打印限制最多 8 行（防止大张量刷屏）。
+13. prep/run 两段式本任务保持现状：prep_only 仍 torch.save 到 ./{case_name}_prep_data.pt 后退出；
+    run_only 仍 torch.load 后 storage.chunk(world_size)（C2 任务会替换为缓存机制，本任务不要做）。
+14. aclgraph 分支（EngramFetchGraphModel/torch.compile npugraph_ex/fullgraph/dynamic=False/recompile_limit）、
+    eager 分支、profiling schedule 结构保持现状。
+15. 本任务不做 M5 显存预检（C3 任务），不要添加任何 mem_get_info/TORCH_CHECK 相关代码。
+
+【B. run_engram.sh —— 用 Write 工具一次性完整重写】
+1.（H7）read_data 调用改为：if ! data_output=$(read_data); then echo "[ERROR] 读取用例表失败"; exit 1; fi
+   （删除现有不可达的 if [[ $? -ne 0 ]] 死代码）。
+2.（M7）read_data 内的整数转换替换为附录 1 的健壮 to_int（处理 NaN/空串/nan/none/空格，非法值报列名错误）。
+3.（H1）_clean() 增加对 "<br>"、"<br/>、"<br />" 的空格替换；字段内 "|" 替换为 ";"（防 IFS 截断）。
+4.（H6）prep 与 qrun 执行改为容错模式：
+     prep_ret=0
+     "${cmd_args[@]}" --prep_only || prep_ret=$?
+   失败时记录到 FAILED_CASES 列表并 continue 下一条用例（不再因 set -e 中断整批）；qrun 同理。
+5.（M6 端口）每条用例传 --master_port $((50008 + current_case))。
+6.（H5）保留 is_profiling 时 mktemp 独立目录并 export PROF_TMP_DIR 的机制（py 端本任务已支持读取）。
+7. 批跑结束：汇总打印全部用例结果（SUCCESS/FAILED 列表），任一失败则脚本 exit 1。
+8. 其余现有列透传逻辑（fetch_mode/sf_dtype/seed/use_fp8/is_graph/is_profiling/num_cpu_bytes）保持不变。
+
+【C. README.md —— 新建 examples/mc2/engram_test/README.md】
+内容必须覆盖：
+- 依赖：须先构建安装本仓 torch_extension（本分支），验证命令 python -c "from cann_ops_transformer import ElasticBuffer"；
+- 数据表：engram_test_cases.xlsx 用法（--sheet engram_tensor / perf_vocab，--num 范围），格式约定
+  （fetch_indicies 单行、无 <br>、seed 纯整数、shape/dtype/range 为 python 字面量）；
+- 语义：input_tensor_shape[0] = 总 vocab（默认 --shape_semantics total）；旧表迁移说明（per_rank）；
+  local/sliced 模式含义与 sliced 整除约束；numTokens>vocab 允许（重复采样，prefill 场景）；
+- 运行：run_engram.sh 用法与两段式（prep 本地 + qrun NPU）、master_port 分配、profiling 输出位置；
+- 运维提示（引自 oom.md）：ninja 编译 OOM 的 stale lock 清理与 MAX_JOBS=1 预编译、HCCL 残留进程清理、
+  多用户 stream 耗尽；
+- 路线图：C2（数据生成重构+缓存复用）与 C3（显存预检+图池释放）为后续任务，本 README 预留小节说明。
+
+═══════════ 第 3 步：验证（全部通过才能提交，逐条执行并记录输出） ═══════════
+1. python3 -m py_compile examples/mc2/engram_test/engram_test.py
+2. bash -n examples/mc2/engram_test/run_engram.sh
+3. grep 检查 engram_test.py 必含以下标记（每条都要命中）：
+   "--shape_semantics"、"num_entries_total"、"sys.exit(0 if all_success else 1)"、
+   "get(timeout"、"from cann_ops_transformer import ElasticBuffer"、"start_method"、
+   "repeated sampling"、"PROF_TMP_DIR"
+4. grep 检查 run_engram.sh 必含："to_int"、"|| prep_ret=$?"、"<br>"、"master_port"
+5. python3 - <<'EOF' 冒烟：ast 解析 + CLI 参数定义自检
+   import ast, sys
+   src = open("examples/mc2/engram_test/engram_test.py").read()
+   ast.parse(src)
+   for m in ["--shape_semantics","--start_method","--master_port","--loop_time","--cpu_map","--verify_write","--prep_only","--run_only","--fetch_mode"]:
+       assert m in src, m
+   print("smoke OK")
+   EOF
+6. 本机无 NPU，功能级验证由用户在服务器执行，无需尝试运行。
+
+═══════════ 第 4 步：提交 ═══════════
+git add examples/mc2/engram_test/engram_test.py examples/mc2/engram_test/run_engram.sh examples/mc2/engram_test/README.md
+git commit -m "C1: engram_test framework fixes and total-vocab semantics per design doc"
+git push qianlong engram-fetch-local-mode
+（若 push 因远端领先被拒：git pull --rebase qianlong engram-fetch-local-mode 后重推；严禁 force push）
+
+═══════════ 红线（违反即任务失败） ═══════════
+- 禁止修改 mc2/ 下任何算子/PTA 代码（C3 独立处理）
+- 禁止修改 engram_test_cases.xlsx、data.md、engram_test_review.md、engram_test_modification_design.md、
+  oom.md、batch/ 目录、examples/mc2/engram_fetch_e2e/、.gitignore
+- 禁止实施设计文档 M2/M3（数据生成重构与 prep 缓存）与 M5（显存预检）——分别属于 C2/C3 任务
+- engram_test.py 与 run_engram.sh 必须用 Write 工具一次性写入完整内容，禁止分段追加/只写片段
+
+═══════════ 附录 1：健壮 to_int（放入 read_data 的 python 段替换现有 int(float(x)) 逻辑） ═══════════
+# 整数安全转换：NaN/空串/nan/none/纯空格按0处理，其余强转int，非法值报明确错误
+def to_int(col, x):
+    try:
+        if pd.isna(x):
+            return 0
+        s = str(x).strip()
+        if s == "" or s.lower() in ("nan", "none"):
+            return 0
+        return int(float(x))
+    except Exception:
+        raise ValueError(f"[ERROR] 列 {col} 存在非法整数值: {x!r}")
