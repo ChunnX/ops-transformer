@@ -137,7 +137,7 @@ run 阶段:
 - 缓存键不含 `fetch_mode`（见 §3.2），data.md 中 `perf_local_X` 与 `perf_sliced_X`（同 shape/dtype/fp8/sf/seed）自动命中同一份缓存文件。
 - `prep_only`：命中且 meta 校验通过 → 打印 `[PREP] cache hit, skip generation`，直接退出 0。
 - runner：不再删除 prep 文件；`prep_cache/` 目录由 `--purge_prep_cache` 显式清理（或跑批结束后统一清理非当日文件）。run_engram.sh:283-286 的删除逻辑改为仅清 legacy `.pt` 路径。
-- 半程开销对比：13 条用例 6 对配对 → 生成次数 13 → 7，large2 只生成一次。
+- 半程开销对比：perf_vocab 11 条用例 5 对配对 → 生成次数 11 → 6，large2 只生成一次；engram_tensor 6 条 3 对配对 → 6 → 3。
 
 ### 4.2 "后跑的用例被缓存 → 运行过快"论证（结论：不影响 fetch 计时）
 
@@ -155,39 +155,45 @@ run 阶段:
 
 ## 5. M5 显存 OOM：根因分析与拦截方案
 
-### 5.1 HBM 占用定量（推理路径）
+> 2026-09-21 修订：结合《oom.md》实测数据（Ascend950DT 91.75GB/卡，CANN 9.2.0，is_graph=1 + dynamic=False），本节从"假设"升级为"实测确认"，并修正预算公式。
 
-先澄清三个事实（已核实代码）：
-- engram 表在 **host 侧窗口**（num_cpu_bytes），**不占 HBM**；
-- 推理路径 workspace 恒为 16MB（engram_fetch_tiling.cpp:630），大 workspace（`wsTokenStaging=totalRecv×hiddenBytes`）只在训练路径（:622）；
-- 输出由调用方分配：`fetched`（T×576×1B）+ `fetched_sf`（T×18×1B）。
+### 5.1 HBM 占用定量（推理路径，已核实代码）
 
-每 rank 单次 fetch（T=16,777,216，fp8，e8m0）：
+- engram 表在 **host 侧窗口**（num_cpu_bytes），**不占 HBM**（1x/4x 实测峰值拟合可证：1x 峰值 19,569MB ≈ Σ全档 fetched = 33.55M×576 = 19.3GB；4x 峰值 79,768MB ≈ 33.55M×2304 = 77.3GB——峰值≈Σ图池输出+零头，表本身不在其中）；
+- 推理路径 workspace 恒为 16MB（engram_fetch_tiling.cpp:630 else 分支；aclnn_common.h 按 GetWorkspaceSize 返回值**精确**分配，无放大）——**修正 oom.md §3.5 第 3 行"workspace 上限≈72GiB"的说法**：16x 大档位 OOM 与 workspace 无关，预算公式无需计入巨量 workspace（graph 模式下每图 16MB 进池，可忽略）；
+- 输出由调用方分配：`fetched`（T×H×1B，elastic_buffer.cpp:1894）+ `fetched_sf`（T×⌈H/32⌉×1B，elastic_buffer.py:893）+ indices/mul（各 T×4B）。
 
-| 项 | 大小 |
-|----|------|
-| fetched | 9.0 GiB |
-| fetched_sf | 288 MiB |
-| indices (int32) | 64 MiB |
-| workspace | 16 MiB |
-| **单次合计** | **≈ 9.4 GiB** —— 64GB 卡上 eager 模式本不应 OOM |
+### 5.2 根因（实测确认）
 
-**主因假设（与"indice 过大才 OOM"吻合）**：data.md 全部行 `is_graph=1` → `torch.compile(backend="npugraph_ex", dynamic=False)` 对 21 个 token 档位各捕获一张图；ACL Graph 使用**图私有内存池且随图对象存活**，21 档位全保留（recompile_limit=256）→ 累积输出 Σ(16+32+…+2^24)×576 ≈ 18.1GiB + sf 0.6GiB + 各图内部缓冲/碎片，叠加后段档位新分配 9.4GiB + HCCL ctx/运行时 → 逼近/超过 64GB → OOM。
-（验证方法：`watch -n1 npu-smi info` 观察 HBM 阶梯；`is_graph=0` eager 对照若不复现即坐实图池累积。）
+oom.md 实测：16x（[[321125,9216]]）token=8,388,608 时单次 `fetched` = 8,388,608×9216×1B = **72.0GiB**，卡上仅 13.03GiB free → 4 rank 同时 OOM。此时"已分配 76.94GiB" ≈ sf(~0.1GB) + **前 20 档 graph pool 累积**（Σ fetched(16..4,194,304) = 8,388,592×9216 ≈ 72GiB，数量级吻合）。
 
-### 5.2 三层拦截
+两个叠加因素：
+1. **单次分配随 H 放大**：`fetched = T×H×elem`，16x(H=9216) 在 T≥8M 时单次即 72~144GiB，任何卡都放不下（91.75GB 卡的理论单次上限 T_max ≈ free×0.8/9216 ≈ 7.7M）；
+2. **图池累积**：`dynamic=False` 使 21 档各捕获一张图，图私有池随图对象存活不释放（recompile_limit=256 全保留）——即使 1x/4x 也已在 OOM 边缘（4x 峰值 79.8GB / 91.75GB），属"未爆雷"。
+
+### 5.3 三层拦截（修订版）
 
 **L1 用例侧（必做）**：
-- 每个 token 档位执行前预算检查：`need = T×H×elem + T×sf_packs×sf_elem + T×4 + 16MB +（graph 模式 ×1.5 余量系数）`，与 `torch.npu.mem_get_info()[0]`（free）比较；不足则 `[SKIP] size=... need X GiB > free Y GiB` 跳过该档位并记录（不算 FAIL），报告汇总 skipped 列表。
-- **graph 模式逐档位释放**：每档位测完后 `torch._dynamo.reset()`（销毁已编译图及其私有池）+ `del fetched` + `torch.npu.empty_cache()`。副作用 = 下一档位需重新编译（warmup 阶段吸收，且每档位本就是独立测量点，编译开销不进计时区段）。
+- 每个 token 档位执行前预算检查（修订公式，不含大 workspace）：`need = T×H×elem + T×⌈H/32⌉×sf_elem + T×4×2 + 16MB + 2GiB 固定余量`，与 `torch.npu.mem_get_info()[0]`（free）× 0.8 比较；不足则 `[SKIP] size=... need X GiB > free Y GiB` 跳过该档位（不算 FAIL），**报告必须汇总 skipped 列表**，避免"全绿"掩盖跳档。
+- **graph 模式逐档位释放**：每档位测完后 `torch._dynamo.reset()`（销毁已编译图及其私有池）+ `del fetched` + `torch.npu.empty_cache()`。注意：oom.md §4.4 只提 `empty_cache()`——**不够**，empty_cache 仅回收空闲缓存块，图池内存随图对象存活，必须 dynamo.reset 销毁图。副作用 = 下档位重新编译，由 warmup 吸收，不进计时区段。
+- 按 91.75GB 卡预估各新用例可测档位（M5 落地后自动 SKIP 生效）：1x(H=576) 全 21 档可测；4x(H=2304) 全 21 档可测（16M 档单次 38.7GiB）；16x(H=9216) 仅到 4M 档（36GiB），8M/16M 档必 SKIP。
 - M1 语义修正后，超 vocab 的档位按 §2.2-5 处理。
 
-**L2 PTA 侧（建议，独立 commit，改动 mc2/common/torch_extension/elastic_buffer.py）**：
-- `engram_fetch` 推理分支（现 :885 前插入）：估算 `fetched + fetched_sf` 字节 vs `torch.npu.mem_get_info()` free，不足则抛 `RuntimeError`，信息含 `need/free/num_tokens/hidden/dtype` 与"请减小 num_tokens"建议——给所有调用方兜底，替代不可读的深层 OOM。
-- 开关：环境变量 `ENGRAM_FETCH_MEM_GUARD`（默认 `1`=ERROR；`warn`=仅告警；`0`=关闭），避免误伤特殊场景。
-- torch_npu 若无 `mem_get_info` API 则自动降级为 no-op + 一次 DEBUG 日志（版本兼容）。
+**L2 C++ 层（采纳 oom.md §4.1，落点从 Python 改为 csrc，单一权威点）**：
+- `mc2/common/torch_extension/csrc/elastic_buffer.cpp`：在 :1894（infer `fetched`）、:1915（train `fetched`）、:1960-1961（train `gradUnique`/`uniqueLocalEntry`）各分配点之前，`aclrtGetMemInfo(ACL_HBM_MEM)` 取 free，`TORCH_CHECK(need < free×0.8)`，错误信息含 need/free/numTokens/hidden/dtype 与"减小 numTokens/hiddenSize"建议；
+- 开关：环境变量 `ENGRAM_FETCH_MEM_GUARD`（默认 `1`=ERROR；`warn`=仅告警；`0`=关闭）；
+- 不在 elastic_buffer.py 重复实现（oom.md §4.2 的 Python 版与 §4.1 的 C++ 版二选一即可，C++ 层同时覆盖 PTA 全部调用方与训练分配点）。
 
-**L3 op host 侧（可选，低优先级）**：tiling 阶段无法感知空闲 HBM，且输出不是它分配的（拦截不到 OOM 本体）；可选加"numTokens×hiddenBytes ≤ 设备 HBM 总量"的静态荒谬值上限（PlatformInfo 可得时）。默认不做，避免无效检查。
+**L3 op host 侧（可选，低优先级）**：tiling 无法感知空闲 HBM 且输出非其分配；可选加"numTokens×hiddenBytes ≤ 设备 HBM 总量"静态荒谬值上限。默认不做。
+
+**不采纳/降级的 oom.md 建议**：
+- §4.3 分块 fetch（`engram_fetch_chunked`）→ 列为 **P2 可选**：多轮 kernel 启动 + `torch.cat` 额外整块拷贝会使性能口径失真，**不适合 perf 用例**；仅适合功能性大 fetch 场景；
+- §4.4 `dynamic=True` 共享图 → 备选评估项：动态图会改变静态 shape 的性能口径（padding/回退），默认仍逐档静态图+释放。
+
+### 5.4 数据修正项（新发现，与 M1 关联）
+
+1. **321125 不能被 4 整除**：sliced 模式的 `num_entries_per_rank` 是全局→owner 均匀映射的单一属性（tiling:509-510 已核实），非整除分片会导致映射错误 → `perf_sliced__16x_tensor` 建议改 `[[321128, 9216]]`（÷4=80282，总量 2.96GB 不变）；local 模式不受影响。engram_test_cases.xlsx 暂保留原值，待拍板后更新。
+2. oom.md 历史 OOM 项处置：HCCL 端口冲突 → 已由 M6 `--master_port` 按 case 递增覆盖；ninja 编译 OOM（exit 137）与多用户 stream 耗尽（507899）→ 列入 README 运维提示（预编译、清残留进程、清 stale lock），非代码改动。
 
 ---
 
@@ -220,8 +226,10 @@ run 阶段:
 | examples/mc2/engram_test/engram_test.py | M1/M2/M3/M4/M5-L1/M6 全部；预计 -400/+450 行 |
 | examples/mc2/engram_test/run_engram.sh | H1/H5/H6/H7/M7 + 缓存目录/端口/失败汇总；~±80 行 |
 | examples/mc2/engram_test/data.md | 语义列说明 + §2.2-5 档位裁剪（方案 A/B 待拍板） |
-| examples/mc2/engram_test/README.md（新增） | 依赖安装、xlsx 转换约定（`<br>`→换行）、缓存机制、CPU map 配置、qrun 共享目录约定 |
-| mc2/common/torch_extension/elastic_buffer.py | M5-L2 输出预算拦截（~+35 行，独立 commit） |
+| examples/mc2/engram_test/engram_test_cases.xlsx（已生成） | 批跑数据源：engram_tensor(6 条 OOM 分析用例) + perf_vocab(data.md 11 条) + 说明页；已通过字体/内容/runner 解析链路三重自检 |
+| examples/mc2/engram_test/README.md（新增） | 依赖安装、xlsx 转换约定（`<br>`→换行）、缓存机制、CPU map 配置、qrun 共享目录约定、运维提示（ninja 预编译/残留进程/stale lock，见 oom.md 历史事件） |
+| examples/mc2/engram_test/oom.md（用户补充） | OOM 实测分析，建议一并入库 |
+| mc2/common/torch_extension/csrc/elastic_buffer.cpp | M5-L2 输出预算拦截（aclrtGetMemInfo + TORCH_CHECK，~+30 行，独立 commit；覆盖 :1894/:1915/:1960-1961 三个分配点） |
 
 CLI 新增：`--shape_semantics`、`--prep_cache_dir`、`--purge_prep_cache`、`--data_pattern`、`--cpu_map`、`--master_port`、`--loop_time`、`--verify_write`、`--start_method`；`--prep_data.pt` 旧文件路径废弃。
 
@@ -268,8 +276,9 @@ CLI 新增：`--shape_semantics`、`--prep_cache_dir`、`--purge_prep_cache`、`
 
 ---
 
-**待你审核确认的 4 个决策点**：
+**待你审核确认的 5 个决策点**：
 1. 修改基线采纳"当前 worktree"（§1）？
 2. `--shape_semantics` 默认值取 `total`（§2.2-4）？
 3. 超 vocab 档位处理选 A（裁剪扫描序列）还是 B（保留+告警）（§2.2-5）？
-4. PTA 侧 L2 拦截默认 `ENGRAM_FETCH_MEM_GUARD=1`（ERROR）还是 `warn`（§5.2）？
+4. C++ 侧 L2 拦截默认 `ENGRAM_FETCH_MEM_GUARD=1`（ERROR）还是 `warn`（§5.3）？
+5. `perf_sliced__16x_tensor` 的 321125 改为 321128（÷4 整除，§5.4）？

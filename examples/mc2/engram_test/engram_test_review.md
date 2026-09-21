@@ -9,7 +9,7 @@
 
 ## 一、第一轮检视结论摘要（空文件版本）
 
-commit `abb15a00c` 提交的 `engram_test.py` 为 **0 字节空文件**，`run_engram.sh` 的全部执行归结为 `python engram_test.py ...`，空脚本对任意参数 exit 0 → 13 条用例全部打印 `[SUCCESS]` 却不做任何数据生成、算子调用与 golden 比对，形成"全绿假象"。该问题已由 `403ea1680` 补全解决，以下为第二轮检视结果。
+commit `abb15a00c` 提交的 `engram_test.py` 为 **0 字节空文件**，`run_engram.sh` 的全部执行归结为 `python engram_test.py ...`，空脚本对任意参数 exit 0 → 11 条用例（data.md 数据行）全部打印 `[SUCCESS]` 却不做任何数据生成、算子调用与 golden 比对，形成"全绿假象"。该问题已由 `403ea1680` 补全解决，以下为第二轮检视结果。
 
 ## 二、第二轮检视发现（补全后版本）
 
