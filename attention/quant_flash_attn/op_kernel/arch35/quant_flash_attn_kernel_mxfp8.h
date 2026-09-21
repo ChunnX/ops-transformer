@@ -780,18 +780,25 @@ public:
         info.isLastDnTask = (s2Cur + 1 == curS2End_) && (tailSplitStep_ == 0);
 
         info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
-        if constexpr (USE_DN) {
-            // [二期PREFILL] DN(含尾task)统一公式: actM<=16时sub0全包、sub1早退(actVecM=0)
-            info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 >> 1);
+        // [SK兼容] CV配比1:1时无sub1: AIV0(GetSubBlockNum()==1)承担全部M。
+        // 1:2(含现行950布局)走原半区逻辑不变。actVecMSize仅vec侧消费, AIC不受影响。
+        if (GetSubBlockNum() == 1) {
+            info.actVecMSize = info.actMSize;
+            info.vecMbaseIdx = 0;
         } else {
-            info.actVecMSize = (info.actMSize + 1) >> 1;
-        }
-        info.vecMbaseIdx = 0;
-        if (constInfo_.subBlockIdx == 1) {
-            // [回归修复] ND(decode)的vecMbase必须保持align32>>1(原值): 改成actVecMSize会
-            // 使actM<32的decode用例sub1读偏(func_rdv 51失败根因之一); DN保持=actVecMSize
-            info.vecMbaseIdx = USE_DN ? info.actVecMSize : (info.actMSizeAlign32 >> 1);
-            info.actVecMSize = info.actMSize - info.actVecMSize;
+            if constexpr (USE_DN) {
+                // [二期PREFILL] DN(含尾task)统一公式: actM<=16时sub0全包、sub1早退(actVecM=0)
+                info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 >> 1);
+            } else {
+                info.actVecMSize = (info.actMSize + 1) >> 1;
+            }
+            info.vecMbaseIdx = 0;
+            if (constInfo_.subBlockIdx == 1) {
+                // [回归修复] ND(decode)的vecMbase必须保持align32>>1(原值): 改成actVecMSize会
+                // 使actM<32的decode用例sub1读偏(func_rdv 51失败根因之一); DN保持=actVecMSize
+                info.vecMbaseIdx = USE_DN ? info.actVecMSize : (info.actMSizeAlign32 >> 1);
+                info.actVecMSize = info.actMSize - info.actVecMSize;
+            }
         }
 
         if ((bN2Start_ == bN2End_ && gS1OStart_ == gS1OEnd_)) {
