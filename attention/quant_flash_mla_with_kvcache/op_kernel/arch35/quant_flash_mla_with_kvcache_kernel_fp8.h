@@ -51,7 +51,9 @@ public:
     static constexpr bool FLASH_DECODE = VecFaBlockType::FLASH_DECODE;
 
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C2
-    static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N + 1;
+    // 须为PRELOAD_N的两倍(4): ExecuteTask(L)同时引用任务L+1(预取K/Q源)、L(C1)与L-2(C2),
+    // 三者槽位互不混叠; 若取PRELOAD_N+1则L+1与L-2同槽, 创建即覆盖未消费的bmm2参数
+    static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N << 1;
 
     static constexpr bool PAGE_ATTENTION = CubeBlockType::PAGE_ATTENTION;
     static constexpr LayOutTypeEnum LAYOUT_Q = CubeBlockType::LAYOUT;
@@ -308,7 +310,9 @@ public:
                     continue;
                 }
             }
-            if (validTaskCount) {
+            // 执行门控: 分发未结束时须保证ExecuteTask(L)前任务L+1已创建(validTaskCount>=2),
+            // 供ExecuteTask提前一轮预取下一任务的K/Q; 收尾阶段(分发完毕)放行, 逐个排空流水
+            if (validTaskCount >= 2 || (!shouldDispatchTask && validTaskCount > 0)) {
                 ExecuteTask(executedTaskCount, taskRunInfo);
                 executedTaskCount++;
                 if (executedTaskCount > PRELOAD_N) {
@@ -399,13 +403,42 @@ public:
 
     __aicore__ inline void ExecuteTask(uint64_t loop, RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
-        RunInfoX &runInfo0 = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];
-        RunInfoX &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE];
+        RunInfoX &runInfo0 = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE]; // 本轮任务: C1
+        RunInfoX &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE]; // 上PRELOAD_N轮: C2
+        RunInfoX &runInfoNext = taskRunInfo[(loop + 1) % PRELOAD_TASK_CACHE_SIZE]; // 下一轮: 仅用于提前搬运K/Q
+
+        // 提前一轮发起下一任务的K搬运(仅MTE2、不等落地): MAC算本轮(L)与上轮(L-1)时, MTE2后台搬L+1
+        if (runInfoNext.isValid) {
+            if ASCEND_IS_AIC {
+                ComputeBmm1Load(runInfoNext);
+            }
+        }
+        // 首个任务(loop==0)无"上一轮"可预取, 须在本轮同轮发起K搬运
+        if (loop == 0) {
+            if (runInfo0.isValid) {
+                if ASCEND_IS_AIC {
+                    // Q的MTE2与首任务K同拍发出, 压缩启动期(仅首任务安全: 无前序Q的MTE1读)
+                    if (runInfo0.isFirstS2Loop) {
+                        ComputeQPreload(runInfo0);
+                    }
+                    ComputeBmm1Load(runInfo0);
+                }
+            }
+        }
+
         if (runInfo0.isValid) {
             if ASCEND_IS_AIC {
-                ComputeMm1(runInfo0);
+                ComputeMm1(runInfo0, runInfo0.qPreloaded);
             } else {
                 ComputeVec1(runInfo0);
+            }
+        }
+
+        // 下一任务为换Q块首任务: Q的MTE2提前到本轮发起(须在ComputeMm1之后:
+        // 本轮Q的MTE1锁已在IterateBmm1Internal末尾释放且qL1BufId_已轮转到新槽, 预取写新槽无冲突)
+        if (runInfo0.isValid && runInfoNext.isValid && runInfo0.isLastS2Loop && runInfoNext.isFirstS2Loop) {
+            if ASCEND_IS_AIC {
+                ComputeQPreload(runInfoNext);
             }
         }
 
@@ -419,24 +452,21 @@ public:
                 runInfoNegN.isValid = false;
             }
         }
-
-        if ASCEND_IS_AIC {
-            // AIC: Mm2已释放KV L1 buffer, 预取2个任务之后的K, 使MTE2搬运与cube计算重叠
-            PrefetchKeyTask(taskRunInfo, loop + 2);
-        }
     }
 
-    __aicore__ inline void PrefetchKeyTask(RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE], uint64_t loop)
+    __aicore__ inline void ComputeBmm1Load(RunInfoX &runInfo)
     {
-        RunInfoX &runInfo = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];
-        if (runInfo.isValid && !runInfo.keyPrefetched) {
-            cubeBlock_.PrefetchKey(runInfo);
-        }
+        cubeBlock_.IterateBmm1Load(runInfo);
     }
 
-    __aicore__ inline void ComputeMm1(RunInfoX &runInfo)
+    __aicore__ inline void ComputeQPreload(RunInfoX &runInfo)
     {
-        cubeBlock_.IterateBmm1(runInfo);
+        cubeBlock_.IterateQPreload(runInfo);
+    }
+
+    __aicore__ inline void ComputeMm1(RunInfoX &runInfo, bool qPreloaded = false)
+    {
+        cubeBlock_.IterateBmm1(runInfo, qPreloaded);
     }
 
     __aicore__ inline void ComputeMm2(RunInfoX &runInfo)
@@ -461,6 +491,7 @@ public:
         CalcParams(loop, bN2Cur, gS1Cur, s2Cur, runInfo);
         runInfo.isValid = true;
         runInfo.keyPrefetched = false; // slot复用, 清除上一个任务残留的预取标记
+        runInfo.qPreloaded = false;
     }
 
     __aicore__ inline void CalcParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur, RunInfoX &info)
