@@ -157,6 +157,7 @@ private:
     uint64_t depthB1_ = DEPTH_DEFAULT;
     uint64_t mTailCnt_ = 1UL;
     uint64_t nTailCnt_ = 1UL;
+    uint32_t splitM_ = 1U;
 
     ge::DataType xDType_ = ge::DT_UNDEFINED;
     ge::DataType weightDtype_ = ge::DT_UNDEFINED;

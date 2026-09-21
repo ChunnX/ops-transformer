@@ -29,6 +29,13 @@ bool GroupedNoQuantMatmulTiling::SetTiling(gert::TilingContext *context)
     OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context->GetNodeName(), "compileInfoPtr is nullptr."), return false);
     usedCoreNum_ = compileInfoPtr->aicNum;
     OP_CHECK_IF(!Init(context), OP_LOGE(context->GetNodeName(), "Init failed"), return false);
+    OP_CHECK_IF(activeType_ == ACT_TYPE_GELU_TANH &&
+                    (compileInfoPtr->aicNum == 0U || compileInfoPtr->aivNum < compileInfoPtr->aicNum),
+                OP_LOGE(context->GetNodeName(), "GMM GELU requires at least one AIV per AIC."), return false);
+    const bool enableSplitM =
+        compileInfoPtr->aicNum != 0U &&
+        static_cast<uint64_t>(compileInfoPtr->aivNum) == static_cast<uint64_t>(compileInfoPtr->aicNum) * 2UL;
+    splitM_ = static_cast<uint32_t>(enableSplitM);
     OP_CHECK_IF(!CalMatMulTiling(context, compileInfoPtr),
                 OP_LOGE(context->GetNodeName(), "Unable to calculate matmul-tiling"), return false);
     SetGMMTiling();
@@ -315,6 +322,14 @@ bool GroupedNoQuantMatmulTiling::GetAttrs(const gert::TilingContext *context)
     if (!CheckNoQuantGroupListType(context)) {
         return false;
     }
+    OP_CHECK_IF(
+        activeType_ == ACT_TYPE_GELU_TANH && groupType_ == SPLIT_K,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context->GetNodeName(), "groupType", Ops::Transformer::Gmm::FormatString("%ld", groupType_).c_str(),
+            Ops::Transformer::Gmm::FormatString("In %s case with %s enabled, the value of %s must be in %s",
+                                                "no-quant", "GELU_TANH", "groupType", "{-1, 0}")
+                .c_str()),
+        return false);
     return true;
 }
 
@@ -385,6 +400,7 @@ void GroupedNoQuantMatmulTiling::SetGMMTiling()
     tilingData_.gmmNoQuantParam.nTailCnt = static_cast<uint32_t>(nTailCnt_);
     tilingData_.gmmNoQuantParam.weightNoL2Cache = weightNoL2Cache_;
     tilingData_.gmmNoQuantParam.activeType = static_cast<uint32_t>(activeType_);
+    tilingData_.gmmNoQuantParam.splitM = splitM_;
 }
 
 void GroupedNoQuantMatmulTiling::SetMatMulTiling()
@@ -642,13 +658,13 @@ void GroupedNoQuantMatmulTiling::PrintTilingResult(const gert::TilingContext *co
     OP_LOGI(context->GetNodeName(),
             "GMM Tiling result: groupNum: %u, singleX: %u, singleWeight: %u, singleY: %u,"
             "groupType: %d, groupListType: %u, hasBias: %u, mTailCnt: %u, nTailCnt: %u, weightNoL2Cache: %u,"
-            "activeType: %u",
+            "activeType: %u, splitM: %u",
             tilingData_.gmmNoQuantParam.groupNum, tilingData_.gmmNoQuantParam.singleX,
             tilingData_.gmmNoQuantParam.singleWeight, tilingData_.gmmNoQuantParam.singleY,
             tilingData_.gmmNoQuantParam.groupType, tilingData_.gmmNoQuantParam.groupListType,
             tilingData_.gmmNoQuantParam.hasBias, tilingData_.gmmNoQuantParam.mTailCnt,
             tilingData_.gmmNoQuantParam.nTailCnt, tilingData_.gmmNoQuantParam.weightNoL2Cache,
-            tilingData_.gmmNoQuantParam.activeType);
+            tilingData_.gmmNoQuantParam.activeType, tilingData_.gmmNoQuantParam.splitM);
 
     OP_LOGI(context->GetNodeName(),
             "GMM MatMul Tiling result: usedCoreNum: %d, baseM: %d, baseN: %d, baseK: %d, stepKa: %d,"

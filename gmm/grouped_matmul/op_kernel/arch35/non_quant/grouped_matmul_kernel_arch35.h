@@ -110,7 +110,7 @@ __aicore__ inline void GroupedMatMulKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bi
         // The FP32 GELU Fixpipe path owns the complete L0C and uses explicit M/FIX slot synchronization.
         mmParams.l0cStages = 1U;
         mmParams.oriK = static_cast<uint64_t>(mmTilingData.Ka);
-        mmParams.splitM = 1U;
+        mmParams.splitM = static_cast<uint64_t>(gmmBaseParams.splitM);
         mmParams.ubDB = BlockEpilogue::UB_BUFFER_DEPTH;
         mmParams.ubPitchGran = BlockEpilogue::ROW_PITCH_GRANULARITY;
     } else {
