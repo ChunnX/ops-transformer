@@ -1,0 +1,398 @@
+{
+  "source_log": "/tmp/ffn_mx_graph_eager.log",
+  "passed": 98,
+  "cases": [
+    {
+      "case": "meta_metadata_dtype_0",
+      "status": "PASS"
+    },
+    {
+      "case": "meta_uint8_metadata_dtype_0",
+      "status": "PASS"
+    },
+    {
+      "case": "meta_metadata_dtype_1",
+      "status": "PASS"
+    },
+    {
+      "case": "meta_uint8_metadata_dtype_1",
+      "status": "PASS"
+    },
+    {
+      "case": "meta_metadata_dtype_2",
+      "status": "PASS"
+    },
+    {
+      "case": "meta_uint8_metadata_dtype_2",
+      "status": "PASS"
+    },
+    {
+      "case": "meta_metadata_dtype_3",
+      "status": "PASS"
+    },
+    {
+      "case": "meta_uint8_metadata_dtype_3",
+      "status": "PASS"
+    },
+    {
+      "case": "meta_metadata_dtype_4",
+      "status": "PASS"
+    },
+    {
+      "case": "meta_uint8_metadata_dtype_4",
+      "status": "PASS"
+    },
+    {
+      "case": "meta_metadata_dtype_5",
+      "status": "PASS"
+    },
+    {
+      "case": "meta_uint8_metadata_dtype_5",
+      "status": "PASS"
+    },
+    {
+      "case": "npu_metadata_dtype_0",
+      "status": "PASS"
+    },
+    {
+      "case": "npu_uint8_metadata_dtype_0",
+      "status": "PASS"
+    },
+    {
+      "case": "npu_metadata_dtype_1",
+      "status": "PASS"
+    },
+    {
+      "case": "npu_uint8_metadata_dtype_1",
+      "status": "PASS"
+    },
+    {
+      "case": "npu_metadata_dtype_2",
+      "status": "PASS"
+    },
+    {
+      "case": "npu_uint8_metadata_dtype_2",
+      "status": "PASS"
+    },
+    {
+      "case": "npu_metadata_dtype_3",
+      "status": "PASS"
+    },
+    {
+      "case": "npu_uint8_metadata_dtype_3",
+      "status": "PASS"
+    },
+    {
+      "case": "npu_metadata_dtype_4",
+      "status": "PASS"
+    },
+    {
+      "case": "npu_uint8_metadata_dtype_4",
+      "status": "PASS"
+    },
+    {
+      "case": "npu_metadata_dtype_5",
+      "status": "PASS"
+    },
+    {
+      "case": "npu_uint8_metadata_dtype_5",
+      "status": "PASS"
+    },
+    {
+      "case": "reject_token_dtype",
+      "status": "PASS"
+    },
+    {
+      "case": "reject_sync_flag",
+      "status": "PASS"
+    },
+    {
+      "case": "reject_need_schedule",
+      "status": "PASS"
+    },
+    {
+      "case": "reject_layer_num",
+      "status": "PASS"
+    },
+    {
+      "case": "reject_fp4_odd_h",
+      "status": "PASS"
+    },
+    {
+      "case": "reject_short_context",
+      "status": "PASS"
+    },
+    {
+      "case": "reject_strided_context",
+      "status": "PASS"
+    },
+    {
+      "case": "reject_context_dtype",
+      "status": "PASS"
+    },
+    {
+      "case": "reject_shape_length",
+      "status": "PASS"
+    },
+    {
+      "case": "schema_context_mutation",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_0_h_2_need_0_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_0_h_2_need_0_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_0_h_2_need_1_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_0_h_2_need_1_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_0_h_66_need_0_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_0_h_66_need_0_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_0_h_66_need_1_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_0_h_66_need_1_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_0_all_masked",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_1_h_2_need_0_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_1_h_2_need_0_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_1_h_2_need_1_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_1_h_2_need_1_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_1_h_66_need_0_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_1_h_66_need_0_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_1_h_66_need_1_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_1_h_66_need_1_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_1_all_masked",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_2_h_2_need_0_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_2_h_2_need_0_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_2_h_2_need_1_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_2_h_2_need_1_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_2_h_66_need_0_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_2_h_66_need_0_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_2_h_66_need_1_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_2_h_66_need_1_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_2_all_masked",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_3_h_2_need_0_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_3_h_2_need_0_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_3_h_2_need_1_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_3_h_2_need_1_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_3_h_66_need_0_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_3_h_66_need_0_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_3_h_66_need_1_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_3_h_66_need_1_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_3_all_masked",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_4_h_2_need_0_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_4_h_2_need_0_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_4_h_2_need_1_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_4_h_2_need_1_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_4_h_66_need_0_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_4_h_66_need_0_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_4_h_66_need_1_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_4_h_66_need_1_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_4_all_masked",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_5_h_2_need_0_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_5_h_2_need_0_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_5_h_2_need_1_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_5_h_2_need_1_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_5_h_66_need_0_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_5_h_66_need_0_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_5_h_66_need_1_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_5_h_66_need_1_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_5_all_masked",
+      "status": "PASS"
+    },
+    {
+      "case": "singleton_dtype_0",
+      "status": "PASS"
+    },
+    {
+      "case": "singleton_dtype_1",
+      "status": "PASS"
+    },
+    {
+      "case": "singleton_dtype_2",
+      "status": "PASS"
+    },
+    {
+      "case": "singleton_dtype_3",
+      "status": "PASS"
+    },
+    {
+      "case": "singleton_dtype_4",
+      "status": "PASS"
+    },
+    {
+      "case": "singleton_dtype_5",
+      "status": "PASS"
+    },
+    {
+      "case": "persistent_fp4_context_and_reuse",
+      "status": "PASS"
+    },
+    {
+      "case": "nondefault_stream",
+      "status": "PASS"
+    },
+    {
+      "case": "delayed_publication_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "delayed_publication_sync_1",
+      "status": "PASS"
+    }
+  ]
+}
