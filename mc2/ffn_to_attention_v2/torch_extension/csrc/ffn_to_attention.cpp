@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <limits>
 #include <vector>
 #include <torch/extension.h>
 #include "aclnn_common.h"
@@ -66,15 +67,33 @@ namespace {
 constexpr int64_t MB_ALIGN = 2LL * 1024LL * 1024LL; // 2MB
 constexpr int64_t BYTES_PER_FP16 = 2;
 constexpr int64_t BYTES_PER_INT32 = 4;
+// Reserve for up to 1024 AIVs; host tiling uses the actual core count.
+constexpr int64_t AIV_RESERVE_COUNT = 1024LL;
+constexpr int64_t FLAG_SOURCE_RESERVE_BYTES = AIV_RESERVE_COUNT * 32LL;
 
 int64_t CeilAlign(int64_t val, int64_t align)
 {
+    TORCH_CHECK(val >= 0 && val <= std::numeric_limits<int64_t>::max() - (align - 1), "Buffer alignment overflow");
     return (val + align - 1) / align * align;
+}
+
+int64_t CheckedMul(int64_t lhs, int64_t rhs)
+{
+    TORCH_CHECK(lhs >= 0 && rhs >= 0 && (rhs == 0 || lhs <= std::numeric_limits<int64_t>::max() / rhs),
+                "Buffer size multiplication overflow");
+    return lhs * rhs;
+}
+
+int64_t CheckedAdd(int64_t lhs, int64_t rhs)
+{
+    TORCH_CHECK(lhs >= 0 && rhs >= 0 && lhs <= std::numeric_limits<int64_t>::max() - rhs,
+                "Buffer size addition overflow");
+    return lhs + rhs;
 }
 } // namespace
 
 int64_t GetFFNToAttentionCclBufferSize(const std::vector<int64_t> &tokenInfoTableShape,
-                                       const std::vector<int64_t> &tokenDataShape)
+                                       const std::vector<int64_t> &tokenDataShape, int64_t worldSize)
 {
     TORCH_CHECK(tokenInfoTableShape.size() == 3, "token_info_table_shape should have 3 elements, but got ",
                 tokenInfoTableShape.size());
@@ -85,9 +104,21 @@ int64_t GetFFNToAttentionCclBufferSize(const std::vector<int64_t> &tokenInfoTabl
     int64_t expertNumPerToken = tokenInfoTableShape[2];
     int64_t hs = tokenDataShape[3];
 
-    int64_t tokenDataSize = microBatchNum * bs * expertNumPerToken * hs * BYTES_PER_FP16;
-    int64_t tokenInfoSize = microBatchNum * bs * expertNumPerToken * BYTES_PER_INT32;
-    int64_t rawSize = tokenDataSize + tokenInfoSize;
+    TORCH_CHECK(microBatchNum > 0 && bs > 0 && expertNumPerToken > 0 && hs > 0, "Token dimensions must be positive");
+    TORCH_CHECK(std::equal(tokenInfoTableShape.begin(), tokenInfoTableShape.end(), tokenDataShape.begin()),
+                "Token info/data dimensions must match");
+    TORCH_CHECK(worldSize > 0 && worldSize <= 1024, "Complete window sizing requires world_size in [1, 1024]");
+    int64_t tokenSlots = CheckedMul(CheckedMul(microBatchNum, bs), expertNumPerToken);
+    int64_t tokenDataSize = CheckedMul(CheckedMul(tokenSlots, hs), BYTES_PER_FP16);
+    int64_t tokenInfoSize = CeilAlign(CheckedMul(tokenSlots, BYTES_PER_INT32), 512);
+    int64_t rawSize = CeilAlign(CheckedAdd(tokenInfoSize, tokenDataSize), 32);
+    rawSize = CeilAlign(CheckedAdd(rawSize, FLAG_SOURCE_RESERVE_BYTES), 512);
+    const int64_t tokenCapacity = CheckedMul(worldSize, tokenSlots);
+    const int64_t rankTableStride = CeilAlign(CheckedMul(tokenCapacity, 16), 512);
+    const int64_t countRowStride = CeilAlign(CheckedMul(worldSize, BYTES_PER_INT32), 512);
+    const int64_t tableBytes =
+        CheckedAdd(CheckedMul(worldSize, rankTableStride), CheckedMul(AIV_RESERVE_COUNT + 1, countRowStride));
+    rawSize = CheckedAdd(rawSize, tableBytes);
     return CeilAlign(rawSize, MB_ALIGN);
 }
 
@@ -96,6 +127,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("npu_ffn_to_attention", &NpuFFNToAttention, "npu_ffn_to_attention");
     m.def("get_ffn_to_attention_ccl_buffer_size", &GetFFNToAttentionCclBufferSize,
-          "get_ffn_to_attention_ccl_buffer_size");
+          pybind11::arg("token_info_table_shape"), pybind11::arg("token_data_shape"), pybind11::arg("world_size"),
+          "URMA window size including flag sources, rank address tables and count rows");
 }
 } // namespace op_api
