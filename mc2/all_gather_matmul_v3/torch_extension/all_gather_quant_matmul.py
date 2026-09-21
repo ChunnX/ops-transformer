@@ -75,7 +75,7 @@ class _AllGatherQuantMatmulOpBuilder(OpBuilder):
             m_per_rank = x1.size(0)
             k = x1.size(1)
             n = x2.size(1)
-            out_dtype = torch.bfloat16
+            out_dtype = _ACL_DTYPE_TO_TORCH_DTYPE.get(y_dtype, torch.bfloat16)
             y = x1.new_empty(tuple([m_per_rank * rank_size, n]), dtype=out_dtype)
             gather_out = x1.new_empty(
                 tuple([m_per_rank * rank_size, k]), dtype=x1.dtype
@@ -122,7 +122,7 @@ def _npu_all_gather_quant_matmul(
         x2_dtype,
         x1_scale_dtype,
         x2_scale_dtype,
-        y_dtype if y_dtype is not None else torch.bfloat16,
+        y_dtype if y_dtype is not None else 15,  # ACL BF16
         comm_mode if comm_mode is not None else "aiv_urma",
     )
     return result
@@ -363,7 +363,7 @@ def all_gather_quant_matmul(
         x2_dtype=x2_dtype,
         x1_scale_dtype=x1_scale_dtype,
         x2_scale_dtype=x2_scale_dtype,
-        y_dtype=y_dtype if y_dtype is not None else torch.bfloat16,
+        y_dtype=y_dtype if y_dtype is not None else 15,  # ACL BF16
         comm_mode=comm_mode,
     )
     _logger.info("rank=%s, npu_all_gather_quant_matmul returned", rank_id)
