@@ -37,7 +37,7 @@ public:
     explicit AllGatherMatmulTilingV2(gert::TilingContext *context);
     ~AllGatherMatmulTilingV2() override = default;
     // §4.29 miss 路径: 全量 V3 mm tiling → 核利用率优先通信切分(校验日志在本类, 引擎纯计算)
-    CutResult GetCutResByCoreOccupancyFirst(uint32_t *baseMOut = nullptr);
+    CutResult GetCutResByCoreOccupancyFirst();
 
     CutResult MakeNoCutResult() const;
 

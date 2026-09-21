@@ -27,7 +27,7 @@
  *
  * 零特有代码架构(2026-09-17 §4.24 裁定): 钩子机制已废除, 算子差异按
  * (通信原语 CommPrimitive, 通算顺序 CommComputeOrder, 通信引擎 TilingCommEngine, dtype)
- * 键控分支内化于引擎; 阈值经 FitBalanceCalibration.tunables(FitTunables) 注入。
+ * 键控分支内化于引擎(FitTunables 阈值载体已随 §4.37 阶段2 开销补丁废弃而删除)。
  * 算子侧 = CALIBRATION 实例 + 枚举入参 + 一行调用, 无任何算子特有代码。
  *
  * 统一引擎分派（三引擎接入结构完全一致, 见 TilingCommEngine/ParseCommEngine）:
@@ -247,16 +247,6 @@ inline TilingCommEngine ParseCommEngine(const char *commMode)
 enum class CommComputeOrder {
     COMPUTE_FIRST, // 计算在前通信在后(输出侧通信: RS/AR/matmul_allto_all)
     COMM_FIRST,    // 通信在前计算在后(输入侧通信: AG/allto_all_matmul)
-};
-
-// ====== 键控分支的可调阈值(载体: FitBalanceCalibration.tunables, 缺省=现网值) ======
-// 机制随引擎键控分支下沉, 阈值留标定——同键算子将来分叉只改各自 CALIBRATION(§4.22 裁定)
-struct FitTunables {
-    // E9(AG 键): 短块减半鼓励门——通算平衡且半块双耗时均超阈, 才减半对齐长度(鼓励多切)
-    // [§4.37 阶段2 废弃] 该门属启动开销的经验防御(b 已入模型), 真实 b/c 数据激活时随补丁批次删除
-    double halveEncourageMmUs = 40;   // 半块 matmul 耗时下限 (us)
-    double halveEncourageCommUs = 40; // 半块通信耗时下限 (us)
-    // E10(AR 键)的 minCutCommUs/minCutMmUs(100/60μs)已删除——E10 属启动开销补偿, §4.37 裁定废弃
 };
 
 // fp4 子字节建模分母: 1 字节打包 2 个 fp4 元素(D6, dtype 键控)
@@ -795,7 +785,6 @@ struct FitBasedBalanceCtx {
     CutPlanner tilingM;
     CommPrimitive commPrimitive; // 键控维度: 通信原语
     CommComputeOrder order;      // 键控维度: 通算顺序
-    FitTunables tunables;        // 键控分支阈值(自 Calibration.tunables 拷贝)
     uint64_t commRankCntForMm = 1; // 派生: commPerf.commRankCntForMm_(mm 工作集 rank 份数, 取值表见模型成员注释)
     uint64_t mmRankMul = 1;     // 派生: MmRankMul(ctx)(本卡 mm 总行数的 rank 倍数, 见该函数注释)
     double ratioCalcComm = 1.0; // 过程量: Estimate 骨干设置的通算比(键控分支消费)
@@ -870,7 +859,6 @@ struct FitBalanceCalibration {
         double defaultComputesPerCycle = 4096.0;    // 算力档回退(通常勿动)
     };
     MatmulFit mmFit;
-    FitTunables tunables; // 键控分支阈值(缺省=现网值, 通常勿动; 尾部可整段省略)
 };
 
 // 统一入口: 算子侧只传大结构体标定数据 + 键控枚举(原语/顺序/引擎; soc 恒 950)
@@ -920,7 +908,6 @@ inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, CommPrimitiv
                            CutPlanner(args),
                            commPrimitive,
                            order,
-                           calib.tunables,
                            1,
                            1,
                            1.0};
@@ -1088,20 +1075,8 @@ inline CommCutResult Schedule(FitBasedBalanceCtx &ctx)
         ctx.tilingM.cutRes.shortTileAtBack = (est.totalTpTime > est.totalMatmulTime);
     }
 
-    // ---- ② SetShort: E9(AG 键) 减半鼓励门 + 短块落位 ----
-    if (isAg) {
-        // 通算平衡且半块双耗时均超阈(切了不亏) → 对齐长度减半鼓励多切(阈值见 FitTunables)
-        const bool isCalcCommBalance = ctx.ratioCalcComm < CALC_COMM_BALANCE_RATIO;
-        const uint64_t cutLen = ctx.tilingM.GetAlignLength() / 2U;
-        const double mmCost = ctx.matmulPerf.MatmulTime(cutLen, ctx.commPerf.rankDim());
-        const double commCost = ctx.commPerf.CommTime(cutLen);
-        if (isCalcCommBalance && (mmCost > ctx.tunables.halveEncourageMmUs) &&
-            (commCost > ctx.tunables.halveEncourageCommUs)) {
-            ctx.tilingM.SetAlignLength(cutLen);
-            ctx.tilingM.SetMinLenByMin(cutLen);
-        }
-    }
-    // [P2 接线] E10(AR 键 阈值反解)/E11-E13(L2/小shape)/E14-E16(E27 等)随各算子迁移接入
+    // ---- ② SetShort: 短块落位(minTileLen 为短块长度种子; NoCut 几何门在落位后) ----
+    // [P2 接线] E11-E13(L2/小 shape)随各算子迁移接入; §4.37 废弃条目(E9/E10/E14-E16/E20/E26/E29)不再接线
     ctx.tilingM.cutRes.shortTileLen = ctx.tilingM.GetMinLen();
     ctx.tilingM.cutRes.numShortTile = 1U;
 
@@ -1121,8 +1096,38 @@ inline CommCutResult Schedule(FitBasedBalanceCtx &ctx)
     const bool goodLin = isAg ? true : IsGoodLinearityShape(ctx.matmulPerf.mmShapeInfo_);
     ctx.tilingM.FitTileLengthDiscrete(goodLin, isAg); // localAtFront: AG 前端有本地块
     MergeEqualTiles(ctx.tilingM);
+    // ---- ⑤ 切分收益门控(§4.37 阶段2): 把每轮启动开销纳入切分决策 ----
+    // 切分不改变总通信数据量(k·X 不变), 只多付启动税 (N−1)·b; 买到的是通信-计算重叠。
+    // 流水线总时近似(不可重叠段在流水线两端, 与通算顺序对应):
+    //   通信在前(AG):       T_cut ≈ T_comm(首块) + max(T_comm(其余轮), T_mm − T_mm(末块)) + T_mm(末块)
+    //   通信在后(RS/AR/A2A): T_cut ≈ T_mm(首块) + max(T_mm − T_mm(首块), T_comm(除末轮)) + T_comm(末轮)
+    // 不切 T_serial = T_comm(1 轮) + T_mm(全串行)。T_cut ≥ T_serial → 回退 NoCut——
+    // 启动税买不回重叠收益(b 为保守高估值时门控同步保守, §4.37 拍板②口径)。
+    const CommCutResult &gateCut = ctx.tilingM.cutRes;
+    if (gateCut.totalTileCnt > 1U) {
+        const double tCommN = ctx.commPerf.TotalCommTime(ctx.matmulPerf.mmShapeInfo_.mValue, gateCut.totalTileCnt);
+        const double tComm1 = ctx.commPerf.TotalCommTime(ctx.matmulPerf.mmShapeInfo_.mValue, 1U);
+        const double tMm = est.totalMatmulTime;
+        const uint64_t firstLen =
+            (gateCut.numShortTile > 0U && !gateCut.shortTileAtBack) ? gateCut.shortTileLen : gateCut.longTileLen;
+        const uint64_t lastLen =
+            (gateCut.numShortTile > 0U && gateCut.shortTileAtBack) ? gateCut.shortTileLen : gateCut.longTileLen;
+        double tCut;
+        if (ctx.order == CommComputeOrder::COMM_FIRST) {
+            const double commFirst = ctx.commPerf.CommTime(firstLen);
+            const double mmLast = ctx.matmulPerf.MatmulTime(lastLen, ctx.mmRankMul);
+            tCut = commFirst + std::max(tCommN - commFirst, tMm - mmLast) + mmLast;
+        } else {
+            const double mmFirst = ctx.matmulPerf.MatmulTime(firstLen, ctx.mmRankMul);
+            const double commLast = ctx.commPerf.CommTime(lastLen);
+            tCut = mmFirst + std::max(tMm - mmFirst, tCommN - commLast) + commLast;
+        }
+        if (tCut >= tComm1 + tMm) {
+            ctx.tilingM.NoCutTiling();
+        }
+    }
     // §4.37: 按最终切分的实际轮数精算总通信时(N 轮 vs NoCut 候选 1 轮), 差值即切分
-    // 多付的启动税 (N−1)·b——诊断输出供 op 侧日志, 引擎不做再决策
+    // 多付的启动税 (N−1)·b——诊断输出供 op 侧日志
     ctx.commTimeActualUs =
         ctx.commPerf.TotalCommTime(ctx.matmulPerf.mmShapeInfo_.mValue, ctx.tilingM.cutRes.totalTileCnt);
     ctx.commTimeNoCutUs = ctx.commPerf.TotalCommTime(ctx.matmulPerf.mmShapeInfo_.mValue, 1);
