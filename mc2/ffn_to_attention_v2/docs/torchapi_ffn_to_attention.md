@@ -68,7 +68,7 @@
 先用get_buffer_for_ffn_to_attention接口封装输入参数并创建通信上下文（buffer），再调用ffn_to_attention接口进行数据发送。
 
 ```python
-get_buffer_for_ffn_to_attention(group, world_size, token_info_table_shape, token_data_shape) -> FFNToAttentionBuffer
+get_buffer_for_ffn_to_attention(group, world_size, token_info_table_shape, token_data_shape, *, window_addr=None, window_size=None) -> FFNToAttentionBuffer
 ```
 
 ```python
@@ -118,10 +118,22 @@ ffn_to_attention(buffer, x, session_ids, micro_batch_ids, token_ids, expert_offs
         <td>必选</td>
         <td>Token数据表格的shape，长度为4，格式为<code>[microBatchNum, BS, expertNumPerToken, HS]</code>。</td>
     </tr>
+    <tr>
+        <td>window_addr</td>
+        <td>int</td>
+        <td>可选</td>
+        <td>本卡（ffn侧）通信窗口内存的设备地址，与<code>window_size</code>必须成对传入。传入后该内存替代框架内部分配的通信窗口：框架会将其清零一次并注册进通信域，不会分配或释放该内存；调用方需保证该内存在buffer销毁前持续有效。仅channel后端（Ascend950）支持。默认值为None，表示由框架内部分配。</td>
+    </tr>
+    <tr>
+        <td>window_size</td>
+        <td>int</td>
+        <td>可选</td>
+        <td>本卡通信窗口内存大小（Bytes），即ffn侧内存大小，需不小于FFN侧接收<code>attention_to_ffn</code>下发token数据所需的窗口大小（可由attention卡侧<code>get_buffer_for_attention_to_ffn</code>返回buffer的<code>ccl_buffer_size</code>获得）。attention侧内存大小由本接口内部根据<code>token_info_table_shape</code>与<code>token_data_shape</code>自动计算，作为算子<code>ccl_buffer_size</code>（对端attention卡窗口大小），并可从返回buffer的<code>ccl_buffer_size</code>属性读取。默认值为None，表示由框架内部分配。</td>
+    </tr>
 </tbody>
 </table>
 
-该接口返回<code>FFNToAttentionBuffer</code>对象，内部自动计算CCL通信缓冲区大小并创建通信上下文，供<code>ffn_to_attention</code>使用。
+该接口返回<code>FFNToAttentionBuffer</code>对象，内部根据attention侧token shape自动计算attention侧CCL通信缓冲区大小（即对端attention卡通信窗口大小，作为算子<code>ccl_buffer_size</code>属性），并创建通信上下文，供<code>ffn_to_attention</code>使用；传入<code>window_addr</code>/<code>window_size</code>时，本卡通信窗口以该地址和大小注册。本接口与<code>attention_to_ffn</code>共用注册tag以便对端rank查询本卡窗口。
 
 ### ffn_to_attention
 
@@ -231,13 +243,19 @@ ffn_to_attention(buffer, x, session_ids, micro_batch_ids, token_ids, expert_offs
 
 - `ccl_buffer_size`为HBM上分配的CCL通信缓冲区**总大小**（Bytes），由`get_buffer_for_ffn_to_attention`内部自动计算，需满足：
 
-$$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{tokenInfoSize} + \mathrm{tokenDataSize},\ 2\,\mathrm{MB})$$
+$$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{CeilAlign}(\mathrm{CeilAlign}(\mathrm{tokenInfoSize},512) + \mathrm{tokenDataSize},32) + 32\,\mathrm{KiB},\ 2\,\mathrm{MB})$$
 
 其中：
   - `tokenInfoSize = microBatchNum × BS × expertNumPerToken × 4B`
   - `tokenDataSize = microBatchNum × BS × expertNumPerToken × HS × 2B`
 
-该大小由`get_buffer_for_ffn_to_attention`内部自动计算，用户无需自行计算或设置`ccl_buffer_size`。
+该大小由`get_buffer_for_ffn_to_attention`内部自动计算，用户无需自行计算或设置`ccl_buffer_size`。`ccl_buffer_size`描述对端attention卡通信窗口大小；本卡（ffn侧）通信窗口大小由`window_size`指定。
+
+- 自定义通信窗口约束（`window_addr`/`window_size`）：
+    - 两个参数必须成对传入，`window_size`为本卡窗口内存的实际大小（Bytes）。
+    - FFN卡上传入的为ffn侧内存大小，需不小于FFN侧接收`attention_to_ffn`下发数据所需的窗口大小（可由attention卡侧`get_buffer_for_attention_to_ffn`返回buffer的`ccl_buffer_size`获得）；attention侧内存大小由本接口内部计算，可通过返回buffer的`ccl_buffer_size`属性获取。
+    - 窗口内存由调用方管理，需在`buffer.destroy()`之前保持有效；框架仅负责清零一次，不负责分配与释放。
+    - 仅channel后端（Ascend950）支持；同一进程同一group下只应创建一个通信buffer（attn卡创建`attention_to_ffn`的buffer，FFN卡创建`ffn_to_attention`的buffer）。
 
 - 参数说明里shape格式说明：
     - `Y`：表示本卡需要分发的最大token数量。
@@ -311,12 +329,33 @@ $$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{tokenInfoSize} + \mathrm{toke
       token_info_table_shape = [microBatchNum, BS, expertNumPerToken]
       token_data_shape = [microBatchNum, BS, expertNumPerToken, HS]
 
-      # 步骤1：创建通信buffer
+      # 步骤1：准备本卡通信窗口内存并创建通信buffer。
+      # attention卡窗口为attention侧大小（接收ffn_to_attention回传数据）：
+      #   CeilAlign(microBatchNum × BS × expertNumPerToken × (4B + HS × 2B), 2MB)
+      # FFN卡窗口为ffn侧大小（接收attention_to_ffn下发数据，含全部attention worker）：
+      #   CeilAlign(attnWorkerNum × microBatchNum × (infoTableLastDim × 4B
+      #             + BS × expertNumPerToken × HS × 2B), 2MB)
+      # attention侧内存大小由接口内部计算（buffer.ccl_buffer_size）。
+      if rank < ATTENTION_WORKER_NUM:
+          window_size = microBatchNum * BS * expertNumPerToken * (4 + HS * 2)
+      else:
+          # infoTableLastDim与attention_to_ffn的ffn_token_info_table_shape最后一维一致
+          info_table_last_dim = 2 + BS * expertNumPerToken
+          window_size = ATTENTION_WORKER_NUM * microBatchNum * (
+              info_table_last_dim * 4 + BS * expertNumPerToken * H * 2
+          )
+      window_size = (
+          window_size + 2 * 1024 * 1024 - 1
+      ) // (2 * 1024 * 1024) * (2 * 1024 * 1024)
+      # 本卡窗口内存由调用方管理，需在buffer销毁前保持有效
+      window = torch.empty(window_size, dtype=torch.uint8, device="npu")
       buffer = get_buffer_for_ffn_to_attention(
           ep_group,
           WORLD_SIZE,
           token_info_table_shape,
           token_data_shape,
+          window_addr=window_addr,
+          window_size=window_size,
       )
 
       # FFN Worker发送token数据至Attention Worker

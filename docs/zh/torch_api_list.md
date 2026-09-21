@@ -46,6 +46,7 @@
 |[ElasticBuffer](../../mc2/common/docs/torchapi_ElasticBuffer.md)|统一的分布式Engram存储与MoE dispatch/combine通信buffer管理；配套get_engram_storage_size_hint、engram_fetch/engram_fetch_grad等接口。|-|-|
 |[dense_lightning_indexer_softmax_lse](../../attention/dense_lightning_indexer_softmax_lse_v2/docs/torchapi_dense_lightning_indexer_softmax_lse.md)| dense场景DenseLightningIndexerGradKlLoss算子计算Softmax输入的一个分支算子。支持压缩注意力（Compressed Attention），并支持通过metadata前置算子进行分核负载均衡。需与`dense_lightning_indexer_softmax_lse_metadata`配套使用。|-|默认确定性实现|
 |[dense_lightning_indexer_softmax_lse_metadata](../../attention/dense_lightning_indexer_softmax_lse_v2/docs/torchapi_dense_lightning_indexer_softmax_lse.md)| dense_lightning_indexer_softmax_lse接口的前置接口，用于计算dense_lightning_indexer_softmax_lse的负载均衡。|-|默认确定性实现|
+|[ffn_worker_batching](../../ffn/ffn_worker_batching/docs/torchapi_ffn_worker_batching.md)|按专家聚合并重排 Attention 发送的 token，支持 NORM 和同步/异步 RECV。|-|固定输入及就绪快照下确定性计算；异步快照由生产者时序决定。|
 |[flash_attn](../../attention/flash_attn/docs/torchapi_flash_attn.md)| 调用`FlashAttn`算子完成共享KV（Key和Value使用同一份输入）的非量化注意力计算，训练推理归一化。需与`flash_attn_metadata`配套使用。 | - | 默认支持确定性计算  |
 |[flash_attn_grad](../../attention/flash_attn_grad/docs/torchapi_flash_attn_grad.md)| 调用`FlashAttnGrad`算子计算Flash Attention的反向梯度，根据前向`softmax_lse`、`attn_out`和上游梯度`dout`计算`dq`、`dk`、`dv`。需与`flash_attn_metadata`（is_grad_enabled=True）配套使用。 | - | 默认支持确定性计算  |
 |[ffn_to_attention](../../mc2/ffn_to_attention_v2/docs/torchapi_ffn_to_attention.md)| 一个通信域内的FFN节点对Attention节点发送数据并写状态位，以检测通信链路是否正常。 | - | 默认支持确定性计算  |
