@@ -13,6 +13,8 @@
  * \brief
  */
 #include "flash_attention_score_grad_tiling_normal_regbase.h"
+#include <iostream>
+#include <sstream>
 
 using namespace Ops::Transformer::OpTiling;
 
@@ -324,6 +326,88 @@ struct TNDLineDeterPack {
     int64_t rLine = 0;
 };
 
+// Temporary host-side diagnostics. Coordinates are scheduler tiles, before the
+// rectangular-tile split in CalcleDeterParam, not a device execution trace.
+// Mirror CalTNDDenseLine + MapTNDLeftUp/RightDown in arch35/deter.h for paired
+// causal runs only. Single-copy tails and band mappings are not sampled here.
+inline void PrintTNDCausalLinePreview(const FuzzyBaseInfoParamsRegbase &p, const TNDRunShape &shape,
+                                     int64_t runHead, int64_t groupSize, bool leftUp, int64_t roundStart)
+{
+    const int64_t k = static_cast<int64_t>(p.aicNum);
+    const int64_t pairs = p.n2 * groupSize / NUM_TWO;
+    int64_t vm = 0;
+    int64_t vn = 0;
+    if (leftUp) {
+        GetTNDLeftUpVirt(shape.m, shape.n, vm, vn);
+    } else {
+        GetTNDRightDownVirt(shape.m, shape.n, vm, vn);
+    }
+    if (k <= 0 || vm <= 0 || vn <= 0 || pairs <= 0) {
+        return;
+    }
+    const int64_t columns = vn * pairs;
+    const int64_t rounds = CeilDivideBy(columns, k) * vm;
+    const int64_t tailActive = (columns - 1) % k + 1;
+    std::vector<int64_t> samples = {1, 2, vm, vm + 1, rounds - 1, rounds};
+    std::sort(samples.begin(), samples.end());
+    samples.erase(std::unique(samples.begin(), samples.end()), samples.end());
+    std::ostringstream out;
+    out << "[TND_LINE_DEBUG][paired] runHead=" << runHead << " direction=" << (leftUp ? "LEFT_UP" : "RIGHT_DOWN")
+        << " virtualMN=" << vm << ',' << vn << " pairs=" << pairs << " columns=" << columns
+        << " columnGroups=" << CeilDivideBy(columns, k) << " pairRounds=" << rounds
+        << " tailActive=" << tailActive << " tailIdle=" << k - tailActive
+        << " columnSlotUtil=" << static_cast<double>(columns) / (CeilDivideBy(columns, k) * k)
+        << " (before causal masking)\n"
+        << "[TND_LINE_DEBUG][legend] core,batch,head,s1,s2 are 0-based; r is 1-based global scheduler round; "
+           "IDLE=no virtual column; MASKED=invalid causal tile; paired rounds only\n";
+    for (int64_t core = 0; core < k; ++core) {
+        out << "[TND_LINE_DEBUG][core] runHead=" << runHead << " core=" << core;
+        for (const int64_t r : samples) {
+            if (r < 1 || r > rounds) {
+                continue;
+            }
+            out << " r=" << roundStart + r << ':';
+            const int64_t column = ((r - 1) / vm) * k + core + 1;
+            if (column > columns) {
+                out << "IDLE";
+                continue;
+            }
+            const int64_t pair = (column - 1) / vn + 1;
+            int64_t y = (column - 1) % vn + 1;
+            int64_t x = (y + r - 2) % vm + 1;
+            int64_t copy = NUM_TWO * pair - 1;
+            if (leftUp) {
+                if (x > shape.m) {
+                    y = shape.n + 1 - y;
+                    x = NUM_TWO * shape.m + 1 - x;
+                    copy = NUM_TWO * pair;
+                } else if (x < y) {
+                    y = shape.n + 1 - y;
+                    x = shape.n - x;
+                    copy = NUM_TWO * pair;
+                }
+            } else if (y >= x + shape.n + 1 - shape.m + 1) {
+                y = NUM_TWO * (shape.n + 1) - shape.m - y + NUM_TWO;
+                x = shape.m + 1 - x;
+                copy = NUM_TWO * pair;
+            }
+            const int64_t maxY = leftUp ? x : x + shape.n - shape.m + 1;
+            if (x < 1 || x > shape.m || y < 1 || y > shape.n || y > maxY) {
+                out << "MASKED";
+                continue;
+            }
+            const int64_t batch = runHead + (copy - 1) / p.n2;
+            int64_t rawM = 0;
+            int64_t rawN = 0;
+            GetTNDOuterMN(p, batch, rawM, rawN);
+            const int64_t rowShift = leftUp ? 0 : GetTNDRightDownRowShift(rawM, rawN);
+            out << '(' << batch << ',' << (copy - 1) % p.n2 << ',' << x + rowShift - 1 << ',' << y - 1 << ')';
+        }
+        out << '\n';
+    }
+    std::cout << out.str() << std::flush;
+}
+
 inline TNDLineDeterPack BuildTNDLineDeter(FuzzyBaseInfoParamsRegbase &p)
 {
     TNDLineDeterPack pack;
@@ -368,6 +452,15 @@ inline TNDLineDeterPack BuildTNDLineDeter(FuzzyBaseInfoParamsRegbase &p)
             }
         }
         const int64_t soloEnd = prefixSolo.back() + runSolo;
+        std::cout << "[TND_LINE_DEBUG][run] batchBegin=" << i << " batchEnd=" << i + groupSize - 1
+                  << " mn=" << shape.m << ',' << shape.n << " bandPQ=" << shape.p << ',' << shape.q
+                  << " kind=" << static_cast<int>(shape.kind) << " copies=" << total << " pairs=" << runPairs
+                  << " singleTail=" << runHasSingle << " roundBegin=" << prefixSolo.back() + 1
+                  << " roundEnd=" << soloEnd << " rounds=" << runSolo
+                  << " preview=" << (isBand ? "not_sampled_band" : "paired_causal") << std::endl;
+        if (!isBand && !TNDRunEmpty(shape, isBand)) {
+            PrintTNDCausalLinePreview(p, shape, i, groupSize, leftUp, prefixSolo.back());
+        }
         for (int64_t runIdx = 0; runIdx < groupSize; ++runIdx) {
             prefixSolo.push_back(soloEnd);
         }
@@ -436,8 +529,22 @@ protected:
         std::fill(std::begin(fBaseParams.deterPrefix2), std::end(fBaseParams.deterPrefix2), static_cast<int64_t>(0));
         fBaseParams.tndLineDeter = 0;
 
-        if (PreferTNDLineDeter(fBaseParams)) {
+        const bool preferLine = PreferTNDLineDeter(fBaseParams);
+        std::cout << "[TND_LINE_DEBUG][select] aicNum=" << fBaseParams.aicNum
+                  << " coreNum=" << fBaseParams.coreNum << " b=" << fBaseParams.b << " n2=" << fBaseParams.n2
+                  << " g=" << fBaseParams.g << " d=" << fBaseParams.d << " sparseMode=" << fBaseParams.sparseMode
+                  << " deterSparseType=" << static_cast<int>(fBaseParams.deterSparseType)
+                  << " schedulerTile=" << fBaseParams.s1Inner * fBaseParams.s1CvRatio << ','
+                  << fBaseParams.s2Inner * fBaseParams.s2CvRatio << " prefixStep=" << fBaseParams.deterPrefixStep
+                  << " selected=" << (preferLine ? "LINE" : "LEGACY") << std::endl;
+        for (int64_t bIdx = 0; bIdx < fBaseParams.b; ++bIdx) {
+            std::cout << "[TND_LINE_DEBUG][seq] batch=" << bIdx << " q=" << fBaseParams.actualSeqQlen[bIdx]
+                      << " kv=" << fBaseParams.actualSeqKvlen[bIdx] << std::endl;
+        }
+        if (preferLine) {
             ApplyTNDLineDeterParam(fBaseParams, BuildTNDLineDeter(fBaseParams));
+            std::cout << "[TND_LINE_DEBUG][schedule] selected=LINE roundsBeforeTileSplit="
+                      << fBaseParams.deterMaxRound << std::endl;
             OP_LOGD("CalcleTNDDeterParam", "TND deterMaxRound is %ld.", fBaseParams.deterMaxRound);
             return;
         }
@@ -445,6 +552,8 @@ protected:
         CalcleTNDDenseDeterParam();
         CalcleTNDCausalDeterParam();
         CalcleTNDBandDeterParam();
+        std::cout << "[TND_LINE_DEBUG][schedule] selected=LEGACY roundsBeforeTileSplit="
+                  << fBaseParams.deterMaxRound << std::endl;
         OP_LOGD("CalcleTNDDeterParam", "TND deterMaxRound is %ld.", fBaseParams.deterMaxRound);
     }
 

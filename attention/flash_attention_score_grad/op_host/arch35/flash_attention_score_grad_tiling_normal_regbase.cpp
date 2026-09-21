@@ -13,6 +13,7 @@
  * \brief
  */
 #include "flash_attention_score_grad_tiling_normal_regbase.h"
+#include <iostream>
 #include "op_host/tiling_templates_registry.h"
 #include "op_host/tiling_type.h"
 #include "err/ops_err.h"
@@ -1397,6 +1398,15 @@ void FlashAttentionScoreGradTilingNormalRegbase::CalcleDeterParam()
         fBaseParams.s1Inner = s1Inner;
         fBaseParams.s2Inner = s2Inner;
         fBaseParams.deterMaxRound *= NUM_TWO;
+    }
+    if (fBaseParams.layoutType == INPUT_FORMAT_TND) {
+        std::cout << "[TND_LINE_DEBUG][final] aicNum=" << fBaseParams.aicNum
+                  << " selectedLine=" << static_cast<int>(fBaseParams.tndLineDeter)
+                  << " tileSplitMode=" << static_cast<int>(deterTilingSplitMode)
+                  << " roundMultiplier=" << ((needChangeSplitItemMode1 || needChangeSplitItemMode2) ? 2 : 1)
+                  << " kernelTile=" << fBaseParams.s1Inner * fBaseParams.s1CvRatio << ','
+                  << fBaseParams.s2Inner * fBaseParams.s2CvRatio
+                  << " finalRounds=" << fBaseParams.deterMaxRound << std::endl;
     }
     // 还原eod
     fBaseParams.b = oriBsize;
