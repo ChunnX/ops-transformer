@@ -92,7 +92,7 @@ void SetTilingParam(CoCTiling &cocTilingData, const std::map<int *, TilingValue>
         auto value = item.second.value;
         const auto &conditionMap = item.second.conditionMap;
         if (!conditionMap.empty()) {
-            *item.first = mc2tiling::GetValueFromMknConditionMap(m, k, n, value, conditionMap);
+            *item.first = mc2tiling::GetValueFromMKNConditionMap(m, k, n, value, conditionMap);
         } else if (value != -1) {
             *item.first = value;
         }
@@ -351,8 +351,7 @@ static ge::graphStatus AllGatherMatmulAIVModeCheckShapeAndSetTiling(const gert::
 }
 
 static ge::graphStatus AllGatherMatmulAIVModeGetPlatformInfoAndSetTiling(const gert::TilingContext *context,
-                                                                         AllGatherMatmulAIVModeInfo &info,
-                                                                         CoCTiling &coctiling)
+                                                                         AllGatherMatmulAIVModeInfo &info)
 {
     const auto platformInfo = mc2tiling::GetAivPlatformInfo(context);
     info.aivNum = platformInfo.aivNum;
@@ -464,7 +463,8 @@ bool SetTilingDataA3(CoCTiling &cocTilingData, const AllGatherMatmulAIVModeInfo 
     return false;
 }
 
-bool SetTilingDataA2(CoCTiling &cocTilingData, AllGatherMatmulAIVModeInfo &info, int64_t rankSize, bool isInt4Type)
+bool SetTilingDataA2(CoCTiling &cocTilingData, const AllGatherMatmulAIVModeInfo &info, int64_t rankSize,
+                     bool isInt4Type)
 {
     if (rankSize == RANKSIZE_TWO && info.quantFlag) {
         AllGatherV2MatmulNPU910BTwoRankINT8Tiling(cocTilingData);
@@ -525,16 +525,16 @@ ge::graphStatus AllGatherMatmulTilingAIVModeFunc(gert::TilingContext *context)
     OP_TILING_CHECK(AllGatherMatmulAIVModeCheckShapeAndSetTiling(context, info, coctiling) != ge::GRAPH_SUCCESS,
                     OP_LOGE(context->GetNodeName(), "AllGatherMatmulAIVMode CheckAttrAndSetTiling Failed"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(AllGatherMatmulAIVModeGetPlatformInfoAndSetTiling(context, info, coctiling) != ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(AllGatherMatmulAIVModeGetPlatformInfoAndSetTiling(context, info) != ge::GRAPH_SUCCESS,
                     OP_LOGE(context->GetNodeName(), "AllGatherMatmulAIVMode GetPlatformInfoAndSetTiling Failed"),
                     return ge::GRAPH_FAILED);
 
     auto attrs = context->GetAttrs();
     auto group = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_GROUP_INDEX));
     const char *opName = context->GetNodeName();
-    OP_TILING_CHECK(
-        mc2tiling::ValidateCclBufferSizeIfAvailable(group, opName, CCL_BUFFER_MIN_BYTES) != ge::GRAPH_SUCCESS,
-        OP_LOGE(opName, "Check CCL buffer size failed"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(mc2tiling::CheckHcclBuffSize(context, ATTR_GROUP_INDEX, static_cast<int32_t>(CCL_BUFFER_MIN_BYTES),
+                                                 opName) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(opName, "Check CCL buffer size failed"), return ge::GRAPH_FAILED);
     int64_t rankSize = 0;
     mc2tiling::GetRankSize(opName, group, rankSize);
     coctiling.rankSize = rankSize;

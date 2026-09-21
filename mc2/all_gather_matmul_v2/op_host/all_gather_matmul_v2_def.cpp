@@ -152,7 +152,7 @@ private:
         this->Attr("comm_mode").AttrType(REQUIRED).String("ai_cpu");
     }
 
-    void DefineAicoreConfig910bRequiredInputs(OpAICoreConfig &aicore_config_910b)
+    void DefineAicoreConfig910bRequiredInputs(OpAICoreConfig &aicore_config_910b) const
     {
         aicore_config_910b.Input("x1")
             .ParamType(REQUIRED)
@@ -176,7 +176,7 @@ private:
             .IgnoreContiguous();
     }
 
-    void DefineAicoreConfig910bOptionalInputs(OpAICoreConfig &aicore_config_910b)
+    void DefineAicoreConfig910bOptionalInputs(OpAICoreConfig &aicore_config_910b) const
     {
         aicore_config_910b.Input("bias")
             .ParamType(OPTIONAL)
@@ -216,7 +216,7 @@ private:
                                  ge::FORMAT_ND, ge::FORMAT_ND});
     }
 
-    void DefineAicoreConfig910bOutputs(OpAICoreConfig &aicore_config_910b)
+    void DefineAicoreConfig910bOutputs(OpAICoreConfig &aicore_config_910b) const
     {
         aicore_config_910b.Output("y")
             .ParamType(REQUIRED)

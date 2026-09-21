@@ -12,28 +12,10 @@
 #define MC2_MATMUL_AIV_MODE_COMMON_H
 
 #include <cstdint>
-#include <map>
-#include <vector>
 
 #include "exe_graph/runtime/tiling_context.h"
 
 namespace mc2tiling {
-
-struct MknRange {
-    int32_t mStart;
-    int32_t mEnd;
-    int32_t kStart;
-    int32_t kEnd;
-    int32_t nStart;
-    int32_t nEnd;
-
-    bool Contains(int32_t m, int32_t k, int32_t n) const;
-};
-
-using MknConditionMap = std::map<int32_t, std::vector<MknRange>>;
-
-int32_t GetValueFromMknConditionMap(int32_t m, int32_t k, int32_t n, int32_t defaultValue,
-                                    const MknConditionMap &conditionMap);
 
 struct AivPlatformInfo {
     uint32_t aivNum;
@@ -48,8 +30,6 @@ struct AivScaleDtypeResult {
 };
 
 AivScaleDtypeResult CheckAivMatmulScaleDtype(const gert::Tensor *scale, ge::DataType outputType);
-
-ge::graphStatus ValidateCclBufferSizeIfAvailable(const char *group, const char *opName, uint64_t minBufferSize);
 
 } // namespace mc2tiling
 

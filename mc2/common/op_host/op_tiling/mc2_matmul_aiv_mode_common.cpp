@@ -10,29 +10,9 @@
 
 #include "mc2_matmul_aiv_mode_common.h"
 
-#include "mc2_log.h"
-#include "mc2_tiling_utils.h"
 #include "platform/platform_ascendc.h"
 
 namespace mc2tiling {
-
-bool MknRange::Contains(int32_t m, int32_t k, int32_t n) const
-{
-    return m > mStart && m <= mEnd && k > kStart && k <= kEnd && n > nStart && n <= nEnd;
-}
-
-int32_t GetValueFromMknConditionMap(int32_t m, int32_t k, int32_t n, int32_t defaultValue,
-                                    const MknConditionMap &conditionMap)
-{
-    for (const auto &item : conditionMap) {
-        for (const auto &range : item.second) {
-            if (range.Contains(m, k, n)) {
-                return item.first;
-            }
-        }
-    }
-    return defaultValue;
-}
 
 AivPlatformInfo GetAivPlatformInfo(const gert::TilingContext *context)
 {
@@ -50,20 +30,6 @@ AivScaleDtypeResult CheckAivMatmulScaleDtype(const gert::Tensor *scale, ge::Data
     const auto scaleType = scale->GetDataType();
     const bool isInt64 = outputType == ge::DT_FLOAT16 && scaleType == ge::DT_INT64;
     return {scaleType == ge::DT_FLOAT || isInt64, isInt64};
-}
-
-ge::graphStatus ValidateCclBufferSizeIfAvailable(const char *group, const char *opName, uint64_t minBufferSize)
-{
-    uint64_t cclBufferSize = 0ULL;
-    if (GetCclBufferSize(group, &cclBufferSize, opName) != ge::GRAPH_SUCCESS) {
-        OP_LOGW(opName, "Can't get HCCL_BUFFSIZE, skip CCL buffer size validation.");
-        return ge::GRAPH_SUCCESS;
-    }
-    OP_TILING_CHECK(
-        cclBufferSize < minBufferSize,
-        OP_LOGE(opName, "HCCL_BUFFSIZE (%lu Bytes) too small, min required %lu Bytes", cclBufferSize, minBufferSize),
-        return ge::GRAPH_FAILED);
-    return ge::GRAPH_SUCCESS;
 }
 
 } // namespace mc2tiling

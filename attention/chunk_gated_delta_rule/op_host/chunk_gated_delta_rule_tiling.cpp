@@ -74,6 +74,7 @@ void ChunkGatedDeltaRuleTiling::InitCompileInfo()
     compileInfo_.aivNum = ascendcPlatform.GetCoreNumAiv();
     compileInfo_.aicNum = ascendcPlatform.GetCoreNumAic();
     socVersion_ = ascendcPlatform.GetSocVersion();
+    npuArch_ = ascendcPlatform.GetCurNpuArch();
 
     if (compileInfo_.aivNum <= 0 || compileInfo_.aicNum <= 0) {
         OP_LOGE(context_->GetNodeName(), "aivNum <= 0 or aicNum <= 0");
@@ -143,7 +144,7 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoOpTiling()
     tilingData_.interWorkspaceSz += sizeLow * nv * s * c;  // qkt (BF16)
     if (tilingData_.stateIsFp32) {
         tilingData_.interWorkspaceSz += sizeLow * nv * dv * dk; // stateBf16Wk (BF16, arch35)
-    } else if (socVersion_ != platform_ascendc::SocVersion::ASCEND950) {
+    } else if (npuArch_ != NpuArch::DAV_3510) {
         tilingData_.interWorkspaceSz +=
             sizeHigh * tilingData_.b * nv * dv * dk; // highState_ (arch22: kernel unconditionally advances offset)
     }
@@ -230,7 +231,7 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoMatmulTiling()
 
 ge::graphStatus ChunkGatedDeltaRuleTiling::DoLibApiTiling()
 {
-    if (socVersion_ == platform_ascendc::SocVersion::ASCEND950) {
+    if (npuArch_ == NpuArch::DAV_3510) {
         tilingKey_ = (tilingData_.stateIsFp32 ? 1UL : 0UL) + (tilingData_.hasGamma != 0 ? 10UL : 0UL);
     } else {
         tilingKey_ = 0UL;
@@ -362,7 +363,7 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::AnalyzeDtype()
     OP_CHECK_IF(stateDtype != ge::DT_BF16 && stateDtype != ge::DT_FLOAT,
                 OP_LOGE(context_->GetNodeName(), "initial_state dtype should be bfloat16 or float32"),
                 return ge::GRAPH_FAILED);
-    if (stateDtype == ge::DT_FLOAT && socVersion_ != platform_ascendc::SocVersion::ASCEND950) {
+    if (stateDtype == ge::DT_FLOAT && npuArch_ != NpuArch::DAV_3510) {
         OP_LOGE(context_->GetNodeName(), "FP32 initial_state is only supported on Ascend950");
         return ge::GRAPH_FAILED;
     }
