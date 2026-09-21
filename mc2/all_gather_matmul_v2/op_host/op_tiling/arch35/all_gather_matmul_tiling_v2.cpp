@@ -143,13 +143,16 @@ CutResult AllGatherMatmulTilingV2::GetTilingResult()
     } else {
         result = GetCutResByCoreOccupancyFirst(&baseM);
     }
-    if (commEngine == TilingCommEngine::CCU) {
-        CommSizeInfo commSize{args_.kValue, args_.inputDtypeSize, args_.rankDim};
-        AdjustCutResultForCCU(result, args_.mValue, commSize, opName_);
-    } else if (!kUseNewEngine) {
-        // 旧代码原样保留(§4.37): AICPU 限轮后处理仅回退老类路径时执行——新引擎已由切分
-        // 收益门控(每轮启动开销 b 入模型)统一裁决轮数, 不再消费此补丁
-        AdjustCutResultForAICPU(result, args_.mValue, baseM, opName_);
+    if (!kUseNewEngine) {
+        // 旧代码原样保留(§4.37 只新增不删除裁定): 回退老类路径的调用点后处理完整保留。
+        // 新引擎路径已由引擎内键控分支接替——CCU=Schedule ⑥ 单轮 256MB 上限整形
+        // (ApplySingleRoundCommLimit); AICPU=切分收益门控裁决轮数(b 已入模型)
+        if (commEngine == TilingCommEngine::CCU) {
+            CommSizeInfo commSize{args_.kValue, args_.inputDtypeSize, args_.rankDim};
+            AdjustCutResultForCCU(result, args_.mValue, commSize, opName_);
+        } else {
+            AdjustCutResultForAICPU(result, args_.mValue, baseM, opName_);
+        }
     }
 
     return result;

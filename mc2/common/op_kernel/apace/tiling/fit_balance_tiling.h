@@ -785,6 +785,7 @@ struct FitBasedBalanceCtx {
     CutPlanner tilingM;
     CommPrimitive commPrimitive; // 键控维度: 通信原语
     CommComputeOrder order;      // 键控维度: 通算顺序
+    TilingCommEngine commEngine; // 键控维度: 通信引擎(CCU 专属的单轮通信量上限整形)
     uint64_t commRankCntForMm = 1; // 派生: commPerf.commRankCntForMm_(mm 工作集 rank 份数, 取值表见模型成员注释)
     uint64_t mmRankMul = 1;     // 派生: MmRankMul(ctx)(本卡 mm 总行数的 rank 倍数, 见该函数注释)
     double ratioCalcComm = 1.0; // 过程量: Estimate 骨干设置的通算比(键控分支消费)
@@ -908,6 +909,7 @@ inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, CommPrimitiv
                            CutPlanner(args),
                            commPrimitive,
                            order,
+                           commEngine,
                            1,
                            1,
                            1.0};
@@ -1050,6 +1052,68 @@ inline void ApplySmallShapeMinLen(CutPlanner &tilingM, FitBasedBalanceCtx &ctx)
     }
 }
 
+// 单轮通信量上限整形(CCU 键, §4.37: 自 AGMM 调用点 AdjustCutResultForCCU 四函数链迁入合并):
+// HCCL 单次通信调用有 256MB 上限——单块通信量(块长×单行通信字节)超过时按候选表
+// {2048,1024,512,256}(大块优先=少轮次)等长重切, 尾块吸收余数, 完全覆盖长短结构
+// (超限属极端大 shape, 约束满足优先); 轮次预算 = MAX_COMM_ROUNDS−1(1 轮保留给 scale
+// 通道通信, AGMM quant 语义, 与老 HCCL_MAX_TOTAL_TILES=62 一致)。
+// 量级安全: 块长×单行字节 ≤ 1e6×5e5 = 5e11 << uint64 上限, 免老代码三段溢出回检;
+// 两约束(256MB/轮次预算)冲突时放弃整形保持原切分(老代码 UNSUPPORTED 路径)。
+inline void ApplySingleRoundCommLimit(CutPlanner &tilingM, const HCCLCommModel &commPerf, uint64_t mValue)
+{
+    constexpr uint64_t MAX_ROUND_COMM_BYTES = 268435456;               // HCCL 单次调用通信量上限 (256MB)
+    constexpr uint64_t TILE_LEN_CANDIDATES[] = {2048, 1024, 512, 256}; // 等长重切候选(大值优先=少轮次)
+    constexpr uint64_t CANDIDATE_ALIGN = 256;                          // 候选全超限时的兜底对齐粒度
+    // 单行通信字节数 = 通信矩阵另一维 × 每元素字节 / 子字节折算 × 通信数据卡份数(与 CommTime 同口径;
+    // fp4 时=矩阵另一维×卡数/2, 与老调用点 kValue/2×dtypeSize=1 的折算口径等价)
+    const uint64_t rowBytes = commPerf.commTypeInfo_.commMatrixLen * commPerf.commTypeInfo_.commDtypeSize *
+                              commPerf.commRankCnt_ / commPerf.commTypeInfo_.commDtypeSizeExpansionFraction;
+    if (rowBytes == 0) {
+        return; // 防御: 单行为零无法约束
+    }
+    if (tilingM.cutRes.longTileLen * rowBytes <= MAX_ROUND_COMM_BYTES) {
+        return; // 未超限: 保持长短配平结构
+    }
+    const uint64_t maxTileLen = MAX_ROUND_COMM_BYTES / rowBytes; // 满足上限的最大块长
+    if (maxTileLen < CANDIDATE_ALIGN) {
+        return; // 单行通信量过大, 任何对齐块都超限——放弃整形
+    }
+    // 优选候选(降序第一个 ≤ maxTileLen); 全部超限则 floor 对齐兜底
+    uint64_t tileLen = 0;
+    for (const uint64_t cand : TILE_LEN_CANDIDATES) {
+        if (cand <= maxTileLen) {
+            tileLen = cand;
+            break;
+        }
+    }
+    if (tileLen == 0) {
+        tileLen = maxTileLen / CANDIDATE_ALIGN * CANDIDATE_ALIGN;
+    }
+    // 轮次预算: 候选块太小块数超预算时, 反向取满足预算的最小块(仍优先候选表, 降序第一个 ≥)
+    const uint64_t roundsBudget = MAX_COMM_ROUNDS - 1;
+    if ((mValue + tileLen - 1) / tileLen > roundsBudget) {
+        const uint64_t minLen =
+            ((mValue + roundsBudget - 1) / roundsBudget + CANDIDATE_ALIGN - 1) / CANDIDATE_ALIGN * CANDIDATE_ALIGN;
+        uint64_t pick = minLen;
+        for (const uint64_t cand : TILE_LEN_CANDIDATES) {
+            if (cand >= minLen) {
+                pick = cand;
+                break;
+            }
+        }
+        if (pick > maxTileLen) {
+            return; // 256MB 上限与轮次预算冲突——放弃整形
+        }
+        tileLen = pick;
+    }
+    // 等长重切(mValue > maxTileLen ≥ tileLen 保证主块数 ≥ 1): 主块等长 + 尾块余数, 短块位置保持
+    tilingM.cutRes.longTileLen = tileLen;
+    tilingM.cutRes.numLongTile = mValue / tileLen;
+    tilingM.cutRes.shortTileLen = mValue - tilingM.cutRes.numLongTile * tileLen;
+    tilingM.cutRes.numShortTile = (tilingM.cutRes.shortTileLen > 0) ? 1 : 0;
+    tilingM.cutRes.totalTileCnt = tilingM.cutRes.numLongTile + tilingM.cutRes.numShortTile;
+}
+
 // 键控维度: isAg = (通信原语 == ALL_GATHER)。AG 语义——本卡 A 块已在手:
 // 首块计算无通信依赖(E5), 长块通信掩盖的是本地首轮计算而非短块(E19), 短块恒后置(E4)
 inline CommCutResult Schedule(FitBasedBalanceCtx &ctx)
@@ -1126,6 +1190,12 @@ inline CommCutResult Schedule(FitBasedBalanceCtx &ctx)
             ctx.tilingM.NoCutTiling();
         }
     }
+
+    // ---- ⑥ 单轮通信量上限整形(CCU 键, §4.37): HCCL 单次调用 256MB 上限, 超限块等长重切 ----
+    if (ctx.commEngine == TilingCommEngine::CCU) {
+        ApplySingleRoundCommLimit(ctx.tilingM, ctx.commPerf, ctx.matmulPerf.mmShapeInfo_.mValue);
+    }
+
     // §4.37: 按最终切分的实际轮数精算总通信时(N 轮 vs NoCut 候选 1 轮), 差值即切分
     // 多付的启动税 (N−1)·b——诊断输出供 op 侧日志
     ctx.commTimeActualUs =

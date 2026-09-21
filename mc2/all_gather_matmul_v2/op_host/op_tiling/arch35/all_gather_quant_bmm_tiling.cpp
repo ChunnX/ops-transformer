@@ -794,12 +794,16 @@ CutResult AllGatherQuantBmmTiling::GetTilingResult()
         inputDtypeSize = 1;
     }
 
-    if (commEngine == TilingCommEngine::CCU) {
-        CommSizeInfo commSize{kValue, inputDtypeSize, args_.rankDim};
-        AdjustCutResultForCCU(result, args_.mValue, commSize, opName_);
-    } else if (!kUseNewEngine) {
-        // 旧代码原样保留(§4.37): AICPU 限轮后处理仅回退老类路径时执行
-        AdjustCutResultForAICPU(result, args_.mValue, baseM, opName_);
+    if (!kUseNewEngine) {
+        // 旧代码原样保留(§4.37 只新增不删除裁定): 回退老类路径的调用点后处理完整保留
+        // (fp4 折算口径 kValue/2+dtypeSize=1 与引擎 rowBytes 的子字节折算等价);
+        // 新引擎路径由引擎内键控分支接替(CCU=⑥ 整形, AICPU=切分收益门控)
+        if (commEngine == TilingCommEngine::CCU) {
+            CommSizeInfo commSize{kValue, inputDtypeSize, args_.rankDim};
+            AdjustCutResultForCCU(result, args_.mValue, commSize, opName_);
+        } else {
+            AdjustCutResultForAICPU(result, args_.mValue, baseM, opName_);
+        }
     }
 
     return result;
