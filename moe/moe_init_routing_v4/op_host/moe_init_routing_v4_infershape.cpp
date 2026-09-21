@@ -882,8 +882,7 @@ static ge::DataType DetermineOutputDtypes(const gert::InferDataTypeContext *cont
     } else if (QuantMode::FP8_GROUP_E4M3FN == quantMode || QuantMode::FP8_GROUP_AMAX_E4M3FN == quantMode) {
         expandedXDtype = ge::DT_FLOAT8_E4M3FN;
         expandedScaleDtype = ge::DT_FLOAT;
-    } else if (QuantMode::HIF8_CAST == quantMode || QuantMode::HIF8_PERTENSOR == quantMode ||
-               QuantMode::HIF8_PERTOKEN == quantMode) {
+    } else if (QuantMode::HIF8_CAST == quantMode) {
         expandedXDtype = ge::DT_HIFLOAT8;
     } else if (QuantMode::MXQUANT_FP4_E2M1 == quantMode) {
         expandedXDtype = ge::DT_FLOAT4_E2M1;

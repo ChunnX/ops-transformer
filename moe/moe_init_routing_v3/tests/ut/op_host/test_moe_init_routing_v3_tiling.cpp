@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -1550,7 +1550,7 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_counting_sort_fullload
 }
 
 // 用例3: 触发 ep_==0 路径（expert_range=[0, expertNum] 全量专家）
-// 覆盖 ep_==0 全量专家场景（kernel 统一走掩码过滤路径）
+// 覆盖 FilterAndCountChunked 中 ep_==0 的快速路径（不过滤）
 TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_counting_sort_ep_zero)
 {
     optiling::MoeInitRoutingV3CompileInfo compileInfo = {40, 65536};
