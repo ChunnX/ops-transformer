@@ -270,7 +270,16 @@ def run_metadata(arguments, metadata):
     )
 
 
-def run(q, *, ori_kv=None, cmp_kv=None, metadata=None, quant_mode=None, **kwargs):
+def run(
+    q,
+    *,
+    ori_kv=None,
+    cmp_kv=None,
+    metadata=None,
+    quant_mode=None,
+    _metadata_target=None,
+    **kwargs,
+):
     """Generate metadata dynamically, or fill an existing static placeholder."""
     if quant_mode is None:
         raise ValueError("MixedQuantSparseFlashMla npu_preprocess requires quant_mode")
@@ -292,7 +301,8 @@ def run(q, *, ori_kv=None, cmp_kv=None, metadata=None, quant_mode=None, **kwargs
         source,
         force_metadata_refresh,
     )
-    generated = run_metadata(arguments, metadata if metadata is not None else q)
+    target = metadata if metadata is not None else _metadata_target
+    generated = run_metadata(arguments, target if target is not None else q)
     if metadata is None:
         return {"metadata": generated}
     if tuple(metadata.shape) != tuple(generated.shape):
@@ -317,10 +327,13 @@ def run_aclnn(*args, **kwargs):
         )
     values = dict(zip(ACLNN_PARAMETER_NAMES, args))
     host_metadata = values["metadata"]
-    metadata = move_to_device(host_metadata, torch.empty(0, device="npu"))
+    metadata_target = torch.empty(0, device="npu")
+    metadata = move_to_device(host_metadata, metadata_target)
     values["metadata"] = metadata
     q = values.pop("q")
-    result = run(q, **values, **kwargs)
+    result = run(q, _metadata_target=metadata_target, **values, **kwargs)
+    if host_metadata is None:
+        return {"metadataOptional": result["metadata"]}
     if torch.is_tensor(host_metadata):
         if host_metadata.device != metadata.device:
             host_metadata.copy_(

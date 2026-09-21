@@ -13,8 +13,8 @@
 
 This module is intentionally independent from TTK.  The framework passes the
 main API arguments after H2D; this hook invokes the companion torch operator
-``quant_flash_attn_metadata``.  A static placeholder is updated in place,
-while a dynamic TTK slot is returned to the framework for argument patching.
+``quant_flash_attn_metadata`` and updates ``metadata`` in place.  Profiling and
+result handling remain in TTK, and the hook always returns ``None``.
 
 The metadata construction was extracted from the two-phase ``npu_*_fa`` golden
 implementations (``npu_mxfp8_fa`` / ``npu_gqa_fp8_fa`` / ``npu_hif8_fa``) that
@@ -251,12 +251,14 @@ def run(
     return_softmax_lse=False,
     **kwargs,
 ):
-    """Generate metadata dynamically, or fill an existing static placeholder.
+    """Generate and copy metadata for a main QuantFlashAttn invocation.
 
     Signature mirrors ``torch.ops.cann_ops_transformer.quant_flash_attn`` so TTK
     delivers the op-schema-ordered positional args; extra sidecar attributes
     (batch_size / N_q / N_kv / D / head_dim_v / *_values ...) arrive via kwargs.
     """
+    if metadata is None:
+        raise ValueError("QuantFlashAttn npu_preprocess requires metadata")
     if quant_mode is None:
         quant_mode = get_attribute(kwargs, "quant_mode", 1)
     # 位置标量参数桥接进 kwargs, 供 build_metadata_arguments 统一读取。
@@ -284,9 +286,7 @@ def run(
         seqused_kv,
         hook_kwargs,
     )
-    generated = run_metadata(arguments, metadata if metadata is not None else q)
-    if metadata is None:
-        return {"metadata": generated}
+    generated = run_metadata(arguments, metadata)
     if tuple(metadata.shape) != tuple(generated.shape):
         raise ValueError(
             "QuantFlashAttn metadata shape mismatch: "

@@ -209,6 +209,7 @@ def run(
     seqused_k=None,
     cmp_residual_k=None,
     metadata=None,
+    _metadata_target=None,
     max_seqlen_q=-1,
     layout_q="BSND",
     layout_k="BSND",
@@ -256,7 +257,8 @@ def run(
         source,
         force_metadata_refresh,
     )
-    generated = run_metadata(arguments, metadata if metadata is not None else q)
+    target = metadata if metadata is not None else _metadata_target
+    generated = run_metadata(arguments, target if target is not None else q)
     if metadata is None:
         return {"metadata": generated}
     if tuple(metadata.shape) != tuple(generated.shape):
@@ -281,16 +283,20 @@ def run_aclnn(*args, **kwargs):
         )
     values = dict(zip(ACLNN_PARAMETER_NAMES, args))
     host_metadata = values["metadata"]
-    metadata = move_to_device(host_metadata, torch.empty(0, device="npu"))
+    metadata_target = torch.empty(0, device="npu")
+    metadata = move_to_device(host_metadata, metadata_target)
     values["metadata"] = metadata
     result = run(
         values.pop("q"),
         values.pop("k"),
         values.pop("w"),
         values.pop("topk"),
+        _metadata_target=metadata_target,
         **values,
         **kwargs,
     )
+    if host_metadata is None:
+        return {"metadataOptional": result["metadata"]}
     if torch.is_tensor(host_metadata):
         if host_metadata.device != metadata.device:
             host_metadata.copy_(
