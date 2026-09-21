@@ -51,8 +51,8 @@ class GeneralizedQSLI:
             raise ValueError("QSLI golden supports quant_mode=1 only")
         if candidate_block_size != self.CANDIDATE_BLOCK_SIZE:
             raise ValueError("candidate_block_size must be 8")
-        if layout_q != "TND" or layout_k != "PA_BBND":
-            raise ValueError("QSLI golden requires TND and PA_BBND layouts")
+        if layout_q != "TND" or layout_k not in ("PA_BBND", "TND"):
+            raise ValueError("QSLI golden requires TND queries and PA_BBND or TND keys")
         if mask_mode not in (0, 3):
             raise ValueError("mask_mode must be 0 or 3")
         if not 1 <= cmp_ratio <= 128:
@@ -62,6 +62,7 @@ class GeneralizedQSLI:
         self.mask_mode = int(mask_mode)
         self.cmp_ratio = int(cmp_ratio)
         self.return_value = bool(return_value)
+        self.layout_k = layout_k
 
     @staticmethod
     def _unpack_mxfp4(packed: torch.Tensor) -> torch.Tensor:
@@ -99,7 +100,7 @@ class GeneralizedQSLI:
     @classmethod
     def _decode_k(cls, k: torch.Tensor, descale_k: torch.Tensor) -> torch.Tensor:
         values = cls._unpack_mxfp4(k)
-        scale = cls._decode_e8m0(descale_k).reshape(*k.shape[:3], 4)
+        scale = cls._decode_e8m0(descale_k).reshape(*k.shape[:-1], 4)
         scale = scale.repeat_interleave(cls.GROUP_SIZE, dim=-1)
         return values * scale
 
@@ -139,6 +140,7 @@ class GeneralizedQSLI:
         q: torch.Tensor,
         k: torch.Tensor,
         cu_seqlens_q: Optional[torch.Tensor],
+        cu_seqlens_k: Optional[torch.Tensor],
         seqused_q: Optional[torch.Tensor],
         seqused_k: Optional[torch.Tensor],
         cmp_residual_k: Optional[torch.Tensor],
@@ -168,7 +170,15 @@ class GeneralizedQSLI:
             raise ValueError("max_seqlen_q does not cover every sequence")
 
         batch = len(q_lengths)
-        if block_table is None:
+        if self.layout_k == "TND":
+            if cu_seqlens_k is None:
+                raise ValueError("TND K requires cu_seqlens_k")
+            cu_k = [int(x) for x in cu_seqlens_k.reshape(-1).tolist()]
+            if len(cu_k) != batch + 1:
+                raise ValueError("cu_seqlens_k must have B+1 entries")
+            pages = [[cu_k[index]] for index in range(batch)]
+            capacity = [cu_k[index + 1] - cu_k[index] for index in range(batch)]
+        elif block_table is None:
             pages = [list(range(int(k.shape[0]))) for _ in range(batch)]
         else:
             if block_table.ndim != 2 or int(block_table.shape[0]) != batch:
@@ -179,7 +189,8 @@ class GeneralizedQSLI:
                 if not valid:
                     raise ValueError("every batch requires a physical K page")
                 pages.append(valid)
-        capacity = [len(row) * int(k.shape[1]) for row in pages]
+        if self.layout_k != "TND":
+            capacity = [len(row) * int(k.shape[1]) for row in pages]
         used_k = (
             capacity
             if seqused_k is None
@@ -208,6 +219,8 @@ class GeneralizedQSLI:
         pages: list[int],
         logical_tokens: torch.Tensor,
     ) -> torch.Tensor:
+        if decoded_k.ndim == 3:
+            return decoded_k[pages[0] + logical_tokens, 0]
         logical_page = torch.div(logical_tokens, int(decoded_k.shape[1]), rounding_mode="floor")
         page_offset = logical_tokens % int(decoded_k.shape[1])
         page_tensor = torch.tensor(pages, dtype=torch.long)
@@ -259,6 +272,7 @@ class GeneralizedQSLI:
         candidate_block_indices: torch.Tensor,
         candidate_block_length: torch.Tensor,
         cu_seqlens_q: Optional[torch.Tensor],
+        cu_seqlens_k: Optional[torch.Tensor],
         seqused_q: Optional[torch.Tensor],
         seqused_k: Optional[torch.Tensor],
         cmp_residual_k: Optional[torch.Tensor],
@@ -267,12 +281,13 @@ class GeneralizedQSLI:
     ) -> dict[str, torch.Tensor]:
         if tuple(q.shape[1:]) != (32, 64):
             raise ValueError("q must have shape (T1,32,64)")
-        if k.ndim != 4 or tuple(k.shape[2:]) != (1, 64):
-            raise ValueError("k must have shape (block_num,block_size,1,64)")
+        expected_k = (1, 64) if self.layout_k == "TND" else (k.shape[1], 1, 64)
+        if tuple(k.shape[1:]) != expected_k:
+            raise ValueError(f"k must have inner shape {expected_k}")
         if candidate_block_indices.shape[-1] != self.CANDIDATE_CAPACITY:
             raise ValueError("candidate capacity must be 2048")
         cu, used_q, used_k, pages, residual = self._page_plan(
-            q, k, cu_seqlens_q, seqused_q, seqused_k,
+            q, k, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k,
             cmp_residual_k, block_table,
         )
         decoded_q = self._decode_q(q, descale_q)
@@ -339,6 +354,7 @@ class GeneralizedQSLI:
         candidate_block_length: torch.Tensor,
         selected_rows: list[int],
         cu_seqlens_q: Optional[torch.Tensor],
+        cu_seqlens_k: Optional[torch.Tensor],
         seqused_q: Optional[torch.Tensor],
         seqused_k: Optional[torch.Tensor],
         cmp_residual_k: Optional[torch.Tensor],
@@ -347,7 +363,7 @@ class GeneralizedQSLI:
     ) -> dict[str, torch.Tensor]:
         """Evaluate selected Prefill rows while preserving full TND positions."""
         cu, used_q, used_k, pages, residual = self._page_plan(
-            q, k, cu_seqlens_q, seqused_q, seqused_k,
+            q, k, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k,
             cmp_residual_k, block_table,
         )
         selected = torch.tensor(selected_rows, dtype=torch.long)
@@ -375,9 +391,12 @@ class GeneralizedQSLI:
         for output_row, query_row in enumerate(selected_rows):
             batch = next(
                 index for index in range(len(used_q))
-                if cu[index] <= query_row < cu[index] + used_q[index]
+                if cu[index] <= query_row < cu[index + 1]
             )
             local_q = query_row - cu[batch]
+            selected_used_k.append(used_k[batch])
+            if local_q >= used_q[batch]:
+                continue
             block_count = int(candidate_block_length[query_row, 0])
             blocks = candidate_block_indices[query_row, 0, :block_count]
             logical_tokens, score = self._score_row(
@@ -385,7 +404,6 @@ class GeneralizedQSLI:
                 pages[batch], used_k[batch], used_q[batch], local_q,
                 residual[batch],
             )
-            selected_used_k.append(used_k[batch])
             if logical_tokens.numel() == 0:
                 continue
             topk_value[output_row, 0, 0, logical_tokens] = score
@@ -441,6 +459,8 @@ def quant_sparse_lightning_indexer_golden(
     output_idx_offset: Optional[torch.Tensor] = None,
     metadata: Optional[torch.Tensor] = None,
     *,
+    descale_k: Optional[torch.Tensor] = None,
+    cu_seqlens_k: Optional[torch.Tensor] = None,
     topk: int,
     candidate_block_size: int,
     quant_mode: int = 1,
@@ -453,7 +473,10 @@ def quant_sparse_lightning_indexer_golden(
 ) -> dict[str, torch.Tensor]:
     if metadata is not None:
         raise ValueError("metadata is reserved and must be None")
-    k, descale_k = unpack_candidate_k(k)
+    if layout_k == "PA_BBND":
+        k, descale_k = unpack_candidate_k(k)
+    elif descale_k is None:
+        raise ValueError("TND K requires descale_k")
     golden = GeneralizedQSLI(
         topk=topk,
         candidate_block_size=candidate_block_size,
@@ -468,7 +491,7 @@ def quant_sparse_lightning_indexer_golden(
     return golden.forward(
         q, k, w, descale_q, descale_k,
         candidate_block_indices, candidate_block_length,
-        cu_seqlens_q, seqused_q, seqused_k, cmp_residual_k,
+        cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k,
         block_table, output_idx_offset,
     )
 
@@ -488,6 +511,8 @@ def quant_sparse_lightning_indexer_golden_selected(
     cmp_residual_k: Optional[torch.Tensor],
     block_table: torch.Tensor,
     output_idx_offset: torch.Tensor,
+    descale_k: Optional[torch.Tensor] = None,
+    cu_seqlens_k: Optional[torch.Tensor] = None,
     topk: int,
     candidate_block_size: int,
     quant_mode: int = 1,
@@ -499,7 +524,10 @@ def quant_sparse_lightning_indexer_golden_selected(
     return_value: bool = False,
 ) -> dict[str, torch.Tensor]:
     """Prefill golden for selected rows, retaining their full-sequence mask."""
-    k, descale_k = unpack_candidate_k(k)
+    if layout_k == "PA_BBND":
+        k, descale_k = unpack_candidate_k(k)
+    elif descale_k is None:
+        raise ValueError("TND K requires descale_k")
     golden = GeneralizedQSLI(
         topk=topk,
         candidate_block_size=candidate_block_size,
@@ -514,6 +542,6 @@ def quant_sparse_lightning_indexer_golden_selected(
     return golden.forward_selected(
         q, k, w, descale_q, descale_k,
         candidate_block_indices, candidate_block_length, selected_rows,
-        cu_seqlens_q, seqused_q, seqused_k, cmp_residual_k,
+        cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k,
         block_table, output_idx_offset,
     )

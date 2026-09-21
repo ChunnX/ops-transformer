@@ -15,7 +15,7 @@ import torch_npu
 TEST_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(TEST_DIR))
 
-import result_compare_method  # noqa: E402
+from qsli_test_utils import result_compare_method
 from quant_sparse_lightning_indexer_golden import (  # noqa: E402
     pack_mxfp4,
     quant_sparse_lightning_indexer_golden,
@@ -171,7 +171,7 @@ def _run_and_compare(case: dict[str, torch.Tensor], topk: int) -> None:
         seqused_k=case["used_k"].npu(),
         block_table=case["block_table"].npu(),
         output_idx_offset=case["offset"].npu(),
-        return_value=True,
+        return_value=True, layout_k="PA_BBND",
     )
     torch.npu.synchronize()
     actual = {
@@ -270,7 +270,7 @@ def test_allow_distinct_indices_with_equal_scores():
 
 @pytest.mark.parametrize("return_value", [False, True])
 def test_close_integer_indices_cannot_rescue_wrong_scores(return_value):
-    from result_compare_method import compare_topk_valid
+    compare_topk_valid = result_compare_method.compare_topk_valid
     scores = np.zeros((1, 1, 1, 1002), dtype=np.float32)
     scores[0, 0, 0, 1000] = 10.0
     scores[0, 0, 0, 1001] = 1.0
@@ -282,7 +282,7 @@ def test_close_integer_indices_cannot_rescue_wrong_scores(return_value):
 
 
 def test_boundary_tolerance_matches_qli():
-    from result_compare_method import compare_topk_valid
+    compare_topk_valid = result_compare_method.compare_topk_valid
     scores = np.array([[[[1.0, 0.9995]]]], dtype=np.float32)
     assert compare_topk_valid([0], [1], scores, (0, 0, 0), [], [],
                              thres=0.001, return_value_flag=False)[0]
@@ -290,7 +290,7 @@ def test_boundary_tolerance_matches_qli():
 
 @pytest.mark.parametrize("enabled", [False, True])
 def test_value_fallback_respects_return_value(enabled):
-    from result_compare_method import compare_topk_valid
+    compare_topk_valid = result_compare_method.compare_topk_valid
     scores = np.array([[[[1.0, 0.9]]]], dtype=np.float32)
     passed, _ = compare_topk_valid([0], [1], scores, (0, 0, 0), [], [],
                                   np.array([1.0]), np.array([1.0]),
@@ -321,7 +321,7 @@ def test_entrypoint_uses_real_values_not_integer_indices(enabled, actual_value, 
     (True, 1.006, True), (True, 1.009, False),
 ])
 def test_value_tolerance_matches_asc(force_bf16, real, expected_pass):
-    from result_compare_method import judge_value_by_isclose
+    judge_value_by_isclose = result_compare_method.judge_value_by_isclose
     assert judge_value_by_isclose(np.array([real],dtype=np.float32),
                                   np.array([1.0],dtype=np.float32),
                                   force_bf16=force_bf16) == expected_pass

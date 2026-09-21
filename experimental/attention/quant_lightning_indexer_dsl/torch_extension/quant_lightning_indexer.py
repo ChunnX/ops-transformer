@@ -71,16 +71,18 @@ class QuantLightningIndexerOpBuilder(OpBuilder):
             candidate_topk_blocks=-1,
             candidate_block_size=-1,
         ):
-            if layout_q != "TND" or layout_k != "PA_BBND":
-                raise ValueError("current layouts must be TND and PA_BBND")
+            if layout_q != "TND" or layout_k not in ("PA_BBND", "TND"):
+                raise ValueError("layout_q must be TND and layout_k must be PA_BBND or TND")
             device = next(
                 (
                     t.device
                     for t in (cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k)
                     if t is not None
                 ),
-                "npu",
+                None,
             )
+            if device is None:
+                device = torch.device("npu", torch.npu.current_device())
             return torch.empty((1024,), dtype=torch.int32, device=device)
 
         @impl(get_as_library(), self.name, "Meta")
@@ -110,9 +112,10 @@ class QuantLightningIndexerOpBuilder(OpBuilder):
             candidate_topk_blocks=-1,
             candidate_block_size=-1,
         ):
-            if layout_q != "TND" or layout_k != "PA_BBND":
-                raise ValueError("current layouts must be TND and PA_BBND")
-            output_shape = (q.shape[0], k.shape[2], topk)
+            if layout_q != "TND" or layout_k not in ("PA_BBND", "TND"):
+                raise ValueError("layout_q must be TND and layout_k must be PA_BBND or TND")
+            heads = k.shape[1] if layout_k == "TND" else k.shape[2]
+            output_shape = (q.shape[0], heads, topk)
             sparse_indices = torch.empty(
                 output_shape, dtype=torch.int32, device="meta"
             )
@@ -123,10 +126,10 @@ class QuantLightningIndexerOpBuilder(OpBuilder):
             if candidate_topk_blocks > 0:
                 candidate_indices_shape = (
                     q.shape[0],
-                    k.shape[2],
+                    heads,
                     candidate_topk_blocks,
                 )
-                candidate_length_shape = (q.shape[0], k.shape[2])
+                candidate_length_shape = (q.shape[0], heads)
             else:
                 candidate_indices_shape = (0,)
                 candidate_length_shape = (0,)

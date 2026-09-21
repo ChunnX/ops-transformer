@@ -71,8 +71,8 @@ class QuantSparseLightningIndexerOpBuilder(OpBuilder):
             layout_q="TND",
             layout_k="TND",
         ):
-            if layout_q != "TND" or layout_k != "PA_BBND":
-                raise ValueError("current layouts must be TND and PA_BBND")
+            if layout_q != "TND" or layout_k not in ("PA_BBND", "TND"):
+                raise ValueError("layout_q must be TND and layout_k must be PA_BBND or TND")
             device = candidate_block_length.device
             return torch.empty((1024,), dtype=torch.int32, device=device)
 
@@ -104,9 +104,9 @@ class QuantSparseLightningIndexerOpBuilder(OpBuilder):
             layout_k="TND",
             return_value=False,
         ):
-            if layout_q != "TND" or layout_k != "PA_BBND":
-                raise ValueError("current layouts must be TND and PA_BBND")
-            output_shape = (q.shape[0], 1, topk)
+            if layout_q != "TND" or layout_k not in ("PA_BBND", "TND"):
+                raise ValueError("layout_q must be TND and layout_k must be PA_BBND or TND")
+            output_shape = (q.shape[0], candidate_block_indices.shape[1], topk)
             sparse_indices = torch.empty(
                 output_shape, dtype=torch.int32, device="meta"
             )

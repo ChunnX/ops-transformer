@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
-source /usr/local/Ascend/cann-9.2.0/set_env.sh
 set -uo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-PYTHON=/home/x00949573/.conda/envs/xwr/bin/python
-TESTCASE_DIR=${1:-"$SCRIPT_DIR/pt_path"}
-RESULT_XLSX=${2:-"$SCRIPT_DIR/result.xlsx"}
+ARTIFACT_DIR=${QLIV2_ARTIFACT_DIR:-/tmp/ops_transformer_indexer/qli}
+mkdir -p "$ARTIFACT_DIR"
+export PYTHONDONTWRITEBYTECODE=1
+export PYTEST_ADDOPTS="${PYTEST_ADDOPTS:-} -p no:cacheprovider"
+export TMPDIR="$ARTIFACT_DIR"
+export CANNBOTDSL_CACHE_DIR="$ARTIFACT_DIR/cache"
+PYTHON=${PYTHON:-python3}
+TESTCASE_DIR=${1:-"$ARTIFACT_DIR/pt_path"}
+RESULT_XLSX=${2:-"$ARTIFACT_DIR/result.xlsx"}
 
 mapfile -t CASE_FILES < <(find "$TESTCASE_DIR" -maxdepth 1 -name '*.pt' | sort)
 [ ${#CASE_FILES[@]} -gt 0 ] || { echo "未找到PT用例: $TESTCASE_DIR"; exit 1; }

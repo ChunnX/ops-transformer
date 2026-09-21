@@ -18,7 +18,7 @@ import torch_npu
 TEST_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(TEST_DIR))
 
-import result_compare_method  # noqa: E402
+from qsli_test_utils import result_compare_method
 from quant_sparse_lightning_indexer_golden import (  # noqa: E402
     quant_sparse_lightning_indexer_golden,
     quant_sparse_lightning_indexer_golden_selected,
@@ -671,7 +671,7 @@ def test_qsli_partial_s2_tail_precision(
         ),
         block_table=npu["block_table"], output_idx_offset=npu["offset"],
         max_seqlen_q=1, mask_mode=mask_mode, cmp_ratio=cmp_ratio,
-        return_value=True,
+        return_value=True, layout_k="PA_BBND",
     )
     torch.npu.synchronize()
     actual = {
@@ -701,25 +701,28 @@ def test_qsli_partial_s2_tail_precision(
 
 
 @pytest.mark.npu
-@pytest.mark.parametrize("input_name", ("k", "descale_k"))
-def test_qsli_rejects_inner_axis_noncontiguous(input_name: str):
-    case = _make_case(1, 1024, 1, query_length=1)
-    npu = _npu_arguments(case)
-    pages = int(case["k"].shape[0])
-    if input_name == "k":
-        storage = torch.empty(
-            (pages, PAGE_SIZE, N2, PACKED_D * 2),
-            dtype=torch.uint8, device="npu",
-        )
-        npu["k"] = storage[..., ::2]
-    else:
-        storage = torch.empty(
-            (pages, PAGE_SIZE, N2, 2, 4),
-            dtype=torch.uint8, device="npu",
-        )
-        npu["descale_k"] = storage[..., ::2]
+@pytest.mark.parametrize("layout,input_name", [("TND", "k"), ("TND", "descale_k"), ("PA_BBND", "k")])
+def test_qsli_rejects_inner_axis_noncontiguous(layout: str, input_name: str):
+    from qsli_test_utils import _to_npu_tensors
+
+    case = generate_qsli_test_data(dict(
+        batch_size=1, query_length=1, sequence_length=1024, layout_k=layout,
+    ))
+    npu = _to_npu_tensors(case["tensors"])
+    tensor = npu[input_name]
+    storage = torch.empty(
+        (*tensor.shape[:-1], tensor.shape[-1] * 2),
+        dtype=tensor.dtype, device=tensor.device,
+    )
+    npu[input_name] = storage[..., ::2]
     with pytest.raises(ValueError, match="only supports non-contiguous storage on axis 0"):
-        _invoke_operator(npu, query_length=1, cmp_ratio=1)
+        quant_sparse_lightning_indexer(
+            npu["q"], npu["k"], npu["weights"], npu["descale_q"],
+            npu["candidate"], npu["candidate_length"], TOPK, 1, CANDIDATE_BLOCK_SIZE,
+            descale_k=npu.get("descale_k"), cu_seqlens_q=npu["cu"],
+            cu_seqlens_k=npu["cu_k"], seqused_q=npu["used_q"], seqused_k=npu["used_k"],
+            block_table=npu["block_table"], max_seqlen_q=1, layout_k=layout,
+        )
 
 
 @pytest.mark.npu

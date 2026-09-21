@@ -10,7 +10,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from qsli_test_utils import QsliCaseSelector, generate_qsli_test_data
+from qsli_test_utils import QsliCaseSelector, convert_qsli_case_to_tnd, generate_qsli_test_data
 
 
 def _value(value):
@@ -31,6 +31,8 @@ def main():
     parser.add_argument("pt_dir")
     parser.add_argument("--sheet", "-S", default="TestCases")
     parser.add_argument("--indexes", default="")
+    parser.add_argument("--paired-layouts", action="store_true")
+    parser.add_argument("--defer-golden", action="store_true")
     args = parser.parse_args()
     frame = pd.read_excel(args.excel_path, sheet_name=args.sheet)
     required = [
@@ -53,11 +55,21 @@ def main():
     if args.indexes:
         selected = QsliCaseSelector.parse_indexes(args.indexes, len(frame))
         frame = frame.iloc[[index - 1 for index in selected]]
-    for _, row in frame.iterrows():
+    for source_index, row in frame.iterrows():
         params = {name: _value(row[name]) for name in required if name != "Testcase_Name"}
         target = output / f"{row['Testcase_Name']}.pt"
-        torch.save(generate_qsli_test_data(params), target)
-        print(f"saved: {target}")
+        case_data = generate_qsli_test_data(params, defer_golden=args.defer_golden or args.paired_layouts)
+        case_data["source"] = dict(workbook=str(Path(args.excel_path).resolve()),
+                                   sheet=args.sheet, row=int(source_index) + 2,
+                                   case_name=str(row["Testcase_Name"]))
+        if args.paired_layouts:
+            for layout, data in (("PA_BBND", case_data), ("TND", convert_qsli_case_to_tnd(case_data))):
+                target = output / f"{row['Testcase_Name']}__{layout}.pt"
+                torch.save(data, target)
+                print(f"saved: {target}")
+        else:
+            torch.save(case_data, target)
+            print(f"saved: {target}")
 
 
 if __name__ == "__main__":
