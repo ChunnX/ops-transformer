@@ -897,6 +897,7 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CleanOutput(__gm__ uint
             SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId); // 释放剩余ub
             InitOutputSingleCore(constInfo);
             WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+            GetTPipePtr()->ReleaseEventID<AscendC::HardEvent::MTE3_V>(initOutputEventId);
         }
     }
 }
@@ -928,6 +929,7 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CleanOutput(__gm__ uint
             SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId); // 释放剩余ub
             InitOutputSingleCore(constInfo);
             WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+            GetTPipePtr()->ReleaseEventID<AscendC::HardEvent::MTE3_V>(initOutputEventId);
         }
     }
 }
