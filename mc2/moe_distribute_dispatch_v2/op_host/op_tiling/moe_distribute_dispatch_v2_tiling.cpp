@@ -632,8 +632,9 @@ static ge::graphStatus CheckGroupAttrParams(const gert::TilingContext *context, 
     auto epRankIdPtr = attrs->GetAttrPointer<int64_t>(config.attrEpRankIdIndex);
     auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int64_t>(config.attrCommAlgIndex));
     int64_t epWorldSize = *epWorldSizePtr;
-    isLayered = strcmp(commAlgPtr, "hierarchy") == 0; // isLayered赋值
     NpuArch npuArch = mc2tiling::GetNpuArch(context);
+    isLayered = (commAlgPtr != nullptr) && (strcmp(commAlgPtr, "hierarchy") == 0); // isLayered赋值
+    std::string socVersion = mc2tiling::GetSocVersion(context);
     int64_t maxEpworldsize = 0;
     if (npuArch == Ops::Base::DAV_3510) {
         maxEpworldsize = isLayered ? MAX_EP_WORLD_SIZE_LAYERED : MAX_EP_WORLD_SIZE_A5;
@@ -676,7 +677,7 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::CheckOtherAttrParams(cons
     auto expertTokenNumsTypePtr = attrs->GetAttrPointer<int64_t>(static_cast<int>(config.attrExpertTokenNumsTypeIndex));
     auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrCommAlgIndex));
     if (config.isMc2Context) {
-        if (strcmp(commAlgPtr, "hierarchy") == 0) {
+        if (commAlgPtr != nullptr && strcmp(commAlgPtr, "hierarchy") == 0) {
             std::string reason = "hierarchy does not support mc2 context mode";
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "comm_alg", commAlgPtr, reason.c_str());
             return ge::GRAPH_FAILED;
@@ -1571,6 +1572,8 @@ static ge::graphStatus SetHcommCfg(const gert::TilingContext *context, MoeDistri
                                    const std::string groupEp, bool isLayered)
 {
     const char *nodeName = context->GetNodeName();
+    OP_TILING_CHECK(nodeName == nullptr, OP_LOGE("MoeDistributeDispatchV2", "Fail to get nodeName."),
+                    return ge::GRAPH_FAILED);
     OP_LOGD(nodeName, "MoeDistributeDispatchV2 groupEp = %s", groupEp.c_str());
     uint32_t opType1 = OP_TYPE_ALL_TO_ALL;
     std::string algConfigAllToAllStr =
@@ -1591,6 +1594,7 @@ static ge::graphStatus CheckAndCalWinSize(const gert::TilingContext *context,
                                           const bool isSetFullMeshV2, uint32_t localMoeExpertNum, bool isLayered,
                                           DispatchV2Config &config)
 {
+    // win区的数据结构
     CheckWinSizeData winSizeData;
     winSizeData.localMoeExpertNum = localMoeExpertNum;
     winSizeData.sharedExpertNum = tilingData.moeDistributeDispatchV2Info.sharedExpertNum;
@@ -1604,8 +1608,10 @@ static ge::graphStatus CheckAndCalWinSize(const gert::TilingContext *context,
     winSizeData.isSetFullMeshV2 = isSetFullMeshV2;
     winSizeData.isLayered = isLayered;
     winSizeData.isMc2Context = config.isMc2Context;
+
     OP_TILING_CHECK(CheckWinSize(context, nodeName, winSizeData) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Get WinSize failed."), return ge::GRAPH_FAILED);
+    // 总的win区大小
     tilingData.moeDistributeDispatchV2Info.totalWinSizeEp = winSizeData.totalWinSizeEp;
     return ge::GRAPH_SUCCESS;
 }
@@ -2015,7 +2021,11 @@ static ge::graphStatus FinalizeDispatchTiling(gert::TilingContext *context,
 ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::MoeDistributeDispatchA3TilingFuncImplPublic(
     gert::TilingContext *context, DispatchV2Config &config)
 {
+    OP_TILING_CHECK(context == nullptr, OP_LOGE("MoeDistributeDispatchV2", "Fail to get tiling context."),
+                    return ge::GRAPH_FAILED);
     const char *nodeName = context->GetNodeName();
+    OP_TILING_CHECK(nodeName == nullptr, OP_LOGE("MoeDistributeDispatchV2", "Fail to get nodeName."),
+                    return ge::GRAPH_FAILED);
     MoeDistributeDispatchV2TilingData *tilingData = context->GetTilingData<MoeDistributeDispatchV2TilingData>();
     OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "tilingData"), return ge::GRAPH_FAILED);
     std::string groupEp = "";
