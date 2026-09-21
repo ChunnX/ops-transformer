@@ -81,6 +81,8 @@ class FlashAttnGradTilingData:
     s1Token: int
     s2Token: int
     totalPerBatchNum: int
+    # 1 = 带 sinks 输入，kernel 额外算 dsink。运行期标量分支，不占 tilingkey。
+    sinkOptional: int
 
 
 # 与 op_kernel/flash_attn_grad.py 的 FlashAttnGradTilingKey 一致
