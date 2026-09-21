@@ -140,6 +140,7 @@ private:
     StaticBuffer<Q_T> l0ABufs[2];
     RingBuffer<Q_T> l0A;
     LocalTensor<Q_T> l0ResidentP;
+    LocalTensor<Q_T> l0ResidentQ;
     StaticBuffer<Q_T> l0BBufs[2];
     RingBuffer<Q_T> l0B;
     StaticBuffer<T> l0CBufs[2];
@@ -152,9 +153,10 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::InitLocalBuffer(uint32_t l1B
     AttentionCommon::InitCubeLocalBuffer<Q_T, T>(l1QBufs, l1RightBufs, l0ABufs, l0A, l0BBufs, l0B, l0CBufs, l0C,
                                                  l1BaseAddr);
     if ASCEND_IS_AIC {
-        // QK uses [0,32KiB); reserve [32,48KiB) for one PV P tile.
-        static_assert(3 * L0A_ELEM_PER_BUF * sizeof(Q_T) <= 64 * 1024);
+        // QK scratch [0,32KiB), PV P [32,48KiB), first Q K-tile [48,64KiB).
+        static_assert(4 * L0A_ELEM_PER_BUF * sizeof(Q_T) <= 64 * 1024);
         l0ResidentP = LocalTensor<Q_T>(TPosition::A2, 2 * L0A_ELEM_PER_BUF * sizeof(Q_T), L0A_ELEM_PER_BUF);
+        l0ResidentQ = LocalTensor<Q_T>(TPosition::A2, 3 * L0A_ELEM_PER_BUF * sizeof(Q_T), L0A_ELEM_PER_BUF);
         SetFlag<HardEvent::M_MTE1>(l0ResidentPEventId);
     }
 }
@@ -405,7 +407,7 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm1Impl(StaticBuffer
     MMParam smlaParam = {
         static_cast<uint32_t>(runInfo.mRealSize),    // singleM
         static_cast<uint32_t>(runInfo.s2RealSize),   // singleN
-        static_cast<uint32_t>(constInfo.dSize >> 1), // singleK
+        dBaseMatmulSize,                           // first K128 query tile
         0,                                           // isLeftTranspose
         1                                            // isRightTranspose
     };
@@ -414,20 +416,30 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm1Impl(StaticBuffer
         WaitFlag<HardEvent::MTE2_MTE1>(INNERCORE_L1Q(smlaCurL1QBufId));
     }
 
-    // m,n不切，k切128，mm1B直接用tensor的数据
+    // D=512: QK consumes four AB slots and PV four, so the first Q tile
+    // always uses AB slot 0. Its existing M_MTE1 wait protects the resident
+    // tile from the preceding query's last read; no separate Q event is needed.
+    MatmulKStatic<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN, true>(
+        l1QBufs[smlaCurL1QBufId].tensor, curL1RightTensor, l0A, l0B, smlaCBuf.tensor, smlaParam,
+        {}, {}, l0ResidentQ, runInfo.s2LoopCount == 0);
+    // Explicit K128 calls keep the resident-tile selection out of the K loop.
+    smlaParam.isOutKFisrt = false;
     MatmulKStatic<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN>(
-        l1QBufs[smlaCurL1QBufId].tensor, curL1RightTensor, l0A, l0B, smlaCBuf.tensor, smlaParam);
+        l1QBufs[smlaCurL1QBufId].tensor[dBaseMatmulSize * Align16Func(runInfo.mRealSize)],
+        curL1RightTensor[dBaseMatmulSize * Align16Func(runInfo.s2RealSize)],
+        l0A, l0B, smlaCBuf.tensor, smlaParam);
 
     smlaCurL1QBufId = (smlaCurL1QBufId + 1) % l1QBufNum;
     if (unlikely(runInfo.s2LoopCount == 0)) {
         WaitFlag<HardEvent::MTE2_MTE1>(INNERCORE_L1Q(smlaCurL1QBufId));
     }
-    smlaParam.singleK = constInfo.dSize - smlaParam.singleK;
-    smlaParam.isOutKFisrt = false;
-
-    // m,n不切，k切128, mm1B直接用tensor的数据
+    // The supported D=512 also makes the second half two fixed K128 tiles.
     MatmulKStatic<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN>(
-        l1QBufs[smlaCurL1QBufId].tensor, curL1RightTensor[(constInfo.dSize >> 1) * Align16Func(runInfo.s2RealSize)],
+        l1QBufs[smlaCurL1QBufId].tensor, curL1RightTensor[2 * dBaseMatmulSize * Align16Func(runInfo.s2RealSize)],
+        l0A, l0B, smlaCBuf.tensor, smlaParam);
+    MatmulKStatic<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN>(
+        l1QBufs[smlaCurL1QBufId].tensor[dBaseMatmulSize * Align16Func(runInfo.mRealSize)],
+        curL1RightTensor[3 * dBaseMatmulSize * Align16Func(runInfo.s2RealSize)],
         l0A, l0B, smlaCBuf.tensor, smlaParam);
 
     if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
