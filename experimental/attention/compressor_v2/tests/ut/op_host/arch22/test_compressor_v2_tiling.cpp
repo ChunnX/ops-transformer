@@ -69,7 +69,7 @@ TEST_P(CompressorV2TilingArch22, ValidateContractAndSplitK)
     } else if (scenario == 13) {
         para.outputTensorDesc_[0].dtype_ = ge::DT_FLOAT;
     }
-    if (scenario >= 5 && scenario <= 13) {
+    if (scenario >= 6 && scenario <= 13) {
         ExecuteTestCase(para, ge::GRAPH_FAILED, std::numeric_limits<uint64_t>::max());
         return;
     }
@@ -98,7 +98,7 @@ TEST_P(CompressorV2TilingArch22, ValidateContractAndSplitK)
 INSTANTIATE_TEST_SUITE_P(Contract, CompressorV2TilingArch22, testing::Range(0, 18),
     ([](const testing::TestParamInfo<int> &info) {
         const char *names[] = {"Normal", "FullLoadSplitKBound", "ThNormal", "EmptyBsh", "EmptyTh",
-            "InsufficientCapacity", "ShortStride", "StateDtype", "WeightShape", "MissingTable",
+            "BshShortRingCapacity", "ShortStride", "StateDtype", "WeightShape", "MissingTable",
             "TableRank", "InvalidRatio", "HiddenAlignment", "OutputDtype", "ThNoValueCapacityCheck",
             "ExactCapacity", "SplitKUncapped", "SplitKMultipleD"};
         return names[info.param];

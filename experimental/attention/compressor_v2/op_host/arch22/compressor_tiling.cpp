@@ -610,12 +610,6 @@ ge::graphStatus CompressorV2Tiling::CheckSingleParaStateCache() const
     OP_CHECK_IF(context_->stateCacheStrideDim0 == nullptr || *context_->stateCacheStrideDim0 < contiguousStride,
                 OP_LOGE(context_->opName, "state_cache stride0 must cover its contiguous rows"),
                 return ge::GRAPH_FAILED);
-    if (context_->layout == LayoutType::LAYOUT_BSH) {
-        int64_t seqSize = context_->x.shape->GetStorageShape().GetDim(1);
-        OP_CHECK_IF(seqSize + static_cast<int64_t>(*context_->cmpRatio) - 1 > blockSize,
-                    OP_LOGE(context_->opName, "BSH ring buffer requires block_size >= cmp_ratio + S - 1"),
-                    return ge::GRAPH_FAILED);
-    }
     OP_CHECK_IF(
         blockSize > MAX_BLOCK_SIZE || blockSize < MIN_BLOCK_SIZE,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->opName, STATE_CACHE_NAME, "dim 1=" + std::to_string(blockSize),

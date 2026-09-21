@@ -18,7 +18,7 @@
 - 支持H为1K~10K，512对齐。
 - 支持cmp_ratio为2、4、8、16、32、64、128。
 - V2 不提供 APE/coff/cache_mode 参数，固定 coff=1 和循环buffer语义。
-- A2/A3 BSH 要求 block_size >= cmp_ratio + S - 1。TH 不在 Host 读取设备长度值做容量校验。
+- A2/A3 的 BSH 支持 S 大于 ring buffer 容量，state 仅保存本 batch 序列末尾窗口；TH 不在 Host 读取设备长度值做容量校验。
 
 ### A2 迁移回归
 
@@ -30,7 +30,15 @@ python3 -m pytest -v test_compressor_single.py test_compressor_arch22.py
 
 `test_compressor_arch22.py` 共118项，覆盖FP16/BF16、BSH/TH、两条kernel路径、全部压缩比、跨环及多次回绕、长prefill后decode、Split-K、seqUsed、空batch、连续/非连续state。
 输出沿用现有Golden精度标准；全量FP32 state使用rtol=1e-4/atol=1e-5，未更新区域与padding guard要求精确不变。
-`test_compressor_single.py` 的FullLoad2容量为131，满足ratio128/S4的BSH容量约束；容量不足由Host UT负例单独验证。
+`test_compressor_single.py` 的FullLoad2容量为131，覆盖ratio128/S4的状态容量边界；A2 host 不再要求 BSH 的 S 与 ring buffer 容量绑定。
+
+H=5120扩展矩阵单独运行：
+
+```bash
+python3 -m pytest -v test_compressor_arch22_h5120.py
+```
+
+共32项：B=2、H=5120、D=128/512、FP16/BF16、cmp_ratio=4，BSH首次S=1/1003/8192/10240，TH首次S=1/1003/8192/10240；每项再连续调用4次S=1的decode。容量固定1024，BSH和TH均覆盖长序列超过环容量的场景。state带一行stride padding，检查Golden输出、完整state、未更新区域及padding guard，沿用原精度阈值。
 
 本次只验证A2 eager。图模式不在验收范围；MEMCHECK-001已定位为CANN DFX非连续state边界描述误报，不能将此结论外推到其他ERROR，详见[验证记录](../../docs/arch22_validation.md)。
 
