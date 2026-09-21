@@ -435,7 +435,7 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckExistence() const
     }
     if (!paddedQ && opParamInfo.cuSeqlensQ.tensor == nullptr) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "cu_seqlens_q", "nullptr",
-                                              "Cu_seqlens_q is required to describe effective query lengths "
+                                              "cu_seqlens_q is required to describe effective query lengths "
                                               "with PA BNBD KV-cache");
         return ge::GRAPH_FAILED;
     }
@@ -879,15 +879,20 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckMXFP8FullQuantShape() const
         static_cast<int64_t>(tilingInfo_.dSizeV), QBSA_MXFP8_SCALE_LAST_DIM};
 
     if (tilingInfo_.qSeqSize != 0U) {
-        const int64_t b = tilingInfo_.bSize;
-        const int64_t s = tilingInfo_.qSeqSize;
-        const int64_t n = tilingInfo_.n1Size;
-        const bool bsnd = tilingInfo_.layoutQStr == "BSND";
-        const std::array<int64_t, 4> qShape = {b, bsnd ? s : n, bsnd ? n : s, tilingInfo_.dSize};
-        const std::array<int64_t, 5> qScaleShape = {b, bsnd ? s : n, bsnd ? n : s,
-                                                 scaleDSize, QBSA_MXFP8_SCALE_LAST_DIM};
-        const std::array<int64_t, 4> outShape = {b, bsnd ? s : n, bsnd ? n : s, tilingInfo_.dSizeV};
-        const std::array<int64_t, 3> lseShape = {b, n, s};
+        const int64_t batchSize = tilingInfo_.bSize;
+        const int64_t querySequenceLength = tilingInfo_.qSeqSize;
+        const int64_t queryHeadCount = tilingInfo_.n1Size;
+        const bool isBsndLayout = tilingInfo_.layoutQStr == "BSND";
+        const std::array<int64_t, DIM_NUM_4> qShape = {
+            batchSize, isBsndLayout ? querySequenceLength : queryHeadCount,
+            isBsndLayout ? queryHeadCount : querySequenceLength, tilingInfo_.dSize};
+        const std::array<int64_t, DIM_NUM_5> qScaleShape = {
+            batchSize, isBsndLayout ? querySequenceLength : queryHeadCount,
+            isBsndLayout ? queryHeadCount : querySequenceLength, scaleDSize, QBSA_MXFP8_SCALE_LAST_DIM};
+        const std::array<int64_t, DIM_NUM_4> outShape = {
+            batchSize, isBsndLayout ? querySequenceLength : queryHeadCount,
+            isBsndLayout ? queryHeadCount : querySequenceLength, tilingInfo_.dSizeV};
+        const std::array<int64_t, DIM_NUM_3> lseShape = {batchSize, queryHeadCount, querySequenceLength};
         if (CheckInputShape(opParamInfo.query, "query", qShape) != ge::GRAPH_SUCCESS ||
             CheckInputShape(opParamInfo.qDescale, "q_descale", qScaleShape) != ge::GRAPH_SUCCESS ||
             CheckInputShape(opParamInfo.attnOut, "attention_out", outShape) != ge::GRAPH_SUCCESS ||
