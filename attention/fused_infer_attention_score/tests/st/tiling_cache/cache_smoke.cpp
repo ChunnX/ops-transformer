@@ -1,6 +1,6 @@
 // Copyright (c) 2026 Huawei Technologies Co., Ltd.
 // Licensed under the CANN Open Software License Agreement Version 2.0.
-// Device regression: build/run instructions are in README.md.
+// Device regression for V1-V4; run with DISABLE_L2_CACHE=1.
 #include <acl/acl.h>
 #include <opdev/op_executor.h>
 #include <cstdint>

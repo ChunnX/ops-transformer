@@ -23,7 +23,6 @@
 #include "log/log.h"
 #include "err/ops_err.h"
 #include "prompt_flash_attention_tiling.h"
-#include "../../common/op_host/fia_tiling_schedule_recorder.h"
 #include "register/tilingdata_base.h"
 
 using namespace ge;
@@ -6506,7 +6505,7 @@ PFA_EXTERN_C ge::graphStatus PromptFlashAttentionTiling::DoOpTiling() {
     }
     auto platformInfoPtr = context_->GetPlatformInfo();
     // 使用SyncAll，需要设置为batchmode模式，所有核同时启动，否则多流方式下执行可能会卡死
-    FiaTilingScheduleRecorder::Set(context_, BATCH_MODE_SCHEDULE);
+    context_->SetScheduleMode(BATCH_MODE_SCHEDULE);
 
     PromptFlashAttentionTilingData tilingData;
     OP_CHECK_IF(memset_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
