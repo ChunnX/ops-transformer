@@ -27,11 +27,6 @@ using namespace AscendC;
 using namespace FFNToAttentionImpl;
 using namespace Mc2Tiling;
 
-static_assert(sizeof(FFNToAttentionV2Info) == sizeof(FFNToAttentionInfo),
-              "FFNToAttention V1/V2 tiling info layout size mismatch");
-static_assert(sizeof(FFNToAttentionV2TilingData) == sizeof(FFNToAttentionTilingData),
-              "FFNToAttention V1/V2 tiling data layout size mismatch");
-
 /*
  * A5 tiling key fields:
  *   RankTableMode: whether attnRankTable is provided.

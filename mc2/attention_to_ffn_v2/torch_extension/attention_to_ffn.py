@@ -249,6 +249,7 @@ class AttentionToFfnBuffer:
             opName="attention_to_ffn",
             customCclBufferSize=self.window_size,
             customDeviceBufferAddr=window_addr if window_addr is not None else 0,
+            multiChannel=True,
         )
         self.context = self._ctx_manager.create_context()
 
