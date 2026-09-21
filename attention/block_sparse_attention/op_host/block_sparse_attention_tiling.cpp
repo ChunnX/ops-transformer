@@ -1473,6 +1473,7 @@ ge::graphStatus BSATiling::FillTilingData(gert::TilingContext *bsaContext)
 
     // 生成tilingKey（按照开发规范：在tiling层生成）
     uint64_t tilingKey = GenerateTilingKey(bsaContext);
+    std::printf("lwg _hif8 2036 _ 0921 tilingKey: %lu \n ", tilingKey);
     printf("lwg 0917-1941 tilingKey: %lu \n", tilingKey);
     tilingData_->set_tilingKey(tilingKey);
     bsaContext->SetTilingKey(tilingKey);
