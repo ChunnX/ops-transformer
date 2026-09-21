@@ -56,11 +56,24 @@ public:
         contextInfo_ = contextInfo;
         curMicroBatchID = contextInfo_->curMicroBatchID;
         BsKPaddingCount = contextInfo_->BsKPaddingCount;
-        int64_t useCore = contextInfo_->coreNum - usedCoreNum;
+        int64_t useCore = GetFlatAivNum() - usedCoreNum;
 
-        tokenDtypeSize_ = (contextInfo_->tokenDtype == NUM_TWO) ? sizeof(int8_t) : sizeof(half); // attr 2: int8
+        // 搬运单位统一为字节；FP4 的两个逻辑元素共用一个字节。
+        // 原实现以 H 个元素 * sizeof(dtype) 切块，4-bit 类型没有整数 sizeof 可用，
+        // 因而把切块长度、队列容量、GM 偏移统一改成 byte。FP16/BF16 为 2H，
+        // INT8/FP8 为 H，FP4 为 H/2；不能只修改输出 dtype 而保留原来的寻址公式。
+        tokenRowBytes_ = contextInfo_->tokenDtype <= 1 ?
+                             contextInfo_->H * sizeof(half) :
+                             (contextInfo_->tokenDtype == 5 ? contextInfo_->H / NUM_TWO : contextInfo_->H);
 
-        sessionNumBlockAlign_ = Align(contextInfo_->A, sizeof(int32_t));
+        // 此处 32 的业务含义是“每组逻辑元素数”，恰与 BLOCK_BYTES=32 相等。
+        // E8M0 每组仅一个字节，尾组也占一个字节；它不是 INT8 的逐 token FP32 scale。
+        // 本算子只复制编码，不把 E8M0 解码成 float，也不把 FP4 nibble 拆成浮点数。
+        scaleRowBytes_ = contextInfo_->tokenDtype >= 3 ? CeilDiv(contextInfo_->H, BLOCK_BYTES) : 0;
+
+        // NORM 的路由表只消费 outNum 前缀；RECV 不读取这两张路由表。
+        activeSessionNum_ = isScanFlag ? contextInfo_->A : contextInfo_->outNum;
+        sessionNumBlockAlign_ = Align(activeSessionNum_, sizeof(int32_t));
         int64_t validGatherIdxLength = contextInfo_->validGatherIdxLength;
 
         // ⚠️ 逐项扣除本类**所有**会 InitBuffer 的缓冲。少扣一项会让 maxBlockSize_ 算大,
@@ -73,11 +86,11 @@ public:
 
         int64_t maxTokenSize = ubAvailable / BUFFER_NUM;
         maxBlockSize_ = maxTokenSize - (contextInfo_->tokenDtype == TOKEN_KIND_TWO ? BLOCK_BYTES : 0);
-        maxBlockSize_ = (maxBlockSize_ / BLOCK_BYTES * BLOCK_BYTES) / tokenDtypeSize_;
-        hBlocks_ = (contextInfo_->H + maxBlockSize_ - 1) / maxBlockSize_;
-        lastHBlockSize_ = contextInfo_->H - (hBlocks_ - 1) * maxBlockSize_;
+        maxBlockSize_ = maxBlockSize_ / BLOCK_BYTES * BLOCK_BYTES;
+        hBlocks_ = (tokenRowBytes_ + maxBlockSize_ - 1) / maxBlockSize_;
+        lastHBlockSize_ = tokenRowBytes_ - (hBlocks_ - 1) * maxBlockSize_;
 
-        int64_t blockIdx = GetBlockIdx();
+        int64_t blockIdx = GetFlatAivIdx();
         int64_t perCoreRows = CeilDiv(validGatherIdxLength, useCore);
         needCoreNum_ = perCoreRows == 0 ? 0 : CeilDiv(validGatherIdxLength, perCoreRows);
         int64_t lastCoreRows = validGatherIdxLength - perCoreRows * (needCoreNum_ - 1);
@@ -89,7 +102,7 @@ public:
             lastLoopRows_ = perCoreRows - (CeilDiv(perCoreRows, PER_LOOP_ROWS) - 1) * PER_LOOP_ROWS;
             rowLoops_ = (perCoreRows + PER_LOOP_ROWS - 1) / PER_LOOP_ROWS;
         }
-        uint64_t SplitY = perCoreRows * contextInfo_->H * tokenDtypeSize_;
+        uint64_t SplitY = perCoreRows * tokenRowBytes_;
 
         GM_ADDR tokenDataBufAddr = reinterpret_cast<GM_ADDR>(contextInfo_->bufferPtr.tokenDataBuf);
         GM_ADDR sessionIdsBufAddr = reinterpret_cast<GM_ADDR>(contextInfo_->bufferPtr.sessionIdsBuf);
@@ -100,8 +113,8 @@ public:
         // 排序的后的  对应gather_index
         expertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expertid_idx + blockIdx * perCoreRows);
 
-        sessionIdsInGm_.SetGlobalBuffer((__gm__ int32_t *)sessionIdsBufAddr, contextInfo_->A);
-        microBatchIdsInGm_.SetGlobalBuffer((__gm__ int32_t *)microBatchIdsBufAddr, contextInfo_->A);
+        sessionIdsInGm_.SetGlobalBuffer((__gm__ int32_t *)sessionIdsBufAddr, activeSessionNum_);
+        microBatchIdsInGm_.SetGlobalBuffer((__gm__ int32_t *)microBatchIdsBufAddr, activeSessionNum_);
 
         // 输出空间
         yOutGm_.SetGlobalBuffer((__gm__ int8_t *)y + blockIdx * SplitY);
@@ -114,14 +127,17 @@ public:
             dynamicScaleOutGm_.SetGlobalBuffer((__gm__ float *)dynamic_scale + blockIdx * perCoreRows);
         }
 
+        if (scaleRowBytes_ > 0) {
+            mxScaleOutGm_.SetGlobalBuffer((__gm__ int8_t *)dynamic_scale + blockIdx * perCoreRows * scaleRowBytes_);
+        }
+
         InitBuffers(pipe);
     }
 
     // 各缓冲的开辟:块大小已由上面按可用 UB 逐项扣除算好,这里只做分配。
     __aicore__ inline void InitBuffers(TPipe *pipe)
     {
-        int64_t blockBufferSize =
-            maxBlockSize_ * tokenDtypeSize_ + (contextInfo_->tokenDtype == TOKEN_KIND_TWO ? BLOCK_BYTES : 0);
+        int64_t blockBufferSize = maxBlockSize_ + (contextInfo_->tokenDtype == TOKEN_KIND_TWO ? BLOCK_BYTES : 0);
         pipe->InitBuffer(inQueueX_, BUFFER_NUM, blockBufferSize);
 
         // PER_LOOP_ROWS 为长度 包含 额外5 + 1个输出;
@@ -142,7 +158,7 @@ public:
 
     __aicore__ inline void CopyInIds()
     {
-        DataCopyExtParams copyParams1{1, static_cast<uint32_t>(contextInfo_->A * sizeof(int32_t)), 0, 0, 0};
+        DataCopyExtParams copyParams1{1, static_cast<uint32_t>(activeSessionNum_ * sizeof(int32_t)), 0, 0, 0};
         DataCopyPadExtParams<int32_t> padParams1{false, 0, 0, 0};
         sessionIdsLocal_ = tmpBuffer_.Get<int32_t>();
         microBatchIdsLocal_ = sessionIdsLocal_[sessionNumBlockAlign_];
@@ -163,21 +179,24 @@ public:
 
     __aicore__ inline void Process()
     {
-        if (GetBlockIdx() >= needCoreNum_) {
+        if (GetFlatAivIdx() >= needCoreNum_) {
             return;
         }
 
-        int64_t bskProduct = contextInfo_->BS * contextInfo_->K;
+        int64_t bskProduct = static_cast<int64_t>(contextInfo_->BS) * contextInfo_->K;
         if constexpr (isScanFlag == false) {
             CopyInIds();
         } else {
-            bskProduct = contextInfo_->BS * contextInfo_->K + BsKPaddingCount;
+            bskProduct += BsKPaddingCount;
         }
 
         int64_t curLoopElements = PER_LOOP_ROWS;
-        int64_t strideSession = contextInfo_->M * contextInfo_->BS * contextInfo_->K * contextInfo_->HS;
-        int64_t strideMicroBatch = contextInfo_->BS * contextInfo_->K * contextInfo_->HS;
-        int64_t strideBs = contextInfo_->K * contextInfo_->HS;
+        // context 字段是 uint32_t，必须在第一次乘法前提升类型；仅把结果赋给
+        // int64_t 无法挽回已经发生的回绕（例如 64*64*64*16384 字节会变成 0）。
+        int64_t strideSession =
+            static_cast<int64_t>(contextInfo_->M) * contextInfo_->BS * contextInfo_->K * contextInfo_->HS;
+        int64_t strideMicroBatch = static_cast<int64_t>(contextInfo_->BS) * contextInfo_->K * contextInfo_->HS;
+        int64_t strideBs = static_cast<int64_t>(contextInfo_->K) * contextInfo_->HS;
         int64_t strideK = contextInfo_->HS;
 
         for (int64_t i = 0; i < rowLoops_; i++) {
@@ -231,18 +250,25 @@ public:
             outAllLocal.SetValue(PER_LOOP_ROWS * VAR_TOKEN_IDX + indicesIndex, bsIndices);
             outAllLocal.SetValue(PER_LOOP_ROWS * VAR_EXPERT_OFFSETS_IDX + indicesIndex, kIndices);
 
+            // gatherIdx 记录原始位置而非排序 key，所以跨层专家编码不参与 payload 寻址。
+            // NORM 先通过两张路由表恢复真实 (session,microbatch)，RECV 则直接使用
+            // session 下标和本轮已发布的 selectedMb；两条路径最后统一为同一个字节地址。
+            const int64_t rowOffset = sessionIndices * strideSession + microbatchIndices * strideMicroBatch +
+                                      bsIndices * strideBs + kIndices * strideK;
             for (int64_t hBlock = 0; hBlock < hBlocks_; hBlock++) {
                 int64_t hStart = hBlock * maxBlockSize_;
                 int64_t hSize = (hBlock == hBlocks_ - 1) ? lastHBlockSize_ : maxBlockSize_;
-                int64_t globalXOffset = sessionIndices * strideSession + microbatchIndices * strideMicroBatch +
-                                        bsIndices * strideBs + kIndices * strideK + hStart;
+                int64_t globalXOffset = rowOffset + hStart;
 
                 bool isLastBlock = (hBlock == hBlocks_ - 1);
                 CopyXIn(globalXOffset, hSize, indicesIndex, outAllLocal[PER_LOOP_ROWS * VAR_NUM], isLastBlock);
-                int64_t outputOffset =
-                    (indicesIndex + currentOuterStart) * contextInfo_->H * tokenDtypeSize_ + hStart * tokenDtypeSize_;
+                int64_t outputOffset = (indicesIndex + currentOuterStart) * tokenRowBytes_ + hStart;
                 CopyXOut(outputOffset, hSize);
             }
+            // 输入记录是 [全部 token bytes][全部 scale bytes][行尾 padding]，不是组间
+            // 交错布局。scale 起点必须使用完整 tokenRowBytes_，不能用最后一块 hSize。
+            // 输出 y 与 scale 分开紧凑存储，不复制输入 HS 中的 512B 对齐空隙。
+            CopyMxScale(rowOffset + tokenRowBytes_, (indicesIndex + currentOuterStart) * scaleRowBytes_);
         }
     }
 
@@ -254,7 +280,8 @@ private:
     {
         // ---- 索引换算(向量):把逐 token 的两次整数除法整块算完 ----
         // aIdx = gatherIdx / bskProduct;bsIdx = 余数 / K;kIdx = 余数 % K。
-        // gatherIdx < Y <= 2^22,fp32 精确表示 2^24 内整数,商与余数无误差;商恒非负。
+        // expertIdxLocal 存的是排序前的扁平位置，不是受 expert_num<=8192 限制的专家 ID。
+        // 小容量沿用 FP32 向量快速路径；大容量必须在 Cast 前走精确整数路径。
         LocalTensor<float> lanes = idxCalcBuf_.Get<float>();
         LocalTensor<float> srcF = lanes[PER_LOOP_ROWS * IDX_LANE_SRC];
         LocalTensor<float> qaF = lanes[PER_LOOP_ROWS * IDX_LANE_QA];
@@ -267,6 +294,25 @@ private:
         LocalTensor<int32_t> aIdxAll = ints[PER_LOOP_ROWS * IDX_LANE_AI];
         LocalTensor<int32_t> bsIdxAll = ints[PER_LOOP_ROWS * IDX_LANE_BI];
         LocalTensor<int32_t> kIdxAll = ints[PER_LOOP_ROWS * IDX_LANE_KI];
+        constexpr int64_t FP32_EXACT_POSITION_CAPACITY = 1LL << 24;
+        if (static_cast<int64_t>(contextInfo_->A) * bskProduct > FP32_EXACT_POSITION_CAPACITY) {
+            // 即使仅一个 token 有效，它的原始位置也可能超过 2^24。RECV 的
+            // bskProduct 包含补位，不能用 actualTokenNum 或未补位的 Y 判断安全范围。
+            // FP32 无法表示该范围内的奇数，更换舍入方式/修正商余数均不能恢复丢位。
+            // 仅大容量使用标量整数除法，保留常规形状的原有向量计算路径。
+            SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
+            for (int64_t i = 0; i < curLoopElements; ++i) {
+                const int64_t position = expertIdxLocal.GetValue(i);
+                const int64_t session = position / bskProduct;
+                const int64_t remainder = position - session * bskProduct;
+                const int64_t token = remainder / contextInfo_->K;
+                aIdxAll.SetValue(i, static_cast<int32_t>(session));
+                bsIdxAll.SetValue(i, static_cast<int32_t>(token));
+                kIdxAll.SetValue(i, static_cast<int32_t>(remainder - token * contextInfo_->K));
+            }
+            // 这三路结果由后续 EmitTokens 的标量 GetValue 消费，无向量消费者。
+            return;
+        }
         // 除法用倒数乘法(硬件无整数向量除法),但 1/n 与乘积各有一次舍入,恰好整除处
         // floor 会掉一档(实测 BS*K=189 时 a 偏 -1、bs 偏 +BS,k 因两处偏移抵消反而不变)。
         // 故每次除法后都按余数做一次 ±1 修正:余数是整数且落在 (-n, 2n),
@@ -367,7 +413,7 @@ private:
                                    const LocalTensor<int32_t> &dynamicScaleLocal, bool isLastBlock)
     {
         LocalTensor<int8_t> xLocal = inQueueX_.AllocTensor<int8_t>();
-        uint32_t copySize = curLoopCols * tokenDtypeSize_;
+        uint32_t copySize = curLoopCols;
         DataCopyExtParams copyParams0{1, copySize, 0, 0, 0};
         DataCopyPadExtParams<int8_t> padParams0{false, 0, 0, 0};
         DataCopyPad(xLocal, tokenDataBufGm_[xSrcOffset], copyParams0, padParams0);
@@ -382,11 +428,31 @@ private:
         inQueueX_.EnQue(xLocal);
     }
 
+    // E8M0 按字节搬运，复用 token 队列；超 UB 的 scale 行同样分块。
+    __aicore__ inline void CopyMxScale(int64_t srcOffset, int64_t dstOffset)
+    {
+        // scale 长度也可能超过单队列容量；与 token 共用字节搬运队列可避免为大 H
+        // 额外常驻一行 scale。每块依次 EnQue/DeQue/Free，保持 MTE2→MTE3 的队列
+        // 生命周期；scaleRowBytes_=0 的非 MX 路径直接零次循环，不访问无效输出地址。
+        for (int64_t offset = 0; offset < scaleRowBytes_; offset += maxBlockSize_) {
+            const int64_t remaining = scaleRowBytes_ - offset;
+            const uint32_t count = static_cast<uint32_t>(remaining < maxBlockSize_ ? remaining : maxBlockSize_);
+            LocalTensor<int8_t> local = inQueueX_.AllocTensor<int8_t>();
+            DataCopyExtParams params{1, count, 0, 0, 0};
+            DataCopyPadExtParams<int8_t> padding{false, 0, 0, 0};
+            DataCopyPad(local, tokenDataBufGm_[srcOffset + offset], params, padding);
+            inQueueX_.EnQue(local);
+            local = inQueueX_.DeQue<int8_t>();
+            DataCopyPad(mxScaleOutGm_[dstOffset + offset], local, params);
+            inQueueX_.FreeTensor(local);
+        }
+    }
+
     __aicore__ inline void CopyXOut(int64_t xDstOffset, int64_t curLoopCols)
     {
         LocalTensor<int8_t> xLocal = inQueueX_.DeQue<int8_t>();
 
-        DataCopyExtParams copyParams2{1, static_cast<uint32_t>(curLoopCols * tokenDtypeSize_), 0, 0, 0};
+        DataCopyExtParams copyParams2{1, static_cast<uint32_t>(curLoopCols), 0, 0, 0};
         DataCopyPad(yOutGm_[xDstOffset], xLocal, copyParams2);
 
         inQueueX_.FreeTensor(xLocal);
@@ -422,6 +488,7 @@ private:
     GlobalTensor<int32_t> tokenIdsOutGm_;
     GlobalTensor<int32_t> expertOffsetsOutGm_;
     GlobalTensor<float> dynamicScaleOutGm_;
+    GlobalTensor<int8_t> mxScaleOutGm_;
 
     LocalTensor<int32_t> sessionIdsLocal_;
     LocalTensor<int32_t> microBatchIdsLocal_;
@@ -431,8 +498,10 @@ private:
     int64_t needCoreNum_ = 0;
     int64_t lastLoopRows_ = 0;
     int64_t rowLoops_ = 0;
-    int64_t tokenDtypeSize_ = 0;
+    int64_t tokenRowBytes_ = 0;
+    int64_t scaleRowBytes_ = 0;
     int64_t sessionNumBlockAlign_ = 0;
+    int64_t activeSessionNum_ = 0;
 
     int64_t maxBlockSize_ = 0;
     int64_t hBlocks_ = 0;

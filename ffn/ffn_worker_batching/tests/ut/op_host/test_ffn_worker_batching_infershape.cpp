@@ -10,7 +10,9 @@
 
 #include <gtest/gtest.h>
 #include <iostream>
+#include <limits>
 #include "infer_shape_context_faker.h"
+#include "infer_datatype_context_faker.h"
 #include "infer_shape_case_executor.h"
 #include "base/registry/op_impl_space_registry_v2.h"
 
@@ -125,4 +127,165 @@ TEST_F(FfnWorkerBatchingInfershapeTest, ffn_worker_batching_infershape_arch35_ma
     std::vector<std::vector<int64_t>> expectOutputShape = {{8192, 4096}, {8, 2}, {8192}, {8192},
                                                            {8192},       {8192}, {8192}, {1}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
+}
+
+// 六组类型映射均验证，确保新增类型不会改变原有输出签名。
+TEST_F(FfnWorkerBatchingInfershapeTest, ffn_worker_batching_inferdtype_arch35)
+{
+    // schedule_context始终是INT8协议头，不能用其dtype推断token输出；token_dtype
+    // 才是y的类型来源。MX的scale是E8M0指数编码，不能继续沿用INT8模式的FP32。
+    // 直接调用注册的dtype推导，覆盖六种公开枚举和全部八个输出，不依赖kernel写内存。
+    auto registry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    ASSERT_NE(registry, nullptr);
+    auto impl = registry->GetOpImpl("FfnWorkerBatching");
+    ASSERT_NE(impl, nullptr);
+    ASSERT_NE(impl->infer_datatype, nullptr);
+    const ge::DataType tokenTypes[] = {ge::DT_FLOAT16,     ge::DT_BF16,          ge::DT_INT8,
+                                       ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT4_E2M1};
+    for (int64_t tokenDtype = 0; tokenDtype < 6; ++tokenDtype) {
+        ge::DataType input = ge::DT_INT8;
+        ge::DataType outputs[8] = {};
+        auto holder = gert::InferDataTypeContextFaker()
+                          .IrInputNum(1)
+                          .NodeIoNum(1, 8)
+                          .NodeInputTd(0, ge::DT_INT8, ge::FORMAT_ND, ge::FORMAT_ND)
+                          .InputDataTypes({&input})
+                          .OutputDataTypes({&outputs[0], &outputs[1], &outputs[2], &outputs[3], &outputs[4],
+                                            &outputs[5], &outputs[6], &outputs[7]})
+                          .NodeAttrs({{"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+                                      {"max_out_shape",
+                                       Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({1, 8, 9, 64})},
+                                      {"token_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tokenDtype)}})
+                          .Build();
+        auto context = holder.GetContext<gert::InferDataTypeContext>();
+        ASSERT_NE(context, nullptr);
+        ASSERT_EQ(impl->infer_datatype(context), ge::GRAPH_SUCCESS);
+        EXPECT_EQ(context->GetOutputDataType(0), tokenTypes[tokenDtype]);
+        EXPECT_EQ(context->GetOutputDataType(1), ge::DT_INT64);
+        for (size_t i = 2; i < 6; ++i) {
+            EXPECT_EQ(context->GetOutputDataType(i), ge::DT_INT32);
+        }
+        EXPECT_EQ(context->GetOutputDataType(6), tokenDtype >= 3 ? ge::DT_FLOAT8_E8M0 : ge::DT_FLOAT);
+        EXPECT_EQ(context->GetOutputDataType(7), ge::DT_INT64);
+    }
+}
+
+TEST_F(FfnWorkerBatchingInfershapeTest, ffn_worker_batching_mx_shape_3)
+{
+    // GE/ACL逻辑shape使用H个FP8元素；每32个逻辑元素一个scale，尾组也要占一个。
+    // 这里检查二维scale容量，不能将其误写成旧INT8模式的一行一个FP32 scale。
+    gert::StorageShape schedule_context_shape = {{1024}, {1024}};
+
+    gert::InfershapeContextPara infershapeContextPara(
+        "FfnWorkerBatching",
+        {// input
+         {schedule_context_shape, ge::DT_INT8, ge::FORMAT_ND}},
+        {
+            // output
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // y
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},   // group_list
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},   // session_ids
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},   // micro_batch_ids
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},   // token_ids
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},   // expert_offsets
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},   // dynamic_scale
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},   // actual_token_num
+        },
+        {{"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+         {"max_out_shape", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({16, 8, 9, 66})},
+         {"token_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+         {"need_schedule", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+         {"layer_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}});
+    std::vector<std::vector<int64_t>> expectOutputShape = {{1152, 66}, {8, 2}, {1152},    {1152},
+                                                           {1152},     {1152}, {1152, 3}, {1}};
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
+}
+
+TEST_F(FfnWorkerBatchingInfershapeTest, ffn_worker_batching_mx_shape_4)
+{
+    // E4M3与E5M2仅编码不同，逻辑shape及按32元素分组的scale规则相同；单独列用例
+    // 是为避免新增一种dtype时只同步了类型分支，却遗漏对应shape分支。
+    gert::StorageShape schedule_context_shape = {{1024}, {1024}};
+
+    gert::InfershapeContextPara infershapeContextPara(
+        "FfnWorkerBatching",
+        {// input
+         {schedule_context_shape, ge::DT_INT8, ge::FORMAT_ND}},
+        {
+            // output
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // y
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},   // group_list
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},   // session_ids
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},   // micro_batch_ids
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},   // token_ids
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},   // expert_offsets
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},   // dynamic_scale
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},   // actual_token_num
+        },
+        {{"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+         {"max_out_shape", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({16, 8, 9, 66})},
+         {"token_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+         {"need_schedule", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+         {"layer_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}});
+    std::vector<std::vector<int64_t>> expectOutputShape = {{1152, 66}, {8, 2}, {1152},    {1152},
+                                                           {1152},     {1152}, {1152, 3}, {1}};
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
+}
+
+TEST_F(FfnWorkerBatchingInfershapeTest, ffn_worker_batching_mx_shape_5)
+{
+    // GE的FP4 shape仍以逻辑元素计为[Y,H]；物理存储才是每字节两个值的Y*H/2字节。
+    // Torch Float4_e2m1fn_x2视图使用[Y,H/2]，不能把那个物理shape复制到本推导期望。
+    // scale按照逻辑H而不是H/2分组，因此同H的FP4和FP8拥有相同scale元素数。
+    gert::StorageShape schedule_context_shape = {{1024}, {1024}};
+
+    gert::InfershapeContextPara infershapeContextPara(
+        "FfnWorkerBatching",
+        {// input
+         {schedule_context_shape, ge::DT_INT8, ge::FORMAT_ND}},
+        {
+            // output
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // y
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},   // group_list
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},   // session_ids
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},   // micro_batch_ids
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},   // token_ids
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},   // expert_offsets
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},   // dynamic_scale
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},   // actual_token_num
+        },
+        {{"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+         {"max_out_shape", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({16, 8, 9, 66})},
+         {"token_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(5)},
+         {"need_schedule", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+         {"layer_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}});
+    std::vector<std::vector<int64_t>> expectOutputShape = {{1152, 66}, {8, 2}, {1152},    {1152},
+                                                           {1152},     {1152}, {1152, 3}, {1}};
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
+}
+
+TEST_F(FfnWorkerBatchingInfershapeTest, ffn_worker_batching_infershape_shape_product_overflow_fail)
+{
+    // 输出行数来自A*BS*K。必须在乘法发生前拒绝溢出；若先乘再比较上限，
+    // 有符号溢出已发生，回绕后的正数也可能被误认为合法shape。
+    gert::StorageShape schedule_context_shape = {{1024}, {1024}};
+    gert::InfershapeContextPara infershapeContextPara(
+        "FfnWorkerBatching", {{schedule_context_shape, ge::DT_INT8, ge::FORMAT_ND}},
+        {
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        },
+        {{"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+         {"max_out_shape", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(
+                               {1024, std::numeric_limits<int64_t>::max(), 1, 1})},
+         {"token_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"need_schedule", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"layer_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}});
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED);
 }

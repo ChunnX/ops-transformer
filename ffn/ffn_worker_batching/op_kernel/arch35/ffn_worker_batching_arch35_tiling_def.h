@@ -30,9 +30,9 @@ struct FfnWorkerBatchingArch35TilingData {
     // ---- 形状与平台 ----
     int64_t Y{0};          // A*BS*K
     int64_t H{0};          // hidden size（max_out_shape[3]）
-    int64_t tokenDtype{0}; // 0:FP16 1:BF16 2:dynamic_quant_int8
+    int64_t tokenDtype{0}; // 0:FP16 1:BF16 2:INT8 3:E5M2 4:E4M3FN 5:E2M1；均为输入已有格式
     int64_t expertNum{0};
-    int64_t coreNum{0}; // 运行时 GetCoreNumAiv 取值
+    int64_t coreNum{0}; // min(平台 AIV 数, ceil(Y/32))，至少 1；实际执行核编号见 GetFlatAivIdx
     int64_t ubSize{0};  // 运行时 GetCoreMemSize(UB) 取值
 
     // ---- 段内排序（VBS）----
@@ -50,18 +50,29 @@ struct FfnWorkerBatchingArch35TilingData {
     int64_t mergeOneLoopElements{0}; // 单路单次载入 UB 的元素数
 
     // ---- 归并收尾（Extract）----
-    int64_t extractPerLoopElements{0}; // 单次拆包元素数（Sort32 粒度整数倍）
+    int64_t extractPerLoopElements{0}; // 单次有效拆包上限；执行时向上按 Sort32 对齐，尾部不写出
 
     // ---- group_list ----
     int64_t glRowsPerLoop{0}; // 写出时每块拼多少行（每行 16B）
 
     // ---- workspace 段偏移（以 int32 word 计，相对 userWorkspace 起始）----
-    int64_t wsFlatIds{0};   // 归一后的扁平 expert_id：Y 个 int32
+    int64_t wsFlatIds{0};   // 归一后的扁平 expert_id：flatElements 个 int32，RECV 包含逐 session 补位
     int64_t wsPairA{0};     // 排序/归并工作区 A：sortSegNum*sortLenPerSeg 个 float
     int64_t wsPairB{0};     // 排序/归并工作区 B（与 A 乒乓）
     int64_t wsSegCnt{0};    // 各段有效元素数：每段一个 32B 槽
     int64_t wsSortedIds{0}; // 有序 expert_id：Y 个 int32
+    // 与 tokenDtype 正交，不增加 tiling key；kernel 仅在 RECV 路径解释此值。
+    bool syncFlag{false}; // false: wait all; true: consume ready (RECV only)
+    // 单位为 int32 word，相对 userWorkspace；仅异步 RECV 使用。
+    // 头块存 uint64 selectedMb；后续每块存一个 int32 flag，其余字节为对齐填充。
+    int64_t wsReady{0};     // selected micro batch block + A padded flag blocks
     int64_t wsGatherIdx{0}; // gather_idx：Y 个 int32
+    // 以下容量字段在本版尾部追加，保持本版之前字段的相对顺序；这不是跨版本序列化格式。
+    // struct 还包含 bool 后的编译器对齐空隙，不能把成员大小简单求和当作总大小，也不能
+    // 手写字节偏移。Host 直写与 kernel 读取必须使用同一版头文件和配套构建产物。
+    int64_t preparePerLoopElements{0};  // ID 缓冲的元素容量；大行按此值分块
+    int64_t mergeCountCacheSegments{0}; // 段计数缓存的槽数，每槽占 32B
+    int64_t layerNum{0};                // 仅异步RECV使用；追加字段，Host/kernel需配套构建
 };
 
 #endif // FFN_WB_ARCH35_TILING_DEF_H

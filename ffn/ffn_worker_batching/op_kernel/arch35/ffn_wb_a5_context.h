@@ -26,7 +26,8 @@
  *   · proposal 对宽度由"fp32 键 + uint32 索引"两个类型宽度相加得到,不写 8;
  *   · fp32 下界由编译器内建 __FLT_MAX__ 取反得到,不写 -3.4e38;
  *   · 切分/workspace 段偏移一律由 host tiling 下发,kernel 不持有任何布局常量;
- *   · A/M/K 的上界由 host 侧 CheckInputParam 统一校验,kernel 不再重复声明限值。
+ *   · Host 校验的是 max_out_shape 属性；设备 context 的实际 A/M/BS/K/HS 来自调用方，
+ *     调用方仍须保证其合法、实际容量不超过属性上界，不能把属性校验等同于内容校验。
  */
 #ifndef OP_KERNEL_ARCH35_FFN_WB_A5_CONTEXT_H
 #define OP_KERNEL_ARCH35_FFN_WB_A5_CONTEXT_H
@@ -54,11 +55,6 @@ constexpr int64_t ONE_REPEAT_SORT_NUM = 32;
 constexpr int64_t MRG_LIST_NUM = 4;
 
 // schedule_context 内存放的是设备地址(二级指针),真数据需二次解引用后使用。
-// 测试模式下(TEST_MAGIC),存放的是相对 schedule_context 起始的偏移量,
-// kernel 通过 scBase + offset 还原真实地址,与 A2 路径 ffn_wb_get_schedule_context.h 同源。
-constexpr int32_t TEST_MAGIC_OFFSET = 640;
-constexpr int32_t TEST_MAGIC = 0x54455354;
-
 struct BufferInfo {
     uint64_t tokenInfoBuf = 0;
     uint64_t tokenDataBuf = 0;
@@ -77,8 +73,11 @@ struct ScheduleContextInfo {
     uint32_t Y = 0;               // A*BS*K
     uint64_t curMicroBatchID = 0; // RECV:当前 expert id 已就绪的 micro batch
     uint32_t outNum = 0;          // NORM:FfnArea 中有效的 session 数
-    uint32_t tokenDtype = 0;      // 0:FP16 1:BF16 2:int8 + dynamic scale 连续排布
+    uint32_t tokenDtype = 0;      // 0:FP16 1:BF16 2:int8 3:E5M2 4:E4M3 5:E2M1；scale 紧跟 token
     uint32_t expertNum = 0;
+    uint32_t layerNum = 0;
+    uint32_t expertsPerLayer = 0;
+    bool asyncRecv = false; // 本次是否启用快照接收；只有 RECV 且 syncFlag=true 才为 true
     int64_t coreNum = 0;
     int64_t ubSize = 0;
     int64_t validGatherIdxLength = 0; // 排序后剔除无效值的有效长度,≤ A*BS*K
@@ -131,6 +130,28 @@ __aicore__ inline T Max(T a, T b)
     return (a > b) ? a : b;
 }
 
+// DAV_3510 的公共 AscendC API 已在 AIV 上把 GetBlockIdx() 展平为：
+//
+//   rawBlockIdx * GetTaskRation() + GetSubBlockIdx()
+//
+// 该语义可直接见 CANN 的 dav_3510/kernel_operator_sys_var_impl.h：AIV 分支返回
+// get_block_idx() * get_subblockdim() + get_subblockid()。所以 CV 1:2 时两个 sibling
+// AIV 通过 GetBlockIdx() 已分别得到 0/1；调用点若再乘 taskRatio 并加 subBlockIdx，才会
+// 跳过任务编号并造成重复/遗漏。统一封装为本函数，防止各 phase 对 API 语义作出不同假设。
+__aicore__ inline int64_t GetFlatAivIdx()
+{
+    return GetBlockIdx();
+}
+
+// GetBlockNum() 仍是 launch 的原始 block 数，故总 AIV 数需乘 CV 比率，与上面的已展平索引
+// 位于同一个 [0, flatAivNum) 坐标系。taskRatio 异常为 0 时按 1 防御，合法 DAV_3510 启动
+// 的 taskRatio 始终为正。
+__aicore__ inline int64_t GetFlatAivNum()
+{
+    const int64_t taskRatio = GetTaskRation();
+    return GetBlockNum() * ((taskRatio > 0) ? taskRatio : 1);
+}
+
 // proposal 对表示下,count 个元素占用的 T 元素个数。
 template <typename T>
 __aicore__ inline int64_t GetSortLen(int64_t count)
@@ -154,6 +175,10 @@ __aicore__ inline void ScheduleContextParse(GM_ADDR schedule_context, const Tili
     DataCopy(val, ctxGm, SCHEDULE_CONTEXT_BYTES);
     SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
 
+    // 以下是设备 context 的实际调度尺寸，不是 max_out_shape 的静态容量。
+    // Host 为避免读取设备状态，只按容量申请 workspace；本核据实际尺寸解释二级指针
+    // 所指数据。调用方必须保证 M/BS/K 非零、outNum<=A、实际尺寸不超容量、HS 足以容纳
+    // token+scale，并保持二级指针有效。这些内容约束不由 int8[1024] 的形状检查证明。
     ctx.A = val[FFN_WB_CTX_OFFSET(common.session_num)].template ReinterpretCast<uint32_t>().GetValue(0);
     ctx.M = val[FFN_WB_CTX_OFFSET(common.micro_batch_num)].template ReinterpretCast<uint32_t>().GetValue(0);
     ctx.BS = val[FFN_WB_CTX_OFFSET(common.micro_batch_size)].template ReinterpretCast<uint32_t>().GetValue(0);
@@ -164,21 +189,24 @@ __aicore__ inline void ScheduleContextParse(GM_ADDR schedule_context, const Tili
     ctx.Y = tilingData->Y;
     ctx.tokenDtype = tilingData->tokenDtype;
     ctx.expertNum = tilingData->expertNum;
+    // 属性值与执行路径共同决定开关，确保 NORM 即使传 sync_flag=true 也不进入 flag 轮询。
+    ctx.asyncRecv = isRecv && tilingData->syncFlag;
+    if (ctx.asyncRecv) {
+        // expertNum 表示所有层合计的专家数，层内跨度为 expertNum/layerNum。
+        // 只有该分支允许解释 descriptor.layer_id；默认 layerNum=0 的旧路径不会除零。
+        // Host has validated nonzero layer count and exact divisibility.
+        ctx.layerNum = static_cast<uint32_t>(tilingData->layerNum);
+        ctx.expertsPerLayer = ctx.expertNum / ctx.layerNum;
+    }
     ctx.coreNum = tilingData->coreNum;
     ctx.ubSize = tilingData->ubSize;
 
-    // 测试模式判定:magic 字段 == TEST_MAGIC 时,各 buffer 字段存放的是相对偏移,
-    // 需加上 schedule_context 基址还原真实地址;否则为绝对设备地址(scBase=0)。
-    LocalTensor<uint32_t> magicField = val[TEST_MAGIC_OFFSET].template ReinterpretCast<uint32_t>();
-    uint32_t magicValue = magicField.GetValue(0);
-    uint64_t scBase = (magicValue == TEST_MAGIC) ? reinterpret_cast<uint64_t>(schedule_context) : 0;
-
     ctx.bufferPtr.tokenDataBuf =
-        scBase + val[FFN_WB_CTX_OFFSET(ffn.token_data_buf)].template ReinterpretCast<uint64_t>().GetValue(0);
+        val[FFN_WB_CTX_OFFSET(ffn.token_data_buf)].template ReinterpretCast<uint64_t>().GetValue(0);
 
     if constexpr (isRecv) {
         ctx.bufferPtr.tokenInfoBuf =
-            scBase + val[FFN_WB_CTX_OFFSET(ffn.token_info_buf)].template ReinterpretCast<uint64_t>().GetValue(0);
+            val[FFN_WB_CTX_OFFSET(ffn.token_info_buf)].template ReinterpretCast<uint64_t>().GetValue(0);
         ctx.curMicroBatchID =
             val[FFN_WB_CTX_OFFSET(ffn.polling_index)].template ReinterpretCast<uint64_t>().GetValue(0);
         ASSERT_MSG(ctx.curMicroBatchID < ctx.M, "curMicroBatchID:%lu should be less than micro_batch_num:%u",
@@ -187,11 +215,11 @@ __aicore__ inline void ScheduleContextParse(GM_ADDR schedule_context, const Tili
         ctx.BsKPaddingCount = Align(bsk, sizeof(int32_t)) - bsk;
     } else {
         ctx.bufferPtr.sessionIdsBuf =
-            scBase + val[FFN_WB_CTX_OFFSET(ffn.session_ids_buf)].template ReinterpretCast<uint64_t>().GetValue(0);
+            val[FFN_WB_CTX_OFFSET(ffn.session_ids_buf)].template ReinterpretCast<uint64_t>().GetValue(0);
         ctx.bufferPtr.microBatchIdsBuf =
-            scBase + val[FFN_WB_CTX_OFFSET(ffn.micro_batch_ids_buf)].template ReinterpretCast<uint64_t>().GetValue(0);
+            val[FFN_WB_CTX_OFFSET(ffn.micro_batch_ids_buf)].template ReinterpretCast<uint64_t>().GetValue(0);
         ctx.bufferPtr.expertIdsBuf =
-            scBase + val[FFN_WB_CTX_OFFSET(ffn.expert_ids_buf)].template ReinterpretCast<uint64_t>().GetValue(0);
+            val[FFN_WB_CTX_OFFSET(ffn.expert_ids_buf)].template ReinterpretCast<uint64_t>().GetValue(0);
         ctx.outNum = val[FFN_WB_CTX_OFFSET(ffn.out_num)].template ReinterpretCast<uint32_t>().GetValue(0);
     }
 }
