@@ -296,16 +296,26 @@ inline bool PreferTNDLineDeter(FuzzyBaseInfoParamsRegbase &p)
             } else {
                 GetTNDRightDownVirt(shape.m, shape.n, virtM, virtN);
             }
-            // Equal-length right-down pairs remain row/column-disjoint after
-            // folding into separate heads, even when the virtual rectangle
-            // fails the generic dense-line shape constraint.
-            const bool equalLengthRightDownPairs =
-                !leftUp && p.isS1S2Same && shape.m == shape.n && !runHasSingle && runPairs > 0 && k > 0;
-            if (!equalLengthRightDownPairs && !TNDRunIsLineWorthy(k, virtM, virtN, runPairs)) {
+            // Left-up pairs (m >= n) and equal-length right-down pairs remain
+            // row/column-disjoint after folding into separate heads. An odd
+            // copy runs in a separate phase: single-causal for left-up, square
+            // dense-line plus masking for equal-length right-down. Neither
+            // needs the paired rectangle's minimum-area/occupancy gate.
+            const bool foldedCausalPairsSafe =
+                k > 0 && runPairs > 0 &&
+                ((leftUp && shape.m >= shape.n) || (!leftUp && p.isS1S2Same && shape.m == shape.n));
+            const bool genericLineWorthy = TNDRunIsLineWorthy(k, virtM, virtN, runPairs);
+            if (!foldedCausalPairsSafe && !genericLineWorthy) {
                 return false;
             }
             if (!leftUp && runHasSingle && shape.m < std::min(k, shape.n)) {
                 return false;
+            }
+            if (foldedCausalPairsSafe && !genericLineWorthy) {
+                std::cout << "[TND_LINE_DEBUG][gate] runHead=" << i << " mn=" << shape.m << ',' << shape.n
+                          << " copies=" << total << " singleTail=" << runHasSingle
+                          << " direction=" << (leftUp ? "LEFT_UP" : "RIGHT_DOWN")
+                          << " accepted=folded_causal" << std::endl;
             }
         } else if (shape.kind == TNDRunShapeKind::BAND_DENSE) {
             if (!TNDRunIsLineWorthy(k, shape.m, shape.n, total)) {
