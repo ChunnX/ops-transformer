@@ -748,10 +748,12 @@ macro(add_graph_plugin_sources)
     endif()
   endif()
 
-  file(GLOB GRAPH_PLUGIN_SRCS
-      ${SOURCE_DIR}/*_graph_plugin*.cpp
-      ${SOURCE_DIR}/fusion_pass/*fusion_pass*.cpp
-  )
+  # only built-in build fusion_pass
+  file(GLOB GRAPH_PLUGIN_SRCS ${SOURCE_DIR}/*_graph_plugin*.cpp)
+  if(ENABLE_BUILT_IN)
+    file(GLOB GRAPH_PLUGIN_FUSION_SRCS ${SOURCE_DIR}/fusion_pass/*fusion_pass*.cpp)
+    list(APPEND GRAPH_PLUGIN_SRCS ${GRAPH_PLUGIN_FUSION_SRCS})
+  endif()
   if(GRAPH_PLUGIN_SRCS)
     add_graph_plugin_modules()
     target_sources(${GRAPH_PLUGIN_NAME}_obj PRIVATE ${GRAPH_PLUGIN_SRCS})
