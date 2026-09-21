@@ -2030,9 +2030,25 @@ def set_quant_run_info(run_info, s1_idx, s2_idx):
 
 
 def iterate_mm_ds_p(mm1_res, mm2_res, const_info, run_info, tensor_info):
+    fused = qk_s1_fuse() and is_fused_s1_pair(run_info, run_info.s1_idx)
+    if fused:
+        q_l1_fused = tensor_info.common_l1_db.next()
+        do_l1_fused = tensor_info.common_l1_db.next()
+        iterate_mm_ds_p_tiles(
+            mm1_res, mm2_res, run_info, tensor_info, q_l1_fused, do_l1_fused, fused
+        )
+    else:
+        q_l1_single = tensor_info.common_l1.next()
+        do_l1_single = tensor_info.common_l1.next()
+        tensor_info.common_l1_db.next()
+        iterate_mm_ds_p_tiles(
+            mm1_res, mm2_res, run_info, tensor_info, q_l1_single, do_l1_single, fused
+        )
+
+
+def iterate_mm_ds_p_tiles(mm1_res, mm2_res, run_info, tensor_info, q_l1, do_l1, fused):
     real_m = run_info.inner_s2_real_size[run_info.s2_idx]
     real_n = run_info.inner_s1_real_size[run_info.s1_idx]
-    fused = qk_s1_fuse() and is_fused_s1_pair(run_info, run_info.s1_idx)
     if fused:
         real_n = real_n + run_info.inner_s1_real_size[run_info.s1_idx + 1]
 
@@ -2050,17 +2066,8 @@ def iterate_mm_ds_p(mm1_res, mm2_res, const_info, run_info, tensor_info):
     mm1_acc = tensor_info.acc_mm1.current()
     mm2_acc = tensor_info.acc_mm2.current()
 
-    if fused:
-        q_l1 = tensor_info.common_l1_db.next()
-        do_l1 = tensor_info.common_l1_db.next()
-        pl.set_validshape(q_l1, [TD, real_n])
-        pl.set_validshape(do_l1, [TD, real_n])
-    else:
-        q_l1 = tensor_info.common_l1.next()
-        do_l1 = tensor_info.common_l1.next()
-        tensor_info.common_l1_db.next()
-        pl.set_validshape(q_l1, [TD, real_n])
-        pl.set_validshape(do_l1, [TD, real_n])
+    pl.set_validshape(q_l1, [TD, real_n])
+    pl.set_validshape(do_l1, [TD, real_n])
     if layout == 0 or layout == 2:  # BSND
         pl.load(
             q_l1,
@@ -2973,6 +2980,10 @@ def iterate_mm_ds_k(
     if run_info.is_key_reuse:
         k_l1_first = tensor_info.k_l1[run_info.s2_idx]
         k_l1_second = tensor_info.k_l1[run_info.s2_idx + 1]
+        pl.set_validshape(right_first, [k_size_first, D_SIZE])
+        pl.set_validshape(right_second, [k_size_second, D_SIZE])
+        pl.move(right_first, k_l1_first, [0, 0])
+        pl.move(right_second, k_l1_second, [0, 0])
     else:
         k_l1_first = tensor_info.common_l1.next()
         k_l1_second = tensor_info.common_l1.next()
@@ -3026,10 +3037,10 @@ def iterate_mm_ds_k(
                 ],
                 order=[2, 3],
             )
-    pl.set_validshape(right_first, [k_size_first, D_SIZE])
-    pl.set_validshape(right_second, [k_size_second, D_SIZE])
-    pl.move(right_first, k_l1_first, [0, 0])
-    pl.move(right_second, k_l1_second, [0, 0])
+        pl.set_validshape(right_first, [k_size_first, D_SIZE])
+        pl.set_validshape(right_second, [k_size_second, D_SIZE])
+        pl.move(right_first, k_l1_first, [0, 0])
+        pl.move(right_second, k_l1_second, [0, 0])
     pl.set_validshape(left, [128, real_k])
     pl.set_validshape(right, [real_k, D_SIZE])
     if run_info.is_dq_fix_out:
