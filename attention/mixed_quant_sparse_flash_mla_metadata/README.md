@@ -4,16 +4,14 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-|<term>Ascend 950PR/Ascend 950DT</term>| √（主算子quant_mode=1/2） |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>| √（主算子quant_mode=3） |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>| √（主算子quant_mode=3） |
+|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
 
 ## 功能说明
-
-> Metadata接口支持`quant_mode=1/2/3`且不感知执行架构。A5主算子仅支持`quant_mode=1/2`，A2/A3 TurboQuant主算子仅支持`quant_mode=3`。输出保持为INT32 `[1024]`。
 
 - 算子功能：`MixedQuantSparseFlashMlaMetadata`是`MixedQuantSparseFlashMla`算子的前置算子，用于后续Attention计算生成负载均衡的任务划分方案。本算子不执行实际的Attention计算，而是根据输入参数在AI CPU计算出每个AI Core应处理的Attention计算起止范围，从而最大化计算资源的利用率，避免各Core间负载不均衡的问题。
 
@@ -123,7 +121,7 @@
     <tr>
       <td>quant_mode</td>
       <td>属性</td>
-      <td>表示量化模式。1表示A5原有BF16 scale量化布局；2表示A5原有FLOAT8_E8M0 scale量化布局；3表示A2/A3 TurboQuant TQ4配套metadata。Metadata接口接受1、2、3，最终的平台与quant_mode组合由主算子校验。</td>
+      <td>表示量化模式。1表示BF16 scale量化布局；2表示FLOAT8_E8M0 scale量化布局；3表示TurboQuant TQ4配套metadata。Metadata接口接受1、2、3，具体平台约束见约束说明。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
@@ -251,6 +249,7 @@
 
 ## 约束说明
 
+- `quant_mode`支持1、2、3。与`MixedQuantSparseFlashMla`算子配套使用时，Ascend 950PR/Ascend 950DT仅支持1/2，Atlas A2/A3仅支持3。
 - MixedQuantSparseFlashMlaMetadata算子需要与MixedQuantSparseFlashMla算子配套使用。
 - B（Batch）表示输入样本批量大小，q、ori_kv、cmp_kv为配套的MixedQuantSparseFlashMla算子的入参，S1表示layout_q=BSND时，q shape中的S轴的大小，T1表示layout_q=TND时，q shape中的T轴的大小，S2表示layout_kv=BSND时，ori_kv shape中的S轴的大小，S3表示layout_kv=BSND时，cmp_kv shape中的S轴的大小，N2表示ori_kv、cmp_kv shape中的N轴的大小。
 - 参数cu_seqlens_q、cu_seqlens_ori_kv及cu_seqlens_cmp_kv要求其值为当前Batch与前序Batch有效token数的累加值，第一个元素固定为0，后一个元素的值必须大于等于前一个元素的值。

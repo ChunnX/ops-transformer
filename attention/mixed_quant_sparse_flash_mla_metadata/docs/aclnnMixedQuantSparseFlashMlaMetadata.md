@@ -5,13 +5,13 @@
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：支持（主算子仅 `quantMode=1/2`）
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持（仅 `quantMode=3`）
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持（仅 `quantMode=3`）
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
 - <term>Atlas 200I/500 A2 推理产品</term>：不支持
@@ -24,8 +24,6 @@
 <!-- end id6 -->
 
 ## 功能说明
-
-> A5 主算子仅支持 `quantMode=1/2`，A2/A3 TurboQuant 主算子仅支持 `quantMode=3`。Metadata 输出仍为 INT32 `[1024]`。
 
 - 算子功能：`aclnnMixedQuantSparseFlashMlaMetadata`是`aclnnMixedQuantSparseFlashMla`算子的前置算子，用于后续Attention计算生成负载均衡的任务划分方案。本算子不执行实际的Attention计算，而是根据输入参数在AI CPU计算出每个AI Core应处理的Attention计算起止范围，从而最大化计算资源的利用率，避免各Core间负载不均衡的问题。
 
@@ -232,7 +230,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
       <td>quantMode（int64_t）</td>
       <td>输入</td>
       <td>表示量化模式。</td>
-      <td><ul><li>1: A5原有BF16 scale量化布局。</li><li>2: A5原有FLOAT8_E8M0 scale量化布局。</li><li>3: A2/A3 TurboQuant TQ4配套metadata。metadata接口接受1、2、3，但不感知执行架构；最终的平台与quantMode组合由主算子校验。</li></ul></td>
+      <td><ul><li>1: BF16 scale量化布局。</li><li>2: FLOAT8_E8M0 scale量化布局。</li><li>3: TurboQuant TQ4配套metadata。Metadata接口接受1、2、3，具体平台约束见约束说明。</li></ul></td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -513,6 +511,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
 
 ## 约束说明
 
+  - `quantMode`支持1、2、3。与`aclnnMixedQuantSparseFlashMla`算子配套使用时，Ascend 950PR/Ascend 950DT仅支持1/2，Atlas A2/A3仅支持3。
   - aclnnMixedQuantSparseFlashMlaMetadata默认确定性实现。
   - B（Batch）表示输入样本批量大小，q、oriKvOptional、cmpKvOptional为配套的aclnnMixedQuantSparseFlashMla算子的入参，S1表示layoutQOptional=BSND时，q shape中的S轴的大小，T1表示layoutQOptional=TND时，q shape中的T轴的大小，S2表示layoutKvOptional=BSND时，oriKvOptional shape中的S轴的大小，S3表示layoutKvOptional=BSND时，cmpKvOptional shape中的S轴的大小，N2表示oriKvOptional、cmpKvOptional shape中的N轴的大小。
   - 参数cuSeqlensQOptional、cuSeqlensOriKvOptional、cuSeqlensCmpKvOptional要求其值为当前Batch与前序Batch有效token数的累加值，第一个元素固定为0，后一个元素的值必须大于等于前一个元素的值。
