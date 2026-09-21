@@ -241,6 +241,7 @@ private:
     TBuf<> statusBuf_;
     TBuf<> tempBuf_;
     TBuf<> indicesBuf_;
+    TBuf<> offBuf_;
     uint32_t indicesBufElements_{0};
     TBuf<> castFp32Buf_;
     TBuf<> accumBuf_;
@@ -463,6 +464,23 @@ __aicore__ inline static uint32_t AlignRowStride(uint32_t hiddenBytes)
     return (hiddenBytes + Mc2Kernel::UB_ALIGN - 1U) / Mc2Kernel::UB_ALIGN * Mc2Kernel::UB_ALIGN;
 }
 
+// unsort 每批行数钳制链：tile 容量与 idxUb 容量取小。
+// Init 的 offBuf_ 分配与 UnsortGrad 的批大小共用此函数，保证 uint64 偏移表容量与 n 恒同源
+__aicore__ inline static uint32_t UnsortTokensPerBuf(int64_t hiddenBytes, uint32_t tileBytes,
+                                                     uint32_t indicesElems)
+{
+    uint32_t tokensPerBuf = 1U;
+    if (hiddenBytes > 0) {
+        uint32_t byTile = static_cast<uint32_t>(static_cast<uint64_t>(tileBytes) /
+                                                static_cast<uint64_t>(hiddenBytes));
+        tokensPerBuf = (byTile > 1U) ? byTile : 1U;
+    }
+    if (tokensPerBuf > indicesElems) {
+        tokensPerBuf = indicesElems;
+    }
+    return (tokensPerBuf > 0U) ? tokensPerBuf : 1U;
+}
+
 __aicore__ inline static uint32_t MaxGradRowsPerPing(uint32_t hiddenBytes, uint32_t gradSubBatch)
 {
     uint32_t maxByPong = Mc2Kernel::GRAD_PING_BYTES / AlignRowStride(hiddenBytes);
@@ -676,7 +694,11 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     if (tempBufSize < entryBatchBytes) {
         tempBufSize = entryBatchBytes;
     }
-    uint32_t coreArrayBytes = Ceil(static_cast<uint64_t>(totalBlocks_) * sizeof(int32_t) * 2U, UB_ALIGN) * UB_ALIGN;
+    // LoadCoreRange 两段读入(coreStart+segCount)实际占用 = align32(T)+T：第二段起点为满足
+    // DataCopyPad 目的地址 32B 对齐放在 align32(T) 处(T=totalBlocks_*4B)。
+    // 旧算法 align32(2T) 在 totalBlocks_%8 为 1..4 时少算 4~16B，多 die 大核数下越界踩 tempBuf 尾部
+    uint32_t coreArrayBytes = Ceil(Ceil(static_cast<uint64_t>(totalBlocks_) * sizeof(int32_t), UB_ALIGN) +
+                                   static_cast<uint64_t>(totalBlocks_) * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
     if (tempBufSize < coreArrayBytes) {
         tempBufSize = coreArrayBytes;
     }
@@ -700,6 +722,15 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     tpipe_->InitBuffer(indicesBuf_, indicesBufSize);
     indicesBufBytes_ = indicesBufSize;
     indicesBufElements_ = indicesBufSize / sizeof(int32_t);
+
+    // unsort V 偏移表专用缓冲（int64 元素）：容量按 UnsortTokensPerBuf 同源钳制链分配，
+    // 分配期即绑定 n 上界（免运行时容量检查；上界 1024*8B 由 IDX_BUF_BYTES 静态钳死，
+    // 最坏总占用 ~146KB/256KB，与原版一致无需额外断言）；
+    // sort 阶段 tpipe_->Reset() 自动释放，不占 scatter 预算
+    uint32_t unsortBatch = UnsortTokensPerBuf(hiddenBytes_, tileBytes_, indicesBufElements_);
+    uint32_t offBufBytes = (unsortBatch * sizeof(int64_t) + Mc2Kernel::UB_ALIGN - 1U) / Mc2Kernel::UB_ALIGN *
+                           Mc2Kernel::UB_ALIGN;
+    tpipe_->InitBuffer(offBuf_, offBufBytes);
 
     uint32_t maxByPong = MaxGradRowsPerPing(static_cast<uint32_t>(hiddenBytes_), gradSubBatch_);
     if (chunkElems_ == 0U) {
@@ -756,36 +787,22 @@ __aicore__ inline uint32_t EngramFetchGradArch35::LoadGradChunk(int64_t pos, int
     GlobalTensor<uint8_t> srcGm;
     srcGm.SetGlobalBuffer((__gm__ uint8_t *)gradFetchedGM_);
     DataCopyPadExtParams<uint8_t> gPad{false, 0, 0, 0};
+    uint32_t hb32 = static_cast<uint32_t>(hiddenBytes_);
 
-    uint32_t j = 0;
-    while (j < n) {
-        int32_t runStartIdx = idxUb.GetValue(j);
-        uint32_t runLen = 1;
-        while (j + runLen < n) {
-            int32_t nextIdx = idxUb.GetValue(j + runLen);
-            if (nextIdx == runStartIdx + static_cast<int32_t>(runLen)) {
-                runLen++;
-            } else {
-                break;
-            }
-        }
-
-        uint64_t srcOff = static_cast<uint64_t>(runStartIdx) * static_cast<uint64_t>(hiddenBytes_);
-        uint64_t dstOff = static_cast<uint64_t>(j) * static_cast<uint64_t>(hiddenBytes_);
-        uint64_t runBytesLeft = static_cast<uint64_t>(runLen) * static_cast<uint64_t>(hiddenBytes_);
-        uint64_t curSrcOff = srcOff;
-        uint64_t curDstOff = dstOff;
-        while (runBytesLeft > 0) {
-            uint32_t chunkBytes =
-                (runBytesLeft > MAX_BLOCK_BYTES) ? MAX_BLOCK_BYTES : static_cast<uint32_t>(runBytesLeft);
-            DataCopyExtParams gParams{1U, chunkBytes, 0U, 0U, 0U};
-            DataCopyPad(buf[curDstOff], srcGm[curSrcOff], gParams, gPad);
-            curSrcOff += chunkBytes;
-            curDstOff += chunkBytes;
-            runBytesLeft -= chunkBytes;
-        }
-
-        j += runLen;
+    // V 预计算源偏移表：off[i] = perm[i] * hiddenBytes（int64 承载，任意 token 规模无溢出）。
+    // 标量循环退化为每行 1 次 GetValue + 1 条 DataCopyPad，消除逐行 run 探测链
+    // （perm 分桶后桶内随机，run 平均长度≈1，run 合并收益趋零）；
+    // Muls 无 int32->int64 混合类型重载（dst/src 必须同型），故 Cast 加宽后同型自乘两步完成，
+    // 均为 V pipe 操作，开销流水内可忽略；offBuf_ 容量与批大小钳制链同源分配（见 Init），n 恒 ≤ 表容量
+    LocalTensor<int64_t> offUb = offBuf_.Get<int64_t>();
+    AscendC::Cast<int64_t, int32_t>(offUb, idxUb, AscendC::RoundMode::CAST_NONE,
+                                    static_cast<int32_t>(n));
+    AscendC::Muls<int64_t>(offUb, offUb, static_cast<int64_t>(hiddenBytes_), static_cast<int32_t>(n));
+    EngramFetchGradSyncFunc<HardEvent::V_S>();
+    for (uint32_t j = 0; j < n; j++) {
+        int64_t srcOff = offUb.GetValue(j);
+        DataCopyExtParams gParams{1U, hb32, 0U, 0U, 0U};
+        DataCopyPad(buf[static_cast<uint64_t>(j) * hiddenBytes_], srcGm[srcOff], gParams, gPad);
     }
     AscendC::SetFlag<HardEvent::MTE2_MTE3>(ppEvtMte2ToMte3_[bufIdx]);
     return n;
@@ -864,13 +881,8 @@ __aicore__ inline void EngramFetchGradArch35::UnsortGrad()
         return;
     }
 
-    uint32_t tokensPerBuf = static_cast<uint32_t>(tileBytes_ / static_cast<uint64_t>(hiddenBytes_));
-    if (tokensPerBuf == 0) {
-        tokensPerBuf = 1;
-    }
-    if (tokensPerBuf > indicesBufElements_) {
-        tokensPerBuf = indicesBufElements_;
-    }
+    // 与 Init 的 offBuf_ 分配共用钳制链（UnsortTokensPerBuf），n 恒 ≤ off 表容量
+    uint32_t tokensPerBuf = UnsortTokensPerBuf(hiddenBytes_, tileBytes_, indicesBufElements_);
 
     LocalTensor<uint8_t> buf0 = entryBuf_.Get<uint8_t>();
     LocalTensor<uint8_t> buf1 = gradBuf_.Get<uint8_t>();
