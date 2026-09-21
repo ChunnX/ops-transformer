@@ -16,7 +16,8 @@
 // 数据加载
 
 /// 加载一个token的h_post[N]和h_res[N*N]。
-__aicore__ inline void LoadTokenWeights(uint32_t token, float (&postVals)[N_MAX])
+__aicore__ inline void LoadTokenWeights(uint32_t token, float (&postVals)[N_MAX], uint32_t headBegin = 0U,
+                                        uint32_t headEnd = N_MAX)
 {
     // Host已固定校验N为4，使用编译期常量便于展开标量循环。
     constexpr uint32_t N = N_MAX;
@@ -35,7 +36,8 @@ __aicore__ inline void LoadTokenWeights(uint32_t token, float (&postVals)[N_MAX]
         DataCopyPad(hResUb, hResGm_[(uint64_t)token * N * N], cp, cpad);
     }
     PipeBarrier<PIPE_ALL>();
-    for (uint32_t i = 0; i < N; ++i)
+    // 双AIV每条lane只消费自己负责的两个post标量，避免无效UB到Scalar回读。
+    for (uint32_t i = headBegin; i < headEnd; ++i)
         postVals[i] = hPostUb.GetValue(i);
 }
 

@@ -21,7 +21,8 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     float midSqHalf[2] = {0.0f, 0.0f};
     CacheHOut((uint64_t)token * D_);
     CacheGamma0();
-    LoadTokenWeights(token, postVals);
+    const uint32_t headBegin = laneId_ * 2U;
+    LoadTokenWeights(token, postVals, headBegin, headBegin + 2U);
 
     // 两个lane按完全相同的分块和顺序冗余执行R1。
     float sumSq0 = 0.0f;
@@ -78,7 +79,6 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
             const uint32_t tD = GetTileD(tile);
             const uint32_t tOff = tile * dimTile_;
-            const uint32_t headBegin = laneId_ * 2U;
             LocalTensor<float> gammaEven = bufGamma2Fp32_.Get<float>();
             LocalTensor<float> gammaOdd = bufGamma0Fp32_.Get<float>();
             LoadGammaInto(gammaEven, gamma2Gm_, headBegin * D_ + tOff, tD);
