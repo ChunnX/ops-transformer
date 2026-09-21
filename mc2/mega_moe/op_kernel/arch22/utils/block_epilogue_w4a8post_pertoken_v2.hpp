@@ -382,6 +382,9 @@ public:
                 AscendC::Add(ubFp32[row * n0], ubFp32[row * n0], ubweighAux, actualN);
             }
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbTileCVMTE2List[ubListId]);
+            // The scale load only synchronizes MTE2 with scalar reads; drain
+            // the bias adds before the in-place vector multiply below.
+            AscendC::PipeBarrier<PIPE_V>();
 
             layout::VectorLayout scaleLayout{actualM};
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbScaleVMTE2List[ubListId]);

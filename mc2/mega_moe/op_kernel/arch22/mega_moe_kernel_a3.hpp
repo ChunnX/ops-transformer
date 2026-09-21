@@ -717,15 +717,12 @@ private:
         if (routeCacheNum == 0) {
             return;
         }
-        // DataCopyPad pads each UB row to 32 bytes. Keep the cache compact even
-        // when expertPerRank is not a multiple of eight (e.g. four experts/rank).
+        // DataCopyPad pads each UB row to 32 bytes. Preserve that layout:
+        // dispatch/combine index counts with expertPerRankAligned, including
+        // non-aligned cases such as EP=32 with 12 experts per rank.
         uint32_t runtimeRank = static_cast<uint32_t>(RuntimeRank(params));
-        const uint32_t paddedExperts = AlignUp(params.expertPerRank, BYTE_PER_BLK / sizeof(int32_t));
-        const bool needsCompaction = paddedExperts != params.expertPerRank;
-        AscendC::LocalTensor<int32_t> copiedCounts =
-            needsCompaction ? resource.ubBuf.template GetBufferByByte<int32_t>(0) : ubTokenPerExpertCache;
         AscendC::DataCopyPad(
-            copiedCounts, tokenPerExpert[runtimeRank * params.expertPerRank],
+            ubTokenPerExpertCache, tokenPerExpert[runtimeRank * params.expertPerRank],
             {static_cast<uint16_t>(params.EP), static_cast<uint16_t>(params.expertPerRank * sizeof(int32_t)),
              static_cast<uint16_t>((paddedExpertNumAligned - params.expertPerRank) * sizeof(int32_t)), 0},
             {});
@@ -735,14 +732,6 @@ private:
         // 标量读取前确保 MTE2 搬入完成（与 CopyRankMaskToLocal 一致）
         AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
-        if (needsCompaction) {
-            for (uint32_t rank = 0; rank < params.EP; ++rank) {
-                for (uint32_t expert = 0; expert < params.expertPerRank; ++expert) {
-                    ubTokenPerExpertCache.SetValue(rank * params.expertPerRank + expert,
-                                                   copiedCounts.GetValue(rank * paddedExperts + expert));
-                }
-            }
-        }
     }
 
     // 发送侧 chunk 总数
@@ -890,7 +879,7 @@ private:
             reinterpret_cast<__gm__ int32_t *>(RoundTablePtr(params, chunkIdx, roundIdx, RoundTableSeg::kPreSum)));
     }
 
-    // 将本轮轮表 tpe_r / preSum_r 刷新到本核 UB 路由缓存（布局与 chunk 级紧凑缓存一致，
+    // 将本轮轮表 tpe_r / preSum_r 刷新到本核 UB 路由缓存（计数按 expertPerRankAligned 补齐，前缀紧凑，
     // dispatch / CombineV1 / CombineV2 / BlockEpilogue3 读取路径零改动）。仅 rounds>1 时调用。
     CATLASS_DEVICE void CacheRoundTablesToUb(Params const &params)
     {
