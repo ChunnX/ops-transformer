@@ -20,6 +20,7 @@
 // 通信模式
 #define TILINGKEY_TPL_CCU 0
 #define TILINGKEY_TPL_AICPU 1
+#define TILINGKEY_TPL_APACE 2 // apace hcomm 融合通路（GMM 走 Blaze GroupedMatmulMxKernel，AllToAllV 走 Hccl）
 
 // 量化模式宏定义
 #define QUANT_MODE_NONE 0 // 无量化
@@ -58,9 +59,10 @@ ASCENDC_TPL_ARGS_DECL(QuantGroupedMatMulAlltoAllv,
                       // 共享专家 MM 计算转置场景
                       ASCENDC_TPL_BOOL_DECL(TILINGKEY_SHARED_MM_WEIGHT_TRANS, 0, 1),
 
-                      // 通信引擎
-                      ASCENDC_TPL_UINT_DECL(TILINGKEY_COMM_MODE, ASCENDC_TPL_1_BW, ASCENDC_TPL_UI_LIST,
-                                            TILINGKEY_TPL_CCU, TILINGKEY_TPL_AICPU), );
+                      // 通信引擎：COMM_MODE 为 DECL 末位参数，宽度 1→2 bit 后
+                      // 原有 CCU/AICPU(索引 0/1) 的 tiling key 编码值不变，APACE(索引 2) 使用新 bit 位
+                      ASCENDC_TPL_UINT_DECL(TILINGKEY_COMM_MODE, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST,
+                                            TILINGKEY_TPL_CCU, TILINGKEY_TPL_AICPU, TILINGKEY_TPL_APACE), );
 
 /**
  * TilingKey 选择器定义
@@ -72,56 +74,56 @@ ASCENDC_TPL_SEL(
                          ASCENDC_TPL_BOOL_SEL(TILINGKEY_GMM_WEIGHT_TRANS, WEIGHT_NO_TRANS),
                          ASCENDC_TPL_BOOL_SEL(TILINGKEY_SHARED_MM_WEIGHT_TRANS, WEIGHT_NO_TRANS),
                          ASCENDC_TPL_UINT_SEL(TILINGKEY_COMM_MODE, ASCENDC_TPL_UI_LIST, TILINGKEY_TPL_CCU,
-                                              TILINGKEY_TPL_AICPU)),
+                                              TILINGKEY_TPL_AICPU, TILINGKEY_TPL_APACE)),
 
     // 场景2: 无共享专家，GMM不转置，MM转置
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_BOOL_SEL(TILINGKEY_COMPUTE_MATMUL, NO_COMPUTE_MATMUL),
                          ASCENDC_TPL_BOOL_SEL(TILINGKEY_GMM_WEIGHT_TRANS, WEIGHT_NO_TRANS),
                          ASCENDC_TPL_BOOL_SEL(TILINGKEY_SHARED_MM_WEIGHT_TRANS, WEIGHT_TRANS),
                          ASCENDC_TPL_UINT_SEL(TILINGKEY_COMM_MODE, ASCENDC_TPL_UI_LIST, TILINGKEY_TPL_CCU,
-                                              TILINGKEY_TPL_AICPU)),
+                                              TILINGKEY_TPL_AICPU, TILINGKEY_TPL_APACE)),
 
     // 场景3: 无共享专家，GMM转置，MM不转置
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_BOOL_SEL(TILINGKEY_COMPUTE_MATMUL, NO_COMPUTE_MATMUL),
                          ASCENDC_TPL_BOOL_SEL(TILINGKEY_GMM_WEIGHT_TRANS, WEIGHT_TRANS),
                          ASCENDC_TPL_BOOL_SEL(TILINGKEY_SHARED_MM_WEIGHT_TRANS, WEIGHT_NO_TRANS),
                          ASCENDC_TPL_UINT_SEL(TILINGKEY_COMM_MODE, ASCENDC_TPL_UI_LIST, TILINGKEY_TPL_CCU,
-                                              TILINGKEY_TPL_AICPU)),
+                                              TILINGKEY_TPL_AICPU, TILINGKEY_TPL_APACE)),
 
     // 场景4: 无共享专家，GMM转置，MM转置
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_BOOL_SEL(TILINGKEY_COMPUTE_MATMUL, NO_COMPUTE_MATMUL),
                          ASCENDC_TPL_BOOL_SEL(TILINGKEY_GMM_WEIGHT_TRANS, WEIGHT_TRANS),
                          ASCENDC_TPL_BOOL_SEL(TILINGKEY_SHARED_MM_WEIGHT_TRANS, WEIGHT_TRANS),
                          ASCENDC_TPL_UINT_SEL(TILINGKEY_COMM_MODE, ASCENDC_TPL_UI_LIST, TILINGKEY_TPL_CCU,
-                                              TILINGKEY_TPL_AICPU)),
+                                              TILINGKEY_TPL_AICPU, TILINGKEY_TPL_APACE)),
 
     // 场景5: 有共享专家，GMM不转置，MM不转置
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_BOOL_SEL(TILINGKEY_COMPUTE_MATMUL, HAS_COMPUTE_MATMUL),
                          ASCENDC_TPL_BOOL_SEL(TILINGKEY_GMM_WEIGHT_TRANS, WEIGHT_NO_TRANS),
                          ASCENDC_TPL_BOOL_SEL(TILINGKEY_SHARED_MM_WEIGHT_TRANS, WEIGHT_NO_TRANS),
                          ASCENDC_TPL_UINT_SEL(TILINGKEY_COMM_MODE, ASCENDC_TPL_UI_LIST, TILINGKEY_TPL_CCU,
-                                              TILINGKEY_TPL_AICPU)),
+                                              TILINGKEY_TPL_AICPU, TILINGKEY_TPL_APACE)),
 
     // 场景6: 有共享专家，GMM不转置，MM转置
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_BOOL_SEL(TILINGKEY_COMPUTE_MATMUL, HAS_COMPUTE_MATMUL),
                          ASCENDC_TPL_BOOL_SEL(TILINGKEY_GMM_WEIGHT_TRANS, WEIGHT_NO_TRANS),
                          ASCENDC_TPL_BOOL_SEL(TILINGKEY_SHARED_MM_WEIGHT_TRANS, WEIGHT_TRANS),
                          ASCENDC_TPL_UINT_SEL(TILINGKEY_COMM_MODE, ASCENDC_TPL_UI_LIST, TILINGKEY_TPL_CCU,
-                                              TILINGKEY_TPL_AICPU)),
+                                              TILINGKEY_TPL_AICPU, TILINGKEY_TPL_APACE)),
 
     // 场景8: 有共享专家，GMM转置，MM不转置
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_BOOL_SEL(TILINGKEY_COMPUTE_MATMUL, HAS_COMPUTE_MATMUL),
                          ASCENDC_TPL_BOOL_SEL(TILINGKEY_GMM_WEIGHT_TRANS, WEIGHT_TRANS),
                          ASCENDC_TPL_BOOL_SEL(TILINGKEY_SHARED_MM_WEIGHT_TRANS, WEIGHT_NO_TRANS),
                          ASCENDC_TPL_UINT_SEL(TILINGKEY_COMM_MODE, ASCENDC_TPL_UI_LIST, TILINGKEY_TPL_CCU,
-                                              TILINGKEY_TPL_AICPU)),
+                                              TILINGKEY_TPL_AICPU, TILINGKEY_TPL_APACE)),
 
     // 场景9: 有共享专家，GMM转置，MM转置
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_BOOL_SEL(TILINGKEY_COMPUTE_MATMUL, HAS_COMPUTE_MATMUL),
                          ASCENDC_TPL_BOOL_SEL(TILINGKEY_GMM_WEIGHT_TRANS, WEIGHT_TRANS),
                          ASCENDC_TPL_BOOL_SEL(TILINGKEY_SHARED_MM_WEIGHT_TRANS, WEIGHT_TRANS),
                          ASCENDC_TPL_UINT_SEL(TILINGKEY_COMM_MODE, ASCENDC_TPL_UI_LIST, TILINGKEY_TPL_CCU,
-                                              TILINGKEY_TPL_AICPU)),
+                                              TILINGKEY_TPL_AICPU, TILINGKEY_TPL_APACE)),
 
 );
 

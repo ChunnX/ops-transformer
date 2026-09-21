@@ -66,7 +66,8 @@ uint64_t TTQuantGroupedMatmulAllToAllvTiling::GetTilingKey() const
     return tilingKey;
 }
 
-// 注册tiling类
-REGISTER_OPS_TILING_TEMPLATE(QuantGroupedMatMulAlltoAllv, TTQuantGroupedMatmulAllToAllvTiling, 0);
+// 注册tiling类：priority=0 已由 apace hcomm 通路占用（其能力域为 MX 子集，需先于 MX 尝试），
+// TT 通路顺延至 priority=2（仍在 MX(1) 之后，仅处理 TT 量化模式，无屏蔽风险）
+REGISTER_OPS_TILING_TEMPLATE(QuantGroupedMatMulAlltoAllv, TTQuantGroupedMatmulAllToAllvTiling, 2);
 
 } // namespace Mc2Tiling

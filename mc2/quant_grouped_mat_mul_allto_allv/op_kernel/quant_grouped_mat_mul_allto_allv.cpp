@@ -18,6 +18,22 @@
 
 #include "../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/mc2_templates.h"
 
+// apace hcomm 通路依赖 tensor_api/blaze 头（opc 流程按构建开关引入，与 mega_moe 的 ENABLE_TENSOR_API 惯例一致）。
+// 打开方式：构建时环境变量 ENABLE_APACE_QUANT_GMM_A2AV=1（op_host/CMakeLists 同步下发本宏至 kernel 与 tiling）。
+#ifdef ENABLE_APACE_QUANT_GMM_A2AV
+#include "apace/kernel/fusions/quant_grouped_matmul_all_to_all_v/quant_grouped_matmul_all_to_all_v_tiling_data.h"
+#include "apace/kernel/fusions/quant_grouped_matmul_all_to_all_v/mx_quant_grouped_matmul_all_to_all_v_hcomm_impl.h"
+
+// apace 通路仅支持同位宽 MX 量化 dtype（MXFP8/MXFP4）；FP16/BF16/HIFLOAT8 等 dtype 二进制中
+// APACE tiling key 实例退化为兜底空实现（tiling 侧仅对 MX 场景下发该 key，正常不会命中）
+#define APACE_GMM_A2AV_MX_DTYPE_OK() \
+    (((ORIG_DTYPE_GMM_X == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_GMM_X == DT_FLOAT8_E5M2) || \
+      (ORIG_DTYPE_GMM_X == DT_FLOAT4_E2M1)) && \
+     ((ORIG_DTYPE_GMM_WEIGHT == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_GMM_WEIGHT == DT_FLOAT8_E5M2) || \
+      (ORIG_DTYPE_GMM_WEIGHT == DT_FLOAT4_E2M1)) && \
+     (ORIG_DTYPE_GMM_X == ORIG_DTYPE_GMM_WEIGHT))
+#endif
+
 using namespace AscendC;
 using namespace MC2KernelTemplate;
 using namespace Mc2GroupedMatmulTilingData;
@@ -48,8 +64,38 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
         return;
     }
 
-    TPipe pipe;
+    // 原 QuantGmmA2avTilingData 保留为默认 tiling 结构；apace hcomm 通路按 tiling key 条件注册
+    // （opc 约束：单 kernel 仅允许一个 default tiling 结构，其余须按 tiling key 表达式注册）
     REGISTER_TILING_DEFAULT(QuantGmmA2avTilingData);
+#ifdef ENABLE_APACE_QUANT_GMM_A2AV
+    REGISTER_TILING_FOR_TILINGKEY("TILINGKEY_COMM_MODE == TILINGKEY_TPL_APACE",
+                                  Apace::hcommQuantGmmAlltoAllvTilingData);
+#endif
+
+    if constexpr (TILINGKEY_COMM_MODE == TILINGKEY_TPL_APACE) {
+        // apace hcomm 融合通路：AIC 走 Blaze GroupedMatmulMxKernel，AIV block 0 走 Hccl AllToAllV
+#if defined(ENABLE_APACE_QUANT_GMM_A2AV)
+#if APACE_GMM_A2AV_MX_DTYPE_OK()
+        GET_TILING_DATA_WITH_STRUCT(Apace::hcommQuantGmmAlltoAllvTilingData, apaceTilingData, tilingGM);
+        using ApaceImplType =
+            Apace::MxQuantGroupedMatmulAllToAllvHcommImpl<DTYPE_GMM_X, DTYPE_GMM_WEIGHT, DTYPE_Y,
+                                                          AscendC::HcclServerType::HCCL_SERVER_TYPE_CCU,
+                                                          TILINGKEY_GROUPED_MATMUL_TRANS, TILINGKEY_MATMUL_TRANS>;
+        ApaceImplType apaceImpl(&apaceTilingData);
+        apaceImpl.Init(gmmxGM, gmmweightGM, gmmxScaleGM, gmmWeightScaleGM, mmxOptionalGM, mmweightOptionalGM,
+                       mmxScaleGM, mmWeightScaleGM, yGM, mmyOptionalGM, userWorkspace);
+        apaceImpl.Run();
+        return;
+#else
+        // 非 MX 量化 dtype 二进制：tiling 侧不会下发该 tiling key，此处兜底直接返回
+        return;
+#endif
+#else
+        // 未开启 apace 构建开关（默认）：tiling 侧 IsCapable 同步关闭，不会下发该 tiling key；此处兜底直接返回
+        return;
+#endif
+    }
+    TPipe pipe;
     GET_TILING_DATA(tilingData, tilingGM);
     const QuantGmmA2avTilingData *tilingData_ = &tilingData;
     const void *hcclInitTiling = &(tilingData_->hcclA2avTiling.hcclInitTiling);
