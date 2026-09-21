@@ -46,7 +46,7 @@ void LogPlan(gert::TilingContext *context, const FagParsedInfo &info, const FagT
 {
     OP_LOGI(context->GetNodeName(),
             "FlashAttnGrad tiling: usedCube=%u, usedBlockDim=%u, useActualCores=%d, s1Outer=%ld, s2Outer=%ld, "
-            "layoutStr=%s, layout=%ld, maskMode=%ld, win=(%ld,%ld), sparseType=%ld, totalPerBatch=%ld, "
+            "layoutStr=%s, layout=%ld, effectiveMaskMode=%ld, win=(%ld,%ld), sparseType=%ld, totalPerBatch=%ld, "
             "hasAttenMask=%d, hasSeqused=%d, hasSinks=%d, isEmptyShape=%d, "
             "template=%ld, isBn2MultiBlk=%ld, bn2NeedZero=%ld, swizzle=%ld, dAlign=%ld, dvAlign=%ld, "
             "B=%ld, S1=%ld, S2=%ld, N1=%ld, N2=%ld, G=%ld, D=%ld, Dv=%ld, "

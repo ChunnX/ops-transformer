@@ -60,8 +60,7 @@ FagWorkspacePlan BuildWorkspacePlan(const FagParsedInfo &info)
     // 行数按芯片 AIV 数取上限（launch 的 AIV = usedCube*subblock ≤ aivNum），
     // kernel 按实际 AIV 数写槽位，post 阶段由 AIV0 固定次序归约。
     plan.dsink.offset = cursor;
-    plan.dsink.size =
-        static_cast<size_t>(info.aivNum) * static_cast<size_t>(info.n1) * FP32_SIZE;
+    plan.dsink.size = static_cast<size_t>(info.aivNum) * static_cast<size_t>(info.n1) * FP32_SIZE;
     cursor += plan.dsink.size;
 
     plan.totalSize = cursor;

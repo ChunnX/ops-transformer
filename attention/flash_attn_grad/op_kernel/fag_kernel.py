@@ -34,12 +34,13 @@ vector 子核各自发来的信号。
 以下是这两个模板共同的设计约束，改动前务必读完。
 
 当前裁剪范围：非 TND（BSND/BNSD）、FP16。mask_mode 0=dense，3=causal，
-4=band。tilingkey ``swizzle`` 区分线性 skip 无效块与 packed 有效块分核。
+4=band。tilingkey ``swizzle`` 区分线性 skip 无效块与 mask 按列分核。
 BN2 支持 mask，禁止 BN2+swizzle。
 
 dQ/dK/dV 均由 fixpipe 经 GM workspace 做 atomicAdd 累加。dK/dV 的 L0C
 驻留累加作为后续优化单独叠加。mask_mode 静态分支：0 恒有效，3=causal
-块有效，4=band 区间；线性路径 skip 无效块。
+块有效，4=band 区间；线性路径 skip 无效块。mask 3/4 非 TND GS1S2 过门
+走 HeadSliceSplit 按列分核，未过门仍 skip。
 
 Tmpl.BN2GS1S2 且 d_align<=192 走 flash_attn_grad_preload3 的
 PRELOAD_TIMES=3（+2）。其余（Tmpl.BN2、D=256/768 GS1S2）走
@@ -281,7 +282,10 @@ def flash_attn_grad_preload3(
     # atomicAdd 到本行；post 阶段 AIV0 按固定行序归约。
     aivCount = coreNum * AIV_PER_CORE
     tensor_dsink_ws = pl.make_tensor(
-        dsink_workspace, [1, aivCount * n1Size], [aivCount * n1Size, 1], dtype=pl.DT_FP32
+        dsink_workspace,
+        [1, aivCount * n1Size],
+        [aivCount * n1Size, 1],
+        dtype=pl.DT_FP32,
     )
 
     # ---- pre/post：一维视图 ----
@@ -745,8 +749,12 @@ def flash_attn_grad_preload3(
         if constInfo.sinkOptional == 1:
             if pl.get_block_idx() == 0:
                 process_sink_reduce(
-                    constInfo, tensor_dsink_ws, tensor_dsink_out,
-                    sink_red_ub.current(), sink_row_ub.current(), aivCount,
+                    constInfo,
+                    tensor_dsink_ws,
+                    tensor_dsink_out,
+                    sink_red_ub.current(),
+                    sink_row_ub.current(),
+                    aivCount,
                 )
 
 
@@ -949,13 +957,16 @@ def flash_attn_grad_preload2(
     wsRowsKVBn2 = constInfo.bSize * constInfo.s2Size * constInfo.n2Size
     dsink_workspace = pl.addptr(
         ws_ptr,
-        wsRowsQBn2 * dQ + wsRowsKVBn2 * dQ
+        wsRowsQBn2 * dQ
+        + wsRowsKVBn2 * dQ
         + wsRowsKVBn2 * constInfo.dvSize
         + 128 * pl.max(dQ, constInfo.dvSize),
     )
     aivCount = coreNum * AIV_PER_CORE
     tensor_dsink_ws = pl.make_tensor(
-        dsink_workspace, [1, aivCount * n1SizeBn2], [aivCount * n1SizeBn2, 1],
+        dsink_workspace,
+        [1, aivCount * n1SizeBn2],
+        [aivCount * n1SizeBn2, 1],
         dtype=pl.DT_FP32,
     )
     # dsink : [N1] fp32，尾部 AIV0 固定次序归约后全量写出。
@@ -985,9 +996,7 @@ def flash_attn_grad_preload2(
         if bn2_need_zero == 1:
             with pl.section_vector():
                 n1Size = constInfo.n2Size * constInfo.gSize
-                dqElems = (
-                    constInfo.bSize * constInfo.s1Size * n1Size * constInfo.dSize
-                )
+                dqElems = constInfo.bSize * constInfo.s1Size * n1Size * constInfo.dSize
                 dkElems = (
                     constInfo.bSize
                     * constInfo.s2Size
@@ -1631,16 +1640,20 @@ def flash_attn_grad_preload2(
                 (dkvRowEndP - dkvRowStartP) * dV,
             )
     else:
-        # ==== dsink 归约（BN2：槽位 → sync_all → 固定次序）====
-        # BN2 原本没有 sync_all；归约要读所有 AIV 的槽位行，必须加一道全片栅栏。
-        # 不带 sinks 时该栅栏只对齐各核收尾，无正确性影响。
-        pl.system.sync_all()
-        with pl.section_vector():
-            sink_row_ub = make_sink_row_post_ub(HEAD_DIM_ALIGN)
-            sink_red_ub = make_sink_red_post_ub(HEAD_DIM_ALIGN)
-            if constInfo.sinkOptional == 1:
+        # BN2 无 sink 时不能有 post / sync_all（与 ASC 一致：只有
+        # sinkOptional 才 Pre + SyncALL + Post）。归约要读所有 AIV 槽位，
+        # 栅栏必须包在同一条运行期判断里，否则短 BN2 会多付一次全片同步。
+        if constInfo.sinkOptional == 1:
+            pl.system.sync_all()
+            with pl.section_vector():
+                sink_row_ub = make_sink_row_post_ub(HEAD_DIM_ALIGN)
+                sink_red_ub = make_sink_red_post_ub(HEAD_DIM_ALIGN)
                 if pl.get_block_idx() == 0:
                     process_sink_reduce(
-                        constInfo, tensor_dsink_ws, tensor_dsink_out,
-                        sink_red_ub.current(), sink_row_ub.current(), aivCount,
+                        constInfo,
+                        tensor_dsink_ws,
+                        tensor_dsink_out,
+                        sink_red_ub.current(),
+                        sink_row_ub.current(),
+                        aivCount,
                     )

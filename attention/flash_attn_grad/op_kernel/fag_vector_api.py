@@ -445,6 +445,7 @@ def dsink_reduce_add_vf(acc_ub, row_ub, nsegs: pl.DT_INT64):
 
 # ---- pre: 清零 ----
 
+
 @pl.vector_function
 def fill_zero_vf(dst_ub, nvecs: pl.DT_INT64):
     """把 UB tile 的前 nvecs 个 vreg(每个 VF_LANES 个 fp32)填 0。

@@ -325,7 +325,9 @@ def process_sink_partial(
     pl.set_validshape(sink_part_ub, [1, VECTOR_BASEN])
 
 
-def process_sink_reduce(constInfo, tensor_slots, tensor_dsink, acc_ub, row_ub, aiv_count):
+def process_sink_reduce(
+    constInfo, tensor_slots, tensor_dsink, acc_ub, row_ub, aiv_count
+):
     """dsink 的固定次序归约：acc = slot[0] + slot[1] + ... + slot[aiv_count-1]。
 
     由 AIV0 在末尾 sync_all 之后单点执行；行序固定 → 括号结构逐位可复现。

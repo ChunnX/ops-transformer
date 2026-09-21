@@ -21,6 +21,7 @@
 ``fag_mem``          L1/L0/UB 地址与 mutex id
 ``fag_tiling``       host 契约（TilingData / TilingKey）
 ``fag_schedule``     块有效性、swizzle、RunInfo
+``fag_colsplit``     mask 3/4 按列分核几何 + HeadSliceSplit
 ``fag_buffers``      片上 tile 声明
 ``fag_block_cube``   C1..C5 五个 matmul
 ``fag_block_vec``    V1..V6 与 pre/post 编排
