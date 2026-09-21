@@ -171,8 +171,9 @@ __aicore__ inline void ComputeX2AllHeadsBatched(const float (&postVals)[N_MAX], 
     constexpr uint32_t N = N_MAX;
     LocalTensor<T> residual = bufResidualBf16_.AllocTensor<T>();
     // 四行在GM和UB中都使用固定行跨度，一次二维搬运减少MTE2指令发射。
-    DataCopyExtParams copyParams = {N, tD * sizeof(T), (D_ - tD) * sizeof(T),
-                                    (dimTile_ - tD) * sizeof(T), 0};
+    DataCopyExtParams copyParams = {N, static_cast<uint32_t>(tD * sizeof(T)),
+                                    static_cast<int64_t>((D_ - tD) * sizeof(T)),
+                                    static_cast<int64_t>((dimTile_ - tD) * sizeof(T)), 0};
     DataCopyPadExtParams<T> copyPad = {false, 0, 0, 0};
     DataCopyPad(residual, residualGm_[gmBaseOffset], copyParams, copyPad);
     bufResidualBf16_.EnQue(residual);
