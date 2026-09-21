@@ -31,6 +31,9 @@ namespace Apace {
 constexpr uint32_t GMM_A2AV_MAX_EXPERT_NUM = 256U;
 // AIV 侧 AllToAllV send/recv cnt/offset 数组按 rank 数开表的上限（epWorldSize 超限时 tiling 侧回退原通路）
 constexpr uint32_t GMM_A2AV_MAX_RANK_NUM = 128U;
+// 分批通算掩盖流水：expertNumPerBatch = CeilDiv(e, 4)（与原通路 TARGET_COMM_ROUNDS=4 口径一致），
+// totalLoopCnt = CeilDiv(e, expertNumPerBatch) ≤ 4（e ≤ 32）；AIV 侧 handle 数组按此上限留余量
+constexpr uint32_t GMM_A2AV_MAX_COMM_LOOP_CNT = 8U;
 
 // GroupedMatmulMxKernel 的 groupList 存储格式（与 blaze GroupedMatmulMxKernel 定义一致）
 constexpr uint8_t GMM_A2AV_GROUP_LIST_TYPE_LENGTH = 1U; // 每组存 token 数
@@ -39,11 +42,12 @@ constexpr uint8_t GMM_A2AV_GROUP_LIST_TYPE_SPARSE = 2U; // [专家id, token数] 
 /*!
  * \brief Hcomm/CCU 路径 tiling 结构体（apace 自有，不依赖原算子 QuantGmmA2avTilingData 布局）
  *
- * 数据布局契约（后通信模式，与原算子语义一致）：
+ * 数据布局契约（专家分批通算掩盖流水，最终语义与原算子一致）：
  *   - gmmX 按 [expert0: rank0..rankN-1 tokens][expert1: ...] 专家主序排列；
  *     kernel 侧 groupList 采用 SPARSE 格式按 (expertIdx * ep + rankIdx) 主序生成，
- *     A/scaleA 走 GroupedMatmulMxKernel 默认累计 offset，B/scaleB 按 sparse 专家 id 寻址；
- *   - GMM 输出（AllToAllV 发送缓冲）按 rank-first 布局，由 cGroupOffsetTable 提供；
+ *     A/scaleA 按批推进基址后走 GroupedMatmulMxKernel 默认累计 offset，B/scaleB 按 sparse 专家 id 寻址；
+ *   - GMM 输出（AllToAllV 发送缓冲）按全局 rank-first 布局，由 cGroupOffsetTable 提供；
+ *     分批通信读取其中本批的不相交连续 chunk（sendOff = rank 全局基 + 批内专家前缀）；
  *   - y 输出按 rank-first 接收（recvCounts 按源 rank 聚合后顺序拼接）。
  */
 struct hcommQuantGmmAlltoAllvTilingData {
