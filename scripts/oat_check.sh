@@ -134,7 +134,7 @@ if [ -n "$_HEAD_SHA" ]; then
     if [ -n "$_PR_MERGE_BASE" ] && [ "$_PR_MERGE_BASE" != "$(git rev-parse HEAD 2>/dev/null)" ]; then
         mkdir -p "$OAT_RESULT_DIR"
         _DONE_MARKER="$OAT_RESULT_DIR/.done_${_HEAD_SHA}"
-        if [ -f "$_DONE_MARKER" ]; then
+        if [ $# -eq 0 ] && [ -f "$_DONE_MARKER" ]; then
             echo "[OAT] [SKIP] Already scanned HEAD=${_HEAD_SHA}. Skipping duplicate invocation."
             exit 0
         fi
@@ -157,7 +157,7 @@ if command -v flock >/dev/null 2>&1; then
         flock -w 120 9
         # Re-check done marker: if the scanning instance completed normally, skip.
         # If it exited abnormally (no marker), fall through and run the scan ourselves.
-        if [ -n "$_DONE_MARKER" ] && [ -f "$_DONE_MARKER" ]; then
+        if [ $# -eq 0 ] && [ -n "$_DONE_MARKER" ] && [ -f "$_DONE_MARKER" ]; then
             echo "[OAT] Scan already completed by another instance. Skipping."
             exit 0
         fi
@@ -403,7 +403,7 @@ echo "[OAT] [OK] All checks passed ($FILE_COUNT file(s) checked)."
 echo "[OAT] Summary: cat $RESULT_FILE"
 echo ""
 # Mark scan as done for CI range mode (prevents redundant re-runs on same PR head)
-if [ -n "$_DONE_MARKER" ]; then
+if [ $# -eq 0 ] && [ -n "$_DONE_MARKER" ]; then
     touch "$_DONE_MARKER" 2>/dev/null || true
     echo "[OAT] Done-marker created: $_DONE_MARKER"
 fi
