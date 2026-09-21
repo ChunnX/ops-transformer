@@ -105,6 +105,18 @@ import pandas as pd
 import sys
 import os
 
+# 整数安全转换：NaN/空串/nan/none/纯空格按0处理，其余强转int，非法值报明确错误
+def to_int(col, x):
+    try:
+        if pd.isna(x):
+            return 0
+        s = str(x).strip()
+        if s == "" or s.lower() in ("nan", "none"):
+            return 0
+        return int(float(x))
+    except Exception:
+        raise ValueError(f"[ERROR] 列 {col} 存在非法整数值: {x!r}")
+
 # 按换行分割还原每一个原始列名
 cols_list = os.environ["COLS_ENV"].splitlines()
 opt_cols = os.environ["OPT_COLS_ENV"].splitlines()
@@ -138,10 +150,10 @@ for col in opt_cols:
     else:
         df_required[col] = 0
 
-# 强制将数值列转为int整数
+# 强制将数值列转为int整数（健壮转换：NaN/空串/nan/none按0，非法值报列名明确的错误）
 for col in int_cols:
     if col in df_required.columns:
-        df_required[col] = df_required[col].apply(lambda x: int(float(x)) if x != "" and x is not None else 0)
+        df_required[col] = df_required[col].apply(lambda x: to_int(col, x))
 
 # 按行输出参数，用|分隔，顺序：必填列 + 所有可选列
 for idx in range($start_idx, $end_idx + 1):
@@ -159,9 +171,12 @@ for idx in range($start_idx, $end_idx + 1):
     else:
         fm_str = str(fm_val).strip()
 
-    # 去除所有字段中的换行符，避免 | 分隔的按行解析被截断
+    # 去除所有字段中的换行符/<br>标签(替换为空格)，字段内"|"替换为";"，避免 | 分隔的按行解析被截断
     def _clean(v):
-        return str(v).replace(chr(10), ' ').replace(chr(13), '')
+        s = str(v).replace(chr(10), ' ').replace(chr(13), '')
+        s = s.replace('<br />', ' ').replace('<br/>', ' ').replace('<br>', ' ')
+        s = s.replace('|', ';')
+        return s
 
     fields = [
         _clean(row["case_name"]),
@@ -174,33 +189,34 @@ for idx in range($start_idx, $end_idx + 1):
         str(int(row["is_graph"])),
         str(int(row["is_profiling"])),
         str(int(row["use_fp8"])),
-        sf_str,
+        _clean(sf_str),
         str(int(row["seed"])),
-        fm_str
+        _clean(fm_str)
     ]
     print("|".join(fields))
 EOF
 }
 
-# 执行读取，捕获错误
-data_output=$(read_data)
-if [[ $? -ne 0 ]]; then
-    echo "$data_output"
+# 执行读取，捕获错误（python 的错误信息直接走 stderr 透传给用户）
+if ! data_output=$(read_data); then
+    echo "[ERROR] 读取用例表失败"
     exit 1
 fi
 
 # 循环执行用例
 total_cases=$((num_end - num_start + 1))
 current_case=0
+SUCCESS_CASES=()
+FAILED_CASES=()
 echo "[INFO] 共读取到 $total_cases 条测试用例，开始执行..."
 echo "================================================================"
 
 while IFS="|" read -r case_name input_tensor_shape input_tensor_dtype input_tensor_range fetch_indicies world_size num_cpu_bytes is_graph is_profiling use_fp8 sf_dtype seed fetch_mode; do
     current_case=$((current_case + 1))
-    # profiling 开启时创建独立临时目录
+    # profiling 开启时创建独立临时目录（py 端读取 PROF_TMP_DIR 作为 profiling 输出根目录）
     if [[ "${is_profiling}" -eq 1 ]]; then
         export PROF_TMP_DIR=$(mktemp -d)
-        echo "[INFO] 已开启Profiling，当前用例独立临时目录: ${PROF_TMP_DIR}"
+        echo "[INFO] 已开启Profiling，当前用例独立输出目录: ${PROF_TMP_DIR}"
     else
         unset PROF_TMP_DIR
         echo "[INFO] 未开启Profiling，不配置Profiler临时目录"
@@ -232,6 +248,7 @@ while IFS="|" read -r case_name input_tensor_shape input_tensor_dtype input_tens
         --input_tensor_range "$input_tensor_range"
         --fetch_indicies "$fetch_indicies"
         --world_size "$world_size"
+        --master_port $((50008 + current_case))
     )
     # 可选参数
     if [[ "$num_cpu_bytes" != "0" ]]; then
@@ -262,20 +279,34 @@ while IFS="|" read -r case_name input_tensor_shape input_tensor_dtype input_tens
     echo "${cmd_args[@]}"
     echo "------------------------------------------------"
 
-    # ===== Phase 1: 数据准备 (不排队) =====
+    # ===== Phase 1: 数据准备 (不排队)，容错模式：失败记录后继续下一条用例 =====
     echo "[PREP] 开始数据准备: $case_name"
-    "${cmd_args[@]}" --prep_only
-    prep_ret=$?
+    prep_ret=0
+    "${cmd_args[@]}" --prep_only || prep_ret=$?
     if [[ $prep_ret -ne 0 ]]; then
         echo "[ERROR] 数据准备失败: $case_name, 返回码: $prep_ret"
-        exec_ret=$prep_ret
-    else
-        echo "[PREP] 数据准备完成: $case_name"
+        FAILED_CASES+=("${case_name}(prep:${prep_ret})")
+        prep_data_file="./${case_name}_prep_data.pt"
+        if [[ -f "$prep_data_file" ]]; then
+            rm -f "$prep_data_file"
+            echo "[INFO] 已清理预准备数据文件: $prep_data_file"
+        fi
+        echo "[INFO] 当前测试用例【${case_name}】性能数据存放路径：${PROF_TMP_DIR:-$PWD/profiling_data/${case_name}_profiling}"
+        echo "================================================================"
+        continue
+    fi
+    echo "[PREP] 数据准备完成: $case_name"
 
-        # ===== Phase 2: NPU执行 (qrun排队) =====
-        echo "[RUN] 排队等待NPU执行: $case_name"
-        qrun --emp q00983190 -n "${case_name}" "${cmd_args[@]}" --run_only
-        exec_ret=$?
+    # ===== Phase 2: NPU执行 (qrun排队)，容错模式：失败记录后继续下一条用例 =====
+    echo "[RUN] 排队等待NPU执行: $case_name"
+    exec_ret=0
+    qrun --emp q00983190 -n "${case_name}" "${cmd_args[@]}" --run_only || exec_ret=$?
+    if [[ $exec_ret -ne 0 ]]; then
+        echo "[ERROR] 用例 $case_name 执行失败，返回码: $exec_ret"
+        FAILED_CASES+=("${case_name}(run:${exec_ret})")
+    else
+        echo "[SUCCESS] 用例 $case_name 执行完成"
+        SUCCESS_CASES+=("$case_name")
     fi
 
     # 清理预准备数据文件
@@ -286,19 +317,22 @@ while IFS="|" read -r case_name input_tensor_shape input_tensor_dtype input_tens
     fi
     echo "------------------------------------------------"
 
-    # 执行结果校验
-    if [[ $exec_ret -ne 0 ]]; then
-        echo "[ERROR] 用例 $case_name 执行失败，返回码: $exec_ret"
-    else
-        echo "[SUCCESS] 用例 $case_name 执行完成"
-    fi
-    
-    if [[ -n "${PROF_TMP_DIR:-}" && -d "${PROF_TMP_DIR}" ]]; then
-    rm -rf "${PROF_TMP_DIR}"
-    echo "[INFO] 已清理当前用例Profiler临时目录"
-    fi
-    echo "[INFO] 当前测试用例【${case_name}】性能数据存放路径：./profiling_data/${case_name}_profiling"
+    echo "[INFO] 当前测试用例【${case_name}】性能数据存放路径：${PROF_TMP_DIR:-$PWD/profiling_data/${case_name}_profiling}"
     echo "================================================================"
 done <<< "$data_output"
 
-echo "[FINISH] 全部 $total_cases 条测试用例执行完毕" 
+echo "[FINISH] 全部 $total_cases 条测试用例执行完毕"
+echo "================================================================"
+echo "[SUMMARY] 用例执行结果汇总 (SUCCESS: ${#SUCCESS_CASES[@]} / FAILED: ${#FAILED_CASES[@]} / 总数: $total_cases):"
+for c in ${SUCCESS_CASES[@]+"${SUCCESS_CASES[@]}"}; do
+    echo "  [SUCCESS] $c"
+done
+for c in ${FAILED_CASES[@]+"${FAILED_CASES[@]}"}; do
+    echo "  [FAILED]  $c"
+done
+if [[ ${#FAILED_CASES[@]} -gt 0 ]]; then
+    echo "[ERROR] 存在失败用例，脚本以非零码退出"
+    exit 1
+fi
+echo "[SUCCESS] 全部用例执行成功"
+exit 0
