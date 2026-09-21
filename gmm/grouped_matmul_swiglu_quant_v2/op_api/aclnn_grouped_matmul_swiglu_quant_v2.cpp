@@ -14,7 +14,6 @@
 #include <sstream>
 #include <string>
 #include <unordered_map>
-#include <vector>
 #include "gmm_dsq_base.h"
 #include "grouped_matmul_swiglu_quant_v2_utils.h"
 #include "grouped_matmul_swiglu_quant_v2.h"
@@ -198,12 +197,12 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2GetWorkspaceSize(
                                                                workspaceSize, executor);
 }
 
-static aclnnStatus ProcessSingleWeightNz(const aclTensorList *&weight, aclOpExecutor *executor)
+static aclnnStatus ProcessSingleWeightNz(const aclTensorList *weight)
 {
-    CHECK_RET(executor != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    const aclTensor *w = (*weight)[0];
+    auto w = (*weight)[0];
     auto storgeShape = w->GetStorageShape();
     auto viewShape = w->GetViewShape();
+    aclTensor *weightNZ = const_cast<aclTensor *>(w);
     std::ostringstream gotShape;
     gotShape << op::ToString(storgeShape).GetString() << " with dim num " << storgeShape.GetDimNum();
     std::string gotShapeStr = gotShape.str();
@@ -213,34 +212,24 @@ static aclnnStatus ProcessSingleWeightNz(const aclTensorList *&weight, aclOpExec
     CHECK_RET(CheckMxfp4WeightNzViewShape(ACLNN_GMM_SWIGLU_QUANT_WEIGHT_NZ_V2_API_NAME, w, viewShape,
                                           WEIGHT_ND_DIM_LIMIT) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
-    // 创建executor托管的视图tensor并规整格式，不修改调用方原始输入
-    aclTensor *weightNZ = executor->CreateView(w, viewShape, w->GetViewOffset());
-    CHECK_RET(weightNZ != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    weightNZ->SetStorageShape(storgeShape);
-    weightNZ->SetViewFormat(w->GetViewFormat());
     weightNZ->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
     if (viewShape.GetDimNum() == WEIGHT_NZ_DIM_LIMIT) {
         weightNZ->SetViewFormat(op::Format::FORMAT_FRACTAL_NZ);
     } else if (viewShape.GetDimNum() == WEIGHT_ND_DIM_LIMIT) {
         weightNZ->SetViewFormat(op::Format::FORMAT_ND);
     }
-    std::vector<aclTensor *> wrappedTensors = {weightNZ};
-    weight = executor->AllocTensorList(wrappedTensors.data(), wrappedTensors.size());
-    CHECK_RET(weight != nullptr, ACLNN_ERR_INNER_NULLPTR);
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus ProcessMultiWeightNz(const aclTensorList *&weight, aclOpExecutor *executor)
+static aclnnStatus ProcessMultiWeightNz(const aclTensorList *weight)
 {
-    CHECK_RET(executor != nullptr, ACLNN_ERR_INNER_NULLPTR);
     size_t wLength = weight->Size();
-    std::vector<aclTensor *> wrappedTensors;
-    wrappedTensors.reserve(wLength);
     for (size_t i = 0; i < wLength; i++) {
-        const aclTensor *w = (*weight)[i];
+        auto w = (*weight)[i];
         CHECK_RET(w != nullptr, ACLNN_ERR_PARAM_NULLPTR);
         auto storgeShape = w->GetStorageShape();
         auto viewShape = w->GetViewShape();
+        aclTensor *weightNZ = const_cast<aclTensor *>(w);
         std::ostringstream gotShape;
         gotShape << op::ToString(storgeShape).GetString() << " with dim num " << storgeShape.GetDimNum();
         std::string gotShapeStr = gotShape.str();
@@ -251,21 +240,14 @@ static aclnnStatus ProcessMultiWeightNz(const aclTensorList *&weight, aclOpExecu
         CHECK_RET(CheckMxfp4WeightNzViewShape(ACLNN_GMM_SWIGLU_QUANT_WEIGHT_NZ_V2_API_NAME, w, viewShape,
                                               MULTI_WEIGHT_ND_DIM_LIMIT) == ACLNN_SUCCESS,
                   ACLNN_ERR_PARAM_INVALID);
-        // 创建executor托管的视图tensor，weight的StorageFormat无条件视为NZ
-        aclTensor *weightNZ = executor->CreateView(w, viewShape, w->GetViewOffset());
-        CHECK_RET(weightNZ != nullptr, ACLNN_ERR_INNER_NULLPTR);
-        weightNZ->SetStorageShape(storgeShape);
-        weightNZ->SetViewFormat(w->GetViewFormat());
+        // weight的StorageFormat无条件视为NZ
         weightNZ->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
         if (viewShape.GetDimNum() == MULTI_WEIGHT_NZ_DIM_LIMIT) {
             weightNZ->SetViewFormat(op::Format::FORMAT_FRACTAL_NZ);
         } else if (viewShape.GetDimNum() == MULTI_WEIGHT_ND_DIM_LIMIT) {
             weightNZ->SetViewFormat(op::Format::FORMAT_ND);
         }
-        wrappedTensors.emplace_back(weightNZ);
     }
-    weight = executor->AllocTensorList(wrappedTensors.data(), wrappedTensors.size());
-    CHECK_RET(weight != nullptr, ACLNN_ERR_INNER_NULLPTR);
     return ACLNN_SUCCESS;
 }
 
@@ -290,13 +272,10 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize(
     auto firstWeightViewDimNum = (*weight)[0]->GetViewShape().GetDimNum();
     bool isSingleWeightTensor =
         wLength == 1 && (firstWeightViewDimNum == WEIGHT_ND_DIM_LIMIT || firstWeightViewDimNum == WEIGHT_NZ_DIM_LIMIT);
-    // 创建子executor托管规整后的tensor/list生命周期
-    auto uniqueExecutor = CREATE_EXECUTOR();
-    CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
     if (isSingleWeightTensor) {
-        CHECK_RET(ProcessSingleWeightNz(weight, uniqueExecutor.get()) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+        CHECK_RET(ProcessSingleWeightNz(weight) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     } else {
-        CHECK_RET(ProcessMultiWeightNz(weight, uniqueExecutor.get()) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+        CHECK_RET(ProcessMultiWeightNz(weight) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     }
 
     GroupedMatmulSwigluQuantParamsBase params =
@@ -315,13 +294,8 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize(
             .Build();
 
     // 调用公共接口
-    auto ret = aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(ACLNN_GMM_SWIGLU_QUANT_WEIGHT_NZ_V2_API_NAME, params,
-                                                                   workspaceSize, executor);
-    if (ret == ACLNN_SUCCESS) {
-        // 成功时将子executor并入输出executor，保证规整后的tensor存活到launch结束
-        uniqueExecutor.ReleaseTo(executor);
-    }
-    return ret;
+    return aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(ACLNN_GMM_SWIGLU_QUANT_WEIGHT_NZ_V2_API_NAME, params,
+                                                               workspaceSize, executor);
 }
 
 aclnnStatus aclnnGroupedMatmulSwigluQuantV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
