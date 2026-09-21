@@ -106,7 +106,9 @@ public:
         // UB空间分配
         pipe_.InitBuffer(bufHOutBf16_, BUFFER_NUM_ONE, dimTile_ * sizeof(T));
         pipe_.InitBuffer(bufGamma0Fp32_, D_ * sizeof(float));
-        pipe_.InitBuffer(bufX2Fp32_, N_ * dimTile_ * sizeof(float));
+        // 双sibling每条lane只恢复并归约自己负责的两个head，使用紧凑两行缓存。
+        const uint32_t x2Fp32Rows = DUAL_SIBLING ? 2U : N_;
+        pipe_.InitBuffer(bufX2Fp32_, x2Fp32Rows * dimTile_ * sizeof(float));
         // 完整gamma0复用初始同步；gamma1在D不超过5120时完整缓存。
         // D=7168时总UB为260448B，小于A5的256KiB上限并保留1696B余量。
         pipe_.InitBuffer(bufX2Cache_, K_ * sizeof(T));

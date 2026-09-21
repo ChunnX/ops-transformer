@@ -115,7 +115,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     }
     if (!USE_RMS_MID || writeOutput) {
         // 双路R4/R5只读取本lane负责的相邻两行，避免恢复另一lane的无效副本。
-        MhcSandwichRegBase::CastB16PairToFp32(x2[headBegin * dimTile_], x2[(headBegin + 1U) * dimTile_],
+        MhcSandwichRegBase::CastB16PairToFp32(x2, x2[dimTile_],
                                               x2Cache[headBegin * D_ + tOff],
                                               x2Cache[(headBegin + 1U) * D_ + tOff], tD);
         PipeBarrier<PIPE_V>();
@@ -179,10 +179,12 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
         for (uint32_t half = halfBegin; half < halfEnd; ++half) {
             const uint32_t h0 = half * 2;
             const uint32_t h1 = h0 + 1;
+            const uint32_t x2h0 = DUAL_SIBLING ? 0U : h0;
+            const uint32_t x2h1 = DUAL_SIBLING ? 1U : h1;
 
-            MhcSandwichRegBase::Mul(out, x2[h0 * dimTile_], x2[h0 * dimTile_], tD);
+            MhcSandwichRegBase::Mul(out, x2[x2h0 * dimTile_], x2[x2h0 * dimTile_], tD);
             PipeBarrier<PIPE_V>();
-            MhcSandwichRegBase::Mul(tmp, x2[h1 * dimTile_], x2[h1 * dimTile_], tD);
+            MhcSandwichRegBase::Mul(tmp, x2[x2h1 * dimTile_], x2[x2h1 * dimTile_], tD);
             PipeBarrier<PIPE_V>();
             MhcSandwichRegBase::Add(out, out, tmp, tD);
             PipeBarrier<PIPE_V>();
@@ -194,7 +196,7 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
                 DataCopyPad(phi, phiGm_[phiOffset], copyParams, copyPad);
                 bufPhiFp32_.EnQue(phi);
                 phi = bufPhiFp32_.DeQue<float>();
-                MhcSandwichRegBase::Mul(out, x2[h0 * dimTile_], phi, tD);
+                MhcSandwichRegBase::Mul(out, x2[x2h0 * dimTile_], phi, tD);
                 PipeBarrier<PIPE_V>();
                 bufPhiFp32_.FreeTensor(phi);
 
@@ -203,7 +205,7 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
                 DataCopyPad(phi, phiGm_[phiOffset], copyParams, copyPad);
                 bufPhiFp32_.EnQue(phi);
                 phi = bufPhiFp32_.DeQue<float>();
-                MhcSandwichRegBase::Mul(tmp, x2[h1 * dimTile_], phi, tD);
+                MhcSandwichRegBase::Mul(tmp, x2[x2h1 * dimTile_], phi, tD);
                 PipeBarrier<PIPE_V>();
                 bufPhiFp32_.FreeTensor(phi);
 
@@ -218,12 +220,14 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
     for (uint32_t half = halfBegin; half < halfEnd; ++half) {
         const uint32_t h0 = half * 2;
         const uint32_t h1 = h0 + 1;
+        const uint32_t x2h0 = DUAL_SIBLING ? 0U : h0;
+        const uint32_t x2h1 = DUAL_SIBLING ? 1U : h1;
 
         // 五行依次保存{sumSqPre,dot0,dot1,dot2,dot3}，一次按行归约，
         // 避免每个标量结果都单独触发一次Vector到Scalar的等待。
-        MhcSandwichRegBase::Mul(reduceRows, x2[h0 * dimTile_], x2[h0 * dimTile_], tD);
+        MhcSandwichRegBase::Mul(reduceRows, x2[x2h0 * dimTile_], x2[x2h0 * dimTile_], tD);
         PipeBarrier<PIPE_V>();
-        MhcSandwichRegBase::Mul(tmp, x2[h1 * dimTile_], x2[h1 * dimTile_], tD);
+        MhcSandwichRegBase::Mul(tmp, x2[x2h1 * dimTile_], x2[x2h1 * dimTile_], tD);
         PipeBarrier<PIPE_V>();
         MhcSandwichRegBase::Add(reduceRows, reduceRows, tmp, tD);
 
@@ -234,7 +238,7 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
             DataCopyPad(phi, phiGm_[phiOffset], copyParams, copyPad);
             bufPhiFp32_.EnQue(phi);
             phi = bufPhiFp32_.DeQue<float>();
-            MhcSandwichRegBase::Mul(dotRow, x2[h0 * dimTile_], phi, tD);
+            MhcSandwichRegBase::Mul(dotRow, x2[x2h0 * dimTile_], phi, tD);
             PipeBarrier<PIPE_V>();
             bufPhiFp32_.FreeTensor(phi);
 
@@ -243,7 +247,7 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
             DataCopyPad(phi, phiGm_[phiOffset], copyParams, copyPad);
             bufPhiFp32_.EnQue(phi);
             phi = bufPhiFp32_.DeQue<float>();
-            MhcSandwichRegBase::Mul(tmp, x2[h1 * dimTile_], phi, tD);
+            MhcSandwichRegBase::Mul(tmp, x2[x2h1 * dimTile_], phi, tD);
             PipeBarrier<PIPE_V>();
             bufPhiFp32_.FreeTensor(phi);
 
