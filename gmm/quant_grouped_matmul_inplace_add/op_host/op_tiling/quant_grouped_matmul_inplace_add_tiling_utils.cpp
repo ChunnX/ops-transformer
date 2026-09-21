@@ -158,7 +158,7 @@ bool CheckShapeForHif8Quant(const gert::Shape &x1ScaleShape, const gert::Shape &
     auto x1FirstDim = static_cast<uint64_t>(x1ScaleShape.GetDim(0));
     OP_CHECK_IF(x1FirstDim != inputParams.groupNum,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                    inputParams.opType, "scale1", ShapeToString(x1ScaleShape),
+                    inputParams.opType, "scale1", "[" + ShapeToString(x1ScaleShape) + "]",
                     BuildErrorMsgStr("in T-T/T-C mode, first dim of scale1 must be equal to groupNum[",
                            inputParams.groupNum, "]")),
                 return false);
@@ -166,7 +166,7 @@ bool CheckShapeForHif8Quant(const gert::Shape &x1ScaleShape, const gert::Shape &
         auto x1LastDim = static_cast<uint64_t>(x1ScaleShape.GetDim(1));
         OP_CHECK_IF(x1LastDim != 1,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams.opType, "scale1",
-                                                          ShapeToString(x1ScaleShape),
+                                                          "[" + ShapeToString(x1ScaleShape) + "]",
                                                           "in T-T/T-C mode, last dim of scale1 must be equal to 1"),
                     return false);
     }
@@ -180,7 +180,7 @@ bool CheckShapeForHif8Quant(const gert::Shape &x1ScaleShape, const gert::Shape &
     auto x2FirstDim = static_cast<uint64_t>(x2ScaleShape.GetDim(0));
     OP_CHECK_IF(x2FirstDim != inputParams.groupNum,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams.opType, "scale2",
-                                                      ShapeToString(x2ScaleShape),
+                                                      "[" + ShapeToString(x2ScaleShape) + "]",
                                                       BuildErrorMsgStr("in T-T/T-C mode, first dim of scale2 must "
                                                                        "be equal to groupNum[",
                                                                        inputParams.groupNum, "]")),
@@ -189,7 +189,7 @@ bool CheckShapeForHif8Quant(const gert::Shape &x1ScaleShape, const gert::Shape &
         auto x2LastDim = static_cast<uint64_t>(x2ScaleShape.GetDim(1));
         OP_CHECK_IF(x2LastDim != 1 && x2LastDim != inputParams.nSize,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        inputParams.opType, "scale2", ShapeToString(x2ScaleShape),
+                        inputParams.opType, "scale2", "[" + ShapeToString(x2ScaleShape) + "]",
                         BuildErrorMsgStr("in T-T/T-C mode, last dim of scale2 must be "
                                          "equal to 1 or n[", inputParams.nSize, "]")),
                     return false);
