@@ -79,6 +79,7 @@ extern thread_local char g_hashBuf[kHashBufSize];
 extern thread_local int g_hashOffset;
 constexpr int64_t MAX_DIM_NUM = 5;
 constexpr int64_t FP4_IN_INT8 = 2;
+constexpr int64_t INT4_IN_INT32 = 8;
 constexpr int64_t PENULTIMATE_DIM = 2;
 const int g_toAclOffset = 256;
 
@@ -186,14 +187,46 @@ inline bool Is4BitDtype(const aclDataType acl_data_type)
     return acl_data_type == ACL_FLOAT4_E2M1 || acl_data_type == ACL_FLOAT4_E1M2 || acl_data_type == ACL_INT4;
 }
 
+// A packed INT32 carries eight INT4 elements; byte carriers contain two 4-bit elements.
+inline int64_t GetB4ElementsPerScalar(const at::Tensor &tensor, aclDataType dtype)
+{
+    return dtype == ACL_INT4 && tensor.scalar_type() == at::kInt ? INT4_IN_INT32 : FP4_IN_INT8;
+}
+
+inline int64_t GetB4StorageElementsPerScalar(const at::Tensor &tensor, aclDataType dtype, bool isBaseFormat,
+                                             const std::vector<int64_t> &storageDims)
+{
+    if (!isBaseFormat && dtype == ACL_INT4 && tensor.scalar_type() == at::kInt) {
+        // dtype views keep the original NPU storage descriptor. NZ INT8.view(INT32)
+        // has INT32 view units but byte storage units. Derive the storage unit from
+        // the complete physical shape and byte capacity, using public torch_npu APIs.
+        int64_t storageElements = 1;
+        for (int64_t dim : storageDims) {
+            if (dim == 0) {
+                return GetB4ElementsPerScalar(tensor, dtype);
+            }
+            TORCH_CHECK(dim > 0 && storageElements <= INT64_MAX / dim, "Invalid 4-bit storage shape.");
+            storageElements *= dim;
+        }
+        const auto storageBytes = tensor.storage().nbytes();
+        TORCH_CHECK(storageBytes % storageElements == 0, "4-bit storage shape does not match byte capacity.");
+        const auto bytesPerStorageElement = storageBytes / storageElements;
+        TORCH_CHECK(bytesPerStorageElement > 0 && bytesPerStorageElement <= INT64_MAX / FP4_IN_INT8,
+                    "Invalid 4-bit storage element width: ", bytesPerStorageElement);
+        return static_cast<int64_t>(bytesPerStorageElement) * FP4_IN_INT8;
+    }
+    return GetB4ElementsPerScalar(tensor, dtype);
+}
+
 inline int64_t ConvertToAclStorageOffset(const at::Tensor &at_tensor, const aclDataType acl_data_type)
 {
     int64_t storageOffset = at_tensor.storage_offset();
     if (Is4BitDtype(acl_data_type)) {
         // ACL 4-bit descriptors express offsets in logical nibble elements.
-        TORCH_CHECK(storageOffset <= INT64_MAX / FP4_IN_INT8,
+        const int64_t elementsPerScalar = GetB4ElementsPerScalar(at_tensor, acl_data_type);
+        TORCH_CHECK(storageOffset <= INT64_MAX / elementsPerScalar,
                     "4-bit tensor storage offset is too large to convert to logical elements: ", storageOffset);
-        storageOffset *= FP4_IN_INT8;
+        storageOffset *= elementsPerScalar;
     }
     return storageOffset;
 }
@@ -212,30 +245,31 @@ static inline bool IsOpInputBaseFormat(const at::Tensor &at_tensor)
 }
 
 inline void CollectB4ShapeInfo(const at::Tensor &at_tensor, c10::SmallVector<int64_t, MAX_DIM_NUM> &wrapperStride,
-                               c10::SmallVector<int64_t, MAX_DIM_NUM> &wrapperShape)
+                               c10::SmallVector<int64_t, MAX_DIM_NUM> &wrapperShape,
+                               int64_t elementsPerScalar = FP4_IN_INT8)
 {
     int64_t nDim = at_tensor.sizes().size();
     if (nDim == 1) {
-        wrapperShape[0] = wrapperShape[0] * FP4_IN_INT8;
+        wrapperShape[0] = wrapperShape[0] * elementsPerScalar;
     } else if (nDim > 1) {
         if (wrapperStride[nDim - 1] == 1 && wrapperStride[nDim - PENULTIMATE_DIM] == 1) {
             if (wrapperShape[nDim - PENULTIMATE_DIM] == 1) {
-                wrapperStride[nDim - 1] = wrapperStride[nDim - 1] * FP4_IN_INT8;
-                wrapperShape[nDim - PENULTIMATE_DIM] = wrapperShape[nDim - PENULTIMATE_DIM] * FP4_IN_INT8;
+                wrapperStride[nDim - 1] = wrapperStride[nDim - 1] * elementsPerScalar;
+                wrapperShape[nDim - PENULTIMATE_DIM] = wrapperShape[nDim - PENULTIMATE_DIM] * elementsPerScalar;
             } else if (wrapperShape[nDim - 1] == 1) {
-                wrapperStride[nDim - PENULTIMATE_DIM] = wrapperStride[nDim - PENULTIMATE_DIM] * FP4_IN_INT8;
-                wrapperShape[nDim - 1] = wrapperShape[nDim - 1] * FP4_IN_INT8;
+                wrapperStride[nDim - PENULTIMATE_DIM] = wrapperStride[nDim - PENULTIMATE_DIM] * elementsPerScalar;
+                wrapperShape[nDim - 1] = wrapperShape[nDim - 1] * elementsPerScalar;
             }
         } else if (wrapperStride[nDim - 1] == 1) {
-            wrapperStride[nDim - PENULTIMATE_DIM] = wrapperStride[nDim - PENULTIMATE_DIM] * FP4_IN_INT8;
-            wrapperShape[nDim - 1] = wrapperShape[nDim - 1] * FP4_IN_INT8;
+            wrapperStride[nDim - PENULTIMATE_DIM] = wrapperStride[nDim - PENULTIMATE_DIM] * elementsPerScalar;
+            wrapperShape[nDim - 1] = wrapperShape[nDim - 1] * elementsPerScalar;
         } else if (wrapperStride[nDim - PENULTIMATE_DIM] == 1) {
-            wrapperStride[nDim - 1] = wrapperStride[nDim - 1] * FP4_IN_INT8;
-            wrapperShape[nDim - PENULTIMATE_DIM] = wrapperShape[nDim - PENULTIMATE_DIM] * FP4_IN_INT8;
+            wrapperStride[nDim - 1] = wrapperStride[nDim - 1] * elementsPerScalar;
+            wrapperShape[nDim - PENULTIMATE_DIM] = wrapperShape[nDim - PENULTIMATE_DIM] * elementsPerScalar;
         }
 
         for (auto i = 0; i < nDim - PENULTIMATE_DIM; i++) {
-            wrapperStride[i] = wrapperStride[i] * FP4_IN_INT8;
+            wrapperStride[i] = wrapperStride[i] * elementsPerScalar;
         }
     } else {
         TORCH_CHECK(false, "unsupported tensor size() in 4-bit dtype.");
@@ -493,8 +527,9 @@ inline aclTensor *ConvertType(const at::Tensor &at_tensor)
     }
 
     if (acl_data_type != ACL_STRING && Is4BitDtype(acl_data_type)) {
-        CollectB4ShapeInfo(at_tensor, wrapperStride, wrapperShape);
-        storageDims.back() *= FP4_IN_INT8;
+        const int64_t elementsPerScalar = GetB4ElementsPerScalar(at_tensor, acl_data_type);
+        CollectB4ShapeInfo(at_tensor, wrapperStride, wrapperShape, elementsPerScalar);
+        storageDims.back() *= GetB4StorageElementsPerScalar(at_tensor, acl_data_type, isBaseFormat, storageDims);
         if (!isBaseFormat) {
             auto realFormat = FORMAT_FAKE_TO_REAL.find(format);
             TORCH_CHECK(realFormat != FORMAT_FAKE_TO_REAL.end(), "not support convert ", format, ".");
@@ -741,8 +776,9 @@ aclTensor *ConvertType(const TensorWrapper &tensor_r)
     }
 
     if (acl_data_type != ACL_STRING && Is4BitDtype(acl_data_type)) {
-        CollectB4ShapeInfo(at_tensor, wrapperStride, wrapperShape);
-        storageDims.back() *= FP4_IN_INT8;
+        const int64_t elementsPerScalar = GetB4ElementsPerScalar(at_tensor, acl_data_type);
+        CollectB4ShapeInfo(at_tensor, wrapperStride, wrapperShape, elementsPerScalar);
+        storageDims.back() *= GetB4StorageElementsPerScalar(at_tensor, acl_data_type, isBaseFormat, storageDims);
         if (!isBaseFormat) {
             auto realFormat = FORMAT_FAKE_TO_REAL.find(format);
             TORCH_CHECK(realFormat != FORMAT_FAKE_TO_REAL.end(), "not support convert ", format, ".");

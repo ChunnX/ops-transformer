@@ -14,6 +14,7 @@
 #include <cstring>
 #include <limits>
 #include "aclnn_common.h"
+#include "mega_moe_weight_utils.h"
 
 namespace op_api {
 using npu_utils = at_npu::native::NpuUtils;
@@ -235,7 +236,10 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
                                      xActiveMask,
                                      scales,
                                      maskBuffer};
+    const c10::OptionalDeviceGuard deviceGuard(x.device());
     const char *socName = aclrtGetSocName();
+    const bool isArch22 = socName != nullptr && (std::strstr(socName, "Ascend910B") != nullptr ||
+                                                 std::strstr(socName, "Ascend910_93") != nullptr);
     const bool isAscend950 = socName != nullptr && std::strstr(socName, "Ascend950") != nullptr;
     CheckMegaMoeInputs(inputs, epWorldSize, moeExpertNum, socName, isAscend950);
     if (isAscend950) {
@@ -268,8 +272,7 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
     at::TensorList bias1Ref = toTensorList(bias1);
     at::TensorList bias2Ref = toTensorList(bias2);
 
-    aclDataType weight1RefDtype = weight1Type.has_value() ? GetAclDataType(weight1Type.value()) :
-                                                            ConvertToAclDataType(weight1Ref[0].scalar_type());
+    aclDataType weight1RefDtype = ResolveMegaMoeWeightDtype(weight1Ref, weight1Type, isArch22, "weight1");
     aclDataType weightScales1Dtype;
     if (weight1RefDtype == aclDataType::ACL_FLOAT8_E5M2 || weight1RefDtype == aclDataType::ACL_FLOAT8_E4M3FN ||
         weight1RefDtype == aclDataType::ACL_FLOAT4_E2M1) {
@@ -278,8 +281,7 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
         weightScales1Dtype = aclDataType::ACL_UINT64;
     }
 
-    aclDataType weight2RefDtype = weight2Type.has_value() ? GetAclDataType(weight2Type.value()) :
-                                                            ConvertToAclDataType(weight2Ref[0].scalar_type());
+    aclDataType weight2RefDtype = ResolveMegaMoeWeightDtype(weight2Ref, weight2Type, isArch22, "weight2");
     aclDataType weightScales2Dtype;
     if (weight2RefDtype == aclDataType::ACL_FLOAT8_E5M2 || weight2RefDtype == aclDataType::ACL_FLOAT8_E4M3FN ||
         weight2RefDtype == aclDataType::ACL_FLOAT4_E2M1) {
@@ -359,6 +361,20 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
         sharedWeight1Type.has_value() ? GetAclDataType(sharedWeight1Type.value()) : weight1RefDtype;
     aclDataType sharedWeight2RefDtype =
         sharedWeight2Type.has_value() ? GetAclDataType(sharedWeight2Type.value()) : weight2RefDtype;
+    if (isArch22) {
+        if (!sharedWeight1Ref.empty()) {
+            sharedWeight1RefDtype =
+                ResolveMegaMoeWeightDtype(sharedWeight1Ref, sharedWeight1Type, true, "shared_weight1");
+        } else if (sharedWeight1RefDtype == ACL_INT32) {
+            sharedWeight1RefDtype = ACL_INT4;
+        }
+        if (!sharedWeight2Ref.empty()) {
+            sharedWeight2RefDtype =
+                ResolveMegaMoeWeightDtype(sharedWeight2Ref, sharedWeight2Type, true, "shared_weight2");
+        } else if (sharedWeight2RefDtype == ACL_INT32) {
+            sharedWeight2RefDtype = ACL_INT4;
+        }
+    }
     const auto getWeightScaleDtype = [](aclDataType weightDtype) {
         return weightDtype == aclDataType::ACL_FLOAT8_E5M2 || weightDtype == aclDataType::ACL_FLOAT8_E4M3FN ||
                        weightDtype == aclDataType::ACL_FLOAT4_E2M1 ?
