@@ -626,24 +626,16 @@ public:
         info.faTmpOutWsPos = coreFirstTmpOutWsPos_;
         info.isLastS2Loop = (s2Cur + 1 == curS2End_);
 
-        // [SK兼容] CV配比1:1时无sub1: AIV0(GetSubBlockNum()==1)承担全部M。
-        // 1:2(含现行950布局)走原半区逻辑不变。actVecMSize仅vec侧消费, AIC不受影响。
-        if (GetSubBlockNum() == 1) {
+        if constexpr (USE_DN) {
             info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
-            info.actVecMSize = info.actMSize;
-            info.vecMbaseIdx = 0;
+            info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 >> 1);
         } else {
-            if constexpr (USE_DN) {
-                info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
-                info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 >> 1);
-            } else {
-                info.actVecMSize = (info.actMSize + 1) >> 1;
-            }
-            info.vecMbaseIdx = 0;
-            if (constInfo_.subBlockIdx == 1) {
-                info.vecMbaseIdx = info.actVecMSize;
-                info.actVecMSize = info.actMSize - info.actVecMSize;
-            }
+            info.actVecMSize = (info.actMSize + 1) >> 1;
+        }
+        info.vecMbaseIdx = 0;
+        if (constInfo_.subBlockIdx == 1) {
+            info.vecMbaseIdx = info.actVecMSize;
+            info.actVecMSize = info.actMSize - info.actVecMSize;
         }
 
         if ((bN2Start_ == bN2End_ && gS1OStart_ == gS1OEnd_)) {
