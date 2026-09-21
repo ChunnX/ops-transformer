@@ -143,7 +143,7 @@
 
 - `cclBufferSize`为HBM上分配的通信window总大小，单位为Byte，必须大于0并满足：
 
-$$cclBufferSize \ge \mathrm{CeilAlign}(\mathrm{CeilAlign}(\mathrm{tokenInfoSize}, 512) + \mathrm{tokenDataSize},\ 2\,\mathrm{MB})$$
+$$cclBufferSize \ge \mathrm{CeilAlign}(\mathrm{CeilAlign}(\mathrm{CeilAlign}(\mathrm{tokenInfoSize}, 512) + \mathrm{tokenDataSize}, 32) + 32\,\mathrm{KiB},\ 2\,\mathrm{MB})$$
 
 其中：
 

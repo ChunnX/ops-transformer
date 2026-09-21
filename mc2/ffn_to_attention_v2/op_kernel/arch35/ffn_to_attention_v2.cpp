@@ -18,11 +18,6 @@
 #else
 #include "kernel_operator.h"
 #endif
-#if __has_include("../../ffn_to_attention/ffn_to_attention.h")
-#include "../../ffn_to_attention/ffn_to_attention.h"
-#else
-#include "../../../ffn_to_attention/op_kernel/ffn_to_attention.h"
-#endif
 #include "../ffn_to_attention_v2_tiling.h"
 #include "../ffn_to_attention_v2_tilling_key.h"
 #include "../ffn_to_attention_urma.h"
@@ -30,11 +25,6 @@
 using namespace AscendC;
 using namespace FFNToAttentionImpl;
 using namespace Mc2Tiling;
-
-static_assert(sizeof(FFNToAttentionV2Info) == sizeof(FFNToAttentionInfo),
-              "FFNToAttention V1/V2 tiling info layout size mismatch");
-static_assert(sizeof(FFNToAttentionV2TilingData) == sizeof(FFNToAttentionTilingData),
-              "FFNToAttention V1/V2 tiling data layout size mismatch");
 
 /*
  * A5 tiling key fields:
