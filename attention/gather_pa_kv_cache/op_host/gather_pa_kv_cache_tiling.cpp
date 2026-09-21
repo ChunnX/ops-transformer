@@ -207,5 +207,5 @@ ge::graphStatus TilingPrepare4GatherPaKvCache(gert::TilingParseContext *context)
 }
 IMPL_OP_OPTILING(GatherPaKvCache)
     .Tiling(Tiling4GatherPaKvCache)
-    .TilingParse<GatherPaKvCacheCompileInfo>(TilingPrepare4GatherPaKvCache);
+    .TilingParse<Tiling4GatherPaKvCacheCompileInfo>(TilingPrepare4GatherPaKvCache);
 } // namespace optiling
