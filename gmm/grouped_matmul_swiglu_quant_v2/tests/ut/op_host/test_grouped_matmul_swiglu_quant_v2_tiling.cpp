@@ -298,12 +298,21 @@ const vector<GroupedMatmulSwigluQuantV2TilingCase> &GetAscend910BCases()
 
 class TestGroupedMatmulSwigluQuantV2Tiling950 : public testing::TestWithParam<GroupedMatmulSwigluQuantV2TilingCase> {
 protected:
-    static void SetUpTestCase() { std::cout << "GroupedMatmulSwigluQuantV2Tiling950 SetUp" << std::endl; }
+    static void SetUpTestCase()
+    {
+        std::cout << "GroupedMatmulSwigluQuantV2Tiling950 SetUp" << std::endl;
+    }
 
-    static void TearDownTestCase() { std::cout << "GroupedMatmulSwigluQuantV2Tiling950 TearDown" << std::endl; }
+    static void TearDownTestCase()
+    {
+        std::cout << "GroupedMatmulSwigluQuantV2Tiling950 TearDown" << std::endl;
+    }
 };
 
-TEST_P(TestGroupedMatmulSwigluQuantV2Tiling950, csvDrivenCase) { GetParam().Run(); }
+TEST_P(TestGroupedMatmulSwigluQuantV2Tiling950, csvDrivenCase)
+{
+    GetParam().Run();
+}
 
 INSTANTIATE_TEST_SUITE_P(GMMSQ_V2_TILING_950, TestGroupedMatmulSwigluQuantV2Tiling950,
                          testing::ValuesIn(GetAscend950Cases()), MakeParamName);
@@ -385,12 +394,21 @@ TEST(TestGroupedMatmulSwigluQuantV2Tiling950WhiteBox, NonSmsTilingKeyAndDataFiel
 
 class TestGroupedMatmulSwigluQuantV2Tiling910B : public testing::TestWithParam<GroupedMatmulSwigluQuantV2TilingCase> {
 protected:
-    static void SetUpTestCase() { std::cout << "GroupedMatmulSwigluQuantV2Tiling910B SetUp" << std::endl; }
+    static void SetUpTestCase()
+    {
+        std::cout << "GroupedMatmulSwigluQuantV2Tiling910B SetUp" << std::endl;
+    }
 
-    static void TearDownTestCase() { std::cout << "GroupedMatmulSwigluQuantV2Tiling910B TearDown" << std::endl; }
+    static void TearDownTestCase()
+    {
+        std::cout << "GroupedMatmulSwigluQuantV2Tiling910B TearDown" << std::endl;
+    }
 };
 
-TEST_P(TestGroupedMatmulSwigluQuantV2Tiling910B, csvDrivenCase) { GetParam().Run(); }
+TEST_P(TestGroupedMatmulSwigluQuantV2Tiling910B, csvDrivenCase)
+{
+    GetParam().Run();
+}
 
 INSTANTIATE_TEST_SUITE_P(GMMSQ_V2_TILING_910B, TestGroupedMatmulSwigluQuantV2Tiling910B,
                          testing::ValuesIn(GetAscend910BCases()), MakeParamName);

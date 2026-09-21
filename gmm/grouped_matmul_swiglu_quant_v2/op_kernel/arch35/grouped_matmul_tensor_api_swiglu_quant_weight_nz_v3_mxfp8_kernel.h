@@ -1,7 +1,16 @@
-/*
+/**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- *
- * Tensor API entry point for the Ascend 950 WeightNZ MXFP8 V3 aligned-K path.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/*!
+ * \file grouped_matmul_tensor_api_swiglu_quant_weight_nz_v3_mxfp8_kernel.h
+ * \brief Tensor API entry point for the Ascend 950 WeightNZ MXFP8 V3 aligned-K path.
  */
 
 #ifndef GROUPED_MATMUL_SWIGLU_QUANT_V3_MXFP8_TENSOR_API_KERNEL_H
@@ -16,18 +25,19 @@
 namespace GroupedMatmulSwigluQuantV3 {
 
 template <typename T>
-__aicore__ inline __gm__ T* GetFirstTensorAddr(GM_ADDR tensorListAddr)
+__aicore__ inline __gm__ T *GetFirstTensorAddr(GM_ADDR tensorListAddr)
 {
-    __gm__ uint64_t* dataAddr = reinterpret_cast<__gm__ uint64_t*>(tensorListAddr);
+    __gm__ uint64_t *dataAddr = reinterpret_cast<__gm__ uint64_t *>(tensorListAddr);
     uint64_t tensorPtrOffset = *dataAddr;
-    __gm__ uint64_t* retPtr = dataAddr + (tensorPtrOffset >> 3);
-    return reinterpret_cast<__gm__ T*>(*retPtr);
+    __gm__ uint64_t *retPtr = dataAddr + (tensorPtrOffset >> 3);
+    return reinterpret_cast<__gm__ T *>(*retPtr);
 }
 
 template <typename LayoutB_>
-__aicore__ inline void GmmTensorApiSwigluQuantV3MxFp8Kernel(
-    GM_ADDR x, GM_ADDR weight, GM_ADDR weightScale, GM_ADDR xScale, GM_ADDR weightAssistanceMatrix,
-    GM_ADDR smoothScale, GM_ADDR groupList, GM_ADDR y, GM_ADDR yScale, GM_ADDR workspace, GM_ADDR tiling)
+__aicore__ inline void GmmTensorApiSwigluQuantV3MxFp8Kernel(GM_ADDR x, GM_ADDR weight, GM_ADDR weightScale,
+                                                            GM_ADDR xScale, GM_ADDR weightAssistanceMatrix,
+                                                            GM_ADDR smoothScale, GM_ADDR groupList, GM_ADDR y,
+                                                            GM_ADDR yScale, GM_ADDR workspace, GM_ADDR tiling)
 {
     (void)weightAssistanceMatrix;
     (void)smoothScale;
@@ -47,18 +57,18 @@ __aicore__ inline void GmmTensorApiSwigluQuantV3MxFp8Kernel(
     using LayoutC1 = AscendC::Te::NDExtLayoutPtn;
     using LayoutBias = AscendC::Te::NDExtLayoutPtn;
     using WeightScaleType = AscendC::fp8_e8m0_t;
-    using LayoutScaleB = AscendC::Std::conditional_t<
-        Blaze::Gemm::IsTrans<LayoutB>::value, AscendC::Te::ScaleBDNLayoutPtn, AscendC::Te::ScaleBNDLayoutPtn>;
+    using LayoutScaleB = AscendC::Std::conditional_t<Blaze::Gemm::IsTrans<LayoutB>::value,
+                                                     AscendC::Te::ScaleBDNLayoutPtn, AscendC::Te::ScaleBNDLayoutPtn>;
     using BLayoutPair = AscendC::Std::tuple<LayoutB, LayoutScaleB>;
     using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
 
     using BlockMmadPolicy = Blaze::Gemm::GroupedMatmulWithScaleMx<0, false, Blaze::Gemm::KernelGmmSwiGluMixMx>;
-    using SwigluBlockMmad = Blaze::Gemm::Block::BlockMmad<BlockMmadPolicy, AType, LayoutA, BType, BLayoutPair,
-                                                          C1Type, LayoutC1, BiasType, LayoutBias>;
+    using SwigluBlockMmad = Blaze::Gemm::Block::BlockMmad<BlockMmadPolicy, AType, LayoutA, BType, BLayoutPair, C1Type,
+                                                          LayoutC1, BiasType, LayoutBias>;
     using BlockEpilogue = Blaze::Epilogue::Block::BlockEpilogueSwigluMxQuant<CType, C1Type, WeightScaleType>;
     using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerGmmSwatWithTailSplit;
-    using SwigluKernel = Blaze::Gemm::Kernel::GemmUniversal<ProblemShape, SwigluBlockMmad, BlockEpilogue,
-                                                             BlockScheduler>;
+    using SwigluKernel =
+        Blaze::Gemm::Kernel::GemmUniversal<ProblemShape, SwigluBlockMmad, BlockEpilogue, BlockScheduler>;
     using Params = typename SwigluKernel::Params;
     using GMMTiling = typename SwigluKernel::GMMTiling;
     using BlockMmadAddressParams = typename SwigluBlockMmad::Params;
@@ -72,11 +82,10 @@ __aicore__ inline void GmmTensorApiSwigluQuantV3MxFp8Kernel(
     const uint32_t kBL1 = static_cast<uint32_t>(mmTiling_.stepKb * mmTiling_.baseK);
     const uint32_t scaleFactorA = static_cast<uint32_t>(mmTiling_.mxTypePara & 0xffU);
     const uint32_t scaleFactorB = static_cast<uint32_t>((mmTiling_.mxTypePara >> 8) & 0xffU);
-    const uint32_t scaleKAL1 = static_cast<uint32_t>(
-        AscendC::Std::min(static_cast<uint64_t>(AscendC::Std::max(scaleFactorA * mmTiling_.stepKa,
-                                                                  scaleFactorB * mmTiling_.stepKb) *
-                                                       mmTiling_.baseK),
-                          static_cast<uint64_t>(mmTiling_.Ka)));
+    const uint32_t scaleKAL1 = static_cast<uint32_t>(AscendC::Std::min(
+        static_cast<uint64_t>(AscendC::Std::max(scaleFactorA * mmTiling_.stepKa, scaleFactorB * mmTiling_.stepKb) *
+                              mmTiling_.baseK),
+        static_cast<uint64_t>(mmTiling_.Ka)));
     const uint32_t scaleKBL1 = scaleKAL1;
     GMMTiling gmmTiling{gmmParams_.groupNum,
                         static_cast<int64_t>(mmTiling_.M),
@@ -100,9 +109,8 @@ __aicore__ inline void GmmTensorApiSwigluQuantV3MxFp8Kernel(
     GM_ADDR weightData = reinterpret_cast<GM_ADDR>(GetFirstTensorAddr<BType>(weight));
     GM_ADDR weightScaleData = reinterpret_cast<GM_ADDR>(GetFirstTensorAddr<WeightScaleType>(weightScale));
     BlockMmadAddressParams blockMmadAddrs{x, weightData, nullptr, nullptr, xScale, weightScaleData};
-    typename BlockEpilogue::Params epilogueParams{y, yScale,
-                                                   static_cast<uint32_t>(mmTiling_.baseM),
-                                                   static_cast<uint32_t>(mmTiling_.baseN)};
+    typename BlockEpilogue::Params epilogueParams{y, yScale, static_cast<uint32_t>(mmTiling_.baseM),
+                                                  static_cast<uint32_t>(mmTiling_.baseN)};
     epilogueParams.swigluMode = 2;
     epilogueParams.clampLimit = gmmParams_.clampLimit;
     epilogueParams.gluAlpha = gmmParams_.gluAlpha;
