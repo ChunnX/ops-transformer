@@ -9,10 +9,10 @@
  */
 
 /*!
- * \file matmul_all_reduce_tiling_950.cc
+ * \file matmul_all_reduce_tiling_a5.cc
  * \brief
  */
-#include "matmul_all_reduce_tiling_950.h"
+#include "matmul_all_reduce_tiling_a5.h"
 #include "op_host/op_tiling/new_mc2_tiling_utils.h"
 #include "common/utils/op_mc2.h"
 #include "mc2/matmul_all_reduce/op_kernel/arch35/matmul_all_reduce_apt_tiling_key.h"
