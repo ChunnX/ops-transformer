@@ -237,6 +237,15 @@ TEST_F(nsa_compress_attention_opapi_ut, nsa_compress_attention_aclnn_invalid_lay
 TEST_F(nsa_compress_attention_opapi_ut, invalid_input_shapes_return_param_invalid)
 {
     const vector<array<vector<int64_t>, 3>> shapes = {
+        {{{kT, kN1, kQueryD}, {kT, kN2, kQueryD}, {0, kN2, kValueD}}},
+        {{{kT, kN1, kQueryD}, {kT, kN2, kQueryD}, {kT, 0, kValueD}}},
+        {{{kT, kN1, kQueryD}, {kT, kN2, 0}, {kT, kN2, kValueD}}},
+        {{{kT, kN1, kQueryD}, {kT, kN2, kQueryD}, {kT + 1, kN2, kValueD}}},
+        {{{kT, kN1, kQueryD}, {kT, kN2, kQueryD}, {kT, kN2 + 1, kValueD}}},
+        {{{kT, kN1, kQueryD}, {kT, kN2, kQueryD + 16}, {kT, kN2, kValueD}}},
+        {{{kT, kN1, kQueryD}, {kT, kN2, kQueryD}, {kT, kN2, kQueryD + 16}}},
+        {{{kT, 1, kQueryD}, {kT, kN2, kQueryD}, {kT, kN2, kValueD}}},
+        {{{kT, 3, kQueryD}, {kT, kN2, kQueryD}, {kT, kN2, kValueD}}},
         {{{kT, kN1, kQueryD}, {kT, 0, kQueryD}, {kT, kN2, kValueD}}},
         {{{kT, kN1}, {kT, kN2, kQueryD}, {kT, kN2, kValueD}}},
         {{{kT, kN1, kQueryD}, {kT}, {kT, kN2, kValueD}}},

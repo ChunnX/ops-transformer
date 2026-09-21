@@ -66,10 +66,30 @@ aclnnStatus CheckNsaCmpAttnShape(const aclTensor *query, const aclTensor *key, c
                 vDim);
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (qShape[0] == 0 || kShape[0] == 0 || qShape[1] == 0 || kShape[1] == 0 || qShape[2] == 0 || vShape[2] == 0) {
+    for (size_t axis = 0; axis < DIM_NUM_3; ++axis) {
+        if (qShape[axis] <= 0 || kShape[axis] <= 0 || vShape[axis] <= 0) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "input dimensions must be positive, but got query[%zu]=%ld, key[%zu]=%ld, value[%zu]=%ld", axis,
+                    qShape[axis], axis, kShape[axis], axis, vShape[axis]);
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+    }
+    if (kShape[0] != vShape[0] || kShape[1] != vShape[1]) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "input shape error, got 0 in Tq Tkv Nq Nkv Dqk Dv (%ld, %ld, %ld, %ld, %ld, %ld)", qShape[0], kShape[0],
-                qShape[1], kShape[1], qShape[2], vShape[2]);
+                "key and value must have the same T and N, but got key=(%ld, %ld), value=(%ld, %ld)", kShape[0],
+                kShape[1], vShape[0], vShape[1]);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (qShape[2] != kShape[2] || kShape[2] < vShape[2]) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "head dimensions must satisfy qD == kD and kD >= vD, but got qD=%ld, kD=%ld, vD=%ld", qShape[2],
+                kShape[2], vShape[2]);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (qShape[1] < kShape[1] || qShape[1] % kShape[1] != 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "query head count must be a positive multiple of key head count, but got Nq=%ld, Nkv=%ld", qShape[1],
+                kShape[1]);
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
