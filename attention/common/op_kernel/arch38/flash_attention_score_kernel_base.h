@@ -74,7 +74,10 @@ public:
     __aicore__ inline void ComputeBmm1Tail(RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam);
     __aicore__ inline void GetSeqQlenKvlenByBoidx(int64_t boIdx, int64_t &actualSeqQlen, int64_t &actualSeqKvLen);
 
-    __aicore__ inline ChildClass *GetDerived() { return static_cast<ChildClass *>(this); }
+    __aicore__ inline ChildClass *GetDerived()
+    {
+        return static_cast<ChildClass *>(this);
+    }
     TPipe *pipe;
 
     const FlashAttentionScoreSimplifiedTilingData *__restrict tilingData;
@@ -89,9 +92,7 @@ public:
     static constexpr bool bmm2Write2Ub = CubeBlockType::bmm2Write2Ub;
     static constexpr bool splitD = CubeBlockType::splitD;
     static constexpr uint64_t SYNC_MODE = 4;
-    static constexpr uint64_t SYNC_C1_V1_FLAG[2] = {0, 1};
-    static constexpr uint64_t SYNC_V1_C2_FLAG[3] = {2, 3, 4};
-    static constexpr uint64_t SYNC_C2_V2_FLAG[2] = {5, 6};
+
     /* 核间通道 */
     BufferManager<BufferType::GM> gmBufferManager;
     BuffersPolicy3buff<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> bmm2ResGmBuffers;
@@ -139,7 +140,7 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
     __gm__ uint8_t *softmaxSum, __gm__ uint8_t *softmaxOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
     __gm__ uint8_t *workspace, const FlashAttentionScoreSimplifiedTilingData *__restrict tiling, TPipe *tPipe)
 {
-    fa_base_matmul::idCounterNum = 0;
+    fa_base_matmul::ResetIdCounter();
     constInfo.subBlockIdx = GetSubBlockIdx();
     constInfo.aivIdx = GetBlockIdx();
     this->aicIdx = constInfo.aivIdx;
@@ -240,13 +241,11 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
     constexpr uint32_t mm2LeftSize = s1BaseSize * s2BaseSize * sizeof(INPUT_T);
     l1BufferManager.Init(pipe, 524288); // 512 * 1024
     // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
-    PipeBarrier<PIPE_ALL>();
     l1PBuffers.Init(l1BufferManager, mm2LeftSize);
-    PipeBarrier<PIPE_ALL>();
+
     if constexpr (bmm2Write2Ub) {
         if constexpr (!(useDn && isFp8)) {
             ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize * 2);
-            PipeBarrier<PIPE_ALL>();
             bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
         } else {
             ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize);

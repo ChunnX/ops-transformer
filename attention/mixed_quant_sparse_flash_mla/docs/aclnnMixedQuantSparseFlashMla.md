@@ -176,7 +176,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>q（aclTensor*）</td>
       <td>输入</td>
       <td>Query输入张量。</td>
-      <td>不支持空Tensor。N1/N2仅支持2、4、8、16、32、64、128范围内的2的幂；D仅支持512。</td>
+      <td>不支持空Tensor。qN支持1-128；D仅支持512。</td>
       <td>BFLOAT16</td>
       <td>ND</td>
       <td>
@@ -191,7 +191,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>oriKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>原始KV输入张量，Key与Value共享同一份数据。</td>
-      <td>SWA/CSA/HCA场景必须传入。量化KV布局由quantMode决定：quant_mode为1时，依次由rope（64，bfloat16）、nope（448，FLOAT8_E4M3FN）、scale（7，bfloat16）、pad（18B）拼接而成；quant_mode为2时，依次由nope（448，FLOAT8_E4M3FN）、rope（64，bfloat16）、scale（7，FLOAT8_E8M0）、pad（1B）拼接而成。当前仅支持1和2，量化模式2仅支持layout_kv为PA_BBND。</td>
+      <td>SWA/CSA/HCA场景必须传入。量化KV布局由quantMode决定：quant_mode为1时，依次由rope（64，bfloat16）、nope（448，FLOAT8_E4M3FN）、scale（7，bfloat16）、pad（18B）拼接而成；quant_mode为2时，依次由nope（448，FLOAT8_E4M3FN）、rope（64，bfloat16）、scale（7，FLOAT8_E8M0）、pad（1B）拼接而成。当前仅支持1和2，量化模式2仅支持layout_kv为PA_BBND。各量化模式均支持使用UINT8、FLOAT8_E4M3FN作为单字节存储视图，底层字节内容保持不变。</td>
       <td>详见quantMode</td>
       <td>ND</td>
       <td>
@@ -241,7 +241,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>cmpSparseIndicesOptional（aclTensor*）</td>
       <td>输入</td>
       <td>代表离散取cmpKvCache的TopK索引。</td>
-      <td>CSA场景必须传入，SWA/HCA场景不传入。无效位置填-1，其余为非负整数。</td>
+      <td>cmpKv稀疏场景必须传入，其他不传入。无效位置填-1，其余为非负整数。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>
@@ -267,7 +267,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>cmpBlockTableOptional（aclTensor*）</td>
       <td>输入</td>
       <td>PageAttention中cmpKvCache存储使用的block映射表。</td>
-      <td>CSA/HCA场景且layoutKv为PA_BBND时必须传入。</td>
+      <td>cmpKv传入且layoutKv为PA_BBND时必须传入。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(b, Ceil(cmpKvSMax/cmpKvBlockSize))</td>
@@ -327,7 +327,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>sequsedCmpKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中cmpKv实际参与运算的token数。</td>
-      <td>可选输入。传入时shape必须为(B,)，作为每个batch的cmp逻辑有效长度，优先于cmpKvOptional shape、cuSeqlensCmpKvOptional或PA block table推导；layoutKvOptional为BSND、TND、PA_BBND时均可使用。</td>
+      <td>可选输入。传入时shape必须为(B,)，作为每个batch的cmp逻辑有效长度，优先于cmpKvOptional shape、cuSeqlensCmpKvOptional或PA block table推导。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(b,)</td>
@@ -337,7 +337,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>cmpResidualKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>压缩KV余数，用于恢复cmp侧mask使用的压缩前KV长度。</td>
-      <td>可选输入。传入时shape必须为(B,)，第b个batch按cmp_len * cmpRatio + cmpResidualKvOptional[b]恢复压缩前KV长度；在CSA/HCA、cmpRatio不等于1且cmpMaskMode为3场景必传。该参数是主算子和aclnnMixedQuantSparseFlashMlaMetadata的可选入参，layoutKvOptional为BSND、TND、PA_BBND时均可使用。</td>
+      <td>可选输入。传入时shape必须为(B,)，第b个batch按cmp_len * cmpRatio + cmpResidualKvOptional[b]恢复压缩前KV长度；在cmpMaskMode为3且cmpRatio不等于1场景必传，cmpMaskMode为0或cmpRatio等于1时不允许传入。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(b,)</td>
@@ -427,7 +427,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>cmpRatio（int64_t）</td>
       <td>输入</td>
       <td>cmpKv相对于压缩前KV长度的压缩倍率，用于恢复cmp侧mask使用的压缩前KV长度。</td>
-      <td>cmpRatio支持1到128。在SWA典型场景，仅支持默认值1。</td>
+      <td>cmpRatio支持1到128。在cmpKv未传入时，仅支持默认值1。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -447,7 +447,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>cmpMaskMode（int64_t）</td>
       <td>输入</td>
       <td>q和cmpKv计算的mask模式。</td>
-      <td>支持：<br/>0: No mask。<br/>3: rightDownCausal模式。SWA场景下该参数不生效。</td>
+      <td>支持：<br/>0: No mask。<br/>3: rightDownCausal模式。cmpKv未传入时仅支持默认值0。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -562,8 +562,6 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
   </tbody>
   </table>
 
-  - <term>Ascend 950PR/Ascend 950DT</term>：qN/kvN支持2、4、8、16、32、64、128，不支持1。
-
 - **常见字段释义**
 
 |    命名    |                            含义                            |
@@ -675,7 +673,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
   - aclnnMixedQuantSparseFlashMlaMetadata和aclnnMixedQuantSparseFlashMla的入参在调用时应该保持一致。由于算子分为两个接口分段调用，算子无法自行校验，正确性需要由用户自行保证。若接口传入参数不一致，会发生未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
   - oriTopkLengthOptional、cmpTopkLengthOptional表示ori/cmp sparseIndices实际参与计算的长度。其值不能大于sparseIndicesOptional的最后一维大小，且当sequsedQOptional传入时，topkLength对应有效部分的值需要大于等于0。
   - 当oriMaskMode/cmpMaskMode为0时，oriKvK/cmpKvK需要大于等于oriTopkLengthOptional/cmpTopkLengthOptional的最大值。
-  - cmpResidualKvOptional配合cmpRatio使用，可恢复压缩前KV长度。且每个batch的值需要小于cmpRatio。
+  - cmpResidualKvOptional配合cmpRatio使用，可恢复压缩前KV长度。且每个batch的值需要小于cmpRatio。仅当cmpMaskMode为3且cmpRatio不等于1时允许传入；cmpMaskMode为0或cmpRatio等于1时不允许传入。
   - attnOutOut：tensor类型，公式中的输出，数据类型支持BFLOAT16。数据格式支持ND。限制：该输出参数的shape与入参q的shape保持一致，dtype与q一致。
   - returnSoftmaxLse=False时返回shape为[1]的值为0的tensor；returnSoftmaxLse=True时返回FLOAT32的log-sum-exp结果。
   - cuSeqlensQOptional、cuSeqlensOriKvOptional、cuSeqlensCmpKvOptional须满足首元素为0，且序列整体呈非递减排列，即任一元素不小于其前一个元素。
@@ -922,8 +920,7 @@ metadataOptional校验
             </td>
             <td>
                 <ul>
-                     <li>只有oriKvOptional稀疏场景下，cmpMaskMode为0和oriMaskMode必须为0</li>
-                     <li>SWA场景下，oriMaskMode为0、3、4</li>
+                     <li>oriMaskMode支持0、3、4</li>
                  </ul>
              </td>
          </tr>
@@ -944,10 +941,7 @@ metadataOptional校验
                  </ul>
              </td>
              <td>
-                     <li>当oriKvOptional/cmpKvOptional/cmpSparseIndicesOptional/oriSparseIndicesOptional传入时，cmpMaskMode为0和oriMaskMode必须为0</li>
-                    <li>当cmpKvOptional不传时，oriMaskMode为3、4</li>
-                    <li>当oriMaskMode为3时，cmpMaskMode必须为3</li>
-                    <li>当oriMaskMode为4时，cmpMaskMode必须为3</li>
+                    <li>cmpKvOptional未传入时，cmpMaskMode必须为0 </li>
             </td>
         </tr>
         <tr>
@@ -1144,7 +1138,7 @@ metadataOptional校验
             <td>无</td>
             <td>
                 <ul>
-                    <li>在SWA典型场景，仅支持默认值1。</li>
+                    <li>cmpKv未传入时，仅支持默认值1。</li>
                 </ul>
             </td>
         </tr>

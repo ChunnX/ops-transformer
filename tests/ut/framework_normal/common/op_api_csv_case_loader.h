@@ -1,7 +1,7 @@
 /**
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
@@ -71,7 +71,8 @@ const std::unordered_map<std::string, op::SocVersion> SOC_VERSION{
     {"Ascend910E", op::SocVersion::ASCEND910E},     {"Ascend310", op::SocVersion::ASCEND310},
     {"Ascend310P", op::SocVersion::ASCEND310P},     {"Ascend310B", op::SocVersion::ASCEND310B},
     {"Ascend310C", op::SocVersion::ASCEND310C},     {"Ascend610LITE", op::SocVersion::ASCEND610LITE},
-    {"KirinX90", op::SocVersion::KIRINX90},         {"Kirin9030", op::SocVersion::KIRIN9030}};
+    {"KirinX90", op::SocVersion::KIRINX90},         {"Kirin9030", op::SocVersion::KIRIN9030},
+    {"Ascend5162A", op::SocVersion::ASCEND5162A},   {"DAV_3510", op::SocVersion::ASCEND950}}; // DAV_3510为arch串
 
 const std::unordered_map<std::string, aclnnStatus> ACR_RET{{"SUCCESS", ACLNN_SUCCESS},
                                                            {"PARAM_NULLPTR", ACLNN_ERR_PARAM_NULLPTR},

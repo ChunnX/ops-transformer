@@ -28,6 +28,24 @@ FP8_DATA_RANGE_LEFT = -5
 FP8_DATA_RANGE_RIGHT = 5
 
 
+def restore_cmp_kv_lengths(
+    seqused_cmp_kv, cmp_ratio, cmp_residual_kv=None, cmp_mask_mode=3
+):
+    """Restore the logical CMP context lengths used by the Arch35 kernels."""
+    if seqused_cmp_kv is None:
+        return None
+    if cmp_mask_mode == 0 or int(cmp_ratio) == 1:
+        cmp_residual_kv = None
+    if cmp_residual_kv is not None and len(cmp_residual_kv) != len(seqused_cmp_kv):
+        raise ValueError("cmp_residual_kv and seqused_cmp_kv must have the same length")
+
+    return [
+        int(cmp_len) * cmp_ratio
+        + (int(cmp_residual_kv[index]) if cmp_residual_kv is not None else 0)
+        for index, cmp_len in enumerate(seqused_cmp_kv)
+    ]
+
+
 class GeneralizedSFAQuant:
     def __init__(
         self,
@@ -135,16 +153,17 @@ class GeneralizedSFAQuant:
         act_q = self.seqused_q
         G = int(self.N1 / self.N2)
         s2_base_size = 128
+        cmp_restored_lengths = restore_cmp_kv_lengths(
+            seqused_cmp_kv, self.cmp_ratio, cmp_residual_kv, self.cmp_mask_mode
+        )
 
         for i_B in range(B):
             logging.info(f"i_B = {i_B}/{B}")
             cur_act_q = act_q[i_B]
             cur_ori_act_kv = seqused_ori_kv[i_B]
-            cur_cmp_act_kv = seqused_cmp_kv[i_B] if seqused_cmp_kv is not None else 0
-            cur_cmp_residual = (
-                cmp_residual_kv[i_B] if cmp_residual_kv is not None else 0
+            cur_cmp_restored = (
+                cmp_restored_lengths[i_B] if cmp_restored_lengths is not None else 0
             )
-            cur_cmp_restored = cur_cmp_act_kv * self.cmp_ratio + cur_cmp_residual
 
             for i_N2 in range(self.N2):
                 logging.info(f"    i_N2 = {i_N2}/{self.N2}")
@@ -389,20 +408,30 @@ class GeneralizedSFAQuant:
         sparse_block_size=1,
     ):
         s2_sparse = list()
-        threshold = 0
+        ori_threshold = cur_act_kv - cur_act_q + i_S1 + 1
+        left_bound = 0
+        right_bound = cur_act_kv
         if self.ori_mask_mode == 3:
-            threshold = cur_act_kv - cur_act_q + i_S1 + 1
+            left_bound = 0
+            right_bound = min(max(ori_threshold, 0), cur_act_kv)
+        elif self.ori_mask_mode == 4:
+            if self.ori_win_left == -1:
+                left_bound = 0
+            else:
+                left_bound = max(ori_threshold - self.ori_win_left - 1, 0)
+            if self.ori_win_right == -1:
+                right_bound = cur_act_kv
+            else:
+                right_bound = min(
+                    max(ori_threshold + self.ori_win_right, 0), cur_act_kv
+                )
         elif self.ori_mask_mode == 0:
-            threshold = cur_act_kv
+            pass
+        left_bound = min(left_bound, cur_act_kv)
 
+        valid_count = min(topk_id.shape[0], right_bound)
         if ori_topk_length_bnsd is not None:
-            valid_count = min(
-                int(ori_topk_length_bnsd[i_B, 0, i_S1, 0]), topk_id.shape[0]
-            )
-        else:
-            raise ValueError(
-                "ori_topk_length_bnsd cann not be None when template_run_mode is ORI_SPARSE or ORI_CMP_SPARSE"
-            )
+            valid_count = min(int(ori_topk_length_bnsd[i_B, 0, i_S1, 0]), valid_count)
 
         for i_valid in range(valid_count):
             cur_topk_id = topk_id[i_valid]
@@ -410,12 +439,14 @@ class GeneralizedSFAQuant:
                 break
             begin_idx = cur_topk_id * sparse_block_size
             end_idx = min(begin_idx + sparse_block_size, cur_act_kv)
-            if begin_idx >= threshold:
+            if begin_idx >= right_bound:
                 continue
-            if end_idx <= threshold:
+            if begin_idx < left_bound:
+                continue
+            if end_idx <= right_bound:
                 s2_sparse.extend(np.arange(begin_idx, end_idx))
             else:
-                s2_sparse.extend(np.arange(begin_idx, threshold))
+                s2_sparse.extend(np.arange(begin_idx, right_bound))
         empty_flag = len(s2_sparse) == 0
         k_sparse = k_tensor[i_B, i_N2, s2_sparse, :] if not empty_flag else []
         return empty_flag, k_sparse
@@ -783,6 +814,8 @@ def gen_sparse_indices_bsnd(
     sparse_indices_mode,
     kv_topk_mode,
     topk_length_override=None,
+    ori_win_left=-1,
+    ori_win_right=-1,
 ):
     if mask_mode != 0:
         kv_topk_mode = "no"  # mask_mode != 0时，kv_topk_mode只能为no
@@ -812,15 +845,31 @@ def gen_sparse_indices_bsnd(
         cur_act_kv = seqused_kv[i_B]
         for i_N2 in range(N2):
             for i_S1 in range(cur_act_q):
+                cur_valid_left = 0
                 if mask_mode == 3:
                     cur_valid_s2_max = math.floor(
                         (cur_act_kv - cur_act_q + i_S1 + 1) / cmp_ratio
                     )
                 elif mask_mode == 0:
                     cur_valid_s2_max = math.floor(cur_act_kv / cmp_ratio)
+                elif mask_mode == 4:
+                    ori_threshold = cur_act_kv - cur_act_q + i_S1 + 1
+                    if ori_win_left == -1:
+                        left_bound = 0
+                    else:
+                        left_bound = max(ori_threshold - ori_win_left - 1, 0)
+                    if ori_win_right == -1:
+                        right_bound = cur_act_kv
+                    else:
+                        right_bound = min(
+                            max(ori_threshold + ori_win_right, 0), cur_act_kv
+                        )
+                    left_bound = min(left_bound, cur_act_kv)
+                    cur_valid_left = max(0, left_bound)
+                    cur_valid_s2_max = max(0, right_bound - cur_valid_left)
                 else:
                     raise ValueError(
-                        f"topklen sparse mask mode only support 0 and 3, which is {mask_mode}"
+                        f"topklen sparse mask mode only support 0/3/4, which is {mask_mode}"
                     )
                 cur_valid_s2_max = max(0, cur_valid_s2_max)
 
@@ -838,9 +887,9 @@ def gen_sparse_indices_bsnd(
                 valid_blocks_max = max(0, cur_valid_s2_max_update)
                 block_indices = torch.randperm(valid_blocks_max).to(torch.int32)
                 valid_blocks_topk = min(valid_blocks_max, K)
-                sparse_data[i_B, i_S1, i_N2, :valid_blocks_topk] = block_indices[
-                    0:valid_blocks_topk
-                ]
+                sparse_data[i_B, i_S1, i_N2, :valid_blocks_topk] = (
+                    block_indices[0:valid_blocks_topk] + cur_valid_left
+                )
 
                 # gen topk length
                 if topk_length is not None and topk_length_override is None:
@@ -868,6 +917,8 @@ def gen_sparse_indices_tnd(
     sparse_indices_mode,
     kv_topk_mode,
     topk_length_override=None,
+    ori_win_left=-1,
+    ori_win_right=-1,
 ):
     if mask_mode != 0:
         kv_topk_mode = "no"  # mask_mode != 0时，kv_topk_mode只能为no
@@ -897,15 +948,31 @@ def gen_sparse_indices_tnd(
         cur_act_kv = seqused_ori_kv[i_B]
         for i_N2 in range(N2):
             for i_S1 in range(cur_act_q):
+                cur_valid_left = 0
                 if mask_mode == 3:
                     cur_valid_s2_max = math.floor(
                         (cur_act_kv - cur_act_q + i_S1 + 1) / cmp_ratio
                     )
                 elif mask_mode == 0:
                     cur_valid_s2_max = math.floor(cur_act_kv / cmp_ratio)
+                elif mask_mode == 4:
+                    ori_threshold = cur_act_kv - cur_act_q + i_S1 + 1
+                    if ori_win_left == -1:
+                        left_bound = 0
+                    else:
+                        left_bound = max(ori_threshold - ori_win_left - 1, 0)
+                    if ori_win_right == -1:
+                        right_bound = cur_act_kv
+                    else:
+                        right_bound = min(
+                            max(ori_threshold + ori_win_right, 0), cur_act_kv
+                        )
+                    left_bound = min(left_bound, cur_act_kv)
+                    cur_valid_left = max(0, left_bound)
+                    cur_valid_s2_max = max(0, right_bound - cur_valid_left)
                 else:
                     raise ValueError(
-                        f"ori_mask_mode only support 0 and 3, which is {mask_mode}"
+                        f"ori_mask_mode only support 0/3/4, which is {mask_mode}"
                     )
                 cur_valid_s2_max = max(0, cur_valid_s2_max)
 
@@ -923,9 +990,9 @@ def gen_sparse_indices_tnd(
                 valid_blocks_max = max(0, cur_valid_s2_max_update)
                 block_indices = torch.randperm(valid_blocks_max).to(torch.int32)
                 valid_blocks_topk = min(valid_blocks_max, K)
-                sparse_data[s1_prefix + i_S1, i_N2, :valid_blocks_topk] = block_indices[
-                    0:valid_blocks_topk
-                ]
+                sparse_data[s1_prefix + i_S1, i_N2, :valid_blocks_topk] = (
+                    block_indices[0:valid_blocks_topk] + cur_valid_left
+                )
 
                 # gen topk length
                 if topk_length is not None and topk_length_override is None:
@@ -1049,6 +1116,8 @@ def gen_ori_kv(
     ori_sparse_indices_mode="full",
     ori_kv_topk_mode="no",
     ori_topk_length_override=None,
+    ori_win_left=-1,
+    ori_win_right=-1,
 ):
     ori_k_bnsd, ori_k_bnsd_npu, ori_kv_descale = _gen_hif8_tensor(
         (B, N2, ori_max_s2, D), ori_kv_datarange, scale_datarange
@@ -1091,6 +1160,8 @@ def gen_ori_kv(
                 ori_sparse_indices_mode,
                 ori_kv_topk_mode,
                 ori_topk_length_override,
+                ori_win_left=ori_win_left,
+                ori_win_right=ori_win_right,
             )
         elif layout_q == "TND":
             ori_sparse_indices, ori_topk_length = gen_sparse_indices_tnd(
@@ -1106,6 +1177,8 @@ def gen_ori_kv(
                 ori_sparse_indices_mode,
                 ori_kv_topk_mode,
                 ori_topk_length_override,
+                ori_win_left=ori_win_left,
+                ori_win_right=ori_win_right,
             )
 
     return (
@@ -1133,7 +1206,6 @@ def gen_cmp_kv(
     cmp_max_block_num_per_batch,
     cu_seqlens_q,
     seqused_q,
-    seqused_ori_kv,
     seqused_cmp_kv,
     cu_seqlens_cmp_kv,
     cmp_residual_kv,
@@ -1179,12 +1251,9 @@ def gen_cmp_kv(
     cmp_sparse_indices = None
     cmp_topk_length = None
     if template_run_mode in ("CSA", "ORI_CMP_SPARSE") and cmp_max_s2 != 0:
-        if cmp_residual_kv is not None:
-            cmp_restored_len = [
-                seqused_cmp_kv[i] * cmp_ratio + cmp_residual_kv[i] for i in range(B)
-            ]
-        else:
-            cmp_restored_len = [seqused_cmp_kv[i] * cmp_ratio for i in range(B)]
+        cmp_restored_len = restore_cmp_kv_lengths(
+            seqused_cmp_kv, cmp_ratio, cmp_residual_kv, cmp_mask_mode
+        )
         if layout_q == "BSND":
             cmp_sparse_indices, cmp_topk_length = gen_sparse_indices_bsnd(
                 cmp_ratio,
@@ -1244,9 +1313,7 @@ def save_test_case(input_data, output_dir):
     return input_filepath
 
 
-def generate_and_save_testdata(
-    params, save_pt=False, save_path="", generate_golden=True
-):
+def gen_data(params, generate_golden=True):
     """
     生成input param及cpuout
     runNpu: 生成完毕后执行npu计算
@@ -1384,7 +1451,6 @@ def generate_and_save_testdata(
         )
 
     # D维度固定512，已对齐128，无需padding
-    block_num = block_num1 if block_num1 >= block_num2 else block_num2
 
     # generate sinks tensor (only when isSink=True)
     if isSink:
@@ -1410,7 +1476,7 @@ def generate_and_save_testdata(
         T1,
         N2,
         D,
-        block_num,
+        block_num1,
         block_size1,
         ori_max_s2,
         ori_max_block_num_per_batch,
@@ -1428,6 +1494,8 @@ def generate_and_save_testdata(
         ori_sparse_indices_mode=ori_sparse_indices_mode,
         ori_kv_topk_mode=ori_kv_topk_mode,
         ori_topk_length_override=ori_topk_length_override,
+        ori_win_left=ori_win_left,
+        ori_win_right=ori_win_right,
     )
 
     # generate cmp_kv and sparse_indices
@@ -1448,13 +1516,12 @@ def generate_and_save_testdata(
             N2,
             D,
             K,
-            block_num,
+            block_num2,
             block_size2,
             cmp_max_s2,
             cmp_max_block_num_per_batch,
             cu_seqlens_q,
             seqused_q,
-            seqused_ori_kv,
             seqused_cmp_kv,
             cu_seqlens_cmp_kv,
             cmp_residual_kv,
@@ -1483,22 +1550,29 @@ def generate_and_save_testdata(
         and (template_run_mode in ("HCA", "CSA", "ORI_CMP_SPARSE"))
         and cmp_k_in_pa_shape is not None
     ):
+        # 0轴非连续：ori/cmp独立成池后，每个物理块仍补齐到block_size1+block_size2行，
+        # 保持与原融合布局相同的stride覆盖
         total_block = block_size1 + block_size2
-        fusion_base = torch.zeros((block_num, total_block, N2, D), dtype=ori_kv_type)
-        fusion_base[:, :block_size1, :, :] = ori_k_in_pa_shape
-        fusion_base[:, block_size1:, :, :] = cmp_k_in_pa_shape
+        ori_fusion_base = torch.zeros(
+            (block_num1, total_block, N2, D), dtype=ori_kv_type
+        )
+        ori_fusion_base[:, :block_size1, :, :] = ori_k_in_pa_shape
+        cmp_fusion_base = torch.zeros(
+            (block_num2, total_block, N2, D), dtype=cmp_kv_type
+        )
+        cmp_fusion_base[:, block_size1:, :, :] = cmp_k_in_pa_shape
         stride_n = total_block * N2 * D
         stride_bs = N2 * D
         stride_n2 = D
         stride_d = 1
         ori_k_in_pa_shape = torch.as_strided(
-            fusion_base,
-            size=[block_num, block_size1, N2, D],
+            ori_fusion_base,
+            size=[block_num1, block_size1, N2, D],
             stride=[stride_n, stride_bs, stride_n2, stride_d],
         )
         cmp_k_in_pa_shape = torch.as_strided(
-            fusion_base,
-            size=[block_num, block_size2, N2, D],
+            cmp_fusion_base,
+            size=[block_num2, block_size2, N2, D],
             stride=[stride_n, stride_bs, stride_n2, stride_d],
             storage_offset=block_size1 * N2 * D,
         )
@@ -1590,10 +1664,9 @@ def generate_and_save_testdata(
     max_seqlen_ori_kv = seqused_ori_kv.max().item()
     max_seqlen_cmp_kv = seqused_cmp_kv.max().item() if seqused_cmp_kv is not None else 0
 
-    # ORI_SPARSE/ORI_CMP_SPARSE: seqused (actualLength) not passed to op, determined by sparse_indices and topkLength
-    no_actual_length = template_run_mode in ("ORI_SPARSE", "ORI_CMP_SPARSE")
-    seqused_ori_kv = None if no_actual_length else seqused_ori_kv
-    seqused_cmp_kv = None if no_actual_length else seqused_cmp_kv
+    # Sparse templates derive KV lengths from sparse indices and top-k lengths.
+    # Keep the derived values for metadata and CPU Golden, but do not expose them
+    # as direct API inputs when their CSV slots are intentionally absent.
     cu_seqlens_ori_kv = cu_seqlens_ori_kv if layout_kv == "TND" else None
     cu_seqlens_cmp_kv = cu_seqlens_cmp_kv if layout_kv == "TND" else None
 
@@ -1675,9 +1748,6 @@ def generate_and_save_testdata(
         "cpu_output": cpu_result,
         "cpu_lse": cpu_lse if return_softmax_lse else None,
     }
-
-    if save_pt:
-        save_test_case(input_data, save_path)
 
     return input_data
 

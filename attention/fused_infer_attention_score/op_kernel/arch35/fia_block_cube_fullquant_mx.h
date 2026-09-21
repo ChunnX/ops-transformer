@@ -18,7 +18,6 @@
 #include "../../../common/op_kernel/matmul.h"
 #include "../../../common/op_kernel/FixpipeOut.h"
 #include "memory_copy_arch35_fused_infer.h"
-
 #include "../../../common/op_kernel/arch35/infer_flash_attention_comm_arch35.h"
 #include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
 #include "kernel_operator_list_tensor_intf.h"
@@ -123,7 +122,7 @@ public:
     using KeyScaleGmToL1Type = typename KeyScaleGmToL1Sel<KvLayoutType>::Type;
     using ValueScaleGmToL1Type = typename ValueScaleGmToL1Sel<KvLayoutType>::Type;
 
-    using ConstInfoX = ConstInfo_t<FiaKernelType::FULL_QUANT>;
+    using ConstInfoX = ConstInfo_t;
     TPipe *tPipe = nullptr;
     /* =====================GM变量(with layout)==================== */
     FaGmTensor<Q_T, Q_FORMAT> queryGm;
@@ -429,12 +428,12 @@ public:
         uint32_t dstStride = (runInfo.actMSize + 31) >> 5 << 5;
         FaL1Tensor<Q_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
-        GmCoord gmCoord{.bIdx = runInfo.bIdx,
-                        .n2Idx = runInfo.realN2Idx,
-                        .gS1Idx = runInfo.gS1Idx,
-                        .dIdx = dOffset,
-                        .gS1DealSize = runInfo.actMSize,
-                        .dDealSize = nopeDealSize};
+        GmCoordGs1Merge gmCoord{.bIdx = runInfo.bIdx,
+                                .n2Idx = runInfo.realN2Idx,
+                                .gS1Idx = runInfo.gS1Idx,
+                                .dIdx = dOffset,
+                                .gS1DealSize = runInfo.actMSize,
+                                .dDealSize = nopeDealSize};
         copyQueryGmToL1(l1Tensor, queryGm, gmCoord);
 
         if constexpr (HAS_ROPE) {
@@ -445,12 +444,12 @@ public:
             FaL1Tensor<ROPE_T, L1Format::NZ> l1Tensor{.tensor = (dstTensor[offset]).template ReinterpretCast<ROPE_T>(),
                                                       .rowCount = dstStrideRope};
 
-            GmCoord gmCoord = {.bIdx = runInfo.bIdx,
-                               .n2Idx = runInfo.realN2Idx,
-                               .gS1Idx = runInfo.gS1Idx,
-                               .dIdx = 0,
-                               .gS1DealSize = runInfo.actMSize,
-                               .dDealSize = ropeDealSize};
+            GmCoordGs1Merge gmCoord = {.bIdx = runInfo.bIdx,
+                                       .n2Idx = runInfo.realN2Idx,
+                                       .gS1Idx = runInfo.gS1Idx,
+                                       .dIdx = 0,
+                                       .gS1DealSize = runInfo.actMSize,
+                                       .dDealSize = ropeDealSize};
             copyQueryRopeGmToL1(l1Tensor, queryRopeGm, gmCoord);
         }
     }
@@ -467,12 +466,12 @@ public:
         uint32_t dstStride = (runInfo.actMSize + 31) >> 5 << 5;
         FaL1Tensor<SCALE_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
-        GmCoord gmCoord{.bIdx = runInfo.bIdx,
-                        .n2Idx = runInfo.realN2Idx,
-                        .gS1Idx = runInfo.gS1Idx,
-                        .dIdx = dOffset,
-                        .gS1DealSize = runInfo.actMSize,
-                        .dDealSize = dRealSize};
+        GmCoordGs1Merge gmCoord{.bIdx = runInfo.bIdx,
+                                .n2Idx = runInfo.realN2Idx,
+                                .gS1Idx = runInfo.gS1Idx,
+                                .dIdx = dOffset,
+                                .gS1DealSize = runInfo.actMSize,
+                                .dDealSize = dRealSize};
         copyQueryScaleGmToL1(l1Tensor, queryScaleGm, gmCoord);
     }
 
@@ -717,7 +716,7 @@ public:
         // 源NZ矩阵中相邻Z排布的起始地址偏移
         fixpipeParams.srcStride = ((runInfo.actMSize + 15) / 16) * 16;
         fixpipeParams.dstStride = s2SplitSize; // mmResUb上两行之间的间隔，单位：element
-        fixpipeParams.dualDstCtl = 1;          // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
+        fixpipeParams.dualDstCtl = 1; // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
@@ -1071,7 +1070,7 @@ public:
     using MM1_DBUF_T = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
     using MM2_ABUF_POLICY_T = BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
     using MM2_ABUF_T = Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
-    using ConstInfoX = ConstInfo_t<FiaKernelType::FULL_QUANT>;
+    using ConstInfoX = ConstInfo_t;
     __aicore__ inline FAFullQuantMxBlockCubeDummy(ConstInfoX &constInfo){};
 };
 } // namespace BaseApi

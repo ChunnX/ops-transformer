@@ -297,6 +297,7 @@ aclnnStatus aclnnFusedFloydAttention(
 ## 约束说明<a name="1"></a>
 
 - 该接口与PyTorch配合使用时，需要保证CANN相关包与PyTorch相关包的版本匹配
+- 该接口不支持非连续输出。
 - 关于数据shape的约束，其中：
   - B：取值范围为1\~2K。
   - H：取值范围为1\~256。
@@ -310,7 +311,7 @@ aclnnStatus aclnnFusedFloydAttention(
 - key2与value2 shape需相同。
 - softmaxMax与softmaxSum shape需相同。
 - D只支持32/64/128。
-- 由于底层指令限制，当M\*D>=65536或者K\*D>=65536时，会出现明显性能下降，此时建议使用小算子拼接替换实现。
+- 由于底层指令限制，当M\*D>=65536或者K\*D>=65536时，会出现明显性能下降。同时，K的长度较大时，算子运行可能会超时。以上两种情况建议使用小算子拼接替换实现。
 
 ## 调用示例
 

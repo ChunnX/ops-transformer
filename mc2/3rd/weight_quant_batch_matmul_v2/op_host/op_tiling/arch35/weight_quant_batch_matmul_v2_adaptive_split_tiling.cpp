@@ -18,7 +18,7 @@
 #include <array>
 
 #include "register/op_impl_registry.h"
-#include "common/op_host/math_util.h"
+#include "common/op_host/mc2_3rd_math_util.h"
 
 using namespace platform_ascendc;
 
@@ -130,7 +130,7 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingAS::DoOpTiling()
     OP_TILING_CHECK(InstantiateTilingData() == ge::GRAPH_FAILED,
                     OP_LOGE(opName_, "unable to get pointer of tiling data"), return ge::GRAPH_FAILED);
     if (compileInfoPtr_->socVersion != SocVersion::ASCEND910_55) {
-        // 950上默认给L1的n轴大小为256
+        // A5上默认给L1的n轴大小为256
         l1NMaxSize_ = 256UL;
     } else {
         // 910_55上默认给L1的n轴大小转置情况下为128，非转置情况下为256
@@ -272,8 +272,8 @@ void Mc2WeightQuantBatchMatmulV2TilingAS::ComputeCubeSplit(bool highPerfFlag)
             // 分核只够剩下可用核数量一半，尝试切分粒度缩减后再重新切分
             tilingData_->cubeBlockDimM = ops::CeilDiv(matmulInfoPtr_->mSize, static_cast<uint64_t>(M_MAX_SIZE >> 1));
         } else {
-            tilingData_->cubeBlockDimM = (std::min(cubeBlockDimMMax, static_cast<uint32_t>(compileInfoPtr_->aicNum) /
-                                                                         tilingData_->cubeBlockDimN));
+            tilingData_->cubeBlockDimM = (std::min(
+                cubeBlockDimMMax, static_cast<uint32_t>(compileInfoPtr_->aicNum) / tilingData_->cubeBlockDimN));
         }
     } else {
         tilingData_->cubeBlockDimN = std::min(compileInfoPtr_->aicNum, mainBlockCountDefault);

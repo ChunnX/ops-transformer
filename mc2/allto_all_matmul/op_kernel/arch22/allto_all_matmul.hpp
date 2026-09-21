@@ -16,15 +16,15 @@
 #ifndef CATLASS_GEMM_KERNEL_ALLTOALL_ALLTO_ALL_MATMUL_HPP
 #define CATLASS_GEMM_KERNEL_ALLTOALL_ALLTO_ALL_MATMUL_HPP
 
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/coord.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm_coord.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/matrix_coord.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/resource.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/cross_core_sync.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/copy_gm_to_ub.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/copy_ub_to_gm.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/kernel/padding_matmul.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_catlass.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_coord.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_gemm_coord.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_matrix_coord.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/tla_arch_resource.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/tla_arch_cross_core_sync.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tla_epilogue_copy_gm_to_ub.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tla_epilogue_copy_ub_to_gm.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/kernel/tla_gemm_kernel_padding_matmul.hpp"
 
 namespace Catlass::Gemm::Kernel {
 template <class PrologueA, class PrologueB, class BlockMmad_, class BlockEpilogue_, class BlockScheduler_, bool HasBias>
@@ -85,26 +85,31 @@ public:
 
         // Methods
         CATLASS_HOST_DEVICE
-        Params()
-        {
-        }
+        Params() {}
 
         CATLASS_HOST_DEVICE
         Params(GemmCoord const &problemShape_, GM_ADDR ptrA_, LayoutA layoutA_, GM_ADDR ptrB_, LayoutB layoutB_,
                GM_ADDR ptrBias_, GM_ADDR ptrC_, LayoutC layoutC_, int32_t pValue_, int32_t swizzlCount_,
                int32_t swizzlDirect_, int32_t rankSize_, int32_t pipeDepth_)
-            : problemShape(problemShape_), ptrA(ptrA_), layoutA(layoutA_), ptrB(ptrB_), layoutB(layoutB_),
-              ptrBias(ptrBias_), ptrC(ptrC_), layoutC(layoutC_), pValue(pValue_), swizzlCount(swizzlCount_),
-              swizzlDirect(swizzlDirect_), rankSize(rankSize_), pipeDepth(pipeDepth_)
-        {
-        }
+            : problemShape(problemShape_),
+              ptrA(ptrA_),
+              layoutA(layoutA_),
+              ptrB(ptrB_),
+              layoutB(layoutB_),
+              ptrBias(ptrBias_),
+              ptrC(ptrC_),
+              layoutC(layoutC_),
+              pValue(pValue_),
+              swizzlCount(swizzlCount_),
+              swizzlDirect(swizzlDirect_),
+              rankSize(rankSize_),
+              pipeDepth(pipeDepth_)
+        {}
     };
 
     // Methods
     CATLASS_DEVICE
-    AlltoAllMatmulKernel()
-    {
-    }
+    AlltoAllMatmulKernel() {}
 
     template <int32_t CORE_TYPE = g_coreType>
     CATLASS_DEVICE void operator()(Params const &params);
@@ -192,8 +197,7 @@ public:
         int32_t coreNum = AscendC::GetBlockNum();
         int32_t mLoops = (params.problemShape.m() + L1TileShape::M - 1) / L1TileShape::M;
         uint32_t nLoops = (params.problemShape.n() + L1TileShape::N - 1) / L1TileShape::N;
-        int64_t pingPongBlockSize =
-            static_cast<int64_t>(L1TileShape::M) * params.pValue * params.problemShape.k();
+        int64_t pingPongBlockSize = static_cast<int64_t>(L1TileShape::M) * params.pValue * params.problemShape.k();
 
         int32_t commCount = (mLoops + params.pValue - 1) / params.pValue;
 

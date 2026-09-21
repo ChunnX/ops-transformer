@@ -19,8 +19,8 @@
 #include "../../../common/op_kernel/memcopy/fa_l1_tensor.h"
 #include "../../../common/op_kernel/memcopy/fa_ub_tensor.h"
 #include "../../../common/op_kernel/memcopy/gm_coord.h"
-#include "../../../common/op_kernel/memcopy/copy_gm_to_l1.h"
-#include "../../../common/op_kernel/memcopy/copy_gm_to_ub.h"
+#include "../../../common/op_kernel/memcopy/attn_copy_gm_to_l1.h"
+#include "../../../common/op_kernel/memcopy/attn_copy_gm_to_ub.h"
 #include "../../../common/op_kernel/memcopy/copy_ub_to_gm.h"
 
 // 格式转换, 暂时放在这里
@@ -164,10 +164,11 @@ __aicore__ inline void DataCopySoftmaxLseBSNDArch35(GlobalTensor<float> softmaxL
                                                     uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
                                                     const CONST_INFO_T &constInfo, uint64_t s1LeftPaddingSize = 0)
 {
-    uint32_t startS1Idx = mOffset / constInfo.gSize;
-    uint32_t startGIdx = mOffset % constInfo.gSize;
-    uint32_t endS1Idx = (mOffset + dealCount - 1) / constInfo.gSize;
-    uint32_t endGIdx = (mOffset + dealCount - 1) % constInfo.gSize;
+    // USE_DN时，realGSize=1(G合入N2)
+    uint32_t startS1Idx = mOffset / constInfo.realGSize;
+    uint32_t startGIdx = mOffset % constInfo.realGSize;
+    uint32_t endS1Idx = (mOffset + dealCount - 1) / constInfo.realGSize;
+    uint32_t endGIdx = (mOffset + dealCount - 1) % constInfo.realGSize;
     uint64_t outOffset = 0;
     uint64_t ubOffset = 0;
     uint32_t curDealRowCount = 0;
@@ -175,7 +176,7 @@ __aicore__ inline void DataCopySoftmaxLseBSNDArch35(GlobalTensor<float> softmaxL
     for (uint32_t s1Idx = startS1Idx; s1Idx <= endS1Idx; s1Idx++) {
         outOffset = bN2Offset + startGIdx * constInfo.s1Size + s1Idx + s1LeftPaddingSize;
         if (s1Idx != endS1Idx) {
-            curDealRowCount = constInfo.gSize - startGIdx;
+            curDealRowCount = constInfo.realGSize - startGIdx;
         } else {
             curDealRowCount = endGIdx + 1 - startGIdx;
         }

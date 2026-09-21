@@ -22,7 +22,7 @@
 #include "../../../3rd/mat_mul_v3/op_kernel/mat_mul_v3_common.h"
 #include "../../../3rd/mat_mul_v3/op_kernel/arch35/mat_mul_asw_kernel.h"
 #include "../all_gather_matmul_tiling_data.h"
-#include "../common.h"
+#include "../agm_v2_common.h"
 
 namespace AllGatherMatmulImpl {
 using namespace AscendC;
@@ -43,9 +43,7 @@ template <typename AType, typename BType, typename BiasType, typename CType, uin
 
 class AllGatherMatmulFP16BF16 {
 public:
-    __aicore__ inline AllGatherMatmulFP16BF16()
-    {
-    }
+    __aicore__ inline AllGatherMatmulFP16BF16() {}
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR contextGM,
                                 GM_ADDR workspaceGM, GM_ADDR gatherOut,
                                 Mc2Tiling::AllGatherMatmulTilingDataV2 *tilingData, __gm__ void *mc2InitTiling,

@@ -74,6 +74,7 @@ void ChunkGatedDeltaRuleTiling::InitCompileInfo()
     compileInfo_.aivNum = ascendcPlatform.GetCoreNumAiv();
     compileInfo_.aicNum = ascendcPlatform.GetCoreNumAic();
     socVersion_ = ascendcPlatform.GetSocVersion();
+    npuArch_ = ascendcPlatform.GetCurNpuArch();
 
     if (compileInfo_.aivNum <= 0 || compileInfo_.aicNum <= 0) {
         OP_LOGE(context_->GetNodeName(), "aivNum <= 0 or aicNum <= 0");
@@ -143,7 +144,7 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoOpTiling()
     tilingData_.interWorkspaceSz += sizeLow * nv * s * c;  // qkt (BF16)
     if (tilingData_.stateIsFp32) {
         tilingData_.interWorkspaceSz += sizeLow * nv * dv * dk; // stateBf16Wk (BF16, arch35)
-    } else if (socVersion_ != platform_ascendc::SocVersion::ASCEND950) {
+    } else if (npuArch_ != NpuArch::DAV_3510) {
         tilingData_.interWorkspaceSz +=
             sizeHigh * tilingData_.b * nv * dv * dk; // highState_ (arch22: kernel unconditionally advances offset)
     }
@@ -230,7 +231,7 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoMatmulTiling()
 
 ge::graphStatus ChunkGatedDeltaRuleTiling::DoLibApiTiling()
 {
-    if (socVersion_ == platform_ascendc::SocVersion::ASCEND950) {
+    if (npuArch_ == NpuArch::DAV_3510) {
         tilingKey_ = (tilingData_.stateIsFp32 ? 1UL : 0UL) + (tilingData_.hasGamma != 0 ? 10UL : 0UL);
     } else {
         tilingKey_ = 0UL;
@@ -344,7 +345,8 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::CheckContext()
     return ge::GRAPH_SUCCESS;
 }
 
-// 校验输入输出 dtype：q/k/v/beta/out 为 bf16，initial_state/final_state 为 bf16 或 float32，actual_seq_lengths 为 int32，可选 g 为 float
+// 校验输入输出 dtype：q/k/v/beta/out 为 bf16，initial_state/final_state 为 bf16 或 float32，actual_seq_lengths 为
+// int32，可选 g 为 float
 ge::graphStatus ChunkGatedDeltaRuleTiling::AnalyzeDtype()
 {
     auto queryDtype = context_->GetInputDesc(QUERY_INDEX)->GetDataType();
@@ -361,7 +363,7 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::AnalyzeDtype()
     OP_CHECK_IF(stateDtype != ge::DT_BF16 && stateDtype != ge::DT_FLOAT,
                 OP_LOGE(context_->GetNodeName(), "initial_state dtype should be bfloat16 or float32"),
                 return ge::GRAPH_FAILED);
-    if (stateDtype == ge::DT_FLOAT && socVersion_ != platform_ascendc::SocVersion::ASCEND950) {
+    if (stateDtype == ge::DT_FLOAT && npuArch_ != NpuArch::DAV_3510) {
         OP_LOGE(context_->GetNodeName(), "FP32 initial_state is only supported on Ascend950");
         return ge::GRAPH_FAILED;
     }
@@ -392,7 +394,6 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::AnalyzeDtype()
 
     return ge::GRAPH_SUCCESS;
 }
-
 
 // 校验 shape 的维度数是否符合预期
 bool ChunkGatedDeltaRuleTiling::CheckDim(const gert::Shape &shape, const size_t dim, const std::string &dimDesc)
@@ -437,24 +438,22 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::CheckExpectedShapes(
                 OP_LOGE(context_->GetNodeName(),
                         "The shape of value parameter[%ld, %ld, %ld] is not expected, Expect [%ld, %ld, %ld].",
                         valueShape.GetDim(DIM_0), valueShape.GetDim(DIM_1), valueShape.GetDim(DIM_2),
-                        expectValueShape.GetDim(DIM_0), expectValueShape.GetDim(DIM_1),
-                        expectValueShape.GetDim(DIM_2)),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(betaShape != expectBetaShape,
-                OP_LOGE(context_->GetNodeName(),
-                        "The shape of beta parameter[%ld, %ld] is not expected, Expect [%ld, %ld].",
-                        betaShape.GetDim(DIM_0), betaShape.GetDim(DIM_1), expectBetaShape.GetDim(DIM_0),
-                        expectBetaShape.GetDim(DIM_1)),
+                        expectValueShape.GetDim(DIM_0), expectValueShape.GetDim(DIM_1), expectValueShape.GetDim(DIM_2)),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(
-        stateShape != expectStateShape,
-        OP_LOGE(context_->GetNodeName(),
-                "The shape of initial_state parameter[%ld, %ld, %ld, %ld] is not expected, "
-                "Expect [%ld, %ld, %ld, %ld].",
-                stateShape.GetDim(DIM_0), stateShape.GetDim(DIM_1), stateShape.GetDim(DIM_2), stateShape.GetDim(DIM_3),
-                expectStateShape.GetDim(DIM_0), expectStateShape.GetDim(DIM_1), expectStateShape.GetDim(DIM_2),
-                expectStateShape.GetDim(DIM_3)),
+        betaShape != expectBetaShape,
+        OP_LOGE(context_->GetNodeName(), "The shape of beta parameter[%ld, %ld] is not expected, Expect [%ld, %ld].",
+                betaShape.GetDim(DIM_0), betaShape.GetDim(DIM_1), expectBetaShape.GetDim(DIM_0),
+                expectBetaShape.GetDim(DIM_1)),
         return ge::GRAPH_FAILED);
+    OP_CHECK_IF(stateShape != expectStateShape,
+                OP_LOGE(context_->GetNodeName(),
+                        "The shape of initial_state parameter[%ld, %ld, %ld, %ld] is not expected, "
+                        "Expect [%ld, %ld, %ld, %ld].",
+                        stateShape.GetDim(DIM_0), stateShape.GetDim(DIM_1), stateShape.GetDim(DIM_2),
+                        stateShape.GetDim(DIM_3), expectStateShape.GetDim(DIM_0), expectStateShape.GetDim(DIM_1),
+                        expectStateShape.GetDim(DIM_2), expectStateShape.GetDim(DIM_3)),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(actualSeqLengthsShape != expectActualSeqLengthsShape,
                 OP_LOGE(context_->GetNodeName(),
                         "The shape of actual_seq_lengths parameter[%ld] is not expected, Expect [%ld].",
@@ -478,12 +477,12 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::CheckExpectedShapes(
 
     if (gShape != nullptr) {
         const gert::Shape expectGShape = gert::Shape({tilingData_.t, tilingData_.nv});
-        OP_CHECK_IF(*gShape != expectGShape,
-                    OP_LOGE(context_->GetNodeName(),
-                            "The shape of g parameter[%ld, %ld] is not expected, Expect [%ld, %ld].",
-                            gShape->GetDim(DIM_0), gShape->GetDim(DIM_1), expectGShape.GetDim(DIM_0),
-                            expectGShape.GetDim(DIM_1)),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            *gShape != expectGShape,
+            OP_LOGE(context_->GetNodeName(), "The shape of g parameter[%ld, %ld] is not expected, Expect [%ld, %ld].",
+                    gShape->GetDim(DIM_0), gShape->GetDim(DIM_1), expectGShape.GetDim(DIM_0),
+                    expectGShape.GetDim(DIM_1)),
+            return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
@@ -501,7 +500,7 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::CheckDerivedDimConstraints()
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(tilingData_.nk > 64 || tilingData_.nv > 64,
-                OP_LOGE(inputParams_.opName, "nk and nv should no bigger than 64, but nk is %ld, nv is %ld",
+                OP_LOGE(inputParams_.opName, "nk and nv should be no bigger than 64, but nk is %ld, nv is %ld",
                         tilingData_.nk, tilingData_.nv),
                 return ge::GRAPH_FAILED);
 
@@ -583,15 +582,14 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::AnalyzeEmptyTensor()
     OP_CHECK_IF(context_->GetInputShape(STATE_INDEX)->GetOriginShape().GetShapeSize() == 0,
                 OP_LOGE(inputParams_.opName, "initial_state not support empty tensor."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(context_->GetInputShape(ACTUAL_SEQ_LENGTHS_INDEX)->GetOriginShape().GetShapeSize() == 0,
-                OP_LOGE(inputParams_.opName, "actual_seq_lengths not support empty tensor."),
-                return ge::GRAPH_FAILED);
+                OP_LOGE(inputParams_.opName, "actual_seq_lengths not support empty tensor."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(context_->GetOutputShape(OUTPUT_OUT_IDX)->GetOriginShape().GetShapeSize() == 0,
                 OP_LOGE(inputParams_.opName, "out not support empty tensor."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(context_->GetOutputShape(OUTPUT_FINAL_STATE_IDX)->GetOriginShape().GetShapeSize() == 0,
                 OP_LOGE(inputParams_.opName, "final_state not support empty tensor."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(tilingData_.hasGamma == 1 &&
-                    context_->GetOptionalInputShape(G_INDEX)->GetOriginShape().GetShapeSize() == 0,
-                OP_LOGE(inputParams_.opName, "g not support empty tensor."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        tilingData_.hasGamma == 1 && context_->GetOptionalInputShape(G_INDEX)->GetOriginShape().GetShapeSize() == 0,
+        OP_LOGE(inputParams_.opName, "g not support empty tensor."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -664,7 +662,6 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::GetOptionalInput()
     tilingData_.hasGamma = (gDesc != nullptr && gTensor != nullptr && gShape != nullptr) ? 1 : 0;
     return ge::GRAPH_SUCCESS;
 }
-
 
 void ChunkGatedDeltaRuleTiling::PrintTilingData()
 {

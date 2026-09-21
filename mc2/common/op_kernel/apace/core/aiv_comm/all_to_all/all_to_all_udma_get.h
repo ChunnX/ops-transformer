@@ -33,8 +33,9 @@ private:
     {}
 
     template <uint8_t BarrierMode>
-    __aicore__ inline void DoCommit(uint32_t targetRankId, uint64_t tileByteSize)
+    __aicore__ inline void DoCommit(uint32_t targetRankId, uint64_t tileByteSize, uint64_t bufferOffset)
     {
+        (void)bufferOffset;
         if constexpr (BarrierMode & BARRIER_CORE) {
             this->barrier_.CrossCore();
         }
@@ -50,8 +51,8 @@ private:
 
         GM_ADDR dstAddr = this->localAddr_ + targetRankId * this->chunkBytes_ + this->tileByteOffset_;
 
-        int32_t ret = this->comm_.ReadNbi(
-            static_cast<ChannelHandle>(this->udmaCtx_->channelHandles[targetRankId]), dstAddr, srcAddr, tileByteSize);
+        int32_t ret = this->comm_.ReadNbi(static_cast<ChannelHandle>(this->udmaCtx_->channelHandles[targetRankId]),
+                                          dstAddr, srcAddr, tileByteSize);
         ascendc_assert(ret == 0, "Urma readNbi failed, ret=%d, targetRankId=%u", ret, targetRankId);
     }
 

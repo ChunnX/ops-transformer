@@ -68,9 +68,7 @@ __aicore__ inline uint64_t MMV3DivCeil(uint64_t a, uint64_t b)
 
 class QuantBatchMatmulAswBlock {
 public:
-    __aicore__ inline QuantBatchMatmulAswBlock()
-    {
-    }
+    __aicore__ inline QuantBatchMatmulAswBlock() {}
     __aicore__ inline void Init(const DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams *tilingData, uint32_t blockIdx);
     __aicore__ inline bool UpdateBasicIndex(uint64_t roundIdx, uint64_t newBlockIdx);
     __aicore__ inline void UpdateBlockParams(uint64_t roundIdx, bool isLast);
@@ -114,8 +112,8 @@ private:
     uint32_t taskRation_ = AscendC::GetTaskRation();
 };
 
-__aicore__ inline void
-QuantBatchMatmulAswBlock::Init(const DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams *tilingData, uint32_t blockIdx)
+__aicore__ inline void QuantBatchMatmulAswBlock::Init(
+    const DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams *tilingData, uint32_t blockIdx)
 {
     params_.mSplitAddrOffset = 0;
     params_.nSplitAddrOffset = 0;
@@ -228,7 +226,6 @@ __aicore__ inline bool QuantBatchMatmulAswBlock::UpdateBasicIndex(uint64_t round
     return true;
 }
 
-
 __aicore__ inline void QuantBatchMatmulAswBlock::UpdateBlockParams(uint64_t roundIdx, bool isLast)
 {
     params_.mSplitAddrOffset = 0;
@@ -246,6 +243,9 @@ __aicore__ inline void QuantBatchMatmulAswBlock::UpdateBlockParams(uint64_t roun
                                     tilingData_->adaptiveSlidingWin.mTailTile;
         uint64_t singleCoreNSplit = (params_.singleCoreN + tilingData_->adaptiveSlidingWin.nTailTile - 1) /
                                     tilingData_->adaptiveSlidingWin.nTailTile;
+        if (tilingData_->adaptiveSlidingWin.alignNTailSplit) {
+            singleCoreNSplit = DequantBmm::Align(singleCoreNSplit, static_cast<uint64_t>(BMM_BLOCK_NUM));
+        }
         uint64_t mBaseSplitCnt = MMV3DivCeil(params_.singleCoreM, singleCoreMSplit);
         uint64_t nBaseSplitCnt = MMV3DivCeil(params_.singleCoreN, singleCoreNSplit);
         totalSplitCnt_ = mBaseSplitCnt * nBaseSplitCnt;

@@ -30,7 +30,8 @@ namespace optiling {
 
 class MoeTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit MoeTilingBase(gert::TilingContext *context) : Ops::Transformer::OpTiling::TilingBaseClass(context) {};
+    explicit MoeTilingBase(gert::TilingContext *context)
+        : Ops::Transformer::OpTiling::TilingBaseClass(context) {};
 
 protected:
     ge::graphStatus GetShapeAttrsInfo() override;
@@ -38,6 +39,9 @@ protected:
     ge::graphStatus DoLibApiTiling() override;
     ge::graphStatus GetWorkspaceSize() override;
     ge::graphStatus PostTiling() override;
+
+    ge::graphStatus CheckSharedExpertAttrValue(const char *nodeName, const uint32_t sharedExpertNum,
+                                               const uint32_t sharedExpertRankNum);
 
     NpuArch npuArch_;
 };

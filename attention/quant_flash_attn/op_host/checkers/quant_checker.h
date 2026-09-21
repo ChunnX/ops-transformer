@@ -10,7 +10,7 @@
 
 /*!
  * \file quant_checker.h
- * \brief Checker for quant_mode, q_descale, k_descale, v_descale, p_scale (文档约束: 全量化参数组)
+ * \brief Checker for quant_mode, q_descale, k_descale, v_descale, p_scale ( 全量化参数组)
  */
 
 #ifndef QUANT_FLASH_ATTN_QUANT_CHECKER_H
@@ -46,10 +46,13 @@ private:
     // --- SinglePara: descale shape dim 校验 (按量化场景分发) ---
     ge::graphStatus CheckQDescaleDimMxFp8(const QfaTilingInfo &qfaInfo) const;
     ge::graphStatus CheckQDescaleDimGqaFp8(const QfaTilingInfo &qfaInfo) const;
+    ge::graphStatus CheckQDescaleDimHif8(const QfaTilingInfo &qfaInfo) const;
     ge::graphStatus CheckKDescaleDimMxFp8(const QfaTilingInfo &qfaInfo) const;
     ge::graphStatus CheckKDescaleDimGqaFp8(const QfaTilingInfo &qfaInfo) const;
+    ge::graphStatus CheckKDescaleDimHif8(const QfaTilingInfo &qfaInfo) const;
     ge::graphStatus CheckVDescaleDimMxFp8(const QfaTilingInfo &qfaInfo) const;
     ge::graphStatus CheckVDescaleDimGqaFp8(const QfaTilingInfo &qfaInfo) const;
+    ge::graphStatus CheckVDescaleDimHif8(const QfaTilingInfo &qfaInfo) const;
 
     // --- ParaExistence: 场景化必选参数 ---
     ge::graphStatus CheckParaExistenceGqaFp8(const QfaTilingInfo &qfaInfo) const;
@@ -74,10 +77,11 @@ private:
     // 各 batch 实际 KV 序列长度按 64 向上取整后累加，即 Σ ceil(cu_seqlens_kv[b+1]-cu_seqlens_kv[b], 64)
     int64_t CalcVDescaleTndDim0(const QfaTilingInfo &qfaInfo) const;
 
-    // --- Feature: 非连续 Tensor 支持校验 ---
-    // 仅 PA 场景(layout_kv 为 PA_BBND、PA_BNBD 或 PA_NZ)时，k/v/k_descale/v_descale
-    // 仅支持 0 轴和 1 轴非连续，其余轴必须连续；非 PA 场景均不支持非连续。
-    ge::graphStatus CheckNonContiguousSupport(const QfaTilingInfo &qfaInfo) const;
+    // --- Feature: q/k/v dtype 与 quant_mode 精确匹配校验 ---
+    ge::graphStatus CheckQkvDtype(const QfaTilingInfo &qfaInfo) const;
+
+    // --- Feature: q/out ShapeDim 与 quant_mode 精确匹配校验 ---
+    ge::graphStatus CheckQkvShapeDim(const QfaTilingInfo &qfaInfo) const;
 
     // --- Feature: layout 匹配关系校验 (文档: layout匹配关系表) ---
     // MxFP8: layout_q=TND, layout_kv∈{TND,PA_BBND,PA_BNBD,PA_NZ}, layout_out=TND, layout_q_descale∈{TND,N2TGD}

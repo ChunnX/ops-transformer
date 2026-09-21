@@ -21,7 +21,7 @@
 #include "kernel_operator.h"
 #endif
 #include "lib/matmul_intf.h"
-#include "../common.h"
+#include "../matmul_all_reduce_common.h"
 #include "matmul_all_reduce_add_x3.h"
 #include "../unquant_matmul_all_reduce_tiling_data.h"
 #include "../weight_quant_matmul_all_reduce_tiling_data.h"
@@ -34,7 +34,10 @@ class MatmulAllReduceBase {
 public:
     __aicore__ inline MatmulAllReduceBase(MC2GmAddrs *addrs, QuantGmAddrs *quantAddrs, ArnGmAddrs *arnAddrs,
                                           MC2TilingHeader *tilingData, TPipe *tPipe)
-        : addrs_(addrs), quantAddrs_(quantAddrs), arnAddrs_(arnAddrs), tPipe_(tPipe)
+        : addrs_(addrs),
+          quantAddrs_(quantAddrs),
+          arnAddrs_(arnAddrs),
+          tPipe_(tPipe)
     {
         if constexpr (coreType == Mc2CoreType::ON_CUBE) {
             notifyFlag_ = (GetBlockIdx() == 0);

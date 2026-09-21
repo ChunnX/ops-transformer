@@ -213,10 +213,13 @@ void QfaInfoParser::GetInputParaInfo()
     opParamInfo_.vDescale.shape = context_->GetInputShape(V_DESCALE_INDEX);
 
     // 获取 k/v/k_descale/v_descale 的 stride，用于非连续 Tensor 校验
-    keyStrides_ = context_->GetInputStride(KEY_INDEX);
-    valueStrides_ = context_->GetInputStride(VALUE_INDEX);
-    kDescaleStrides_ = context_->GetInputStride(K_DESCALE_INDEX);
-    vDescaleStrides_ = context_->GetInputStride(V_DESCALE_INDEX);
+    if (context_->InputIsView(KEY_INDEX) == true) {
+        hasStride_ = true;
+        keyStrides_ = context_->GetInputStride(KEY_INDEX);
+        valueStrides_ = context_->GetInputStride(VALUE_INDEX);
+        kDescaleStrides_ = context_->GetInputStride(K_DESCALE_INDEX);
+        vDescaleStrides_ = context_->GetInputStride(V_DESCALE_INDEX);
+    }
 
     GetOptionalInputParaInfo();
 }
@@ -269,10 +272,12 @@ ge::graphStatus QfaInfoParser::GetQuantMode()
     if (quantModeVal != static_cast<int64_t>(QM::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) &&
         quantModeVal !=
             static_cast<int64_t>(
-                QM::A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32)) {
+                QM::A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) &&
+        quantModeVal != static_cast<int64_t>(QM::A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32)) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "quant_mode", std::to_string(quantModeVal).c_str(),
-                                              "quant_mode must be 1 "
-                                              "(A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) or "
+                                              "quant_mode must be 0 "
+                                              "(A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32) or "
+                                              "1 (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) or "
                                               "6 (A8C8_QK_FP8_"
                                               "E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_"
                                               "P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32)");
@@ -519,7 +524,10 @@ ge::graphStatus QfaInfoParser::GetGSize()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QfaInfoParser::GetActualSeqInfo() { return ge::GRAPH_SUCCESS; }
+ge::graphStatus QfaInfoParser::GetActualSeqInfo()
+{
+    return ge::GRAPH_SUCCESS;
+}
 
 void QfaInfoParser::GenerateFeatureInfo(QfaTilingInfo &qfaInfo)
 {
@@ -549,7 +557,10 @@ void QfaInfoParser::GenerateLayoutInfo(QfaTilingInfo &qfaInfo)
     qfaInfo.layoutQDescale = layoutQDescale_;
 }
 
-void QfaInfoParser::GenerateQuantInfo(QfaTilingInfo &qfaInfo) { qfaInfo.quantMode = quantMode_; }
+void QfaInfoParser::GenerateQuantInfo(QfaTilingInfo &qfaInfo)
+{
+    qfaInfo.quantMode = quantMode_;
+}
 
 void QfaInfoParser::GenerateAxisInfo(QfaTilingInfo &qfaInfo)
 {
@@ -580,6 +591,7 @@ void QfaInfoParser::GenerateInfo(QfaTilingInfo &qfaInfo)
     qfaInfo.opName = opName_;
     qfaInfo.platformInfo = platformInfo_;
     qfaInfo.opParamInfo = opParamInfo_;
+    qfaInfo.hasStride = hasStride_;
     qfaInfo.keyStrides = keyStrides_;
     qfaInfo.valueStrides = valueStrides_;
     qfaInfo.kDescaleStrides = kDescaleStrides_;
@@ -620,31 +632,6 @@ ge::graphStatus QfaInfoParser::ParseAxisInfo()
 
     if (ge::GRAPH_SUCCESS != GetGSize() || ge::GRAPH_SUCCESS != GetS2Size()) {
         return ge::GRAPH_FAILED;
-    }
-
-    uint32_t qDescaleDimNum = opParamInfo_.qDescale.shape->GetStorageShape().GetDimNum();
-    using QM = QfaQuantMode;
-    if (quantMode_ == QM::A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) {
-        if (qDescaleDimNum != 2) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                opName_, Q_DESCALE_NAME.c_str(), (std::to_string(qDescaleDimNum) + "D").c_str(),
-                "In GQA_FP8_FULLQUANT scenario, the shape dim of q_descale must be 2D");
-            return ge::GRAPH_FAILED;
-        }
-    } else {
-        bool isDecode = (layoutQDescale_ == QfaLayout::N2TGD);
-        if (isDecode && qDescaleDimNum != 5) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                opName_, Q_DESCALE_NAME.c_str(), (std::to_string(qDescaleDimNum) + "D").c_str(),
-                "In MxFP8 decode scenario(layout_q_descale=N2TGD), the shape dim of q_descale must be 5D");
-            return ge::GRAPH_FAILED;
-        }
-        if (!isDecode && qDescaleDimNum != 4) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                opName_, Q_DESCALE_NAME.c_str(), (std::to_string(qDescaleDimNum) + "D").c_str(),
-                "In MxFP8 prefill scenario(layout_q_descale=TND), the shape dim of q_descale must be 4D");
-            return ge::GRAPH_FAILED;
-        }
     }
 
     return ge::GRAPH_SUCCESS;
@@ -689,8 +676,6 @@ ge::graphStatus QfaInfoParser::Parse(QfaTilingInfo &qfaInfo)
     }
     GetKvStorageMode();
     if (emptyTensorFlag_) {
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(qfaInfo.opName, "input tensor", "",
-                                              "Empty tensor (containing a dimension of size 0) is not supported");
         return ge::GRAPH_FAILED;
     }
     if (ge::GRAPH_SUCCESS != GetQuantMode()) {

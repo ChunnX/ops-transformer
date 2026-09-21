@@ -57,6 +57,10 @@
     - cmp_ratio取值范围为[1, 128]。
     - mask_mode当前仅支持0和3。
 
+## 问题定位说明
+
+- 关于AI CPU算子Kernel常见执行问题或异常错误，问题定位方法请参考《故障处理》中“[故障案例集>算子执行问题>AI CPU算子Kernel执行报错](https://www.hiascend.com/document/detail/zh/canncommercial/latest/maintenref/troubleshooting/troubleshooting_0151.html)”。
+
 ## Metadata输出布局
 
 metadata输出为INT32 Tensor，shape固定为(64,)，字段布局如下：
@@ -76,4 +80,4 @@ metadata输出为INT32 Tensor，shape固定为(64,)，字段布局如下：
 | 调用方式 | 调用样例 | 说明 |
 | -------- | -------- | ---- |
 | aclnn API | - | 通过[aclnnSparseFlashMlaSoftmaxL1NormMetadata](docs/aclnnSparseFlashMlaSoftmaxL1NormMetadata.md)接口方式调用算子，输出metadata供`SparseFlashMlaSoftmaxL1Norm`使用。 |
-| PyTorch API | - | 通过[sparse_flash_mla_softmax_l1_norm_metadata](../../torch_extension/cann_ops_transformer/docs/zh/sparse_flash_mla_softmax_l1_norm.md)（内置在主算子接口中）调用算子。 |
+| PyTorch API | - | 通过[sparse_flash_mla_softmax_l1_norm_metadata](../../attention/sparse_flash_mla_softmax_l1_norm/docs/torchapi_sparse_flash_mla_softmax_l1_norm.md)（内置在主算子接口中）调用算子。 |

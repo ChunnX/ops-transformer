@@ -15,14 +15,22 @@
 #include "tensor_api/tensor.h"
 #include "../mega_moe_tiling.h"
 #include "mega_moe_constants.h"
+#include "mega_moe_gmm_epilogue_sync.h"
 #include "mega_moe_workspace.h"
 #if defined(ENABLE_MEGA_MOE_LAYERED_KERNEL)
 #include "adv_api/hcomm/hcomm.h"
 #endif
+#include "../../../../common/op_kernel/mc2_moe_context.h"
 
 namespace MegaMoeImpl {
 
 using namespace AscendC;
+
+enum DispatchQuantOutDtype : int64_t {
+    E5M2_QUANT = 3U,
+    E4M3_QUANT = 4U,
+    E2M1_QUANT = 5U,
+};
 
 using ProblemShape = Shape<int64_t, int64_t, int64_t, int64_t>;
 
@@ -32,13 +40,13 @@ struct ExpertLoopState {
     ProblemShape problemShape;
     int64_t globalTokenStartIndex = 0;
     uint32_t expertIdx = 0U;
+    bool expertCountTableReady = false;
 };
 
-// GMM1/GMM2 执行期间共同维护的流水状态；引用成员将更新直接回写到调用方持有的状态。
+// GMM1 执行期间共同维护的流水状态；引用成员将更新直接回写到调用方持有的状态。
 struct GmmRuntimeState {
     uint32_t &startBlockIdx;
     int32_t &vecSetSyncCom;
-    int32_t &gmTileSequence;
     uint16_t &pingpongIdx;
 };
 
@@ -46,15 +54,17 @@ struct GmmRuntimeState {
 struct ExpertTokenPosition {
     uint32_t expertIdx = 0U;
     uint32_t tokenIndexInExpert = 0U;
+    // 从全部本卡 MoE 专家起点累计的全局连续 row，避免末波 Combine 重新标量扫描 count 表。
+    uint64_t globalTokenIndex = 0U;
 };
 
-struct Mc2MoeContext {
-    uint32_t epRankId = 0;
-    uint32_t rankSizePerServer = 0;
-    uint64_t kfcContextAddr = 0; // 通信 API 所需的地址
-    uint64_t epHcclBuffer[HCCL_MAX_RANK_SIZE] = {};
-    uint64_t hcommHandle[HCCL_MAX_RANK_SIZE] = {}; // 支持 ROCE 或 URMA
+// 标识 MoE 专家紧凑 token 序列中的左闭右开区间 [begin, end)。
+struct ExpertTokenRange {
+    ExpertTokenPosition begin{};
+    ExpertTokenPosition end{};
 };
+
+using Mc2MoeContext = Mc2Aclnn::Mc2MoeContext;
 
 struct GMMAddrInfo {
     GM_ADDR aGlobal;
@@ -70,13 +80,20 @@ struct GMMAddrInfo {
     __gm__ int32_t *gmmToEpilogueFlag;
     __gm__ int32_t *gmm1TileStatus;
     __gm__ int32_t *sharedExpertGmm2TileCounter;
+    uint32_t gmm2CombineLogicalCoreCount = 0U;
+    Gmm1ActivationSync *gmm1ActivationSync = nullptr;
+    Gmm2CombineSync *gmm2CombineSync = nullptr;
+};
+
+// A/ScaleA 以逻辑元素为单位记录相邻行起始地址的跨度。
+struct StridedAConfig {
+    uint32_t rowStrideElements;
+    uint32_t scaleRowStrideElements;
 };
 
 #if defined(ENABLE_MEGA_MOE_LAYERED_KERNEL)
 struct CombineCommParams {
-    uint32_t rankId;
     Hcomm<COMM_PROTOCOL_UBC_CTP> *hcomm;
-    __gm__ Mc2MoeContext *mc2Context;
 };
 #endif
 
@@ -90,6 +107,7 @@ struct ExpertWeightTensorListAddrs {
 
 struct Params {
     GM_ADDR aGmAddr;
+    GM_ADDR xScaleGmAddr;
     GM_ADDR expertIdxGmAddr;
     GM_ADDR bGmAddr;
     GM_ADDR bScaleGmAddr;
@@ -131,6 +149,66 @@ struct PackedElementTraits {
     static constexpr uint32_t ELEMENTS_PER_BYTE = Std::IsSame<T, fp4x2_e2m1_t>::value ? 2U : 1U;
 };
 
+template <int32_t QuantMode>
+struct QuantTypeTraits {
+    using Type = fp8_e4m3fn_t;
+};
+
+template <>
+struct QuantTypeTraits<E5M2_QUANT> {
+    using Type = fp8_e5m2_t;
+};
+
+template <>
+struct QuantTypeTraits<E2M1_QUANT> {
+    using Type = fp4x2_e2m1_t;
+};
+
+enum class AxWMode : uint8_t {
+    A8W8,
+    A8W4,
+    A4W4,
+};
+
+template <typename WeightType, typename QuantOutType>
+constexpr AxWMode ResolveAxWMode()
+{
+    constexpr bool isA8W8 =
+        (Std::IsSame<WeightType, fp8_e5m2_t>::value && Std::IsSame<QuantOutType, fp8_e5m2_t>::value) ||
+        (Std::IsSame<WeightType, fp8_e4m3fn_t>::value && Std::IsSame<QuantOutType, fp8_e4m3fn_t>::value);
+    constexpr bool isA8W4 =
+        Std::IsSame<WeightType, fp4x2_e2m1_t>::value && Std::IsSame<QuantOutType, fp8_e4m3fn_t>::value;
+    constexpr bool isA4W4 =
+        Std::IsSame<WeightType, fp4x2_e2m1_t>::value && Std::IsSame<QuantOutType, fp4x2_e2m1_t>::value;
+    static_assert(isA8W8 || isA8W4 || isA4W4, "unsupported activation and weight dtype combination");
+
+    if constexpr (isA8W8) {
+        return AxWMode::A8W8;
+    }
+    if constexpr (isA8W4) {
+        return AxWMode::A8W4;
+    }
+    return AxWMode::A4W4;
+}
+
+template <typename WeightType, int32_t QuantMode>
+struct QuantConfig {
+    using QuantOutType = typename QuantTypeTraits<QuantMode>::Type;
+    // QuantOutType 表达量化算法和 GMM 的逻辑 dtype；QuantStorageType 用于 UB/GM 量化结果的物理承载。
+    // FP4 每字节打包两个元素，基础搬运链路按原始字节处理，因此使用 uint8_t 作为存储类型。
+    using QuantStorageType =
+        typename std::conditional<Std::IsSame<QuantOutType, fp4x2_e2m1_t>::value, uint8_t, QuantOutType>::type;
+    using QuantScaleType = typename std::conditional<(QuantMode >= E5M2_QUANT), fp8_e8m0_t, float>::type;
+
+    static constexpr AxWMode AXW_MODE = ResolveAxWMode<WeightType, QuantOutType>();
+    using ActivationQuantOutType =
+        typename std::conditional<AXW_MODE == AxWMode::A4W4, fp8_e4m3fn_t, QuantOutType>::type;
+
+    static constexpr uint32_t A_ELEMS_PER_BYTE = PackedElementTraits<QuantOutType>::ELEMENTS_PER_BYTE;
+    static constexpr uint32_t B_ELEMS_PER_BYTE = PackedElementTraits<WeightType>::ELEMENTS_PER_BYTE;
+    static constexpr uint32_t C_ELEMS_PER_BYTE = PackedElementTraits<ActivationQuantOutType>::ELEMENTS_PER_BYTE;
+};
+
 struct AivJobContext {
     uint32_t jobIndex;
     uint32_t totalJobs;
@@ -150,8 +228,8 @@ struct MoeStageCommonConfig {
 // GMM1/GMM2 共用的执行方式：当前 block 的任务分工、矩阵模板模式和专家权重布局。
 struct GmmExecutionConfig {
     BlockJobContext blockJob;
-    int32_t groupedMatmulMode;
     bool isPerExpertWeightTensor;
+    StridedAConfig inputLayout;
 };
 
 // 各流水阶段在同步 workspace 中为每个专家预留的 slot 数量。
@@ -159,7 +237,6 @@ struct MoeSyncWorkspaceLayout {
     int32_t dispatchFlagSlotCountPerExpert;
     int32_t activationFlagSlotCountPerExpert;
     uint32_t gmm1TileStatusCountPerExpert;
-    uint64_t combineSyncSlotCountPerExpert;
 };
 
 struct GroupSyncSlotLayout {

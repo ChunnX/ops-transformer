@@ -10,10 +10,10 @@
 #ifndef ARCH35_CATLASS_PIPELINE_PIPELINE_STAGE_SINGLECORE_BASE_H
 #define ARCH35_CATLASS_PIPELINE_PIPELINE_STAGE_SINGLECORE_BASE_H
 
-#include "../utils/device_utils.h"
+#include "../utils/wq_device_utils.h"
 #include "../utils/math_utils.h"
 #include "kernel_operator.h"
-#include "utils.h"
+#include "wq_pipeline_utils.h"
 
 using AscendC::HardEvent;
 using AscendC::Hardware;
@@ -30,9 +30,7 @@ struct PipelineStageSingleCoreBase {
     TEventID backwardEventId[Stages];
 
     DEVICE
-    PipelineStageSingleCoreBase()
-    {
-    }
+    PipelineStageSingleCoreBase() {}
 
     DEVICE
     void ProducerWait(PipelineState<Stages> const &state) const

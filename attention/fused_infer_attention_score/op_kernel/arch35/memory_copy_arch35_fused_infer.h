@@ -19,8 +19,8 @@
 #include "../../../common/op_kernel/memcopy/fa_l1_tensor.h"
 #include "../../../common/op_kernel/memcopy/fa_ub_tensor.h"
 #include "../../../common/op_kernel/memcopy/gm_coord.h"
-#include "../../../common/op_kernel/memcopy/copy_gm_to_l1.h"
-#include "../../../common/op_kernel/memcopy/copy_gm_to_ub.h"
+#include "../../../common/op_kernel/memcopy/attn_copy_gm_to_l1.h"
+#include "../../../common/op_kernel/memcopy/attn_copy_gm_to_ub.h"
 #include "../../../common/op_kernel/memcopy/copy_ub_to_gm.h"
 
 // 格式转换, 暂时放在这里
@@ -63,12 +63,15 @@ __aicore__ inline constexpr GmFormat GetQueryGmFormat()
     }
 }
 
-template <LayOutTypeEnum LAYOUT, bool useDn = false, bool isPerTokenHead = false>
+template <LayOutTypeEnum LAYOUT, bool useDn = false, bool isPerTokenHead = false, bool isMlaFullQuant = false>
 __aicore__ inline constexpr GmFormat GetQueryScaleGmFormat()
 {
     if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH || LAYOUT == LayOutTypeEnum::LAYOUT_BNSD) {
         return GmFormat::BNGSD;
     } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND || LAYOUT == LayOutTypeEnum::LAYOUT_NTD) {
+        if constexpr (isMlaFullQuant) {
+            return GmFormat::TNG;
+        }
         if constexpr (isPerTokenHead) {
             return GmFormat::NGT;
         }

@@ -183,7 +183,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>输入</td>
       <td>公式中的bias。</td>
       <td>长度与weight相同。</td>
-      <td>INT32、BFLOAT16、FLOAT16、FLOAT32、INT8</td>
+      <td>INT32、BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>-</td>
       <td>-</td>
@@ -506,7 +506,7 @@ aclnnStatus aclnnGroupedMatmulV4(
     |全量化-A8W8|INT8|INT8|BFLOAT16/FLOAT16/INT32/INT8|[A8W8场景约束](#a8w8场景约束)|[计算公式](#全量化场景)|
     |全量化-A4W4|INT4|INT4|BFLOAT16/FLOAT16|[A4W4场景约束](#a4w4场景约束)|[计算公式](#全量化场景)|
     |伪量化-A8W4|INT8|INT4|BFLOAT16/FLOAT16|[A8W4场景约束](#a8w4场景约束)|[计算公式](#a8w4伪量化场景)|
-    |伪量化-A16W8|BFLOAT16/FLOAT16|INT8|BFLOAT16/FLOAT16|[A16W8场景约束](#a16w4场景约束)|[计算公式](#伪量化场景)|
+    |伪量化-A16W8|BFLOAT16/FLOAT16|INT8|BFLOAT16/FLOAT16|[A16W8场景约束](#a16w8场景约束)|[计算公式](#伪量化场景)|
     |伪量化-A16W4|BFLOAT16/FLOAT16|INT4|BFLOAT16/FLOAT16|[A16W4场景约束](#a16w4场景约束)|[计算公式](#伪量化场景)|
 
   <!-- end id11 -->
@@ -1196,7 +1196,7 @@ int main() {
     }
     // 调用aclnnGroupedMatmulV4第二段接口
     ret = aclnnGroupedMatmulV4(workspaceAddr, workspaceSize, executor, stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmul failed. ERROR: %d\n", ret); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulV4 failed. ERROR: %d\n", ret); return ret);
 
     // 4.（固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);

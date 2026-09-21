@@ -57,6 +57,9 @@ public:
     static constexpr bool POST_QUANT = false;
     static constexpr bool USE_DN = true;
     static constexpr int64_t FP8_QUANT_KV_BLOCK_SIZE = 256;
+    // 与 CUDA 空 softmax 行的 LSE=-Inf 语义一致；仅用于 LSE 输出初始化，
+    // V1 在线 max 空态哨兵仍为 VF_QBSA_EMPTY_LSE_VALUE(-FLT_MAX)。
+    static constexpr float FP8_EMPTY_LSE_VALUE = -3e+99;
     static constexpr int64_t FP8_QUANT_K_BLOCK_SIZE = 256;
     static constexpr int64_t FP8_QUANT_V_BLOCK_SIZE = 512;
     static constexpr uint32_t bufferSizeByte32K = 32768;
@@ -397,12 +400,12 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec2OnUb(
         } else {
             if (unlikely(runInfo.s2LoopCount == 1)) {
                 LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>();
-                FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, true>(
+                FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, true, true>(
                     vec2ResUb, mmRes, vec2ResUb, expUb, sumUb, runInfo.vec2S1RealSize, dTemplateAlign64, deSCaleVValue,
                     deSCalePreVValue);
             } else {
                 LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>();
-                FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false>(
+                FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, true>(
                     vec2ResUb, mmRes, vec2ResUb, expUb, sumUb, runInfo.vec2S1RealSize, dTemplateAlign64, deSCaleVValue,
                     deSCalePreVValue);
             }
@@ -432,8 +435,8 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec2(mm2ResPos &bmm2R
 TEMPLATES_DEF_NO_DEFAULT
 template <typename VEC2_RES_T>
 __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::Bmm2DataCopyOut(RunInfo &runInfo, ConstInfo &constInfo,
-                                                                   LocalTensor<VEC2_RES_T> &vec2ResUb,
-                                                                   int64_t vec2S1Idx, int64_t vec2CalcSize)
+                                                                    LocalTensor<VEC2_RES_T> &vec2ResUb,
+                                                                    int64_t vec2S1Idx, int64_t vec2CalcSize)
 {
     LocalTensor<OUTPUT_T> attenOut;
     int64_t dSizeAligned64 = (int64_t)dVTemplateType;
@@ -638,8 +641,7 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::InitCubeVecSharedParams(CVSh
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::CleanOutput(__gm__ uint8_t *softmaxLse,
-                                                                __gm__ uint8_t *attentionOut,
-                                                                ConstInfo &constInfo)
+                                                                __gm__ uint8_t *attentionOut, ConstInfo &constInfo)
 {
     if ASCEND_IS_AIV {
         this->attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
@@ -678,8 +680,8 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::SoftmaxDataCopyOut(RunInfo &
 TEMPLATES_DEF_NO_DEFAULT
 template <typename VEC2_RES_T>
 __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::CopyOutAttentionOut(RunInfo &runInfo, ConstInfo &constInfo,
-                                                                       LocalTensor<VEC2_RES_T> &vec2ResUb,
-                                                                       int64_t vec2S1Idx, int64_t vec2CalcSize)
+                                                                        LocalTensor<VEC2_RES_T> &vec2ResUb,
+                                                                        int64_t vec2S1Idx, int64_t vec2CalcSize)
 {
     this->Bmm2DataCopyOut(runInfo, constInfo, vec2ResUb, vec2S1Idx, vec2CalcSize);
 }
@@ -700,7 +702,7 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::SoftmaxLseCopyOut(LocalTenso
     TEventID lseVToMte3Id = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
     TEventID lseMte3ToMte2Id = GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>();
 
-    ComputeLseOutputVF(lseUb, softmaxSumTmp, softmaxMaxTmp, runInfo.halfS1RealSize);
+    ComputeLseOutputVF<float, true>(lseUb, softmaxSumTmp, softmaxMaxTmp, runInfo.halfS1RealSize);
 
     // Vector 写完 lseUb 后，MTE3 才能读取。
     SetFlag<HardEvent::V_MTE3>(lseVToMte3Id);
@@ -744,7 +746,7 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::InitLseOutputSingleCore(Cons
             singleCoreLseSize += initParams.totalSoftMaxLseOutputSize % coreNum;
         }
         InitOutput<float>(softmaxLseGm[constInfo.aivIdx * (initParams.totalSoftMaxLseOutputSize / coreNum)],
-                          singleCoreLseSize, QBSA_EMPTY_LSE_VALUE);
+                          singleCoreLseSize, FP8_EMPTY_LSE_VALUE);
     }
 }
 

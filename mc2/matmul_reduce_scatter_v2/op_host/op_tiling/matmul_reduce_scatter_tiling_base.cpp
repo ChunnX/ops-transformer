@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file matmul_reduce_scatter_tiling_base.cpp
@@ -49,7 +49,7 @@ constexpr uint32_t IS_TRANS_B = 3;
 constexpr uint32_t COMM_TURN = 4;
 constexpr int64_t AICPU_STRLEN = 6;
 const std::set<int> SUPPORT_RANK_SIZE{2, 4, 8, 16, 32, 64};
-const std::set<std::string> SUPPORT_COMM_MODE_A5{"ai_cpu", "ccu"};
+const std::set<std::string> SUPPORT_COMM_MODE_A5{"ai_cpu", "ccu", "ccu_peer_only"};
 
 uint32_t MatmulReduceScatterTilingBase::ReduceScatterSpliteM(mc2tiling::TilingArgs &args, uint32_t maxTileCnt) const
 {
@@ -72,8 +72,7 @@ uint32_t MatmulReduceScatterTilingBase::ReduceScatterSpliteM(mc2tiling::TilingAr
 
 CutResult MatmulReduceScatterTilingBase::GetTilingResult()
 {
-    SocVersion inputSocVersion = (npuArch_ == NpuArch::DAV_3510) ? SocVersion::SOC950 : SocVersion::SOC910_B;
-    MMPlusReduceScatter scatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER, inputSocVersion);
+    MMPlusReduceScatter scatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER, npuArch_, false, false);
     scatterTiling.GetTiling();
     return scatterTiling.tilingM_.cutRes;
 }
@@ -256,7 +255,8 @@ uint64_t MatmulReduceScatterTilingBase::GetTilingKey() const
     if ((args_.geAType == ge::DT_BF16) || (args_.geAType == ge::DT_FLOAT16)) {
         inputIsBf16Fp16 = INPUT_TYPE_IS_FP16_BF16;
     }
-    uint8_t commAlg = isA2APath_ ? TPL_CCU_ALL2ALL_VEC_REDUCE : TPL_CCU_REDUCESUM;
+    uint8_t commAlg =
+        isPeerOnly_ ? TPL_CCU_REDUCESUM_PEER_ONLY : (isA2APath_ ? TPL_CCU_ALL2ALL_VEC_REDUCE : TPL_CCU_REDUCESUM);
     uint64_t tilingKey = GET_TPL_TILING_KEY(false, args_.isATrans, args_.isBTrans, inputIsBf16Fp16, OUTPUT_TYPE_IS_FP8,
                                             TPL_X1_X2_DTYPE_IS_OTHER, commAlg, commMode_);
     OP_LOGD(opName_, "args_.isATrans, args_.isBTrans, inputIsBf16Fp16 is: [%d, %d, %d]", args_.isATrans, args_.isBTrans,
@@ -327,11 +327,11 @@ bool MatmulReduceScatterTilingBase::CheckGroupSize() const
     if (((aType == ge::DT_BF16) && (bType == ge::DT_BF16)) ||
         ((aType == ge::DT_FLOAT16) && (bType == ge::DT_FLOAT16))) {
         if (groupSizePtr != nullptr) {
-            OP_TILING_CHECK((*groupSizePtr != 0),
-                            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "groupSize",
-                                                                  std::to_string(*groupSizePtr).c_str(),
-                                                                  "The value of groupSize must be nullptr or 0"),
-                            return false);
+            OP_TILING_CHECK(
+                (*groupSizePtr != 0),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "groupSize", std::to_string(*groupSizePtr).c_str(),
+                                                      "The value of groupSize must be nullptr or 0"),
+                return false);
         }
     }
     return CheckBias();
@@ -373,8 +373,13 @@ bool MatmulReduceScatterTilingBase::CheckAttrInfoValid(uint64_t kValue)
     OP_TILING_CHECK(commTurn != 0,
                     OP_LOGE_FOR_INVALID_VALUE(opName_, "commTurn", std::to_string(commTurn).c_str(), "0"),
                     return false);
+    // blockSize 语义同 AllGatherMatmulV2: 0 - 非量化, 32 - MX 量化, packed - PerBlock 量化
+    // 仅对非 fp8 输入硬拒非零值; fp8 路径 (QuantBmmReduceScatterTiling) 使用非零值,
+    // base 不拒, 否则 README §情形4 MX 路径不可达。
     auto blockSize = *context_->GetAttrs()->GetAttrPointer<int64_t>(BLOCKSIZE_INDEX);
-    OP_TILING_CHECK(blockSize != 0,
+    ge::DataType x1Type = context_->GetInputDesc(INPUT_X1)->GetDataType();
+    bool x1IsFp8 = (x1Type == ge::DT_FLOAT8_E4M3FN) || (x1Type == ge::DT_FLOAT8_E5M2) || (x1Type == ge::DT_HIFLOAT8);
+    OP_TILING_CHECK(!x1IsFp8 && blockSize != 0,
                     OP_LOGE_FOR_INVALID_VALUE(opName_, "blockSize", std::to_string(blockSize).c_str(), "0"),
                     return false);
     auto commMode = context_->GetAttrs()->GetAttrPointer<char>(COMMMODE_INDEX);
@@ -445,6 +450,7 @@ void MatmulReduceScatterTilingBase::Reset()
     tailMValue_ = 0UL;  // mc2 切块后尾块M的大小；
     longTileLen_ = 0UL; // mc2 切块后长块的大小；
     mmResultLen_ = 0UL; // mc2 matmul计算后结果的大小
+    isPeerOnly_ = false;
 }
 
 void MatmulReduceScatterTilingBase::SetReduceScatterTilingArgsDataType()

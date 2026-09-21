@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file mc2_tiling_utils.cpp
@@ -14,6 +14,8 @@
  */
 
 #include <cstdlib>
+#include <cstring>
+#include <limits>
 
 #include "graph/utils/type_utils.h"
 #include "mc2_hcom_topo_info.h"
@@ -69,6 +71,8 @@ matmul_tiling::DataType ConvertGeTypeToMmType(const std::string &opName, ge::Dat
         {ge::DT_HIFLOAT8, matmul_tiling::DataType::DT_HIFLOAT8},
         {ge::DT_FLOAT8_E4M3FN, matmul_tiling::DataType::DT_FLOAT8_E4M3FN},
         {ge::DT_FLOAT8_E5M2, matmul_tiling::DataType::DT_FLOAT8_E5M2},
+        {ge::DT_FLOAT4_E2M1, matmul_tiling::DataType::DT_FLOAT4_E2M1},
+        {ge::DT_FLOAT4_E1M2, matmul_tiling::DataType::DT_FLOAT4_E1M2},
     };
 
     auto iterator = GE_TO_MM_MAP.find(type);
@@ -89,6 +93,8 @@ ge::DataType ConvertMmTypeToGeType(const std::string &opName, matmul_tiling::Dat
         {matmul_tiling::DataType::DT_HIFLOAT8, ge::DT_HIFLOAT8},
         {matmul_tiling::DataType::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN},
         {matmul_tiling::DataType::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2},
+        {matmul_tiling::DataType::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1},
+        {matmul_tiling::DataType::DT_FLOAT4_E1M2, ge::DT_FLOAT4_E1M2},
     };
 
     auto iterator = MM_TO_GE_MAP.find(type);
@@ -171,7 +177,7 @@ uint8_t Mc2GetCommAlgo(int64_t rankDim, uint64_t mValue, const char *group, cons
         return COMM_ALG_DEFAULT;
     }
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
+    if (ascendcPlatform.GetCurNpuArch() == Ops::Base::DAV_3510) {
         return COMM_ALG_FULL_MESH;
     }
 
@@ -228,9 +234,9 @@ uint8_t Mc2GetCommAlgo(int64_t rankDim, uint64_t mValue, const char *group, cons
 bool CheckRankSize(const NpuArch npuArch, const uint32_t rankSize)
 {
     static const std::map<NpuArch, std::set<uint32_t>> SUPPORT_RANK_SIZE_SET = {
-        {NpuArch::DAV_2002, {1, 2, 4}},
-        {NpuArch::DAV_2201, {1, 2, 4, 8}},
-        {NpuArch::DAV_3510, {1, 2, 4, 8, 16, 32, 64}},
+        {Ops::Base::DAV_2002, {1, 2, 4}},
+        {Ops::Base::DAV_2201, {1, 2, 4, 8}},
+        {Ops::Base::DAV_3510, {1, 2, 4, 8, 16, 32, 64}},
     };
     auto it = SUPPORT_RANK_SIZE_SET.find(npuArch);
     if (it != SUPPORT_RANK_SIZE_SET.end()) {
@@ -243,6 +249,54 @@ bool CheckRankSize(const NpuArch npuArch, const uint32_t rankSize)
 bool CheckDataTypeVaild(ge::DataType type, std::initializer_list<ge::DataType> supportDtypeList)
 {
     return std::find(supportDtypeList.begin(), supportDtypeList.end(), type) != supportDtypeList.end();
+}
+
+ge::graphStatus ParseCommAlgWithEnvFallback(const char *entityName, const char *commAlg, bool &isLayered)
+{
+    if (commAlg == nullptr || strlen(commAlg) == 0 || strcmp(commAlg, "0") == 0) {
+        OP_LOGW(entityName, "Attr commAlg is invalid, please configure fullmesh or hierarchy.");
+
+        const char *hcclIntraPcieEnable = getenv("HCCL_INTRA_PCIE_ENABLE");
+        const char *hcclIntraRoceEnable = getenv("HCCL_INTRA_ROCE_ENABLE");
+        if (hcclIntraPcieEnable != nullptr && hcclIntraRoceEnable != nullptr && strcmp(hcclIntraPcieEnable, "1") == 0 &&
+            strcmp(hcclIntraRoceEnable, "0") == 0) {
+            OP_LOGD(entityName,
+                    "ENV HCCL_INTRA_PCIE_ENABLE = 1 and HCCL_INTRA_ROCE_ENABLE = 0, use hierarchy algorithm.");
+            isLayered = true;
+        } else {
+            OP_LOGD(entityName,
+                    "ENV HCCL_INTRA_PCIE_ENABLE != 1 or HCCL_INTRA_ROCE_ENABLE != 0, use default fullmesh algorithm.");
+        }
+        return ge::GRAPH_SUCCESS;
+    }
+
+    OP_LOGI(entityName, "commAlg is %s", commAlg);
+
+    if (strcmp(commAlg, "fullmesh") == 0) {
+        return ge::GRAPH_SUCCESS;
+    }
+    if (strcmp(commAlg, "hierarchy") == 0) {
+        isLayered = true;
+        return ge::GRAPH_SUCCESS;
+    }
+    return ge::GRAPH_FAILED;
+}
+
+bool IsHcclPcieLayered(const char *entityName)
+{
+    const char *hcclIntraPcieEnable = getenv("HCCL_INTRA_PCIE_ENABLE");
+    const char *hcclIntraRoceEnable = getenv("HCCL_INTRA_ROCE_ENABLE");
+
+    if (hcclIntraPcieEnable == nullptr || hcclIntraRoceEnable == nullptr) {
+        OP_LOGD(entityName, "ENV HCCL_INTRA_PCIE_ENABLE or HCCL_INTRA_ROCE_ENABLE don't set");
+        return false;
+    }
+    if (strcmp(hcclIntraPcieEnable, "1") == 0 && strcmp(hcclIntraRoceEnable, "0") == 0) {
+        OP_LOGD(entityName, "ENV HCCL_INTRA_PCIE_ENABLE = 1 and HCCL_INTRA_ROCE_ENABLE = 0, use layered solution.");
+        return true;
+    }
+    OP_LOGD(entityName, "ENV HCCL_INTRA_PCIE_ENABLE != 1 or HCCL_INTRA_ROCE_ENABLE != 0, use default solution.");
+    return false;
 }
 
 void UpdateMatmulV3Args(optiling::mc2_matmul_v3_advanced::Mc2MatMulV3Args &mmV3Args, const TilingArgs &args,
@@ -270,7 +324,7 @@ void UpdateMatmulV3Args(optiling::mc2_matmul_v3_advanced::Mc2MatMulV3Args &mmV3A
 ge::graphStatus GetMatmulV3PriorityPolicy(const NpuArch npuArch, std::vector<int32_t> &priorities, const char *opName)
 {
     const static std::map<NpuArch, std::vector<int32_t>> MATMUL_V3_PRIOR_MAP = {
-        {NpuArch::DAV_3510, {optiling::mc2_matmul_v3_advanced::strategy::BASE}},
+        {Ops::Base::DAV_3510, {optiling::mc2_matmul_v3_advanced::strategy::BASE}},
     };
     if (MATMUL_V3_PRIOR_MAP.find(npuArch) != MATMUL_V3_PRIOR_MAP.end()) {
         priorities = MATMUL_V3_PRIOR_MAP.at(npuArch);
@@ -343,18 +397,25 @@ mc2tiling::HcclDataType Mc2TilingUtils::GetDataType(ge::DataType type)
 
 uint64_t Mc2TilingUtils::GetMaxWindowSize()
 {
-    uint16_t defaultWindowSize = 200;
-    if (getenv(HCCL_BUFFSIZE) == nullptr) {
+    uint64_t defaultWindowSize = 200;
+    const char *envValue = getenv(HCCL_BUFFSIZE);
+    if (envValue == nullptr) {
         OP_LOGD("", "Env HCCL_BUFFSIZE don't set");
     } else {
         try {
-            std::string envStr(getenv(HCCL_BUFFSIZE));
-            defaultWindowSize = std::stoi(envStr);
+            const uint64_t parsedWindowSize = std::stoull(envValue);
+            // 防 uint64 乘法回绕与下游 int64 溢出，非法取值回退默认 200MB
+            if (parsedWindowSize == 0 ||
+                parsedWindowSize > static_cast<uint64_t>(std::numeric_limits<int64_t>::max()) / (1024UL * 1024UL)) {
+                OP_LOGE("", "Invalid env HCCL_BUFFSIZE '%s', fallback to default %lu MB", envValue, defaultWindowSize);
+            } else {
+                defaultWindowSize = parsedWindowSize;
+            }
         } catch (...) {
             OP_LOGE("", "Unknown Exception encountered when parsing env HCCL_BUFFSIZE");
         }
     }
-    const uint64_t maxWindowSize = static_cast<uint64_t>(defaultWindowSize) * 1024UL * 1024UL;
+    const uint64_t maxWindowSize = defaultWindowSize * 1024UL * 1024UL;
     OP_LOGI("", "Get maxWindowSize is %lu", maxWindowSize);
     return maxWindowSize;
 }

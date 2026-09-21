@@ -31,9 +31,9 @@ struct MatmulAlltoAllTilingValue {
     int32_t value = -1;
     std::map<int, std::vector<std::vector<int>>> conditionMap = {};
     explicit MatmulAlltoAllTilingValue(int32_t v = -1, std::map<int, std::vector<std::vector<int>>> m = {})
-        : value(v), conditionMap(std::move(m))
-    {
-    }
+        : value(v),
+          conditionMap(std::move(m))
+    {}
 };
 
 class MatmulAlltoAllTiling910B : public MatmulAllToAllTilingBase {
@@ -58,8 +58,6 @@ protected:
     void DoEightRankTiling(CoCTiling &cocTilingData, MatmulAlltoAllInfo &info);
     void CalTilingParam(CoCTiling &cocTilingData, const std::map<int *, MatmulAlltoAllTilingValue> &TilingParamMap,
                         MatmulAlltoAllInfo &info);
-    int32_t GetValueFromMKNConditionMap(int32_t m, int32_t k, int32_t n, int32_t defaultValue,
-                                        std::map<int, std::vector<std::vector<int>>> conditionMap);
     ge::graphStatus SetHcclTiling(MatmulAlltoAllTilingData *tilingData);
     void PrintMatmulAlltoAllTilingData(CoCTiling &cocTilingData, MatmulAlltoAllInfo &info);
     void SetTilingKey();

@@ -20,14 +20,18 @@ extern "C" {
  * @domain aclnn_ops_infer
  *
  * @param [in] x:
- * 表示公式中的输入x，数据类型支持FLOAT16、BFLOAT16、INT8、FLOAT8_E4M3FN、FLOAT4_E2M1、FLOAT4_E1M2，数据格式支持ND，支持的最大长度为128个。
+ * 表示公式中的输入x，数据类型支持FLOAT16、BFLOAT16、INT8、INT4、INT32、FLOAT8_E4M3FN、FLOAT4_E2M1、FLOAT4_E1M2，数据格式支持ND。
+ * 部分场景支持的最大长度为1024个（详见接口文档约束说明），其他场景支持的最大长度为128个。
+ * INT32为打包输入，每个INT32承载8个INT4数据。
  * @param [in]
  * weight：表示公式中的weight，数据类型支持FLOAT16、BFLOAT16、INT8、INT4、FLOAT4_E2M1、INT32、FLOAT32、
- * FLOAT8_E4M3FN、FLOAT4_E1M2，数据格式支持NZ，支持的最大长度为128个。
+ * FLOAT8_E4M3FN、FLOAT4_E1M2，数据格式支持NZ。
+ * 部分场景支持的最大长度为1024个（详见接口文档约束说明），其他场景支持的最大长度为128个。
  * @param [in]
- * biasOptional：表示公式中的bias，数据类型支持FLOAT16、BFLOAT16、FLOAT32、INT32，数据格式支持ND，长度与weight相同。
+ * biasOptional：表示公式中的bias，数据类型支持FLOAT16、BFLOAT16、FLOAT32、INT32，数据格式支持ND。
+ * 部分场景支持的最大长度为1024个（详见接口文档约束说明），其他场景支持的最大长度为128个。
  * @param [in]
- * scaleOptional：代表量化参数中的缩放因子，数据类型支持BFLOAT16、FLOAT32、UINT64、FLOAT8_E8M0，数据格式支持ND，长度与weight相同。
+ * scaleOptional：代表量化参数中的缩放因子，数据类型支持BFLOAT16、FLOAT32、INT64、UINT64、FLOAT8_E8M0，数据格式支持ND和FRACTAL_NZ，长度与weight相同。
  * @param [in] offsetOptional：代表量化参数中的偏移量，数据类型支持FLOAT32，数据格式支持ND，长度与weight相同。
  * @param [in]
  * antiquantScaleOptional：代表伪量化参数中的缩放因子，数据类型支持FLOAT16、BFLOAT16、FLOAT8_E8M0，数据格式支持ND，长度与weight相同。
@@ -52,7 +56,8 @@ extern "C" {
  * 调优参数。数组中第一个值表示各个专家处理的token数的预期值，算子tiling时会按照该预期值进行最优tiling。
  * @param [in] quantGroupSize: 整数型参数，代表分组量化（per-group）的分组大小，不涉及分组量化时，填0。
  * @param [out] out:
- * 表示公式中的out，数据类型支持FLOAT16、BFLOAT16、FLOAT32、INT32数据类型，数据格式支持ND，支持的最大长度为128个。
+ * 表示公式中的out，数据类型支持FLOAT16、BFLOAT16、FLOAT32、INT32数据类型，数据格式支持ND。
+ * 部分场景支持的最大长度为1024个（详见接口文档约束说明），其他场景支持的最大长度为128个。
  * @param [out] activationFeatureOutOptional: 激活函数的输入数据。
  * @param [out] dynQuantScaleOutOptional: 存在激活函数的时候，对激活后的输出进行动态量化的量化系数输出。
  * @param [out] workspaceSize: 返回用户需要在npu device侧申请的workspace大小。
@@ -65,21 +70,23 @@ __attribute__((visibility("default"))) aclnnStatus aclnnGroupedMatmulWeightNzGet
     const aclTensorList *antiquantScaleOptional, const aclTensorList *antiquantOffsetOptional,
     const aclTensorList *perTokenScaleOptional, const aclTensor *groupListOptional,
     const aclTensorList *activationInputOptional, const aclTensorList *activationQuantScaleOptional,
-    const aclTensorList *activationQuantOffsetOptional,  int64_t splitItem, int64_t groupType,
-    int64_t groupListType, int64_t actType, aclIntArray *tuningConfigOptional, int64_t quantGroupSize, aclTensorList *out, aclTensorList *activationFeatureOutOptional,
-    aclTensorList *dynQuantScaleOutOptional, uint64_t *workspaceSize,
+    const aclTensorList *activationQuantOffsetOptional, int64_t splitItem, int64_t groupType, int64_t groupListType,
+    int64_t actType, aclIntArray *tuningConfigOptional, int64_t quantGroupSize, aclTensorList *out,
+    aclTensorList *activationFeatureOutOptional, aclTensorList *dynQuantScaleOutOptional, uint64_t *workspaceSize,
     aclOpExecutor **executor);
 
 /**
  * @brief aclnnGroupedMatmulWeightNz的第二段接口，用于执行计算。
  * @param [in] workspace: 在npu device侧申请的workspace内存起址。
- * @param [in] workspaceSize: 在npu device侧申请的workspace大小，由第一段接口aclnnGroupedMatmulWeightNzGetWorkspaceSize获取。
+ * @param [in] workspaceSize: 在npu
+ * device侧申请的workspace大小，由第一段接口aclnnGroupedMatmulWeightNzGetWorkspaceSize获取。
  * @param [in] stream: acl stream流。
  * @param [in] executor: op执行器，包含了算子计算流程。
  * @return aclnnStatus: 返回状态码。
  */
-__attribute__((visibility("default"))) aclnnStatus aclnnGroupedMatmulWeightNz(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
-                                            aclrtStream stream);
+__attribute__((visibility("default"))) aclnnStatus aclnnGroupedMatmulWeightNz(void *workspace, uint64_t workspaceSize,
+                                                                              aclOpExecutor *executor,
+                                                                              aclrtStream stream);
 
 #ifdef __cplusplus
 }

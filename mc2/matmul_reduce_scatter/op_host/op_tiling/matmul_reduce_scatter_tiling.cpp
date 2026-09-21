@@ -220,29 +220,6 @@ namespace optiling {
 static ge::graphStatus CalcMatmulTilingReduceScatter(mc2tiling::TilingArgs &args, ::TCubeTiling &cubeTiling,
                                                      Mc2Tiling::TileL2Tiling &l2Tiling);
 
-static uint32_t MC2_SpliteReduceScatter(mc2tiling::TilingArgs &args, uint32_t maxTileCnt = 64)
-{
-    // 检查允许通信的最大次数
-    if (args.commTurn >= maxTileCnt) {
-        args.commTurn = maxTileCnt;
-    }
-
-    uint64_t tileLen = 1;
-    if (args.mValue > args.commTurn) {
-        tileLen = args.mValue / args.commTurn;
-    }
-
-    if (args.outputDtypeSize == 2) { // 数据长度为2, 则向 2*64 = 128，则向128对齐
-        tileLen = mc2tiling::AlignUp<uint64_t>(tileLen, 64);
-    } else if (args.outputDtypeSize == 4) {                  // 4 is float32 tpye size
-        tileLen = mc2tiling::AlignUp<uint64_t>(tileLen, 32); // 32 is used to align to 128
-    }
-    if (args.mValue > tileLen) {
-        return tileLen;
-    }
-    return args.mValue;
-}
-
 static ge::graphStatus ReduceScatterParamsCheck(const gert::TilingContext *context)
 {
     OP_TILING_CHECK(mc2tiling::Mc2TilingUtils::CommonParamCheck(context) != ge::GRAPH_SUCCESS,
@@ -276,11 +253,11 @@ static ge::graphStatus ReduceScatterParamsCheck(const gert::TilingContext *conte
         auto isTransA = context->GetAttrs()->GetAttrPointer<bool>(2);
         OP_TILING_CHECK(isTransA == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "isTransA"),
                         return ge::GRAPH_FAILED);
-        OP_TILING_CHECK(*isTransA != false,
-                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "isTransA",
-                                                              *isTransA ? "true" : "false",
-                                                              "The value of isTransA must be false"),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            *isTransA != false,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "isTransA", *isTransA ? "true" : "false",
+                                                  "The value of isTransA must be false"),
+            return ge::GRAPH_FAILED);
     }
 
     auto group = context->GetAttrs()->GetAttrPointer<char>(static_cast<int>(0));
@@ -323,9 +300,9 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::GetReduceScatterFormulateTile
     if (mCutScatter.shortTileAtBack || mCutScatter.numShortTile == 0) {
         tilingData.param.tileCnt = mCutScatter.numLongTile;
         args.mValue = mCutScatter.longTileLen;
-        OP_TILING_CHECK(CalcMatmulTilingReduceScatter(args, tilingData.tileTiling, tilingData.tileL2Tiling) !=
-                            ge::GRAPH_SUCCESS,
-                        OP_LOGE(ctx->GetNodeName(), "CalcMatmulTilingReduceScatter failed"), return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            CalcMatmulTilingReduceScatter(args, tilingData.tileTiling, tilingData.tileL2Tiling) != ge::GRAPH_SUCCESS,
+            OP_LOGE(ctx->GetNodeName(), "CalcMatmulTilingReduceScatter failed"), return ge::GRAPH_FAILED);
         args.baseMLimit = mCutScatter.longTileLen;
         args.mValue = mCutScatter.longTileLen * args.rankTileNum;
         tilingData.param.tailM = mCutScatter.shortTileLen;
@@ -343,9 +320,9 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::GetReduceScatterFormulateTile
     } else {
         tilingData.param.tileCnt = mCutScatter.numShortTile;
         args.mValue = mCutScatter.shortTileLen;
-        OP_TILING_CHECK(CalcMatmulTilingReduceScatter(args, tilingData.tileTiling, tilingData.tileL2Tiling) !=
-                            ge::GRAPH_SUCCESS,
-                        OP_LOGE(ctx->GetNodeName(), "CalcMatmulTilingReduceScatter failed"), return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            CalcMatmulTilingReduceScatter(args, tilingData.tileTiling, tilingData.tileL2Tiling) != ge::GRAPH_SUCCESS,
+            OP_LOGE(ctx->GetNodeName(), "CalcMatmulTilingReduceScatter failed"), return ge::GRAPH_FAILED);
         args.baseMLimit = mCutScatter.shortTileLen;
         args.mValue = mCutScatter.shortTileLen * args.rankTileNum;
         tilingData.param.tailM = mCutScatter.longTileLen;
@@ -376,11 +353,11 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::MCSpliteMReduceScatter(gert::
         tilingData.param.tileCnt = 1;
         tilingData.param.tailCnt = 0;
         tilingData.param.tailM = 0;
-        OP_TILING_CHECK(CalcMatmulTilingReduceScatter(args, tilingData.tileTiling, tilingData.tileL2Tiling) !=
-                            ge::GRAPH_SUCCESS,
-                        OP_LOGE(ctx->GetNodeName(), "CalcMatmulTilingReduceScatter failed"), return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            CalcMatmulTilingReduceScatter(args, tilingData.tileTiling, tilingData.tileL2Tiling) != ge::GRAPH_SUCCESS,
+            OP_LOGE(ctx->GetNodeName(), "CalcMatmulTilingReduceScatter failed"), return ge::GRAPH_FAILED);
     } else if (args.commTurn != 0) {
-        uint64_t splite = MC2_SpliteReduceScatter(args);
+        uint64_t splite = mc2tiling::SplitMValueByCommTurn(args.mValue, args.commTurn, args.outputDtypeSize);
 
         // 现在找到1个合适的切分
         auto tileCnt = args.mValue / splite;  // 切的份数
@@ -389,9 +366,9 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::MCSpliteMReduceScatter(gert::
         tilingData.param.tileCnt = tileCnt;
         args.mValue = splite;
         tilingData.param.tailCnt = 0;
-        OP_TILING_CHECK(CalcMatmulTilingReduceScatter(args, tilingData.tileTiling, tilingData.tileL2Tiling) !=
-                            ge::GRAPH_SUCCESS,
-                        OP_LOGE(ctx->GetNodeName(), "CalcMatmulTilingReduceScatter failed"), return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            CalcMatmulTilingReduceScatter(args, tilingData.tileTiling, tilingData.tileL2Tiling) != ge::GRAPH_SUCCESS,
+            OP_LOGE(ctx->GetNodeName(), "CalcMatmulTilingReduceScatter failed"), return ge::GRAPH_FAILED);
         tilingData.param.tailM = tileTail;
         if (tileTail != 0) {
             args.mValue = tileTail;

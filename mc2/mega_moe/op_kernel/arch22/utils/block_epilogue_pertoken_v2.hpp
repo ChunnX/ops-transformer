@@ -16,13 +16,13 @@
 #ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_V2_ONLY_HPP
 #define CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_V2_ONLY_HPP
 
-#include "../template_linear_algebra_v2/catlass.hpp"
-#include "../template_linear_algebra_v2/arch/resource.hpp"
-#include "../template_linear_algebra_v2/epilogue/dispatch_policy.hpp"
-#include "../template_linear_algebra_v2/gemm_coord.hpp"
-#include "../template_linear_algebra_v2/matrix_coord.hpp"
-#include "../template_linear_algebra_v2/layout/layout.hpp"
-#include "../template_linear_algebra_v2/detail/tla_v2_callback.hpp"
+#include "catlass/catlass.hpp"
+#include "catlass/arch/resource.hpp"
+#include "catlass/epilogue/dispatch_policy.hpp"
+#include "catlass/gemm_coord.hpp"
+#include "catlass/matrix_coord.hpp"
+#include "catlass/layout/layout.hpp"
+#include "catlass/detail/callback.hpp"
 
 #include "const_args.hpp"
 #include "hccl_shmem.hpp"
@@ -66,21 +66,32 @@ public:
         HcclShmem<IS_A2> shmem;
         int64_t offsetD;
         Layout3D tokenPerExpertLayout;
+        bool useUbRouteCache{false};
+        int32_t ubRouteStride{0};
+        AscendC::LocalTensor<int32_t> ubTokenPerExpert;
+        AscendC::LocalTensor<int32_t> ubPreSumBeforeRank;
 
         CATLASS_DEVICE
         Params() {};
         CATLASS_DEVICE
         Params(int32_t EP_, int32_t expertPerRank_, int32_t rank_, __gm__ int32_t *ptrTokenPerExpert_, LayoutC layoutC_,
                int32_t n2_, int32_t n0_, HcclShmem<IS_A2> &shmem_, int64_t offsetD_, Layout3D tokenPerExpertLayout_)
-            : ptrTokenPerExpert(ptrTokenPerExpert_), EP(EP_), expertPerRank(expertPerRank_), rank(rank_),
-              layoutC(layoutC_), n2(n2_), n0(n0_), shmem(shmem_), offsetD(offsetD_),
+            : ptrTokenPerExpert(ptrTokenPerExpert_),
+              EP(EP_),
+              expertPerRank(expertPerRank_),
+              rank(rank_),
+              layoutC(layoutC_),
+              n2(n2_),
+              n0(n0_),
+              shmem(shmem_),
+              offsetD(offsetD_),
               tokenPerExpertLayout(tokenPerExpertLayout_)
-        {
-        }
+        {}
     };
 
     CATLASS_DEVICE
-    BlockEpilogue(Arch::Resource<ArchTag> const &resource, Params const &params = Params{}) : params(params)
+    BlockEpilogue(Arch::Resource<ArchTag> const &resource, Params const &params = Params{})
+        : params(params)
     {
         n0 = params.n0;
         size_t ubOffset = 0;
@@ -114,18 +125,30 @@ public:
     }
 
     CATLASS_DEVICE
-    void InitFlag()
-    {
-    }
+    void InitFlag() {}
 
     CATLASS_DEVICE
-    void Finalize()
-    {
-    }
+    void Finalize() {}
 
     CATLASS_DEVICE
-    ~BlockEpilogue()
+    ~BlockEpilogue() {}
+
+    CATLASS_DEVICE int32_t GetLenRankInExpert(int32_t dstEpIdx, int32_t groupIdx) const
     {
+        if (params.useUbRouteCache) {
+            int32_t stride = params.ubRouteStride > 0 ? params.ubRouteStride : params.expertPerRank;
+            return params.ubTokenPerExpert.GetValue(dstEpIdx * stride + groupIdx);
+        }
+        return tokenPerExpert(tokenPerExpertLayout(dstEpIdx, params.rank, groupIdx));
+    }
+
+    CATLASS_DEVICE int32_t GetDstExpertOffset(int32_t dstEpIdx, int32_t groupIdx,
+                                              AscendC::GlobalTensor<int32_t> const &preSumBeforeRank) const
+    {
+        if (params.useUbRouteCache) {
+            return params.ubPreSumBeforeRank.GetValue(dstEpIdx * params.expertPerRank + groupIdx);
+        }
+        return preSumBeforeRank(dstEpIdx * params.expertPerRank + groupIdx);
     }
 
     CATLASS_DEVICE
@@ -194,8 +217,8 @@ public:
 
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(event_id);
         for (int32_t dstEpIdx = 0; dstEpIdx < params.EP; dstEpIdx++) {
-            int32_t lenRankInExpert = tokenPerExpert(tokenPerExpertLayout(dstEpIdx, params.rank, groupIdx));
-            int32_t dstExpertOffset = preSumBeforeRank(dstEpIdx * params.expertPerRank + groupIdx);
+            int32_t lenRankInExpert = GetLenRankInExpert(dstEpIdx, groupIdx);
+            int32_t dstExpertOffset = GetDstExpertOffset(dstEpIdx, groupIdx, preSumBeforeRank);
             int32_t stRankInExpert = preSumRankInExpert;
             int32_t edRankInExpert = stRankInExpert + lenRankInExpert;
             preSumRankInExpert += lenRankInExpert;
@@ -255,8 +278,8 @@ public:
 
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(event_id);
         for (int32_t dstEpIdx = 0; dstEpIdx < params.EP; dstEpIdx++) {
-            int32_t lenRankInExpert = tokenPerExpert(tokenPerExpertLayout(dstEpIdx, params.rank, groupIdx));
-            int32_t dstExpertOffset = preSumBeforeRank(dstEpIdx * params.expertPerRank + groupIdx);
+            int32_t lenRankInExpert = GetLenRankInExpert(dstEpIdx, groupIdx);
+            int32_t dstExpertOffset = GetDstExpertOffset(dstEpIdx, groupIdx, preSumBeforeRank);
             int32_t stRankInExpert = preSumRankInExpert;
             int32_t edRankInExpert = stRankInExpert + lenRankInExpert;
             preSumRankInExpert += lenRankInExpert;

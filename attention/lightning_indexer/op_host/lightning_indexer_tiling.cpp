@@ -309,13 +309,13 @@ ge::graphStatus LIInfoParser::GetAndCheckAttrParaInfo()
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_query", std::string(opParamInfo_.layOut).c_str(),
                                                       "Layout_query only supports BSND or TND"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF((!((*opParamInfo_.sparseCount > 0) && (*opParamInfo_.sparseCount <= SPARSE_LIMIT)) &&
-                 *opParamInfo_.sparseCount % 1024 != 0) ||
-                    (*opParamInfo_.sparseCount > 8192),
+    OP_CHECK_IF(*opParamInfo_.sparseCount <= 0 || *opParamInfo_.sparseCount > static_cast<int32_t>(TOPK_MAX) ||
+                    (*opParamInfo_.sparseCount > static_cast<int32_t>(SPARSE_2K) &&
+                     *opParamInfo_.sparseCount % TOPK_MULTIPLE != 0),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     opName_, "sparse_count", std::to_string(*opParamInfo_.sparseCount).c_str(),
                     "Sparse_count must > 0 and <= 8192."
-                    " And when sparse_count > 2048, sparse_count must be an interger multiple of 1024"),
+                    " And when sparse_count > 2048, sparse_count must be an integer multiple of 1024"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(!((*opParamInfo_.sparseMode == 0) || (*opParamInfo_.sparseMode == SPARSE_MODE_LOWER)),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "sparse_mode", std::to_string(*opParamInfo_.sparseMode),
@@ -549,9 +549,10 @@ ge::graphStatus LIInfoParser::CheckKeyContiguous() const
         uint64_t shapeSize = 0;
 
         if (kLayout_ == DataLayout::BnBsND) {
-            totalElements = keyStride1_ * static_cast<uint64_t>(shape.GetDim(1));
-            shapeSize = static_cast<uint64_t>(shape.GetDim(1)) * static_cast<uint64_t>(shape.GetDim(2U)) *
-                        static_cast<uint64_t>(shape.GetDim(3U));
+            totalElements = keyStride1_ * static_cast<uint64_t>(shape.GetDim(DIM_IDX_ONE));
+            shapeSize = static_cast<uint64_t>(shape.GetDim(DIM_IDX_ONE)) *
+                        static_cast<uint64_t>(shape.GetDim(DIM_IDX_TWO)) *
+                        static_cast<uint64_t>(shape.GetDim(DIM_IDX_THREE));
         } else {
             totalElements = keyStride0_ * static_cast<uint64_t>(shape.GetDim(0));
             shapeSize = context_->GetOptionalInputTensor(KEY_INDEX)->GetShapeSize();
@@ -571,10 +572,10 @@ ge::graphStatus LIInfoParser::CheckKeyContiguous() const
 ge::graphStatus LIInfoParser::GetN1Size()
 {
     if (qLayout_ == DataLayout::BSND) {
-        n1Size_ = static_cast<uint32_t>(opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_TWO));
+        n1Size_ = opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_TWO);
     } else {
         // TND
-        n1Size_ = static_cast<uint32_t>(opParamInfo_.query.shape->GetStorageShape().GetDim(1));
+        n1Size_ = opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_ONE);
     }
     OP_LOGI(context_->GetNodeName(), "n1Size is %d", n1Size_);
     if (npuArch_ == NpuArch::DAV_3510) {
@@ -596,7 +597,7 @@ ge::graphStatus LIInfoParser::GetN1Size()
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus LiGetActualSeqLenSize(uint32_t &liSize, const gert::Tensor *liTensor,
+static ge::graphStatus LiGetActualSeqLenSize(int64_t &liSize, const gert::Tensor *liTensor,
                                              const std::string &liActualSeqLenName, const char *liOpName)
 {
     liSize = static_cast<uint32_t>(liTensor->GetShapeSize());
@@ -609,7 +610,7 @@ static ge::graphStatus LiGetActualSeqLenSize(uint32_t &liSize, const gert::Tenso
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LIInfoParser::GetActualSeqLenSize(uint32_t &liSize, const gert::Tensor *liTensor,
+ge::graphStatus LIInfoParser::GetActualSeqLenSize(int64_t &liSize, const gert::Tensor *liTensor,
                                                   const std::string &liSeqLenName) const
 {
     return LiGetActualSeqLenSize(liSize, liTensor, liSeqLenName, opName_);
@@ -618,7 +619,7 @@ ge::graphStatus LIInfoParser::GetActualSeqLenSize(uint32_t &liSize, const gert::
 ge::graphStatus LIInfoParser::GetAndCheckN2Size()
 {
     uint32_t n2Index = (kLayout_ == DataLayout::TND) ? DIM_IDX_ONE : DIM_IDX_TWO;
-    n2Size_ = static_cast<uint32_t>(opParamInfo_.key.shape->GetStorageShape().GetDim(n2Index));
+    n2Size_ = opParamInfo_.key.shape->GetStorageShape().GetDim(n2Index);
     OP_LOGI(context_->GetNodeName(), "n2Size_ is %d", n2Size_);
     OP_CHECK_IF(n2Size_ != 1,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "key",
@@ -655,7 +656,7 @@ ge::graphStatus LIInfoParser::GetBatchSize()
 }
 
 static ge::graphStatus LiGetHeadDim(const TilingRequiredParaInfo &liQuery, DataLayout liQLayout, const char *liOpName,
-                                    uint32_t &liHeadDim)
+                                    int64_t &liHeadDim)
 {
     uint32_t liDIndex = DIM_IDX_TWO;
     switch (liQLayout) {
@@ -679,19 +680,22 @@ static ge::graphStatus LiGetHeadDim(const TilingRequiredParaInfo &liQuery, DataL
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LIInfoParser::GetHeadDim() { return LiGetHeadDim(opParamInfo_.query, qLayout_, opName_, headDim_); }
+ge::graphStatus LIInfoParser::GetHeadDim()
+{
+    return LiGetHeadDim(opParamInfo_.query, qLayout_, opName_, headDim_);
+}
 
 ge::graphStatus LIInfoParser::GetS1Size()
 {
     if (qLayout_ == DataLayout::BSND) {
-        s1Size_ = opParamInfo_.query.shape->GetStorageShape().GetDim(1);
+        s1Size_ = opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_ONE);
     }
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus LIInfoParser::GetAndCheckBlockSize()
 {
-    blockSize_ = static_cast<uint32_t>(opParamInfo_.key.shape->GetStorageShape().GetDim(1));
+    blockSize_ = opParamInfo_.key.shape->GetStorageShape().GetDim(DIM_IDX_ONE);
     OP_LOGI(context_->GetNodeName(), "blockSize_ is %d", blockSize_);
 
     OP_CHECK_IF(((blockSize_ % 16 != 0) || (blockSize_ == 0) || (blockSize_ > 1024)),
@@ -722,7 +726,7 @@ ge::graphStatus LIInfoParser::GetS2SizeForPageAttention()
     if (CheckBlockCount() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    maxBlockNumPerBatch_ = opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(1);
+    maxBlockNumPerBatch_ = opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(DIM_IDX_ONE);
     s2Size_ = maxBlockNumPerBatch_ * blockSize_;
     OP_LOGI(context_->GetNodeName(), "maxBlockNumPerBatch_ is %d, blockSize_ is %d, s2Size_ is %d",
             maxBlockNumPerBatch_, blockSize_, s2Size_);
@@ -739,7 +743,33 @@ ge::graphStatus LIInfoParser::GetS2Size()
     } else if (kLayout_ == DataLayout::TND) {
         s2Size_ = opParamInfo_.key.shape->GetStorageShape().GetDim(0);
     } else if (kLayout_ == DataLayout::BSND) {
-        s2Size_ = opParamInfo_.key.shape->GetStorageShape().GetDim(1);
+        s2Size_ = opParamInfo_.key.shape->GetStorageShape().GetDim(DIM_IDX_ONE);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+// A2/A3(arch22)场景BSND布局下S1/S2超过8M直接报错不支持
+// TND/PA布局序列长度host侧不可见, 不做该校验
+ge::graphStatus LIInfoParser::CheckSeqLenLimit() const
+{
+    if (npuArch_ != NpuArch::DAV_2201) {
+        return ge::GRAPH_SUCCESS;
+    }
+    if (qLayout_ == DataLayout::BSND) {
+        OP_CHECK_IF(s1Size_ > MAX_SEQ_LEN_LIMIT,
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        opName_, "query", ToStringRaw(opParamInfo_.query.shape->GetStorageShape()).c_str(),
+                        "S1 of query is " + std::to_string(s1Size_) + ", exceeds max supported seqLen " +
+                            std::to_string(MAX_SEQ_LEN_LIMIT) + " on A2/A3, operator not supported"),
+                    return ge::GRAPH_FAILED);
+    }
+    if (kLayout_ == DataLayout::BSND) {
+        OP_CHECK_IF(s2Size_ > MAX_SEQ_LEN_LIMIT,
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        opName_, "key", ToStringRaw(opParamInfo_.key.shape->GetStorageShape()).c_str(),
+                        "S2 of key is " + std::to_string(s2Size_) + ", exceeds max supported seqLen " +
+                            std::to_string(MAX_SEQ_LEN_LIMIT) + " on A2/A3, operator not supported"),
+                    return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -870,27 +900,28 @@ ge::graphStatus LIInfoParser::ValidateInputShapesMatchQbsnd()
                         " respectively, they must be same"),
                 return ge::GRAPH_FAILED);
     // -----------------------check S1-------------------
-    OP_CHECK_IF((opParamInfo_.weights.shape->GetStorageShape().GetDim(1) != s1Size_) ||
-                    (opParamInfo_.attenOut.shape->GetStorageShape().GetDim(1) != s1Size_),
+    OP_CHECK_IF((opParamInfo_.weights.shape->GetStorageShape().GetDim(DIM_IDX_ONE) != s1Size_) ||
+                    (opParamInfo_.attenOut.shape->GetStorageShape().GetDim(DIM_IDX_ONE) != s1Size_),
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                     opName_, "query, weights and sparse_indices",
                     Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()) + ", " +
                         Ops::Base::ToString(opParamInfo_.weights.shape->GetStorageShape()) + " and " +
                         Ops::Base::ToString(opParamInfo_.attenOut.shape->GetStorageShape()),
                     "BSND case query, weights and sparse_indices dim 1 are " + std::to_string(s1Size_) + ", " +
-                        std::to_string(opParamInfo_.weights.shape->GetStorageShape().GetDim(1)) + ", " +
-                        std::to_string(opParamInfo_.attenOut.shape->GetStorageShape().GetDim(1)) +
+                        std::to_string(opParamInfo_.weights.shape->GetStorageShape().GetDim(DIM_IDX_ONE)) + ", " +
+                        std::to_string(opParamInfo_.attenOut.shape->GetStorageShape().GetDim(DIM_IDX_ONE)) +
                         " respectively, they must be same"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF((opParamInfo_.valuesOut.shape->GetStorageShape().GetDim(1) != s1Size_ && (*opParamInfo_.returnValue)),
-                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                    opName_, "query and sparse_values",
-                    Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()) + " and " +
-                        Ops::Base::ToString(opParamInfo_.valuesOut.shape->GetStorageShape()),
-                    "BSND case query and sparse_values dim 1 are " + std::to_string(s1Size_) + ", " +
-                        std::to_string(opParamInfo_.valuesOut.shape->GetStorageShape().GetDim(1)) +
-                        " respectively, they must be same"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        (opParamInfo_.valuesOut.shape->GetStorageShape().GetDim(DIM_IDX_ONE) != s1Size_ && (*opParamInfo_.returnValue)),
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+            opName_, "query and sparse_values",
+            Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()) + " and " +
+                Ops::Base::ToString(opParamInfo_.valuesOut.shape->GetStorageShape()),
+            "BSND case query and sparse_values dim 1 are " + std::to_string(s1Size_) + ", " +
+                std::to_string(opParamInfo_.valuesOut.shape->GetStorageShape().GetDim(DIM_IDX_ONE)) +
+                " respectively, they must be same"),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1083,6 +1114,10 @@ ge::graphStatus LIInfoParser::ParseAndCheck(LITilingInfo &liInfo)
 
     if (ge::GRAPH_SUCCESS != GetBatchSize() || ge::GRAPH_SUCCESS != GetS1Size() || ge::GRAPH_SUCCESS != GetHeadDim() ||
         ge::GRAPH_SUCCESS != GetS2Size()) {
+        return ge::GRAPH_FAILED;
+    }
+
+    if (ge::GRAPH_SUCCESS != CheckSeqLenLimit()) {
         return ge::GRAPH_FAILED;
     }
 
