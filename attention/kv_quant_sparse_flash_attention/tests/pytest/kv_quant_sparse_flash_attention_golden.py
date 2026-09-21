@@ -551,8 +551,8 @@ def _tq4_generate_inputs(params):
     scale = (torch.rand(slots, generator=generator) * 2.875 + 0.125).half()
     if slots > 0:
         scale[:min(slots, 4)] = torch.tensor([0.125, 0.5, 1.0, 3.0], dtype=torch.float16)[:slots]
-    # The fused path stores RoPE pre-divided by scale and restores it in the
-    # vector service together with the dequantized latent/nope half.
+    # The fused path stores RoPE pre-divided by scale; the vector service
+    # applies that token scale on the score column before softmax.
     rope = (torch.randn((slots, params["rope_head_dim"]), generator=generator) *
             0.02 / scale.float()[:, None]).to(q_dtype)
     flat[:, params["D"] // 2:params["D"] // 2 + params["rope_head_dim"] * 2] = rope.contiguous().view(torch.uint8)
@@ -608,11 +608,21 @@ def _tq4_golden(input_tensor_dict, params):
     query = input_tensor_dict["query_cache"].detach().cpu().contiguous()
     cache = input_tensor_dict["key_cache"].detach().cpu().contiguous().view(torch.uint8)
     packed = cache.view(-1, params["D"] // 2 + params["rope_head_dim"] * 2 + 2)
-    codes = torch.empty((packed.shape[0], params["D"]), dtype=torch.int64)
-    codes[:, 0::2] = packed[:, :params["D"] // 2] & 15
-    codes[:, 1::2] = packed[:, :params["D"] // 2] >> 4
-    codebook = torch.tensor(TQ4_CENTERS, dtype=torch.float64)
-    latent = codebook[codes]
+    # The device TQ4 fast path does not gather the FP32 codebook directly.
+    # It first builds a 256-entry byte LUT, with the low and high nibbles
+    # stored as two values in one 32-bit entry, and each value rounded to the
+    # query/cache element type.  Reproduce that conversion here so the CPU
+    # reference compares against the same dequantized values (in particular
+    # for BF16, where using the FP64 codebook would hide the LUT rounding).
+    packed_codes = packed[:, :params["D"] // 2]
+    codebook = torch.tensor(TQ4_CENTERS, dtype=torch.float32)
+    byte_lut = torch.empty((256, 2), dtype=q_dtype)
+    byte_values = torch.arange(256, dtype=torch.int64)
+    byte_lut[:, 0] = codebook[byte_values & 0xF].to(q_dtype)
+    byte_lut[:, 1] = codebook[byte_values >> 4].to(q_dtype)
+    # Keep the LUT rounding above, then promote the already-rounded values for
+    # the CPU reference matmul (query/rope are evaluated in FP64 below).
+    latent = byte_lut[packed_codes.long()].reshape(packed.shape[0], params["D"]).double()
     rope = packed[:, params["D"] // 2:params["D"] // 2 + params["rope_head_dim"] * 2].contiguous().view(q_dtype).double()
     scale = packed[:, params["D"] // 2 + params["rope_head_dim"] * 2:].contiguous().view(torch.float16).double().flatten()
 

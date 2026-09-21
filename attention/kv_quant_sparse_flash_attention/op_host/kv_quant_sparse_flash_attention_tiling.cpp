@@ -540,7 +540,7 @@ void QSFAMlaTiling::GetWorkspaceSize()
         workspaceSize_ += 4 * 512 * (512 + 64) * 2 * actCoreNum;
         // 缓存有效mte2 size的长度 份数  512B对齐的长度  sizeof(int32_t)   aiv核数
         workspaceSize_ +=
-            4 * 128 * 4 * (2 * actCoreNum); // 4:缓存有效mte2 size的长度 128:份数  4:512B对齐的长度  2:aiv核数
+            4 * 128 * 4 * (4 * actCoreNum); // valid-size ring plus equal-sized TQ4 scale staging region
     }
 
     CalcFDWorkSpace(actCoreNum);

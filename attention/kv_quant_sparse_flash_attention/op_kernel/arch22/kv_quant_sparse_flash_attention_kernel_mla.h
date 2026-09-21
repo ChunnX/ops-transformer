@@ -501,11 +501,14 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::Init(
     if constexpr (TEMPLATE_MODE == V_TEMPLATE) {
         // s2  d+rope bufNum
         kvMergeGm_.SetGlobalBuffer(
-            (__gm__ K_ROPE_T *)(workspace + qsfaOffset + aiCoreIdx * 512 * 576 * 4 * sizeof(K_ROPE_T)));
-        qsfaOffset += GetBlockNum() * 512 * 576 * 4 * sizeof(K_ROPE_T);
+            (__gm__ K_ROPE_T *)(workspace + qsfaOffset +
+                                aiCoreIdx * 512 * constInfo.combineHeadDim * 4 * sizeof(K_ROPE_T)));
+        qsfaOffset += GetBlockNum() * 512 * constInfo.combineHeadDim * 4 * sizeof(K_ROPE_T);
 
+        // Each AI core owns two AIV valid-size partitions and an equal-sized
+        // upper region for TQ4 per-token FP16 scales.
         kvValidSizeGm_.SetGlobalBuffer(
-            (__gm__ int32_t *)(workspace + qsfaOffset + (aiCoreIdx * 2) * 128 * 4 * sizeof(int32_t)));
+            (__gm__ int32_t *)(workspace + qsfaOffset + (aiCoreIdx * 4) * 128 * 4 * sizeof(int32_t)));
     }
 
     if constexpr (FLASH_DECODE) {
