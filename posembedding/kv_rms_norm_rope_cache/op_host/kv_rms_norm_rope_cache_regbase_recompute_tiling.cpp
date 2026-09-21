@@ -347,6 +347,7 @@ ge::graphStatus KvRmsNormRopeCacheRegbaseRecomputeTiling::DoOpTiling()
     // 弹性部分按 ubFactor 的份数记账（1 份 = ubFactor * sizeof(T_KV)）：gamma 2 + cosSin 4 + x 2 + out 4 +
     // xPow 4(按 float 存两段) + kScaleOffset 4 + vScaleOffset 4 = 24 份 = CONST_TWELVE * DOUBLE_BUFFER 份
     int64_t ubFactor = FloorDiv(ubFlexible_, CONST_TWELVE * DOUBLE_BUFFER * kvDtypeSize_);
+    ubFactor = FloorDiv(ubFactor, CONST_TWO * BLOCK_SIZE) * CONST_TWO * BLOCK_SIZE;
 
     OP_CHECK_IF((ubFactor <= 0),
                 OP_LOGI(context_->GetNodeName(), "D recompute template is not capable. dv is %ld, dk is %ld", dv_, dk_),
@@ -355,7 +356,6 @@ ge::graphStatus KvRmsNormRopeCacheRegbaseRecomputeTiling::DoOpTiling()
     // 1. slice datas along with the A-axis for all vector cores
     int64_t blockFactor = (bs + coreNum_ - 1) / coreNum_;
     usedCoreNum_ = (bs + blockFactor - 1) / blockFactor;
-    ubFactor = FloorDiv(ubFactor, CONST_TWO * BLOCK_SIZE) * CONST_TWO * BLOCK_SIZE;
 
     // 2. slice datas along with the R-axis for every core
     int64_t ubFactorDvLoopCountCeil = CeilDiv(dv_, ubFactor);

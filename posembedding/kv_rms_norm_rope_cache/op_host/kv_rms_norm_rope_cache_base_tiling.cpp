@@ -25,8 +25,8 @@ static const std::vector<std::string> inputNames = {"kv",         "gamma",      
                                                     "index",      "k_cache",       "ckv_cache",   "k_rope_scale",
                                                     "c_kv_scale", "k_rope_offset", "c_kv_offset", "v"};
 using namespace Ops::Base;
-std::tuple<int64_t, int64_t, int64_t, int64_t>
-KvRmsNormRopeCacheTilingBase::GetShapeTuple(const gert::TilingContext *context, const int64_t index)
+std::tuple<int64_t, int64_t, int64_t, int64_t> KvRmsNormRopeCacheTilingBase::GetShapeTuple(
+    const gert::TilingContext *context, const int64_t index)
 {
     const gert::StorageShape *shapePtr = context->GetInputShape(index);
     OP_CHECK_IF(shapePtr == nullptr, OP_LOGE(context, "Shape is nullptr."), return std::make_tuple(0, 0, 0, 0));
@@ -42,8 +42,8 @@ KvRmsNormRopeCacheTilingBase::GetShapeTuple(const gert::TilingContext *context, 
         shapePtr->GetStorageShape().GetDim(SHAPE_IDX_S), shapePtr->GetStorageShape().GetDim(SHAPE_IDX_D));
 }
 
-std::tuple<int64_t, int64_t, int64_t, int64_t>
-KvRmsNormRopeCacheTilingBase::GetOptionalShapeTuple(const gert::TilingContext *context, const int64_t index)
+std::tuple<int64_t, int64_t, int64_t, int64_t> KvRmsNormRopeCacheTilingBase::GetOptionalShapeTuple(
+    const gert::TilingContext *context, const int64_t index)
 {
     const gert::StorageShape *shapePtr = context->GetOptionalInputShape(index);
     OP_CHECK_IF(shapePtr == nullptr, OP_LOGE(context, "Shape is nullptr."), return std::make_tuple(0, 0, 0, 0));
@@ -465,7 +465,10 @@ ge::graphStatus KvRmsNormRopeCacheTilingBase::GetShapeAttrsInfo()
         OP_CHECK_IF(!CheckVValid(context_, batchSize, numHead, seqLen, vlen_),
                     OP_LOGE(context_->GetNodeName(), "v shape is invalid."), return ge::GRAPH_FAILED);
     }
-    OP_CHECK_IF(!CheckKvValid(context_, batchSize, numHead, seqLen, kv_),
+    // V1 packs the RMSNorm and RoPE inputs into one kv row, so Dkv must equal Dv + Dk.
+    // V2 keeps v in a separate tensor and uses kv's original head size.
+    const int64_t expectedKvHeadSize = (methodMode_ == 0) ? (dv_ + dk_) : kv_;
+    OP_CHECK_IF(!CheckKvValid(context_, batchSize, numHead, seqLen, expectedKvHeadSize),
                 OP_LOGE(context_->GetNodeName(), "kv shape is invalid."), return ge::GRAPH_FAILED);
     // Attrs info
     // cache_mode 必须在 CheckCosSinValid / CheckGammaValid 之前解析：这两个函数里按

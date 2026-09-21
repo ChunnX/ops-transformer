@@ -32,6 +32,7 @@ constexpr size_t OUTPUT_IDX_K_ROPE = 2;
 constexpr size_t OUTPUT_IDX_C_KV = 3;
 constexpr size_t HEAD_SIZE_SHAPE_IDX = 3;
 constexpr size_t EXPECT_DIM_NUM = 4;
+constexpr size_t EXPECT_VECTOR_DIM_NUM = 1;
 constexpr int64_t UNKNOWN_DIM_VALUE_ = -1LL;
 constexpr int64_t RMS_NORM_LENGTH_V2 = 192;
 
@@ -40,6 +41,16 @@ inline ge::graphStatus SetAllUnknownDim(const int64_t rank, gert::Shape *output_
     output_shape->SetDimNum(rank);
     for (int64_t i = 0; i < rank; ++i) {
         output_shape->SetDim(i, UNKNOWN_DIM_VALUE_);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+inline ge::graphStatus CheckInputRank(gert::InferShapeContext *context, const gert::Shape &shape, const char *inputName,
+                                      size_t expectedDimNum)
+{
+    if (!Ops::Base::IsUnknownRank(shape) && shape.GetDimNum() != expectedDimNum) {
+        OP_LOGE(context, "%s must be a %zuD tensor, but got %zuD.", inputName, expectedDimNum, shape.GetDimNum());
+        return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -56,8 +67,19 @@ graphStatus InferShape4KvRmsNormRopeCache(gert::InferShapeContext *context)
     OP_CHECK_NULL_WITH_CONTEXT(context, kvInputShape);
     const gert::Shape *cosInputShape = context->GetInputShape(INPUT_IDX_COS);
     OP_CHECK_NULL_WITH_CONTEXT(context, cosInputShape);
+    const gert::Shape *sinInputShape = context->GetInputShape(INPUT_IDX_SIN);
+    OP_CHECK_NULL_WITH_CONTEXT(context, sinInputShape);
     const gert::Shape *gammaInputShape = context->GetInputShape(INPUT_IDX_GAMMA);
     OP_CHECK_NULL_WITH_CONTEXT(context, gammaInputShape);
+
+    if (CheckInputRank(context, *kvInputShape, "kv", EXPECT_DIM_NUM) != ge::GRAPH_SUCCESS ||
+        CheckInputRank(context, *gammaInputShape, "gamma", EXPECT_VECTOR_DIM_NUM) != ge::GRAPH_SUCCESS ||
+        CheckInputRank(context, *cosInputShape, "cos", EXPECT_DIM_NUM) != ge::GRAPH_SUCCESS ||
+        CheckInputRank(context, *sinInputShape, "sin", EXPECT_DIM_NUM) != ge::GRAPH_SUCCESS ||
+        CheckInputRank(context, *kCacheInputShape, "k_cache", EXPECT_DIM_NUM) != ge::GRAPH_SUCCESS ||
+        CheckInputRank(context, *vCacheInputShape, "ckv_cache", EXPECT_DIM_NUM) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
 
     gert::Shape *kCacheShape = context->GetOutputShape(OUTPUT_IDX_K_CACHE);
     gert::Shape *vCacheShape = context->GetOutputShape(OUTPUT_IDX_CKV_CACHE);
@@ -68,7 +90,6 @@ graphStatus InferShape4KvRmsNormRopeCache(gert::InferShapeContext *context)
     OP_CHECK_NULL_WITH_CONTEXT(context, kRopeShape);
     OP_CHECK_NULL_WITH_CONTEXT(context, cKvShape);
 
-    int64_t kvDimSize = kvInputShape->GetDimNum();
     int64_t cosDimSize = cosInputShape->GetDimNum();
     int64_t gammaDimSize = gammaInputShape->GetDimNum();
     int64_t methodMode = gammaInputShape->GetDim(gammaDimSize - 1) == RMS_NORM_LENGTH_V2 ? 1 : 0;
@@ -82,12 +103,6 @@ graphStatus InferShape4KvRmsNormRopeCache(gert::InferShapeContext *context)
     if (Ops::Base::IsUnknownRank(*kvInputShape)) {
         SetAllUnknownDim(EXPECT_DIM_NUM, kRopeShape);
         SetAllUnknownDim(EXPECT_DIM_NUM, cKvShape);
-        // 非-2场景校验输入shape为4维
-    } else {
-        if (kvDimSize != EXPECT_DIM_NUM) {
-            OP_LOGE(context, "don't support kv dimSize != 4, infershape failed");
-            return ge::GRAPH_FAILED;
-        }
     }
 
     if (methodMode == 0) {
@@ -104,7 +119,7 @@ graphStatus InferShape4KvRmsNormRopeCache(gert::InferShapeContext *context)
             kRopeShape->SetDim(HEAD_SIZE_SHAPE_IDX, gammaInputShape->GetDim(gammaDimSize - 1));
         }
         if (!Ops::Base::IsUnknownRank(*vCacheInputShape)) {
-            cKvShape->SetDim(HEAD_SIZE_SHAPE_IDX, vCacheInputShape->GetDim(kvDimSize - 1));
+            cKvShape->SetDim(HEAD_SIZE_SHAPE_IDX, vCacheInputShape->GetDim(HEAD_SIZE_SHAPE_IDX));
         }
     }
 
