@@ -250,9 +250,10 @@ def all_to_all_quant_matmul(
         raise ValueError(
             f"x2_quant_mode must be an int or None, but got {type(x2_quant_mode).__name__}."
         )
-    if y_dtype is not None and not isinstance(y_dtype, int):
+    if y_dtype is not None and not isinstance(y_dtype, (int, torch.dtype)):
         raise ValueError(
-            f"y_dtype must be an int (ACL dtype enum) or None, but got {type(y_dtype).__name__}."
+            f"y_dtype must be an int (ACL dtype enum), a torch.dtype, or None, "
+            f"but got {type(y_dtype).__name__}."
         )
     if precision_mode is not None and not isinstance(precision_mode, int):
         raise ValueError(
