@@ -167,6 +167,9 @@ def default_tiling(case):
             elif n == 512:
                 values = ([256, 128, 256, 64, 1280, 2, 8, 1, 0, 8] if export
                           else [256, 128, 256, 128, 1536, 2, 64, 1, 0, 1])
+        elif (export and case["world_size"] == 4 and case["expert_num"] == 28
+              and m == 131072 and k == 3584 and n in (6144, 3072)):
+            values = [256, 256, 256, 32, 2048, 2, 16, 1, 8, 4 if n == 6144 else 8]
     elif operator == GROUPED_MATMUL:
         values = [128, 256, 256, 10, 32]
         if business and n == 2048:

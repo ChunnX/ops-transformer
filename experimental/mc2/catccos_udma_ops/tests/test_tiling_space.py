@@ -35,6 +35,30 @@ def test_fixed_business_profiles_remain_search_baselines(export, n, expected):
     )) == expected
 
 
+@pytest.mark.parametrize("n,self_copy_cores", [(6144, 4), (3072, 8)])
+def test_ep4_28_expert_export_profiles_match_measured_tilings(n, self_copy_cores):
+    workload = dict(case(n=n, k=3584), world_size=4, expert_num=28)
+    assert list(default_tiling(workload).values()) == [
+        256, 256, 256, 32, 2048, 2, 16, 1, 8, self_copy_cores,
+    ]
+
+
+@pytest.mark.parametrize("n", [6144, 3072])
+@pytest.mark.parametrize("override", [
+    {"output_all_to_allv": False}, {"world_size": 2}, {"expert_num": 32},
+    {"m": 131071}, {"k": 3585}, {"n": 4096},
+])
+def test_ep4_profiles_require_exact_export_shape_and_topology(n, override):
+    workload = dict(case(n=n, k=3584), world_size=4, expert_num=28)
+    fallback = default_tiling(case(export=False, n=n, k=3584))
+    for name, value in override.items():
+        if name in workload["shape"]:
+            workload["shape"][name] = value
+        else:
+            workload[name] = value
+    assert default_tiling(workload) == fallback
+
+
 @pytest.mark.parametrize("k,expected", [(1024, (128, 256, 10, 4)), (512, (128, 256, 16, 16))])
 def test_inverse_profiles_use_searched_local_copy_rows(k, expected):
     profile = default_tiling(case(GROUPED_MATMUL, False, 2048, k))
@@ -207,13 +231,17 @@ def test_unsafe_old_hardware_profile_does_not_prevent_search():
     assert all(item["export_core_count"] <= 16 for item in result)
 
 
-@pytest.mark.parametrize("operator,n,k,native_name", [
-    (ALL_TO_ALLV, 1024, 2048, "kM131072K2048N1024ExportTiling"),
-    (ALL_TO_ALLV, 512, 2048, "kM131072K2048N512ExportTiling"),
-    (GROUPED_MATMUL, 2048, 1024, "kK1024N2048Tiling"),
-    (GROUPED_MATMUL, 2048, 512, "kK512N2048Tiling"),
+@pytest.mark.parametrize("operator,n,k,world_size,expert_num,native_name", [
+    (ALL_TO_ALLV, 1024, 2048, 8, 256, "kM131072K2048N1024ExportTiling"),
+    (ALL_TO_ALLV, 512, 2048, 8, 256, "kM131072K2048N512ExportTiling"),
+    (ALL_TO_ALLV, 6144, 3584, 4, 28, "kM131072K3584N6144ExportTiling"),
+    (ALL_TO_ALLV, 3072, 3584, 4, 28, "kM131072K3584N3072ExportTiling"),
+    (GROUPED_MATMUL, 2048, 1024, 8, 256, "kK1024N2048Tiling"),
+    (GROUPED_MATMUL, 2048, 512, 8, 256, "kK512N2048Tiling"),
 ])
-def test_native_model_profiles_match_search_baselines_and_fit_deployment_ub(operator, n, k, native_name):
+def test_native_model_profiles_match_search_baselines_and_fit_deployment_ub(
+    operator, n, k, world_size, expert_num, native_name,
+):
     # Search previously omitted the inverse baseline because it exceeded 248 KiB.
     # Check the independently maintained native and Python defaults together, so
     # the default measured by search also describes the no-override native call.
@@ -242,10 +270,11 @@ def test_native_model_profiles_match_search_baselines_and_fit_deployment_ub(oper
         assert native["commTileM"] % 2 == 0
         wire.update(comm_interval=native["commInterval"], local_copy_tile_rows=native["commTileM"] // 2)
     workload = case(operator, operator == ALL_TO_ALLV, n, k)
+    workload.update(world_size=world_size, expert_num=expert_num)
     baseline = default_tiling(workload)
     assert wire == baseline
     validate_tiling(operator, baseline, output_all_to_allv=operator == ALL_TO_ALLV,
-                    m=131072, n=n, k=k, world_size=8, aic_cores=32, ub_bytes=248 * 1024)
+                    m=131072, n=n, k=k, world_size=world_size, aic_cores=32, ub_bytes=248 * 1024)
     candidates = candidates_for_case(workload, aic_cores=32, ub_bytes=248 * 1024, max_candidates=8)
     assert candidates[0] == baseline
     assert candidates.count(baseline) == 1

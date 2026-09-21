@@ -587,8 +587,8 @@ available to validate outputs after rebuilding and reinstalling the Wheel.
 
 `all_to_allv_grouped_mat_mul` selects the following tuned profiles only when
 `world_size=8`, `expert_num=256`, and `(M, K, N)` matches exactly. Export and
-non-export calls select separate records. All other shapes and topologies
-retain the default profile.
+non-export calls select separate records. The four-rank export profiles are
+listed separately below; other shapes and topologies retain the default profile.
 
 | AllToAllV output | M | K | N | M0 | N0 | K0 | comm block M | stage rows | WS stages | local-copy rows | M split | export cores | self-copy cores |
 |:---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -603,6 +603,22 @@ For AllToAllV-GroupedMatMul, `commNpuSplit`, `commDataSplit`, and the explicit
 parameters; `export cores=0` means all AI cores. The search result's execution
 mode is not part of this kernel ABI. Both model-case winners were measured
 with export enabled. The non-export records retain the earlier non-export tuning.
+
+For `world_size=4`, `expert_num=28` (seven local experts per rank), export-enabled
+calls with `M=131072`, `K=3584`, and the exact N below use these customer-provided
+CatCCOS search winners. Rebuild and reinstall the Wheel to use the native defaults;
+no explicit `tiling` argument is required. Non-export calls retain the default
+profile. Selection does not depend on the rank-local received row count.
+
+| N | MMAD id | M0/N0/K0 | comm interval | comm tile/block M | NPU/data split | stage rows | WS stages | local-copy rows | M split | export cores | self-copy cores | Reported time (us) |
+|---:|---:|:---:|---:|:---:|:---:|---:|---:|---:|---:|---:|---:|---:|
+| 6144 | 2 | 256/256/256 | 8 | 32/32 | 1/16 | 2048 | 2 | 16 | 1 | 8 | 4 | 14210.256083333334 |
+| 3072 | 2 | 256/256/256 | 8 | 32/32 | 1/16 | 2048 | 2 | 16 | 1 | 8 | 8 | 7210.724833333334 |
+
+Both records use non-transposed BF16 inputs and report `executionMode=1`;
+execution mode is a search setting, not a runtime kernel field. The Python search
+baselines include these same profiles. The reported timings are from the supplied
+CSV, not a new measurement of this integration.
 
 `grouped_mat_mul_all_to_allv` independently selects these profiles for the
 same `world_size=8`, `expert_num=256` topology. Because imbalanced routing can
