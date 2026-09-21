@@ -220,6 +220,13 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::InitTilingData()
     constInfo.sparseMode = tilingData->baseParams.sparseMode;
     constInfo.quantScaleRepoMode = QUANT_SCALE_REPO_MODE::COMBINE;
     constInfo.attentionMode = ATTENTION_MODE::MLA_ABSORB;
+    // TQ4 uses a packed 386-byte slot (256B int4 nope + 64 BF16 RoPE + 2B
+    // scale).  The storage dimension is available in tiling data and is a
+    // reliable kernel-side discriminator because the quant-mode attribute is
+    // not copied into the device tiling structure.
+    constInfo.keyQuantMode = (tilingData->baseParams.dSizeVInput == 386) ?
+        QUANT_MODE::TQ4 : QUANT_MODE::PER_TILE;
+    constInfo.valueQuantMode = constInfo.keyQuantMode;
     constInfo.combineHeadDim =
         (constInfo.quantScaleRepoMode == QUANT_SCALE_REPO_MODE::COMBINE) ? headDim + headDimRope : headDim;
 
