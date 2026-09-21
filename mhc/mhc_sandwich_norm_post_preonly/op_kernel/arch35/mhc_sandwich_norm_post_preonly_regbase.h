@@ -249,6 +249,61 @@ __aicore__ inline void Add(const LocalTensor<float> &dst, const LocalTensor<floa
     }
 }
 
+// 在一个VF内完成两路FP32平方和：dst = src0*src0 + src1*src1，替代两次Mul和一次Add。
+__aicore__ inline void SquareSumPairFp32(const LocalTensor<float> &dst, const LocalTensor<float> &src0,
+                                         const LocalTensor<float> &src1, uint32_t count)
+{
+    __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();
+    __local_mem__ float *src0Addr = (__local_mem__ float *)src0.GetPhyAddr();
+    __local_mem__ float *src1Addr = (__local_mem__ float *)src1.GetPhyAddr();
+    uint32_t remain = count;
+    const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
+    __VEC_SCOPE__
+    {
+        RegTensor<float> src0Reg, src1Reg, sq0Reg, sq1Reg, dstReg;
+        MaskReg mask;
+        for (uint16_t i = 0; i < loops; ++i) {
+            mask = UpdateMask<float>(remain);
+            DataCopy<float, LoadDist::DIST_NORM>(src0Reg, src0Addr + i * VL_FP32);
+            DataCopy<float, LoadDist::DIST_NORM>(src1Reg, src1Addr + i * VL_FP32);
+            AscendC::Reg::Mul(sq0Reg, src0Reg, src0Reg, mask);
+            AscendC::Reg::Mul(sq1Reg, src1Reg, src1Reg, mask);
+            AscendC::Reg::Add(dstReg, sq0Reg, sq1Reg, mask);
+            DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
+        }
+    }
+}
+
+// 在一个VF内完成两路加权累加：dst = x0*w0 + x1*w1，用于R4/R5点积的两半，保持与原
+// “两次Mul再Add”完全相同的运算顺序与舍入。
+__aicore__ inline void DotPairFp32(const LocalTensor<float> &dst, const LocalTensor<float> &x0,
+                                   const LocalTensor<float> &x1, const LocalTensor<float> &w0,
+                                   const LocalTensor<float> &w1, uint32_t count)
+{
+    __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();
+    __local_mem__ float *x0Addr = (__local_mem__ float *)x0.GetPhyAddr();
+    __local_mem__ float *x1Addr = (__local_mem__ float *)x1.GetPhyAddr();
+    __local_mem__ float *w0Addr = (__local_mem__ float *)w0.GetPhyAddr();
+    __local_mem__ float *w1Addr = (__local_mem__ float *)w1.GetPhyAddr();
+    uint32_t remain = count;
+    const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
+    __VEC_SCOPE__
+    {
+        RegTensor<float> x0Reg, x1Reg, w0Reg, w1Reg, dstReg;
+        MaskReg mask;
+        for (uint16_t i = 0; i < loops; ++i) {
+            mask = UpdateMask<float>(remain);
+            DataCopy<float, LoadDist::DIST_NORM>(x0Reg, x0Addr + i * VL_FP32);
+            DataCopy<float, LoadDist::DIST_NORM>(x1Reg, x1Addr + i * VL_FP32);
+            DataCopy<float, LoadDist::DIST_NORM>(w0Reg, w0Addr + i * VL_FP32);
+            DataCopy<float, LoadDist::DIST_NORM>(w1Reg, w1Addr + i * VL_FP32);
+            AscendC::Reg::Mul(dstReg, x0Reg, w0Reg, mask);
+            AscendC::Reg::MulAddDst(dstReg, x1Reg, w1Reg, mask);
+            DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
+        }
+    }
+}
+
 __aicore__ inline void Muls(const LocalTensor<float> &dst, const LocalTensor<float> &src, float scalar, uint32_t count)
 {
     __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();
