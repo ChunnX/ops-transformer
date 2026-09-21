@@ -16,8 +16,8 @@
 
 namespace ops {
 namespace {
-// x1_scale/x2_scale 公共 dtype 列表（950 场景：前段为 fp32，后段为 fp8_e8m0）
-static const std::vector<ge::DataType> scaleDtypes950 = {
+// x1_scale/x2_scale 公共 dtype 列表（A5 场景：前段为 fp32，后段为 fp8_e8m0）
+static const std::vector<ge::DataType> scaleDtypesA5 = {
     ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,
     ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,
     ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,
@@ -128,9 +128,9 @@ private:
                        ge::DT_FLOAT, ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND});
 
-        this->Input("x1_scale").ParamType(OPTIONAL).DataType(scaleDtypes950).FormatList({ge::FORMAT_ND});
+        this->Input("x1_scale").ParamType(OPTIONAL).DataType(scaleDtypesA5).FormatList({ge::FORMAT_ND});
 
-        this->Input("x2_scale").ParamType(OPTIONAL).DataType(scaleDtypes950).FormatList({ge::FORMAT_ND});
+        this->Input("x2_scale").ParamType(OPTIONAL).DataType(scaleDtypesA5).FormatList({ge::FORMAT_ND});
         this->Input("quant_scale").ParamType(OPTIONAL).DataTypeList({ge::DT_FLOAT}).FormatList({ge::FORMAT_ND});
     }
 

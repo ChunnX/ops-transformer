@@ -161,7 +161,7 @@ inline ge::graphStatus CheckWinSize(const gert::TilingContext *context, const ch
     uint64_t h = static_cast<uint64_t>(winSizeData.h);
     // combine数据区 token首地址对齐512
     uint64_t tokenNeedSizeCombine = 0;
-    if (mc2tiling::GetSocVersion(context) == "Ascend950") {
+    if (mc2tiling::GetNpuArch(context) == Ops::Base::DAV_3510) {
         tokenNeedSizeCombine =
             ((h * MAX_OUT_DTYPE_SIZE + FULL_MESH_DATA_ALIGN - 1UL) / FULL_MESH_DATA_ALIGN) * WIN_ADDR_ALIGN;
     } else {

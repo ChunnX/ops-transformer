@@ -127,7 +127,7 @@ public:
         this->Attr("comm_mode").AttrType(OPTIONAL).String("ai_cpu");
         this->Attr("alltoall_out_flag").AttrType(OPTIONAL).Bool(true);
 
-        // ascend950 AI处理器定义OpAICoreConfig变量，定制化配置参数
+        // A5 AI处理器定义OpAICoreConfig变量，定制化配置参数
         OpAICoreConfig aicoreConfig_a5;
         aicoreConfig_a5.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)

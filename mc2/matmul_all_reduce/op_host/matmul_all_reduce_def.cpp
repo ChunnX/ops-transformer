@@ -22,7 +22,7 @@ static const std::vector<ge::DataType> floatDtypes910b = {
     ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_BF16,
     ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16,
     ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT16};
-static const std::vector<ge::DataType> floatDtypes950 = {
+static const std::vector<ge::DataType> floatDtypesA5 = {
     ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_BF16,    ge::DT_FLOAT16,
     ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_BF16,
     ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT,   ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_FLOAT,   ge::DT_FLOAT16,
@@ -34,13 +34,13 @@ static const std::vector<ge::DataType> floatDtypes950 = {
     ge::DT_FLOAT,   ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_FLOAT,   ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_FLOAT,
     ge::DT_FLOAT16, ge::DT_BF16};
 static const std::vector<ge::Format> ndFormats910b(floatDtypes910b.size(), ge::FORMAT_ND);
-static const std::vector<ge::Format> ndFormats950(floatDtypes950.size(), ge::FORMAT_ND);
+static const std::vector<ge::Format> ndFormatsA5(floatDtypesA5.size(), ge::FORMAT_ND);
 static const std::vector<ge::Format> x2Formats910b = {
     ge::FORMAT_ND,         ge::FORMAT_ND,         ge::FORMAT_ND,         ge::FORMAT_ND,
     ge::FORMAT_ND,         ge::FORMAT_ND,         ge::FORMAT_ND,         ge::FORMAT_ND,
     ge::FORMAT_ND,         ge::FORMAT_ND,         ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ,
     ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ};
-static const std::vector<ge::Format> x2Formats950 = {
+static const std::vector<ge::Format> x2FormatsA5 = {
     ge::FORMAT_ND,         ge::FORMAT_ND,         ge::FORMAT_ND,         ge::FORMAT_ND,         ge::FORMAT_ND,
     ge::FORMAT_ND,         ge::FORMAT_ND,         ge::FORMAT_ND,         ge::FORMAT_ND,         ge::FORMAT_ND,
     ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ,
@@ -65,9 +65,9 @@ public:
         DefineCommQuantInputs();
         this->Output("y")
             .ParamType(REQUIRED)
-            .DataType(floatDtypes950)
-            .Format(ndFormats950)
-            .UnknownShapeFormat(ndFormats950);
+            .DataType(floatDtypesA5)
+            .Format(ndFormatsA5)
+            .UnknownShapeFormat(ndFormatsA5);
         DefineAttributes();
 
         OpAICoreConfig aicore_config;
@@ -211,8 +211,8 @@ private:
                        ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E4M3FN,
                        ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,
                        ge::DT_FLOAT8_E4M3FN})
-            .Format(ndFormats950)
-            .UnknownShapeFormat(ndFormats950);
+            .Format(ndFormatsA5)
+            .UnknownShapeFormat(ndFormatsA5);
         this->Input("x2")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16,       ge::DT_BF16,          ge::DT_INT8,          ge::DT_INT8,
@@ -232,8 +232,8 @@ private:
                        ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,
                        ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,
                        ge::DT_FLOAT8_E4M3FN})
-            .Format(x2Formats950)
-            .UnknownShapeFormat(x2Formats950)
+            .Format(x2FormatsA5)
+            .UnknownShapeFormat(x2FormatsA5)
             .IgnoreContiguous();
     }
 
@@ -252,24 +252,24 @@ private:
                        ge::DT_FLOAT16, ge::DT_BF16,  ge::DT_FLOAT, ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,
                        ge::DT_FLOAT,   ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,
                        ge::DT_FLOAT,   ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT,   ge::DT_FLOAT})
-            .Format(ndFormats950)
-            .UnknownShapeFormat(ndFormats950);
+            .Format(ndFormatsA5)
+            .UnknownShapeFormat(ndFormatsA5);
         this->Input("x3")
             .ParamType(OPTIONAL)
-            .DataType(floatDtypes950)
-            .Format(ndFormats950)
-            .UnknownShapeFormat(ndFormats950);
+            .DataType(floatDtypesA5)
+            .Format(ndFormatsA5)
+            .UnknownShapeFormat(ndFormatsA5);
         this->Input("antiquant_scale")
             .ParamType(OPTIONAL)
-            .DataType(floatDtypes950)
-            .Format(ndFormats950)
-            .UnknownShapeFormat(ndFormats950)
+            .DataType(floatDtypesA5)
+            .Format(ndFormatsA5)
+            .UnknownShapeFormat(ndFormatsA5)
             .IgnoreContiguous();
         this->Input("antiquant_offset")
             .ParamType(OPTIONAL)
-            .DataType(floatDtypes950)
-            .Format(ndFormats950)
-            .UnknownShapeFormat(ndFormats950)
+            .DataType(floatDtypesA5)
+            .Format(ndFormatsA5)
+            .UnknownShapeFormat(ndFormatsA5)
             .IgnoreContiguous();
         this->Input("dequant_scale")
             .ParamType(OPTIONAL)
@@ -287,8 +287,8 @@ private:
                  ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
                  ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
                  ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0})
-            .Format(ndFormats950)
-            .UnknownShapeFormat(ndFormats950)
+            .Format(ndFormatsA5)
+            .UnknownShapeFormat(ndFormatsA5)
             .IgnoreContiguous();
         this->Input("pertoken_scale")
             .ParamType(OPTIONAL)
@@ -306,22 +306,22 @@ private:
                  ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
                  ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
                  ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0})
-            .Format(ndFormats950)
-            .UnknownShapeFormat(ndFormats950);
+            .Format(ndFormatsA5)
+            .UnknownShapeFormat(ndFormatsA5);
     }
 
     void DefineCommQuantInputs()
     {
         this->Input("comm_quant_scale_1")
             .ParamType(OPTIONAL)
-            .DataType(floatDtypes950)
-            .Format(ndFormats950)
-            .UnknownShapeFormat(ndFormats950);
+            .DataType(floatDtypesA5)
+            .Format(ndFormatsA5)
+            .UnknownShapeFormat(ndFormatsA5);
         this->Input("comm_quant_scale_2")
             .ParamType(OPTIONAL)
-            .DataType(floatDtypes950)
-            .Format(ndFormats950)
-            .UnknownShapeFormat(ndFormats950);
+            .DataType(floatDtypesA5)
+            .Format(ndFormatsA5)
+            .UnknownShapeFormat(ndFormatsA5);
     }
 
     void DefineAttributes()

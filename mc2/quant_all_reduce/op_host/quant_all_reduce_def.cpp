@@ -61,7 +61,7 @@ public:
         this->Attr("output_dtype").AttrType(OPTIONAL).Int(static_cast<int64_t>(ge::DT_BF16)); // 默认值为bf16
         this->Attr("world_size").AttrType(REQUIRED).Int();
 
-        // ascend950 AI处理器定义OpAICoreConfig变量，定制化配置参数
+        // A5 AI处理器定义OpAICoreConfig变量，定制化配置参数
         OpAICoreConfig aicore_config_a5;
         aicore_config_a5.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
