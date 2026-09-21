@@ -311,8 +311,7 @@ ge::graphStatus TilingPrepareBlockAttnResPrepare(gert::TilingParseContext *conte
     OP_CHECK_IF(compileInfo->aicCoreNum == 0 || compileInfo->aivCoreNum == 0 || compileInfo->ubSize == 0 ||
                     compileInfo->l1Size == 0 || compileInfo->l0ASize == 0 || compileInfo->l0BSize == 0 ||
                     compileInfo->l0CSize == 0,
-                OP_LOGE(context->GetNodeName(), "failed to query Ascend 950 core memory information"),
-                return ge::GRAPH_FAILED);
+                OP_LOGE(context->GetNodeName(), "failed to query core memory information"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
