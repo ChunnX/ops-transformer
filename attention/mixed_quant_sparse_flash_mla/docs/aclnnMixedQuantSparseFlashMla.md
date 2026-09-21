@@ -6,10 +6,10 @@
 - <term>Ascend 950PR/Ascend 950DT</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持（仅 `quantMode=3`）
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持（仅 `quantMode=3`）
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
 - <term>Atlas 200I/500 A2 推理产品</term>：不支持
@@ -22,8 +22,6 @@
 <!-- end id6 -->
 
 ## 功能说明
-
-> A5仅支持`quantMode=1/2`，A2/A3 TurboQuant TQ4仅支持`quantMode=3`和CSA场景，公开接口签名不变。
 
 - 接口功能：
 
@@ -179,7 +177,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>输入</td>
       <td>Query输入张量。</td>
       <td>A5不支持空Tensor；A2/A3 TurboQuant允许qT为0。qN支持1-128，TurboQuant还要求为4的倍数；D仅支持512。</td>
-      <td>A5：BFLOAT16；A2/A3 TurboQuant：FLOAT16、BFLOAT16</td>
+      <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>
         <ul>
@@ -194,7 +192,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>输入</td>
       <td>原始KV输入张量，Key与Value共享同一份数据。</td>
       <td>必须传入。A5的quantMode=1/2保持原量化KV布局：模式1依次拼接rope（64，bfloat16）、nope（448，FLOAT8_E4M3FN）、scale（7，bfloat16）、pad（18B）；模式2依次拼接nope（448，FLOAT8_E4M3FN）、rope（64，bfloat16）、scale（7，FLOAT8_E8M0）、pad（1B）。A2/A3的quantMode=3使用与q相同的FLOAT16或BFLOAT16原始KV，kvD=512。</td>
-      <td>详见quantMode</td>
+      <td>FLOAT8_E4M3FN、FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>
         <ul>
@@ -211,7 +209,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>输入</td>
       <td>压缩KV输入张量，Key与Value共享同一份数据。</td>
       <td>A5的CSA/HCA场景必须传入，SWA场景不传入，布局同oriKvOptional。A2/A3的quantMode=3必须传入UINT8 TQ4压缩KV，kvD=258。</td>
-      <td>详见quantMode</td>
+      <td>FLOAT8_E4M3FN、UINT8</td>
       <td>ND</td>
       <td>
         <ul>
@@ -676,11 +674,13 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
   - oriTopkLengthOptional、cmpTopkLengthOptional表示ori/cmp sparseIndices实际参与计算的长度。其值不能大于sparseIndicesOptional的最后一维大小，且当sequsedQOptional传入时，topkLength对应有效部分的值需要大于等于0。
   - 当oriMaskMode/cmpMaskMode为0时，oriKvK/cmpKvK需要大于等于oriTopkLengthOptional/cmpTopkLengthOptional的最大值。
   - A5上cmpResidualKvOptional配合cmpRatio使用，可恢复压缩前KV长度。且每个batch的值需要小于cmpRatio。仅当cmpMaskMode为3且cmpRatio不等于1时允许传入；cmpMaskMode为0或cmpRatio等于1时不允许传入。
-  - attnOutOut：tensor类型，公式中的输出。A5支持BFLOAT16；A2/A3 TurboQuant支持FLOAT16、BFLOAT16。数据格式支持ND，shape和dtype与q一致。
+  - attnOutOut：tensor类型，公式中的输出。数据类型支持FLOAT16、BFLOAT16，数据格式支持ND，shape和dtype与q一致。
   - returnSoftmaxLse=False时返回shape为[1]的值为0的tensor；returnSoftmaxLse=True时返回FLOAT32的log-sum-exp结果。
   - cuSeqlensQOptional、cuSeqlensOriKvOptional、cuSeqlensCmpKvOptional须满足首元素为0，且序列整体呈非递减排列，即任一元素不小于其前一个元素。
   - 当layoutKv为PA_BBND时，oriKvOptional和cmpKvOptional支持0轴非连续。
   - 各参数shape中以相同符号表示的维度，其对应轴的实际数值需保持一致。
+
+  - `quantMode=1/2`仅支持Ascend 950PR/Ascend 950DT，q、attnOutOut的数据类型为BFLOAT16，oriKvOptional、cmpKvOptional的数据类型为FLOAT8_E4M3FN。
 
 ### TurboQuant参数约束
 

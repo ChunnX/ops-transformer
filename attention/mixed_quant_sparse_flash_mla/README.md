@@ -4,16 +4,14 @@
 
 | 产品                                                         |  是否支持 |
 | :----------------------------------------------------------  | :------: |
-|<term>Ascend 950PR/Ascend 950DT</term>                        | √（quant_mode=1/2） |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>        | √（quant_mode=3） |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>        | √（quant_mode=3） |
+|<term>Ascend 950PR/Ascend 950DT</term>                        |     √    |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>        |     √    |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>        |     √    |
 |<term>Atlas 200I/500 A2 推理产品</term>                        |     ×    |
 |<term>Atlas 推理系列产品</term>                                |     ×    |
 |<term>Atlas 训练系列产品</term>                                |     ×    |
 
 ## 功能说明
-
-> 公开接口签名不变，`quant_mode=3` 仅在 A2/A3 生效，A5 原有 `quant_mode=1/2` 路径不变。
 
 - 算子功能：
 
@@ -63,21 +61,21 @@
       <td>q</td>
       <td>输入</td>
       <td>表示对应公式中的Q。</td>
-      <td>A5：BFLOAT16；A2/A3 TurboQuant：FLOAT16、BFLOAT16</td>
+      <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>ori_kv</td>
       <td>可选输入</td>
       <td>原始KV，Key和Value共享同一份数据。A5保持原FP8量化布局；A2/A3 TurboQuant使用与q相同dtype的512维KV。</td>
-      <td>详见quant_mode</td>
+      <td>FLOAT8_E4M3FN、FLOAT16、BFLOAT16</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cmp_kv</td>
       <td>可选输入</td>
       <td>压缩KV，Key和Value共享同一份数据。A5保持原FP8量化布局；A2/A3 TurboQuant使用UINT8存储的258字节TQ4数据。</td>
-      <td>详见quant_mode</td>
+      <td>FLOAT8_E4M3FN、UINT8</td>
       <td>ND</td>
     </tr>
     <tr>
@@ -273,7 +271,7 @@
       <td>attn_out</td>
       <td>输出</td>
       <td>表示对应公式中的输出O。</td>
-      <td>与q的数据类型一致</td>
+      <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
     </tr>
     <tr>
@@ -288,6 +286,8 @@
 
 ## 约束说明
 
+- Ascend 950PR/Ascend 950DT仅支持`quant_mode=1/2`：q和attn_out仅支持BFLOAT16，ori_kv和cmp_kv仅支持FLOAT8_E4M3FN。
+- Atlas A2/A3仅支持`quant_mode=3`的TurboQuant CSA场景：q、ori_kv和attn_out支持FLOAT16、BFLOAT16且数据类型一致，cmp_kv仅支持UINT8。
 - 该接口支持推理场景下使用。
 - 该接口支持aclgraph模式。
 - 该接口支持batch一致性。
