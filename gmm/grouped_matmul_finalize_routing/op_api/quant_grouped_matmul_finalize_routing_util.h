@@ -135,7 +135,10 @@ public:
         return *this;
     }
 
-    GroupedMatmulParams Build() const { return p_; }
+    GroupedMatmulParams Build() const
+    {
+        return p_;
+    }
 
 private:
     GroupedMatmulParams p_;

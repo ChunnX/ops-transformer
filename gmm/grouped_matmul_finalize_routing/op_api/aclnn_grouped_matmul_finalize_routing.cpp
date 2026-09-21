@@ -987,9 +987,9 @@ static aclnnStatus aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSizeCommonProces
     int64_t l0Dtype = GetL0OutputDtype(params2);
     auto matmulRet = l0op::GroupedMatmulFinalizeRouting(
         reformatedX1, params2.x2, params2.scale, reformatedBias, reformatedPertokenScaleOptional, reformatedGroupList,
-        reformatedShareInput, reformatedLogit, reformatedRowIndex, reformatedOffset, l0Dtype,
-        params.shareInputWeight, params.shareInputOffset, params.transposeX1, params.transposeX2, outputBS,
-        params.groupListType, params.tuningConfig, executor);
+        reformatedShareInput, reformatedLogit, reformatedRowIndex, reformatedOffset, l0Dtype, params.shareInputWeight,
+        params.shareInputOffset, params.transposeX1, params.transposeX2, outputBS, params.groupListType,
+        params.tuningConfig, executor);
     ret = PostMatmulCalcProcess(matmulRet, params, executor);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     return ACLNN_SUCCESS;
@@ -1254,8 +1254,8 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(
 
         CheckSupportSceneParams sceneParams{x1,    tmpWeight, scale, pertokenScaleOptional, groupList, sharedInput,
                                             logit, rowIndex,  dtype};
-        auto ret0 = CheckSupportScene(sceneParams, transposeX1, transposeX2, "GroupedMatmulFinalizeRoutingWeightNzV2",
-                                      true);
+        auto ret0 =
+            CheckSupportScene(sceneParams, transposeX1, transposeX2, "GroupedMatmulFinalizeRoutingWeightNzV2", true);
         CHECK_RET(ret0 == ACLNN_SUCCESS, ret0);
         finalWeight = tmpWeight;
     }

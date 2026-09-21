@@ -82,7 +82,7 @@ const std::vector<DataType> X_WEIGHT_TYPE_SUPPORT_LIST_MX = {
     op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_FLOAT8_E5M2, op::DataType::DT_FLOAT4_E2M1};
 const std::vector<DataType> X_WEIGHT_TYPE_SUPPORT_LIST_FP4 = {op::DataType::DT_FLOAT4_E2M1};
 const std::vector<DataType> X_WEIGHT_TYPE_SUPPORT_LIST_MX_FP8 = {op::DataType::DT_FLOAT8_E4M3FN,
-                                                                  op::DataType::DT_FLOAT8_E5M2};
+                                                                 op::DataType::DT_FLOAT8_E5M2};
 const std::vector<DataType> X_WEIGHT_TYPE_SUPPORT_LIST_FP8 = {op::DataType::DT_FLOAT4_E2M1};
 static const std::vector<op::DataType> SCALE_TYPE_SUPPORT_LIST_MX = {op::DataType::DT_FLOAT8_E8M0};
 static const std::vector<op::DataType> ROW_INDEX_TYPE_SUPPORT_LIST_MX = {op::DataType::DT_INT64};
@@ -93,10 +93,9 @@ static const std::vector<op::DataType> GROUP_LIST_TYPE_SUPPORT_LIST = {op::DataT
 static const std::vector<op::DataType> SHARED_INPUT_TYPE_SUPPORT_LIST = {op::DataType::DT_BF16};
 static const std::vector<op::DataType> LOGIT_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
 static const std::vector<op::DataType> LOGIT_TYPE_SUPPORT_LIST_BF16_OUTPUT = {op::DataType::DT_FLOAT,
-                                                                               op::DataType::DT_BF16};
+                                                                              op::DataType::DT_BF16};
 static const std::vector<op::DataType> OUT_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
-static const std::vector<op::DataType> OUT_TYPE_SUPPORT_LIST_MX = {op::DataType::DT_FLOAT,
-                                                                    op::DataType::DT_BF16};
+static const std::vector<op::DataType> OUT_TYPE_SUPPORT_LIST_MX = {op::DataType::DT_FLOAT, op::DataType::DT_BF16};
 constexpr int64_t OUT_DTYPE_FLOAT32 = 0;
 constexpr int64_t OUT_DTYPE_BF16 = 2;
 
@@ -575,10 +574,9 @@ public:
         if (quantMode_ == QuantMode::MX) {
             bool isBf16Output =
                 gmmParams_.dtype == OUT_DTYPE_BF16 || gmmParams_.out->GetDataType() == DataType::DT_BF16;
-            bool weightFormatInvalid = isBf16Output ?
-                                           gmmParams_.x2->GetStorageFormat() != Format::FORMAT_FRACTAL_NZ :
-                                           (op::IsPrivateFormat(gmmParams_.x2->GetStorageFormat()) &&
-                                            gmmParams_.x2->GetStorageFormat() != Format::FORMAT_FRACTAL_NZ);
+            bool weightFormatInvalid = isBf16Output ? gmmParams_.x2->GetStorageFormat() != Format::FORMAT_FRACTAL_NZ :
+                                                      (op::IsPrivateFormat(gmmParams_.x2->GetStorageFormat()) &&
+                                                       gmmParams_.x2->GetStorageFormat() != Format::FORMAT_FRACTAL_NZ);
             if (weightFormatInvalid) {
                 const char *expectedFormatStr = isBf16Output ? "FRACTAL_NZ" : "ND or FRACTAL_NZ";
                 OP_LOGE_FOR_INVALID_FORMAT(GMMFR_ACLNN_OP_NAME, "weight",

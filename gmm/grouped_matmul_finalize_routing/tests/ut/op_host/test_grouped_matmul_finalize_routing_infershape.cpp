@@ -167,7 +167,10 @@ namespace GroupedMatmulFinalizeRoutingInfershapeUT {
 
 class TestInfershape : public testing::TestWithParam<GmmFrInfershapeCase> {};
 
-TEST_P(TestInfershape, csvDriven) { GetParam().Run(); }
+TEST_P(TestInfershape, csvDriven)
+{
+    GetParam().Run();
+}
 
 INSTANTIATE_TEST_SUITE_P(GMMFR_INFERSHAPE, TestInfershape, testing::ValuesIn(LoadEnabled()), MakeParamName);
 

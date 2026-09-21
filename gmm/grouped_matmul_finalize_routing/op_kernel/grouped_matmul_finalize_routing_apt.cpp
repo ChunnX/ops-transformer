@@ -144,11 +144,11 @@ __global__ __aicore__ void grouped_matmul_finalize_routing(GM_ADDR x, GM_ADDR w,
     AscendC::TPipe pipe;
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     if constexpr (GMM_FR_WEIGHT_NZ && ATRANS == 0 && BTRANS == 0 && SCALETYPE == 0 && ROWINDEXTYPE == 1) {
-        RunGmmFrMx<0, LOGITTYPE>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y,
-                      workspaceGM, tilingGM);
+        RunGmmFrMx<0, LOGITTYPE>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset,
+                                 y, workspaceGM, tilingGM);
     } else if constexpr (GMM_FR_WEIGHT_NZ && ATRANS == 0 && BTRANS == 1 && SCALETYPE == 0 && ROWINDEXTYPE == 1) {
-        RunGmmFrMx<1, LOGITTYPE>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y,
-                      workspaceGM, tilingGM);
+        RunGmmFrMx<1, LOGITTYPE>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset,
+                                 y, workspaceGM, tilingGM);
     }
 #endif
 #else
@@ -196,19 +196,19 @@ __global__ __aicore__ void grouped_matmul_finalize_routing(GM_ADDR x, GM_ADDR w,
     }
 #elif ORIG_DTYPE_X == DT_FLOAT4_E1M2 || ORIG_DTYPE_X == DT_FLOAT4_E2M1
     if constexpr (ATRANS == 0 && BTRANS == 0 && SCALETYPE == 0 && ROWINDEXTYPE == 0) {
-        RunGmmFrMx<0, LOGITTYPE>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y,
-                      workspaceGM, tilingGM);
+        RunGmmFrMx<0, LOGITTYPE>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset,
+                                 y, workspaceGM, tilingGM);
     } else if constexpr (ATRANS == 0 && BTRANS == 1 && SCALETYPE == 0 && ROWINDEXTYPE == 0) {
-        RunGmmFrMx<1, LOGITTYPE>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y,
-                      workspaceGM, tilingGM);
+        RunGmmFrMx<1, LOGITTYPE>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset,
+                                 y, workspaceGM, tilingGM);
     }
 #else
     if constexpr (ATRANS == 0 && BTRANS == 0 && SCALETYPE == 0 && ROWINDEXTYPE == 0) {
-        RunGmmFrMx<0, LOGITTYPE>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y,
-                      workspaceGM, tilingGM);
+        RunGmmFrMx<0, LOGITTYPE>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset,
+                                 y, workspaceGM, tilingGM);
     } else if constexpr (ATRANS == 0 && BTRANS == 1 && SCALETYPE == 0 && ROWINDEXTYPE == 0) {
-        RunGmmFrMx<1, LOGITTYPE>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y,
-                      workspaceGM, tilingGM);
+        RunGmmFrMx<1, LOGITTYPE>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset,
+                                 y, workspaceGM, tilingGM);
     } else if constexpr (ATRANS == 0 && BTRANS == 0 && SCALETYPE == 1 && ROWINDEXTYPE == 0) {
         grouped_matmul_finalize_routing_pertoken_dequant<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz, 1, 0>(
             x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
