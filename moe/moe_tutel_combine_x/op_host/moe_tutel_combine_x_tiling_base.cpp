@@ -13,7 +13,7 @@
  * \brief Entry of the MoeTutelCombineX host tiling: dispatch through the
  *        TilingRegistry and register the IMPL_OP_OPTILING interface.
  */
-#include "moe_tutel_combine_x_tiling.h"
+#include "moe_tutel_combine_x_tiling_data.h"
 #include "register/op_def_registry.h"
 #include "log/log.h"
 

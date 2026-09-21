@@ -27,7 +27,7 @@
 
   带batch场景下，y_grad形状为[B, EC, H]，gates/indices/locations形状为[B, S]，x_grad形状为[B, S, H]，对每个batch b、每个token t按同一规则计算。
 
-  其中EC为y_grad无batch时的行数或带batch时的第二维长度，H为隐藏维度（y_grad最后一维），S为token数（gates最后一维），B为batch数。专家数E=max(indices)+1，每专家容量C=floor(EC/E)不经算子属性传递，由张量维度与路由元数据推导；E=1时C=EC；indices全为-1时E=0，全部条目无效，输出全零。
+  其中EC为y_grad无batch时的行数或带batch时的第二维长度，H为隐藏维度（y_grad最后一维），S为token数（gates最后一维），B为batch数。专家数E=max(indices)+1，每专家容量C=floor(EC/E)不经算子属性传递，由张量维度与路由元数据推导；E=1时C=EC；indices全为-1时全部条目无效，输出全零（此场景实现内部按E=1哨兵推导容量以规避EC/0，与E=0语义等价）。
 
 - 计算规则补充说明：x_grad的每个输出行只由对应token的一条路由条目决定，有效条目写gates[t]*y_grad[srcRow, :]，无效条目（indices[t]<0、locations[t]<0、locations[t]>=C或srcRow越出y_grad行范围）输出全零行，不访问越界内存，调用前无需对x_grad预置初值。
 
@@ -92,8 +92,9 @@
 - shape与rank契约：y_grad的rank为2或3，gates/indices/locations的rank为1或2，且rank(y_grad)=rank(gates)+1；gates、indices、locations三者shape一致；带batch（rank(y_grad)=3）时gates.dim0=y_grad.dim0。
 - 动态shape：支持以-1表示未知维（动态shape）。图模式下-1维被接受并传播到输出shape（x_grad对应维为-1），维具体化后须满足上述rank与shape契约；维度值小于-1（如-2）为非法输入，报错退出。不支持动态rank，各输入rank须为上述固定取值。
 - 数据类型约束：y_grad、gates、x_grad三者数据类型必须一致（FLOAT16、FLOAT、BFLOAT16三选一），indices、locations固定为INT32。
-- 数据格式约束：仅支持ND格式。
-- 非连续Tensor：要求传入的Tensor为连续存储（图模式经算子IR构图调用）。
+- 数据格式约束：仅支持ND格式，非ND格式（如FRACTAL_NZ、NCHW）在图模式InferShape与tiling校验处均被独立拒绝。
+- 非连续Tensor：要求传入的Tensor为连续存储；非连续输入（如带stride的视图）不支持，算子自身不校验stride，由图模式构图调用侧保证传入Tensor连续存储。
+- 内存布局语义：所有输入Tensor只读，算子不修改任何输入；输出x_grad由图框架按输出shape新分配，为连续ND存储（不具备非连续输出形态）；输入与输出不允许别名或重叠（x_grad不与任何输入共享存储），无原地修改语义。
 - 空Tensor：S=0、H=0或B=0时输出为对应shape的空Tensor；EC=0且S大于0时C=0，全部条目无效，输出[S, H]全零。
 - 索引语义：indices[t]<0、locations[t]<0、locations[t]>=C或计算得到的源行越出y_grad行范围的条目为无效条目，对应输出行置零，不报错。
 - 路由元数据来源：gates/indices/locations须由前向MoeTutelDispatch产出并在反向原样重放，不允许反向独立重算路由。

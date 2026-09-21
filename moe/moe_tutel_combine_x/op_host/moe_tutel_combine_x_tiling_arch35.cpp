@@ -52,6 +52,21 @@ ge::graphStatus MoeTutelCombineXTilingArch35::GetPlatformInfo()
 
 ge::graphStatus MoeTutelCombineXTilingArch35::GetShapeAttrsInfo()
 {
+    // Only FORMAT_ND is supported. The tiling gate validates the format
+    // independently (INFER_AND_TILING_INDEPENDENT interception): a stage-visible
+    // non-ND origin/storage format must be rejected here instead of flowing
+    // into TilingData, whose layout math assumes ND row-contiguous storage —
+    // the same contract the graph-mode InferShape enforces.
+    for (size_t i = 0; i < 4; ++i) {
+        const gert::CompileTimeTensorDesc *desc = context_->GetInputDesc(i);
+        OP_CHECK_NULL_WITH_CONTEXT(context_, desc);
+        if (desc->GetFormat().GetOriginFormat() != ge::FORMAT_ND ||
+            desc->GetFormat().GetStorageFormat() != ge::FORMAT_ND) {
+            OP_LOGE_FOR_INVALID_FORMAT(context_->GetNodeName(), "input" + std::to_string(i),
+                                       std::to_string(static_cast<int>(desc->GetFormat().GetOriginFormat())), "ND");
+            return ge::GRAPH_FAILED;
+        }
+    }
     // Dims are either >= 0 (0 allowed for empty tensors) or -1 (unknown) —
     // the same lower bound the graph-mode InferShape enforces; anything below
     // -1 must be rejected here instead of flowing into TilingData.
@@ -222,6 +237,15 @@ ge::graphStatus MoeTutelCombineXTilingArch35::DeriveCapacity()
         for (size_t d = 0; d < s.GetDimNum(); ++d) {
             totalIndices *= s.GetDim(d);
         }
+        // Clamp the scan bound by the actual host tensor size: a shape that
+        // disagrees with the backing tensor (out of contract) must never make
+        // the loop read past the data available via GetSize().
+        const int64_t availableElems = static_cast<int64_t>(indicesSize / sizeof(int32_t));
+        if (totalIndices > availableElems) {
+            OP_LOGW(context_, "indices shape product %ld exceeds host tensor size %ld, clamping scan", totalIndices,
+                    availableElems);
+            totalIndices = availableElems;
+        }
         int64_t maxIdx = -1;
         for (int64_t i = 0; i < totalIndices; i++) {
             if (indicesData[i] > maxIdx) {
@@ -257,6 +281,23 @@ ge::graphStatus MoeTutelCombineXTilingArch35::DoOpTiling()
         return HandleEmptyTensor();
     }
 
+    // Non-empty path guard: H and EC flow into TilingData (hChunk_/capacity_
+    // math) and must already be concrete non-negative values here. A still
+    // unknown -1 dim would make hChunk_ negative and underflow the kernel's
+    // DataCopy blockLen; S/B are already covered by the usedCoreNum_ guard
+    // below. Legitimate graph flows bind concrete shapes before execution
+    // tiling, so this only rejects out-of-contract probes.
+    if (hidden_ < 0 || eC_ < 0) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "y_grad",
+                                              std::to_string(hidden_) + ", " + std::to_string(eC_),
+                                              "H and EC must be concrete (>= 0) dims at tiling on the non-empty path");
+        return ge::GRAPH_FAILED;
+    }
+
+    // DeriveCapacity() never fails in the current implementation (both the
+    // no-tensor and the host-data paths return GRAPH_SUCCESS); this branch is
+    // defensive propagation kept for future host-data validation failures and
+    // is therefore not unit-test reachable today.
     if (DeriveCapacity() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }

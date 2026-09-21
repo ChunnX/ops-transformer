@@ -23,7 +23,7 @@
 #include "util/math_util.h"
 #include "platform/platform_infos_def.h"
 #include "platform/platform_ascendc.h"
-#include "moe_tutel_combine_x_tiling.h"
+#include "moe_tutel_combine_x_tiling_data.h"
 #include "../op_kernel/arch35/moe_tutel_combine_x_tiling_struct.h"
 
 namespace optiling {

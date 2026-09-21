@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file moe_tutel_combine_x_tiling.h
+ * \file moe_tutel_combine_x_tiling_data.h
  * \brief Tiling data class and compile info of MoeTutelCombineX.
  */
 #ifndef OPS_BUILT_IN_OP_TILING_RUNTIME_MOE_TUTEL_COMBINE_X_H
