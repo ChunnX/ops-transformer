@@ -124,7 +124,7 @@ public:
                                        uint32_t blockStartOffset, uint32_t nowNIdx, uint32_t &strideKV,
                                        uint32_t &blockSize, uint32_t embed, uint64_t valueBnStride)
     {
-        uint32_t blockTableId = gBlockTable.GetValue(nowNIdx);
+        uint64_t blockTableId = gBlockTable.GetValue(nowNIdx);
         if (valueBnStride != 0) {
             if constexpr (std::is_same_v<LayoutB, layout::zN>) {
                 constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(ElementB);

@@ -120,7 +120,7 @@ public:
                                        uint64_t valueBnStride)
     {
         if constexpr (PAGED_CACHE_FLAG_) {
-            uint32_t blockTableId = gBlockTable.GetValue(nowNIdx);
+            uint64_t blockTableId = gBlockTable.GetValue(nowNIdx);
             if (valueBnStride != 0) {
                 kOffset = blockTableId * valueBnStride;
             } else {
