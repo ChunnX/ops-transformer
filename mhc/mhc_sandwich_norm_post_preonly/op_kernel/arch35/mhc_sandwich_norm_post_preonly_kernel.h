@@ -99,7 +99,8 @@ public:
             hInF32Gm_.SetGlobalBuffer((__gm__ float *)h_in_f32_gm, (uint64_t)totalTokens_ * D_);
         }
         if constexpr (DUAL_SIBLING) {
-            partial1Gm_.SetGlobalBuffer((__gm__ float *)workspace, (uint64_t)totalTokens_ * PARTIAL_SLOT_ELEMS);
+            partial1Gm_.SetGlobalBuffer((__gm__ float *)workspace,
+                                        (uint64_t)totalTokens_ * 2U * PARTIAL_SLOT_ELEMS);
         }
 
         // UB空间分配
@@ -185,6 +186,8 @@ private:
     __aicore__ inline void ProcessTokenDualSiblingAiv(uint32_t token);
     __aicore__ inline void ComputeX2PostTile(uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
                                              const float (&postVals)[N_MAX]);
+    __aicore__ inline void ComputeX2PostTileForLane(uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
+                                                    const float (&postVals)[N_MAX]);
     __aicore__ inline void CacheX2Tile(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput,
                                       bool quantizeInput = true);
     __aicore__ inline void CacheX2TileForLane(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput,

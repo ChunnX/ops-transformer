@@ -27,6 +27,34 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     ComputeX2AllHeadsBatched(postVals, (uint64_t)token * N_ * D_ + tOff, tOff, tD);
 }
 
+// 双AIV仍需读取全部残差行，但每个lane只计算自己负责的两个输出head。
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
+__aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
+                                                        DUAL_SIBLING>::ComputeX2PostTileForLane(
+    uint32_t token, uint32_t tOff, uint32_t tD, float invRms0, const float (&postVals)[N_MAX])
+{
+    LoadCachedHOut(tOff, tD);
+    LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
+    ApplyScaleAndGamma(hOut, invRms0, bufGamma0Fp32_.Get<float>()[tOff], tD);
+    QuantizeRoundTrip(hOut, tD);
+
+    const uint32_t headBegin = laneId_ * 2U;
+    const uint64_t gmBaseOffset = (uint64_t)token * N_ * D_ + tOff;
+    LocalTensor<T> residual = bufResidualBf16_.AllocTensor<T>();
+    for (uint32_t n = 0; n < N_MAX; ++n) {
+        DataCopy(residual[n * dimTile_], residualGm_[gmBaseOffset + (uint64_t)n * D_], tD);
+    }
+    bufResidualBf16_.EnQue(residual);
+    residual = bufResidualBf16_.DeQue<T>();
+    LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
+    LocalTensor<float> combWeights = bufPostComb_.Get<float>()[ALIGN8];
+    MhcSandwichRegBase::ComputePostHeadPair<T>(
+        x2Cache[headBegin * D_ + tOff], x2Cache[(headBegin + 1U) * D_ + tOff], hOut, residual, combWeights,
+        dimTile_, headBegin, postVals[headBegin], postVals[headBegin + 1U], tD);
+    PipeBarrier<PIPE_V>();
+    bufResidualBf16_.FreeTensor(residual);
+}
+
 // 将完整x2以输出dtype常驻UB，同时完成设计要求的低精度往返；写GM仅用于保留x2_out输出语义。
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::CacheX2Tile(

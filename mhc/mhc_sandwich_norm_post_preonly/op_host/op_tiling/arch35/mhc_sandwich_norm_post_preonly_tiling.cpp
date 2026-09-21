@@ -23,6 +23,7 @@ constexpr uint32_t HOST_D_ALIGN_ELEM = 16;
 constexpr uint32_t HOST_MAX_TOKENS = 1024 * 1024; // B*S 上限
 constexpr uint32_t NUM_TWO = 2;
 constexpr uint32_t PARTIAL_SLOT_BYTES = 32;
+constexpr uint32_t PARTIAL_SLOTS_PER_TOKEN = 2;
 
 constexpr uint64_t TILING_KEY_USE_RMS_MID = 1ULL << 0;
 constexpr uint64_t TILING_KEY_RETURN_H_IN_F32 = 1ULL << 1;
@@ -228,7 +229,8 @@ static ge::graphStatus TilingMhcSandwichNormPostPreonly(gert::TilingContext *con
         OP_LOGE("MhcSandwichNormPostPreonly", "GetWorkspaceSizes is nullptr");
         return ge::GRAPH_FAILED;
     }
-    currentWorkspace[0] = sysWsBytes + (enableDualSibling ? (size_t)totalTokens * PARTIAL_SLOT_BYTES : 0U);
+    currentWorkspace[0] = sysWsBytes +
+                          (enableDualSibling ? (size_t)totalTokens * PARTIAL_SLOTS_PER_TOKEN * PARTIAL_SLOT_BYTES : 0U);
 
     // 输出Tiling数据
     context->SetBlockDim(usedCoreNum);
