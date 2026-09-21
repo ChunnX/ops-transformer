@@ -542,7 +542,7 @@ def generate_qfa_gqa_fp8_inputs(
         ("ENABLE_PA", enable_pa),
         ("KV_CACHE_LAYOUT", kv_cache_layout),
         ("BLOCK_SIZE", block_size),
-        ("Q_SCALE_LAYOUT", q_scale_layout),
+        ("LAYOUT_Q_DESCALE", layout_q_descale),
         ("INPUT_LAYOUT", input_layout),
         ("SPARSE_MODE", mask_mode),
     ]:

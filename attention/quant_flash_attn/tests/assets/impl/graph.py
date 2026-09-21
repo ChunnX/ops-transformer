@@ -260,8 +260,11 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
         p_scale_cpu = p_scale
         block_table_cpu = block_table
 
+        _descale_fmt = "e8m0" if quant_mode not in (0, 6) else "fp32"
+
         logger.info(
-            "[GRAPH] 透传 fp8+e8m0 (q=%s, k=%s, v=%s, dq=%s, dk=%s, dv=%s, enable_pa=%s)",
+            "[GRAPH] 透传 fp8+%s (q=%s, k=%s, v=%s, dq=%s, dk=%s, dv=%s, enable_pa=%s)",
+            _descale_fmt,
             tuple(q_fp8.shape),
             tuple(k_fp8.shape),
             tuple(v_fp8.shape),
@@ -389,18 +392,12 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
             self.metadata = self.metadata.to(inputs["q"].device)
 
         # ---- 6. 存所有 forward 需要的入参为 self. 属性 ----
+        # GQA FP8: k/v cache 末 K_SCALE_ROWS(=4) 行 scale 的剥离统一由
+        # npu_preprocess 的 set_ 原地切片完成 (aclgraph 模式下 hook 同样先于
+        # graph 执行, 到这里 k/v 已是纯数据行), 此处直接透传。
         self.q = inputs["q"]
-        if int(quant_mode) == 6:
-            # GQA FP8: kernel 的 blockSize = k.dim2 (硬性要求 128), 且 deq_k 从独立的
-            # k_descale 张量读取 — 主算子的 k/v 只能传纯数据行 (前 block_size 行),
-            # cache 末 K_SCALE_ROWS 行 (嵌入 deq_k/占位) 不能传入, 否则被当数据读。
-            # 与 eager 路径 fa_run_npu 的 strip 逻辑对齐。
-            _bs = int(inputs["block_size"])
-            self.k = inputs["k"][:, :, :_bs, :]
-            self.v = inputs["v"][:, :, :_bs, :]
-        else:
-            self.k = inputs["k"]
-            self.v = inputs["v"]
+        self.k = inputs["k"]
+        self.v = inputs["v"]
         self.q_descale = inputs["dequant_scale_q"]
         self.k_descale = inputs["dequant_scale_k"]
         self.v_descale = inputs["dequant_scale_v"]
