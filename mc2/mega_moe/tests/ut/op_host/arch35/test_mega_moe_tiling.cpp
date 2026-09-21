@@ -15,8 +15,8 @@
 #include <string>
 #include <vector>
 #include <gtest/gtest.h>
-#include "../../../../op_kernel/arch35/common/mega_moe_workspace.h"
-#include "../../../../op_kernel/arch35/mega_moe_tiling.h"
+#include "../../../../op_kernel/arch35_92/common/mega_moe_workspace.h"
+#include "../../../../op_kernel/arch35_92/mega_moe_tiling.h"
 #include "mc2_tiling_case_executor.h"
 
 namespace MegaMoeUT {

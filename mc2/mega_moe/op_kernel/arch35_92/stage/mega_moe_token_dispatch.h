@@ -362,7 +362,7 @@ __aicore__ inline void DispatchTokenRange(const TokenDispatchConfig &context, co
     if constexpr (g_coreType == AIC) {
         return;
     }
-    if (GetSubBlockIdx() != 1U || blockJob.totalJobs == 0U) {
+    if (!MegaMoeHardwarePolicy::RunsDispatchVectorWork() || blockJob.totalJobs == 0U) {
         return;
     }
 
@@ -427,7 +427,7 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
     if constexpr (g_coreType == AIC) {
         return;
     }
-    if (GetSubBlockIdx() != 1U) {
+    if (!MegaMoeHardwarePolicy::RunsDispatchVectorWork()) {
         return;
     }
 
@@ -490,7 +490,7 @@ __aicore__ inline void ReloadDispatchCumsumRange(const MoeStageCommonConfig &com
     if constexpr (g_coreType == AIC) {
         return;
     }
-    if (GetSubBlockIdx() != 1U) {
+    if (!MegaMoeHardwarePolicy::RunsDispatchVectorWork()) {
         return;
     }
 
@@ -518,7 +518,7 @@ __aicore__ inline void ExportExpertTokenCounts(const MoeStageCommonConfig &commo
     if constexpr (g_coreType == AIC) {
         return;
     }
-    if (GetSubBlockIdx() != 1U || countWorkspace.blockIdx != 0U) {
+    if (!MegaMoeHardwarePolicy::RunsDispatchVectorWork() || countWorkspace.blockIdx != 0U) {
         return;
     }
 

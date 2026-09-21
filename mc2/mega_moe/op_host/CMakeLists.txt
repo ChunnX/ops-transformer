@@ -28,6 +28,13 @@ if (BUILD_OPEN_PROJECT)  # custom
             OP_NAME MegaMoe
             OPTIONS --cce-auto-sync=off
         )
+    elseif ("${CONDITION_UNIT}" STREQUAL "ascend910_96")
+        # arch92 使用 1C1V，保留自动同步并使用公共 Kernel 头。
+        add_ops_compile_options(
+            OP_NAME MegaMoe
+            OPTIONS --cce-auto-sync=on
+            OPTIONS -I${CMAKE_SOURCE_DIR}/mc2/common/op_kernel
+        )
     else()
         add_ops_compile_options(
             OP_NAME MegaMoe
