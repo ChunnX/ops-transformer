@@ -962,6 +962,13 @@ ge::graphStatus IFATiling::ProcessActualSeqLen()
 {
     if (inputLayout_ == IfaLayout::TND) {
         if (isWorkspace_) {
+            // TND场景必须携带actualSeqLengthsQ；DD(GQA+KV NZ)场景该张量被强制为空，
+            // 若直接放行会导致kernel侧读取未初始化的GlobalTensor而挂死，此处先拦截
+            if (ifaContext_->actualSeqLengthsQ.tensor == nullptr) {
+                OP_LOGE(ifaContext_->opName,
+                        "TND the query's actual sequence lengths should not be null!");
+                return ge::GRAPH_FAILED;
+            }
             actualSeqLenFlag_ = true;
             maxActualseq_ = sMax_;
             return ge::GRAPH_SUCCESS;
