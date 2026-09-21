@@ -96,9 +96,11 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         SetFlag<HardEvent::V_MTE3>(evtVtoMte3_);
         WaitFlag<HardEvent::V_MTE3>(evtVtoMte3_);
         const uint32_t headBegin = laneId_ * 2U;
-        for (uint32_t n = headBegin; n < headBegin + 2U; ++n) {
-            DataCopy(x2OutGm_[outBase + (uint64_t)n * D_], x2Cache[n * D_ + tOff], tD);
-        }
+        // 每个lane负责两个相邻head；用一次二维搬运保持D行跨度，尾块仍只写实际tD元素。
+        DataCopyExtParams copyParams = {2U, static_cast<uint32_t>(tD * sizeof(T)),
+                                        static_cast<uint32_t>((D_ - tD) * sizeof(T)),
+                                        static_cast<uint32_t>((D_ - tD) * sizeof(T)), 0U};
+        DataCopyPad(x2OutGm_[outBase + (uint64_t)headBegin * D_], x2Cache[headBegin * D_ + tOff], copyParams);
     }
 }
 
