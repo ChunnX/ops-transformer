@@ -26,7 +26,7 @@ OP_TYPE_REGISTER(GroupedMatmulFinalizeRouting);
 namespace {
 constexpr int64_t OUT_DTYPE_BF16 = 2;
 
-bool IsMxFullQuant(const aclTensor *x1, const aclTensor *x2)
+bool IsMxBf16OutputSupported(const aclTensor *x1, const aclTensor *x2)
 {
     if (x1 == nullptr || x2 == nullptr) {
         return false;
@@ -34,15 +34,15 @@ bool IsMxFullQuant(const aclTensor *x1, const aclTensor *x2)
     auto x1Dtype = x1->GetDataType();
     auto x2Dtype = x2->GetDataType();
     bool isMxFp4 = x1Dtype == DataType::DT_FLOAT4_E2M1 && x2Dtype == DataType::DT_FLOAT4_E2M1;
-    bool isMxFp8 = (x1Dtype == DataType::DT_FLOAT8_E4M3FN || x1Dtype == DataType::DT_FLOAT8_E5M2) &&
-                   (x2Dtype == DataType::DT_FLOAT8_E4M3FN || x2Dtype == DataType::DT_FLOAT8_E5M2);
-    return isMxFp4 || isMxFp8;
+    bool isMxFp8E4M3 = x1Dtype == DataType::DT_FLOAT8_E4M3FN && x2Dtype == DataType::DT_FLOAT8_E4M3FN;
+    return x2->GetStorageFormat() == Format::FORMAT_FRACTAL_NZ && (isMxFp4 || isMxFp8E4M3);
 }
 
 DataType GetOutputDataType(const aclTensor *x1, const aclTensor *x2, const aclTensor *logit, int64_t dtype)
 {
     bool isBf16Output = dtype == OUT_DTYPE_BF16 || (logit != nullptr && logit->GetDataType() == DataType::DT_BF16);
-    if (isBf16Output && op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 && IsMxFullQuant(x1, x2)) {
+    if (isBf16Output && op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
+        IsMxBf16OutputSupported(x1, x2)) {
         return DataType::DT_BF16;
     }
     return DataType::DT_FLOAT;

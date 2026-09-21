@@ -1083,7 +1083,7 @@ static inline aclnnStatus CheckSupportScene(const CheckSupportSceneParams &param
         return ACLNN_ERR_PARAM_NULLPTR;
     }
 
-    if (params.dtype != 0 && !(supportBfloat16 && params.dtype == 2)) {
+    if (params.dtype != ACLNN_OUT_DTYPE_FLOAT32 && !(supportBfloat16 && params.dtype == ACLNN_OUT_DTYPE_BF16)) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s dtype must be 0 (FLOAT32) or 2 (BFLOAT16), but is %lld.", opName,
                 params.dtype);
         return ACLNN_ERR_PARAM_INVALID;
