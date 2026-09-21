@@ -67,7 +67,7 @@ TEST_F(MoeDistributeCombineArch35TilingTest, BasicSharedExpert)
          {"outDtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"commQuantMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"groupListType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
-        &compileInfo, "Ascend950", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, 32UL);
 }
@@ -120,7 +120,7 @@ TEST_F(MoeDistributeCombineArch35TilingTest, TpWorldSize1)
          {"outDtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outDtype)},
          {"commQuantMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(commQuantMode)},
          {"groupListType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)}},
-        &compileInfo, "Ascend950", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
@@ -173,7 +173,7 @@ TEST_F(MoeDistributeCombineArch35TilingTest, Int8CommQuant)
          {"outDtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outDtype)},
          {"commQuantMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(commQuantMode)},
          {"groupListType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)}},
-        &compileInfo, "Ascend950", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
@@ -226,7 +226,7 @@ TEST_F(MoeDistributeCombineArch35TilingTest, EpWorldSize4)
          {"outDtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outDtype)},
          {"commQuantMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(commQuantMode)},
          {"groupListType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)}},
-        &compileInfo, "Ascend950", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
@@ -279,7 +279,7 @@ TEST_F(MoeDistributeCombineArch35TilingTest, EpWorldSize144)
          {"outDtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outDtype)},
          {"commQuantMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(commQuantMode)},
          {"groupListType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)}},
-        &compileInfo, "Ascend950", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
@@ -332,7 +332,7 @@ TEST_F(MoeDistributeCombineArch35TilingTest, EpWorldSize2)
          {"outDtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outDtype)},
          {"commQuantMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(commQuantMode)},
          {"groupListType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)}},
-        &compileInfo, "Ascend950", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
@@ -385,7 +385,7 @@ TEST_F(MoeDistributeCombineArch35TilingTest, MoeExpertRank)
          {"outDtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outDtype)},
          {"commQuantMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(commQuantMode)},
          {"groupListType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)}},
-        &compileInfo, "Ascend950", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_FAILED);
 }
@@ -438,7 +438,7 @@ TEST_F(MoeDistributeCombineArch35TilingTest, Int8CommQuantTp1)
          {"outDtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outDtype)},
          {"commQuantMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(commQuantMode)},
          {"groupListType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)}},
-        &compileInfo, "Ascend950", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, kSkipTilingKeyCheck);
 }
@@ -491,7 +491,7 @@ TEST_F(MoeDistributeCombineArch35TilingTest, EpWorldSizeOdd)
          {"outDtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outDtype)},
          {"commQuantMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(commQuantMode)},
          {"groupListType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)}},
-        &compileInfo, "Ascend950", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
@@ -544,7 +544,7 @@ TEST_F(MoeDistributeCombineArch35TilingTest, EpWorldSizeInvalid)
          {"outDtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outDtype)},
          {"commQuantMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(commQuantMode)},
          {"groupListType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)}},
-        &compileInfo, "Ascend950", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
@@ -597,7 +597,7 @@ TEST_F(MoeDistributeCombineArch35TilingTest, GlobalBsNonZero)
          {"outDtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outDtype)},
          {"commQuantMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(commQuantMode)},
          {"groupListType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)}},
-        &compileInfo, "Ascend950", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, kSkipTilingKeyCheck);
 }
@@ -650,7 +650,7 @@ TEST_F(MoeDistributeCombineArch35TilingTest, AllMoeExperts)
          {"outDtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outDtype)},
          {"commQuantMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(commQuantMode)},
          {"groupListType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)}},
-        &compileInfo, "Ascend950", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, kSkipTilingKeyCheck);
 }
@@ -703,7 +703,7 @@ TEST_F(MoeDistributeCombineArch35TilingTest, MoeExpertRankSuccess)
          {"outDtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outDtype)},
          {"commQuantMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(commQuantMode)},
          {"groupListType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)}},
-        &compileInfo, "Ascend950", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, kSkipTilingKeyCheck);
 }
@@ -756,7 +756,7 @@ TEST_F(MoeDistributeCombineArch35TilingTest, TpWorldSize1Success)
          {"outDtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outDtype)},
          {"commQuantMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(commQuantMode)},
          {"groupListType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)}},
-        &compileInfo, "Ascend950", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, kSkipTilingKeyCheck);
 }
@@ -797,7 +797,7 @@ TEST_F(MoeDistributeCombineArch35TilingTest, InvalidTpRankId)
          {"outDtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"commQuantMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"groupListType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
-        &compileInfo, "Ascend950", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_FAILED);
 }
@@ -838,7 +838,7 @@ TEST_F(MoeDistributeCombineArch35TilingTest, EpWorldSizeNotDivisibleBySharedRank
          {"outDtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"commQuantMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"groupListType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
-        &compileInfo, "Ascend950", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_FAILED);
 }
@@ -879,7 +879,7 @@ TEST_F(MoeDistributeCombineArch35TilingTest, MoeExpertNumIndivisible)
          {"outDtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"commQuantMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"groupListType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
-        &compileInfo, "Ascend950", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_FAILED);
 }
@@ -920,7 +920,7 @@ TEST_F(MoeDistributeCombineArch35TilingTest, KGreaterThanMoeExpertNum)
          {"outDtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"commQuantMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"groupListType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
-        &compileInfo, "Ascend950", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_FAILED);
 }
@@ -961,7 +961,7 @@ TEST_F(MoeDistributeCombineArch35TilingTest, InvalidGlobalBs)
          {"outDtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"commQuantMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"groupListType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
-        &compileInfo, "Ascend950", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_FAILED);
 }
@@ -1002,7 +1002,7 @@ TEST_F(MoeDistributeCombineArch35TilingTest, InvalidExpandXDim0)
          {"outDtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"commQuantMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"groupListType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
-        &compileInfo, "Ascend950", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_FAILED);
 }
@@ -1043,7 +1043,7 @@ TEST_F(MoeDistributeCombineArch35TilingTest, InvalidExpandIdxDim0)
          {"outDtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"commQuantMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"groupListType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
-        &compileInfo, "Ascend950", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_FAILED);
 }
@@ -1084,7 +1084,7 @@ TEST_F(MoeDistributeCombineArch35TilingTest, InvalidExpertScalesDim0)
          {"outDtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"commQuantMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"groupListType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
-        &compileInfo, "Ascend950", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_FAILED);
 }
@@ -1125,7 +1125,7 @@ TEST_F(MoeDistributeCombineArch35TilingTest, InvalidOutputXDim0)
          {"outDtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"commQuantMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"groupListType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
-        &compileInfo, "Ascend950", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_FAILED);
 }
