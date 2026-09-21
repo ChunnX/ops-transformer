@@ -2950,6 +2950,65 @@ def iterate_p_ds(p_l1_bit8, ds_l1_bit8, sdp_id, const_info, run_info, tensor_inf
         pl.insert(ds_l1_bit8, dpds_vec_bit8[:, :256], [const_info.sub_id * 16, 0])
 
 
+def load_k_for_dq(right_first, right_second, k_size_first, k_size_second, run_info, tensor_info):
+    k_l1_first = tensor_info.common_l1.next()
+    k_l1_second = tensor_info.common_l1.next()
+    tensor_info.common_l1_db.next()
+
+    pl.set_validshape(k_l1_first, [k_size_first, D_SIZE])
+    pl.set_validshape(k_l1_second, [k_size_second, D_SIZE])
+    if layout == 0 or layout == 2:  # BSND
+        pl.load(
+            k_l1_first,
+            tensor_info.tensor_k,
+            [
+                run_info.gm_batch_id,
+                run_info.kv_start + run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS,
+                run_info.n2o_idx,
+                0,
+            ],
+            order=[1, 3],
+        )
+        pl.load(
+            k_l1_second,
+            tensor_info.tensor_k,
+            [
+                run_info.gm_batch_id,
+                run_info.kv_start + run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS + TS,
+                run_info.n2o_idx,
+                0,
+            ],
+            order=[1, 3],
+        )
+    elif layout == 1:  # BNSD
+        pl.load(
+            k_l1_first,
+            tensor_info.tensor_k,
+            [
+                run_info.gm_batch_id,
+                run_info.n2o_idx,
+                run_info.kv_start + run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS,
+                0,
+            ],
+            order=[2, 3],
+        )
+        pl.load(
+            k_l1_second,
+            tensor_info.tensor_k,
+            [
+                run_info.gm_batch_id,
+                run_info.n2o_idx,
+                run_info.kv_start + run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS + TS,
+                0,
+            ],
+            order=[2, 3],
+        )
+    pl.set_validshape(right_first, [k_size_first, D_SIZE])
+    pl.set_validshape(right_second, [k_size_second, D_SIZE])
+    pl.move(right_first, k_l1_first, [0, 0])
+    pl.move(right_second, k_l1_second, [0, 0])
+
+
 def iterate_mm_ds_k(
     ds_l1_tensor0, ds_l1_tensor1, const_info, run_info, tensor_info, tmp_info
 ):
@@ -2977,7 +3036,9 @@ def iterate_mm_ds_k(
     pl.set_validshape(left_second, [128, 128])
     pl.move(left_first, ds_l1_tensor0, [0, 0])
     pl.move(left_second, ds_l1_tensor1, [0, 0])
-    if run_info.is_key_reuse:
+    if input_dtype == pl.DT_HF8:
+        load_k_for_dq(right_first, right_second, k_size_first, k_size_second, run_info, tensor_info)
+    elif run_info.is_key_reuse:
         k_l1_first = tensor_info.k_l1[run_info.s2_idx]
         k_l1_second = tensor_info.k_l1[run_info.s2_idx + 1]
         pl.set_validshape(right_first, [k_size_first, D_SIZE])
@@ -2985,62 +3046,7 @@ def iterate_mm_ds_k(
         pl.move(right_first, k_l1_first, [0, 0])
         pl.move(right_second, k_l1_second, [0, 0])
     else:
-        k_l1_first = tensor_info.common_l1.next()
-        k_l1_second = tensor_info.common_l1.next()
-        tensor_info.common_l1_db.next()
-
-        pl.set_validshape(k_l1_first, [k_size_first, D_SIZE])
-        pl.set_validshape(k_l1_second, [k_size_second, D_SIZE])
-        if layout == 0 or layout == 2:  # BSND
-            pl.load(
-                k_l1_first,
-                tensor_info.tensor_k,
-                [
-                    run_info.gm_batch_id,
-                    run_info.kv_start + run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS,
-                    run_info.n2o_idx,
-                    0,
-                ],
-                order=[1, 3],
-            )
-            pl.load(
-                k_l1_second,
-                tensor_info.tensor_k,
-                [
-                    run_info.gm_batch_id,
-                    run_info.kv_start + run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS + TS,
-                    run_info.n2o_idx,
-                    0,
-                ],
-                order=[1, 3],
-            )
-        elif layout == 1:  # BNSD
-            pl.load(
-                k_l1_first,
-                tensor_info.tensor_k,
-                [
-                    run_info.gm_batch_id,
-                    run_info.n2o_idx,
-                    run_info.kv_start + run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS,
-                    0,
-                ],
-                order=[2, 3],
-            )
-            pl.load(
-                k_l1_second,
-                tensor_info.tensor_k,
-                [
-                    run_info.gm_batch_id,
-                    run_info.n2o_idx,
-                    run_info.kv_start + run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS + TS,
-                    0,
-                ],
-                order=[2, 3],
-            )
-        pl.set_validshape(right_first, [k_size_first, D_SIZE])
-        pl.set_validshape(right_second, [k_size_second, D_SIZE])
-        pl.move(right_first, k_l1_first, [0, 0])
-        pl.move(right_second, k_l1_second, [0, 0])
+        load_k_for_dq(right_first, right_second, k_size_first, k_size_second, run_info, tensor_info)
     pl.set_validshape(left, [128, real_k])
     pl.set_validshape(right, [real_k, D_SIZE])
     if run_info.is_dq_fix_out:
@@ -4601,7 +4607,7 @@ def quant_flash_attn_grad(
             shape=[TS, TS],
             dtype=input_dtype,
             target_memory=pl.MemorySpace.Mat,
-            layout=pl.NZ,
+            layout=pl.ZN if input_dtype == pl.DT_HF8 else pl.NZ,
             compact=1,
         ),
         addrs=MA2,
@@ -4612,7 +4618,7 @@ def quant_flash_attn_grad(
             shape=[TS * 2, TS],
             dtype=input_dtype,
             target_memory=pl.MemorySpace.Mat,
-            layout=pl.NZ,
+            layout=pl.ZN if input_dtype == pl.DT_HF8 else pl.NZ,
             compact=1,
         ),
         addrs=MA2,
