@@ -71,7 +71,7 @@ private:
     int32_t useGather_;
     int32_t qGlobalOffset_;
     int32_t orderMethod_;
-    int32_t fastConcatB1_; // B==1 && Concat：row==val
+    int32_t fastConcatB1_; // B==1：row_map 与 order 无关（等价 row==val），可省 token/rowMap
 
     TBuf<TPosition::VECCALC> histBuf_;
     TBuf<TPosition::VECCALC> cursorBuf_;
@@ -135,7 +135,9 @@ __aicore__ inline void K2qCsrPipelineMc::Init(GM_ADDR q2k, GM_ADDR cuQ, GM_ADDR 
     useGather_ = tiling->useGather;
     qGlobalOffset_ = tiling->qGlobalOffset;
     orderMethod_ = tiling->orderMethod;
-    fastConcatB1_ = (B_ == 1 && orderMethod_ == 0) ? 1 : 0;
+    // B==1 时 Concat 与 RoundRobin 的 row_map 完全一致（level < rb ? level : -1），
+    // 且 token_batch 恒为 0，故两种 order 共用 B1 快路径。
+    fastConcatB1_ = (B_ == 1) ? 1 : 0;
     tileEdgesCap_ = (B_ == 1) ? kTileEdgesB1 : K2qCsrCommon::DEFAULT_TILE_EDGES;
     useQPingPong_ = (B_ == 1) ? 1 : 0;
 
@@ -167,8 +169,8 @@ __aicore__ inline void K2qCsrPipelineMc::Init(GM_ADDR q2k, GM_ADDR cuQ, GM_ADDR 
 
     pipe_->InitBuffer(histBuf_, K2qCsrCommon::Align32((totalRows_ > 0 ? totalRows_ : 1) * sizeof(int32_t)));
     pipe_->InitBuffer(cursorBuf_, K2qCsrCommon::Align32((totalRows_ > 0 ? totalRows_ : 1) * sizeof(int32_t)));
-    // B==1 时 bi 恒 0，token 缓冲缩到 1，避免 T 很大时占满 UB
-    int64_t tokenElems = (B_ == 1) ? 1 : (T_ > 0 ? T_ : 1);
+    // 快路径不读 token（bi 恒 0），缓冲缩到 1，避免 B==1 且 T 很大时占满 UB
+    int64_t tokenElems = (fastConcatB1_ != 0) ? 1 : (T_ > 0 ? T_ : 1);
     pipe_->InitBuffer(tokenBuf_, K2qCsrCommon::Align32(tokenElems * sizeof(int32_t)));
     if (cuQ != nullptr) {
         pipe_->InitBuffer(cuQBuf_, K2qCsrCommon::Align32((B_ + 1) * sizeof(int32_t)));
@@ -189,7 +191,7 @@ __aicore__ inline void K2qCsrPipelineMc::Init(GM_ADDR q2k, GM_ADDR cuQ, GM_ADDR 
     }
 }
 
-/** B==1 + Concat：row==val，无 token/rowMap；紧凑边循环降 scalar。 */
+/** B==1 快路径（Concat/RoundRobin 等价）：row==val，无 token/rowMap；紧凑边循环降 scalar。 */
 __aicore__ inline void K2qCsrPipelineMc::HistOneGroupHeadFastB1(int64_t g, int64_t hid)
 {
     int64_t q0 = g * qPerGroup_;
@@ -314,7 +316,7 @@ __aicore__ inline void K2qCsrPipelineMc::ProcessPhase1Hist()
     if (bid >= G_ || totalRows_ <= 0 || T_ <= 0) {
         return;
     }
-    if (B_ != 1) {
+    if (fastConcatB1_ == 0) {
         LocalTensor<int32_t> tokenLocal = tokenBuf_.Get<int32_t>();
         K2qCsrCommon::CopyInInt32(tokenLocal, tokenBatchGm_, T_);
     }
@@ -327,7 +329,7 @@ __aicore__ inline void K2qCsrPipelineMc::ProcessPhase1Hist()
     }
 }
 
-/** B==1 + Concat 热路径：qVal=qAbs，row=val，批量 MTE3。 */
+/** B==1 热路径（Concat/RoundRobin 等价）：qVal=qAbs，row=val，批量 MTE3。 */
 __aicore__ inline void K2qCsrPipelineMc::ScatterOneGroupHeadFastB1(int64_t g, int64_t hid)
 {
     int64_t q0 = g * qPerGroup_;
@@ -496,7 +498,7 @@ __aicore__ inline void K2qCsrPipelineMc::ProcessPhase3Scatter()
     if (bid >= G_ || totalRows_ <= 0 || T_ <= 0) {
         return;
     }
-    if (B_ != 1) {
+    if (fastConcatB1_ == 0) {
         LocalTensor<int32_t> tokenLocal = tokenBuf_.Get<int32_t>();
         K2qCsrCommon::CopyInInt32(tokenLocal, tokenBatchGm_, T_);
     }
