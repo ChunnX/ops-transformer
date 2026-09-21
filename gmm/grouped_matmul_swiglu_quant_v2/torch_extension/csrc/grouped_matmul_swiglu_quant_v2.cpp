@@ -94,16 +94,15 @@ int64_t InferLogicalN(const at::Tensor &weightScale)
     return weightScale.size(kDim2);
 }
 
-void CheckV3Args(const at::Tensor &x, const std::vector<at::Tensor> &weight,
-                 const std::vector<at::Tensor> &weightScale, const at::Tensor &xScale,
-                 const c10::optional<std::vector<at::Tensor>> &weightAssistMatrix,
+void CheckV3Args(const at::Tensor &x, const std::vector<at::Tensor> &weight, const std::vector<at::Tensor> &weightScale,
+                 const at::Tensor &xScale, const c10::optional<std::vector<at::Tensor>> &weightAssistMatrix,
                  const c10::optional<std::vector<at::Tensor>> &bias, const c10::optional<at::Tensor> &smoothScale,
                  const c10::optional<std::vector<int64_t>> &tuningConfig, const c10::optional<int64_t> &dequantMode,
                  const c10::optional<int64_t> &dequantDtype, const c10::optional<int64_t> &quantMode,
                  const c10::optional<int64_t> &groupListType, const c10::optional<int64_t> &xDtype,
                  const c10::optional<int64_t> &weightDtype, const c10::optional<int64_t> &weightScaleDtype,
-                 const c10::optional<int64_t> &xScaleDtype, const c10::optional<int64_t> &swigluMode,
-                 double clampLimit, const std::string &roundMode, int64_t scaleAlg, double dstTypeMax)
+                 const c10::optional<int64_t> &xScaleDtype, const c10::optional<int64_t> &swigluMode, double clampLimit,
+                 const std::string &roundMode, int64_t scaleAlg, double dstTypeMax)
 {
     CheckList(weight, "weight");
     CheckList(weightScale, "weight_scale");
@@ -119,17 +118,16 @@ void CheckV3Args(const at::Tensor &x, const std::vector<at::Tensor> &weight,
     TORCH_CHECK(xScale.scalar_type() == at::ScalarType::Char || xScale.scalar_type() == at::ScalarType::Byte,
                 "swiglu_mode=2 requires x_scale to use torch.int8 or torch.uint8 storage for "
                 "torch_npu.float8_e8m0fnu.");
-    TORCH_CHECK(weightScale[0].scalar_type() == at::ScalarType::Char ||
-                    weightScale[0].scalar_type() == at::ScalarType::Byte,
-                "swiglu_mode=2 requires weight_scale to use torch.int8 or torch.uint8 storage for "
-                "torch_npu.float8_e8m0fnu.");
+    TORCH_CHECK(
+        weightScale[0].scalar_type() == at::ScalarType::Char || weightScale[0].scalar_type() == at::ScalarType::Byte,
+        "swiglu_mode=2 requires weight_scale to use torch.int8 or torch.uint8 storage for "
+        "torch_npu.float8_e8m0fnu.");
     TORCH_CHECK(!weightAssistMatrix.has_value() || weightAssistMatrix->empty(),
                 "swiglu_mode=2 does not support weight_assist_matrix.");
     TORCH_CHECK(!bias.has_value() || bias->empty(), "swiglu_mode=2 does not support a non-empty bias TensorList.");
     TORCH_CHECK(!smoothScale.has_value() || !smoothScale->defined(), "swiglu_mode=2 does not support smooth_scale.");
     TORCH_CHECK(!tuningConfig.has_value() || tuningConfig->empty(), "swiglu_mode=2 does not support tuning_config.");
-    TORCH_CHECK(!dequantMode.has_value() || dequantMode.value() == 2,
-                "swiglu_mode=2 requires dequant_mode=2.");
+    TORCH_CHECK(!dequantMode.has_value() || dequantMode.value() == 2, "swiglu_mode=2 requires dequant_mode=2.");
     // The public Torch API accepts torch.float32, whose ScalarType value is
     // different from the ACL/GE DT_FLOAT value (0).  The dispatcher schema
     // also historically used 0 as its default.  Accept both representations
@@ -137,8 +135,7 @@ void CheckV3Args(const at::Tensor &x, const std::vector<at::Tensor> &weight,
     TORCH_CHECK(!dequantDtype.has_value() || dequantDtype.value() == static_cast<int64_t>(ACL_FLOAT) ||
                     dequantDtype.value() == static_cast<int64_t>(at::ScalarType::Float),
                 "swiglu_mode=2 requires dequant_dtype=torch.float32.");
-    TORCH_CHECK(!quantMode.has_value() || quantMode.value() == 2,
-                "swiglu_mode=2 requires quant_mode=2.");
+    TORCH_CHECK(!quantMode.has_value() || quantMode.value() == 2, "swiglu_mode=2 requires quant_mode=2.");
     TORCH_CHECK(!groupListType.has_value() || groupListType.value() == 0 || groupListType.value() == 1,
                 "group_list_type only supports 0 or 1.");
     TORCH_CHECK(!xDtype.has_value() || GetAclDtypeFromValue(xDtype.value()) == ACL_FLOAT8_E4M3FN,
@@ -161,20 +158,20 @@ std::tuple<at::Tensor, at::Tensor> grouped_matmul_swiglu_quant_v2(
     const at::Tensor &x, const std::vector<at::Tensor> &weight, const std::vector<at::Tensor> &weightScale,
     const at::Tensor &xScale, const at::Tensor &groupList, const c10::optional<at::Tensor> &smoothScale,
     const c10::optional<std::vector<at::Tensor>> &weightAssistMatrix,
-    const c10::optional<std::vector<at::Tensor>> &bias,
-    c10::optional<int64_t> dequantMode, c10::optional<int64_t> dequantDtype, c10::optional<int64_t> quantMode,
-    c10::optional<int64_t> quantDtype, c10::optional<int64_t> groupListType,
-    const c10::optional<std::vector<int64_t>> &tuningConfig, c10::optional<int64_t> xDtype,
-    c10::optional<int64_t> weightDtype, c10::optional<int64_t> weightScaleDtype, c10::optional<int64_t> xScaleDtype,
-    c10::optional<int64_t> swigluMode, c10::optional<double> clampLimit, c10::optional<double> gluAlpha,
-    c10::optional<double> gluBias, const std::string &roundMode, int64_t scaleAlg, double dstTypeMax)
+    const c10::optional<std::vector<at::Tensor>> &bias, c10::optional<int64_t> dequantMode,
+    c10::optional<int64_t> dequantDtype, c10::optional<int64_t> quantMode, c10::optional<int64_t> quantDtype,
+    c10::optional<int64_t> groupListType, const c10::optional<std::vector<int64_t>> &tuningConfig,
+    c10::optional<int64_t> xDtype, c10::optional<int64_t> weightDtype, c10::optional<int64_t> weightScaleDtype,
+    c10::optional<int64_t> xScaleDtype, c10::optional<int64_t> swigluMode, c10::optional<double> clampLimit,
+    c10::optional<double> gluAlpha, c10::optional<double> gluBias, const std::string &roundMode, int64_t scaleAlg,
+    double dstTypeMax)
 {
     const double clampLimitValue = clampLimit.value_or(kDefaultClampLimit);
     const double gluAlphaValue = gluAlpha.value_or(kDefaultGluAlpha);
     const double gluBiasValue = gluBias.value_or(kDefaultGluBias);
     CheckV3Args(x, weight, weightScale, xScale, weightAssistMatrix, bias, smoothScale, tuningConfig, dequantMode,
-                dequantDtype, quantMode, groupListType, xDtype, weightDtype, weightScaleDtype, xScaleDtype,
-                swigluMode, clampLimitValue, roundMode, scaleAlg, dstTypeMax);
+                dequantDtype, quantMode, groupListType, xDtype, weightDtype, weightScaleDtype, xScaleDtype, swigluMode,
+                clampLimitValue, roundMode, scaleAlg, dstTypeMax);
     TORCH_CHECK(!quantDtype.has_value() || quantDtype.value() == 1 ||
                     GetAclDtypeFromValue(quantDtype.value()) == ACL_FLOAT8_E4M3FN,
                 "swiglu_mode=2 only supports torch.float8_e4m3fn output.");
@@ -193,8 +190,7 @@ std::tuple<at::Tensor, at::Tensor> grouped_matmul_swiglu_quant_v2(
         // deterministic.
         // ZerosLike does not support float8_e8m0fnu. Allocate byte storage,
         // initialize it, then reinterpret the one-byte elements as E8M0.
-        outputScale = at::zeros({m, CeilDiv(n / 2, kMxGroupSize), 2},
-                                x.options().dtype(at::ScalarType::Byte))
+        outputScale = at::zeros({m, CeilDiv(n / 2, kMxGroupSize), 2}, x.options().dtype(at::ScalarType::Byte))
                           .view(at::ScalarType::Float8_e8m0fnu);
     }
 
@@ -236,10 +232,10 @@ std::tuple<at::Tensor, at::Tensor> grouped_matmul_swiglu_quant_v2(
     int64_t scaleAlgValue = scaleAlg;
     double dstTypeMaxArg = dstTypeMax;
 
-    ACLNN_CMD(aclnnGroupedMatmulSwigluQuantWeightNzV3, xWrapper, weightWrapper, weightScaleWrapper, assistRef,
-              biasRef, xScaleWrapper, smoothScaleRef, groupList, dequantModeValue, dequantDtypeValue,
-              quantModeValue, groupListTypeValue, tuningConfigRef, swigluModeValue, clampLimitArg,
-              gluAlphaArg, gluBiasArg, roundModePtr, scaleAlgValue, dstTypeMaxArg, outputWrapper, outputScaleWrapper);
+    ACLNN_CMD(aclnnGroupedMatmulSwigluQuantWeightNzV3, xWrapper, weightWrapper, weightScaleWrapper, assistRef, biasRef,
+              xScaleWrapper, smoothScaleRef, groupList, dequantModeValue, dequantDtypeValue, quantModeValue,
+              groupListTypeValue, tuningConfigRef, swigluModeValue, clampLimitArg, gluAlphaArg, gluBiasArg,
+              roundModePtr, scaleAlgValue, dstTypeMaxArg, outputWrapper, outputScaleWrapper);
     return std::tie(output, outputScale);
 }
 

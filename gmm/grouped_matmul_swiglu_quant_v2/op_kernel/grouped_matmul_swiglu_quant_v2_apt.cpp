@@ -129,19 +129,17 @@ __global__ __aicore__ void grouped_matmul_swiglu_quant_v2(GM_ADDR x, GM_ADDR xSc
                     workspace, tiling);
             }
         } else if constexpr (QUANT_B_TRANS == GMM_SWIGLU_QUANT_NO_TRANS) {
-            GroupedMatmulSwigluQuantV3::GmmSwigluAswtV3<Cgmct::Gemm::layout::RowMajor,
-                                                        Cgmct::Gemm::layout::Nz>(
+            GroupedMatmulSwigluQuantV3::GmmSwigluAswtV3<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz>(
                 x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
                 tiling);
         } else {
-            GroupedMatmulSwigluQuantV3::GmmSwigluAswtV3<Cgmct::Gemm::layout::RowMajor,
-                                                        Cgmct::Gemm::layout::Zn>(
+            GroupedMatmulSwigluQuantV3::GmmSwigluAswtV3<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn>(
                 x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
                 tiling);
         }
     } else
 #endif
-    if constexpr (weightFormat == CubeFormat::NZ && isMxFp4Input) {
+        if constexpr (weightFormat == CubeFormat::NZ && isMxFp4Input) {
         if (QUANT_B_TRANS == GMM_SWIGLU_QUANT_NO_TRANS && QUANT_A_TRANS == GMM_SWIGLU_QUANT_NO_TRANS) {
             GmmSwigluMxFp4WeightNz<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz>(
                 x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
