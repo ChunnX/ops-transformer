@@ -76,6 +76,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
     LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
     const uint64_t outBase = (uint64_t)token * N_ * D_ + tOff;
+    const uint32_t headBegin = laneId_ * 2U;
 
     if (quantizeInput) {
         for (uint32_t n = 0; n < N_MAX; n += 2U) {
@@ -85,17 +86,16 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         PipeBarrier<PIPE_V>();
     }
     if (!USE_RMS_MID || writeOutput) {
-        for (uint32_t n = 0; n < N_MAX; n += 2U) {
-            MhcSandwichRegBase::CastB16PairToFp32(x2[n * dimTile_], x2[(n + 1U) * dimTile_],
-                                                  x2Cache[n * D_ + tOff], x2Cache[(n + 1U) * D_ + tOff], tD);
-        }
+        // 每个lane的R4/R5只读取自己负责的逻辑half，避免冗余恢复另一半head。
+        MhcSandwichRegBase::CastB16PairToFp32(x2[headBegin * dimTile_], x2[(headBegin + 1U) * dimTile_],
+                                              x2Cache[headBegin * D_ + tOff],
+                                              x2Cache[(headBegin + 1U) * D_ + tOff], tD);
         PipeBarrier<PIPE_V>();
     }
 
     if (writeOutput) {
         SetFlag<HardEvent::V_MTE3>(evtVtoMte3_);
         WaitFlag<HardEvent::V_MTE3>(evtVtoMte3_);
-        const uint32_t headBegin = laneId_ * 2U;
         for (uint32_t n = headBegin; n < headBegin + 2U; ++n) {
             DataCopy(x2OutGm_[outBase + (uint64_t)n * D_], x2Cache[n * D_ + tOff], tD);
         }
