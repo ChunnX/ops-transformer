@@ -134,7 +134,7 @@ public:
                                        uint64_t keyBnStride)
     {
         if constexpr (PAGED_CACHE_FLAG_) {
-            uint32_t blockTableId = gBlockTable.GetValue(nowNIdx);
+            uint64_t blockTableId = gBlockTable.GetValue(nowNIdx);
             if (keyBnStride != 0) {
                 if constexpr (BNBD_FLAG) {
                     // BNBD: token stride within block is embed
