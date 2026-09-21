@@ -59,7 +59,8 @@ public:
         coresPerToken_ = td.coresPerToken;
 
         const uint32_t aivIdx = GetBlockIdx();
-        // 纯AIV任务按blockDim启动；双路模板把相邻两个AIV固定映射到同一token。
+        // MIX_AIC_1_2在A5上按每个物理AI Core展开两个连续AIV。
+        // 该映射与同平台算子保持一致，只在双sibling模板中使用。
         laneId_ = DUAL_SIBLING ? (aivIdx & 1U) : 0U;
         const uint32_t blockIdx = DUAL_SIBLING ? (aivIdx >> 1U) : aivIdx;
         if (blockIdx >= usedCoreNum_) {
