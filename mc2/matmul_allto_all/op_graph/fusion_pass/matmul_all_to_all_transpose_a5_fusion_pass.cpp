@@ -420,7 +420,7 @@ bool MatmulAllToAllTransposeA5FusionPass::MeetRequirements(const std::unique_ptr
         return false;
     }
 
-    // 是否ascend950
+    // 是否A5平台(NpuArch DAV_3510)
     if (!IsTargetPlatformNpuArch(FUSION_PASS_NAME.c_str(), NPUARCH_A5)) {
         OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Check target platform fail!");
         return false;
