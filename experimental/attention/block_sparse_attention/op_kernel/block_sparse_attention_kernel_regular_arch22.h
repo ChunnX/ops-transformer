@@ -508,8 +508,8 @@ public:
             uint64_t effRowsBase = 0;
             int64_t gatheredKvSeqlen = 0;
             if (enableEffRows) {
-                // A2/A3 attenMask is shared across batch and heads: [maxBlockNum, 2].
-                effRowsBase = 0;
+                // A2/A3 attenMask layout: [batch, numHeads, maxBlockNum, 2].
+                effRowsBase = (static_cast<uint64_t>(curBatch) * qHeads + qHeadIdx) * maxBlockNumEff * 2;
                 for (uint32_t i = 0; i < curSelectNum; ++i) {
                     uint32_t oriYBlockIdx =
                         static_cast<uint32_t>(gSelectIdx.GetValue(curSelectIdx * maxKvBlockNum + i));
