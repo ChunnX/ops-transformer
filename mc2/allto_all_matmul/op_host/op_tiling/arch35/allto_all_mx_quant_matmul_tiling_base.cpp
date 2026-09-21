@@ -503,7 +503,7 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::DoOpTiling()
 ge::graphStatus AllToAllMxQuantMatmulTilingBase::DoMxQuantMMTiling()
 {
     if (usingApaceImpl_) {
-        // HCOMM路径：output-off保持原有行为，output-on由AIV完成可选输出重排。
+        // HCOMM路径：可根据output-off/output-on选择是否由AIV完成输出重排。
         return DoHcommMxQuantMMTiling();
     }
     // arch35主线路径：不满足HCOMM启用条件时使用DequantBmm tiling。
