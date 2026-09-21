@@ -723,14 +723,24 @@ static bool CheckXAndExpertIdShapes(const char *nodeName, const int32_t xDim0, c
 }
 
 static bool CheckExpertRankTableShape(const char *nodeName, const int32_t expertRankTableDim0,
-                                      const int32_t expertRankTableDim1, const int64_t moeExpertNum)
+                                      const int32_t expertRankTableDim1, const int64_t moeExpertNum,
+                                      const AttentionToFFNTilingConfig &config)
 {
-    OP_TILING_CHECK(
-        expertRankTableDim0 != 1,
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "expert_rank_table",
-                                              (std::string("[") + std::to_string(expertRankTableDim0) + "]").c_str(),
-                                              "Dim0 of expert_rank_table must be 1"),
-        return false);
+    if (config.allowMultiLayer) {
+        OP_TILING_CHECK(
+            expertRankTableDim0 < 1,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                nodeName, "expert_rank_table", (std::string("[") + std::to_string(expertRankTableDim0) + "]").c_str(),
+                "Dim0 of expert_rank_table must greater than 0"),
+            return false);
+    } else {
+        OP_TILING_CHECK(
+            expertRankTableDim0 != 1,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                nodeName, "expert_rank_table", (std::string("[") + std::to_string(expertRankTableDim0) + "]").c_str(),
+                "Dim0 of expert_rank_table must be 1"),
+            return false);
+    }
     OP_TILING_CHECK(
         (expertRankTableDim1 < moeExpertNum) || (expertRankTableDim1 > moeExpertNum + SHARED_EXPERT_MAX_NUM),
         OP_LOGE_FOR_INVALID_VALUE(ATTN_FFN_INNER_DEBUG, "expert_rank_table",
@@ -768,9 +778,10 @@ static bool CheckTensorShapeAndSetTinglingData(const gert::TilingContext *contex
 
     OP_TILING_CHECK(!CheckXAndExpertIdShapes(nodeName, xDim0, xDim1, xDim2, sessionIdDim0, microBatchIdDim0,
                                              layerIdDim0, expertIdsDim0, expertIdsDim1, expertIdsDim2, moeExpertNum),
-                    static_cast<void>(0), return false);
-    OP_TILING_CHECK(!CheckExpertRankTableShape(nodeName, expertRankTableDim0, expertRankTableDim1, moeExpertNum),
-                    static_cast<void>(0), return false);
+                    OP_LOGE(nodeName, "Check x and expertId shape failed!"), return false);
+    OP_TILING_CHECK(
+        !CheckExpertRankTableShape(nodeName, expertRankTableDim0, expertRankTableDim1, moeExpertNum, config),
+        OP_LOGE(nodeName, "Check expertRankTable shape failed!"), return false);
 
     if (isScales) {
         const gert::StorageShape *scalesStorageShape = context->GetOptionalInputShape(config.scalesIndex);
