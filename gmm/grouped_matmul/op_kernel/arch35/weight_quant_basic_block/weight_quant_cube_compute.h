@@ -77,6 +77,7 @@ public:
     __aicore__ inline void EndSync();
     __aicore__ inline void ClearAFullLoadFlag();
     __aicore__ inline void PrefetchA(uint64_t aPrefetchSize, uint64_t xSizeLimit);
+    __aicore__ inline void FillL1WithZero(LocalTensor<uint32_t> l1Tensor, uint64_t blockCount);
 
 private:
     __aicore__ inline void PrefetchA(uint64_t aPrefetchSize, uint64_t aGmSize, const LocalTensor<xType> &perloadBuffer);
@@ -270,7 +271,7 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::CopyAGmToL1SingleBuffer(const B
 }
 
 WQBMM_CUBE_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::FillWithZero(LocalTensor<xType> l1Tensor, uint64_t blockCount)
+__aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::FillL1WithZero(LocalTensor<xType> l1Tensor, uint64_t blockCount)
 {
     AscendC::InitConstValueParams<T> initParams;
     initParams.repeatTimes = 1;
