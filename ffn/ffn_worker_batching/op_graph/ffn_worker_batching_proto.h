@@ -44,27 +44,37 @@ namespace ge {
  * @li token_dtype: A scalar, support FP16, BF16, quantization type of the input tokens.
  * @li need_schedule: A scalar, whether the op should be scheduled.
  * @li layer_num: A scalar, the number of layers.
+ * @li sync_flag: A bool scalar, default false. On Ascend950 with need_schedule=1,
+ *                false waits for all sessions; true consumes the ready sessions.
  *
  * @par Restrictions:
+ * token_dtype 3/4/5 and E8M0 scale are supported only on Ascend950.
+ * Each 32 token elements share one scale; dynamic_scale shape is [Y, ceil(H/32)].
+ * FP4 requires even H.
  * Warning: THIS FUNCTION IS EXPERIMENTAL. Please do not use.
  */
 #ifndef OPS_PROTO_DEF_FFNWORKERBATCHING
 #define OPS_PROTO_DEF_FFNWORKERBATCHING
+// 图原型描述逻辑类型，不描述 Torch 为传输 FP4/E8M0 而使用的 uint8 view。
+// 因此这里声明 FP4/E8M0，不能为迁就某个图后端把 y/scale 改成 UINT8：那会使
+// GE 的 dtype 推导、二进制选择与 ACLNN 的逻辑元素大小不一致。uint8 视图仅存在
+// 于 Torch 返回端，GE converter 对尚未支持的视图组合显式拒绝。
 REG_OP(FfnWorkerBatching)
     .INPUT(schedule_context, TensorType({DT_INT8}))
-    .OUTPUT(y, TensorType({DT_INT8, DT_FLOAT16, DT_BFLOAT16}))
+    .OUTPUT(y, TensorType({DT_INT8, DT_FLOAT16, DT_BFLOAT16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT4_E2M1}))
     .OUTPUT(group_list, TensorType({DT_INT64}))
     .OUTPUT(session_ids, TensorType({DT_INT32}))
     .OUTPUT(micro_batch_ids, TensorType({DT_INT32}))
     .OUTPUT(token_ids, TensorType({DT_INT32}))
     .OUTPUT(expert_offsets, TensorType({DT_INT32}))
-    .OUTPUT(dynamic_scale, TensorType({DT_FLOAT32}))
+    .OUTPUT(dynamic_scale, TensorType({DT_FLOAT32, DT_FLOAT8_E8M0}))
     .OUTPUT(actual_token_num, TensorType({DT_INT64}))
     .REQUIRED_ATTR(expert_num, Int)
     .REQUIRED_ATTR(max_out_shape, ListInt)
     .ATTR(token_dtype, Int, 0)
     .ATTR(need_schedule, Int, 0)
     .ATTR(layer_num, Int, 0)
+    .ATTR(sync_flag, Bool, false)
     .OP_END_FACTORY_REG(FfnWorkerBatching)
 #endif // OPS_PROTO_DEF_FFNWORKERBATCHING
 

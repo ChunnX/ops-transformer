@@ -9,7 +9,11 @@
 # -----------------------------------------------------------------------------------------------------------
 
 if (BUILD_OPEN_PROJECT)
-    target_sources(op_host_aclnn PRIVATE
+    # sync_flag 加入 OpDef 后，自动生成器的参数列表随之增长。若仍生成公共 V1，
+    # 会以同名 C 符号覆盖旧签名。这里只生成 aclnnInner，由 op_api 中手写 V1/V2
+    # 适配器分别补 false / 传入 syncFlag；OPP 内部仍只有 FfnWorkerBatching 一个算子。
+    # Generate only the internal ABI; public V1/V2 signatures are maintained in op_api.
+    target_sources(op_host_aclnnInner PRIVATE
         ffn_worker_batching_def.cpp
     )
     if (BUILD_OPS_RTY_KERNEL) # 回黄kernel
@@ -31,8 +35,8 @@ if (BUILD_OPEN_PROJECT)
                             -cce-aicore-dcci-before-kernel-end=false
             )
         endif()
-        add_modules_sources(OPTYPE ffn_worker_batching ACLNNTYPE aclnn)
+        add_modules_sources(OPTYPE ffn_worker_batching ACLNNTYPE aclnn_inner)
     endif()
 else() # 回黄host
-    add_modules_sources(OPTYPE ffn_worker_batching ACLNNTYPE aclnn)  
+    add_modules_sources(OPTYPE ffn_worker_batching ACLNNTYPE aclnn_inner)
 endif()
