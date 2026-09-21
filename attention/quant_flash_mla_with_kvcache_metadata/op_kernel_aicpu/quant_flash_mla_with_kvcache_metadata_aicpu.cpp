@@ -41,10 +41,10 @@ bool QuantFlashMlaWithKvcacheMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     sequsedQ_ = ctx.Input(static_cast<uint32_t>(ParamId::sequsedQ));
     metaData_ = ctx.Output(static_cast<uint32_t>(ParamId::metaData));
 
-    bool requiredAttrs = GetAttrValue(ctx, "num_heads_q", numHeadsQ_) && GetAttrValue(ctx, "num_heads_kv", numHeadsKv_) &&
-                         GetAttrValue(ctx, "soc_version", socVersion_) &&
-                         GetAttrValue(ctx, "aic_core_num", aicCoreNum_) &&
-                         GetAttrValue(ctx, "aiv_core_num", aivCoreNum_);
+    bool requiredAttrs =
+        GetAttrValue(ctx, "num_heads_q", numHeadsQ_) && GetAttrValue(ctx, "num_heads_kv", numHeadsKv_) &&
+        GetAttrValue(ctx, "soc_version", socVersion_) && GetAttrValue(ctx, "aic_core_num", aicCoreNum_) &&
+        GetAttrValue(ctx, "aiv_core_num", aivCoreNum_);
     if (!requiredAttrs) {
         return false;
     }
@@ -194,18 +194,18 @@ bool QuantFlashMlaWithKvcacheMetadataCpuKernel::ParamsInit()
     // KV cache为PA布局, 分核侧统一按BSND处理
     baseInfo.layoutKv = ConvertToLayout("BSND");
     // MLA量化场景: quantMode 1=FP8_E4M3, 0=HIFLOAT8, 按量化模式设置分核代价估算的数据类型(均为1字节)
-    load_balance::DataType quantDtype = (quantMode_ == 1) ? load_balance::DataType::FP8
-                                        : (quantMode_ == 0) ? load_balance::DataType::HIFP8
-                                        : load_balance::DataType::INT8;
+    load_balance::DataType quantDtype = (quantMode_ == 1) ? load_balance::DataType::FP8 :
+                                        (quantMode_ == 0) ? load_balance::DataType::HIFP8 :
+                                                            load_balance::DataType::INT8;
     baseInfo.queryType = quantDtype;
     baseInfo.kvType = quantDtype;
 
-    // MLA固定切分: SOuter=32, SInner=128 (与FIA MLA tiling保持一致)
-    s2BaseSize_ = NUM_128; // SInner
+    // MLA固定切分: SOuter=32, SInner=256 (与QMLA kernel保持一致)
+    s2BaseSize_ = 256U;                                // SInner
     mBaseSize_ = NUM_32 * (aivCoreNum_ / aicCoreNum_); // SOuter * cvRatio
     param.mBaseSize = mBaseSize_;
     param.s2BaseSize = s2BaseSize_;
-    param.l2Byte = 96*1024*1024;
+    param.l2Byte = 96 * 1024 * 1024;
     // param.fdTolerance = 300;
     param.fdOn = true;
     // MLA的M轴为GS1合轴(n2=1, g=numHeadsQ), 与FA kernel的M轴遍历方式一致

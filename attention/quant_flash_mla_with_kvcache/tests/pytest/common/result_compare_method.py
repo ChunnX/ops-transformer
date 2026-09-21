@@ -279,11 +279,74 @@ def check_result(expect, npu_result):
     if result == "Failed":
         display_error_output_torch(real_data, expect_data, err_idx, err_diff)
         logger.info("Total error count: %d / %d", int(err_idx.numel()), split_count)
-        logger.info("Real NaN count: %d, Inf count: %d",
-                     int(torch.isnan(real_float).sum().item()),
-                     int(torch.isinf(real_float).sum().item()))
-        logger.info("Expect NaN count: %d, Inf count: %d",
-                     int(torch.isnan(expect_float).sum().item()),
-                     int(torch.isinf(expect_float).sum().item()))
+        logger.info(
+            "Real NaN count: %d, Inf count: %d",
+            int(torch.isnan(real_float).sum().item()),
+            int(torch.isinf(real_float).sum().item()),
+        )
+        logger.info(
+            "Expect NaN count: %d, Inf count: %d",
+            int(torch.isnan(expect_float).sum().item()),
+            int(torch.isinf(expect_float).sum().item()),
+        )
 
     return result, fulfill_percent, max_error
+
+
+def check_result_device(expect, actual, chunk_size=4 * 1024 * 1024):
+    """Compare in bounded chunks on actual.device; transfer only scalar statistics.
+
+    Preserve QMLA's existing BF16/FP32 tolerances, 99.5% pass rate and maximum
+    error threshold. NaNs and mismatched infinities always fail.
+    """
+    if expect.shape != actual.shape:
+        logger.error(
+            "Shape mismatch: expected=%s actual=%s", expect.shape, actual.shape
+        )
+        return "Failed", 0.0, float("inf")
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be positive")
+    rtol, atol = (
+        (0.0078125, 0.0001) if actual.dtype == torch.bfloat16 else (0.005, 0.000025)
+    )
+    expected = expect.detach().reshape(-1)
+    observed = actual.detach().reshape(-1)
+    bad_count, max_error, invalid = 0, 0.0, False
+    for start in range(0, observed.numel(), chunk_size):
+        real = observed[start : start + chunk_size].float()
+        ref = expected[start : start + chunk_size].to(
+            device=actual.device, dtype=torch.float32
+        )
+        finite = torch.isfinite(real) & torch.isfinite(ref)
+        invalid |= bool(
+            (
+                torch.isnan(real)
+                | torch.isnan(ref)
+                | ((torch.isinf(real) | torch.isinf(ref)) & (real != ref))
+            )
+            .any()
+            .item()
+        )
+        close = torch.isclose(real, ref, rtol=rtol, atol=atol, equal_nan=False)
+        bad = ~close
+        bad_count += int(bad.sum().item())
+        denom = (
+            torch.maximum(real.abs(), ref.abs()).clamp_min((1.0 / (1 << 14)) / 0.005)
+            + _EPS
+        )
+        errors = torch.where(bad & finite, (real - ref).abs() / denom, 0.0)
+        max_error = max(max_error, float(errors.max().item()))
+    count = observed.numel()
+    percent = 100.0 * (count - bad_count) / count if count else 100.0
+    status = "Pass" if percent >= 99.5 and max_error < 10 and not invalid else "Failed"
+    logger.info(
+        "[Compare] device=%s count=%d bad=%d pass=%.6f%% max_error=%g invalid=%s result=%s",
+        actual.device,
+        count,
+        bad_count,
+        percent,
+        max_error,
+        invalid,
+        status,
+    )
+    return status, percent, max_error

@@ -1,10 +1,10 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms of
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
@@ -63,8 +63,8 @@ void QuantFlashMlaWithKvcacheTilingFp8Impl::CalcScheduleMode()
 
 ge::graphStatus QuantFlashMlaWithKvcacheTilingFp8Impl::DoOpTiling()
 {
-    OP_CHECK_IF(SetPlatMemoryInfo() != ge::GRAPH_SUCCESS,
-                OP_LOGE(qmlaInfo_->opName, "Set plat memory info fail."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(SetPlatMemoryInfo() != ge::GRAPH_SUCCESS, OP_LOGE(qmlaInfo_->opName, "Set plat memory info fail."),
+                return ge::GRAPH_FAILED);
 
     InitImplParam();
     FillTiling();
@@ -108,21 +108,18 @@ ge::graphStatus QuantFlashMlaWithKvcacheTilingFp8Impl::SetPlatMemoryInfo()
 void QuantFlashMlaWithKvcacheTilingFp8Impl::InitImplParam()
 {
     const gert::Tensor *cuSeqLenQ = qmlaInfo_->opParamInfo.cuSeqlensQ.tensor;
-    uint32_t cuSeqLenQDims = (cuSeqLenQ != nullptr && cuSeqLenQ->GetShapeSize() > 0)
-                                 ? static_cast<uint32_t>(cuSeqLenQ->GetShapeSize())
-                                 : 0U;
-    cuSeqLenQFlag_ =
-        !((cuSeqLenQDims == 0) || (cuSeqLenQ == nullptr) || (cuSeqLenQ->GetData<int32_t>() == nullptr));
+    uint32_t cuSeqLenQDims =
+        (cuSeqLenQ != nullptr && cuSeqLenQ->GetShapeSize() > 0) ? static_cast<uint32_t>(cuSeqLenQ->GetShapeSize()) : 0U;
+    cuSeqLenQFlag_ = !((cuSeqLenQDims == 0) || (cuSeqLenQ == nullptr) || (cuSeqLenQ->GetData<int32_t>() == nullptr));
 
     const gert::Tensor *seqUsedQ = qmlaInfo_->opParamInfo.sequsedQ.tensor;
-    uint32_t seqUsedQDims = (seqUsedQ != nullptr && seqUsedQ->GetShapeSize() > 0)
-                                ? static_cast<uint32_t>(seqUsedQ->GetShapeSize())
-                                : 0U;
+    uint32_t seqUsedQDims =
+        (seqUsedQ != nullptr && seqUsedQ->GetShapeSize() > 0) ? static_cast<uint32_t>(seqUsedQ->GetShapeSize()) : 0U;
     seqUsedQFlag_ = !((seqUsedQDims == 0) || (seqUsedQ == nullptr) || (seqUsedQ->GetData<int32_t>() == nullptr));
 
     // MLA固定切分
     sOuterFactor_ = MLA_SOUTER_32;
-    sInnerFactor_ = MLA_SINNER_128;
+    sInnerFactor_ = 256U;
     OP_LOGI(qmlaInfo_->opName, "MLA Souter:%u SInner:%u", sOuterFactor_, sInnerFactor_);
 
     CalcNumBlocks(platformInfo_.aicNum);
@@ -160,8 +157,8 @@ void QuantFlashMlaWithKvcacheTilingFp8Impl::UpdateTilingKeyLayout()
 
 void QuantFlashMlaWithKvcacheTilingFp8Impl::UpdateTilingKeyConfig()
 {
-    // MLA FP8 固定 config: S1Aligned64(M=64) S2Aligned128 DAligned576 DVAligned512
-    tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned128_DAligned576_DVAligned512;
+    // MLA FP8 固定 config: S1Aligned64(M=64) S2Aligned256 DAligned576 DVAligned512
+    tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned576_DVAligned512;
 }
 
 void QuantFlashMlaWithKvcacheTilingFp8Impl::UpdateTilingKeyKvLayout()
@@ -282,9 +279,8 @@ void QuantFlashMlaWithKvcacheTilingFp8Impl::SetQmlaTilingData()
     tilingData_.pageAttentionParams.maxBlockNumPerBatch = static_cast<uint32_t>(qmlaInfo_->maxBlockNumPerBatch);
 
     int64_t outSize = qmlaInfo_->opParamInfo.attnOut.shape->GetStorageShape().GetShapeSize();
-    int64_t lseSize = qmlaInfo_->returnSoftmaxLse
-                          ? qmlaInfo_->opParamInfo.softmaxLse.shape->GetStorageShape().GetShapeSize()
-                          : 0;
+    int64_t lseSize =
+        qmlaInfo_->returnSoftmaxLse ? qmlaInfo_->opParamInfo.softmaxLse.shape->GetStorageShape().GetShapeSize() : 0;
     uint32_t singleCoreSize = (outSize + platformInfo_.aivNum - 1) / (platformInfo_.aivNum);
     tilingData_.emptyTensorParams.singleCoreSize = singleCoreSize;
     tilingData_.emptyTensorParams.totalOutputSize = static_cast<uint64_t>(std::max(outSize, static_cast<int64_t>(0)));
@@ -308,8 +304,7 @@ bool QuantFlashMlaWithKvcacheTilingFp8Impl::CheckNeedInitOutput() const
     return false;
 }
 
-ge::graphStatus QuantFlashMlaWithKvcacheTilingFp8Impl::SetTilingData(
-    QuantFlashMlaWithKvcacheTilingData &tilingData)
+ge::graphStatus QuantFlashMlaWithKvcacheTilingFp8Impl::SetTilingData(QuantFlashMlaWithKvcacheTilingData &tilingData)
 {
     QuantFlashMlaWithKvcacheTilingData *tiling = context_->GetTilingData<QuantFlashMlaWithKvcacheTilingData>();
     OP_CHECK_IF(tiling == nullptr, OP_LOGE(qmlaInfo_->opName, "The tiling data is nullptr"), return ge::GRAPH_FAILED);

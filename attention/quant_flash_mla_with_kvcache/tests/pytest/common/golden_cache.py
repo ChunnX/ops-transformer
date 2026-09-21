@@ -32,17 +32,37 @@ def _path(case_name, suffix, cache_dir=None):
     return os.path.join(d, f"{case_name}_{suffix}.pt")
 
 
+def _to_device(value, device):
+    """Stage cache I/O without changing the tensors used for computation.
+
+    torch_npu cannot pickle FP8 device storage in this environment. Save CPU
+    storage and transfer after loading, keeping FP8 values unchanged.
+    """
+    if isinstance(value, torch.Tensor):
+        return value.detach().to(device=device)
+    if isinstance(value, dict):
+        return {key: _to_device(item, device) for key, item in value.items()}
+    if isinstance(value, (tuple, list)):
+        return type(value)(_to_device(item, device) for item in value)
+    return value
+
+
+def _load(path, device):
+    data = torch.load(path, weights_only=False, map_location="cpu")
+    return _to_device(data, device) if device is not None else data
+
+
 def save_input(case_name, data_dict, cache_dir=None):
     path = _path(case_name, "input", cache_dir)
-    torch.save(data_dict, path)
+    torch.save(_to_device(data_dict, "cpu"), path)
     logger.info("[CACHE] save input → %s", path)
 
 
-def load_input(case_name, cache_dir=None):
+def load_input(case_name, cache_dir=None, device=None):
     path = _path(case_name, "input", cache_dir)
     if not os.path.exists(path):
         raise FileNotFoundError(f"No cached input: {path}")
-    data = torch.load(path, weights_only=False)
+    data = _load(path, device)
     logger.info("[CACHE] load input ← %s", path)
     return (
         data["q_fp8"],
@@ -66,15 +86,15 @@ def has_input(case_name, cache_dir=None):
 
 def save_cpu_output(case_name, cpu_out, cpu_lse, cache_dir=None):
     path = _path(case_name, "cpu_output", cache_dir)
-    torch.save({"cpu_out": cpu_out, "cpu_lse": cpu_lse}, path)
+    torch.save(_to_device({"cpu_out": cpu_out, "cpu_lse": cpu_lse}, "cpu"), path)
     logger.info("[CACHE] save CPU output → %s", path)
 
 
-def load_cpu_output(case_name, cache_dir=None):
+def load_cpu_output(case_name, cache_dir=None, device=None):
     path = _path(case_name, "cpu_output", cache_dir)
     if not os.path.exists(path):
         raise FileNotFoundError(f"No cached CPU output: {path}")
-    data = torch.load(path, weights_only=False)
+    data = _load(path, device)
     logger.info("[CACHE] load CPU output ← %s", path)
     return data["cpu_out"], data["cpu_lse"]
 
@@ -85,15 +105,15 @@ def has_cpu_output(case_name, cache_dir=None):
 
 def save_npu_output(case_name, atten_out, lse_out, cache_dir=None):
     path = _path(case_name, "npu_output", cache_dir)
-    torch.save({"atten_out": atten_out, "lse_out": lse_out}, path)
+    torch.save(_to_device({"atten_out": atten_out, "lse_out": lse_out}, "cpu"), path)
     logger.info("[CACHE] save NPU output → %s", path)
 
 
-def load_npu_output(case_name, cache_dir=None):
+def load_npu_output(case_name, cache_dir=None, device=None):
     path = _path(case_name, "npu_output", cache_dir)
     if not os.path.exists(path):
         raise FileNotFoundError(f"No cached NPU output: {path}")
-    data = torch.load(path, weights_only=False)
+    data = _load(path, device)
     logger.info("[CACHE] load NPU output ← %s", path)
     return data["atten_out"], data["lse_out"]
 

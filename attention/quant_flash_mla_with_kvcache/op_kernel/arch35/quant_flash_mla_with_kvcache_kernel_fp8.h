@@ -50,10 +50,9 @@ public:
     static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
     static constexpr bool FLASH_DECODE = VecFaBlockType::FLASH_DECODE;
 
-    static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C2
-    // 须为PRELOAD_N的两倍(4): ExecuteTask(L)同时引用任务L+1(预取K/Q源)、L(C1)与L-2(C2),
-    // 三者槽位互不混叠; 若取PRELOAD_N+1则L+1与L-2同槽, 创建即覆盖未消费的bmm2参数
-    static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N << 1;
+    static constexpr uint32_t PRELOAD_N = 1; // C1(i), C2(i-1)
+    // Four task slots keep L+1 (prefetch), L (QK), and L-1 (PV) distinct.
+    static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = 4U;
 
     static constexpr bool PAGE_ATTENTION = CubeBlockType::PAGE_ATTENTION;
     static constexpr LayOutTypeEnum LAYOUT_Q = CubeBlockType::LAYOUT;
@@ -131,9 +130,8 @@ public:
         // metadata header: [0]=sectionNum
         sectionNum_ = ((__gm__ uint32_t *)metadata)[QMLA_HEAD_SECTION_NUM_INDEX];
         // FA区: header之后, 布局[section][aicIdx][16]
-        faMetaDataGm_.SetGlobalBuffer(
-            (__gm__ uint32_t *)(metadata + QMLA_METADATA_HEADER_SIZE * sizeof(uint32_t)),
-            QMLA_AIC_CORE_NUM * QMLA_FA_METADATA_SIZE * sectionNum_);
+        faMetaDataGm_.SetGlobalBuffer((__gm__ uint32_t *)(metadata + QMLA_METADATA_HEADER_SIZE * sizeof(uint32_t)),
+                                      QMLA_AIC_CORE_NUM * QMLA_FA_METADATA_SIZE * sectionNum_);
         // FD区: FA区之后, 布局[section][aivIdx][16]
         fdMetaDataGm_.SetGlobalBuffer(
             (__gm__ uint32_t *)(metadata +
@@ -149,21 +147,20 @@ public:
         cacheSeqLensGm_.SetGlobalBuffer((__gm__ int32_t *)cacheSeqLens, constInfo_.kvSeqUsedSize);
         kvSeqUsedParser_.Init(cacheSeqLensGm_, constInfo_.kvSeqUsedSize, constInfo_.s2Size);
         // FD统一开关: metadata header[1], 由metadata算子按是否存在FD任务写入, 所有核一致
-        constInfo_.enableFlashDecode =
-            static_cast<bool>(((__gm__ uint32_t *)metadata)[QMLA_HEAD_IS_FD_INDEX]);
+        constInfo_.enableFlashDecode = static_cast<bool>(((__gm__ uint32_t *)metadata)[QMLA_HEAD_IS_FD_INDEX]);
         workspace = GetUserWorkspace(workspace);
 
         if ASCEND_IS_AIV {
             // MLA: V=K_nope, descale共用k_descale
-            vecFaBlock_.InitVecBlock(qDescale, kDescale, kDescale, softmaxLse, attnOut, workspace,
-                                     qCuSeqLensParser_, attnMask);
+            vecFaBlock_.InitVecBlock(qDescale, kDescale, kDescale, softmaxLse, attnOut, workspace, qCuSeqLensParser_,
+                                     attnMask);
             vecFaBlock_.ClearOutput();
         }
 
         if ASCEND_IS_AIC {
             // MLA: 无独立v_cache, value复用key指针
-            cubeBlock_.InitCubeBlock(query, key, key, blockTable, qDescale, kDescale, kDescale,
-                                      qCuSeqLensParser_, kvSeqUsedParser_);
+            cubeBlock_.InitCubeBlock(query, key, key, blockTable, qDescale, kDescale, kDescale, qCuSeqLensParser_,
+                                     kvSeqUsedParser_);
         }
         if constexpr (FLASH_DECODE) {
             if ASCEND_IS_AIV {
@@ -403,7 +400,7 @@ public:
 
     __aicore__ inline void ExecuteTask(uint64_t loop, RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
-        RunInfoX &runInfo0 = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE]; // 本轮任务: C1
+        RunInfoX &runInfo0 = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];                  // 本轮任务: C1
         RunInfoX &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE]; // 上PRELOAD_N轮: C2
         RunInfoX &runInfoNext = taskRunInfo[(loop + 1) % PRELOAD_TASK_CACHE_SIZE]; // 下一轮: 仅用于提前搬运K/Q
 
