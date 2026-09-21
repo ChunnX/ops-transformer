@@ -278,28 +278,28 @@ bool GroupedMatmulSwigluQuantV2BasicApiTiling950::IsCapable()
     const bool checkTensorApiShapes = CheckTensorApiShapes();
     const bool checkTensorApiScaleShapes = CheckTensorApiScaleShapes();
     const uint64_t averageMPerGroup = inputParams_.mSize / inputParams_.groupNum;
-    const uint64_t mPerGroupLowerLimit = inputParams_.transB ?
-        GroupedMatmulSwigluQuantTensorApiTiling::TRANS_B_M_PER_GROUP_LOWER_LIMIT :
-        GroupedMatmulSwigluQuantTensorApiTiling::NOT_TRANS_B_M_PER_GROUP_LOWER_LIMIT;
+    const uint64_t mPerGroupLowerLimit =
+        inputParams_.transB ? GroupedMatmulSwigluQuantTensorApiTiling::TRANS_B_M_PER_GROUP_LOWER_LIMIT :
+                              GroupedMatmulSwigluQuantTensorApiTiling::NOT_TRANS_B_M_PER_GROUP_LOWER_LIMIT;
     const bool commonCapable = GroupedMatmulSwigluQuantTensorApiTiling::IsShapeAndPlatformCapable(
-        {inputParams_.mSize, inputParams_.nSize, inputParams_.kSize, inputParams_.groupNum,
-         aicoreParams_.aicNum, aivNum_, inputParams_.transB, platformMemoryReady_});
-    const bool capable = dtypeSupported && quantDtypeSupported && formatSupported &&
-                         checkTensorApiShapes && checkTensorApiScaleShapes && commonCapable;
-    OP_LOGD(context_->GetNodeName(),
-            "Tensor API capability: dtype=%d, quantDtypeSupported=%d, format=%d, groupNum=%lu, M=%lu, "
-            "averageMPerGroup=%lu, mPerGroupLowerLimit=%lu, transB=%d, N=%lu, "
-            "cores=%lu:%u, "
-            "checkTensorApiShapes=%d, checkKSize=%d, checkKSizeAlign=%d, "
-            "checkTensorApiScaleShapes=%d, checkMSizeGroupNumRatio=%d, checkBNoTransMLimlit=%d, capable=%d.",
-            dtypeSupported, quantDtypeSupported, formatSupported, inputParams_.groupNum, inputParams_.mSize,
-            averageMPerGroup, mPerGroupLowerLimit, inputParams_.transB, inputParams_.nSize, aicoreParams_.aicNum,
-            aivNum_, checkTensorApiShapes, inputParams_.kSize > 64U,
-            inputParams_.kSize % GroupedMatmulSwigluQuantTensorApiTiling::K_ALIGN == 0U,
-            checkTensorApiScaleShapes, averageMPerGroup > mPerGroupLowerLimit,
-            inputParams_.transB || inputParams_.mSize >
-                GroupedMatmulSwigluQuantTensorApiTiling::NOT_TRANS_B_M_LOWER_LIMIT,
-            capable);
+        {inputParams_.mSize, inputParams_.nSize, inputParams_.kSize, inputParams_.groupNum, aicoreParams_.aicNum,
+         aivNum_, inputParams_.transB, platformMemoryReady_});
+    const bool capable = dtypeSupported && quantDtypeSupported && formatSupported && checkTensorApiShapes &&
+                         checkTensorApiScaleShapes && commonCapable;
+    OP_LOGD(
+        context_->GetNodeName(),
+        "Tensor API capability: dtype=%d, quantDtypeSupported=%d, format=%d, groupNum=%lu, M=%lu, "
+        "averageMPerGroup=%lu, mPerGroupLowerLimit=%lu, transB=%d, N=%lu, "
+        "cores=%lu:%u, "
+        "checkTensorApiShapes=%d, checkKSize=%d, checkKSizeAlign=%d, "
+        "checkTensorApiScaleShapes=%d, checkMSizeGroupNumRatio=%d, checkBNoTransMLimlit=%d, capable=%d.",
+        dtypeSupported, quantDtypeSupported, formatSupported, inputParams_.groupNum, inputParams_.mSize,
+        averageMPerGroup, mPerGroupLowerLimit, inputParams_.transB, inputParams_.nSize, aicoreParams_.aicNum, aivNum_,
+        checkTensorApiShapes, inputParams_.kSize > 64U,
+        inputParams_.kSize % GroupedMatmulSwigluQuantTensorApiTiling::K_ALIGN == 0U, checkTensorApiScaleShapes,
+        averageMPerGroup > mPerGroupLowerLimit,
+        inputParams_.transB || inputParams_.mSize > GroupedMatmulSwigluQuantTensorApiTiling::NOT_TRANS_B_M_LOWER_LIMIT,
+        capable);
     return capable;
 }
 

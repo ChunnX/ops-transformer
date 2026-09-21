@@ -27,6 +27,6 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulSwigluQuantV2(
     bool transposeWeight, int64_t groupListType, const aclIntArray *tuningConfigOptional, int64_t swigluMode,
     float clampLimit, float gluAlpha, float gluBias, const char *roundMode, int64_t scaleAlg, float dstTypeMax,
     aclOpExecutor *executor);
-}
+} // namespace l0op
 
 #endif

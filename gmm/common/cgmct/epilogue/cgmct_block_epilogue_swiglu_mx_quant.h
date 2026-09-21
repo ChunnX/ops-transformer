@@ -182,14 +182,14 @@ private:
                                               uint16_t loopNumScale);
 
     __aicore__ inline void ComputeScaleCublasFromBf16(__ubuf__ uint16_t *maxValueAddr,
-                                                       __ubuf__ uint16_t *mxScaleLocalAddr,
-                                                       __ubuf__ uint16_t *halfScaleLocalAddr,
-                                                       uint32_t totalScaleInUB, uint16_t loopNumScale);
+                                                      __ubuf__ uint16_t *mxScaleLocalAddr,
+                                                      __ubuf__ uint16_t *halfScaleLocalAddr, uint32_t totalScaleInUB,
+                                                      uint16_t loopNumScale);
 
     __aicore__ inline void ComputeScaleDynamicDtypeRange(__ubuf__ uint16_t *maxExpAddr,
                                                          __ubuf__ uint16_t *mxScaleLocalAddr,
-                                                         __ubuf__ uint16_t *halfScaleLocalAddr,
-                                                         uint32_t totalScaleInUB, uint16_t loopNumScale);
+                                                         __ubuf__ uint16_t *halfScaleLocalAddr, uint32_t totalScaleInUB,
+                                                         uint16_t loopNumScale);
 
     __aicore__ inline void ComputeDataForQuantTargetFp8(__ubuf__ bfloat16_t *srcAddr,
                                                         __ubuf__ uint16_t *halfScaleLocalAddr,
@@ -285,9 +285,9 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
                                                 MAX_SINGLE_MN / AscendC::ONE_BLK_SIZE);
     constexpr uint32_t realScaleBlockOffset =
         afterIOAndGluExp + MAX_SINGLE_MN / AscendC::ONE_BLK_SIZE * sizeof(uint16_t);
-    quantScaleBlockOutput_ = AscendC::LocalTensor<AscendC::fp8_e8m0_t>(
-        AscendC::TPosition::VECOUT, realScaleBlockOffset,
-        params_->baseM / AscendC::GetTaskRation() * AscendC::ONE_BLK_SIZE);
+    quantScaleBlockOutput_ =
+        AscendC::LocalTensor<AscendC::fp8_e8m0_t>(AscendC::TPosition::VECOUT, realScaleBlockOffset,
+                                                  params_->baseM / AscendC::GetTaskRation() * AscendC::ONE_BLK_SIZE);
 }
 
 QMM_BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
@@ -296,8 +296,8 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
 {
     if ASCEND_IS_AIV {
         quantOutputGlobal_.SetGlobalBuffer((__gm__ int8_t *)params_->yGmAddr + Get<Y_IDX>(baseOffset));
-        quantScaleGlobal_.SetGlobalBuffer(
-            (__gm__ AscendC::fp8_e8m0_t *)params_->yScaleGmAddr + Get<Y_SCALE_IDX>(baseOffset));
+        quantScaleGlobal_.SetGlobalBuffer((__gm__ AscendC::fp8_e8m0_t *)params_->yScaleGmAddr +
+                                          Get<Y_SCALE_IDX>(baseOffset));
     }
 }
 
@@ -358,8 +358,7 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
     params.blockCount = 1;
     params.blockLen = static_cast<uint32_t>(validScaleN * sizeof(AscendC::fp8_e8m0_t));
     for (uint64_t row = 0; row < blockCount; ++row) {
-        AscendC::DataCopyPad(quantScaleGlobal_[offset + row * scaleN_],
-                             src[row * AscendC::ONE_BLK_SIZE], params);
+        AscendC::DataCopyPad(quantScaleGlobal_[offset + row * scaleN_], src[row * AscendC::ONE_BLK_SIZE], params);
     }
 }
 
@@ -479,14 +478,14 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
             mask1 = AscendC::Reg::UpdateMask<bfloat16_t>(totalCountInUB);
             AscendC::Reg::MaskDeInterleave<bfloat16_t>(maskEven, maskOdd, mask0, mask1);
             AscendC::Reg::DataCopy<bfloat16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE,
-                                   AscendC::Reg::LoadDist::DIST_DINTLV_B16>(
-                value0, value1, srcAddr, vlForHalfNumber_ * 2);
-            AscendC::Reg::And(reinterpret_cast<AscendC::Reg::RegTensor<uint16_t>&>(value0),
-                              reinterpret_cast<AscendC::Reg::RegTensor<uint16_t>&>(value0), absMask, maskEven);
-            AscendC::Reg::And(reinterpret_cast<AscendC::Reg::RegTensor<uint16_t>&>(value1),
-                              reinterpret_cast<AscendC::Reg::RegTensor<uint16_t>&>(value1), absMask, maskOdd);
-            AscendC::Reg::Max(maxValue, reinterpret_cast<AscendC::Reg::RegTensor<uint16_t>&>(value0),
-                              reinterpret_cast<AscendC::Reg::RegTensor<uint16_t>&>(value1), mask0);
+                                   AscendC::Reg::LoadDist::DIST_DINTLV_B16>(value0, value1, srcAddr,
+                                                                            vlForHalfNumber_ * 2);
+            AscendC::Reg::And(reinterpret_cast<AscendC::Reg::RegTensor<uint16_t> &>(value0),
+                              reinterpret_cast<AscendC::Reg::RegTensor<uint16_t> &>(value0), absMask, maskEven);
+            AscendC::Reg::And(reinterpret_cast<AscendC::Reg::RegTensor<uint16_t> &>(value1),
+                              reinterpret_cast<AscendC::Reg::RegTensor<uint16_t> &>(value1), absMask, maskOdd);
+            AscendC::Reg::Max(maxValue, reinterpret_cast<AscendC::Reg::RegTensor<uint16_t> &>(value0),
+                              reinterpret_cast<AscendC::Reg::RegTensor<uint16_t> &>(value1), mask0);
             AscendC::Reg::ReduceMaxWithDataBlock(maxValue, maxValue, mask0);
             AscendC::Reg::DataCopyUnAlign<uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(
                 maxExpAddr, maxValue, unalign, elementAfterReduce_);
@@ -526,8 +525,8 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
         AscendC::Reg::MaskReg maskB16;
         AscendC::Reg::MaskReg maskFloat;
         static constexpr AscendC::Reg::CastTrait castBf16ToFloat = {
-            AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::UNKNOWN,
-            AscendC::Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
+            AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::UNKNOWN, AscendC::Reg::MaskMergeMode::ZEROING,
+            AscendC::RoundMode::UNKNOWN};
 
         AscendC::Reg::Duplicate(invMax, invDstTypeMax_);
         AscendC::Reg::Duplicate(mantissaMask, MAN_MASK_FLOAT);
@@ -539,25 +538,23 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
 
         uint32_t remainingScale = totalScaleInUB;
         for (uint16_t i = 0; i < loopNumScale; ++i) {
-            uint32_t processedScale =
-                remainingScale < vlForHalfNumber_ / 2 ? remainingScale : vlForHalfNumber_ / 2;
+            uint32_t processedScale = remainingScale < vlForHalfNumber_ / 2 ? remainingScale : vlForHalfNumber_ / 2;
             maskB16 = AscendC::Reg::UpdateMask<uint16_t>(processedScale);
             maskFloat = AscendC::Reg::UpdateMask<uint32_t>(processedScale);
             AscendC::Reg::DataCopy<uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE,
-                                   AscendC::Reg::LoadDist::DIST_UNPACK_B16>(max16, maxExpAddr,
-                                                                            vlForHalfNumber_ / 2);
+                                   AscendC::Reg::LoadDist::DIST_UNPACK_B16>(max16, maxExpAddr, vlForHalfNumber_ / 2);
             AscendC::Reg::Cast<float, bfloat16_t, castBf16ToFloat>(
-                reinterpret_cast<AscendC::Reg::RegTensor<float>&>(max32),
-                reinterpret_cast<AscendC::Reg::RegTensor<bfloat16_t>&>(max16), maskFloat);
+                reinterpret_cast<AscendC::Reg::RegTensor<float> &>(max32),
+                reinterpret_cast<AscendC::Reg::RegTensor<bfloat16_t> &>(max16), maskFloat);
             AscendC::Reg::Compare<uint32_t, AscendC::CMPMODE::LT>(finiteMask, max32, expMask, maskFloat);
             AscendC::Reg::Compare<uint32_t, AscendC::CMPMODE::NE>(nonzeroMask, max32, zero, maskFloat);
-            AscendC::Reg::Mul(reinterpret_cast<AscendC::Reg::RegTensor<float>&>(max32),
-                              reinterpret_cast<AscendC::Reg::RegTensor<float>&>(max32), invMax, maskFloat);
+            AscendC::Reg::Mul(reinterpret_cast<AscendC::Reg::RegTensor<float> &>(max32),
+                              reinterpret_cast<AscendC::Reg::RegTensor<float> &>(max32), invMax, maskFloat);
             AscendC::Reg::ShiftRights(exp32, max32, SHR_NUM_FOR_FP32, maskFloat);
             AscendC::Reg::And(mantissa32, max32, mantissaMask, maskFloat);
             AscendC::Reg::CompareScalar<uint32_t, AscendC::CMPMODE::GT>(predicate0, exp32, NUMBER_ZERO, maskFloat);
-            AscendC::Reg::CompareScalar<uint32_t, AscendC::CMPMODE::LT>(predicate1, exp32,
-                                                                         NUMBER_TWO_FIVE_FOUR, maskFloat);
+            AscendC::Reg::CompareScalar<uint32_t, AscendC::CMPMODE::LT>(predicate1, exp32, NUMBER_TWO_FIVE_FOUR,
+                                                                        maskFloat);
             AscendC::Reg::CompareScalar<uint32_t, AscendC::CMPMODE::GT>(predicate2, mantissa32, NUMBER_ZERO, maskFloat);
             AscendC::Reg::MaskAnd(predicate0, predicate0, predicate1, maskFloat);
             AscendC::Reg::MaskAnd(predicate0, predicate0, predicate2, maskFloat);
@@ -577,15 +574,15 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
             AscendC::Reg::Select<uint32_t>(halfScale, halfScale, nan, finiteMask);
             AscendC::Reg::Select<uint32_t>(halfScale, halfScale, zero, nonzeroMask);
             AscendC::Reg::Pack<uint16_t, uint32_t, AscendC::Reg::HighLowPart::LOWEST>(reciprocalExpOut, halfScale);
-            AscendC::Reg::DataCopy<uint16_t>(halfScaleLocalAddr + i * vlForHalfNumber_ / 2, reciprocalExpOut,
-                                              maskB16);
+            AscendC::Reg::DataCopy<uint16_t>(halfScaleLocalAddr + i * vlForHalfNumber_ / 2, reciprocalExpOut, maskB16);
             remainingScale = remainingScale > processedScale ? remainingScale - processedScale : 0;
         }
     }
 }
 
 QMM_BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
-__aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ComputeScaleDynamicDtypeRange(
+__aicore__ inline void
+BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ComputeScaleDynamicDtypeRange(
     __ubuf__ uint16_t *maxExpAddr, __ubuf__ uint16_t *mxScaleLocalAddr, __ubuf__ uint16_t *halfScaleLocalAddr,
     uint32_t totalScaleInUB, uint16_t loopNumScale)
 {
@@ -623,8 +620,8 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
         uint32_t remainingScale = totalScaleInUB;
         for (uint16_t i = 0; i < loopNumScale; ++i) {
             mask = AscendC::Reg::UpdateMask<uint16_t>(remainingScale);
-            AscendC::Reg::DataCopy<uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(
-                maxValue, maxExpAddr, vlForHalfNumber_);
+            AscendC::Reg::DataCopy<uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(maxValue, maxExpAddr,
+                                                                                          vlForHalfNumber_);
             AscendC::Reg::And(maxExpOnly, maxValue, expMask, mask);
             AscendC::Reg::Compare<uint16_t, AscendC::CMPMODE::NE>(finiteMask, maxExpOnly, expMask, mask);
             AscendC::Reg::Compare<uint16_t, AscendC::CMPMODE::LT>(belowRangeMask, maxExpOnly, maxExpValue, mask);
@@ -635,8 +632,8 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
             AscendC::Reg::ShiftRights(scaleValue, sharedExp, SHR_NUM_FOR_BF16, mask);
             AscendC::Reg::Select<uint16_t>(scaleValue, scaleValue, fp8Nan, finiteMask);
             AscendC::Reg::DataCopy<uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE,
-                                   AscendC::Reg::StoreDist::DIST_PACK_B16>(
-                mxScaleLocalAddr, scaleValue, vlForHalfNumber_ >> 1, mask);
+                                   AscendC::Reg::StoreDist::DIST_PACK_B16>(mxScaleLocalAddr, scaleValue,
+                                                                           vlForHalfNumber_ >> 1, mask);
 
             AscendC::Reg::Compare<uint16_t, AscendC::CMPMODE::NE>(zeroMask, sharedExp, zero, mask);
             AscendC::Reg::Compare<uint16_t, AscendC::CMPMODE::EQ>(specialMask, sharedExp, scaleBias, mask);
@@ -663,10 +660,8 @@ BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ComputeD
     using U = DataTypeOut;
     __VEC_SCOPE__
     {
-        AscendC::Reg::MaskReg maskAll =
-            AscendC::Reg::CreateMask<uint16_t, AscendC::Reg::MaskPattern::ALL>();
-        AscendC::Reg::MaskReg maskAllB8 =
-            AscendC::Reg::CreateMask<uint8_t, AscendC::Reg::MaskPattern::ALL>();
+        AscendC::Reg::MaskReg maskAll = AscendC::Reg::CreateMask<uint16_t, AscendC::Reg::MaskPattern::ALL>();
+        AscendC::Reg::MaskReg maskAllB8 = AscendC::Reg::CreateMask<uint8_t, AscendC::Reg::MaskPattern::ALL>();
         AscendC::Reg::RegTensor<uint16_t> halfScaleForMul;
         AscendC::Reg::RegTensor<T> vdExp0, vdExp1;
         AscendC::Reg::RegTensor<float> vdExp0FP32Zero, vdExp0FP32One, vdExp1FP32Zero, vdExp1FP32One;
@@ -691,8 +686,8 @@ BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ComputeD
             AscendC::RoundMode::CAST_RINT};
         for (uint16_t i = 0; i < loopNum; i++) {
             AscendC::Reg::DataCopy<T, AscendC::Reg::PostLiteral::POST_MODE_UPDATE,
-                                   AscendC::Reg::LoadDist::DIST_DINTLV_B16>(vdExp0, vdExp1, srcAddr,
-                                                                            vlForHalfNumber_ * CGMCT_INTERLEAVED_REG_FACTOR);
+                                   AscendC::Reg::LoadDist::DIST_DINTLV_B16>(
+                vdExp0, vdExp1, srcAddr, vlForHalfNumber_ * CGMCT_INTERLEAVED_REG_FACTOR);
             AscendC::Reg::DataCopy<uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE,
                                    AscendC::Reg::LoadDist::DIST_E2B_B16>(halfScaleForMul, halfScaleLocalAddr,
                                                                          elementAfterReduce_);
@@ -787,8 +782,7 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
     __ubuf__ DataTypeIn *secondSrc, uint16_t mSize, uint16_t nSize)
 {
     constexpr uint16_t sizePerRepeat = AscendC::VECTOR_REG_WIDTH / sizeof(DataTypeIn);
-    uint16_t OneRowRepeatTimes =
-        CeilDiv(static_cast<uint64_t>(nSize), static_cast<uint64_t>(sizePerRepeat));
+    uint16_t OneRowRepeatTimes = CeilDiv(static_cast<uint64_t>(nSize), static_cast<uint64_t>(sizePerRepeat));
     uint32_t nSrcUbAligned = CeilAlign(nSize, AscendC::ONE_BLK_SIZE / sizeof(DataTypeIn));
     uint32_t nDstUbAligned64 = Align64(nSize); // 64 对齐
 
@@ -842,7 +836,7 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
                 AscendC::Reg::Cast<bfloat16_t, float, CAST_FP32_TO_BF16>(verg7, verg6, mask);
                 uint32_t dstUbOffset = mIdx * nDstUbAligned64 + vfBlockIdx * sizePerRepeat;
                 AscendC::Reg::DataCopy<bfloat16_t, AscendC::Reg::StoreDist::DIST_PACK_B32>(gluResAddr + dstUbOffset,
-                                                                                             verg7, mask);
+                                                                                           verg7, mask);
             }
         }
     }
@@ -861,14 +855,12 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
         ComputeMaxExpCublas(gluResAddr, maxExpAddr, totalDataInUb, loopDataNum);
         const uint16_t cublasLoopScaleNum =
             static_cast<uint16_t>((totalScaleInUb + vlForHalfNumber_ - 1) / vlForHalfNumber_);
-        ComputeScaleCublasFromBf16(maxExpAddr, scaleDst, halfScaleLocalAddr, totalScaleInUb,
-                                   cublasLoopScaleNum);
+        ComputeScaleCublasFromBf16(maxExpAddr, scaleDst, halfScaleLocalAddr, totalScaleInUb, cublasLoopScaleNum);
     } else {
         ComputeMaxExpCublas(gluResAddr, maxExpAddr, totalDataInUb, loopDataNum);
-        const uint16_t dynamicLoopScaleNum = static_cast<uint16_t>(
-            (totalScaleInUb + vlForHalfNumber_ - 1) / vlForHalfNumber_);
-        ComputeScaleDynamicDtypeRange(maxExpAddr, scaleDst, halfScaleLocalAddr, totalScaleInUb,
-                                      dynamicLoopScaleNum);
+        const uint16_t dynamicLoopScaleNum =
+            static_cast<uint16_t>((totalScaleInUb + vlForHalfNumber_ - 1) / vlForHalfNumber_);
+        ComputeScaleDynamicDtypeRange(maxExpAddr, scaleDst, halfScaleLocalAddr, totalScaleInUb, dynamicLoopScaleNum);
     }
     if constexpr (AscendC::IsSameType<DataTypeOut, fp8_e4m3fn_t>::value ||
                   AscendC::IsSameType<DataTypeOut, fp8_e5m2_t>::value) {
@@ -883,8 +875,8 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
 QMM_BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
 __aicore__ inline void
 BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ComputeScaleCublasFromBf16(
-    __ubuf__ uint16_t *maxValueAddr, __ubuf__ uint16_t *mxScaleLocalAddr,
-    __ubuf__ uint16_t *halfScaleLocalAddr, uint32_t totalScaleInUB, uint16_t loopNumScale)
+    __ubuf__ uint16_t *maxValueAddr, __ubuf__ uint16_t *mxScaleLocalAddr, __ubuf__ uint16_t *halfScaleLocalAddr,
+    uint32_t totalScaleInUB, uint16_t loopNumScale)
 {
     __VEC_SCOPE__
     {
@@ -903,8 +895,8 @@ BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ComputeS
 
         for (uint16_t i = 0; i < loopNumScale; ++i) {
             mask = AscendC::Reg::UpdateMask<uint16_t>(totalScaleInUB);
-            AscendC::Reg::DataCopy<uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(
-                maxValue, maxValueAddr, vlForHalfNumber_);
+            AscendC::Reg::DataCopy<uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(maxValue, maxValueAddr,
+                                                                                          vlForHalfNumber_);
             AscendC::Reg::Compare<uint16_t, AscendC::CMPMODE::NE>(nonzeroMask, maxValue, zero, mask);
             AscendC::Reg::ShiftRights(exponent, maxValue, static_cast<int16_t>(7), mask);
             AscendC::Reg::And(mantissa, maxValue, mantissaMask, mask);
@@ -919,8 +911,8 @@ BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ComputeS
             AscendC::Reg::Select<uint16_t>(scaleValue, scaleValue, zero, nonzeroMask);
             AscendC::Reg::Select<uint16_t>(scaleValue, fp8Nan, scaleValue, infNanMask);
             AscendC::Reg::DataCopy<uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE,
-                                   AscendC::Reg::StoreDist::DIST_PACK_B16>(
-                mxScaleLocalAddr, scaleValue, vlForHalfNumber_ >> 1, mask);
+                                   AscendC::Reg::StoreDist::DIST_PACK_B16>(mxScaleLocalAddr, scaleValue,
+                                                                           vlForHalfNumber_ >> 1, mask);
             AscendC::Reg::ShiftLefts(shiftedScale, scaleValue, static_cast<int16_t>(7), mask);
             AscendC::Reg::Sub(reciprocalValue, reciprocalBias, shiftedScale, mask);
             AscendC::Reg::Select<uint16_t>(reciprocalValue, reciprocalValue, zero, nonzeroMask);

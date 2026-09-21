@@ -1,7 +1,16 @@
-/*
+/**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- *
- * Cgmct entry for the Ascend 950 MXFP8 weight-NZ V3 path.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/*!
+ * \file grouped_matmul_swiglu_quant_weight_nz_v3_mxquant.h
+ * \brief Cgmct entry for the Ascend 950 MXFP8 weight-NZ V3 path.
  */
 
 #ifndef GROUPED_MATMUL_SWIGLU_QUANT_V3_MXQUANT_H
@@ -16,18 +25,16 @@ using namespace Cgmct::Gemm::Kernel;
 
 namespace Cgmct {
 namespace Gemm {
-namespace Tile {
-
-} // namespace Tile
+namespace Tile {} // namespace Tile
 } // namespace Gemm
 } // namespace Cgmct
 
 namespace GroupedMatmulSwigluQuantV3 {
 
 template <typename layoutA, typename layoutB>
-__aicore__ inline void GmmSwigluAswtV3(
-    GM_ADDR x, GM_ADDR weight, GM_ADDR weightScale, GM_ADDR xScale, GM_ADDR weightAssistanceMatrix,
-    GM_ADDR smoothScale, GM_ADDR groupList, GM_ADDR y, GM_ADDR yScale, GM_ADDR workspace, GM_ADDR tiling)
+__aicore__ inline void GmmSwigluAswtV3(GM_ADDR x, GM_ADDR weight, GM_ADDR weightScale, GM_ADDR xScale,
+                                       GM_ADDR weightAssistanceMatrix, GM_ADDR smoothScale, GM_ADDR groupList,
+                                       GM_ADDR y, GM_ADDR yScale, GM_ADDR workspace, GM_ADDR tiling)
 {
     GET_TILING_DATA_MEMBER(GMMSwigluQuantV3TilingDataParams, gmmSwigluQuantParams, gmmSwigluQuantParams_, tiling);
     GET_TILING_DATA_MEMBER(GMMSwigluQuantV3TilingDataParams, mmTilingData, mmTilingData_, tiling);
@@ -50,8 +57,7 @@ __aicore__ inline void GmmSwigluAswtV3(
     using DefaultTileCopy = Tile::TileCopy<Arch::DAV3510, Tile::CopyInAndCopyOutSplitMWithParams>;
     using BlockMmad =
         Block::BlockMxMmAicToAivBuilder<AType, LayoutA, BType, LayoutB, BiasType, C1Type, LayoutC, L1TileShape,
-                                        L0TileShape, BlockScheduler, QuantMatmulWithTileMultiBlock<>,
-                                        DefaultTileCopy>;
+                                        L0TileShape, BlockScheduler, QuantMatmulWithTileMultiBlock<>, DefaultTileCopy>;
     using QGmmKernel = Kernel::KernelGmmSwiGluMixOnlineDynamic<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>;
     using Params = typename QGmmKernel::Params;
     using GMMTiling = typename QGmmKernel::GMMTiling;
@@ -83,10 +89,7 @@ __aicore__ inline void GmmSwigluAswtV3(
     // reserved0 is retained only for compatibility with older payloads.
     epilogueArgs.scaleAlg = gmmSwigluQuantParams_.scaleAlg;
     epilogueArgs.dstTypeMax = gmmSwigluQuantParams_.dstTypeMax;
-    Params params = {{1, 1, 1, 1},
-                     {x, weight, weightScale, xScale, y, groupList},
-                     epilogueArgs,
-                     gmmParams};
+    Params params = {{1, 1, 1, 1}, {x, weight, weightScale, xScale, y, groupList}, epilogueArgs, gmmParams};
     QGmmKernel op;
     op(params);
 }
