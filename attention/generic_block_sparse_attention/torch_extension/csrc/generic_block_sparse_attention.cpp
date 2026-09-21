@@ -28,8 +28,8 @@ at::Tensor GenericBlockSparseAttentionMetadata(
     const c10::optional<at::Tensor> &cu_seqlens_q, const c10::optional<at::Tensor> &cu_seqlens_kv,
     const c10::optional<at::Tensor> &seqused_q, const c10::optional<at::Tensor> &seqused_kv, int64_t max_seqlen_q,
     int64_t max_seqlen_kv, int64_t num_heads_q, int64_t num_heads_kv, int64_t head_dim, at::IntArrayRef block_shape,
-    std::string layout_q, std::string layout_kv, int64_t layout_sparse_pattern, int64_t mask_mode,
-    int64_t quant_mode, int64_t softmax_precision, int64_t win_left, int64_t win_right, int64_t residual_block_mode,
+    std::string layout_q, std::string layout_kv, int64_t layout_sparse_pattern, int64_t mask_mode, int64_t quant_mode,
+    int64_t softmax_precision, int64_t win_left, int64_t win_right, int64_t residual_block_mode,
     bool is_consistent_topk, const at::Tensor &output)
 {
     ACLNN_CMD(aclnnGenericBlockSparseAttentionMetadata, sparse_block_idx, sparse_block_count, cu_seqlens_q,
@@ -46,11 +46,10 @@ std::tuple<at::Tensor, at::Tensor> GenericBlockSparseAttention(
     const c10::optional<at::Tensor> &k_dequant_scale, const c10::optional<at::Tensor> &v_dequant_scale,
     const c10::optional<at::Tensor> &p_quant_scale, const c10::optional<at::Tensor> &cu_seqlens_q,
     const c10::optional<at::Tensor> &cu_seqlens_kv, const c10::optional<at::Tensor> &seqused_q,
-    const c10::optional<at::Tensor> &seqused_kv, const c10::optional<at::Tensor> &block_table,
-    std::string layout_q, std::string layout_kv, int64_t layout_sparse_pattern, double softmax_scale,
-    int64_t mask_mode, int64_t quant_mode, double dst_type_max, int64_t softmax_precision, int64_t win_left,
-    int64_t win_right, bool return_softmax_lse, int64_t residual_block_mode, bool is_consistent_topk,
-    c10::optional<at::ScalarType> attention_out_dtype)
+    const c10::optional<at::Tensor> &seqused_kv, const c10::optional<at::Tensor> &block_table, std::string layout_q,
+    std::string layout_kv, int64_t layout_sparse_pattern, double softmax_scale, int64_t mask_mode, int64_t quant_mode,
+    double dst_type_max, int64_t softmax_precision, int64_t win_left, int64_t win_right, bool return_softmax_lse,
+    int64_t residual_block_mode, bool is_consistent_topk, c10::optional<at::ScalarType> attention_out_dtype)
 {
     // pybind 按值收下 std::vector，再在本作用域构建 IntArrayRef，避免悬垂指针。
     at::IntArrayRef block_shape_ref(block_shape);

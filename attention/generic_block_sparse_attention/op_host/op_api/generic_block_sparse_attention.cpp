@@ -25,7 +25,7 @@ const std::array<const aclTensor *, 2> GenericBlockSparseAttention(
     const aclTensor *qDequantScaleOptional, const aclTensor *kDequantScaleOptional,
     const aclTensor *vDequantScaleOptional, const aclTensor *pQuantScaleOptional,
     const aclTensor *cuSeqLengthsQOptional, const aclTensor *cuSeqLengthsKvOptional, const aclTensor *sequsedQOptional,
-    const aclTensor *sequsedKvOptional, const aclTensor *blockTableOptional,     const aclIntArray *blockShape,
+    const aclTensor *sequsedKvOptional, const aclTensor *blockTableOptional, const aclIntArray *blockShape,
     const char *layoutQ, const char *layoutKv, int64_t layoutSparsePattern, double scaleValue, int64_t maskType,
     int64_t quantType, double dstTypeMax, int64_t softmaxPrecision, int64_t winLeft, int64_t winRight,
     int64_t returnSoftmaxlse, int64_t residualBlockMode, bool isConsistentTopk, const aclTensor *attentionOut,
@@ -52,8 +52,7 @@ const std::array<const aclTensor *, 2> GenericBlockSparseAttention(
         OP_ATTR(blockShape, layoutQ, layoutKv, layoutSparsePattern, static_cast<float>(scaleValue),
                 static_cast<int64_t>(maskType), static_cast<int64_t>(quantType), static_cast<float>(dstTypeMax),
                 static_cast<int64_t>(softmaxPrecision), static_cast<int64_t>(winLeft), static_cast<int64_t>(winRight),
-                static_cast<int64_t>(returnSoftmaxlse), static_cast<int64_t>(residualBlockMode),
-                isConsistentTopk));
+                static_cast<int64_t>(returnSoftmaxlse), static_cast<int64_t>(residualBlockMode), isConsistentTopk));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GenericBlockSparseAttention infer shape failed.");
         return {nullptr, nullptr};
@@ -69,8 +68,7 @@ const std::array<const aclTensor *, 2> GenericBlockSparseAttention(
         OP_ATTR(blockShape, layoutQ, layoutKv, layoutSparsePattern, static_cast<float>(scaleValue),
                 static_cast<int64_t>(maskType), static_cast<int64_t>(quantType), static_cast<float>(dstTypeMax),
                 static_cast<int64_t>(softmaxPrecision), static_cast<int64_t>(winLeft), static_cast<int64_t>(winRight),
-                static_cast<int64_t>(returnSoftmaxlse), static_cast<int64_t>(residualBlockMode),
-                isConsistentTopk));
+                static_cast<int64_t>(returnSoftmaxlse), static_cast<int64_t>(residualBlockMode), isConsistentTopk));
 
     return {attentionOutTensor, softmaxLseTensor};
 }

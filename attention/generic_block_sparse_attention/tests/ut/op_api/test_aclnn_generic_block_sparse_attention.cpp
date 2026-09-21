@@ -408,7 +408,7 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, invalid_layout_q)
 
     auto ut = OP_API_UT(aclnnGenericBlockSparseAttention,
                         INPUT(query, key, value, sparseBlockIdx, sparseBlockCount, metadata, nullptr, nullptr, nullptr,
-                              nullptr,                               nullptr, nullptr, nullptr, nullptr, nullptr, blockTable, blockShape, layoutQ,
+                              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, blockTable, blockShape, layoutQ,
                               layoutKv, kLayoutSparse, kScale, 1, 0, 0.0, 0, -1, -1, 0, 0, false),
                         OUTPUT(attentionOut, nullptr));
 
@@ -435,8 +435,8 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, null_block_shape)
 
     auto ut = OP_API_UT(aclnnGenericBlockSparseAttention,
                         INPUT(query, key, value, sparseBlockIdx, sparseBlockCount, metadata, nullptr, nullptr, nullptr,
-                              nullptr,                               nullptr, nullptr, nullptr, nullptr, nullptr, blockTable, nullptr, layoutQ, layoutKv,
-                              kLayoutSparse, kScale, 1, 0, 0.0, 0, -1, -1, 0, 0, false),
+                              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, blockTable, nullptr, layoutQ,
+                              layoutKv, kLayoutSparse, kScale, 1, 0, 0.0, 0, -1, -1, 0, 0, false),
                         OUTPUT(attentionOut, nullptr));
 
     uint64_t workspaceSize = 0;
@@ -463,7 +463,7 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, invalid_block_shape_size)
 
     auto ut = OP_API_UT(aclnnGenericBlockSparseAttention,
                         INPUT(query, key, value, sparseBlockIdx, sparseBlockCount, metadata, nullptr, nullptr, nullptr,
-                              nullptr,                               nullptr, nullptr, nullptr, nullptr, nullptr, blockTable, blockShape, layoutQ,
+                              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, blockTable, blockShape, layoutQ,
                               layoutKv, kLayoutSparse, kScale, 1, 0, 0.0, 0, -1, -1, 0, 0, false),
                         OUTPUT(attentionOut, nullptr));
 
@@ -491,7 +491,7 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, dtype_mismatch)
 
     auto ut = OP_API_UT(aclnnGenericBlockSparseAttention,
                         INPUT(query, key, value, sparseBlockIdx, sparseBlockCount, metadata, nullptr, nullptr, nullptr,
-                              nullptr,                               nullptr, nullptr, nullptr, nullptr, nullptr, blockTable, blockShape, layoutQ,
+                              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, blockTable, blockShape, layoutQ,
                               layoutKv, kLayoutSparse, kScale, 1, 0, 0.0, 0, -1, -1, 0, 0, false),
                         OUTPUT(attentionOut, nullptr));
 
@@ -519,7 +519,7 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, invalid_softmax_precision)
 
     auto ut = OP_API_UT(aclnnGenericBlockSparseAttention,
                         INPUT(query, key, value, sparseBlockIdx, sparseBlockCount, metadata, nullptr, nullptr, nullptr,
-                              nullptr,                               nullptr, nullptr, nullptr, nullptr, nullptr, blockTable, blockShape, layoutQ,
+                              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, blockTable, blockShape, layoutQ,
                               layoutKv, kLayoutSparse, kScale, 1, 0, 0.0, 2, -1, -1, 0, 0, 0),
                         OUTPUT(attentionOut, nullptr));
 
