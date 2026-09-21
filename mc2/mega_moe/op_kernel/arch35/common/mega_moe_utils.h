@@ -221,13 +221,10 @@ __aicore__ inline WorkRange GetRotatedBalancedWorkRange(uint32_t totalWorkItems,
 }
 
 #if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
-// 使用调用方准备的全零 UB Tensor，清理当前 AIV 任务负责的连续 GM 区域。
-template <int32_t JobAlignment>
-__aicore__ inline void ResetWorkspaceRegion(const AivJobContext &job, GM_ADDR regionPtr, int32_t elementCount,
-                                            int32_t batchElementCount, LocalTensor<int32_t> &resetTensor)
+// 使用调用方准备的全零 UB Tensor 清理指定范围；range 以 int32 元素为单位。
+__aicore__ inline void ResetWorkspaceRegion(const WorkRange &range, GM_ADDR regionPtr, int32_t batchElementCount,
+                                            LocalTensor<int32_t> &resetTensor)
 {
-    WorkRange range = TilingByJobContext(static_cast<uint32_t>(elementCount), job.jobIndex, job.totalJobs,
-                                         static_cast<uint32_t>(JobAlignment));
     GlobalTensor<int32_t> regionGm;
     regionGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(regionPtr));
     for (uint32_t offset = 0; offset < range.count; offset += static_cast<uint32_t>(batchElementCount)) {
@@ -237,6 +234,16 @@ __aicore__ inline void ResetWorkspaceRegion(const AivJobContext &job, GM_ADDR re
         DataCopyExtParams copyParams{1U, static_cast<uint32_t>(batchCount * sizeof(int32_t)), 0U, 0U, 0U};
         DataCopyPad(regionGm[range.start + offset], resetTensor, copyParams);
     }
+}
+
+// 按任务划分对齐范围，再复用范围版本执行清零。
+template <int32_t JobAlignment>
+__aicore__ inline void ResetWorkspaceRegion(const AivJobContext &job, GM_ADDR regionPtr, int32_t elementCount,
+                                            int32_t batchElementCount, LocalTensor<int32_t> &resetTensor)
+{
+    const WorkRange range = TilingByJobContext(static_cast<uint32_t>(elementCount), job.jobIndex, job.totalJobs,
+                                               static_cast<uint32_t>(JobAlignment));
+    ResetWorkspaceRegion(range, regionPtr, batchElementCount, resetTensor);
 }
 
 #endif
