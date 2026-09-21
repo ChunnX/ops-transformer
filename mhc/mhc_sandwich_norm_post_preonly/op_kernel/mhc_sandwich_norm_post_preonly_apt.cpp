@@ -54,36 +54,28 @@ mhc_sandwich_norm_post_preonly(GM_ADDR h_out, GM_ADDR residual, GM_ADDR h_post, 
                 h_in_f32, nullptr, tiling);
         op.Process();
     } else if (TILING_KEY_IS(4)) {
-        KERNEL_TASK_TYPE(4, KERNEL_TYPE_MIX_AIC_1_2);
-        if ASCEND_IS_AIV {
-            KernelMhcSandwichNormPostPreonly<DTYPE_H_OUT, false, false, true> op;
-            op.Init(h_out, residual, h_post, h_res, phi, alpha_0, bias, gamma_0, gamma_1, gamma_2, h_in_prime,
-                    x_2_out, h_in_f32, GetUserWorkspace(workspace), tiling);
-            op.Process();
-        }
+        KERNEL_TASK_TYPE(4, KERNEL_TYPE_AIV_ONLY);
+        KernelMhcSandwichNormPostPreonly<DTYPE_H_OUT, false, false, true> op;
+        op.Init(h_out, residual, h_post, h_res, phi, alpha_0, bias, gamma_0, gamma_1, gamma_2, h_in_prime, x_2_out,
+                h_in_f32, GetUserWorkspace(workspace), tiling);
+        op.Process();
     } else if (TILING_KEY_IS(5)) {
-        KERNEL_TASK_TYPE(5, KERNEL_TYPE_MIX_AIC_1_2);
-        if ASCEND_IS_AIV {
-            KernelMhcSandwichNormPostPreonly<DTYPE_H_OUT, true, false, true> op;
-            op.Init(h_out, residual, h_post, h_res, phi, alpha_0, bias, gamma_0, gamma_1, gamma_2, h_in_prime,
-                    x_2_out, h_in_f32, GetUserWorkspace(workspace), tiling);
-            op.Process();
-        }
+        KERNEL_TASK_TYPE(5, KERNEL_TYPE_AIV_ONLY);
+        KernelMhcSandwichNormPostPreonly<DTYPE_H_OUT, true, false, true> op;
+        op.Init(h_out, residual, h_post, h_res, phi, alpha_0, bias, gamma_0, gamma_1, gamma_2, h_in_prime, x_2_out,
+                h_in_f32, GetUserWorkspace(workspace), tiling);
+        op.Process();
     } else if (TILING_KEY_IS(6)) {
-        KERNEL_TASK_TYPE(6, KERNEL_TYPE_MIX_AIC_1_2);
-        if ASCEND_IS_AIV {
-            KernelMhcSandwichNormPostPreonly<DTYPE_H_OUT, false, true, true> op;
-            op.Init(h_out, residual, h_post, h_res, phi, alpha_0, bias, gamma_0, gamma_1, gamma_2, h_in_prime,
-                    x_2_out, h_in_f32, GetUserWorkspace(workspace), tiling);
-            op.Process();
-        }
+        KERNEL_TASK_TYPE(6, KERNEL_TYPE_AIV_ONLY);
+        KernelMhcSandwichNormPostPreonly<DTYPE_H_OUT, false, true, true> op;
+        op.Init(h_out, residual, h_post, h_res, phi, alpha_0, bias, gamma_0, gamma_1, gamma_2, h_in_prime, x_2_out,
+                h_in_f32, GetUserWorkspace(workspace), tiling);
+        op.Process();
     } else if (TILING_KEY_IS(7)) {
-        KERNEL_TASK_TYPE(7, KERNEL_TYPE_MIX_AIC_1_2);
-        if ASCEND_IS_AIV {
-            KernelMhcSandwichNormPostPreonly<DTYPE_H_OUT, true, true, true> op;
-            op.Init(h_out, residual, h_post, h_res, phi, alpha_0, bias, gamma_0, gamma_1, gamma_2, h_in_prime,
-                    x_2_out, h_in_f32, GetUserWorkspace(workspace), tiling);
-            op.Process();
-        }
+        KERNEL_TASK_TYPE(7, KERNEL_TYPE_AIV_ONLY);
+        KernelMhcSandwichNormPostPreonly<DTYPE_H_OUT, true, true, true> op;
+        op.Init(h_out, residual, h_post, h_res, phi, alpha_0, bias, gamma_0, gamma_1, gamma_2, h_in_prime, x_2_out,
+                h_in_f32, GetUserWorkspace(workspace), tiling);
+        op.Process();
     }
 }

@@ -188,7 +188,7 @@ static ge::graphStatus TilingMhcSandwichNormPostPreonly(gert::TilingContext *con
     uint32_t dimLoop = D / dimTile + (lastDimTile ? 1 : 0);
 
     // 首个双sibling候选只覆盖当前固定性能形状；其余组合继续走已验证的单AIV回退。
-    // A5的MIX_AIC_1_2以一个物理AI Core为blockDim单位，并展开两个sibling AIV。
+    // 纯AIV任务以AIV为blockDim单位；目标形状为每个token启动两个连续AIV。
     const bool enableDualSibling =
         totalTokens == 4U && D == 5120U && useRmsMid && !returnHInF32 && hOutDesc->GetDataType() == ge::DT_BF16;
     const uint32_t coresPerToken = enableDualSibling ? 2U : 1U;
@@ -231,7 +231,7 @@ static ge::graphStatus TilingMhcSandwichNormPostPreonly(gert::TilingContext *con
     currentWorkspace[0] = sysWsBytes + (enableDualSibling ? (size_t)totalTokens * PARTIAL_SLOT_BYTES : 0U);
 
     // 输出Tiling数据
-    context->SetBlockDim(usedCoreNum);
+    context->SetBlockDim(usedCoreNum * coresPerToken);
     if (enableDualSibling) {
         context->SetScheduleMode(1);
     }
