@@ -1285,6 +1285,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(
                                      .SetOffset(offsetOptional)
                                      .SetTuningConfig(tuningConfigOptional)
                                      .SetNumbers(sharedInputWeight, sharedInputOffset, groupListType)
+                                     .SetDtype(dtype)
                                      .SetTranspose(transposeX1, transposeX2)
                                      .Build();
     auto ret = aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSizeCommonProcess(params, uniqueExecutor.get());
@@ -1600,10 +1601,9 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(
             "for mx, the dtypes of x and weight must be within the range {FLOAT8_E5M2, FLOAT8_E4M3FN, FLOAT4_E2M1}");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (dtype != ACLNN_OUT_DTYPE_FLOAT32 && !(op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
-                                              isMXValid && dtype == ACLNN_OUT_DTYPE_BF16)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "aclnnGroupedMatmulFinalizeRoutingV3 dtype must be 0, or 2 for DAV_3510 mx quant, but is %lld.", dtype);
+    if (dtype != ACLNN_OUT_DTYPE_FLOAT32) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclnnGroupedMatmulFinalizeRoutingV3 dtype must be 0 (FLOAT32), but is %lld.",
+                dtype);
         return ACLNN_ERR_PARAM_INVALID;
     }
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -1619,7 +1619,6 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(
                                      .SetOffset(offsetOptional)
                                      .SetTuningConfig(tuningConfigOptional)
                                      .SetNumbers(sharedInputWeight, sharedInputOffset, groupListType)
-                                     .SetDtype(dtype)
                                      .SetTranspose(transposeX1, transposeX2)
                                      .Build();
     auto ret = aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSizeCommonProcess(params, uniqueExecutor.get());

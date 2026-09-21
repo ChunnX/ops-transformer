@@ -420,6 +420,14 @@ public:
     bool CheckDtypeValid()
     {
         DataType scaleDtype = gmmParams_.scale->GetDataType();
+        if (gmmParams_.dtype != OUT_DTYPE_FLOAT32 && gmmParams_.dtype != OUT_DTYPE_BF16) {
+            OP_LOGE_FOR_INVALID_VALUE(GMMFR_ACLNN_OP_NAME, "dtype", std::to_string(gmmParams_.dtype), "0 or 2");
+            return false;
+        }
+        if (quantMode_ != QuantMode::MX && gmmParams_.dtype != OUT_DTYPE_FLOAT32) {
+            OP_LOGE_FOR_INVALID_VALUE(GMMFR_ACLNN_OP_NAME, "dtype", std::to_string(gmmParams_.dtype), "0");
+            return false;
+        }
         if (quantMode_ == QuantMode::MX) {
             if (CheckDtypeValidForMX() == false) {
                 return false;
@@ -458,8 +466,8 @@ public:
                               return false);
             GMMFR_CHECK_DTYPE(gmmParams_.logit, "logit", LOGIT_TYPE_SUPPORT_LIST_BF16_OUTPUT, return false);
             GMMFR_CHECK_REPORT(
-                gmmParams_.dtype == OUT_DTYPE_FLOAT32 || gmmParams_.dtype == OUT_DTYPE_BF16, return false,
-                OP_LOGE_FOR_INVALID_VALUE(GMMFR_ACLNN_OP_NAME, "dtype", std::to_string(gmmParams_.dtype), "0 or 2"));
+                gmmParams_.dtype == OUT_DTYPE_BF16, return false,
+                OP_LOGE_FOR_INVALID_VALUE(GMMFR_ACLNN_OP_NAME, "dtype", std::to_string(gmmParams_.dtype), "2"));
             GMMFR_CHECK_REPORT(gmmParams_.bias == nullptr, return false,
                                OP_LOGE_FOR_INVALID_VALUE(GMMFR_ACLNN_OP_NAME, "bias", "not nullptr",
                                                          "when dtype is 2 or y is BF16, bias must be nullptr"));
