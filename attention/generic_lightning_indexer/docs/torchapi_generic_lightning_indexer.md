@@ -126,8 +126,6 @@ cann_ops_transformer.generic_lightning_indexer(
 
 与 [aclnnGenericLightningIndexer](./aclnnGenericLightningIndexer.md) 相同。`PA_BSND` / `BBND` 视为 `PA_BBND` 别名；`BNBD` 为 `[BN,N2,BS,D]`（N2=1 时与 BBND 等价）。序列张量支持 int32 与 int64。
 
-完整设计见 [generic_lightning_indexer_design.md](../generic_lightning_indexer_design.md)。
-
 ## 调用示例
 
 ```python

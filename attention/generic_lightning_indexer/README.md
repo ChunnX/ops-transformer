@@ -107,8 +107,6 @@
   - 不支持 FLOAT8_E4M3FN、HIFLOAT8、FLOAT4_E2M1、FLOAT8_E5M2 与 FLOAT8_E8M0。
   - quant_mode 支持 -1（不量化）与 2（INT8）。
 
-完整需求、收编映射与参数对齐分析见 [generic_lightning_indexer_design.md](generic_lightning_indexer_design.md)。
-
 ## 调用说明
 
 | 调用方式 | 样例代码 | 说明 |

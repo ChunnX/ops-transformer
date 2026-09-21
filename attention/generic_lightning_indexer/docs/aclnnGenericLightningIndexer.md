@@ -173,8 +173,6 @@ aclnnStatus aclnnGenericLightningIndexer(
 - <term>Ascend 950PR/Ascend 950DT</term>：支持 FLOAT16 / BFLOAT16 / INT8 / FLOAT8_E4M3FN / HIFLOAT8 / FLOAT4_E2M1 / FLOAT8_E5M2。
 - <term>Atlas A2 / A3</term>：支持 FLOAT16 / BFLOAT16 / INT8；quantMode 支持 -1 与 2。
 
-完整收编映射与参数对齐见 [generic_lightning_indexer_design.md](../generic_lightning_indexer_design.md)。
-
 ## 调用示例
 
 见 [test_aclnn_generic_lightning_indexer.cpp](../examples/test_aclnn_generic_lightning_indexer.cpp)。
