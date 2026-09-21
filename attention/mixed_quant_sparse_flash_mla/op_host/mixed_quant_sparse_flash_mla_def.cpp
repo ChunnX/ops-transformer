@@ -14,6 +14,8 @@
  */
 
 #include "register/op_def_registry.h"
+#include "arch22/mixed_quant_sparse_flash_mla_def.h"
+#include "arch35/mixed_quant_sparse_flash_mla_def.h"
 
 namespace ops {
 class MixedQuantSparseFlashMla : public OpDef {
@@ -131,45 +133,8 @@ public:
         this->Attr("topk_value_mode").AttrType(OPTIONAL).Int(1);
         this->Attr("return_softmax_lse").AttrType(OPTIONAL).Bool(false);
 
-        OpAICoreConfig aicore_config_910;
-        aicore_config_910.DynamicCompileStaticFlag(true)
-            .DynamicFormatFlag(true)
-            .DynamicRankSupportFlag(true)
-            .DynamicShapeSupportFlag(true)
-            .NeedCheckSupportFlag(false)
-            .PrecisionReduceFlag(true)
-            .ExtendCfgInfo("aclnnSupport.value", "support_aclnn");
-        this->AICore().AddConfig("ascend910b", aicore_config_910);
-        this->AICore().AddConfig("ascend910_93", aicore_config_910);
-
-        OpAICoreConfig aicore_config_950;
-        aicore_config_950.Input("q")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_BF16})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        aicore_config_950.Input("ori_kv")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_FLOAT8_E4M3FN})
-            .FormatList({ge::FORMAT_ND})
-            .IgnoreContiguous();
-        aicore_config_950.Input("cmp_kv")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_FLOAT8_E4M3FN})
-            .FormatList({ge::FORMAT_ND})
-            .IgnoreContiguous();
-        aicore_config_950.Output("attn_out")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_BF16})
-            .FormatList({ge::FORMAT_ND});
-        aicore_config_950.DynamicCompileStaticFlag(true)
-            .DynamicFormatFlag(true)
-            .DynamicRankSupportFlag(true)
-            .DynamicShapeSupportFlag(true)
-            .NeedCheckSupportFlag(false)
-            .PrecisionReduceFlag(true)
-            .ExtendCfgInfo("aclnnSupport.value", "support_aclnn");
-        this->AICore().AddConfig("ascend950", aicore_config_950);
+        arch22::AddConfig(*this);
+        arch35::AddConfig(*this);
     }
 };
 OP_ADD(MixedQuantSparseFlashMla);

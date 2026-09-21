@@ -57,7 +57,6 @@ TILING_DATA_FIELD_DEF(uint32_t, dSize)
 TILING_DATA_FIELD_DEF(uint32_t, dSizeVInput)
 TILING_DATA_FIELD_DEF(uint32_t, returnSoftmaxLse)
 END_TILING_DATA_DEF
-REGISTER_TILING_DATA_CLASS(MixedQuantSparseFlashMlaBaseParamsOp, MixedQuantSparseFlashMlaBaseParams)
 
 // arch22 TurboQuant parameters are appended to the registered tiling payload.
 // The existing arch35 payload remains at the beginning with unchanged offsets.
@@ -87,7 +86,6 @@ TILING_DATA_FIELD_DEF(uint32_t, s2BaseSize)
 TILING_DATA_FIELD_DEF(bool, returnSoftmaxLse)
 TILING_DATA_FIELD_DEF(uint32_t, kvQuantMode)
 END_TILING_DATA_DEF
-REGISTER_TILING_DATA_CLASS(MixedQuantSparseFlashMlaTqBaseParamsOp, MixedQuantSparseFlashMlaTqBaseParams)
 
 BEGIN_TILING_DATA_DEF(MixedQuantSparseFlashMlaTqCmpParams)
 TILING_DATA_FIELD_DEF(uint32_t, cmpMaxBlockNumPerBatch)
@@ -96,7 +94,6 @@ TILING_DATA_FIELD_DEF(int64_t, cmpRatio)
 TILING_DATA_FIELD_DEF(uint64_t, cmpMaskMode)
 TILING_DATA_FIELD_DEF(int64_t, cmpKvStride0)
 END_TILING_DATA_DEF
-REGISTER_TILING_DATA_CLASS(MixedQuantSparseFlashMlaTqCmpParamsOp, MixedQuantSparseFlashMlaTqCmpParams)
 
 BEGIN_TILING_DATA_DEF(MixedQuantSparseFlashMlaTilingData)
 TILING_DATA_FIELD_DEF_STRUCT(MixedQuantSparseFlashMlaBaseParams, baseParams);
@@ -104,7 +101,6 @@ TILING_DATA_FIELD_DEF_STRUCT(MixedQuantSparseFlashMlaTqBaseParams, tqBaseParams)
 TILING_DATA_FIELD_DEF_STRUCT(MixedQuantSparseFlashMlaTqCmpParams, tqCmpParams);
 END_TILING_DATA_DEF
 
-REGISTER_TILING_DATA_CLASS(MixedQuantSparseFlashMla, MixedQuantSparseFlashMlaTilingData)
 
 // ---------------算子Tiling类---------------
 class MixedQuantSparseFlashMlaTiling {
@@ -115,6 +111,7 @@ public:
 
 private:
     ge::graphStatus DoTurboQuantTiling(MQSMLATilingInfo *tilingInfo);
+    ge::graphStatus DoCsaTiling(MQSMLATilingInfo *tilingInfo);
     gert::TilingContext *context_ = nullptr;
     QSMLATemplateMode perfMode_ = QSMLATemplateMode::SWA_TEMPLATE_MODE;
     MixedQuantSparseFlashMlaTilingData tilingData_;
