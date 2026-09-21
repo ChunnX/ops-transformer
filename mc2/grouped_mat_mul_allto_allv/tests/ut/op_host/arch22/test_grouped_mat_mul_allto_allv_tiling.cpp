@@ -172,7 +172,7 @@ static TestParam g_testParams[] = {
     {"Test_910b_ccu_rejected", {}, {}, {}, ge::GRAPH_FAILED, false, "Ascend910B", "ccu"},
     {"Test_950_aicpu_unchanged", {}, {}, {}, ge::GRAPH_SUCCESS, false, "Ascend950"},
     {"Test_missing_comm_mode_matches_master_a3", {}, {}, {}, ge::GRAPH_SUCCESS, true, "Ascend910_93"},
-    // 950 validates commMode in SetHcclTiling, before the final key conversion.
+    // A5 validates commMode in SetHcclTiling, before the final key conversion.
     {"Test_950_missing_comm_mode_rejected", {}, {}, {}, ge::GRAPH_FAILED, true, "Ascend950"},
     {"Test_a3_aicpu_topk8", {{"BS", "512"}}, {}, {}, ge::GRAPH_SUCCESS},
     {"Test_a3_aicpu_topk9",
