@@ -218,22 +218,28 @@ def all_to_all_quant_matmul(
         ``(BS/world_size, N)``. all2all_out is a reserved output and is not
         supported yet (returned as an empty tensor).
     """
-    if x1_dtype is not None and not isinstance(x1_dtype, int):
+    if x1_dtype is not None and not isinstance(x1_dtype, (int, torch.dtype)):
         raise ValueError(
-            f"x1_dtype must be an int (ACL dtype enum) or None, but got {type(x1_dtype).__name__}."
+            f"x1_dtype must be an int (ACL dtype enum), a torch.dtype, or None, "
+            f"but got {type(x1_dtype).__name__}."
         )
-    if x2_dtype is not None and not isinstance(x2_dtype, int):
+    if x2_dtype is not None and not isinstance(x2_dtype, (int, torch.dtype)):
         raise ValueError(
-            f"x2_dtype must be an int (ACL dtype enum) or None, but got {type(x2_dtype).__name__}."
+            f"x2_dtype must be an int (ACL dtype enum), a torch.dtype, or None, "
+            f"but got {type(x2_dtype).__name__}."
         )
-    if x1_scale_dtype is not None and not isinstance(x1_scale_dtype, int):
+    if x1_scale_dtype is not None and not isinstance(
+        x1_scale_dtype, (int, torch.dtype)
+    ):
         raise ValueError(
-            f"x1_scale_dtype must be an int (ACL dtype enum) or None, "
+            f"x1_scale_dtype must be an int (ACL dtype enum), a torch.dtype, or None, "
             f"but got {type(x1_scale_dtype).__name__}."
         )
-    if x2_scale_dtype is not None and not isinstance(x2_scale_dtype, int):
+    if x2_scale_dtype is not None and not isinstance(
+        x2_scale_dtype, (int, torch.dtype)
+    ):
         raise ValueError(
-            f"x2_scale_dtype must be an int (ACL dtype enum) or None, "
+            f"x2_scale_dtype must be an int (ACL dtype enum), a torch.dtype, or None, "
             f"but got {type(x2_scale_dtype).__name__}."
         )
     if x1_quant_mode is not None and not isinstance(x1_quant_mode, int):
@@ -244,9 +250,10 @@ def all_to_all_quant_matmul(
         raise ValueError(
             f"x2_quant_mode must be an int or None, but got {type(x2_quant_mode).__name__}."
         )
-    if y_dtype is not None and not isinstance(y_dtype, int):
+    if y_dtype is not None and not isinstance(y_dtype, (int, torch.dtype)):
         raise ValueError(
-            f"y_dtype must be an int (ACL dtype enum) or None, but got {type(y_dtype).__name__}."
+            f"y_dtype must be an int (ACL dtype enum), a torch.dtype, or None, "
+            f"but got {type(y_dtype).__name__}."
         )
     if precision_mode is not None and not isinstance(precision_mode, int):
         raise ValueError(
