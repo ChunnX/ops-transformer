@@ -42,15 +42,31 @@
 #include "../common/moe_distribute_base.h"
 #include "../common/mc2_kernel_utils.h"
 #include "../common/mc2_moe_context.h"
+#include "../common/moe_ep_profiler.h"
 #include "../common/moe_ep_exception_dump_writer.h"
 #else
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #include "../../common/op_kernel/mc2_moe_context.h"
+#include "../../common/op_kernel/moe_ep_profiler.h"
 #include "../../common/op_kernel/moe_ep_exception_dump_writer.h"
 #endif
 
 namespace MoeEpDispatchEpilogueImpl {
+
+// Stable IDs; stages are function intervals, never per-token accumulated counters.
+enum class MoeEpDispatchEpilogueProfileStage : uint32_t {
+    KERNEL = 0U,
+    PREFIX = 1U,
+    PAYLOAD_WAIT = 2U,
+    COUNT_HITS = 4U,
+    WINDOW_OUTPUT = 5U,
+    RANK_ROW_STARTS = 7U,
+    CACHED_RANK_OFFSETS = 8U,
+    OUTPUT_SYNC = 9U,
+    INIT = 10U,
+    CACHED_WINDOW_OUTPUT = 11U,
+};
 
 #if defined(ENABLE_MOE_EP_DISPATCH_EPILOGUE_KERNEL)
 
@@ -105,6 +121,7 @@ public:
     __aicore__ inline void Process();
 
 private:
+    MOE_EP_PROFILE_DECLARE();
     __aicore__ inline void ComputePrefixSums();
     __aicore__ inline void CountHits();
     __aicore__ inline void BuildRankRowStarts();
@@ -268,6 +285,9 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     GM_ADDR cachedRecvSrcMetadata, GM_ADDR recvX, GM_ADDR recvSrcMetadata, GM_ADDR recvTopkWeights, GM_ADDR recvScales,
     GM_ADDR workspace, GM_ADDR tilingGM, TPipe *pipe, const MoeEpDispatchEpilogueInfo *tilingData)
 {
+    MOE_EP_PROFILE_INIT(reinterpret_cast<__gm__ Mc2Aclnn::MoeCommContext *>(context),
+                        MoeEpProfileOp::DISPATCH_EPILOGUE, tilingData->aivNum);
+    MOE_EP_PROFILE_INIT_BEGIN();
     tpipe_ = pipe;
     aivId_ = GetBlockIdx();
     workspaceGM_ = workspace;
@@ -429,11 +449,15 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     SyncFunc<AscendC::HardEvent::V_S>();
     expertSum_ = static_cast<uint32_t>(expertSumOut.GetValue(0));
     diagWriter_.RunPosRecord(MOE_EP_DISPATCH_EPILOGUE_RUN_POS_INIT_DONE);
+    MOE_EP_PROFILE_INIT_END();
 }
 
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
 __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::Process()
 {
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::SCALAR,
+        MoeEpDispatchEpilogueProfileStage::KERNEL, MoeEpProfileBoundary::BEGIN));
+    MOE_EP_PROFILE_INIT_PUBLISH(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpDispatchEpilogueProfileStage::INIT);
     if constexpr (!IsCached) {
         ComputePrefixSums();
         WaitDispatch();
@@ -456,7 +480,11 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         }
         // recv_x/metadata/weights are consumed immediately by MoeEpCombine in continue mode.  Do not rely on the
         // diagnostic write below (or on kernel-tail draining) to complete preceding MTE3 writes.
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::WAIT,
+            MoeEpDispatchEpilogueProfileStage::OUTPUT_SYNC, MoeEpProfileBoundary::BEGIN));
         SyncFunc<AscendC::HardEvent::MTE3_S>();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::WAIT,
+            MoeEpDispatchEpilogueProfileStage::OUTPUT_SYNC, MoeEpProfileBoundary::END));
         diagWriter_.RunPosRecord(MOE_EP_DISPATCH_EPILOGUE_RUN_POS_OUTPUT_DONE);
     } else {
         WaitDispatch();
@@ -466,9 +494,16 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         CopyFromWindowByCachedMeta();
         // The cached metadata path ends with MTE3_MTE2 for UB reuse.  Add an explicit producer-completion edge for
         // the following combine kernel, which consumes all five metadata fields and recv_rank_offsets.
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::WAIT,
+            MoeEpDispatchEpilogueProfileStage::OUTPUT_SYNC, MoeEpProfileBoundary::BEGIN));
         SyncFunc<AscendC::HardEvent::MTE3_S>();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::WAIT,
+            MoeEpDispatchEpilogueProfileStage::OUTPUT_SYNC, MoeEpProfileBoundary::END));
         diagWriter_.RunPosRecord(MOE_EP_DISPATCH_EPILOGUE_RUN_POS_OUTPUT_DONE);
     }
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::SCALAR,
+        MoeEpDispatchEpilogueProfileStage::KERNEL, MoeEpProfileBoundary::END));
+    MOE_EP_PROFILE_FLUSH();
 }
 
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
@@ -477,6 +512,8 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     if (aivId_ != aivNum_ - 1) {
         return;
     }
+    MOE_EP_PROFILE_SCOPE(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::WAIT,
+                         MoeEpDispatchEpilogueProfileStage::PAYLOAD_WAIT);
 
     uint32_t mask = 1;
     int32_t sumOfFlag = 0;
@@ -511,6 +548,8 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
 __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::ComputePrefixSums()
 {
+    MOE_EP_PROFILE_SCOPE(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::SCALAR,
+                         MoeEpDispatchEpilogueProfileStage::PREFIX);
     int64_t cumulativeRowOffset = 0;
     for (uint32_t localExpertIdx = 0; localExpertIdx < numLocalExperts_; ++localExpertIdx) {
         int64_t expertTokenCnt = ubExpertPfx_.GetValue(localExpertIdx);
@@ -523,6 +562,8 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
 __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::CountHits()
 {
+    MOE_EP_PROFILE_SCOPE(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::SCALAR,
+                         MoeEpDispatchEpilogueProfileStage::COUNT_HITS);
     DataCopyExtParams recvCntCopyParams{1U, static_cast<uint32_t>(epWorldSize_ * sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPadExtParams<int32_t> recvCntPadParams{false, 0U, 0U, 0};
     DataCopyPad(ubRecvCnt_, numRecvPerRankGm_, recvCntCopyParams, recvCntPadParams);
@@ -595,6 +636,8 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
 __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::BuildRankRowStarts()
 {
+    MOE_EP_PROFILE_SCOPE(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::SCALAR,
+                         MoeEpDispatchEpilogueProfileStage::RANK_ROW_STARTS);
     // CountHits used ubRankExpertHitCount_ as an MTE3 source. Finish that read before reusing the buffer as the
     // per-rank prefix contributed by cores preceding this core.
     SyncFunc<AscendC::HardEvent::MTE3_V>();
@@ -658,6 +701,8 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
 __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::CopyCachedRankOffsets()
 {
+    MOE_EP_PROFILE_SCOPE(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::SCALAR,
+                         MoeEpDispatchEpilogueProfileStage::CACHED_RANK_OFFSETS);
     if (aivId_ != 0U) {
         return;
     }
@@ -718,6 +763,8 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
 __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::CopyFromWindowByExpert()
 {
+    MOE_EP_PROFILE_SCOPE(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::SCALAR,
+                         MoeEpDispatchEpilogueProfileStage::WINDOW_OUTPUT);
     SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
     // recv_x 段起点 = 专家前缀 + 本核之前所有核在该专家上的命中数。
     // BuildRankRowStarts 已经把后者按 [rank][expert] 存进 ubRankExpertHitCount_，而且只累加了 coreId < aivId_
@@ -916,6 +963,8 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
 __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::CopyFromWindowByCachedMeta()
 {
+    MOE_EP_PROFILE_SCOPE(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::SCALAR,
+                         MoeEpDispatchEpilogueProfileStage::CACHED_WINDOW_OUTPUT);
     if (expertSum_ == 0) {
         return;
     }

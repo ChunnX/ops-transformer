@@ -114,6 +114,10 @@ while [[ $# -gt 0 ]]; do
         ENABLE_AICPU="$2"
         shift 2
         ;;
+    --enable_moe_ep_profiling)
+        ENABLE_MOE_EP_PROFILING="$2"
+        shift 2
+        ;;
     --enable_aicpu_kernel)
         ENABLE_AICPU_KERNEL="$2"
         shift 2
@@ -183,6 +187,7 @@ function build() {
         -DENABLE_TILING_SINK=${ENABLE_TILING_SINK} \
         -DENABLE_AICPU=${ENABLE_AICPU} \
         -DENABLE_AICPU_KERNEL=${ENABLE_AICPU_KERNEL}  \
+        -DENABLE_MOE_EP_PROFILING=${ENABLE_MOE_EP_PROFILING:-OFF} \
         -DENABLE_OOM=${ENABLE_OOM} \
         -DASCEND_MODULE_NAME=${ASCEND_MODULE_NAME}
 

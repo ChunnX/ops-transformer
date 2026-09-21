@@ -49,15 +49,34 @@
 #include "../common/moe_distribute_base.h"
 #include "../common/mc2_kernel_utils.h"
 #include "../common/mc2_moe_context.h"
+#include "../common/moe_ep_profiler.h"
 #include "../common/moe_ep_exception_dump_writer.h"
 #else
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #include "../../common/op_kernel/mc2_moe_context.h"
+#include "../../common/op_kernel/moe_ep_profiler.h"
 #include "../../common/op_kernel/moe_ep_exception_dump_writer.h"
 #endif
 
 namespace MoeEpDispatchImpl {
+
+// Stable IDs; stages are function intervals, never per-token accumulated counters.
+enum class MoeEpDispatchProfileStage : uint32_t {
+    KERNEL = 0U,
+    BUFFER_INIT = 1U,
+    COUNT_BUILD = 2U,
+    COUNT_ISSUE = 3U,
+    COUNT_WAIT = 4U,
+    SLOT_PREFIX = 6U,
+    PAYLOAD_PREP = 7U,
+    PAYLOAD_ISSUE = 8U,
+    INIT = 9U,
+    CACHED_PAYLOAD_PREP = 17U,
+    CACHED_COUNT_ISSUE = 18U,
+    CACHED_COUNT_WAIT = 19U,
+};
+
 
 #define TemplateMoeEpDispatchTypeClass \
     typename XType, typename ScalesType, bool DoCpuSync, bool IsCached, bool IsTopkWeights, uint8_t NetworkMode
@@ -103,6 +122,7 @@ public:
     __aicore__ inline void Process();
 
 private:
+    MOE_EP_PROFILE_DECLARE();
     __aicore__ inline void BufferInit();
     __aicore__ inline void ResetCounters();
     __aicore__ inline void CalSendCntHistograms(LocalTensor<int16_t> dstTensor, LocalTensor<int16_t> &tempTensor,
@@ -274,6 +294,9 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     GM_ADDR numRecvPerRank, GM_ADDR numRecvPerExpert, GM_ADDR dstBufferSlotIdx, GM_ADDR workspaceGM, GM_ADDR tilingGM,
     TPipe *pipe, const MoeEpDispatchTilingData *tilingData)
 {
+    MOE_EP_PROFILE_INIT(reinterpret_cast<__gm__ Mc2Aclnn::MoeCommContext *>(context),
+                        MoeEpProfileOp::DISPATCH, tilingData->moeEpDispatchInfo.aivNum);
+    MOE_EP_PROFILE_INIT_BEGIN();
     tpipe_ = pipe;
     aivId_ = GetBlockIdx();
     workspaceGM_ = workspaceGM;
@@ -378,6 +401,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     sendCntPerExpertGMTensor_.SetGlobalBuffer((__gm__ int32_t *)(sendCntWorkspaceAddr_ + epWorldSizeAlign512_));
     dstRankGMTensor_.SetGlobalBuffer((__gm__ int16_t *)dstRankInfoAddr_);
     diagWriter_.RunPosRecord(MOE_EP_DISPATCH_RUN_POS_INIT_DONE);
+    MOE_EP_PROFILE_INIT_END();
 }
 
 template <TemplateMoeEpDispatchTypeClass>
@@ -447,6 +471,8 @@ __aicore__ inline bool MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetCoreAssi
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::BufferInit()
 {
+    MOE_EP_PROFILE_SCOPE(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR,
+                         MoeEpDispatchProfileStage::BUFFER_INIT);
     tpipe_->InitBuffer(metaSlotQueue_, BUFFER_NUM, metaSlotBytes_);
     tpipe_->InitBuffer(topkIdsBuf_, 2 * perGroupSizeAlign_);
     tpipe_->InitBuffer(tempBuf_, perGroupSizeAlign_);
@@ -610,6 +636,8 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCntP
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCnt()
 {
+    MOE_EP_PROFILE_SCOPE(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR,
+                         MoeEpDispatchProfileStage::COUNT_BUILD);
     SplitToCore(axisBS_, aivNum_, startTokenId_, endTokenId_, sendTokenNum_); // 按token数量分核
     if (startTokenId_ >= axisBS_) {
         return;
@@ -661,6 +689,8 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCnt(
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Communication()
 {
+    MOE_EP_PROFILE_SCOPE(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR,
+                         MoeEpDispatchProfileStage::COUNT_ISSUE);
     // 通信初始化
     tpipe_->InitBuffer(hcommBuf_, HCOMM_INIT_SIZE);
     hcommTensor_ = hcommBuf_.Get<uint8_t>();
@@ -729,6 +759,8 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetRecvCoun
     if (aivId_ != aivNum_ - 1) { // 最后一个核处理recvCount
         return;
     }
+    MOE_EP_PROFILE_SCOPE(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::WAIT,
+                         MoeEpDispatchProfileStage::COUNT_WAIT);
 
     uint32_t mask = 1;
     int32_t sumOfFlag = -1;
@@ -812,6 +844,8 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SetRecvNumP
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetSlotStartNum()
 {
+    MOE_EP_PROFILE_SCOPE(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR,
+                         MoeEpDispatchProfileStage::SLOT_PREFIX);
     slotIdxPerRankTensor_ = sendCntExpertBuf_.GetWithOffset<int32_t>(counterCnt_, 0);
     Duplicate<int32_t>(slotIdxPerRankTensor_, 0, epWorldSize_);
     if (aivId_ == 0) { // 0核起始id 均为0
@@ -944,6 +978,8 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::ProcessMeta
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendPhase()
 {
+    MOE_EP_PROFILE_SCOPE(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR,
+                         MoeEpDispatchProfileStage::PAYLOAD_PREP);
     if (startTokenId_ >= axisBS_) {
         return;
     }
@@ -1018,6 +1054,8 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetLocalSlo
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendPhaseCached()
 {
+    MOE_EP_PROFILE_SCOPE(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR,
+                         MoeEpDispatchProfileStage::CACHED_PAYLOAD_PREP);
     // cache 模式：直接以 cached_dst_slot_idx 输入表驱动发送（本端提取 + x/meta 写入）
     SplitToCore(axisBS_, aivNum_, startTokenId_, endTokenId_, sendTokenNum_); // 按token数量分核
     if (startTokenId_ >= axisBS_) {
@@ -1082,6 +1120,8 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SetLocalSta
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CommunicationCached()
 {
+    MOE_EP_PROFILE_SCOPE(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR,
+                         MoeEpDispatchProfileStage::CACHED_COUNT_ISSUE);
     SplitToCore(epWorldSize_, aivNum_, startRankId_, endRankId_, rankNumPerCore_); // 按卡分核
     coreAssigned_ = GetCoreAssignment(copyRankStart_, copyRankNum_, channelIndex_, coreIndexInGroup_, groupSize_);
     if (!coreAssigned_) {
@@ -1105,6 +1145,8 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WaitStatusC
     if (aivId_ != aivNum_ - 1) {
         return;
     }
+    MOE_EP_PROFILE_SCOPE(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::WAIT,
+                         MoeEpDispatchProfileStage::CACHED_COUNT_WAIT);
 
     uint32_t tmpOffset = epWorldSize_ * UB_ALIGN;
     uint32_t mask = 1;
@@ -1173,6 +1215,8 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CommBufferI
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteToRemoteWindow()
 {
+    MOE_EP_PROFILE_SCOPE(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR,
+                         MoeEpDispatchProfileStage::PAYLOAD_ISSUE);
     CommBufferInit();
     if (!coreAssigned_) {
         return;
@@ -1294,7 +1338,11 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenBy
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Process()
 {
-    if ASCEND_IS_AIV { // 全aiv处理
+    if ASCEND_IS_AIV {
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR,
+            MoeEpDispatchProfileStage::KERNEL, MoeEpProfileBoundary::BEGIN));
+        MOE_EP_PROFILE_INIT_PUBLISH(MoeEpProfileOp::DISPATCH, MoeEpDispatchProfileStage::INIT);
+ // 全aiv处理
         if constexpr (!IsCached) {
             BufferInit();
             CalSendCnt();
@@ -1313,6 +1361,9 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Process()
         SyncAll<true>();
         WriteToRemoteWindow();
         diagWriter_.RunPosRecord(MOE_EP_DISPATCH_RUN_POS_URMA_REQUESTS_ISSUE_DONE);
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR,
+            MoeEpDispatchProfileStage::KERNEL, MoeEpProfileBoundary::END));
+        MOE_EP_PROFILE_FLUSH();
     }
 }
 
