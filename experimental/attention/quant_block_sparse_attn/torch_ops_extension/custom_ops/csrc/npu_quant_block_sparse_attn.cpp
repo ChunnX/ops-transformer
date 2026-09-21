@@ -53,6 +53,8 @@ std::tuple<at::Tensor, at::Tensor> construct_bsa_output_tensors(const at::Tensor
                                                                 int64_t quant_mode,
                                                                 bool return_softmax_lse)
 {
+    TORCH_CHECK(value.dim() == DIM_FOUR,
+                "value should be 4D PA_BNBD [blockNum, Nkv, blockSize, headDim], but got ", value.dim(), "D.");
     const std::string layout_q_str(layout_q);
     const bool padded = layout_q_str == "BSND" || layout_q_str == "BNSD";
     if (padded) {
