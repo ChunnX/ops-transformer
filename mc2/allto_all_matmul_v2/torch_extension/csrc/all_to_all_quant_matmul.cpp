@@ -18,7 +18,6 @@ using npu_utils = at_npu::native::NpuUtils;
 const int DIM_TWO = 2;
 static const int64_t DYN_PERTOKEN_QUANT_MODE = 7;
 static const int64_t PERCHANNEL_QUANT_MODE = 2;
-static const int64_t INT4_NUMS_IN_INT32 = 8;
 static const int64_t GROUP_MAX = 65535;
 static const size_t GROUP_DIM = 3;
 static const size_t OFFSET_32_BITS = 32;
@@ -123,13 +122,12 @@ std::tuple<at::Tensor, at::Tensor> NpuAlltoAllQuantMatmul(
 {
     CheckNpuAlltoAllQuantMatmulInputs(x1, x2, worldSize, x1ScaleOptional, x2ScaleOptional);
 
-    bool is_w4 = x2.dtype() == at::kInt;
     auto x1Size = x1.sizes();
     auto x2Size = x2.sizes();
     int64_t bs = x1Size[0];
     int64_t h = x1Size[1];
     int64_t localBs = bs / worldSize;
-    int64_t n = is_w4 ? x2Size[1] * INT4_NUMS_IN_INT32 : x2Size[1];
+    int64_t n = x2Size[1];
 
     TORCH_CHECK(bs % worldSize == 0, "The first dim of x1 (", bs, ") should be divisible by world_size (", worldSize,
                 ")");

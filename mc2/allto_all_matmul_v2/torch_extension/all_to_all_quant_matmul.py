@@ -231,6 +231,22 @@ def all_to_all_quant_matmul(
             f"x2_scale_dtype must be an int (ACL dtype enum) or None, "
             f"but got {type(x2_scale_dtype).__name__}."
         )
+    if x1_quant_mode is not None and not isinstance(x1_quant_mode, int):
+        raise ValueError(
+            f"x1_quant_mode must be an int or None, but got {type(x1_quant_mode).__name__}."
+        )
+    if x2_quant_mode is not None and not isinstance(x2_quant_mode, int):
+        raise ValueError(
+            f"x2_quant_mode must be an int or None, but got {type(x2_quant_mode).__name__}."
+        )
+    if y_dtype is not None and not isinstance(y_dtype, int):
+        raise ValueError(
+            f"y_dtype must be an int (ACL dtype enum) or None, but got {type(y_dtype).__name__}."
+        )
+    if precision_mode is not None and not isinstance(precision_mode, int):
+        raise ValueError(
+            f"precision_mode must be an int or None, but got {type(precision_mode).__name__}."
+        )
 
     rank_id = torch.distributed.get_rank(group)
     world_size, group_name, context, hccl_buffer_size = _prepare_comm_context(
