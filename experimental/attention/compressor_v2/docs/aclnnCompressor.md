@@ -25,8 +25,6 @@
 
 ## 功能说明
 
-arch22 支持 A2/A3，本次仅验证 A2，未执行 A3/A5 上板。已定位的非连续 state memcheck ERROR 属于 CANN DFX 边界描述误报，原生 ACLNN 启用 lite_exception 后也可复现；不代表原始工具链检测全部通过，详见[验证记录](./arch22_validation.md)。V2 无 APE，固定 coff=1、cacheMode=2，不提供训练输出。
-
 - 接口功能：CompressorV2是推理场景下SMLA和QLI的前处理算子，用于将每cmp_ratio个token的KV cache压缩成一个，然后每个token与这些压缩的KV cache进行DSA计算。在长序列的情况下，可以有效减少计算开销。主要计算过程为：
     1. 将输入$X$与$W^{KV}$做Matmul运算得到$kv\_state$，将输入$X$与$W^{Gate}$做Matmul运算得到$score\_state$，$kv\_state$与$score\_state$根据输入的start_pos及cu_seqlens写入state_cache（循环buffer，写本次序列末尾min(seqused, block_size)个token）。
     2. 对$score\_state$进行softmax运算，将softmax结果与$kv\_state$做Mul计算，后进行ReduceSum运算得到压缩结果。
@@ -150,13 +148,13 @@ aclnnStatus aclnnCompressorV2(
       <td>不支持空Tensor。</td>
       <td>FLOAT</td>
       <td>ND</td>
-      <td>[block_num,block_size,2* D]，要求block_num>=B且block_num>0；BSH场景需满足block_size >= cmp_ratio + S - 1。</td>
+      <td>[block_num,block_size,2* D]，要求block_num>0；需满足block_size >= cmp_ratio + S - 1。</td>
       <td>支持0轴非连续</td>
     </tr>
     <tr>
       <td>stateBlockTableOptional（aclTensor*）</td>
       <td>可选输入</td>
-      <td>表示state_cache存储使用的block映射表，当前实现必须传入。0为有效物理块号，正常读写。</td>
+      <td>表示state_cache存储使用的block映射表。当其中元素的值为0时，表示当前位置无需进行更新state_cache操作。</td>
       <td>支持S=0、T=0的空Tensor。</td>
       <td>INT32</td>
       <td>ND</td>
@@ -345,9 +343,6 @@ aclnnStatus aclnnCompressorV2(
 
 ## 约束说明
 
-- A2/A3 在BSH场景下检查 block_size >= cmp_ratio + S - 1；TH不在Host读取设备长度值做容量校验，调用方需保证历史数据不会被ring写回提前覆盖。
-- stateCacheRef最后两轴连续，仅0轴允许非连续。原生调用须显式传入实际stateCacheStrideDim0，至少为block_size*2*D，并分配足够的底层storage。
-
 - 确定性计算：
   - aclnnCompressorV2默认确定性实现。
   <!-- npu="950" id8 -->
@@ -355,7 +350,7 @@ aclnnStatus aclnnCompressorV2(
   <!-- end id8 -->
 - x参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、H（Head Size）表示hidden层的大小、D（Head Dim）表示hidden层的最小单元大小、T表示所有Batch输入样本序列长度的累加和。
 - 输入shape限制：
-  - stateCacheRef支持输入shape为[block_num, block_size, 2* D]，要求block_num>=B且block_num>0；BSH场景需满足block_size >= cmp_ratio + S - 1。
+  - stateCacheRef支持输入shape为[block_num, block_size, 2* D]，要求block_num>0；需满足block_size >= cmp_ratio + S - 1。
   - 当x采用BS合轴，即x的输入shape为[T,H]时：
     - cuSeqlensOptional输入shape必须为[B+1,]，且该参数为前缀和数组，后一个元素的值必须大于等于前一个元素的值，第一位必须为0。
     - sequsedOptional支持输入shape为[B,]，要求0 ≤ seqused[n] ≤ cu_seqlens[n+1] - cu_seqlens[n]。
@@ -548,7 +543,7 @@ int main()
     std::vector<bfloat16> wkvHostData(wkvSize, bfloat16(0.1f));
     std::vector<bfloat16> wgateHostData(wgateSize, bfloat16(0.1f));
     std::vector<float_t> stateCacheHostData(stateCacheSize, 0.1f);
-    std::vector<int32_t> stateBlockTableHostData(B, 0);
+    std::vector<int32_t> stateBlockTableHostData(B, 1);
     std::vector<int32_t> startPosHostData(B, 0);
     std::vector<bfloat16> cmpKvHostData(cmpKvSize, bfloat16(0.0f));
 

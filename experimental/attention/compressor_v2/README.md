@@ -13,9 +13,6 @@
 
 ## 功能说明
 
-- V2 不提供 APE 参数，固定 coff=1、cacheMode=2，仅支持推理。A2/A3 使用 arch22，Ascend 950 使用原 arch35 实现。
-- 本次迁移仅验证 A2，未执行 A3/A5 上板及图模式验证。已定位的非连续 state memcheck ERROR 属于 CANN DFX 边界描述误报，不代表原始工具链检测全部通过，适用范围和证据见[验证记录](./docs/arch22_validation.md)。
-
 - 算子功能：CompressorV2是推理场景下SMLA和QLI的前处理算子，用于将每cmp_ratio个token的KV cache压缩成一个，然后每个token与这些压缩的KV cache进行DSA计算。在长序列的情况下，可以有效减少计算开销。主要计算过程为：
     1. 将输入$X$与$W^{KV}$做Matmul运算得到$kv\_state$，将输入$X$与$W^{Gate}$做Matmul运算得到$score\_state$，$kv\_state$与$score\_state$根据输入的start_pos及cu_seqlens写入state_cache（循环buffer，写本次序列末尾min(seqused, block_size)个token）。
     2. 对$score\_state$进行softmax运算，将softmax结果与$kv\_state$做Mul计算，后进行ReduceSum运算得到压缩结果。
@@ -103,7 +100,7 @@
   <tr>
     <td>state_block_table</td>
     <td>可选输入</td>
-    <td>表示state_cache存储使用的block映射表。0是有效物理块号，正常读写。当前实现必须传入该映射表。</td>
+    <td>表示state_cache存储使用的block映射表。当其中元素的值为0时，表示当前位置无需进行更新state_cache操作。</td>
     <td>INT32</td>
     <td>ND</td>
   </tr>
@@ -151,9 +148,7 @@
 - 输入shape限制：
     - wkv支持输入shape为[D,H]。
     - wgate支持输入shape为[D,H]。
-    - state_cache支持输入shape为[block_num, block_size, 2*D]，要求block_num>=B且block_num>0。A2/A3 的 BSH 场景在 Host 校验 block_size >= cmp_ratio + S - 1；TH 不读取设备端长度值做该校验，由调用方保证历史数据读取期间不会被 ring 写回覆盖。
-    - state_cache仅允许0轴非连续，最后两轴连续；原生 ACLNN 必须传入实际 state_cache_stride_dim0，且不小于 block_size*2*D。PyTorch 自动传入 stride(0)。
-    - state_block_table元素在[0, block_num)内且各batch映射互不重复；0有效，不能用作跳过更新的标志。
+    - state_cache支持输入shape为[block_num, block_size, 2*D]，要求block_num>0，且需要满足block_size >= cmp_ratio + S - 1。
     - start_pos支持输入shape为[B,]。
     - 若x的维度采用BS合轴，即x的输入shape为[T,H]：
         - cu_seqlens输入shape必须为[B+1,]。该参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值，且第一位必须为0。
@@ -200,8 +195,6 @@
   - <term>Ascend 950PR/Ascend 950DT</term>：batch一致性：通过aclrtSetSysParamOpt()配置ACL_OPT_DETERMINISTIC为3来开启batch一致性，开启后可以满足计算结果和所在批次大小、位置无关。
 
 ## 调用说明
-
-- A2/A3：使用[原生 ACLNN 样例](./examples/test_aclnn_compressor.cpp)或算子目录下的 `torch_extension`，Python 入口为 `from cann_ops_transformer.ops.ds41 import compressor`。
 
 - <term>Ascend 950PR/Ascend 950DT</term>：
 

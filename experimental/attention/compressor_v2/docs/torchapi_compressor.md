@@ -25,8 +25,6 @@
 
 ## 功能说明
 
-本次 arch22 迁移仅在 A2 验证 eager，未验证 A3/A5 或图模式。已定位的非连续 state memcheck ERROR 属于 CANN DFX 边界描述误报，不是 PyTorch 专属问题；原始工具链检测仍有 ERROR，详见[验证记录](./arch22_validation.md)。V2 无 APE 参数，固定 coff=1、cacheMode=2。
-
 - 接口功能：compressor 是 CompressorV2 压缩算子的 PyTorch（PTA）接口，通过 `cann_ops_transformer.ops.ds41` 子模块对外提供。用于将每 `cmp_ratio` 个 token 的 KV cache 压缩成一个，同时将 `kv_state`/`score_state` 原位更新到 `state_cache`（循环 buffer）。主要计算过程为：
     1. 将输入 $X$ 与 $W^{KV}$ 做 Matmul 运算得到 $kv\_state$，将输入 $X$ 与 $W^{Gate}$ 做 Matmul 运算得到 $score\_state$，$kv\_state$ 与 $score\_state$ 根据输入的 start_pos 及 cu_seqlens 写入 state_cache（循环 buffer，写本次序列末尾 min(seqused, block_size) 个 token）。
     2. 对 $score\_state$ 进行 softmax 运算，将 softmax 结果与 $kv\_state$ 做 Mul 计算，后按压缩轴 ReduceSum 得到压缩结果 $cmp\_kv$。
@@ -84,7 +82,7 @@ compressor(
 | wgate | Tensor | 必选 | gate压缩权重，对应公式中的 $W^{Gate}$。不支持非连续，数据格式支持ND。 | bfloat16、float16 | [D,H] |
 | state_cache | Tensor | 必选 | kv_state和score_state的历史数据，对应公式中的 $\left[kv\_state, score\_state\right]$。支持0轴非连续，数据格式支持ND。计算后 kv_state 和 score_state 会原位更新到此 Tensor。 | float32 | [block_num, block_size, 2\*D]，要求block_num>0 |
 | cmp_ratio | int | 必选 | 数据压缩率。取值范围为[2, 128]内的整数。 | - | - |
-| state_block_table | Tensor | 签名可选，当前实现必须传入 | state_cache存储使用的block映射表。不支持非连续，数据格式支持ND。0为有效物理块号，正常读写。 | int32 | [B] |
+| state_block_table | Tensor | 可选 | state_cache存储使用的block映射表。不支持非连续，数据格式支持ND。当其中元素的值为0时，表示当前位置无需进行更新state_cache操作。 | int32 | [B] |
 | cu_seqlens | Tensor | 可选 | 不同Batch上的有效token数。不支持非连续，数据格式支持ND。<br>当x的shape为[B,S,H]时，参数必须为空。<br>当x的shape为[T,H]时，输入shape必须为[B+1,]，该参数为前缀和数组，后一个元素≥前一个元素，第一位必须为0，最后一位必须为T。 | int32 | [B+1,] |
 | seqused | Tensor | 可选 | 不同Batch中实际参与压缩的token数。不支持非连续，数据格式支持ND。<br>指定为None时，数值等于每个Batch上的Sequence Length。<br>[B,S,H]场景：0 ≤ seqused[n] ≤ S<br>[T,H]场景：0 ≤ seqused[n] ≤ cu_seqlens[n+1] - cu_seqlens[n]。 | int32 | [B,] |
 | start_pos | Tensor | 可选 | 计算起始位置。不支持非连续，数据格式支持ND，输入为None时从0开始计算。 | int32 | [B,] |
@@ -98,9 +96,6 @@ compressor(
 | cmp_kv | Tensor | 必选 | 压缩后的数据。不支持非连续，数据格式支持ND；<br>当x的shape为[B,S,H]时，输出拼接：(\<batch0\>compressed_tokens+pad0) + (\<batch1\>compressed_tokens+pad1) + ... + (\<batchN\>compressed_tokens+padN)；<br>当x的shape为[T,H]时，输出拼接：\<batch0\>compressed_tokens + \<batch1\>compressed_tokens + ... + \<batchN\>compressed_tokens + pad。 | bfloat16、float16 | x=[B,S,H]：[B,ceil(S/cmp_ratio),D]<br>x=[T,H]：[min(T,T//cmp_ratio+B),D] |
 
 ## 约束说明
-
-- A2/A3 的 BSH 场景要求 block_size >= cmp_ratio + S - 1，Host 根据shape校验；TH不读取设备tensor的长度值做容量校验，调用方需保证 ring 历史数据不被提前覆盖。
-- state_cache最后两轴必须连续，仅0轴允许padding；接口自动将实际stride(0)传给ACLNN。
 
 - 该接口支持推理场景下使用。
 - 该接口支持单算子模式和TorchAir图模式(aclgraph)调用。
