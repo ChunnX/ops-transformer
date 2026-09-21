@@ -32,7 +32,36 @@ __aicore__ inline int32_t DnClip(int64_t value, int32_t low, int32_t high)
     return static_cast<int32_t>(value < low ? low : (value > high ? high : value));
 }
 
-template <uint16_t N>
+// Fixed state intersections remove the data-dependent state walk. Only
+// geometrically possible pairs for the selected boundary mode are emitted.
+template <uint16_t N, uint16_t Pair, uint16_t First, uint16_t Second, bool Narrow, uint16_t BoundaryMode,
+          bool FullColumns>
+__aicore__ inline void DnSetPairCount(DnSegmentPlan &plan, const int32_t *ends)
+{
+    if constexpr ((BoundaryMode != 1 || (First >= 2 && Second >= 2)) &&
+                  (BoundaryMode != 2 || ((First <= 2 || First == 5) && (Second <= 2 || Second == 5))) &&
+                  (!FullColumns || Second != 5) && !(First == 1 && Second == 1) && !(First == 3 && Second == 3) &&
+                  (!Narrow || !((First == 1 && Second == 2) || (First == 2 && (Second == 2 || Second == 3))))) {
+        constexpr int32_t firstOffset = Pair * (N / 4U);
+        constexpr int32_t secondOffset = firstOffset + N / 2U;
+        const int32_t firstBegin = First == 0 ? 0 : ends[First - 1];
+        const int32_t secondBegin = Second == 0 ? 0 : ends[Second - 1];
+        const int32_t beginA = firstBegin - firstOffset;
+        const int32_t beginB = secondBegin - secondOffset;
+        const int32_t endA = ends[First] - firstOffset;
+        const int32_t endB = ends[Second] - secondOffset;
+        const int32_t intervalBegin = beginA > beginB ? beginA : beginB;
+        const int32_t intervalEnd = endA < endB ? endA : endB;
+        const int32_t begin = intervalBegin > 0 ? intervalBegin : 0;
+        const int32_t end = intervalEnd < N / 4 ? intervalEnd : N / 4;
+        const uint32_t count = end > begin ? static_cast<uint32_t>(end - begin) : 0U;
+        constexpr uint32_t index = First * (11U - First) / 2U + Second;
+        plan.pairCounts[Pair][index / 8U] |= static_cast<uint64_t>(count) << (8U * (index % 8U));
+        plan.pairCounts[Pair][2] |= static_cast<uint64_t>(count != 0) << (40U + index);
+    }
+}
+
+template <uint16_t N, bool Narrow = false, uint16_t BoundaryMode = 0, bool FullColumns = false>
 __aicore__ inline DnSegmentPlan MakeDnSegmentPlan(int64_t lower, int64_t upper, uint16_t validN)
 {
     static_assert(N >= 128 && N < 256 && N % 16 == 0,
@@ -43,7 +72,15 @@ __aicore__ inline DnSegmentPlan MakeDnSegmentPlan(int64_t lower, int64_t upper, 
     plan.narrow = upper - lower + 1 < 64;
     // States: masked-left, lower, visible/both, upper, masked-right, padding.
     int32_t ends[6];
-    if (lower > upper) {
+    if constexpr (BoundaryMode == 1) {
+        ends[0] = ends[1] = 0;
+        ends[2] = DnClip(upper + 1, 0, validN);
+        ends[3] = DnClip(upper + 64, 0, validN);
+    } else if constexpr (BoundaryMode == 2) {
+        ends[0] = DnClip(lower, 0, validN);
+        ends[1] = DnClip(lower + 63, 0, validN);
+        ends[2] = ends[3] = validN;
+    } else if (lower > upper) {
         ends[0] = ends[1] = ends[2] = ends[3] = validN;
     } else {
         ends[0] = DnClip(lower, 0, validN);
@@ -68,34 +105,48 @@ __aicore__ inline DnSegmentPlan MakeDnSegmentPlan(int64_t lower, int64_t upper, 
     for (uint32_t kind = 1; kind <= 3; ++kind) {
         plan.maxCounts[1] |= static_cast<uint64_t>((ends[kind] - ends[kind - 1]) / 4U) << (32U + (kind - 1U) * 8U);
     }
-    // Merge the two monotonically advancing state streams. At most eleven
-    // intersections per pair; no scan over the score columns is needed.
-    for (uint32_t pair = 0; pair < 2; ++pair) {
-        const int32_t firstOffset = pair * (N / 4U);
-        const int32_t secondOffset = firstOffset + N / 2U;
-        uint32_t first = 0;
-        uint32_t second = 0;
-        int32_t column = 0;
-        while (column < N / 4) {
-            while (column + firstOffset >= ends[first]) {
-                ++first;
-            }
-            while (column + secondOffset >= ends[second]) {
-                ++second;
-            }
-            int32_t stop = ends[first] - firstOffset;
-            if (ends[second] - secondOffset < stop) {
-                stop = ends[second] - secondOffset;
-            }
-            if (stop > N / 4) {
-                stop = N / 4;
-            }
-            uint32_t index = first * (11U - first) / 2U + second;
-            plan.pairCounts[pair][index / 8U] |= static_cast<uint64_t>(stop - column) << (8U * (index % 8U));
-            plan.pairCounts[pair][2] |= 1ULL << (40U + index);
-            column = stop;
-        }
-    }
+    DnSetPairCount<N, 0, 0, 0, Narrow, BoundaryMode, FullColumns>(plan, ends);
+    DnSetPairCount<N, 0, 0, 1, Narrow, BoundaryMode, FullColumns>(plan, ends);
+    DnSetPairCount<N, 0, 0, 2, Narrow, BoundaryMode, FullColumns>(plan, ends);
+    DnSetPairCount<N, 0, 0, 3, Narrow, BoundaryMode, FullColumns>(plan, ends);
+    DnSetPairCount<N, 0, 0, 4, Narrow, BoundaryMode, FullColumns>(plan, ends);
+    DnSetPairCount<N, 0, 0, 5, Narrow, BoundaryMode, FullColumns>(plan, ends);
+    DnSetPairCount<N, 0, 1, 1, Narrow, BoundaryMode, FullColumns>(plan, ends);
+    DnSetPairCount<N, 0, 1, 2, Narrow, BoundaryMode, FullColumns>(plan, ends);
+    DnSetPairCount<N, 0, 1, 3, Narrow, BoundaryMode, FullColumns>(plan, ends);
+    DnSetPairCount<N, 0, 1, 4, Narrow, BoundaryMode, FullColumns>(plan, ends);
+    DnSetPairCount<N, 0, 1, 5, Narrow, BoundaryMode, FullColumns>(plan, ends);
+    DnSetPairCount<N, 0, 2, 2, Narrow, BoundaryMode, FullColumns>(plan, ends);
+    DnSetPairCount<N, 0, 2, 3, Narrow, BoundaryMode, FullColumns>(plan, ends);
+    DnSetPairCount<N, 0, 2, 4, Narrow, BoundaryMode, FullColumns>(plan, ends);
+    DnSetPairCount<N, 0, 2, 5, Narrow, BoundaryMode, FullColumns>(plan, ends);
+    DnSetPairCount<N, 0, 3, 3, Narrow, BoundaryMode, FullColumns>(plan, ends);
+    DnSetPairCount<N, 0, 3, 4, Narrow, BoundaryMode, FullColumns>(plan, ends);
+    DnSetPairCount<N, 0, 3, 5, Narrow, BoundaryMode, FullColumns>(plan, ends);
+    DnSetPairCount<N, 0, 4, 4, Narrow, BoundaryMode, FullColumns>(plan, ends);
+    DnSetPairCount<N, 0, 4, 5, Narrow, BoundaryMode, FullColumns>(plan, ends);
+    DnSetPairCount<N, 0, 5, 5, Narrow, BoundaryMode, FullColumns>(plan, ends);
+    DnSetPairCount<N, 1, 0, 0, Narrow, BoundaryMode, FullColumns>(plan, ends);
+    DnSetPairCount<N, 1, 0, 1, Narrow, BoundaryMode, FullColumns>(plan, ends);
+    DnSetPairCount<N, 1, 0, 2, Narrow, BoundaryMode, FullColumns>(plan, ends);
+    DnSetPairCount<N, 1, 0, 3, Narrow, BoundaryMode, FullColumns>(plan, ends);
+    DnSetPairCount<N, 1, 0, 4, Narrow, BoundaryMode, FullColumns>(plan, ends);
+    DnSetPairCount<N, 1, 0, 5, Narrow, BoundaryMode, FullColumns>(plan, ends);
+    DnSetPairCount<N, 1, 1, 1, Narrow, BoundaryMode, FullColumns>(plan, ends);
+    DnSetPairCount<N, 1, 1, 2, Narrow, BoundaryMode, FullColumns>(plan, ends);
+    DnSetPairCount<N, 1, 1, 3, Narrow, BoundaryMode, FullColumns>(plan, ends);
+    DnSetPairCount<N, 1, 1, 4, Narrow, BoundaryMode, FullColumns>(plan, ends);
+    DnSetPairCount<N, 1, 1, 5, Narrow, BoundaryMode, FullColumns>(plan, ends);
+    DnSetPairCount<N, 1, 2, 2, Narrow, BoundaryMode, FullColumns>(plan, ends);
+    DnSetPairCount<N, 1, 2, 3, Narrow, BoundaryMode, FullColumns>(plan, ends);
+    DnSetPairCount<N, 1, 2, 4, Narrow, BoundaryMode, FullColumns>(plan, ends);
+    DnSetPairCount<N, 1, 2, 5, Narrow, BoundaryMode, FullColumns>(plan, ends);
+    DnSetPairCount<N, 1, 3, 3, Narrow, BoundaryMode, FullColumns>(plan, ends);
+    DnSetPairCount<N, 1, 3, 4, Narrow, BoundaryMode, FullColumns>(plan, ends);
+    DnSetPairCount<N, 1, 3, 5, Narrow, BoundaryMode, FullColumns>(plan, ends);
+    DnSetPairCount<N, 1, 4, 4, Narrow, BoundaryMode, FullColumns>(plan, ends);
+    DnSetPairCount<N, 1, 4, 5, Narrow, BoundaryMode, FullColumns>(plan, ends);
+    DnSetPairCount<N, 1, 5, 5, Narrow, BoundaryMode, FullColumns>(plan, ends);
     return plan;
 }
 
@@ -451,8 +502,10 @@ __aicore__ inline void DnSegmentedSoftmax(const LocalTensor<T> &output, const Lo
                                           int64_t upper)
 {
     const uint32_t validN = FullColumns ? N : originN;
-    const DnSegmentPlan plan = MakeDnSegmentPlan<N>(lower, upper, static_cast<uint16_t>(validN));
+    const int32_t clippedLower = DnClip(lower, -64, N);
+    const int32_t clippedUpper = DnClip(upper, -64, N);
 #define DN_SEGMENTED_SOFTMAX(NARROW, BOUNDARIES) \
+    const DnSegmentPlan plan = MakeDnSegmentPlan<N, NARROW, BOUNDARIES, FullColumns>(lower, upper, validN); \
     DnSegmentedSoftmaxVF<T, N, ScaleSign, Rows64, NARROW, BOUNDARIES, FullColumns>( \
         (__ubuf__ T *)output.GetPhyAddr(), (__ubuf__ float *)scores.GetPhyAddr(), (__ubuf__ float *)sum.GetPhyAddr(), \
         (__ubuf__ float *)maximum.GetPhyAddr(), (__ubuf__ float *)exp.GetPhyAddr(), \
@@ -461,11 +514,11 @@ __aicore__ inline void DnSegmentedSoftmax(const LocalTensor<T> &output, const Lo
         plan.pairCounts[0][2], plan.pairCounts[1][0], plan.pairCounts[1][1], plan.pairCounts[1][2])
     if (lower > upper) {
         DN_SEGMENTED_SOFTMAX(false, 3);
-    } else if (plan.lower <= -64) {
+    } else if (clippedLower <= -64) {
         DN_SEGMENTED_SOFTMAX(false, 1);
-    } else if (plan.upper >= static_cast<int32_t>(validN) - 1) {
+    } else if (clippedUpper >= static_cast<int32_t>(validN) - 1) {
         DN_SEGMENTED_SOFTMAX(false, 2);
-    } else if (plan.narrow) {
+    } else if (upper - lower + 1 < 64) {
         DN_SEGMENTED_SOFTMAX(true, 3);
     } else {
         DN_SEGMENTED_SOFTMAX(false, 3);
