@@ -113,13 +113,12 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulSwigluQuantV2(
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "AllocTensor for GroupedMatmulSwigluQuantV2 scaleOut failed.");
         return std::tuple(nullptr, nullptr);
     }
-    auto ret =
-        INFER_SHAPE(GroupedMatmulSwigluQuantV2,
-                    OP_INPUT(x, xScale, groupList, weight, weightScale, weightAssistanceMatrix, bias, smoothScale),
-                    OP_OUTPUT(out, scaleOut),
-                    OP_ATTR(dequantMode, dequantDtype, quantMode, quantDtype, transposeWeight, groupListType,
-                            tuningConfigOptional, swigluMode, clampLimit, gluAlpha, gluBias, roundMode, scaleAlg,
-                            dstTypeMax));
+    auto ret = INFER_SHAPE(
+        GroupedMatmulSwigluQuantV2,
+        OP_INPUT(x, xScale, groupList, weight, weightScale, weightAssistanceMatrix, bias, smoothScale),
+        OP_OUTPUT(out, scaleOut),
+        OP_ATTR(dequantMode, dequantDtype, quantMode, quantDtype, transposeWeight, groupListType, tuningConfigOptional,
+                swigluMode, clampLimit, gluAlpha, gluBias, roundMode, scaleAlg, dstTypeMax));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "InferShape failed.");
         return std::tuple(nullptr, nullptr);
@@ -129,8 +128,8 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulSwigluQuantV2(
         GroupedMatmulSwigluQuantV2,
         OP_INPUT(x, xScale, groupList, weight, weightScale, weightAssistanceMatrix, bias, smoothScale),
         OP_OUTPUT(out, scaleOut),
-        OP_ATTR(dequantMode, dequantDtype, quantMode, quantDtype, transposeWeight, groupListType,
-                tuningConfigOptional, swigluMode, clampLimit, gluAlpha, gluBias, roundMode, scaleAlg, dstTypeMax));
+        OP_ATTR(dequantMode, dequantDtype, quantMode, quantDtype, transposeWeight, groupListType, tuningConfigOptional,
+                swigluMode, clampLimit, gluAlpha, gluBias, roundMode, scaleAlg, dstTypeMax));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "ADD_TO_LAUNCHER_LIST_AICORE failed.");
         return std::tuple(nullptr, nullptr);
@@ -145,10 +144,10 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulSwigluQuantV2(
     const aclTensor *groupList, int64_t dequantMode, int64_t dequantDtype, int64_t quantMode, int64_t quantDtype,
     bool transposeWeight, int64_t groupListType, const aclIntArray *tuningConfigOptional, aclOpExecutor *executor)
 {
-    return GroupedMatmulSwigluQuantV2(
-        x, weight, weightScale, xScale, weightAssistanceMatrix, bias, smoothScale, groupList, dequantMode,
-        dequantDtype, quantMode, quantDtype, transposeWeight, groupListType, tuningConfigOptional, 0, 7.0F, 1.702F,
-        1.0F, "rint", 0, 0.0F, executor);
+    return GroupedMatmulSwigluQuantV2(x, weight, weightScale, xScale, weightAssistanceMatrix, bias, smoothScale,
+                                      groupList, dequantMode, dequantDtype, quantMode, quantDtype, transposeWeight,
+                                      groupListType, tuningConfigOptional, 0, 7.0F, 1.702F, 1.0F, "rint", 0, 0.0F,
+                                      executor);
 }
 
 } // namespace l0op
