@@ -15,14 +15,13 @@ template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
                                                         DUAL_SIBLING>::ProcessTokenDualSiblingAiv(uint32_t token)
 {
-    float postVals[N_MAX];
     float sumSqHalf[2] = {0.0f, 0.0f};
     float dotHalf[2][N_MAX] = {{0.0f, 0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 0.0f}};
     float midSqHalf[2] = {0.0f, 0.0f};
     CacheHOut((uint64_t)token * D_);
     CacheGamma0();
     const uint32_t headBegin = laneId_ * 2U;
-    LoadTokenWeights(token, postVals, headBegin, headBegin + 2U);
+    LoadTokenWeights(token);
 
     // 两个lane按完全相同的分块和顺序冗余执行R1。
     float sumSq0 = 0.0f;
@@ -38,7 +37,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        ComputeX2PostTileForLane(token, tOff, tD, invRms0, postVals);
+        ComputeX2PostTileForLane(token, tOff, tD, invRms0);
         CacheX2TileForLane(token, tOff, tD, !USE_RMS_MID, false);
 
         if constexpr (USE_RMS_MID) {

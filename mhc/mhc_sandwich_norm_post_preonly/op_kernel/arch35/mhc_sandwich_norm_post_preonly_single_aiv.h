@@ -16,22 +16,21 @@
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
                                                         DUAL_SIBLING>::ComputeX2PostTile(uint32_t token, uint32_t tOff,
-                                                                                         uint32_t tD, float invRms0,
-                                                                                         const float (&postVals)[N_MAX])
+                                                                                         uint32_t tD, float invRms0)
 {
     LoadCachedHOut(tOff, tD);
     LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
     ApplyScaleAndGamma(hOut, invRms0, bufGamma0Fp32_.Get<float>()[tOff], tD);
     QuantizeRoundTrip(hOut, tD);
 
-    ComputeX2AllHeadsBatched(postVals, (uint64_t)token * N_ * D_ + tOff, tOff, tD);
+    ComputeX2AllHeadsBatched((uint64_t)token * N_ * D_ + tOff, tOff, tD);
 }
 
 // 双AIV仍需读取全部残差行，但每个lane只计算自己负责的两个输出head。
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
                                                         DUAL_SIBLING>::ComputeX2PostTileForLane(
-    uint32_t token, uint32_t tOff, uint32_t tD, float invRms0, const float (&postVals)[N_MAX])
+    uint32_t token, uint32_t tOff, uint32_t tD, float invRms0)
 {
     LoadCachedHOut(tOff, tD);
     LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
@@ -47,10 +46,12 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     bufResidualBf16_.EnQue(residual);
     residual = bufResidualBf16_.DeQue<T>();
     LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
-    LocalTensor<float> combWeights = bufPostComb_.Get<float>()[ALIGN8];
+    LocalTensor<float> postComb = bufPostComb_.Get<float>();
+    LocalTensor<float> hPost = postComb;
+    LocalTensor<float> combWeights = postComb[ALIGN8];
     MhcSandwichRegBase::ComputePostHeadPair<T>(
-        x2Cache[headBegin * D_ + tOff], x2Cache[(headBegin + 1U) * D_ + tOff], hOut, residual, combWeights,
-        dimTile_, headBegin, postVals[headBegin], postVals[headBegin + 1U], tD);
+        x2Cache[headBegin * D_ + tOff], x2Cache[(headBegin + 1U) * D_ + tOff], hOut, residual, hPost, combWeights,
+        dimTile_, headBegin, tD);
     PipeBarrier<PIPE_V>();
     bufResidualBf16_.FreeTensor(residual);
 }
@@ -267,13 +268,12 @@ template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void
 KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ProcessTokenSingleAiv(uint32_t token)
 {
-    float postVals[N_MAX];
     float sumSqHalf[2] = {0.0f, 0.0f};
     float dotHalf[2][N_MAX] = {{0.0f, 0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 0.0f}};
     float midSqHalf[2] = {0.0f, 0.0f};
     CacheHOut((uint64_t)token * D_);
     CacheGamma0();
-    LoadTokenWeights(token, postVals);
+    LoadTokenWeights(token);
 
     // 第一遍：沿完整D轴计算R1。
     float sumSq0 = 0.0f;
@@ -290,7 +290,7 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        ComputeX2PostTile(token, tOff, tD, invRms0, postVals);
+        ComputeX2PostTile(token, tOff, tD, invRms0);
         CacheX2Tile(token, tOff, tD, !USE_RMS_MID, false);
 
         if constexpr (USE_RMS_MID) {
