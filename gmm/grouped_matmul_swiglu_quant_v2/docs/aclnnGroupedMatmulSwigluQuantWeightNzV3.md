@@ -210,14 +210,16 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
 
 | 参数名 | 输入/输出 | 描述 |
 | --- | --- | --- |
-| `workspace` | 输入 | Device 侧申请的 workspace 内存地址；大小由第一段接口返回的 `workspaceSize` 决定。 |
+| `workspace` | 输入 | Device 侧申请的 workspace 内存地址；`workspaceSize` 大于 0 时不能为空，等于 0 时可传 `nullptr`。 |
 | `workspaceSize` | 输入 | Device 侧 workspace 大小，必须使用第一段接口返回的值。 |
-| `executor` | 输入 | 第一段接口返回的 op executor。 |
+| `executor` | 输入 | 第一段接口返回的 op executor，不能为空。 |
 | `stream` | 输入 | 指定算子执行的 ACL stream。 |
 
 - **返回值**
 
 返回 `aclnnStatus` 状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+
+当 `executor` 为空，或 `workspaceSize` 大于 0 且 `workspace` 为空时，返回 `ACLNN_ERR_PARAM_NULLPTR`（161001）。
 
 ## 约束说明
 

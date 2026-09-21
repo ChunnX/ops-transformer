@@ -1,6 +1,14 @@
-/* Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * Licensed under the CANN Open Software License Agreement Version 2.0.
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
+
+#include <array>
 #include <gtest/gtest.h>
 #include <string>
 #include <vector>
@@ -25,7 +33,7 @@ constexpr int64_t V3_CGMCT_ZN_KEY = 33;
 constexpr int64_t V3_TENSOR_API_NZ_KEY = 48;
 constexpr int64_t V3_TENSOR_API_ZN_KEY = 49;
 
-gert::TilingContextPara MakeContext(const RouteCase& c, optiling::GMMSwigluV2CompileInfo* info, int scaleAlg,
+gert::TilingContextPara MakeContext(const RouteCase &c, optiling::GMMSwigluV2CompileInfo *info, int scaleAlg,
                                     int aiv = 64, int64_t swigluMode = 2)
 {
     using Desc = gert::TilingContextPara::TensorDescription;
@@ -35,13 +43,11 @@ gert::TilingContextPara MakeContext(const RouteCase& c, optiling::GMMSwigluV2Com
     const auto tensor = [](std::vector<int64_t> dims, ge::DataType dtype) {
         return Desc(ops::ut::MakeGertStorageShape(dims, dims), dtype, ge::FORMAT_ND);
     };
-    const std::vector<int64_t> w = c.trans ? std::vector<int64_t>{c.e, c.n, c.k} :
-                                           std::vector<int64_t>{c.e, c.k, c.n};
-    const std::vector<int64_t> ws = c.trans ? std::vector<int64_t>{c.e, c.n, s, 2} :
-                                            std::vector<int64_t>{c.e, s, c.n, 2};
-    const std::vector<int64_t> storage = c.trans ?
-        std::vector<int64_t>{c.e, (c.k + 31) / 32, (c.n + 15) / 16, 16, 32} :
-        std::vector<int64_t>{c.e, (c.n + 31) / 32, (c.k + 15) / 16, 16, 32};
+    const std::vector<int64_t> w = c.trans ? std::vector<int64_t>{c.e, c.n, c.k} : std::vector<int64_t>{c.e, c.k, c.n};
+    const std::vector<int64_t> ws =
+        c.trans ? std::vector<int64_t>{c.e, c.n, s, 2} : std::vector<int64_t>{c.e, s, c.n, 2};
+    const std::vector<int64_t> storage = c.trans ? std::vector<int64_t>{c.e, (c.k + 31) / 32, (c.n + 15) / 16, 16, 32} :
+                                                   std::vector<int64_t>{c.e, (c.n + 31) / 32, (c.k + 15) / 16, 16, 32};
     info->aicNum_ = 32;
     info->aivNum_ = static_cast<uint32_t>(aiv);
     info->ubSize_ = 262144;
@@ -51,9 +57,9 @@ gert::TilingContextPara MakeContext(const RouteCase& c, optiling::GMMSwigluV2Com
     info->l0CSize_ = 262144;
     info->npuArch_ = static_cast<int32_t>(NpuArch::DAV_3510);
     info->supportL12BtBf16 = true;
-    gert::TilingContextPara context("GroupedMatmulSwigluQuantV2",
-        {tensor({c.m, c.k}, ge::DT_FLOAT8_E4M3FN), tensor({c.m, s, 2}, ge::DT_FLOAT8_E8M0),
-         tensor({c.e}, ge::DT_INT64),
+    gert::TilingContextPara context(
+        "GroupedMatmulSwigluQuantV2",
+        {tensor({c.m, c.k}, ge::DT_FLOAT8_E4M3FN), tensor({c.m, s, 2}, ge::DT_FLOAT8_E8M0), tensor({c.e}, ge::DT_INT64),
          Desc(ops::ut::MakeGertStorageShape(w, storage), ge::DT_FLOAT8_E4M3FN, ge::FORMAT_FRACTAL_NZ),
          tensor(ws, ge::DT_FLOAT8_E8M0)},
         {tensor({c.m, h}, ge::DT_FLOAT8_E4M3FN), tensor({c.m, (h + 63) / 64, 2}, ge::DT_FLOAT8_E8M0)},
@@ -72,40 +78,33 @@ gert::TilingContextPara MakeContext(const RouteCase& c, optiling::GMMSwigluV2Com
          {"scale_alg", Value::CreateFrom<int64_t>(scaleAlg)},
          {"dst_type_max", Value::CreateFrom<float>(0.0F)}},
         {1, 1, 1, 1, 1, 0, 0, 0}, {1, 1}, info, "Ascend950", 32, 262144);
-    context.socInfoString_ = R"({"hardware_info":{"CORE_NUM":32,"cube_core_cnt":32,"vector_core_cnt":)" +
-        std::to_string(aiv) + R"(,"UB_SIZE":262144,"L1_SIZE":524288,"L0A_SIZE":65536,"L0B_SIZE":65536,"L0C_SIZE":262144}})";
+    context.socInfoString_ =
+        R"({"hardware_info":{"CORE_NUM":32,"cube_core_cnt":32,"vector_core_cnt":)" + std::to_string(aiv) +
+        R"(,"UB_SIZE":262144,"L1_SIZE":524288,"L0A_SIZE":65536,"L0B_SIZE":65536,"L0C_SIZE":262144}})";
     return context;
 }
 
-const ::GMMSwigluQuantV3TilingDataParams* GetTilingData(const TilingInfo& result)
+const ::GMMSwigluQuantV3TilingDataParams *GetTilingData(const TilingInfo &result)
 {
     EXPECT_EQ(result.tilingDataSize, sizeof(::GMMSwigluQuantV3TilingDataParams));
-    return reinterpret_cast<const ::GMMSwigluQuantV3TilingDataParams*>(result.tilingData.get());
+    return reinterpret_cast<const ::GMMSwigluQuantV3TilingDataParams *>(result.tilingData.get());
 }
 
 TEST(GroupedMatmulSwigluQuantV3Route, V2CapabilityBoundaries)
 {
     const std::vector<RouteCase> cases = {
-        {512, 128, 128, 1, false, V3_CGMCT_NZ_KEY},
-        {513, 128, 128, 1, false, V3_TENSOR_API_NZ_KEY},
-        {128, 128, 128, 1, true, V3_CGMCT_ZN_KEY},
-        {129, 128, 128, 1, true, V3_TENSOR_API_ZN_KEY},
-        {1025, 128, 128, 2, false, V3_CGMCT_NZ_KEY},
-        {1026, 128, 128, 2, false, V3_TENSOR_API_NZ_KEY},
-        {257, 128, 128, 2, true, V3_CGMCT_ZN_KEY},
-        {258, 128, 128, 2, true, V3_TENSOR_API_ZN_KEY},
-        {1026, 128, 192, 2, false, V3_CGMCT_NZ_KEY},
-        {258, 128, 192, 2, true, V3_CGMCT_ZN_KEY},
-        {1026, 64, 128, 2, false, V3_CGMCT_NZ_KEY},
-        {258, 64, 128, 2, true, V3_CGMCT_ZN_KEY},
-        {1026, 192, 128, 2, false, V3_CGMCT_NZ_KEY},
-        {258, 192, 128, 2, true, V3_CGMCT_ZN_KEY},
-        {3000, 4096, 8192, 3, false, V3_TENSOR_API_NZ_KEY},
-        {3000, 4096, 8192, 3, true, V3_TENSOR_API_ZN_KEY}};
-    for (const auto& c : cases) {
+        {512, 128, 128, 1, false, V3_CGMCT_NZ_KEY},         {513, 128, 128, 1, false, V3_TENSOR_API_NZ_KEY},
+        {128, 128, 128, 1, true, V3_CGMCT_ZN_KEY},          {129, 128, 128, 1, true, V3_TENSOR_API_ZN_KEY},
+        {1025, 128, 128, 2, false, V3_CGMCT_NZ_KEY},        {1026, 128, 128, 2, false, V3_TENSOR_API_NZ_KEY},
+        {257, 128, 128, 2, true, V3_CGMCT_ZN_KEY},          {258, 128, 128, 2, true, V3_TENSOR_API_ZN_KEY},
+        {1026, 128, 192, 2, false, V3_CGMCT_NZ_KEY},        {258, 128, 192, 2, true, V3_CGMCT_ZN_KEY},
+        {1026, 64, 128, 2, false, V3_CGMCT_NZ_KEY},         {258, 64, 128, 2, true, V3_CGMCT_ZN_KEY},
+        {1026, 192, 128, 2, false, V3_CGMCT_NZ_KEY},        {258, 192, 128, 2, true, V3_CGMCT_ZN_KEY},
+        {3000, 4096, 8192, 3, false, V3_TENSOR_API_NZ_KEY}, {3000, 4096, 8192, 3, true, V3_TENSOR_API_ZN_KEY}};
+    for (const auto &c : cases) {
         for (int scaleAlg : {0, 1}) {
-            SCOPED_TRACE(::testing::Message() << c.m << "," << c.k << "," << c.n << "," << c.e
-                                            << ",trans=" << c.trans << ",alg=" << scaleAlg);
+            SCOPED_TRACE(::testing::Message() << c.m << "," << c.k << "," << c.n << "," << c.e << ",trans=" << c.trans
+                                              << ",alg=" << scaleAlg);
             optiling::GMMSwigluV2CompileInfo info{};
             auto context = MakeContext(c, &info, scaleAlg);
             TilingInfo result;
@@ -122,16 +121,15 @@ TEST(GroupedMatmulSwigluQuantV3Route, ReportedUnalignedKCasesKeepCgmctScaleFacto
         RouteCase route;
         int scaleAlg;
     };
-    const std::vector<UnalignedKCase> cases = {
-        {{1, 6060, 1920, 5, false, V3_CGMCT_NZ_KEY}, 0},
-        {{2815, 8208, 896, 7, true, V3_CGMCT_ZN_KEY}, 0},
-        {{68, 8066, 1280, 5, false, V3_CGMCT_NZ_KEY}, 0},
-        {{1, 6558, 4352, 5, true, V3_CGMCT_ZN_KEY}, 0},
-        {{128, 6452, 1408, 4, false, V3_CGMCT_NZ_KEY}, 1}};
+    const std::vector<UnalignedKCase> cases = {{{1, 6060, 1920, 5, false, V3_CGMCT_NZ_KEY}, 0},
+                                               {{2815, 8208, 896, 7, true, V3_CGMCT_ZN_KEY}, 0},
+                                               {{68, 8066, 1280, 5, false, V3_CGMCT_NZ_KEY}, 0},
+                                               {{1, 6558, 4352, 5, true, V3_CGMCT_ZN_KEY}, 0},
+                                               {{128, 6452, 1408, 4, false, V3_CGMCT_NZ_KEY}, 1}};
 
     for (const auto &c : cases) {
-        SCOPED_TRACE(::testing::Message() << c.route.m << "," << c.route.k << "," << c.route.n << ","
-                                          << c.route.e << ",trans=" << c.route.trans << ",alg=" << c.scaleAlg);
+        SCOPED_TRACE(::testing::Message() << c.route.m << "," << c.route.k << "," << c.route.n << "," << c.route.e
+                                          << ",trans=" << c.route.trans << ",alg=" << c.scaleAlg);
         optiling::GMMSwigluV2CompileInfo info{};
         auto context = MakeContext(c.route, &info, c.scaleAlg);
         TilingInfo result;
@@ -176,14 +174,14 @@ TEST(GroupedMatmulSwigluQuantV3Route, TensorApiUsesSymmetricL1Budget)
     for (bool trans : {false, true}) {
         SCOPED_TRACE(::testing::Message() << "trans=" << trans);
         optiling::GMMSwigluV2CompileInfo info{};
-        auto context = MakeContext(
-            {8192, 6144, 4096, 8, trans, trans ? V3_TENSOR_API_ZN_KEY : V3_TENSOR_API_NZ_KEY}, &info, 0);
+        auto context =
+            MakeContext({8192, 6144, 4096, 8, trans, trans ? V3_TENSOR_API_ZN_KEY : V3_TENSOR_API_NZ_KEY}, &info, 0);
         TilingInfo result;
         ASSERT_TRUE(ExecuteTiling(context, result));
         ASSERT_EQ(result.tilingKey, trans ? V3_TENSOR_API_ZN_KEY : V3_TENSOR_API_NZ_KEY);
-        const auto* tilingData = GetTilingData(result);
+        const auto *tilingData = GetTilingData(result);
         ASSERT_NE(tilingData, nullptr);
-        const auto& mm = tilingData->mmTilingData;
+        const auto &mm = tilingData->mmTilingData;
         EXPECT_EQ(mm.baseM, 256);
         EXPECT_EQ(mm.baseN, 128);
         EXPECT_EQ(mm.baseK, 128);
@@ -200,21 +198,21 @@ TEST(GroupedMatmulSwigluQuantV3Route, TensorApiUsesSymmetricL1Budget)
 
 TEST(GroupedMatmulSwigluQuantV3Route, PerformanceShapesKeepNdCompatibleBasicTiles)
 {
-    const std::vector<int64_t> mValues = {
-        128, 256, 512, 1024, 1536, 2048, 4096, 6144, 8192, 10240, 12288, 14336, 16384,
-        18432, 20480, 24576, 28672, 32768, 36864, 40960, 45056, 49152, 53248, 57344, 61440, 65535};
+    const std::vector<int64_t> mValues = {128,   256,   512,   1024,  1536,  2048,  4096,  6144,  8192,
+                                          10240, 12288, 14336, 16384, 18432, 20480, 24576, 28672, 32768,
+                                          36864, 40960, 45056, 49152, 53248, 57344, 61440, 65535};
     for (const auto m : mValues) {
         SCOPED_TRACE(::testing::Message() << "M=" << m);
         const bool useTensorApi = m / 64 > 512;
         optiling::GMMSwigluV2CompileInfo info{};
-        auto context = MakeContext(
-            {m, 6144, 4096, 64, false, useTensorApi ? V3_TENSOR_API_NZ_KEY : V3_CGMCT_NZ_KEY}, &info, 0);
+        auto context =
+            MakeContext({m, 6144, 4096, 64, false, useTensorApi ? V3_TENSOR_API_NZ_KEY : V3_CGMCT_NZ_KEY}, &info, 0);
         TilingInfo result;
         ASSERT_TRUE(ExecuteTiling(context, result));
         ASSERT_EQ(result.tilingKey, useTensorApi ? V3_TENSOR_API_NZ_KEY : V3_CGMCT_NZ_KEY);
-        const auto* tilingData = GetTilingData(result);
+        const auto *tilingData = GetTilingData(result);
         ASSERT_NE(tilingData, nullptr);
-        const auto& mm = tilingData->mmTilingData;
+        const auto &mm = tilingData->mmTilingData;
         EXPECT_EQ(mm.baseM, useTensorApi ? 256 : 128);
         EXPECT_EQ(mm.baseN, useTensorApi ? 128 : 256);
         EXPECT_EQ(mm.baseK, 128);
@@ -227,14 +225,14 @@ TEST(GroupedMatmulSwigluQuantV3Route, TensorApiKeepsKBoundaryScaleWindowWithinL1
         for (bool trans : {false, true}) {
             SCOPED_TRACE(::testing::Message() << "K=" << k << ",trans=" << trans);
             optiling::GMMSwigluV2CompileInfo info{};
-            auto context = MakeContext(
-                {8192, k, 4096, 8, trans, trans ? V3_TENSOR_API_ZN_KEY : V3_TENSOR_API_NZ_KEY}, &info, 0);
+            auto context =
+                MakeContext({8192, k, 4096, 8, trans, trans ? V3_TENSOR_API_ZN_KEY : V3_TENSOR_API_NZ_KEY}, &info, 0);
             TilingInfo result;
             ASSERT_TRUE(ExecuteTiling(context, result));
             ASSERT_EQ(result.tilingKey, trans ? V3_TENSOR_API_ZN_KEY : V3_TENSOR_API_NZ_KEY);
-            const auto* tilingData = GetTilingData(result);
+            const auto *tilingData = GetTilingData(result);
             ASSERT_NE(tilingData, nullptr);
-            const auto& mm = tilingData->mmTilingData;
+            const auto &mm = tilingData->mmTilingData;
             EXPECT_EQ(mm.baseM, 256);
             EXPECT_EQ(mm.baseN, 128);
             EXPECT_EQ(mm.baseK, 128);
@@ -250,8 +248,7 @@ TEST(GroupedMatmulSwigluQuantV3Route, CoreRatioFallsBack)
 {
     for (bool trans : {false, true}) {
         optiling::GMMSwigluV2CompileInfo info{};
-        auto context = MakeContext(
-            {1026, 128, 128, 2, trans, trans ? V3_CGMCT_ZN_KEY : V3_CGMCT_NZ_KEY}, &info, 0, 32);
+        auto context = MakeContext({1026, 128, 128, 2, trans, trans ? V3_CGMCT_ZN_KEY : V3_CGMCT_NZ_KEY}, &info, 0, 32);
         TilingInfo result;
         ASSERT_TRUE(ExecuteTiling(context, result));
         EXPECT_EQ(result.tilingKey, trans ? V3_CGMCT_ZN_KEY : V3_CGMCT_NZ_KEY);
@@ -277,9 +274,34 @@ TEST(GroupedMatmulSwigluQuantV3Route, RejectsUnsupportedModeAndPlatform)
     EXPECT_FALSE(ExecuteTiling(invalidModeContext, result));
 
     optiling::GMMSwigluV2CompileInfo invalidPlatformInfo{};
-    auto invalidPlatformContext = MakeContext(
-        {512, 128, 128, 1, false, V3_CGMCT_NZ_KEY}, &invalidPlatformInfo, 0);
+    auto invalidPlatformContext = MakeContext({512, 128, 128, 1, false, V3_CGMCT_NZ_KEY}, &invalidPlatformInfo, 0);
     invalidPlatformInfo.npuArch_ = static_cast<int32_t>(NpuArch::DAV_2201);
     EXPECT_FALSE(ExecuteTiling(invalidPlatformContext, result));
+}
+
+TEST(GroupedMatmulSwigluQuantV3Route, RejectsMissingRequiredInputs)
+{
+    constexpr std::array<const char *, 5> INPUT_NAMES = {"x", "xScale", "groupList", "weight", "weightScale"};
+    for (size_t inputIndex = 0; inputIndex < INPUT_NAMES.size(); ++inputIndex) {
+        SCOPED_TRACE(INPUT_NAMES[inputIndex]);
+        optiling::GMMSwigluV2CompileInfo info{};
+        auto context = MakeContext({512, 128, 128, 1, false, V3_CGMCT_NZ_KEY}, &info, 0);
+        context.inputTensorDesc_.erase(context.inputTensorDesc_.begin() + inputIndex);
+        context.inputInstanceNum_[inputIndex] = 0;
+        ExecuteTestCase(context, ge::GRAPH_FAILED);
+    }
+}
+
+TEST(GroupedMatmulSwigluQuantV3Route, RejectsMissingRequiredOutputs)
+{
+    constexpr std::array<const char *, 2> OUTPUT_NAMES = {"y", "yScale"};
+    for (size_t outputIndex = 0; outputIndex < OUTPUT_NAMES.size(); ++outputIndex) {
+        SCOPED_TRACE(OUTPUT_NAMES[outputIndex]);
+        optiling::GMMSwigluV2CompileInfo info{};
+        auto context = MakeContext({512, 128, 128, 1, false, V3_CGMCT_NZ_KEY}, &info, 0);
+        context.outputTensorDesc_.erase(context.outputTensorDesc_.begin() + outputIndex);
+        context.outputInstanceNum_[outputIndex] = 0;
+        ExecuteTestCase(context, ge::GRAPH_FAILED);
+    }
 }
 } // namespace
