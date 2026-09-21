@@ -16,6 +16,8 @@
 #ifndef FLASH_ATTN_COMMON_DEF_H_
 #define FLASH_ATTN_COMMON_DEF_H_
 
+#include "dn_unmerged_policy.h"
+
 // 提供flash_attn算子tiling和kernel共用的相关定义
 
 // BUFFER的字节数
@@ -88,6 +90,8 @@ enum class inferS2TemplateType {
     Aligned32 = 32,
     Aligned64 = 64,
     Aligned128 = 128,
+    Aligned208 = 208,
+    Aligned224 = 224,
     Aligned256 = 256,
     Aligned512 = 512,
     Aligned1024 = 1024,
@@ -176,6 +180,24 @@ static constexpr ConfigParams ConfigValue[] = {
      inferDTemplateType::Aligned128}, // config=6
     {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned192,
      inferDTemplateType::Aligned128}, // config=7
+};
+
+// Only template2 changes basic blocks; the legacy config table is unchanged.
+template <uint8_t TemplateId, uint8_t Config, bool HasMask>
+struct FlashAttnConfig {
+    static_assert(TemplateId != FA_Template_DN_Unmerged || Config == 0 || Config == 2 || Config == 6 || Config == 8 ||
+                      Config == 9,
+                  "Unsupported DN unmerged config");
+    static constexpr uint8_t baseConfig = Config == 8 ? 0 : (Config == 9 ? 2 : Config);
+    static constexpr uint32_t dnN =
+        Config >= 8 ? FlashAttnPolicy::DnCausalTileN(Config == 9 ? 72U : 64U) :
+        HasMask     ? (Config == 0 ? FlashAttnPolicy::DN_MASK_D64_N : FlashAttnPolicy::DN_MASK_OTHER_N) :
+                      FlashAttnPolicy::DN_NO_MASK_N;
+    static constexpr ConfigParams value = {
+        ConfigValue[baseConfig].s1,
+        TemplateId == FA_Template_DN_Unmerged ? static_cast<inferS2TemplateType>(dnN) : ConfigValue[baseConfig].s2,
+        Config == 9 ? static_cast<inferDTemplateType>(80) : ConfigValue[baseConfig].d,
+        Config == 9 ? static_cast<inferDTemplateType>(80) : ConfigValue[baseConfig].dv};
 };
 
 // Config macro definitions for D=64

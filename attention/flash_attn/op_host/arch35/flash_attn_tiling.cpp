@@ -114,37 +114,35 @@ void FlashAttnTilingImpl::InitImplParam()
 
 void FlashAttnTilingImpl::SplitPolicy()
 {
-    int64_t winLeft = faInfo_->winLeft;
-    int64_t winRight = faInfo_->winRight;
-    if (faInfo_->maskMode == static_cast<int64_t>(MaskMode::NO_MASK) ||
-        faInfo_->maskMode == static_cast<int64_t>(MaskMode::CAUSAL)) {
-        winLeft = MASK_MODE_INT_MAX;
-        winRight = MASK_MODE_INT_MAX;
-    }
-    if (winLeft == -1) {
-        winLeft = MASK_MODE_INT_MAX;
-    }
-    if (winRight == -1) {
-        winRight = MASK_MODE_INT_MAX;
-    }
     fa_tiling_util::AdjustSinnerAndSouter(static_cast<uint32_t>(faInfo_->vHeadDim),
                                           static_cast<uint32_t>(faInfo_->gSize), faInfo_->maxSeqQ, faInfo_->maxSeqKv,
-                                          static_cast<int32_t>(faInfo_->maskMode), winLeft, winRight,
+                                          static_cast<int32_t>(faInfo_->maskMode), faInfo_->winLeft, faInfo_->winRight,
                                           static_cast<uint32_t>(faInfo_->qLayout), sOuterFactor_, sInnerFactor_);
-    // 不合轴 DN(预埋): 模板判定需在 CalcWorkspaceSize 之前完成(templateId 影响 workspace 分配),
-    // 判定仅依赖 D/DV 维度; 开关关闭时不执行, 保持原行为不变
+    // Select from the original Cube M before workspace calculation. The predicate
+    // reads operator inputs directly; config and hasAttenMask are initialized later.
     if (fa_tiling_util::DN_UNMERGED_ROUTE_ENABLED) {
         UpdateTilingKeyTemplateId();
     }
-    uint32_t maxUsedAicCores = fa_tiling_util::GetMaxUsedAicCores(platformInfo_.aicNum, faInfo_->bSize, faInfo_->n2Size,
-                                                                  faInfo_->gSize, faInfo_->maxSeqQ, faInfo_->maxSeqKv,
-                                                                  sOuterFactor_ * platformInfo_.cvRatio, sInnerFactor_);
+    if (tilingKeyInfo_.templateId == fa_tiling_util::FA_TEMPLATE_DN_UNMERGED) {
+        sInnerFactor_ = FlashAttnPolicy::DnCausalOptimized(faInfo_->qkHeadDim, faInfo_->vHeadDim, faInfo_->maskMode) ?
+                            FlashAttnPolicy::DnCausalTileN(faInfo_->qkHeadDim) :
+                            FlashAttnPolicy::DnUnmergedS2(faInfo_->qkHeadDim, faInfo_->maskMode != 0);
+    }
+    uint32_t maxUsedAicCores = fa_tiling_util::GetMaxUsedAicCores(
+        platformInfo_.aicNum, faInfo_->bSize, faInfo_->n2Size, faInfo_->gSize, faInfo_->maxSeqQ, faInfo_->maxSeqKv,
+        sOuterFactor_ * platformInfo_.cvRatio, sInnerFactor_,
+        tilingKeyInfo_.templateId == fa_tiling_util::FA_TEMPLATE_DN_UNMERGED);
     CalcNumBlocks(maxUsedAicCores);
     flashDecodeFlag_ = true;
 }
 
 void FlashAttnTilingImpl::UpdateTilingKeyConfig()
 {
+    if (tilingKeyInfo_.templateId == fa_tiling_util::FA_TEMPLATE_DN_UNMERGED &&
+        FlashAttnPolicy::DnCausalOptimized(faInfo_->qkHeadDim, faInfo_->vHeadDim, faInfo_->maskMode)) {
+        tilingKeyInfo_.config = faInfo_->qkHeadDim == 64 ? 8 : 9;
+        return;
+    }
     if (faInfo_->qkHeadDim == faInfo_->vHeadDim) {
         // 等长 (QK D == V DV) 按 D 值映射:
         //   config=0: Dk=64,  Dv=64,  sOuter=64,  sInner=128
@@ -199,20 +197,10 @@ void FlashAttnTilingImpl::UpdateTilingKeyKvLayout()
 
 void FlashAttnTilingImpl::UpdateTilingKeyTemplateId()
 {
-    if (fa_tiling_util::DN_UNMERGED_ROUTE_ENABLED) {
-        // 不合轴 DN(预埋): 全量路由, 判定与 flash_attn_metadata(AICPU) 共享
-        // fa_tiling_util::GetFlashAttnTemplateId, 两侧严格一致; dnFlag_ 仍表示旧合轴 DN 模板
-        tilingKeyInfo_.templateId = fa_tiling_util::GetFlashAttnTemplateId(static_cast<uint32_t>(faInfo_->qkHeadDim),
-                                                                           static_cast<uint32_t>(faInfo_->vHeadDim));
-        dnFlag_ = false;
-        return;
-    }
-    // templateId: 0=ND模板, 1=DN模板
-    // DN模板仅支持无attenMask且config=0/2/6（sOuter=64, D=64/128, QK
-    // D=192/DV=128）场景，与kernel侧模板实例化范围保持一致
-    dnFlag_ = (!tilingKeyInfo_.hasAttenMask) &&
-              ((tilingKeyInfo_.config == 0) || (tilingKeyInfo_.config == 2) || (tilingKeyInfo_.config == 6));
-    tilingKeyInfo_.templateId = dnFlag_ ? 1 : 0;
+    tilingKeyInfo_.templateId = fa_tiling_util::GetFlashAttnTemplateId(
+        static_cast<uint32_t>(faInfo_->qkHeadDim), static_cast<uint32_t>(faInfo_->vHeadDim),
+        sOuterFactor_ * platformInfo_.cvRatio, faInfo_->maskMode != static_cast<int64_t>(MaskMode::NO_MASK));
+    dnFlag_ = tilingKeyInfo_.templateId == fa_tiling_util::FA_TEMPLATE_DN;
 }
 
 void FlashAttnTilingImpl::UpdateTilingKeyInfo()

@@ -19,6 +19,8 @@
 #include "../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
 #include "arch35/flash_attn_kernel_dn.h"
 #include "arch35/flash_attn_kernel_dn_unmerged.h"
+#include "arch35/flash_attn_block_cube_dn_unmerged.h"
+#include "arch35/flash_attn_block_vec_dn_unmerged.h"
 #include "arch35/flash_attn_kernel_nd.h"
 
 using namespace AscendC;
@@ -111,10 +113,11 @@ __global__ __aicore__ void flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key
     constexpr FA_LAYOUT kvLayout = GetKvLayout<inOutLayoutType, KvLayoutType>();
     constexpr bool pageAttention = IsPageAttention<KvLayoutType>();
 
-    constexpr S1TemplateType s1TemplateType = static_cast<S1TemplateType>(ConfigValue[config].s1);
-    constexpr S2TemplateType s2TemplateType = static_cast<S2TemplateType>(ConfigValue[config].s2);
-    constexpr DTemplateType dTemplateType = static_cast<DTemplateType>(ConfigValue[config].d);
-    constexpr DTemplateType dVTemplateType = static_cast<DTemplateType>(ConfigValue[config].dv);
+    constexpr ConfigParams blockConfig = FlashAttnConfig<templateId, config, hasAttenMask>::value;
+    constexpr S1TemplateType s1TemplateType = static_cast<S1TemplateType>(blockConfig.s1);
+    constexpr S2TemplateType s2TemplateType = static_cast<S2TemplateType>(blockConfig.s2);
+    constexpr DTemplateType dTemplateType = static_cast<DTemplateType>(blockConfig.d);
+    constexpr DTemplateType dVTemplateType = static_cast<DTemplateType>(blockConfig.dv);
 
     // 根因（静态图）：固定 shape 下 tiling 是编译期常量字节数组而非 __gm__ buffer，
     // 不能直接 reinterpret_cast 成结构体指针访问，必须先拷贝到栈局部结构体对象再取指针。
@@ -129,18 +132,21 @@ __global__ __aicore__ void flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key
                                          s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask>;
 
     if constexpr (templateId == FA_Template_DN_Unmerged) {
-        // 不合轴 DN(预埋): BN1_S1 分核, 独立文件(*_dn_unmerged.h), 全部注册维度/有无 mask 实例化;
-        // 路由入口 DN_UNMERGED_ROUTE_ENABLED 默认关闭, 打开后由 host tiling 产生 templateId=2
-        using CubeBlock = FlashAttnKernel::FANoQuantGqaBlockCubeDnUnmerged<FA_T>;
-        using VecFaBlock = FlashAttnKernel::FANoQuantGqaBlockVecDnUnmerged<FA_T>;
-        using VecFdBlock = FlashAttnKernel::FiaBlockVecFlashDecode<FA_T, true>;
-        using VecDummy = FlashAttnKernel::FANoQuantGqaBlockVecDummyDnUnmerged<FA_T>;
-        using CubeDummy = FlashAttnKernel::FANoQuantGqaBlockCubeDummyDnUnmerged<FA_T>;
+        using DN_T = FlashAttnKernel::DnCausalType<FA_T, (config == 8 || config == 9)>;
+        // BN1_S1 scheduling for Cube M=128 and D/DV=64/64, 128/128 or 192/128.
+        // Actual D=72 uses config=2. Both mask variants share the same routing gate.
+        static_assert(config == 0 || config == 2 || config == 6 || config == 8 || config == 9,
+                      "DN unmerged excludes M64 and D256");
+        using CubeBlock = FlashAttnKernel::FANoQuantGqaBlockCubeDnUnmerged<DN_T>;
+        using VecFaBlock = FlashAttnKernel::FANoQuantGqaBlockVecDnUnmerged<DN_T>;
+        using VecFdBlock = FlashAttnKernel::FiaBlockVecFlashDecode<DN_T, true, true>;
+        using VecDummy = FlashAttnKernel::FANoQuantGqaBlockVecDummyDnUnmerged<DN_T>;
+        using CubeDummy = FlashAttnKernel::FANoQuantGqaBlockCubeDummyDnUnmerged<DN_T>;
 #ifdef __DAV_CUBE__
-        using Kernel = FlashAttnKernel::FlashAttentionNoQuantGqaKernelDnUnmerged<FA_T, CubeBlock, VecDummy, VecDummy>;
+        using Kernel = FlashAttnKernel::FlashAttentionNoQuantGqaKernelDnUnmerged<DN_T, CubeBlock, VecDummy, VecDummy>;
 #else
         using Kernel =
-            FlashAttnKernel::FlashAttentionNoQuantGqaKernelDnUnmerged<FA_T, CubeDummy, VecFaBlock, VecFdBlock>;
+            FlashAttnKernel::FlashAttentionNoQuantGqaKernelDnUnmerged<DN_T, CubeDummy, VecFaBlock, VecFdBlock>;
 #endif
         Kernel op;
         op.Init(query, key, value, blockTable, cuSeqLensQ, cuSeqLensKv, sequsedQ, sequsedKv, sinks, attnMask, metadata,
@@ -181,3 +187,11 @@ __global__ __aicore__ void flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key
 
     AscendC::PipeBarrier<PIPE_ALL>();
 }
+
+// Diagnostic section placement for the generated wrapper that follows this source.
+// Keep the unified kernel and normal CANN metadata/relocations; the new mixed
+// entries request a distinct input section together, preserving Cube-before-Vector order. Verify final linker placement
+// before use.
+#if defined(TILING_KEY_VAR) && (((TILING_KEY_VAR >> 25U) == 8U) || ((TILING_KEY_VAR >> 25U) == 9U))
+#pragma clang section text = ".text.fa_causal"
+#endif

@@ -409,16 +409,140 @@ __aicore__ inline void ProcessVec1DnNoUpdate(const LocalTensor<T2> &dstTensor, c
         deScaleQK, minValue, keepProb, needAtten, dScale, blockStride, repeatStride, pScale, sinkValue);
 }
 
-template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128, bool hasSink = false>
-__simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB,
-                                              __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
-                                              __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb,
-                                              __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n,
-                                              const uint32_t originN, const T scale, float deScaleQK, const T minValue,
-                                              float keepProb, bool needAtten, const float dScale,
-                                              const uint32_t blockStride, const uint32_t repeatStride,
-                                              const float pScale = 1.0f, const float sinkValue = 0.0f)
+// Transform scores in registers in the exp pass. The mask sentinel and
+// padding are selected AFTER scaling, including zero and negative scales.
+template <bool applyMask, bool fullColumns>
+__simd_callee__ inline void TransformDnScore(RegTensor<float> &score, RegTensor<uint32_t> &words,
+                                             RegTensor<uint32_t> &byteMask, RegTensor<float> &maskedValue,
+                                             RegTensor<float> &paddingValue, RegTensor<uint32_t> &columnBase,
+                                             uint32_t columnOffset, uint32_t originN, float scale, MaskReg &active)
 {
+    Muls(score, score, scale, active);
+    if constexpr (applyMask) {
+        RegTensor<uint32_t> bytes;
+        MaskReg visible;
+        ShiftRights(bytes, words, static_cast<int16_t>((columnOffset % 4U) * 8U), active);
+        And(bytes, bytes, byteMask, active);
+        Compares<uint32_t, CMPMODE::EQ>(visible, bytes, 0U, active);
+        Select(score, score, maskedValue, visible);
+    }
+    if constexpr (!fullColumns) {
+        RegTensor<uint32_t> columns;
+        MaskReg valid;
+        Adds(columns, columnBase, columnOffset, active);
+        Compares<uint32_t, CMPMODE::LT>(valid, columns, originN, active);
+        Select(score, score, paddingValue, valid);
+    }
+}
+
+// Reduce unscaled visible scores. Scaling is monotone for a fixed sign, so
+// positive scales use max and negative scales use min. Zero scales reduce
+// visibility only. Mask/padding sentinels must never be divided by scale.
+template <bool applyMask, bool fullColumns, int scaleSign>
+__simd_callee__ inline void ReduceDnRawScore(RegTensor<float> &value, RegTensor<float> &extreme,
+                                             RegTensor<uint32_t> &words, RegTensor<uint32_t> &byteMask,
+                                             RegTensor<float> &excluded, RegTensor<uint32_t> &columnBase,
+                                             uint32_t columnOffset, uint32_t originN, MaskReg &active)
+{
+    if constexpr (scaleSign == 0) {
+        Duplicate(value, 0.0F);
+    }
+    if constexpr (applyMask) {
+        RegTensor<uint32_t> bytes;
+        MaskReg visible;
+        ShiftRights(bytes, words, static_cast<int16_t>(columnOffset * 8U), active);
+        And(bytes, bytes, byteMask, active);
+        Compares<uint32_t, CMPMODE::EQ>(visible, bytes, 0U, active);
+        Select(value, value, excluded, visible);
+    }
+    if constexpr (!fullColumns) {
+        RegTensor<uint32_t> column;
+        MaskReg valid;
+        Adds(column, columnBase, columnOffset, active);
+        Compares<uint32_t, CMPMODE::LT>(valid, column, originN, active);
+        Select(value, value, excluded, valid);
+    }
+    if constexpr (scaleSign < 0) {
+        Min(extreme, extreme, value, active);
+    } else {
+        Max(extreme, extreme, value, active);
+    }
+}
+
+template <bool applyMask, bool fullColumns, int scaleSign>
+__simd_callee__ inline void ReduceDnScoreGroup(__ubuf__ float *scores, __ubuf__ uint32_t *mask, uint32_t group,
+                                               uint32_t pitch, uint32_t originN, RegTensor<uint32_t> &indices,
+                                               RegTensor<uint32_t> &byteMask, RegTensor<uint32_t> &seenMask,
+                                               RegTensor<float> &excluded, MaskReg &active, RegTensor<float> &max0,
+                                               RegTensor<float> &max1, RegTensor<float> &max2, RegTensor<float> &max3)
+{
+    RegTensor<float> value0, value1, value2, value3;
+    RegTensor<uint32_t> words, columnBase;
+    if constexpr (applyMask) {
+        Gather(words, mask + group, indices, active);
+        if constexpr (!fullColumns) {
+            RegTensor<uint32_t> validBytes;
+            Duplicate(validBytes, (1U << ((originN % 4U) * 8U)) - 1U);
+            And(words, words, validBytes, active);
+        }
+        Or(seenMask, seenMask, words, active);
+    }
+    if constexpr (!fullColumns) {
+        Duplicate(columnBase, group * 4U);
+    }
+    if constexpr (scaleSign != 0) {
+        LoadAlign(value0, scores + (group * 4U + 0U) * pitch);
+        LoadAlign(value1, scores + (group * 4U + 1U) * pitch);
+        LoadAlign(value2, scores + (group * 4U + 2U) * pitch);
+        LoadAlign(value3, scores + (group * 4U + 3U) * pitch);
+    }
+    ReduceDnRawScore<applyMask, fullColumns, scaleSign>(value0, max0, words, byteMask, excluded, columnBase, 0U,
+                                                        originN, active);
+    ReduceDnRawScore<applyMask, fullColumns, scaleSign>(value1, max1, words, byteMask, excluded, columnBase, 1U,
+                                                        originN, active);
+    ReduceDnRawScore<applyMask, fullColumns, scaleSign>(value2, max2, words, byteMask, excluded, columnBase, 2U,
+                                                        originN, active);
+    ReduceDnRawScore<applyMask, fullColumns, scaleSign>(value3, max3, words, byteMask, excluded, columnBase, 3U,
+                                                        originN, active);
+}
+
+template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128, bool hasSink = false,
+          bool fullRows64 = false, bool unitPScale = false, bool expUnrollTwo = false, bool fuseScores = false,
+          uint16_t scoreMaskPitch = 0, bool fullColumns = false, int maxScaleSign = 1>
+__simd_vf__ inline void ProcessVec1DnUpdateVF(
+    __ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
+    __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb, __ubuf__ uint8_t *indexesUb, const uint32_t runtimeM,
+    const uint32_t n, const uint32_t originN, const T scale, float deScaleQK, const T minValue, float keepProb,
+    bool needAtten, const float dScale, const uint32_t blockStride, const uint32_t repeatStride,
+    const float pScale = 1.0f, const float sinkValue = 0.0f, const uint16_t scoreTailGroups = 0)
+{
+    static_assert(
+        !unitPScale || (IsSameType<T, float>::value &&
+                        (IsSameType<T2, half>::value || IsSameType<T2, bfloat16_t>::value) && !hasAtten && !hasSink),
+        "unitPScale requires an unquantized update without VF mask or sink");
+    static_assert(!fullRows64 || (ubN % 16 == 0 && !hasAtten && !hasSink && IsSameType<T, float>::value &&
+                                  (IsSameType<T2, half>::value || IsSameType<T2, bfloat16_t>::value)),
+                  "Full DN VF requires a 64xN FP16/BF16 tile without legacy mask");
+    static_assert(
+        !fuseScores || (expUnrollTwo && ubN % 16 == 0 && !hasAtten && !hasSink && IsSameType<T, float>::value &&
+                        (IsSameType<T2, half>::value || IsSameType<T2, bfloat16_t>::value)),
+        "Fused DN scores require an unquantized update without legacy mask or sink");
+    static_assert(scoreMaskPitch == 0 || (fuseScores && scoreMaskPitch >= ubN && scoreMaskPitch % 4 == 0),
+                  "Byte mask pitch must cover the fused DN tile and be word aligned");
+    static_assert(!fullColumns || fuseScores, "Full columns is a fused-score caller contract");
+    constexpr bool SCORE_FULL_COLUMNS = fullRows64 || fullColumns;
+    const uint32_t m = fullRows64 ? 64U : runtimeM;
+    uint32_t scoreRows = m;
+    MaskReg scoreActive = UpdateMask<float>(scoreRows);
+    RegTensor<int32_t> scoreIndices;
+    RegTensor<uint32_t> scoreByteMask, scoreColumnBase;
+    RegTensor<float> scoreMaskedValue;
+    if constexpr (scoreMaskPitch != 0) {
+        Arange(scoreIndices, 0);
+        Muls(scoreIndices, scoreIndices, static_cast<int32_t>(scoreMaskPitch / 4U), scoreActive);
+        Duplicate(scoreByteMask, 255U);
+        Duplicate(scoreMaskedValue, -1000000000000.0F);
+    }
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
     RegTensor<float> vreg_x_sum_2;
@@ -505,21 +629,33 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
     __ubuf__ uint32_t *mask_ub2 = maskUb + 32;
     __ubuf__ uint32_t *mask_ub3 = maskUb + 48;
 
-    Duplicate(max0, minValue);
-    Duplicate(max1, minValue);
-    Duplicate(max2, minValue);
-    Duplicate(max3, minValue);
+    RegTensor<float> rawExcluded;
+    RegTensor<uint32_t> seenScoreMask;
+    constexpr float rawInitial = maxScaleSign < 0 ? __builtin_inff() : -__builtin_inff();
+    Duplicate(max0, fuseScores ? rawInitial : minValue);
+    Duplicate(max1, fuseScores ? rawInitial : minValue);
+    Duplicate(max2, fuseScores ? rawInitial : minValue);
+    Duplicate(max3, fuseScores ? rawInitial : minValue);
+    if constexpr (fuseScores) {
+        Duplicate(rawExcluded, rawInitial);
+        if constexpr (scoreMaskPitch != 0) {
+            Duplicate(seenScoreMask, 0U);
+        }
+    }
     Duplicate(vreg_min, minValue);
     if constexpr (hasSink) {
         Duplicate(vreg_sink_input, sinkValue);
     }
-    uint32_t paddingRows = m;
-    MaskReg paddingMask = UpdateMask<T>(paddingRows);
-    for (uint16_t i = originN; i < ubN; ++i) {
-        // 仅写实际 pitch 对应的 M lanes, 避免全宽写入越过相邻通信缓冲
-        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, paddingMask);
+    if constexpr (!fullRows64 && !fuseScores) {
+        uint32_t paddingRows = m;
+        MaskReg paddingMask = UpdateMask<T>(paddingRows);
+        for (uint16_t i = originN; i < ubN; ++i) {
+            // 仅写实际 pitch 对应的 M lanes, 避免全宽写入越过相邻通信缓冲
+            StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_min,
+                                                         paddingMask);
+        }
+        mem_bar(VST_VLD);
     }
-    mem_bar(VST_VLD);
 
     if constexpr ((IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
                    IsSameType<T2, hifloat8_t>::value) &&
@@ -559,6 +695,21 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
                 Max(max3, max3, src3, preg_108);
             }
         }
+    } else if constexpr (fuseScores) {
+        const uint16_t fullGroups = SCORE_FULL_COLUMNS ? ubN / 4U : originN / 4U;
+        for (uint16_t group = 0; group < fullGroups; ++group) {
+            ReduceDnScoreGroup<(scoreMaskPitch != 0), true, maxScaleSign>(
+                input_x_local_UB, maskUb, group, m, originN, reinterpret_cast<RegTensor<uint32_t> &>(scoreIndices),
+                scoreByteMask, seenScoreMask, rawExcluded, scoreActive, max0, max1, max2, max3);
+        }
+        if constexpr (!SCORE_FULL_COLUMNS) {
+            for (uint16_t tail = 0; tail < scoreTailGroups; ++tail) {
+                ReduceDnScoreGroup<(scoreMaskPitch != 0), false, maxScaleSign>(
+                    input_x_local_UB, maskUb, fullGroups, m, originN,
+                    reinterpret_cast<RegTensor<uint32_t> &>(scoreIndices), scoreByteMask, seenScoreMask, rawExcluded,
+                    scoreActive, max0, max1, max2, max3);
+            }
+        }
     } else {
         for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
             LoadAlign(src0, src_ub0 + iter_m * m * 4);
@@ -573,16 +724,41 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
     }
 
     LoadAlign(vreg_x_max_f32_b, new_global_max);
-    Max(max0, max0, max2, preg_108);
-    Max(max1, max1, max3, preg_108);
-    Max(max0, max0, max1, preg_108);
-    Muls(max0, max0, dScale, preg_108);
+    if constexpr (fuseScores && maxScaleSign < 0) {
+        Min(max0, max0, max2, preg_108);
+        Min(max1, max1, max3, preg_108);
+        Min(max0, max0, max1, preg_108);
+    } else {
+        Max(max0, max0, max2, preg_108);
+        Max(max1, max1, max3, preg_108);
+        Max(max0, max0, max1, preg_108);
+    }
+    if constexpr (fuseScores) {
+        if constexpr (maxScaleSign != 0) {
+            Muls(max0, max0, scale, scoreActive);
+        }
+        // Preserve the original reduction seed, including an entirely padded tile.
+        Max(max0, max0, vreg_min, scoreActive);
+        if constexpr (scoreMaskPitch != 0) {
+            MaskReg noMaskedScore;
+            RegTensor<float> maskBound;
+            Compares<uint32_t, CMPMODE::EQ>(noMaskedScore, seenScoreMask, 0U, scoreActive);
+            Select(maskBound, vreg_min, scoreMaskedValue, noMaskedScore);
+            Max(max0, max0, maskBound, scoreActive);
+        }
+    } else {
+        Muls(max0, max0, dScale, preg_108);
+    }
     if constexpr (hasSink) {
         Max(max0, max0, vreg_sink_input, preg_108);
     }
 
-    Duplicate(vreg_p_scale, pScale);
-    Ln(vreg_ln_p_scale, vreg_p_scale, preg_108);
+    if constexpr (unitPScale) {
+        Duplicate(vreg_ln_p_scale, 0.0f);
+    } else {
+        Duplicate(vreg_p_scale, pScale);
+        Ln(vreg_ln_p_scale, vreg_p_scale, preg_108);
+    }
     Sub(max0, max0, vreg_ln_p_scale, preg_108);
     Max(max0, max0, vreg_x_max_f32_b, preg_108);
 
@@ -595,6 +771,8 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
     Duplicate<T, Reg::MaskMergeMode::ZEROING, float>(vreg_x_sum_2, 0, preg_134);
     Duplicate<T, Reg::MaskMergeMode::ZEROING, float>(vreg_x_sum_3, 0, preg_134);
     RegTensor<uint8_t> idx_nd2nz;
+    constexpr bool EXP_UNROLL_TWO =
+        expUnrollTwo && (IsSameType<T2, bfloat16_t>::value || IsSameType<T2, half>::value) && (ubN % 8 == 0);
     uint16_t loopNum;
     if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
                   IsSameType<T2, hifloat8_t>::value) {
@@ -605,144 +783,264 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
         LoadAlign(idx_nd2nz, indexesUb);
         loopNum = ubN / 8;
     } else {
-        loopNum = ubN / 4;
+        loopNum = EXP_UNROLL_TWO ? ubN / 8 : ubN / 4;
     }
 
-    for (uint16_t i0 = 0; i0 < loopNum; ++i0) {
-        if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
-                      IsSameType<T2, hifloat8_t>::value) {
-            LoadAlign(vreg_x_f32_0, input_x_local_UB + i0 * m * 2);
-            LoadAlign(vreg_x_f32_1, input_x_local_UB + ubN * m / 4 + i0 * m * 2);
-            LoadAlign(vreg_x_f32_2, input_x_local_UB + ubN * m / 2 + i0 * m * 2);
-            LoadAlign(vreg_x_f32_3, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + i0 * m * 2);
-
-            LoadAlign(vreg_x_f32_4, input_x_local_UB + i0 * m * 2 + 64);
-            LoadAlign(vreg_x_f32_5, input_x_local_UB + ubN * m / 4 + i0 * m * 2 + 64);
-            LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN * m / 2 + i0 * m * 2 + 64);
-            LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + i0 * m * 2 + 64);
-        } else {
-            LoadAlign(vreg_x_f32_0, input_x_local_UB + i0 * m);
-            LoadAlign(vreg_x_f32_1, input_x_local_UB + ubN * m / 4 + i0 * m);
-            LoadAlign(vreg_x_f32_2, input_x_local_UB + ubN * m / 2 + i0 * m);
-            LoadAlign(vreg_x_f32_3, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + i0 * m);
+    // Expand four columns per quarter so mask byte shifts are compile-time
+    // constants inside the hardware loop; preserve the original sum order.
+    constexpr uint16_t SCORE_GROUP_UNROLL = fuseScores && EXP_UNROLL_TWO ? 2U : 1U;
+    const uint16_t scoreLoopNum = loopNum / SCORE_GROUP_UNROLL;
+    if constexpr (fuseScores && !SCORE_FULL_COLUMNS) {
+        Duplicate(scoreColumnBase, 0U);
+    }
+    for (uint16_t group = 0; group < scoreLoopNum; ++group) {
+        RegTensor<uint32_t> scoreWords0, scoreWords1, scoreWords2, scoreWords3;
+        if constexpr (fuseScores && scoreMaskPitch != 0) {
+            Gather(scoreWords0, maskUb + group, reinterpret_cast<RegTensor<uint32_t> &>(scoreIndices), scoreActive);
+            Gather(scoreWords1, maskUb + group + 1U * (ubN / 16U),
+                   reinterpret_cast<RegTensor<uint32_t> &>(scoreIndices), scoreActive);
+            Gather(scoreWords2, maskUb + group + 2U * (ubN / 16U),
+                   reinterpret_cast<RegTensor<uint32_t> &>(scoreIndices), scoreActive);
+            Gather(scoreWords3, maskUb + group + 3U * (ubN / 16U),
+                   reinterpret_cast<RegTensor<uint32_t> &>(scoreIndices), scoreActive);
         }
+#pragma unroll
+        for (uint16_t part = 0; part < SCORE_GROUP_UNROLL; ++part) {
+            const uint16_t i0 = group * SCORE_GROUP_UNROLL + part;
+            if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
+                          IsSameType<T2, hifloat8_t>::value) {
+                LoadAlign(vreg_x_f32_0, input_x_local_UB + i0 * m * 2);
+                LoadAlign(vreg_x_f32_1, input_x_local_UB + ubN * m / 4 + i0 * m * 2);
+                LoadAlign(vreg_x_f32_2, input_x_local_UB + ubN * m / 2 + i0 * m * 2);
+                LoadAlign(vreg_x_f32_3, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + i0 * m * 2);
 
-        Muls(vreg_x_f32_0, vreg_x_f32_0, dScale, preg_108);
-        Muls(vreg_x_f32_1, vreg_x_f32_1, dScale, preg_108);
-        Muls(vreg_x_f32_2, vreg_x_f32_2, dScale, preg_108);
-        Muls(vreg_x_f32_3, vreg_x_f32_3, dScale, preg_108);
-
-        FusedExpSub(vreg_x_exp_0, vreg_x_f32_0, max0, preg_134);
-        FusedExpSub(vreg_x_exp_1, vreg_x_f32_1, max0, preg_134);
-        FusedExpSub(vreg_x_exp_2, vreg_x_f32_2, max0, preg_134);
-        FusedExpSub(vreg_x_exp_3, vreg_x_f32_3, max0, preg_134);
-
-        if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
-                      IsSameType<T2, hifloat8_t>::value) {
-            Muls(vreg_x_f32_4, vreg_x_f32_4, dScale, preg_108);
-            Muls(vreg_x_f32_5, vreg_x_f32_5, dScale, preg_108);
-            Muls(vreg_x_f32_6, vreg_x_f32_6, dScale, preg_108);
-            Muls(vreg_x_f32_7, vreg_x_f32_7, dScale, preg_108);
-
-            FusedExpSub(vreg_x_exp_4, vreg_x_f32_4, max0, preg_134);
-            FusedExpSub(vreg_x_exp_5, vreg_x_f32_5, max0, preg_134);
-            FusedExpSub(vreg_x_exp_6, vreg_x_f32_6, max0, preg_134);
-            FusedExpSub(vreg_x_exp_7, vreg_x_f32_7, max0, preg_134);
-        }
-        if constexpr (AscendC::IsSameType<T2, bfloat16_t>::value) {
-            Cast<T2, T, castTraitZero>(vreg_x_exp_even_bf16, vreg_x_exp_0, preg_135);
-            Cast<T2, T, castTraitZero>(vreg_x_exp_odd_bf16, vreg_x_exp_2, preg_135);
-            DeInterleave(vreg_x_exp_bf16_pack, vreg_x_exp_bf16_packa, vreg_x_exp_even_bf16, vreg_x_exp_odd_bf16);
-
-            Cast<T2, T, castTraitZero>(vreg_x_exp_even_bf16_1, vreg_x_exp_1, preg_135);
-            Cast<T2, T, castTraitZero>(vreg_x_exp_odd_bf16_1, vreg_x_exp_3, preg_135);
-            DeInterleave(vreg_x_exp_bf16_1_pack, vreg_x_exp_bf16_1_packa, vreg_x_exp_even_bf16_1,
-                         vreg_x_exp_odd_bf16_1);
-            /* vreg_x_exp_bf16_pack会不连续的存储156在x_exp上，shape为2*4*64*16， 其中每64*16个的head之间跳129 * 16
-                个数，中间跳的部分就是vreg_x_exp_bf16_1_pack的 */
-            StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
-                ((__ubuf__ T2 *&)x_exp), vreg_x_exp_bf16_pack, blockStride, repeatStride, preg_136);
-            Add(vreg_x_sum_0, vreg_x_exp_0, vreg_x_sum_0, preg_134);
-            Add(vreg_x_sum_2, vreg_x_exp_2, vreg_x_sum_2, preg_134);
-            StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
-                ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_bf16_1_pack, blockStride, repeatStride, preg_136);
-            Add(vreg_x_sum_1, vreg_x_exp_1, vreg_x_sum_1, preg_134);
-            Add(vreg_x_sum_3, vreg_x_exp_3, vreg_x_sum_3, preg_134);
-        } else if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
-                             IsSameType<T2, hifloat8_t>::value) {
-            Add(vreg_x_sum_0, vreg_x_exp_0, vreg_x_sum_0, preg_134);
-            Add(vreg_x_sum_1, vreg_x_exp_1, vreg_x_sum_1, preg_134);
-            Add(vreg_x_sum_2, vreg_x_exp_2, vreg_x_sum_2, preg_134);
-            Add(vreg_x_sum_3, vreg_x_exp_3, vreg_x_sum_3, preg_134);
-            if constexpr (IsSameType<T2, hifloat8_t>::value) {
-                Cast<T2, T, castTraitZero>(vreg_x_exp_fp8_0, vreg_x_exp_0, preg_135);
-                Cast<T2, T, castTraitOne>((RegTensor<T2> &)vreg_x_exp_0, vreg_x_exp_1, preg_135);
-                Cast<T2, T, castTraitTwo>((RegTensor<T2> &)vreg_x_exp_1, vreg_x_exp_2, preg_135);
-                Cast<T2, T, castTraitThree>((RegTensor<T2> &)vreg_x_exp_2, vreg_x_exp_3, preg_135);
+                LoadAlign(vreg_x_f32_4, input_x_local_UB + i0 * m * 2 + 64);
+                LoadAlign(vreg_x_f32_5, input_x_local_UB + ubN * m / 4 + i0 * m * 2 + 64);
+                LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN * m / 2 + i0 * m * 2 + 64);
+                LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + i0 * m * 2 + 64);
             } else {
-                Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_0, vreg_x_exp_0, preg_135);
-                Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_0, vreg_x_exp_1, preg_135);
-                Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_1, vreg_x_exp_2, preg_135);
-                Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_2, vreg_x_exp_3, preg_135);
+                uint32_t row = i0 * (EXP_UNROLL_TWO ? 2U : 1U);
+                LoadAlign(vreg_x_f32_0, input_x_local_UB + row * m);
+                LoadAlign(vreg_x_f32_1, input_x_local_UB + ubN * m / 4 + row * m);
+                LoadAlign(vreg_x_f32_2, input_x_local_UB + ubN * m / 2 + row * m);
+                LoadAlign(vreg_x_f32_3, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + row * m);
+                if constexpr (EXP_UNROLL_TWO) {
+                    // The next iteration uses independent inputs; sum and Store order stay unchanged.
+                    LoadAlign(vreg_x_f32_4, input_x_local_UB + (row + 1U) * m);
+                    LoadAlign(vreg_x_f32_5, input_x_local_UB + ubN * m / 4 + (row + 1U) * m);
+                    LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN * m / 2 + (row + 1U) * m);
+                    LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + (row + 1U) * m);
+                }
             }
 
-            Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-               (RegTensor<uint8_t> &)vreg_x_exp_0, preg_134);
-            Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-               (RegTensor<uint8_t> &)vreg_x_exp_1, preg_134);
-            Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-               (RegTensor<uint8_t> &)vreg_x_exp_2, preg_134);
-            Gather(vreg_x_exp_f8_pack_0, vreg_x_exp_fp8_0, idx_nd2nz);
-            StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
-                ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
-
-            // -----------------------------------------------------------------------------//
-            Add(vreg_x_sum_4, vreg_x_exp_4, vreg_x_sum_4, preg_134);
-            Add(vreg_x_sum_5, vreg_x_exp_5, vreg_x_sum_5, preg_134);
-            Add(vreg_x_sum_6, vreg_x_exp_6, vreg_x_sum_6, preg_134);
-            Add(vreg_x_sum_7, vreg_x_exp_7, vreg_x_sum_7, preg_134);
-            if constexpr (IsSameType<T2, hifloat8_t>::value) {
-                Cast<T2, T, castTraitZero>(vreg_x_exp_fp8_1, vreg_x_exp_4, preg_135);
-                Cast<T2, T, castTraitOne>((RegTensor<T2> &)vreg_x_exp_4, vreg_x_exp_5, preg_135);
-                Cast<T2, T, castTraitTwo>((RegTensor<T2> &)vreg_x_exp_5, vreg_x_exp_6, preg_135);
-                Cast<T2, T, castTraitThree>((RegTensor<T2> &)vreg_x_exp_6, vreg_x_exp_7, preg_135);
+            if constexpr (fuseScores) {
+                // Each gathered word covers four columns across the two expanded exp steps.
+                const uint32_t scoreRow = part * 2U;
+                TransformDnScore<(scoreMaskPitch != 0), SCORE_FULL_COLUMNS>(vreg_x_f32_0, scoreWords0, scoreByteMask,
+                                                                            scoreMaskedValue, vreg_min, scoreColumnBase,
+                                                                            scoreRow, originN, scale, scoreActive);
+                if constexpr (EXP_UNROLL_TWO) {
+                    TransformDnScore<(scoreMaskPitch != 0), SCORE_FULL_COLUMNS>(
+                        vreg_x_f32_4, scoreWords0, scoreByteMask, scoreMaskedValue, vreg_min, scoreColumnBase,
+                        scoreRow + 1U, originN, scale, scoreActive);
+                }
+                TransformDnScore<(scoreMaskPitch != 0), SCORE_FULL_COLUMNS>(
+                    vreg_x_f32_1, scoreWords1, scoreByteMask, scoreMaskedValue, vreg_min, scoreColumnBase,
+                    scoreRow + (ubN / 4U), originN, scale, scoreActive);
+                if constexpr (EXP_UNROLL_TWO) {
+                    TransformDnScore<(scoreMaskPitch != 0), SCORE_FULL_COLUMNS>(
+                        vreg_x_f32_5, scoreWords1, scoreByteMask, scoreMaskedValue, vreg_min, scoreColumnBase,
+                        scoreRow + (ubN / 4U) + 1U, originN, scale, scoreActive);
+                }
+                TransformDnScore<(scoreMaskPitch != 0), SCORE_FULL_COLUMNS>(
+                    vreg_x_f32_2, scoreWords2, scoreByteMask, scoreMaskedValue, vreg_min, scoreColumnBase,
+                    scoreRow + (ubN / 2U), originN, scale, scoreActive);
+                if constexpr (EXP_UNROLL_TWO) {
+                    TransformDnScore<(scoreMaskPitch != 0), SCORE_FULL_COLUMNS>(
+                        vreg_x_f32_6, scoreWords2, scoreByteMask, scoreMaskedValue, vreg_min, scoreColumnBase,
+                        scoreRow + (ubN / 2U) + 1U, originN, scale, scoreActive);
+                }
+                TransformDnScore<(scoreMaskPitch != 0), SCORE_FULL_COLUMNS>(
+                    vreg_x_f32_3, scoreWords3, scoreByteMask, scoreMaskedValue, vreg_min, scoreColumnBase,
+                    scoreRow + 3U * (ubN / 4U), originN, scale, scoreActive);
+                if constexpr (EXP_UNROLL_TWO) {
+                    TransformDnScore<(scoreMaskPitch != 0), SCORE_FULL_COLUMNS>(
+                        vreg_x_f32_7, scoreWords3, scoreByteMask, scoreMaskedValue, vreg_min, scoreColumnBase,
+                        scoreRow + 3U * (ubN / 4U) + 1U, originN, scale, scoreActive);
+                }
             } else {
-                Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_1, vreg_x_exp_4, preg_135);
-                Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_4, vreg_x_exp_5, preg_135);
-                Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_5, vreg_x_exp_6, preg_135);
-                Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_6, vreg_x_exp_7, preg_135);
+                Muls(vreg_x_f32_0, vreg_x_f32_0, dScale, preg_108);
+                Muls(vreg_x_f32_1, vreg_x_f32_1, dScale, preg_108);
+                Muls(vreg_x_f32_2, vreg_x_f32_2, dScale, preg_108);
+                Muls(vreg_x_f32_3, vreg_x_f32_3, dScale, preg_108);
+
+                if constexpr (EXP_UNROLL_TWO) {
+                    Muls(vreg_x_f32_4, vreg_x_f32_4, dScale, preg_108);
+                    Muls(vreg_x_f32_5, vreg_x_f32_5, dScale, preg_108);
+                    Muls(vreg_x_f32_6, vreg_x_f32_6, dScale, preg_108);
+                    Muls(vreg_x_f32_7, vreg_x_f32_7, dScale, preg_108);
+                }
             }
 
-            Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
-               (RegTensor<uint8_t> &)vreg_x_exp_4, preg_134);
-            Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
-               (RegTensor<uint8_t> &)vreg_x_exp_5, preg_134);
-            Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
-               (RegTensor<uint8_t> &)vreg_x_exp_6, preg_134);
-            Gather(vreg_x_exp_f8_pack_1, vreg_x_exp_fp8_1, idx_nd2nz);
-            StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
-                ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_f8_pack_1, blockStride, repeatStride, preg_134);
-        } else {
-            Cast<T2, T, castTraitZero>(vreg_x_exp_even_f16, vreg_x_exp_0, preg_135);
-            Cast<T2, T, castTraitZero>(vreg_x_exp_odd_f16, vreg_x_exp_2, preg_135);
-            DeInterleave(vreg_x_exp_f16_pack, vreg_x_exp_f16_packa, vreg_x_exp_even_f16, vreg_x_exp_odd_f16);
+            FusedExpSub(vreg_x_exp_0, vreg_x_f32_0, max0, preg_134);
+            FusedExpSub(vreg_x_exp_1, vreg_x_f32_1, max0, preg_134);
+            FusedExpSub(vreg_x_exp_2, vreg_x_f32_2, max0, preg_134);
+            FusedExpSub(vreg_x_exp_3, vreg_x_f32_3, max0, preg_134);
 
-            Cast<T2, T, castTraitZero>(vreg_x_exp_even_f16_1, vreg_x_exp_1, preg_135);
-            Cast<T2, T, castTraitZero>(vreg_x_exp_odd_f16_1, vreg_x_exp_3, preg_135);
+            if constexpr (EXP_UNROLL_TWO || IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
+                          IsSameType<T2, hifloat8_t>::value) {
+                if constexpr (!EXP_UNROLL_TWO) {
+                    Muls(vreg_x_f32_4, vreg_x_f32_4, dScale, preg_108);
+                    Muls(vreg_x_f32_5, vreg_x_f32_5, dScale, preg_108);
+                    Muls(vreg_x_f32_6, vreg_x_f32_6, dScale, preg_108);
+                    Muls(vreg_x_f32_7, vreg_x_f32_7, dScale, preg_108);
+                }
 
-            DeInterleave(vreg_x_exp_f16_1_pack, vreg_x_exp_f16_1_packa, vreg_x_exp_even_f16_1, vreg_x_exp_odd_f16_1);
+                FusedExpSub(vreg_x_exp_4, vreg_x_f32_4, max0, preg_134);
+                FusedExpSub(vreg_x_exp_5, vreg_x_f32_5, max0, preg_134);
+                FusedExpSub(vreg_x_exp_6, vreg_x_f32_6, max0, preg_134);
+                FusedExpSub(vreg_x_exp_7, vreg_x_f32_7, max0, preg_134);
+            }
+            if constexpr (AscendC::IsSameType<T2, bfloat16_t>::value) {
+                Cast<T2, T, castTraitZero>(vreg_x_exp_even_bf16, vreg_x_exp_0, preg_135);
+                Cast<T2, T, castTraitZero>(vreg_x_exp_odd_bf16, vreg_x_exp_2, preg_135);
+                DeInterleave(vreg_x_exp_bf16_pack, vreg_x_exp_bf16_packa, vreg_x_exp_even_bf16, vreg_x_exp_odd_bf16);
 
-            /* vreg_x_exp_f16_pack会不连续的存储在x_exp上，shape为2*4*64*16， 其中每64*16个的head之间跳129 * 16
-                个数，中间跳的部分就是vreg_x_exp_f16_1_pack的 */
-            StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
-                ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f16_pack, blockStride, repeatStride, preg_136);
-            Add(vreg_x_sum_0, vreg_x_exp_0, vreg_x_sum_0, preg_134);
-            Add(vreg_x_sum_2, vreg_x_exp_2, vreg_x_sum_2, preg_134);
+                Cast<T2, T, castTraitZero>(vreg_x_exp_even_bf16_1, vreg_x_exp_1, preg_135);
+                Cast<T2, T, castTraitZero>(vreg_x_exp_odd_bf16_1, vreg_x_exp_3, preg_135);
+                DeInterleave(vreg_x_exp_bf16_1_pack, vreg_x_exp_bf16_1_packa, vreg_x_exp_even_bf16_1,
+                             vreg_x_exp_odd_bf16_1);
+                /* vreg_x_exp_bf16_pack会不连续的存储156在x_exp上，shape为2*4*64*16， 其中每64*16个的head之间跳129 * 16
+                    个数，中间跳的部分就是vreg_x_exp_bf16_1_pack的 */
+                StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
+                    ((__ubuf__ T2 *&)x_exp), vreg_x_exp_bf16_pack, blockStride, repeatStride, preg_136);
+                Add(vreg_x_sum_0, vreg_x_exp_0, vreg_x_sum_0, preg_134);
+                Add(vreg_x_sum_2, vreg_x_exp_2, vreg_x_sum_2, preg_134);
+                StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
+                    ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_bf16_1_pack, blockStride, repeatStride, preg_136);
+                Add(vreg_x_sum_1, vreg_x_exp_1, vreg_x_sum_1, preg_134);
+                Add(vreg_x_sum_3, vreg_x_exp_3, vreg_x_sum_3, preg_134);
+                if constexpr (EXP_UNROLL_TWO) {
+                    Cast<T2, T, castTraitZero>(vreg_x_exp_even_bf16, vreg_x_exp_4, preg_135);
+                    Cast<T2, T, castTraitZero>(vreg_x_exp_odd_bf16, vreg_x_exp_6, preg_135);
+                    DeInterleave(vreg_x_exp_bf16_pack, vreg_x_exp_bf16_packa, vreg_x_exp_even_bf16,
+                                 vreg_x_exp_odd_bf16);
 
-            StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
-                ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_f16_1_pack, blockStride, repeatStride, preg_136);
-            Add(vreg_x_sum_1, vreg_x_exp_1, vreg_x_sum_1, preg_134);
-            Add(vreg_x_sum_3, vreg_x_exp_3, vreg_x_sum_3, preg_134);
+                    Cast<T2, T, castTraitZero>(vreg_x_exp_even_bf16_1, vreg_x_exp_5, preg_135);
+                    Cast<T2, T, castTraitZero>(vreg_x_exp_odd_bf16_1, vreg_x_exp_7, preg_135);
+                    DeInterleave(vreg_x_exp_bf16_1_pack, vreg_x_exp_bf16_1_packa, vreg_x_exp_even_bf16_1,
+                                 vreg_x_exp_odd_bf16_1);
+
+                    StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
+                        ((__ubuf__ T2 *&)x_exp), vreg_x_exp_bf16_pack, blockStride, repeatStride, preg_136);
+                    Add(vreg_x_sum_0, vreg_x_exp_4, vreg_x_sum_0, preg_134);
+                    Add(vreg_x_sum_2, vreg_x_exp_6, vreg_x_sum_2, preg_134);
+                    StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
+                        ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_bf16_1_pack, blockStride, repeatStride, preg_136);
+                    Add(vreg_x_sum_1, vreg_x_exp_5, vreg_x_sum_1, preg_134);
+                    Add(vreg_x_sum_3, vreg_x_exp_7, vreg_x_sum_3, preg_134);
+                }
+            } else if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
+                                 IsSameType<T2, hifloat8_t>::value) {
+                Add(vreg_x_sum_0, vreg_x_exp_0, vreg_x_sum_0, preg_134);
+                Add(vreg_x_sum_1, vreg_x_exp_1, vreg_x_sum_1, preg_134);
+                Add(vreg_x_sum_2, vreg_x_exp_2, vreg_x_sum_2, preg_134);
+                Add(vreg_x_sum_3, vreg_x_exp_3, vreg_x_sum_3, preg_134);
+                if constexpr (IsSameType<T2, hifloat8_t>::value) {
+                    Cast<T2, T, castTraitZero>(vreg_x_exp_fp8_0, vreg_x_exp_0, preg_135);
+                    Cast<T2, T, castTraitOne>((RegTensor<T2> &)vreg_x_exp_0, vreg_x_exp_1, preg_135);
+                    Cast<T2, T, castTraitTwo>((RegTensor<T2> &)vreg_x_exp_1, vreg_x_exp_2, preg_135);
+                    Cast<T2, T, castTraitThree>((RegTensor<T2> &)vreg_x_exp_2, vreg_x_exp_3, preg_135);
+                } else {
+                    Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_0, vreg_x_exp_0, preg_135);
+                    Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_0, vreg_x_exp_1, preg_135);
+                    Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_1, vreg_x_exp_2, preg_135);
+                    Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_2, vreg_x_exp_3, preg_135);
+                }
+
+                Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
+                   (RegTensor<uint8_t> &)vreg_x_exp_0, preg_134);
+                Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
+                   (RegTensor<uint8_t> &)vreg_x_exp_1, preg_134);
+                Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
+                   (RegTensor<uint8_t> &)vreg_x_exp_2, preg_134);
+                Gather(vreg_x_exp_f8_pack_0, vreg_x_exp_fp8_0, idx_nd2nz);
+                StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
+                    ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
+
+                // -----------------------------------------------------------------------------//
+                Add(vreg_x_sum_4, vreg_x_exp_4, vreg_x_sum_4, preg_134);
+                Add(vreg_x_sum_5, vreg_x_exp_5, vreg_x_sum_5, preg_134);
+                Add(vreg_x_sum_6, vreg_x_exp_6, vreg_x_sum_6, preg_134);
+                Add(vreg_x_sum_7, vreg_x_exp_7, vreg_x_sum_7, preg_134);
+                if constexpr (IsSameType<T2, hifloat8_t>::value) {
+                    Cast<T2, T, castTraitZero>(vreg_x_exp_fp8_1, vreg_x_exp_4, preg_135);
+                    Cast<T2, T, castTraitOne>((RegTensor<T2> &)vreg_x_exp_4, vreg_x_exp_5, preg_135);
+                    Cast<T2, T, castTraitTwo>((RegTensor<T2> &)vreg_x_exp_5, vreg_x_exp_6, preg_135);
+                    Cast<T2, T, castTraitThree>((RegTensor<T2> &)vreg_x_exp_6, vreg_x_exp_7, preg_135);
+                } else {
+                    Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_1, vreg_x_exp_4, preg_135);
+                    Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_4, vreg_x_exp_5, preg_135);
+                    Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_5, vreg_x_exp_6, preg_135);
+                    Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_6, vreg_x_exp_7, preg_135);
+                }
+
+                Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
+                   (RegTensor<uint8_t> &)vreg_x_exp_4, preg_134);
+                Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
+                   (RegTensor<uint8_t> &)vreg_x_exp_5, preg_134);
+                Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
+                   (RegTensor<uint8_t> &)vreg_x_exp_6, preg_134);
+                Gather(vreg_x_exp_f8_pack_1, vreg_x_exp_fp8_1, idx_nd2nz);
+                StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
+                    ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_f8_pack_1, blockStride, repeatStride, preg_134);
+            } else {
+                Cast<T2, T, castTraitZero>(vreg_x_exp_even_f16, vreg_x_exp_0, preg_135);
+                Cast<T2, T, castTraitZero>(vreg_x_exp_odd_f16, vreg_x_exp_2, preg_135);
+                DeInterleave(vreg_x_exp_f16_pack, vreg_x_exp_f16_packa, vreg_x_exp_even_f16, vreg_x_exp_odd_f16);
+
+                Cast<T2, T, castTraitZero>(vreg_x_exp_even_f16_1, vreg_x_exp_1, preg_135);
+                Cast<T2, T, castTraitZero>(vreg_x_exp_odd_f16_1, vreg_x_exp_3, preg_135);
+
+                DeInterleave(vreg_x_exp_f16_1_pack, vreg_x_exp_f16_1_packa, vreg_x_exp_even_f16_1,
+                             vreg_x_exp_odd_f16_1);
+
+                /* vreg_x_exp_f16_pack会不连续的存储在x_exp上，shape为2*4*64*16， 其中每64*16个的head之间跳129 * 16
+                    个数，中间跳的部分就是vreg_x_exp_f16_1_pack的 */
+                StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
+                    ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f16_pack, blockStride, repeatStride, preg_136);
+                Add(vreg_x_sum_0, vreg_x_exp_0, vreg_x_sum_0, preg_134);
+                Add(vreg_x_sum_2, vreg_x_exp_2, vreg_x_sum_2, preg_134);
+
+                StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
+                    ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_f16_1_pack, blockStride, repeatStride, preg_136);
+                Add(vreg_x_sum_1, vreg_x_exp_1, vreg_x_sum_1, preg_134);
+                Add(vreg_x_sum_3, vreg_x_exp_3, vreg_x_sum_3, preg_134);
+                if constexpr (EXP_UNROLL_TWO) {
+                    Cast<T2, T, castTraitZero>(vreg_x_exp_even_f16, vreg_x_exp_4, preg_135);
+                    Cast<T2, T, castTraitZero>(vreg_x_exp_odd_f16, vreg_x_exp_6, preg_135);
+                    DeInterleave(vreg_x_exp_f16_pack, vreg_x_exp_f16_packa, vreg_x_exp_even_f16, vreg_x_exp_odd_f16);
+
+                    Cast<T2, T, castTraitZero>(vreg_x_exp_even_f16_1, vreg_x_exp_5, preg_135);
+                    Cast<T2, T, castTraitZero>(vreg_x_exp_odd_f16_1, vreg_x_exp_7, preg_135);
+
+                    DeInterleave(vreg_x_exp_f16_1_pack, vreg_x_exp_f16_1_packa, vreg_x_exp_even_f16_1,
+                                 vreg_x_exp_odd_f16_1);
+
+                    StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
+                        ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f16_pack, blockStride, repeatStride, preg_136);
+                    Add(vreg_x_sum_0, vreg_x_exp_4, vreg_x_sum_0, preg_134);
+                    Add(vreg_x_sum_2, vreg_x_exp_6, vreg_x_sum_2, preg_134);
+
+                    StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
+                        ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_f16_1_pack, blockStride, repeatStride, preg_136);
+                    Add(vreg_x_sum_1, vreg_x_exp_5, vreg_x_sum_1, preg_134);
+                    Add(vreg_x_sum_3, vreg_x_exp_7, vreg_x_sum_3, preg_134);
+                }
+            }
+        }
+        if constexpr (fuseScores && !SCORE_FULL_COLUMNS) {
+            Adds(scoreColumnBase, scoreColumnBase, 4U, scoreActive);
         }
     }
     Add(vreg_x_sum0, vreg_x_sum_2, vreg_x_sum_0, preg_134);
@@ -765,7 +1063,9 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
     StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)new_global_sum, vreg_l0, preg_134);
 }
 
-template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128, bool hasSink = false>
+template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128, bool hasSink = false,
+          bool fullRows64 = false, bool unitPScale = false, bool expUnrollTwo = false, bool fuseScores = false,
+          uint16_t scoreMaskPitch = 0, bool fullColumns = false, int maxScaleSign = 1>
 __aicore__ inline void ProcessVec1DnUpdate(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor,
                                            const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
                                            const LocalTensor<T> &expMaxTensor,
@@ -797,9 +1097,11 @@ __aicore__ inline void ProcessVec1DnUpdate(const LocalTensor<T2> &dstTensor, con
         repeatStride = 1;
     }
 
-    ProcessVec1DnUpdateVF<T, T2, hasAtten, ubN, hasSink>(
+    ProcessVec1DnUpdateVF<T, T2, hasAtten, ubN, hasSink, fullRows64, unitPScale, expUnrollTwo, fuseScores,
+                          scoreMaskPitch, fullColumns, maxScaleSign>(
         x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, indexesUb, m, n, originN, scale,
-        deScaleQK, minValue, keepProb, needAtten, dScale, blockStride, repeatStride, pScale, sinkValue);
+        deScaleQK, minValue, keepProb, needAtten, dScale, blockStride, repeatStride, pScale, sinkValue,
+        static_cast<uint16_t>(originN % 4U != 0));
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128>
@@ -1924,7 +2226,8 @@ __aicore__ inline void ProcessVec1DnCausal(
  */
 
 template <typename T, typename T2, bool isUpdate = false, bool hasAtten = false, uint16_t ubN = 256,
-          bool hasSink = false>
+          bool hasSink = false, bool fullRows64 = false, bool unitPScale = false, bool expUnrollTwo = false,
+          bool fuseScores = false, uint16_t scoreMaskPitch = 0, bool fullColumns = false, int maxScaleSign = 1>
 __aicore__ inline void ProcessVec1VfDn(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor,
                                        const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
                                        const LocalTensor<T> &expMaxTensor, TBuf<> *vselrIndexesBuf,
@@ -1933,6 +2236,13 @@ __aicore__ inline void ProcessVec1VfDn(const LocalTensor<T2> &dstTensor, const L
                                        float keepProb, bool needAtten, const float pScale = 1.0f,
                                        const float sinkValue = 0.0f)
 {
+    static_assert(!fuseScores || isUpdate, "Fused scores require the update path");
+    static_assert(!fullColumns || fuseScores, "Full columns requires fused scores");
+    // unitPScale is a caller contract: pScale must remain exactly +1.
+    static_assert(!unitPScale || isUpdate, "unitPScale is supported by the update path only");
+    static_assert(!fullRows64 || (isUpdate && !hasAtten && !hasSink && ubN % 16 == 0 && IsSameType<T, float>::value &&
+                                  (IsSameType<T2, half>::value || IsSameType<T2, bfloat16_t>::value)),
+                  "Full DN VF requires update and a 64xN FP16/BF16 tile without legacy mask");
     if constexpr (!isUpdate) {
         // 索引序列，用于在VF代码中量化cast后的gather指令
         // 在对计算结果进行cast之后，数据从fp32转换成了fp8，可能会得到一个乱序的非紧密排布的结果，需要定义一个索引序列来把结果调整正确
@@ -1950,9 +2260,10 @@ __aicore__ inline void ProcessVec1VfDn(const LocalTensor<T2> &dstTensor, const L
                       IsSameType<T2, hifloat8_t>::value) {
             indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::DN_INDEX)].template Get<uint8_t>();
         }
-        ProcessVec1DnUpdate<T, T2, hasAtten, ubN, hasSink>(dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor,
-                                                           indexesTensor, maskTensor, m, n, originN, scale, deScaleQK,
-                                                           minValue, keepProb, needAtten, pScale, sinkValue);
+        ProcessVec1DnUpdate<T, T2, hasAtten, ubN, hasSink, fullRows64, unitPScale, expUnrollTwo, fuseScores,
+                            scoreMaskPitch, fullColumns, maxScaleSign>(
+            dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, indexesTensor, maskTensor, m, n, originN,
+            scale, deScaleQK, minValue, keepProb, needAtten, pScale, sinkValue);
     }
 }
 template <typename T, typename T2, bool isUpdate = false, bool hasAtten = false, uint16_t ubN = 256,

@@ -51,8 +51,9 @@ public:
     static constexpr bool PAGE_ATTENTION = FA_T::pageAttention;
     static constexpr bool HAS_MASK = FA_T::hasMask;
 
-    static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C1 C2
-    // task ring buffer 至少需要 PRELOAD_N+1(=3) 个slot；为了用位掩码(loop & MASK)代替取模(loop % SIZE)，
+    static constexpr uint32_t PRELOAD_N =
+        FA_T::causalOpt ? 3U : (static_cast<uint32_t>(FA_T::dBaseSize) == 64U ? 3U : 2U);
+    // task ring buffer 至少需要 PRELOAD_N+1 个slot；为了用位掩码(loop & MASK)代替取模(loop % SIZE)，
     // 将容量向上取整到最近的2的幂(=4)。代价仅为多1个RunInfo slot，换取消除内层循环的取模scalar bound。
     static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = 4;
     static constexpr uint32_t PRELOAD_TASK_CACHE_MASK = PRELOAD_TASK_CACHE_SIZE - 1;
@@ -60,7 +61,7 @@ public:
     static_assert((PRELOAD_TASK_CACHE_SIZE & PRELOAD_TASK_CACHE_MASK) == 0,
                   "PRELOAD_TASK_CACHE_SIZE must be a power of two for bitmask indexing");
 
-    ConstInfo_t constInfo_;
+    ConstInfo_t constInfo_{};
 
     SeqLensTool<LAYOUT_T, SEQLEN_T> qSeqLensTool_;
     SeqLensTool<LAYOUT_KV, SEQLEN_T> kvSeqLensTool_;
@@ -299,6 +300,15 @@ public:
     __aicore__ inline TASK_DEAL_MODE GetTaskDealMode(uint32_t bn1Cur, uint32_t s1Cur, uint32_t s2Cur)
     {
         bool isFirstTask = (bn1Cur == bn1Start_) && (s1Cur == s1OStart_ * mBaseSize) && (s2Cur == s2OStart_);
+        if constexpr (FA_T::causalOpt && static_cast<uint32_t>(FA_T::dBaseSize) == 80U) {
+            // Interior KV tiles keep the current query block's bounds.  Keep the
+            // first tile on the full path so lengths, sparse bounds and mloop are
+            // initialized before taking this fast path.
+            if (mloop_ != 0U && !isFirstTask && bn1Cur == prevBn1Idx_ && s1Cur == prevS1Idx_ && s2Cur > curS2Start_ &&
+                s2Cur < curS2End_) {
+                return TASK_DEAL_MODE::CREATE_TASK;
+            }
+        }
         uint32_t bIdx = bn1Cur / constInfo_.n1Size;
         if (isFirstTask || prevBIdx_ != bIdx) {
             prevBIdx_ = bIdx;
@@ -428,11 +438,38 @@ public:
 
     __aicore__ inline void ExecuteTask(uint64_t loop, RunInfo taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
+        constexpr bool earlyVec2 = FA_T::causalOpt && static_cast<uint32_t>(FA_T::dBaseSize) == 80U;
+        if constexpr (earlyVec2) {
+            if ASCEND_IS_AIV {
+                if (loop >= PRELOAD_N) {
+                    RunInfo &previous = taskRunInfo[(loop - PRELOAD_N) & PRELOAD_TASK_CACHE_MASK];
+                    if (previous.isValid) {
+                        ComputeVec2(previous);
+                    }
+                }
+            }
+        }
         RunInfo &runInfo0 = taskRunInfo[loop & PRELOAD_TASK_CACHE_MASK]; // 本轮任务
+        // Invocation-local slots leave the Cube object layout unchanged for legacy routes.
+        uint32_t keySlot = 0U;
+        uint32_t valueSlot = 0U;
 
+        if constexpr (FA_T::causalOpt) {
+            if ASCEND_IS_AIC {
+                if (runInfo0.isValid) {
+                    keySlot = cubeBlock_.PrefetchKey(runInfo0);
+                }
+                if (loop >= PRELOAD_N) {
+                    RunInfo &previous = taskRunInfo[(loop - PRELOAD_N) & PRELOAD_TASK_CACHE_MASK];
+                    if (previous.isValid) {
+                        valueSlot = cubeBlock_.PrefetchValue(previous);
+                    }
+                }
+            }
+        }
         if (runInfo0.isValid) {
             if ASCEND_IS_AIC {
-                ComputeMm1(runInfo0);
+                ComputeMm1(runInfo0, keySlot);
             } else {
                 ComputeVec1(runInfo0);
             }
@@ -441,8 +478,8 @@ public:
             RunInfo &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) & PRELOAD_TASK_CACHE_MASK]; // 上PRELOAD_N轮任务
             if (runInfoNegN.isValid) {
                 if ASCEND_IS_AIC {
-                    ComputeMm2(runInfoNegN);
-                } else {
+                    ComputeMm2(runInfoNegN, valueSlot);
+                } else if constexpr (!earlyVec2) {
                     ComputeVec2(runInfoNegN);
                 }
                 runInfoNegN.isValid = false;
@@ -450,14 +487,14 @@ public:
         }
     }
 
-    __aicore__ inline void ComputeMm1(RunInfo &runInfo)
+    __aicore__ inline void ComputeMm1(RunInfo &runInfo, uint32_t prefetchedSlot)
     {
-        cubeBlock_.IterateBmm1(runInfo);
+        cubeBlock_.IterateBmm1(runInfo, prefetchedSlot);
     }
 
-    __aicore__ inline void ComputeMm2(RunInfo &runInfo)
+    __aicore__ inline void ComputeMm2(RunInfo &runInfo, uint32_t prefetchedSlot)
     {
-        cubeBlock_.IterateBmm2(runInfo);
+        cubeBlock_.IterateBmm2(runInfo, prefetchedSlot);
     }
 
     __aicore__ inline void ComputeVec1(RunInfo &runInfo)
@@ -620,6 +657,9 @@ public:
         }
         for (uint32_t sectionIdx = 0; sectionIdx < sectionNum_; sectionIdx++) {
             if (constInfo_.aicIdx < constInfo_.coreNum) {
+                if ASCEND_IS_AIV {
+                    vecFaBlock_.InitTriangleMasks();
+                }
                 FlashAttention(sectionIdx);
             }
             if ASCEND_IS_AIV {

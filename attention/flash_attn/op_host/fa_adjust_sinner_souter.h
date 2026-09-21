@@ -13,6 +13,7 @@
 
 #include <cstdint>
 #include <initializer_list>
+#include "../op_kernel/utils/dn_unmerged_policy.h"
 
 namespace optiling {
 namespace flash_attn {
@@ -33,6 +34,7 @@ constexpr uint32_t SINNER_128 = 128;
 constexpr uint32_t SINNER_256 = 256;
 constexpr uint32_t DSIZE_128 = 128;
 constexpr uint32_t DSIZE_256 = 256;
+constexpr uint32_t CUBE_M_128 = 128;
 
 /**
  * @brief 根据算子参数决定 sOuter / sInner 切块大小，纯函数，不依赖任何类。
@@ -52,6 +54,18 @@ inline void AdjustSinnerAndSouter(uint32_t vHeadDim, uint32_t gSize, int64_t max
                                   int32_t maskMode, int64_t winLeft, int64_t winRight, uint32_t qLayout,
                                   uint32_t &sOuterFactor, uint32_t &sInnerFactor)
 {
+    // NO_MASK and CAUSAL ignore user windows. Normalize here so host and metadata
+    // choose the same basic block, including short-Q fallback to Cube M=64.
+    if (maskMode == 0 || maskMode == 3) {
+        winLeft = MAX_SEQ_LEN_DEFAULT;
+        winRight = MAX_SEQ_LEN_DEFAULT;
+    }
+    if (winLeft == -1) {
+        winLeft = MAX_SEQ_LEN_DEFAULT;
+    }
+    if (winRight == -1) {
+        winRight = MAX_SEQ_LEN_DEFAULT;
+    }
     if (maxSeqQ == -1) {
         maxSeqQ = MAX_SEQ_LEN_DEFAULT;
     }
@@ -92,21 +106,25 @@ inline void AdjustSinnerAndSouter(uint32_t vHeadDim, uint32_t gSize, int64_t max
 // Count dense (B, N2, ceil(Q * G / M), ceil(KV / N)) blocks to retain split-KV parallelism.
 // Unknown/empty dimensions keep the platform limit, including the existing empty-output path.
 inline uint32_t GetMaxUsedAicCores(uint32_t aicNum, uint32_t batchSize, uint32_t kvHeads, uint32_t groupSize,
-                                   int64_t maxSeqQ, int64_t maxSeqKv, uint32_t mBaseSize, uint32_t s2BaseSize)
+                                   int64_t maxSeqQ, int64_t maxSeqKv, uint32_t mBaseSize, uint32_t s2BaseSize,
+                                   bool dnUnmerged = false)
 {
     if (aicNum == 0 || batchSize == 0 || kvHeads == 0 || groupSize == 0 || maxSeqQ <= 0 || maxSeqKv <= 0 ||
         mBaseSize == 0 || s2BaseSize == 0) {
         return aicNum;
     }
+    // BN1_S1 keeps G outside the query ceil; legacy BN2_S1G merges Q and G.
+    const uint32_t mergedGroup = dnUnmerged ? 1U : groupSize;
     // Cap before multiplying Q by G, so even very large static bounds cannot overflow.
-    if (static_cast<uint64_t>(maxSeqQ) > static_cast<uint64_t>(aicNum) * mBaseSize / groupSize) {
+    if (static_cast<uint64_t>(maxSeqQ) > static_cast<uint64_t>(aicNum) * mBaseSize / mergedGroup) {
         return aicNum;
     }
-    const uint64_t mSize = static_cast<uint64_t>(maxSeqQ) * groupSize;
+    const uint64_t mSize = static_cast<uint64_t>(maxSeqQ) * mergedGroup;
     const uint64_t mBlocks = (mSize - 1) / mBaseSize + 1;
     const uint64_t s2Blocks = (static_cast<uint64_t>(maxSeqKv) - 1) / s2BaseSize + 1;
     uint32_t cores = 1;
-    for (uint64_t factor : {static_cast<uint64_t>(batchSize), static_cast<uint64_t>(kvHeads), mBlocks, s2Blocks}) {
+    for (uint64_t factor : {static_cast<uint64_t>(batchSize), static_cast<uint64_t>(kvHeads),
+                            static_cast<uint64_t>(dnUnmerged ? groupSize : 1U), mBlocks, s2Blocks}) {
         if (factor >= (static_cast<uint64_t>(aicNum) - 1) / cores + 1) {
             return aicNum;
         }
@@ -119,21 +137,22 @@ constexpr uint32_t FA_TEMPLATE_ND = 0;
 constexpr uint32_t FA_TEMPLATE_DN = 1;
 constexpr uint32_t FA_TEMPLATE_DN_UNMERGED = 2; // 不合轴 DN(templateId=2), 预埋路由入口默认关闭
 
-// 预埋开关: false 时模板路由维持原逻辑(ND/合轴DN), 不影响现网行为;
-// 打开后所有 case 路由到不合轴 DN 新模板(kernel/block *_dn_unmerged.h 文件, templateId=2),
-// host tiling 与 flash_attn_metadata(AICPU) 共享该开关, 保证两侧分核选择严格一致。
+// Host and metadata share this gate. Migration is complete; keep disabled until
+// masked prefill performance satisfies the per-case enablement gate.
 constexpr bool DN_UNMERGED_ROUTE_ENABLED = false;
 
-// DN 模板路由的共享判定: host tiling 与 flash_attn_metadata(AICPU) 必须使用同一份逻辑,
-// 保证 metadata 的分核 outputLayout 选择与 kernel 模板选择严格一致。
-// 全量路由: 所有 case 均走 DN 模板; 接口层已限定 D/DV 注册组合, 此处注册表仅作
-// 未注册维度的防御性回退, mask/layout/S1 大小不设任何路由限制。
-inline uint32_t GetFlashAttnTemplateId(uint32_t qkHeadDim, uint32_t vHeadDim)
+// Use the original Cube M, not per-AIV rows or actual tail rows. Eligible shapes
+// serve multimodal attention and LLM prefill; M=64 and D=256 retain legacy routing.
+inline uint32_t GetFlashAttnTemplateId(uint32_t qkHeadDim, uint32_t vHeadDim, uint32_t cubeM, bool hasAttenMask,
+                                       bool enableDnUnmerged = DN_UNMERGED_ROUTE_ENABLED)
 {
-    bool supportedEqualDim =
-        (qkHeadDim == vHeadDim) && (qkHeadDim == 64 || qkHeadDim == 72 || qkHeadDim == 128 || qkHeadDim == 256);
-    bool supportedMlaDim = (qkHeadDim == 192) && (vHeadDim == 128);
-    return (supportedEqualDim || supportedMlaDim) ? FA_TEMPLATE_DN_UNMERGED : FA_TEMPLATE_ND;
+    const bool supportedEqualDim = (qkHeadDim == vHeadDim) && (qkHeadDim == 64 || qkHeadDim == 72 || qkHeadDim == 128);
+    const bool supportedMlaDim = (qkHeadDim == 192) && (vHeadDim == 128);
+    const bool supported = cubeM == CUBE_M_128 && (supportedEqualDim || supportedMlaDim);
+    if (supported && enableDnUnmerged) {
+        return FA_TEMPLATE_DN_UNMERGED;
+    }
+    return (supported && !hasAttenMask) ? FA_TEMPLATE_DN : FA_TEMPLATE_ND;
 }
 
 } // namespace fa_tiling_util
