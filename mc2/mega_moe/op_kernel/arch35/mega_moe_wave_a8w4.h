@@ -88,9 +88,8 @@ private:
                                                       WaveCombineBufferConfig &combineBufferConfig,
                                                       uint32_t &combineRowSequence, const BlockContext &pipeline);
     __aicore__ inline void RunMoeExpertLoop(GMMAddrInfo &gmm1AddrInfo, GMMAddrInfo &gmm2AddrInfo,
-                                           ExpertTokenPosition dispatchPosition,
-                                           WaveCombineBufferConfig &combineBufferConfig,
-                                           const BlockContext &pipeline);
+                                            ExpertTokenPosition dispatchPosition,
+                                            WaveCombineBufferConfig &combineBufferConfig, const BlockContext &pipeline);
     __aicore__ inline void ProcessMoeExpertStages(Gmm1ActivationSync &gmm1ActivationSync,
                                                   Gmm2CombineSync &gmm2CombineSync);
 };
@@ -278,13 +277,12 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
 
     ExpertTokenPosition dispatchPosition = DispatchFirstWave();
     EnterSteadyDispatch();
-    using Config = GmmKernel::Config<true, 0, typename MoeQuantConfig::QuantOutType,
-        MoeWeightType, bfloat16_t, typename MoeQuantConfig::QuantScaleType,
-        typename MoeQuantConfig::QuantScaleType, false, TopkWeightsPrefetch, false, false, true>;
+    using Config = GmmKernel::Config<true, 0, typename MoeQuantConfig::QuantOutType, MoeWeightType, bfloat16_t,
+                                     typename MoeQuantConfig::QuantScaleType, typename MoeQuantConfig::QuantScaleType,
+                                     false, TopkWeightsPrefetch, false, false, true>;
     if constexpr (g_coreType == AIC) {
         typename Config::BlockMmad blockMmad(params_.tilingData->a8w4L1Layout);
-        RunMoeExpertLoop(gmm1AddrInfo, gmm2AddrInfo, dispatchPosition, combineBufferConfig,
-                         BlockContext{&blockMmad});
+        RunMoeExpertLoop(gmm1AddrInfo, gmm2AddrInfo, dispatchPosition, combineBufferConfig, BlockContext{&blockMmad});
     } else if (GetSubBlockIdx() == 0U) {
         typename Config::BlockPrologue blockPrologue(params_.tilingData->a8w4L1Layout);
         RunMoeExpertLoop(gmm1AddrInfo, gmm2AddrInfo, dispatchPosition, combineBufferConfig,
@@ -318,8 +316,8 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunMoeE
         gmm1Position = waveRange.end;
         UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM1, ++gmm1Count);
         if (!gmm2LagActive) {
-            RunGmm2CombineForWaveRange(waveRange, gmm2State, gmm2AddrInfo, combineBufferConfig,
-                                       combineRowSequence, pipeline);
+            RunGmm2CombineForWaveRange(waveRange, gmm2State, gmm2AddrInfo, combineBufferConfig, combineRowSequence,
+                                       pipeline);
             UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
         } else {
             if (hasPendingWave) {
@@ -333,8 +331,8 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunMoeE
     }
     // 滞后流水收尾：三角色共同补跑最后一个 Wave 的 GMM2/Combine。
     if (hasPendingWave) {
-        RunGmm2CombineForWaveRange(pendingWaveRange, gmm2State, gmm2AddrInfo, combineBufferConfig,
-                                   combineRowSequence, pipeline);
+        RunGmm2CombineForWaveRange(pendingWaveRange, gmm2State, gmm2AddrInfo, combineBufferConfig, combineRowSequence,
+                                   pipeline);
         UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
     }
 }

@@ -224,9 +224,9 @@ __aicore__ inline void Gmm1AicMmadGeneric(WorkSet &workSet, const GMMAddrInfo &g
 
 // 执行 A8W4 GMM1 AIC tile 循环，并维持 Dispatch/GMM1 和 GMM1/Activation 的同步关系。
 template <typename BlockMmad, bool IsShared, bool TopkWeightsPrefetch, typename WorkSet, typename Config>
-__aicore__ inline void Gmm1AicMmadA8W4(BlockMmad &blockMmad, WorkSet &workSet, const Params &params, const GMMAddrInfo &gmmAddrInfo,
-                                       const Config &config, uint32_t startLoopIdx, uint32_t tileNum,
-                                       int32_t &gmm1TileReadySequence, uint32_t expertIdx)
+__aicore__ inline void Gmm1AicMmadA8W4(BlockMmad &blockMmad, WorkSet &workSet, const Params &params,
+                                       const GMMAddrInfo &gmmAddrInfo, const Config &config, uint32_t startLoopIdx,
+                                       uint32_t tileNum, int32_t &gmm1TileReadySequence, uint32_t expertIdx)
 {
     Gmm1GmActivationSync<TopkWeightsPrefetch, GMMAddrInfo> sync(gmmAddrInfo, &gmm1TileReadySequence);
     typename BlockMmad::BlockShape l0TileShape{config.blockMmadTiling.tileM, config.blockMmadTiling.tileN, L0_TILE_K,
@@ -369,8 +369,8 @@ __aicore__ inline void Gmm1Aiv1EpilogueTileA8W4(ActivationQuantOp &activationQua
 
 // AIV0 在 UB 拼接 gate/up 并展开 A8W4 权重，每个配对 tile 只提交一次 prologue。
 template <typename BlockPrologue, typename Scheduler, typename TensorB, typename Config>
-__aicore__ inline void Gmm1Aiv0PrologueA8W4(BlockPrologue &blockPrologue, Scheduler &scheduler, TensorB &gmB, const Config &config,
-                                            uint32_t startLoopIdx, uint32_t tileNum)
+__aicore__ inline void Gmm1Aiv0PrologueA8W4(BlockPrologue &blockPrologue, Scheduler &scheduler, TensorB &gmB,
+                                            const Config &config, uint32_t startLoopIdx, uint32_t tileNum)
 {
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
@@ -587,10 +587,12 @@ __aicore__ inline void Gmm1ExecA8W4(Scheduler &scheduler, const Params &params, 
                                     decltype(gmC), decltype(metaInfoGm)>;
     WorkSetType workSet{scheduler, gmA, gmB, gmScaleA, gmScaleB, gmC, metaInfoGm};
     if constexpr (g_coreType == AscendC::AIC) {
-        Gmm1AicMmadA8W4<BlockMmad, IsShared, TopkWeightsPrefetch>(*pipeline.block, workSet, params, gmmAddrInfo,
-            config, startLoopIdx, tileNum, gmm1TileReadySequence, expertIdx);
+        Gmm1AicMmadA8W4<BlockMmad, IsShared, TopkWeightsPrefetch>(*pipeline.block, workSet, params, gmmAddrInfo, config,
+                                                                  startLoopIdx, tileNum, gmm1TileReadySequence,
+                                                                  expertIdx);
     } else if (GetSubBlockIdx() == 0) {
-        Gmm1Aiv0PrologueA8W4<BlockPrologue>(*pipeline.block, workSet.scheduler, workSet.gmB, config, startLoopIdx, tileNum);
+        Gmm1Aiv0PrologueA8W4<BlockPrologue>(*pipeline.block, workSet.scheduler, workSet.gmB, config, startLoopIdx,
+                                            tileNum);
     } else {
         if constexpr (TopkWeightsPrefetch) {
             Gmm1Aiv1PrefetchEpilogueA8W4<ElementC, MakeLayoutC, IsWaveFlagGrained>(
@@ -674,8 +676,7 @@ __aicore__ inline void RunGmm1Generic(BlockEpilogueActivationMxQuant<EpilogueEle
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB,
           uint32_t Gmm1TileM = L1_TILE_M_256, uint32_t EpilogueTileM = Gmm1TileM, bool TopkWeightsPrefetch = false,
           bool IsShared = false, bool IsWaveFlagGrained = false, typename BlockContext, typename... LayoutArgs>
-__aicore__ inline void RunGmm1A8W4(
-                                   const BlockContext &pipeline,
+__aicore__ inline void RunGmm1A8W4(const BlockContext &pipeline,
                                    BlockEpilogueActivationMxQuant<ElementA, ElementC, EpilogueTileM, L1_TILE_N,
                                                                   TopkWeightsPrefetch> &activationQuantOp,
                                    const Params &params,
@@ -733,9 +734,9 @@ __aicore__ inline void RunGmm1A8W4(const BlockContext &pipeline,
     BlockJobContext blockJob{static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
                              static_cast<uint32_t>(GetBlockNum())};
     RunGmm1A8W4<ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, Gmm1TileM, EpilogueTileM,
-                TopkWeightsPrefetch, IsShared, IsWaveFlagGrained>(pipeline, activationQuantOp, params, problemShape, gmmAddrInfo,
-                                                                  startBlockIdx, gmm1TileReadySequence, blockJob,
-                                                                  expertBeforeCnt, expertIdx);
+                TopkWeightsPrefetch, IsShared, IsWaveFlagGrained>(pipeline, activationQuantOp, params, problemShape,
+                                                                  gmmAddrInfo, startBlockIdx, gmm1TileReadySequence,
+                                                                  blockJob, expertBeforeCnt, expertIdx);
 }
 
 template <typename ActivationType, typename WeightType, typename ActivationOutType, typename QuantScaleType,

@@ -621,7 +621,6 @@ static void RunA8W4FormatCase(ge::Format weightOneFormat, ge::Format weightTwoFo
     EXPECT_EQ(layout.aOffsets[2] + layout.aSlotBytes, layout.bOffsets[0]);
     EXPECT_EQ(layout.scaleAOffsets[0], 448U * 1024);
     EXPECT_EQ(layout.scaleBOffsets[1] + layout.scaleBSlotBytes, 512U * 1024);
-
 }
 
 TEST_F(MegaMoeArch35TilingTest, H4096_BS128_A8W4_URMA)

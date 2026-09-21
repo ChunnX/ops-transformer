@@ -2624,8 +2624,7 @@ static MegaMoeL1Layout CalcMegaMoeL1Layout(uint64_t maxGmmK)
     const uint64_t fullKScaleBytesPerRow = (maxGmmK + 63) / 64 * 2;
     const uint64_t fullKScalePairBytes = (TILE_M + TILE_N) * fullKScaleBytesPerRow;
     MegaMoeL1Layout layout{};
-    layout.aBufferNum = fullKScalePairBytes < L1_BYTES ?
-        (L1_BYTES - fullKScalePairBytes) / (A_BYTES + B_BYTES) : 1;
+    layout.aBufferNum = fullKScalePairBytes < L1_BYTES ? (L1_BYTES - fullKScalePairBytes) / (A_BYTES + B_BYTES) : 1;
     layout.aBufferNum = std::max(uint64_t{1}, std::min(layout.aBufferNum, MegaMoeL1Layout::MAX_A_BUFFER_NUM));
 
     // Step 2: A count is fixed; reserve two minimal scale pairs before assigning B.
@@ -2668,8 +2667,8 @@ static ge::graphStatus CommitTilingResult(gert::TilingContext *context, const Me
                                           const char *nodeName)
 {
     // Shared and routed experts have the same validated H/hiddenDim dimensions.
-    tilingData->a8w4L1Layout = CalcMegaMoeL1Layout(
-        std::max(uint64_t{tilingData->h}, uint64_t{tilingData->hiddenDim / 2U}));
+    tilingData->a8w4L1Layout =
+        CalcMegaMoeL1Layout(std::max(uint64_t{tilingData->h}, uint64_t{tilingData->hiddenDim / 2U}));
 
     WorkspaceLayout workspaceLayout(tilingData);
     OP_TILING_CHECK(SetWorkspace(context, workspaceLayout, nodeName) != ge::GRAPH_SUCCESS,
