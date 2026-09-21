@@ -43,7 +43,7 @@ using namespace AscendC::Reg;
                                                       s1TemplateType, s2TemplateType, dTemplateType) \
     do { \
         if (unlikely(tilingData->s1s2BNGS1S2BaseParams.enablePreSfmg)) { \
-            if constexpr ((uint32_t)dTemplateType > 64) { \
+            if constexpr ((uint32_t)dTemplateType > 64 || IS_PSE) { \
                 FlashAttentionScoreGradPresfmgRegbase<INPUT_TYPE, CALC_TYPE, OUTDTYPE, dTemplateType, IS_D_NO_EQUAL, \
                                                       DETER_SPARSE_TYPE, IS_TND, SPLIT_AXIS, IS_TND_SWIZZLE> \
                     opPre; \
