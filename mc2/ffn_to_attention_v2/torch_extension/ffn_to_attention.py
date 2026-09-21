@@ -126,11 +126,11 @@ def _get_hccl_comm_name(group, rank_id):
     return get_backend(torch.device("npu")).get_hccl_comm_name(rank_id, init_comm=False)
 
 
-def _calc_window_size(token_info_table_shape, token_data_shape):
-    """Calculate the required window buffer size in bytes."""
+def _calc_window_size(token_info_table_shape, token_data_shape, world_size):
+    """Calculate window capacity including flag sources, address tables and count rows."""
     _op_module = _ffn_to_attention_op_builder.load()
     return _op_module.get_ffn_to_attention_ccl_buffer_size(
-        token_info_table_shape, token_data_shape
+        token_info_table_shape, token_data_shape, world_size
     )
 
 
@@ -164,6 +164,8 @@ class FFNToAttentionBuffer:
         window_addr: Optional[int] = None,
         window_size: Optional[int] = None,
     ):
+        if world_size != torch.distributed.get_world_size(group):
+            raise ValueError("world_size must match the communication group size")
         self.group = group
         self.rank_id = torch.distributed.get_rank(group)
         self.group_name = _get_hccl_comm_name(group, self.rank_id)
@@ -196,7 +198,12 @@ class FFNToAttentionBuffer:
 
         # Attention-side CCL buffer size, computed internally from the
         self.ccl_buffer_size = _calc_window_size(
-            token_info_table_shape, token_data_shape
+            token_info_table_shape, token_data_shape, world_size
+        )
+
+        self._capacity_shapes = (
+            tuple(self.token_info_table_shape),
+            tuple(self.token_data_shape),
         )
         # Local FFN-side window: user-provided memory
         self.window_addr = window_addr
@@ -216,11 +223,13 @@ class FFNToAttentionBuffer:
             opName="attention_to_ffn",
             customCclBufferSize=self.window_size,
             customDeviceBufferAddr=window_addr if window_addr is not None else 0,
+            multiChannel=True,
         )
         self.context = self._ctx_manager.create_context()
 
     def destroy(self):
         self._ctx_manager.destroy()
+        self.context = None
 
     def get_window_addr(self) -> int:
         """Get the local window memory device address from the context."""
@@ -328,6 +337,21 @@ def ffn_to_attention(
     Returns:
         None. Data is sent to peer ranks via the HCCL window; no host-visible output.
     """
+    if buffer.context is None:
+        raise RuntimeError("FFNToAttentionBuffer has been destroyed")
+    if (
+        tuple(buffer.token_info_table_shape),
+        tuple(buffer.token_data_shape),
+    ) != buffer._capacity_shapes:
+        raise ValueError(
+            "Window shapes cannot change after buffer creation; create a replacement buffer"
+        )
+    torch._check(x.dim() == 2, lambda: "x must be a 2D tensor")
+    torch._check(
+        x.shape[1] <= buffer.token_data_shape[3],
+        lambda: "x.shape[1] exceeds the window token slot width HS",
+    )
+
     torch.ops.cann_ops_transformer.npu_ffn_to_attention(
         buffer.context,
         x,
