@@ -2,14 +2,19 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+ARTIFACT_DIR=${QLIV2_ARTIFACT_DIR:-/tmp/xyh/LI_ds41/sync_back/qli}
+mkdir -p "$ARTIFACT_DIR"
+export PYTHONDONTWRITEBYTECODE=1
+export PYTEST_ADDOPTS="${PYTEST_ADDOPTS:-} -p no:cacheprovider"
+export TMPDIR="$ARTIFACT_DIR"
+export CANNBOTDSL_CACHE_DIR="$ARTIFACT_DIR/cache"
 PYTHON=${PYTHON:-python3}
-PYTHON_SITE=$($PYTHON -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')
-export PYTHONPATH="$PYTHON_SITE${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH="$SCRIPT_DIR${PYTHONPATH:+:$PYTHONPATH}"
 
 COMMAND=${1:-help}
 shift || true
-EXCEL=""; SHEET="Sheet1"; PT_PATH="$SCRIPT_DIR/pt_path"
-RESULT="$SCRIPT_DIR/result.xlsx"; CASES=""; INDEXES=""; SAVE_PT=""
+EXCEL=""; SHEET="Sheet1"; PT_PATH="$ARTIFACT_DIR/pt_path"
+RESULT="$ARTIFACT_DIR/result.xlsx"; CASES=""; INDEXES=""; SAVE_PT=""
 while [ $# -gt 0 ]; do
   case "$1" in
     -E|--excel) EXCEL="$2"; shift 2 ;;

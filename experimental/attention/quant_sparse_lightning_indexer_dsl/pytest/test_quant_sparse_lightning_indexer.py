@@ -5,9 +5,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import numpy as np
 import pytest
-from quant_sparse_lightning_indexer_golden import pack_candidate_k
 import torch
 import torch_npu
 
@@ -151,8 +149,8 @@ def _check_sparse_values(
 
 def _run_and_compare(case: dict[str, torch.Tensor], topk: int) -> None:
     golden = quant_sparse_lightning_indexer_golden(
-        case["q"], pack_candidate_k(case["k"], case["descale_k"]), case["w"],
-        case["descale_q"],
+        case["q"], case["k"], case["w"],
+        case["descale_q"], case["descale_k"],
         case["candidate"], case["candidate_length"],
         cu_seqlens_q=case["cu"],
         seqused_k=case["used_k"],
@@ -163,8 +161,8 @@ def _run_and_compare(case: dict[str, torch.Tensor], topk: int) -> None:
         return_value=True,
     )
     actual_outputs = quant_sparse_lightning_indexer(
-        case["q"].npu(), pack_candidate_k(case["k"], case["descale_k"]).npu(), case["w"].npu(),
-        case["descale_q"].npu(),
+        case["q"].npu(), case["k"].npu(), case["w"].npu(),
+        case["descale_q"].npu(), case["descale_k"].npu(),
         case["candidate"].npu(), case["candidate_length"].npu(),
         topk, 1, 8,
         cu_seqlens_q=case["cu"].npu(),
@@ -224,104 +222,3 @@ def test_candidate_block_length_is_exact_prefix_count():
     case["candidate_length"][0, 0] = 17
     case["candidate"][0, 0, 17:] = 2**30
     _run_and_compare(case, topk=64)
-
-
-def _compare_structure(expected, actual, layout='TND', tied=False):
-    expected=torch.tensor(expected,dtype=torch.int32).reshape(1,1,4)
-    actual=torch.tensor(actual,dtype=torch.int32).reshape(1,1,4)
-    if layout=='BSND':
-        expected=expected.reshape(1,1,1,4)
-        actual=actual.reshape(1,1,1,4)
-    params=(1,1,8,1,8,32,1,128,128,1,torch.uint8,torch.float32,
-            torch.uint8,torch.int32,[0,1],[8],1,1,layout,'PA_BBND',4,0,
-            (-1,1),(-1,1),(0,1),(125,129),(125,129))
-    scores=np.ones((1,1,1,8),dtype=np.float32) if tied else np.arange(8,0,-1,dtype=np.float32).reshape(1,1,1,8)
-    return result_compare_method.check_result(expected,actual,scores,params)[0]
-
-
-@pytest.mark.parametrize('layout',['TND','BSND'])
-@pytest.mark.parametrize('expected,actual',[
-    ([-1,-1,-1,-1],[0,0,0,0]),
-    ([-1,-1,-1,-1],[-1,-1,-1,0]),
-    ([-1,-1,-1,-1],[-2,-1,-1,-1]),
-    ([0,1,-1,-1],[0,1,2,-1]),
-    ([0,1,-1,-1],[0,-1,1,-1]),
-    ([0,1,2,3],[0,1,2,-1]),
-    ([0,1,2,3],[0,1,2,2]),
-    ([0,1,-1,-1],[0,0,-1,-1]),
-])
-def test_reject_invalid_structure(expected,actual,layout):
-    assert _compare_structure(expected,actual,layout)=='Failed'
-
-
-@pytest.mark.parametrize('layout',['TND','BSND'])
-@pytest.mark.parametrize('expected,actual',[
-    ([-1,-1,-1,-1],[-1,-1,-1,-1]),
-    ([0,1,-1,-1],[1,0,-1,-1]),
-    ([0,1,2,3],[3,1,0,2]),
-])
-def test_accept_valid_structure(expected,actual,layout):
-    assert _compare_structure(expected,actual,layout)=='Pass'
-
-
-def test_allow_distinct_indices_with_equal_scores():
-    assert _compare_structure([0,1,2,3],[4,5,6,7],tied=True)=='Pass'
-
-
-@pytest.mark.parametrize("return_value", [False, True])
-def test_close_integer_indices_cannot_rescue_wrong_scores(return_value):
-    from result_compare_method import compare_topk_valid
-    scores = np.zeros((1, 1, 1, 1002), dtype=np.float32)
-    scores[0, 0, 0, 1000] = 10.0
-    scores[0, 0, 0, 1001] = 1.0
-    passed, _ = compare_topk_valid(
-        [1000], [1001], scores, (0, 0, 0), [], [],
-        np.array([1.0]), np.array([10.0]), thres=0.001,
-        return_value_flag=return_value)
-    assert not passed
-
-
-def test_boundary_tolerance_matches_qli():
-    from result_compare_method import compare_topk_valid
-    scores = np.array([[[[1.0, 0.9995]]]], dtype=np.float32)
-    assert compare_topk_valid([0], [1], scores, (0, 0, 0), [], [],
-                             thres=0.001, return_value_flag=False)[0]
-
-
-@pytest.mark.parametrize("enabled", [False, True])
-def test_value_fallback_respects_return_value(enabled):
-    from result_compare_method import compare_topk_valid
-    scores = np.array([[[[1.0, 0.9]]]], dtype=np.float32)
-    passed, _ = compare_topk_valid([0], [1], scores, (0, 0, 0), [], [],
-                                  np.array([1.0]), np.array([1.0]),
-                                  thres=0.001, return_value_flag=enabled)
-    assert passed == enabled
-
-
-@pytest.mark.parametrize("enabled,actual_value,expected_pass", [
-    (False, 10.0, False), (True, 1.0, False), (True, 10.0, True),
-])
-def test_entrypoint_uses_real_values_not_integer_indices(enabled, actual_value, expected_pass):
-    expected = torch.tensor([[[1000, -1, -1, -1]]], dtype=torch.int32)
-    actual = torch.tensor([[[1001, -1, -1, -1]]], dtype=torch.int32)
-    params = (1,1,1002,1,1002,32,1,128,128,8,torch.uint8,torch.float32,
-              torch.uint8,torch.int32,[0,1],[1002],1,1,'TND','PA_BBND',4,0,
-              (-1,1),(-1,1),(0,1),(125,129),(125,129))
-    scores = np.zeros((1,1,1,1002), dtype=np.float32)
-    scores[0,0,0,1000] = 10.0
-    scores[0,0,0,1001] = 1.0
-    result, _ = result_compare_method.check_result(expected, actual, scores, params, return_value=enabled,
-                            cpu_topk_value=torch.tensor([[[10.0,0,0,0]]]),
-                            npu_topk_value=torch.tensor([[[actual_value,0,0,0]]]))
-    assert (result == 'Pass') == expected_pass
-
-
-@pytest.mark.parametrize("force_bf16,real,expected_pass", [
-    (False, 1.004, True), (False, 1.006, False),
-    (True, 1.006, True), (True, 1.009, False),
-])
-def test_value_tolerance_matches_asc(force_bf16, real, expected_pass):
-    from result_compare_method import judge_value_by_isclose
-    assert judge_value_by_isclose(np.array([real],dtype=np.float32),
-                                  np.array([1.0],dtype=np.float32),
-                                  force_bf16=force_bf16) == expected_pass

@@ -72,3 +72,57 @@ TEST_PARAMS = {
 }
 
 ENABLED_PARAMSETS = list(TEST_PARAMS.items())
+
+
+def _excel_cases():
+    from pathlib import Path
+    import openpyxl
+    from qliv2_parameter_normalization import normalize_cell
+    selections = (
+        ('qli_0909.xlsx', (28, 31, 32, 37, 45, 48, 54, 59)),
+        ('qli_decode_prefill_20cases.xlsx', (2, 3, 7, 8, 12, 13, 18, 22)),
+    )
+    cases = []
+    for filename, row_numbers in selections:
+        workbook = openpyxl.load_workbook(Path(__file__).parent / 'excel' / filename, data_only=True)
+        rows = list(workbook.active.values)
+        for row_number in row_numbers:
+            values = {key: normalize_cell(value) for key, value in zip(rows[0], rows[row_number - 1])}
+            name = values.pop('Testcase_Name')
+            values['layout_key'] = 'TND'
+            values['block_table'] = None
+            values['block_num'] = (values['k_seq'] + 127) // 128
+            values['output_idx_offset'] = None
+            values['run_mode'] = 'eager'
+            index = len(cases)
+            if index == 0:
+                values['storage_layout'] = 'key_axis0_noncontiguous'
+            elif index == 1:
+                values['storage_layout'] = 'axis0_noncontiguous'
+                values['cmp_ratio'] = 1
+                values['cmp_residual_k'] = None
+            elif index == 2:
+                values['storage_layout'] = 'scale_axis0_noncontiguous'
+                values['max_seqlen_q'] = -1
+            elif index == 3:
+                values['sparse_mode'] = 0
+                values['cmp_residual_k'] = None
+            elif index == 4:
+                values['candidate_topk_blocks'] = -1
+                values['candidate_block_size'] = -1
+            elif index == 5:
+                values['seqused_q'] = None
+            elif index == 8:
+                values['seqused_k'] = None
+            elif index == 9:
+                lengths = [4096, 4060, 4030, 3999]
+                bounds = [0]
+                for length in lengths:
+                    bounds.append(bounds[-1] + length)
+                values['cu_seqlens_k'] = bounds
+            case_name = f'excel_{index + 1:02d}_{name}'
+            cases.append((case_name, {key: [value] for key, value in values.items()}))
+    return cases
+
+
+ENABLED_PARAMSETS = _excel_cases()

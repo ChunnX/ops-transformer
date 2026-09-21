@@ -59,7 +59,7 @@ if unknown_names:
 @pytest.mark.ci
 @pytest.mark.parametrize("param_combinations", param_combinations)
 def test_qliv2(param_combinations):
-    torch_npu.npu.set_device(0)
+    torch_npu.npu.set_device(int(os.environ.get("QLIV2_DEVICE_ID", "0")))
     run_mode = os.environ.get(
         "QLIV2_RUN_MODE", param_combinations["run_mode"]
     ).strip().lower()
@@ -107,4 +107,3 @@ def test_qliv2(param_combinations):
     ensure_comparison_passed(
         case_name, result, fulfill_percent, value_result, value_percent
     )
-

@@ -206,7 +206,7 @@ def operator_kwargs(case: QliCase, inputs: QliInputs) -> dict[str, object]:
         "mask_mode": 3,
         "cmp_ratio": case.cmp_ratio,
         "layout_q": "TND",
-        "layout_k": "PA_BBND",
+        "layout_kv": "PA_BBND",
         "return_value": True,
         "candidate_topk_blocks": CANDIDATE_TOPK,
         "candidate_block_size": CANDIDATE_BLOCK_SIZE,

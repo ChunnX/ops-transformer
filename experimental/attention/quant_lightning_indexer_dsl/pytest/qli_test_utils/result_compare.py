@@ -311,8 +311,15 @@ def compare_sparse_outputs(
     if reference_scores is None:
         return {"pass": False, "mismatched_rows": [], "reason": "missing_reference_scores"}
     return_value = bool(expected.get("_return_value", False))
+    expected_indices = expected["sparse_indices"]
+    actual_indices = actual["sparse_indices"]
+    offsets = expected.get("_output_idx_offset")
+    if offsets is not None:
+        offsets = offsets.unsqueeze(-1)
+        expected_indices = torch.where(expected_indices >= 0, expected_indices - offsets, expected_indices)
+        actual_indices = torch.where(actual_indices >= 0, actual_indices - offsets, actual_indices)
     return _compare_sparse_indices(
-        expected["sparse_indices"], actual["sparse_indices"], reference_scores,
+        expected_indices, actual_indices, reference_scores,
         expected.get("sparse_values"), actual.get("sparse_values"),
         return_value=return_value,
     )
