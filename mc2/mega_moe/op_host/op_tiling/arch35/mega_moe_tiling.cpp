@@ -1007,8 +1007,8 @@ static ge::graphStatus CheckCclBufferCapacity(const gert::TilingContext *context
 {
     auto attrs = context->GetAttrs();
     int64_t yDtypeSize = ge::GetSizeByDataType(context->GetOutputDesc(config.yIndex)->GetDataType());
-    // 记录布局是否带权重段与最终 tilingData 同式（tkw=1 或 combine 去重）；此处收益门可能尚未
-    // 裁决，按原始请求位算下界偏保守（门只会关位、实际需求只小不大），安全。
+    // 记录布局是否带权重段与最终 tilingData 同式（tkw=1 或 combine 去重）；此处收益门尚未裁决
+    // （SetDedupModeParams 排在容量属性之后），按原始请求位算下界偏保守（门只会关位、实际需求只小不大），安全。
     const int64_t dedupModeForLayout = GetDedupMode(context, config);
     const bool recordHasWeights = tilingData->topkWeightsPrefetch == 1 ||
                                   (dedupModeForLayout > 0 && (dedupModeForLayout & DEDUP_MODE_COMBINE) != 0);
@@ -2756,7 +2756,7 @@ static MegaMoeL1Layout CalcMegaMoeL1Layout(uint64_t maxGmmK)
 
 /*
  * 去重请求位落库（终态：dispatch 恒请求 + ccm 请求 combine，comm_alg 仅调试旁路）
- * + per-shape 收益/容量门。必须在 bs/h/topK/epWorldSize 全部写入
+ * + per-shape 收益/容量门。必须在 bs/h/topK/epWorldSize/numMaxTokensPerRank 全部写入
  * tilingData 之后、workspace 与自适应 buffer 规划之前调用（两者按 dedupMode 定布局）。
  */
 static void SetDedupModeParams(const gert::TilingContext *context, const MegaMoeConfig &config,
@@ -2911,12 +2911,13 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
         CheckAndSetExpertExecutionParams(context, config, expertParams, tilingData, nodeName) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "expert execution parameters are invalid."), return ge::GRAPH_FAILED);
 
-    // 通信去重：comm_alg 转译落库 + per-shape 收益/容量门（依赖 bs/h/topK/epWorldSize 已就位）。
-    SetDedupModeParams(context, config, tilingData, nodeName);
-
     // 容量属性：num_max_tokens_per_rank、max_recv_token_num 和 ccl_buffer_size。
     OP_TILING_CHECK(CheckAndSetCapacityAttrs(context, config, tilingData, nodeName) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "capacity attributes are invalid."), return ge::GRAPH_FAILED);
+
+    // 通信去重：请求位落库 + per-shape 收益/容量门。prepass 容量护栏要读 numMaxTokensPerRank，
+    // 故必须排在容量属性落库之后；CCL 窗口下界按原始请求位算（GetDedupMode），不依赖本步裁决。
+    SetDedupModeParams(context, config, tilingData, nodeName);
 
     // 平台与资源规划。
     uint32_t aicNum = 0U;
