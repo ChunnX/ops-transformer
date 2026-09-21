@@ -95,4 +95,3 @@
 |----------|----------|------|
 | PyTorch API | - | 通过[torch.ops.cann_ops_transformer.quant_lightning_indexer](../../../attention/quant_lightning_indexer_v2/docs/torchapi_quant_lightning_indexer.md)接口调用QuantLightningIndexerV2算子。 |
 | aclnn API | [test_aclnn_quant_lightning_indexer_v2](examples/test_aclnn_quant_lightning_indexer_v2.cpp) | 通过[aclnnQuantLightningIndexerV2](docs/aclnnQuantLightningIndexerV2.md)两段式接口调用QuantLightningIndexerV2算子。 |
-| PyTorch API（两级TopK） | - | 通过 torch.ops.cann_ops_transformer.quant_lightning_indexer.candidate 变体（返回sparse_indices、sparse_values、candidate_topk_index三元组）或适配入口 quant_lightning_indexer_candidate_source / quant_lightning_indexer_candidate_consumer 调用两级TopK能力。 |
