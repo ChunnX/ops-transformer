@@ -1,3 +1,13 @@
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
 # QuantLightningIndexerV2 两级TopK (candidate) 设备测试
 # 自包含 harness: 输入生成(910b int8/PA) + torch 参考实现 + NPU 调用(新 aclnn 签名) + 集合比较
 # 用例矩阵: 设计文档 §6.5 (cmp_ratio 1/2 x mode 1/2/3, g64/32, decode/prefill, numBlocks 边界)
