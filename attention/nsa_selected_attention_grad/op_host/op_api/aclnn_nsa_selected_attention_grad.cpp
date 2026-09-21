@@ -98,25 +98,10 @@ static aclnnStatus CheckParams(const NsaSelectedAttentionGradParams &params)
 
 static bool CheckViewShape(const aclTensor *input1, const aclTensor *input2)
 {
-    int64_t *viewDims1 = nullptr;
-    uint64_t viewDimsNum1 = 0;
-    auto ret = aclGetViewShape(input1, &viewDims1, &viewDimsNum1);
-
-    int64_t *viewDims2 = nullptr;
-    uint64_t viewDimsNum2 = 0;
-    ret = aclGetViewShape(input2, &viewDims2, &viewDimsNum2);
-
-    if (viewDimsNum1 != viewDimsNum2) {
+    if (input1 == nullptr || input2 == nullptr) {
         return false;
     }
-
-    for (uint64_t i = 0; i < viewDimsNum1; i++) {
-        if (viewDims1[i] != viewDims2[i]) {
-            return false;
-        }
-    }
-
-    return true;
+    return input1->GetViewShape() == input2->GetViewShape();
 }
 static void CheckFormatValid(const NsaSelectedAttentionGradParams &params)
 {
@@ -230,6 +215,11 @@ aclnnStatus ContiguousAndNsaSelectedAttentionGrad(const NsaSelectedAttentionGrad
     string inputLayoutStr = op::ToString(params.inputLayout).GetString();
     CHECK_RET(inputLayoutStr == "TND", ACLNN_ERR_INNER_NULLPTR);
 
+    // check output shape with input shape
+    CHECK_COND(CheckViewShape(params.query, dqOut) != false, ACLNN_ERR_PARAM_INVALID, "The dq Tensor is Invaild");
+    CHECK_COND(CheckViewShape(params.key, dkOut) != false, ACLNN_ERR_PARAM_INVALID, "The dk Tensor is Invaild");
+    CHECK_COND(CheckViewShape(params.value, dvOut) != false, ACLNN_ERR_PARAM_INVALID, "The dv Tensor is Invaild");
+
     // call l0 interface
     auto result = l0op::NsaSelectedAttentionGrad(
         queryContiguous, keyContiguous, valueContiguous, attentionOutContiguous, attentionOutGradContiguous,
@@ -238,9 +228,6 @@ aclnnStatus ContiguousAndNsaSelectedAttentionGrad(const NsaSelectedAttentionGrad
         params.selectedBlockSize, params.headNum, inputLayoutStr.c_str(), params.sparseMode, executor);
     // convert output tensor to contiguous tensor
     CHECK_RET(result[0] != nullptr && result[1] != nullptr && result[2] != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    CHECK_COND(CheckViewShape(result[0], dqOut) != false, ACLNN_ERR_PARAM_INVALID, "The dq Tensor is Invaild");
-    CHECK_COND(CheckViewShape(result[1], dkOut) != false, ACLNN_ERR_PARAM_INVALID, "The dk Tensor is Invaild");
-    CHECK_COND(CheckViewShape(result[2], dvOut) != false, ACLNN_ERR_PARAM_INVALID, "The dv Tensor is Invaild");
 
     auto viewCopyResult = l0op::ViewCopy(result[0], dqOut, executor);
     CHECK_RET(viewCopyResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
