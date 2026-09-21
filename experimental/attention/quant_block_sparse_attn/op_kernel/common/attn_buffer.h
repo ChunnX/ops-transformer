@@ -156,6 +156,18 @@ struct BufferInfo {
     static constexpr TPosition Position = GetTPosition();
 };
 
+// Flag-based buffers keep an empty base instead of carrying an unused mutex ID.
+template <SyncMode syncMode>
+struct BufferMutexState {};
+
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+template <>
+struct BufferMutexState<SyncMode::LOCK_UNLOCK> {
+protected:
+    MutexID mutexId_;
+};
+#endif
+
 // buffer绑定生产者、消费者关系
 // L1 buffer的生产者为MTE2或者MTE3，消费者为MTE1
 // L0A buffer的生产者为MTE1，消费者为M
@@ -163,7 +175,7 @@ struct BufferInfo {
 // L0C buffer的生产者为M，消费者为FIX
 template <BufferType bufferType, SyncType syncType = SyncType::INNER_CORE_SYNC,
           SyncMode syncMode = SyncMode::SET_WAIT_FLAG>
-class Buffer {
+class Buffer : private BufferMutexState<syncMode> {
     using TensorType = std::conditional_t<bufferType == BufferType::GM, GlobalTensor<uint8_t>, LocalTensor<uint8_t>>;
 
     template <typename T>
@@ -202,7 +214,7 @@ public:
                     SetFlag<BufferInfo<bufferType>::EventC2P>(c2pEventId_);
                 } else if constexpr (syncMode == SyncMode::LOCK_UNLOCK) {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-                    mutexId_ = AllocMutexID();
+                    this->mutexId_ = AllocMutexID();
 #endif
                 }
             }
@@ -222,7 +234,7 @@ public:
                     SetFlag<BufferInfo<bufferType>::EventC2P>(c2pEventId_);
                 } else if constexpr (syncMode == SyncMode::LOCK_UNLOCK) {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-                    mutexId_ = id;
+                    this->mutexId_ = id;
 #endif
                 }
             }
@@ -244,7 +256,7 @@ public:
                 } else if constexpr (syncMode == SyncMode::LOCK_UNLOCK) {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
                     if constexpr (idSource == IdSource::INTERNAL) {
-                        ReleaseMutexID(mutexId_);
+                        ReleaseMutexID(this->mutexId_);
                     }
 #endif
                 }
@@ -258,7 +270,7 @@ public:
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
         if ASCEND_IS_AIC {
             if constexpr (syncType == SyncType::INNER_CORE_SYNC && syncMode == SyncMode::LOCK_UNLOCK) {
-                Mutex::Lock<pipe>(mutexId_);
+                Mutex::Lock<pipe>(this->mutexId_);
             }
         }
 #endif
@@ -270,7 +282,7 @@ public:
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
         if ASCEND_IS_AIC {
             if constexpr (syncType == SyncType::INNER_CORE_SYNC && syncMode == SyncMode::LOCK_UNLOCK) {
-                Mutex::Unlock<pipe>(mutexId_);
+                Mutex::Unlock<pipe>(this->mutexId_);
             }
         }
 #endif
@@ -290,9 +302,9 @@ public:
                 } else if constexpr (syncMode == SyncMode::LOCK_UNLOCK) {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
                     if constexpr (EventType == BufferInfo<bufferType>::EventP2C) {
-                        Mutex::Lock<BufferInfo<bufferType>::ConsPipe>(mutexId_); // 消费者加锁
+                        Mutex::Lock<BufferInfo<bufferType>::ConsPipe>(this->mutexId_); // 消费者加锁
                     } else {
-                        Mutex::Lock<BufferInfo<bufferType>::ProdPipe>(mutexId_); // 生产者加锁
+                        Mutex::Lock<BufferInfo<bufferType>::ProdPipe>(this->mutexId_); // 生产者加锁
                     }
 #endif
                 }
@@ -314,9 +326,9 @@ public:
                 } else if constexpr (syncMode == SyncMode::LOCK_UNLOCK) {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
                     if constexpr (EventType == BufferInfo<bufferType>::EventP2C) {
-                        Mutex::Unlock<BufferInfo<bufferType>::ProdPipe>(mutexId_); // 生产者解锁
+                        Mutex::Unlock<BufferInfo<bufferType>::ProdPipe>(this->mutexId_); // 生产者解锁
                     } else {
-                        Mutex::Unlock<BufferInfo<bufferType>::ConsPipe>(mutexId_); // 消费者解锁
+                        Mutex::Unlock<BufferInfo<bufferType>::ConsPipe>(this->mutexId_); // 消费者解锁
                     }
 #endif
                 }
@@ -446,9 +458,6 @@ private:
     TEventID c2pEventId_;
     uint32_t id0_; // 用作正向同步：生产者通知消费者，或者消费者等待生产者；
     uint32_t id1_; // 用作反向同步：消费者通知生产者，或者生产者等待消费者；
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-    MutexID mutexId_;
-#endif
 };
 } // namespace fa_base_matmul
 #endif

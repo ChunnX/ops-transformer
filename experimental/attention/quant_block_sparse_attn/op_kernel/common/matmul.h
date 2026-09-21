@@ -52,30 +52,11 @@ struct MMParam {
                            // 3：enable: 行为在切K接口中（MatmulK），在k的最后一轮循环，会将mmadParams.unitFlag设置为
                            // 0b11 外部使用时，在外层k循环的最后一轮将该参数配置为3
     uint32_t realM = 0; // bmm2以s1realsize为M轴，不赋值时不影响现有代码逻辑
-    // L1->L0 搬运寻址宽度: 0 表示按 singleK/singleN 的分形粒度向上取整(即默认兼容语义)。
-    // 解绑场景(D 非 16 倍数, 如 D=72): singleK=72 精确累加, loadK=80 保证 LoadData 组数与
-    // Nd2Nz 写入 L1 的组数一致(ceil(72/16)=5), 避免 n1 行组寻址错位。
-    uint32_t loadK = 0;
-    uint32_t loadN = 0;
 };
-
-// L1->L0 搬运的实际寻址宽度: loadK/loadN 显式赋值时生效, 否则原样透传 singleK/singleN(兼容旧行为,
-// 历史代码将原始值直接传给 LoadData, 3D 路径的 kExtension/mExtension 依赖原始值)。
-// 解绑场景(D 非 16 倍数, 如 D=72): singleK=72 精确累加, loadK=80 保证 LoadData 组数与
-// Nd2Nz 写入 L1 的组数一致(ceil(72/16)=5), 避免 n1 行组寻址错位。
-__aicore__ inline uint32_t GetLoadK(const MMParam &param)
-{
-    return (param.loadK != 0) ? param.loadK : param.singleK;
-}
-
-__aicore__ inline uint32_t GetLoadN(const MMParam &param)
-{
-    return (param.loadN != 0) ? param.loadN : param.singleN;
-}
 
 __aicore__ inline MMParam MakeMMParam(uint32_t singleM, uint32_t singleN, uint32_t singleK, bool isLeftTranspose,
                                       bool isRightTranspose, bool cmatrixInitVal = true, bool isOutKFisrt = true,
-                                      uint32_t unitFlag = 0, uint32_t realM = 0, uint32_t loadK = 0, uint32_t loadN = 0)
+                                      uint32_t unitFlag = 0, uint32_t realM = 0)
 {
     return {.singleM = singleM,
             .singleN = singleN,
@@ -85,9 +66,7 @@ __aicore__ inline MMParam MakeMMParam(uint32_t singleM, uint32_t singleN, uint32
             .cmatrixInitVal = cmatrixInitVal,
             .isOutKFisrt = isOutKFisrt,
             .unitFlag = unitFlag,
-            .realM = realM,
-            .loadK = loadK,
-            .loadN = loadN};
+            .realM = realM};
 }
 
 enum class ABLayout {
@@ -643,7 +622,7 @@ __aicore__ inline void MatmulFull(const LocalTensor<A> &aL1Tensor, const LocalTe
     } else
 #endif
     {
-        LoadDataToL0A(L0ATensor, aL1Tensor, param, 0, GetLoadK(param), param.singleM); // s2*d,d,s2
+        LoadDataToL0A(L0ATensor, aL1Tensor, param, 0, param.singleK, param.singleM); // s2*d,d,s2
     }
     l0aBuffer.template Set<HardEvent::MTE1_M>();
 
@@ -656,7 +635,7 @@ __aicore__ inline void MatmulFull(const LocalTensor<A> &aL1Tensor, const LocalTe
     } else
 #endif
     {
-        LoadDataToL0B(L0BTensor, bL1Tensor, param, 0, GetLoadK(param), GetLoadN(param));
+        LoadDataToL0B(L0BTensor, bL1Tensor, param, 0, param.singleK, param.singleN);
     }
     l0bBuffer.template Set<HardEvent::MTE1_M>();
 
@@ -721,9 +700,7 @@ __aicore__ inline void MatmulK(const LocalTensor<A> &aL1Tensor, const LocalTenso
         } else
 #endif
         {
-            // 尾块搬运宽度按分形粒度对齐(对齐D时与legacy原值等价; 非对齐D如72→80, 与Nd2Nz写入组数一致)
-            LoadDataToL0A(L0ATensor, aL1Tensor, param, k * L1Aoffset,
-                          (k == (kLoops - 1) && param.loadK != 0) ? (((tileK + 15) >> 4) << 4) : tileK,
+            LoadDataToL0A(L0ATensor, aL1Tensor, param, k * L1Aoffset, tileK,
                           param.singleM); // s2*d,d,s2
         }
 
@@ -738,9 +715,7 @@ __aicore__ inline void MatmulK(const LocalTensor<A> &aL1Tensor, const LocalTenso
         } else
 #endif
         {
-            LoadDataToL0B(L0BTensor, bL1Tensor, param, k * L1Boffset,
-                          (k == (kLoops - 1) && param.loadK != 0) ? (((tileK + 15) >> 4) << 4) : tileK, GetLoadN(param),
-                          loopNum);
+            LoadDataToL0B(L0BTensor, bL1Tensor, param, k * L1Boffset, tileK, param.singleN, loopNum);
         }
         l0bBuffer.template Set<HardEvent::MTE1_M>(); // mte1搬运完后，通知可以开始matmul
         // l0aBuffer和l0bBuffer共用MTE1_M，在D=512场景减少同步指令数量，提升性能
@@ -882,11 +857,10 @@ __aicore__ inline void MatmulN(const LocalTensor<A> &aL1Tensor, const LocalTenso
     } else
 #endif
     {
-        LoadDataToL0A(L0ATensor, aL1Tensor, param, 0, GetLoadK(param), param.singleM); // s2*d,d,s2
+        LoadDataToL0A(L0ATensor, aL1Tensor, param, 0, param.singleK, param.singleM); // s2*d,d,s2
     }
     for (uint32_t n = 0; n < nLoops; n++) {
         uint32_t tileN = (n == (nLoops - 1)) ? tailN : baseN;
-        uint32_t loadTileN = (n == (nLoops - 1) && param.loadN != 0) ? (((tileN + 15) >> 4) << 4) : tileN;
 
         auto l0bBuffer = bL0BuffsDb.Get();
         l0bBuffer.template Wait<HardEvent::M_MTE1>(); // mte1等Matmul：上一轮matmul完成后才能搬运新数据到L0B
@@ -899,7 +873,7 @@ __aicore__ inline void MatmulN(const LocalTensor<A> &aL1Tensor, const LocalTenso
         } else
 #endif
         {
-            LoadDataToL0B(L0BTensor, bL1Tensor, param, n * L1Boffset, GetLoadK(param), loadTileN, loopNum);
+            LoadDataToL0B(L0BTensor, bL1Tensor, param, n * L1Boffset, param.singleK, tileN, loopNum);
         }
         l0bBuffer.template Set<HardEvent::MTE1_M>(); // mte1搬运完后，通知可以开始matmul
         // l0aBuffer和l0bBuffer共用MTE1_M，在D=512场景减少同步指令数量，提升性能

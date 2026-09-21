@@ -358,7 +358,7 @@ private:
             startPos.s2Offset = runInfo.sparseBlockTokenOffset[i] + copyStartInBlock;
             keyShape.copyRowNum = copyRowNum;
             LocalTensor<INPUT_T> keyBlockDstTensor = keyDstTensor[(overlapStart - tileStart) * blockElementCnt];
-            GmCopyInToL1PA<INPUT_T>(keyBlockDstTensor, keyGm_, blockTableGm_, KVLAYOUT::BNBD, keyShape, startPos);
+            MxGmCopyInToL1PABnbd<INPUT_T>(keyBlockDstTensor, keyGm_, blockTableGm_, keyShape, startPos);
 
             keyScaleShape.copyRowNum = copyRowNum;
             LocalTensor<SCALE_T> keyScaleBlockDstTensor =
@@ -406,7 +406,7 @@ private:
             startPos.s2Offset = runInfo.sparseBlockTokenOffset[i] + copyStartInBlock;
             valueShape.copyRowNum = copyRowNum;
             LocalTensor<INPUT_T> valueDstTensor = dstTensor[(overlapStart - tileStart) * blockElementCnt];
-            GmCopyInToL1PA<INPUT_T>(valueDstTensor, valueGm_, blockTableGm_, KVLAYOUT::BNBD, valueShape, startPos);
+            MxGmCopyInToL1PABnbd<INPUT_T>(valueDstTensor, valueGm_, blockTableGm_, valueShape, startPos);
         }
     }
 

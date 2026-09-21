@@ -17,6 +17,37 @@
 
 #include "CopyInL1.h"
 
+template <typename L1Type>
+__aicore__ inline void MxGmCopyInToL1PABnbd(LocalTensor<L1Type> &l1Tensor, GlobalTensor<L1Type> &gmTensor,
+                                            GlobalTensor<int32_t> &blockTableGm, const PAShape &shape,
+                                            const Position &startPos)
+{
+    // QBSA validates a positive PA page stride and contiguous BNBD rows on the host.
+    // Preserve the physical page stride for views; no layout or stride fallback is needed here.
+    uint32_t copyFinishRowCnt = 0;
+    uint64_t blockTableBaseOffset = static_cast<uint64_t>(startPos.bIdx) * shape.maxblockNumPerBatch;
+    uint64_t curS2Idx = startPos.s2Offset;
+    constexpr uint32_t blockElementCnt = 32U / sizeof(L1Type);
+    while (copyFinishRowCnt < shape.copyRowNum) {
+        uint64_t blockIdOffset = curS2Idx / shape.blockSize;
+        uint64_t remainRowCnt = curS2Idx % shape.blockSize;
+        uint64_t idInBlockTable = blockTableGm.GetValue(blockTableBaseOffset + blockIdOffset);
+        uint32_t copyRowCnt = shape.blockSize - remainRowCnt;
+        if (copyFinishRowCnt + copyRowCnt > shape.copyRowNum) {
+            copyRowCnt = shape.copyRowNum - copyFinishRowCnt;
+        }
+
+        uint64_t offset = idInBlockTable * shape.pageStride +
+                          static_cast<uint64_t>(startPos.n2Idx) * shape.blockSize * shape.headDim +
+                          remainRowCnt * shape.headDim + startPos.dIdx;
+        LocalTensor<L1Type> dstTensor = l1Tensor[copyFinishRowCnt * blockElementCnt];
+        GlobalTensor<L1Type> srcTensor = gmTensor[offset];
+        DataCopyGmNDToL1(dstTensor, srcTensor, copyRowCnt, shape.copyRowNumAlign, shape.actHeadDim, shape.headDim);
+        copyFinishRowCnt += copyRowCnt;
+        curS2Idx += copyRowCnt;
+    }
+}
+
 template <typename INPUT_T>
 __aicore__ inline void MxCopyScaleToL1Nd2Nz(const LocalTensor<INPUT_T> &l1Tensor, const GlobalTensor<INPUT_T> &gmTensor,
                                             uint32_t nValue, uint32_t dValue, uint32_t srcDValue,
