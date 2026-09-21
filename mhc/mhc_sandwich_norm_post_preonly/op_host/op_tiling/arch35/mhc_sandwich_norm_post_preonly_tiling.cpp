@@ -191,8 +191,8 @@ static ge::graphStatus TilingMhcSandwichNormPostPreonly(gert::TilingContext *con
     // A5的MIX_AIC_1_2以一个物理AI Core为blockDim单位，并展开两个sibling AIV。
     // 对精度集覆盖的四档D分别实测双AIV收益，由tiling按已验证维度稳定路由。
     const bool dualSiblingDim = D == 2560U || D == 5120U || D == 6144U || D == 7168U;
-    const bool enableDualSibling =
-        totalTokens == 4U && dualSiblingDim && useRmsMid && !returnHInF32 && hOutDesc->GetDataType() == ge::DT_BF16;
+    const bool enableDualSibling = totalTokens == 4U && dualSiblingDim && useRmsMid && !returnHInF32 &&
+                                   hOutDesc->GetDataType() == ge::DT_BF16;
     const uint32_t coresPerToken = enableDualSibling ? 2U : 1U;
     const uint32_t usedCoreNum = std::min(totalTokens, enableDualSibling ? (coreNumAiv / 2U) : coreNumAiv);
     uint32_t rowsPerCore = totalTokens / usedCoreNum;
@@ -223,17 +223,15 @@ static ge::graphStatus TilingMhcSandwichNormPostPreonly(gert::TilingContext *con
     tiling.set_coresPerToken(coresPerToken);
     tiling.set_returnHInF32(static_cast<int8_t>(returnHInF32));
 
-    // 双sibling为两组标量交换槽和follower的D长FP32 R6部分和分配workspace。
+    // CrossCore同步不占GM；双sibling路径每个token只分配一个32B partial1槽。
     size_t sysWsBytes = ascendcPlatform.GetLibApiWorkSpaceSize();
     size_t *currentWorkspace = context->GetWorkspaceSizes(1);
     if (currentWorkspace == nullptr) {
         OP_LOGE("MhcSandwichNormPostPreonly", "GetWorkspaceSizes is nullptr");
         return ge::GRAPH_FAILED;
     }
-    currentWorkspace[0] =
-        sysWsBytes + (enableDualSibling ?
-                          (size_t)totalTokens * (PARTIAL_SLOTS_PER_TOKEN * PARTIAL_SLOT_BYTES + D * sizeof(float)) :
-                          0U);
+    currentWorkspace[0] = sysWsBytes +
+                          (enableDualSibling ? (size_t)totalTokens * PARTIAL_SLOTS_PER_TOKEN * PARTIAL_SLOT_BYTES : 0U);
 
     // 输出Tiling数据
     context->SetBlockDim(usedCoreNum);

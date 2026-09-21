@@ -48,7 +48,8 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
             for (uint32_t half = laneId_; half < laneId_ + 1U; ++half) {
                 const uint32_t h0 = half * 2U;
                 const uint32_t h1 = h0 + 1;
-                MhcSandwichRegBase::PairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff], x2Cache[h1 * D_ + tOff], tD);
+                MhcSandwichRegBase::PairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff],
+                                                       x2Cache[h1 * D_ + tOff], tD);
                 PipeBarrier<PIPE_V>();
                 midSqHalf[half] += ReduceSumPrecise(out, tD);
             }
@@ -92,8 +93,8 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
                 if (n + 1U < headBegin + 2U) {
                     LoadGammaInto(gammaNext, gamma2Gm_, (n + 1) * D_ + tOff, tD);
                 }
-                MhcSandwichRegBase::CastB16ScaleAndMulGammaToB16(x2Cache[n * D_ + tOff], x2Cache[n * D_ + tOff],
-                                                                 gammaCurrent, invRmsMid, tD);
+                MhcSandwichRegBase::CastB16ScaleAndMulGammaToB16(
+                    x2Cache[n * D_ + tOff], x2Cache[n * D_ + tOff], gammaCurrent, invRmsMid, tD);
                 PipeBarrier<PIPE_V>();
                 if (n + 2U < headBegin + 2U) {
                     FenceVToMte2();
@@ -122,77 +123,56 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
 
     // 两个lane均无条件执行一次mode1 Set/Wait；该等待不替代本核流水事件。
     MhcPairReadySync();
-    const uint64_t followerSlot = ((uint64_t)token * 2U + 1U) * PARTIAL_SLOT_ELEMS;
-    LocalTensor<float> gateBuf = bufScalar_.Get<float>()[EXP_DIV_ELEM];
-    if (laneId_ == 0U) {
-        // leader读取R4/R5 partial并生成四路门控，再复用follower标量槽广播给sibling。
-        DataCopy(partialBuf, partial1Gm_[followerSlot], PARTIAL_SLOT_ELEMS);
-        SetFlag<HardEvent::MTE2_S>(evtMte2toS_);
-        WaitFlag<HardEvent::MTE2_S>(evtMte2toS_);
-        sumSqHalf[1] = partialBuf.GetValue(0);
-        for (uint32_t o = 0; o < N_MAX; ++o) {
-            dotHalf[1][o] = partialBuf.GetValue(o + 1U);
-        }
-
-        const float totalSumSqPre = sumSqHalf[0] + sumSqHalf[1];
-        float xHatVals[N_MAX];
-        for (uint32_t o = 0; o < N_MAX; ++o) {
-            xHatVals[o] = dotHalf[0][o] + dotHalf[1][o];
-        }
-        ComputeGateValues(totalSumSqPre, xHatVals);
-        SetFlag<HardEvent::V_MTE3>(evtVtoMte3_);
-        WaitFlag<HardEvent::V_MTE3>(evtVtoMte3_);
-        DataCopy(partial1Gm_[followerSlot], gateBuf, PARTIAL_SLOT_ELEMS);
-    }
-
-    MhcPairGateReadySync();
-    if (laneId_ == 1U) {
-        DataCopy(gateBuf, partial1Gm_[followerSlot], PARTIAL_SLOT_ELEMS);
-        SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
-        WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-    }
-
-    // 每个lane直接消费自己已经常驻UB的两个head，避免leader回读两行x2并串行累加四路。
-    SetFlag<HardEvent::MTE3_V>(evtMte3toV_);
-    WaitFlag<HardEvent::MTE3_V>(evtMte3toV_);
-    LocalTensor<float> r6Half = bufX2Fp32_.Get<float>();
-    LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
-    for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
-        const uint32_t tD = GetTileD(tile);
-        const uint32_t tOff = tile * dimTile_;
-        MhcSandwichRegBase::MulsB16WithUbScalar(r6Half[tOff], x2Cache[headBegin * D_ + tOff], gateBuf, headBegin, tD);
-        PipeBarrier<PIPE_V>();
-        MhcSandwichRegBase::AxpyB16WithUbScalar(r6Half[tOff], x2Cache[(headBegin + 1U) * D_ + tOff], gateBuf,
-                                                headBegin + 1U, tD);
-        PipeBarrier<PIPE_V>();
-    }
-
-    if (laneId_ == 1U) {
-        SetFlag<HardEvent::V_MTE3>(evtVtoMte3_);
-        WaitFlag<HardEvent::V_MTE3>(evtVtoMte3_);
-        const uint64_t r6Base = (uint64_t)token * D_;
-        for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
-            const uint32_t tD = GetTileD(tile);
-            const uint32_t tOff = tile * dimTile_;
-            DataCopy(r6PartialGm_[r6Base + tOff], r6Half[tOff], tD);
-        }
-    }
-
-    MhcPairR6ReadySync();
     if (laneId_ == 1U) {
         return;
     }
+
+    // 发出本核MTE3完成事件，同时读取follower的partial1，用32B搬运隐藏事件等待。
+    SetFlag<HardEvent::MTE3_V>(evtMte3toV_);
+    const uint64_t followerSlot = ((uint64_t)token * 2U + 1U) * PARTIAL_SLOT_ELEMS;
+    DataCopy(partialBuf, partial1Gm_[followerSlot], PARTIAL_SLOT_ELEMS);
+    SetFlag<HardEvent::MTE2_S>(evtMte2toS_);
+    WaitFlag<HardEvent::MTE3_V>(evtMte3toV_);
+    WaitFlag<HardEvent::MTE2_S>(evtMte2toS_);
+    sumSqHalf[1] = partialBuf.GetValue(0);
+    for (uint32_t o = 0; o < N_MAX; ++o) {
+        dotHalf[1][o] = partialBuf.GetValue(o + 1U);
+    }
+
+    const float totalSumSqPre = sumSqHalf[0] + sumSqHalf[1];
+    float xHatVals[N_MAX];
+    for (uint32_t o = 0; o < N_MAX; ++o) {
+        xHatVals[o] = dotHalf[0][o] + dotHalf[1][o];
+    }
+    ComputeGateValues(totalSumSqPre, xHatVals);
+
+    // 会合后只有leader继续执行R6、R7和最终输出。leader的私有缓存仅包含
+    // 自己完成R3的前两行，从已经同步写出的x2_out恢复follower负责的后两行。
+    for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
+        const uint32_t tD = GetTileD(tile);
+        const uint32_t tOff = tile * dimTile_;
+        const uint64_t outBase = (uint64_t)token * N_ * D_ + tOff;
+        LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
+        for (uint32_t n = 2U; n < N_MAX; ++n) {
+            DataCopy(x2Cache[n * D_ + tOff], x2OutGm_[outBase + (uint64_t)n * D_], tD);
+        }
+    }
+    SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+    WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
 
     float sumSq1 = 0.0f;
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
         LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-        DataCopy(hIn, r6PartialGm_[(uint64_t)token * D_ + tOff], tD);
-        SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
-        WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-        MhcSandwichRegBase::Axpy(hIn, r6Half[tOff], 1.0f, tD);
+        LocalTensor<T> x2Cache = bufX2Cache_.Get<T>()[tOff];
+        LocalTensor<float> gateBuf = bufScalar_.Get<float>()[EXP_DIV_ELEM];
+        MhcSandwichRegBase::MulsB16WithUbScalar(hIn, x2Cache, gateBuf, 0U, tD);
         PipeBarrier<PIPE_V>();
+        for (uint32_t n = 1; n < N_MAX; ++n) {
+            MhcSandwichRegBase::AxpyB16WithUbScalar(hIn, x2Cache[n * D_], gateBuf, n, tD);
+            PipeBarrier<PIPE_V>();
+        }
         sumSq1 += CacheHInAndReduceSumSq(tOff, tD, hIn);
     }
 

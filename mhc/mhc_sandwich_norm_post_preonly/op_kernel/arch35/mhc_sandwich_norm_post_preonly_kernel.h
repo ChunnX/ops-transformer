@@ -99,9 +99,8 @@ public:
             hInF32Gm_.SetGlobalBuffer((__gm__ float *)h_in_f32_gm, (uint64_t)totalTokens_ * D_);
         }
         if constexpr (DUAL_SIBLING) {
-            partial1Gm_.SetGlobalBuffer((__gm__ float *)workspace, (uint64_t)totalTokens_ * 2U * PARTIAL_SLOT_ELEMS);
-            const uint64_t r6Offset = (uint64_t)totalTokens_ * 2U * PARTIAL_SLOT_ELEMS;
-            r6PartialGm_.SetGlobalBuffer((__gm__ float *)workspace + r6Offset, (uint64_t)totalTokens_ * D_);
+            partial1Gm_.SetGlobalBuffer((__gm__ float *)workspace,
+                                        (uint64_t)totalTokens_ * 2U * PARTIAL_SLOT_ELEMS);
         }
 
         // UB空间分配
@@ -197,9 +196,9 @@ private:
     __aicore__ inline void ComputeX2PostTileForLane(uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
                                                     const float (&postVals)[N_MAX]);
     __aicore__ inline void CacheX2Tile(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput,
-                                       bool quantizeInput = true);
+                                      bool quantizeInput = true);
     __aicore__ inline void CacheX2TileForLane(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput,
-                                              bool quantizeInput = true);
+                                             bool quantizeInput = true);
     __aicore__ inline float CacheHInAndReduceSumSq(uint32_t tOff, uint32_t tD, LocalTensor<float> hIn);
     __aicore__ inline void LoadHInCacheTile(uint32_t tOff, uint32_t tD, LocalTensor<float> hIn);
     __aicore__ inline void AccumulateHalfPartials(uint32_t tOff, uint32_t tD, float (&sumSqHalf)[2],
@@ -237,7 +236,6 @@ private:
     GlobalTensor<float> gamma0Gm_, gamma1Gm_, gamma2Gm_;
     GlobalTensor<float> hInF32Gm_;
     GlobalTensor<float> partial1Gm_;
-    GlobalTensor<float> r6PartialGm_;
 
     // Tiling参数
     uint32_t totalTokens_ = 0, N_ = 0, D_ = 0, K_ = 0;

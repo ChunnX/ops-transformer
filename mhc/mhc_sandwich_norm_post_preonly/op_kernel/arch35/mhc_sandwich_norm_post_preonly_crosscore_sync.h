@@ -25,18 +25,4 @@ __aicore__ inline void MhcPairReadySync()
     CrossCoreWaitFlag<0x1, PIPE_MTE2>(PAIR_READY_FLAG);
 }
 
-// leader先生成门控，follower在独立flag会合后读取，避免复用前序握手状态。
-__aicore__ inline void MhcPairGateReadySync()
-{
-    CrossCoreSetFlag<0x1, PIPE_MTE3>(GATE_READY_FLAG);
-    CrossCoreWaitFlag<0x1, PIPE_MTE2>(GATE_READY_FLAG);
-}
-
-// 两个lane完成各自两路R6后会合，保证leader读取的FP32部分和已经写完。
-__aicore__ inline void MhcPairR6ReadySync()
-{
-    CrossCoreSetFlag<0x1, PIPE_MTE3>(R6_READY_FLAG);
-    CrossCoreWaitFlag<0x1, PIPE_MTE2>(R6_READY_FLAG);
-}
-
 #endif // MHC_SANDWICH_NORM_POST_PREONLY_CROSSCORE_SYNC_H_
