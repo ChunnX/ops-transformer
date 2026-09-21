@@ -59,7 +59,6 @@ struct NsaSelectedAttentionGradParams {
     const aclTensor *dvOut = nullptr;
 };
 
-
 static aclnnStatus CheckParams(const NsaSelectedAttentionGradParams &params)
 {
     CHECK_COND(params.query != nullptr, ACLNN_ERR_PARAM_NULLPTR, "query must not be nullptr.");
