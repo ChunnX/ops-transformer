@@ -127,6 +127,8 @@ public:
     /* 模板库Block */
     CubeBlockType cubeBlock;
     VecBlockType vecBlock;
+    /* C/V跨队列同步事件号 */
+    CVSyncEventIds cvSync;
 };
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
@@ -158,6 +160,8 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
                            actualSeqLengthsKv, deqScaleQ, deqScaleK, deqScaleV, deqScaleQK, quantScaleP, postQuantScale,
                            postQuantOffset, queryRope, keyRope, blockTable, queryPaddingSize, kvPaddingSize, softmaxMax,
                            softmaxSum, softmaxOut, workspace, tiling, tPipe); // gm设置
+    vecBlock.cvSyncPtr = &cvSync;
+    cubeBlock.cvSyncPtr = &cvSync;
     this->InitLocalBuffer();
 }
 
@@ -260,6 +264,7 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, VecBlockType>::InitLocalBuffer()
 {
+    cvSync.Init();
     vecBlock.InitLocalBuffer(pipe, constInfo);
 }
 
