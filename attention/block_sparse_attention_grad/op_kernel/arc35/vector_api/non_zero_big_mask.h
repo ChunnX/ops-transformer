@@ -982,10 +982,8 @@ __aicore__ inline void NonZeroBigMask<T1, T2>::CastOutput(LocalTensor<int32_t> &
                 uint32_t sreg = num * 2;
                 for (uint16_t i = 0; i < repeatTimes; i++) {
                     preg = AscendC::Reg::UpdateMask<int32_t>(sreg);
-                    AscendC::Reg::AddrReg srcAreg =
-                        AscendC::Reg::CreateAddrReg<uint32_t>(j, srcOffsetJ, i, srcOffsetI);
-                    AscendC::Reg::AddrReg dstAreg =
-                        AscendC::Reg::CreateAddrReg<uint32_t>(j, dstOffsetJ, i, dstOffsetI);
+                    AscendC::Reg::AddrReg srcAreg = AscendC::Reg::CreateAddrReg<uint32_t>(j, srcOffsetJ, i, srcOffsetI);
+                    AscendC::Reg::AddrReg dstAreg = AscendC::Reg::CreateAddrReg<uint32_t>(j, dstOffsetJ, i, dstOffsetI);
                     DataCopy<int32_t, AscendC::Reg::LoadDist::DIST_UNPACK_B32>(srcReg, srcPtr, srcAreg);
                     DataCopy(dstPtr, srcReg, dstAreg, preg);
                 }
@@ -1029,23 +1027,19 @@ __aicore__ inline void NonZeroBigMask<T1, T2>::SqzNonZeroNumB8(int32_t processNu
             AscendC::Reg::MaskUnPack<AscendC::Reg::HighLowPart::HIGHEST>(maskReg4, pregHigher);
 
             AscendC::Reg::GatherMask<int32_t, Reg::GatherMaskMode::STORE_REG>(vsqzReg, idsReg, maskReg1);
-            AscendC::Reg::DataCopyUnAlign<int32_t, Reg::PostLiteral::POST_MODE_UPDATE>(yUbPtr, vsqzReg,
-                                                                                                 ureg0);
+            AscendC::Reg::DataCopyUnAlign<int32_t, Reg::PostLiteral::POST_MODE_UPDATE>(yUbPtr, vsqzReg, ureg0);
 
             AscendC::Reg::Adds(idsReg, idsReg, offsetNum64, preg1);
             AscendC::Reg::GatherMask<int32_t, Reg::GatherMaskMode::STORE_REG>(vsqzReg, idsReg, maskReg2);
-            AscendC::Reg::DataCopyUnAlign<int32_t, Reg::PostLiteral::POST_MODE_UPDATE>(yUbPtr, vsqzReg,
-                                                                                                 ureg0);
+            AscendC::Reg::DataCopyUnAlign<int32_t, Reg::PostLiteral::POST_MODE_UPDATE>(yUbPtr, vsqzReg, ureg0);
 
             AscendC::Reg::Adds(idsReg, idsReg, offsetNum64, preg1);
             AscendC::Reg::GatherMask<int32_t, Reg::GatherMaskMode::STORE_REG>(vsqzReg, idsReg, maskReg3);
-            AscendC::Reg::DataCopyUnAlign<int32_t, Reg::PostLiteral::POST_MODE_UPDATE>(yUbPtr, vsqzReg,
-                                                                                                 ureg0);
+            AscendC::Reg::DataCopyUnAlign<int32_t, Reg::PostLiteral::POST_MODE_UPDATE>(yUbPtr, vsqzReg, ureg0);
 
             AscendC::Reg::Adds(idsReg, idsReg, offsetNum64, preg1);
             AscendC::Reg::GatherMask<int32_t, Reg::GatherMaskMode::STORE_REG>(vsqzReg, idsReg, maskReg4);
-            AscendC::Reg::DataCopyUnAlign<int32_t, Reg::PostLiteral::POST_MODE_UPDATE>(yUbPtr, vsqzReg,
-                                                                                                 ureg0);
+            AscendC::Reg::DataCopyUnAlign<int32_t, Reg::PostLiteral::POST_MODE_UPDATE>(yUbPtr, vsqzReg, ureg0);
 
             AscendC::Reg::Adds(idsReg, idsReg, offsetNum, preg1);
         }
@@ -1083,13 +1077,11 @@ __aicore__ inline void NonZeroBigMask<T1, T2>::SqzNonZeroNumB16(int32_t processN
             AscendC::Reg::MaskUnPack<AscendC::Reg::HighLowPart::HIGHEST>(pregHigher, cmpReg);
 
             AscendC::Reg::GatherMask<int32_t, Reg::GatherMaskMode::STORE_REG>(vsqzReg, idsReg, pregLower);
-            AscendC::Reg::DataCopyUnAlign<int32_t, Reg::PostLiteral::POST_MODE_UPDATE>(yUbPtr, vsqzReg,
-                                                                                                 ureg0);
+            AscendC::Reg::DataCopyUnAlign<int32_t, Reg::PostLiteral::POST_MODE_UPDATE>(yUbPtr, vsqzReg, ureg0);
 
             AscendC::Reg::Adds(idsReg, idsReg, offsetNum64, preg1);
             AscendC::Reg::GatherMask<int32_t, Reg::GatherMaskMode::STORE_REG>(vsqzReg, idsReg, pregHigher);
-            AscendC::Reg::DataCopyUnAlign<int32_t, Reg::PostLiteral::POST_MODE_UPDATE>(yUbPtr, vsqzReg,
-                                                                                                 ureg0);
+            AscendC::Reg::DataCopyUnAlign<int32_t, Reg::PostLiteral::POST_MODE_UPDATE>(yUbPtr, vsqzReg, ureg0);
 
             AscendC::Reg::Adds(idsReg, idsReg, offsetNum, preg1);
         }
@@ -1121,8 +1113,7 @@ __aicore__ inline void NonZeroBigMask<T1, T2>::SqzNonZeroNumB32(int32_t processN
             DataCopy(xSrcReg, xUbPtr + i * repeatElmB32);
             CompareScalar<T1, CMPMODE::NE>(cmpReg, xSrcReg, (T1)0, preg);
             AscendC::Reg::GatherMask<int32_t, Reg::GatherMaskMode::STORE_REG>(vsqzReg, idsReg, cmpReg);
-            AscendC::Reg::DataCopyUnAlign<int32_t, Reg::PostLiteral::POST_MODE_UPDATE>(yUbPtr, vsqzReg,
-                                                                                                 ureg0);
+            AscendC::Reg::DataCopyUnAlign<int32_t, Reg::PostLiteral::POST_MODE_UPDATE>(yUbPtr, vsqzReg, ureg0);
             AscendC::Reg::Adds(idsReg, idsReg, repeatElmB32, preg1);
         }
         AscendC::Reg::DataCopyUnAlignPost(yUbPtr, ureg0);
@@ -1155,8 +1146,7 @@ __aicore__ inline void NonZeroBigMask<T1, T2>::SqzNonZeroNumB64(int32_t processN
             AscendC::Reg::MaskReg maskHalf;
             AscendC::Reg::MaskPack<Reg::HighLowPart::LOWEST>(maskHalf, cmpReg);
             AscendC::Reg::GatherMask<int32_t, Reg::GatherMaskMode::STORE_REG>(vsqzReg, idsReg, maskHalf);
-            AscendC::Reg::DataCopyUnAlign<int32_t, Reg::PostLiteral::POST_MODE_UPDATE>(yUbPtr, vsqzReg,
-                                                                                                 ureg0);
+            AscendC::Reg::DataCopyUnAlign<int32_t, Reg::PostLiteral::POST_MODE_UPDATE>(yUbPtr, vsqzReg, ureg0);
 
             AscendC::Reg::Adds(idsReg, idsReg, repeatElmB64, preg1);
         }
