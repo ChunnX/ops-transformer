@@ -32,9 +32,11 @@ static const uint64_t DIM_0 = 0;
 static const uint64_t DIM_1 = 1;
 static const uint64_t DIM_2 = 2;
 
-aclnnStatus CheckNsaCmpAttnParam(const aclTensor *query, const aclTensor *key, const aclTensor *value, const char *inputLayout,
-    const aclTensor *softmaxMaxOut, const aclTensor *softmaxSumOut, const aclTensor *attentionOutOut,
-    const aclTensor *topkIndicesOut, const uint64_t *workspaceSize, aclOpExecutor ** const executor)
+aclnnStatus CheckNsaCmpAttnParam(const aclTensor *query, const aclTensor *key, const aclTensor *value,
+                                 const char *inputLayout, const aclTensor *softmaxMaxOut,
+                                 const aclTensor *softmaxSumOut, const aclTensor *attentionOutOut,
+                                 const aclTensor *topkIndicesOut, const uint64_t *workspaceSize,
+                                 aclOpExecutor **const executor)
 {
     // 必须的参数指针判空
     CHECK_RET(query != nullptr, ACLNN_ERR_PARAM_NULLPTR);
@@ -60,21 +62,22 @@ aclnnStatus CheckNsaCmpAttnShape(const aclTensor *query, const aclTensor *key, c
     auto vDim = vShape.GetDimNum();
     if (qDim != DIM_NUM_3 || kDim != DIM_NUM_3 || vDim != DIM_NUM_3) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "input shape error: expected all shapes to be 3D, but got qDim=%zu, kDim=%zu, vDim=%zu",
-                qDim, kDim, vDim);
+                "input shape error: expected all shapes to be 3D, but got qDim=%zu, kDim=%zu, vDim=%zu", qDim, kDim,
+                vDim);
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (qShape[0] == 0 || kShape[0] == 0 || qShape[1] == 0 || kShape[1] == 0 || qShape[2] == 0 || vShape[2] == 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,  "input shape error, got 0 in Tq Tkv Nq Nkv Dqk Dv (%ld, %ld, %ld, %ld, %ld, %ld)",
-        qShape[0], kShape[0], qShape[1], kShape[1], qShape[2], vShape[2]);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "input shape error, got 0 in Tq Tkv Nq Nkv Dqk Dv (%ld, %ld, %ld, %ld, %ld, %ld)", qShape[0], kShape[0],
+                qShape[1], kShape[1], qShape[2], vShape[2]);
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
 }
 
 aclnnStatus NsaCmpAttnContiguous(const aclTensor *&query, const aclTensor *&key, const aclTensor *&value,
-                       const aclTensor *&attenMaskOptional, const aclTensor *&topkMaskOptional,
-                       aclOpExecutor *executor)
+                                 const aclTensor *&attenMaskOptional, const aclTensor *&topkMaskOptional,
+                                 aclOpExecutor *executor)
 {
     query = l0op::Contiguous(query, executor);
     CHECK_RET(query != nullptr, ACLNN_ERR_INNER_NULLPTR);
@@ -95,7 +98,7 @@ aclnnStatus NsaCmpAttnContiguous(const aclTensor *&query, const aclTensor *&key,
 }
 
 aclnnStatus aclnnNsaCompressAttentionVarLenScore(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                           const aclrtStream stream)
+                                                 const aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnNsaCompressAttentionVarLenScore);
     // 固定写法，调用框架能力，完成计算
@@ -103,7 +106,7 @@ aclnnStatus aclnnNsaCompressAttentionVarLenScore(void *workspace, uint64_t works
 }
 
 aclnnStatus aclnnNsaCompressAttention(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                           const aclrtStream stream)
+                                      const aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnNsaCompressAttention);
     // 固定写法，调用框架能力，完成计算
@@ -117,9 +120,10 @@ aclnnStatus Preprocess(const aclTensor *&query, const aclTensor *&key, aclOpExec
     Shape qShape = query->GetViewShape();
     Shape kShape = key->GetViewShape();
 
-    FVector<int64_t, DIM_NUM_4> reshapedQueryShape = {qShape[DIM_0], kShape[DIM_1], qShape[DIM_1] / kShape[DIM_1], qShape[DIM_2]}; // T,N2,G,D
-    query = l0op::Reshape(
-                query, executor->AllocIntArray(reshapedQueryShape.data(), reshapedQueryShape.size()), executor);
+    FVector<int64_t, DIM_NUM_4> reshapedQueryShape = {qShape[DIM_0], kShape[DIM_1], qShape[DIM_1] / kShape[DIM_1],
+                                                      qShape[DIM_2]}; // T,N2,G,D
+    query =
+        l0op::Reshape(query, executor->AllocIntArray(reshapedQueryShape.data(), reshapedQueryShape.size()), executor);
     CHECK_RET(query != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     FVector<int64_t, DIM_NUM_4> transedQueryShape = {1, 0, 2, 3}; // N2,T,G,D
@@ -140,7 +144,8 @@ aclnnStatus Postprocess(const aclTensor *&attenOut, const aclTensor *&topkIndice
     attenOut = l0op::Transpose(attenOut, perm, executor);
     CHECK_RET(attenOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
-    FVector<int64_t, DIM_NUM_3> reshapedShape = {attenOutShape[DIM_1], attenOutShape[DIM_0] * attenOutShape[DIM_2], attenOutShape[DIM_3]}; // T,N1,D2
+    FVector<int64_t, DIM_NUM_3> reshapedShape = {attenOutShape[DIM_1], attenOutShape[DIM_0] * attenOutShape[DIM_2],
+                                                 attenOutShape[DIM_3]}; // T,N1,D2
     attenOut = l0op::Reshape(attenOut, executor->AllocIntArray(reshapedShape.data(), reshapedShape.size()), executor);
     CHECK_RET(attenOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
@@ -156,14 +161,15 @@ aclnnStatus Postprocess(const aclTensor *&attenOut, const aclTensor *&topkIndice
 aclnnStatus aclnnNsaCompressAttentionVarLenScoreGetWorkspaceSize(
     const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *attenMaskOptional,
     const aclTensor *topkMaskOptional, const aclIntArray *actualSeqQLenOptional,
-    const aclIntArray *actualCmpSeqKvLenOptional, const aclIntArray *actualSelSeqKvLenOptional,
-    double scaleValue, int64_t headNum, char *inputLayout, int64_t sparseMode,
-    int64_t compressBlockSize, int64_t compressStride, int64_t selectBlockSize, int64_t selectBlockCount,
-    const aclTensor *softmaxMaxOut, const aclTensor *softmaxSumOut, const aclTensor *attentionOutOut,
-    const aclTensor *topkIndicesOut, uint64_t *workspaceSize, aclOpExecutor **executor)
+    const aclIntArray *actualCmpSeqKvLenOptional, const aclIntArray *actualSelSeqKvLenOptional, double scaleValue,
+    int64_t headNum, char *inputLayout, int64_t sparseMode, int64_t compressBlockSize, int64_t compressStride,
+    int64_t selectBlockSize, int64_t selectBlockCount, const aclTensor *softmaxMaxOut, const aclTensor *softmaxSumOut,
+    const aclTensor *attentionOutOut, const aclTensor *topkIndicesOut, uint64_t *workspaceSize,
+    aclOpExecutor **executor)
 {
     CHECK_RET(CheckNsaCmpAttnParam(query, key, value, inputLayout, softmaxMaxOut, softmaxSumOut, attentionOutOut,
-        topkIndicesOut, workspaceSize, executor) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
+                                   topkIndicesOut, workspaceSize, executor) == ACLNN_SUCCESS,
+              ACLNN_ERR_PARAM_NULLPTR);
     L2_DFX_PHASE_1(aclnnNsaCompressAttentionVarLenScore,
                    DFX_IN(query, key, value, attenMaskOptional, topkMaskOptional, actualSeqQLenOptional,
                           actualCmpSeqKvLenOptional, actualSelSeqKvLenOptional, scaleValue, headNum, inputLayout,
@@ -173,8 +179,8 @@ aclnnStatus aclnnNsaCompressAttentionVarLenScoreGetWorkspaceSize(
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
-    if (softmaxMaxOut->IsEmpty() && softmaxSumOut->IsEmpty() && topkIndicesOut->IsEmpty()
-            && attentionOutOut->IsEmpty()) {
+    if (softmaxMaxOut->IsEmpty() && softmaxSumOut->IsEmpty() && topkIndicesOut->IsEmpty() &&
+        attentionOutOut->IsEmpty()) {
         *workspaceSize = 0;
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_SUCCESS;
@@ -212,8 +218,8 @@ aclnnStatus aclnnNsaCompressAttentionVarLenScoreGetWorkspaceSize(
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_ERR_INNER_NULLPTR;
     }
-    CHECK_RET(
-        Postprocess(l0AttentionOutOut, l0TopkIndicesOutOut, l0Executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(Postprocess(l0AttentionOutOut, l0TopkIndicesOutOut, l0Executor) == ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
 
     auto viewCopyResult0 = l0op::ViewCopy(l0SoftmaxMaxOut, softmaxMaxOut, l0Executor);
     CHECK_RET(viewCopyResult0 != nullptr, ACLNN_ERR_INNER_NULLPTR);
@@ -232,14 +238,15 @@ aclnnStatus aclnnNsaCompressAttentionVarLenScoreGetWorkspaceSize(
 aclnnStatus aclnnNsaCompressAttentionGetWorkspaceSize(
     const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *attenMaskOptional,
     const aclTensor *topkMaskOptional, const aclIntArray *actualSeqQLenOptional,
-    const aclIntArray *actualCmpSeqKvLenOptional, const aclIntArray *actualSelSeqKvLenOptional,
-    double scaleValue, int64_t headNum, char *inputLayout, int64_t sparseMode,
-    int64_t compressBlockSize, int64_t compressStride, int64_t selectBlockSize, int64_t selectBlockCount,
-    const aclTensor *softmaxMaxOut, const aclTensor *softmaxSumOut, const aclTensor *attentionOutOut,
-    const aclTensor *topkIndicesOut, uint64_t *workspaceSize, aclOpExecutor **executor)
+    const aclIntArray *actualCmpSeqKvLenOptional, const aclIntArray *actualSelSeqKvLenOptional, double scaleValue,
+    int64_t headNum, char *inputLayout, int64_t sparseMode, int64_t compressBlockSize, int64_t compressStride,
+    int64_t selectBlockSize, int64_t selectBlockCount, const aclTensor *softmaxMaxOut, const aclTensor *softmaxSumOut,
+    const aclTensor *attentionOutOut, const aclTensor *topkIndicesOut, uint64_t *workspaceSize,
+    aclOpExecutor **executor)
 {
     CHECK_RET(CheckNsaCmpAttnParam(query, key, value, inputLayout, softmaxMaxOut, softmaxSumOut, attentionOutOut,
-        topkIndicesOut, workspaceSize, executor) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
+                                   topkIndicesOut, workspaceSize, executor) == ACLNN_SUCCESS,
+              ACLNN_ERR_PARAM_NULLPTR);
     L2_DFX_PHASE_1(aclnnNsaCompressAttention,
                    DFX_IN(query, key, value, attenMaskOptional, topkMaskOptional, actualSeqQLenOptional,
                           actualCmpSeqKvLenOptional, actualSelSeqKvLenOptional, scaleValue, headNum, inputLayout,
@@ -249,8 +256,8 @@ aclnnStatus aclnnNsaCompressAttentionGetWorkspaceSize(
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
-    if (softmaxMaxOut->IsEmpty() && softmaxSumOut->IsEmpty() && topkIndicesOut->IsEmpty()
-            && attentionOutOut->IsEmpty()) {
+    if (softmaxMaxOut->IsEmpty() && softmaxSumOut->IsEmpty() && topkIndicesOut->IsEmpty() &&
+        attentionOutOut->IsEmpty()) {
         *workspaceSize = 0;
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_SUCCESS;
@@ -288,8 +295,8 @@ aclnnStatus aclnnNsaCompressAttentionGetWorkspaceSize(
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_ERR_INNER_NULLPTR;
     }
-    CHECK_RET(
-        Postprocess(l0AttentionOutOut, l0TopkIndicesOutOut, l0Executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(Postprocess(l0AttentionOutOut, l0TopkIndicesOutOut, l0Executor) == ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
 
     auto viewCopyResult0 = l0op::ViewCopy(l0SoftmaxMaxOut, softmaxMaxOut, l0Executor);
     CHECK_RET(viewCopyResult0 != nullptr, ACLNN_ERR_INNER_NULLPTR);
@@ -305,7 +312,7 @@ aclnnStatus aclnnNsaCompressAttentionGetWorkspaceSize(
     return ACLNN_SUCCESS;
 }
 
-}  // namespace
+} // namespace
 
 #ifdef __cplusplus
 }

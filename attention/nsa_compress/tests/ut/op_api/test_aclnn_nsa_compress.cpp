@@ -39,9 +39,7 @@ TEST_F(NsaCompressApiTest, aclnn_nsa_compress_A1_small_fp16)
     char layoutOptional[] = "TND";
     auto output = TensorDesc({3, 32, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnNsaCompress,
-        INPUT(input, weight, actSeqLen, layoutOptional, 16, 16, 0),
-        OUTPUT(output));
+    auto ut = OP_API_UT(aclnnNsaCompress, INPUT(input, weight, actSeqLen, layoutOptional, 16, 16, 0), OUTPUT(output));
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACLNN_SUCCESS);
@@ -60,9 +58,7 @@ TEST_F(NsaCompressApiTest, aclnn_nsa_compress_A2_large_fp16)
     char layoutOptional[] = "TND";
     auto output = TensorDesc({288, 4, 192}, ACL_FLOAT16, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnNsaCompress,
-        INPUT(input, weight, actSeqLen, layoutOptional, 16, 16, 0),
-        OUTPUT(output));
+    auto ut = OP_API_UT(aclnnNsaCompress, INPUT(input, weight, actSeqLen, layoutOptional, 16, 16, 0), OUTPUT(output));
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACLNN_SUCCESS);
@@ -71,11 +67,7 @@ TEST_F(NsaCompressApiTest, aclnn_nsa_compress_A2_large_fp16)
 TEST_F(NsaCompressApiTest, invalid_input_and_weight_ranks)
 {
     const std::vector<std::array<std::vector<int64_t>, 2>> shapes = {
-        {{{48, 32}, {16, 32}}},
-        {{{48, 32, 16}, {16}}},
-        {{{48, 32, 16, 1}, {16, 32}}},
-        {{{48, 32, 16}, {16, 32, 1}}}
-    };
+        {{{48, 32}, {16, 32}}}, {{{48, 32, 16}, {16}}}, {{{48, 32, 16, 1}, {16, 32}}}, {{{48, 32, 16}, {16, 32, 1}}}};
     for (size_t i = 0; i < shapes.size(); ++i) {
         SCOPED_TRACE(i);
         auto input = TensorDesc(shapes[i][0], ACL_FLOAT16, ACL_FORMAT_ND);

@@ -63,7 +63,7 @@ struct CompressShapeInfo {
 };
 
 static aclnnStatus CheckNsaCompressParam(const aclTensor *input, const aclTensor *weight, const aclTensor *output,
-                                         const uint64_t *workspaceSize, aclOpExecutor ** const executor)
+                                         const uint64_t *workspaceSize, aclOpExecutor **const executor)
 {
     // 必须的参数指针判空
     CHECK_RET(input != nullptr, ACLNN_ERR_PARAM_NULLPTR);
@@ -155,9 +155,9 @@ static aclnnStatus AnalysisInput(const aclTensor *input, const aclTensor *weight
                                  CompressShapeInfo &shapeInfo, const aclIntArray *actSeqLenOptional = nullptr)
 {
     // 从shape中取需要的值到shapeInfo
-    CHECK_RET(AnalysisAxis(input, weight, layoutOptional, compressBlockSize, compressStride, shapeInfo) ==
-                  ACLNN_SUCCESS,
-              ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(
+        AnalysisAxis(input, weight, layoutOptional, compressBlockSize, compressStride, shapeInfo) == ACLNN_SUCCESS,
+        ACLNN_ERR_PARAM_INVALID);
 
     if (actSeqLenOptional == nullptr || actSeqLenOptional->Size() == 0) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "actSeqLenOptional is not currently support null");
