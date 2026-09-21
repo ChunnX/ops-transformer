@@ -84,8 +84,6 @@ class _AllToAllQuantMatmulOpBuilder(OpBuilder):
             n = x2.size(1)
             local_bs = bs // world_size
             out_dtype = torch.float32
-            if y_dtype is not None:
-                out_dtype = _ACL_DTYPE_TO_TORCH_DTYPE.get(y_dtype, out_dtype)
             y = x1.new_empty(tuple([local_bs, n]), dtype=out_dtype)
             all2all_out = x1.new_empty(
                 tuple([local_bs, h * world_size]), dtype=x1.dtype
@@ -130,14 +128,14 @@ def _npu_all_to_all_quant_matmul(
         bias,
         x1_scale,
         x2_scale,
-        x1_quant_mode,
-        x2_quant_mode,
+        x1_quant_mode if x1_quant_mode is not None else 6,
+        x2_quant_mode if x2_quant_mode is not None else 6,
         group_sizes if group_sizes is not None else [],
         x1_dtype,
         x2_dtype,
         x1_scale_dtype,
         x2_scale_dtype,
-        y_dtype,
+        y_dtype if y_dtype is not None else torch.bfloat16,
         comm_mode if comm_mode is not None else "aiv_urma",
         precision_mode,
     )
@@ -263,14 +261,14 @@ def all_to_all_quant_matmul(
         bias=bias,
         x1_scale=x1_scale,
         x2_scale=x2_scale,
-        x1_quant_mode=x1_quant_mode,
-        x2_quant_mode=x2_quant_mode,
+        x1_quant_mode=x1_quant_mode if x1_quant_mode is not None else 6,
+        x2_quant_mode=x2_quant_mode if x2_quant_mode is not None else 6,
         group_sizes=group_sizes if group_sizes is not None else [],
         x1_dtype=x1_dtype,
         x2_dtype=x2_dtype,
         x1_scale_dtype=x1_scale_dtype,
         x2_scale_dtype=x2_scale_dtype,
-        y_dtype=y_dtype,
+        y_dtype=y_dtype if y_dtype is not None else torch.bfloat16,
         comm_mode=comm_mode if comm_mode is not None else "aiv_urma",
         precision_mode=precision_mode,
     )
