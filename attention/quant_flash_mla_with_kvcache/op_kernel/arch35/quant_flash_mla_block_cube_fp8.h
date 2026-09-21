@@ -344,10 +344,10 @@ public:
     }
 
     // MLA中V = K_nope, bmm2复用K的L1 buffer, 无需独立搬运V
-
-    // K预取: 提前2个任务将K从GM加载到L1, 使MTE2搬运与cube计算重叠, 避免bmm1等待MTE2断流
-    // buffer轮转取task.loop % L1_KV_BUFCNT, 与原自增计数严格等价(每任务恰好一次Mm1)
-    __aicore__ inline void PrefetchKey(RunInfoX &runInfo)
+ 
+    // 提前一轮发起下一任务的K搬运(仅MTE2、不等落地): MAC算本轮(L)与上轮(L-1)时, MTE2后台搬L+1,
+    // 避免bmm1现场等MTE2断流; buffer轮转取task.loop % L1_KV_BUFCNT
+    __aicore__ inline void IterateBmm1Load(RunInfoX &runInfo)
     {
         if (!runInfo.isValid || runInfo.keyPrefetched) {
             return;
@@ -361,7 +361,19 @@ public:
         runInfo.keyPrefetched = true;
     }
 
-    __aicore__ inline void IterateBmm1(RunInfoX &runInfo)
+    // Q预加载: 仅MTE2发起Q(含rope, D=576)拷贝到L1 NZ布局
+    // 启动首任务(loop==0): 与首任务K同拍发出, 压缩启动期;
+    // 换Q块边界: 在上块最后一次bmm1释放MTE1(Q)锁并轮转qL1BufId_之后调用, 预取写新槽与在途读无冲突
+    __aicore__ inline void IterateQPreload(RunInfoX &runInfo)
+    {
+        LocalTensor<Q_T> qL1Tensor = l1QBuffers_[qL1BufId_ * L1_Q_BUF_BYTES].template ReinterpretCast<Q_T>();
+        Mutex::Lock<PIPE_MTE2>(Q_L1_BUFFER_ID0 + qL1BufId_);
+        CopyQueryTile(qL1Tensor, runInfo);
+        Mutex::Unlock<PIPE_MTE2>(Q_L1_BUFFER_ID0 + qL1BufId_);
+        runInfo.qPreloaded = true;
+    }
+
+    __aicore__ inline void IterateBmm1(RunInfoX &runInfo, bool qPreloaded = false)
     {
         uint32_t mmResUbBufId = mmResUbBufId_;
         mmResUbBufId_ = (mmResUbBufId_ + 1) % UB_MM1_RES_BUFCNT;
@@ -373,26 +385,29 @@ public:
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(mmSyncIdx);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(mmSyncIdx + AIV0_AIV1_OFFSET);
 
-        IterateBmm1Internal(mm1ResUbTensor, runInfo);
+        IterateBmm1Internal(mm1ResUbTensor, runInfo, qPreloaded);
 
         // 通知AIV bmm1 result已就绪
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(mmSyncIdx);
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(mmSyncIdx + AIV0_AIV1_OFFSET);
     }
 
-    __aicore__ inline void IterateBmm1Internal(LocalTensor<T> &mm1ResUbTensor, RunInfoX &runInfo)
+    // qPreloaded: Q已由IterateQPreload提前发起MTE2, 跳过重复拷贝, 仅锁MTE1
+    __aicore__ inline void IterateBmm1Internal(LocalTensor<T> &mm1ResUbTensor, RunInfoX &runInfo, bool qPreloaded)
     {
         // MLA全量化bmm1(rope方案A): Q[64,576] @ K[576,128]单次matmul
         // Q(含rope)首次全载L1，后续s2循环复用
         LocalTensor<Q_T> qL1Tensor = l1QBuffers_[qL1BufId_ * L1_Q_BUF_BYTES].template ReinterpretCast<Q_T>();
         if (unlikely(runInfo.isFirstS2Loop)) {
-            Mutex::Lock<PIPE_MTE2>(Q_L1_BUFFER_ID0 + qL1BufId_);
-            CopyQueryTile(qL1Tensor, runInfo);
-            Mutex::Unlock<PIPE_MTE2>(Q_L1_BUFFER_ID0 + qL1BufId_);
+            if (!qPreloaded) {
+                Mutex::Lock<PIPE_MTE2>(Q_L1_BUFFER_ID0 + qL1BufId_);
+                CopyQueryTile(qL1Tensor, runInfo);
+                Mutex::Unlock<PIPE_MTE2>(Q_L1_BUFFER_ID0 + qL1BufId_);
+            }
             Mutex::Lock<PIPE_MTE1>(Q_L1_BUFFER_ID0 + qL1BufId_);
         }
 
-        // 加载当前轮的K(含rope)到L1: 已由PrefetchKey预取则直接锁MTE1使用, 否则现场加载
+        // 加载当前轮的K(含rope)到L1: 已由IterateBmm1Load预取则直接锁MTE1使用, 否则现场加载
         uint32_t kvBufId = runInfo.loop % L1_KV_BUFCNT;
         runInfo.kvL1BufId = kvBufId;
         uint32_t s2CurSize = runInfo.actSingleLoopS2Size;
