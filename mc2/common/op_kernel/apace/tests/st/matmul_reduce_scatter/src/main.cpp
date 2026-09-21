@@ -144,7 +144,8 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n, co
     QuantMatmulReduceScatterTilingData tilingData;
 
     // MatMul tiling: 使用完整 m, n, k（无 TP 切分）
-    QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN, mm::BiasDataType::DT_FLOAT> tilingEngine;
+    QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN, mm::BiasDataType::DT_FLOAT>
+        tilingEngine;
     tilingEngine.GetTilingData(m, n, k, false, true, tilingData.mmTilingData);
 
     // 通信 tiling: PUT 模式多 tile (headMSize 由参数传入，默认 512)
@@ -193,9 +194,8 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n, co
     if (winRequiredBytes > QMRS_HCCL_BUF_SIZE_LIMIT) {
         throw std::invalid_argument("ERROR: win required=" + std::to_string(winRequiredBytes) +
                                     " bytes (128 reserved + rankNum=" + std::to_string(rankNum) +
-                                    " x chunkBytes=" + std::to_string(chunkBytes) +
-                                    ") exceeds hcclBufSize limit=" + std::to_string(QMRS_HCCL_BUF_SIZE_LIMIT) +
-                                    " bytes. Reduce m/n or rankNum.");
+                                    " x chunkBytes=" + std::to_string(chunkBytes) + ") exceeds hcclBufSize limit=" +
+                                    std::to_string(QMRS_HCCL_BUF_SIZE_LIMIT) + " bytes. Reduce m/n or rankNum.");
     }
 
     tilingData.commTilingData.splitAxisTileCnt = static_cast<uint64_t>(headTileCnt);
@@ -206,12 +206,16 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n, co
 
     // 子问题 tiling: m=headMSize, 用于 T>1 per-tile head tile
     if (tileCnt > 1) {
-        QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN, mm::BiasDataType::DT_FLOAT> subTilingEngine;
+        QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN,
+                              mm::BiasDataType::DT_FLOAT>
+            subTilingEngine;
         subTilingEngine.EnableBaseMHalving(true); // 块数<2×核数时 baseM 减半, 提升负载均衡(同 allto_all_matmul_v2)
         subTilingEngine.GetTilingData(headMSize, n, k, false, true, tilingData.subMmTilingData);
         // tail tile tiling: m=rankSize*tailMSize (tailMSize 已保证 16 对齐)
         if (tailTileCnt > 0 && tailMSize > 0) {
-            QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN, mm::BiasDataType::DT_FLOAT> tailTilingEngine;
+            QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN,
+                                  mm::BiasDataType::DT_FLOAT>
+                tailTilingEngine;
             uint32_t tailLogicalM = static_cast<uint32_t>(rankNum) * tailMSize;
             tailTilingEngine.GetTilingData(tailLogicalM, n, k, false, true, tilingData.tailMmTilingData);
         } else {

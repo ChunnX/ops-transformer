@@ -271,8 +271,8 @@ __aicore__ inline void QmmMxKernelRsFrag<AType, BType, CType>::Run(const Params 
     const int64_t scaleKLen = static_cast<int64_t>(fp.scaleKLen);
 
     bool hasTail = (fp.tailCnt > 0 && fp.tailM > 0);
-    uint32_t effRankCnt = (fp.fragCount > 0) ?
-        fp.fragCount : ((fp.fragScope == FRAG_SCOPE_LOCAL) ? 1U : fp.rankSize - 1U);
+    uint32_t effRankCnt =
+        (fp.fragCount > 0) ? fp.fragCount : ((fp.fragScope == FRAG_SCOPE_LOCAL) ? 1U : fp.rankSize - 1U);
     const int64_t headMainRows = static_cast<int64_t>(fp.headRows) * effRankCnt / fp.rankSize;
     const int64_t mainRoundRows = static_cast<int64_t>(effRankCnt) * static_cast<int64_t>(fp.tileM);
     const int64_t mainSectionRows = static_cast<int64_t>(fp.tileCnt) * mainRoundRows;
@@ -313,8 +313,8 @@ __aicore__ inline void QmmMxKernelRsFrag<AType, BType, CType>::Process(const Par
     const int64_t Ni = static_cast<int64_t>(fp.n);
     const int64_t scaleKLen = static_cast<int64_t>(fp.scaleKLen);
 
-    uint32_t effRankCnt = (fp.fragCount > 0) ?
-        fp.fragCount : ((fp.fragScope == FRAG_SCOPE_LOCAL) ? 1U : fp.rankSize - 1U);
+    uint32_t effRankCnt =
+        (fp.fragCount > 0) ? fp.fragCount : ((fp.fragScope == FRAG_SCOPE_LOCAL) ? 1U : fp.rankSize - 1U);
     const int64_t headMainRows = static_cast<int64_t>(fp.headRows) * effRankCnt / fp.rankSize;
     const int64_t mainRoundRows = static_cast<int64_t>(effRankCnt) * static_cast<int64_t>(fp.tileM);
     const int64_t mainSectionRows = static_cast<int64_t>(fp.tileCnt) * mainRoundRows;
@@ -369,8 +369,8 @@ __aicore__ inline void QmmMxKernelRsFrag<AType, BType, CType>::Process(const Par
         auto blockC = ctx.fragC->Slice(coordC, shapeC);
         mmadFrag(blockA, gmBlockB, blockScaleA, gmBlockScaleB, gmBlockBias, cFragAddrs_,
                  static_cast<uint64_t>(fp.mPerRank), static_cast<uint64_t>(fp.tileM), static_cast<uint64_t>(fp.tileCnt),
-                 static_cast<uint64_t>(fp.tailM), static_cast<uint64_t>(effRankCnt), Ni, singleShape,
-                 ctx.regionMPos, nPos, 0, blockC);
+                 static_cast<uint64_t>(fp.tailM), static_cast<uint64_t>(effRankCnt), Ni, singleShape, ctx.regionMPos,
+                 nPos, 0, blockC);
     }
 }
 
@@ -431,8 +431,7 @@ __aicore__ inline void QmmMxKernelRsFrag<AType, BType, CType>::BuildFragmentTens
         }
     }
     uint64_t fragM = fp.headRows / fp.rankSize;
-    uint32_t fragCnt = (fp.fragCount > 0) ?
-        fp.fragCount : ((fp.fragScope == FRAG_SCOPE_LOCAL) ? 1U : fp.rankSize - 1U);
+    uint32_t fragCnt = (fp.fragCount > 0) ? fp.fragCount : ((fp.fragScope == FRAG_SCOPE_LOCAL) ? 1U : fp.rankSize - 1U);
     headFragA_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, MakeLayoutA, AType>(
         MakeFragParam(fragM, fragM, fragCnt, fp.k), headAddrListA_);
     headFragScaleA_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, MakeLayoutScaleA, fp8_e8m0_t>(

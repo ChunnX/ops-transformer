@@ -96,7 +96,8 @@ public:
         SplitRowsToCores(static_cast<uint32_t>(tileM), static_cast<uint32_t>(rsParams_.aivNum),
                          static_cast<uint32_t>(GetBlockIdx()), startRowIdx, rowNumPerCore);
 
-        LocalTensor<SumType> ubSum{TPosition::VECIN, 0, static_cast<uint32_t>(AscendC::TOTAL_UB_SIZE / sizeof(SumType))};
+        LocalTensor<SumType> ubSum{TPosition::VECIN, 0,
+                                   static_cast<uint32_t>(AscendC::TOTAL_UB_SIZE / sizeof(SumType))};
         LocalTensor<IOType> ubIO{TPosition::VECIN, 0, static_cast<uint32_t>(AscendC::TOTAL_UB_SIZE / sizeof(IOType))};
 
         for (uint32_t rowIdx = 0; rowIdx < rowNumPerCore; ++rowIdx) {
@@ -143,8 +144,7 @@ public:
                         DataCopy(ubIO[inIOElem[pingPongIdx]], gmData, segLen);
                         SetFlag<HardEvent::MTE2_V>(FLAG_ID_NUM_ONE);
                         WaitFlag<HardEvent::MTE2_V>(FLAG_ID_NUM_ONE);
-                        Cast(ubSum[inSumElem[pingPongIdx]], ubIO[inIOElem[pingPongIdx]], RoundMode::CAST_NONE,
-                             segLen);
+                        Cast(ubSum[inSumElem[pingPongIdx]], ubIO[inIOElem[pingPongIdx]], RoundMode::CAST_NONE, segLen);
                         PipeBarrier<PIPE_V>();
                     }
 

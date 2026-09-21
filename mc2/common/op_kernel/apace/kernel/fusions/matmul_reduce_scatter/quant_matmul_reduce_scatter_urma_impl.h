@@ -164,15 +164,15 @@ private:
 
     // ---------------- 私有方法 ----------------
     __aicore__ inline void InitBaseParams(const QuantMatmulReduceScatterTilingData *tilingData);
-    __aicore__ inline void RunMatmul();      // AIC 段1: head tiles 的 REMOTE 片段, 每 tile 一次 SetFlag
-    __aicore__ inline void RunTailMatmul();  // AIC 段2: tail tile 的 REMOTE 片段 (存在时), 一次 SetFlag
+    __aicore__ inline void RunMatmul();     // AIC 段1: head tiles 的 REMOTE 片段, 每 tile 一次 SetFlag
+    __aicore__ inline void RunTailMatmul(); // AIC 段2: tail tile 的 REMOTE 片段 (存在时), 一次 SetFlag
     __aicore__ inline void RunLocalMatmul(); // AIC 段3: 全部 tiles 的 LOCAL 片段, 尾部一次性 SetFlag(LOCAL_DONE)
-    __aicore__ inline void RunAllToAllAndReduceSum(); // AIV: 统一 turn 循环 + 收尾归约
+    __aicore__ inline void RunAllToAllAndReduceSum();             // AIV: 统一 turn 循环 + 收尾归约
     __aicore__ inline void InitAivRunContext(AivRunContext &ctx); // AIV: 角色判定 + 形状派生
     __aicore__ inline void RunOneTileTurn(const AivRunContext &ctx, uint32_t tileIdx); // AIV: 一轮通信步
-    __aicore__ inline void ReduceSumTile(const AivRunContext &ctx, uint32_t tileIdx); // AIV: 单 tile reduceSum
-    __aicore__ inline uint32_t GetTileM(uint32_t tileIdx);       // 获取 tile 的 M 大小
-    __aicore__ inline uint64_t GetTileMOffset(uint32_t tileIdx); // 获取 tile 的 M 偏移
+    __aicore__ inline void ReduceSumTile(const AivRunContext &ctx, uint32_t tileIdx);  // AIV: 单 tile reduceSum
+    __aicore__ inline uint32_t GetTileM(uint32_t tileIdx);                             // 获取 tile 的 M 大小
+    __aicore__ inline uint64_t GetTileMOffset(uint32_t tileIdx);                       // 获取 tile 的 M 偏移
     __aicore__ inline void DoReduceSum(uint32_t tileM, uint64_t tileMOffset, uint32_t nSize, uint32_t rowBytes,
                                        uint64_t stride, uint32_t rsCoreNum);
 };
