@@ -665,8 +665,8 @@ static ge::graphStatus EngramFetchTilingFunc(gert::TilingContext *context)
         }
     }
 
-    // local 模式(全量本NPU)仅支持推理场景, 训练场景不支持
-    OP_TILING_CHECK(!(isTraining && isLocalMode),
+    // local mode only support llm infer scenario
+    OP_TILING_CHECK((isTraining && isLocalMode),
                     OP_LOGE(nodeName,
                             "fetch_mode=1 (local, full replication) only supports inference, "
                             "training (with_grad=1) is not supported."),
