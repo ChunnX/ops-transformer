@@ -116,6 +116,61 @@ TEST(GroupedMatmulSwigluQuantV3Route, V2CapabilityBoundaries)
     }
 }
 
+TEST(GroupedMatmulSwigluQuantV3Route, ReportedUnalignedKCasesKeepCgmctScaleFactorsWithinL1)
+{
+    struct UnalignedKCase {
+        RouteCase route;
+        int scaleAlg;
+    };
+    const std::vector<UnalignedKCase> cases = {
+        {{1, 6060, 1920, 5, false, V3_CGMCT_NZ_KEY}, 0},
+        {{2815, 8208, 896, 7, true, V3_CGMCT_ZN_KEY}, 0},
+        {{68, 8066, 1280, 5, false, V3_CGMCT_NZ_KEY}, 0},
+        {{1, 6558, 4352, 5, true, V3_CGMCT_ZN_KEY}, 0},
+        {{128, 6452, 1408, 4, false, V3_CGMCT_NZ_KEY}, 1}};
+
+    for (const auto &c : cases) {
+        SCOPED_TRACE(::testing::Message() << c.route.m << "," << c.route.k << "," << c.route.n << ","
+                                          << c.route.e << ",trans=" << c.route.trans << ",alg=" << c.scaleAlg);
+        optiling::GMMSwigluV2CompileInfo info{};
+        auto context = MakeContext(c.route, &info, c.scaleAlg);
+        TilingInfo result;
+        ASSERT_TRUE(ExecuteTiling(context, result));
+        ASSERT_EQ(result.tilingKey, c.route.key);
+        const auto *tilingData = GetTilingData(result);
+        ASSERT_NE(tilingData, nullptr);
+        const auto &mm = tilingData->mmTilingData;
+        ASSERT_GT(mm.stepKa, 0);
+        ASSERT_GT(mm.stepKb, 0);
+        ASSERT_GT(mm.baseK, 0);
+
+        const auto mxTypePara = static_cast<uint32_t>(mm.mxTypePara);
+        const uint64_t scaleFactorA = mxTypePara & 0xFFU;
+        const uint64_t scaleFactorB = (mxTypePara >> 8U) & 0xFFU;
+        const uint64_t fullScaleWindowsA = std::max<int64_t>(1, c.route.k / (mm.stepKa * mm.baseK));
+        const uint64_t fullScaleWindowsB = std::max<int64_t>(1, c.route.k / (mm.stepKb * mm.baseK));
+        EXPECT_LE(scaleFactorA, fullScaleWindowsA);
+        EXPECT_LE(scaleFactorB, fullScaleWindowsB);
+
+        const uint64_t scaleK = ((mm.baseK + 31U) / 32U + 1U) / 2U * 2U;
+        const uint64_t baseASize = mm.baseM * mm.baseK;
+        const uint64_t baseBSize = mm.baseN * mm.baseK;
+        const uint64_t baseScaleASize = mm.baseM * scaleK;
+        const uint64_t baseScaleBSize = mm.baseN * scaleK;
+        const uint64_t l1Size = mm.depthA1 * (baseASize + scaleFactorA * baseScaleASize) +
+                                mm.depthB1 * (baseBSize + scaleFactorB * baseScaleBSize);
+        EXPECT_LE(l1Size, info.l1Size_);
+        if (c.route.m == 1 && c.route.k == 6060 && c.route.n == 1920 && !c.route.trans) {
+            // This is the smallest reported failure.  The old post-budget
+            // ceil adjustment changed factorB from 7 to 12 and required
+            // 563200 bytes, overflowing the 512-KiB L1 by 38912 bytes.
+            EXPECT_EQ(scaleFactorA, 1U);
+            EXPECT_EQ(scaleFactorB, 7U);
+            EXPECT_EQ(l1Size, 522240U);
+        }
+    }
+}
+
 TEST(GroupedMatmulSwigluQuantV3Route, TensorApiUsesSymmetricL1Budget)
 {
     for (bool trans : {false, true}) {
