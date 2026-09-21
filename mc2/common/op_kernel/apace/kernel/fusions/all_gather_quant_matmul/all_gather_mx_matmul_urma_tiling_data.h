@@ -33,7 +33,7 @@ struct CommContext {
 
 #pragma pack(push, 8)
 // 8 means 8 bytes aligned
-// DFX 头部约定: dumpInfo 必须是第一个成员(offset 0)
+// DFX 约定: dumpInfo 位于 Mc2InitTiling/Mc2CcTiling 之后，否则放在最前面
 struct alignas(8) AllGatherMxMatmulUrmaTilingData {
     Utils::DfxDumpInfo dumpInfo{};
     QuantMatmulTilingData mmTile;
