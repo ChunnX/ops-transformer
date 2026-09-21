@@ -62,6 +62,7 @@ struct FlashMlaWithKvcacheRunInfoX {
     uint32_t mloop = 0;
     bool isValid = false;
     bool isChangeBatch = false;
+    bool isFirstFdBlock = false;
     bool isFirstS2Loop = false;
     bool isLastS2Loop = false;
     bool qPreloaded = false; // 本任务 Q 的 MTE2 已提前一轮发起（启动首任务/Q 块边界）
@@ -174,6 +175,7 @@ struct PAConstInfo {
 
 struct LseConstInfo {
     bool isSoftmaxLseEnable;
+    bool learnableSinkFlag = false;
 };
 
 struct SinkConstInfo {

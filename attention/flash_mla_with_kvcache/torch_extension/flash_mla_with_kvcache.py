@@ -77,7 +77,7 @@ class FlashMlaWithKvcacheOpBuilder(OpBuilder):
             "int head_dim_v=512, float softmax_scale=1.0, int mask_mode=0, "
             "int max_seqlen_q=-1, int max_seqlen_kv=-1, "
             'str layout_q="BSND", str layout_kv="PA_BBND", str? layout_out="BSND", '
-            "bool return_softmax_lse=False, int win_left=-1, int win_right=-1) -> (Tensor, Tensor)",
+            "bool return_softmax_lse=False, int win_left=-1, int win_right=-1, Tensor? sinks=None) -> (Tensor, Tensor)",
         ]
 
     def register_meta(self):
@@ -128,6 +128,7 @@ class FlashMlaWithKvcacheOpBuilder(OpBuilder):
             return_softmax_lse: Optional[bool] = False,
             win_left: int = -1,
             win_right: int = -1,
+            sinks: Optional[torch.Tensor] = None,
         ):
             layout_q = "BSND" if layout_q is None else layout_q
             layout_out = "BSND" if layout_out is None else layout_out
@@ -253,6 +254,7 @@ def flash_mla_with_kvcache(
     return_softmax_lse: Optional[bool] = False,
     win_left: int = -1,
     win_right: int = -1,
+    sinks: Optional[torch.Tensor] = None,
 ):
     """
     Dispatcher implementation for NPU (DeepSeek MLA flash attention).
@@ -295,6 +297,7 @@ def flash_mla_with_kvcache(
         return_softmax_lse,
         win_left,
         win_right,
+        sinks,
         aic_core_num,
         aiv_core_num,
     )

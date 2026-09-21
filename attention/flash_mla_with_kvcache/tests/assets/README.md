@@ -57,3 +57,7 @@ python attention/flash_mla_with_kvcache/tests/assets/test_band.py
 
 覆盖右对齐闭区间、FP16/BF16、分页边界、单点/无限窗口、空 batch、
 整行屏蔽、FlashDecode、mode 0/3 等价性和非法参数。CPU golden 同时检查 full/tiled 两条路径。
+
+`test_band.py` 同时覆盖 FP32 per-head sinks：mode 0/3/4、空 sinks、极大 logit、
+full/tiled golden、长 KV FlashDecode，以及 FP16/BF16。CPU 验证可运行
+`python test_band.py BandGoldenTest`；完整 NPU 回归需重建并加载匹配的算子包和 Torch 扩展。

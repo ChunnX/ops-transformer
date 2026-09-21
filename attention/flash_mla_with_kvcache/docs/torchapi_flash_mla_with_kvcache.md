@@ -106,6 +106,7 @@ cann_ops_transformer.flash_mla_with_kvcache(
     return_softmax_lse=False,
     win_left=-1,
     win_right=-1,
+    sinks=None,
 ) -> (Tensor, Tensor)
 ```
 
@@ -139,6 +140,7 @@ cann_ops_transformer.flash_mla_with_kvcache(
 | cache_seqlens | Tensor | 必选 | 各batch有效KV长度 | int32 | ND | (B,) |
 | cu_seqlens_q | Tensor | 必选 | 累积Query长度，首项0，末项Q_T | int32 | ND | (B+1,) |
 | seqused_q | Tensor | 可选 | 各batch实际使用的Query长度 | int32 | ND | (B,) |
+| sinks | Tensor | 可选 | 每个 Q head 的 softmax sink logit；None 或形状(0,)表示关闭 | float32 | ND | (num_heads_q,) |
 | attn_mask | Tensor | 可选 | mask_mode=3或4时必传；mask_mode=0时不传 | int8 | ND | (2048, 2048) |
 | metadata | Tensor | 必选 | 配套metadata接口生成的调度数据 | int32 | ND | (max_schedule_size,) |
 | head_dim_v | int | 可选 | Value头维，固定512，默认512 | int32 | - | - |
@@ -345,3 +347,15 @@ assert softmax_lse.shape == (96, 8)
 assert attn_out.dtype == dtype
 assert softmax_lse.dtype == torch.float32
 ```
+
+### Learnable sink
+
+`sinks` 支持与 `mask_mode=0/3/4` 组合。每个 Q head 的 sink logit 不乘
+`softmax_scale`，只参与 softmax 分母和 LSE，不参与 V 加权分子：
+`out = sum(exp(score_j) * V_j) / (sum(exp(score_j)) + exp(sinks[h]))`。
+FlashDecode 跨核切分时仅在首个有效 KV 分块注入一次 sink；metadata 生成接口不需要 sinks。
+完全无有效 KV 的行沿用输出零、LSE 为正无穷的约定。
+
+Python 的 `sinks=None` 追加在 `win_right` 之后，原有位置参数调用保持兼容。
+ACLNN/GE 新增第 9 个输入 `sinksOptional`（metadata 之后）；使用新接口需一起重建
+算子包与 Torch 扩展，C++ 调用者需在 metadata 后补传 sinks 或 nullptr。

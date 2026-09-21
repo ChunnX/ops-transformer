@@ -92,7 +92,8 @@ std::tuple<at::Tensor, at::Tensor> FlashMlaWithKvcache(
     const c10::optional<at::Tensor> &sequsedQ, const c10::optional<at::Tensor> &attnMask,
     const c10::optional<at::Tensor> &metadata, int64_t headDimV, double softmaxScale, int64_t maskMode,
     int64_t maxSeqlenQ, int64_t maxSeqlenKv, std::string layoutQ, std::string layoutKv, std::string layoutOut,
-    int64_t returnSoftmaxLse, int64_t winLeft, int64_t winRight, int64_t aicCoreNum, int64_t aivCoreNum)
+    int64_t returnSoftmaxLse, int64_t winLeft, int64_t winRight, const c10::optional<at::Tensor> &sinks,
+    int64_t aicCoreNum, int64_t aivCoreNum)
 {
     int64_t tSize = 0;
     int64_t nSize = 0;
@@ -161,7 +162,7 @@ std::tuple<at::Tensor, at::Tensor> FlashMlaWithKvcache(
 
     // Python bool -> C++ int64_t: pybind11 auto-converts return_softmax_lse (True->1, False->0) before here.
     ACLNN_CMD(aclnnFlashMlaWithKvcache, q, kCache, blockTable, cacheSeqlens, cuSeqlensQ, sequsedQ, attnMask, metadata,
-              headDimV, softmaxScale, maskMode, maxSeqlenQ, maxSeqlenKv, layoutQPtr, layoutKvPtr, layoutOutPtr,
+              sinks, headDimV, softmaxScale, maskMode, maxSeqlenQ, maxSeqlenKv, layoutQPtr, layoutKvPtr, layoutOutPtr,
               returnSoftmaxLse, winLeft, winRight, attentionOutput, softmaxLse);
 
     return std::tuple<at::Tensor, at::Tensor>(attentionOutput, softmaxLse);

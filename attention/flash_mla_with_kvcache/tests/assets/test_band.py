@@ -40,7 +40,7 @@ def make_case(q_lens, kv_lens, heads, dtype):
     return q, k, table, cu, lens, pages
 
 
-def reference(q, pages, q_lens, kv_lens, mode, left, right):
+def reference(q, pages, q_lens, kv_lens, mode, left, right, sinks=None):
     out = torch.zeros(q.shape[1], q.shape[0], 512)
     lse = torch.full((q.shape[1], q.shape[0]), float("inf"))
     q_start = page_start = 0
@@ -60,8 +60,15 @@ def reference(q, pages, q_lens, kv_lens, mode, left, right):
             if right >= 0:
                 valid &= key <= pos + right
         scores.masked_fill_(~valid, float("-inf"))
-        out[:, q_start : q_start + sq] = scores.softmax(-1).nan_to_num(0) @ kv[:, :512]
-        batch_lse = scores.logsumexp(-1)
+        logits = (
+            scores
+            if sinks is None or sinks.numel() == 0
+            else torch.cat((scores, sinks[:, None, None].expand(-1, sq, 1)), dim=-1)
+        )
+        out[:, q_start : q_start + sq] = (
+            logits.softmax(-1)[..., :skv].nan_to_num(0) @ kv[:, :512]
+        )
+        batch_lse = logits.logsumexp(-1)
         batch_lse[:, ~valid.any(-1)] = float("inf")
         lse[:, q_start : q_start + sq] = batch_lse
         q_start += sq
@@ -114,6 +121,54 @@ class BandGoldenTest(unittest.TestCase):
                     )
                     torch.testing.assert_close(lse, expected_lse, atol=1e-5, rtol=0)
 
+    def test_sinks_full_and_tiled(self):
+        q_lens, kv_lens = [3, 8], [129, 3]
+        q, k, table, cu, lens, pages = make_case(q_lens, kv_lens, 64, torch.bfloat16)
+        for sink in [
+            torch.linspace(-8, 12, 64),
+            torch.full((64,), 1000.0),
+            torch.empty(0),
+        ]:
+            for mode, left, right in [
+                (0, -1, -1),
+                (3, -1, -1),
+                (4, 2, 1),
+                (4, 0, 0),
+                (4, -1, -1),
+            ]:
+                expected, expected_lse = reference(
+                    q, pages, q_lens, kv_lens, mode, left, right, sink
+                )
+                for crossover in [0, 10**12]:
+                    with self.subTest(
+                        mode=mode,
+                        window=(left, right),
+                        crossover=crossover,
+                        sink_size=sink.numel(),
+                    ):
+                        golden = FlashMlaWithKvcacheGolden()
+                        golden.TILED_CROSSOVER = crossover
+                        out, lse = golden.forward_golden(
+                            q,
+                            k,
+                            block_table=table,
+                            cache_seqlens=lens,
+                            cu_seqlens_q=cu,
+                            mask_mode=mode,
+                            win_left=left,
+                            win_right=right,
+                            sinks=sink,
+                            layout_q="TND",
+                            layout_kv="PA_NZ",
+                            layout_out="NTD",
+                            return_softmax_lse=True,
+                            device_mode="cpu",
+                        )
+                        torch.testing.assert_close(
+                            out.float(), expected, atol=0.035, rtol=0
+                        )
+                        torch.testing.assert_close(lse, expected_lse, atol=1e-5, rtol=0)
+
 
 class BandNpuTest(unittest.TestCase):
     @classmethod
@@ -134,7 +189,9 @@ class BandNpuTest(unittest.TestCase):
             torch.ones(2048, 2048, dtype=torch.int8, device="npu"), diagonal=1
         )
 
-    def run_case(self, q_lens, kv_lens, heads, dtype, mode, left=-1, right=-1):
+    def run_case(
+        self, q_lens, kv_lens, heads, dtype, mode, left=-1, right=-1, sinks=None
+    ):
         q, k, table, cu, lens, pages = make_case(q_lens, kv_lens, heads, dtype)
         kwargs = dict(
             cache_seqlens=lens.npu(),
@@ -148,6 +205,7 @@ class BandNpuTest(unittest.TestCase):
         out, lse = self.mla(
             q.npu(),
             k.npu(),
+            sinks=None if sinks is None else sinks.npu(),
             block_table=table.npu(),
             metadata=metadata,
             attn_mask=self.mask if mode else None,
@@ -157,7 +215,9 @@ class BandNpuTest(unittest.TestCase):
             return_softmax_lse=True,
             **kwargs,
         )
-        expected, expected_lse = reference(q, pages, q_lens, kv_lens, mode, left, right)
+        expected, expected_lse = reference(
+            q, pages, q_lens, kv_lens, mode, left, right, sinks
+        )
         torch.testing.assert_close(
             out.cpu().float(),
             expected,
@@ -206,6 +266,51 @@ class BandNpuTest(unittest.TestCase):
                             torch.testing.assert_close(
                                 actual, expected, atol=0.01, rtol=0
                             )
+
+    def test_sinks_and_band_flashdecode(self):
+        for dtype in [torch.float16, torch.bfloat16]:
+            for heads in [64, 96]:
+                sinks = torch.linspace(-8, 12, heads)
+                for mode, left, right in [
+                    (0, -1, -1),
+                    (3, -1, -1),
+                    (4, 2, 1),
+                    (4, 0, 0),
+                    (4, 16384, 0),
+                ]:
+                    with self.subTest(
+                        dtype=dtype, heads=heads, mode=mode, window=(left, right)
+                    ):
+                        self.run_case(
+                            [3, 8], [4097, 3], heads, dtype, mode, left, right, sinks
+                        )
+                self.run_case([1], [32768], heads, dtype, 4, 16384, 0, sinks)
+                self.run_case(
+                    [1], [113], heads, dtype, 4, 2, 1, torch.full((heads,), 1000.0)
+                )
+                self.run_case([1], [113], heads, dtype, 4, 2, 1, torch.empty(0))
+
+    def test_invalid_sinks(self):
+        q, k, table, cu, lens, _ = make_case([1], [113], 64, torch.float16)
+        kwargs = dict(cache_seqlens=lens.npu(), cu_seqlens_q=cu.npu(), layout_q="TND")
+        metadata = self.meta(num_heads_q=64, num_heads_kv=1, **kwargs)
+        for sink in [
+            torch.zeros(63),
+            torch.zeros(64, 1),
+            torch.zeros(64, dtype=torch.float16),
+        ]:
+            with self.subTest(shape=sink.shape, dtype=sink.dtype):
+                with self.assertRaises(RuntimeError):
+                    self.mla(
+                        q.npu(),
+                        k.npu(),
+                        block_table=table.npu(),
+                        metadata=metadata,
+                        layout_kv="PA_NZ",
+                        layout_out="NTD",
+                        sinks=sink.npu(),
+                        **kwargs,
+                    )
 
     def test_invalid_windows_and_missing_mask(self):
         q, k, table, cu, lens, _ = make_case([1], [113], 96, torch.float16)

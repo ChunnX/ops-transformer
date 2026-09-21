@@ -203,6 +203,7 @@ class FlashMlaWithKvcacheGolden:
         return_softmax_lse: bool = False,
         win_left: int = -1,
         win_right: int = -1,
+        sinks: Optional[torch.Tensor] = None,
         device_mode: str = "npu",
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """计算 flash_mla_with_kvcache 参考实现。
@@ -324,6 +325,7 @@ class FlashMlaWithKvcacheGolden:
             compute_mode,
             win_left,
             win_right,
+            sinks,
         )
 
         # 4. 输出布局转换 + dtype
@@ -382,6 +384,7 @@ class FlashMlaWithKvcacheGolden:
         compute_mode: str,
         win_left: int,
         win_right: int,
+        sinks: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """逐 batch 计算, 每 batch q/k 保持输入 dtype 转 BNSD 后进入单头 compute。
 
@@ -389,6 +392,14 @@ class FlashMlaWithKvcacheGolden:
         (宽 head_dim_v), QK 内积用 D=576 全宽(= nope+rope 之和)。
         """
         N_q = self._geo["num_heads_q"]
+        if sinks is not None and sinks.shape == (0,):
+            sinks = None
+        if sinks is not None:
+            if sinks.dtype != torch.float32 or sinks.shape != (N_q,):
+                raise ValueError(
+                    "sinks must be a float32 tensor with shape (num_heads_q,)"
+                )
+            sinks = sinks.to(q.device)
         dv = self._geo["head_dim_v"]
         seq_decl = self._geo["seq_decl"]  # BNSD/BSND 声明序列长(TND=None)
         group = N_q  # num_heads_kv == 1, 单 KV 头广播到所有 Q 头
@@ -495,6 +506,9 @@ class FlashMlaWithKvcacheGolden:
                         win_right=win_right,
                     )
                 flat_q = q_heads.reshape(-1, q_heads.shape[-1])
+                sink_rows = (
+                    None if sinks is None else sinks[first:last].repeat_interleave(sq)
+                )
                 if compute_mode == "tiled":
 
                     def mask_fn(qs, qe, ks, ke):
@@ -534,14 +548,34 @@ class FlashMlaWithKvcacheGolden:
                         scale,
                         self.TILE_SIZE,
                         mask_fn,
+                        sink=sink_rows,
                         kv_bounds=kv_bounds,
                     )
                 else:
                     if selected_mask is not None and last - first > 1:
                         selected_mask = selected_mask.repeat(last - first, 1)
                     o, l = self._compute_full_single(
-                        flat_q, k_bh, v_bh, selected_mask, scale
+                        flat_q, k_bh, v_bh, selected_mask, scale, sink_rows
                     )
+                # Match the operator's invalid-row contract even when a sink is present.
+                if sinks is not None and mask_mode in (3, 4):
+                    pos = torch.arange(sq, device=q.device) + delta
+                    lower = (
+                        torch.zeros_like(pos)
+                        if mask_mode == 3 or win_left == -1
+                        else pos - win_left
+                    )
+                    upper = (
+                        pos
+                        if mask_mode == 3
+                        else (
+                            torch.full_like(pos, skv - 1)
+                            if win_right == -1
+                            else pos + win_right
+                        )
+                    )
+                    valid = lower.clamp(min=0) <= upper.clamp(max=skv - 1)
+                    l = l.masked_fill(~valid.repeat(last - first), float("inf"))
                 o = o.reshape(last - first, sq, dv)
                 l = l.reshape(last - first, sq)
                 if is_tnd_out:
@@ -635,6 +669,7 @@ class FlashMlaWithKvcacheGolden:
         v: torch.Tensor,  # (Skv, DV) input dtype
         mask: Optional[torch.Tensor],  # (Sq, Skv) bool
         scale: float,
+        sink: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """One-tile mixed-precision reference; exp weights round before PV."""
         return attention_single(
@@ -644,7 +679,7 @@ class FlashMlaWithKvcacheGolden:
             scale,
             max(q.shape[0], k.shape[0], 1),
             lambda qs, qe, ks, ke: mask,
-            None,
+            sink,
         )
 
     # ==========================================================================

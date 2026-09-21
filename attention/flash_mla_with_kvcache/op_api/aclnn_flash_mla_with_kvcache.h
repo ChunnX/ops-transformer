@@ -46,6 +46,7 @@ extern "C" {
  * @param attnMaskOptional    [IN]  可选。attnmask的参数，数据类型INT8。
  * @param metadataOptional    [IN]  可选。预计算的tiling切分方案，数据类型INT32，由上游算子传入。
  *                                  当该输入不为nullptr时，tiling侧跳过切分方案计算，直接使用该元数据。
+ * @param sinksOptional       [IN] 可选。每个 Q head 的 FLOAT32 sink logit，形状(N,)。
  * @param headDimV            [IN]  ATTR可选。k_cache中nope（value）段的宽度。数据类型INT，默认值512。
  *                                  q/k_cache最后维=headDimV+64（rope宽）。
  * @param softmaxScale        [IN]  ATTR可选。softmax缩放系数，对应老接口的scaleValue。
@@ -71,10 +72,11 @@ extern "C" {
 aclnnStatus aclnnFlashMlaWithKvcacheGetWorkspaceSize(
     const aclTensor *q, const aclTensor *kCache, const aclTensor *blockTableOptional,
     const aclTensor *cacheSeqlensOptional, const aclTensor *cuSeqlensQOptional, const aclTensor *sequsedQOptional,
-    const aclTensor *attnMaskOptional, const aclTensor *metadataOptional, int64_t headDimV, double softmaxScale,
-    int64_t maskMode, int64_t maxSeqlenQ, int64_t maxSeqlenKV, const char *layoutQ, const char *layoutKv,
-    const char *layoutOut, int64_t returnSoftmaxLse, int64_t winLeft, int64_t winRight, const aclTensor *attnOut,
-    const aclTensor *softmaxLseOptional, uint64_t *workspaceSize, aclOpExecutor **executor);
+    const aclTensor *attnMaskOptional, const aclTensor *metadataOptional, const aclTensor *sinksOptional,
+    int64_t headDimV, double softmaxScale, int64_t maskMode, int64_t maxSeqlenQ, int64_t maxSeqlenKV,
+    const char *layoutQ, const char *layoutKv, const char *layoutOut, int64_t returnSoftmaxLse, int64_t winLeft,
+    int64_t winRight, const aclTensor *attnOut, const aclTensor *softmaxLseOptional, uint64_t *workspaceSize,
+    aclOpExecutor **executor);
 
 /**
  * @brief aclnnFlashMlaWithKvcache的第二段接口，用于执行计算。

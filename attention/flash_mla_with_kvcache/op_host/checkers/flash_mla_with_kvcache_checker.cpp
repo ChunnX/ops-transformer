@@ -22,6 +22,7 @@
 #include "../flash_mla_with_kvcache_tiling_info.h"
 #include "flash_mla_with_kvcache_checker.h"
 #include "common_checker.h"
+#include "sinks_checker.h"
 
 namespace optiling {
 namespace flash_mla_with_kvcache {
@@ -40,6 +41,7 @@ void FlashMlaWithKvcacheChecker::RegisterCheckers()
     checkers_.push_back(std::make_unique<ActualSeqLenChecker>());
     checkers_.push_back(std::make_unique<PagedAttentionChecker>());
     checkers_.push_back(std::make_unique<MaskChecker>());
+    checkers_.push_back(std::make_unique<SinksChecker>());
     checkers_.push_back(std::make_unique<MetadataChecker>());
     checkers_.push_back(std::make_unique<SoftmaxLSEChecker>());
 }

@@ -178,6 +178,8 @@ void FlashMlaWithKvcacheInfoParser::GetInputParaInfo()
     opParamInfo_.kCache.desc = context_->GetInputDesc(K_CACHE_INDEX);
     opParamInfo_.kCache.shape = context_->GetInputShape(K_CACHE_INDEX);
     GetOptionalInputParaInfo();
+    opParamInfo_.sinks.tensor = context_->GetOptionalInputTensor(SINKS_INDEX);
+    opParamInfo_.sinks.desc = context_->GetOptionalInputDesc(SINKS_INDEX);
 }
 
 ge::graphStatus FlashMlaWithKvcacheInfoParser::GetStrides()

@@ -28,7 +28,7 @@ namespace optiling {
 namespace flash_mla_with_kvcache {
 // ============================================================
 // String name constants for tensor and attribute parameters
-// (interface: no v / q_rope / k_rope / sinks;
+// (interface: no v / q_rope / k_rope;
 //  rope merged into q and k_cache, last dim 576 = head_dim_v(512) + rope(64))
 // ============================================================
 const std::string QUERY_NAME = "q";
@@ -55,7 +55,7 @@ const std::string SOFTMAX_LSE_NAME = "softmax_lse";
 // ============================================================
 
 // Inputs Index (order: q, k_cache, block_table, cache_seqlens, cu_seqlens_q,
-// seqused_q, attn_mask, metadata)
+// seqused_q, attn_mask, metadata, sinks)
 constexpr uint32_t QUERY_INDEX = 0;
 constexpr uint32_t K_CACHE_INDEX = 1;
 constexpr uint32_t BLOCK_TABLE_INDEX = 2;
@@ -64,6 +64,7 @@ constexpr uint32_t CU_SEQLENS_Q_INDEX = 4;
 constexpr uint32_t SEQUSED_Q_INDEX = 5;
 constexpr uint32_t ATTN_MASK_INDEX = 6;
 constexpr uint32_t METADATA_INDEX = 7;
+constexpr uint32_t SINKS_INDEX = 8;
 
 // Attributes Index (order: head_dim_v, softmax_scale, mask_mode, max_seqlen_q,
 // max_seqlen_kv, layout_q, layout_kv, layout_out, return_softmax_lse, win_left, win_right)
@@ -160,6 +161,7 @@ struct FlashMlaWithKvcacheParaInfo {
     FlashMlaWithKvcacheOptionalParaInfo cuSeqlensQ = {nullptr, nullptr};
     FlashMlaWithKvcacheOptionalParaInfo sequsedQ = {nullptr, nullptr};
     FlashMlaWithKvcacheOptionalParaInfo attnMask = {nullptr, nullptr};
+    FlashMlaWithKvcacheOptionalParaInfo sinks = {nullptr, nullptr};
     FlashMlaWithKvcacheOptionalParaInfo metadata = {nullptr, nullptr};
 
     // 已从接口移除：key/value/cu_seqlens_kv/seqused_kv 输入。
