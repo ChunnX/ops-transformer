@@ -313,9 +313,9 @@ static bool CheckMxA8W4NzAttrPtr(gert::TilingContext *context)
 
     const int64_t *outputDtypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_DTYPE);
     OP_CHECK_IF(outputDtypePtr == nullptr, OP_LOGE(context->GetNodeName(), "dtype cannot be nullptr"), return false);
-    if (unlikely(*outputDtypePtr != 0 && *outputDtypePtr != 2)) {
+    if (unlikely(*outputDtypePtr != 0)) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(OP_NAME, "dtype", std::to_string(*outputDtypePtr),
-                                              "Attr dtype must be 0(float32) or 2(bfloat16)");
+                                              "Attr dtype must be 0(float32)");
         return false;
     }
 
