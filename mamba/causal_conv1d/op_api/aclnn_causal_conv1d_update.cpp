@@ -311,6 +311,9 @@ aclnnStatus CausalConv1dUpdateCommonProcess(const aclTensor *x, const aclTensor 
     aclTensor *convStatesFinal = const_cast<aclTensor *>(l0op::Contiguous(convStatesRef, uniqueExecutor.get()));
     CHECK_COND(convStatesFinal != nullptr, ACLNN_ERR_PARAM_NULLPTR, "Contiguous convStatesRef failed.");
 
+    aclTensor *yFinal = const_cast<aclTensor *>(l0op::Contiguous(y, uniqueExecutor.get()));
+    CHECK_COND(yFinal != nullptr, ACLNN_ERR_PARAM_NULLPTR, "Contiguous y failed.");
+
     weight = l0op::Contiguous(weight, uniqueExecutor.get());
     CHECK_COND(weight != nullptr, ACLNN_ERR_PARAM_NULLPTR, "Contiguous weight failed.");
 
@@ -338,8 +341,19 @@ aclnnStatus CausalConv1dUpdateCommonProcess(const aclTensor *x, const aclTensor 
 
     bool ok =
         l0op::CausalConv1d(xFinal, weight, convStatesFinal, biasOptional, queryStartLocOptional, cacheIndicesOptional,
-                           nullptr, numAcceptedTokensOptional, activation, nullBlockId, y, uniqueExecutor.get());
+                           nullptr, numAcceptedTokensOptional, activation, nullBlockId, yFinal, uniqueExecutor.get());
     CHECK_RET(ok, ACLNN_ERR_INNER_TILING_ERROR);
+
+    // convStatesRef 是 in-place 输入/输出、y 是输出：非连续时 Contiguous 产出的是临时副本，
+    // kernel 结果只落在副本上，必须 ViewCopy 拷回调用方原始张量，否则更新静默丢失。
+    if (convStatesFinal != convStatesRef) {
+        auto convStatesCopyResult = l0op::ViewCopy(convStatesFinal, convStatesRef, uniqueExecutor.get());
+        CHECK_COND(convStatesCopyResult != nullptr, ACLNN_ERR_INNER_NULLPTR, "ViewCopy convStatesRef back failed.");
+    }
+    if (yFinal != y) {
+        auto yCopyResult = l0op::ViewCopy(yFinal, y, uniqueExecutor.get());
+        CHECK_COND(yCopyResult != nullptr, ACLNN_ERR_INNER_NULLPTR, "ViewCopy y back failed.");
+    }
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
     uniqueExecutor.ReleaseTo(executor);

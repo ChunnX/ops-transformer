@@ -42,6 +42,7 @@
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #include "../../common/op_kernel/mc2_moe_context.h"
 #include "../../common/op_kernel/moe_ep_exception_dump_writer.h"
+#include "../../common/op_kernel/moe_ep_send_completion.h"
 
 #include "moe_ep_combine_epilogue_tiling_key.h"
 #include "moe_ep_combine_epilogue_tiling.h"
@@ -453,6 +454,7 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     uint32_t localExpertBegin = rankId_ * tilingData_->cfg.numLocalExperts;
     uint32_t localExpertEnd = localExpertBegin + tilingData_->cfg.numLocalExperts;
     for (uint32_t topkId = 0U; topkId < topK_; topkId++) {
+        uint64_t slotOffset = (static_cast<uint64_t>(tokenIndex) * topK_ + topkId) * tilingData_->cfg.perSlotBytes;
         uint32_t lookupIndex = (tokenIndex - tStart_) * topK_ + topkId;
         bool maskExpertFlag = maskGenerateTensor_.GetValue(lookupIndex);
         if (!maskExpertFlag) {
@@ -468,7 +470,6 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
         if (localRecvXIdx >= 0) {
             DataCopyPad(xLocal, xGm_[static_cast<uint64_t>(localRecvXIdx) * axisH_], xCopyParams_, padParams_);
         } else {
-            uint64_t slotOffset = (static_cast<uint64_t>(tokenIndex) * topK_ + topkId) * tilingData_->cfg.perSlotBytes;
             GM_ADDR tokenAddr = GetUrmaWinAddrByRankId(rankId_, combineDataWinOffset_) + slotOffset;
             GlobalTensor<XType> srcTokenTensor;
             srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType *>(tokenAddr));
@@ -485,8 +486,7 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
             if (localRecvXIdx >= 0) {
                 DataCopyPad(weightLocal, topkWeightsGm_[localRecvXIdx], weightCopyParams_, padParams_);
             } else {
-                GM_ADDR weightAddr = GetUrmaStateAddrByRankId(rankId_, combineStateWinOffset_) +
-                                     (tokenIndex * topK_ + topkId) * WIN_ADDR_ALIGN;
+                GM_ADDR weightAddr = GetUrmaWinAddrByRankId(rankId_, combineDataWinOffset_) + slotOffset + hAlignSize_;
                 GlobalTensor<float> srcWeightTensor;
                 srcWeightTensor.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(weightAddr));
                 DataCopyPad(weightLocal, srcWeightTensor, weightCopyParams_, padParams_);
@@ -568,6 +568,7 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     LoadTopkIds();
     MaskCheck();
     RecvPhaseReduce();
+    MoeEpCompletion::DrainChannels(mc2Context_, epWorldSize_, tpipe_);
 }
 
 #endif
