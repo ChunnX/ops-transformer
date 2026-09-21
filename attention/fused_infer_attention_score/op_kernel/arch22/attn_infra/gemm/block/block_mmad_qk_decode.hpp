@@ -134,7 +134,7 @@ public:
                                        uint64_t keyBnStride)
     {
         if constexpr (PAGED_CACHE_FLAG_) {
-            uint64_t blockTableId = gBlockTable.GetValue(nowNIdx);
+            uint32_t blockTableId = gBlockTable.GetValue(nowNIdx);
             if (keyBnStride != 0) {
                 if constexpr (BNBD_FLAG) {
                     // BNBD: token stride within block is embed
@@ -145,9 +145,10 @@ public:
             } else {
                 if constexpr (BNBD_FLAG) {
                     // BNBD: token stride within block is embed
-                    kOffset = blockTableId * blockSize * strideKV + nL1Idx * l1NDynamic * embed;
+                    kOffset = static_cast<uint64_t>(blockTableId) * blockSize * strideKV + nL1Idx * l1NDynamic * embed;
                 } else {
-                    kOffset = blockTableId * blockSize * strideKV + nL1Idx * l1NDynamic * strideKV;
+                    kOffset =
+                        static_cast<uint64_t>(blockTableId) * blockSize * strideKV + nL1Idx * l1NDynamic * strideKV;
                 }
             }
         } else {

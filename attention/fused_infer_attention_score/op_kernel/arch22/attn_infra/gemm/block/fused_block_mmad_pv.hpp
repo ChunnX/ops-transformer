@@ -124,7 +124,7 @@ public:
                                        uint32_t blockStartOffset, uint32_t nowNIdx, uint32_t &strideKV,
                                        uint32_t &blockSize, uint32_t embed, uint64_t valueBnStride)
     {
-        uint64_t blockTableId = gBlockTable.GetValue(nowNIdx);
+        uint32_t blockTableId = gBlockTable.GetValue(nowNIdx);
         if (valueBnStride != 0) {
             if constexpr (std::is_same_v<LayoutB, layout::zN>) {
                 constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(ElementB);
@@ -138,12 +138,13 @@ public:
         } else {
             if constexpr (std::is_same_v<LayoutB, layout::zN>) {
                 constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(ElementB);
-                kOffset = blockTableId * blockSize * strideKV + blockStartOffset * ELE_NUM_PER_C0;
+                kOffset =
+                    static_cast<uint64_t>(blockTableId) * blockSize * strideKV + blockStartOffset * ELE_NUM_PER_C0;
             } else if constexpr (BNBD_FLAG) {
                 // BNBD layout: (numBlocks, kvHeads, blockSize, D)
-                kOffset = blockTableId * blockSize * strideKV + blockStartOffset * embed;
+                kOffset = static_cast<uint64_t>(blockTableId) * blockSize * strideKV + blockStartOffset * embed;
             } else {
-                kOffset = blockTableId * blockSize * strideKV + blockStartOffset * strideKV;
+                kOffset = static_cast<uint64_t>(blockTableId) * blockSize * strideKV + blockStartOffset * strideKV;
             }
         }
     }
