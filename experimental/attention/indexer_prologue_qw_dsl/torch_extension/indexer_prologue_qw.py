@@ -70,6 +70,12 @@ class IndexerPrologueQwOpBuilder(OpBuilder):
 indexer_prologue_qw_op_builder = IndexerPrologueQwOpBuilder()
 indexer_prologue_qw_op_builder._ensure_initialized()
 
+# Imported at module load, not inside the impl.  ``ops/__init__.py`` registers
+# the packaged ``_native`` directory; dynamo traces a function-local import as a
+# direct module load and skips that, so a capture-first ACLGraph path would
+# miss every precompiled ``.so`` and either JIT (prefer) or raise (require).
+from ops.indexer_prologue_qw import indexer_prologue_qw as dsl_indexer_prologue_qw
+
 
 @impl(get_as_library(), indexer_prologue_qw_op_builder.name, "PrivateUse1")
 def indexer_prologue_qw(
@@ -88,8 +94,6 @@ def indexer_prologue_qw(
     w=None,
 ):
     """Run the CANNBotDSL kernel through the Torch NPU dispatcher."""
-    from ops.indexer_prologue_qw import indexer_prologue_qw as dsl_indexer_prologue_qw
-
     return dsl_indexer_prologue_qw(
         x,
         qr,
