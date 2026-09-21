@@ -481,10 +481,10 @@ static ge::graphStatus CheckSituGluActivationParams(const float *activationParam
 }
 
 /*
- * 校验激活类型、参数个数与取值，并检查激活类型和通信拓扑的兼容性。
+ * 校验激活类型、参数个数与取值。
  */
 static ge::graphStatus CheckActivationParams(const gert::TilingContext *context, const MegaMoeConfig &config,
-                                             int64_t topoType, const char *nodeName)
+                                             const char *nodeName)
 {
     auto attrs = context->GetAttrs();
     auto activationPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrActivationIndex));
@@ -500,12 +500,6 @@ static ge::graphStatus CheckActivationParams(const gert::TilingContext *context,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "activation", activationPtr,
                                               "one of 'swiglu', 'swiglustep', 'swigluoai' or 'situglu'"),
                     return ge::GRAPH_FAILED);
-
-    // URMA Layered 已接入 swiglu/situglu，其余扩展激活仍保持拦截。
-    OP_TILING_CHECK(
-        topoType == TOPO_TYPE_URMA && !isSwiGlu && !isSituGlu,
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "activation", activationPtr, "'swiglu' or 'situglu' for URMA topology"),
-        return ge::GRAPH_FAILED);
 
     // 前置类型校验已将其余分支收敛为 situglu。
     if (isSwiGlu || isSwiGluStep) {
@@ -2507,7 +2501,7 @@ static ge::graphStatus CheckAndSetIndependentAttrs(const gert::TilingContext *co
                     OP_LOGE(nodeName, "communication algorithm is invalid."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckAndSetQuantModeAttrs(context, config, tilingData, nodeName) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "quantization mode attributes are invalid."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(CheckActivationParams(context, config, tilingData->topoType, nodeName) != ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(CheckActivationParams(context, config, nodeName) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "activation parameters are invalid."), return ge::GRAPH_FAILED);
     SetActivationAttrParams(context, config, tilingData);
     OP_TILING_CHECK(CheckAndSetTopkWeightsTypeAttr(context, config, tilingData, nodeName) != ge::GRAPH_SUCCESS,

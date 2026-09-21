@@ -348,11 +348,12 @@ static void RunUrmaTilingCase(int64_t xBs, int64_t topkIdsBs, int64_t topkWeight
     const uint64_t expectedTilingKey = expectedStatus == ge::GRAPH_SUCCESS ? 42607652UL : 0UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, expectedStatus, expectedTilingKey);
 
-    if (expectedStatus != ge::GRAPH_SUCCESS || activation != "situglu") {
+    const bool shouldCheckActivationTilingData =
+        activation == "situglu" || activation == "swiglustep" || activation == "swigluoai";
+    if (expectedStatus != ge::GRAPH_SUCCESS || !shouldCheckActivationTilingData) {
         return;
     }
 
-    ASSERT_TRUE(activationParams.size() == 1U || activationParams.size() == 2U);
     Mc2Hcom::MC2HcomTopologyMocker::GetInstance().SetValues(hcomTopologyMockValues);
     TilingInfo tilingInfo;
     const bool tilingSucceeded = ExecuteTiling(tilingContextPara, tilingInfo);
@@ -362,12 +363,29 @@ static void RunUrmaTilingCase(int64_t xBs, int64_t topkIdsBs, int64_t topkWeight
     ASSERT_GE(tilingInfo.tilingDataSize, sizeof(MegaMoeTilingData));
     MegaMoeTilingData tilingData{};
     std::memcpy(&tilingData, tilingInfo.tilingData.get(), sizeof(tilingData));
-    EXPECT_EQ(tilingData.actMode, static_cast<uint8_t>(MegaMoeImpl::MegaMoeActMode::SITU));
-    EXPECT_EQ(tilingData.actSubMode,
-              static_cast<uint8_t>(activationParams.size() == 2U ? MegaMoeImpl::MegaMoeActSubMode::LINEAR :
-                                                                   MegaMoeImpl::MegaMoeActSubMode::DEFAULT));
-    EXPECT_FLOAT_EQ(tilingData.activationAlpha, activationParams.size() == 2U ? activationParams[1] : 0.0f);
-    EXPECT_FLOAT_EQ(tilingData.activationBeta, activationParams[0]);
+    if (activation == "swiglustep") {
+        EXPECT_EQ(tilingData.actMode, static_cast<uint8_t>(MegaMoeImpl::MegaMoeActMode::SWIGLU_STEP));
+        EXPECT_EQ(tilingData.actSubMode, static_cast<uint8_t>(MegaMoeImpl::MegaMoeActSubMode::DEFAULT));
+        EXPECT_FLOAT_EQ(tilingData.clampLimit, std::numeric_limits<float>::max());
+        EXPECT_FLOAT_EQ(tilingData.activationAlpha, 1.0f);
+        EXPECT_FLOAT_EQ(tilingData.activationBeta, 1.0f);
+    } else if (activation == "swigluoai") {
+        ASSERT_TRUE(activationParams.empty() || activationParams.size() == 3U);
+        EXPECT_EQ(tilingData.actMode, static_cast<uint8_t>(MegaMoeImpl::MegaMoeActMode::SWIGLU_OAI));
+        EXPECT_EQ(tilingData.actSubMode, static_cast<uint8_t>(MegaMoeImpl::MegaMoeActSubMode::DEFAULT));
+        EXPECT_FLOAT_EQ(tilingData.clampLimit,
+                        activationParams.empty() ? std::numeric_limits<float>::max() : activationParams[0]);
+        EXPECT_FLOAT_EQ(tilingData.activationAlpha, activationParams.empty() ? 1.702f : activationParams[1]);
+        EXPECT_FLOAT_EQ(tilingData.activationBeta, activationParams.empty() ? 1.0f : activationParams[2]);
+    } else {
+        ASSERT_TRUE(activationParams.size() == 1U || activationParams.size() == 2U);
+        EXPECT_EQ(tilingData.actMode, static_cast<uint8_t>(MegaMoeImpl::MegaMoeActMode::SITU));
+        EXPECT_EQ(tilingData.actSubMode,
+                  static_cast<uint8_t>(activationParams.size() == 2U ? MegaMoeImpl::MegaMoeActSubMode::LINEAR :
+                                                                       MegaMoeImpl::MegaMoeActSubMode::DEFAULT));
+        EXPECT_FLOAT_EQ(tilingData.activationAlpha, activationParams.size() == 2U ? activationParams[1] : 0.0f);
+        EXPECT_FLOAT_EQ(tilingData.activationBeta, activationParams[0]);
+    }
 }
 
 static void RunUrmaVariableBsInputShapeCase(int64_t xBs, int64_t topkIdsBs, int64_t topkWeightsBs,
@@ -442,7 +460,17 @@ TEST_F(MegaMoeArch35TilingTest, H4096_BS128_N8448_SwiGlu_URMA_2Servers)
 
 TEST_F(MegaMoeArch35TilingTest, H4096_BS128_N2048_SwiGluStep_URMA_2Servers)
 {
-    RunUrmaActivationCase(2048, "swiglustep", {}, ge::GRAPH_FAILED);
+    RunUrmaActivationCase(2048, "swiglustep", {}, ge::GRAPH_SUCCESS);
+}
+
+TEST_F(MegaMoeArch35TilingTest, H4096_BS128_N2048_SwiGluOai_Default_URMA_2Servers)
+{
+    RunUrmaActivationCase(2048, "swigluoai", {}, ge::GRAPH_SUCCESS);
+}
+
+TEST_F(MegaMoeArch35TilingTest, H4096_BS128_N2048_SwiGluOai_ExplicitParams_URMA_2Servers)
+{
+    RunUrmaActivationCase(2048, "swigluoai", {16.0f, 1.5f, -0.25f}, ge::GRAPH_SUCCESS);
 }
 
 TEST_F(MegaMoeArch35TilingTest, H4096_BS128_N2048_SITU_MissingBeta_URMA_2Servers)
