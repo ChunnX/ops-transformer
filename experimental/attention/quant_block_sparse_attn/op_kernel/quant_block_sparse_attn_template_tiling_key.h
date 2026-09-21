@@ -26,7 +26,6 @@
 #define QBSA_LAYOUT_NTD 5 // == QBSALayout::NTD
 
 #define QBSA_KV_LAYOUT_CONTIGUOUS 0
-#define QBSA_KV_LAYOUT_PA_ND 1
 #define QBSA_KV_LAYOUT_PA_BNSD 3 // == QBSALayout::PA_BNBD
 
 #define QBSA_MASK_NONE 0
