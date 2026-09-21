@@ -127,10 +127,10 @@ __aicore__ inline void FlashAttentionScoreKernelInferRegbaseV2<CubeBlockType, Ve
     RunInfo<isInfer> runInfo[4];
     RunParamStr<isInfer> runParam;
 
-    SetFlag<HardEvent::V_FIX>(cvSync.syncC1V1VFix[0]);
-    SetFlag<HardEvent::V_FIX>(cvSync.syncC1V1VFix[1]);
-    SetFlag<HardEvent::V_FIX>(cvSync.syncC2V2VFix[0]);
-    SetFlag<HardEvent::V_FIX>(cvSync.syncC2V2VFix[1]);
+    SetFlag<HardEvent::V_FIX>(this->cvSync.syncC1V1VFix[0]);
+    SetFlag<HardEvent::V_FIX>(this->cvSync.syncC1V1VFix[1]);
+    SetFlag<HardEvent::V_FIX>(this->cvSync.syncC2V2VFix[0]);
+    SetFlag<HardEvent::V_FIX>(this->cvSync.syncC2V2VFix[1]);
 
     if constexpr (isFd) {
         runParam.boIdx = this->aicIdx / (this->constInfo.n2Size * this->constInfo.splitKVNum);
