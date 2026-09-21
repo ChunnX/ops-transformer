@@ -358,6 +358,12 @@ private:
 
     __aicore__ inline void EncodeLayerExperts(const LocalTensor<int32_t> &buf, int64_t count, int32_t offset)
     {
+        // 示例：每层 4 个专家时，layer=0/id=2 与 layer=1/id=2 编为 2 与 6，
+        // 排序和 group_list 才不会把不同层的同号专家合并。原始 flat 位置仍保留，
+        // gather 可按原 (session, token, k) 取数据，不需要解码全局专家号。
+        // 校验必须先于加偏移：负 id 按 uint32 看是大数，sentinel 也是大数，二者
+        // 都被 ids<limit 排除；否则 INT32_MAX+offset 会溢出并可能伪装成合法 key。
+        // 非法 layer 将 limit 置 0，使整行都变成 sentinel；layer_id 本身不回写。
         // Transform only the private sort key, never the original gather position.
         // Unsigned comparison rejects negative IDs, >=1000000 masks and padding
         // before addition. INT32_MAX must not be added to a layer offset.

@@ -27,6 +27,8 @@ except ImportError:
 
 _FIRST_MX_TOKEN_DTYPE = 3
 _FP4_TOKEN_DTYPE = 5
+# 顺序是跨层 ABI，而非用于美化输出的标签：它同时对应 Torch tuple、GE 原型、
+# ACLNN 入参和 kernel GM_ADDR。增加/重排字段时必须在所有层一起更新。
 _OUTPUT_NAMES = (
     "y",
     "group_list",
@@ -87,6 +89,9 @@ if _TORCHAIR_AVAILABLE:
                 "containing sync_flag, including when sync_flag=False. " + error
             )
 
+        # GE 路径构造 FfnWorkerBatching 图节点，不经过 eager 的 C++ 分配和 V2 wrapper。
+        # 所以必须在这里显式保留新增属性；仅升级 ACLNN V2 不会自动更新 GE 节点契约。
+        # 静态容量由 max_out_shape 提供，实际就绪数仍由 kernel 决定，不在转换阶段求值。
         return ge_op(
             op_type="FfnWorkerBatching",
             inputs={"schedule_context": schedule_context},

@@ -25,6 +25,9 @@ _FP4_ELEMENTS_PER_BYTE = 2
 _FIRST_MX_TOKEN_DTYPE = 3
 _MX_BLOCK_SIZE = 32
 _FP4 = 5
+# 属性值是算子协议中的 token 格式编号，不是 torch.dtype 的枚举值。
+# schedule_context 自身固定为 int8，因此不能用它的 dtype 推导实际 token 格式。
+# 此顺序必须同时对应 C++ TokenKind、OpDef 六列签名以及 InferDataType 的映射。
 _TOKEN_DTYPE_NAMES = (
     "float16",
     "bfloat16",
@@ -123,6 +126,9 @@ def _output_specs(
     token_dtype: int,
     mx_output_uint8: bool = False,
 ) -> List[Tuple[Tuple[int, ...], torch.dtype]]:
+    # Meta 与实际 C++ 分配共享同一语义，但不读取 context 内的设备指针或 out_num。
+    # 编译时只能知道容量 Y；本轮有多少有效行必须在运行时读取 actual_token_num。
+    # 将容量改成“当前有效数”会使图捕获依赖某次调度状态，并隐式引入设备同步。
     a, bs, k, h = max_out_shape
     y = a * bs * k
     dtype = getattr(torch, _TOKEN_DTYPE_NAMES[token_dtype])
@@ -130,6 +136,9 @@ def _output_specs(
         torch.float8_e8m0fnu if token_dtype >= _FIRST_MX_TOKEN_DTYPE else torch.float32
     )
     if mx_output_uint8 and token_dtype >= _FIRST_MX_TOKEN_DTYPE:
+        # 这里模拟 C++ 返回端的 view(uint8)，不是 to(uint8) 数值转换。
+        # E8M0 的指数编码和 FP4 的两个 nibble 必须原样保留；FP8 y 本身仍用原生 dtype。
+        # 不能因视图开关改动 ACLNN 内部的逻辑 dtype，否则会选择错误的输出描述。
         scale_dtype = torch.uint8
         if token_dtype == _FP4:
             dtype = torch.uint8
@@ -156,6 +165,9 @@ class _FfnWorkerBatchingOpBuilder(OpBuilder):
         return ["csrc/ffn/ffn_worker_batching.cpp"]
 
     def schema(self) -> str:
+        # 调度副作用不能被图优化当成纯函数消除或重排。a! 告知 dispatcher context
+        # 会被更新，但隐藏在其字节内容中的二级指针并不是 Torch 可追踪的 tensor alias。
+        # 因此 schema 不能代替调用方维护 payload 的生命周期和生产者/消费者流依赖。
         # RECV updates polling_index and descriptors. Mark the context mutable
         # even though the eight returned tensors are newly allocated.
         return (
@@ -165,6 +177,8 @@ class _FfnWorkerBatchingOpBuilder(OpBuilder):
         )
 
     def register_meta(self) -> None:
+        # Meta 只描述八个输出的容量、类型与特殊 stride；不会轮询 ready，也不会推进
+        # polling_index。FakeTensor 执行时 context 没有真实存储，禁止在此解析其内容。
         @impl(get_as_library(), self.name, "Meta")
         def ffn_worker_batching_meta(
             schedule_context,

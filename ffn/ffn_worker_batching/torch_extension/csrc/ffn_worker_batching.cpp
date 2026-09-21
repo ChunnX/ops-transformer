@@ -24,6 +24,8 @@ constexpr int64_t MAX_K = 64;
 constexpr int64_t MX_BLOCK_SIZE = 32;
 constexpr int64_t FP4_ELEMENTS_PER_BYTE = 2;
 enum TokenKind : int64_t {
+    // 与 Python token_dtype 属性和 GE/OpDef 的六种签名按位置对应。
+    // 这里描述源 token 的已有格式；算子只重排记录，不根据此枚举重新量化输入。
     FP16,
     BF16,
     INT8,
@@ -74,9 +76,14 @@ Outputs ffn_worker_batching(const at::Tensor &schedule_context, int64_t expert_n
                                               at::ScalarType::Float8_e5m2,
                                               at::ScalarType::Float8_e4m3fn,
                                               at::ScalarType::Float4_e2m1fn_x2};
+        // 输出按最大容量分配，不能在 host 读取 context.out_num/ready 来缩小：
+        // 那会等待设备、破坏图捕获，而且随后生产者仍可能改变本轮可消费集合。
+        // kernel 最终只定义 actual_token_num 指出的前缀，尾部无需初始化或对外使用。
         const int64_t y_rows = a * bs * k;
         const bool mx = token_dtype >= FP8_E5M2;
         const int64_t y_cols = token_dtype == FP4_E2M1 ? h / FP4_ELEMENTS_PER_BYTE : h;
+        // 以逻辑 H 分组：FP4 也是每 32 个四位元素一组，不是每 32 个存储字节一组。
+        // 使用商+非零余数实现 ceil，避免 (h+31)/32 在属性上界附近发生加法溢出。
         const int64_t scales = h / MX_BLOCK_SIZE + (h % MX_BLOCK_SIZE != 0);
         auto options = schedule_context.options();
         // Native FP4 x2 counts packed bytes. The common converter expands the
@@ -95,6 +102,8 @@ Outputs ffn_worker_batching(const at::Tensor &schedule_context, int64_t expert_n
         auto token_ids = at::empty({y_rows}, options.dtype(at::kInt));
         auto expert_offsets = at::empty({y_rows}, options.dtype(at::kInt));
         auto scale_shape = mx ? std::vector<int64_t>{y_rows, scales} : std::vector<int64_t>{y_rows};
+        // MX scale 是 E8M0 位模式，不是 float32 缩放值；INT8 是每 token 一个 FP32。
+        // FP16/BF16 仍返回兼容接口的 FP32 scale 张量，但 kernel 不定义其中的数据。
         auto dynamic_scale = at::empty(scale_shape, options.dtype(mx ? at::ScalarType::Float8_e8m0fnu : at::kFloat));
         auto actual_token_num = at::empty({1}, options.dtype(at::kLong));
         // V2 exposes sync_flag; the legacy ACLNN symbol retains its original argument layout.

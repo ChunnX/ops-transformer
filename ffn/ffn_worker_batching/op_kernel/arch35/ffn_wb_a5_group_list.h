@@ -223,6 +223,11 @@ private:
     // 出首尾两张掩码并压缩成等长的三列,返回本块内完整游程数。
     __aicore__ inline int64_t BuildAndCompact(A5RunLanes &ln, int64_t len, uint64_t &startNum, uint64_t &endNum)
     {
+        // 这里统计的是排序 key 的游程；异步跨层编码已在 prepare 完成，因此层内同号
+        // 专家不会误合并。cmpLen 是指令读取范围，len 才是业务有效范围：前者必须全
+        // 初始化，后者用于 GatherMask 压缩，二者不能为了省填充而混用。
+        // group_list 的一行是 [全局 expert_id, 本专家 token 数]，不是每个专家固定占
+        // 一行的直方图；零 token 专家被跳过，尾部清零由写出阶段负责。
         const int64_t cmpLen = Ceil(len, ONE_REPEAT_COMPARE_NUM) * ONE_REPEAT_COMPARE_NUM;
         // CompareScalar 会按 cmpLen（64 的整数倍）读取 diffF。因此 Sub/Cast 也必须覆盖 cmpLen，
         // 不能只处理 len：最后一块的 [len, cmpLen) 已由 LoadChunk 写为 SENTINEL_ID，

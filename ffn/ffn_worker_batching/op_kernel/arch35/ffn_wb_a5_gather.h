@@ -59,10 +59,16 @@ public:
         int64_t useCore = GetFlatAivNum() - usedCoreNum;
 
         // 搬运单位统一为字节；FP4 的两个逻辑元素共用一个字节。
+        // 原实现以 H 个元素 * sizeof(dtype) 切块，4-bit 类型没有整数 sizeof 可用，
+        // 因而把切块长度、队列容量、GM 偏移统一改成 byte。FP16/BF16 为 2H，
+        // INT8/FP8 为 H，FP4 为 H/2；不能只修改输出 dtype 而保留原来的寻址公式。
         tokenRowBytes_ = contextInfo_->tokenDtype <= 1 ?
                              contextInfo_->H * sizeof(half) :
                              (contextInfo_->tokenDtype == 5 ? contextInfo_->H / NUM_TWO : contextInfo_->H);
 
+        // 此处 32 的业务含义是“每组逻辑元素数”，恰与 BLOCK_BYTES=32 相等。
+        // E8M0 每组仅一个字节，尾组也占一个字节；它不是 INT8 的逐 token FP32 scale。
+        // 本算子只复制编码，不把 E8M0 解码成 float，也不把 FP4 nibble 拆成浮点数。
         scaleRowBytes_ = contextInfo_->tokenDtype >= 3 ? CeilDiv(contextInfo_->H, BLOCK_BYTES) : 0;
 
         // NORM 的路由表只消费 outNum 前缀；RECV 不读取这两张路由表。
@@ -244,6 +250,9 @@ public:
             outAllLocal.SetValue(PER_LOOP_ROWS * VAR_TOKEN_IDX + indicesIndex, bsIndices);
             outAllLocal.SetValue(PER_LOOP_ROWS * VAR_EXPERT_OFFSETS_IDX + indicesIndex, kIndices);
 
+            // gatherIdx 记录原始位置而非排序 key，所以跨层专家编码不参与 payload 寻址。
+            // NORM 先通过两张路由表恢复真实 (session,microbatch)，RECV 则直接使用
+            // session 下标和本轮已发布的 selectedMb；两条路径最后统一为同一个字节地址。
             const int64_t rowOffset = sessionIndices * strideSession + microbatchIndices * strideMicroBatch +
                                       bsIndices * strideBs + kIndices * strideK;
             for (int64_t hBlock = 0; hBlock < hBlocks_; hBlock++) {
@@ -256,6 +265,9 @@ public:
                 int64_t outputOffset = (indicesIndex + currentOuterStart) * tokenRowBytes_ + hStart;
                 CopyXOut(outputOffset, hSize);
             }
+            // 输入记录是 [全部 token bytes][全部 scale bytes][行尾 padding]，不是组间
+            // 交错布局。scale 起点必须使用完整 tokenRowBytes_，不能用最后一块 hSize。
+            // 输出 y 与 scale 分开紧凑存储，不复制输入 HS 中的 512B 对齐空隙。
             CopyMxScale(rowOffset + tokenRowBytes_, (indicesIndex + currentOuterStart) * scaleRowBytes_);
         }
     }
@@ -419,6 +431,9 @@ private:
     // E8M0 按字节搬运，复用 token 队列；超 UB 的 scale 行同样分块。
     __aicore__ inline void CopyMxScale(int64_t srcOffset, int64_t dstOffset)
     {
+        // scale 长度也可能超过单队列容量；与 token 共用字节搬运队列可避免为大 H
+        // 额外常驻一行 scale。每块依次 EnQue/DeQue/Free，保持 MTE2→MTE3 的队列
+        // 生命周期；scaleRowBytes_=0 的非 MX 路径直接零次循环，不访问无效输出地址。
         for (int64_t offset = 0; offset < scaleRowBytes_; offset += maxBlockSize_) {
             const int64_t remaining = scaleRowBytes_ - offset;
             const uint32_t count = static_cast<uint32_t>(remaining < maxBlockSize_ ? remaining : maxBlockSize_);

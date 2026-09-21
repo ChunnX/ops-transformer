@@ -13,5 +13,8 @@
 __all__ = ["ffn_worker_batching", "convert_ffn_worker_batching"]
 
 # Register the dispatcher schema before the converter decorator looks it up.
+# 导入顺序有依赖：前一模块的 builder 先建立 torch.ops 中的 schema，后一模块的
+# 注册装饰器才有可引用的 .default overload。TorchAir 是可选依赖，由转换模块内部
+# 捕获 ImportError；没有安装它也应能使用 eager/Meta，不能在包入口强制导入 TorchAir。
 from .ffn_worker_batching import ffn_worker_batching
 from .graph_convert_ffn_worker_batching import convert_ffn_worker_batching

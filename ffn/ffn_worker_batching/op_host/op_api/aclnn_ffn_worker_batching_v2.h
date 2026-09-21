@@ -21,6 +21,19 @@ extern "C" {
 /**
  * @brief 获取FfnWorkerBatching的workspace大小及执行器。
  * syncFlag为bool类型：false等待全部session，true消费ready快照；仅Ascend 950接收模式生效。
+ *
+ * scheduleContext虽然以const aclTensor*传入，const限定的是描述对象，不承诺设备载荷只读。
+ * RECV会推进其polling_index并清理所选描述符；调用方不能把同一调度上下文无序并发使用。
+ * 其中保存的token/descriptor设备指针必须保持有效，且ready发布前payload写入须可见。
+ * flag清零只表示描述符已被接收，并不表示gather已搬完token；槽位复用须遵守完整消费协议。
+ *
+ * maxOutShape=[A,BS,K,H]用于输出容量，实际有效行数由actualTokenNum返回；只消费有效前缀。
+ * tokenDtype=3/4/5表示已有MXFP8/MXFP4数据，dynamicScale使用E8M0，并不请求本算子量化。
+ * FP4的aclTensor形状以逻辑H计，而实际每行token载荷为H/2字节；不得用字节数替代逻辑维度。
+ * syncFlag=true且needSchedule=1时要求layerNum>0、expertNum能被layerNum整除，以构造跨层专家号。
+ *
+ * 此V2符号在layerNum后显式追加bool属性，旧V1符号保留原签名并固定同步接收语义。
+ * 两段调用之间须保持输入输出及workspace有效；GetWorkspaceSize不代表已消费ready数据。
  * @domain aclnn_ops_infer
  */
 ACLNN_API aclnnStatus aclnnFfnWorkerBatchingV2GetWorkspaceSize(

@@ -315,6 +315,12 @@ ge::graphStatus FfnWorkerBatchingTilingArch35::ParseOptionalAttrs(const gert::Ru
     }
 
     // 未提供时默认 false，兼容旧图的同步接收语义。
+    // 注意公开参数的历史命名：sync_flag=true 表示启用“异步部分接收”，不是等待全部。
+    // 开关只对 RECV 有意义；后续 kernel 还会与 isRecv 相与，避免 NORM 意外读取 flag。
+    // 属性追加在索引 5 而非插入已有属性中间，使旧属性的 tiling/GE 位置保持稳定。
+    // 此处模板参数必须与 OpDef.Bool、GE attr.Bool、JSON 的 bool 和 V2 的 C++ bool
+    // 一致。不能因为旧实现曾用 0/1，就改回 GetAttrPointer<int64_t>：它读取的是运行时
+    // 属性存储，并非执行一次数值类型转换，错误宽度会破坏属性解释。
     const bool *syncFlagPtr = attrs->GetAttrPointer<bool>(SYNC_FLAG_ATTR);
     if (syncFlagPtr != nullptr) {
         syncFlag_ = *syncFlagPtr;
@@ -425,6 +431,9 @@ ge::graphStatus FfnWorkerBatchingTilingArch35::DoOpTiling()
                 return ge::GRAPH_FAILED);
 
     tilingDataPtr_->syncFlag = syncFlag_;
+    // 仅异步 RECV 把 (layer_id, 层内 expert_id) 编成全局专家号。
+    // 同步和 NORM 保持原来的 expert_id 语义；即便调用者给了 layer_num，也不能在
+    // 这些路径无条件加层偏移，否则原有 group_list 的专家编号会发生静默变化。
     tilingDataPtr_->layerNum = (needSchedule_ == 1 && syncFlag_) ? layerNum_ : 0;
     SplitPrepare();
     SplitSortAndMerge();
@@ -452,6 +461,9 @@ void FfnWorkerBatchingTilingArch35::SplitPrepare()
     // 一行可能大于 UB。保留一次一行的调度粒度，但把 ID 缓冲限制为可用容量，
     // kernel 会在行内分块；不能再把“至少一行”解释为“整行必须驻留”。
     const int64_t idBudget = static_cast<int64_t>(ubSize_) - selectionBytes - prepRows * ONE_BLK_BYTES;
+    // 向下按 32B 取整保证行内中间块起点与下一次 DMA 的 UB 起点保持对齐。
+    // perLoopRows 是调度粒度，perLoopElements 才是物理驻留上限；二者刻意分开，
+    // 使 BS*K 超过 UB 时仍能分块处理，而不是靠 max(1, rows) 超额分配一整行。
     const int64_t idCapacity = idBudget / ONE_BLK_BYTES * ONE_BLK_BYTES / sizeof(int32_t);
     tilingDataPtr_->preparePerLoopElements = std::min<int64_t>(prepRows * bskAlign_, idCapacity);
 }
@@ -499,6 +511,9 @@ void FfnWorkerBatchingTilingArch35::SplitSortAndMerge()
     // 否则输入与输出两块相加恰好等于可用 UB，分配越界后输出会压到输入上（表现为归并结果头部被覆盖）。
     // 大 Y 的段数可能上万，计数不能全部放 UB。只缓存至多 128 个槽，按需换块；
     // 三个 InitBuffer 的额外 32B 也必须扣除，禁止容量不足时回退到完整 UB。
+    // 缓存的是原始排序段的有效长度，归并不修改这些计数，因此跨归并轮复用是安全的。
+    // 段数随 Y 增长，而 UB 不增长：必须限制缓存槽数，不能把 segNum 个计数全驻留。
+    // 每槽保留 32B 而不是 4B，是为了与各核独立写回的 GM 计数槽布局一致。
     tilingDataPtr_->mergeCountCacheSegments = std::min<int64_t>(sortSegNum_, Arch35Config::MERGE_COUNT_CACHE_SEGMENTS);
     const int64_t mergeOther = tilingDataPtr_->mergeCountCacheSegments * ONE_BLK_BYTES + MERGE_FIXED_BYTES;
     const int64_t mergeUb = ubAvail - mergeOther;

@@ -112,6 +112,11 @@ static graphStatus InferShape4FfnWorkerBatching(gert::InferShapeContext *context
     gert::Shape *actualTokenNum = context->GetOutputShape(ACTUAL_TOKEN_NUM_OUT);
     OP_CHECK_NULL_WITH_CONTEXT(context, actualTokenNum);
 
+    // GE/ACL 的 shape 以逻辑元素计数，即使 token_dtype=5，一个元素只有 4 bit，
+    // 这里仍必须保留 H，不能改成 H/2。H/2 是 Torch FP4-x2 张量的字节存储宽度，
+    // 由 Torch→aclTensor 的转换层处理；在此再除一次会使输出容量和 kernel 寻址相差一倍。
+    // Y 使用静态最大容量而非设备上的有效 token 数，避免 shape 推导读取调度状态、
+    // 引入流同步或让图编译依赖某一次运行的数据。有效前缀通过 actual_token_num 返回。
     *yShape = {Y, H};
     *groupList = {expertNum, 2};
     *sessionIds = {Y};
@@ -125,6 +130,9 @@ static graphStatus InferShape4FfnWorkerBatching(gert::InferShapeContext *context
         return ge::GRAPH_FAILED;
     }
     if (tokenDtype >= TOKEN_DTYPE_E5M2 && tokenDtype <= TOKEN_DTYPE_E2M1) {
+        // MX 的数据和 scale 成对搬运：每 32 个逻辑元素对应一个 E8M0 字节。
+        // FP4 的分组仍按逻辑 H 计算，不按打包后的 H/2 字节计算；尾组不足 32 个
+        // 元素也保留一个 scale。输出是紧凑二维布局，不包含输入记录的 512B padding。
         *dynamicScale = {Y, (H + MXFP_SCALE_GROUP - 1) / MXFP_SCALE_GROUP};
     } else {
         *dynamicScale = {Y};
@@ -136,6 +144,9 @@ static graphStatus InferShape4FfnWorkerBatching(gert::InferShapeContext *context
 
 static graphStatus InferDataType4FfnWorkerBatching(gert::InferDataTypeContext *context)
 {
+    // 唯一显式输入 schedule_context 是 INT8 字节容器，其 dtype 与 token 无关。
+    // token 的真实设备地址藏在容器内，所以输出 dtype 必须由 token_dtype 属性决定，
+    // 不能照抄输入 dtype。这里仅声明解释方式；gather 不做 FP16/BF16→MX 数值量化。
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
     const int64_t *tokenDtypePtr = attrs->GetAttrPointer<int64_t>(TOKEN_DTYPE_ATTR);

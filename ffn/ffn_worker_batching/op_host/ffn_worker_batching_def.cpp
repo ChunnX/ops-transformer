@@ -87,6 +87,11 @@ public:
         // every port as well, otherwise GE rejects the OPP during initialization
         // (dtype size 6 versus unknownshape_format size 3), even for FP16 graphs.
         OpAICoreConfig regbaseCfg;
+        // 下面各端口的 DataType 列表按位置组成六套完整签名，而不是各自独立任选：
+        // 列 0/1/2 分别为 FP16/BF16/INT8 + FP32 scale，列 3/4/5 分别为
+        // E5M2/E4M3FN/E2M1 + E8M0 scale。即使某端口始终是 INT32，也必须重复六次，
+        // 使它与 y、dynamic_scale 的对应列匹配，不能把重复项去重为单元素列表。
+        // 这些是注册允许的类型组合；实际输出类型仍由 token_dtype 的推导逻辑选择。
         // 新增低精度类型仅注册到 Ascend950，保留其它平台的三种类型签名。
         regbaseCfg.Input("schedule_context")
             .ParamType(REQUIRED)

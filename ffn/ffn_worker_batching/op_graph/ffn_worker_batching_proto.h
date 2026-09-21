@@ -55,6 +55,10 @@ namespace ge {
  */
 #ifndef OPS_PROTO_DEF_FFNWORKERBATCHING
 #define OPS_PROTO_DEF_FFNWORKERBATCHING
+// 图原型描述逻辑类型，不描述 Torch 为传输 FP4/E8M0 而使用的 uint8 view。
+// 因此这里声明 FP4/E8M0，不能为迁就某个图后端把 y/scale 改成 UINT8：那会使
+// GE 的 dtype 推导、二进制选择与 ACLNN 的逻辑元素大小不一致。uint8 视图仅存在
+// 于 Torch 返回端，GE converter 对尚未支持的视图组合显式拒绝。
 REG_OP(FfnWorkerBatching)
     .INPUT(schedule_context, TensorType({DT_INT8}))
     .OUTPUT(y, TensorType({DT_INT8, DT_FLOAT16, DT_BFLOAT16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT4_E2M1}))

@@ -1,5 +1,11 @@
 # FfnWorkerBatching
 
+## 需求与设计文档
+
+- [arch35 算子介绍与源码导读](docs/ARCH35_OPERATOR_GUIDE.md)：整体流程、完整字段说明、各阶段核心代码，以及 NORM、异步多层、MXFP4 应用示例。
+- [需求分析](docs/REQUIREMENTS.md)：四提交范围、接口与调度契约、功能需求、验收场景及验证证据。
+- [详细设计](docs/DESIGN.md)：关键代码、异步快照时序、跨层专家编号、MX 数据布局、资源预算与 Torch 接入。
+
 ## 产品支持情况
 
 | 产品 | 是否支持 |

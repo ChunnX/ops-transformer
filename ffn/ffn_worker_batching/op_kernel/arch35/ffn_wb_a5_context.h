@@ -26,7 +26,8 @@
  *   · proposal 对宽度由"fp32 键 + uint32 索引"两个类型宽度相加得到,不写 8;
  *   · fp32 下界由编译器内建 __FLT_MAX__ 取反得到,不写 -3.4e38;
  *   · 切分/workspace 段偏移一律由 host tiling 下发,kernel 不持有任何布局常量;
- *   · A/M/K 的上界由 host 侧 CheckInputParam 统一校验,kernel 不再重复声明限值。
+ *   · Host 校验的是 max_out_shape 属性；设备 context 的实际 A/M/BS/K/HS 来自调用方，
+ *     调用方仍须保证其合法、实际容量不超过属性上界，不能把属性校验等同于内容校验。
  */
 #ifndef OP_KERNEL_ARCH35_FFN_WB_A5_CONTEXT_H
 #define OP_KERNEL_ARCH35_FFN_WB_A5_CONTEXT_H
@@ -174,6 +175,10 @@ __aicore__ inline void ScheduleContextParse(GM_ADDR schedule_context, const Tili
     DataCopy(val, ctxGm, SCHEDULE_CONTEXT_BYTES);
     SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
 
+    // 以下是设备 context 的实际调度尺寸，不是 max_out_shape 的静态容量。
+    // Host 为避免读取设备状态，只按容量申请 workspace；本核据实际尺寸解释二级指针
+    // 所指数据。调用方必须保证 M/BS/K 非零、outNum<=A、实际尺寸不超容量、HS 足以容纳
+    // token+scale，并保持二级指针有效。这些内容约束不由 int8[1024] 的形状检查证明。
     ctx.A = val[FFN_WB_CTX_OFFSET(common.session_num)].template ReinterpretCast<uint32_t>().GetValue(0);
     ctx.M = val[FFN_WB_CTX_OFFSET(common.micro_batch_num)].template ReinterpretCast<uint32_t>().GetValue(0);
     ctx.BS = val[FFN_WB_CTX_OFFSET(common.micro_batch_size)].template ReinterpretCast<uint32_t>().GetValue(0);
@@ -187,6 +192,8 @@ __aicore__ inline void ScheduleContextParse(GM_ADDR schedule_context, const Tili
     // 属性值与执行路径共同决定开关，确保 NORM 即使传 sync_flag=true 也不进入 flag 轮询。
     ctx.asyncRecv = isRecv && tilingData->syncFlag;
     if (ctx.asyncRecv) {
+        // expertNum 表示所有层合计的专家数，层内跨度为 expertNum/layerNum。
+        // 只有该分支允许解释 descriptor.layer_id；默认 layerNum=0 的旧路径不会除零。
         // Host has validated nonzero layer count and exact divisibility.
         ctx.layerNum = static_cast<uint32_t>(tilingData->layerNum);
         ctx.expertsPerLayer = ctx.expertNum / ctx.layerNum;

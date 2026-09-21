@@ -234,6 +234,9 @@ int main()
     ret = aclrtMalloc(&tokenDataBuf, tokenDataSize, ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("malloc token data buf failed. ERROR: %d\n", ret); return ret);
     scheduleContext.ffn.token_data_buf = reinterpret_cast<uint64_t>(tokenDataBuf);
+    // int16_t在此承载FP16的原始16位存储；整数1表示位模式0x0001，不是浮点1.0。
+    // 所有token使用同一内容便于演示API搬运，但无法区分错行/重复行，因此下方
+    // y相等检查只是冒烟验证；检验gather寻址需要各行不同的数据及四路索引参考。
     std::vector<int16_t> hostTokenData(Y * H, 1);
     ret = aclrtMemcpy(tokenDataBuf, tokenDataSize, hostTokenData.data(), tokenDataSize, ACL_MEMCPY_HOST_TO_DEVICE);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("cpy token data buf failed. ERROR: %d\n", ret); return ret);
@@ -259,6 +262,8 @@ int main()
     scheduleContext.ffn.expert_ids_buf = reinterpret_cast<uint64_t>(expertIdsBuf);
     scheduleContext.ffn.expert_ids_buf_size = hostExpertIds.size() * sizeof(int32_t);
 
+    // NORM通过这两组数组间接选择源session/microbatch；这里都设为0，示例只读取
+    // 同一源session。它不覆盖session置换、非零microbatch或out_num小于A的场景。
     std::vector<int32_t> hostSessionIds(A, 0);
     std::vector<int32_t> hostMicroBatchIds(A, 0);
     std::vector<int32_t> hostLayerIds(A, 0);
@@ -342,6 +347,9 @@ int main()
     // 3. 调用CANN算子库API
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
+    // V2在layerNum之后显式增加sync_flag；本例传false且needSchedule=0，只演示
+    // 新符号的参数顺序及NORM兼容性，不会进入异步RECV。不能在V1的实参表中
+    // 直接插入bool调用旧符号，否则后续输出指针参数的ABI位置会整体错位。
     ret = aclnnFfnWorkerBatchingV2GetWorkspaceSize(scheduleContextRef, expertNum, maxOutShapeArray, tokenDtype,
                                                    needSchedule, layerNum, false, yRef, groupListRef, sessionIdsRef,
                                                    microBatchIdsRef, tokenIdsRef, expertOffsetsRef, dynamicScaleRef,
@@ -377,6 +385,9 @@ int main()
                   groupListHost[i * 2 + 1]);
     }
 
+    // 本输入没有mask，故有效前缀恰好等于容量Y；一般调用只能检查
+    // [0,actual_token_num)内的token/索引/scale，容量尾部没有初始化承诺。
+    // 专家按i%expertNum均匀分布且本例Y可整除专家数，才可用Y/expertNum作为期望。
     CHECK_RET(actualTokenNum == Y, LOG_PRINT("unexpected token count\n"); return 1);
     for (int64_t i = 0; i < expertNum; ++i) {
         CHECK_RET(groupListHost[i * 2] == i && groupListHost[i * 2 + 1] == Y / expertNum,
@@ -387,6 +398,8 @@ int main()
     ret = aclrtMemcpy(yHost.data(), tokenDataSize, yDeviceAddr, tokenDataSize, ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     CHECK_RET(yHost == hostTokenData, LOG_PRINT("unexpected token data\n"); return 1);
+    // PASS的范围限于以上三项。本示例未读回四个索引，也未验证RECV消费后的
+    // polling_index、flag/IDs清理和未选中描述符；不能替代异步协议状态测试。
     LOG_PRINT("PASS: token count, expert groups and token data\n");
 
     // 6. 释放aclTensor与aclIntArray

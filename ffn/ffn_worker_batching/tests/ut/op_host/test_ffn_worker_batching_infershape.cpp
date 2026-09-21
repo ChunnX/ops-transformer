@@ -132,6 +132,9 @@ TEST_F(FfnWorkerBatchingInfershapeTest, ffn_worker_batching_infershape_arch35_ma
 // 六组类型映射均验证，确保新增类型不会改变原有输出签名。
 TEST_F(FfnWorkerBatchingInfershapeTest, ffn_worker_batching_inferdtype_arch35)
 {
+    // schedule_context始终是INT8协议头，不能用其dtype推断token输出；token_dtype
+    // 才是y的类型来源。MX的scale是E8M0指数编码，不能继续沿用INT8模式的FP32。
+    // 直接调用注册的dtype推导，覆盖六种公开枚举和全部八个输出，不依赖kernel写内存。
     auto registry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     ASSERT_NE(registry, nullptr);
     auto impl = registry->GetOpImpl("FfnWorkerBatching");
@@ -169,6 +172,8 @@ TEST_F(FfnWorkerBatchingInfershapeTest, ffn_worker_batching_inferdtype_arch35)
 
 TEST_F(FfnWorkerBatchingInfershapeTest, ffn_worker_batching_mx_shape_3)
 {
+    // GE/ACL逻辑shape使用H个FP8元素；每32个逻辑元素一个scale，尾组也要占一个。
+    // 这里检查二维scale容量，不能将其误写成旧INT8模式的一行一个FP32 scale。
     gert::StorageShape schedule_context_shape = {{1024}, {1024}};
 
     gert::InfershapeContextPara infershapeContextPara(
@@ -198,6 +203,8 @@ TEST_F(FfnWorkerBatchingInfershapeTest, ffn_worker_batching_mx_shape_3)
 
 TEST_F(FfnWorkerBatchingInfershapeTest, ffn_worker_batching_mx_shape_4)
 {
+    // E4M3与E5M2仅编码不同，逻辑shape及按32元素分组的scale规则相同；单独列用例
+    // 是为避免新增一种dtype时只同步了类型分支，却遗漏对应shape分支。
     gert::StorageShape schedule_context_shape = {{1024}, {1024}};
 
     gert::InfershapeContextPara infershapeContextPara(
@@ -227,6 +234,9 @@ TEST_F(FfnWorkerBatchingInfershapeTest, ffn_worker_batching_mx_shape_4)
 
 TEST_F(FfnWorkerBatchingInfershapeTest, ffn_worker_batching_mx_shape_5)
 {
+    // GE的FP4 shape仍以逻辑元素计为[Y,H]；物理存储才是每字节两个值的Y*H/2字节。
+    // Torch Float4_e2m1fn_x2视图使用[Y,H/2]，不能把那个物理shape复制到本推导期望。
+    // scale按照逻辑H而不是H/2分组，因此同H的FP4和FP8拥有相同scale元素数。
     gert::StorageShape schedule_context_shape = {{1024}, {1024}};
 
     gert::InfershapeContextPara infershapeContextPara(
@@ -256,6 +266,8 @@ TEST_F(FfnWorkerBatchingInfershapeTest, ffn_worker_batching_mx_shape_5)
 
 TEST_F(FfnWorkerBatchingInfershapeTest, ffn_worker_batching_infershape_shape_product_overflow_fail)
 {
+    // 输出行数来自A*BS*K。必须在乘法发生前拒绝溢出；若先乘再比较上限，
+    // 有符号溢出已发生，回绕后的正数也可能被误认为合法shape。
     gert::StorageShape schedule_context_shape = {{1024}, {1024}};
     gert::InfershapeContextPara infershapeContextPara(
         "FfnWorkerBatching", {{schedule_context_shape, ge::DT_INT8, ge::FORMAT_ND}},

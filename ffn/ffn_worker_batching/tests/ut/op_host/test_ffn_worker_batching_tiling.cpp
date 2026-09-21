@@ -83,13 +83,16 @@ TEST_F(FfnWorkerBatchingTilingTest, ffn_worker_batching_tiling_test01)
 //   socVersion="Ascend910B"/"Ascend910_93" -> DAV_2201 -> IsRegbaseSocVersion()==false
 //   -> 走原 monolithic FfnWorkerBatchingTiling::RunFfnWorkerBatchingTiling（A2/A3，逐字不动）。
 //
-// arch35 TilingData 平铺 struct FfnWorkerBatchingArch35TilingData 与 A2 FfnWorkerBatchingTilingData 字段一一对应
-// （8×int64：Y H tokenDtype expertNum coreNum ubSize sortLoopMaxElement sortNumWorkSpace），A5 功能对齐 A2，
-// 故相同输入下 golden 值与 A2 一致 —— 本身即是「arch35 复算等价于 A2」的交叉校验。
+// arch35 使用独立的 FfnWorkerBatchingArch35TilingData，包含分段排序、归并、快照等字段，
+// 不能按旧 A2 的八个 int64 布局解读。下面按完整 struct 大小和具名字段检查 A5；
+// A2/A3 回归则继续检查自己的布局。两者业务目标相同，不意味着核数、UB预算或workspace相同。
+// 这些是 Host UT：不执行设备 kernel，不验证 ready 发布、描述符清理或 token 的搬运结果。
 // ---------------------------------------------------------------------------------------------------------------------
 
 namespace {
-// 构造 8 输出 desc（shape 仅供 faker 建 tensor，tiling 不读输出 shape，dtype 按 def 顺序）。
+// 构造八个输出的占位 desc。当前 tiling 从属性计算切分，不据此校验真实输出 dtype/shape；
+// 因此固定的 INT8 y 和 FP32 scale 仅满足 faker 建图，不能证明 MX 输出描述正确。
+// MX 的逻辑shape/dtype由独立 infershape UT验证，物理打包与实际写入还需上板测试。
 std::vector<gert::TilingContextPara::TensorDescription> MakeA5OutputDesc()
 {
     static gert::StorageShape y_shape = {{1152, 4096}, {1152, 4096}};
@@ -126,6 +129,8 @@ void CheckArch35(int64_t dtype, int64_t mode, int64_t a, int64_t bs, int64_t k, 
         &compileInfo, "Ascend950", 64, ub);
     TilingInfo info;
     ASSERT_TRUE(ExecuteTiling(para, info));
+    // 先检查 ABI 大小再按结构解释字节，防止新增字段后仍按旧布局读取“看似合理”的数值。
+    // 这只能验证同次构建中 Host 输出；部署时 Host/kernel 仍须使用配套构建产物。
     ASSERT_EQ(info.tilingDataSize, sizeof(FfnWorkerBatchingArch35TilingData));
     const auto &d = *reinterpret_cast<const FfnWorkerBatchingArch35TilingData *>(info.tilingData.get());
     EXPECT_EQ(info.tilingKey, 100 + mode);
@@ -409,6 +414,8 @@ TEST_F(FfnWorkerBatchingTilingTest, ffn_wb_tiling_arch35_need_schedule_out_of_ra
 
 TEST_F(FfnWorkerBatchingTilingTest, ffn_wb_tiling_arch35_mx_types)
 {
+    // dtype 与 NORM/RECV 形成正交组合：MX 不应占用新的 tiling key，字节数由kernel
+    // 按 tokenDtype 解释。此处只检查接受范围与下发字段，不验证 FP4 打包或 E8M0 内容。
     gert::StorageShape scShape = {{1024}, {1024}};
     FfnWorkerBatchingCompileInfo compileInfo = {};
     for (int64_t dtype = 3; dtype <= 5; ++dtype) {
@@ -454,6 +461,9 @@ TEST_F(FfnWorkerBatchingTilingTest, ffn_wb_tiling_mx_rejected_on_legacy_soc)
 // 对异步 RECV 再验证快照与 gather workspace 不重叠、按块对齐且总空间覆盖 A+1 个块。
 TEST_F(FfnWorkerBatchingTilingTest, ffn_wb_tiling_arch35_sync_flag)
 {
+    // 快照只对 RECV+true 分配有效载荷；布局按 int32 word 计，8 words=32B。
+    // A=4 时头块与四个 session flag 共5块，不可只预算4个紧密 int32。
+    // 检查 workspace 容量不能替代设备侧选中集合一致性和消费后状态验证。
     gert::StorageShape scShape = {{1024}, {1024}};
     FfnWorkerBatchingCompileInfo compileInfo = {};
     for (int64_t mode : {0, 1}) {
@@ -481,6 +491,9 @@ TEST_F(FfnWorkerBatchingTilingTest, ffn_wb_tiling_arch35_sync_flag)
 // 新字段为零时按旧实现的分配公式核算，可在修复前运行同一组测试记录失败。
 TEST_F(FfnWorkerBatchingTilingTest, arch35_review_ub_capacity_contract)
 {
+    // 按kernel实际同时驻留的buffer重新核算，避免只复制Host公式而共同漏算。
+    // 各phase之间会Reset，故分别约束峰值，不将所有phase容量相加；单phase内
+    // 额外32B对齐块和归并计数缓存必须计入。Extract还受255次repeat的API上限约束。
     for (const auto &shape :
          std::vector<std::vector<int64_t>>{{1, 1024, 64, 2}, {1024, 648, 64, 2}, {1024, 257, 64, 2}, {16, 128, 4, 2}}) {
         for (int64_t mode : {0, 1}) {
@@ -572,6 +585,9 @@ TEST_F(FfnWorkerBatchingTilingTest, arch35_adopt_minimum_ub)
 // Layer-derived expert IDs are exclusively an asynchronous RECV contract.
 TEST_F(FfnWorkerBatchingTilingTest, ffn_wb_tiling_arch35_async_layer_contract)
 {
+    // expertsPerLayer=expert_num/layer_num 仅在异步RECV使用；该路径必须非零且整除。
+    // NORM/同步RECV保留layer_num=0的历史默认，不能为了新分支改变旧调用合法性。
+    // 本用例验证属性前置条件；运行时descriptor.layer_id越界的mask行为不在此执行。
     gert::StorageShape shape = {{1024}, {1024}};
     FfnWorkerBatchingCompileInfo compileInfo = {};
     for (int64_t mode : {0, 1}) {

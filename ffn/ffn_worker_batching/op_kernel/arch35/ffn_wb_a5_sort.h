@@ -319,6 +319,10 @@ private:
 
     __aicore__ inline void LoadSegCounts(int64_t seg)
     {
+        // 缓存坐标使用“原始段号”，不使用当前归并路号：第 r 轮一路由 4^r 个
+        // 原始段组成，ListLength 必须累加这些段的真实长度，而非 slot 的 padding 长度。
+        // 原始计数在 phase1 结束后不再改变，所以缓存失效条件只有段号离开当前窗口，
+        // 不需要每轮清空。Host 以相同槽数扣除 UB，修改缓存上限须同时修改预算。
         if (seg >= cachedBegin_ && seg < cachedBegin_ + cachedCount_) {
             return;
         }
@@ -571,6 +575,9 @@ private:
         }
 
         LocalTensor<int32_t> idsLocal = idsBuf_.Get<int32_t>();
+        // proposal 的第二个 word 是 uint32 下标的原始 bit，不是 float 数值。
+        // 即使 pairLocal 的容器类型是 float，也不能把 payload 用浮点 Cast 取出来，
+        // 否则超过 2^24 的原始位置会丢位；这里只拆包，gather 再选择整数解码路径。
         LocalTensor<int32_t> idxLocal = idxBuf_.Get<int32_t>();
         LocalTensor<float> keysLocal = idsLocal.template ReinterpretCast<float>();
         LocalTensor<uint32_t> idxU32 = idxLocal.template ReinterpretCast<uint32_t>();

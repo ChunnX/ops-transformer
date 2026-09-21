@@ -109,6 +109,12 @@ __aicore__ inline void RunPrepare(GM_ADDR schedule_context, GM_ADDR flatIdsWs, G
                                   ScheduleContextInfo &ctx, const FfnWorkerBatchingTilingData *tilingData,
                                   int64_t activeElements, TPipe &pipe)
 {
+    // 异步一致性的三个边界，不能合并为一个尾部屏障：
+    // ① ContextParse 后同步：所有核保存相同的入口 cursor，0 核才能推进共享游标；
+    // ② Waiter 后同步：先写完 selectedMb/flags，再允许各核按同一快照读取 descriptor；
+    // ③ Prepare 后同步：各核 flatIds 全部可见，排序才能消费，不读取半完成的归一结果。
+    // 异步并不表示 kernel 无等待地返回：没有任何 ready 时仍持续扫描；它表示本轮
+    // 不必等齐所有 session。快照之后才到达的 session 留给后续调用，不能临时追加。
     // ---------------- phase0:expert_id 归一 ----------------
     if constexpr (isRecv) {
         // 轮询下标由本次调用推进(回写见 FfnWbA5RecvWait),而每个核是在 ScheduleContextParse 里
@@ -216,6 +222,10 @@ __aicore__ inline void FfnWorkerBatchingA5(GM_ADDR schedule_context, GM_ADDR y, 
     ScheduleContextParse<isRecv>(schedule_context, tilingData, ctx, &pipe);
     // max_out_shape 只决定容量；RECV 按实际 A，NORM 按 outNum 处理有效行。
     // 行跨度取实际 BS*K（RECV 含 padding），不能用静态 flat 除以实际 A。
+    // 例如 RECV 的 BS*K=9 时，每行补到 16 个 int32，第二个 session 的原始位置
+    // 从 16 而非 9 开始；sort payload 和 gather 解码必须使用同一个含 padding 的跨度。
+    // NORM 则使用连续的 outNum*BS*K 前缀，outNum=0 时仍走完计数/group_list 流程，
+    // 以产生确定的 actual_token_num=0 和空 group_list，而不读取尾部遗留的 expert ID。
     const int64_t rowElements = static_cast<int64_t>(ctx.BS) * ctx.K + (isRecv ? ctx.BsKPaddingCount : 0);
     const int64_t activeElements = rowElements * (isRecv ? ctx.A : ctx.outNum);
     pipe.Reset();

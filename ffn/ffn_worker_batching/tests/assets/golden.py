@@ -149,6 +149,11 @@ def _ensure_device(lib):
 
 
 def _hbm_alloc(size):
+    # context 中保存的是可供 kernel 二次解引用的设备绝对地址，不是 host 数组地址。
+    # 大块分配后按 512B 切分，既满足生产者的缓冲起点约束，又减少小对象 aclrtMalloc。
+    # _HBM_VIEWS 记录每个子分配的逻辑长度，而非整块容量；归档校验必须匹配这段
+    # payload 的大小，不能因为某地址落在已分配的大块内就允许读取任意长度。
+    # 分配保留到进程退出，避免 Python 临时数组析构后 context 中的设备地址失效。
     global _HBM_BASE, _HBM_OFFSET, _HBM_CAP
     lib = _load_acl()
     _ensure_device(lib)
@@ -221,6 +226,9 @@ def _context_buffer_offsets(need_schedule):
 
 def validate_live_context(header, need_schedule=0):
     """Reject a plain dump from another process before dereferencing its pointers."""
+    # 1024B 头本身不是完整输入：token/描述符/路由数组各自位于独立 HBM。
+    # 当前进程登记表只用于确认测试夹具拥有这批缓冲，不能验证全部生产者协议，
+    # 例如 flag 发布顺序、实际 A/BS/K 与静态容量的关系仍不由这里检查。
     header = np.asarray(header, dtype=np.int8).reshape(-1)
     if header.size < _SCHEDULE_CONTEXT_BYTES:
         raise ValueError("schedule_context needs at least 1024 bytes")
@@ -240,6 +248,10 @@ def save_context_archive(path, header, attributes):
     reading stale addresses from an ordinary input dump. Synchronize before D2H
     so the archive represents completed input preparation, not queued writes.
     """
+    # 必须复制头再将地址清零：不能修改仍将交给本次 kernel 的 live context。
+    # 属性也随包保存，因为相同字节在 FP4/FP8、NORM/RECV 下具有不同解释。
+    # 同步只保证已提交任务完成；归档不会自动恢复 RECV 消费前的 flag/IDs，
+    # 因此要重放初始输入，调用方必须在消费前保存，而不能归档已被清理的描述符。
     header = (
         np.asarray(header, dtype=np.int8).reshape(-1)[:_SCHEDULE_CONTEXT_BYTES].copy()
     )
@@ -272,6 +284,9 @@ def save_context_archive(path, header, attributes):
 
 def restore_context_archive(path, expected_attributes=None):
     """Allocate fresh HBM and relocate the header; never reuse saved addresses."""
+    # 文件只提供字节与元数据，旧进程虚拟地址不可继承。先检查所有 payload，
+    # 再逐段分配/复制并重定位头部指针，使新进程的 kernel 访问新设备内存。
+    # allow_pickle=False 使格式限于数组；这里验证格式不等于验证调度并发行为。
     with np.load(path, allow_pickle=False) as archive:
         if archive["version"].tolist() != [_CONTEXT_ARCHIVE_VERSION]:
             raise ValueError("unsupported FFN context archive version")
@@ -339,6 +354,9 @@ def _generate_test_data(
     testcase_name, A, M, BS, K, H, expertNum, tokenDtype, needSchedule
 ):
     rng = np.random.RandomState(_seed_from_name(testcase_name))
+    # 当前夹具使用满容量 NORM：out_num=A，并在下方使用顺序 session、microbatch=0。
+    # 因而本生成器尚不覆盖 out_num=0/<A、session 重排或 NORM 非零 microbatch；
+    # 不能把这些静态用例通过当作对应间接寻址/容量边界已经得到验证。
     out_num = A
     has_mask = "masked" in testcase_name
     single_expert = "single_expert" in testcase_name
@@ -508,6 +526,10 @@ def _get_cached_data(testcase_name, **gen_kwargs):
 
 
 def _sort_expert_ids(expert_ids_flat):
+    # 稳定排序保留同一专家内的原始 token 顺序。参考实现直接用整数排序，
+    # 不复制设备 proposal 的浮点 key/uint32 index 表示，从而可检查设备排序的
+    # 键与原始位置是否被混淆。当前普通路径输入由生成器保证非负；负 ID 的
+    # 过滤由异步层编码参考另行处理，此函数本身只实现上界 mask 判据。
     sort_key = np.where(
         expert_ids_flat < EXPERT_MASK_VALUE, expert_ids_flat, np.iinfo(np.int32).max
     ).astype(np.int64)
@@ -669,7 +691,8 @@ class AclnnFfnWorkerBatchingTestSpec:
             token_info[:, :, 0] = ready.astype(np.int32)
             data["ready"] = ready
             # 静态 ST 的入口 cursor 为 0，至少预置一个 ready；期望选中首个非空 micro batch。
-            # 完全无 ready 的等待/延迟发布不能用静态 CSV 表达，由状态脚本单独验证。
+            # 完全无 ready 的等待/延迟发布不能用静态 CSV 表达，需要独立状态测试。
+            # 当前仓库未随此夹具提供该状态测试源码，不能据此宣称已覆盖并发发布。
             # RECV 单次执行（run_time 已钉到 1），描述符消费后不复位。
             data["cur_micro_batch_id"] = next(m for m in range(M) if ready[:, m].any())
             ti_bytes = token_info.tobytes()
@@ -828,6 +851,9 @@ class AclnnFfnWorkerBatchingTestSpec:
             expert_ids_flat = ids.reshape(-1).astype(np.int32)
         else:
             expert_ids_flat = expert_ids.reshape(-1).astype(np.int32)
+        # CPU 参考不插入 RECV 的 32B 行 padding：只枚举业务 token，再以 BS*K
+        # 解码原位置。设备实现必须自行排除 padding，并用其物理行跨度解码，
+        # 两种路径最终的 session/token/expert-offset 应一致。
         sorted_order, valid_count, sorted_valid_ids = _sort_expert_ids(expert_ids_flat)
 
         y_out = np.zeros((Y, H), dtype=out_np_dtype)
@@ -904,6 +930,10 @@ class AclnnFfnWorkerBatchingTestSpec:
 
     @staticmethod
     def compare(*outputs, **kwargs):
+        # 本比较器的输入仅包含八个输出张量及其参考值，不读取消费后的 context
+        # 或二级 descriptor 缓冲。因此即使输出全对，也不证明 polling_index
+        # 推进正确、已选行 flag/IDs 已清理、未选行保持不变，或下次调用不会重复消费。
+        # 这些状态生命周期性质必须通过额外设备状态读回/多次调用测试确认。
         # 接口固定返回八个张量。先验证数量和元数据，不能通过截短到 min(size)
         # 来比较，否则空输出/缺行输出会因“没有发现不同元素”而被误判为通过。
         def failure(message):
@@ -975,7 +1005,8 @@ class TorchFfnWorkerBatchingTestSpec:
     """TTK eager/aclgraph NORM cases with real-device-address context buffers.
 
     RECV consumes descriptors and cannot safely use TTK's default repeated runs.
-    Its real-pointer publication/replay tests live in verify_torch_*.py.
+    Real-pointer publication/replay needs separate state tests; those scripts
+    are not included in the current repository test sources.
     """
 
     @staticmethod
@@ -1034,6 +1065,8 @@ class TorchFfnWorkerBatchingTestSpec:
         mx_output_uint8=False,
         **kwargs,
     ):
+        # 当前 Torch CSV 限于可重复执行的 NORM。下方错误消息保留历史脚本名，
+        # 但仓库没有随附 verify_torch_*.py；RECV 状态测试需另行提供入口。
         if need_schedule != 0:
             raise ValueError(
                 "TTK Torch cases require need_schedule=0; use verify_torch_*.py for RECV"
@@ -1092,6 +1125,8 @@ class TorchFfnWorkerBatchingTestSpec:
             *([None] * 8),
             **kwargs,
         )
+        # uint8 是图模式传输视图，不是量化/数值转换。E8M0 的指数位模式必须保留；
+        # FP4 Torch 最后一维计打包字节，每字节含两个逻辑值，view 不应再乘除 H。
         if mx_output_uint8 and token_dtype >= 3:
             outputs[6] = outputs[6].view(torch.uint8)
             if token_dtype == 5:

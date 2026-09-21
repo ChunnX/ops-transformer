@@ -78,6 +78,10 @@ __aicore__ inline void ScheduleContextInfoCompute(GM_ADDR schedule_context,
     contextInfo.sortLoopMaxElement = tilingData->sortLoopMaxElement;
     contextInfo.sortNumWorkSpace = tilingData->sortNumWorkSpace;
 
+    // 此处按生产 ABI 解释真实设备绝对地址。旧测试魔数触发的“context基址+偏移”
+    // 模式已移除：若生产数据的保留字节恰好等于测试魔数，会把合法指针错误地加基址。
+    // 测试应在各缓冲分配后回填真实地址；持久化用例也必须在重载时重新分配/重定位，
+    // 不能把上一次进程的指针数值直接交给本 kernel。A2/A3 的字段偏移本次未改变。
     // token_data_buf: offset = 272  // 400
     LocalTensor<uint64_t> localTokenDataBuf = valLocal[400].template ReinterpretCast<uint64_t>();
     uint64_t tokenDataBufValue = localTokenDataBuf.GetValue(0);
