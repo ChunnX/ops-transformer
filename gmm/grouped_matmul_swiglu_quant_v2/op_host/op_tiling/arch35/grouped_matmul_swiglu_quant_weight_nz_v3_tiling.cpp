@@ -1,7 +1,16 @@
-/*
+/**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- *
- * Ascend 950 MXFP8 weight-NZ tiling for GroupedMatmulSwigluQuantV3.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/*!
+ * \file grouped_matmul_swiglu_quant_weight_nz_v3_tiling.cpp
+ * \brief Ascend 950 MXFP8 weight-NZ tiling for GroupedMatmulSwigluQuantV3.
  */
 
 #include <algorithm>
@@ -45,7 +54,8 @@ bool IsDenseFormat(ge::Format format)
 
 void GroupedMatmulSwigluQuantV3Tiling950::Reset()
 {
-    tilingData_.SetDataPtr(context_->GetRawTilingData()->GetData());
+    auto *rawTilingData = context_ == nullptr ? nullptr : context_->GetRawTilingData();
+    tilingData_.SetDataPtr(rawTilingData == nullptr ? nullptr : rawTilingData->GetData());
     transposeWeight_ = false;
     swigluMode_ = SWIGLU_MODE;
     clampLimit_ = 7.0F;
@@ -101,7 +111,8 @@ bool GroupedMatmulSwigluQuantV3Tiling950::GetAttrInt(const gert::RuntimeAttrs *a
     return true;
 }
 
-bool GroupedMatmulSwigluQuantV3Tiling950::GetAttrBool(const gert::RuntimeAttrs *attrs, uint32_t index, bool &value) const
+bool GroupedMatmulSwigluQuantV3Tiling950::GetAttrBool(const gert::RuntimeAttrs *attrs, uint32_t index,
+                                                      bool &value) const
 {
     const bool *ptr = attrs == nullptr ? nullptr : attrs->GetAttrPointer<bool>(index);
     if (ptr == nullptr) {
@@ -185,10 +196,10 @@ bool GroupedMatmulSwigluQuantV3Tiling950::AnalyzeAttrs()
     OP_CHECK_IF(roundMode != DEFAULT_ROUND_MODE,
                 OP_LOGE(context_->GetNodeName(), "round_mode must be rint, but got %s", roundMode.c_str()),
                 return false);
-    OP_CHECK_IF(scaleAlg != SCALE_ALG_OCP && scaleAlg != SCALE_ALG_CUBLAS,
-                OP_LOGE(context_->GetNodeName(),
-                        "scale_alg must be 0 or 1 for the MXFP8 output path, but got %ld", scaleAlg),
-                return false);
+    OP_CHECK_IF(
+        scaleAlg != SCALE_ALG_OCP && scaleAlg != SCALE_ALG_CUBLAS,
+        OP_LOGE(context_->GetNodeName(), "scale_alg must be 0 or 1 for the MXFP8 output path, but got %ld", scaleAlg),
+        return false);
     OP_CHECK_IF(!std::isfinite(dstTypeMax) || dstTypeMax != DEFAULT_DST_TYPE_MAX,
                 OP_LOGE(context_->GetNodeName(), "dst_type_max must be 0.0 for the MXFP8 output path"), return false);
 
@@ -246,26 +257,28 @@ bool GroupedMatmulSwigluQuantV3Tiling950::AnalyzeDtype()
                 OP_LOGE(context_->GetNodeName(), "x_scale and weight_scale must be FLOAT8_E8M0"), return false);
     OP_CHECK_IF(groupListDesc->GetDataType() != ge::DT_INT64,
                 OP_LOGE(context_->GetNodeName(), "group_list must be INT64"), return false);
-    OP_CHECK_IF(inputParams_.outDataDtype != ge::DT_FLOAT8_E4M3FN ||
-                    inputParams_.outScaleDtype != ge::DT_FLOAT8_E8M0,
+    OP_CHECK_IF(inputParams_.outDataDtype != ge::DT_FLOAT8_E4M3FN || inputParams_.outScaleDtype != ge::DT_FLOAT8_E8M0,
                 OP_LOGE(context_->GetNodeName(), "V3 output must be FLOAT8_E4M3FN with FLOAT8_E8M0 scale"),
                 return false);
-    OP_CHECK_IF(inputParams_.aFormat != ge::FORMAT_ND || inputParams_.bFormat != ge::FORMAT_FRACTAL_NZ ||
-                    inputParams_.scaleFormat != ge::FORMAT_ND || inputParams_.cFormat != ge::FORMAT_ND ||
-                    static_cast<ge::Format>(ge::GetPrimaryFormat(groupListDesc->GetFormat().GetStorageFormat())) !=
-                        ge::FORMAT_ND ||
-                    !IsDenseFormat(static_cast<ge::Format>(ge::GetPrimaryFormat(xScaleDesc->GetFormat().GetStorageFormat()))) ||
-                    !IsDenseFormat(static_cast<ge::Format>(ge::GetPrimaryFormat(yScaleDesc->GetFormat().GetStorageFormat()))),
-                OP_LOGE(context_->GetNodeName(), "V3 requires x/scale/output ND and weight FRACTAL_NZ"), return false);
+    OP_CHECK_IF(
+        inputParams_.aFormat != ge::FORMAT_ND || inputParams_.bFormat != ge::FORMAT_FRACTAL_NZ ||
+            inputParams_.scaleFormat != ge::FORMAT_ND || inputParams_.cFormat != ge::FORMAT_ND ||
+            static_cast<ge::Format>(ge::GetPrimaryFormat(groupListDesc->GetFormat().GetStorageFormat())) !=
+                ge::FORMAT_ND ||
+            !IsDenseFormat(static_cast<ge::Format>(ge::GetPrimaryFormat(xScaleDesc->GetFormat().GetStorageFormat()))) ||
+            !IsDenseFormat(static_cast<ge::Format>(ge::GetPrimaryFormat(yScaleDesc->GetFormat().GetStorageFormat()))),
+        OP_LOGE(context_->GetNodeName(), "V3 requires x/scale/output ND and weight FRACTAL_NZ"), return false);
     return true;
 }
 
-bool GroupedMatmulSwigluQuantV3Tiling950::CheckShapeAndScale(
-    const gert::Shape &xShape, const gert::Shape &xScaleShape, const gert::Shape &weightShape,
-    const gert::Shape &weightStorageShape, const gert::Shape &weightScaleShape, const gert::Shape &groupListShape) const
+bool GroupedMatmulSwigluQuantV3Tiling950::CheckShapeAndScale(const gert::Shape &xShape, const gert::Shape &xScaleShape,
+                                                             const gert::Shape &weightShape,
+                                                             const gert::Shape &weightStorageShape,
+                                                             const gert::Shape &weightScaleShape,
+                                                             const gert::Shape &groupListShape) const
 {
-    OP_CHECK_IF(xShape.GetDimNum() != X_DIM_NUM,
-                OP_LOGE(context_->GetNodeName(), "x must be a 2D shape"), return false);
+    OP_CHECK_IF(xShape.GetDimNum() != X_DIM_NUM, OP_LOGE(context_->GetNodeName(), "x must be a 2D shape"),
+                return false);
     OP_CHECK_IF(groupListShape.GetDimNum() != GROUP_LIST_DIM_NUM,
                 OP_LOGE(context_->GetNodeName(), "group_list must be a 1D shape"), return false);
     OP_CHECK_IF(weightShape.GetDimNum() != WEIGHT_VIEW_DIM_NUM,
@@ -277,26 +290,24 @@ bool GroupedMatmulSwigluQuantV3Tiling950::CheckShapeAndScale(
     const int64_t n = transposeWeight_ ? weightShape.GetDim(1) : weightShape.GetDim(2);
     const int64_t weightK = transposeWeight_ ? weightShape.GetDim(2) : weightShape.GetDim(1);
     const int64_t kScale = (k + MX_GROUP_SIZE_V3 - 1) / MX_GROUP_SIZE_V3;
-    OP_CHECK_IF(m <= 0 || k <= 0,
-                OP_LOGE(context_->GetNodeName(), "x must be non-empty"), return false);
-    OP_CHECK_IF(e <= 0 || e > MAX_GROUP_NUM,
-                OP_LOGE(context_->GetNodeName(), "group_list length must be in [1, 1024]"), return false);
-    OP_CHECK_IF(weightShape.GetDim(0) != e || weightK != k || n <= 0 || n % 64 != 0 ||
-                    n % SWIGLU_SPLIT != 0,
+    OP_CHECK_IF(m <= 0 || k <= 0, OP_LOGE(context_->GetNodeName(), "x must be non-empty"), return false);
+    OP_CHECK_IF(e <= 0 || e > MAX_GROUP_NUM, OP_LOGE(context_->GetNodeName(), "group_list length must be in [1, 1024]"),
+                return false);
+    OP_CHECK_IF(weightShape.GetDim(0) != e || weightK != k || n <= 0 || n % 64 != 0 || n % SWIGLU_SPLIT != 0,
                 OP_LOGE(context_->GetNodeName(),
                         "weight view must be (E, K, N) or transposed (E, N, K), with N positive and 64 aligned"),
                 return false);
     // FRACTAL_NZ follows the V2 MXFP8 contract: non-transposed (E, K, N)
     // views use storage (E, ceil(N/32), ceil(K/16), 16, 32), while
     // transposed (E, N, K) views use (E, ceil(K/32), ceil(N/16), 16, 32).
-    const int64_t expectedStorageDim1 = transposeWeight_ ? (k + NZ_C0_SIZE - 1) / NZ_C0_SIZE
-                                                         : (n + NZ_C0_SIZE - 1) / NZ_C0_SIZE;
-    const int64_t expectedStorageDim2 = transposeWeight_ ? (n + NZ_K0_SIZE - 1) / NZ_K0_SIZE
-                                                         : (k + NZ_K0_SIZE - 1) / NZ_K0_SIZE;
+    const int64_t expectedStorageDim1 =
+        transposeWeight_ ? (k + NZ_C0_SIZE - 1) / NZ_C0_SIZE : (n + NZ_C0_SIZE - 1) / NZ_C0_SIZE;
+    const int64_t expectedStorageDim2 =
+        transposeWeight_ ? (n + NZ_K0_SIZE - 1) / NZ_K0_SIZE : (k + NZ_K0_SIZE - 1) / NZ_K0_SIZE;
     OP_CHECK_IF(weightStorageShape.GetDimNum() != WEIGHT_STORAGE_DIM_NUM || weightStorageShape.GetDim(0) != e ||
                     weightStorageShape.GetDim(1) != expectedStorageDim1 ||
-                    weightStorageShape.GetDim(2) != expectedStorageDim2 ||
-                    weightStorageShape.GetDim(3) != NZ_K0_SIZE || weightStorageShape.GetDim(4) != NZ_C0_SIZE,
+                    weightStorageShape.GetDim(2) != expectedStorageDim2 || weightStorageShape.GetDim(3) != NZ_K0_SIZE ||
+                    weightStorageShape.GetDim(4) != NZ_C0_SIZE,
                 OP_LOGE(context_->GetNodeName(),
                         "weight storage shape is not the expected FRACTAL_NZ shape for the transpose setting"),
                 return false);
@@ -308,8 +319,7 @@ bool GroupedMatmulSwigluQuantV3Tiling950::CheckShapeAndScale(
     const int64_t weightScaleN = transposeWeight_ ? weightScaleShape.GetDim(1) : weightScaleShape.GetDim(2);
     const int64_t weightScaleK = transposeWeight_ ? weightScaleShape.GetDim(2) : weightScaleShape.GetDim(1);
     OP_CHECK_IF(weightScaleShape.GetDimNum() != WEIGHT_SCALE_DIM_NUM || weightScaleShape.GetDim(0) != e ||
-                    weightScaleN != n || weightScaleK != kScale ||
-                    weightScaleShape.GetDim(3) != 2,
+                    weightScaleN != n || weightScaleK != kScale || weightScaleShape.GetDim(3) != 2,
                 OP_LOGE(context_->GetNodeName(),
                         "weight_scale must be (E, ceil(K/64), N, 2) or transposed (E, N, ceil(K/64), 2)"),
                 return false);
@@ -322,9 +332,9 @@ bool GroupedMatmulSwigluQuantV3Tiling950::CheckOutputShape() const
     auto weightStorage = context_->GetDynamicInputShape(WEIGHT_INDEX, 0);
     auto outputStorage = context_->GetOutputShape(Y_INDEX);
     auto outputScaleStorage = context_->GetOutputShape(Y_SCALE_INDEX);
-    OP_CHECK_IF(xStorage == nullptr || weightStorage == nullptr || outputStorage == nullptr ||
-                    outputScaleStorage == nullptr,
-                OP_LOGE(context_->GetNodeName(), "shape is nullptr"), return false);
+    OP_CHECK_IF(
+        xStorage == nullptr || weightStorage == nullptr || outputStorage == nullptr || outputScaleStorage == nullptr,
+        OP_LOGE(context_->GetNodeName(), "shape is nullptr"), return false);
     const auto &xShape = xStorage->GetOriginShape();
     const auto &weightShape = weightStorage->GetOriginShape();
     const auto &yShape = outputStorage->GetOriginShape();
@@ -351,12 +361,13 @@ bool GroupedMatmulSwigluQuantV3Tiling950::AnalyzeInputs()
     const auto *groupListStorage = context_->GetInputShape(GROUPLIST_INDEX);
     const auto *weightStorage = context_->GetDynamicInputShape(WEIGHT_INDEX, 0);
     const auto *weightScaleStorage = context_->GetDynamicInputShape(WEIGHT_SCALE_INDEX, 0);
-    OP_CHECK_IF(xStorage == nullptr || xScaleStorage == nullptr || groupListStorage == nullptr || weightStorage == nullptr ||
-                    weightScaleStorage == nullptr,
+    OP_CHECK_IF(xStorage == nullptr || xScaleStorage == nullptr || groupListStorage == nullptr ||
+                    weightStorage == nullptr || weightScaleStorage == nullptr,
                 OP_LOGE(context_->GetNodeName(), "required input shape is nullptr"), return false);
     OP_CHECK_IF(GetDynamicInputCount(context_, WEIGHT_INDEX) != SINGLE_TENSOR_COUNT ||
                     GetDynamicInputCount(context_, WEIGHT_SCALE_INDEX) != SINGLE_TENSOR_COUNT,
-                OP_LOGE(context_->GetNodeName(), "V3 only supports a single weight and weight_scale tensor"), return false);
+                OP_LOGE(context_->GetNodeName(), "V3 only supports a single weight and weight_scale tensor"),
+                return false);
 
     const auto &xShape = xStorage->GetOriginShape();
     const auto &xScaleShape = xScaleStorage->GetOriginShape();
@@ -381,13 +392,13 @@ bool GroupedMatmulSwigluQuantV3Tiling950::IsTensorApiCapable() const
     }
     const uint64_t averageM = inputParams_.mSize / inputParams_.groupNum;
     const bool capable = GroupedMatmulSwigluQuantTensorApiTiling::IsShapeAndPlatformCapable(
-        {inputParams_.mSize, inputParams_.nSize, inputParams_.kSize, inputParams_.groupNum,
-         aicoreParams_.aicNum, aivNum_, transposeWeight_, true});
+        {inputParams_.mSize, inputParams_.nSize, inputParams_.kSize, inputParams_.groupNum, aicoreParams_.aicNum,
+         aivNum_, transposeWeight_, true});
     OP_LOGD(context_->GetNodeName(),
             "V3 Tensor API capability: M=%lu, N=%lu, K=%lu, groups=%lu, averageM=%lu, "
             "transB=%d, cores=%lu:%lu, capable=%d",
-            inputParams_.mSize, inputParams_.nSize, inputParams_.kSize, inputParams_.groupNum,
-            averageM, transposeWeight_, aicoreParams_.aicNum, aivNum_, capable);
+            inputParams_.mSize, inputParams_.nSize, inputParams_.kSize, inputParams_.groupNum, averageM,
+            transposeWeight_, aicoreParams_.aicNum, aivNum_, capable);
     return capable;
 }
 
@@ -421,14 +432,13 @@ ge::graphStatus GroupedMatmulSwigluQuantV3Tiling950::DoLibApiTiling()
     if (useTensorApi_) {
         GroupedMatmulSwigluQuantTensorApiTiling::PrepareBasicBlockForL1(basicTiling_);
     } else {
-        basicTiling_.baseM = GroupedMatmul::CeilAlign(std::min(basicTiling_.baseM, static_cast<uint64_t>(128)),
-                                                      GmmConstant::CUBE_BLOCK);
-        basicTiling_.baseN = GroupedMatmul::CeilAlign(std::min(basicTiling_.baseN, static_cast<uint64_t>(256)),
-                                                      GmmConstant::CUBE_BLOCK);
+        basicTiling_.baseM =
+            GroupedMatmul::CeilAlign(std::min(basicTiling_.baseM, static_cast<uint64_t>(128)), GmmConstant::CUBE_BLOCK);
+        basicTiling_.baseN =
+            GroupedMatmul::CeilAlign(std::min(basicTiling_.baseN, static_cast<uint64_t>(256)), GmmConstant::CUBE_BLOCK);
     }
     OP_CHECK_IF(CalL1Tiling() != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed for V3 MXFP8 weight-NZ"),
-                return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed for V3 MXFP8 weight-NZ"), return ge::GRAPH_FAILED);
     if (useTensorApi_) {
         GroupedMatmulSwigluQuantTensorApiTiling::RestoreBasicBlockAfterL1(basicTiling_);
     }
@@ -462,16 +472,15 @@ ge::graphStatus GroupedMatmulSwigluQuantV3Tiling950::DoLibApiTiling()
     // The factors are bounded by CalL1Tiling's L1 budget. Matmul's K loop
     // handles the residual scale groups, so a K tail must not enlarge these
     // factors after the L1 depth and buffer sizes have been fixed.
-    mm.set_mxTypePara((SCALER_FACTOR_DEFAULT << SCALER_FACTOR_N_BIT) +
-                      (SCALER_FACTOR_DEFAULT << SCALER_FACTOR_M_BIT) +
+    mm.set_mxTypePara((SCALER_FACTOR_DEFAULT << SCALER_FACTOR_N_BIT) + (SCALER_FACTOR_DEFAULT << SCALER_FACTOR_M_BIT) +
                       (basicTiling_.scaleFactorB << SCALER_FACTOR_B_BIT) + basicTiling_.scaleFactorA);
     return ge::GRAPH_SUCCESS;
 }
 
 uint64_t GroupedMatmulSwigluQuantV3Tiling950::GetTilingKey() const
 {
-    const uint64_t kernelType = useTensorApi_ ? GMM_SWIGLU_QUANT_V3_TENSOR_LEVEL_KERNEL_TYPE :
-                                               GMM_SWIGLU_QUANT_V3_CGMCT_KERNEL_TYPE;
+    const uint64_t kernelType =
+        useTensorApi_ ? GMM_SWIGLU_QUANT_V3_TENSOR_LEVEL_KERNEL_TYPE : GMM_SWIGLU_QUANT_V3_CGMCT_KERNEL_TYPE;
     return GET_TPL_TILING_KEY(static_cast<uint64_t>(transposeWeight_), GMM_SWIGLU_QUANT_NO_TRANS, kernelType);
 }
 
@@ -485,12 +494,21 @@ ge::graphStatus GroupedMatmulSwigluQuantV3Tiling950::GetWorkspaceSize()
 
 ge::graphStatus GroupedMatmulSwigluQuantV3Tiling950::PostTiling()
 {
+    auto *rawTilingData = context_->GetRawTilingData();
+    OP_CHECK_IF(
+        rawTilingData == nullptr,
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->GetNodeName(), "tilingData", "does not support nullptr"),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(rawTilingData->GetData() == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->GetNodeName(), "tilingData.data",
+                                                         "does not support nullptr"),
+                return ge::GRAPH_FAILED);
     context_->SetBlockDim(aicoreParams_.aicNum);
     context_->SetScheduleMode(1);
     OP_CHECK_IF(tilingData_.GetDataSize() % sizeof(uint64_t) != 0,
                 OP_LOGE(context_->GetNodeName(), "V3 tiling data is not 8-byte aligned"), return ge::GRAPH_FAILED);
-    tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
-    context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
+    tilingData_.SaveToBuffer(rawTilingData->GetData(), rawTilingData->GetCapacity());
+    rawTilingData->SetDataSize(tilingData_.GetDataSize());
     return ge::GRAPH_SUCCESS;
 }
 
