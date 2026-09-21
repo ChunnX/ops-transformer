@@ -364,8 +364,7 @@ int RunCase(ge::Session &session, uint32_t graphId, const char *name, const Shap
     std::vector<ge::Operator> graphOutputs = {op};
     graph.SetInputs(graphInputs).SetOutputs(graphOutputs);
 
-    CHECK_RET(session.AddGraph(graphId, graph) == ge::GRAPH_SUCCESS,
-              LOG_PRINT("[%s] FAILED: session AddGraph\n", name);
+    CHECK_RET(session.AddGraph(graphId, graph) == ge::GRAPH_SUCCESS, LOG_PRINT("[%s] FAILED: session AddGraph\n", name);
               return -1);
 
     // --- feed the four inputs (order strictly matches the graph inputs)
@@ -373,10 +372,10 @@ int RunCase(ge::Session &session, uint32_t graphId, const char *name, const Shap
     std::vector<ge::Tensor> inputs;
     inputs.push_back(MakeGeTensor({sh.S, sh.H}, GeType(dt), in.x.data(), in.x.size()));
     inputs.push_back(MakeGeTensor({sh.B, sh.C, sh.H}, GeType(dt), in.y.data(), in.y.size()));
-    inputs.push_back(MakeGeTensor({sh.B, sh.S}, ge::DT_INT32, reinterpret_cast<const uint8_t *>(in.idx.data()),
-                                   idxBytes));
-    inputs.push_back(MakeGeTensor({sh.B, sh.S}, ge::DT_INT32, reinterpret_cast<const uint8_t *>(in.loc.data()),
-                                   idxBytes));
+    inputs.push_back(
+        MakeGeTensor({sh.B, sh.S}, ge::DT_INT32, reinterpret_cast<const uint8_t *>(in.idx.data()), idxBytes));
+    inputs.push_back(
+        MakeGeTensor({sh.B, sh.S}, ge::DT_INT32, reinterpret_cast<const uint8_t *>(in.loc.data()), idxBytes));
 
     std::vector<ge::Tensor> outputs;
     CHECK_RET(session.RunGraph(graphId, inputs, outputs) == ge::GRAPH_SUCCESS,
@@ -417,8 +416,8 @@ int RunCase(ge::Session &session, uint32_t graphId, const char *name, const Shap
         return -1;
     }
     LOG_PRINT("[%s] PASSED (S=%ld H=%ld B=%ld C=%ld taskNum=%ld, worst |diff| = %.6g)\n", name, static_cast<long>(sh.S),
-              static_cast<long>(sh.H), static_cast<long>(sh.B), static_cast<long>(sh.C),
-              static_cast<long>(taskNum), worst);
+              static_cast<long>(sh.H), static_cast<long>(sh.B), static_cast<long>(sh.C), static_cast<long>(taskNum),
+              worst);
     return 0;
 }
 
@@ -427,8 +426,7 @@ int RunCase(ge::Session &session, uint32_t graphId, const char *name, const Shap
 int main()
 {
     LOG_PRINT("Initialize ge using ge global options\n");
-    std::map<ge::AscendString, ge::AscendString> globalOptions = {{"ge.exec.deviceId", "0"},
-                                                                  {"ge.graphRunMode", "1"}};
+    std::map<ge::AscendString, ge::AscendString> globalOptions = {{"ge.exec.deviceId", "0"}, {"ge.graphRunMode", "1"}};
     CHECK_RET(ge::GEInitialize(globalOptions) == ge::GRAPH_SUCCESS, LOG_PRINT("GEInitialize failed\n"); return -1);
 
     int ret = 0;
@@ -441,23 +439,22 @@ int main()
         uint32_t graphId = 0;
 
         // float32 (tilingKey 1): rtol = atol = 1e-6 — the reduction is a compensated fp32 sum.
-        ret |= RunCase(session, graphId++, "fp32_TC01", {500, 64, 2, 500}, DType::FP32, 0x5A5A1234ULL, legal, 1e-6,
-                       1e-6);
+        ret |=
+            RunCase(session, graphId++, "fp32_TC01", {500, 64, 2, 500}, DType::FP32, 0x5A5A1234ULL, legal, 1e-6, 1e-6);
         ret |= RunCase(session, graphId++, "fp32_TC06_illegal", {353, 512, 3, 64}, DType::FP32, 0x12345678ULL,
                        allIllegal, 1e-6, 1e-6);
         ret |= RunCase(session, graphId++, "fp32_H1", {4, 1, 2, 3}, DType::FP32, 0x0F0F0F0FULL, legal, 1e-6, 1e-6);
-        ret |= RunCase(session, graphId++, "fp32_H0_zero", {4, 0, 2, 3}, DType::FP32, 0x2468ACE0ULL, legal, 1e-6,
-                       1e-6);
+        ret |= RunCase(session, graphId++, "fp32_H0_zero", {4, 0, 2, 3}, DType::FP32, 0x2468ACE0ULL, legal, 1e-6, 1e-6);
         // bfloat16 (tilingKey 0): rtol = atol = 1e-2.
         ret |= RunCase(session, graphId++, "bf16_TC03", {1024, 1024, 8, 256}, DType::BF16, 0x11112222ULL, legal, 1e-2,
                        1e-2);
-        ret |= RunCase(session, graphId++, "bf16_TC19_unaligned", {128, 513, 2, 64}, DType::BF16, 0x33334444ULL,
-                       legal, 1e-2, 1e-2);
+        ret |= RunCase(session, graphId++, "bf16_TC19_unaligned", {128, 513, 2, 64}, DType::BF16, 0x33334444ULL, legal,
+                       1e-2, 1e-2);
         // float16 (tilingKey 2): rtol = atol = 1e-3.
-        ret |= RunCase(session, graphId++, "fp16_unaligned", {96, 130, 3, 17}, DType::FP16, 0x55556666ULL, legal,
-                       1e-3, 1e-3);
-        ret |= RunCase(session, graphId++, "fp16_S0_empty", {0, 8, 2, 3}, DType::FP16, 0x77778888ULL, legal, 1e-3,
+        ret |= RunCase(session, graphId++, "fp16_unaligned", {96, 130, 3, 17}, DType::FP16, 0x55556666ULL, legal, 1e-3,
                        1e-3);
+        ret |=
+            RunCase(session, graphId++, "fp16_S0_empty", {0, 8, 2, 3}, DType::FP16, 0x77778888ULL, legal, 1e-3, 1e-3);
     }
 
     CHECK_RET(ge::GEFinalize() == ge::GRAPH_SUCCESS, LOG_PRINT("GEFinalize failed\n"); return -1);
