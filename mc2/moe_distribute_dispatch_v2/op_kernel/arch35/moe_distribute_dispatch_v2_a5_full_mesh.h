@@ -931,8 +931,8 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
 template <TemplateMC2A5FullMeshTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::BufferInit()
 {
-    uint32_t waitStatusBufSize = Ceil(rscvStatusNum_ * sizeof(float), SIZE_ALIGN_256) * SIZE_ALIGN_256;
-    tpipe_->InitBuffer(waitStatusBuf_, waitStatusBufSize); // 先存compact flag，后复用存compact count
+    uint32_t waitStatusBufSize = Ceil(rscvStatusNum_ * STATE_OFFSET, SIZE_ALIGN_256) * SIZE_ALIGN_256;
+    tpipe_->InitBuffer(waitStatusBuf_, waitStatusBufSize); // 先存compact flag，轮询完成后复用存完整status块
     uint64_t recStatusNumPerCoreSpace = Ceil(recStatusNumPerCore_ * sizeof(float), UB_ALIGN) * UB_ALIGN;
     uint64_t recvWinBlockNumSpace = epWorldSize_ * moeExpertNumPerRank_ * sizeof(float);
     uint64_t gatherMaskOutSize =
@@ -972,9 +972,8 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
 template <TemplateMC2A5FullMeshTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::WaitDispatchAndCalRecv()
 {
-    // 每核轮询getcum所需的全部状态位[0, endStatusIndex_)的flag，compact只搬flag字段
+    // 每核轮询getcum所需的全部状态位[0, endStatusIndex_)的flag，compact只搬flag字段（32B对齐基址）
     LocalTensor<float> statusSumOutTensor = scalarBuf_.GetWithOffset<float>(UB_ALIGN / sizeof(float), UB_ALIGN);
-    LocalTensor<float> prefixSumOutTensor = scalarBuf_.GetWithOffset<float>(UB_ALIGN / sizeof(float), 2 * UB_ALIGN);
     statusFp32Tensor_ = waitStatusBuf_.Get<float>();
     uint32_t endStatusIndex = endStatusIndex_;
     DataCopyExtParams flagCopyParams{static_cast<uint16_t>(endStatusIndex), sizeof(float), STATE_OFFSET - sizeof(float),
@@ -1006,31 +1005,26 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
         DataCopyPad(performanceInfoGMTensor_, performanceInfoTensor_, performanceInfoCopyParams);
         SetAtomicNone();
     }
-    // 复用同一个UB，compact搬入[0, endStatusIndex_)的count字段
+    // 轮询完成后补搬完整32B块（对齐基址、连续读），count取块内偏移1；
+    // 不能用非对齐基址windowInstatusFp32Tensor_[1]做compact搬count：A5 MTE会将GM基址按32B向下取整，
+    // 导致搬回flag位而非count，cumsum溢出后phase2按错误dstPosition野写GM（error 95）
     SyncFunc<AscendC::HardEvent::V_MTE2>();
-    DataCopyExtParams countCopyParams{static_cast<uint16_t>(endStatusIndex), sizeof(float),
-                                      STATE_OFFSET - sizeof(float), 0U, 0U};
-    DataCopyPadExtParams<float> countCopyPadParams{false, 0U, 0U, 0.0f};
-    DataCopyPad<float, PaddingMode::Compact>(statusFp32Tensor_, windowInstatusFp32Tensor_[1], countCopyParams,
-                                             countCopyPadParams);
+    DataCopyParams fullStatusCopyParams{static_cast<uint16_t>(endStatusIndex), 1, 0, 0};
+    DataCopy(statusFp32Tensor_, windowInstatusFp32Tensor_[0], fullStatusCopyParams);
     SyncFunc<AscendC::HardEvent::MTE2_V>();
     SyncFunc<AscendC::HardEvent::MTE2_S>();
-    // 一把加起来：前置分区count求和得到前缀
+    // 前置分区count求和得到前缀
+    LocalTensor<int32_t> statusBlocksTensor = statusFp32Tensor_.ReinterpretCast<int32_t>();
     uint32_t preSum = 0;
-    if (startStatusIndex_ > 0) {
-        uint32_t prefixSumInner = Ceil(startStatusIndex_ * sizeof(float), UB_ALIGN) * UB_ALIGN / sizeof(float);
-        SumParams prefixSumParams{1, prefixSumInner, startStatusIndex_};
-        Sum(prefixSumOutTensor, statusFp32Tensor_, prefixSumParams);
-        SyncFunc<AscendC::HardEvent::V_S>();
-        preSum = static_cast<uint32_t>(prefixSumOutTensor.ReinterpretCast<int32_t>().GetValue(0));
+    for (uint32_t idx = 0; idx < startStatusIndex_; ++idx) {
+        preSum += static_cast<uint32_t>(statusBlocksTensor.GetValue(idx * UB_ALIGN_DATA_COUNT + 1));
     }
     // 本分区inclusive cumsum并写sendCounts与workspace
-    LocalTensor<int32_t> countsTensor = statusFp32Tensor_.ReinterpretCast<int32_t>();
     LocalTensor<int32_t> outCountLocal = gatherMaskOutBuf_.Get<int32_t>();
     uint32_t curCnt = preSum;
     for (uint32_t index = startStatusIndex_; index < endStatusIndex_; ++index) {
         uint32_t i = index - startStatusIndex_;
-        uint32_t count = static_cast<uint32_t>(countsTensor.GetValue(index));
+        uint32_t count = static_cast<uint32_t>(statusBlocksTensor.GetValue(index * UB_ALIGN_DATA_COUNT + 1));
         curCnt += count;
         outCountLocal.SetValue(i, curCnt);
     }
@@ -1427,7 +1421,7 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     tpipe_->Reset();
     TBuf<> cumSumBuf, statusWaitBuf, statusCleanBuf;
     uint32_t rscvNumAlign = Ceil(rscvStatusNum_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
-    uint32_t clearFlagsSize = Ceil(recStatusNumPerCore_ * sizeof(float), SIZE_ALIGN_256) * SIZE_ALIGN_256;
+    uint32_t clearFlagsSize = recStatusNumPerCore_ * UB_ALIGN; // 整32B块清零回写所需空间
     uint32_t statusCleanBufSize = aivUsedCumSum_ * UB_ALIGN;
     if (clearFlagsSize > statusCleanBufSize) {
         statusCleanBufSize = clearFlagsSize;
@@ -1442,15 +1436,15 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     SplitToCore(rscvStatusNum_, aivNum_, startId_, endId_, sendNum_, true);
     // 软同步
     WaitCumSumFlag();
-    // 所有cumsum核已完成状态读取，此处清本分区flag，COUNT字段无需保留
+    // 所有cumsum核已完成状态读取，此处清本分区状态位；整32B块连续回写，
+    // 不用compact跨步写窗口（count字段一并清零无副作用：下一轮发送端整块写入count+flag）
     if (aivId_ >= aivUsedAllToAll_ && recStatusNumPerCore_ > 0) {
         SyncFunc<AscendC::HardEvent::MTE3_V>(); // WaitCumSumFlag末尾MTE3读取该buffer后才可写
-        Duplicate<float>(statusCleanFp32Tensor_, 0, recStatusNumPerCore_);
+        Duplicate<float>(statusCleanFp32Tensor_, 0, recStatusNumPerCore_ * UB_ALIGN_DATA_COUNT);
         SyncFunc<AscendC::HardEvent::V_MTE3>();
-        DataCopyExtParams clearFlagParams{static_cast<uint16_t>(recStatusNumPerCore_), sizeof(float), 0U,
-                                          STATE_OFFSET - sizeof(float), 0U};
-        DataCopyPad<float, PaddingMode::Compact>(windowInstatusFp32Tensor_[startStatusIndex_ * FLAG_OFFSET],
-                                                 statusCleanFp32Tensor_, clearFlagParams);
+        DataCopyParams clearStatusParams{static_cast<uint16_t>(recStatusNumPerCore_), 1, 0, 0};
+        DataCopy(windowInstatusFp32Tensor_[startStatusIndex_ * STATE_OFFSET / sizeof(float)], statusCleanFp32Tensor_,
+                 clearStatusParams);
         SyncFunc<AscendC::HardEvent::MTE3_S>();
     }
     if (sendNum_ == 0) {
