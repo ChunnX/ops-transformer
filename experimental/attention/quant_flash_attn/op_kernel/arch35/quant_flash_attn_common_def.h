@@ -1,196 +1,185 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co.,
-    Ltd.
- * This program is free software,
-    you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS,
-    WITHOUT WARRANTIES OF ANY KIND,
-    EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
-    MERCHANTABILITY,
-    OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file quant_flash_attn_common_def.h
- * \brief
+ * \brief QuantFlashAttn MxFP8 Softmax FP16 公共定义（tiling key 常量 + 尺寸常量 + 跨核同步 + ConstInfo/RunInfo）
  */
 
 #ifndef QUANT_FLASH_ATTN_COMMON_DEF_H_
 #define QUANT_FLASH_ATTN_COMMON_DEF_H_
 
-#include "quant_flash_attn_template_tiling_key.h"
-#include "../../common/op_kernel/memcopy/parser.h"
+#include <cstdint>
 
-namespace QFA_KERNEL {
+#define ASCENDC_TPL_5_BW 5
+#define ASCENDC_TPL_10_BW 10
 
-constexpr float FLOAT_ZERO = 0;
-// // // BUFFER的字节数
-static constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32;
-static constexpr uint32_t BUFFER_SIZE_BYTE_64B = 64;
-static constexpr uint32_t BUFFER_SIZE_BYTE_256B = 256;
-static constexpr uint32_t BUFFER_SIZE_BYTE_512B = 512;
-static constexpr uint32_t BUFFER_SIZE_BYTE_1K = 1024;
-static constexpr uint32_t BUFFER_SIZE_BYTE_2K = 2048;
-static constexpr uint32_t BUFFER_SIZE_BYTE_4K = 4096;
-static constexpr uint32_t BUFFER_SIZE_BYTE_8K = 8192;
-static constexpr uint32_t BUFFER_SIZE_BYTE_16K = 16384;
-static constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768;
-static constexpr uint32_t BUFFER_SIZE_BYTE_64K = 65536;
-static constexpr uint32_t BUFFER_SIZE_BYTE_128K = 131072;
+// q_out layout → inputLayout
+#define InOutLayoutType_BSND 0
+#define InOutLayoutType_BNSD 1
+#define InOutLayoutType_TND 2
+#define InOutLayoutType_NTD 3
+// backward compat
+#define InOutLayoutType_BSND_BSND InOutLayoutType_BSND
+#define InOutLayoutType_BNSD_BNSD InOutLayoutType_BNSD
+#define InOutLayoutType_TND_TND InOutLayoutType_TND
+#define InOutLayoutType_NTD_TND InOutLayoutType_NTD
 
-#ifndef SET_MARK2_JSELF
-#define SET_MARK2_JSELF
-__aicore__ inline void set_mark(uint64_t v)
-{
-    __asm__ __volatile__("");
-    asm volatile("MOV COND, %0\n" : "+l"(v));
-    __asm__ __volatile__("");
-}
-#endif
+#define KvLayoutType_NO_PA 0
+#define KvLayoutType_PA_BBND 1
+#define KvLayoutType_PA_BNBD 2
+#define KvLayoutType_PA_NZ 3
 
-struct CommonConstInfo {
-    /* 轴长度 */
-    uint32_t bSize = 0;
-    uint64_t t1Size = 0;
-    uint64_t t2Size = 0;
-    uint32_t dSize = 0;
-    uint32_t dSizeV = 0;
-    uint32_t dBasicBlock = 0;
-    uint32_t gSize = 0; /* g轴的大小 */
-    uint32_t n2Size = 0;
-    uint64_t s1Size = 0;          /* s1总大小 */
-    uint64_t s2Size = 0;          /* s2总大小 */
-    uint32_t qCuSeqLensSize = 0;  /* 用户输入的cu_seqlens_q的长度 */
-    uint32_t kvCuSeqLensSize = 0; /* 用户输入的cu_seqlens_kv的长度 */
-    uint32_t qSeqUsedSize = 0;    /* 用户输入的seqused_q的长度 */
-    uint32_t kvSeqUsedSize = 0;   /* 用户输入的seqused_kv的长度 */
-    uint64_t maxSeqlenQ = 0; /* seqUsed/cuSeq 为空时每个 batch 的实际序列长度 (区别于 s1Size 物理维) */
-    uint64_t maxSeqlenKv = 0; /* seqUsed/cuSeq 为空时每个 batch 的实际序列长度 (区别于 s2Size 物理维) */
+#define Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64 0
+#define Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128 1
+#define Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128 2
+#define Config_S1Aligned128_S2Aligned256_DAligned256_DVAligned256 3
+#define Config_S1Aligned128_S2Aligned512_DAligned72_DVAligned72 4
+#define Config_S1Aligned256_S2Aligned256_DAligned128_DVAligned128 5
 
-    /* FA kernel meta */
-    uint32_t bN2Start = 0;
-    uint32_t bN2End = 0;
-    uint32_t gS1OStart = 0;
-    uint32_t gS1OEnd = 0;
-    uint32_t s2OStart = 0;
-    uint32_t s2OEnd = 0;
-    uint32_t coreFirstTmpOutWsPos = 0;
+#define QFA_MXFP8_FP32_PREFILL 1
+#define QFA_MXFP8_FP32_DECODE 2
+#define QFA_GQA_FP8_FULLQUANT 6
+#define QFA_HIF8_FP32 0
+#define QFA_MXFP8_SOFTMAX_FP16 3
 
-    /* mask */
-    uint32_t sparseMode = 0;
-    uint32_t attenMaskS1Size = 0;
-    uint32_t attenMaskS2Size = 0;
-    int64_t preTokens = 0;
-    int64_t nextTokens = 0;
-    float scaleValue = 0.0;
+// =====================================================================
+// MxFP8 Softmax FP16 kernel 层公共定义（设计文档 design_mxfp8_pipeline.md）
+// =====================================================================
 
-    /* 核信息 */
-    uint32_t aicIdx = 0;
-    uint32_t aivIdx = 0;
-    uint8_t subBlockIdx = 0;
-    uint32_t coreNum = 0;
+// ===== 基础尺寸常量（设计文档 §2）=====
+constexpr uint32_t S1_BASE_SIZE = 256;   // gS1 分块步长（调度器 mBaseSize）
+constexpr uint32_t S2_BASE_SIZE = 256;   // S2 分块步长
+constexpr uint32_t D_BASE_SIZE = 128;    // QK reduce 轴
+constexpr uint32_t DV_BASE_SIZE = 128;   // V 输出维
+constexpr uint32_t S2_SUB_LOOP_SIZE = S2_BASE_SIZE / 2;      // 128，C1 subLoop 的 M 轴（切 S2）
+constexpr uint32_t S1_SUB_BLOCK_SIZE = S1_BASE_SIZE / 2;     // 128，V0/V1 各持 S1 半（切 S1）
+constexpr uint32_t ROWSUM_ROWS = 16;     // C2 L0A 全 1 行数（捎带计算 rowsum 分母）
 
-    /* FA中间结果写出workspace信息 */
-    uint32_t accumOutSize = 0;
-    uint32_t logSumExpSize = 0;
+// ===== 流水深度（设计文档 §2）=====
+constexpr uint32_t PRELOAD_N = 2;                      // 预取两轮任务，C1/V1/C2/V2 四段流水
+constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N + 1; // = 3
+
+// ===== 跨核同步 flagId（设计文档 §4.2）=====
+// 约束：C1/C2 各一个 Matmul 对象时，Matmul 高阶 API 内部占用 flagId [0, 3]，自定义 flagId 从 4 开始。
+// subBlock 寻址规则：AIC 侧 flagId 0-15 对应 V0，16-31 对应 V1（即 +16 指向 V1）；V 核侧统一用 [0, 15]。
+constexpr uint8_t SYNC_MODE_4 = 4;
+constexpr uint16_t CROSS_CORE_SYNC_C1_V1 = 4;      // mm1Res UB，C1(AIC)/V1(AIV) 双向，每 subBlockId
+constexpr uint16_t CROSS_CORE_SYNC_V1_P_READY = 5; // L1 P，V1(AIV)→C2(AIC)，每 C1 任务
+constexpr uint16_t CROSS_CORE_SYNC_C2_V2 = 6;      // mm2Res UB，C2(AIC)/V2(AIV) 双向，每 V 核
+
+// ===== metadata 头附加索引（与主线 AICPU metadata 布局对齐）=====
+constexpr uint32_t QFA_HEAD_NEED_INIT_OUTPUT_INDEX = 15U;
+
+// ===== ConstInfo（精简自主线 CommonConstInfo：去 mask/PA/sink/tensorList/strides）=====
+struct ConstInfo {
+    // shape
+    uint32_t bSize;
+    uint64_t t1Size;
+    uint64_t t2Size;
+    uint32_t n2Size;
+    uint32_t gSize;
+    uint32_t realN2Size; // DN 语义（不合轴）：n2Size * gSize
+    uint32_t realGSize;  // DN 语义（不合轴）：1
+    uint64_t s1Size;
+    uint64_t s2Size;
+    uint32_t dSize;
+    uint32_t dSizeV;
+    // seqlen 输入尺寸
+    uint64_t cuSeqLensQSize;
+    uint64_t cuSeqLensKVSize;
+    uint64_t seqUsedQSize;
+    uint64_t seqUsedKvSize;
+    // softmax scale
+    float scaleValue;
+    // 核信息
+    uint32_t aicIdx;
+    uint32_t aivIdx;
+    uint8_t subBlockIdx; // AIV 子核编号：0→V0（S1 前半），1→V1（S1 后半）
+    uint32_t coreNum;
+    // 其他
+    bool isSoftmaxLseEnable;
+    bool needInitOutput;
 };
 
-struct PAConstInfo {
-    uint32_t blockSize = 0;
-    uint32_t maxBlockNumPerBatch = 0;
-    uint32_t paLayoutType = 0;
+// ===== RunInfo（设计文档 §4.1 全字段）=====
+struct RunInfoMxfp8SoftmaxFp16 {
+    // ==================== 基础字段 ====================
+
+    uint32_t loop = 0;    // 全局任务编号，用于 PRELOAD_TASK_CACHE_SIZE 取模索引
+    uint32_t mloop = 0;   // 当前处理第几行 [bN2, gS1]，UpdateAxisInfo 中递增，softmaxStateSlot = mloop % (PRELOAD_N+1)
+    bool isValid = false; // 当前 RunInfo 槽位是否有效
+
+    uint32_t bIdx = 0;      // batch 索引
+    uint32_t n2Idx = 0;     // head 索引
+    uint32_t realN2Idx = 0; // realN2 索引
+    uint32_t gS1Idx = 0;    // GS1 起始索引
+    uint32_t s1Idx = 0;     // S1 轴 token 索引
+    uint32_t s2Idx = 0;     // S2 轴起始 token 索引
+    uint64_t actS1Size = 1; // 当前 batch S1 实际长度
+    uint64_t actS2Size = 1; // 当前 batch S2 实际长度
+    uint32_t actMSize = 0;  // 当前切块 M 轴实际长度（≤ S1_BASE_SIZE）
+    uint32_t actMSizeAlign32 = 0;
+
+    uint32_t actSingleLoopS2Size = 0;      // 当前 S2 分块实际长度
+    uint32_t actSingleLoopS2SizeAlign = 0; // 对齐到 32（BYTE_BLOCK / sizeof(fp8)）
+
+    // ==================== V 核视角 ====================
+
+    // 本 V 核在 [bN2, gS1] 行的 S1 轴起始偏移
+    // V0: vecS1BaseIdx = 0，V1: vecS1BaseIdx = S1_BASE_SIZE / 2 = 128
+    uint32_t vecS1BaseIdx = 0;
+
+    // 本 V 核处理的 S1 轴实际长度（截断到 S1_BASE_SIZE/2 = 128）
+    uint32_t actVecS1Size = 0;
+
+    bool isFirstS2Loop = false; // 是否当前 [bN2, gS1] 行的首个 S2 分块（用于 Q/QScale 搬入、V1 accMax 初始化、V2 直接赋值分支）
+    bool isLastS2Loop = false;  // 是否当前 [bN2, gS1] 行的最后一个 S2 分块（V2 做最终除+输出）
+
+    // ==================== softmax 在线状态（V1 维护） ====================
+
+    // V1 维护 accMax 的 ring 槽位（跨 subLoop 与跨 S2 分块在线累积），索引 = mloop % (PRELOAD_N+1)
+    // softmaxExpUB 独立按 loop % 3 索引，V1 每任务替换写入
+    uint32_t softmaxStateSlot = 0;
+
+    // ==================== P L1 ring 槽位（CubeBlock C2 读取 / VectorBlock V1 写入） ====================
+
+    // P 按 S2 分块写入（同 [bN2,gS1] 行的不同 S2 块用不同槽，避免覆盖），索引 = loop % (PRELOAD_N+1)
+    uint32_t pSlot = 0;
 };
 
-struct LseConstInfo {
-    bool isSoftmaxLseEnable = false;
-};
+// ===== L1 共享布局（AIC/AIV 同偏移，block cube/vector 共同引用）=====
+constexpr uint32_t L1_P_BUFCNT = PRELOAD_TASK_CACHE_SIZE;          // = 3
 
-struct SinkConstInfo {
-    bool learnableSinkFlag = false;
-};
+constexpr uint32_t L1_P_V0_SINGLE_SLOT_SIZE      = 256 * 128; // fp8 [256,128] = 32KB
+constexpr uint32_t L1_P_V1_SINGLE_SLOT_SIZE      = 256 * 128;
+// e8m0 (256×128/32=1024B) + bank 冲突预留 padding（DN 同几何 L1_P_DESCALE_SIZE=32*5*8=1280；
+// 配套 LoadPToL0B scale srcStride = S2/64 + 1 的 +1 预留，实现期数值对拍后可再精确调整）
+constexpr uint32_t L1_PSCALE_V0_SINGLE_SLOT_SIZE = 1280;
+constexpr uint32_t L1_PSCALE_V1_SINGLE_SLOT_SIZE = 1280;
 
-struct ConstInfo : CommonConstInfo, PAConstInfo, LseConstInfo, SinkConstInfo {};
+constexpr uint32_t L1_P_V0_BASE = 0;
+constexpr uint32_t L1_P_V1_BASE = L1_P_V0_BASE + L1_P_BUFCNT * L1_P_V0_SINGLE_SLOT_SIZE;
+constexpr uint32_t L1_PSCALE_V0_BASE = L1_P_V1_BASE + L1_P_BUFCNT * L1_P_V1_SINGLE_SLOT_SIZE;
+constexpr uint32_t L1_PSCALE_V1_BASE = L1_PSCALE_V0_BASE + L1_P_BUFCNT * L1_PSCALE_V0_SINGLE_SLOT_SIZE;
+constexpr uint32_t L1_SHARED_REGION_SIZE = L1_PSCALE_V1_BASE + L1_P_BUFCNT * L1_PSCALE_V1_SINGLE_SLOT_SIZE;
 
-struct RunInfo {
-    uint32_t loop = 0;
-    uint32_t mloop = 0;
-    bool isValid = false;
-    bool isFirstS2Loop = false;
-    bool isLastS2Loop = false;
-    bool isUpdatePScale = false;
-    bool isC2Sync = false;            // s2上16个softmax是一个tile，这是每一个tile的第一个softmax 任务
-    uint32_t s2FirstStartVecCore = 0; // s2上第一个softmax分给哪个vec core
-    uint32_t tileBuffIdx = 0;         // 当前tile分给哪个buff
-    uint32_t tileMaxIdx = 0;
-    uint32_t pscaleNum = 0;
-    bool isS2FirstTilePerCore = false; // 16个softmax均分在两个core, 当前任务是否是分在当前core上的第一个，
+// ===== V 核 UB 跨核契约（AIC Fixpipe 跨核写入 / VectorBlock 分配与消费，两侧同源引用）=====
+// 单位约定（对齐 LocalTensor(TPosition, addr, size)：addr=字节地址、size=元素数）：
+//   BASE 为字节地址；SLOT/SIZE 为元素数；mm1ResUB ring 槽位 = loop % UB_MM1RES_BUFCNT
+// mm1ResUB：C1 FixpipeMm1 的目标（subBlockId 寻址核），V1 softmax 的输入
+// mm2ResUB：C2 FixpipeMm2 的目标，V2 的输入（divOut/outputT 别名区见 block_vector 设计）
+constexpr uint32_t UB_MM1RES_BASE   = 0;                // 字节
+constexpr uint32_t UB_MM1RES_SLOT   = 128 * 128;        // half 元素/槽 [128,128] = 32KB
+constexpr uint32_t UB_MM1RES_BUFCNT = 2;                // ring：loop % 2
+constexpr uint32_t UB_MM2RES_BASE   = 64 * 1024;        // 字节（= mm1ResUB 2 槽 × 32KB 之后）
+constexpr uint32_t UB_MM2RES_SIZE   = (128 + 1) * 128;  // fp32 元素 [129,128] = 66,048B
 
-    uint32_t bIdx = 0;
-    uint32_t n2Idx = 0;
-    uint32_t gS1Idx = 0;
-    uint32_t gIdx = 0;
-    uint32_t s1Idx = 0;
-    uint32_t s2Idx = 0;
-    uint32_t curS2LoopIdx = 0;     // 在当前核处理的S2的循环下标
-    uint64_t actS1Size = 1;        // 当前处理head的S1轴实际大小
-    uint64_t actS2Size = 1;        // 当前处理head的S2轴实际大小
-    uint32_t actMSize = 0;         // GS1方向上的长度,当前切块M轴长度
-    uint32_t actMSizeAlign32 = 0;  // GS1 方向上长度对齐
-    uint32_t actMSizeAlign128 = 0; // GS1 方向上长度对齐对齐128
-    uint32_t actVecMSize = 0;      // VEC 视角, 基本块GS1方向长度，每个核的M长度
-    uint32_t vecMbaseIdx = 0;      // VEC 对应的M 轴起始位置,V0 为0， V1 为 V0的actVecMSize
-    uint32_t updateScaleNum = 0;
-
-    uint32_t actSingleLoopS2Size = 0;        // 单个softmaxS2方向长度
-    uint32_t actSingleLoopS2SizeAlign = 0;   // 对齐到32
-    uint32_t actSingleLoopS2SizeAlign16 = 0; // 对齐到16
-    uint32_t actSingleLoopS2SizeAlign64 = 0; // 对齐到64
-    uint32_t curS2LoopTimes = 0;
-    bool isS2SplitCore = false;
-    uint32_t faTmpOutWsPos = 0; // FA阶段，S2外切，需要写到workspace时，写出到第几块M*D的GM块
-
-    int64_t preTokensLeftUp = 0;
-    int64_t nextTokensLeftUp = 0;
-};
-
-// kernel stream related struct
-struct FDparams {
-    uint32_t fdCoreEnable = 0;
-    uint32_t fdBN2Idx = 0;
-    uint32_t fdMIdx = 0;
-    uint32_t fdS2SplitNum = 0;
-    uint32_t mStart = 0;
-    uint32_t mLen = 0;
-    uint32_t fdWorkspaceIdx = 0;
-};
-
-template <QFA_LAYOUT LAYOUT_Q, typename SEQLEN_T>
-class SeqLensTool {
-public:
-    ActualSeqLensParser<ActualSeqLensMode::ACCUM, SEQLEN_T, true> cuSeqLensParser;
-    ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, SEQLEN_T, false> seqUsedParser;
-
-    __aicore__ inline void Init(__gm__ uint8_t *cuSeqLensGmAddr, uint32_t cuSeqLensDims, __gm__ uint8_t *seqUsedGmAddr,
-                                uint32_t seqUsedDims, uint64_t defaultSeqUsedVal)
-    {
-        cuSeqLensParser.Init(cuSeqLensGmAddr, cuSeqLensDims, seqUsedGmAddr, seqUsedDims);
-        seqUsedParser.Init(seqUsedGmAddr, seqUsedDims, defaultSeqUsedVal);
-    }
-
-    __aicore__ inline uint64_t GetActualSeqLength(uint32_t bIdx)
-    {
-        if constexpr (LAYOUT_Q == QFA_LAYOUT::TND) {
-            return cuSeqLensParser.GetActualSeqLength(bIdx);
-        } else {
-            return seqUsedParser.GetActualSeqLength(bIdx);
-        }
-    }
-};
-
-} // namespace QFA_KERNEL
-
-#endif
+#endif // QUANT_FLASH_ATTN_COMMON_DEF_H_

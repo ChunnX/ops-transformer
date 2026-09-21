@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -14,52 +14,56 @@
  */
 
 #include <cmath>
-#include "quant_flash_attn_tiling.h"
+#include <register/op_impl_registry.h>
 #include "log/log.h"
-#include "tiling/platform/platform_ascendc.h"
-#include "quant_flash_attn_tiling_info.h"
-#include "quant_flash_attn_tiling_info_parser.h"
+#include "op_host/tiling_templates_registry.h"
+#include "quant_flash_attn_tiling.h"
+#include "quant_flash_attn_tiling_common.h"
+#include "../op_kernel/arch35/quant_flash_attn_template_tiling_key.h"
+#include "qfa_tiling_info_parser.h"
 #include "checkers/qfa_checker.h"
-#include "../common/op_host/fia_tiling_templates_registry.h"
+#include "../../common/op_host/fia_tiling_templates_registry.h"
 
 using namespace ge;
-using namespace optiling::quant_flash_attn;
+using namespace AscendC;
+using namespace Ops::Transformer::OpTiling;
 
 namespace optiling {
+using namespace quant_flash_attn;
 
-struct QuantFlashAttnCompileInfo {
-    uint32_t aivNum;
-    uint32_t aicNum;
-    uint64_t ubSize;
-    uint64_t l1Size;
-    uint64_t l0cSize;
-    uint64_t l2CacheSize;
-    platform_ascendc::SocVersion socVersion;
-    NpuArch npuArch;
-};
+static bool IsEmptyInput(gert::TilingContext *context)
+{
+    (void)context;
+    return false;
+}
 
 ASCENDC_EXTERN_C ge::graphStatus TilingQuantFlashAttn(gert::TilingContext *context)
 {
-    OP_LOGW(context, "QuantFlashAttn TilingQuantFlashAttn start.");
+    OP_LOGI(context, "QuantFlashAttn TilingQuantFlashAttn start.");
 
     auto platformInfoPtr = context->GetPlatformInfo();
     OP_CHECK_IF(platformInfoPtr == nullptr, OP_LOGE(context, "platformInfoPtr is null"), return ge::GRAPH_FAILED);
 
-    QuantFlashAttnTilingInfo faInfo;
-    QuantFlashAttnTilingInfoParser faInfoParser(context, faInfo);
-    if (faInfoParser.Parse() != ge::GRAPH_SUCCESS) {
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
+    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
+        if (IsEmptyInput(context)) {
+            return ge::GRAPH_SUCCESS;
+        }
+    }
+
+    QfaTilingInfo qfaInfo;
+    QfaInfoParser qfaInfoParser(context);
+    if (qfaInfoParser.Parse(qfaInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
-    QfaChecker faChecker;
-    faChecker.Init(faInfo);
-    // Check函数只做校验，不能修改faInfo中的信息
-    if (faChecker.Process(faInfo) != ge::GRAPH_SUCCESS) {
+    QfaChecker qfaChecker;
+    qfaChecker.Init(qfaInfo);
+    if (qfaChecker.Process(qfaInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
-    OP_LOGI(context, "QuantFlashAttn Tiling bSize:%ld.", faInfo.bSize);
-    return FiaTilingRegistry::GetInstance().DoTilingImpl(context, &faInfo);
+    return FiaTilingRegistry::GetInstance().DoTilingImpl(context, &qfaInfo);
 }
 
 ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForQuantFlashAttn(gert::TilingParseContext *context)
@@ -82,7 +86,6 @@ ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForQuantFlashAttn(gert::TilingPars
     return ge::GRAPH_SUCCESS;
 }
 
-// 注册tiling函数：
 IMPL_OP_OPTILING(QuantFlashAttn)
     .Tiling(TilingQuantFlashAttn)
     .TilingParse<QuantFlashAttnCompileInfo>(TilingPrepareForQuantFlashAttn);
