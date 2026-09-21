@@ -119,14 +119,15 @@ __aicore__ inline void WQBMM_BASIC_API_V1_CLASS::Iterate(bool isLastGmK, bool is
     for (uint64_t l1KOffset = 0; l1KOffset < basicApiParams.l1KbSize; l1KOffset += l0KSize) {
         bool isLastL1K = l1KOffset + l0KSize >= basicApiParams.l1KbSize;
         uint64_t realL0k = isLastL1K ? basicApiParams.l1KbSize - l1KOffset : l0KSize;
+        uint64_t paddedL0k = CeilAlign(realL0k, MX_K_ALIGN);
         uint64_t loopId = l0LoopIdx_ % L0_BUF_NUM; // 等价于 l0LoopIdx_ % L0_BUF_NUM，减少scalar
         WaitFlag<HardEvent::M_MTE1>(eventIdMToMte1_ + loopId);
-        LoadAL1ToL0A(realL0k, loopId, l1KOffset, basicApiParams, aL1, aMxScaleL1);
-        LoadBL1ToL0B(realL0k, loopId, l1KOffset, basicApiParams, bL1, bMxScaleL1);
+        LoadAL1ToL0A(paddedL0k, loopId, l1KOffset, basicApiParams, aL1, aMxScaleL1);
+        LoadBL1ToL0B(paddedL0k, loopId, l1KOffset, basicApiParams, bL1, bMxScaleL1);
         if (basicApiParams.isBias && isFirstGmK && l1KOffset == 0) {
             LoadBiasToBt(basicApiParams.l0NSize, loopId, biasL1);
         }
-        Mmad(isLastGmK && isLastL1K, isFirstGmK && l1KOffset == 0, realL0k, loopId, basicApiParams);
+        Mmad(isLastGmK && isLastL1K, isFirstGmK && l1KOffset == 0, paddedL0k, loopId, basicApiParams);
         SetFlag<HardEvent::M_MTE1>(eventIdMToMte1_ + loopId);
         l0LoopIdx_++;
     }

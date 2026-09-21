@@ -2464,12 +2464,17 @@ static aclnnStatus TransWeightToNzCheckAlign(gmm::GroupedMatmulParams &gmmParams
                 weight->GetDataType() == DataType::DT_FLOAT4_E1M2) &&
                (xDtype == DataType::DT_FLOAT16 || xDtype == DataType::DT_BF16 ||
                 xDtype == DataType::DT_FLOAT8_E4M3FN)) {
-        k_align = k % ALIGN_NZ_4BIT_K == 0;
-        n_align = n % ALIGN_NZ_4BIT_N == 0;
+        if (xDtype == DataType::DT_FLOAT8_E4M3FN) {
+            k_align = k % 2 == 0;
+            n_align = n % 2 == 0;
+        } else {
+            k_align = k % ALIGN_NZ_4BIT_K == 0;
+            n_align = n % ALIGN_NZ_4BIT_N == 0;
+        }
     }
     CHECK_COND(k_align == true && n_align == true, ACLNN_ERR_PARAM_INVALID,
                "When weight(%s) format is FRACTAL_NZ, weight'shape(k[%lu], n[%lu]) should be divisible by the "
-               "following shape: INT8:[16, 32],BF16/FP16[16, 16],INT4[16, 64],FP4[64,64]). If the weight is transposed,"
+               "following shape: INT8:[16, 32],BF16/FP16[16, 16],INT4[16, 64],FP4[64,64],MxA8W4 FP4[2,2]). If the weight is transposed,"
                "the k/n need to be reversed.",
                gmm::dTypeToString(weight->GetDataType()).c_str(), k, n);
     return ACLNN_SUCCESS;

@@ -310,7 +310,6 @@ __aicore__ inline void GMM_WQ_BASIC_BLOCK_CLASS::ComputeBasicBlockAivNdKnNzNk(co
             vectorCompute_.WeightAntiQuantCompute(ubConsumeConfig, weightL1_[(cvLoopIdx_ & 1) * weightL1DbOffset_],
                                                   l1ConsumeConfig, nullptr);
         }
-
         SetAivToAic();
         vectorCompute_.SetVToMTE2();
     }
@@ -330,6 +329,10 @@ __aicore__ inline void GMM_WQ_BASIC_BLOCK_CLASS::ComputeBasicBlockAic(const Basi
         }
         cubeCompute_.WaitMTE1ToMTE2(kbGmOffset, offsetParam);
         cubeCompute_.CopyAAndBiasGmToL1(offsetParam, kbGmOffset, cvLoopIdx_);
+        if (kbL1RealSize % MX_K_ALIGN != 0) {
+            uint64_t offset = CeilAlign(offsetParam.nL1Size, BLOCK_CUBE) * CeilAlign(kbL1RealSize, ONE_BLK_SIZE);
+            cubeCompute_.FillL1WithZero(weightL1_[(cvLoopIdx_ & 1) * weightL1DbOffset_ + offset].template ReinterpretCast<uint32_t>(), offsetParam.nL1Size);
+        }
         WaitAivToAic();
         cubeCompute_.LaunchMatmul(weightL1_[(cvLoopIdx_ & 1) * weightL1DbOffset_], kbGmOffset, kbL1RealSize, cvLoopIdx_,
                                   offsetParam); // mte1 mmad fixp流水
@@ -378,8 +381,10 @@ __aicore__ inline void GMM_WQ_BASIC_BLOCK_CLASS::HandleMxA8W4Scale(const BasicBl
         return;
     }
 
-    uint64_t mxScaleMxGroupNum = CeilDivide(offsetParam.kSize, MX_GROUPSIZE);
-    uint64_t mxScaleRealGroupNum = CeilDivide(mxScaleKSize, MX_GROUPSIZE);
+    // Each physical scale pair covers 64 K elements and occupies two E8M0 bytes.
+    uint64_t mxScaleMxGroupNum = CeilDivide(offsetParam.kSize, MX_GROUPSIZE * 2) * 2;
+    uint64_t mxScaleRealGroupNum =
+        CeilAlign(CeilDivide(mxScaleKSize, static_cast<uint64_t>(MX_GROUPSIZE)), static_cast<uint64_t>(2));
 
     vectorCompute_.WaitVToMTE2();
     vectorCompute_.CopyWeightMxScaleGmToUb(offsetParam.nOffset + mxScaleNOffset, mxScaleNSize, kMte2Offset,
