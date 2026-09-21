@@ -4,14 +4,16 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      ×     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      ×     |
+|<term>Ascend 950PR/Ascend 950DT</term>| √（主算子quant_mode=1/2） |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>| √（主算子quant_mode=3） |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>| √（主算子quant_mode=3） |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
 
 ## 功能说明
+
+> Metadata接口支持`quant_mode=1/2/3`且不感知执行架构。A5主算子仅支持`quant_mode=1/2`，A2/A3 TurboQuant主算子仅支持`quant_mode=3`。输出保持为INT32 `[1024]`。
 
 - 算子功能：`MixedQuantSparseFlashMlaMetadata`是`MixedQuantSparseFlashMla`算子的前置算子，用于后续Attention计算生成负载均衡的任务划分方案。本算子不执行实际的Attention计算，而是根据输入参数在AI CPU计算出每个AI Core应处理的Attention计算起止范围，从而最大化计算资源的利用率，避免各Core间负载不均衡的问题。
 
@@ -121,7 +123,7 @@
     <tr>
       <td>quant_mode</td>
       <td>属性</td>
-      <td>表示量化模式，1表示K、V nope为per-token-group量化，scale类型为bfloat16，2表示K、V nope为per-token-group量化，scale类型为float8_e8m0。</td>
+      <td>表示量化模式。1表示A5原有BF16 scale量化布局；2表示A5原有FLOAT8_E8M0 scale量化布局；3表示A2/A3 TurboQuant TQ4配套metadata。Metadata接口接受1、2、3，最终的平台与quant_mode组合由主算子校验。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>

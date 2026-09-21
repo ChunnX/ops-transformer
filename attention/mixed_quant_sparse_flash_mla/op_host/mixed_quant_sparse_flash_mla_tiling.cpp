@@ -121,7 +121,7 @@ ge::graphStatus MQSMLAInfoParser::GetNpuInfo()
 
     socVersion_ = ascendcPlatform.GetSocVersion();
     npuArch_ = ascendcPlatform.GetCurNpuArch();
-    if (npuArch_ != NpuArch::DAV_3510) {
+    if (npuArch_ != NpuArch::DAV_2201 && npuArch_ != NpuArch::DAV_3510) {
         OP_LOGE(opName_, "NpuArch[%d] is not support.", static_cast<int32_t>(npuArch_));
         return GRAPH_FAILED;
     }
@@ -502,6 +502,16 @@ ge::graphStatus MQSMLAInfoParser::GetSparseBlockCount()
 ge::graphStatus MQSMLAInfoParser::GetActualseqInfo()
 {
     maxActualseq_ = s2Size_;
+    if (qLayout_ == MQSMLALayout::TND && opParamInfo_.cuSeqLensQ.tensor != nullptr) {
+        actualLenDimsQ_ = static_cast<uint32_t>(opParamInfo_.cuSeqLensQ.tensor->GetShapeSize() - 1);
+    } else if (opParamInfo_.seqUsedQ.tensor != nullptr) {
+        actualLenDimsQ_ = static_cast<uint32_t>(opParamInfo_.seqUsedQ.tensor->GetShapeSize());
+    }
+    if (kvLayout_ == MQSMLALayout::PA_BBND && opParamInfo_.sequsedOriKv.tensor != nullptr) {
+        actualLenDimsKV_ = static_cast<uint32_t>(opParamInfo_.sequsedOriKv.tensor->GetShapeSize());
+    } else if (opParamInfo_.cuSeqLensOriKv.tensor != nullptr) {
+        actualLenDimsKV_ = static_cast<uint32_t>(opParamInfo_.cuSeqLensOriKv.tensor->GetShapeSize() - 1);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -530,6 +540,7 @@ ge::graphStatus MQSMLAInfoParser::GetKvstride()
         }
     } else if (kvLayout_ == MQSMLALayout::PA_BBND) {
         oriKvStride_ = oriBlockSize_ * n2Size_ * dSizeKV_;
+        oriKvStridesVec_.push_back(oriKvStride_);
     }
     if (cmpKvStrides != nullptr && cmpKvStrides->GetDimNum() > 0) {
         for (size_t i = 0; i < cmpKvStrides->GetDimNum(); i++) {
@@ -539,7 +550,9 @@ ge::graphStatus MQSMLAInfoParser::GetKvstride()
             cmpKvStride_ = cmpKvStrides->GetStride(0);
         }
     } else if (kvLayout_ == MQSMLALayout::PA_BBND) {
-        cmpKvStride_ = cmpBlockSize_ * n2Size_ * dSizeKV_;
+        const int64_t cmpHeadDim = GetAxisNum(cmpKvShape_, MQSMLAAxis::D, kvLayout_);
+        cmpKvStride_ = static_cast<int64_t>(cmpBlockSize_) * n2Size_ * cmpHeadDim;
+        cmpKvStridesVec_.push_back(cmpKvStride_);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -561,6 +574,8 @@ void MQSMLAInfoParser::GenerateInfo(MQSMLATilingInfo &qsmlaInfo)
     qsmlaInfo.gSize = gSize_;
     qsmlaInfo.qkHeadDim = qkHeadDim_;
     qsmlaInfo.qTSize = qTSize_;
+    qsmlaInfo.actualLenDimsQ = actualLenDimsQ_;
+    qsmlaInfo.actualLenDimsKV = actualLenDimsKV_;
     qsmlaInfo.oriSparseBlockCount = oriSparseBlockCount_;
     qsmlaInfo.cmpSparseBlockCount = cmpSparseBlockCount_;
 
@@ -647,8 +662,78 @@ static ge::graphStatus TilingPrepareForMixedQuantSparseFlashMla(gert::TilingPars
 }
 
 // --------------------------MixedQuantSparseFlashMlaTiling类成员函数定义-----------------------
+ge::graphStatus MixedQuantSparseFlashMlaTiling::DoTurboQuantTiling(MQSMLATilingInfo *tilingInfo)
+{
+    constexpr uint32_t s2BaseSize = 512;
+    constexpr uint32_t byteBlock = 32;
+    constexpr uint32_t preloadNum = 2;
+    constexpr uint32_t mergeCacheGmBufNum = 3;
+    auto align = [](uint32_t value, uint32_t alignment) { return (value + alignment - 1) / alignment * alignment; };
+
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(tilingInfo->platformInfo);
+    const uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
+    const uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
+    context_->SetBlockDim(ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum));
+
+    const uint32_t mBaseSize = tilingInfo->gSize;
+    const uint32_t s2BaseSizeAlign = align(s2BaseSize, byteBlock);
+    const uint32_t cubeMSize = std::min(tilingInfo->gSize * tilingInfo->s1Size, mBaseSize);
+    const uint32_t mmResUbSize = s2BaseSizeAlign * align(cubeMSize, 16U);
+    const uint32_t bmm2ResUbSize = align(tilingInfo->qkHeadDim, byteBlock) * align(cubeMSize, 16U);
+
+    size_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
+    workspaceSize += static_cast<size_t>(preloadNum) * mmResUbSize * (4U + 2U) * aicNum;
+    workspaceSize += static_cast<size_t>(preloadNum) * bmm2ResUbSize * (4U + 4U) * aicNum;
+    workspaceSize += static_cast<size_t>(mergeCacheGmBufNum) * s2BaseSize * tilingInfo->qkHeadDim * 2U * aicNum;
+    size_t *workspaces = context_->GetWorkspaceSizes(1);
+    OP_CHECK_IF(workspaces == nullptr, OP_LOGE(tilingInfo->opName, "workspace sizes is nullptr"),
+                return ge::GRAPH_FAILED);
+    workspaces[0] = workspaceSize;
+
+    tilingData_.tqBaseParams.set_batchSize(tilingInfo->bSize);
+    tilingData_.tqBaseParams.set_qSeqSize(tilingInfo->s1Size);
+    tilingData_.tqBaseParams.set_kvSeqSize(tilingInfo->s2Size);
+    tilingData_.tqBaseParams.set_paBlockSize(tilingInfo->oriBlockSize);
+    tilingData_.tqBaseParams.set_oriBlockSize(tilingInfo->oriBlockSize);
+    tilingData_.tqBaseParams.set_cmpBlockSize(tilingInfo->cmpBlockSize);
+    tilingData_.tqBaseParams.set_oriMaxBlockNumPerBatch(tilingInfo->oriMaxBlockNumPerBatch);
+    tilingData_.tqBaseParams.set_nNumOfQInOneGroup(tilingInfo->gSize);
+    tilingData_.tqBaseParams.set_actualLenDimsQ(tilingInfo->actualLenDimsQ);
+    tilingData_.tqBaseParams.set_actualLenDimsKV(tilingInfo->actualLenDimsKV);
+    tilingData_.tqBaseParams.set_softmaxScale(tilingInfo->softmaxScale);
+    tilingData_.tqBaseParams.set_outputLayout(static_cast<uint32_t>(tilingInfo->outLayout));
+    tilingData_.tqBaseParams.set_oriMaskMode(tilingInfo->oriMaskMode);
+    tilingData_.tqBaseParams.set_oriKvStride0(tilingInfo->oriKvStride);
+    tilingData_.tqBaseParams.set_oriWinLeft(tilingInfo->oriWinLeft);
+    tilingData_.tqBaseParams.set_oriWinRight(tilingInfo->oriWinRight);
+    tilingData_.tqBaseParams.set_sparseBlockSize(tilingInfo->sparseBlockSize);
+    tilingData_.tqBaseParams.set_usedCoreNum(aicNum);
+    tilingData_.tqBaseParams.set_mmResUbSize(mmResUbSize);
+    tilingData_.tqBaseParams.set_bmm2ResUbSize(bmm2ResUbSize);
+    tilingData_.tqBaseParams.set_mBaseSize(mBaseSize);
+    tilingData_.tqBaseParams.set_s2BaseSize(s2BaseSize);
+    tilingData_.tqBaseParams.set_returnSoftmaxLse(tilingInfo->returnSoftmaxLse);
+    tilingData_.tqBaseParams.set_kvQuantMode(3U);
+    tilingData_.tqCmpParams.set_cmpMaxBlockNumPerBatch(tilingInfo->cmpMaxBlockNumPerBatch);
+    tilingData_.tqCmpParams.set_sparseBlockCount(tilingInfo->cmpSparseBlockCount);
+    tilingData_.tqCmpParams.set_cmpRatio(tilingInfo->cmpRatio);
+    tilingData_.tqCmpParams.set_cmpMaskMode(tilingInfo->cmpMaskMode);
+    tilingData_.tqCmpParams.set_cmpKvStride0(tilingInfo->cmpKvStride);
+    tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
+    context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
+
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(0U, QSMLA_LAYOUT_TND, QSMLA_LAYOUT_PA_BBND, CSA_TEMPLATE, 0U, 3U,
+                                                  DTYPE_FP8_E4M3FN, 0U, 0U, 0U);
+    context_->SetTilingKey(tilingKey);
+    context_->SetScheduleMode(1);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(MQSMLATilingInfo *tilingInfo)
 {
+    if (tilingInfo->npuArch == NpuArch::DAV_2201) {
+        return DoTurboQuantTiling(tilingInfo);
+    }
     if (tilingInfo->opParamInfo.cmpKv.tensor == nullptr) {
         OP_CHECK_IF(
             tilingInfo->opParamInfo.cmpSparseIndices.tensor != nullptr,

@@ -22,18 +22,18 @@ public:
     {
         this->Input("q")
             .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_BF16})
-            .FormatList({ge::FORMAT_ND})
+            .DataType({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("ori_kv")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT8_E4M3FN})
-            .FormatList({ge::FORMAT_ND})
+            .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT16, ge::DT_BF16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .IgnoreContiguous();
         this->Input("cmp_kv")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT8_E4M3FN})
-            .FormatList({ge::FORMAT_ND})
+            .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_UINT8, ge::DT_UINT8})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .IgnoreContiguous();
         this->Input("ori_sparse_indices")
             .ParamType(OPTIONAL)
@@ -112,8 +112,8 @@ public:
             .AutoContiguous();
         this->Output("attn_out")
             .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_BF16})
-            .FormatList({ge::FORMAT_ND});
+            .DataType({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
         this->Output("softmax_lse")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_FLOAT})
@@ -139,6 +139,8 @@ public:
             .NeedCheckSupportFlag(false)
             .PrecisionReduceFlag(true)
             .ExtendCfgInfo("aclnnSupport.value", "support_aclnn");
+        this->AICore().AddConfig("ascend910b", aicore_config);
+        this->AICore().AddConfig("ascend910_93", aicore_config);
         this->AICore().AddConfig("ascend950", aicore_config);
     }
 };
