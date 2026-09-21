@@ -116,19 +116,20 @@ int main(int argc, char **argv)
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init failed\n"); return ret);
     int64_t E = 1;
     int64_t M = 2048;
+    int64_t K = 64;
     int64_t N = 128;
-    // K=128 intentionally exercises the V3 Tensor API tiling path for
-    // swigluMode=2.
-    int64_t K = 128;
 
     std::vector<int64_t> xShape = {M, K};
-    std::vector<int64_t> weightLogicalShape = transposeWeight ? std::vector<int64_t>{E, N, K}
-                                                                  : std::vector<int64_t>{E, K, N};
-    std::vector<int64_t> weightStorageShape =
-        transposeWeight ? std::vector<int64_t>{E, K / 32, N / 16, 16, 32}
-                        : std::vector<int64_t>{E, K / 16, N / 32, 16, 32};
-    std::vector<int64_t> weightScaleShape =
-        transposeWeight ? std::vector<int64_t>{E, N, Ceil(K, 64), 2} : std::vector<int64_t>{E, Ceil(K, 64), N, 2};
+    // The API entry view is always [E, K, N]. A transposed (ZN) weight is
+    // distinguished by its view stride and physical FRACTAL_NZ storage.
+    std::vector<int64_t> weightLogicalShape = {E, K, N};
+    std::vector<int64_t> weightStorageShape = transposeWeight ?
+                                                  std::vector<int64_t>{E, Ceil(K, 32), Ceil(N, 16), 16, 32} :
+                                                  std::vector<int64_t>{E, Ceil(N, 32), Ceil(K, 16), 16, 32};
+    const int64_t scaleK = Ceil(K, 64);
+    std::vector<int64_t> weightScaleShape = {E, scaleK, N, 2};
+    std::vector<int64_t> weightScaleStorageShape =
+        transposeWeight ? std::vector<int64_t>{E, N, scaleK, 2} : weightScaleShape;
     std::vector<int64_t> xScaleShape = {M, Ceil(K, 64), 2};
     std::vector<int64_t> groupListShape = {E};
     std::vector<int64_t> outputShape = {M, N / 2};
@@ -175,7 +176,7 @@ int main(int argc, char **argv)
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     std::vector<int64_t> weightViewStrides =
-        transposeWeight ? std::vector<int64_t>{K * N, 1, N} : std::vector<int64_t>{K * N, N, 1};
+        transposeWeight ? std::vector<int64_t>{K * N, 1, K} : std::vector<int64_t>{K * N, N, 1};
     ret = CreateAclTensor<uint8_t>(weightHostData, weightLogicalShape, weightStorageShape, &weightDeviceAddr,
                                    ACL_FLOAT8_E4M3FN, ACL_FORMAT_FRACTAL_NZ, &weightTensor, &weightViewStrides);
     std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> weightTensorPtr(weightTensor, aclDestroyTensor);
@@ -186,8 +187,14 @@ int main(int argc, char **argv)
     CHECK_RET(weight != nullptr, LOG_PRINT("aclCreateTensorList(weight) failed\n"); return ACL_ERROR_FAILURE);
     std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList *)> weightTensorListPtr(weight,
                                                                                                aclDestroyTensorList);
-    ret = CreateAclTensorND<uint8_t>(weightScaleHostData, weightScaleShape, &weightScaleDeviceAddr, ACL_FLOAT8_E8M0,
-                                    &weightScaleTensor);
+    // The ZN scale view is obtained by transposing an [E, N, scaleK, 2]
+    // source. Its API entry view remains [E, scaleK, N, 2].
+    std::vector<int64_t> weightScaleViewStrides = transposeWeight ?
+                                                      std::vector<int64_t>{N * scaleK * 2, 2, scaleK * 2, 1} :
+                                                      std::vector<int64_t>{scaleK * N * 2, N * 2, 2, 1};
+    ret =
+        CreateAclTensor<uint8_t>(weightScaleHostData, weightScaleShape, weightScaleStorageShape, &weightScaleDeviceAddr,
+                                 ACL_FLOAT8_E8M0, ACL_FORMAT_ND, &weightScaleTensor, &weightScaleViewStrides);
     std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> weightScaleTensorPtr(weightScaleTensor,
                                                                                         aclDestroyTensor);
     std::unique_ptr<void, aclError (*)(void *)> weightScaleDeviceAddrPtr(weightScaleDeviceAddr, aclrtFree);
@@ -214,7 +221,7 @@ int main(int argc, char **argv)
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     ret = CreateAclTensorND<uint8_t>(outputScaleHostData, outputScaleShape, &outputScaleDeviceAddr, ACL_FLOAT8_E8M0,
-                                    &outputScale);
+                                     &outputScale);
     std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> outputScaleTensorPtr(outputScale, aclDestroyTensor);
     std::unique_ptr<void, aclError (*)(void *)> outputScaleDeviceAddrPtr(outputScaleDeviceAddr, aclrtFree);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -222,8 +229,8 @@ int main(int argc, char **argv)
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     ret = aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize(
-        x, weight, weightScale, nullptr, nullptr, xScale, nullptr, groupList, 2, 0, 2, 0, nullptr, swigluMode,
-        7.0, 1.702, 1.0, "rint", scaleAlg, 0.0, output, outputScale, &workspaceSize, &executor);
+        x, weight, weightScale, nullptr, nullptr, xScale, nullptr, groupList, 2, 0, 2, 0, nullptr, swigluMode, 7.0,
+        1.702, 1.0, "rint", scaleAlg, 0.0, output, outputScale, &workspaceSize, &executor);
 
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("GetWorkspaceSize failed. ret=%d\n", ret); return ret);
     LOG_PRINT("workspaceSize = %lu\n", workspaceSize);
@@ -237,7 +244,10 @@ int main(int argc, char **argv)
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("run op failed. ret=%d\n", ret); return ret);
 
     ret = aclrtSynchronizeStream(stream);
-    if (ret != ACL_SUCCESS) { LOG_PRINT("sync stream failed ret=%d\n", ret); std::_Exit(3); }
+    if (ret != ACL_SUCCESS) {
+        LOG_PRINT("sync stream failed ret=%d\n", ret);
+        std::_Exit(3);
+    }
     LOG_PRINT("run success\n");
 
     ret = aclrtMemcpy(outputHostData.data(), outputHostData.size() * sizeof(uint8_t), outputDeviceAddr,
@@ -259,7 +269,7 @@ int main(int argc, char **argv)
                          static_cast<std::streamsize>(outputHostData.size()));
         std::ofstream scaleFile(dumpPrefix + "_output_scale.bin", std::ios::binary);
         scaleFile.write(reinterpret_cast<const char *>(outputScaleHostData.data()),
-                         static_cast<std::streamsize>(outputScaleHostData.size()));
+                        static_cast<std::streamsize>(outputScaleHostData.size()));
         LOG_PRINT("dumpPrefix=%s\n", dumpPrefix.c_str());
     }
 
@@ -267,5 +277,4 @@ int main(int argc, char **argv)
     // results.  Avoid device/ACL teardown here: the 950 debug runtime can wait
     // indefinitely while releasing a successful custom-op context.
     std::_Exit(0);
-
 }
