@@ -59,14 +59,23 @@ ge::graphStatus QkvRmsNormRopeCacheTilingRegbase::CalUbTiling()
 
     // 每个 token 占用的 UB(与 arch35 内核的 buffer 布局一一对应)
     // 单 token 的各个 buffer 字节数也在这里一次算准,随 tiling 下发给内核,内核不重算
+    //
+    // ⚠️ cosSinUbBytes_ 的语义是【cos 或 sin 的单份】,不是"cos+sin 合计":
+    // 内核里 cos / sin 是两个**独立的 queue**(regbase.h InitUbBuffers:
+    //   InitBuffer(inQueueCos_, 1, cosSinUbBytes_);
+    //   InitBuffer(inQueueSin_, 1, cosSinUbBytes_);),
+    // 而每个 queue 只装一个 token 的 D 个元素 —— 所以两处相加才是 cos+sin。
+    // 曾经把它写成 2*dimBytes*qkvBytes(合计一份)却仍按"单份"下发给两个 queue,
+    // 内核实物就比记账多出 `qkvBytes*dimBytes*ubFactor_` 字节 → ubFactor 大的形态
+    // 撑爆 UB,报 VEC_ERROR(实测 ubFactor=40 的 fp16 形态必挂,39 及以下正常)。
     int64_t perTokenBytes = numHead_ * dimBytes * qkvBytes;                     // x(整行 qkv)
-    cosSinUbBytes_ = 2 * dimBytes * qkvBytes;                                   // cos + sin
+    cosSinUbBytes_ = dimBytes * qkvBytes;                                       // cos(或 sin)单份
     qOutUbBytes_ = numHeadQ_ * dimBytes * qkvBytes;                             // q_out / q_out_before_quant
     kProtoUbBytes_ = numHeadK_ * dimBytes * qkvBytes;                           // k_out_before_quant
     vProtoUbBytes_ = numHeadV_ * dimBytes * qkvBytes;                           // v_out_before_quant
     kCacheUbBytes_ = numHeadK_ * dimBytes * kCacheBytes;                        // k_cache 散射源
     vCacheUbBytes_ = numHeadV_ * dimBytes * vCacheBytes;                        // v_cache 散射源
-    perTokenBytes += cosSinUbBytes_ + qOutUbBytes_ + kProtoUbBytes_ + vProtoUbBytes_ + kCacheUbBytes_ + vCacheUbBytes_;
+    perTokenBytes += 2 * cosSinUbBytes_ + qOutUbBytes_ + kProtoUbBytes_ + vProtoUbBytes_ + kCacheUbBytes_ + vCacheUbBytes_;
 
     const int64_t fixedBytes = gammaUbBytes_ + quantUbBytes_;
     const int64_t available = static_cast<int64_t>(ubSize_) - UB_RESERVED_BYTES - fixedBytes;
