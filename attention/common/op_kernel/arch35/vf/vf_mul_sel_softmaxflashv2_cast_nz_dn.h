@@ -100,11 +100,6 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ flo
 
     RegTensor<T2> vreg_x_exp_fp8_0, vreg_x_exp_f8_pack_0;
     RegTensor<T2> vreg_x_exp_fp8_1, vreg_x_exp_f8_pack_1;
-    // [v_tail高精窗口] bf16直出寄存器(与非量化DN bf16路径同款: Cast+DeInterleave交错拓宽)
-    RegTensor<bfloat16_t> vreg_x_exp_bf16_e0, vreg_x_exp_bf16_o0, vreg_x_exp_bf16_p0, vreg_x_exp_bf16_pa;
-    RegTensor<bfloat16_t> vreg_x_exp_bf16_e1, vreg_x_exp_bf16_o1, vreg_x_exp_bf16_p1, vreg_x_exp_bf16_pb;
-    RegTensor<bfloat16_t> vreg_x_exp_bf16_e2, vreg_x_exp_bf16_o2, vreg_x_exp_bf16_p2, vreg_x_exp_bf16_pc;
-    RegTensor<bfloat16_t> vreg_x_exp_bf16_e3, vreg_x_exp_bf16_o3, vreg_x_exp_bf16_p3, vreg_x_exp_bf16_pd;
 
     __ubuf__ T2 *x_exp_1;
     if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
@@ -495,11 +490,6 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
 
     RegTensor<T2> vreg_x_exp_fp8_0, vreg_x_exp_f8_pack_0;
     RegTensor<T2> vreg_x_exp_fp8_1, vreg_x_exp_f8_pack_1;
-    // [v_tail高精窗口] bf16直出寄存器(与非量化DN bf16路径同款: Cast+DeInterleave交错拓宽)
-    RegTensor<bfloat16_t> vreg_x_exp_bf16_e0, vreg_x_exp_bf16_o0, vreg_x_exp_bf16_p0, vreg_x_exp_bf16_pa;
-    RegTensor<bfloat16_t> vreg_x_exp_bf16_e1, vreg_x_exp_bf16_o1, vreg_x_exp_bf16_p1, vreg_x_exp_bf16_pb;
-    RegTensor<bfloat16_t> vreg_x_exp_bf16_e2, vreg_x_exp_bf16_o2, vreg_x_exp_bf16_p2, vreg_x_exp_bf16_pc;
-    RegTensor<bfloat16_t> vreg_x_exp_bf16_e3, vreg_x_exp_bf16_o3, vreg_x_exp_bf16_p3, vreg_x_exp_bf16_pd;
 
     __ubuf__ T2 *x_exp_1;
     if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
@@ -1573,11 +1563,6 @@ __simd_vf__ inline void ProcessVec1DnCausalVF(
 
     RegTensor<T2> vreg_x_exp_fp8_0, vreg_x_exp_f8_pack_0;
     RegTensor<T2> vreg_x_exp_fp8_1, vreg_x_exp_f8_pack_1;
-    // [v_tail高精窗口] bf16直出寄存器(与非量化DN bf16路径同款: Cast+DeInterleave交错拓宽)
-    RegTensor<bfloat16_t> vreg_x_exp_bf16_e0, vreg_x_exp_bf16_o0, vreg_x_exp_bf16_p0, vreg_x_exp_bf16_pa;
-    RegTensor<bfloat16_t> vreg_x_exp_bf16_e1, vreg_x_exp_bf16_o1, vreg_x_exp_bf16_p1, vreg_x_exp_bf16_pb;
-    RegTensor<bfloat16_t> vreg_x_exp_bf16_e2, vreg_x_exp_bf16_o2, vreg_x_exp_bf16_p2, vreg_x_exp_bf16_pc;
-    RegTensor<bfloat16_t> vreg_x_exp_bf16_e3, vreg_x_exp_bf16_o3, vreg_x_exp_bf16_p3, vreg_x_exp_bf16_pd;
 
     __ubuf__ T2 *x_exp_1;
     if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
