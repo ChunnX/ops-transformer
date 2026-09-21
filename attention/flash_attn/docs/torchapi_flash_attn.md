@@ -835,3 +835,138 @@ layout_q、layout_kv与SeqLens参数的组合关系：
     assert attn_out.dtype == q.dtype
     assert torch.isfinite(attn_out.float()).all().item()
     ```
+
+- flash_attn_metadata + flash_attn联合调用示例（稠密GQA非量化场景，BSND + causal mask）
+
+    ```python
+    import torch
+    import torch_npu
+    import cann_ops_transformer
+
+    torch_npu.npu.set_device(0)
+
+    # 稠密GQA非量化场景：连续KV、等长序列，Q_N为KV_N的整数倍（GQA分组数G = Q_N // KV_N = 4）
+    dtype = torch.bfloat16
+    B = 2
+    S = 1024
+    Q_N = 32
+    KV_N = 8
+    D = 128
+
+    q = torch.randn(B, S, Q_N, D, dtype=dtype, device="npu")
+    k = torch.randn(B, S, KV_N, D, dtype=dtype, device="npu")
+    v = torch.randn(B, S, KV_N, D, dtype=dtype, device="npu")
+
+    # causal模板矩阵：2048x2048，含对角线的下三角全0（参与计算），上三角非0（被掩掉）
+    attn_mask = torch.triu(torch.ones(2048, 2048), diagonal=1).to(dtype=torch.int8, device="npu")
+
+    metadata = cann_ops_transformer.ops.flash_attn_metadata(
+        Q_N,
+        KV_N,
+        D,
+        batch_size=B,
+        max_seqlen_q=S,
+        max_seqlen_kv=S,
+        mask_mode=3,
+        win_left=-1,
+        win_right=-1,
+        layout_q="BSND",
+        layout_kv="BSND",
+        layout_out="BSND",
+    )
+
+    attn_out, softmax_lse = cann_ops_transformer.ops.flash_attn(
+        q, k, v,
+        attn_mask=attn_mask,
+        metadata=metadata,
+        softmax_scale=1.0 / (D ** 0.5),
+        mask_mode=3,
+        win_left=-1,
+        win_right=-1,
+        max_seqlen_q=S,
+        max_seqlen_kv=S,
+        layout_q="BSND",
+        layout_kv="BSND",
+        layout_out="BSND",
+        return_softmax_lse=False,
+    )
+    torch_npu.npu.synchronize()
+    assert attn_out.shape == q.shape
+    assert attn_out.dtype == q.dtype
+    assert torch.isfinite(attn_out.float()).all().item()
+    ```
+
+- flash_attn_metadata + flash_attn联合调用示例（MLA非量化prefill场景，QKD=192、VD=128，TND + causal mask）
+
+    ```python
+    import torch
+    import torch_npu
+    import cann_ops_transformer
+
+    torch_npu.npu.set_device(0)
+
+    # MLA非量化prefill场景：q/k的head_dim为192，v的head_dim为128
+    dtype = torch.bfloat16
+    Q_N = 128                # MLA查询头数
+    KV_N = 1                 # MLA压缩KV单头共享（MQA形态），满足Q_N % KV_N == 0
+    D_QK = 192               # q/k的head_dim
+    D_V = 128                # v的head_dim
+    seq_lens = [1024, 2048]  # prefill各batch序列长度（causal模板矩阵上限2048）
+    B = len(seq_lens)
+    Q_T = sum(seq_lens)
+    KV_T = sum(seq_lens)
+
+    # TND布局：batch内变长序列拼接，q:(Q_T, Q_N, D_QK)，k:(KV_T, KV_N, D_QK)，v:(KV_T, KV_N, D_V)
+    q = torch.randn(Q_T, Q_N, D_QK, dtype=dtype, device="npu")
+    k = torch.randn(KV_T, KV_N, D_QK, dtype=dtype, device="npu")
+    v = torch.randn(KV_T, KV_N, D_V, dtype=dtype, device="npu")
+
+    # cu_seqlens（TND必传）：首元素为0，末元素等于Q_T/KV_T，单调不减
+    cu_seqlens = torch.zeros(B + 1, dtype=torch.int32, device="npu")
+    cu_seqlens[1:] = torch.cumsum(torch.tensor(seq_lens, dtype=torch.int32, device="npu"), dim=0)
+
+    # causal模板矩阵：2048x2048，含对角线的下三角全0（参与计算），上三角非0（被掩掉）
+    attn_mask = torch.triu(torch.ones(2048, 2048), diagonal=1).to(dtype=torch.int8, device="npu")
+
+    # 关键点：QK与V维度不同（192/128）时，flash_attn_metadata必须显式传入head_dim_v，
+    # 且与后续flash_attn调用中value的head_dim（连续布局即value末维）一致，否则负载均衡切分与主算子不一致
+    metadata = cann_ops_transformer.ops.flash_attn_metadata(
+        Q_N,
+        KV_N,
+        D_QK,
+        head_dim_v=D_V,
+        cu_seqlens_q=cu_seqlens,
+        cu_seqlens_kv=cu_seqlens,
+        batch_size=B,
+        max_seqlen_q=max(seq_lens),
+        max_seqlen_kv=max(seq_lens),
+        mask_mode=3,
+        win_left=-1,
+        win_right=-1,
+        layout_q="TND",
+        layout_kv="TND",
+        layout_out="TND",
+    )
+
+    attn_out, softmax_lse = cann_ops_transformer.ops.flash_attn(
+        q, k, v,
+        cu_seqlens_q=cu_seqlens,
+        cu_seqlens_kv=cu_seqlens,
+        attn_mask=attn_mask,
+        metadata=metadata,
+        softmax_scale=1.0 / (D_QK ** 0.5),
+        mask_mode=3,
+        win_left=-1,
+        win_right=-1,
+        max_seqlen_q=max(seq_lens),
+        max_seqlen_kv=max(seq_lens),
+        layout_q="TND",
+        layout_kv="TND",
+        layout_out="TND",
+        return_softmax_lse=True,
+    )
+    torch_npu.npu.synchronize()
+    assert attn_out.shape == (Q_T, Q_N, D_V)   # 输出D维度与value的head_dim一致
+    assert softmax_lse.shape == (Q_N, Q_T)     # TND布局下softmax_lse输出shape为(Q_N, Q_T)
+    assert torch.isfinite(attn_out.float()).all().item()
+    ```
