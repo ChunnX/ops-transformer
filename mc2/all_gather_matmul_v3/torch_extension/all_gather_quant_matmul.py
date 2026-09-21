@@ -8,12 +8,13 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 import logging
-from typing import Optional, List, Tuple
+from typing import List, Optional, Tuple
 
 import torch
+from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 from torch.library import impl
 from torch_npu.utils._error_code import ErrCode, ops_error
-from cann_ops_transformer.op_builder import OpBuilder, get_as_library
+
 from ..common import CommChannelBuilderManager
 
 _logger = logging.getLogger(__name__)
@@ -79,15 +80,12 @@ class _AllGatherQuantMatmulOpBuilder(OpBuilder):
             if y_dtype is not None:
                 out_dtype = _ACL_DTYPE_TO_TORCH_DTYPE.get(y_dtype, out_dtype)
             y = x1.new_empty(tuple([m_per_rank * rank_size, n]), dtype=out_dtype)
-            gather_out = x1.new_empty(
-                tuple([m_per_rank * rank_size, k]), dtype=x1.dtype
-            )
+            gather_out = x1.new_empty(tuple([m_per_rank * rank_size, k]), dtype=x1.dtype)
             amax_out = x1.new_empty(tuple([0]), dtype=torch.float32)
             return (y, gather_out, amax_out)
 
 
 _all_gather_quant_matmul_op_builder = _AllGatherQuantMatmulOpBuilder()
-_op_module = _all_gather_quant_matmul_op_builder.load()
 
 
 @impl(get_as_library(), _all_gather_quant_matmul_op_builder.name, "PrivateUse1")
@@ -109,7 +107,8 @@ def _npu_all_gather_quant_matmul(
     y_dtype=None,
     comm_mode=None,
 ):
-    result = _op_module.npu_all_gather_quant_matmul(
+    op_module = _all_gather_quant_matmul_op_builder.load()
+    result = op_module.npu_all_gather_quant_matmul(
         context,
         x1,
         x2,
@@ -212,9 +211,7 @@ def _check_hccl_buffer(x1, x1_scale, rank_size, hccl_buffer_size):
     scale_k_groups = (k + 63) // 64
     x1_scale_bytes = 0
     if x1_scale is not None:
-        x1_scale_bytes = (
-            rank_size * m_per_rank * scale_k_groups * 2 * x1_scale.element_size()
-        )
+        x1_scale_bytes = rank_size * m_per_rank * scale_k_groups * 2 * x1_scale.element_size()
     comm_data_bytes = x1_data_bytes + x1_scale_bytes
     need_bytes = comm_data_bytes + hccl_buffer_reserved_bytes
     _logger.info(
@@ -304,9 +301,7 @@ def all_gather_quant_matmul(
         x2_scale_dtype,
         comm_mode,
     )
-    context, hccl_buffer_size, rank_id, rank_size, group_name = _prepare_comm_context(
-        group
-    )
+    context, hccl_buffer_size, rank_id, rank_size, group_name = _prepare_comm_context(group)
     _check_hccl_buffer(x1, x1_scale, rank_size, hccl_buffer_size)
     _logger.info(
         "rank=%s, rank_size=%s, comm_mode=%s, calling npu_all_gather_quant_matmul ...",

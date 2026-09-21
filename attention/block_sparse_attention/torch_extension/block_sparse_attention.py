@@ -9,10 +9,11 @@
 # -----------------------------------------------------------------------------------------------------------
 from enum import IntEnum
 from typing import List, Optional
+
 import torch
 import torch_npu  # noqa: F401
-from torch.library import impl
 from cann_ops_transformer.op_builder import OpBuilder, get_as_library
+from torch.library import impl
 
 
 class QuantMode(IntEnum):
@@ -97,9 +98,7 @@ class BlockSparseAttentionOpBuilder(OpBuilder):
             elif quant_mode == QuantMode.NO_QUANT:
                 out_dtype = query.dtype
             else:
-                raise ValueError(
-                    "attention_out_dtype must be specified when quant_mode != 0"
-                )
+                raise ValueError("attention_out_dtype must be specified when quant_mode != 0")
             # FP4: two values pack into one uint8 byte, so last dim is 2*D
             if query.dtype == torch.uint8 and quant_mode in (
                 QuantMode.MXFP4_OCP_QUANT,
@@ -122,7 +121,6 @@ class BlockSparseAttentionOpBuilder(OpBuilder):
 
 
 _op_builder = BlockSparseAttentionOpBuilder()
-_op_module = _op_builder.load()
 
 
 @impl(get_as_library(), _op_builder.name, "PrivateUse1")
@@ -155,7 +153,8 @@ def block_sparse_attention(
     p_quant_scale: Optional[torch.Tensor] = None,
     attention_out_dtype: Optional[torch.dtype] = None,
 ):
-    return _op_module.npu_block_sparse_attention(
+    op_module = _op_builder.load()
+    return op_module.npu_block_sparse_attention(
         query,
         key,
         value,

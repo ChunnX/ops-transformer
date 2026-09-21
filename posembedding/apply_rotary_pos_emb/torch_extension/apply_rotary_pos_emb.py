@@ -8,10 +8,10 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 from typing import Tuple
-import torch
-from torch.library import impl
-from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
+import torch
+from cann_ops_transformer.op_builder import OpBuilder, get_as_library
+from torch.library import impl
 
 OP_NAME = "apply_rotary_pos_emb"
 ROTARY_MODE_HALF_STR = "half"
@@ -50,8 +50,7 @@ GRAD_LAYOUT_BY_LAYOUT = {
 def _check_layout(layout: str):
     if layout not in SUPPORTED_LAYOUTS:
         raise ValueError(
-            "apply_rotary_pos_emb: layout must be one of BSND/BSH/SBND/BNSD/TND, "
-            f"got {layout}."
+            f"apply_rotary_pos_emb: layout must be one of BSND/BSH/SBND/BNSD/TND, got {layout}."
         )
 
 
@@ -133,9 +132,7 @@ class ApplyRotaryPosEmbFunction(torch.autograd.Function):
 
 class ApplyRotaryPosEmbOpBuilder(OpBuilder):
     def __init__(self):
-        super(ApplyRotaryPosEmbOpBuilder, self).__init__(
-            OP_NAME, category="posembedding"
-        )
+        super(ApplyRotaryPosEmbOpBuilder, self).__init__(OP_NAME, category="posembedding")
 
     def sources(self):
         return ["csrc/posembedding/apply_rotary_pos_emb.cpp"]
@@ -154,7 +151,6 @@ class ApplyRotaryPosEmbOpBuilder(OpBuilder):
 
 
 apply_rotary_pos_emb_op_builder = ApplyRotaryPosEmbOpBuilder()
-apply_rotary_pos_emb_op_builder.load()
 
 
 @impl(get_as_library(), apply_rotary_pos_emb_op_builder.name, "PrivateUse1")
@@ -174,19 +170,12 @@ def apply_rotary_pos_emb(
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     _check_inputs(query, key, cos, sin, layout, rotary_mode)
     needs_grad = torch.is_grad_enabled() and (
-        query.requires_grad
-        or key.requires_grad
-        or cos.requires_grad
-        or sin.requires_grad
+        query.requires_grad or key.requires_grad or cos.requires_grad or sin.requires_grad
     )
     if needs_grad:
         if rotary_mode != ROTARY_MODE_HALF_STR:
-            raise ValueError(
-                "apply_rotary_pos_emb: autograd only supports rotary_mode='half'."
-            )
-        return ApplyRotaryPosEmbFunction.apply(
-            query, key, cos, sin, layout, rotary_mode
-        )
+            raise ValueError("apply_rotary_pos_emb: autograd only supports rotary_mode='half'.")
+        return ApplyRotaryPosEmbFunction.apply(query, key, cos, sin, layout, rotary_mode)
     return torch.ops.cann_ops_transformer.apply_rotary_pos_emb(
         query, key, cos, sin, layout, rotary_mode
     )

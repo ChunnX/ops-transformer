@@ -8,10 +8,10 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 from typing import Optional, Tuple
-import torch
-from torch.library import impl
-from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
+import torch
+from cann_ops_transformer.op_builder import OpBuilder, get_as_library
+from torch.library import impl
 
 OP_NAME = "apply_rotary_pos_emb_grad"
 ROTARY_MODE_HALF = "half"
@@ -25,9 +25,7 @@ SUPPORTED_DTYPES = (torch.float16, torch.float32, torch.bfloat16)
 
 class ApplyRotaryPosEmbGradOpBuilder(OpBuilder):
     def __init__(self):
-        super(ApplyRotaryPosEmbGradOpBuilder, self).__init__(
-            OP_NAME, category="posembedding"
-        )
+        super(ApplyRotaryPosEmbGradOpBuilder, self).__init__(OP_NAME, category="posembedding")
 
     def sources(self):
         """Path to C++ source code."""
@@ -72,9 +70,7 @@ class ApplyRotaryPosEmbGradOpBuilder(OpBuilder):
             grad_query = torch.empty(
                 grad_query_embed.shape, dtype=grad_query_embed.dtype, device="meta"
             )
-            grad_key = torch.empty(
-                grad_key_embed.shape, dtype=grad_key_embed.dtype, device="meta"
-            )
+            grad_key = torch.empty(grad_key_embed.shape, dtype=grad_key_embed.dtype, device="meta")
             grad_cos = (
                 torch.empty(cos.shape, dtype=cos.dtype, device="meta")
                 if query is not None
@@ -175,7 +171,6 @@ def _check_inputs(
 
 
 apply_rotary_pos_emb_grad_op_builder = ApplyRotaryPosEmbGradOpBuilder()
-apply_rotary_pos_emb_grad_op_builder.load()
 
 
 @impl(get_as_library(), apply_rotary_pos_emb_grad_op_builder.name, "PrivateUse1")
