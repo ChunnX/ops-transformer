@@ -243,6 +243,78 @@ def test_multi_node_resume_is_rejected_before_launch(monkeypatch):
         search_tiling._parse_args()
 
 
+def test_refinement_reruns_finalists_with_new_sampling_and_can_resume(tmp_path, monkeypatch):
+    coarse, fine = tmp_path / "coarse", tmp_path / "fine"
+    common = ["search_tiling", "--cases", str(CASES),
+              "--case-id", "aligned_m128_n256_k256_ep2_uniform"]
+    launches = _install_fake_workers(monkeypatch)
+    monkeypatch.setattr(sys, "argv", common + ["--output-dir", str(coarse), "--max-candidates", "8",
+                                             "--iterations", "1", "--repeats", "1"])
+    assert search_tiling.main() == 0
+    # An interrupted or damaged derived stream does not invalidate committed batches.
+    (coarse / "results.jsonl").write_text('{"truncated":', encoding="utf-8")
+    arguments = common + ["--output-dir", str(fine), "--refine-from", str(coarse), "--top-k", "2",
+                          "--iterations", "10", "--repeats", "5"]
+    monkeypatch.setattr(sys, "argv", arguments)
+    assert search_tiling.main() == 0
+    assert [item["mode"] for item in launches] == ["probe", "session", "probe", "session"]
+    manifest = json.loads((fine / "search_manifest.json").read_text(encoding="utf-8"))
+    seeds = manifest["settings"]["refinement"]["seeds"][manifest["cases"][0]["id"]]
+    baseline = default_tiling(manifest["cases"][0])
+    expected = {search_tiling.candidate_id(baseline)} | {item["candidate_id"] for item in seeds}
+    assert {item["candidate_id"] for item in manifest["plan"]} == expected
+    assert launches[-1]["case"]["performance"]["repeats"] == 5
+    records = json.loads((fine / "summary.json").read_text(encoding="utf-8"))["results"]
+    assert all(len(item["rank_samples_us"][0]) == 5 for item in records)
+    monkeypatch.setattr(sys, "argv", arguments + ["--resume"])
+    assert search_tiling.main() == 0
+    assert [item["mode"] for item in launches] == ["probe", "session", "probe", "session", "probe"]
+
+
+def test_refinement_rejects_changed_workload_and_corrupt_evidence(tmp_path, monkeypatch):
+    _install_fake_workers(monkeypatch)
+    monkeypatch.setattr(sys, "argv", ["search_tiling", "--cases", str(CASES),
+        "--case-id", "aligned_m128_n256_k256_ep2_uniform", "--output-dir", str(tmp_path),
+        "--max-candidates", "2"])
+    assert search_tiling.main() == 0
+    case = load_case_manifest(CASES)[0]
+    changed = copy.deepcopy(case)
+    changed["seed"] += 1
+    with pytest.raises(ValueError, match="workload differs"):
+        search_tiling._load_refinement(tmp_path, [changed], 2)
+    path = next(tmp_path.glob("*/sessions/session_*/batch_*.json"))
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["results"][0]["latency_us"] = 0.01
+    search_tiling.write_json(path, payload)
+    with pytest.raises(ValueError, match="score"):
+        search_tiling._load_refinement(tmp_path, [case], 2)
+
+
+def test_refinement_can_use_an_interrupted_search_and_expand_neighbors(tmp_path, monkeypatch):
+    coarse, fine = tmp_path / "coarse", tmp_path / "fine"
+    _install_fake_workers(monkeypatch)
+    common = ["search_tiling", "--cases", str(CASES),
+              "--case-id", "aligned_m128_n256_k256_ep2_uniform"]
+
+    def interrupted(command, environment, output_dir, timeout, request, on_batch):
+        payload = _session_batch(request, 0)
+        search_tiling.write_json(batch_path(output_dir, 0), payload)
+        on_batch(payload)
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(search_tiling, "run_persistent", interrupted)
+    monkeypatch.setattr(sys, "argv", common + ["--output-dir", str(coarse), "--batch-size", "2",
+                                             "--max-candidates", "8"])
+    with pytest.raises(KeyboardInterrupt):
+        search_tiling.main()
+    monkeypatch.setattr(sys, "argv", common + ["--dry-run", "--aic-cores", "24", "--output-dir", str(fine),
+        "--refine-from", str(coarse), "--top-k", "2", "--refine-neighbors", "--max-candidates", "16"])
+    assert search_tiling.main() == 0
+    plan = json.loads((fine / "search_manifest.json").read_text(encoding="utf-8"))
+    assert len(plan["plan"]) == 16
+    assert len(plan["settings"]["refinement"]["seeds"][plan["cases"][0]["id"]]) == 2
+
+
 def test_resume_reprobes_hardware_and_reuses_only_identical_trials(tmp_path, monkeypatch):
     output = tmp_path / "search"
     arguments = [

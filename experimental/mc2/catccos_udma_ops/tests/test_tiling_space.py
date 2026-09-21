@@ -9,7 +9,7 @@ import pytest
 
 from validation.tiling_space import (
     ALL_TO_ALLV, GROUPED_MATMUL, MMAD_SHAPES, TILING_FIELDS,
-    candidate_id, candidates_for_case, default_tiling, validate_tiling,
+    candidate_id, candidates_for_case, default_tiling, refinement_candidates_for_case, validate_tiling,
 )
 
 
@@ -151,6 +151,47 @@ def test_inverse_search_deduplicates_intervals_with_same_complete_m_groups():
     workload = case(GROUPED_MATMUL, False, 2048, 1024)
     result = candidates_for_case(workload, {"mmad": [[128, 256, 256]], "comm_interval": [2, 3], "local_copy_tile_rows": [8]}, strategy="exhaustive", max_candidates=None, aic_cores=32)
     assert len(result) == 2  # Baseline plus interval2/3, both producing one group.
+
+
+def test_refinement_reserves_winners_before_neighbor_budget_and_is_reproducible():
+    workload = case()
+    seeds = candidates_for_case(workload, aic_cores=32, max_candidates=5)[1:]
+    options = dict(neighbors=True, max_candidates=30, aic_cores=32)
+    result = refinement_candidates_for_case(workload, seeds, **options)
+    assert len(result) == 30
+    assert result[:5] == [default_tiling(workload)] + seeds
+    assert result == refinement_candidates_for_case(workload, seeds, **options)
+    # MMAD changes count as one axis, even though M0 and N0 may both change.
+    def distance(left, right):
+        return int(tuple(left[k] for k in ("m0", "n0", "k0")) !=
+                   tuple(right[k] for k in ("m0", "n0", "k0"))) + sum(
+                       left[k] != right[k] for k in left if k not in ("m0", "n0", "k0"))
+    assert all(any(distance(item, seed) == 1 for seed in seeds) for item in result[5:])
+    with pytest.raises(ValueError, match="reserved"):
+        refinement_candidates_for_case(workload, seeds, max_candidates=2, aic_cores=32)
+
+
+def test_refinement_exact_finalists_and_effective_interval_deduplication():
+    workload = case(GROUPED_MATMUL, False, 2048, 1024)
+    baseline = default_tiling(workload)
+    seeds = [dict(baseline, comm_interval=i, local_copy_tile_rows=8) for i in (2, 3)]
+    result = refinement_candidates_for_case(workload, seeds, max_candidates=None, aic_cores=32)
+    assert result == [baseline, seeds[0]]
+    # Invalid seed geometry on another machine cannot silently become a winner.
+    with pytest.raises(ValueError, match="incompatible"):
+        refinement_candidates_for_case(workload, seeds, aic_cores=30)
+
+
+def test_refinement_filters_illegal_neighbors_and_treats_mmad_as_joint_axis():
+    workload = case()
+    seed = default_tiling(workload)
+    result = refinement_candidates_for_case(workload, [seed],
+        {"stage_rows": [127, 1024, 1 << 20], "local_copy_tile_rows": [16, 1000]},
+        neighbors=True, max_candidates=None, aic_cores=32, ub_bytes=248 * 1024)
+    assert any(item["m0"] == 128 and item["n0"] == 256 for item in result)
+    assert any(item["stage_rows"] == 1024 for item in result)
+    assert all(item["stage_rows"] not in (127, 1 << 20) for item in result)
+    assert all(item["local_copy_tile_rows"] != 1000 for item in result)
 
 
 @pytest.mark.parametrize("space", [{"comm_npu_split": [4]}, {"mmad": [[64, 64, 64]]}, {"stage_rows": []}, {"stage_rows": [True]}, {"mmad": "128,256,256"}])

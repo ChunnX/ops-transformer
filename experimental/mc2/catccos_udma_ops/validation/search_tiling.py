@@ -19,7 +19,7 @@ from pathlib import Path
 try:
     from .case_schema import case_digest, load_case_manifest, select_cases
     from .common import timestamp, write_json as _write_json
-    from .tiling_space import candidate_id, candidates_for_case, default_tiling
+    from .tiling_space import candidate_id, candidates_for_case, default_tiling, refinement_candidates_for_case
     from .tiling_protocol import (
         EXECUTION_MODE, SEARCH_MODE, batch_path, candidate_request, request_digest,
         validate_batch_payload,
@@ -28,7 +28,7 @@ try:
 except ImportError:
     from case_schema import case_digest, load_case_manifest, select_cases
     from common import timestamp, write_json as _write_json
-    from tiling_space import candidate_id, candidates_for_case, default_tiling
+    from tiling_space import candidate_id, candidates_for_case, default_tiling, refinement_candidates_for_case
     from tiling_protocol import (
         EXECUTION_MODE, SEARCH_MODE, batch_path, candidate_request, request_digest,
         validate_batch_payload,
@@ -502,6 +502,11 @@ def _parse_args():
     parser.add_argument("--case-id", action="append", default=[])
     parser.add_argument("--include-tag", action="append", default=[])
     parser.add_argument("--space", help="JSON search space (defaults to the supported compiled variants)")
+    parser.add_argument("--refine-from", help="previous search directory whose committed winners seed a new search")
+    parser.add_argument("--top-k", type=_positive_int, default=16,
+                        help="best measured candidates per case to remeasure with --refine-from")
+    parser.add_argument("--refine-neighbors", action="store_true",
+                        help="also vary one grid dimension around each seed; requires --refine-from")
     parser.add_argument("--strategy", choices=("random", "exhaustive", "grid"), default="random")
     parser.add_argument("--max-candidates", type=_nonnegative_int, default=64,
                         help="candidate budget per case; 0 searches every feasible candidate")
@@ -532,6 +537,8 @@ def _parse_args():
     parser.add_argument("--udma-master-port", type=_positive_int, default=29601)
     parser.add_argument("--run-id", help="identical unique ID required on every node for multi-node runs")
     args = parser.parse_args()
+    if args.refine_neighbors and not args.refine_from:
+        parser.error("--refine-neighbors requires --refine-from")
     if not 0 <= args.node_rank < args.nnodes:
         parser.error("node-rank must be in [0, nnodes)")
     if args.nnodes > 1 and not args.run_id:
@@ -604,6 +611,56 @@ def _replay_checkpoints(output_root, cases, plan, manifest, plan_digest, report,
             if cached.get("status") == "measured" or not retry_failed:
                 report.record(cached)
     report.flush_best()
+
+
+def _load_refinement(source_root, cases, top_k):
+    """Use validated checkpoints as seed evidence, never reuse their timings.
+
+    An interrupted exhaustive run is also a usable source. Derived JSONL/CSV
+    streams may have truncated tails and are deliberately not read here.
+    """
+    source_root = Path(source_root).resolve()
+    manifest = json.loads((source_root / "search_manifest.json").read_text(encoding="utf-8"))
+    if manifest.get("execution_mode") != EXECUTION_MODE or manifest.get("search_mode") != SEARCH_MODE:
+        raise ValueError("refinement requires a persistent performance-only search directory")
+    by_id = {case["id"]: case for case in manifest["cases"]}
+    source_cases = []
+    # Sampling and report-only settings may differ; the generated tensors must not.
+    workload_keys = ("operator", "output_all_to_allv", "shape", "world_size", "expert_num",
+                     "dtype", "route", "seed", "input_distribution")
+    for case in cases:
+        previous = by_id.get(case["id"])
+        if previous is None or any(previous.get(key) != case.get(key) for key in workload_keys):
+            raise ValueError("refinement workload differs or is missing: {}".format(case["id"]))
+        source_cases.append(previous)
+
+    class SeedRecords:
+        def __init__(self):
+            self.records = {}
+
+        def record(self, result):
+            self.records.setdefault((result["case_id"], result["candidate_id"]), result)
+
+        def flush_best(self):
+            pass
+
+    evidence = SeedRecords()
+    selected = {case["id"] for case in cases}
+    source_plan = [item for item in manifest["plan"] if item["case_id"] in selected]
+    digest = request_digest(manifest)
+    _replay_checkpoints(source_root, source_cases, source_plan, manifest, digest, evidence, False)
+    seeds = {}
+    for case in cases:
+        measured = sorted(
+            (item for item in evidence.records.values()
+             if item["case_id"] == case["id"] and item["status"] == "measured"),
+            key=lambda item: (item["latency_us"], item["candidate_id"]),
+        )[:top_k]
+        if not measured:
+            raise ValueError("no committed measurements to refine for {}".format(case["id"]))
+        seeds[case["id"]] = [{key: item[key] for key in ("candidate_id", "tiling", "latency_us")}
+                              for item in measured]
+    return seeds, {"source_manifest_digest": digest, "top_k": top_k, "seeds": seeds}
 
 
 def _run_case_sessions(args, output_root, case, candidates, manifest, plan_digest, report, trial_index):
@@ -730,6 +787,9 @@ def main():
     for case in cases:
         case["performance"].update(sampling)
     space = json.loads(Path(args.space).read_text(encoding="utf-8")) if args.space else None
+    refinement_seeds, refinement = (None, None)
+    if args.refine_from:
+        refinement_seeds, refinement = _load_refinement(args.refine_from, cases, args.top_k)
     output_root = Path(args.output_dir or (
         HERE.parent / "validation_results" / timestamp() / "tiling"
     )).resolve()
@@ -754,6 +814,8 @@ def main():
         "master_port": args.master_port, "udma_master_port": args.udma_master_port,
         "timeout": args.timeout, "topology_label": args.topology_label,
     }
+    if refinement is not None:
+        settings["refinement"] = dict(refinement, neighbors=args.refine_neighbors)
     selection_digest = request_digest({"cases": cases, "settings": settings})
     world_sizes = sorted({case["world_size"] for case in cases})
     environments = {}
@@ -797,12 +859,21 @@ def main():
             item["hardware"][1] if len(item["hardware"]) > 1 else 256 * 1024
             for item in rank_environments
         ) if rank_environments else 256 * 1024
-        candidates = candidates_for_case(
-            case, space, strategy=args.strategy, max_candidates=args.max_candidates or None,
-            seed=args.seed, aic_cores=cores, ub_bytes=ub_bytes,
-        )
+        candidate_options = dict(strategy=args.strategy, max_candidates=args.max_candidates or None,
+                                 seed=args.seed, aic_cores=cores, ub_bytes=ub_bytes)
+        if refinement_seeds is None:
+            candidates = candidates_for_case(case, space, **candidate_options)
+        else:
+            candidates = refinement_candidates_for_case(
+                case, [item["tiling"] for item in refinement_seeds[case["id"]]], space,
+                neighbors=args.refine_neighbors, **candidate_options,
+            )
         if not candidates:
             raise ValueError("no feasible tiling candidates for {}".format(case["id"]))
+        calls = args.repeats * (args.align_iterations + args.iterations)
+        print("{}: operator={}, {} candidates, {} calls/candidate, {} total calls + {} warmup/session".format(
+            case["id"], case["operator"], len(candidates), calls, len(candidates) * calls, args.warmup,
+        ), flush=True)
         # Normal runs consume ports per case session, not per candidate. Full
         # grids therefore have no candidate-count-derived TCP port limit.
         launch_command(args, case["world_size"], "request.json", "output", trial_index)

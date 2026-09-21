@@ -419,6 +419,20 @@ default space without a candidate cap. The tool reports the best **successfully 
 not a guarantee beyond the tested space. Hardware-equivalent candidates are
 deduplicated before applying the budget.
 
+For a bounded search, start with `--strategy random --max-candidates 512
+--align-iterations 1 --iterations 2 --repeats 1`, then use a new output directory
+with `--refine-from PREVIOUS_SEARCH_DIR --top-k 16 --refine-neighbors
+--max-candidates 256` to explore winners and their one-dimension neighbors.
+Omit `--refine-neighbors` for a final, higher-repeat measurement of only the
+winners and the valid built-in fallback. Seeds are always remeasured; earlier
+timings never enter the new ranking. The budget must cover all distinct seeds
+and the fallback. Refinement reads validated committed checkpoints, including
+those from an interrupted search, and checks workload identity while allowing
+different sampling settings. Use the same deployment environment for comparable
+seed rankings; every new candidate is checked against the newly probed hardware.
+See [the staged search guide](docs/tiling_search_fast.md) for full commands,
+measurement budgets, and the limits of heuristic pruning.
+
 To search the complete default space for all four model cases on one eight-NPU
 host, run the following from this subproject directory. The cases execute in
 sequence and each reuses its own inputs and runtime:

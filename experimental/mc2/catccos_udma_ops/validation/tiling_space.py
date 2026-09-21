@@ -246,6 +246,81 @@ def _space_for_case(case, space):
     return defaults
 
 
+def _effective_id(case, tiling, aic_cores):
+    effective = dict(tiling)
+    if aic_cores is not None:
+        if case["operator"] == ALL_TO_ALLV:
+            effective["export_core_count"] = effective["export_core_count"] or aic_cores
+        else:
+            # Only complete M groups reach the target-order schedulers.
+            n_loops = (case["shape"]["n"] + effective["n0"] - 1) // effective["n0"]
+            effective["comm_interval"] = (
+                aic_cores * effective["comm_interval"] // case["world_size"] // n_loops
+            )
+    return candidate_id(effective)
+
+
+def refinement_candidates_for_case(
+    case, ranked_tilings, space=None, *, neighbors=False, strategy="random",
+    max_candidates=64, seed=2026, aic_cores=None, ub_bytes=UB_BYTES,
+):
+    """Remeasure winners, optionally exploring one search dimension at a time.
+
+    MMAD is one joint dimension, not three independent integers. The valid
+    baseline and all distinct seeds are reserved before budgeting neighbors.
+    This is a heuristic neighborhood, not performance-equivalence pruning.
+    """
+    if strategy not in ("random", "exhaustive", "grid"):
+        raise ValueError("strategy must be random or exhaustive")
+    if max_candidates is not None:
+        _integer("max_candidates", max_candidates)
+    _integer("seed", seed, 0, (1 << 63) - 1)
+    dimensions = _space_for_case(case, space)
+    candidates, seen = [], set()
+
+    def append(tiling, required=False):
+        try:
+            normalized = validate_tiling(
+                case["operator"], tiling,
+                output_all_to_allv=case.get("output_all_to_allv", False),
+                m=case["shape"]["m"], n=case["shape"]["n"], k=case["shape"]["k"],
+                world_size=case["world_size"], aic_cores=aic_cores, ub_bytes=ub_bytes,
+            )
+        except ValueError as error:
+            if required:
+                raise ValueError("refinement seed is incompatible with this hardware: {}".format(error)) from error
+            return
+        identity = _effective_id(case, normalized, aic_cores)
+        if identity not in seen:
+            seen.add(identity)
+            candidates.append(normalized)
+
+    if not ranked_tilings:
+        raise ValueError("refinement requires at least one measured seed")
+    append(default_tiling(case))
+    for tiling in ranked_tilings:
+        append(tiling, required=True)
+    reserved = len(candidates)
+    if max_candidates is not None and max_candidates < reserved:
+        raise ValueError("max-candidates must cover all {} reserved baseline/seed candidates; "
+                         "increase the budget or reduce --top-k".format(reserved))
+    if neighbors:
+        for tiling in ranked_tilings:
+            for name, values in dimensions.items():
+                for value in values:
+                    neighbor = dict(tiling)
+                    if name == "mmad":
+                        neighbor.update(zip(("m0", "n0", "k0"), value))
+                    else:
+                        neighbor[name] = value
+                    append(neighbor)
+    if strategy == "random":
+        rest = candidates[reserved:]
+        random.Random(seed).shuffle(rest)
+        candidates[reserved:] = rest
+    return candidates[:max_candidates] if max_candidates is not None else candidates
+
+
 def candidates_for_case(
     case, space=None, *, strategy="random", max_candidates=64, seed=2026,
     aic_cores=None, ub_bytes=UB_BYTES,
@@ -277,18 +352,7 @@ order. None means no budget cap. Only the tested space can claim an optimum.
             )
         except ValueError:
             return
-        effective = dict(normalized)
-        if aic_cores is not None:
-            if case["operator"] == ALL_TO_ALLV:
-                effective["export_core_count"] = effective["export_core_count"] or aic_cores
-            else:
-                # Only the complete M groups per round reach the target-order
-                # schedulers; intervals that produce the same groups are equal.
-                n_loops = (case["shape"]["n"] + effective["n0"] - 1) // effective["n0"]
-                effective["comm_interval"] = (
-                    aic_cores * effective["comm_interval"] // case["world_size"] // n_loops
-                )
-        identity = candidate_id(effective)
+        identity = _effective_id(case, normalized, aic_cores)
         if identity not in seen:
             seen.add(identity)
             candidates.append(normalized)
