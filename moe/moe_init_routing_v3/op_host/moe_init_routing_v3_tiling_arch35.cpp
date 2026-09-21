@@ -1435,13 +1435,14 @@ void MoeInitRoutingV3TilingArch35::Tiling4ExpertTokensCountCompute()
 
     int64_t expertNumElement = (tilingDataPtr_->expertTokensNumType != EXPERT_TOKENS_TYPE_KEY_VALUE) ?
                                    tilingDataPtr_->actualExpertNum :
-                                   (tilingDataPtr_->actualExpertNum + 1) * DIM_VALUE_TWO;
-    int64_t maxElementsPerLoop =
-        (availUbSize_ -
-         Ops::Base::CeilAlign(expertNumElement, UB_BLOCK_SIZE) *
-             (static_cast<int64_t>(sizeof(int32_t)) * NUM_TWO + static_cast<int64_t>(sizeof(int64_t))) -
-         UB_BLOCK_SIZE) /
-        static_cast<int64_t>(sizeof(int32_t));
+                                   tilingDataPtr_->expertNum * DIM_VALUE_TWO;
+    int64_t expertCountBufBytes =
+        Ops::Base::CeilAlign(tilingDataPtr_->actualExpertNum * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE) *
+        NUM_TWO;
+    int64_t expertTokensBufBytes =
+        Ops::Base::CeilAlign(expertNumElement * static_cast<int64_t>(sizeof(int64_t)), UB_BLOCK_SIZE);
+    int64_t maxElementsPerLoop = (availUbSize_ - expertCountBufBytes - expertTokensBufBytes - UB_BLOCK_SIZE) /
+                                 static_cast<int64_t>(sizeof(int32_t));
     int64_t perCoreLoops = Ops::Base::CeilDiv(perCoreElements, maxElementsPerLoop);
     int64_t perCorePerLoopElements = Ops::Base::CeilDiv(perCoreElements, perCoreLoops);
     int64_t perCoreLastLoopElements = perCoreElements - (perCoreLoops - 1) * perCorePerLoopElements;
