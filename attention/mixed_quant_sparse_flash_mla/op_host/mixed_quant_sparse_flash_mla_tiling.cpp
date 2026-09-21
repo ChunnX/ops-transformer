@@ -677,7 +677,8 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoTurboQuantTiling(MQSMLATilingI
 
     const uint32_t mBaseSize = tilingInfo->gSize;
     const uint32_t s2BaseSizeAlign = align(s2BaseSize, byteBlock);
-    const uint32_t cubeMSize = std::min(tilingInfo->gSize * tilingInfo->s1Size, mBaseSize);
+    // The kernel splits the full TND M dimension into tiles no larger than mBaseSize.
+    const uint32_t cubeMSize = mBaseSize;
     const uint32_t mmResUbSize = s2BaseSizeAlign * align(cubeMSize, 16U);
     const uint32_t bmm2ResUbSize = align(tilingInfo->qkHeadDim, byteBlock) * align(cubeMSize, 16U);
 
