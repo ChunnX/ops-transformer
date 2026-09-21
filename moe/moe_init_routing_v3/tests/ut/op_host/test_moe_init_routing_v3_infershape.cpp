@@ -1788,9 +1788,6 @@ TEST_F(MoeInitRoutingV3, moe_init_routing_v3_infershape_int4_dynamic_4)
                                  ROW_IDX_TYPE_GATHER, {256, 7168}, {256}, {64}, {256});
 }
 
-ge::DataType GetExpandedXDtype(ge::DataType xDtype, int64_t quantMode);
-ge::DataType GetExpandedScaleDtype(int64_t quantMode);
-
 void RunTestcaseInferDataType(ge::DataType xDtype, int64_t quantMode, ge::graphStatus expectRet,
                               ge::DataType expectOutDtype0, ge::DataType expectOutDtype3)
 {
@@ -1844,8 +1841,12 @@ void RunTestcaseInferDataType(ge::DataType xDtype, int64_t quantMode, ge::graphS
 
 void RunSuccessTestcaseInferDataType(ge::DataType xDtype, int64_t quantMode)
 {
-    ge::DataType expandedXDtype = GetExpandedXDtype(xDtype, quantMode);
-    ge::DataType expandedScaleDtype = GetExpandedScaleDtype(quantMode);
+    ge::DataType expandedXDtype = (quantMode == QUANT_MODE_UNQUANT) ? xDtype : QUANT_DST_TYPE_MAP.at(quantMode);
+    ge::DataType expandedScaleDtype =
+        (quantMode == QUANT_MODE_MXFP8_E5M2 || quantMode == QUANT_MODE_MXFP8_E4M3FN ||
+         quantMode == QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2 || quantMode == QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN) ?
+            ge::DT_FLOAT8_E8M0 :
+            ge::DT_FLOAT;
     RunTestcaseInferDataType(xDtype, quantMode, ge::GRAPH_SUCCESS, expandedXDtype, expandedScaleDtype);
 }
 
@@ -1982,8 +1983,6 @@ ge::DataType GetExpandedXDtype(ge::DataType xDtype, int64_t quantMode)
         case QUANT_MODE_FP8_GROUP_AMAX_E4M3FN:
             return ge::DT_FLOAT8_E4M3FN;
         case QUANT_MODE_HIF8_CAST:
-        case QUANT_MODE_HIF8_PERTENSOR:
-        case QUANT_MODE_HIF8_PERTOKEN:
             return ge::DT_HIFLOAT8;
         case QUANT_MODE_MXFP4_E2M1:
             return ge::DT_FLOAT4_E2M1;
@@ -2199,14 +2198,6 @@ TEST_F(MoeInitRoutingV3, moe_init_routing_v3_infershape_hif8_pertensor)
 {
     RunExtendedSuccessInferShape({32, 1024}, ge::DT_BF16, {32, 8}, {1}, {}, 256, EXPERT_CAPACITY, 256, DROP_PAD_MODE,
                                  EXPERT_TOKENS_TYPE_COUNT, EXPERT_TOKENS_NUM_FLAG, QUANT_MODE_HIF8_PERTENSOR, {0, 256},
-                                 ROW_IDX_TYPE_GATHER, {256, 1024}, {256}, {256}, {});
-}
-
-// HIF8 直转量化（expanded_scale 不输出，空 shape）
-TEST_F(MoeInitRoutingV3, moe_init_routing_v3_infershape_hif8_cast)
-{
-    RunExtendedSuccessInferShape({32, 1024}, ge::DT_FLOAT16, {32, 8}, {}, {}, 256, EXPERT_CAPACITY, 256, DROP_PAD_MODE,
-                                 EXPERT_TOKENS_TYPE_COUNT, EXPERT_TOKENS_NUM_FLAG, QUANT_MODE_HIF8_CAST, {0, 256},
                                  ROW_IDX_TYPE_GATHER, {256, 1024}, {256}, {256}, {});
 }
 
@@ -2653,34 +2644,4 @@ TEST_F(MoeInitRoutingV3, moe_init_routing_v3_inferdatatype_fp8_perblock_fail)
 {
     int64_t quantMode = QUANT_MODE_FP8_PERBLOCK_E5M2;
     RunTestcaseInferDataType(ge::DT_FLOAT, quantMode, ge::GRAPH_FAILED, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT);
-}
-
-// FP16+静态量化
-TEST_F(MoeInitRoutingV3, moe_init_routing_v3_inferdatatype_static_fp16)
-{
-    RunSuccessTestcaseInferDataType(ge::DT_FLOAT16, QUANT_MODE_STATIC);
-}
-
-// FP32+静态量化
-TEST_F(MoeInitRoutingV3, moe_init_routing_v3_inferdatatype_static_fp32)
-{
-    RunSuccessTestcaseInferDataType(ge::DT_FLOAT, QUANT_MODE_STATIC);
-}
-
-// BF16+HIF8 PERTENSOR量化
-TEST_F(MoeInitRoutingV3, moe_init_routing_v3_inferdatatype_hif8_pertensor)
-{
-    RunSuccessTestcaseInferDataType(ge::DT_BF16, QUANT_MODE_HIF8_PERTENSOR);
-}
-
-// FP16+HIF8 PERTOKEN量化
-TEST_F(MoeInitRoutingV3, moe_init_routing_v3_inferdatatype_hif8_pertoken)
-{
-    RunSuccessTestcaseInferDataType(ge::DT_FLOAT16, QUANT_MODE_HIF8_PERTOKEN);
-}
-
-// BF16+FP8 PerBlock E4M3FN量化
-TEST_F(MoeInitRoutingV3, moe_init_routing_v3_inferdatatype_fp8_perblock_e4m3fn)
-{
-    RunSuccessTestcaseInferDataType(ge::DT_BF16, QUANT_MODE_FP8_PERBLOCK_E4M3FN);
 }

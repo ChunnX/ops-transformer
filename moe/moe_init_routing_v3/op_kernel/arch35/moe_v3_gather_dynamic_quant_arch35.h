@@ -38,8 +38,8 @@ public:
     __aicore__ inline void Process();
 
 private:
-    __aicore__ inline void StoreInt4QuantOut(__ubuf__ uint8_t *outUbAddr, Reg::RegTensor<float> &inReg,
-                                             Reg::MaskReg &maskRegInLoop, Reg::MaskReg &maskRegHalf);
+    __aicore__ inline void StoreInt4QuantOut(__ubuf__ uint8_t *outUbAddr, MicroAPI::RegTensor<float> &inReg,
+                                             MicroAPI::MaskReg &maskRegInLoop, MicroAPI::MaskReg &maskRegHalf);
     __aicore__ inline void CopyInExpandedExpertIdx(int64_t progress);
     __aicore__ inline void CopyOutXQuantEH(int64_t progress);
     template <bool IS_INPUT_SCALE>
@@ -106,29 +106,29 @@ private:
 
     TBuf<AscendC::TPosition::VECCALC> tempCalcBuf_;
 
-    constexpr static Reg::CastTrait castTraitF32ToF16 = {Reg::RegLayout::ZERO, Reg::SatMode::SAT,
-                                                         Reg::MaskMergeMode::ZEROING, RoundMode::CAST_TRUNC};
-    constexpr static Reg::CastTrait castTraitF16ToI8 = {Reg::RegLayout::ZERO, Reg::SatMode::SAT,
-                                                        Reg::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
-    constexpr static Reg::CastTrait castTraitF16ToI4 = {Reg::RegLayout::ZERO, Reg::SatMode::SAT,
-                                                        Reg::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
+    constexpr static MicroAPI::CastTrait castTraitF32ToF16 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::SAT,
+                                                              MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_TRUNC};
+    constexpr static MicroAPI::CastTrait castTraitF16ToI8 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::SAT,
+                                                             MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
+    constexpr static MicroAPI::CastTrait castTraitF16ToI4 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::SAT,
+                                                             MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
 };
 
 template <typename T, typename QuantT>
 __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::StoreInt4QuantOut(__ubuf__ uint8_t *outUbAddr,
-                                                                              Reg::RegTensor<float> &inReg,
-                                                                              Reg::MaskReg &maskRegInLoop,
-                                                                              Reg::MaskReg &maskRegHalf)
+                                                                              MicroAPI::RegTensor<float> &inReg,
+                                                                              MicroAPI::MaskReg &maskRegInLoop,
+                                                                              MicroAPI::MaskReg &maskRegHalf)
 {
-    Reg::RegTensor<half> outRegF16;
-    Reg::RegTensor<uint8_t> outRegI4;
-    Reg::RegTensor<uint16_t> outRegPackedHalf;
+    MicroAPI::RegTensor<half> outRegF16;
+    MicroAPI::RegTensor<uint8_t> outRegI4;
+    MicroAPI::RegTensor<uint16_t> outRegPackedHalf;
 
-    Reg::Cast<half, float, castTraitF32ToF16>(outRegF16, inReg, maskRegInLoop);
-    Reg::Pack(outRegPackedHalf, (Reg::RegTensor<uint32_t> &)outRegF16);
-    Reg::Cast<int4x2_t, half, castTraitF16ToI4>((Reg::RegTensor<int4x2_t> &)outRegI4,
-                                                (Reg::RegTensor<half> &)outRegPackedHalf, maskRegInLoop);
-    Reg::StoreAlign<uint8_t, Reg::StoreDist::DIST_PACK4_B32>(outUbAddr, outRegI4, maskRegHalf);
+    MicroAPI::Cast<half, float, castTraitF32ToF16>(outRegF16, inReg, maskRegInLoop);
+    MicroAPI::Pack(outRegPackedHalf, (MicroAPI::RegTensor<uint32_t> &)outRegF16);
+    MicroAPI::Cast<int4x2_t, half, castTraitF16ToI4>((MicroAPI::RegTensor<int4x2_t> &)outRegI4,
+                                                     (MicroAPI::RegTensor<half> &)outRegPackedHalf, maskRegInLoop);
+    MicroAPI::StoreAlign<uint8_t, MicroAPI::StoreDist::DIST_PACK4_B32>(outUbAddr, outRegI4, maskRegHalf);
 }
 
 template <typename T, typename QuantT>
@@ -182,40 +182,40 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::ComputeInt4SinglePas
     uint32_t sreg = static_cast<uint32_t>(cols_);
     __VEC_SCOPE__
     {
-        Reg::RegTensor<float> inReg, absReg, smoothReg, scaleValueReg, quantFactorReg, zeroReg;
-        Reg::Duplicate(scaleValueReg, 0.0f);
-        Reg::Duplicate(absReg, 0.0f);
+        MicroAPI::RegTensor<float> inReg, absReg, smoothReg, scaleValueReg, quantFactorReg, zeroReg;
+        MicroAPI::Duplicate(scaleValueReg, 0.0f);
+        MicroAPI::Duplicate(absReg, 0.0f);
 
-        Reg::MaskReg maskRegInLoop = Reg::UpdateMask<float>(sreg);
-        Reg::MaskReg maskRegAll = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
-        Reg::MaskReg maskRegHalf = Reg::CreateMask<float, Reg::MaskPattern::H>();
-        Reg::MaskReg maskRegVL1 = Reg::CreateMask<float, Reg::MaskPattern::VL1>();
-        Reg::MaskReg maskRegScaleZero;
+        MicroAPI::MaskReg maskRegInLoop = MicroAPI::UpdateMask<float>(sreg);
+        MicroAPI::MaskReg maskRegAll = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
+        MicroAPI::MaskReg maskRegHalf = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::H>();
+        MicroAPI::MaskReg maskRegVL1 = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::VL1>();
+        MicroAPI::MaskReg maskRegScaleZero;
 
         if constexpr (!IsSameType<T, float>::value) {
             ops::LoadOneTensorForDtypeT<T>(inUbAddrCastT, inReg, maskRegInLoop, 0);
         } else {
-            Reg::LoadAlign(inReg, inUbAddr);
+            MicroAPI::LoadAlign(inReg, inUbAddr);
         }
         if constexpr (IS_INPUT_SCALE) {
-            Reg::LoadAlign(smoothReg, smoothUbAddr);
-            Reg::Mul(inReg, inReg, smoothReg, maskRegInLoop);
+            MicroAPI::LoadAlign(smoothReg, smoothUbAddr);
+            MicroAPI::Mul(inReg, inReg, smoothReg, maskRegInLoop);
         }
-        Reg::Abs(absReg, inReg, maskRegInLoop);
-        Reg::Max(scaleValueReg, scaleValueReg, absReg, maskRegAll);
+        MicroAPI::Abs(absReg, inReg, maskRegInLoop);
+        MicroAPI::Max(scaleValueReg, scaleValueReg, absReg, maskRegAll);
         Reg::Reduce<Reg::ReduceType::MAX>(scaleValueReg, scaleValueReg, maskRegAll);
-        Reg::Duplicate(quantFactorReg, DYNAMIC_QUANT_INT4_SYM_SCALE, maskRegVL1);
-        Reg::Div(quantFactorReg, quantFactorReg, scaleValueReg, maskRegVL1);
-        Reg::Duplicate(zeroReg, 0.0f, maskRegVL1);
-        Reg::Compares<float, CMPMODE::EQ>(maskRegScaleZero, scaleValueReg, 0.0f, maskRegVL1);
-        Reg::Select(quantFactorReg, zeroReg, quantFactorReg, maskRegScaleZero);
-        Reg::Duplicate(quantFactorReg, quantFactorReg, maskRegAll);
+        MicroAPI::Duplicate(quantFactorReg, DYNAMIC_QUANT_INT4_SYM_SCALE, maskRegVL1);
+        MicroAPI::Div(quantFactorReg, quantFactorReg, scaleValueReg, maskRegVL1);
+        MicroAPI::Duplicate(zeroReg, 0.0f, maskRegVL1);
+        MicroAPI::Compares<float, CMPMODE::EQ>(maskRegScaleZero, scaleValueReg, 0.0f, maskRegVL1);
+        MicroAPI::Select(quantFactorReg, zeroReg, quantFactorReg, maskRegScaleZero);
+        MicroAPI::Duplicate(quantFactorReg, quantFactorReg, maskRegAll);
 
-        Reg::Muls(scaleValueReg, scaleValueReg, 1.0f / DYNAMIC_QUANT_INT4_SYM_SCALE, maskRegVL1);
-        Reg::Duplicate(scaleValueReg, scaleValueReg, maskRegAll);
-        Reg::StoreAlign(scaleUbAddr, scaleValueReg, maskRegVL1);
+        MicroAPI::Muls(scaleValueReg, scaleValueReg, 1.0f / DYNAMIC_QUANT_INT4_SYM_SCALE, maskRegVL1);
+        MicroAPI::Duplicate(scaleValueReg, scaleValueReg, maskRegAll);
+        MicroAPI::StoreAlign(scaleUbAddr, scaleValueReg, maskRegVL1);
 
-        Reg::Mul(inReg, inReg, quantFactorReg, maskRegInLoop);
+        MicroAPI::Mul(inReg, inReg, quantFactorReg, maskRegInLoop);
         StoreInt4QuantOut((__ubuf__ uint8_t *)outUbAddr, inReg, maskRegInLoop, maskRegHalf);
     }
 
@@ -247,68 +247,68 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::ComputeMultiPass(Loc
     uint32_t sreg;
     __VEC_SCOPE__
     {
-        Reg::RegTensor<float> inReg, smoothReg, scaleValueReg, quantFactorReg, zeroReg;
-        Reg::Duplicate(scaleValueReg, 0.0f);
-        Reg::RegTensor<half> outRegF16;
-        Reg::RegTensor<int8_t> outRegI8;
+        MicroAPI::RegTensor<float> inReg, smoothReg, scaleValueReg, quantFactorReg, zeroReg;
+        MicroAPI::Duplicate(scaleValueReg, 0.0f);
+        MicroAPI::RegTensor<half> outRegF16;
+        MicroAPI::RegTensor<int8_t> outRegI8;
 
-        Reg::MaskReg maskRegInLoop;
-        Reg::MaskReg maskRegAll = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
-        Reg::MaskReg maskRegHalf = Reg::CreateMask<float, Reg::MaskPattern::H>();
-        Reg::MaskReg maskRegVL1 = Reg::CreateMask<float, Reg::MaskPattern::VL1>();
-        Reg::MaskReg maskRegVL8 = Reg::CreateMask<float, Reg::MaskPattern::VL8>();
-        Reg::MaskReg maskRegScaleZero;
+        MicroAPI::MaskReg maskRegInLoop;
+        MicroAPI::MaskReg maskRegAll = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
+        MicroAPI::MaskReg maskRegHalf = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::H>();
+        MicroAPI::MaskReg maskRegVL1 = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::VL1>();
+        MicroAPI::MaskReg maskRegVL8 = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::VL8>();
+        MicroAPI::MaskReg maskRegScaleZero;
 
         sreg = static_cast<uint32_t>(cols_);
         for (uint16_t i = 0; i < repeatTimes; i++) {
-            maskRegInLoop = Reg::UpdateMask<float>(sreg);
+            maskRegInLoop = MicroAPI::UpdateMask<float>(sreg);
             if constexpr (!IsSameType<T, float>::value) {
                 ops::LoadOneTensorForDtypeT<T>(inUbAddrCastT, inReg, maskRegInLoop, i * FLOAT_REG_TENSOR_LENGTH);
             } else {
-                Reg::LoadAlign(inReg, inUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
+                MicroAPI::LoadAlign(inReg, inUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
             }
             if constexpr (IS_INPUT_SCALE) {
-                Reg::LoadAlign(smoothReg, smoothUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
-                Reg::Mul(inReg, inReg, smoothReg, maskRegInLoop);
+                MicroAPI::LoadAlign(smoothReg, smoothUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
+                MicroAPI::Mul(inReg, inReg, smoothReg, maskRegInLoop);
             }
             if constexpr (!IsSameType<T, float>::value || IS_INPUT_SCALE) {
-                Reg::StoreAlign(inUbAddr + i * FLOAT_REG_TENSOR_LENGTH, inReg, maskRegInLoop);
+                MicroAPI::StoreAlign(inUbAddr + i * FLOAT_REG_TENSOR_LENGTH, inReg, maskRegInLoop);
             }
-            Reg::Abs(inReg, inReg, maskRegInLoop);
-            Reg::Max(scaleValueReg, scaleValueReg, inReg, maskRegAll);
+            MicroAPI::Abs(inReg, inReg, maskRegInLoop);
+            MicroAPI::Max(scaleValueReg, scaleValueReg, inReg, maskRegAll);
         }
         Reg::Reduce<Reg::ReduceType::MAX>(scaleValueReg, scaleValueReg, maskRegAll);
         if constexpr (!IsSameType<QuantT, int4b_t>::value) {
-            Reg::Muls(scaleValueReg, scaleValueReg, 1.0f / 127.0f, maskRegVL1);
+            MicroAPI::Muls(scaleValueReg, scaleValueReg, 1.0f / 127.0f, maskRegVL1);
         }
         if constexpr (IsSameType<QuantT, int4b_t>::value) {
-            Reg::Duplicate(quantFactorReg, DYNAMIC_QUANT_INT4_SYM_SCALE, maskRegVL1);
-            Reg::Div(quantFactorReg, quantFactorReg, scaleValueReg, maskRegVL1);
-            Reg::Duplicate(zeroReg, 0.0f, maskRegVL1);
-            Reg::Compares<float, CMPMODE::EQ>(maskRegScaleZero, scaleValueReg, 0.0f, maskRegVL1);
-            Reg::Select(quantFactorReg, zeroReg, quantFactorReg, maskRegScaleZero);
-            Reg::Duplicate(quantFactorReg, quantFactorReg, maskRegAll);
-            Reg::Muls(scaleValueReg, scaleValueReg, 1.0f / DYNAMIC_QUANT_INT4_SYM_SCALE, maskRegVL1);
+            MicroAPI::Duplicate(quantFactorReg, DYNAMIC_QUANT_INT4_SYM_SCALE, maskRegVL1);
+            MicroAPI::Div(quantFactorReg, quantFactorReg, scaleValueReg, maskRegVL1);
+            MicroAPI::Duplicate(zeroReg, 0.0f, maskRegVL1);
+            MicroAPI::Compares<float, CMPMODE::EQ>(maskRegScaleZero, scaleValueReg, 0.0f, maskRegVL1);
+            MicroAPI::Select(quantFactorReg, zeroReg, quantFactorReg, maskRegScaleZero);
+            MicroAPI::Duplicate(quantFactorReg, quantFactorReg, maskRegAll);
+            MicroAPI::Muls(scaleValueReg, scaleValueReg, 1.0f / DYNAMIC_QUANT_INT4_SYM_SCALE, maskRegVL1);
         }
-        Reg::Duplicate(scaleValueReg, scaleValueReg, maskRegAll);
-        Reg::StoreAlign(scaleUbAddr, scaleValueReg, maskRegVL8);
+        MicroAPI::Duplicate(scaleValueReg, scaleValueReg, maskRegAll);
+        MicroAPI::StoreAlign(scaleUbAddr, scaleValueReg, maskRegVL8);
 
-        Reg::LocalMemBar<Reg::MemType::VEC_STORE, Reg::MemType::VEC_LOAD>();
+        MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
 
         sreg = static_cast<uint32_t>(cols_);
         for (uint16_t i = 0; i < repeatTimes; i++) {
-            maskRegInLoop = Reg::UpdateMask<float>(sreg);
-            Reg::LoadAlign(inReg, inUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
+            maskRegInLoop = MicroAPI::UpdateMask<float>(sreg);
+            MicroAPI::LoadAlign(inReg, inUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
             if constexpr (IsSameType<QuantT, int4b_t>::value) {
-                Reg::Mul(inReg, inReg, quantFactorReg, maskRegInLoop);
+                MicroAPI::Mul(inReg, inReg, quantFactorReg, maskRegInLoop);
                 StoreInt4QuantOut((__ubuf__ uint8_t *)outUbAddr + i * FLOAT_REG_TENSOR_LENGTH / 2, inReg, maskRegInLoop,
                                   maskRegHalf);
             } else {
-                Reg::Div(inReg, inReg, scaleValueReg, maskRegInLoop);
-                Reg::Cast<half, float, castTraitF32ToF16>(outRegF16, inReg, maskRegInLoop);
-                Reg::Cast<int8_t, half, castTraitF16ToI8>(outRegI8, outRegF16, maskRegInLoop);
-                Reg::StoreAlign<int8_t, Reg::StoreDist::DIST_PACK4_B32>(outUbAddr + i * FLOAT_REG_TENSOR_LENGTH,
-                                                                        outRegI8, maskRegInLoop);
+                MicroAPI::Div(inReg, inReg, scaleValueReg, maskRegInLoop);
+                MicroAPI::Cast<half, float, castTraitF32ToF16>(outRegF16, inReg, maskRegInLoop);
+                MicroAPI::Cast<int8_t, half, castTraitF16ToI8>(outRegI8, outRegF16, maskRegInLoop);
+                MicroAPI::StoreAlign<int8_t, MicroAPI::StoreDist::DIST_PACK4_B32>(
+                    outUbAddr + i * FLOAT_REG_TENSOR_LENGTH, outRegI8, maskRegInLoop);
             }
         }
     }
@@ -425,31 +425,31 @@ __aicore__ inline float MoeGatherOutDynamicQuant<T, QuantT>::ComputeMax(LocalTen
     uint32_t sreg;
     __VEC_SCOPE__
     {
-        Reg::RegTensor<float> inReg, scaleReg, smoothReg;
-        Reg::Duplicate(scaleReg, 0.0f);
+        MicroAPI::RegTensor<float> inReg, scaleReg, smoothReg;
+        MicroAPI::Duplicate(scaleReg, 0.0f);
 
-        Reg::MaskReg maskRegLoop;
-        Reg::MaskReg maskRegAll = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
-        Reg::MaskReg maskRegVL2 = Reg::CreateMask<float, Reg::MaskPattern::VL2>();
+        MicroAPI::MaskReg maskRegLoop;
+        MicroAPI::MaskReg maskRegAll = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
+        MicroAPI::MaskReg maskRegVL2 = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::VL2>();
 
         sreg = static_cast<uint32_t>(colsTileLength_);
         for (uint16_t i = 0; i < repeatTimes; i++) {
-            maskRegLoop = Reg::UpdateMask<float>(sreg);
+            maskRegLoop = MicroAPI::UpdateMask<float>(sreg);
             if constexpr (!IsSameType<T, float>::value) {
                 ops::LoadOneTensorForDtypeT<T>(inUbAddrCastT, inReg, maskRegLoop, i * FLOAT_REG_TENSOR_LENGTH);
             } else {
-                Reg::LoadAlign(inReg, inUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
+                MicroAPI::LoadAlign(inReg, inUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
             }
             if constexpr (IS_INPUT_SCALE) {
-                Reg::LoadAlign(smoothReg, smoothUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
-                Reg::Mul(inReg, inReg, smoothReg, maskRegLoop);
+                MicroAPI::LoadAlign(smoothReg, smoothUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
+                MicroAPI::Mul(inReg, inReg, smoothReg, maskRegLoop);
             }
-            Reg::StoreAlign(inUbAddr + i * FLOAT_REG_TENSOR_LENGTH, inReg, maskRegLoop);
-            Reg::Abs(inReg, inReg, maskRegLoop);
-            Reg::Max(scaleReg, scaleReg, inReg, maskRegAll);
+            MicroAPI::StoreAlign(inUbAddr + i * FLOAT_REG_TENSOR_LENGTH, inReg, maskRegLoop);
+            MicroAPI::Abs(inReg, inReg, maskRegLoop);
+            MicroAPI::Max(scaleReg, scaleReg, inReg, maskRegAll);
         }
         Reg::Reduce<Reg::ReduceType::MAX>(scaleReg, scaleReg, maskRegAll);
-        Reg::StoreAlign(scaleUbAddr + 8, scaleReg, maskRegVL2);
+        MicroAPI::StoreAlign(scaleUbAddr + 8, scaleReg, maskRegVL2);
     }
 
     SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
@@ -474,15 +474,15 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::QuantizeToInt4(Local
     uint32_t sreg = static_cast<uint32_t>(colsTileLength_);
     __VEC_SCOPE__
     {
-        Reg::RegTensor<float> inReg, tempReg;
-        Reg::MaskReg maskRegLoop;
-        Reg::MaskReg maskRegHalf = Reg::CreateMask<float, Reg::MaskPattern::H>();
+        MicroAPI::RegTensor<float> inReg, tempReg;
+        MicroAPI::MaskReg maskRegLoop;
+        MicroAPI::MaskReg maskRegHalf = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::H>();
 
         for (uint16_t i = 0; i < repeatTimes; i++) {
-            maskRegLoop = Reg::UpdateMask<float>(sreg);
-            Reg::Duplicate(tempReg, quantFactor, maskRegLoop);
-            Reg::LoadAlign(inReg, inUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
-            Reg::Mul(tempReg, inReg, tempReg, maskRegLoop);
+            maskRegLoop = MicroAPI::UpdateMask<float>(sreg);
+            MicroAPI::Duplicate(tempReg, quantFactor, maskRegLoop);
+            MicroAPI::LoadAlign(inReg, inUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
+            MicroAPI::Mul(tempReg, inReg, tempReg, maskRegLoop);
             StoreInt4QuantOut(outUbAddr + i * FLOAT_REG_TENSOR_LENGTH / 2, tempReg, maskRegLoop, maskRegHalf);
         }
     }
@@ -514,20 +514,20 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::QuantizeToInt8(Local
     uint32_t sreg = static_cast<uint32_t>(colsTileLength_);
     __VEC_SCOPE__
     {
-        Reg::RegTensor<float> inReg, tempReg;
-        Reg::RegTensor<half> outRegF16;
-        Reg::RegTensor<int8_t> outRegI8;
-        Reg::MaskReg maskRegLoop;
+        MicroAPI::RegTensor<float> inReg, tempReg;
+        MicroAPI::RegTensor<half> outRegF16;
+        MicroAPI::RegTensor<int8_t> outRegI8;
+        MicroAPI::MaskReg maskRegLoop;
 
         for (uint16_t i = 0; i < repeatTimes; i++) {
-            maskRegLoop = Reg::UpdateMask<float>(sreg);
-            Reg::Duplicate(tempReg, scaleTemp, maskRegLoop);
-            Reg::LoadAlign(inReg, inUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
-            Reg::Div(tempReg, inReg, tempReg, maskRegLoop);
-            Reg::Cast<half, float, castTraitF32ToF16>(outRegF16, tempReg, maskRegLoop);
-            Reg::Cast<int8_t, half, castTraitF16ToI8>(outRegI8, outRegF16, maskRegLoop);
-            Reg::StoreAlign<int8_t, Reg::StoreDist::DIST_PACK4_B32>(outUbAddr + i * FLOAT_REG_TENSOR_LENGTH, outRegI8,
-                                                                    maskRegLoop);
+            maskRegLoop = MicroAPI::UpdateMask<float>(sreg);
+            MicroAPI::Duplicate(tempReg, scaleTemp, maskRegLoop);
+            MicroAPI::LoadAlign(inReg, inUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
+            MicroAPI::Div(tempReg, inReg, tempReg, maskRegLoop);
+            MicroAPI::Cast<half, float, castTraitF32ToF16>(outRegF16, tempReg, maskRegLoop);
+            MicroAPI::Cast<int8_t, half, castTraitF16ToI8>(outRegI8, outRegF16, maskRegLoop);
+            MicroAPI::StoreAlign<int8_t, MicroAPI::StoreDist::DIST_PACK4_B32>(outUbAddr + i * FLOAT_REG_TENSOR_LENGTH,
+                                                                              outRegI8, maskRegLoop);
         }
     }
 }
