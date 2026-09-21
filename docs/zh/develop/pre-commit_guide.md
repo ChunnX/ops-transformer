@@ -1,4 +1,21 @@
-# Pre-commit 配置指导书
+# pre-commit 配置指导书
+
+## 快速使用
+
+```bash
+# 1. 安装 pre-commit
+pip3 install pre-commit
+
+# 2. 安装 Git Hooks（此后 git commit 自动触发检查）
+cd /path/to/ops-transformer
+pre-commit install        # 取消：pre-commit uninstall
+
+# 3. 配置 git pc 别名（对指定范围提交运行检查，每个环境执行一次）
+git config --global alias.pc '!f() { pre-commit run --files $(git diff --name-only "$@"); }; f'
+git pc HEAD~x        # 检查最近x笔提交
+```
+
+完成上述配置后，`git commit` 时将自动执行检查，无需手动干预。完整说明见下文。
 
 ## 一、概述
 
@@ -37,7 +54,7 @@ git pc HEAD~x        # 检查最近x笔提交
 
 ```bash
 # 提交时自动检查
-git add . && git commit -m "msg"
+git add <文件清单> && git commit -m "msg"
 
 # 手动运行
 pre-commit run                        # 暂存区
@@ -60,7 +77,7 @@ git commit --no-verify -m "msg"
 
 | 报错                  | 原因               | 处理方式                                          |
 |-----------------------|--------------------|---------------------------------------------------|
-| clang-format Failed   | 代码存在规范问题 | rebase 最新代码后再做 pre-commit；重新 `git add` 后再次 commit |
+| clang-format Failed   | 代码存在规范问题 | 钩子会自动修复文件，重新 `git add` 后再次 commit 即可 |
 | OAT Compliance Failed | 缺版权声明等       | 搜索 `OAT Scan Result Summary` 定位文件；版权声明无法自动订正，需参照仓内文件头手动补齐 |
 
 ## 六、补查历史提交（--no-verify 跳过后）
