@@ -141,10 +141,17 @@ public:
         if (tokenStart_ >= tokenEnd_) {
             return;
         }
-        // 缓存标量
-        alpha0_ = alpha0Gm_.GetValue(0);
-        for (uint32_t i = 0; i < N_MAX; ++i) {
-            biasCache_[i] = biasGm_.GetValue(i);
+        // 双AIV的follower在会合后退出，不参与gate计算，省去五次无效标量GM读取。
+        if constexpr (!DUAL_SIBLING) {
+            alpha0_ = alpha0Gm_.GetValue(0);
+            for (uint32_t i = 0; i < N_MAX; ++i) {
+                biasCache_[i] = biasGm_.GetValue(i);
+            }
+        } else if (laneId_ == 0U) {
+            alpha0_ = alpha0Gm_.GetValue(0);
+            for (uint32_t i = 0; i < N_MAX; ++i) {
+                biasCache_[i] = biasGm_.GetValue(i);
+            }
         }
 
         // 仅单分块路径提前加载gamma
