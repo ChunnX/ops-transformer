@@ -220,33 +220,31 @@ public:
         }
     }
 
-    __aicore__ inline void CalculateEndGroupInfo(int64_t endBasicBlockId, int endGroupId, uint64_t &endGroupMOffset,
-                                                 int64_t &basicBlockCountBeforeEndGroup)
+    __aicore__ inline int SeekGroupCursor(int64_t basicBlockId, int64_t &processedBasicBlock,
+                                          uint64_t &groupMOffsetBegin, int &currentGroupId)
     {
-        endGroupMOffset = 0;
-        basicBlockCountBeforeEndGroup = 0;
-        for (int gId = 0; gId < endGroupId; gId++) {
-            int tokens = groupListGm_.GetValue(gId);
-            if (tilingData_->groupListType == 0 && gId > 0) {
-                tokens = groupListGm_.GetValue(gId) - groupListGm_.GetValue(gId - 1);
+        for (int groupId = currentGroupId; groupId < tilingData_->groupNum; groupId++) {
+            int tokens = groupListGm_.GetValue(groupId);
+            if (tilingData_->groupListType == 0 && groupId > 0) {
+                tokens = groupListGm_.GetValue(groupId) - groupListGm_.GetValue(groupId - 1);
             }
             int mBasicBlocks = CeilDiv(tokens, matmulTilingData_->baseM);
             int64_t groupBasicBlocks = static_cast<int64_t>(mBasicBlocks) * nBasicsBlocks;
-            basicBlockCountBeforeEndGroup += groupBasicBlocks;
-            endGroupMOffset += tokens;
+            if (processedBasicBlock + groupBasicBlocks >= basicBlockId) {
+                currentGroupId = groupId;
+                return groupId;
+            }
+            processedBasicBlock += groupBasicBlocks;
+            groupMOffsetBegin += tokens;
         }
-        int64_t basicBlockIdxInCurrentGroup = endBasicBlockId - basicBlockCountBeforeEndGroup;
-        int64_t currentBasicBlockMId = basicBlockIdxInCurrentGroup / nBasicsBlocks;
-        endGroupMOffset += currentBasicBlockMId * matmulTilingData_->baseM;
+        currentGroupId = static_cast<int>(tilingData_->groupNum) - 1;
+        return currentGroupId;
     }
 
     __aicore__ inline void ProcessGroupRange(int startGroupId, int endGroupId, uint64_t endGroupMOffset,
-                                             uint64_t &globalMOffset, bool &isSyncAll)
+                                             uint64_t startGroupMOffset, uint64_t &globalMOffset, bool &isSyncAll)
     {
-        uint64_t currentGroupMOffset = 0;
-        for (int gId = 0; gId < startGroupId; gId++) {
-            currentGroupMOffset += groupListGm_.GetValue(gId);
-        }
+        uint64_t currentGroupMOffset = startGroupMOffset;
         for (int groupId = startGroupId; groupId <= endGroupId; groupId++) {
             if (tilingData_->groupListType == 0 && groupId > 0) {
                 currentGroupMOffset = groupListGm_.GetValue(groupId);
@@ -264,19 +262,23 @@ public:
         }
     }
 
-    __aicore__ inline void ProcessVectorBlock(int64_t syncId, bool &isSyncAll, uint64_t &globalMOffset)
+    __aicore__ inline void ProcessVectorBlock(int64_t syncId, bool &isSyncAll, uint64_t &globalMOffset,
+                                              int64_t &processedBasicBlock, uint64_t &groupMOffsetBegin,
+                                              int &currentGroupId)
     {
         int64_t startBasicBlockId = syncId * tilingData_->cubeBlockDim;
         int64_t endBasicBlockId = startBasicBlockId + tilingData_->cubeBlockDim;
         if (totalBasicBlocks < endBasicBlockId) {
             endBasicBlockId = totalBasicBlocks;
         }
-        int startGroupId = GetGroupId(startBasicBlockId);
-        int endGroupId = GetGroupId(endBasicBlockId);
-        uint64_t endGroupMOffset = 0;
-        int64_t basicBlockCountBeforeEndGroup = 0;
-        CalculateEndGroupInfo(endBasicBlockId, endGroupId, endGroupMOffset, basicBlockCountBeforeEndGroup);
-        ProcessGroupRange(startGroupId, endGroupId, endGroupMOffset, globalMOffset, isSyncAll);
+        int startGroupId = SeekGroupCursor(startBasicBlockId, processedBasicBlock, groupMOffsetBegin, currentGroupId);
+        uint64_t startGroupMOffset = groupMOffsetBegin;
+        int endGroupId = SeekGroupCursor(endBasicBlockId, processedBasicBlock, groupMOffsetBegin, currentGroupId);
+        uint64_t endGroupMOffset = groupMOffsetBegin;
+        int64_t basicBlockIdxInEndGroup = endBasicBlockId - processedBasicBlock;
+        int64_t currentBasicBlockMId = basicBlockIdxInEndGroup / nBasicsBlocks;
+        endGroupMOffset += currentBasicBlockMId * matmulTilingData_->baseM;
+        ProcessGroupRange(startGroupId, endGroupId, endGroupMOffset, startGroupMOffset, globalMOffset, isSyncAll);
     }
 
     __aicore__ inline void VectorProcess()
@@ -290,7 +292,8 @@ public:
             int64_t syncId = 0;
             uint64_t globalMOffset = 0;
             int64_t processedBasicBlock = 0;
-            uint32_t currentGroupId = 0;
+            uint64_t groupMOffsetBegin = 0;
+            int currentGroupId = 0;
             uint32_t realSyncId = 0;
             bool isSyncAll = false;
             while (syncId < totalSyncTimes) {
@@ -300,7 +303,8 @@ public:
                 isSyncAll = true;
 
                 for (int64_t cvId = 0; cvId < cvTimes; cvId++) {
-                    ProcessVectorBlock(syncId, isSyncAll, globalMOffset);
+                    ProcessVectorBlock(syncId, isSyncAll, globalMOffset, processedBasicBlock, groupMOffsetBegin,
+                                       currentGroupId);
                     currentBlockId += tilingData_->cubeBlockDim;
                     syncId += 1;
                 }
@@ -317,27 +321,6 @@ public:
     {
         CubeProcess();
         VectorProcess();
-    }
-
-    __aicore__ inline int GetGroupId(int64_t basicBlockId)
-    {
-        int64_t processedBasicBlock = 0;
-        int currentGroupId = 0;
-        uint64_t globalMOffset = 0;
-        for (int groupId = 0; groupId < tilingData_->groupNum; groupId++) {
-            int tokens = groupListGm_.GetValue(groupId);
-            if (tilingData_->groupListType == 0 && groupId > 0) {
-                tokens = groupListGm_.GetValue(groupId) - groupListGm_.GetValue(groupId - 1);
-            }
-            int mBasicBlocks = CeilDiv(tokens, matmulTilingData_->baseM);
-            int64_t groupBasicBlocks = static_cast<int64_t>(mBasicBlocks) * nBasicsBlocks;
-            if (processedBasicBlock + groupBasicBlocks >= basicBlockId) {
-                return groupId;
-            } else {
-                processedBasicBlock += groupBasicBlocks;
-            }
-        }
-        return tilingData_->groupNum - 1;
     }
 
     __aicore__ inline void ComputeReduceMax(const LocalTensor<float> &tempRes, int32_t calcCount)
