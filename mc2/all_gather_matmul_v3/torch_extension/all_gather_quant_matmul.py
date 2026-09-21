@@ -8,12 +8,13 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 import logging
-from typing import Optional, List, Tuple
+from typing import List, Optional, Tuple
 
 import torch
+from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 from torch.library import impl
 from torch_npu.utils._error_code import ErrCode, ops_error
-from cann_ops_transformer.op_builder import OpBuilder, get_as_library
+
 from ..common import CommChannelBuilderManager
 
 _logger = logging.getLogger(__name__)
@@ -92,7 +93,6 @@ class _AllGatherQuantMatmulOpBuilder(OpBuilder):
 
 
 _all_gather_quant_matmul_op_builder = _AllGatherQuantMatmulOpBuilder()
-_op_module = _all_gather_quant_matmul_op_builder.load()
 
 
 @impl(get_as_library(), _all_gather_quant_matmul_op_builder.name, "PrivateUse1")
@@ -114,7 +114,8 @@ def _npu_all_gather_quant_matmul(
     y_dtype=None,
     comm_mode=None,
 ):
-    result = _op_module.npu_all_gather_quant_matmul(
+    op_module = _all_gather_quant_matmul_op_builder.load()
+    result = op_module.npu_all_gather_quant_matmul(
         context,
         x1,
         x2,

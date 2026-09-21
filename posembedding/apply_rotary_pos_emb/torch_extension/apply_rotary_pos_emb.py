@@ -8,10 +8,10 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 from typing import Tuple
-import torch
-from torch.library import impl
-from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
+import torch
+from cann_ops_transformer.op_builder import OpBuilder, get_as_library
+from torch.library import impl
 
 OP_NAME = "apply_rotary_pos_emb"
 ROTARY_MODE_HALF_STR = "half"
@@ -50,8 +50,7 @@ GRAD_LAYOUT_BY_LAYOUT = {
 def _check_layout(layout: str):
     if layout not in SUPPORTED_LAYOUTS:
         raise ValueError(
-            "apply_rotary_pos_emb: layout must be one of BSND/BSH/SBND/BNSD/TND, "
-            f"got {layout}."
+            f"apply_rotary_pos_emb: layout must be one of BSND/BSH/SBND/BNSD/TND, got {layout}."
         )
 
 
@@ -154,7 +153,6 @@ class ApplyRotaryPosEmbOpBuilder(OpBuilder):
 
 
 apply_rotary_pos_emb_op_builder = ApplyRotaryPosEmbOpBuilder()
-apply_rotary_pos_emb_op_builder.load()
 
 
 @impl(get_as_library(), apply_rotary_pos_emb_op_builder.name, "PrivateUse1")
