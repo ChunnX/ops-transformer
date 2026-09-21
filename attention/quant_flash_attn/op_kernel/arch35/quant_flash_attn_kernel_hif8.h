@@ -669,17 +669,26 @@ public:
         info.faTmpOutWsPos = coreFirstTmpOutWsPos_;
         info.isLastS2Loop = (s2Cur + 1 == curS2End_);
 
-        if constexpr (USE_DN) {
+        // [SK兼容] CV_RATIO==1(1:1配比)时无sub1: AIV0承担全部M; 与attn_buffer的
+        // ArchInfo::CV_RATIO编译期配比方案配套。CV_RATIO==2(950现行)走原半区逻辑不变;
+        // actVecMSize仅vec侧消费, AIC不受影响。
+        if constexpr (CV_RATIO == 1) {
             info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
-            info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 >> 1);
+            info.actVecMSize = info.actMSize;
+            info.vecMbaseIdx = 0;
         } else {
-            info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
-            info.actVecMSize = (info.actMSize + 1) >> 1;
-        }
-        info.vecMbaseIdx = 0;
-        if (constInfo_.subBlockIdx == 1) {
-            info.vecMbaseIdx = USE_DN ? info.actVecMSize : (info.actMSizeAlign32 >> 1);
-            info.actVecMSize = info.actMSize - info.actVecMSize;
+            if constexpr (USE_DN) {
+                info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
+                info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 >> 1);
+            } else {
+                info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
+                info.actVecMSize = (info.actMSize + 1) >> 1;
+            }
+            info.vecMbaseIdx = 0;
+            if (constInfo_.subBlockIdx == 1) {
+                info.vecMbaseIdx = USE_DN ? info.actVecMSize : (info.actMSizeAlign32 >> 1);
+                info.actVecMSize = info.actMSize - info.actVecMSize;
+            }
         }
 
         if ((bN2Start_ == bN2End_ && gS1OStart_ == gS1OEnd_)) {
