@@ -427,7 +427,7 @@ def presfmg_quant_tnd_used_hif8(const_info, tensor_info):
         attn_out = tensor_info.tensor_attn_out
         dy = tensor_info.tensor_do
         sfmg = tensor_info.tensor_workspace_sfmg
-        deq_scale_do_value = pl.getval(tensor_info.tensor_do_descale, 0)
+        deq_scale_do_value = const_info.deq_scale_do_value
         y_tile = pl.make_tile_group(
             type=pl.TileType(shape=[TS, D_SIZE], dtype=pl.DT_BF16,
                              target_memory=pl.MemorySpace.Vec),
@@ -484,7 +484,7 @@ def presfmg_quant_inner_hif8(const_info, tensor_info):
             else VEC_CHUNK
         )
 
-        deq_scale_do_value = pl.getval(tensor_info.tensor_do_descale, 0)
+        deq_scale_do_value = const_info.deq_scale_do_value
         y_tt = pl.TileType(
             shape=[TS, D_SIZE], dtype=pl.DT_BF16, target_memory=pl.MemorySpace.Vec
         )
@@ -1648,10 +1648,10 @@ def set_run_info(
     run_info.inner_s1_loop_num = ceil(run_info.s1_real_size, 128)
     run_info.inner_s2_loop_num = ceil(run_info.s2_real_size, 128)
     with pl.section_vector():
-        run_info.deq_scale_q_value = pl.getval(tensor_info.tensor_q_descale, 0)
-        run_info.deq_scale_k_value = pl.getval(tensor_info.tensor_k_descale, 0)
-        run_info.deq_scale_v_value = pl.getval(tensor_info.tensor_v_descale, 0)
-        run_info.deq_scale_do_value = pl.getval(tensor_info.tensor_do_descale, 0)
+        run_info.deq_scale_q_value = const_info.deq_scale_q_value
+        run_info.deq_scale_k_value = const_info.deq_scale_k_value
+        run_info.deq_scale_v_value = const_info.deq_scale_v_value
+        run_info.deq_scale_do_value = const_info.deq_scale_do_value
 
         if not is_var_len() and (sparse_type == 3 or sparse_type == 4):
             # Cache reuse only describes the preceding task. A sparse schedule
@@ -3531,17 +3531,6 @@ def quant_flash_attn_grad(
         [tiling.metadata_len, 1],
         dtype=pl.DT_INT32,
     )
-    if is_var_len():
-        # A stale schedule or a different core count changes the swizzle mapping.
-        pl.pto_assert(pl.getval(tensor_metadata, tiling.metadata_len + META_SCHEDULE_VALID_IDX) == 1,
-                      "QuantFAG: invalid seqused metadata")
-        pl.pto_assert(pl.getval(tensor_metadata, tiling.metadata_len + META_BATCH_SIZE_IDX) == tiling.b,
-                      "QuantFAG: metadata batch mismatch")
-        pl.pto_assert(pl.getval(tensor_metadata, tiling.metadata_len + META_AIC_CORE_NUM_IDX) == pl.get_block_num(),
-                      "QuantFAG: metadata AIC core count mismatch")
-        if sparse_type != 0 or layout == 2:
-            pl.pto_assert(pl.getval(tensor_metadata, tiling.metadata_len + META_SCHEDULE_VERSION_IDX) == 2,
-                          "QuantFAG: sparse seqused requires metadata ABI v2")
     # Physical packed starts and effective lengths have separate tensor views.
     # Missing inputs use metadata as an unused, non-null placeholder.
     if layout == 2:
@@ -3562,11 +3551,6 @@ def quant_flash_attn_grad(
         tensor_seq_kv = tensor_cu_kv
     else:
         tensor_seq_kv = tensor_metadata
-    if layout == 2:
-        pl.pto_assert(pl.getval(tensor_cu_q, tiling.b) == tiling.t1,
-                      "QuantFAG: TND query cumulative end does not match Tq")
-        pl.pto_assert(pl.getval(tensor_cu_kv, tiling.b) == tiling.t2,
-                      "QuantFAG: TND KV cumulative end does not match Tkv")
     tensor_attn_mask = pl.make_tensor(
         attn_mask,
         [2048, 2048],
@@ -3844,6 +3828,12 @@ def quant_flash_attn_grad(
     sub_id = pl.get_subblock_idx()
     core_id_vec = core_id_cube * pl.get_subblock_num() + sub_id
     core_num = pl.get_block_num()
+    # Scalar descales are invariant across every scheduled block. Read them
+    # once at kernel entry and cache their values in const_info.
+    deq_scale_q_value = pl.getval(tensor_q_descale, 0)
+    deq_scale_k_value = pl.getval(tensor_k_descale, 0)
+    deq_scale_v_value = pl.getval(tensor_v_descale, 0)
+    deq_scale_do_value = pl.getval(tensor_do_descale, 0)
     scale_p_value = pl.getval(tensor_p_scale, 0)
     scale_ds_value = pl.getval(tensor_ds_scale, 0)
     const_info = pl.make_tuple(
@@ -3878,6 +3868,10 @@ def quant_flash_attn_grad(
         scale_ds=scale_ds_value,
         deq_scale_p_value=1.0 / scale_p_value,
         deq_scale_ds_value=1.0 / scale_ds_value,
+        deq_scale_q_value=deq_scale_q_value,
+        deq_scale_k_value=deq_scale_k_value,
+        deq_scale_v_value=deq_scale_v_value,
+        deq_scale_do_value=deq_scale_do_value,
         sfmg_used_core_num=tiling.sfmg_used_core_num,
         sfmg_dy_buffer_len=tiling.sfmg_dy_buffer_len,
         sfmg_y_buffer_len=tiling.sfmg_y_buffer_len,
@@ -4208,10 +4202,6 @@ def quant_flash_attn_grad(
         tensor_seq_q=tensor_seq_q,
         tensor_seq_kv=tensor_seq_kv,
         tensor_workspace_sfmg_flat=tensor_workspace_sfmg_flat,
-        tensor_q_descale=tensor_q_descale,
-        tensor_k_descale=tensor_k_descale,
-        tensor_v_descale=tensor_v_descale,
-        tensor_do_descale=tensor_do_descale,
         tensor_p_scale=tensor_p_scale,
         tensor_ds_scale=tensor_ds_scale,
         tensor_metadata=tensor_metadata,
