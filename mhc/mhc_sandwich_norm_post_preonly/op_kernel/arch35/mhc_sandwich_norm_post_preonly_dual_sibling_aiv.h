@@ -63,22 +63,25 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
             const uint32_t tD = GetTileD(tile);
             const uint32_t tOff = tile * dimTile_;
+            const uint32_t headBegin = laneId_ * 2U;
             LocalTensor<float> gammaEven = bufGamma2Fp32_.Get<float>();
             LocalTensor<float> gammaOdd = bufGamma0Fp32_.Get<float>();
-            LoadGammaInto(gammaEven, gamma2Gm_, tOff, tD);
+            LoadGammaInto(gammaEven, gamma2Gm_, headBegin * D_ + tOff, tD);
             LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
-            for (uint32_t n = 0; n < N_MAX; ++n) {
-                LocalTensor<float> gammaCurrent = ((n & 1U) == 0) ? gammaEven : gammaOdd;
-                LocalTensor<float> gammaNext = ((n & 1U) == 0) ? gammaOdd : gammaEven;
+            // 每个lane只执行自己负责的两个head，另一半由sibling并行完成。
+            for (uint32_t n = headBegin; n < headBegin + 2U; ++n) {
+                const uint32_t laneHead = n - headBegin;
+                LocalTensor<float> gammaCurrent = ((laneHead & 1U) == 0) ? gammaEven : gammaOdd;
+                LocalTensor<float> gammaNext = ((laneHead & 1U) == 0) ? gammaOdd : gammaEven;
                 SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
                 WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-                if (n + 1 < N_MAX) {
+                if (n + 1U < headBegin + 2U) {
                     LoadGammaInto(gammaNext, gamma2Gm_, (n + 1) * D_ + tOff, tD);
                 }
                 MhcSandwichRegBase::CastB16ScaleAndMulGammaToB16(
                     x2Cache[n * D_ + tOff], x2Cache[n * D_ + tOff], gammaCurrent, invRmsMid, tD);
                 PipeBarrier<PIPE_V>();
-                if (n + 2 < N_MAX) {
+                if (n + 2U < headBegin + 2U) {
                     FenceVToMte2();
                 }
             }
@@ -126,7 +129,20 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     }
     ComputeGateValues(totalSumSqPre, xHatVals);
 
-    // 会合后只有leader继续执行R6、R7和最终输出。
+    // 会合后只有leader继续执行R6、R7和最终输出。leader的私有缓存仅包含
+    // 自己完成R3的前两行，从已经同步写出的x2_out恢复follower负责的后两行。
+    for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
+        const uint32_t tD = GetTileD(tile);
+        const uint32_t tOff = tile * dimTile_;
+        const uint64_t outBase = (uint64_t)token * N_ * D_ + tOff;
+        LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
+        for (uint32_t n = 2U; n < N_MAX; ++n) {
+            DataCopy(x2Cache[n * D_ + tOff], x2OutGm_[outBase + (uint64_t)n * D_], tD);
+        }
+    }
+    SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+    WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
+
     float sumSq1 = 0.0f;
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
