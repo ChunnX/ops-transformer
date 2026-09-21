@@ -101,7 +101,6 @@ TILING_DATA_FIELD_DEF_STRUCT(MixedQuantSparseFlashMlaTqBaseParams, tqBaseParams)
 TILING_DATA_FIELD_DEF_STRUCT(MixedQuantSparseFlashMlaTqCmpParams, tqCmpParams);
 END_TILING_DATA_DEF
 
-
 // ---------------算子Tiling类---------------
 class MixedQuantSparseFlashMlaTiling {
 public:

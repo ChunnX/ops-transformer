@@ -33,10 +33,7 @@ inline void AddConfig(OpDef &op)
         .DataTypeList({ge::DT_FLOAT8_E4M3FN})
         .FormatList({ge::FORMAT_ND})
         .IgnoreContiguous();
-    aicore_config_950.Output("attn_out")
-        .ParamType(REQUIRED)
-        .DataTypeList({ge::DT_BF16})
-        .FormatList({ge::FORMAT_ND});
+    aicore_config_950.Output("attn_out").ParamType(REQUIRED).DataTypeList({ge::DT_BF16}).FormatList({ge::FORMAT_ND});
     aicore_config_950.DynamicCompileStaticFlag(true)
         .DynamicFormatFlag(true)
         .DynamicRankSupportFlag(true)
