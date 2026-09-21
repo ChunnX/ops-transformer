@@ -57,6 +57,9 @@ struct MoeEpWindowLayout {
 
     uint64_t cntWinStateOffset;
     uint64_t cntWinStateSize;
+    // dispatch 落的 [源 rank][本端专家] 计数表起点（计数通知区之后），行按 WIN 对齐。
+    // Epilogue 用它替代「逐核扫窗区数命中 + workspace 全核规约」，所以这里是 host/kernel 之间的一份契约。
+    uint64_t expertCountWinOffset;
     uint64_t slotWinStateOffset;
     uint64_t dispatchSlotStateSize;
     uint64_t payloadWinStateOffset; // payload 发送状态位区（slot 状态区之后）
