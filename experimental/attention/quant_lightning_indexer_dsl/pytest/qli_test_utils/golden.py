@@ -442,7 +442,7 @@ def validate_quant_lightning_indexer_contract(
     mask_mode: int = 0,
     cmp_ratio: int = 1,
     layout_q: str = "TND",
-    layout_kv: str = "PA_BBND",
+    layout_k: str = "PA_BBND",
 ) -> None:
     """Validate the public qli shape contract from ``算子接口.xlsx``.
 
@@ -475,8 +475,8 @@ def validate_quant_lightning_indexer_contract(
             raise ValueError("k_descale must follow the xlsx shape (block_num,block_size,N2,ceil(D/64),2)")
     if layout_q != "TND":
         raise ValueError("layout_q must be TND under the current xlsx contract")
-    if layout_kv != "PA_BBND":
-        raise ValueError("layout_kv must be PA_BBND under the current xlsx contract")
+    if layout_k != "PA_BBND":
+        raise ValueError("layout_k must be PA_BBND under the current xlsx contract")
     _cpu_page_plan(
         query, key, cu_seqlens_q, seqused_q, seqused_k,
         cmp_residual_k, block_table,
@@ -526,8 +526,8 @@ def _cpu_page_plan(
         used = _cpu_int_list(seqused_q, "seqused_q")
         if any(v < 0 or v > q_lengths[b] for b, v in enumerate(used)):
             raise ValueError("seqused_q values must be within each cu_seqlens_q interval")
-    if int(max_seqlen_q) != -1 and (int(max_seqlen_q) < 0 or max(q_lengths, default=0) > int(max_seqlen_q)):
-        raise ValueError("max_seqlen_q must be -1 or cover every query sequence")
+    if int(max_seqlen_q) != -1 and (int(max_seqlen_q) < 0 or max(used, default=0) > int(max_seqlen_q)):
+        raise ValueError("max_seqlen_q must be -1 or cover every valid query length")
 
     if block_table is None:
         page_ids = [list(range(physical_blocks)) for _ in range(batch)]
@@ -599,8 +599,6 @@ def quant_lightning_indexer_golden(
     block_table: Optional[torch.Tensor] = None,
     metadata: Optional[torch.Tensor] = None,
     *,
-    cu_seqlens_k=None,
-    output_idx_offset=None,
     topk: int,
     candidate_topk_blocks: int = -1,
     candidate_block_size: int = -1,
@@ -609,7 +607,7 @@ def quant_lightning_indexer_golden(
     mask_mode: int = 0,
     cmp_ratio: int = 1,
     layout_q: str = "TND",
-    layout_kv: str = "PA_BBND",
+    layout_k: str = "PA_BBND",
     return_value: bool = False,
 ) -> dict[str, torch.Tensor]:
     """Independent CPU golden for xlsx TND query plus PA_BBND key.
@@ -618,15 +616,6 @@ def quant_lightning_indexer_golden(
     batch; TND rows are assigned through ``cu_seqlens_q``.  Consequently this
     reference does not rely on a shared flattened-K shortcut.
     """
-    if output_idx_offset is not None:
-        parameters = locals().copy()
-        parameters['output_idx_offset'] = None
-        result = quant_lightning_indexer_golden(**parameters)
-        indices = result['sparse_indices']
-        result['sparse_indices'] = torch.where(
-            indices >= 0, indices + output_idx_offset.unsqueeze(-1), indices)
-        result['_output_idx_offset'] = output_idx_offset
-        return result
     query, key, weights = q, k, w
     query_dequant_scale, key_dequant_scale = q_descale, k_descale
     if int(quant_mode) != QUANT_MODE_MXFP4:
@@ -643,32 +632,20 @@ def quant_lightning_indexer_golden(
     if tuple(weights.shape) != tuple(query.shape[:2]) or weights.dtype != torch.float32:
         raise ValueError("w must be FP32 with shape (T1,N1)")
 
-    if layout_kv == 'TND':
-        if tuple(query.shape[1:]) != (32, 64) or tuple(key.shape[1:]) != (1, 64):
-            raise ValueError('TND golden requires N1=32, N2=1, logical D=128')
-        cu = [0, len(query)] if cu_seqlens_q is None else cu_seqlens_q.tolist()
-        bounds = [0, len(key)] if cu_seqlens_k is None else cu_seqlens_k.tolist()
-        if len(cu) != len(bounds) or cu[0] != 0 or bounds[0] != 0 or cu[-1] != len(query) or bounds[-1] != len(key):
-            raise ValueError('invalid TND boundaries')
-        used = [end - begin for begin, end in zip(cu, cu[1:])] if seqused_q is None else seqused_q.tolist()
-        used_k = [end - begin for begin, end in zip(bounds, bounds[1:])] if seqused_k is None else seqused_k.tolist()
-        residual = [0] * len(used) if cmp_residual_k is None else cmp_residual_k.tolist()
-        page_ids = [range(begin, begin + count) for begin, count in zip(bounds, used_k)]
-    else:
-        validate_quant_lightning_indexer_contract(
-            query, key, query_dequant_scale, key_dequant_scale,
-            cu_seqlens_q, seqused_q, seqused_k, cmp_residual_k,
-            block_table, metadata, max_seqlen_q=max_seqlen_q,
-            mask_mode=mask_mode, cmp_ratio=cmp_ratio,
-            layout_q=layout_q, layout_kv=layout_kv,
-        )
-        cu, used, used_k, page_ids, residual = _cpu_page_plan(
-            query, key, cu_seqlens_q, seqused_q, seqused_k,
-            cmp_residual_k, block_table,
-            max_seqlen_q=max_seqlen_q, mask_mode=mask_mode, cmp_ratio=cmp_ratio,
-        )
+    validate_quant_lightning_indexer_contract(
+        query, key, query_dequant_scale, key_dequant_scale,
+        cu_seqlens_q, seqused_q, seqused_k, cmp_residual_k,
+        block_table, metadata, max_seqlen_q=max_seqlen_q,
+        mask_mode=mask_mode, cmp_ratio=cmp_ratio,
+        layout_q=layout_q, layout_k=layout_k,
+    )
+    cu, used, used_k, page_ids, residual = _cpu_page_plan(
+        query, key, cu_seqlens_q, seqused_q, seqused_k,
+        cmp_residual_k, block_table,
+        max_seqlen_q=max_seqlen_q, mask_mode=mask_mode, cmp_ratio=cmp_ratio,
+    )
 
-    if len(used) > 1 and layout_kv != 'TND':
+    if len(used) > 1:
         total_rows = int(query.shape[0])
         candidate_width = max(0, int(candidate_topk_blocks))
         combined = {
@@ -722,7 +699,7 @@ def quant_lightning_indexer_golden(
                 mask_mode=mask_mode,
                 cmp_ratio=cmp_ratio,
                 layout_q=layout_q,
-                layout_kv=layout_kv,
+                layout_k=layout_k,
                 return_value=return_value,
             )
             return batch, row_begin, row_end, result
@@ -759,7 +736,7 @@ def quant_lightning_indexer_golden(
         )
     else:
         k_scale_phys = _decode_scale(
-            key_dequant_scale.contiguous().view(torch.uint8), tuple(key.shape[:2] if layout_kv == 'TND' else key.shape[:3]), d
+            key_dequant_scale.contiguous().view(torch.uint8), tuple(key.shape[:3]), d
         ).to(k_phys.device)
     k_phys = k_phys * k_scale_phys
     w = weights.to(torch.float32)
