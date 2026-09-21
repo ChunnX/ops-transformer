@@ -1068,5 +1068,4 @@ int main() {
   //   2) candidateTopkIndexOutOutOptional传nullptr；
   //   3) candidateBlockSize必须与source层一致；
   //   4) 候选块仅降低排序优先级、不取消入选资格（候选内有效位置数不足topk时候选外可达位置会入选）。
-  // 契约：output_idx_offset仅作用于sparse_indices；候选块索引始终为batch内相对块号。
 ```
