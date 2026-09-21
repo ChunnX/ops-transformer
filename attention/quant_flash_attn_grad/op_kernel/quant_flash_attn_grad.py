@@ -2032,15 +2032,20 @@ def set_quant_run_info(run_info, s1_idx, s2_idx):
 def iterate_mm_ds_p(mm1_res, mm2_res, const_info, run_info, tensor_info):
     fused = qk_s1_fuse() and is_fused_s1_pair(run_info, run_info.s1_idx)
     if fused:
-        q_l1_fused = tensor_info.common_l1_db.next()
-        do_l1_fused = tensor_info.common_l1_db.next()
+        q_l1_fused = tensor_info.common_qk_l1_db.next()
+        tensor_info.common_l1_db.next()
+        do_l1_fused = tensor_info.common_qk_l1_db.next()
+        tensor_info.common_l1_db.next()
         iterate_mm_ds_p_tiles(
             mm1_res, mm2_res, run_info, tensor_info, q_l1_fused, do_l1_fused, fused
         )
     else:
-        q_l1_single = tensor_info.common_l1.next()
-        do_l1_single = tensor_info.common_l1.next()
+        q_l1_single = tensor_info.common_qk_l1.next()
+        tensor_info.common_l1.next()
+        do_l1_single = tensor_info.common_qk_l1.next()
+        tensor_info.common_l1.next()
         tensor_info.common_l1_db.next()
+        tensor_info.common_qk_l1_db.next()
         iterate_mm_ds_p_tiles(
             mm1_res, mm2_res, run_info, tensor_info, q_l1_single, do_l1_single, fused
         )
@@ -2061,7 +2066,8 @@ def iterate_mm_ds_p_tiles(mm1_res, mm2_res, run_info, tensor_info, q_l1, do_l1, 
 
     right_first = tensor_info.right_four.next()
     right_second = tensor_info.right_four.next()
-    right_fused = tensor_info.right_db.next()
+    right_fused = tensor_info.right_qk_db.next()
+    tensor_info.right_db.next()
 
     mm1_acc = tensor_info.acc_mm1.current()
     mm2_acc = tensor_info.acc_mm2.current()
@@ -2952,8 +2958,11 @@ def iterate_p_ds(p_l1_bit8, ds_l1_bit8, sdp_id, const_info, run_info, tensor_inf
 
 def load_k_for_dq(right_first, right_second, k_size_first, k_size_second, run_info, tensor_info):
     k_l1_first = tensor_info.common_l1.next()
+    tensor_info.common_qk_l1.next()
     k_l1_second = tensor_info.common_l1.next()
+    tensor_info.common_qk_l1.next()
     tensor_info.common_l1_db.next()
+    tensor_info.common_qk_l1_db.next()
 
     pl.set_validshape(k_l1_first, [k_size_first, D_SIZE])
     pl.set_validshape(k_l1_second, [k_size_second, D_SIZE])
@@ -3029,6 +3038,7 @@ def iterate_mm_ds_k(
     right_first = tensor_info.right_four.next()
     right_second = tensor_info.right_four.next()
     right = tensor_info.right_db.next()
+    tensor_info.right_qk_db.next()
 
     mm_acc = tensor_info.acc_db[tmp_info.l0c_buffer_id]
 
@@ -3036,9 +3046,7 @@ def iterate_mm_ds_k(
     pl.set_validshape(left_second, [128, 128])
     pl.move(left_first, ds_l1_tensor0, [0, 0])
     pl.move(left_second, ds_l1_tensor1, [0, 0])
-    if input_dtype == pl.DT_HF8:
-        load_k_for_dq(right_first, right_second, k_size_first, k_size_second, run_info, tensor_info)
-    elif run_info.is_key_reuse:
+    if run_info.is_key_reuse:
         k_l1_first = tensor_info.k_l1[run_info.s2_idx]
         k_l1_second = tensor_info.k_l1[run_info.s2_idx + 1]
         pl.set_validshape(right_first, [k_size_first, D_SIZE])
@@ -3065,8 +3073,11 @@ def iterate_mm_p_dy(
     real_k = (run_info.s1_real_size % K_SIZE) if is_tail_k else K_SIZE
 
     do_l1 = tensor_info.common_l1_db.next()
+    tensor_info.common_qk_l1_db.next()
     tensor_info.common_l1.next()
+    tensor_info.common_qk_l1.next()
     tensor_info.common_l1.next()
+    tensor_info.common_qk_l1.next()
 
     left_first = tensor_info.left_four.next()
     left_second = tensor_info.left_four.next()
@@ -3075,6 +3086,7 @@ def iterate_mm_p_dy(
     right_first = tensor_info.right_four.next()
     right_second = tensor_info.right_four.next()
     right = tensor_info.right_db.next()
+    tensor_info.right_qk_db.next()
 
     acc = tensor_info.acc_db[tmp_info.l0c_buffer_id]
     pl.set_validshape(left_first, [128, 128])  #
@@ -3129,14 +3141,18 @@ def iterate_mm_ds_q(
     acc_id = (tmp_info.l0c_buffer_id + 1) % 2
 
     q_l1 = tensor_info.common_l1_db.next()
+    tensor_info.common_qk_l1_db.next()
     tensor_info.common_l1.next()
+    tensor_info.common_qk_l1.next()
     tensor_info.common_l1.next()
+    tensor_info.common_qk_l1.next()
 
     left_first = tensor_info.left_four.next()
     left_second = tensor_info.left_four.next()
     left = tensor_info.left_db.next()
 
     right = tensor_info.right_db.next()
+    tensor_info.right_qk_db.next()
     right_first = tensor_info.right_four.next()
     right_second = tensor_info.right_four.next()
 
@@ -4607,7 +4623,18 @@ def quant_flash_attn_grad(
             shape=[TS, TS],
             dtype=input_dtype,
             target_memory=pl.MemorySpace.Mat,
-            layout=pl.ZN if input_dtype == pl.DT_HF8 else pl.NZ,
+            layout=pl.NZ,
+            compact=1,
+        ),
+        addrs=MA2,
+        mutex_ids=[9, 10, 11, 12],
+    )
+    common_qk_l1 = pl.make_tile_group(
+        type=pl.TileType(
+            shape=[TS, TS],
+            dtype=input_dtype,
+            target_memory=pl.MemorySpace.Mat,
+            layout=pl.ZN,
             compact=1,
         ),
         addrs=MA2,
@@ -4618,7 +4645,18 @@ def quant_flash_attn_grad(
             shape=[TS * 2, TS],
             dtype=input_dtype,
             target_memory=pl.MemorySpace.Mat,
-            layout=pl.ZN if input_dtype == pl.DT_HF8 else pl.NZ,
+            layout=pl.NZ,
+            compact=1,
+        ),
+        addrs=MA2,
+        mutex_ids=[[9, 10], [11, 12]],
+    )
+    common_qk_l1_db = pl.make_tile_group(
+        type=pl.TileType(
+            shape=[TS, TS * 2],
+            dtype=input_dtype,
+            target_memory=pl.MemorySpace.Mat,
+            layout=pl.ZN,
             compact=1,
         ),
         addrs=MA2,
@@ -4682,6 +4720,17 @@ def quant_flash_attn_grad(
     right_db = pl.make_tile_group(
         type=pl.TileType(
             shape=[TS * 2, TS],
+            dtype=input_dtype,
+            target_memory=pl.MemorySpace.Right,
+            valid_shape=[-1, -1],
+            compact=1,
+        ),
+        addrs=RA0,
+        mutex_ids=[[25, 26], [27, 28]],
+    )
+    right_qk_db = pl.make_tile_group(
+        type=pl.TileType(
+            shape=[TS, TS * 2],
             dtype=input_dtype,
             target_memory=pl.MemorySpace.Right,
             valid_shape=[-1, -1],
@@ -4794,13 +4843,16 @@ def quant_flash_attn_grad(
         p_l1=p_l1,
         p_l1_bit8=p_l1_bit8,
         common_l1=common_l1,
+        common_qk_l1=common_qk_l1,
         common_l1_db=common_l1_db,
+        common_qk_l1_db=common_qk_l1_db,
         k_l1=k_l1,
         v_l1=v_l1,
         left_four=left_four,
         left_db=left_db,
         right_four=right_four,
         right_db=right_db,
+        right_qk_db=right_qk_db,
         acc_mm1=acc_mm1,
         acc_mm2=acc_mm2,
         acc_db=acc_db,
