@@ -429,6 +429,8 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
         return;
     }
     if (GetSubBlockIdx() != 1U) {
+        // AIV0 不读取 count，但 mode 0 需要全部 AIV 每轮各上报一次。
+        CrossCoreSetFlag<ALL_AICORE_SYNC_MODE, PIPE_V>(COUNT_TABLE_READ_DONE_FLAG);
         return;
     }
 
@@ -449,6 +451,8 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
                       rawCountElementCount, expectedSyncRoundTag);
     ComputeExpertCountTables(scratch.cumsumInfoTensor, scratch.expertTokenNumsOutTensor, common.moeExpertPerRank,
                              common.worldSize, params.tilingData->maxOutputSize);
+    // 后续只使用 UB 结果及 workspace 副本，不再读取 peermem 原始 count 表。
+    CrossCoreSetFlag<ALL_AICORE_SYNC_MODE, PIPE_V>(COUNT_TABLE_READ_DONE_FLAG);
     SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();
     uint64_t countOffset = GetExpertCountWorkspaceOffset(countWorkspace, common.moeExpertPerRank, 0U, true);
     SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID2>();
