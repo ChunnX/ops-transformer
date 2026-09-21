@@ -159,9 +159,10 @@ static ge::graphStatus MoeFinalizeRoutingV2GradInferShape(gert::InferShapeContex
 static graphStatus MoeFinalizeRoutingV2GradInferDtype(gert::InferDataTypeContext* context)
 {
     auto gradYtype = context->GetInputDataType(INPUT_0_IDX);
-    auto scaleType = context->GetInputDataType(INPUT_3_IDX);
+    auto scaleType = context->GetOptionalInputDataType(INPUT_3_IDX);
+    auto gradScalesType = (scaleType == ge::DT_UNDEFINED) ? gradYtype : scaleType;
     context->SetOutputDataType(OUTPUT_0_IDX, gradYtype);
-    context->SetOutputDataType(OUTPUT_1_IDX, scaleType);
+    context->SetOutputDataType(OUTPUT_1_IDX, gradScalesType);
     return GRAPH_SUCCESS;
 }
 
