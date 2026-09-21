@@ -156,7 +156,7 @@ public:
             case SparseMode::BAND:
                 return static_cast<int64_t>(querySeq) - static_cast<int64_t>(kvSeq) + preToken;
             default:
-                return preToken;
+                return querySeq;
         }
     }
 
@@ -165,15 +165,17 @@ public:
         auto mode = GetSparseMode();
         switch (mode) {
             case SparseMode::DEFAULT_MASK:
-            case SparseMode::ALL_MASK:
-            case SparseMode::LEFT_UP_CAUSAL:
                 return nextToken;
+            case SparseMode::ALL_MASK:
+                return kvSeq;
+            case SparseMode::LEFT_UP_CAUSAL:
+                return 0L;
             case SparseMode::RIGHT_DOWN_CAUSAL:
                 return static_cast<int64_t>(kvSeq) - static_cast<int64_t>(querySeq);
             case SparseMode::BAND:
                 return static_cast<int64_t>(kvSeq) - static_cast<int64_t>(querySeq) + nextToken;
             default:
-                return nextToken;
+                return kvSeq;
         }
     }
 
@@ -212,8 +214,8 @@ public:
     uint32_t headDimV{64U};
     bool attenMaskFlag{false};
     uint32_t sparseMode{0U};
-    uint32_t preToken{0U};
-    uint32_t nextToken{0U};
+    int64_t preToken{0U};
+    int64_t nextToken{0U};
     bool isCumulativeQuerySeq{false};
     bool isCumulativeKvSeq{false};
     std::vector<int64_t> actualQuerySeqSize{};

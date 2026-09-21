@@ -14,6 +14,8 @@
  */
 
 #include <cstdlib>
+#include <cstring>
+#include <limits>
 
 #include "graph/utils/type_utils.h"
 #include "mc2_hcom_topo_info.h"
@@ -249,6 +251,54 @@ bool CheckDataTypeVaild(ge::DataType type, std::initializer_list<ge::DataType> s
     return std::find(supportDtypeList.begin(), supportDtypeList.end(), type) != supportDtypeList.end();
 }
 
+ge::graphStatus ParseCommAlgWithEnvFallback(const char *entityName, const char *commAlg, bool &isLayered)
+{
+    if (commAlg == nullptr || strlen(commAlg) == 0 || strcmp(commAlg, "0") == 0) {
+        OP_LOGW(entityName, "Attr commAlg is invalid, please configure fullmesh or hierarchy.");
+
+        const char *hcclIntraPcieEnable = getenv("HCCL_INTRA_PCIE_ENABLE");
+        const char *hcclIntraRoceEnable = getenv("HCCL_INTRA_ROCE_ENABLE");
+        if (hcclIntraPcieEnable != nullptr && hcclIntraRoceEnable != nullptr && strcmp(hcclIntraPcieEnable, "1") == 0 &&
+            strcmp(hcclIntraRoceEnable, "0") == 0) {
+            OP_LOGD(entityName,
+                    "ENV HCCL_INTRA_PCIE_ENABLE = 1 and HCCL_INTRA_ROCE_ENABLE = 0, use hierarchy algorithm.");
+            isLayered = true;
+        } else {
+            OP_LOGD(entityName,
+                    "ENV HCCL_INTRA_PCIE_ENABLE != 1 or HCCL_INTRA_ROCE_ENABLE != 0, use default fullmesh algorithm.");
+        }
+        return ge::GRAPH_SUCCESS;
+    }
+
+    OP_LOGI(entityName, "commAlg is %s", commAlg);
+
+    if (strcmp(commAlg, "fullmesh") == 0) {
+        return ge::GRAPH_SUCCESS;
+    }
+    if (strcmp(commAlg, "hierarchy") == 0) {
+        isLayered = true;
+        return ge::GRAPH_SUCCESS;
+    }
+    return ge::GRAPH_FAILED;
+}
+
+bool IsHcclPcieLayered(const char *entityName)
+{
+    const char *hcclIntraPcieEnable = getenv("HCCL_INTRA_PCIE_ENABLE");
+    const char *hcclIntraRoceEnable = getenv("HCCL_INTRA_ROCE_ENABLE");
+
+    if (hcclIntraPcieEnable == nullptr || hcclIntraRoceEnable == nullptr) {
+        OP_LOGD(entityName, "ENV HCCL_INTRA_PCIE_ENABLE or HCCL_INTRA_ROCE_ENABLE don't set");
+        return false;
+    }
+    if (strcmp(hcclIntraPcieEnable, "1") == 0 && strcmp(hcclIntraRoceEnable, "0") == 0) {
+        OP_LOGD(entityName, "ENV HCCL_INTRA_PCIE_ENABLE = 1 and HCCL_INTRA_ROCE_ENABLE = 0, use layered solution.");
+        return true;
+    }
+    OP_LOGD(entityName, "ENV HCCL_INTRA_PCIE_ENABLE != 1 or HCCL_INTRA_ROCE_ENABLE != 0, use default solution.");
+    return false;
+}
+
 void UpdateMatmulV3Args(optiling::mc2_matmul_v3_advanced::Mc2MatMulV3Args &mmV3Args, const TilingArgs &args,
                         const char *opName)
 {
@@ -347,18 +397,25 @@ mc2tiling::HcclDataType Mc2TilingUtils::GetDataType(ge::DataType type)
 
 uint64_t Mc2TilingUtils::GetMaxWindowSize()
 {
-    uint16_t defaultWindowSize = 200;
-    if (getenv(HCCL_BUFFSIZE) == nullptr) {
+    uint64_t defaultWindowSize = 200;
+    const char *envValue = getenv(HCCL_BUFFSIZE);
+    if (envValue == nullptr) {
         OP_LOGD("", "Env HCCL_BUFFSIZE don't set");
     } else {
         try {
-            std::string envStr(getenv(HCCL_BUFFSIZE));
-            defaultWindowSize = std::stoi(envStr);
+            const uint64_t parsedWindowSize = std::stoull(envValue);
+            // 防 uint64 乘法回绕与下游 int64 溢出，非法取值回退默认 200MB
+            if (parsedWindowSize == 0 ||
+                parsedWindowSize > static_cast<uint64_t>(std::numeric_limits<int64_t>::max()) / (1024UL * 1024UL)) {
+                OP_LOGE("", "Invalid env HCCL_BUFFSIZE '%s', fallback to default %lu MB", envValue, defaultWindowSize);
+            } else {
+                defaultWindowSize = parsedWindowSize;
+            }
         } catch (...) {
             OP_LOGE("", "Unknown Exception encountered when parsing env HCCL_BUFFSIZE");
         }
     }
-    const uint64_t maxWindowSize = static_cast<uint64_t>(defaultWindowSize) * 1024UL * 1024UL;
+    const uint64_t maxWindowSize = defaultWindowSize * 1024UL * 1024UL;
     OP_LOGI("", "Get maxWindowSize is %lu", maxWindowSize);
     return maxWindowSize;
 }
