@@ -84,8 +84,8 @@ public:
         this->Attr("y_dtype").AttrType(OPTIONAL).Int(static_cast<int64_t>(ge::DT_UNDEFINED));
         this->Attr("comm_mode").AttrType(OPTIONAL).String("aiv_urma");
 
-        OpAICoreConfig aicoreConfig_950;
-        aicoreConfig_950.DynamicCompileStaticFlag(true)
+        OpAICoreConfig aicoreConfig_a5;
+        aicoreConfig_a5.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
             .DynamicRankSupportFlag(true)
             .DynamicShapeSupportFlag(true)
@@ -95,7 +95,7 @@ public:
             .ExtendCfgInfo("jitCompile.flag", "static_false") // 动态shape,复用二进制,后续图支持后修改
             .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel")
             .ExtendCfgInfo("opFile.value", "all_gather_matmul_v3_apt");
-        this->AICore().AddConfig("ascend950", aicoreConfig_950);
+        this->AICore().AddConfig("ascend950", aicoreConfig_a5);
     }
 };
 

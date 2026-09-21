@@ -27,13 +27,13 @@ class AclnnFfnToAttentionV2Test : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
-        op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
+        op::SetPlatformNpuArch(Ops::Base::DAV_3510);
         cout << "AclnnFfnToAttentionV2Test SetUp" << endl;
     }
 
     static void TearDownTestCase()
     {
-        op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
+        op::SetPlatformNpuArch(Ops::Base::DAV_3510);
         cout << "AclnnFfnToAttentionV2Test TearDown" << endl;
     }
 };

@@ -22,13 +22,13 @@ class AclnnMegaMoeTest : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
-        op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
+        op::SetPlatformNpuArch(Ops::Base::DAV_3510);
         std::cout << "MegaMoe AclnnMegaMoeTest SetUp" << std::endl;
     }
 
     static void TearDownTestCase()
     {
-        op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
+        op::SetPlatformNpuArch(Ops::Base::DAV_3510);
         std::cout << "MegaMoe AclnnMegaMoeTest TearDown" << std::endl;
     }
 };
@@ -73,7 +73,7 @@ TEST_F(AclnnMegaMoeTest, activation_param_domain)
     EXPECT_EQ(RunActivationParamCase("situglu", {4.0f, 25.0f}), ACLNN_ERR_RUNTIME_ERROR);
 }
 
-TEST_F(AclnnMegaMoeTest, ascend950_nullptr_context)
+TEST_F(AclnnMegaMoeTest, dav3510_nullptr_context)
 {
     auto x_desc = TensorDesc({128, 4096}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto topk_ids_desc = TensorDesc({128, 8}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 3);
@@ -101,7 +101,7 @@ TEST_F(AclnnMegaMoeTest, ascend950_nullptr_context)
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
 
-TEST_F(AclnnMegaMoeTest, ascend950_nullptr_x)
+TEST_F(AclnnMegaMoeTest, dav3510_nullptr_x)
 {
     auto context_desc = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
     auto topk_ids_desc = TensorDesc({128, 8}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 3);
@@ -129,7 +129,7 @@ TEST_F(AclnnMegaMoeTest, ascend950_nullptr_x)
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
 
-TEST_F(AclnnMegaMoeTest, ascend950_nullptr_topk_ids)
+TEST_F(AclnnMegaMoeTest, dav3510_nullptr_topk_ids)
 {
     auto context_desc = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
     auto x_desc = TensorDesc({128, 4096}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
@@ -157,7 +157,7 @@ TEST_F(AclnnMegaMoeTest, ascend950_nullptr_topk_ids)
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
 
-TEST_F(AclnnMegaMoeTest, ascend950_nullptr_topk_weights)
+TEST_F(AclnnMegaMoeTest, dav3510_nullptr_topk_weights)
 {
     auto context_desc = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
     auto x_desc = TensorDesc({128, 4096}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
@@ -185,7 +185,7 @@ TEST_F(AclnnMegaMoeTest, ascend950_nullptr_topk_weights)
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
 
-TEST_F(AclnnMegaMoeTest, ascend950_nullptr_weight1)
+TEST_F(AclnnMegaMoeTest, dav3510_nullptr_weight1)
 {
     auto context_desc = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
     auto x_desc = TensorDesc({128, 4096}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
@@ -213,7 +213,7 @@ TEST_F(AclnnMegaMoeTest, ascend950_nullptr_weight1)
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
 
-TEST_F(AclnnMegaMoeTest, ascend950_nullptr_weight2)
+TEST_F(AclnnMegaMoeTest, dav3510_nullptr_weight2)
 {
     auto context_desc = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
     auto x_desc = TensorDesc({128, 4096}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
@@ -241,7 +241,7 @@ TEST_F(AclnnMegaMoeTest, ascend950_nullptr_weight2)
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
 
-TEST_F(AclnnMegaMoeTest, ascend950_nullptr_y_out)
+TEST_F(AclnnMegaMoeTest, dav3510_nullptr_y_out)
 {
     auto context_desc = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
     auto x_desc = TensorDesc({128, 4096}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
@@ -269,7 +269,7 @@ TEST_F(AclnnMegaMoeTest, ascend950_nullptr_y_out)
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
 
-TEST_F(AclnnMegaMoeTest, ascend950_nullptr_expert_token_nums_out)
+TEST_F(AclnnMegaMoeTest, dav3510_nullptr_expert_token_nums_out)
 {
     auto context_desc = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
     auto x_desc = TensorDesc({128, 4096}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
