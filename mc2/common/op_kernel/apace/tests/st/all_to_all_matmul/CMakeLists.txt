@@ -21,6 +21,11 @@ set(KERNEL_INCLUDES
     ${CMAKE_CURRENT_SOURCE_DIR}/../utils                                    # utils.h
     ${BLAZE_COMMON}                                                         # blaze/（apace_blaze_api 也提供，此处冗余但无害）
     ${ASCEND_DIR}/${SYSTEM_PREFIX}/asc/include                              # basic_api/ adv_api/
+    ${ASCEND_DIR}/${SYSTEM_PREFIX}/asc/include/basic_api
+    ${ASCEND_DIR}/${SYSTEM_PREFIX}/asc/include/c_api
+    ${ASCEND_DIR}/${SYSTEM_PREFIX}/asc/impl/basic_api
+    ${ASCEND_DIR}/${SYSTEM_PREFIX}/asc/impl/c_api
+    ${ASCEND_DIR}/${SYSTEM_PREFIX}/asc/impl/utils
     ${ASCEND_DIR}/${SYSTEM_PREFIX}/ascendc/include/highlevel_api            # kernel_tiling/kernel_tiling.h
     ${ASCEND_DIR}/compiler/tikcpp/tikcfw
     ${ASCEND_DIR}/include
