@@ -8,11 +8,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-"""QuantFlashAttnGrad kernel (pypto-pro).
-
-B-test: TND/varlen (non-band) fuses s1 0+1 / 2+3 into one 256x128 QK.
-BSND/BNSD keep 128x128.
-"""
+"""QuantFlashAttnGrad kernel (pypto-pro)."""
 
 from dataclasses import dataclass
 
@@ -127,7 +123,6 @@ VA1 = _align_up(VA0 + VB4_KV)
 VA2 = _align_up(VA1 + VB4_KV)
 VA3 = _align_up(VA2 + VB4_KV)
 VA4 = VA3 + TS * HALF_D_SIZE * 4
-# VA4 = VA3 + TS_HALF * 4
 VAP_0 = 0
 VAP_1 = _align_up(VAP_0 + VB_P)
 MA0 = 0
@@ -370,9 +365,10 @@ def init_dq_workspace(const_info, tensor_info):
                 dq_tile.current(),
                 offsets=[0, dq_offset + i],
             )
-        if is_var_len():
-            # seqused 下 s2o >= ceil(seqused_kv[b] / 512) 的整块从不被访问, 不清零的话
-            # post 阶段会把 workspace 脏数据搬进 dk/dv 输出的 padding 行。
+        if is_var_len() or sparse_type == 3 or sparse_type == 4:
+            # Sparse schedules can revisit a head/KV column after switching away.
+            # Zero the full workspace before additive writeback; varlen also needs
+            # zero padding for columns that are never visited.
             init_dk_size = (
                 const_info.k_pre_block_tail
                 if const_info.core_id_vec == const_info.k_pre_block_total - 1
@@ -453,7 +449,7 @@ def presfmg_quant_tnd_used_hif8(const_info, tensor_info):
         attn_out = tensor_info.tensor_attn_out
         dy = tensor_info.tensor_do
         sfmg = tensor_info.tensor_workspace_sfmg
-        deq_scale_do_value = pl.getval(tensor_info.tensor_do_descale, 0)
+        deq_scale_do_value = const_info.deq_scale_do_value
         y_tile = pl.make_tile_group(
             type=pl.TileType(shape=[TS, D_SIZE], dtype=pl.DT_BF16,
                              target_memory=pl.MemorySpace.Vec),
@@ -510,7 +506,7 @@ def presfmg_quant_inner_hif8(const_info, tensor_info):
             else VEC_CHUNK
         )
 
-        deq_scale_do_value = pl.getval(tensor_info.tensor_do_descale, 0)
+        deq_scale_do_value = const_info.deq_scale_do_value
         y_tt = pl.TileType(
             shape=[TS, D_SIZE], dtype=pl.DT_BF16, target_memory=pl.MemorySpace.Vec
         )
@@ -764,13 +760,14 @@ def cal_dense_index(k, m, n, b, j, r, coordinate):
         coordinate.batch_id = -1
 
 def _isqrt(x):
+    # floor(sqrt(x)) for nonnegative int64 x. Keep a single loop-carried
+    # scalar to avoid PyPTO overwriting the old res/nxt state on the backedge.
     if x < 2:
         return x
-    res = x
-    nxt = (res + 1) // 2
-    while nxt < res:
-        res = nxt
-        nxt = (res + x // res) // 2
+    # This seed and the division-based condition avoid integer overflow.
+    res = x // 2 + 1
+    while res > x // res:
+        res = (res + x // res) // 2
     return res
 
 
@@ -1364,8 +1361,8 @@ def cal_dense_swizzle_deter_index(
     found_b = -1
     delta = 0
     for b_idx in pl.range(0, b_size, 1):
-        prefix_lo = pl.getval(tensor_metadata, prefix_base + b_idx)
-        prefix_hi = pl.getval(tensor_metadata, prefix_base + b_idx + 1)
+        prefix_lo = pl.astype(pl.getval(tensor_metadata, prefix_base + b_idx), pl.DT_INT64)
+        prefix_hi = pl.astype(pl.getval(tensor_metadata, prefix_base + b_idx + 1), pl.DT_INT64)
         if found_b < 0 and round_id < prefix_hi:
             found_b = b_idx
             delta = round_id - prefix_lo
@@ -1514,8 +1511,8 @@ def cal_tnd_line_swizzle_deter_index(
     found_b = -1
     delta = 0
     for b_idx in pl.range(0, b_size, 1):
-        prefix_lo = pl.getval(tensor_metadata, prefix_base + b_idx)
-        prefix_hi = pl.getval(tensor_metadata, prefix_base + b_idx + 1)
+        prefix_lo = pl.astype(pl.getval(tensor_metadata, prefix_base + b_idx), pl.DT_INT64)
+        prefix_hi = pl.astype(pl.getval(tensor_metadata, prefix_base + b_idx + 1), pl.DT_INT64)
         if found_b < 0 and round_id < prefix_hi:
             found_b = b_idx
             delta = round_id - prefix_lo
@@ -1879,7 +1876,6 @@ def cal_deter_index(
             next_valid_index = cal_causal_deter_index(
                 current_round_id, max_loop_num, coordinate_info, const_info, flag
             )
-            # pass
         else:
             next_valid_index = cal_dense_deter_index(
                 current_round_id, max_loop_num, coordinate_info, const_info, flag
@@ -1914,6 +1910,7 @@ def set_run_info(
     run_info.is_last_process_block = next_coordinate_info.batch_id == -1
     run_info.is_first_process_block = task_id == 0
     last_run_info.is_next_key_reuse = run_info.is_key_reuse
+    # This flag controls K/V cache loads, not whether dK/dV was written before.
     run_info.is_value_reuse = (
         tmp_info.last_s2_idx == coordinate_info.s2_idx
         and tmp_info.last_batch_idx == coordinate_info.batch_id
@@ -1968,12 +1965,17 @@ def set_run_info(
     run_info.inner_s1_loop_num = ceil(run_info.s1_real_size, 128)
     run_info.inner_s2_loop_num = ceil(run_info.s2_real_size, 128)
     with pl.section_vector():
-        run_info.deq_scale_q_value = pl.getval(tensor_info.tensor_q_descale, 0)
-        run_info.deq_scale_k_value = pl.getval(tensor_info.tensor_k_descale, 0)
-        run_info.deq_scale_v_value = pl.getval(tensor_info.tensor_v_descale, 0)
-        run_info.deq_scale_do_value = pl.getval(tensor_info.tensor_do_descale, 0)
+        run_info.deq_scale_q_value = const_info.deq_scale_q_value
+        run_info.deq_scale_k_value = const_info.deq_scale_k_value
+        run_info.deq_scale_v_value = const_info.deq_scale_v_value
+        run_info.deq_scale_do_value = const_info.deq_scale_do_value
 
-        if is_var_len():
+        if not is_var_len() and (sparse_type == 3 or sparse_type == 4):
+            # Cache reuse only describes the preceding task. A sparse schedule
+            # may return to a previously written column, so always accumulate
+            # into the workspace cleared by init_dq_workspace (as FAG does).
+            run_info.kv_need_atomic = True
+        elif is_var_len():
             # swizzle 下 (n1_idx, s2o) 与 linearIdx = (delta // m_b) * k + j 一一对应,
             # 同一列只会落在唯一一个核上, dk/dv 不存在跨核累加, 只需核内跨 s1 行累加。
             if sparse_type != 0:
@@ -2170,6 +2172,28 @@ def iterate_mm_ds_p(mm1_res, mm2_res, const_info, run_info, tensor_info):
 
 
 @pl.vector_function
+def merge_band_attn_mask_vf(attn_tile, attn_pre_tile):
+    # Preserve the packed predicate bits: keep = next & ~pre.
+    # Reinterpret pairs of bytes as uint16 for the bitwise vector operations.
+    preg_all_16 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_UINT16)
+    preg_all_8 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_INT8)
+    for offset in pl.range(0, TS * TS_HALF, 256):
+        next_bytes = vf.load_align(attn_tile, offset)
+        pre_bytes = vf.load_align(attn_pre_tile, offset)
+        next_words = vf.bit_cast(next_bytes, dtype=pl.DT_UINT16)
+        pre_words = vf.bit_cast(pre_bytes, dtype=pl.DT_UINT16)
+        pre_inverse = vf.not_(pre_words, preg_all_16)
+        keep_words = vf.and_(next_words, pre_inverse, preg_all_16)
+        # Keep the merged mask in the second acquired slot. The next pair
+        # can then load into the other two slots while P/dS consumes this one.
+        vf.store_align(
+            attn_pre_tile + offset,
+            vf.bit_cast(keep_words, dtype=pl.DT_INT8),
+            preg_all_8,
+        )
+
+
+@pl.vector_function
 def compute_p_ds_vf(
     sp_tile,
     dpds_tile,
@@ -2179,7 +2203,6 @@ def compute_p_ds_vf(
     lse_tile,
     d_tile,
     attn_tile,
-    attn_pre_tile,
     src_m,
     src_n,
     ss,
@@ -2189,10 +2212,7 @@ def compute_p_ds_vf(
 ):
     dscale_neg = -1.0 * ds_scale
     un_roll_num = 8
-    n_lo = src_n
-    if n_lo > 64:
-        n_lo = 64
-    preg_all = vf.update_mask(n_lo, dtype=pl.DT_FP32)
+    preg_all = vf.update_mask(src_n, dtype=pl.DT_FP32)
     preg_all_8 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_UINT8)
     preg_all_32 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
     if has_attn_mask:
@@ -2201,11 +2221,6 @@ def compute_p_ds_vf(
         preg_mask3 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_INT32)
         preg_mask4 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_INT32)
         vreg_min = vf.full(ATTEN_MASK_MIN, preg_all_32, dtype=pl.DT_FP32)
-        if sparse_type == 4:
-            preg_pre1 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_INT32)
-            preg_pre2 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_INT32)
-            preg_pre3 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_INT32)
-            preg_pre4 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_INT32)
 
     vreg_d = vf.load_align(d_tile, 0)
     vreg_perm = vf.load_align(perm_tile, 0)
@@ -2218,40 +2233,12 @@ def compute_p_ds_vf(
     vreg_d = vf.muls(vreg_d, dscale_neg, preg_all)
     vreg_dps = vf.full(dps, preg_all, dtype=pl.DT_FP32)
     vreg_dps = vf.muls(vreg_dps, ds_scale, preg_all)
-    vreg_lse_h = vreg_lse
-    vreg_d_h = vreg_d
-    vreg_dps_h = vreg_dps
-    if ((layout == 2 or has_seq_used_q == 1 or has_seq_used_kv == 1) and sparse_type != 4):
-        vreg_lse_h = vf.load_align(lse_tile, 64)
-        vreg_d_h = vf.load_align(d_tile, 64)
-        vreg_lse_h = vf.add(vreg_lse_h, vreg_ps, preg_all)
-        vreg_d_h = vf.muls(vreg_d_h, dscale_neg, preg_all)
-        vreg_dps_h = vf.full(dps, preg_all, dtype=pl.DT_FP32)
-        vreg_dps_h = vf.muls(vreg_dps_h, ds_scale, preg_all)
 
     for i in pl.range(0, src_m, un_roll_num):
-    # for i in pl.range(0, 8, un_roll_num):
         vreg_sp1 = vf.load_align(sp_tile, i * 128)
         vreg_sp2 = vf.load_align(sp_tile, (i + 1) * 128)
         vreg_sp3 = vf.load_align(sp_tile, (i + 2) * 128)
         vreg_sp4 = vf.load_align(sp_tile, (i + 3) * 128)
-        vreg_sp1h = vreg_sp1
-        vreg_sp2h = vreg_sp2
-        vreg_sp3h = vreg_sp3
-        vreg_sp4h = vreg_sp4
-        vreg_dps1h = vreg_sp1
-        vreg_dps2h = vreg_sp2
-        vreg_dps3h = vreg_sp3
-        vreg_dps4h = vreg_sp4
-        if ((layout == 2 or has_seq_used_q == 1 or has_seq_used_kv == 1) and sparse_type != 4) and src_n > 64:
-            vreg_sp1h = vf.load_align(sp_tile, i * 128 + 64)
-            vreg_sp2h = vf.load_align(sp_tile, (i + 1) * 128 + 64)
-            vreg_sp3h = vf.load_align(sp_tile, (i + 2) * 128 + 64)
-            vreg_sp4h = vf.load_align(sp_tile, (i + 3) * 128 + 64)
-            vreg_dps1h = vf.load_align(dpds_tile, i * 128 + 64)
-            vreg_dps2h = vf.load_align(dpds_tile, (i + 1) * 128 + 64)
-            vreg_dps3h = vf.load_align(dpds_tile, (i + 2) * 128 + 64)
-            vreg_dps4h = vf.load_align(dpds_tile, (i + 3) * 128 + 64)
 
         vreg_sp1 = vf.muls(vreg_sp1, ss, preg_all)
         vreg_sp2 = vf.muls(vreg_sp2, ss, preg_all)
@@ -2268,23 +2255,10 @@ def compute_p_ds_vf(
             vreg_sp3 = vf.select(vreg_sp3, vreg_min, preg_mask3)
             vreg_sp4 = vf.select(vreg_sp4, vreg_min, preg_mask4)
 
-            if sparse_type == 4:
-                preg_pre1 = vf.load_align(attn_pre_tile, i * 64, dist=pl.LoadDist.DS)
-                preg_pre2 = vf.load_align(attn_pre_tile, (i + 1) * 64, dist=pl.LoadDist.DS)
-                preg_pre3 = vf.load_align(attn_pre_tile, (i + 2) * 64, dist=pl.LoadDist.DS)
-                preg_pre4 = vf.load_align(attn_pre_tile, (i + 3) * 64, dist=pl.LoadDist.DS)
-
-                vreg_sp1 = vf.select(vreg_min, vreg_sp1, preg_pre1)
-                vreg_sp2 = vf.select(vreg_min, vreg_sp2, preg_pre2)
-                vreg_sp3 = vf.select(vreg_min, vreg_sp3, preg_pre3)
-                vreg_sp4 = vf.select(vreg_min, vreg_sp4, preg_pre4)
-
-        # vf.store(sp_tile, vreg_sp1)
         vreg_sp1 = vf.exp_sub(vreg_sp1, vreg_lse, preg_all)
         vreg_sp2 = vf.exp_sub(vreg_sp2, vreg_lse, preg_all)
         vreg_sp3 = vf.exp_sub(vreg_sp3, vreg_lse, preg_all)
         vreg_sp4 = vf.exp_sub(vreg_sp4, vreg_lse, preg_all)
-        # return
         vreg_p1 = vf.astype(
             vreg_sp1,
             preg_all,
@@ -2413,74 +2387,12 @@ def compute_p_ds_vf(
             vreg_perm,
             preg_all_8,
         )
-        if ((layout == 2 or has_seq_used_q == 1 or has_seq_used_kv == 1) and sparse_type != 4) and src_n > 64:
-            vreg_sp1h = vf.muls(vreg_sp1h, ss, preg_all)
-            vreg_sp2h = vf.muls(vreg_sp2h, ss, preg_all)
-            vreg_sp3h = vf.muls(vreg_sp3h, ss, preg_all)
-            vreg_sp4h = vf.muls(vreg_sp4h, ss, preg_all)
-            if has_attn_mask:
-                preg_mask1 = vf.load_align(attn_pre_tile, i * 64, dist=pl.LoadDist.DS)
-                preg_mask2 = vf.load_align(attn_pre_tile, (i + 1) * 64, dist=pl.LoadDist.DS)
-                preg_mask3 = vf.load_align(attn_pre_tile, (i + 2) * 64, dist=pl.LoadDist.DS)
-                preg_mask4 = vf.load_align(attn_pre_tile, (i + 3) * 64, dist=pl.LoadDist.DS)
-                vreg_sp1h = vf.select(vreg_sp1h, vreg_min, preg_mask1)
-                vreg_sp2h = vf.select(vreg_sp2h, vreg_min, preg_mask2)
-                vreg_sp3h = vf.select(vreg_sp3h, vreg_min, preg_mask3)
-                vreg_sp4h = vf.select(vreg_sp4h, vreg_min, preg_mask4)
-            vreg_sp1h = vf.exp_sub(vreg_sp1h, vreg_lse_h, preg_all)
-            vreg_sp2h = vf.exp_sub(vreg_sp2h, vreg_lse_h, preg_all)
-            vreg_sp3h = vf.exp_sub(vreg_sp3h, vreg_lse_h, preg_all)
-            vreg_sp4h = vf.exp_sub(vreg_sp4h, vreg_lse_h, preg_all)
-            vreg_p1 = vf.astype(vreg_sp1h, preg_all, dtype=pl.DT_HF8, layout=pl.CastLayout.ZERO, round_mode=pl.VFRoundMode.CAST_ROUND)
-            vreg_p2 = vf.astype(vreg_sp2h, preg_all, dtype=pl.DT_HF8, layout=pl.CastLayout.ZERO, round_mode=pl.VFRoundMode.CAST_ROUND)
-            vreg_p3 = vf.astype(vreg_sp3h, preg_all, dtype=pl.DT_HF8, layout=pl.CastLayout.TWO, round_mode=pl.VFRoundMode.CAST_ROUND)
-            vreg_p4 = vf.astype(vreg_sp4h, preg_all, dtype=pl.DT_HF8, layout=pl.CastLayout.TWO, round_mode=pl.VFRoundMode.CAST_ROUND)
-            vreg_p13 = vf.or_(vf.bit_cast(vreg_p1, dtype=pl.DT_INT8), vf.bit_cast(vreg_p3, dtype=pl.DT_INT8), preg_all_8)
-            vreg_p24 = vf.or_(vf.bit_cast(vreg_p2, dtype=pl.DT_INT8), vf.bit_cast(vreg_p4, dtype=pl.DT_INT8), preg_all_8)
-            vreg_p_res1, vreg_p_res2 = vf.interleave(vf.bit_cast(vreg_p13, dtype=pl.DT_FP16), vf.bit_cast(vreg_p24, dtype=pl.DT_FP16))
-            vf.scatter(sp_tile_bit8 + ((i + 0) * 512 + 256), vf.bit_cast(vreg_p_res1, dtype=pl.DT_INT8), vreg_perm, preg_all_8)
-            vf.scatter(sp_tile_bit8 + ((i + 1) * 512 + 256), vf.bit_cast(vreg_p_res2, dtype=pl.DT_INT8), vreg_perm, preg_all_8)
-            vreg_dps1h = vf.mul_dst_add(vreg_dps_h, vreg_d_h, preg_all)
-            vreg_dps2h = vf.mul_dst_add(vreg_dps_h, vreg_d_h, preg_all)
-            vreg_dps3h = vf.mul_dst_add(vreg_dps_h, vreg_d_h, preg_all)
-            vreg_dps4h = vf.mul_dst_add(vreg_dps_h, vreg_d_h, preg_all)
-            vreg_dps1h = vf.mul(vreg_dps1h, vreg_sp1h, preg_all)
-            vreg_dps2h = vf.mul(vreg_dps2h, vreg_sp2h, preg_all)
-            vreg_dps3h = vf.mul(vreg_dps3h, vreg_sp3h, preg_all)
-            vreg_dps4h = vf.mul(vreg_dps4h, vreg_sp4h, preg_all)
-            vreg_ds1 = vf.astype(vreg_dps1h, preg_all, dtype=pl.DT_HF8, layout=pl.CastLayout.ZERO, round_mode=pl.VFRoundMode.CAST_ROUND)
-            vreg_ds2 = vf.astype(vreg_dps2h, preg_all, dtype=pl.DT_HF8, layout=pl.CastLayout.ZERO, round_mode=pl.VFRoundMode.CAST_ROUND)
-            vreg_ds3 = vf.astype(vreg_dps3h, preg_all, dtype=pl.DT_HF8, layout=pl.CastLayout.TWO, round_mode=pl.VFRoundMode.CAST_ROUND)
-            vreg_ds4 = vf.astype(vreg_dps4h, preg_all, dtype=pl.DT_HF8, layout=pl.CastLayout.TWO, round_mode=pl.VFRoundMode.CAST_ROUND)
-            vreg_ds13 = vf.or_(vf.bit_cast(vreg_ds1, dtype=pl.DT_INT8), vf.bit_cast(vreg_ds3, dtype=pl.DT_INT8), preg_all_8)
-            vreg_ds24 = vf.or_(vf.bit_cast(vreg_ds2, dtype=pl.DT_INT8), vf.bit_cast(vreg_ds4, dtype=pl.DT_INT8), preg_all_8)
-            vreg_ds_res1, vreg_ds_res2 = vf.interleave(vf.bit_cast(vreg_ds13, dtype=pl.DT_FP16), vf.bit_cast(vreg_ds24, dtype=pl.DT_FP16))
-            vf.scatter(dpds_tile_bit8 + ((i + 0) * 512 + 256), vf.bit_cast(vreg_ds_res1, dtype=pl.DT_INT8), vreg_perm, preg_all_8)
-            vf.scatter(dpds_tile_bit8 + ((i + 1) * 512 + 256), vf.bit_cast(vreg_ds_res2, dtype=pl.DT_INT8), vreg_perm, preg_all_8)
 
     for i in pl.range(0, src_m, un_roll_num):
-    # for i in pl.range(0, 8, un_roll_num):
         vreg_sp1 = vf.load_align(sp_tile, (i + 4) * 128)
         vreg_sp2 = vf.load_align(sp_tile, (i + 5) * 128)
         vreg_sp3 = vf.load_align(sp_tile, (i + 6) * 128)
         vreg_sp4 = vf.load_align(sp_tile, (i + 7) * 128)
-        vreg_sp1h = vreg_sp1
-        vreg_sp2h = vreg_sp2
-        vreg_sp3h = vreg_sp3
-        vreg_sp4h = vreg_sp4
-        vreg_dps1h = vreg_sp1
-        vreg_dps2h = vreg_sp2
-        vreg_dps3h = vreg_sp3
-        vreg_dps4h = vreg_sp4
-        if ((layout == 2 or has_seq_used_q == 1 or has_seq_used_kv == 1) and sparse_type != 4) and src_n > 64:
-            vreg_sp1h = vf.load_align(sp_tile, (i + 4) * 128 + 64)
-            vreg_sp2h = vf.load_align(sp_tile, (i + 5) * 128 + 64)
-            vreg_sp3h = vf.load_align(sp_tile, (i + 6) * 128 + 64)
-            vreg_sp4h = vf.load_align(sp_tile, (i + 7) * 128 + 64)
-            vreg_dps1h = vf.load_align(dpds_tile, (i + 4) * 128 + 64)
-            vreg_dps2h = vf.load_align(dpds_tile, (i + 5) * 128 + 64)
-            vreg_dps3h = vf.load_align(dpds_tile, (i + 6) * 128 + 64)
-            vreg_dps4h = vf.load_align(dpds_tile, (i + 7) * 128 + 64)
 
         vreg_sp1 = vf.muls(vreg_sp1, ss, preg_all)
         vreg_sp2 = vf.muls(vreg_sp2, ss, preg_all)
@@ -2498,22 +2410,10 @@ def compute_p_ds_vf(
             vreg_sp3 = vf.select(vreg_sp3, vreg_min, preg_mask3)
             vreg_sp4 = vf.select(vreg_sp4, vreg_min, preg_mask4)
 
-            if sparse_type == 4:
-                preg_pre1 = vf.load_align(attn_pre_tile, (i + 4) * 64, dist=pl.LoadDist.DS)
-                preg_pre2 = vf.load_align(attn_pre_tile, (i + 5) * 64, dist=pl.LoadDist.DS)
-                preg_pre3 = vf.load_align(attn_pre_tile, (i + 6) * 64, dist=pl.LoadDist.DS)
-                preg_pre4 = vf.load_align(attn_pre_tile, (i + 7) * 64, dist=pl.LoadDist.DS)
-
-                vreg_sp1 = vf.select(vreg_min, vreg_sp1, preg_pre1)
-                vreg_sp2 = vf.select(vreg_min, vreg_sp2, preg_pre2)
-                vreg_sp3 = vf.select(vreg_min, vreg_sp3, preg_pre3)
-                vreg_sp4 = vf.select(vreg_min, vreg_sp4, preg_pre4)
-
         vreg_sp1 = vf.exp_sub(vreg_sp1, vreg_lse, preg_all)
         vreg_sp2 = vf.exp_sub(vreg_sp2, vreg_lse, preg_all)
         vreg_sp3 = vf.exp_sub(vreg_sp3, vreg_lse, preg_all)
         vreg_sp4 = vf.exp_sub(vreg_sp4, vreg_lse, preg_all)
-        # vf.store(sp_tile, vreg_sp1)
         vreg_p1 = vf.astype(
             vreg_sp1,
             preg_all,
@@ -2642,50 +2542,6 @@ def compute_p_ds_vf(
             vreg_perm,
             preg_all_8,
         )
-        if ((layout == 2 or has_seq_used_q == 1 or has_seq_used_kv == 1) and sparse_type != 4) and src_n > 64:
-            vreg_sp1h = vf.muls(vreg_sp1h, ss, preg_all)
-            vreg_sp2h = vf.muls(vreg_sp2h, ss, preg_all)
-            vreg_sp3h = vf.muls(vreg_sp3h, ss, preg_all)
-            vreg_sp4h = vf.muls(vreg_sp4h, ss, preg_all)
-            if has_attn_mask:
-                preg_mask1 = vf.load_align(attn_pre_tile, (i + 4) * 64, dist=pl.LoadDist.DS)
-                preg_mask2 = vf.load_align(attn_pre_tile, (i + 5) * 64, dist=pl.LoadDist.DS)
-                preg_mask3 = vf.load_align(attn_pre_tile, (i + 6) * 64, dist=pl.LoadDist.DS)
-                preg_mask4 = vf.load_align(attn_pre_tile, (i + 7) * 64, dist=pl.LoadDist.DS)
-                vreg_sp1h = vf.select(vreg_sp1h, vreg_min, preg_mask1)
-                vreg_sp2h = vf.select(vreg_sp2h, vreg_min, preg_mask2)
-                vreg_sp3h = vf.select(vreg_sp3h, vreg_min, preg_mask3)
-                vreg_sp4h = vf.select(vreg_sp4h, vreg_min, preg_mask4)
-            vreg_sp1h = vf.exp_sub(vreg_sp1h, vreg_lse_h, preg_all)
-            vreg_sp2h = vf.exp_sub(vreg_sp2h, vreg_lse_h, preg_all)
-            vreg_sp3h = vf.exp_sub(vreg_sp3h, vreg_lse_h, preg_all)
-            vreg_sp4h = vf.exp_sub(vreg_sp4h, vreg_lse_h, preg_all)
-            vreg_p1 = vf.astype(vreg_sp1h, preg_all, dtype=pl.DT_HF8, layout=pl.CastLayout.ZERO, round_mode=pl.VFRoundMode.CAST_ROUND)
-            vreg_p2 = vf.astype(vreg_sp2h, preg_all, dtype=pl.DT_HF8, layout=pl.CastLayout.ZERO, round_mode=pl.VFRoundMode.CAST_ROUND)
-            vreg_p3 = vf.astype(vreg_sp3h, preg_all, dtype=pl.DT_HF8, layout=pl.CastLayout.TWO, round_mode=pl.VFRoundMode.CAST_ROUND)
-            vreg_p4 = vf.astype(vreg_sp4h, preg_all, dtype=pl.DT_HF8, layout=pl.CastLayout.TWO, round_mode=pl.VFRoundMode.CAST_ROUND)
-            vreg_p13 = vf.or_(vf.bit_cast(vreg_p1, dtype=pl.DT_INT8), vf.bit_cast(vreg_p3, dtype=pl.DT_INT8), preg_all_8)
-            vreg_p24 = vf.or_(vf.bit_cast(vreg_p2, dtype=pl.DT_INT8), vf.bit_cast(vreg_p4, dtype=pl.DT_INT8), preg_all_8)
-            vreg_p_res1, vreg_p_res2 = vf.interleave(vf.bit_cast(vreg_p13, dtype=pl.DT_FP16), vf.bit_cast(vreg_p24, dtype=pl.DT_FP16))
-            vf.scatter(sp_tile_bit8 + ((i + 0) * 512 + 128 + 256), vf.bit_cast(vreg_p_res1, dtype=pl.DT_INT8), vreg_perm, preg_all_8)
-            vf.scatter(sp_tile_bit8 + ((i + 1) * 512 + 128 + 256), vf.bit_cast(vreg_p_res2, dtype=pl.DT_INT8), vreg_perm, preg_all_8)
-            vreg_dps1h = vf.mul_dst_add(vreg_dps_h, vreg_d_h, preg_all)
-            vreg_dps2h = vf.mul_dst_add(vreg_dps_h, vreg_d_h, preg_all)
-            vreg_dps3h = vf.mul_dst_add(vreg_dps_h, vreg_d_h, preg_all)
-            vreg_dps4h = vf.mul_dst_add(vreg_dps_h, vreg_d_h, preg_all)
-            vreg_dps1h = vf.mul(vreg_dps1h, vreg_sp1h, preg_all)
-            vreg_dps2h = vf.mul(vreg_dps2h, vreg_sp2h, preg_all)
-            vreg_dps3h = vf.mul(vreg_dps3h, vreg_sp3h, preg_all)
-            vreg_dps4h = vf.mul(vreg_dps4h, vreg_sp4h, preg_all)
-            vreg_ds1 = vf.astype(vreg_dps1h, preg_all, dtype=pl.DT_HF8, layout=pl.CastLayout.ZERO, round_mode=pl.VFRoundMode.CAST_ROUND)
-            vreg_ds2 = vf.astype(vreg_dps2h, preg_all, dtype=pl.DT_HF8, layout=pl.CastLayout.ZERO, round_mode=pl.VFRoundMode.CAST_ROUND)
-            vreg_ds3 = vf.astype(vreg_dps3h, preg_all, dtype=pl.DT_HF8, layout=pl.CastLayout.TWO, round_mode=pl.VFRoundMode.CAST_ROUND)
-            vreg_ds4 = vf.astype(vreg_dps4h, preg_all, dtype=pl.DT_HF8, layout=pl.CastLayout.TWO, round_mode=pl.VFRoundMode.CAST_ROUND)
-            vreg_ds13 = vf.or_(vf.bit_cast(vreg_ds1, dtype=pl.DT_INT8), vf.bit_cast(vreg_ds3, dtype=pl.DT_INT8), preg_all_8)
-            vreg_ds24 = vf.or_(vf.bit_cast(vreg_ds2, dtype=pl.DT_INT8), vf.bit_cast(vreg_ds4, dtype=pl.DT_INT8), preg_all_8)
-            vreg_ds_res1, vreg_ds_res2 = vf.interleave(vf.bit_cast(vreg_ds13, dtype=pl.DT_FP16), vf.bit_cast(vreg_ds24, dtype=pl.DT_FP16))
-            vf.scatter(dpds_tile_bit8 + ((i + 0) * 512 + 128 + 256), vf.bit_cast(vreg_ds_res1, dtype=pl.DT_INT8), vreg_perm, preg_all_8)
-            vf.scatter(dpds_tile_bit8 + ((i + 1) * 512 + 128 + 256), vf.bit_cast(vreg_ds_res2, dtype=pl.DT_INT8), vreg_perm, preg_all_8)
 
 
 def compute_p_ds(
@@ -2698,7 +2554,6 @@ def compute_p_ds(
     d_tile,
     zero_tile,
     attn_tile,
-    attn_pre_tile,
     src_m,
     src_n,
     ss,
@@ -2718,7 +2573,6 @@ def compute_p_ds(
         lse_tile,
         d_tile,
         attn_tile,
-        attn_pre_tile,
         src_m,
         src_n,
         ss,
@@ -2761,12 +2615,78 @@ def cal_atten_mask_offset_pre(run_info, const_info):
     return delta_pre
 
 
+def load_attn_mask(attn_vec, attn_pre_vec, run_info, const_info, tensor_info):
+    if has_attn_mask:
+        delta = cal_atten_mask_offset(run_info, const_info)
+        if delta >= 0:
+            s1_offset = pl.min(delta, 128) + 1
+            s2_offset = 0
+        else:
+            s1_offset = 1
+            s2_offset = pl.min(_abs(delta), 128)
+        pl.load(
+            attn_vec,
+            tensor_info.tensor_attn_mask,
+            [
+                s2_offset,
+                s1_offset,
+            ],
+            order=[0, 1],
+        )
+        if sparse_type == 4:
+            # pre侧复用同一张压缩mask, 位为1的位置由pre边界屏蔽, 与next侧极性相反
+            delta_pre = cal_atten_mask_offset_pre(run_info, const_info)
+            if delta_pre >= 0:
+                s1_offset_pre = 0
+                s2_offset_pre = pl.min(delta_pre, 128)
+            else:
+                s1_offset_pre = pl.min(_abs(delta_pre), 128)
+                s2_offset_pre = 0
+            pl.load(
+                attn_pre_vec,
+                tensor_info.tensor_attn_mask,
+                [
+                    s2_offset_pre,
+                    s1_offset_pre,
+                ],
+                order=[0, 1],
+            )
+
+
+def preload_attn_mask(run_info, const_info, tensor_info):
+    # Match the consumer guards: empty sub-blocks must not advance the mask slot.
+    if not has_attn_mask:
+        return
+    if (
+        run_info.s2_idx >= run_info.inner_s2_loop_num
+        or run_info.s1_idx >= run_info.inner_s1_loop_num
+    ):
+        return
+    real_s1 = run_info.inner_s1_real_size[run_info.s1_idx]
+    first_half_s1 = ceil(real_s1, QUANT_S1_BASE_COUNT) * QUANT_S1_BASE_COUNT // 2
+    current_real_s1 = (
+        first_half_s1 if const_info.sub_id == 0 else real_s1 - first_half_s1
+    )
+    if layout == 2:
+        current_real_s1 = min(current_real_s1, real_s1 - const_info.sub_id * first_half_s1)
+    if current_real_s1 <= 0:
+        return
+
+    # Every load acquires the next slot of the shared three-buffer ring.
+    # Band pairs rotate (0, 1), (2, 0), (1, 2); fusion writes the second slot,
+    # leaving the other two available for the next pair of mask loads.
+    attn_vec = tensor_info.attn_mask_pool.next()
+    attn_pre_vec = attn_vec
+    if sparse_type == 4:
+        attn_pre_vec = tensor_info.attn_mask_pool.next()
+    load_attn_mask(attn_vec, attn_pre_vec, run_info, const_info, tensor_info)
+    if sparse_type == 4:
+        merge_band_attn_mask_vf(attn_vec, attn_pre_vec)
+
+
 def iterate_p_ds(p_l1_bit8, ds_l1_bit8, sdp_id, const_info, run_info, tensor_info):
     real_s1 = run_info.inner_s1_real_size[run_info.s1_idx]
     real_s2 = run_info.inner_s2_real_size[run_info.s2_idx]
-    fused = qk_s1_fuse() and is_fused_s1_pair(run_info, run_info.s1_idx)
-    if fused:
-        real_s1 = real_s1 + run_info.inner_s1_real_size[run_info.s1_idx + 1]
     first_half_s1 = ceil(real_s1, QUANT_S1_BASE_COUNT) * QUANT_S1_BASE_COUNT // 2
     current_real_s1 = (
         first_half_s1 if const_info.sub_id == 0 else real_s1 - first_half_s1
@@ -2786,63 +2706,9 @@ def iterate_p_ds(p_l1_bit8, ds_l1_bit8, sdp_id, const_info, run_info, tensor_inf
     pl.set_validshape(lse_vec, [1, current_real_s1])
     pl.set_validshape(d_vec, [1, current_real_s1])
 
-    attn_vec = tensor_info.attn_vec.current()
-    attn_pre_vec = tensor_info.attn_pre_vec.current()
-    if has_attn_mask:
-        delta = cal_atten_mask_offset(run_info, const_info)
-        if delta >= 0:
-            s1_offset = pl.min(delta, 128) + 1
-            s2_offset = 0
-        else:
-            s1_offset = 1
-            s2_offset = pl.min(_abs(delta), 128)
-        pl.load(
-            attn_vec,
-            tensor_info.tensor_attn_mask,
-            [
-                s2_offset,
-                s1_offset,
-            ],
-            order=[0, 1],
-        )
-        if fused:
-            delta_hi = cal_atten_mask_offset(run_info, const_info, 64)
-            if delta_hi >= 0:
-                s1_offset_hi = pl.min(delta_hi, 128) + 1
-                s2_offset_hi = 0
-            else:
-                s1_offset_hi = 1
-                s2_offset_hi = pl.min(_abs(delta_hi), 128)
-            pl.load(
-                attn_pre_vec,
-                tensor_info.tensor_attn_mask,
-                [
-                    s2_offset_hi,
-                    s1_offset_hi,
-                ],
-                order=[0, 1],
-            )
-        if sparse_type == 4:
-            # pre侧复用同一张压缩mask, 位为1的位置由pre边界屏蔽, 与next侧极性相反
-            delta_pre = cal_atten_mask_offset_pre(run_info, const_info)
-            if delta_pre >= 0:
-                s1_offset_pre = 0
-                s2_offset_pre = pl.min(delta_pre, 128)
-            else:
-                s1_offset_pre = pl.min(_abs(delta_pre), 128)
-                s2_offset_pre = 0
-            pl.load(
-                attn_pre_vec,
-                tensor_info.tensor_attn_mask,
-                [
-                    s2_offset_pre,
-                    s1_offset_pre,
-                ],
-                order=[0, 1],
-            )
-    # pl.system.bar_all()
-    # pl.printf("222 wenyu  \n")
-    # pl.dump_data(attn_vec, offsets=[0, 0], shapes=[4,64])
+    # The last acquired slot holds the final mask: next for causal, or the
+    # second slot overwritten by band fusion. Consumption does not advance it.
+    attn_vec = tensor_info.attn_mask_pool.current()
     if layout == 0 or layout == 1 or layout == 2:
         pl.load(
             lse_vec,
@@ -2873,8 +2739,6 @@ def iterate_p_ds(p_l1_bit8, ds_l1_bit8, sdp_id, const_info, run_info, tensor_inf
     sp_vec_bit8 = tensor_info.sp_vec_bit8[sdp_id]
     dpds_vec = tensor_info.dpds_vec[sdp_id]
     dpds_vec_bit8 = tensor_info.dpds_vec_bit8[sdp_id]
-    # pl.system.bar_all()
-    # pl.dump_data(sp_vec, offsets=[0, 0], shapes=[2,64])
     compute_p_ds(
         sp_vec,
         dpds_vec,
@@ -2885,7 +2749,6 @@ def iterate_p_ds(p_l1_bit8, ds_l1_bit8, sdp_id, const_info, run_info, tensor_inf
         d_vec,
         zero_vec,
         attn_vec,
-        attn_pre_vec,
         current_real_s2,
         current_real_s1,
         run_info.deq_scale_q_value
@@ -2895,18 +2758,7 @@ def iterate_p_ds(p_l1_bit8, ds_l1_bit8, sdp_id, const_info, run_info, tensor_inf
         const_info.deq_scale_p_value,
         const_info.deq_scale_p_value * const_info.scale_ds,
     )
-    # pl.system.bar_all()
-    # pl.dump_data(sp_vec, offsets=[0, 0], shapes=[2,64])
-    if fused and current_real_s1 > 64:
-        pl.insert(p_l1_bit8, sp_vec_bit8[:, :256], [0, 0])
-        pl.insert(p_l1_bit8, sp_vec_bit8[:, 512:768], [16, 0])
-        pl.insert(p_l1_bit8, sp_vec_bit8[:, 256:512], [32, 0])
-        pl.insert(p_l1_bit8, sp_vec_bit8[:, 768:1024], [48, 0])
-        pl.insert(ds_l1_bit8, dpds_vec_bit8[:, :256], [0, 0])
-        pl.insert(ds_l1_bit8, dpds_vec_bit8[:, 512:768], [16, 0])
-        pl.insert(ds_l1_bit8, dpds_vec_bit8[:, 256:512], [32, 0])
-        pl.insert(ds_l1_bit8, dpds_vec_bit8[:, 768:1024], [48, 0])
-    elif first_half_s1 > BLOCK_SIZE:
+    if first_half_s1 > BLOCK_SIZE:
         pl.insert(p_l1_bit8, sp_vec_bit8[:, :256], [const_info.sub_id * 32, 0])
         pl.insert(p_l1_bit8, sp_vec_bit8[:, 512:768], [const_info.sub_id * 32 + 16, 0])
 
@@ -3398,6 +3250,9 @@ def process_sp(run_info, const_info, sdp_id, tensor_info):
 
 def process_p_ds(run_info, const_info, sdp_id, tensor_info, tmp_info):
     with pl.section_vector():
+        # Mask data depends only on run_info, so issue MTE2 before waiting for
+        # Cube results and the P/dS L1 buffers. Their original waits stay below.
+        preload_attn_mask(run_info, const_info, tensor_info)
         pl.system.wait_cross_core(
             pipe=pl.PipeType.V,
             event_id=sdp_id + 5,
@@ -3689,9 +3544,8 @@ def process_first_s2(
     with pl.section_vector():
         if not last_run_info.is_dq_completed:
             set_quant_run_info(last_run_info, kv_inner_id, 2)
-            # One INTER_BLOCK per outer tile: wait before the first 128 dQ
-            # writeback, set after the last. Inner slices belong to the same
-            # s1o and the same core, so they do not need extra uniqueness.
+            # Deterministic schedules assign disjoint Q blocks within a round.
+            # Order whole 512-row writebacks; event 4 still releases each 128-row UB tile.
             if kv_inner_id == 0:
                 pl.system.wait_cross_core(
                     pipe=pl.PipeType.MTE3,
@@ -3701,7 +3555,7 @@ def process_first_s2(
 
             if last_run_info.s1_idx < last_run_info.inner_s1_loop_num:
                 copy_dqkv2gm(False, last_run_info, const_info, tensor_info)
-            if kv_inner_id == 3:
+            if kv_inner_id == CUBE_BASEM // TS - 1:
                 pl.system.set_cross_core(
                     pipe=pl.PipeType.MTE3,
                     event_id=SYNC_DETER_FLAG,
@@ -3778,13 +3632,14 @@ def drain_pending_task(run_info, const_info, tensor_info, tmp_info):
                 sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK,
             )
 
+    # Every logical round contributes one global phase, including empty rounds.
+    with pl.section_vector():
+        pl.system.wait_cross_core(
+            pipe=pl.PipeType.MTE3,
+            event_id=SYNC_DETER_FLAG,
+            sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
+        )
     if not run_info.is_dq_completed:
-        with pl.section_vector():
-            pl.system.wait_cross_core(
-                pipe=pl.PipeType.MTE3,
-                event_id=SYNC_DETER_FLAG,
-                sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
-            )
         for i in pl.range(4):
             set_quant_run_info(run_info, i, 0)
             process_dq(
@@ -3808,14 +3663,12 @@ def drain_pending_task(run_info, const_info, tensor_info, tmp_info):
                     event_id=SYNC_TRANSFER_DQ_FLAG,
                     sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK,
                 )
-        with pl.section_vector():
-            pl.system.set_cross_core(
-                pipe=pl.PipeType.MTE3,
-                event_id=SYNC_DETER_FLAG,
-                sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
-            )
-    else:
-        deter_empty_round_barrier()
+    with pl.section_vector():
+        pl.system.set_cross_core(
+            pipe=pl.PipeType.MTE3,
+            event_id=SYNC_DETER_FLAG,
+            sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
+        )
     run_info.is_dkv_completed = True
     run_info.is_dq_completed = True
 
@@ -4054,11 +3907,6 @@ def quant_flash_attn_grad(
         tensor_seq_kv = tensor_cu_kv
     else:
         tensor_seq_kv = tensor_metadata
-    if layout == 2:
-        pl.pto_assert(pl.getval(tensor_cu_q, tiling.b) == tiling.t1,
-                      "QuantFAG: TND query cumulative end does not match Tq")
-        pl.pto_assert(pl.getval(tensor_cu_kv, tiling.b) == tiling.t2,
-                      "QuantFAG: TND KV cumulative end does not match Tkv")
     tensor_attn_mask = pl.make_tensor(
         attn_mask,
         [2048, 2048],
@@ -4336,6 +4184,12 @@ def quant_flash_attn_grad(
     sub_id = pl.get_subblock_idx()
     core_id_vec = core_id_cube * pl.get_subblock_num() + sub_id
     core_num = pl.get_block_num()
+    # Scalar descales are invariant across every scheduled block. Read them
+    # once at kernel entry and cache their values in const_info.
+    deq_scale_q_value = pl.getval(tensor_q_descale, 0)
+    deq_scale_k_value = pl.getval(tensor_k_descale, 0)
+    deq_scale_v_value = pl.getval(tensor_v_descale, 0)
+    deq_scale_do_value = pl.getval(tensor_do_descale, 0)
     scale_p_value = pl.getval(tensor_p_scale, 0)
     scale_ds_value = pl.getval(tensor_ds_scale, 0)
     const_info = pl.make_tuple(
@@ -4370,6 +4224,10 @@ def quant_flash_attn_grad(
         scale_ds=scale_ds_value,
         deq_scale_p_value=1.0 / scale_p_value,
         deq_scale_ds_value=1.0 / scale_ds_value,
+        deq_scale_q_value=deq_scale_q_value,
+        deq_scale_k_value=deq_scale_k_value,
+        deq_scale_v_value=deq_scale_v_value,
+        deq_scale_do_value=deq_scale_do_value,
         sfmg_used_core_num=tiling.sfmg_used_core_num,
         sfmg_dy_buffer_len=tiling.sfmg_dy_buffer_len,
         sfmg_y_buffer_len=tiling.sfmg_y_buffer_len,
@@ -4485,20 +4343,14 @@ def quant_flash_attn_grad(
         addrs=[VA4 + 512 * 9],
         mutex_ids=[18],
     )
-    attn_vec = pl.make_tile_group(
+    # One shared ring for both mask boundaries; each slot retains its own
+    # MTE2/V mutex. This uses the same UB space as the former DB + single slot.
+    attn_mask_pool = pl.make_tile_group(
         type=pl.TileType(
             shape=[128, 64], dtype=pl.DT_INT8, target_memory=pl.MemorySpace.Vec
         ),
-        addrs=[VA4 + 512 * 10],
-        mutex_ids=[19],
-    )
-    # band需要pre/next两条边界, 各自从同一张压缩mask取一块, 仅sparse_type=4会真正搬运
-    attn_pre_vec = pl.make_tile_group(
-        type=pl.TileType(
-            shape=[128, 64], dtype=pl.DT_INT8, target_memory=pl.MemorySpace.Vec
-        ),
-        addrs=[VA4 + 512 * 26],
-        mutex_ids=[20],
+        addrs=[VA4 + 512 * 10, VA4 + 512 * 26, VA4 + 512 * 42],
+        mutex_ids=[19, 21, 20],
     )
     with pl.section_vector():
         pl.expands(zero_vec.current(), 0)
@@ -4684,7 +4536,6 @@ def quant_flash_attn_grad(
         addrs=acc_db_addr,
         mutex_ids=[4, 6],
     )
-    ## post
     post_in = pl.make_tile_group(
         type=pl.TileType(
             shape=[1, TS * TS],
@@ -4709,10 +4560,6 @@ def quant_flash_attn_grad(
         tensor_seq_q=tensor_seq_q,
         tensor_seq_kv=tensor_seq_kv,
         tensor_workspace_sfmg_flat=tensor_workspace_sfmg_flat,
-        tensor_q_descale=tensor_q_descale,
-        tensor_k_descale=tensor_k_descale,
-        tensor_v_descale=tensor_v_descale,
-        tensor_do_descale=tensor_do_descale,
         tensor_p_scale=tensor_p_scale,
         tensor_ds_scale=tensor_ds_scale,
         tensor_metadata=tensor_metadata,
@@ -4748,8 +4595,7 @@ def quant_flash_attn_grad(
         d_vec=d_vec,
         perm_vec=perm_vec,
         zero_vec=zero_vec,
-        attn_vec=attn_vec,
-        attn_pre_vec=attn_pre_vec,
+        attn_mask_pool=attn_mask_pool,
         ds_l1=ds_l1,
         ds_l1_t=ds_l1_t,
         ds_l1_bit8=ds_l1_bit8,
@@ -4861,14 +4707,12 @@ def quant_flash_attn_grad(
     )
     band_info = band_infos[0]
 
-    # process presfmg
     if is_var_len():
         init_sfmg_workspace(const_info, tensor_info)
         pl.system.sync_all()
     presfmg_quant_inner_hif8(const_info, tensor_info)
     pl.system.sync_all()
 
-    # process kernel
 
     alloc_event_id()
     if sparse_type == 4 and not is_var_len():
@@ -4881,8 +4725,6 @@ def quant_flash_attn_grad(
         meta_rounds = meta_get(const_info, tensor_metadata, META_DETER_MAX_NUM_IDX)
     else:
         loop_max = cal_deter_max_loop_num(const_info, band_info)
-    # with pl.section_cube():
-    #     pl.printf("wenyu check1 loop_max : %d \n", loop_max)
     task_id = 0
     next_valid_loop_idx = 0
     next_block_idx = 0
@@ -4930,8 +4772,6 @@ def quant_flash_attn_grad(
         tensor_seq_q,
         tensor_seq_kv,
     )
-    # with pl.section_cube():
-    #     pl.printf("wenyu check2 next_valid_loop_idx : %d next_block_idx : %d \n", next_valid_loop_idx, next_block_idx)
     for loop_idx in pl.range(loop_max):
         if is_var_len():
             if loop_idx >= meta_rounds:
@@ -4957,8 +4797,6 @@ def quant_flash_attn_grad(
         if is_valid_block:
             if not is_var_len():
                 is_valid_block = is_valid_for_deter(block_inner_idx, const_info)
-        # with pl.section_cube():
-        #     pl.printf("wenyu check3 next_valid_loop_idx : %d next_block_idx : %d is_valid_block : %d \n", next_valid_loop_idx, next_block_idx, is_valid_block)
         if is_valid_block:
             # A gap may have already drained the previous task. Match the
             # single dQ uniqueness barrier even when this core has no pending dQ.
@@ -4986,17 +4824,14 @@ def quant_flash_attn_grad(
                     tmp_info[0],
                 )
         else:
-            if is_var_len():
-                # Do not carry dQ across skipped swizzle rounds: contributions
-                # from different rounds could otherwise write the same Q tile.
-                if loop_idx > 0:
-                    drain_pending_task(
-                        run_infos[(task_id + 1) % 2],
-                        const_info, tensor_info, tmp_info[0],
-                    )
-            else:
-                if loop_idx > 0:
-                    deter_empty_round_barrier()
+            # Keep pending dQ in its original logical round for every schedule.
+            # Deferring it past a gap can make different rounds update the same
+            # Q tile in one writeback slot and lose deterministic accumulation.
+            if loop_idx > 0:
+                drain_pending_task(
+                    run_infos[(task_id + 1) % 2],
+                    const_info, tensor_info, tmp_info[0],
+                )
         if is_valid_block:
             task_id += 1
 
@@ -5006,5 +4841,4 @@ def quant_flash_attn_grad(
     free_event_id()
     pl.system.sync_all()
 
-    # # process post
     process_post_dqkv(const_info, tensor_info)
