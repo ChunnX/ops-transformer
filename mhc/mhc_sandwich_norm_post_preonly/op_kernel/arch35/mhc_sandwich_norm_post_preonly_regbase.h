@@ -462,30 +462,26 @@ __aicore__ inline void ComputePostHead(const LocalTensor<float> &dst, const Loca
 template <typename T>
 __aicore__ inline void ComputePostHeadPair(const LocalTensor<T> &dst0, const LocalTensor<T> &dst1,
                                            const LocalTensor<float> &hOut, const LocalTensor<T> &residual,
-                                           const LocalTensor<float> &hPost, const LocalTensor<float> &combWeights,
-                                           uint32_t rowStride, uint32_t headIndex, uint32_t count)
+                                           const LocalTensor<float> &combWeights, uint32_t rowStride,
+                                           uint32_t headIndex, float postWeight0, float postWeight1, uint32_t count)
 {
     __local_mem__ T *dst0Addr = (__local_mem__ T *)dst0.GetPhyAddr();
     __local_mem__ T *dst1Addr = (__local_mem__ T *)dst1.GetPhyAddr();
     __local_mem__ float *hOutAddr = (__local_mem__ float *)hOut.GetPhyAddr();
     __local_mem__ T *residualAddr = (__local_mem__ T *)residual.GetPhyAddr();
-    __local_mem__ float *postAddr = (__local_mem__ float *)hPost.GetPhyAddr();
     __local_mem__ float *combAddr = (__local_mem__ float *)combWeights.GetPhyAddr();
     uint32_t remain = count;
     const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
     __VEC_SCOPE__
     {
         RegTensor<T> residualB16Reg, dst0B16Reg, dst1B16Reg;
-        RegTensor<float> hOutReg, residualReg, postWeight0Reg, postWeight1Reg, weight0Reg, weight1Reg, dst0Reg, dst1Reg;
+        RegTensor<float> hOutReg, residualReg, weight0Reg, weight1Reg, dst0Reg, dst1Reg;
         MaskReg mask;
-        // h_post在一个成对VF内保持不变，只广播一次，避免逐token回读到Scalar。
-        DataCopy<float, LoadDist::DIST_BRC_B32>(postWeight0Reg, postAddr + headIndex);
-        DataCopy<float, LoadDist::DIST_BRC_B32>(postWeight1Reg, postAddr + headIndex + 1U);
         for (uint16_t i = 0; i < loops; ++i) {
             mask = UpdateMask<float>(remain);
             DataCopy<float, LoadDist::DIST_NORM>(hOutReg, hOutAddr + i * VL_FP32);
-            AscendC::Reg::Mul(dst0Reg, hOutReg, postWeight0Reg, mask);
-            AscendC::Reg::Mul(dst1Reg, hOutReg, postWeight1Reg, mask);
+            AscendC::Reg::Muls(dst0Reg, hOutReg, postWeight0, mask);
+            AscendC::Reg::Muls(dst1Reg, hOutReg, postWeight1, mask);
             for (uint16_t j = 0; j < static_cast<uint16_t>(N_MAX); ++j) {
                 const uint32_t row = static_cast<uint32_t>(j);
                 DataCopy<T, LoadDist::DIST_UNPACK_B16>(residualB16Reg, residualAddr + row * rowStride + i * VL_FP32);
