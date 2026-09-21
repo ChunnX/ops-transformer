@@ -13,7 +13,7 @@ from torch.library import impl
 from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
 FA_METADATA_SIZE = 1024
-FA_METADATA_OP_NAME = "flash_attn_metadata"
+FA_METADATA_OP_NAME = "flash_attn_exp_metadata"
 
 
 def _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q):
@@ -42,21 +42,21 @@ def _calculate_metadata_size(batch_size, num_heads_kv):
 
 class FlashAttenOpBuilder(OpBuilder):
     def __init__(self):
-        super(FlashAttenOpBuilder, self).__init__("flash_attn", category="attention")
+        super(FlashAttenOpBuilder, self).__init__("flash_attn_exp", category="attention")
 
     def sources(self):
         """Path to C++ source code."""
-        return ["csrc/attention/flash_attn.cpp"]
+        return ["csrc/attention/flash_attn_exp.cpp"]
 
     def schema(self) -> str:
         """PyTorch operator signature."""
         return [
-            "flash_attn_metadata(int num_heads_q, int num_heads_kv, int head_dim, *, "
+            "flash_attn_exp_metadata(int num_heads_q, int num_heads_kv, int head_dim, *, "
             "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_kv=None, Tensor? seqused_q=None, Tensor? seqused_kv=None,"
             "int? batch_size=None, int? max_seqlen_q=None, int? max_seqlen_kv=None, "
             "int? mask_mode=None, int? win_left=None, int? win_right=None, "
             "str? layout_q=None, str? layout_kv=None, str? layout_out=None) -> Tensor",
-            "flash_attn(Tensor q, Tensor k, Tensor v, Tensor? rel_h=None, Tensor? rel_w=None,"
+            "flash_attn_exp(Tensor q, Tensor k, Tensor v, Tensor? rel_h=None, Tensor? rel_w=None,"
             "Tensor?block_table=None, Tensor?cu_seqlens_q=None,"
             "Tensor?cu_seqlens_kv=None, Tensor?seqused_q=None,"
             "Tensor?seqused_kv=None, Tensor?sinks=None, Tensor?attn_mask=None, Tensor?metadata=None,"
@@ -72,8 +72,8 @@ class FlashAttenOpBuilder(OpBuilder):
         Essential for Autograd and FakeTensor support.
         """
 
-        @torch.library.register_fake("cann_ops_transformer::flash_attn_metadata")
-        def flash_attn_metadata_meta(
+        @torch.library.register_fake("cann_ops_transformer::flash_attn_exp_metadata")
+        def flash_attn_exp_metadata_meta(
             num_heads_q: int,
             num_heads_kv: int,
             head_dim: int,
@@ -95,8 +95,8 @@ class FlashAttenOpBuilder(OpBuilder):
             metadata_size = _calculate_metadata_size(b_size, num_heads_kv)
             return torch.empty((metadata_size,), dtype=torch.int32, device="meta")
 
-        @torch.library.register_fake("cann_ops_transformer::flash_attn")
-        def flash_attn_meta(
+        @torch.library.register_fake("cann_ops_transformer::flash_attn_exp")
+        def flash_attn_exp_meta(
             q: torch.Tensor,
             k: torch.Tensor,
             v: torch.Tensor,
@@ -165,12 +165,12 @@ class FlashAttenOpBuilder(OpBuilder):
 
 
 # Instantiate the builder
-flash_attn_op_builder = FlashAttenOpBuilder()
-flash_attn_op_builder._ensure_initialized()
+flash_attn_exp_op_builder = FlashAttenOpBuilder()
+flash_attn_exp_op_builder._ensure_initialized()
 
 
 @impl(get_as_library(), FA_METADATA_OP_NAME, "PrivateUse1")
-def flash_attn_metadata(
+def flash_attn_exp_metadata(
     num_heads_q: int,
     num_heads_kv: int,
     head_dim: int,
@@ -203,11 +203,11 @@ def flash_attn_metadata(
     layout_kv = "BSND" if layout_kv is None else layout_kv
     layout_out = "BSND" if layout_out is None else layout_out
 
-    op_module = flash_attn_op_builder.load()
+    op_module = flash_attn_exp_op_builder.load()
     metadata_size = _calculate_metadata_size(b_size, num_heads_kv)
     output = torch.empty((metadata_size,), dtype=torch.int32, device="npu")
 
-    return op_module.flash_attn_metadata(
+    return op_module.flash_attn_exp_metadata(
         cu_seqlens_q,
         cu_seqlens_kv,
         seqused_q,
@@ -228,11 +228,11 @@ def flash_attn_metadata(
     )
 
 
-_flash_attn_metadata = flash_attn_metadata
+_flash_attn_exp_metadata = flash_attn_exp_metadata
 
 
 @torch.library.register_kernel("cann_ops_transformer::" + FA_METADATA_OP_NAME, None)
-def flash_attn_metadata_fallback(
+def flash_attn_exp_metadata_fallback(
     num_heads_q: int,
     num_heads_kv: int,
     head_dim: int,
@@ -251,7 +251,7 @@ def flash_attn_metadata_fallback(
     layout_out: Optional[str] = None,
 ):
     # 处理所有 tensor 都为 None 的情况
-    return _flash_attn_metadata(
+    return _flash_attn_exp_metadata(
         num_heads_q=num_heads_q,
         num_heads_kv=num_heads_kv,
         head_dim=head_dim,
@@ -271,8 +271,8 @@ def flash_attn_metadata_fallback(
     )
 
 
-@impl(get_as_library(), flash_attn_op_builder.name, "PrivateUse1")
-def flash_attn(
+@impl(get_as_library(), flash_attn_exp_op_builder.name, "PrivateUse1")
+def flash_attn_exp(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
@@ -301,8 +301,8 @@ def flash_attn(
     dispatcher implementation for NPU.
     'PrivateUse1' is the combine key for custom NPU backends.
     """
-    op_module = flash_attn_op_builder.load()
-    return op_module.flash_attn(
+    op_module = flash_attn_exp_op_builder.load()
+    return op_module.flash_attn_exp(
         q,
         k,
         v,
@@ -329,5 +329,5 @@ def flash_attn(
     )
 
 
-flash_attn = torch.ops.cann_ops_transformer.flash_attn
-flash_attn_metadata = torch.ops.cann_ops_transformer.flash_attn_metadata
+flash_attn_exp = torch.ops.cann_ops_transformer.flash_attn_exp
+flash_attn_exp_metadata = torch.ops.cann_ops_transformer.flash_attn_exp_metadata

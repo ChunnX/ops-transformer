@@ -17,7 +17,7 @@ from typing import Any, Dict
 from .base import Backend
 
 try:
-    from cann_ops_transformer.ops import flash_attn, flash_attn_metadata
+    from cann_ops_transformer.ops import flash_attn_exp, flash_attn_exp_metadata
     _HAS_NPU = True
 except ImportError:
     _HAS_NPU = False
@@ -38,7 +38,7 @@ class FlashAttnGraphNetwork(torch.nn.Module):
                 softmax_scale, mask_mode, win_left, win_right,
                 max_seqlen_q, max_seqlen_kv, layout_q, layout_kv, layout_out,
                 return_softmax_lse):
-        out, lse_out = torch.ops.cann_ops_transformer.flash_attn(
+        out, lse_out = torch.ops.cann_ops_transformer.flash_attn_exp(
             q, k, v, rel_h, rel_w,
             block_table=block_table,
             sinks=None,
@@ -180,7 +180,7 @@ class NPUBackend(Backend):
         meta_kwargs, kernel_kwargs, _ = build_flash_attn_params(
             params, self._device, inputs)
 
-        metadata = flash_attn_metadata(**meta_kwargs)
+        metadata = flash_attn_exp_metadata(**meta_kwargs)
 
         if self._meta_only:
             print_metadata(metadata)
@@ -221,7 +221,7 @@ class NPUBackend(Backend):
                 rel_h_t = rel_h_t.to(self._device)
             if rel_w_t is not None:
                 rel_w_t = rel_w_t.to(self._device)
-            out, lse = flash_attn(inputs["q"], inputs["k"], inputs["v"], rel_h_t, rel_w_t,
+            out, lse = flash_attn_exp(inputs["q"], inputs["k"], inputs["v"], rel_h_t, rel_w_t,
                                       metadata=metadata, **kernel_kwargs)
         torch.npu.synchronize()
         return {"out": out, "lse": lse}

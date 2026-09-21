@@ -62,7 +62,7 @@ public:
 
 private:
     ge::graphStatus SetPlatMemoryInfo();
-    void SplitPolicy();
+    ge::graphStatus SplitPolicy();
     void ComputeTilingData();
     void GenTilingKey();
     void CalcWorkspaceSize();

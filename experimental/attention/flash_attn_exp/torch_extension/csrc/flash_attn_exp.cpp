@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file flash_attn.cpp
+ * \file flash_attn_exp.cpp
  * \brief
  */
 
@@ -102,7 +102,7 @@ std::tuple<at::Tensor, at::Tensor> FlashAttn(
 // Bind the C++ function to Python module
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("flash_attn", &FlashAttn, "flash_attn");
-    m.def("flash_attn_metadata", &FlashAttnMetadata, "flash_attn_metadata");
+    m.def("flash_attn_exp", &FlashAttn, "flash_attn_exp");
+    m.def("flash_attn_exp_metadata", &FlashAttnMetadata, "flash_attn_exp_metadata");
 }
 } // namespace op_api

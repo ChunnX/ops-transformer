@@ -123,7 +123,7 @@ public:
             .PrecisionReduceFlag(true)
             .ExtendCfgInfo("prebuildPattern.value", "Opaque")
             .ExtendCfgInfo("coreType.value", "AiCore")
-            .ExtendCfgInfo("opFile.value", "flash_attn");
+            .ExtendCfgInfo("opFile.value", "flash_attn_exp");
 
         this->AICore().AddConfig("ascend950", aicore_config_95);
     }
