@@ -182,6 +182,11 @@ private:
                                               __ubuf__ uint16_t *halfScaleLocalAddr, uint32_t totalScaleInUB,
                                               uint16_t loopNumScale);
 
+    __aicore__ inline void ComputeScaleCublasFromBf16(__ubuf__ uint16_t *maxValueAddr,
+                                                       __ubuf__ uint16_t *mxScaleLocalAddr,
+                                                       __ubuf__ uint16_t *halfScaleLocalAddr,
+                                                       uint32_t totalScaleInUB, uint16_t loopNumScale);
+
     __aicore__ inline void ComputeScaleDynamicDtypeRange(__ubuf__ uint16_t *maxExpAddr,
                                                          __ubuf__ uint16_t *mxScaleLocalAddr,
                                                          __ubuf__ uint16_t *halfScaleLocalAddr,
@@ -975,15 +980,16 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
         ComputeScale(maxExpAddr, scaleDst, halfScaleLocalAddr, totalScaleInUb, loopScaleNum);
     } else if (params_->scaleAlg == 1) {
         ComputeMaxExpCublas(gluResAddr, maxExpAddr, totalDataInUb, loopDataNum);
+        const uint16_t cublasLoopScaleNum =
+            static_cast<uint16_t>((totalScaleInUb + vlForHalfNumber_ - 1) / vlForHalfNumber_);
+        ComputeScaleCublasFromBf16(maxExpAddr, scaleDst, halfScaleLocalAddr, totalScaleInUb,
+                                   cublasLoopScaleNum);
+    } else {
+        ComputeMaxExpCublas(gluResAddr, maxExpAddr, totalDataInUb, loopDataNum);
         const uint16_t dynamicLoopScaleNum = static_cast<uint16_t>(
             (totalScaleInUb + vlForHalfNumber_ - 1) / vlForHalfNumber_);
         ComputeScaleDynamicDtypeRange(maxExpAddr, scaleDst, halfScaleLocalAddr, totalScaleInUb,
                                       dynamicLoopScaleNum);
-    } else {
-        ComputeMaxExpCublas(gluResAddr, maxExpAddr, totalDataInUb, loopDataNum);
-        const uint16_t cublasLoopScaleNum =
-            static_cast<uint16_t>((totalScaleInUb + vlForHalfNumber_ / 2 - 1) / (vlForHalfNumber_ / 2));
-        ComputeScaleCublas(maxExpAddr, scaleDst, halfScaleLocalAddr, totalScaleInUb, cublasLoopScaleNum);
     }
     if constexpr (AscendC::IsSameType<DataTypeOut, fp8_e4m3fn_t>::value ||
                   AscendC::IsSameType<DataTypeOut, fp8_e5m2_t>::value) {
@@ -993,6 +999,57 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
         ComputeDataForQuantTargetFp4(gluResAddr, halfScaleLocalAddr, outputDst, totalDataInUb, loopDataNum);
     }
     return;
+}
+
+QMM_BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
+__aicore__ inline void
+BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ComputeScaleCublasFromBf16(
+    __ubuf__ uint16_t *maxValueAddr, __ubuf__ uint16_t *mxScaleLocalAddr,
+    __ubuf__ uint16_t *halfScaleLocalAddr, uint32_t totalScaleInUB, uint16_t loopNumScale)
+{
+    __VEC_SCOPE__
+    {
+        AscendC::Reg::RegTensor<uint16_t> maxValue, exponent, mantissa, roundedExponent;
+        AscendC::Reg::RegTensor<uint16_t> scaleValue, shiftedScale, reciprocalValue;
+        AscendC::Reg::RegTensor<uint16_t> mantissaMask, roundThreshold, exponentOffset;
+        AscendC::Reg::RegTensor<uint16_t> reciprocalBias, zero, fp8Nan, nan;
+        AscendC::Reg::MaskReg nonzeroMask, roundMask, normalScaleMask, infNanMask, mask;
+        AscendC::Reg::Duplicate(mantissaMask, static_cast<uint16_t>(0x007f));
+        AscendC::Reg::Duplicate(roundThreshold, static_cast<uint16_t>(0x0060));
+        AscendC::Reg::Duplicate(exponentOffset, static_cast<uint16_t>(8));
+        AscendC::Reg::Duplicate(reciprocalBias, static_cast<uint16_t>(0x7f00));
+        AscendC::Reg::Duplicate(zero, static_cast<uint16_t>(0));
+        AscendC::Reg::Duplicate(fp8Nan, static_cast<uint16_t>(0x00ff));
+        AscendC::Reg::Duplicate(nan, static_cast<uint16_t>(0x7f81));
+
+        for (uint16_t i = 0; i < loopNumScale; ++i) {
+            mask = AscendC::Reg::UpdateMask<uint16_t>(totalScaleInUB);
+            AscendC::Reg::DataCopy<uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(
+                maxValue, maxValueAddr, vlForHalfNumber_);
+            AscendC::Reg::Compare<uint16_t, AscendC::CMPMODE::NE>(nonzeroMask, maxValue, zero, mask);
+            AscendC::Reg::ShiftRights(exponent, maxValue, static_cast<int16_t>(7), mask);
+            AscendC::Reg::And(mantissa, maxValue, mantissaMask, mask);
+            AscendC::Reg::Compare<uint16_t, AscendC::CMPMODE::GT>(roundMask, mantissa, roundThreshold, mask);
+            AscendC::Reg::Adds(roundedExponent, exponent, static_cast<uint16_t>(1), mask);
+            AscendC::Reg::Select<uint16_t>(exponent, roundedExponent, exponent, roundMask);
+            AscendC::Reg::Compare<uint16_t, AscendC::CMPMODE::GE>(normalScaleMask, exponent, exponentOffset, mask);
+            AscendC::Reg::CompareScalar<uint16_t, AscendC::CMPMODE::EQ>(infNanMask, exponent,
+                                                                        static_cast<uint16_t>(0x00ff), mask);
+            AscendC::Reg::Sub(scaleValue, exponent, exponentOffset, mask);
+            AscendC::Reg::Select<uint16_t>(scaleValue, scaleValue, zero, normalScaleMask);
+            AscendC::Reg::Select<uint16_t>(scaleValue, scaleValue, zero, nonzeroMask);
+            AscendC::Reg::Select<uint16_t>(scaleValue, fp8Nan, scaleValue, infNanMask);
+            AscendC::Reg::DataCopy<uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE,
+                                   AscendC::Reg::StoreDist::DIST_PACK_B16>(
+                mxScaleLocalAddr, scaleValue, vlForHalfNumber_ >> 1, mask);
+            AscendC::Reg::ShiftLefts(shiftedScale, scaleValue, static_cast<int16_t>(7), mask);
+            AscendC::Reg::Sub(reciprocalValue, reciprocalBias, shiftedScale, mask);
+            AscendC::Reg::Select<uint16_t>(reciprocalValue, reciprocalValue, zero, nonzeroMask);
+            AscendC::Reg::Select<uint16_t>(reciprocalValue, nan, reciprocalValue, infNanMask);
+            AscendC::Reg::DataCopy<uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(
+                halfScaleLocalAddr, reciprocalValue, vlForHalfNumber_, mask);
+        }
+    }
 }
 
 QMM_BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
