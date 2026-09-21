@@ -50,7 +50,7 @@ __aicore__ inline void SoftmaxFlashV510NoUpdateImpl128(
     if constexpr (hasAtten) {
         maskUb = (__ubuf__ uint8_t *)inMaskTensor.GetPhyAddr();
     }
-
+    uint32_t maskLen = originN;
     __VEC_SCOPE__
     {
         Reg::RegTensor<T> vreg_input_x;
@@ -75,13 +75,13 @@ __aicore__ inline void SoftmaxFlashV510NoUpdateImpl128(
         Reg::RegTensor<half> vreg_muls_res;
         Reg::RegTensor<int8_t> vreg_res;
 
-        if constexpr (hasAtten) {
-            Reg::Duplicate(vreg_min, minValue);
-        }
+        Reg::Duplicate(vreg_min, minValue);
+        Reg::MaskReg preg_ori_tail_n = Reg::UpdateMask<T>(maskLen);
 
         for (uint16_t i = 0; i < rows; ++i) {
             Reg::DataCopy<T, Reg::LoadDist::DIST_NORM>(vreg_input_x, srcUb + i * sInner);
             Reg::Muls<T, T, Reg::MaskMergeMode::ZEROING>(vreg_input_x, vreg_input_x, scale, preg_all_b16);
+            Reg::Select(vreg_input_x, vreg_input_x, vreg_min, preg_ori_tail_n);
             if constexpr (hasAtten) {
                 Reg::DataCopy<uint8_t, Reg::LoadDist::DIST_UNPACK_B8>((Reg::RegTensor<uint8_t> &)vreg_atten_mask,
                                                                       maskUb + i * sInner);
@@ -153,6 +153,8 @@ __aicore__ inline void SoftmaxFlashV510NoUpdateImpl256(
     if constexpr (hasAtten) {
         maskUb = (__ubuf__ uint8_t *)inMaskTensor.GetPhyAddr();
     }
+    uint32_t maskLen1 = originN;
+    uint32_t maskLen2 = originN > halfRepSize ? originN - halfRepSize : 0;
 
     __VEC_SCOPE__
     {
@@ -185,16 +187,18 @@ __aicore__ inline void SoftmaxFlashV510NoUpdateImpl256(
         Reg::RegTensor<T> vreg_muls_res_2;
         Reg::RegTensor<int8_t> vreg_res_1;
         Reg::RegTensor<int8_t> vreg_res_2;
+        Reg::MaskReg preg_ori_tail_n_1 = Reg::UpdateMask<T>(maskLen1);
+        Reg::MaskReg preg_ori_tail_n_2 = Reg::UpdateMask<T>(maskLen2);
 
-        if constexpr (hasAtten) {
-            Reg::Duplicate(vreg_min, minValue);
-        }
+        Reg::Duplicate(vreg_min, minValue);
 
         for (uint16_t i = 0; i < rows; ++i) {
             Reg::DataCopy<T, Reg::LoadDist::DIST_NORM>(vreg_input_x_1, srcUb + i * sInner);
             Reg::DataCopy<T, Reg::LoadDist::DIST_NORM>(vreg_input_x_2, srcUb + i * sInner + halfRepSize);
             Reg::Muls<T, T, Reg::MaskMergeMode::ZEROING>(vreg_input_x_1, vreg_input_x_1, scale, preg_all_b16);
             Reg::Muls<T, T, Reg::MaskMergeMode::ZEROING>(vreg_input_x_2, vreg_input_x_2, scale, preg_all_b16);
+            Reg::Select(vreg_input_x_1, vreg_input_x_1, vreg_min, preg_ori_tail_n_1);
+            Reg::Select(vreg_input_x_2, vreg_input_x_2, vreg_min, preg_ori_tail_n_2);
             if constexpr (hasAtten) {
                 Reg::DataCopy<uint8_t, Reg::LoadDist::DIST_UNPACK_B8>((Reg::RegTensor<uint8_t> &)vreg_atten_mask_1,
                                                                       maskUb + i * sInner);
@@ -319,6 +323,7 @@ __aicore__ inline void SoftmaxFlashV510UpdateImpl128(
     if constexpr (hasAtten) {
         maskUb = (__ubuf__ uint8_t *)inMaskTensor.GetPhyAddr();
     }
+    uint32_t maskLen = originN;
 
     __VEC_SCOPE__
     {
@@ -360,14 +365,12 @@ __aicore__ inline void SoftmaxFlashV510UpdateImpl128(
                                                       Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
         static constexpr Reg::CastTrait castTrait1 = {Reg::RegLayout::ONE, Reg::SatMode::UNKNOWN,
                                                       Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
-
-        if constexpr (hasAtten) {
-            Reg::Duplicate(vreg_min, minValue);
-        }
-
+        Reg::MaskReg preg_ori_tail_n = Reg::UpdateMask<T>(maskLen);
+        Reg::Duplicate(vreg_min, minValue);
         for (uint16_t i = 0; i < rows; ++i) {
             Reg::DataCopy<T, Reg::LoadDist::DIST_NORM>(vreg_input_x, srcUb + i * sInner);
             Reg::Muls<T, T, Reg::MaskMergeMode::ZEROING>(vreg_input_x, vreg_input_x, scale, preg_all_b16);
+            Reg::Select(vreg_input_x, vreg_input_x, vreg_min, preg_ori_tail_n);
             if constexpr (hasAtten) {
                 Reg::LoadAlign<uint8_t, Reg::LoadDist::DIST_UNPACK_B8>((Reg::RegTensor<uint8_t> &)vreg_atten_mask,
                                                                        maskUb + i * sInner);
@@ -477,6 +480,8 @@ __aicore__ inline void SoftmaxFlashV510UpdateImpl256(
     if constexpr (hasAtten) {
         maskUb = (__ubuf__ uint8_t *)inMaskTensor.GetPhyAddr();
     }
+    uint32_t maskLen1 = originN;
+    uint32_t maskLen2 = originN > halfRepSize ? originN - halfRepSize : 0;
 
     __VEC_SCOPE__
     {
@@ -527,15 +532,18 @@ __aicore__ inline void SoftmaxFlashV510UpdateImpl256(
         static constexpr Reg::CastTrait castTrait1 = {Reg::RegLayout::ONE, Reg::SatMode::UNKNOWN,
                                                       Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 
-        if constexpr (hasAtten) {
-            Reg::Duplicate(vreg_min, minValue);
-        }
+        Reg::MaskReg preg_ori_tail_n_1 = Reg::UpdateMask<T>(maskLen1);
+        Reg::MaskReg preg_ori_tail_n_2 = Reg::UpdateMask<T>(maskLen2);
+
+        Reg::Duplicate(vreg_min, minValue);
 
         for (uint16_t i = 0; i < rows; ++i) {
             Reg::DataCopy<T, Reg::LoadDist::DIST_NORM>(vreg_input_x_1, srcUb + i * sInner);
             Reg::DataCopy<T, Reg::LoadDist::DIST_NORM>(vreg_input_x_2, srcUb + i * sInner + halfRepSize);
             Reg::Muls<T, T, Reg::MaskMergeMode::ZEROING>(vreg_input_x_1, vreg_input_x_1, scale, preg_all_b16);
             Reg::Muls<T, T, Reg::MaskMergeMode::ZEROING>(vreg_input_x_2, vreg_input_x_2, scale, preg_all_b16);
+            Reg::Select(vreg_input_x_1, vreg_input_x_1, vreg_min, preg_ori_tail_n_1);
+            Reg::Select(vreg_input_x_2, vreg_input_x_2, vreg_min, preg_ori_tail_n_2);
             if constexpr (hasAtten) {
                 Reg::DataCopy<uint8_t, Reg::LoadDist::DIST_UNPACK_B8>((Reg::RegTensor<uint8_t> &)vreg_atten_mask_1,
                                                                       maskUb + i * sInner);
