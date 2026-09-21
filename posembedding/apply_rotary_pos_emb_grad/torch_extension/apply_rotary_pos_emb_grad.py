@@ -8,10 +8,10 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 from typing import Optional, Tuple
-import torch
-from torch.library import impl
-from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
+import torch
+from cann_ops_transformer.op_builder import OpBuilder, get_as_library
+from torch.library import impl
 
 OP_NAME = "apply_rotary_pos_emb_grad"
 ROTARY_MODE_HALF = "half"
@@ -175,7 +175,6 @@ def _check_inputs(
 
 
 apply_rotary_pos_emb_grad_op_builder = ApplyRotaryPosEmbGradOpBuilder()
-apply_rotary_pos_emb_grad_op_builder.load()
 
 
 @impl(get_as_library(), apply_rotary_pos_emb_grad_op_builder.name, "PrivateUse1")
