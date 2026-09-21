@@ -19,7 +19,9 @@
 #include "kernel_operator.h"
 #endif
 #include "moe_distribute_dispatch_teardown_tiling.h"
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
 #include "arch35/moe_distribute_dispatch_teardown_arch35.h"
+#endif // __NPU_ARCH__ == 3510
 
 using namespace AscendC;
 using namespace Mc2Kernel;
