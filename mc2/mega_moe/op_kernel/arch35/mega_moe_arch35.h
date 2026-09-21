@@ -203,7 +203,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::InitInputPrepareConfigs
     } else {
         sharedQuantProcessConfig_ = CreateQuantProcessConfig<typename SharedQuantConfig::QuantStorageType,
                                                              typename SharedQuantConfig::QuantScaleType, false,
-                                                             SharedQuantConfig::A_ELEMS_PER_BYTE>(k_, params_);
+                                                             SharedQuantConfig::A_ELEMS_PER_BYTE, false>(k_, params_);
     }
     // 共享专家启用时仅 AIV1 计算发送 topK 有效下标，其余情况保留全 AIV 分工。
     const uint32_t topkValidIndexCoreIdx = sharedExpertNum_ > 0U ? blockIdx_ : aivCoreIdx_;
@@ -853,9 +853,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::QuantizeInputTokens(con
     const TokenQuantParams<MoeQuantMode, QuantOutType, ActivationType> moeQuant{quantProcessConfig_, quantScratch_};
     auto quantize = [&](const auto &moeQuant, const auto &...sharedQuant) __attribute__((cce_aicore))
     {
-        QuantizeLocalTokens<TopkWeightsType, TopkWeightsPrefetch>(
-            tokenRange, commonConfig_, params_.probsGmAddr, MegaMoeRecordHasTopkWeights(params_.tilingData), moeQuant,
-            sharedQuant...);
+        QuantizeLocalTokens<TopkWeightsType, TopkWeightsPrefetch>(tokenRange, commonConfig_, params_.probsGmAddr,
+                                                                  moeQuant, sharedQuant...);
     };
 
     if (sharedExpertNum_ > 0U && !SHARED_INPUT_REUSES_MOE_QUANT) {

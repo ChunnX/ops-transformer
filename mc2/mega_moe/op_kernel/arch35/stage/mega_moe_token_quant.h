@@ -34,7 +34,8 @@ struct QuantProcessConfig {
  * 记录布局 = Align256(token 数据) + Align32(scale) + prefetch 时附加 Align32(topk 权重)，
  * 与 host CalcDispatchBufferConfig 的 copyBufferBytes 契约恒相等。
  */
-template <typename ActivationType, typename QuantScaleOutType, bool TopkWeightsPrefetch, uint32_t AElemsPerByte>
+template <typename ActivationType, typename QuantScaleOutType, bool TopkWeightsPrefetch, uint32_t AElemsPerByte,
+          bool DedupWeightsEligible = true>
 __aicore__ inline QuantProcessConfig CreateQuantProcessConfig(uint32_t tokenHiddenDim, const Params &params)
 {
     uint32_t quantScaleValidCountPerToken = Ops::Base::CeilDiv(tokenHiddenDim, static_cast<uint32_t>(ALIGN_32));
@@ -45,12 +46,20 @@ __aicore__ inline QuantProcessConfig CreateQuantProcessConfig(uint32_t tokenHidd
                              static_cast<uint32_t>(ALIGN_32));
     uint32_t quantTokenScaleAlignBytes = quantTokenAlignBytes + quantScaleAlignBytes;
     // 布局与 host 同式：prefetch 或 tkw=0 的 combine 去重（发送端乘权）都携带权重段。
-    if (TopkWeightsPrefetch || MegaMoeRecordHasTopkWeights(params.tilingData)) {
+    // 权重段只属于 MoE 通信记录：共享专家独立量化的记录不参与 combine，DedupWeightsEligible=false
+    // 时与上游同为编译期判定，host 也只按无权重段给它分配（InitializeMteSharedExpertInput）。
+    if (TopkWeightsPrefetch || (DedupWeightsEligible && MegaMoeRecordHasTopkWeights(params.tilingData))) {
         uint32_t weightAlignBytes = Ops::Base::CeilAlign(static_cast<uint32_t>(params.tilingData->topK * sizeof(float)),
                                                          static_cast<uint32_t>(ALIGN_32));
         quantTokenScaleAlignBytes += weightAlignBytes;
     }
     return {quantTokenAlignBytes, quantScaleAlignBytes, quantTokenScaleAlignBytes, quantScaleValidCountPerToken};
+}
+
+// 记录是否带 topk 权重段：布局由 CreateQuantProcessConfig 唯一决定，消费方按布局判定，不各自重算条件。
+__aicore__ inline bool QuantRecordHasWeights(const QuantProcessConfig &config)
+{
+    return config.quantTokenScaleAlignBytes > config.quantTokenAlignBytes + config.quantScaleAlignBytes;
 }
 
 template <typename ActivationType>
@@ -135,8 +144,8 @@ __aicore__ inline void QuantizeTokenInUb(const LocalTensor<bfloat16_t> &input,
 // 仅由 AIV 调用，tokenRange 非空；量化指定范围的本卡 token，按逐 token 交织布局写入数据与 scale。
 template <typename TopkWeightsType, bool TopkWeightsPrefetch, typename MoeQuantParams, typename... SharedQuantParams>
 __aicore__ inline void QuantizeLocalTokens(const WorkRange &tokenRange, const MoeStageCommonConfig &common,
-                                           GM_ADDR topkWeightsAddr, bool recordHasTopkWeights,
-                                           const MoeQuantParams &moeQuant, const SharedQuantParams &...sharedQuant)
+                                           GM_ADDR topkWeightsAddr, const MoeQuantParams &moeQuant,
+                                           const SharedQuantParams &...sharedQuant)
 {
     auto &scratch = moeQuant.scratch;
     const auto &config = moeQuant.config;
@@ -155,7 +164,7 @@ __aicore__ inline void QuantizeLocalTokens(const WorkRange &tokenRange, const Mo
         DataCopyPad(xInTensor, scratch.inputGm[static_cast<uint64_t>(tokenIndex) * hiddenDim],
                     {1U, static_cast<uint16_t>(hiddenDim * sizeof(bfloat16_t)), 0U, 0U}, {true, 0, 0, 0});
         // tkw=0 的 combine 去重同样携带整 token 权重段（发送端乘权语义）；tkw=1 实例常量折叠零开销。
-        if (TopkWeightsPrefetch || recordHasTopkWeights) {
+        if (TopkWeightsPrefetch || QuantRecordHasWeights(config)) {
             GM_ADDR tokenTopkWeightsAddr =
                 topkWeightsAddr + static_cast<uint64_t>(tokenIndex) * common.topK * sizeof(TopkWeightsType);
             PrefetchTopkWeights<TopkWeightsType>(tokenTopkWeightsAddr, common.topK, config, scratch, xOutTensor, event);
