@@ -140,7 +140,13 @@ struct GMMSwigluV2CompileInfo {
     uint32_t aivNum_ = 0;
     uint32_t baseM_ = 128;
     uint32_t baseN_ = 256;
-    bool supportL12BtBf16;
+    bool supportL12BtBf16 = false;
+    uint64_t l1Size_ = 0;
+    uint64_t l2Size_ = 0;
+    uint64_t l0ASize_ = 0;
+    uint64_t l0BSize_ = 0;
+    uint64_t l0CSize_ = 0;
+    int32_t npuArch_ = 0;
 };
 
 namespace GroupedMatmulSwigluQuantV2Tiling {
@@ -162,6 +168,13 @@ constexpr uint32_t ATTR_INDEX_QUANT_DTYPE = 3;
 constexpr uint32_t ATTR_INDEX_TRANSPOSE_WEIGHT = 4;
 constexpr uint32_t ATTR_INDEX_GROUPLIST_TYPE = 5;
 constexpr uint32_t ATTR_INDEX_TUNING_CONFIG = 6;
+constexpr uint32_t ATTR_INDEX_SWIGLU_MODE = 7;
+constexpr uint32_t ATTR_INDEX_CLAMP_LIMIT = 8;
+constexpr uint32_t ATTR_INDEX_GLU_ALPHA = 9;
+constexpr uint32_t ATTR_INDEX_GLU_BIAS = 10;
+constexpr uint32_t ATTR_INDEX_ROUND_MODE = 11;
+constexpr uint32_t ATTR_INDEX_SCALE_ALG = 12;
+constexpr uint32_t ATTR_INDEX_DST_TYPE_MAX = 13;
 constexpr uint32_t DIM_0 = 0;
 constexpr uint32_t DIM_1 = 1;
 constexpr uint32_t DIM_2 = 2;
