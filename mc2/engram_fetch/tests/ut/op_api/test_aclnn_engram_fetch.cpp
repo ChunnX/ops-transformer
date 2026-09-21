@@ -94,7 +94,7 @@ TEST_F(AclnnEngramFetchTest, ascend950_inference_local_success)
     auto fetched_desc = TensorDesc({8, 512}, ACL_BF16, ACL_FORMAT_ND);
 
     int32_t hiddenSize = 512;
-    // local 模式: 全量表在本 rank, num_entries_per_rank 即全局 entry 数
+    // Local mode: full table on this rank, num_entries_per_rank is the global entry count.
     int64_t numEntriesFull = 32;
     int64_t zero = 0;
     int64_t fetchModeLocal = 1;
@@ -112,7 +112,7 @@ TEST_F(AclnnEngramFetchTest, ascend950_inference_local_success)
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
-// sf 链路: sfTable/fetchedSf 非空(fp8 表 + E8M0 sf, packs=ceil(hidden/32)=16), 覆盖 kernel GatherSf 分支
+// SF path: non-null sfTable/fetchedSf (fp8 table + E8M0 sf, packs = ceil(hidden/32) = 16).
 TEST_F(AclnnEngramFetchTest, ascend950_inference_sf_success)
 {
     auto commContext_desc = TensorDesc({2048}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
@@ -139,7 +139,7 @@ TEST_F(AclnnEngramFetchTest, ascend950_inference_sf_success)
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
-// sf 链路 + local 模式: 全量表在本 rank, sfTable 为全量表
+// SF path + local mode: sfTable holds the full-table scales.
 TEST_F(AclnnEngramFetchTest, ascend950_inference_local_sf_success)
 {
     auto commContext_desc = TensorDesc({2048}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
@@ -199,7 +199,7 @@ TEST_F(AclnnEngramFetchTest, ascend950_training_success)
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
-// local 模式(fetch_mode=1)仅支持推理场景, 训练场景(with_grad=1)应被tiling拒绝
+// fetch_mode=local is inference-only; with_grad=1 must be rejected by the op_api param check.
 TEST_F(AclnnEngramFetchTest, ascend950_training_local_rejected)
 {
     auto commContext_desc = TensorDesc({6146}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);

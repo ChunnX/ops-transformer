@@ -443,30 +443,6 @@ def gen_balanced_indices(num_token, all_num_token, indices_type):
     indices = np.concatenate(all_indices)
     np.random.shuffle(indices)
     return indices.tolist()
-# def gen_balanced_indices(num_token, all_num_token, indices_type):
-#     segment_size = all_num_token // world_size
-#     base_count = num_token // world_size
-#     remainder = num_token % world_size
-    
-#     indices = []
-    
-#     for i in range(world_size):
-#         start = i * segment_size
-#         end = start + segment_size if i < world_size - 1 else all_num_token
-        
-#         count = base_count + (1 if i < remainder else 0)
-        
-#         # ---------------------------------------------------------
-#         # 优化部分：
-#         # 1. 利用 range 对象直接支持切片的特性 (Python 3.2+)
-#         # 2. range(start, end)[:count] 直接截取前 count 个数
-#         # 3. 一次性转为 list，无需循环 append，速度极快
-#         # ---------------------------------------------------------
-#         indices.extend(list(map(indices_type, range(start, end)[:count])))
-            
-#     return indices
-
-
 def gen_fetch_golden(indices, storage, hidden_size):
     idx_tensor = torch.tensor(indices, dtype=torch.long)
     return torch.index_select(storage, 0, idx_tensor)
@@ -616,10 +592,6 @@ class EngramFetchGraphModel(torch.nn.Module):
         with torch.profiler.record_function("Engram"):
             a = torch.mul(indices, 1)
             wait_func = self.buffer.engram_fetch(a)
-            # dummy_w = torch.randn(4096, 4096, dtype=torch.float16, device=a.device)
-            # dummy = torch.matmul(dummy_w, dummy_w)
-            # for _ in range(10):
-            #     dummy = torch.matmul(dummy, dummy_w)
             result = wait_func()
             if self.use_fp8:
                 fetched, fetched_sf = result
@@ -681,7 +653,6 @@ def egram_npu(queue, rank, write_golden, storage, fetch_num, num_token, storage_
             buffer.engram_write(write_cpu, sf_device)
         else:
             buffer.engram_write(write_cpu)
-        #write_pass = compare_write(buffer._runtime.get_host_buf_ptr(), write_cpu)
         print(f"[INFO] rank: {rank} engram_write completed, shape={write_cpu.shape}")
 
         # fetch
@@ -702,7 +673,7 @@ def egram_npu(queue, rank, write_golden, storage, fetch_num, num_token, storage_
                         shutil.rmtree(rank_prof_path)
                 os.makedirs(rank_prof_path, exist_ok=True)
                 with get_profiling(fetch_num * loop_time, repeat_time, warmup_time, rank_prof_path) as prof:
-                    for i in range(fetch_num):  # [16 32 64 128 256...]
+                    for i in range(fetch_num):
                         indices_list, fetch_golden, fetch_sf_golden = egram_cpu(rank, num_token[i], indices_type, storage, i, sf_table)
                         print("indices_list len is ", len(indices_list))
                         print("fetch_golden dtype is ", fetch_golden.dtype)

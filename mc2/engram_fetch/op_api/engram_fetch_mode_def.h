@@ -10,9 +10,9 @@
 
 /*!
  * \file engram_fetch_mode_def.h
- * \brief engram_fetch 取数模式定义(op_api 与 op_host/tiling 共享)
- * 注意: PTA 侧 mc2/common/torch_extension/{elastic_buffer.py, csrc/elastic_buffer.cpp}
- * 与 Python 侧常量(FETCH_MODE_SLICED/LOCAL)与本文件保持相同的值契约, 修改时需同步
+ * \brief fetch_mode definitions for engram_fetch, shared by op_api and op_host/tiling.
+ * \note The PTA side (mc2/common/torch_extension/{elastic_buffer.py, csrc/elastic_buffer.cpp}) and its Python
+ *       constants (FETCH_MODE_SLICED/LOCAL) must keep the same values; update both together.
  */
 
 #ifndef ENGRAM_FETCH_MODE_DEF_H
@@ -20,7 +20,7 @@
 
 #include <cstdint>
 
-constexpr int64_t ENGRAM_FETCH_MODE_SLICED = 0; // 切片分存 + 跨NPU通信(默认, 推理/训练)
-constexpr int64_t ENGRAM_FETCH_MODE_LOCAL = 1;  // 全量表冗余到每个NPU, 取数纯本地(仅推理)
+constexpr int64_t ENGRAM_FETCH_MODE_SLICED = 0; // sliced sharding + cross-NPU comm (default, train/infer)
+constexpr int64_t ENGRAM_FETCH_MODE_LOCAL = 1;  // full table replicated per NPU, local gather only (infer only)
 
 #endif // ENGRAM_FETCH_MODE_DEF_H

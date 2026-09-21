@@ -61,8 +61,9 @@ struct TokenRangeAssignment {
     uint32_t count;
 };
 
-// 余数感知的连续 token 区间分配(与 GetCoreAssignment 同构的分配风格):
-// 前 (numTokens % totalBlocks) 个核各多分 1 个 token, 保证全部核参与且核间负载差 <= 1
+// Remainder-aware contiguous token range split (same style as GetCoreAssignment):
+// the first (numTokens % totalBlocks) cores take one extra token, so every core participates and the
+// per-core load differs by at most 1.
 __aicore__ inline TokenRangeAssignment GetTokenRangeAssignment(uint32_t totalBlocks, uint32_t aivId,
                                                                 uint32_t numTokens)
 {

@@ -101,8 +101,8 @@ python3 -m torch.distributed.run --standalone --nproc_per_node=2 \
 # 4 卡 + 指定数据类型/表规模等（其余参数透传给测试脚本）
 bash run_example.sh --fetch-mode sliced --nproc 4 --dtype fp16 --num-entries 8192 --num-tokens 1024
 
-# 也可直接用 torchrun 调起
-torchrun --standalone --nproc_per_node=2 test_engram_fetch_e2e.py --fetch-mode local --phase train
+# 也可直接用 torchrun 调起（注意：local 模式仅支持推理，不能与 --phase train 组合）
+torchrun --standalone --nproc_per_node=2 test_engram_fetch_e2e.py --fetch-mode local --phase infer
 ```
 
 参数说明（`python3 test_engram_fetch_e2e.py --help` 查看全部）：
@@ -159,7 +159,7 @@ bash run_example.sh --fetch-mode local --phase perf --num-entries 513800 --hidde
 [rank 0] [PASS] [train/sliced] 零拷贝: storage 原地更新后 fetch 可见新数据
 [rank 0] engram_fetch(local, bf16) 端到端验证全部通过
 ...
-[SUMMARY] 全部模式验证通过: sliced local
+[SUMMARY] 全部用例验证通过
 ```
 
 脚本退出码：`0` 表示全部模式验证通过，非 `0` 表示存在失败项。

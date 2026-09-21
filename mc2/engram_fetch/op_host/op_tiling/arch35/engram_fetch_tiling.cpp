@@ -573,7 +573,7 @@ static void SetTilingKey(gert::TilingContext *context, bool isTraining, bool isL
     const char *nodeName = context->GetNodeName();
     uint64_t tilingKey;
     if (isTraining) {
-        // local 模式仅支持推理, 训练场景已在 TilingFunc 前置拒绝
+        // Local mode is inference-only; training was rejected earlier in TilingFunc.
         tilingKey = GET_TPL_TILING_KEY(ENGRAM_FETCH_TRAIN_MODE);
     } else {
         tilingKey = isLocalMode ? GET_TPL_TILING_KEY(ENGRAM_FETCH_LOCAL_MODE)
@@ -665,7 +665,7 @@ static ge::graphStatus EngramFetchTilingFunc(gert::TilingContext *context)
         }
     }
 
-    // local mode only support llm infer scenario
+    // fetch_mode=local supports inference only
     OP_TILING_CHECK((isTraining && isLocalMode),
                     OP_LOGE(nodeName,
                             "fetch_mode=1 (local, full replication) only supports inference, "

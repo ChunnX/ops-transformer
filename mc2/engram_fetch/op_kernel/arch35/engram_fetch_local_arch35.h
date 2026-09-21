@@ -10,8 +10,8 @@
 
 /*!
  * \file engram_fetch_local_arch35.h
- * \brief engram_fetch算子arch35全量本NPU(local)模式kernel实现(仅推理)
- * fetch_mode=1: 每个rank持有全局全量表, indices即本表行号, 取数纯本地GM拷贝, 无跨NPU通信
+ * \brief engram_fetch arch35 kernel, local full-table mode (fetch_mode=1, inference only):
+ *        every rank holds the full table, indices are local row ids, pure local GM copies, no cross-NPU traffic.
  */
 
 #ifndef ENGRAM_FETCH_LOCAL_ARCH35_H
@@ -43,8 +43,8 @@ namespace Mc2Kernel {
 
 #if defined(ENABLE_ENGRAM_FETCH_KERNEL)
 
-// 推理local模式: fetched[t] = localTable[indices[t]]
-// 表基址 = commBuffer[rankId](host pinned注册内存的设备映射地址), entry即全局行号(无rank偏移)
+// Inference local mode: fetched[t] = localTable[indices[t]].
+// Table base = commBuffer[rankId] (device mapping of the host pinned window); entry is a global row id.
 class EngramFetchLocalArch35 : public EngramFetchInferBase {
 public:
     __aicore__ inline EngramFetchLocalArch35() = default;
@@ -115,8 +115,9 @@ __aicore__ inline void EngramFetchLocalArch35::Process()
         if (numEntriesPerRank_ == 0 || numTokens_ == 0) {
             return;
         }
-        // 余数感知多核分配: 全部 AIV 核参与, 核间 token 数差 <= 1(与 sliced 模式 GetCoreAssignment
-        // 的分配风格同构; 朴素 ceil 切分在 T%totalBlocks 较小时会使近半数核空转)
+        // Remainder-aware range split: all AIV cores participate and the per-core token count differs by <= 1
+        // (same style as GetCoreAssignment in sliced mode; naive ceil split idles nearly half the cores
+        // when numTokens % totalBlocks is small).
         auto assign = GetTokenRangeAssignment(totalBlocks_, aivId_, static_cast<uint32_t>(numTokens_));
         GatherRange(assign.start, assign.start + assign.count);
         SyncFunc<AscendC::HardEvent::MTE3_S>();

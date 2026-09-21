@@ -33,7 +33,7 @@ static bool CheckNotNull(const aclTensor *commContext, const aclTensor *indices,
     return true;
 }
 
-// fetch_mode: 0=切片跨NPU(默认, 推理/训练), 1=全量本NPU(仅推理, 不支持训练)
+// fetch_mode: 0 = sliced cross-NPU (default, train/infer), 1 = local full table (infer only)
 static bool CheckFetchMode(int64_t withGrad, int64_t fetchMode)
 {
     if (fetchMode != ENGRAM_FETCH_MODE_SLICED && fetchMode != ENGRAM_FETCH_MODE_LOCAL) {

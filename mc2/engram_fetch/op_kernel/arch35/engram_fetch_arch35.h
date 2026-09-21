@@ -10,7 +10,7 @@
 
 /*!
  * \file engram_fetch_arch35.h
- * \brief engram_fetch算子arch35 kernel实现(切片跨NPU模式, fetch_mode=0)
+ * \brief engram_fetch arch35 kernel, sliced cross-NPU mode (fetch_mode=0)
  */
 
 #ifndef ENGRAM_FETCH_ARCH35_H

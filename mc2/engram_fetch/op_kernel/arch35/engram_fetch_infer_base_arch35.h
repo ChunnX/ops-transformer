@@ -10,9 +10,8 @@
 
 /*!
  * \file engram_fetch_infer_base_arch35.h
- * \brief engram_fetch算子arch35推理模式kernel公共基类
- * 封装 sliced(切片跨NPU) 与 local(全量本NPU) 两种推理kernel的共同逻辑:
- * 通信上下文/tiling解析、indices分批加载、行级GM拷贝、sf gather等
+ * \brief Common base class of the arch35 inference kernels (sliced and local modes):
+ *        comm context/tiling parsing, batched indices loading, row-level GM copy and SF gather.
  */
 
 #ifndef ENGRAM_FETCH_INFER_BASE_ARCH35_H
@@ -56,7 +55,7 @@ public:
     __aicore__ inline EngramFetchInferBase() = default;
 
 protected:
-    // 推理模式公共初始化: GM输入指针 + 通信上下文解析 + tiling解析 + relay队列
+    // Common inference init: GM inputs, comm context, tiling fields and the relay queue.
     __aicore__ inline void InitInferBase(GM_ADDR commContext, GM_ADDR indices, GM_ADDR fetched, GM_ADDR sfTable,
                                          GM_ADDR fetchedSf, AscendC::TPipe *pipe,
                                          const EngramFetchTilingData *tilingData)
@@ -82,7 +81,7 @@ protected:
         tpipe_->InitBuffer(relayQue_, RELAY_BUFFER_NUM, TILE_BYTES);
     }
 
-    // 按各模式已占用的UB(usedUb)与每index所需字节数(bytesPerIndice)计算indices分批大小并分配缓冲
+    // Derive the indices batch size from the UB left after usedUb and bytes per index, then allocate the buffer.
     __aicore__ inline void InitIndicesBuffer(uint64_t usedUb, uint32_t bytesPerIndice)
     {
         constexpr uint64_t ubReserved = 8U * 1024U;
@@ -132,7 +131,7 @@ protected:
         relayQue_.FreeTensor<uint8_t>(sfTmp);
     }
 
-    // 行级 GM->UB->GM 中转拷贝(按 TILE_BYTES 分片)
+    // Row-level GM->UB->GM relay copy, chunked by TILE_BYTES.
     __aicore__ inline void LocalCopySlice(GM_ADDR dst, GM_ADDR src, uint64_t len)
     {
         AscendC::GlobalTensor<uint8_t> srcGm;

@@ -61,9 +61,9 @@ constexpr int32_t GRAD_CREDIT_READ_SENTINEL = -1;
 enum TimeoutSite {
     TIMEOUT_CREDIT_READ_WAIT = 1,  // CompleteCreditCounter 等待异步读完成
     TIMEOUT_STATUS_FLAG_WAIT = 2,  // WaitAllStatusFlags 等待跨 rank barrier
-    TIMEOUT_SEND_CREDIT_WAIT = 3,  // SendGradRemote 发送端等待对端 credit
-    TIMEOUT_RECV_COUNTER_WAIT = 4, // RecvGradFromPeers 接收端等待对端写计数
-    TIMEOUT_A2A_PROGRESS_STALL = 5,
+    TIMEOUT_SEND_CREDIT_WAIT = 3,  // send side waits for peer credit (A2aChunkSendStep)
+    TIMEOUT_RECV_COUNTER_WAIT = 4, // recv side waits for peer write counter (A2aChunkRecvStep)
+    TIMEOUT_A2A_PROGRESS_STALL = 5, // whole A2A loop made no progress
 };
 
 class EngramFetchGradArch35 {
@@ -229,8 +229,8 @@ private:
     GM_ADDR sortCompanionGM_{0};
     GM_ADDR sortWorkspaceGm_{0};
 
-    uint32_t sortNumTileData_{0U}; // SortLib tile 元素数
-    uint32_t sortTmpUbSize_{0U};   // SortLib AscendC::Sort 临时 UB
+    uint32_t sortNumTileData_{0U}; // SortLib: elements per tile
+    uint32_t sortTmpUbSize_{0U};   // SortLib: AscendC::Sort temp UB bytes
     uint32_t chunkElems_{0U};
 
     TBuf<> entryBuf_;

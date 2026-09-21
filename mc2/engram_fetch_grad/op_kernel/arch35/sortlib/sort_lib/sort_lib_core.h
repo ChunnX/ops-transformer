@@ -539,31 +539,30 @@ __aicore__ inline void SortRadixMoreCore<ValT, IdxT, CountT, isDescend>::Init(GM
     outValueGm_.SetGlobalBuffer((__gm__ ValT *)value);
     outIdxGm_.SetGlobalBuffer((__gm__ uint32_t *)sortIndex);
 
-    // ⚠️ Workspace 布局契约：本六段 [0]~[5] 的 offset 计算，
-    //    必须与 op_host/arch35/sort_lib_tiling.h 中 SortTilingCompute 的六段总大小计算逐段一致。
-    //    变量对应：RADIX_SORT_NUM==BIN_NUM；sizeof(CountT)==counterSize；
-    //    UB_ALIGN_BYTES==blockUbSize；totalDataNum_==totalElements；
-    //    [3] 段两次 wkOffset += tileHistBytes 对应 host 侧 [3] 段的 ×2。
-    // [0] exclusiveBinsGmWk_ — 256 × radixRounds × sizeof(CountT) 字节, 对齐 UB_ALIGN_BYTES
-    constexpr uint32_t radixRounds = sizeof(ValT); // radix sort passes
+    // Workspace layout contract: the six segments [0]~[5] below must stay byte-identical with the
+    // host-side total size computation in engram_fetch_grad_tiling.cpp SetWorkSpace().
+    // Mapping: RADIX_SORT_NUM == BIN_NUM; sizeof(CountT) == counterSize; UB_ALIGN_BYTES == blockUbSize;
+    // totalDataNum_ == totalElements; segment [3] advances wkOffset by tileHistBytes twice (= host x2).
+    // [0] exclusiveBinsGmWk_ - 256 x radixRounds x sizeof(CountT) bytes, aligned to UB_ALIGN_BYTES
+    constexpr uint32_t radixRounds = sizeof(ValT);
     uint64_t exclBinBytes = static_cast<uint64_t>(RADIX_SORT_NUM) * radixRounds * sizeof(CountT);
     exclBinBytes = RoundUpAlign(exclBinBytes, UB_ALIGN_BYTES);
     exclusiveBinsGmWkAsU32_.SetGlobalBuffer((__gm__ uint32_t *)workspace);
     uint64_t wkOffset = exclBinBytes;
 
-    // [1] globalHistGmWk_ — radixRounds 轮 × 256 bin × tileCount × sizeof(CountT) 字节
+    // [1] globalHistGmWk_ - radixRounds x 256 bins x tileCount x sizeof(CountT) bytes
     uint64_t globalHistBytes = static_cast<uint64_t>(tileCount_) * RADIX_SORT_NUM * radixRounds * sizeof(CountT);
     globalHistBytes = RoundUpAlign(globalHistBytes, UB_ALIGN_BYTES);
     globalHistGmWk_.SetGlobalBuffer((__gm__ CountT *)(workspace + wkOffset));
     wkOffset += globalHistBytes;
 
-    // [2] outIdxDbWK_ — totalElements × sizeof(CountT) 字节
+    // [2] outIdxDbWK_ - totalElements x sizeof(CountT) bytes
     uint64_t idxDbBytes = static_cast<uint64_t>(totalDataNum_) * sizeof(CountT);
     idxDbBytes = RoundUpAlign(idxDbBytes, UB_ALIGN_BYTES);
     outIdxDbWK_.SetGlobalBuffer((__gm__ uint32_t *)(workspace + wkOffset));
     wkOffset += idxDbBytes;
 
-    // [3] histTileGmWk_ + histCumsumTileGmWk_ — 各 tileCount × 256 × sizeof(uint16_t)
+    // [3] histTileGmWk_ + histCumsumTileGmWk_ - each tileCount x 256 x sizeof(uint16_t)
     uint64_t tileHistBytes = static_cast<uint64_t>(tileCount_) * RADIX_SORT_NUM * sizeof(uint16_t);
     tileHistBytes = RoundUpAlign(tileHistBytes, UB_ALIGN_BYTES);
     histTileGmWk_.SetGlobalBuffer((__gm__ uint16_t *)(workspace + wkOffset));
@@ -571,13 +570,13 @@ __aicore__ inline void SortRadixMoreCore<ValT, IdxT, CountT, isDescend>::Init(GM
     histCumsumTileGmWk_.SetGlobalBuffer((__gm__ uint16_t *)(workspace + wkOffset));
     wkOffset += tileHistBytes;
 
-    // [4] xB8GmWk_ — tileCount × numTileData 字节, 对齐 UB_ALIGN_BYTES
+    // [4] xB8GmWk_ - tileCount x numTileData bytes, aligned to UB_ALIGN_BYTES
     uint64_t xB8Bytes = static_cast<uint64_t>(tileCount_) * numTileData_;
     xB8Bytes = RoundUpAlign(xB8Bytes, UB_ALIGN_BYTES);
     xB8GmWk_.SetGlobalBuffer((__gm__ uint8_t *)(workspace + wkOffset));
     wkOffset += xB8Bytes;
 
-    // [5] outValueDbWK_ — ValT 结尾段
+    // [5] outValueDbWK_ - trailing ValT segment
     outValueDbWK_.SetGlobalBuffer((__gm__ ValT *)(workspace + wkOffset));
 
     pipe_->InitBuffer(inQueueX_, 1, numTileData_ * sizeof(ValT));
@@ -594,17 +593,17 @@ __aicore__ inline void SortRadixMoreCore<ValT, IdxT, CountT, isDescend>::Init(GM
 
     exclusiveBinsGmWkAsCount_ = exclusiveBinsGmWkAsU32_.template ReinterpretCast<CountT>();
 
-    ClearWorkSpace(); // MUST be before InitBuffer
+    ClearWorkSpace(); // zero-init the [0]/[1] stat segments before first use
 }
 
 template <typename ValT, typename IdxT, typename CountT, bool isDescend>
 __aicore__ inline void SortRadixMoreCore<ValT, IdxT, CountT, isDescend>::ParserTilingData()
 {
-    totalDataNum_ = params_.totalElements; // total number of elements to sort
-    numTileData_ = params_.numTileData;    // max elements per tile (UB capacity limited)
-    tileCount_ = params_.tileCount;        // total tiles: ceil(totalElements / numTileData)
-    activeCores_ = params_.activeCores;    // cores actually used: min(coreCount, tileCount)
-    tmpUbSize_ = params_.tmpUbSize;        // UB size reserved for AscendC::Sort<uint8_t>
+    totalDataNum_ = params_.totalElements;
+    numTileData_ = params_.numTileData;
+    tileCount_ = params_.tileCount;
+    activeCores_ = params_.activeCores;
+    tmpUbSize_ = params_.tmpUbSize;
 }
 
 template <typename ValT, typename IdxT, typename CountT, bool isDescend>
@@ -695,7 +694,6 @@ __aicore__ inline void SortRadixMoreCore<ValT, IdxT, CountT, isDescend>::Scatter
 {
     if constexpr (sizeof(ValT) == sizeof(int8_t)) {
         // int8 has only one radix pass, always scatter as output dtype
-
         uint64_t exclRoundOffset = round * RADIX_SORT_NUM;
         AscendC::GlobalTensor<IdxT> outIdxT2 = (idxDbGm_.Alternate()).template ReinterpretCast<IdxT>();
         asc_vf_call<CopyOutGm<ValT, CountT, IdxT, false>>(

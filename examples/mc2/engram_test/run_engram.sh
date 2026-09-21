@@ -17,7 +17,7 @@ REQUIRED_COLS=(
     "fetch_indicies"
     "world_size"
 )
-# 新增3个可选列，连同原有num_cpu_bytes统一管理
+# 可选列统一在这里管理
 OPT_COLS=(
     "num_cpu_bytes"
     "is_graph"
@@ -195,10 +195,9 @@ current_case=0
 echo "[INFO] 共读取到 $total_cases 条测试用例，开始执行..."
 echo "================================================================"
 
-# 新增三个可选字段接收
 while IFS="|" read -r case_name input_tensor_shape input_tensor_dtype input_tensor_range fetch_indicies world_size num_cpu_bytes is_graph is_profiling use_fp8 sf_dtype seed fetch_mode; do
     current_case=$((current_case + 1))
-    # ==========新增：仅开启profiling时创建独立临时目录==========
+    # profiling 开启时创建独立临时目录
     if [[ "${is_profiling}" -eq 1 ]]; then
         export PROF_TMP_DIR=$(mktemp -d)
         echo "[INFO] 已开启Profiling，当前用例独立临时目录: ${PROF_TMP_DIR}"
@@ -234,11 +233,11 @@ while IFS="|" read -r case_name input_tensor_shape input_tensor_dtype input_tens
         --fetch_indicies "$fetch_indicies"
         --world_size "$world_size"
     )
-    # 原有可选参数
+    # 可选参数
     if [[ "$num_cpu_bytes" != "0" ]]; then
         cmd_args+=(--num_cpu_bytes "$num_cpu_bytes")
     fi
-    # 新增三个可选参数
+    # 可选参数
     if [[ "$is_graph" != "0" ]]; then
         cmd_args+=(--is_graph "$is_graph")
     fi

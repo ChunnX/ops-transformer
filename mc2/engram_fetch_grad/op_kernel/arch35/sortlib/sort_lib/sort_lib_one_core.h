@@ -10,8 +10,8 @@
 
 /*!
  * \file sort_lib_one_core.h
- * \brief 单核 radix sort 类 (SortRadixOneCore)。
- *        小 N 时直接调用 AscendC::Sort(RADIX_SORT)，0 SyncAll、0 GM workspace。
+ * \brief Single-core radix sort (SortRadixOneCore): for small N, delegate to AscendC::Sort(RADIX_SORT)
+ *        directly - no SyncAll, no GM workspace.
  *
  * \internal  Do not include directly — use sort_lib.h instead.
  */
@@ -60,12 +60,13 @@ __aicore__ inline void SortRadixOneCore<ValT, IdxT, isDescend>::Init(GM_ADDR x, 
                                                                      const SortLib::SortParams &params,
                                                                      AscendC::TPipe *pipe)
 {
-    // 单核路径不使用 GM workspace，忽略 workspace 参数。
+    // The single-core path does not use the GM workspace; the parameter is ignored.
     pipe_ = pipe;
     numTileData_ = params.numTileData;
     tmpUbSize_ = params.tmpUbSize;
-    // int64 index 时，AscendC::Sort 先把 uint32 索引写到 buffer 后半段（32 字节对齐），再 AscendC::Cast 为 int64。
-    // uint32 排序结果缓冲 CeilAlign(N*4, 32)，int64 时再翻倍以容纳 AscendC::Cast 结果。
+    // For int64 indices AscendC::Sort first writes uint32 indices into the second half of the buffer
+    // (32B aligned), then AscendC::Cast converts them to int64.
+    // The uint32 result buffer is CeilAlign(N*4, 32); doubled for int64 to hold the Cast output.
     uint32_t idxUbSize32 = RoundUpAlign(static_cast<uint32_t>(numTileData_ * sizeof(uint32_t)));
     halfIndex_ = idxUbSize32 / static_cast<uint32_t>(sizeof(uint32_t));
     uint32_t idxBufferBytes = (sizeof(IdxT) == sizeof(int64_t)) ? (2U * idxUbSize32) : idxUbSize32;

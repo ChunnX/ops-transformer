@@ -100,7 +100,6 @@ fi
 echo "[INFO] python: ${PYTHON}, nproc: ${NPROC}, fetch-mode: ${FETCH_MODE}, dtypes: ${DTYPES:-（单dtype, 见透传参数）}"
 echo "[INFO] 透传参数: ${EXTRA_ARGS[*]:-（无）}"
 
-# 前置依赖检查
 if ! ${PYTHON} -c "import torch, torch_npu, cann_ops_transformer" 2>/dev/null; then
     echo "[ERROR] 依赖检查失败, 请确认已安装 torch / torch_npu / cann_ops_transformer(PTA whl)"
     exit 1
