@@ -77,11 +77,13 @@ ACLNN_API aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize(
 
 /**
  * @brief aclnnGroupedMatmulSwigluQuantWeightNzV3 的第二段接口，用于执行计算。
- * @param [in] workspace: 在 NPU device 侧申请的 workspace 内存起址。
+ * @param [in] workspace: 在 NPU device 侧申请的 workspace 内存起址。workspaceSize 大于 0 时必选、非空；
+ * workspaceSize 等于 0 时可传 nullptr。
  * @param [in] workspaceSize: 在 NPU device 侧申请的 workspace 大小，由第一段接口获取。
- * @param [in] executor: op 执行器，包含算子计算流程。
+ * @param [in] executor: 必选、非空。op 执行器，包含算子计算流程。
  * @param [in] stream: acl stream 流。
  * @retval ACLNN_SUCCESS 执行成功。
+ * @retval ACLNN_ERR_PARAM_NULLPTR（161001）executor 为空，或 workspaceSize 大于 0 时 workspace 为空。
  * @retval ACLNN_ERR_INNER 执行器运行失败。
  */
 ACLNN_API aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(void *workspace, uint64_t workspaceSize,
