@@ -459,6 +459,7 @@ __aicore__ inline void ComputePostHead(const LocalTensor<float> &dst, const Loca
 }
 
 // 一个VF同时计算相邻两个head，共用h_out与residual的寄存器加载，并保持各自四路累加顺序不变。
+// 八个h_res权重对整块D不变，外提到D寄存器循环外并显式展开四路累加，避免每轮重复广播。
 template <typename T>
 __aicore__ inline void ComputePostHeadPair(const LocalTensor<T> &dst0, const LocalTensor<T> &dst1,
                                            const LocalTensor<float> &hOut, const LocalTensor<T> &residual,
@@ -475,22 +476,39 @@ __aicore__ inline void ComputePostHeadPair(const LocalTensor<T> &dst0, const Loc
     __VEC_SCOPE__
     {
         RegTensor<T> residualB16Reg, dst0B16Reg, dst1B16Reg;
-        RegTensor<float> hOutReg, residualReg, weight0Reg, weight1Reg, dst0Reg, dst1Reg;
+        RegTensor<float> hOutReg, residualReg, dst0Reg, dst1Reg;
+        RegTensor<float> w00Reg, w01Reg, w10Reg, w11Reg, w20Reg, w21Reg, w30Reg, w31Reg;
         MaskReg mask;
+        // 八个h_res权重仅依赖j与headIndex，对整个D循环不变，广播一次。
+        DataCopy<float, LoadDist::DIST_BRC_B32>(w00Reg, combAddr + 0U * N_MAX + headIndex);
+        DataCopy<float, LoadDist::DIST_BRC_B32>(w01Reg, combAddr + 0U * N_MAX + headIndex + 1U);
+        DataCopy<float, LoadDist::DIST_BRC_B32>(w10Reg, combAddr + 1U * N_MAX + headIndex);
+        DataCopy<float, LoadDist::DIST_BRC_B32>(w11Reg, combAddr + 1U * N_MAX + headIndex + 1U);
+        DataCopy<float, LoadDist::DIST_BRC_B32>(w20Reg, combAddr + 2U * N_MAX + headIndex);
+        DataCopy<float, LoadDist::DIST_BRC_B32>(w21Reg, combAddr + 2U * N_MAX + headIndex + 1U);
+        DataCopy<float, LoadDist::DIST_BRC_B32>(w30Reg, combAddr + 3U * N_MAX + headIndex);
+        DataCopy<float, LoadDist::DIST_BRC_B32>(w31Reg, combAddr + 3U * N_MAX + headIndex + 1U);
         for (uint16_t i = 0; i < loops; ++i) {
             mask = UpdateMask<float>(remain);
             DataCopy<float, LoadDist::DIST_NORM>(hOutReg, hOutAddr + i * VL_FP32);
             AscendC::Reg::Muls(dst0Reg, hOutReg, postWeight0, mask);
             AscendC::Reg::Muls(dst1Reg, hOutReg, postWeight1, mask);
-            for (uint16_t j = 0; j < static_cast<uint16_t>(N_MAX); ++j) {
-                const uint32_t row = static_cast<uint32_t>(j);
-                DataCopy<T, LoadDist::DIST_UNPACK_B16>(residualB16Reg, residualAddr + row * rowStride + i * VL_FP32);
-                Cast<float, T, CAST_B16_TO_FP32>(residualReg, residualB16Reg, mask);
-                DataCopy<float, LoadDist::DIST_BRC_B32>(weight0Reg, combAddr + row * N_MAX + headIndex);
-                DataCopy<float, LoadDist::DIST_BRC_B32>(weight1Reg, combAddr + row * N_MAX + headIndex + 1U);
-                AscendC::Reg::MulAddDst(dst0Reg, residualReg, weight0Reg, mask);
-                AscendC::Reg::MulAddDst(dst1Reg, residualReg, weight1Reg, mask);
-            }
+            DataCopy<T, LoadDist::DIST_UNPACK_B16>(residualB16Reg, residualAddr + 0U * rowStride + i * VL_FP32);
+            Cast<float, T, CAST_B16_TO_FP32>(residualReg, residualB16Reg, mask);
+            AscendC::Reg::MulAddDst(dst0Reg, residualReg, w00Reg, mask);
+            AscendC::Reg::MulAddDst(dst1Reg, residualReg, w01Reg, mask);
+            DataCopy<T, LoadDist::DIST_UNPACK_B16>(residualB16Reg, residualAddr + 1U * rowStride + i * VL_FP32);
+            Cast<float, T, CAST_B16_TO_FP32>(residualReg, residualB16Reg, mask);
+            AscendC::Reg::MulAddDst(dst0Reg, residualReg, w10Reg, mask);
+            AscendC::Reg::MulAddDst(dst1Reg, residualReg, w11Reg, mask);
+            DataCopy<T, LoadDist::DIST_UNPACK_B16>(residualB16Reg, residualAddr + 2U * rowStride + i * VL_FP32);
+            Cast<float, T, CAST_B16_TO_FP32>(residualReg, residualB16Reg, mask);
+            AscendC::Reg::MulAddDst(dst0Reg, residualReg, w20Reg, mask);
+            AscendC::Reg::MulAddDst(dst1Reg, residualReg, w21Reg, mask);
+            DataCopy<T, LoadDist::DIST_UNPACK_B16>(residualB16Reg, residualAddr + 3U * rowStride + i * VL_FP32);
+            Cast<float, T, CAST_B16_TO_FP32>(residualReg, residualB16Reg, mask);
+            AscendC::Reg::MulAddDst(dst0Reg, residualReg, w30Reg, mask);
+            AscendC::Reg::MulAddDst(dst1Reg, residualReg, w31Reg, mask);
             if constexpr (IsSameT<T, bfloat16_t>::value) {
                 Cast<T, float, CAST_FP32_TO_B16_RINT>(dst0B16Reg, dst0Reg, mask);
                 Cast<T, float, CAST_FP32_TO_B16_RINT>(dst1B16Reg, dst1Reg, mask);
