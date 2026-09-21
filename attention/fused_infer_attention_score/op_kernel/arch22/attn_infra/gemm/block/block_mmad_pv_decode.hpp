@@ -120,11 +120,11 @@ public:
                                        uint64_t valueBnStride)
     {
         if constexpr (PAGED_CACHE_FLAG_) {
-            uint64_t blockTableId = gBlockTable.GetValue(nowNIdx);
+            uint32_t blockTableId = gBlockTable.GetValue(nowNIdx);
             if (valueBnStride != 0) {
                 kOffset = blockTableId * valueBnStride;
             } else {
-                kOffset = blockTableId * blockSize * strideKV;
+                kOffset = static_cast<uint64_t>(blockTableId) * blockSize * strideKV;
             }
         } else {
             kOffset = static_cast<uint64_t>(nowNIdx) * blockSize * strideKV;
