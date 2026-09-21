@@ -17,11 +17,11 @@
 #define GROUPED_MATMUL_FINALIZE_ROUTING_ARCH35_H
 
 #include "blaze/gemm/block/block_mmad_qgmm_mx.h"
-#include "blaze/gemm/block/block_prologue_finalize_routing.h"
+#include "blaze/gemm/block/block_prologue_qgmm_mx_finalize_routing.h"
 #include "blaze/gemm/block/block_scheduler_gmm_swat_with_tail_split.h"
-#include "blaze/gemm/kernel/kernel_gmm_finalize_routing_mx.h"
+#include "blaze/gemm/kernel/kernel_qgmm_mx_finalize_routing.h"
 #include "blaze/gemm/policy/dispatch_policy.h"
-#include "blaze/epilogue/block/block_epilogue_finalize_routing.h"
+#include "blaze/epilogue/block/block_epilogue_qgmm_mx_finalize_routing.h"
 #include "grouped_matmul_finalize_routing_tiling_data.h"
 
 namespace {
@@ -31,8 +31,7 @@ constexpr uint64_t GMM_FR_MX_SCALE_FACTOR_MASK = 0xFFUL;
 __aicore__ inline uint64_t GetGmmFrScaleKL1(const TCubeTiling &matmulTiling)
 {
     const uint64_t scaleFactorA = matmulTiling.mxTypePara & GMM_FR_MX_SCALE_FACTOR_MASK;
-    const uint64_t scaleFactorB = (matmulTiling.mxTypePara >> GMM_FR_MX_SCALE_FACTOR_BIT) &
-                                  GMM_FR_MX_SCALE_FACTOR_MASK;
+    const uint64_t scaleFactorB = (matmulTiling.mxTypePara >> GMM_FR_MX_SCALE_FACTOR_BIT) & GMM_FR_MX_SCALE_FACTOR_MASK;
     const uint64_t kAL1 = static_cast<uint64_t>(matmulTiling.stepKa) * static_cast<uint64_t>(matmulTiling.baseK);
     const uint64_t kBL1 = static_cast<uint64_t>(matmulTiling.stepKb) * static_cast<uint64_t>(matmulTiling.baseK);
     return Blaze::Gemm::Min(Blaze::Gemm::Max(scaleFactorA * kAL1, scaleFactorB * kBL1),
@@ -69,15 +68,16 @@ __aicore__ inline void grouped_matmul_finalize_routing_mx(GM_ADDR x, GM_ADDR w, 
     using BiasType = bfloat16_t;
 
     using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
-    using BlockMmadPolicy = Blaze::Gemm::GroupedMatmulWithScaleMx<0, false, Blaze::Gemm::KernelGmmFinalizeRoutingMx>;
+    using BlockMmadPolicy = Blaze::Gemm::GroupedMatmulWithScaleMx<0, false, Blaze::Gemm::KernelQGmmMxFinalizeRouting>;
     using BlockMmad = Blaze::Gemm::Block::BlockMmad<BlockMmadPolicy, AType, LayoutA, BType, LayoutB, C1Type, LayoutC,
                                                     BiasType, LayoutBias>;
     using BlockPrologue = Blaze::Gemm::Block::BlockPrologueFinalizeRouting<CType, BiasType>;
-    using BlockEpilogue = Blaze::Epilogue::Block::BlockEpilogueFinalizeRouting<CType, C1Type, LogitType, RowIndexType>;
+    using BlockEpilogue =
+        Blaze::Epilogue::Block::BlockEpilogueQGmmMxFinalizeRouting<CType, C1Type, LogitType, RowIndexType>;
     using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerGmmSwatWithTailSplit;
     using BlockPrologueEpilogue = AscendC::Std::tuple<BlockPrologue, BlockEpilogue>;
-    using GmmKernel = Blaze::Gemm::Kernel::GemmUniversal<ProblemShape, BlockMmad, BlockPrologueEpilogue,
-                                                        BlockScheduler>;
+    using GmmKernel =
+        Blaze::Gemm::Kernel::GemmUniversal<ProblemShape, BlockMmad, BlockPrologueEpilogue, BlockScheduler>;
     using Params = typename GmmKernel::Params;
     using GMMTiling = typename GmmKernel::GMMTiling;
     using BlockMmadParams = typename BlockMmad::Params;
