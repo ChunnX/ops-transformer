@@ -71,6 +71,15 @@ VECTOR_BASEN = CUBE_BASEN
 
 # 单个 VF 寄存器的 fp32 / fp16 lane 数
 VF_LANES = 64
+# 每个 AI Core 的 vector 子核数：pypto 的 get_subblock_idx() 文档明确子核
+# 编号只有 0/1，host 的 FAG_AICV_RATIO_DEFAULT 同为 2 —— 平台常量。
+# 不能用 pl.get_subblock_num() 在函数级求：AIC 语境恒折叠成 1。
+AIV_PER_CORE = 2
+# dsink 支持的 Q head 数上限（host 侧校验用，与 host 的 FAG_SINK_HEADS_MAX
+# 保持同值）。kernel 的部分和直接 atomicAdd 到 workspace 槽位区（每个 AIV
+# 一行、行宽 N1），不再有 UB 容量约束；该上限是 host 侧的保守策略值。
+# workspace 的槽位行数 = 实际 AIV 数，与 N1 无关。
+SINK_HEADS_MAX = 1024
 VF_LANES_FP16 = 128
 # 压缩 mask 边长 2048，minValue = 0xFF7FFFFF
 ATTEN_MASK_COMPRESS = 2048
@@ -202,6 +211,8 @@ def set_const_info(tiling, coreNum):
         n2GS1oS2o=tiling.n2 * tiling.gSize * s1Outer * s2Outer,
         totalBlockNum=tiling.b * tiling.n2 * tiling.gSize * s1Outer * s2Outer,
         gSize=tiling.gSize,
+        # Q 侧 head 总数（= n2*g）。dsink/sinks 都按它索引（headQ）。
+        n1Size=tiling.n2 * tiling.gSize,
         coreNum=coreNum,
         # 布局视图参数(BSND/BNSD 统一四维视图)，见 FlashAttnGradTilingData 注释。
         # Q 侧 n1=n2*G 个 head，KV 侧 n2 个，故两套。
@@ -226,6 +237,8 @@ def set_const_info(tiling, coreNum):
         colQ=colQ,
         packedPerHead=packedPerHead,
         colRounds=colRounds,
+        # 1 = 带 sinks 输入。主循环里多一个标量分支：额外算 dsink（sink 的梯度）。
+        sinkOptional=tiling.sinkOptional,
     )
 
 

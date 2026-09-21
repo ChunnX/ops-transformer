@@ -25,7 +25,7 @@
 
 - **接口功能**：
 
-  `flash_attn_grad`是基于`TorchNPU`的`cann_ops_transformer`扩展接口，用于计算Flash Attention的反向结果。接口根据前向计算的`softmax_lse`、`attn_out`和上游梯度`dout`，计算Query、Key、Value对应的梯度`dq`、`dk`、`dv`。
+  `flash_attn_grad`是基于`TorchNPU`的`cann_ops_transformer`扩展接口，用于计算Flash Attention的反向结果。接口根据前向计算的`softmax_lse`、`attn_out`和上游梯度`dout`，计算Query、Key、Value对应的梯度`dq`、`dk`、`dv`；当传入`sinks`时，同时计算sink参数的梯度`dsink`。
 
   调用本接口前，需要调用`flash_attn_metadata`生成反向计算所需的`metadata`。生成时必须设置`is_grad_enabled=True`，并保证两个接口的shape、layout、mask和序列长度相关参数一致。
 
@@ -71,6 +71,12 @@
   dK=scale\cdot(dS^T\cdot Q)
   $$
 
+  当传入`sinks`时，前向softmax的分母额外包含sink项（`softmax_lse`已包含该贡献），sink的梯度为：
+
+  $$
+  dSink=-\sum_{b,s1,s2}P\cdot dP\cdot\exp(sink-softmax\_lse)
+  $$
+
   其中，$Q$、$K$、$V$分别对应输入`q`、`k`、`v`，$Y$对应`attn_out`，$dY$对应`dout`。`softmax_scale`非0时，$scale$取`softmax_scale`；为0时，$scale=1/\sqrt{D}$。
 
 > [!NOTE]
@@ -103,7 +109,7 @@ cann_ops_transformer.flash_attn_grad(
     layout_q="BSND",
     layout_kv="BSND",
     layout_out="BSND"
-) -> (Tensor, Tensor, Tensor)
+) -> (Tensor, Tensor, Tensor, Tensor)
 ```
 
 当前注册的PyTorch schema未使用`*`分隔符，因此`cu_seqlens_q`及之后的参数既可以按位置传入，也可以按关键字传入。建议使用关键字传入可选参数。
@@ -138,7 +144,7 @@ cann_ops_transformer.flash_attn_grad(
 | cu_seqlens_kv | Tensor | 可选 | TND布局下KV的累积序列长度，第一个元素必须为0，最后一个元素等于T2。`layout_kv`为TND时必须传入，非TND时不支持传入。默认值为None | int32 | ND | (B+1,) |
 | seqused_q | Tensor | 可选 | 每个batch实际使用的Q序列长度。默认值为None | int32 | ND | (B,) |
 | seqused_kv | Tensor | 可选 | 每个batch实际使用的KV序列长度。默认值为None | int32 | ND | (B,) |
-| sinks | Tensor | 可选 | Sink参数，用于改善自注意力计算的数值稳定性。默认值为None | float32 | ND | (N1,) |
+| sinks | Tensor | 可选 | Sink参数，用于改善自注意力计算的数值稳定性，shape为(N1,)。默认值为None，此时`dsink`返回全0 | float32 | ND | (N1,) |
 | attn_mask | Tensor | 可选 | 掩码矩阵。默认值为None | int8 | ND | (2048, 2048) |
 | metadata | Tensor | 可选 | `flash_attn_metadata`生成的FAG任务切分数据。schema中为可选参数，但实际调用时必须传入 | int32 | ND | shape根据batch大小和N2动态计算 |
 | softmax_scale | float | 可选 | Softmax缩放系数。默认值为0.0，表示使用$1/\sqrt{D}$ | float32 | - | - |
@@ -162,6 +168,7 @@ cann_ops_transformer.flash_attn_grad(
 | dq | Tensor | 必选 | 公式中的dQ，Query的梯度 | bfloat16/float16 | ND | shape与`q`相同 |
 | dk | Tensor | 必选 | 公式中的dK，Key的梯度 | bfloat16/float16 | ND | shape与`k`相同 |
 | dv | Tensor | 必选 | 公式中的dV，Value的梯度 | bfloat16/float16 | ND | shape与`v`相同 |
+| dsink | Tensor | 必选 | 公式中的dSink，sink参数的梯度 | float32 | ND | (N1,)；`sinks`为None时为全0 |
 
 ## 约束说明
 
@@ -180,6 +187,8 @@ cann_ops_transformer.flash_attn_grad(
 - `metadata`必须由`flash_attn_metadata`生成，并设置`is_grad_enabled=True`。生成metadata和调用本接口时，N1、N2、D、B、S1、S2、layout及mask相关参数必须一致，否则行为未定义。
 - `is_grad_enabled=True`生成的metadata同时包含正向和反向任务切分数据，前向`flash_attn`和反向`flash_attn_grad`均可使用同一份metadata，无需分别生成。
 - `softmax_lse`、`attn_out`必须来自与本次反向计算配置一致的前向调用，尤其是`softmax_scale`和layout必须一致。
+- `sinks`为float32、shape为(N1,)，N1为Query head数；提供时必须与前向`flash_attn`所用sinks一致。不提供时`dsink`为全0。
+- `dsink`为float32、shape为(N1,)，逐次运行逐位可复现：kernel 里每个 AIV 子核在 UB 内按 head 精确累加部分和，写成 workspace 中自己独占的槽位行（每 AIV 一行，无原子加）；`sync_all` 后由 AIV0 按固定行序归约成 dsink，读前带一遍读侧预热以避开「紧随栅栏的首次读可能尚未全局可见」的窗口。
 - 当前仅支持单算子模式。
 
 ## 配套接口说明
@@ -295,7 +304,7 @@ cann_ops_transformer.flash_attn_metadata(
     )
     dout = torch.randn_like(attn_out)
 
-    dq, dk, dv = cann_ops_transformer.flash_attn_grad(
+    dq, dk, dv, dsink = cann_ops_transformer.flash_attn_grad(
         q,
         k,
         v,
@@ -318,4 +327,8 @@ cann_ops_transformer.flash_attn_metadata(
     assert dq.shape == q.shape
     assert dk.shape == k.shape
     assert dv.shape == v.shape
+    # 未传 sinks 时 dsink 为全 0
+    assert dsink.shape == (N1,)
+    assert dsink.dtype == torch.float32
+    assert torch.count_nonzero(dsink) == 0
     ```
