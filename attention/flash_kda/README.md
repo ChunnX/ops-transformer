@@ -37,7 +37,8 @@ aclnnFlashKda(...)
 - `scale=0..1`、`lower_bound=-5..0`
 
 BSND/TND、metadata 参数及旧 Torch dispatcher 接口不属于该 frozen Entry 合约；
-对应的 Transformer 老实现已经删除。
+对应的 Transformer 老实现已经删除。独立的 AICPU metadata API 仍然交付，但它使用
+`attention/flash_kda_metadata` 中同步自 arena 的源码，不进入本 Entry 的参数列表。
 
 ## built-in RUN 包构建
 
@@ -83,4 +84,6 @@ opp/built-in/op_impl/cannbotdsl/FlashKda/...
 bundle/stage 在 CMake configure 阶段生成，因为框架的 CMake API需要读取冻结
 `stage.json` 后才能声明 object target。输入哈希未变化时会复用已有 stage。默认
 `libopapi_transformer.so` 直接依赖 External Task ABI；目标 CANN 安装也必须提供匹配的
-patched nnopbase，不能在运行时退回旧系统库。
+patched nnopbase，不能在运行时退回旧系统库。公共接入按源码中的
+`@cannbotdsl.entry` 和约定的 `build_<文件名>(target)` 自动发现 bundle，不包含
+FlashKDA 专用的框架分支。

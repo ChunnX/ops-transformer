@@ -17,9 +17,9 @@ from typing import Optional
 os.environ.setdefault("TORCH_DEVICE_BACKEND_AUTOLOAD", "0")
 
 import torch
+from cannbotdsl import get_platform_info
 from cannbotdsl.aicpu import GmIn, GmOut, I32, I64, U32, aicpu_kernel, current_raw_stream
 from cannbotdsl.aicpu.toolchain import compile_aicpu_kernel
-from . import _runtime
 
 
 MAGIC = 0x4B444132
@@ -789,7 +789,7 @@ _AICPU_LOCK = threading.Lock()
 
 
 def _device_block_num(ref: Optional[torch.Tensor] = None) -> int:
-    """Return a grid-barrier-safe launch size for the selected NPU."""
+    """Return a grid-barrier-safe launch size for the current NPU stream."""
     if ref is not None and ref.device.type not in {"npu", "privateuseone"}:
         return MAX_AIC_CORES
     npu = getattr(torch, "npu", None)
@@ -801,9 +801,10 @@ def _device_block_num(ref: Optional[torch.Tensor] = None) -> int:
             device_index = npu.current_device()
         except RuntimeError:
             return MAX_AIC_CORES
-    properties = npu.get_device_properties(device_index)
+    stream = npu.current_stream(device_index)
+    platform_info = get_platform_info(stream=stream)
     try:
-        cube_core_num = int(properties.cube_core_num)
+        cube_core_num = int(platform_info.cube_core_num)
     except (AttributeError, TypeError, ValueError) as exc:
         raise RuntimeError(f"NPU {device_index} does not expose a valid cube_core_num") from exc
     if cube_core_num <= 0:
@@ -814,8 +815,6 @@ def _device_block_num(ref: Optional[torch.Tensor] = None) -> int:
 def _get_aicpu_kernel():
     global _AICPU_COMPILED
     with _AICPU_LOCK:
-        if _AICPU_COMPILED is None:
-            _AICPU_COMPILED = _runtime.get_aicpu_kernel()
         if _AICPU_COMPILED is None:
             workdir = tempfile.mkdtemp(prefix="flash_kda_metadata_aicpu_")
             _AICPU_COMPILED = compile_aicpu_kernel(flash_kda_metadata_kernel, workdir=workdir, launch_mode="interface")

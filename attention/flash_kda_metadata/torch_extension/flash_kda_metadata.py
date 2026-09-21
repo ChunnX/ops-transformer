@@ -5,19 +5,24 @@ import torch
 from torch.library import impl
 from cannbotdsl.aicpu.toolchain import CompiledAicpuKernel
 from cann_ops_transformer.op_builder import get_as_library
-from .op_kernel.flash_kda_metadata import (
-    flash_kda_metadata as _flash_kda_metadata,
-    flash_kda_metadata_kernel,
-    metadata_capacity_upper_bound,
-)
+from .op_kernel import flash_kda_metadata as _source
+
+_flash_kda_metadata = _source.flash_kda_metadata
+metadata_capacity_upper_bound = _source.metadata_capacity_upper_bound
 
 def _load_native_metadata():
     from pathlib import Path
     binary = Path(__file__).parent / "_native/flash_kda_metadata.so"
     if not binary.is_file():
         raise FileNotFoundError(binary)
-    from ..op_kernel import _runtime
-    _runtime.set_aicpu_kernel(CompiledAicpuKernel(str(binary), flash_kda_metadata_kernel.spec, name=flash_kda_metadata_kernel.fn.__name__, launch_mode="interface"))
+    kernel = _source.flash_kda_metadata_kernel
+    compiled = CompiledAicpuKernel(
+        str(binary), kernel.spec, name=kernel.fn.__name__, launch_mode="interface"
+    )
+    # Keep the arena source byte-for-byte unchanged. The product wrapper owns
+    # binding its packaged executable to the arena module's documented cache.
+    with _source._AICPU_LOCK:
+        _source._AICPU_COMPILED = compiled
 
 _load_native_metadata()
 _library = get_as_library()

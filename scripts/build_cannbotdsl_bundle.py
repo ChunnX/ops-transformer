@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and stage the arena FlashKDA Entry for the built-in ACLNN DSO."""
+"""Build one conventional CANNBotDSL Entry and stage its built-in ACLNN export."""
 
 from __future__ import annotations
 
@@ -10,16 +10,15 @@ from pathlib import Path
 import sys
 
 
-ENTRY = "FlashKda"
 VENDOR = "builtin"
 VENDOR_ROOT = f"packages/vendors/{VENDOR}"
-BUILTIN_ARTIFACT = f"opp/built-in/op_impl/cannbotdsl/{ENTRY}"
 
 
 def _load_source(source: Path):
-    spec = importlib.util.spec_from_file_location("flash_kda", source)
+    module_name = f"_cannbotdsl_bundle_{source.stem}"
+    spec = importlib.util.spec_from_file_location(module_name, source)
     if spec is None or spec.loader is None:
-        raise ImportError(f"cannot load FlashKDA source: {source}")
+        raise ImportError(f"cannot load CANNBotDSL source: {source}")
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
@@ -27,22 +26,22 @@ def _load_source(source: Path):
 
 
 def _rewrite_for_builtin(stage: Path, processor: str) -> None:
-    """Map the framework vendor layout onto the CANN built-in layout.
-
-    The generated ACLNN DSO is installed at ``opp/built-in/op_api/lib``. Its
-    framework-owned Provider lookup can therefore retain the canonical
-    ``../../op_impl/cannbotdsl`` relative layout.
-    """
+    """Map a framework vendor stage onto the parent OPP built-in layout."""
 
     manifest_path = stage / "stage.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    expected_artifact = f"{VENDOR_ROOT}/op_impl/cannbotdsl/{ENTRY}"
+    operator = manifest.get("operator")
+    if not isinstance(operator, str) or not operator:
+        raise RuntimeError("framework stage has no operator name")
+    expected_artifact = f"{VENDOR_ROOT}/op_impl/cannbotdsl/{operator}"
     expected_headers = f"{VENDOR_ROOT}/op_api/include"
     if manifest.get("artifact_install_destination") != expected_artifact:
         raise RuntimeError("unexpected framework artifact destination")
     if manifest.get("api_header_install_destination") != expected_headers:
         raise RuntimeError("unexpected framework API header destination")
-    manifest["artifact_install_destination"] = BUILTIN_ARTIFACT
+    manifest["artifact_install_destination"] = (
+        f"opp/built-in/op_impl/cannbotdsl/{operator}"
+    )
     manifest["api_header_install_destination"] = (
         f"{processor}-linux/include/aclnnop"
     )
@@ -58,6 +57,11 @@ def main() -> int:
     parser.add_argument("--parent-opp", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--processor", required=True)
+    parser.add_argument("--npu-arch", required=True)
+    parser.add_argument("--aic-count", type=int, default=0)
+    parser.add_argument("--aiv-count", type=int, default=0)
+    parser.add_argument("--barrier-limit", type=int, default=0)
+    parser.add_argument("--ub-bytes", type=int, default=0)
     args = parser.parse_args()
 
     source = args.source.resolve(strict=True)
@@ -70,22 +74,31 @@ def main() -> int:
     import cannbot_framework
 
     module = _load_source(source)
-    bundle = module.build_flash_kda(
+    builder_name = f"build_{source.stem}"
+    builder = getattr(module, builder_name, None)
+    if not callable(builder):
+        raise AttributeError(
+            f"{source} must expose the conventional builder {builder_name}(target)"
+        )
+    bundle = builder(
         cannbotdsl.Target(
-            "dav-3510",
-            aic_count=24,
-            aiv_count=48,
-            barrier_limit=16,
-            ub_bytes=256 * 1024,
+            args.npu_arch,
+            aic_count=args.aic_count,
+            aiv_count=args.aiv_count,
+            barrier_limit=args.barrier_limit,
+            ub_bytes=args.ub_bytes,
         )
     )
+    operator = bundle.public_schema.get("name")
+    if not isinstance(operator, str) or not operator:
+        raise RuntimeError("OperatorBundle public schema has no name")
     staged = cannbot_framework.stage(
         bundle=bundle,
         export=cannbot_framework.AclnnExportSpec(
-            operator=ENTRY,
-            public_name=ENTRY,
-            l0_name=ENTRY,
-            op_type=ENTRY,
+            operator=operator,
+            public_name=operator,
+            l0_name=operator,
+            op_type=operator,
             vendor=VENDOR,
         ),
         parent_opp=parent_opp,

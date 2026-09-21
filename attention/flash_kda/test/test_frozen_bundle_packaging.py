@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 from pathlib import Path
 import xml.etree.ElementTree as ET
 
 
 ROOT = Path(__file__).resolve().parents[3]
 SOURCE = ROOT / "attention/flash_kda/op_kernel/flash_kda.py"
+METADATA_SOURCE = (
+    ROOT / "attention/flash_kda_metadata/op_kernel/flash_kda_metadata.py"
+)
 
 
 def _call_decorator(node: ast.FunctionDef, owner: str, name: str):
@@ -44,13 +48,13 @@ def test_flash_kda_uses_the_arena_frozen_entry_contract():
     assert "_get_compiled_kernel" not in text
 
 
-def test_flash_kda_is_loaded_by_the_builtin_opapi():
+def test_frozen_entries_use_the_generic_builtin_opapi_bridge():
     selection = (ROOT / "cmake/cannbotdsl.cmake").read_text(encoding="utf-8")
     integration = (ROOT / "cmake/cannbotdsl_aclnn.cmake").read_text(
         encoding="utf-8"
     )
     symbols = (ROOT / "cmake/symbol.cmake").read_text(encoding="utf-8")
-    builder = (ROOT / "scripts/build_cannbotdsl_aclnn.py").read_text(
+    builder = (ROOT / "scripts/build_cannbotdsl_bundle.py").read_text(
         encoding="utf-8"
     )
     assert "@cannbotdsl\\\\.entry" in selection
@@ -62,7 +66,24 @@ def test_flash_kda_is_loaded_by_the_builtin_opapi():
     assert "$ORIGIN/../../opp/built-in/op_api/lib" in integration
     assert "NO_SONAME TRUE" in integration
     assert "opp/built-in/op_impl/cannbotdsl" in builder
-    assert "aclnnFlashKdaGetWorkspaceSize" in integration
+    assert 'builder_name = f"build_{source.stem}"' in builder
+    assert 'bundle.public_schema.get("name")' in builder
+    assert "aclnn${_operator}GetWorkspaceSize" in integration
+    for common_file in (selection, integration, builder):
+        assert "FlashKda" not in common_file
+        assert "flash_kda" not in common_file
+
+
+def test_metadata_source_is_the_unmodified_arena_version():
+    assert hashlib.sha256(METADATA_SOURCE.read_bytes()).hexdigest() == (
+        "6b555448eae83e8fd89d3c7c1205bd40d2a701240f470a950abba7a24c23878f"
+    )
+    assert not (METADATA_SOURCE.parent / "_runtime.py").exists()
+    wrapper = (
+        ROOT
+        / "attention/flash_kda_metadata/torch_extension/flash_kda_metadata.py"
+    ).read_text(encoding="utf-8")
+    assert "_source._AICPU_COMPILED = compiled" in wrapper
 
 
 def test_old_torch_dispatcher_was_removed():
