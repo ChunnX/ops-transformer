@@ -124,7 +124,6 @@ public:
         uint32_t baseN{0};
         // V3 SwiGLU controls.  The defaults preserve the V2 standard SwiGLU path.
         int64_t swigluMode{0};
-        bool activateLeft{true};
         float clampLimit{7.0F};
         float gluAlpha{1.702F};
         float gluBias{1.0F};
@@ -237,7 +236,6 @@ private:
     uint16_t fpEmax_ = 0;
 
     int64_t swigluMode_ = 0;
-    bool activateLeft_ = true;
     float clampLimit_ = 7.0F;
     float gluAlpha_ = 1.702F;
     float gluBias_ = 1.0F;
@@ -255,7 +253,6 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
     }
     params_ = &params;
     swigluMode_ = params.swigluMode;
-    activateLeft_ = params.activateLeft;
     clampLimit_ = params.clampLimit;
     gluAlpha_ = params.gluAlpha;
     gluBias_ = params.gluBias;
@@ -792,8 +789,6 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
     constexpr uint16_t sizePerRepeat = AscendC::VECTOR_REG_WIDTH / sizeof(DataTypeIn);
     uint16_t OneRowRepeatTimes =
         CeilDiv(static_cast<uint64_t>(nSize), static_cast<uint64_t>(sizePerRepeat));
-    // The cube always produces two ordinary N-wide MMAD results.  Mode 1
-    // changes only the pairing of the two results in the vector epilogue.
     uint32_t nSrcUbAligned = CeilAlign(nSize, AscendC::ONE_BLK_SIZE / sizeof(DataTypeIn));
     uint32_t nDstUbAligned64 = Align64(nSize); // 64 对齐
 
@@ -807,94 +802,6 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
     // swiglu
     __VEC_SCOPE__
     {
-        if (swigluMode_ == 1) {
-            // Mode 1 is defined on the original 2*N-wide GEMM result:
-            //   act  = mm[:, 0::2]
-            //   gate = mm[:, 1::2]
-            // The CGMCT path has already split that result into two ordinary
-            // N-wide MMAD buffers, so a vector de-interleave between the two
-            // buffers is not correct.  Gather the even/odd elements from each
-            // half separately and write the two output portions directly into
-            // the final contiguous row.  This also handles a tile crossing the
-            // boundary between the two MMAD buffers.
-            // Arch35 Arange supports signed 32-bit lanes.  Gather for a
-            // float source consumes the same bits as uint32 offsets, so the
-            // index registers are reinterpreted at the Gather call site.
-            AscendC::Reg::RegTensor<int32_t> laneIndex;
-            AscendC::Reg::RegTensor<int32_t> evenIndex;
-            AscendC::Reg::RegTensor<int32_t> oddIndex;
-            AscendC::Reg::RegTensor<float> swishInput;
-            AscendC::Reg::RegTensor<float> gateInput;
-            AscendC::Reg::RegTensor<float> verg1, verg2, verg3, verg4, verg6, swishOutput;
-            AscendC::Reg::RegTensor<bfloat16_t> verg7;
-            const uint32_t halfN = static_cast<uint32_t>(nSize / 2);
-            const uint32_t allElements = static_cast<uint32_t>(nSize);
-
-            for (uint16_t mIdx = 0; mIdx < mSize; mIdx++) {
-                const uint32_t srcRowOffset = static_cast<uint32_t>(mIdx) * nSrcUbAligned;
-                const uint32_t dstRowOffset = static_cast<uint32_t>(mIdx) * nDstUbAligned64;
-                for (uint16_t vfBlockIdx = 0; vfBlockIdx < OneRowRepeatTimes; vfBlockIdx++) {
-                    const uint32_t outputOffset = static_cast<uint32_t>(vfBlockIdx) * sizePerRepeat;
-                    const uint32_t outputEnd =
-                        outputOffset + sizePerRepeat < allElements ? outputOffset + sizePerRepeat : allElements;
-                    const uint32_t leftEnd = outputEnd < halfN ? outputEnd : halfN;
-                    uint32_t leftCount = leftEnd > outputOffset ? leftEnd - outputOffset : 0;
-                    const uint32_t rightStart = outputOffset > halfN ? outputOffset : halfN;
-                    uint32_t rightCount = outputEnd > rightStart ? outputEnd - rightStart : 0;
-
-                    if (leftCount != 0) {
-                        auto activeMask = AscendC::Reg::UpdateMask<float>(leftCount);
-                        AscendC::Reg::Arange(laneIndex, static_cast<int32_t>(0));
-                        AscendC::Reg::Muls(evenIndex, laneIndex, static_cast<int32_t>(2), activeMask);
-                        AscendC::Reg::Adds(evenIndex, evenIndex, static_cast<int32_t>(outputOffset * 2), activeMask);
-                        AscendC::Reg::Adds(oddIndex, evenIndex, static_cast<int32_t>(1), activeMask);
-                        AscendC::Reg::Gather(swishInput, firstSrc + srcRowOffset,
-                                             (AscendC::Reg::RegTensor<uint32_t> &)evenIndex, activeMask);
-                        AscendC::Reg::Gather(gateInput, firstSrc + srcRowOffset,
-                                             (AscendC::Reg::RegTensor<uint32_t> &)oddIndex, activeMask);
-
-                        AscendC::Reg::Mins(verg1, swishInput, clampLimit_, activeMask);
-                        AscendC::Reg::Muls(verg2, verg1, -gluAlpha_, activeMask);
-                        AscendC::Reg::Exp(verg3, verg2, activeMask);
-                        AscendC::Reg::Adds(verg4, verg3, scalarOne, activeMask);
-                        AscendC::Reg::Div<float, &DIV_MODE>(swishOutput, verg1, verg4, activeMask);
-                        AscendC::Reg::Mins(gateInput, gateInput, clampLimit_, activeMask);
-                        AscendC::Reg::Maxs(gateInput, gateInput, -clampLimit_, activeMask);
-                        AscendC::Reg::Adds(gateInput, gateInput, gluBias_, activeMask);
-                        AscendC::Reg::Mul(verg6, swishOutput, gateInput, activeMask);
-                        AscendC::Reg::Cast<bfloat16_t, float, CAST_FP32_TO_BF16>(verg7, verg6, activeMask);
-                        AscendC::Reg::DataCopy<bfloat16_t, AscendC::Reg::StoreDist::DIST_PACK_B32>(
-                            gluResAddr + dstRowOffset + outputOffset, verg7, activeMask);
-                    }
-
-                    if (rightCount != 0) {
-                        auto activeMask = AscendC::Reg::UpdateMask<float>(rightCount);
-                        const uint32_t localOutputOffset = rightStart - halfN;
-                        AscendC::Reg::Arange(laneIndex, static_cast<int32_t>(0));
-                        AscendC::Reg::Muls(evenIndex, laneIndex, static_cast<int32_t>(2), activeMask);
-                        AscendC::Reg::Adds(evenIndex, evenIndex, static_cast<int32_t>(localOutputOffset * 2), activeMask);
-                        AscendC::Reg::Adds(oddIndex, evenIndex, static_cast<int32_t>(1), activeMask);
-                        AscendC::Reg::Gather(swishInput, secondSrc + srcRowOffset,
-                                             (AscendC::Reg::RegTensor<uint32_t> &)evenIndex, activeMask);
-                        AscendC::Reg::Gather(gateInput, secondSrc + srcRowOffset,
-                                             (AscendC::Reg::RegTensor<uint32_t> &)oddIndex, activeMask);
-
-                        AscendC::Reg::Mins(verg1, swishInput, clampLimit_, activeMask);
-                        AscendC::Reg::Muls(verg2, verg1, -gluAlpha_, activeMask);
-                        AscendC::Reg::Exp(verg3, verg2, activeMask);
-                        AscendC::Reg::Adds(verg4, verg3, scalarOne, activeMask);
-                        AscendC::Reg::Div<float, &DIV_MODE>(swishOutput, verg1, verg4, activeMask);
-                        AscendC::Reg::Mins(gateInput, gateInput, clampLimit_, activeMask);
-                        AscendC::Reg::Maxs(gateInput, gateInput, -clampLimit_, activeMask);
-                        AscendC::Reg::Adds(gateInput, gateInput, gluBias_, activeMask);
-                        AscendC::Reg::Mul(verg6, swishOutput, gateInput, activeMask);
-                        AscendC::Reg::Cast<bfloat16_t, float, CAST_FP32_TO_BF16>(verg7, verg6, activeMask);
-                        AscendC::Reg::DataCopy<bfloat16_t, AscendC::Reg::StoreDist::DIST_PACK_B32>(
-                            gluResAddr + dstRowOffset + rightStart, verg7, activeMask);
-                    }
-                }
-            }
-        } else {
         for (uint16_t mIdx = 0; mIdx < mSize; mIdx++) { // 需要计算m次
             AscendC::Reg::MaskReg mask;
             for (uint16_t vfBlockIdx = 0; vfBlockIdx < OneRowRepeatTimes; vfBlockIdx++) { // 每次计算m=1, n=64的数据大小
@@ -908,26 +815,11 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
                 mask = AscendC::Reg::UpdateMask<DataTypeIn>(elementNum);
                 AscendC::Reg::RegTensor<bfloat16_t> verg7;
                 AscendC::Reg::RegTensor<float> swishInput, gateInput;
-                AscendC::Reg::RegTensor<float> swigluEvenInput, swigluOddInput;
                 AscendC::Reg::RegTensor<float> verg1, verg2, verg3, verg4, verg6, swishOutput;
 
                 uint32_t l0cOutOffset = mIdx * nSrcUbAligned + outputOffset;
                 AscendC::Reg::DataCopy(swishInput, firstSrc + l0cOutOffset);
                 AscendC::Reg::DataCopy(gateInput, secondSrc + l0cOutOffset);
-
-                if (swigluMode_ == 1) {
-                    AscendC::Reg::DeInterleave(swigluEvenInput, swigluOddInput, swishInput, gateInput);
-                    swishInput = swigluEvenInput;
-                    gateInput = swigluOddInput;
-                }
-
-                // V3 modes 2/3 retain the split-half layout and add clamp/alpha/bias
-                // around the activation as defined by SwigluMxQuant.
-                if (swigluMode_ != 1 && !activateLeft_) {
-                    auto temp = swishInput;
-                    swishInput = gateInput;
-                    gateInput = temp;
-                }
 
                 if (swigluMode_ == 0) {
                     AscendC::Reg::Muls(verg2, swishInput, -(scalarOne), mask);
@@ -935,26 +827,14 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
                     AscendC::Reg::Adds(verg4, verg3, scalarOne, mask);
                     AscendC::Reg::Div<float, &DIV_MODE>(swishOutput, swishInput, verg4, mask);
                 } else {
-                    if (swigluMode_ == 3) {
-                        AscendC::Reg::Muls(verg2, swishInput, -(scalarOne), mask);
-                        AscendC::Reg::Exp(verg3, verg2, mask);
-                        AscendC::Reg::Adds(verg4, verg3, scalarOne, mask);
-                        AscendC::Reg::Div<float, &DIV_MODE>(swishOutput, swishInput, verg4, mask);
-                        AscendC::Reg::Mins(swishOutput, swishOutput, clampLimit_, mask);
-                        AscendC::Reg::Mins(gateInput, gateInput, clampLimit_, mask);
-                        AscendC::Reg::Maxs(gateInput, gateInput, -clampLimit_, mask);
-                    } else {
-                        AscendC::Reg::Mins(verg1, swishInput, clampLimit_, mask);
-                        AscendC::Reg::Muls(verg2, verg1, -gluAlpha_, mask);
-                        AscendC::Reg::Exp(verg3, verg2, mask);
-                        AscendC::Reg::Adds(verg4, verg3, scalarOne, mask);
-                        AscendC::Reg::Div<float, &DIV_MODE>(swishOutput, verg1, verg4, mask);
-                        AscendC::Reg::Mins(gateInput, gateInput, clampLimit_, mask);
-                        AscendC::Reg::Maxs(gateInput, gateInput, -clampLimit_, mask);
-                        if (swigluMode_ == 1 || swigluMode_ == 2) {
-                            AscendC::Reg::Adds(gateInput, gateInput, gluBias_, mask);
-                        }
-                    }
+                    AscendC::Reg::Mins(verg1, swishInput, clampLimit_, mask);
+                    AscendC::Reg::Muls(verg2, verg1, -gluAlpha_, mask);
+                    AscendC::Reg::Exp(verg3, verg2, mask);
+                    AscendC::Reg::Adds(verg4, verg3, scalarOne, mask);
+                    AscendC::Reg::Div<float, &DIV_MODE>(swishOutput, verg1, verg4, mask);
+                    AscendC::Reg::Mins(gateInput, gateInput, clampLimit_, mask);
+                    AscendC::Reg::Maxs(gateInput, gateInput, -clampLimit_, mask);
+                    AscendC::Reg::Adds(gateInput, gateInput, gluBias_, mask);
                 }
 
                 AscendC::Reg::Mul(verg6, swishOutput, gateInput, mask);
@@ -964,7 +844,6 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
                 AscendC::Reg::DataCopy<bfloat16_t, AscendC::Reg::StoreDist::DIST_PACK_B32>(gluResAddr + dstUbOffset,
                                                                                              verg7, mask);
             }
-        }
         }
     }
 
