@@ -505,7 +505,7 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Proc
     bool qsmlaNotLastTwoLoop = true;
     RunInfo runInfo[4];
     RunParamStr runParam;
-    int64_t multiCoreInnerIdx = 1;
+    int64_t qsmlaMultiCoreInnerIdx = 1;
     for (int64_t bnIdx = bN2StartIdx; bnIdx < bN2EndIdx; bnIdx++) {
         bool lastBN = (bnIdx == bN2EndIdx - 1);
         runParam.boIdx = bnIdx;
@@ -559,7 +559,7 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Proc
             for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; ++s2LoopCount) {
                 if (qsmlaNotLastThreeLoop) {
                     RunInfo &runInfo1 = runInfo[taskId % 4];
-                    this->SetRunInfo(runInfo1, runParam, taskId, s2LoopCount, s2LoopLimit, multiCoreInnerIdx);
+                    this->SetRunInfo(runInfo1, runParam, taskId, s2LoopCount, s2LoopLimit, qsmlaMultiCoreInnerIdx);
                 }
                 if ASCEND_IS_AIV {
                     if (qsmlaNotLastThreeLoop) {
@@ -609,7 +609,7 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Proc
                 }
                 ++taskId;
             }
-            ++multiCoreInnerIdx;
+            ++qsmlaMultiCoreInnerIdx;
         }
         gS1StartIdx = 0;
     }
