@@ -2,14 +2,14 @@
 
 ## 产品支持情况
 
-| 产品 | 是否支持 |
-| --- | :---: |
-| <term>Ascend 950PR/Ascend 950DT</term> | √ |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> | × |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> | × |
-| <term>Atlas 200I/500 A2 推理产品</term> | × |
-| <term>Atlas 推理系列产品</term> | × |
-| <term>Atlas 训练系列产品</term> | × |
+| 产品                                                     | 是否支持 |
+| -------------------------------------------------------- | :------: |
+| <term>Ascend 950PR/Ascend 950DT</term>                   |    √     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> |    ×     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
+| <term>Atlas 200I/500 A2 推理产品</term>                  |    ×     |
+| <term>Atlas 推理系列产品</term>                          |    ×     |
+| <term>Atlas 训练系列产品</term>                          |    ×     |
 
 ## 功能说明
 
@@ -120,7 +120,7 @@
   - **直读拒收（仅一种情形）**：框架以 host 张量（`kOnHost` / `kFollowing`）提供取值**且该张量带非空数据指针**时（如常量折叠等由框架把取值物化到 host 的通路），tiling 直读取值，命中 `indices ≥ B` 或 `locations < 0` 即拒收、返回 `ge::GRAPH_FAILED`，以 tiling 失败对应的 GE 错误码上报。
   - **放行（记 INFO）：host 放置但无数据指针**——张量为 `kOnHost` / `kFollowing`，但取值指针为空（`GetData<int32_t>() == nullptr`）⇒ 本层不可判，放行；`indices ≥ B` / `locations < 0` 由 kernel 掩码置 `0`。
   - **放行（记 INFO）：设备张量**——tiling 收到的描述符不带任何非连续信息（无 stride / offset、storage 维等于视图维），按线性缓冲读值无法证明读到的是逻辑元素序列，因此**不读值、不拒收**，同样由 kernel 掩码置 `0`。
-  即：**越界访存永不发生；`indices ≥ B` / `locations < 0` 的「前置拦截」在上述两类放行路径上改为「由 kernel 掩码置 0」**。`indices < 0` 与 `locations ≥ C` 在任何通路上都不由校验层拒绝，对应 task 输出精确 `0`（整块 task 非法时同样写回 `0`，不保留旧值）。
+    即：**越界访存永不发生；`indices ≥ B` / `locations < 0` 的「前置拦截」在上述两类放行路径上改为「由 kernel 掩码置 0」**。`indices < 0` 与 `locations ≥ C` 在任何通路上都不由校验层拒绝，对应 task 输出精确 `0`（整块 task 非法时同样写回 `0`，不保留旧值）。
 - 维数上界：`S` / `H` / `B` / `C` 由 TilingData 的 int32 字段承载，`S×B`（`taskNum`）不得超过 `INT32_MAX - 256`（分核粒度取 256 对齐，故预留该余量）；`S` / `B` / `H` / `C` 逐维不得超过 `INT32_MAX`（`C` 是槽位地址乘子 `slot = e×C + p`，截断会算出错误地址）。超界即返回失败，不静默截断、不降档。
 - 隐藏维上界：`H` 整段驻留 UB 且不切分，超过 UB 容量上限时返回失败且不降档。上限由 platform 接口实时取 `ubSize` 计算：tiling 把每条 `H` 长 UB 路由的元素数向上对齐到 `max(blockSize, vectorSize) / sizeof(dtype)`、块级小路由各按自己的 block 对齐后求和，得到 `needBytes(H)`，取满足 `needBytes(H) ≤ ubSize` 的最大 `H`（本算子不调用 `ReserveLocalMemory()`，故预留量为 0）。以 `ubSize = 253952` B、UB block `32` B、向量寄存器宽 `256` B 代入时：float32 路径 `H ≤ 15808`，FLOAT16 / BFLOAT16 路径 `H ≤ 12608`；该上限随 `ubSize` / `blockSize` / `vectorSize` 变化，不是固定常量。
 - 特殊值：`x` 或 `y_grad` 含 NaN 时受影响 token 行的 task 输出为 NaN；含 `+inf` 时按 IEEE-754 逐元素传播——内积由 `x_h × y_grad_h` 逐项相乘再相加，故**同号且不出现 `0 × inf`** 时结果为 `+inf`，出现 `0 × inf`（某一 `h` 上 `x` 或 `y_grad` 为 0）或异号 `inf` 相消时为 `NaN`；浮点溢出不做饱和（无 clamp / 饱和路径）；FLOAT16 路径回写超过 65504 的输出为 `±inf`（`CAST_ROUND`，不饱和）。
@@ -128,9 +128,9 @@
 
 ## 调用说明
 
-| 调用方式 | 样例代码 | 说明 |
-| --- | --- | --- |
-| GE图模式 | [test_geir_moe_tutel_combine_gates](examples/test_geir_moe_tutel_combine_gates.cpp) | 通过 [算子IR](op_graph/moe_tutel_combine_gates_proto.h) 的 `REG_OP(MoeTutelCombineGates)` 构图方式调用；本算子无属性。样例覆盖 BFLOAT16 / FLOAT16 / FLOAT 三个 dtype 组合，并与 CPU 参考实现逐元素比对。 |
+| 调用方式 | 样例代码                                                                                   | 说明                                                                                                                                                                                                     |
+| -------- | ------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GE图模式 | [test_geir_moe_tutel_combine_gates](examples/arch35/test_geir_moe_tutel_combine_gates.cpp) | 通过 [算子IR](op_graph/moe_tutel_combine_gates_proto.h) 的 `REG_OP(MoeTutelCombineGates)` 构图方式调用；本算子无属性。样例覆盖 BFLOAT16 / FLOAT16 / FLOAT 三个 dtype 组合，并与 CPU 参考实现逐元素比对。 |
 
 > 本算子在本仓库内只提供 GE 图模式这一种调用方式（aclnn 单算子调用方式已删除），无 PyTorch / TensorFlow 适配通路。
 
