@@ -2571,11 +2571,13 @@ FIA_EXTERN_C ge::graphStatus DoOpTilingFusedInferAttentionScore(gert::TilingCont
         FusedInferAttentionScoreTilingCache::TilingResult cachedResult;
         if (FusedInferAttentionScoreTilingCache::GetInstance().Get(cacheKey, cachedResult) &&
             (FusedInferAttentionScoreTilingCache::Restore(context, cachedResult) == ge::GRAPH_SUCCESS)) {
-            // 命中日志用于验证缓存生效与排查：恢复 schedule mode=%u 随命中一起打印
+            // 命中日志用于验证缓存生效与排查：恢复的 scheduleMode 与当前平台核数随命中一起打印
             OP_LOGI(context->GetNodeName(),
-                    "FIA tiling cache hit, skip tiling, tilingKey=%lu, blockDim=%u, scheduleMode=%u.",
+                    "FIA tiling cache hit, skip tiling, tilingKey=%lu, blockDim=%u, scheduleMode=%u, "
+                    "coreNumAiv=%u, coreNumAic=%u.",
                     cachedResult.tilingKey, cachedResult.blockDim,
-                    cachedResult.scheduleModeSet ? cachedResult.scheduleMode : 0U);
+                    cachedResult.scheduleModeSet ? cachedResult.scheduleMode : 0U,
+                    ascendcPlatform.GetCoreNumAiv(), ascendcPlatform.GetCoreNumAic());
             return ge::GRAPH_SUCCESS;
         }
     }
