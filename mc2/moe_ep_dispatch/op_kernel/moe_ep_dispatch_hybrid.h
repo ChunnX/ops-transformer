@@ -49,15 +49,29 @@
 #include "../common/moe_distribute_base.h"
 #include "../common/mc2_kernel_utils.h"
 #include "../common/mc2_moe_context.h"
+#include "../common/moe_ep_profiler.h"
 #include "../common/moe_ep_exception_dump_writer.h"
 #else
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #include "../../common/op_kernel/mc2_moe_context.h"
+#include "../../common/op_kernel/moe_ep_profiler.h"
 #include "../../common/op_kernel/moe_ep_exception_dump_writer.h"
 #endif
 
 namespace MoeEpDispatchHybridImpl {
+
+// Stable IDs; stages are function intervals, never per-token accumulated counters.
+enum class MoeEpDispatchHybridProfileStage : uint32_t {
+    KERNEL = 0U,
+    INIT = 9U,
+    HYBRID_COUNT_BUILD = 30U,
+    HYBRID_COUNT_ISSUE = 31U,
+    HYBRID_COUNT_WAIT_OUTPUT = 32U,
+    HYBRID_PAYLOAD_PREP = 33U,
+    HYBRID_SCALEOUT_SEND = 34U,
+    HYBRID_SCALEUP_SEND = 35U,
+};
 
 #if defined(ENABLE_MOE_EP_KERNEL)
 
@@ -101,6 +115,7 @@ public:
     __aicore__ inline void Process();
 
 private:
+    MOE_EP_PROFILE_DECLARE();
     __aicore__ inline void PrepareDispatchPayloads();
     __aicore__ inline void TransferDispatchPayloads();
     __aicore__ inline void InitTilingFields(const MoeEpDispatchTilingData *tilingData);
@@ -346,6 +361,9 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     GM_ADDR routeScaleoutSlot, GM_ADDR workspaceGM, GM_ADDR tilingGM, TPipe *pipe,
     const MoeEpDispatchTilingData *tilingData)
 {
+    MOE_EP_PROFILE_INIT(reinterpret_cast<__gm__ Mc2Aclnn::MoeCommContext *>(context),
+                        MoeEpProfileOp::DISPATCH, tilingData->moeEpDispatchInfo.aivNum);
+    MOE_EP_PROFILE_INIT_BEGIN();
     tpipe_ = pipe;
     aivId_ = GetBlockIdx();
     workspaceGM_ = workspaceGM;
@@ -363,6 +381,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     InitCopyParams();
     InitGlobalAddresses(tilingData);
     diagWriter_.RunPosRecord(MOE_EP_DISPATCH_RUN_POS_INIT_DONE);
+    MOE_EP_PROFILE_INIT_END();
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
@@ -735,6 +754,8 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
 template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::CalSendCnt()
 {
+    MOE_EP_PROFILE_SCOPE(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR,
+                         MoeEpDispatchHybridProfileStage::HYBRID_COUNT_BUILD);
     SplitToCore(axisBS_, aivNum_, startTokenId_, endTokenId_, sendTokenNum_);
     uint32_t groupCnt = Ceil(sendTokenNum_, perGroupTokenNum_);
     uint32_t calCnt = perGroupTokenNum_ * axisK_;
@@ -877,6 +898,8 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
 template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::ExchangeCount()
 {
+    MOE_EP_PROFILE_SCOPE(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR,
+                         MoeEpDispatchHybridProfileStage::HYBRID_COUNT_ISSUE);
     // 计数发送规则：
     // 1. 需要发数据的卡（本节点卡、跨节点代理卡）由负责发数据的核一并发送计数，
     //    保证每个通道每轮只由一个核使用；
@@ -920,6 +943,8 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
 template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::GetRecvCount()
 {
+    MOE_EP_PROFILE_SCOPE(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::WAIT,
+                         MoeEpDispatchHybridProfileStage::HYBRID_COUNT_WAIT_OUTPUT);
     if (aivId_ != 0U) {
         return;
     }
@@ -1389,6 +1414,8 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
 template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::SendScaleoutPayloadsToProxy()
 {
+    MOE_EP_PROFILE_SCOPE(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR,
+                         MoeEpDispatchHybridProfileStage::HYBRID_SCALEOUT_SEND);
     if (remoteServerCount_ == 0U || numScaleoutSendAiv_ == 0U) {
         return;
     }
@@ -1701,6 +1728,8 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
 template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::SendScaleupPayloads()
 {
+    MOE_EP_PROFILE_SCOPE(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR,
+                         MoeEpDispatchHybridProfileStage::HYBRID_SCALEUP_SEND);
     uint32_t destinationScaleupStart = 0U;
     uint32_t destinationScaleupEnd = 0U;
     if (numNodeLocalAiv_ == 0U) {
@@ -1916,6 +1945,8 @@ __aicore__ inline uint32_t MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFu
 template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::PreparePayloads()
 {
+    MOE_EP_PROFILE_SCOPE(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR,
+                         MoeEpDispatchHybridProfileStage::HYBRID_PAYLOAD_PREP);
     InitPreparePayloadsBuffers();
 
     uint32_t tokenRangeIndexStart = 0U;
@@ -2015,10 +2046,17 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
 template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::Process()
 {
-    if ASCEND_IS_AIV { // 全aiv处理
+    if ASCEND_IS_AIV {
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR,
+            MoeEpDispatchHybridProfileStage::KERNEL, MoeEpProfileBoundary::BEGIN));
+        MOE_EP_PROFILE_INIT_PUBLISH(MoeEpProfileOp::DISPATCH, MoeEpDispatchHybridProfileStage::INIT);
+ // 全aiv处理
         PrepareDispatchPayloads();
         TransferDispatchPayloads();
         diagWriter_.RunPosRecord(MOE_EP_DISPATCH_RUN_POS_URMA_REQUESTS_ISSUE_DONE);
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR,
+            MoeEpDispatchHybridProfileStage::KERNEL, MoeEpProfileBoundary::END));
+        MOE_EP_PROFILE_FLUSH();
     }
 }
 

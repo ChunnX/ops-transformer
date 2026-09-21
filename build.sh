@@ -89,6 +89,7 @@ else
     DEFAULT_INSTALL_DIR="/usr/local/Ascend/latest"
 fi
 BISHENG_FLAGS=""
+ENABLE_MOE_EP_PROFILING=FALSE
 ENABLE_AICPU_KERNEL=FALSE
 CANN_3RD_LIB_PATH="${CURRENT_DIR}/third_party"
 CUSTOM_OPTION="-DBUILD_OPEN_PROJECT=ON"
@@ -370,6 +371,7 @@ function help_info() {
     echo "    --ophost build ophost_transformer.so"
     echo "    --opkernel build binary kernel"
     echo "    --jit build run package without kernel bin"
+    echo "    --moe-ep-profiler Enable MoE EP device cycle profiling (matching Python JIT ABI required)"
     echo "    --pkg build run package with kernel bin"
     echo "    --pkg-type=<TYPE> Specify package type(TYPE options: run/rpm/deb/all), Default: run"
     echo "    --torch_extension           Build torch_extension whl only, support --ops for single op packaging"
@@ -1326,7 +1328,7 @@ set_example_opt() {
 SUPPORTED_LONG_OPTS=(
   "help" "list_soc" "pkg" "pkg-type=" "static" "jit" "noaicpu" "opkernel_aicpu" "opkernel"
   "experimental" "noexec" "torch_extension" "torch_extension_only" "oom" "make_clean"
-  "mssanitizer" "dump_cce"
+  "mssanitizer" "dump_cce" "moe-ep-profiler"
   "ophost" "opapi" "opgraph" "onnxplugin"
   "ophost_test" "opapi_test" "opgraph_test" "opkernel_test"
   "asan" "valgrind" "ubsan" "cov" "clang" "run_example"
@@ -1619,6 +1621,8 @@ assemble_cmake_args() {
     CUSTOM_OPTION="${CUSTOM_OPTION} -DBISHENG_FLAGS=${BISHENG_FLAGS}"
   fi
 
+  CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_MOE_EP_PROFILING=${ENABLE_MOE_EP_PROFILING}"
+
   if [ -n "${ENABLE_AICPU_KERNEL}" ];then
     CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_AICPU_KERNEL=${ENABLE_AICPU_KERNEL}"
   fi
@@ -1709,6 +1713,10 @@ while [[ $# -gt 0 ]]; do
     --pkg)
         ENABLE_BUILD_PKG=TRUE
         ENABLE_BUILT_IN=TRUE            # 只输入--pkg时编builtin包
+        shift
+        ;;
+    --moe-ep-profiler)
+        ENABLE_MOE_EP_PROFILING=TRUE
         shift
         ;;
     --static)

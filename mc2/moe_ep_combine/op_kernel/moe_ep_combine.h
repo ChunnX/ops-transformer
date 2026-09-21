@@ -44,10 +44,12 @@
 #if __has_include("../common/moe_distribute_base.h")
 #include "../common/moe_distribute_base.h"
 #include "../common/mc2_kernel_utils.h"
+#include "../common/moe_ep_profiler.h"
 #include "../common/moe_ep_exception_dump_writer.h"
 #else
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
+#include "../../common/op_kernel/moe_ep_profiler.h"
 #include "../../common/op_kernel/moe_ep_exception_dump_writer.h"
 #endif
 
@@ -55,6 +57,15 @@
 #include "moe_ep_combine_tiling.h"
 
 namespace MoeEpCombineImpl {
+
+// Stable IDs; stages are function intervals, never per-token accumulated counters.
+enum class MoeEpCombineProfileStage : uint32_t {
+    KERNEL = 0U,
+    DATA_WQE = 2U,
+    FLAG_COMMIT = 3U,
+    FLAG_SOURCE_INIT = 4U,
+    INIT = 8U,
+};
 
 #if defined(ENABLE_MOE_EP_COMBINE_KERNEL)
 
@@ -94,6 +105,7 @@ public:
     __aicore__ inline void Process();
 
 private:
+    MOE_EP_PROFILE_DECLARE();
     __aicore__ inline void SendChannelFlag(uint32_t dstRank, uint32_t channelIndex);
     __aicore__ inline void BeginPreparedWrites(uint32_t dstRank, uint32_t channelIndex);
     __aicore__ inline void InitFlagSource();
@@ -186,6 +198,9 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR 
                                                                         GM_ADDR workspace, GM_ADDR tilingGM,
                                                                         TPipe *pipe, const MoeEpCombineInfo *tilingData)
 {
+    MOE_EP_PROFILE_INIT(reinterpret_cast<__gm__ Mc2Aclnn::MoeCommContext *>(context),
+                        MoeEpProfileOp::COMBINE, tilingData->aivNum);
+    MOE_EP_PROFILE_INIT_BEGIN();
     tpipe_ = pipe;
     tilingData_ = tilingData;
     aivId_ = GetBlockIdx();
@@ -263,6 +278,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR 
     tpipe_->InitBuffer(readStateBuf_, WIN_ADDR_ALIGN);
     statusTensor_ = readStateBuf_.Get<uint32_t>();
     diagWriter_.RunPosRecord(MOE_EP_COMBINE_RUN_POS_INIT_DONE);
+    MOE_EP_PROFILE_INIT_END();
 }
 
 template <TemplateMoeEpCombineTypeClass>
@@ -354,6 +370,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::InitFlagSourc
     if (aivId_ != 0U) {
         return;
     }
+    MOE_EP_PROFILE_SCOPE(MoeEpProfileOp::COMBINE, MoeEpProfileEngine::SCALAR,
+                         MoeEpCombineProfileStage::FLAG_SOURCE_INIT);
     LocalTensor<uint64_t> flagTensor = statusTensor_.ReinterpretCast<uint64_t>();
     Duplicate<uint64_t>(flagTensor, 1U, WIN_ADDR_ALIGN / sizeof(uint64_t));
     SyncFunc<AscendC::HardEvent::V_MTE3>();
@@ -518,6 +536,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseDire
     if (splitRankTokens && aivId_ < activeAivNum) {
         GetCoreAssignment(activeAivNum, targetRank, coreIndexInGroup, groupSize);
     }
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE, MoeEpProfileEngine::SCALAR,
+        MoeEpCombineProfileStage::DATA_WQE, MoeEpProfileBoundary::BEGIN));
     bool sendsTokens = actualA_ != 0U && aivId_ < activeAivNum;
     if (sendsTokens) {
         if (splitRankTokens) {
@@ -542,12 +562,17 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseDire
         }
     }
 
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE, MoeEpProfileEngine::SCALAR,
+        MoeEpCombineProfileStage::DATA_WQE, MoeEpProfileBoundary::END));
+
     InitFlagSource();
     // Publish AIV0's shared constant-source initialization before any remote flag is submitted.
     SyncAll<true>();
 
     // Match upstream: publish flags after this AIV's payload phase, even for empty rank/channel slices.
     // In the low-AIV branch the same strided rank list is visited again, using channel 0 only.
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE, MoeEpProfileEngine::SCALAR,
+        MoeEpCombineProfileStage::FLAG_COMMIT, MoeEpProfileBoundary::BEGIN));
     bool publishesChannelFlag = aivId_ < activeAivNum && (!splitRankTokens || coreIndexInGroup < combineChannelCount_);
     if (publishesChannelFlag) {
         if (splitRankTokens) {
@@ -560,6 +585,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseDire
     }
     // Only SQ high-watermark checkpoints drain; the final ordered flag is submitted without waiting here.
     FlushPreparedWrites();
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE, MoeEpProfileEngine::SCALAR,
+        MoeEpCombineProfileStage::FLAG_COMMIT, MoeEpProfileBoundary::END));
     DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
     diagWriter_.RunPosRecord(MOE_EP_COMBINE_RUN_POS_URMA_REQUESTS_ISSUE_DONE);
 }
@@ -567,7 +594,13 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseDire
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Process()
 {
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE, MoeEpProfileEngine::SCALAR,
+        MoeEpCombineProfileStage::KERNEL, MoeEpProfileBoundary::BEGIN));
+    MOE_EP_PROFILE_INIT_PUBLISH(MoeEpProfileOp::COMBINE, MoeEpCombineProfileStage::INIT);
     SendPhaseDirectFromMetadata();
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE, MoeEpProfileEngine::SCALAR,
+        MoeEpCombineProfileStage::KERNEL, MoeEpProfileBoundary::END));
+    MOE_EP_PROFILE_FLUSH();
 }
 
 #endif
