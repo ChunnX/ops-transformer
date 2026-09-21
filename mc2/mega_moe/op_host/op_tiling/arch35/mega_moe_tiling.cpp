@@ -270,7 +270,10 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nod
     OP_LOGD(nodeName, "dedup: dedupMode=%d, topkWeightsPrefetch=%d", tilingData->dedupMode,
             tilingData->topkWeightsPrefetch);
     OP_LOGD(nodeName, "topkWeightsPrefetch is %d", tilingData->topkWeightsPrefetch);
-    OP_LOGD(nodeName, "preQuant: tileTokens=%u, stageBytes=%u", tilingData->preQuantTileTokens,
+    OP_LOGD(nodeName,
+            "preQuant: tileTokens=%u, xTileTokens=%u, scaleTileTokens=%u, weightTileTokens=%u, stageBytes=%u",
+            tilingData->preQuantTileTokens, tilingData->preQuantXTileTokens,
+            tilingData->preQuantScaleTileTokens, tilingData->preQuantWeightTileTokens,
             tilingData->preQuantStageBytes);
     OP_LOGD(nodeName, "mGroupsPerWave is %u", tilingData->mGroupsPerWave);
 
@@ -1498,17 +1501,43 @@ static uint32_t CalcTopkValidIndexFixedBufferBytes(const MegaMoeTilingData *tili
 }
 
 /*
- * 计算预量化一个 stage slot 所需的 UB。kernel 的 x/scale/weight 阶段共用同一 slot，
- * 因此取三类 tile 空间的最大值，而不是相加；BF16 topK weight 的 Cast 输入/输出需要同时保留。
+ * 以 512B 为目标计算一个阶段的 tile token 数。
+ *
+ * B 只控制一次 MTE2/MTE3 处理多少个 token，不改变 GM record 布局。这里按有效字节数
+ * 选择最接近 512B 的正整数，并由 maxTokens 限制到当前 AIV 可处理的范围。单行未按 32B
+ * 对齐时，kernel 仍会走 DataCopyPad；增大 B 只能减少指令次数，不能改变单行的对齐属性。
+ */
+static uint32_t CalcPreQuantTargetTileTokens(uint64_t validRowBytes, uint32_t minTokens,
+                                             uint32_t maxTokens)
+{
+    if (maxTokens == 0U) {
+        return 0U;
+    }
+    minTokens = std::min(minTokens, maxTokens);
+    if (validRowBytes == 0U) {
+        return minTokens;
+    }
+
+    // Round(512 / validRowBytes)，避免用浮点数；再按阶段的最小 B 和 token 上限裁剪。
+    uint64_t roundedTokens = (static_cast<uint64_t>(ALIGN_512) + validRowBytes / 2U) / validRowBytes;
+    roundedTokens = std::max<uint64_t>(roundedTokens, minTokens);
+    roundedTokens = std::min<uint64_t>(roundedTokens, maxTokens);
+    return static_cast<uint32_t>(roundedTokens);
+}
+
+/*
+ * 计算预量化一个 stage slot 所需的 UB。x、scale、weight 使用独立 B，但三个阶段按顺序
+ * 复用同一 slot，因此只取三类空间的最大值；BF16 topK weight 的 Cast 输入/输出需要同时保留。
  */
 static uint32_t CalcPreQuantStageBytes(const MegaMoeTilingData *tilingData, uint32_t activationElementsPerByte,
-                                       uint32_t tileTokens, ge::DataType topKWeightsDataType)
+                                       uint32_t xTileTokens, uint32_t scaleTileTokens,
+                                       uint32_t weightTileTokens, ge::DataType topKWeightsDataType)
 {
     uint64_t dataRowBytes = ops::CeilAlign(
         static_cast<uint64_t>(tilingData->h) / activationElementsPerByte, static_cast<uint64_t>(ALIGN_32));
     uint64_t scaleCount = ops::CeilDiv(static_cast<uint64_t>(tilingData->h), static_cast<uint64_t>(ALIGN_32));
     uint64_t scaleRowBytes = ops::CeilAlign(scaleCount, static_cast<uint64_t>(ALIGN_32));
-    uint64_t stageBytes = std::max(dataRowBytes, scaleRowBytes) * tileTokens;
+    uint64_t stageBytes = std::max(dataRowBytes * xTileTokens, scaleRowBytes * scaleTileTokens);
 
     if (tilingData->topkWeightsPrefetch == 1) {
         uint64_t weightSrcRowBytes = ops::CeilAlign(
@@ -1516,9 +1545,9 @@ static uint32_t CalcPreQuantStageBytes(const MegaMoeTilingData *tilingData, uint
             static_cast<uint64_t>(ALIGN_32));
         uint64_t weightDstRowBytes = ops::CeilAlign(
             static_cast<uint64_t>(tilingData->topK) * sizeof(float), static_cast<uint64_t>(ALIGN_32));
-        uint64_t weightBytes = tileTokens * weightDstRowBytes;
+        uint64_t weightBytes = weightTileTokens * weightDstRowBytes;
         if (topKWeightsDataType == ge::DT_BF16) {
-            weightBytes = tileTokens * (weightSrcRowBytes + weightDstRowBytes);
+            weightBytes = weightTileTokens * (weightSrcRowBytes + weightDstRowBytes);
         }
         stageBytes = std::max(stageBytes, weightBytes);
     }
@@ -1538,8 +1567,9 @@ static uint64_t CalcTopkValidIndexConfigUsedBytes(const MegaMoeTilingData *tilin
 }
 
 /*
- * 预量化 tile 与 SendMask route ring 共用 UB。候选 B 从大到小检查两类 SendMask core，
- * 只有两类配置都不越界时才接受，避免 extra-expert core 的 route ring 溢出。
+ * 预量化 tile 与 SendMask route ring 共用 UB 预算。候选 token 上限从大到小检查两类
+ * SendMask core；每个候选上限内，x/scale/weight 分别选择自己的 B。只有两类配置都不越界时
+ * 才接受，避免 extra-expert core 的 route ring 溢出。
  */
 static bool SetPreQuantTileConfig(MegaMoeTilingData *tilingData, bool isPreQuantizedX, uint32_t activationElementsPerByte,
                                   uint32_t sharedActivationElementsPerByte, bool isSharedQuantIndependent,
@@ -1547,6 +1577,9 @@ static bool SetPreQuantTileConfig(MegaMoeTilingData *tilingData, bool isPreQuant
 {
     tilingData->preQuantTileTokens = 0U;
     tilingData->preQuantStageBytes = 0U;
+    tilingData->preQuantXTileTokens = 0U;
+    tilingData->preQuantScaleTileTokens = 0U;
+    tilingData->preQuantWeightTileTokens = 0U;
     if (!isPreQuantizedX || tilingData->h == 0U) {
         return true;
     }
@@ -1563,18 +1596,35 @@ static bool SetPreQuantTileConfig(MegaMoeTilingData *tilingData, bool isPreQuant
     // PrepareLocalTokens 按 blockAivNum 个 AIV 分工，stage 不需要为 route 上界之外的 token 预留空间。
     uint32_t maxTokensPerAiv =
         ops::CeilDiv(tilingData->bs, std::max(tilingData->blockAivNum, 1U));
+    const uint64_t dataValidBytes = static_cast<uint64_t>(tilingData->h) / activationElementsPerByte;
+    const uint64_t scaleValidBytes = ops::CeilDiv(static_cast<uint64_t>(tilingData->h), static_cast<uint64_t>(ALIGN_32));
+    const uint64_t weightValidBytes =
+        static_cast<uint64_t>(tilingData->topK) * ge::GetSizeByDataType(topKWeightsDataType);
+
     // 用单 token stage 给候选搜索一个安全上界，避免在大 batch 上逐个扫描明显不可能的 B。
-    uint32_t oneTokenStageBytes =
-        CalcPreQuantStageBytes(tilingData, activationElementsPerByte, 1U, topKWeightsDataType);
+    uint32_t oneTokenStageBytes = CalcPreQuantStageBytes(tilingData, activationElementsPerByte, 1U, 1U, 1U,
+                                                         topKWeightsDataType);
     uint32_t maxTokensByStage = oneTokenStageBytes == 0U ? 0U : availableUbBytes / (2U * oneTokenStageBytes);
     uint32_t maxTileTokens = std::min(
         std::min(maxTokensPerAiv, PRE_QUANT_MAX_DMA_BLOCK_COUNT), std::max(maxTokensByStage, 1U));
     maxTileTokens = std::max(maxTileTokens, 1U);
 
+    // candidate 是三个阶段共同允许的最大 token 上限；每个阶段在该上限内独立选择最接近 512B 的 B。
     for (uint32_t candidate = maxTileTokens; candidate > 0U; --candidate) {
-        tilingData->preQuantTileTokens = candidate;
-        tilingData->preQuantStageBytes =
-            CalcPreQuantStageBytes(tilingData, activationElementsPerByte, candidate, topKWeightsDataType);
+        const uint32_t xMinTokens = std::min(2U, candidate);
+        const uint32_t xTileTokens = CalcPreQuantTargetTileTokens(dataValidBytes, xMinTokens, candidate);
+        const uint32_t scaleTileTokens = CalcPreQuantTargetTileTokens(scaleValidBytes, 1U, candidate);
+        const uint32_t weightTileTokens =
+            tilingData->topkWeightsPrefetch == 1
+                ? CalcPreQuantTargetTileTokens(weightValidBytes, 1U, candidate)
+                : 1U;
+
+        tilingData->preQuantXTileTokens = xTileTokens;
+        tilingData->preQuantScaleTileTokens = scaleTileTokens;
+        tilingData->preQuantWeightTileTokens = weightTileTokens;
+        tilingData->preQuantTileTokens = std::max(xTileTokens, std::max(scaleTileTokens, weightTileTokens));
+        tilingData->preQuantStageBytes = CalcPreQuantStageBytes(
+            tilingData, activationElementsPerByte, xTileTokens, scaleTileTokens, weightTileTokens, topKWeightsDataType);
         uint32_t fixedBytes = CalcTopkValidIndexFixedBufferBytes(
             tilingData, activationElementsPerByte, sharedActivationElementsPerByte, isSharedQuantIndependent,
             topkValidIndexCoreNum);
@@ -1592,6 +1642,9 @@ static bool SetPreQuantTileConfig(MegaMoeTilingData *tilingData, bool isPreQuant
     // 没有任何可行 tile 时不能把越界的 route ring 配置提交给 device。
     tilingData->preQuantTileTokens = 0U;
     tilingData->preQuantStageBytes = 0U;
+    tilingData->preQuantXTileTokens = 0U;
+    tilingData->preQuantScaleTileTokens = 0U;
+    tilingData->preQuantWeightTileTokens = 0U;
     return false;
 }
 
