@@ -123,6 +123,7 @@ private:
     static constexpr bool FLASH_DECODE = SMLAT::flashDecode;
     static constexpr SMLA_LAYOUT LAYOUT_T = SMLAT::layout;
     static constexpr SMLA_LAYOUT KV_LAYOUT_T = SMLAT::kvLayout;
+    static constexpr bool IS_DSPARK = SMLAT::isDspark;
 
     static constexpr uint64_t SYNC_INPUT_BUF1_FLAG = 2;
     static constexpr uint64_t SYNC_INPUT_BUF1_PONG_FLAG = 3;
@@ -352,6 +353,8 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::CopyOutOriSparseMerge(int64_t mte2
     DataCopyPad(kvMergeGm_[runInfo.cmpLoop % MERGE_CACHE_GM_BUF_NUM * MERGE_WORKSPACE_ROW_NUM * constInfo.headDim +
                            (s2GmStartOffset + mte3Size) * constInfo.headDim],
                 kvMergUb_[mergeMte3Idx % 2 * INPUT1_BUFFER_OFFSET / sizeof(KV_T)], dataCopyParams);
+    SetFlag<AscendC::HardEvent::MTE3_MTE2>(mergeMte3Idx % 2 + SYNC_INPUT_BUF2_FLAG);
+    WaitFlag<AscendC::HardEvent::MTE3_MTE2>(mergeMte3Idx % 2 + SYNC_INPUT_BUF2_FLAG);
 }
 
 template <typename SMLAT>
@@ -398,8 +401,6 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::LoadOriSparseIndicesGmToUb(uint64_
 template <typename SMLAT>
 __aicore__ inline void SWAVectorBlock<SMLAT>::ProcessVec0L(const RunInfo &runInfo)
 {
-    // V0 shares inputBuff1 with V1. Complete all prior pipe activity before reuse.
-    PipeBarrier<PIPE_ALL>();
     int64_t s2ProcessSize = runInfo.v0S2DealSize;
     if (s2ProcessSize <= 0) {
         return;
@@ -415,6 +416,9 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::ProcessVec0L(const RunInfo &runInf
     if (s2GmStartOffset >= s2GmLimit) {
         return;
     }
+    // V0 reuses both inputBuff1 halves after V1/V2 release their MTE2 access.
+    WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_FLAG);
+    WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_PONG_FLAG);
 
     LocalTensor<int32_t> sliceUb = v0ValidSizeBuff.Get<int32_t>();
     LoadOriSparseIndicesGmToUb(runInfo.qTokenOffset, runInfo.n2IdxReal,
@@ -445,8 +449,9 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::ProcessVec0L(const RunInfo &runInf
             needWaitMte3ToMte2 = true;
         }
     }
-    // V1 may overwrite inputBuff1 only after V0's final MTE3 copy is complete.
-    PipeBarrier<PIPE_ALL>();
+    // CopyOutOriSparseMerge drains V0's MTE3 read before V1/V2 reuse inputBuff1.
+    SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_FLAG);
+    SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_PONG_FLAG);
 }
 
 template <typename SMLAT>
@@ -484,7 +489,7 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::AllocEventID()
     SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_PONG_FLAG);
     SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_FLAG);
     SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_PONG_FLAG);
-    if (constInfo.hasOriSparseIndices) {
+    if constexpr (IS_DSPARK) {
         SetFlag<AscendC::HardEvent::MTE3_MTE2>(SYNC_INPUT_BUF2_FLAG);
         SetFlag<AscendC::HardEvent::MTE3_MTE2>(SYNC_INPUT_BUF2_PONG_FLAG);
     }
@@ -499,7 +504,7 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::FreeEventID()
     WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_PONG_FLAG);
     WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_FLAG);
     WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_PONG_FLAG);
-    if (constInfo.hasOriSparseIndices) {
+    if constexpr (IS_DSPARK) {
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(SYNC_INPUT_BUF2_FLAG);
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(SYNC_INPUT_BUF2_PONG_FLAG);
     }
@@ -576,7 +581,7 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::ElewiseCompute(const RunInfo &info
     uint32_t dealTempSize = 0;
     uint32_t ubOffset = 0;
     if (info.isOriOnly) {
-        if (constInfo.hasOriSparseIndices) {
+        if constexpr (IS_DSPARK) {
             int32_t oriLenLimit = actualSeqLengthsKVGm.GetValue(info.bIdx);
             uint32_t validCols = Min(info.actualSingleProcessSInnerSize, columnCount);
             uint32_t sparseColStart = info.s2Idx * constInfo.s2BaseSize;

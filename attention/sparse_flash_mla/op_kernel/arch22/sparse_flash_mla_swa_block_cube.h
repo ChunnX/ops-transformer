@@ -55,6 +55,7 @@ private:
     static constexpr bool FLASH_DECODE = SMLAT::flashDecode;
     static constexpr SMLA_LAYOUT LAYOUT_T = SMLAT::layout;
     static constexpr SMLA_LAYOUT KV_LAYOUT_T = SMLAT::kvLayout;
+    static constexpr bool IS_DSPARK = SMLAT::isDspark;
 
     static constexpr uint32_t M_SPLIT_SIZE = 128;     // m方向切分
     static constexpr uint32_t N_SPLIT_SIZE = 128;     // n方向切分
@@ -375,7 +376,7 @@ __aicore__ inline void SWACubeBlock<SMLAT>::ComputeMm1(const RunInfo &info, cons
                     LocalTensor<KV_T> kTensor;
                     uint32_t copyRowCnt = 0;
 
-                    if (constInfo.hasOriSparseIndices) {
+                    if constexpr (IS_DSPARK) {
                         uint64_t mergeBase = static_cast<uint64_t>(info.cmpLoop % MERGE_CACHE_GM_BUF_NUM) *
                                              N_WORKSPACE_SIZE * constInfo.headDim;
                         uint32_t blockElementCnt = 32U / sizeof(KV_T);
@@ -831,7 +832,7 @@ __aicore__ inline void SWACubeBlock<SMLAT>::ComputeMm2(const RunInfo &info, cons
                     if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
                         uint64_t curS2Offset = static_cast<uint64_t>(info.s2Idx) * constInfo.s2BaseSize +
                                                info.s2StartPoint + kL1 * K_L0_SPLIT_SIZE;
-                        if (constInfo.hasOriSparseIndices) {
+                        if constexpr (IS_DSPARK) {
                             uint64_t mergeBase = static_cast<uint64_t>(info.cmpLoop % MERGE_CACHE_GM_BUF_NUM) *
                                                  N_WORKSPACE_SIZE * constInfo.headDim;
                             uint32_t blockElementCnt = 32U / sizeof(KV_T);
