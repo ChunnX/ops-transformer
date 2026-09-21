@@ -116,6 +116,7 @@ target_include_directories(apace_blaze_api INTERFACE
 )
 
 # ---- ST 用例 ----
+add_subdirectory(all_to_all_matmul)
 add_subdirectory(all_to_all_quant_matmul)
 add_subdirectory(all_gather_quant_matmul/urma)
 add_subdirectory(all_gather_quant_matmul/ubmem)
