@@ -87,16 +87,13 @@ def col_total_blocks(constInfo):
 
 
 # 邻域窗口：packed 列优先时，瘦头约覆盖 T=4K token 的 K → B≈(T/128)^2/2=512。
-# 步长 ≈ B/36 ≈ 14，避免 B=V 的 229/913，也不再收到孤立 tile 预算的 10。
+# 步长 ≈ B/36 ≈ 14，避免 B=V 时落到 229/913。
 B_NEIGHBOR = 512
 STRIDE_MIN = 8
 
 
 def col_wave_tiles(constInfo, coreNum):
-    """窗口 B = min(V, max(C*STRIDE_MIN, B_NEIGHBOR))。
-
-    不再用「单头≤L2 → B=V」拉长步长。DecideSwizzle 不变。
-    """
+    """窗口 B = min(V, max(C*STRIDE_MIN, B_NEIGHBOR))。"""
     v = constInfo.packedPerHead
     b_min = pl.max(coreNum, coreNum * STRIDE_MIN)
     return pl.min(v, pl.max(b_min, B_NEIGHBOR))

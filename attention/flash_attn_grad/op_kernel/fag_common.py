@@ -176,7 +176,6 @@ def set_const_info(tiling, coreNum):
         packedPerHead = col_prefix_body(s1Outer, colP, colQ, s2Outer - 1) + pl.max(
             colLastHi - lastLo + 1, 0
         )
-        # HeadSliceSplit 不再用 K 轮转。字段留下以免 Tiling/constInfo 漂移。
         colRounds = 1
 
     return pl.struct(
@@ -231,8 +230,7 @@ def set_const_info(tiling, coreNum):
         s1Token=tiling.s1Token,
         s2Token=tiling.s2Token,
         totalPerBatchNum=tiling.totalPerBatchNum,
-        # 按列分核的列几何。colP/colQ 不夹负值——旧的 bandP/bandQ 用
-        # max(token,0) 夹到 0，token < -128 时会多算一整行，见 SPEC §3.2。
+        # 按列分核列几何。colP/colQ 不夹负值：token < -128 夹到 0 会多算一行。
         colP=colP,
         colQ=colQ,
         packedPerHead=packedPerHead,
