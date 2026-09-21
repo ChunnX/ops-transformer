@@ -105,38 +105,30 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         }
     }
 
-    // follower把五个有效partial写入独占的32B槽；leader的partial0始终留在本核。
+    // 两个lane各自写入五个有效partial，随后对称读取sibling结果。
     LocalTensor<float> partialBuf = bufScalar_.Get<float>();
-    if (laneId_ == 1U) {
-        partialBuf.SetValue(0, sumSqHalf[1]);
-        for (uint32_t o = 0; o < N_MAX; ++o) {
-            partialBuf.SetValue(o + 1U, dotHalf[1][o]);
-        }
-        for (uint32_t i = N_MAX + 1U; i < PARTIAL_SLOT_ELEMS; ++i) {
-            partialBuf.SetValue(i, 0.0f);
-        }
-        SetFlag<HardEvent::S_MTE3>(evtStoMte3_);
-        WaitFlag<HardEvent::S_MTE3>(evtStoMte3_);
-        const uint64_t followerSlot = ((uint64_t)token * 2U + 1U) * PARTIAL_SLOT_ELEMS;
-        DataCopy(partial1Gm_[followerSlot], partialBuf, PARTIAL_SLOT_ELEMS);
+    partialBuf.SetValue(0, sumSqHalf[laneId_]);
+    for (uint32_t o = 0; o < N_MAX; ++o) {
+        partialBuf.SetValue(o + 1U, dotHalf[laneId_][o]);
     }
+    for (uint32_t i = N_MAX + 1U; i < PARTIAL_SLOT_ELEMS; ++i) {
+        partialBuf.SetValue(i, 0.0f);
+    }
+    SetFlag<HardEvent::S_MTE3>(evtStoMte3_);
+    WaitFlag<HardEvent::S_MTE3>(evtStoMte3_);
+    const uint64_t ownSlot = ((uint64_t)token * 2U + laneId_) * PARTIAL_SLOT_ELEMS;
+    DataCopy(partial1Gm_[ownSlot], partialBuf, PARTIAL_SLOT_ELEMS);
 
     // 两个lane均无条件执行一次mode1 Set/Wait；该等待不替代本核流水事件。
     MhcPairReadySync();
-    if (laneId_ == 1U) {
-        return;
-    }
-
-    // 发出本核MTE3完成事件，同时读取follower的partial1，用32B搬运隐藏事件等待。
-    SetFlag<HardEvent::MTE3_V>(evtMte3toV_);
-    const uint64_t followerSlot = ((uint64_t)token * 2U + 1U) * PARTIAL_SLOT_ELEMS;
-    DataCopy(partialBuf, partial1Gm_[followerSlot], PARTIAL_SLOT_ELEMS);
+    const uint32_t siblingLane = 1U - laneId_;
+    const uint64_t siblingSlot = ((uint64_t)token * 2U + siblingLane) * PARTIAL_SLOT_ELEMS;
+    DataCopy(partialBuf, partial1Gm_[siblingSlot], PARTIAL_SLOT_ELEMS);
     SetFlag<HardEvent::MTE2_S>(evtMte2toS_);
-    WaitFlag<HardEvent::MTE3_V>(evtMte3toV_);
     WaitFlag<HardEvent::MTE2_S>(evtMte2toS_);
-    sumSqHalf[1] = partialBuf.GetValue(0);
+    sumSqHalf[siblingLane] = partialBuf.GetValue(0);
     for (uint32_t o = 0; o < N_MAX; ++o) {
-        dotHalf[1][o] = partialBuf.GetValue(o + 1U);
+        dotHalf[siblingLane][o] = partialBuf.GetValue(o + 1U);
     }
 
     const float totalSumSqPre = sumSqHalf[0] + sumSqHalf[1];
@@ -146,22 +138,22 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     }
     ComputeGateValues(totalSumSqPre, xHatVals);
 
-    // 会合后只有leader继续执行R6、R7和最终输出。leader的私有缓存仅包含
-    // 自己完成R3的前两行，从已经同步写出的x2_out恢复follower负责的后两行。
-    for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
+    // 每个lane从已同步写出的x2_out补齐sibling两行，仅处理自己负责的D分块。
+    const uint32_t siblingHeadBegin = siblingLane * 2U;
+    for (uint32_t tile = laneId_; tile < dimLoop_; tile += 2U) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
         const uint64_t outBase = (uint64_t)token * N_ * D_ + tOff;
         LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
-        for (uint32_t n = 2U; n < N_MAX; ++n) {
+        for (uint32_t n = siblingHeadBegin; n < siblingHeadBegin + 2U; ++n) {
             DataCopy(x2Cache[n * D_ + tOff], x2OutGm_[outBase + (uint64_t)n * D_], tD);
         }
     }
     SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
     WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
 
-    float sumSq1 = 0.0f;
-    for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
+    float sumSq1Local = 0.0f;
+    for (uint32_t tile = laneId_; tile < dimLoop_; tile += 2U) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
         LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
@@ -173,13 +165,27 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
             MhcSandwichRegBase::AxpyB16WithUbScalar(hIn, x2Cache[n * D_], gateBuf, n, tD);
             PipeBarrier<PIPE_V>();
         }
-        sumSq1 += CacheHInAndReduceSumSq(tOff, tD, hIn);
+        sumSq1Local += CacheHInAndReduceSumSq(tOff, tD, hIn);
     }
 
+    // R6按D分片后交换平方和；两个lane均按tile0、tile1的固定顺序合并。
+    partialBuf.SetValue(0, sumSq1Local);
+    for (uint32_t i = 1U; i < PARTIAL_SLOT_ELEMS; ++i) {
+        partialBuf.SetValue(i, 0.0f);
+    }
+    SetFlag<HardEvent::S_MTE3>(evtStoMte3_);
+    WaitFlag<HardEvent::S_MTE3>(evtStoMte3_);
+    DataCopy(partial1Gm_[ownSlot], partialBuf, PARTIAL_SLOT_ELEMS);
+    MhcPairR6ReadySync();
+    DataCopy(partialBuf, partial1Gm_[siblingSlot], PARTIAL_SLOT_ELEMS);
+    SetFlag<HardEvent::MTE2_S>(evtMte2toS_);
+    WaitFlag<HardEvent::MTE2_S>(evtMte2toS_);
+    const float siblingSumSq1 = partialBuf.GetValue(0);
+    const float sumSq1 = laneId_ == 0U ? sumSq1Local + siblingSumSq1 : siblingSumSq1 + sumSq1Local;
     StartCacheGamma1();
     const float invRms1 = ComputeInvRms(sumSq1, invD_);
     WaitCacheGamma1();
-    for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
+    for (uint32_t tile = laneId_; tile < dimLoop_; tile += 2U) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
         LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
