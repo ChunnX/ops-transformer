@@ -467,6 +467,7 @@ static ge::graphStatus BuildAndCheckWindowLayout(const gert::TilingContext *cont
     info.dumpMetadata = BuildMoeEpDumpMetadata(params, layout, aivNum);
     info.winDataOffset = layout.winDataOffset;
     info.slotWinStateOffset = layout.slotWinStateOffset;
+    info.expertCountWinOffset = layout.expertCountWinOffset;
     info.dispatchNotifyCount = layout.dispatchNotifyCount;
     return ge::GRAPH_SUCCESS;
 }
@@ -547,15 +548,10 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(nodeName, "workSpaces is nullptr."), return ge::GRAPH_FAILED);
 
-    // Joint counts replace the old per-core rank matrix; each core derives private metadata cursors ordered by rank,
-    // expert and contributing core. They sit at the very start of this op's user workspace.
-    // 必须与 kernel 的 rankExpertCountStride_ 逐字节一致：kernel 按 [rank][expert] 存表，每个 rank 的行先补到
-    // ELEM_ALIGN 再乘 epWorldSize_。写成 ceil(numExperts / 8) * 8 只在 numLocalExperts 本身对齐时才相等。
-    uint32_t jointCountStride = ((info.cfg.numLocalExperts + 7U) / 8U) * 8U * info.cfg.epWorldSize;
-    uint64_t jointCountBytes = static_cast<uint64_t>(aivNum) * jointCountStride * sizeof(int32_t);
-    uint64_t jointCountBytesAlign512 = ((jointCountBytes + WIN_ADDR_ALIGN - 1UL) / WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
-
-    workSpaces[0] = SYSTEM_NEED_WORKSPACE + jointCountBytesAlign512;
+    // 非 cached 路径的命中计数整块搬到窗口里了：dispatch 已经在 count-ready 之前把 [源 rank][本端专家]
+    // 计数写进本端窗口的 expertCountWinOffset（见 moe_ep_window_layout.cpp），epilogue 直接读，不再需要
+    // 「每核扫窗区数命中 → 落 workspace → 全核规约」。所以用户 workspace 只剩系统那一段。
+    workSpaces[0] = SYSTEM_NEED_WORKSPACE;
 
     uint64_t tilingKey =
         GET_TPL_TILING_KEY(TILINGKEY_TPL_A5, cached ? 1U : 0U, hasTopkWeights ? 1U : 0U, info.isMxQuant ? 1U : 0U);

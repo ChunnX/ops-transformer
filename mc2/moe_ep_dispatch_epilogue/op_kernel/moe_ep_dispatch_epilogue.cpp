@@ -27,7 +27,8 @@
 
 #include "moe_ep_dispatch_epilogue_tiling_key.h"
 #include "moe_ep_dispatch_epilogue_tiling.h"
-#include "moe_ep_dispatch_epilogue.h"
+#include "moe_ep_dispatch_epilogue_uncached.h"
+#include "moe_ep_dispatch_epilogue_cached.h"
 
 using namespace MoeEpDispatchEpilogueImpl;
 using namespace Mc2Tiling;
@@ -47,9 +48,16 @@ __global__ __aicore__ void moe_ep_dispatch_epilogue(GM_ADDR context, GM_ADDR x, 
     using ScalesType = typename std::conditional<IsMxQuant, fp8_e8m0_t, float>::type;
 
 #if defined(ENABLE_MOE_EP_DISPATCH_EPILOGUE_KERNEL)
-    MoeEpDispatchEpilogue<DTYPE_RECV_X, ScalesType, IsCached, HasTopkWeights> op;
-    op.Init(context, x, topkIdx, numRecvPerRank, numRecvPerExpert, cachedRecvSrcMetadata, recvX, recvSrcMetadata,
-            recvTopkWeights, recvScales, workspace, tilingGM, &pipe, &tilingData.moeEpDispatchEpilogueInfo);
-    op.Process();
+    if constexpr (IsCached) {
+        MoeEpDispatchEpilogueCached<DTYPE_RECV_X, ScalesType, HasTopkWeights> op;
+        op.Init(context, x, topkIdx, numRecvPerRank, numRecvPerExpert, cachedRecvSrcMetadata, recvX, recvSrcMetadata,
+                recvTopkWeights, recvScales, workspace, tilingGM, &pipe, &tilingData.moeEpDispatchEpilogueInfo);
+        op.Process();
+    } else {
+        MoeEpDispatchEpilogueUncached<DTYPE_RECV_X, ScalesType, HasTopkWeights> op;
+        op.Init(context, x, topkIdx, numRecvPerRank, numRecvPerExpert, cachedRecvSrcMetadata, recvX, recvSrcMetadata,
+                recvTopkWeights, recvScales, workspace, tilingGM, &pipe, &tilingData.moeEpDispatchEpilogueInfo);
+        op.Process();
+    }
 #endif
 }

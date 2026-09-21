@@ -65,6 +65,7 @@ ge::graphStatus CalcMoeEpWindowLayout(const MoeEpWindowLayoutParams &params, Moe
 
     layout.cntWinStateOffset = MOE_EP_FIXED_PREFIX_BYTES;
     layout.cntWinStateSize = countNotifySize + expertCountSize;
+    layout.expertCountWinOffset = layout.cntWinStateOffset + countNotifySize;
     layout.slotWinStateOffset = layout.cntWinStateOffset + layout.cntWinStateSize;
     layout.dispatchSlotStateSize = layout.dispatchNotifyCount * epWorldSize * MOE_EP_WIN_ALIGN;
     layout.payloadWinStateOffset = layout.slotWinStateOffset + layout.dispatchSlotStateSize;
@@ -136,7 +137,7 @@ MoeEpDumpMetadata BuildMoeEpDumpMetadata(const MoeEpWindowLayoutParams &params, 
     const uint64_t combineTokenStateSize = static_cast<uint64_t>(params.nmt) * params.topK * MOE_EP_WIN_ALIGN;
     metadata.regions[MOE_EP_DUMP_REGION_PER_CORE_DIAG] = {layout.perCoreDiagOffset, layout.perCoreDiagSize};
     metadata.regions[MOE_EP_DUMP_REGION_COUNT_NOTIFY] = {layout.cntWinStateOffset, countNotifySize};
-    metadata.regions[MOE_EP_DUMP_REGION_EXPERT_COUNT] = {layout.cntWinStateOffset + countNotifySize,
+    metadata.regions[MOE_EP_DUMP_REGION_EXPERT_COUNT] = {layout.expertCountWinOffset,
                                                          layout.cntWinStateSize - countNotifySize};
     metadata.regions[MOE_EP_DUMP_REGION_DISPATCH_SLOT_STATE] = {layout.slotWinStateOffset,
                                                                 layout.dispatchSlotStateSize};
