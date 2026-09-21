@@ -24,8 +24,8 @@
 using namespace op;
 using namespace std;
 
-// 950-specific test suite (MUST run before the V2 test suite to cache 950 platform via const static)
-namespace MoeDistributeDispatchV2950 {
+// A5-specific test suite (MUST run before the V2 test suite to cache A5 platform via const static)
+namespace MoeDistributeDispatchV2Dav3510 {
 class L2AclnnMoeDistributeDispatchV2Dav3510Test : public testing::Test {
 protected:
     static void SetUpTestCase()
@@ -126,7 +126,7 @@ TEST_F(L2AclnnMoeDistributeDispatchV2Dav3510Test, TestExecuteEntryDav3510)
     EXPECT_THAT(st, testing::AnyOf(testing::Eq(ACLNN_SUCCESS), testing::Eq(ACLNN_ERR_PARAM_NULLPTR),
                                    testing::Eq(ACLNN_ERR_PARAM_INVALID)));
 }
-} // namespace MoeDistributeDispatchV2950
+} // namespace MoeDistributeDispatchV2Dav3510
 
 namespace MoeDistributeDispatchV2 {
 class L2AclnnMoeDistributeDispatchV2Test : public testing::Test {
