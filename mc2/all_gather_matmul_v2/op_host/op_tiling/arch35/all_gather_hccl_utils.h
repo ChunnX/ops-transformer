@@ -30,6 +30,10 @@ constexpr uint64_t TILE_M_CANDIDATES[] = {2048, 1024, 512, 256}; // 优选候选
 constexpr uint64_t HCCL_NO_ADJUSTMENT = 0;        // 不需要调整
 constexpr uint64_t HCCL_UNSUPPORTED = UINT64_MAX; // 无法处理
 
+// 旧代码原样保留(§4.37: 新引擎路径不再调用——每轮启动开销 b 已入模型, 切分收益门控统一
+// 裁决轮数; 仅 kUseNewEngine=false 回退老类路径时经调用点消费, 防切换出问题)
+constexpr uint64_t AICPU_TARGET_TILE_CNT = 4; // AICPU 目标 tile 数
+
 struct CommSizeInfo {
     uint64_t kValue;
     uint64_t dtypeSize;
@@ -47,6 +51,8 @@ void ApplyTileSplit(CutResult &cutRes, uint64_t mValue, uint64_t tileM, const Co
                     const std::string &opName);
 
 void AdjustCutResultForCCU(CutResult &cutRes, uint64_t mValue, const CommSizeInfo &commSize, const std::string &opName);
+
+void AdjustCutResultForAICPU(CutResult &cutRes, uint64_t mValue, uint64_t baseM, const std::string &opName);
 } // namespace optiling
 
 #endif // ALL_GATHER_HCCL_UTILS_H

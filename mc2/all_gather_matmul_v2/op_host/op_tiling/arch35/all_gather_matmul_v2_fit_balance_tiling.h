@@ -119,7 +119,10 @@ inline CutResult ToLegacyCut(const CommCutResult &c)
 }
 
 // 统一引擎路径: 键控枚举 + 标定 → InitCtx(含通算胶水) → Schedule(含 AG 键控分支)。
-inline CutResult ScheduleFitBalance(const mc2tiling::TilingArgs &args, TilingCommEngine commEngine)
+// baseMOut(可空): 回传 matmul 基本块(回退老类路径的调用点后处理 AdjustCutResultForAICPU 需要;
+// 新引擎路径不消费——§4.37 切分收益门控已接替, 保留出参仅为回退路径完整)
+inline CutResult ScheduleFitBalance(const mc2tiling::TilingArgs &args, TilingCommEngine commEngine,
+                                    uint32_t *baseMOut = nullptr)
 {
     // 引擎分路在 InitCtx 内完成(按 CommEngine 选 CALIBRATION 的 aicpu/ccu 分区);
     // 本算子 kernel 仅 HCCL 两引擎, AIV_URMA 不可达(枚举值保留供三引擎分派框架)
@@ -135,6 +138,9 @@ inline CutResult ScheduleFitBalance(const mc2tiling::TilingArgs &args, TilingCom
     // §4.37 诊断: 实际切分 N 轮 vs 不切的总通信时(含每轮启动开销 b 与一次性 c), 差值=切分启动税
     OPS_LOG_D("AllGatherMatmul", "Comm total time: %lu rounds actual %.3fus vs no-cut %.3fus (round tax %.3fus)",
               cut.totalTileCnt, ctx.commTimeActualUs, ctx.commTimeNoCutUs, ctx.commTimeActualUs - ctx.commTimeNoCutUs);
+    if (baseMOut != nullptr) {
+        *baseMOut = ctx.matmulPerf.GetBaseM();
+    }
     return cut;
 }
 
@@ -172,12 +178,16 @@ constexpr bool kUseNewEngine = true;
 
 // 对外唯一入口：两个 GetTilingResult 调用点共用（commEngine 决定通信拟合选表; 三引擎
 // 统一分派模式——调用点用 ParseCommEngine(commMode_) 解析后传入(global 符号)）
-inline CutResult GetFitBalanceCut(const mc2tiling::TilingArgs &args, TilingCommEngine commEngine)
+inline CutResult GetFitBalanceCut(const mc2tiling::TilingArgs &args, TilingCommEngine commEngine,
+                                  uint32_t *baseMOut = nullptr)
 {
     if (kUseNewEngine) {
-        return ScheduleFitBalance(args, commEngine);
+        return ScheduleFitBalance(args, commEngine, baseMOut);
     }
     AllGatherMMFitBalanceTiling tileFormulate(args, KernelType::ALL_GATHER, TopoType::STANDARD_CARD);
+    if (baseMOut != nullptr) {
+        *baseMOut = tileFormulate.matmulPerf_.GetBaseM();
+    }
     return tileFormulate.GetTiling();
 }
 

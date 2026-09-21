@@ -779,11 +779,12 @@ CutResult AllGatherQuantBmmTiling::GetTilingResult()
     // 回退: kUseNewEngine 置 false); miss(未标定 rank) → 核利用率优先(mm-first)。
     // 三引擎统一分派: ParseCommEngine 解析 comm_mode 后传入(本算子仅 HCCL 两引擎可达)
     const auto commEngine = ParseCommEngine(commMode_);
+    uint32_t baseM = 0;
     CutResult result;
     if (IsCommCalibrated(args_.rankDim, commEngine)) {
-        result = GetFitBalanceCut(args_, commEngine);
+        result = GetFitBalanceCut(args_, commEngine, &baseM);
     } else {
-        result = GetCutResByCoreOccupancyFirst();
+        result = GetCutResByCoreOccupancyFirst(&baseM);
     }
 
     auto kValue = args_.kValue;
@@ -794,10 +795,11 @@ CutResult AllGatherQuantBmmTiling::GetTilingResult()
     }
 
     if (commEngine == TilingCommEngine::CCU) {
-        // §4.37: AICPU 限轮后处理已废弃(每轮启动开销 b 入模型, 引擎切分收益门控统一裁决);
-        // CCU 保留单轮通信字节数上限约束
         CommSizeInfo commSize{kValue, inputDtypeSize, args_.rankDim};
         AdjustCutResultForCCU(result, args_.mValue, commSize, opName_);
+    } else if (!kUseNewEngine) {
+        // 旧代码原样保留(§4.37): AICPU 限轮后处理仅回退老类路径时执行
+        AdjustCutResultForAICPU(result, args_.mValue, baseM, opName_);
     }
 
     return result;
@@ -806,7 +808,7 @@ CutResult AllGatherQuantBmmTiling::GetTilingResult()
 // §4.29 miss 路径: 全量 DequantBmm tiling 预跑(与 DoAdaptSlidWindowTiling 的 local 块完全同口径:
 // mValue=orgMValue、isLocal=true)取 matmulTiling 的 baseM/baseN/usedCoreNum → 核利用率优先推导。
 // M 口径与 TilingV2 一致(per-rank m, 切分域同单位); 栈上临时不占真实槽位, 下游 local 块重跑。
-CutResult AllGatherQuantBmmTiling::GetCutResByCoreOccupancyFirst()
+CutResult AllGatherQuantBmmTiling::GetCutResByCoreOccupancyFirst(uint32_t *baseMOut)
 {
     const uint64_t savedM = args_.mValue;
     args_.mValue = args_.orgMValue;
@@ -825,6 +827,9 @@ CutResult AllGatherQuantBmmTiling::GetCutResByCoreOccupancyFirst()
                              static_cast<uint64_t>(cube.baseN), static_cast<uint64_t>(cube.usedCoreNum), comm)) {
         OP_LOGE(opName_, "COF: mm tiling anomaly (baseM/baseN/usedCoreNum invalid), fallback no-cut.");
         return MakeNoCutResult();
+    }
+    if (baseMOut != nullptr) {
+        *baseMOut = static_cast<uint32_t>(cube.baseM);
     }
     OP_LOGI(opName_, "COF cut: baseM=%d baseN=%d usedCoreNum=%d, head=%lux%lu tail=%lux%lu", cube.baseM, cube.baseN,
             cube.usedCoreNum, comm.splitAxisTileSize, comm.splitAxisTileCnt, comm.splitAxisTailSize,
