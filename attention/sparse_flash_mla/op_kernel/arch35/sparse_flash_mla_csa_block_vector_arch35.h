@@ -46,18 +46,24 @@ using AttentionCommon::FdRunInfo;
 namespace SMLAKernel {
 
 // The extra NZ row rotates consecutive C0 blocks across UB banks.
+// Keep this in one place so bank-rotation candidates can be evaluated without
+// changing the transpose loop or its MTE3 copy contract.
+constexpr uint32_t SPARSE_KV_NZ_ROW_STRIDE = 17;
+
 __simd_vf__ inline void SparseKvNdToNz16(__ubuf__ uint16_t *dst, __ubuf__ uint16_t *src)
 {
     Reg::RegTensor<uint16_t> data;
     Reg::MaskReg mask = Reg::CreateMask<uint16_t, Reg::MaskPattern::ALL>();
-    for (uint16_t col = 0; col < 4; ++col) {
-        for (uint16_t row = 0; row < 8; ++row) {
+    for (uint16_t row = 0; row < 8; ++row) {
+        for (uint16_t col = 0; col < 4; ++col) {
             Reg::LoadAlign<uint16_t>(data, src + row * 512 + col * 128);
             Reg::StoreAlign<uint16_t, Reg::DataCopyMode::DATA_BLOCK_COPY>(
-                dst + col * 8 * 17 * 16 + row * 16, data, 17, mask);
+                dst + col * 8 * SPARSE_KV_NZ_ROW_STRIDE * 16 + row * 16, data,
+                SPARSE_KV_NZ_ROW_STRIDE, mask);
             Reg::LoadAlign<uint16_t>(data, src + 8 * 512 + 128 + row * 512 + col * 128);
             Reg::StoreAlign<uint16_t, Reg::DataCopyMode::DATA_BLOCK_COPY>(
-                dst + col * 8 * 17 * 16 + (row + 8) * 16, data, 17, mask);
+                dst + col * 8 * SPARSE_KV_NZ_ROW_STRIDE * 16 + (row + 8) * 16, data,
+                SPARSE_KV_NZ_ROW_STRIDE, mask);
         }
     }
 }
@@ -674,7 +680,8 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyOutKvUb2Gm(
             DataCopyParams nzCopy;
             nzCopy.blockCount = dVTemplateType / 16;
             nzCopy.blockLen = KV_PROCESS_UNIT;
-            nzCopy.srcStride = 1; // Skip the UB bank-rotation padding row.
+            nzCopy.srcStride = SPARSE_KV_NZ_ROW_STRIDE - KV_PROCESS_UNIT;
+            // Skip the UB bank-rotation padding rows.
             nzCopy.dstStride = s2BaseSize - KV_PROCESS_UNIT;
             DataCopy(dst[s2StartIdx * 16], nzUb, nzCopy);
             SetFlag<HardEvent::MTE3_V>(2 + pingPongV0);
@@ -1692,8 +1699,8 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(ConstInfo &co
         ubAddr += 256; // Toggle UB bank bit 8 relative to the padded ND rows.
         for (uint32_t slot = 0; slot < 2; ++slot) {
             sparseKvNzBufs[slot] = {
-                LocalTensor<Q_T>(TPosition::VECIN, ubAddr, dVTemplateType * 17U), slot};
-            ubAddr += dVTemplateType * 17U * sizeof(Q_T);
+                LocalTensor<Q_T>(TPosition::VECIN, ubAddr, dVTemplateType * SPARSE_KV_NZ_ROW_STRIDE), slot};
+            ubAddr += dVTemplateType * SPARSE_KV_NZ_ROW_STRIDE * sizeof(Q_T);
             SetFlag<HardEvent::MTE3_V>(2 + slot);
             SetFlag<HardEvent::V_MTE2>(slot);
         }
