@@ -190,9 +190,10 @@ static ge::graphStatus TilingMhcSandwichNormPostPreonly(gert::TilingContext *con
 
     // A5的MIX_AIC_1_2以一个物理AI Core为blockDim单位，并展开两个sibling AIV。
     // 对精度集覆盖的四档D分别实测双AIV收益，由tiling按已验证维度稳定路由。
+    // 4op（无RMS_mid）与5op均走head切分双sibling；kernel的USE_RMS_MID=false分支已实例化。
     const bool dualSiblingDim = D == 2560U || D == 5120U || D == 6144U || D == 7168U;
     const bool enableDualSibling =
-        totalTokens == 4U && dualSiblingDim && useRmsMid && !returnHInF32 && hOutDesc->GetDataType() == ge::DT_BF16;
+        totalTokens == 4U && dualSiblingDim && !returnHInF32 && hOutDesc->GetDataType() == ge::DT_BF16;
     const uint32_t coresPerToken = enableDualSibling ? 2U : 1U;
     const uint32_t usedCoreNum = std::min(totalTokens, enableDualSibling ? (coreNumAiv / 2U) : coreNumAiv);
     uint32_t rowsPerCore = totalTokens / usedCoreNum;
