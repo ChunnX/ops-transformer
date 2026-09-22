@@ -77,7 +77,7 @@ public:
     // 供kernel侧static_assert编译期校验布局容量
     static __aicore__ inline constexpr uint32_t GetFdTotalUbSize()
     {
-        return 5U * FD_LSE_BUF_BYTES + 4U * FD_MM2_BUF_BYTES + 4U * BUFFER_SIZE_BYTE_256B;
+        return 5U * FD_LSE_BUF_BYTES + 4U * FD_MM2_BUF_BYTES + 5U * BUFFER_SIZE_BYTE_256B;
     }
 
 private:
@@ -171,7 +171,8 @@ private:
 
     LocalTensor<T> fdLseMaxUbBuf1_;    // 256B
     LocalTensor<T> fdLseMaxUbBuf2_;    // 256B
-    LocalTensor<T> fdLseUbBuf_;        // 256B
+    LocalTensor<T> fdLseUbBuf1_;       // 256B
+    LocalTensor<T> fdLseUbBuf2_;       // 256B
     LocalTensor<float> fdMinCheckBuf_; // 256B
 
 public:
@@ -223,8 +224,9 @@ public:
             constexpr uint32_t OFF_OUTPUT = OFF_REDUCE + FD_MM2_BUF_BYTES;
             constexpr uint32_t OFF_LSEMAX1 = OFF_OUTPUT + FD_MM2_BUF_BYTES;
             constexpr uint32_t OFF_LSEMAX2 = OFF_LSEMAX1 + BUFFER_SIZE_BYTE_256B;
-            constexpr uint32_t OFF_LSEUB = OFF_LSEMAX2 + BUFFER_SIZE_BYTE_256B;
-            constexpr uint32_t OFF_MINCHECK = OFF_LSEUB + BUFFER_SIZE_BYTE_256B;
+            constexpr uint32_t OFF_LSEUB1 = OFF_LSEMAX2 + BUFFER_SIZE_BYTE_256B;
+            constexpr uint32_t OFF_LSEUB2 = OFF_LSEUB1 + BUFFER_SIZE_BYTE_256B;
+            constexpr uint32_t OFF_MINCHECK = OFF_LSEUB2 + BUFFER_SIZE_BYTE_256B;
 
             fdSumBuf1_ =
                 LocalTensor<uint8_t>(TPosition::VECIN, OFF_SUM1, FD_LSE_BUF_BYTES).template ReinterpretCast<T>();
@@ -248,8 +250,10 @@ public:
                                   .template ReinterpretCast<T>();
             fdLseMaxUbBuf2_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_LSEMAX2, BUFFER_SIZE_BYTE_256B)
                                   .template ReinterpretCast<T>();
-            fdLseUbBuf_ =
-                LocalTensor<uint8_t>(TPosition::VECIN, OFF_LSEUB, BUFFER_SIZE_BYTE_256B).template ReinterpretCast<T>();
+            fdLseUbBuf1_ =
+                LocalTensor<uint8_t>(TPosition::VECIN, OFF_LSEUB1, BUFFER_SIZE_BYTE_256B).template ReinterpretCast<T>();
+            fdLseUbBuf2_ =
+                LocalTensor<uint8_t>(TPosition::VECIN, OFF_LSEUB2, BUFFER_SIZE_BYTE_256B).template ReinterpretCast<T>();
             fdMinCheckBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_MINCHECK, BUFFER_SIZE_BYTE_256B)
                                  .template ReinterpretCast<float>();
         }
@@ -289,9 +293,11 @@ public:
             fdLseMaxUbBuf1_ = tmpBuf.Get<T>();
             pipe->InitBuffer(tmpBuf, BUFFER_SIZE_BYTE_256B);
             fdLseMaxUbBuf2_ = tmpBuf.Get<T>();
-            // OutQue, SYNC_LSEOUTPUT_BUF_FLAG
+            // OutQue, SYNC_LSEOUTPUT_BUF_FLAG + buffer id
             pipe->InitBuffer(tmpBuf, BUFFER_SIZE_BYTE_256B);
-            fdLseUbBuf_ = tmpBuf.Get<T>();
+            fdLseUbBuf1_ = tmpBuf.Get<T>();
+            pipe->InitBuffer(tmpBuf, BUFFER_SIZE_BYTE_256B);
+            fdLseUbBuf2_ = tmpBuf.Get<T>();
             // CalcMinCheckValueVF 的结果缓存
             pipe->InitBuffer(tmpBuf, BUFFER_SIZE_BYTE_256B);
             fdMinCheckBuf_ = tmpBuf.Get<float>();
@@ -359,7 +365,7 @@ protected:
         LocalTensor<T> lseMaxUb = (cntM & 1) == 0 ? fdLseMaxUbBuf1_ : fdLseMaxUbBuf2_;
 
         LocalTensor<T> sinkExpBuf;
-        LocalTensor<T> maxLseUb = fdLseUbBuf_;
+        LocalTensor<T> maxLseUb = (cntM & 1) == 0 ? fdLseUbBuf1_ : fdLseUbBuf2_;
         ComputeScaleValue_VF_FD(sinkExpBuf, lseMax, lseSum, lseExp, maxLseUb, lseMaxUb, dealRowCount,
                                 actualCombineLoopSize, constInfo_.isSoftmaxLseEnable, false, CalcMinCheckValue());
     }
@@ -552,18 +558,19 @@ public:
                 Mutex::Unlock<PIPE_MTE2>(SYNC_MM2RES_BUF1_FLAG + ((reduceGlobaLoop + preLoadIdx) & 1));
             }
             Mutex::Lock<PIPE_V>(SYNC_LSE_MAX_SUM_BUF1_FLAG + (reduceMLoop & 1));
-            Mutex::Lock<PIPE_V>(SYNC_LSEOUTPUT_BUF_FLAG);
+            uint64_t lseOutSyncId = SYNC_LSEOUTPUT_BUF_FLAG + (reduceMLoop & 1U);
+            Mutex::Lock<PIPE_V>(lseOutSyncId);
             ComputeScaleValue(lseExp, actualGSplitSize, taskInfo_.actualCombineLoopSize, reduceMLoop, startRow);
-            Mutex::Unlock<PIPE_V>(SYNC_LSEOUTPUT_BUF_FLAG);
+            Mutex::Unlock<PIPE_V>(lseOutSyncId);
             Mutex::Unlock<PIPE_V>(SYNC_LSE_MAX_SUM_BUF1_FLAG + (reduceMLoop & 1));
             CalcPreNextTokens();
             if (constInfo_.isSoftmaxLseEnable) {
                 // lse行无效在ComputeScaleValue的VF计算时已经进行了赋值inf处理
-                LocalTensor<T> maxLseUb = fdLseUbBuf_;
-                Mutex::Lock<PIPE_MTE3>(SYNC_LSEOUTPUT_BUF_FLAG);
+                LocalTensor<T> maxLseUb = (reduceMLoop & 1) == 0 ? fdLseUbBuf1_ : fdLseUbBuf2_;
+                Mutex::Lock<PIPE_MTE3>(lseOutSyncId);
                 uint32_t mOffset = taskInfo_.gS1Idx + startRow;
                 if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
-                    // LSE 输出改为 N-major 排布 [N2*G, T]: N 在外, T 在内
+                    // N-major 输出，与 flash_attn 保持一致。
                     uint32_t prefixBS1 = qActSeqLensParser_->GetTBase(taskInfo_.bIdx);
                     uint64_t bN2Offset = taskInfo_.n2Idx * constInfo_.realGSize * constInfo_.t1Size + prefixBS1;
                     DataCopySoftmaxLseTNDtoNTArch35NoGS1Merge<T, ConstInfoX>(softmaxLseGm_, maxLseUb, bN2Offset,
@@ -593,7 +600,7 @@ public:
                                                                 actualGSplitSize, constInfo_, qActSeqLens,
                                                                 s1LeftPaddingSize);
                 }
-                Mutex::Unlock<PIPE_MTE3>(SYNC_LSEOUTPUT_BUF_FLAG);
+                Mutex::Unlock<PIPE_MTE3>(lseOutSyncId);
             }
 
             for (uint32_t i = 0; i < taskInfo_.actualCombineLoopSize; ++i) {

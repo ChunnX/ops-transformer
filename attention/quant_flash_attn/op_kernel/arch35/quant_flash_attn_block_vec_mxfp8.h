@@ -176,7 +176,7 @@ public:
     TQue<QuePosition::VECOUT, 1> sumBrdcst_;
 
     TBuf<> lseTmpBuff_;
-    TQue<QuePosition::VECOUT, 1> softmaxLseQueue_;
+    TQue<QuePosition::VECOUT, 2> softmaxLseQueue_;
     TQue<QuePosition::VECOUT, 1> FDResOutputQue_;
     TQue<QuePosition::VECIN, 1> accumOutInputQue_;
     TQue<QuePosition::VECIN, 1> postQuantScaleQue_;  // postQuant
@@ -512,8 +512,7 @@ public:
         softmaxLseQueue_.DeQue<float>();
 
         if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
-            // LSE 输出改为 N-major 排布 [N2*G, T]: N 在外, T 在内
-            // bN2Offset = n2Idx * G * T_total + prefixBS1, 内部按 gIdx * T_total + s1Idx 步进
+            // N-major 输出 [N2*G, T]: N 在外, T 在内
             uint32_t prefixBS1 = qActSeqLensParser_->GetTBase(runInfo.bIdx);
             uint64_t bN2Offset = runInfo.realN2Idx * constInfo_.realGSize * constInfo_.t1Size + prefixBS1;
             DataCopySoftmaxLseTNDtoNTArch35NoGS1Merge<T, ConstInfoX>(softmaxLseGm_, lseUb, bN2Offset, vecMIdx,
@@ -1056,8 +1055,9 @@ public:
         // ===== 保留区: 跨section必须存活的buffer, 分配顺序与GetPersistUbSize保持一致 =====
         SoftmaxInitBuffer();
         tPipe_->InitBuffer(commonTBuf_, 512);
-        // softmaxLseQueue_常开分配(未使能LSE时空闲), 保证FD静态布局偏移编译期确定
-        this->tPipe_->InitBuffer(softmaxLseQueue_, 1, (mBaseSize >> 1U) * sizeof(float) * 8);
+        // 双缓冲 LSE 输出队列: 允许当前 LSE 的 MTE3 搬出与下一轮 V 计算重叠。
+        // 常开分配(未使能LSE时空闲), 保证 FD 静态布局偏移编译期确定。
+        this->tPipe_->InitBuffer(softmaxLseQueue_, 2, (mBaseSize >> 1U) * sizeof(float) * 8);
         if constexpr (isFp8) {
             if constexpr (USE_DN) {
                 tPipe_->InitBuffer(vselrIndexesBuf_[static_cast<int>(VselrIndexEnum::DN_INDEX)], 256);
@@ -1104,13 +1104,13 @@ public:
 
     // FA保留区字节数(紧跟kernel侧ubBufferManager_的跨核bmm区之后):
     // softmax状态(12*256) + preLoop(3*256) + brdcst(FLASH_DECODE时2*2048) + commonTBuf(512)
-    // + softmaxLseQueue(2048, 常开) + vselr索引表(isFp8时, 按256上界对齐)
+    // + softmaxLseQueue(4096, 双缓冲常开) + vselr索引表(isFp8时, 按256上界对齐)
     static __aicore__ inline constexpr uint32_t GetPersistUbSize()
     {
         constexpr uint32_t softmaxSize = (12U + 3U) * 256U;
         constexpr uint32_t brdcstSize = FLASH_DECODE ? (2U * 2048U) : 0U;
         constexpr uint32_t commonSize = 512U;
-        constexpr uint32_t lseSize = (mBaseSize >> 1U) * sizeof(float) * 8U;
+        constexpr uint32_t lseSize = 2U * (mBaseSize >> 1U) * sizeof(float) * 8U;
         constexpr uint32_t vselrSize = isFp8 ? 256U : 0U;
         return softmaxSize + brdcstSize + commonSize + lseSize + vselrSize;
     }

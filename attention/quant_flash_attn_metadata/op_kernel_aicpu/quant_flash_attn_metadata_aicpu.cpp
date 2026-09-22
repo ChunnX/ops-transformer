@@ -223,12 +223,14 @@ bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
     mBaseSize_ = mBaseSize_ * (aivCoreNum_ / aicCoreNum_);
     param.mBaseSize = mBaseSize_;
     param.s2BaseSize = s2BaseSize_;
-    if (quantMode_ == 1) {                  // 仅 MXFP8 开启 FlashDecode
+    if (quantMode_ == 1 && isDecode) {      // 仅 MXFP8 decode 开启 FlashDecode
         param.l2Byte = 96U * 1024U * 1024U; // 96: 96MB, 1024: Mb2Kb, 1024:Kb2Mb
         param.fdTolerance = 10;             // 10: tolerance block
         param.fdLeastBlock = 3;             // 3: least block
         param.fdOn = true;
     } else {
+        // MXFP8 prefill 按整行分配，关闭 L2 分段和 FD，避免 section 数增长导致
+        // 每个 section 的尾核等待，并与 FIA mxfp8 prefill 的调度策略保持一致。
         param.l2Byte = 0;
         param.fdTolerance = 300;
         param.fdOn = false;
