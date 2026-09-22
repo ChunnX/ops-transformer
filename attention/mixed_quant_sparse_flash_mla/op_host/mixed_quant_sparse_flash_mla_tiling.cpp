@@ -503,6 +503,9 @@ ge::graphStatus MQSMLAInfoParser::GetSparseBlockCount()
 ge::graphStatus MQSMLAInfoParser::GetActualseqInfo()
 {
     maxActualseq_ = s2Size_;
+    if (npuArch_ != NpuArch::DAV_2201) {
+        return ge::GRAPH_SUCCESS;
+    }
     if (qLayout_ == MQSMLALayout::TND && opParamInfo_.cuSeqLensQ.tensor != nullptr) {
         actualLenDimsQ_ = static_cast<uint32_t>(opParamInfo_.cuSeqLensQ.tensor->GetShapeSize() - 1);
     } else if (opParamInfo_.seqUsedQ.tensor != nullptr) {
@@ -541,7 +544,9 @@ ge::graphStatus MQSMLAInfoParser::GetKvstride()
         }
     } else if (kvLayout_ == MQSMLALayout::PA_BBND) {
         oriKvStride_ = oriBlockSize_ * n2Size_ * dSizeKV_;
-        oriKvStridesVec_.push_back(oriKvStride_);
+        if (npuArch_ == NpuArch::DAV_2201) {
+            oriKvStridesVec_.push_back(oriKvStride_);
+        }
     }
     if (cmpKvStrides != nullptr && cmpKvStrides->GetDimNum() > 0) {
         for (size_t i = 0; i < cmpKvStrides->GetDimNum(); i++) {
@@ -551,9 +556,13 @@ ge::graphStatus MQSMLAInfoParser::GetKvstride()
             cmpKvStride_ = cmpKvStrides->GetStride(0);
         }
     } else if (kvLayout_ == MQSMLALayout::PA_BBND) {
-        const int64_t cmpHeadDim = GetAxisNum(cmpKvShape_, MQSMLAAxis::D, kvLayout_);
-        cmpKvStride_ = static_cast<int64_t>(cmpBlockSize_) * n2Size_ * cmpHeadDim;
-        cmpKvStridesVec_.push_back(cmpKvStride_);
+        if (npuArch_ == NpuArch::DAV_2201) {
+            const int64_t cmpHeadDim = GetAxisNum(cmpKvShape_, MQSMLAAxis::D, kvLayout_);
+            cmpKvStride_ = static_cast<int64_t>(cmpBlockSize_) * n2Size_ * cmpHeadDim;
+            cmpKvStridesVec_.push_back(cmpKvStride_);
+        } else {
+            cmpKvStride_ = cmpBlockSize_ * n2Size_ * dSizeKV_;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
