@@ -671,6 +671,28 @@ static void SetPlatformTilingData(gert::TilingContext *context, const char *node
     OP_LOGD(nodeName, "numBlocks=%u, aivNum=%u, ubSize=%lu", numBlocks, aivNum, ubSize);
 }
 
+static ge::graphStatus CheckFFNWindowSize(gert::TilingContext *context, const char *nodeName,
+                                          FFNToAttentionTilingData *tilingData,
+                                          const FFNToAttentionTilingConfig &config)
+{
+    // Check window Size
+    uint64_t neededSize = 0;
+    uint64_t viableWindowSize = 0;
+    CalWinSize(*tilingData, neededSize, viableWindowSize);
+    OP_TILING_CHECK(
+        neededSize > viableWindowSize,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName, "neededSize", (std::to_string(neededSize) + " > " + std::to_string(viableWindowSize)).c_str(),
+            "The value of neededSize must not be greater than viable window size"),
+        return ge::GRAPH_FAILED);
+
+    // Validate ccl_buffer_size when provided (V2 path)
+    OP_TILING_CHECK(
+        CheckCclBufferSize(context, nodeName, config.attrCclBufferSizeIndex, neededSize) != ge::GRAPH_SUCCESS,
+        static_cast<void>(0), return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus FFNToAttentionTilingFuncBase(gert::TilingContext *context, const FFNToAttentionTilingConfig &config)
 {
     FFNToAttentionTilingData *tilingData = context->GetTilingData<FFNToAttentionTilingData>();
@@ -691,26 +713,8 @@ ge::graphStatus FFNToAttentionTilingFuncBase(gert::TilingContext *context, const
     OP_TILING_CHECK(!CheckInputAndSetTilingData(context, nodeName, *tilingData, config),
                     OP_LOGE(nodeName, "Check Inputs and Outputs failed!"), return ge::GRAPH_FAILED);
 
-    // Check window Size
-    uint64_t neededSize = 0;
-    uint64_t viableWindowSize = 0;
-    CalWinSize(*tilingData, neededSize, viableWindowSize);
-    OP_TILING_CHECK(
-        neededSize > viableWindowSize,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            nodeName, "neededSize", (std::to_string(neededSize) + " > " + std::to_string(viableWindowSize)).c_str(),
-            "The value of neededSize must not be greater than viable window size"),
-        return ge::GRAPH_FAILED);
-
-    // Validate ccl_buffer_size when provided (V2 path)
-    OP_TILING_CHECK(
-        CheckCclBufferSize(context, nodeName, config.attrCclBufferSizeIndex, neededSize) != ge::GRAPH_SUCCESS,
-        static_cast<void>(0), return ge::GRAPH_FAILED);
-
-    // Validate ccl_buffer_size when provided (V2 path)
-    OP_TILING_CHECK(
-        CheckCclBufferSize(context, nodeName, config.attrCclBufferSizeIndex, neededSize) != ge::GRAPH_SUCCESS,
-        static_cast<void>(0), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CheckFFNWindowSize(context, nodeName, tilingData, config) != ge::GRAPH_SUCCESS,
+                    static_cast<void>(0), return ge::GRAPH_FAILED);
 
     // Set WorkSpace
     OP_TILING_CHECK(SetWorkSpace(context, nodeName) != ge::GRAPH_SUCCESS,
