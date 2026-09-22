@@ -78,13 +78,22 @@ bool ApaceMxQuantGroupedMatmulAllToAllvTiling::IsCapable()
         OP_LOGD(opName_, "Apace path requires MX quant mode, skip.");
         return false;
     }
-    // 与 kernel 侧 APACE_GMM_A2AV_MX_DTYPE_OK 守卫对齐：Blaze GroupedMatmulMxKernel 仅支持
-    // A/B 同 dtype；混合 MXFP8（E4M3FN×E5M2 交叉）时 kernel 兜底分支直接 return，
-    // 输出不写且本 rank 静默掉队、对端 hccl Wait 挂死——须在此回退原通路
+    // 与 kernel 侧 APACE_GMM_A2AV_MX_DTYPE_OK 守卫对齐（同位宽即可，FP8 家族内 X/weight 可混）：
+    //   FP8：X/W ∈ {E4M3FN, E5M2} 任意组合；FP4：X/W 均为 E2M1。
+    // Blaze GroupedMatmulMxKernel 仅要求 A/B 同为 FP8 或同为 FP4（不要求同一 dtype），
+    // 原算子 MX 类型约束亦支持 E4M3FN×E5M2 交叉组合
     const auto gmmXDesc = context_->GetInputDesc(GMM_X_INDEX);
     const auto gmmWeightDesc = context_->GetInputDesc(GMM_WEIGHT_INDEX);
-    if (gmmXDesc == nullptr || gmmWeightDesc == nullptr || gmmXDesc->GetDataType() != gmmWeightDesc->GetDataType()) {
-        OP_LOGD(opName_, "Apace path requires gmmX/gmmWeight same dtype, skip.");
+    if (gmmXDesc == nullptr || gmmWeightDesc == nullptr) {
+        return false;
+    }
+    const ge::DataType xDtype = gmmXDesc->GetDataType();
+    const ge::DataType wDtype = gmmWeightDesc->GetDataType();
+    const bool bothFp8 = ((xDtype == ge::DT_FLOAT8_E4M3FN) || (xDtype == ge::DT_FLOAT8_E5M2)) &&
+                         ((wDtype == ge::DT_FLOAT8_E4M3FN) || (wDtype == ge::DT_FLOAT8_E5M2));
+    const bool bothFp4 = (xDtype == ge::DT_FLOAT4_E2M1) && (wDtype == ge::DT_FLOAT4_E2M1);
+    if (!bothFp8 && !bothFp4) {
+        OP_LOGD(opName_, "Apace path requires same-width MX dtype (fp8 x fp8 or fp4 x fp4), skip.");
         return false;
     }
     // apace hcomm 通路当前仅支持 CCU 通信引擎

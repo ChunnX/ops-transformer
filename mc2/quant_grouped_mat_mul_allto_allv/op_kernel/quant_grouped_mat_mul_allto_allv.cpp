@@ -24,14 +24,14 @@
 #include "apace/kernel/fusions/quant_grouped_matmul_all_to_all_v/quant_grouped_matmul_all_to_all_v_tiling_data.h"
 #include "apace/kernel/fusions/quant_grouped_matmul_all_to_all_v/mx_quant_grouped_matmul_all_to_all_v_hcomm_impl.h"
 
-// apace 通路仅支持同位宽 MX 量化 dtype（MXFP8/MXFP4）；FP16/BF16/HIFLOAT8 等 dtype 二进制中
-// APACE tiling key 实例退化为兜底空实现（tiling 侧仅对 MX 场景下发该 key，正常不会命中）
+// apace 通路支持的 MX 量化 dtype 组合（与算子 README 类型约束表一致，FP8 家族内 X/weight 可混）：
+//   FP8：X ∈ {E4M3FN, E5M2} 且 W ∈ {E4M3FN, E5M2}（含 E4M3FN+E5M2 / E5M2+E4M3FN 混合）
+//   FP4：X 与 W 均为 E2M1（FP4 不与其他位宽混用）
+// 其余 dtype 二进制中 APACE tiling key 实例退化为兜底空实现（tiling 侧 IsCapable 同步拦截）
 #define APACE_GMM_A2AV_MX_DTYPE_OK() \
-    (((ORIG_DTYPE_GMM_X == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_GMM_X == DT_FLOAT8_E5M2) || \
-      (ORIG_DTYPE_GMM_X == DT_FLOAT4_E2M1)) && \
-     ((ORIG_DTYPE_GMM_WEIGHT == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_GMM_WEIGHT == DT_FLOAT8_E5M2) || \
-      (ORIG_DTYPE_GMM_WEIGHT == DT_FLOAT4_E2M1)) && \
-     (ORIG_DTYPE_GMM_X == ORIG_DTYPE_GMM_WEIGHT))
+    ((((ORIG_DTYPE_GMM_X == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_GMM_X == DT_FLOAT8_E5M2)) && \
+     ((ORIG_DTYPE_GMM_WEIGHT == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_GMM_WEIGHT == DT_FLOAT8_E5M2))) || \
+    ((ORIG_DTYPE_GMM_X == DT_FLOAT4_E2M1) && (ORIG_DTYPE_GMM_WEIGHT == DT_FLOAT4_E2M1))
 #endif
 
 using namespace AscendC;
