@@ -82,24 +82,26 @@ enum QuantMode : int8_t {
     MXFP8_ROUNDSCALE_AMAX_E4M3FN = 17
 };
 
-const std::set<int64_t> validQuantModes = {QuantMode::NON_QUANT,
-                                           QuantMode::STATIC_QUANT,
-                                           QuantMode::DYNAMIC_QUANT,
-                                           QuantMode::MXQUANT_FP8_E5M2,
-                                           QuantMode::MXQUANT_FP8_E4M3FN,
-                                           QuantMode::FP8_GROUP_E5M2,
-                                           QuantMode::FP8_GROUP_E4M3FN,
-                                           QuantMode::HIF8_CAST,
-                                           QuantMode::HIF8_PERTENSOR,
-                                           QuantMode::HIF8_PERTOKEN,
-                                           QuantMode::MXQUANT_FP4_E2M1,
-                                           QuantMode::FP8_PERBLOCK_E5M2,
-                                           QuantMode::FP8_PERBLOCK_E4M3FN,
-                                           QuantMode::INT4_DYNAMIC_QUANT,
-                                           QuantMode::FP8_GROUP_AMAX_E5M2,
-                                           QuantMode::FP8_GROUP_AMAX_E4M3FN,
-                                           QuantMode::MXFP8_ROUNDSCALE_AMAX_E5M2,
-                                           QuantMode::MXFP8_ROUNDSCALE_AMAX_E4M3FN};
+const std::set<int64_t> validQuantModes = {
+    QuantMode::NON_QUANT,
+    QuantMode::STATIC_QUANT,
+    QuantMode::DYNAMIC_QUANT,
+    QuantMode::MXQUANT_FP8_E5M2,
+    QuantMode::MXQUANT_FP8_E4M3FN,
+    QuantMode::FP8_GROUP_E5M2,
+    QuantMode::FP8_GROUP_E4M3FN,
+    QuantMode::HIF8_CAST,
+    QuantMode::HIF8_PERTENSOR,
+    QuantMode::HIF8_PERTOKEN,
+    QuantMode::MXQUANT_FP4_E2M1,
+    QuantMode::FP8_PERBLOCK_E5M2,
+    QuantMode::FP8_PERBLOCK_E4M3FN,
+    QuantMode::INT4_DYNAMIC_QUANT,
+    QuantMode::FP8_GROUP_AMAX_E5M2,
+    QuantMode::FP8_GROUP_AMAX_E4M3FN,
+    QuantMode::MXFP8_ROUNDSCALE_AMAX_E5M2,
+    QuantMode::MXFP8_ROUNDSCALE_AMAX_E4M3FN
+};
 
 enum ExpertTokenNumType : int8_t {
     CUMSUM = 0,
@@ -149,8 +151,9 @@ static ge::graphStatus GetAndCheckAttrActiveExpertRange(const gert::RuntimeAttrs
 }
 
 static ge::graphStatus GetAndCheckAttrExpertCapacity(const gert::RuntimeAttrs *attrs,
-                                                     const gert::InferShapeContext *context, const gert::Shape *xShape,
-                                                     int64_t &expertCapacity, const int64_t dropPadMode)
+                                                     const gert::InferShapeContext *context,
+                                                     const gert::Shape *xShape, int64_t &expertCapacity,
+                                                     const int64_t dropPadMode)
 {
     OP_LOGD(context, "Begin to do GetAndCheckAttrExpertCapacity.");
     const int64_t *expertCapacityPtr = attrs->GetAttrPointer<int64_t>(MOE_INIT_ROUTING_V4_ATTR_EXPERT_CAPACITY);
@@ -168,7 +171,8 @@ static ge::graphStatus GetAndCheckAttrExpertCapacity(const gert::RuntimeAttrs *a
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus GetAndCheckAttrExpertNum(const gert::RuntimeAttrs *attrs, const gert::InferShapeContext *context,
+static ge::graphStatus GetAndCheckAttrExpertNum(const gert::RuntimeAttrs *attrs,
+                                                const gert::InferShapeContext *context,
                                                 int64_t &expertNum)
 {
     OP_LOGD(context, "Begin to do GetAndCheckAttrExpertNum.");
@@ -189,7 +193,8 @@ static ge::graphStatus GetAndCheckAttrExpertNum(const gert::RuntimeAttrs *attrs,
 }
 
 static ge::graphStatus GetAndCheckAttrDropPadMode(const gert::RuntimeAttrs *attrs,
-                                                  const gert::InferShapeContext *context, int64_t &dropPadMode)
+                                                  const gert::InferShapeContext *context,
+                                                  int64_t &dropPadMode)
 {
     OP_LOGD(context, "Begin to do GetAndCheckAttrDropPadMode.");
     const int64_t *dropPadModePtr = attrs->GetAttrPointer<int64_t>(MOE_INIT_ROUTING_V4_ATTR_DROP_PAD_MODE);
@@ -221,8 +226,8 @@ static ge::graphStatus GetAndCheckAttrExpertTokenNumType(const gert::RuntimeAttr
     }
     experTokenNumType = *experTokenNumTypePtr;
     if (experTokenNumType < ExpertTokenNumType::CUMSUM || experTokenNumType > ExpertTokenNumType::KEY_VALUE) {
-        OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "expert_token_num_type", std::to_string(experTokenNumType),
-                                  "0, 1 or 2");
+        OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "expert_token_num_type",
+                                  std::to_string(experTokenNumType), "0, 1 or 2");
         return ge::GRAPH_FAILED;
     }
 
@@ -245,7 +250,8 @@ static ge::graphStatus GetAndCheckAttrExpertTokenNumFlag(const gert::RuntimeAttr
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus GetAndCheckAttrQuantMode(const gert::RuntimeAttrs *attrs, const gert::InferShapeContext *context,
+static ge::graphStatus GetAndCheckAttrQuantMode(const gert::RuntimeAttrs *attrs,
+                                                const gert::InferShapeContext *context,
                                                 int64_t &quantMode)
 {
     OP_LOGD(context, "Begin to do GetAndCheckQuantMode.");
@@ -269,8 +275,8 @@ static ge::graphStatus GetAndCheckAttrQuantMode(const gert::RuntimeAttrs *attrs,
 }
 
 static ge::graphStatus GetAndCheckAttrRowIdxType(const gert::RuntimeAttrs *attrs,
-                                                 const gert::InferShapeContext *context, int64_t &rowIdxType,
-                                                 int64_t &dropPadMode)
+                                                 const gert::InferShapeContext *context,
+                                                 int64_t &rowIdxType, int64_t &dropPadMode)
 {
     OP_LOGD(context, "Begin to do GetAndCheckAttrRowIdxType.");
     if (nullptr == attrs) {
@@ -303,34 +309,40 @@ static ge::graphStatus CheckScaleShapeForNonQuant(const gert::InferShapeContext 
                                                   const gert::Shape *scaleShape)
 {
     if (scaleShape->GetDimNum() == DIM_ONE) {
-        OP_CHECK_IF(
-            scaleShape->GetDim(0) < 0 && scaleShape->GetDim(0) != NEG_ONE && scaleShape->GetDim(0) != NEG_TWO,
-            OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "scale", Ops::Base::ToString(*scaleShape), "-1 or -2"),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(scaleShape->GetDim(0) < 0 && scaleShape->GetDim(0) != NEG_ONE && scaleShape->GetDim(0) != NEG_TWO,
+                    OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "scale",
+                                              Ops::Base::ToString(*scaleShape), "-1 or -2"),
+                    return ge::GRAPH_FAILED);
         OP_CHECK_IF(scaleShape->GetDim(0) > 0 && !IsSameDim(scaleShape->GetDim(0), xShape->GetDim(0)),
-                    OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "scale", Ops::Base::ToString(*scaleShape),
+                    OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "scale",
+                                              Ops::Base::ToString(*scaleShape),
                                               std::to_string(xShape->GetDim(0))),
                     return ge::GRAPH_FAILED);
     } else if (scaleShape->GetDimNum() == DIM_THREE) {
         OP_CHECK_IF(scaleShape->GetDim(0) < 0 && scaleShape->GetDim(0) != NEG_ONE ||
-                        scaleShape->GetDim(1) < 0 && scaleShape->GetDim(1) != NEG_ONE ||
-                        scaleShape->GetDim(DIM_TWO) < 0 && scaleShape->GetDim(DIM_TWO) != NEG_ONE,
-                    OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "scale", Ops::Base::ToString(*scaleShape),
-                                              "each dim is -1"),
+                    scaleShape->GetDim(1) < 0 && scaleShape->GetDim(1) != NEG_ONE ||
+                    scaleShape->GetDim(DIM_TWO) < 0 && scaleShape->GetDim(DIM_TWO) != NEG_ONE,
+                    OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "scale",
+                                              Ops::Base::ToString(*scaleShape), "each dim is -1"),
                     return ge::GRAPH_FAILED);
-        OP_CHECK_IF(
-            scaleShape->GetDim(0) > 0 && xShape->GetDim(0) > 0 && !IsSameDim(scaleShape->GetDim(0), xShape->GetDim(0)),
-            OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "scale", Ops::Base::ToString(*scaleShape),
-                                      std::to_string(xShape->GetDim(0))),
-            return ge::GRAPH_FAILED);
-        OP_CHECK_IF(
-            scaleShape->GetDim(1) > 0 && xShape->GetDimNum() > 2 && xShape->GetDim(1) > 0 &&
-                !IsSameDim(scaleShape->GetDim(1), Ops::Base::CeilDiv<int64_t>(xShape->GetDim(1), SCALE_BLOCK_SIZE)),
-            OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "scale", Ops::Base::ToString(*scaleShape),
-                                      std::to_string(Ops::Base::CeilDiv<int64_t>(xShape->GetDim(1), SCALE_BLOCK_SIZE))),
-            return ge::GRAPH_FAILED);
-        OP_CHECK_IF(scaleShape->GetDim(DIM_TWO) > 0 && !IsSameDim(scaleShape->GetDim(DIM_TWO), SCALE_THIRD_DIM_SIZE),
-                    OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "scale", Ops::Base::ToString(*scaleShape),
+        OP_CHECK_IF(scaleShape->GetDim(0) > 0 && xShape->GetDim(0) > 0 &&
+                        !IsSameDim(scaleShape->GetDim(0), xShape->GetDim(0)),
+                    OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "scale",
+                                              Ops::Base::ToString(*scaleShape),
+                                              std::to_string(xShape->GetDim(0))),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(scaleShape->GetDim(1) > 0 && xShape->GetDimNum() > 2 && xShape->GetDim(1) > 0 &&
+                        !IsSameDim(scaleShape->GetDim(1),
+                            Ops::Base::CeilDiv<int64_t>(xShape->GetDim(1), SCALE_BLOCK_SIZE)),
+                    OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "scale",
+                                              Ops::Base::ToString(*scaleShape),
+                                              std::to_string(Ops::Base::CeilDiv<int64_t>(
+                                                  xShape->GetDim(1), SCALE_BLOCK_SIZE))),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(scaleShape->GetDim(DIM_TWO) > 0 && !IsSameDim(scaleShape->GetDim(DIM_TWO),
+                                                                    SCALE_THIRD_DIM_SIZE),
+                    OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "scale",
+                                              Ops::Base::ToString(*scaleShape),
                                               std::to_string(SCALE_THIRD_DIM_SIZE)),
                     return ge::GRAPH_FAILED);
     } else {
@@ -348,16 +360,19 @@ static ge::graphStatus CheckScaleShapeForStaticQuant(const gert::InferShapeConte
         OP_CHECK_IF(
             scaleShape->GetDim(0) != NEG_ONE && scaleShape->GetDim(0) != NEG_TWO &&
                 !IsSameDim(scaleShape->GetDim(0), DIM_ONE),
-            OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "scale", Ops::Base::ToString(*scaleShape), "-1, -2 or 1"),
+            OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "scale", Ops::Base::ToString(*scaleShape),
+                                      "-1, -2 or 1"),
             return ge::GRAPH_FAILED);
     } else {
-        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "scale", std::to_string(scaleShape->GetDimNum()), "1");
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "scale", std::to_string(scaleShape->GetDimNum()),
+                                     "1");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CheckScaleShapeForDynamicQuant(const gert::InferShapeContext *context, const gert::Shape *xShape,
+static ge::graphStatus CheckScaleShapeForDynamicQuant(const gert::InferShapeContext *context,
+                                                      const gert::Shape *xShape,
                                                       const gert::Shape *scaleShape, int64_t expertStart,
                                                       int64_t expertEnd)
 {
@@ -371,20 +386,23 @@ static ge::graphStatus CheckScaleShapeForDynamicQuant(const gert::InferShapeCont
         if (scaleShape->GetDim(0) > 0) {
             OP_CHECK_IF(
                 !IsSameDim(scaleShape->GetDim(0), activeExpertRange) && !IsSameDim(scaleShape->GetDim(0), DIM_ONE),
-                OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "scale dim[0]", std::to_string(scaleShape->GetDim(0)),
+                OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "scale dim[0]",
+                                          std::to_string(scaleShape->GetDim(0)),
                                           ("1 or " + std::to_string(activeExpertRange))),
                 return ge::GRAPH_FAILED);
             OP_CHECK_IF(
                 !IsSameDim(scaleShape->GetDim(1), xShape->GetDim(1)),
-                OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "scale dim[1]", std::to_string(scaleShape->GetDim(1)),
+                OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "scale dim[1]",
+                                          std::to_string(scaleShape->GetDim(1)),
                                           std::to_string(xShape->GetDim(1))),
                 return ge::GRAPH_FAILED);
         } else {
-            OP_CHECK_IF(scaleShape->GetDim(0) != NEG_ONE ||
-                            (scaleShape->GetDim(1) != NEG_ONE && scaleShape->GetDim(1) != xShape->GetDim(1)),
-                        OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "scale", Ops::Base::ToString(*scaleShape),
-                                                  ("(-1, -1) or (-1, " + std::to_string(xShape->GetDim(1)) + ")")),
-                        return ge::GRAPH_FAILED);
+            OP_CHECK_IF(
+                scaleShape->GetDim(0) != NEG_ONE || (scaleShape->GetDim(1) != NEG_ONE &&
+                    scaleShape->GetDim(1) != xShape->GetDim(1)),
+                OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "scale", Ops::Base::ToString(*scaleShape),
+                                          ("(-1, -1) or (-1, " + std::to_string(xShape->GetDim(1)) + ")")),
+                return ge::GRAPH_FAILED);
         }
     } else {
         OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "scale", std::to_string(scaleShape->GetDimNum()),
@@ -398,20 +416,24 @@ static ge::graphStatus CheckScaleShapeForHif8PerTensor(const gert::InferShapeCon
                                                        const gert::Shape *scaleShape)
 {
     if (scaleShape->GetDimNum() != DIM_ONE) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "scale", std::to_string(scaleShape->GetDimNum()), "1");
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "scale", std::to_string(scaleShape->GetDimNum()),
+                                     "1");
         return ge::GRAPH_FAILED;
     }
-    OP_CHECK_IF(!IsSameDim(scaleShape->GetDim(0), DIM_ONE),
-                OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "scale", Ops::Base::ToString(*scaleShape), "1"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        !IsSameDim(scaleShape->GetDim(0), DIM_ONE),
+        OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "scale", Ops::Base::ToString(*scaleShape), "1"),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 static ge::graphStatus CheckScaleShapeForInt4DynamicQuant(const gert::InferShapeContext *context,
-                                                          const gert::Shape *xShape, const gert::Shape *scaleShape)
+                                                          const gert::Shape *xShape,
+                                                          const gert::Shape *scaleShape)
 {
     if (scaleShape->GetDimNum() != DIM_TWO) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "scale", std::to_string(scaleShape->GetDimNum()), "2");
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "scale", std::to_string(scaleShape->GetDimNum()),
+                                     "2");
         return ge::GRAPH_FAILED;
     }
     if (scaleShape->GetDim(0) > 0) {
@@ -421,7 +443,8 @@ static ge::graphStatus CheckScaleShapeForInt4DynamicQuant(const gert::InferShape
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(!IsSameDim(scaleShape->GetDim(1), xShape->GetDim(1)),
                     OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "scale dim[1]",
-                                              std::to_string(scaleShape->GetDim(1)), std::to_string(xShape->GetDim(1))),
+                                              std::to_string(scaleShape->GetDim(1)),
+                                              std::to_string(xShape->GetDim(1))),
                     return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(scaleShape->GetDim(0) != NEG_ONE ||
@@ -437,21 +460,23 @@ static ge::graphStatus CheckInputScaleShape(const gert::InferShapeContext *conte
                                             const gert::Shape *scaleShape, const int64_t expertStart,
                                             const int64_t expertEnd, const int64_t quantMode)
 {
-    OP_CHECK_IF(
-        (nullptr == scaleShape && (QuantMode::STATIC_QUANT == quantMode || QuantMode::HIF8_PERTENSOR == quantMode)),
-        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "scale"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF((nullptr == scaleShape && (QuantMode::STATIC_QUANT == quantMode ||
+                                           QuantMode::HIF8_PERTENSOR == quantMode)),
+                OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "scale"),
+                return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(
-        (nullptr == scaleShape &&
-         (QuantMode::NON_QUANT == quantMode || QuantMode::DYNAMIC_QUANT == quantMode ||
-          QuantMode::MXQUANT_FP8_E5M2 == quantMode || QuantMode::MXQUANT_FP8_E4M3FN == quantMode ||
-          QuantMode::FP8_GROUP_E5M2 == quantMode || QuantMode::FP8_GROUP_E4M3FN == quantMode ||
-          QuantMode::MXFP8_ROUNDSCALE_AMAX_E5M2 == quantMode || QuantMode::MXFP8_ROUNDSCALE_AMAX_E4M3FN == quantMode ||
-          QuantMode::HIF8_CAST == quantMode || QuantMode::HIF8_PERTOKEN == quantMode ||
-          QuantMode::MXQUANT_FP4_E2M1 == quantMode || QuantMode::FP8_PERBLOCK_E5M2 == quantMode ||
-          QuantMode::FP8_PERBLOCK_E4M3FN == quantMode || QuantMode::INT4_DYNAMIC_QUANT == quantMode ||
-          QuantMode::FP8_GROUP_AMAX_E5M2 == quantMode || QuantMode::FP8_GROUP_AMAX_E4M3FN == quantMode)),
-        OP_LOGI(context, "When quant_mode is %ld , scale can be none.", quantMode), return ge::GRAPH_SUCCESS);
+    OP_CHECK_IF((nullptr == scaleShape &&
+                 (QuantMode::NON_QUANT == quantMode || QuantMode::DYNAMIC_QUANT == quantMode ||
+                  QuantMode::MXQUANT_FP8_E5M2 == quantMode || QuantMode::MXQUANT_FP8_E4M3FN == quantMode ||
+                  QuantMode::FP8_GROUP_E5M2 == quantMode || QuantMode::FP8_GROUP_E4M3FN == quantMode ||
+                  QuantMode::MXFP8_ROUNDSCALE_AMAX_E5M2 == quantMode ||
+                  QuantMode::MXFP8_ROUNDSCALE_AMAX_E4M3FN == quantMode ||
+                  QuantMode::HIF8_CAST == quantMode || QuantMode::HIF8_PERTOKEN == quantMode ||
+                  QuantMode::MXQUANT_FP4_E2M1 == quantMode ||
+                  QuantMode::FP8_PERBLOCK_E5M2 == quantMode || QuantMode::FP8_PERBLOCK_E4M3FN == quantMode ||
+                  QuantMode::INT4_DYNAMIC_QUANT == quantMode || QuantMode::FP8_GROUP_AMAX_E5M2 == quantMode ||
+                  QuantMode::FP8_GROUP_AMAX_E4M3FN == quantMode)),
+                OP_LOGI(context, "When quant_mode is %ld , scale can be none.", quantMode), return ge::GRAPH_SUCCESS);
 
     if (QuantMode::NON_QUANT == quantMode) {
         return CheckScaleShapeForNonQuant(context, xShape, scaleShape);
@@ -478,20 +503,22 @@ static ge::graphStatus CheckInputOffsetShape(const gert::InferShapeContext *cont
     }
 
     if (offsetShape->GetDimNum() != DIM_ONE) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "offset", std::to_string(offsetShape->GetDimNum()), "1");
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "offset", std::to_string(offsetShape->GetDimNum()),
+                                     "1");
         return ge::GRAPH_FAILED;
     }
     if (offsetShape->GetDim(0) != NEG_ONE && offsetShape->GetDim(0) != NEG_TWO &&
         !IsSameDim(offsetShape->GetDim(0), DIM_ONE)) {
-        OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "offset", Ops::Base::ToString(*offsetShape), "1, -1 or -2");
+        OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "offset", Ops::Base::ToString(*offsetShape),
+                                  "1, -1 or -2");
         return ge::GRAPH_FAILED;
     }
 
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CheckXShape(const gert::InferShapeContext *context, const gert::Shape *xShape, int64_t &x_n,
-                                   int64_t &cols)
+static ge::graphStatus CheckXShape(const gert::InferShapeContext *context, const gert::Shape *xShape,
+                                   int64_t &x_n, int64_t &cols)
 {
     if (xShape->GetDimNum() == DIM_ONE) {
         if (xShape->GetDim(0) != ge::UNKNOWN_DIM_NUM) {
@@ -499,7 +526,8 @@ static ge::graphStatus CheckXShape(const gert::InferShapeContext *context, const
             return ge::GRAPH_FAILED;
         }
     } else if (xShape->GetDimNum() != DIM_TWO) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "x", std::to_string(xShape->GetDimNum()), "2 or dynamic");
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "x", std::to_string(xShape->GetDimNum()),
+                                     "2 or dynamic");
         return ge::GRAPH_FAILED;
     }
 
@@ -518,12 +546,13 @@ static ge::graphStatus CheckExpertIdxShape(const gert::InferShapeContext *contex
 {
     if (expertIdxShape->GetDimNum() == DIM_ONE) {
         if (expertIdxShape->GetDim(0) != ge::UNKNOWN_DIM_NUM) {
-            OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "expert_idx", Ops::Base::ToString(*expertIdxShape), "-2");
+            OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "expert_idx", Ops::Base::ToString(*expertIdxShape),
+                                      "-2");
             return ge::GRAPH_FAILED;
         }
     } else if (expertIdxShape->GetDimNum() != DIM_TWO) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "expert_idx", std::to_string(expertIdxShape->GetDimNum()),
-                                     "2 or dynamic");
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "expert_idx",
+                                     std::to_string(expertIdxShape->GetDimNum()), "2 or dynamic");
         return ge::GRAPH_FAILED;
     }
 
@@ -531,7 +560,8 @@ static ge::graphStatus CheckExpertIdxShape(const gert::InferShapeContext *contex
     expert_idx_k = expertIdxShape->GetDimNum() == DIM_ONE ? NEG_ONE : expertIdxShape->GetDim(1);
     if (expert_idx_n < NEG_ONE || expert_idx_k < NEG_ONE) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "expert_idx",
-                                              Ops::Base::ToString(*expertIdxShape), "invalid expert_idx shape");
+                                              Ops::Base::ToString(*expertIdxShape),
+                                              "invalid expert_idx shape");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -555,10 +585,10 @@ static ge::graphStatus CheckInputShape(const gert::InferShapeContext *context, c
     }
 
     if (!IsSameDim(x_n, expert_idx_n)) {
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-            context->GetNodeName(), "x, expert_idx",
-            (Ops::Base::ToString(*xShape) + ", " + Ops::Base::ToString(*expertIdxShape)),
-            "the first dim of x and expert_idx should be same");
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "x, expert_idx",
+                                               (Ops::Base::ToString(*xShape) + ", " +
+                                                Ops::Base::ToString(*expertIdxShape)),
+                                               "the first dim of x and expert_idx should be same");
         return ge::GRAPH_FAILED;
     }
 
@@ -591,9 +621,10 @@ static void ShowOutputShapeInfo(const gert::InferShapeContext *context, const ge
     OP_LOGD(context, "End to do MoeInitRoutingV4Infershape.");
 }
 
-static ge::graphStatus GetAndValidateAttrs(const gert::InferShapeContext *context, const gert::Shape *xShape,
-                                           int64_t &expertNum, int64_t &expertStart, int64_t &expertEnd,
-                                           int64_t &dropPadMode, int64_t &expertCapacity, int64_t &expertTokenNumType,
+static ge::graphStatus GetAndValidateAttrs(const gert::InferShapeContext *context,
+                                           const gert::Shape *xShape, int64_t &expertNum, int64_t &expertStart,
+                                           int64_t &expertEnd, int64_t &dropPadMode,
+                                           int64_t &expertCapacity, int64_t &expertTokenNumType,
                                            bool &expertTokenNumFlag, int64_t &quantMode, int64_t &rowIdxType)
 {
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
@@ -630,8 +661,8 @@ static ge::graphStatus GetAndValidateAttrs(const gert::InferShapeContext *contex
     return ge::GRAPH_SUCCESS;
 }
 
-static void CalculateOutputDims(const gert::Shape *xShape, const gert::Shape *expertIdxShape, int64_t &cols,
-                                int64_t &outNum, int64_t &xOutNum)
+static void CalculateOutputDims(const gert::Shape *xShape, const gert::Shape *expertIdxShape,
+                                int64_t &cols, int64_t &outNum, int64_t &xOutNum)
 {
     int64_t x_n = xShape->GetDimNum() == DIM_ONE ? NEG_ONE : xShape->GetDim(0);
     cols = xShape->GetDimNum() == DIM_ONE ? NEG_ONE : xShape->GetDim(1);
@@ -662,8 +693,8 @@ static void SetExpandedXandRowIdxShape(gert::Shape *expandedXShape, gert::Shape 
 }
 
 static void SetExpertTokenCumsumOrCountShape(gert::Shape *expertTokenCumsumOrCountShape, bool expertTokenNumFlag,
-                                             int64_t expertTokenNumType, int64_t expertNum, int64_t expertStart,
-                                             int64_t expertEnd)
+                                             int64_t expertTokenNumType, int64_t expertNum,
+                                             int64_t expertStart, int64_t expertEnd)
 {
     if (expertTokenNumFlag) {
         if (expertTokenNumType == ExpertTokenNumType::KEY_VALUE) {
@@ -677,9 +708,9 @@ static void SetExpertTokenCumsumOrCountShape(gert::Shape *expertTokenCumsumOrCou
     }
 }
 
-static void SetExpandedScaleShape(gert::Shape *expandedScaleShape, const gert::Shape *scaleShape, int64_t quantMode,
-                                  int64_t dropPadMode, int64_t xOutNum, int64_t outNum, int64_t expertNum,
-                                  int64_t expertCapacity, int64_t cols)
+static void SetExpandedScaleShape(gert::Shape *expandedScaleShape, const gert::Shape *scaleShape,
+                                  int64_t quantMode, int64_t dropPadMode, int64_t xOutNum,
+                                  int64_t outNum, int64_t expertNum, int64_t expertCapacity, int64_t cols)
 {
     if ((QuantMode::NON_QUANT == quantMode && scaleShape && scaleShape->GetDimNum() == DIM_THREE) ||
         QuantMode::MXQUANT_FP4_E2M1 == quantMode) {
@@ -701,12 +732,12 @@ static void SetExpandedScaleShape(gert::Shape *expandedScaleShape, const gert::S
                quantMode == QuantMode::MXFP8_ROUNDSCALE_AMAX_E4M3FN) {
         expandedScaleShape->SetDimNum(DIM_TWO);
         expandedScaleShape->SetDim(0U, outNum);
-        int64_t dim1 = (cols == NEG_ONE) ?
-                           NEG_ONE :
-                           Ops::Base::CeilAlign<int64_t>(Ops::Base::CeilDiv<int64_t>(cols, MX_QUANT_BLOCK_SIZE), 2LL);
+        int64_t dim1 = (cols == NEG_ONE) ? NEG_ONE :
+                       Ops::Base::CeilAlign<int64_t>(Ops::Base::CeilDiv<int64_t>(cols, MX_QUANT_BLOCK_SIZE), 2LL);
         expandedScaleShape->SetDim(1U, dim1);
     } else if (QuantMode::FP8_GROUP_E5M2 == quantMode || QuantMode::FP8_GROUP_E4M3FN == quantMode ||
-               QuantMode::FP8_GROUP_AMAX_E5M2 == quantMode || QuantMode::FP8_GROUP_AMAX_E4M3FN == quantMode) {
+               QuantMode::FP8_GROUP_AMAX_E5M2 == quantMode ||
+               QuantMode::FP8_GROUP_AMAX_E4M3FN == quantMode) {
         expandedScaleShape->SetDimNum(DIM_TWO);
         expandedScaleShape->SetDim(0U, outNum);
         int64_t dim1 = (cols == NEG_ONE) ? NEG_ONE : Ops::Base::CeilDiv<int64_t>(cols, FP8_GROUP_SIZE);
@@ -717,15 +748,16 @@ static void SetExpandedScaleShape(gert::Shape *expandedScaleShape, const gert::S
     } else if (QuantMode::FP8_PERBLOCK_E5M2 == quantMode || QuantMode::FP8_PERBLOCK_E4M3FN == quantMode) {
         expandedScaleShape->SetDimNum(DIM_THREE);
         expandedScaleShape->SetDim(0U, outNum);
-        int64_t colsAligned =
-            (cols == NEG_ONE) ? NEG_ONE : Ops::Base::CeilDiv<int64_t>(cols, FP8_PERBLOCK_BLOCK_SIZE * NUM_TWO);
+        int64_t colsAligned = (cols == NEG_ONE) ? NEG_ONE :
+            Ops::Base::CeilDiv<int64_t>(cols, FP8_PERBLOCK_BLOCK_SIZE * NUM_TWO);
         expandedScaleShape->SetDim(1U, colsAligned);
         expandedScaleShape->SetDim(DIM_TWO, SCALE_THIRD_DIM_SIZE);
     }
 }
 
 static void SetExpandedTopkWeightShape(gert::Shape *expandedTopkWeightShape, const gert::Shape *topkWeightShape,
-                                       int64_t dropPadMode, int64_t outNum, int64_t expertNum, int64_t expertCapacity)
+                                       int64_t dropPadMode, int64_t outNum, int64_t expertNum,
+                                       int64_t expertCapacity)
 {
     if (expandedTopkWeightShape != nullptr) {
         if (topkWeightShape != nullptr) {
@@ -765,8 +797,9 @@ static ge::graphStatus InferShape4MoeInitRoutingV4(gert::InferShapeContext *cont
     int64_t quantMode = -1;
     int64_t rowIdxType = -1;
 
-    if (GetAndValidateAttrs(context, xShape, expertNum, expertStart, expertEnd, dropPadMode, expertCapacity,
-                            expertTokenNumType, expertTokenNumFlag, quantMode, rowIdxType) != ge::GRAPH_SUCCESS) {
+    if (GetAndValidateAttrs(context, xShape, expertNum, expertStart, expertEnd, dropPadMode,
+                            expertCapacity, expertTokenNumType, expertTokenNumFlag, quantMode, rowIdxType) !=
+        ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
@@ -794,19 +827,19 @@ static ge::graphStatus InferShape4MoeInitRoutingV4(gert::InferShapeContext *cont
     SetExpandedXandRowIdxShape(expandedXShape, expandedRowIdxShape, dropPadMode, xOutNum, outNum, expertNum,
                                expertCapacity, cols);
 
-    SetExpertTokenCumsumOrCountShape(expertTokenCumsumOrCountShape, expertTokenNumFlag, expertTokenNumType, expertNum,
-                                     expertStart, expertEnd);
+    SetExpertTokenCumsumOrCountShape(expertTokenCumsumOrCountShape, expertTokenNumFlag, expertTokenNumType,
+                                     expertNum, expertStart, expertEnd);
 
-    SetExpandedScaleShape(expandedScaleShape, scaleShape, quantMode, dropPadMode, xOutNum, outNum, expertNum,
-                          expertCapacity, cols);
+    SetExpandedScaleShape(expandedScaleShape, scaleShape, quantMode, dropPadMode, xOutNum, outNum,
+                          expertNum, expertCapacity, cols);
 
     gert::Shape *expandedTopkWeightShape = context->GetOutputShape(MOE_INIT_ROUTING_V4_OUTPUT_EXPANDED_TOPK_WEIGHT);
 
     SetExpandedTopkWeightShape(expandedTopkWeightShape, topkWeightShape, dropPadMode, outNum, expertNum,
                                expertCapacity);
 
-    ShowOutputShapeInfo(context, expandedXShape, expandedRowIdxShape, expertTokenCumsumOrCountShape, expandedScaleShape,
-                        expandedTopkWeightShape);
+    ShowOutputShapeInfo(context, expandedXShape, expandedRowIdxShape, expertTokenCumsumOrCountShape,
+                        expandedScaleShape, expandedTopkWeightShape);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -815,9 +848,9 @@ static ge::graphStatus ValidateInputDtype(const gert::InferDataTypeContext *cont
 {
     if (QuantMode::STATIC_QUANT == quantMode || QuantMode::DYNAMIC_QUANT == quantMode) {
         if (ge::DT_INT8 == xDtype) {
-            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-                context->GetNodeName(), "xDtype", Ops::Base::ToString(xDtype),
-                ("xDtype cannot be int8 when quant_mode=" + std::to_string(quantMode)));
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context->GetNodeName(), "xDtype", Ops::Base::ToString(xDtype),
+                                                  ("xDtype cannot be int8 when quant_mode=" +
+                                                   std::to_string(quantMode)));
             return ge::GRAPH_FAILED;
         }
     } else if (QuantMode::INT4_DYNAMIC_QUANT == quantMode) {
@@ -826,14 +859,14 @@ static ge::graphStatus ValidateInputDtype(const gert::InferDataTypeContext *cont
                                       "DT_FLOAT or DT_BF16");
             return ge::GRAPH_FAILED;
         }
-    } else if (QuantMode::MXQUANT_FP8_E5M2 == quantMode || QuantMode::MXQUANT_FP8_E4M3FN == quantMode ||
-               QuantMode::MXFP8_ROUNDSCALE_AMAX_E5M2 == quantMode ||
-               QuantMode::MXFP8_ROUNDSCALE_AMAX_E4M3FN == quantMode || QuantMode::HIF8_CAST == quantMode ||
-               QuantMode::HIF8_PERTOKEN == quantMode || QuantMode::HIF8_PERTENSOR == quantMode ||
-               QuantMode::MXQUANT_FP4_E2M1 == quantMode || QuantMode::FP8_PERBLOCK_E5M2 == quantMode ||
-               QuantMode::FP8_PERBLOCK_E4M3FN == quantMode || QuantMode::FP8_GROUP_E5M2 == quantMode ||
-               QuantMode::FP8_GROUP_E4M3FN == quantMode || QuantMode::FP8_GROUP_AMAX_E5M2 == quantMode ||
-               QuantMode::FP8_GROUP_AMAX_E4M3FN == quantMode) {
+    } else if (QuantMode::MXQUANT_FP8_E5M2 == quantMode || QuantMode::MXQUANT_FP8_E4M3FN == quantMode
+        || QuantMode::MXFP8_ROUNDSCALE_AMAX_E5M2 == quantMode
+        || QuantMode::MXFP8_ROUNDSCALE_AMAX_E4M3FN == quantMode
+        || QuantMode::HIF8_CAST == quantMode || QuantMode::HIF8_PERTOKEN == quantMode
+        || QuantMode::HIF8_PERTENSOR == quantMode || QuantMode::MXQUANT_FP4_E2M1 == quantMode ||
+        QuantMode::FP8_PERBLOCK_E5M2 == quantMode || QuantMode::FP8_PERBLOCK_E4M3FN == quantMode ||
+        QuantMode::FP8_GROUP_E5M2 == quantMode || QuantMode::FP8_GROUP_E4M3FN == quantMode ||
+        QuantMode::FP8_GROUP_AMAX_E5M2 == quantMode || QuantMode::FP8_GROUP_AMAX_E4M3FN == quantMode) {
         if (xDtype != ge::DT_FLOAT16 && xDtype != ge::DT_BF16) {
             OP_LOGE_FOR_INVALID_DTYPE(context->GetNodeName(), "xDtype", Ops::Base::ToString(xDtype),
                                       "DT_FLOAT16 or DT_BF16");
@@ -882,8 +915,7 @@ static ge::DataType DetermineOutputDtypes(const gert::InferDataTypeContext *cont
     } else if (QuantMode::FP8_GROUP_E4M3FN == quantMode || QuantMode::FP8_GROUP_AMAX_E4M3FN == quantMode) {
         expandedXDtype = ge::DT_FLOAT8_E4M3FN;
         expandedScaleDtype = ge::DT_FLOAT;
-    } else if (QuantMode::HIF8_CAST == quantMode || QuantMode::HIF8_PERTENSOR == quantMode ||
-               QuantMode::HIF8_PERTOKEN == quantMode) {
+    } else if (QuantMode::HIF8_CAST == quantMode) {
         expandedXDtype = ge::DT_HIFLOAT8;
     } else if (QuantMode::MXQUANT_FP4_E2M1 == quantMode) {
         expandedXDtype = ge::DT_FLOAT4_E2M1;
@@ -921,8 +953,8 @@ static ge::graphStatus InferDataType4MoeInitRoutingV4(gert::InferDataTypeContext
 
     auto activeNumDtype = context->GetOptionalInputDataType(MOE_INIT_ROUTING_V4_INPUT_ACTIVE_NUM);
     if (activeNumDtype != ge::DT_UNDEFINED && activeNumDtype != ge::DT_INT64) {
-        OP_LOGE_FOR_INVALID_DTYPE(context->GetNodeName(), "active_num", Ops::Base::ToString(activeNumDtype),
-                                  "DT_INT64");
+        OP_LOGE_FOR_INVALID_DTYPE(context->GetNodeName(), "active_num",
+                                  Ops::Base::ToString(activeNumDtype), "DT_INT64");
         return ge::GRAPH_FAILED;
     }
 

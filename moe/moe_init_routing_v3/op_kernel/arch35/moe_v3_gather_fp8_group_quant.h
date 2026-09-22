@@ -20,7 +20,7 @@
 
 namespace MoeInitRoutingV3 {
 using namespace AscendC;
-using namespace AscendC::Reg;
+using namespace AscendC::MicroAPI;
 
 constexpr int64_t FP8_GROUP_QUANT_SIZE = 128;
 constexpr uint32_t FP32_MANTISSA_MASK = 0x007fffffU;
