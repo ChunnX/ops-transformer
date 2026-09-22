@@ -30,6 +30,7 @@
 #include "memory_copy_arch35.h"
 #include "../utils/attn_sink_gs1.h"
 #include "../../../common/op_kernel/arch_info.h"
+#include "flash_attn_block_sync.h"
 
 using namespace AscendC;
 using namespace FaVectorApi;
@@ -39,7 +40,7 @@ namespace FlashAttnKernel {
 using ArchInfo::CV_RATIO;
 
 template <typename FA_T>
-class FANoQuantGqaBlockVecNd {
+class FANoQuantGqaBlockVecNd : public FlashAttnVecSync {
 public:
     using INPUT_T = typename FA_T::inputType;
     using OUTPUT_T = typename FA_T::outputType;
@@ -60,23 +61,6 @@ public:
     // 索引使用 loop & (DB - 1) 代替 loop % DB，要求 DB 必须是2的幂，否则位掩码结果错误
     static_assert(DB > 0 && (DB & (DB - 1)) == 0, "DB must be a power of two for bitmask indexing");
 
-    // 核间同步ID
-    static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4;
-    static constexpr uint32_t CC_MM_0 = 0U;
-    static constexpr uint32_t CC_MM_1 = 1U;
-    static constexpr uint32_t CC_MM_2 = 2U;
-    static constexpr uint32_t CC_MM_3 = 3U;
-    static constexpr uint32_t CC_L1P_0 = 5U;
-    static constexpr uint32_t CC_L1P_1 = 6U;
-    static constexpr uint32_t CC_L1P_2 = 7U;
-
-    // 核内同步ID
-    // MTE3<->V, 输出buffer
-    static constexpr uint32_t UB_OUT_VEC2_RES_EVENT0 = 0;
-    static constexpr uint32_t UB_OUT_VEC1_RES_EVENT0 = 2;
-    static constexpr uint32_t UB_OUT_VEC1_RES_EVENT1 = 3;
-    static constexpr uint32_t UB_OUT_LSE_OUT_EVENT0 = 4;
-    static constexpr uint32_t UB_OUT_LSE_OUT_EVENT1 = 5;
     // MTE2<->V, 输入buffer
     static constexpr uint32_t UB_IN_MASK_EVENT0 = 6;
     static constexpr uint32_t UB_IN_MASK_EVENT1 = 7;
@@ -288,19 +272,8 @@ public:
 
     __aicore__ inline void InitCrossCoreSync()
     {
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_0);
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_1);
-        if constexpr (dBaseSize <= 128) {
-            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_2);
-            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_3);
-        }
+        InitMmResults<dBaseSize>();
     }
-
-    __aicore__ inline void UnInitCrossCoreSync() {}
-
-    __aicore__ inline void AllocEventID() {}
-
-    __aicore__ inline void FreeEventID() {}
 
     __aicore__ inline void ProcessVec1(RunInfo runInfo)
     {

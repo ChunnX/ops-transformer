@@ -19,6 +19,7 @@
 #include "../../../common/op_kernel/matmul.h"
 #include "../../../common/op_kernel/const_def.h"
 #include "../../../common/op_kernel/arch_info.h"
+#include "flash_attn_block_sync.h"
 
 using namespace fa_base_matmul;
 
@@ -26,7 +27,7 @@ namespace FlashAttnKernel {
 using ArchInfo::CV_RATIO;
 
 template <typename FA_T>
-class FANoQuantGqaBlockCubeNd {
+class FANoQuantGqaBlockCubeNd : public FlashAttnCubeSync {
 public:
     using INPUT_T = typename FA_T::inputType;
     using OUTPUT_T = typename FA_T::outputType;
@@ -61,32 +62,6 @@ public:
     CopyQueryGmToL1<Q_T, Q_FORMAT> copyQueryGmToL1_;
     CopyKvGmToL1<KV_T, KV_FORMAT> copyKvGmToL1_;
     GlobalTensor<int32_t> blockTableGm_;
-
-    // 核间同步ID
-    static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4U;
-    static constexpr uint32_t CROSSCORE_MM_0 = 0U;
-    static constexpr uint32_t CROSSCORE_MM_1 = 1U;
-    static constexpr uint32_t CROSSCORE_MM_2 = 2U;
-    static constexpr uint32_t CROSSCORE_MM_3 = 3U;
-    static constexpr uint32_t CROSSCORE_L1P_0 = 5U;
-    static constexpr uint32_t CROSSCORE_L1P_1 = 6U;
-    static constexpr uint32_t CROSSCORE_L1P_2 = 7U;
-
-    // 核内同步ID
-    static constexpr uint32_t Q_L1_BUFFER_ID0 = 0U;
-    static constexpr uint32_t Q_L1_BUFFER_ID1 = 1U;
-    static constexpr uint32_t KV_L1_BUFFER_ID0 = 2U;
-    static constexpr uint32_t KV_L1_BUFFER_ID1 = 3U;
-    static constexpr uint32_t KV_L1_BUFFER_ID2 = 4U;
-    static constexpr uint32_t KV_L1_BUFFER_ID3 = 5U;
-    static constexpr uint32_t L0A_BUFFER_ID0 = 6U;
-    static constexpr uint32_t L0A_BUFFER_ID1 = 7U;
-    static constexpr uint32_t L0B_BUFFER_ID0 = 8U;
-    static constexpr uint32_t L0B_BUFFER_ID1 = 9U;
-    static constexpr uint32_t L0C_BUFFER_ID0 = 10U;
-    static constexpr uint32_t L0C_BUFFER_ID1 = 11U;
-    static constexpr uint32_t L0C_BUFFER_ID2 = 12U;
-    static constexpr uint32_t L0C_BUFFER_ID3 = 13U;
 
     // UB
     static constexpr uint32_t UB_MM_RES_BUFCNT = (dBaseSize > 128) ? 2U : 4U;
@@ -213,16 +188,7 @@ public:
 
     __aicore__ inline void UnInitCrossCoreSync()
     {
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_MM_0);
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_MM_0 + AIV0_AIV1_OFFSET);
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_MM_1);
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_MM_1 + AIV0_AIV1_OFFSET);
-        if constexpr (dBaseSize <= 128) {
-            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_MM_2);
-            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_MM_2 + AIV0_AIV1_OFFSET);
-            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_MM_3);
-            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_MM_3 + AIV0_AIV1_OFFSET);
-        }
+        WaitMmResults<dBaseSize>();
     }
 
     __aicore__ inline void AllocEventID()
