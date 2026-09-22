@@ -1747,7 +1747,8 @@ static bool IsUsingFAI(gert::TilingContext &context, const string inputLayoutStr
     bool isMha = (kvHeadNum == 0) || (headNum == kvHeadNum);
     bool mhaConditions = isMha && !((qDataType == ge::DT_BF16) && (innerPrecise == 1)) &&
                          !((sparseMode == 0) && (tempAttnMaskShape != nullptr));
-    bool nonMhaConditions = !isMha && (innerPrecise == 0);
+    bool nonMhaConditions =
+        !isMha && (innerPrecise == 0) && !((sparseMode == 0) && (tempAttnMaskShape != nullptr) && (tempD == 256));
 
     if (!(inputLayoutStr == "TND" && isLearnableSinkFlag && !isRopeSplitMla && sparseModeSupported &&
           (nonMhaConditions || mhaConditions))) {
