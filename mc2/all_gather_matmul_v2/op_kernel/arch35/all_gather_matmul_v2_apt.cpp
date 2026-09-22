@@ -10,7 +10,7 @@
 
 /*!
  * \file all_gather_matmul_v2_apt.cpp
- * \brief arch35 apt 入口：v1 主线路径 + APACE 非量化路径（USING_APACE_IMPL 并存分发，a2a 范式）
+ * \brief arch35 apt 入口：非量化路径全量走 APACE（hcomm 实现）+ 量化路径
  */
 
 #include "lib/matmul_intf.h"
@@ -18,8 +18,8 @@
 #include "../all_gather_matmul_v2_apt_tiling_key.h"
 
 #if ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && ((ORIG_DTYPE_X1 == DT_FLOAT16) || (ORIG_DTYPE_X1 == DT_BF16)))
-#include "all_gather_matmul_fp16_bf16.h"
-// APACE 非量化路径（N5）：a2a 相对路径 include 先例（a2a apt L31-32 同款机制）
+#include "../all_gather_matmul_tiling_data.h"
+// APACE 非量化路径（全量承接）
 #include "../../../common/op_kernel/apace/kernel/fusions/all_gather_matmul/all_gather_matmul_hcomm_impl.h"
 #endif
 #if (((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_HIFLOAT8)) || \
@@ -33,26 +33,9 @@
 using namespace Mc2Tiling;
 using namespace AllGatherMatmulImpl;
 
-#define INVOKE_ALLGATHERMM_FP16_BF16_V2_OP_IMPL(templateClass, isTransB, hcclCommType, ...) \
-    do { \
-        using aType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, A_DTYPE, false>; \
-        using bType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, B_DTYPE, isTransB>; \
-        using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, typename BiasType<BIAS_DTYPE>::type>; \
-        using cType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, C_DTYPE>; \
-        REGISTER_TILING_DEFAULT(Mc2Tiling::AllGatherMatmulTilingDataV2); \
-        auto tiling = (__gm__ Mc2Tiling::AllGatherMatmulTilingDataV2 *)tilingGM; \
-        __gm__ void *mc2InitTiling = (__gm__ void *)(&(tiling->mc2InitTiling)); \
-        __gm__ void *mc2CcTiling = (__gm__ void *)(&(tiling->mc2CcTiling)); \
-        GET_TILING_DATA(tilingData, tilingGM); \
-        templateClass<aType, bType, biasType, cType, hcclCommType> op; \
-        op.Init(aGM, bGM, biasGM, cGM, (__gm__ uint8_t *)context, workspaceGM, gatherOut, &tilingData, mc2InitTiling, \
-                mc2CcTiling, &pipe); \
-        op.Process(); \
-    } while (0)
-
 // APACE 非量化路径（N5，a2a apt L161-186 同款范式）：
-//   REGISTER_TILING_DEFAULT 按最大结构申请（两分支共享，容量兼容）；GET_TILING_DATA_WITH_STRUCT
-//   取窄结构视图；MIX_AIC_1_2 核型沿用（APACE 分支 AIC-only 逻辑，AIV 空转于 impl 内部保护）
+// REGISTER_TILING_DEFAULT 按最大结构申请（容量兼容）；GET_TILING_DATA_WITH_STRUCT
+// 取窄结构视图；MIX_AIC_1_2 核型沿用（AIC-only 逻辑，AIV 空转于 impl 内部保护）
 #define INVOKE_AGMV2_APACE_HCOMM_OP_IMPL(hcclServerType) \
     do { \
         REGISTER_TILING_DEFAULT(Mc2Tiling::AllGatherMatmulTilingDataV2); \
@@ -88,7 +71,7 @@ using namespace AllGatherMatmulImpl;
         op.Process(); \
     } while (0)
 
-template <TPL_PARAMS_COMM, TPL_QUANT_BMM_PARAMS_COMM, TPL_HCCL_COMM_MODE, TPL_APACE_IMPL>
+template <TPL_PARAMS_COMM, TPL_QUANT_BMM_PARAMS_COMM, TPL_HCCL_COMM_MODE>
 __global__ __aicore__ void all_gather_matmul_v2(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR scaleInv1,
                                                 GM_ADDR scaleInv2, GM_ADDR scale, GM_ADDR cGM, GM_ADDR gatherOut,
                                                 GM_ADDR amax, GM_ADDR workspaceGM, GM_ADDR tilingGM)
@@ -119,15 +102,11 @@ __global__ __aicore__ void all_gather_matmul_v2(GM_ADDR aGM, GM_ADDR bGM, GM_ADD
                                                              Mc2CoreType::ON_CUBE, HCCL_COMM_MODE, false, TRANS_B);
     }
 #elif ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && ((ORIG_DTYPE_X1 == DT_FLOAT16) || (ORIG_DTYPE_X1 == DT_BF16)))
-    if constexpr (INPUT_IS_BF16FP16 && USING_APACE_IMPL) {
-        // APACE 非量化分支（B2：初期默认 v1；tiling 侧 usingApaceImpl_ 为 true 时走此分支）
+    if constexpr (INPUT_IS_BF16FP16) {
         constexpr HcclServerType hcclServerType = HCCL_COMM_MODE == HCCL_COMM_MODE_CCU ?
                                                       HcclServerType::HCCL_SERVER_TYPE_CCU :
                                                       HcclServerType::HCCL_SERVER_TYPE_AICPU;
         INVOKE_AGMV2_APACE_HCOMM_OP_IMPL(hcclServerType);
-    } else if constexpr (SCALETYPE == SCALE_TYPE_NOT_IS_MX && INPUT_IS_BF16FP16 &&
-                         OUTPUTDTYPE == OUTPUT_TYPE_IS_FP16_BF16) { // full mesh+ no nd2nz +biasNoNeedCast
-        INVOKE_ALLGATHERMM_FP16_BF16_V2_OP_IMPL(AllGatherMatmulFP16BF16, TRANS_B, HCCL_COMM_MODE);
     }
 #endif
 }
