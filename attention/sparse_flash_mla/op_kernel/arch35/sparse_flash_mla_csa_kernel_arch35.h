@@ -105,6 +105,7 @@ private:
     bool hasActualSeqQlen = false;
     bool hasActualSeqOriKvlen = false;
     bool hasActualSeqCmpKvlen = false;
+    bool isInitialized = false;
     /* workspace 空间 */
     BuffersPolicy3buffSFA<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> v0ResGmBuffers;
     BufferManager<BufferType::GM> fdStagingBufferManager;
@@ -151,7 +152,62 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Ini
         this->tilingData = tiling;
     }
 
-    if (metadata == nullptr) {
+    if (query == nullptr || oriKV == nullptr || metadata == nullptr || attentionOut == nullptr) {
+        return;
+    }
+    if constexpr (LAYOUT_T == SMLA_LAYOUT::TND) {
+        if (cuSeqlensQ == nullptr) {
+            return;
+        }
+    }
+    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::TND) {
+        if (cuSeqlensOriKv == nullptr) {
+            return;
+        }
+    } else if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
+        if (oriBlockTable == nullptr) {
+            return;
+        }
+        if constexpr (TEMPLATE_MODE != SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE &&
+                      TEMPLATE_MODE != SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+            if (seqUsedOriKV == nullptr) {
+                return;
+            }
+        }
+    }
+    if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE &&
+                  TEMPLATE_MODE != SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
+        if (cmpKV == nullptr) {
+            return;
+        }
+        if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::TND) {
+            if (cuSeqlensCmpKv == nullptr) {
+                return;
+            }
+        } else if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
+            if (cmpBlockTable == nullptr) {
+                return;
+            }
+            if constexpr (TEMPLATE_MODE != SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+                if (seqUsedCmpKV == nullptr) {
+                    return;
+                }
+            }
+        }
+    }
+    if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE ||
+                  TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+        if (cmpSparseIndices == nullptr) {
+            return;
+        }
+    }
+    if constexpr (TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+                  TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+        if (oriSparseIndices == nullptr) {
+            return;
+        }
+    }
+    if (workspace == nullptr) {
         return;
     }
     this->metadataGm.SetGlobalBuffer((__gm__ uint32_t *)metadata);
@@ -161,6 +217,37 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Ini
 
     this->ParseTilingData(cuSeqlensQ, sequsedQ, cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedOriKV, seqUsedCmpKV,
                           cmpResidualKV);
+    if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE &&
+                  TEMPLATE_MODE != SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
+        if (constInfo.cmpMaskMode != 0 && constInfo.cmpRatio != 1 && cmpResidualKV == nullptr) {
+            return;
+        }
+    }
+    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND &&
+                  (TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+                   TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE)) {
+        if (constInfo.oriMaskMode != 0 && seqUsedOriKV == nullptr) {
+            return;
+        }
+    }
+    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND &&
+                  TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+        if (constInfo.cmpMaskMode != 0 && seqUsedCmpKV == nullptr) {
+            return;
+        }
+    }
+    if constexpr (TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+                  TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+        if (constInfo.oriMaskMode == 0 && oriTopkLength == nullptr) {
+            return;
+        }
+    }
+    if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE ||
+                  TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+        if (constInfo.cmpMaskMode == 0 && cmpTopkLength == nullptr) {
+            return;
+        }
+    }
     vecBlock.InitVecBlock(cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedOriKV, seqUsedCmpKV, cmpResidualKV);
     vecBlock.CleanOutput(attentionOut, softmaxLse, constInfo);
 
@@ -199,6 +286,7 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Ini
     }
     ComputeConstexpr<TEMPLATE_INTF_ARGS>(this->constInfo);
     InitLocalBuffer(this->vecBlock, this->cubeBlock, this->constInfo, this->vUbBase, this->l1CubeBase);
+    this->isInitialized = true;
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -438,6 +526,9 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Ini
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Process()
 {
+    if (!this->isInitialized) {
+        return;
+    }
     // SyncAll Cube和Vector都需要调用
     if constexpr (IS_VEC_S2PHYADDR) {
         SyncAll<false>();
@@ -449,8 +540,8 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Pro
         ParseFdRunInfo(fdRunInfo, this->constInfo, this->metadataGm);
     }
     ProcessMainLoop();
+    SyncAll();
     if ASCEND_IS_AIV {
-        SyncAll();
         if (fdRunInfo.coreEnable) {
             this->vecBlock.ProcessFlashDecode(fdRunInfo, this->constInfo);
         }
