@@ -287,15 +287,15 @@
 ## 约束说明
 
 <!-- npu="950" id1 -->
-<term>Ascend 950PR&950DT系列产品</term>：仅支持`quant_mode=1/2`，q和attn_out仅支持BFLOAT16，ori_kv和cmp_kv仅支持FLOAT8_E4M3FN；quant_mode为1和2时kv_d分别为608和584，quant_mode为2时layout_kv仅支持PA_BBND。
+- <term>Ascend 950PR&950DT系列产品</term>：仅支持`quant_mode=1/2`，q和attn_out仅支持BFLOAT16，ori_kv和cmp_kv仅支持FLOAT8_E4M3FN；quant_mode为1和2时kv_d分别为608和584，quant_mode为2时layout_kv仅支持PA_BBND。
 <!-- end id1 -->
 
 <!-- npu="A3" id2 -->
-<term>Atlas A3系列产品</term>：仅支持`quant_mode=3`的TurboQuant CSA场景，q、ori_kv和attn_out支持FLOAT16、BFLOAT16且数据类型一致，ori_kv的尾维为512，cmp_kv仅支持UINT8且尾维为258。
+- <term>Atlas A3系列产品</term>：仅支持`quant_mode=3`的TurboQuant CSA场景，q、ori_kv和attn_out支持FLOAT16、BFLOAT16且数据类型一致，ori_kv的尾维为512，cmp_kv仅支持UINT8且尾维为258。
 <!-- end id2 -->
 
 <!-- npu="910b" id3 -->
-<term>Atlas A2系列产品</term>：仅支持`quant_mode=3`的TurboQuant CSA场景，q、ori_kv和attn_out支持FLOAT16、BFLOAT16且数据类型一致，ori_kv的尾维为512，cmp_kv仅支持UINT8且尾维为258。
+- <term>Atlas A2系列产品</term>：仅支持`quant_mode=3`的TurboQuant CSA场景，q、ori_kv和attn_out支持FLOAT16、BFLOAT16且数据类型一致，ori_kv的尾维为512，cmp_kv仅支持UINT8且尾维为258。
 <!-- end id3 -->
 
 - 该接口支持推理场景下使用。
