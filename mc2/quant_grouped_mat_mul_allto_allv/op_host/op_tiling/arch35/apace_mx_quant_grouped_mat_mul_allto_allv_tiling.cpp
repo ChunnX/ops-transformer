@@ -285,8 +285,24 @@ uint64_t ApaceMxQuantGroupedMatmulAllToAllvTiling::GetTilingKey() const
 
 ge::graphStatus ApaceMxQuantGroupedMatmulAllToAllvTiling::PostTiling()
 {
-    // tiling 数据只声明结构体大小（capacity-8），尾部 8 字节留给框架写入 DFX 指针（atomicIndex）
-    context_->GetRawTilingData()->SetDataSize(sizeof(Apace::hcommQuantGmmAlltoAllvTilingData));
+    // 对齐镜像算子 PR 11573 的 data size 处理：框架按 REGISTER_TILING_DEFAULT 结构
+    // （QuantGmmA2avTilingData）的大小处理 tiling 数据（DFX/异常恢复/参数打包），
+    // 须按 registeredSize 声明并清零 apace 结构之后的 padding，避免框架读到脏数据
+    auto *rawTiling = context_->GetRawTilingData();
+    OP_TILING_CHECK(rawTiling == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "rawTilingData"),
+                    return ge::GRAPH_FAILED);
+    const size_t capacity = rawTiling->GetCapacity();
+    constexpr size_t registeredSize = sizeof(QuantGmmA2avTilingData);
+    const size_t apaceSize = sizeof(Apace::hcommQuantGmmAlltoAllvTilingData);
+    if (capacity >= registeredSize && registeredSize > apaceSize) {
+        errno_t ret = memset_s(reinterpret_cast<uint8_t *>(rawTiling->GetData()) + apaceSize, capacity - apaceSize, 0,
+                               registeredSize - apaceSize);
+        OP_TILING_CHECK(ret != EOK, OP_LOGE(opName_, "clear apace tiling padding failed, ret=%d.", ret),
+                        return ge::GRAPH_FAILED);
+        rawTiling->SetDataSize(registeredSize);
+    } else {
+        rawTiling->SetDataSize(apaceSize);
+    }
     // 与原通路完全对齐：不设置 SetScheduleMode（原通路为默认 0；独占模式与 MC2 通信域
     // 辅助 task 的调度交互未知，属未验证组合）
     // 必须全核启动（与原通路 aicCoreNum 口径一致）：kernel 逐批使用 mode-0 全核 FFTS barrier
