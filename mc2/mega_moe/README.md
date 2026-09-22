@@ -929,7 +929,6 @@
     - `localMoeExpertNum` = `moeExpertNum` / `epWorldSize`；`sharedExpertNumPerRank` = `sharedWeight1`.dim0（未启用共享专家时为0）；`expertPerRank` = `sharedExpertNumPerRank` + `localMoeExpertNum`。
     - `sharedExpertNumPerRank`范围 [0, 4]。
     - `topoType`由通信域上下文自动推导。0表示MTE拓扑，1表示URMA跨超拓扑。
-    - URMA拓扑下，`activation`不支持`swiglustep`和`swigluoai`。
     - `topkWeightsType`取值为0或1，0表示关闭topkWeights前移，1表示开启。
     - `weightScales1`和`weightScales2`为必选输入，数据类型必须为FLOAT8_E8M0。
     - `weight1`和`weight2`的数据类型必须一致，且仅支持FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1。
