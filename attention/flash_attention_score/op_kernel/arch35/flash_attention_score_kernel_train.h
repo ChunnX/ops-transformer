@@ -158,6 +158,19 @@ __aicore__ inline int64_t FlashAttentionScoreKernelTrain<CubeBlockType, VecBlock
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreKernelTrain<CubeBlockType, VecBlockType>::Process()
 {
+    // TEMPORARY experiment 2: only the BF16 BNSD 128/128/768/768 reproducer reads Q/K.
+    // AIV already sent flag 15 during InitBaseAPI; no compute-phase cross-core waits remain.
+    if ASCEND_IS_AIV {
+        return;
+    }
+    if constexpr (!(IsSameType<INPUT_T, bfloat16_t>::value && layout == LayOutTypeEnum::LAYOUT_BNSD &&
+                    static_cast<uint16_t>(s1TemplateType) == 128 && static_cast<uint16_t>(s2TemplateType) == 128 &&
+                    dTemplateType == DTemplateType::Aligned768 && dVTemplateType == DTemplateType::Aligned768 &&
+                    static_cast<uint8_t>(implMode) == 0 && pseMode == PseTypeEnum::PSE_NONE_TYPE && !hasAtten &&
+                    !hasDrop && !hasRope && !optionalDn && !isInfer)) {
+        return;
+    }
+    // Keep runtime sizes and offsets from tiling unchanged so invalid parameters remain observable.
     int64_t multiCoreInnerOffset = 0;
     int64_t multiCoreInnerLimit = 0;
 
@@ -278,7 +291,6 @@ __aicore__ inline void FlashAttentionScoreKernelTrain<CubeBlockType, VecBlockTyp
 
         int64_t s2LoopLimit = 0;
         bool notLastThreeLoop = notThirdLast && notSecondLast && notLast;
-        bool notLastTwoLoop = notSecondLast && notLast;
         if (notLastThreeLoop) {
             this->ComputeAxisIdx(realCoreInnerIdx, runParam);
             this->GetAttentionOffset(runParam);
@@ -308,35 +320,7 @@ __aicore__ inline void FlashAttentionScoreKernelTrain<CubeBlockType, VecBlockTyp
                     this->cubeBlock.IterateBmm1(this->bmm1Buffers.Get(), runInfo1, this->constInfo);
                 }
             }
-            if (taskId > 0 && notLastTwoLoop) {
-                if ASCEND_IS_AIV {
-                    auto &runInfo3 = runInfo[(taskId + 3) & 3];
-                    this->vecBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfo3,
-                                               this->constInfo);
-                }
-            }
-            if (taskId > 1 && notLast) {
-                RunInfo<isInfer> &runInfo2 = runInfo[(taskId + 2) & 3];
-                if ASCEND_IS_AIC {
-                    if constexpr (BaseClass::bmm2Write2Ub) {
-                        this->cubeBlock.IterateBmm2(this->bmm2Buffers.Get(), this->l1PBuffers, runInfo2,
-                                                    this->constInfo);
-                    } else {
-                        this->cubeBlock.IterateBmm2(this->bmm2ResGmBuffers.Get(), this->l1PBuffers, runInfo2,
-                                                    this->constInfo);
-                    }
-                }
-            }
-            if (taskId > 2) {
-                if ASCEND_IS_AIV {
-                    RunInfo<isInfer> &runInfo3 = runInfo[(taskId + 1) & 3];
-                    if constexpr (BaseClass::bmm2Write2Ub) {
-                        this->vecBlock.ProcessVec2(this->bmm2Buffers.Get(), runInfo3, this->constInfo);
-                    } else {
-                        this->vecBlock.ProcessVec2(this->bmm2ResGmBuffers.Get(), runInfo3, this->constInfo);
-                    }
-                }
-            }
+            // Experiment 2: no VEC1, BMM2 or VEC2 consumers; do not wait on their flags.
             taskId++;
         }
     }

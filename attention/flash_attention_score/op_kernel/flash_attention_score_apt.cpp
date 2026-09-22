@@ -51,19 +51,19 @@ __global__ __aicore__ void flash_attention_score(
 #if (ORIG_DTYPE_QUERY == DT_FLOAT16)
         FlashAttentionScoreEmptyTensorRegbase<half> op;
         op.Init(softmaxMax, softmaxSum, attentionOut, tiling_data);
-        // Experiment 1: skip empty-input output writes.
+        // Experiment 2: skip empty-input output writes.
         // op.Process();
 #endif
 #if (ORIG_DTYPE_QUERY == DT_FLOAT)
         FlashAttentionScoreEmptyTensorRegbase<float> op;
         op.Init(softmaxMax, softmaxSum, attentionOut, tiling_data);
-        // Experiment 1: skip empty-input output writes.
+        // Experiment 2: skip empty-input output writes.
         // op.Process();
 #endif
 #if (ORIG_DTYPE_QUERY == DT_BF16)
         FlashAttentionScoreEmptyTensorRegbase<bfloat16_t> op;
         op.Init(softmaxMax, softmaxSum, attentionOut, tiling_data);
-        // Experiment 1: skip empty-input output writes.
+        // Experiment 2: skip empty-input output writes.
         // op.Process();
 #endif
         return;
