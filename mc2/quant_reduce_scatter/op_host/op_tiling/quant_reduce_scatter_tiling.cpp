@@ -46,14 +46,15 @@ static void PrintTilingDataInfo(const gert::TilingContext *context, QuantReduceS
  */
 static void SetTilingData(gert::TilingContext *context, QuantReduceScatterTilingData &tilingData)
 {
+    const char *nodeName = context->GetNodeName();
     fe::PlatFormInfos *platformInfoPtr = context->GetPlatformInfo();
     platform_ascendc::PlatformAscendC ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
     // set tilingData
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
+    OP_TILING_CHECK(aivNum == 0, OP_LOGE(nodeName, "aivNum is 0."), return ge::GRAPH_FAILED); 
     context->SetBlockDim(ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum));
     tilingData.quantReduceScatterTilingInfo.aivNum = aivNum;
     size_t xDimNum = context->GetInputShape(X_INDEX)->GetStorageShape().GetDimNum();
-    size_t scalesDimNum = context->GetInputShape(SCALES_INDEX)->GetStorageShape().GetDimNum();
     uint64_t xValueBS = 1UL;
     uint64_t scalesValueH = 0UL;
     // 3d场景，context->GetInputShape在函数CheckInputTensorDim中已经校验

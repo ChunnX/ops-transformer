@@ -283,7 +283,7 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::ExecuteAllReduce(
             // 读取对端对应地址的 x 和 scale数据，进行反量化和求和
             ReadDataBlockReduceSum(currXOffset, currScaleOffset, currXNum, currScaleNum);
         }
-
+        PipeBarrier<PIPE_V>();
         // 将计算好的数据拷贝到输出tensor
         mteComm_.CopyResultToOutput(currXOffset, sumTensor_, currXNum);
     }

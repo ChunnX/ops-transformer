@@ -182,7 +182,7 @@ __aicore__ inline void VectorCompute<TemplateType>::CastToFloat(LocalTensor<XTyp
     } else if (quantMode_ == PT_QUANT_MOD) {
         // PT(per-tensor)量化：1个scale，Duplicate填充整块
         castLocalScale = scaleTensor.template ReinterpretCast<float>();
-        Duplicate<float>(scaleCalTensor_, castLocalScale, xNumPerBlock_);
+        Duplicate<float>(scaleCalTensor_, castLocalScale.GetValue(0), xNumPerBlock_);
         PipeBarrier<PIPE_V>();
     } else {
         // KG量化：scale已为float，直接ReinterpretCast，一次BroadCast广播全部totalScaleNum个scale

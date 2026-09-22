@@ -99,7 +99,8 @@ private:
     LocalTensor<float> stateResetTensor_;
     LocalTensor<OutputType> xOutTensor_;
 
-    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> xQueue_, scaleQueue_;
+    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> xQueue_;
+    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> scaleQueue_;
     TQue<QuePosition::VECOUT, 1> xOutQueue_;
     TBuf<> winFlagsBuf_;
     TBuf<> writeStateBuf_;
@@ -128,7 +129,7 @@ __aicore__ inline void MTECommunication<TemplateType>::InitParams()
         aivId_ < tailBlockNums_ ? round_ + 1 : round_; // 当前核分配到的数据块数量，顺序分核，序号小的核多搬一轮
     uint64_t blockIdx =
         aivId_ * round_ + (aivId_ < tailBlockNums_ ? aivId_ : tailBlockNums_); // 计算当前核分派到的首个数据块序列号
-    xOffset_ = blockIdx * xNumPerBlock_;          // 块数 * 一块有多少数据，得到要搬第几个x数据
+    xOffset_ = blockIdx * xNumPerBlock_; // 块数 * 一块有多少数据，得到要搬第几个x数据
     scaleOffset_ = (quantMode_ == PT_QUANT_MOD) ? 0 : blockIdx * scaleNumsPerBlock_; // 计算要搬第几个 scale
 }
 
@@ -249,7 +250,7 @@ __aicore__ inline void MTECommunication<TemplateType>::CopyDataBlock(uint64_t cu
                                                                      uint32_t count)
 {
     // 先拷贝data数据， 再拷贝scales
-    /* x 从 GM -> UB -> Win */
+    // x 从 GM -> UB -> Win
     xTmpTensor_ = xQueue_.AllocTensor<XType>();
     DataCopy(xTmpTensor_, xGMTensor_[curXOffset], count);
     xQueue_.EnQue(xTmpTensor_);
@@ -257,7 +258,7 @@ __aicore__ inline void MTECommunication<TemplateType>::CopyDataBlock(uint64_t cu
     DataCopy(localWinXGMTensor_[curXOffset], xTmpTensor_, count);
     xQueue_.FreeTensor<XType>(xTmpTensor_);
 
-    /* scale 从 GM -> UB -> Win（DataCopyPad 处理 sub-32B 对齐） */
+    // scale 从 GM -> UB -> Win（DataCopyPad 处理 sub-32B 对齐）
     scaleTmpTensor_ = scaleQueue_.AllocTensor<ScalesType>();
     DataCopyParams scaleGmToUbParams;
     scaleGmToUbParams.blockLen = scaleNumsPerBlock_ * sizeof(ScalesType);
