@@ -182,7 +182,7 @@ bool FusedInferAttentionScoreTilingImpl::CheckAntiQuantGSMerge(const FiaTilingIn
     }
 
     int64_t totalSize = static_cast<int64_t>(fiaInfo.gSize) * fiaInfo.s1Size;
-    if (totalSize <= 0 || totalSize > NUM_16 * platformInfo.cvRatio) {
+    if (totalSize <= 0 || totalSize > NUM_16 * platformInfo_.cvRatio) {
         return false;
     }
 
