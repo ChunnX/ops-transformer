@@ -1121,6 +1121,8 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::P
         DataCopyExtParams xCopyParams = {1U, static_cast<uint32_t>(hSize_), 0U, 0U, 0U};
         remoteFlagCnt_ = 0;
 
+        // Phase 1: metadata + staging. Each AIV also counts its remote records per rank and
+        // keeps its own toRankId stash in UB for the scatter pass.
         for (uint64_t round = 0; round < roundNum; ++round) {
             const uint32_t tokenOffset = static_cast<uint32_t>(static_cast<uint64_t>(aivId_) + round * aivNum_);
             if (tokenOffset < totalSendNum_) {
