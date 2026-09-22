@@ -206,8 +206,8 @@ bool KvRmsNormRopeCacheTilingBase::CheckGammaValid(const gert::TilingContext *co
         }
         if (!isValidAlign) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "gamma",
-                                                  ToString(gammaShapePtr->GetStorageShape()).c_str(),
-                                                  reasonMsg.c_str());
+            ToString(gammaShapePtr->GetStorageShape()).c_str(),
+            reasonMsg.c_str());
         }
         isValid = isValidAlign && isValid;
     }
@@ -215,8 +215,8 @@ bool KvRmsNormRopeCacheTilingBase::CheckGammaValid(const gert::TilingContext *co
 }
 
 bool KvRmsNormRopeCacheTilingBase::CheckCacheValid(const gert::TilingContext *context, int64_t batchSize,
-                                                   int64_t numHead, int64_t cacheLen, int64_t headSize,
-                                                   size_t cacheIndex, const char *cacheName)
+    int64_t numHead, int64_t cacheLen, int64_t headSize,
+    size_t cacheIndex, const char *cacheName)
 {
     auto cacheShapeTuple = GetShapeTuple(context, cacheIndex);
     int64_t cacheB = std::get<SHAPE_IDX_B>(cacheShapeTuple);
@@ -260,7 +260,7 @@ bool KvRmsNormRopeCacheTilingBase::CheckVCacheValid(const gert::TilingContext *c
 }
 
 bool KvRmsNormRopeCacheTilingBase::CheckKCacheValidPA(const gert::TilingContext *context, int64_t numHead,
-                                                      int64_t headSize)
+    int64_t headSize)
 {
     auto kCacheShapeTuple = GetShapeTuple(context, K_CACHE_INDEX);
     auto kCacheShape = context->GetInputShape(K_CACHE_INDEX)->GetStorageShape();
@@ -288,14 +288,14 @@ bool KvRmsNormRopeCacheTilingBase::CheckKCacheValidPA(const gert::TilingContext 
     }
     if (!isValidAlign) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "k_cache", ToString(kCacheShape).c_str(),
-                                              reasonMsg.c_str());
+        reasonMsg.c_str());
     }
     isValid = isValid && isValidAlign;
     return isValid;
 }
 
 bool KvRmsNormRopeCacheTilingBase::CheckVCacheValidPA(const gert::TilingContext *context, int64_t numHead,
-                                                      int64_t headSize)
+    int64_t headSize)
 {
     auto vCacheShapeTuple = GetShapeTuple(context, V_CACHE_INDEX);
     auto vCacheShape = context->GetInputShape(V_CACHE_INDEX)->GetStorageShape();
@@ -354,14 +354,24 @@ bool KvRmsNormRopeCacheTilingBase::CheckIndexValid(const gert::TilingContext *co
 
 int64_t KvRmsNormRopeCacheTilingBase::GetQuantMode(const gert::TilingContext *context)
 {
+    int64_t qmode = NON_QUANT_MODE;
+
     auto scale1Shape = context->GetOptionalInputShape(K_ROPE_SCALE_IDX);
     auto scale2Shape = context->GetOptionalInputShape(C_KV_SCALE_IDX);
     bool allNullPtr = (scale1Shape == nullptr) && (scale2Shape == nullptr);
-    if (allNullPtr) {
-        return NON_QUANT_MODE;
-    } else {
-        return QUANT_MODE;
+    if (!allNullPtr) {
+        qmode = QUANT_MODE;
     }
+    // Check and warn dissociated quant offsets
+    auto offset1Shape = context->GetOptionalInputShape(K_ROPE_OFFSET_IDX);
+    auto offset2Shape = context->GetOptionalInputShape(C_KV_OFFSET_IDX);
+    if (scale1Shape == nullptr && offset1Shape!=nullptr) {
+        OP_LOGW(context_->GetNodeName(), "Non-empty quant offset for k_cache without quant scale will be ignored.");
+    }
+    if (scale2Shape == nullptr && offset2Shape!=nullptr) {
+        OP_LOGW(context_->GetNodeName(), "Non-empty quant offset for ckv_cache without quant scale will be ignored.");
+    }
+    return qmode;
 }
 
 ge::graphStatus KvRmsNormRopeCacheTilingBase::GetPlatformInfo()
@@ -391,7 +401,7 @@ ge::graphStatus KvRmsNormRopeCacheTilingBase::GetShapeAttrsInfo()
     OP_CHECK_IF(context_ == nullptr, OP_LOGE(context_->GetNodeName(), "context_ can not be nullptr."),
                 return ge::GRAPH_FAILED);
     isRegbase_ = Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_);
-    // GetQuantMode
+    // GetQuantMode and validate quant terms
     quantMode_ = GetQuantMode(context_);
     // Basic info
     auto kvShapeTuple = GetShapeTuple(context_, KV_INDEX);

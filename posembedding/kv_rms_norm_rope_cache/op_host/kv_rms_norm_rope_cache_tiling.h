@@ -22,7 +22,7 @@
 
 namespace optiling {
 using namespace Ops::Base;
-// DS
+// DS (Atlas 2/3)
 BEGIN_TILING_DATA_DEF(KvRmsNormRopeCacheTilingData)
 TILING_DATA_FIELD_DEF(int64_t, numBlocks);
 TILING_DATA_FIELD_DEF(int64_t, rowsPerBlock);
@@ -77,6 +77,7 @@ REGISTER_TILING_DATA_CLASS(KvRmsNormRopeCache_4010, KvRmsNormRopeCacheTilingData
 REGISTER_TILING_DATA_CLASS(KvRmsNormRopeCache_4011, KvRmsNormRopeCacheTilingData)
 REGISTER_TILING_DATA_CLASS(KvRmsNormRopeCache_5010, KvRmsNormRopeCacheTilingData)
 REGISTER_TILING_DATA_CLASS(KvRmsNormRopeCache_5011, KvRmsNormRopeCacheTilingData)
+
 // D全载
 BEGIN_TILING_DATA_DEF(KvRmsNormRopeCacheRegbaseFullLoadTilingData)
 TILING_DATA_FIELD_DEF(int64_t, batchSize);
