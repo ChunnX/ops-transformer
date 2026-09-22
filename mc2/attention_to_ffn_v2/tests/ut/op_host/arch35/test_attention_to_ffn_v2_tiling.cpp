@@ -48,8 +48,9 @@ std::vector<TensorDescription> BuildInputs(bool quant, bool activeMask, uint32_t
     };
 
     if (quant || activeMask) {
+        // scales 必须 3D：[expertRankTable.dim0, expertRankTable.dim1, x.dim2]，见 base tiling CheckInputForScales
         const gert::StorageShape scalesShape =
-            quant ? gert::StorageShape{{9, 7168}, {9, 7168}} : gert::StorageShape{{}, {}};
+            quant ? gert::StorageShape{{1, 9, 7168}, {1, 9, 7168}} : gert::StorageShape{{}, {}};
         inputs.emplace_back(scalesShape, ge::DT_FLOAT, ge::FORMAT_ND);
     }
     if (activeMask) {
