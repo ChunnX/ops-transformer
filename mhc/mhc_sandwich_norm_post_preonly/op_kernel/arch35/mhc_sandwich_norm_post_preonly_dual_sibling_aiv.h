@@ -191,13 +191,8 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         if (D_ > GAMMA1_CACHE_MAX_D) {
             FenceVToMte2();
         }
-        // 上一tile的低精度输出已EnQue，先回收其MTE3，再入队本tile，形成跨tile流水。
-        if (tile > 0) {
-            FlushHInPrimeQueue((uint64_t)token * D_ + (tile - 1U) * dimTile_, GetTileD(tile - 1U));
-        }
-        EnqueHInPrimeTile(hIn, tD);
+        WriteHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tD);
     }
-    FlushHInPrimeQueue((uint64_t)token * D_ + (dimLoop_ - 1U) * dimTile_, GetTileD(dimLoop_ - 1U));
 }
 
 #endif // MHC_SANDWICH_NORM_POST_PREONLY_DUAL_SIBLING_AIV_H_

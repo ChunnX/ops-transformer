@@ -66,22 +66,6 @@ __aicore__ inline void WriteLowPrecisionTile(GlobalTensor<T> &dst, uint64_t gmOf
     bufHInPrimeBf16_.FreeTensor(tmp);
 }
 
-// 入队式低精度输出：量化并EnQue后立即返回，由调用方在下一tile DeQue回收，
-// 使Vector量化与MTE3写回重叠。所有EnQue完成后必须调用FlushHInPrimeQueue回收。
-__aicore__ inline void EnqueHInPrimeTile(LocalTensor<float> src, uint32_t count)
-{
-    LocalTensor<T> tmp = bufHInPrimeBf16_.AllocTensor<T>();
-    CastToIO(tmp, src, count);
-    bufHInPrimeBf16_.EnQue(tmp);
-}
-
-__aicore__ inline void FlushHInPrimeQueue(uint64_t gmOffset, uint32_t count)
-{
-    LocalTensor<T> tmp = bufHInPrimeBf16_.DeQue<T>();
-    DataCopy(hInPrimeGm_[gmOffset], tmp, count);
-    bufHInPrimeBf16_.FreeTensor(tmp);
-}
-
 __aicore__ inline void WriteHInPrimeTile(LocalTensor<float> src, uint64_t gmOffset, uint32_t count)
 {
     WriteLowPrecisionTile(hInPrimeGm_, gmOffset, src, count);
