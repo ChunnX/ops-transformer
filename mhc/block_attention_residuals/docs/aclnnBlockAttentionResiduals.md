@@ -440,10 +440,10 @@ int main()
     std::vector<int64_t> normShape       = {H};
     std::vector<int64_t> hiddenShape     = {T, H};
 
-    std::vector<uint16_t> partialBlockData(GetShapeSize(partialBlockShape), 0x3C00);
-    std::vector<uint16_t> blockData(GetShapeSize(blockShape), 0x3C00);
-    std::vector<uint16_t> projData(GetShapeSize(projShape), 0x3C00);
-    std::vector<uint16_t> normData(GetShapeSize(normShape), 0x3C00);
+    std::vector<uint16_t> partialBlockData(GetShapeSize(partialBlockShape), 0x3F80);
+    std::vector<uint16_t> blockData(GetShapeSize(blockShape), 0x3F80);
+    std::vector<uint16_t> projData(GetShapeSize(projShape), 0x3F80);
+    std::vector<uint16_t> normData(GetShapeSize(normShape), 0x3F80);
     std::vector<uint16_t> hiddenData(GetShapeSize(hiddenShape), 0);
 
     void* partialBlockDev = nullptr;
