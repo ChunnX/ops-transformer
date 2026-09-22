@@ -22,7 +22,7 @@
 #include "kernel_operator.h"
 #endif
 #include "kernel_operator_list_tensor_intf.h"
-#include "mixed_quant_sparse_flash_mla_csa_common.h"
+#include "mixed_quant_sparse_flash_mla_common_arch35.h"
 #include "util_regbase.h"
 
 using namespace matmul;

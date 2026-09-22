@@ -230,7 +230,7 @@ TEST_F(MixedQuantSparseFlashMlaTiling, test_tiling_arch35_empty_query_failed)
     RunMQSmlaTilingCase(c, ge::GRAPH_FAILED);
 }
 
-// arch22 supports the TurboQuant SCFA contract through quant_mode=3.
+// arch22 supports the TurboQuant CSA contract through quant_mode=3.
 TEST_F(MixedQuantSparseFlashMlaTiling, test_tiling_arch22_turbo_quant_success)
 {
     for (ge::DataType dtype : {ge::DT_FLOAT16, ge::DT_BF16}) {

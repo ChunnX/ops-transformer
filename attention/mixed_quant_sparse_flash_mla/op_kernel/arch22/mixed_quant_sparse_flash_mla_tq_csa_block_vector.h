@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file mixed_quant_sparse_flash_mla_tq_scfa_block_vector.h
+ * \file mixed_quant_sparse_flash_mla_tq_csa_block_vector.h
  * \brief
  */
-#ifndef MIXED_QUANT_SPARSE_FLASH_MLA_TQ_SCFA_BLOCK_VECTOR_H
-#define MIXED_QUANT_SPARSE_FLASH_MLA_TQ_SCFA_BLOCK_VECTOR_H
+#ifndef MIXED_QUANT_SPARSE_FLASH_MLA_TQ_CSA_BLOCK_VECTOR_H
+#define MIXED_QUANT_SPARSE_FLASH_MLA_TQ_CSA_BLOCK_VECTOR_H
 
 #include "kernel_operator.h"
 #include "kernel_operator_list_tensor_intf.h"
@@ -27,7 +27,7 @@ using AscendC::CrossCoreSetFlag;
 using AscendC::CrossCoreWaitFlag;
 
 template <typename SAST>
-class KvQuantSparseFlashMlaScfaBlockVector {
+class KvQuantSparseFlashMlaCsaBlockVector {
 public:
     // 中间计算数据类型为float，高精度模式
     using T = float;
@@ -38,7 +38,7 @@ public:
     using MM1_OUT_T = float;
     using MM2_OUT_T = float;
 
-    __aicore__ inline KvQuantSparseFlashMlaScfaBlockVector(){};
+    __aicore__ inline KvQuantSparseFlashMlaCsaBlockVector(){};
     __aicore__ inline void ProcessVec0L(const RunInfo &runInfo);
     __aicore__ inline void ProcessVec1L(const RunInfo &info);
     __aicore__ inline void ProcessVec2L(const RunInfo &info);
@@ -267,7 +267,7 @@ private:
 };
 
 template <typename SAST>
-__aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::InitBuffers(TPipe *pipe)
+__aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::InitBuffers(TPipe *pipe)
 {
     pipe->InitBuffer(inputBuff1, ConstInfo::BUFFER_SIZE_BYTE_32K * 2); // 2:pingpong
     pipe->InitBuffer(inputBuff2, ConstInfo::BUFFER_SIZE_BYTE_16K * 2); // 2:pingpong
@@ -341,7 +341,7 @@ __aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::InitBuffers(T
 }
 
 template <typename SAST>
-__aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::InitParams(
+__aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::InitParams(
     const struct ConstInfo &constInfo, const MixedQuantSparseFlashMlaTilingData *__restrict tilingData)
 {
     this->constInfo = constInfo;
@@ -349,7 +349,7 @@ __aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::InitParams(
 }
 
 template <typename SAST>
-__aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::InitVec0GlobalTensor(
+__aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::InitVec0GlobalTensor(
     const GlobalTensor<KV_T> &kvMergeGm, const GlobalTensor<KV_T> &oriKvGm, const GlobalTensor<KV_T> &cmpKvGm,
     const GlobalTensor<uint8_t> &cmpTqGm, const GlobalTensor<int32_t> &oriBlockTableGm,
     const GlobalTensor<int32_t> &cmpBlockTableGm)
@@ -363,7 +363,7 @@ __aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::InitVec0Globa
 }
 
 template <typename SAST>
-__aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::InitVec1GlobalTensor(
+__aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::InitVec1GlobalTensor(
     GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<KV_T> vec1ResGm, GlobalTensor<int32_t> actualSeqLengthsQGm,
     GlobalTensor<int32_t> actualSeqLengthsKVGm, GlobalTensor<int32_t> topKGm, GlobalTensor<SINKS_T> sinksGm,
     GlobalTensor<T> softmaxLseGm)
@@ -378,7 +378,7 @@ __aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::InitVec1Globa
 }
 
 template <typename SAST>
-__aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::InitVec2GlobalTensor(
+__aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::InitVec2GlobalTensor(
     GlobalTensor<T> accumOutGm, GlobalTensor<UPDATE_T> vec2ResGm, GlobalTensor<MM2_OUT_T> mm2ResGm,
     GlobalTensor<OUT_T> attentionOutGm)
 {
@@ -389,7 +389,7 @@ __aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::InitVec2Globa
 }
 
 template <typename SAST>
-__aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::AllocEventID()
+__aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::AllocEventID()
 {
     SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_FLAG);
     SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_PONG_FLAG);
@@ -400,7 +400,7 @@ __aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::AllocEventID(
 }
 
 template <typename SAST>
-__aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::FreeEventID()
+__aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::FreeEventID()
 {
     WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_FLAG);
     WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_PONG_FLAG);
@@ -411,7 +411,7 @@ __aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::FreeEventID()
 }
 
 template <typename SAST>
-__aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::CopySinksIn()
+__aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::CopySinksIn()
 {
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = 1U;
@@ -438,8 +438,8 @@ __aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::CopySinksIn()
 }
 
 template <typename SAST>
-__aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::SliceAndContactSinksValue(uint32_t nIdx,
-                                                                                             uint32_t dealRowCount)
+__aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::SliceAndContactSinksValue(uint32_t nIdx,
+                                                                                            uint32_t dealRowCount)
 {
     // WholeReduceMax接口中repeatTimes支持范围（0,255），因此需要分多次调用WholeReduceMax，每次repeatTime=128
     uint32_t repeatTimesOnce = 128;
@@ -458,7 +458,7 @@ __aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::SliceAndConta
 }
 
 template <typename SAST>
-__aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::InitSoftmaxDefaultBuffer()
+__aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::InitSoftmaxDefaultBuffer()
 {
     CopySinksIn();
     Duplicate(softmaxMaxDefaultUb, SOFTMAX_MIN_NUM, SOFTMAX_TMP_BUFFER_OFFSET / sizeof(T));
@@ -466,7 +466,7 @@ __aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::InitSoftmaxDe
 }
 
 template <typename SAST>
-__aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::ElewiseCompute(
+__aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::ElewiseCompute(
     const RunInfo &info, const MSplitInfo &mSplitInfo, uint32_t startRow, const LocalTensor<T> &mmResUb,
     uint32_t dealRowCount, uint32_t columnCount)
 {
@@ -532,10 +532,10 @@ __aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::ElewiseComput
 }
 
 template <typename SAST>
-__aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::SetInfInBlk(const LocalTensor<T> &mmResUb,
-                                                                               uint32_t dealRowCount,
-                                                                               uint32_t columnCount, int64_t startId,
-                                                                               int64_t endId)
+__aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::SetInfInBlk(const LocalTensor<T> &mmResUb,
+                                                                              uint32_t dealRowCount,
+                                                                              uint32_t columnCount, int64_t startId,
+                                                                              int64_t endId)
 {
     if (startId > endId) {
         return;
@@ -556,8 +556,8 @@ __aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::SetInfInBlk(c
 }
 
 template <typename SAST>
-__aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::ProcessLse(const RunInfo &info,
-                                                                              const MSplitInfo &mSplitInfo)
+__aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::ProcessLse(const RunInfo &info,
+                                                                             const MSplitInfo &mSplitInfo)
 {
     if (mSplitInfo.vecDealM == 0) {
         return;
@@ -598,7 +598,7 @@ __aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::ProcessLse(co
 }
 
 template <typename SAST>
-__aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::SoftmaxFlashV2Compute(
+__aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::SoftmaxFlashV2Compute(
     const RunInfo &info, const MSplitInfo &mSplitInfo, LocalTensor<T> &mmResUb, LocalTensor<uint8_t> &softmaxTmpUb,
     uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
@@ -631,7 +631,7 @@ __aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::SoftmaxFlashV
 }
 
 template <typename SAST>
-__aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::DealBmm1ResBaseBlock(
+__aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::DealBmm1ResBaseBlock(
     const RunInfo &info, const MSplitInfo &mSplitInfo, uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount,
     uint32_t loopId)
 {
@@ -670,8 +670,8 @@ __aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::DealBmm1ResBa
 }
 
 template <typename SAST>
-__aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::ProcessVec1SingleBuf(const RunInfo &info,
-                                                                                        const MSplitInfo &mSplitInfo)
+__aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::ProcessVec1SingleBuf(const RunInfo &info,
+                                                                                       const MSplitInfo &mSplitInfo)
 {
     if (mSplitInfo.vecDealM == 0) {
         return;
@@ -701,7 +701,7 @@ __aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::ProcessVec1Si
 }
 
 template <typename SAST>
-__aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::GetRealS2Idx(
+__aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::GetRealS2Idx(
     int64_t s2GmOffset, int64_t &realS2Idx, int64_t topkGmBaseOffset, const RunInfo &runInfo,
     const LocalTensor<int32_t> &topkCache, int64_t topkCacheStart, uint32_t topkCacheSize)
 {
@@ -723,7 +723,7 @@ __aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::GetRealS2Idx(
 }
 
 template <typename SAST>
-__aicore__ inline int64_t KvQuantSparseFlashMlaScfaBlockVector<SAST>::GetKeyGmOffset(
+__aicore__ inline int64_t KvQuantSparseFlashMlaCsaBlockVector<SAST>::GetKeyGmOffset(
     int64_t realS2Idx, const RunInfo &runInfo, int64_t s2IdLimit, const LocalTensor<int32_t> &blockTableCache,
     uint32_t blockTableCacheSize)
 {
@@ -757,9 +757,9 @@ __aicore__ inline int64_t KvQuantSparseFlashMlaScfaBlockVector<SAST>::GetKeyGmOf
 }
 
 template <typename SAST>
-__aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::DequantTq4Rows(LocalTensor<uint8_t> slots,
-                                                                                  LocalTensor<KV_T> output,
-                                                                                  int64_t rowCount)
+__aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::DequantTq4Rows(LocalTensor<uint8_t> slots,
+                                                                                 LocalTensor<KV_T> output,
+                                                                                 int64_t rowCount)
 {
     LocalTensor<float> work =
         TQ4_FAST_BF16 ? outputBuff1.Get<float>() : tmpBuff1.Get<float>()[TQ4_PACKED_BATCH_BYTES / sizeof(float)];
@@ -854,7 +854,7 @@ __aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::DequantTq4Row
 }
 
 template <typename SAST>
-__aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::CopyInSingleKv(
+__aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::CopyInSingleKv(
     int64_t &mte2Size, int64_t mte3Size, int64_t mergeMte3Idx, int64_t realS2Idx, int64_t keyBNBOffset,
     int64_t s2IdLimit, const RunInfo &runInfo)
 {
@@ -896,11 +896,11 @@ __aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::CopyInSingleK
 }
 
 template <typename SAST>
-__aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::CopyInKv(int64_t &mte2Size, int64_t mte3Size,
-                                                                            int64_t mergeMte3Idx, int64_t realS2Idx1,
-                                                                            int64_t realS2Idx2, const RunInfo &runInfo,
-                                                                            const LocalTensor<int32_t> &blockTableCache,
-                                                                            uint32_t blockTableCacheSize)
+__aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::CopyInKv(int64_t &mte2Size, int64_t mte3Size,
+                                                                           int64_t mergeMte3Idx, int64_t realS2Idx1,
+                                                                           int64_t realS2Idx2, const RunInfo &runInfo,
+                                                                           const LocalTensor<int32_t> &blockTableCache,
+                                                                           uint32_t blockTableCacheSize)
 {
     int64_t s2IdLimit = runInfo.cmpS2IdLimit;
 
@@ -982,10 +982,10 @@ __aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::CopyInKv(int6
 }
 
 template <typename SAST>
-__aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::CopyOutMrgeResult(int64_t mte2Size, int64_t mte3Size,
-                                                                                     int64_t s2GmStartOffset,
-                                                                                     int64_t mergeMte3Idx,
-                                                                                     const RunInfo &runInfo)
+__aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::CopyOutMrgeResult(int64_t mte2Size, int64_t mte3Size,
+                                                                                    int64_t s2GmStartOffset,
+                                                                                    int64_t mergeMte3Idx,
+                                                                                    const RunInfo &runInfo)
 {
     if (mte2Size <= mte3Size) {
         return;
@@ -1016,7 +1016,7 @@ __aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::CopyOutMrgeRe
 
 // b s1 k
 template <typename SAST>
-__aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::ProcessVec0L(const RunInfo &runInfo)
+__aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::ProcessVec0L(const RunInfo &runInfo)
 {
     int64_t s2ProcessSize = runInfo.v0S2DealSize;
     int64_t s2Pair = CeilDiv(s2ProcessSize, 2 * constInfo.sparseBlockSize);
@@ -1107,7 +1107,7 @@ __aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::ProcessVec0L(
 }
 
 template <typename SAST>
-__aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::ProcessVec1L(const RunInfo &info)
+__aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::ProcessVec1L(const RunInfo &info)
 {
     uint32_t nBufferLoopTimes = (info.actMBaseSize + constInfo.nBufferMBaseSize - 1) / constInfo.nBufferMBaseSize;
     uint32_t nBufferTail = info.actMBaseSize - (nBufferLoopTimes - 1) * constInfo.nBufferMBaseSize;
@@ -1138,14 +1138,14 @@ __aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::ProcessVec1L(
 }
 
 template <typename SAST>
-__aicore__ inline uint64_t KvQuantSparseFlashMlaScfaBlockVector<SAST>::CalcAccumOffset(uint32_t bN2Idx, uint32_t gS1Idx)
+__aicore__ inline uint64_t KvQuantSparseFlashMlaCsaBlockVector<SAST>::CalcAccumOffset(uint32_t bN2Idx, uint32_t gS1Idx)
 {
     return 0;
 }
 
 template <typename SAST>
-__aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::ProcessVec2SingleBuf(const RunInfo &info,
-                                                                                        const MSplitInfo &mSplitInfo)
+__aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::ProcessVec2SingleBuf(const RunInfo &info,
+                                                                                       const MSplitInfo &mSplitInfo)
 {
     if (mSplitInfo.vecDealM == 0) {
         return;
@@ -1155,7 +1155,7 @@ __aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::ProcessVec2Si
 }
 
 template <typename SAST>
-__aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::ProcessVec2L(const RunInfo &info)
+__aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::ProcessVec2L(const RunInfo &info)
 {
     uint32_t nBufferLoopTimes = (info.actMBaseSize + constInfo.nBufferMBaseSize - 1) / constInfo.nBufferMBaseSize;
     uint32_t nBufferTail = info.actMBaseSize - (nBufferLoopTimes - 1) * constInfo.nBufferMBaseSize;
@@ -1178,10 +1178,10 @@ __aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::ProcessVec2L(
 }
 
 template <typename SAST>
-__aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::ProcessVec2Inner(const RunInfo &info,
-                                                                                    const MSplitInfo &mSplitInfo,
-                                                                                    uint32_t mStartRow,
-                                                                                    uint32_t mDealSize)
+__aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::ProcessVec2Inner(const RunInfo &info,
+                                                                                   const MSplitInfo &mSplitInfo,
+                                                                                   uint32_t mStartRow,
+                                                                                   uint32_t mDealSize)
 {
     uint32_t mSplitSize = BASE_BLOCK_MAX_ELEMENT_NUM / constInfo.headDim;
     if (mSplitSize > mDealSize) {
@@ -1200,7 +1200,7 @@ __aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::ProcessVec2In
 }
 
 template <typename SAST>
-__aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::Bmm2FDDataCopyOut(
+__aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::Bmm2FDDataCopyOut(
     const RunInfo &info, LocalTensor<T> &bmm2ResUb, uint32_t wsMStart, uint32_t dealRowCount, uint32_t columnCount,
     uint32_t actualColumnCount)
 {
@@ -1229,7 +1229,7 @@ __aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::Bmm2FDDataCop
 }
 
 template <typename SAST>
-__aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::Bmm2DataCopyOutTrans(
+__aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::Bmm2DataCopyOutTrans(
     const RunInfo &info, LocalTensor<OUT_T> &attenOutUb, uint32_t wsMStart, uint32_t dealRowCount, uint32_t columnCount,
     uint32_t actualColumnCount)
 {
@@ -1243,7 +1243,7 @@ __aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::Bmm2DataCopyO
 }
 
 template <typename SAST>
-__aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::Bmm2CastAndCopyOut(
+__aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::Bmm2CastAndCopyOut(
     const RunInfo &info, LocalTensor<T> &bmm2ResUb, uint32_t wsMStart, uint32_t dealRowCount, uint32_t columnCount,
     uint32_t actualColumnCount)
 {
@@ -1262,7 +1262,7 @@ __aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::Bmm2CastAndCo
 }
 
 template <typename SAST>
-__aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::Bmm2ResCopyOut(
+__aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::Bmm2ResCopyOut(
     const RunInfo &info, LocalTensor<T> &bmm2ResUb, uint32_t wsMStart, uint32_t dealRowCount, uint32_t columnCount,
     uint32_t actualColumnCount)
 {
@@ -1278,7 +1278,7 @@ __aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::Bmm2ResCopyOu
 }
 
 template <typename SAST>
-__aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::DealBmm2ResBaseBlock(
+__aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::DealBmm2ResBaseBlock(
     const RunInfo &info, const MSplitInfo &mSplitInfo, uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount,
     uint32_t actualColumnCount)
 {
@@ -1356,11 +1356,11 @@ __aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::DealBmm2ResBa
 }
 
 template <typename SAST>
-__aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::RowDivs(LocalTensor<float> dstUb,
-                                                                           LocalTensor<float> src0Ub,
-                                                                           LocalTensor<float> src1Ub,
-                                                                           uint32_t dealRowCount, uint32_t columnCount,
-                                                                           uint32_t actualColumnCount)
+__aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::RowDivs(LocalTensor<float> dstUb,
+                                                                          LocalTensor<float> src0Ub,
+                                                                          LocalTensor<float> src1Ub,
+                                                                          uint32_t dealRowCount, uint32_t columnCount,
+                                                                          uint32_t actualColumnCount)
 {
     // divs by row, 每行的元素除以相同的元素
     // dstUb[i, (j * 8) : (j * 8 + 7)] = src0Ub[i, (j * 8) : (j * 8 + 7)] / src1Ub[i, 0 : 7]
@@ -1405,10 +1405,10 @@ __aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::RowDivs(Local
 }
 
 template <typename SAST>
-__aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::RowMuls(LocalTensor<T> dstUb, LocalTensor<T> src0Ub,
-                                                                           LocalTensor<T> src1Ub, uint32_t dealRowCount,
-                                                                           uint32_t columnCount,
-                                                                           uint32_t actualColumnCount)
+__aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::RowMuls(LocalTensor<T> dstUb, LocalTensor<T> src0Ub,
+                                                                          LocalTensor<T> src1Ub, uint32_t dealRowCount,
+                                                                          uint32_t columnCount,
+                                                                          uint32_t actualColumnCount)
 {
     // muls by row, 每行的元素乘以相同的元素
     // dstUb[i, (j * 8) : (j * 8 + 7)] = src0Ub[i, (j * 8) : (j * 8 + 7)] * src1Ub[i, 0 : 7]
@@ -1487,4 +1487,4 @@ __aicore__ inline void KvQuantSparseFlashMlaScfaBlockVector<SAST>::RowMuls(Local
     }
 }
 } // namespace SASKernel
-#endif // MIXED_QUANT_SPARSE_FLASH_MLA_TQ_SCFA_BLOCK_VECTOR_H
+#endif // MIXED_QUANT_SPARSE_FLASH_MLA_TQ_CSA_BLOCK_VECTOR_H

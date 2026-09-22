@@ -27,7 +27,7 @@ constexpr SoftmaxConfig SAS_SOFTMAX_FLASHV2_CFG_WITHOUT_BRC = {false, 0, 0, Soft
 
 enum class SAS_RUN_MODE {
     SWA_MODE = 0,
-    SCFA_MODE = 1,
+    CSA_MODE = 1,
     CFA_MODE = 2,
 };
 

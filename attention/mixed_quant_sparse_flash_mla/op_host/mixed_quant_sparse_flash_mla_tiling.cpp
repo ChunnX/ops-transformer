@@ -27,11 +27,6 @@ using std::pair;
 using std::string;
 namespace optiling {
 
-REGISTER_TILING_DATA_CLASS(MixedQuantSparseFlashMlaBaseParamsOp, MixedQuantSparseFlashMlaBaseParams)
-REGISTER_TILING_DATA_CLASS(MixedQuantSparseFlashMlaTqBaseParamsOp, MixedQuantSparseFlashMlaTqBaseParams)
-REGISTER_TILING_DATA_CLASS(MixedQuantSparseFlashMlaTqCmpParamsOp, MixedQuantSparseFlashMlaTqCmpParams)
-REGISTER_TILING_DATA_CLASS(MixedQuantSparseFlashMla, MixedQuantSparseFlashMlaTilingData)
-
 constexpr int64_t BATCH_CONSISTENCY_LEVEL = 3;
 constexpr uint32_t DEFAULT_D_SIZE_V = 512;
 constexpr uint32_t DEFAULT_TILE_SIZE = 512;
