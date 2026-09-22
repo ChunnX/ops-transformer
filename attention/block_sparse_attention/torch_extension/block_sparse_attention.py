@@ -123,6 +123,7 @@ class BlockSparseAttentionOpBuilder(OpBuilder):
 
 
 _op_builder = BlockSparseAttentionOpBuilder()
+_op_builder._ensure_initialized()
 
 
 @impl(get_as_library(), _op_builder.name, "PrivateUse1")
