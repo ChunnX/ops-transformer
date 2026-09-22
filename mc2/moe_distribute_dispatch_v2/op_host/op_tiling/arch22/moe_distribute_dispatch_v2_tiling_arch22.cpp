@@ -689,8 +689,11 @@ static ge::graphStatus MoeDistributeDispatchA2GetPlatformInfoAndSetTiling(const 
 }
 
 uint64_t MoeDistributeDispatchV2TilingFuncA2A3::CalTilingKey(const bool isScales, const uint32_t quantMode,
-                                                             const bool isSetFullMeshV2, bool isLayered)
+                                                             const bool isSetFullMeshV2, bool isLayered,
+                                                             const bool isAtomicSort)
 {
+    // A3 无原子定序内核，isAtomicSort 恒按基线（NO_FULLMESH）处理，仅保持虚接口一致
+    (void)isAtomicSort;
     uint32_t templateDispatch = TILINGKEY_NO_FULLMESH;
     uint32_t tilingKeyQuantMode = quantMode;
     bool scaleMode = false;
