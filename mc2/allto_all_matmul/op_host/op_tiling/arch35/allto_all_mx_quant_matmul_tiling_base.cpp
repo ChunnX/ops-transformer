@@ -409,19 +409,9 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::InitTilingContextParameters()
         opName_, MatmulAlltoAllTilingUtil::SetAttrsInfo(context_, opName_, contextInfo_, ALLTOALL_MATMUL_INDEX_SCHEMA));
     MC2_CHECK_LOG_RET(opName_, SetMxDataTypeInfo(context_, opName_, contextInfo_));
     MC2_CHECK_LOG_RET(opName_, SetAlltoAllMatmulShapeInfo(context_, contextInfo_));
-    // rankDim不超过8时，all2all_out为空继续使用原APACE路径；all2all_out非空仅在CCU通信模式下启用。
+    // rankDim不超过8时使用APACE路径，AICPU和CCU均支持可选的all2all_out输出。
     constexpr uint64_t APACE_IMPL_MAX_RANK_DIM = 8;
-    const bool rankSupported = contextInfo_.args_.rankDim <= APACE_IMPL_MAX_RANK_DIM;
-    usingApaceImpl_ = !contextInfo_.allToAllOutFlag && rankSupported;
-    if (contextInfo_.allToAllOutFlag && rankSupported) {
-        uint8_t commMode = mc2tiling::A5_AICPU_TS_ENGINE;
-        if (MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo_,
-                                                           ALLTOALL_MATMUL_INDEX_SCHEMA,
-                                                           commMode) == ge::GRAPH_SUCCESS &&
-            commMode == mc2tiling::A5_CCU_ENGINE) {
-            usingApaceImpl_ = true;
-        }
-    }
+    usingApaceImpl_ = contextInfo_.args_.rankDim <= APACE_IMPL_MAX_RANK_DIM;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -513,7 +503,7 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::DoOpTiling()
 ge::graphStatus AllToAllMxQuantMatmulTilingBase::DoMxQuantMMTiling()
 {
     if (usingApaceImpl_) {
-        // HCOMM路径：output-off保持原有行为，output-on仅在CCU模式下启用AIV输出特化。
+        // HCOMM路径：output-off保持原有行为，output-on由AIV完成可选输出重排。
         return DoHcommMxQuantMMTiling();
     }
     // arch35主线路径：不满足HCOMM启用条件时使用DequantBmm tiling。
@@ -966,9 +956,7 @@ uint64_t AllToAllMxQuantMatmulTilingBase::GetTilingKey() const
     uint8_t biasDType = DTYPE_BIAS_FP32;
     // 获取commMode
     uint8_t commMode = (hcclServerType_ == mc2tiling::A5_CCU_ENGINE) ? ALL2ALL_COMM_TYPE_CCU : ALL2ALL_COMM_TYPE_AICPU;
-    // Only the CCU HCOMM output path uses the AIV all-to-all output specialization.
-    const bool enableHcommAllToAllOut =
-        usingApaceImpl_ && (commMode == ALL2ALL_COMM_TYPE_CCU) && contextInfo_.allToAllOutFlag;
+    const bool enableHcommAllToAllOut = usingApaceImpl_ && contextInfo_.allToAllOutFlag;
     const uint64_t tilingKey = GET_TPL_TILING_KEY(
         MX_QUANT_MODE, x2TransposeFlag, biasDType, false, commMode, usingApaceImpl_, ADDBIAS_OFF, enableHcommAllToAllOut);
     OP_LOGD(opName_,

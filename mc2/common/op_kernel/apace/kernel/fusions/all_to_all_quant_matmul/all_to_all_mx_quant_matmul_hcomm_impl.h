@@ -98,8 +98,6 @@ struct HcommCommWaitPolicy {
                 state_->hccl_.Wait(state_->dataTailHandle_);
             }
         } else {
-            static_assert(ServerType == AscendC::HcclServerType::HCCL_SERVER_TYPE_CCU,
-                          "Hcomm output notifications require CCU");
             while (state_->nextNotifyTile_ <= tileIdx) {
                 if (state_->nextNotifyTile_ - state_->acknowledgedTiles_ == HCOMM_NOTIFY_WINDOW) {
                     // A scalar wait prevents the sender loop from running ahead of the paired AIVs.
