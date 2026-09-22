@@ -25,7 +25,7 @@
 
 ## 功能说明
 
-- 接口功能：`BlockAttentionResidualsGrad` 是正向算子 `BlockAttentionResiduals`（注意力残差）的反向传播算子，该接口根据前向输入partialBlock、blockRes、projWeight、normWeight，结合前向保存的invNorm、probs以及上游梯度gradHiddenStates，计算partialBlock、blockRes、projWeight和normWeight的梯度。validBlockNum支持传入-1或blockRes的N，其他值报错。
+- 接口功能：`BlockAttentionResidualsGrad` 是正向算子 `BlockAttentionResiduals`（注意力残差）的反向传播算子。该接口根据前向输入 `partialBlock`、`blockRes`、`projWeight`、`normWeight`，结合前向保存的 `invNorm`、Softmax 概率以及上游梯度 `gradHiddenStates`，计算 `partialBlock`、`blockRes`、`projWeight` 和 `normWeight` 的梯度。`validBlockNum` 支持传入 -1 或 `blockRes` 的 N，其他值报错。
 
 - 计算公式：
 
