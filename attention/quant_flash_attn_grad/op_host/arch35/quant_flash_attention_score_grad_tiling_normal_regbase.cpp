@@ -24,6 +24,19 @@ using namespace optiling::QuantFag;
 namespace optiling {
 namespace QuantFag {
 
+namespace {
+uint32_t GetKernelSparseType(uint32_t deterSparseType)
+{
+    if (deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_CAUSAL)) {
+        return 3;
+    }
+    if (deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND)) {
+        return 4;
+    }
+    return 0;
+}
+} // namespace
+
 ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
 {
     fBaseParams.isDeterministic = true;
@@ -46,12 +59,32 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsIn
     } else if (strcmp(inputLayoutQ, "BNSD") == 0) {
         // q shape = [B, N, S, D]
         headNum = queryShape->GetStorageShape().GetDim(1);
+    } else if (strcmp(inputLayoutQ, "TND") == 0) {
+        // packed q shape = [T, N, D]; N is dim 1
+        headNum = queryShape->GetStorageShape().GetDim(1);
     } else {
-        OP_LOGE(context_, "Invalid layout_q: %s, only BSND/BNSD supported", inputLayoutQ);
+        OP_LOGE(context_, "Invalid layout_q: %s, only BSND/BNSD/TND supported", inputLayoutQ);
         return ge::GRAPH_FAILED;
     }
 
-    if (strcmp(inputLayoutQ, "BNSD") == 0) {
+    if (strcmp(inputLayoutQ, "TND") == 0) {
+        fBaseParams.layoutType = INPUT_FORMAT_TND;
+        fBaseParams.t1 = queryShape->GetStorageShape().GetDim(0);
+        fBaseParams.t2 = keyShape->GetStorageShape().GetDim(0);
+        auto cuSeqlensQ = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::ACTUAL_SEQ_Q_LEN));
+        OP_CHECK_IF(cuSeqlensQ == nullptr || cuSeqlensQ->GetStorageShape().GetDimNum() != 1 ||
+                        cuSeqlensQ->GetStorageShape().GetDim(0) < 2,
+                    OP_LOGE(context_, "TND requires int32 cu_seqlens_q with shape [B+1]."), return ge::GRAPH_FAILED);
+        fBaseParams.b = cuSeqlensQ->GetStorageShape().GetDim(0) - 1;
+        fBaseParams.n2 = headNum;
+        fBaseParams.g = 1;
+        fBaseParams.d = queryShape->GetStorageShape().GetDim(2);
+        fBaseParams.d1 = valueShape->GetStorageShape().GetDim(2);
+        auto maxQ = context_->GetAttrs()->GetAttrPointer<int64_t>(5);
+        auto maxKV = context_->GetAttrs()->GetAttrPointer<int64_t>(6);
+        fBaseParams.s1 = maxQ != nullptr && *maxQ > 0 ? std::min(*maxQ, fBaseParams.t1) : fBaseParams.t1;
+        fBaseParams.s2 = maxKV != nullptr && *maxKV > 0 ? std::min(*maxKV, fBaseParams.t2) : fBaseParams.t2;
+    } else if (strcmp(inputLayoutQ, "BNSD") == 0) {
         OP_LOGD(context_, "inputLayout == BNSD queryShape");
         fBaseParams.layoutType = INPUT_FORMAT_BN2GS2D;
         fBaseParams.b = queryShape->GetStorageShape().GetDim(INPUT_DIM_0);
@@ -80,6 +113,7 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsIn
     }
 
     fBaseParams.n1 = fBaseParams.n2 * fBaseParams.g;
+    fBaseParams.isS1S2Same = (fBaseParams.s1 == fBaseParams.s2);
 
     auto ret = ProcessOptionalInput(context_, fBaseParams);
     if (ret != ge::GRAPH_SUCCESS) {
@@ -191,6 +225,34 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::DoSparse()
 {
     fBaseParams.sparseType = GetSparseType(); // 非确定性计算下获取sparseType
     fBaseParams.deterSparseType = GetDeterSparseTilingKey();
+    if (fBaseParams.layoutType == INPUT_FORMAT_TND || fBaseParams.hasSequsedQ || fBaseParams.hasSequsedKV) {
+        fBaseParams.splitAxis = SplitAxisEnum::BN2GS1S2;
+        fBaseParams.blockOuter = fBaseParams.aicNum;
+        fBaseParams.blockFactor = 1;
+        fBaseParams.maxValidBBLen = 1;
+        // Host cannot read cu_seqlens. This conservative ceiling is only a
+        // fallback; the kernel uses metadata layer-2 slot 0 (AICPU roundPrefix[B])
+        // as the real loop_max so empty INTER_BLOCK rounds are not executed.
+        const int64_t bSize = fBaseParams.b;
+        const int64_t kNum = std::max(static_cast<int64_t>(1), static_cast<int64_t>(fBaseParams.aicNum));
+        const int64_t n1 = std::max(static_cast<int64_t>(1), fBaseParams.n1);
+        const int64_t s1Outer = fBaseParams.s1Outer;
+        const int64_t s2Outer = fBaseParams.s2Outer;
+        if (fBaseParams.layoutType == INPUT_FORMAT_TND ||
+            fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL) ||
+            fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::BAND)) {
+            fBaseParams.deterMaxRound =
+                bSize * (s1Outer + 2) * (CeilDivideBy((s2Outer + s1Outer + 4) * n1, kNum) + s1Outer);
+        } else {
+            const int64_t mTiles = CeilDivideBy(fBaseParams.s1, static_cast<int64_t>(QUANT_BLOCK_S1_SIZE));
+            const int64_t nTiles = CeilDivideBy(fBaseParams.s2, static_cast<int64_t>(QUANT_BLOCK_S2_SIZE));
+            fBaseParams.deterMaxRound = bSize * CeilDivideBy(nTiles * n1, kNum) * mTiles;
+        }
+        if (fBaseParams.deterMaxRound < 1) {
+            fBaseParams.deterMaxRound = 1;
+        }
+        return ge::GRAPH_SUCCESS;
+    }
     CalcleDeterParam();
     fBaseParams.splitAxis = SplitAxisEnum::BN2GS1S2;
     if (fBaseParams.isSparse) {
@@ -285,6 +347,19 @@ uint32_t QuantFlashAttentionScoreGradTilingNormalRegbase::GetDeterSparseTilingKe
         return static_cast<uint32_t>(DeterSparseType::NO_DETER);
     }
 
+    // Padded S1 == S2 does not imply equal effective lengths in each batch.
+    // The varlen kernel obtains the right-down alignment from metadata.
+    if ((fBaseParams.layoutType == INPUT_FORMAT_TND || fBaseParams.hasSequsedQ || fBaseParams.hasSequsedKV) &&
+        fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL)) {
+        return static_cast<uint32_t>(DeterSparseType::DETER_BAND);
+    }
+
+    // mask_mode=4显式指定band，即使窗口大到覆盖整个序列（winLeft/winRight传-1）也保持band调度，
+    // 不退化到dense，避免kernel按sparse_type选mask分支时与band语义不一致
+    if (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::BAND)) {
+        return static_cast<uint32_t>(DeterSparseType::DETER_BAND);
+    }
+
     if (!fBaseParams.isSparse || (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::ALL_MASK)) ||
         (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::NO_MASK) &&
          fBaseParams.s1Token >= fBaseParams.s1 && fBaseParams.s2Token >= fBaseParams.s2)) {
@@ -376,11 +451,11 @@ void QuantFlashAttentionScoreGradTilingNormalRegbase::CalcleDeterParam()
         fBaseParams.s1Inner = fBaseParams.s1Inner * NUM_TWO;
         fBaseParams.s1Outer = CeilDivideBy(s1Outer, static_cast<int64_t>(NUM_TWO));
     }
-    if (fBaseParams.layoutType != INPUT_FORMAT_TND &&
-        fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_CAUSAL)) {
+    const bool varlenHostSkip =
+        fBaseParams.layoutType == INPUT_FORMAT_TND || fBaseParams.hasSequsedQ || fBaseParams.hasSequsedKV;
+    if (!varlenHostSkip && fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_CAUSAL)) {
         CalcleCausalDeterParam(fBaseParams);
-    } else if (fBaseParams.layoutType != INPUT_FORMAT_TND &&
-               fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND)) {
+    } else if (!varlenHostSkip && fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND)) {
         CalcleBandDeterParam(fBaseParams);
     }
     if (needChangeSplitItemMode1 || needChangeSplitItemMode2) {
@@ -431,7 +506,9 @@ uint64_t QuantFlashAttentionScoreGradTilingNormalRegbase::DoPreSfmgTiling()
     uint32_t valueDAlign = fBaseParams.sfmgdInner;
 
     int64_t normalAxisSize = 0;
-    normalAxisSize = fBaseParams.b * fBaseParams.n2 * fBaseParams.g * fBaseParams.s1;
+    normalAxisSize = fBaseParams.layoutType == INPUT_FORMAT_TND ?
+                         fBaseParams.t1 * fBaseParams.n1 :
+                         fBaseParams.b * fBaseParams.n2 * fBaseParams.g * fBaseParams.s1;
 
     int32_t inputSize = FP16_BYTES;
     int32_t outDtypeSize = FP16_BYTES;
@@ -611,6 +688,11 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::GetWorkspaceSiz
         ((fBaseParams.b * fBaseParams.n2 - 1) * fBaseParams.s2 + AlignTo(fBaseParams.s2, ALIGN128)) * fBaseParams.d;
     int64_t vSize =
         ((fBaseParams.b * fBaseParams.n2 - 1) * fBaseParams.s2 + AlignTo(fBaseParams.s2, ALIGN128)) * fBaseParams.d1;
+    if (fBaseParams.layoutType == INPUT_FORMAT_TND) {
+        qSize = fBaseParams.qSize;
+        kSize = fBaseParams.kSize;
+        vSize = fBaseParams.vSize;
+    }
     if (fBaseParams.queryType != ge::DT_FLOAT) {
         quantFagTilingData_->dq_work_space_offset = workspaceSize;
         // matmal3 q
@@ -640,6 +722,9 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::GetWorkspaceSiz
         uint64_t sfmgSize = ((fBaseParams.b * fBaseParams.n2 * fBaseParams.g - 1) * fBaseParams.s1 +
                              AlignTo(fBaseParams.s1, ALIGN128)) *
                             BIT_NUMS;
+        if (fBaseParams.layoutType == INPUT_FORMAT_TND) {
+            sfmgSize = fBaseParams.t1 * fBaseParams.n1 * BIT_NUMS;
+        }
         workspaceSize = (workspaceSize + static_cast<size_t>(sfmgSize) * FP32_BYTES + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
     }
 
@@ -669,11 +754,18 @@ uint64_t QuantFlashAttentionScoreGradTilingNormalRegbase::GetTilingKey() const
     uint32_t d_template_num = 128;
     uint32_t is_n_equal = 1;
     uint32_t layout = fBaseParams.layoutType;
+    uint32_t sparse_type = GetKernelSparseType(fBaseParams.deterSparseType);
+    uint32_t has_seq_used_q = fBaseParams.hasSequsedQ ? 1 : 0;
+    uint32_t has_seq_used_kv = fBaseParams.hasSequsedKV ? 1 : 0;
     uint64_t tilingKey = GET_TPL_TILING_KEY(
         static_cast<uint8_t>(has_attn_mask), static_cast<uint8_t>(has_sink), static_cast<uint16_t>(s1_template_num),
         static_cast<uint16_t>(s2_template_num), static_cast<uint8_t>(d_template_num), static_cast<uint8_t>(is_n_equal),
-        static_cast<uint8_t>(layout));
-    OP_LOGI(context_, "QuantFAGTiling DoTiling success, tiling is %lu.", tilingKey);
+        static_cast<uint8_t>(layout), static_cast<uint8_t>(sparse_type), static_cast<uint8_t>(has_seq_used_q),
+        static_cast<uint8_t>(has_seq_used_kv));
+    OP_LOGI(context_,
+            "QuantFAGTiling DoTiling success, tiling is %lu, sparse_type is %u, has_seq_used_q is %u, "
+            "has_seq_used_kv is %u.",
+            tilingKey, sparse_type, has_seq_used_q, has_seq_used_kv);
     return tilingKey;
 }
 
@@ -897,9 +989,12 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::SaveToTilingDat
     quantFagTilingData_->s1_tail = fBaseParams.s1CvTail;
     quantFagTilingData_->s2_tail = fBaseParams.s2CvTail;
     quantFagTilingData_->softmax_scale = fBaseParams.scaleValue;
-    quantFagTilingData_->has_seq_used_q = fBaseParams.hasSequsedQ;
-    quantFagTilingData_->has_seq_used_k = fBaseParams.hasSequsedKV;
+    // hasSequsedQ / hasSequsedKV 走编译期 tilingkey (见 GetTilingKey), 不再下发运行时标志
     quantFagTilingData_->metadata_len = fBaseParams.metadataLen;
+    quantFagTilingData_->deter_max_round = fBaseParams.deterMaxRound;
+    quantFagTilingData_->mask_mode = fBaseParams.sparseMode;
+    quantFagTilingData_->s1_token = fBaseParams.s1Token;
+    quantFagTilingData_->s2_token = fBaseParams.s2Token;
     return ge::GRAPH_SUCCESS;
 }
 
