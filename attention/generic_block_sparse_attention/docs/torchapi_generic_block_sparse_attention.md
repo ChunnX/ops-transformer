@@ -338,7 +338,7 @@ cann_ops_transformer.generic_block_sparse_attention(
                 <li>Q_T > 0</li>
                 <li>Q_N > 0</li>
                 <li>KV_N > 0</li>
-                <li>当前D仅支持128</li>
+                <li>A5(Ascend 950)上D仅128；A2/A3(Atlas A2/A3)上D支持128、256</li>
                 <li>Q_N % KV_N == 0且Q_N / KV_N > 0</li>
                 <li>groupSize = Q_N / KV_N 当前须不超过128</li>
             </ul>

@@ -140,11 +140,11 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID6);
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID7);
 
-        static constexpr uint32_t L1_QK_SIZE =
-            BlockMmadQK::L1TileShape::M * BlockMmadQK::L1TileShape::K * sizeof(ElementQ) +
-            BlockMmadQK::L1TileShape::N * BlockMmadQK::L1TileShape::K * sizeof(ElementK) * 2;
-        BlockMmadQK blockMmadQK(resource);
-        BlockMmadPV blockMmadPV(resource, L1_QK_SIZE);
+        uint32_t embedRoundQk = RoundUp(embed_, 16);
+        uint32_t l1QkSize = BlockMmadQK::L1TileShape::M * embedRoundQk * sizeof(ElementQ) +
+                            BlockMmadQK::L1TileShape::N * embedRoundQk * sizeof(ElementK) * 2;
+        BlockMmadQK blockMmadQK(resource, 0, embedRoundQk);
+        BlockMmadPV blockMmadPV(resource, l1QkSize);
 #endif
 
 #ifdef __DAV_C220_VEC__

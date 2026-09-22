@@ -961,7 +961,7 @@ key、value的shape由layoutKv及是否使能Paged Cache决定，见<a href="#pa
 
 - 确定性计算：aclnnGenericBlockSparseAttention默认确定性实现。
 - 调用前须先执行aclnnGenericBlockSparseAttentionMetadata生成metadataOptional，再调用本接口；metadata须与当前输入/属性配套，每次调用须重新生成。
-- query/key/value的headDim(D)当前仅支持128；KV页blockSize当前仅支持128，且须等于blockShapeY。
+- query/key/value的headDim(D)：A5(Ascend 950)上仅支持128；A2/A3(Atlas A2/A3)上支持128、256。KV页blockSize仅支持128，且须等于blockShapeY。
 - TND + isPackedGQA=1时：totalQBlocks按cuSeqLengthsQ差分得到的存储长度分块，即$\sum_i \mathrm{ceilDiv}(qStorageLen_i, blockShapeX)$；sparse分块与QKV寻址均按该存储长度，不以seqused重切分。
 - layoutKv为PA_BBND时须传sequsedKvOptional，不传cuSeqLengthsKvOptional。
 - seqused与对应cu前缀和同时传入时（Q侧，及layoutKv为TND时的KV侧）：分核/任务空间按各batch实际有效长度（seqused）累加；各batch的seqused元素须≤对应cu存储长度，且须与Metadata侧完全一致。
