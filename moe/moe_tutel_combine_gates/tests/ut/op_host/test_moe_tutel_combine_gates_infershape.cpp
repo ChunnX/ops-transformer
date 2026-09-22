@@ -15,7 +15,8 @@
  *        The shape contract under test: gates_grad.shape = indices.shape, with
  *        S = x.shape[0] = indices.shape[1] = locations.shape[1],
  *        H = x.shape[1] = y_grad.shape[2],
- *        B = y_grad.shape[0] = indices.shape[0] = locations.shape[0] and
+ *        B = y_grad.shape[0] = indices.shape[0] (and locations.shape[0] when
+ *        S != 0; S == 0 leaves locations' leading dim unconstrained) and
  *        indices / locations holding exactly S*B elements.
  */
 
@@ -42,6 +43,24 @@ std::vector<gert::InfershapeContextPara::TensorDescription> MakeInputs(std::init
         {gert::StorageShape(yShape, yShape), fcDtype, format},
         {gert::StorageShape(idxShape, idxShape), ge::DT_INT32, format},
         {gert::StorageShape(idxShape, idxShape), ge::DT_INT32, format},
+    };
+}
+
+// Overload with an independent locations shape (the default above always feeds
+// indices and locations the same shape, which cannot exercise the S == 0
+// leading-dim exemption).
+std::vector<gert::InfershapeContextPara::TensorDescription> MakeInputs(std::initializer_list<int64_t> xShape,
+                                                                       std::initializer_list<int64_t> yShape,
+                                                                       std::initializer_list<int64_t> idxShape,
+                                                                       std::initializer_list<int64_t> locShape,
+                                                                       ge::DataType fcDtype = ge::DT_BF16,
+                                                                       ge::Format format = ge::FORMAT_ND)
+{
+    return {
+        {gert::StorageShape(xShape, xShape), fcDtype, format},
+        {gert::StorageShape(yShape, yShape), fcDtype, format},
+        {gert::StorageShape(idxShape, idxShape), ge::DT_INT32, format},
+        {gert::StorageShape(locShape, locShape), ge::DT_INT32, format},
     };
 }
 
@@ -82,6 +101,16 @@ TEST(MoeTutelCombineGatesInferShape, infershape_ok_dynamic_dims)
 TEST(MoeTutelCombineGatesInferShape, infershape_ok_empty_samples)
 {
     gert::InfershapeContextPara para("MoeTutelCombineGates", MakeInputs({0, 8}, {2, 3, 8}, {2, 0}), MakeOutputs({}));
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, std::vector<std::vector<int64_t>>{{2, 0}});
+}
+
+// S = 0 also exempts locations.shape[0] == B: the element count is already 0
+// (locations must still be (*, 0)), so an arbitrary leading dim is accepted.
+// Pins the exemption the tiling-side check mirrors (review 12438 consistency).
+TEST(MoeTutelCombineGatesInferShape, infershape_ok_empty_samples_locations_leading_dim_free)
+{
+    gert::InfershapeContextPara para("MoeTutelCombineGates", MakeInputs({0, 8}, {2, 3, 8}, {2, 0}, {5, 0}),
+                                     MakeOutputs({}));
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, std::vector<std::vector<int64_t>>{{2, 0}});
 }
 
@@ -145,6 +174,16 @@ TEST(MoeTutelCombineGatesInferShape, infershape_fail_batch_binding)
     // indices.shape[0] = 4 contradicts y_grad.shape[0] = 8
     gert::InfershapeContextPara para("MoeTutelCombineGates", MakeInputs({1024, 1024}, {8, 256, 1024}, {4, 1024}),
                                      MakeOutputs({}));
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
+}
+
+// The locations leading-dim exemption is S == 0 only: with S > 0 a
+// locations.shape[0] != B is still a binding violation.
+TEST(MoeTutelCombineGatesInferShape, infershape_fail_locations_batch_binding)
+{
+    // locations.shape[0] = 4 contradicts y_grad.shape[0] = 8 while S = 1024 > 0
+    gert::InfershapeContextPara para("MoeTutelCombineGates",
+                                     MakeInputs({1024, 1024}, {8, 256, 1024}, {8, 1024}, {4, 1024}), MakeOutputs({}));
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
 

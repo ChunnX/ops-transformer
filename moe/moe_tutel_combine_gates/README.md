@@ -83,7 +83,7 @@
 <tr>
 <td>locations</td>
 <td>输入</td>
-<td>专家内槽位，公式中的 p；与 indices 同形，按平坦的 S×B 数组消费。合法取值域 [0, C)：<code>p &lt; 0</code> 仅在框架以 host 张量提供取值<strong>且带数据指针</strong>时由校验层拒绝（图模式下以 GE / tiling 错误码上报），host 放置但无数据指针与设备张量通路下均不拒收、对应 task 输出精确 0（见[约束说明](#约束说明)），<code>p ≥ C</code> 不被拒绝、对应 task 输出精确 0。</td>
+<td>专家内槽位，公式中的 p；与 indices 同形（唯一例外：<code>S = 0</code> 时 leading dim 无约束，见[约束说明](#约束说明)的「空 Tensor」条），按平坦的 S×B 数组消费。合法取值域 [0, C)：<code>p &lt; 0</code> 仅在框架以 host 张量提供取值<strong>且带数据指针</strong>时由校验层拒绝（图模式下以 GE / tiling 错误码上报），host 放置但无数据指针与设备张量通路下均不拒收、对应 task 输出精确 0（见[约束说明](#约束说明)），<code>p ≥ C</code> 不被拒绝、对应 task 输出精确 0。</td>
 <td>INT32</td>
 <td>ND</td>
 <td>[B, S]（rank 2，元素数 S×B）</td>
@@ -115,7 +115,7 @@
   - **输入**：图模式下不存在调用方手工传入非连续张量的入口——`RunGraph` 喂入的图输入是「shape + 平坦缓冲」，图内由上游算子产出、框架分配的中转张量本身连续；`.AutoContiguous()` 作为「进入 kernel 的输入必须连续」的契约声明保留。
   - **输出 `gates_grad`**：由 GE 按 InferShape 推导出的 shape 分配，天然连续；调用方不自行分配输出内存。kernel / tiling 层不感知输出 stride，按连续语义写回。
   - **`indices` / `locations` 的取值域校验**：本校验**只在框架以 host 张量（`kOnHost` / `kFollowing`）提供取值、且该张量带非空数据指针时才生效**（此时读到的就是逻辑元素序列本身，判据可信）；host 放置但取不到数据指针时记 INFO 后放行。设备张量通路下**不读值、不拒收**——该通路喂给 tiling 的描述符不带任何非连续信息（stride / offset 为空、storage 维等于视图维），按线性缓冲读 `S×B` 个 int32 无法证明就是逻辑元素序列：**按线性缓冲读值会误拒合法输入**，而误拒合法输入比漏检更严重，故取「宁可放行、不误拒」，越界取值改由 kernel 四条件掩码置 `0` 兜底。
-- 空 Tensor：允许。**多轴同时为 0 的优先级（本代契约）**：先判 `taskNum = S×B` 是否为 0——`S = 0` 或 `B = 0` 时输出为空张量（shape 与 `indices.shape` 一致），**无论 `H` / `C` 是否为 0**；只有 `S > 0 ∧ B > 0` 时，`H = 0`（内积为空）或 `C = 0`（所有 task 非法）才给出**整张量精确 `0`**。该契约与实现一致：tiling 的空 Tensor 短路 `HandleEmptyTensor()` 只判 `taskNum == 0`（此时不写任何数据、`taskNumPerBlock = 0`、`SetBlockDim(1)`），而 `H = 0` / `C = 0` 的其他组合进入正常通路，由 kernel 的 `hidden <= 0` 短路与四条件掩码写出精确 `0`。
+- 空 Tensor：允许。**多轴同时为 0 的优先级（本代契约）**：先判 `taskNum = S×B` 是否为 0——`S = 0` 或 `B = 0` 时输出为空张量（shape 与 `indices.shape` 一致），**无论 `H` / `C` 是否为 0**；只有 `S > 0 ∧ B > 0` 时，`H = 0`（内积为空）或 `C = 0`（所有 task 非法）才给出**整张量精确 `0`**。该契约与实现一致：tiling 的空 Tensor 短路 `HandleEmptyTensor()` 只判 `taskNum == 0`（此时不写任何数据、`taskNumPerBlock = 0`、`SetBlockDim(1)`），而 `H = 0` / `C = 0` 的其他组合进入正常通路，由 kernel 的 `hidden <= 0` 短路与四条件掩码写出精确 `0`。`S = 0` 另带一条 shape 豁免（infershape 与 tiling 两处同口径）：`locations.shape[0] = B` 仅在 `S ≠ 0` 时判——`S = 0` 时 `locations` 的 leading dim 无约束（kernel 按 `S×B` 平坦数组消费 `indices` / `locations`，`taskNum = 0` 时一个元素也不读；元素数契约 `S×B = 0` 与 `locations.shape[1] = S` 已把 `locations` 钉在 `(*, 0)`）；`indices.shape[0] = B` 则恒判。
 - 取值域：`indices ≥ B` 与 `locations < 0` 会越过 `y_grad` 张量范围。本代实现**保证绝不发生越界访存**（kernel 的四条件掩码 `(e ≥ 0) ∧ (e < B) ∧ (p ≥ 0) ∧ (p < C)` 不成立时 `continue`、不发起任何 DMA，槽位保持精确 `0`），但**校验层的前置拒收只在取值可被可信读出时生效**，判据是「张量放置」与「数据指针」两个条件**同时成立**：
   - **直读拒收（仅一种情形）**：框架以 host 张量（`kOnHost` / `kFollowing`）提供取值**且该张量带非空数据指针**时（如常量折叠等由框架把取值物化到 host 的通路），tiling 直读取值，命中 `indices ≥ B` 或 `locations < 0` 即拒收、返回 `ge::GRAPH_FAILED`，以 tiling 失败对应的 GE 错误码上报。
   - **放行（记 INFO）：host 放置但无数据指针**——张量为 `kOnHost` / `kFollowing`，但取值指针为空（`GetData<int32_t>() == nullptr`）⇒ 本层不可判，放行；`indices ≥ B` / `locations < 0` 由 kernel 掩码置 `0`。

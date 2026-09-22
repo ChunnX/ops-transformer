@@ -228,6 +228,18 @@ TEST_F(MoeTutelCombineGatesTiling, tiling_empty_batch)
     ExpectTilingOk(para, s, h, b, c, kKeyBf16, false);
 }
 
+// S == 0 exempts locations.shape[0] == B (the infershape-side exemption, kept
+// in lockstep here): with taskNum = 0 the kernel reads neither index tensor, and
+// the element-count contract (S*B = 0) plus locations.shape[1] == S already pin
+// locations to (k, 0) for any leading dim k. indices.shape[0] == B still binds.
+TEST_F(MoeTutelCombineGatesTiling, tiling_empty_samples_locations_leading_dim_free)
+{
+    const int64_t s = 0, h = 8, b = 2, c = 3;
+    auto inputs = MakeInputs(s, h, b, c, ge::DT_FLOAT, ge::DT_INT32);
+    inputs[3] = {gert::StorageShape({5, s}, {5, s}), ge::DT_INT32, ge::FORMAT_ND}; // locations.shape[0] != B
+    ExpectTilingOk(MakePara(inputs, MakeOutputs(s, b, ge::DT_FLOAT)), s, h, b, c, kKeyFp32, true);
+}
+
 // C = 0 with S, B > 0 is not an empty tensor: taskNum stays S*B, every task
 // fails the routing mask and the kernel writes exactly 0 (real-machine case
 // mtcg_bf16_c0 pins the kernel side of this contract).
@@ -344,6 +356,16 @@ TEST_F(MoeTutelCombineGatesTiling, tiling_fail_batch_binding)
     auto inputs = MakeInputs(s, h, 2, c, ge::DT_BF16, ge::DT_INT32);
     inputs[2] = {gert::StorageShape({3, s}, {3, s}), ge::DT_INT32, ge::FORMAT_ND}; // indices.shape[0] != B
     ExpectTilingFail(MakePara(inputs, MakeOutputs(s, 2, ge::DT_BF16)));
+}
+
+// locations.shape[0] != B is rejected whenever S != 0 (the exemption above is
+// S == 0 only): with S > 0 the binding is equivalent to the S*B element count.
+TEST_F(MoeTutelCombineGatesTiling, tiling_fail_locations_batch_binding)
+{
+    const int64_t s = 8, h = 64, b = 2, c = 4;
+    auto inputs = MakeInputs(s, h, b, c, ge::DT_BF16, ge::DT_INT32);
+    inputs[3] = {gert::StorageShape({3, s}, {3, s}), ge::DT_INT32, ge::FORMAT_ND}; // locations.shape[0] != B
+    ExpectTilingFail(MakePara(inputs, MakeOutputs(s, b, ge::DT_BF16)));
 }
 
 TEST_F(MoeTutelCombineGatesTiling, tiling_fail_task_element_count)

@@ -657,8 +657,10 @@ ge::graphStatus MoeTutelCombineGatesTiling::CheckExactRanks()
 // CheckShapeContract() — HostTiling §3.3 item 5 + InferShapeDtype.md §2
 //
 // broadcast.kind = none, so no broadcast alignment: the dimensions are strictly
-// equal. The 8 checks are: 4 exact ranks (CheckExactRanks) + H match + B match +
-// S match + indices/locations element count == S*B.
+// equal. The 8 checks are: 4 exact ranks (CheckExactRanks) + H match + B match
+// (indices always; locations only when S != 0 — the same exemption as
+// InferShape's, see the dim0 comment below) + S match + indices/locations
+// element count == S*B.
 // ---------------------------------------------------------------------------
 ge::graphStatus MoeTutelCombineGatesTiling::CheckShapeContract()
 {
@@ -669,7 +671,8 @@ ge::graphStatus MoeTutelCombineGatesTiling::CheckShapeContract()
     const int64_t yHidden = yShape.GetDim(HIDDEN_DIM); // H = y_grad.shape[2]
 
     // 这一组都是「两个参数联合判定」⇒ 复数宏 ..._SHAPES_WITH_REASON（EZ0010，收 paramNames）。
-    // 后三处即上一轮遗留的 U-1（indices/locations dim0、dim1、元素数三处裸 OP_LOGE）。
+    // 后三处即上一轮遗留的 U-1（indices/locations dim0、dim1、元素数三处裸 OP_LOGE）；
+    // 其中 dim0 因两条判据不再同款而拆成 indices / locations 两条（见下）。
     const std::string hGotStr = "x.shape[1]=" + std::to_string(hidden);
     const std::string hWantStr = "y_grad.shape[2]=" + std::to_string(yHidden);
     const std::string hGotPairStr = hGotStr + ", " + hWantStr;
@@ -677,14 +680,28 @@ ge::graphStatus MoeTutelCombineGatesTiling::CheckShapeContract()
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(tilingContext->GetNodeName(), "x, y_grad", hGotPairStr.c_str(),
                                                        "x.shape[1] (H) must equal y_grad.shape[2] (H)"),
                 return ge::GRAPH_FAILED);
-    const std::string dim0GotStr = "indices.shape[0]=" + std::to_string(idxShape.GetDim(0)) +
-                                   ", locations.shape[0]=" + std::to_string(locShape.GetDim(0));
-    const std::string dim0ReasonStr =
-        "indices.shape[0] and locations.shape[0] must equal B = " + std::to_string(batchSize) + " (y_grad.shape[0])";
-    OP_CHECK_IF(idxShape.GetDim(0) != batchSize || locShape.GetDim(0) != batchSize,
-                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(tilingContext->GetNodeName(), "indices, locations, y_grad",
-                                                       dim0GotStr.c_str(), dim0ReasonStr.c_str()),
-                return ge::GRAPH_FAILED);
+    // dim0 的两条判据不同款，须分开上报：indices.shape[0] == B 恒判；locations.shape[0]
+    // 带 S != 0 豁免——S > 0 时「locations.shape[0] == B」与下方元素数契约（S*B）等价，
+    // S == 0 时 locations 的 leading dim 无约束（design §2：kernel 按 S*B 平坦数组消费
+    // indices / locations，taskNum == 0 时一个元素也不读，元素数契约已由 shape[1] == S
+    // 与元素数 == 0 蕴含）。该豁免与 infershape 的第 4) 步（moe_tutel_combine_gates_
+    // infershape.cpp）逐字同源，两处口径必须一致：否则 S == 0 且 locations.shape[0] != B
+    // （元素数仍为 0）时 infershape 放行、tiling 拒绝，同一张图在两个阶段得到相反判决。
+    const std::string idxDim0GotStr =
+        "indices.shape[0]=" + std::to_string(idxShape.GetDim(0)) + ", y_grad.shape[0]=" + std::to_string(batchSize);
+    OP_CHECK_IF(
+        idxShape.GetDim(0) != batchSize,
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(tilingContext->GetNodeName(), "indices, y_grad", idxDim0GotStr.c_str(),
+                                               "indices.shape[0] (B) must equal y_grad.shape[0] (B)"),
+        return ge::GRAPH_FAILED);
+    const std::string locDim0GotStr =
+        "locations.shape[0]=" + std::to_string(locShape.GetDim(0)) + ", y_grad.shape[0]=" + std::to_string(batchSize);
+    OP_CHECK_IF(
+        samples != 0 && locShape.GetDim(0) != batchSize,
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(tilingContext->GetNodeName(), "locations, y_grad", locDim0GotStr.c_str(),
+                                               "locations.shape[0] (B) must equal y_grad.shape[0] (B) "
+                                               "when S != 0 (S == 0 leaves the leading dim unconstrained)"),
+        return ge::GRAPH_FAILED);
     const std::string dim1GotStr = "indices.shape[1]=" + std::to_string(idxShape.GetDim(1)) +
                                    ", locations.shape[1]=" + std::to_string(locShape.GetDim(1));
     const std::string dim1ReasonStr =
