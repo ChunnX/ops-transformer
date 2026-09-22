@@ -62,6 +62,9 @@ def npu_qfa(
     sinks_t: torch.Tensor = None,
     attn_mask_t: torch.Tensor = None,
     metadata_t: torch.Tensor = None,
+    v_tail: torch.Tensor = None,
+    block_table_tail: torch.Tensor = None,
+    seqused_kv_tail: torch.Tensor = None,
     *,
     batch_size: int,
     N_q: int,
@@ -92,14 +95,16 @@ def npu_qfa(
     attn_mask_shape: tuple = None,
     **kwargs,
 ):
-    """qfa_wrapper.npu_qfa — 15 个位置 tensor 与 CSV tensor_view_shapes 顺序一致:
+    """qfa_wrapper.npu_qfa — 18 个位置 tensor 与 CSV tensor_view_shapes 顺序一致:
 
       0 q, 1 k, 2 v, 3 q_descale, 4 k_descale, 5 v_descale, 6 p_scale, 7 block_table,
       8 cu_seqlens_q, 9 cu_seqlens_kv, 10 seqused_q, 11 seqused_kv,
-      12 sinks, 13 attn_mask, 14 metadata.
+      12 sinks, 13 attn_mask, 14 metadata, 15 v_tail, 16 block_table_tail,
+      17 seqused_kv_tail。
 
     slot 8-14 的 tensor 值由 inputs.py (customize_inputs) 用 attributes 真实值覆盖；
     本函数从 cu_seqlens_q_t/seqused_q_t 等 tensor（.cpu().tolist()）读回 list 计算。
+    slot 15-17 为 v_tail 尾块高精窗口三件套 (MXFP8/PA 专属), 旧 CSV 15 slot 时缺省 None。
     """
     torch_npu.npu.set_device(int(device_id))
     env_graph_path = os.environ.get("GRAPH_PATH")
@@ -255,6 +260,9 @@ def npu_qfa(
                 cu_seqlens_kv_t=cu_seqlens_kv_t,
                 seqused_q_t=seqused_q_t,
                 seqused_kv_t=seqused_kv_t,
+                v_tail=v_tail,
+                block_table_tail=block_table_tail,
+                seqused_kv_tail=seqused_kv_tail,
             )
     except Exception as e:
         logger.error("[WRAPPER] NPU 调用失败: %s", str(e))

@@ -24,11 +24,20 @@ import torch
 import torch_npu
 
 try:
-    from cann_ops_transformer.ops import quant_flash_attn_metadata
+    # [v_tail配套] 优先custom单算子包(18输入schema), builtin整包兜底 — 同 assets golden
+    from cann_ops_transformer_custom.ops.attention.quant_flash_attn import (
+        quant_flash_attn_metadata,
+    )
 
     _HAS_NPU = True
-except ImportError as e:
-    _HAS_NPU = False
+except ImportError:
+    try:
+        from cann_ops_transformer.ops import quant_flash_attn_metadata
+
+        _HAS_NPU = True
+    except ImportError:
+        quant_flash_attn_metadata = None
+        _HAS_NPU = False
 
 _TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
 if _TESTS_DIR not in sys.path:
@@ -73,6 +82,9 @@ def run_metadata(
     sinks_t: torch.Tensor,
     attn_mask_t: torch.Tensor,
     metadata_t: torch.Tensor,
+    v_tail: torch.Tensor = None,
+    block_table_tail: torch.Tensor = None,
+    seqused_kv_tail: torch.Tensor = None,
     *,
     batch_size: int,
     N_q: int,
@@ -344,7 +356,7 @@ def run_metadata(
             cu_seqlens_kv=cu_seqlens_kv_t if is_tnd_kv else None,
             seqused_q=seqused_q_t,
             seqused_kv=seqused_kv_t,
-            v_descale=inputs["dequant_scale_v"],
+            
             batch_size=batch_size if not is_tnd_q else None,
             mask_mode=inputs["sparse_mode"],
             layout_q=layout_q,

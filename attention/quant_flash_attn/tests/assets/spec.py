@@ -11,6 +11,7 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import importlib.util
+import sys
 from pathlib import Path
 
 
@@ -18,11 +19,16 @@ ASSET_IMPL_DIR = Path(__file__).with_name("impl")
 
 
 def load_impl_module(stem):
+    # [aclgraph兼容] 模块名必须稳定(hash(path)每进程随机)且注册进 sys.modules —
+    # torch.compile/npugraph_ex 的 dynamo 追踪需按名 import 回模块,
+    # 未注册时报 ModuleNotFoundError: qfa_assets_impl_graph_xxx
+    mod_name = f"qfa_assets_impl_{stem}"
+    if mod_name in sys.modules:
+        return sys.modules[mod_name]
     path = ASSET_IMPL_DIR / f"{stem}.py"
-    spec = importlib.util.spec_from_file_location(
-        f"qfa_assets_impl_{stem}_{abs(hash(path))}", path
-    )
+    spec = importlib.util.spec_from_file_location(mod_name, path)
     module = importlib.util.module_from_spec(spec)
+    sys.modules[mod_name] = module
     spec.loader.exec_module(module)
     return module
 

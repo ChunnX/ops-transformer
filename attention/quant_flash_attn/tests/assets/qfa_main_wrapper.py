@@ -27,11 +27,22 @@ import torch
 import torch_npu
 
 try:
-    from cann_ops_transformer.ops import quant_flash_attn_metadata, quant_flash_attn
+    # [v_tail配套] 优先custom单算子包(18输入schema), builtin整包兜底 — 同 assets golden
+    from cann_ops_transformer_custom.ops.attention.quant_flash_attn import (
+        quant_flash_attn,
+        quant_flash_attn_metadata,
+    )
 
     _HAS_NPU = True
-except ImportError as e:
-    _HAS_NPU = False
+except ImportError:
+    try:
+        from cann_ops_transformer.ops import quant_flash_attn_metadata, quant_flash_attn
+
+        _HAS_NPU = True
+    except ImportError:
+        quant_flash_attn = None
+        quant_flash_attn_metadata = None
+        _HAS_NPU = False
 
 _TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
 if _TESTS_DIR not in sys.path:
@@ -76,6 +87,9 @@ def run_main(
     sinks_t: torch.Tensor,
     attn_mask_t: torch.Tensor,
     metadata_t: torch.Tensor,
+    v_tail: torch.Tensor = None,
+    block_table_tail: torch.Tensor = None,
+    seqused_kv_tail: torch.Tensor = None,
     *,
     batch_size: int,
     N_q: int,
@@ -110,11 +124,13 @@ def run_main(
     分离测试入口: 验证主算子 + metadata 完整链路。
     metadata 不跨 testcase 传递, 本函数内部重新调 metadata 算子重建。
 
-    15 个位置 tensor 与 CSV tensor_view_shapes 顺序一致:
+    18 个位置 tensor 与 CSV tensor_view_shapes 顺序一致:
       0 q .. 7 block_table, 8 cu_seqlens_q, 9 cu_seqlens_kv, 10 seqused_q,
-      11 seqused_kv, 12 sinks, 13 attn_mask, 14 metadata。
+      11 seqused_kv, 12 sinks, 13 attn_mask, 14 metadata,
+      15 v_tail, 16 block_table_tail, 17 seqused_kv_tail (尾块高精窗口, MXFP8 专属)。
     slot 8-14 值由 inputs.py 用 attributes 覆盖; 本函数直接用入参 _t 的 NPU tensor
     （cu_seqlens_q_t/seqused_q_t 等）作为主算子的 cu_seqlens/seqused 输入。
+    v_tail 三件套为 final-layout bf16 原样透传 (gate 在 prepare_npu_inputs 内)。
     """
     torch_npu.npu.set_device(int(device_id))
 
@@ -326,6 +342,9 @@ def run_main(
             block_table_cpu
             if isinstance(block_table_cpu, torch.Tensor) and enable_pa
             else None,
+            v_tail=v_tail,
+            block_table_tail=block_table_tail,
+            seqused_kv_tail=seqused_kv_tail,
         )
 
     # cu_seqlens/seqused 的 NPU tensor 直接用入参 (_t) —— inputs.py 已 in-place 写入真实值。
@@ -347,7 +366,7 @@ def run_main(
             cu_seqlens_kv=cu_seqlens_kv_t if is_tnd_kv else None,
             seqused_q=seqused_q_t,
             seqused_kv=seqused_kv_t,
-            v_descale=inputs["dequant_scale_v"],
+            
             batch_size=batch_size if not is_tnd_q else None,
             mask_mode=inputs["sparse_mode"],
             layout_q=layout_q,
@@ -387,6 +406,12 @@ def run_main(
         max_seqlen_kv=inputs["max_seqlen_kv"],
         return_softmax_lse=enable_lse,
     )
+    # v_tail 三件套(尾块高精窗口, MXFP8/PA 专属): prepare_npu_inputs 已 gate(空/全零→None)
+    if inputs.get("v_tail") is not None:
+        main_kwargs["v_tail"] = inputs["v_tail"]
+        main_kwargs["seqused_kv_tail"] = inputs["seqused_kv_tail"]
+        if inputs.get("block_table_tail") is not None:
+            main_kwargs["block_table_tail"] = inputs["block_table_tail"]
 
     logger.info("[MAIN_WRAPPER] 调用 quant_flash_attn 主算子")
     try:
