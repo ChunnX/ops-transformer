@@ -409,7 +409,7 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::InitTilingContextParameters()
         opName_, MatmulAlltoAllTilingUtil::SetAttrsInfo(context_, opName_, contextInfo_, ALLTOALL_MATMUL_INDEX_SCHEMA));
     MC2_CHECK_LOG_RET(opName_, SetMxDataTypeInfo(context_, opName_, contextInfo_));
     MC2_CHECK_LOG_RET(opName_, SetAlltoAllMatmulShapeInfo(context_, contextInfo_));
-    // rankDim不超过8时使用APACE路径，AICPU和CCU均支持可选的all2all_out输出。
+    // 卡数不超过8时使用APACE路径，AICPU和CCU均支持可选的all2all_out输出。
     constexpr uint64_t APACE_IMPL_MAX_RANK_DIM = 8;
     usingApaceImpl_ = contextInfo_.args_.rankDim <= APACE_IMPL_MAX_RANK_DIM;
     return ge::GRAPH_SUCCESS;
@@ -503,7 +503,7 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::DoOpTiling()
 ge::graphStatus AllToAllMxQuantMatmulTilingBase::DoMxQuantMMTiling()
 {
     if (usingApaceImpl_) {
-        // HCOMM路径：output-off保持原有行为，output-on由AIV完成可选输出重排。
+        // HCOMM路径：卡数<16启用，可根据output-off/output-on选择是否由AIV完成输出重排。
         return DoHcommMxQuantMMTiling();
     }
     // arch35主线路径：不满足HCOMM启用条件时使用DequantBmm tiling。
