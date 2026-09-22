@@ -52,7 +52,7 @@
   $$
 
   $$
-  score\_weight_{h} = norm\_weight_{h} \cdot proj\_weight_{0,h}
+  score\_weight_{h} = norm\_weight_{h} \cdot proj\_weight_{h}
   $$
 
   $$
@@ -71,7 +71,7 @@
   - $T$ 表示 token 数量，$N$ 表示 `blockRes` 的 block 数量，$H$ 表示 hidden size。
   - $v_{t,i,h}$ 表示 `blockRes` 与 `partialBlock` 拼接后的 value，维度为 $(T,N+1,H)$。
   - $inv\_rms_{t,i}$ 表示前向逐行归一化系数。
-  - $score\_weight_{h}$ 表示 `normWeight` 与 `projWeight` 逐元素相乘的结果。
+  - $score\_weight_{h}$ 表示 `normWeight` 与 `projWeight` 逐元素相乘的结果；当 `projWeight` 为 $(H)$ 时，$proj\_weight_{h}$ 为 `projWeight` 的第 $h$ 个元素，当 `projWeight` 为 $(1,H)$ 时为 `projWeight` 的第 $(0,h)$ 个元素。
   - $probs_{t,i}$ 表示前向 softmax 输出概率。
   - $hidden\_states_{t,h}$ 表示前向加权融合输出。
 
@@ -172,8 +172,8 @@ aclnnStatus aclnnBlockAttentionResiduals(
   <tr>
       <td>validBlockNum（int64_t）</td>
       <td>输入</td>
-      <td>预留属性，当前不参与计算。</td>
-      <td><ul><li>默认值：-1。</li><li>仅支持传入-1。</li></ul></td>
+      <td>兼容性参数，当前等价于blockRes的N，不改变计算。</td>
+      <td><ul><li>默认值：-1。</li><li>支持传入-1或等于N。</li></ul></td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -271,20 +271,18 @@ aclnnStatus aclnnBlockAttentionResiduals(
   </thead>
   <tbody>
     <tr>
-    <td> ACLNN_ERR_PARAM_NULLPTR </td>
-    <td> 161001 </td>
+    <td rowspan="4"> ACLNN_ERR_PARAM_INVALID </td>
+    <td rowspan="4"> 161002 </td>
     <td>partialBlock、blockRes、projWeight、normWeight、hiddenStates存在空指针；needBackward为true时invNorm、probs存在空指针。</td>
     </tr>
     <tr>
-    <td rowspan="3"> ACLNN_ERR_PARAM_INVALID </td>
-    <td rowspan="3"> 161002 </td>
     <td>partialBlock、blockRes、projWeight、normWeight、hiddenStates、invNorm、probs的数据类型不在支持的范围内，或计算张量之间的数据类型不一致。</td>
     </tr>
     <tr>
-    <td>partialBlock、blockRes、projWeight、normWeight、hiddenStates、invNorm、probs的shape维度不在支持的范围内。</td>
+    <td>partialBlock、blockRes、projWeight、normWeight、hiddenStates、invNorm、probs的shape维度、shape取值或张量间的shape关系不满足要求。</td>
     </tr>
     <tr>
-    <td>validBlockNum不为-1，或normEps小于等于0。</td>
+    <td>validBlockNum不为-1且不等于N，或normEps小于等于0。</td>
     </tr>
     <tr>
     <td> ACLNN_ERR_INNER_CREATE_EXECUTOR </td>
@@ -359,7 +357,7 @@ aclnnStatus aclnnBlockAttentionResiduals(
   - T大于等于0，H大于等于1，N取值范围为1~100。
   - partialBlock、blockRes、projWeight、normWeight、hiddenStates的数据类型须一致，支持FLOAT16、BFLOAT16、FLOAT32；invNorm、probs仅支持FLOAT32。
   - shape须满足：partialBlock为(T, H)，blockRes为(T, N, H)，projWeight为(H)或(1, H)，normWeight为(H)，hiddenStates为(T, H)；needBackward为true时invNorm、probs为(T, N+1)。
-  - validBlockNum为预留属性，默认值为-1，当前不参与计算；仅支持传入-1。
+  - validBlockNum为兼容性参数，默认值为-1；支持传入-1或等于N，当前均等价于使用blockRes的N。
   - normEps须大于0，默认值为1e-6。
   - 输入张量支持非连续Tensor，接口内部转为Contiguous后计算；输出不支持非连续Tensor。
   - workspace仅使用平台系统预留，不追加用户侧workspace。
@@ -440,10 +438,10 @@ int main()
     std::vector<int64_t> normShape       = {H};
     std::vector<int64_t> hiddenShape     = {T, H};
 
-    std::vector<uint16_t> partialBlockData(GetShapeSize(partialBlockShape), 0x3C00);
-    std::vector<uint16_t> blockData(GetShapeSize(blockShape), 0x3C00);
-    std::vector<uint16_t> projData(GetShapeSize(projShape), 0x3C00);
-    std::vector<uint16_t> normData(GetShapeSize(normShape), 0x3C00);
+    std::vector<uint16_t> partialBlockData(GetShapeSize(partialBlockShape), 0x3F80);
+    std::vector<uint16_t> blockData(GetShapeSize(blockShape), 0x3F80);
+    std::vector<uint16_t> projData(GetShapeSize(projShape), 0x3F80);
+    std::vector<uint16_t> normData(GetShapeSize(normShape), 0x3F80);
     std::vector<uint16_t> hiddenData(GetShapeSize(hiddenShape), 0);
 
     void* partialBlockDev = nullptr;
