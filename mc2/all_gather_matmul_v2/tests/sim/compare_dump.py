@@ -41,7 +41,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-REPO_TESTS = Path(__file__).resolve().parents[1]          # .../tests
+REPO_TESTS = Path(__file__).resolve().parents[1]  # .../tests
 ASSETS_IMPL = REPO_TESTS / "assets" / "impl" / "golden.py"
 
 # ---------------------------------------------------------------------------
@@ -50,20 +50,20 @@ ASSETS_IMPL = REPO_TESTS / "assets" / "impl" / "golden.py"
 
 PRECISION_CRITERIA = {
     "fp16": {
-        "rtol": 2.0 ** -9,           # ≈ 1.953e-3
-        "atol": 2.0 ** -9,
+        "rtol": 2.0**-9,  # ≈ 1.953e-3
+        "atol": 2.0**-9,
         "matched_ratio_min": 0.99,
         "max_abs_error_limit": 0.1,  # max(1e-1, 32*ULP)=max(0.1, 32*2^-10)=0.1
         "source": "ops-precision-standard/references/float_compute.md §3 "
-                  "FLOAT16 列; 2.1 §2.3 口径表",
+        "FLOAT16 列; 2.1 §2.3 口径表",
     },
     "bf16": {
-        "rtol": 2.0 ** -6,           # ≈ 1.5625e-2
-        "atol": 2.0 ** -6,
+        "rtol": 2.0**-6,  # ≈ 1.5625e-2
+        "atol": 2.0**-6,
         "matched_ratio_min": 0.99,
         "max_abs_error_limit": 1.0,  # max(1e-0, 32*ULP)=max(1.0, 32*2^-7)=1.0
         "source": "ops-precision-standard/references/float_compute.md §3 "
-                  "BF16 列; 2.1 §2.3 口径表",
+        "BF16 列; 2.1 §2.3 口径表",
     },
 }
 
@@ -138,8 +138,9 @@ def load_dump(dump_dir):
             )
         # 完整 storage 交给 as_strided（padded stride 场景不截断）
         storage = torch.from_numpy(raw).view(dtype)
-        return torch.as_strided(storage, [int(d) for d in shape],
-                                [int(s) for s in strides])
+        return torch.as_strided(
+            storage, [int(d) for d in shape], [int(s) for s in strides]
+        )
 
     rank_size = meta["rank_size"]
     desc = meta.get("tensors", {})
@@ -148,16 +149,21 @@ def load_dump(dump_dir):
     # inner/TTK 的 (n,k) 形态同样接受（golden 按视图 shape 与 k 判别）。
     defaults = {
         "x1": {"shape": [meta["m"], meta["k"]], "strides": [meta["k"], 1]},
-        "x2": {"shape": desc.get("x2", {}).get(
-            "shape", [meta["k"], meta["n"]]),
+        "x2": {
+            "shape": desc.get("x2", {}).get("shape", [meta["k"], meta["n"]]),
             "strides": desc.get("x2", {}).get(
-                "strides", [1, meta["k"]] if meta.get("trans_b")
-                else [meta["n"], 1])},
+                "strides", [1, meta["k"]] if meta.get("trans_b") else [meta["n"], 1]
+            ),
+        },
         "bias": {"shape": [meta["n"]], "strides": [1]},
-        "output": {"shape": [meta["m"] * rank_size, meta["n"]],
-                   "strides": [meta["n"], 1]},
-        "gather_out": {"shape": [meta["m"] * rank_size, meta["k"]],
-                       "strides": [meta["k"], 1]},
+        "output": {
+            "shape": [meta["m"] * rank_size, meta["n"]],
+            "strides": [meta["n"], 1],
+        },
+        "gather_out": {
+            "shape": [meta["m"] * rank_size, meta["k"]],
+            "strides": [meta["k"], 1],
+        },
     }
     load_flags = {
         "x1": True,
@@ -189,8 +195,9 @@ def load_dump(dump_dir):
             for i in range(1, repeat):
                 spec = dict(defaults["output"])
                 spec.update(desc.get("output", {}))
-                runs.append(_load(f"output_rank{r}_run{i}.bin",
-                                  spec["shape"], spec["strides"]))
+                runs.append(
+                    _load(f"output_rank{r}_run{i}.bin", spec["shape"], spec["strides"])
+                )
             repeat_outputs.append(runs)
     tensors["output_runs"] = repeat_outputs
     return meta, tensors
@@ -215,11 +222,11 @@ def check_mixed_tolerance(actual, golden, dtype_key):
     if total == 0:
         return {
             "metric": "mixed_tolerance",
-            "measured": {"matched_ratio": 1.0, "max_abs_error": 0.0,
-                         "numel": 0},
-            "threshold": {k: crit[k] for k in
-                          ("rtol", "atol", "matched_ratio_min",
-                           "max_abs_error_limit")},
+            "measured": {"matched_ratio": 1.0, "max_abs_error": 0.0, "numel": 0},
+            "threshold": {
+                k: crit[k]
+                for k in ("rtol", "atol", "matched_ratio_min", "max_abs_error_limit")
+            },
             "conclusion": "PASS",
         }, True
     err = np.abs(a - g)
@@ -233,8 +240,10 @@ def check_mixed_tolerance(actual, golden, dtype_key):
     matched_ratio = (matched / finite_total) if finite_total > 0 else 1.0
     finite_err = np.where(finite_mask, err, 0.0)
     max_abs_error = float(finite_err.max()) if finite_err.size else 0.0
-    passed = (matched_ratio >= crit["matched_ratio_min"]
-              and max_abs_error <= crit["max_abs_error_limit"])
+    passed = (
+        matched_ratio >= crit["matched_ratio_min"]
+        and max_abs_error <= crit["max_abs_error_limit"]
+    )
     return {
         "metric": "mixed_tolerance",
         "measured": {
@@ -243,9 +252,10 @@ def check_mixed_tolerance(actual, golden, dtype_key):
             "numel": total,
             "finite_numel": finite_total,
         },
-        "threshold": {k: crit[k] for k in
-                      ("rtol", "atol", "matched_ratio_min",
-                       "max_abs_error_limit")},
+        "threshold": {
+            k: crit[k]
+            for k in ("rtol", "atol", "matched_ratio_min", "max_abs_error_limit")
+        },
         "conclusion": "PASS" if passed else "FAIL",
     }, passed
 
@@ -268,8 +278,7 @@ def check_bitwise(actual, golden):
     passed = a_bytes == g_bytes
     return {
         "metric": GATHEROUT_METRIC,
-        "measured": {"mismatched_bytes": mismatched,
-                     "total_bytes": len(g_bytes)},
+        "measured": {"mismatched_bytes": mismatched, "total_bytes": len(g_bytes)},
         "threshold": GATHEROUT_THRESHOLD,
         "conclusion": "PASS" if passed else "FAIL",
     }, passed
@@ -286,19 +295,27 @@ def check_propagation(actual, golden):
     g_nan = np.isnan(g)
     g_pos_inf = np.isposinf(g)
     g_neg_inf = np.isneginf(g)
-    nan_ok = bool((np.isnan(a) & g_nan).sum() == g_nan.sum()) \
-        if g_nan.any() else True
-    pos_ok = bool((np.isposinf(a) & g_pos_inf).sum() == g_pos_inf.sum()) \
-        if g_pos_inf.any() else True
-    neg_ok = bool((np.isneginf(a) & g_neg_inf).sum() == g_neg_inf.sum()) \
-        if g_neg_inf.any() else True
+    nan_ok = bool((np.isnan(a) & g_nan).sum() == g_nan.sum()) if g_nan.any() else True
+    pos_ok = (
+        bool((np.isposinf(a) & g_pos_inf).sum() == g_pos_inf.sum())
+        if g_pos_inf.any()
+        else True
+    )
+    neg_ok = (
+        bool((np.isneginf(a) & g_neg_inf).sum() == g_neg_inf.sum())
+        if g_neg_inf.any()
+        else True
+    )
     special = int(g_nan.sum() + g_pos_inf.sum() + g_neg_inf.sum())
     ok = nan_ok and pos_ok and neg_ok
     return {
         "metric": "special_value_propagation",
-        "measured": {"special_elements": special,
-                     "nan_class_match": nan_ok,
-                     "pos_inf_match": pos_ok, "neg_inf_match": neg_ok},
+        "measured": {
+            "special_elements": special,
+            "nan_class_match": nan_ok,
+            "pos_inf_match": pos_ok,
+            "neg_inf_match": neg_ok,
+        },
         "threshold": "informational（不作通过依据）",
         "conclusion": "INFO_CONSISTENT" if ok else "INFO_INCONSISTENT",
     }, None  # None => 不 gating
@@ -312,20 +329,26 @@ def crosscheck_st_acc(actual, golden, golden_f64):
     a = _to_f32(actual).astype(np.float64)
     g = _to_f32(golden_f64).astype(np.float64)
     if g.size == 0:
-        return {"metric": "cv_fused_double_benchmark",
-                "measured": {"max_re_ratio": 0.0, "avg_re_ratio": 0.0},
-                "threshold": dict(CROSSCHECK_RE_RATIOS),
-                "conclusion": "PASS"}
+        return {
+            "metric": "cv_fused_double_benchmark",
+            "measured": {"max_re_ratio": 0.0, "avg_re_ratio": 0.0},
+            "threshold": dict(CROSSCHECK_RE_RATIOS),
+            "conclusion": "PASS",
+        }
     with np.errstate(invalid="ignore", divide="ignore"):
         re = np.abs(a - g) / np.maximum(np.abs(g), 1e-30)
     max_re = float(re.max())
     avg_re = float(re.mean())
-    ok = (max_re <= CROSSCHECK_RE_RATIOS["max_re_ratio"]
-          and avg_re <= CROSSCHECK_RE_RATIOS["avg_re_ratio"])
+    ok = (
+        max_re <= CROSSCHECK_RE_RATIOS["max_re_ratio"]
+        and avg_re <= CROSSCHECK_RE_RATIOS["avg_re_ratio"]
+    )
     return {
         "metric": "cv_fused_double_benchmark",
-        "measured": {"max_re_ratio": round(max_re, 6),
-                     "avg_re_ratio": round(avg_re, 6)},
+        "measured": {
+            "max_re_ratio": round(max_re, 6),
+            "avg_re_ratio": round(avg_re, 6),
+        },
         "threshold": dict(CROSSCHECK_RE_RATIOS),
         "conclusion": "PASS" if ok else "FAIL",
         "note": "交叉核对项，不作通过依据（2.1 §2.3 辅助交叉核对）",
@@ -340,9 +363,7 @@ def crosscheck_st_acc(actual, golden, golden_f64):
 def _load_golden_module():
     import importlib.util
 
-    spec = importlib.util.spec_from_file_location(
-        "agm_v2_assets_golden", ASSETS_IMPL
-    )
+    spec = importlib.util.spec_from_file_location("agm_v2_assets_golden", ASSETS_IMPL)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -350,9 +371,7 @@ def _load_golden_module():
 
 def _golden_f64(case, rank_inputs, golden_mod):
     """双精度 golden（交叉核对基准）：不落 dtype 舍入。"""
-    gathered = torch.cat(
-        [inp["x1"].to(torch.float64) for inp in rank_inputs], dim=0
-    )
+    gathered = torch.cat([inp["x1"].to(torch.float64) for inp in rank_inputs], dim=0)
     outs = []
     for inp in rank_inputs:
         x2 = inp["x2"]
@@ -392,11 +411,13 @@ def compare_case(dump_dir):
     }
     rank_inputs = []
     for r in range(rank_size):
-        rank_inputs.append({
-            "x1": tensors["x1"][r],
-            "x2": tensors["x2"][r],
-            "bias": tensors["bias"][r],
-        })
+        rank_inputs.append(
+            {
+                "x1": tensors["x1"][r],
+                "x2": tensors["x2"][r],
+                "bias": tensors["bias"][r],
+            }
+        )
 
     goldens = golden_mod.agm_v2_sim_golden(case, rank_inputs)
     goldens_f64 = _golden_f64(case, rank_inputs, golden_mod)
@@ -421,21 +442,22 @@ def compare_case(dump_dir):
         # 辅助交叉核对（不作通过依据；结论分叉时标注）
         cc = crosscheck_st_acc(actual, golden, goldens_f64[r])
         if (not has_special) and cc["conclusion"] != rep["conclusion"]:
-            divergences.append({
-                "tensor": "output", "rank": r,
-                "authoritative": rep["conclusion"],
-                "crosscheck": cc["conclusion"],
-                "note": "两口径结论不一致，以 §2.3 口径表为准"
-                        "（交叉核对项仅参考）",
-            })
-        tensor_reports.append({"tensor": "output", "rank": r, **cc,
-                               "role": "crosscheck"})
+            divergences.append(
+                {
+                    "tensor": "output",
+                    "rank": r,
+                    "authoritative": rep["conclusion"],
+                    "crosscheck": cc["conclusion"],
+                    "note": "两口径结论不一致，以 §2.3 口径表为准（交叉核对项仅参考）",
+                }
+            )
+        tensor_reports.append(
+            {"tensor": "output", "rank": r, **cc, "role": "crosscheck"}
+        )
 
         # ---- gatherOut（§2.3 bitwise 硬门槛） ----
         if case["gather_out"] and tensors["gather_out"][r] is not None:
-            rep, ok = check_bitwise(
-                tensors["gather_out"][r], goldens["gather_out"][r]
-            )
+            rep, ok = check_bitwise(tensors["gather_out"][r], goldens["gather_out"][r])
             tensor_reports.append({"tensor": "gather_out", "rank": r, **rep})
             if not ok:
                 case_pass = False
@@ -449,14 +471,18 @@ def compare_case(dump_dir):
             for i in range(1, repeat):
                 cur = _tensor_bytes(runs[i])
                 ok = base == cur
-                tensor_reports.append({
-                    "tensor": "output", "rank": r,
-                    "metric": "determinism_bitwise",
-                    "measured": {f"run0_vs_run{i}":
-                                 "identical" if ok else "differ"},
-                    "threshold": "bitwise identical（其他要求 #3）",
-                    "conclusion": "PASS" if ok else "FAIL",
-                })
+                tensor_reports.append(
+                    {
+                        "tensor": "output",
+                        "rank": r,
+                        "metric": "determinism_bitwise",
+                        "measured": {
+                            f"run0_vs_run{i}": "identical" if ok else "differ"
+                        },
+                        "threshold": "bitwise identical（其他要求 #3）",
+                        "conclusion": "PASS" if ok else "FAIL",
+                    }
+                )
                 if not ok:
                     case_pass = False
 
@@ -465,31 +491,41 @@ def compare_case(dump_dir):
         "desc": meta.get("desc", ""),
         "dtype": dtype_key,
         "params": {
-            "m": case["m"], "k": case["k"], "n": case["n"],
+            "m": case["m"],
+            "k": case["k"],
+            "n": case["n"],
             "rank_size": case["rank_size"],
             "comm_mode": meta.get("comm_mode", ""),
-            "bias": case["bias"], "trans_b": case["trans_b"],
+            "bias": case["bias"],
+            "trans_b": case["trans_b"],
             "gather_out": case["gather_out"],
             "value_spec": meta.get("value_spec", "clean"),
+            "value_scale": meta.get("value_scale", 1.0),
         },
         "pass": case_pass,
         "tensors": tensor_reports,
         "crosscheck_divergences": divergences,
         "criteria_source": "2.1 §2.3 精度判定口径表"
-                           "（ops-precision-standard float_compute §3 实例化）",
+        "（ops-precision-standard float_compute §3 实例化）",
     }
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dump-dir", required=True,
-                        help="example dump 目录（含 meta.json 与 per-rank bins）")
-    parser.add_argument("--out-dir", default=None,
-                        help="报告输出目录（默认 dump 目录）")
-    parser.add_argument("--json-out", default=None,
-                        help="报告 json 文件名（默认 report_<case_id>.json）")
-    parser.add_argument("--summary", default=None,
-                        help="追加汇总 jsonl 路径（可选）")
+    parser.add_argument(
+        "--dump-dir",
+        required=True,
+        help="example dump 目录（含 meta.json 与 per-rank bins）",
+    )
+    parser.add_argument(
+        "--out-dir", default=None, help="报告输出目录（默认 dump 目录）"
+    )
+    parser.add_argument(
+        "--json-out",
+        default=None,
+        help="报告 json 文件名（默认 report_<case_id>.json）",
+    )
+    parser.add_argument("--summary", default=None, help="追加汇总 jsonl 路径（可选）")
     args = parser.parse_args()
 
     report = compare_case(args.dump_dir)
@@ -503,18 +539,21 @@ def main():
         with open(args.summary, "a", encoding="utf-8") as f:
             f.write(json.dumps(report, ensure_ascii=False) + "\n")
 
-    print(f"[compare] case={report['case_id']} "
-          f"pass={report['pass']} report={out_path}")
+    print(f"[compare] case={report['case_id']} pass={report['pass']} report={out_path}")
     for rep in report["tensors"]:
         if rep.get("role") == "crosscheck":
             continue
-        print("  {tensor}[rank{rank}] {metric}: {conclusion} "
-              "measured={measured} threshold={threshold}".format(
-                  tensor=rep["tensor"], rank=rep.get("rank", "-"),
-                  metric=rep["metric"], conclusion=rep["conclusion"],
-                  measured=json.dumps(rep["measured"], ensure_ascii=False),
-                  threshold=json.dumps(rep.get("threshold"),
-                                       ensure_ascii=False)))
+        print(
+            "  {tensor}[rank{rank}] {metric}: {conclusion} "
+            "measured={measured} threshold={threshold}".format(
+                tensor=rep["tensor"],
+                rank=rep.get("rank", "-"),
+                metric=rep["metric"],
+                conclusion=rep["conclusion"],
+                measured=json.dumps(rep["measured"], ensure_ascii=False),
+                threshold=json.dumps(rep.get("threshold"), ensure_ascii=False),
+            )
+        )
     for d in report["crosscheck_divergences"]:
         print(f"  [crosscheck-divergence] {d}")
     return 0 if report["pass"] else 1

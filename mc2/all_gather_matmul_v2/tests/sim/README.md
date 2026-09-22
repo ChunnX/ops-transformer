@@ -8,7 +8,7 @@
 
 | 文件 | 用途 |
 |------|------|
-| `run_sim_cases.sh` | 用例驱动：逐例注入参数 → `build.sh --run_example --simulator` → 比对 → 汇总 |
+| `run_sim_cases.sh` | 用例驱动：逐例注入参数 → `build.sh --run_example`（有卡直跑；`--sim` 回退 `--simulator=camodel` cannsim 仿真）→ 比对 → 汇总 |
 | `compare_dump.py` | 比对脚本：§2.3 权威断言（output 混合容差 + gatherOut 逐位字节一致）+ 交叉核对 + 逐张量报告落盘 |
 | `selftest_compare.py` | 管线自检（无 NPU/无 example）：合成 dump 验证 golden 与断言可执行、负例可检出 |
 | `gen_st_json.py` | 从 `../assets/sim_cases.py` 派生 arch35 非量化 ST 用例 json（28 例参数域镜像，T4） |
@@ -22,18 +22,26 @@
 # 0) 管线自检（无需 NPU / 无需 example，验证 golden+断言可执行）
 python3 tests/sim/selftest_compare.py
 
-# 1) 全量 L0+L1 仿真执行 + 比对（需参数化 example 就绪，见下）
-bash tests/sim/run_sim_cases.sh                 # L0+L1 非条件例（34 例）
+# 1) 全量 L0+L1 执行 + 比对（需参数化 example 就绪，见下）
+bash tests/sim/run_sim_cases.sh                 # L0+L1 非条件例（34 例），有卡直跑
 bash tests/sim/run_sim_cases.sh --case L0-01    # 单例
 bash tests/sim/run_sim_cases.sh --include-conditional   # 追加 L1-142（8 卡）
+bash tests/sim/run_sim_cases.sh --include-informational # 追加 INFO_CASES（大幅值
+                                                # informational 变体，判定不计门禁）
 bash tests/sim/run_sim_cases.sh --dry-run       # 只打印将执行的参数
+bash tests/sim/run_sim_cases.sh --sim           # 无卡回退：--simulator=camodel cannsim 仿真
 
 # 2) 结果
 #    tests/sim/reports/<case>/report_<case>.json  逐张量「张量/指标/实测值/阈值/结论」
-#    tests/sim/reports/summary.jsonl              汇总
+#    tests/sim/reports/summary.jsonl              compare_dump 汇总（有 dump 的用例）
+#    tests/sim/reports/driver_summary.jsonl       驱动级逐例汇总（每例一行，含
+#                                                 example 退出状态/权威判定/关键
+#                                                 指标/失败原因摘要——失败例不缺行）
 ```
 
-执行前置条件：build 目录空闲（与其他构建任务互斥）；CANN 环境已 source。
+执行前置条件：build 目录空闲（与其他构建任务互斥）；CANN 环境已 source；
+自定义算子包已出包安装（cust 模式依赖 vendors/<vendor>_transformer 或
+ASCEND_CUSTOM_OPP_PATH）。
 
 ## 与参数化 example 的接口契约（对 3.1 种子 example）
 
@@ -52,10 +60,12 @@ bash tests/sim/run_sim_cases.sh --dry-run       # 只打印将执行的参数
 | `AGM_V2_COMM_MODE` | 通信引擎 | `ai_cpu` / `ccu` |
 | `AGM_V2_BIAS` / `AGM_V2_TRANS_B` / `AGM_V2_GATHER_OUT` | 因子开关 | 0 / 1 |
 | `AGM_V2_VALUE_SPEC` | 输入数值语义 | `clean` / `signed_zero` / `inf_nan` / `magnitude_bands` |
+| `AGM_V2_VALUE_SCALE` | 输入幅值缩放系数（乘在 VALUE_SPEC 生成值上，P1 处置 2026-09-20） | (0,1]，默认 1.0 |
+| `AGM_V2_INFORMATIONAL` | informational 用例属性透传（驱动识别；example 不消费） | 0 / 1 |
 | `AGM_V2_REPEAT_LAUNCH` | 确定性重复 launch 次数 | ≥1（>1 时逐 run dump） |
 | `AGM_V2_SEED` | 确定性伪随机种子（per-rank 派生区分） | 整数 |
 
-未设置任一 `AGM_V2_*` 时 example 应回退到内置默认（等价 `L0-01`），
+未设置任一 `AGM_V2_*` 时 example 回退到内置默认（等价 `L0-01`，scale=1.0），
 保证既有调用方式不受影响。
 
 `AGM_V2_VALUE_SPEC` 语义（与 `selftest_compare.py::gen_values` 一致）：
@@ -64,6 +74,16 @@ bash tests/sim/run_sim_cases.sh --dry-run       # 只打印将执行的参数
 - `inf_nan`：约 0.1% +inf、0.1% -inf、0.3% nan；
 - `magnitude_bands`：[1,5]/[1e-2,1e-1]/[1e-4,1e-3]/[0,1e-6] 四带等分，
   符号随机。
+
+`AGM_V2_VALUE_SCALE` 语义（P1 处置）：对上述 spec 生成值**统一乘**该系数
+（clean ±5→±0.5、小值带 ±1→±0.1；x1/x2/bias 全部生成值含全 rank 重放，
+单点应用于 `GenSpecValue`）；±0/±inf/nan 位形经 IEEE 乘法保持
+（-0×s=-0、±inf×s=±inf、nan×s=nan）。缩放后输入语义仍为 clean 分层采样，
+仅幅值量级变化；golden（compare_dump/golden.py）从 dump 字节重算，天然
+与缩放无关。informational 用例（`INFO_CASES`，大幅值原幅值变体）刻意
+**不缩放**且与母用例同种子，逐位复现缩放前输入，用于「§2.3 容差口径 +
+fp64 归因」双指标记录（3.4 报告 v1.2）；判定加 `INFO_` 前缀，不计入
+驱动级 PASS/FAIL 门禁。
 
 ### 2. dump 落盘格式
 
@@ -87,12 +107,30 @@ bash tests/sim/run_sim_cases.sh --dry-run       # 只打印将执行的参数
   （golden 按视图 shape 与 k 判别，见 `golden.py::logical_weight_from_view`）；
 - **空 tensor**：0 字节文件（m=0 / n=0 / gatherOut 空传入）；
 - `meta.json` 必含：`case_id/desc/dtype/m/k/n/rank_size/comm_mode/bias/
-  trans_b/gather_out/value_spec/repeat_launch`。
+  trans_b/gather_out/value_spec/value_scale/repeat_launch`。
 
 ### 3. 计时打印（perf 备用，T7）
 
 每次 launch 后打印一行：`AGM_V2_TIMING_US: <us>`（`perf/collect_perf.sh`
 采集、`perf_report.py` 解析）。
+
+## 驱动级判定与汇总（P2 处置 2026-09-20）
+
+- **权威判定 = `compare_dump.py`**（§2.3 口径表实现处）。example 退出码仅
+  记录：dump 完整（`meta.json` + `output_rank0.bin`）即执行权威比对，不因
+  example 内嵌自校验失败而跳过（v1.1 曾因此失败例 summary 缺行）；example
+  内嵌自校验已对齐 §2.3（混合容差 + matched_ratio≥0.99 + max_abs_error
+  上限，见参数化 example 头注释），与权威口径单一语义。
+- **不掩盖真实崩溃**：example 异常退出且 dump 不完整（未到 kernel 输出/
+  建链失败/段错误）→ 直接计 FAIL（driver_summary 记 `crash/launch
+  failure`），不做权威比对。
+- **informational 用例**（`INFO_CASES` 大幅值原幅值变体）：判定
+  `INFO_PASS`/`INFO_FAIL`，不计入驱动级门禁与退出码；报告按「§2.3 容差
+  口径 + fp64 归因」双指标记录（3.4 报告 v1.2）。
+- **driver_summary.jsonl**：每例一行（`driver_case_summary.py` 生成）——
+  `case_id / informational / example_exit_ok / compare_pass / verdict /
+  reason / metrics`；失败例另有驱动日志逐例一行汇总（末尾
+  `non-PASS case summary` 段）。
 
 ## 精度判定实现位置（§2.3 口径表 → 可执行断言）
 

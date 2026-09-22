@@ -21,6 +21,9 @@
  *   - BiasType = CType（B5：bias=x1 dtype 直用，mmad 消费侧恒 fp32 由硬件 conv_control 承担）；
  *   - MAX_RANK_SIZE 16→64、FragmentTensor MaxFragments 32→64（B7 rankSize 支持域 2~64）；
  *   - 三区逻辑 M / WaitTile 递进 / FragmentTensor 复用 / 输出分段原样保留。
+ *   - 【P10 修复】Process 块循环增加区域边界分段：块 m 范围跨越 region/MAIN-round 边界时按边界
+ *     切分逐段计算（每段用各自 region 的 fragment tensor），修复跨界块对 HEAD/MAIN fragment
+ *     assembled 空间的越界切片（addrList 越界索引 → 非法 GM 读 → 507015，见 Process 注释）。
  */
 
 #pragma once
@@ -181,7 +184,7 @@ private:
         uint64_t rankCnt;
     };
     __aicore__ inline TileCtx ResolveTileCtx(int64_t mPos, int64_t headMainRows, int64_t mainRoundRows,
-                                              int64_t mainSectionRows, uint32_t rankSize, uint32_t commTurn) const;
+                                             int64_t mainSectionRows, uint32_t rankSize, uint32_t commTurn) const;
 
     // ---- GM addresses ----
     __gm__ AType *aGmAddr_{nullptr};
@@ -246,14 +249,13 @@ __aicore__ inline void AllGatherBmmKernel<AType, BType, CType, CommPolicy, Trans
         // DN: transB → fast dim = K
         const bool bAlignForL2Stream = (asc::te::get<Blaze::Gemm::MNK_K>(problemShape) & kCacheLineAlignMask) == 0;
         gmB.set_l2_cache_hint((fullMBlock && bAlignForL2Stream) ? asc::te::cache_mode::disable :
-                                                                   asc::te::cache_mode::normal);
+                                                                  asc::te::cache_mode::normal);
     }
 }
 
 template <typename AType, typename BType, typename CType, typename CommPolicy, bool TransB>
-__aicore__ inline void AllGatherBmmKernel<AType, BType, CType, CommPolicy, TransB>::Run(const Params &params,
-                                                                                        Mc2Kernel::OpStateDump
-                                                                                            &opStateDump)
+__aicore__ inline void AllGatherBmmKernel<AType, BType, CType, CommPolicy, TransB>::Run(
+    const Params &params, Mc2Kernel::OpStateDump &opStateDump)
 {
     // MIX_AIC_1_2 入口核型：AIV 空转（通信由 HCCL server 执行，计算为 AIC-only）
     if ASCEND_IS_AIV {
@@ -294,14 +296,20 @@ __aicore__ inline void AllGatherBmmKernel<AType, BType, CType, CommPolicy, Trans
     schParams.baseM = mmT.baseM;
     schParams.baseN = mmT.baseN;
     schParams.baseK = mmT.baseK;
-    // 尾块拆分因子由 mmTile 字段驱动（basic 调度器构造期生效；底本 UpdateTailTile 判定式同构，
-    // 拆分合法性由 tiling 产出侧保证——mmv3 尾块因子按核数产出）
-    schParams.mTailCnt = mmT.mTailTile;
-    schParams.nTailCnt = mmT.nTailTile;
-    schParams.mBaseTailSplitCnt = mmT.mBaseTailSplitCnt;
-    schParams.nBaseTailSplitCnt = mmT.nBaseTailSplitCnt;
-    schParams.mTailMain = mmT.mTailMain;
-    schParams.nTailMain = mmT.nTailMain;
+    // 【P10 修复·缺陷2】尾块分裂因子固定为 1（不启用 basic 调度器尾块分裂协议）：
+    // mmTile 的 mTailTile/mBaseTailSplitCnt/mTailMain 系 mmv3 尾块协议参数（底本 qbmm 所用
+    // BlockSchedulerQuantBatchMatmulV3 消费口径）；basic 调度器的分裂协议与之不同构——
+    // perCoreBlockNums_ 按扩展前 blockNums 计算、mSplitOffset_ 仅分裂分支写入且跨块残留，
+    // mTailTile>1 时产生越出 totalLogicalM 的畸形块（P10 L1-133 实测：块 [3926,4182) 超
+    // totalLogicalM=4096，残留 split offset 86/172）→ fragment 越界（原始 507015）/
+    // 分段零长循环（507014）。固定 1 后退化为 plain 网格（末行尺寸由调度器 mL1TailLast_
+    // 自洽收口），与 mTailTile==1 既有全过路径同构；代价为末轮负载不均（perf 项，登记回传）。
+    schParams.mTailCnt = 1;
+    schParams.nTailCnt = 1;
+    schParams.mBaseTailSplitCnt = 1;
+    schParams.nBaseTailSplitCnt = 1;
+    schParams.mTailMain = 0;
+    schParams.nTailMain = 0;
 
     FragBlockShape l0TileShape{static_cast<int64_t>(mmT.baseM), static_cast<int64_t>(mmT.baseN),
                                static_cast<int64_t>(mmT.baseK), 0L};
@@ -336,7 +344,7 @@ __aicore__ inline void AllGatherBmmKernel<AType, BType, CType, CommPolicy, Trans
     __gm__ BiasType *biasNull = nullptr;
     __gm__ BiasType *biasPtr = params.isBias ? biasGmAddr_ : biasNull;
     auto gmBias = asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::gm>(biasPtr),
-                                        asc::te::make_frame_layout<asc::te::nd_ext_layout_ptn>(1L, Ni));
+                                       asc::te::make_frame_layout<asc::te::nd_ext_layout_ptn>(1L, Ni));
 
     // basic 调度器迭代协议（kernel_matmul_basic.h MatmulProcess 同款）：
     // 核内 blockIdx 递增步进 coreNums，调度顺序保持 mPos 单调（滑窗映射保序）⇒ WaitTile 递进消费不变量成立
@@ -371,42 +379,74 @@ __aicore__ inline void AllGatherBmmKernel<AType, BType, CType, CommPolicy, Trans
         int64_t mPos = asc::te::get<Blaze::Gemm::MNK_M>(blockCoord);
         int64_t nPos = asc::te::get<Blaze::Gemm::MNK_N>(blockCoord);
 
-        auto ctx = ResolveTileCtx(mPos, headMainRows, mainRoundRows, mainSectionRows, fp.rankSize, fp.commTurn);
-
-        while (readyTileIdx < ctx.dependTileIdx) {
-            readyTileIdx++;
-            commPolicy_.WaitTile(readyTileIdx);
-            opStateDump.DoDump(DUMP_FIELD_WAIT);
-        }
-
         // Per-tile L2 cache hint（去 scaleB）
         SetL2Cache(problemShape, curMtile, curNtile, gmB);
 
         auto gmBlockB = gmB.slice(asc::te::make_coord(0L, nPos), asc::te::make_shape(Ki, curNtile));
         auto gmBlockBias = gmBias.slice(asc::te::make_coord(0L, nPos), asc::te::make_shape(1L, curNtile));
 
-        auto coordA = asc::te::make_coord(ctx.regionMPos, 0L);
-        auto coordC = asc::te::make_coord(ctx.regionMPos, nPos);
-        auto shapeA = asc::te::make_shape(curMtile, Ki);
-        auto shapeC = asc::te::make_shape(curMtile, curNtile);
-
-        // MAIN/TAIL 的 fragment tensor 延迟到首次命中时构建/更新地址。
-        if (ctx.region == MAIN) {
-            if (curMainRoundIdx_ == 0xFFFFFFFF) {
-                BuildMainFragment(params, ctx.roundIdx);
-            } else if (curMainRoundIdx_ != ctx.roundIdx) {
-                UpdateMainRoundAddrs(params, ctx.roundIdx);
+        // 【P10 修复】区域边界分段：块 m 范围跨越 region/MAIN-round 边界时按边界切分逐段计算。
+        // HEAD/MAIN fragment 的 assembled 虚拟空间仅覆盖本 region（fragmentCnt=1/R-1），跨界行属于
+        // 相邻 region 的数据空间——按块整片切片会使 FragmentSliceCopy 经 ComputeFragmentComposition
+        // 索引 addrList_[fragmentIdx >= fragmentCnt]（未初始化地址），MTE2 从非法 GM 地址读取触发
+        // aicore 异常（507015；P10：headRows/tileM 与调度器 baseM 不对齐的 shape 全体失败，如
+        // m∈{512,640,1024,1280,1536,2048}×k768，底本 CommTilingBase 按 baseM 对齐切分故无此问题）。
+        // 分段不变量：段行区间互斥覆盖块区间；每段用各自 region 的 fragment/ctx；K 循环与 C 散射
+        // 逐段独立且行区间不相交 ⇒ 数值结果与整块计算一致；无跨界块时退化为单段原路径（逐值等价）。
+        // TAIL 段内 rank 间 fragment 边界为设计内合法跨界（addrList 覆盖全部 R rank，见
+        // BuildTailFragment 注释），不切分；TAIL 段上界取 TAIL 区末（= totalLogicalM，调度器已收口）。
+        const int64_t tailRegionEnd =
+            headMainRows + mainSectionRows + static_cast<int64_t>(fp.rankSize) * static_cast<int64_t>(fp.paddedTailM);
+        int64_t segPos = mPos;
+        const int64_t blkEnd = mPos + curMtile;
+        while (segPos < blkEnd) {
+            auto ctx = ResolveTileCtx(segPos, headMainRows, mainRoundRows, mainSectionRows, fp.rankSize, fp.commTurn);
+            int64_t segLimit;
+            if (ctx.region == HEAD) {
+                segLimit = headMainRows;
+            } else if (ctx.region == MAIN) {
+                segLimit = headMainRows + (static_cast<int64_t>(ctx.roundIdx) + 1) * mainRoundRows;
+            } else {
+                segLimit = tailRegionEnd;
             }
-        } else if (ctx.region == TAIL && !tailBuilt_) {
-            BuildTailFragment(params);
-            tailBuilt_ = true;
-        }
+            int64_t segStop = (segLimit < blkEnd) ? segLimit : blkEnd;
+            if (segStop <= segPos) {
+                break; // 防御：块越出本段区域末（畸形块兜底）时截断，避免零长段循环
+            }
+            int64_t segLen = segStop - segPos;
 
-        auto blockA = ctx.fragA->Slice(coordA, shapeA);
-        auto blockC = ctx.fragC->Slice(coordC, shapeC);
-        mmadFrag(blockA, gmBlockB, gmBlockBias, cFragAddrs_, static_cast<uint64_t>(fp.mPerRank),
-                 static_cast<uint64_t>(fp.tileM), static_cast<uint64_t>(fp.tileCnt), static_cast<uint64_t>(fp.tailM),
-                 ctx.rankCnt, Ni, singleShape, ctx.regionMPos, nPos, 0, blockC);
+            while (readyTileIdx < ctx.dependTileIdx) {
+                readyTileIdx++;
+                commPolicy_.WaitTile(readyTileIdx);
+                opStateDump.DoDump(DUMP_FIELD_WAIT);
+            }
+
+            // MAIN/TAIL 的 fragment tensor 延迟到首次命中时构建/更新地址。
+            if (ctx.region == MAIN) {
+                if (curMainRoundIdx_ == 0xFFFFFFFF) {
+                    BuildMainFragment(params, ctx.roundIdx);
+                } else if (curMainRoundIdx_ != ctx.roundIdx) {
+                    UpdateMainRoundAddrs(params, ctx.roundIdx);
+                }
+            } else if (ctx.region == TAIL && !tailBuilt_) {
+                BuildTailFragment(params);
+                tailBuilt_ = true;
+            }
+
+            auto coordA = asc::te::make_coord(ctx.regionMPos, 0L);
+            auto coordC = asc::te::make_coord(ctx.regionMPos, nPos);
+            auto shapeA = asc::te::make_shape(segLen, Ki);
+            auto shapeC = asc::te::make_shape(segLen, curNtile);
+            FragBlockShape segShape{segLen, curNtile, asc::te::get<Blaze::Gemm::IDX_K_IDX>(singleShape),
+                                    asc::te::get<3>(singleShape)};
+
+            auto blockA = ctx.fragA->Slice(coordA, shapeA);
+            auto blockC = ctx.fragC->Slice(coordC, shapeC);
+            mmadFrag(blockA, gmBlockB, gmBlockBias, cFragAddrs_, static_cast<uint64_t>(fp.mPerRank),
+                     static_cast<uint64_t>(fp.tileM), static_cast<uint64_t>(fp.tileCnt),
+                     static_cast<uint64_t>(fp.tailM), ctx.rankCnt, Ni, segShape, ctx.regionMPos, nPos, 0, blockC);
+            segPos = segStop;
+        }
     }
 
     // 确保所有 dependTileIdx 均已 wait（收尾清理）。
