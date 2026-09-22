@@ -480,7 +480,8 @@ UB_NZP_A = _addr(_UB, "nzp")
 UB_SFMG_A = _addr(_UB, "sfmg")
 UB_LSE0_A = {w: _UB[w]["lse"]["addrs"][0] for w in _TIERS}
 UB_LSE1_A = {w: _UB[w]["lse"]["addrs"][1] for w in _TIERS}
-# sink 反向专用（BN2 与 GS1S2 共用 HEAD_DIM_ALIGN 那张图，同 BN2_UB_* 的做法）。
+# sink 反向专用。下面都是按档导出的表，调用方必须传「本分支其余 tile 用的那张图」
+# 的宽度；传错档会取到别档的地址、与同分支的活 buffer 重叠，造成踩UB内存
 UB_SINK_PART_A = _addr(_UB, "sink_part")
 # attenmask 复用 y/dy 的地址与号（vec1 之后 vec2 再用）。
 UB_MASK_A = UB_Y_A
@@ -496,6 +497,8 @@ MTX_UB_CAST = _flat(_UB, "cast")  # 仅 BN2
 UB_PRE_ZERO = _UB[HEAD_DIM_ALIGN]["zero"]["addrs"][0]
 MTX_UB_ZERO = _flat(_UB, "zero")
 POST_F32_ADDRS = _addrs(_UB, "f32")
+# post 段的 sink 归约 tile：规则同 UB_SINK_*——BN2 传 HEAD_DIM_ALIGN，GS1S2 传 v1w。
+# post_f32/f16 的尺寸随档变（POST_ELEMS[width]），这两格排在其后，故必须同档。
 UB_SINK_ROW_POST_A = _addr(_UB, "sink_row_post")
 UB_SINK_RED_POST_A = _addr(_UB, "sink_red_post")
 POST_F16_ADDRS = _addrs(_UB, "f16")
