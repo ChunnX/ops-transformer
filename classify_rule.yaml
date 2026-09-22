@@ -749,6 +749,7 @@ mc2_moe_advanced@ops-transformer:
                 - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_api/
                 - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_graph/
                 - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_kernel/arch35/
+                - ops/ops-transformer/mc2/moe_distribute_combine_setup/README.md
                 - ops/ops-transformer/mc2/moe_distribute_combine_setup/CMakeLists.txt
                 - ops/ops-transformer/mc2/moe_distribute_combine_teardown/op_host/op_tiling/arch35/
                 - ops/ops-transformer/mc2/moe_distribute_combine_teardown/op_api/
