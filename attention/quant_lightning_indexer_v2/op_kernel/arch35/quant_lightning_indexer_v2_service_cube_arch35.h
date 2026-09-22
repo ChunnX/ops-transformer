@@ -40,14 +40,14 @@ public:
                         QLIV2T::isMx, 
                         MX_DATA_DST_T, 
                         std::conditional_t<
-                        IS_HIFLOAT4,
+                        QLIV2T::isHiFloat4,
                         hifloat4x2_t,
                         Q_T>>;
     using L0_K_T = std::conditional_t<
                         QLIV2T::isMx, 
                         MX_DATA_DST_T, 
                         std::conditional_t<
-                        IS_HIFLOAT4,
+                        QLIV2T::isHiFloat4,
                         hifloat4x2_t,
                         Q_T>>;
     using CL0_T = std::conditional_t<std::is_same_v<QK_T, int32_t>, int32_t, float>;
