@@ -145,7 +145,8 @@ TEST_F(AttentionToFfnV2MxTilingTest, MxE5M2)
 
 TEST_F(AttentionToFfnV2MxTilingTest, MxClipE4M3)
 {
-    ExecuteTilingCase(BuildInputs(false, false), 6, false, ge::GRAPH_SUCCESS,
+    // quant_mode=7 → (MX_CLIP, E4M3)；quant_mode=6 是 (MX_CLIP, E5M2)
+    ExecuteTilingCase(BuildInputs(false, false), 7, false, ge::GRAPH_SUCCESS,
                       GET_TPL_TILING_KEY(ATTN_FFN_TILINGKEY_MX_CLIP, ATTN_FFN_TILINGKEY_OUT_E4M3, false, false, false,
                                          TILINGKEY_TPL_A5));
 }
