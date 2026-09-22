@@ -319,8 +319,6 @@ protected:
 protected:
     void DoOpTilingPaBlkNz();
     bool CheckQuantTermShape(const gert::TilingContext* context, size_t inputIdx, int64_t headSize, bool& hasShape);
-    bool CheckScaleValid(const gert::TilingContext *context);
-    bool CheckOffsetValid(const gert::TilingContext *context);
     bool CheckCacheValid(const gert::TilingContext *context, int64_t batchSize, int64_t numHead, int64_t cacheLen,
                          int64_t headSize, size_t cacheIndex, const char *cacheName) override;
     ge::graphStatus ResolveQuantConfig(size_t scaleIdx, size_t offsetIdx, int64_t headSize, const char *cacheName, int8_t& quantType);
