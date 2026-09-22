@@ -10,7 +10,7 @@
 
 #include "../mixed_quant_sparse_flash_mla_tiling.h"
 #include "../../op_kernel/arch22/mixed_quant_sparse_flash_mla_tiling_data.h"
-#include "../../op_kernel/mixed_quant_sparse_flash_mla_template_tiling_key.h"
+#include "../../op_kernel/arch22/mixed_quant_sparse_flash_mla_template_tiling_key.h"
 #include <algorithm>
 
 using namespace ge;
