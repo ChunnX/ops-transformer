@@ -162,7 +162,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
         LocalTensor<T> hInCache = bufX2Cache_.Get<T>()[tOff];
-        LocalTensor<T> x2Cache = bufX2Cache_.Get<T>()[tOff];
+        LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
         LocalTensor<float> gateBuf = bufScalar_.Get<float>()[EXP_DIV_ELEM];
         LocalTensor<float> sqBuf = bufGamma2Fp32_.Get<float>();
         MhcSandwichRegBase::GateWeightedSumQuantize<T>(hInCache, x2Cache, D_, gateBuf, tD);
