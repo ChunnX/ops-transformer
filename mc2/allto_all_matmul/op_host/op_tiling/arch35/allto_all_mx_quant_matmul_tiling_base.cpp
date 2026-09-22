@@ -1012,7 +1012,8 @@ void AllToAllMxQuantMatmulTilingBase::BuildWorkspaceLayout()
 /**
  * @brief 构建apace(hcomm)路线专属的workspace布局，与kernel侧实际存放顺序保持一致
  * 顺序: LIB_API → commX1Scale → commOut → STATE_DUMP
- * 注意: apace是纯C核路线，无转置段(transX1Scale/transOut)
+ * 注意: commX1Scale和commOut用于存放HCCL接收数据；all2all_out非空时，
+ * AIV将commOut中的数据重排后直接写入all2all_out，因此workspace不分配transX1Scale/transOut段。
  */
 void AllToAllMxQuantMatmulTilingBase::BuildWorkspaceLayoutApace()
 {
