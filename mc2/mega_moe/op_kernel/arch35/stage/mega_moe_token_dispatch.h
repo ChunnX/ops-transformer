@@ -744,6 +744,14 @@ __aicore__ inline void DispatchTokenRange(const TokenDispatchConfig &context, co
     if (GetSubBlockIdx() != 1U || blockJob.totalJobs == 0U) {
         return;
     }
+    if (context.dedup.dedupMode != 0) {
+        // AIV0 参与建表后，其 UB 建表区会被 AIC 的首批 GMM1 tile 覆写（P0 探针实测覆写发生在
+        // dispatch 首批发布之后）。发布任何 tile 前等全体建表工人 done（每 block AIV1+AIV0 各一，
+        // 共 2×blockNum），保证 AIV0 已离开建表区。典型形状下 AIV0 早于此点完成，等待实际≈0；
+        // combine 单开（dispatch 走基线路径）同样经由本入口，覆盖两条路径。首个 wave 之后瞬时通过。
+        WaitUntilGmFlagEquals(reinterpret_cast<__gm__ int32_t *>(context.dedup.prepassReadyPtr),
+                              static_cast<int32_t>(GetBlockNum()) * 2);
+    }
 
     // maxOutputSize 是 Dispatch workspace 的硬边界，先统一裁剪再做分核。
     uint32_t dispatchGlobalRowBegin = static_cast<uint32_t>(
@@ -802,23 +810,16 @@ __aicore__ inline void DispatchTokenRange(const TokenDispatchConfig &context, co
     }
 }
 
-// Wave 进入逐专家流水前一次准备完整 count 表；每个物理 block 只发布一次 ready。
-// W4 Wave-ahead 路径同时将 prefix 持久化到 GM，避免后续 Activation 覆盖 UB 后丢失 Dispatch 状态。
-template <bool NeedCumsumReload = false, typename ActivationType, typename TopkIndexType>
-__aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfig &common,
-                                                       const BlockWorkspaceContext &countWorkspace,
-                                                       const Params &params,
-                                                       TokenDispatchScratch<ActivationType, TopkIndexType> &scratch)
+/*
+ * count 表的装载与本地计算段（从 PrepareMoeExpertTokenCountTable 提取，语义逐字不变）：
+ * 装载原始 count → 逐槽 epoch 到达校验 → 前缀和。不含 GM 发布与 ready 标志。
+ * AIV1 经 PrepareMoeExpertTokenCountTable 调用；AIV0 参与去重 prepass 建表时直接调用本函数，
+ * 在自己的 UB 里得到一份本地前缀表（发布仍由 AIV1 独担；count 槽只被读，无并发写）。
+ */
+template <typename ActivationType, typename TopkIndexType>
+__aicore__ inline void LoadAndComputeExpertCountTable(const MoeStageCommonConfig &common, const Params &params,
+                                                      TokenDispatchScratch<ActivationType, TopkIndexType> &scratch)
 {
-    if constexpr (g_coreType == AIC) {
-        return;
-    }
-    if (GetSubBlockIdx() != 1U) {
-        // AIV0 不读取 count，但 mode 0 需要全部 AIV 每轮各上报一次。
-        CrossCoreSetFlag<ALL_AICORE_SYNC_MODE, PIPE_V>(COUNT_TABLE_READ_DONE_FLAG);
-        return;
-    }
-
     uint32_t rawCountElementCount = common.worldSize * common.moeExpertPerRank;
 
     /*
@@ -839,6 +840,29 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
     // 后续只使用 UB 结果及 workspace 副本，不再读取 peermem 原始 count 表。
     CrossCoreSetFlag<ALL_AICORE_SYNC_MODE, PIPE_V>(COUNT_TABLE_READ_DONE_FLAG);
     SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();
+}
+
+// Wave 进入逐专家流水前一次准备完整 count 表；每个物理 block 只发布一次 ready。
+// W4 Wave-ahead 路径同时将 prefix 持久化到 GM，避免后续 Activation 覆盖 UB 后丢失 Dispatch 状态。
+template <bool NeedCumsumReload = false, typename ActivationType, typename TopkIndexType>
+__aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfig &common,
+                                                       const BlockWorkspaceContext &countWorkspace,
+                                                       const Params &params,
+                                                       TokenDispatchScratch<ActivationType, TopkIndexType> &scratch)
+{
+    if constexpr (g_coreType == AIC) {
+        return;
+    }
+    if (GetSubBlockIdx() != 1U) {
+        // AIV0 不读取 count，但 mode 0 需要全部 AIV 每轮各上报一次；参与去重建表的 AIV0
+        // 经 PrepareDedupPrepassAiv0Local -> LoadAndComputeExpertCountTable 已上报，此处不得重复。
+        if (params.tilingData->dedupMode == 0) {
+            CrossCoreSetFlag<ALL_AICORE_SYNC_MODE, PIPE_V>(COUNT_TABLE_READ_DONE_FLAG);
+        }
+        return;
+    }
+    LoadAndComputeExpertCountTable(common, params, scratch);
+    uint32_t rawCountElementCount = common.worldSize * common.moeExpertPerRank;
     uint64_t countOffset = GetExpertCountWorkspaceOffset(countWorkspace, common.moeExpertPerRank, 0U, true);
     SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID2>();
     DataCopyPad(scratch.expertRevNumsGlobalTensor[countOffset], scratch.expertTokenNumsOutTensor,
@@ -853,6 +877,39 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
         reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.flagSendCntCalToUpdParamsPtr) +
         static_cast<uint64_t>(countWorkspace.blockIdx) * INT_CACHELINE;
     WriteGmBypassDCache(countTableReady, static_cast<int32_t>(1));
+}
+
+/*
+ * AIV0 参与去重 prepass 建表的本地准备：AIV0 的 dispatch UB 布局从未初始化（DispatchBuffInit 仅
+ * AIV1 执行），在本子核 UB 自建 cumsum / expertTokenNumsOut 视图与 dedupUbBaseAddr——两子核 UB
+ * 物理独立，且 P0 探针实测本窗口 AIV0 UB [0,200KB) 无人写（AIC 首批 GMM1 tile 的覆写发生在
+ * dispatch 首批发布之后，而发布侧有 done-gate 挡到全体建表完成）。随后本地复算 count 前缀表
+ *（发布仍由 AIV1 独担；count 槽只被读，无并发写）。必须在 BuildDedupRowDescTable 之前调用；
+ * 去重关闭或非 AIV0 为空操作。
+ */
+template <typename ActivationType, typename TopkIndexType>
+__aicore__ inline void PrepareDedupPrepassAiv0Local(const DedupConfig &dedup, const MoeStageCommonConfig &common,
+                                                    const Params &params,
+                                                    TokenDispatchScratch<ActivationType, TopkIndexType> &scratch)
+{
+    if constexpr (g_coreType == AIC) {
+        return;
+    }
+    if (dedup.dedupMode == 0 || GetSubBlockIdx() != 0U) {
+        return;
+    }
+    const uint32_t cumsumInfoTensorSize = static_cast<uint32_t>(
+        Ops::Base::CeilAlign(static_cast<int64_t>(common.worldSize * common.moeExpertPerRank * sizeof(int32_t)),
+                             static_cast<int64_t>(ALIGN_32)));
+    scratch.cumsumInfoTensor = LocalTensor<int32_t>(TPosition::VECCALC, 0U, cumsumInfoTensorSize / sizeof(int32_t));
+    const uint32_t expertTokenNumsOutTensorSize = static_cast<uint32_t>(Ops::Base::CeilAlign(
+        static_cast<int64_t>(common.moeExpertPerRank * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32)));
+    scratch.expertTokenNumsOutTensor = LocalTensor<int32_t>(TPosition::VECCALC, cumsumInfoTensorSize,
+                                                            expertTokenNumsOutTensorSize / sizeof(int32_t));
+    scratch.dedupUbBaseAddr = static_cast<uint32_t>(
+        Ops::Base::CeilAlign(static_cast<uint64_t>(cumsumInfoTensorSize + expertTokenNumsOutTensorSize),
+                             static_cast<uint64_t>(ALIGN_512)));
+    LoadAndComputeExpertCountTable(common, params, scratch);
 }
 
 /*

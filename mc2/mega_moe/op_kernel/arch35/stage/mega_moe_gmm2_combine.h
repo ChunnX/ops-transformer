@@ -1408,10 +1408,10 @@ __aicore__ inline void RunWaveCombineStageDedup(const MoeStageCommonConfig &comm
     MM_KTS_T(ktsReadyWaitT0);
     WaitWaveGmm2Ready(job, params, expertIdx);
     MM_KTS_SPAN(MgbKts::MM_DEDUP_MERGE_WAIT, 0U, expertIdx, 0U, 0U, ktsReadyWaitT0);
-    // prepass 槽 0（每核 done 计数）到齐后整张 desc 表方可读；combine 消费点远晚于 prepass 收尾，
-    // 此处等待实际≈0，仅作契约兜底。
+    // prepass 槽 0（每核 done 计数）到齐后整张 desc 表方可读；建表工人=每 block 的 AIV1+AIV0 各一，
+    // 期望 2×blockNum。combine 消费点远晚于 prepass 收尾，此处等待实际≈0，仅作契约兜底。
     WaitUntilGmFlagEquals(reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.dedupPrepassReadyPtr),
-                          static_cast<int32_t>(GetBlockNum()));
+                          static_cast<int32_t>(GetBlockNum()) * 2);
     MM_KTS_T(ktsCombineT0);
 
     const uint32_t strideInt32 =
