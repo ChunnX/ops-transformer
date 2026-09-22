@@ -58,9 +58,9 @@ struct EngramFetchGradTilingData {
     int32_t inputDtype;        // gradFetched 的 dtype（ge::DataType）
     int32_t outputDtype;       // gradUniqueOut 的 dtype（ge::DataType）
     uint32_t gradSubBatch;     // unique 阶段每批处理的 grad 数量
-    uint32_t sortNumTileData;  // SortLib: elements per tile
-    uint32_t sortTileCount;    // SortLib: tile count
-    uint32_t sortTmpUbSize;    // SortLib: AscendC::Sort temp UB bytes
-    uint32_t chunkElems;       // elements per chunked column pass, 0 = whole row fits in UB
+    uint32_t sortNumTileData;  // SortLib: 每 tile 元素数
+    uint32_t sortTileCount;    // SortLib: tile 数
+    uint32_t sortTmpUbSize;    // SortLib: AscendC::Sort 临时 UB 字节
+    uint32_t chunkElems;
 };
 #endif

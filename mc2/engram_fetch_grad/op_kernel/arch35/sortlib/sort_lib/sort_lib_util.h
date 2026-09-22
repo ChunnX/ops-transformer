@@ -22,8 +22,8 @@
 
 namespace SortLib::detail {
 
-constexpr uint32_t UB_ALIGN_BYTES = 32U;  // UB/workspace alignment granularity
-constexpr uint32_t FILL_MIN_BYTES = 256U; // min byte granularity per FillZeros fill
+constexpr uint32_t UB_ALIGN_BYTES = 32U;  // UB/workspace 32 字节对齐单位
+constexpr uint32_t FILL_MIN_BYTES = 256U; // FillZeros 每次 Fill 的最小字节粒度
 
 __aicore__ inline uint32_t RoundUpAlign(uint32_t x, uint32_t block)
 {

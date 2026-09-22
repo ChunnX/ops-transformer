@@ -220,9 +220,9 @@ private:
     bool flushPending_[2]{false, false};
     int32_t flushEvtVMte3Arr_[2]{0, 0};
     int32_t flushEvtMte3VArr_[2]{0, 0};
-    uint32_t runCnt_{0};   // direct-run rows in this batch
-    uint32_t accumCnt_{0}; // accum rows in this batch (<= ENTRY_BATCH_CAP)
-    uint32_t accumRowCnt_{0};
+    uint32_t runCnt_{0};      // 本批 direct-run 数
+    uint32_t accumCnt_{0};    // 本批 accum 行数(≤ENTRY_BATCH_CAP)
+    uint32_t accumRowCnt_{0}; // 当前 accum 组已累加行数
 };
 
 __aicore__ inline void EngramFetchGradUnique::Init(uint32_t aivId, uint32_t totalBlocks, uint32_t rankId,
