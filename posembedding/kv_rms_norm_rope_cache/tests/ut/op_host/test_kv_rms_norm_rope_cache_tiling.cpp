@@ -1057,7 +1057,6 @@ TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_tiling_1001B)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 5001, "");
 }
 
-
 TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_d_full_load_is_output_kv_tilingB)
 {
     optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
@@ -1156,7 +1155,6 @@ TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_d_full_load_is_output_kv
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10000, "");
 }
-
 
 TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_norm_cache_bn_match_tiling)
 {
@@ -1762,4 +1760,74 @@ TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_non_quant_cache_with_sca
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10000,
                     "* * * * * * * * * * * * * * * * * * * * * * * 256 * * * ");
+}
+
+// V1 reads every kv row as [dv, dk]. If Dkv differs from dv + dk, the kernel either crosses rows or reads the wrong
+// segment, so the mismatch must be rejected by tiling.
+TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_v1_dkv_mismatch_tiling)
+{
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 64;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{4, 1, 1, 575}, {4, 1, 1, 575}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{512}, {512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 64}, {4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 64}, {4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1}, {4, 1}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{4, 1, 128, 64}, {4, 1, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 128, 512}, {4, 1, 128, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput},
+        {{{{4, 1, 128, 64}, {4, 1, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 128, 512}, {4, 1, 128, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 64}, {4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 512}, {4, 1, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        },
+        &compileInfo, "Ascend950", 64, 196608);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+// The raw recompute factor is 32 here. Aligning it down to a 64-element tile produces zero and must return
+// GRAPH_PARAM_INVALID instead of reaching CeilDiv/FloorDiv with a zero divisor.
+TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_recompute_zero_aligned_ub_factor_tiling)
+{
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 64;
+    compileInfo.ubSize = 4640;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {{{{4, 1, 1, 576}, {4, 1, 1, 576}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{512}, {512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 64}, {4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 64}, {4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1}, {4, 1}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{4, 1, 128, 64}, {4, 1, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 128, 512}, {4, 1, 128, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput,
+         kOptionalInput},
+        {{{{4, 1, 128, 64}, {4, 1, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 128, 512}, {4, 1, 128, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 64}, {4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{4, 1, 1, 512}, {4, 1, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo, "Ascend950", 64, 4640);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }

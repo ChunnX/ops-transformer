@@ -313,18 +313,19 @@ __aicore__ inline void CopyInLineAlign(const LocalTensor<T> &dstUb, const Global
 /*
 ub->gm拷出
 lineNum：拷入的行数
+srcLineLength：UB中实际一行的长度
 dstLineLength：Gm中实际一行的长度
 copyLineLength：从原ub中实际需要拷入Gm的长度
-拷入完成后dstGm中的数据为lineNum*copyLineLengthPadAlign
+拷入完成后dstGm中的数据为lineNum*copyLineLength
 */
 template <typename T>
 __aicore__ inline void CopyLineAlignOut(const GlobalTensor<T> &dstGm, const LocalTensor<T> &srcUb, int64_t lineNum,
-                                        int64_t dstLineLength, int64_t copyLineLength)
+                                        int64_t srcLineLength, int64_t dstLineLength, int64_t copyLineLength)
 {
     DataCopyExtParams copyOutParams;
     copyOutParams.blockCount = lineNum;
     copyOutParams.blockLen = copyLineLength * sizeof(T);
-    copyOutParams.srcStride = 0;
+    copyOutParams.srcStride = (srcLineLength - copyLineLength) * sizeof(T);
     copyOutParams.dstStride = (dstLineLength - copyLineLength) * sizeof(T);
     DataCopyPad(dstGm, srcUb, copyOutParams);
 }

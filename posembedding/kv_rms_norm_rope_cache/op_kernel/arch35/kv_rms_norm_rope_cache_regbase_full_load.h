@@ -604,7 +604,7 @@ public:
             RopeVF(outFront, outBack, x, realCos, imgCos, realSin, imgSin, ws, row, kVFLoop, colCosSin, xOffset,
                    cosSinOffset);
             outQueue.EnQue(kOutLocal);
-            kOutLocal = outQueue.DeQue<T_K_CACHE>();
+            kOutLocal = outQueue.DeQue<T_KV>();
         }
     }
 
@@ -764,7 +764,8 @@ public:
 
             // 拷出到kOut
             if (tilingData_->isOutputKv > 0) {
-                CopyLineAlignOut<T_KV>(this->kOutGm[kOutGmOffset], kOutLocal, calcRow, this->dk, this->dk);
+                CopyLineAlignOut<T_KV>(this->kOutGm[kOutGmOffset], kOutLocal, calcRow, this->dkAlign, this->dk,
+                                       this->dk);
             }
             // FreeTensor 区分场景
             if constexpr (IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
@@ -798,7 +799,8 @@ public:
             }
             // 拷出到vOut
             if (tilingData_->isOutputKv > 0) {
-                CopyLineAlignOut<T_KV>(this->vOutGm[vOutGmOffset], vOutLocal, calcRow, this->dv, this->dv);
+                CopyLineAlignOut<T_KV>(this->vOutGm[vOutGmOffset], vOutLocal, calcRow, this->dvAlign, this->dv,
+                                       this->dv);
             }
             // FreeTensor 不论什么场景，都是申请的vOutLocal
             outQueue.FreeTensor(vOutLocal);
