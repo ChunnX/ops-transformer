@@ -1349,8 +1349,9 @@ def flash_attn_grad_preload2(
             nzp_ub = make_nzp_ub(v1w)
             sfmg_ub = make_sfmg_ub(v1w)
             lse_ub = make_lse_ub(v1w)
-            # sink 反向专用 tile：与 BN2 一样用 HEAD_DIM_ALIGN 那张 UB 图。
-            sink_part_ub = make_sink_part_ub(HEAD_DIM_ALIGN)
+            # sink 反向专用 tile：用本分支（GS1S2）的 v1w 那张 UB 图；
+            # 不能沿用 BN2 的 HEAD_DIM_ALIGN——大 D 档两者地址不同，会踩活 buffer。
+            sink_part_ub = make_sink_part_ub(v1w)
             mask_ub = make_mask_view(v1w)
             mask_pre_ub = make_mask_pre_view(v1w)
         runInfos = make_run_infos_2()
@@ -1668,8 +1669,8 @@ def flash_attn_grad_preload2(
             )
             # ---- dsink 归约（GS1S2 wide-D，与 BN2 同构）：sync_all 已在段首，
             # 中间隔着整段 process_post，AIV0 在末尾按固定行序归约出 dsink。
-            sink_row_ub = make_sink_row_post_ub(HEAD_DIM_ALIGN)
-            sink_red_ub = make_sink_red_post_ub(HEAD_DIM_ALIGN)
+            sink_row_ub = make_sink_row_post_ub(v1w)
+            sink_red_ub = make_sink_red_post_ub(v1w)
             if constInfo.sinkOptional == 1:
                 if pl.get_block_idx() == 0:
                     process_sink_reduce(
