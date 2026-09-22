@@ -17,8 +17,8 @@
 #define __TILING_FUNC_H__
 
 #include <cmath>
+#include <map>
 #include <vector>
-#include "op_host/op_tiling/mc2_matmul_aiv_mode_common.h"
 #include "../../../op_kernel/all_gather_matmul_aiv_mode_tiling.h"
 #include "register/op_def_registry.h"
 #include "register/tilingdata_base.h"
@@ -26,11 +26,11 @@
 
 struct TilingValue {
     int32_t value = -1;
-    mc2tiling::MknConditionMap conditionMap = {};
+    std::map<int, std::vector<std::vector<int>>> conditionMap = {};
 
     // 添加构造函数
     TilingValue() = default;
-    TilingValue(int32_t v, mc2tiling::MknConditionMap m = {})
+    TilingValue(int32_t v, std::map<int, std::vector<std::vector<int>>> m = {})
         : value(v),
           conditionMap(std::move(m))
     {}
@@ -64,7 +64,7 @@ inline bool IsMatrixAligned(uint32_t m, uint32_t n, bool transpose, uint32_t nEl
 }
 
 namespace optiling {
-using mc2tiling::MknConditionMap;
+using MknConditionMap = std::map<int, std::vector<std::vector<int>>>;
 
 constexpr int32_t RANKSIZE_TWO = 2;
 constexpr int32_t RANKSIZE_FOUR = 4;
