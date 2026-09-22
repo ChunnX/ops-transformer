@@ -626,13 +626,23 @@ static ge::graphStatus SetTilingData(const gert::TilingContext *context, EngramF
 static void SetTilingKey(gert::TilingContext *context, bool isTraining)
 {
     const char *nodeName = context->GetNodeName();
-    auto sfTableDesc = context->GetInputDesc(SF_TABLE_INDEX);
-    auto sfTableShape = context->GetInputShape(SF_TABLE_INDEX);
-    auto fetchedSfDesc = context->GetOutputDesc(FETCHED_SF_INDEX);
-    auto fetchedSfShape = context->GetOutputShape(FETCHED_SF_INDEX);
-    bool hasSf = sfTableDesc != nullptr && sfTableShape != nullptr && fetchedSfDesc != nullptr &&
-                 fetchedSfShape != nullptr && fetchedSfShape->GetStorageShape().GetDimNum() == DIM_TWO &&
-                 fetchedSfShape->GetStorageShape().GetDim(1) > 0;
+    bool hasSf = false;
+    if (isTraining) {
+        // 训练模式 SF 通过 context(sfAddrList) 传递，无 sf_table 输入，仅按 fetched_sf 输出形态判定
+        auto fetchedSfDesc = context->GetOutputDesc(FETCHED_SF_INDEX);
+        auto fetchedSfShape = context->GetOutputShape(FETCHED_SF_INDEX);
+        hasSf = fetchedSfDesc != nullptr && fetchedSfShape != nullptr &&
+                fetchedSfShape->GetStorageShape().GetDimNum() == DIM_TWO &&
+                fetchedSfShape->GetStorageShape().GetDim(1) > 0;
+    } else {
+        auto sfTableDesc = context->GetInputDesc(SF_TABLE_INDEX);
+        auto sfTableShape = context->GetInputShape(SF_TABLE_INDEX);
+        auto fetchedSfDesc = context->GetOutputDesc(FETCHED_SF_INDEX);
+        auto fetchedSfShape = context->GetOutputShape(FETCHED_SF_INDEX);
+        hasSf = sfTableDesc != nullptr && sfTableShape != nullptr && fetchedSfDesc != nullptr &&
+                fetchedSfShape != nullptr && fetchedSfShape->GetStorageShape().GetDimNum() == DIM_TWO &&
+                fetchedSfShape->GetStorageShape().GetDim(1) > 0;
+    }
     const uint64_t tilingKey = isTraining ? GET_TPL_TILING_KEY(ENGRAM_FETCH_TRAIN_MODE, hasSf) :
                                             GET_TPL_TILING_KEY(ENGRAM_FETCH_DEFAULT_MODE, hasSf);
     context->SetTilingKey(tilingKey);
