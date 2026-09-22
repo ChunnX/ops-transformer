@@ -134,6 +134,7 @@ static constexpr inferPFALayoutTypeEnum InOutLayoutPFATypeValue[5][2] = {
 // templateId
 #define FA_Template_ND 0
 #define FA_Template_DN 1
+#define FA_Template_DN_Unmerged 2 // 不合轴 DN(预埋, 路由入口默认关闭)
 
 struct ConfigParams {
     inferS1TemplateType s1;
@@ -208,13 +209,11 @@ static constexpr ConfigParams ConfigValue[] = {
 #define false 0
 #define true 1
 
-#define OFFSET_OF_MEMBER(TYPE, MEMBER) ((uint64_t) & ((TYPE *)0)->MEMBER)
-#define SIZE_OF_MEMBER(TYPE, MEMBER) sizeof(((TYPE *)0)->MEMBER)
-
 namespace FlashAttnKernel {
 
 struct FDparams {
     uint32_t fdCoreEnable;
+    uint32_t fdBN1Idx;
     uint32_t fdBN2Idx;
     uint32_t fdMIdx;
     uint32_t fdS2SplitNum;
@@ -232,6 +231,7 @@ struct RunInfo {
 
     uint32_t bIdx = 0;
     uint32_t n2Idx = 0;
+    uint32_t n1Idx = 0; // 不合轴 DN 预埋: 当前 query 头(b*n1 空间), 原 ND/合轴 DN 未使用
     uint32_t gS1Idx = 0;
     uint32_t gIdx = 0;
     uint32_t s1Idx = 0;
@@ -268,6 +268,7 @@ struct CommonConstInfo {
     uint32_t dSizeRope;
     uint32_t gSize; /* g轴的大小 */
     uint32_t n2Size;
+    uint32_t n1Size = 0;      /* N1(query头)轴的大小, 不合轴 DN 预埋使用, 原 ND/合轴 DN 未使用 */
     uint64_t s1Size;          /* s1总大小 */
     uint64_t s2Size;          /* s2总大小 */
     uint64_t cuSeqLensQSize;  /* 用户输入的actualseq的长度 */

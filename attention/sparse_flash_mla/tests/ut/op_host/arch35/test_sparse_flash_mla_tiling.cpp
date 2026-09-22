@@ -546,11 +546,25 @@ TEST_F(SparseFlashMlaTilingArch35, test_tiling_950_csa_omit_seqused_cmp_success)
     c.cmpSparseIndicesShape = {512, 1, 512};
     c.cmpTopkLengthShape = {512, 1};
     c.cmpBlockTableShape = {4, 8};
-    c.cmpResidualKvShape = {4};
     c.cmpRatio = 4;
     c.cmpMaskMode = 0;
     c.sequsedCmpKvShape = {};
     RunSmlaTilingCase(c, ge::GRAPH_SUCCESS);
+}
+
+// cmp_residual_kv is not supported when cmp_mask_mode=0 or cmp_ratio=1
+TEST_F(SparseFlashMlaTilingArch35, test_tiling_950_cmp_residual_kv_not_supported_failed)
+{
+    SmlaCase c;
+    c.cmpKvShape = {32, 128, 1, 512};
+    c.cmpSparseIndicesShape = {512, 1, 512};
+    c.cmpTopkLengthShape = {512, 1};
+    c.cmpBlockTableShape = {4, 8};
+    c.cmpResidualKvShape = {4};
+    c.cmpRatio = 4;
+    c.cmpMaskMode = 0;
+    c.sequsedCmpKvShape = {};
+    RunSmlaTilingCase(c, ge::GRAPH_FAILED);
 }
 
 // length of seqused_ori_kv must match batch size
@@ -875,12 +889,12 @@ TEST_F(SparseFlashMlaTilingArch35, test_tiling_910b_block_table_dim0_failed)
     RunSmlaTilingCase(c, ge::GRAPH_FAILED);
 }
 
-// 910B SWA without cmp_kv: cmp_ratio must be 1
-TEST_F(SparseFlashMlaTilingArch35, test_tiling_910b_swa_cmp_ratio_not_1_failed)
+// 910B SWA without cmp_kv: cmp_ratio does not affect routing
+TEST_F(SparseFlashMlaTilingArch35, test_tiling_910b_swa_cmp_ratio_4_success)
 {
     SmlaCase c = Make910bCase();
     c.cmpRatio = 4;
-    RunSmlaTilingCase(c, ge::GRAPH_FAILED);
+    RunSmlaTilingCase(c, ge::GRAPH_SUCCESS);
 }
 
 // 910B DSpark: dtype of ori_topk_length only supports int32

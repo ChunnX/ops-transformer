@@ -132,7 +132,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
     </tr></thead>
   <tbody>
     <tr>
-      <td>x1</td>
+      <td>x1（aclTensor *）</td>
       <td>输入</td>
       <td>输入x（左矩阵）。</td>
       <td>-</td>
@@ -142,7 +142,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       <td>√</td>
     </tr>
     <tr>
-      <td>x2</td>
+      <td>x2（aclTensor *）</td>
       <td>输入</td>
       <td>输入weight（右矩阵）。</td>
       <td>-</td>
@@ -152,7 +152,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       <td>√</td>
     </tr>
     <tr>
-      <td>scaleOptional</td>
+      <td>scaleOptional（aclTensor *）</td>
       <td>输入</td>
       <td>量化参数中的缩放因子，per-channel量化参数。</td>
       <td>-</td>
@@ -162,7 +162,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       <td>√</td>
     </tr>
     <tr>
-      <td>biasOptional</td>
+      <td>biasOptional（aclTensor *）</td>
       <td>输入</td>
       <td>矩阵的偏移。</td>
       <td>-</td>
@@ -172,7 +172,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       <td>√</td>
     </tr>
     <tr>
-      <td>offsetOptional</td>
+      <td>offsetOptional（aclTensor *）</td>
       <td>输入</td>
       <td>非对称量化的偏移量。</td>
       <td>-</td>
@@ -182,7 +182,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>antiquantScaleOptional</td>
+      <td>antiquantScaleOptional（aclTensor *）</td>
       <td>输入</td>
       <td>伪量化的缩放因子。</td>
       <td>目前暂未启用</td>
@@ -192,7 +192,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>antiquantOffsetOptional</td>
+      <td>antiquantOffsetOptional（aclTensor *）</td>
       <td>输入</td>
       <td>伪量化的偏移量。</td>
       <td>目前暂未启用</td>
@@ -202,7 +202,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>pertokenScaleOptional</td>
+      <td>pertokenScaleOptional（aclTensor *）</td>
       <td>输入</td>
       <td>矩阵计算的反量化参数。</td>
       <td></td>
@@ -212,7 +212,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       <td>√</td>
     </tr>
     <tr>
-      <td>groupListOptional</td>
+      <td>groupListOptional（aclTensor *）</td>
       <td>输入</td>
       <td>输入和输出分组轴方向的matmul大小分布。</td>
       <td></td>
@@ -222,7 +222,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       <td>√</td>
     </tr>
     <tr>
-      <td>sharedInputOptional</td>
+      <td>sharedInputOptional（aclTensor *）</td>
       <td>输入</td>
       <td>moe计算中共享专家的输出，需要与moe专家的输出进行combine操作。</td>
       <td></td>
@@ -232,7 +232,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       <td>√</td>
     </tr>
     <tr>
-      <td>logitOptional</td>
+      <td>logitOptional（aclTensor *）</td>
       <td>输入</td>
       <td>moe专家对各个token的logit大小。</td>
       <td></td>
@@ -242,17 +242,17 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       <td>√</td>
     </tr>
     <tr>
-      <td>rowIndexOptional</td>
+      <td>rowIndexOptional（aclTensor *）</td>
       <td>输入</td>
       <td>moe专家输出按照该rowIndex进行combine，其中的值即为combine做scatter add的索引。</td>
       <td></td>
-      <td>INT64</td>
+      <td>INT64，INT32</td>
       <td>ND</td>
       <td>shape支持一维，维度为(m)</td>
       <td>√</td>
     </tr>
     <tr>
-      <td>dtype</td>
+      <td>dtype（int64_t）</td>
       <td>输入</td>
       <td>计算的输出类型：0：FLOAT32；1：FLOAT16；2：BFLOAT16。目前仅支持0。</td>
       <td></td>
@@ -262,7 +262,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>sharedInputWeight</td>
+      <td>sharedInputWeight（float）</td>
       <td>输入</td>
       <td>共享专家与moe专家进行combine的系数，sharedInput先与该参数相乘，然后再与moe专家结果累加。</td>
       <td></td>
@@ -272,7 +272,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>sharedInputOffset</td>
+      <td>sharedInputOffset（int64_t）</td>
       <td>输入</td>
       <td>共享专家输出的在总输出中的偏移。</td>
       <td></td>
@@ -282,7 +282,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>transposeX1</td>
+      <td>transposeX1（bool）</td>
       <td>输入</td>
       <td>左矩阵是否转置，仅支持false。</td>
       <td></td>
@@ -292,7 +292,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>transposeX2</td>
+      <td>transposeX2（bool）</td>
       <td>输入</td>
       <td>右矩阵是否转置。</td>
       <td></td>
@@ -302,7 +302,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>groupListType</td>
+      <td>groupListType（int64_t）</td>
       <td>输入</td>
       <td>分组模式：配置为0：cumsum模式，即为前缀和；配置为1：count模式。</td>
       <td></td>
@@ -312,7 +312,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>tuningConfigOptional</td>
+      <td>tuningConfigOptional（aclIntArray *）</td>
       <td>输入</td>
       <td>数组中的第一个元素表示各个专家处理的token数的预期值，算子tiling时会按照数组的第一个元素合理进行tiling切分，性能更优。从第二个元素开始预留，用户无须填写。未来会进行扩展。兼容历史版本，用户如不使用该参数，不传入（即为nullptr）即可。</td>
       <td></td>
@@ -322,7 +322,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>out</td>
+      <td>out（aclTensor *）</td>
       <td>输出</td>
       <td>输出结果。</td>
       <td>-</td>
@@ -332,7 +332,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>workspaceSize</td>
+      <td>workspaceSize（uint64_t *）</td>
       <td>输出</td>
       <td>返回需要在Device侧申请的workspace大小。</td>
       <td>-</td>
@@ -342,7 +342,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>executor</td>
+      <td>executor（aclOpExecutor **）</td>
       <td>输出</td>
       <td>返回op执行器，包含了算子计算流程。</td>
       <td>-</td>
@@ -366,8 +366,8 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
     - groupListOptional支持e和w的e一致。
     - sharedInputOptional支持二维，维度为(bsdp,n)，bsdp必须小于等于batchSize/e，n和w的n一致。
     - logitOptional支持m和x的m一致。
-    - rowIndexOptional支持m和x的m一致。
-    - x1、x2、groupListOptional、biasOptional是必选参数，scaleOptional、pertokenScaleOptional、logitOptional、rowIndexOptional、sharedInputOptional是可选参数。
+    - rowIndexOptional支持INT64、INT32，且m和x的m一致。
+    - x1、x2、scaleOptional、biasOptional、pertokenScaleOptional、groupListOptional、logitOptional、rowIndexOptional是必选参数，sharedInputOptional是可选参数。
 
   <!-- end id9 -->
   <!-- npu="950" id10 -->
@@ -378,6 +378,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
     - biasOptional支持BF16。
     - sharedInputOptional支持二维，维度为(bsdp,n)，bsdp代表batchSize / dataParallelSize。
     - perTokenScaleOptional支持FLOAT8_E8M0。shape支持三维，维度为(m,Ceil(k/64),2)。
+    - rowIndexOptional仅支持INT64。
     - x1、x2、scaleOptional、pertokenScaleOptional、groupListOptional、logitOptional、rowIndexOptional是必选参数，biasOptional，sharedInputOptional是可选参数。目前暂不支持offsetOptional参数。
     - 当groupListType为0时，groupListOptional须为非负单调非递减数列（累积和），且最后一个值不大于x1中tensor的第一维；当groupListType为1时，groupListOptional须为非负数组（各组大小），且数值的总和不大于x1中tensor的第一维。
     - out的第一维batch、sharedInputOffset必须大于等于0，且小于等于m。
@@ -485,8 +486,8 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
 
     | x1   | x2   | scaleOptional | biasOptional | offsetOptional | antiquantScaleOptional | antiquantOffsetOptional | pertokenScaleOptional | groupListOptional | sharedInputOptional | logitOptional | rowIndexOptional | out     |
     | ---- | ---- | ------------- | ------------ | -------------- | ---------------------- | ----------------------- | --------------------- | ----------------- | ------------------- | ------------- | ---------------- | ------- |
-    | INT8 | INT4 | INT64         | FLOAT32      | FLOAT32        | null                   | null                    | FLOAT32               | INT64             | BFLOAT16            | FLOAT32       | INT64            | FLOAT32 |
-    | INT8 | INT4 | INT64         | FLOAT32      | null           | null                   | null                    | FLOAT32               | INT64             | BFLOAT16            | FLOAT32       | INT64            | FLOAT32 |
+    | INT8 | INT4 | INT64         | FLOAT32      | FLOAT32        | null                   | null                    | FLOAT32               | INT64             | BFLOAT16 / null     | FLOAT32       | INT64 / INT32    | FLOAT32 |
+    | INT8 | INT4 | INT64         | FLOAT32      | null           | null                   | null                    | FLOAT32               | INT64             | BFLOAT16 / null     | FLOAT32       | INT64 / INT32    | FLOAT32 |
 
   - 在该场景中，scaleOptional代表per-channel和per-group离线融合的结果。
   - 在该场景中，biasOptional代表离线计算的辅助结果，值要求为$8 \times w \times scaleOptional$，并在第一维累加。

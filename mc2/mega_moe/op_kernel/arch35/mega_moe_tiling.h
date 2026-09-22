@@ -87,7 +87,8 @@ constexpr uint32_t DEQUANT_FP32_SCALE_EXPANSION = 4U;
  * CalcDispatchBufferConfig 固定选中的 buffer 数后，用剩余 UB 扩大 batch，并向下对齐到 ALIGN_256。
  * 每个 route item 占 1 bit mask 和两个 int32 index，因此：
  *   maxRouteItems = routeItemBudgetBytes * 8 / 65。
- * CopyGMToGMPerToken 的 copyTmp、triple 和 event ID 三类槽位一一对应，统一使用 2~6 个 buffer。
+ * CopyGMToGMPerToken 的 copyTmp、triple 和 event ID 三类槽位一一对应，MTE 启动轮沿用自适应 2~6 个 buffer，稳态使用前 2
+ * 个槽，UB 地址保持不变。
  */
 constexpr int32_t MIN_DISPATCH_BUFFER_COUNT = 2;
 constexpr int32_t MAX_DISPATCH_BUFFER_COUNT = 6;
@@ -159,6 +160,25 @@ struct MegaMoeSendMaskBufferConfig {
     uint32_t bufferBytes;
 };
 
+// Host-computed A8W4 layout, shared by Wave/Layered and routed/shared experts.
+// Offsets are bytes; A and expanded W8 B tiles both use 256 x 256 bytes.
+struct MegaMoeL1Layout {
+    static constexpr uint64_t MAX_A_BUFFER_NUM = 6;
+    static constexpr uint64_t MAX_B_BUFFER_NUM = 8;
+    uint64_t aBufferNum;
+    uint64_t bBufferNum;
+    uint64_t tileK;
+    uint64_t scaleK;
+    uint64_t aSlotBytes;
+    uint64_t bSlotBytes;
+    uint64_t scaleASlotBytes;
+    uint64_t scaleBSlotBytes;
+    uint64_t aOffsets[MAX_A_BUFFER_NUM];
+    uint64_t bOffsets[MAX_B_BUFFER_NUM];
+    uint64_t scaleAOffsets[2];
+    uint64_t scaleBOffsets[2];
+};
+
 struct MegaMoeTilingData {
     uint32_t moeExpertPerRank; // 本卡参与 topK 路由的 MoE 专家数，与 weight1 表达的专家数一致
     uint32_t bs;
@@ -208,5 +228,9 @@ struct MegaMoeTilingData {
     uint32_t numMaxTokensPerRank;
     // URMA 分层拓扑；Host workspace 计算与 Device 通道映射必须使用同一个值。
     uint32_t rankNumPerServer;
+    // MTE 下 MoE/shared 量化输出类型不同时，需要为共享专家准备独立的 token/scale 拼接数据。
+    bool isSharedQuantIndependent;
+    // Appended to retain all existing field offsets; host and kernel packages must match.
+    MegaMoeL1Layout a8w4L1Layout;
 };
 #endif

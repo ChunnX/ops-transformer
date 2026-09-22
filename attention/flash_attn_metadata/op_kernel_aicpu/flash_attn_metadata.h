@@ -54,7 +54,8 @@ constexpr uint32_t FD_M_NUM_INDEX = 5U;
 // FAG (Flash Attn Grad) Metadata Index Definitions — head[7] records FAG start offset
 // (head[4]/[5]/[6] are taken by HEAD_AIC_NUM_INDEX/HEAD_AIV_NUM_INDEX/HEAD_OUTPUT_LAYOUT_INDEX)
 constexpr uint32_t HEAD_FAG_START_OFFSET_INDEX = 7U;
-constexpr uint32_t FAG_METADATA_SIZE = 121U;
+constexpr uint32_t FAG_METADATA_SIZE = 412U;
+constexpr uint32_t FAG_AIV_SLOT_NUM = 72U;
 constexpr uint32_t FAG_CORE_LIST_NUM = 36U;
 
 // FAG Metadata field indices (relative to fagStartOffset)
@@ -74,6 +75,14 @@ constexpr uint32_t FAG_WIN_LEFT_INDEX = 117U;
 constexpr uint32_t FAG_WIN_RIGHT_INDEX = 118U;
 constexpr uint32_t FAG_MAX_SEQLEN_Q_INDEX = 119U;
 constexpr uint32_t FAG_MAX_SEQLEN_KV_INDEX = 120U;
+// pre/post 行区间：按实际启动的 AIV 数均分（nAiv = blockOuter * 2）
+constexpr uint32_t FAG_PRE_AIV_NUM_INDEX = 121U;
+constexpr uint32_t FAG_DQ_ROWS_INDEX = 122U;
+constexpr uint32_t FAG_DKV_ROWS_INDEX = 123U;
+constexpr uint32_t FAG_DQ_ROW_STARTS_OFFSET = 124U;  // [72]
+constexpr uint32_t FAG_DQ_ROW_ENDS_OFFSET = 196U;    // [72]
+constexpr uint32_t FAG_DKV_ROW_STARTS_OFFSET = 268U; // [72]
+constexpr uint32_t FAG_DKV_ROW_ENDS_OFFSET = 340U;   // [72]  // 340+72=412
 
 // FAG internal constants
 constexpr uint32_t FAG_S1CV_RATIO_DEFAULT = 2U;
@@ -112,7 +121,7 @@ struct FaMetadata {
           aivNum(aivNum),
           headMetadata(static_cast<FA_METADATA_T *>(metadataPtr)),
           faMetadata(headMetadata + METADATA_STRIDE),
-          fdMetadata(faMetadata + sectionNum * aicNum * METADATA_STRIDE)
+          fdMetadata(faMetadata + static_cast<size_t>(sectionNum) * static_cast<size_t>(aicNum * METADATA_STRIDE))
     {
         headMetadata[0] = sectionNum;
     }
@@ -147,7 +156,9 @@ struct FaMetadata {
         assert(sectionIdx < sectionNum);
         assert(aicIdx < aicNum);
         assert(metaIdx < METADATA_STRIDE);
-        faMetadata[sectionIdx * aicNum * METADATA_STRIDE + aicIdx * METADATA_STRIDE + metaIdx] = val;
+        size_t offset = static_cast<size_t>(sectionIdx) * static_cast<size_t>(aicNum * METADATA_STRIDE) +
+                        static_cast<size_t>(aicIdx * METADATA_STRIDE);
+        faMetadata[offset + static_cast<size_t>(metaIdx)] = val;
     }
 
     uint32_t GetFaMetadata(uint32_t sectionIdx, uint32_t aicIdx, uint32_t metaIdx)
@@ -155,7 +166,9 @@ struct FaMetadata {
         assert(sectionIdx < sectionNum);
         assert(aicIdx < aicNum);
         assert(metaIdx < METADATA_STRIDE);
-        return faMetadata[aicNum * METADATA_STRIDE * sectionIdx + METADATA_STRIDE * aicIdx + metaIdx];
+        size_t offset = static_cast<size_t>(sectionIdx) * static_cast<size_t>(aicNum * METADATA_STRIDE) +
+                        static_cast<size_t>(aicIdx * METADATA_STRIDE);
+        return faMetadata[offset + static_cast<size_t>(metaIdx)];
     }
 
     void SetFdMetadata(uint32_t sectionIdx, uint32_t aivIdx, uint32_t metaIdx, uint32_t val)
@@ -163,7 +176,9 @@ struct FaMetadata {
         assert(sectionIdx < sectionNum);
         assert(aivIdx < aicNum);
         assert(metaIdx < METADATA_STRIDE);
-        fdMetadata[aivNum * METADATA_STRIDE * sectionIdx + METADATA_STRIDE * aivIdx + metaIdx] = val;
+        size_t offset = static_cast<size_t>(sectionIdx) * static_cast<size_t>(aivNum * METADATA_STRIDE) +
+                        static_cast<size_t>(aivIdx * METADATA_STRIDE);
+        fdMetadata[offset + static_cast<size_t>(metaIdx)] = val;
     }
 
     uint32_t GetFdMetadata(uint32_t sectionIdx, uint32_t aivIdx, uint32_t metaIdx)
@@ -171,7 +186,9 @@ struct FaMetadata {
         assert(sectionIdx < sectionNum);
         assert(aivIdx < aivNum);
         assert(metaIdx < METADATA_STRIDE);
-        return fdMetadata[aivNum * METADATA_STRIDE * sectionIdx + METADATA_STRIDE * aivIdx + metaIdx];
+        size_t offset = static_cast<size_t>(sectionIdx) * static_cast<size_t>(aivNum * METADATA_STRIDE) +
+                        static_cast<size_t>(aivIdx * METADATA_STRIDE);
+        return fdMetadata[offset + static_cast<size_t>(metaIdx)];
     }
 };
 } // namespace detail

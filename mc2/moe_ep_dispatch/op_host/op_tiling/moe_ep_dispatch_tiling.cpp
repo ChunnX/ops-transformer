@@ -199,20 +199,37 @@ static bool CheckOptionalTensorShape(const gert::TilingContext *context, const c
                         OP_LOGE(nodeName, "cached_slot_idx dims must be 2, but got %lu.",
                                 cachedShape->GetStorageShape().GetDimNum()),
                         return false);
-        OP_TILING_CHECK(
-            cachedShape->GetStorageShape().GetDim(0) != topkDim0,
-            OP_LOGE(
-                nodeName,
-                "cached_slot_idx dim0 must equal topk_idx dim0, but got cached_slot_idx dim0=%ld, topk_idx dim0=%ld.",
-                cachedShape->GetStorageShape().GetDim(0), topkDim0),
-            return false);
-        OP_TILING_CHECK(
-            cachedShape->GetStorageShape().GetDim(1) != topkDim1,
-            OP_LOGE(
-                nodeName,
-                "cached_slot_idx dim1 must equal topk_idx dim1, but got cached_slot_idx dim1=%ld, topk_idx dim1=%ld.",
-                cachedShape->GetStorageShape().GetDim(1), topkDim1),
-            return false);
+        if (info.networkMode == NETWORK_HYBRID) {
+            // hybrid: [num_tokens, top_k]
+            OP_TILING_CHECK(cachedShape->GetStorageShape().GetDim(0) != topkDim0,
+                            OP_LOGE(nodeName,
+                                    "cached_slot_idx dim0 must equal topk_idx dim0, but got cached_slot_idx dim0=%ld, "
+                                    "topk_idx dim0=%ld.",
+                                    cachedShape->GetStorageShape().GetDim(0), topkDim0),
+                            return false);
+            OP_TILING_CHECK(cachedShape->GetStorageShape().GetDim(1) != topkDim1,
+                            OP_LOGE(nodeName,
+                                    "cached_slot_idx dim1 must equal topk_idx dim1, but got cached_slot_idx dim1=%ld, "
+                                    "topk_idx dim1=%ld.",
+                                    cachedShape->GetStorageShape().GetDim(1), topkDim1),
+                            return false);
+        } else {
+            // direct: [ep_world_size, num_tokens + 1]
+            OP_TILING_CHECK(
+                cachedShape->GetStorageShape().GetDim(0) != static_cast<int64_t>(info.cfg.epWorldSize),
+                OP_LOGE(nodeName,
+                        "cached_slot_idx dim0 must equal ep_world_size=%u in direct mode, but got cached_slot_idx "
+                        "dim0=%ld.",
+                        info.cfg.epWorldSize, cachedShape->GetStorageShape().GetDim(0)),
+                return false);
+            OP_TILING_CHECK(
+                cachedShape->GetStorageShape().GetDim(1) != topkDim0 + 1,
+                OP_LOGE(nodeName,
+                        "cached_slot_idx dim1 must equal topk_idx dim0(num_tokens) + 1 in direct mode, but got "
+                        "cached_slot_idx dim1=%ld, topk_idx dim0=%ld.",
+                        cachedShape->GetStorageShape().GetDim(1), topkDim0),
+                return false);
+        }
     }
 
     const gert::StorageShape *cachedRouteCountShape = context->GetOptionalInputShape(CACHED_ROUTE_COUNT_INDEX);
@@ -336,18 +353,35 @@ static bool CheckOutputTensorShape(const gert::TilingContext *context, const cha
                     OP_LOGE(nodeName, "dst_buffer_slot_idx dims must be 2, but got %lu.",
                             dstSlotIdxShape->GetStorageShape().GetDimNum()),
                     return false);
-    OP_TILING_CHECK(dstSlotIdxShape->GetStorageShape().GetDim(0) != topkDim0,
-                    OP_LOGE(nodeName,
-                            "dst_buffer_slot_idx dim0 must equal topk_idx dim0, but got dst_buffer_slot_idx dim0=%ld, "
-                            "topk_idx dim0=%ld.",
-                            dstSlotIdxShape->GetStorageShape().GetDim(0), topkDim0),
-                    return false);
-    OP_TILING_CHECK(dstSlotIdxShape->GetStorageShape().GetDim(1) != topkDim1,
-                    OP_LOGE(nodeName,
-                            "dst_buffer_slot_idx dim1 must equal topk_idx dim1, but got dst_buffer_slot_idx dim1=%ld, "
-                            "topk_idx dim1=%ld.",
-                            dstSlotIdxShape->GetStorageShape().GetDim(1), topkDim1),
-                    return false);
+    if (info.networkMode == NETWORK_HYBRID) {
+        // hybrid: [num_tokens, top_k]
+        OP_TILING_CHECK(dstSlotIdxShape->GetStorageShape().GetDim(0) != topkDim0,
+                        OP_LOGE(nodeName,
+                                "dst_buffer_slot_idx dim0 must equal topk_idx dim0, but got dst_buffer_slot_idx "
+                                "dim0=%ld, topk_idx dim0=%ld.",
+                                dstSlotIdxShape->GetStorageShape().GetDim(0), topkDim0),
+                        return false);
+        OP_TILING_CHECK(dstSlotIdxShape->GetStorageShape().GetDim(1) != topkDim1,
+                        OP_LOGE(nodeName,
+                                "dst_buffer_slot_idx dim1 must equal topk_idx dim1, but got dst_buffer_slot_idx "
+                                "dim1=%ld, topk_idx dim1=%ld.",
+                                dstSlotIdxShape->GetStorageShape().GetDim(1), topkDim1),
+                        return false);
+    } else {
+        // direct: [ep_world_size, num_tokens + 1]
+        OP_TILING_CHECK(dstSlotIdxShape->GetStorageShape().GetDim(0) != static_cast<int64_t>(info.cfg.epWorldSize),
+                        OP_LOGE(nodeName,
+                                "dst_buffer_slot_idx dim0 must equal ep_world_size=%u in direct mode, but got "
+                                "dst_buffer_slot_idx dim0=%ld.",
+                                info.cfg.epWorldSize, dstSlotIdxShape->GetStorageShape().GetDim(0)),
+                        return false);
+        OP_TILING_CHECK(dstSlotIdxShape->GetStorageShape().GetDim(1) != topkDim0 + 1,
+                        OP_LOGE(nodeName,
+                                "dst_buffer_slot_idx dim1 must equal topk_idx dim0(num_tokens) + 1 in direct mode, but "
+                                "got dst_buffer_slot_idx dim1=%ld, topk_idx dim0=%ld.",
+                                dstSlotIdxShape->GetStorageShape().GetDim(1), topkDim0),
+                        return false);
+    }
     int64_t routeCapacity = topkDim1;
     OP_TILING_CHECK(routeCountShape->GetStorageShape().GetDimNum() != ONE_DIM,
                     OP_LOGE(nodeName, "route_count dims must be 1."), return false);
@@ -567,20 +601,24 @@ static ge::graphStatus CheckInputTensor(const gert::TilingContext *context, cons
                     OP_LOGE(nodeName, "Check scales input failed."), return ge::GRAPH_FAILED);
 
     uint32_t xDtypeSize = isXFp8 ? FP8_DTYPE_SIZE : MAX_OUT_DTYPE_SIZE;
-    uint32_t hAlign32 = ((info.cfg.hidden * xDtypeSize + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
+    uint32_t tokenSize = info.cfg.hidden * xDtypeSize;
     uint32_t kAlign32 = ((info.cfg.topK * METADATA_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
     uint32_t scalesSizeAlign32 = isXFp8 ? ((info.scalesBytes + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN : 0;
-    info.perSlotBytes =
-        ((hAlign32 + scalesSizeAlign32 + kAlign32 * TOPK_AND_TOPK_WEIGHT_NUMBER + UB_ALIGN + WIN_ADDR_ALIGN - 1) /
-         WIN_ADDR_ALIGN) *
-        WIN_ADDR_ALIGN;
-    // stash 的元数据 slot：scales + topk + topkWeights + pad（不含 hidden）。
-    // 与共享布局 dispatchMetaPerSlotBytes 严格同构（窗口预留=步长基准），
-    // 且 ≤ perSlotBytes - hAlign32（远端槽 meta 区容量），WQE2 整槽搬运贴合不越界
-    info.metaSlotBytes = scalesSizeAlign32 + kAlign32 * TOPK_AND_TOPK_WEIGHT_NUMBER + UB_ALIGN;
+    // stash 的元数据 slot：scales + topk + topkWeights + pad（不含 x）
+    uint32_t metaSize = scalesSizeAlign32 + kAlign32 * TOPK_AND_TOPK_WEIGHT_NUMBER + UB_ALIGN;
+    if (info.networkMode == NETWORK_HYBRID) {
+        // hybrid 槽布局保持原样: [x: ALIGN32(tokenSize)][scales][meta]，整槽 512 对齐（hybrid kernel 整槽搬运）
+        uint32_t hAlign32 = ((tokenSize + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
+        info.metaSlotBytes = metaSize;
+        info.perSlotBytes = ((hAlign32 + metaSize + WIN_ADDR_ALIGN - 1UL) / WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
+    } else {
+        // direct 紧凑槽布局: [x: tokenSize][meta: metaSlotBytes]，multi-sge 连续打包
+        info.metaSlotBytes = (metaSize + WIN_ADDR_ALIGN - 1UL) / WIN_ADDR_ALIGN * WIN_ADDR_ALIGN;
+        info.perSlotBytes = tokenSize + info.metaSlotBytes;
+    }
     info.isTopkWeights = (context->GetOptionalInputShape(TOPK_WEIGHTS_INDEX) != nullptr) ? 1 : 0;
-    OP_LOGD(nodeName, "perSlotBytes = %u(hidden=%u), metaSlotBytes = %u", info.perSlotBytes, info.cfg.hidden,
-            info.metaSlotBytes);
+    OP_LOGD(nodeName, "metaSlotBytes = %u, perSlotBytes = %u(hidden=%u, networkMode=%u)", info.metaSlotBytes,
+            info.perSlotBytes, info.cfg.hidden, info.networkMode);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -741,12 +779,13 @@ static uint64_t BuildDispatchWorkspaceLayout(MoeEpDispatchInfo &info)
     uint64_t superNodeCount = static_cast<uint64_t>(info.hybrid.serverNum);
     uint64_t numTokens = static_cast<uint64_t>(info.cfg.numTokens);
 
-    // counter 区: [aivNum][epAlignWin] 布局，每核写自己的行，独占 cache line
+    // counter 区: [aivNum][epAlignWin] 布局，每核写自己的行
     uint64_t epAlignWinBytes = AlignUpWin(epWorldSize * sizeof(int32_t));
     uint64_t counterBytes = aivNum * epAlignWinBytes;
 
-    // sendCntPerRank区
-    uint64_t sendCntPerRankBytes = epAlignWinBytes;
+    // sendCntPerRank 区  HYBRID [ep][512B]， DIRECT [epAlignWin]
+    uint64_t sendCntPerRankBytes =
+        (info.networkMode == NETWORK_HYBRID) ? epWorldSize * WIN_ADDR_ALIGN : epAlignWinBytes;
 
     // sendCntPerExpert 区: 两边一致
     uint64_t sendCntPerExpertBytes = AlignUpWin(moeExpertNumPerRank * epWorldSize * sizeof(int32_t));
@@ -754,14 +793,8 @@ static uint64_t BuildDispatchWorkspaceLayout(MoeEpDispatchInfo &info)
     // dstRank 区 [BS][K]
     uint64_t dstRankInfoBytes = AlignUpWin(numTokens * info.cfg.topK * sizeof(int16_t));
 
-    // tokenHit 发送列表区 [ep][bsAlign]：统一存 tokenId(int32)，
-    uint64_t srcTokenListBytes = AlignUpWin(numTokens * sizeof(int32_t));
-    uint64_t srcTokenTableBytes = epWorldSize * srcTokenListBytes;
-
     uint64_t sendCntBytes = counterBytes + sendCntPerRankBytes + sendCntPerExpertBytes;
     info.workspace.dstRankInfoOffset = sendCntBytes;
-    info.workspace.srcTokenTableOffset = sendCntBytes + dstRankInfoBytes;
-    info.workspace.srcTokenListBytes = srcTokenListBytes;
 
     // scaleout counter 与 scaleup counter 一样按每 AIV 一份，SendPhase 用它做 slot prefix。
     uint64_t scaleoutCounterBytes =
@@ -783,7 +816,7 @@ static uint64_t BuildDispatchWorkspaceLayout(MoeEpDispatchInfo &info)
     info.workspace.routeWorkspaceOffset = 0UL;
     info.workspace.scaleoutSendEntryOffset = 0UL;
     info.workspace.scaleupSendEntryOffset = 0UL;
-    return SYSTEM_NEED_WORKSPACE + sendCntBytes + dstRankInfoBytes + srcTokenTableBytes + globalABytes;
+    return SYSTEM_NEED_WORKSPACE + sendCntBytes + dstRankInfoBytes + globalABytes;
 }
 
 static ge::graphStatus BuildAndCheckWindowLayout(const gert::TilingContext *context, MoeEpDispatchInfo &info,
@@ -803,6 +836,15 @@ static ge::graphStatus BuildAndCheckWindowLayout(const gert::TilingContext *cont
                     OP_LOGE(nodeName, "Calculate Moe EP window layout failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckMoeEpWindowCapacity(layout.requiredBytes, maxWindowSize, nodeName) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Check Moe EP window capacity failed."), return ge::GRAPH_FAILED);
+    //  kernel 按 perSlotBytes 步长写接收区、按 align512(metaSlotBytes) 步长写 stash 区, 均不得超过窗口预留, 避免踩踏
+    OP_TILING_CHECK(static_cast<uint64_t>(info.perSlotBytes) > layout.dispatchReservedPerSlotBytes,
+                    OP_LOGE(nodeName, "perSlotBytes %u exceeds window reserved slot bytes %lu.", info.perSlotBytes,
+                            layout.dispatchReservedPerSlotBytes),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(AlignUpWin(info.metaSlotBytes) > layout.dispatchMetaPerSlotBytes,
+                    OP_LOGE(nodeName, "metaSlotBytes %u exceeds window stash reserved bytes %lu.", info.metaSlotBytes,
+                            layout.dispatchMetaPerSlotBytes),
+                    return ge::GRAPH_FAILED);
 
     info.dumpMetadata = BuildMoeEpDumpMetadata(params, layout, aivNum);
     info.totalWinSizeEp = maxWindowSize;

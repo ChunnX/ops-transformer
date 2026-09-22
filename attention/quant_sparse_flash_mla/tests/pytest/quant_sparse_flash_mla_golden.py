@@ -28,6 +28,53 @@ FP8_DATA_RANGE_LEFT = -5
 FP8_DATA_RANGE_RIGHT = 5
 
 
+def _nonfinite_fill(shape, data_range):
+    """Return a constant tensor for an INF/NAN range, or None for finite data."""
+    low, high = (float(data_range[0]), float(data_range[1]))
+    if math.isfinite(low) and math.isfinite(high):
+        return None
+    if math.isnan(low) or math.isnan(high):
+        if math.isnan(low) and math.isnan(high):
+            value = math.nan
+        else:
+            raise ValueError(
+                f"data range must use [nan, nan] for a constant NaN, got [{low}, {high}]"
+            )
+    elif low == high:
+        value = low
+    else:
+        raise ValueError(f"non-finite data range must be constant, got [{low}, {high}]")
+    return torch.full(shape, value, dtype=torch.float32)
+
+
+def _resolve_descale_range(data_range):
+    """Avoid non-finite scale factors masking the data-range signal."""
+    if any(not math.isfinite(float(value)) for value in data_range):
+        return [1.0, 1.0]
+    return [
+        float(data_range[0]) / FP8_DATA_RANGE_LEFT,
+        float(data_range[1]) / FP8_DATA_RANGE_RIGHT,
+    ]
+
+
+def restore_cmp_kv_lengths(
+    seqused_cmp_kv, cmp_ratio, cmp_residual_kv=None, cmp_mask_mode=3
+):
+    """Restore the logical CMP context lengths used by the Arch35 kernels."""
+    if seqused_cmp_kv is None:
+        return None
+    if cmp_mask_mode == 0 or int(cmp_ratio) == 1:
+        cmp_residual_kv = None
+    if cmp_residual_kv is not None and len(cmp_residual_kv) != len(seqused_cmp_kv):
+        raise ValueError("cmp_residual_kv and seqused_cmp_kv must have the same length")
+
+    return [
+        int(cmp_len) * cmp_ratio
+        + (int(cmp_residual_kv[index]) if cmp_residual_kv is not None else 0)
+        for index, cmp_len in enumerate(seqused_cmp_kv)
+    ]
+
+
 class GeneralizedSFAQuant:
     def __init__(
         self,
@@ -135,16 +182,17 @@ class GeneralizedSFAQuant:
         act_q = self.seqused_q
         G = int(self.N1 / self.N2)
         s2_base_size = 128
+        cmp_restored_lengths = restore_cmp_kv_lengths(
+            seqused_cmp_kv, self.cmp_ratio, cmp_residual_kv, self.cmp_mask_mode
+        )
 
         for i_B in range(B):
             logging.info(f"i_B = {i_B}/{B}")
             cur_act_q = act_q[i_B]
             cur_ori_act_kv = seqused_ori_kv[i_B]
-            cur_cmp_act_kv = seqused_cmp_kv[i_B] if seqused_cmp_kv is not None else 0
-            cur_cmp_residual = (
-                cmp_residual_kv[i_B] if cmp_residual_kv is not None else 0
+            cur_cmp_restored = (
+                cmp_restored_lengths[i_B] if cmp_restored_lengths is not None else 0
             )
-            cur_cmp_restored = cur_cmp_act_kv * self.cmp_ratio + cur_cmp_residual
 
             for i_N2 in range(self.N2):
                 logging.info(f"    i_N2 = {i_N2}/{self.N2}")
@@ -1004,15 +1052,20 @@ def trans_kv_bnsd_to_tnd(kv_bnsd_npu, cu_seqlens_kv, seqused_kv, B, N2, D, kv_ty
 
 
 def _gen_hif8_tensor(shape, data_range, scale_range):
-    scale = torch.tensor(
-        [random.uniform(*scale_range)],
-        dtype=torch.float32,
-    )
+    if any(not math.isfinite(float(value)) for value in scale_range):
+        scale = torch.ones((1,), dtype=torch.float32)
+    else:
+        scale = torch.tensor(
+            [random.uniform(*scale_range)],
+            dtype=torch.float32,
+        )
 
-    x = (
-        torch.rand(shape, dtype=torch.float32) * (data_range[1] - data_range[0])
-        + data_range[0]
-    )
+    x = _nonfinite_fill(shape, data_range)
+    if x is None:
+        x = (
+            torch.rand(shape, dtype=torch.float32) * (data_range[1] - data_range[0])
+            + data_range[0]
+        )
 
     x_uint8 = trans_float_tensor_to_hifuint8(x)
     x_fp32 = torch.tensor(trans_hifuint8_tensor_to_float(x_uint8))
@@ -1187,7 +1240,6 @@ def gen_cmp_kv(
     cmp_max_block_num_per_batch,
     cu_seqlens_q,
     seqused_q,
-    seqused_ori_kv,
     seqused_cmp_kv,
     cu_seqlens_cmp_kv,
     cmp_residual_kv,
@@ -1233,12 +1285,9 @@ def gen_cmp_kv(
     cmp_sparse_indices = None
     cmp_topk_length = None
     if template_run_mode in ("CSA", "ORI_CMP_SPARSE") and cmp_max_s2 != 0:
-        if cmp_residual_kv is not None:
-            cmp_restored_len = [
-                seqused_cmp_kv[i] * cmp_ratio + cmp_residual_kv[i] for i in range(B)
-            ]
-        else:
-            cmp_restored_len = [seqused_cmp_kv[i] * cmp_ratio for i in range(B)]
+        cmp_restored_len = restore_cmp_kv_lengths(
+            seqused_cmp_kv, cmp_ratio, cmp_residual_kv, cmp_mask_mode
+        )
         if layout_q == "BSND":
             cmp_sparse_indices, cmp_topk_length = gen_sparse_indices_bsnd(
                 cmp_ratio,
@@ -1344,18 +1393,9 @@ def gen_data(params, generate_golden=True):
     q_datarange = params.get("q_datarange")
     ori_kv_datarange = params.get("ori_kv_datarange")
     cmp_kv_datarange = params.get("cmp_kv_datarange")
-    q_descale_datarange = [
-        q_datarange[0] / FP8_DATA_RANGE_LEFT,
-        q_datarange[1] / FP8_DATA_RANGE_RIGHT,
-    ]
-    ori_kv_descale_datarange = [
-        ori_kv_datarange[0] / FP8_DATA_RANGE_LEFT,
-        ori_kv_datarange[1] / FP8_DATA_RANGE_RIGHT,
-    ]
-    cmp_kv_descale_datarange = [
-        cmp_kv_datarange[0] / FP8_DATA_RANGE_LEFT,
-        cmp_kv_datarange[1] / FP8_DATA_RANGE_RIGHT,
-    ]
+    q_descale_datarange = _resolve_descale_range(q_datarange)
+    ori_kv_descale_datarange = _resolve_descale_range(ori_kv_datarange)
+    cmp_kv_descale_datarange = _resolve_descale_range(cmp_kv_datarange)
     K1 = params.get("K1")
     ori_kv_topk_mode = params.get("ori_kv_topk_mode", "no")
     cmp_kv_topk_mode = params.get("cmp_kv_topk_mode", "no")
@@ -1436,14 +1476,18 @@ def gen_data(params, generate_golden=True):
         )
 
     # D维度固定512，已对齐128，无需padding
-    block_num = block_num1 if block_num1 >= block_num2 else block_num2
 
     # generate sinks tensor (only when isSink=True)
     if isSink:
-        sinks = (
-            torch.rand((N1)) * (q_datarange[1] - q_datarange[0]) / 10
-            + q_datarange[0] / 10
-        ).to(torch.float)
+        sinks = _nonfinite_fill((N1,), q_datarange)
+        if sinks is None:
+            sinks = (
+                torch.rand((N1)) * (q_datarange[1] - q_datarange[0]) / 10
+                + q_datarange[0] / 10
+            )
+        else:
+            sinks = sinks / 10
+        sinks = sinks.to(torch.float)
     else:
         sinks = None
 
@@ -1462,7 +1506,7 @@ def gen_data(params, generate_golden=True):
         T1,
         N2,
         D,
-        block_num,
+        block_num1,
         block_size1,
         ori_max_s2,
         ori_max_block_num_per_batch,
@@ -1502,13 +1546,12 @@ def gen_data(params, generate_golden=True):
             N2,
             D,
             K,
-            block_num,
+            block_num2,
             block_size2,
             cmp_max_s2,
             cmp_max_block_num_per_batch,
             cu_seqlens_q,
             seqused_q,
-            seqused_ori_kv,
             seqused_cmp_kv,
             cu_seqlens_cmp_kv,
             cmp_residual_kv,
@@ -1537,22 +1580,29 @@ def gen_data(params, generate_golden=True):
         and (template_run_mode in ("HCA", "CSA", "ORI_CMP_SPARSE"))
         and cmp_k_in_pa_shape is not None
     ):
+        # 0轴非连续：ori/cmp独立成池后，每个物理块仍补齐到block_size1+block_size2行，
+        # 保持与原融合布局相同的stride覆盖
         total_block = block_size1 + block_size2
-        fusion_base = torch.zeros((block_num, total_block, N2, D), dtype=ori_kv_type)
-        fusion_base[:, :block_size1, :, :] = ori_k_in_pa_shape
-        fusion_base[:, block_size1:, :, :] = cmp_k_in_pa_shape
+        ori_fusion_base = torch.zeros(
+            (block_num1, total_block, N2, D), dtype=ori_kv_type
+        )
+        ori_fusion_base[:, :block_size1, :, :] = ori_k_in_pa_shape
+        cmp_fusion_base = torch.zeros(
+            (block_num2, total_block, N2, D), dtype=cmp_kv_type
+        )
+        cmp_fusion_base[:, block_size1:, :, :] = cmp_k_in_pa_shape
         stride_n = total_block * N2 * D
         stride_bs = N2 * D
         stride_n2 = D
         stride_d = 1
         ori_k_in_pa_shape = torch.as_strided(
-            fusion_base,
-            size=[block_num, block_size1, N2, D],
+            ori_fusion_base,
+            size=[block_num1, block_size1, N2, D],
             stride=[stride_n, stride_bs, stride_n2, stride_d],
         )
         cmp_k_in_pa_shape = torch.as_strided(
-            fusion_base,
-            size=[block_num, block_size2, N2, D],
+            cmp_fusion_base,
+            size=[block_num2, block_size2, N2, D],
             stride=[stride_n, stride_bs, stride_n2, stride_d],
             storage_offset=block_size1 * N2 * D,
         )
@@ -1647,9 +1697,6 @@ def gen_data(params, generate_golden=True):
     # Sparse templates derive KV lengths from sparse indices and top-k lengths.
     # Keep the derived values for metadata and CPU Golden, but do not expose them
     # as direct API inputs when their CSV slots are intentionally absent.
-    no_actual_length = template_run_mode in ("ORI_SPARSE", "ORI_CMP_SPARSE")
-    op_seqused_ori_kv = None if no_actual_length else seqused_ori_kv
-    op_seqused_cmp_kv = None if no_actual_length else seqused_cmp_kv
     cu_seqlens_ori_kv = cu_seqlens_ori_kv if layout_kv == "TND" else None
     cu_seqlens_cmp_kv = cu_seqlens_cmp_kv if layout_kv == "TND" else None
 
@@ -1706,8 +1753,8 @@ def gen_data(params, generate_golden=True):
             "seqused_q": seqused_q,
             "cu_seqlens_ori_kv": cu_seqlens_ori_kv,
             "cu_seqlens_cmp_kv": cu_seqlens_cmp_kv,
-            "seqused_ori_kv": op_seqused_ori_kv,
-            "seqused_cmp_kv": op_seqused_cmp_kv,
+            "seqused_ori_kv": seqused_ori_kv,
+            "seqused_cmp_kv": seqused_cmp_kv,
             "cmp_residual_kv": cmp_residual_kv,
             "sinks": sinks,
             "q_descale": q_descale,

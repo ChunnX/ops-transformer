@@ -14,9 +14,44 @@ from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
 FA_METADATA_OP_NAME = "flash_attn_metadata"
 METADATA_STRIDE = 16
-AIC_NUM = torch.npu.get_device_properties().cube_core_num
-AIV_NUM = torch.npu.get_device_properties().vector_core_num
-FAG_METADATA_SIZE = 121  # FAG (Flash Attn Grad) metadata size, in int32 elements
+FAG_METADATA_SIZE = 412  # FAG (Flash Attn Grad) metadata size, in int32 elements
+
+
+_LAYOUT_DIMS = {
+    "TND": 3,
+    "BSND": 4,
+    "BNSD": 4,
+    "PA_BBND": 4,
+    "PA_BNBD": 4,
+    "PA_NZ": 5,
+}
+
+
+def _check_layout_dims(tensor, name, layout):
+    # Layout validity is checked by tiling; only check rank here to prevent out-of-range shape access.
+    expected = _LAYOUT_DIMS.get(layout)
+    if expected is None:
+        return
+    torch._check(
+        tensor.dim() == expected,
+        lambda: f"{name} with layout {layout} expects {expected} dims, "
+        f"but got {tensor.dim()} dims {tuple(tensor.shape)}",
+    )
+
+
+def _validate_layout_dims(q, k, v, layout_q, layout_kv):
+    # Validate before indexing shapes or inferring output dimensions.
+    _check_layout_dims(q, "q", layout_q)
+    _check_layout_dims(k, "k", layout_kv)
+    _check_layout_dims(v, "v", layout_kv)
+
+
+def _get_npu_core_nums():
+    try:
+        properties = torch.npu.get_device_properties()
+        return properties.cube_core_num, properties.vector_core_num
+    except Exception:
+        return 128, 128
 
 
 def _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q):
@@ -41,8 +76,9 @@ def _calculate_metadata_size(batch_size, num_heads_kv):
     """计算 metadata tensor 的对齐后大小"""
     align_size = 4096
     head_size = 1 * METADATA_STRIDE
-    fa_size = AIC_NUM * METADATA_STRIDE * batch_size * num_heads_kv
-    fd_size = AIV_NUM * METADATA_STRIDE * batch_size * num_heads_kv
+    aic_num, aiv_num = _get_npu_core_nums()
+    fa_size = aic_num * METADATA_STRIDE * batch_size * num_heads_kv
+    fd_size = aiv_num * METADATA_STRIDE * batch_size * num_heads_kv
 
     metadata_size = head_size + fa_size + fd_size
     metadata_size += FAG_METADATA_SIZE  # FAG (Flash Attn Grad) metadata size
@@ -132,6 +168,7 @@ class FlashAttenOpBuilder(OpBuilder):
             layout_out: Optional[str] = "BSND",
             return_softmax_lse: Optional[bool] = False,
         ):
+            _validate_layout_dims(q, k, v, layout_q, layout_kv)
             if layout_q == "TND":
                 t_size = q.size(0)
                 n_size = q.size(1)
@@ -321,6 +358,14 @@ def flash_attn(
     dispatcher implementation for NPU.
     'PrivateUse1' is the combine key for custom NPU backends.
     """
+    _validate_layout_dims(q, k, v, layout_q, layout_kv)
+    # FA 不支持 k/v 的 stride 中含 0
+    for name, tensor in (("k", k), ("v", v)):
+        if 0 in tensor.stride():
+            raise ValueError(
+                f"flash_attn does not support {name} with stride containing 0, "
+                f"got {name}.stride() = {tensor.stride()}"
+            )
     op_module = flash_attn_op_builder.load()
     return op_module.flash_attn(
         q,

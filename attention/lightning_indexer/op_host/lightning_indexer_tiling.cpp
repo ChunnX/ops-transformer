@@ -26,32 +26,32 @@ const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {
     {ge::DT_UNDEFINED, "DT_UNDEFINED"},           // Used to indicate a DataType field has not been set.
     {ge::DT_FLOAT, "DT_FLOAT"},                   // float type
     {ge::DT_FLOAT16, "DT_FLOAT16"},               // fp16 type
-    {ge::DT_FLOAT8_E4M3FN, "DT_FLOAT8_E4M3FN"},   // fp8_e4m3 type
     {ge::DT_HIFLOAT8, "DT_HIFLOAT8"},             // hifloat8 type
+    {ge::DT_FLOAT8_E4M3FN, "DT_FLOAT8_E4M3FN"},   // fp8_e4m3 type
     {ge::DT_INT8, "DT_INT8"},                     // int8 type
     {ge::DT_INT16, "DT_INT16"},                   // int16 type
-    {ge::DT_UINT16, "DT_UINT16"},                 // uint16 type
     {ge::DT_UINT8, "DT_UINT8"},                   // uint8 type
+    {ge::DT_UINT16, "DT_UINT16"},                 // uint16 type
     {ge::DT_INT32, "DT_INT32"},                   // uint32 type
     {ge::DT_INT64, "DT_INT64"},                   // int64 type
-    {ge::DT_UINT32, "DT_UINT32"},                 // unsigned int32
     {ge::DT_UINT64, "DT_UINT64"},                 // unsigned int64
+    {ge::DT_UINT32, "DT_UINT32"},                 // unsigned int32
     {ge::DT_BOOL, "DT_BOOL"},                     // bool type
     {ge::DT_DOUBLE, "DT_DOUBLE"},                 // double type
     {ge::DT_DUAL, "DT_DUAL"},                     // dual output type
-    {ge::DT_DUAL_SUB_INT8, "DT_DUAL_SUB_INT8"},   // dual output int8 type
     {ge::DT_DUAL_SUB_UINT8, "DT_DUAL_SUB_UINT8"}, // dual output uint8 type
+    {ge::DT_DUAL_SUB_INT8, "DT_DUAL_SUB_INT8"},   // dual output int8 type
     {ge::DT_COMPLEX32, "DT_COMPLEX32"},           // complex32 type
-    {ge::DT_COMPLEX64, "DT_COMPLEX64"},           // complex64 type
     {ge::DT_COMPLEX128, "DT_COMPLEX128"},         // complex128 type
+    {ge::DT_COMPLEX64, "DT_COMPLEX64"},           // complex64 type
     {ge::DT_QINT8, "DT_QINT8"},                   // qint8 type
-    {ge::DT_QINT16, "DT_QINT16"},                 // qint16 type
     {ge::DT_QINT32, "DT_QINT32"},                 // qint32 type
+    {ge::DT_QINT16, "DT_QINT16"},                 // qint16 type
     {ge::DT_QUINT8, "DT_QUINT8"},                 // quint8 type
     {ge::DT_QUINT16, "DT_QUINT16"},               // quint16 type
     {ge::DT_RESOURCE, "DT_RESOURCE"},             // resource type
-    {ge::DT_STRING_REF, "DT_STRING_REF"},         // string ref type
     {ge::DT_STRING, "DT_STRING"},                 // string type
+    {ge::DT_STRING_REF, "DT_STRING_REF"},         // string ref type
     {ge::DT_VARIANT, "DT_VARIANT"},               // dt_variant type
     {ge::DT_BF16, "DT_BFLOAT16"},                 // dt_bfloat16 type
     {ge::DT_INT4, "DT_INT4"},                     // dt_variant type
@@ -74,18 +74,18 @@ static std::string LIDataTypeToSerialString(ge::DataType type)
 static std::vector<int64_t> ToVector(const gert::Shape &shape)
 {
     size_t shapeSize = shape.GetDimNum();
-    std::vector<int64_t> shapeVec(shapeSize, 0);
+    std::vector<int64_t> liShapeVec(shapeSize, 0);
 
     for (size_t i = 0; i < shapeSize; i++) {
-        shapeVec[i] = shape.GetDim(i);
+        liShapeVec[i] = shape.GetDim(i);
     }
-    return shapeVec;
+    return liShapeVec;
 }
 
 static std::string ToStringRaw(const gert::Shape &shape)
 {
-    std::ostringstream oss;
     auto v = ToVector(shape);
+    std::ostringstream oss;
     if (v.size() > 0) {
         for (size_t i = 0; i < v.size() - 1; ++i) {
             oss << v[i] << ", ";
@@ -144,14 +144,14 @@ ge::graphStatus LIInfoParser::CheckTensorDescriptions() const
 // --------------------------LIInfoParser类成员函数定义-------------------------------------
 ge::graphStatus LIInfoParser::CheckRequiredInOutExistence() const
 {
-    ge::graphStatus status = CheckTensorShapes();
-    if (status != ge::GRAPH_SUCCESS) {
-        return status;
+    ge::graphStatus liStatus = CheckTensorShapes();
+    if (liStatus != ge::GRAPH_SUCCESS) {
+        return liStatus;
     }
 
-    status = CheckTensorDescriptions();
-    if (status != ge::GRAPH_SUCCESS) {
-        return status;
+    liStatus = CheckTensorDescriptions();
+    if (liStatus != ge::GRAPH_SUCCESS) {
+        return liStatus;
     }
 
     return ge::GRAPH_SUCCESS;
@@ -202,13 +202,13 @@ ge::graphStatus LIInfoParser::GetNpuInfo()
     platformInfo_ = context_->GetPlatformInfo();
     OP_CHECK_IF(platformInfo_ == nullptr, OP_LOGE(opName_, "GetPlatformInfo is nullptr"), return ge::GRAPH_FAILED);
 
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo_);
-    uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
-    uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
+    auto liAscendcPlatform = platform_ascendc::PlatformAscendC(platformInfo_);
+    uint32_t aivNum = liAscendcPlatform.GetCoreNumAiv();
+    uint32_t aicNum = liAscendcPlatform.GetCoreNumAic();
     OP_CHECK_IF(aicNum == 0 || aivNum == 0, OP_LOGE(opName_, "num of core obtained is 0."), return GRAPH_FAILED);
 
-    socVersion_ = ascendcPlatform.GetSocVersion();
-    npuArch_ = ascendcPlatform.GetCurNpuArch();
+    socVersion_ = liAscendcPlatform.GetSocVersion();
+    npuArch_ = liAscendcPlatform.GetCurNpuArch();
     if ((npuArch_ != NpuArch::DAV_2201) && (npuArch_ != NpuArch::DAV_3510)) {
         OP_LOGE(opName_, "NpuArch[%d] is not support.", static_cast<int32_t>(npuArch_));
         return GRAPH_FAILED;
@@ -408,10 +408,10 @@ ge::graphStatus LIInfoParser::GetQueryKeyAndOutLayout()
     const map<string, DataLayout> layoutMap = {
         {"BSND", DataLayout::BSND}, {"TND", DataLayout::TND}, {"PA_BSND", DataLayout::BnBsND}};
 
-    std::string layout(opParamInfo_.layOut);
-    auto it = layoutMap.find(layout);
-    if (it != layoutMap.end()) {
-        qLayout_ = it->second;
+    std::string queryLayout(opParamInfo_.layOut);
+    auto queryLayoutIt = layoutMap.find(queryLayout);
+    if (queryLayoutIt != layoutMap.end()) {
+        qLayout_ = queryLayoutIt->second;
     }
 
     std::string layoutKey(opParamInfo_.layOutKey);
@@ -572,10 +572,10 @@ ge::graphStatus LIInfoParser::CheckKeyContiguous() const
 ge::graphStatus LIInfoParser::GetN1Size()
 {
     if (qLayout_ == DataLayout::BSND) {
-        n1Size_ = static_cast<uint32_t>(opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_TWO));
+        n1Size_ = opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_TWO);
     } else {
         // TND
-        n1Size_ = static_cast<uint32_t>(opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_ONE));
+        n1Size_ = opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_ONE);
     }
     OP_LOGI(context_->GetNodeName(), "n1Size is %d", n1Size_);
     if (npuArch_ == NpuArch::DAV_3510) {
@@ -597,7 +597,7 @@ ge::graphStatus LIInfoParser::GetN1Size()
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus LiGetActualSeqLenSize(uint32_t &liSize, const gert::Tensor *liTensor,
+static ge::graphStatus LiGetActualSeqLenSize(int64_t &liSize, const gert::Tensor *liTensor,
                                              const std::string &liActualSeqLenName, const char *liOpName)
 {
     liSize = static_cast<uint32_t>(liTensor->GetShapeSize());
@@ -610,7 +610,7 @@ static ge::graphStatus LiGetActualSeqLenSize(uint32_t &liSize, const gert::Tenso
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LIInfoParser::GetActualSeqLenSize(uint32_t &liSize, const gert::Tensor *liTensor,
+ge::graphStatus LIInfoParser::GetActualSeqLenSize(int64_t &liSize, const gert::Tensor *liTensor,
                                                   const std::string &liSeqLenName) const
 {
     return LiGetActualSeqLenSize(liSize, liTensor, liSeqLenName, opName_);
@@ -619,7 +619,7 @@ ge::graphStatus LIInfoParser::GetActualSeqLenSize(uint32_t &liSize, const gert::
 ge::graphStatus LIInfoParser::GetAndCheckN2Size()
 {
     uint32_t n2Index = (kLayout_ == DataLayout::TND) ? DIM_IDX_ONE : DIM_IDX_TWO;
-    n2Size_ = static_cast<uint32_t>(opParamInfo_.key.shape->GetStorageShape().GetDim(n2Index));
+    n2Size_ = opParamInfo_.key.shape->GetStorageShape().GetDim(n2Index);
     OP_LOGI(context_->GetNodeName(), "n2Size_ is %d", n2Size_);
     OP_CHECK_IF(n2Size_ != 1,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "key",
@@ -656,7 +656,7 @@ ge::graphStatus LIInfoParser::GetBatchSize()
 }
 
 static ge::graphStatus LiGetHeadDim(const TilingRequiredParaInfo &liQuery, DataLayout liQLayout, const char *liOpName,
-                                    uint32_t &liHeadDim)
+                                    int64_t &liHeadDim)
 {
     uint32_t liDIndex = DIM_IDX_TWO;
     switch (liQLayout) {
@@ -695,7 +695,7 @@ ge::graphStatus LIInfoParser::GetS1Size()
 
 ge::graphStatus LIInfoParser::GetAndCheckBlockSize()
 {
-    blockSize_ = static_cast<uint32_t>(opParamInfo_.key.shape->GetStorageShape().GetDim(DIM_IDX_ONE));
+    blockSize_ = opParamInfo_.key.shape->GetStorageShape().GetDim(DIM_IDX_ONE);
     OP_LOGI(context_->GetNodeName(), "blockSize_ is %d", blockSize_);
 
     OP_CHECK_IF(((blockSize_ % 16 != 0) || (blockSize_ == 0) || (blockSize_ > 1024)),
@@ -744,6 +744,32 @@ ge::graphStatus LIInfoParser::GetS2Size()
         s2Size_ = opParamInfo_.key.shape->GetStorageShape().GetDim(0);
     } else if (kLayout_ == DataLayout::BSND) {
         s2Size_ = opParamInfo_.key.shape->GetStorageShape().GetDim(DIM_IDX_ONE);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+// A2/A3(arch22)场景BSND布局下S1/S2超过8M直接报错不支持
+// TND/PA布局序列长度host侧不可见, 不做该校验
+ge::graphStatus LIInfoParser::CheckSeqLenLimit() const
+{
+    if (npuArch_ != NpuArch::DAV_2201) {
+        return ge::GRAPH_SUCCESS;
+    }
+    if (qLayout_ == DataLayout::BSND) {
+        OP_CHECK_IF(s1Size_ > MAX_SEQ_LEN_LIMIT,
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        opName_, "query", ToStringRaw(opParamInfo_.query.shape->GetStorageShape()).c_str(),
+                        "S1 of query is " + std::to_string(s1Size_) + ", exceeds max supported seqLen " +
+                            std::to_string(MAX_SEQ_LEN_LIMIT) + " on A2/A3, operator not supported"),
+                    return ge::GRAPH_FAILED);
+    }
+    if (kLayout_ == DataLayout::BSND) {
+        OP_CHECK_IF(s2Size_ > MAX_SEQ_LEN_LIMIT,
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        opName_, "key", ToStringRaw(opParamInfo_.key.shape->GetStorageShape()).c_str(),
+                        "S2 of key is " + std::to_string(s2Size_) + ", exceeds max supported seqLen " +
+                            std::to_string(MAX_SEQ_LEN_LIMIT) + " on A2/A3, operator not supported"),
+                    return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -920,7 +946,7 @@ ge::graphStatus LIInfoParser::ValidateInputShapesMatch()
     act_seq_q [BatchSize] 可选
     out [BatchSize,S1,N2,topk]
     */
-    uint32_t queryWeightsN1Dim = 1;
+    uint32_t liQueryWeightsN1Dim = 1;
     uint32_t outN2Dim = 1;
     if (qLayout_ == DataLayout::TND) {
         if (ValidateInputShapesMatchQtnd() != ge::GRAPH_SUCCESS) {
@@ -930,11 +956,11 @@ ge::graphStatus LIInfoParser::ValidateInputShapesMatch()
         if (ValidateInputShapesMatchQbsnd() != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
-        queryWeightsN1Dim = DIM_IDX_TWO;
+        liQueryWeightsN1Dim = DIM_IDX_TWO;
         outN2Dim = DIM_IDX_TWO;
     }
     // -----------------------check N1-------------------
-    OP_CHECK_IF((opParamInfo_.weights.shape->GetStorageShape().GetDim(queryWeightsN1Dim) != n1Size_),
+    OP_CHECK_IF((opParamInfo_.weights.shape->GetStorageShape().GetDim(liQueryWeightsN1Dim) != n1Size_),
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                     opName_, "query and weights",
                     Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()) + " and " +
@@ -942,8 +968,8 @@ ge::graphStatus LIInfoParser::ValidateInputShapesMatch()
                     "The head num of query and weights must be same"),
                 return ge::GRAPH_FAILED);
     // -----------------------check D-------------------
-    uint32_t keyDDim = kLayout_ == DataLayout::TND ? DIM_IDX_TWO : DIM_IDX_THREE;
-    OP_CHECK_IF((opParamInfo_.key.shape->GetStorageShape().GetDim(keyDDim) != headDim_),
+    uint32_t liKeyDDim = kLayout_ == DataLayout::TND ? DIM_IDX_TWO : DIM_IDX_THREE;
+    OP_CHECK_IF((opParamInfo_.key.shape->GetStorageShape().GetDim(liKeyDDim) != headDim_),
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                     opName_, "query and key",
                     Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()) + " and " +
@@ -1091,6 +1117,10 @@ ge::graphStatus LIInfoParser::ParseAndCheck(LITilingInfo &liInfo)
         return ge::GRAPH_FAILED;
     }
 
+    if (ge::GRAPH_SUCCESS != CheckSeqLenLimit()) {
+        return ge::GRAPH_FAILED;
+    }
+
     if (ge::GRAPH_SUCCESS != CheckFeatureMlaNoQuantShape()) {
         return ge::GRAPH_FAILED;
     }
@@ -1153,8 +1183,8 @@ ge::graphStatus LightningIndexerTiling::DoTiling(LITilingInfo *tilingInfo)
 
     // -------------set workspacesize-----------------
     uint64_t workspaceSize = LiCalcWorkspaceSize(ascendcPlatform, tilingInfo->s2Size, aicNum);
-    size_t *workSpaces = context_->GetWorkspaceSizes(1);
-    workSpaces[0] = workspaceSize;
+    size_t *liWorkSpaces = context_->GetWorkspaceSizes(1);
+    liWorkSpaces[0] = workspaceSize;
 
     // -------------set tilingdata-----------------
     tilingData_.set_bSize(tilingInfo->bSize);

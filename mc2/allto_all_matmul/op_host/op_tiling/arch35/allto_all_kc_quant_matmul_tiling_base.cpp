@@ -14,8 +14,7 @@
  */
 #include "allto_all_kc_quant_matmul_tiling_base.h"
 
-#include "allto_all_comm_algo_table.h"
-#include "common/utils/mc2_comm_algo_selector.h"
+#include "mc2/matmul_allto_all/op_host/op_tiling/common/allto_all_comm_algo_table.h"
 #include "common/utils/mc2_comm_utils.h"
 #include "common/utils/op_mc2.h"
 #include "mc2_log.h"
@@ -175,14 +174,13 @@ CutResult AllToAllKcQuantMatmulTilingBase::GetCutResOfCommAndCompute()
     if (contextInfo_.args_.rankDim == COMM_RANKDIM_FOUR || contextInfo_.args_.rankDim == COMM_RANKDIM_EIGHT) {
         TopoType topoType =
             contextInfo_.args_.rankDim == COMM_RANKDIM_FOUR ? TopoType::STANDARD_CARD : TopoType::EIGHT_P;
-        // 950的4卡和8卡形态使用基于拟合数据的公式化tiling
-        AlltoAllMatmulFitBalanceTiling tiling(matmulQuantType_, contextInfo_.args_, topoType, SocVersion::SOC950,
-                                              commMode);
+        // A5的4卡和8卡形态使用基于拟合数据的公式化tiling
+        AlltoAllMatmulFitBalanceTiling tiling(matmulQuantType_, contextInfo_.args_, topoType, commMode);
         return tiling.GetTiling();
     } else {
         OP_LOGD(opName_, "Falling back to formulaic tiling for arch35 tiling");
         AlltoAllMM alltoallMatmulTileFormulate(contextInfo_.args_, contextInfo_.args_.rankDim, KernelType::ALL_TO_ALL,
-                                               SocVersion::SOC950, true);
+                                               Ops::Base::DAV_3510, true);
         if (commMode == mc2tiling::A5_AICPU_TS_ENGINE) {
             constexpr uint64_t KC_AICPU_TILING_MAX_NUM = 5;
             alltoallMatmulTileFormulate.tilingM_.SetMaxTileCnt(KC_AICPU_TILING_MAX_NUM);
@@ -252,17 +250,9 @@ ge::graphStatus AllToAllKcQuantMatmulTilingBase::SetHcclTiling()
         OP_LOGE(opName_, "SetHcclTiling failed");
         return ge::GRAPH_FAILED;
     }
-    uint64_t commDataBytes =
-        inferredInfo_.tileM * contextInfo_.args_.kValue * static_cast<uint64_t>(contextInfo_.args_.inputDtypeSize);
-    OP_LOGI(opName_, "[SetHcclTiling] commDataBytes=%llu, tileM=%u, kValue=%llu, rankDim=%u, engine=%u", commDataBytes,
-            inferredInfo_.tileM, contextInfo_.args_.kValue, contextInfo_.args_.rankDim, hcclServerEngine);
-    uint32_t algoCount = 0;
-    const Mc2Hcom::CommAlgoEntry *algoEntries = Mc2Tiling::GetAllToAllCommAlgoTable(algoCount);
-    std::string algoName =
-        Mc2Hcom::Mc2CommAlgoSelector::SelectAlgoName(opName_, contextInfo_.group.c_str(), hcclServerEngine,
-                                                     commDataBytes, static_cast<uint32_t>(contextInfo_.args_.rankDim),
-                                                     algoEntries, algoCount, Mc2Tiling::ALLTOALL_DEFAULT_ALGO_NAME);
-    OP_LOGI(opName_, "[SetHcclTiling] selected algoName=%s, group=%s", algoName.c_str(), contextInfo_.group.c_str());
+    std::string algoName = Mc2Tiling::SelectAllToAllAlgoName(
+        opName_, contextInfo_.group, hcclServerEngine, inferredInfo_.tileM, contextInfo_.args_.kValue,
+        contextInfo_.args_.inputDtypeSize, contextInfo_.args_.rankDim);
 
     Mc2CcTilingConfigBuilder allToAllBuilder =
         Mc2CcTilingConfigBuilder::create(contextInfo_.group, mc2tiling::AicpuComType::HCCL_CMD_ALLTOALL, algoName);
@@ -396,10 +386,10 @@ ge::graphStatus AlltoAllKcQuantMatmulHelper::PostTiling()
  */
 AlltoAllKcQuantMatmulHelper::AlltoAllKcQuantMatmulHelper(
     AllToAllKcQuantMatmulTilingBase &allToAllKcQuantMatmulTilingBase,
-    DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &data, uint64_t &mm_mvalue_len)
-    : Mc2AdaptiveSlidingWindowTiling(allToAllKcQuantMatmulTilingBase.context_, &data),
+    DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &out, uint64_t &mmMvalueLen)
+    : Mc2AdaptiveSlidingWindowTiling(allToAllKcQuantMatmulTilingBase.context_, &out),
       tilingProcesser_(allToAllKcQuantMatmulTilingBase),
-      mm_len(mm_mvalue_len)
+      mm_len(mmMvalueLen)
 {}
 
 /**
@@ -554,6 +544,7 @@ void AllToAllKcQuantMatmulTilingBase::SetTilingInfo(AlltoAllMatmulTilingInfo &ti
     tilingInfo.permuteLen = inferredInfo_.permuteLen;
     tilingInfo.x1ScaleOptionalLen = inferredInfo_.x1ScaleOptionalLen;
     tilingInfo.rankDim = contextInfo_.args_.rankDim;
+    tilingInfo.aicCoreNum = contextInfo_.args_.aicCoreNum;
     tilingInfo.hcclDataType =
         (static_cast<uint8_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, contextInfo_.hcclGeType))); // hccl数据类型
     tilingInfo.x1QuantDtype = contextInfo_.x1KcDynQuantDTypeVal;

@@ -42,10 +42,16 @@
    y_{t,:}=\operatorname{Softmax}(I_{t,:})
    $$
 
-   本接口将$y$写出到softmaxOut。目标分布$p$由attnSoftmaxL1Norm输入提供，等价于旧版kernel内部由main attention score经head求和和L1归一化得到的结果。若后续继续计算KL Loss，其形式与旧版保持一致：
+   本接口将$y$写出到softmaxOut。目标分布$p$由attnSoftmaxL1Norm输入提供，由main attention score沿head平均得到，不沿上下文做L1归一化。记$Z_{t}$为$p$沿上下文的求和，$t$为L1归一化后的target分布：
 
    $$
-   L(I){=}\sum_tD_{KL}(p_{t,:}||\operatorname{Softmax}(I_{t,:}))
+   Z_{t}=\sum_{j}p_{t,j},\quad t_{t,:}=\frac{p_{t,:}}{Z_{t}}
+   $$
+
+   若后续继续计算KL Loss，对应的loss function为：
+
+   $$
+   L_{t}=Z_{t}\,D_{KL}(t_{t,:}||y_{t,:})=\sum_{j}p_{t,j}(\log t_{t,j}-\log y_{t,j})
    $$
 
    $$
@@ -55,7 +61,7 @@
    通过求导可得Loss的梯度表达式：
 
    $$
-   dI_{t,:}=\operatorname{Softmax}(I_{t,:})-p_{t,:}
+   dI_{t,:}=y_{t,:}\cdot Z_{t}-p_{t,:}
    $$
 
    利用链式法则可以进行w、q和k矩阵的梯度计算：
@@ -266,7 +272,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
                 <td>metadataOptional</td>
                 <td>输入</td>
                 <td>由aclnnSparseLightningIndexerKLLossGradMetadata生成的分核信息。</td>
-                <td>必须传入。传入后kernel将使用metadata中的分核切分。</td>
+                <td>可选输入。传入后kernel将使用metadata中的分核切分。</td>
                 <td>INT32</td>
                 <td>ND</td>
                 <td>(x,)</td>
@@ -463,6 +469,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
 - 确定性计算：
   - aclnnSparseLightningIndexerKLLossGrad默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
 - 公共约束：
+  - 本接口不支持非连续输出。
   - 参数q、k、dq、dk的数据类型应保持一致，支持FLOAT16和BFLOAT16。
   - 参数w、dw、attnSoftmaxL1Norm、softmaxOut的数据类型应为FLOAT32。
   - 参数sparseIndices、cuSeqLensQOptional、cuSeqLensKOptional、seqUsedQOptional、seqUsedKOptional、cmpResidualKOptional、metadataOptional的数据类型应为INT32。
@@ -579,7 +586,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
   - 参数S1、S2的支持情况:
 
     <!-- npu="A3,910b" id12 -->
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：S1支持1~8K，S2支持1~512K。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：S1支持1~8k，S2支持1~512k。
     <!-- end id12 -->
     <!-- npu="950" id13 -->
     - <term>Ascend 950PR/Ascend 950DT</term>：S1>0，S2>0。

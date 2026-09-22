@@ -25,71 +25,19 @@
 #include "err/ops_err.h"
 #include "platform/platform_info.h"
 #include "op_host/tiling_util.h"
+#include "../../sparse_flash_mla/op_host/common/smla_host_common_defs.h"
 
 namespace optiling {
 
 const std::string ORI_BLOCK_TABLE_NAME = "ori_block_table";
 const std::string CMP_BLOCK_TABLE_NAME = "cmp_block_table";
-const std::string SINKS_NAME = "sinks";
-
-const std::string QUERY_NAME = "query";
-const std::string KEY_NAME = "key";
-const std::string VALUE_NAME = "value";
-
-const std::string ORI_KV_NAME = "ori_kv";
-const std::string CMP_KV_NAME = "cmp_kv";
-const std::string ORI_SPARSE_INDICES_NAME = "ori_sparse_indices";
-const std::string CMP_SPARSE_INDICES_NAME = "cmp_sparse_indices";
-const std::string ATTEN_OUT_NAME = "attention_out";
-const std::string SOFTMAX_LSE_NAME = "softmax_lse";
-
-const std::string CU_SEQLENS_Q_NAME = "cu_seqlens_q";
-const std::string CU_SEQLENS_ORI_KV_NAME = "cu_seqlens_ori_kv";
-const std::string CU_SEQLENS_CMP_KV_NAME = "cu_seqlens_cmp_kv";
-const std::string SEQUSED_Q_NAME = "seqused_q";
-const std::string SEQUSED_ORI_KV_NAME = "seqused_ori_kv";
-const std::string SEQUSED_CMP_KV_NAME = "seqused_cmp_kv";
-const std::string CMP_RESIDUAL_KV_NAME = "cmp_residual_kv";
-const std::string ORI_TOPK_LENGTH_NAME = "ori_topk_length";
-const std::string CMP_TOPK_LENGTH_NAME = "cmp_topk_length";
-const std::string METADATA_NAME = "metadata";
 
 // // ------------------公共定义--------------------------
-struct MQSMLATilingRequiredParaInfo {
-    const gert::CompileTimeTensorDesc *desc;
-    const gert::StorageShape *shape;
-};
-
-struct MQSMLATilingOptionalParaInfo {
-    const gert::CompileTimeTensorDesc *desc;
-    const gert::Tensor *tensor;
-    const gert::StorageShape *shape;
-};
-
-enum class MQSMLALayout : uint32_t {
-    BSND = 0,
-    TND = 1,
-    PA_BBND = 2
-};
-
-enum class MQSMLAAxis : uint32_t {
-    B = 0,
-    S = 1,
-    N = 2,
-    D = 3,
-    K = 3, // sparse_indices的K和key的D枚举值相同，表达相同位置, 最后一维
-    T = 5,
-    Bn = 6, // block number
-    Bs = 7  // block size
-};
-
-enum class QSMLATemplateMode : uint32_t {
-    SWA_TEMPLATE_MODE = 0,
-    HCA_TEMPLATE_MODE = 1,
-    CSA_TEMPLATE_MODE = 2,
-    ORI_SPARSE_TEMPLATE_MODE = 3,
-    ORI_CMP_SPARSE_TEMPLATE_MODE = 4
-};
+using MQSMLATilingRequiredParaInfo = SMLATilingRequiredParaInfo;
+using MQSMLATilingOptionalParaInfo = SMLATilingOptionalParaInfo;
+using MQSMLALayout = SMLALayout;
+using MQSMLAAxis = SMLAAxis;
+using QSMLATemplateMode = SMLATemplateMode;
 
 // ------------------算子原型索引常量定义----------------
 // Inputs Index
@@ -111,9 +59,6 @@ constexpr uint32_t ORI_TOPK_LENGTH_INDEX = 14;
 constexpr uint32_t CMP_TOPK_LENGTH_INDEX = 15;
 constexpr uint32_t SINKS_INDEX = 16;
 constexpr uint32_t METADATA_INDEX = 17;
-// Outputs Index
-constexpr uint32_t ATTN_OUT_INDEX = 0;
-constexpr uint32_t SOFTMAX_LSE_INDEX = 1;
 
 // Attributes Index
 constexpr uint32_t ATTR_QUANT_SCALE_INDEX = 0;
@@ -128,19 +73,6 @@ constexpr uint32_t ATTR_LAYOUT_Q_INDEX = 8;
 constexpr uint32_t ATTR_LAYOUT_KV_INDEX = 9;
 constexpr uint32_t ATTR_TOPK_VALUE_MODE_INDEX = 10;
 constexpr uint32_t ATTR_RETURN_SOFTMAX_LSE_INDEX = 11;
-
-// Dim Index
-constexpr uint32_t DIM_IDX_ZERO = 0;
-constexpr uint32_t DIM_IDX_ONE = 1;
-constexpr uint32_t DIM_IDX_TWO = 2;
-constexpr uint32_t DIM_IDX_THREE = 3;
-constexpr uint32_t DIM_IDX_FOUR = 4;
-
-// Dim Num
-constexpr uint32_t DIM_NUM_ONE = 1;
-constexpr uint32_t DIM_NUM_TWO = 2;
-constexpr uint32_t DIM_NUM_THREE = 3;
-constexpr uint32_t DIM_NUM_FOUR = 4;
 
 const std::map<MQSMLALayout, std::vector<MQSMLAAxis>> QSMLA_LAYOUT_AXIS_MAP = {
     {MQSMLALayout::BSND, {MQSMLAAxis::B, MQSMLAAxis::S, MQSMLAAxis::N, MQSMLAAxis::D}},
@@ -283,9 +215,9 @@ public:
     ge::graphStatus CheckRequiredAttrExistence() const;
     ge::graphStatus CheckRequiredParaExistence() const;
 
-    ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor, MQSMLALayout &layout,
+    ge::graphStatus GetActualSeqLenSize(int64_t &size, const gert::Tensor *tensor, MQSMLALayout &layout,
                                         const std::string &name) const;
-    ge::graphStatus GetActualSeqLenQSize(uint32_t &size);
+    ge::graphStatus GetActualSeqLenQSize(int64_t &size);
     ge::graphStatus GetOpName();
     ge::graphStatus GetNpuInfo();
     void GetOptionalInputParaInfo();
@@ -326,30 +258,30 @@ public:
 
     bool HasAxis(const MQSMLAAxis &axis, const MQSMLALayout &layout, const gert::Shape &shape) const;
     size_t GetAxisIdx(const MQSMLAAxis &axis, const MQSMLALayout &layout) const;
-    uint32_t GetAxisNum(const gert::Shape &shape, const MQSMLAAxis &axis, const MQSMLALayout &layout) const;
-    static constexpr uint32_t invalidDimValue_ = std::numeric_limits<uint32_t>::min();
+    int64_t GetAxisNum(const gert::Shape &shape, const MQSMLAAxis &axis, const MQSMLALayout &layout) const;
+    static constexpr int64_t invalidDimValue_ = std::numeric_limits<int64_t>::min();
 
     // BaseParams
-    uint32_t bSize_ = 0;
-    uint32_t n1Size_ = 0;
-    uint32_t n2Size_ = 0;
-    uint32_t gSize_ = 0;
-    uint32_t s1Size_ = 0;
+    int64_t bSize_ = 0;
+    int64_t n1Size_ = 0;
+    int64_t n2Size_ = 0;
+    int64_t gSize_ = 0;
+    int64_t s1Size_ = 0;
     int64_t s2Size_ = 0;
     int64_t cmpS2Size_ = 0;
-    uint32_t headDim_ = 0;
-    uint32_t qTSize_ = 0;
-    uint32_t qkHeadDim_ = 0;
+    int64_t headDim_ = 0;
+    int64_t qTSize_ = 0;
+    int64_t qkHeadDim_ = 0;
     int64_t sparseBlockSize_ = 0;
     int64_t oriSparseBlockCount_ = 0;
     int64_t cmpSparseBlockCount_ = 0;
-    uint32_t maxActualseq_ = 0;
+    int64_t maxActualseq_ = 0;
     bool isSameSeqAllKVTensor_ = true;
     bool batchConsistency_ = false;
-    uint32_t dSizeQ_ = 0;
-    uint32_t dSizeKV_ = 0;
-    uint32_t oriKvStride_ = 0;
-    uint32_t cmpKvStride_ = 0;
+    int64_t dSizeQ_ = 0;
+    int64_t dSizeKV_ = 0;
+    int64_t oriKvStride_ = 0;
+    int64_t cmpKvStride_ = 0;
     std::vector<int64_t> oriKvStridesVec_;
     std::vector<int64_t> cmpKvStridesVec_;
     // Layout
@@ -359,8 +291,8 @@ public:
     // PageAttention
     uint32_t oriMaxBlockNumPerBatch_ = 0;
     uint32_t cmpMaxBlockNumPerBatch_ = 0;
-    int32_t oriBlockSize_ = 0;
-    int32_t cmpBlockSize_ = 0;
+    int64_t oriBlockSize_ = 0;
+    int64_t cmpBlockSize_ = 0;
     platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
     NpuArch npuArch_ = NpuArch::DAV_2201;
     ge::DataType qType_ = ge::DT_FLOAT16;

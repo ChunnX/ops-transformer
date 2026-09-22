@@ -1418,11 +1418,12 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2GetWorkspaceSize(
 {
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
     CHECK_RET(out != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-    L2_DFX_PHASE_1(aclnnGroupedMatmulFinalizeRoutingV2,
-                   DFX_IN(x1, x2, scaleOptional, biasOptional, pertokenScaleOptional, groupListOptional,
-                          sharedInputOptional, logitOptional, rowIndexOptional, dtype, sharedInputWeight,
-                          sharedInputOffset, transposeX1, transposeX2, groupListType),
-                   DFX_OUT(out));
+    L2_DFX_PHASE_1(
+        aclnnGroupedMatmulFinalizeRoutingV2,
+        DFX_IN(x1, x2, scaleOptional, biasOptional, offsetOptional, antiquantScaleOptional, antiquantOffsetOptional,
+               pertokenScaleOptional, groupListOptional, sharedInputOptional, logitOptional, rowIndexOptional, dtype,
+               sharedInputWeight, sharedInputOffset, transposeX1, transposeX2, groupListType),
+        DFX_OUT(out));
     auto ret0 = ValidateV2Inputs(x1, x2, scaleOptional, biasOptional, pertokenScaleOptional, groupListOptional,
                                  logitOptional, rowIndexOptional, antiquantScaleOptional, antiquantOffsetOptional,
                                  dtype, transposeX1, transposeX2);

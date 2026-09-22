@@ -70,8 +70,9 @@ ge::graphStatus CalcMoeEpWindowLayout(const MoeEpWindowLayoutParams &params, Moe
     layout.payloadWinStateOffset = layout.slotWinStateOffset + layout.dispatchSlotStateSize;
     layout.payloadWinStateSize = layout.dispatchNotifyCount * MOE_EP_WIN_ALIGN;
     layout.combineStateWinOffset = layout.payloadWinStateOffset + layout.payloadWinStateSize;
-    const uint64_t combineReceiveStateSize =
-        nmt * topK * MOE_EP_WIN_ALIGN + epWorldSize * MOE_EP_COMBINE_CHANNEL_COUNT * MOE_EP_WIN_ALIGN;
+    const uint64_t combineFlagCount =
+        epWorldSize > MOE_EP_COMBINE_CHANNEL_HANDLE_COUNT ? epWorldSize : MOE_EP_COMBINE_CHANNEL_HANDLE_COUNT;
+    const uint64_t combineReceiveStateSize = nmt * topK * MOE_EP_WIN_ALIGN + combineFlagCount * MOE_EP_WIN_ALIGN;
     layout.combineFlagSourceWinOffset = layout.combineStateWinOffset + combineReceiveStateSize;
     // The non-inline asynchronous completion write must read from persistent window storage, not op workspace.
     // This source is separate from the receive flags cleared by Combine Epilogue.
@@ -80,8 +81,8 @@ ge::graphStatus CalcMoeEpWindowLayout(const MoeEpWindowLayoutParams &params, Moe
     const uint64_t dataBase = layout.combineStateWinOffset + layout.combineStateWinSize;
     const uint64_t hiddenAlign = AlignMoeEpUb(params.hidden * MOE_EP_MAX_OUT_DTYPE_SIZE);
     const uint64_t topKAlign = AlignMoeEpUb(topK * MOE_EP_METADATA_DTYPE_SIZE);
-    layout.dispatchReservedPerSlotBytes = AlignMoeEpWin(hiddenAlign + 2UL * topKAlign + MOE_EP_UB_ALIGN);
     layout.dispatchMetaPerSlotBytes = AlignMoeEpWin(AlignMoeEpUb(params.hidden) + 2UL * topKAlign + MOE_EP_UB_ALIGN);
+    layout.dispatchReservedPerSlotBytes = AlignMoeEpWin(hiddenAlign + layout.dispatchMetaPerSlotBytes);
     layout.scaleoutReservedPerSlotBytes = AlignMoeEpWin(layout.dispatchReservedPerSlotBytes + topK * sizeof(int32_t));
     layout.combineReservedPerSlotBytes = AlignMoeEpWin(hiddenAlign + MOE_EP_UB_ALIGN);
     layout.dispatchRecvDataSize = epWorldSize * nmt * layout.dispatchReservedPerSlotBytes;

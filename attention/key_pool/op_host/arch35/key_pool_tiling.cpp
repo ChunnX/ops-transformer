@@ -20,7 +20,7 @@
 #include <graph/utils/type_utils.h>
 #include "err/ops_err.h"
 #include "register/op_def_registry.h"
-#include "key_pool_tiling.h"
+#include "key_pool_tiling_arch35.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -108,6 +108,7 @@ ge::graphStatus KeyPoolTiling::GetNpuInfo()
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->platformInfo);
     socVersion_ = ascendcPlatform.GetSocVersion();
+    npuArch_ = ascendcPlatform.GetCurNpuArch();
 
     libapiSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
 
@@ -176,7 +177,7 @@ ge::graphStatus KeyPoolTiling::SetTemplateId()
     if (context_->templateId == TemplateId::EMPTY_HIDDEN_STATES) {
         return ge::GRAPH_SUCCESS;
     }
-    if (socVersion_ == platform_ascendc::SocVersion::ASCEND950) {
+    if (npuArch_ == NpuArch::DAV_3510) {
         // 设置高性能模板
         if (context_->normWeight.desc == nullptr && context_->layout == LayoutType::LAYOUT_BSH &&
             baseParams_->seqSize <= 4 && baseParams_->tokenSize <= 256) {
@@ -198,7 +199,9 @@ ge::graphStatus KeyPoolTiling::SetInnerSplitInfo()
         baseParams_->kBaseNum = 1;
         baseParams_->kBaseSize = baseParams_->hiddenSize;
         if ((dBaseNum * mBaseNum) < baseParams_->usedCoreNum && baseParams_->batchConsistency != BATCH_CONSISTENCY) {
-            baseParams_->kBaseNum = baseParams_->usedCoreNum / dBaseNum;
+            uint32_t candidateKBaseNum = baseParams_->usedCoreNum / dBaseNum;
+            uint32_t kBlockNum = (baseParams_->hiddenSize + 15) / 16;
+            baseParams_->kBaseNum = candidateKBaseNum < kBlockNum ? candidateKBaseNum : kBlockNum;
             uint32_t kAlignSize = (baseParams_->hiddenSize + baseParams_->kBaseNum - 1) / baseParams_->kBaseNum;
             baseParams_->kBaseSize = kAlignSize / 16 * 16; // 切k的size需要16对齐
         }
@@ -827,8 +830,17 @@ ge::graphStatus KeyPoolTiling::CheckDtypeConsistency() const
 
 ge::graphStatus KeyPoolTiling::CheckDimNumConsistency() const
 {
-    OP_CHECK_IF(context_->pooledKey.shape->GetStorageShape().GetDimNum() != KEY_POOL_DIM_NUM_3,
-                OP_LOGE(context_->opName, "pooledKey must be a BSH rank-3 tensor"), return ge::GRAPH_FAILED);
+    const auto &outputShape = context_->pooledKey.shape->GetStorageShape();
+    const bool isBsh = context_->layout == LayoutType::LAYOUT_BSH;
+    const uint32_t rank = isBsh ? KEY_POOL_DIM_NUM_3 : KEY_POOL_DIM_NUM_2;
+    OP_CHECK_IF(outputShape.GetDimNum() != rank,
+                OP_LOGE(context_->opName, "pooledKey rank must match hidden_states rank"), return ge::GRAPH_FAILED);
+    const uint32_t capacity = isBsh ? (baseParams_->seqSize + baseParams_->cmpRatio - 1) / baseParams_->cmpRatio :
+                                      std::min(baseParams_->tokenSize,
+                                               baseParams_->tokenSize / baseParams_->cmpRatio + baseParams_->batchSize);
+    OP_CHECK_IF(outputShape.GetDim(rank - 1) != baseParams_->headDim || outputShape.GetDim(rank - 2) != capacity ||
+                    (isBsh && outputShape.GetDim(0) != baseParams_->batchSize),
+                OP_LOGE(context_->opName, "pooledKey shape must use current-input capacity"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
