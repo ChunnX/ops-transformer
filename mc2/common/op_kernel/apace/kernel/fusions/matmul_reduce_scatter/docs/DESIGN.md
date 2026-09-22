@@ -204,21 +204,18 @@ win 区布局 (接收方):
 ### 4.3 数据流阶段
 
 ```
-阶段 1: FragmentTensor QuantMatMul（per-tile, AIC 三段式）
-    AIC: 段1 RunMatmul:  for t = 0..headTileCnt-1:
-            构建 FragmentTensor (rankSize 个 fragment, 每个 curTileM 行, REMOTE scope)
-            matmul(rankSize * curTileM) → workspace
-            CrossCoreSetFlag<0x2, PIPE_FIX>(t) 通知 AIV (flagid = tid, 三轮评审意见1)
-         段2 RunTailMatmul: tail tile (存在时), tiling 切换前 SetFlag/WaitFlag(MTE1_MTE2) 排空 L1
-         段3 RunLocalMatmul: 全部 tiles 的 LOCAL 片段, 与段1/2 之间及段内 head→tail
-            tiling 切换前同样排空 L1 (三轮评审意见3), 尾部 SetFlag(FLAG_ID_LOCAL_DONE=15)
+阶段 1: FragmentTensor QuantMatMul（v5 逐 tile 交错, AIC）
+    AIC: for t = 0..commTurn-1:
+            [L1 排空] LOCAL 片段(t): 本 rank 段 → workspace 本 rank 槽位
+            [L1 排空] REMOTE 片段(t): R-1 个 remote rank 段 → workspace 各槽位
+            CrossCoreSetFlag<0x2, PIPE_FIX>(t) — flagid=tid, 语义=本 block tile t 全部片段完成
 
-阶段 2: AlltoAll PUT + reduceSum（per-tile, AIV）
+阶段 2: AlltoAll PUT ‖ reduceSum 掩盖流水（per-tile, AIV）
     AIV: for t = 0..commTurn-1:
-            CrossCoreWaitFlag<0x2, PIPE_S>(t)
-            SyncAll → 通信核 AllToAll PUT: 推送 tile t 到其他 rank
-        收尾: WaitFlag(LOCAL_DONE) → SyncAll → 通信核并行 CrossDevice → SyncAll
-        计算核: reduceSum: float32 中间转换累加 → output
+            CrossCoreWaitFlag<0x2, PIPE_S>(t) → SyncAll#1 (⇒ 全 AIC 核 tile t 完成)
+            通信核: AllToAll PUT tile t  ‖  计算核: reduceSum(t-1)  [通算重叠]
+            SyncAll#2 → 并行 fence (R 核各 1 远端, 证 PUT(t) 到达) → SyncAll#3
+        末尾: 计算核 reduceSum(T-1); reduceSum 为 float32 中间转换累加 → output
 
 阶段 3: 输出
     AIV: reduceSum 结果直接写入 output GM [m/rankSize, n]
@@ -314,7 +311,7 @@ AIV:                  WaitFlag [comm0+rs0]   WaitFlag [comm1+rs1]   WaitFlag [co
 
 | 同步机制 | 用途 | 说明 |
 |---------|------|------|
-| `CrossCoreSetFlag<0x2, PIPE_FIX>` | AIC → AIV 计算完成通知 | AIC 完成 tile t 计算后通知 AIV（PIPE_FIX = AIC FixPipe 管道，flagid = tid） |
+| `CrossCoreSetFlag<0x2, PIPE_FIX>` | AIC → AIV 计算完成通知 | AIC 完成 tile t 的 LOCAL+REMOTE 片段后通知 AIV（PIPE_FIX = AIC FixPipe 管道，flagid = tid） |
 | `CrossCoreWaitFlag<0x2, PIPE_S>` | AIV 等待 AIC | AIV 等待 AIC tile t 完成（PIPE_S = 标量流，flagid = tid，每 id 一次 Set ↔ 一次 Wait） |
 | `AscendC::SyncAll<true>()` | AIV 核间同步 | 每轮通信后全局同步（isAIVOnly=true, AIC 调用为 no-op, 内部占用 flagid 14） |
 | `SetFlag/WaitFlag<HardEvent::MTE1_MTE2>` | tiling 切换 L1 排空 | 段间/段内 tiling 切换前排队空 L1（event id 6，三轮评审意见3） |
@@ -390,48 +387,41 @@ __global__ __aicore__ void QuantMatmulReduceScatterKernelE4M3E4M3(
 __aicore__ inline void Run()
 {
     if ASCEND_IS_AIC {
-        // AIC: 三段式 (v3) — head REMOTE → tail REMOTE → 全部 LOCAL
-        RunMatmul();      // 段1: 每 tile SetFlag(tid)
-        RunTailMatmul();  // 段2: tiling 切换前排空 L1, SetFlag(tid)
-        RunLocalMatmul(); // 段3: 排空 L1 后进入, 尾部 SetFlag(LOCAL_DONE=15)
+        // AIC: v5 逐 tile 交错 — LOCAL(t) → REMOTE(t) → SetFlag(t), 片段间排空 L1
+        RunInterleavedMatmul();
     }
     if ASCEND_IS_AIV {
-        // AIV: 统一 turn 循环 + 收尾四步
+        // AIV: 逐 turn 通信 + 重叠归约流水 (v5 掩盖并行)
         RunAllToAllAndReduceSum();
     }
 }
 ```
 
-**RunMatmul (AIC)**:
+**RunInterleavedMatmul (AIC)**:
 ```cpp
-for (t = 0..headTileCnt-1) {
-    // 构建 FragmentTensor: rankSize 个 fragment, 每个 curTileM 行 (REMOTE scope)
-    // A/C 地址带 tile 偏移: aGm + tileMOffset*K, workspaceGm + tileMOffset*N*2
-    fragKernelImpl_(params);  // 一次调用覆盖所有 remote rank 段, 无 R 循环
-    CrossCoreSetFlag<0x2, PIPE_FIX>(t);  // 通知 AIV (flagid = tid, 三轮评审意见1)
+for (t = 0..commTurn-1) {
+    if (tail tile 首次) DrainL1();                  // head→tail tiling 切换
+    if (t > 0) DrainL1();                           // remote(t-1) → local(t) 切换
+    RunOneFragScope(t, LOCAL,  localHead/localTail);   // 本 rank 段 → workspace 本 rank 槽位
+    DrainL1();                                      // local(t) → remote(t) 切换
+    RunOneFragScope(t, REMOTE, remoteHead/remoteTail); // R-1 个 remote 段 → workspace 各槽位
+    CrossCoreSetFlag<0x2, PIPE_FIX>(t);             // flagid = tid, tile t 全部片段完成
 }
 ```
 
-**RunAllToAllAndReduceSum (AIV)**:
+**RunAllToAllAndReduceSum (AIV, v5 掩盖流水)**:
 ```cpp
 // 角色分离 — 后 R 核仅通信, 前 (28-R) 核仅计算, 其余核仅参与 SyncAll
-// isCommBlock = (jobIndex < rankSize)     — 后 R 个核
-// isComputeBlock = (blockIdx < 28-R)     — 前 (28-R) 个核
-// rsCoreNum = 28 - rankSize              — reduceSum 核数
-
-// 统一 turn 循环: 单 tile / 多 tile 无分支 (T=1 自然退化为 1 轮)
 for (t = 0..commTurn-1) {
-    CrossCoreWaitFlag<0x2, PIPE_S>(t);   // flagid = tid
-    SyncAll<true>();
-    if (isCommBlock) { Commit<BARRIER_NONE>(); Wait<BARRIER_NONE>(); }  // PUT tile t
+    CrossCoreWaitFlag<0x2, PIPE_S>(t);              // flagid = tid
+    SyncAll<true>();                                // #1: 全 AIC 核 tile t 完成
+    if (isCommBlock)  { Commit(); Wait(); }         // PUT tile t
+    if (isComputeBlock && t > 0) ReduceSumTile(t-1);// ‖ 与 PUT(t) 重叠 (掩盖并行)
+    SyncAll<true>();                                // #2: 汇合
+    teamBarrier_.CrossDevice();                     // 并行 fence: 证 PUT(t) 到达
+    SyncAll<true>();                                // #3: 传播
 }
-
-// ---- kernel 收尾四步 ----
-CrossCoreWaitFlag<0x2, PIPE_S>(FLAG_ID_LOCAL_DONE);  // F4: 本 block AIC 三段全部完成
-SyncAll<true>();                                      // F1': 全核聚合
-teamBarrier_.CrossDevice();                           // F2: R 个通信核并行 fence (每核 1 个远端)
-SyncAll<true>();                                      // F3: 传播跨卡可见性
-if (isComputeBlock) { for (t) DoReduceSum(t); }       // 末尾统一消费
+if (isComputeBlock) { ReduceSumTile(commTurn-1); }  // 末 tile 归约
 if (isCommBlock) { Finalize<BARRIER_NONE>(); }
 ```
 
@@ -442,8 +432,8 @@ if (isCommBlock) { Finalize<BARRIER_NONE>(); }
 | `CrossCoreSetFlag<0x2, PIPE_FIX>` | AIC → AIV | AIC tile t 完成, PIPE_FIX = AIC FixPipe, flagid = tid |
 | `CrossCoreWaitFlag<0x2, PIPE_S>` | AIV 等 AIC | per-tile WaitFlag, flagid = tid, 每 id 一次 Set ↔ 一次 Wait |
 | `SyncAll<true>()` | AIV 核间同步 | isAIVOnly=true, AIC 调用为 no-op, 内部占用 flagid 14 |
-| `teamBarrier_.CrossDevice()` | 跨设备同步 | R 个通信核并行执行 (job j 轮询远端 j), step=R |
-| `SetFlag/WaitFlag<HardEvent::MTE1_MTE2>` | L1 排空 | tiling 切换前排队空 L1 (event id 6, 三轮评审意见3) |
+| `teamBarrier_.CrossDevice()` | 跨设备同步 | 逐 turn 执行 (v5): R 个通信核并行 (job j 轮询远端 j), step=R, 证 PUT(t) 到达 |
+| `SetFlag/WaitFlag<HardEvent::MTE1_MTE2>` | L1 排空 | 片段间 tiling 切换前排队空 L1 (event id 6, 三轮评审意见3) |
 | `SetAtomicAdd` | **不使用** | 无跨卡部分和 |
 
 ---
