@@ -232,5 +232,14 @@ struct MegaMoeTilingData {
     bool isSharedQuantIndependent;
     // Appended to retain all existing field offsets; host and kernel packages must match.
     MegaMoeL1Layout a8w4L1Layout;
+    // 预量化搬运的试验性配置：x 固定一次搬一个 token，两个 slot 做 ping-pong。
+    uint32_t preQuantTileTokens;
+    uint32_t preQuantStageBytes;
+    // 一个 token 的 stage 空间中，scale/weight 一次可以合并搬运的 token 数。
+    uint32_t preQuantScaleTileTokens;
+    uint32_t preQuantWeightTileTokens;
+    // 以一个 AIV 最多负责的 token 数估算的 DMA 次数，仅用于 tiling 观察和调试。
+    uint32_t preQuantScaleCopyCount;
+    uint32_t preQuantWeightCopyCount;
 };
 #endif

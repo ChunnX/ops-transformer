@@ -411,6 +411,28 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::InitQuantTokenBufferCon
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline uint32_t MegaMoe<TemplateMegaMoeTypeFunc>::InitQuantScratchTensors(uint32_t mxTempTensorAddr)
 {
+    // 预量化输入已经是最终的 FP8/FP4 字节，不需要动态量化的 mxTemp、xIn、xOut。
+    // 一个 stage 对应一个 token，两个 stage 仅用于 MTE2/MTE3 ping-pong；scale 和 weight
+    // 在 token 阶段结束后复用这两块空间。
+    if constexpr (!Std::IsSame<XType, bfloat16_t>::value) {
+        uint32_t stageBytes = params_.tilingData->preQuantStageBytes;
+        if (stageBytes == 0U) {
+            // 兼容未带新 tiling 字段的旧 launch，至少按一个 token 的对齐宽度保留空间。
+            stageBytes = Ops::Base::CeilAlign(
+                Ops::Base::CeilDiv(k_, A_ELEMS_PER_BYTE), static_cast<uint32_t>(ALIGN_512));
+        }
+        quantScratch_.preQuantStage0 = LocalTensor<uint8_t>(TPosition::VECCALC, mxTempTensorAddr, stageBytes);
+        quantScratch_.preQuantStage1 =
+            LocalTensor<uint8_t>(TPosition::VECCALC, mxTempTensorAddr + stageBytes, stageBytes);
+        if constexpr (!SHARED_INPUT_REUSES_MOE_QUANT) {
+            if (sharedExpertNum_ > 0U) {
+                sharedQuantScratch_.preQuantStage0 = quantScratch_.preQuantStage0;
+                sharedQuantScratch_.preQuantStage1 = quantScratch_.preQuantStage1;
+            }
+        }
+        return mxTempTensorAddr + 2U * stageBytes;
+    }
+
     uint32_t mxTempTensorSize = 2 * 1024;
     // 单个 xOutTensor 槽位与 dispatch 的 token-scale-weight 通信记录使用相同布局。
     uint32_t xOutTensorSize = quantProcessConfig_.quantTokenScaleAlignBytes;
