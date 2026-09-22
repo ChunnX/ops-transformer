@@ -74,21 +74,35 @@ function(gen_es_transformer_lib_builtin)
     OPP_PROTO_TARGET proto_temp_transformer
     OUTPUT_PATH ${CMAKE_BINARY_DIR}/es_packages
   )
-  install(
-    FILES ${CMAKE_BINARY_DIR}/es_packages/lib64/libes_transformer.so
+  if (ENABLE_BUILT_IN)
+    install(
+      FILES ${CMAKE_BINARY_DIR}/es_packages/lib64/libes_transformer.so
  	  DESTINATION ${VERSION_INFO_INSTALL_DIR}/lib64
-    OPTIONAL
-  )
-  install(
+      OPTIONAL
+    )
+    install(
  	  DIRECTORY ${CMAKE_BINARY_DIR}/es_packages/include/es_transformer
  	  DESTINATION ${VERSION_INFO_INSTALL_DIR}/include/es
  	  OPTIONAL
  	)
-  install(
-    DIRECTORY ${CMAKE_BINARY_DIR}/es_packages/whl/
-    DESTINATION ${WHL_INSTALL_DIR}/es_packages/whl
-    OPTIONAL
-  )
+    install(
+      DIRECTORY ${CMAKE_BINARY_DIR}/es_packages/whl/
+      DESTINATION ${WHL_INSTALL_DIR}/es_packages/whl
+      OPTIONAL
+    )
+  else()
+    # custom pkg：es 库/头文件随 vendor 包发布，供 op_graph .so 链接与 GE 加载
+    install(
+      FILES ${CMAKE_BINARY_DIR}/es_packages/lib64/libes_transformer.so
+      DESTINATION ${ES_LIB_INSTALL_DIR}
+      OPTIONAL
+    )
+    install(
+      DIRECTORY ${CMAKE_BINARY_DIR}/es_packages/include/es_transformer
+      DESTINATION ${ES_INC_INSTALL_DIR}
+      OPTIONAL
+    )
+  endif()
 endfunction()
 
 # graph_plugin shared
@@ -501,6 +515,37 @@ function(gen_norm_symbol)
   gen_onnx_plugin_symbol()
   gen_aicpu_const_symbol()
 
+endfunction()
+
+# custom 包 fusion pass 载体：
+# graph_plugin_obj 直接链入 cust_proto（libcust_opsproto_rt2.0.so），
+# GE 加载 vendor 包 op_proto .so 时 REG_FUSION_PASS 静态注册生效，标准安装流开箱即用
+function(gen_cust_graph_plugin_symbol)
+  if(NOT TARGET ${GRAPH_PLUGIN_NAME}_obj)
+    message(STATUS "No graph plugin obj, skip linking fusion pass into cust_proto.")
+    return()
+  endif()
+  # 构建 es_transformer（pattern fusion pass 的 es 建图依赖），并随包安装到 op_proto/es
+  merge_graph_headers(TARGET merge_ops_proto OUT_DIR ${ASCEND_GRAPH_CONF_DST})
+  gen_es_transformer_lib_builtin()
+  unset(GRAPH_SOURCE)
+  get_target_property(GRAPH_SOURCE ${GRAPH_PLUGIN_NAME}_obj SOURCES)
+  if(GRAPH_SOURCE)
+    add_dependencies(${GRAPH_PLUGIN_NAME}_obj
+      build_es_math
+      build_es_transformer
+    )
+    target_link_libraries(${GRAPH_PLUGIN_NAME}_obj
+      PRIVATE
+      es_math
+      es_transformer
+    )
+  endif()
+  target_sources(cust_proto PRIVATE $<TARGET_OBJECTS:${GRAPH_PLUGIN_NAME}_obj>)
+  # cust_proto 装在 op_proto/lib/linux/<arch>/，libes_transformer.so 装在 op_proto/es/lib/linux/<arch>/，
+  # 链接期打入相对 RUNPATH，dlopen cust_proto 时依赖自包含解析
+  set_property(TARGET cust_proto APPEND PROPERTY
+    LINK_FLAGS "-Wl,-rpath,'\$ORIGIN/../../../es/lib/linux/${CMAKE_SYSTEM_PROCESSOR}'")
 endfunction()
 
 function(gen_cust_symbol)
