@@ -562,9 +562,9 @@ private:
         dataCopyParams.blockCount = runInfo.actVecMSize;
         dataCopyParams.srcStride = (dTemplateAlign64 - constInfo.dSizeV) >> 4;
         dataCopyParams.dstStride = constInfo.attentionOutStride;
-        const uint64_t dstOffset = MxQuerySlot<LAYOUT>(runInfo.queryTokenBase,
-            runInfo.s1Idx + runInfo.vecMbaseIdx, runInfo.realN2Idx, constInfo.realN2Size,
-            constInfo.qSeqSize) * constInfo.dSizeV;
+        const uint64_t dstOffset = MxQuerySlot<LAYOUT>(runInfo.queryTokenBase, runInfo.s1Idx + runInfo.vecMbaseIdx,
+                                                       runInfo.realN2Idx, constInfo.realN2Size, constInfo.qSeqSize) *
+                                   constInfo.dSizeV;
         DataCopyPad(attentionOutGm_[dstOffset], attenOut, dataCopyParams);
     }
 
@@ -580,8 +580,8 @@ private:
         dataCopyParams.blockCount = runInfo.actVecMSize;
         dataCopyParams.srcStride = 0;
         dataCopyParams.dstStride = constInfo.softmaxLseStride;
-        const uint64_t dstOffset = MxLseSlot<LAYOUT>(runInfo.queryTokenBase,
-            runInfo.s1Idx + runInfo.vecMbaseIdx, runInfo.realN2Idx, constInfo.realN2Size, constInfo.qSeqSize);
+        const uint64_t dstOffset = MxLseSlot<LAYOUT>(runInfo.queryTokenBase, runInfo.s1Idx + runInfo.vecMbaseIdx,
+                                                     runInfo.realN2Idx, constInfo.realN2Size, constInfo.qSeqSize);
         DataCopyPad(softmaxLseGm_[dstOffset], lseUb, dataCopyParams);
         softmaxLseQueue_.template FreeTensor(lseUb);
     }

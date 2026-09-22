@@ -151,13 +151,12 @@ static aclnnStatus CheckConsistencyQbsa(int64_t numHeadsQ, int64_t numHeadsKv)
 }
 
 static aclnnStatus CheckLayoutQbsa(const aclTensor *sparseSeqLen, const aclTensor *cuSeqlensQ,
-                                  const aclTensor *sequsedQ, int64_t batchSize, int64_t numHeadsQ,
-                                  int64_t quantMode, const char *layoutQ, const char *layoutKv)
+                                   const aclTensor *sequsedQ, int64_t batchSize, int64_t numHeadsQ, int64_t quantMode,
+                                   const char *layoutQ, const char *layoutKv)
 {
-    if (!optiling::detail::IsSupportedQueryLayout(layoutQ, quantMode) ||
-        layoutKv == nullptr || strcmp(layoutKv, "PA_BNBD") != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "metadata requires FP8 TND/NTD or MXFP8 TND/BSND/BNSD, with PA_BNBD KV");
+    if (!optiling::detail::IsSupportedQueryLayout(layoutQ, quantMode) || layoutKv == nullptr ||
+        strcmp(layoutKv, "PA_BNBD") != 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "metadata requires FP8 TND/NTD or MXFP8 TND/BSND/BNSD, with PA_BNBD KV");
         return ACLNN_ERR_PARAM_INVALID;
     }
     const auto &shape = sparseSeqLen->GetViewShape();
@@ -184,19 +183,18 @@ static aclnnStatus ParamsCheck(const aclTensor *sparseSeqLen, const aclTensor *c
                                const aclTensor *sequsedKvOptional, int64_t batchSize, int64_t numHeadsQ,
                                int64_t numHeadsKv, int64_t headDim, int64_t sparseBlockSizeQ, int64_t sparseBlockSizeK,
                                int64_t quantMode, int64_t maskMode, const char *layoutQOptional,
-                               const char *layoutKvOptional,
-                               const char *layoutSparseIndicesOptional, uint32_t aicCoreNum, uint32_t aivCoreNum,
-                               const char *socVersion, const aclTensor *metadata)
+                               const char *layoutKvOptional, const char *layoutSparseIndicesOptional,
+                               uint32_t aicCoreNum, uint32_t aivCoreNum, const char *socVersion,
+                               const aclTensor *metadata)
 {
-    aclnnStatus ret =
-        CheckSingleParamQbsa(batchSize, numHeadsQ, numHeadsKv, headDim, sparseBlockSizeQ, sparseBlockSizeK, quantMode,
-                             maskMode, layoutSparseIndicesOptional);
+    aclnnStatus ret = CheckSingleParamQbsa(batchSize, numHeadsQ, numHeadsKv, headDim, sparseBlockSizeQ,
+                                           sparseBlockSizeK, quantMode, maskMode, layoutSparseIndicesOptional);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     ret = CheckExistenceQbsa(sparseSeqLen, cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional, sequsedKvOptional,
                              batchSize, numHeadsQ, aicCoreNum, aivCoreNum, socVersion, metadata);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
-    ret = CheckLayoutQbsa(sparseSeqLen, cuSeqlensQOptional, sequsedQOptional, batchSize, numHeadsQ,
-                         quantMode, layoutQOptional, layoutKvOptional);
+    ret = CheckLayoutQbsa(sparseSeqLen, cuSeqlensQOptional, sequsedQOptional, batchSize, numHeadsQ, quantMode,
+                          layoutQOptional, layoutKvOptional);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     ret = CheckConsistencyQbsa(numHeadsQ, numHeadsKv);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);

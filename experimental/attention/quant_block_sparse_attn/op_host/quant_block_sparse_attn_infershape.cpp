@@ -54,7 +54,7 @@ ge::graphStatus InferShapeQuantBlockSparseAttn(gert::InferShapeContext *context)
         return ge::GRAPH_FAILED;
     }
     if (padded ? queryShape->GetDimNum() != 4U :
-        ((queryShape->GetDimNum() != 3U) || (layoutQ != "TND" && layoutQ != "NTD"))) {
+                 ((queryShape->GetDimNum() != 3U) || (layoutQ != "TND" && layoutQ != "NTD"))) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(kOpName, "query",
                                                  std::to_string(queryShape->GetDimNum()) + "D with layout " + layoutQ,
                                                  "3D TND/NTD or 4D BSND/BNSD");

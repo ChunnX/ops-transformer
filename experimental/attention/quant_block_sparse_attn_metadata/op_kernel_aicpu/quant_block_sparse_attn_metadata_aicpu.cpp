@@ -71,8 +71,8 @@ bool QuantBlockSparseAttnMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
 
 bool QuantBlockSparseAttnMetadataCpuKernel::ParamsCheck()
 {
-    if (!optiling::detail::IsSupportedQueryLayout(layoutQ_.c_str(), quantMode_) ||
-        layoutKv_ != "PA_BNBD" || layoutSparseIndices_ != "B_N_Qb_Kb") {
+    if (!optiling::detail::IsSupportedQueryLayout(layoutQ_.c_str(), quantMode_) || layoutKv_ != "PA_BNBD" ||
+        layoutSparseIndices_ != "B_N_Qb_Kb") {
         KERNEL_LOG_ERROR("unsupported metadata layout/quant_mode combination");
         return false;
     }
@@ -122,14 +122,13 @@ bool QuantBlockSparseAttnMetadataCpuKernel::CheckTensorData()
     // GE can invoke AICPU without the ACLNN host checks. Validate its output
     // before Clear()/SetQbsaMetadata() writes the fixed-format scheduling table.
     if (batchSize_ <= 0 || numHeadsQ_ <= 0 || aicCoreNum_ <= 0 ||
-        aicCoreNum_ > static_cast<int32_t>(optiling::AIC_CORE_NUM) ||
-        metadata_->GetDataType() != DT_INT32 || metadata_->GetTensorShape() == nullptr ||
-        metadata_->GetTensorShape()->GetDims() != 1) {
+        aicCoreNum_ > static_cast<int32_t>(optiling::AIC_CORE_NUM) || metadata_->GetDataType() != DT_INT32 ||
+        metadata_->GetTensorShape() == nullptr || metadata_->GetTensorShape()->GetDims() != 1) {
         KERNEL_LOG_ERROR("invalid metadata output capacity, dtype or core count");
         return false;
     }
-    constexpr int64_t fixedSize = optiling::QBSA_HEAD_METADATA_SIZE +
-        optiling::AIV_CORE_NUM * optiling::FD_METADATA_SIZE;
+    constexpr int64_t fixedSize =
+        optiling::QBSA_HEAD_METADATA_SIZE + optiling::AIV_CORE_NUM * optiling::FD_METADATA_SIZE;
     constexpr int64_t sectionSize = optiling::AIC_CORE_NUM * optiling::QBSA_METADATA_SIZE;
     const int64_t bn1Size = static_cast<int64_t>(batchSize_) * numHeadsQ_;
     if (bn1Size > std::numeric_limits<uint32_t>::max() || metadata_->NumElements() < fixedSize ||
@@ -270,8 +269,8 @@ uint64_t QuantBlockSparseAttnMetadataCpuKernel::CalcBN1Cost(uint32_t bIdx, uint3
     }
 
     const uint32_t headDim = static_cast<uint32_t>(std::max(headDim_, 0));
-    const uint64_t s1Cost = static_cast<uint64_t>(validS1Rows) * static_cast<uint32_t>(sparseBlockSizeQ_) *
-        headDim * BYTES_PER_ELEM_Q * COST_FACTOR;
+    const uint64_t s1Cost = static_cast<uint64_t>(validS1Rows) * static_cast<uint32_t>(sparseBlockSizeQ_) * headDim *
+                            BYTES_PER_ELEM_Q * COST_FACTOR;
     const uint64_t s2Size = static_cast<uint64_t>(maxS2BlockNum) * static_cast<uint32_t>(sparseBlockSizeK_);
     const uint64_t s2Cost = s2Size * headDim * BYTES_PER_ELEM_KV * COST_FACTOR;
     return s1Cost + s2Cost;
