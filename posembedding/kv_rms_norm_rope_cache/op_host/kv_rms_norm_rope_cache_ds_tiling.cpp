@@ -146,6 +146,7 @@ ge::graphStatus KvRmsNormRopeCacheTilingDs::ResolveQuantComponents()
         tilingData_.set_isKQuant(kQuantType);
         tilingData_.set_isVQuant(vQuantType);
         staticQuantType = std::max(kQuantType, vQuantType);
+        OP_LOGI(context_->GetNodeName(), "Resolved static quant mode of Atlas 2/3 is %d.", staticQuantType);
     }
 
     return componentStatus;
@@ -153,10 +154,10 @@ ge::graphStatus KvRmsNormRopeCacheTilingDs::ResolveQuantComponents()
 
 bool KvRmsNormRopeCacheTilingDs::validateQuantCrossTermShapes()
 {
-    auto scale1Shape = context->GetOptionalInputShape(K_ROPE_SCALE_IDX);
-    auto scale2Shape = context->GetOptionalInputShape(C_KV_SCALE_IDX);
-    auto offset1Shape = context->GetOptionalInputShape(K_ROPE_OFFSET_IDX);
-    auto offset2Shape = context->GetOptionalInputShape(C_KV_OFFSET_IDX);
+    auto scale1Shape = context_->GetOptionalInputShape(K_ROPE_SCALE_IDX);
+    auto scale2Shape = context_->GetOptionalInputShape(C_KV_SCALE_IDX);
+    auto offset1Shape = context_->GetOptionalInputShape(K_ROPE_OFFSET_IDX);
+    auto offset2Shape = context_->GetOptionalInputShape(C_KV_OFFSET_IDX);
     bool isValid = true;
     if ((scale1Shape != nullptr) && (scale2Shape != nullptr)) {
         isValid = isValid &&
@@ -174,15 +175,17 @@ bool KvRmsNormRopeCacheTilingDs::validateCacheDatatypes()
     bool isValid = true;
     // Validate cache datatypes
     auto kcacheDesc = context_->GetInputDesc(K_CACHE_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, kcacheDesc);
     auto vcacheDesc = context_->GetInputDesc(V_CACHE_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, vcacheDesc);
+    if (kcacheDesc == nullptr || vcacheDesc == nullptr) {
+        // Caches are required
+        return false;
+    }
 
     ge::DataType kcacheDtype = kcacheDesc->GetDataType();
     ge::DataType vcacheDtype = vcacheDesc->GetDataType();
 
-    int8_t kQuantType = tilingData_.get_isKQuant(kQuantType);
-    int8_t vQuantType = tilingData_.get_isVQuant(vQuantType);
+    int8_t kQuantType = tilingData_.get_isKQuant();
+    int8_t vQuantType = tilingData_.get_isVQuant();
 
     if (kQuantType > STATIC_QUANT_NONE) {
         isValid = (kcacheDtype == ge::DT_INT8);

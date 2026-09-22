@@ -449,10 +449,8 @@ bool KvRmsNormRopeCacheTilingBase::ValidateSBroadcast()
     bool isValid = true;
     if (cosSinNeedBrc_ == 1) {
         // got cosSeq == 1 && cosSeq != seqLen && seqLen > 1
-        if (isPagedAttention_) {
-            // only non-quant under PA can be broadcasted
-            isValid = (quantMode_ == NON_QUANT_MODE && !isPABNSD_);
-        }
+        // only non-quant under PA can be broadcasted
+        isValid = (isPagedAttention_ && !isPABNSD_ && quantMode_ == NON_QUANT_MODE);
     }
     return isValid;
 }
@@ -539,7 +537,7 @@ ge::graphStatus KvRmsNormRopeCacheTilingBase::GetShapeAttrsInfo()
 
     if (methodMode_ == 1) {
         // Datatype alignment
-        auto vDesc = context_->GetInputDesc(KV_INDEX);
+        auto vDesc = context_->GetOptionalInputDesc(V_IDX);
         OP_CHECK_NULL_WITH_CONTEXT(context_, vDesc);
         vDtype_ = vDesc->GetDataType();
         OP_CHECK_IF((vDtype_ != kvDtype_),
