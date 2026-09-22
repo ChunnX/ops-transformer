@@ -181,12 +181,13 @@ static aclnnStatus ResolveInnerWorkspaceSize(
     char *groupEpBuf, char *groupTpBuf, const char *commAlg, char *commAlgBuf, int64_t epWorldSize, int64_t epRankId,
     int64_t moeExpertNum, int64_t tpWorldSize, int64_t tpRankId, int64_t expertShardType, int64_t sharedExpertNum,
     int64_t sharedExpertRankNum, int64_t globalBs, int64_t outDtype, int64_t commQuantMode, int64_t groupListType,
-    int64_t zeroExpertNum, int64_t copyExpertNum, int64_t constExpertNum, bool isA5, aclTensor *xOut,
+    int64_t zeroExpertNum, int64_t copyExpertNum, int64_t constExpertNum, bool is910B, bool isA5, aclTensor *xOut,
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
+    aclnnStatus getWorkspaceSizesRes = ACLNN_ERR_INNER;
     // ccu暂时不支持mc2Context，回退到V2接口
     if (!isA5 || (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0)) {
-        return aclnnInnerMoeDistributeCombineV2GetWorkspaceSize(
+        getWorkspaceSizesRes = aclnnInnerMoeDistributeCombineV2GetWorkspaceSize(
             expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales, tpSendCountsOptional,
             xActiveMaskOptional, activationScaleOptional, weightScaleOptional, groupListOptional, expandScalesOptional,
             sharedExpertXOptional, elasticInfoOptional, oriXOptional, constExpertAlpha1Optional,
@@ -194,23 +195,25 @@ static aclnnStatus ResolveInnerWorkspaceSize(
             moeExpertNum, groupTpBuf, tpWorldSize, tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum,
             globalBs, outDtype, commQuantMode, groupListType, commAlgBuf, zeroExpertNum, copyExpertNum, constExpertNum,
             xOut, workspaceSize, executor);
-    }
+    } else {
 #if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
-    aclTensor *mc2Context = nullptr;
-    uint64_t hcclBuffSize = 0;
-    const char *opName = "moe_distribute_v2";
-    auto aclnnRet = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
-    CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
-    return aclnnInnerMoeDistributeCombineV3GetWorkspaceSize(
-        mc2Context, expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales, tpSendCountsOptional,
-        xActiveMaskOptional, activationScaleOptional, weightScaleOptional, groupListOptional, expandScalesOptional,
-        sharedExpertXOptional, elasticInfoOptional, oriXOptional, constExpertAlpha1Optional, constExpertAlpha2Optional,
-        constExpertVOptional, performanceInfoOptional, epWorldSize, epRankId, moeExpertNum, hcclBuffSize, tpWorldSize,
-        tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs, outDtype, commQuantMode,
-        groupListType, commAlgBuf, zeroExpertNum, copyExpertNum, constExpertNum, xOut, workspaceSize, executor);
-#else
-    return ACLNN_ERR_INNER;
+        aclTensor *mc2Context = nullptr;
+        uint64_t hcclBuffSize = 0;
+        const char *opName = "moe_distribute_v2";
+        auto aclnnRet = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
+        CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
+        getWorkspaceSizesRes = aclnnInnerMoeDistributeCombineV3GetWorkspaceSize(
+            mc2Context, expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales, tpSendCountsOptional,
+            xActiveMaskOptional, activationScaleOptional, weightScaleOptional, groupListOptional, expandScalesOptional,
+            sharedExpertXOptional, elasticInfoOptional, oriXOptional, constExpertAlpha1Optional,
+            constExpertAlpha2Optional, constExpertVOptional, performanceInfoOptional, epWorldSize, epRankId,
+            moeExpertNum, hcclBuffSize, tpWorldSize, tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum,
+            globalBs, outDtype, commQuantMode, groupListType, commAlgBuf, zeroExpertNum, copyExpertNum, constExpertNum,
+            xOut, workspaceSize, executor);
 #endif
+    }
+    SetCommArgs(executor, is910B, isA5, commAlg);
+    return getWorkspaceSizesRes;
 }
 
 aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
@@ -238,16 +241,14 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
     PrepareCommBuffers(groupEp, groupTp, commAlg, is910B, groupEpBuf, groupTpBuf, commAlgBuf);
     auto retCcu = CheckCcuWorkspaceParams(performanceInfoOptional, commAlg);
     CHECK_RET(retCcu == ACLNN_SUCCESS, retCcu);
-    aclnnStatus getWorkspaceSizesRes = ResolveInnerWorkspaceSize(
+    return ResolveInnerWorkspaceSize(
         expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales, tpSendCountsOptional, xActiveMaskOptional,
         activationScaleOptional, weightScaleOptional, groupListOptional, expandScalesOptional, sharedExpertXOptional,
         elasticInfoOptional, oriXOptional, constExpertAlpha1Optional, constExpertAlpha2Optional, constExpertVOptional,
         performanceInfoOptional, groupEp, groupEpBuf, groupTpBuf, commAlg, commAlgBuf, epWorldSize, epRankId,
         moeExpertNum, tpWorldSize, tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs, outDtype,
-        commQuantMode, groupListType, zeroExpertNum, copyExpertNum, constExpertNum, isA5, xOut, workspaceSize,
+        commQuantMode, groupListType, zeroExpertNum, copyExpertNum, constExpertNum, is910B, isA5, xOut, workspaceSize,
         executor);
-    SetCommArgs(executor, is910B, isA5, commAlg);
-    return getWorkspaceSizesRes;
 }
 
 // aclnn二段式接口
