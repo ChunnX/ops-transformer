@@ -15,6 +15,8 @@
 | Atlas A3 训练/推理系列产品 | × |
 | Atlas A2 训练/推理系列产品 | × |
 
+> 注：本次验证在 Ascend 950DT 上完成；Ascend 950PR 同族（arch35）未上板实测。
+
 ## 接口
 
 ```python

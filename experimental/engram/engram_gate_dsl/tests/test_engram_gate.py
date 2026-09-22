@@ -41,6 +41,7 @@ def _inputs(t, hc, dim, seed):
 
 
 def test_engram_gate_compile_default_shape():
+    pytest.importorskip("cannbotdsl")
     import cannbotdsl
 
     EngramGate(eps=1e-6, clamp_value=1e-6).run.compile(
