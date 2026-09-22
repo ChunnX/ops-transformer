@@ -143,6 +143,34 @@ static bool IsMXQuantMode(const std::unique_ptr<ge::fusion::MatchResult> &matchR
     return (x1QuantMode == MX_QUANT_MODE && x2QuantMode == MX_QUANT_MODE);
 }
 
+static bool ReadTransposePermData(ge::Tensor &permTensor, ge::DataType permDType, std::vector<int64_t> &permValue)
+{
+    uint8_t *permData = permTensor.GetData();
+
+    if (permData == nullptr) {
+        OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Transpose permutation data is nullptr.");
+        return false;
+    }
+
+    size_t size = 0;
+    if (permDType == ge::DT_INT32) {
+        size = permTensor.GetSize() / sizeof(int32_t);
+        for (size_t i = 0; i < size; ++i) {
+            permValue.emplace_back(static_cast<int64_t>(*(reinterpret_cast<int32_t *>(permData) + i)));
+        }
+    } else if (permDType == ge::DT_INT64) {
+        size = permTensor.GetSize() / sizeof(int64_t);
+        for (size_t i = 0; i < size; ++i) {
+            permValue.emplace_back(*(reinterpret_cast<int64_t *>(permData) + i));
+        }
+    } else {
+        OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Transpose permutation dtype must be int32 or int64.");
+        return false;
+    }
+
+    return !permValue.empty();
+}
+
 static bool GetTransposePerm(const ge::GNode &transposeNode, std::vector<int64_t> &permValue)
 {
     ge::AscendString nodeType("");
@@ -174,30 +202,7 @@ static bool GetTransposePerm(const ge::GNode &transposeNode, std::vector<int64_t
     }
 
     ge::DataType permDType = permDesc.GetDataType();
-    uint8_t *permData = permTensor.GetData();
-
-    if (permData == nullptr) {
-        OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Transpose permutation data is nullptr.");
-        return false;
-    }
-
-    size_t size = 0;
-    if (permDType == ge::DT_INT32) {
-        size = permTensor.GetSize() / sizeof(int32_t);
-        for (size_t i = 0; i < size; ++i) {
-            permValue.emplace_back(static_cast<int64_t>(*(reinterpret_cast<int32_t *>(permData) + i)));
-        }
-    } else if (permDType == ge::DT_INT64) {
-        size = permTensor.GetSize() / sizeof(int64_t);
-        for (size_t i = 0; i < size; ++i) {
-            permValue.emplace_back(*(reinterpret_cast<int64_t *>(permData) + i));
-        }
-    } else {
-        OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Transpose permutation dtype must be int32 or int64.");
-        return false;
-    }
-
-    return !permValue.empty();
+    return ReadTransposePermData(permTensor, permDType, permValue);
 }
 
 static bool IsTransposePermValid(const std::unique_ptr<ge::fusion::MatchResult> &matchResult)
@@ -320,6 +325,57 @@ static bool CreateReplaceGraphInputs(ReplaceGraphInputs &inputs, ge::es::EsGraph
     return true;
 }
 
+static bool ReadReplacementBaseAttrs(ge::GNode &mc2Node, ge::AscendString &group, int64_t &worldSize,
+                                     std::vector<int64_t> &all2allAxes, int64_t &yDType, int64_t &x1QuantMode,
+                                     int64_t &x2QuantMode)
+{
+    OP_LOGE_IF(mc2Node.GetAttr("group", group) != ge::GRAPH_SUCCESS, false, FUSION_PASS_NAME.c_str(),
+               "Get Attr group failed.");
+
+    OP_LOGE_IF(mc2Node.GetAttr("world_size", worldSize) != ge::GRAPH_SUCCESS, false, FUSION_PASS_NAME.c_str(),
+               "Get Attr world_size failed.");
+
+    OP_LOGE_IF(mc2Node.GetAttr("all2all_axes", all2allAxes) != ge::GRAPH_SUCCESS, false, FUSION_PASS_NAME.c_str(),
+               "Get Attr all2all_axes failed.");
+
+    OP_LOGE_IF(mc2Node.GetAttr("y_dtype", yDType) != ge::GRAPH_SUCCESS, false, FUSION_PASS_NAME.c_str(),
+               "Get Attr y_dtype failed.");
+
+    OP_LOGE_IF(mc2Node.GetAttr("x1_quant_mode", x1QuantMode) != ge::GRAPH_SUCCESS, false, FUSION_PASS_NAME.c_str(),
+               "Get Attr x1_quant_mode failed.");
+
+    OP_LOGE_IF(mc2Node.GetAttr("x2_quant_mode", x2QuantMode) != ge::GRAPH_SUCCESS, false, FUSION_PASS_NAME.c_str(),
+               "Get Attr x2_quant_mode failed.");
+
+    return true;
+}
+
+static bool ReadReplacementQuantAttrs(ge::GNode &mc2Node, int64_t &commQuantMode, int64_t &commQuantDType,
+                                      bool &transposeX1, bool &transposeX2, int64_t &groupSize,
+                                      ge::AscendString &commMode)
+{
+    OP_LOGE_IF(mc2Node.GetAttr("comm_quant_mode", commQuantMode) != ge::GRAPH_SUCCESS, false, FUSION_PASS_NAME.c_str(),
+               "Get Attr comm_quant_mode failed.");
+
+    OP_LOGE_IF(mc2Node.GetAttr("comm_quant_dtype", commQuantDType) != ge::GRAPH_SUCCESS, false,
+               FUSION_PASS_NAME.c_str(), "Get Attr comm_quant_dtype failed.");
+
+    OP_LOGE_IF(mc2Node.GetAttr("transpose_x1", transposeX1) != ge::GRAPH_SUCCESS, false, FUSION_PASS_NAME.c_str(),
+               "Get Attr transpose_x1 failed.");
+
+    OP_LOGE_IF(mc2Node.GetAttr("transpose_x2", transposeX2) != ge::GRAPH_SUCCESS, false, FUSION_PASS_NAME.c_str(),
+               "Get Attr transpose_x2 failed.");
+    // 移除Transpose节点后，transpose x2 attr 置反
+    transposeX2 = !transposeX2;
+
+    OP_LOGE_IF(mc2Node.GetAttr("group_size", groupSize) != ge::GRAPH_SUCCESS, false, FUSION_PASS_NAME.c_str(),
+               "Get Attr group_size failed.");
+
+    OP_LOGE_IF(mc2Node.GetAttr("comm_mode", commMode) != ge::GRAPH_SUCCESS, false, FUSION_PASS_NAME.c_str(),
+               "Get Attr comm_mode failed.");
+    return true;
+}
+
 static ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::SubgraphInput> &subgraphInputs,
                                                   const std::unique_ptr<ge::fusion::MatchResult> &matchResult)
 {
@@ -338,54 +394,24 @@ static ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::
     ge::GNode mc2Node = mc2NodeIo.node;
 
     ge::AscendString group = "";
-    OP_LOGE_IF(mc2Node.GetAttr("group", group) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
-               "Get Attr group failed.");
-
     int64_t worldSize = -1;
-    OP_LOGE_IF(mc2Node.GetAttr("world_size", worldSize) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
-               "Get Attr world_size failed.");
-
     std::vector<int64_t> all2allAxes = {-1, -2};
-    OP_LOGE_IF(mc2Node.GetAttr("all2all_axes", all2allAxes) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
-               "Get Attr all2all_axes failed.");
-
     int64_t yDType = 28;
-    OP_LOGE_IF(mc2Node.GetAttr("y_dtype", yDType) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
-               "Get Attr y_dtype failed.");
-
     int64_t x1QuantMode = 0;
-    OP_LOGE_IF(mc2Node.GetAttr("x1_quant_mode", x1QuantMode) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
-               "Get Attr x1_quant_mode failed.");
-
     int64_t x2QuantMode = 0;
-    OP_LOGE_IF(mc2Node.GetAttr("x2_quant_mode", x2QuantMode) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
-               "Get Attr x2_quant_mode failed.");
-
     int64_t commQuantMode = 0;
-    OP_LOGE_IF(mc2Node.GetAttr("comm_quant_mode", commQuantMode) != ge::GRAPH_SUCCESS, nullptr,
-               FUSION_PASS_NAME.c_str(), "Get Attr comm_quant_mode failed.");
-
     int64_t commQuantDType = 28;
-    OP_LOGE_IF(mc2Node.GetAttr("comm_quant_dtype", commQuantDType) != ge::GRAPH_SUCCESS, nullptr,
-               FUSION_PASS_NAME.c_str(), "Get Attr comm_quant_dtype failed.");
-
     bool transposeX1 = false;
-    OP_LOGE_IF(mc2Node.GetAttr("transpose_x1", transposeX1) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
-               "Get Attr transpose_x1 failed.");
-
     bool transposeX2 = false;
-    OP_LOGE_IF(mc2Node.GetAttr("transpose_x2", transposeX2) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
-               "Get Attr transpose_x2 failed.");
-    // 移除Transpose节点后，transpose x2 attr 置反
-    transposeX2 = !transposeX2;
-
     int64_t groupSize = 0;
-    OP_LOGE_IF(mc2Node.GetAttr("group_size", groupSize) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
-               "Get Attr group_size failed.");
-
     ge::AscendString commMode = "";
-    OP_LOGE_IF(mc2Node.GetAttr("comm_mode", commMode) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
-               "Get Attr comm_mode failed.");
+    if (!ReadReplacementBaseAttrs(mc2Node, group, worldSize, all2allAxes, yDType, x1QuantMode, x2QuantMode)) {
+        return nullptr;
+    }
+    if (!ReadReplacementQuantAttrs(mc2Node, commQuantMode, commQuantDType, transposeX1, transposeX2, groupSize,
+                                   commMode)) {
+        return nullptr;
+    }
 
     auto mc2 = ge::es::MatmulAlltoAll(inputTensors.rX1, inputTensors.rX2, inputTensors.rBias, inputTensors.rX1Scale,
                                       inputTensors.rX2Scale, inputTensors.rCommScale, inputTensors.rX1Offset,

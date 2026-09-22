@@ -3383,44 +3383,8 @@ protected:
 };
 
 // ut
-static void TestOneParamCase(const MatmulAlltoAllTestParam &param)
+static std::vector<gert::TilingContextPara::OpAttr> BuildTilingAttributes(const MatmulAlltoAllTestParam &param)
 {
-    std::cout << "[TEST_CASE] " << param.caseName << std::endl;
-
-    // For 910B cases, set mock rankNum to match worldSizeAttr so GetRankSize returns correct value
-    if (param.socVersion == "Ascend910B") {
-        Mc2Hcom::MC2HcomTopologyMocker::GetInstance().SetValue("rankNum", static_cast<uint64_t>(param.worldSizeAttr));
-    }
-
-    //
-    //  Shape  tensor  shape  gert::StorageShape
-    gert::StorageShape x1Shape = {param.x1Shape, param.x1Shape};
-    gert::StorageShape x2Shape = {param.x2Shape, param.x2Shape};
-    gert::StorageShape biasShape = {param.biasShape, param.biasShape};
-    gert::StorageShape x1ScaleShape = {param.x1ScaleShape, param.x1ScaleShape};
-    gert::StorageShape x2ScaleShape = {param.x2ScaleShape, param.x2ScaleShape};
-    gert::StorageShape commScaleShape = {param.commScaleShape, param.commScaleShape};
-    gert::StorageShape x1OffsetShape = {param.x1OffsetShape, param.x1OffsetShape};
-    gert::StorageShape x2OffsetShape = {param.x2OffsetShape, param.x2OffsetShape};
-
-    gert::StorageShape yShape = {param.yShape, param.yShape};
-
-    //  input tensor
-    std::vector<gert::TilingContextPara::TensorDescription> inputTensorDesc_(
-        {{x1Shape, param.x1Dtype, param.x1Format},
-         {x2Shape, param.x2Dtype, param.x2Format},
-         {biasShape, param.biasDtype, param.biasFormat},
-         {x1ScaleShape, param.x1ScaleDtype, param.x1ScaleFormat},
-         {x2ScaleShape, param.x2ScaleDtype, param.x2ScaleFormat},
-         {commScaleShape, param.commScaleDtype, param.commScaleFormat},
-         {x1OffsetShape, param.x1OffsetDtype, param.x1OffsetFormat},
-         {x2OffsetShape, param.x2OffsetDtype, param.x2OffsetFormat}});
-
-    //  output tensor
-    std::vector<gert::TilingContextPara::TensorDescription> outputTensorDesc_(
-        {{yShape, param.youtputDtype, param.youtputFormat}});
-
-    //  attributes
     std::vector<gert::TilingContextPara::OpAttr> attrs_(
         {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.groupAttr)},
          {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.worldSizeAttr)},
@@ -3435,7 +3399,41 @@ static void TestOneParamCase(const MatmulAlltoAllTestParam &param)
          {"transpose_x2", Ops::Transformer::AnyValue::CreateFrom<bool>(param.transposex2Attr)},
          {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.groupSizeAttr)},
          {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.commModeAttr)}});
-    //
+    return attrs_;
+}
+
+static void TestOneParamCase(const MatmulAlltoAllTestParam &param)
+{
+    std::cout << "[TEST_CASE] " << param.caseName << std::endl;
+    // For 910B cases, set mock rankNum to match worldSizeAttr so GetRankSize returns correct value
+    if (param.socVersion == "Ascend910B") {
+        Mc2Hcom::MC2HcomTopologyMocker::GetInstance().SetValue("rankNum", static_cast<uint64_t>(param.worldSizeAttr));
+    }
+    //  Shape  tensor  shape  gert::StorageShape
+    gert::StorageShape x1Shape = {param.x1Shape, param.x1Shape};
+    gert::StorageShape x2Shape = {param.x2Shape, param.x2Shape};
+    gert::StorageShape biasShape = {param.biasShape, param.biasShape};
+    gert::StorageShape x1ScaleShape = {param.x1ScaleShape, param.x1ScaleShape};
+    gert::StorageShape x2ScaleShape = {param.x2ScaleShape, param.x2ScaleShape};
+    gert::StorageShape commScaleShape = {param.commScaleShape, param.commScaleShape};
+    gert::StorageShape x1OffsetShape = {param.x1OffsetShape, param.x1OffsetShape};
+    gert::StorageShape x2OffsetShape = {param.x2OffsetShape, param.x2OffsetShape};
+    gert::StorageShape yShape = {param.yShape, param.yShape};
+    //  input tensor
+    std::vector<gert::TilingContextPara::TensorDescription> inputTensorDesc_(
+        {{x1Shape, param.x1Dtype, param.x1Format},
+         {x2Shape, param.x2Dtype, param.x2Format},
+         {biasShape, param.biasDtype, param.biasFormat},
+         {x1ScaleShape, param.x1ScaleDtype, param.x1ScaleFormat},
+         {x2ScaleShape, param.x2ScaleDtype, param.x2ScaleFormat},
+         {commScaleShape, param.commScaleDtype, param.commScaleFormat},
+         {x1OffsetShape, param.x1OffsetDtype, param.x1OffsetFormat},
+         {x2OffsetShape, param.x2OffsetDtype, param.x2OffsetFormat}});
+    //  output tensor
+    std::vector<gert::TilingContextPara::TensorDescription> outputTensorDesc_(
+        {{yShape, param.youtputDtype, param.youtputFormat}});
+    //  attributes
+    auto attrs_ = BuildTilingAttributes(param);
     struct MatmulAlltoAllCompileInfo {
     } compileInfoInstance; // 创建一个实例
     void *pCompileInfo = &compileInfoInstance;
@@ -3443,7 +3441,6 @@ static void TestOneParamCase(const MatmulAlltoAllTestParam &param)
                                               param.socVersion, param.coreNum);
     ExecuteTestCase(tilingContextPara, param.status, param.expectTilingKey, param.expectTilingData,
                     param.expectWorkspaces, param.mc2TilingDataReservedLen);
-
     // Reset mock after 910B cases
     if (param.socVersion == "Ascend910B") {
         Mc2Hcom::MC2HcomTopologyMocker::GetInstance().Reset();

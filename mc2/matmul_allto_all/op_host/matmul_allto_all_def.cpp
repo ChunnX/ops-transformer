@@ -17,7 +17,7 @@
 namespace ops {
 class MatmulAlltoAll : public OpDef {
 public:
-    explicit MatmulAlltoAll(const char *name) : OpDef(name)
+    void DefineDefaultX1()
     {
         this->Input("x1")
             .ParamType(REQUIRED)
@@ -53,6 +53,10 @@ public:
                        ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
+    }
+
+    void DefineDefaultX1Scale()
+    {
         this->Input("x1_scale")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,
@@ -87,6 +91,10 @@ public:
             .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
+    }
+
+    void DefineDefaultX2Offset()
+    {
         this->Input("x2_offset")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_FLOAT})
@@ -113,9 +121,10 @@ public:
         this->Attr("transpose_x2").AttrType(OPTIONAL).Bool(false);
         this->Attr("group_size").AttrType(OPTIONAL).Int(0);
         this->Attr("comm_mode").AttrType(OPTIONAL).String("ai_cpu");
+    }
 
-        // A5 AI处理器定义OpAICoreConfig变量，定制化配置参数
-        OpAICoreConfig aicoreConfig_a5;
+    void DefineAscend950Options(OpAICoreConfig &aicoreConfig_a5)
+    {
         aicoreConfig_a5.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
             .DynamicRankSupportFlag(true)
@@ -130,9 +139,10 @@ public:
 
         // 将group配置为该算子的通信域
         this->MC2().HcclGroup("group");
+    }
 
-        // ascend910_93 AI处理器定义OpAICoreConfig变量，定制化配置参数
-        OpAICoreConfig aicoreConfig_910_93;
+    void DefineAscend91093X1(OpAICoreConfig &aicoreConfig_910_93)
+    {
         aicoreConfig_910_93.Input("x1")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
@@ -168,6 +178,10 @@ public:
             .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
+    }
+
+    void DefineAscend91093X2Offset(OpAICoreConfig &aicoreConfig_910_93)
+    {
         aicoreConfig_910_93.Input("x2_offset")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_FLOAT})
@@ -201,9 +215,10 @@ public:
             .ExtendCfgInfo("opFile.value", "matmul_allto_all");
         this->AICore().AddConfig("ascend910_93", aicoreConfig_910_93);
         this->MC2().HcclGroup("group");
+    }
 
-        // 910B
-        OpAICoreConfig aicore_config_910b;
+    void DefineAscend910BX1(OpAICoreConfig &aicore_config_910b)
+    {
         aicore_config_910b.Input("x1")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8})
@@ -239,6 +254,10 @@ public:
             .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
+    }
+
+    void DefineAscend910BX2Offset(OpAICoreConfig &aicore_config_910b)
+    {
         aicore_config_910b.Input("x2_offset")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_FLOAT})
@@ -261,6 +280,27 @@ public:
             .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
         this->AICore().AddConfig("ascend910b", aicore_config_910b);
         this->MC2().HcclGroup("group");
+    }
+
+    explicit MatmulAlltoAll(const char *name) : OpDef(name)
+    {
+        DefineDefaultX1();
+        DefineDefaultX1Scale();
+        DefineDefaultX2Offset();
+
+        // A5 AI处理器定义OpAICoreConfig变量，定制化配置参数
+        OpAICoreConfig aicoreConfig_a5;
+        DefineAscend950Options(aicoreConfig_a5);
+
+        // ascend910_93 AI处理器定义OpAICoreConfig变量，定制化配置参数
+        OpAICoreConfig aicoreConfig_910_93;
+        DefineAscend91093X1(aicoreConfig_910_93);
+        DefineAscend91093X2Offset(aicoreConfig_910_93);
+
+        // 910B
+        OpAICoreConfig aicore_config_910b;
+        DefineAscend910BX1(aicore_config_910b);
+        DefineAscend910BX2Offset(aicore_config_910b);
     }
 };
 

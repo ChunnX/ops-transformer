@@ -139,8 +139,7 @@ static bool Check1DScaleShape(const aclTensor *x1, const aclTensor *x2, const ac
 }
 
 // 校验Scale为3D时的shape（MX量化）
-static bool Check3DScaleShape(const aclTensor *x1, const aclTensor *x2, const aclTensor *x1Scale,
-                              const aclTensor *x2Scale, bool transposeX2)
+static bool CheckScaleDimensions(const aclTensor *x1Scale, const aclTensor *x2Scale)
 {
     if (x1Scale->GetViewShape().GetDimNum() != THREE_DIMS) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x1Scale",
@@ -154,6 +153,13 @@ static bool Check3DScaleShape(const aclTensor *x1, const aclTensor *x2, const ac
                                                  "The shape of x2Scale must be 3D.");
         return false;
     }
+    return true;
+}
+
+static bool Check3DScaleShape(const aclTensor *x1, const aclTensor *x2, const aclTensor *x1Scale,
+                              const aclTensor *x2Scale, bool transposeX2)
+{
+    CHECK_RET(CheckScaleDimensions(x1Scale, x2Scale), false);
     auto mVal = x1->GetViewShape().GetDim(0);
     auto nVal = transposeX2 ? x2->GetViewShape().GetDim(0) : x2->GetViewShape().GetDim(1);
     auto x1ScaleMVal = x1Scale->GetViewShape().GetDim(0);
@@ -469,17 +475,8 @@ extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
 extern "C" void *NnopbaseGetUserHandle(void *executor);
 
 // 两段式接口
-aclnnStatus aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize(
-    const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional, const aclTensor *x1Scale,
-    const aclTensor *x2Scale, const aclTensor *commScaleOptional, const aclTensor *x1OffsetOptional,
-    const aclTensor *x2OffsetOptional, const aclIntArray *alltoAllAxesOptional, const char *group, const char *commMode,
-    int64_t x1QuantMode, int64_t x2QuantMode, int64_t commQuantMode, int64_t commQuantDtype, int64_t groupSize,
-    bool transposeX1, bool transposeX2, const aclTensor *output, uint64_t *workspaceSize, aclOpExecutor **executor)
+static aclnnStatus PrepareX2(const aclTensor *x2, const aclTensor *&transX2, bool &transposeX2)
 {
-    // 处理非连续Tensor，目前只有支持转置的x2涉及该处理
-    aclnnStatus checkX2Ret = CheckX2Valid("quant_matmul_allto_all", x2);
-    CHECK_RET(checkX2Ret == ACLNN_SUCCESS, checkX2Ret); // 先检查x2是否合法，避免非法操作
-    auto transX2 = x2;                                  // 复制一个x2
     if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) { // 只有当非连续时，才会涉及到转连续等情况
         bool notContiguous =
             IsTransposeLastTwoDims(x2); // notContiguous标识x2是否是非连续的，通常在pytorch经过.t()会导致x2非连续
@@ -507,6 +504,37 @@ aclnnStatus aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize(
             return ACLNN_ERR_PARAM_INVALID;
         });
     }
+    return ACLNN_SUCCESS;
+}
+
+static void FinishQuantMatmulAlltoAllWorkspace(aclnnStatus ret, uint8_t commModeEnum, aclOpExecutor **executor)
+{
+    OP_LOGD("QuantMatmulAlltoAll, aclnnInnerGetWorkspaceSize ret %d.", ret);
+    if (ret != ACLNN_SUCCESS) {
+        OP_LOGE_LIBOPAPI_REPORT(
+            "aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize",
+            "This is an error in launch aicore, aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize interface call failed.");
+    }
+
+    if (ret == ACLNN_SUCCESS && executor != nullptr && *executor != nullptr) {
+        void *arg = reinterpret_cast<void *>(static_cast<uintptr_t>(commModeEnum));
+        NnopbaseSetUserHandle(*executor, arg);
+    }
+}
+
+aclnnStatus aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize(
+    const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional, const aclTensor *x1Scale,
+    const aclTensor *x2Scale, const aclTensor *commScaleOptional, const aclTensor *x1OffsetOptional,
+    const aclTensor *x2OffsetOptional, const aclIntArray *alltoAllAxesOptional, const char *group, const char *commMode,
+    int64_t x1QuantMode, int64_t x2QuantMode, int64_t commQuantMode, int64_t commQuantDtype, int64_t groupSize,
+    bool transposeX1, bool transposeX2, const aclTensor *output, uint64_t *workspaceSize, aclOpExecutor **executor)
+{
+    // 处理非连续Tensor，目前只有支持转置的x2涉及该处理
+    aclnnStatus checkX2Ret = CheckX2Valid("quant_matmul_allto_all", x2);
+    CHECK_RET(checkX2Ret == ACLNN_SUCCESS, checkX2Ret); // 先检查x2是否合法，避免非法操作
+    auto transX2 = x2;                                  // 复制一个x2
+    aclnnStatus prepareX2Ret = PrepareX2(x2, transX2, transposeX2);
+    CHECK_RET(prepareX2Ret == ACLNN_SUCCESS, prepareX2Ret);
     aclnnStatus retParam =
         CheckAndHandleParams(x1, transX2, biasOptional, x1Scale, x2Scale, group, commMode, alltoAllAxesOptional,
                              x1QuantMode, x2QuantMode, transposeX1, transposeX2, output);
@@ -537,17 +565,7 @@ aclnnStatus aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize(
         x1, transX2, biasOptional, x1Scale, x2Scale, commScaleOptional, x1OffsetOptional, x2OffsetOptional,
         str_group.data(), worldSize, alltoAllAxesOptional, enumYDtype, x1QuantMode, x2QuantMode, commQuantMode,
         commQuantDtype, transposeX1, transposeX2, groupSize, str_commMode.data(), out, workspaceSize, executor);
-    OP_LOGD("QuantMatmulAlltoAll, aclnnInnerGetWorkspaceSize ret %d.", ret);
-    if (ret != ACLNN_SUCCESS) {
-        OP_LOGE_LIBOPAPI_REPORT(
-            "aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize",
-            "This is an error in launch aicore, aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize interface call failed.");
-    }
-
-    if (ret == ACLNN_SUCCESS && *executor != nullptr) {
-        void *arg = reinterpret_cast<void *>(static_cast<uintptr_t>(commModeEnum));
-        NnopbaseSetUserHandle(*executor, arg);
-    }
+    FinishQuantMatmulAlltoAllWorkspace(ret, commModeEnum, executor);
 
     return ret;
 }

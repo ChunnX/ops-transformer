@@ -111,6 +111,106 @@ public:
     CATLASS_DEVICE
     AlltoAllMatmulKernel() {}
 
+    struct AicBuffers {
+        AscendC::GlobalTensor<ElementA> &gmA;
+        AscendC::GlobalTensor<ElementB> &gmB;
+        AscendC::GlobalTensor<ElementC> &gmC;
+        AscendC::GlobalTensor<ElementBias> &gmBias;
+        BlockMmad &blockMmad;
+    };
+
+    CATLASS_DEVICE void ProcessAicRound(AicBuffers &buffers, Params const &params, int32_t coreIdx, int32_t coreNum,
+                                        int32_t mLoops, uint32_t nLoops, int64_t pingPongBlockSize, int32_t commCount,
+                                        int32_t commIdx)
+    {
+        uint64_t flagIdx = commIdx % params.pipeDepth;
+        int64_t peerMemBlockSt = static_cast<int64_t>(flagIdx) * pingPongBlockSize;
+
+        uint32_t actualPValue = params.pValue;
+        int32_t mLoopStart = commIdx * params.pValue;
+        int32_t blockMSize = actualPValue * L1TileShape::M;
+
+        if (commIdx == commCount - 1) {
+            actualPValue = mLoops - commIdx * params.pValue;
+            blockMSize = params.problemShape.m() - mLoopStart * L1TileShape::M;
+        }
+
+        WaitEvent(flagIdx);
+
+        int32_t actualLoopNum = actualPValue * nLoops;
+
+        for (int32_t loopOffset = 0; loopOffset < actualLoopNum; loopOffset++) {
+            int32_t loopIdx = mLoopStart * nLoops + loopOffset;
+
+            if (loopIdx % coreNum != coreIdx) {
+                continue;
+            }
+
+            ProcessAicBlock(buffers, params, loopOffset, actualPValue, nLoops, blockMSize, peerMemBlockSt, mLoopStart,
+                            coreNum, actualLoopNum);
+        }
+        AscendC::PipeBarrier<PIPE_ALL>();
+        AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(flagIdx);
+    }
+
+    CATLASS_DEVICE void ProcessAicBlock(AicBuffers &buffers, Params const &params, int32_t loopOffset,
+                                        uint32_t actualPValue, uint32_t nLoops, int32_t blockMSize,
+                                        int64_t peerMemBlockSt, int32_t mLoopStart, int32_t coreNum,
+                                        int32_t actualLoopNum)
+    {
+        GemmCoord blockIdxCoord =
+            GetBlockIdCoord(loopOffset, actualPValue, nLoops, params.swizzlDirect, params.swizzlCount);
+        GemmCoord blockLocCoord = GetBlockLocCoord(blockIdxCoord);
+        GemmCoord blockSizeCoord = GetBlockSizeCoord(blockIdxCoord, blockLocCoord, actualPValue, blockMSize, nLoops,
+                                                     params.problemShape.n(), params.problemShape.k());
+
+        MatrixCoord offsetA{blockLocCoord.m(), blockLocCoord.k()};
+        MatrixCoord offsetB{blockLocCoord.k(), blockLocCoord.n()};
+        MatrixCoord offsetC{blockLocCoord.m(), blockLocCoord.n()};
+
+        int64_t gmOffsetA = params.layoutA.GetOffset(offsetA) + peerMemBlockSt;
+        int64_t gmOffsetB = params.layoutB.GetOffset(offsetB);
+        int64_t gmOffsetC = static_cast<int64_t>(mLoopStart) * L1TileShape::M * params.problemShape.n() +
+                            params.layoutC.GetOffset(offsetC);
+
+        if constexpr (HasBias) {
+            buffers.blockMmad(buffers.gmA[gmOffsetA], params.layoutA, buffers.gmB[gmOffsetB], params.layoutB,
+                              buffers.gmC[gmOffsetC], params.layoutC, buffers.gmBias[blockLocCoord.n()],
+                              blockSizeCoord);
+        } else {
+            ProcessNoBiasBlock(buffers, params, loopOffset, coreNum, actualLoopNum, actualPValue, nLoops, blockMSize,
+                               peerMemBlockSt, blockSizeCoord, gmOffsetA, gmOffsetB, gmOffsetC);
+        }
+    }
+
+    CATLASS_DEVICE void ProcessNoBiasBlock(AicBuffers &buffers, Params const &params, int32_t loopOffset,
+                                           int32_t coreNum, int32_t actualLoopNum, uint32_t actualPValue,
+                                           uint32_t nLoops, int32_t blockMSize, int64_t peerMemBlockSt,
+                                           GemmCoord &blockSizeCoord, int64_t gmOffsetA, int64_t gmOffsetB,
+                                           int64_t gmOffsetC)
+    {
+        bool isFirstBlock = (loopOffset < coreNum);
+        bool hasNextBlock = false;
+        GemmCoord nextBlockIdCoord;
+        GemmCoord nextBlockLocCoord;
+        GemmCoord nextBlockSizeCoord;
+        if (loopOffset + coreNum < actualLoopNum) {
+            hasNextBlock = true;
+            nextBlockIdCoord =
+                GetBlockIdCoord(loopOffset + coreNum, actualPValue, nLoops, params.swizzlDirect, params.swizzlCount);
+            nextBlockLocCoord = GetBlockLocCoord(nextBlockIdCoord);
+            nextBlockSizeCoord = GetBlockSizeCoord(nextBlockIdCoord, nextBlockLocCoord, actualPValue, blockMSize,
+                                                   nLoops, params.problemShape.n(), params.problemShape.k());
+        }
+        MatrixCoord offsetNextA{nextBlockLocCoord.m(), nextBlockLocCoord.k()};
+        MatrixCoord offsetNextB{nextBlockLocCoord.k(), nextBlockLocCoord.n()};
+        int64_t gmOffsetNextA = params.layoutA.GetOffset(offsetNextA) + peerMemBlockSt;
+        int64_t gmOffsetNextB = params.layoutB.GetOffset(offsetNextB);
+        buffers.blockMmad(buffers.gmA[gmOffsetA], params.layoutA, buffers.gmB[gmOffsetB], params.layoutB,
+                          buffers.gmC[gmOffsetC], params.layoutC, buffers.gmA[gmOffsetNextA],
+                          buffers.gmB[gmOffsetNextB], blockSizeCoord, nextBlockSizeCoord, isFirstBlock, hasNextBlock);
+    }
+
     template <int32_t CORE_TYPE = g_coreType>
     CATLASS_DEVICE void operator()(Params const &params);
 
@@ -201,74 +301,9 @@ public:
 
         int32_t commCount = (mLoops + params.pValue - 1) / params.pValue;
 
+        AicBuffers buffers{gmA, gmB, gmC, gmBias, blockMmad};
         for (int32_t commIdx = 0; commIdx < commCount; commIdx++) {
-            uint64_t flagIdx = commIdx % params.pipeDepth;
-            int64_t peerMemBlockSt = static_cast<int64_t>(flagIdx) * pingPongBlockSize;
-
-            uint32_t actualPValue = params.pValue;
-            int32_t mLoopStart = commIdx * params.pValue;
-            int32_t blockMSize = actualPValue * L1TileShape::M;
-
-            if (commIdx == commCount - 1) {
-                actualPValue = mLoops - commIdx * params.pValue;
-                blockMSize = params.problemShape.m() - mLoopStart * L1TileShape::M;
-            }
-
-            WaitEvent(flagIdx);
-
-            int32_t actualLoopNum = actualPValue * nLoops;
-
-            for (int32_t loopOffset = 0; loopOffset < actualLoopNum; loopOffset++) {
-                int32_t loopIdx = mLoopStart * nLoops + loopOffset;
-
-                if (loopIdx % coreNum != coreIdx) {
-                    continue;
-                }
-
-                GemmCoord blockIdxCoord =
-                    GetBlockIdCoord(loopOffset, actualPValue, nLoops, params.swizzlDirect, params.swizzlCount);
-                GemmCoord blockLocCoord = GetBlockLocCoord(blockIdxCoord);
-                GemmCoord blockSizeCoord = GetBlockSizeCoord(blockIdxCoord, blockLocCoord, actualPValue, blockMSize,
-                                                             nLoops, params.problemShape.n(), params.problemShape.k());
-
-                MatrixCoord offsetA{blockLocCoord.m(), blockLocCoord.k()};
-                MatrixCoord offsetB{blockLocCoord.k(), blockLocCoord.n()};
-                MatrixCoord offsetC{blockLocCoord.m(), blockLocCoord.n()};
-
-                int64_t gmOffsetA = params.layoutA.GetOffset(offsetA) + peerMemBlockSt;
-                int64_t gmOffsetB = params.layoutB.GetOffset(offsetB);
-                int64_t gmOffsetC = static_cast<int64_t>(mLoopStart) * L1TileShape::M * params.problemShape.n() +
-                                    params.layoutC.GetOffset(offsetC);
-
-                if constexpr (HasBias) {
-                    blockMmad(gmA[gmOffsetA], params.layoutA, gmB[gmOffsetB], params.layoutB, gmC[gmOffsetC],
-                              params.layoutC, gmBias[blockLocCoord.n()], blockSizeCoord);
-                } else {
-                    bool isFirstBlock = (loopOffset < coreNum);
-                    bool hasNextBlock = false;
-                    GemmCoord nextBlockIdCoord;
-                    GemmCoord nextBlockLocCoord;
-                    GemmCoord nextBlockSizeCoord;
-                    if (loopOffset + coreNum < actualLoopNum) {
-                        hasNextBlock = true;
-                        nextBlockIdCoord = GetBlockIdCoord(loopOffset + coreNum, actualPValue, nLoops,
-                                                           params.swizzlDirect, params.swizzlCount);
-                        nextBlockLocCoord = GetBlockLocCoord(nextBlockIdCoord);
-                        nextBlockSizeCoord =
-                            GetBlockSizeCoord(nextBlockIdCoord, nextBlockLocCoord, actualPValue, blockMSize, nLoops,
-                                              params.problemShape.n(), params.problemShape.k());
-                    }
-                    MatrixCoord offsetNextA{nextBlockLocCoord.m(), nextBlockLocCoord.k()};
-                    MatrixCoord offsetNextB{nextBlockLocCoord.k(), nextBlockLocCoord.n()};
-                    int64_t gmOffsetNextA = params.layoutA.GetOffset(offsetNextA) + peerMemBlockSt;
-                    int64_t gmOffsetNextB = params.layoutB.GetOffset(offsetNextB);
-                    blockMmad(gmA[gmOffsetA], params.layoutA, gmB[gmOffsetB], params.layoutB, gmC[gmOffsetC],
-                              params.layoutC, gmA[gmOffsetNextA], gmB[gmOffsetNextB], blockSizeCoord,
-                              nextBlockSizeCoord, isFirstBlock, hasNextBlock);
-                }
-            }
-            AscendC::PipeBarrier<PIPE_ALL>();
-            AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(flagIdx);
+            ProcessAicRound(buffers, params, coreIdx, coreNum, mLoops, nLoops, pingPongBlockSize, commCount, commIdx);
         }
     }
 

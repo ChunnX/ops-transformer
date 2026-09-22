@@ -60,6 +60,48 @@ def _load_framework():
 # ---------------------------------------------------------------------------
 
 
+def _collect_rank_chunks(
+    device_ids,
+    thread_contexts,
+    torch,
+    to_torch_f32,
+    t_x1,
+    t_x2,
+    mm_m,
+    world_size,
+    chunk_n,
+    target_idx,
+    all_to_all_results,
+):
+    for src_did in device_ids:
+        src_tc = thread_contexts[src_did]
+        src_x1 = src_tc.flatten_tensors[0]
+        src_x2 = src_tc.flatten_tensors[1]
+        src_bias = (
+            src_tc.flatten_tensors[2] if len(src_tc.flatten_tensors) > 2 else None
+        )
+        if (
+            src_bias is not None
+            and isinstance(src_bias, torch.Tensor)
+            and src_bias.numel() == 0
+        ):
+            src_bias = None
+        s_input = to_torch_f32(src_x1)
+        if t_x1:
+            s_input = s_input.t().contiguous()
+        s_weight = to_torch_f32(src_x2)
+        if t_x2:
+            s_weight = s_weight.t().contiguous()
+        s_mm = torch.matmul(s_input, s_weight)
+        if src_bias is not None:
+            s_mm = s_mm + to_torch_f32(src_bias)
+        s_chunks = s_mm.view(mm_m, world_size, chunk_n).permute(1, 0, 2).contiguous()
+        s_chunks = s_chunks.view(world_size, mm_m * chunk_n)
+        send_chunks = s_chunks.chunk(world_size, dim=0)
+        all_to_all_results.append(send_chunks[target_idx].clone())
+        del s_mm, s_chunks, send_chunks
+
+
 def matmul_allto_all_cpu_golden(thread_contexts, device_ids, world_size):
     """Compute per-rank golden dict for MatmulAlltoAll.
 
@@ -85,35 +127,19 @@ def matmul_allto_all_cpu_golden(thread_contexts, device_ids, world_size):
     for target_did in device_ids:
         target_idx = list(device_ids).index(target_did)
         all_to_all_results = []
-        for src_did in device_ids:
-            src_tc = thread_contexts[src_did]
-            src_x1 = src_tc.flatten_tensors[0]
-            src_x2 = src_tc.flatten_tensors[1]
-            src_bias = (
-                src_tc.flatten_tensors[2] if len(src_tc.flatten_tensors) > 2 else None
-            )
-            if (
-                src_bias is not None
-                and isinstance(src_bias, torch.Tensor)
-                and src_bias.numel() == 0
-            ):
-                src_bias = None
-            s_input = to_torch_f32(src_x1)
-            if t_x1:
-                s_input = s_input.t().contiguous()
-            s_weight = to_torch_f32(src_x2)
-            if t_x2:
-                s_weight = s_weight.t().contiguous()
-            s_mm = torch.matmul(s_input, s_weight)
-            if src_bias is not None:
-                s_mm = s_mm + to_torch_f32(src_bias)
-            s_chunks = (
-                s_mm.view(mm_m, world_size, chunk_n).permute(1, 0, 2).contiguous()
-            )
-            s_chunks = s_chunks.view(world_size, mm_m * chunk_n)
-            send_chunks = s_chunks.chunk(world_size, dim=0)
-            all_to_all_results.append(send_chunks[target_idx].clone())
-            del s_mm, s_chunks, send_chunks
+        _collect_rank_chunks(
+            device_ids,
+            thread_contexts,
+            torch,
+            to_torch_f32,
+            t_x1,
+            t_x2,
+            mm_m,
+            world_size,
+            chunk_n,
+            target_idx,
+            all_to_all_results,
+        )
         received = torch.cat(all_to_all_results, dim=0)
         received = received.reshape(-1, chunk_n).contiguous()
         rank_goldens[target_did] = {"main": received}
@@ -170,6 +196,55 @@ def _next_port():
         return port
 
 
+def _run_cascade_workers(
+    subprocess,
+    sys,
+    n,
+    worker_script,
+    port,
+    input_path,
+    result_path,
+    error_path,
+    transpose_x1,
+    transpose_x2,
+    mm_m,
+    chunk_n,
+):
+    procs = []
+    for rank in range(n):
+        cmd = [
+            sys.executable,
+            worker_script,
+            str(rank),
+            str(n),
+            str(port),
+            input_path,
+            result_path,
+            error_path,
+            str(transpose_x1),
+            str(transpose_x2),
+            str(mm_m),
+            str(chunk_n),
+        ]
+        p = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        procs.append(p)
+    for p in procs:
+        p.wait()
+    error_msg = ""
+    if os.path.exists(error_path):
+        with open(error_path) as f:
+            error_msg = f.read()
+    for p in procs:
+        if p.returncode != 0:
+            stderr = (
+                p.stderr.read().decode(errors="replace")[-2000:] if p.stderr else ""
+            )
+            raise RuntimeError(
+                f"cascade worker exited {p.returncode}\n{error_msg}\n{stderr}"
+            )
+    return error_msg
+
+
 def run_matmul_alltoall_cascade(
     thread_contexts, device_ids, transpose_x1=False, transpose_x2=False
 ):
@@ -195,38 +270,20 @@ def run_matmul_alltoall_cascade(
         result_path = os.path.join(tmpdir, "results.npz")
         error_path = os.path.join(tmpdir, "errors.log")
         _save_inputs_per_rank(thread_contexts, device_ids, input_path)
-        procs = []
-        for rank in range(n):
-            cmd = [
-                sys.executable,
-                worker_script,
-                str(rank),
-                str(n),
-                str(port),
-                input_path,
-                result_path,
-                error_path,
-                str(transpose_x1),
-                str(transpose_x2),
-                str(mm_m),
-                str(chunk_n),
-            ]
-            p = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-            procs.append(p)
-        for p in procs:
-            p.wait()
-        error_msg = ""
-        if os.path.exists(error_path):
-            with open(error_path) as f:
-                error_msg = f.read()
-        for p in procs:
-            if p.returncode != 0:
-                stderr = (
-                    p.stderr.read().decode(errors="replace")[-2000:] if p.stderr else ""
-                )
-                raise RuntimeError(
-                    f"cascade worker exited {p.returncode}\n{error_msg}\n{stderr}"
-                )
+        error_msg = _run_cascade_workers(
+            subprocess,
+            sys,
+            n,
+            worker_script,
+            port,
+            input_path,
+            result_path,
+            error_path,
+            transpose_x1,
+            transpose_x2,
+            mm_m,
+            chunk_n,
+        )
         outs = {}
         for did in device_ids:
             rank_file = f"{result_path}.did{did}.npz"

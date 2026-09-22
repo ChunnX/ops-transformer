@@ -398,6 +398,24 @@ static bool CheckFormat(const aclTensor *x1, const aclTensor *x2, const aclTenso
 }
 
 // 兼容性处理，非ND格式转换为ND格式
+static bool ReFormatOutputs(const aclTensor *alltoAllOutOptional, const aclTensor *output)
+{
+    if (alltoAllOutOptional != nullptr) {
+        if (alltoAllOutOptional->GetStorageFormat() != op::Format::FORMAT_ND) {
+            OP_LOGW("alltoallout origin format is %s.",
+                    op::ToString(alltoAllOutOptional->GetStorageFormat()).GetString());
+            alltoAllOutOptional = l0op::ReFormat(alltoAllOutOptional, op::Format::FORMAT_ND);
+            CHECK_RET(alltoAllOutOptional != nullptr, false);
+        }
+    }
+    if (output->GetStorageFormat() != op::Format::FORMAT_ND) {
+        OP_LOGW("output origin format is %s.", op::ToString(output->GetStorageFormat()).GetString());
+        output = l0op::ReFormat(output, op::Format::FORMAT_ND);
+        CHECK_RET(output != nullptr, false);
+    }
+    return true;
+}
+
 static bool ReFormatNotND(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
                           const aclTensor *x1ScaleOptional, const aclTensor *x2Scale, const aclTensor *output,
                           const aclTensor *alltoAllOutOptional)
@@ -433,20 +451,7 @@ static bool ReFormatNotND(const aclTensor *x1, const aclTensor *x2, const aclTen
         x2Scale = l0op::ReFormat(x2Scale, op::Format::FORMAT_ND);
         CHECK_RET(x2Scale != nullptr, false);
     }
-    if (alltoAllOutOptional != nullptr) {
-        if (alltoAllOutOptional->GetStorageFormat() != op::Format::FORMAT_ND) {
-            OP_LOGW("alltoallout origin format is %s.",
-                    op::ToString(alltoAllOutOptional->GetStorageFormat()).GetString());
-            alltoAllOutOptional = l0op::ReFormat(alltoAllOutOptional, op::Format::FORMAT_ND);
-            CHECK_RET(alltoAllOutOptional != nullptr, false);
-        }
-    }
-    if (output->GetStorageFormat() != op::Format::FORMAT_ND) {
-        OP_LOGW("output origin format is %s.", op::ToString(output->GetStorageFormat()).GetString());
-        output = l0op::ReFormat(output, op::Format::FORMAT_ND);
-        CHECK_RET(output != nullptr, false);
-    }
-    return true;
+    return ReFormatOutputs(alltoAllOutOptional, output);
 }
 
 static aclnnStatus CheckAndHandleParams(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
@@ -552,18 +557,8 @@ extern "C" aclnnStatus InnerAlltoAllQuantMatmulGetWorkspaceSize(
 }
 
 // 两段式接口
-extern "C" aclnnStatus aclnnAlltoAllQuantMatmulBaseGetWorkspaceSize(
-    const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional, const aclTensor *x1ScaleOptional,
-    const aclTensor *x2Scale, const aclTensor *commScaleOptional, const aclTensor *x1OffsetOptional,
-    const aclTensor *x2OffsetOptional, const char *group, const char *commMode, const aclIntArray *alltoAllAxesOptional,
-    int64_t x1QuantMode, int64_t x2QuantMode, int64_t commQuantMode, int64_t commQuantDtype, int64_t x1QuantDtype,
-    int64_t groupSize, bool transposeX1, bool transposeX2, const aclTensor *output,
-    const aclTensor *alltoAllOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
+static aclnnStatus PrepareX2(const aclTensor *x2, const aclTensor *&transX2, bool &transposeX2)
 {
-    // 处理非连续Tensor，目前只有支持转置的x2涉及该处理
-    aclnnStatus checkX2Ret = CheckX2Valid("allto_all_quant_matmul", x2);
-    CHECK_RET(checkX2Ret == ACLNN_SUCCESS, checkX2Ret); // 先检查x2是否合法，避免非法操作
-    auto transX2 = x2;                                  // 复制一个x2
     if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) { // 只有当非连续时，才会涉及到转连续等情况
         bool notContiguous =
             IsTransposeLastTwoDims(x2); // notContiguous标识x2是否是非连续的，通常在pytorch经过.t()会导致x2非连续
@@ -589,6 +584,23 @@ extern "C" aclnnStatus aclnnAlltoAllQuantMatmulBaseGetWorkspaceSize(
             return ACLNN_ERR_PARAM_INVALID;
         });
     }
+    return ACLNN_SUCCESS;
+}
+
+extern "C" aclnnStatus aclnnAlltoAllQuantMatmulBaseGetWorkspaceSize(
+    const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional, const aclTensor *x1ScaleOptional,
+    const aclTensor *x2Scale, const aclTensor *commScaleOptional, const aclTensor *x1OffsetOptional,
+    const aclTensor *x2OffsetOptional, const char *group, const char *commMode, const aclIntArray *alltoAllAxesOptional,
+    int64_t x1QuantMode, int64_t x2QuantMode, int64_t commQuantMode, int64_t commQuantDtype, int64_t x1QuantDtype,
+    int64_t groupSize, bool transposeX1, bool transposeX2, const aclTensor *output,
+    const aclTensor *alltoAllOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
+{
+    // 处理非连续Tensor，目前只有支持转置的x2涉及该处理
+    aclnnStatus checkX2Ret = CheckX2Valid("allto_all_quant_matmul", x2);
+    CHECK_RET(checkX2Ret == ACLNN_SUCCESS, checkX2Ret); // 先检查x2是否合法，避免非法操作
+    auto transX2 = x2;                                  // 复制一个x2
+    aclnnStatus prepareX2Ret = PrepareX2(x2, transX2, transposeX2);
+    CHECK_RET(prepareX2Ret == ACLNN_SUCCESS, prepareX2Ret);
     // 只在DAV_2201架构上对x1和x2进行int32到int4的转换预处理
     if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_2201 && executor != nullptr) {
         auto uniqueExecutor = CREATE_EXECUTOR();

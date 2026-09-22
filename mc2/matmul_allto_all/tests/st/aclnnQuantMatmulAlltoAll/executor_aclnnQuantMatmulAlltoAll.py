@@ -65,6 +65,98 @@ class QuantMatmulAlltoAll(BaseApi):
                     + target_rank,  # 通信标签（避免数据混淆）
                 )
 
+    def _cpu_golden(
+        self,
+        x,
+        weight,
+        bias,
+        pertoken_scale,
+        scale,
+        transB,
+        is_dequant,
+        output_type,
+        world_size,
+    ):
+        """
+        ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓ CPU  真值 ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓
+        """
+        x = x.cpu().to(torch.float32)
+        weight = weight.cpu().to(torch.float32)
+        bias = bias.cpu().to(torch.float32)
+        if transB:
+            weight = weight.T.contiguous()
+        if is_dequant:
+            output = torch.matmul(x, weight)
+            scale_todim = torch.unsqueeze(scale.cpu(), 0)
+            bias_todim = torch.unsqueeze(bias, 0)
+            perTokenScale_todim = torch.unsqueeze(pertoken_scale.cpu(), 1)
+            output = (output * scale_todim * perTokenScale_todim + bias_todim).to(
+                output_type
+            )
+        else:
+            output = (torch.matmul(x, weight) + bias).to(output_type)
+
+        # 1. split to world_size times chunk, with each (m, n/world_size)
+        send_chunks = list(
+            torch.chunk(output, world_size, dim=1)
+        )  # (world_size, m, n/world_size)
+        send_chunks = [c.contiguous() for c in send_chunks]
+        # 2. recv_chunks shape: (world_size, m, n/world_size)
+        recv_chunks = [
+            torch.empty_like(send_chunks[0], device=output.device, dtype=output.dtype)
+            for _ in range(world_size)
+        ]
+        # 3. alltoall
+        self.manual_all_to_all(recv_chunks, send_chunks)
+        # 4. output shape: (m*world_size, n/world_size)
+        y = torch.cat(recv_chunks, dim=0)
+
+        return y
+
+    def _npu_golden(
+        self,
+        x,
+        weight,
+        bias,
+        pertoken_scale,
+        scale,
+        transB,
+        is_dequant,
+        output_type,
+        world_size,
+    ):
+        """
+        ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓ NPU 小算子级联标杆 ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓
+        """
+        if transB:
+            weight = weight.T.contiguous()
+        if is_dequant:  # 量化部分
+            output = torch_npu.npu_quant_matmul(
+                x1=x,
+                x2=weight,
+                scale=scale,
+                pertoken_scale=pertoken_scale,
+                bias=bias,
+                output_dtype=output_type,
+            )
+        else:
+            output = (torch.matmul(x, weight) + bias).to(output_type)
+
+        # 1. split to world_size times chunk, with each (m, n/world_size)
+        send_chunks = list(torch.chunk(output, world_size, dim=1))
+        send_chunks = [c.contiguous() for c in send_chunks]
+        # 2. output shape: (m*world_size, n/world_size)
+        recv_chunks = [
+            torch.empty_like(send_chunks[0], device=x.device, dtype=output_type)
+            for _ in range(world_size)
+        ]
+        # 3. alltoall
+        dist.all_to_all(recv_chunks, send_chunks)
+        # 4. output
+        y = torch.cat(recv_chunks, dim=0)
+
+        return y
+
     def __call__(self, input_data: InputDataset, with_output: bool = False):
         rank_id = self.dist_task_info.rank
         world_size = self.dist_task_info.world_size
@@ -83,76 +175,30 @@ class QuantMatmulAlltoAll(BaseApi):
             )
 
         if self.name == "cpu":
-            """
-            ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓ CPU  真值 ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓
-            """
-            x = x.cpu().to(torch.float32)
-            weight = weight.cpu().to(torch.float32)
-            bias = bias.cpu().to(torch.float32)
-            if transB:
-                weight = weight.T.contiguous()
-            if is_dequant:
-                output = torch.matmul(x, weight)
-                scale_todim = torch.unsqueeze(scale.cpu(), 0)
-                bias_todim = torch.unsqueeze(bias, 0)
-                perTokenScale_todim = torch.unsqueeze(pertoken_scale.cpu(), 1)
-                output = (output * scale_todim * perTokenScale_todim + bias_todim).to(
-                    output_type
-                )
-            else:
-                output = (torch.matmul(x, weight) + bias).to(output_type)
-
-            # 1. split to world_size times chunk, with each (m, n/world_size)
-            send_chunks = list(
-                torch.chunk(output, world_size, dim=1)
-            )  # (world_size, m, n/world_size)
-            send_chunks = [c.contiguous() for c in send_chunks]
-            # 2. recv_chunks shape: (world_size, m, n/world_size)
-            recv_chunks = [
-                torch.empty_like(
-                    send_chunks[0], device=output.device, dtype=output.dtype
-                )
-                for _ in range(world_size)
-            ]
-            # 3. alltoall
-            self.manual_all_to_all(recv_chunks, send_chunks)
-            # 4. output shape: (m*world_size, n/world_size)
-            y = torch.cat(recv_chunks, dim=0)
-
-            return y
+            return self._cpu_golden(
+                x,
+                weight,
+                bias,
+                pertoken_scale,
+                scale,
+                transB,
+                is_dequant,
+                output_type,
+                world_size,
+            )
 
         if self.name == "npu_bm":
-            """
-            ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓ NPU 小算子级联标杆 ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓
-            """
-            if transB:
-                weight = weight.T.contiguous()
-            if is_dequant:  # 量化部分
-                output = torch_npu.npu_quant_matmul(
-                    x1=x,
-                    x2=weight,
-                    scale=scale,
-                    pertoken_scale=pertoken_scale,
-                    bias=bias,
-                    output_dtype=output_type,
-                )
-            else:
-                output = (torch.matmul(x, weight) + bias).to(output_type)
-
-            # 1. split to world_size times chunk, with each (m, n/world_size)
-            send_chunks = list(torch.chunk(output, world_size, dim=1))
-            send_chunks = [c.contiguous() for c in send_chunks]
-            # 2. output shape: (m*world_size, n/world_size)
-            recv_chunks = [
-                torch.empty_like(send_chunks[0], device=x.device, dtype=output_type)
-                for _ in range(world_size)
-            ]
-            # 3. alltoall
-            dist.all_to_all(recv_chunks, send_chunks)
-            # 4. output
-            y = torch.cat(recv_chunks, dim=0)
-
-            return y
+            return self._npu_golden(
+                x,
+                weight,
+                bias,
+                pertoken_scale,
+                scale,
+                transB,
+                is_dequant,
+                output_type,
+                world_size,
+            )
 
     @staticmethod
     def get_hcomm_info(rank_id):

@@ -66,6 +66,35 @@ def _load_inputs_for_rank(input_path, did):
     return tensors
 
 
+def _compute_and_save(
+    rank, world_size, input_path, result_path, transpose_x1, transpose_x2, mm_m, chunk_n
+):
+    tensors = _load_inputs_for_rank(input_path, rank)
+    x1 = tensors[0].npu()
+    x2 = tensors[1].npu()
+    bias = (
+        tensors[2].npu()
+        if 2 in tensors and tensors[2] is not None and tensors[2].numel() > 0
+        else None
+    )
+    input_mat = x1.t().contiguous() if transpose_x1 else x1
+    weight_mat = x2.t().contiguous() if transpose_x2 else x2
+    w_dtype_str = str(weight_mat.dtype).replace("torch.", "")
+    if any(d in w_dtype_str for d in ("float8", "hifloat8", "hif8", "fp8", "int8")):
+        mm_out = torch.matmul(input_mat.float(), weight_mat.float())
+    else:
+        mm_out = torch.matmul(input_mat, weight_mat)
+    if bias is not None:
+        mm_out = mm_out + bias
+    per_out = mm_out.view(mm_m, world_size, chunk_n).permute(1, 0, 2).contiguous()
+    alltoall_out = torch.empty_like(per_out)
+    dist.all_to_all_single(alltoall_out, per_out)
+    torch.npu.synchronize()
+    out_cpu = alltoall_out.reshape(mm_m * world_size, chunk_n).contiguous().cpu()
+    rank_file = f"{result_path}.did{rank}.npz"
+    np.savez(rank_file, **{f"cascade_did{rank}": out_cpu.numpy()})
+
+
 def main():
     (
         rank,
@@ -97,30 +126,16 @@ def main():
             init_method=f"tcp://127.0.0.1:{port}",
             timeout=datetime.timedelta(seconds=3600),
         )
-        tensors = _load_inputs_for_rank(input_path, rank)
-        x1 = tensors[0].npu()
-        x2 = tensors[1].npu()
-        bias = (
-            tensors[2].npu()
-            if 2 in tensors and tensors[2] is not None and tensors[2].numel() > 0
-            else None
+        _compute_and_save(
+            rank,
+            world_size,
+            input_path,
+            result_path,
+            transpose_x1,
+            transpose_x2,
+            mm_m,
+            chunk_n,
         )
-        input_mat = x1.t().contiguous() if transpose_x1 else x1
-        weight_mat = x2.t().contiguous() if transpose_x2 else x2
-        w_dtype_str = str(weight_mat.dtype).replace("torch.", "")
-        if any(d in w_dtype_str for d in ("float8", "hifloat8", "hif8", "fp8", "int8")):
-            mm_out = torch.matmul(input_mat.float(), weight_mat.float())
-        else:
-            mm_out = torch.matmul(input_mat, weight_mat)
-        if bias is not None:
-            mm_out = mm_out + bias
-        per_out = mm_out.view(mm_m, world_size, chunk_n).permute(1, 0, 2).contiguous()
-        alltoall_out = torch.empty_like(per_out)
-        dist.all_to_all_single(alltoall_out, per_out)
-        torch.npu.synchronize()
-        out_cpu = alltoall_out.reshape(mm_m * world_size, chunk_n).contiguous().cpu()
-        rank_file = f"{result_path}.did{rank}.npz"
-        np.savez(rank_file, **{f"cascade_did{rank}": out_cpu.numpy()})
         dist.destroy_process_group()
     except Exception:
         tb = traceback.format_exc()

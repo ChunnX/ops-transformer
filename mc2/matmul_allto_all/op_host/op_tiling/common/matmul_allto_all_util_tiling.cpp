@@ -152,6 +152,30 @@ ge::graphStatus MatmulAlltoAllTilingUtil::CheckAttrsInfo(const gert::TilingConte
  * @param context: 框架根据input，output，attrs等信息生成tiling需要的context
  * @return
  */
+static ge::graphStatus CheckAlltoAllOutputFormat(const gert::TilingContext *context, const char *opName)
+{
+    // alltoallout:optional
+    const gert::RuntimeAttrs *attrs = context->GetAttrs();
+    bool allToAllOutFlag = false;
+    // 先检查属性数量是否大于索引12，避免越界访问
+    if (attrs->GetAttrNum() > ALLTOALLMATMUL_ATTR_ALLTO_ALL_OUT_FLAG_INDEX) {
+        const bool *allToAllOutFlagPtr = attrs->GetAttrPointer<bool>(ALLTOALLMATMUL_ATTR_ALLTO_ALL_OUT_FLAG_INDEX);
+        allToAllOutFlag = (allToAllOutFlagPtr != nullptr) ? *allToAllOutFlagPtr : false;
+    }
+    if (allToAllOutFlag) {
+        auto allToAllOutDesc = context->GetOutputDesc(ALLTO_ALL_OUT_INDEX);
+        if (allToAllOutDesc != nullptr) {
+            ge::Format allToAllFormat =
+                static_cast<ge::Format>(ge::GetPrimaryFormat(allToAllOutDesc->GetStorageFormat()));
+            OP_TILING_CHECK(
+                allToAllFormat != ge::FORMAT_ND,
+                OP_LOGE_FOR_INVALID_FORMAT(opName, "alltoallOut", Ops::Base::ToString(allToAllFormat).c_str(), "ND"),
+                return ge::GRAPH_FAILED);
+        }
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus MatmulAlltoAllTilingUtil::CheckTensorFormat(const gert::TilingContext *context, const char *opName)
 {
     // x1:require
@@ -183,26 +207,7 @@ ge::graphStatus MatmulAlltoAllTilingUtil::CheckTensorFormat(const gert::TilingCo
                         OP_LOGE_FOR_INVALID_FORMAT(opName, "bias", Ops::Base::ToString(biasFormat).c_str(), "ND"),
                         return ge::GRAPH_FAILED);
     }
-    // alltoallout:optional
-    const gert::RuntimeAttrs *attrs = context->GetAttrs();
-    bool allToAllOutFlag = false;
-    // 先检查属性数量是否大于索引12，避免越界访问
-    if (attrs->GetAttrNum() > ALLTOALLMATMUL_ATTR_ALLTO_ALL_OUT_FLAG_INDEX) {
-        const bool *allToAllOutFlagPtr = attrs->GetAttrPointer<bool>(ALLTOALLMATMUL_ATTR_ALLTO_ALL_OUT_FLAG_INDEX);
-        allToAllOutFlag = (allToAllOutFlagPtr != nullptr) ? *allToAllOutFlagPtr : false;
-    }
-    if (allToAllOutFlag) {
-        auto allToAllOutDesc = context->GetOutputDesc(ALLTO_ALL_OUT_INDEX);
-        if (allToAllOutDesc != nullptr) {
-            ge::Format allToAllFormat =
-                static_cast<ge::Format>(ge::GetPrimaryFormat(allToAllOutDesc->GetStorageFormat()));
-            OP_TILING_CHECK(
-                allToAllFormat != ge::FORMAT_ND,
-                OP_LOGE_FOR_INVALID_FORMAT(opName, "alltoallOut", Ops::Base::ToString(allToAllFormat).c_str(), "ND"),
-                return ge::GRAPH_FAILED);
-        }
-    }
-    return ge::GRAPH_SUCCESS;
+    return CheckAlltoAllOutputFormat(context, opName);
 }
 
 /**
@@ -212,6 +217,18 @@ ge::graphStatus MatmulAlltoAllTilingUtil::CheckTensorFormat(const gert::TilingCo
  * @param opName  算子名称
  * @return ge::graphStatus
  */
+static ge::graphStatus CheckNonQuantScalesAbsent(const gert::TilingContext *context, const char *opName)
+{
+    // 校验 scale 张量为空（非量化场景）
+    auto x1ScaleTensorDesc = context->GetOptionalInputDesc(INPUT_X1_SCALE_INDEX);
+    auto x2ScaleTensorDesc = context->GetOptionalInputDesc(INPUT_X2_SCALE_INDEX);
+    OP_TILING_CHECK((x1ScaleTensorDesc != nullptr || x2ScaleTensorDesc != nullptr),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "x1Scale/x2Scale", "non-null",
+                                                          "x1Scale and x2Scale must be nullptr in non-quant mode"),
+                    return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus MatmulAlltoAllTilingUtil::CheckNonQuantTensorDataType(const gert::TilingContext *context,
                                                                       const char *opName)
 {
@@ -244,13 +261,10 @@ ge::graphStatus MatmulAlltoAllTilingUtil::CheckNonQuantTensorDataType(const gert
                         return ge::GRAPH_FAILED);
     }
 
-    // 校验 scale 张量为空（非量化场景）
-    auto x1ScaleTensorDesc = context->GetOptionalInputDesc(INPUT_X1_SCALE_INDEX);
-    auto x2ScaleTensorDesc = context->GetOptionalInputDesc(INPUT_X2_SCALE_INDEX);
-    OP_TILING_CHECK((x1ScaleTensorDesc != nullptr || x2ScaleTensorDesc != nullptr),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "x1Scale/x2Scale", "non-null",
-                                                          "x1Scale and x2Scale must be nullptr in non-quant mode"),
-                    return ge::GRAPH_FAILED);
+    const auto scaleStatus = CheckNonQuantScalesAbsent(context, opName);
+    if (scaleStatus != ge::GRAPH_SUCCESS) {
+        return scaleStatus;
+    }
 
     // 校验输出张量数据类型
     auto yDesc = context->GetOutputDesc(OUTPUT_Y_INDEX);
@@ -272,6 +286,26 @@ ge::graphStatus MatmulAlltoAllTilingUtil::CheckNonQuantTensorDataType(const gert
  * @param runInfo 过程信息
  * @return ge::graphStatus
  */
+static ge::graphStatus CheckKcScaleDataTypes(const gert::TilingContext *context, const char *opName)
+{
+    // 校验 scale 张量不为空（量化场景）
+    auto x1ScaleTensorDesc = context->GetOptionalInputDesc(INPUT_X1_SCALE_INDEX);
+    auto x2ScaleTensorDesc = context->GetOptionalInputDesc(INPUT_X2_SCALE_INDEX);
+    OP_TILING_CHECK((x1ScaleTensorDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName, "x1Scale"),
+                    return ge::GRAPH_FAILED);
+    ge::DataType x1scaleDtype = x1ScaleTensorDesc->GetDataType();
+    OP_TILING_CHECK((x1scaleDtype != ge::DT_FLOAT),
+                    OP_LOGE_FOR_INVALID_DTYPE(opName, "x1Scale", Ops::Base::ToString(x1scaleDtype).c_str(), "FLOAT32"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((x2ScaleTensorDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName, "x2Scale"),
+                    return ge::GRAPH_FAILED);
+    ge::DataType x2scaleDtype = x2ScaleTensorDesc->GetDataType();
+    OP_TILING_CHECK((x2scaleDtype != ge::DT_FLOAT),
+                    OP_LOGE_FOR_INVALID_DTYPE(opName, "x2Scale", Ops::Base::ToString(x2scaleDtype).c_str(), "FLOAT32"),
+                    return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus MatmulAlltoAllTilingUtil::CheckKcQuantTensorDataType(const gert::TilingContext *context,
                                                                      const char *opName)
 {
@@ -300,21 +334,10 @@ ge::graphStatus MatmulAlltoAllTilingUtil::CheckKcQuantTensorDataType(const gert:
                         OP_LOGE_FOR_INVALID_DTYPE(opName, "bias", Ops::Base::ToString(biasDtype).c_str(), "FLOAT32"),
                         return ge::GRAPH_FAILED);
     }
-    // 校验 scale 张量不为空（量化场景）
-    auto x1ScaleTensorDesc = context->GetOptionalInputDesc(INPUT_X1_SCALE_INDEX);
-    auto x2ScaleTensorDesc = context->GetOptionalInputDesc(INPUT_X2_SCALE_INDEX);
-    OP_TILING_CHECK((x1ScaleTensorDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName, "x1Scale"),
-                    return ge::GRAPH_FAILED);
-    ge::DataType x1scaleDtype = x1ScaleTensorDesc->GetDataType();
-    OP_TILING_CHECK((x1scaleDtype != ge::DT_FLOAT),
-                    OP_LOGE_FOR_INVALID_DTYPE(opName, "x1Scale", Ops::Base::ToString(x1scaleDtype).c_str(), "FLOAT32"),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((x2ScaleTensorDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName, "x2Scale"),
-                    return ge::GRAPH_FAILED);
-    ge::DataType x2scaleDtype = x2ScaleTensorDesc->GetDataType();
-    OP_TILING_CHECK((x2scaleDtype != ge::DT_FLOAT),
-                    OP_LOGE_FOR_INVALID_DTYPE(opName, "x2Scale", Ops::Base::ToString(x2scaleDtype).c_str(), "FLOAT32"),
-                    return ge::GRAPH_FAILED);
+    const auto scaleStatus = CheckKcScaleDataTypes(context, opName);
+    if (scaleStatus != ge::GRAPH_SUCCESS) {
+        return scaleStatus;
+    }
     // 校验输出张量数据类型
     auto yDesc = context->GetOutputDesc(OUTPUT_Y_INDEX);
     OP_TILING_CHECK((yDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName, "y"), return ge::GRAPH_FAILED);
