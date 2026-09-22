@@ -84,6 +84,9 @@
     seqLensOptional:[batch]
     cacheMode:"Norm"
     scatter_mode:"Alibi"
+
+    (k_head_size * sizeof(dtypeKey)) % 32 == 0
+    (v_head_size * sizeof(dtypeValue)) % 32 == 0
     ```
 
   - 场景五：
@@ -99,6 +102,9 @@
     compressSeqOffsetOptional:[batch * num_head]
     cacheMode:"Norm"
     scatter_mode:"Rope"/"Omni"
+
+    (k_head_size * sizeof(dtypeKey)) % 32 == 0
+    (v_head_size * sizeof(dtypeValue)) % 32 == 0
     ```
 
   - 场景六：
@@ -443,7 +449,7 @@ aclnnStatus aclnnScatterPaKvCache(
 - 当key和value是3维且存在seqLensOptional时，seqLensOptional中所有值的和等于key的第一维为num_blocks（对应场景四、五）；
 - seqLensOptional和compressLensOptional里面的每个元素值必须满足公式：reduceSum(seqLensOptional[i] - compressLensOptional[i]) <= num_blocks * block_size （对应场景三、四、五）。
 - 当cacheModeOptional为“PA_NZ”时，keyCacheRef和valueCacheRef的倒数第二维必须小于UINT16_MAX（对应场景一）。
-- k_head_size和v_head_size必须32字节对齐（对应场景七）。
+- k_head_size和v_head_size必须32字节对齐（对应场景四、五、七；Atlas A2 压缩路径会校验该约束）。
 - num_head必须小于4095（对应场景七）。
 - block_size *k_head_size和block_size* v_head_size必须小于UINT32_MAX（对应场景七）。
 - （num_head *k_head_size + num_head* v_head_size） * sizeof(dtype_key)必须小于196608（对应场景七）。
