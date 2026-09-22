@@ -251,13 +251,21 @@ def excel_row_to_csv_row(ws, row_idx, col_map, api_name, testcase_suffix):
 
     ms_q_raw = g("max_seqlen_q")
     ms_kv_raw = g("max_seqlen_kv")
-    max_seqlen_q = int(ms_q_raw) if ms_q_raw is not None and str(ms_q_raw).strip() != "" else -1
-    max_seqlen_kv = int(ms_kv_raw) if ms_kv_raw is not None and str(ms_kv_raw).strip() != "" else -1
+    max_seqlen_q = (
+        int(ms_q_raw) if ms_q_raw is not None and str(ms_q_raw).strip() != "" else -1
+    )
+    max_seqlen_kv = (
+        int(ms_kv_raw) if ms_kv_raw is not None and str(ms_kv_raw).strip() != "" else -1
+    )
 
     win_left = g("win_left")
-    win_left_val = 2147483647 if (win_left is None or int(win_left) == -1) else int(win_left)
+    win_left_val = (
+        2147483647 if (win_left is None or int(win_left) == -1) else int(win_left)
+    )
     win_right = g("win_right")
-    win_right_val = 2147483647 if (win_right is None or int(win_right) == -1) else int(win_right)
+    win_right_val = (
+        2147483647 if (win_right is None or int(win_right) == -1) else int(win_right)
+    )
 
     q_shape = _half_last_dim(_parse_shape(g("q_shape")))
     k_shape = _half_last_dim(_parse_shape(g("k_shape")))
@@ -284,11 +292,21 @@ def excel_row_to_csv_row(ws, row_idx, col_map, api_name, testcase_suffix):
     metadata_shape = _metadata_slot_shape(B, N_kv, sq, cu_sq, layout_q)
 
     shapes = [
-        q_shape, k_shape, v_shape,
-        q_descale_shape, k_descale_shape, v_descale_shape,
-        block_table_shape, p_scale_shape,
-        cu_seqlens_q_shape, cu_seqlens_kv_shape, seqused_q_shape, seqused_kv_shape,
-        sinks_shape, attn_mask_shape, metadata_shape,
+        q_shape,
+        k_shape,
+        v_shape,
+        q_descale_shape,
+        k_descale_shape,
+        v_descale_shape,
+        block_table_shape,
+        p_scale_shape,
+        cu_seqlens_q_shape,
+        cu_seqlens_kv_shape,
+        seqused_q_shape,
+        seqused_kv_shape,
+        sinks_shape,
+        attn_mask_shape,
+        metadata_shape,
     ]
     tensor_view_shapes = repr(tuple(shapes))
 
@@ -296,11 +314,18 @@ def excel_row_to_csv_row(ws, row_idx, col_map, api_name, testcase_suffix):
         return _norm_dtype(g(key)) or default
 
     dtypes = [
-        "'uint8'", "'uint8'", "'uint8'",  # q/k/v packed
-        "'uint8'", "'uint8'", "'uint8'",  # descale e8m0
+        "'uint8'",
+        "'uint8'",
+        "'uint8'",  # q/k/v packed
+        "'uint8'",
+        "'uint8'",
+        "'uint8'",  # descale e8m0
         "'int32'",  # block_table
         "'float32'",  # p_scale
-        "'int32'", "'int32'", "'int32'", "'int32'",  # cu_seqlens/seqused
+        "'int32'",
+        "'int32'",
+        "'int32'",
+        "'int32'",  # cu_seqlens/seqused
         "'float32'",  # sinks
         "'int8'",  # attn_mask
         "'int32'",  # metadata
@@ -379,8 +404,12 @@ def excel_row_to_csv_row(ws, row_idx, col_map, api_name, testcase_suffix):
 
     pt_raw = g_opt("precision_tolerances")
     ap_raw = g_opt("absolute_precision")
-    precision_tolerances = str(pt_raw).strip() if pt_raw is not None else DEFAULT_PRECISION_TOLERANCES
-    absolute_precision = str(ap_raw).strip() if ap_raw is not None else DEFAULT_ABSOLUTE_PRECISION
+    precision_tolerances = (
+        str(pt_raw).strip() if pt_raw is not None else DEFAULT_PRECISION_TOLERANCES
+    )
+    absolute_precision = (
+        str(ap_raw).strip() if ap_raw is not None else DEFAULT_ABSOLUTE_PRECISION
+    )
 
     return [
         name,
@@ -402,7 +431,9 @@ def main():
     parser.add_argument("--sheet", default="mxfp4", help="sheet 名 (默认 mxfp4)")
     args = parser.parse_args()
 
-    excel_path = args.excel if os.path.isabs(args.excel) else os.path.join(_HERE, args.excel)
+    excel_path = (
+        args.excel if os.path.isabs(args.excel) else os.path.join(_HERE, args.excel)
+    )
     wb = openpyxl.load_workbook(excel_path, data_only=True)
     if args.sheet not in wb.sheetnames:
         raise ValueError(f"sheet '{args.sheet}' 不存在, 可用: {wb.sheetnames}")
@@ -424,13 +455,17 @@ def main():
     ]
     name_col = col_map.get("name")
     data_row_indices = [
-        r for r in range(2, ws.max_row + 1)
+        r
+        for r in range(2, ws.max_row + 1)
         if name_col and ws.cell(row=r, column=name_col).value is not None
     ]
 
     for fname, api_name, suffix in CSV_PROFILES:
         out_path = os.path.join(_HERE, fname)
-        rows = [excel_row_to_csv_row(ws, r, col_map, api_name, suffix) for r in data_row_indices]
+        rows = [
+            excel_row_to_csv_row(ws, r, col_map, api_name, suffix)
+            for r in data_row_indices
+        ]
         with open(out_path, "w", encoding="utf-8", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(header)

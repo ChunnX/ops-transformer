@@ -158,10 +158,16 @@ def generate_qfa_mxfp4_inputs(
     _inplace_write(v_descale, data_dict["v_descale"], "v_descale (slot 5)")
     _inplace_write(block_table, data_dict.get("block_table"), "block_table (slot 6)")
     _inplace_write(p_scale, data_dict.get("p_scale"), "p_scale (slot 7)")
-    _write_int32_list(cu_seqlens_q, data_dict.get("cu_seqlens_q"), "cu_seqlens_q (slot 8)")
-    _write_int32_list(cu_seqlens_kv, data_dict.get("cu_seqlens_kv"), "cu_seqlens_kv (slot 9)")
+    _write_int32_list(
+        cu_seqlens_q, data_dict.get("cu_seqlens_q"), "cu_seqlens_q (slot 8)"
+    )
+    _write_int32_list(
+        cu_seqlens_kv, data_dict.get("cu_seqlens_kv"), "cu_seqlens_kv (slot 9)"
+    )
     _write_int32_list(seqused_q, data_dict.get("act_seq_lens_q"), "seqused_q (slot 10)")
-    _write_int32_list(seqused_kv, data_dict.get("act_seq_lens_kv"), "seqused_kv (slot 11)")
+    _write_int32_list(
+        seqused_kv, data_dict.get("act_seq_lens_kv"), "seqused_kv (slot 11)"
+    )
     _inplace_write(sinks, data_dict.get("sinks"), "sinks (slot 12)")
     _inplace_write(attn_mask, data_dict.get("attn_mask"), "attn_mask (slot 13)")
 

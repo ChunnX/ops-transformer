@@ -64,21 +64,33 @@ def build_metadata_arguments(q, k, v, quant_mode, kwargs):
         get_attribute(kwargs, "head_dim", get_attribute(kwargs, "D", q_shape[-1]))
     )
     num_heads_q = int(
-        get_attribute(kwargs, "num_heads_q", get_attribute(kwargs, "N_q", _num_heads_q(q_shape, layout_q)))
+        get_attribute(
+            kwargs,
+            "num_heads_q",
+            get_attribute(kwargs, "N_q", _num_heads_q(q_shape, layout_q)),
+        )
     )
     num_heads_kv = int(
-        get_attribute(kwargs, "num_heads_kv", get_attribute(kwargs, "N_kv", _num_heads_kv(k_shape, layout_kv)))
+        get_attribute(
+            kwargs,
+            "num_heads_kv",
+            get_attribute(kwargs, "N_kv", _num_heads_kv(k_shape, layout_kv)),
+        )
     )
 
     return {
         "num_heads_q": num_heads_q,
         "num_heads_kv": num_heads_kv,
         "head_dim": head_dim,
-        "quant_mode": int(quant_mode) if quant_mode is not None else int(get_attribute(kwargs, "quant_mode", 5)),
+        "quant_mode": int(quant_mode)
+        if quant_mode is not None
+        else int(get_attribute(kwargs, "quant_mode", 5)),
         "batch_size": get_attribute(kwargs, "batch_size", get_attribute(kwargs, "B")),
         "max_seqlen_q": int(get_attribute(kwargs, "max_seqlen_q", -1)),
         "max_seqlen_kv": int(get_attribute(kwargs, "max_seqlen_kv", -1)),
-        "head_dim_v": get_attribute(kwargs, "head_dim_v", get_attribute(kwargs, "V_D", head_dim)),
+        "head_dim_v": get_attribute(
+            kwargs, "head_dim_v", get_attribute(kwargs, "V_D", head_dim)
+        ),
         "mask_mode": int(get_attribute(kwargs, "mask_mode", 0)),
         "win_left": int(get_attribute(kwargs, "win_left", -1)),
         "win_right": int(get_attribute(kwargs, "win_right", -1)),
@@ -101,7 +113,9 @@ def _resolve_metadata_op():
         return torch.ops.cann_ops_transformer.quant_flash_attn_metadata
 
 
-def run_metadata(arguments, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, metadata):
+def run_metadata(
+    arguments, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, metadata
+):
     return _resolve_metadata_op()(
         int(arguments["num_heads_q"]),
         int(arguments["num_heads_kv"]),
@@ -112,12 +126,16 @@ def run_metadata(arguments, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, 
         seqused_q=_move_to_device(seqused_q, metadata),
         seqused_kv=_move_to_device(seqused_kv, metadata),
         batch_size=(
-            None if arguments.get("batch_size") is None else int(arguments["batch_size"])
+            None
+            if arguments.get("batch_size") is None
+            else int(arguments["batch_size"])
         ),
         max_seqlen_q=int(arguments["max_seqlen_q"]),
         max_seqlen_kv=int(arguments["max_seqlen_kv"]),
         head_dim_v=(
-            None if arguments.get("head_dim_v") is None else int(arguments["head_dim_v"])
+            None
+            if arguments.get("head_dim_v") is None
+            else int(arguments["head_dim_v"])
         ),
         mask_mode=int(arguments["mask_mode"]),
         win_left=int(arguments["win_left"]),

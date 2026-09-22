@@ -672,12 +672,8 @@ def generate_data():
 
     # Q/K: 沿 D 维量化, V: 沿 S 维量化. 产出「未打包」FP4 编码 (uint8 0-15),
     # 由 inputs.py view 成 float4_e2m1 喂给 TTK.
-    query_codes, q_descale = mxfp4_quantize_last(
-        query, quant_axis=-1, mode="baseline"
-    )
-    key_codes, k_descale = mxfp4_quantize_last(
-        key, quant_axis=-1, mode="baseline"
-    )
+    query_codes, q_descale = mxfp4_quantize_last(query, quant_axis=-1, mode="baseline")
+    key_codes, k_descale = mxfp4_quantize_last(key, quant_axis=-1, mode="baseline")
 
     # V 按 act_seq_lens_kv 分批量化: padding 区域编码填 0, descale 只覆盖有效区域.
     # v_descale 的 S 维须与 kernel 对齐 (maxSeqlenKv = max_seqlen_kv 或物理 S(s2),
@@ -689,9 +685,7 @@ def generate_data():
     for b_idx in range(B):
         sk = min(act_seq_kv_eff[b_idx], s2)
         v_b = value[b_idx : b_idx + 1, :, :sk, :]
-        v_b_codes, v_b_scale = mxfp4_quantize_last(
-            v_b, quant_axis=-2, mode="baseline"
-        )
+        v_b_codes, v_b_scale = mxfp4_quantize_last(v_b, quant_axis=-2, mode="baseline")
         codes_padded = torch.zeros((1, n2, s2, v_d), dtype=v_b_codes.dtype)
         codes_padded[:, :, :sk, :] = v_b_codes
         value_codes_list.append(codes_padded)
