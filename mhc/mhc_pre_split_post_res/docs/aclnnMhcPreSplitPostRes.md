@@ -132,7 +132,7 @@ aclnnStatus aclnnMhcPreSplitPostRes(
     <tr>
       <td>phi</td>
       <td>输入</td>
-      <td>mHC的变换矩阵phi（线性投影矩阵）。</td>
+      <td>mHC的变换矩阵phi（线性投影矩阵）。两种形态：[n^2+n, n·D]（完整，输出 h_res）或 [n, n·D]（仅 post，无 h_res）。</td>
       <td>不支持空Tensor。</td>
       <td>FLOAT32</td>
       <td>ND</td>
@@ -305,7 +305,7 @@ aclnnStatus aclnnMhcPreSplitPostRes(
   | :------- | :----------------- | :------------------------------------- |
   | T或B*S   | 1~512K             | B*S或T支持1~512K范围以内               |
   | n        | 4                  | 固定为4                                |
-  | D        | 16~16384（16对齐） | 典型值2560/5120/6144/7168              |
+  | D        | {2560,5120,6144,7168} | 仅支持 4 种典型值，其余拦截              |
 
 ## 调用示例
 
@@ -419,7 +419,7 @@ int main() {
     // 2. To construct input and output, it is necessary to customize the construction according to the API interface.
     // Example: TND format (T, n, D)
     std::vector<int64_t> xShape = {1024, 4, 2560};      // TND
-    std::vector<int64_t> phiShape = {20, 10240};        // n^2+n, n*D
+    std::vector<int64_t> phiShape = {20, 10240};        // 完整形态 n^2+n, n*D（仅 post 形态取 {4, 10240}）
     std::vector<int64_t> alphaShape = {2};              // [alpha0, alpha1]
     std::vector<int64_t> biasShape = {20};              // n^2+n
     std::vector<int64_t> hPostOutShape = {1024, 4};     // Tn

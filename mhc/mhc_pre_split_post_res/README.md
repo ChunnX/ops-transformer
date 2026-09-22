@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- **算子功能**：MhcPreSplitPostRes 算子是 MhcPre 算子的一部分，负责计算 mHC（Manifold-Constrained Hyper Connection）架构中 x2 输入对应的 post 分支和 comb/Res 分支，输出 h_post 和 h_res 两个变换矩阵。具体流程为：将输入 x 展平并转 FP32 后计算 RMSNorm 的 invRms 因子，执行线性投影得到 x_hat，然后切分为 post 分支和 comb 分支分别计算 h_post 和 h_res。
+- **算子功能**：MhcPreSplitPostRes 算子是 MhcPre 算子的一部分，负责计算 mHC（Manifold-Constrained Hyper Connection）架构中 x2 输入对应的 post 分支和 comb/Res 分支，输出 h_post 和 h_res 两个变换矩阵（h_res 为可选输出：phi 行数为 n^2+n 时输出，为 n 时仅输出 h_post、h_res 为 0 元素 tensor）。具体流程为：将输入 x 展平并转 FP32 后计算 RMSNorm 的 invRms 因子，执行线性投影得到 x_hat，然后切分为 post 分支和 comb 分支分别计算 h_post 和 h_res。
 
 - **计算公式**：
 
@@ -99,7 +99,7 @@
       <tr>
         <td>h_res</td>
         <td>输出</td>
-        <td>mHC的comb分支输出矩阵，对应公式中的h_res。维度shape支持[B,S,n,n]或[T,n,n]，不支持空Tensor。</td>
+        <td>mHC的comb分支输出矩阵，对应公式中的h_res。可选输出：phi 行数为 n^2+n（完整形态）时维度为 [B,S,n,n] 或 [T,n,n]；phi 行数为 n（仅 post 形态）时为 0 元素 tensor。</td>
         <td>FLOAT32</td>
         <td>ND</td>
       </tr>
@@ -117,7 +117,7 @@
 |:--- |:--- |:--- |
 | T或B*S | 1~512K | B*S或T支持1~512K范围以内。|
 | n | 4 | n为固定值4。|
-| D | 16~16384（16对齐） | D支持16对齐、范围16~16384，典型值2560/5120/6144/7168。|
+| D | 白名单 {2560,5120,6144,7168} | D仅支持 2560/5120/6144/7168 四种典型值，其余值拦截。|
 
 - 典型值：
 
