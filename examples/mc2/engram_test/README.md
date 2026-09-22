@@ -91,10 +91,12 @@ Zipf 分布天然大量重复）。此时仅打一条
 
 `run_engram.sh` 对每条用例分两阶段：
 
-1. **prep**（本地，不排队）：`python engram_test.py ... --prep_only` 生成 storage/sf 表并
-   `torch.save` 到 `./{case_name}_prep_data.pt`；
+1. **prep**（本地，不排队）：`python engram_test.py ... --prep_only` 按 mmap 分块直写生成
+   storage/sf 缓存文件（`prep_cache/{key}.storage.bin/.sf.bin/.meta.json`，无 fp32 整表、无
+   /dev/shm、峰值 RSS <2GB；large2 44GiB 约 5 分钟）；同 shape/seed 的 local/sliced 配对用例
+   自动命中同一缓存（fetch_mode 不参与缓存键）；
 2. **run**（qrun 排队占 NPU）：`qrun --emp q00983190 -n {case_name} python engram_test.py ... --run_only`
-   加载 prep 数据后 fork 多个子进程执行 NPU 测试。
+   从 prep_cache 以 memmap 零拷贝加载数据后 fork 多个子进程执行 NPU 测试。
 
 prep/qrun 均为容错模式：单条用例失败会记入失败列表并继续下一条，批跑结束汇总打印全部
 用例结果（SUCCESS/FAILED），任一失败则脚本退出码非 0。py 侧失败也会以非零码退出
@@ -143,14 +145,13 @@ NUMA 亲和对 C2C 取数带宽有实际影响，建议正式出数时配置 `--
   属后续任务（见路线图 C3），当前请参考 oom.md §3.6 的各档位 `fetched` 大小表裁剪
   token 档位。
 
-## 6. 路线图（后续任务，本框架预留演进）
+## 6. 路线图
 
-- **C2（数据生成重构 + 缓存复用）**：替换现有"fp32 整表 /dev/shm + clone + torch.save/.pt"
-  链路为分块直写最终 dtype 的 mmap 缓存文件（峰值临时内存从数百 GB 降到 <1GB），
-  local/sliced 同 shape 配对用例按缓存键复用同一份数据（只缩短 prep 墙钟，不影响 fetch
-  计时口径）；`--seed` 全链路生效（SeedSequence 派生）。
-- **C3（显存预检 + 图池释放）**：用例侧按 token 档位预算检查可用 HBM（不足则 SKIP 并
-  汇总，不算 FAIL）+ graph 模式逐档位 `torch._dynamo.reset()` 释放图池；PTA（csrc）侧
-  在输出分配点加 `TORCH_CHECK(fetched_bytes < free*0.8)` 拦截。
-
-以上两项落地后本 README 将同步更新用法说明。
+- **C2（数据生成重构 + 缓存复用）—— 已完成**（2026-09-22）：`prep_cache.py` mmap 分块直写最终
+  dtype（块级 SeedSequence 确定性，任意机器/并行度逐字节一致），`bench_prep.py` 全规格基准
+  9/9 PASS（large2 44GiB 冷生成 282s、峰值 RSS 1.69GB、/dev/shm 零占用、tensor_1x 与
+  vocab_small 缓存复用命中），报告见 `prep_bench_report.md`。
+- **C3（显存预检 + 图池释放）—— 未实施**：用例侧按 token 档位预算检查可用 HBM（不足则 SKIP 并
+  汇总，不算 FAIL）+ graph 模式逐档位 `torch._dynamo.reset()` 释放图池；PTA（csrc）侧在输出
+  分配点加 `TORCH_CHECK(fetched_bytes < free*0.8)` 拦截。落地前 16x（hidden=9216）请把
+  token 档位裁剪到 ≤4M（8M 档单次输出 72GiB 必 OOM，见 oom.md §3.6）。
