@@ -422,7 +422,7 @@ def _contiguous_stride(shape):
     return tuple(strides)
 
 
-def _fa_metadata_size(batch, kv_heads):
+def _fa_metadata_size(batch, kv_heads, q_heads=None, s1=0, s2=0):
     """metadata 槽位的 int32 占位元素数, 逐字镜像 op 公式。
 
     Mirrors torch_extension/flash_attn.py _calculate_metadata_size:
@@ -433,6 +433,13 @@ def _fa_metadata_size(batch, kv_heads):
     metadata_size += (
         412  # FAG region (int32 elements), mirrors flash_attn.py FAG_METADATA_SIZE
     )
+    n2 = max(int(kv_heads), 1)
+    nq = int(q_heads or n2)
+    g = max(nq // n2, 1)
+    s1o = (max(int(s1), 0) + 127) // 128
+    s2o = (max(int(s2), 0) + 127) // 128
+    tiles = max(int(batch), 0) * n2 * g * s1o * s2o
+    metadata_size += 7 + 2 * max(tiles + s1o * 128, 128)
     return ((metadata_size + 4095) // 4096) * 4096
 
 
@@ -450,7 +457,10 @@ def _build_row(case_name, p):
     # kv_heads 用 N2(非 N1)。
     batch = int(attrs["batch_size"])
     kv_heads = int(p.get("N2", p["N1"]))
-    metadata_shape = (_fa_metadata_size(batch, kv_heads),)
+    q_heads = int(p.get("N1", kv_heads))
+    s1 = int(p.get("S1", 0) or 0)
+    s2 = int(p.get("S2", s1) or 0)
+    metadata_shape = (_fa_metadata_size(batch, kv_heads, q_heads, s1, s2),)
 
     shapes = [
         q_shape,

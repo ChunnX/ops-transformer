@@ -220,6 +220,7 @@ ge::graphStatus ParseFlashAttnGradInfo(gert::TilingContext *context, FagParsedIn
 
     FillLayoutView(info);
     FagFillSparseInfo(info);
+    info.isDeterministic = (context->GetDeterministic() == 1);
     return ge::GRAPH_SUCCESS;
 }
 

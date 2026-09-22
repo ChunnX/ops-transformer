@@ -18,7 +18,7 @@
 
 import pypto_pro.language as pl
 
-# ---- 基本块尺寸 (对应 s1/s2/dTemplateType) ----
+# ---- 基本块尺寸 ----
 CUBE_BASEM = 128  # s1 对齐 128
 CUBE_BASEN = 128  # s2 对齐 128
 # D 的分配宽度。这不是普通常量，而是 tilingkey 字段 d_align 的取值之一 ——
@@ -44,17 +44,24 @@ BLOCK_ELEMS_F16 = 16
 # 表拆成几个**平铺的标量表**而不是一个嵌套元组表：把 tuple-of-tuples 赋给
 # 局部变量(哪怕只是 `chunks = TABLE[d_align]` 之后再下标取)会让 codegen 报
 # "Array tuple assignment ... has elements without a C++ name"。
-D_NCHUNKS = {64: 1, 128: 1, 192: 2}  # 块数(当前最多 2)
-D_CHUNK_OFF0 = {64: 0, 128: 0, 192: 0}  # 第 0 块的列偏移
-D_CHUNK_W0 = {64: 128, 128: 128, 192: 96}  # D<=128 一块 128；尾列靠 valid_shape
-D_CHUNK_OFF1 = {64: 0, 128: 0, 192: 96}  # 第 1 块(仅 192 档)
-D_CHUNK_W1 = {64: 0, 128: 0, 192: 96}
+D_NCHUNKS = {64: 1, 128: 1, 192: 2, 256: 2, 768: 6}  # 768=6×128，空块 dW=0
+D_CHUNK_OFF0 = {64: 0, 128: 0, 192: 0, 256: 0, 768: 0}  # 第 0 块的列偏移
+D_CHUNK_W0 = {
+    64: 128,
+    128: 128,
+    192: 96,
+    256: 128,
+    768: 128,
+}  # D<=128 一块 128；192=96+96；256=128+128；768 走 6 块循环
+D_CHUNK_OFF1 = {64: 0, 128: 0, 192: 96, 256: 128, 768: 128}  # 第 1 块
+D_CHUNK_W1 = {64: 0, 128: 0, 192: 96, 256: 128, 768: 128}
 # L0A/L0B/L0C 按最宽的一块声明，足以装下任一块
-D_CHUNK_MAXW = {64: 128, 128: 128, 192: 96}
+D_CHUNK_MAXW = {64: 128, 128: 128, 192: 96, 256: 128, 768: 128}
 
 # Cube L1/L0 物理宽钉在 128（d_align=64 只是 tilingkey 分档，Acc/L1 仍按
 # 128 开）。pre/post 已改成 1D 元素切，不再用列宽表。V1 列宽见 v1w。
-D_PHYS_W = {64: 128, 128: 128, 192: 192}
+# 768 档物理宽仍 256：整头 768 进 L1 会超 512KB，按窗重载（docs/D256设计.md）。
+D_PHYS_W = {64: 128, 128: 128, 192: 192, 256: 256, 768: 256}
 
 CV_CORE_RATIO = 2
 VECTOR_BASEM = CUBE_BASEM // CV_CORE_RATIO  # 64，每个 vector 子核处理半个 S1
@@ -104,6 +111,11 @@ SYNC_C3_TO_V5_FLAG = 6  # mm3 fp32 已进 mm1 UB，v5 可 Muls+Cast dQ
 SYNC_C4_TO_V6_FLAG = 7  # mm4 fp32 已进 mm2 UB，v6 可 Muls+Cast dK
 # cube 在下一轮 mm1/mm2 前等 v6 写完，避免覆写仍在用的 mm1/mm2 槽
 SYNC_DETER_FIX_FLAG = 14
+# newDeter template0 的三段 FIX token。事件 6/7 在 BN2 分支使用，
+# 事件 14 也只在与 template0 编译期互斥的路径使用，因此可以安全复用。
+SYNC_DQ_DETER_FIX_FLAG = 6
+SYNC_DK_DETER_FIX_FLAG = 7
+SYNC_DV_DETER_FIX_FLAG = 14
 
 # cube 领先 vector 的 task 数。PRELOAD_TIMES=3：首轮连发两组
 # mm2+mm1(共四次 matmul)填满两个 UB 槽位，之后第 N 组的 cube 计算与
@@ -114,14 +126,15 @@ PRELOAD_TIMES = 3
 # ==================================================================
 #  SetConstInfo
 # ==================================================================
-def set_const_info(tiling, coreNum, enableSwizzle):
+def set_const_info(tiling, coreNum):
     """由 tiling + 运行期核数推导常量。
 
     coreNum 不在 tiling 里(TilingData 没有该字段)，改由调用方从
     pl.get_block_num() 取：这是 host SetBlockDim 启动的 cube 数，dense 下
     等于 metadata blockOuter。cube/vector 两侧同一口径，set/wait 才能配对。
 
-    enableSwizzle 同理由 host 判据算好后经 tilingkey/常量传入。
+    分核开关用 tilingkey 裸名 ``swizzle``，不要再写进本结构体：字段会
+    被当成运行期值，``if constInfo.enableSwizzle`` 两路都编进同一份二进制。
     """
     s1Outer = (tiling.s1 + CUBE_BASEM - 1) // CUBE_BASEM
     s2Outer = (tiling.s2 + CUBE_BASEN - 1) // CUBE_BASEN
@@ -158,7 +171,6 @@ def set_const_info(tiling, coreNum, enableSwizzle):
         totalBlockNum=tiling.b * tiling.n2 * tiling.gSize * s1Outer * s2Outer,
         gSize=tiling.gSize,
         coreNum=coreNum,
-        enableSwizzle=enableSwizzle,
         # 布局视图参数(BSND/BNSD 统一四维视图)，见 FlashAttnGradTilingData 注释。
         # Q 侧 n1=n2*G 个 head，KV 侧 n2 个，故两套。
         viewD0Q=tiling.viewD0Q,
@@ -202,11 +214,7 @@ def make_run_infos():
         halfS1RealSize=0,
         queryOffset=0,
         keyOffset=0,
-        # GQA 的组内索引 g，取值 [0, gSize)
         goIdx=0,
-        # 统一四维视图上的第 0 / 第 2 轴索引，见 set_run_info()。
-        # Q 侧(q/dout/attn_out/dq)用 head = n2oIdx*gSize + goIdx；
-        # KV 侧(k/v/dk/dv)用 head = n2oIdx。
         idx0Q=0,
         idx2Q=0,
         idx0KV=0,
@@ -216,6 +224,38 @@ def make_run_infos():
         loadKV=0,
         dkvAcc=0,
         flushDkv=0,
+        readyRound=0,
+        gIdx=0,
+        dqFirst=1,
+        dqLast=1,
+    )
+
+
+def make_run_infos_2():
+    """1-ahead：runInfos[2]（BN2 与 D=256 共用）。"""
+    return pl.struct_array(
+        2,
+        "FagRunInfo",
+        boIdx=0,
+        n2oIdx=0,
+        s1oIdx=0,
+        s2oIdx=0,
+        s1RealSize=0,
+        s2RealSize=0,
+        halfS1RealSize=0,
+        queryOffset=0,
+        keyOffset=0,
+        goIdx=0,
+        idx0Q=0,
+        idx2Q=0,
+        idx0KV=0,
+        idx2KV=0,
+        loadBase=0,
+        rowShift=0,
+        loadKV=0,
+        dkvAcc=0,
+        flushDkv=0,
+        readyRound=0,
         gIdx=0,
         dqFirst=1,
         dqLast=1,

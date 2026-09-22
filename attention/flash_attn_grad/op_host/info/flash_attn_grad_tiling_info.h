@@ -80,7 +80,7 @@ constexpr int64_t TMPL_RESERVED_BN2S2 = 3;
 constexpr int64_t LAYOUT_NOT_TND = 0;
 constexpr int64_t LAYOUT_TND = 1;
 
-constexpr int64_t MAX_HEAD_DIM = 192;
+constexpr int64_t MAX_HEAD_DIM = 768;
 
 // ---------------------------------------------------------------------------
 // L2 解析结果。策略层对它只读。
@@ -128,6 +128,8 @@ struct FagParsedInfo {
     // 已解析但**不参与 tilingkey**。D4 暂定：sinks 是否占位要等 pypto 侧实现
     // 方式确定后再定，在那之前它只用于日志与将来的判据输入。
     bool hasSinks = false;
+    // context->GetDeterministic()==1。BN2 单块仍走现网（tilingkey deter=0）。
+    bool isDeterministic = false;
 
     // 布局视图参数：把 BSND/BNSD 折叠成同一种四维紧凑视图，使 kernel 只需
     // 一份 pl.load。推导见 parser 的 FillLayoutView。
@@ -160,6 +162,7 @@ struct FagSchedulePlan {
     uint32_t blockDim = 0;
     bool useActualCores = false;
     int64_t swizzle = 0;
+    int64_t deterMaxRound = 0;
 };
 
 // workspace 具名分区。offset 是相对 kernel 拿到的 workspace 指针的字节偏移，

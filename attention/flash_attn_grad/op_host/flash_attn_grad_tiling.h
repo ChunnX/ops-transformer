@@ -68,6 +68,7 @@ TILING_DATA_FIELD_DEF(int64_t, sparseType)
 TILING_DATA_FIELD_DEF(int64_t, s1Token)
 TILING_DATA_FIELD_DEF(int64_t, s2Token)
 TILING_DATA_FIELD_DEF(int64_t, totalPerBatchNum)
+TILING_DATA_FIELD_DEF(int64_t, deterMaxRound)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(FlashAttnGrad, FlashAttnGradTilingDataTmp)
 
