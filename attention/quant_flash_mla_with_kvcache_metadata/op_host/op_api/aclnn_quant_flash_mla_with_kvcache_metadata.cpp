@@ -16,6 +16,7 @@
 #include "l0_quant_flash_mla_with_kvcache_metadata.h"
 #include <cstring>
 #include "aclnn/aclnn_base.h"
+#include "aclnn_kernels/contiguous.h"
 #include "acl/acl_rt.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/common_types.h"
@@ -61,7 +62,30 @@ aclnnStatus aclnnQuantFlashMlaWithKvcacheMetadataGetWorkspaceSize(
                                                        maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDimQk,
                                                        headDimV, quantMode, maskMode, layoutQ, metaData);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
-    
+    const aclTensor *cacheSeqlensContiguous = nullptr;
+    if (cacheSeqlens != nullptr) {
+        cacheSeqlensContiguous = l0op::Contiguous(cacheSeqlens, uniqueExecutor.get());
+        if (cacheSeqlensContiguous == nullptr) {
+            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "cacheSeqlens contiguous is null");
+            return ACLNN_ERR_INNER_NULLPTR;
+        }
+    }
+    const aclTensor *cuSeqlensQOptionalContiguous = nullptr;
+    if (cuSeqlensQOptional != nullptr) {
+        cuSeqlensQOptionalContiguous = l0op::Contiguous(cuSeqlensQOptional, uniqueExecutor.get());
+        if (cuSeqlensQOptionalContiguous == nullptr) {
+            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "cuSeqlensQOptional contiguous is null");
+            return ACLNN_ERR_INNER_NULLPTR;
+        }
+    }
+    const aclTensor *sequsedQOptionalContiguous = nullptr;
+    if (sequsedQOptional != nullptr) {
+        sequsedQOptionalContiguous = l0op::Contiguous(sequsedQOptional, uniqueExecutor.get());
+        if (sequsedQOptionalContiguous == nullptr) {
+            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "sequsedQOptional contiguous is null");
+            return ACLNN_ERR_INNER_NULLPTR;
+        }
+    }
     // 与主算子 ACLNN tiling 保持一致：优先获取当前线程的有效核数（含 stream 控核）。
     // 查询失败时，与 opbase InitL2Phase1Context 一样回退到硬件平台核数。
     const op::PlatformInfo &npuInfo = op::GetCurrentPlatformInfo();
@@ -76,7 +100,7 @@ aclnnStatus aclnnQuantFlashMlaWithKvcacheMetadataGetWorkspaceSize(
     const char *socVersion = npuInfo.GetSocLongVersion().c_str();
 
     auto output = l0op::QuantFlashMlaWithKvcacheMetadata(
-        cacheSeqlens, cuSeqlensQOptional, sequsedQOptional, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv,
+        cacheSeqlensContiguous, cuSeqlensQOptionalContiguous, sequsedQOptionalContiguous, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv,
         headDimQk, headDimV, quantMode, maskMode, layoutQ, socVersion, aicCoreNum, aivCoreNum, metaData,
         uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
