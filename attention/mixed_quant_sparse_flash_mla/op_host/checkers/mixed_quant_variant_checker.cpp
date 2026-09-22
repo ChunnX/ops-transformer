@@ -9,7 +9,7 @@
  */
 
 #include "mixed_quant_variant_checker.h"
-#include "mc2_log_compat.h"
+#include "log/log.h"
 
 namespace optiling {
 namespace sparse_mla_checker {
@@ -33,6 +33,7 @@ ge::graphStatus MixedQuantVariantChecker::CheckSinglePara(const CheckContext &co
             Op(context), "quant_mode", std::to_string(context.quantMode).c_str(),
             "quant_mode 3 is supported only on arch22; quant_mode 1/2 are supported only on arch35"),
         return ge::GRAPH_FAILED);
+    // The RoPE part of the TurboQuant layout has a fixed 64-dimensional head.
     OP_CHECK_IF(
         context.ropeHeadDim != 64,
         OP_LOGE_FOR_INVALID_VALUE(Op(context), "rope_head_dim", std::to_string(context.ropeHeadDim).c_str(), "64"),

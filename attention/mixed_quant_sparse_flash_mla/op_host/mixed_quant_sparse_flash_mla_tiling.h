@@ -21,7 +21,7 @@
 #include "register/tilingdata_base.h"
 #include "register/op_def_registry.h"
 #include "tiling/tiling_api.h"
-#include "mc2_log_compat.h"
+#include "log/log.h"
 #include "log/error_code.h"
 #include "err/ops_err.h"
 #include "platform/platform_info.h"

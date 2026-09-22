@@ -13,7 +13,7 @@
  * \brief
  */
 
-#include "mc2_log_compat.h"
+#include "log/log.h"
 #include "opdev/format_utils.h"
 #include "opdev/data_type_utils.h"
 #include "opdev/tensor_view_utils.h"

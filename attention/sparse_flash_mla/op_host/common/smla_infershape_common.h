@@ -24,7 +24,7 @@
 #include <exe_graph/runtime/infer_shape_context.h>
 #include <exe_graph/runtime/infer_datatype_context.h>
 #include <register/op_impl_registry.h>
-#include "mc2_log_compat.h"
+#include "log/log.h"
 #include "err/ops_err.h"
 #include "smla_host_common_defs.h"
 

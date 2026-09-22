@@ -13,7 +13,7 @@
 
 #include <cstdint>
 #include <vector>
-#include "mc2_log_compat.h"
+#include "log/log.h"
 #include "tiling/tiling_api.h"
 #include "exe_graph/runtime/tiling_context.h"
 #include "platform/platform_info.h"

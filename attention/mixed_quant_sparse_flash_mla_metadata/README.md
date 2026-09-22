@@ -249,7 +249,7 @@
 
 ## 约束说明
 
-- `quant_mode`支持1、2、3。与`MixedQuantSparseFlashMla`算子配套使用时，Ascend 950PR/Ascend 950DT仅支持1/2，Atlas A2/A3仅支持3。
+- `quant_mode`支持1、2、3。与`MixedQuantSparseFlashMla`算子配套使用时，<term>Ascend 950PR/Ascend 950DT</term>仅支持1/2，<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>仅支持3。
 - MixedQuantSparseFlashMlaMetadata算子需要与MixedQuantSparseFlashMla算子配套使用。
 - B（Batch）表示输入样本批量大小，q、ori_kv、cmp_kv为配套的MixedQuantSparseFlashMla算子的入参，S1表示layout_q=BSND时，q shape中的S轴的大小，T1表示layout_q=TND时，q shape中的T轴的大小，S2表示layout_kv=BSND时，ori_kv shape中的S轴的大小，S3表示layout_kv=BSND时，cmp_kv shape中的S轴的大小，N2表示ori_kv、cmp_kv shape中的N轴的大小。
 - 参数cu_seqlens_q、cu_seqlens_ori_kv及cu_seqlens_cmp_kv要求其值为当前Batch与前序Batch有效token数的累加值，第一个元素固定为0，后一个元素的值必须大于等于前一个元素的值。
