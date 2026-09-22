@@ -1228,7 +1228,8 @@ bool CheckSpecConditions(const gert::TilingContext *context)
     bool isMha = (kvHeadNum == 0) || (headNum == kvHeadNum);
     bool mhaConditions = isMha && !((qDataType == ge::DT_BF16) && (innerPrecise == 1)) &&
                          !((sparseMode == 0) && (tempAttnMaskShape != nullptr));
-    bool nonMhaConditions = !isMha && (innerPrecise == 0);
+    bool nonMhaConditions = !isMha && (innerPrecise == 0) &&
+                            !((sparseMode == 0) && (tempAttnMaskShape != nullptr));
     bool quantScale2Flag = context->GetOptionalInputTensor(QUANT_SCALE2_INDEX) != nullptr ? true : false;
     if (!(isLayoutSupported && isLearnableSinkFlag && !isRopeSplitMla && sparseModeSupported &&
           (nonMhaConditions || mhaConditions) && !quantScale2Flag)) {
@@ -1400,11 +1401,11 @@ bool RouteToFia(gert::TilingContext *context)
 
     const std::string inputLayoutStr = std::string(context->GetAttrs()->GetAttrPointer<char>(ATTR_INPUT_LAYOUT_INDEX));
 
-    // TND without rope only supports headDim 64/128/192 in FIA V3 (see CommonChecker::ValidateNoRopeLayoutDim);
-    // other headDim values (e.g. 256) are handled by the original route (FAI), which supports D up to 256.
+    // TND without rope only supports headDim 64/128/192/256 in FIA V3 (see CommonChecker::ValidateNoRopeLayoutDim);
+    // other headDim values are handled by the original route (FAI), which supports D up to 256.
     // Note: this covers both 3D (BnBsH) and 4D (BNBD) page-attention KV, so BNBD itself needs no extra block.
     if (inputLayoutStr == "TND" && queryRopeD == 0 && queryD == valueD && queryD != 64 && queryD != 128 &&
-        queryD != 192) {
+        queryD != 192 && queryD != 256) {
         return false;
     }
 
