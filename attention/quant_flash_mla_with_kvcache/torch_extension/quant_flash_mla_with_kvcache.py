@@ -208,14 +208,16 @@ class QuantFlashMlaWithKvcacheOpBuilder(OpBuilder):
                 attention_out_size = (n_size, t_size, head_dim_v)
 
             return (
-                torch.empty(attention_out_size, dtype=torch.bfloat16, device="meta"),
-                torch.empty(softmax_out_size, dtype=torch.float32, device="meta"),
+                torch.empty(attention_out_size, dtype=torch.bfloat16, device=q.device),
+                torch.empty(softmax_out_size, dtype=torch.float32, device=q.device),
             )
 
 
 # Instantiate the builder
 quant_flash_mla_with_kvcache_op_builder = QuantFlashMlaWithKvcacheOpBuilder()
 quant_flash_mla_with_kvcache_op_builder._ensure_initialized()
+# 预加载 C++ 扩展，避免 aclgraph/torch.compile 时在 compile 区域内首次调用 load() 触发 graph break
+quant_flash_mla_with_kvcache_op_builder.load(verbose=False)
 
 
 @impl(get_as_library(), QMLA_METADATA_OP_NAME, "PrivateUse1")

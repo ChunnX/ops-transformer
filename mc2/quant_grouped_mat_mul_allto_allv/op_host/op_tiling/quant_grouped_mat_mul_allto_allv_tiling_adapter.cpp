@@ -51,15 +51,15 @@ ge::graphStatus QuantGroupedMatmulAllToAllvAdapter::SetCommonInputParams(const Q
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus
-QuantGroupedMatmulAllToAllvAdapter::SetGroupExpertInputParameters(const QuantGmmAlltoAllvParamsInfo &params,
-                                                                  uint64_t gmmX, uint64_t expertNum)
+ge::graphStatus QuantGroupedMatmulAllToAllvAdapter::SetGroupExpertInputParameters(
+    const QuantGmmAlltoAllvParamsInfo &params, uint64_t gmmX, uint64_t expertNum)
 {
     inputParams_.mSize = gmmX;
     inputParams_.kSize = params.H1;
     inputParams_.nSize = params.N1;
     inputParams_.groupNum = expertNum;
-    if (params.gmmXQuantMode > 0 && params.gmmXQuantMode < QUANT_MODE_MP.size()) {
+    if (params.gmmXQuantMode > 0 && static_cast<size_t>(params.gmmXQuantMode) < QUANT_MODE_MP.size() &&
+        static_cast<size_t>(params.gmmWeightQuantMode) < QUANT_MODE_MP.size()) {
         inputParams_.aQuantMode = static_cast<QuantMode>(1U << (QUANT_MODE_MP[params.gmmXQuantMode]));
         inputParams_.bQuantMode = static_cast<QuantMode>(1U << (QUANT_MODE_MP[params.gmmWeightQuantMode]));
     }
@@ -89,14 +89,15 @@ QuantGroupedMatmulAllToAllvAdapter::SetGroupExpertInputParameters(const QuantGmm
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus
-QuantGroupedMatmulAllToAllvAdapter::SetSharedExpertInputParameters(const QuantGmmAlltoAllvParamsInfo &params)
+ge::graphStatus QuantGroupedMatmulAllToAllvAdapter::SetSharedExpertInputParameters(
+    const QuantGmmAlltoAllvParamsInfo &params)
 {
     inputParams_.mSize = params.Bs;
     inputParams_.kSize = params.H2;
     inputParams_.nSize = params.N2;
     inputParams_.groupNum = 1;
-    if (params.gmmXQuantMode > 0 && QUANT_MODE_MP.size()) {
+    if (params.mmXQuantMode > 0 && static_cast<size_t>(params.mmXQuantMode) < QUANT_MODE_MP.size() &&
+        static_cast<size_t>(params.mmWeightQuantMode) < QUANT_MODE_MP.size()) {
         inputParams_.aQuantMode = static_cast<QuantMode>(1U << (QUANT_MODE_MP[params.mmXQuantMode]));
         inputParams_.bQuantMode = static_cast<QuantMode>(1U << (QUANT_MODE_MP[params.mmWeightQuantMode]));
     }

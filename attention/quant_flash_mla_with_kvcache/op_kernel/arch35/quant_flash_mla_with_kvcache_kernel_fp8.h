@@ -214,11 +214,10 @@ public:
         constInfo_.coreNum = baseParams.coreNum;
         constInfo_.needInitOutput = emptyTensorParams.needInit;
         constInfo_.outputLayout = ConvertToQmlaKernelLayout(baseParams.outputLayout);
-        // strides
-        constInfo_.keyStrides.bnStride = 0;
-        constInfo_.keyStrides.n2Stride = 0;
-        constInfo_.valueStrides.bnStride = 0;
-        constInfo_.valueStrides.n2Stride = 0;
+        // strides: k_cache非连续stride, 0表示按shape推连续; V=K_nope复用同一tensor, valueStrides取keyStrides
+        constInfo_.keyStrides.bnStride = baseParams.keyStrides.bnStride;
+        constInfo_.keyStrides.n2Stride = baseParams.keyStrides.n2Stride;
+        constInfo_.valueStrides = constInfo_.keyStrides;
 
         constInfo_.sparseMode = attenMaskParams.maskMode;
         constInfo_.preTokens = 0;

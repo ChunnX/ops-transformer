@@ -264,7 +264,7 @@ protected:
             .rowCount = dealRowCount,
             .colCount = columnCount,
         };
-        GmCoord gmCoord{.bIdx = taskInfo_.bIdx,
+        GmCoordGs1Merge gmCoord{.bIdx = taskInfo_.bIdx,
                         .n2Idx = taskInfo_.n2Idx,
                         .gS1Idx = taskInfo_.gS1Idx + startRow,
                         .dIdx = 0,
@@ -273,7 +273,7 @@ protected:
         CopyAttentionOut(ubTensor, gmCoord);
     }
 
-    __aicore__ inline void CopyAttentionOut(FaUbTensor<OUTPUT_T> &ubTensor, GmCoord &gmCoord)
+    __aicore__ inline void CopyAttentionOut(FaUbTensor<OUTPUT_T> &ubTensor, GmCoordGs1Merge &gmCoord)
     {
         if constexpr (outLayout == LayOutTypeEnum::LAYOUT_TND) {
             constexpr GmFormat OUT_FORMAT = GmFormat::TNGD;

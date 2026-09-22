@@ -37,6 +37,8 @@ constexpr size_t OUTPUT_AMAX = 2;
 
 // Attr
 constexpr size_t GROUPSIZE_IDX = 7;
+constexpr int64_t PEER_ONLY_RANK_SIZE = 2;
+inline constexpr char PEER_ONLY_ALGORITHM[] = "CcuSchedReduceScatterSoleMeshPeerOnly";
 
 // Dtype
 constexpr std::initializer_list<ge::DataType> MXDTYPE_SUPPORT_LIST = {
@@ -98,6 +100,7 @@ protected:
                         const ::TCubeTiling &tailTiling, uint32_t debugMode);
     ge::graphStatus CheckHCCLSize();
     ge::graphStatus AdjustHCCLLimit(Mc2Tiling::RCSTiling &rcsCfg, mc2tiling::Mc2QuantMode quantMmMode);
+    void BuildWorkspaceLayout();
 
     mc2tiling::TilingArgs args_;
     platform_ascendc::SocVersion socVersion_;
@@ -106,11 +109,15 @@ protected:
     const char *opName_ = nullptr;
     int64_t rankSize_{0};
     uint8_t commMode_{0};
+    bool isPeerOnly_{false};
     uint64_t tileMValue_{0};  // mc2 切块后主块M的大小；
     uint64_t tailMValue_{0};  // mc2 切块后尾块M的大小；
     uint64_t longTileLen_{0}; // mc2 切块后长块的大小；
     uint64_t mmResultLen_{0};
     uint32_t libApiWorkSpaceSize_{0};
+#if MC2_DFX_ENABLE
+    Utils::DfxWorkspaceLayoutInfo workspaceLayout_{};
+#endif
 };
 } // namespace optiling
 

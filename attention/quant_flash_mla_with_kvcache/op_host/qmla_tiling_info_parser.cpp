@@ -144,6 +144,12 @@ ge::graphStatus QmlaInfoParser::GetOpParaInfo()
     fillTensorInfo(opParamInfo_.attnMask, ATTN_MASK_INDEX, true);
     fillTensorInfo(opParamInfo_.metadata, METADATA_INDEX, true);
 
+    // k_cache为view输入时提取stride, 用于非连续Tensor校验与kernel侧offset计算
+    if (context_->InputIsView(K_CACHE_INDEX)) {
+        keyStrides_ = context_->GetInputStride(K_CACHE_INDEX);
+        hasStride_ = keyStrides_ != nullptr;
+    }
+
     opParamInfo_.attnOut.desc = context_->GetOutputDesc(ATTN_OUT_INDEX);
     opParamInfo_.attnOut.shape = context_->GetOutputShape(ATTN_OUT_INDEX);
     opParamInfo_.softmaxLse.desc = context_->GetOutputDesc(SOFTMAX_LSE_INDEX);
@@ -418,6 +424,9 @@ void QmlaInfoParser::GenerateInfo(QmlaTilingInfo &qmlaInfo)
     qmlaInfo.layoutQ = layoutQ_;
     qmlaInfo.layoutOut = layoutOut_;
     qmlaInfo.layoutKv = layoutKv_;
+
+    qmlaInfo.keyStrides = keyStrides_;
+    qmlaInfo.hasStride = hasStride_;
 
     qmlaInfo.returnSoftmaxLse = returnSoftmaxLse_;
     qmlaInfo.metadataFlag = metadataFlag_;

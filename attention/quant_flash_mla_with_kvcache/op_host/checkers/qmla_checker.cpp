@@ -34,6 +34,61 @@ using namespace Ops::Base;
 // MLA 支持的Q_N取值
 static const std::vector<int64_t> MLA_SUPPORT_N1 = {1, 2, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128};
 
+ge::graphStatus QmlaChecker::CheckTensorContiguous(const gert::Shape &inputShape, const gert::Stride *strides,
+                                                   int32_t &index) const
+{
+    // 根据 shape 从最后一维向前累乘推算连续场景的期望 stride, 若某一维实际 stride 不等于期望值则不连续
+    if (strides == nullptr || strides->GetDimNum() == 0) {
+        return ge::GRAPH_SUCCESS;
+    }
+    const int32_t tensorDimNum = static_cast<int32_t>(inputShape.GetDimNum());
+    // 维度为 0 或 1 的 tensor 始终连续
+    if (tensorDimNum == 0 || tensorDimNum == 1) {
+        return ge::GRAPH_SUCCESS;
+    }
+    uint64_t preStride = 1; // 连续场景最后一维的 stride 默认为 1
+    for (index = tensorDimNum - 1; index >= 0; index--) {
+        if (inputShape.GetDim(index) == 1) { // dim=1 时步长不影响连续性
+            continue;
+        }
+        if (preStride != strides->GetStride(index)) {
+            return ge::GRAPH_FAILED;
+        }
+        preStride *= inputShape.GetDim(index);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QmlaChecker::CheckNonContiguousSupport(const QmlaTilingInfo &qmlaInfo)
+{
+    if (!qmlaInfo.hasStride) {
+        return ge::GRAPH_SUCCESS;
+    }
+    const char *opName = qmlaInfo.opName;
+    const gert::StorageShape *kCacheShape = qmlaInfo.opParamInfo.kCache.shape;
+    OP_CHECK_IF(kCacheShape == nullptr, OP_LOGE(opName, "k_cache shape is nullptr"),
+                return ge::GRAPH_FAILED);
+    int32_t dimIndex = -1;
+    if (CheckTensorContiguous(kCacheShape->GetStorageShape(), qmlaInfo.keyStrides, dimIndex) == ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_SUCCESS;
+    }
+    // PA_BBND(BnBsH) 仅 0 轴可非连续, PA_BNBD(BnNBsD)/PA_NZ 仅 0、1 轴可非连续
+    const bool isBbnd = (qmlaInfo.layoutKv == QmlaKvLayout::PA_BBND);
+    const int32_t maxNonContiguousAxis = isBbnd ? 0 : 1;
+    if (dimIndex > maxNonContiguousAxis) {
+        const char *layoutName = isBbnd ? "PA_BBND (BnBsH)"
+                                 : (qmlaInfo.layoutKv == QmlaKvLayout::PA_NZ) ? "PA_NZ" : "PA_BNBD (BnNBsD)";
+        const std::string reason = "k_cache layout is " + std::string(layoutName) +
+                                   ", only axis 0" + (isBbnd ? "" : " and axis 1") +
+                                   " can be non-contiguous, but axis " + std::to_string(dimIndex) +
+                                   " is non-contiguous";
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            opName, K_CACHE_NAME, std::to_string(dimIndex).c_str(), reason.c_str());
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus QmlaChecker::Init(const QmlaTilingInfo &qmlaInfo)
 {
     (void)qmlaInfo;
@@ -223,7 +278,8 @@ ge::graphStatus QmlaChecker::Process(const QmlaTilingInfo &qmlaInfo)
     if (CheckAxisPara(qmlaInfo) != ge::GRAPH_SUCCESS || CheckSeqLenPara(qmlaInfo) != ge::GRAPH_SUCCESS ||
         CheckMaskPara(qmlaInfo) != ge::GRAPH_SUCCESS || CheckQuantPara(qmlaInfo) != ge::GRAPH_SUCCESS ||
         CheckLayoutPara(qmlaInfo) != ge::GRAPH_SUCCESS ||
-        CheckSoftmaxLsePara(qmlaInfo) != ge::GRAPH_SUCCESS) {
+        CheckSoftmaxLsePara(qmlaInfo) != ge::GRAPH_SUCCESS ||
+        CheckNonContiguousSupport(qmlaInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

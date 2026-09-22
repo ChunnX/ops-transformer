@@ -75,7 +75,7 @@ public:
     using mm2ResPos = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
     using attenMaskGmType = typename std::conditional<hasAtten, GlobalTensor<uint8_t>, int8_t>::type;
     using flashdecodeGmType = typename std::conditional<FLASH_DECODE, GlobalTensor<float>, int8_t>::type;
-    using ConstInfoNoQuant = ConstInfo_t<FiaKernelType::NO_QUANT>;
+    using ConstInfoNoQuant = ConstInfo_t;
     using OUT_T = OUTPUT_T;
 
     // gm
@@ -576,19 +576,19 @@ public:
     __aicore__ inline void Bmm2DataCopyOutTrans(const RunInfoX &info, LocalTensor<OUTPUT_T> &attenOutUb,
                                                 uint32_t vecMIdx, uint32_t dealRowCount)
     {
-        GmCoord gmCoord{.bIdx = info.bIdx,
-                        .n2Idx = info.n2Idx,
-                        .gS1Idx = (info.gS1Idx + info.vecMbaseIdx + vecMIdx),
-                        .dIdx = 0,
-                        .gS1DealSize = dealRowCount,
-                        .dDealSize = (uint32_t)constInfo.dSizeV};
+        GmCoordGs1Merge gmCoord{.bIdx = info.bIdx,
+                                .n2Idx = info.n2Idx,
+                                .gS1Idx = (info.gS1Idx + info.vecMbaseIdx + vecMIdx),
+                                .dIdx = 0,
+                                .gS1DealSize = dealRowCount,
+                                .dDealSize = (uint32_t)constInfo.dSizeV};
         FaUbTensor<OUTPUT_T, false> ubTensor{
             .tensor = attenOutUb, .rowCount = dealRowCount, .colCount = (uint32_t)(dVTemplateAlign64)};
         // [MTE3] CopyAttentionOut: 按 outputLayout 分支(B 本用例 BNSD)走 CopyAttenOutUbToGm 执行 MTE3(UB->GM) 写回
         CopyAttentionOut(ubTensor, gmCoord);
     }
 
-    __aicore__ inline void CopyAttentionOut(FaUbTensor<OUTPUT_T, false> &ubTensor, GmCoord &gmCoord)
+    __aicore__ inline void CopyAttentionOut(FaUbTensor<OUTPUT_T, false> &ubTensor, GmCoordGs1Merge &gmCoord)
     {
         if (constInfo.outputLayout == FIA_LAYOUT::BSH) {
             constexpr GmFormat OUT_FORMAT = GmFormat::BSNGD;
@@ -834,7 +834,7 @@ public:
     static constexpr bool HAS_MASK = hasAtten;
     static constexpr bool FLASH_DECODE = isFd;
     using OUT_T = OUTPUT_T;
-    using ConstInfoNoQuant = ConstInfo_t<FiaKernelType::NO_QUANT>;
+    using ConstInfoNoQuant = ConstInfo_t;
     __aicore__ inline FANoQuantMlaBlockVecDummy(ConstInfoNoQuant &constInfo){};
 };
 
