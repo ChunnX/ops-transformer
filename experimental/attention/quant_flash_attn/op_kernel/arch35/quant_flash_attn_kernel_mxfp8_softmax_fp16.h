@@ -532,8 +532,8 @@ public:
                 // 注意：CROSS_CORE_SYNC_V1_P_READY 不预置——它是「P/pscale 数据就绪」信号（非槽位释放），
                 // 预置会让 cube Phase 2 在 V1 实际写入 L1 之前就读 PScale（读全零）。
                 // Phase 2 仅在 loop >= PRELOAD_N 时执行，此时对应 Phase 1 已 Set，无需预置。
-                // CrossCoreSetFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_C1_V1);
-                // CrossCoreSetFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_C2_V2);
+                CrossCoreSetFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_C1_V1);
+                CrossCoreSetFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_C2_V2);
             }
         }
 
@@ -556,10 +556,10 @@ public:
         if (constInfo_.aicIdx < constInfo_.coreNum) {
             if ASCEND_IS_AIC {
                 // 收尾 Wait：配平两侧 V 核初始 Set 的 4 个 flag，防止 flag 计数泄漏
-                // CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_C1_V1);
-                // CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_C1_V1 + 16);
-                // CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_C2_V2);
-                // CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_C2_V2 + 16);
+                CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_C1_V1);
+                CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_C1_V1 + 16);
+                CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_C2_V2);
+                CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_C2_V2 + 16);
 #if QFA_SF16_DEBUG_PRINTF
                 AscendC::printf("[Process][AIC%u] pipeline done\n", constInfo_.aicIdx);
 #endif
