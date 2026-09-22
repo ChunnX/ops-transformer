@@ -70,10 +70,8 @@ ASCENDC_TPL_ARGS_DECL(FlashAttn,
                       //    config=4: sOuter=32, sInner=256 → D=256, DV=256
                       ASCENDC_TPL_UINT_DECL(Config, ASCENDC_TPL_3_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 4), );
 
-ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST,
-                                                          0,1,2,3
-                                                          ),
-                                     ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, 0,1,2,3),
+ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, 0, 1, 2, 3),
+                                     ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, 0, 1, 2, 3),
                                      ASCENDC_TPL_BOOL_SEL(HasAttenMask, false),
                                      ASCENDC_TPL_BOOL_SEL(HasRel, false, true),
                                      ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, 0),

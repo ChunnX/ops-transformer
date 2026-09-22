@@ -410,7 +410,7 @@ const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {{ge::DT_UNDE
 const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
     {QUERY_NAME, {ge::DT_FLOAT16, ge::DT_BF16}}, {KEY_NAME, {ge::DT_FLOAT16, ge::DT_BF16}},
     {VALUE_NAME, {ge::DT_FLOAT16, ge::DT_BF16}}, {REL_H_NAME, {ge::DT_FLOAT16, ge::DT_BF16}},
-    {REL_W_NAME, {ge::DT_FLOAT16, ge::DT_BF16}},  {ATTN_MASK_NAME, {ge::DT_INT8}},
+    {REL_W_NAME, {ge::DT_FLOAT16, ge::DT_BF16}}, {ATTN_MASK_NAME, {ge::DT_INT8}},
     {BLOCK_TABLE_NAME, {ge::DT_INT32}},          {ATTN_OUT_NAME, {ge::DT_FLOAT16, ge::DT_BF16}},
     {SOFTMAX_LSE_NAME, {ge::DT_FLOAT}},
 };

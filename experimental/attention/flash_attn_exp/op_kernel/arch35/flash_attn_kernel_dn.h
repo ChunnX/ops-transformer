@@ -74,7 +74,7 @@ public:
     VecFaBlockType vecFaBlock_;
     VecFdBlockType vecFdBlock_;
 
-    //eventId
+    // eventId
     static constexpr uint32_t UB_IN_PSE_EVENT0 = 0;
 
     // 分核信息
@@ -111,12 +111,11 @@ public:
           vecFaBlock_(constInfo_, qSeqLensTool_, kvSeqLensTool_),
           vecFdBlock_(constInfo_, qSeqLensTool_, kvSeqLensTool_){};
 
-    __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                                __gm__ uint8_t *relH, __gm__ uint8_t *relW,
-                                __gm__ uint8_t *blockTable, __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv,
-                                __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKv, __gm__ uint8_t *learnableSink,
-                                __gm__ uint8_t *attenMask, __gm__ uint8_t *fiaMetaData, __gm__ uint8_t *attentionOut,
-                                __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
+    __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *relH,
+                                __gm__ uint8_t *relW, __gm__ uint8_t *blockTable, __gm__ uint8_t *cuSeqLensQ,
+                                __gm__ uint8_t *cuSeqLensKv, __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKv,
+                                __gm__ uint8_t *learnableSink, __gm__ uint8_t *attenMask, __gm__ uint8_t *fiaMetaData,
+                                __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
                                 __tiling_data_ptr__ FlashAttnNoQuantTilingArch35 *tiling)
     {
         tilingData_ = tiling;
@@ -592,12 +591,12 @@ public:
 
     __aicore__ inline void GetFASectionInfo(uint32_t sectionIdx)
     {
-        bN2Start_ = faMetaDataGm_.GetValue(
-            GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_BN2_START_INDEX, sectionIdx));
-        gS1OStart_ = faMetaDataGm_.GetValue(
-            GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_M_START_INDEX, sectionIdx));
-        s2OStart_ = faMetaDataGm_.GetValue(
-            GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_S2_START_INDEX, sectionIdx));
+        bN2Start_ =
+            faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_BN2_START_INDEX, sectionIdx));
+        gS1OStart_ =
+            faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_M_START_INDEX, sectionIdx));
+        s2OStart_ =
+            faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_S2_START_INDEX, sectionIdx));
         bN2End_ = faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_BN2_END_INDEX, sectionIdx));
         gS1OEnd_ = faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_M_END_INDEX, sectionIdx));
         s2OEnd_ = faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_S2_END_INDEX, sectionIdx));
@@ -619,8 +618,8 @@ public:
             fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_WORKSPACE_IDX_INDEX, sectionIdx));
         fdParams_.fdS2SplitNum =
             fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_WORKSPACE_NUM_INDEX, sectionIdx));
-        fdParams_.mStart = fdMetaDataGm_.GetValue(
-            GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_M_START_INDEX, sectionIdx));
+        fdParams_.mStart =
+            fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_M_START_INDEX, sectionIdx));
     }
 
     __aicore__ inline void Process()

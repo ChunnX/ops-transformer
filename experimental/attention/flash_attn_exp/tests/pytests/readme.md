@@ -74,8 +74,6 @@ pytests/
 │   ├── perf_parser.py              # 性能数据解析
 │   ├── perf_runner.py              # 性能测试运行器
 │   └── precision_visual.py         # 精度热力图可视化
-├── tools/
-│   └── xlsx_to_testcase.py         # Excel → test case转换
 ├── test_flash_attn.py              # 主入口
 ├── test_npu_metadata.py            # metadata算子独立测试
 └── readme.md

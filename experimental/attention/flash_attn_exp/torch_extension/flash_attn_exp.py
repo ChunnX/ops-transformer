@@ -42,7 +42,9 @@ def _calculate_metadata_size(batch_size, num_heads_kv):
 
 class FlashAttenOpBuilder(OpBuilder):
     def __init__(self):
-        super(FlashAttenOpBuilder, self).__init__("flash_attn_exp", category="attention")
+        super(FlashAttenOpBuilder, self).__init__(
+            "flash_attn_exp", category="attention"
+        )
 
     def sources(self):
         """Path to C++ source code."""

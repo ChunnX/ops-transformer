@@ -35,9 +35,8 @@ at::Tensor FlashAttnMetadata(const c10::optional<at::Tensor> &cuSeqlensQ, const 
 }
 
 std::tuple<at::Tensor, at::Tensor> FlashAttn(
-    const at::Tensor &q, const at::Tensor &k, const at::Tensor &v,
-    const c10::optional<at::Tensor> &relH, const c10::optional<at::Tensor> &relW,
-    const c10::optional<at::Tensor> &blockTable,
+    const at::Tensor &q, const at::Tensor &k, const at::Tensor &v, const c10::optional<at::Tensor> &relH,
+    const c10::optional<at::Tensor> &relW, const c10::optional<at::Tensor> &blockTable,
     const c10::optional<at::Tensor> &cuSeqlensQ, const c10::optional<at::Tensor> &cuSeqlensKv,
     const c10::optional<at::Tensor> &sequsedQ, const c10::optional<at::Tensor> &sequsedKv,
     const c10::optional<at::Tensor> &sinks, const c10::optional<at::Tensor> &attnMask,

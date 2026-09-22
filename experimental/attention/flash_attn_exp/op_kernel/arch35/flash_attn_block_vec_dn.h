@@ -147,9 +147,8 @@ public:
           qSeqLensTool_(qSeqLensTool),
           kvSeqLensTool_(kvSeqLensTool){};
 
-    __aicore__ inline void InitBlock(__gm__ uint8_t *attenMask, __gm__ uint8_t *learnableSink,
-                                     __gm__ uint8_t *relH, __gm__ uint8_t *relW,
-                                     __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
+    __aicore__ inline void InitBlock(__gm__ uint8_t *attenMask, __gm__ uint8_t *learnableSink, __gm__ uint8_t *relH,
+                                     __gm__ uint8_t *relW, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
                                      __gm__ uint8_t *workspace)
     {
         uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32;
@@ -247,17 +246,11 @@ public:
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM1_1);
     }
 
-    __aicore__ inline void UnInitCrossCoreSync()
-    {
-    }
+    __aicore__ inline void UnInitCrossCoreSync() {}
 
-    __aicore__ inline void AllocEventID()
-    {
-    }
+    __aicore__ inline void AllocEventID() {}
 
-    __aicore__ inline void FreeEventID()
-    {
-    }
+    __aicore__ inline void FreeEventID() {}
 
     __aicore__ inline void ProcessVec1(RunInfoX runInfo)
     {
@@ -513,9 +506,8 @@ public:
                                                uint32_t mDealSize)
     {
         int64_t dSizeAligned64 = (int64_t)dVBaseSize;
-        uint64_t gmOffset =
-            runInfo.faTmpOutWsPos * mBaseSize * constInfo_.dSizeV +
-            (runInfo.vecMbaseIdx + mStartVec) * constInfo_.dSizeV;
+        uint64_t gmOffset = runInfo.faTmpOutWsPos * mBaseSize * constInfo_.dSizeV +
+                            (runInfo.vecMbaseIdx + mStartVec) * constInfo_.dSizeV;
 
         DataCopyExtParams dataCopyParams;
         dataCopyParams.blockCount = mDealSize;
@@ -555,9 +547,8 @@ public:
                         ubVec2Res_, mm2ResUbTensor, ubVec2Res_, expUb, pScaleUb, runInfo.actVecMSize, dTemplateAlign64,
                         1.0, 1.0);
                 } else {
-                    LocalTensor<float> sumUb =
-                        softmaxSumBuf_[(runInfo.mloop % UB_SOFTMAX_SUM_BUFCNT) *
-                                       (UB_SOFTMAX_SUM_BUF_BYTES / sizeof(T))];
+                    LocalTensor<float> sumUb = softmaxSumBuf_[(runInfo.mloop % UB_SOFTMAX_SUM_BUFCNT) *
+                                                              (UB_SOFTMAX_SUM_BUF_BYTES / sizeof(T))];
                     FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
                         ubVec2Res_, mm2ResUbTensor, ubVec2Res_, expUb, pScaleUb, sumUb, runInfo.actVecMSize,
                         dTemplateAlign64, 1.0, 1.0);
@@ -601,7 +592,7 @@ public:
 
     __aicore__ inline void AttnRelCopyIn(const RunInfoX &runInfo, uint32_t vec1ResUbBufId)
     {
-        // 拷贝REL进入Ub, 借用 ubVec1ResBuffers_ 
+        // 拷贝REL进入Ub, 借用 ubVec1ResBuffers_
         // MTE2 写 rel 临时数据 → V 转置读取+写 stage1 → MTE3 拷出 stage1 → (下下轮) MTE2 再写
         LocalTensor<INPUT_T> relHTempTensor =
             ubVec1ResBuffers_[vec1ResUbBufId * UB_VEC1_RES_BUF_BYTES].template ReinterpretCast<INPUT_T>();
@@ -702,10 +693,8 @@ public:
                                      curS1Idx * constInfo_.relHSize;
                 int64_t relWOffset = (runInfo.bIdx * n1Size + curN1Idx) * constInfo_.s1Size * constInfo_.relWSize +
                                      curS1Idx * constInfo_.relWSize;
-                RelDataCopy(relHUb[dstRow * constInfo_.relHSize], relHGm, relHOffset,
-                            segRows * constInfo_.relHSize);
-                RelDataCopy(relWUb[dstRow * constInfo_.relWSize], relWGm, relWOffset,
-                            segRows * constInfo_.relWSize);
+                RelDataCopy(relHUb[dstRow * constInfo_.relHSize], relHGm, relHOffset, segRows * constInfo_.relHSize);
+                RelDataCopy(relWUb[dstRow * constInfo_.relWSize], relWGm, relWOffset, segRows * constInfo_.relWSize);
                 dstRow += segRows;
                 remainRows -= segRows;
                 curS1Idx = 0;
