@@ -53,8 +53,6 @@ def _inplace_write(dst, src, slot_name):
             f"!= computed {tuple(src_t.shape)}"
         )
     if _is_numpy_arr(dst):
-        # ttk fp4/e8m0 输入走 numpy fallback (float4_e2m1 非 torch 原生 dtype),
-        # 此处把 golden 产出的 uint8 编码/字节 view 成原生 numpy dtype 后原位写入.
         src_np = src_t.detach().cpu().contiguous().numpy()
         dst_str = str(dst.dtype)
         if "float4" in dst_str or "float8" in dst_str:
@@ -65,7 +63,6 @@ def _inplace_write(dst, src, slot_name):
     else:
         dst_str = str(dst.dtype)
         if "float4" in dst_str or "float8" in dst_str:
-            # 原生 4/8-bit dtype 走 view 重解释 (与 numpy fallback 一致)
             dst.copy_(src_t.view(dst.dtype))
         else:
             dst.copy_(src_t.to(dst.dtype))
@@ -130,8 +127,7 @@ def generate_qfa_mxfp4_inputs(
 ):
     """原位生成 quant_flash_attn (MXFP4) 全部 15 个 tensor slot 的真实数据。
 
-    Signature 镜像 torch.ops.cann_ops_transformer.quant_flash_attn。metadata slot
-    由 npu_preprocess 在主算子调用前回填, 这里只保留 ttk 分配的占位。
+    Signature 镜像 torch.ops.cann_ops_transformer.quant_flash_attn。
     """
     attrs = dict(kwargs)
     attrs.setdefault("quant_mode", quant_mode)

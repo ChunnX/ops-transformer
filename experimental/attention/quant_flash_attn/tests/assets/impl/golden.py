@@ -62,9 +62,7 @@ def cpu_qfa_mxfp4(
 ):
     """CPU golden: 与 inputs 同源 generate_data, 再跑 cpu_mxfp4_golden。
 
-    Signature 镜像 torch.ops.cann_ops_transformer.quant_flash_attn, 位置参数由
-    ttk 按 op schema 传入; 额外 CSV attributes (B/N_q/N_kv/D/V_D/*_values ...)
-    走 kwargs。
+    Signature 镜像 torch.ops.cann_ops_transformer.quant_flash_attn。
     """
     attrs = dict(kwargs)
     attrs.setdefault("quant_mode", quant_mode)

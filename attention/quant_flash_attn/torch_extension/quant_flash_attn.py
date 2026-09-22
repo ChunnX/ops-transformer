@@ -570,8 +570,6 @@ def quant_flash_attn(
             )
 
     if quant_mode == int(QuantMode.A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16):
-        # MxFP4 下 q/k/v 统一走原生 float4_e2m1fn_x2 (2 值/byte), C++ make_wrapper
-        # 映射到 ACL_FLOAT4_E2M1.
         for name, tensor in (("q", q), ("k", k), ("v", v)):
             if tensor.dtype != torch.float4_e2m1fn_x2:
                 raise ValueError(
