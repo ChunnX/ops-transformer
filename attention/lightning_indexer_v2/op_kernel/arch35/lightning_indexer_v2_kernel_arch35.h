@@ -778,10 +778,13 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::ProcessMain()
         matmulService.FreeEventID();
         CrossCoreWaitFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(LIV2Common::ConstInfo::CROSS_VC_EVENT + 0);
         CrossCoreWaitFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(LIV2Common::ConstInfo::CROSS_VC_EVENT + 1);
+#if CVRATIO > 1
+        // 950(1:2): 收尾需等待AIV1(配对第二V核)的VC事件; 960(1:1): 无AIV1, +OFFSET事件无人设置, 不能等待
         CrossCoreWaitFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(LIV2Common::ConstInfo::CROSS_VC_EVENT + 0 +
                                                                           LIV2Common::ConstInfo::AIV0_AIV1_OFFSET);
         CrossCoreWaitFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(LIV2Common::ConstInfo::CROSS_VC_EVENT + 1 +
                                                                           LIV2Common::ConstInfo::AIV0_AIV1_OFFSET);
+#endif
     }
 }
 
