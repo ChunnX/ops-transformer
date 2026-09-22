@@ -391,14 +391,12 @@ int64_t KvRmsNormRopeCacheTilingBase::GetQuantMode(const gert::TilingContext *co
     // Check and warn dissociated quant offsets
     auto offset1Shape = context->GetOptionalInputShape(K_ROPE_OFFSET_IDX);
     auto offset2Shape = context->GetOptionalInputShape(C_KV_OFFSET_IDX);
-    if (scale1Shape == nullptr && offset1Shape!=nullptr) {
+    if (scale1Shape == nullptr && offset1Shape != nullptr) {
         OP_LOGW(context_->GetNodeName(), "Orphan quant offset for k_cache without quant scale will be ignored.");
     }
-    if (scale2Shape == nullptr && offset2Shape!=nullptr) {
+    if (scale2Shape == nullptr && offset2Shape != nullptr) {
         OP_LOGW(context_->GetNodeName(), "Orphan quant offset for ckv_cache without quant scale will be ignored.");
     }
-    hasQuantOffset_ = ((scale1Shape != nullptr && offset1Shape!=nullptr) ||
-    (scale2Shape != nullptr && offset2Shape!=nullptr))
     return qmode;
 }
 
@@ -443,7 +441,7 @@ bool KvRmsNormRopeCacheTilingBase::ValidateCacheShapes()
     {
         return false;
     }
-    return (this->cacheLength_ > 0 && this->blockSize_ > DIM_ONE);
+    return (this->cacheLength_ > 0 && this->blockSize_ > 0);
 }
 
 bool KvRmsNormRopeCacheTilingBase::ValidateSBroadcast()
@@ -453,7 +451,7 @@ bool KvRmsNormRopeCacheTilingBase::ValidateSBroadcast()
         // got cosSeq == 1 && cosSeq != seqLen && seqLen > 1
         if (isPagedAttention_) {
             // only non-quant under PA can be broadcasted
-            isValid = (quantMode_ == NON_QUANT_MODE);
+            isValid = (quantMode_ == NON_QUANT_MODE && !isPABNSD_);
         }
     }
     return isValid;
@@ -540,10 +538,21 @@ ge::graphStatus KvRmsNormRopeCacheTilingBase::GetShapeAttrsInfo()
     }
 
     if (methodMode_ == 1) {
+        // Datatype alignment
+        auto vDesc = context_->GetInputDesc(KV_INDEX);
+        OP_CHECK_NULL_WITH_CONTEXT(context_, vDesc);
+        vDtype_ = vDesc->GetDataType();
+        OP_CHECK_IF((vDtype_ != kvDtype_),
+                    OP_LOGE(context_->GetNodeName(), "v datatype Must be consist with kv under k-v split mode."),
+                    return ge::GRAPH_FAILED);
+
         auto vShape = GetOptionalShapeTuple(context_, V_IDX);
         vlen_ = std::get<SHAPE_IDX_D>(vShape);
         OP_CHECK_IF(!CheckVValid(context_, batchSize, numHead, seqLen, vlen_),
                     OP_LOGE(context_->GetNodeName(), "v shape is invalid."), return ge::GRAPH_FAILED);
+    } else {
+        // kv components are aligned in merged hdim
+        vDtype_ = kvDtype_;
     }
     OP_CHECK_IF(!CheckKvValid(context_, batchSize, numHead, seqLen, kv_),
                 OP_LOGE(context_->GetNodeName(), "kv shape is invalid."), return ge::GRAPH_FAILED);
@@ -573,21 +582,23 @@ ge::graphStatus KvRmsNormRopeCacheTilingBase::GetShapeAttrsInfo()
         }
         // both (cacheMode == "PA" || cacheMode == "PA_BNSD") are mapped to CacheMode::PA
         isPagedAttention_ = (currentCacheMode_ == CacheMode::PA);
+        isPABNSD_ = (cacheMode == "PA_BNSD");
     } else {
         isPagedAttention_ = false;
         currentCacheMode_ = CacheMode::Norm;
         OP_LOGW(context_->GetNodeName(), "Get Empty cachemode, set to default mode Norm.");
     }
-    // validate S-axis broadcast
-    OP_CHECK_IF(!ValidateSBroadcast(),
-                OP_LOGE(context_->GetNodeName(), "Unsupported RoPE axis broadcast config."),
-                return ge::GRAPH_FAILED);
+
     // setup output config
     const bool *isOutputKv = attrs->GetBool(IS_OUTPUT_KV_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, isOutputKv);
     isOutputKv_ = *isOutputKv;
+    // validate S-axis broadcast
     OP_CHECK_IF(!CheckCosSinValid(context_, batchSize, numHead, seqLen, dk_),
                 OP_LOGE(context_->GetNodeName(), "cos or sin shape is invalid."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(!ValidateSBroadcast(),
+                OP_LOGE(context_->GetNodeName(), "Unsupported RoPE axis broadcast config."),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(!CheckGammaValid(context_, dv_), OP_LOGE(context_->GetNodeName(), "gamma shape is invalid."),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(!CheckIndexValid(context_, batchSize, seqLen, blockSize_, currentCacheMode_),
