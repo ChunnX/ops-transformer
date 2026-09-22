@@ -69,7 +69,8 @@ std::string SelectAllToAllAlgoName(const std::string &opName, const std::string 
         commDataBytes *= dtypeSize;
     }
     OP_LOGI(opName.c_str(), "[SetHcclTiling] commDataBytes=%llu, tileM=%u, dimSize=%llu, rankDim=%u, engine=%u",
-            commDataBytes, tileM, dimSize, rankDim, static_cast<uint32_t>(commEngine));
+            static_cast<unsigned long long>(commDataBytes), tileM, static_cast<unsigned long long>(dimSize), rankDim,
+            static_cast<uint32_t>(commEngine));
     uint32_t algoCount = 0;
     const Mc2Hcom::CommAlgoEntry *algoEntries = GetAllToAllCommAlgoTable(algoCount);
     std::string algoName = Mc2Hcom::Mc2CommAlgoSelector::SelectAlgoName(

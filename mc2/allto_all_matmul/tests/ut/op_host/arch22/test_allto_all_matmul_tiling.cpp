@@ -2099,39 +2099,8 @@ struct AlltoAllMatmulCompileInfo {
 } compileInfoA3;
 
 // ut
-static void TestOneParamCase(const AlltoAllMatmulTestParam &param)
+static std::vector<gert::TilingContextPara::OpAttr> BuildTilingAttributes(const AlltoAllMatmulTestParam &param)
 {
-    std::cout << "[TEST_CASE] " << param.caseName << std::endl;
-    //
-    //  Shape  tensor  shape  gert::StorageShape
-    gert::StorageShape x1Shape = {param.x1Shape, param.x1Shape};
-    gert::StorageShape x2Shape = {param.x2Shape, param.x2Shape};
-    gert::StorageShape biasShape = {param.biasShape, param.biasShape};
-    gert::StorageShape x1ScaleShape = {param.x1ScaleShape, param.x1ScaleShape};
-    gert::StorageShape x2ScaleShape = {param.x2ScaleShape, param.x2ScaleShape};
-    gert::StorageShape commScaleShape = {param.commScaleShape, param.commScaleShape};
-    gert::StorageShape x1OffsetShape = {param.x1OffsetShape, param.x1OffsetShape};
-    gert::StorageShape x2OffsetShape = {param.x2OffsetShape, param.x2OffsetShape};
-
-    gert::StorageShape yShape = {param.yShape, param.yShape};
-    gert::StorageShape all2allOutShape = {param.all2allOutShape, param.all2allOutShape};
-
-    //  input tensor
-    std::vector<gert::TilingContextPara::TensorDescription> inputTensorDesc_(
-        {{x1Shape, param.x1Dtype, param.x1Format},
-         {x2Shape, param.x2Dtype, param.x2Format},
-         {biasShape, param.biasDtype, param.biasFormat},
-         {x1ScaleShape, param.x1ScaleDtype, param.x1ScaleFormat},
-         {x2ScaleShape, param.x2ScaleDtype, param.x2ScaleFormat},
-         {commScaleShape, param.commScaleDtype, param.commScaleFormat},
-         {x1OffsetShape, param.x1OffsetDtype, param.x1OffsetFormat},
-         {x2OffsetShape, param.x2OffsetDtype, param.x2OffsetFormat}});
-
-    //  output tensor
-    std::vector<gert::TilingContextPara::TensorDescription> outputTensorDesc_(
-        {{yShape, param.youtputDtype, param.youtputFormat}, {all2allOutShape, param.outputDtype, param.outputFormat}});
-
-    //  attributes
     std::vector<gert::TilingContextPara::OpAttr> attrs_(
         {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.groupAttr)},
          {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.worldSizeAttr)},
@@ -2148,7 +2117,38 @@ static void TestOneParamCase(const AlltoAllMatmulTestParam &param)
          {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.groupSizeAttr)},
          {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.commModeAttr)},
          {"alltoallout_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(param.alltoalloutFlag)}});
-    //
+    return attrs_;
+}
+
+static void TestOneParamCase(const AlltoAllMatmulTestParam &param)
+{
+    std::cout << "[TEST_CASE] " << param.caseName << std::endl;
+    //  Shape  tensor  shape  gert::StorageShape
+    gert::StorageShape x1Shape = {param.x1Shape, param.x1Shape};
+    gert::StorageShape x2Shape = {param.x2Shape, param.x2Shape};
+    gert::StorageShape biasShape = {param.biasShape, param.biasShape};
+    gert::StorageShape x1ScaleShape = {param.x1ScaleShape, param.x1ScaleShape};
+    gert::StorageShape x2ScaleShape = {param.x2ScaleShape, param.x2ScaleShape};
+    gert::StorageShape commScaleShape = {param.commScaleShape, param.commScaleShape};
+    gert::StorageShape x1OffsetShape = {param.x1OffsetShape, param.x1OffsetShape};
+    gert::StorageShape x2OffsetShape = {param.x2OffsetShape, param.x2OffsetShape};
+    gert::StorageShape yShape = {param.yShape, param.yShape};
+    gert::StorageShape all2allOutShape = {param.all2allOutShape, param.all2allOutShape};
+    //  input tensor
+    std::vector<gert::TilingContextPara::TensorDescription> inputTensorDesc_(
+        {{x1Shape, param.x1Dtype, param.x1Format},
+         {x2Shape, param.x2Dtype, param.x2Format},
+         {biasShape, param.biasDtype, param.biasFormat},
+         {x1ScaleShape, param.x1ScaleDtype, param.x1ScaleFormat},
+         {x2ScaleShape, param.x2ScaleDtype, param.x2ScaleFormat},
+         {commScaleShape, param.commScaleDtype, param.commScaleFormat},
+         {x1OffsetShape, param.x1OffsetDtype, param.x1OffsetFormat},
+         {x2OffsetShape, param.x2OffsetDtype, param.x2OffsetFormat}});
+    //  output tensor
+    std::vector<gert::TilingContextPara::TensorDescription> outputTensorDesc_(
+        {{yShape, param.youtputDtype, param.youtputFormat}, {all2allOutShape, param.outputDtype, param.outputFormat}});
+    //  attributes
+    auto attrs_ = BuildTilingAttributes(param);
     gert::TilingContextPara tilingContextPara(OP_NAME, inputTensorDesc_, outputTensorDesc_, attrs_, &compileInfoA3,
                                               param.socVersion, param.coreNum);
     Mc2Hcom::MC2HcomTopologyMocker::GetInstance().SetValue("rankNum", static_cast<uint64_t>(param.worldSizeAttr));

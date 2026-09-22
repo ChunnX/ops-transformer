@@ -42,6 +42,24 @@ private:
     GM_ADDR transOutGM_;
 
 private:
+    __aicore__ inline void InitTileTranspose(uint64_t tileMMultiRankK)
+    {
+        auto &&mc2Tiling_ = tilingData_->alltoAllMatmulTilingInfo;
+        // 转置相关地址和偏移
+        pipeLineContext_.transposeContext->transposeSrcAddr = commOutGM_;
+        pipeLineContext_.transposeContext->transposeDstAddr = transOutGM_;
+        pipeLineContext_.transposeContext->transposeSrcOffset = tileMMultiRankK * sizeof(DTYPE_X1);
+        pipeLineContext_.transposeContext->transposeDstOffset = tileMMultiRankK * mc2Tiling_.rankDim * sizeof(DTYPE_X1);
+        pipeLineContext_.transposeContext->nextSrcBlockOffset =
+            (uint64_t)mc2Tiling_.rankM * mc2Tiling_.rankK / mc2Tiling_.rankDim;
+        pipeLineContext_.transposeContext->nextDstBlockOffset = (uint64_t)mc2Tiling_.rankK;
+        pipeLineContext_.transposeContext->rankCnt = (uint64_t)mc2Tiling_.rankDim;
+        pipeLineContext_.transposeContext->innerAxis = (uint64_t)mc2Tiling_.rankK;
+        pipeLineContext_.transposeContext->transM = (uint64_t)mc2Tiling_.tileM;
+        pipeLineContext_.transposeContext->innerOffsetIn = (uint64_t)mc2Tiling_.rankK;
+        pipeLineContext_.transposeContext->innerOffsetOut = (uint64_t)mc2Tiling_.rankK * mc2Tiling_.rankDim;
+    }
+
     __aicore__ inline void ProcessTile(uint32_t taskCnt);
     __aicore__ inline void ProcessTail(uint32_t taskCnt);
 };
@@ -126,19 +144,7 @@ __aicore__ inline void AlltoAllMatmulKernelBase<SchedulerType, SchedulerContextT
         (uint64_t)mc2Tiling_.tileM * mc2Tiling_.rankN * sizeof(DTYPE_Y);
     pipeLineContext_.computationContext->tilingDataPtr = &(tilingData_->mc2MmV3TileTilingData);
 
-    // 转置相关地址和偏移
-    pipeLineContext_.transposeContext->transposeSrcAddr = commOutGM_;
-    pipeLineContext_.transposeContext->transposeDstAddr = transOutGM_;
-    pipeLineContext_.transposeContext->transposeSrcOffset = tileMMultiRankK * sizeof(DTYPE_X1);
-    pipeLineContext_.transposeContext->transposeDstOffset = tileMMultiRankK * mc2Tiling_.rankDim * sizeof(DTYPE_X1);
-    pipeLineContext_.transposeContext->nextSrcBlockOffset =
-        (uint64_t)mc2Tiling_.rankM * mc2Tiling_.rankK / mc2Tiling_.rankDim;
-    pipeLineContext_.transposeContext->nextDstBlockOffset = (uint64_t)mc2Tiling_.rankK;
-    pipeLineContext_.transposeContext->rankCnt = (uint64_t)mc2Tiling_.rankDim;
-    pipeLineContext_.transposeContext->innerAxis = (uint64_t)mc2Tiling_.rankK;
-    pipeLineContext_.transposeContext->transM = (uint64_t)mc2Tiling_.tileM;
-    pipeLineContext_.transposeContext->innerOffsetIn = (uint64_t)mc2Tiling_.rankK;
-    pipeLineContext_.transposeContext->innerOffsetOut = (uint64_t)mc2Tiling_.rankK * mc2Tiling_.rankDim;
+    InitTileTranspose(tileMMultiRankK);
 
     // 通信相关地址和偏移
     pipeLineContext_.communicationContext->taskCnt = mc2Tiling_.tileCnt;

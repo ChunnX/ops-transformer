@@ -121,6 +121,243 @@ public:
         }
     }
 
+    struct AicBuffers {
+        AscendC::GlobalTensor<ElementA> &gmA;
+        AscendC::GlobalTensor<ElementB> &gmB;
+        AscendC::GlobalTensor<ElementC> &gmC;
+        layout::RowMajor &layoutC;
+        BlockMmad &blockMmad;
+    };
+
+    struct AivBuffers {
+        AscendC::GlobalTensor<ElementD> &gmD;
+        AscendC::GlobalTensor<ElementC> &gmC;
+        layout::RowMajor &layoutC;
+        LayoutD &layoutD;
+        BlockEpilogue &blockEpilogue;
+    };
+
+    CATLASS_DEVICE void ProcessAicRound(AicBuffers &buffers, Params &params, int32_t coreIdx, int32_t coreNum,
+                                        int32_t mLoops, int32_t commCount, int32_t commIdx)
+    {
+        uint64_t flagIdx = commIdx % params.pipeDepth;
+
+        int32_t tailN = (params.problemShape.n() / params.commUtil.rank_size) % L1TileShape::N;
+        uint32_t nLoops = params.problemShape.n() / params.commUtil.rank_size / L1TileShape::N;
+        if (tailN) {
+            nLoops += 1;
+        }
+        nLoops *= params.commUtil.rank_size;
+
+        int32_t coreLoops = mLoops * nLoops;
+
+        uint32_t actualPValue = params.commUtil.p_value;
+        if (commIdx == commCount - 1) {
+            actualPValue = mLoops - commIdx * params.commUtil.p_value;
+        }
+        if (commIdx >= params.pipeDepth) {
+            WaitEvent(flagIdx + WORKSPACE_STAGES * 2); // 避开matmul-dequant使用的flag_idx(0-3)
+        }
+        int64_t gmAPingpongSize =
+            static_cast<int64_t>(L1TileShape::M) * params.commUtil.p_value * params.problemShape.n();
+
+        int32_t actualLoopNum = actualPValue * nLoops;
+
+        int32_t nLoopPerRank = nLoops / params.commUtil.rank_size;
+        GemmCoord calSwizzleShape{actualPValue, nLoops, 1};
+        BlockScheduler matmulBlockScheduler(calSwizzleShape,
+                                            MakeCoord(static_cast<uint32_t>(1), static_cast<uint32_t>(1)));
+
+        uint32_t stageId = 0;
+        uint32_t stageUsed = 0;
+        for (int32_t loopOffset = 0; loopOffset < actualLoopNum; loopOffset++) {
+            int32_t loopIdx = commIdx * params.commUtil.p_value * nLoops + loopOffset;
+            if (loopIdx % coreNum != coreIdx) {
+                continue;
+            }
+
+            ProcessAicBlock(buffers, params, matmulBlockScheduler, stageId, stageUsed, loopOffset, commIdx, commCount,
+                            mLoops, nLoopPerRank, coreIdx, coreNum);
+        }
+        buffers.blockMmad.SynchronizeBlock();
+
+        DrainAivStages(stageId, stageUsed);
+    }
+
+    CATLASS_DEVICE void ProcessAicBlock(AicBuffers &buffers, Params &params, BlockScheduler &matmulBlockScheduler,
+                                        uint32_t &stageId, uint32_t &stageUsed, int32_t loopOffset, int32_t commIdx,
+                                        int32_t commCount, int32_t mLoops, int32_t nLoopPerRank, int32_t coreIdx,
+                                        int32_t coreNum)
+    {
+        Callback callbackBeforeFixpipe{};
+        if (stageUsed == WORKSPACE_STAGES) {
+            callbackBeforeFixpipe = MakeCallback(&aicWaitFuncList[stageId]);
+        } else {
+            ++stageUsed;
+        }
+        Callback callbackAfterFixpipe = MakeCallback(&aicSetFuncList[stageId]);
+
+        GemmCoord blockIdxCoord = matmulBlockScheduler.GetBlockCoord(loopOffset);
+        uint32_t mActual = (commIdx == commCount - 1) &&
+                                   (blockIdxCoord.m() == (mLoops - 1) % params.commUtil.p_value) &&
+                                   (params.problemShape.m() % L1TileShape::M != 0) ?
+                               (params.problemShape.m() - commIdx * params.commUtil.p_value * L1TileShape::M -
+                                blockIdxCoord.m() * L1TileShape::M) :
+                               L1TileShape::M;
+        uint32_t nActual = (blockIdxCoord.n() % nLoopPerRank == (nLoopPerRank - 1)) ?
+                               (params.problemShape.n() / params.commUtil.rank_size -
+                                blockIdxCoord.n() % nLoopPerRank * L1TileShape::N) :
+                               L1TileShape::N;
+        GemmCoord actualBlockShape{mActual, nActual, params.problemShape.k()};
+
+        MatrixCoord offsetA{blockIdxCoord.m() * L1TileShape::M, blockIdxCoord.k() * L1TileShape::K};
+        MatrixCoord offsetC{(stageId * coreNum + coreIdx) * L1TileShape::M, 0};
+        int64_t gmOffsetA = params.layoutA.GetOffset(offsetA) + static_cast<int64_t>(commIdx) * L1TileShape::M *
+                                                                    params.commUtil.p_value * params.problemShape.k();
+        int64_t gmOffsetB = (static_cast<int64_t>(blockIdxCoord.n() / nLoopPerRank) *
+                                 (params.problemShape.n() / params.commUtil.rank_size) +
+                             static_cast<int64_t>(blockIdxCoord.n() % nLoopPerRank) * L1TileShape::N) *
+                            (params.transB ? params.problemShape.k() : 1);
+        int64_t gmOffsetC = buffers.layoutC.GetOffset(offsetC);
+
+        buffers.blockMmad(buffers.gmA[gmOffsetA], params.layoutA, buffers.gmB[gmOffsetB], params.layoutB,
+                          buffers.gmC[gmOffsetC], buffers.layoutC, actualBlockShape, callbackBeforeFixpipe,
+                          callbackAfterFixpipe);
+        stageId = (stageId + 1 < WORKSPACE_STAGES) ? (stageId + 1) : 0;
+    }
+
+    CATLASS_DEVICE void DrainAivStages(uint32_t stageId, uint32_t &stageUsed)
+    {
+        while (stageUsed > 0) {
+            uint32_t aivComputeStageId =
+                (stageId >= stageUsed) ? (stageId - stageUsed) : (stageId + WORKSPACE_STAGES - stageUsed);
+            Arch::CrossCoreWaitFlag(flagAivFinishComputeList[aivComputeStageId]);
+            --stageUsed;
+        }
+    }
+
+    CATLASS_DEVICE void ProcessAivRound(AivBuffers &buffers, Params &params, uint32_t coreIdx, uint32_t coreNum,
+                                        int32_t mLoops, int32_t commCount, int32_t commIdx)
+    {
+        uint64_t flagIdx = commIdx % params.pipeDepth;
+
+        int32_t tailN = (params.problemShape.n() / params.commUtil.rank_size) % L1TileShape::N;
+        uint32_t nLoops = params.problemShape.n() / params.commUtil.rank_size / L1TileShape::N;
+        if (tailN) {
+            nLoops += 1;
+        }
+        nLoops *= params.commUtil.rank_size;
+
+        int32_t coreLoops = mLoops * nLoops;
+
+        uint32_t actualPValue = params.commUtil.p_value;
+        if (commIdx == commCount - 1) {
+            actualPValue = mLoops - commIdx * params.commUtil.p_value;
+        }
+
+        int64_t gmAPingpongSize =
+            static_cast<int64_t>(L1TileShape::M) * params.commUtil.p_value * params.problemShape.n();
+        int32_t actualLoopNum = actualPValue * nLoops;
+
+        int32_t nLoopPerRank = nLoops / params.commUtil.rank_size;
+        GemmCoord calSwizzleShape{actualPValue, nLoops, 1};
+        BlockScheduler matmulBlockScheduler(calSwizzleShape,
+                                            MakeCoord(static_cast<uint32_t>(1), static_cast<uint32_t>(1)));
+        uint64_t flag_idx = commIdx % MAX_BLOCK_COUNT;
+        uint32_t stageId = 0;
+        for (int32_t loopOffset = 0; loopOffset < actualLoopNum; loopOffset++) {
+            int32_t loopIdx = commIdx * params.commUtil.p_value * nLoops + loopOffset;
+            if (loopIdx % coreNum != coreIdx) {
+                continue;
+            }
+            ProcessAivBlock(buffers, params, matmulBlockScheduler, loopOffset, commIdx, commCount, mLoops, nLoopPerRank,
+                            stageId, coreIdx, coreNum, gmAPingpongSize, flagIdx);
+        }
+        CommunicateAivRound(params, commIdx, commCount, flag_idx);
+    }
+
+    CATLASS_DEVICE void ProcessAivBlock(AivBuffers &buffers, Params &params, BlockScheduler &matmulBlockScheduler,
+                                        int32_t loopOffset, int32_t commIdx, int32_t commCount, int32_t mLoops,
+                                        int32_t nLoopPerRank, uint32_t &stageId, uint32_t coreIdx, uint32_t coreNum,
+                                        int64_t gmAPingpongSize, uint64_t flagIdx)
+    {
+        GemmCoord blockIdxCoord = matmulBlockScheduler.GetBlockCoord(loopOffset);
+        uint32_t mActual = (commIdx == commCount - 1) &&
+                                   (blockIdxCoord.m() == (mLoops - 1) % params.commUtil.p_value) &&
+                                   (params.problemShape.m() % L1TileShape::M != 0) ?
+                               (params.problemShape.m() - commIdx * params.commUtil.p_value * L1TileShape::M -
+                                blockIdxCoord.m() * L1TileShape::M) :
+                               L1TileShape::M;
+        uint32_t nActual = (blockIdxCoord.n() % nLoopPerRank == (nLoopPerRank - 1)) ?
+                               (params.problemShape.n() / params.commUtil.rank_size -
+                                blockIdxCoord.n() % nLoopPerRank * L1TileShape::N) :
+                               L1TileShape::N;
+        GemmCoord actualBlockShape{mActual, nActual, params.problemShape.k()};
+        int64_t mOffset = static_cast<int64_t>(commIdx) * L1TileShape::M * params.commUtil.p_value +
+                          static_cast<int64_t>(blockIdxCoord.m()) * L1TileShape::M;
+        int64_t nOffset = (blockIdxCoord.n() / nLoopPerRank) * (params.problemShape.n() / params.commUtil.rank_size) +
+                          (blockIdxCoord.n() % nLoopPerRank) * L1TileShape::N;
+        MatrixCoord blockOffset{mOffset, nOffset};
+        MatrixCoord actualBlockShapeMN = actualBlockShape.GetCoordMN();
+        MatrixCoord offsetC{static_cast<uint32_t>((stageId * coreNum + coreIdx) * L1TileShape::M),
+                            static_cast<uint32_t>(0)};
+        int64_t gmOffsetC = buffers.layoutC.GetOffset(offsetC);
+
+        auto gmBlockC = buffers.gmC[gmOffsetC];
+        auto layoutBlockC = buffers.layoutC.GetTileLayout(actualBlockShape.GetCoordMN());
+
+        MatrixCoord offsetD{blockIdxCoord.m() * L1TileShape::M, blockIdxCoord.n() * L1TileShape::N};
+        int64_t rankOffset = gmAPingpongSize / params.commUtil.rank_size;
+        int64_t rankIdx = blockIdxCoord.n() / nLoopPerRank;
+        int64_t rankOffsetInRank = blockIdxCoord.n() % nLoopPerRank;
+        int64_t gmOffsetD =
+            static_cast<int64_t>(flagIdx) * L1TileShape::M * params.commUtil.p_value * params.problemShape.n() +
+            rankIdx * rankOffset +
+            static_cast<int64_t>(blockIdxCoord.m()) * L1TileShape::M *
+                (params.problemShape.n() / params.commUtil.rank_size) +
+            blockIdxCoord.n() % nLoopPerRank * L1TileShape::N;
+        Arch::CrossCoreWaitFlag(flagAicFinishStoreList[stageId]);
+        buffers.blockEpilogue(blockOffset, actualBlockShape, gmBlockC, layoutBlockC, buffers.gmD[gmOffsetD],
+                              buffers.layoutD);
+        Arch::CrossCoreSetFlag<0x2, PIPE_MTE3>(flagAivFinishComputeList[stageId]);
+
+        stageId = (stageId + 1 < WORKSPACE_STAGES) ? (stageId + 1) : 0;
+    }
+
+    CATLASS_DEVICE void CommunicateAivRound(Params &params, int32_t commIdx, int32_t commCount, uint64_t flag_idx)
+    {
+        int64_t token_total = static_cast<int64_t>(params.commUtil.p_value) * L1TileShape::M * params.problemShape.n();
+        if (commIdx == commCount - 1) {
+            token_total =
+                (params.problemShape.m() - static_cast<int64_t>(commIdx) * L1TileShape::M * params.commUtil.p_value) *
+                params.problemShape.n();
+        }
+        int64_t token_per_rank = token_total / params.commUtil.rank_size;
+
+        params.commUtil.SetAndWaitAivSync(flag_idx + WORKSPACE_STAGES);
+        params.commUtil.CrossRankSyncV1(FLAG_ZERO_IDX, commIdx + 1);
+        params.commUtil.SetAndWaitAivSync(flag_idx + WORKSPACE_STAGES);
+
+        int64_t rank_offset =
+            static_cast<int64_t>(params.problemShape.m()) * params.problemShape.n() / params.commUtil.rank_size;
+        if (params.commUtil.aiv_idx == 0 && params.commUtil.core_idx < params.commUtil.rank_size) {
+            int64_t src_offset = static_cast<int64_t>(flag_idx) * params.commUtil.gm_a_pingpong_size +
+                                 params.commUtil.gm_a_pingpong_size / params.commUtil.rank_size * params.commUtil.rank;
+            int64_t dst_offset = params.commUtil.core_idx * rank_offset +
+                                 static_cast<int64_t>(commIdx) * L1TileShape::M * params.commUtil.p_value *
+                                     (params.problemShape.n() / params.commUtil.rank_size);
+            params.commUtil.CopyGMToGM((__gm__ ElementD *)params.commUtil.buff[params.commUtil.core_idx] + src_offset,
+                                       reinterpret_cast<__gm__ ElementD *>(params.ptrOut) + dst_offset, token_per_rank);
+        }
+
+        params.commUtil.SetAndWaitAivSync(flag_idx + WORKSPACE_STAGES);
+        params.commUtil.CrossRankSyncV1(FLAG_ONE_IDX, commIdx + 1);
+        params.commUtil.SetAndWaitAivSync(flag_idx + WORKSPACE_STAGES);
+        if (commIdx < commCount - 2) {
+            params.commUtil.SetAicSync(flag_idx + WORKSPACE_STAGES * 2); // 避开matmul-dequant使用的flag_idx(0-3)
+        }
+    }
+
     template <int32_t CORE_TYPE = g_coreType>
     CATLASS_DEVICE void operator()(Params &params);
 
@@ -146,87 +383,9 @@ public:
 
         int32_t commCount = (mLoops + params.commUtil.p_value - 1) / params.commUtil.p_value;
 
+        AicBuffers buffers{gmA, gmB, gmC, layoutC, blockMmad};
         for (int32_t commIdx = 0; commIdx < commCount; commIdx++) {
-            uint64_t flagIdx = commIdx % params.pipeDepth;
-
-            int32_t tailN = (params.problemShape.n() / params.commUtil.rank_size) % L1TileShape::N;
-            uint32_t nLoops = params.problemShape.n() / params.commUtil.rank_size / L1TileShape::N;
-            if (tailN) {
-                nLoops += 1;
-            }
-            nLoops *= params.commUtil.rank_size;
-
-            int32_t coreLoops = mLoops * nLoops;
-
-            uint32_t actualPValue = params.commUtil.p_value;
-            if (commIdx == commCount - 1) {
-                actualPValue = mLoops - commIdx * params.commUtil.p_value;
-            }
-            if (commIdx >= params.pipeDepth) {
-                WaitEvent(flagIdx + WORKSPACE_STAGES * 2); // 避开matmul-dequant使用的flag_idx(0-3)
-            }
-            int64_t gmAPingpongSize =
-                static_cast<int64_t>(L1TileShape::M) * params.commUtil.p_value * params.problemShape.n();
-
-            int32_t actualLoopNum = actualPValue * nLoops;
-
-            int32_t nLoopPerRank = nLoops / params.commUtil.rank_size;
-            GemmCoord calSwizzleShape{actualPValue, nLoops, 1};
-            BlockScheduler matmulBlockScheduler(calSwizzleShape,
-                                                MakeCoord(static_cast<uint32_t>(1), static_cast<uint32_t>(1)));
-
-            uint32_t stageId = 0;
-            uint32_t stageUsed = 0;
-            for (int32_t loopOffset = 0; loopOffset < actualLoopNum; loopOffset++) {
-                int32_t loopIdx = commIdx * params.commUtil.p_value * nLoops + loopOffset;
-                if (loopIdx % coreNum != coreIdx) {
-                    continue;
-                }
-
-                Callback callbackBeforeFixpipe{};
-                if (stageUsed == WORKSPACE_STAGES) {
-                    callbackBeforeFixpipe = MakeCallback(&aicWaitFuncList[stageId]);
-                } else {
-                    ++stageUsed;
-                }
-                Callback callbackAfterFixpipe = MakeCallback(&aicSetFuncList[stageId]);
-
-                GemmCoord blockIdxCoord = matmulBlockScheduler.GetBlockCoord(loopOffset);
-                uint32_t mActual = (commIdx == commCount - 1) &&
-                                           (blockIdxCoord.m() == (mLoops - 1) % params.commUtil.p_value) &&
-                                           (params.problemShape.m() % L1TileShape::M != 0) ?
-                                       (params.problemShape.m() - commIdx * params.commUtil.p_value * L1TileShape::M -
-                                        blockIdxCoord.m() * L1TileShape::M) :
-                                       L1TileShape::M;
-                uint32_t nActual = (blockIdxCoord.n() % nLoopPerRank == (nLoopPerRank - 1)) ?
-                                       (params.problemShape.n() / params.commUtil.rank_size -
-                                        blockIdxCoord.n() % nLoopPerRank * L1TileShape::N) :
-                                       L1TileShape::N;
-                GemmCoord actualBlockShape{mActual, nActual, params.problemShape.k()};
-
-                MatrixCoord offsetA{blockIdxCoord.m() * L1TileShape::M, blockIdxCoord.k() * L1TileShape::K};
-                MatrixCoord offsetC{(stageId * coreNum + coreIdx) * L1TileShape::M, 0};
-                int64_t gmOffsetA = params.layoutA.GetOffset(offsetA) + static_cast<int64_t>(commIdx) * L1TileShape::M *
-                                                                            params.commUtil.p_value *
-                                                                            params.problemShape.k();
-                int64_t gmOffsetB = (static_cast<int64_t>(blockIdxCoord.n() / nLoopPerRank) *
-                                         (params.problemShape.n() / params.commUtil.rank_size) +
-                                     static_cast<int64_t>(blockIdxCoord.n() % nLoopPerRank) * L1TileShape::N) *
-                                    (params.transB ? params.problemShape.k() : 1);
-                int64_t gmOffsetC = layoutC.GetOffset(offsetC);
-
-                blockMmad(gmA[gmOffsetA], params.layoutA, gmB[gmOffsetB], params.layoutB, gmC[gmOffsetC], layoutC,
-                          actualBlockShape, callbackBeforeFixpipe, callbackAfterFixpipe);
-                stageId = (stageId + 1 < WORKSPACE_STAGES) ? (stageId + 1) : 0;
-            }
-            blockMmad.SynchronizeBlock();
-
-            while (stageUsed > 0) {
-                uint32_t aivComputeStageId =
-                    (stageId >= stageUsed) ? (stageId - stageUsed) : (stageId + WORKSPACE_STAGES - stageUsed);
-                Arch::CrossCoreWaitFlag(flagAivFinishComputeList[aivComputeStageId]);
-                --stageUsed;
-            }
+            ProcessAicRound(buffers, params, coreIdx, coreNum, mLoops, commCount, commIdx);
         }
         AscendC::PipeBarrier<PIPE_ALL>();
     }
@@ -261,113 +420,9 @@ public:
 
         params.commUtil.ResetIpcFlags(2);
         PipeBarrier<PIPE_ALL>();
+        AivBuffers buffers{gmD, gmC, layoutC, layoutD, blockEpilogue};
         for (int32_t commIdx = 0; commIdx < commCount; commIdx++) {
-            uint64_t flagIdx = commIdx % params.pipeDepth;
-
-            int32_t tailN = (params.problemShape.n() / params.commUtil.rank_size) % L1TileShape::N;
-            uint32_t nLoops = params.problemShape.n() / params.commUtil.rank_size / L1TileShape::N;
-            if (tailN) {
-                nLoops += 1;
-            }
-            nLoops *= params.commUtil.rank_size;
-
-            int32_t coreLoops = mLoops * nLoops;
-
-            uint32_t actualPValue = params.commUtil.p_value;
-            if (commIdx == commCount - 1) {
-                actualPValue = mLoops - commIdx * params.commUtil.p_value;
-            }
-
-            int64_t gmAPingpongSize =
-                static_cast<int64_t>(L1TileShape::M) * params.commUtil.p_value * params.problemShape.n();
-            int32_t actualLoopNum = actualPValue * nLoops;
-
-            int32_t nLoopPerRank = nLoops / params.commUtil.rank_size;
-            GemmCoord calSwizzleShape{actualPValue, nLoops, 1};
-            BlockScheduler matmulBlockScheduler(calSwizzleShape,
-                                                MakeCoord(static_cast<uint32_t>(1), static_cast<uint32_t>(1)));
-            uint64_t flag_idx = commIdx % MAX_BLOCK_COUNT;
-            uint32_t stageId = 0;
-            for (int32_t loopOffset = 0; loopOffset < actualLoopNum; loopOffset++) {
-                int32_t loopIdx = commIdx * params.commUtil.p_value * nLoops + loopOffset;
-                if (loopIdx % coreNum != coreIdx) {
-                    continue;
-                }
-                GemmCoord blockIdxCoord = matmulBlockScheduler.GetBlockCoord(loopOffset);
-                uint32_t mActual = (commIdx == commCount - 1) &&
-                                           (blockIdxCoord.m() == (mLoops - 1) % params.commUtil.p_value) &&
-                                           (params.problemShape.m() % L1TileShape::M != 0) ?
-                                       (params.problemShape.m() - commIdx * params.commUtil.p_value * L1TileShape::M -
-                                        blockIdxCoord.m() * L1TileShape::M) :
-                                       L1TileShape::M;
-                uint32_t nActual = (blockIdxCoord.n() % nLoopPerRank == (nLoopPerRank - 1)) ?
-                                       (params.problemShape.n() / params.commUtil.rank_size -
-                                        blockIdxCoord.n() % nLoopPerRank * L1TileShape::N) :
-                                       L1TileShape::N;
-                GemmCoord actualBlockShape{mActual, nActual, params.problemShape.k()};
-                int64_t mOffset = static_cast<int64_t>(commIdx) * L1TileShape::M * params.commUtil.p_value +
-                                  static_cast<int64_t>(blockIdxCoord.m()) * L1TileShape::M;
-                int64_t nOffset =
-                    (blockIdxCoord.n() / nLoopPerRank) * (params.problemShape.n() / params.commUtil.rank_size) +
-                    (blockIdxCoord.n() % nLoopPerRank) * L1TileShape::N;
-                MatrixCoord blockOffset{mOffset, nOffset};
-                MatrixCoord actualBlockShapeMN = actualBlockShape.GetCoordMN();
-                MatrixCoord offsetC{static_cast<uint32_t>((stageId * coreNum + coreIdx) * L1TileShape::M),
-                                    static_cast<uint32_t>(0)};
-                int64_t gmOffsetC = layoutC.GetOffset(offsetC);
-
-                auto gmBlockC = gmC[gmOffsetC];
-                auto layoutBlockC = layoutC.GetTileLayout(actualBlockShape.GetCoordMN());
-
-                MatrixCoord offsetD{blockIdxCoord.m() * L1TileShape::M, blockIdxCoord.n() * L1TileShape::N};
-                int64_t rankOffset = gmAPingpongSize / params.commUtil.rank_size;
-                int64_t rankIdx = blockIdxCoord.n() / nLoopPerRank;
-                int64_t rankOffsetInRank = blockIdxCoord.n() % nLoopPerRank;
-                int64_t gmOffsetD =
-                    static_cast<int64_t>(flagIdx) * L1TileShape::M * params.commUtil.p_value * params.problemShape.n() +
-                    rankIdx * rankOffset +
-                    static_cast<int64_t>(blockIdxCoord.m()) * L1TileShape::M *
-                        (params.problemShape.n() / params.commUtil.rank_size) +
-                    blockIdxCoord.n() % nLoopPerRank * L1TileShape::N;
-                Arch::CrossCoreWaitFlag(flagAicFinishStoreList[stageId]);
-                blockEpilogue(blockOffset, actualBlockShape, gmBlockC, layoutBlockC, gmD[gmOffsetD], layoutD);
-                Arch::CrossCoreSetFlag<0x2, PIPE_MTE3>(flagAivFinishComputeList[stageId]);
-
-                stageId = (stageId + 1 < WORKSPACE_STAGES) ? (stageId + 1) : 0;
-            }
-            int64_t token_total =
-                static_cast<int64_t>(params.commUtil.p_value) * L1TileShape::M * params.problemShape.n();
-            if (commIdx == commCount - 1) {
-                token_total = (params.problemShape.m() -
-                               static_cast<int64_t>(commIdx) * L1TileShape::M * params.commUtil.p_value) *
-                              params.problemShape.n();
-            }
-            int64_t token_per_rank = token_total / params.commUtil.rank_size;
-
-            params.commUtil.SetAndWaitAivSync(flag_idx + WORKSPACE_STAGES);
-            params.commUtil.CrossRankSyncV1(FLAG_ZERO_IDX, commIdx + 1);
-            params.commUtil.SetAndWaitAivSync(flag_idx + WORKSPACE_STAGES);
-
-            int64_t rank_offset =
-                static_cast<int64_t>(params.problemShape.m()) * params.problemShape.n() / params.commUtil.rank_size;
-            if (params.commUtil.aiv_idx == 0 && params.commUtil.core_idx < params.commUtil.rank_size) {
-                int64_t src_offset =
-                    static_cast<int64_t>(flag_idx) * params.commUtil.gm_a_pingpong_size +
-                    params.commUtil.gm_a_pingpong_size / params.commUtil.rank_size * params.commUtil.rank;
-                int64_t dst_offset = params.commUtil.core_idx * rank_offset +
-                                     static_cast<int64_t>(commIdx) * L1TileShape::M * params.commUtil.p_value *
-                                         (params.problemShape.n() / params.commUtil.rank_size);
-                params.commUtil.CopyGMToGM(
-                    (__gm__ ElementD *)params.commUtil.buff[params.commUtil.core_idx] + src_offset,
-                    reinterpret_cast<__gm__ ElementD *>(params.ptrOut) + dst_offset, token_per_rank);
-            }
-
-            params.commUtil.SetAndWaitAivSync(flag_idx + WORKSPACE_STAGES);
-            params.commUtil.CrossRankSyncV1(FLAG_ONE_IDX, commIdx + 1);
-            params.commUtil.SetAndWaitAivSync(flag_idx + WORKSPACE_STAGES);
-            if (commIdx < commCount - 2) {
-                params.commUtil.SetAicSync(flag_idx + WORKSPACE_STAGES * 2); // 避开matmul-dequant使用的flag_idx(0-3)
-            }
+            ProcessAivRound(buffers, params, coreIdx, coreNum, mLoops, commCount, commIdx);
         }
         params.commUtil.ResetIpcFlags(1);
     }

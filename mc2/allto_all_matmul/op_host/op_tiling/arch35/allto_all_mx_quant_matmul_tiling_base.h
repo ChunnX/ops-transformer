@@ -56,14 +56,19 @@ public:
 protected:
     bool IsCapable() override;
     ge::graphStatus DoOpTiling() override;
+    ge::graphStatus WriteHcommTilingData(size_t tilingBufCap);
     ge::graphStatus PostTiling() override;
     ge::graphStatus GetWorkspaceSize() override;
     uint64_t GetTilingKey() const override;
     CutResult GetCutResOfCommAndCompute() override;
     void AlignCutResForKernel(CutResult &cutRes, uint64_t mValue) const;
+    ge::graphStatus CheckMxBiasAndScaleDataTypes(const gert::TilingContext *context, const char *opName);
     ge::graphStatus CheckMxQuantTensorDataType(const gert::TilingContext *context, const char *opName);
     ge::graphStatus CheckX2Transpose(const gert::TilingContext *context, const char *opName,
                                      const OpAttrIndexSchema &indexSchema);
+    ge::graphStatus CheckMxScaleDimensions(const char *opName, const gert::StorageShape *x1ScaleShape,
+                                           const gert::StorageShape *x2ScaleShape, uint64_t x1Dim0, uint64_t x1Dim1,
+                                           uint64_t x2Dim0, uint64_t x2Dim1);
     ge::graphStatus CheckMxQuantShapeInfo(const gert::TilingContext *context, const char *opName,
                                           const OpAttrIndexSchema &indexSchema);
     ge::graphStatus CheckOpInputInfo();
