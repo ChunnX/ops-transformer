@@ -259,6 +259,31 @@ bool KvRmsNormRopeCacheTilingBase::CheckVCacheValid(const gert::TilingContext *c
     return CheckCacheValid(context, batchSize, numHead, cacheLen, headSize, V_CACHE_INDEX, "v_cache");
 }
 
+bool KvRmsNormRopeCacheTilingBase::CheckCacheValidPA(const gert::TilingContext *context, int64_t headSize, size_t cacheIndex, const char *cacheName)
+{
+    // Default PA format cache check
+    // In PageAttention mode, cache dimensions are in [block_num, block_size, N, hDim].
+    auto cacheShapeTuple = GetShapeTuple(context, cacheIndex);
+    int64_t cacheBlkNum = std::get<SHAPE_IDX_BLOCK_NUM>(cacheShapeTuple);
+    int64_t cacheBlkSize = std::get<SHAPE_IDX_BLOCK_SIZE>(cacheShapeTuple);
+    int64_t cacheN = std::get<DIM_TWO>(cacheShapeTuple);
+    int64_t cacheD = std::get<SHAPE_IDX_D>(cacheShapeTuple);
+
+    if (cacheBlkSize < DIM_TWO) {
+        // block size must be larger than 1 under all PageAttention modes.
+        return false;
+    }
+    if (cacheN != this->numHeadKv_) {
+        return false;
+    }
+    if (cacheD != headSize) {
+        // Inconsist cache hDim size with the expected value headSize
+        return false;
+    }
+    // block_num ≥ Floor(Skv/block_size) ∗ Bkv
+    return (cacheBlkNum >= (this->seqLenKv_ / cacheBlkSize) * this->batchKv_);
+}
+
 bool KvRmsNormRopeCacheTilingBase::CheckKCacheValidPA(const gert::TilingContext *context, int64_t numHead,
     int64_t headSize)
 {
@@ -396,6 +421,28 @@ ge::graphStatus KvRmsNormRopeCacheTilingBase::GetPlatformInfo()
     return ge::GRAPH_SUCCESS;
 }
 
+bool KvRmsNormRopeCacheTilingBase::ValidateCacheShapes()
+{
+    auto kCacheShapeTuple = GetShapeTuple(context_, K_CACHE_INDEX);
+    auto vCacheShapeTuple = GetShapeTuple(context_, V_CACHE_INDEX);
+
+    if (std::get<SHAPE_IDX_BLOCK_NUM>(kCacheShapeTuple) != std::get<SHAPE_IDX_BLOCK_NUM>(vCacheShapeTuple))
+    {
+        // Must have same blocknum or batch size for cache
+        return false;
+    }
+
+    this->cacheLength_ = std::get<SHAPE_IDX_S>(kCacheShapeTuple);
+    this->blockSize_ = std::get<SHAPE_IDX_BLOCK_SIZE>(kCacheShapeTuple);
+
+    if (cacheLength_ != std::get<SHAPE_IDX_S>(vCacheShapeTuple) ||
+    blockSize_ != std::get<SHAPE_IDX_BLOCK_SIZE>(vCacheShapeTuple))
+    {
+        return false;
+    }
+    return (this->cacheLength_ > 0 && this->blockSize_ > 0);
+}
+
 ge::graphStatus KvRmsNormRopeCacheTilingBase::GetShapeAttrsInfo()
 {
     OP_CHECK_IF(context_ == nullptr, OP_LOGE(context_->GetNodeName(), "context_ can not be nullptr."),
@@ -405,7 +452,7 @@ ge::graphStatus KvRmsNormRopeCacheTilingBase::GetShapeAttrsInfo()
     quantMode_ = GetQuantMode(context_);
     // Basic info
     auto kvShapeTuple = GetShapeTuple(context_, KV_INDEX);
-    auto kCacheShapeTuple = GetShapeTuple(context_, K_CACHE_INDEX);
+
     // Dk
     auto cosShapeTuple = GetShapeTuple(context_, COS_INDEX);
     // Dv
@@ -427,8 +474,15 @@ ge::graphStatus KvRmsNormRopeCacheTilingBase::GetShapeAttrsInfo()
     int64_t batchSize = std::get<SHAPE_IDX_B>(kvShapeTuple);
     int64_t numHead = std::get<SHAPE_IDX_N>(kvShapeTuple);
     int64_t seqLen = std::get<SHAPE_IDX_S>(kvShapeTuple);
-    cacheLength_ = std::get<SHAPE_IDX_S>(kCacheShapeTuple);
-    blockSize_ = std::get<SHAPE_IDX_BLOCK_SIZE>(kCacheShapeTuple);
+    this->batchKv_ = batchSize;
+    this->seqLenKv_ = seqLen;
+    this->numHeadKv_ = numHead;
+
+    OP_CHECK_IF(
+            !ValidateCacheShapes(),
+            OP_LOGE(context_->GetNodeName(), "Found shape inconsistency with Normal axes between k_cache and v_cache! Ensure they have same dim sizes except for the LAST DIM."),
+            return ge::GRAPH_FAILED);
+
     isMTP_ = (seqLen > 1);
     auto kvStorageShape = context_->GetInputShape(KV_INDEX)->GetStorageShape();
     std::string kvStorageShapeStr = ToString(kvStorageShape);

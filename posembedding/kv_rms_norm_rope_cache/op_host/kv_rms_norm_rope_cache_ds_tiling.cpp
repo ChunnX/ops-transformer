@@ -112,7 +112,7 @@ bool KvRmsNormRopeCacheTilingDs::CheckOffsetValid(const gert::TilingContext* con
             isValid = isValid && (offset1Shape->GetStorageShape().GetDim(0) == ROPE_LENGTH);
         } else if (offset1Shape != nullptr && offset1Shape->GetStorageShape().GetDimNum() == DIM_TWO) {
             isValid = isValid && (offset1Shape->GetStorageShape().GetDim(0) == DIM_ONE);
-            isValid = isValid && (offset1Shape->GetStorageShape().GetDim(1) == ROPE_LENGTH); 
+            isValid = isValid && (offset1Shape->GetStorageShape().GetDim(1) == ROPE_LENGTH);
         }
 
         if (offset2Shape != nullptr && offset2Shape->GetStorageShape().GetDimNum() == DIM_ONE) {
@@ -127,7 +127,7 @@ bool KvRmsNormRopeCacheTilingDs::CheckOffsetValid(const gert::TilingContext* con
             isValid = isValid && (offset1Shape->GetStorageShape().GetDim(0) == RMS_NORM_LENGTH);
         } else if (offset1Shape != nullptr && offset1Shape->GetStorageShape().GetDimNum() == DIM_TWO) {
             isValid = isValid && (offset1Shape->GetStorageShape().GetDim(0) == tilingData_.get_numHead());
-            isValid = isValid && (offset1Shape->GetStorageShape().GetDim(1) == RMS_NORM_LENGTH); 
+            isValid = isValid && (offset1Shape->GetStorageShape().GetDim(1) == RMS_NORM_LENGTH);
         }
 
         if (offset2Shape != nullptr && offset2Shape->GetStorageShape().GetDimNum() == DIM_ONE) {
@@ -137,6 +137,45 @@ bool KvRmsNormRopeCacheTilingDs::CheckOffsetValid(const gert::TilingContext* con
             isValid = isValid && (offset2Shape->GetStorageShape().GetDim(1) == V_LENGTH);
         }
     }
+    return isValid;
+}
+
+bool KvRmsNormRopeCacheTilingDs::CheckCacheValid(const gert::TilingContext *context, int64_t batchSize,
+    int64_t numHead, int64_t cacheLen, int64_t headSize,
+    size_t cacheIndex, const char *cacheName)
+{
+    auto cacheShapeTuple = GetShapeTuple(context, cacheIndex);
+    int64_t cacheB = std::get<SHAPE_IDX_B>(cacheShapeTuple);
+    int64_t cacheN = std::get<SHAPE_IDX_N>(cacheShapeTuple);
+    int64_t cacheS = std::get<SHAPE_IDX_S>(cacheShapeTuple);
+    int64_t cacheD = std::get<SHAPE_IDX_D>(cacheShapeTuple);
+    // Batch and headnum of cache Must be consist with input kv
+    if (cacheB != batchSize) {
+        OP_LOGE(context->GetNodeName(),
+        "In CacheMode::Norm, inconsist B dimension %ld of %s with kv %ld.",
+        cacheB, cacheName, batchSize);
+        return false;
+    }
+    if (cacheN != numHead) {
+        OP_LOGE(context->GetNodeName(),
+        "In CacheMode::Norm, inconsist N dimension %ld of %s with kv %ld.",
+        cacheN, cacheName, numHead);
+        return false;
+    }
+    if (cacheD != headSize) {
+        OP_LOGE(context->GetNodeName(),
+        "In CacheMode::Norm, inconsist D dimension %ld of %s with kv %ld.", cacheD, cacheName,
+        headSize);
+        return false;
+    }
+    if (cacheS < cacheLen) {
+        // 'cacheLen' here is seqlen of the input kv
+        OP_LOGE(context->GetNodeName(),
+        "In CacheMode::Norm, Scache %ld of %s is smaller than kv %ld.",
+        cacheS, cacheName, cacheLen);
+        return false;
+    }
+    bool isValid = true;
     return isValid;
 }
 
@@ -170,9 +209,41 @@ ge::graphStatus KvRmsNormRopeCacheTilingDs::DoOpTiling()
 {
     RMS_NORM_LENGTH = RMS_NORM_LENGTHS[methodMode_];
     auto kvShapeTuple = GetShapeTuple(context_, KV_INDEX);
-    tilingData_.set_batchSize(std::get<SHAPE_IDX_B>(kvShapeTuple));
-    tilingData_.set_numHead(std::get<SHAPE_IDX_N>(kvShapeTuple));
-    tilingData_.set_seqLength(std::get<SHAPE_IDX_S>(kvShapeTuple));
+    int64_t batchSize = std::get<SHAPE_IDX_B>(kvShapeTuple);
+    int64_t numHead = std::get<SHAPE_IDX_N>(kvShapeTuple);
+    int64_t seqLength = std::get<SHAPE_IDX_S>(kvShapeTuple);
+
+    if (methodMode_ == 0) {
+        hDimKCache = ROPE_LENGTH;       // k_cache hDim
+        hDimVCache = RMS_NORM_LENGTH;   // ckv_cache hDim
+    } else (methodMode_ == 1) {
+        hDimKCache = RMS_NORM_LENGTH;
+        hDimVCache = V_LENGTH;
+    } else {
+        OP_LOGE(context_->GetNodeName(), "Unsupported hDim size configuration.");
+        return ge::GRAPH_FAILED;
+    }
+
+    // Validate cache shapes
+    if (currentCacheMode_ == CacheMode::Norm) {
+        OP_CHECK_IF(
+            !CheckKCacheValid(context_, batchSize, numHead, seqLength, hDimKCache),
+            OP_LOGE(context_->GetNodeName(), "k_cache shape invalid."), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            !CheckVCacheValid(context_, batchSize, numHead, seqLength, hDimVCache),
+            OP_LOGE(context_->GetNodeName(), "ckv_cache shape invalid."), return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF(
+            !CheckCacheValidPA(context_, hDimKCache, K_CACHE_INDEX, "k_cache"), OP_LOGE(context_->GetNodeName(), "k_cache shape invalid."),
+            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            !CheckCacheValidPA(context_, hDimVCache, V_CACHE_INDEX, "v_cache"), OP_LOGE(context_->GetNodeName(), "ckv_cache shape invalid."),
+            return ge::GRAPH_FAILED);
+    }
+
+    tilingData_.set_batchSize(batchSize);
+    tilingData_.set_numHead(numHead);
+    tilingData_.set_seqLength(seqLength);
     tilingData_.set_cacheLength(cacheLength_);
     tilingData_.set_blockSize(blockSize_);
     tilingData_.set_reciprocal(reciprocal_);
@@ -211,7 +282,7 @@ ge::graphStatus KvRmsNormRopeCacheTilingDs::DoOpTiling()
             reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
-            
+
     if(methodMode_ == 0){
         OP_CHECK_IF(
             (currentCacheMode_ == CacheMode::Norm) && (quantMode_ == QUANT_MODE),
