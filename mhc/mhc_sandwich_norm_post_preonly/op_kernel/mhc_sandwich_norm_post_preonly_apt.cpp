@@ -84,13 +84,5 @@ extern "C" __global__ __aicore__ void mhc_sandwich_norm_post_preonly(
                     x_2_out, h_in_f32, h_pre, GetUserWorkspace(workspace), tiling);
             op.Process();
         }
-    } else if (TILING_KEY_IS(13)) {
-        KERNEL_TASK_TYPE(13, KERNEL_TYPE_MIX_AIC_1_2);
-        if ASCEND_IS_AIV {
-            KernelMhcSandwichNormPostPreonly<DTYPE_H_OUT, true, false, true, true> op;
-            op.Init(h_out, residual, h_post, h_res, phi, alpha, bias, pre_mix, gamma_0, gamma_1, gamma_2, h_in_prime,
-                    x_2_out, h_in_f32, h_pre, GetUserWorkspace(workspace), tiling);
-            op.Process();
-        }
     }
 }

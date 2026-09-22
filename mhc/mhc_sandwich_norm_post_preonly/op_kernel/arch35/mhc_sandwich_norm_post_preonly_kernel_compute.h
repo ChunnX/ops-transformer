@@ -73,13 +73,6 @@ __aicore__ inline void CacheHOut(uint64_t gmOffset)
     DataCopy(hOutCache, hOutGm_[gmOffset], D_);
 }
 
-/// 搬运h_out的一段到x2缓存指定偏移，供D轴切分路径每lane只缓存自己的D/2段。
-__aicore__ inline void CacheHOutSegment(uint64_t gmOffset, uint32_t ubOffset, uint32_t count)
-{
-    LocalTensor<T> hOutCache = bufX2Cache_.Get<T>()[ubOffset];
-    DataCopy(hOutCache, hOutGm_[gmOffset], count);
-}
-
 /// 每个token一次搬运完整gamma0，与h_out和权重共用初始全流水等待。
 __aicore__ inline void CacheGamma0()
 {
