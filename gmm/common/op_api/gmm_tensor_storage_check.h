@@ -12,19 +12,21 @@
 #define GMM_TENSOR_STORAGE_CHECK_H
 
 #include <limits>
+#include <string>
 
+#include "log/log.h"
 #include "opdev/common_types.h"
-#include "opdev/op_log.h"
 #include "opdev/shape_utils.h"
 
 namespace gmm {
-inline bool ReportInvalidTensorStorage(const aclTensor *tensor, const char *name, const char *reason)
+inline bool ReportInvalidTensorStorage(const aclTensor *tensor, const char *opName, const char *name,
+                                       const char *reason)
 {
-    OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-            "Invalid tensor storage layout for %s: %s. viewShape=%s, strides=%s, offset=%ld, storageShape=%s.", name,
-            reason, op::ToString(tensor->GetViewShape()).GetString(),
-            op::ToString(tensor->GetViewStrides()).GetString(), tensor->GetViewOffset(),
-            op::ToString(tensor->GetStorageShape()).GetString());
+    const std::string layout = std::string("viewShape=") + op::ToString(tensor->GetViewShape()).GetString() +
+                               ", strides=" + op::ToString(tensor->GetViewStrides()).GetString() +
+                               ", offset=" + std::to_string(tensor->GetViewOffset()) +
+                               ", storageShape=" + op::ToString(tensor->GetStorageShape()).GetString();
+    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, name, layout, reason);
     return false;
 }
 
@@ -32,7 +34,7 @@ inline bool ReportInvalidTensorStorage(const aclTensor *tensor, const char *name
 // Use the caller's declared element counts before reinterpreting packed weights as four-bit tensors.
 // Format-specific physical layout checks remain the responsibility of each operator.
 // This validates the declared storage only; aclTensor does not expose the caller's allocation size.
-inline bool CheckTensorStorageBounds(const aclTensor *tensor, const char *name)
+inline bool CheckTensorStorageBounds(const aclTensor *tensor, const char *opName, const char *name)
 {
     // Required/optional null semantics belong to each operator's existing parameter checks.
     if (tensor == nullptr) {
@@ -43,22 +45,22 @@ inline bool CheckTensorStorageBounds(const aclTensor *tensor, const char *name)
     const auto &storageShape = tensor->GetStorageShape();
     const int64_t offset = tensor->GetViewOffset();
     if (viewShape.GetDimNum() != strides.size()) {
-        return ReportInvalidTensorStorage(tensor, name, "view shape and strides must have the same rank");
+        return ReportInvalidTensorStorage(tensor, opName, name, "view shape and strides must have the same rank");
     }
     if (offset < 0) {
-        return ReportInvalidTensorStorage(tensor, name, "offset must be nonnegative");
+        return ReportInvalidTensorStorage(tensor, opName, name, "offset must be nonnegative");
     }
     bool emptyView = false;
     for (size_t i = 0; i < viewShape.GetDimNum(); ++i) {
         if (viewShape.GetDim(i) < 0 || strides[i] < 0) {
-            return ReportInvalidTensorStorage(tensor, name, "view dimensions and strides must be nonnegative");
+            return ReportInvalidTensorStorage(tensor, opName, name, "view dimensions and strides must be nonnegative");
         }
         emptyView = emptyView || viewShape.GetDim(i) == 0;
     }
     bool emptyStorage = false;
     for (size_t i = 0; i < storageShape.GetDimNum(); ++i) {
         if (storageShape.GetDim(i) < 0) {
-            return ReportInvalidTensorStorage(tensor, name, "storage dimensions must be nonnegative");
+            return ReportInvalidTensorStorage(tensor, opName, name, "storage dimensions must be nonnegative");
         }
         emptyStorage = emptyStorage || storageShape.GetDim(i) == 0;
     }
@@ -67,18 +69,18 @@ inline bool CheckTensorStorageBounds(const aclTensor *tensor, const char *name)
         return true;
     }
     if (emptyStorage) {
-        return ReportInvalidTensorStorage(tensor, name, "a nonempty view cannot use empty storage");
+        return ReportInvalidTensorStorage(tensor, opName, name, "a nonempty view cannot use empty storage");
     }
     int64_t storageElements = 1;
     for (size_t i = 0; i < storageShape.GetDimNum(); ++i) {
         const int64_t dim = storageShape.GetDim(i);
         if (storageElements > std::numeric_limits<int64_t>::max() / dim) {
-            return ReportInvalidTensorStorage(tensor, name, "storage element count overflows int64");
+            return ReportInvalidTensorStorage(tensor, opName, name, "storage element count overflows int64");
         }
         storageElements *= dim;
     }
     if (offset >= storageElements) {
-        return ReportInvalidTensorStorage(tensor, name, "offset is outside storage");
+        return ReportInvalidTensorStorage(tensor, opName, name, "offset is outside storage");
     }
     // maxIndex = offset + sum((viewShape[i] - 1) * strides[i]).
     // Subtract from the remaining capacity so neither multiplication nor accumulation can overflow.
@@ -86,21 +88,21 @@ inline bool CheckTensorStorageBounds(const aclTensor *tensor, const char *name)
     for (size_t i = 0; i < viewShape.GetDimNum(); ++i) {
         const int64_t steps = viewShape.GetDim(i) - 1;
         if (steps != 0 && strides[i] > remaining / steps) {
-            return ReportInvalidTensorStorage(tensor, name, "view shape, strides and offset exceed storage");
+            return ReportInvalidTensorStorage(tensor, opName, name, "view shape, strides and offset exceed storage");
         }
         remaining -= steps * strides[i];
     }
     return true;
 }
 
-inline bool CheckTensorListStorageBounds(const aclTensorList *tensors, const char *name)
+inline bool CheckTensorListStorageBounds(const aclTensorList *tensors, const char *opName, const char *name)
 {
     if (tensors == nullptr) {
         return true;
     }
     for (size_t i = 0; i < tensors->Size(); ++i) {
-        if (!CheckTensorStorageBounds((*tensors)[i], name)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Invalid tensor storage layout at %s[%zu].", name, i);
+        const std::string indexedName = std::string(name) + "[" + std::to_string(i) + "]";
+        if (!CheckTensorStorageBounds((*tensors)[i], opName, indexedName.c_str())) {
             return false;
         }
     }
