@@ -409,7 +409,7 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::InitTilingContextParameters()
         opName_, MatmulAlltoAllTilingUtil::SetAttrsInfo(context_, opName_, contextInfo_, ALLTOALL_MATMUL_INDEX_SCHEMA));
     MC2_CHECK_LOG_RET(opName_, SetMxDataTypeInfo(context_, opName_, contextInfo_));
     MC2_CHECK_LOG_RET(opName_, SetAlltoAllMatmulShapeInfo(context_, contextInfo_));
-    // rankDim不超过8时使用APACE路径，AICPU和CCU均支持可选的all2all_out输出。
+    // 卡数不超过8时使用APACE路径，AICPU和CCU均支持可选的all2all_out输出。
     constexpr uint64_t APACE_IMPL_MAX_RANK_DIM = 8;
     usingApaceImpl_ = contextInfo_.args_.rankDim <= APACE_IMPL_MAX_RANK_DIM;
     return ge::GRAPH_SUCCESS;
