@@ -99,7 +99,8 @@ __aicore__ inline DedupConfig CreateDedupConfig(const Params &params)
 /*
  * 去重 prepass：扫描 route 槽（[expert][srcRank]，槽内按 topkIndex 升序），为每个接收行写一条
  * rowDesc（布局见 mega_moe_constants.h DEDUP_ROW_*）。
- * 分工：工作项 = (srcRank, token 段)，全体 AIV1 平铺认领。
+ * 分工：工作项 = (srcRank, token 段)，全体 AIV1+AIV0 平铺认领（AIV0 的本地前缀表与 UB 布局由
+ * PrepareDedupPrepassAiv0Local 先行就位；工人互斥无交叠，done 计数期望 2×blockNum）。
  * （历史：v3 曾把 prepass 挪到 AIV0——它在等首 wave GMM1 输出，可与 AIV1 dispatch 完全并行；
  * 但实测大 bs 下 AIV0 早期密集访问 route 窗口触发 aicore trap（机制待与驱动侧对齐，2026-09-09
  * 通宵二分 F 系探针铁证：不调 prepass 不崩/调即崩且崩点在公共段），已回退 AIV1 保稳。）
@@ -161,9 +162,13 @@ __aicore__ inline void BuildDedupRowDescTable(const DedupConfig &dedup, const Mo
     if constexpr (g_coreType == AIC) {
         return;
     }
-    if (GetSubBlockIdx() != 1U || blockJob.totalJobs == 0U) {
+    if (blockJob.totalJobs == 0U) {
         return;
     }
+    // 建表工人平铺：每 block 的 AIV1（编号 jobIndex）与 AIV0（编号 jobIndex+totalJobs）各一。
+    const uint32_t workerIndex =
+        GetSubBlockIdx() == 1U ? blockJob.jobIndex : blockJob.jobIndex + blockJob.totalJobs;
+    const uint32_t totalWorkers = blockJob.totalJobs * 2U;
 
     const uint32_t topK = params.tilingData->topK;
     const uint32_t strideInt32 = dedup.rowDescStrideInt32;
@@ -205,7 +210,7 @@ __aicore__ inline void BuildDedupRowDescTable(const DedupConfig &dedup, const Mo
     uint32_t descHalf = 0U;
 
     MM_KTS_T(ktsPrepassT0);
-    for (uint32_t workItem = blockJob.jobIndex; workItem < totalWorkItems; workItem += blockJob.totalJobs) {
+    for (uint32_t workItem = workerIndex; workItem < totalWorkItems; workItem += totalWorkers) {
         const uint32_t srcRank = workItem / chunkCount;
         const uint32_t chunkIdx = workItem % chunkCount;
         const int32_t tokenLo = static_cast<int32_t>(chunkIdx * chunkTokens);
