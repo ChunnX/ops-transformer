@@ -16,13 +16,43 @@
 #pragma once
 
 #include "kernel_operator.h"
-#include "sparse_flash_attention_grad_block_index.h"
 #include "../../../common/op_kernel/arch35/util_regbase.h"
 #include <cstdint>
 
 using namespace regbaseutil;
 using AscendC::Cast;
 using AscendC::RoundMode;
+
+namespace SfagBaseApi {
+template <typename IndexTensor>
+__aicore__ inline int64_t FindSfagPartialBlock(IndexTensor &indices, int64_t baseOffset, int64_t count,
+                                               int64_t blockSize, int64_t validTokens)
+{
+    if (count <= 0 || validTokens <= 0 || validTokens % blockSize == 0) {
+        return -1;
+    }
+    const int64_t boundaryBlock = validTokens / blockSize;
+    for (int64_t position = count - 1; position >= 0; --position) {
+        if (indices.GetValue(baseOffset + position) == boundaryBlock) {
+            return baseOffset + position;
+        }
+    }
+    return -1;
+}
+
+__aicore__ inline int64_t MapSfagBlockOffset(int64_t offset, int64_t partialOffset, int64_t lastOffset)
+{
+    if (partialOffset >= 0) {
+        if (offset == lastOffset) {
+            return partialOffset;
+        }
+        if (offset == partialOffset) {
+            return lastOffset;
+        }
+    }
+    return offset;
+}
+} // namespace SfagBaseApi
 
 namespace commondef {
 // L0C自主管理相关
