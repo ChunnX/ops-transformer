@@ -22,13 +22,9 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     LoadCachedHOut(tOff, tD);
     LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
     ApplyScaleAndGamma(hOut, invRms0, bufGamma0Fp32_.Get<float>()[tOff], tD);
-    // 量化h_out到低精度缓存，省去BF16->FP32恢复往返，ComputePostHeadPairB16在寄存器内恢复FP32。
-    LocalTensor<T> hOutB16 = bufHInPrimeBf16_.AllocTensor<T>();
-    CastToIO(hOutB16, hOut, tD);
-    PipeBarrier<PIPE_V>();
+    QuantizeRoundTrip(hOut, tD);
 
-    ComputeX2AllHeadsBatched(postVals, (uint64_t)token * N_ * D_ + tOff, tOff, tD, hOutB16);
-    bufHInPrimeBf16_.FreeTensor(hOutB16);
+    ComputeX2AllHeadsBatched(postVals, (uint64_t)token * N_ * D_ + tOff, tOff, tD);
 }
 
 // 双AIV仍需读取全部残差行，但每个lane只计算自己负责的两个输出head。
@@ -50,20 +46,16 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     bufResidualBf16_.EnQue(residual);
 
     ApplyScaleAndGamma(hOut, invRms0, bufGamma0Fp32_.Get<float>()[tOff], tD);
-    // 量化h_out到低精度缓存，省去BF16->FP32恢复往返，ComputePostHeadPairB16在寄存器内恢复FP32。
-    LocalTensor<T> hOutB16 = bufHInPrimeBf16_.AllocTensor<T>();
-    CastToIO(hOutB16, hOut, tD);
-    PipeBarrier<PIPE_V>();
+    QuantizeRoundTrip(hOut, tD);
 
     residual = bufResidualBf16_.DeQue<T>();
     LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
     LocalTensor<float> combWeights = bufPostComb_.Get<float>()[ALIGN8];
-    MhcSandwichRegBase::ComputePostHeadPairB16<T>(
-        x2Cache[headBegin * D_ + tOff], x2Cache[(headBegin + 1U) * D_ + tOff], hOutB16, residual, combWeights,
+    MhcSandwichRegBase::ComputePostHeadPair<T>(
+        x2Cache[headBegin * D_ + tOff], x2Cache[(headBegin + 1U) * D_ + tOff], hOut, residual, combWeights,
         dimTile_, headBegin, postVals[headBegin], postVals[headBegin + 1U], tD);
     PipeBarrier<PIPE_V>();
     bufResidualBf16_.FreeTensor(residual);
-    bufHInPrimeBf16_.FreeTensor(hOutB16);
 }
 
 // 将完整x2以输出dtype常驻UB，同时完成设计要求的低精度往返；写GM仅用于保留x2_out输出语义。
