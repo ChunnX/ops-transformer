@@ -120,6 +120,10 @@ ge::graphStatus FiaTilingFullQuantMxArch35::SetPlatMemoryInfo()
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
     platformInfo_.aivNum = ascendcPlatform.GetCoreNumAiv();
     platformInfo_.aicNum = ascendcPlatform.GetCoreNumAic();
+    if (platformInfo_.aicNum > 32) {
+        platformInfo_.aivNum = 64;
+        platformInfo_.aicNum = 32;
+    }
     platformInfo_.cvRatio = platformInfo_.aivNum / platformInfo_.aicNum;
     platformInfo_.coreNum = platformInfo_.aivNum;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, platformInfo_.ubSize);

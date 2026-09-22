@@ -30,6 +30,12 @@
 #endif
 
 #include "quant_flash_attn_tiling_data.h"
+#if __has_include("utils/debug/asc_printf.h")
+#include "utils/debug/asc_printf.h"
+#define QFA_FD_DEBUG_PRINTF(fmt, ...) __asc_aicore::printf((__gm__ const char *)(fmt), ##__VA_ARGS__)
+#else
+#define QFA_FD_DEBUG_PRINTF(fmt, ...) static_cast<void>(0)
+#endif
 
 using namespace AscendC;
 using namespace optiling;
@@ -85,6 +91,7 @@ public:
     GlobalTensor<int32_t> seqUsedGmKv_;
     GlobalTensor<uint32_t> faMetaDataGm_;
     GlobalTensor<uint32_t> fdMetaDataGm_;
+    GlobalTensor<uint32_t> fdExecMarkerGm_; // 调试: FD实际执行标记回写metadata头
     GlobalTensor<float> softmaxLseGm_;
     __gm__ uint8_t *keyPtr_ = nullptr;
     __gm__ uint8_t *valuePtr_ = nullptr;
@@ -154,6 +161,8 @@ public:
         this->tilingData_ = tiling;
 
         InitConstInfo();
+        // 运行时FD开关: 由AICPU metadata头指示本次是否实际走FD; needInitOutput仍从tiling data读取
+        constInfo_.enableFlashDecode = ((__gm__ uint32_t *)metadata)[QFA_HEAD_IS_FD_INDEX] != 0;
 
         keyPtr_ = key;
         valuePtr_ = value;
@@ -205,22 +214,28 @@ public:
             }
         }
         if constexpr (FLASH_DECODE) {
-            if ASCEND_IS_AIV {
-                fdMetaDataGm_.SetGlobalBuffer(
-                    (__gm__ uint32_t *)(metadata + METADATA_HEADER_OFFSET +
-                                        sectionNum_ * metadataAicNum_ * METADATA_STRIDE * sizeof(uint32_t)),
-                    sectionNum_ * metadataAivNum_ * METADATA_STRIDE);
-                vecFdBlock_.InitParams();
-                vecFdBlock_.InitGlobalTensor(this->vecFaBlock_.softmaxFDMaxGm_, this->vecFaBlock_.softmaxFDSumGm_,
-                                             this->vecFaBlock_.accumOutGm_, this->vecFaBlock_.attentionOutGm_, keyPtr_);
-                if (constInfo_.isSoftmaxLseEnable) {
-                    softmaxLseGm_.SetGlobalBuffer((__gm__ float *)softmaxLse);
-                    vecFdBlock_.InitSoftmaxLseGm(softmaxLseGm_);
-                }
-                if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-                    vecFdBlock_.SetCuSeqLensParsers(qCuSeqLensParser_, kvCuSeqLensParser_);
-                } else {
-                    vecFdBlock_.SetCuSeqLensParsers(qSeqUsedParser_, kvSeqUsedParser_);
+            if (constInfo_.enableFlashDecode) {
+                if ASCEND_IS_AIV {
+                    fdExecMarkerGm_.SetGlobalBuffer(
+                        (__gm__ uint32_t *)metadata + QFA_HEAD_FD_EXEC_MARKER_INDEX,
+                        sizeof(uint32_t) * (16 - QFA_HEAD_FD_EXEC_MARKER_INDEX));
+                    fdMetaDataGm_.SetGlobalBuffer(
+                        (__gm__ uint32_t *)(metadata + METADATA_HEADER_OFFSET +
+                                            sectionNum_ * metadataAicNum_ * METADATA_STRIDE * sizeof(uint32_t)),
+                        sectionNum_ * metadataAivNum_ * METADATA_STRIDE);
+                    vecFdBlock_.InitParams();
+                    vecFdBlock_.InitGlobalTensor(this->vecFaBlock_.softmaxFDMaxGm_, this->vecFaBlock_.softmaxFDSumGm_,
+                                                 this->vecFaBlock_.accumOutGm_, this->vecFaBlock_.attentionOutGm_,
+                                                 keyPtr_);
+                    if (constInfo_.isSoftmaxLseEnable) {
+                        softmaxLseGm_.SetGlobalBuffer((__gm__ float *)softmaxLse);
+                        vecFdBlock_.InitSoftmaxLseGm(softmaxLseGm_);
+                    }
+                    if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
+                        vecFdBlock_.SetCuSeqLensParsers(qCuSeqLensParser_, kvCuSeqLensParser_);
+                    } else {
+                        vecFdBlock_.SetCuSeqLensParsers(qSeqUsedParser_, kvSeqUsedParser_);
+                    }
                 }
             }
         }
@@ -277,7 +292,6 @@ public:
         constInfo_.seqUsedQSize = qfaBaseParams.seqUsedQSize;
         constInfo_.seqUsedKvSize = qfaBaseParams.seqUsedKvSize;
         constInfo_.scaleValue = static_cast<float>(qfaBaseParams.scaleValue);
-        constInfo_.isKvContinuous = true;
         constInfo_.coreNum = qfaBaseParams.coreNum;
         constInfo_.needInitOutput = qfaBaseParams.needInitOutput;
         constInfo_.outputLayout = static_cast<FA_LAYOUT>(qfaBaseParams.outputLayout);
@@ -739,15 +753,27 @@ public:
 
     __aicore__ inline void FlashDecode(uint32_t sectionIdx)
     {
-        GetFDSectionInfo(sectionIdx);
-        if (!fdParams_.fdCoreEnable) {
+        // enableFlashDecode来自metadata头, 各核取值一致, 可在SyncAll前统一提前返回
+        if (!constInfo_.enableFlashDecode) {
             return;
         }
+        GetFDSectionInfo(sectionIdx);
         vecFdBlock_.InitBuffers(this->pipe_);
+        if (fdParams_.fdCoreEnable) {
+            // 调试标记: 证明FD规约路径真实执行(0xFD00|splitNum), 经MTE3写出保证host可见
+            vecFdBlock_.WriteExecMarker(fdExecMarkerGm_,
+                                        QFA_FD_EXEC_MARKER_MAGIC | (fdParams_.fdS2SplitNum & 0xFFU));
+        }
         AscendC::ICachePreLoad(2);
         vecFdBlock_.AllocEventID();
         SyncAll();
+        if (constInfo_.aivIdx < 2) {
+            QFA_FD_DEBUG_PRINTF("QFA_FD_EXEC aiv=%u enableFD=%u mLen=%u splitNum=%u wsIdx=%u\n",
+                                constInfo_.aivIdx, static_cast<uint32_t>(constInfo_.enableFlashDecode),
+                                fdParams_.mLen, fdParams_.fdS2SplitNum, fdParams_.fdWorkspaceIdx);
+        }
         vecFdBlock_.FlashDecode(fdParams_);
+        SyncAll();
         vecFdBlock_.FreeEventID();
     }
 
@@ -793,25 +819,24 @@ public:
                 cubeBlock_.InitBuffers();
                 cubeBlock_.AllocEventID();
             }
-        }
-        for (uint32_t sectionIdx = 0; sectionIdx < sectionNum_; sectionIdx++) {
-            if (constInfo_.aicIdx < constInfo_.coreNum) {
+            for (uint32_t sectionIdx = 0; sectionIdx < sectionNum_; sectionIdx++) {
                 FlashAttention(sectionIdx);
             }
-            if constexpr (FLASH_DECODE) {
-                if ASCEND_IS_AIV {
-                    FlashDecode(sectionIdx);
-                }
-            }
-        }
-
-        if (constInfo_.aicIdx < constInfo_.coreNum) {
             if ASCEND_IS_AIV {
                 vecFaBlock_.FreeEventID();
             } else {
                 cubeBlock_.FreeEventID();
             }
             CrossCoreBufferUnInit();
+        }
+
+        // FD的InitBuffers会Reset pipe（复用FA的UB），必须等FA全部完成并释放事件后再执行
+        if constexpr (FLASH_DECODE) {
+            if ASCEND_IS_AIV {
+                for (uint32_t sectionIdx = 0; sectionIdx < sectionNum_; sectionIdx++) {
+                    FlashDecode(sectionIdx);
+                }
+            }
         }
     }
 }; // QuantFlashAttnKernelHif8
