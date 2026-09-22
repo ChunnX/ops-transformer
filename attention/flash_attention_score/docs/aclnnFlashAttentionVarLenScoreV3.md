@@ -356,7 +356,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV3(
       <tr>
         <td>softmaxOutOut</td>
         <td>输出</td>
-        <td>预留参数，暂未使用。</td>
+        <td>预留参数，暂未使用，接口不写入该输出。</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -422,10 +422,10 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV3(
     <tr>
       <td rowspan="2">ACLNN_ERR_PARAM_INVALID</td>
       <td rowspan="2">161002</td>
-      <td>query、queryRope、key、keyRope、value、realShiftOptional、dropMaskOptional、paddingMaskOptional、attenMaskOptional、softmaxMaxOut、softmaxSumOut、softmaxOutOut、attentionOutOut的数据类型不在支持的范围内。</td>
+      <td>query、queryRope、key、keyRope、value、realShiftOptional、dropMaskOptional、paddingMaskOptional、attenMaskOptional、softmaxMaxOut、softmaxSumOut、attentionOutOut的数据类型不在支持的范围内。</td>
     </tr>
     <tr>
-      <td>query、queryRope、key、keyRope、value、realShiftOptional、dropMaskOptional、paddingMaskOptional、attenMaskOptional、softmaxMaxOut、softmaxSumOut、softmaxOutOut、attentionOutOut的数据格式不在支持的范围内。</td>
+      <td>query、queryRope、key、keyRope、value、realShiftOptional、dropMaskOptional、paddingMaskOptional、attenMaskOptional、softmaxMaxOut、softmaxSumOut、attentionOutOut的数据格式不在支持的范围内。</td>
     </tr>
   </tbody>
   </table>
