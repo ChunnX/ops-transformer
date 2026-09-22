@@ -28,7 +28,7 @@
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #include "mixed_quant_sparse_flash_mla_template_tiling_key.h"
-#include "arch22/mixed_quant_sparse_flash_mla_tq_scfa_kernel.h"
+#include "arch22/mixed_quant_sparse_flash_mla_tq_csa_kernel.h"
 #include "mixed_quant_sparse_flash_mla_metadata.h"
 #endif
 
@@ -99,13 +99,13 @@ __global__ __aicore__ void mixed_quant_sparse_flash_mla(
     if constexpr (QUANT_MODE == TURBO_QUANT && TEMPLATE_MODE == CSA_TEMPLATE) {
         if constexpr (ORIG_DTYPE_Q == DT_FLOAT16 && ORIG_DTYPE_ORI_KV == DT_FLOAT16 && ORIG_DTYPE_CMP_KV == DT_UINT8 &&
                       ORIG_DTYPE_ATTN_OUT == DT_FLOAT16) {
-            QSMLA_TQ_OP_IMPL(SASKernel::MixedQuantSparseFlashMlaTqScfaKernel, MixedQuantSparseFlashMlaTilingData, half,
+            QSMLA_TQ_OP_IMPL(SASKernel::MixedQuantSparseFlashMlaTqCsaKernel, MixedQuantSparseFlashMlaTilingData, half,
                              half, half, FLASH_DECODE, static_cast<SASKernel::SAS_LAYOUT>(LAYOUT_T),
                              static_cast<SASKernel::SAS_LAYOUT>(KV_LAYOUT_T), CSA_TEMPLATE);
         }
         if constexpr (ORIG_DTYPE_Q == DT_BF16 && ORIG_DTYPE_ORI_KV == DT_BF16 && ORIG_DTYPE_CMP_KV == DT_UINT8 &&
                       ORIG_DTYPE_ATTN_OUT == DT_BF16) {
-            QSMLA_TQ_OP_IMPL(SASKernel::MixedQuantSparseFlashMlaTqScfaKernel, MixedQuantSparseFlashMlaTilingData,
+            QSMLA_TQ_OP_IMPL(SASKernel::MixedQuantSparseFlashMlaTqCsaKernel, MixedQuantSparseFlashMlaTilingData,
                              bfloat16_t, bfloat16_t, bfloat16_t, FLASH_DECODE,
                              static_cast<SASKernel::SAS_LAYOUT>(LAYOUT_T),
                              static_cast<SASKernel::SAS_LAYOUT>(KV_LAYOUT_T), CSA_TEMPLATE);

@@ -15,7 +15,7 @@
 
 #ifndef MIXED_QUANT_SPARSE_FLASH_MLA_CSA_KERNEL_H
 #define MIXED_QUANT_SPARSE_FLASH_MLA_CSA_KERNEL_H
-#include "mixed_quant_sparse_flash_mla_csa_common.h"
+#include "mixed_quant_sparse_flash_mla_common_arch35.h"
 #include "mixed_quant_sparse_flash_mla_kvcache.h"
 #include "mixed_quant_sparse_flash_mla_csa_block_cube.h"
 #include "mixed_quant_sparse_flash_mla_csa_block_vector.h"
