@@ -156,13 +156,16 @@ ge::graphStatus AttentionWorkerCombineTilingArch35::DoGetShapeAttrsInfo()
                                                           std::to_string(*needSchedule).c_str(),
                                                           "MXFP need_schedule must be 0 or 1."),
                     return ge::GRAPH_FAILED);
-        const auto *outDesc = context_->GetOutputDesc(0);
-        OP_CHECK_NULL_WITH_CONTEXT(context_, outDesc);
-        OP_CHECK_IF(outDesc->GetDataType() != ge::DT_BF16,
-                    OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "y",
-                                              Ops::Base::ToString(outDesc->GetDataType()).c_str(), "BF16"),
-                    return ge::GRAPH_FAILED);
     }
+
+    const auto *outDesc = context_->GetOutputDesc(0);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, outDesc);
+    const ge::DataType expectedOutputType = tokenDtype_ == 0 ? ge::DT_FLOAT16 : ge::DT_BF16;
+    OP_CHECK_IF(outDesc->GetDataType() != expectedOutputType,
+                OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "y",
+                                          Ops::Base::ToString(outDesc->GetDataType()).c_str(),
+                                          Ops::Base::ToString(expectedOutputType).c_str()),
+                return ge::GRAPH_FAILED);
 
     batchSize_ = batchSize;
     k_ = k;

@@ -131,7 +131,7 @@ TEST_F(AttentionWorkerCombineTilingTest, attention_worker_combine_tiling_test04)
                                                {expert_scales_shape, ge::DT_FLOAT, ge::FORMAT_ND},
                                                {layer_id_shape, ge::DT_INT32, ge::FORMAT_ND}},
                                               {// output
-                                               {y_shape_out, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                               {y_shape_out, ge::DT_BF16, ge::FORMAT_ND},
                                                {next_layer_id_shape_out, ge::DT_INT32, ge::FORMAT_ND}},
                                               {{"hidden_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(7168)},
                                                {"token_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
@@ -159,7 +159,7 @@ TEST_F(AttentionWorkerCombineTilingTest, attention_worker_combine_tiling_test05)
                                                {expert_scales_shape, ge::DT_FLOAT, ge::FORMAT_ND},
                                                {layer_id_shape, ge::DT_INT32, ge::FORMAT_ND}},
                                               {// output
-                                               {y_shape_out, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                               {y_shape_out, ge::DT_BF16, ge::FORMAT_ND},
                                                {next_layer_id_shape_out, ge::DT_INT32, ge::FORMAT_ND}},
                                               {{"hidden_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(20480)},
                                                {"token_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
@@ -172,6 +172,25 @@ TEST_F(AttentionWorkerCombineTilingTest, attention_worker_combine_tiling_test05)
 }
 
 namespace {
+void CheckNonquantOutputType(int64_t tokenDtype, ge::DataType outputType, ge::graphStatus status)
+{
+    constexpr int64_t r = 3;
+    constexpr int64_t k = 2;
+    constexpr int64_t h = 64;
+    AttentionWorkerCombineCompileInfo compileInfo = {8, 256 * 1024};
+    gert::TilingContextPara para(
+        "AttentionWorkerCombine",
+        {{{{1024}, {1024}}, ge::DT_INT8, ge::FORMAT_ND},
+         {{{r, k}, {r, k}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND}},
+        {{{{r, h}, {r, h}}, outputType, ge::FORMAT_ND}, {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND}},
+        {{"hidden_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(h)},
+         {"token_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tokenDtype)},
+         {"need_schedule", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
+        {1, 1, 1}, {1, 1}, &compileInfo, "Ascend950", 8, 256 * 1024, 8192);
+    ExecuteTestCase(para, status, 0);
+}
+
 void CheckMxfpTiling(int64_t h, int64_t scaleCols, int64_t dtype, ge::DataType scaleType, ge::graphStatus status,
                      int64_t r = 3, int64_t k = 2, const char *soc = "Ascend950", ge::DataType outputType = ge::DT_BF16,
                      int64_t keyBase = 11000, int64_t schedule = 0, const std::string &expected = "")
@@ -190,6 +209,12 @@ void CheckMxfpTiling(int64_t h, int64_t scaleCols, int64_t dtype, ge::DataType s
     ExecuteTestCase(para, status, status == ge::GRAPH_SUCCESS ? keyBase + dtype : 0, expected);
 }
 } // namespace
+
+TEST_F(AttentionWorkerCombineTilingTest, nonquant_reject_output_dtype_mismatch)
+{
+    CheckNonquantOutputType(0, ge::DT_BF16, ge::GRAPH_FAILED);
+    CheckNonquantOutputType(1, ge::DT_FLOAT16, ge::GRAPH_FAILED);
+}
 
 TEST_F(AttentionWorkerCombineTilingTest, mxfp_tail_and_large_h)
 {
