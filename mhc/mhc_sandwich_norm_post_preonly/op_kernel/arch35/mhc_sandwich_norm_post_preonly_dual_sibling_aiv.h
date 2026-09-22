@@ -20,9 +20,11 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     float dotHalf[2][N_MAX] = {{0.0f, 0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 0.0f}};
     float midSqHalf[2] = {0.0f, 0.0f};
     CacheHOut((uint64_t)token * D_);
-    CacheGamma0();
     const uint32_t headBegin = laneId_ * 2U;
     LoadTokenWeights(token, postVals, headBegin, headBegin + 2U);
+
+    // 提前发起gamma0搬运（MTE2），使其与下方R1平方和（Vector）重叠。
+    CacheGamma0();
 
     // 两个lane按完全相同的分块和顺序冗余执行R1。
     float sumSq0 = 0.0f;
@@ -32,6 +34,10 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         sumSq0 += ReduceSumSqFromCache(tOff, tD);
     }
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
+
+    // R2的RMSNorm_0缩放需要gamma0，进入R2前回收其MTE2完成事件。
+    SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+    WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
 
     // 两个lane分别构造自己负责的两个x2 head。
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
