@@ -14,8 +14,6 @@
  */
 
 #include "register/op_def_registry.h"
-#include "arch22/mixed_quant_sparse_flash_mla_def.h"
-#include "arch35/mixed_quant_sparse_flash_mla_def.h"
 
 namespace ops {
 class MixedQuantSparseFlashMla : public OpDef {
@@ -133,8 +131,124 @@ public:
         this->Attr("topk_value_mode").AttrType(OPTIONAL).Int(1);
         this->Attr("return_softmax_lse").AttrType(OPTIONAL).Bool(false);
 
-        arch22::AddConfig(*this);
-        arch35::AddConfig(*this);
+        OpAICoreConfig aicore_config;
+        aicore_config.DynamicCompileStaticFlag(true)
+            .DynamicFormatFlag(true)
+            .DynamicRankSupportFlag(true)
+            .DynamicShapeSupportFlag(true)
+            .NeedCheckSupportFlag(false)
+            .PrecisionReduceFlag(true)
+            .ExtendCfgInfo("aclnnSupport.value", "support_aclnn");
+        this->AICore().AddConfig("ascend910b", aicore_config);
+        this->AICore().AddConfig("ascend910_93", aicore_config);
+
+        OpAICoreConfig aicore_config_950;
+        aicore_config_950.Input("q")
+            .ParamType(REQUIRED)
+            .DataTypeList({ge::DT_BF16})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        aicore_config_950.Input("ori_kv")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_FLOAT8_E4M3FN})
+            .FormatList({ge::FORMAT_ND})
+            .IgnoreContiguous();
+        aicore_config_950.Input("cmp_kv")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_FLOAT8_E4M3FN})
+            .FormatList({ge::FORMAT_ND})
+            .IgnoreContiguous();
+        aicore_config_950.Input("ori_sparse_indices")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        aicore_config_950.Input("cmp_sparse_indices")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        aicore_config_950.Input("ori_block_table")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        aicore_config_950.Input("cmp_block_table")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        aicore_config_950.Input("cu_seqlens_q")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        aicore_config_950.Input("cu_seqlens_ori_kv")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        aicore_config_950.Input("cu_seqlens_cmp_kv")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        aicore_config_950.Input("seqused_q")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        aicore_config_950.Input("seqused_ori_kv")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        aicore_config_950.Input("seqused_cmp_kv")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        aicore_config_950.Input("cmp_residual_kv")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        aicore_config_950.Input("ori_topk_length")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        aicore_config_950.Input("cmp_topk_length")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        aicore_config_950.Input("sinks")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_FLOAT})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        aicore_config_950.Input("metadata")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        aicore_config_950.Output("attn_out")
+            .ParamType(REQUIRED)
+            .DataTypeList({ge::DT_BF16})
+            .FormatList({ge::FORMAT_ND});
+        aicore_config_950.Output("softmax_lse")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_FLOAT})
+            .FormatList({ge::FORMAT_ND});
+        aicore_config_950.DynamicCompileStaticFlag(true)
+            .DynamicFormatFlag(true)
+            .DynamicRankSupportFlag(true)
+            .DynamicShapeSupportFlag(true)
+            .NeedCheckSupportFlag(false)
+            .PrecisionReduceFlag(true)
+            .ExtendCfgInfo("aclnnSupport.value", "support_aclnn");
+        this->AICore().AddConfig("ascend950", aicore_config_950);
     }
 };
 OP_ADD(MixedQuantSparseFlashMla);
