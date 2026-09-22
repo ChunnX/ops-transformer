@@ -299,17 +299,8 @@ extern "C" aclnnStatus InnerMatmulAlltoAllGetWorkspaceSize(const aclTensor *x1, 
 }
 
 // 两段式接口
-aclnnStatus aclnnMatmulAlltoAllBaseGetWorkspaceSize(const aclTensor *x1, const aclTensor *x2,
-                                                    const aclTensor *biasOptional,
-                                                    const aclIntArray *alltoAllAxesOptional, const char *group,
-                                                    const char *commMode, bool transposeX1, bool transposeX2,
-                                                    const aclTensor *output, uint64_t *workspaceSize,
-                                                    aclOpExecutor **executor)
+static aclnnStatus PrepareX2(const aclTensor *x2, const aclTensor *&transX2, bool &transposeX2)
 {
-    // 处理非连续Tensor，目前只有支持转置的x2涉及该处理
-    aclnnStatus checkX2Ret = CheckX2Valid("matmul_allto_all", x2);
-    CHECK_RET(checkX2Ret == ACLNN_SUCCESS, checkX2Ret); // 先检查x2是否合法，避免非法操作
-    auto transX2 = x2;                                  // 复制一个x2
     if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) { // 只有当非连续时，才会涉及到转连续等情况
         bool notContiguous =
             IsTransposeLastTwoDims(x2); // notContiguous标识x2是否是非连续的，通常在pytorch经过.t()会导致x2非连续
@@ -335,6 +326,22 @@ aclnnStatus aclnnMatmulAlltoAllBaseGetWorkspaceSize(const aclTensor *x1, const a
             return ACLNN_ERR_PARAM_INVALID;
         });
     }
+    return ACLNN_SUCCESS;
+}
+
+aclnnStatus aclnnMatmulAlltoAllBaseGetWorkspaceSize(const aclTensor *x1, const aclTensor *x2,
+                                                    const aclTensor *biasOptional,
+                                                    const aclIntArray *alltoAllAxesOptional, const char *group,
+                                                    const char *commMode, bool transposeX1, bool transposeX2,
+                                                    const aclTensor *output, uint64_t *workspaceSize,
+                                                    aclOpExecutor **executor)
+{
+    // 处理非连续Tensor，目前只有支持转置的x2涉及该处理
+    aclnnStatus checkX2Ret = CheckX2Valid("matmul_allto_all", x2);
+    CHECK_RET(checkX2Ret == ACLNN_SUCCESS, checkX2Ret); // 先检查x2是否合法，避免非法操作
+    auto transX2 = x2;                                  // 复制一个x2
+    aclnnStatus prepareX2Ret = PrepareX2(x2, transX2, transposeX2);
+    CHECK_RET(prepareX2Ret == ACLNN_SUCCESS, prepareX2Ret);
     aclnnStatus retParam = CheckAndHandleParams(x1, transX2, biasOptional, alltoAllAxesOptional, group, commMode,
                                                 transposeX1, transposeX2, output);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
@@ -357,7 +364,7 @@ aclnnStatus aclnnMatmulAlltoAllBaseGetWorkspaceSize(const aclTensor *x1, const a
             "This is an error in launch aicore, aclnnMatmulAlltoAllBaseGetWorkspaceSize interface call failed.");
     }
 
-    if (ret == ACLNN_SUCCESS && *executor != nullptr) {
+    if (ret == ACLNN_SUCCESS && executor != nullptr && *executor != nullptr) {
         void *arg = reinterpret_cast<void *>(static_cast<uintptr_t>(commModeEnum));
         NnopbaseSetUserHandle(*executor, arg);
     }

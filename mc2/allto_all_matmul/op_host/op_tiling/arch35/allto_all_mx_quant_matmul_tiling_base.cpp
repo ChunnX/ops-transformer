@@ -187,29 +187,9 @@ static bool IsContain(const std::vector<uint32_t> &list, uint32_t value)
  * @param opName  算子名称
  * @return ge::graphStatus
  */
-ge::graphStatus AllToAllMxQuantMatmulTilingBase::CheckMxQuantTensorDataType(const gert::TilingContext *context,
-                                                                            const char *opName)
+ge::graphStatus AllToAllMxQuantMatmulTilingBase::CheckMxBiasAndScaleDataTypes(const gert::TilingContext *context,
+                                                                              const char *opName)
 {
-    // 获取并校验输入张量描述符
-    auto x1TensorDesc = context->GetInputDesc(INPUT_X1_INDEX);
-    auto x2TensorDesc = context->GetInputDesc(INPUT_X2_INDEX);
-    OP_TILING_CHECK((x1TensorDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName, "x1"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((x2TensorDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName, "x2"), return ge::GRAPH_FAILED);
-    // 获取数据类型并校验一致性与范围
-    ge::DataType x1Dtype = x1TensorDesc->GetDataType();
-    ge::DataType x2Dtype = x2TensorDesc->GetDataType();
-    const std::vector<uint32_t> MX_QUANT_X_DTYPE_LIST = {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT4_E2M1};
-    const std::vector<uint32_t> MX_QUANT_Y_DTYPE_LIST = {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT};
-    OP_TILING_CHECK(!IsContain(MX_QUANT_X_DTYPE_LIST, x1Dtype),
-                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-                        opName, "x1", Ops::Base::ToString(x1Dtype).c_str(),
-                        "The dtype of x1 must be within the range {float8_e4m3fn, float8_e5m2, float4_e2m1}."),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(!IsContain(MX_QUANT_X_DTYPE_LIST, x2Dtype),
-                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-                        opName, "x2", Ops::Base::ToString(x2Dtype).c_str(),
-                        "The dtype of x2 must be within the range {float8_e4m3fn, float8_e5m2, float4_e2m1}."),
-                    return ge::GRAPH_FAILED);
     // 校验 bias 数据类型（如果存在）
     auto biasTensorDesc = context->GetOptionalInputDesc(INPUT_BIAS_INDEX);
     if (biasTensorDesc != nullptr) {
@@ -235,6 +215,36 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::CheckMxQuantTensorDataType(cons
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "x2Scale", Ops::Base::ToString(x2scaleDtype).c_str(),
                                                           "The dtype of x2Scale must be DT_FLOAT8_E8M0."),
                     return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus AllToAllMxQuantMatmulTilingBase::CheckMxQuantTensorDataType(const gert::TilingContext *context,
+                                                                            const char *opName)
+{
+    // 获取并校验输入张量描述符
+    auto x1TensorDesc = context->GetInputDesc(INPUT_X1_INDEX);
+    auto x2TensorDesc = context->GetInputDesc(INPUT_X2_INDEX);
+    OP_TILING_CHECK((x1TensorDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName, "x1"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((x2TensorDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName, "x2"), return ge::GRAPH_FAILED);
+    // 获取数据类型并校验一致性与范围
+    ge::DataType x1Dtype = x1TensorDesc->GetDataType();
+    ge::DataType x2Dtype = x2TensorDesc->GetDataType();
+    const std::vector<uint32_t> MX_QUANT_X_DTYPE_LIST = {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT4_E2M1};
+    const std::vector<uint32_t> MX_QUANT_Y_DTYPE_LIST = {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT};
+    OP_TILING_CHECK(!IsContain(MX_QUANT_X_DTYPE_LIST, x1Dtype),
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                        opName, "x1", Ops::Base::ToString(x1Dtype).c_str(),
+                        "The dtype of x1 must be within the range {float8_e4m3fn, float8_e5m2, float4_e2m1}."),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(!IsContain(MX_QUANT_X_DTYPE_LIST, x2Dtype),
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                        opName, "x2", Ops::Base::ToString(x2Dtype).c_str(),
+                        "The dtype of x2 must be within the range {float8_e4m3fn, float8_e5m2, float4_e2m1}."),
+                    return ge::GRAPH_FAILED);
+    const auto checkMxBiasAndScaleDataTypesStatus = CheckMxBiasAndScaleDataTypes(context, opName);
+    if (checkMxBiasAndScaleDataTypesStatus != ge::GRAPH_SUCCESS) {
+        return checkMxBiasAndScaleDataTypesStatus;
+    }
     // 校验输出张量数据类型
     auto yDesc = context->GetOutputDesc(OUTPUT_Y_INDEX);
     OP_TILING_CHECK((yDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName, "y"), return ge::GRAPH_FAILED);
@@ -265,6 +275,51 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::CheckMxQuantTensorDataType(cons
  * @param indexSchema 存放输入参数索引差别的结构体
  * @return ge::graphStatus
  */
+ge::graphStatus AllToAllMxQuantMatmulTilingBase::CheckMxScaleDimensions(const char *opName,
+                                                                        const gert::StorageShape *x1ScaleShape,
+                                                                        const gert::StorageShape *x2ScaleShape,
+                                                                        uint64_t x1Dim0, uint64_t x1Dim1,
+                                                                        uint64_t x2Dim0, uint64_t x2Dim1)
+{
+    uint64_t x1ScaleDim0 = x1ScaleShape->GetStorageShape().GetDim(DIM_ZERO);
+    uint64_t x1ScaleDim1 = x1ScaleShape->GetStorageShape().GetDim(DIM_ONE);
+    uint64_t x1ScaleDim2 = x1ScaleShape->GetStorageShape().GetDim(DIM_TWO);
+    OP_TILING_CHECK((x1ScaleDim0 != x1Dim0),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x1Scale",
+                                                          Ops::Base::ToString(x1ScaleShape->GetStorageShape()).c_str(),
+                                                          "The shape [0] of x1Scale must be " + std::to_string(x1Dim0)),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((x1ScaleDim1 != x1Dim1 / MX_SCALE_ALIGN),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        opName, "x1Scale", Ops::Base::ToString(x1ScaleShape->GetStorageShape()).c_str(),
+                        "The shape [1] of x1Scale must be " + std::to_string(x1Dim1 / MX_SCALE_ALIGN)),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((x1ScaleDim2 != DIM_TWO),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        opName, "x1Scale", Ops::Base::ToString(x1ScaleShape->GetStorageShape()).c_str(),
+                        "The shape [2] of x1Scale must be " + std::to_string(DIM_TWO)),
+                    return ge::GRAPH_FAILED);
+    uint64_t x2ScaleDim0 = x2ScaleShape->GetStorageShape().GetDim(DIM_ZERO);
+    uint64_t x2ScaleDim1 = x2ScaleShape->GetStorageShape().GetDim(DIM_ONE);
+    uint64_t x2ScaleDim2 = x2ScaleShape->GetStorageShape().GetDim(DIM_TWO);
+    OP_TILING_CHECK((x2ScaleDim2 != DIM_TWO),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        opName, "x2Scale", Ops::Base::ToString(x2ScaleShape->GetStorageShape()).c_str(),
+                        "The shape [2] of x2Scale must be " + std::to_string(DIM_TWO)),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((x2ScaleDim0 != x2Dim0),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x2Scale",
+                                                          Ops::Base::ToString(x2ScaleShape->GetStorageShape()).c_str(),
+                                                          "The shape [0] of x2Scale must be " + std::to_string(x2Dim0)),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((x2ScaleDim1 != x2Dim1 / MX_SCALE_ALIGN),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        opName, "x2Scale", Ops::Base::ToString(x2ScaleShape->GetStorageShape()).c_str(),
+                        "The shape [1] of x2Scale must be " + std::to_string(x2Dim1 / MX_SCALE_ALIGN)),
+                    return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus AllToAllMxQuantMatmulTilingBase::CheckMxQuantShapeInfo(const gert::TilingContext *context,
                                                                        const char *opName,
                                                                        const OpAttrIndexSchema &indexSchema)
@@ -310,43 +365,7 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::CheckMxQuantShapeInfo(const ger
     if (MatmulAlltoAllTilingUtil::GetAndValidateRankSize(context, opName, group, rankDim) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    uint64_t x1ScaleDim0 = x1ScaleShape->GetStorageShape().GetDim(DIM_ZERO);
-    uint64_t x1ScaleDim1 = x1ScaleShape->GetStorageShape().GetDim(DIM_ONE);
-    uint64_t x1ScaleDim2 = x1ScaleShape->GetStorageShape().GetDim(DIM_TWO);
-    OP_TILING_CHECK((x1ScaleDim0 != x1Dim0),
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x1Scale",
-                                                          Ops::Base::ToString(x1ScaleShape->GetStorageShape()).c_str(),
-                                                          "The shape [0] of x1Scale must be " + std::to_string(x1Dim0)),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((x1ScaleDim1 != x1Dim1 / MX_SCALE_ALIGN),
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        opName, "x1Scale", Ops::Base::ToString(x1ScaleShape->GetStorageShape()).c_str(),
-                        "The shape [1] of x1Scale must be " + std::to_string(x1Dim1 / MX_SCALE_ALIGN)),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((x1ScaleDim2 != DIM_TWO),
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        opName, "x1Scale", Ops::Base::ToString(x1ScaleShape->GetStorageShape()).c_str(),
-                        "The shape [2] of x1Scale must be " + std::to_string(DIM_TWO)),
-                    return ge::GRAPH_FAILED);
-    uint64_t x2ScaleDim0 = x2ScaleShape->GetStorageShape().GetDim(DIM_ZERO);
-    uint64_t x2ScaleDim1 = x2ScaleShape->GetStorageShape().GetDim(DIM_ONE);
-    uint64_t x2ScaleDim2 = x2ScaleShape->GetStorageShape().GetDim(DIM_TWO);
-    OP_TILING_CHECK((x2ScaleDim2 != DIM_TWO),
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        opName, "x2Scale", Ops::Base::ToString(x2ScaleShape->GetStorageShape()).c_str(),
-                        "The shape [2] of x2Scale must be " + std::to_string(DIM_TWO)),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((x2ScaleDim0 != x2Dim0),
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x2Scale",
-                                                          Ops::Base::ToString(x2ScaleShape->GetStorageShape()).c_str(),
-                                                          "The shape [0] of x2Scale must be " + std::to_string(x2Dim0)),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((x2ScaleDim1 != x2Dim1 / MX_SCALE_ALIGN),
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        opName, "x2Scale", Ops::Base::ToString(x2ScaleShape->GetStorageShape()).c_str(),
-                        "The shape [1] of x2Scale must be " + std::to_string(x2Dim1 / MX_SCALE_ALIGN)),
-                    return ge::GRAPH_FAILED);
-    return ge::GRAPH_SUCCESS;
+    return CheckMxScaleDimensions(opName, x1ScaleShape, x2ScaleShape, x1Dim0, x1Dim1, x2Dim0, x2Dim1);
 }
 
 /**
@@ -802,44 +821,53 @@ void AllToAllMxQuantMatmulTilingBase::PrintAlltoAllMxQuantMatmulTilingData(Allto
  *
  * @return ge::graphStatus
  */
+ge::graphStatus AllToAllMxQuantMatmulTilingBase::WriteHcommTilingData(size_t tilingBufCap)
+{
+    // hcomm 路径: 输出 hcommAllToAllMatmulTilingData
+    SetHcommTilingInfo(hcommTilingData_.commTilingData);
+    Apace::hcommAllToAllMatmulTilingData *outTilingData =
+        context_->GetTilingData<Apace::hcommAllToAllMatmulTilingData>();
+#if MC2_DFX_ENABLE
+    hcommTilingData_.dumpInfo.workspaceLayout = workspaceLayout_;
+#endif
+    OP_TILING_CHECK((outTilingData == nullptr), OP_LOGE(opName_, "Fail to get hcomm tiling data from context"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((tilingBufCap < sizeof(hcommTilingData_)),
+                    OP_LOGE(opName_, "TilingBuffer capacity is too small, capacity = %zu, need = %zu.", tilingBufCap,
+                            sizeof(hcommTilingData_)),
+                    return ge::GRAPH_FAILED);
+    errno_t ret = memcpy_s(outTilingData, tilingBufCap, &hcommTilingData_, sizeof(hcommTilingData_));
+    if (ret != EOK) {
+        OP_LOGE(opName_, "AlltoAllMxQuantMatmul postTiling: memcpy_s hcomm tiling data failed, ret=%d.", ret);
+        return ge::GRAPH_FAILED;
+    }
+    OP_LOGD(opName_, "Final hcomm tiling data size=%zu and context capacity size=%zu.",
+            sizeof(Apace::hcommAllToAllMatmulTilingData), context_->GetRawTilingData()->GetCapacity());
+    const size_t registeredMaxTilingSize = sizeof(AlltoAllQuantMatmulTilingData);
+    if (tilingBufCap >= registeredMaxTilingSize && registeredMaxTilingSize > sizeof(hcommTilingData_)) {
+        errno_t zeroRet =
+            memset_s(reinterpret_cast<uint8_t *>(outTilingData) + sizeof(hcommTilingData_),
+                     tilingBufCap - sizeof(hcommTilingData_), 0, registeredMaxTilingSize - sizeof(hcommTilingData_));
+        if (zeroRet != EOK) {
+            OP_LOGE(opName_, "AlltoAllMxQuantMatmul postTiling: memset_s hcomm tiling padding failed, ret=%d.",
+                    zeroRet);
+            return ge::GRAPH_FAILED;
+        }
+        context_->GetRawTilingData()->SetDataSize(registeredMaxTilingSize);
+    } else {
+        context_->GetRawTilingData()->SetDataSize(sizeof(Apace::hcommAllToAllMatmulTilingData));
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus AllToAllMxQuantMatmulTilingBase::PostTiling()
 {
     context_->SetScheduleMode(1);
     size_t tilingBufCap = context_->GetRawTilingData()->GetCapacity();
     if (usingApaceImpl_) {
-        // hcomm 路径: 输出 hcommAllToAllMatmulTilingData
-        SetHcommTilingInfo(hcommTilingData_.commTilingData);
-        Apace::hcommAllToAllMatmulTilingData *outTilingData =
-            context_->GetTilingData<Apace::hcommAllToAllMatmulTilingData>();
-#if MC2_DFX_ENABLE
-        hcommTilingData_.dumpInfo.workspaceLayout = workspaceLayout_;
-#endif
-        OP_TILING_CHECK((outTilingData == nullptr), OP_LOGE(opName_, "Fail to get hcomm tiling data from context"),
-                        return ge::GRAPH_FAILED);
-        OP_TILING_CHECK((tilingBufCap < sizeof(hcommTilingData_)),
-                        OP_LOGE(opName_, "TilingBuffer capacity is too small, capacity = %zu, need = %zu.",
-                                tilingBufCap, sizeof(hcommTilingData_)),
-                        return ge::GRAPH_FAILED);
-        errno_t ret = memcpy_s(outTilingData, tilingBufCap, &hcommTilingData_, sizeof(hcommTilingData_));
-        if (ret != EOK) {
-            OP_LOGE(opName_, "AlltoAllMxQuantMatmul postTiling: memcpy_s hcomm tiling data failed, ret=%d.", ret);
-            return ge::GRAPH_FAILED;
-        }
-        OP_LOGD(opName_, "Final hcomm tiling data size=%zu and context capacity size=%zu.",
-                sizeof(Apace::hcommAllToAllMatmulTilingData), context_->GetRawTilingData()->GetCapacity());
-        const size_t registeredMaxTilingSize = sizeof(AlltoAllQuantMatmulTilingData);
-        if (tilingBufCap >= registeredMaxTilingSize && registeredMaxTilingSize > sizeof(hcommTilingData_)) {
-            errno_t zeroRet = memset_s(reinterpret_cast<uint8_t *>(outTilingData) + sizeof(hcommTilingData_),
-                                       tilingBufCap - sizeof(hcommTilingData_), 0,
-                                       registeredMaxTilingSize - sizeof(hcommTilingData_));
-            if (zeroRet != EOK) {
-                OP_LOGE(opName_, "AlltoAllMxQuantMatmul postTiling: memset_s hcomm tiling padding failed, ret=%d.",
-                        zeroRet);
-                return ge::GRAPH_FAILED;
-            }
-            context_->GetRawTilingData()->SetDataSize(registeredMaxTilingSize);
-        } else {
-            context_->GetRawTilingData()->SetDataSize(sizeof(Apace::hcommAllToAllMatmulTilingData));
+        const auto writeHcommTilingDataStatus = WriteHcommTilingData(tilingBufCap);
+        if (writeHcommTilingDataStatus != ge::GRAPH_SUCCESS) {
+            return writeHcommTilingDataStatus;
         }
     } else {
         // arch35 主线路径: 输出 AlltoAllQuantMatmulTilingData

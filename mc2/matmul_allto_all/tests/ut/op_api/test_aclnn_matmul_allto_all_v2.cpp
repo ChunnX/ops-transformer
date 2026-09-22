@@ -884,8 +884,8 @@ static MatmulAlltoAllV2AclnnTestParam g_v2_casesParams_a5[] = {
 static aclTensor *CreateAclTensor(const std::vector<int64_t> &shape, aclDataType dataType, aclFormat format)
 {
     std::vector<int64_t> strides(shape.size(), 1);
-    for (int64_t i = shape.size() - 2; i >= 0; i--) {
-        strides[i] = shape[i + 1] * strides[i + 1];
+    for (size_t i = shape.size(); i > 1; --i) {
+        strides[i - 2] = shape[i - 1] * strides[i - 1];
     }
     aclTensor *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, format, shape.data(),
                                         shape.size(), nullptr);
@@ -896,38 +896,22 @@ static aclTensor *CreateAclTensor(const std::vector<int64_t> &shape, aclDataType
 static void TestV2OneParamCase(const MatmulAlltoAllV2AclnnTestParam &param)
 {
     std::cout << "run case " << param.caseName << std::endl;
-    vector<int64_t> x1Shape = param.x1Shape;
-    vector<int64_t> x2Shape = param.x2Shape;
-    vector<int64_t> biasShape = param.biasShape;
-    vector<int64_t> outputShape = param.outputShape;
-    aclDataType x1Dtype = param.x1Dtype;
-    aclDataType x2Dtype = param.x2Dtype;
-    aclDataType biasDtype = param.biasDtype;
-    aclDataType outputDtype = param.outputDtype;
-    aclFormat x1Format = param.x1Format;
-    aclFormat x2Format = param.x2Format;
-    aclFormat biasFormat = param.biasFormat;
-    aclFormat outputFormat = param.outputFormat;
-    vector<int64_t> axesAcl = param.alltoAllAxesOptional;
-    aclIntArray *alltoAllAxesOptional = aclCreateIntArray(axesAcl.data(), axesAcl.size());
-    const char *group = param.group;
-    const char *commMode = param.commMode;
-    bool transposeX1 = param.transposeX1;
-    bool transposeX2 = param.transposeX2;
-    aclnnStatus retStatus = param.aclnnStatusUt;
+    aclIntArray *alltoAllAxesOptional =
+        aclCreateIntArray(param.alltoAllAxesOptional.data(), param.alltoAllAxesOptional.size());
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet;
-
     if (param.x1Null || param.x2Null || param.outputNull) {
-        aclTensor *x1Ptr = param.x1Null ? nullptr : CreateAclTensor(x1Shape, x1Dtype, x1Format);
-        aclTensor *x2Ptr = param.x2Null ? nullptr : CreateAclTensor(x2Shape, x2Dtype, x2Format);
-        aclTensor *outputPtr = param.outputNull ? nullptr : CreateAclTensor(outputShape, outputDtype, outputFormat);
-        aclTensor *biasPtr = biasShape.empty() ? nullptr : CreateAclTensor(biasShape, biasDtype, biasFormat);
-        auto ut =
-            OP_API_UT(aclnnMatmulAlltoAllV2,
-                      INPUT(x1Ptr, x2Ptr, biasPtr, alltoAllAxesOptional, group, commMode, transposeX1, transposeX2),
-                      OUTPUT(outputPtr));
+        aclTensor *x1Ptr = param.x1Null ? nullptr : CreateAclTensor(param.x1Shape, param.x1Dtype, param.x1Format);
+        aclTensor *x2Ptr = param.x2Null ? nullptr : CreateAclTensor(param.x2Shape, param.x2Dtype, param.x2Format);
+        aclTensor *outputPtr =
+            param.outputNull ? nullptr : CreateAclTensor(param.outputShape, param.outputDtype, param.outputFormat);
+        aclTensor *biasPtr =
+            param.biasShape.empty() ? nullptr : CreateAclTensor(param.biasShape, param.biasDtype, param.biasFormat);
+        auto ut = OP_API_UT(aclnnMatmulAlltoAllV2,
+                            INPUT(x1Ptr, x2Ptr, biasPtr, alltoAllAxesOptional, param.group, param.commMode,
+                                  param.transposeX1, param.transposeX2),
+                            OUTPUT(outputPtr));
         aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
         if (x1Ptr != nullptr)
             aclDestroyTensor(x1Ptr);
@@ -938,26 +922,28 @@ static void TestV2OneParamCase(const MatmulAlltoAllV2AclnnTestParam &param)
         if (biasPtr != nullptr)
             aclDestroyTensor(biasPtr);
     } else {
-        TensorDesc x1 = TensorDesc(x1Shape, x1Dtype, x1Format);
-        TensorDesc x2 = TensorDesc(x2Shape, x2Dtype, x2Format);
-        TensorDesc output = TensorDesc(outputShape, outputDtype, outputFormat);
-        if (biasShape.empty()) {
+        TensorDesc x1 = TensorDesc(param.x1Shape, param.x1Dtype, param.x1Format);
+        TensorDesc x2 = TensorDesc(param.x2Shape, param.x2Dtype, param.x2Format);
+        TensorDesc output = TensorDesc(param.outputShape, param.outputDtype, param.outputFormat);
+        if (param.biasShape.empty()) {
             auto ut = OP_API_UT(aclnnMatmulAlltoAllV2,
-                                INPUT(x1, x2, nullptr, alltoAllAxesOptional, group, commMode, transposeX1, transposeX2),
+                                INPUT(x1, x2, nullptr, alltoAllAxesOptional, param.group, param.commMode,
+                                      param.transposeX1, param.transposeX2),
                                 OUTPUT(output));
             aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
         } else {
-            TensorDesc bias = TensorDesc(biasShape, biasDtype, biasFormat);
+            TensorDesc bias = TensorDesc(param.biasShape, param.biasDtype, param.biasFormat);
             auto ut = OP_API_UT(aclnnMatmulAlltoAllV2,
-                                INPUT(x1, x2, bias, alltoAllAxesOptional, group, commMode, transposeX1, transposeX2),
+                                INPUT(x1, x2, bias, alltoAllAxesOptional, param.group, param.commMode,
+                                      param.transposeX1, param.transposeX2),
                                 OUTPUT(output));
             aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
         }
     }
-    if (retStatus == ACLNN_SUCCESS) {
+    if (param.aclnnStatusUt == ACLNN_SUCCESS) {
         EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
     } else {
-        EXPECT_EQ(aclRet, retStatus);
+        EXPECT_EQ(aclRet, param.aclnnStatusUt);
     }
     std::cout << "end case " << param.caseName << std::endl;
 }

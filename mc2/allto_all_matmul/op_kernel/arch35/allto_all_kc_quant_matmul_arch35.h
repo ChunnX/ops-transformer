@@ -46,7 +46,51 @@ private:
     GM_ADDR quantOutGM_;
 
 private:
+    __aicore__ inline void InitTileQuantization(uint64_t tileMMultiRankK)
+    {
+        auto &&mc2Tiling_ = tilingData_->alltoAllQuantMatmulTilingInfo;
+        // 转置和动态量化相关地址和偏移
+        pipeLineContext_.quantizationContext->quantOutputScaleAddr = x1ScaleGM_;
+        pipeLineContext_.quantizationContext->quantOutputScaleAddrOffset = (uint64_t)mc2Tiling_.tileM * sizeof(float);
+        pipeLineContext_.quantizationContext->quantInputAddr = commOutGM_;
+        pipeLineContext_.quantizationContext->quantInputAddrOffset = tileMMultiRankK * (uint64_t)sizeof(DTYPE_X1);
+        pipeLineContext_.quantizationContext->quantOutputAddr = quantOutGM_;
+        pipeLineContext_.quantizationContext->quantOutputAddrOffset =
+            tileMMultiRankK * (uint64_t)sizeof(DTYPE_X2) * mc2Tiling_.rankDim;
+        pipeLineContext_.quantizationContext->rowNum = (uint64_t)mc2Tiling_.tileM;
+        pipeLineContext_.quantizationContext->colNumPerBlock = (uint64_t)mc2Tiling_.rankK;
+        pipeLineContext_.quantizationContext->blockNum = (uint64_t)mc2Tiling_.rankDim;
+        pipeLineContext_.quantizationContext->transposeDstAddr = transOutGM_;
+        pipeLineContext_.quantizationContext->transposeDstAddrOffset =
+            tileMMultiRankK * (uint64_t)mc2Tiling_.rankDim * sizeof(DTYPE_X1);
+        pipeLineContext_.quantizationContext->nextBlockDataOffset =
+            (uint64_t)mc2Tiling_.rankM * mc2Tiling_.rankK / mc2Tiling_.rankDim;
+    }
+
     __aicore__ inline void ProcessTile(uint32_t taskCnt);
+    __aicore__ inline void InitTailQuantization(uint64_t tailMMultiRankK, uint64_t tileCntMultitileMMultiRankK)
+    {
+        auto &&mc2Tiling_ = tilingData_->alltoAllQuantMatmulTilingInfo;
+        // 动态量化相关地址和偏移
+        pipeLineContext_.quantizationContext->quantOutputScaleAddr =
+            x1ScaleGM_ + (uint64_t)mc2Tiling_.tileCnt * mc2Tiling_.tileM * sizeof(float);
+        pipeLineContext_.quantizationContext->quantOutputScaleAddrOffset = (uint64_t)mc2Tiling_.tailM * sizeof(float);
+        pipeLineContext_.quantizationContext->quantInputAddr =
+            commOutGM_ + tileCntMultitileMMultiRankK * sizeof(DTYPE_X1);
+        pipeLineContext_.quantizationContext->quantInputAddrOffset = tailMMultiRankK * (uint64_t)sizeof(DTYPE_X1);
+        pipeLineContext_.quantizationContext->quantOutputAddr =
+            quantOutGM_ + tileCntMultitileMMultiRankK * sizeof(DTYPE_X2) * mc2Tiling_.rankDim;
+        pipeLineContext_.quantizationContext->quantOutputAddrOffset =
+            tailMMultiRankK * sizeof(DTYPE_X2) * mc2Tiling_.rankDim;
+        pipeLineContext_.quantizationContext->rowNum = (uint64_t)mc2Tiling_.tailM;
+        pipeLineContext_.quantizationContext->transposeDstAddr =
+            (transOutGM_ == nullptr) ?
+                transOutGM_ :
+                (transOutGM_ + tileCntMultitileMMultiRankK * (uint64_t)mc2Tiling_.rankDim * sizeof(DTYPE_X1));
+        pipeLineContext_.quantizationContext->transposeDstAddrOffset =
+            tailMMultiRankK * (uint64_t)mc2Tiling_.rankDim * sizeof(DTYPE_X1);
+    }
+
     __aicore__ inline void ProcessTail(uint32_t taskCnt);
 };
 
@@ -117,22 +161,7 @@ __aicore__ inline void AlltoAllKcQuantMatmulArch35<SchedulerType, SchedulerConte
         (uint64_t)mc2Tiling_.rankM * (uint64_t)mc2Tiling_.rankK / (uint64_t)mc2Tiling_.rankDim;
     pipeLineContext_.communicationContext->hcclDataType = mc2Tiling_.hcclDataType;
 
-    // 转置和动态量化相关地址和偏移
-    pipeLineContext_.quantizationContext->quantOutputScaleAddr = x1ScaleGM_;
-    pipeLineContext_.quantizationContext->quantOutputScaleAddrOffset = (uint64_t)mc2Tiling_.tileM * sizeof(float);
-    pipeLineContext_.quantizationContext->quantInputAddr = commOutGM_;
-    pipeLineContext_.quantizationContext->quantInputAddrOffset = tileMMultiRankK * (uint64_t)sizeof(DTYPE_X1);
-    pipeLineContext_.quantizationContext->quantOutputAddr = quantOutGM_;
-    pipeLineContext_.quantizationContext->quantOutputAddrOffset =
-        tileMMultiRankK * (uint64_t)sizeof(DTYPE_X2) * mc2Tiling_.rankDim;
-    pipeLineContext_.quantizationContext->rowNum = (uint64_t)mc2Tiling_.tileM;
-    pipeLineContext_.quantizationContext->colNumPerBlock = (uint64_t)mc2Tiling_.rankK;
-    pipeLineContext_.quantizationContext->blockNum = (uint64_t)mc2Tiling_.rankDim;
-    pipeLineContext_.quantizationContext->transposeDstAddr = transOutGM_;
-    pipeLineContext_.quantizationContext->transposeDstAddrOffset =
-        tileMMultiRankK * (uint64_t)mc2Tiling_.rankDim * sizeof(DTYPE_X1);
-    pipeLineContext_.quantizationContext->nextBlockDataOffset =
-        (uint64_t)mc2Tiling_.rankM * mc2Tiling_.rankK / mc2Tiling_.rankDim;
+    InitTileQuantization(tileMMultiRankK);
 
     // quantMatmul相关的地址和偏移
     pipeLineContext_.computationContext->baseData.aGM = quantOutGM_;
@@ -170,23 +199,7 @@ __aicore__ inline void AlltoAllKcQuantMatmulArch35<SchedulerType, SchedulerConte
     pipeLineContext_.communicationContext->recvOffset = pipeLineContext_.communicationContext->sendOffset;
     pipeLineContext_.communicationContext->sendCount = tailMMultiRankK;
 
-    // 动态量化相关地址和偏移
-    pipeLineContext_.quantizationContext->quantOutputScaleAddr =
-        x1ScaleGM_ + (uint64_t)mc2Tiling_.tileCnt * mc2Tiling_.tileM * sizeof(float);
-    pipeLineContext_.quantizationContext->quantOutputScaleAddrOffset = (uint64_t)mc2Tiling_.tailM * sizeof(float);
-    pipeLineContext_.quantizationContext->quantInputAddr = commOutGM_ + tileCntMultitileMMultiRankK * sizeof(DTYPE_X1);
-    pipeLineContext_.quantizationContext->quantInputAddrOffset = tailMMultiRankK * (uint64_t)sizeof(DTYPE_X1);
-    pipeLineContext_.quantizationContext->quantOutputAddr =
-        quantOutGM_ + tileCntMultitileMMultiRankK * sizeof(DTYPE_X2) * mc2Tiling_.rankDim;
-    pipeLineContext_.quantizationContext->quantOutputAddrOffset =
-        tailMMultiRankK * sizeof(DTYPE_X2) * mc2Tiling_.rankDim;
-    pipeLineContext_.quantizationContext->rowNum = (uint64_t)mc2Tiling_.tailM;
-    pipeLineContext_.quantizationContext->transposeDstAddr =
-        (transOutGM_ == nullptr) ?
-            transOutGM_ :
-            (transOutGM_ + tileCntMultitileMMultiRankK * (uint64_t)mc2Tiling_.rankDim * sizeof(DTYPE_X1));
-    pipeLineContext_.quantizationContext->transposeDstAddrOffset =
-        tailMMultiRankK * (uint64_t)mc2Tiling_.rankDim * sizeof(DTYPE_X1);
+    InitTailQuantization(tailMMultiRankK, tileCntMultitileMMultiRankK);
 
     // quantMatmul相关的地址和偏移
     pipeLineContext_.computationContext->baseData.aGM =
