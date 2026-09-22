@@ -25,39 +25,39 @@ namespace optiling {
 constexpr uint32_t BATCH_MODE_SCHEDULE = 1;
 
 static const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {
-    {ge::DT_UNDEFINED, "DT_UNDEFINED"},           // Used to indicate a DataType field has not been set.
-    {ge::DT_FLOAT, "DT_FLOAT"},                   // float type
-    {ge::DT_FLOAT16, "DT_FLOAT16"},               // fp16 type
-    {ge::DT_INT8, "DT_INT8"},                     // int8 type
-    {ge::DT_INT16, "DT_INT16"},                   // int16 type
-    {ge::DT_UINT16, "DT_UINT16"},                 // uint16 type
-    {ge::DT_INT32, "DT_INT32"},                   // uint32 type
-    {ge::DT_UINT8, "DT_UINT8"},                   // uint8 type
-    {ge::DT_INT64, "DT_INT64"},                   // int64 type
-    {ge::DT_UINT32, "DT_UINT32"},                 // unsigned int32
-    {ge::DT_UINT64, "DT_UINT64"},                 // unsigned int64
-    {ge::DT_BOOL, "DT_BOOL"},                     // bool type
-    {ge::DT_DOUBLE, "DT_DOUBLE"},                 // double type
-    {ge::DT_DUAL, "DT_DUAL"},                     // dual output type
-    {ge::DT_DUAL_SUB_UINT8, "DT_DUAL_SUB_UINT8"}, // dual output uint8 type
-    {ge::DT_DUAL_SUB_INT8, "DT_DUAL_SUB_INT8"},   // dual output int8 type
-    {ge::DT_COMPLEX32, "DT_COMPLEX32"},           // complex32 type
-    {ge::DT_COMPLEX64, "DT_COMPLEX64"},           // complex64 type
-    {ge::DT_COMPLEX128, "DT_COMPLEX128"},         // complex128 type
-    {ge::DT_QINT8, "DT_QINT8"},                   // qint8 type
+    {ge::DT_UINT2, "DT_UINT2"},                   // dt_variant type
+    {ge::DT_INT2, "DT_INT2"},                     // dt_variant type
+    {ge::DT_UINT1, "DT_UINT1"},                   // dt_variant type
+    {ge::DT_INT4, "DT_INT4"},                     // dt_variant type
+    {ge::DT_BF16, "DT_BFLOAT16"},                 // dt_bfloat16 type
+    {ge::DT_VARIANT, "DT_VARIANT"},               // dt_variant type
+    {ge::DT_STRING, "DT_STRING"},                 // string type
+    {ge::DT_STRING_REF, "DT_STRING_REF"},         // string ref type
+    {ge::DT_RESOURCE, "DT_RESOURCE"},             // resource type
+    {ge::DT_QUINT16, "DT_QUINT16"},               // quint16 type
+    {ge::DT_QUINT8, "DT_QUINT8"},                 // quint8 type
     {ge::DT_QINT32, "DT_QINT32"},                 // qint32 type
     {ge::DT_QINT16, "DT_QINT16"},                 // qint16 type
-    {ge::DT_QUINT8, "DT_QUINT8"},                 // quint8 type
-    {ge::DT_QUINT16, "DT_QUINT16"},               // quint16 type
-    {ge::DT_RESOURCE, "DT_RESOURCE"},             // resource type
-    {ge::DT_STRING_REF, "DT_STRING_REF"},         // string ref type
-    {ge::DT_STRING, "DT_STRING"},                 // string type
-    {ge::DT_VARIANT, "DT_VARIANT"},               // dt_variant type
-    {ge::DT_BF16, "DT_BFLOAT16"},                 // dt_bfloat16 type
-    {ge::DT_INT4, "DT_INT4"},                     // dt_variant type
-    {ge::DT_UINT1, "DT_UINT1"},                   // dt_variant type
-    {ge::DT_INT2, "DT_INT2"},                     // dt_variant type
-    {ge::DT_UINT2, "DT_UINT2"}                    // dt_variant type
+    {ge::DT_QINT8, "DT_QINT8"},                   // qint8 type
+    {ge::DT_COMPLEX128, "DT_COMPLEX128"},         // complex128 type
+    {ge::DT_COMPLEX64, "DT_COMPLEX64"},           // complex64 type
+    {ge::DT_COMPLEX32, "DT_COMPLEX32"},           // complex32 type
+    {ge::DT_DUAL_SUB_UINT8, "DT_DUAL_SUB_UINT8"}, // dual output uint8 type
+    {ge::DT_DUAL_SUB_INT8, "DT_DUAL_SUB_INT8"},   // dual output int8 type
+    {ge::DT_DUAL, "DT_DUAL"},                     // dual output type
+    {ge::DT_DOUBLE, "DT_DOUBLE"},                 // double type
+    {ge::DT_BOOL, "DT_BOOL"},                     // bool type
+    {ge::DT_UINT64, "DT_UINT64"},                 // unsigned int64
+    {ge::DT_UINT32, "DT_UINT32"},                 // unsigned int32
+    {ge::DT_INT64, "DT_INT64"},                   // int64 type
+    {ge::DT_INT32, "DT_INT32"},                   // uint32 type
+    {ge::DT_UINT8, "DT_UINT8"},                   // uint8 type
+    {ge::DT_UINT16, "DT_UINT16"},                 // uint16 type
+    {ge::DT_INT16, "DT_INT16"},                   // int16 type
+    {ge::DT_INT8, "DT_INT8"},                     // int8 type
+    {ge::DT_FLOAT16, "DT_FLOAT16"},               // fp16 type
+    {ge::DT_FLOAT, "DT_FLOAT"},                   // float type
+    {ge::DT_UNDEFINED, "DT_UNDEFINED"}            // Used to indicate a DataType field has not been set.
 };
 
 std::string LIV2DataTypeToSerialString(ge::DataType type)
@@ -73,26 +73,26 @@ std::string LIV2DataTypeToSerialString(ge::DataType type)
 
 static std::vector<int64_t> ToVector(const gert::Shape &shape)
 {
-    size_t shapeSize = shape.GetDimNum();
-    std::vector<int64_t> liV2ShapeVec(shapeSize, 0);
+    size_t liV2ShapeSize = shape.GetDimNum();
+    std::vector<int64_t> liV2ShapeVec(liV2ShapeSize, 0);
 
-    for (size_t i = 0; i < shapeSize; i++) {
-        liV2ShapeVec[i] = shape.GetDim(i);
+    for (size_t liV2I = 0; liV2I < liV2ShapeSize; liV2I++) {
+        liV2ShapeVec[liV2I] = shape.GetDim(liV2I);
     }
     return liV2ShapeVec;
 }
 
 static std::string ToStringRaw(const gert::Shape &shape)
 {
-    std::ostringstream oss;
-    auto v = ToVector(shape);
-    if (v.size() > 0) {
-        for (size_t liV2Idx = 0; liV2Idx < v.size() - 1; ++liV2Idx) {
-            oss << v[liV2Idx] << ", ";
+    std::ostringstream liV2Oss;
+    auto liV2V = ToVector(shape);
+    if (liV2V.size() > 0) {
+        for (size_t liV2I = 0; liV2I < liV2V.size() - 1; ++liV2I) {
+            liV2Oss << liV2V[liV2I] << ", ";
         }
-        oss << v[v.size() - 1];
+        liV2Oss << liV2V[liV2V.size() - 1];
     }
-    return oss.str();
+    return liV2Oss.str();
 }
 
 // --------------------------LIV2InfoParser类成员函数定义-------------------------------------
@@ -1014,6 +1014,7 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatch()
     act_seq_k [BatchSize]
     act_seq_q [BatchSize],
     out [T,N2,topk]
+    LightningIndexerV2 输入输出shape约束:
     ----------------------
     BSND:
     query [BatchSize,S1,N1,D],
@@ -1025,7 +1026,7 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatch()
     out [BatchSize,S1,N2,topk]
     */
     uint32_t liV2QueryWeightsN1Dim = 1;
-    uint32_t outN2Dim = 1;
+    uint32_t liV2OutN2Dim = 1;
     if (qLayout_ == DataLayout::TND) {
         if (ValidateInputShapesMatchQtnd() != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
@@ -1035,7 +1036,7 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatch()
             return ge::GRAPH_FAILED;
         }
         liV2QueryWeightsN1Dim = DIM_IDX_TWO;
-        outN2Dim = DIM_IDX_TWO;
+        liV2OutN2Dim = DIM_IDX_TWO;
     }
     // -----------------------check N1-------------------
     OP_CHECK_IF((opParamInfo_.weights.shape->GetStorageShape().GetDim(liV2QueryWeightsN1Dim) != n1Size_),
@@ -1046,8 +1047,8 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatch()
                     "The head num of q and w must be same"),
                 return ge::GRAPH_FAILED);
     // -----------------------check D-------------------
-    uint32_t keyDDim = kLayout_ == DataLayout::TND ? DIM_IDX_TWO : DIM_IDX_THREE;
-    OP_CHECK_IF((opParamInfo_.key.shape->GetStorageShape().GetDim(keyDDim) != headDim_),
+    uint32_t liV2KeyDDim = kLayout_ == DataLayout::TND ? DIM_IDX_TWO : DIM_IDX_THREE;
+    OP_CHECK_IF((opParamInfo_.key.shape->GetStorageShape().GetDim(liV2KeyDDim) != headDim_),
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                     opName_, "q and k",
                     Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()) + " and " +
@@ -1055,13 +1056,13 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatch()
                     "The last dim of q and k shape must be same"),
                 return ge::GRAPH_FAILED);
     // -----------------------check N2-------------------
-    OP_CHECK_IF((opParamInfo_.attenOut.shape->GetStorageShape().GetDim(outN2Dim) != n2Size_),
+    OP_CHECK_IF((opParamInfo_.attenOut.shape->GetStorageShape().GetDim(liV2OutN2Dim) != n2Size_),
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                     opName_, "k and sparse_indices",
                     Ops::Base::ToString(opParamInfo_.key.shape->GetStorageShape()) + " and " +
                         Ops::Base::ToString(opParamInfo_.attenOut.shape->GetStorageShape()),
                     "The head num of k and sparse_indices are " + std::to_string(n2Size_) + ", " +
-                        std::to_string(opParamInfo_.attenOut.shape->GetStorageShape().GetDim(outN2Dim)) +
+                        std::to_string(opParamInfo_.attenOut.shape->GetStorageShape().GetDim(liV2OutN2Dim)) +
                         " respectively, they must be same"),
                 return ge::GRAPH_FAILED);
     // -----------------------check cmp_residual_k-------------------
@@ -1076,23 +1077,23 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatch()
         }
     }
     // -----------------------check sparse_count-------------------
-    OP_CHECK_IF((opParamInfo_.attenOut.shape->GetStorageShape().GetDim(outN2Dim + 1) != *opParamInfo_.topk),
+    OP_CHECK_IF((opParamInfo_.attenOut.shape->GetStorageShape().GetDim(liV2OutN2Dim + 1) != *opParamInfo_.topk),
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     opName_, "sparse_indices", ToStringRaw(opParamInfo_.attenOut.shape->GetStorageShape()),
                     "The last dim of sparse_indices and sparse_count are " +
-                        std::to_string(opParamInfo_.attenOut.shape->GetStorageShape().GetDim(outN2Dim + 1)) + ", " +
+                        std::to_string(opParamInfo_.attenOut.shape->GetStorageShape().GetDim(liV2OutN2Dim + 1)) + ", " +
                         std::to_string(*opParamInfo_.topk) + " respectively, they must be same"),
                 return ge::GRAPH_FAILED);
     // -----------------------check sparse_values------------------
     if (npuArch_ == NpuArch::DAV_3510 && *opParamInfo_.returnValue == 1) {
-        OP_CHECK_IF((opParamInfo_.valuesOut.shape->GetStorageShape().GetDim(outN2Dim) != n2Size_),
+        OP_CHECK_IF((opParamInfo_.valuesOut.shape->GetStorageShape().GetDim(liV2OutN2Dim) != n2Size_),
                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                         opName_, "k and sparse_values",
                         Ops::Base::ToString(opParamInfo_.key.shape->GetStorageShape()) + " and " +
                             Ops::Base::ToString(opParamInfo_.valuesOut.shape->GetStorageShape()),
                         "The head num of k and sparse_values must be same"),
                     return ge::GRAPH_FAILED);
-        OP_CHECK_IF((opParamInfo_.valuesOut.shape->GetStorageShape().GetDim(outN2Dim + 1) != *opParamInfo_.topk),
+        OP_CHECK_IF((opParamInfo_.valuesOut.shape->GetStorageShape().GetDim(liV2OutN2Dim + 1) != *opParamInfo_.topk),
                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                         opName_, "topk and sparse_values",
                         std::to_string(*opParamInfo_.topk) + " and " +

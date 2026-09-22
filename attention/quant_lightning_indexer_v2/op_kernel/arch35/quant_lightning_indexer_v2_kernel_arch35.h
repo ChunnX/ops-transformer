@@ -313,12 +313,12 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::SplitCoreByAICPU(uint32_t cubeCoreI
                                                               GlobalTensor<uint32_t> &metadataGm)
 {
     uint32_t qliV2CoreEnableIndex = GetAttrAbsIndex(cubeCoreIdx, QLI_V2_CORE_ENABLE_INDEX);
-    uint32_t bN2StartIndex = GetAttrAbsIndex(cubeCoreIdx, QLI_V2_BN2_START_INDEX);
-    uint32_t mStartIndex = GetAttrAbsIndex(cubeCoreIdx, QLI_V2_M_START_INDEX);
-    uint32_t s2StartIndex = GetAttrAbsIndex(cubeCoreIdx, QLI_V2_S2_START_INDEX);
-    uint32_t bN2EndIndex = GetAttrAbsIndex(cubeCoreIdx, QLI_V2_BN2_END_INDEX);
-    uint32_t mEndIndex = GetAttrAbsIndex(cubeCoreIdx, QLI_V2_M_END_INDEX);
-    uint32_t s2EndIndex = GetAttrAbsIndex(cubeCoreIdx, QLI_V2_S2_END_INDEX);
+    uint32_t qliV2BN2StartIndex = GetAttrAbsIndex(cubeCoreIdx, QLI_V2_BN2_START_INDEX);
+    uint32_t qliV2MStartIndex = GetAttrAbsIndex(cubeCoreIdx, QLI_V2_M_START_INDEX);
+    uint32_t qliV2S2StartIndex = GetAttrAbsIndex(cubeCoreIdx, QLI_V2_S2_START_INDEX);
+    uint32_t qliV2BN2EndIndex = GetAttrAbsIndex(cubeCoreIdx, QLI_V2_BN2_END_INDEX);
+    uint32_t qliV2MEndIndex = GetAttrAbsIndex(cubeCoreIdx, QLI_V2_M_END_INDEX);
+    uint32_t qliV2S2EndIndex = GetAttrAbsIndex(cubeCoreIdx, QLI_V2_S2_END_INDEX);
 
     uint32_t qliV2ZeroCoreEnableIndex = GetAttrAbsIndex(0, QLI_V2_CORE_ENABLE_INDEX);
     if (metadataGm.GetValue(qliV2ZeroCoreEnableIndex) == 0) {
@@ -331,12 +331,12 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::SplitCoreByAICPU(uint32_t cubeCoreI
         splitCoreInfo.isCoreEnable = true;
     }
 
-    splitCoreInfo.bN2Start = metadataGm.GetValue(bN2StartIndex);
-    splitCoreInfo.gS1Start = metadataGm.GetValue(mStartIndex);
-    splitCoreInfo.s2Start = metadataGm.GetValue(s2StartIndex);
-    splitCoreInfo.bN2End = metadataGm.GetValue(bN2EndIndex);
-    splitCoreInfo.gS1End = metadataGm.GetValue(mEndIndex);
-    splitCoreInfo.s2End = metadataGm.GetValue(s2EndIndex);
+    splitCoreInfo.bN2Start = metadataGm.GetValue(qliV2BN2StartIndex);
+    splitCoreInfo.gS1Start = metadataGm.GetValue(qliV2MStartIndex);
+    splitCoreInfo.s2Start = metadataGm.GetValue(qliV2S2StartIndex);
+    splitCoreInfo.bN2End = metadataGm.GetValue(qliV2BN2EndIndex);
+    splitCoreInfo.gS1End = metadataGm.GetValue(qliV2MEndIndex);
+    splitCoreInfo.s2End = metadataGm.GetValue(qliV2S2EndIndex);
 
     if (splitCoreInfo.s2End != 0) {
         // 此时只需要s2End往前退一格，bN2End和gS1End都不变
@@ -347,39 +347,39 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::SplitCoreByAICPU(uint32_t cubeCoreI
             // 此时需要使用bIdx获取实际Actal S2来计算出 s2End
             splitCoreInfo.gS1End = splitCoreInfo.gS1End - 1;
             // 需要获取当前的Actaul S2
-            uint32_t bIdx = splitCoreInfo.bN2End / constInfo.kHeadNum;
-            uint32_t actS1Size, actS2Size, actS2SizeOrig;
-            GetS1S2ActualSeqLen(bIdx, actS1Size, actS2Size, actS2SizeOrig);
+            uint32_t qliV2BIdx = splitCoreInfo.bN2End / constInfo.kHeadNum;
+            uint32_t qliV2ActS1Size, qliV2ActS2Size, qliV2ActS2SizeOrig;
+            GetS1S2ActualSeqLen(qliV2BIdx, qliV2ActS1Size, qliV2ActS2Size, qliV2ActS2SizeOrig);
             // s2的切块数量
-            uint32_t s2BaseNum;
+            uint32_t qliV2S2BaseNum;
             if (constInfo.attenMaskFlag) {
-                s2BaseNum = GetS2BaseBlockNumOnMask(splitCoreInfo.gS1End, actS1Size, actS2SizeOrig);
+                qliV2S2BaseNum = GetS2BaseBlockNumOnMask(splitCoreInfo.gS1End, qliV2ActS1Size, qliV2ActS2SizeOrig);
             } else {
-                s2BaseNum = CeilDiv(actS2Size, constInfo.s2BaseSize);
+                qliV2S2BaseNum = CeilDiv(qliV2ActS2Size, constInfo.s2BaseSize);
             }
-            splitCoreInfo.s2End = s2BaseNum - 1;
+            splitCoreInfo.s2End = qliV2S2BaseNum - 1;
         } else {
             // splitCoreInfo.gS1End == 0 splitCoreInfo.s2End == 0 时，bN2End需要往前退一格
             // 此时需要使用bIdx获取实际Actal S1和S2来计算出 gS1End 和 s2End
             splitCoreInfo.bN2End = splitCoreInfo.bN2End - 1;
 
             // 需要获取当前的Actaul S1 S2
-            uint32_t bIdx = splitCoreInfo.bN2End / constInfo.kHeadNum;
-            uint32_t actS1Size, actS2Size, actS2SizeOrig;
-            GetS1S2ActualSeqLen(bIdx, actS1Size, actS2Size, actS2SizeOrig);
+            uint32_t qliV2BIdx = splitCoreInfo.bN2End / constInfo.kHeadNum;
+            uint32_t qliV2ActS1Size, qliV2ActS2Size, qliV2ActS2SizeOrig;
+            GetS1S2ActualSeqLen(qliV2BIdx, qliV2ActS1Size, qliV2ActS2Size, qliV2ActS2SizeOrig);
 
             // s1的切块数量
-            uint32_t s1GBaseNum = CeilDiv(actS1Size, constInfo.s1BaseSize);
-            splitCoreInfo.gS1End = s1GBaseNum - 1;
+            uint32_t qliV2S1GBaseNum = CeilDiv(qliV2ActS1Size, constInfo.s1BaseSize);
+            splitCoreInfo.gS1End = qliV2S1GBaseNum - 1;
 
             // s2的切块数量
-            uint32_t s2BaseNum;
+            uint32_t qliV2S2BaseNum;
             if (constInfo.attenMaskFlag) {
-                s2BaseNum = GetS2BaseBlockNumOnMask(splitCoreInfo.gS1End, actS1Size, actS2SizeOrig);
+                qliV2S2BaseNum = GetS2BaseBlockNumOnMask(splitCoreInfo.gS1End, qliV2ActS1Size, qliV2ActS2SizeOrig);
             } else {
-                s2BaseNum = CeilDiv(actS2Size, constInfo.s2BaseSize);
+                qliV2S2BaseNum = CeilDiv(qliV2ActS2Size, constInfo.s2BaseSize);
             }
-            splitCoreInfo.s2End = s2BaseNum - 1;
+            splitCoreInfo.s2End = qliV2S2BaseNum - 1;
         }
     }
     uint32_t ldFirstWorkSpaceIndex =
