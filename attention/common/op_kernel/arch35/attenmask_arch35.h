@@ -19,6 +19,7 @@
 #include "util_regbase.h"
 #include "flash_attention_score_common_regbase_arch35.h"
 #include "../const_def.h"
+#include "../arch_info.h"
 
 using namespace AscendC;
 using namespace AscendC::Reg;
