@@ -45,6 +45,10 @@ public:
     using CopyUbToGmO = typename TileCopy::CopyUbToGmO;
 
     static constexpr float LN2_FP32 = 0.69314718056f;
+    // snap 7.8046875 vs pscale emax=8：ℓ 含 2^Δ。切卡混用 LSE 时补 -Δ·ln2。
+    static constexpr float P_SNAP_EMAX_FP32 = 7.8046875f;
+    static constexpr float P_PSCALE_EMAX_FP32 = 8.0f;
+    static constexpr float LSE_SNAP_PSCALE_CORR = (P_PSCALE_EMAX_FP32 - P_SNAP_EMAX_FP32) * LN2_FP32;
     static constexpr uint32_t NEG_INF_BITS = 0xFF800000u;
 
     __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource)
@@ -84,7 +88,7 @@ public:
     }
 
     // softmaxMax 是 128-half even/odd pack；SPLIT_CONSEC64 后 AIV0=qs[0:64)、AIV1=qs[64:128)。
-    // lse = K_g·ln2 + ln(ℓ)；ℓ=0 → -inf。写出连续 64-float，TN1/BSN1 再 Expand。
+    // lse = K_g·ln2 + ln(ℓ) - Δ·ln2，Δ=7.8046875-8；ℓ=0 → -inf。TN1/BSN1 再 Expand。
     template <uint16_t coreIndex>
     __simd_vf__ inline void ComputeMxfp8LseVF(__ubuf__ half *kgHalf, __ubuf__ float *rowsum, __ubuf__ float *lseUb,
                                               uint32_t row)
@@ -123,6 +127,7 @@ public:
         Duplicate(negInf, negInfVal);
         Ln<float, &lnMode>(logEll, ell, pregTail);
         Add(lse, logEll, kgSel, pregTail);
+        Adds(lse, lse, LSE_SNAP_PSCALE_CORR, pregTail);
         Compare<float, AscendC::CMPMODE::EQ>(pregZero, ell, zeros, pregTail);
         Select(lse, negInf, lse, pregZero);
         StoreAlign<float, StoreDist::DIST_NORM_B32>(lseUb, lse, pregTail);
