@@ -9,6 +9,7 @@
  */
 
 #include "../mixed_quant_sparse_flash_mla_tiling.h"
+#include "../../op_kernel/arch22/mixed_quant_sparse_flash_mla_tiling_data.h"
 #include "../../op_kernel/mixed_quant_sparse_flash_mla_template_tiling_key.h"
 #include <algorithm>
 
@@ -52,37 +53,38 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoTurboQuantTiling(MQSMLATilingI
                 return ge::GRAPH_FAILED);
     workspaces[0] = workspaceSize;
 
-    tilingData_.tqBaseParams.set_batchSize(tilingInfo->bSize);
-    tilingData_.tqBaseParams.set_qSeqSize(tilingInfo->s1Size);
-    tilingData_.tqBaseParams.set_kvSeqSize(tilingInfo->s2Size);
-    tilingData_.tqBaseParams.set_paBlockSize(tilingInfo->oriBlockSize);
-    tilingData_.tqBaseParams.set_oriBlockSize(tilingInfo->oriBlockSize);
-    tilingData_.tqBaseParams.set_cmpBlockSize(tilingInfo->cmpBlockSize);
-    tilingData_.tqBaseParams.set_oriMaxBlockNumPerBatch(tilingInfo->oriMaxBlockNumPerBatch);
-    tilingData_.tqBaseParams.set_nNumOfQInOneGroup(tilingInfo->gSize);
-    tilingData_.tqBaseParams.set_actualLenDimsQ(tilingInfo->actualLenDimsQ);
-    tilingData_.tqBaseParams.set_actualLenDimsKV(tilingInfo->actualLenDimsKV);
-    tilingData_.tqBaseParams.set_softmaxScale(tilingInfo->softmaxScale);
-    tilingData_.tqBaseParams.set_outputLayout(static_cast<uint32_t>(tilingInfo->outLayout));
-    tilingData_.tqBaseParams.set_oriMaskMode(tilingInfo->oriMaskMode);
-    tilingData_.tqBaseParams.set_oriKvStride0(tilingInfo->oriKvStride);
-    tilingData_.tqBaseParams.set_oriWinLeft(tilingInfo->oriWinLeft);
-    tilingData_.tqBaseParams.set_oriWinRight(tilingInfo->oriWinRight);
-    tilingData_.tqBaseParams.set_sparseBlockSize(tilingInfo->sparseBlockSize);
-    tilingData_.tqBaseParams.set_usedCoreNum(aicNum);
-    tilingData_.tqBaseParams.set_mmResUbSize(mmResUbSize);
-    tilingData_.tqBaseParams.set_bmm2ResUbSize(bmm2ResUbSize);
-    tilingData_.tqBaseParams.set_mBaseSize(mBaseSize);
-    tilingData_.tqBaseParams.set_s2BaseSize(S2_BASE_SIZE);
-    tilingData_.tqBaseParams.set_returnSoftmaxLse(tilingInfo->returnSoftmaxLse);
-    tilingData_.tqBaseParams.set_kvQuantMode(static_cast<uint32_t>(tilingInfo->quantMode));
-    tilingData_.tqCmpParams.set_cmpMaxBlockNumPerBatch(tilingInfo->cmpMaxBlockNumPerBatch);
-    tilingData_.tqCmpParams.set_sparseBlockCount(tilingInfo->cmpSparseBlockCount);
-    tilingData_.tqCmpParams.set_cmpRatio(tilingInfo->cmpRatio);
-    tilingData_.tqCmpParams.set_cmpMaskMode(tilingInfo->cmpMaskMode);
-    tilingData_.tqCmpParams.set_cmpKvStride0(tilingInfo->cmpKvStride);
-    tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
-    context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
+    auto *tqTilingData = context_->GetTilingData<MixedQuantSparseFlashMlaTqTilingData>();
+    OP_CHECK_IF(tqTilingData == nullptr, OP_LOGE(tilingInfo->opName, "tiling data is nullptr"),
+                return ge::GRAPH_FAILED);
+    tqTilingData->tqBaseParams.batchSize = tilingInfo->bSize;
+    tqTilingData->tqBaseParams.qSeqSize = tilingInfo->s1Size;
+    tqTilingData->tqBaseParams.kvSeqSize = tilingInfo->s2Size;
+    tqTilingData->tqBaseParams.paBlockSize = tilingInfo->oriBlockSize;
+    tqTilingData->tqBaseParams.oriBlockSize = tilingInfo->oriBlockSize;
+    tqTilingData->tqBaseParams.cmpBlockSize = tilingInfo->cmpBlockSize;
+    tqTilingData->tqBaseParams.oriMaxBlockNumPerBatch = tilingInfo->oriMaxBlockNumPerBatch;
+    tqTilingData->tqBaseParams.nNumOfQInOneGroup = tilingInfo->gSize;
+    tqTilingData->tqBaseParams.actualLenDimsQ = tilingInfo->actualLenDimsQ;
+    tqTilingData->tqBaseParams.actualLenDimsKV = tilingInfo->actualLenDimsKV;
+    tqTilingData->tqBaseParams.softmaxScale = tilingInfo->softmaxScale;
+    tqTilingData->tqBaseParams.outputLayout = static_cast<uint32_t>(tilingInfo->outLayout);
+    tqTilingData->tqBaseParams.oriMaskMode = tilingInfo->oriMaskMode;
+    tqTilingData->tqBaseParams.oriKvStride0 = tilingInfo->oriKvStride;
+    tqTilingData->tqBaseParams.oriWinLeft = tilingInfo->oriWinLeft;
+    tqTilingData->tqBaseParams.oriWinRight = tilingInfo->oriWinRight;
+    tqTilingData->tqBaseParams.sparseBlockSize = tilingInfo->sparseBlockSize;
+    tqTilingData->tqBaseParams.usedCoreNum = aicNum;
+    tqTilingData->tqBaseParams.mmResUbSize = mmResUbSize;
+    tqTilingData->tqBaseParams.bmm2ResUbSize = bmm2ResUbSize;
+    tqTilingData->tqBaseParams.mBaseSize = mBaseSize;
+    tqTilingData->tqBaseParams.s2BaseSize = S2_BASE_SIZE;
+    tqTilingData->tqBaseParams.returnSoftmaxLse = tilingInfo->returnSoftmaxLse;
+    tqTilingData->tqBaseParams.kvQuantMode = static_cast<uint32_t>(tilingInfo->quantMode);
+    tqTilingData->tqCmpParams.cmpMaxBlockNumPerBatch = tilingInfo->cmpMaxBlockNumPerBatch;
+    tqTilingData->tqCmpParams.sparseBlockCount = tilingInfo->cmpSparseBlockCount;
+    tqTilingData->tqCmpParams.cmpRatio = tilingInfo->cmpRatio;
+    tqTilingData->tqCmpParams.cmpMaskMode = tilingInfo->cmpMaskMode;
+    tqTilingData->tqCmpParams.cmpKvStride0 = tilingInfo->cmpKvStride;
 
     const uint64_t tilingKey = GET_TPL_TILING_KEY(
         0U, static_cast<uint32_t>(tilingInfo->qLayout), static_cast<uint32_t>(tilingInfo->kvLayout), CSA_TEMPLATE, 0U,
