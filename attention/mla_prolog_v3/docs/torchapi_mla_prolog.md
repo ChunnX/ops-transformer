@@ -275,7 +275,7 @@ cann_ops_transformer.mla_prolog(
 - `weight_dq`/`weight_uq_qr`/`weight_dkv_kr`必须为 FRACTAL_NZ 格式（通过 `torch_npu.npu_format_cast(t, 29)` 转换），ND 格式会被接口报错拦截。
 - `rope_sin`/`rope_cos`必须成对传入：同时非空时执行 RoPE；同时为空（或`None`）时不执行 RoPE；一空一非空为非法输入，接口报错拦截。
 - `cache_mode`为 PagedAttention 模式（`"PA_BSND"`/`"PA_NZ"`/`"PA_BLK_BSND"`/`"PA_BLK_NZ"`）时，`cache_index`必须传入（非空），否则接口报错拦截；`"BSND"`/`"TND"` 模式可选。
-- `ckvkr_repo_mode=1`时，`kr_cache`必须为空 Tensor（shape 乘积为 0），维度应包含 0，支持 shape 为`(0)`；该场景下接口不再按`cache_mode`校验`kr_cache`的 3D/4D 布局。`ckvkr_repo_mode=0`时仍按`cache_mode`校验（TND 为 3 维，其余为 4 维）。
+- `ckvkr_repo_mode=1`时，`kr_cache`维度应包含 0，支持 shape 为`(0)`。
 - `weight_quant_mode=3`（mxfp8）或`weight_quant_mode=5`（hifloat8）时，`dequant_scale_x`/`dequant_scale_w_dq`/`dequant_scale_w_uq_qr`/`dequant_scale_w_dkv_kr`必须同时非空；mode=3 时 dtype 均为 `torch.float8_e8m0fnu`。
 - `weight_quant_mode=5` 且输入为 `torch.uint8` 时，必须显式指定各 `*_dtype` 为 `torch_npu.hifloat8`（枚举值 290）。
 - `kv_cache_quant_mode=1`（per-tensor）且`weight_quant_mode`为全量化（2/3/4/5）时，`quant_scale_ckv`必须传入。
