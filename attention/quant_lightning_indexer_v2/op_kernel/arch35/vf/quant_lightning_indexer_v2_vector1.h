@@ -1490,6 +1490,146 @@ __aicore__ inline void BatchMulWeightAndReduceSumPerTensor(
     }
 }
 
+// ========================= HIF4 MXFP4 变体 ===================
+__simd_callee__ inline void CastWeightToBf16(AscendC::MicroAPI::RegTensor<bfloat16_t> &dst, __ubuf__ float *src, 
+                                             AscendC::MicroAPI::MaskReg &maskAllB32)
+{
+    using CastTrait = AscendC::MicroAPI::CastTrait;
+    static constexpr CastTrait castTraitF32ToBf16 = {AscendC::MicroAPI::RegLayout::ZERO,
+                                                     Ascend::MicroAPI::SatMode::NO_SAT,
+                                                     Ascend::MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+    AscendC::MicroAPI::RegTensor<float> regWeightF32;
+    AscendC::MicroAPI::LoadAlign<float>(regWeightF32, src);
+    AscendC::MicroAPI::Cast<bfloat16_t, float, castTraitF32ToBf16>(dst, regWeightF32, maskAllB32);
+    
+    Ascend::MicroAPI::Pack<uint16_t, uint32_t, AscendC::MicroAPI::HighLowPart::LOWEST>(
+        (AscendC::MicroAPI::RegTensor<uint16_t> &)dst, (AscendC::MicroAPI::RegTensor<uint32_t> &)dst);
+}
+
+__simd_vf_ void MulWeightAndReduceSumFP4TwoRowsVF(__ubuf__ uint16_t *out0, __ubuf__ uint16_t *out1,
+                                                  __ubuf__ bfloat16_t *qk0, __ubuf__ bfloat16_t *qk1,
+                                                  __ubuf__ float *weight0, __ubuf__ float *weight1, uint16_t gSize)
+{
+    constexpr uint32_t BF16_QK_ROW_STRIDE = UB_BANK_DEPTH_STRIDE / sizeof(bfloat16_t);
+    AscendC::MicroAPI::RegTensor<bfloat16_t> regQK0;
+    AscendC::MicroAPI::RegTensor<bfloat16_t> regQK1;
+    AscendC::MicroAPI::RegTensor<bfloat16_t> regWeight[2];
+    AscendC::MicroAPI::RegTensor<bfloat16_t> regWeightBrc[2];
+    AscendC::MicroAPI::RegTensor<bfloat16_t> regSum[2];
+    AscendC::MicroAPI::MaskReg maskAllB16 = 
+        AscendC::MicroAPI::CreateMask<bfloat16_t, AscendC::MicroAPI::MaskPattern:;ALL>();
+    AscendC::MicroAPI::MaskReg maskAllB32 = 
+        AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
+
+    FloatSortConstCtx<bfloat16_t> bf16Ctx;
+    InitFloatSortConstCtx(bf16Ctx, maskAllB16);
+
+    CastWeightToBf16(regWeight[0], weight0, maskAllB32);
+    CastWeightToBf16(regWeight[1], weight1, maskAllB32);
+    AscendC::MicroAPI::Duplicate(regSum[0], bfloat16_t(0.0f), maskAllB16);
+    AscendC::MicroAPI::Duplicate(regSum[1], bfloat16_t(0.0f), maskAllB16);
+
+    for (uint16_t i = 0; i < gSize; i++) {
+        AscendC::MicroAPI::LoadAlign<bfloat16_t>(regQK0, qk0 + BF16_QK_ROW_STRIDE * i);
+        AscendC::MicroAPI::LoadAlign<bfloat16_t>(regQK1, qk1 + BF16_QK_ROW_STRIDE * i);
+        BroadcastLane(regWrightBrc[0], regWeight[0], i);
+        BroadcastLane(regWrightBrc[1], regWeight[1], i);
+        AscendC::MicroAPI::MulAddDst(regSum[0], regQK0, regWeightBrc[0], maskAllB16);
+        AscendC::MicroAPI::MulAddDst(regSum[1], regQK1, regWeightBrc[1], maskAllB16);
+    }
+
+    AscendC::MicroAPI::RegTensor<uint16_t> regOut[2];
+    FloatX2ToSortableKey<bfloat16_t>(regOut[0], regOut[1], regSum[0], regSum[1], bf16Ctx, maskAllB16);
+    FloatX2ToSortableKey<uint16_t, AscendC::MicroAPI::StoreDist::DIST_NORM>(out0, regOut[0], maskAllB16);
+    FloatX2ToSortableKey<uint16_t, AscendC::MicroAPI::StoreDist::DIST_NORM>(out1, regOut[1], maskAllB16);
+}
+
+__simd_vf__ void MulWeightAndReduceSumFP4VF(__ubuf__ uint16_t *out, __ubuf__ bfloat16_t *qk, __ubuf__ float *weight,
+                                            uint16_t gSize)
+{
+    constexpr uint32_t BF16_QK_ROW_STRIDE = UB_BANK_DEPTH_STRIDE / sizeof(bfloat16_t);
+    AscendC::MicroAPI::RegTensor<bfloat16_t> regQK;
+    AscendC::MicroAPI::RegTensor<bfloat16_t> regWeight;
+    AscendC::MicroAPI::RegTensor<bfloat16_t> regWeightBrc;
+    AscendC::MicroAPI::RegTensor<bfloat16_t> regSum;
+    AscendC::MicroAPI::MaskReg maskAllB16 = 
+        AscendC::MicroAPI::CreateMask<bfloat16_t, AscendC::MicroAPI::MaskPattern::ALL>();
+    AscendC::MicroAPI::MaskReg maskAllB32 = 
+        AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
+    
+    FloatSortConstCtx<bfloat16_t> bf16Ctx;
+    InitFloatSortConstCtx(bf16Ctx, maskAllB16);
+
+    CastWeightToBf16(regWeight, weight, maskAllB32);
+    AscendC::MicroAPI::Duplicate(regSum, bfloat16_t(0.0f), maskAllB16);
+
+    for (uint16_t i = 0; i < gSize; i++) {
+        AscendC::MicroAPI::LoadAlign<bfloat16_t>(regQK, qk + BF16_QK_ROW_STRIDE * i);
+        BroadcastLane(regWeightBrc, regWeight, i);
+        AscendC::MicroAPI::MulAddDst(regSum, regQK, regWeightBrc, maskAllB16);
+    }
+
+    AscendC::MicroAPI::RegTensor<uint16_t> regOut;
+    FloatToSortableKey<bfloat16_t>(regOut, regSum, bf16Ctx, maskAllB16);
+    AscendC::MicroAPI::StoreAlign<uint16_t, AscendC::MicroAPI::StoreDist::DIST_NORM>(out, regOut, maskAllB16);
+}
+
+__aicore__ inline void MulWeightAndReduceSumFP4TwoRows(const LocalTensor<uint16_t> &out_, uint32_t outStride,
+                                                        const LocalTensor<bfloat16_t> &qk_, uint32_t qkVLStride,
+                                                        uint32_t qkStride, const LocalTensor<float> &weight_,
+                                                        uint32_t weightStride, const int gSize)
+{
+    (void)qkVLStride;
+    __ubuf__ uint16_t *out0 = (__ubuf__ uint16_t *)out_.GetPhyAddr();
+    __ubuf__ uint16_t *out1 = out0 + outStride;
+    __ubuf__ bfloat16_t *qk0 = (__ubuf__ bfloat16_t *)qk_.GetPhyAddr();
+    __ubuf__ bfloat16_t *qk1 =qk0 + qkStride;
+    __ubuf__ float *weight0 = (__ubuf__ float *)weight_.GetPhyAddr();
+    __ubuf__ float *weight1 = weight0 + weightStride;
+    MulWeightAndReduceSumFP4TwoRowsVF(out0, out1, qk0, qk1, weight0, weight1, static_cast<uint16_t>(gSize));
+}
+
+__aicore__ inline void MulWeightAndReduceSumFP4(const LocalTensor<uint16_t> &out_, const LocalTensor<bfloat16_t> &qk_,
+                                                const uint32_t qkVLStride, const LocalTensor<float> &weight_,
+                                                const int gSize)
+{
+    (void)qkVLStride;
+    __ubuf__ uint16_t *out = (__ubuf__ uint16_t *)out_.GetPhyAddr();
+    __ubuf__ bfloat16_t *qk = (__ubuf__ bfloat16_t *)qk_.GetPhyAddr();
+    __ubuf__ float *weight = (__ubuf__ float *)weight_.GetPhyAddr();
+    MulWeightAndReduceSumFP4VF(out, qk, weight, static_cast<uint16_t>(gSize));
+}            
+
+template <typename QK_T, typename SCORE_T, typename WEIGHT_T>
+__aicore__ inline void BatchMulWeightAndReduceSumFP4(const LocalTensor<SCORE_T> &out_, uint32_t outStride,
+                                                     const LocalTensor<QK_T> &qk_, uint32_t qkVLStride,
+                                                     uint32_t qkStride, const LocalTensor<WEIGHT_T> &weight_,
+                                                     uint32_t weightStride, const int gSize, const int batch)
+{
+    static_assert(std::is_same_v<QK_T, bfloat16_t>);
+    static_assert(std::is_same_v<SCORE_T, uint16_t>);
+    static_assert(std::is_same_v<WEIGHT_T, float>);
+    if (batch < 1) {
+        return;
+    }
+
+    int pairCount = batch / 2;
+    for (int p = 0; p < pairCount; p++) {
+        auto curOut = out_[p * 2 * outStride];
+        auto curQk = qk_[p * 2 * qkStride];
+        auto curWeight = weight_[p * 2 * weightStride];
+        MulWeightAndReduceSumFP4TwoRows(curOut, outStride, curQk, qkVLStride, qkStride,
+                                        curWeight, weightStride, gSize);
+    }
+
+    if (batch % 2 != 0) {
+        auto lastOut = out_[(batch - 1) * outStride];
+        auto lastQk = qk_[(batch - 1) * qkStride];
+        auto lastWeight = weight_[(batch - 1) * weightStride];
+        MulWeightAndReduceSumFP4(lastOut, lastQk, qkVLStride, lastWeight, gSize);
+    }
+}
+
 } // namespace vector1
 
 #endif // QUANT_LIGHTNING_INDEXER_V2_VECTOR1_H

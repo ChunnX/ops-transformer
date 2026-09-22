@@ -81,6 +81,7 @@ public:
     using SCALE_T = typename QLIV2T::scaleType;
     using WEIGHT_T = typename QLIV2T::weightType;
     static constexpr bool IS_MX = QLIV2T::isMx;
+    static constexpr bool IS_HIFLOAT4 = QLIV2T::isHiFloat4;
 
     QLIV2Matmul<QLIV2T> matmulService;
     QLIV2Vector<QLIV2T> vectorService;
@@ -520,7 +521,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::Init(
             isOutputIdxOffsetValid = true;
             outputIdxOffsetGm.SetGlobalBuffer((__gm__ int32_t *)outputIdxOffset);
         }
-        if constexpr (IS_MX) {
+        if constexpr (IS_MX || IS_HIFLOAT4) {
             vectorService.InitVecInputTensor(weightsGm, indiceOutGm, blockTableGm, valueOutGm, outputIdxOffsetGm);
         } else {
             GlobalTensor<SCALE_T> qScaleGmForVec;
@@ -539,7 +540,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::Init(
             blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
         }
         keyGm.SetGlobalBuffer((__gm__ K_T *)key);
-        if constexpr (IS_MX) {
+        if constexpr (IS_MX || IS_HIFLOAT4) {
             mxQueryScaleGmBf16.SetGlobalBuffer((__gm__ bfloat16_t *)queryScale);
             mxKeyScaleGmBf16.SetGlobalBuffer((__gm__ bfloat16_t *)keyScale);
             matmulService.InitMm1GlobalTensor(blockTableGm, keyGm, queryGm, mxKeyScaleGmBf16, mxQueryScaleGmBf16);
@@ -656,6 +657,9 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::CalcRunInfo(uint32_t loop, uint32_t
     if constexpr (QLIV2T::isMxFp4) {
         qkHeadDim = constInfo.headDim / FP4_PACK_NUM;
     }
+    if constexpr (IS_HIFLOAT4) {
+        qkHeadDim = constInfo.headDim / HIFLOAT4_TWO;
+    }
     if (runInfo.isFirstS2InnerLoop) {
         uint64_t actualSeqQPrefixSum;
         if constexpr (Q_LAYOUT_T == LI_LAYOUT::TND) {
@@ -692,6 +696,12 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::CalcRunInfo(uint32_t loop, uint32_t
             uint64_t qScaleS1Offset =
                 static_cast<uint64_t>(runInfo.gS1Idx) * constInfo.mBaseSize * (constInfo.headDim / MX_SCALE_GROUP_SIZE);
             qScaleCoreOffset = qScalePrefixSum + qScaleS1Offset;
+        } else if constexpr (IS_HIFLOAT4) {
+            uint64_t qScalePrefixSum =
+                actualSeqQPrefixSum * constInfo.qHeadNum * (constInfo.headDim / HIFLOAT4_BLOCK_SIZE);
+            uint64_t qScaleS1Offset =
+                static_cast<uint64_t>(runInfo.gS1Idx) * constInfo.mBaseSize * (constInfo.headDim / HIFLOAT4_BLOCK_SIZE);
+            qScaleCoreOffset = qScalePrefixSum + qScaleS1Offset;
         }
     }
     uint64_t actualSeqKPrefixSum;
@@ -702,11 +712,12 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::CalcRunInfo(uint32_t loop, uint32_t
     }
     uint64_t tndBIdxOffsetForK = actualSeqKPrefixSum * constInfo.kHeadNum * qkHeadDim;
     keyCoreOffset = tndBIdxOffsetForK + runInfo.s2Idx * constInfo.s2BaseSize * constInfo.kHeadNum * qkHeadDim;
-    }
     uint64_t keyScaleS2Offset = actualSeqKPrefixSum + static_cast<uint64_t>(runInfo.s2Idx) * constInfo.s2BaseSize;
     if constexpr (IS_MX) {
         // MX: kScale offset, shape [B, S2, N2, D/64, 2]
         keyScaleCoreOffset = keyScaleS2Offset * constInfo.kHeadNum * (constInfo.headDim / MX_SCALE_GROUP_SIZE);
+    } else if constexpr (IS_HIFLOAT4) {
+        keyScaleCoreOffset = keyScaleS2Offset * constInfo.kHeadNum * (constInfo.headDim / HIFLOAT4_BLOCK_SIZE);
     } else {
         keyScaleCoreOffset = keyScaleS2Offset * constInfo.kHeadNum;
     }

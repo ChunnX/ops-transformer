@@ -28,6 +28,8 @@ using FP8E8M0 = fp8_e8m0_t;
 constexpr uint32_t MX_SCALE_GROUP_SIZE = 32; // 每32个D维度元素一个scale
 constexpr uint32_t FP8_TWO = 2;              // 2个FP8E8M0打包成1个BF16
 constexpr uint32_t FP4_PACK_NUM = 2;         // 2个FP4E2M1打包成1个字节存储
+constexpr uint32_t HIFLOAT4_BLOCK_SIZE = 64; // HIFLOAT每64个D维度元素一个scale
+constexpr uint32_t HIFLOAT4_TWO = 2;         // 2个HIFLOAT4打包成1个UINT8
 
 // 与tiling的layout保持一致
 enum class LI_LAYOUT : uint32_t {
@@ -54,6 +56,8 @@ struct QLIV2Type {
     static constexpr bool isMxFp4 = std::is_same_v<rawQueryType, FP4E2M1> && std::is_same_v<rawKeyType, FP4E2M1> &&
                                     std::is_same_v<SCALE_T, FP8E8M0>;
     static constexpr bool isMx = isMxFp8 || isMxFp4;
+    static constexpr bool isHiFloat4 = std::is_same_v<rawQueryType, hifloat4x2_t> &&
+                                       std::is_same_v<rawKeyType, hifloat4x2_t>;
 
     using queryType = std::conditional_t<isMxFp4, uint8_t, rawQueryType>;
     using keyType = std::conditional_t<isMxFp4, uint8_t, rawKeyType>;
