@@ -658,6 +658,11 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
         }
         if (coreNum != 0 && totalReturnSoftmaxSize > 0) {
             uint64_t singleCoreSoftmaxSize = (totalReturnSoftmaxSize + (CV_RATIO * coreNum) - 1) / (CV_RATIO * coreNum);
+            // 段大小向上对齐到8个float(32B), 保证InitOutput的GM偏移与长度均满足MTE对齐要求;
+            // gSize为64的倍数, total与尾段必为8的倍数, 对齐后覆盖不变且不越界
+            constexpr uint64_t softmaxAlignElems = 8U;
+            singleCoreSoftmaxSize =
+                (singleCoreSoftmaxSize + softmaxAlignElems - 1) / softmaxAlignElems * softmaxAlignElems;
             uint64_t tailSoftmaxSize = totalReturnSoftmaxSize - constInfo.aivIdx * singleCoreSoftmaxSize;
             uint64_t singleInitSoftmaxSize =
                 tailSoftmaxSize < singleCoreSoftmaxSize ? tailSoftmaxSize : singleCoreSoftmaxSize;
