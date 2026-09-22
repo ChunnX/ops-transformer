@@ -628,7 +628,7 @@ get_symm_buffer_for_mega_moe(group, num_experts, num_max_tokens_per_rank, num_to
 ```
 
 ```python
-mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_weights_sf=None, l2_weights_sf=None, l1_bias=None, l2_bias=None, x_active_mask=None, activation="swiglu", activation_clamp=None, activation_params=None, weight1_type=None, weight2_type=None, shared_l1_weights=None, shared_l2_weights=None, shared_l1_weights_sf=None, shared_l2_weights_sf=None, shared_l1_bias=None, shared_l2_bias=None) -> (Tensor, Tensor)
+mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_weights_sf=None, l2_weights_sf=None, l1_bias=None, l2_bias=None, x_active_mask=None, activation="swiglu", activation_clamp=None, activation_params=None, weight1_type=None, weight2_type=None, shared_expert_quant_out_dtype=None, shared_weight1_type=None, shared_weight2_type=None, shared_l1_weights=None, shared_l2_weights=None, shared_l1_weights_sf=None, shared_l2_weights_sf=None, shared_l1_bias=None, shared_l2_bias=None) -> (Tensor, Tensor)
 ```
 
 ### 弹性扩缩容接口
@@ -846,7 +846,7 @@ sym_buffer.update_group(group) -> None
         <td rowspan="6">l2_weights</td>
         <td rowspan="6">list[Tensor]</td>
         <td rowspan="6">必选</td>
-        <td rowspan="6">MoE专家网络第二线性层的权重矩阵，负责将激活后的中间特征投影回隐藏维度。数据类型与l1_weights一致。单卡 MoE 专家数为 <code>local_moe_expert_num</code>。</td>
+        <td rowspan="6">MoE专家网络第二线性层的权重矩阵，负责将激活后的中间特征投影回隐藏维度。MTE 下可通过 shared_weight1_type 独立指定逻辑类型，省略时继承 weight1_type 解析后的类型。单卡 MoE 专家数为 <code>local_moe_expert_num</code>。</td>
         <td>bfloat16<sup>2</sup></td>
         <td>ND</td>
         <td>(intermediate_hidden, hidden)</td>
@@ -991,7 +991,7 @@ sym_buffer.update_group(group) -> None
         <td rowspan="3">shared_l1_weights<sup>1</sup></td>
         <td rowspan="3">list[Tensor]</td>
         <td rowspan="3">可选</td>
-        <td rowspan="3">共享专家网络第一线性层的权重矩阵（包括门控与上投影），用于将输入映射至中间维度，输出供给激活函数。数据类型与l1_weights一致。</td>
+        <td rowspan="3">共享专家网络第一线性层的权重矩阵（包括门控与上投影），用于将输入映射至中间维度，输出供给激活函数。MTE 下可通过 shared_weight1_type 独立指定逻辑类型，省略时继承 weight1_type 解析后的类型。</td>
         <td>FLOAT8_E5M2</td>
         <td>ND</td>
         <td>(shared_expert_num_per_rank, 2 × intermediate_hidden, hidden)</td>
@@ -1010,7 +1010,7 @@ sym_buffer.update_group(group) -> None
         <td rowspan="3">shared_l2_weights<sup>1</sup></td>
         <td rowspan="3">list[Tensor]</td>
         <td rowspan="3">可选</td>
-        <td rowspan="3">共享专家网络第二线性层的权重矩阵，负责将激活后的中间特征投影回隐藏维度。数据类型与l2_weights一致。</td>
+        <td rowspan="3">共享专家网络第二线性层的权重矩阵，负责将激活后的中间特征投影回隐藏维度。MTE 下可通过 shared_weight2_type 独立指定逻辑类型，省略时继承 weight2_type 解析后的类型。</td>
         <td>FLOAT8_E5M2</td>
         <td>ND</td>
         <td>(shared_expert_num_per_rank, hidden, intermediate_hidden)</td>
@@ -1413,6 +1413,12 @@ sym_buffer.update_group(group) -> None
     - l1_weights_sf和l2_weights_sf不可为空指针。
     - local_moe_expert_num = num_experts / ep_world_size；启用共享专家时，shared_expert_num_per_rank = shared_l1_weights.dim0；num_experts_per_rank = shared_expert_num_per_rank + local_moe_expert_num，未启用共享专家时 shared_expert_num_per_rank = 0。
     - shared_expert_num_per_rank范围 [0, 4]。
+    - MTE 支持共享专家与路由专家独立选择 A8W8 E5M2、A8W8 E4M3FN、A8W4 或 A4W4；输入 x 仍为 BF16。
+    - `shared_expert_quant_out_dtype` 为可选的量化输出类型，支持 `torch.float8_e5m2`、`torch.float8_e4m3fn` 或 FP4 E2M1 对应类型枚举；省略时继承 `sym_buffer.dispatch_quant_out_dtype`，无共享专家时按路由专家配置处理。
+    - `shared_weight1_type`、`shared_weight2_type` 为可选的逻辑权重类型枚举，分别省略时继承路由专家对应权重的逻辑类型。共享权重与路由权重类型不同时必须显式配置；打包 FP4 在 PyTorch 中以 uint8 存储，不能用存储类型代替逻辑类型。
+    - 共享专家两层权重必须遵循同一专家量化模式。A4W4 的 GMM1 输入为 E2M1，激活后量化为 E4M3FN，GMM2 按 A8W4 执行。共享权重和 scale 四组输入必须同时提供。
+    - 两侧输入量化类型相同时复用同一份量化记录，类型不同时分别从 BF16 输入量化。URMA 不支持两侧混合配置；A2/A3 不启用此能力。
+
     - topo_type由通信域上下文自动推导。0表示MTE拓扑，1表示URMA跨超拓扑。
     - URMA拓扑下，`activation`不支持"swiglustep"和"swigluoai"。
     - topk_weights_type取值为0或1，0表示关闭topkWeights前移，1表示开启。
@@ -1427,7 +1433,7 @@ sym_buffer.update_group(group) -> None
         - shared_l1_weights的逻辑shape为(shared_expert_num_per_rank, 2 × intermediate_hidden, hidden)，shared_l2_weights的逻辑shape为(shared_expert_num_per_rank, hidden, intermediate_hidden)。FLOAT4_E2M1权重在PyTorch侧以uint8打包传入，对应的物理shape分别为(shared_expert_num_per_rank, 2 × intermediate_hidden, hidden / 2)和(shared_expert_num_per_rank, hidden, intermediate_hidden / 2)。
         - shared_l1_weights_sf shape为(shared_expert_num_per_rank, 2 × intermediate_hidden, CeilDiv(hidden, 64), 2)，shared_l2_weights_sf shape为(shared_expert_num_per_rank, hidden, CeilDiv(intermediate_hidden, 64), 2)。
         - l1_weights_sf的dim3和l2_weights_sf的dim3必须等于2。
-        - A8W4-FP场景下，FLOAT4_E2M1类型的l1_weights必须使用FORMAT_FRACTAL_NZ_C0_32格式；A4W4-FP场景下，FLOAT4_E2M1类型的l1_weights必须使用FRACTAL_NZ格式。两种场景的l2_weights均必须使用FORMAT_FRACTAL_NZ_C0_32格式。启用共享专家时，shared_l1_weights和shared_l2_weights必须分别与l1_weights和l2_weights使用相同格式。
+        - A8W4-FP场景下，FLOAT4_E2M1类型的l1_weights必须使用FORMAT_FRACTAL_NZ_C0_32格式；A4W4-FP场景下，FLOAT4_E2M1类型的l1_weights必须使用FRACTAL_NZ格式。两种场景的l2_weights均必须使用FORMAT_FRACTAL_NZ_C0_32格式。MTE 下共享专家按自身量化模式选择对应的合法权重格式，可与路由专家不同；URMA 下两侧量化配置必须一致。
         - A8W8-FP场景下，l1_weights和l2_weights必须同为FLOAT8_E5M2或同为FLOAT8_E4M3FN，`weight1_type`和`weight2_type`可省略并从权重Tensor的数据类型推导。A8W4-FP和A4W4-FP场景下，两层权重均为FLOAT4_E2M1，必须显式将`weight1_type`和`weight2_type`设置为`float4_e2m1fn_x2`对应的类型枚举，且两者一致。
         - x_active_mask和scales必须为None。
     - 支持三种计算场景（A8W8-FP、A8W4-FP、A4W4-FP），不同场景下可选入参（缩放因子、偏置等）的必需性及数据类型有严格配套要求。调用时必须根据所选场景完整提供对应参数，不可混用或遗漏，配套关系见下表。
