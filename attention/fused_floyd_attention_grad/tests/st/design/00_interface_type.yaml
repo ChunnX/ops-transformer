@@ -1,0 +1,20 @@
+# 接口类型判定（步骤 1.1/1.2 产物）
+# 生成日期: 2026-09-21
+available_interfaces:
+  aclnn: docs/aclnnFusedFloydAttentionGrad.md
+  reg_op: null        # op_graph/fused_floyd_attention_grad_proto.h 不存在，reg_op 不可用
+  torchapi: null      # docs/torch_npu-npu_Fused_floyd_attention_backward.md 不存在，torchapi 不可用
+
+generate_for: aclnn          # 仅一种接口可用，直接选用（技能规则 1.2.1）
+operator_name: aclnnFusedFloydAttentionGrad
+api_name: null               # 仅 torchapi 需要；aclnn 的 operator_name 即 API 名
+csv_mode: aclnn
+target_product: Ascend 950PR/Ascend 950DT
+
+notes: >-
+  1) 用户 prompt 简写为 FusedFloydAttentionGrad；本会话首轮指令为 aclnnFusedFloydAttentionGrad（aclnn 接口测试设计），
+  且目录扫描仅 aclnn 接口资料可用（docs/aclnnFusedFloydAttentionGrad.md 存在，无 op_graph proto），
+  故 operator_name 取真实 aclnn API 名 aclnnFusedFloydAttentionGrad（csv_mode=aclnn 依据此前缀）。
+  2) 接口文档"产品支持情况"章节当前标注 Ascend 950PR/950DT 不支持（仅 A3/A2 支持）；
+  用户已在本会话明确确认：按"当前接口新增支持 Ascend 950PR/950DT（A5）"的需求开展测试设计，不再中断。
+  3) 输入上下文：tests/st/analysis/spec.md（测试需求分析产物，已读取）。
