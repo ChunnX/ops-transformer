@@ -265,11 +265,11 @@ public:
     {
         InitQBuffer(constInfo_.bSize, constInfo_.n2Size, constInfo_.gSize, constInfo_.s1Size, constInfo_.dSize,
                     queryGm_, query, qSeqParser);
-        InitQScaleBuffer(constInfo_.bSize, constInfo_.n2Size, constInfo_.gSize, constInfo_.s1Size, constInfo_.dSize,
-                        queryScaleGm_, dequantScaleQuery, qSeqParser);
+        InitQScaleBuffer(constInfo_.bSize, constInfo_.n2Size, constInfo_.gSize, constInfo_.s1Size,
+                    constInfo_.dSize / MXFP_GROUP_SIZE, queryScaleGm_, dequantScaleQuery, qSeqParser);
         InitKBuffer(constInfo_.bSize, constInfo_.n2Size, constInfo_.s2Size, constInfo_.dSize,
                     keyGm_, key, kvSeqParser);
-        InitKScaleBuffer(constInfo_.bSize, constInfo_.n2Size, constInfo_.s2Size, constInfo_.dSize,
+        InitKScaleBuffer(constInfo_.bSize, constInfo_.n2Size, constInfo_.s2Size, constInfo_.dSize / MXFP_GROUP_SIZE,
                         keyScaleGm_, dequantScaleKey, kvSeqParser);
         InitVBuffer(constInfo_.bSize, constInfo_.n2Size, constInfo_.s2Size, constInfo_.dSize,
                     valueGm_, value, kvSeqParser);
@@ -447,7 +447,7 @@ public:
         fixpipeParams.mSize = (actKSize + 1U) >> 1 << 1;
         fixpipeParams.srcStride = ((actKSize + 15U) / 16U) * 16U;
         fixpipeParams.dstStride = S1_SUB_BLOCK_SIZE;  // 固定 pitch 128，nSize 恒 ≤ pitch，杜绝行覆盖
-        fixpipeParams.quantPre = QuantMode_t::F322F16;
+        fixpipeParams.quantPre = QuantMode_t::QF322F16_PRE;
         fixpipeParams.deqScalar = static_cast<uint64_t>(
             *reinterpret_cast<const int32_t *>(&constInfo_.scaleValue));
         fixpipeParams.dualDstCtl = 0;  // 单目标模式（CANN PTO GetDualDstCtl 权威定义：0=Single/1=SplitM/2=SplitN）
@@ -465,7 +465,7 @@ public:
         // 满块 actKSize=128 → 16384 元素（64KB 半槽边界）；尾块 actKSize=96 → 12288（[96,256] 精确半分）。
         // 布局模型由 srcStride 语义（DN/mxfp8 参考互证）+ 槽尺寸双重验算，待 S1=256 数值对拍终审
         uint32_t l0cHalfOff = subBlockId * S1_SUB_BLOCK_SIZE * ((actKSize + 15U) / 16U) * 16U;
-        uint32_t ubRingSlot = runInfo.loop % UB_MM1RES_BUFCNT;
+        uint32_t ubRingSlot = subLoopIdx % UB_MM1RES_BUFCNT;
         uint32_t ubBase     = ubRingSlot * UB_MM1RES_SLOT;
 
         Fixpipe<SOFTMAX_T, MM_OUT_T, CFG_ROW_MAJOR_UB>(
@@ -684,7 +684,7 @@ public:
         scaleParams.xStartPosition = 0U;
         scaleParams.yStartPosition = 0U;
         scaleParams.xStep = dataParams.mStep;
-        scaleParams.yStep = 1U;
+        scaleParams.yStep = 2U;
         scaleParams.srcStride = scaleParams.yStep;
         scaleParams.dstStride = scaleParams.yStep;
 
@@ -714,7 +714,7 @@ public:
         scaleParams.xStartPosition = subLoopIdx * (S2_SPLIT_SIZE / 16U);
         scaleParams.yStartPosition = 0U;
         scaleParams.xStep = actKSizeAlign / 16U;
-        scaleParams.yStep = 1U;
+        scaleParams.yStep = 2U;
         scaleParams.srcStride = scaleParams.yStep;
         scaleParams.dstStride = scaleParams.yStep;
 
