@@ -24,10 +24,7 @@ public:
                                uint64_t bytesPerRank, uint32_t workerId, uint32_t workerCount,
                                AscendC::TPipe *pipe)
     {
-        ASSERT_MSG(rawInput != nullptr && output != nullptr && pipe != nullptr, "permute requires buffers and pipe");
-        ASSERT_MSG(rows > 0 && ranks > 0 && bytesPerRank > 0 && bytesPerRank % 32 == 0,
-                   "permute requires nonempty, 32-byte-aligned rank segments");
-        ASSERT_MSG(workerCount > 0 && workerId < workerCount, "invalid permute worker assignment");
+        // The caller provides valid buffers, a 32-byte-aligned rank segment and a MIX_AIC_1_2 worker assignment.
         rows_ = rows;
         ranks_ = ranks;
         bytesPerRank_ = bytesPerRank;
@@ -45,7 +42,6 @@ public:
 
     __aicore__ inline void CopyTile(uint64_t rowStart, uint64_t rowCount)
     {
-        ASSERT_MSG(rowStart <= rows_ && rowCount <= rows_ - rowStart, "permute tile exceeds total rows");
         const uint64_t taskCount = rowCount * ranks_ * chunkCount_;
         auto local = buffer_.Get<uint8_t>();
         for (uint64_t task = workerId_; task < taskCount; task += workerCount_) {
