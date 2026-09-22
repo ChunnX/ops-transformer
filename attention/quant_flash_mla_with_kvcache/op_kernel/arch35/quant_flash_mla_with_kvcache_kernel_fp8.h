@@ -71,7 +71,6 @@ public:
 
     ConstInfoX constInfo_;
 
-    const __gm__ QuantFlashMlaWithKvcacheTilingData *__restrict tilingData_ = nullptr;
     CubeBlockType cubeBlock_;
     VecFaBlockType vecFaBlock_;
     VecFdBlockType vecFdBlock_;
@@ -120,12 +119,9 @@ public:
                                 __gm__ uint8_t *kDescale, __gm__ uint8_t *blockTable, __gm__ uint8_t *cacheSeqLens,
                                 __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *attnMask,
                                 __gm__ uint8_t *metadata, __gm__ uint8_t *attnOut, __gm__ uint8_t *softmaxLse,
-                                __gm__ uint8_t *workspace,
-                                const __gm__ QuantFlashMlaWithKvcacheTilingData *__restrict tiling)
+                                __gm__ uint8_t *workspace, const QuantFlashMlaWithKvcacheTilingData &tiling)
     {
-        this->tilingData_ = tiling;
-
-        InitConstInfo();
+        InitConstInfo(tiling);
 
         // metadata header: [0]=sectionNum
         sectionNum_ = ((__gm__ uint32_t *)metadata)[QMLA_HEAD_SECTION_NUM_INDEX];
@@ -177,7 +173,7 @@ public:
         (void)attnMask;
     }
 
-    __aicore__ inline void InitConstInfo()
+    __aicore__ inline void InitConstInfo(const QuantFlashMlaWithKvcacheTilingData &tiling)
     {
         if ASCEND_IS_AIC {
             constInfo_.aicIdx = GetBlockIdx();
@@ -187,11 +183,11 @@ public:
             constInfo_.subBlockIdx = GetSubBlockIdx();
         }
 
-        const auto &baseParams = this->tilingData_->baseParams;
-        const auto &attenMaskParams = this->tilingData_->attenMaskParams;
-        const auto &pageAttentionParams = this->tilingData_->pageAttentionParams;
-        const auto &workspaceParams = this->tilingData_->workspaceParams;
-        const auto &emptyTensorParams = this->tilingData_->emptyTensorParams;
+        const auto &baseParams = tiling.baseParams;
+        const auto &attenMaskParams = tiling.attenMaskParams;
+        const auto &pageAttentionParams = tiling.pageAttentionParams;
+        const auto &workspaceParams = tiling.workspaceParams;
+        const auto &emptyTensorParams = tiling.emptyTensorParams;
 
         constInfo_.bSize = baseParams.bSize;
         constInfo_.t1Size = baseParams.t1Size;
