@@ -780,7 +780,7 @@ ge::graphStatus MatmulAlltoAllTiling910B::DoOpTiling()
 
     // 2. tilingkey
     SetTilingKey();
-    OP_LOGD(context_->GetNodeName(), "tilingKey is %u.", tilingKey_);
+    OP_LOGD(context_->GetNodeName(), "tilingKey is %llu.", static_cast<unsigned long long>(tilingKey_));
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
     auto aicNum = ascendcPlatform.GetCoreNumAic();
@@ -830,7 +830,7 @@ ge::graphStatus MatmulAlltoAllTiling910B::GetWorkspaceSize()
         wsSize += tileM0 * numBlocks * WORKSPACE_NUM * tileN0 * 4; // 4 is sizeof uint32_t
     }
     workspaces[0] = wsSize;
-    OP_LOGD(opName_, "Workspaces[0] size=%ld", workspaces[0]);
+    OP_LOGD(opName_, "Workspaces[0] size=%zu", workspaces[0]);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -846,11 +846,11 @@ void MatmulAlltoAllTiling910B::PrintMatmulAlltoAllTilingData(CoCTiling &cocTilin
     OP_LOGD(opName_, "info.K: %u", info.K);
     OP_LOGD(opName_, "info.N: %u", info.N);
     OP_LOGD(opName_, "info.worldSize: %u", info.worldSize);
-    OP_LOGD(opName_, "cocTilingData.m0: %u", cocTilingData.m0);
-    OP_LOGD(opName_, "cocTilingData.k0: %u", cocTilingData.k0);
-    OP_LOGD(opName_, "cocTilingData.n0: %u", cocTilingData.n0);
-    OP_LOGD(opName_, "cocTilingData.pValue: %u", cocTilingData.pValue);
-    OP_LOGD(opName_, "cocTilingData.ubMoveNum: %u", cocTilingData.ubMoveNum);
+    OP_LOGD(opName_, "cocTilingData.m0: %d", cocTilingData.m0);
+    OP_LOGD(opName_, "cocTilingData.k0: %d", cocTilingData.k0);
+    OP_LOGD(opName_, "cocTilingData.n0: %d", cocTilingData.n0);
+    OP_LOGD(opName_, "cocTilingData.pValue: %d", cocTilingData.pValue);
+    OP_LOGD(opName_, "cocTilingData.ubMoveNum: %d", cocTilingData.ubMoveNum);
 }
 
 /**

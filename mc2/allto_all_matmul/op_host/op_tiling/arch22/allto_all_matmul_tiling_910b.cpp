@@ -1585,7 +1585,7 @@ ge::graphStatus AlltoAllMatmulTiling910b::GetWorkspaceSize()
         wsSize += quantWorkspaceSize;
     }
     workspaces[0] = wsSize;
-    OP_LOGD(opName_, "Workspaces[0] size=%ld", workspaces[0]);
+    OP_LOGD(opName_, "Workspaces[0] size=%zu", workspaces[0]);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1602,13 +1602,13 @@ void AlltoAllMatmulTiling910b::PrintAlltoAllMatmulTilingData(CoCTiling &cocTilin
     OP_LOGD(opName_, "info.N: %u", info.N);
     OP_LOGD(opName_, "info.rankSize: %u", info.rankSize);
     OP_LOGD(opName_, "info.hasBias: %d", info.hasBias);
-    OP_LOGD(opName_, "cocTilingData.m0: %u", cocTilingData.m0);
-    OP_LOGD(opName_, "cocTilingData.pValue: %u", cocTilingData.pValue);
-    OP_LOGD(opName_, "cocTilingData.unMoveNum: %u", cocTilingData.ubMoveNum);
-    OP_LOGD(opName_, "cocTilingData.swizzlDirect: %u", cocTilingData.swizzlDirect);
-    OP_LOGD(opName_, "cocTilingData.swizzlCount: %u", cocTilingData.swizzlCount);
-    OP_LOGD(opName_, "cocTilingData.allToAllSendCoreNum: %u", cocTilingData.allToAllSendCoreNum);
-    OP_LOGD(opName_, "cocTilingData.allToAllRecvCoreNum: %u", cocTilingData.allToAllRecvCoreNum);
+    OP_LOGD(opName_, "cocTilingData.m0: %d", cocTilingData.m0);
+    OP_LOGD(opName_, "cocTilingData.pValue: %d", cocTilingData.pValue);
+    OP_LOGD(opName_, "cocTilingData.unMoveNum: %d", cocTilingData.ubMoveNum);
+    OP_LOGD(opName_, "cocTilingData.swizzlDirect: %d", cocTilingData.swizzlDirect);
+    OP_LOGD(opName_, "cocTilingData.swizzlCount: %d", cocTilingData.swizzlCount);
+    OP_LOGD(opName_, "cocTilingData.allToAllSendCoreNum: %d", cocTilingData.allToAllSendCoreNum);
+    OP_LOGD(opName_, "cocTilingData.allToAllRecvCoreNum: %d", cocTilingData.allToAllRecvCoreNum);
 }
 
 /**
