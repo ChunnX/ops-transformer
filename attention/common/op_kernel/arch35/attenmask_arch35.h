@@ -624,9 +624,15 @@ __aicore__ inline void AttenMaskCopyInDn(TQue<QuePosition::VECIN, 1> &attenMaskI
                     ComputeAttenMaskOffset<hasAtten, false, false, false, isInfer, DTemplateType::Aligned128,
                                            isMxfp8FullQuant>(runInfo, constInfo, attenMaskInfo, true, subLoop);
                 if (attenMaskInfo.computeMode != AttenMaskComputeMode::NO_NEED_COMPUTE_MODE) {
+#if (__NPU_ARCH__ == 3510)
                     BoolCopyInRegbase<isInfer>(attenMaskUb, srcTensor, maskOffset, constInfo.s2BaseSize,
                                                runInfo.s1RealSizeAlign64 >> 1, attenMaskInfo.attenMaskS2Size,
                                                runInfo.s1RealSizeAlign64 >> 1, constInfo);
+#else
+                    BoolCopyInRegbase<isInfer>(attenMaskUb, srcTensor, maskOffset, constInfo.s2BaseSize,
+                                               constInfo.s1BaseSize, attenMaskInfo.attenMaskS2Size,
+                                               constInfo.s1BaseSize, constInfo);
+#endif
                 }
             }
         } else {
@@ -640,8 +646,9 @@ __aicore__ inline void AttenMaskCopyInDn(TQue<QuePosition::VECIN, 1> &attenMaskI
                         s2RealSize = subLoop == 0 ? 256 : runInfo.s2RealSize - 256;
                     }
                 }
-                BoolCopyInRegbase<isInfer>(attenMaskUb, srcTensor, maskOffset, s2RealSize, constInfo.s1BaseSize >> 1,
-                                           attenMaskInfo.attenMaskS2Size, constInfo.s1BaseSize >> 1, constInfo);
+                BoolCopyInRegbase<isInfer>(attenMaskUb, srcTensor, maskOffset, s2RealSize,
+                                           constInfo.s1BaseSize / ArchInfo::CV_RATIO, attenMaskInfo.attenMaskS2Size,
+                                           constInfo.s1BaseSize / ArchInfo::CV_RATIO, constInfo);
             }
         }
         attenMaskInQue.template EnQue(attenMaskUb);

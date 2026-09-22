@@ -467,15 +467,15 @@ __aicore__ inline void AttentionmaskCopyInDn(LocalTensor<T> &attenMaskUb, Global
     if (info.s2Size % 32U == 0) { // 32： datablock size is 32B
         DataCopyParams dataCopyParams;
         dataCopyParams.blockCount = info.s2dealNum;
-        dataCopyParams.blockLen = (info.gs1dealNum >> 1) >> 5;
-        dataCopyParams.srcStride = (info.attenMaskS1Stride - (info.gs1dealNum >> 1)) >> 5;
+        dataCopyParams.blockLen = (info.gs1dealNum / ArchInfo::CV_RATIO) >> 5;
+        dataCopyParams.srcStride = (info.attenMaskS1Stride - (info.gs1dealNum / ArchInfo::CV_RATIO)) >> 5;
         dataCopyParams.dstStride = info.attenMaskDstStride;
         DataCopy(attenMaskUb, srcGmAddr[maskOffset], dataCopyParams);
     } else {
         DataCopyExtParams dataCopyParams;
         dataCopyParams.blockCount = info.s2dealNum;
-        dataCopyParams.blockLen = info.gs1dealNum >> 1;
-        dataCopyParams.srcStride = info.attenMaskS1Stride - (info.gs1dealNum >> 1);
+        dataCopyParams.blockLen = info.gs1dealNum / ArchInfo::CV_RATIO;
+        dataCopyParams.srcStride = info.attenMaskS1Stride - (info.gs1dealNum / ArchInfo::CV_RATIO);
         dataCopyParams.dstStride = info.attenMaskDstStride;
         DataCopyPadExtParams<T> padParams;
         DataCopyPad(attenMaskUb, srcGmAddr[maskOffset], dataCopyParams, padParams);

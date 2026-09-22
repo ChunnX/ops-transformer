@@ -426,10 +426,14 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Dn(
     bool needAtten = false;
     if constexpr (optionalDn) {
         // s1=s2时s2方向末尾一轮需要处理atten，s1!=s2且有尾块时s2方向末尾两轮需要处理atten
+#if (__NPU_ARCH__ == 3510)
         needAtten = hasAtten &&
                     ((runInfo.s2EndIdx - s1BaseSize < s2BaseSize) ||
                      ((runInfo.s2EndIdx - s1BaseSize >= s2BaseSize) &&
                       (runInfo.s2LoopCount == runInfo.s2LoopLimit || runInfo.s2LoopCount == runInfo.s2LoopLimit - 1)));
+#else
+        needAtten = true;
+#endif
         AttenMaskCopyInDn<hasAtten, hasRope, isInfer, false, optionalDn>(this->attenMaskInQue[runInfo.taskIdMod2],
                                                                          this->attenMaskGmInt, runInfo, constInfo,
                                                                          *attenMaskInfoPtr, needAtten);
