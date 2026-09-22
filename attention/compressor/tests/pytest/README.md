@@ -26,7 +26,7 @@
 
 #### 前置要求
 
-1、 确认TorchNPU为最新版本  
+1、 确认TorchNPU为最新版本
 
 #### custom包调用
 

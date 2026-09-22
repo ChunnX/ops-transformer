@@ -170,7 +170,7 @@
     <td>×</td>
     <td>√</td>
     <td>AI Core</td>
-    <td>该算子完成GDN prefill阶段chunk内的WY/UT前处理变换，一次性输出后续chunk扫描所需的q、k、w、u、g，替换框架侧的torch算子序列。仅支持<term>Atlas 推理系列产品</term>。</td>
+    <td>该算子完成GDN prefill阶段chunk内的WY/UT前处理变换，一次性输出后续chunk扫描所需的q、k、w、u、g，替换框架侧的torch算子序列。仅支持<term>Atlas推理系列产品</term>。</td>
   </tr>
   <tr>
     <td>fused_gdn_decode</td>
@@ -222,7 +222,7 @@
     # 如要使用DeepSeek-V4，ascend950环境编译命令示例如下：
     # bash build.sh --pkg --experimental --soc=ascend950 --ops=compressor,quant_lightning_indexer,quant_lightning_indexer_metadata,kv_quant_sparse_attn_sharedkv,kv_quant_sparse_attn_sharedkv_metadata
     ```
-    - --soc：\$\{soc\_version\}表示NPU型号。Atlas A2 训练系列产品/Atlas A2 推理系列产品使用"ascend910b"，Atlas A3 训练系列产品/Atlas A3 推理系列产品使用"ascend910_93"。
+    - --soc：\$\{soc\_version\}表示NPU型号。Atlas A2系列产品使用"ascend910b"，Atlas A3系列产品使用"ascend910_93"。
     - --ops：自定义算子名称，多个自定义算子通过`,`分割。
 
     若提示如下信息，说明编译成功。
