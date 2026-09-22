@@ -61,7 +61,7 @@ constexpr int32_t UB_MOVE_NUM = 16 * 1024;
 
 // 发送侧逐 chunk 处理的 chunk 大小（= moe_permute_prologue 的 MAX_TOKENS=1024）
 constexpr int64_t PERMUTE_CHUNK = 1024;
-// 相邻 chunk 通过 SyncAll<false> 全核屏障串行化，不同时执行，因此 C2V/V2C 固定占用 flag 9/10，
+// 相邻 chunk 通过 AIV 屏障和 syncgmm/C2V/V2C 握手串行复用 workspace，因此 C2V/V2C 固定占用 flag 9/10，
 // 每 chunk 复用同一组 flag（syncgmm 流 0-8、C2V=9、V2C=10、GMM2-combine 0-8）。
 // 注意 mode0/1/2 下 flagId 仅 0-15，超出截取低 4bit；若改为按 chunk 偏移必须满足
 // C2V(chunk n) != V2C(chunk m) 且不落入 syncgmm 流 0-8 与 SyncAll<false> 的 11-13。
@@ -71,7 +71,7 @@ constexpr int64_t PERMUTE_MAX_CORES = 128;
 
 // Atlas A3 (910_93) kernel.
 template <class BlockMmad_, class BlockScheduler_, class ElementGroupList_, class BlockEpilogue1_,
-          class BlockEpilogue2_, class BlockEpilogue3_>
+          class BlockEpilogue2_, class BlockEpilogue3_, class ElementProbs_ = float>
 class MegaMoeKernel {
 public:
     using BlockMmad = BlockMmad_;
@@ -90,6 +90,7 @@ public:
     using LayoutPerTokenScale = typename layout::VectorLayout;
     using BlockScheduler = BlockScheduler_;
     using BlockEpilogue1 = BlockEpilogue1_;
+    using Activation = typename BlockEpilogue1::Activation;
     using BlockEpilogue2 = BlockEpilogue2_;
     using BlockEpilogue3 = BlockEpilogue3_;
     using ElementD1 = typename BlockEpilogue1::ElementD;
@@ -97,6 +98,8 @@ public:
     using ElementD2 = typename BlockEpilogue2::ElementD;
     using LayoutD2 = typename BlockEpilogue2::LayoutD;
     using ElementABefore = std::conditional_t<std::is_same_v<ElementA, AscendC::int4b_t>, int8_t, ElementA>;
+    // Routing weights can be BF16 or FP32 independently of X and the expert weights.
+    using ElementProbs = ElementProbs_;
 
     /// Parameters structure
     struct Params {
@@ -134,9 +137,10 @@ public:
         // for reuse workspace, gmm1 out preRow Stride use max(n,k)
         // single axis must lower than uint32, layoutC need uint32
         uint32_t gmmOutPreRowStride;
-        // GMM1 input reuses the SwiGLU output workspace. Inputs are K-dense
+        // GMM1 input reuses the activation output workspace. Inputs are K-dense
         // inside each expert, while every expert reserves currentM * max(K, K2)
-        // elements. The tail gap prevents an earlier expert's K2-wide SwiGLU
+        // elements. K2 is N for GELU and N/2 for gated activations. The tail gap
+        // prevents an earlier expert's K2-wide activation
         // output from overwriting a later expert's unconsumed GMM1 input.
         uint32_t gmm1InputExpertSlotWidth;
         //--------------
@@ -226,7 +230,7 @@ public:
               ptrExpertTokenNums(gmExpertTokenNums_)
         {
             gmmOutPreRowStride = problemShape.n() > problemShape.k() ? problemShape.n() : problemShape.k();
-            uint32_t k2 = problemShape.n() / 2;
+            uint32_t k2 = Activation::OutputColumns(problemShape.n(), activationCode);
             gmm1InputExpertSlotWidth = problemShape.k() > k2 ? problemShape.k() : k2;
         }
     };
@@ -678,8 +682,10 @@ private:
         if (routeCacheNum == 0) {
             return;
         }
-        // tokenPerExpert 紧凑化：[dstEpIdx][runtimeRank][groupIdx] -> UB[dstEpIdx*expertPerRank+groupIdx]
+        // tokenPerExpert：[dstEpIdx][runtimeRank][groupIdx] -> UB[dstEpIdx*expertPerRankAligned+groupIdx]
         // 与 GetCumsumForMMAIV 相同的 2D DataCopyPad（跨 dstEpIdx 取 runtimeRank 平面）
+        // DataCopyPad rounds each UB row up to 32 bytes: L=25/50 therefore uses stride 32/56.
+        // Only the count table has this padding; preSumBeforeRank below keeps stride L.
         uint32_t runtimeRank = static_cast<uint32_t>(RuntimeRank(params));
         AscendC::DataCopyPad(
             ubTokenPerExpertCache, tokenPerExpert[runtimeRank * params.expertPerRank],
@@ -748,7 +754,7 @@ private:
     // 的三张轮表并写 GM。count[s][g] = cumsumMM[s*epr+g] - cumsumMM[(s-1)*epr+g]，不依赖 UB 缓存
     // （其内容已被上一轮轮表覆盖）。第 r 轮覆盖行区间 [r*B, min((r+1)*B, R))：
     //   tokenPerExpert_r[s][g] = max(0, min((r+1)*B, blkLo+cnt) - max(r*B, blkLo))
-    //   preSumBeforeRank_r[s][g] = max(r*B, blkLo)，即块内偏移（仍是 chunk A/D 行空间全局偏移）
+    //   preSumBeforeRank_r[s][g] = sourcePrefix[s][g] + max(r*B,blkLo) - blkLo（远端 A/D 行号）
     //   cumsumMM_r[(s-1)*epr+g] = Σ_{s'<s} tokenPerExpert_r[g][s']，[(EP-1)*epr+g] = 轮内 group 行数
     CATLASS_DEVICE void BuildRoundTables(Params const &params, int64_t chunkIdx, int64_t roundIdx)
     {
@@ -761,21 +767,45 @@ private:
         const int64_t roundLo = roundIdx * B;
         const int64_t roundHi = roundLo + B; // 轮右界（开区间）
         const int64_t n = ep * epr;
+        const int64_t ubTableElements = AlignUp(n, 8);
+        // Keep the original source-window prefixes even after consumers switch to round tables.
+        AscendC::GlobalTensor<int32_t> sourcePrefix;
+        sourcePrefix.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(workspaceInfo.ptrSumBeforeRank));
 
         AscendC::LocalTensor<int32_t> ubCumR = resource.ubBuf.template GetBufferByByte<int32_t>(0);
-        AscendC::LocalTensor<int32_t> ubTpeR = resource.ubBuf.template GetBufferByByte<int32_t>(n * sizeof(int32_t));
+        AscendC::LocalTensor<int32_t> ubTpeR =
+            resource.ubBuf.template GetBufferByByte<int32_t>(ubTableElements * sizeof(int32_t));
         AscendC::LocalTensor<int32_t> ubPreSumR =
-            resource.ubBuf.template GetBufferByByte<int32_t>(2 * n * sizeof(int32_t));
+            resource.ubBuf.template GetBufferByByte<int32_t>(2 * ubTableElements * sizeof(int32_t));
+        // This GM prefix is rewritten each chunk. Read it through MTE2, just like the route cache,
+        // rather than retaining an AIV scalar-cache line from an earlier chunk.
+        AscendC::LocalTensor<int32_t> ubSourcePrefix =
+            resource.ubBuf.template GetBufferByByte<int32_t>(3 * ubTableElements * sizeof(int32_t));
+        AscendC::LocalTensor<int32_t> ubChunkCumsum =
+            resource.ubBuf.template GetBufferByByte<int32_t>(4 * ubTableElements * sizeof(int32_t));
+        AscendC::Duplicate(ubCumR, 0, n);
+        AscendC::Duplicate(ubTpeR, 0, n);
+        AscendC::Duplicate(ubPreSumR, 0, n);
+        AscendC::DataCopyPad(ubSourcePrefix, sourcePrefix, {1, static_cast<uint16_t>(n * sizeof(int32_t)), 0, 0}, {});
+        AscendC::DataCopyPad(ubChunkCumsum, chunkCumsumMM, {1, static_cast<uint16_t>(n * sizeof(int32_t)), 0, 0}, {});
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
+        AscendC::SetFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
 
+        // Build the expert prefix once, rather than rescanning preceding experts
+        // from GM for every group in every receive round.
+        int64_t prevGroupSum = 0;
         for (int64_t g = 0; g < epr; ++g) {
-            int64_t prevGroupSum = 0;
-            for (int64_t gg = 0; gg < g; ++gg) {
-                prevGroupSum += chunkCumsumMM.GetValue((ep - 1) * epr + gg);
+            const int64_t groupRows = ubChunkCumsum.GetValue((ep - 1) * epr + g);
+            if (groupRows == 0 || roundHi <= prevGroupSum || roundLo >= prevGroupSum + groupRows) {
+                prevGroupSum += groupRows;
+                continue;
             }
             int64_t pre = 0;
             for (int64_t s = 0; s < ep; ++s) {
-                const int64_t cumCur = chunkCumsumMM.GetValue(s * epr + g);
-                const int64_t cumPrev = s > 0 ? chunkCumsumMM.GetValue((s - 1) * epr + g) : 0;
+                const int64_t cumCur = ubChunkCumsum.GetValue(s * epr + g);
+                const int64_t cumPrev = s > 0 ? ubChunkCumsum.GetValue((s - 1) * epr + g) : 0;
                 const int64_t blkLo = prevGroupSum + cumPrev;     // 块起点（chunk 行空间）
                 const int64_t blkHi = blkLo + (cumCur - cumPrev); // 块终点（开区间）
                 const int64_t lo = roundLo > blkLo ? roundLo : blkLo;
@@ -785,10 +815,14 @@ private:
                     ubCumR.SetValue((s - 1) * epr + g, static_cast<int32_t>(pre));
                 }
                 ubTpeR.SetValue(s * epr + g, static_cast<int32_t>(m));
-                ubPreSumR.SetValue(s * epr + g, static_cast<int32_t>(lo)); // = blkLo + slice_r
+                // blkLo is in this receiver's expert-major order; DMA addresses use the
+                // sender's permuted order. Rebase only the offset within the same (s, g) block.
+                const int64_t sourceRow = m > 0 ? ubSourcePrefix.GetValue(s * epr + g) + lo - blkLo : 0;
+                ubPreSumR.SetValue(s * epr + g, static_cast<int32_t>(sourceRow));
                 pre += m;
             }
             ubCumR.SetValue((ep - 1) * epr + g, static_cast<int32_t>(pre));
+            prevGroupSum += groupRows;
         }
 
         // UB 标量写完成后再发起 MTE3 搬出（与 AllGatherTokenPerExpert 的 S_MTE3 同步一致）
@@ -821,13 +855,13 @@ private:
         roundPreSumBeforeRankGm.SetGlobalBuffer(
             reinterpret_cast<__gm__ int32_t *>(RoundTablePtr(params, chunkIdx, roundIdx, RoundTableSeg::kPreSum)));
         // CombineV2 的 epilogue 以成员 GT 读 D 区写回偏移表，轮内切到 preSum_r
-        // （= 全局 chunk 行偏移，D 区布局不受轮次影响）；
+        // （= 对应源卡窗口中的 chunk 内行偏移，D 区布局不受轮次影响）；
         // 调用方须在下一 chunk 的 AllGather 前恢复其 chunk 级指向
         preSumBeforeRank.SetGlobalBuffer(
             reinterpret_cast<__gm__ int32_t *>(RoundTablePtr(params, chunkIdx, roundIdx, RoundTableSeg::kPreSum)));
     }
 
-    // 将本轮轮表 tpe_r / preSum_r 刷新到本核 UB 路由缓存（布局与 chunk 级紧凑缓存一致，
+    // 将本轮轮表 tpe_r / preSum_r 刷新到本核 UB 路由缓存（与 chunk 级缓存一致：count 行补齐，prefix 紧凑，
     // dispatch / CombineV1 / CombineV2 / BlockEpilogue3 读取路径零改动）。仅 rounds>1 时调用。
     CATLASS_DEVICE void CacheRoundTablesToUb(Params const &params)
     {
@@ -995,7 +1029,7 @@ private:
         BlockMmad blockMmad(resource);
 
         uint32_t n2 = params.problemShape.k();
-        uint32_t k2 = params.problemShape.n() / 2;
+        uint32_t k2 = Activation::OutputColumns(params.problemShape.n(), params.activationCode);
 
         int64_t gmGroupOffsetA = 0;
         int64_t gmGroupOffsetB = 0;
@@ -1372,7 +1406,11 @@ private:
                     }
                 }
             }
-            AscendC::SyncAll<true>();
+            // An empty expert has no dispatch data to make visible. All AIVs
+            // read the same currentM; retain the per-expert AIC flag count.
+            if (currentM > 0) {
+                AscendC::SyncAll<true>();
+            }
             AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(syncgmm1Idx / CROSS_CORE_FLAG_MAX_SET_COUNT);
             syncgmm1Idx++;
 
@@ -1566,10 +1604,10 @@ private:
                 AscendC::LocalTensor<int32_t> zeroBuf = resource.ubBuf.template GetBufferByByte<int32_t>(0);
                 AscendC::Duplicate(zeroBuf, 0, params.expertPerRank);
                 AscendC::PipeBarrier<PIPE_V>();
-                AscendC::DataCopyPad(gmExpertTokenNums[0], zeroBuf,
-                                     {1, static_cast<uint16_t>(params.expertPerRank * sizeof(int32_t)), 0, 0});
                 AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+                AscendC::DataCopyPad(gmExpertTokenNums[0], zeroBuf,
+                                     {1, static_cast<uint16_t>(params.expertPerRank * sizeof(int32_t)), 0, 0});
             }
         }
         CopyRankMaskToLocal(params);
@@ -1636,17 +1674,16 @@ private:
                     AscendC::LocalTensor<int32_t> ubSum = resource.ubBuf.template GetBufferByByte<int32_t>(0);
                     AscendC::LocalTensor<int32_t> ubOut = resource.ubBuf.template GetBufferByByte<int32_t>(
                         AlignUp(params.expertPerRank * sizeof(int32_t), 32));
-                    AscendC::DataCopyPad(ubSum, cumsumMM[(params.EP - 1) * params.expertPerRank],
-                                         {1, static_cast<uint16_t>(params.expertPerRank * sizeof(int32_t)), 0, 0}, {});
-                    AscendC::DataCopyPad(ubOut, gmExpertTokenNums[0],
-                                         {1, static_cast<uint16_t>(params.expertPerRank * sizeof(int32_t)), 0, 0}, {});
+                    const uint16_t countBytes = static_cast<uint16_t>(params.expertPerRank * sizeof(int32_t));
+                    AscendC::DataCopyPad(ubSum, cumsumMM[(params.EP - 1) * params.expertPerRank], {1, countBytes, 0, 0},
+                                         {});
+                    AscendC::DataCopyPad(ubOut, gmExpertTokenNums[0], {1, countBytes, 0, 0}, {});
                     AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
                     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
                     AscendC::Add(ubOut, ubOut, ubSum, params.expertPerRank);
                     AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
                     AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-                    AscendC::DataCopyPad(gmExpertTokenNums[0], ubOut,
-                                         {1, static_cast<uint16_t>(params.expertPerRank * sizeof(int32_t)), 0, 0});
+                    AscendC::DataCopyPad(gmExpertTokenNums[0], ubOut, {1, countBytes, 0, 0});
                     AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
                     AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
                 }
@@ -1656,7 +1693,7 @@ private:
             // 此处 cumsumMM 仍指向 chunk 级缓冲，轮数推导必须在切换轮表之前完成；
             // AIC/AIV 两侧独立推导，结果一致，无需额外跨核通信。
             const int64_t numRecvRounds = ComputeNumRecvRounds(params);
-            // 接收轮次循环：rounds==1 时退化为原 chunk 局部流水（零回归）；rounds>1 时
+            // 接收轮次循环：rounds==1 时使用 chunk 表；rounds>1 时
             // 每轮先由 core0 生成轮表并切换全核视图，再执行轮内 dispatch/swiglu/combine。
             // 轮间串行由 ProcessRecvRound 末尾 SyncAll 保证，flag 槽位按轮复用。
             for (int64_t roundIdx = 0;; ++roundIdx) {
@@ -1717,10 +1754,11 @@ private:
                     exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::UNPERMUTE);
                     MoeTokenUnpermuteTilingData tilingData;
                     MoeTokenUnpermuteTiling(chunkTokens * topK, n2, topK, tilingData, coreNum / AIV_PER_AIC);
-                    KernelMoeTokenUnpermute<ElementD2, int32_t, float, true> kernelMoeTokenUnpermuteOp;
+                    KernelMoeTokenUnpermute<ElementD2, int32_t, ElementProbs, true> kernelMoeTokenUnpermuteOp;
                     kernelMoeTokenUnpermuteOp.Init(
                         shmem() + peermemInfo.offsetD, workspaceInfo.expandedRowIdx,
-                        reinterpret_cast<GM_ADDR>(reinterpret_cast<__gm__ float *>(params.probs) + tokenBase * topK),
+                        reinterpret_cast<GM_ADDR>(reinterpret_cast<__gm__ ElementProbs *>(params.probs) +
+                                                  tokenBase * topK),
                         reinterpret_cast<GM_ADDR>(params.ptrOutput + tokenBase * hidden), &tilingData);
                     kernelMoeTokenUnpermuteOp.Process();
                 }
@@ -1734,10 +1772,10 @@ private:
                 exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::UNPERMUTE);
                 MoeTokenUnpermuteTilingData tilingData;
                 MoeTokenUnpermuteTiling(chunkTokens * topK, n2, topK, tilingData, coreNum);
-                KernelMoeTokenUnpermute<ElementD2, int32_t, float, true> kernelMoeTokenUnpermuteOp;
+                KernelMoeTokenUnpermute<ElementD2, int32_t, ElementProbs, true> kernelMoeTokenUnpermuteOp;
                 kernelMoeTokenUnpermuteOp.Init(
                     shmem() + peermemInfo.offsetD, workspaceInfo.expandedRowIdx,
-                    reinterpret_cast<GM_ADDR>(reinterpret_cast<__gm__ float *>(params.probs) + tokenBase * topK),
+                    reinterpret_cast<GM_ADDR>(reinterpret_cast<__gm__ ElementProbs *>(params.probs) + tokenBase * topK),
                     reinterpret_cast<GM_ADDR>(params.ptrOutput + tokenBase * hidden), &tilingData, true);
                 kernelMoeTokenUnpermuteOp.Process();
             }
@@ -1760,7 +1798,12 @@ private:
         icache_preload(ICACHE_PRELOAD_LINES);
         for (uint32_t t_groupIdx = 0; t_groupIdx < params.expertPerRank; ++t_groupIdx) {
             int32_t flagId = t_groupIdx / CROSS_CORE_FLAG_MAX_SET_COUNT;
+            // GMM2 publishes completion for every expert, including empty ones. Consume
+            // the flag before skipping work so the next round cannot observe a stale signal.
             AscendC::CrossCoreWaitFlag<0x2>(flagId);
+            if (cumsumMM.GetValue((params.EP - 1) * params.expertPerRank + t_groupIdx) == 0) {
+                continue;
+            }
             AscendC::SyncAll<true>();
 
             uint32_t groupIdx = t_groupIdx;
@@ -1811,7 +1854,7 @@ private:
         uint32_t aivSubCoreIdx = get_subblockid();
         uint32_t preSrcExpertSum = 0;
         uint32_t n2 = params.problemShape.k();
-        uint32_t k2 = params.problemShape.n() / 2;
+        uint32_t k2 = Activation::OutputColumns(params.problemShape.n(), params.activationCode);
 
         int64_t gmGroupOffsetC = 0;
         uint32_t aivCoreNum = coreNum;
@@ -1942,7 +1985,7 @@ private:
                                sizeof(int32_t);
 
             // 接收侧轮表区：每 (chunk, round) 独立一份 [cumsumMM_r | tokenPerExpert_r | preSumBeforeRank_r]，
-            // 各 EP*expertPerRank int32（紧凑布局，与 chunk 级 UB 路由缓存同构），轮间不复用以规避
+            // 各 EP*expertPerRank int32（GM 紧凑；搬入 UB 时仅 count 表按行补齐），轮间不复用以规避
             // AIC 跨轮 cache 陈旧读。host 侧已按 numChunks*recvRoundsMax*3*EP*expertPerRank 同步分配。
             ptrRoundTables = params.ptrWorkspace + workspaceOffset;
             workspaceOffset += static_cast<uint64_t>(numChunks) * params.recvRoundsMax * 3UL *
@@ -2074,7 +2117,7 @@ private:
     AscendC::GlobalTensor<int32_t> cumsumMM;
     // chunk 级 cumsumMM（不随后续接收轮次切换而重指，轮表生成 / 轮数推导统一从这里读）
     AscendC::GlobalTensor<int32_t> chunkCumsumMM;
-    // 接收侧轮表（仅 rounds>1 时使用，紧凑 EP*expertPerRank 布局，与 UB 缓存同构）
+    // 接收侧 GM 轮表（仅 rounds>1 时使用，紧凑 EP*expertPerRank 布局）
     AscendC::GlobalTensor<int32_t> roundTokenPerExpertGm;
     AscendC::GlobalTensor<int32_t> roundPreSumBeforeRankGm;
     AscendC::GlobalTensor<int32_t> preSumBeforeRank;
@@ -2084,8 +2127,8 @@ private:
     bool isCombineV1;
     GM_ADDR maskBufferAddr{nullptr};
     AscendC::LocalTensor<int32_t> rankMaskLocal;
-    // 路由表 UB 缓存（仅 AIV 使用）：tokenPerExpert 取 [dstEpIdx][runtimeRank][groupIdx] 紧凑平面，
-    // preSumBeforeRank 为连续 EP*expertPerRank；每 chunk 由 CacheRouteTablesToUb 刷新
+    // 路由表 UB 缓存（仅 AIV 使用）：count 行步长为 expertPerRankAligned，prefix 行步长为 expertPerRank。
+    // 每 chunk/round 刷新；不能将两个缓存混用同一个步长。
     AscendC::LocalTensor<int32_t> ubTokenPerExpertCache;
     AscendC::LocalTensor<int32_t> ubPreSumBeforeRankCache;
     uint32_t routeCacheNum{0};

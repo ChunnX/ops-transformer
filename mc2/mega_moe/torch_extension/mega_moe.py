@@ -21,6 +21,7 @@ _CLAMP_DEFAULT = 3.4028234663852886e38
 _ALPHA_DEFAULT = 1.702
 _BETA_DEFAULT = 1.0
 _ALLOWED_ACTIVATION_KEYS = {
+    "gelu": frozenset(),
     "swiglu": frozenset(),
     "swiglustep": frozenset(),
     "swigluoai": frozenset({"alpha", "beta"}),
@@ -74,6 +75,12 @@ def _normalize_activation_params(
                 f"Unknown activation param key {key!r} for activation {activation!r}; "
                 f"allowed keys: {sorted(allowed)}."
             )
+
+    if activation == "gelu":
+        if activation_clamp is not None:
+            raise ValueError("gelu does not accept activation_clamp")
+        # Reserved transport placeholder, not a mathematical GELU parameter.
+        return [0.0]
 
     # aclnn cannot register a zero-length ListFloat because its data pointer is null. Materialize
     # every default here while the named Torch arguments can still be encoded without ambiguity.

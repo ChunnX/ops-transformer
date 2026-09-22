@@ -23,6 +23,33 @@ enum class GatedActivationMode : uint32_t {
     SITU = 2,
     SWIGLU_STEP = 3,
     SWIGLU_OAI = 4,
+    GELU = 5,
+};
+
+// Ordinary (non-gated) FFN: W1 and activation have the same width.
+struct GeluActivation {
+    CATLASS_DEVICE static void Compute(AscendC::LocalTensor<float> const &output,
+                                       AscendC::LocalTensor<float> const &input,
+                                       AscendC::LocalTensor<float> const &scaledInput,
+                                       AscendC::LocalTensor<uint8_t> const &sharedTmpBuffer, uint32_t dataLength)
+    {
+        // Exact GELU form: x * (1 + erf(x / sqrt(2))) / 2; no gate/up multiplication.
+        // The unused up tile is scaledInput scratch. Preserve input for the final multiplication.
+        AscendC::Muls(scaledInput, input, 0.7071067811865475244f, dataLength);
+        AscendC::PipeBarrier<PIPE_V>();
+        // The top of UB holds the persistent route cache. Erf partitions the buffer by GetSize(),
+        // so passing an unbounded tail view would overwrite that cache even for short input rows.
+        auto erfTmpBuffer = sharedTmpBuffer;
+        erfTmpBuffer.SetSize(32 * 1024);
+        AscendC::Erf(output, scaledInput, erfTmpBuffer, dataLength);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Adds(output, output, 1.0f, dataLength);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Muls(output, output, 0.5f, dataLength);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Mul(output, output, input, dataLength);
+        AscendC::PipeBarrier<PIPE_V>();
+    }
 };
 
 // All gated activations used by MegaMoe follow this interface. A new
@@ -202,6 +229,18 @@ struct GatedActivation {
     static constexpr uint32_t PREFERRED_TILE_LENGTH = SwigluActivation::PREFERRED_TILE_LENGTH;
     static constexpr uint32_t MIN_SHARED_TMP_BYTES = SwigluActivation::MIN_SHARED_TMP_BYTES;
 
+    // The default policy is gated (also used by A2). A3 GELU explicitly selects
+    // SpecializedActivation<true> through its own tiling key.
+    CATLASS_DEVICE static bool IsGelu(uint32_t)
+    {
+        return false;
+    }
+
+    CATLASS_DEVICE static uint32_t OutputColumns(uint32_t inputColumns, uint32_t)
+    {
+        return inputColumns / 2;
+    }
+
     template <class Element>
     CATLASS_DEVICE static void PrepareBranches(AscendC::LocalTensor<float> const &gate,
                                                AscendC::LocalTensor<float> const &up,
@@ -237,6 +276,39 @@ struct GatedActivation {
                 break;
             default:
                 break;
+        }
+    }
+};
+
+// A3 separates GELU and the common SwiGLU formula at compile time. Situ, Step
+// and OAI keep the existing runtime policy and all activation parameters.
+template <bool GELU, bool SWIGLU = false>
+struct SpecializedActivation : GatedActivation {
+    static_assert(!(GELU && SWIGLU), "GELU and SwiGLU entries are mutually exclusive");
+    CATLASS_DEVICE static bool IsGelu(uint32_t)
+    {
+        return GELU;
+    }
+
+    CATLASS_DEVICE static uint32_t OutputColumns(uint32_t inputColumns, uint32_t)
+    {
+        return GELU ? inputColumns : inputColumns / 2;
+    }
+
+    CATLASS_DEVICE
+    static void Compute(AscendC::LocalTensor<float> const &output, AscendC::LocalTensor<float> const &gate,
+                        AscendC::LocalTensor<float> const &up, AscendC::LocalTensor<uint8_t> const &sharedTmpBuffer,
+                        uint32_t dataLength, float clampLimit, uint32_t activationCode,
+                        float activationParams1 = SwigluOaiActivation::DEFAULT_ALPHA,
+                        float activationParams2 = SituActivation::DEFAULT_BETA)
+    {
+        if constexpr (GELU) {
+            GeluActivation::Compute(output, gate, up, sharedTmpBuffer, dataLength);
+        } else if constexpr (SWIGLU) {
+            SwigluActivation::Compute(output, gate, up, sharedTmpBuffer, dataLength, clampLimit);
+        } else {
+            GatedActivation::Compute(output, gate, up, sharedTmpBuffer, dataLength, clampLimit, activationCode,
+                                     activationParams1, activationParams2);
         }
     }
 };

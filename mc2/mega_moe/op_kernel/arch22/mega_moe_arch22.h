@@ -74,8 +74,12 @@ using namespace Mc2Tiling;
 //   TB2_   : transpose_weight2 attribute
 //   Nz_    : whether weight1/2 is in FRACTAL_NZ format (both are the same)
 //   IS_A2_ : whether running on Atlas A2 (910B); false means A3 (910_93)
-#define MegaMoeClass typename AType_, typename BType_, typename CType_, bool TB1_, bool TB2_, bool Nz_, bool IS_A2_
-#define MegaMoeFunc AType_, BType_, CType_, TB1_, TB2_, Nz_, IS_A2_
+//   GELU_  : FFN layout selected by the Host tiling key; gated activations use false
+//   SWIGLU_: direct SwiGLU formula; other gated activations keep the runtime policy
+#define MegaMoeClass \
+    typename AType_, typename BType_, typename CType_, bool TB1_, bool TB2_, bool Nz_, bool IS_A2_, bool GELU_, \
+        bool SWIGLU_
+#define MegaMoeFunc AType_, BType_, CType_, TB1_, TB2_, Nz_, IS_A2_, GELU_, SWIGLU_
 
 template <MegaMoeClass>
 class MegaMoe {
@@ -194,6 +198,7 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Init(GM_ADDR contextGM, GM_ADDR xGM
 template <MegaMoeClass>
 __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
 {
+    using Activation = Epilogue::SpecializedActivation<GELU_, SWIGLU_>;
     using ArchTag = Arch::AtlasA2;
     constexpr bool enableUnitFlag = false;
     constexpr bool enableShuffleK = true;
@@ -206,7 +211,7 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
     using CElement = std::conditional_t<isW4A8 || isInt8, float16_t, CType_>;
     using D1Element = std::conditional_t<isW4A8 || isInt8, int8_t, CType_>;
 
-    uint32_t k2 = n_ / 2;
+    uint32_t k2 = Activation::OutputColumns(n_, activationCode_);
     uint32_t n2 = k_;
 
     using LayoutA = layout::RowMajor;
@@ -252,8 +257,8 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
     constexpr uint32_t ubStages = 2;
 
     using EpilogueDispatchPolicy1 =
-        std::conditional_t<isW4A8, Epilogue::EpilogueAtlasA2W4A8PostPerTokenDequantSwigluQuant<ubStages>,
-                           Epilogue::EpilogueAtlasA2PerTokenDequantSwigluQuant<ubStages>>;
+        std::conditional_t<isW4A8, Epilogue::EpilogueAtlasA2W4A8PostPerTokenDequantSwigluQuant<ubStages, Activation>,
+                           Epilogue::EpilogueAtlasA2PerTokenDequantSwigluQuant<ubStages, Activation>>;
     using EpilogueDispatchPolicy2 = Epilogue::EpilogueAtlasA2PerTokenDequant<ubStages>;
     using EpilogueDispatchPolicy3 =
         std::conditional_t<isW4A8, Epilogue::EpilogueAtlasA2W4A8PostPerTokenDequantV2<ubStages>,
@@ -281,7 +286,7 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
     using ElementGroupList = int64_t;
 
     using MatmulKernel = Gemm::Kernel::MegaMoeKernel<BlockMmad, BlockScheduler, ElementGroupList, BlockEpilogue1,
-                                                     BlockEpilogue2, BlockEpilogue3>;
+                                                     BlockEpilogue2, BlockEpilogue3, DTYPE_TOPK_WEIGHTS>;
 
     LayoutA layoutA1{static_cast<uint32_t>(m_), static_cast<uint32_t>(k_)};
     LayoutA layoutA2{static_cast<uint32_t>(m_), static_cast<uint32_t>(k2)};

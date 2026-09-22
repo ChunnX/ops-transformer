@@ -1249,12 +1249,12 @@ sym_buffer.update_group(group) -> None
 
     // winIn
     offsetAAfterDispatch = max_recv_token_num × (quant ? hidden + 512 : hidden × 2)
-    offsetD              = num_max_tokens_per_rank × num_topk × hidden × 2Byte
+    offsetD              = num_max_tokens_per_rank × num_topk × hidden × 2Byteyte
     winInTensorSize      = offsetAAfterDispatch + offsetD
 
     // winOut
     offsetA              = num_max_tokens_per_rank × num_topk × (quant ? hidden + 512 : hidden × 2)
-    offsetC              = max_recv_token_num × hidden × 2Byte
+    offsetC              = max_recv_token_num × hidden × 2Byteyte
     winOutTensorSize     = offsetA + offsetC
 
     offsetTensor         = max(winInTensorSize, winOutTensorSize)
@@ -1274,12 +1274,12 @@ sym_buffer.update_group(group) -> None
     offsetTokenPerExpert = ep_world_size × CeilAlign(ep_world_size × maxExpertPerRank + 1, 128) × 4Byte
 
     // winIn（仅winIn，无winOut）
-    offsetAAfterDispatch = num_max_tokens_per_rank × num_topk × (quant ? hidden + 512 : hidden × 2)
-    offsetD              = num_max_tokens_per_rank × num_topk × hidden × 2Byte
+    offsetAAfterDispatch = min(num_max_tokens_per_rank, 1024) × num_topk × (quant ? hidden + 512 : hidden × 2)
+    offsetD              = min(num_max_tokens_per_rank, 1024) × num_topk × hidden × 2Byte
     winInTensorSize      = offsetAAfterDispatch + offsetD
 
     offsetTensor         = winInTensorSize
-                        + (quant ? num_max_tokens_per_rank × num_topk × 4Byte : 0)
+                        + (quant ? min(num_max_tokens_per_rank, 1024) × num_topk × 4Byte : 0)
 
     // sync flags
     syncStateReservedSize = 512KB
@@ -1316,12 +1316,13 @@ sym_buffer.update_group(group) -> None
     - `num_experts`：取值范围为`world_size ≤ num_experts ≤ 1024`，且 `num_experts % ep_world_size == 0`。
     - `num_experts_per_rank`：取值范围为 `1 ≤ num_experts_per_rank ≤ 128`，且 `num_experts_per_rank = num_experts / world_size`。
     - `num_max_tokens_per_rank`：取值范围为 `1 ≤ num_max_tokens_per_rank < +∞`。
-    - `max_recv_token_num` 需大于0，输入0表示自动计算，公式为 `num_tokens × ep_world_size × min(num_topk, local_moe_expert_num)`。
-    - `num_topk`：取值范围为 `1 ≤ num_topk ≤ 16`。
+    - `max_recv_token_num` 取非负值。A2 的自动值（0）按 `num_tokens × ep_world_size × min(num_topk, local_moe_expert_num)` 计算；A3 在该自动值上增加 8192 route/轮的上限，并在每个 1024-token chunk 内分轮完成全部接收。显式正值仍表示调用方指定的接收预算。
+    - `num_topk`：A2 取值范围为 `1 ≤ num_topk ≤ 16`，A3 为 `1 ≤ num_topk ≤ 25`。
     - `hidden`：取值范围为 `1024 ≤ hidden ≤ 8192`，且 `hidden % 512 == 0`。
-    - `intermediate_hidden`：取值范围为 `512 ≤ intermediate_hidden ≤ 3072`，且 `intermediate_hidden % 256 == 0`。
+    - `intermediate_hidden`：Host 要求 `intermediate_hidden ≥ 512`；门控激活保留主仓的 256 对齐，新增 GELU 路径要求 512 对齐。A3 新增 GELU 路径已覆盖 512、1536 和 4096（跨 epilogue tile），其他宽度需按目标形状验证。
     - `dispatch_quant_mode`：取值范围为 `0`（非量化）、`2`（pertoken量化）。
     - `dispatch_quant_out_dtype`：取值为 `torch.int8`。
+    - A3 的 A8W8-INT / A8W4-INT 增加 `activation="gelu"`，使用 erf 形式的普通 FFN：`W1:[H,F]`、`W2:[F,H]`，激活前后均为 F 通道。`activation_params` 为 `{}`，不接受 `activation_clamp`；`weight1_interleave` 必须为 0。A2 和 A16W16 不支持此新增 GELU 路径。门控激活仍使用 `W1:[H,2F]`。
     - 支持三种计算场景（A16W16、A8W8-INT、A8W4-INT），不同场景下可选入参（缩放因子、偏置等）的必需性及数据类型有严格配套要求。调用时必须根据所选场景完整提供对应参数，不可混用或遗漏，配套关系见下表。
         <table>
         <thead>

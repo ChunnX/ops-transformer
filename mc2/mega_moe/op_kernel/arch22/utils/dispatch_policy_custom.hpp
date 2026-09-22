@@ -103,18 +103,18 @@ struct EpilogueAtlasA2PerTokenDequantQuant {
     static constexpr uint32_t UB_STAGES = UB_STAGES_;
 };
 
-template <uint32_t UB_STAGES_>
+template <uint32_t UB_STAGES_, class Activation_ = Catlass::Epilogue::GatedActivation>
 struct EpilogueAtlasA2PerTokenDequantSwigluQuant {
     using ArchTag = Arch::AtlasA2;
-    using Activation = Catlass::Epilogue::GatedActivation;
+    using Activation = Activation_;
     static constexpr uint32_t TILE_LENGTH = Activation::PREFERRED_TILE_LENGTH;
     static constexpr uint32_t UB_STAGES = UB_STAGES_;
 };
 
-template <uint32_t UB_STAGES_>
+template <uint32_t UB_STAGES_, class Activation_ = Catlass::Epilogue::GatedActivation>
 struct EpilogueAtlasA2W4A8PostPerTokenDequantSwigluQuant {
     using ArchTag = Arch::AtlasA2;
-    using Activation = Catlass::Epilogue::GatedActivation;
+    using Activation = Activation_;
     static constexpr uint32_t TILE_LENGTH = Activation::PREFERRED_TILE_LENGTH;
     static constexpr uint32_t UB_STAGES = UB_STAGES_;
 };

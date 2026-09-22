@@ -153,6 +153,8 @@ _sorted_selected_op_categories = sorted(set(_selected_op_categories))
 _entry_points = []
 if _selected_ops is not None:
     for _cat, _op_name in _sorted_selected_op_categories:
+        if _op_name == "common":
+            continue  # Shared communication helpers are a module, not an operator entry point.
         _entry_points.append(
             "%s = %s.ops.%s.%s:%s" % (_op_name, PACKAGE_NAME, _cat, _op_name, _op_name)
         )
@@ -215,7 +217,10 @@ class BuildPyWithOps(_build_py):
                 os.makedirs(os.path.dirname(dst), exist_ok=True)
                 with open(dst, "w") as f:
                     for sel_op in sel_ops:
-                        f.write("from .%s import %s\n" % (sel_op, sel_op))
+                        if sel_op == "common":
+                            f.write("from . import common\n")
+                        else:
+                            f.write("from .%s import %s\n" % (sel_op, sel_op))
         else:
             for category, init_src in _op_category_inits.items():
                 dst = os.path.join(build_pkg, "ops", category, "__init__.py")

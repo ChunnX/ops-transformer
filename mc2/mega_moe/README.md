@@ -15,6 +15,8 @@
 
 - 算子功能：MegaMoE算子将MoE层的专家FFN的完整计算流程及前后数据通信（即 Dispatch + Linear1 + Activation + Linear2 + Combine）融合为单个算子，实现了通信和计算的掩盖。
 
+- A3 的 A8W8-INT / A8W4-INT 支持普通 FFN 的 `activation="gelu"`：第一层权重为 `[H,F]`，第二层权重为 `[F,H]`，计算 `GELU(z)=0.5*z*(1+erf(z/sqrt(2)))`。GELU 不拆分 gate/up，不接受 clamp 或额外激活参数，要求 `weight1_interleave=0`。下面涉及 `2F` 和 gate/up 的公式用于原有门控激活。具体调用约束见 [Torch API](docs/torchapi_mega_moe.md)。
+
 - 计算公式：
   - 输入：
     - $\mathbf{X} \in \mathbb{R}^{\text{totalNumTokens} \times \text{hidden}}$：激活矩阵，对应入参 `x`。$\text{totalNumTokens}$ 是全局总 token 数，$\text{hidden}$ 是隐藏层维度。
