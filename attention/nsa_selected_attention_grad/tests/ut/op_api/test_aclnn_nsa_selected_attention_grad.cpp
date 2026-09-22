@@ -78,9 +78,9 @@ TEST_F(NsaSelectedAttentionGradOpapiUt, A1_tnd_fp16_no_mask)
     auto softmaxSum = MakeTensor({t1, n1, 8}, ACL_FLOAT);
     auto topkIndices = MakeTensor({t1, n2, selectedBlockCount}, ACL_INT32);
 
-    auto dqOut = MakeTensor({t1, n1, d}, ACL_FLOAT16);
-    auto dkOut = MakeTensor({t2, n2, d}, ACL_FLOAT16);
-    auto dvOut = MakeTensor({t2, n2, d2}, ACL_FLOAT16);
+    auto dqOut = MakeTensor({}, ACL_FLOAT16);
+    auto dkOut = MakeTensor({}, ACL_FLOAT16);
+    auto dvOut = MakeTensor({}, ACL_FLOAT16);
 
     int64_t actQ[1] = {t1};
     int64_t actKv[1] = {t2};
@@ -91,6 +91,7 @@ TEST_F(NsaSelectedAttentionGradOpapiUt, A1_tnd_fp16_no_mask)
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
 
+    // clang-format off
     aclnnStatus aclRet = aclnnNsaSelectedAttentionGradGetWorkspaceSize(
         query.get(), key.get(), value.get(), attentionOut.get(), attentionOutGrad.get(),
         softmaxMax.get(), softmaxSum.get(), topkIndices.get(),
@@ -98,6 +99,7 @@ TEST_F(NsaSelectedAttentionGradOpapiUt, A1_tnd_fp16_no_mask)
         /*scaleValue=*/0.088388, selectedBlockSize, selectedBlockCount,
         /*headNum=*/n1, inputLayout, /*sparseMode=*/0,
         dqOut.get(), dkOut.get(), dvOut.get(), &workspaceSize, &executor);
+    // clang-format on
 
     EXPECT_EQ(aclRet, ACL_SUCCESS);
     EXPECT_NE(executor, nullptr);
@@ -126,9 +128,9 @@ TEST_F(NsaSelectedAttentionGradOpapiUt, A2_tnd_bf16_with_mask)
     auto topkIndices = MakeTensor({t1, n2, selectedBlockCount}, ACL_INT32);
     auto attenMask = MakeTensor({selectedBlockSize, selectedBlockSize}, ACL_BOOL);
 
-    auto dqOut = MakeTensor({t1, n1, d}, ACL_BF16);
-    auto dkOut = MakeTensor({t2, n2, d}, ACL_BF16);
-    auto dvOut = MakeTensor({t2, n2, d2}, ACL_BF16);
+    auto dqOut = MakeTensor({}, ACL_BF16);
+    auto dkOut = MakeTensor({}, ACL_BF16);
+    auto dvOut = MakeTensor({}, ACL_BF16);
 
     int64_t actQ[1] = {t1};
     int64_t actKv[1] = {t2};
@@ -139,6 +141,7 @@ TEST_F(NsaSelectedAttentionGradOpapiUt, A2_tnd_bf16_with_mask)
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
 
+    // clang-format off
     aclnnStatus aclRet = aclnnNsaSelectedAttentionGradGetWorkspaceSize(
         query.get(), key.get(), value.get(), attentionOut.get(), attentionOutGrad.get(),
         softmaxMax.get(), softmaxSum.get(), topkIndices.get(),
@@ -146,6 +149,7 @@ TEST_F(NsaSelectedAttentionGradOpapiUt, A2_tnd_bf16_with_mask)
         /*scaleValue=*/0.088388, selectedBlockSize, selectedBlockCount,
         /*headNum=*/n1, inputLayout, /*sparseMode=*/2,
         dqOut.get(), dkOut.get(), dvOut.get(), &workspaceSize, &executor);
+    // clang-format on
 
     EXPECT_EQ(aclRet, ACL_SUCCESS);
     EXPECT_NE(executor, nullptr);
@@ -169,6 +173,7 @@ TEST_F(NsaSelectedAttentionGradOpapiUt, E1_null_query)
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
 
+    // clang-format off
     aclnnStatus aclRet = aclnnNsaSelectedAttentionGradGetWorkspaceSize(
         /*query=*/nullptr, key.get(), value.get(), attentionOut.get(), attentionOutGrad.get(),
         softmaxMax.get(), softmaxSum.get(), topkIndices.get(),
@@ -177,6 +182,7 @@ TEST_F(NsaSelectedAttentionGradOpapiUt, E1_null_query)
         /*scaleValue=*/0.088388, /*selectedBlockSize=*/64, /*selectedBlockCount=*/16,
         /*headNum=*/4, inputLayout, /*sparseMode=*/0,
         dqOut.get(), dkOut.get(), dvOut.get(), &workspaceSize, &executor);
+    // clang-format on
 
     EXPECT_NE(aclRet, ACL_SUCCESS);
     EXPECT_EQ(executor, nullptr);
@@ -200,6 +206,7 @@ TEST_F(NsaSelectedAttentionGradOpapiUt, E2_null_topk_indices)
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
 
+    // clang-format off
     aclnnStatus aclRet = aclnnNsaSelectedAttentionGradGetWorkspaceSize(
         query.get(), key.get(), value.get(), attentionOut.get(), attentionOutGrad.get(),
         softmaxMax.get(), softmaxSum.get(), /*topkIndices=*/nullptr,
@@ -208,6 +215,7 @@ TEST_F(NsaSelectedAttentionGradOpapiUt, E2_null_topk_indices)
         /*scaleValue=*/0.088388, /*selectedBlockSize=*/64, /*selectedBlockCount=*/16,
         /*headNum=*/4, inputLayout, /*sparseMode=*/0,
         dqOut.get(), dkOut.get(), dvOut.get(), &workspaceSize, &executor);
+    // clang-format on
 
     EXPECT_NE(aclRet, ACL_SUCCESS);
     EXPECT_EQ(executor, nullptr);
@@ -231,6 +239,7 @@ TEST_F(NsaSelectedAttentionGradOpapiUt, E3_null_dq_output)
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
 
+    // clang-format off
     aclnnStatus aclRet = aclnnNsaSelectedAttentionGradGetWorkspaceSize(
         query.get(), key.get(), value.get(), attentionOut.get(), attentionOutGrad.get(),
         softmaxMax.get(), softmaxSum.get(), topkIndices.get(),
@@ -239,6 +248,7 @@ TEST_F(NsaSelectedAttentionGradOpapiUt, E3_null_dq_output)
         /*scaleValue=*/0.088388, /*selectedBlockSize=*/64, /*selectedBlockCount=*/16,
         /*headNum=*/4, inputLayout, /*sparseMode=*/0,
         /*dqOut=*/nullptr, dkOut.get(), dvOut.get(), &workspaceSize, &executor);
+    // clang-format on
 
     EXPECT_NE(aclRet, ACL_SUCCESS);
     EXPECT_EQ(executor, nullptr);
