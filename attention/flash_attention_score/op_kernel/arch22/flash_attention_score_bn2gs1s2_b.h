@@ -313,7 +313,7 @@ __aicore__ inline void FlashAttentionScoreBn2gs1s2B<FA_BN2GS1S2B_FUNCTION_PARAMS
     LocalTensor<T> apiTmpBuffer = this->commonTBuf.template Get<T>();
     DropOutBitModeInit(apiTmpBuffer);
     if (this->blockIdx < this->tilingData->multiCoreParams.coreNum) {
-        LocalTensor<half> pseHelpBuffer = this->stage1PingBuf.template Get<half>();
+        LocalTensor<half> pseHelpBuffer = this->pseTBuf.template Get<half>();
         PseInnerAlibiCreate<hasPse>(this->pseAlibiGm, pseHelpBuffer, this->pseInfo);
     }
 }
@@ -549,7 +549,9 @@ __aicore__ inline void FlashAttentionScoreBn2gs1s2B<FA_BN2GS1S2B_FUNCTION_PARAMS
 
     SplitBExtraInfo extraInfo[3];
     int64_t taskId = 0;
-    event_t eventIdMte3ToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
+    event_t eventIdMte3ToMte2[3] = {static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>()),
+                                    static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>()),
+                                    static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>())};
     bool notSecondLast = true;
     bool notLast = true;
     multiCoreInnerLimit += 2;
@@ -575,7 +577,7 @@ __aicore__ inline void FlashAttentionScoreBn2gs1s2B<FA_BN2GS1S2B_FUNCTION_PARAMS
 
         if (taskId > 0 && notLast) {
             this->ProcessVec1(extraInfo[(taskId + 2) % 3]);
-            AscendC::SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2);
+            AscendC::SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2[(taskId + 2) % 3]);
         }
 
         if (taskId > 1) {
@@ -587,7 +589,7 @@ __aicore__ inline void FlashAttentionScoreBn2gs1s2B<FA_BN2GS1S2B_FUNCTION_PARAMS
         }
 
         if (taskId > 0 && notLast) {
-            AscendC::WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2);
+            AscendC::WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2[(taskId + 2) % 3]);
             if (likely(this->dSizeAlign16 == this->dSize)) {
                 this->IterateBmm2(extraInfo[(taskId + 2) % 3], this->bmm2);
             } else {
