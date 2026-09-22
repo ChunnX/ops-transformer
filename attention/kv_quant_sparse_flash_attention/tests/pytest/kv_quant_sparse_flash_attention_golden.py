@@ -510,10 +510,22 @@ def kv_concat_nopa_preprocessing(input_tensor_dict, fa_param, params):
 
 
 TQ4_CENTERS = (
-    -0.12091285, -0.09111122, -0.07112455, -0.05513602,
-    -0.04132067, -0.02874970, -0.01700489, -0.00568677,
-    0.00547294, 0.01680406, 0.02857605, 0.04108622,
-    0.05492980, 0.07101817, 0.09115373, 0.12037795,
+    -0.12091285,
+    -0.09111122,
+    -0.07112455,
+    -0.05513602,
+    -0.04132067,
+    -0.02874970,
+    -0.01700489,
+    -0.00568677,
+    0.00547294,
+    0.01680406,
+    0.02857605,
+    0.04108622,
+    0.05492980,
+    0.07101817,
+    0.09115373,
+    0.12037795,
 )
 
 
@@ -524,16 +536,23 @@ def _tq4_q_dtype(params):
 def _tq4_q_lengths(params):
     actual_seq_q = params["actualseqlengths"]
     if params["layout_query"] == "TND":
-        return [actual_seq_q[0]] + [end - start for start, end in zip(actual_seq_q, actual_seq_q[1:])]
+        return [actual_seq_q[0]] + [
+            end - start for start, end in zip(actual_seq_q, actual_seq_q[1:])
+        ]
     return actual_seq_q
 
 
 def _tq4_generate_inputs(params):
     shape = params["shape_input"]
     if params["layout_kv"] != "PA_BSND":
-        raise ValueError(f"TQ4 tests currently support PA_BSND, got {params['layout_kv']}")
+        raise ValueError(
+            f"TQ4 tests currently support PA_BSND, got {params['layout_kv']}"
+        )
     expected_slot_dim = params["D"] // 2 + params["rope_head_dim"] * 2 + 2
-    if shape["key_cache"][-1] != expected_slot_dim or shape["value_cache"][-1] != expected_slot_dim:
+    if (
+        shape["key_cache"][-1] != expected_slot_dim
+        or shape["value_cache"][-1] != expected_slot_dim
+    ):
         raise ValueError("TQ4 cache shape must use packed 386-byte slots")
 
     q_dtype = _tq4_q_dtype(params)
@@ -542,21 +561,32 @@ def _tq4_generate_inputs(params):
     flat = key_cache.contiguous().view(-1, expected_slot_dim)
     slots = flat.shape[0]
     generator = torch.Generator().manual_seed(20260916)
-    codes = torch.randint(0, 16, (slots, params["D"]), generator=generator, dtype=torch.uint8)
+    codes = torch.randint(
+        0, 16, (slots, params["D"]), generator=generator, dtype=torch.uint8
+    )
     if slots > 0:
         codes[0, :16] = torch.arange(16, dtype=torch.uint8)
     if slots > 1:
         codes[1, :16] = torch.arange(15, -1, -1, dtype=torch.uint8)
-    flat[:, :params["D"] // 2] = codes[:, 0::2] | (codes[:, 1::2] << 4)
+    flat[:, : params["D"] // 2] = codes[:, 0::2] | (codes[:, 1::2] << 4)
     scale = (torch.rand(slots, generator=generator) * 2.875 + 0.125).half()
     if slots > 0:
-        scale[:min(slots, 4)] = torch.tensor([0.125, 0.5, 1.0, 3.0], dtype=torch.float16)[:slots]
+        scale[: min(slots, 4)] = torch.tensor(
+            [0.125, 0.5, 1.0, 3.0], dtype=torch.float16
+        )[:slots]
     # The fused path stores RoPE pre-divided by scale; the vector service
     # applies that token scale on the score column before softmax.
-    rope = (torch.randn((slots, params["rope_head_dim"]), generator=generator) *
-            0.02 / scale.float()[:, None]).to(q_dtype)
-    flat[:, params["D"] // 2:params["D"] // 2 + params["rope_head_dim"] * 2] = rope.contiguous().view(torch.uint8)
-    flat[:, params["D"] // 2 + params["rope_head_dim"] * 2:] = scale.view(torch.uint8).reshape(slots, 2)
+    rope = (
+        torch.randn((slots, params["rope_head_dim"]), generator=generator)
+        * 0.02
+        / scale.float()[:, None]
+    ).to(q_dtype)
+    flat[:, params["D"] // 2 : params["D"] // 2 + params["rope_head_dim"] * 2] = (
+        rope.contiguous().view(torch.uint8)
+    )
+    flat[:, params["D"] // 2 + params["rope_head_dim"] * 2 :] = scale.view(
+        torch.uint8
+    ).reshape(slots, 2)
     value_cache = key_cache.clone().view(torch.int8)
     key_cache = key_cache.view(torch.int8)
 
@@ -567,7 +597,9 @@ def _tq4_generate_inputs(params):
     for batch, kv_length in enumerate(params["actualseqlengthskv"]):
         allocated = min(columns, (kv_length + block_size - 1) // block_size)
         if allocated:
-            block_table[batch, :allocated] = torch.arange(page_start, page_start + allocated, dtype=torch.int32)
+            block_table[batch, :allocated] = torch.arange(
+                page_start, page_start + allocated, dtype=torch.int32
+            )
             page_start += allocated
 
     q_lengths = _tq4_q_lengths(params)
@@ -582,23 +614,47 @@ def _tq4_generate_inputs(params):
             if params["sparsemode"] == 3:
                 visible = kv_lengths[batch] - q_length + offset + 1
             visible = max(0, min(kv_lengths[batch], visible))
-            count = min(max_count, int((visible + params["sparse_blocksize"] - 1) // params["sparse_blocksize"]))
+            count = min(
+                max_count,
+                int(
+                    (visible + params["sparse_blocksize"] - 1)
+                    // params["sparse_blocksize"]
+                ),
+            )
             if count:
-                selected_rows[start + offset, :count] = torch.arange(count, dtype=torch.int32)
+                selected_rows[start + offset, :count] = torch.arange(
+                    count, dtype=torch.int32
+                )
         start += q_length
 
     return {
-        "query_cache": query_cache, "key_cache": key_cache, "value_cache": value_cache,
-        "sparse_indices": selected, "block_table": block_table,
-        "query": None, "key": None, "value": None, "query_rope": None, "key_rope": None,
-        "dequant_scale": None, "v_dequant_scale": None, "key_dequant_scale": None,
-        "value_dequant_scale": None, "scale_value": params["scalevalue"],
-        "key_quant_mode": params["key_quant_mode"], "value_quant_mode": params["value_quant_mode"],
-        "sparse_block_size": params["sparse_blocksize"], "layout_query": params["layout_query"],
-        "layout_kv": params["layout_kv"], "sparse_mode": params["sparsemode"],
-        "attention_mode": params["attention_mode"], "quant_scale_repo_mode": params["quant_scale_repo_mode"],
-        "tile_size": params["tile_size"], "rope_head_dim": params["rope_head_dim"],
-        "kv_dtype": params["dtype_input"]["key"], "pre_tokens": (1 << 63) - 1,
+        "query_cache": query_cache,
+        "key_cache": key_cache,
+        "value_cache": value_cache,
+        "sparse_indices": selected,
+        "block_table": block_table,
+        "query": None,
+        "key": None,
+        "value": None,
+        "query_rope": None,
+        "key_rope": None,
+        "dequant_scale": None,
+        "v_dequant_scale": None,
+        "key_dequant_scale": None,
+        "value_dequant_scale": None,
+        "scale_value": params["scalevalue"],
+        "key_quant_mode": params["key_quant_mode"],
+        "value_quant_mode": params["value_quant_mode"],
+        "sparse_block_size": params["sparse_blocksize"],
+        "layout_query": params["layout_query"],
+        "layout_kv": params["layout_kv"],
+        "sparse_mode": params["sparsemode"],
+        "attention_mode": params["attention_mode"],
+        "quant_scale_repo_mode": params["quant_scale_repo_mode"],
+        "tile_size": params["tile_size"],
+        "rope_head_dim": params["rope_head_dim"],
+        "kv_dtype": params["dtype_input"]["key"],
+        "pre_tokens": (1 << 63) - 1,
         "next_tokens": (1 << 63) - 1,
     }
 
@@ -614,7 +670,7 @@ def _tq4_golden(input_tensor_dict, params):
     # query/cache element type.  Reproduce that conversion here so the CPU
     # reference compares against the same dequantized values (in particular
     # for BF16, where using the FP64 codebook would hide the LUT rounding).
-    packed_codes = packed[:, :params["D"] // 2]
+    packed_codes = packed[:, : params["D"] // 2]
     codebook = torch.tensor(TQ4_CENTERS, dtype=torch.float32)
     byte_lut = torch.empty((256, 2), dtype=q_dtype)
     byte_values = torch.arange(256, dtype=torch.int64)
@@ -624,12 +680,25 @@ def _tq4_golden(input_tensor_dict, params):
     # the CPU reference matmul. The FP64 calculation isolates the TQ4
     # quantization/LUT error; it is not intended to reproduce every Cube
     # intermediate BF16 cast bit-for-bit.
-    latent = byte_lut[packed_codes.long()].reshape(packed.shape[0], params["D"]).double()
-    rope = packed[:, params["D"] // 2:params["D"] // 2 + params["rope_head_dim"] * 2].contiguous().view(q_dtype).double()
-    scale = packed[:, params["D"] // 2 + params["rope_head_dim"] * 2:].contiguous().view(torch.float16).double().flatten()
+    latent = (
+        byte_lut[packed_codes.long()].reshape(packed.shape[0], params["D"]).double()
+    )
+    rope = (
+        packed[:, params["D"] // 2 : params["D"] // 2 + params["rope_head_dim"] * 2]
+        .contiguous()
+        .view(q_dtype)
+        .double()
+    )
+    scale = (
+        packed[:, params["D"] // 2 + params["rope_head_dim"] * 2 :]
+        .contiguous()
+        .view(torch.float16)
+        .double()
+        .flatten()
+    )
 
     q = query.view(-1, query.shape[-2], query.shape[-1]).double()
-    q_nope, q_rope = q[..., :params["D"]], q[..., params["D"]:]
+    q_nope, q_rope = q[..., : params["D"]], q[..., params["D"] :]
     q_lengths, kv_lengths = _tq4_q_lengths(params), params["actualseqlengthskv"]
     indices = input_tensor_dict["sparse_indices"].detach().cpu().long()
     table = input_tensor_dict["block_table"].detach().cpu().long()
@@ -648,15 +717,32 @@ def _tq4_golden(input_tensor_dict, params):
             for block in flat_indices[row].tolist():
                 if block == -1:
                     break
-                selected.extend(token for token in range(block * params["sparse_blocksize"],
-                              (block + 1) * params["sparse_blocksize"]) if 0 <= token < visible)
+                selected.extend(
+                    token
+                    for token in range(
+                        block * params["sparse_blocksize"],
+                        (block + 1) * params["sparse_blocksize"],
+                    )
+                    if 0 <= token < visible
+                )
             if not selected:
                 continue
             selected_t = torch.tensor(selected)
-            physical = table[batch, selected_t // block_size] * block_size + selected_t % block_size
-            scores = (q_nope[row] @ latent[physical].T + q_rope[row] @ rope[physical].T) * scale[physical] * params["scalevalue"]
+            physical = (
+                table[batch, selected_t // block_size] * block_size
+                + selected_t % block_size
+            )
+            scores = (
+                (q_nope[row] @ latent[physical].T + q_rope[row] @ rope[physical].T)
+                * scale[physical]
+                * params["scalevalue"]
+            )
             weights = torch.softmax(scores, dim=-1)
-            output_rows[row] = (weights @ (latent[physical] * scale[physical][:, None])).to(q_dtype).float()
+            output_rows[row] = (
+                (weights @ (latent[physical] * scale[physical][:, None]))
+                .to(q_dtype)
+                .float()
+            )
         start += length
     return output.to(q_dtype)
 

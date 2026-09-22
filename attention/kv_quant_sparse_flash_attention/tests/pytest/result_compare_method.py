@@ -224,7 +224,11 @@ def check_result(expect, npu_result):
         )
         print_log(
             "MERE=%.6e; MARE=%.6e; finite_count=%s"
-            % (float(np.mean(relative_error)), float(np.max(relative_error)), int(np.sum(finite_mask)))
+            % (
+                float(np.mean(relative_error)),
+                float(np.max(relative_error)),
+                int(np.sum(finite_mask)),
+            )
         )
     else:
         print_log("MERE/MARE unavailable: no finite elements")

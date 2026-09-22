@@ -224,8 +224,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::InitTilingData()
     // scale).  The storage dimension is available in tiling data and is a
     // reliable kernel-side discriminator because the quant-mode attribute is
     // not copied into the device tiling structure.
-    constInfo.keyQuantMode = (tilingData->baseParams.dSizeVInput == 386) ?
-        QUANT_MODE::TQ4 : QUANT_MODE::PER_TILE;
+    constInfo.keyQuantMode = (tilingData->baseParams.dSizeVInput == 386) ? QUANT_MODE::TQ4 : QUANT_MODE::PER_TILE;
     constInfo.valueQuantMode = constInfo.keyQuantMode;
     constInfo.combineHeadDim =
         (constInfo.quantScaleRepoMode == QUANT_SCALE_REPO_MODE::COMBINE) ? headDim + headDimRope : headDim;

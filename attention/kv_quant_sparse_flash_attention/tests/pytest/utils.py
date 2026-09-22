@@ -431,8 +431,16 @@ def convert_param_combination_to_cs_format(param_combination):
             "sparse_indices": [T1, N2, sparse_blockcount],
             "block_table": [B],
             "query_cache": [T1, N1, D + rope_head_dim],
-            "key_cache": [T2, N2, tq4_slot_dim if key_quant_mode == 3 else int8_slot_dim],
-            "value_cache": [T2, N2, tq4_slot_dim if value_quant_mode == 3 else int8_slot_dim],
+            "key_cache": [
+                T2,
+                N2,
+                tq4_slot_dim if key_quant_mode == 3 else int8_slot_dim,
+            ],
+            "value_cache": [
+                T2,
+                N2,
+                tq4_slot_dim if value_quant_mode == 3 else int8_slot_dim,
+            ],
             "query_rope": [T1, N1, rope_head_dim],
             "key_rope": [T2, N2, rope_head_dim],
             "dequant_scale": [T2, N2, D // tile_size],
