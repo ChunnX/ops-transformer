@@ -752,7 +752,7 @@ __aicore__ inline void DispatchTokenRange(const TokenDispatchConfig &context, co
         // 同样经由本入口。首个 wave 之后瞬时通过。
         __gm__ int32_t *dedupDoneSlot = reinterpret_cast<__gm__ int32_t *>(context.dedup.prepassReadyPtr);
         const int32_t expectAiv0Done = static_cast<int32_t>(GetBlockNum());
-        while ((ReadGmBypassDCache(dedupDoneSlot) >> 16) != expectAiv0Done) {
+        while ((ReadGmByPassDCache(dedupDoneSlot) >> 16) != expectAiv0Done) {
             int64_t gateBackoffStart = AscendC::GetSystemCycle();
             while (AscendC::GetSystemCycle() - gateBackoffStart < GM_FLAG_POLL_BACKOFF_CYCLES) {
             }
@@ -885,7 +885,7 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
     __gm__ int32_t *countTableReady =
         reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.flagSendCntCalToUpdParamsPtr) +
         static_cast<uint64_t>(countWorkspace.blockIdx) * INT_CACHELINE;
-    WriteGmBypassDCache(countTableReady, static_cast<int32_t>(1));
+    WriteGmByPassDCache(countTableReady, static_cast<int32_t>(1));
 }
 
 /*
