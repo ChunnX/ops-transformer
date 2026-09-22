@@ -17,11 +17,16 @@
  *   - 无 ScaleA 通信（计算在前，通信的是输出 C）
  *   - 无 localMatmul 字段（无 LOCAL/REMOTE 双阶段）
  *
- * Tiling 结构:
- *   - mmTilingData: 全量 matmul tiling (m=完整M), 用于 T=1 退化路径
- *   - subMmTilingData: 子问题 tiling (m=headMSize), 用于 T>1 per-tile head tile 路径 (baseM 减半优化)
- *   - tailMmTilingData: tail tile tiling (m=rankSize*tailMSize), 用于 T>1 tail tile 路径
- *   - blockDim 固定使用 mmTilingData.usedCoreNum（不随子问题 tiling 变化）
+ * Tiling 结构 (v4 段级 tiling — 每段 tiling 的 m 必须等于该段实际逻辑 M):
+ *   三段式各段的 fragment 数不同 (REMOTE 段 rankSize-1 个, LOCAL 段 1 个),
+ *   调度器 tail 参数 (mTailMain/mBaseTailSplitCnt 等) 按设计 m 编码绝对位置,
+ *   m 不匹配时 tile 形状非法 → L0A/L1 越界。故按段分别计算:
+ *   - remoteHeadMmTilingData: REMOTE head 段 (m=(R-1)*headMSize)
+ *   - remoteTailMmTilingData: REMOTE tail 段 (m=(R-1)*tailMSize, 无 tail 时置空)
+ *   - localHeadMmTilingData:  LOCAL head tile (m=headMSize; T=1 时 = chunkM)
+ *   - localTailMmTilingData:  LOCAL tail tile (m=tailMSize, 无 tail 时置空)
+ *   - mmTilingData: 全量 tiling, 仅取 usedCoreNum 作 blockDim/AIV 角色派生
+ *   - blockDim 固定使用 mmTilingData.usedCoreNum（不随段级 tiling 变化）
  */
 
 #pragma once
@@ -47,13 +52,16 @@ struct CommContext {
 using Apace::AivComm::CommContext;
 
 struct QuantMatmulReduceScatterTilingData {
-    CommTilingData commTilingData;          // C 矩阵 AlltoAll 通信切分（M 轴）
-    QuantMatmulTilingData mmTilingData;     // 量化 MatMul tiling (全量, T=1 退化路径)
-    QuantMatmulTilingData subMmTilingData;  // 子问题 tiling (m=headMSize, T>1 per-tile head tile 路径)
-    QuantMatmulTilingData tailMmTilingData; // tail tile tiling (m=rankSize*tailMSize, T>1 tail tile 路径)
+    CommTilingData commTilingData;                // C 矩阵 AlltoAll 通信切分（M 轴）
+    QuantMatmulTilingData mmTilingData;           // 全量 tiling (仅取 usedCoreNum)
+    QuantMatmulTilingData remoteHeadMmTilingData; // REMOTE head 段 (m=(R-1)*headMSize)
+    QuantMatmulTilingData remoteTailMmTilingData; // REMOTE tail 段 (m=(R-1)*tailMSize)
+    QuantMatmulTilingData localHeadMmTilingData;  // LOCAL head tile (m=headMSize)
+    QuantMatmulTilingData localTailMmTilingData;  // LOCAL tail tile (m=tailMSize)
 };
 
 // 通信 tiles (splitAxisTileCnt + splitAxisTailCnt) 上限 — host/kernel 同源常量。
-// 单 REMOTE flag 轮转安全边界: 每计数器深度 0-15, 轮转周期 11,
-// 最坏单 id 积压 = ⌊(T−1)/11⌋+1 ≤ 15 ⇒ T ≤ 165(触界)/154(留1余量), 取 64 留 2.4x 余量。
-constexpr uint32_t QMRS_MAX_COMM_TILES = 64;
+// remote tile 通知 flagid 直接使用 tid (三轮评审意见1), 每 id 严格一次 Set ↔ 一次 Wait;
+// dav_3510 flagid 为 4bit (0-15): id 14 保留给 SyncAll<true> (SYNC_AIV_ONLY_ALL),
+// id 15 = LOCAL_DONE, tiles 可用 {0..13} ⇒ T ≤ 14。
+constexpr uint32_t QMRS_MAX_COMM_TILES = 14;

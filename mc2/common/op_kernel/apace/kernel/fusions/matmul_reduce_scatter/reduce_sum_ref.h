@@ -21,6 +21,11 @@
  *
  * 注: 曾有 ExecuteReduceSumBatch 批量接口, 因多行批量 + 单次 flag 模式存在
  * 时序竞态(尾段数据错乱)已删除; 统一走逐行同步的 ExecuteReduceSum。
+ *
+ * v3 修复 (v2 存量 bug): slot 布局按 maxSegLen 固定 (不再按每段 segLen 重算)。
+ * 旧实现在尾段收缩 (n 分段最后一段 segLen < maxSegLen) 时, 尾段 inIO slot 与
+ * 前段 sum slot 在 UB 内重叠, 且 MTE2 (下段输入写) 与 MTE3 (上段输出读) 无排序,
+ * 竞态覆写前段输出尾部元素 (n=16384: 坏列窗口 [7856, 8528))。
  */
 
 #ifndef REDUCE_SUM_REF_H
@@ -100,23 +105,27 @@ public:
                                    static_cast<uint32_t>(AscendC::TOTAL_UB_SIZE / sizeof(SumType))};
         LocalTensor<IOType> ubIO{TPosition::VECIN, 0, static_cast<uint32_t>(AscendC::TOTAL_UB_SIZE / sizeof(IOType))};
 
+        // slot 布局按 maxSegLen 固定计算 (分段循环外), 全部段共用同一布局。
+        // v2 存量 bug: 布局曾按每段 segLen 重算, 尾段 (segLen < maxSegLen) 收缩后其 inIO slot
+        // 起始字节 4*segLen 落入前段 sum slot [0, 4*maxSegLen) 内 (重叠 maxSegLen-segLen 个元素);
+        // 且下段输入 DataCopy (MTE2 写) 与上段输出 DataCopy (MTE3 读) 之间无管道排序,
+        // 竞态导致前段输出尾部 (重叠区) 被下段输入数据覆写 — n=16384 时分段 (8528, 7856),
+        // 恰坏列 [7856, 8528) = 观测错误窗口。固定布局后各段 slot 互不重叠, 竞态消除。
+        uint64_t slotIOElems = maxSegLen * sizeof(SumType) / sizeof(IOType);
+        uint64_t sumElem = SLOT_SUM; // 累加器位于 slot#0
+        uint64_t inIOElem[PINGPONG_NUM], inSumElem[PINGPONG_NUM];
+        for (uint32_t pp = 0; pp < PINGPONG_NUM; ++pp) {
+            inIOElem[pp] = SLOT_IN_IO[pp] * slotIOElems;
+            inSumElem[pp] = SLOT_IN_SUM[pp] * maxSegLen;
+        }
+        uint64_t outElem = SLOT_OUT * slotIOElems;
+
         for (uint32_t rowIdx = 0; rowIdx < rowNumPerCore; ++rowIdx) {
             uint32_t tokenIndex = startRowIdx + rowIdx;
 
             // N 分段循环
             for (uint64_t nStart = 0; nStart < alignedN; nStart += maxSegLen) {
                 uint64_t segLen = (nStart + maxSegLen <= alignedN) ? maxSegLen : (alignedN - nStart);
-
-                // 各 slot 起始元素偏移 (以本类型元素计, 无除法):
-                //   SumType slot 容量 = segLen 元素, IOType slot 容量 = segLen*sizeof(SumType)/sizeof(IOType) 元素
-                uint64_t slotIOElems = segLen * sizeof(SumType) / sizeof(IOType);
-                uint64_t sumElem = SLOT_SUM; // 累加器位于 slot#0
-                uint64_t inIOElem[PINGPONG_NUM], inSumElem[PINGPONG_NUM];
-                for (uint32_t pp = 0; pp < PINGPONG_NUM; ++pp) {
-                    inIOElem[pp] = SLOT_IN_IO[pp] * slotIOElems;
-                    inSumElem[pp] = SLOT_IN_SUM[pp] * segLen;
-                }
-                uint64_t outElem = SLOT_OUT * slotIOElems;
 
                 // 1. 清零 sum (SumType 累加器)
                 Duplicate<SumType>(ubSum[sumElem], static_cast<SumType>(0.0), segLen);

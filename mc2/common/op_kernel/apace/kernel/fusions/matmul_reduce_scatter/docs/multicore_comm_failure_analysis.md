@@ -115,8 +115,9 @@ Wait\<BARRIER_DEVICE\> 中的 CrossDevice 不轮询 remote，SyncAll 只同步�
 int32_t step = totalJobs_ < nranks ? (int32_t)totalJobs_ : (int32_t)nranks;
 ```
 
-- totalJobs=1: step=1，轮询所有 remote ✓
-- totalJobs=rankSize: step=rankSize，不轮询任何 remote ✗
+- totalJobs=1: step=1，job0 轮询所有 remote ✓
+- totalJobs=rankSize: step=rankSize，每 job j 仅一轮迭代 i=j（j≠myRank 时轮询 remote j）——
+  历史分析曾误判为"不轮询任何 remote"，实际是**逐 job 分摊**而非不轮询
 
 ### 方案B 的绕过方式
 
@@ -124,7 +125,46 @@ int32_t step = totalJobs_ < nranks ? (int32_t)totalJobs_ : (int32_t)nranks;
 
 ### 仍需框架修改才能实现的
 
-- **teamBarrier totalJobs=rankSize**: 需要 CrossDeviceExecute 修改 step 逻辑，在 totalJobs=rankSize 时仍轮询所有 remote
 - **框架新增 ReduceScatter PUT 算子**: 全新通信算子，绕过 AllToAll 语义
+
+## 五、v4 复审修订（三轮评审）
+
+### totalJobs=rankSize 在收尾单次调用下验证通过
+
+三轮评审意见 2 要求消除单核串行 CrossDevice 的性能瓶颈。复核尝试 2 的失败条件后发现：
+其失败场景是 `Wait<BARRIER_DEVICE>` **每 turn 内嵌调用**且 self-target job 因 DoWait 早退不参与；
+而**收尾段一次性调用**（F4→F1'→F2→F3）下，全部 R 个通信 job 无条件进入 CrossDevice，
+rendezvous 配对完整（本 rank job j 轮询远端 j 的本 rank 槽位 ← 由远端 j 的 job-myRank 写入）。
+
+- 配置：teamBarrier totalJobs=rankSize + 收尾单次 CrossDevice + win 数据区起点
+  alignUp(2*R*32, 128)（barrier 区 = localFlag R*32 + teamSyncCounter R*32；
+  旧 winOffset=128 在 R=4 时与 counter 槽位 [128,160) 重叠——旧 R=4 fence 实际处于
+  "计数被 PUT 数据覆写→比较值恒通过"的假通过状态，本次一并修复）
+- 验证：R=2 / R=4 全量用例 PASS（含 m=4032 tail、T=1、大 M 系列）
+
+### v2 存量 bug：段级 tiling M 不匹配（与本 fence 分析无关，同期修复）
+
+v2 三段式把每 tile 拆成 REMOTE((R-1) 个 fragment)/LOCAL(1 个) 两次调用，但 sub/tail tiling 仍按
+旧语义计算（m=headMSize / rankSize*tailMSize），调度器 tail 参数（mTailMain/mBaseTailSplitCnt）
+与段实际逻辑 M 不匹配 → tile 形状非法 → 设备侧崩溃（errcode 264 标量 GM 非法 / 5 L0A 越界）。
+触发条件：sub/tail tiling 存在非平凡 M-tail 结构（m=4032 系列必触发）。v4 按段实际逻辑 M 计算
+tiling（REMOTE (R-1)*tileM / LOCAL tileM）修复。
+
+### v2 存量 bug 2：reduceSum N 分段 slot 布局随段收缩重叠（k/n 族失败根因）
+
+**现象**: 全量 101 case 中 22 例失败，全部集中在 n=16384（任意 k）与 n=10240×R=2（特定 k/m）；
+v2/v3 代码均失败，v1（ed7d74662, 97 用例基线）全部通过。错误窗口精确锁定：n=16384 时
+坏列恒为 **[7856, 8528) = [alignedN−maxSegLen, maxSegLen)**，且坏值 ≈ 单 rank 输入数据幅值。
+
+**根因**: reduceSum（405f8e6f7 重写版）的 6-slot UB 布局按**当前段 segLen** 重算。n 分段为
+(8528, 7856) 时尾段收缩，其 inIO slot 起始字节 4×7856=31424B 落入前段 sum slot
+[0, 4×8528=34112B) 内，重叠 672 元素；且下段输入 DataCopy（MTE2 写）与上段输出 DataCopy
+（MTE3 读）之间无管道排序 → 竞态以前段输入数据覆写前段输出尾部 672 列。
+v1 不触发纯属几何巧合：其 180KB 预算 → maxSegLen=7680，n=16384 分段 (7680,7680,1024)，
+等长段间无重叠；v2 预算 200KB → maxSegLen=8528，分段 (8528,7856) 出现收缩尾段。
+失败面随 (n,k,m) 漂移是竞态本质（MTE3/MTE2 完成时序随规模变化），非确定性边界。
+
+**修复**: slot 布局按 maxSegLen 固定于分段循环外计算，全部段共用同一布局（互不重叠）；
+固定布局下 inIO/inSum/out slot 与 sum slot 天然不相交，无需引入额外 MTE3→MTE2 排序。
 
 当前方案B 通过分离 totalJobs 绕过了框架限制，是当前框架下的最优解。

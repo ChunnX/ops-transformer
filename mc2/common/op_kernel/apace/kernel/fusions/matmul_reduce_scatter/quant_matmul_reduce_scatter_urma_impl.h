@@ -18,19 +18,25 @@
  *   - 一次 matmul 调用覆盖所有 rank 段, 无 R 循环
  *   - per-tile 流水: AIC 逐 tile SetFlag, AIV 逐 tile WaitFlag + AllToAll + reduceSum
  *
- * 架构 (v2: AIC 三段式 + 单 flag 轮转 + 收尾统一归约):
- *   AIC: RunMatmul()      段1: head tiles 的 REMOTE 片段, 每 tile SetFlag(RemoteFlagId(t))
- *        RunTailMatmul()  段2: tail tile 的 REMOTE 片段 (存在时), 一次 SetFlag
- *        RunLocalMatmul() 段3: 全部 tiles 的 LOCAL 片段 (无 per-tile SetFlag),
- *                          尾部一次性 SetFlag(FLAG_ID_LOCAL_DONE)
+ * 架构 (v3: AIC 三段式 + tid flag + 并行跨卡 fence + 收尾统一归约):
+ *   AIC: RunMatmul()      段1: head tiles 的 REMOTE 片段, 每 tile SetFlag(tid)
+ *        RunTailMatmul()  段2: tail tile 的 REMOTE 片段 (存在时), 一次 SetFlag(tid); tiling 切换前排空 L1
+ *        RunLocalMatmul() 段3: 全部 tiles 的 LOCAL 片段 (无 per-tile SetFlag), 与段1/2 之间及段内
+ *                          head→tail 切换 tiling 前排空 L1, 尾部一次性 SetFlag(FLAG_ID_LOCAL_DONE)
  *   AIV: for t = 0..commTurn-1: RunOneTileTurn(t)
- *          = 全核 WaitFlag(RemoteFlagId(t)) → SyncAll → 通信核 Commit/Wait (PUT tile t)
- *        收尾四步: WaitFlag(LOCAL_DONE) → SyncAll → job0 CrossDevice (一次性跨卡 fence)
+ *          = 全核 WaitFlag(tid) → SyncAll → 通信核 Commit/Wait (PUT tile t)
+ *        收尾四步: WaitFlag(LOCAL_DONE) → SyncAll → 通信核并行 CrossDevice (R 核各 fence 1 个远端)
  *          → SyncAll → 计算核逐 tile ReduceSum(0..T-1)
  *
  * 关键设计:
  *   - 无 R 循环: FragmentTensor 打包 rankSize 个 fragment, 一次调用覆盖一个 tile 的全部 rank 段
- *   - 单 flag 轮转: RemoteFlagId(t) = t % 11 ∈ {0..10}, LOCAL_DONE 专用 15, 与 SyncAll 保留区 [11,14] 不相交
+ *   - tid flag (三轮评审意见1): remote tile 通知直接用 tid 作 flagid, 每 id 严格一次 Set ↔ 一次 Wait,
+ *     无轮转复用积压; flagid 空间: tiles {0..T-1} (T ≤ QMRS_MAX_COMM_TILES=14), 14 保留给
+ *     SyncAll<true> (SYNC_AIV_ONLY_ALL), 15 = LOCAL_DONE
+ *   - tiling 切换 L1 排空 (三轮评审意见3): 段间/段内 tiling 切换前 SetFlag/WaitFlag(MTE1_MTE2)
+ *     排空 L1 (同 mx_quant_matmul_all_to_all_urma_impl.h), 防止新 tiling 的 MTE2 写覆盖未消费的 L1
+ *   - 并行跨卡 fence (三轮评审意见2): teamBarrier totalJobs=rankSize, R 个通信核各轮询 1 个远端 win,
+ *     替代单核串行轮询全部远端; win 数据区起点随 barrier 区 (2*R*32) 后移对齐 128B
  *   - local 片段就绪: 收尾 LOCAL_DONE(15) + SyncAll 聚合 (per-tile local 通知已随旧 ALL_DONE 删除)
  *   - 归约统一后移: per-turn reduceSum 读 win 存在跨设备读-写竞态, 移至 kernel 末尾由一次性 fence 排序
  */
@@ -137,18 +143,27 @@ private:
 
     const QuantMatmulReduceScatterTilingData *tilingData_{nullptr};
 
-    // ---------------- AIC→AIV CrossCore flag (v2: 单 flag 轮转 + 一次性收尾 flag) ----------------
+    // ---------------- AIC→AIV CrossCore flag (v3: tid 直通 + 一次性收尾 flag) ----------------
     // modeId 与既有形态一致 (kernel 内 Set 已移出, 形态仅在 impl 层使用)
     constexpr static uint8_t AIC_NOTIFY_MODE = 0x2;
-    // REMOTE 轮转: 连续段 {0..10}, 纯算术映射, 无查表、无 11→15 跳变 (落点恒 ≤10, 不会落入
-    // SyncAll 保留区 [11,14])
-    constexpr static uint32_t REMOTE_FLAG_PERIOD = 11;
-    // LOCAL_DONE: 收尾一次性完成信号 (AIC 三段全部完成); 专用 id 15, 与轮转段 {0..10} 不相交
+    // REMOTE tile 通知: flagid 直接使用 tid (三轮评审意见1), 每 id 严格一次 Set ↔ 一次 Wait,
+    // 无轮转复用积压 (旧 t%11 轮转在大 case 下 AIC 领先 ≥11 tile 时存在卡死风险)。
+    // flagid 空间 (dav_3510 为 4bit): tiles {0..T-1}, T ≤ QMRS_MAX_COMM_TILES(14);
+    // 14 保留给 SyncAll<true> (SYNC_AIV_ONLY_ALL), 15 = LOCAL_DONE, 二者与 tiles 不相交。
+    // LOCAL_DONE: 收尾一次性完成信号 (AIC 三段全部完成); 专用 id 15
     constexpr static uint16_t FLAG_ID_LOCAL_DONE = 15;
 
-    static __aicore__ inline uint16_t RemoteFlagId(uint32_t t)
+    // ---------------- tiling 切换 L1 排空 (三轮评审意见3, 同 mx_quant_matmul_all_to_all) ----------------
+    // 不同段/不同 tile 的 matmul tiling 切分不同 (L1Params 变化), 切换前须排空 L1:
+    // SetFlag(MTE1_MTE2) 等 MTE1 (L1→L0) 此前的读全部完成, WaitFlag 让切换后新 tiling 的
+    // MTE2 (GM→L1) 写等待其结束, 避免覆盖未消费的 L1 数据。event id 6 与 mmad 流水内部
+    // 使用的 {0..5} (INPUT_BUFFER_0..3 / SCALE_BUFFER_0..1) 不相交。
+    static constexpr uint16_t MTE1_MTE2_EVENT_FLAG = 6;
+
+    static __aicore__ inline void DrainL1BeforeTilingSwitch()
     {
-        return static_cast<uint16_t>(t % REMOTE_FLAG_PERIOD); // 落点恒 ∈ {0..10}
+        AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(MTE1_MTE2_EVENT_FLAG);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(MTE1_MTE2_EVENT_FLAG);
     }
 
     // AIV 流水上下文: 角色分类 + reduceSum 形状派生 (RunAllToAllAndReduceSum 使用)
@@ -201,18 +216,21 @@ __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA,
 
     InitBaseParams(tilingData);
 
-    // selfWinAddr: 本 rank 的 win 区数据起始地址 (跳过 barrier counter 区域)
-    // Barrier 布局 (totalJobs=1): localFlag(32) + teamSyncCounter(32) + crossCoreFlag(32) = 96B
-    // 对齐到 128B, PUT 数据从 offset 128 开始写入, 不覆盖 counter
-    constexpr uint64_t WIN_DATA_OFFSET = 128;
-    baseParams_.selfWinAddr =
-        reinterpret_cast<GM_ADDR>(udmaCtx_->commBufferAddrs[baseParams_.rankId]) + WIN_DATA_OFFSET;
+    // selfWinAddr: 本 rank 的 win 区数据起始地址 (跳过 barrier 区域)
+    // Barrier 布局 (totalJobs=rankSize): localFlag rank 槽位区 (R*32) + teamSyncCounter 任务槽位区
+    // (R*32) = 2*R*32, 向上对齐 128B (R=2 → 128, R=4 → 256, R=8 → 512);
+    // PUT 数据从 WIN_DATA_OFFSET 开始写入, 不覆盖 barrier 区域
+    uint32_t rankSize = baseParams_.rankSize;
+    constexpr uint64_t WIN_DATA_ALIGN = 128;
+    uint64_t winDataOffset =
+        ((2UL * rankSize * BARRIER_FLAG_SIZE + WIN_DATA_ALIGN - 1) / WIN_DATA_ALIGN) * WIN_DATA_ALIGN;
+    baseParams_.selfWinAddr = reinterpret_cast<GM_ADDR>(udmaCtx_->commBufferAddrs[baseParams_.rankId]) + winDataOffset;
 
     // 多核并行通信: 后 rankSize 个核做 AllToAll PUT
-    // teamBarrier: totalJobs=1 → jobIndex=0 (最后一个 block) 的核执行 CrossDevice, step=1 轮询所有 remote
+    // teamBarrier: totalJobs=rankSize → 后 R 个核各执行 1 个 job, CrossDevice 时 step=R,
+    // 每核只轮询 1 个远端 win (三轮评审意见2: 替代 totalJobs=1 单核串行轮询全部远端)
     // AllToAll: totalJobs=rankSize → 后 R 个核各负责 1 个 target, 并行 PUT
     // jobIndex = BlockNum - 1 - blockIdx → 最后一个 block jobIndex=0, 倒数第二个 jobIndex=1
-    uint32_t rankSize = baseParams_.rankSize;
     uint32_t jobIndex = static_cast<uint32_t>(GetBlockNum() - 1 - GetBlockIdx());
 
     // UB 分配: commBuf + barrierBuf
@@ -220,11 +238,11 @@ __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA,
     auto commBuf = AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, uint8_t>(ubOffset);
     ubOffset += COMM_WORKSPACE_SIZE;
     auto barrierBuf = AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, uint8_t>(ubOffset);
-    // teamBarrier totalJobs=1: 仅 jobIndex=0 的核执行 CrossDevice (step=1, 轮询所有 remote)
-    teamBarrier_.Init(barrierBuf.Get(), syncBuffer_, 1, jobIndex);
+    // teamBarrier totalJobs=rankSize: R 个通信核并行执行 CrossDevice, 每核 fence 1 个远端
+    teamBarrier_.Init(barrierBuf.Get(), syncBuffer_, rankSize, jobIndex);
 
     allToAllC_.template Init<BARRIER_NONE>(udmaCtx_, teamBarrier_, tilingData->commTilingData, baseParams_.workspaceGm,
-                                           commBuf.Get(), rankSize, jobIndex, WIN_DATA_OFFSET);
+                                           commBuf.Get(), rankSize, jobIndex, winDataOffset);
 }
 
 template <typename AType, typename BType, typename CType, bool TransA, bool TransB>
@@ -277,17 +295,14 @@ __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA,
 {
     // 段1: head tiles 的 REMOTE 片段 (仅 remote rank 段, fragScope 剔除 self), 每 tile 一次 SetFlag。
     // headTileCnt ≥ 1 恒成立 (host 侧 headMSize 钳位到 chunkM 后 headTileCnt = chunkM/headMSize ≥ 1);
-    // 单 tile 退化时 commTurn == 1, 本段即全覆盖, tiling 取 mmT。
-    const auto &mmT = tilingData_->mmTilingData;
-    uint32_t commTurn = static_cast<uint32_t>(baseParams_.commTurn);
+    // 单 tile 退化时 commTurn == 1, 本段即全覆盖。tiling 用 remoteHead (m=(R-1)*headMSize,
+    // T=1 时 headMSize=chunkM) — 段级 tiling 的 m 必须等于本段实际逻辑 M (REMOTE=(R-1)*tileM)。
+    const auto &tileT = tilingData_->remoteHeadMmTilingData;
     uint32_t rankSize = baseParams_.rankSize;
 
     for (uint32_t tileIdx = 0; tileIdx < baseParams_.headTileCnt; ++tileIdx) {
         uint32_t curTileM = GetTileM(tileIdx);
         uint64_t tileMOffset = GetTileMOffset(tileIdx);
-
-        const auto &subMmT = tilingData_->subMmTilingData;
-        const auto &tileT = (commTurn == 1) ? mmT : subMmT;
 
         FragFragmentParams fragParams;
         fragParams.tileCnt = 0;
@@ -321,7 +336,7 @@ __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA,
 
         fragKernelImpl_(params);
 
-        CrossCoreSetFlag<AIC_NOTIFY_MODE, PIPE_FIX>(RemoteFlagId(tileIdx)); // remote frag done
+        CrossCoreSetFlag<AIC_NOTIFY_MODE, PIPE_FIX>(tileIdx); // remote frag done (flagid = tid)
     }
 }
 
@@ -335,7 +350,11 @@ __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA,
         uint32_t curTileM = GetTileM(tileIdx);
         uint64_t tileMOffset = GetTileMOffset(tileIdx);
 
-        const auto &tailMmT = tilingData_->tailMmTilingData;
+        // tiling 用 remoteTail (m=(R-1)*tailMSize) — 与本段实际逻辑 M 一致
+        const auto &tailMmT = tilingData_->remoteTailMmTilingData;
+
+        // 三轮评审意见3: head 段 (remoteHead) → tail 段 (remoteTail) tiling 切换, 前排空 L1
+        DrainL1BeforeTilingSwitch();
 
         FragFragmentParams fragParams;
         fragParams.tileCnt = 0;
@@ -369,7 +388,7 @@ __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA,
 
         fragKernelImpl_(params);
 
-        CrossCoreSetFlag<AIC_NOTIFY_MODE, PIPE_FIX>(RemoteFlagId(tileIdx)); // tail tile remote frag done
+        CrossCoreSetFlag<AIC_NOTIFY_MODE, PIPE_FIX>(tileIdx); // tail tile remote frag done (flagid = tid)
     }
 }
 
@@ -377,19 +396,29 @@ template <typename AType, typename BType, typename CType, bool TransA, bool Tran
 __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA, TransB>::RunLocalMatmul()
 {
     // 段3: 全部 tiles 的 LOCAL 片段 (仅本 rank 段, 输出落 workspace 本 rank 段对应 tile 行区),
-    // 无任何 per-tile SetFlag (意见2)。tiling 选择与段1/2 同公式 (head → subMmT/mmT, tail → tailMmT)。
-    const auto &mmT = tilingData_->mmTilingData;
+    // 无任何 per-tile SetFlag (意见2)。tiling 按段选择 (LOCAL 段实际逻辑 M = tileM):
+    // head → localHead (m=headMSize), tail → localTail (m=tailMSize)。
+    // 三轮评审意见3: remote 段 (段1/2) → local 段 (段3) 之间 tiling/scope 切换, 前排空 L1
+    // (同 mx_quant_matmul_all_to_all 的 RunLocalMatmul 前置排空)。
+    DrainL1BeforeTilingSwitch();
+
     uint32_t commTurn = static_cast<uint32_t>(baseParams_.commTurn);
     uint32_t rankSize = baseParams_.rankSize;
 
+    bool switchFlag = false; // head (localHead) → tail (localTail) tiling 切换标志
     for (uint32_t tileIdx = 0; tileIdx < commTurn; ++tileIdx) {
         uint32_t curTileM = GetTileM(tileIdx);
         uint64_t tileMOffset = GetTileMOffset(tileIdx);
 
-        const auto &subMmT = tilingData_->subMmTilingData;
-        const auto &tailMmT = tilingData_->tailMmTilingData;
+        const auto &localHeadT = tilingData_->localHeadMmTilingData;
+        const auto &localTailT = tilingData_->localTailMmTilingData;
         bool isHeadTile = (tileIdx < baseParams_.headTileCnt);
-        const auto &tileT = (commTurn == 1) ? mmT : (isHeadTile ? subMmT : tailMmT);
+        if (!isHeadTile && !switchFlag) {
+            // 三轮评审意见3: 段内 head→tail tiling 切换前排空 L1
+            DrainL1BeforeTilingSwitch();
+            switchFlag = true;
+        }
+        const auto &tileT = isHeadTile ? localHeadT : localTailT;
 
         FragFragmentParams fragParams;
         fragParams.tileCnt = 0;
@@ -455,9 +484,10 @@ __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA,
     //      (ii) 全部 AIV 核的 F4 已通过 ⇒ 全部 AIC 的段 3 完成 (reduceSum 读 workspace 的全 AIC 聚合语义)。
     SyncAll<true>();
 
-    // F2: 一次性跨卡 fence — job0 执行; rendezvous 语义: 本 rank job0 轮询每个远端 rank 的 ubmem win
-    //     本 rank 槽位计数, 对端到达 ⇔ 对端全核已过其 F1' ⇔ 对端全部 PUT 完成。位置在 RunOneTileTurn
-    //     之外 (kernel 收尾段), 每 launch 仅 1 次。
+    // F2: 一次性跨卡 fence — R 个通信核并行执行 (三轮评审意见2: 替代旧 totalJobs=1 单核串行
+    //     轮询全部远端); rendezvous 语义: 本 rank 通信核 job j 轮询远端 rank j 的 ubmem win
+    //     本 rank 槽位计数, 对端到达 ⇔ 对端全核已过其 F1' ⇔ 对端全部 PUT 完成。位置在
+    //     RunOneTileTurn 之外 (kernel 收尾段), 每 launch 仅 1 次。
     teamBarrier_.CrossDevice();
 
     // F3: 全核 SyncAll — 将 F2 的跨卡可见性结论传播给全部核。
@@ -500,9 +530,9 @@ template <typename AType, typename BType, typename CType, bool TransA, bool Tran
 __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA, TransB>::RunOneTileTurn(
     const AivRunContext &ctx, uint32_t tileIdx)
 {
-    // 意见4: 全核 Wait (通信核/计算核/多余核同序同次, 计数平衡); 意见2: 单 flag, 无 remote/local 之分。
+    // 全核 Wait (通信核/计算核/多余核同序同次, 计数平衡); flagid = tid (三轮评审意见1), 无 remote/local 之分。
     // WaitFlag 形态 PIPE_S: 阻塞标量流 (兄弟先例 mx_quant_matmul_all_to_all_urma_impl.h 同形态)。
-    CrossCoreWaitFlag<AIC_NOTIFY_MODE, PIPE_S>(RemoteFlagId(tileIdx));
+    CrossCoreWaitFlag<AIC_NOTIFY_MODE, PIPE_S>(tileIdx);
 
     // 意见1: 每 turn 唯一一次全卡同核同步。
     // 位置固定在 Wait 之后、Commit 之前 (不可后移): PUT(t) 读 workspace remote 片段 (全 AIC 分片写出),

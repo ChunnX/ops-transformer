@@ -108,16 +108,16 @@ quantMatmulReduceScatter 实现如下计算流程：
 │  ┌────────────────────┐  ┌────────────────────────┐                  │
 │  │ QuantMatmulTiling  │  │ AlltoAll + reduceSum   │                 │
 │  │ (SWAT 策略)        │  │ Tile 切分/求和配置     │                 │
-│  │ + subMmTiling      │  │                        │                 │
+│  │ + 段级 tiling x4   │  │                        │                 │
 │  └─────────┬──────────┘  └─────────┬──────────────┘                  │
 │            └──────────┬────────────┘                                 │
 │                       ▼                                              │
 │              TilingData 序列化                                         │
 │        ┌─────────────────────────────┐                               │
 │        │ commTilingData              │  通信侧切分                    │
-│        │ mmTilingData                │  MatMul 侧 tiling (全量)       │
-│        │ subMmTilingData             │  子问题 tiling (baseM=128)    │
-│        │ tailMmTilingData            │  tail tile tiling              │
+│        │ mmTilingData                │  全量 tiling (仅 usedCoreNum) │
+│        │ remoteHead/remoteTailMm     │  REMOTE 段 (m=(R-1)*tileM)    │
+│        │ localHead/localTailMm       │  LOCAL 段 (m=tileM)           │
 │        └─────────────────────────────┘                               │
 └─────────────────────────────────────────────────────────────────────┘
                                    │
@@ -145,7 +145,7 @@ quantMatmulReduceScatter 实现如下计算流程：
 | 模块 | 文件 | 职责 |
 |------|------|------|
 | MatMul Tiling | `apace/tiling/quant_matmul_tiling_swat.h` | SWAT 流式 Tiling 策略 |
-| Tiling 数据 | `quant_matmul_reduce_scatter_urma_tiling_data.h` | Host→Device 序列化 TilingData（含 commTilingData + mmTilingData + subMmTilingData） |
+| Tiling 数据 | `quant_matmul_reduce_scatter_urma_tiling_data.h` | Host→Device 序列化 TilingData（含 commTilingData + mmTilingData + 段级 tiling x4） |
 | FragmentTensor Kernel | `reduce_scatter_qbmm_mx_kernel.h` | FragmentTensor 版量化 MatMul 内核，参考 allgather `QmmMxKernelAgUdma`，消除 R 循环 |
 | 通信框架 | `apace/core/aiv_comm/` | `CollectiveComm` 统一通信 API、AllToAll PUT 实现 |
 | 算子编排 | `quant_matmul_reduce_scatter_urma_impl.h` | 本算子的 Init/Run 编排逻辑 |
@@ -204,18 +204,21 @@ win 区布局 (接收方):
 ### 4.3 数据流阶段
 
 ```
-阶段 1: FragmentTensor QuantMatMul（per-tile, AIC）
-    AIC: for t = 0..commTurn:
-           构建 FragmentTensor (rankSize 个 fragment, 每个 curTileM 行)
-           matmul(rankSize * curTileM) → workspace
-           CrossCoreSetFlag<0x2, PIPE_FIX>(0) 通知 AIV
-    （无跨卡数据依赖，无 L0C 原子累加）
+阶段 1: FragmentTensor QuantMatMul（per-tile, AIC 三段式）
+    AIC: 段1 RunMatmul:  for t = 0..headTileCnt-1:
+            构建 FragmentTensor (rankSize 个 fragment, 每个 curTileM 行, REMOTE scope)
+            matmul(rankSize * curTileM) → workspace
+            CrossCoreSetFlag<0x2, PIPE_FIX>(t) 通知 AIV (flagid = tid, 三轮评审意见1)
+         段2 RunTailMatmul: tail tile (存在时), tiling 切换前 SetFlag/WaitFlag(MTE1_MTE2) 排空 L1
+         段3 RunLocalMatmul: 全部 tiles 的 LOCAL 片段, 与段1/2 之间及段内 head→tail
+            tiling 切换前同样排空 L1 (三轮评审意见3), 尾部 SetFlag(FLAG_ID_LOCAL_DONE=15)
 
 阶段 2: AlltoAll PUT + reduceSum（per-tile, AIV）
-    AIV: for t = 0..commTurn:
-           CrossCoreWaitFlag<0x2, PIPE_MTE2>(0)
-           AlltoAll PUT: 推送 tile t 到其他 rank
-           reduceSum: float32 中间转换累加 → output
+    AIV: for t = 0..commTurn-1:
+            CrossCoreWaitFlag<0x2, PIPE_S>(t)
+            SyncAll → 通信核 AllToAll PUT: 推送 tile t 到其他 rank
+        收尾: WaitFlag(LOCAL_DONE) → SyncAll → 通信核并行 CrossDevice → SyncAll
+        计算核: reduceSum: float32 中间转换累加 → output
 
 阶段 3: 输出
     AIV: reduceSum 结果直接写入 output GM [m/rankSize, n]
@@ -229,20 +232,26 @@ win 区布局 (接收方):
 
 ```cpp
 struct QuantMatmulReduceScatterTilingData {
-    CommTilingData commTilingData;          // C 矩阵 AlltoAll 通信切分（M 轴）
-    QuantMatmulTilingData mmTilingData;     // 量化 MatMul tiling (全量, T=1 退化路径)
-    QuantMatmulTilingData subMmTilingData;  // 子问题 tiling (m=headMSize, baseM=128, T>1 head tile)
-    QuantMatmulTilingData tailMmTilingData; // tail tile tiling (m=rankSize*tailMSize, T>1 tail tile)
+    CommTilingData commTilingData;                // C 矩阵 AlltoAll 通信切分（M 轴）
+    QuantMatmulTilingData mmTilingData;           // 全量 tiling (仅取 usedCoreNum 作 blockDim/AIV 角色派生)
+    QuantMatmulTilingData remoteHeadMmTilingData; // REMOTE head 段 (m=(R-1)*headMSize)
+    QuantMatmulTilingData remoteTailMmTilingData; // REMOTE tail 段 (m=(R-1)*tailMSize)
+    QuantMatmulTilingData localHeadMmTilingData;  // LOCAL head tile (m=headMSize)
+    QuantMatmulTilingData localTailMmTilingData;  // LOCAL tail tile (m=tailMSize)
 };
 ```
 
+**段级 tiling 一致性约束（v4）**：三段式各段 fragment 数不同（REMOTE 段 rankSize−1 个、LOCAL 段 1 个），
+每段 tiling 的 m 必须等于该段实际逻辑 M。调度器 tail 参数（mTailMain/mBaseTailSplitCnt 等）按设计 m
+编码绝对位置，m 不匹配时 tile 形状非法 → L0A/L1 越界（v2 存量 bug：tail/T=1 case 设备侧崩溃，
+errcode 264/5）。
+
 ### 5.2 SWAT + baseM 减半 + 自适应 headMSize
 
-1. **全量 tiling**：`GetTilingData(m, n, k)` 生成 mmTilingData（baseM=256）
+1. **全量 tiling**：`GetTilingData(m, n, k)` 生成 mmTilingData（仅取 usedCoreNum）
 2. **自适应 headMSize**：R<=2 保持 headMSize=512, R>=4 压缩到 128 (流水掩盖效果好)
-3. **子问题 tiling**：`GetTilingData(headMSize, n, k)` 生成 subMmTilingData
-4. **baseM 减半**：若 SWAT 生成 baseM=256 且 headMSize 可被 128 整除，手动减半为 128
-5. **统一选择**：T>1 head tile 用 subMmTilingData（baseM=128），T>1 tail tile 用 tailMmTilingData（m=rankSize×tailMSize），T=1 用 mmTilingData
+3. **段级 tiling**：REMOTE head 段 `GetTilingData((R-1)*headMSize)`、LOCAL head tile `GetTilingData(headMSize)`（EnableBaseMHalving）；tail 段同理（REMOTE (R-1)*tailMSize / LOCAL tailMSize）
+4. **统一选择**：段1 → remoteHead，段2 → remoteTail，段3 head tile → localHead、tail tile → localTail；T=1 时 headMSize=chunkM，无特判
 
 ### 5.3 调度器
 
@@ -280,8 +289,9 @@ using AllToAllComm = Apace::AivComm::CollectiveComm<
 
 // localAddr = workspaceGM (PUT 源数据)
 // AllToAll totalJobs = rankSize (后 R 核各负责 1 个 target, 并行 PUT)
-// teamBarrier totalJobs = 1 (仅 jobIndex=0 的核执行 CrossDevice, step=1 正确轮询所有 remote)
-// winOffset = 128 (PUT 数据跳过 win 区前 128B barrier counter, 避免覆盖)
+// teamBarrier totalJobs = rankSize (R 个通信核并行执行 CrossDevice, step=R 每核只轮询 1 个远端, 三轮评审意见2)
+// winOffset = alignUp(2*R*32, 128) (PUT 数据跳过 win 区前 barrier 区域:
+//            localFlag R*32 + teamSyncCounter R*32; R=2→128, R=4→256, R=8→512)
 // jobIndex = BlockNum - 1 - blockIdx (block 27: jobIndex=0, block 26: jobIndex=1, ...)
 ```
 
@@ -292,19 +302,22 @@ AIC: [tile0 frag mm] SetFlag [tile1 frag mm] SetFlag [tile2 frag mm] SetFlag ...
 AIV:                  WaitFlag [comm0+rs0]   WaitFlag [comm1+rs1]   WaitFlag [comm2+rs2]
 ```
 
-- **per-tile WaitFlag**：CrossCore flag 是计数式，T 次 Set 对应 T 次 Wait
+- **per-tile WaitFlag (flagid = tid)**：remote tile 通知 flagid 直接用 tid，每 id 严格一次 Set ↔ 一次 Wait，无轮转复用积压（三轮评审意见1，替代旧 t%11 轮转——大 case 下 AIC 领先 ≥ 周期长度时存在卡死风险）；flagid 空间 (dav_3510 为 4bit)：tiles {0..T-1} (T ≤ QMRS_MAX_COMM_TILES=14)，14 保留给 SyncAll<true>，15 = LOCAL_DONE
+- **tiling 切换 L1 排空**：段间 (remote→tail、remote→local) 及段内 head→tail 切换 tiling 前 SetFlag/WaitFlag(MTE1_MTE2) 排空 L1（三轮评审意见3，同 mx_quant_matmul_all_to_all）
 - **reduceSum float32 中间转换累加**：Cast(BF16→F32) + Add(F32) + Cast(F32→BF16)，精度优先（R=4 累加误差放大），pingpong 双 buffer
-- **严格分离流水**：后 R 核做 AllToAll(t), 前 (28-R) 核做 ReduceSum(t-1), 完全并行, 无 Phase 2
-- **自适应 headMSize**：R<=2 用 512 (少 SyncAll), R>=4 用 128 (流水掩盖效果好)
+- **严格分离流水**：后 R 核做 AllToAll(t), 前 (28-R) 核做 ReduceSum, 完全并行, 无 Phase 2
+- **自适应 headMSize**：R<=2 用 512 (少 SyncAll), R>=4 用 128 (流水掩盖效果好)；受 tid flagid 空间约束 T ≤ 14，chunkM/headMSize 超界时增大 headMSize
 - **多核并行通信**：后 rankSize 个核各负责 1 个 target rank 并行 PUT, 通信时间降为 1/R
+- **并行跨卡 fence**：收尾 CrossDevice 由 R 个通信核并行执行（每核轮询 1 个远端），替代单核串行轮询（三轮评审意见2）
 
 ### 6.4 同步机制
 
 | 同步机制 | 用途 | 说明 |
 |---------|------|------|
-| `CrossCoreSetFlag<0x2, PIPE_FIX>` | AIC → AIV 计算完成通知 | AIC 完成 tile t 计算后通知 AIV（PIPE_FIX = AIC FixPipe 管道） |
-| `CrossCoreWaitFlag<0x2, PIPE_MTE2>` | AIV 等待 AIC | AIV 等待 AIC tile t 完成（PIPE_MTE2 = AIV MTE2 管道） |
-| `AscendC::SyncAll<true>()` | AIV 核间同步 | 每轮通信后全局同步（isAIVOnly=true, AIC 调用为 no-op） |
+| `CrossCoreSetFlag<0x2, PIPE_FIX>` | AIC → AIV 计算完成通知 | AIC 完成 tile t 计算后通知 AIV（PIPE_FIX = AIC FixPipe 管道，flagid = tid） |
+| `CrossCoreWaitFlag<0x2, PIPE_S>` | AIV 等待 AIC | AIV 等待 AIC tile t 完成（PIPE_S = 标量流，flagid = tid，每 id 一次 Set ↔ 一次 Wait） |
+| `AscendC::SyncAll<true>()` | AIV 核间同步 | 每轮通信后全局同步（isAIVOnly=true, AIC 调用为 no-op, 内部占用 flagid 14） |
+| `SetFlag/WaitFlag<HardEvent::MTE1_MTE2>` | tiling 切换 L1 排空 | 段间/段内 tiling 切换前排队空 L1（event id 6，三轮评审意见3） |
 | `SetAtomicAdd` | **不使用** | 无 splitK/splitM 部分和 |
 
 ---
@@ -364,11 +377,11 @@ __global__ __aicore__ void QuantMatmulReduceScatterKernelE4M3E4M3(
 
 ### 8.2 Init 流程
 
-1. 解析 Tiling 参数（commTilingData + mmTilingData + subMmTilingData）
+1. 解析 Tiling 参数（commTilingData + mmTilingData + 段级 tiling x4）
 2. 初始化通信上下文（udmaCtx / ubmemCtx）
-3. 获取 selfWinAddr（本卡 win 区基址 + winOffset=128，跳过 barrier counter）
+3. 获取 selfWinAddr（本卡 win 区基址 + winOffset = alignUp(2*R*32, 128)，跳过 barrier 区域）
 4. UB 分配：commBuf (512B) + barrierBuf
-5. 初始化 teamBarrier（totalJobs=1，仅 jobIndex=0 执行 CrossDevice）
+5. 初始化 teamBarrier（totalJobs=rankSize，R 个通信核并行执行 CrossDevice）
 6. 初始化 AllToAll PUT 通信链（totalJobs=rankSize，后 R 核各负责 1 个 target）
 
 ### 8.3 Run 流程
@@ -377,12 +390,13 @@ __global__ __aicore__ void QuantMatmulReduceScatterKernelE4M3E4M3(
 __aicore__ inline void Run()
 {
     if ASCEND_IS_AIC {
-        // AIC: per-tile FragmentTensor matmul + SetFlag
-        // 统一路径: for t = 0..commTurn, 无 if/else, T=1 自然退化
-        RunMatmul();
+        // AIC: 三段式 (v3) — head REMOTE → tail REMOTE → 全部 LOCAL
+        RunMatmul();      // 段1: 每 tile SetFlag(tid)
+        RunTailMatmul();  // 段2: tiling 切换前排空 L1, SetFlag(tid)
+        RunLocalMatmul(); // 段3: 排空 L1 后进入, 尾部 SetFlag(LOCAL_DONE=15)
     }
     if ASCEND_IS_AIV {
-        // AIV: per-tile WaitFlag + AllToAll PUT + reduceSum
+        // AIV: 统一 turn 循环 + 收尾四步
         RunAllToAllAndReduceSum();
     }
 }
@@ -390,60 +404,34 @@ __aicore__ inline void Run()
 
 **RunMatmul (AIC)**:
 ```cpp
-for (t = 0..commTurn) {
-    // 构建 FragmentTensor: rankSize 个 fragment, 每个 curTileM 行
+for (t = 0..headTileCnt-1) {
+    // 构建 FragmentTensor: rankSize 个 fragment, 每个 curTileM 行 (REMOTE scope)
     // A/C 地址带 tile 偏移: aGm + tileMOffset*K, workspaceGm + tileMOffset*N*2
-    fragKernelImpl_(params);  // 一次调用覆盖所有 rank 段, 无 R 循环
-    CrossCoreSetFlag<0x2, PIPE_FIX>(0);  // 通知 AIV
+    fragKernelImpl_(params);  // 一次调用覆盖所有 remote rank 段, 无 R 循环
+    CrossCoreSetFlag<0x2, PIPE_FIX>(t);  // 通知 AIV (flagid = tid, 三轮评审意见1)
 }
 ```
 
 **RunAllToAllAndReduceSum (AIV)**:
 ```cpp
-// 方案B: 严格分离 — 后 R 核仅通信, 前 (28-R) 核仅计算
+// 角色分离 — 后 R 核仅通信, 前 (28-R) 核仅计算, 其余核仅参与 SyncAll
 // isCommBlock = (jobIndex < rankSize)     — 后 R 个核
 // isComputeBlock = (blockIdx < 28-R)     — 前 (28-R) 个核
 // rsCoreNum = 28 - rankSize              — reduceSum 核数
 
-if (commTurn <= 1) {
-    // 单 tile 路径: AllToAll + DoReduceSum (逐行同步)
-    WaitFlag<0x2, PIPE_MTE2>(0);
+// 统一 turn 循环: 单 tile / 多 tile 无分支 (T=1 自然退化为 1 轮)
+for (t = 0..commTurn-1) {
+    CrossCoreWaitFlag<0x2, PIPE_S>(t);   // flagid = tid
     SyncAll<true>();
-    if (isCommBlock) { Commit<BARRIER_NONE>(); Wait<BARRIER_NONE>(); }
-    SyncAll<true>();
-    teamBarrier_.CrossDevice();   // block 0 跨设备 fence
-    SyncAll<true>();
-    if (isComputeBlock) { DoReduceSum(tile0); }
-    if (isCommBlock) { Finalize<BARRIER_NONE>(); }
-    return;
+    if (isCommBlock) { Commit<BARRIER_NONE>(); Wait<BARRIER_NONE>(); }  // PUT tile t
 }
 
-// 多 tile 路径: AllToAll(t) ‖ ReduceSum(t-1) 流水
-// Tile 0: AllToAll only (通信尽早启动, 无 ReduceSum)
-WaitFlag<0x2, PIPE_MTE2>(0);
-SyncAll<true>();
-if (isCommBlock) { Commit<BARRIER_NONE>(); Wait<BARRIER_NONE>(); }
-SyncAll<true>();
-teamBarrier_.CrossDevice();
-SyncAll<true>();
-
-// Tiles 1..commTurn-1: AllToAll(t) 与 ReduceSum(t-1) 并行
-for (t = 1..commTurn-1) {
-    WaitFlag<0x2, PIPE_MTE2>(0);
-    SyncAll<true>();
-    if (isCommBlock) {
-        Commit<BARRIER_NONE>(); Wait<BARRIER_NONE>();   // AllToAll(t)
-    } else if (isComputeBlock) {
-        DoReduceSum(t-1);                                 // ReduceSum(t-1)
-    }
-    SyncAll<true>();
-    teamBarrier_.CrossDevice();
-    SyncAll<true>();
-}
-
-// Final: 仅计算核做 ReduceSum(last tile)
-SyncAll<true>();
-if (isComputeBlock) { DoReduceSum(commTurn-1); }
+// ---- kernel 收尾四步 ----
+CrossCoreWaitFlag<0x2, PIPE_S>(FLAG_ID_LOCAL_DONE);  // F4: 本 block AIC 三段全部完成
+SyncAll<true>();                                      // F1': 全核聚合
+teamBarrier_.CrossDevice();                           // F2: R 个通信核并行 fence (每核 1 个远端)
+SyncAll<true>();                                      // F3: 传播跨卡可见性
+if (isComputeBlock) { for (t) DoReduceSum(t); }       // 末尾统一消费
 if (isCommBlock) { Finalize<BARRIER_NONE>(); }
 ```
 
@@ -451,10 +439,11 @@ if (isCommBlock) { Finalize<BARRIER_NONE>(); }
 
 | 同步机制 | 用途 | 说明 |
 |---------|------|------|
-| `CrossCoreSetFlag<0x2, PIPE_FIX>` | AIC → AIV | AIC tile t 完成, PIPE_FIX = AIC FixPipe |
-| `CrossCoreWaitFlag<0x2, PIPE_MTE2>` | AIV 等 AIC | per-tile WaitFlag, 计数式 flag (T 次 Set ↔ T 次 Wait) |
-| `SyncAll<true>()` | AIV 核间同步 | isAIVOnly=true, AIC 调用为 no-op |
-| `teamBarrier_.CrossDevice()` | 跨设备同步 | block 0 (jobIndex=0) 执行, step=1 轮询所有 remote localFlag |
+| `CrossCoreSetFlag<0x2, PIPE_FIX>` | AIC → AIV | AIC tile t 完成, PIPE_FIX = AIC FixPipe, flagid = tid |
+| `CrossCoreWaitFlag<0x2, PIPE_S>` | AIV 等 AIC | per-tile WaitFlag, flagid = tid, 每 id 一次 Set ↔ 一次 Wait |
+| `SyncAll<true>()` | AIV 核间同步 | isAIVOnly=true, AIC 调用为 no-op, 内部占用 flagid 14 |
+| `teamBarrier_.CrossDevice()` | 跨设备同步 | R 个通信核并行执行 (job j 轮询远端 j), step=R |
+| `SetFlag/WaitFlag<HardEvent::MTE1_MTE2>` | L1 排空 | tiling 切换前排队空 L1 (event id 6, 三轮评审意见3) |
 | `SetAtomicAdd` | **不使用** | 无跨卡部分和 |
 
 ---
@@ -509,8 +498,8 @@ if (isCommBlock) { Finalize<BARRIER_NONE>(); }
 - 后 rankSize 个核（jobIndex = 0..R-1）专职 AllToAll PUT 通信
 - 前 (28-R) 个核（blockIdx = 0..27-R）专职 reduceSum 计算
 - AllToAll totalJobs=rankSize：每个通信核负责 1 个 target rank，并行 PUT
-- teamBarrier totalJobs=1：仅 jobIndex=0 的核执行 CrossDevice（step=1 正确轮询所有 remote）
-- winOffset=128：PUT 数据跳过 win 区前 128B barrier counter，避免覆盖
+- teamBarrier totalJobs=rankSize：R 个通信核并行执行 CrossDevice（step=R，每核只轮询 1 个远端，三轮评审意见2）
+- winOffset=alignUp(2*R*32, 128)：PUT 数据跳过 win 区前 barrier 区域（localFlag R*32 + teamSyncCounter R*32），避免覆盖
 - Wait<BARRIER_NONE>（Drain only）→ SyncAll → CrossDevice → SyncAll
 - 无 Phase 2：通信核不补做 reduceSum，消除关键路径串行
 
@@ -546,7 +535,7 @@ AIC 计算 tile N 时，AIV 通信核在 PUT tile N，计算核在 ReduceSum til
 
 - **卡数约束**：支持 2、4、8、16、32、64 卡
 
-- **通信约束**：通信数据总量受通信缓冲区大小限制；使用 PUT 模式 + winOffset=128 + 多核并行通信（方案B）
+- **通信约束**：通信数据总量受通信缓冲区大小限制；使用 PUT 模式 + winOffset=alignUp(2*R*32,128) + 多核并行通信（方案B）
 
 - **硬件约束**：仅在 Apace 架构（Ascend 950 系列）上生效，`--npu-arch=dav-3510`，`ASC_DEVKIT_MAJOR >= 9`
 
@@ -564,7 +553,9 @@ AIC 计算 tile N 时，AIV 通信核在 PUT tile N，计算核在 ReduceSum til
 
 ---
 
-> **文档状态**：已更新至方案B（多核并行通信 + 严格分离 + winOffset=128 + float32 中间转换 + N 分段 + 逐行同步 reduceSum）
+> **文档状态**：已更新至三轮评审后 v4 方案（tid flag + tiling 切换 L1 排空 + 并行跨卡 fence + 段级 tiling +
+> reduceSum slot 固定布局 + float32 中间转换 + N 分段 + 逐行同步 reduceSum）。
+> v4 精度：101/101 PASS（本机 Ascend915, CANN 9.2.0, 2026-09-22）；性能复测见 perf_optimization_results.md 第零节。
 > **适用版本**：CANN 9.2.0（Apace 架构, dav-3510）
 > **代码版本**：quant_matmul_reduce_scatter_urma_impl.h (方案B: 后R核通信+前28-R核计算, reduceSum float32+N分段+逐行ExecuteReduceSum；已清理 ExecuteReduceSumBatch/DoReduceSumBatch 历史批量接口)
 > **精度验证**：97/97 case ALL PASS（R=2, R=4, 含 N=12288/18432）

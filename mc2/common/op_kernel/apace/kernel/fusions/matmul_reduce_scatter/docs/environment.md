@@ -1,6 +1,10 @@
 # 环境信息
 
-**算子**: quantMatmulReduceScatter   **状态**: ✅ 通过   **时间**: 2026-08-22
+**算子**: quantMatmulReduceScatter   **状态**: ✅ 通过   **时间**: 2026-09-22 (v4 三轮评审版, 101/101)
+
+> 2026-09-22 v4 全量回归与性能复测环境: **本机 (hostname: huawei)**, ASCEND_HOME_PATH=
+> `/home/l00947526/Ascend915/cann-9.2.0` (与 2026-08-22 首次验证的 Ascend806 路径为
+> 不同主机/安装, 跨环境数据对比需注意)。硬件同规格: Ascend 950PR ×4, CANN 9.2.0。
 
 ## 硬件
 

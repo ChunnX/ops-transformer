@@ -175,27 +175,29 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n, co
     uint32_t tailTileCnt = (tailMSize > 0) ? 1 : 0;
     uint32_t tileCnt = headTileCnt + tailTileCnt;
 
-    // 通信 tiles 上限校验: 单 REMOTE flag 轮转安全边界 (kernel 侧同源常量, 经 include 链引入).
-    // 轮转周期 11, 每 flagid 计数器深度 15: 最坏单 id 积压 floor((T-1)/11)+1 <= 15 => T <= 154(留1余量),
-    // 上限取 64 留 2.4x 余量 (方案 v2 §4.3/§4.5).
+    // 通信 tiles 上限校验: remote tile 通知 flagid 直接使用 tid (kernel 侧同源常量, 经 include 链引入).
+    // dav_3510 flagid 为 4bit: id 14 保留给 SyncAll<true>, id 15 = LOCAL_DONE, tiles 可用 {0..13} ⇒ T ≤ 14.
     if (tileCnt > QMRS_MAX_COMM_TILES) {
         throw std::invalid_argument("ERROR: tileCnt=" + std::to_string(tileCnt) +
                                     " exceeds QMRS_MAX_COMM_TILES=" + std::to_string(QMRS_MAX_COMM_TILES) +
-                                    " (flagid rotation safety bound). Reduce M or increase headMSize.");
+                                    " (tid-as-flagid safety bound). Reduce M or increase headMSize.");
     }
 
-    // win 容量防御校验: data win = [0,128) 保留区(对齐 kernel 侧 WIN_DATA_OFFSET, barrier counter) +
-    // [128, 128+R*chunkBytes) PUT 数据区, 需 <= hcclBufSize. tiling 阶段 HCCL 建链未完成、
-    // 实际 hcclBufSize 不可得, 以实测上限 400MB 为界 (方案 v2 §4.5/§8.1).
-    constexpr uint64_t QMRS_WIN_RESERVED_BYTES = 128;                  // 与 impl.h WIN_DATA_OFFSET 同口径
+    // win 容量防御校验: data win = [0, winReserved) barrier 保留区(对齐 kernel 侧 win 数据区起点公式:
+    // localFlag R*32 + teamSyncCounter R*32, 对齐 128) + [winReserved, winReserved+R*chunkBytes) PUT 数据区,
+    // 需 <= hcclBufSize. tiling 阶段 HCCL 建链未完成、实际 hcclBufSize 不可得, 以实测上限 400MB 为界.
+    constexpr uint64_t QMRS_WIN_ALIGN = 128;                           // 与 impl.h WIN_DATA_ALIGN 同口径
     constexpr uint64_t QMRS_HCCL_BUF_SIZE_LIMIT = 400UL * 1024 * 1024; // hcclBufSize 实测上限
+    uint64_t winReservedBytes =
+        (2UL * static_cast<uint64_t>(rankNum) * 32UL + QMRS_WIN_ALIGN - 1) / QMRS_WIN_ALIGN * QMRS_WIN_ALIGN;
     uint64_t chunkBytes = static_cast<uint64_t>(chunkM) * static_cast<uint64_t>(n) * sizeof(uint16_t);
-    uint64_t winRequiredBytes = QMRS_WIN_RESERVED_BYTES + static_cast<uint64_t>(rankNum) * chunkBytes;
+    uint64_t winRequiredBytes = winReservedBytes + static_cast<uint64_t>(rankNum) * chunkBytes;
     if (winRequiredBytes > QMRS_HCCL_BUF_SIZE_LIMIT) {
-        throw std::invalid_argument("ERROR: win required=" + std::to_string(winRequiredBytes) +
-                                    " bytes (128 reserved + rankNum=" + std::to_string(rankNum) +
-                                    " x chunkBytes=" + std::to_string(chunkBytes) + ") exceeds hcclBufSize limit=" +
-                                    std::to_string(QMRS_HCCL_BUF_SIZE_LIMIT) + " bytes. Reduce m/n or rankNum.");
+        throw std::invalid_argument(
+            "ERROR: win required=" + std::to_string(winRequiredBytes) + " bytes (" + std::to_string(winReservedBytes) +
+            " reserved + rankNum=" + std::to_string(rankNum) + " x chunkBytes=" + std::to_string(chunkBytes) +
+            ") exceeds hcclBufSize limit=" + std::to_string(QMRS_HCCL_BUF_SIZE_LIMIT) +
+            " bytes. Reduce m/n or rankNum.");
     }
 
     tilingData.commTilingData.splitAxisTileCnt = static_cast<uint64_t>(headTileCnt);
@@ -204,26 +206,31 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n, co
     tilingData.commTilingData.splitAxisTailCnt = static_cast<uint64_t>(tailTileCnt);
     tilingData.commTilingData.nonSplitAxisSize = static_cast<uint64_t>(n);
 
-    // 子问题 tiling: m=headMSize, 用于 T>1 per-tile head tile
-    if (tileCnt > 1) {
+    // 段级 tiling (v4): 三段式各段 fragment 数不同 (REMOTE 段 rankSize-1 个, LOCAL 段 1 个),
+    // 调度器 tail 参数 (mTailMain/mBaseTailSplitCnt 等) 按设计 m 编码绝对位置, m 不匹配时
+    // tile 形状非法 → L0A/L1 越界 (v2 存量 bug: sub/tail tiling 按旧语义计算导致 tail/T=1 case 崩溃)。
+    // 每段 tiling 的 m 必须等于该段实际逻辑 M:
+    //   REMOTE head 段 = (R-1)*headMSize, REMOTE tail 段 = (R-1)*tailMSize,
+    //   LOCAL head tile = headMSize, LOCAL tail tile = tailMSize (T=1 时 headMSize=chunkM)
+    {
         QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN,
                               mm::BiasDataType::DT_FLOAT>
-            subTilingEngine;
-        subTilingEngine.EnableBaseMHalving(true); // 块数<2×核数时 baseM 减半, 提升负载均衡(同 allto_all_matmul_v2)
-        subTilingEngine.GetTilingData(headMSize, n, k, false, true, tilingData.subMmTilingData);
-        // tail tile tiling: m=rankSize*tailMSize (tailMSize 已保证 16 对齐)
+            headTilingEngine;
+        headTilingEngine.EnableBaseMHalving(true); // 块数<2×核数时 baseM 减半, 提升负载均衡(同 allto_all_matmul_v2)
+        uint32_t remoteCnt = static_cast<uint32_t>(rankNum) - 1U;
+        headTilingEngine.GetTilingData(remoteCnt * headMSize, n, k, false, true, tilingData.remoteHeadMmTilingData);
+        headTilingEngine.GetTilingData(headMSize, n, k, false, true, tilingData.localHeadMmTilingData);
         if (tailTileCnt > 0 && tailMSize > 0) {
             QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN,
                                   mm::BiasDataType::DT_FLOAT>
                 tailTilingEngine;
-            uint32_t tailLogicalM = static_cast<uint32_t>(rankNum) * tailMSize;
-            tailTilingEngine.GetTilingData(tailLogicalM, n, k, false, true, tilingData.tailMmTilingData);
+            uint32_t remoteTailLogicalM = (static_cast<uint32_t>(rankNum) - 1U) * tailMSize;
+            tailTilingEngine.GetTilingData(remoteTailLogicalM, n, k, false, true, tilingData.remoteTailMmTilingData);
+            tailTilingEngine.GetTilingData(tailMSize, n, k, false, true, tilingData.localTailMmTilingData);
         } else {
-            tilingData.tailMmTilingData = {};
+            tilingData.remoteTailMmTilingData = {};
+            tilingData.localTailMmTilingData = {};
         }
-    } else {
-        tilingData.subMmTilingData = {};
-        tilingData.tailMmTilingData = {};
     }
 
     if (rankId == 0) {
@@ -231,43 +238,20 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n, co
                  "rankSize=%d",
                  chunkM, headMSize, headTileCnt, tailMSize, tailTileCnt, tileCnt, rankNum);
 
-        INFO_LOG("[Tiling] mmTilingData: m=%u n=%u k=%u baseM=%u baseN=%u baseK=%u stepK=%u usedCoreNum=%u dbL0c=%u "
-                 "nBufferNum=%u scaleKL1=%u mTailTile=%u nTailTile=%u mBaseTailSplitCnt=%u nBaseTailSplitCnt=%u "
-                 "mTailMain=%u nTailMain=%u",
-                 tilingData.mmTilingData.m, tilingData.mmTilingData.n, tilingData.mmTilingData.k,
-                 tilingData.mmTilingData.baseM, tilingData.mmTilingData.baseN, tilingData.mmTilingData.baseK,
-                 tilingData.mmTilingData.stepK, tilingData.mmTilingData.usedCoreNum, tilingData.mmTilingData.dbL0c,
-                 tilingData.mmTilingData.nBufferNum, tilingData.mmTilingData.scaleKL1,
-                 tilingData.mmTilingData.mTailTile, tilingData.mmTilingData.nTailTile,
-                 tilingData.mmTilingData.mBaseTailSplitCnt, tilingData.mmTilingData.nBaseTailSplitCnt,
-                 tilingData.mmTilingData.mTailMain, tilingData.mmTilingData.nTailMain);
-
-        if (tileCnt > 1) {
-            INFO_LOG("[Tiling] subMmTilingData: m=%u n=%u k=%u baseM=%u baseN=%u baseK=%u stepK=%u dbL0c=%u "
+        auto printTiling = [](const char *name, const QuantMatmulTilingData &t) {
+            INFO_LOG("[Tiling] %s: m=%u n=%u k=%u baseM=%u baseN=%u baseK=%u stepK=%u usedCoreNum=%u dbL0c=%u "
                      "nBufferNum=%u scaleKL1=%u mTailTile=%u nTailTile=%u mBaseTailSplitCnt=%u nBaseTailSplitCnt=%u "
                      "mTailMain=%u nTailMain=%u",
-                     tilingData.subMmTilingData.m, tilingData.subMmTilingData.n, tilingData.subMmTilingData.k,
-                     tilingData.subMmTilingData.baseM, tilingData.subMmTilingData.baseN,
-                     tilingData.subMmTilingData.baseK, tilingData.subMmTilingData.stepK,
-                     tilingData.subMmTilingData.dbL0c, tilingData.subMmTilingData.nBufferNum,
-                     tilingData.subMmTilingData.scaleKL1, tilingData.subMmTilingData.mTailTile,
-                     tilingData.subMmTilingData.nTailTile, tilingData.subMmTilingData.mBaseTailSplitCnt,
-                     tilingData.subMmTilingData.nBaseTailSplitCnt, tilingData.subMmTilingData.mTailMain,
-                     tilingData.subMmTilingData.nTailMain);
-
-            if (tailTileCnt > 0 && tailMSize > 0) {
-                INFO_LOG("[Tiling] tailMmTilingData: m=%u n=%u k=%u baseM=%u baseN=%u baseK=%u stepK=%u dbL0c=%u "
-                         "nBufferNum=%u scaleKL1=%u mTailTile=%u nTailTile=%u mBaseTailSplitCnt=%u "
-                         "nBaseTailSplitCnt=%u mTailMain=%u nTailMain=%u",
-                         tilingData.tailMmTilingData.m, tilingData.tailMmTilingData.n, tilingData.tailMmTilingData.k,
-                         tilingData.tailMmTilingData.baseM, tilingData.tailMmTilingData.baseN,
-                         tilingData.tailMmTilingData.baseK, tilingData.tailMmTilingData.stepK,
-                         tilingData.tailMmTilingData.dbL0c, tilingData.tailMmTilingData.nBufferNum,
-                         tilingData.tailMmTilingData.scaleKL1, tilingData.tailMmTilingData.mTailTile,
-                         tilingData.tailMmTilingData.nTailTile, tilingData.tailMmTilingData.mBaseTailSplitCnt,
-                         tilingData.tailMmTilingData.nBaseTailSplitCnt, tilingData.tailMmTilingData.mTailMain,
-                         tilingData.tailMmTilingData.nTailMain);
-            }
+                     name, t.m, t.n, t.k, t.baseM, t.baseN, t.baseK, t.stepK, t.usedCoreNum, t.dbL0c, t.nBufferNum,
+                     t.scaleKL1, t.mTailTile, t.nTailTile, t.mBaseTailSplitCnt, t.nBaseTailSplitCnt, t.mTailMain,
+                     t.nTailMain);
+        };
+        printTiling("mmTilingData(usedCoreNum only)", tilingData.mmTilingData);
+        printTiling("remoteHeadMmTilingData", tilingData.remoteHeadMmTilingData);
+        printTiling("localHeadMmTilingData", tilingData.localHeadMmTilingData);
+        if (tailTileCnt > 0 && tailMSize > 0) {
+            printTiling("remoteTailMmTilingData", tilingData.remoteTailMmTilingData);
+            printTiling("localTailMmTilingData", tilingData.localTailMmTilingData);
         }
     }
 
