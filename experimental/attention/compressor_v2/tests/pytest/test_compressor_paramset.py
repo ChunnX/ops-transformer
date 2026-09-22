@@ -226,7 +226,7 @@ TEST_PARAMS = {
         "hidden_size": [4096],
         "Seq_len": [4],
         "head_dim": [512],
-        "block_size": [128],
+        "block_size": [131],
         "cmp_ratio": [128],
         "start_p": [0],
         "layout_x": ["BSH"],

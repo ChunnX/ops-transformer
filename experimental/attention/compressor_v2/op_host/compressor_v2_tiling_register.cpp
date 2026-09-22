@@ -27,6 +27,7 @@ namespace optiling {
 #endif
 
 CMP_EXTERN_C ge::graphStatus TilingCompressorArch35(gert::TilingContext *context);
+CMP_EXTERN_C ge::graphStatus TilingCompressorV2Arch22(gert::TilingContext *context);
 
 struct CompressorV2CompileInfo {
     int64_t core_num;
@@ -40,7 +41,11 @@ CMP_EXTERN_C ge::graphStatus TilingCompressorV2(gert::TilingContext *context)
     OP_CHECK_IF(platformInfoPtr == nullptr,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("CompressorV2", "platformInfo", "is nullptr"),
                 return ge::GRAPH_FAILED);
-    return TilingCompressorArch35(context);
+    auto platform = platform_ascendc::PlatformAscendC(platformInfoPtr);
+    if (platform.GetSocVersion() == platform_ascendc::SocVersion::ASCEND950) {
+        return TilingCompressorArch35(context);
+    }
+    return TilingCompressorV2Arch22(context);
 }
 
 ge::graphStatus TilingPrepareForCompressorV2(gert::TilingParseContext *context)
