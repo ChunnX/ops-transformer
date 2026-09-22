@@ -86,7 +86,7 @@ constexpr std::initializer_list<ge::DataType> HIF8FP8FP4DTYPE_SUPPORT_LIST = {
 
 bool QuantBmmReduceScatterTiling::IsCapable()
 {
-    if (npuArch_ != Ops::Base::DAV_3510) {
+    if (npuArch_ != Ops::Base::DAV_3510 && npuArch_ != Ops::Base::DAV_9201) { // A6复用A5 tiling路径
         OP_LOGI(opName_, "skip quantbmm reducescatter tiling when npuArch is not 3510.");
         return false;
     }
@@ -1087,8 +1087,9 @@ CutResult QuantBmmReduceScatterTiling::GetTilingResult()
     }
 }
 // 注册Tiling类
-REGISTER_TILING_TEMPLATE_WITH_ARCH(MatmulReduceScatterV2, QuantBmmReduceScatterTiling,
-                                   static_cast<int32_t>(Ops::Base::DAV_3510), 1);
+REGISTER_TILING_TEMPLATE_WITH_ARCH(
+    MatmulReduceScatterV2, QuantBmmReduceScatterTiling,
+    std::vector<int32_t>({static_cast<int32_t>(Ops::Base::DAV_3510), static_cast<int32_t>(Ops::Base::DAV_9201)}), 1);
 } // namespace optiling
 
 #endif //_QUANT_BMM_MATMUL_REDUCE_SCATTER_TILING_CC_

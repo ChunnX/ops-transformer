@@ -233,7 +233,7 @@ DEVICE void InvokeActKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, G
                                     AscendC::Std::tuple<StrideB, StrideAntiquantScale>>;
 
     using DtypeBias = AscendC::Std::conditional_t<params.biasTypeSameAsX, DTYPE_X, float>;
-#if defined(__DAV_310R6__)
+#if defined(__DAV_310R6__) || (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
     constexpr int SUB_BLOCK_NUM = 1;
 #else
     constexpr int SUB_BLOCK_NUM = 2;

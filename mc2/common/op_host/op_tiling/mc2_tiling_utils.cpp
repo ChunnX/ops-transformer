@@ -177,7 +177,8 @@ uint8_t Mc2GetCommAlgo(int64_t rankDim, uint64_t mValue, const char *group, cons
         return COMM_ALG_DEFAULT;
     }
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    if (ascendcPlatform.GetCurNpuArch() == Ops::Base::DAV_3510) {
+    if (ascendcPlatform.GetCurNpuArch() == Ops::Base::DAV_3510 ||
+        ascendcPlatform.GetCurNpuArch() == Ops::Base::DAV_9201) { // A6复用950的fullmesh算法
         return COMM_ALG_FULL_MESH;
     }
 
@@ -237,6 +238,7 @@ bool CheckRankSize(const NpuArch npuArch, const uint32_t rankSize)
         {Ops::Base::DAV_2002, {1, 2, 4}},
         {Ops::Base::DAV_2201, {1, 2, 4, 8}},
         {Ops::Base::DAV_3510, {1, 2, 4, 8, 16, 32, 64}},
+        {Ops::Base::DAV_9201, {1, 2, 4, 8, 16, 32, 64}}, // A6复用950支持的rank规格
     };
     auto it = SUPPORT_RANK_SIZE_SET.find(npuArch);
     if (it != SUPPORT_RANK_SIZE_SET.end()) {
