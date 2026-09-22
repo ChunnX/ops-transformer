@@ -167,16 +167,6 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::CheckGroupSize(const gert::Tili
     uint64_t groupSizeM = (groupSize >> GROUP_M_OFFSET) & GROUP_MNK_BIT_SIZE;
     shapeInfo.isMxfp = true;
     shapeInfo.isHif4 = isHiF4_;
-    // HiF4: Ka(x1 的 K 维)需按 128 对齐, 前置校验保证非对齐时直接报出明确的 128 对齐错误
-    // (128 对齐同时保证 Ka%64==0 且 scale 组数为偶数, 与 MX 的 CeilDiv(Ka,64)%2==0 约束统一)
-    if (isHiF4_) {
-        auto x1Shape = context_->GetInputShape(INPUT_X1_INDEX)->GetStorageShape();
-        const uint64_t kaValue = static_cast<uint64_t>(x1Shape.GetDim(x1Shape.GetDimNum() - 1));
-        OP_TILING_CHECK((kaValue % HIF4_KA_ALIGN_SIZE) != 0,
-                        OP_LOGE_FOR_INVALID_VALUE(opName, "Ka(x1 k dimension)", std::to_string(kaValue).c_str(),
-                                                  "must be 128-aligned (Ka % 128 == 0)"),
-                        return ge::GRAPH_FAILED);
-    }
     OP_TILING_CHECK(!mc2tiling::Mc2TilingUtils::InferGroupSize(shapeInfo, groupSizeM, groupSizeN, groupSizeK),
                     OP_LOGE(opName, "Failed to execute inferGroupSize in mx scene."), return ge::GRAPH_FAILED);
     // MX: group size (1, 1, 32); HiF4: group size (1, 1, 64)
@@ -360,6 +350,16 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::CheckMxQuantShapeInfo(const ger
     OP_TILING_CHECK(isTransX2 == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName, "isTransX2"), return ge::GRAPH_FAILED);
     const uint64_t x2KDim = (*isTransX2) ? x2Dim1 : x2Dim0;
     const uint64_t x2NDim = (*isTransX2) ? x2Dim0 : x2Dim1;
+    // ND 布局(x2=[K,N])时 N 为内轴: S1P2 按 2 元素/字节打包, 内轴必须为偶数,
+    // 否则每行末尾半字节悬空导致行间错位(尾块 nTail 为奇数同样错位, 故按 N 整体校验)
+    if (isHiF4_ && !(*isTransX2)) {
+        OP_TILING_CHECK(
+            (x2NDim % DIM_TWO != 0),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                opName, "x2", Ops::Base::ToString(x2Shape->GetStorageShape()).c_str(),
+                "The dim(n) of x2 must be even when transposeX2 is false."),
+            return ge::GRAPH_FAILED);
+    }
     OP_TILING_CHECK(
         (x1Dim1 % MX_SCALE_ALIGN != 0),
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x1", Ops::Base::ToString(x1Shape->GetStorageShape()).c_str(),
