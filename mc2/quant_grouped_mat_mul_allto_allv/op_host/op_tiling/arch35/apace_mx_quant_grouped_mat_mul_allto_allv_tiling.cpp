@@ -265,7 +265,12 @@ ge::graphStatus ApaceMxQuantGroupedMatmulAllToAllvTiling::PostTiling()
     context_->GetRawTilingData()->SetDataSize(sizeof(Apace::hcommQuantGmmAlltoAllvTilingData));
     // 独占全核：kernel 内含 CrossCore/SyncAll 多核同步原语，需独占启动避免网络挂死
     context_->SetScheduleMode(1);
-    context_->SetBlockDim(usedCoreNum_);
+    // 必须全核启动（与原通路 aicCoreNum 口径一致）：kernel 逐批使用 mode-0 全核 FFTS barrier
+    // （CrossCoreSetFlag<0>(8)+WaitFlag）及 SyncAll<false>，其计数域为调度域内全部 AIC 核，
+    // 部分核启动（SWAT usedCoreNum）时未启动核永不 arrive → barrier 永不释放 → 卡死。
+    // GMM 调度器在满核下自行分配 block，闲置核空跑 Run 循环并正常参与 barrier。
+    context_->SetBlockDim(localParams_.aicCoreNum);
+    OP_LOGI(opName_, "Apace blockDim=%lu (usedCoreNum=%u)", localParams_.aicCoreNum, usedCoreNum_);
     return ge::GRAPH_SUCCESS;
 }
 
