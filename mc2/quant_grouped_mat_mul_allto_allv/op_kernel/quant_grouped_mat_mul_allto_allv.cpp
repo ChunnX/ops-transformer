@@ -84,7 +84,7 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
                                                           TILINGKEY_GROUPED_MATMUL_TRANS, TILINGKEY_MATMUL_TRANS>;
         ApaceImplType apaceImpl(&apaceTilingData);
         apaceImpl.Init(gmmxGM, gmmweightGM, gmmxScaleGM, gmmWeightScaleGM, mmxOptionalGM, mmweightOptionalGM,
-                       mmxScaleGM, mmWeightScaleGM, yGM, mmyOptionalGM, userWorkspace);
+                       mmxScaleGM, mmWeightScaleGM, yGM, mmyOptionalGM, userWorkspace, tilingGM);
         apaceImpl.Run();
         return;
 #else

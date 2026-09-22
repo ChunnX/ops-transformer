@@ -34,6 +34,8 @@ constexpr uint32_t GMM_A2AV_MAX_RANK_NUM = 128U;
 // 分批通算掩盖流水：expertNumPerBatch = CeilDiv(e, 4)（与原通路 TARGET_COMM_ROUNDS=4 口径一致），
 // totalLoopCnt = CeilDiv(e, expertNumPerBatch) ≤ 4（e ≤ 32）；AIV 侧 handle 数组按此上限留余量
 constexpr uint32_t GMM_A2AV_MAX_COMM_LOOP_CNT = 8U;
+// AIC-only 内核跨核软 barrier 槽位上限（按 AIC 核数开表，host 侧 tiling 清零保证初值）
+constexpr uint32_t GMM_A2AV_MAX_AIC_CORE_NUM = 64U;
 
 // GroupedMatmulMxKernel 的 groupList 存储格式（与 blaze GroupedMatmulMxKernel 定义一致）
 constexpr uint8_t GMM_A2AV_GROUP_LIST_TYPE_LENGTH = 1U; // 每组存 token 数
@@ -86,6 +88,10 @@ struct hcommQuantGmmAlltoAllvTilingData {
     uint32_t e;           // 单卡专家数
     uint32_t epWorldSize; // EP 域大小
     uint32_t hasSharedMm; // 是否携带共享专家 MM 计算
+
+    // ============ 跨 AIC 软 barrier 槽位（host 清零，kernel 按 generation 单调递增使用） ============
+    // 位于 tiling 数据尾部（tiling buffer 每次下发前整体清零，保证初值为 0）
+    volatile uint32_t barrierSlots[GMM_A2AV_MAX_AIC_CORE_NUM];
 };
 
 } // namespace Apace
