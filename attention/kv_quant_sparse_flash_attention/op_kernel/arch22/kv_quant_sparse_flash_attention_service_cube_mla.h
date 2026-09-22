@@ -466,9 +466,8 @@ __aicore__ inline void QSFAMatmulService<QSFAT>::CopyInMm1BRopeToL1(LocalTensor<
 
 template <typename QSFAT>
 __aicore__ inline void QSFAMatmulService<QSFAT>::CopyInMm1BTq4ToL1(LocalTensor<K_ROPE_T> &bL1Tensor,
-                                                                   const RunInfo &info, uint32_t nL1,
-                                                                   uint32_t nL1Size, uint32_t nL1SizeAlign,
-                                                                   uint32_t kL1, uint32_t kSize)
+                                                                   const RunInfo &info, uint32_t nL1, uint32_t nL1Size,
+                                                                   uint32_t nL1SizeAlign, uint32_t kL1, uint32_t kSize)
 {
     // TQ4 的 vector 输出是行主序 [N, 576]：第一段 K 切分取前 288 个值，
     // 第二段由 224 个 nope 尾部和独立的 64 个 RoPE 值拼成 288 个元素。
@@ -486,9 +485,8 @@ __aicore__ inline void QSFAMatmulService<QSFAT>::CopyInMm1BTq4ToL1(LocalTensor<K
 }
 
 template <typename QSFAT>
-__aicore__ inline void QSFAMatmulService<QSFAT>::CopyInMm1KVToL1(LocalTensor<K_ROPE_T> &bL1Tensor,
-                                                                 const RunInfo &info, uint32_t nL1,
-                                                                 uint32_t nL1Size, uint32_t nL1SizeAlign,
+__aicore__ inline void QSFAMatmulService<QSFAT>::CopyInMm1KVToL1(LocalTensor<K_ROPE_T> &bL1Tensor, const RunInfo &info,
+                                                                 uint32_t nL1, uint32_t nL1Size, uint32_t nL1SizeAlign,
                                                                  uint32_t kL1, uint32_t kSize)
 {
     if (constInfo.keyQuantMode == QUANT_MODE::TQ4) {
@@ -501,7 +499,8 @@ __aicore__ inline void QSFAMatmulService<QSFAT>::CopyInMm1KVToL1(LocalTensor<K_R
     copyParams.dstStride = nL1SizeAlign - nL1Size;
     if (kL1 == 0) {
         copyParams.blockCount = K_SPLIT_SIZE / BLOCK_ELEMENT_NUM;
-        DataCopy(bL1Tensor, kvMergeGm_[info.loop % 4 * N_WORKSPACE_SIZE * kSize + nL1 * N_SPLIT_SIZE * BLOCK_ELEMENT_NUM],
+        DataCopy(bL1Tensor,
+                 kvMergeGm_[info.loop % 4 * N_WORKSPACE_SIZE * kSize + nL1 * N_SPLIT_SIZE * BLOCK_ELEMENT_NUM],
                  copyParams);
         return;
     }
@@ -607,10 +606,9 @@ __aicore__ inline void QSFAMatmulService<QSFAT>::CopyInMm2BToL1(LocalTensor<K_RO
 
 template <typename QSFAT>
 __aicore__ inline void QSFAMatmulService<QSFAT>::CopyInMm2BTq4ToL1(LocalTensor<K_ROPE_T> &bL1Tensor,
-                                                                   const RunInfo &info, uint32_t nL1,
-                                                                   uint32_t qsfaKL1, uint32_t qsfaKOffset,
-                                                                   uint32_t kL0Size, uint32_t kL0SizeAlign,
-                                                                   uint32_t nL1Size)
+                                                                   const RunInfo &info, uint32_t nL1, uint32_t qsfaKL1,
+                                                                   uint32_t qsfaKOffset, uint32_t kL0Size,
+                                                                   uint32_t kL0SizeAlign, uint32_t nL1Size)
 {
     // TQ4 的 merge buffer 为行主序 [N, 576]，按 nL1 直接取 [kL0Size, nL1Size] 子块。
     constexpr uint32_t K_SIZE = 576;
@@ -623,9 +621,8 @@ __aicore__ inline void QSFAMatmulService<QSFAT>::CopyInMm2BTq4ToL1(LocalTensor<K
 }
 
 template <typename QSFAT>
-__aicore__ inline void QSFAMatmulService<QSFAT>::CopyInMm2KVToL1(LocalTensor<K_ROPE_T> &bL1Tensor,
-                                                                 const RunInfo &info, uint32_t nL1,
-                                                                 uint32_t qsfaKL1, uint32_t qsfaKOffset,
+__aicore__ inline void QSFAMatmulService<QSFAT>::CopyInMm2KVToL1(LocalTensor<K_ROPE_T> &bL1Tensor, const RunInfo &info,
+                                                                 uint32_t nL1, uint32_t qsfaKL1, uint32_t qsfaKOffset,
                                                                  uint32_t kL0Size, uint32_t kL0SizeAlign,
                                                                  uint32_t nL1Size)
 {

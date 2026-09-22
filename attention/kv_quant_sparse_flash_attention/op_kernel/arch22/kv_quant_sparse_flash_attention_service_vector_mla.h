@@ -96,21 +96,20 @@ public:
                                           int64_t keyBNBOffset, int64_t s2IdLimit, const RunInfo &runInfo);
     // Decode packed TQ4 slots into the latent/nope workspace. Each slot is
     // 256B int4 codes followed by 64 RoPE values and one FP16 scale.
-    __aicore__ inline void Tq4DequantRows(LocalTensor<KV_T> &srcTensor, LocalTensor<K_ROPE_T> &dstB16,
-                                          int32_t dealRow);
+    __aicore__ inline void Tq4DequantRows(LocalTensor<KV_T> &srcTensor, LocalTensor<K_ROPE_T> &dstB16, int32_t dealRow);
     __aicore__ inline void Tq4DequantRowsBf16(LocalTensor<KV_T> &srcTensor, LocalTensor<K_ROPE_T> &dstB16,
                                               int32_t dealRow, uint32_t rowBytes);
     __aicore__ inline void Tq4DequantRowsFp16(LocalTensor<KV_T> &srcTensor, LocalTensor<K_ROPE_T> &dstB16,
                                               int32_t dealRow, uint32_t rowBytes);
     __aicore__ inline void CopyInTq4Scale(const RunInfo &info);
-    __aicore__ inline void CopyOutMrgeResultTq4(LocalTensor<KV_T> srcTensor,
-                                                LocalTensor<K_ROPE_T> antiKvTensorAsB16, int64_t mte3Size,
-                                                int64_t s2GmStartOffset, const RunInfo &runInfo, int32_t dealRow);
-    __aicore__ inline void CopyOutMrgeResultQuant(LocalTensor<KV_T> srcTensor,
-                                                  LocalTensor<K_ROPE_T> antiKvTensorAsB16, int32_t dealRow);
-    __aicore__ inline void CopyOutMrgeResultNz(LocalTensor<KV_T> srcTensor,
-                                               LocalTensor<K_ROPE_T> antiKvTensorAsB16, int64_t mte3Size,
-                                               int64_t s2GmStartOffset, const RunInfo &runInfo, int32_t dealRow);
+    __aicore__ inline void CopyOutMrgeResultTq4(LocalTensor<KV_T> srcTensor, LocalTensor<K_ROPE_T> antiKvTensorAsB16,
+                                                int64_t mte3Size, int64_t s2GmStartOffset, const RunInfo &runInfo,
+                                                int32_t dealRow);
+    __aicore__ inline void CopyOutMrgeResultQuant(LocalTensor<KV_T> srcTensor, LocalTensor<K_ROPE_T> antiKvTensorAsB16,
+                                                  int32_t dealRow);
+    __aicore__ inline void CopyOutMrgeResultNz(LocalTensor<KV_T> srcTensor, LocalTensor<K_ROPE_T> antiKvTensorAsB16,
+                                               int64_t mte3Size, int64_t s2GmStartOffset, const RunInfo &runInfo,
+                                               int32_t dealRow);
     // ================================Vector1==========================================
     __aicore__ inline void ProcessVec1SingleBuf(const RunInfo &info, const MSplitInfo &mSplitInfo);
     __aicore__ inline void DealBmm1ResBaseBlock(const RunInfo &info, const MSplitInfo &mSplitInfo, uint32_t startRow,
@@ -187,8 +186,7 @@ private:
     static constexpr uint32_t TQ4_CHUNK_BYTES = TQ4_DEQUANT_CHUNK * 256U;
     static constexpr uint32_t TQ4_HALF_ELEMS = TQ4_FAST_BF16 ? TQ4_CHUNK_BYTES : TQ4_CHUNK_ELEMS;
     static constexpr uint32_t TQ4_IDX_ELEMS = TQ4_FAST_BF16 ? TQ4_CHUNK_BYTES : TQ4_CHUNK_ELEMS;
-    static constexpr uint32_t TQ4_SHALF_BYTE_OFF =
-        TQ4_FAST_BF16 ? TQ4_CHUNK_BYTES : TQ4_CHUNK_ELEMS * sizeof(float);
+    static constexpr uint32_t TQ4_SHALF_BYTE_OFF = TQ4_FAST_BF16 ? TQ4_CHUNK_BYTES : TQ4_CHUNK_ELEMS * sizeof(float);
     static constexpr uint32_t TQ4_IDX_BYTE_OFF = TQ4_SHALF_BYTE_OFF + TQ4_HALF_ELEMS * sizeof(half);
 
     const KvQuantSparseFlashAttentionTilingDataMla *__restrict tilingData;
@@ -305,14 +303,22 @@ __aicore__ inline void QSFAVectorService<QSFAT>::InitTq4Buffers(TPipe *pipe)
     pipe->InitBuffer(tq4ByteLutBuf_, ConstInfo::BUFFER_SIZE_BYTE_1K);
     tq4Cent_ = tq4CentBuf_.Get<float>();
     // centSigned[k] = _CENT[(k + 8) % 16]，即按有符号 nibble 重排后的码本
-    tq4Cent_.SetValue(0, 0.00547294f);  tq4Cent_.SetValue(1, 0.01680406f);
-    tq4Cent_.SetValue(2, 0.02857605f);  tq4Cent_.SetValue(3, 0.04108622f);
-    tq4Cent_.SetValue(4, 0.05492980f);  tq4Cent_.SetValue(5, 0.07101817f);
-    tq4Cent_.SetValue(6, 0.09115373f);  tq4Cent_.SetValue(7, 0.12037795f);
-    tq4Cent_.SetValue(8, -0.12091285f); tq4Cent_.SetValue(9, -0.09111122f);
-    tq4Cent_.SetValue(10, -0.07112455f); tq4Cent_.SetValue(11, -0.05513602f);
-    tq4Cent_.SetValue(12, -0.04132067f); tq4Cent_.SetValue(13, -0.02874970f);
-    tq4Cent_.SetValue(14, -0.01700489f); tq4Cent_.SetValue(15, -0.00568677f);
+    tq4Cent_.SetValue(0, 0.00547294f);
+    tq4Cent_.SetValue(1, 0.01680406f);
+    tq4Cent_.SetValue(2, 0.02857605f);
+    tq4Cent_.SetValue(3, 0.04108622f);
+    tq4Cent_.SetValue(4, 0.05492980f);
+    tq4Cent_.SetValue(5, 0.07101817f);
+    tq4Cent_.SetValue(6, 0.09115373f);
+    tq4Cent_.SetValue(7, 0.12037795f);
+    tq4Cent_.SetValue(8, -0.12091285f);
+    tq4Cent_.SetValue(9, -0.09111122f);
+    tq4Cent_.SetValue(10, -0.07112455f);
+    tq4Cent_.SetValue(11, -0.05513602f);
+    tq4Cent_.SetValue(12, -0.04132067f);
+    tq4Cent_.SetValue(13, -0.02874970f);
+    tq4Cent_.SetValue(14, -0.01700489f);
+    tq4Cent_.SetValue(15, -0.00568677f);
     // bf16 byte-LUT（纯标量侧生成，无跨流水序问题）。标量域没有 bf16 寄存器
     // （SetValue<bfloat16_t> 后端不支持），故按 RNE 手工舍出 bf16 位型，与热路径
     // Cast(CAST_RINT) 的 f32->bf16 舍入一致，查表时直接取位型。
@@ -762,8 +768,8 @@ template <typename QSFAT>
 __aicore__ inline void QSFAVectorService<QSFAT>::Tq4DequantRows(LocalTensor<KV_T> &srcTensor,
                                                                 LocalTensor<K_ROPE_T> &dstB16, int32_t dealRow)
 {
-    uint32_t rowBytes = QSFAAlign(static_cast<uint32_t>(tilingData->baseParams.dSizeVInput),
-                                  static_cast<uint32_t>(BYTE_BLOCK));
+    uint32_t rowBytes =
+        QSFAAlign(static_cast<uint32_t>(tilingData->baseParams.dSizeVInput), static_cast<uint32_t>(BYTE_BLOCK));
     static_assert(TQ4_IDX_BYTE_OFF + TQ4_IDX_ELEMS * sizeof(int32_t) <= ConstInfo::BUFFER_SIZE_BYTE_32K,
                   "TQ4 dequant scratch exceeds inputBuff2");
 
@@ -782,8 +788,8 @@ __aicore__ inline void QSFAVectorService<QSFAT>::Tq4DequantRows(LocalTensor<KV_T
 
 template <typename QSFAT>
 __aicore__ inline void QSFAVectorService<QSFAT>::Tq4DequantRowsBf16(LocalTensor<KV_T> &srcTensor,
-                                                                    LocalTensor<K_ROPE_T> &dstB16,
-                                                                    int32_t dealRow, uint32_t rowBytes)
+                                                                    LocalTensor<K_ROPE_T> &dstB16, int32_t dealRow,
+                                                                    uint32_t rowBytes)
 {
     uint32_t hdDiv2 = constInfo.headDim / 2U;
     LocalTensor<half> sHalfBase = inputBuff2.Get<half>()[TQ4_SHALF_BYTE_OFF / sizeof(half)];
@@ -820,8 +826,8 @@ __aicore__ inline void QSFAVectorService<QSFAT>::Tq4DequantRowsBf16(LocalTensor<
 
 template <typename QSFAT>
 __aicore__ inline void QSFAVectorService<QSFAT>::Tq4DequantRowsFp16(LocalTensor<KV_T> &srcTensor,
-                                                                    LocalTensor<K_ROPE_T> &dstB16,
-                                                                    int32_t dealRow, uint32_t rowBytes)
+                                                                    LocalTensor<K_ROPE_T> &dstB16, int32_t dealRow,
+                                                                    uint32_t rowBytes)
 {
     uint32_t hd = constInfo.headDim;
     LocalTensor<half> sHalfBase = inputBuff2.Get<half>()[TQ4_SHALF_BYTE_OFF / sizeof(half)];
@@ -1122,8 +1128,8 @@ __aicore__ inline void QSFAVectorService<QSFAT>::CopyOutMrgeResultTq4(LocalTenso
     WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
     Tq4DequantRows(srcTensor, antiKvTensorAsB16, dealRow);
 
-    uint32_t rowBytes = QSFAAlign(static_cast<uint32_t>(tilingData->baseParams.dSizeVInput),
-                                   static_cast<uint32_t>(BYTE_BLOCK));
+    uint32_t rowBytes =
+        QSFAAlign(static_cast<uint32_t>(tilingData->baseParams.dSizeVInput), static_cast<uint32_t>(BYTE_BLOCK));
     uint32_t mergeGmStride = 512U * constInfo.combineHeadDim;
     uint32_t latentBytes = constInfo.headDim * sizeof(K_ROPE_T);
     uint32_t ropeBytes = constInfo.headDimRope * sizeof(K_ROPE_T);
@@ -1152,8 +1158,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::CopyOutMrgeResultTq4(LocalTenso
         scaleOutParams.blockLen = static_cast<uint32_t>(dealRow) * sizeof(uint16_t);
         scaleOutParams.srcStride = 0;
         scaleOutParams.dstStride = 0;
-        DataCopyPad(tq4ScaleGm_[TQ4_SCALE_HALF_BASE +
-                                runInfo.loop % MERGE_CACHE_GM_BUF_NUM * TQ4_SCALE_SLOT_STRIDE +
+        DataCopyPad(tq4ScaleGm_[TQ4_SCALE_HALF_BASE + runInfo.loop % MERGE_CACHE_GM_BUF_NUM * TQ4_SCALE_SLOT_STRIDE +
                                 (s2GmStartOffset + mte3Size)],
                     scaleUb.template ReinterpretCast<uint16_t>(), scaleOutParams);
     }
@@ -1163,8 +1168,8 @@ __aicore__ inline void QSFAVectorService<QSFAT>::CopyOutMrgeResultTq4(LocalTenso
     tq4DataCopyParams.blockLen = latentBytes;
     tq4DataCopyParams.srcStride = 0;
     tq4DataCopyParams.dstStride = (constInfo.combineHeadDim - constInfo.headDim) * sizeof(K_ROPE_T);
-    uint64_t tq4GmBase = runInfo.loop % MERGE_CACHE_GM_BUF_NUM * mergeGmStride +
-                         (s2GmStartOffset + mte3Size) * constInfo.combineHeadDim;
+    uint64_t tq4GmBase =
+        runInfo.loop % MERGE_CACHE_GM_BUF_NUM * mergeGmStride + (s2GmStartOffset + mte3Size) * constInfo.combineHeadDim;
     DataCopyPad(kvMergeGm_[tq4GmBase], antiKvTensorAsB16, tq4DataCopyParams);
 
     LocalTensor<K_ROPE_T> tq4KRopeUb = srcTensor[ropeByteOff].template ReinterpretCast<K_ROPE_T>();
