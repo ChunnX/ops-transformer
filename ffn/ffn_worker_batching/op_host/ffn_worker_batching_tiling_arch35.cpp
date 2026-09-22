@@ -425,7 +425,7 @@ ge::graphStatus FfnWorkerBatchingTilingArch35::DoOpTiling()
                 return ge::GRAPH_FAILED);
 
     tilingDataPtr_->syncFlag = syncFlag_;
-    tilingDataPtr_->layerNum = (needSchedule_ == 1 && syncFlag_) ? layerNum_ : 0;
+    tilingDataPtr_->layerNum = layerNum_;
     SplitPrepare();
     SplitSortAndMerge();
     SplitGroupList();

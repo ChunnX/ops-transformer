@@ -101,8 +101,6 @@ int CreateAclTensorNoData(const std::vector<int64_t> &shape, void **deviceAddr, 
     return 0;
 }
 
-constexpr uint64_t kBufAlignSize = 512;
-
 inline uint64_t AlignUp(uint64_t num, uint64_t align)
 {
     return ((num + align - 1) / align) * align;
@@ -180,8 +178,6 @@ int main()
     scheduleContext.common.micro_batch_size = 8;
     scheduleContext.common.selected_expert_num = 9; // topK + 1
     scheduleContext.common.expert_num = 8;
-    scheduleContext.common.attn_to_ffn_token_size = 512;
-    scheduleContext.common.ffn_to_attn_token_size = 512;
     scheduleContext.common.schedule_mode = 0; // Ffn only
     scheduleContext.control.run_flag = 1;     // running
     scheduleContext.ffn.polling_index = 0;

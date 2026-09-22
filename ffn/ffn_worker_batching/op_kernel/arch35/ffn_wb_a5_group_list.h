@@ -181,35 +181,19 @@ private:
     // pendingCnt 承接),全局末元素一律记为游程终点。
     __aicore__ inline void LoadChunk(A5RunLanes &ln, int64_t begin, int64_t len)
     {
-        // CompareScalar 的 ISA 粒度是 64。最后一块可能只有 1~63 个有效元素，而 DataCopyPad 在
-        // isPad=false 时会把 32B 对齐补位写成随机值；若直接按 cmpLen 比较，随机 UB 尾部会参与
-        // 向量指令。先把整个比较范围写成哨兵，再由有明确 paddingValue 的 DataCopyPad 覆盖有效
-        // 元素及最多一个 32B 的 DMA 尾部，保证 [len, cmpLen) 始终确定且不会形成伪游程。
-        const int64_t cmpLen = Ceil(len, ONE_REPEAT_COMPARE_NUM) * ONE_REPEAT_COMPARE_NUM;
-        const int64_t blockElements = BLOCK_BYTES / static_cast<int64_t>(sizeof(int32_t));
-        if (cmpLen > len) {
-            Duplicate<int32_t>(ln.cur, SENTINEL_ID, static_cast<int32_t>(cmpLen));
-            Duplicate<int32_t>(ln.prev, SENTINEL_ID, static_cast<int32_t>(cmpLen));
-            Duplicate<int32_t>(ln.next, SENTINEL_ID, static_cast<int32_t>(cmpLen));
-        }
-
-        // 上一轮 Compare/GatherMask 与本轮 DMA 复用这三块 UB。即使本轮没有尾块，也必须建立
-        // V->MTE2 依赖，避免 MTE2 覆盖上一轮尚未结束的向量读取；有尾块时该事件还保证哨兵预填
-        // 已经完成，再让 DMA 写入前 len 个元素。
+        // GatherMask 只消费前 len 个元素，DMA 对齐尾部无需填哨兵。
+        // 上一轮向量读取与本轮 DMA 复用 cur/prev/next，覆盖前必须等待读取完成。
         SetWaitFlag<HardEvent::V_MTE2>(HardEvent::V_MTE2);
 
+        DataCopyPadExtParams<int32_t> pad{false, 0, 0, 0};
         DataCopyExtParams cpLen{static_cast<uint16_t>(1), static_cast<uint32_t>(len * sizeof(int32_t)), 0, 0, 0};
-        const int64_t curPadElements = (blockElements - len % blockElements) % blockElements;
-        DataCopyPadExtParams<int32_t> curPad{true, 0, static_cast<uint8_t>(curPadElements), SENTINEL_ID};
-        DataCopyPad(ln.cur, idsGm_[begin], cpLen, curPad);
-        DataCopyPad(ln.prev, idsGm_[begin - 1], cpLen, curPad);
+        DataCopyPad(ln.cur, idsGm_[begin], cpLen, pad);
+        DataCopyPad(ln.prev, idsGm_[begin - 1], cpLen, pad);
         const int64_t nextLen = Min(len, totalLen_ - begin - 1);
         if (nextLen > 0) {
             DataCopyExtParams cpNext{static_cast<uint16_t>(1), static_cast<uint32_t>(nextLen * sizeof(int32_t)), 0, 0,
                                      0};
-            const int64_t nextPadElements = (blockElements - nextLen % blockElements) % blockElements;
-            DataCopyPadExtParams<int32_t> nextPad{true, 0, static_cast<uint8_t>(nextPadElements), SENTINEL_ID};
-            DataCopyPad(ln.next, idsGm_[begin + 1], cpNext, nextPad);
+            DataCopyPad(ln.next, idsGm_[begin + 1], cpNext, pad);
         }
         SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
         // 块首一律记为游程起点:它若处在游程中间,缺的那一段正由 pendingCnt 承接。
@@ -224,22 +208,20 @@ private:
     __aicore__ inline int64_t BuildAndCompact(A5RunLanes &ln, int64_t len, uint64_t &startNum, uint64_t &endNum)
     {
         const int64_t cmpLen = Ceil(len, ONE_REPEAT_COMPARE_NUM) * ONE_REPEAT_COMPARE_NUM;
-        // CompareScalar 会按 cmpLen（64 的整数倍）读取 diffF。因此 Sub/Cast 也必须覆盖 cmpLen，
-        // 不能只处理 len：最后一块的 [len, cmpLen) 已由 LoadChunk 写为 SENTINEL_ID，
-        // 其差值应稳定为 0。若这里仍只写 len，CompareScalar 虽然最终只压缩前 len 个 mask，
-        // 但会先读取未初始化的 diffF 尾部，造成未定义的向量输入并破坏尾块确定性。
-        // 有效 expert_id 与哨兵的差值绝对值不超过 expert_id 的协议上界，可精确转成 FP32。
-        Sub(ln.diff, ln.cur, ln.prev, static_cast<int32_t>(cmpLen));
+        // CompareScalar 保留 64 元素对齐长度，缓冲容量覆盖 cmpLen；Sub/Cast 只计算有效元素。
+        // 比较按元素独立执行，尾部 mask 位不保证取值，但下方三次 GatherMask 都以 len 限定
+        // 输入范围，因此尾部不会进入压缩结果或 startNum/endNum/idNum 计数。
+        // 有效 expert_id 与边界哨兵的差值可精确转成 FP32，再与 0 比较。
+        Sub(ln.diff, ln.cur, ln.prev, static_cast<int32_t>(len));
         PipeBarrier<PIPE_V>();
-        Cast(ln.diffF, ln.diff, RoundMode::CAST_ROUND, static_cast<int32_t>(cmpLen));
+        Cast(ln.diffF, ln.diff, RoundMode::CAST_ROUND, static_cast<int32_t>(len));
         PipeBarrier<PIPE_V>();
         CompareScalar(ln.maskS.template ReinterpretCast<uint8_t>(), ln.diffF, static_cast<float>(0), CMPMODE::NE,
                       static_cast<int32_t>(cmpLen));
         PipeBarrier<PIPE_V>();
-        // 同理，末尾掩码的输入也必须完整初始化到 CompareScalar 的实际读取长度。
-        Sub(ln.diff, ln.next, ln.cur, static_cast<int32_t>(cmpLen));
+        Sub(ln.diff, ln.next, ln.cur, static_cast<int32_t>(len));
         PipeBarrier<PIPE_V>();
-        Cast(ln.diffF, ln.diff, RoundMode::CAST_ROUND, static_cast<int32_t>(cmpLen));
+        Cast(ln.diffF, ln.diff, RoundMode::CAST_ROUND, static_cast<int32_t>(len));
         PipeBarrier<PIPE_V>();
         CompareScalar(ln.maskE.template ReinterpretCast<uint8_t>(), ln.diffF, static_cast<float>(0), CMPMODE::NE,
                       static_cast<int32_t>(cmpLen));
