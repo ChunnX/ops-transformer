@@ -97,6 +97,14 @@ struct AntiquantTaskParamBaseAPI {
     uint64_t paN2HeadOffset = 0;
 };
 
+// kvOutputQue 为 2 buffer，用 2 个 MTE3_V event 分别保护两个物理 buffer 的复用:
+// freeEvt[i] 表示 kvOutputQue 第 i 个 buffer 上一轮的 UB->L1 搬出(MTE3)是否已完成。
+// bufIdx 必须与 kvOutputQue 内部的 buffer 轮转(bufCursor)保持同步, 每次 AllocTensor 递增一次。
+struct AntiquantKvOutSyncInfo {
+    TEventID freeEvt[2];
+    uint32_t bufIdx;
+};
+
 template <ANTIQUANT_PROCESSOR_TEMPLATE_DEF, const bool ANTIQUANT_PER_TOKEN>
 class AntiquantProcessorBaseAPI {
 public:
@@ -117,7 +125,7 @@ public:
                                           TQue<QuePosition::VECIN, 1> &antiqScaleInputQue,
                                           TQue<QuePosition::VECIN, 1> &antiqOffsetInputQue, TBuf<> kvAntiqMxScaleRes,
                                           const AntiquantTaskParamBaseAPI &taskParam, int32_t taskId, bool isBeforeHalf,
-                                          int32_t s2RealSize);
+                                          int32_t s2RealSize, AntiquantKvOutSyncInfo &kvOutSync);
 
     __aicore__ inline void CopyAntiqScaleE8M0(LocalTensor<Q_T> dstLocal, GlobalTensor<Q_T> &srcGm, uint64_t offset,
                                               uint32_t rowCnt, uint32_t grpNum);
@@ -150,7 +158,8 @@ public:
                                             TQue<QuePosition::VECOUT, 1> &kvOutputQue, LocalTensor<Q_T> outScm,
                                             GlobalTensor<KV_T> &kvGm, GlobalTensor<int32_t> &blockTableGm,
                                             uint32_t dealRowCount, const AntiquantTaskParamBaseAPI &taskParam,
-                                            int32_t taskId, bool isBeforeHalf, int32_t s2RealSize);
+                                            int32_t taskId, bool isBeforeHalf, int32_t s2RealSize,
+                                            AntiquantKvOutSyncInfo &kvOutSync);
     __aicore__ inline void CopyKV(LocalTensor<KV_T> dstLocal, GlobalTensor<KV_T> &srcGm, uint64_t offset,
                                   uint32_t rowCnt, uint32_t headDim, uint32_t kvHeadNum, uint32_t paKvShapeType);
     __aicore__ inline void CopyKVPaNz(LocalTensor<KV_T> dstLocal, GlobalTensor<KV_T> &srcGm, uint64_t offset,
@@ -189,7 +198,7 @@ __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQU
     TQue<QuePosition::VECIN, 1> &kvInputQue, TQue<QuePosition::VECOUT, 1> &kvOutputQue,
     TQue<QuePosition::VECIN, 1> &antiqScaleInputQue, TQue<QuePosition::VECIN, 1> &antiqOffsetInputQue,
     TBuf<> kvAntiqMxScaleRes, const AntiquantTaskParamBaseAPI &taskParam, int32_t taskId, bool isBeforeHalf,
-    int32_t s2RealSize)
+    int32_t s2RealSize, AntiquantKvOutSyncInfo &kvOutSync)
 {
     if (taskParam.isLoadAntiqParam) {
         if constexpr (KVFP4) {
@@ -226,7 +235,7 @@ __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQU
             actCopyS = tailCopyS;
         }
         AntiquantBaseAPI(i, kvInputQue, kvOutputQue, scmTensor, kvGm, blockTableGm, actCopyS, taskParam, taskId,
-                         isBeforeHalf, s2RealSize);
+                         isBeforeHalf, s2RealSize, kvOutSync);
     }
     CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(VC_L1_EVENT[taskId % 2]);
     if (taskParam.isFreeAntiqParam) {
@@ -506,7 +515,8 @@ template <ANTIQUANT_PROCESSOR_TEMPLATE_DEF, const bool ANTIQUANT_PER_TOKEN>
 __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::AntiquantBaseAPI(
     uint32_t copyLoopIdx, TQue<QuePosition::VECIN, 1> &kvInputQue, TQue<QuePosition::VECOUT, 1> &kvOutputQue,
     LocalTensor<Q_T> outScm, GlobalTensor<KV_T> &kvGm, GlobalTensor<int32_t> &blockTableGm, uint32_t dealRowCount,
-    const AntiquantTaskParamBaseAPI &taskParam, int32_t taskId, bool isBeforeHalf, int32_t s2RealSize)
+    const AntiquantTaskParamBaseAPI &taskParam, int32_t taskId, bool isBeforeHalf, int32_t s2RealSize,
+    AntiquantKvOutSyncInfo &kvOutSync)
 {
     LocalTensor<KV_T> tmpUb = kvInputQue.template AllocTensor<KV_T>();
 
@@ -521,13 +531,19 @@ __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQU
     kvInputQue.template EnQue(tmpUb);
     kvInputQue.DeQue<KV_T>();
 
+    // 该 buffer 上一轮的 UB->L1 搬出(MTE3)未完成前不能写入, 否则 V 会踩踏 MTE3 正在读的数据
+    WaitFlag<HardEvent::MTE3_V>(kvOutSync.freeEvt[kvOutSync.bufIdx]);
     LocalTensor<Q_T> outUb = kvOutputQue.template AllocTensor<Q_T>();
+    const uint32_t outBufIdx = kvOutSync.bufIdx;
+    kvOutSync.bufIdx ^= 1U;
     AntiquantVec(outUb, tmpUb, copyLoopIdx, dealRowCount, taskParam, isBeforeHalf);
     kvInputQue.FreeTensor(tmpUb);
 
     kvOutputQue.template EnQue(outUb);
     kvOutputQue.DeQue<Q_T>();
     CopyAntiquantResToL1BaseAPI(outScm, outUb, copyLoopIdx, dealRowCount, taskParam, taskId, isBeforeHalf, s2RealSize);
+    // MTE3 搬出完成后释放该 buffer, 供下一轮写入
+    SetFlag<HardEvent::MTE3_V>(kvOutSync.freeEvt[outBufIdx]);
     kvOutputQue.FreeTensor(outUb);
 }
 

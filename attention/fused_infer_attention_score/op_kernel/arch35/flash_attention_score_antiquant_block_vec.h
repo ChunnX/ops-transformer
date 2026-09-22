@@ -93,6 +93,7 @@ public:
     __aicore__ inline void WaitCrossCoreFlag();
     __aicore__ inline void InitLocalBuffer(ConstInfo<isInfer, hasRope> &constInfo);
     __aicore__ inline void InitAntiquantBuffer();
+    __aicore__ inline void FreeEventID();
     __aicore__ inline void SoftmaxInitBuffer();
     __aicore__ inline void ClearOutput(ConstInfo<isInfer, hasRope> &constInfo);
     __aicore__ inline void InitOutputSingleCore(ConstInfo<isInfer, hasRope> &constInfo);
@@ -196,6 +197,7 @@ protected:
     T positiveFloatScalar;
     TQue<QuePosition::VECIN, 1> kvInputQue;
     TQue<QuePosition::VECOUT, 1> kvOutputQue;
+    AntiquantKvOutSyncInfo kvOutSync;
     TQue<QuePosition::VECIN, 1> keyAntiqScaleInputQue;
     TQue<QuePosition::VECIN, 1> keyAntiqOffsetInputQue;
     TQue<QuePosition::VECIN, 1> valueAntiqScaleInputQue;
@@ -389,6 +391,20 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::InitAntiqua
     if constexpr (KVFP4) {
         this->tPipe->InitBuffer(kvAntiqMxScaleRes, BUFFER_SIZE_BYTE_5K_ANTIQUANT);
     }
+    kvOutSync.bufIdx = 0;
+    kvOutSync.freeEvt[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
+    kvOutSync.freeEvt[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
+    SetFlag<HardEvent::MTE3_V>(kvOutSync.freeEvt[0]);
+    SetFlag<HardEvent::MTE3_V>(kvOutSync.freeEvt[1]);
+}
+
+ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::FreeEventID()
+{
+    WaitFlag<HardEvent::MTE3_V>(kvOutSync.freeEvt[0]);
+    WaitFlag<HardEvent::MTE3_V>(kvOutSync.freeEvt[1]);
+    GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(kvOutSync.freeEvt[0]);
+    GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(kvOutSync.freeEvt[1]);
 }
 
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
@@ -611,7 +627,8 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::AntiquantKe
     }
     keyAntiquantProcessor.ProcessBaseAPI(outBufAntiKey, tempKeyGm, keyAntiqScaleGm, keyAntiquantOffsetGm, blockTableGm,
                                          kvInputQue, kvOutputQue, keyAntiqScaleInputQue, keyAntiqOffsetInputQue,
-                                         kvAntiqMxScaleRes, taskParam, subTaskId, isBeforeHalf, runInfo.s2RealSize);
+                                         kvAntiqMxScaleRes, taskParam, subTaskId, isBeforeHalf, runInfo.s2RealSize,
+                                         kvOutSync);
 }
 
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
@@ -1008,7 +1025,7 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::AntiquantVa
     valueAntiquantProcessor.ProcessBaseAPI(outBufAntiValue, tempValueGm, valueAntiqScaleGm, valueAntiquantOffsetGm,
                                            blockTableGm, kvInputQue, kvOutputQue, valueAntiqScaleInputQue,
                                            valueAntiqOffsetInputQue, kvAntiqMxScaleRes, taskParam, subTaskId,
-                                           isBeforeHalf, runInfo.s2RealSize);
+                                           isBeforeHalf, runInfo.s2RealSize, kvOutSync);
 }
 
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
@@ -1784,6 +1801,7 @@ public:
     __aicore__ inline void WaitCrossCoreFlag() {}
     __aicore__ inline void setConstAntiTaskParam(ConstInfo<isInfer, hasRope> &constInfo) {}
     __aicore__ inline void InitLocalBuffer(ConstInfo<isInfer, hasRope> &constInfo) {}
+    __aicore__ inline void FreeEventID() {}
     __aicore__ inline void ClearOutput(ConstInfo<isInfer, hasRope> &constInfo) {}
     __aicore__ inline void InitQuant(__gm__ uint8_t *antiquantScale, __gm__ uint8_t *antiquantOffset,
                                      __gm__ uint8_t *keyAntiquantScale, __gm__ uint8_t *keyAntiquantOffset,
