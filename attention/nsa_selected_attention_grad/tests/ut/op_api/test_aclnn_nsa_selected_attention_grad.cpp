@@ -78,9 +78,9 @@ TEST_F(NsaSelectedAttentionGradOpapiUt, A1_tnd_fp16_no_mask)
     auto softmaxSum = MakeTensor({t1, n1, 8}, ACL_FLOAT);
     auto topkIndices = MakeTensor({t1, n2, selectedBlockCount}, ACL_INT32);
 
-    auto dqOut = MakeTensor({t1, n1, d}, ACL_FLOAT16);
-    auto dkOut = MakeTensor({t2, n2, d}, ACL_FLOAT16);
-    auto dvOut = MakeTensor({t2, n2, d2}, ACL_FLOAT16);
+    auto dqOut = MakeTensor({}, ACL_FLOAT16);
+    auto dkOut = MakeTensor({}, ACL_FLOAT16);
+    auto dvOut = MakeTensor({}, ACL_FLOAT16);
 
     int64_t actQ[1] = {t1};
     int64_t actKv[1] = {t2};
@@ -126,9 +126,9 @@ TEST_F(NsaSelectedAttentionGradOpapiUt, A2_tnd_bf16_with_mask)
     auto topkIndices = MakeTensor({t1, n2, selectedBlockCount}, ACL_INT32);
     auto attenMask = MakeTensor({selectedBlockSize, selectedBlockSize}, ACL_BOOL);
 
-    auto dqOut = MakeTensor({t1, n1, d}, ACL_BF16);
-    auto dkOut = MakeTensor({t2, n2, d}, ACL_BF16);
-    auto dvOut = MakeTensor({t2, n2, d2}, ACL_BF16);
+    auto dqOut = MakeTensor({}, ACL_BF16);
+    auto dkOut = MakeTensor({}, ACL_BF16);
+    auto dvOut = MakeTensor({}, ACL_BF16);
 
     int64_t actQ[1] = {t1};
     int64_t actKv[1] = {t2};
