@@ -114,7 +114,7 @@ static aclnnStatus ValidateParams(const aclTensor *query, const aclTensor *key, 
     }
 
     // 验证KV layout
-    if (kvLayout != "TND" && kvLayout != "BNSD" && qLayout != "BSND") {
+    if (kvLayout != "TND" && kvLayout != "BNSD" && kvLayout != "BSND") {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "kvInputLayout only supports TND, BNSD or BSND, got %s.", kvLayout.c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
