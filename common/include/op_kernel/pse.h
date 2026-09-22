@@ -154,7 +154,6 @@ __aicore__ inline void BroadcastAdd(const LocalTensor<T> &src0Tensor, const Loca
         binaryRepeatParams.src1BlkStride = 1;
         binaryRepeatParams.src1RepStride = 0;
         binaryRepeatParams.dstRepStride = binaryRepeatParams.src0RepStride;
-        binaryRepeatParams.blockNumber = binaryRepeatParams.src0RepStride;
 
         for (int32_t j = 0; j < innerLoop; j++) {
             auto innerOffset = j * repeatMaxSize;
