@@ -111,6 +111,7 @@ struct QuantBlockSparseAttnTilingInfo {
     uint32_t dSize = 0;
     uint32_t dSizeV = 0;
     uint32_t qTokenNum = 0;
+    uint32_t qSeqSize = 0; // Physical Sq for padded BSND/BNSD; zero for packed layouts.
 
     uint32_t sparseCount = 0;
     uint32_t qBlockSizeVal = 0;
