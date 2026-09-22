@@ -56,6 +56,10 @@ constexpr uint32_t HCCL_COMM_LAYERS_UB_MEM = 0;
 constexpr uint32_t GET_LOCAL_SERVER_RANK_SIZE_LAYER = 0;
 constexpr int64_t NETWORK_DIRECT = 0;
 constexpr int64_t NETWORK_HYBRID = 1;
+// engram fetch modes (this standalone package cannot include op-side headers; values must stay in
+// sync with mc2/engram_fetch/op_api/engram_fetch_mode_def.h and the Python FETCH_MODE_* constants)
+constexpr int64_t ENGRAM_FETCH_MODE_SLICED = 0; // sliced sharding + cross-NPU comm (default)
+constexpr int64_t ENGRAM_FETCH_MODE_LOCAL = 1;  // full table replicated per NPU, local gather only
 constexpr int64_t BUFFER_ALIGNMENT = 2 * 1024 * 1024;
 constexpr int64_t MB_SIZE = 1024LL * 1024LL;
 constexpr int64_t HUGE1G_SIZE = 1024ULL * 1024ULL * 1024ULL;
@@ -110,19 +114,15 @@ static inline int64_t AlignTo(int64_t x, int64_t y)
 }
 
 static inline void CheckMoeEpMetadataTensor(const at::Tensor &metadata, const char *name, int64_t capacity,
-                                            int64_t epWorldSize, int64_t routeSlots, const at::Device &device)
+                                            int64_t epWorldSize, const at::Device &device)
 {
     TORCH_CHECK(capacity >= 0 && capacity <= INT32_MAX, "metadata capacity must be in [0, INT32_MAX]");
     TORCH_CHECK(epWorldSize >= 2 && epWorldSize <= 1024, "ep_world_size must be in [2, 1024]");
-    TORCH_CHECK(routeSlots >= 0 && routeSlots <= INT32_MAX, "metadata route_slots must be in [0, INT32_MAX]");
-    // Packed ABI: five-column A_alloc rows, rank offsets, then the local [token, top_k] reverse index.
+    // Packed ABI: five-column A_alloc rows, then separately 512B-aligned rank offsets.
     const int64_t elementBytes = sizeof(int32_t);
-    const int64_t rankOffsetsOffset =
-        AlignTo(capacity * MOE_EP_METADATA_FIELDS * elementBytes, MOE_EP_METADATA_ALIGN_BYTES);
-    const int64_t localIndexOffset =
-        rankOffsetsOffset + AlignTo((epWorldSize + 1) * elementBytes, MOE_EP_METADATA_ALIGN_BYTES);
+    const int64_t offsetBytes = AlignTo(capacity * MOE_EP_METADATA_FIELDS * elementBytes, MOE_EP_METADATA_ALIGN_BYTES);
     const int64_t elements =
-        (localIndexOffset + AlignTo(routeSlots * elementBytes, MOE_EP_METADATA_ALIGN_BYTES)) / elementBytes;
+        (offsetBytes + AlignTo((epWorldSize + 1) * elementBytes, MOE_EP_METADATA_ALIGN_BYTES)) / elementBytes;
     TORCH_CHECK(metadata.scalar_type() == at::kInt && metadata.dim() == DIM_ONE, name,
                 " must be a 1D int32 packed tensor");
     TORCH_CHECK(metadata.numel() == static_cast<int64_t>(elements), name, " packed length must be ", elements);
@@ -215,8 +215,6 @@ struct EngramContextResources {
     int64_t commBufferSize = 0;
     EngramCommContext context;
     at::Tensor contextTensor;
-    void *sfDeviceBufPtr = nullptr;
-    bool sfExternalRegistered = false;
 };
 
 // 进程级 Engram 通信 buffer 共享池：HCCL 引擎 ctx 以 tag 为单例缓存在通信域内，注册内存
@@ -233,8 +231,6 @@ struct EngramSharedBufferEntry {
     int64_t registeredBytes = 0; // 实际已注册的字节数
     int64_t commBufferSize = 0;
     EngramCommContext context;
-    void *sfDeviceBufPtr = nullptr;
-    bool sfExternalRegistered = false;
 };
 static std::mutex gEngramSharedBufferMutex;
 static std::unordered_map<std::string, EngramSharedBufferEntry> gEngramSharedBuffers;
@@ -496,11 +492,11 @@ protected:
 
 class EngramContextBuilder : public HcclContextBuilderBase {
 public:
-    EngramContextResources Build(const std::string &groupName, int64_t numCpuBytes, bool withGrad,
-                                 void *externalHostPtr = nullptr, int64_t externalBytes = 0, void *sfHostPtr = nullptr,
-                                 int64_t sfBytes = 0)
+    EngramContextResources Build(const std::string &groupName, int64_t numCpuBytes, bool withGrad, int64_t fetchMode,
+                                 void *externalHostPtr = nullptr, int64_t externalBytes = 0)
     {
         withGrad_ = withGrad;
+        fetchMode_ = fetchMode;
         EngramContextResources resources;
         AcquireHcclHandle(groupName, resources.hcclComm);
 
@@ -515,18 +511,12 @@ public:
             HcclEngineCtxGetFunc(resources.hcclComm, contextTag.c_str(), CommEngine::COMM_ENGINE_AIV, &ctx, &ctxSize);
         if (hcclRet != HCCL_SUCCESS) {
             HostBufferGuard guard;
-            HostBufferGuard sfGuard;
             try {
-                CreateContext(resources, contextTag, numCpuBytes, guard, externalHostPtr, externalBytes, sfHostPtr,
-                              sfBytes, sfGuard);
+                CreateContext(resources, contextTag, numCpuBytes, guard, externalHostPtr, externalBytes);
             } catch (...) {
                 if (externalHostPtr != nullptr && resources.externalRegistered) {
                     (void)aclrtHostUnregister(externalHostPtr);
                     resources.externalRegistered = false;
-                }
-                if (sfHostPtr != nullptr && resources.sfExternalRegistered) {
-                    (void)aclrtHostUnregister(sfHostPtr);
-                    resources.sfExternalRegistered = false;
                 }
                 throw;
             }
@@ -544,15 +534,12 @@ public:
                     resources.hostBufPtr != nullptr ? ((externalHostPtr != nullptr) ? externalBytes : numCpuBytes) : 0;
                 entry.commBufferSize = resources.commBufferSize;
                 entry.context = resources.context;
-                entry.sfDeviceBufPtr = resources.sfDeviceBufPtr;
-                entry.sfExternalRegistered = resources.sfExternalRegistered;
             } catch (...) {
                 ASCEND_LOGW("failed to record engram shared buffer for tag %s, buffer will be rolled back",
                             contextTag.c_str());
                 throw;
             }
             guard.Release();
-            sfGuard.Release();
             return resources;
         }
         // ctx 已存在(同 group 曾创建过，含 destroy 后重建)：注册内存与 channel 均无反注册接口，
@@ -575,8 +562,6 @@ public:
             resources.commBufferSize = entry.commBufferSize;
             resources.context = entry.context;
             resources.contextTensor = CreateCommContextTensor(resources.context);
-            resources.sfDeviceBufPtr = entry.sfDeviceBufPtr;
-            resources.sfExternalRegistered = entry.sfExternalRegistered;
             return resources;
         }
         if (entry.hostBufPtr == nullptr) {
@@ -584,18 +569,12 @@ public:
             GetRankInfo(resources.hcclComm, resources.context.rankId, resources.context.rankSize);
             ValidateRankSize(resources.context.rankSize);
             HostBufferGuard guard;
-            HostBufferGuard sfGuard;
             try {
-                SetupEngramBuffer(resources, contextTag, numCpuBytes, guard, externalHostPtr, externalBytes, sfHostPtr,
-                                  sfBytes, sfGuard);
+                SetupEngramBuffer(resources, contextTag, numCpuBytes, guard, externalHostPtr, externalBytes);
             } catch (...) {
                 if (externalHostPtr != nullptr && resources.externalRegistered) {
                     (void)aclrtHostUnregister(externalHostPtr);
                     resources.externalRegistered = false;
-                }
-                if (sfHostPtr != nullptr && resources.sfExternalRegistered) {
-                    (void)aclrtHostUnregister(sfHostPtr);
-                    resources.sfExternalRegistered = false;
                 }
                 throw;
             }
@@ -610,15 +589,12 @@ public:
                 poolEntry.registeredBytes = (externalHostPtr != nullptr) ? externalBytes : numCpuBytes;
                 poolEntry.commBufferSize = resources.commBufferSize;
                 poolEntry.context = resources.context;
-                poolEntry.sfDeviceBufPtr = resources.sfDeviceBufPtr;
-                poolEntry.sfExternalRegistered = resources.sfExternalRegistered;
             } catch (...) {
                 ASCEND_LOGW("failed to record engram shared buffer for tag %s, buffer will be rolled back",
                             contextTag.c_str());
                 throw;
             }
             guard.Release();
-            sfGuard.Release();
             return resources;
         }
         if (externalHostPtr != nullptr) {
@@ -644,12 +620,12 @@ public:
         resources.commBufferSize = entry.commBufferSize;
         resources.context = entry.context;
         resources.contextTensor = CreateCommContextTensor(resources.context);
-        resources.sfDeviceBufPtr = entry.sfDeviceBufPtr;
         return resources;
     }
 
 private:
     bool withGrad_ = false;
+    int64_t fetchMode_ = ENGRAM_FETCH_MODE_SLICED;
 
     static void ValidateRankSize(uint32_t rankSize)
     {
@@ -675,47 +651,30 @@ private:
             // Map caller-owned storage memory directly (zero-copy): plain memory is supported
             aclError ar =
                 aclrtHostRegisterV2(externalHostPtr, static_cast<uint64_t>(externalBytes), ACL_HOST_REG_MAPPED);
+            resources.externalRegistered = (ar == ACL_SUCCESS);
             if (ar != ACL_SUCCESS) {
                 ASCEND_LOGW("aclrtHostRegisterV2(%lld B) failed, ret=%d, fallback to existing registration",
                             externalBytes, static_cast<int>(ar));
             }
-            resources.externalRegistered = (ar == ACL_SUCCESS);
         }
 
         void *hostPtr = (externalHostPtr != nullptr) ? externalHostPtr : guard.hostPtr;
         void *devPtr = nullptr;
         aclError ar = aclrtHostGetDevicePointer(hostPtr, &devPtr, 0);
         TORCH_CHECK(ar == ACL_SUCCESS, "aclrtHostGetDevicePointer failed, ret=", ar,
-                    ", host memory cannot be mapped to device");
+                    ", storage host memory cannot be mapped to device");
 
         CommMem mem;
         mem.type = COMM_MEM_TYPE_DEVICE;
         mem.addr = devPtr;
         mem.size = static_cast<uint64_t>((externalHostPtr != nullptr) ? externalBytes : numCpuBytes);
+
         auto hcclRet = HcclCommMemRegFunc(commHandle, memBufferTag.c_str(), &mem, &resources.memHandle);
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclCommMemReg(tag='", memBufferTag, "', size=", mem.size,
                     ") failed, ret=", hcclRet);
 
         resources.hostBufPtr = hostPtr;
         resources.deviceBufPtr = devPtr;
-    }
-
-    // SF 表仅本核经映射地址直读 (参数路由): 只做 host->device 映射, 不自建内存、不入 HCCL 通信域。
-    static void MapSfTableBuffer(EngramContextResources &resources, void *sfHostPtr, int64_t sfBytes)
-    {
-        aclError ar = aclrtHostRegisterV2(sfHostPtr, static_cast<uint64_t>(sfBytes), ACL_HOST_REG_MAPPED);
-        if (ar != ACL_SUCCESS) {
-            ASCEND_LOGW("aclrtHostRegisterV2(%lld B) failed, ret=%d, fallback to existing registration", sfBytes,
-                        static_cast<int>(ar));
-        }
-        resources.sfExternalRegistered = (ar == ACL_SUCCESS);
-
-        void *devPtr = nullptr;
-        ar = aclrtHostGetDevicePointer(sfHostPtr, &devPtr, 0);
-        TORCH_CHECK(ar == ACL_SUCCESS, "aclrtHostGetDevicePointer failed, ret=", ar,
-                    ", storage host memory cannot be mapped to device");
-
-        resources.sfDeviceBufPtr = devPtr;
     }
 
     void BuildChannelDescs(const HcclComm &commHandle, uint32_t srcRankId, uint32_t rankDim, uint32_t channelsPerRank,
@@ -862,6 +821,7 @@ private:
                     ASCEND_LOGI("Get Target Mem(%s) Success, Mem id is %d, Addr is %lu", targetTag.c_str(), j,
                                 targetMemAddr);
                     hasTargetMem = true;
+                    break;
                 }
             }
             TORCH_CHECK(hasTargetMem, "Target Mem : ", targetTag, " is not found.");
@@ -934,8 +894,7 @@ private:
     }
 
     void CreateContext(EngramContextResources &resources, const std::string &contextTag, int64_t numCpuBytes,
-                       HostBufferGuard &guard, void *externalHostPtr, int64_t externalBytes, void *sfHostPtr,
-                       int64_t sfBytes, HostBufferGuard &sfGuard)
+                       HostBufferGuard &guard, void *externalHostPtr = nullptr, int64_t externalBytes = 0)
     {
         uint64_t contextSize = sizeof(EngramCommContext);
         void *ctx = nullptr;
@@ -944,15 +903,13 @@ private:
         GetRankInfo(resources.hcclComm, resources.context.rankId, resources.context.rankSize);
         ValidateRankSize(resources.context.rankSize);
 
-        SetupEngramBuffer(resources, contextTag, numCpuBytes, guard, externalHostPtr, externalBytes, sfHostPtr, sfBytes,
-                          sfGuard);
+        SetupEngramBuffer(resources, contextTag, numCpuBytes, guard, externalHostPtr, externalBytes);
     }
 
     // 注册存储并构建 channel/远端地址信息，最后把完整 context 拷贝到设备端引擎 ctx。
     // 复用路径(ctx 已存在但共享池尚无注册内存)重建时也会走到这里。
     void SetupEngramBuffer(EngramContextResources &resources, const std::string &contextTag, int64_t numCpuBytes,
-                           HostBufferGuard &guard, void *externalHostPtr, int64_t externalBytes, void *sfHostPtr,
-                           int64_t sfBytes, HostBufferGuard &sfGuard)
+                           HostBufferGuard &guard, void *externalHostPtr = nullptr, int64_t externalBytes = 0)
     {
         if (numCpuBytes == 0 && externalHostPtr == nullptr) {
             return;
@@ -962,21 +919,24 @@ private:
         AllocateAndRegisterBuffer(resources.hcclComm, memBufferTag, numCpuBytes, resources, guard, externalHostPtr,
                                   externalBytes);
 
-        if (sfHostPtr != nullptr && sfBytes > 0) {
-            MapSfTableBuffer(resources, sfHostPtr, sfBytes);
-        }
-
-        uint32_t *netLayerList = nullptr;
-        uint32_t netLayerNum = 0;
-        GetNetLayers(resources.hcclComm, netLayerList, netLayerNum);
-        if (netLayerNum != HCCL_COMM_LAYERS_MTE_CCU) {
-            CheckProtocolSupport(resources.hcclComm, netLayerList, netLayerNum, CommProtocol::COMM_PROTOCOL_UB_CTP);
-        }
-
-        if (withGrad_) {
-            QueryHcclBufferResource(resources.hcclComm, resources);
+        if (fetchMode_ == ENGRAM_FETCH_MODE_LOCAL) {
+            // Local mode (infer only): acquire no cross-card channels or remote addresses
+            // (no inter-NPU RDMA dependency); record only this rank's table base address.
+            resources.context.virtualAddrList[resources.context.rankId] =
+                reinterpret_cast<uint64_t>(resources.deviceBufPtr);
         } else {
-            GetHcclCommResource(resources.hcclComm, resources, memBufferTag);
+            uint32_t *netLayerList = nullptr;
+            uint32_t netLayerNum = 0;
+            GetNetLayers(resources.hcclComm, netLayerList, netLayerNum);
+            if (netLayerNum != HCCL_COMM_LAYERS_MTE_CCU) {
+                CheckProtocolSupport(resources.hcclComm, netLayerList, netLayerNum, CommProtocol::COMM_PROTOCOL_UB_CTP);
+            }
+
+            if (withGrad_) {
+                QueryHcclBufferResource(resources.hcclComm, resources);
+            } else {
+                GetHcclCommResource(resources.hcclComm, resources, memBufferTag);
+            }
         }
 
         CopyContextToDevice(resources.hcclComm, contextTag, CommEngine::COMM_ENGINE_AIV, &resources.context,
@@ -1631,7 +1591,7 @@ private:
 class ElasticBuffer {
 public:
     ElasticBuffer(const std::string &groupName, int64_t numCpuBytes, int64_t numMaxTokensPerRank = 0,
-                  bool withGrad = false, bool explicitlyDestroy = false);
+                  bool withGrad = false, bool explicitlyDestroy = false, int64_t fetchMode = ENGRAM_FETCH_MODE_SLICED);
     ~ElasticBuffer();
 
     void EngramWrite(const at::Tensor &storage, const c10::optional<at::Tensor> &sf);
@@ -1646,10 +1606,6 @@ public:
     {
         return localStorageAddrTensor_;
     }
-    const at::Tensor &GetLocalSfTableAddrTensor() const
-    {
-        return localSfTableTensor_;
-    }
     int64_t GetCommBufferSize() const
     {
         return commBufferSize_;
@@ -1658,15 +1614,13 @@ public:
     {
         return engramCommContext_.rankSize;
     }
-
     static at::Tensor EngramFetch(const at::Tensor &context, const at::Tensor &indices, int64_t hiddenSize,
                                   int64_t numEntries, int64_t dtypeEnum, const at::Tensor &sfTable,
-                                  at::Tensor &fetchedSf);
+                                  at::Tensor &fetchedSf, int64_t fetchMode);
     using EngramFetchTrainOutput = std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor>;
     static EngramFetchTrainOutput EngramFetchTrain(const at::Tensor &context, const at::Tensor &indices,
                                                    int64_t hiddenSize, int64_t numEntries, int64_t dtypeEnum,
-                                                   const at::Tensor &localStorageAddr, const at::Tensor &sfTableAddr,
-                                                   at::Tensor &fetchedSf, int64_t numMaxTokensPerRank,
+                                                   const at::Tensor &localStorageAddr, int64_t numMaxTokensPerRank,
                                                    int64_t commBufferSize, int64_t rankSize);
     static at::Tensor EngramFetchWait(const at::Tensor &context, const at::Tensor &fetched);
 
@@ -1713,8 +1667,7 @@ public:
                                                    const c10::optional<at::Tensor> &combinedTopkWeightsOpt);
 
 private:
-    void EnsureEngramContext(void *externalHostPtr = nullptr, int64_t externalBytes = 0, void *sfHostPtr = nullptr,
-                             int64_t sfBytes = 0);
+    void EnsureEngramContext(void *externalHostPtr = nullptr, int64_t externalBytes = 0);
     void EnsureMoeContext(int64_t cclBufferSize);
     int64_t ResolveRankNumPerServer(int64_t epWorldSize) const;
     int64_t ResolveTopoType(int64_t epWorldSize, int64_t rankNumPerServer) const;
@@ -1733,9 +1686,6 @@ private:
     EngramCommContext engramCommContext_;
     at::Tensor engramContextTensor_;    // Cached Engram context tensor
     at::Tensor localStorageAddrTensor_; // int64 scalar tensor, stores deviceBufPtr_ address
-    at::Tensor localSfTableTensor_;     // FP8 device tensor view of HCCL-registered sf table
-    void *sfDeviceBufPtr_ = nullptr;
-    bool sfExternalRegistered_ = false;
     bool engramContextInitialized_ = false;
     bool engramStorageExternal_ = false;
     bool engramExternalRegisteredByUs_ = false;
@@ -1757,21 +1707,29 @@ private:
 
     bool destroyed_ = false;
     bool engramWriteCalled_ = false;
+    int64_t fetchMode_ = ENGRAM_FETCH_MODE_SLICED; // 0 = sliced cross-NPU (default), 1 = local full table
     aclrtStream commStream_ = nullptr;
 };
 
 // Constructor
 
 ElasticBuffer::ElasticBuffer(const std::string &groupName, int64_t numCpuBytes, int64_t numMaxTokensPerRank,
-                             bool withGrad, bool explicitlyDestroy)
+                             bool withGrad, bool explicitlyDestroy, int64_t fetchMode)
     : groupName_(groupName),
       engramNumCpuBytes_(numCpuBytes),
       destroyed_(false),
       engramWriteCalled_(false),
       numMaxTokensPerRank_(numMaxTokensPerRank),
       explicitlyDestroy_(explicitlyDestroy),
-      withGrad_(withGrad)
+      withGrad_(withGrad),
+      fetchMode_(fetchMode)
 {
+    TORCH_CHECK(fetchMode == ENGRAM_FETCH_MODE_SLICED || fetchMode == ENGRAM_FETCH_MODE_LOCAL,
+                "fetch_mode must be 0 (sliced, cross-NPU) or 1 (local, full replication), got ", fetchMode);
+    TORCH_CHECK(!(withGrad && fetchMode == ENGRAM_FETCH_MODE_LOCAL),
+                "fetch_mode=1 (local, full replication) only supports inference, "
+                "with_grad=True is not supported in local fetch_mode, got with_grad=",
+                withGrad, ", fetch_mode=", fetchMode);
     InitHcclEngineCtxFunctions();
     InitHcclFunctions();
 }
@@ -1793,7 +1751,7 @@ ElasticBuffer::~ElasticBuffer()
     }
 }
 
-void ElasticBuffer::EnsureEngramContext(void *externalHostPtr, int64_t externalBytes, void *sfHostPtr, int64_t sfBytes)
+void ElasticBuffer::EnsureEngramContext(void *externalHostPtr, int64_t externalBytes)
 {
     TORCH_CHECK(!destroyed_, "ElasticBuffer cannot be used after destroy, please create a new ElasticBuffer instance");
     if (engramContextInitialized_) {
@@ -1803,7 +1761,7 @@ void ElasticBuffer::EnsureEngramContext(void *externalHostPtr, int64_t externalB
     TORCH_CHECK(commStream_ != nullptr, "Failed to get NPU stream from pool for comm stream");
     EngramContextBuilder builder;
     EngramContextResources resources = builder.Build(groupName_, withGrad_ ? 0 : engramNumCpuBytes_, withGrad_,
-                                                     externalHostPtr, externalBytes, sfHostPtr, sfBytes);
+                                                     fetchMode_, externalHostPtr, externalBytes);
     engramHcclComm_ = resources.hcclComm;
     engramMemHandle_ = resources.memHandle;
     engramHostBufPtr_ = resources.hostBufPtr;
@@ -1813,13 +1771,6 @@ void ElasticBuffer::EnsureEngramContext(void *externalHostPtr, int64_t externalB
     commBufferSize_ = resources.commBufferSize;
     engramStorageExternal_ = (externalHostPtr != nullptr);
     engramExternalRegisteredByUs_ = resources.externalRegistered;
-    sfDeviceBufPtr_ = resources.sfDeviceBufPtr;
-    sfExternalRegistered_ = resources.sfExternalRegistered;
-    if (sfDeviceBufPtr_ != nullptr) {
-        int64_t sfAddrValue = reinterpret_cast<int64_t>(sfDeviceBufPtr_);
-        auto hostSfAddrTensor = at::full({1}, sfAddrValue, at::TensorOptions().dtype(at::kLong));
-        localSfTableTensor_ = hostSfAddrTensor.to(c10::DeviceType::PrivateUse1);
-    }
     engramExternalBytes_ = externalBytes;
     engramBufferPooled_ = (engramHostBufPtr_ != nullptr);
     int64_t addrValue = reinterpret_cast<int64_t>(engramDeviceBufPtr_);
@@ -1871,8 +1822,6 @@ void ElasticBuffer::EngramWrite(const at::Tensor &storage, const c10::optional<a
                              "please create a new ElasticBuffer instance");
     void *externalHostPtr = nullptr;
     int64_t externalBytes = 0;
-    void *sfHostPtr = nullptr;
-    int64_t sfBytes = 0;
     if (withGrad_) {
         TORCH_CHECK(storage.nbytes() > 0, "engram_write in with_grad mode requires non-empty storage, got ",
                     storage.nbytes(), " bytes");
@@ -1890,13 +1839,9 @@ void ElasticBuffer::EngramWrite(const at::Tensor &storage, const c10::optional<a
         } else {
             externalHostPtr = storage.data_ptr();
             externalBytes = static_cast<int64_t>(storage.nbytes());
-            if (sf.has_value()) {
-                sfHostPtr = sf.value().data_ptr();
-                sfBytes = static_cast<int64_t>(sf.value().nbytes());
-            }
         }
     }
-    EnsureEngramContext(externalHostPtr, externalBytes, sfHostPtr, sfBytes);
+    EnsureEngramContext(externalHostPtr, externalBytes);
 
     if (!withGrad_) {
         TORCH_CHECK(storage.nbytes() <= static_cast<size_t>(engramNumCpuBytes_), "storage size ", storage.nbytes(),
@@ -1904,10 +1849,16 @@ void ElasticBuffer::EngramWrite(const at::Tensor &storage, const c10::optional<a
     }
 
     constexpr int64_t int32Max = static_cast<int64_t>(INT32_MAX);
-    TORCH_CHECK(storage.size(0) * static_cast<int64_t>(engramCommContext_.rankSize) <= int32Max,
-                "num_entries * rank_size must not exceed INT32_MAX, got num_entries=", storage.size(0),
-                ", rank_size=", engramCommContext_.rankSize,
-                ", product=", storage.size(0) * static_cast<int64_t>(engramCommContext_.rankSize));
+    if (fetchMode_ == ENGRAM_FETCH_MODE_LOCAL) {
+        // Local mode: storage is the full global table, its row count is the global entry count.
+        TORCH_CHECK(storage.size(0) <= int32Max,
+                    "num_entries must not exceed INT32_MAX in local fetch_mode, got num_entries=", storage.size(0));
+    } else {
+        TORCH_CHECK(storage.size(0) * static_cast<int64_t>(engramCommContext_.rankSize) <= int32Max,
+                    "num_entries * rank_size must not exceed INT32_MAX, got num_entries=", storage.size(0),
+                    ", rank_size=", engramCommContext_.rankSize,
+                    ", product=", storage.size(0) * static_cast<int64_t>(engramCommContext_.rankSize));
+    }
 
     EngramBarrier(false, true);
 
@@ -1939,7 +1890,7 @@ void ElasticBuffer::EngramWrite(const at::Tensor &storage, const c10::optional<a
 // EngramFetch - stateless static method for torch CustomOp registration (graph-mode compatible).
 at::Tensor ElasticBuffer::EngramFetch(const at::Tensor &context, const at::Tensor &indices, int64_t hiddenSize,
                                       int64_t numEntries, int64_t dtypeEnum, const at::Tensor &sfTable,
-                                      at::Tensor &fetchedSf)
+                                      at::Tensor &fetchedSf, int64_t fetchMode)
 {
     auto dtype = static_cast<at::ScalarType>(dtypeEnum);
     int64_t numTokens = indices.size(0);
@@ -1950,7 +1901,7 @@ at::Tensor ElasticBuffer::EngramFetch(const at::Tensor &context, const at::Tenso
     aclTensor *nullTensor = nullptr;
     int64_t zero = 0;
     ACLNN_CMD(aclnnEngramFetch, context, indices, nullTensor, sfTable, fetched, nullTensor, nullTensor, nullTensor,
-              nullTensor, nullTensor, fetchedSf, hiddenSize, numEntries, zero, zero, zero);
+              nullTensor, nullTensor, fetchedSf, hiddenSize, numEntries, zero, zero, zero, fetchMode);
     return fetched;
 }
 
@@ -1958,8 +1909,7 @@ at::Tensor ElasticBuffer::EngramFetch(const at::Tensor &context, const at::Tenso
 // Outputs: fetched + save-for-backward ctx tensors (perm, sendCounts, recvCounts, recvLocalEntry, numRecv).
 ElasticBuffer::EngramFetchTrainOutput ElasticBuffer::EngramFetchTrain(
     const at::Tensor &context, const at::Tensor &indices, int64_t hiddenSize, int64_t numEntries, int64_t dtypeEnum,
-    const at::Tensor &localStorageAddr, const at::Tensor &sfTableAddr, at::Tensor &fetchedSf,
-    int64_t numMaxTokensPerRank, int64_t commBufferSize, int64_t rankSize)
+    const at::Tensor &localStorageAddr, int64_t numMaxTokensPerRank, int64_t commBufferSize, int64_t rankSize)
 {
     auto dtype = static_cast<at::ScalarType>(dtypeEnum);
     int64_t numTokens = indices.size(0);
@@ -1977,10 +1927,10 @@ ElasticBuffer::EngramFetchTrainOutput ElasticBuffer::EngramFetchTrain(
 
     if (numTokens > 0) {
         constexpr int64_t withGrad = 1;
-        int64_t zero = 0;
-        ACLNN_CMD(aclnnEngramFetch, context, indices, localStorageAddr, sfTableAddr, fetched, perm, sendCounts,
-                  recvCounts, recvLocalEntry, numRecv, fetchedSf, hiddenSize, numEntries, numMaxTokensPerRank,
-                  commBufferSize, withGrad);
+        aclTensor *nullTensor = nullptr;
+        ACLNN_CMD(aclnnEngramFetch, context, indices, localStorageAddr, nullTensor, fetched, perm, sendCounts,
+                  recvCounts, recvLocalEntry, numRecv, nullTensor, hiddenSize, numEntries, numMaxTokensPerRank,
+                  commBufferSize, withGrad, ENGRAM_FETCH_MODE_SLICED); // 训练场景仅支持切片跨NPU模式
     }
     return std::make_tuple(fetched, perm, sendCounts, recvCounts, recvLocalEntry, numRecv);
 }
@@ -2100,12 +2050,7 @@ void ElasticBuffer::Destroy()
     moeContextInitialized_ = false;
     engramContextTensor_ = at::Tensor();
     localStorageAddrTensor_ = at::Tensor();
-    localSfTableTensor_ = at::Tensor();
     moeContextTensor_ = at::Tensor();
-
-    // SF 注册内存同样按 tag 入进程级共享池，Destroy 仅解除本实例引用、不释放内存。
-    sfDeviceBufPtr_ = nullptr;
-    sfExternalRegistered_ = false;
 
     destroyed_ = true;
 }
@@ -2265,11 +2210,10 @@ Mc2Api::ElasticBuffer::DispatchEpilogueTensorList Mc2Api::ElasticBuffer::MoeEpDi
 {
     TORCH_CHECK(x.dim() == DIM_TWO, "x dims must be 2, but got ", x.dim());
     TORCH_CHECK(recvX.dim() == DIM_TWO, "recv_x dims must be 2, but got ", recvX.dim());
-    CheckMoeEpMetadataTensor(recvSrcMetadata, "recv_src_metadata", recvX.size(0), epWorldSize, topkIdx.numel(),
-                             recvX.device());
+    CheckMoeEpMetadataTensor(recvSrcMetadata, "recv_src_metadata", recvX.size(0), epWorldSize, recvX.device());
     if (cachedRecvSrcMetadata.has_value()) {
         CheckMoeEpMetadataTensor(*cachedRecvSrcMetadata, "cached_recv_src_metadata", recvX.size(0), epWorldSize,
-                                 topkIdx.numel(), recvX.device());
+                                 recvX.device());
     }
 
     EnsureMoeContext(cclBufferSize);
@@ -2315,7 +2259,7 @@ void Mc2Api::ElasticBuffer::MoeEpCombine(const at::Tensor &x, const at::Tensor &
 {
     TORCH_CHECK(x.dim() == DIM_TWO, "x dims must be 2, but got ", x.dim());
     TORCH_CHECK(topkIdx.dim() == DIM_TWO, "topk_idx dims must be 2, but got ", topkIdx.dim());
-    CheckMoeEpMetadataTensor(recvSrcMetadata, "recv_src_metadata", x.size(0), epWorldSize, topkIdx.numel(), x.device());
+    CheckMoeEpMetadataTensor(recvSrcMetadata, "recv_src_metadata", x.size(0), epWorldSize, x.device());
     EnsureMoeContext(cclBufferSize);
     int64_t rankNumPerServer = ResolveRankNumPerServer(epWorldSize);
     int64_t topoType = ResolveTopoType(epWorldSize, rankNumPerServer);
@@ -2334,7 +2278,7 @@ Mc2Api::ElasticBuffer::CombineEpilogueTensorList Mc2Api::ElasticBuffer::MoeEpCom
 {
     TORCH_CHECK(x.dim() == DIM_TWO, "x dims must be 2, but got ", x.dim());
     TORCH_CHECK(topkIdx.dim() == DIM_TWO, "topk_idx dims must be 2, but got ", topkIdx.dim());
-    CheckMoeEpMetadataTensor(recvSrcMetadata, "recv_src_metadata", x.size(0), epWorldSize, topkIdx.numel(), x.device());
+    CheckMoeEpMetadataTensor(recvSrcMetadata, "recv_src_metadata", x.size(0), epWorldSize, x.device());
     EnsureMoeContext(cclBufferSize);
     int64_t rankNumPerServer = ResolveRankNumPerServer(epWorldSize);
     int64_t topoType = ResolveTopoType(epWorldSize, rankNumPerServer);
@@ -2366,22 +2310,24 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         .def("host_ptr", &OpApi::HostPinnedCounter::HostPtr);
 
     pybind11::class_<Mc2Api::ElasticBuffer>(m, "ElasticBuffer")
-        .def(pybind11::init<const std::string &, int64_t, int64_t, bool, bool>(), pybind11::arg("groupName"),
+        .def(pybind11::init<const std::string &, int64_t, int64_t, bool, bool, int64_t>(), pybind11::arg("groupName"),
              pybind11::arg("numCpuBytes"), pybind11::arg("numMaxTokensPerRank") = 0, pybind11::arg("withGrad") = false,
-             pybind11::arg("explicitlyDestroy") = false)
+             pybind11::arg("explicitlyDestroy") = false,
+             pybind11::arg("fetchMode") = Mc2Api::ENGRAM_FETCH_MODE_SLICED)
         .def("engram_write", &Mc2Api::ElasticBuffer::EngramWrite, pybind11::arg("storage").noconvert(),
              pybind11::arg("sf") = pybind11::none())
         .def_static("engram_fetch",
                     static_cast<at::Tensor (*)(const at::Tensor &, const at::Tensor &, int64_t, int64_t, int64_t,
-                                               const at::Tensor &, at::Tensor &)>(&Mc2Api::ElasticBuffer::EngramFetch),
+                                               const at::Tensor &, at::Tensor &, int64_t)>(
+                        &Mc2Api::ElasticBuffer::EngramFetch),
                     pybind11::arg("context"), pybind11::arg("indices"), pybind11::arg("hidden_size"),
                     pybind11::arg("num_entries"), pybind11::arg("dtype"), pybind11::arg("sf_table"),
-                    pybind11::arg("fetched_sf"))
+                    pybind11::arg("fetched_sf"), pybind11::arg("fetch_mode"))
         .def_static("engram_fetch_train", &Mc2Api::ElasticBuffer::EngramFetchTrain, pybind11::arg("context"),
                     pybind11::arg("indices"), pybind11::arg("hidden_size"), pybind11::arg("num_entries"),
-                    pybind11::arg("dtype"), pybind11::arg("local_storage_addr"), pybind11::arg("sf_table_addr"),
-                    pybind11::arg("fetched_sf"), pybind11::arg("num_max_tokens_per_rank"),
-                    pybind11::arg("comm_buffer_size"), pybind11::arg("rank_size"))
+                    pybind11::arg("dtype"), pybind11::arg("local_storage_addr"),
+                    pybind11::arg("num_max_tokens_per_rank"), pybind11::arg("comm_buffer_size"),
+                    pybind11::arg("rank_size"))
         .def_static("engram_fetch_wait", &Mc2Api::ElasticBuffer::EngramFetchWait, pybind11::arg("context"),
                     pybind11::arg("fetched"))
         .def_static(
@@ -2400,7 +2346,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         .def("destroy", &Mc2Api::ElasticBuffer::Destroy)
         .def("get_context_tensor", &Mc2Api::ElasticBuffer::GetContextTensor)
         .def("get_local_storage_addr", &Mc2Api::ElasticBuffer::GetLocalStorageAddrTensor)
-        .def("get_local_sf_table_addr", &Mc2Api::ElasticBuffer::GetLocalSfTableAddrTensor)
         .def("get_comm_buffer_size", &Mc2Api::ElasticBuffer::GetCommBufferSize)
         .def("get_rank_size", &Mc2Api::ElasticBuffer::GetRankSize)
         .def("moe_ep_dispatch", &Mc2Api::ElasticBuffer::MoeEpDispatch)

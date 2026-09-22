@@ -29,13 +29,20 @@ _ENGRAM_DTYPE_TO_INT = {
 }
 _ENGRAM_INT_TO_DTYPE = {v: k for k, v in _ENGRAM_DTYPE_TO_INT.items()}
 _ENGRAM_SF_DTYPES = (torch.float32, torch.float8_e8m0fnu)
-_ENGRAM_GRAD_DTYPES = (torch.bfloat16, torch.float16, torch.float32)
 _MOE_EP_METADATA_FIELDS = 5
+
+# engram fetch modes: 0 = sliced sharding + cross-NPU comm (default, same as before, train/infer);
+# 1 = full table replicated on every NPU, purely local gather (infer only, not with with_grad=True).
+# Values must stay in sync with op-side mc2/engram_fetch/op_api/engram_fetch_mode_def.h and the
+# ENGRAM_FETCH_MODE_* constants in elastic_buffer.cpp.
+FETCH_MODE_SLICED = 0
+FETCH_MODE_LOCAL = 1
+_FETCH_MODES = (FETCH_MODE_SLICED, FETCH_MODE_LOCAL)
 
 _MOE_EP_METADATA_ALIGN_ELEMENTS = 128  # 512 bytes, int32 elements
 
 
-def _metadata_buffer_layout(capacity: int, ep_world_size: int, route_slots: int):
+def _metadata_buffer_layout(capacity: int, ep_world_size: int):
     torch._check(
         0 <= capacity <= 2147483647,
         lambda: "metadata capacity must be in [0, INT32_MAX]",
@@ -43,27 +50,14 @@ def _metadata_buffer_layout(capacity: int, ep_world_size: int, route_slots: int)
     torch._check(
         2 <= ep_world_size <= 1024, lambda: "ep_world_size must be in [2, 1024]"
     )
-    torch._check(
-        0 <= route_slots <= 2147483647,
-        lambda: "metadata route_slots must be in [0, INT32_MAX]",
-    )
     align = _MOE_EP_METADATA_ALIGN_ELEMENTS
-    rank_offsets_offset = (
-        (capacity * _MOE_EP_METADATA_FIELDS + align - 1) // align * align
-    )
-    local_index_offset = (
-        rank_offsets_offset + (ep_world_size + 1 + align - 1) // align * align
-    )
-    total = local_index_offset + (route_slots + align - 1) // align * align
-    return rank_offsets_offset, local_index_offset, total
+    offset = (capacity * _MOE_EP_METADATA_FIELDS + align - 1) // align * align
+    total = offset + (ep_world_size + 1 + align - 1) // align * align
+    return offset, total
 
 
-def _metadata_buffer_views(
-    buffer: torch.Tensor, capacity: int, ep_world_size: int, route_slots: int
-):
-    rank_offsets_offset, _, total = _metadata_buffer_layout(
-        capacity, ep_world_size, route_slots
-    )
+def _metadata_buffer_views(buffer: torch.Tensor, capacity: int, ep_world_size: int):
+    offset, total = _metadata_buffer_layout(capacity, ep_world_size)
     torch._check(
         buffer.dtype == torch.int32 and buffer.dim() == 1 and buffer.numel() == total,
         lambda: "metadata buffer must have the full packed int32 shape",
@@ -76,19 +70,17 @@ def _metadata_buffer_views(
         buffer[: capacity * _MOE_EP_METADATA_FIELDS].view(
             capacity, _MOE_EP_METADATA_FIELDS
         ),
-        buffer[rank_offsets_offset : rank_offsets_offset + ep_world_size + 1],
+        buffer[offset : offset + ep_world_size + 1],
     )
 
 
-def _checked_handle_metadata_buffer(
-    handle, capacity: int, ep_world_size: int, route_slots: int, device
-):
+def _checked_handle_metadata_buffer(handle, capacity: int, ep_world_size: int, device):
     buffer = handle.recv_metadata_buffer
     torch._check(
         buffer is not None,
         lambda: "EPHandle requires packed recv_metadata_buffer; regenerate or explicitly repack the old handle",
     )
-    rows, offsets = _metadata_buffer_views(buffer, capacity, ep_world_size, route_slots)
+    rows, offsets = _metadata_buffer_views(buffer, capacity, ep_world_size)
     torch._check(
         buffer.device == device,
         lambda: "metadata buffer and x must be on the same device",
@@ -152,10 +144,10 @@ class ElasticBufferOpBuilder(OpBuilder):
         """PyTorch operator signature."""
         return [
             "engram_fetch(Tensor context, Tensor indices, int hidden_size, "
-            "int num_entries, int dtype, Tensor sf_table, Tensor fetched_sf) -> Tensor",
+            "int num_entries, int dtype, Tensor sf_table, Tensor fetched_sf, "
+            "int fetch_mode) -> Tensor",
             "engram_fetch_train(Tensor context, Tensor indices, int hidden_size, "
             "int num_entries, int dtype, Tensor local_storage_addr, "
-            "Tensor sf_table_addr, Tensor fetched_sf, "
             "int num_max_tokens_per_rank, int comm_buffer_size, int rank_size) "
             "-> (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)",
             "engram_fetch_wait(Tensor context, Tensor fetched) -> Tensor",
@@ -170,7 +162,7 @@ class ElasticBufferOpBuilder(OpBuilder):
 
         @impl(get_as_library(), "engram_fetch", "Meta")
         def engram_fetch_meta(
-            context, indices, hidden_size, num_entries, dtype, sf_table, fetched_sf
+            context, indices, hidden_size, num_entries, dtype, sf_table, fetched_sf, fetch_mode
         ):
             return torch.empty(
                 (indices.size(0), hidden_size),
@@ -187,8 +179,6 @@ class ElasticBufferOpBuilder(OpBuilder):
                 _num_entries,
                 dtype,
                 _local_storage_addr,
-                _sf_table_addr,
-                _fetched_sf,
                 num_max_tokens_per_rank,
                 _comm_buffer_size,
                 rank_size,
@@ -273,11 +263,11 @@ _elastic_buffer_op_builder._ensure_initialized()
 
 @impl(get_as_library(), "engram_fetch", "PrivateUse1")
 def engram_fetch(
-    context, indices, hidden_size, num_entries, dtype, sf_table, fetched_sf
+    context, indices, hidden_size, num_entries, dtype, sf_table, fetched_sf, fetch_mode
 ):
     op_module = _elastic_buffer_op_builder.load()
     return op_module.ElasticBuffer.engram_fetch(
-        context, indices, hidden_size, num_entries, dtype, sf_table, fetched_sf
+        context, indices, hidden_size, num_entries, dtype, sf_table, fetched_sf, fetch_mode
     )
 
 
@@ -603,7 +593,17 @@ class _EPEpilogueEvent:
 class ElasticBuffer:
     """
     ElasticBuffer for distributed Engram storage management and MoE dispatch/combine operations.
+
+    Engram fetch modes:
+        FETCH_MODE_SLICED (0, default): global table sharded across ranks,
+            fetching requires cross-NPU communication (inference & training).
+        FETCH_MODE_LOCAL (1, inference only): full global table replicated
+            on every NPU, fetching is purely local (no cross-NPU
+            communication); not supported with with_grad=True.
     """
+
+    FETCH_MODE_SLICED = FETCH_MODE_SLICED
+    FETCH_MODE_LOCAL = FETCH_MODE_LOCAL
 
     def __init__(
         self,
@@ -615,6 +615,7 @@ class ElasticBuffer:
         num_topk: Optional[int] = None,
         with_grad: bool = False,
         explicitly_destroy: bool = False,
+        fetch_mode: int = FETCH_MODE_SLICED,
     ):
         """
         Initialize the ElasticBuffer.
@@ -632,14 +633,42 @@ class ElasticBuffer:
                 instance is garbage collected. Note that Engram host pinned
                 memory is retained in a process-level pool after ``destroy``
                 and freed when the process exits (see ``destroy``).
+            fetch_mode: engram fetch mode. 0 (FETCH_MODE_SLICED, default):
+                global table is sharded across ranks, fetching goes through
+                cross-NPU communication (RDMA / a2a); 1 (FETCH_MODE_LOCAL,
+                inference only): the full global table is replicated on every
+                NPU, fetching is purely local with no cross-NPU communication;
+                not supported together with with_grad=True.
         """
         moe_args = (num_max_tokens_per_rank, hidden, num_topk)
         self._validate_init_args(group, num_cpu_bytes, moe_args, with_grad)
+        _torch_check(
+            isinstance(fetch_mode, int) and not isinstance(fetch_mode, bool),
+            lambda: (
+                f"fetch_mode must be an int, got {type(fetch_mode).__name__}: {fetch_mode!r}."
+            ),
+        )
+        _torch_check(
+            fetch_mode in _FETCH_MODES,
+            lambda: (
+                f"fetch_mode must be one of {_FETCH_MODES} "
+                f"(0=FETCH_MODE_SLICED, 1=FETCH_MODE_LOCAL), got {fetch_mode}."
+            ),
+        )
+        _torch_check(
+            not (with_grad and fetch_mode == FETCH_MODE_LOCAL),
+            lambda: (
+                "fetch_mode=1 (FETCH_MODE_LOCAL, full replication) only supports inference, "
+                f"with_grad=True is not supported in local fetch_mode, got with_grad={with_grad}, "
+                f"fetch_mode={fetch_mode}."
+            ),
+        )
 
         self._group = group
         self._num_cpu_bytes = num_cpu_bytes
         self._with_grad = with_grad
         self._explicitly_destroy = explicitly_destroy
+        self._fetch_mode = fetch_mode
         self._rank_id = dist.get_rank(self._group)
         self._ep_world_size = dist.get_world_size(self._group)
 
@@ -658,6 +687,7 @@ class ElasticBuffer:
             num_max_tokens_per_rank if num_max_tokens_per_rank is not None else 0,
             self._with_grad,
             self._explicitly_destroy,
+            self._fetch_mode,
         )
 
         self._num_max_tokens_per_rank = num_max_tokens_per_rank
@@ -671,9 +701,7 @@ class ElasticBuffer:
         self._engram_dtype = None
         self._engram_fetch_in_progress = False
         self._engram_storage_ref = None
-        self._engram_sf_ref = None
         self._local_storage_addr = None
-        self._local_sf_table_addr = None
         self._comm_buffer_size = 0
         self._rank_size = 0
         self._engram_sf = None
@@ -838,23 +866,23 @@ class ElasticBuffer:
                 lambda: "engram_write in with_grad mode requires a non-empty storage",
             )
         if sf is not None:
-            if self._with_grad:
-                torch._check(
-                    sf.is_cpu,
-                    lambda: f"sf must be on CPU in with_grad mode, got device: {sf.device}",
-                )
-                torch._check(
-                    sf.is_pinned(),
-                    lambda: (
-                        "engram_write in with_grad mode maps sf host memory directly and "
-                        "requires pinned memory (e.g. sf.pin_memory() or "
-                        "torch.empty(..., pin_memory=True)), got a non-pinned CPU tensor"
-                    ),
-                )
+            torch._check(
+                sf.device.type == torch.device("npu").type,
+                lambda: f"sf must be on NPU, got device: {sf.device}",
+            )
+            if self._fetch_mode == FETCH_MODE_LOCAL:
+                # Local mode: storage is the full global table, sf is full-table too (same rows).
                 torch._check(
                     sf.size(0) == storage.size(0),
-                    lambda: f"sf dim0 ({sf.size(0)}) must match storage dim0 "
-                    f"({storage.size(0)}) in with_grad mode, sf must be the per-rank table",
+                    lambda: f"sf dim0 ({sf.size(0)}) must match full-table storage dim0 "
+                    f"({storage.size(0)}) in local fetch_mode",
+                )
+            else:
+                torch._check(
+                    sf.size(0) == storage.size(0) * self._ep_world_size,
+                    lambda: f"sf dim0 ({sf.size(0)}) must match storage dim0 * world_size "
+                    f"({storage.size(0)} * {self._ep_world_size} = "
+                    f"{storage.size(0) * self._ep_world_size}), sf must be the full replicated table",
                 )
             torch._check(
                 sf.dtype in _ENGRAM_SF_DTYPES,
@@ -863,16 +891,12 @@ class ElasticBuffer:
         self._runtime.engram_write(storage, sf)
         if self._with_grad:
             self._engram_storage_ref = storage
-            if sf is not None:
-                self._engram_sf_ref = sf
         self._engram_context_tensor = self._runtime.get_context_tensor()
         self._engram_hidden_size = storage.size(1)
         self._engram_num_entries = storage.size(0)
         self._engram_dtype = storage.dtype
         self._engram_sf = sf
         self._local_storage_addr = self._runtime.get_local_storage_addr()
-        if self._with_grad and sf is not None:
-            self._local_sf_table_addr = self._runtime.get_local_sf_table_addr()
         self._comm_buffer_size = self._runtime.get_comm_buffer_size()
         self._rank_size = self._runtime.get_rank_size()
 
@@ -896,15 +920,6 @@ class ElasticBuffer:
         sf = self._engram_sf
 
         if self._with_grad:
-            fetched_sf = None
-            sf_table_addr = torch.empty(0, device=indices.device)
-            if sf is not None:
-                fetched_sf = torch.empty(
-                    (indices.size(0), sf.size(1)),
-                    dtype=sf.dtype,
-                    device=indices.device,
-                )
-                sf_table_addr = self._local_sf_table_addr
             fetched, perm, send_counts, recv_counts, recv_local_entry, num_recv = (
                 torch.ops.cann_ops_transformer.engram_fetch_train(
                     context,
@@ -913,10 +928,6 @@ class ElasticBuffer:
                     self._engram_num_entries,
                     _ENGRAM_DTYPE_TO_INT[self._engram_dtype],
                     self._local_storage_addr,
-                    sf_table_addr,
-                    fetched_sf
-                    if fetched_sf is not None
-                    else torch.empty(0, device=indices.device),
                     self._num_max_tokens_per_rank,
                     self._comm_buffer_size,
                     self._rank_size,
@@ -932,8 +943,6 @@ class ElasticBuffer:
 
             def _wait_train():
                 self._engram_fetch_in_progress = False
-                if fetched_sf is not None:
-                    return fetched, fetched_sf, ctx
                 return fetched, ctx
 
             return _wait_train
@@ -956,10 +965,16 @@ class ElasticBuffer:
             fetched_sf
             if fetched_sf is not None
             else torch.empty(0, device=indices.device),
+            self._fetch_mode,
         )
 
         def _wait():
-            result = torch.ops.cann_ops_transformer.engram_fetch_wait(context, fetched)
+            # Local mode: no in-flight RDMA reads, data is visible once the kernel completes;
+            # skip the cross-NPU wait.
+            if self._fetch_mode == FETCH_MODE_LOCAL:
+                result = fetched
+            else:
+                result = torch.ops.cann_ops_transformer.engram_fetch_wait(context, fetched)
             self._engram_fetch_in_progress = False
             if sf is not None:
                 return result, fetched_sf
@@ -1257,11 +1272,7 @@ class ElasticBuffer:
         )
 
         metadata = _checked_handle_metadata_buffer(
-            handle,
-            x.shape[0],
-            self._ep_world_size,
-            handle.topk_idx.numel(),
-            x.device,
+            handle, x.shape[0], self._ep_world_size, x.device
         )
         event = self._reserve_moe_epilogue(
             async_with_compute_stream,
@@ -1346,9 +1357,7 @@ class ElasticBuffer:
         self._engram_dtype = None
         self._engram_fetch_in_progress = False
         self._engram_storage_ref = None
-        self._engram_sf_ref = None
         self._local_storage_addr = None
-        self._local_sf_table_addr = None
         self._comm_buffer_size = 0
         self._rank_size = 0
         self._engram_sf = None
@@ -1377,13 +1386,7 @@ class ElasticBuffer:
                 "engram_fetch_grad must be called after at least one engram_write"
             )
         expected_dtype = self._engram_dtype
-        if self._engram_sf is not None:
-            # 反向不做量化: 携带 SF 时正向为 fp8, 反向梯度仅支持已有类型 (bf16/fp16/fp32)
-            if grad_fetched.dtype not in _ENGRAM_GRAD_DTYPES:
-                raise RuntimeError(
-                    f"grad_fetched dtype must be one of {_ENGRAM_GRAD_DTYPES}, got {grad_fetched.dtype}"
-                )
-        elif grad_fetched.dtype != expected_dtype:
+        if grad_fetched.dtype != expected_dtype:
             raise RuntimeError(
                 f"grad_fetched dtype must match storage dtype ({expected_dtype}), got {grad_fetched.dtype}"
             )
@@ -1550,11 +1553,7 @@ class ElasticBuffer:
             )
             capacity = handle.recv_src_metadata.shape[0]
             packed_metadata = _checked_handle_metadata_buffer(
-                handle,
-                capacity,
-                self._ep_world_size,
-                handle.topk_idx.numel(),
-                x.device,
+                handle, capacity, self._ep_world_size, x.device
             )
             torch._check(
                 x.shape[0] == handle.topk_idx.shape[0],
@@ -1634,9 +1633,7 @@ class ElasticBuffer:
         recv_x = torch.empty(
             (actual_a, self._hidden), dtype=args.x.dtype, device=args.x.device
         )
-        _, _, packed_elements = _metadata_buffer_layout(
-            actual_a, self._ep_world_size, args.topk_idx.numel()
-        )
+        _, packed_elements = _metadata_buffer_layout(actual_a, self._ep_world_size)
         recv_src_meta = torch.empty(
             (packed_elements,), dtype=torch.int32, device=args.x.device
         )
@@ -1669,7 +1666,7 @@ class ElasticBuffer:
         route_scaleout_slot: torch.Tensor,
     ) -> EPHandle:
         metadata_rows, rank_offsets = _metadata_buffer_views(
-            recv_src_meta, capacity, self._ep_world_size, args.topk_idx.numel()
+            recv_src_meta, capacity, self._ep_world_size
         )
         topk_idx = (
             args.topk_idx
