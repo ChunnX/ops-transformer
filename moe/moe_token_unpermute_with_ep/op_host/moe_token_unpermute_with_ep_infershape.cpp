@@ -28,6 +28,7 @@ static constexpr int64_t UNPERMUTE_WITH_EP_ARRT_RANGE = 1;
 static ge::graphStatus InferShapeForMoeTokenUnpermuteWithEp(gert::InferShapeContext *context)
 {
     const gert::Shape *permuted_inputs_shape = context->GetInputShape(UNPERMUTE_WITH_EP_INPUT_TOKENS);
+    OP_CHECK_NULL_WITH_CONTEXT(context, permuted_inputs_shape);
     if (permuted_inputs_shape->GetDimNum() != 2) {
         return GRAPH_FAILED;
     }
@@ -35,13 +36,21 @@ static ge::graphStatus InferShapeForMoeTokenUnpermuteWithEp(gert::InferShapeCont
         return GRAPH_FAILED;
     }
     const gert::Shape *probs_shape = context->GetInputShape(UNPERMUTE_WITH_EP_INPUT_PROBS);
-    const int64_t *topk = context->GetAttrs()->GetAttrPointer<int64_t>(UNPERMUTE_WITH_EP_ARRT_TOPK);
+    const auto *attrs = context->GetAttrs();
+    OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
+    const int64_t *topk = attrs->GetAttrPointer<int64_t>(UNPERMUTE_WITH_EP_ARRT_TOPK);
+    OP_CHECK_NULL_WITH_CONTEXT(context, topk);
+    const auto *range = attrs->GetAttrPointer<gert::ContinuousVector>(UNPERMUTE_WITH_EP_ARRT_RANGE);
     int64_t inputTopK = *topk;
     int64_t tokens_num;
     if (probs_shape == nullptr) {
         const gert::Shape *indices_shape = context->GetInputShape(UNPERMUTE_WITH_EP_INPUT_IDX);
-        int64_t indicesDim0 = indices_shape->GetDim(0);
-        tokens_num = (indicesDim0 == -1) ? -1 : indicesDim0 / inputTopK;
+        OP_CHECK_NULL_WITH_CONTEXT(context, indices_shape);
+        int64_t indices_dim0 = indices_shape->GetDim(0);
+        tokens_num = (indices_dim0 == -1) ? -1 : indices_dim0;
+        if (tokens_num != -1 && range != nullptr && range->GetSize() != 0) {
+            tokens_num /= inputTopK;
+        }
     } else {
         tokens_num = probs_shape->GetDim(0);
     }
