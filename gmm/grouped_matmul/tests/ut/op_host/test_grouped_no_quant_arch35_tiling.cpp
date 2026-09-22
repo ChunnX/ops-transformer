@@ -65,7 +65,8 @@ string TilingData2Str(const void *tilingData, size_t tilingSize)
     return oss.str();
 }
 
-vector<gert::TilingContextPara::OpAttr> GetGroupedNoQuantAttrs(int64_t splitItem, bool transposeX, bool transposeWeight, int64_t groupType)
+vector<gert::TilingContextPara::OpAttr> GetGroupedNoQuantAttrs(int64_t splitItem, bool transposeX, bool transposeWeight,
+                                                               int64_t groupType, int64_t groupListType)
 {
     return {
         {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(splitItem)},
@@ -73,7 +74,7 @@ vector<gert::TilingContextPara::OpAttr> GetGroupedNoQuantAttrs(int64_t splitItem
         {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(transposeX)},
         {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transposeWeight)},
         {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupType)},
-        {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)},
         {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
     };
@@ -103,7 +104,12 @@ public:
         gert::StorageShape xShape = ops::ut::MakeGertStorageShape(xOriginDims, xOriginDims);
         gert::StorageShape biasShape =
             hasBias ? ops::ut::MakeGertStorageShape({groupNum, n}, {groupNum, n}) : MakeEmptyShape();
-        gert::StorageShape groupListShape = ops::ut::MakeGertStorageShape({groupNum}, {groupNum});
+        // groupListType 0(cumsum)/1(count): 1D [E]; groupListType 2(sparse): 2D [E, 2].
+        const int64_t groupListDimNum =
+            groupListDimNumOverride > 0 ? groupListDimNumOverride : (groupListType == 2 ? 2 : 1);
+        gert::StorageShape groupListShape = groupListDimNum == 2 ?
+                                                ops::ut::MakeGertStorageShape({groupNum, 2}, {groupNum, 2}) :
+                                                ops::ut::MakeGertStorageShape({groupNum}, {groupNum});
 
         vector<int64_t> weightOriginDims =
             transposeWeight ? vector<int64_t>{groupNum, n, k} : vector<int64_t>{groupNum, k, n};
@@ -122,16 +128,16 @@ public:
                 {xShape, xDtype, ge::FORMAT_ND},                                                          // x
                 {weightShape, weightDtype, weightFormat == "NZ" ? ge::FORMAT_FRACTAL_NZ : ge::FORMAT_ND}, // weight
                 {biasShape, biasDtype, ge::FORMAT_ND},                                                    // bias
-                {MakeEmptyShape(), ge::DT_FLOAT, ge::FORMAT_ND},         // scale (empty for no quant)
-                {MakeEmptyShape(), ge::DT_FLOAT, ge::FORMAT_ND},         // offset (empty for no quant)
-                {MakeEmptyShape(), ge::DT_FLOAT, ge::FORMAT_ND},         // antiquantScale (empty for no quant)
-                {MakeEmptyShape(), ge::DT_FLOAT, ge::FORMAT_ND},         // antiquantOffset (empty for no quant)
-                {groupListShape, ge::DT_INT64, ge::FORMAT_ND},           // groupList
-                {MakeEmptyShape(), ge::DT_FLOAT, ge::FORMAT_ND},         // perTokenScale (empty for no quant)
+                {MakeEmptyShape(), ge::DT_FLOAT, ge::FORMAT_ND}, // scale (empty for no quant)
+                {MakeEmptyShape(), ge::DT_FLOAT, ge::FORMAT_ND}, // offset (empty for no quant)
+                {MakeEmptyShape(), ge::DT_FLOAT, ge::FORMAT_ND}, // antiquantScale (empty for no quant)
+                {MakeEmptyShape(), ge::DT_FLOAT, ge::FORMAT_ND}, // antiquantOffset (empty for no quant)
+                {groupListShape, ge::DT_INT64, ge::FORMAT_ND},   // groupList
+                {MakeEmptyShape(), ge::DT_FLOAT, ge::FORMAT_ND}, // perTokenScale (empty for no quant)
             },
             {{ops::ut::MakeGertStorageShape({m}, {n}), yDtype, ge::FORMAT_ND}},
-            GetGroupedNoQuantAttrs(splitItem, transposeX, transposeWeight, groupType),
-            &compileInfo, "3510", compileInfo.aicNum, compileInfo.ubSize);
+            GetGroupedNoQuantAttrs(splitItem, transposeX, transposeWeight, groupType, groupListType), &compileInfo,
+            "3510", compileInfo.aicNum, compileInfo.ubSize);
 
         TilingInfo tilingInfo;
         bool tilingResult = ExecuteTiling(tilingContextPara, tilingInfo);
@@ -168,6 +174,8 @@ public:
     bool transposeX = false;
     bool transposeWeight = false;
     int64_t groupType = 0;
+    int64_t groupListType = 0;
+    int64_t groupListDimNumOverride = 0; // 0: derive from groupListType; 1/2: force 1D/2D negative cases
     int64_t splitItem = 0;
     string weightFormat;
     ge::DataType xDtype = ge::DT_UNDEFINED;
@@ -241,6 +249,16 @@ vector<GroupedNoQuantArch35TilingTestParam> GetParams(const string &socVersion)
             param.expectBlockDim = static_cast<uint64_t>(stoull(items[idx++]));
             param.expectTilingKey = static_cast<uint64_t>(stoull(items[idx++]));
             param.expectTilingData = items[idx++];
+            // Optional trailing columns for groupListType scenarios; absent columns keep the
+            // legacy default (groupListType=0, dimNum derived from the type).
+            if (items.size() > idx && !Trim(items[idx]).empty()) {
+                param.groupListType = stoll(items[idx]);
+            }
+            idx++;
+            if (items.size() > idx && !Trim(items[idx]).empty()) {
+                param.groupListDimNumOverride = stoll(items[idx]);
+            }
+            idx++;
             params.push_back(param);
         } catch (const std::exception &error) {
             ADD_FAILURE() << ops::ut::BuildCsvParseErrorMessage(csvPath, lineNo, caseName, error);
@@ -266,12 +284,8 @@ const vector<GroupedNoQuantArch35TilingTestParam> &GetAscend950Params()
 
 class TestGroupedNoQuantArch35Tiling : public testing::TestWithParam<GroupedNoQuantArch35TilingTestParam> {
 protected:
-    static void SetUpTestCase()
-    {
-    }
-    static void TearDownTestCase()
-    {
-    }
+    static void SetUpTestCase() {}
+    static void TearDownTestCase() {}
 };
 
 TEST_P(TestGroupedNoQuantArch35Tiling, generalTest)
@@ -280,6 +294,6 @@ TEST_P(TestGroupedNoQuantArch35Tiling, generalTest)
 }
 
 INSTANTIATE_TEST_SUITE_P(GROUPED_NO_QUANT_950, TestGroupedNoQuantArch35Tiling, testing::ValuesIn(GetAscend950Params()),
-                          MakeParamName);
+                         MakeParamName);
 
 } // namespace GroupedNoQuantArch35TilingUT
