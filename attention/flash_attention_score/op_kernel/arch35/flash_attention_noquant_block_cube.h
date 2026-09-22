@@ -1707,8 +1707,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1NdL1SplitK(
 {
     constexpr uint32_t baseK = l1BaseD;
     uint32_t kLoops = (constInfo.dSize + baseK - 1) / baseK; // 尾块处理
-    Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
-    mm1ResL0C.Wait<HardEvent::FIX_M>();
+    // Experiment 2: keep original GM offsets, transfer sizes and L1 buffer rotation only.
     Buffer<BufferType::L1> mm1A;
     uint32_t dstNzC0Stride = ((runInfo.s1RealSize + 15) >> 4 << 4);
     uint64_t l1BaseKOffset = baseK * dstNzC0Stride;
@@ -1836,31 +1835,13 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1NdL1SplitK(
         mm1A.Wait<HardEvent::MTE2_MTE1>(); // 等待L1A
         mm1B.Wait<HardEvent::MTE2_MTE1>(); // 等待L1B
 
-        MMParam param = {(uint32_t)runInfo.s1RealSize,
-                         (uint32_t)runInfo.s2RealSize,
-                         realK, // singleK = realK
-                         0,     // isLeftTranspose
-                         1,     // isRightTranspose
-                         k == 0,
-                         k == 0};
-
-        // 这里base M N K不要写死
-        MatmulFull<INPUT_T, INPUT_T, T, 128, 128, baseK, ABLayout::MK, ABLayout::KN>(
-            mm1A.GetTensor<INPUT_T>()[k * l1BaseKOffset], mm1BTensor, mmL0ABuffers, mmL0BBuffers,
-            mm1ResL0C.GetTensor<T>(), param);
-
+        // MTE2 completion was consumed above. No L1->L0 load or MatmulFull in this probe.
         mm1B.Set<HardEvent::MTE1_MTE2>(); // 释放L1B
     }
     if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
         mm1A.Set<HardEvent::MTE1_MTE2>();
     }
-    mm1ResL0C.Set<HardEvent::M_FIX>(); // 通知
-    outputBuf.WaitCrossCore();
-
-    mm1ResL0C.Wait<HardEvent::M_FIX>(); // 等待L0C
-    FixpipeBmm1NdToUb(outputBuf, mm1ResL0C, runInfo, constInfo);
-    mm1ResL0C.Set<HardEvent::FIX_M>(); // 释放
-    outputBuf.SetCrossCore();
+    // No L0C/Fixpipe or outputBuf cross-core handshake: AIV is not consuming BMM1 output.
 }
 
 TEMPLATES_DEF_NO_DEFAULT
