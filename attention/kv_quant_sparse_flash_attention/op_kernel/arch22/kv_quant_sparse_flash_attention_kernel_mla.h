@@ -163,6 +163,9 @@ private:
     // ================================Init functions==================================
     __aicore__ inline void InitTilingData();
     __aicore__ inline void InitCalcParamsEach();
+    __aicore__ inline void InitWorkspaceGlobalTensor(__gm__ uint8_t *workspace);
+    __aicore__ inline void InitVectorService();
+    __aicore__ inline void InitMatmulService();
     __aicore__ inline void InitBuffers();
     __aicore__ inline void InitActualSeqLen(__gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths);
     __aicore__ inline void InitOutputSingleCore();
@@ -473,6 +476,20 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::Init(
     }
     topKGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
 
+    InitWorkspaceGlobalTensor(workspace);
+
+    InitVectorService();
+    InitMatmulService();
+
+    // 要在InitParams之后执行
+    if (pipe != nullptr) {
+        InitBuffers();
+    }
+}
+
+template <typename QSFAT>
+__aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::InitWorkspaceGlobalTensor(__gm__ uint8_t *workspace)
+{
     // workspace 内存排布
     // |Q--|mm1ResGm(存S)|vec1ResGm(存A1,A2)|mm2ResGm(存O)|vec2ResGm
     // |Core0_Q1-Core0_Q2-Core1_Q1-Core1_Q2....Core32_Q1-Core32_Q2|Core0_mmRes
@@ -499,13 +516,11 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::Init(
 
     if constexpr (TEMPLATE_MODE == V_TEMPLATE) {
         // s2  d+rope bufNum
-        kvMergeGm_.SetGlobalBuffer(
-            (__gm__ K_ROPE_T *)(workspace + qsfaOffset +
-                                aiCoreIdx * 512 * constInfo.combineHeadDim * 4 * sizeof(K_ROPE_T)));
-        qsfaOffset += GetBlockNum() * 512 * constInfo.combineHeadDim * 4 * sizeof(K_ROPE_T);
+        uint64_t kvMergeBytesPerCore = 512 * constInfo.combineHeadDim * 4 * sizeof(K_ROPE_T);
+        kvMergeGm_.SetGlobalBuffer((__gm__ K_ROPE_T *)(workspace + qsfaOffset + aiCoreIdx * kvMergeBytesPerCore));
+        qsfaOffset += GetBlockNum() * kvMergeBytesPerCore;
 
-        // Each AI core owns two AIV valid-size partitions and an equal-sized
-        // upper region for TQ4 per-token FP16 scales.
+        // 每核 4 份：2 份 AIV 有效 size 分区 + 等大的 TQ4 逐 token FP16 scale 区
         kvValidSizeGm_.SetGlobalBuffer(
             (__gm__ int32_t *)(workspace + qsfaOffset + (aiCoreIdx * 4) * 128 * 4 * sizeof(int32_t)));
     }
@@ -518,7 +533,11 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::Init(
                                    tilingData->splitKVParams.logSumExpSize / 2);
         qsfaOffset = qsfaOffset + tilingData->splitKVParams.logSumExpSize * sizeof(float);
     }
+}
 
+template <typename QSFAT>
+__aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::InitVectorService()
+{
     if ASCEND_IS_AIV {
         vectorService.InitParams(constInfo, tilingData);
         vectorService.InitMm2ResInt32GmGlobalTensor(mm2ResInt32Gm);
@@ -529,17 +548,17 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::Init(
                                            lseSumFdGm, topKGm);
         vectorService.InitVec2GlobalTensor(accumOutGm, vec2ResGm, mm2ResGm, attentionOutGm);
     }
+}
 
+template <typename QSFAT>
+__aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::InitMatmulService()
+{
     if ASCEND_IS_AIC {
         matmulService.InitParams(constInfo);
         matmulService.InitMm1GlobalTensor(queryGm, qRopeGm, keyGm, kRopeGm, mm1ResGm);
         matmulService.InitMm2GlobalTensor(vec1ResGm, valueGm, mm2ResGm, attentionOutGm);
         matmulService.InitPageAttentionInfo(kvMergeGm_, blockTableGm, topKGm, constInfo.kvCacheBlockSize,
                                             constInfo.maxBlockNumPerBatch);
-    }
-    // 要在InitParams之后执行
-    if (pipe != nullptr) {
-        InitBuffers();
     }
 }
 

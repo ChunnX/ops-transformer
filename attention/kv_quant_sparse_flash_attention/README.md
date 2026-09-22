@@ -235,8 +235,10 @@ TQ4 当前面向 Ascend 910B 的 MLA-absorb 场景，query 支持 FLOAT16/BFLOAT
   - 参数key、value数据类型仅支持float8_e4m3、int8、hifloat8数据类型。
   - 参数sparse\_block\_size仅支持1。
   - 仅在layout_key为PA_BSND时，key支持0轴非连续。
+  - TQ4 INT4 模式（key\_quant\_mode=3、value\_quant\_mode=3）不支持，传入3会被tiling校验拦截。
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
   - query Q_N不支持48。
   - 参数key、value数据类型仅支持int8数据类型。
   - 参数sparse\_block\_size支持[1,16]，且要求是2的幂次方，在PageAttention场景下要求sparse\_block\_size整除block\_size。
   - key不支持非连续。
+  - TQ4 INT4 模式（key\_quant\_mode=3、value\_quant\_mode=3）支持。
