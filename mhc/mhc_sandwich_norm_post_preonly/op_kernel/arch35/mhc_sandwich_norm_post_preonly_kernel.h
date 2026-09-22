@@ -121,7 +121,7 @@ public:
         // h_out失效后再复用为R6/R7的h_in和通用输出暂存。
         pipe_.InitBuffer(bufResFp32_, (N_ + 1) * dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufPostComb_, POST_COMB_SIZE * sizeof(float));
-        pipe_.InitBuffer(bufPhiFp32_, BUFFER_NUM_TWO, dimTile_ * sizeof(float));
+        pipe_.InitBuffer(bufPhiFp32_, BUFFER_NUM_FOUR, dimTile_ * sizeof(float));
         // TODO: 后续重新设计流水并单独验证输入、输出双缓冲收益。
         pipe_.InitBuffer(bufHInPrimeBf16_, BUFFER_NUM_ONE, dimTile_ * sizeof(T));
         pipe_.InitBuffer(bufScalar_, SCALAR_BUF_SIZE);
@@ -231,7 +231,7 @@ private:
     TQue<TPosition::VECIN, 1> bufResidualBf16_;
     TBuf<TPosition::VECCALC> bufResFp32_;
     TBuf<TPosition::VECCALC> bufPostComb_;
-    TQue<TPosition::VECIN, BUFFER_NUM_TWO> bufPhiFp32_;
+    TQue<TPosition::VECIN, BUFFER_NUM_FOUR> bufPhiFp32_;
     TQue<TPosition::VECOUT, BUFFER_NUM_ONE> bufHInPrimeBf16_;
     TBuf<TPosition::VECCALC> bufScalar_;
 
