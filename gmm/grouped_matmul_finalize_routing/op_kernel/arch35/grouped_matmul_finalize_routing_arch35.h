@@ -18,7 +18,7 @@
 
 #include "blaze/gemm/block/block_mmad_qgmm_mx.h"
 #include "blaze/gemm/block/block_scheduler_gmm_swat_with_tail_split.h"
-#include "blaze/gemm/kernel/kernel_qgmm_mx_finalize_routing.h"
+#include "blaze/gemm/kernel/kernel_universal.h"
 #include "blaze/gemm/policy/dispatch_policy.h"
 #include "blaze/epilogue/block/block_epilogue_finalize_routing.h"
 #include "grouped_matmul_finalize_routing_tiling_data.h"
@@ -67,7 +67,8 @@ __aicore__ inline void grouped_matmul_finalize_routing_mx(GM_ADDR x, GM_ADDR w, 
     using BiasType = bfloat16_t;
 
     using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
-    using BlockMmadPolicy = Blaze::Gemm::GroupedMatmulWithScaleMx<0, false, Blaze::Gemm::KernelQGmmMxFinalizeRouting>;
+    using BlockMmadPolicy =
+        Blaze::Gemm::GroupedMatmulWithScaleMx<0, false, Blaze::Gemm::KernelQgmmMxMixFinalizeRouting>;
     using BlockMmad = Blaze::Gemm::Block::BlockMmad<BlockMmadPolicy, AType, LayoutA, BType, LayoutB, C1Type, LayoutC,
                                                     BiasType, LayoutBias>;
     using BlockPrologue = Blaze::Gemm::Kernel::BlockPrologueFinalizeRouting<CType, BiasType>;
