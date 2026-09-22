@@ -428,12 +428,14 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAddGetWorkspaceSize(const aclTensor *x
                                                               int64_t groupListType, int64_t groupSize,
                                                               uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    CHECK_RET(gmm::CheckTensorStorageBounds(x1, "x1"), ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(gmm::CheckTensorStorageBounds(x2, "x2"), ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(gmm::CheckTensorStorageBounds(scale1Optional, "scale1Optional"), ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(gmm::CheckTensorStorageBounds(scale2, "scale2"), ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(gmm::CheckTensorStorageBounds(groupList, "groupList"), ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(gmm::CheckTensorStorageBounds(yRef, "yRef"), ACLNN_ERR_PARAM_INVALID);
+    if (!gmm::CheckTensorStorageBounds(x1, QGMM_INPLACE_ADD_ACLNN_OP_NAME, "x1") ||
+        !gmm::CheckTensorStorageBounds(x2, QGMM_INPLACE_ADD_ACLNN_OP_NAME, "x2") ||
+        !gmm::CheckTensorStorageBounds(scale1Optional, QGMM_INPLACE_ADD_ACLNN_OP_NAME, "scale1Optional") ||
+        !gmm::CheckTensorStorageBounds(scale2, QGMM_INPLACE_ADD_ACLNN_OP_NAME, "scale2") ||
+        !gmm::CheckTensorStorageBounds(groupList, QGMM_INPLACE_ADD_ACLNN_OP_NAME, "groupList") ||
+        !gmm::CheckTensorStorageBounds(yRef, QGMM_INPLACE_ADD_ACLNN_OP_NAME, "yRef")) {
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParams params{x1,        x2,   scale1Optional, scale2,
                                                               groupList, yRef, groupListType,  groupSize};
     // Standard syntax, Check parameters.
