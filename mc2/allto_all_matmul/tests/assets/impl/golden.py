@@ -87,6 +87,54 @@ def _next_port():
         return port
 
 
+def _compute_rank_golden(
+    target_did,
+    thread_contexts,
+    device_ids,
+    world_size,
+    t_x1,
+    t_x2,
+    to_torch_f32,
+    torch,
+    rank_goldens,
+):
+    target_idx = list(device_ids).index(target_did)
+    tc = thread_contexts[target_did]
+    x1 = tc.flatten_tensors[0]
+    x2 = tc.flatten_tensors[1]
+    bias = tc.flatten_tensors[2] if len(tc.flatten_tensors) > 2 else None
+    if bias is not None and isinstance(bias, torch.Tensor) and bias.numel() == 0:
+        bias = None
+    weight_mat = to_torch_f32(x2)
+    if t_x2:
+        weight_mat = weight_mat.t().contiguous()
+    M_total = to_torch_f32(x1).shape[0] if not t_x1 else to_torch_f32(x1).t().shape[0]
+    # recompute properly
+    input_mat = to_torch_f32(x1)
+    if t_x1:
+        input_mat = input_mat.t().contiguous()
+    M_total = input_mat.shape[0]
+    K = input_mat.shape[1]
+    M_chunk = M_total // world_size
+
+    recv_chunks = []
+    for src_did in device_ids:
+        src_tc = thread_contexts[src_did]
+        src_x1 = src_tc.flatten_tensors[0]
+        s_input = to_torch_f32(src_x1)
+        if t_x1:
+            s_input = s_input.t().contiguous()
+        s_reshaped = s_input.view(world_size, M_chunk, K)
+        recv_chunks.append(s_reshaped[target_idx])
+    recv_tensor = torch.stack(recv_chunks, dim=0)
+    a2a_out = recv_tensor.permute(1, 0, 2).reshape(M_chunk, world_size * K).contiguous()
+    mm_out = torch.matmul(a2a_out, weight_mat)
+    if bias is not None:
+        mm_out = mm_out + to_torch_f32(bias)
+    rank_goldens[target_did] = {"main": mm_out, "alltoall": a2a_out}
+    del recv_chunks, recv_tensor, a2a_out, mm_out
+
+
 def allto_all_matmul_cpu_golden(thread_contexts, device_ids, world_size):
     import torch
 
@@ -98,46 +146,93 @@ def allto_all_matmul_cpu_golden(thread_contexts, device_ids, world_size):
 
     rank_goldens = {}
     for target_did in device_ids:
-        target_idx = list(device_ids).index(target_did)
-        tc = thread_contexts[target_did]
-        x1 = tc.flatten_tensors[0]
-        x2 = tc.flatten_tensors[1]
-        bias = tc.flatten_tensors[2] if len(tc.flatten_tensors) > 2 else None
-        if bias is not None and isinstance(bias, torch.Tensor) and bias.numel() == 0:
-            bias = None
-        weight_mat = to_torch_f32(x2)
-        if t_x2:
-            weight_mat = weight_mat.t().contiguous()
-        M_total = (
-            to_torch_f32(x1).shape[0] if not t_x1 else to_torch_f32(x1).t().shape[0]
+        _compute_rank_golden(
+            target_did,
+            thread_contexts,
+            device_ids,
+            world_size,
+            t_x1,
+            t_x2,
+            to_torch_f32,
+            torch,
+            rank_goldens,
         )
-        # recompute properly
-        input_mat = to_torch_f32(x1)
-        if t_x1:
-            input_mat = input_mat.t().contiguous()
-        M_total = input_mat.shape[0]
-        K = input_mat.shape[1]
-        M_chunk = M_total // world_size
-
-        recv_chunks = []
-        for src_did in device_ids:
-            src_tc = thread_contexts[src_did]
-            src_x1 = src_tc.flatten_tensors[0]
-            s_input = to_torch_f32(src_x1)
-            if t_x1:
-                s_input = s_input.t().contiguous()
-            s_reshaped = s_input.view(world_size, M_chunk, K)
-            recv_chunks.append(s_reshaped[target_idx])
-        recv_tensor = torch.stack(recv_chunks, dim=0)
-        a2a_out = (
-            recv_tensor.permute(1, 0, 2).reshape(M_chunk, world_size * K).contiguous()
-        )
-        mm_out = torch.matmul(a2a_out, weight_mat)
-        if bias is not None:
-            mm_out = mm_out + to_torch_f32(bias)
-        rank_goldens[target_did] = {"main": mm_out, "alltoall": a2a_out}
-        del recv_chunks, recv_tensor, a2a_out, mm_out
     return rank_goldens
+
+
+def _run_cascade_workers(
+    subprocess,
+    sys,
+    n,
+    worker_script,
+    port,
+    input_path,
+    result_path,
+    error_path,
+    transpose_x1,
+    transpose_x2,
+    mm_m_chunk,
+    k_dim,
+    n_dim,
+    is_alltoall_output,
+):
+    procs = []
+    for rank in range(n):
+        cmd = [
+            sys.executable,
+            worker_script,
+            str(rank),
+            str(n),
+            str(port),
+            input_path,
+            result_path,
+            error_path,
+            str(transpose_x1),
+            str(transpose_x2),
+            str(mm_m_chunk),
+            str(k_dim),
+            str(n_dim),
+            str(is_alltoall_output),
+        ]
+        p = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        procs.append(p)
+    for p in procs:
+        p.wait()
+    error_msg = ""
+    if os.path.exists(error_path):
+        with open(error_path) as f:
+            error_msg = f.read()
+    for p in procs:
+        if p.returncode != 0:
+            stderr = (
+                p.stderr.read().decode(errors="replace")[-2000:] if p.stderr else ""
+            )
+            raise RuntimeError(
+                f"cascade worker exited {p.returncode}\n{error_msg}\n{stderr}"
+            )
+
+
+def _load_cascade_results(device_ids, result_path, torch, mm_m_chunk, n_dim, n, k_dim):
+    result = {}
+    for did in device_ids:
+        rank_file = f"{result_path}.did{did}.npz"
+        main_t = None
+        if os.path.exists(rank_file):
+            data = np.load(rank_file, allow_pickle=False)
+            key = f"cascade_did{did}"
+            if key in data.files:
+                main_t = torch.from_numpy(data[key].copy()).reshape(mm_m_chunk, n_dim)
+        a2a_t = None
+        a2a_file = f"{result_path}.a2a_did{did}.npz"
+        if os.path.exists(a2a_file):
+            data = np.load(a2a_file, allow_pickle=False)
+            key = f"cascade_a2a_did{did}"
+            if key in data.files:
+                a2a_t = torch.from_numpy(data[key].copy()).reshape(
+                    mm_m_chunk, n * k_dim
+                )
+        result[did] = {"main": main_t, "alltoall": a2a_t}
+    return result
 
 
 def run_alltoall_matmul_cascade(
@@ -177,62 +272,25 @@ def run_alltoall_matmul_cascade(
         result_path = os.path.join(tmpdir, "results.npz")
         error_path = os.path.join(tmpdir, "errors.log")
         _save_inputs_per_rank(thread_contexts, device_ids, input_path)
-        procs = []
-        for rank in range(n):
-            cmd = [
-                sys.executable,
-                worker_script,
-                str(rank),
-                str(n),
-                str(port),
-                input_path,
-                result_path,
-                error_path,
-                str(transpose_x1),
-                str(transpose_x2),
-                str(mm_m_chunk),
-                str(k_dim),
-                str(n_dim),
-                str(is_alltoall_output),
-            ]
-            p = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-            procs.append(p)
-        for p in procs:
-            p.wait()
-        error_msg = ""
-        if os.path.exists(error_path):
-            with open(error_path) as f:
-                error_msg = f.read()
-        for p in procs:
-            if p.returncode != 0:
-                stderr = (
-                    p.stderr.read().decode(errors="replace")[-2000:] if p.stderr else ""
-                )
-                raise RuntimeError(
-                    f"cascade worker exited {p.returncode}\n{error_msg}\n{stderr}"
-                )
-        result = {}
-        for did in device_ids:
-            rank_file = f"{result_path}.did{did}.npz"
-            main_t = None
-            if os.path.exists(rank_file):
-                data = np.load(rank_file, allow_pickle=False)
-                key = f"cascade_did{did}"
-                if key in data.files:
-                    main_t = torch.from_numpy(data[key].copy()).reshape(
-                        mm_m_chunk, n_dim
-                    )
-            a2a_t = None
-            a2a_file = f"{result_path}.a2a_did{did}.npz"
-            if os.path.exists(a2a_file):
-                data = np.load(a2a_file, allow_pickle=False)
-                key = f"cascade_a2a_did{did}"
-                if key in data.files:
-                    a2a_t = torch.from_numpy(data[key].copy()).reshape(
-                        mm_m_chunk, n * k_dim
-                    )
-            result[did] = {"main": main_t, "alltoall": a2a_t}
-        return result
+        _run_cascade_workers(
+            subprocess,
+            sys,
+            n,
+            worker_script,
+            port,
+            input_path,
+            result_path,
+            error_path,
+            transpose_x1,
+            transpose_x2,
+            mm_m_chunk,
+            k_dim,
+            n_dim,
+            is_alltoall_output,
+        )
+        return _load_cascade_results(
+            device_ids, result_path, torch, mm_m_chunk, n_dim, n, k_dim
+        )
 
 
 def allto_all_matmul_multi_device_golden(thread_contexts, device_ids, all_precision):

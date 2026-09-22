@@ -50,7 +50,13 @@ protected:
 
     ge::graphStatus CheckOpInputInfo(MatmulAlltoAllInfo &info);
     ge::graphStatus CheckAndSetAttrsInfo(MatmulAlltoAllInfo &info);
+    ge::graphStatus CheckInt8ScaleDataType(ge::DataType x1Dtype, bool hasBiasTensor);
+    ge::graphStatus CheckBiasTypeCombination(ge::DataType x1Dtype, ge::DataType x2Dtype, ge::DataType biasDtype,
+                                             ge::DataType yDtype);
+    ge::graphStatus CheckNoBiasTypeCombination(ge::DataType x1Dtype, ge::DataType x2Dtype, ge::DataType yDtype);
     ge::graphStatus CheckTensorDataType(MatmulAlltoAllInfo &info);
+    ge::graphStatus CheckQuantScaleShapes(const MatmulAlltoAllInfo &info, ge::DataType x1Dtype);
+    ge::graphStatus CheckBiasAndShapeLimits(const MatmulAlltoAllInfo &info);
     ge::graphStatus CheckShapeInfo(MatmulAlltoAllInfo &info);
     ge::graphStatus DoMmCommTiling(CoCTiling &cocTilingData, MatmulAlltoAllInfo &info);
     void DoTwoRankTiling(CoCTiling &cocTilingData, MatmulAlltoAllInfo &info);

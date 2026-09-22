@@ -177,6 +177,21 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::DoOpTiling()
  * @param runInfo 过程信息
  * @return ge::graphStatus
  */
+ge::graphStatus MxQuantMatmulAllToAllTilingBase::CheckMxBiasDataType(const gert::TilingContext *context,
+                                                                     const char *opName)
+{
+    // 校验 bias 数据类型（如果存在）
+    auto biasTensorDesc = context->GetOptionalInputDesc(INPUT_BIAS_INDEX);
+    if (biasTensorDesc != nullptr) {
+        ge::DataType biasDtype = biasTensorDesc->GetDataType();
+        OP_TILING_CHECK((biasDtype != ge::DT_FLOAT),
+                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "bias", Ops::Base::ToString(biasDtype).c_str(),
+                                                              "The dtype of bias must be float"),
+                        return ge::GRAPH_FAILED);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus MxQuantMatmulAllToAllTilingBase::CheckMxQuantTensorDataType(const gert::TilingContext *context,
                                                                             const char *opName)
 {
@@ -207,14 +222,9 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::CheckMxQuantTensorDataType(cons
                 "The dtype of x1 and x2 must be the same in mxfp4 quant mode"),
             return ge::GRAPH_FAILED);
     }
-    // 校验 bias 数据类型（如果存在）
-    auto biasTensorDesc = context->GetOptionalInputDesc(INPUT_BIAS_INDEX);
-    if (biasTensorDesc != nullptr) {
-        ge::DataType biasDtype = biasTensorDesc->GetDataType();
-        OP_TILING_CHECK((biasDtype != ge::DT_FLOAT),
-                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "bias", Ops::Base::ToString(biasDtype).c_str(),
-                                                              "The dtype of bias must be float"),
-                        return ge::GRAPH_FAILED);
+    const auto checkMxBiasDataTypeStatus = CheckMxBiasDataType(context, opName);
+    if (checkMxBiasDataTypeStatus != ge::GRAPH_SUCCESS) {
+        return checkMxBiasDataTypeStatus;
     }
     // 校验 x1Scale和x2Scale 数据类型
     OP_TILING_CHECK(CheckMxQuantScaleDataType(context_, opName_) != ge::GRAPH_SUCCESS,
@@ -489,6 +499,21 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::CheckMxQuantMatrixMulShapes(con
  *
  * @return ge::graphStatus
  */
+ge::graphStatus MxQuantMatmulAllToAllTilingBase::CheckMxFp4Alignment(const Matrix2DShapes &shapeInfo,
+                                                                     const char *opName)
+{
+    // mxfp4场景中，k和ceil(k/32)需要为偶数
+    if (isMxfp4_) {
+        uint64_t x1Dim1DivMxFp4Size =
+            static_cast<uint64_t>(((static_cast<int64_t>(shapeInfo.x1Dim1) + MX_GROUP_SIZE_K - 1) / MX_GROUP_SIZE_K));
+        OP_TILING_CHECK((shapeInfo.x1Dim1 % 2 != 0) || (x1Dim1DivMxFp4Size % 2 != 0),
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "x1", std::to_string(shapeInfo.x1Dim1).c_str(),
+                                                              "in mxfp4 quant mode, k and ceil(k/32) must be even"),
+                        return ge::GRAPH_FAILED);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus MxQuantMatmulAllToAllTilingBase::CheckMxQuantScaleShapes(const gert::TilingContext *context,
                                                                          const char *opName)
 {
@@ -508,14 +533,9 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::CheckMxQuantScaleShapes(const g
         static_cast<uint64_t>(((static_cast<int64_t>(shapeInfo.x2Dim0) + MX_SCALE_OFFSET - 1) / MX_SCALE_OFFSET));
     uint64_t x2Dim1DivMxFp8Size =
         static_cast<uint64_t>(((static_cast<int64_t>(shapeInfo.x2Dim1) + MX_SCALE_OFFSET - 1) / MX_SCALE_OFFSET));
-    // mxfp4场景中，k和ceil(k/32)需要为偶数
-    if (isMxfp4_) {
-        uint64_t x1Dim1DivMxFp4Size =
-            static_cast<uint64_t>(((static_cast<int64_t>(shapeInfo.x1Dim1) + MX_GROUP_SIZE_K - 1) / MX_GROUP_SIZE_K));
-        OP_TILING_CHECK((shapeInfo.x1Dim1 % 2 != 0) || (x1Dim1DivMxFp4Size % 2 != 0),
-                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "x1", std::to_string(shapeInfo.x1Dim1).c_str(),
-                                                              "in mxfp4 quant mode, k and ceil(k/32) must be even"),
-                        return ge::GRAPH_FAILED);
+    const auto checkMxFp4AlignmentStatus = CheckMxFp4Alignment(shapeInfo, opName);
+    if (checkMxFp4AlignmentStatus != ge::GRAPH_SUCCESS) {
+        return checkMxFp4AlignmentStatus;
     }
     OP_TILING_CHECK(
         (x1ScaleDim0 != shapeInfo.x1Dim0) || (x1ScaleDim1 != x1Dim1DivMxFp8Size) || (x1ScaleDim2 != EVEN_ALIGN),

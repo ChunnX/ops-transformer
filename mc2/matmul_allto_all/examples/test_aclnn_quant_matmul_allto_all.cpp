@@ -59,8 +59,8 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); return ret);
     // 计算连续tensor的strides
     std::vector<int64_t> strides(shape.size(), 1);
-    for (int64_t i = shape.size() - 2; i >= 0; i--) {
-        strides[i] = shape[i + 1] * strides[i + 1];
+    for (size_t i = shape.size(); i > 1; --i) {
+        strides[i - 2] = shape[i - 1] * strides[i - 1];
     }
     // 调用aclCreateTensor接口创建aclTensor
     *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
@@ -75,16 +75,7 @@ struct Args {
     aclrtContext context;
 };
 
-int launchOneThreadQuantMatmulAlltoAll(Args &args)
-{
-    int ret;
-    ret = aclrtSetCurrentContext(args.context);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSetCurrentContext failed. ERROR: %d\n", ret); return ret);
-    char hcom_name[128];
-    ret = HcclGetCommName(args.hcclComm, hcom_name);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetCommName failed. ret = %d \n", ret); return -1);
-    LOG_PRINT("[INFO] rank %d hcom: %s stream: %p, context : %p\n", args.rankId, hcom_name, args.stream, args.context);
-
+struct ExampleData {
     std::vector<int64_t> x1Shape = {32, 64};
     std::vector<int64_t> x2Shape = {64, 128};
     std::vector<int64_t> biasShape = {128};
@@ -122,81 +113,125 @@ int launchOneThreadQuantMatmulAlltoAll(Args &args)
     long long x1ScaleShapeSize = GetShapeSize(x1ScaleShape);
     long long x2ScaleShapeSize = GetShapeSize(x2ScaleShape);
     long long outShapeSize = GetShapeSize(outShape);
-    std::vector<int8_t> x1HostData(x1ShapeSize, 1);
-    std::vector<int8_t> x2HostData(x2ShapeSize, 1);
-    std::vector<op::fp16_t> biasHostData(biasShapeSize, 1);
-    std::vector<float> x1ScaleHostData(x1ScaleShapeSize, 1);
-    std::vector<float> x2ScaleHostData(x2ScaleShapeSize, 1);
-    std::vector<op::fp16_t> outHostData(outShapeSize, 0);
-    // 创建 tensor
-    ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_INT8, &x1);
+    std::vector<int8_t> x1HostData = std::vector<int8_t>(x1ShapeSize, 1);
+    std::vector<int8_t> x2HostData = std::vector<int8_t>(x2ShapeSize, 1);
+    std::vector<op::fp16_t> biasHostData = std::vector<op::fp16_t>(biasShapeSize, 1);
+    std::vector<float> x1ScaleHostData = std::vector<float>(x1ScaleShapeSize, 1);
+    std::vector<float> x2ScaleHostData = std::vector<float>(x2ScaleShapeSize, 1);
+    std::vector<op::fp16_t> outHostData = std::vector<op::fp16_t>(outShapeSize, 0);
+
+    int CreateTensors()
+    {
+        int ret;
+        // 创建 tensor
+        ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_INT8, &x1);
+        CHECK_RET(ret == ACL_SUCCESS, return ret);
+        ret = CreateAclTensor(x2HostData, x2Shape, &x2DeviceAddr, aclDataType::ACL_INT8, &x2);
+        CHECK_RET(ret == ACL_SUCCESS, return ret);
+        ret = CreateAclTensor(biasHostData, biasShape, &biasDeviceAddr, aclDataType::ACL_FLOAT16, &bias);
+        CHECK_RET(ret == ACL_SUCCESS, return ret);
+        ret = CreateAclTensor(x1ScaleHostData, x1ScaleShape, &x1ScaleDeviceAddr, aclDataType::ACL_FLOAT, &x1Scale);
+        CHECK_RET(ret == ACL_SUCCESS, return ret);
+        ret = CreateAclTensor(x2ScaleHostData, x2ScaleShape, &x2ScaleDeviceAddr, aclDataType::ACL_FLOAT, &x2Scale);
+        CHECK_RET(ret == ACL_SUCCESS, return ret);
+        ret = CreateAclTensor(outHostData, outShape, &outDeviceAddr, aclDataType::ACL_FLOAT16, &out);
+        CHECK_RET(ret == ACL_SUCCESS, return ret);
+        return 0;
+    }
+
+    int Execute(Args &args, char *hcom_name)
+    {
+        int ret;
+        // 调用第一段接口
+        ret = aclnnQuantMatmulAlltoAllGetWorkspaceSize(
+            x1, x2, bias, x1Scale, x2Scale, nullptr, nullptr, nullptr, alltoAllAxesOptional, hcom_name, x1QuantMode,
+            x2QuantMode, commQuantMode, commQuantDtype, groupSize, false, false, out, &workspaceSize, &executor);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnQuantMatmulAlltoAllGetWorkspaceSize failed. ERROR: %d\n", ret);
+                  return ret);
+        // 根据第一段接口计算出的workspaceSize申请device内存
+        if (workspaceSize > 0) {
+            ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+            CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
+        }
+        // 调用第二段接口
+        ret = aclnnQuantMatmulAlltoAll(workspaceAddr, workspaceSize, executor, args.stream);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnQuantMatmulAlltoAll failed. ERROR: %d\n", ret); return ret);
+        // （固定写法）同步等待任务执行结束
+        ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
+        LOG_PRINT("device%u aclnnQuantMatmulAlltoAll execute success \n", args.rankId);
+        return 0;
+    }
+
+    void DestroyTensors()
+    {
+        // 释放device资源，需要根据具体API的接口定义修改
+        if (x1 != nullptr) {
+            aclDestroyTensor(x1);
+        }
+        if (x2 != nullptr) {
+            aclDestroyTensor(x2);
+        }
+        if (bias != nullptr) {
+            aclDestroyTensor(bias);
+        }
+        if (x1Scale != nullptr) {
+            aclDestroyTensor(x1Scale);
+        }
+        if (x2Scale != nullptr) {
+            aclDestroyTensor(x2Scale);
+        }
+        if (out != nullptr) {
+            aclDestroyTensor(out);
+        }
+    }
+
+    void FreeDeviceBuffers()
+    {
+        if (x1DeviceAddr != nullptr) {
+            aclrtFree(x1DeviceAddr);
+        }
+        if (x2DeviceAddr != nullptr) {
+            aclrtFree(x2DeviceAddr);
+        }
+        if (biasDeviceAddr != nullptr) {
+            aclrtFree(biasDeviceAddr);
+        }
+        if (outDeviceAddr != nullptr) {
+            aclrtFree(outDeviceAddr);
+        }
+    }
+
+    void Release(Args &args)
+    {
+        DestroyTensors();
+        FreeDeviceBuffers();
+        if (workspaceSize > 0) {
+            aclrtFree(workspaceAddr);
+        }
+        aclrtDestroyStream(args.stream);
+        HcclCommDestroy(args.hcclComm);
+        aclrtDestroyContext(args.context);
+        aclrtResetDevice(args.rankId);
+    }
+};
+
+int launchOneThreadQuantMatmulAlltoAll(Args &args)
+{
+    int ret;
+    ret = aclrtSetCurrentContext(args.context);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSetCurrentContext failed. ERROR: %d\n", ret); return ret);
+    char hcom_name[128];
+    ret = HcclGetCommName(args.hcclComm, hcom_name);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetCommName failed. ret = %d \n", ret); return -1);
+    LOG_PRINT("[INFO] rank %u hcom: %s stream: %p, context : %p\n", args.rankId, hcom_name, args.stream, args.context);
+
+    ExampleData data;
+    ret = data.CreateTensors();
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(x2HostData, x2Shape, &x2DeviceAddr, aclDataType::ACL_INT8, &x2);
+    ret = data.Execute(args, hcom_name);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(biasHostData, biasShape, &biasDeviceAddr, aclDataType::ACL_FLOAT16, &bias);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(x1ScaleHostData, x1ScaleShape, &x1ScaleDeviceAddr, aclDataType::ACL_FLOAT, &x1Scale);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(x2ScaleHostData, x2ScaleShape, &x2ScaleDeviceAddr, aclDataType::ACL_FLOAT, &x2Scale);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(outHostData, outShape, &outDeviceAddr, aclDataType::ACL_FLOAT16, &out);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
-    // 调用第一段接口
-    ret = aclnnQuantMatmulAlltoAllGetWorkspaceSize(
-        x1, x2, bias, x1Scale, x2Scale, nullptr, nullptr, nullptr, alltoAllAxesOptional, hcom_name, x1QuantMode,
-        x2QuantMode, commQuantMode, commQuantDtype, groupSize, false, false, out, &workspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnQuantMatmulAlltoAllGetWorkspaceSize failed. ERROR: %d\n", ret);
-              return ret);
-    // 根据第一段接口计算出的workspaceSize申请device内存
-    if (workspaceSize > 0) {
-        ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
-    }
-    // 调用第二段接口
-    ret = aclnnQuantMatmulAlltoAll(workspaceAddr, workspaceSize, executor, args.stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnQuantMatmulAlltoAll failed. ERROR: %d\n", ret); return ret);
-    // （固定写法）同步等待任务执行结束
-    ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
-    LOG_PRINT("device%d aclnnQuantMatmulAlltoAll execute success \n", args.rankId);
-    // 释放device资源，需要根据具体API的接口定义修改
-    if (x1 != nullptr) {
-        aclDestroyTensor(x1);
-    }
-    if (x2 != nullptr) {
-        aclDestroyTensor(x2);
-    }
-    if (bias != nullptr) {
-        aclDestroyTensor(bias);
-    }
-    if (x1Scale != nullptr) {
-        aclDestroyTensor(x1Scale);
-    }
-    if (x2Scale != nullptr) {
-        aclDestroyTensor(x2Scale);
-    }
-    if (out != nullptr) {
-        aclDestroyTensor(out);
-    }
-    if (x1DeviceAddr != nullptr) {
-        aclrtFree(x1DeviceAddr);
-    }
-    if (x2DeviceAddr != nullptr) {
-        aclrtFree(x2DeviceAddr);
-    }
-    if (biasDeviceAddr != nullptr) {
-        aclrtFree(biasDeviceAddr);
-    }
-    if (outDeviceAddr != nullptr) {
-        aclrtFree(outDeviceAddr);
-    }
-    if (workspaceSize > 0) {
-        aclrtFree(workspaceAddr);
-    }
-    aclrtDestroyStream(args.stream);
-    HcclCommDestroy(args.hcclComm);
-    aclrtDestroyContext(args.context);
-    aclrtResetDevice(args.rankId);
+    data.Release(args);
     return 0;
 }
 

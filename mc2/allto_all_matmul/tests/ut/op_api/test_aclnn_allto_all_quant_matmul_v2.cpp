@@ -30,8 +30,8 @@ static aclTensor *CreateAclTensor(const std::vector<int64_t> shape, aclDataType 
     void *storage_data = nullptr;
     // 计算连续tensor的strides
     std::vector<int64_t> strides(shape.size(), 1);
-    for (int64_t i = shape.size() - 2; i >= 0; i--) {
-        strides[i] = shape[i + 1] * strides[i + 1];
+    for (size_t i = shape.size(); i > 1; --i) {
+        strides[i - 2] = shape[i - 1] * strides[i - 1];
     }
     // 调用aclCreateTensor接口创建aclTensor
     aclTensor *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, format, shape.data(),
@@ -5571,58 +5571,30 @@ static void TestQuantV2OneParamCase(const AlltoAllQuantMatmulV2AclnnTestParam &p
 {
     std::cout << "run case " << param.case_name << std::endl;
     // 从结构体list中获取实际用例属性
-    int64_t x1quantmode = param.x1_quantmode;
-    int64_t x2quantmode = param.x2_quantmode;
-    vector<int64_t> x1Shape = param.x1_shape;
-    vector<int64_t> x2Shape = param.x2_shape;
-    vector<int64_t> biasShape = param.bias_shape;
-    vector<int64_t> x1scalesShape = param.x1_scale_optional_shape;
-    vector<int64_t> x2scalesShape = param.x2_scale_shape;
-    vector<int64_t> outputShape = param.output_shape;
-    vector<int64_t> alltoalloutShape = param.alltoalloutput_shape;
-    aclDataType x1Dtype = param.x1_dtype;
-    aclDataType x2Dtype = param.x2_dtype;
-    aclDataType biasDtype = param.bias_dtype;
-    aclDataType x1scalesDtype = param.x1_scale_optional_dtype;
-    aclDataType x2scalesDtype = param.x2_scale_dtype;
-    aclDataType outputDtype = param.output_dtype;
-    aclDataType alltoalloutDtype = param.alltoalloutput_dtype;
-    aclFormat x1Format = param.x1_format;
-    aclFormat x2Format = param.x2_format;
-    aclFormat biasFormat = param.bias_format;
-    aclFormat x1_scale_format = param.x1_scale_optional_format;
-    aclFormat x2_scale_format = param.x2_scale_format;
-    aclFormat outputFormat = param.output_format;
-    aclFormat alltoalloutFormat = param.alltoalloutput_format;
-    int64_t x1quantdtype = param.x1_quantdtype;
-    int64_t groupSize = param.group_size;
-    vector<int64_t> axes_acl = param.alltoAllAxesOptional;
-    aclIntArray *alltoAllAxesOptional = aclCreateIntArray(axes_acl.data(), axes_acl.size());
-    const char *group = param.group;
-    const char *commMode = param.commMode;
-    bool transposeX1 = param.transposeX1;
-    bool transposeX2 = param.transposeX2;
-    aclnnStatus retStatus = param.aclnn_status;
-    aclTensor *x1 = CreateAclTensorOrNull(x1Shape, x1Dtype, x1Format);
-    aclTensor *x2 = CreateAclTensorOrNull(x2Shape, x2Dtype, x2Format);
-    aclTensor *bias = CreateAclTensorOrNull(biasShape, biasDtype, biasFormat);
-    aclTensor *x1scales = CreateAclTensorOrNull(x1scalesShape, x1scalesDtype, x1_scale_format);
-    aclTensor *x2scales = CreateAclTensorOrNull(x2scalesShape, x2scalesDtype, x2_scale_format);
-    aclTensor *output = CreateAclTensorOrNull(outputShape, outputDtype, outputFormat);
-    aclTensor *alltoallout = CreateAclTensorOrNull(alltoalloutShape, alltoalloutDtype, alltoalloutFormat);
+    aclIntArray *alltoAllAxesOptional =
+        aclCreateIntArray(param.alltoAllAxesOptional.data(), param.alltoAllAxesOptional.size());
+    aclTensor *x1 = CreateAclTensorOrNull(param.x1_shape, param.x1_dtype, param.x1_format);
+    aclTensor *x2 = CreateAclTensorOrNull(param.x2_shape, param.x2_dtype, param.x2_format);
+    aclTensor *bias = CreateAclTensorOrNull(param.bias_shape, param.bias_dtype, param.bias_format);
+    aclTensor *x1scales = CreateAclTensorOrNull(param.x1_scale_optional_shape, param.x1_scale_optional_dtype,
+                                                param.x1_scale_optional_format);
+    aclTensor *x2scales = CreateAclTensorOrNull(param.x2_scale_shape, param.x2_scale_dtype, param.x2_scale_format);
+    aclTensor *output = CreateAclTensorOrNull(param.output_shape, param.output_dtype, param.output_format);
+    aclTensor *alltoallout =
+        CreateAclTensorOrNull(param.alltoalloutput_shape, param.alltoalloutput_dtype, param.alltoalloutput_format);
     uint64_t workspace_size = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet;
-    auto ut = OP_API_UT(
-        aclnnAlltoAllQuantMatmulV2,
-        INPUT(x1, x2, bias, x1scales, x2scales, nullptr, nullptr, nullptr, group, commMode, alltoAllAxesOptional,
-              x1quantmode, x2quantmode, 0, -1, x1quantdtype, groupSize, transposeX1, transposeX2),
-        OUTPUT(output, alltoallout));
+    auto ut = OP_API_UT(aclnnAlltoAllQuantMatmulV2,
+                        INPUT(x1, x2, bias, x1scales, x2scales, nullptr, nullptr, nullptr, param.group, param.commMode,
+                              alltoAllAxesOptional, param.x1_quantmode, param.x2_quantmode, 0, -1, param.x1_quantdtype,
+                              param.group_size, param.transposeX1, param.transposeX2),
+                        OUTPUT(output, alltoallout));
     aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
-    if (retStatus == ACLNN_SUCCESS) {
+    if (param.aclnn_status == ACLNN_SUCCESS) {
         EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
     } else {
-        EXPECT_EQ(aclRet, retStatus);
+        EXPECT_EQ(aclRet, param.aclnn_status);
     }
     std::cout << "end case " << param.case_name << std::endl;
 }

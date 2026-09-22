@@ -59,6 +59,57 @@ class AllToAllMatmul(BaseApi):
                     tag=self.rank * 1000 + target_rank,  # 通信标签（避免数据混淆）
                 )
 
+    def _cpu_golden(self, x, weight, bias, hasBias, world_size, m, k):
+        """
+        ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓ CPU  真值 ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓
+        """
+        # ========================= alltoall =========================
+        x = x.cpu().to(torch.float32)
+        weight = weight.cpu().to(torch.float32)
+        bias = bias.cpu().to(torch.float32)
+        x_splits_from_ranks = [
+            torch.empty((m, k), dtype=x.dtype, device=x.device)
+            for _ in range(world_size)
+        ]
+        self.manual_all_to_all(
+            x_splits_from_ranks, [x[m * i : m * (i + 1)] for i in range(world_size)]
+        )
+        A = torch.cat(x_splits_from_ranks, dim=1)
+
+        # ========================= matmul =========================
+        output = torch.matmul(A, weight)
+        if hasBias:
+            output = output + bias.to(A.dtype)
+        return output, A
+        """
+        ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑ CPU  真值 ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑
+        """
+
+    def _npu_golden(self, x, weight, bias, hasBias, world_size, m, k):
+        """
+        ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓ NPU 小算子级联标杆 ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓
+        """
+        # ========================= alltoall =========================
+        x_splits_from_ranks = [
+            torch.empty((m, k), dtype=x.dtype, device=x.device)
+            for _ in range(world_size)
+        ]  # 承接别的rank
+        # 切分送至别的rank
+        dist.all_to_all(
+            x_splits_from_ranks, [x[m * i : m * (i + 1)] for i in range(world_size)]
+        )
+        # 还原隐层
+        A = torch.cat(x_splits_from_ranks, dim=1)
+
+        # ========================= matmul =========================
+        output = torch.matmul(A, weight)
+        if hasBias:
+            output = output + bias.to(A.dtype)
+        return output, A
+        """
+        ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑ NPU 小算子级联标杆 ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑
+        """
+
     def __call__(self, input_data: InputDataset, with_output: bool = False):
         world_size = self.dist_task_info.world_size
         x = input_data.kwargs["x"]
@@ -70,55 +121,10 @@ class AllToAllMatmul(BaseApi):
         hasBias = input_data.kwargs["hasBias"]
 
         if self.name == "cpu":
-            """
-            ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓ CPU  真值 ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓
-            """
-            # ========================= alltoall =========================
-            x = x.cpu().to(torch.float32)
-            weight = weight.cpu().to(torch.float32)
-            bias = bias.cpu().to(torch.float32)
-            x_splits_from_ranks = [
-                torch.empty((m, k), dtype=x.dtype, device=x.device)
-                for _ in range(world_size)
-            ]
-            self.manual_all_to_all(
-                x_splits_from_ranks, [x[m * i : m * (i + 1)] for i in range(world_size)]
-            )
-            A = torch.cat(x_splits_from_ranks, dim=1)
-
-            # ========================= matmul =========================
-            output = torch.matmul(A, weight)
-            if hasBias:
-                output = output + bias.to(A.dtype)
-            return output, A
-            """
-            ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑ CPU  真值 ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑
-            """
+            return self._cpu_golden(x, weight, bias, hasBias, world_size, m, k)
 
         if self.dist_task_info.is_bm:
-            """
-            ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓ NPU 小算子级联标杆 ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓
-            """
-            # ========================= alltoall =========================
-            x_splits_from_ranks = [
-                torch.empty((m, k), dtype=x.dtype, device=x.device)
-                for _ in range(world_size)
-            ]  # 承接别的rank
-            # 切分送至别的rank
-            dist.all_to_all(
-                x_splits_from_ranks, [x[m * i : m * (i + 1)] for i in range(world_size)]
-            )
-            # 还原隐层
-            A = torch.cat(x_splits_from_ranks, dim=1)
-
-            # ========================= matmul =========================
-            output = torch.matmul(A, weight)
-            if hasBias:
-                output = output + bias.to(A.dtype)
-            return output, A
-            """
-            ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑ NPU 小算子级联标杆 ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑
-            """
+            return self._npu_golden(x, weight, bias, hasBias, world_size, m, k)
         else:
             pass
 

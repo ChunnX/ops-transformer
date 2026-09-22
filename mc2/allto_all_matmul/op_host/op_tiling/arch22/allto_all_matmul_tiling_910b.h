@@ -54,11 +54,16 @@ protected:
     void CalcQuantTokenNumPerUb(const CoCTiling &cocTilingData, AlltoAllMatmulInfo &info);
     ge::graphStatus CheckOpInputInfo(AlltoAllMatmulInfo &info);
     ge::graphStatus CheckAndSetAttrsInfo(AlltoAllMatmulInfo &info);
+    ge::graphStatus CheckBiasTypeCombination(ge::DataType x1Dtype, ge::DataType x2Dtype, ge::DataType biasDtype,
+                                             ge::DataType yDtype);
+    ge::graphStatus CheckNoBiasTypeCombination(ge::DataType x1Dtype, ge::DataType x2Dtype, ge::DataType yDtype);
     ge::graphStatus CheckTensorDataType(AlltoAllMatmulInfo &info);
     ge::graphStatus CheckQuantScaleDataType(const AlltoAllMatmulInfo &info, ge::DataType x1Dtype, ge::DataType x2Dtype);
     ge::graphStatus CheckQuantScaleShape(const AlltoAllMatmulInfo &info, int64_t tokenSize);
     ge::graphStatus CheckQuantMatrixShape(const AlltoAllMatmulInfo &info, int64_t tokenSize);
     ge::graphStatus CheckX2ScaleShape(const AlltoAllMatmulInfo &info);
+    ge::graphStatus ReadInputShapeInfo(AlltoAllMatmulInfo &info);
+    ge::graphStatus CheckBiasAndShapeLimits(const AlltoAllMatmulInfo &info);
     ge::graphStatus CheckShapeInfo(AlltoAllMatmulInfo &info);
     ge::graphStatus DoMmCommTiling(CoCTiling &cocTilingData, AlltoAllMatmulInfo &info);
     // basic和A4W4的tiling

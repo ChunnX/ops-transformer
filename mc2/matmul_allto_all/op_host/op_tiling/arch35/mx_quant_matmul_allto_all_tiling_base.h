@@ -59,6 +59,7 @@ protected:
     ge::graphStatus InitTilingContextParameters();
     ge::graphStatus DoMxQuantMMTiling();
     ge::graphStatus SetHcclTiling();
+    ge::graphStatus CheckMxBiasDataType(const gert::TilingContext *context, const char *opName);
     ge::graphStatus CheckMxQuantTensorDataType(const gert::TilingContext *context, const char *opName);
     ge::graphStatus CheckX2Transpose(const gert::TilingContext *context, const char *opName,
                                      const OpAttrIndexSchema &indexSchema);
@@ -66,6 +67,7 @@ protected:
     ge::graphStatus CheckMxQuantShapeInfo(const gert::TilingContext *context, const char *opName,
                                           const OpAttrIndexSchema &indexSchema);
     ge::graphStatus CheckMxQuantMatrixMulShapes(const gert::TilingContext *context, const char *opName);
+    ge::graphStatus CheckMxFp4Alignment(const Matrix2DShapes &shapeInfo, const char *opName);
     ge::graphStatus CheckMxQuantScaleShapes(const gert::TilingContext *context, const char *opName);
     ge::graphStatus CheckMxQuantInputShapesValid(const gert::TilingContext *context, const char *opName);
     ge::graphStatus CheckQuantGroupSize(const gert::TilingContext *context, const char *opName);

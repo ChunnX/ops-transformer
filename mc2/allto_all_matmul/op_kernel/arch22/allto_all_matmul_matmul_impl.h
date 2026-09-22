@@ -17,13 +17,12 @@ namespace Mc2Kernel {
 
 template <TemplateA2AMMClass>
 template <uint32_t TileM, uint32_t TileN>
-__aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::CatlassMatmulImpl()
-{
+struct AlltoAllMatmul<TemplateA2AMMFunc>::CatlassMatmulTypes {
     using ArchTag = Arch::AtlasA2;
 
-    constexpr bool ENABLE_UNIT_FLAG = false;
-    constexpr bool ENABLE_SHUFFLE_K = false;
-    constexpr bool aicCalBias =
+    static constexpr bool ENABLE_UNIT_FLAG = false;
+    static constexpr bool ENABLE_SHUFFLE_K = false;
+    static constexpr bool aicCalBias =
         (QuantType == MC2_NON_QUANT) && hasBias; // 计算量化后的矩阵乘，bias不由CatlassMatmul负责
 
     using ElementA = BType; // 非量化场景、量化场景，A、B的入参类型一致；伪量化场景，A需要动态量化成BType
@@ -36,13 +35,6 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::CatlassMatmulImpl()
     using LayoutB = std::conditional_t<transB, layout::ColumnMajor, layout::RowMajor>;
     using LayoutC = layout::RowMajor;
     using LayoutBias = layout::VectorLayout;
-
-    uint32_t realM = m / rankSize;
-    uint32_t realK = k * rankSize;
-    LayoutA layoutA{static_cast<uint32_t>(realM), static_cast<uint32_t>(realK)};
-    LayoutB layoutB{static_cast<uint32_t>(realK), static_cast<uint32_t>(n)};
-    LayoutC layoutC{static_cast<uint32_t>(realM), static_cast<uint32_t>(n)};
-    LayoutBias layoutBias{static_cast<uint32_t>(n)};
 
     using DispatchPolicy = std::conditional_t<aicCalBias, Gemm::MmadAtlasA2PingpongBias<ENABLE_UNIT_FLAG>,
                                               Gemm::MmadAtlasA2Preload<ENABLE_UNIT_FLAG, ENABLE_SHUFFLE_K>>;
@@ -71,20 +63,14 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::CatlassMatmulImpl()
     };
 
     using TileCopy = TileCopyOpt;
-    GemmCoord processSize{static_cast<uint32_t>(realM), static_cast<uint32_t>(n), static_cast<uint32_t>(realK)};
+
     using BlockScheduler30 = typename Gemm::Block::GemmIdentityBlockSwizzle<3, 0>;
 
-    GM_ADDR srcGM = (QuantType == MC2_DYNAMIC_QUANT) ?
-                        reinterpret_cast<GM_ADDR>(quantAGM_) :
-                        reinterpret_cast<GM_ADDR>(gmPeerMem_); // 动态量化时，需要更改左矩阵读取位置
-    GM_ADDR matmulResultGM = (QuantType == MC2_NON_QUANT) ?
-                                 cGM_ :
-                                 reinterpret_cast<GM_ADDR>(dequantCGM_); // 量化矩阵乘法时，需要修改c矩阵存放地址
-    constexpr uint32_t L1TileShapeK =
+    static constexpr uint32_t L1TileShapeK =
         std::is_same<BType, int4b_t>::value ? 1024 :
         std::is_same<BType, int8_t>::value  ? 512 :
                                               256; // 不同的matmul数据类型对应的L1TileShape不同
-    constexpr uint32_t L0TileShapeK =
+    static constexpr uint32_t L0TileShapeK =
         std::is_same<BType, int4b_t>::value ? 256 :
         std::is_same<BType, int8_t>::value  ? 128 :
                                               64; // 不同的matmul数据类型对应的L0TileShape不同
@@ -95,6 +81,34 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::CatlassMatmulImpl()
         Gemm::Block::BlockMmad<DispatchPolicy, L1TileShape, L0TileShape, AType_, BType_, CType_, BiasType_, TileCopy>;
     using MatmulKernel =
         Gemm::Kernel::AlltoAllMatmulKernel<void, void, BlockMmadOpt, void, BlockScheduler30, aicCalBias>;
+};
+
+template <TemplateA2AMMClass>
+template <uint32_t TileM, uint32_t TileN>
+__aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::CatlassMatmulImpl()
+{
+    using Types = CatlassMatmulTypes<TileM, TileN>;
+    using LayoutA = typename Types::LayoutA;
+    using LayoutB = typename Types::LayoutB;
+    using LayoutC = typename Types::LayoutC;
+    using LayoutBias = typename Types::LayoutBias;
+    using MatmulKernel = typename Types::MatmulKernel;
+
+    uint32_t realM = m / rankSize;
+    uint32_t realK = k * rankSize;
+    LayoutA layoutA{static_cast<uint32_t>(realM), static_cast<uint32_t>(realK)};
+    LayoutB layoutB{static_cast<uint32_t>(realK), static_cast<uint32_t>(n)};
+    LayoutC layoutC{static_cast<uint32_t>(realM), static_cast<uint32_t>(n)};
+    LayoutBias layoutBias{static_cast<uint32_t>(n)};
+
+    GemmCoord processSize{static_cast<uint32_t>(realM), static_cast<uint32_t>(n), static_cast<uint32_t>(realK)};
+
+    GM_ADDR srcGM = (QuantType == MC2_DYNAMIC_QUANT) ?
+                        reinterpret_cast<GM_ADDR>(quantAGM_) :
+                        reinterpret_cast<GM_ADDR>(gmPeerMem_); // 动态量化时，需要更改左矩阵读取位置
+    GM_ADDR matmulResultGM = (QuantType == MC2_NON_QUANT) ?
+                                 cGM_ :
+                                 reinterpret_cast<GM_ADDR>(dequantCGM_); // 量化矩阵乘法时，需要修改c矩阵存放地址
     MatmulKernel matmul_op;
     typename MatmulKernel::Params params{processSize,
                                          reinterpret_cast<GM_ADDR>(srcGM),
@@ -126,29 +140,22 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::CatlassMatmul()
 
 template <TemplateA2AMMClass>
 template <typename EpilogueTileShape>
-__aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::DequantImpl()
-{
+struct AlltoAllMatmul<TemplateA2AMMFunc>::DequantTypes {
     using ArchTag = Arch::AtlasA2;
 
     using ElementC = int32_t;
     using ElementBias = BiasType;
     using LayoutD = layout::RowMajor;
 
-    uint32_t realM = m / rankSize;
-    uint32_t realK = k * rankSize;
-    LayoutD layoutD{static_cast<uint32_t>(realM), static_cast<uint32_t>(n)};
-
     using CType_ = Gemm::GemmType<ElementC, layout::RowMajor>;
 
-    constexpr uint32_t ubStages = 2;
+    static constexpr uint32_t ubStages = 2;
     using EpilogueDispatchPolicy = Epilogue::EpilogueAtlasA2PerTokenDequant<ubStages>;
     using ScaleGType = Gemm::GemmType<ScaleType, layout::VectorLayout>;
     using PerTokenScaleGType = Gemm::GemmType<float, layout::VectorLayout>; // 全量化时，也限定为float
     using BiasGType = Gemm::GemmType<BiasType, layout::VectorLayout>;
     using DType = Gemm::GemmType<CType, layout::RowMajor>;
-    layout::VectorLayout layoutScale{static_cast<uint32_t>(n)};
-    layout::VectorLayout layoutPerTokenScale{static_cast<uint32_t>(realM)};
-    layout::VectorLayout layoutBias{static_cast<uint32_t>(n)};
+
     using LayoutScale = layout::VectorLayout;
     using LayoutPerTokenScale = layout::VectorLayout;
     using ElementD = CType;
@@ -175,6 +182,57 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::DequantImpl()
     };
 
     using EpilogueTileScheduler = Epilogue::Tile::EpilogueHorizontalTileSwizzle;
+
+    using TileRowBroadcastMul = Epilogue::Tile::TileRowBroadcastMul<ArchTag, RowBroadcastMulType, EpilogueTileShape>;
+    using TileRowBroadcastAdd = Epilogue::Tile::TileRowBroadcastAdd<ArchTag, RowBroadcastAddType, EpilogueTileShape>;
+    using TileBroadcastOneBlk =
+        Epilogue::Tile::TileBroadcastOneBlk<ArchTag, BroadcastOneBlkType, EpilogueTileShape::ROW>;
+    using TileOneBlkColumnBroadcastMul =
+        Epilogue::Tile::TileOneBlkColumnBroadcastMul<ArchTag, OneBlkColumnBroadcastMulType, EpilogueTileShape>;
+    using QuantBlockEpilogue =
+        Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy, CType_, ScaleGType, PerTokenScaleGType, BiasGType, DType,
+                                       TileRowBroadcastMul, TileRowBroadcastAdd, TileBroadcastOneBlk,
+                                       TileOneBlkColumnBroadcastMul, TileCopyDequant, EpilogueTileScheduler>;
+
+    using EpilogueParams = typename QuantBlockEpilogue::Params;
+};
+
+template <TemplateA2AMMClass>
+__aicore__ inline uint32_t AlltoAllMatmul<TemplateA2AMMFunc>::GetDequantRows(uint32_t totalRows, uint32_t &stRowPerCore)
+{
+    uint32_t rowsPerCore = DivCeil(totalRows, blockNum);
+    uint32_t rowsThisCore = rowsPerCore;
+    stRowPerCore = aicIdx * rowsPerCore;
+    if (stRowPerCore < totalRows) {
+        if (rowsThisCore + stRowPerCore > totalRows) {
+            rowsThisCore = totalRows - stRowPerCore;
+        }
+    } else {
+        rowsThisCore = 0;
+    }
+    return rowsThisCore;
+}
+
+template <TemplateA2AMMClass>
+template <typename EpilogueTileShape>
+__aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::DequantImpl()
+{
+    using Types = DequantTypes<EpilogueTileShape>;
+    using LayoutD = typename Types::LayoutD;
+    using ElementD = typename Types::ElementD;
+    using ElementC = typename Types::ElementC;
+    using ElementBias = typename Types::ElementBias;
+    using QuantBlockEpilogue = typename Types::QuantBlockEpilogue;
+    using EpilogueParams = typename Types::EpilogueParams;
+
+    uint32_t realM = m / rankSize;
+    uint32_t realK = k * rankSize;
+    LayoutD layoutD{static_cast<uint32_t>(realM), static_cast<uint32_t>(n)};
+
+    layout::VectorLayout layoutScale{static_cast<uint32_t>(n)};
+    layout::VectorLayout layoutPerTokenScale{static_cast<uint32_t>(realM)};
+    layout::VectorLayout layoutBias{static_cast<uint32_t>(n)};
+
     GemmCoord problemShape{static_cast<uint32_t>(realM), static_cast<uint32_t>(n), static_cast<uint32_t>(realK)};
 
     AscendC::GlobalTensor<ElementD> gmD;
@@ -187,16 +245,8 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::DequantImpl()
         gmBias.SetGlobalBuffer((__gm__ ElementBias *)biasGM_);
     }
 
-    uint32_t rowsPerCore = DivCeil(problemShape.m(), blockNum);
-    uint32_t rowsThisCore = rowsPerCore;
-    uint32_t stRowPerCore = aicIdx * rowsPerCore;
-    if (stRowPerCore < problemShape.m()) {
-        if (rowsThisCore + stRowPerCore > problemShape.m()) {
-            rowsThisCore = problemShape.m() - stRowPerCore;
-        }
-    } else {
-        rowsThisCore = 0;
-    }
+    uint32_t stRowPerCore;
+    uint32_t rowsThisCore = GetDequantRows(problemShape.m(), stRowPerCore);
     MatrixCoord coreOffset(stRowPerCore, 0u);
     auto layoutC = layout::RowMajor{problemShape.m(), n};
     int64_t gmOffsetC = layoutC.GetOffset(coreOffset);
@@ -205,19 +255,8 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::DequantImpl()
     GM_ADDR x1ScaleGM =
         (QuantType == MC2_DYNAMIC_QUANT) ? quantScaleGM_ : x1ScaleGM_; // 根据是否是全量化，决定从哪里获得pertokenScale
 
-    using TileRowBroadcastMul = Epilogue::Tile::TileRowBroadcastMul<ArchTag, RowBroadcastMulType, EpilogueTileShape>;
-    using TileRowBroadcastAdd = Epilogue::Tile::TileRowBroadcastAdd<ArchTag, RowBroadcastAddType, EpilogueTileShape>;
-    using TileBroadcastOneBlk =
-        Epilogue::Tile::TileBroadcastOneBlk<ArchTag, BroadcastOneBlkType, EpilogueTileShape::ROW>;
-    using TileOneBlkColumnBroadcastMul =
-        Epilogue::Tile::TileOneBlkColumnBroadcastMul<ArchTag, OneBlkColumnBroadcastMulType, EpilogueTileShape>;
-    using QuantBlockEpilogue =
-        Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy, CType_, ScaleGType, PerTokenScaleGType, BiasGType, DType,
-                                       TileRowBroadcastMul, TileRowBroadcastAdd, TileBroadcastOneBlk,
-                                       TileOneBlkColumnBroadcastMul, TileCopyDequant, EpilogueTileScheduler>;
     QuantBlockEpilogue blockEpilogue(resource);
 
-    using EpilogueParams = typename QuantBlockEpilogue::Params;
     EpilogueParams epilogueParams{
         scaleGM_, layoutScale, x1ScaleGM, layoutPerTokenScale.GetTileLayout(problemShape.template GetCoordByAxis<0>()),
         biasGM_,  layoutBias};
