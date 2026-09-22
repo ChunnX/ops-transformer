@@ -23,7 +23,7 @@ constexpr uint8_t ALL_AICORE_SYNC_MODE = 0;
 constexpr uint8_t AIC_SINGLE_AIV_SYNC_MODE = 4;
 // reset、MoE 及共享量化写回完成事件；与 GMM mode 4 独立，避开 SyncAll 的 11--14。
 constexpr uint16_t MTE_QUANT_READY_FLAG = 8;
-// mode 0：所有 AIV 上报，确认原始 count 表已读取并完成本核 count 计算。
+// count 表读取完成事件编号：count 表清零前等待所有读取结束。
 constexpr uint16_t COUNT_TABLE_READ_DONE_FLAG = 9;
 // 输入就绪事件编号：AIV0 通知配对 AIC，本卡全部 AIV 已完成 reset 和量化。
 constexpr uint16_t INPUT_READY_FLAG = 2;
