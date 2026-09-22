@@ -1,8 +1,0 @@
-prep_cache/
-*.pt
-result*.csv
-result_train*.csv
-__pycache__/
-profiling_data/
-Profiling_Result_engram_fetch/
-core.python.*
