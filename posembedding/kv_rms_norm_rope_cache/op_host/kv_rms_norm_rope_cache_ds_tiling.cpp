@@ -146,7 +146,7 @@ ge::graphStatus KvRmsNormRopeCacheTilingDs::ResolveQuantComponents()
         tilingData_.set_isKQuant(kQuantType);
         tilingData_.set_isVQuant(vQuantType);
         staticQuantType = std::max(kQuantType, vQuantType);
-        OP_LOGI(context_->GetNodeName(), "Resolved static quant mode of Atlas 2/3 is %d.", staticQuantType);
+        OP_LOGI(context_->GetNodeName(), "Resolved static quant mode of Atlas 2/3 is %ld.", staticQuantType);
     }
 
     return componentStatus;

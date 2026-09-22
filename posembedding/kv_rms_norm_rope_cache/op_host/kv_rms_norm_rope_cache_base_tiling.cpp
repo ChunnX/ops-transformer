@@ -449,8 +449,9 @@ bool KvRmsNormRopeCacheTilingBase::ValidateSBroadcast()
     bool isValid = true;
     if (cosSinNeedBrc_ == 1) {
         // got cosSeq == 1 && cosSeq != seqLen && seqLen > 1
-        // only non-quant under PA can be broadcasted
-        isValid = (isPagedAttention_ && !isPABNSD_ && quantMode_ == NON_QUANT_MODE);
+        // only CacheMode::Norm and non-quant PA can be broadcasted
+        isValid = (currentCacheMode_ == CacheMode::Norm) ||
+        (isPagedAttention_ && !isPABNSD_ && quantMode_ == NON_QUANT_MODE);
     }
     return isValid;
 }
