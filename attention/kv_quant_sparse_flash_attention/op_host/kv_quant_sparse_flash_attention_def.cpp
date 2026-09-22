@@ -16,56 +16,37 @@
 #include "register/op_def_registry.h"
 
 namespace ops {
+static const std::vector<ge::DataType> qsfaQDtype = {ge::DT_FLOAT16, ge::DT_BF16};
+static const std::vector<ge::DataType> qsfaInt8Dtype = {ge::DT_INT8, ge::DT_INT8};
+static const std::vector<ge::DataType> qsfaIdxDtype = {ge::DT_INT32, ge::DT_INT32};
+static const std::vector<ge::DataType> qsfaFp32Dtype = {ge::DT_FLOAT, ge::DT_FLOAT};
+static const std::vector<ge::Format> qsfaNdFmt = {ge::FORMAT_ND, ge::FORMAT_ND};
+static const std::vector<ge::DataType> qsfa95OutDtype = {ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_FLOAT16,
+                                                   ge::DT_FLOAT16, ge::DT_FLOAT16};
+static const std::vector<ge::DataType> qsfa95KvDtype = {ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8, ge::DT_INT8,
+                                                     ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8, ge::DT_INT8};
+static const std::vector<ge::DataType> qsfa95IdxDtype = {ge::DT_INT32};
+static const std::vector<ge::DataType> qsfa95Fp32Dtype = {ge::DT_FLOAT};
+static const std::vector<ge::Format> qsfa95NdFmt = {ge::FORMAT_ND};
+
 class KvQuantSparseFlashAttention : public OpDef {
 public:
     explicit KvQuantSparseFlashAttention(const char *name)
         : OpDef(name)
     {
-        this->Input("query")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("key")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_INT8, ge::DT_INT8})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
+        this->Input("query").ParamType(REQUIRED).DataType(qsfaQDtype).Format(qsfaNdFmt).AutoContiguous();
+        this->Input("key").ParamType(REQUIRED).DataType(qsfaInt8Dtype).Format(qsfaNdFmt).AutoContiguous();
         this->Input("value").ParamType(REQUIRED).Follow("key").AutoContiguous();
-        this->Input("sparse_indices")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32, ge::DT_INT32})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+        this->Input("sparse_indices").ParamType(REQUIRED).DataType(qsfaIdxDtype).Format(qsfaNdFmt).AutoContiguous();
+        this->Input("key_dequant_scale").ParamType(OPTIONAL).DataType(qsfaFp32Dtype).Format(qsfaNdFmt).AutoContiguous();
+        this->Input("value_dequant_scale").ParamType(OPTIONAL).DataType(qsfaFp32Dtype).Format(qsfaNdFmt)
             .AutoContiguous();
-        this->Input("key_dequant_scale")
-            .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+        this->Input("block_table").ParamType(OPTIONAL).DataType(qsfaIdxDtype).Format(qsfaNdFmt).AutoContiguous();
+        this->Input("actual_seq_lengths_query").ParamType(OPTIONAL).DataType(qsfaIdxDtype).Format(qsfaNdFmt)
             .AutoContiguous();
-        this->Input("value_dequant_scale")
-            .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+        this->Input("actual_seq_lengths_kv").ParamType(OPTIONAL).DataType(qsfaIdxDtype).Format(qsfaNdFmt)
             .AutoContiguous();
-        this->Input("block_table")
-            .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32, ge::DT_INT32})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("actual_seq_lengths_query")
-            .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32, ge::DT_INT32})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("actual_seq_lengths_kv")
-            .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32, ge::DT_INT32})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Output("attention_out")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND});
+        this->Output("attention_out").ParamType(REQUIRED).DataType(qsfaQDtype).Format(qsfaNdFmt);
         this->Attr("scale_value").AttrType(REQUIRED).Float(1.0);
         this->Attr("key_quant_mode").AttrType(REQUIRED).Int(1);
         this->Attr("value_quant_mode").AttrType(REQUIRED).Int(1);
@@ -90,57 +71,25 @@ public:
         this->AICore().AddConfig("ascend910_93", aicore_config);
 
         OpAICoreConfig aicore_config_95;
-        aicore_config_95.Input("query")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16})
-            .FormatList({ge::FORMAT_ND})
+        aicore_config_95.Input("query").ParamType(REQUIRED).DataType(qsfa95OutDtype).FormatList(qsfa95NdFmt)
             .AutoContiguous();
-        aicore_config_95.Input("key")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8, ge::DT_INT8, ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8,
-                       ge::DT_INT8})
-            .FormatList({ge::FORMAT_ND})
+        aicore_config_95.Input("key").ParamType(REQUIRED).DataType(qsfa95KvDtype).FormatList(qsfa95NdFmt)
             .IgnoreContiguous();
-        aicore_config_95.Input("value")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8, ge::DT_INT8, ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8,
-                       ge::DT_INT8})
-            .FormatList({ge::FORMAT_ND})
+        aicore_config_95.Input("value").ParamType(REQUIRED).DataType(qsfa95KvDtype).FormatList(qsfa95NdFmt)
             .IgnoreContiguous();
-        aicore_config_95.Input("sparse_indices")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
+        aicore_config_95.Input("sparse_indices").ParamType(REQUIRED).DataTypeList(qsfa95IdxDtype)
+            .FormatList(qsfa95NdFmt).AutoContiguous();
+        aicore_config_95.Input("key_dequant_scale").ParamType(OPTIONAL).DataTypeList(qsfa95Fp32Dtype)
+            .FormatList(qsfa95NdFmt).AutoContiguous();
+        aicore_config_95.Input("value_dequant_scale").ParamType(OPTIONAL).DataTypeList(qsfa95Fp32Dtype)
+            .FormatList(qsfa95NdFmt).AutoContiguous();
+        aicore_config_95.Input("block_table").ParamType(OPTIONAL).DataTypeList(qsfa95IdxDtype).FormatList(qsfa95NdFmt)
             .AutoContiguous();
-        aicore_config_95.Input("key_dequant_scale")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_FLOAT})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        aicore_config_95.Input("value_dequant_scale")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_FLOAT})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        aicore_config_95.Input("block_table")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        aicore_config_95.Input("actual_seq_lengths_query")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        aicore_config_95.Input("actual_seq_lengths_kv")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        aicore_config_95.Output("attention_out")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16})
-            .FormatList({ge::FORMAT_ND});
+        aicore_config_95.Input("actual_seq_lengths_query").ParamType(OPTIONAL).DataTypeList(qsfa95IdxDtype)
+            .FormatList(qsfa95NdFmt).AutoContiguous();
+        aicore_config_95.Input("actual_seq_lengths_kv").ParamType(OPTIONAL).DataTypeList(qsfa95IdxDtype)
+            .FormatList(qsfa95NdFmt).AutoContiguous();
+        aicore_config_95.Output("attention_out").ParamType(REQUIRED).DataType(qsfa95OutDtype).FormatList(qsfa95NdFmt);
         aicore_config_95.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
             .DynamicRankSupportFlag(true)

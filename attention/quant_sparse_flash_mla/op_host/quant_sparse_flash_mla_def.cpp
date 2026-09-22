@@ -16,123 +16,54 @@
 #include "register/op_def_registry.h"
 
 namespace ops {
+static const std::vector<ge::DataType> qsmlaKvDtype = {ge::DT_HIFLOAT8};
+static const std::vector<ge::DataType> qsmlaBf16Dtype = {ge::DT_BF16};
+static const std::vector<ge::DataType> qsmlaIdxDtype = {ge::DT_INT32};
+static const std::vector<ge::DataType> qsmlaFp32Dtype = {ge::DT_FLOAT};
+static const std::vector<ge::Format> qsmlaNdFmt = {ge::FORMAT_ND};
+
 class QuantSparseFlashMla : public OpDef {
 public:
     explicit QuantSparseFlashMla(const char *name) : OpDef(name)
     {
-        this->Input("q")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_HIFLOAT8})
-            .FormatList({ge::FORMAT_ND})
+        this->Input("q").ParamType(REQUIRED).DataType(qsmlaKvDtype).FormatList(qsmlaNdFmt).AutoContiguous();
+        this->Input("ori_kv").ParamType(OPTIONAL).DataType(qsmlaKvDtype).FormatList(qsmlaNdFmt).IgnoreContiguous();
+        this->Input("cmp_kv").ParamType(OPTIONAL).DataType(qsmlaKvDtype).FormatList(qsmlaNdFmt).IgnoreContiguous();
+        this->Input("q_descale").ParamType(OPTIONAL).DataType(qsmlaFp32Dtype).FormatList(qsmlaNdFmt).AutoContiguous();
+        this->Input("ori_kv_descale").ParamType(OPTIONAL).DataType(qsmlaFp32Dtype).FormatList(qsmlaNdFmt)
             .AutoContiguous();
-        this->Input("ori_kv")
-            .ParamType(OPTIONAL)
-            .DataType({ge::DT_HIFLOAT8})
-            .FormatList({ge::FORMAT_ND})
-            .IgnoreContiguous();
-        this->Input("cmp_kv")
-            .ParamType(OPTIONAL)
-            .DataType({ge::DT_HIFLOAT8})
-            .FormatList({ge::FORMAT_ND})
-            .IgnoreContiguous();
-        this->Input("q_descale")
-            .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT})
-            .FormatList({ge::FORMAT_ND})
+        this->Input("cmp_kv_descale").ParamType(OPTIONAL).DataType(qsmlaFp32Dtype).FormatList(qsmlaNdFmt)
             .AutoContiguous();
-        this->Input("ori_kv_descale")
-            .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT})
-            .FormatList({ge::FORMAT_ND})
+        this->Input("ori_sparse_indices").ParamType(OPTIONAL).DataTypeList(qsmlaIdxDtype).FormatList(qsmlaNdFmt)
             .AutoContiguous();
-        this->Input("cmp_kv_descale")
-            .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT})
-            .FormatList({ge::FORMAT_ND})
+        this->Input("cmp_sparse_indices").ParamType(OPTIONAL).DataTypeList(qsmlaIdxDtype).FormatList(qsmlaNdFmt)
             .AutoContiguous();
-        this->Input("ori_sparse_indices")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
+        this->Input("ori_block_table").ParamType(OPTIONAL).DataTypeList(qsmlaIdxDtype).FormatList(qsmlaNdFmt)
             .AutoContiguous();
-        this->Input("cmp_sparse_indices")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
+        this->Input("cmp_block_table").ParamType(OPTIONAL).DataTypeList(qsmlaIdxDtype).FormatList(qsmlaNdFmt)
             .AutoContiguous();
-        this->Input("ori_block_table")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
+        this->Input("cu_seqlens_q").ParamType(OPTIONAL).DataTypeList(qsmlaIdxDtype).FormatList(qsmlaNdFmt)
             .AutoContiguous();
-        this->Input("cmp_block_table")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
+        this->Input("cu_seqlens_ori_kv").ParamType(OPTIONAL).DataTypeList(qsmlaIdxDtype).FormatList(qsmlaNdFmt)
             .AutoContiguous();
-        this->Input("cu_seqlens_q")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
+        this->Input("cu_seqlens_cmp_kv").ParamType(OPTIONAL).DataTypeList(qsmlaIdxDtype).FormatList(qsmlaNdFmt)
             .AutoContiguous();
-        this->Input("cu_seqlens_ori_kv")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
+        this->Input("seqused_q").ParamType(OPTIONAL).DataTypeList(qsmlaIdxDtype).FormatList(qsmlaNdFmt)
             .AutoContiguous();
-        this->Input("cu_seqlens_cmp_kv")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
+        this->Input("seqused_ori_kv").ParamType(OPTIONAL).DataTypeList(qsmlaIdxDtype).FormatList(qsmlaNdFmt)
             .AutoContiguous();
-        this->Input("seqused_q")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
+        this->Input("seqused_cmp_kv").ParamType(OPTIONAL).DataTypeList(qsmlaIdxDtype).FormatList(qsmlaNdFmt)
             .AutoContiguous();
-        this->Input("seqused_ori_kv")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
+        this->Input("cmp_residual_kv").ParamType(OPTIONAL).DataTypeList(qsmlaIdxDtype).FormatList(qsmlaNdFmt)
             .AutoContiguous();
-        this->Input("seqused_cmp_kv")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
+        this->Input("ori_topk_length").ParamType(OPTIONAL).DataTypeList(qsmlaIdxDtype).FormatList(qsmlaNdFmt)
             .AutoContiguous();
-        this->Input("cmp_residual_kv")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
+        this->Input("cmp_topk_length").ParamType(OPTIONAL).DataTypeList(qsmlaIdxDtype).FormatList(qsmlaNdFmt)
             .AutoContiguous();
-        this->Input("ori_topk_length")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("cmp_topk_length")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("sinks")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_FLOAT})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("metadata")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Output("attn_out")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_BF16})
-            .FormatList({ge::FORMAT_ND});
-        this->Output("softmax_lse")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_FLOAT})
-            .FormatList({ge::FORMAT_ND});
+        this->Input("sinks").ParamType(OPTIONAL).DataTypeList(qsmlaFp32Dtype).FormatList(qsmlaNdFmt).AutoContiguous();
+        this->Input("metadata").ParamType(OPTIONAL).DataTypeList(qsmlaIdxDtype).FormatList(qsmlaNdFmt).AutoContiguous();
+        this->Output("attn_out").ParamType(REQUIRED).DataTypeList(qsmlaBf16Dtype).FormatList(qsmlaNdFmt);
+        this->Output("softmax_lse").ParamType(OPTIONAL).DataTypeList(qsmlaFp32Dtype).FormatList(qsmlaNdFmt);
         this->Attr("quant_mode").AttrType(REQUIRED).Int();
         this->Attr("softmax_scale").AttrType(OPTIONAL).Float();
         this->Attr("cmp_ratio").AttrType(OPTIONAL).Int(1); // 默认值为1
