@@ -15,7 +15,6 @@
 #ifndef MIXED_QUANT_SPARSE_FLASH_MLA_TQ_CSA_BLOCK_VECTOR_H
 #define MIXED_QUANT_SPARSE_FLASH_MLA_TQ_CSA_BLOCK_VECTOR_H
 
-#include "kernel_operator.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"

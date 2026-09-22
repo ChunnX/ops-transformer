@@ -16,7 +16,10 @@
 #ifndef MIXED_QUANT_SPARSE_FLASH_MLA_TQ_COMMON_H
 #define MIXED_QUANT_SPARSE_FLASH_MLA_TQ_COMMON_H
 
-#include "kernel_operator.h"
+#include "kernel_vec_intf.h"
+#include "kernel_cube_intf.h"
+#include "adv_api/activation/softmaxflashv2.h"
+#include "adv_api/math/log.h"
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
 

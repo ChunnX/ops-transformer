@@ -25,7 +25,8 @@
 #include "arch35/mixed_quant_sparse_flash_mla_csa_kernel.h"
 #include "arch35/mixed_quant_sparse_flash_mla_common.h"
 #else
-#include "kernel_operator.h"
+#include "kernel_vec_intf.h"
+#include "kernel_cube_intf.h"
 #include "lib/matmul_intf.h"
 #include "arch22/mixed_quant_sparse_flash_mla_template_tiling_key.h"
 #include "arch22/mixed_quant_sparse_flash_mla_tq_csa_kernel.h"
