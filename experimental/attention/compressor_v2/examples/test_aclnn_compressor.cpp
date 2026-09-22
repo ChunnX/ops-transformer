@@ -209,8 +209,8 @@ int main()
     LOG_PRINT("CompressorV2 execution succeeded.\n");
     PrintBf16Result(cmpKvShape, &cmpKvDeviceAddr);
 
-    ret = aclrtMemcpy(cmpKvHostData.data(), cmpKvSize * sizeof(bfloat16), cmpKvDeviceAddr,
-                      cmpKvSize * sizeof(bfloat16), ACL_MEMCPY_DEVICE_TO_HOST);
+    ret = aclrtMemcpy(cmpKvHostData.data(), cmpKvSize * sizeof(bfloat16), cmpKvDeviceAddr, cmpKvSize * sizeof(bfloat16),
+                      ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = aclrtMemcpy(stateCacheHostData.data(), stateCacheSize * sizeof(float), stateCacheDeviceAddr,
                       stateCacheSize * sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST);

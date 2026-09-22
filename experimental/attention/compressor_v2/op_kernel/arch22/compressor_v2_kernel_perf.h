@@ -36,9 +36,9 @@ public:
     {}
 
     __aicore__ inline void Init(__gm__ uint8_t *x, __gm__ uint8_t *wKv, __gm__ uint8_t *wGate,
-                                __gm__ uint8_t *stateCache, __gm__ uint8_t *stateBlockTable,
-                                __gm__ uint8_t *cuSeqlens, __gm__ uint8_t *seqUsed, __gm__ uint8_t *startPos,
-                                __gm__ uint8_t *cmpKvOut, __gm__ uint8_t *workspace);
+                                __gm__ uint8_t *stateCache, __gm__ uint8_t *stateBlockTable, __gm__ uint8_t *cuSeqlens,
+                                __gm__ uint8_t *seqUsed, __gm__ uint8_t *startPos, __gm__ uint8_t *cmpKvOut,
+                                __gm__ uint8_t *workspace);
     __aicore__ inline void Process();
 
 private:
@@ -104,9 +104,10 @@ private:
 
 template <typename COMP>
 __aicore__ inline void CompressorV2KernelPerf<COMP>::Init(__gm__ uint8_t *x, __gm__ uint8_t *wKv, __gm__ uint8_t *wGate,
-                                                        __gm__ uint8_t *stateCache, __gm__ uint8_t *stateBlockTable, __gm__ uint8_t *cuSeqlens,
-                                                        __gm__ uint8_t *seqUsed, __gm__ uint8_t *startPos,
-                                                        __gm__ uint8_t *cmpKvOut, __gm__ uint8_t *workspace)
+                                                          __gm__ uint8_t *stateCache, __gm__ uint8_t *stateBlockTable,
+                                                          __gm__ uint8_t *cuSeqlens, __gm__ uint8_t *seqUsed,
+                                                          __gm__ uint8_t *startPos, __gm__ uint8_t *cmpKvOut,
+                                                          __gm__ uint8_t *workspace)
 {
     if ASCEND_IS_AIV {
         constInfo.aiCoreIdx = GetBlockIdx() / 2;
@@ -266,7 +267,7 @@ __aicore__ inline void CompressorV2KernelPerf<COMP>::SkipInvalidBatch(BatchInfo 
 
 template <typename COMP>
 __aicore__ inline void CompressorV2KernelPerf<COMP>::UpdateCurGroup(BasicBlockInfo &basicBlockInfo, BatchInfo batchInfo,
-                                                                  uint32_t &curGroupQuota, uint32_t curDealSeq)
+                                                                    uint32_t &curGroupQuota, uint32_t curDealSeq)
 {
     // 更新当前组的信息
     if (curGroupQuota == 0 && !isFirstUpdateCurGroup) {
@@ -484,7 +485,7 @@ __aicore__ inline bool CompressorV2KernelPerf<COMP>::IsNeedExcuteC1(RunInfo info
 
 template <typename COMP>
 __aicore__ inline void CompressorV2KernelPerf<COMP>::CalcC1V1Params(RunInfo &info, Vec1RunInfo &vec1Info,
-                                                                  BatchInfo &batchInfo, uint32_t loopIdx)
+                                                                    BatchInfo &batchInfo, uint32_t loopIdx)
 {
     vec1Info.bStart = batchInfo.bIdx;
     vec1Info.sStart = batchInfo.sIdx;

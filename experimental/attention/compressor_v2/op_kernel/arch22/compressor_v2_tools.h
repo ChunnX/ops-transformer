@@ -52,7 +52,7 @@ private:
 
 template <typename COMP>
 __aicore__ inline void CompressorV2Tools<COMP>::Init(__gm__ uint8_t *startPos, __gm__ uint8_t *seqUsed,
-                                                   __gm__ uint8_t *cuSeqlens)
+                                                     __gm__ uint8_t *cuSeqlens)
 {
     isExistStartPos_ = (startPos != nullptr);
     if (isExistStartPos_) {
@@ -603,7 +603,7 @@ __aicore__ inline void CompressorV2Vec1SliceIterator<COMP>::Reset(uint32_t bIdx,
 
 template <typename COMP>
 __aicore__ inline void CompressorV2Vec1SliceIterator<COMP>::Reset(uint32_t bIdx, uint32_t sIdx, uint32_t dealedSeqCnt,
-                                                                uint32_t compressoredScCnt)
+                                                                  uint32_t compressoredScCnt)
 {
     Reset(bIdx, sIdx);
     SetDealedSeqCnt(dealedSeqCnt);

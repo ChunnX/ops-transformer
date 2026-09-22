@@ -381,12 +381,11 @@ ge::graphStatus CompressorV2Tiling::GenTilingKey() const
 
 ge::graphStatus CompressorV2Tiling::CheckSinglePara() const
 {
-    if (ge::GRAPH_SUCCESS != CheckSingleParaCmpRatio() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaX() || ge::GRAPH_SUCCESS != CheckSingleParaWkv() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaWgate() || ge::GRAPH_SUCCESS != CheckSingleParaStateCache() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaStateBlockTable() || ge::GRAPH_SUCCESS != CheckSingleParaCuSeqlens() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaSeqused() || ge::GRAPH_SUCCESS != CheckSingleParaStartPos() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaCmpKv()) {
+    if (ge::GRAPH_SUCCESS != CheckSingleParaCmpRatio() || ge::GRAPH_SUCCESS != CheckSingleParaX() ||
+        ge::GRAPH_SUCCESS != CheckSingleParaWkv() || ge::GRAPH_SUCCESS != CheckSingleParaWgate() ||
+        ge::GRAPH_SUCCESS != CheckSingleParaStateCache() || ge::GRAPH_SUCCESS != CheckSingleParaStateBlockTable() ||
+        ge::GRAPH_SUCCESS != CheckSingleParaCuSeqlens() || ge::GRAPH_SUCCESS != CheckSingleParaSeqused() ||
+        ge::GRAPH_SUCCESS != CheckSingleParaStartPos() || ge::GRAPH_SUCCESS != CheckSingleParaCmpKv()) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -699,13 +698,12 @@ ge::graphStatus CompressorV2Tiling::CheckSingleParaCmpKv() const
 ge::graphStatus CompressorV2Tiling::CheckSingleParaCmpRatio() const
 {
     int64_t cmpRatio = *context_->cmpRatio;
-    OP_CHECK_IF(
-        cmpRatio > MAX_CMPRATIO_SIZE || cmpRatio < MIN_CMPRATIO_SIZE || (cmpRatio & (cmpRatio - 1)) != 0,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->opName, "cmp_ratio", std::to_string(cmpRatio),
-                                              "cmp_ratio must be a power of two within [" +
-                                                  std::to_string(MIN_CMPRATIO_SIZE) + ", " +
-                                                  std::to_string(MAX_CMPRATIO_SIZE) + "]"),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(cmpRatio > MAX_CMPRATIO_SIZE || cmpRatio < MIN_CMPRATIO_SIZE || (cmpRatio & (cmpRatio - 1)) != 0,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->opName, "cmp_ratio", std::to_string(cmpRatio),
+                                                      "cmp_ratio must be a power of two within [" +
+                                                          std::to_string(MIN_CMPRATIO_SIZE) + ", " +
+                                                          std::to_string(MAX_CMPRATIO_SIZE) + "]"),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
