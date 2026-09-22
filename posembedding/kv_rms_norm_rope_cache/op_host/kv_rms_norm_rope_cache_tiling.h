@@ -237,6 +237,7 @@ public:
     CacheMode currentCacheMode_ = CacheMode::Norm;
     int64_t quantMode_ = 0;
     int64_t methodMode_ = 0;
+    bool hasQuantOffset_ = false;
 
     ge::DataType kvDtype_{ge::DataType::DT_FLOAT};
     int64_t kvDtypeSize_{0};
@@ -300,6 +301,7 @@ protected:
 
 private:
     bool ValidateCacheShapes();
+    bool ValidateSBroadcast();
 };
 
 class KvRmsNormRopeCacheTilingDs : virtual public KvRmsNormRopeCacheTilingBase {
@@ -316,14 +318,17 @@ protected:
 
 protected:
     void DoOpTilingPaBlkNz();
+    bool CheckQuantTermShape(const gert::TilingContext* context, size_t inputIdx, int64_t headSize, bool& hasShape);
     bool CheckScaleValid(const gert::TilingContext *context);
     bool CheckOffsetValid(const gert::TilingContext *context);
     bool CheckCacheValid(const gert::TilingContext *context, int64_t batchSize, int64_t numHead, int64_t cacheLen,
                          int64_t headSize, size_t cacheIndex, const char *cacheName) override;
-
+    ge::graphStatus ResolveQuantConfig(size_t scaleIdx, size_t offsetIdx, int64_t headSize, const char *cacheName, int8_t& quantType);
+    ge::graphStatus ResolveQuantComponents();
 private:
     int64_t hDimKCache{0};
     int64_t hDimVCache{0};
+    int64_t staticQuantType{0};
     KvRmsNormRopeCacheTilingData tilingData_;
 };
 

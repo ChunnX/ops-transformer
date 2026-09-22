@@ -259,7 +259,8 @@ bool KvRmsNormRopeCacheTilingBase::CheckVCacheValid(const gert::TilingContext *c
     return CheckCacheValid(context, batchSize, numHead, cacheLen, headSize, V_CACHE_INDEX, "v_cache");
 }
 
-bool KvRmsNormRopeCacheTilingBase::CheckCacheValidPA(const gert::TilingContext *context, int64_t headSize, size_t cacheIndex, const char *cacheName)
+bool KvRmsNormRopeCacheTilingBase::CheckCacheValidPA(const gert::TilingContext *context, int64_t headSize,
+    size_t cacheIndex, const char *cacheName)
 {
     // Default PA format cache check
     // In PageAttention mode, cache dimensions are in [block_num, block_size, N, hDim].
@@ -391,11 +392,13 @@ int64_t KvRmsNormRopeCacheTilingBase::GetQuantMode(const gert::TilingContext *co
     auto offset1Shape = context->GetOptionalInputShape(K_ROPE_OFFSET_IDX);
     auto offset2Shape = context->GetOptionalInputShape(C_KV_OFFSET_IDX);
     if (scale1Shape == nullptr && offset1Shape!=nullptr) {
-        OP_LOGW(context_->GetNodeName(), "Non-empty quant offset for k_cache without quant scale will be ignored.");
+        OP_LOGW(context_->GetNodeName(), "Orphan quant offset for k_cache without quant scale will be ignored.");
     }
     if (scale2Shape == nullptr && offset2Shape!=nullptr) {
-        OP_LOGW(context_->GetNodeName(), "Non-empty quant offset for ckv_cache without quant scale will be ignored.");
+        OP_LOGW(context_->GetNodeName(), "Orphan quant offset for ckv_cache without quant scale will be ignored.");
     }
+    hasQuantOffset_ = ((scale1Shape != nullptr && offset1Shape!=nullptr) ||
+    (scale2Shape != nullptr && offset2Shape!=nullptr))
     return qmode;
 }
 
@@ -440,7 +443,20 @@ bool KvRmsNormRopeCacheTilingBase::ValidateCacheShapes()
     {
         return false;
     }
-    return (this->cacheLength_ > 0 && this->blockSize_ > 0);
+    return (this->cacheLength_ > 0 && this->blockSize_ > DIM_ONE);
+}
+
+bool KvRmsNormRopeCacheTilingBase::ValidateSBroadcast()
+{
+    bool isValid = true;
+    if (cosSinNeedBrc_ == 1) {
+        // got cosSeq == 1 && cosSeq != seqLen && seqLen > 1
+        if (isPagedAttention_) {
+            // only non-quant under PA can be broadcasted
+            isValid = (quantMode_ == NON_QUANT_MODE);
+        }
+    }
+    return isValid;
 }
 
 ge::graphStatus KvRmsNormRopeCacheTilingBase::GetShapeAttrsInfo()
@@ -452,7 +468,6 @@ ge::graphStatus KvRmsNormRopeCacheTilingBase::GetShapeAttrsInfo()
     quantMode_ = GetQuantMode(context_);
     // Basic info
     auto kvShapeTuple = GetShapeTuple(context_, KV_INDEX);
-
     // Dk
     auto cosShapeTuple = GetShapeTuple(context_, COS_INDEX);
     // Dv
@@ -480,7 +495,8 @@ ge::graphStatus KvRmsNormRopeCacheTilingBase::GetShapeAttrsInfo()
 
     OP_CHECK_IF(
             !ValidateCacheShapes(),
-            OP_LOGE(context_->GetNodeName(), "Found shape inconsistency with Normal axes between k_cache and v_cache! Ensure they have same dim sizes except for the LAST DIM."),
+            OP_LOGE(context_->GetNodeName(),
+            "Normal axes between k_cache and v_cache must have same sizes except for the LAST DIM."),
             return ge::GRAPH_FAILED);
 
     isMTP_ = (seqLen > 1);
@@ -562,6 +578,11 @@ ge::graphStatus KvRmsNormRopeCacheTilingBase::GetShapeAttrsInfo()
         currentCacheMode_ = CacheMode::Norm;
         OP_LOGW(context_->GetNodeName(), "Get Empty cachemode, set to default mode Norm.");
     }
+    // validate S-axis broadcast
+    OP_CHECK_IF(!ValidateSBroadcast(),
+                OP_LOGE(context_->GetNodeName(), "Unsupported RoPE axis broadcast config."),
+                return ge::GRAPH_FAILED);
+    // setup output config
     const bool *isOutputKv = attrs->GetBool(IS_OUTPUT_KV_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, isOutputKv);
     isOutputKv_ = *isOutputKv;

@@ -24,6 +24,11 @@ constexpr int64_t ROPE_LENGTH = 64;
 constexpr int64_t MAX_BLOCK_DIM = 65535;
 constexpr int64_t V_LENGTH = 128;
 constexpr int64_t D_LENGTH = 576;
+
+constexpr int8_t STATIC_QUANT_NONE = 0;
+constexpr int8_t STATIC_QUANT_SYM = 1;
+constexpr int8_t STATIC_QUANT_ASYM = 2;
+
 constexpr uint64_t TLING_KEY_5011 = 5011;
 constexpr uint64_t TLING_KEY_5010 = 5010;
 constexpr uint64_t TLING_KEY_5000 = 5000;
@@ -42,102 +47,37 @@ constexpr uint64_t TLING_KEY_1010 = 1010;
 constexpr uint64_t TLING_KEY_1001 = 1001;
 constexpr uint64_t TLING_KEY_1011 = 1011;
 
-bool KvRmsNormRopeCacheTilingDs::CheckScaleValid(const gert::TilingContext* context)
+bool KvRmsNormRopeCacheTilingDs::CheckQuantTermShape(const gert::TilingContext* context, size_t inputIdx,
+    int64_t headSize, bool& hasShape)
 {
-    auto scale1Shape = context->GetOptionalInputShape(K_ROPE_SCALE_IDX);
-    auto scale2Shape = context->GetOptionalInputShape(C_KV_SCALE_IDX);
-
     bool isValid = true;
-    isValid = isValid && ((scale1Shape != nullptr) || (scale2Shape != nullptr));
-    if ((scale1Shape != nullptr) && (scale2Shape != nullptr)) {
-        isValid = isValid && (scale1Shape->GetStorageShape().GetDimNum() == scale2Shape->GetStorageShape().GetDimNum());
-    }
-    isValid = isValid && (((scale1Shape != nullptr) && (scale1Shape->GetStorageShape().GetDimNum() <= DIM_TWO)) ||
-                          ((scale2Shape != nullptr) && (scale2Shape->GetStorageShape().GetDimNum() <= DIM_TWO)));
-    if (!isValid) {
-        return false;
-    }
-    if(methodMode_ == 0){
-        if (scale1Shape != nullptr && scale1Shape->GetStorageShape().GetDimNum() == DIM_ONE) {
-            isValid = isValid && (scale1Shape->GetStorageShape().GetDim(0) == ROPE_LENGTH);
-        } else if (scale1Shape != nullptr && scale1Shape->GetStorageShape().GetDimNum() == DIM_TWO) {
-            isValid = isValid && (scale1Shape->GetStorageShape().GetDim(0) == DIM_ONE);
-            isValid = isValid && (scale1Shape->GetStorageShape().GetDim(1) == ROPE_LENGTH);
-        }
-
-        if (scale2Shape != nullptr && scale2Shape->GetStorageShape().GetDimNum() == DIM_ONE) {
-            isValid = isValid && (scale2Shape->GetStorageShape().GetDim(0) == RMS_NORM_LENGTH);
-        } else if (scale2Shape != nullptr && scale2Shape->GetStorageShape().GetDimNum() == DIM_TWO) {
-            isValid = isValid && (scale2Shape->GetStorageShape().GetDim(0) == DIM_ONE);
-            isValid = isValid && (scale2Shape->GetStorageShape().GetDim(1) == RMS_NORM_LENGTH);
+    auto termShape = context->GetOptionalInputShape(inputIdx);
+    hasShape = (termShape != nullptr);
+    if (hasShape)
+    {
+        auto dimNum = termShape->GetStorageShape().GetDimNum();
+        isValid = (dimNum > 0 && dimNum <= DIM_TWO);
+        if (isValid) {
+            if (dimNum == DIM_ONE) {
+                isValid = (termShape->GetStorageShape().GetDim(0) == headSize);
+            } else {
+                const int64_t dimFor2D  = (methodMode_ == 0) ? DIM_ONE : tilingData_.get_numHead();
+                isValid = (termShape->GetStorageShape().GetDim(0) == dimFor2D) &&
+                (termShape->GetStorageShape().GetDim(1) == headSize);
+            }
         }
     }
-    else {
-        if (scale1Shape != nullptr && scale1Shape->GetStorageShape().GetDimNum() == DIM_ONE) {
-            isValid = isValid && (scale1Shape->GetStorageShape().GetDim(0) == RMS_NORM_LENGTH);
-        } else if (scale1Shape != nullptr && scale1Shape->GetStorageShape().GetDimNum() == DIM_TWO) {
-            isValid = isValid && (scale1Shape->GetStorageShape().GetDim(0) == tilingData_.get_numHead());
-            isValid = isValid && (scale1Shape->GetStorageShape().GetDim(1) == RMS_NORM_LENGTH);
-        }
-
-        if (scale2Shape != nullptr && scale2Shape->GetStorageShape().GetDimNum() == DIM_ONE) {
-            isValid = isValid && (scale2Shape->GetStorageShape().GetDim(0) == V_LENGTH);
-        } else if (scale2Shape != nullptr && scale2Shape->GetStorageShape().GetDimNum() == DIM_TWO) {
-            isValid = isValid && (scale2Shape->GetStorageShape().GetDim(0) == tilingData_.get_numHead());
-            isValid = isValid && (scale2Shape->GetStorageShape().GetDim(1) == V_LENGTH);
-        }
-    }
-
     return isValid;
 }
 
+bool KvRmsNormRopeCacheTilingDs::CheckScaleValid(const gert::TilingContext* context)
+{
+    return CheckTwoOptionalShapes(context, K_ROPE_SCALE_IDX, C_KV_SCALE_IDX);
+}
 
 bool KvRmsNormRopeCacheTilingDs::CheckOffsetValid(const gert::TilingContext* context)
 {
-    auto offset1Shape = context->GetOptionalInputShape(K_ROPE_OFFSET_IDX);
-    auto offset2Shape = context->GetOptionalInputShape(C_KV_OFFSET_IDX);
-
-    bool isValid = true;
-    isValid = isValid && ((offset1Shape != nullptr) || (offset2Shape != nullptr));
-    if ((offset1Shape != nullptr) && (offset2Shape != nullptr)) {
-        isValid = isValid && (offset1Shape->GetStorageShape().GetDimNum() == offset2Shape->GetStorageShape().GetDimNum());
-    }
-    isValid = isValid && (((offset1Shape != nullptr) && (offset1Shape->GetStorageShape().GetDimNum() <= DIM_TWO)) ||
-                          ((offset2Shape != nullptr) && (offset2Shape->GetStorageShape().GetDimNum() <= DIM_TWO)));
-    if (!isValid) {
-        return false;
-    }
-    if(methodMode_ == 0){
-        if (offset1Shape != nullptr && offset1Shape->GetStorageShape().GetDimNum() == DIM_ONE) {
-            isValid = isValid && (offset1Shape->GetStorageShape().GetDim(0) == ROPE_LENGTH);
-        } else if (offset1Shape != nullptr && offset1Shape->GetStorageShape().GetDimNum() == DIM_TWO) {
-            isValid = isValid && (offset1Shape->GetStorageShape().GetDim(0) == DIM_ONE);
-            isValid = isValid && (offset1Shape->GetStorageShape().GetDim(1) == ROPE_LENGTH);
-        }
-
-        if (offset2Shape != nullptr && offset2Shape->GetStorageShape().GetDimNum() == DIM_ONE) {
-            isValid = isValid && (offset2Shape->GetStorageShape().GetDim(0) == RMS_NORM_LENGTH);
-        } else if (offset2Shape != nullptr && offset2Shape->GetStorageShape().GetDimNum() == DIM_TWO) {
-            isValid = isValid && (offset2Shape->GetStorageShape().GetDim(0) == DIM_ONE);
-            isValid = isValid && (offset2Shape->GetStorageShape().GetDim(1) == RMS_NORM_LENGTH);
-        }
-    }
-    else {
-        if (offset1Shape != nullptr && offset1Shape->GetStorageShape().GetDimNum() == DIM_ONE) {
-            isValid = isValid && (offset1Shape->GetStorageShape().GetDim(0) == RMS_NORM_LENGTH);
-        } else if (offset1Shape != nullptr && offset1Shape->GetStorageShape().GetDimNum() == DIM_TWO) {
-            isValid = isValid && (offset1Shape->GetStorageShape().GetDim(0) == tilingData_.get_numHead());
-            isValid = isValid && (offset1Shape->GetStorageShape().GetDim(1) == RMS_NORM_LENGTH);
-        }
-
-        if (offset2Shape != nullptr && offset2Shape->GetStorageShape().GetDimNum() == DIM_ONE) {
-            isValid = isValid && (offset2Shape->GetStorageShape().GetDim(0) == V_LENGTH);
-        } else if (offset2Shape != nullptr && offset2Shape->GetStorageShape().GetDimNum() == DIM_TWO) {
-            isValid = isValid && (offset2Shape->GetStorageShape().GetDim(0) == tilingData_.get_numHead());
-            isValid = isValid && (offset2Shape->GetStorageShape().GetDim(1) == V_LENGTH);
-        }
-    }
-    return isValid;
+    return CheckTwoOptionalShapes(context, K_ROPE_OFFSET_IDX, C_KV_OFFSET_IDX);
 }
 
 bool KvRmsNormRopeCacheTilingDs::CheckCacheValid(const gert::TilingContext *context, int64_t batchSize,
@@ -179,6 +119,47 @@ bool KvRmsNormRopeCacheTilingDs::CheckCacheValid(const gert::TilingContext *cont
     return isValid;
 }
 
+ge::graphStatus KvRmsNormRopeCacheTilingDs::ResolveQuantConfig(size_t scaleIdx, size_t offsetIdx, int64_t headSize,
+    const char *cacheName, int8_t& quantType)
+{
+    bool hasQuantScale = false;
+    OP_CHECK_IF(
+            !CheckQuantTermShape(context_, scaleIdx, headSize, hasQuantScale),
+            OP_LOGE(context_->GetNodeName(), "Invalid quant scale shape for %s.", cacheName),
+            return ge::GRAPH_FAILED);
+    quantType = hasQuantScale ? STATIC_QUANT_SYM : STATIC_QUANT_NONE;
+
+    if (quantType == STATIC_QUANT_SYM) {
+        // try to validate quant offset if available
+        bool hasQuantOffset = false;
+        OP_CHECK_IF(
+                !CheckQuantTermShape(context_, offsetIdx, headSize, hasQuantOffset),
+                OP_LOGE(context_->GetNodeName(), "Invalid quant offset shape for %s.", cacheName),
+                return ge::GRAPH_FAILED);
+        quantType = hasQuantOffset ? STATIC_QUANT_ASYM : STATIC_QUANT_SYM;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus KvRmsNormRopeCacheTilingDs::ResolveQuantComponents()
+{
+    int8_t kQuantType = STATIC_QUANT_NONE;
+    int8_t vQuantType = STATIC_QUANT_NONE;
+
+    ge::graphStatus componentStatus = ge::GRAPH_SUCCESS;
+    componentStatus = ResolveQuantConfig(K_ROPE_SCALE_IDX, K_ROPE_OFFSET_IDX, hDimKCache, "k_cache", kQuantType);
+    componentStatus = ResolveQuantConfig(C_KV_SCALE_IDX, C_KV_OFFSET_IDX, hDimVCache, "ckv_cache", vQuantType);
+
+    // Update overall quant mode
+    if (componentStatus == ge::GRAPH_SUCCESS) {
+        tilingData_.set_isKQuant(kQuantType);
+        tilingData_.set_isVQuant(vQuantType);
+        staticQuantType = std::max(kQuantType, vQuantType);
+    }
+
+    return componentStatus;
+}
+
 bool KvRmsNormRopeCacheTilingDs::IsCapable()
 {
     // Block invalid socs from further tiling steps for Atlas 2 and 3
@@ -216,7 +197,7 @@ ge::graphStatus KvRmsNormRopeCacheTilingDs::DoOpTiling()
     if (methodMode_ == 0) {
         hDimKCache = ROPE_LENGTH;       // k_cache hDim
         hDimVCache = RMS_NORM_LENGTH;   // ckv_cache hDim
-    } else (methodMode_ == 1) {
+    } else if (methodMode_ == 1) {
         hDimKCache = RMS_NORM_LENGTH;
         hDimVCache = V_LENGTH;
     } else {
@@ -234,10 +215,12 @@ ge::graphStatus KvRmsNormRopeCacheTilingDs::DoOpTiling()
             OP_LOGE(context_->GetNodeName(), "ckv_cache shape invalid."), return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(
-            !CheckCacheValidPA(context_, hDimKCache, K_CACHE_INDEX, "k_cache"), OP_LOGE(context_->GetNodeName(), "k_cache shape invalid."),
+            !CheckCacheValidPA(context_, hDimKCache, K_CACHE_INDEX, "k_cache"),
+            OP_LOGE(context_->GetNodeName(), "k_cache shape invalid."),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(
-            !CheckCacheValidPA(context_, hDimVCache, V_CACHE_INDEX, "v_cache"), OP_LOGE(context_->GetNodeName(), "ckv_cache shape invalid."),
+            !CheckCacheValidPA(context_, hDimVCache, V_CACHE_INDEX, "v_cache"),
+            OP_LOGE(context_->GetNodeName(), "ckv_cache shape invalid."),
             return ge::GRAPH_FAILED);
     }
 
@@ -255,18 +238,22 @@ ge::graphStatus KvRmsNormRopeCacheTilingDs::DoOpTiling()
     } else {
         tilingData_.set_isOutputKv(0);
     }
+    // Extract quant types for k_cache and v_cache
+    OP_CHECK_IF((ResolveQuantComponents() == ge::GRAPH_FAILED),
+            OP_LOGE(context_->GetNodeName(), "Invalid cache quant inputs configuration, check shapes!"),
+            return ge::GRAPH_FAILED);
 
     if ((quantMode_ == QUANT_MODE)) {
         OP_CHECK_IF(
             !CheckScaleValid(context_), OP_LOGE(context_->GetNodeName(), "quant scale shape check failed."),
             return ge::GRAPH_FAILED);
     }
-
-    if ((quantMode_ > 1)) {
+    if ((staticQuantType == STATIC_QUANT_ASYM)) {
         OP_CHECK_IF(
             !CheckOffsetValid(context_), OP_LOGE(context_->GetNodeName(), "quant offset shape check failed."),
             return ge::GRAPH_FAILED);
     }
+
     if ((dk_ != ROPE_LENGTH)) {
         auto cosShape = context_->GetInputShape(COS_INDEX)->GetStorageShape();
         std::string reasonMsg = "The D-dimension of input cos must be equal to " + std::to_string(ROPE_LENGTH) +
@@ -305,23 +292,9 @@ ge::graphStatus KvRmsNormRopeCacheTilingDs::DoOpTiling()
                 reasonMsg.c_str());
             return ge::GRAPH_FAILED;
         }
-        
         OP_CHECK_IF(
             (quantMode_ != NON_QUANT_MODE && quantMode_ != QUANT_MODE),
             OP_LOGE(context_->GetNodeName(), "Only Support QUANT or NON_QUANT."), return ge::GRAPH_FAILED);
-    }
-    
-    auto scale1Shape = context_->GetOptionalInputShape(K_ROPE_SCALE_IDX);
-    auto scale2Shape = context_->GetOptionalInputShape(C_KV_SCALE_IDX);
-    if (scale1Shape != nullptr) {
-        tilingData_.set_isKQuant(1);
-    } else {
-        tilingData_.set_isKQuant(0);
-    }
-    if (scale2Shape != nullptr) {
-        tilingData_.set_isVQuant(1);
-    } else {
-        tilingData_.set_isVQuant(0);
     }
 
     if (currentCacheMode_ == CacheMode::PA && quantMode_ != NON_QUANT_MODE) {
