@@ -1155,40 +1155,65 @@ inline CommCutResult Schedule(FitBasedBalanceCtx &ctx)
     } else {
         BalanceLongTileLen(ctx); // 乘数 ctx.mmRankMul(老代码 A2A 曾误用管线系数 rankTileNum)
     }
+    // ⑤ 轮数搜索的恢复点: ③ 后形态(短块落位 + 长块反解值)。反解与轮数无关——
+    // 每档仅在收紧的轮次预算下重跑 ④ 离散化, 无需重算配平
+    const CommCutResult afterLong = ctx.tilingM.cutRes;
 
     // ---- ④ Adjust: E24(goodLinearity: AG 恒 true) + 离散化 + E25 等长归一 ----
     const bool goodLin = isAg ? true : IsGoodLinearityShape(ctx.matmulPerf.mmShapeInfo_);
     ctx.tilingM.FitTileLengthDiscrete(goodLin, isAg); // localAtFront: AG 前端有本地块
     MergeEqualTiles(ctx.tilingM);
-    // ---- ⑤ 切分收益门控(§4.37 阶段2): 把每轮启动开销纳入切分决策 ----
-    // 切分不改变总通信数据量(k·X 不变), 只多付启动税 (N−1)·b; 买到的是通信-计算重叠。
+
+    // ---- ⑤ 轮数搜索 + 切分收益门控(§4.37.1): 把每轮启动开销纳入切分决策 ----
+    // 切分不改变总通信数据量(k·X 不变), 只多付启动税 (N−1)·b, 买到的是通信-计算重叠。
     // 流水线总时近似(不可重叠段在流水线两端, 与通算顺序对应):
     //   通信在前(AG):       T_cut ≈ T_comm(首块) + max(T_comm(其余轮), T_mm − T_mm(末块)) + T_mm(末块)
     //   通信在后(RS/AR/A2A): T_cut ≈ T_mm(首块) + max(T_mm − T_mm(首块), T_comm(除末轮)) + T_comm(末轮)
-    // 不切 T_serial = T_comm(1 轮) + T_mm(全串行)。T_cut ≥ T_serial → 回退 NoCut——
-    // 启动税买不回重叠收益(b 为保守高估值时门控同步保守, §4.37 拍板②口径)。
-    const CommCutResult &gateCut = ctx.tilingM.cutRes;
-    if (gateCut.totalTileCnt > 1U) {
-        const double tCommN = ctx.commPerf.TotalCommTime(ctx.matmulPerf.mmShapeInfo_.mValue, gateCut.totalTileCnt);
-        const double tComm1 = ctx.commPerf.TotalCommTime(ctx.matmulPerf.mmShapeInfo_.mValue, 1U);
-        const double tMm = est.totalMatmulTime;
-        const uint64_t firstLen =
-            (gateCut.numShortTile > 0U && !gateCut.shortTileAtBack) ? gateCut.shortTileLen : gateCut.longTileLen;
-        const uint64_t lastLen =
-            (gateCut.numShortTile > 0U && gateCut.shortTileAtBack) ? gateCut.shortTileLen : gateCut.longTileLen;
-        double tCut;
+    // 不切 T_serial = T_comm(1 轮) + T_mm(全串行)。
+    // 搜索动机(2026-09-21 用户指出): 配平产出的轮数 N₀ 是"配平最优"而非"全局最优"——
+    // 通信重时 T(N) 随轮数单调增(启动税吃收益)、计算重时单调降(至首块通信≈b 触底),
+    // 最优轮数常在 [1, N₀] 中间, 二值判定(N₀ vs 1)会错过中间解。
+    // 搜索实现: budget 线性枚举 [2, N₀)(每档恢复 ③ 后形态 + 收紧轮次预算 + 重跑 ④,
+    // 长短结构随预算重新整形), T_cut 择优; 全部候选 ≥ T_serial → NoCut。
+    // 成本: N₀ ≤ MAX_COMM_ROUNDS(63), 每档纯整数重切 O(块数)——host 侧微秒级。
+    const uint64_t mValue = ctx.matmulPerf.mmShapeInfo_.mValue;
+    const double tComm1 = ctx.commPerf.TotalCommTime(mValue, 1U);
+    const double tMm = est.totalMatmulTime;
+    const double tSerial = tComm1 + tMm;
+    auto estimateCutTime = [&](const CommCutResult &c) -> double {
+        if (c.totalTileCnt <= 1U) {
+            return tSerial; // 单块即 NoCut 候选
+        }
+        const double tCommN = ctx.commPerf.TotalCommTime(mValue, c.totalTileCnt);
+        const uint64_t firstLen = (c.numShortTile > 0U && !c.shortTileAtBack) ? c.shortTileLen : c.longTileLen;
+        const uint64_t lastLen = (c.numShortTile > 0U && c.shortTileAtBack) ? c.shortTileLen : c.longTileLen;
         if (ctx.order == CommComputeOrder::COMM_FIRST) {
             const double commFirst = ctx.commPerf.CommTime(firstLen);
             const double mmLast = ctx.matmulPerf.MatmulTime(lastLen, ctx.mmRankMul);
-            tCut = commFirst + std::max(tCommN - commFirst, tMm - mmLast) + mmLast;
-        } else {
-            const double mmFirst = ctx.matmulPerf.MatmulTime(firstLen, ctx.mmRankMul);
-            const double commLast = ctx.commPerf.CommTime(lastLen);
-            tCut = mmFirst + std::max(tMm - mmFirst, tCommN - commLast) + commLast;
+            return commFirst + std::max(tCommN - commFirst, tMm - mmLast) + mmLast;
         }
-        if (tCut >= tComm1 + tMm) {
-            ctx.tilingM.NoCutTiling();
+        const double mmFirst = ctx.matmulPerf.MatmulTime(firstLen, ctx.mmRankMul);
+        const double commLast = ctx.commPerf.CommTime(lastLen);
+        return mmFirst + std::max(tMm - mmFirst, tCommN - commLast) + commLast;
+    };
+    CommCutResult bestCut = ctx.tilingM.cutRes; // 初次切分(N₀ 轮, 配平产出)即候选
+    double bestT = estimateCutTime(bestCut);
+    for (uint64_t budget = 2U; budget < bestCut.totalTileCnt; ++budget) {
+        ctx.tilingM.cutRes = afterLong;    // 恢复 ③ 后形态(反解值复用)
+        ctx.tilingM.SetMaxTileCnt(budget); // 收紧轮次预算
+        ctx.tilingM.FitTileLengthDiscrete(goodLin, isAg);
+        MergeEqualTiles(ctx.tilingM);
+        const double t = estimateCutTime(ctx.tilingM.cutRes);
+        if (t < bestT) {
+            bestT = t;
+            bestCut = ctx.tilingM.cutRes;
         }
+    }
+    ctx.tilingM.SetMaxTileCnt(MAX_COMM_ROUNDS); // 恢复默认轮次预算
+    if (bestT >= tSerial) {
+        ctx.tilingM.NoCutTiling(); // 全部候选不敌串行——启动税买不回重叠收益
+    } else {
+        ctx.tilingM.cutRes = bestCut;
     }
 
     // ---- ⑥ 单轮通信量上限整形(CCU 键, §4.37): HCCL 单次调用 256MB 上限, 超限块等长重切 ----
