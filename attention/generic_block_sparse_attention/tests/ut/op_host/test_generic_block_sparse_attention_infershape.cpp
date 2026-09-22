@@ -48,12 +48,12 @@ constexpr float kScale = 1.0f / sqrt(static_cast<float>(kD));
 
 std::vector<int64_t> kBlockShape = {1, kBlockSize};
 
-std::vector<gert::InfershapeContextPara::TensorDescription> MakeInputs()
+std::vector<gert::InfershapeContextPara::TensorDescription> MakeInputs(int64_t d = kD)
 {
     return {
-        {{{kT, kN1, kD}, {kT, kN1, kD}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{kMaxBlocks, kBlockSize, kN2, kD}, {kMaxBlocks, kBlockSize, kN2, kD}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{kMaxBlocks, kBlockSize, kN2, kD}, {kMaxBlocks, kBlockSize, kN2, kD}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{kT, kN1, d}, {kT, kN1, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{kMaxBlocks, kBlockSize, kN2, d}, {kMaxBlocks, kBlockSize, kN2, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{kMaxBlocks, kBlockSize, kN2, d}, {kMaxBlocks, kBlockSize, kN2, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{kN2, kTotalQBlocks, kTopK}, {kN2, kTotalQBlocks, kTopK}}, ge::DT_INT32, ge::FORMAT_ND},
         {{{kN2, kTotalQBlocks}, {kN2, kTotalQBlocks}}, ge::DT_INT32, ge::FORMAT_ND},
         {{{1024}, {1024}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -170,6 +170,36 @@ TEST_F(generic_block_sparse_attention_infershape_ut, unknown_rank_query)
     std::vector<std::vector<int64_t>> expectOutputShape = {
         {-2},
         {-2},
+    };
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
+}
+
+TEST_F(generic_block_sparse_attention_infershape_ut, tnd_paged_d256_no_lse)
+{
+    gert::InfershapeContextPara infershapeContextPara("GenericBlockSparseAttention", MakeInputs(256),
+                                                      {
+                                                          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                          {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                      },
+                                                      MakeAttrs(0));
+    std::vector<std::vector<int64_t>> expectOutputShape = {
+        {kT, kN1, 256},
+        {0},
+    };
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
+}
+
+TEST_F(generic_block_sparse_attention_infershape_ut, tnd_paged_d256_with_lse)
+{
+    gert::InfershapeContextPara infershapeContextPara("GenericBlockSparseAttention", MakeInputs(256),
+                                                      {
+                                                          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                          {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                      },
+                                                      MakeAttrs(1));
+    std::vector<std::vector<int64_t>> expectOutputShape = {
+        {kT, kN1, 256},
+        {kT, kN1, 1},
     };
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }

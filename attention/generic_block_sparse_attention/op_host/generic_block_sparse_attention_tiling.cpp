@@ -405,9 +405,11 @@ ge::graphStatus GBSATiling::ParseQueryKeyShapes(gert::TilingContext *context)
 
     numHeads_ = static_cast<uint32_t>(queryShape->GetStorageShape().GetDim(TND_DIM_N));
     embeddingSize_ = static_cast<uint32_t>(queryShape->GetStorageShape().GetDim(TND_DIM_D));
-    if (embeddingSize_ != 128) {
-        OP_LOGE(context->GetNodeName(), "Unsupported embeddingSize=%u, currently only D=128 is supported.",
-                embeddingSize_);
+    // A5(Ascend 950) supports D=128 only; A2/A3(Atlas A2/A3) supports D=128/256.
+    const uint32_t maxHeadDim = (socVer_ == SOC_VER_950_CODE) ? 128U : 256U;
+    if (embeddingSize_ != 128 && embeddingSize_ != maxHeadDim) {
+        OP_LOGE(context->GetNodeName(), "Unsupported embeddingSize=%u, headDim only supports 128/%u.",
+                embeddingSize_, maxHeadDim);
         return ge::GRAPH_FAILED;
     }
 

@@ -29,7 +29,8 @@ constexpr int64_t GBSA_TND_BLOCK_CAPACITY_DIM_INDEX = 2;
 constexpr int64_t GBSA_BATCHED_Q_BLOCK_DIM_INDEX = 2;
 constexpr int64_t GBSA_BATCHED_BLOCK_CAPACITY_DIM_INDEX = 3;
 
-constexpr int64_t GBSA_CURRENT_HEAD_DIM = 128;
+constexpr int64_t GBSA_HEAD_DIM_128 = 128;
+constexpr int64_t GBSA_HEAD_DIM_256 = 256;
 constexpr int64_t GBSA_CURRENT_MAX_GROUP_SIZE = 128;
 constexpr int64_t GBSA_CURRENT_BLOCK_SHAPE_X = 1;
 constexpr int64_t GBSA_CURRENT_BLOCK_SHAPE_Y = 128;
@@ -160,7 +161,7 @@ aclnnStatus CheckGbsaBlockAttrs(int64_t blockShapeX, int64_t blockShapeY, int64_
 }
 
 aclnnStatus CheckGbsaScalarAttrs(int64_t numQHeads, int64_t numKvHeads, int64_t headDim, int64_t blockShapeX,
-                                 int64_t blockShapeY, int64_t isPackedGQA)
+                                 int64_t blockShapeY, int64_t isPackedGQA, bool isArch35)
 {
     const struct {
         int64_t value;
@@ -177,9 +178,11 @@ aclnnStatus CheckGbsaScalarAttrs(int64_t numQHeads, int64_t numKvHeads, int64_t 
     if (status != ACLNN_SUCCESS) {
         return status;
     }
-    if (headDim != GBSA_CURRENT_HEAD_DIM) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "headDim currently only supports %lld, but got %lld.", GBSA_CURRENT_HEAD_DIM,
-                headDim);
+    const int64_t maxHeadDim = isArch35 ? GBSA_HEAD_DIM_128 : GBSA_HEAD_DIM_256;
+    if (headDim != GBSA_HEAD_DIM_128 && headDim != maxHeadDim) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "headDim only supports %lld on A5(Ascend 950), %lld/%lld on A2/A3(Atlas A2/A3), but got %lld.",
+                GBSA_HEAD_DIM_128, GBSA_HEAD_DIM_128, GBSA_HEAD_DIM_256, headDim);
         return ACLNN_ERR_PARAM_INVALID;
     }
     return CheckGbsaBlockAttrs(blockShapeX, blockShapeY, isPackedGQA);
@@ -428,7 +431,7 @@ aclnnStatus CheckGbsaMetadataParams(const aclTensor *sparseBlockIdx, const aclTe
     if (status != ACLNN_SUCCESS) {
         return status;
     }
-    status = CheckGbsaScalarAttrs(numQHeads, numKvHeads, headDim, blockShapeX, blockShapeY, isPackedGQA);
+    status = CheckGbsaScalarAttrs(numQHeads, numKvHeads, headDim, blockShapeX, blockShapeY, isPackedGQA, isArch35);
     if (status != ACLNN_SUCCESS) {
         return status;
     }
