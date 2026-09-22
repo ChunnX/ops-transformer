@@ -282,7 +282,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeMm1(const QLIV2Common::RunInf
                 }
             } else {
                 if constexpr (IS_HIFLOAT4) {
-                    KeyNd2NzHif4(s2L1RealSize, s2GmOffset, runInfo)
+                    KeyNd2NzHif4(s2L1RealSize, s2GmOffset, runInfo);
                 } else {
                     KeyNd2Nz(s2L1RealSize, s2GmOffset, runInfo);
                 }
@@ -859,7 +859,7 @@ __aicore__ inline QLIV2Matmul<QLIV2T>::QueryNd2NzHif4(uint64_t s1gL1RealSize, ui
     nd2nzPara.srcDValue = constInfo_.headDim / HIFLOAT4_TWO;
     uint64_t dstNzC0Stride = CeilAlign(s1gL1RealSize, constInfo_.mAlignSize);
     nd2nzPara.dstNzC0Stride = CeilAlign(dstNzC0Stride, (uint64_t)BLOCK_CUBE);
-    nd2nzPara.dstNzNstride = 1;
+    nd2nzPara.dstNzNStride = 1;
     nd2nzPara.srcNdMatrixStride = 0;
     nd2nzPara.dstNzMatrixStride = 0;
 
@@ -878,11 +878,11 @@ __aicore__ inline QLIV2Matmul<QLIV2T>::KeyNd2NzHif4(uint64_t s2L1RealSize, uint6
     nd2nzPara.dValue = constInfo_.headDim / HIFLOAT4_TWO;
     nd2nzPara.srcDValue = constInfo_.headDim / HIFLOAT4_TWO;
     nd2nzPara.dstNzC0Stride = CeilAlign(s2L1RealSize, (uint64_t)BLOCK_CUBE);
-    nd2nzPara.dstNzNstride = 1;
+    nd2nzPara.dstNzNStride = 1;
     nd2nzPara.srcNdMatrixStride = 0;
     nd2nzPara.dstNzMatrixStride = 0;
 
-    LocalTensor<uint8_t> keyL1Cast = keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * KEY_BUFFER_OFFSET_].template ReinterpretCast<uint8_t>();
+    LocalTensor<uint8_t> keyL1Cast = keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * keyBufferOffset_].template ReinterpretCast<uint8_t>();
     GlobalTensor<uint8_t> keyGmCast = keyGm_.template ReinterpretCast<uint8_t>();
     DataCopy(keyL1Cast, keyGmCast[runInfo.tensorQueryOffset + s2GmOffset * (constInfo_.headDim / 2)], nd2nzPara);
 }
@@ -907,11 +907,11 @@ __aicore__ inline QLIV2Matmul<QLIV2T>::keyNd2NzForPAHif4(uint64_t s2L1RealSize, 
         nd2nzPara.dValue = constInfo_.headDim / HIFLOAT4_TWO;
         nd2nzPara.srcDValue = constInfo_.headDim / HIFLOAT4_TWO;
         nd2nzPara.dstNzC0Stride = CeilAlign(s2L1RealSize, (uint64_t)BLOCK_CUBE);
-        nd2nzPara.dstNzNstride = 1;
+        nd2nzPara.dstNzNStride = 1;
         nd2nzPara.srcNdMatrixStride = 0;
         nd2nzPara.dstNzMatrixStride = 0;
 
-        LocalTensor<uint8_t> keyL1Cast = keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * KEY_BUFFER_OFFSET_ + s2L1Offset * FP8_BLOCK_CUBE].template ReinterpretCast<uint8_t>();
+        LocalTensor<uint8_t> keyL1Cast = keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * keyBufferOffset_ + s2L1Offset * FP8_BLOCK_CUBE].template ReinterpretCast<uint8_t>();
         GlobalTensor<uint8_t> keyGmCast = keyGm_.template ReinterpretCast<uint8_t>();
         DataCopy(keyL1Cast, keyGmCast[keyGmOffset], nd2nzPara);
 
@@ -1019,7 +1019,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::LoadQueryToL0aHif4(uint64_t s1gL1Off
     loadDataMxParams.yStep = (constInfo_.headDim + 31) * 2 / HIFLOAT4_BLOCK_SIZE;
     loadDataMxParams.srcStride = (constInfo_.headDim + 31) * 2 / HIFLOAT4_BLOCK_SIZE;
     loadDataMxParams.dstStride = loadDataMxParams.yStep;
-    LoadData(dstTensor, queryL1_[(queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * QUERY_BUFFER_OFFSET], scaleL1, loadData2DParams, loadDataMxParams)
+    LoadData(dstTensor, queryL1_[(queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * QUERY_BUFFER_OFFSET], scaleL1, loadData2DParams, loadDataMxParams);
 }
 
 template <typename QLIV2T>
@@ -1035,7 +1035,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::LoadKeyToL0bHif4(uint64_t s2L1Offset
     loadData2DParams.dstStride = loadData2DParams.mStep;
     loadData2DParams.ifTranspose = false;
 
-    LocalTensor<hifloat4x2_t> dstTensor = keyL0_[(l0BufIdx % L0_BUF_NUM) * KEY_L0_BUFFER_OFFSET];
+    LocalTensor<hifloat4x2_t> dstTensor = keyL0_[(l0BufIdx_ % L0_BUF_NUM) * KEY_L0_BUFFER_OFFSET];
     uint64_t scaleOffsetInBuf = (keyL1BufIdx_ % KEY_BUF_NUM) * keyScaleBufferOffset_;
     LocalTensor<bfloat16_t> scaleL1 = keyScaleL1_[scaleOffsetInBuf].template ReinterpretCast<bfloat16_t>();
 
@@ -1046,7 +1046,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::LoadKeyToL0bHif4(uint64_t s2L1Offset
     loadDataMxParams.yStep = (constInfo_.headDim + 31) * 2 / HIFLOAT4_BLOCK_SIZE;
     loadDataMxParams.srcStride = (constInfo_.headDim + 31) * 2 / HIFLOAT4_BLOCK_SIZE;
     loadDataMxParams.dstStride = loadDataMxParams.yStep;
-    LoadData(dstTensor, keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * keyBufferOffset_], scaleL1, loadData2DParams, loadDataMxParams)
+    LoadData(dstTensor, keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * keyBufferOffset_], scaleL1, loadData2DParams, loadDataMxParams);
 }
 } // namespace QLIV2Kernel
 #endif // QUANT_LIGHTNING_INDEXER_V2_SERVICE_CUBE_H
