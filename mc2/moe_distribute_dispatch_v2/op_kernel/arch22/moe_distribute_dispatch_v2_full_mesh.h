@@ -146,6 +146,9 @@ private:
         return ctx_.GetWindStateAddrByRankId(rankId, epRankIdOriginal_) + dataState_ * WIN_STATE_OFFSET;
     }
 
+    // 校验跨卡通信访问的窗口偏移是否落在通信域缓存区内，winSize 为 0 时跳过校验
+    __aicore__ inline void CheckWinAddrRange(uint64_t winOffset, uint64_t copySize);
+
     TPipe *tpipe_{nullptr};
     GlobalTensor<XInType> xGMTensor_;
     GlobalTensor<int32_t> expertIdsGMTensor_;
@@ -264,6 +267,7 @@ private:
     bool isShareExpertRankFlag_ = false;
     bool isScalingDownFlag_ = false;
     uint64_t totalWinSize_{0};
+    uint64_t winSize_{0};
     uint32_t expertTokenNumsType_{1};
     int32_t expertIdsCnt_{0};
     int32_t tokenQuantAlign_{0};
@@ -428,6 +432,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     totalWinSize_ = runtimeWinSize != 0 ? runtimeWinSize : tilingData->moeDistributeDispatchV2Info.totalWinSizeEp;
     ctx_.InitAndCheck(mc2Context, tilingData->moeDistributeDispatchV2Info.epWorldSize, totalWinSize_, tpipe_,
                       expandXOut);
+    winSize_ = ctx_.GetWinSize();
     xGMTensor_.SetGlobalBuffer((__gm__ XInType *)x);
     xActiveMaskGMTensor_.SetGlobalBuffer((__gm__ bool *)xActiveMask);
     expertIdsGMTensor_.SetGlobalBuffer((__gm__ int32_t *)expertIds);
@@ -586,9 +591,10 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
         if (isScalingDownFlag_) {
             toRankId = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + toRankId);
         }
-        dstWinGMTensor.SetGlobalBuffer((__gm__ XOutType *)(uint64_t(GetWindAddrByRankId(toRankId)) +
-                                                           expertPerSizeOnWin_ * epRankId_ +
-                                                           sendTokenIndex * hCommuSize_));
+        uint64_t slotOffset = expertPerSizeOnWin_ * epRankId_ + sendTokenIndex * hCommuSize_;
+        CheckWinAddrRange(winDataSizeOffset_ + slotOffset, hCommuSize_);
+        dstWinGMTensor.SetGlobalBuffer(
+            (__gm__ XOutType *)(reinterpret_cast<uint64_t>(GetWindAddrByRankId(toRankId)) + slotOffset));
         uint32_t srcTokenIndex = sendTokenIndex;
         if (isExpertMaskFlag_) {
             srcTokenIndex = validBsIndexTensor_.GetValue(sendTokenIndex);
@@ -1447,6 +1453,8 @@ __aicore__ inline uint32_t MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullme
     GM_ADDR wAddr = (__gm__ uint8_t *)(windowGM_) + srcExpDataIdx * expertPerSizeOnWin_ + beginIdx * hCommuSize_ +
                     SPLIT_BLOCK_DATA_SIZE;
     dataFlagGlobal.SetGlobalBuffer((__gm__ float *)(wAddr));
+    CheckWinAddrRange(winDataSizeOffset_ + reinterpret_cast<uint64_t>(wAddr) - reinterpret_cast<uint64_t>(windowGM_),
+                      static_cast<uint64_t>(flagNum - 1) * SPLIT_BLOCK_SIZE + UB_ALIGN);
     DataCopy(flagRecvTensor_, dataFlagGlobal, expFlagCopyParams);
     SyncFunc<AscendC::HardEvent::MTE2_V>();
     LocalTensor<float> flagSumOutTensor = scalarBuf_.Get<float>();
@@ -1486,6 +1494,9 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
         AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(dataBufferId);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(dataBufferId);
     }
+    uint64_t winOffset = winDataSizeOffset_ + reinterpret_cast<uint64_t>(wAddr) -
+                         reinterpret_cast<uint64_t>(windowGM_) + expertFinishNumTensor_(index) * hCommuSize_;
+    CheckWinAddrRange(winOffset, static_cast<uint64_t>(arriveCount) * hCommuSize_);
     DataCopyPad(xTmpTensor, dataFlagGlobal[expertFinishNumTensor_(index) * hCommuSize_ / sizeof(XOutType)],
                 srcTokenCopyParams, srcTokenPadParams);
     AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(dataBufferId);
@@ -1518,6 +1529,18 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
 }
 
 template <TemplateMC2TypeFullmeshClass>
+__aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::CheckWinAddrRange(
+    uint64_t winOffset, uint64_t copySize)
+{
+    if (winSize_ == 0) {
+        return;
+    }
+    ascendc_assert(winOffset <= winSize_ && copySize <= winSize_ - winOffset,
+                   "full mesh window addr out of range, offset=%lu, copySize=%lu, winSize=%lu", winOffset, copySize,
+                   winSize_);
+}
+
+template <TemplateMC2TypeFullmeshClass>
 __aicore__ inline GM_ADDR MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::GetExpertWinAddr(
     uint32_t dstExpertId, uint32_t tokenOffset)
 {
@@ -1531,7 +1554,9 @@ __aicore__ inline GM_ADDR MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmes
         rankTerm = epRankId_;
     }
     uint32_t slot = rankTerm * moeExpertNumPerRank_ + dstExpertId % moeExpertNumPerRank_;
-    return (__gm__ uint8_t *)(GetWindAddrByRankId(toRankId) + expertPerSizeOnWin_ * slot + hCommuSize_ * tokenOffset);
+    uint64_t slotOffset = expertPerSizeOnWin_ * slot + hCommuSize_ * tokenOffset;
+    CheckWinAddrRange(winDataSizeOffset_ + slotOffset, hCommuSize_);
+    return (__gm__ uint8_t *)(GetWindAddrByRankId(toRankId) + slotOffset);
 }
 
 template <TemplateMC2TypeFullmeshClass>
@@ -1581,6 +1606,10 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
             uint32_t curCleanRecordNum = leftRecordNum > cleanRecordNum ? cleanRecordNum : leftRecordNum;
             cleanUpParams.blockCount = static_cast<uint16_t>(curCleanRecordNum);
             uint32_t flagIndex = recordOffset * SPLIT_BLOCK_COUNT + SPLIT_BLOCK_DATA_COUNT;
+            uint64_t flagOffset = winDataSizeOffset_ + reinterpret_cast<uint64_t>(wAddr) -
+                                  reinterpret_cast<uint64_t>(windowGM_) +
+                                  static_cast<uint64_t>(flagIndex) * sizeof(float);
+            CheckWinAddrRange(flagOffset, static_cast<uint64_t>(curCleanRecordNum - 1) * SPLIT_BLOCK_SIZE + UB_ALIGN);
             DataCopy(cleanGlobal[flagIndex], cleanUpTensor, cleanUpParams);
             recordOffset += curCleanRecordNum;
             leftRecordNum -= curCleanRecordNum;
