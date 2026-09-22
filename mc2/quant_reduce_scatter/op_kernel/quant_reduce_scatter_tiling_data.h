@@ -32,7 +32,7 @@ struct QuantReduceScatterTilingInfo {
     uint32_t xPerBlock;    // host 侧基于 TARGET_ITER 公式推荐的每块元素数
     uint32_t alignBlock;   // xPerBlock 对齐粒度（元素数，host/kernel共享）
     uint64_t hcclBufferSize;
-    uint32_t quantMode;    // 1=TG(KG), 2=MX, 3=PT(pertensor)
+    uint32_t quantMode; // 1=TG(KG), 2=MX, 3=PT(pertensor)
 };
 
 struct QuantReduceScatterTilingData {

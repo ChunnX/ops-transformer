@@ -445,7 +445,8 @@ static bool CheckOutputDimSize(const gert::TilingContext *context, size_t output
  * @brief 检查quant_all_reduce的输出形状
  */
 static bool CheckAllReduceOutputShape(const gert::TilingContext *context, const gert::StorageShape *outputShape,
-                                size_t outputDim, size_t xDimNum, const TilingRunInfo &runInfo, const char *nodeName)
+                                      size_t outputDim, size_t xDimNum, const TilingRunInfo &runInfo,
+                                      const char *nodeName)
 {
     (void)xDimNum; // Reserved for future extension
     uint64_t outputValueOne = outputShape->GetStorageShape().GetDim(DIM_ZERO);

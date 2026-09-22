@@ -201,14 +201,15 @@ __aicore__ inline void MTECommunication<TemplateType>::InitBuffer(TPipe *tPipe)
  */
 template <TemplateTypeClass>
 __aicore__ inline void MTECommunication<TemplateType>::SetBlockSize(uint32_t elementsPerBlock, uint64_t aivNum,
-                                            uint32_t lastBlockNum, uint32_t scaleNumsPerBlock, uint32_t tailScaleNums)
+                                                                    uint32_t lastBlockNum, uint32_t scaleNumsPerBlock,
+                                                                    uint32_t tailScaleNums)
 {
     xNumPerBlock_ = elementsPerBlock;
     aivNum_ = aivNum;
     tailXNums_ = lastBlockNum;
     // scaleNumsPerBlock 为 0 时按默认逻辑（SCALE_BLCOK_BYTES/sizeof(ScalesType)）计算，与旧接口兼容
-    scaleNumsPerBlock_ = (scaleNumsPerBlock != 0) ? scaleNumsPerBlock
-                                                   : static_cast<uint32_t>(SCALE_BLCOK_BYTES / sizeof(ScalesType));
+    scaleNumsPerBlock_ =
+        (scaleNumsPerBlock != 0) ? scaleNumsPerBlock : static_cast<uint32_t>(SCALE_BLCOK_BYTES / sizeof(ScalesType));
     tailScaleNums_ = (tailScaleNums != 0) ? tailScaleNums : scaleNumsPerBlock_;
 }
 
@@ -305,7 +306,7 @@ __aicore__ inline void MTECommunication<TemplateType>::CopyDataToWin(uint64_t xS
         uint32_t copyBlockNum = xNumPerBlock_;
         uint32_t copyScaleNum = scaleNumsPerBlock_;
         if ((aivId_ == lastAivId_) && (curBlock == assignedBlockNums_ - 1)) {
-            copyBlockNum = tailXNums_; // 检测是否为最后的尾块搬运
+            copyBlockNum = tailXNums_;     // 检测是否为最后的尾块搬运
             copyScaleNum = tailScaleNums_; // 尾块按实际scale数搬运，避免越界读GM
         }
         if constexpr (isReduceScatter) {

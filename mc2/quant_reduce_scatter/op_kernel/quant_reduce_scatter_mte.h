@@ -63,9 +63,9 @@ private:
     GlobalTensor<ScalesType> remoteWinScaleTensor_;
     LocalTensor<float> sumTensor_;
 
-    TQue<QuePosition::VECIN, 1> xInQueue_;      // 用于读数据和反量化求和的通算并行
-    TQue<QuePosition::VECIN, 1> scaleInQue_;    // 用于读数据和反量化求和的通算并行
-    TBuf<> sumBuf_;                             // 用于Reduce_sum 求和
+    TQue<QuePosition::VECIN, 1> xInQueue_;   // 用于读数据和反量化求和的通算并行
+    TQue<QuePosition::VECIN, 1> scaleInQue_; // 用于读数据和反量化求和的通算并行
+    TBuf<> sumBuf_;                          // 用于Reduce_sum 求和
 
     uint64_t xSize_{0};
     uint64_t totalWinSize_{0};
