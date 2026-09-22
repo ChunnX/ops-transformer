@@ -1159,18 +1159,15 @@ void BSATiling::CalcBaseTileTilingParams950()
 {
     qBaseTile_ = (blockShapeX_ > TILE_SIZE_128) ? TILE_SIZE_128 : static_cast<uint32_t>(blockShapeX_);
     const bool isMixedPrecision = (innerPrecise_ == BsaInnerCalcPrec::LOW_HIGH_MIXED && embeddingSize_ <= D_SIZE_128);
+    kvBaseTile_ = isMixedPrecision ? TILE_SIZE_256 : TILE_SIZE_128;
     if (quantMode_ == MXFP8_OCP_QUANT) {
         kvBaseTile_ = TILE_SIZE_128;
     } else if (dataType_ == ge::DT_FLOAT8_E4M3FN) {
-        bool enableKvBaseTile512 = isMixedPrecision && (quantMode_ == FP8_QUANT) && (blockShapeY_ == 512);
-        if (enableKvBaseTile512) {
+        if (isMixedPrecision && quantMode_ == FP8_QUANT && blockShapeY_ == TILE_SIZE_512) {
             kvBaseTile_ = TILE_SIZE_512;
         } else {
-            const uint32_t preferredTile = isMixedPrecision ? TILE_SIZE_256 : TILE_SIZE_128;
-            kvBaseTile_ = CalcFp8KvBaseTile(static_cast<uint32_t>(blockShapeY_), preferredTile);
+            kvBaseTile_ = CalcFp8KvBaseTile(static_cast<uint32_t>(blockShapeY_), kvBaseTile_);
         }
-    } else {
-        kvBaseTile_ = isMixedPrecision ? TILE_SIZE_256 : TILE_SIZE_128;
     }
 }
 
