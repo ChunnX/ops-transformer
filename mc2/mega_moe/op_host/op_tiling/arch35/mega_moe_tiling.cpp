@@ -1380,11 +1380,11 @@ static uint32_t CalcTopkValidIndexFixedBufferBytes(const MegaMoeTilingData *tili
 
     uint32_t moeQuantOutputBufferBytes = CalcDispatchCopyBufferBytes(tilingData, moeActivationElementsPerByte);
     uint32_t quantOutputBufferBytes = moeQuantOutputBufferBytes;
-    if (isSharedQuantIndependent == 1U) {
-        // 两侧量化分时复用同一组 xOut UB，按较大的单 token 记录预留；共享专家不存储 topK weight。
+    if (isSharedQuantIndependent) {
+        // 独立共享量化增加一组输出双缓冲，输入和 mxTemp 共用；共享输出不包含 topK weight。
         uint32_t sharedQuantOutputBufferBytes =
             CalcQuantTokenAndScaleBytes(tilingData, sharedActivationElementsPerByte);
-        quantOutputBufferBytes = std::max(moeQuantOutputBufferBytes, sharedQuantOutputBufferBytes);
+        quantOutputBufferBytes += sharedQuantOutputBufferBytes;
     }
 
     uint32_t quantInputBufferBytes = ops::CeilAlign(tilingData->h, static_cast<uint32_t>(ALIGN_128)) * sizeof(uint16_t);

@@ -209,6 +209,11 @@ struct QuantConfig {
     static constexpr uint32_t C_ELEMS_PER_BYTE = PackedElementTraits<ActivationQuantOutType>::ELEMENTS_PER_BYTE;
 };
 
+struct WorkRange {
+    uint32_t start = 0;
+    uint32_t count = 0;
+};
+
 struct AivJobContext {
     uint32_t jobIndex;
     uint32_t totalJobs;
@@ -229,7 +234,8 @@ struct MoeStageCommonConfig {
 struct GmmExecutionConfig {
     BlockJobContext blockJob;
     bool isPerExpertWeightTensor;
-    StridedAConfig inputLayout;
+    StridedAConfig inputLayout{};
+    bool useStridedInput = false;
 };
 
 // 各流水阶段在同步 workspace 中为每个专家预留的 slot 数量。

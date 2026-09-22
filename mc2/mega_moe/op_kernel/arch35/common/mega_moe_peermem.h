@@ -39,6 +39,8 @@ namespace MegaMoeImpl {
 // URMA 的 rank 槽位超过预留区时动态扩展；MTE 保持原 60 KiB 固定布局。
 constexpr int64_t PEERMEM_MIN_RANK_SYNC_SIZE = 1024 * 48LL;
 constexpr int64_t PEERMEM_DATA_OFFSET = 1024 * 60LL;
+// MTE count 区固定预留 2048 个 int32 槽，容量覆盖总专家数上限。
+constexpr int64_t PEERMEM_MTE_COUNT_REGION_SIZE = 8LL * 1024LL;
 constexpr int64_t PEERMEM_SYNC_COUNT_REGION_SIZE = PEERMEM_DATA_OFFSET - PEERMEM_MIN_RANK_SYNC_SIZE;
 constexpr int64_t PEERMEM_SYNC_SLOT_SIZE = static_cast<int64_t>(INT_CACHELINE) * sizeof(int32_t);
 
@@ -186,7 +188,9 @@ HOST_DEVICE PeermemLayoutSizes CalcPeermemLayoutSizes(const PeermemSizeParams &p
     } else {
         sizes.maskRecvSize = CalcMaskRecvSize(sizes.maskAlignSize, params.moeExpertPerRank, params.epWorldSize);
     }
-    sizes.expertCountRecvSize = CalcExpertCountRecvSize(params.moeExpertPerRank, params.epWorldSize);
+    sizes.expertCountRecvSize = params.topoType == TOPO_TYPE_MTE ?
+                                    PEERMEM_MTE_COUNT_REGION_SIZE :
+                                    CalcExpertCountRecvSize(params.moeExpertPerRank, params.epWorldSize);
     sizes.tokenScaleBytes =
         CalcQuantTokenScaleBytes(params.h, params.elemsPerByte, params.topK, params.topkWeightsPrefetch);
     sizes.dispatchRecordAreaSize = Ops::Base::CeilAlign(params.numMaxTokensPerRank * sizes.tokenScaleBytes, ALIGN_512);
@@ -206,7 +210,8 @@ HOST_DEVICE PeermemLayoutSizes CalcPeermemLayoutSizes(const PeermemSizeParams &p
 
 /*
  * peermem 窗口所需的最小字节数，逐段与下方 PeermemInfo 构造函数的偏移推进同源：
- *   同步区(dataOffset) + mask 接收区 + count 接收区 + dispatch 接收区 + combine 接收区。
+ *   MTE：同步区 + 固定 count 接收区 + route 接收区 + dispatch 接收区 + combine 接收区。
+ *   URMA：同步区 + mask 接收区 + count 接收区 + dispatch 接收区 + combine 接收区。
  * host 侧 tiling 用它校验用户传入的 cclBufferSize，不再各自手写一份布局公式。
  */
 HOST_DEVICE int64_t CalcPeermemLeastSize(const PeermemSizeParams &params)
@@ -247,11 +252,18 @@ struct PeermemInfo {
 
         rankSyncInWorldPtr = base;
         int64_t offset = sizes.dataOffset;
-        maskRecvPtr = base + offset;
-        offset += sizes.maskRecvSize;
-
-        expertCountRecvPtr = base + offset;
-        offset += sizes.expertCountRecvSize;
+        if (tilingData->topoType == TOPO_TYPE_MTE) {
+            // count 固定在 [60 KiB, 68 KiB)，避免可变路由区覆盖历史 count 槽。
+            expertCountRecvPtr = base + offset;
+            offset += sizes.expertCountRecvSize;
+            maskRecvPtr = base + offset;
+            offset += sizes.maskRecvSize;
+        } else {
+            maskRecvPtr = base + offset;
+            offset += sizes.maskRecvSize;
+            expertCountRecvPtr = base + offset;
+            offset += sizes.expertCountRecvSize;
+        }
 
         if (tilingData->topoType == TOPO_TYPE_MTE) {
             quantTokenScalePtr = base + offset;
