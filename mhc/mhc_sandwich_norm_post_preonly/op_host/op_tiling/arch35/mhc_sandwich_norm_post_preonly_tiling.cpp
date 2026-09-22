@@ -28,7 +28,6 @@ constexpr uint32_t PARTIAL_SLOTS_PER_TOKEN = 2;
 constexpr uint64_t TILING_KEY_USE_RMS_MID = 1ULL << 0;
 constexpr uint64_t TILING_KEY_RETURN_H_IN_F32 = 1ULL << 1;
 constexpr uint64_t TILING_KEY_DUAL_SIBLING_AIV = 1ULL << 2;
-constexpr uint64_t TILING_KEY_R5_CUBE = 1ULL << 3;
 
 static ge::graphStatus TilingMhcSandwichNormPostPreonly(gert::TilingContext *context)
 {
@@ -196,9 +195,6 @@ static ge::graphStatus TilingMhcSandwichNormPostPreonly(gert::TilingContext *con
     const bool enableDualSibling =
         totalTokens == 4U && dualSiblingDim && !returnHInF32 &&
         (hOutDesc->GetDataType() == ge::DT_BF16 || hOutDesc->GetDataType() == ge::DT_FLOAT16);
-    // O13先只开放目标5op BF16形状。其余形状继续使用已验证的Vector路径。
-    const bool enableR5Cube = enableDualSibling && useRmsMid && D == 5120U &&
-                              hOutDesc->GetDataType() == ge::DT_BF16;
     const uint32_t coresPerToken = enableDualSibling ? 2U : 1U;
     const uint32_t usedCoreNum = std::min(totalTokens, enableDualSibling ? (coreNumAiv / 2U) : coreNumAiv);
     uint32_t rowsPerCore = totalTokens / usedCoreNum;
@@ -229,38 +225,6 @@ static ge::graphStatus TilingMhcSandwichNormPostPreonly(gert::TilingContext *con
     tiling.set_coresPerToken(coresPerToken);
     tiling.set_returnHInF32(static_cast<int8_t>(returnHInF32));
 
-    uint32_t r5CubeWorkspaceBytes = 0;
-    if (enableR5Cube) {
-        auto platformInfoForCube = context->GetPlatformInfo();
-        if (platformInfoForCube == nullptr) {
-            OP_LOGE("MhcSandwichNormPostPreonly", "platformInfo is null for R5 Cube candidate");
-            return ge::GRAPH_FAILED;
-        }
-        auto ascendPlatformForCube = platform_ascendc::PlatformAscendC(platformInfoForCube);
-        matmul_tiling::MatmulApiTiling r5CubeTiling(ascendPlatformForCube);
-        // 编译探针使用已验证的M=4/N=4形态（与mhc_post_backward一致），避免M=1触发小矩阵特殊路径。
-        constexpr int64_t r5M = HOST_N_MAX;
-        constexpr int64_t r5N = HOST_N_MAX;
-        constexpr int64_t r5K = 2 * 5120;
-        r5CubeTiling.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,
-                               matmul_tiling::DataType::DT_FLOAT);
-        r5CubeTiling.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,
-                               matmul_tiling::DataType::DT_FLOAT, true);
-        r5CubeTiling.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,
-                               matmul_tiling::DataType::DT_FLOAT);
-        r5CubeTiling.SetOrgShape(r5M, r5N, r5K);
-        r5CubeTiling.SetShape(r5M, r5N, r5K);
-        r5CubeTiling.SetBias(false);
-        r5CubeTiling.SetBufferSpace(-1, -1, -1);
-        if (r5CubeTiling.GetTiling(tiling.r5CubeTilingData) == -1) {
-            OP_LOGE("MhcSandwichNormPostPreonly", "R5 Cube tiling failed");
-            return ge::GRAPH_FAILED;
-        }
-        // 编译探针阶段不让Cube结果进入功能路径，先保留系统workspace和既有partial布局。
-        r5CubeWorkspaceBytes = 0;
-    }
-    tiling.set_r5CubeWorkspaceBytes(r5CubeWorkspaceBytes);
-
     // CrossCore同步不占GM；双sibling路径每个token只分配一个32B partial1槽。
     size_t sysWsBytes = ascendcPlatform.GetLibApiWorkSpaceSize();
     size_t *currentWorkspace = context->GetWorkspaceSizes(1);
@@ -268,8 +232,8 @@ static ge::graphStatus TilingMhcSandwichNormPostPreonly(gert::TilingContext *con
         OP_LOGE("MhcSandwichNormPostPreonly", "GetWorkspaceSizes is nullptr");
         return ge::GRAPH_FAILED;
     }
-    currentWorkspace[0] = sysWsBytes + (enableDualSibling ? (size_t)totalTokens * PARTIAL_SLOTS_PER_TOKEN * PARTIAL_SLOT_BYTES : 0U) +
-                           r5CubeWorkspaceBytes;
+    currentWorkspace[0] =
+        sysWsBytes + (enableDualSibling ? (size_t)totalTokens * PARTIAL_SLOTS_PER_TOKEN * PARTIAL_SLOT_BYTES : 0U);
 
     // 输出Tiling数据
     context->SetBlockDim(usedCoreNum);
@@ -278,8 +242,7 @@ static ge::graphStatus TilingMhcSandwichNormPostPreonly(gert::TilingContext *con
     }
     uint64_t tilingKey = (useRmsMid ? TILING_KEY_USE_RMS_MID : 0ULL) |
                          (returnHInF32 ? TILING_KEY_RETURN_H_IN_F32 : 0ULL) |
-                         (coresPerToken == 2 ? TILING_KEY_DUAL_SIBLING_AIV : 0ULL) |
-                         (enableR5Cube ? TILING_KEY_R5_CUBE : 0ULL);
+                         (coresPerToken == 2 ? TILING_KEY_DUAL_SIBLING_AIV : 0ULL);
     context->SetTilingKey(tilingKey);
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());

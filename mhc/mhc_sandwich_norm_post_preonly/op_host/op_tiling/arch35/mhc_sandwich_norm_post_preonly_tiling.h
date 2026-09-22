@@ -12,7 +12,6 @@
 #define MHC_SANDWICH_NORM_POST_PREONLY_TILING_H_
 
 #include "register/tilingdata_base.h"
-#include "tiling/tiling_api.h"
 
 namespace optiling {
 
@@ -53,10 +52,6 @@ TILING_DATA_FIELD_DEF(uint32_t, coresPerToken); // 取值为1或2
 
 // 是否返回h_in_f32
 TILING_DATA_FIELD_DEF(int8_t, returnHInF32); // TILING_DATA_FIELD_DEF接口不支持bool
-
-// O13候选：AIC使用Cube计算R5投影时的矩阵和workspace参数。
-TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, r5CubeTilingData)
-TILING_DATA_FIELD_DEF(uint32_t, r5CubeWorkspaceBytes)
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(MhcSandwichNormPostPreonly, MhcSandwichNormPostPreonlyTilingData)
