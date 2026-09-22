@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include "../../common/op_api/gmm_tensor_storage_check.h"
 #include <dlfcn.h>
 #include <new>
 #include <memory>
@@ -173,6 +174,16 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2GetWorkspaceSize(
     if (status != ACLNN_SUCCESS) {
         return status;
     }
+    CHECK_RET(gmm::CheckTensorStorageBounds(x, GMM_SWIGLU_QUANT_V2_OP_NAME, "x"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorListStorageBounds(weight, GMM_SWIGLU_QUANT_V2_OP_NAME, "weight"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorListStorageBounds(weightScale, GMM_SWIGLU_QUANT_V2_OP_NAME, "weightScale"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorListStorageBounds(weightAssistMatrix, GMM_SWIGLU_QUANT_V2_OP_NAME, "weightAssistMatrix"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(bias, GMM_SWIGLU_QUANT_V2_OP_NAME, "bias"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(xScale, GMM_SWIGLU_QUANT_V2_OP_NAME, "xScale"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(smoothScale, GMM_SWIGLU_QUANT_V2_OP_NAME, "smoothScale"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(groupList, GMM_SWIGLU_QUANT_V2_OP_NAME, "groupList"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(output, GMM_SWIGLU_QUANT_V2_OP_NAME, "output"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(outputScale, GMM_SWIGLU_QUANT_V2_OP_NAME, "outputScale"), ACLNN_ERR_PARAM_INVALID);
     L2_DFX_PHASE_1(aclnnGroupedMatmulSwigluQuantV2,
                    DFX_IN(x, weight, weightScale, weightAssistMatrix, bias, xScale, smoothScale, groupList, dequantMode,
                           dequantDtype, quantMode, groupListType, tuningConfigOptional),
@@ -264,6 +275,16 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize(
     if (status != ACLNN_SUCCESS) {
         return status;
     }
+    CHECK_RET(gmm::CheckTensorStorageBounds(x, GMM_SWIGLU_QUANT_V2_OP_NAME, "x"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorListStorageBounds(weight, GMM_SWIGLU_QUANT_V2_OP_NAME, "weight"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorListStorageBounds(weightScale, GMM_SWIGLU_QUANT_V2_OP_NAME, "weightScale"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorListStorageBounds(weightAssistMatrix, GMM_SWIGLU_QUANT_V2_OP_NAME, "weightAssistMatrix"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(bias, GMM_SWIGLU_QUANT_V2_OP_NAME, "bias"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(xScale, GMM_SWIGLU_QUANT_V2_OP_NAME, "xScale"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(smoothScale, GMM_SWIGLU_QUANT_V2_OP_NAME, "smoothScale"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(groupList, GMM_SWIGLU_QUANT_V2_OP_NAME, "groupList"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(output, GMM_SWIGLU_QUANT_V2_OP_NAME, "output"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(outputScale, GMM_SWIGLU_QUANT_V2_OP_NAME, "outputScale"), ACLNN_ERR_PARAM_INVALID);
     L2_DFX_PHASE_1(aclnnGroupedMatmulSwigluQuantWeightNzV2,
                    DFX_IN(x, weight, weightScale, weightAssistMatrix, bias, xScale, smoothScale, groupList, dequantMode,
                           dequantDtype, quantMode, groupListType, tuningConfigOptional),
