@@ -23,6 +23,8 @@ static constexpr uint32_t TQ4_SCALE_SLOT_STRIDE = 512U;
 static_assert(TQ4_SCALE_SLOT_STRIDE * sizeof(uint16_t) <= 1024U,
               "TQ4 half staging exceeds the first 1K of tq4ScaleBuf_");
 static constexpr uint32_t TQ4_SCALE_UB_F32 = 256U;
+// tmpBuff2 中 32B gather 的暂存偏移：前 512 个 half 放逐行 scale，其后放 32B 对齐的收集区
+static constexpr uint32_t TQ4_SCALE_STAGE_OFF = 512U;
 static_assert(TQ4_SCALE_UB_F32 * sizeof(float) >= 1024U, "TQ4 fp32 area must start after the half staging area");
 static_assert((TQ4_SCALE_UB_F32 + TQ4_SCALE_SLOT_STRIDE) * sizeof(float) <= 4096U,
               "TQ4 fp32 scale exceeds tq4ScaleBuf_ (4K)");
@@ -149,6 +151,10 @@ public:
     static constexpr uint32_t FP32_REPEAT_ELEMENT_NUM = REPEAT_BLOCK_BYTE / sizeof(float);
     // repeat stride不能超过256
     static constexpr uint32_t REPEATE_STRIDE_UP_BOUND = 256;
+    // 每次 Cast 处理的 half 元素数（256B，与 mask 一致）
+    static constexpr uint32_t HALF_SEG_ELEMS = 128U;
+    // INT8 per-tile 槽位中量化参数的字节偏移：nope(512) + rope(64*2)
+    static constexpr uint32_t QUANT_SCALE_BYTE_OFF = 640U;
 
 private:
     static constexpr bool PAGE_ATTENTION = QSFAT::pageAttention;
@@ -973,13 +979,16 @@ __aicore__ inline void QSFAVectorService<QSFAT>::CopyOutMrgeResultQuant(LocalTen
     } else {
         uint8_t repeatTimes = static_cast<uint8_t>(dealRow);
         Cast(kvTensorAsFp16, srcTensor, RoundMode::CAST_NONE, mask, repeatTimes, {1, 1, 32, 21}); // 21=(512+64*2+32)/32
-        Cast(kvTensorAsFp16[128], srcTensor[128], RoundMode::CAST_NONE, mask, repeatTimes, {1, 1, 32, 21});
-        Cast(kvTensorAsFp16[256], srcTensor[256], RoundMode::CAST_NONE, mask, repeatTimes, {1, 1, 32, 21});
-        Cast(kvTensorAsFp16[384], srcTensor[384], RoundMode::CAST_NONE, mask, repeatTimes, {1, 1, 32, 21});
+        Cast(kvTensorAsFp16[1 * HALF_SEG_ELEMS], srcTensor[1 * HALF_SEG_ELEMS], RoundMode::CAST_NONE, mask, repeatTimes,
+             {1, 1, 32, 21});
+        Cast(kvTensorAsFp16[2 * HALF_SEG_ELEMS], srcTensor[2 * HALF_SEG_ELEMS], RoundMode::CAST_NONE, mask, repeatTimes,
+             {1, 1, 32, 21});
+        Cast(kvTensorAsFp16[3 * HALF_SEG_ELEMS], srcTensor[3 * HALF_SEG_ELEMS], RoundMode::CAST_NONE, mask, repeatTimes,
+             {1, 1, 32, 21});
     }
     PipeBarrier<PIPE_V>();
     LocalTensor<T> antiQuantScale = tmpBuff2.Get<T>();
-    LocalTensor<T> oriQuantScaleTensor = srcTensor[640].template ReinterpretCast<T>();
+    LocalTensor<T> oriQuantScaleTensor = srcTensor[QUANT_SCALE_BYTE_OFF].template ReinterpretCast<T>();
     if (dealRow == 1) {
         Brcb(antiQuantScale, oriQuantScaleTensor, 1, {1, 4});
     } else {
@@ -1126,7 +1135,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::CopyOutMrgeResultTq4(LocalTenso
         uint32_t scaleByteOff = constInfo.headDim / 2U + ropeBytes;
         uint16_t rowStrideBlk = static_cast<uint16_t>(rowBytes / BYTE_BLOCK);
         LocalTensor<half> scaleUb = tmpBuff2.Get<half>();
-        LocalTensor<half> scaleUb32 = tmpBuff2.Get<half>()[512];
+        LocalTensor<half> scaleUb32 = tmpBuff2.Get<half>()[TQ4_SCALE_STAGE_OFF];
         LocalTensor<half> scaleSrc = srcTensor.template ReinterpretCast<half>()[scaleByteOff / 2U];
         DataCopyParams scaleParams;
         scaleParams.blockCount = static_cast<uint16_t>(dealRow);
