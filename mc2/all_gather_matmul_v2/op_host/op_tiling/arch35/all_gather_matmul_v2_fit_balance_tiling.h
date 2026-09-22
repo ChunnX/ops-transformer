@@ -60,20 +60,15 @@ static const FitBalanceCalibration CALIBRATION = {
     },
     /* mmFit: matmul 性能拟合(算力档位/基本块) */
     {
-        /* cubeCalc: {计算类型, isFp4, A/B/C 字节数, 有效算力(MACs/cycle)} */
+        /* cubeCalc: {计算类型, isFp4, A/B 字节数, 有效算力(MACs/cycle)}——键不含 C 侧字节数
+         * (glue 恒 cType=aType → cBytes≡aBytes 零信息量; C dtype 只影响写出带宽不影响
+         * MACs/cycle, §4.37 缺陷根治裁定, 详见引擎 CubeCalc 注释) */
         {
-            // glue 真实口径(SetTilingArgsDataType: cType=aType): fp8 输入时 C 侧按 1B 计——
-            // 运行时查表键即本行(缺陷修复, 见 plans AGMM_QUANT_CPC_KEY_DEFECT_AND_FIX.md)
-            {MatmulDtypeKind::QUANT, false, 1, 1, 1, 8192},
-            // 假设口径行(输出按 2B 计): 仅 outputDtypeSize=2 的调用形态可达, 保留防未来
-            // 输出侧口径独立化后失配(与老表 _2/_1 双行同值语义一致)
-            {MatmulDtypeKind::QUANT, false, 1, 1, 2, 8192},
-            // fp4 glue 真实口径行: GetDataTypeSize(DT_FLOAT4_E2M1) 无条目返回 0 → 键 {0,0,0}——
-            // 命中本行(16384, 与老类钩子手动覆盖值一致); 老类侧为 geAType 特判+覆盖, 新引擎
-            // 侧为 isFp4 维度查表, 两条路径收敛同值
-            {MatmulDtypeKind::QUANT, true, 0, 0, 0, 16384},
-            // fp4 假设口径行(inputDtypeSize=1/outputDtypeSize=2 的调用形态, 同值保留)
-            {MatmulDtypeKind::QUANT, true, 1, 1, 2, 16384},
+            {MatmulDtypeKind::QUANT, false, 1, 1, 8192}, // fp8 量化(glue 真实/假设口径键天然合并)
+            // fp4 glue 真实口径: GetDataTypeSize(DT_FLOAT4_E2M1) 无条目返回 0 → 键 {0,0}
+            {MatmulDtypeKind::QUANT, true, 0, 0, 16384},
+            // fp4 防御行: 上游 GetDataTypeSize 补 fp4 条目(返回 1)后 aBytes=1 的形态
+            {MatmulDtypeKind::QUANT, true, 1, 1, 16384},
         },
         /* baseBlock: matmul 最优基本块(单值; 未填用默认 {128,256,64}) */
         {256, 256, 128},

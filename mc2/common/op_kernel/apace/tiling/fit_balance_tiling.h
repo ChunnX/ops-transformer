@@ -847,12 +847,15 @@ struct FitBalanceCalibration {
     // —— matmul 性能拟合（对仗 CommFit; 字段序: 用户常改字段在前, 平台默认在后——聚合初始化
     //    可省尾部, 省略的尾部字段自动取 NSDMI 默认值）——
     struct MatmulFit {
+        // 键维度裁定(§4.37 缺陷根治, 2026-09-22): 不含 C 侧字节数——glue 恒 cType=aType,
+        // 运行时 cBytes 恒等于 aBytes(零信息量冗余维度, 假设/真实口径曾在其上分叉致 cpc 缺陷);
+        // 物理上 C dtype 只影响写出带宽不影响 MACs/cycle(老表 _1/_2 行同值 8192 佐证)。
+        // 未来 outputDtypeSize 口径独立化(真按输出计)且重标定发现 C 影响算力时, 再按独立 CR 加回。
         struct CubeCalc {
             MatmulDtypeKind calcType;
             bool isFp4;              // FP16 / QUANT / ANTI_QUANT
             uint64_t aBytes;         // 输入 A 每元素字节数
             uint64_t bBytes;         // 输入 B 每元素字节数
-            uint64_t cBytes;         // 输出 C 每元素字节数
             double computesPerCycle; // 有效算力 (MACs/cycle, 含 cube 利用率)
         };
         CubeCalc cubeCalc[MAX_CUBE_CALC_ROWS] = {};
@@ -880,9 +883,9 @@ inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, CommPrimitiv
             break;
         }
     }
-    // matmul 行: 按"计算形态"匹配算力行与 L2 档行——形态键 = (量化类别, fp4 打包, A/B/C 字节数)
-    // 五个维度合起来才确定一种计算形态(只看 dtype 无法区分 fp4/fp8 的 1/1/2 同宽), 键推导与模型
-    // SetCalcType 同源
+    // matmul 行: 按"计算形态"匹配算力行——形态键 = (量化类别, fp4 打包, A/B 字节数) 四维
+    // (C 侧字节数不进键, §4.37 根治裁定: glue cType=aType 使其恒等于 aBytes, 零信息量),
+    // 键推导与模型 SetCalcType 同源
     const auto isQuant = (args.aType == matmul_tiling::DataType::DT_HIFLOAT8) ||
                          (args.aType == matmul_tiling::DataType::DT_FLOAT8_E4M3FN) ||
                          (args.aType == matmul_tiling::DataType::DT_FLOAT8_E5M2) ||
@@ -892,7 +895,7 @@ inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, CommPrimitiv
     const bool isFp4 = (args.geAType == ge::DataType::DT_FLOAT4_E2M1);
     const auto matchesCalcProfile = [&](const auto &row) {
         return (row.calcType == calcType) && (row.isFp4 == isFp4) && (row.aBytes == args.inputDtypeSize) &&
-               (row.bBytes == args.inputDtypeSize) && (row.cBytes == args.outputDtypeSize);
+               (row.bBytes == args.inputDtypeSize); // C 侧字节数不进键(§4.37 根治裁定, 见 CubeCalc 注释)
     };
     double computesPerCycle = calib.mmFit.defaultComputesPerCycle;
     for (size_t i = 0; i < FitBalanceCalibration::MAX_CUBE_CALC_ROWS; ++i) {
