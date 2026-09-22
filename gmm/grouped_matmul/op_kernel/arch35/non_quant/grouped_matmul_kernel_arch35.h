@@ -17,7 +17,7 @@
 
 #include "blaze/epilogue/block/block_epilogue_empty.h"
 #include "blaze/epilogue/block/block_epilogue_gelu_fixpipe.h"
-#include "blaze/gemm/block/block_mmad_gmm_gelu_fixpipe_opti.h"
+#include "blaze/gemm/block/block_mmad_matmul_fixpipe_opti.h"
 #include "blaze/gemm/block/block_mmad_matmul_basic.h"
 #include "blaze/gemm/block/block_scheduler_grouped_matmul.h"
 #include "blaze/gemm/kernel/kernel_grouped_matmul.h"
@@ -46,7 +46,8 @@ __aicore__ inline void GroupedMatMulKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bi
         Blaze::Gemm::MatmulMultiBlockBasic<0, Blaze::Gemm::OP_TYPE_EMPTY, Blaze::Gemm::KernelGroupedMmadNoQuant, 0,
                                            Blaze::Gemm::MatmulOutputMode::OVERWRITE>;
     using GeluDispatchPolicy =
-        Blaze::Gemm::MatmulMultiBlockGmmGeluFixpipeOpti<Blaze::Gemm::KernelGroupedMmadNoQuant>;
+        Blaze::Gemm::MatmulMultiBlockFixpipeOpti<Blaze::Gemm::ND_ALIG_1V2_FIXPIPE, Blaze::Gemm::OP_TYPE_GELU,
+                                                 Blaze::Gemm::KernelGroupedMmadNoQuant>;
     using DispatchPolicy = AscendC::Std::conditional_t<EnableGelu, GeluDispatchPolicy, BasicDispatchPolicy>;
     using BlockMmad = Blaze::Gemm::Block::BlockMmad<DispatchPolicy, AType, LayoutA, BType, LayoutB, CType, LayoutC,
                                                     BiasType, LayoutBias>;
@@ -107,7 +108,7 @@ __aicore__ inline void GroupedMatMulKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bi
     mmParams.l1Stages = 2U;
     mmParams.l0cStages = static_cast<uint16_t>(mmTilingData.dbL0C);
     if constexpr (EnableGelu) {
-        // The FP32 GELU Fixpipe path owns the complete L0C and uses explicit M/FIX slot synchronization.
+        // Keep the current grouped GELU path on the single-L0C-stage configuration selected by tiling.
         mmParams.l0cStages = 1U;
         mmParams.oriK = static_cast<uint64_t>(mmTilingData.Ka);
         mmParams.splitM = static_cast<uint64_t>(gmmBaseParams.splitM);
