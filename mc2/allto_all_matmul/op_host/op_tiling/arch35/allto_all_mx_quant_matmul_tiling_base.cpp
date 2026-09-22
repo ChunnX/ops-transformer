@@ -957,10 +957,11 @@ uint64_t AllToAllMxQuantMatmulTilingBase::GetTilingKey() const
     // 获取commMode
     uint8_t commMode = (hcclServerType_ == mc2tiling::A5_CCU_ENGINE) ? ALL2ALL_COMM_TYPE_CCU : ALL2ALL_COMM_TYPE_AICPU;
     const bool enableHcommAllToAllOut = usingApaceImpl_ && contextInfo_.allToAllOutFlag;
-    const uint64_t tilingKey = GET_TPL_TILING_KEY(
-        MX_QUANT_MODE, x2TransposeFlag, biasDType, false, commMode, usingApaceImpl_, ADDBIAS_OFF, enableHcommAllToAllOut);
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(MX_QUANT_MODE, x2TransposeFlag, biasDType, false, commMode,
+                                                  usingApaceImpl_, ADDBIAS_OFF, enableHcommAllToAllOut);
     OP_LOGD(opName_,
-            "MXQUANTMODE,X2TRANSPOSE,DTYPEBIAS,ISSMALLK,COMMMODE,USING_APACE_IMPL,ADDBIASSPLITMODE,ENABLE_HCOMM_ALL_TO_ALL_OUT: "
+            "MXQUANTMODE,X2TRANSPOSE,DTYPEBIAS,ISSMALLK,COMMMODE,USING_APACE_IMPL,ADDBIASSPLITMODE,ENABLE_HCOMM_ALL_TO_"
+            "ALL_OUT: "
             "[%d,%d,%d,0,%d,%d,0,%d], TilingKey is [%lu].",
             MX_QUANT_MODE, x2TransposeFlag, biasDType, commMode, usingApaceImpl_, enableHcommAllToAllOut, tilingKey);
     return tilingKey;
@@ -1009,12 +1010,11 @@ void AllToAllMxQuantMatmulTilingBase::BuildWorkspaceLayout()
     workspaceLayout_.segCount = idx;
 }
 
-/**
- * @brief 构建apace(hcomm)路线专属的workspace布局，与kernel侧实际存放顺序保持一致
- * 顺序: LIB_API → commX1Scale → commOut → STATE_DUMP
- * 注意: commX1Scale和commOut用于存放HCCL接收数据；all2all_out非空时，
- * AIV将commOut中的数据重排后直接写入all2all_out，因此workspace不分配transX1Scale/transOut段。
- */
+// 构建apace(hcomm)路线专属的workspace布局，与kernel侧实际存放顺序保持一致。
+// workspace依次存放LIB_API、commX1Scale、commOut和STATE_DUMP。
+// commX1Scale和commOut用于存放HCCL接收数据。
+// all2all_out非空时，AIV将commOut中的数据重排后直接写入all2all_out，
+// 因此workspace不分配transX1Scale/transOut段。
 void AllToAllMxQuantMatmulTilingBase::BuildWorkspaceLayoutApace()
 {
     uint64_t offset = 0;
