@@ -21,6 +21,7 @@
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
 #include "mixed_quant_sparse_flash_mla_tq_common.h"
+#include "mixed_quant_sparse_flash_mla_tiling_data.h"
 #include "mixed_quant_sparse_flash_mla_tq_csa_block_cube.h"
 #include "mixed_quant_sparse_flash_mla_tq_csa_block_vector.h"
 #include "../mixed_quant_sparse_flash_mla_metadata.h"
@@ -90,7 +91,8 @@ public:
                                 __gm__ uint8_t *seqUsedCmpKV, __gm__ uint8_t *cmpResidualKV,
                                 __gm__ uint8_t *oriTopkLength, __gm__ uint8_t *cmpTopkLength, __gm__ uint8_t *sinks,
                                 __gm__ uint8_t *metadata, __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
-                                __gm__ uint8_t *workspace, const MixedQuantSparseFlashMlaTilingData *__restrict tiling,
+                                __gm__ uint8_t *workspace,
+                                const optiling::MixedQuantSparseFlashMlaTqTilingData *__restrict tiling,
                                 __gm__ uint8_t *gmTiling, TPipe *tPipe);
 
     __aicore__ inline void Process();
@@ -116,7 +118,7 @@ private:
 
     static constexpr uint32_t dbWorkspaceRatio = PRELOAD_NUM;
 
-    const MixedQuantSparseFlashMlaTilingData *__restrict tilingData = nullptr;
+    const optiling::MixedQuantSparseFlashMlaTqTilingData *__restrict tilingData = nullptr;
 
     TPipe *pipe = nullptr;
     GlobalTensor<uint32_t> metadataGm;
@@ -397,7 +399,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaTqCsaKernel<SAST>::Init(
     __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedOriKV, __gm__ uint8_t *seqUsedCmpKV, __gm__ uint8_t *cmpResidualKV,
     __gm__ uint8_t *oriTopkLength, __gm__ uint8_t *cmpTopkLength, __gm__ uint8_t *sinks, __gm__ uint8_t *metadata,
     __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
-    const MixedQuantSparseFlashMlaTilingData *__restrict tiling, __gm__ uint8_t *gmTiling, TPipe *tPipe)
+    const optiling::MixedQuantSparseFlashMlaTqTilingData *__restrict tiling, __gm__ uint8_t *gmTiling, TPipe *tPipe)
 {
     if ASCEND_IS_AIV {
         tmpBlockIdx = GetBlockIdx(); // vec:0-47

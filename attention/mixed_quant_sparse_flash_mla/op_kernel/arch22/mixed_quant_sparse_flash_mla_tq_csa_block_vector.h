@@ -44,7 +44,7 @@ public:
     __aicore__ inline void ProcessVec2L(const RunInfo &info);
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void InitParams(const struct ConstInfo &constInfo,
-                                      const MixedQuantSparseFlashMlaTilingData *__restrict tilingData);
+                                      const optiling::MixedQuantSparseFlashMlaTqTilingData *__restrict tilingData);
     __aicore__ inline void InitVec0GlobalTensor(const GlobalTensor<KV_T> &kvMergeGm, const GlobalTensor<KV_T> &oriKvGm,
                                                 const GlobalTensor<KV_T> &cmpKvGm, const GlobalTensor<uint8_t> &cmpTqGm,
                                                 const GlobalTensor<int32_t> &oriBlockTableGm,
@@ -203,7 +203,7 @@ private:
     static constexpr T SOFTMAX_MIN_NUM = -2e38;
     static constexpr SINKS_T R0 = 1.0f;
 
-    const MixedQuantSparseFlashMlaTilingData *__restrict tilingData;
+    const optiling::MixedQuantSparseFlashMlaTqTilingData *__restrict tilingData;
 
     uint32_t pingpongFlag = 0U;
     ConstInfo constInfo = {};
@@ -342,7 +342,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::InitBuffers(TP
 
 template <typename SAST>
 __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::InitParams(
-    const struct ConstInfo &constInfo, const MixedQuantSparseFlashMlaTilingData *__restrict tilingData)
+    const struct ConstInfo &constInfo, const optiling::MixedQuantSparseFlashMlaTqTilingData *__restrict tilingData)
 {
     this->constInfo = constInfo;
     this->tilingData = tilingData;
