@@ -623,6 +623,12 @@ public:
             CopyFinalResOut(reduceOut, startRow, actualGSplitSize, reduceMLoop);
             reduceMLoop += 1;
         }
+
+        // Drain the last LSE MTE3 copy before the FD UB region can be reused by
+        // the next FA section, which aliases the same transient UB range.
+        if (constInfo_.isSoftmaxLseEnable) {
+            AscendC::PipeBarrier<PIPE_MTE3>();
+        }
     }
 };
 
