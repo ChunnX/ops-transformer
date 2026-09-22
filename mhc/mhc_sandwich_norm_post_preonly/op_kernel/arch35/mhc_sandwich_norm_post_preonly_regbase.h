@@ -504,6 +504,54 @@ __aicore__ inline void ComputePostHeadPair(const LocalTensor<T> &dst0, const Loc
     }
 }
 
+// 一个VF同时计算相邻两个head，h_out直接读取低精度缓存并在寄存器内恢复FP32，
+// 省去R2中h_out的BF16->FP32恢复往返。保持四路累加顺序与量化边界不变。
+template <typename T>
+__aicore__ inline void ComputePostHeadPairB16(const LocalTensor<T> &dst0, const LocalTensor<T> &dst1,
+                                              const LocalTensor<T> &hOut, const LocalTensor<T> &residual,
+                                              const LocalTensor<float> &combWeights, uint32_t rowStride,
+                                              uint32_t headIndex, float postWeight0, float postWeight1, uint32_t count)
+{
+    __local_mem__ T *dst0Addr = (__local_mem__ T *)dst0.GetPhyAddr();
+    __local_mem__ T *dst1Addr = (__local_mem__ T *)dst1.GetPhyAddr();
+    __local_mem__ T *hOutAddr = (__local_mem__ T *)hOut.GetPhyAddr();
+    __local_mem__ T *residualAddr = (__local_mem__ T *)residual.GetPhyAddr();
+    __local_mem__ float *combAddr = (__local_mem__ float *)combWeights.GetPhyAddr();
+    uint32_t remain = count;
+    const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
+    __VEC_SCOPE__
+    {
+        RegTensor<T> hOutB16Reg, residualB16Reg, dst0B16Reg, dst1B16Reg;
+        RegTensor<float> hOutReg, residualReg, weight0Reg, weight1Reg, dst0Reg, dst1Reg;
+        MaskReg mask;
+        for (uint16_t i = 0; i < loops; ++i) {
+            mask = UpdateMask<float>(remain);
+            DataCopy<T, LoadDist::DIST_UNPACK_B16>(hOutB16Reg, hOutAddr + i * VL_FP32);
+            Cast<float, T, CAST_B16_TO_FP32>(hOutReg, hOutB16Reg, mask);
+            AscendC::Reg::Muls(dst0Reg, hOutReg, postWeight0, mask);
+            AscendC::Reg::Muls(dst1Reg, hOutReg, postWeight1, mask);
+            for (uint16_t j = 0; j < static_cast<uint16_t>(N_MAX); ++j) {
+                const uint32_t row = static_cast<uint32_t>(j);
+                DataCopy<T, LoadDist::DIST_UNPACK_B16>(residualB16Reg, residualAddr + row * rowStride + i * VL_FP32);
+                Cast<float, T, CAST_B16_TO_FP32>(residualReg, residualB16Reg, mask);
+                DataCopy<float, LoadDist::DIST_BRC_B32>(weight0Reg, combAddr + row * N_MAX + headIndex);
+                DataCopy<float, LoadDist::DIST_BRC_B32>(weight1Reg, combAddr + row * N_MAX + headIndex + 1U);
+                AscendC::Reg::MulAddDst(dst0Reg, residualReg, weight0Reg, mask);
+                AscendC::Reg::MulAddDst(dst1Reg, residualReg, weight1Reg, mask);
+            }
+            if constexpr (IsSameT<T, bfloat16_t>::value) {
+                Cast<T, float, CAST_FP32_TO_B16_RINT>(dst0B16Reg, dst0Reg, mask);
+                Cast<T, float, CAST_FP32_TO_B16_RINT>(dst1B16Reg, dst1Reg, mask);
+            } else {
+                Cast<T, float, CAST_FP32_TO_B16_NONE>(dst0B16Reg, dst0Reg, mask);
+                Cast<T, float, CAST_FP32_TO_B16_NONE>(dst1B16Reg, dst1Reg, mask);
+            }
+            DataCopy<T, StoreDist::DIST_PACK_B32>(dst0Addr + i * VL_FP32, dst0B16Reg, mask);
+            DataCopy<T, StoreDist::DIST_PACK_B32>(dst1Addr + i * VL_FP32, dst1B16Reg, mask);
+        }
+    }
+}
+
 // R6在一个VF内完成四路低精度读取、FP32转换和门控累加，不生成四行FP32中间张量。
 // 四个gate权重对整个D循环不变，外提到循环外广播一次，循环内显式展开四路累加，
 // 避免每轮重复广播（参考mhc_pre::VFDoV1ProcessHInRows）。
