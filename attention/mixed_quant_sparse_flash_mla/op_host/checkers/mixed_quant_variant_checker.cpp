@@ -13,6 +13,7 @@
 
 namespace optiling {
 namespace sparse_mla_checker {
+constexpr int64_t TURBO_QUANT_MODE = 3;
 namespace {
 const char *Op(const CheckContext &context)
 {
@@ -23,10 +24,10 @@ const char *Op(const CheckContext &context)
 ge::graphStatus MixedQuantVariantChecker::CheckSinglePara(const CheckContext &context) const
 {
     OP_CHECK_IF(
-        context.quantMode != 1 && context.quantMode != 2 && context.quantMode != 3,
+        context.quantMode != 1 && context.quantMode != 2 && context.quantMode != TURBO_QUANT_MODE,
         OP_LOGE_FOR_INVALID_VALUE(Op(context), "quant_mode", std::to_string(context.quantMode).c_str(), "1, 2 or 3"),
         return ge::GRAPH_FAILED);
-    const bool turboQuant = context.quantMode == 3;
+    const bool turboQuant = context.quantMode == TURBO_QUANT_MODE;
     OP_CHECK_IF(
         (turboQuant && context.npuArch != NpuArch::DAV_2201) || (!turboQuant && context.npuArch != NpuArch::DAV_3510),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(

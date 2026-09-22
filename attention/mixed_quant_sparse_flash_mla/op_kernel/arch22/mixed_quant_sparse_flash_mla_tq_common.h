@@ -341,25 +341,39 @@ constexpr uint32_t TQ4_SCALE_BYTES = sizeof(half);
 constexpr uint32_t TQ4_SLOT_BYTES = TQ4_PACKED_BYTES + TQ4_SCALE_BYTES;
 constexpr uint32_t TQ4_SLOT_ROW_BYTES = (TQ4_SLOT_BYTES + 31U) / 32U * 32U;
 constexpr float TQ4_CENTROID_BYTE_STRIDE = 4.0F;
+constexpr uint32_t TQ4_CENTROID_INDEX_2 = 2U;
+constexpr uint32_t TQ4_CENTROID_INDEX_3 = 3U;
+constexpr uint32_t TQ4_CENTROID_INDEX_4 = 4U;
+constexpr uint32_t TQ4_CENTROID_INDEX_5 = 5U;
+constexpr uint32_t TQ4_CENTROID_INDEX_6 = 6U;
+constexpr uint32_t TQ4_CENTROID_INDEX_7 = 7U;
+constexpr uint32_t TQ4_CENTROID_INDEX_8 = 8U;
+constexpr uint32_t TQ4_CENTROID_INDEX_9 = 9U;
+constexpr uint32_t TQ4_CENTROID_INDEX_10 = 10U;
+constexpr uint32_t TQ4_CENTROID_INDEX_11 = 11U;
+constexpr uint32_t TQ4_CENTROID_INDEX_12 = 12U;
+constexpr uint32_t TQ4_CENTROID_INDEX_13 = 13U;
+constexpr uint32_t TQ4_CENTROID_INDEX_14 = 14U;
+constexpr uint32_t TQ4_CENTROID_INDEX_15 = 15U;
 
 __aicore__ inline void LoadTq4Centroids(LocalTensor<float> centroids)
 {
     centroids.SetValue(0, 0.00547294f);
     centroids.SetValue(1, 0.01680406f);
-    centroids.SetValue(2, 0.02857605f);
-    centroids.SetValue(3, 0.04108622f);
-    centroids.SetValue(4, 0.05492980f);
-    centroids.SetValue(5, 0.07101817f);
-    centroids.SetValue(6, 0.09115373f);
-    centroids.SetValue(7, 0.12037795f);
-    centroids.SetValue(8, -0.12091285f);
-    centroids.SetValue(9, -0.09111122f);
-    centroids.SetValue(10, -0.07112455f);
-    centroids.SetValue(11, -0.05513602f);
-    centroids.SetValue(12, -0.04132067f);
-    centroids.SetValue(13, -0.02874970f);
-    centroids.SetValue(14, -0.01700489f);
-    centroids.SetValue(15, -0.00568677f);
+    centroids.SetValue(TQ4_CENTROID_INDEX_2, 0.02857605f);
+    centroids.SetValue(TQ4_CENTROID_INDEX_3, 0.04108622f);
+    centroids.SetValue(TQ4_CENTROID_INDEX_4, 0.05492980f);
+    centroids.SetValue(TQ4_CENTROID_INDEX_5, 0.07101817f);
+    centroids.SetValue(TQ4_CENTROID_INDEX_6, 0.09115373f);
+    centroids.SetValue(TQ4_CENTROID_INDEX_7, 0.12037795f);
+    centroids.SetValue(TQ4_CENTROID_INDEX_8, -0.12091285f);
+    centroids.SetValue(TQ4_CENTROID_INDEX_9, -0.09111122f);
+    centroids.SetValue(TQ4_CENTROID_INDEX_10, -0.07112455f);
+    centroids.SetValue(TQ4_CENTROID_INDEX_11, -0.05513602f);
+    centroids.SetValue(TQ4_CENTROID_INDEX_12, -0.04132067f);
+    centroids.SetValue(TQ4_CENTROID_INDEX_13, -0.02874970f);
+    centroids.SetValue(TQ4_CENTROID_INDEX_14, -0.01700489f);
+    centroids.SetValue(TQ4_CENTROID_INDEX_15, -0.00568677f);
     PipeBarrier<PIPE_ALL>();
 }
 
