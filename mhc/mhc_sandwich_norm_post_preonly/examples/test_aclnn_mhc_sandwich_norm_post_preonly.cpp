@@ -117,7 +117,7 @@ int main()
         hOut.tensor, residual.tensor, hPost.tensor, hResOptional.tensor, phi.tensor, alpha.tensor, bias.tensor,
         gamma1.tensor, nullptr, gamma0.tensor, gamma2.tensor, 1e-6, 1e-6, 1e-6, false, hInPrimeOut.tensor, x2Out.tensor,
         nullptr, nullptr, &workspaceSize, &executor);
-    CHECK_RET(ret == ACLNN_SUCCESS, LOG_PRINT("GetWorkspaceSize failed, error: %d\n", ret); return -1);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("GetWorkspaceSize failed, error: %d\n", ret); return -1);
 
     void *workspace = nullptr;
     if (workspaceSize > 0) {
@@ -125,7 +125,7 @@ int main()
     }
     for (int64_t i = 0; i < repeat; ++i) {
         ret = aclnnMhcSandwichNormPostPreonly(workspace, workspaceSize, executor, stream);
-        CHECK_RET(ret == ACLNN_SUCCESS, LOG_PRINT("Execute failed, error: %d\n", ret); return -1);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Execute failed, error: %d\n", ret); return -1);
     }
     CHECK_RET(aclrtSynchronizeStream(stream) == ACL_SUCCESS, return -1);
     LOG_PRINT("MhcSandwichNormPostPreonly compute success!\n");
