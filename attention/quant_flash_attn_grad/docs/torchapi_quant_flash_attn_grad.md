@@ -697,7 +697,7 @@ cann_ops_transformer.quant_flash_attn_grad(
                 <td>
                     <ul>
                         <li>tensor_type仅支持float32</li>
-                        <li>shape为(B, Q_N, Q_S, 1)</li>
+                        <li>shape为(B, Q_N, Q_S)</li>
                     </ul>
                 </td>
             </tr>
