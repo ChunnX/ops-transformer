@@ -17,16 +17,16 @@
  *   - 无 ScaleA 通信（计算在前，通信的是输出 C）
  *   - 无 localMatmul 字段（无 LOCAL/REMOTE 双阶段）
  *
- * Tiling 结构 (v4 段级 tiling — 每段 tiling 的 m 必须等于该段实际逻辑 M):
- *   三段式各段的 fragment 数不同 (REMOTE 段 rankSize-1 个, LOCAL 段 1 个),
- *   调度器 tail 参数 (mTailMain/mBaseTailSplitCnt 等) 按设计 m 编码绝对位置,
- *   m 不匹配时 tile 形状非法 → L0A/L1 越界。故按段分别计算:
- *   - remoteHeadMmTilingData: REMOTE head 段 (m=(R-1)*headMSize)
- *   - remoteTailMmTilingData: REMOTE tail 段 (m=(R-1)*tailMSize, 无 tail 时置空)
- *   - localHeadMmTilingData:  LOCAL head tile (m=headMSize; T=1 时 = chunkM)
- *   - localTailMmTilingData:  LOCAL tail tile (m=tailMSize, 无 tail 时置空)
+ * Tiling 结构 (scope 级 tiling — 每个 scope 的 tiling m 必须等于该 scope 实际逻辑 M):
+ *   各 scope 的 fragment 数不同 (REMOTE: rankSize-1 个, LOCAL: 1 个), 调度器 tail 参数
+ *   (mTailMain/mBaseTailSplitCnt 等) 按设计 m 编码绝对位置, m 不匹配时 tile 形状非法
+ *   → L0A/L1 越界。故按 scope 分别计算:
+ *   - remoteHeadMmTilingData: REMOTE head 片段 (m=(R-1)*headMSize)
+ *   - remoteTailMmTilingData: REMOTE tail 片段 (m=(R-1)*tailMSize, 无 tail 时置空)
+ *   - localHeadMmTilingData:  LOCAL head 片段 (m=headMSize; T=1 时 = chunkM)
+ *   - localTailMmTilingData:  LOCAL tail 片段 (m=tailMSize, 无 tail 时置空)
  *   - mmTilingData: 全量 tiling, 仅取 usedCoreNum 作 blockDim/AIV 角色派生
- *   - blockDim 固定使用 mmTilingData.usedCoreNum（不随段级 tiling 变化）
+ *   - blockDim 固定使用 mmTilingData.usedCoreNum（不随 scope 级 tiling 变化）
  */
 
 #pragma once
@@ -61,7 +61,7 @@ struct QuantMatmulReduceScatterTilingData {
 };
 
 // 通信 tiles (splitAxisTileCnt + splitAxisTailCnt) 上限 — host/kernel 同源常量。
-// remote tile 通知 flagid 直接使用 tid (三轮评审意见1), 每 id 严格一次 Set ↔ 一次 Wait;
+// tile 通知 flagid 直接使用 tid (三轮评审意见1), 每 id 严格一次 Set ↔ 一次 Wait;
 // dav_3510 flagid 为 4bit (0-15): id 14 保留给 SyncAll<true> (SYNC_AIV_ONLY_ALL),
-// id 15 = LOCAL_DONE, tiles 可用 {0..13} ⇒ T ≤ 14。
+// id 15 保留未用, tiles 可用 {0..13} ⇒ T ≤ 14。
 constexpr uint32_t QMRS_MAX_COMM_TILES = 14;

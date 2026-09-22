@@ -176,7 +176,7 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n, co
     uint32_t tileCnt = headTileCnt + tailTileCnt;
 
     // 通信 tiles 上限校验: remote tile 通知 flagid 直接使用 tid (kernel 侧同源常量, 经 include 链引入).
-    // dav_3510 flagid 为 4bit: id 14 保留给 SyncAll<true>, id 15 = LOCAL_DONE, tiles 可用 {0..13} ⇒ T ≤ 14.
+    // dav_3510 flagid 为 4bit: id 14 保留给 SyncAll<true>, id 15 保留未用, tiles 可用 {0..13} ⇒ T ≤ 14.
     if (tileCnt > QMRS_MAX_COMM_TILES) {
         throw std::invalid_argument("ERROR: tileCnt=" + std::to_string(tileCnt) +
                                     " exceeds QMRS_MAX_COMM_TILES=" + std::to_string(QMRS_MAX_COMM_TILES) +
@@ -206,12 +206,11 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n, co
     tilingData.commTilingData.splitAxisTailCnt = static_cast<uint64_t>(tailTileCnt);
     tilingData.commTilingData.nonSplitAxisSize = static_cast<uint64_t>(n);
 
-    // 段级 tiling (v4): 三段式各段 fragment 数不同 (REMOTE 段 rankSize-1 个, LOCAL 段 1 个),
+    // scope 级 tiling: 各 scope fragment 数不同 (REMOTE: rankNum-1 个, LOCAL: 1 个),
     // 调度器 tail 参数 (mTailMain/mBaseTailSplitCnt 等) 按设计 m 编码绝对位置, m 不匹配时
-    // tile 形状非法 → L0A/L1 越界 (v2 存量 bug: sub/tail tiling 按旧语义计算导致 tail/T=1 case 崩溃)。
-    // 每段 tiling 的 m 必须等于该段实际逻辑 M:
-    //   REMOTE head 段 = (R-1)*headMSize, REMOTE tail 段 = (R-1)*tailMSize,
-    //   LOCAL head tile = headMSize, LOCAL tail tile = tailMSize (T=1 时 headMSize=chunkM)
+    // tile 形状非法 → L0A/L1 越界。每个 scope 的 tiling m 必须等于该 scope 实际逻辑 M:
+    //   REMOTE head 片段 = (R-1)*headMSize, REMOTE tail 片段 = (R-1)*tailMSize,
+    //   LOCAL head 片段 = headMSize, LOCAL tail 片段 = tailMSize (T=1 时 headMSize=chunkM)
     {
         QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN,
                               mm::BiasDataType::DT_FLOAT>

@@ -32,15 +32,15 @@
  *   - 无 R 循环: FragmentTensor 打包 rankSize 个 fragment, 一次调用覆盖一个 tile 的全部 rank 段
  *   - tid flag (三轮评审意见1): tile 通知直接用 tid 作 flagid, 每 id 严格一次 Set ↔ 一次 Wait,
  *     无轮转复用积压; flagid 空间: tiles {0..T-1} (T ≤ QMRS_MAX_COMM_TILES=14), 14 保留给
- *     SyncAll<true> (SYNC_AIV_ONLY_ALL), 15 保留 (v3 曾用作 LOCAL_DONE, v5 逐 tile 信号后闲置)
- *   - tiling 切换 L1 排空 (三轮评审意见3): 段间/段内 tiling 切换前 SetFlag/WaitFlag(MTE1_MTE2)
- *     排空 L1 (同 mx_quant_matmul_all_to_all_urma_impl.h), 防止新 tiling 的 MTE2 写覆盖未消费的 L1
+ *     SyncAll<true> (SYNC_AIV_ONLY_ALL), 15 保留未用
+ *   - tiling 切换 L1 排空 (三轮评审意见3): local↔remote 片段及 head→tail tiling 切换前
+ *     SetFlag/WaitFlag(MTE1_MTE2) 排空 L1 (同 mx_quant_matmul_all_to_all_urma_impl.h),
+ *     防止新 tiling 的 MTE2 写覆盖未消费的 L1
  *   - 并行跨卡 fence (三轮评审意见2): teamBarrier totalJobs=rankSize, R 个通信核各轮询 1 个远端 win,
  *     替代单核串行轮询全部远端; win 数据区起点随 barrier 区 (2*R*32) 后移对齐 128B
  *   - local 片段就绪: 随 tile flag (LOCAL+REMOTE 同 flag) + SyncAll#1 聚合, 无独立信号
- *   - 通算重叠 (v5, 性能): v2 将归约统一后移至收尾串行, 内存 Bound case 无法用通信时间掩盖
- *     AIV 访存 (cube 利用率仅 4~34%); v5 回归 v1 的逐 turn 掩盖结构 — reduceSum(t-1) 与 PUT(t)
- *     重叠, 且以 R 核并行 fence (三轮评审意见2) 替代 v1 的单核串行逐 turn fence
+ *   - 通算重叠 (v5): reduceSum(t-1) 与 PUT(t) 逐 turn 重叠, 用通信时间掩盖 AIV 归约访存
+ *     (内存 Bound case cube 利用率仅 4~34%, 串行归约无法掩盖); 逐 turn fence 为 R 核并行
  */
 
 #pragma once
@@ -120,7 +120,7 @@ private:
     TeamBarrier teamBarrier_;
 
     struct BaseParams {
-        GM_ADDR selfWinAddr{nullptr}; // 本卡通信窗口地址 (AIC 写入 C_i 的目标)
+        GM_ADDR selfWinAddr{nullptr}; // 本卡通信窗口数据区地址 (远端 rank PUT 落点, reduceSum 读取)
         GM_ADDR aGm{nullptr};
         GM_ADDR scaleAGm{nullptr};
         GM_ADDR bGm{nullptr};
@@ -149,8 +149,8 @@ private:
     // modeId 与既有形态一致 (kernel 内 Set 已移出, 形态仅在 impl 层使用)
     constexpr static uint8_t AIC_NOTIFY_MODE = 0x2;
     // tile 通知: flagid 直接使用 tid (三轮评审意见1), 每 id 严格一次 Set ↔ 一次 Wait,
-    // 无轮转复用积压 (旧 t%11 轮转在大 case 下 AIC 领先 ≥11 tile 时存在卡死风险)。
-    // flag 语义 = 本 block tile t 的 LOCAL+REMOTE 片段全部完成 (v5 逐 tile 交错)。
+    // 不做轮转复用 (同 id 连续两次 Set 在 AIC 领先时有丢失唤醒卡死风险)。
+    // flag 语义 = 本 block tile t 的 LOCAL+REMOTE 片段全部完成。
     // flagid 空间 (dav_3510 为 4bit): tiles {0..T-1}, T ≤ QMRS_MAX_COMM_TILES(14);
     // 14 保留给 SyncAll<true> (SYNC_AIV_ONLY_ALL), 15 保留未用, 二者与 tiles 不相交。
 
@@ -222,7 +222,7 @@ __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA,
     // selfWinAddr: 本 rank 的 win 区数据起始地址 (跳过 barrier 区域)
     // Barrier 布局 (totalJobs=rankSize): localFlag rank 槽位区 (R*32) + teamSyncCounter 任务槽位区
     // (R*32) = 2*R*32, 向上对齐 128B (R=2 → 128, R=4 → 256, R=8 → 512);
-    // PUT 数据从 WIN_DATA_OFFSET 开始写入, 不覆盖 barrier 区域
+    // PUT 数据从 winDataOffset 开始写入, 不覆盖 barrier 区域
     uint32_t rankSize = baseParams_.rankSize;
     constexpr uint64_t WIN_DATA_ALIGN = 128;
     uint64_t winDataOffset =
@@ -294,7 +294,7 @@ __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA,
 // 单 tile 单 scope 的 FragmentTensor matmul 调用 (统一参数装配, 无 R 循环)
 // isLocal=true: 仅本 rank 片段 (fragScope=LOCAL, 1 个 fragment), tiling 用 localHead/localTail (m=tileM);
 // isLocal=false: 仅 remote rank 片段 (fragScope=REMOTE, R-1 个 fragment), tiling 用 remoteHead/remoteTail
-// (m=(R-1)*tileM)。段级 tiling 的 m 必须等于该 scope 实际逻辑 M (v2 存量 bug 修复约束)。
+// (m=(R-1)*tileM)。scope 级 tiling 的 m 必须等于该 scope 实际逻辑 M (见 tiling_data.h 头注)。
 template <typename AType, typename BType, typename CType, bool TransA, bool TransB>
 __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA, TransB>::RunOneFragScope(
     uint32_t tileIdx, bool isLocal, const QuantMatmulTilingData &tileT)
@@ -338,8 +338,8 @@ __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA,
 
 // v5 逐 tile 交错: 每 tile 先 LOCAL 后 REMOTE 片段, 全部完成后 SetFlag(tid)。
 // flag 语义 = 本 block 的 tile t 两个片段全部完成 (PIPE_FIX 保证 fixpipe 写出后生效);
-// AIV 侧 Wait(tid)+SyncAll 聚合后即证全 AIC 核 tile t 完成 — PUT(t) 源数据与 reduceSum(t) 的
-// selfPartial 依赖同步就绪, 无需独立 LOCAL_DONE 信号。
+// AIV 侧 Wait(tid)+SyncAll 聚合后即证全 AIC 核 tile t 完成 — PUT(t) 源数据与 reduceSum 的
+// selfPartial 依赖同步就绪, 无需独立完成信号。
 // tiling 切换排空 (三轮评审意见3): local↔remote 片段 tiling 不同, 每次切换前排队空 L1
 // (与 mmad ctor/dtor flag 纪律冗余的防御性排空, 开销为空转 flag 对); head→tail 切换一次。
 template <typename AType, typename BType, typename CType, bool TransA, bool TransB>

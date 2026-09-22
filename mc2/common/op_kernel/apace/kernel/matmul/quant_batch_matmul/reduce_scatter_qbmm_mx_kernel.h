@@ -19,13 +19,13 @@
  *     → A 数据全在本卡 GM 连续 [m,k], 各 rank 段天然连续
  *     → FragmentTensor 打包本卡 GM 中各 rank 段的地址 (虽然连续, fragment 边界保持 L1 隔离)
  *     → C 输出到 workspace 连续 [m,n], FragmentTensor 打包 workspace 中各 rank 段地址
- *     → 无需 CrossCoreWaitFlag (计算不依赖通信); C→V 同步在 impl 层 per-tile SetFlag (v2 三段式)
+ *     → 无需 CrossCoreWaitFlag (计算不依赖通信); C→V 同步在 impl 层 per-tile SetFlag
  *
  * FragmentTensor 消除 R 循环的核心：
  *   - 完整逻辑 M 划分为 HEAD / MAIN(按轮) / TAIL 区域 (ResolveTileCtx):
  *     totalLogicalM = headMainRows + tileCnt * effRankCnt * tileM + tailRows
- *   - 当前调用方 (impl.h) 逐 tile 调用 (tileCnt=0, tailCnt=0), 仅触发 HEAD 区域,
- *     totalLogicalM 退化为 rankSize * curTileM
+ *   - 当前调用方 (impl.h) 逐 tile 逐 scope 调用 (tileCnt=0, tailCnt=0), 仅触发 HEAD 区域,
+ *     totalLogicalM 退化为 effRankCnt * curTileM (REMOTE scope: (R-1)*tileM / LOCAL scope: tileM)
  *   - BlockScheduler 遍历 totalLogicalM / baseM 个 tile
  *   - 当 tile 跨越 rank 边界时, FragmentSliceCopy 自动从不同 fragment 地址加载
  *   - 每个 fragment 保持独立的 L1 缓存上下文 (与 per-tile 子调用一致)
@@ -65,7 +65,7 @@ enum RegionTag {
     TAIL
 };
 
-// fragment 选择范围 (v2 三段式: 段1/2 仅 remote 片段, 段3 仅本 rank 片段)
+// fragment 选择范围 (调用方按 scope 逐次调用: REMOTE 调用仅 remote 片段, LOCAL 调用仅本 rank 片段)
 enum FragScope : uint8_t {
     FRAG_SCOPE_REMOTE = 0, // 仅 remote rank 片段 (rankSize−1 个, 升序剔除 self)
     FRAG_SCOPE_LOCAL = 1,  // 仅本 rank 片段 (1 个)
@@ -412,12 +412,12 @@ __aicore__ inline void QmmMxKernelRsFrag<AType, BType, CType>::BuildFragmentTens
     // 每个 fragment 指向 aGm + r * chunkM * K + tileOffset (当前 tile 在 chunkM 内的偏移)
     // tileOffset 由调用方通过 params.aGM 的偏移传入 (impl.h 设置 aGM = aGm + tileMOffset * K)
     if (fp.fragScope == FRAG_SCOPE_LOCAL) {
-        // 段3: 仅本 rank 片段 (1 个)
+        // LOCAL scope: 仅本 rank 片段 (1 个)
         headAddrListA_[0] = params.aGM + static_cast<uint64_t>(fp.rankId) * fp.mPerRank * params.dataBytesPerMRow;
         headAddrListScale_[0] =
             params.aScaleGM + static_cast<uint64_t>(fp.rankId) * fp.mPerRank * params.scaleBytesPerMRow;
         headAddrListC_[0] = cFragAddrs_[fp.rankId];
-    } else { // FRAG_SCOPE_REMOTE (段1/2: 升序遍历、剔除 self)
+    } else { // REMOTE scope: 升序遍历、剔除 self
         uint32_t idx = 0;
         for (uint32_t r = 0; r < fp.rankSize; ++r) {
             if (r == fp.rankId) {

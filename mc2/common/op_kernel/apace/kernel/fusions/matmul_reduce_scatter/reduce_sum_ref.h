@@ -105,12 +105,9 @@ public:
                                    static_cast<uint32_t>(AscendC::TOTAL_UB_SIZE / sizeof(SumType))};
         LocalTensor<IOType> ubIO{TPosition::VECIN, 0, static_cast<uint32_t>(AscendC::TOTAL_UB_SIZE / sizeof(IOType))};
 
-        // slot 布局按 maxSegLen 固定计算 (分段循环外), 全部段共用同一布局。
-        // v2 存量 bug: 布局曾按每段 segLen 重算, 尾段 (segLen < maxSegLen) 收缩后其 inIO slot
-        // 起始字节 4*segLen 落入前段 sum slot [0, 4*maxSegLen) 内 (重叠 maxSegLen-segLen 个元素);
-        // 且下段输入 DataCopy (MTE2 写) 与上段输出 DataCopy (MTE3 读) 之间无管道排序,
-        // 竞态导致前段输出尾部 (重叠区) 被下段输入数据覆写 — n=16384 时分段 (8528, 7856),
-        // 恰坏列 [7856, 8528) = 观测错误窗口。固定布局后各段 slot 互不重叠, 竞态消除。
+        // slot 布局按 maxSegLen 固定计算 (分段循环外), 全部段共用同一布局 —
+        // 若按各段 segLen 重算, 收缩尾段的 inIO slot 会落入前段 sum slot 内, 且 MTE2/MTE3
+        // 跨段无排序, 竞态覆写前段输出尾部 (根因详见文件头 v3 修复说明)。
         uint64_t slotIOElems = maxSegLen * sizeof(SumType) / sizeof(IOType);
         uint64_t sumElem = SLOT_SUM; // 累加器位于 slot#0
         uint64_t inIOElem[PINGPONG_NUM], inSumElem[PINGPONG_NUM];
