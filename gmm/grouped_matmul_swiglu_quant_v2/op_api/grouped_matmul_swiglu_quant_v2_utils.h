@@ -490,9 +490,7 @@ protected:
         if (transposeWeightScale && transposeWeight) {
             gmmDsqParams_.transposeWeight = true;
             if (!IsMxWeightNzMultiTensorSupported()) {
-                auto uniqueExecutor = CREATE_EXECUTOR();
-                CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
-                aclOpExecutor *executorPtr = uniqueExecutor.get();
+                aclOpExecutor *executorPtr = l0Executor_;
                 CHECK_RET(executorPtr != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
                 std::vector<aclTensor *> scaleTensorList;
                 std::vector<aclTensor *> weightTensorList;
@@ -514,7 +512,6 @@ protected:
                     OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "AllocTensorList for contiguous weight failed.");
                     return false;
                 }
-                uniqueExecutor.ReleaseTo(executor_);
             }
         }
 
@@ -614,9 +611,7 @@ protected:
 
         if (transposeWeight) {
             gmmDsqParams_.transposeWeight = true;
-            auto uniqueExecutor = CREATE_EXECUTOR();
-            CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
-            aclOpExecutor *executorPtr = uniqueExecutor.get();
+            aclOpExecutor *executorPtr = l0Executor_;
             CHECK_RET(executorPtr != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
             std::vector<aclTensor *> weightTensorList;
             if (!CreateContiguousTensorList(gmmDsqParams_.weight, weightTensorList, executorPtr)) {
@@ -627,7 +622,6 @@ protected:
                 OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "AllocTensorList for contiguous weight failed.");
                 return false;
             }
-            uniqueExecutor.ReleaseTo(executor_);
         }
         if ((gmmDsqParams_.x->GetViewShape().GetDim(0) == 1 && gmmDsqParams_.x->GetViewShape().GetDim(1) == 1) ||
             (gmmDsqParams_.xScale->GetViewShape().GetDim(0) == 1 &&
