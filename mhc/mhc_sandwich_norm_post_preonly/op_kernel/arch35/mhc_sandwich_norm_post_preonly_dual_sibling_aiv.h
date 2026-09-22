@@ -25,11 +25,16 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     LoadTokenWeights(token, postVals, headBegin, headBegin + 2U);
 
     // 两个lane按完全相同的分块和顺序冗余执行R1。
+    // D不超过平方缓存容量时一次归约完整D，减少每个分块的ReduceSum与GetValue等待。
     float sumSq0 = 0.0f;
-    for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
-        const uint32_t tD = GetTileD(tile);
-        const uint32_t tOff = tile * dimTile_;
-        sumSq0 += ReduceSumSqFromCache(tOff, tD);
+    if (D_ <= GAMMA1_CACHE_MAX_D) {
+        sumSq0 = ReduceSumSqFromCache(0, D_);
+    } else {
+        for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
+            const uint32_t tD = GetTileD(tile);
+            const uint32_t tOff = tile * dimTile_;
+            sumSq0 += ReduceSumSqFromCache(tOff, tD);
+        }
     }
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
 
@@ -40,20 +45,34 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         ComputeX2PostTileForLane(token, tOff, tD, invRms0, postVals);
         CacheX2TileForLane(token, tOff, tD, !USE_RMS_MID, false);
 
-        if constexpr (USE_RMS_MID) {
-            // 每个lane只归约自己负责的两个head，循环结束后交换半和。
-            LocalTensor<float> out = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-            LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
-            for (uint32_t half = laneId_; half < laneId_ + 1U; ++half) {
-                const uint32_t h0 = half * 2U;
-                const uint32_t h1 = h0 + 1;
-                MhcSandwichRegBase::PairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff],
-                                                       x2Cache[h1 * D_ + tOff], tD);
-                PipeBarrier<PIPE_V>();
-                midSqHalf[half] += ReduceSumPrecise(out, tD);
-            }
-        } else {
+        if constexpr (!USE_RMS_MID) {
             AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, laneId_, laneId_ + 1U);
+        }
+    }
+
+    if constexpr (USE_RMS_MID) {
+        // 每个lane只归约自己负责的两个head，循环结束后交换半和。
+        // D不超过平方缓存容量时一次归约完整D，减少每个分块的ReduceSum与GetValue等待。
+        if (D_ <= GAMMA1_CACHE_MAX_D) {
+            LocalTensor<float> out = bufGamma2Fp32_.Get<float>();
+            LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
+            const uint32_t h0 = laneId_ * 2U;
+            const uint32_t h1 = h0 + 1;
+            MhcSandwichRegBase::PairSquareB16ToFp32(out, x2Cache[h0 * D_], x2Cache[h1 * D_], D_);
+            PipeBarrier<PIPE_V>();
+            midSqHalf[laneId_] = ReduceSumPrecise(out, D_);
+        } else {
+            for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
+                const uint32_t tD = GetTileD(tile);
+                const uint32_t tOff = tile * dimTile_;
+                LocalTensor<float> out = bufResFp32_.Get<float>()[N_MAX * dimTile_];
+                LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
+                const uint32_t h0 = laneId_ * 2U;
+                const uint32_t h1 = h0 + 1;
+                MhcSandwichRegBase::PairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff], x2Cache[h1 * D_ + tOff], tD);
+                PipeBarrier<PIPE_V>();
+                midSqHalf[laneId_] += ReduceSumPrecise(out, tD);
+            }
         }
     }
 
@@ -156,15 +175,25 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
 
     float sumSq1 = 0.0f;
-    for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
-        const uint32_t tD = GetTileD(tile);
-        const uint32_t tOff = tile * dimTile_;
-        LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-        LocalTensor<T> x2Cache = bufX2Cache_.Get<T>()[tOff];
+    if (D_ <= GAMMA1_CACHE_MAX_D) {
+        // 一次归约完整D，减少每个分块的GateWeightedSum、ReduceSum与GetValue等待。
+        LocalTensor<float> hIn = bufGamma0Fp32_.Get<float>();
+        LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
         LocalTensor<float> gateBuf = bufScalar_.Get<float>()[EXP_DIV_ELEM];
-        MhcSandwichRegBase::GateWeightedSum<T>(hIn, x2Cache, D_, gateBuf, tD);
+        MhcSandwichRegBase::GateWeightedSum<T>(hIn, x2Cache, D_, gateBuf, D_);
         PipeBarrier<PIPE_V>();
-        sumSq1 += CacheHInAndReduceSumSq(tOff, tD, hIn);
+        sumSq1 = CacheHInAndReduceSumSq(0, D_, hIn);
+    } else {
+        for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
+            const uint32_t tD = GetTileD(tile);
+            const uint32_t tOff = tile * dimTile_;
+            LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
+            LocalTensor<T> x2Cache = bufX2Cache_.Get<T>()[tOff];
+            LocalTensor<float> gateBuf = bufScalar_.Get<float>()[EXP_DIV_ELEM];
+            MhcSandwichRegBase::GateWeightedSum<T>(hIn, x2Cache, D_, gateBuf, tD);
+            PipeBarrier<PIPE_V>();
+            sumSq1 += CacheHInAndReduceSumSq(tOff, tD, hIn);
+        }
     }
 
     StartCacheGamma1();

@@ -300,11 +300,16 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
     LoadTokenWeights(token, postVals);
 
     // 第一遍：沿完整D轴计算R1。
+    // D不超过平方缓存容量时一次归约完整D，减少每个分块的ReduceSum与GetValue等待。
     float sumSq0 = 0.0f;
-    for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
-        const uint32_t tD = GetTileD(tile);
-        const uint32_t tOff = tile * dimTile_;
-        sumSq0 += ReduceSumSqFromCache(tOff, tD);
+    if (D_ <= GAMMA1_CACHE_MAX_D) {
+        sumSq0 = ReduceSumSqFromCache(0, D_);
+    } else {
+        for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
+            const uint32_t tD = GetTileD(tile);
+            const uint32_t tOff = tile * dimTile_;
+            sumSq0 += ReduceSumSqFromCache(tOff, tD);
+        }
     }
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
 
@@ -316,19 +321,38 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
         ComputeX2PostTile(token, tOff, tD, invRms0, postVals);
         CacheX2Tile(token, tOff, tD, !USE_RMS_MID, false);
 
-        if constexpr (USE_RMS_MID) {
-            LocalTensor<float> out = bufResFp32_.Get<float>()[N_MAX * dimTile_];
+        if constexpr (!USE_RMS_MID) {
+            AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf);
+        }
+    }
+
+    if constexpr (USE_RMS_MID) {
+        // D不超过平方缓存容量时一次归约完整D，减少每个分块的ReduceSum与GetValue等待。
+        if (D_ <= GAMMA1_CACHE_MAX_D) {
+            LocalTensor<float> out = bufGamma2Fp32_.Get<float>();
             LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
             for (uint32_t half = 0; half < 2; ++half) {
                 const uint32_t h0 = half * 2;
                 const uint32_t h1 = h0 + 1;
-                MhcSandwichRegBase::PairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff],
-                                                       x2Cache[h1 * D_ + tOff], tD);
+                MhcSandwichRegBase::PairSquareB16ToFp32(out, x2Cache[h0 * D_], x2Cache[h1 * D_], D_);
                 PipeBarrier<PIPE_V>();
-                midSqHalf[half] += ReduceSumPrecise(out, tD);
+                midSqHalf[half] = ReduceSumPrecise(out, D_);
             }
         } else {
-            AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf);
+            for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
+                const uint32_t tD = GetTileD(tile);
+                const uint32_t tOff = tile * dimTile_;
+                LocalTensor<float> out = bufResFp32_.Get<float>()[N_MAX * dimTile_];
+                LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
+                for (uint32_t half = 0; half < 2; ++half) {
+                    const uint32_t h0 = half * 2;
+                    const uint32_t h1 = h0 + 1;
+                    MhcSandwichRegBase::PairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff],
+                                                           x2Cache[h1 * D_ + tOff], tD);
+                    PipeBarrier<PIPE_V>();
+                    midSqHalf[half] += ReduceSumPrecise(out, tD);
+                }
+            }
         }
     }
 
@@ -382,15 +406,25 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
     // 第三遍：计算R6和h_in低精度边界。在完整D轴的R7标量确定前，
     // 复用已经消费完的x2缓存首段保存低精度h_in。
     float sumSq1 = 0.0f;
-    for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
-        const uint32_t tD = GetTileD(tile);
-        const uint32_t tOff = tile * dimTile_;
-        LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-        LocalTensor<T> x2Cache = bufX2Cache_.Get<T>()[tOff];
+    if (D_ <= GAMMA1_CACHE_MAX_D) {
+        // 一次归约完整D，减少每个分块的GateWeightedSum、ReduceSum与GetValue等待。
+        LocalTensor<float> hIn = bufGamma0Fp32_.Get<float>();
+        LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
         LocalTensor<float> gateBuf = bufScalar_.Get<float>()[EXP_DIV_ELEM];
-        MhcSandwichRegBase::GateWeightedSum<T>(hIn, x2Cache, D_, gateBuf, tD);
+        MhcSandwichRegBase::GateWeightedSum<T>(hIn, x2Cache, D_, gateBuf, D_);
         PipeBarrier<PIPE_V>();
-        sumSq1 += CacheHInAndReduceSumSq(tOff, tD, hIn);
+        sumSq1 = CacheHInAndReduceSumSq(0, D_, hIn);
+    } else {
+        for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
+            const uint32_t tD = GetTileD(tile);
+            const uint32_t tOff = tile * dimTile_;
+            LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
+            LocalTensor<T> x2Cache = bufX2Cache_.Get<T>()[tOff];
+            LocalTensor<float> gateBuf = bufScalar_.Get<float>()[EXP_DIV_ELEM];
+            MhcSandwichRegBase::GateWeightedSum<T>(hIn, x2Cache, D_, gateBuf, tD);
+            PipeBarrier<PIPE_V>();
+            sumSq1 += CacheHInAndReduceSumSq(tOff, tD, hIn);
+        }
     }
 
     // 第四遍：沿完整D轴计算R7并写最终输出。
