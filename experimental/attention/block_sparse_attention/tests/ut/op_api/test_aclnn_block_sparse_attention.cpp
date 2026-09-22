@@ -23,9 +23,15 @@ using namespace op;
 
 class aclnn_block_sparse_attention_v1_ut : public testing::Test {
 protected:
-    static void SetUpTestCase() { cout << "aclnn_block_sparse_attention_v1_ut SetUp" << endl; }
+    static void SetUpTestCase()
+    {
+        cout << "aclnn_block_sparse_attention_v1_ut SetUp" << endl;
+    }
 
-    static void TearDownTestCase() { cout << "aclnn_block_sparse_attention_v1_ut TearDown" << endl; }
+    static void TearDownTestCase()
+    {
+        cout << "aclnn_block_sparse_attention_v1_ut TearDown" << endl;
+    }
 };
 
 namespace {
@@ -530,25 +536,25 @@ TEST_F(aclnn_block_sparse_attention_v1_ut, bsnd_layout_consistent)
     auto attentionOut = TensorDesc({batch, qSeqlen, numHeads, headDim}, ACL_FLOAT16, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnBlockSparseAttention,
-                        INPUT(query,             // query
-                              key,               // key
-                              value,             // value
-                              blockSparseMask,   // blockSparseMask
-                              nullptr,           // attenMask
-                              blockShape,        // blockShape
-                              nullptr,           // actualSeqLengths
-                              nullptr,           // actualSeqLengthsKv
-                              nullptr,           // blockTable
-                              qInputLayout,      // qInputLayout
-                              kvInputLayout,     // kvInputLayout
-                              numKvHeads,        // numKeyValueHeads
-                              0,                 // maskType
-                              scaleValue,        // scaleValue
-                              0,                 // innerPrecise
-                              0,                 // blockSize
-                              2147483647,        // preTokens
-                              2147483647,        // nextTokens
-                              0                  // softmaxLseFlag
+                        INPUT(query,           // query
+                              key,             // key
+                              value,           // value
+                              blockSparseMask, // blockSparseMask
+                              nullptr,         // attenMask
+                              blockShape,      // blockShape
+                              nullptr,         // actualSeqLengths
+                              nullptr,         // actualSeqLengthsKv
+                              nullptr,         // blockTable
+                              qInputLayout,    // qInputLayout
+                              kvInputLayout,   // kvInputLayout
+                              numKvHeads,      // numKeyValueHeads
+                              0,               // maskType
+                              scaleValue,      // scaleValue
+                              0,               // innerPrecise
+                              0,               // blockSize
+                              2147483647,      // preTokens
+                              2147483647,      // nextTokens
+                              0                // softmaxLseFlag
                               ),
                         OUTPUT(attentionOut, nullptr));
 
