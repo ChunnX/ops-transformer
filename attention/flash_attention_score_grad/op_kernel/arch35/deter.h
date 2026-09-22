@@ -3252,44 +3252,6 @@ __aicore__ inline void CalTNDCausalLineIndex(const __gm__ uint8_t *actualSeqQlen
 }
 
 template <const int64_t CUBE_BASEM, const int64_t CUBE_BASEN>
-__aicore__ inline void CalTNDDenseLineIndex(const __gm__ uint8_t *actualSeqQlenAddr,
-                                            const __gm__ uint8_t *actualSeqKvlenAddr, const __gm__ int64_t *prefix,
-                                            int64_t b, int64_t n1, int64_t k, int64_t j, int64_t r, int64_t step,
-                                            CoordinateInfo &coordinateInfo)
-{
-    coordinateInfo.batchId = -1;
-    const int64_t bucket = BinarySearch(prefix, b, r, step);
-    int64_t a = r - prefix[bucket];
-    int64_t batch = bucket * step;
-    while (batch < b && a > 0) {
-        int64_t runHead = batch;
-        int64_t runEnd = batch;
-        int64_t m = 0;
-        int64_t n = 0;
-        ExpandTNDCausalRun<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, b, batch, true, runHead,
-                                                   runEnd, m, n, coordinateInfo);
-        if (batch > runHead || m <= 0 || n <= 0) {
-            batch = runEnd + 1;
-            continue;
-        }
-        const int64_t copies = (runEnd - runHead + 1) * n1;
-        const int64_t rounds = Ceil<int64_t>(n * copies, k) * m;
-        if (a <= rounds) {
-            int64_t w = 0;
-            int64_t x = 0;
-            int64_t y = 0;
-            if (CalTNDDenseLine(k, m, n, copies, j, a, w, x, y)) {
-                BindTNDCausalMappedBatch<CUBE_BASEM, CUBE_BASEN, true>(actualSeqQlenAddr, actualSeqKvlenAddr, runHead,
-                                                                       n1, w, x, y, coordinateInfo);
-            }
-            return;
-        }
-        a -= rounds;
-        batch = runEnd + 1;
-    }
-}
-
-template <const int64_t CUBE_BASEM, const int64_t CUBE_BASEN>
 __aicore__ inline void CalTNDBandLineIndex(const __gm__ uint8_t *actualSeqQlenAddr,
                                            const __gm__ uint8_t *actualSeqKvlenAddr, const __gm__ int64_t *prefix,
                                            int64_t b, int64_t n1, int64_t k, int64_t j, int64_t r, int64_t step,

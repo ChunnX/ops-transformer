@@ -259,22 +259,6 @@ inline bool PreferTNDLineDeter(FuzzyBaseInfoParamsRegbase &p)
     if (p.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL) && !p.isS1S2Same) {
         return false;
     }
-    if (p.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE)) {
-        bool hasWork = false;
-        for (int64_t batch = 0; batch < p.b; ++batch) {
-            int64_t m = 0;
-            int64_t n = 0;
-            GetTNDOuterMN(p, batch, m, n);
-            if (m == 0 || n == 0) {
-                continue;
-            }
-            if (p.n2 < NUM_TWO || m != n || m * n <= TND_LINE_TINY_AREA) {
-                return false;
-            }
-            hasWork = true;
-        }
-        return hasWork && p.aicNum > 0;
-    }
     if (p.deterSparseType != static_cast<uint32_t>(DeterSparseType::DETER_CAUSAL) &&
         p.deterSparseType != static_cast<uint32_t>(DeterSparseType::DETER_BAND)) {
         return false;
@@ -352,17 +336,16 @@ inline TNDLineDeterPack BuildTNDLineDeter(FuzzyBaseInfoParamsRegbase &p)
                         (p.sparseMode == static_cast<uint32_t>(SparseMode::NO_MASK) &&
                          p.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND));
     const bool leftUp = !isBand && (p.sparseMode != static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL));
-    const bool isDense = p.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE);
     for (int64_t batch = 0; batch < p.b; ++batch) {
         int64_t m = 0;
         int64_t n = 0;
         GetTNDOuterMN(p, batch, m, n);
-        if (!isBand && !isDense) {
+        if (!isBand) {
             const TNDRunShape shape = MakeTNDCausalRunShape(p, batch, leftUp);
             m = shape.m;
             n = shape.n;
         }
-        const int64_t tasks = !isBand && !isDense && m == 1 && n == 1 ? n1 : 0;
+        const int64_t tasks = !isBand && m == 1 && n == 1 ? n1 : 0;
         pack.prefixSingle.push_back(pack.prefixSingle.back() + tasks);
     }
     const int64_t singleRounds = CeilDivideBy(pack.prefixSingle.back(), k);
@@ -377,9 +360,7 @@ inline TNDLineDeterPack BuildTNDLineDeter(FuzzyBaseInfoParamsRegbase &p)
         const bool runHasSingle = (total % NUM_TWO == 1);
         int64_t runSolo = 0;
         if (!TNDRunEmpty(shape, isBand)) {
-            if (isDense) {
-                runSolo = CeilDivideBy(shape.n * total, k) * shape.m;
-            } else if (!isBand && shape.m == 1 && shape.n == 1) {
+            if (!isBand && shape.m == 1 && shape.n == 1) {
                 runSolo = 0;
             } else if (!isBand) {
                 int64_t virtM = 0;

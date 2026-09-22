@@ -442,13 +442,7 @@ __aicore__ inline int64_t FlashAttentionScoreGradKernelDeter<CubeBlockType, VecB
     int64_t r = roundId + 1;
 
     if constexpr (BaseClass::IS_TND) {
-        if (this->tilingData->deterParam.tndLineDeter != 0) {
-            CalTNDDenseLineIndex<BaseClass::CUBE_BASEM, BaseClass::CUBE_BASEN>(
-                this->actualSeqQlenAddr, this->actualSeqKvlenAddr, this->tilingData->deterParam.deterPrefix0,
-                this->constInfo.bSize, this->constInfo.n2Size,
-                static_cast<int64_t>(this->tilingData->s1s2BNGS1S2BaseParams.coreNum / NUM_TWO), j, r,
-                this->tilingData->deterParam.deterPrefixStep, coordinateInfo);
-        } else if constexpr (IS_TND_SWIZZLE) {
+        if constexpr (IS_TND_SWIZZLE) {
             CalTNDDenseSwizzleIndex<BaseClass::CUBE_BASEM, BaseClass::CUBE_BASEN>(
                 this->actualSeqQlenAddr, this->actualSeqKvlenAddr,
                 this->tilingData->tndSwizzleParam.tndS2BlockPrefixSum, this->constInfo.bSize, this->constInfo.n2Size,
