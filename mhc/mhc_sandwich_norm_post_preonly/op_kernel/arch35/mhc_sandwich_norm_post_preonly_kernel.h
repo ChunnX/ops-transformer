@@ -107,13 +107,6 @@ public:
             partial1Gm_.SetGlobalBuffer((__gm__ float *)workspace, (uint64_t)totalTokens_ * 2U * PARTIAL_SLOT_ELEMS);
         }
 
-        // L2缓存策略：流式输入输出只读/只写一次，标记不缓存，避免污染L2、
-        // 给跨token共享的phi/gamma权重腾出L2常驻空间。
-        hOutGm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
-        residualGm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
-        hInPrimeGm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
-        x2OutGm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
-
         // UB空间分配
         pipe_.InitBuffer(bufHOutBf16_, BUFFER_NUM_ONE, dimTile_ * sizeof(T));
         pipe_.InitBuffer(bufGamma0Fp32_, D_ * sizeof(float));
