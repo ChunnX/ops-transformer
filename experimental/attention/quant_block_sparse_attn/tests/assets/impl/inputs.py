@@ -337,9 +337,12 @@ def _mxfp8_assemble_case(
     normalized_blocknum = None if blocknum is None else int(blocknum)
     return {
         "B": batch,
-        "N1": int(query.shape[1]),
+        "N1": int(query.shape[2] if layout_q == "BSND" else query.shape[1]),
         "N2": int(key.shape[1]),
         "D": int(query.shape[-1]),
+        "S1_max": int(query.shape[1 if layout_q == "BSND" else 2])
+        if layout_q in ("BSND", "BNSD")
+        else None,
         "cu_seqlens_q": cu_q,
         "cu_seqlens_kv": cu_kv,
         "seqused_q": seq_q,
@@ -463,7 +466,12 @@ def _mxfp8_customize_inputs(
     k_scale_pa = data["k_descale"]
     v_scale_pa = data["v_descale"]
 
-    _inplace_copy(query, data["query"])
+    sq = int(query.shape[1 if layout_q == "BSND" else 2]) if layout_q != "TND" else None
+    query_input = module.pack_padded_query(
+        data["query"], data["q_lengths"], layout_q, sq
+    )
+    q_scale = module.pack_padded_query(q_scale, data["q_lengths"], layout_q, sq)
+    _inplace_copy(query, query_input)
     _inplace_copy(key, key_pa)
     _inplace_copy(value, value_pa)
     _inplace_copy(q_descale, q_scale)

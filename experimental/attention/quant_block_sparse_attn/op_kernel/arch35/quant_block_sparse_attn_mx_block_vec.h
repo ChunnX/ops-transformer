@@ -55,8 +55,9 @@ public:
     static constexpr uint32_t VEC_M_BASE = M_BASE >> 1U;
     static constexpr uint32_t D_BASE = static_cast<uint32_t>(dTemplateType);
     static constexpr uint32_t DV_BASE = static_cast<uint32_t>(dVTemplateType);
-    static_assert(LAYOUT == QBSALayout::TND && KV_LAYOUT == QBSALayout::PA_BNBD && IS_PA,
-                  "MX vector currently only supports TND query and PA_BNBD KV");
+    static_assert((LAYOUT == QBSALayout::TND || LAYOUT == QBSALayout::BSND || LAYOUT == QBSALayout::BNSD) &&
+                      KV_LAYOUT == QBSALayout::PA_BNBD && IS_PA,
+                  "MX vector currently supports TND/BSND/BNSD query and PA_BNBD KV");
     static_assert(M_BASE == 128U && S2_BASE == 512U && D_BASE == 128U && DV_BASE == 128U,
                   "MX vector currently only supports S1=128, S2=512, D=128 and DV=128");
     // V2 比 V1 延迟三个 task，四槽状态避免 V1 覆盖尚未被 V2 消费的 softmax 状态。
@@ -184,8 +185,10 @@ public:
             outCopyParams.blockCount = actVecMSize;
             outCopyParams.srcStride = 0U;
             outCopyParams.dstStride = constInfo.attentionOutStride;
-            const uint64_t tokenOffset = static_cast<uint64_t>(queryTokenBase) + s1Idx + vecMbaseIdx;
-            const uint64_t outOffset = (tokenOffset * constInfo.realN2Size + n1Idx) * constInfo.dSizeV;
+            const uint32_t querySequenceOffset = s1Idx + vecMbaseIdx;
+            const uint64_t outOffset = MxQuerySlot<LAYOUT>(queryTokenBase, querySequenceOffset, n1Idx,
+                                                           constInfo.realN2Size, constInfo.qSeqSize) *
+                                       constInfo.dSizeV;
             // 空行是冷路径，复用 V1 queue 作为临时零块，避免常驻占用 16 KiB UB。
             LocalTensor<OUTPUT_T> emptyOut = stage1OutQue_[0].template AllocTensor<OUTPUT_T>();
             Duplicate<OUTPUT_T>(emptyOut, 0.0F, actVecMSize * constInfo.dSizeV);
@@ -200,7 +203,8 @@ public:
                 lseCopyParams.blockCount = actVecMSize;
                 lseCopyParams.srcStride = 0U;
                 lseCopyParams.dstStride = constInfo.softmaxLseStride;
-                const uint64_t lseOffset = tokenOffset * constInfo.realN2Size + n1Idx;
+                const uint64_t lseOffset = MxLseSlot<LAYOUT>(queryTokenBase, querySequenceOffset, n1Idx,
+                                                             constInfo.realN2Size, constInfo.qSeqSize);
                 LocalTensor<float> emptyLse = softmaxLseQueue_.template AllocTensor<float>();
                 // UB->GM 以 4B block 搬运时，每行源数据占一个 32B data block。
                 // 与 ComputeLseOutputVF 的 E2B 布局保持一致，避免第 2 行起读取未初始化的 32B 槽位。
@@ -546,7 +550,7 @@ private:
             FaVectorApi::RowInvalidUpdateVF<MM_T>(vec2ResUb, maxUb, runInfo.actVecMSize, constInfo.dSizeV,
                                                   static_cast<int64_t>(dTemplateAlign64));
         }
-        // 按 TND token/head stride 写回。
+        // 按编译期 Q/output layout 的 token/head stride 写回。
         LocalTensor<OUTPUT_T> attenOut;
         attenOut.SetAddr(vec2ResUb.address_);
         Cast(attenOut, vec2ResUb, RoundMode::CAST_ROUND, static_cast<int64_t>(runInfo.actVecMSize) * dTemplateAlign64);
@@ -558,9 +562,9 @@ private:
         dataCopyParams.blockCount = runInfo.actVecMSize;
         dataCopyParams.srcStride = (dTemplateAlign64 - constInfo.dSizeV) >> 4;
         dataCopyParams.dstStride = constInfo.attentionOutStride;
-        const uint64_t tokenOffset =
-            static_cast<uint64_t>(runInfo.queryTokenBase) + runInfo.s1Idx + runInfo.vecMbaseIdx;
-        const uint64_t dstOffset = (tokenOffset * constInfo.realN2Size + runInfo.realN2Idx) * constInfo.dSizeV;
+        const uint64_t dstOffset = MxQuerySlot<LAYOUT>(runInfo.queryTokenBase, runInfo.s1Idx + runInfo.vecMbaseIdx,
+                                                       runInfo.realN2Idx, constInfo.realN2Size, constInfo.qSeqSize) *
+                                   constInfo.dSizeV;
         DataCopyPad(attentionOutGm_[dstOffset], attenOut, dataCopyParams);
     }
 
@@ -576,9 +580,8 @@ private:
         dataCopyParams.blockCount = runInfo.actVecMSize;
         dataCopyParams.srcStride = 0;
         dataCopyParams.dstStride = constInfo.softmaxLseStride;
-        const uint64_t tokenOffset =
-            static_cast<uint64_t>(runInfo.queryTokenBase) + runInfo.s1Idx + runInfo.vecMbaseIdx;
-        const uint64_t dstOffset = tokenOffset * constInfo.realN2Size + runInfo.realN2Idx;
+        const uint64_t dstOffset = MxLseSlot<LAYOUT>(runInfo.queryTokenBase, runInfo.s1Idx + runInfo.vecMbaseIdx,
+                                                     runInfo.realN2Idx, constInfo.realN2Size, constInfo.qSeqSize);
         DataCopyPad(softmaxLseGm_[dstOffset], lseUb, dataCopyParams);
         softmaxLseQueue_.template FreeTensor(lseUb);
     }

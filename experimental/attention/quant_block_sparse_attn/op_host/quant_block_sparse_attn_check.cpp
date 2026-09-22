@@ -177,17 +177,19 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckAttrs() const
         return ge::GRAPH_FAILED;
     }
 
-    if (tilingInfo_.quantModeVal == QBSA_QUANT_MODE_FP8 && tilingInfo_.layoutOutStr != "TND") {
+    if (tilingInfo_.quantModeVal == QBSA_QUANT_MODE_FP8 &&
+        (tilingInfo_.layoutOutStr != "TND" || (tilingInfo_.layoutQStr != "TND" && tilingInfo_.layoutQStr != "NTD"))) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "layout_out", tilingInfo_.layoutOutStr,
                                               "Must be TND in quant_mode=1 FP8 scenario");
         return ge::GRAPH_FAILED;
     }
 
     if (tilingInfo_.quantModeVal == QBSA_QUANT_MODE_MXFP8_FULL_QUANT) {
-        if (tilingInfo_.layoutQStr != "TND" || tilingInfo_.layoutOutStr != "TND") {
+        if ((tilingInfo_.layoutQStr != "TND" && tilingInfo_.layoutQStr != "BSND" && tilingInfo_.layoutQStr != "BNSD") ||
+            tilingInfo_.layoutOutStr != tilingInfo_.layoutQStr) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "layout_q/layout_out",
                                                   tilingInfo_.layoutQStr + "/" + tilingInfo_.layoutOutStr,
-                                                  "Must both be TND in quant_mode=2 MXFP8 full-quant scenario");
+                                                  "MXFP8 requires matching layout_q/layout_out: TND, BSND or BNSD");
             return ge::GRAPH_FAILED;
         }
         OP_LOGD(kOpName, "quant_mode=2 maps to queryQuantMode/keyAntiquantMode/valueAntiquantMode=%u/%u/%u",
@@ -424,15 +426,21 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckExistence() const
                                               "Block_table is required for PA execution path");
         return ge::GRAPH_FAILED;
     }
-    if (opParamInfo.cuSeqlensQ.tensor == nullptr) {
+    const bool paddedQ = tilingInfo_.layoutQStr == "BSND" || tilingInfo_.layoutQStr == "BNSD";
+    if (paddedQ && opParamInfo.cuSeqlensQ.tensor != nullptr) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "cu_seqlens_q", "non-null",
+                                              "BSND/BNSD requires null cu_seqlens_q; query length comes from shape S");
+        return ge::GRAPH_FAILED;
+    }
+    if (!paddedQ && opParamInfo.cuSeqlensQ.tensor == nullptr) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "cu_seqlens_q", "nullptr",
-                                              "Cu_seqlens_q is required for TND/NTD query layout "
+                                              "cu_seqlens_q is required to describe effective query lengths "
                                               "with PA BNBD KV-cache");
         return ge::GRAPH_FAILED;
     }
     if (opParamInfo.seqUsedKV.tensor == nullptr) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "seqused_kv", "nullptr",
-                                              "Seqused_kv is required for TND/NTD query layout "
+                                              "Seqused_kv is required for PA KV layout "
                                               "with PA BNBD KV-cache");
         return ge::GRAPH_FAILED;
     }
@@ -869,9 +877,62 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckMXFP8FullQuantShape() const
         static_cast<int64_t>(tilingInfo_.paBlockNumSum), static_cast<int64_t>(tilingInfo_.n2Size), valueScaleBlockSize,
         static_cast<int64_t>(tilingInfo_.dSizeV), QBSA_MXFP8_SCALE_LAST_DIM};
 
-    if (CheckInputShape(opParamInfo.query, "query", queryShapeExpect) != ge::GRAPH_SUCCESS ||
-        CheckInputShape(opParamInfo.qDescale, "q_descale", queryAntiquantScaleShape) != ge::GRAPH_SUCCESS ||
-        CheckInputShape(opParamInfo.key, "key", keyShapeExpect) != ge::GRAPH_SUCCESS ||
+    if (tilingInfo_.qSeqSize != 0U) {
+        const int64_t batchSize = tilingInfo_.bSize;
+        const int64_t querySequenceLength = tilingInfo_.qSeqSize;
+        const int64_t queryHeadCount = tilingInfo_.n1Size;
+        const bool isBsndLayout = tilingInfo_.layoutQStr == "BSND";
+        const std::array<int64_t, DIM_NUM_4> qShape = {batchSize, isBsndLayout ? querySequenceLength : queryHeadCount,
+                                                       isBsndLayout ? queryHeadCount : querySequenceLength,
+                                                       tilingInfo_.dSize};
+        const std::array<int64_t, DIM_NUM_5> qScaleShape = {
+            batchSize, isBsndLayout ? querySequenceLength : queryHeadCount,
+            isBsndLayout ? queryHeadCount : querySequenceLength, scaleDSize, QBSA_MXFP8_SCALE_LAST_DIM};
+        const std::array<int64_t, DIM_NUM_4> outShape = {batchSize, isBsndLayout ? querySequenceLength : queryHeadCount,
+                                                         isBsndLayout ? queryHeadCount : querySequenceLength,
+                                                         tilingInfo_.dSizeV};
+        const std::array<int64_t, DIM_NUM_3> lseShape = {batchSize, queryHeadCount, querySequenceLength};
+        if (CheckInputShape(opParamInfo.query, "query", qShape) != ge::GRAPH_SUCCESS ||
+            CheckInputShape(opParamInfo.qDescale, "q_descale", qScaleShape) != ge::GRAPH_SUCCESS ||
+            CheckInputShape(opParamInfo.attnOut, "attention_out", outShape) != ge::GRAPH_SUCCESS ||
+            (tilingInfo_.returnSoftmaxLseVal &&
+             CheckInputShape(opParamInfo.lseOut, "softmax_lse", lseShape) != ge::GRAPH_SUCCESS)) {
+            return ge::GRAPH_FAILED;
+        }
+        // An absent stride describes a dense tensor. Explicit views must be contiguous.
+        const QBSARequiredParaInfo *denseInputs[] = {&opParamInfo.query, &opParamInfo.qDescale};
+        for (const auto *input : denseInputs) {
+            if (input->stride == nullptr || input->stride->GetDimNum() == 0U) {
+                continue;
+            }
+            const auto &shape = input->shape->GetStorageShape();
+            if (input->stride->GetDimNum() != shape.GetDimNum()) {
+                OP_LOGE(kOpName, "Padded Q/QScale stride rank must match shape");
+                return ge::GRAPH_FAILED;
+            }
+            uint64_t stride = 1U;
+            for (size_t i = shape.GetDimNum(); i > 0U; --i) {
+                // A singleton index is always zero; its stride cannot affect the
+                // dense addresses used by the kernel (e.g. BNSD with N == 1).
+                if (shape.GetDim(i - 1U) == 1) {
+                    continue;
+                }
+                if (static_cast<uint64_t>(input->stride->GetStride(i - 1U)) != stride) {
+                    OP_LOGE(kOpName, "Padded Q/QScale must be contiguous");
+                    return ge::GRAPH_FAILED;
+                }
+                stride *= static_cast<uint64_t>(shape.GetDim(i - 1U));
+            }
+        }
+        if (tilingInfo_.qbMax < QBSACeilDiv(tilingInfo_.qSeqSize, tilingInfo_.qBlockSizeVal)) {
+            OP_LOGE(kOpName, "Sparse query rows must cover physical Sq");
+            return ge::GRAPH_FAILED;
+        }
+    } else if (CheckInputShape(opParamInfo.query, "query", queryShapeExpect) != ge::GRAPH_SUCCESS ||
+               CheckInputShape(opParamInfo.qDescale, "q_descale", queryAntiquantScaleShape) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (CheckInputShape(opParamInfo.key, "key", keyShapeExpect) != ge::GRAPH_SUCCESS ||
         CheckInputShape(opParamInfo.value, "value", valueShapeExpect) != ge::GRAPH_SUCCESS ||
         CheckInputShape(opParamInfo.kDescale, "k_descale", keyAntiquantScaleShape) != ge::GRAPH_SUCCESS ||
         CheckInputShape(opParamInfo.vDescale, "v_descale", valueAntiquantScaleShape) != ge::GRAPH_SUCCESS) {
