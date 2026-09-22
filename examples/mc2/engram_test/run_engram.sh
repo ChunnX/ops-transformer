@@ -249,6 +249,7 @@ while IFS="|" read -r case_name input_tensor_shape input_tensor_dtype input_tens
         --fetch_indicies "$fetch_indicies"
         --world_size "$world_size"
         --master_port $((50008 + current_case))
+        --prep_cache_dir ./prep_cache
     )
     # 可选参数
     if [[ "$num_cpu_bytes" != "0" ]]; then
@@ -279,18 +280,13 @@ while IFS="|" read -r case_name input_tensor_shape input_tensor_dtype input_tens
     echo "${cmd_args[@]}"
     echo "------------------------------------------------"
 
-    # ===== Phase 1: 数据准备 (不排队)，容错模式：失败记录后继续下一条用例 =====
+    # ===== Phase 1: 数据准备 (不排队，写 mmap prep 缓存)，容错模式：失败记录后继续下一条用例 =====
     echo "[PREP] 开始数据准备: $case_name"
     prep_ret=0
     "${cmd_args[@]}" --prep_only || prep_ret=$?
     if [[ $prep_ret -ne 0 ]]; then
         echo "[ERROR] 数据准备失败: $case_name, 返回码: $prep_ret"
         FAILED_CASES+=("${case_name}(prep:${prep_ret})")
-        prep_data_file="./${case_name}_prep_data.pt"
-        if [[ -f "$prep_data_file" ]]; then
-            rm -f "$prep_data_file"
-            echo "[INFO] 已清理预准备数据文件: $prep_data_file"
-        fi
         echo "[INFO] 当前测试用例【${case_name}】性能数据存放路径：${PROF_TMP_DIR:-$PWD/profiling_data/${case_name}_profiling}"
         echo "================================================================"
         continue
@@ -309,12 +305,6 @@ while IFS="|" read -r case_name input_tensor_shape input_tensor_dtype input_tens
         SUCCESS_CASES+=("$case_name")
     fi
 
-    # 清理预准备数据文件
-    prep_data_file="./${case_name}_prep_data.pt"
-    if [[ -f "$prep_data_file" ]]; then
-        rm -f "$prep_data_file"
-        echo "[INFO] 已清理预准备数据文件: $prep_data_file"
-    fi
     echo "------------------------------------------------"
 
     echo "[INFO] 当前测试用例【${case_name}】性能数据存放路径：${PROF_TMP_DIR:-$PWD/profiling_data/${case_name}_profiling}"
@@ -323,6 +313,11 @@ done <<< "$data_output"
 
 echo "[FINISH] 全部 $total_cases 条测试用例执行完毕"
 echo "================================================================"
+# prep 缓存(mmap)保留: 供 local/sliced 配对用例与重跑复用, 不随批跑清理
+if [[ -d ./prep_cache ]]; then
+    echo "[INFO] prep_cache 缓存目录大小: $(du -sh ./prep_cache 2>/dev/null)"
+fi
+echo "[INFO] prep_cache 缓存保留供 local/sliced 配对与重跑复用, 手动清理用 --purge_prep_cache"
 echo "[SUMMARY] 用例执行结果汇总 (SUCCESS: ${#SUCCESS_CASES[@]} / FAILED: ${#FAILED_CASES[@]} / 总数: $total_cases):"
 for c in ${SUCCESS_CASES[@]+"${SUCCESS_CASES[@]}"}; do
     echo "  [SUCCESS] $c"

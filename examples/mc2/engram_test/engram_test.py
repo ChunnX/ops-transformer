@@ -2,7 +2,6 @@ import argparse
 import ast
 import csv
 import multiprocessing as mp
-import multiprocessing.shared_memory as shm
 import os
 import random
 import shutil
@@ -18,6 +17,7 @@ import torch.distributed as dist
 from torch.multiprocessing import Process, Manager
 
 from cann_ops_transformer import ElasticBuffer
+import prep_cache
 
 try:
     import psutil
@@ -103,6 +103,15 @@ def parse_cli_args(num_entries_total_global, hidden_size_global,
                         help='CPU亲和性映射，格式"0-3:288-383;4-7:96-191"，默认空=关闭')
     parser.add_argument("--verify_write", action="store_true",
                         help="engram_write后读取host窗口指针与write golden比对(默认关闭)")
+    parser.add_argument("--prep_cache_dir", type=str, default="./prep_cache",
+                        help="prep数据缓存目录(mmap分块直写), 默认./prep_cache")
+    parser.add_argument("--data_pattern", type=str, default="random", choices=["random", "arange"],
+                        help="数据生成模式: random(默认,随机内容) / arange(行号派生,近零成本,perf冒烟用)")
+    parser.add_argument("--drop_page_cache", action="store_false", dest="drop_page_cache",
+                        help="engram_write完成后对storage/sf的mmap调madvise(MADV_DONTNEED)释放页缓存"
+                             "(默认开启, 传此参数关闭)")
+    parser.add_argument("--purge_prep_cache", action="store_true",
+                        help="仅prep阶段生效: 先清空缓存目录再生成")
 
     args = parser.parse_args()
 
@@ -270,7 +279,8 @@ def parse_cli_args(num_entries_total_global, hidden_size_global,
     return (num_entries_total, hidden_size, storage_type, val_min, val_max, fetch_token_num,
             world_size, num_cpu_bytes, case_name, is_aclgraph, is_profiling, use_fp8, sf_dtype_out,
             seed, fetch_mode, args.prep_only, args.run_only, args.shape_semantics, start_method,
-            master_port, loop_time, repeat_time, warmup_time, cpu_map, verify_write)
+            master_port, loop_time, repeat_time, warmup_time, cpu_map, verify_write,
+            args.prep_cache_dir, args.data_pattern, args.drop_page_cache, args.purge_prep_cache)
 
 
 def set_global_seed(seed):
@@ -278,180 +288,6 @@ def set_global_seed(seed):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-
-
-def _fill_randn_worker(args):
-    """worker: write randn directly into shared memory"""
-    shm_name, offset, count, hidden, seed = args
-    import numpy as _np
-    _np.random.seed(seed)
-    existing_shm = shm.SharedMemory(name=shm_name)
-    try:
-        arr = _np.ndarray((count, hidden), dtype=_np.float32, buffer=existing_shm.buf, offset=offset)
-        arr[:] = _np.random.standard_normal((count, hidden)).astype(_np.float32)
-    finally:
-        existing_shm.close()
-
-
-def _fill_randint_worker(args):
-    """worker: write randint directly into shared memory"""
-    shm_name, offset, count, hidden, low, high, itemsize, np_dtype_str, seed = args
-    import numpy as _np
-    _np.random.seed(seed)
-    existing_shm = shm.SharedMemory(name=shm_name)
-    try:
-        arr = _np.ndarray((count, hidden), dtype=np_dtype_str, buffer=existing_shm.buf, offset=offset)
-        arr[:] = _np.random.randint(low, high, (count, hidden), dtype=np_dtype_str)
-    finally:
-        existing_shm.close()
-
-
-def _fill_rand_worker(args):
-    """worker: write rand (uniform) directly into shared memory"""
-    shm_name, offset, count, hidden, seed = args
-    import numpy as _np
-    _np.random.seed(seed)
-    existing_shm = shm.SharedMemory(name=shm_name)
-    try:
-        arr = _np.ndarray((count, hidden), dtype=_np.float32, buffer=existing_shm.buf, offset=offset)
-        arr[:] = _np.random.random((count, hidden)).astype(_np.float32)
-    finally:
-        existing_shm.close()
-
-
-def _parallel_randn(total, hidden, dtype=torch.float32, num_workers=64):
-    """Parallel randn via shared memory - no IPC copy"""
-    if total <= 0:
-        return torch.randn(0, hidden, dtype=dtype)
-    # Small data: skip parallel overhead
-    if total * hidden < 10_000_000:
-        return torch.randn(total, hidden, dtype=dtype)
-    num_workers = min(num_workers, max(1, total // 1000))
-    size_bytes = total * hidden * 4
-    shared = shm.SharedMemory(create=True, size=size_bytes)
-    try:
-        chunk_size = (total + num_workers - 1) // num_workers
-        args = []
-        for i in range(num_workers):
-            start = i * chunk_size
-            if start >= total:
-                break
-            end = min((i + 1) * chunk_size, total)
-            count = end - start
-            offset = start * hidden * 4
-            args.append((shared.name, offset, count, hidden, i + 1))
-        with mp.Pool(len(args)) as pool:
-            pool.map(_fill_randn_worker, args)
-        result = torch.frombuffer(shared.buf, dtype=torch.float32, count=total*hidden).reshape(total, hidden).clone()
-    finally:
-        shared.close()
-        shared.unlink()
-    return result.to(dtype) if dtype != torch.float32 else result
-
-
-def _parallel_rand(total, hidden, dtype=torch.float32, num_workers=64):
-    """Parallel rand (uniform) via shared memory - no IPC copy"""
-    if total <= 0:
-        return torch.rand(0, hidden, dtype=dtype)
-    # Small data: skip parallel overhead
-    if total * hidden < 10_000_000:
-        return torch.rand(total, hidden, dtype=dtype)
-    num_workers = min(num_workers, max(1, total // 1000))
-    size_bytes = total * hidden * 4
-    shared = shm.SharedMemory(create=True, size=size_bytes)
-    try:
-        chunk_size = (total + num_workers - 1) // num_workers
-        args = []
-        for i in range(num_workers):
-            start = i * chunk_size
-            if start >= total:
-                break
-            end = min((i + 1) * chunk_size, total)
-            count = end - start
-            offset = start * hidden * 4
-            args.append((shared.name, offset, count, hidden, i + 1))
-        with mp.Pool(len(args)) as pool:
-            pool.map(_fill_rand_worker, args)
-        result = torch.frombuffer(shared.buf, dtype=torch.float32, count=total*hidden).reshape(total, hidden).clone()
-    finally:
-        shared.close()
-        shared.unlink()
-    return result.to(dtype) if dtype != torch.float32 else result
-
-
-def _parallel_randint(total, hidden, low, high, dtype=torch.int32, num_workers=64):
-    """Parallel randint via shared memory - no IPC copy"""
-    if total <= 0:
-        return torch.randint(low, high, (0, hidden), dtype=dtype)
-    # Small data: skip parallel overhead
-    if total * hidden < 10_000_000:
-        return torch.randint(low, high, (total, hidden), dtype=dtype)
-    np_dtype_map = {
-        torch.int8: 'int8', torch.int16: 'int16', torch.int32: 'int32',
-        torch.int64: 'int64', torch.uint8: 'uint8',
-    }
-    np_dtype_str = np_dtype_map.get(dtype, 'int32')
-    itemsize = torch.tensor([], dtype=dtype).element_size()
-    num_workers = min(num_workers, max(1, total // 1000))
-    size_bytes = total * hidden * itemsize
-    shared = shm.SharedMemory(create=True, size=size_bytes)
-    try:
-        chunk_size = (total + num_workers - 1) // num_workers
-        args = []
-        for i in range(num_workers):
-            start = i * chunk_size
-            if start >= total:
-                break
-            end = min((i + 1) * chunk_size, total)
-            count = end - start
-            offset = start * hidden * itemsize
-            args.append((shared.name, offset, count, hidden, low, high, itemsize, np_dtype_str, i + 1))
-        with mp.Pool(len(args)) as pool:
-            pool.map(_fill_randint_worker, args)
-        result = torch.frombuffer(shared.buf, dtype=dtype, count=total*hidden).reshape(total, hidden).clone()
-    finally:
-        shared.close()
-        shared.unlink()
-    return result
-
-
-def gen_storage_write_golden(num_entries_total, hidden, world_size, storage_type, val_min=None, val_max=None, use_fp8=False, sf_dtype=torch.float32):
-    import time as _time
-    total = num_entries_total
-    num_workers = min((os.cpu_count() or 1) // 2, 40)
-    t0 = _time.time()
-    print(f"[INFO] 并行数据生成(共享内存): {num_workers} workers, shape=[{total}, {hidden}]")
-    if use_fp8:
-        storage = _parallel_randn(total, hidden, dtype=torch.float32, num_workers=num_workers).to(storage_type)
-        num_sf_packs = (hidden + 31) // 32
-        sf_table_fp32 = _parallel_rand(total, num_sf_packs, dtype=torch.float32, num_workers=num_workers)
-        if sf_dtype == torch.float8_e8m0fnu:
-            bits = sf_table_fp32.view(torch.int32)
-            biased_exp = ((bits >> 23) & 0xFF).to(torch.uint8)
-            sf_table = biased_exp.view(torch.float8_e8m0fnu).contiguous()
-        else:
-            sf_table = sf_table_fp32.contiguous()
-    elif val_min is not None and val_max is not None:
-        if storage_type in (torch.int8, torch.int16, torch.int32, torch.int64, torch.uint8):
-            storage = _parallel_randint(total, hidden, int(val_min), int(val_max) + 1, dtype=storage_type, num_workers=num_workers)
-        elif storage_type in (torch.float8_e4m3fn, torch.float8_e5m2, torch.float8_e8m0fnu):
-            storage = ((_parallel_rand(total, hidden, dtype=torch.float32, num_workers=num_workers) * (val_max - val_min)) + val_min).to(storage_type)
-        else:
-            storage = (_parallel_rand(total, hidden, dtype=storage_type, num_workers=num_workers) * (val_max - val_min)) + val_min
-        sf_table = None
-    else:
-        if storage_type in (torch.int8, torch.int16, torch.int32, torch.int64, torch.uint8):
-            storage = _parallel_randint(total, hidden, -128, 128, dtype=storage_type, num_workers=num_workers)
-        elif storage_type in (torch.float8_e4m3fn, torch.float8_e5m2, torch.float8_e8m0fnu):
-            storage = _parallel_randn(total, hidden, dtype=torch.float32, num_workers=num_workers).to(storage_type)
-        else:
-            storage = _parallel_randn(total, hidden, dtype=storage_type, num_workers=num_workers)
-        sf_table = None
-
-    write_golden = list(storage.chunk(world_size, dim=0))
-    t1 = _time.time()
-    print(f"[INFO] 数据生成完成，耗时: {t1-t0:.1f}s")
-    return storage, write_golden, sf_table
 
 
 def gen_balanced_indices(num_token, all_num_token, indices_type, world_size, rng):
@@ -709,7 +545,7 @@ def egram_cpu(rank, size_idx, num_token, indices_type, storage, sf_table, world_
 def egram_npu(queue, rank, write_golden, storage, fetch_num, num_token, storage_type, indices_type,
               num_cpu_bytes, world_size, rank_per_dev, master_ip, master_port, is_aclgraph, is_profiling,
               use_fp8, sf_dtype, sf_table, profiling_path, fetch_mode, loop_time, repeat_time, warmup_time,
-              seed, cpu_map, verify_write):
+              seed, cpu_map, verify_write, drop_page_cache):
     """子进程入口: 一切依赖(含 world_size/端口/轮数/seed/cpu_map 等)均由显式参数传入, 不读模块级全局变量。
 
     结果消息协议: [rank, phase, detail], phase ∈ {"write", "fetch", "error"};
@@ -770,6 +606,14 @@ def egram_npu(queue, rank, write_golden, storage, fetch_num, num_token, storage_
                     write_pass = False
             except Exception as e:
                 print(f"[WARNING] rank {rank} --verify_write 跳过: host 窗口指针读取失败({e})")
+
+        # --drop_page_cache(默认开): engram_write 完成后释放 storage/sf 的 mmap 页缓存,
+        # 避免 local 模式 4 份 host 窗口与 mmap page cache 叠加占用 host 内存
+        if drop_page_cache:
+            prep_cache.drop_page_cache(storage)
+            if sf_table is not None:
+                prep_cache.drop_page_cache(sf_table)
+            print(f"[INFO] rank {rank}: drop_page_cache(storage/sf) 完成")
 
         # fetch
         fetch_pass = True
@@ -918,7 +762,8 @@ if __name__ == "__main__":
     (num_entries_total, hidden_size, storage_type, val_min, val_max, fetch_token_num,
      world_size, num_cpu_bytes, case_name, is_aclgraph, is_profiling, use_fp8, sf_dtype,
      seed, fetch_mode, prep_only, run_only, shape_semantics, start_method, master_port,
-     loop_time, repeat_time, warmup_time, cpu_map, verify_write) = parse_cli_args(
+     loop_time, repeat_time, warmup_time, cpu_map, verify_write,
+     prep_cache_dir, data_pattern, drop_page_cache, purge_prep_cache) = parse_cli_args(
                                                         num_entries_total, hidden_size, storage_type, fetch_token_num, world_size, num_cpu_bytes, is_aclgraph, is_profiling, use_fp8, seed)
 
     # sliced 模式校验: 全局 vocab 总行数必须能被 world_size 整除(全局->owner 均匀映射的单一属性)
@@ -934,24 +779,36 @@ if __name__ == "__main__":
     print(f"[INFO] 开始 engram 测试")
     print(f"[INFO] 当前参数: shape_semantics={shape_semantics}, num_entries_total={num_entries_total}, hidden_size={hidden_size}, dtype={storage_type}, world_size={world_size}, range=[{val_min},{val_max}], num_cpu_bytes={num_cpu_bytes} (type:{type(num_cpu_bytes)})\n")
 
-    prep_data_file = f"./{case_name}_prep_data.pt" if case_name else "./prep_data.pt"
-
+    # ==== 数据准备/加载: mmap 分块直写 prep 缓存 (设计文档 M2+M3) ====
+    # 缓存键不含 fetch_mode: local/sliced 配对用例自动复用同一份缓存(只缩短 prep 墙钟, 不影响 fetch 计时)
     if run_only:
-        print(f"[INFO] [run_only] 从文件加载预准备数据: {prep_data_file}")
-        prep_data = torch.load(prep_data_file, weights_only=False)
-        storage = prep_data['storage']
+        print(f"[INFO] [run_only] 从 prep_cache 加载数据: cache_dir={prep_cache_dir}")
+        storage, sf_table = prep_cache.load(
+            prep_cache_dir, num_entries_total, hidden_size, storage_type,
+            use_fp8, sf_dtype, seed, pattern=data_pattern)
         write_golden = list(storage.chunk(world_size, dim=0))
-        sf_table = prep_data.get('sf_table', None)
-        print(f"[INFO] [run_only] 数据加载完成")
+        print("[INFO] [run_only] 数据加载完成 (mmap 零拷贝视图)")
     else:
-        storage, write_golden, sf_table = gen_storage_write_golden(
-            num_entries_total, hidden_size, world_size, storage_type, val_min, val_max, use_fp8, sf_dtype)
-
+        if purge_prep_cache:
+            removed = prep_cache.purge(prep_cache_dir)
+            print(f"[PREP] --purge_prep_cache: 已清空缓存目录 {prep_cache_dir}, 删除 {len(removed)} 个文件")
+        prep_result = prep_cache.generate(
+            prep_cache_dir, num_entries_total, hidden_size, storage_type,
+            use_fp8, sf_dtype, seed, pattern=data_pattern, val_min=val_min, val_max=val_max)
+        size_desc = f"storage {prep_result['storage_bytes'] / 1024**3:.2f} GiB"
+        if use_fp8:
+            size_desc += f", sf {prep_result['sf_bytes'] / 1024**3:.2f} GiB"
+        if prep_result["cache_hit"]:
+            print(f"[PREP] cache hit: key={prep_result['key']} ({size_desc})")
+        else:
+            print(f"[PREP] generated in {prep_result['elapsed_s']:.2f}s: key={prep_result['key']} ({size_desc})")
         if prep_only:
-            print(f"[INFO] [prep_only] 保存预准备数据到: {prep_data_file}")
-            torch.save({'storage': storage, 'sf_table': sf_table}, prep_data_file)
-            print(f"[INFO] [prep_only] 数据准备完成，退出")
+            print("[INFO] [prep_only] 数据准备完成，退出")
             sys.exit(0)
+        storage, sf_table = prep_cache.load(
+            prep_cache_dir, num_entries_total, hidden_size, storage_type,
+            use_fp8, sf_dtype, seed, pattern=data_pattern)
+        write_golden = list(storage.chunk(world_size, dim=0))
 
     print(f"[INFO] storage shape: {storage.shape}, dtype: {storage.dtype}")
     for i, w in enumerate(write_golden):
@@ -1002,7 +859,7 @@ if __name__ == "__main__":
                   storage_type, indices_type, num_cpu_bytes, world_size, rank_per_dev,
                   MASTER_IP, master_port, is_aclgraph, is_profiling, use_fp8, sf_dtype,
                   sf_table, profiling_path, fetch_mode, loop_time, repeat_time, warmup_time,
-                  seed, cpu_map, verify_write)
+                  seed, cpu_map, verify_write, drop_page_cache)
         )
         proc.start()
         proc_list.append(proc)
