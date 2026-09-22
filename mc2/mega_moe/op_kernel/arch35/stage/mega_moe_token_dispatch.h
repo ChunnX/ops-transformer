@@ -897,14 +897,15 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
  * 去重关闭或非 AIV0 为空操作。
  * 到达性判据：等本 block AIV1 的 countTableReady（AIV1 完成 epoch 校验+前缀和才置位，到达性由它
  * 背书；AIV0 正常流程本就在下游等同一标志，清零与多 launch 语义均为既有机制），装载后掩低 24 位。
- * 注：上游已用"count 携带 epoch + WaitForCountTable 整表校验"取代入口跨卡握手，且输入准备阶段
- * 每个物理 AIV（含 AIV0）都推进自己的同步计数，AIV0 理论上可直接走 WaitForCountTable 与 AIV1
- * 并行装载；此处保守沿用 countTableReady 串行判据（与 2026-09-22 定版实测形态一致），并行化留作
- * 后续调优项。
+ * 到达性判据：与 AIV1 相同走 WaitForCountTable（count 携带本轮 epoch tag，整表校验+退避重读；
+ * 输入准备阶段每个物理 AIV 含 AIV0 都推进自己的同步计数，期望 tag 可用）。不可改等 countTableReady
+ * 残留判据：上游已删除入口跨卡握手，且轮尾 count 接收区被清零，而 countTableReady 无人清零——
+ * 首轮=0 时等待成立，第 2 轮起残留非零使 AIV0 冲线，读到"已清零、本轮未到达"的 count 槽即建出
+ * 全 0 前缀表，消费者死等（2026-09-23 连续多轮性能循环停滞实翻，AIV0 禁用对照全绿定案）。
  */
 template <typename ActivationType, typename TopkIndexType>
 __aicore__ inline void PrepareDedupPrepassAiv0Local(const DedupConfig &dedup, const MoeStageCommonConfig &common,
-                                                    const BlockWorkspaceContext &countWorkspace, const Params &params,
+                                                    const Params &params,
                                                     TokenDispatchScratch<ActivationType, TopkIndexType> &scratch)
 {
     if constexpr (g_coreType == AIC) {
@@ -925,20 +926,7 @@ __aicore__ inline void PrepareDedupPrepassAiv0Local(const DedupConfig &dedup, co
     scratch.dedupUbBaseAddr = static_cast<uint32_t>(
         Ops::Base::CeilAlign(static_cast<uint64_t>(cumsumInfoTensorSize + expertTokenNumsOutTensorSize),
                              static_cast<uint64_t>(ALIGN_512)));
-    WaitForMoeExpertTokenCountReady(params.workspaceInfo.flagSendCntCalToUpdParamsPtr, countWorkspace, 0U);
-    const uint32_t rawCountElementCount = common.worldSize * common.moeExpertPerRank;
-    GlobalTensor<int32_t> expertCountGlobal;
-    expertCountGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.peermemInfo.expertCountRecvPtr));
-    DataCopyPad(scratch.cumsumInfoTensor, expertCountGlobal,
-                {1U, rawCountElementCount * static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U}, {true, 0U, 0U, 0U});
-    SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();
-    for (uint32_t slotIdx = 0U; slotIdx < rawCountElementCount; ++slotIdx) {
-        scratch.cumsumInfoTensor.SetValue(slotIdx, scratch.cumsumInfoTensor.GetValue(slotIdx) & 0x00FFFFFF);
-    }
-    SyncFuncStatic<AscendC::HardEvent::S_V, SYNC_EVENT_ID2>();
-    ComputeExpertCountTables(scratch.cumsumInfoTensor, scratch.expertTokenNumsOutTensor, common.moeExpertPerRank,
-                             common.worldSize, params.tilingData->maxOutputSize);
-    SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();
+    LoadAndComputeExpertCountTable(common, params, scratch);
 }
 
 /*
