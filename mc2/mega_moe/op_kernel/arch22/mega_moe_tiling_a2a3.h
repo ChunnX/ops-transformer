@@ -65,6 +65,8 @@ struct MegaMoeA2A3TilingData {
 
     uint32_t isQuantRouting;
     uint32_t isW4A8;
+    uint32_t sharedExpertNum;
+    uint64_t sharedWorkspaceOffset;
 
     int32_t activationOutDtype;
     uint32_t weight1Interleave;
