@@ -176,7 +176,7 @@ cann_ops_transformer.mhc_pre_split_post_res(x, phi, alpha, bias, norm_eps=1e-6) 
         <td>h_res</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>mHC comb/Res分支输出矩阵，对应公式中的h_res。可选输出：完整形态（phi行数n^2+n）时为[B,S,n,n]或[T,n,n]；仅post形态（phi行数n）时为0元素tensor。</td>
+        <td>mHC comb/Res分支输出矩阵。完整形态（phi行数为n²+n）时返回实际结果；仅post形态（phi行数为n）时返回0元素Tensor，以保持二元组返回结构。</td>
         <td>float32</td>
         <td>
             <ul>
@@ -198,7 +198,7 @@ cann_ops_transformer.mhc_pre_split_post_res(x, phi, alpha, bias, norm_eps=1e-6) 
 
 - 维度约束：
   - `x`支持4维(B, S, n, D)或3维(T, n, D)格式，其中n固定为4，D仅支持白名单{2560, 5120, 6144, 7168}；T无上限（>=1）。
-  - `phi`的维度为(n<sup>2</sup>+n, n·D)（完整形态，输出h_res）或(n, n·D)（仅post形态，无h_res），其中n、D与`x`保持一致。
+  - `phi`的维度为(n<sup>2</sup>+n, n·D)（完整形态，输出h_res）或(n, n·D)（仅post形态，h_res返回0元素Tensor），其中n、D与`x`保持一致。
   - `alpha`的维度为(2)。
   - `bias`的维度与`phi`的第0维保持一致（n<sup>2</sup>+n 或 n）。
 
@@ -206,9 +206,9 @@ cann_ops_transformer.mhc_pre_split_post_res(x, phi, alpha, bias, norm_eps=1e-6) 
   - 4维（BSND）格式下：`h_post`的(B, S)维度需与`x`的(B, S)维度一致；`h_res`的(B, S)维度需与`x`的(B, S)维度一致。
   - 3维（TND）格式下：`h_post`、`h_res`的T维度需与`x`的T维度一致。
 
-- T或B*S支持1~512K范围以内。
+- T或B*S至少为1，当前实现不设置上限。
 - `norm_eps`必须大于0。
-- 不支持空Tensor。
+- 输入Tensor不支持空Tensor；输出`h_res`在仅post形态（phi行数为n）时为0元素Tensor（允许）。
 - 所有输入Tensor的shape各维度值必须为正数（大于0）。
 
 ## 确定性计算

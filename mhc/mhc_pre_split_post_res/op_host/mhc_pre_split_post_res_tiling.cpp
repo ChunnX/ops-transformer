@@ -344,7 +344,7 @@ ge::graphStatus MhcPreSplitPostResInfoParser::CheckUbBudget()
 
 ge::graphStatus MhcPreSplitPostResInfoParser::GenerateTiling()
 {
-    // D轴分块：dimTile = min(D, 2560)。D 已由 CheckXValid 保证 16 对齐；
+    // D轴分块：dimTile = min(D, 2560)。D 已由 CheckXValid 保证白名单取值；
     // 尾块不足 dimTile 时由 kernel 的 TileCopyD 按 D - dimOff 计算
     dimTile_ = D_ > MHC_DIM_TILE_MAX ? MHC_DIM_TILE_MAX : D_;
 
@@ -368,9 +368,13 @@ ge::graphStatus MhcPreSplitPostResInfoParser::GenerateTiling()
     // tilingKey
     tilingKey_ = (dimLoop_ == MHC_NUM_ONE) ? MHC_PRE_SPLIT_TILING_KEY_SINGLE_TILE : MHC_PRE_SPLIT_TILING_KEY_MULTI_TILE;
 
-    // h_res 可选输出：完整形态（hasRes_）"必须提供 h_res"的校验在 aclnn 层完成
-    // （GetWorkspaceSize 拦 hResOut==nullptr）；tiling 侧 GetOutputDesc 返回
-    // CompileTimeTensorDesc（无 shape 接口）且 UT faker 常为空，不做额外校验。
+    // h_res 为可选输出（对齐 mhc_pre tiling 的 hasResi 校验）：完整形态（phi 行数 N^2+N）
+    // 必须提供 h_res 输出 desc；仅 post 形态（hasRes_==false）不校验。
+    if (hasRes_) {
+        OP_CHECK_IF(context_->GetOutputDesc(MHC_H_RES_INDEX) == nullptr,
+            OP_LOGE(opName_, "h_res output is required when phi rows is N^2+N (%ld).", phiRows_),
+            return ge::GRAPH_FAILED);
+    }
 
     if (CalcTokenGrouping() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;

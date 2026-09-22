@@ -156,7 +156,7 @@ protected:
     //
     // ascend950（arch35）走 Regbase 实现：Reg 内 Mul(x,x) + ReduceSum 段折叠 + 段间 Add 链，
     // 段内二叉、段间固定顺序的确定性归约；xFp32 只读不覆盖，
-    // INPLACE 模板参数仅为兼容调用点保留。N×copyD 恒为 VL 的整数倍（N=4 × 16 对齐 D），无尾块。
+    // INPLACE 模板参数仅为兼容调用点保留。N×copyD 恒为 VL 的整数倍（N=4 × 白名单 D 均 128 对齐），无尾块。
     template <bool INPLACE>
     __aicore__ inline void AccumSumSq(LocalTensor<float> &xFp32, LocalTensor<float> &sumSq, int64_t copyD, TPipe *pipe)
     {

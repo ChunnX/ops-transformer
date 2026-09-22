@@ -35,7 +35,7 @@ constexpr uint64_t MHC_PRE_SPLIT_TILING_KEY_MULTI_TILE = 1;
 BEGIN_TILING_DATA_DEF(MhcPreSplitPostResTilingData)
 TILING_DATA_FIELD_DEF(int64_t, totalLength);     // B*S 或 T，合轴后的token总数
 TILING_DATA_FIELD_DEF(int64_t, N);               // 超连接维度 (固定4)
-TILING_DATA_FIELD_DEF(int64_t, D);               // Dim维度 (16对齐, 16~16384)
+TILING_DATA_FIELD_DEF(int64_t, D);               // Dim维度 (白名单 2560/5120/6144/7168)
 TILING_DATA_FIELD_DEF(int64_t, phiRows);         // N^2+N，phi的第一维
 TILING_DATA_FIELD_DEF(int64_t, dimTile);         // 核内D的分块大小，min(D, 2560)
 TILING_DATA_FIELD_DEF(int64_t, dimLoop);         // D需要几个tile

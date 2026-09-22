@@ -161,6 +161,13 @@ def small_domain_pass(
     threshold = cfg["threshold"]
     err = cfg["error"]
 
+    if not torch.isfinite(npu_actual).all().item():
+        logger.error("[SmallDomain] NPU output contains non-finite values")
+        return False
+    if not torch.isfinite(gpu_actual).all().item() or not torch.isfinite(golden).all().item():
+        logger.error("[SmallDomain] reference output contains non-finite values")
+        return False
+
     def error_count(actual):
         mask = (torch.abs(golden) < threshold) & (torch.abs(actual - golden) > err)
         return int(mask.sum().item())
@@ -185,6 +192,12 @@ def precision_check(
     dtype: torch.dtype,
     precision_level: str = DEFAULT_PRECISION_LEVEL,
 ) -> bool:
+    if not torch.isfinite(npu_out).all().item():
+        logger.error("[Final] NPU output contains non-finite values")
+        return False
+    if not torch.isfinite(gpu_out).all().item() or not torch.isfinite(golden).all().item():
+        logger.error("[Final] reference output contains non-finite values")
+        return False
     (npu_normal, golden_normal, npu_small, golden_small) = (
         split_normal_and_small_domain(npu_out, golden, dtype)
     )
@@ -424,6 +437,12 @@ class TestMhcPreSplitPostRes(TestCase):
     def test_mhc_pre_split_post_res_bf16_BSND_post_only_phiN_5120(self):
         """phi=[4, 20480] 仅 post 形态：MULTI_TILE，h_res 为空 tensor，仅校验 h_post"""
         self.__run_test_bsnd(B=1, S=4, N=4, D=5120, dtype=torch.bfloat16, norm_eps=1e-6, phi_rows=4)
+
+    @pytest.mark.resources(device="npu:*")
+    def test_mhc_pre_split_post_res_bf16_BSND_post_only_phiN_2560_aclgraph(self):
+        """phi=[4, 10240] 仅 post 形态 + AclGraph（NPUGraph）通路：h_res 空 tensor 入图，仅校验 h_post"""
+        self.__run_test_bsnd(B=1, S=4, N=4, D=2560, dtype=torch.bfloat16, norm_eps=1e-6,
+                             phi_rows=4, use_aclgraph=True)
 
     # ======================== aclgraph静态kernel编译模式测试 ========================
 

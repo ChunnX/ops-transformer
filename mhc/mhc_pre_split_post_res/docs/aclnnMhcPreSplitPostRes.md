@@ -182,8 +182,8 @@ aclnnStatus aclnnMhcPreSplitPostRes(
     <tr>
       <td>hResOut</td>
       <td>输出</td>
-      <td>mHC的comb/Res分支输出矩阵。</td>
-      <td>不支持空Tensor。</td>
+      <td>mHC的comb/Res分支输出矩阵。完整形态（phi行数为n²+n）时必须提供；仅post形态（phi行数为n）时可传nullptr或0元素Tensor。</td>
+      <td>完整形态不支持空Tensor；仅post形态允许0元素Tensor。</td>
       <td>FLOAT32</td>
       <td>ND</td>
       <td>[B,S,n,n]、[T,n,n]</td>
@@ -299,11 +299,11 @@ aclnnStatus aclnnMhcPreSplitPostRes(
 
 - aclnnMhcPreSplitPostRes默认确定性实现。
 - 所有输入/输出Tensor的数据格式仅支持ND。
-- 不支持空Tensor。
+- 输入Tensor不支持空Tensor；输出h_res在仅post形态（phi行数为n）时为0元素Tensor（允许）。
 
   | 规格项   | 规格               | 规格说明                                |
   | :------- | :----------------- | :------------------------------------- |
-  | T或B*S   | 1~512K             | B*S或T支持1~512K范围以内               |
+  | T或B*S   | 1及以上             | B*S或T至少为1，当前实现不设置上限               |
   | n        | 4                  | 固定为4                                |
   | D        | {2560,5120,6144,7168} | 仅支持 4 种典型值，其余拦截              |
 

@@ -42,7 +42,7 @@ protected:
 // ---- MHC_PRE_SPLIT_TILING_KEY_SINGLE_TILE (D<=2560, dimLoop=1) ----
 // 注意：新策略下 coresPerToken=2 仅在 dimLoop==1 且 totalTokens < coreNum/2 时启用
 
-// BF16, T=B*S=1*4=4, N=4, D=100（不支持，D 需 16 对齐且在 [16,16384] 内）
+// BF16, T=B*S=1*4=4, N=4, D=100（不支持，D 不在白名单内）
 TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_4_4_100_1_4_000000)
 {
     int64_t B = 1;
@@ -61,8 +61,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_4_4_100_1_4_00
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},                    // bias [N^2+N]
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},  // h_post
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},  // h_res
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},  // h_post
+            {{{B, S, N, N}, {B, S, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},  // h_res
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -94,8 +94,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_128_4_2560_32_
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N, N}, {B, S, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -127,8 +127,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_fp16_128_4_2560_32_
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N, N}, {B, S, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -162,8 +162,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_4_4_5120_1_4_0
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N, N}, {B, S, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -195,8 +195,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_fp16_4_4_5120_1_4_0
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N, N}, {B, S, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -228,8 +228,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_128_4_8192_32_
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N, N}, {B, S, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -261,8 +261,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_fp16_256_4_16400_64
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N, N}, {B, S, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -280,7 +280,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_fp16_256_4_16400_64
 // ---- MHC_PRE_SPLIT_TILING_KEY_SINGLE_TILE (D<=2560, dimLoop=1) ----
 // 注意：新策略下 coresPerToken=2 仅在 dimLoop==1 且 totalTokens < coreNum/2 时启用
 
-// BF16, T=1, N=4, D=100（不支持，D 需 16 对齐且在 [16,16384] 内）
+// BF16, T=1, N=4, D=100（不支持，D 不在白名单内）
 TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_TND_bf16_1_4_100_000000)
 {
     int64_t T = 1;
@@ -298,8 +298,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_TND_bf16_1_4_100_000000)
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},                    // bias
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N}, {T, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N, N}, {T, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -330,8 +330,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_TND_bf16_512_4_2560_0000
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N}, {T, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N, N}, {T, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -362,8 +362,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_TND_fp16_512_4_2560_0000
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N}, {T, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N, N}, {T, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -396,8 +396,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_TND_bf16_1_4_5120_000000
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N}, {T, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N, N}, {T, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -428,8 +428,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_TND_fp16_1_4_5120_000000
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N}, {T, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N, N}, {T, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -460,8 +460,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_TND_bf16_512_4_8192_0000
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N}, {T, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N, N}, {T, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -474,7 +474,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_TND_bf16_512_4_8192_0000
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
 }
 
-// FP16, T=512, N=4, D=16400（不支持，超出 D 上限 16384）
+// FP16, T=512, N=4, D=16400（不支持，D 不在白名单内）
 TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_TND_fp16_512_4_16400_000000)
 {
     int64_t T = 512;
@@ -492,8 +492,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_TND_fp16_512_4_16400_000
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N}, {T, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N, N}, {T, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -527,8 +527,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_emptyX_000000)
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1, 4}, {1, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{4, 4, 4}, {4, 4, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -558,8 +558,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_emptyPhi_000000)
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N}, {T, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N, N}, {T, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -590,8 +590,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_emptyAlpha_000000)
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N}, {T, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N, N}, {T, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -622,8 +622,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_emptyBias_000000)
             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},  // bias 为空
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N}, {T, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N, N}, {T, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -655,8 +655,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_errorXDimNum_000000
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1, 4}, {1, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{4, 4, 4}, {4, 4, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -686,8 +686,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_errorPhiDimNum_0000
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N}, {T, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N, N}, {T, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -718,8 +718,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_errorAlphaDimNum_00
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N}, {T, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N, N}, {T, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -750,8 +750,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_errorBiasDimNum_000
             {{{phiRows, 1}, {phiRows, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},  // bias 为 2 维（错误）
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N}, {T, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N, N}, {T, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -784,8 +784,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_errorTMin_000000)
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N}, {T, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N, N}, {T, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -816,8 +816,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_TLarge_000000)
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N}, {T, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N, N}, {T, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -848,8 +848,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_errorN_000000)
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N}, {T, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N, N}, {T, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -867,7 +867,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_errorDMin_000000)
 {
     int64_t T = 1;
     int64_t N = 4;
-    int64_t D = 8;                // D 低于下界 16（且非 16 对齐）
+    int64_t D = 8;                // D 不在白名单内
     int64_t phiRows = N * N + N;  // 20
     int64_t phiCols = N * D;      // 32
 
@@ -880,8 +880,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_errorDMin_000000)
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N}, {T, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N, N}, {T, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -899,7 +899,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_errorDMax_000000)
 {
     int64_t T = 1;
     int64_t N = 4;
-    int64_t D = 16385;            // D 超出上限 16384（且非 16 对齐）
+    int64_t D = 16385;            // D 不在白名单内
     int64_t phiRows = N * N + N;  // 20
     int64_t phiCols = N * D;
 
@@ -912,8 +912,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_errorDMax_000000)
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N}, {T, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N, N}, {T, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -926,12 +926,12 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_errorDMax_000000)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
 }
 
-// D 非 16 对齐（D=66，TND 格式）
+// D 不在白名单内（D=66，TND 格式）
 TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_errorDAlign_000000)
 {
     int64_t T = 1;
     int64_t N = 4;
-    int64_t D = 66;               // D 非 16 对齐
+    int64_t D = 66;               // D 不在白名单内
     int64_t phiRows = N * N + N;  // 20
     int64_t phiCols = N * D;      // 264
 
@@ -944,8 +944,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_errorDAlign_000000)
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N}, {T, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N, N}, {T, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -1008,8 +1008,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_errorPhiCols_000000
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N}, {T, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N, N}, {T, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -1040,8 +1040,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_errorAlphaShape_000
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N}, {T, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N, N}, {T, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -1073,8 +1073,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_errorBiasShape_0000
             {{{biasShapeWrong}, {biasShapeWrong}}, ge::DT_FLOAT, ge::FORMAT_ND},  // bias shape 错误
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N}, {T, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N, N}, {T, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -1107,8 +1107,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_errorXDtype_000000)
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N}, {T, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N, N}, {T, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -1139,8 +1139,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_errorPhiDtype_000000)
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N}, {T, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N, N}, {T, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -1171,8 +1171,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_errorAlphaDtype_000000)
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N}, {T, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N, N}, {T, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -1203,8 +1203,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_errorBiasDtype_000000)
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT16, ge::FORMAT_ND},  // bias dtype=fp16（错误）
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N}, {T, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N, N}, {T, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -1244,8 +1244,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_corenum48_T23_
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N, N}, {B, S, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -1279,8 +1279,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_corenum48_T24_
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N, N}, {B, S, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -1314,8 +1314,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_corenum48_T512
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N, N}, {B, S, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -1351,8 +1351,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_corenum40_T19_
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N, N}, {B, S, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -1386,8 +1386,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_corenum40_T20_
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N, N}, {B, S, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -1422,8 +1422,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_TND_bf16_corenum40_T19_D
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N}, {T, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N, N}, {T, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -1456,8 +1456,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_TND_bf16_corenum40_T20_D
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N}, {T, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N, N}, {T, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -1490,8 +1490,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_TND_bf16_corenum40_T512_
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N}, {T, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N, N}, {T, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -1525,8 +1525,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_128_4_6144_32_
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N, N}, {B, S, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -1558,8 +1558,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_128_4_7168_32_
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N, N}, {B, S, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -1591,8 +1591,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_128_4_16384_32
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N, N}, {B, S, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -1624,8 +1624,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_128_4_16_32_4)
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N, N}, {B, S, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -1657,8 +1657,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_128_4_2064_32_
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N, N}, {B, S, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -1690,8 +1690,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_128_4_2576_32_
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N, N}, {B, S, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -1723,8 +1723,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_norm_eps_invalid)
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N, N}, {B, S, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(-1.0f)},
@@ -1756,8 +1756,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_norm_eps_zero_invalid)
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N, N}, {B, S, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(0.0f)},
@@ -1789,8 +1789,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_norm_eps_nan_invalid)
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N, N}, {B, S, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(
@@ -1825,8 +1825,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_dualcore_4_512
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N, N}, {B, S, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -1858,8 +1858,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_singlecore_64_
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N, N}, {B, S, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -1893,8 +1893,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_950_BSND_bf16_128_4_2560
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N, N}, {B, S, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -1925,8 +1925,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_950_TND_fp16_T19_D2560)
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N}, {T, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N, N}, {T, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -1958,8 +1958,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_950_BSND_bf16_4_4_5120_1
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N, N}, {B, S, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -1990,8 +1990,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_950_TND_fp16_T512_D5120)
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N}, {T, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N, N}, {T, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -2004,7 +2004,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_950_TND_fp16_T512_D5120)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
 
-// 950 BF16, D=100（不支持，D 需 16 对齐且在 [16,16384] 内）
+// 950 BF16, D=100（不支持，D 不在白名单内）
 TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_950_BSND_bf16_4_4_100_1_4)
 {
     int64_t B = 1;
@@ -2023,8 +2023,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_950_BSND_bf16_4_4_100_1_
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N, N}, {B, S, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
@@ -2058,7 +2058,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_post_only_phiN
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
@@ -2091,7 +2091,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_post_only_phiN
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
@@ -2125,7 +2125,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_post_only_bias
             {{{biasRows}, {biasRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
@@ -2158,8 +2158,8 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_soc310p_not_support)
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N, N}, {B, S, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},

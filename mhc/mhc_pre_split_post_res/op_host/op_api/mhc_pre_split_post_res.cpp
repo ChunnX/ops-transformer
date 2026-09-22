@@ -35,6 +35,22 @@ bool MhcPreSplitPostRes(const aclTensor *x, const aclTensor *phi, const aclTenso
 {
     L0_DFX(MhcPreSplitPostRes, x, phi, alpha, bias, normEps, hPostOut, hResOut);
 
+    if (executor == nullptr || hPostOut == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "MhcPreSplitPostRes executor and h_post output must not be nullptr.");
+        return false;
+    }
+
+    // 完整形态（phi 行数 N^2+N）必须提供 h_res：dummy 无 shape，kernel 会写 res 段导致越界。
+    // （aclnn 层已拦此组合，此处为绕过 aclnn 直调 L0 的防御双保险。）
+    const size_t xRank = x->GetViewShape().GetDimNum();
+    const int64_t nValue = x->GetViewShape().GetDim(xRank - 2);
+    if (hResOut == nullptr && phi->GetViewShape().GetDim(0) == nValue * nValue + nValue) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "MhcPreSplitPostRes h_res output is required when phi rows is N^2+N (%ld).",
+                nValue * nValue + nValue);
+        return false;
+    }
+
     const aclTensor *hRes = hResOut;
     if (hResOut == nullptr) {
         hRes = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
