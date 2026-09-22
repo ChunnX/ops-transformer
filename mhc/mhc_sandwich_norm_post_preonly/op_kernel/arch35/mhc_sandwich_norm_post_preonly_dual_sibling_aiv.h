@@ -156,6 +156,8 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
 
     float sumSq1 = 0.0f;
+    // 提前发起gamma1搬运（到bufGamma0Fp32_），与下方R6的Vector计算重叠。
+    StartCacheGamma1();
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
@@ -167,7 +169,6 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         sumSq1 += CacheHInAndReduceSumSq(tOff, tD, hIn);
     }
 
-    StartCacheGamma1();
     const float invRms1 = ComputeInvRms(sumSq1, invD_);
     WaitCacheGamma1();
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
@@ -175,7 +176,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         const uint32_t tOff = tile * dimTile_;
         LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
         LoadHInCacheTile(tOff, tD, hIn);
-        LocalTensor<float> gamma1 = bufGamma2Fp32_.Get<float>();
+        LocalTensor<float> gamma1 = bufGamma0Fp32_.Get<float>();
         if (D_ > GAMMA1_CACHE_MAX_D) {
             LoadGammaInto(gamma1, gamma1Gm_, tOff, tD);
             SetFlag<HardEvent::MTE2_V>(evtMte2toV_);

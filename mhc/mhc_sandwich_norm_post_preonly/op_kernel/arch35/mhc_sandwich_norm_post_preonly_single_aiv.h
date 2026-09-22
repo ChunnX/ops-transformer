@@ -382,6 +382,8 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
     // 第三遍：计算R6和h_in低精度边界。在完整D轴的R7标量确定前，
     // 复用已经消费完的x2缓存首段保存低精度h_in。
     float sumSq1 = 0.0f;
+    // 提前发起gamma1搬运（到bufGamma0Fp32_），与下方R6的Vector计算重叠。
+    StartCacheGamma1();
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
@@ -394,7 +396,6 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
     }
 
     // 第四遍：沿完整D轴计算R7并写最终输出。
-    StartCacheGamma1();
     const float invRms1 = ComputeInvRms(sumSq1, invD_);
     WaitCacheGamma1();
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
@@ -402,7 +403,7 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
         const uint32_t tOff = tile * dimTile_;
         LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
         LoadHInCacheTile(tOff, tD, hIn);
-        LocalTensor<float> gamma1 = bufGamma2Fp32_.Get<float>();
+        LocalTensor<float> gamma1 = bufGamma0Fp32_.Get<float>();
         if (D_ > GAMMA1_CACHE_MAX_D) {
             LoadGammaInto(gamma1, gamma1Gm_, tOff, tD);
             SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
