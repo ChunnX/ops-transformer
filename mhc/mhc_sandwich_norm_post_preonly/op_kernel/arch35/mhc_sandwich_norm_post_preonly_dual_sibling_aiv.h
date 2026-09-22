@@ -161,12 +161,15 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-        LocalTensor<T> x2Cache = bufX2Cache_.Get<T>()[tOff];
+        LocalTensor<T> hInCache = bufX2Cache_.Get<T>()[tOff];
+        LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
         LocalTensor<float> gateBuf = bufScalar_.Get<float>()[EXP_DIV_ELEM];
-        MhcSandwichRegBase::GateWeightedSum<T>(hIn, x2Cache, D_, gateBuf, tD);
+        LocalTensor<float> sqBuf = bufGamma2Fp32_.Get<float>();
+        MhcSandwichRegBase::GateWeightedSumQuantize<T>(hInCache, x2Cache, D_, gateBuf, tD);
         PipeBarrier<PIPE_V>();
-        sumSq1 += CacheHInAndReduceSumSq(tOff, tD, hIn);
+        MhcSandwichRegBase::CastB16ToFp32Square(sqBuf, hInCache, tD);
+        PipeBarrier<PIPE_V>();
+        sumSq1 += ReduceSumPrecise(sqBuf, tD);
     }
 
     const float invRms1 = ComputeInvRms(sumSq1, invD_);

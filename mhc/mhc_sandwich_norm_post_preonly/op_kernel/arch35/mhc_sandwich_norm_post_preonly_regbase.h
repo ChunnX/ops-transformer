@@ -547,6 +547,52 @@ __aicore__ inline void GateWeightedSum(const LocalTensor<float> &dst, const Loca
     }
 }
 
+// R6在一个VF内完成四路低精度读取、FP32门控累加并量化到低精度缓存，
+// 省去FP32 h_in中间张量的UB写读；平方仍从低精度缓存读取，保持量化往返边界。
+template <typename T>
+__aicore__ inline void GateWeightedSumQuantize(const LocalTensor<T> &dst, const LocalTensor<T> &src,
+                                               uint32_t headStride, const LocalTensor<float> &gate, uint32_t count)
+{
+    __local_mem__ T *srcAddr = (__local_mem__ T *)src.GetPhyAddr();
+    __local_mem__ T *dstAddr = (__local_mem__ T *)dst.GetPhyAddr();
+    __local_mem__ float *gateAddr = (__local_mem__ float *)gate.GetPhyAddr();
+    uint32_t remain = count;
+    const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
+    __VEC_SCOPE__
+    {
+        RegTensor<T> srcReg, dstB16Reg;
+        RegTensor<float> srcFp32Reg, accReg;
+        RegTensor<float> g0Reg, g1Reg, g2Reg, g3Reg;
+        MaskReg mask;
+        DataCopy<float, LoadDist::DIST_BRC_B32>(g0Reg, gateAddr + 0U);
+        DataCopy<float, LoadDist::DIST_BRC_B32>(g1Reg, gateAddr + 1U);
+        DataCopy<float, LoadDist::DIST_BRC_B32>(g2Reg, gateAddr + 2U);
+        DataCopy<float, LoadDist::DIST_BRC_B32>(g3Reg, gateAddr + 3U);
+        for (uint16_t i = 0; i < loops; ++i) {
+            mask = UpdateMask<float>(remain);
+            const uint32_t offset = static_cast<uint32_t>(i) * VL_FP32;
+            DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + 0U * headStride + offset);
+            Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
+            AscendC::Reg::Mul(accReg, srcFp32Reg, g0Reg, mask);
+            DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + 1U * headStride + offset);
+            Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
+            AscendC::Reg::MulAddDst(accReg, srcFp32Reg, g1Reg, mask);
+            DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + 2U * headStride + offset);
+            Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
+            AscendC::Reg::MulAddDst(accReg, srcFp32Reg, g2Reg, mask);
+            DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + 3U * headStride + offset);
+            Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
+            AscendC::Reg::MulAddDst(accReg, srcFp32Reg, g3Reg, mask);
+            if constexpr (IsSameT<T, bfloat16_t>::value) {
+                Cast<T, float, CAST_FP32_TO_B16_RINT>(dstB16Reg, accReg, mask);
+            } else {
+                Cast<T, float, CAST_FP32_TO_B16_NONE>(dstB16Reg, accReg, mask);
+            }
+            DataCopy<T, StoreDist::DIST_PACK_B32>(dstAddr + offset, dstB16Reg, mask);
+        }
+    }
+}
+
 __aicore__ inline void Axpy(const LocalTensor<float> &dst, const LocalTensor<float> &src, float scalar, uint32_t count)
 {
     __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();
