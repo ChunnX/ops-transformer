@@ -64,37 +64,37 @@ public:
     {
         if (s2LoopNum == 1) {
             if (isNeedLD || returnValueFlag) {
-                liV2Topkb32gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal,
-                                                  idx0Local, idx1Local, idx2Local, idx3Local, nkValueLocal, topK,
-                                                  s2SeqLen);
+                liV2Topkb32gather::LiV2TopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal,
+                                                    idx0Local, idx1Local, idx2Local, idx3Local, nkValueLocal, topK,
+                                                    s2SeqLen);
             } else {
-                liV2Topkb32gather::LiTopKVF<false>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal,
-                                                   idx0Local, idx1Local, idx2Local, idx3Local, nkValueLocal, topK,
-                                                   s2SeqLen);
+                liV2Topkb32gather::LiV2TopKVF<false>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal,
+                                                     idx0Local, idx1Local, idx2Local, idx3Local, nkValueLocal, topK,
+                                                     s2SeqLen);
             }
             PipeBarrier<PIPE_V>();
             AscendC::DataCopy(indicesOutLocal, tmpIndexLocal,
                               LIV2Common::Align(topK, (uint32_t)256)); // 256：拷贝长度对齐大小
         } else {
             if (loopIdx == 0) {
-                liV2Topkb32gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal,
-                                                  idx0Local, idx1Local, idx2Local, idx3Local, nkValueLocal, topK,
-                                                  s2SeqLen);
+                liV2Topkb32gather::LiV2TopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal,
+                                                    idx0Local, idx1Local, idx2Local, idx3Local, nkValueLocal, topK,
+                                                    s2SeqLen);
                 PipeBarrier<PIPE_V>();
                 AscendC::DataCopy(
                     hisIndexLocal[(loopIdx + 1) % 2], tmpIndexLocal, // 2：使用两个本地存储单元进行循环交替存储
                     LIV2Common::Align(topK, (uint32_t)256)); // 对复制的数据量进行对齐处理，确保其为256的倍数
             } else if (loopIdx != 0) {
-                liV2Topkb32gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal,
-                                                  idx0Local, idx1Local, idx2Local, idx3Local, nkValueLocal, topK,
-                                                  s2SeqLen);
+                liV2Topkb32gather::LiV2TopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal,
+                                                    idx0Local, idx1Local, idx2Local, idx3Local, nkValueLocal, topK,
+                                                    s2SeqLen);
                 PipeBarrier<PIPE_V>();
                 uint32_t loopBasicIdx = liV2TopkCommon::GetGatherLoopOffset(topK, trunkLen, loopIdx);
                 // 2：使用两个本地存储单元进行循环交替存储
-                liV2Topkb32gather::LiTopKGatherVF(hisIndexLocal[(loopIdx + 1) % 2], hisValueLocal, mrgValueLocal,
-                                                  // 2：同上
-                                                  tmpIndexLocal, hisIndexLocal[loopIdx % 2], topK, loopBasicIdx,
-                                                  s2SeqLen);
+                liV2Topkb32gather::LiV2TopKGatherVF(hisIndexLocal[(loopIdx + 1) % 2], hisValueLocal, mrgValueLocal,
+                                                    // 2：同上
+                                                    tmpIndexLocal, hisIndexLocal[loopIdx % 2], topK, loopBasicIdx,
+                                                    s2SeqLen);
                 if (loopIdx == s2LoopNum - 1) {
                     PipeBarrier<PIPE_V>();
                     if ((loopIdx + 1) % 2 == 1) { // 2：同上
@@ -116,10 +116,10 @@ public:
                                   LocalTensor<uint32_t> &indicesOutLocal, LocalTensor<uint32_t> &hisValueLocal,
                                   uint32_t s2SeqLen, uint32_t loopIdx, uint32_t s2LoopNum)
     {
-        liV2Topkb32gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idx0Local,
-                                          idx1Local, idx2Local, idx3Local, nkValueLocal, topK, s2SeqLen);
+        liV2Topkb32gather::LiV2TopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idx0Local,
+                                            idx1Local, idx2Local, idx3Local, nkValueLocal, topK, s2SeqLen);
         PipeBarrier<PIPE_V>();
-        liV2Topkb32gather::LiTopKLDGatherVF(indicesOutLocal, tmpIndexLocal, indexLocal, topK);
+        liV2Topkb32gather::LiV2TopKLDGatherVF(indicesOutLocal, tmpIndexLocal, indexLocal, topK);
     }
 
 private:

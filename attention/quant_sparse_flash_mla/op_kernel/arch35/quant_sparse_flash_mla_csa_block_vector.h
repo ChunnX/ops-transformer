@@ -1454,19 +1454,19 @@ __aicore__ inline PhyAddrValidInfo CSABlockVec<TEMPLATE_ARGS>::CalcPhyAddrValidI
                                                                                     ConstInfo &constInfo)
 {
     // per-batch执行一次,  per-s1循环内不再判断maskmode
-    PhyAddrValidInfo validInfo;
+    PhyAddrValidInfo qsmlaValidInfo;
     if constexpr (TEMPLATE_MODE == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
                   TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
-        validInfo.oriS2Act = actualOriS2Size;
+        qsmlaValidInfo.oriS2Act = actualOriS2Size;
         if (isOriKv) {
             if (constInfo.oriMaskMode == 0U) {
-                validInfo.oriTopkMode = true;
+                qsmlaValidInfo.oriTopkMode = true;
             } else if (constInfo.oriMaskMode == 3U) {
-                validInfo.oriRightBias = 0;
+                qsmlaValidInfo.oriRightBias = 0;
             } else {
-                validInfo.oriLeftBias =
+                qsmlaValidInfo.oriLeftBias =
                     (constInfo.oriWinLeft == -1) ? PhyAddrValidInfo::BIAS_UNBOUND : constInfo.oriWinLeft + 1;
-                validInfo.oriRightBias =
+                qsmlaValidInfo.oriRightBias =
                     (constInfo.oriWinRight == -1) ? PhyAddrValidInfo::BIAS_UNBOUND : constInfo.oriWinRight;
             }
         }
@@ -1474,11 +1474,11 @@ __aicore__ inline PhyAddrValidInfo CSABlockVec<TEMPLATE_ARGS>::CalcPhyAddrValidI
     if constexpr (TEMPLATE_MODE == QSMLATemplateMode::CSA_TEMPLATE_MODE ||
                   TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
         if (!isOriKv) {
-            validInfo.cmpTopkMode = (constInfo.cmpMaskMode == 0U);
-            validInfo.cmpBase = restoredSize - actualS1Size + 1;
+            qsmlaValidInfo.cmpTopkMode = (constInfo.cmpMaskMode == 0U);
+            qsmlaValidInfo.cmpBase = restoredSize - actualS1Size + 1;
         }
     }
-    return validInfo;
+    return qsmlaValidInfo;
 }
 
 TEMPLATES_DEF_NO_DEFAULT
