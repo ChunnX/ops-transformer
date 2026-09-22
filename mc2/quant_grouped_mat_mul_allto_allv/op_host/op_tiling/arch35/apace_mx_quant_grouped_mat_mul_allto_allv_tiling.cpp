@@ -28,6 +28,7 @@
 #include <tiling/tiling_api.h>
 #include "mc2_comm_utils.h"
 #include <cstring>
+#include <cstdlib>
 #include <numeric>
 
 using namespace Mc2Log;
@@ -179,6 +180,12 @@ ge::graphStatus ApaceMxQuantGroupedMatmulAllToAllvTiling::SetApaceTilingData(
     td->e = static_cast<uint32_t>(localParams_.ep);
     td->epWorldSize = static_cast<uint32_t>(localParams_.epWorldSize);
     td->hasSharedMm = localParams_.hasSharedMm ? 1U : 0U;
+    // 分阶段诊断开关（真机二分定位卡死域）：0=完整(默认) 1=仅通信 2=仅计算 3=计算+提交
+    td->debugStage = 0U;
+    if (const char *stageEnv = getenv("MC2_APACE_GMM_A2AV_DEBUG_STAGE"); stageEnv != nullptr) {
+        td->debugStage = static_cast<uint32_t>(atoi(stageEnv));
+        OP_LOGI(opName_, "Apace debugStage=%u (1=comm-only 2=compute-only 3=submit-no-batch-wait)", td->debugStage);
+    }
     for (uint64_t i = 0; i < expertNum; i++) {
         td->sendCnt[i] = localTilingData_.taskTilingInfo.sendCnt[i];
         td->recvCnt[i] = localTilingData_.taskTilingInfo.recvCnt[i];

@@ -92,6 +92,11 @@ struct hcommQuantGmmAlltoAllvTilingData {
     // ============ 跨 AIC 软 barrier 槽位（host 清零，kernel 按 generation 单调递增使用） ============
     // 位于 tiling 数据尾部（tiling buffer 每次下发前整体清零，保证初值为 0）
     volatile uint32_t barrierSlots[GMM_A2AV_MAX_AIC_CORE_NUM];
+
+    // ============ 分阶段诊断开关（host 读环境变量 MC2_APACE_GMM_A2AV_DEBUG_STAGE 填入） ============
+    // 0=完整流程（默认） 1=仅通信(GMM/SoftBarrier 跳过) 2=仅计算(Submit/Wait/Finalize 跳过)
+    // 3=计算+提交(逐批 Wait 跳过, 尾部统一 Wait) —— 真机二分定位卡死域用
+    uint32_t debugStage;
 };
 
 } // namespace Apace

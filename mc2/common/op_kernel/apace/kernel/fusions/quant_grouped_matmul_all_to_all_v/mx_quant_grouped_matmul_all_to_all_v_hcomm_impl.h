@@ -136,6 +136,9 @@ private:
     uint64_t scaleKLen_{0}; // 每 token 的 scaleA 元素数 = CeilDiv(H1,64)*2
     bool hasSharedMm_{false};
 
+    // 分阶段诊断：0=完整 1=仅通信 2=仅计算 3=计算+提交（尾部统一 Wait）
+    uint32_t debugStage_{0};
+
     static constexpr uint64_t dataDtype_ = GetA2avHcclDataType<CType>();
 };
 
@@ -155,6 +158,7 @@ MxQuantGroupedMatmulAllToAllvHcommImpl<AType, BType, CType, ServerType, TransGmm
     n1_ = t.n1;
     bs_ = t.bs;
     hasSharedMm_ = (t.hasSharedMm != 0U);
+    debugStage_ = t.debugStage;
     scaleKLen_ = (h1_ + Blaze::Gemm::MXFP_DIVISOR_SIZE - 1UL) / Blaze::Gemm::MXFP_DIVISOR_SIZE *
                  Blaze::Gemm::MXFP_MULTI_BASE_SIZE;
     coreNum_ = AscendC::GetBlockNum();
@@ -427,6 +431,10 @@ __aicore__ inline void
 MxQuantGroupedMatmulAllToAllvHcommImpl<AType, BType, CType, ServerType, TransGmmB, TransMmB>::Run()
 {
     const uint32_t expertNumPerBatch = GetExpertNumPerBatch();
+    // 分阶段诊断（真机二分定位卡死域）：0=完整 1=仅通信 2=仅计算 3=计算+提交
+    const bool skipCompute = (debugStage_ == 1U);
+    const bool skipComm = (debugStage_ == 2U);
+    const bool skipBatchWait = (debugStage_ == 3U);
 
     // 主 GMM 分批（镜像逐批节奏：GMM(b) → barrier → Submit(b) → Wait(b-1)）：
     // 本批 A/scaleA 基址推进至全局 token 偏移（gmmX 专家主序），groupList/cTable 按批切片；
@@ -436,38 +444,47 @@ MxQuantGroupedMatmulAllToAllvHcommImpl<AType, BType, CType, ServerType, TransGmm
     uint32_t submitted = 0U;
     for (uint32_t start = 0U; start < e_; start += expertNumPerBatch) {
         const uint32_t actualExpertNum = (start + expertNumPerBatch > e_) ? (e_ - start) : expertNumPerBatch;
-        // FP4 打包口径与 kernel 内默认 A offset 一致：元素数 (token×K)>>1
-        const uint64_t aElemUnits =
-            Blaze::Gemm::IsFp4<AType>() ? ((batchTokenOffset * h1_) >> 1U) : (batchTokenOffset * h1_);
-        RunGmmKernel<TransGmmB>(
-            tilingData_->gmmTile, actualExpertNum * ep_, static_cast<int64_t>(tilingData_->maxM),
-            static_cast<int64_t>(n1_), static_cast<int64_t>(h1_), gmmxGM_ + aElemUnits * sizeof(AType), gmmWeightGM_,
-            gmmxScaleGM_ + batchTokenOffset * scaleKLen_, gmmWeightScaleGM_, sendBufGM_,
-            groupListGM_ + static_cast<uint64_t>(start) * ep_ * 2UL * sizeof(int64_t),
-            Apace::GMM_A2AV_GROUP_LIST_TYPE_SPARSE,
-            reinterpret_cast<const __gm__ uint64_t *>(cTableGM_) + static_cast<uint64_t>(start) * ep_);
+        if (!skipCompute) {
+            // FP4 打包口径与 kernel 内默认 A offset 一致：元素数 (token×K)>>1
+            const uint64_t aElemUnits =
+                Blaze::Gemm::IsFp4<AType>() ? ((batchTokenOffset * h1_) >> 1U) : (batchTokenOffset * h1_);
+            RunGmmKernel<TransGmmB>(
+                tilingData_->gmmTile, actualExpertNum * ep_, static_cast<int64_t>(tilingData_->maxM),
+                static_cast<int64_t>(n1_), static_cast<int64_t>(h1_), gmmxGM_ + aElemUnits * sizeof(AType),
+                gmmWeightGM_, gmmxScaleGM_ + batchTokenOffset * scaleKLen_, gmmWeightScaleGM_, sendBufGM_,
+                groupListGM_ + static_cast<uint64_t>(start) * ep_ * 2UL * sizeof(int64_t),
+                Apace::GMM_A2AV_GROUP_LIST_TYPE_SPARSE,
+                reinterpret_cast<const __gm__ uint64_t *>(cTableGM_) + static_cast<uint64_t>(start) * ep_);
 
-        // 镜像经验：GMM Run 后排空本核管线，保证 fixpipe 产出全部落 GM
-        AscendC::PipeBarrier<PIPE_ALL>();
-
-        // 跨 AIC 软 barrier（generation = 批序号 + 1，单调递增）
-        SoftBarrier(submitted + 1U);
-
-        // 全核提交（workingFlag_ 自动门控：仅 block 0 写参数/敲 CCU doorbell）
-        a2avHandles_[submitted] = SubmitAllToAllvBatch(start, actualExpertNum);
-
-        // 镜像节奏：等待上一批 CCU 完成后再进入下一批 GMM（排空参数区依赖，多核 Wait 协议逐批汇聚）
-        if (submitted > 0U) {
-            hccl_.Wait(a2avHandles_[submitted - 1U]);
-            // 镜像经验：Wait 依赖 datamove 管线，标量侧复用参数区前排空
+            // 镜像经验：GMM Run 后排空本核管线，保证 fixpipe 产出全部落 GM
             AscendC::PipeBarrier<PIPE_ALL>();
+
+            // 跨 AIC 软 barrier（generation = 批序号 + 1，单调递增）
+            SoftBarrier(submitted + 1U);
         }
-        submitted++;
+
+        if (!skipComm) {
+            // 全核提交（workingFlag_ 自动门控：仅 block 0 写参数/敲 CCU doorbell）
+            a2avHandles_[submitted] = SubmitAllToAllvBatch(start, actualExpertNum);
+
+            // 镜像节奏：等待上一批 CCU 完成后再进入下一批 GMM（排空参数区依赖，多核 Wait 协议逐批汇聚）
+            if (!skipBatchWait && submitted > 0U) {
+                hccl_.Wait(a2avHandles_[submitted - 1U]);
+                // 镜像经验：Wait 依赖 datamove 管线，标量侧复用参数区前排空
+                AscendC::PipeBarrier<PIPE_ALL>();
+            }
+            submitted++;
+        }
         batchTokenOffset += BatchTokenCnt(start, actualExpertNum);
     }
 
+    if (skipComm) {
+        // 诊断 stage=2：仅计算路径，不做任何通信收尾
+        return;
+    }
+
     // 共享专家 MM 与末批 AllToAllV 重叠（mmY 不参与通信，无跨核依赖）
-    if (hasSharedMm_) {
+    if (!skipCompute && hasSharedMm_) {
         RunGmmKernel<TransMmB>(tilingData_->sharedMmTile, 1U, static_cast<int64_t>(bs_),
                                static_cast<int64_t>(tilingData_->n2), static_cast<int64_t>(tilingData_->h2), mmxGM_,
                                mmWeightGM_, mmxScaleGM_, mmWeightScaleGM_, mmyGM_, sharedGroupListGM_,
@@ -475,11 +492,11 @@ MxQuantGroupedMatmulAllToAllvHcommImpl<AType, BType, CType, ServerType, TransGmm
     }
     AscendC::PipeBarrier<PIPE_ALL>();
 
-    // 末批 Wait → Finalize（多核协议下非工作核轮询 finishCntGM_）
+    // 尾部：统一 Wait 未完成的 handle → Finalize（多核协议下非工作核轮询 finishCntGM_）
     if (submitted > 0U) {
         hccl_.Wait(a2avHandles_[submitted - 1U]);
+        hccl_.Finalize();
     }
-    hccl_.Finalize();
 }
 
 } // namespace Apace
