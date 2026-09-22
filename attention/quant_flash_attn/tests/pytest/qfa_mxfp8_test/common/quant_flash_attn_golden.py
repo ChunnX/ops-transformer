@@ -1307,6 +1307,7 @@ class Network(nn.Module):
 
     def forward(
         self,
+        metadata,
         q,
         k,
         v,
@@ -1335,24 +1336,9 @@ class Network(nn.Module):
         max_seqlen_q,
         max_seqlen_kv,
     ):
-        metadata = quant_flash_attn_metadata(
-            num_heads_q=q_n,
-            num_heads_kv=kv_n,
-            head_dim=q.shape[-1],
-            quant_mode=1,
-            cu_seqlens_q=cu_seqlens_q,
-            cu_seqlens_kv=cu_seqlens_kv,
-            seqused_q=seqused_q,
-            seqused_kv=seqused_kv,
-            head_dim_v=None,
-            mask_mode=sparse_mode,
-            layout_q=layout_q,
-            layout_q_descale=layout_q_descale,
-            layout_kv=layout_kv,
-            layout_out=layout_out,
-            max_seqlen_q=max_seqlen_q,
-            max_seqlen_kv=max_seqlen_kv,
-        )
+        # [SK兼容] metadata(AICPU算子)不可进SK捕获图(super_kernel_optimize捕获
+        # AICPU算子会segfault, torch_npu graphs.py:701实测) — 改为捕获外构建后
+        # 作为入参传入, forward只调主算子(与TTK/独立脚本单算子捕获架构一致)
         main_kwargs = dict(
             q=q,
             k=k,
@@ -1379,7 +1365,10 @@ class Network(nn.Module):
             max_seqlen_kv=max_seqlen_kv,
         )
         main_kwargs.update(_get_npu_fa_kwargs())
-        atten_out, lse_out = quant_flash_attn(**main_kwargs)
+        # [SK兼容] OpOverload直调(与TTK/独立脚本架构一致): python wrapper内含
+        # graph_convert分支, dynamo trace进python层会绕开opcompile json生成
+        # (假SK静默回退)且AICPU算子进图曾segfault — torch.ops直调是dynamo原生路径
+        atten_out, lse_out = torch.ops.cann_ops_transformer.quant_flash_attn(**main_kwargs)
         return atten_out, lse_out
 
 
@@ -1879,8 +1868,32 @@ def mxfp8_fa_torch_npu(
     with torch.no_grad():
         torch.npu.synchronize()
 
-        # Network.forward 只调 torch.library op，Python 预处理结果通过参数传入
+        # [SK兼容] metadata(AICPU算子)在捕获外构建(SK捕获AICPU算子会segfault),
+        # 作为fa_args首参传入forward — 单算子捕获架构(TTK/独立脚本13/13 PASS同款)
+        metadata_t = quant_flash_attn_metadata(
+            num_heads_q=q_n,
+            num_heads_kv=kv_n,
+            head_dim=q.shape[-1],
+            quant_mode=1,
+            cu_seqlens_q=cu_seqlens_q_t,
+            cu_seqlens_kv=cu_seqlens_kv_t,
+            seqused_q=seqused_q_t,
+            seqused_kv=seqused_kv_t,
+            head_dim_v=None,
+            mask_mode=sparse_mode,
+            layout_q=layout_q,
+            layout_q_descale=layout_q_descale,
+            layout_kv=layout_kv,
+            layout_out=layout_out,
+            max_seqlen_q=max_seqlen_q,
+            max_seqlen_kv=max_seqlen_kv,
+        )
+        if metadata_t.device != q.device:
+            metadata_t = metadata_t.to(q.device)
+
+        # Network.forward 只调主算子(AICPU metadata已出图), 其余通过参数传入
         fa_args = (
+            metadata_t,
             q,
             k,
             v,
@@ -1911,13 +1924,24 @@ def mxfp8_fa_torch_npu(
         )
 
         # aclgraph: 直接使用 npugraph_ex backend
+        # [Super-Kernel] QFA_SUPER_KERNEL=1 时叠加静态内核编译(SK) — 生产同款最小配置,
+        # 不带 debug_per_op_max_core_num(限单核→多核协同kernel死等→aicore timeout元凶)
+        use_sk = (_os.environ.get("QFA_SUPER_KERNEL", "0") == "1")
+        compile_kwargs = {}
+        if use_sk:
+            compile_kwargs["options"] = {
+                "static_kernel_compile": True,
+                "super_kernel_optimize": True,
+            }
+            logger.info("[SK] SuperKernel enabled (static_kernel_compile + super_kernel_optimize)")
         logger.info("[NPU] 调用 aclgraph (npugraph_ex)...")
         npu_backend = "npugraph_ex"
         npu_mode = torch.compile(
-            npu_mode, fullgraph=False, backend=npu_backend, dynamic=False
+            npu_mode, fullgraph=False, backend=npu_backend, dynamic=False, **compile_kwargs
         )
         # mark_static 标记所有 tensor 输入
         for t in (
+            metadata_t,
             q,
             k,
             v,
@@ -1936,7 +1960,14 @@ def mxfp8_fa_torch_npu(
         ):
             if t is not None:
                 torch._dynamo.mark_static(t)
+        # [SK] scope标定(生产/TTK同款): 必须包住被捕获的forward调用
+        if use_sk:
+            torch.npu.super_kernel_scope_begin("pytest_qfa_sk")
         atten_out, lse_out = npu_mode(*fa_args)
+        if use_sk:
+            torch.npu.super_kernel_scope_end("pytest_qfa_sk")
+            logger.info("[SK] SuperKernel scope executed — 鉴别真假SK: 日志须有 "
+                        "'static kernel compile success'(失败会静默回退普通aclgraph)")
 
         atten_out = atten_out.cpu().detach()
         lse_out = lse_out.cpu().detach()
