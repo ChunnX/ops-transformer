@@ -751,12 +751,19 @@ mc2_moe_advanced@ops-transformer:
                 - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_kernel/arch35/
                 - ops/ops-transformer/mc2/moe_distribute_combine_setup/CMakeLists.txt
                 - ops/ops-transformer/mc2/moe_distribute_combine_setup/README.md
-                - ops/ops-transformer/mc2/moe_distribute_combine_teardown/op_host/op_tiling/arch35/
-                - ops/ops-transformer/mc2/moe_distribute_combine_teardown/op_api/
-                - ops/ops-transformer/mc2/moe_distribute_combine_teardown/op_graph/
-                - ops/ops-transformer/mc2/moe_distribute_combine_teardown/op_kernel/arch35/
-                - ops/ops-transformer/mc2/moe_distribute_combine_teardown/CMakeLists.txt
-                - ops/ops-transformer/mc2/moe_distribute_combine_teardown/README.md
+                - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_host/CMakeLists.txt
+                - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_host/config/
+                - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_host/moe_distribute_combine_setup_def.cpp
+                - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_host/moe_distribute_combine_setup_infershape.cpp
+                - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_kernel/arch22/
+                - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_kernel/moe_distribute_base.h
+                - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_kernel/moe_distribute_combine_setup.cpp
+                - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_kernel/moe_distribute_combine_setup_tiling_data.h
+                - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_kernel/moe_distribute_combine_setup_tiling_key.h
+                - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_host/op_tiling/arch22/
+                - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_host/op_tiling/moe_distribute_combine_setup_tiling.cpp
+                - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_host/op_tiling/moe_distribute_combine_setup_tiling_base.cpp
+                - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_host/op_tiling/moe_distribute_combine_setup_tiling_base.h
                 - ops/ops-transformer/mc2/moe_distribute_combine_teardown/op_host/CMakeLists.txt
                 - ops/ops-transformer/mc2/moe_distribute_combine_teardown/op_host/config/
                 - ops/ops-transformer/mc2/moe_distribute_combine_teardown/op_host/moe_distribute_combine_teardown_def.cpp
