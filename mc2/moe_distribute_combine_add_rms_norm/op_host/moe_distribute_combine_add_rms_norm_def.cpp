@@ -13,7 +13,7 @@
  * \brief
  */
 
-#include "../../common/op_host/mc2_combine_registration.h"
+#include "register/op_def_registry.h"
 
 namespace ops {
 class MoeDistributeCombineAddRmsNorm : public OpDef {
@@ -27,10 +27,32 @@ public:
         DefineAttributes();
 
         // A3 (arch22): _a3 entry (opFile -> arch22/..._a3.cpp). Reuses the class-level I/O.
-        auto aicore_config_a3 = Mc2OpDef::BuildCombineAICoreConfig("static_true", "moe_distribute_combine_add_rms_norm_a3");
+        OpAICoreConfig aicore_config_a3;
+        aicore_config_a3.DynamicCompileStaticFlag(true)
+            .DynamicFormatFlag(true)
+            .DynamicRankSupportFlag(true)
+            .DynamicShapeSupportFlag(true)
+            .NeedCheckSupportFlag(false)
+            .PrecisionReduceFlag(true)
+            .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
+            .ExtendCfgInfo("prebuildPattern.value", "Opaque")
+            .ExtendCfgInfo("jitCompile.flag", "static_true")
+            .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel")
+            .ExtendCfgInfo("opFile.value", "moe_distribute_combine_add_rms_norm_a3");
 
         // A5 (arch35): dedicated kernel entry (opFile -> arch35/..._apt.cpp).
-        auto aicore_config_apt = Mc2OpDef::BuildCombineAICoreConfig("static_true", "moe_distribute_combine_add_rms_norm_apt");
+        OpAICoreConfig aicore_config_apt;
+        aicore_config_apt.DynamicCompileStaticFlag(true)
+            .DynamicFormatFlag(true)
+            .DynamicRankSupportFlag(true)
+            .DynamicShapeSupportFlag(true)
+            .NeedCheckSupportFlag(false)
+            .PrecisionReduceFlag(true)
+            .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
+            .ExtendCfgInfo("prebuildPattern.value", "Opaque")
+            .ExtendCfgInfo("jitCompile.flag", "static_true")
+            .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel")
+            .ExtendCfgInfo("opFile.value", "moe_distribute_combine_add_rms_norm_apt");
 
         this->AICore().AddConfig("ascend910_93", aicore_config_a3);
         this->AICore().AddConfig("ascend950", aicore_config_apt);
@@ -84,30 +106,80 @@ private:
             .AutoContiguous();
     }
 
-    void DefineOptionalInput(const char *name, ge::DataType dataType)
+    void DefineOptionalInputs()
     {
-        this->Input(name)
+        this->Input("tp_send_counts")
             .ParamType(OPTIONAL)
-            .DataType({dataType})
+            .DataType({ge::DT_INT32})
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND})
             .AutoContiguous();
-    }
-
-    void DefineOptionalInputs()
-    {
-        DefineOptionalInput("tp_send_counts", ge::DT_INT32);
-        DefineOptionalInput("x_active_mask", ge::DT_BOOL);
-        DefineOptionalInput("activation_scale", ge::DT_FLOAT);
-        DefineOptionalInput("weight_scale", ge::DT_FLOAT);
-        DefineOptionalInput("group_list", ge::DT_INT64);
-        DefineOptionalInput("expand_scales", ge::DT_FLOAT);
-        DefineOptionalInput("shared_expert_x", ge::DT_BF16);
-        DefineOptionalInput("elastic_info", ge::DT_INT32);
-        DefineOptionalInput("ori_x", ge::DT_BF16);
-        DefineOptionalInput("const_expert_alpha_1", ge::DT_BF16);
-        DefineOptionalInput("const_expert_alpha_2", ge::DT_BF16);
-        DefineOptionalInput("const_expert_v", ge::DT_BF16);
+        this->Input("x_active_mask")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_BOOL})
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("activation_scale")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("weight_scale")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("group_list")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_INT64})
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("expand_scales")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("shared_expert_x")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_BF16})
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("elastic_info")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_INT32})
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("ori_x")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_BF16})
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("const_expert_alpha_1")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_BF16})
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("const_expert_alpha_2")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_BF16})
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("const_expert_v")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_BF16})
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND})
+            .AutoContiguous();
     }
 
     void DefineOutputs()
@@ -131,11 +203,26 @@ private:
 
     void DefineAttributes()
     {
-        Mc2OpDef::DefineCombineAttributes(*this, 0);
+        this->Attr("group_ep").AttrType(REQUIRED).String();
+        this->Attr("ep_world_size").AttrType(REQUIRED).Int();
+        this->Attr("ep_rank_id").AttrType(REQUIRED).Int();
+        this->Attr("moe_expert_num").AttrType(REQUIRED).Int();
+        this->Attr("group_tp").AttrType(OPTIONAL).String("");
+        this->Attr("tp_world_size").AttrType(OPTIONAL).Int(0);
+        this->Attr("tp_rank_id").AttrType(OPTIONAL).Int(0);
+        this->Attr("expert_shard_type").AttrType(OPTIONAL).Int(0);
+        this->Attr("shared_expert_num").AttrType(OPTIONAL).Int(0);
+        this->Attr("shared_expert_rank_num").AttrType(OPTIONAL).Int(0);
+        this->Attr("global_bs").AttrType(OPTIONAL).Int(0);
+        this->Attr("out_dtype").AttrType(OPTIONAL).Int(0);
+        this->Attr("comm_quant_mode").AttrType(OPTIONAL).Int(0);
+        this->Attr("group_list_type").AttrType(OPTIONAL).Int(0);
         this->Attr("comm_alg").AttrType(OPTIONAL).String("");
         this->Attr("norm_eps").AttrType(OPTIONAL).Float(1e-6f);
-        Mc2OpDef::DefineCombineSpecialExpertAttributes(*this);
-}
+        this->Attr("zero_expert_num").AttrType(OPTIONAL).Int(0);
+        this->Attr("copy_expert_num").AttrType(OPTIONAL).Int(0);
+        this->Attr("const_expert_num").AttrType(OPTIONAL).Int(0);
+    }
 };
 
 OP_ADD(MoeDistributeCombineAddRmsNorm);
