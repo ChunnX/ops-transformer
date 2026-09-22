@@ -88,7 +88,6 @@ int main()
     constexpr int64_t N = 4;
     constexpr int64_t D = 5120;
     constexpr aclDataType hdt = ACL_BF16; // 性能主场景为 BF16
-    constexpr int64_t repeat = 10;        // 供 msprof op 采集多次 launch
     aclrtContext context = nullptr;
     aclrtStream stream = nullptr;
     CHECK_RET(aclInit(nullptr) == ACL_SUCCESS, return -1);
@@ -123,10 +122,8 @@ int main()
     if (workspaceSize > 0) {
         CHECK_RET(aclrtMalloc(&workspace, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST) == ACL_SUCCESS, return -1);
     }
-    for (int64_t i = 0; i < repeat; ++i) {
-        ret = aclnnMhcSandwichNormPostPreonly(workspace, workspaceSize, executor, stream);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Execute failed, error: %d\n", ret); return -1);
-    }
+    ret = aclnnMhcSandwichNormPostPreonly(workspace, workspaceSize, executor, stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Execute failed, error: %d\n", ret); return -1);
     CHECK_RET(aclrtSynchronizeStream(stream) == ACL_SUCCESS, return -1);
     LOG_PRINT("MhcSandwichNormPostPreonly compute success!\n");
 
