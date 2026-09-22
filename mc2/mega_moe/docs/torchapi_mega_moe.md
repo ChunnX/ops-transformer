@@ -1414,7 +1414,6 @@ sym_buffer.update_group(group) -> None
     - local_moe_expert_num = num_experts / ep_world_size；启用共享专家时，shared_expert_num_per_rank = shared_l1_weights.dim0；num_experts_per_rank = shared_expert_num_per_rank + local_moe_expert_num，未启用共享专家时 shared_expert_num_per_rank = 0。
     - shared_expert_num_per_rank范围 [0, 4]。
     - topo_type由通信域上下文自动推导。0表示MTE拓扑，1表示URMA跨超拓扑。
-    - URMA拓扑下，`activation`不支持"swiglustep"和"swigluoai"。
     - topk_weights_type取值为0或1，0表示关闭topkWeights前移，1表示开启。
     - 通信buffer由`get_symm_buffer_for_mega_moe`自动计算并申请，用户无需自行计算或设置`ccl_buffer_size`。
     - l1_weights和l2_weights的数据类型必须一致，且仅支持FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1。
