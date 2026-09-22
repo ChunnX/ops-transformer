@@ -82,18 +82,31 @@ def _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q):
     return 0
 
 
-def _calculate_max_schedule_size(batch_size, num_heads_kv):
-    """dim0 按 sectionNum 最坏值(batch*num_heads_kv)动态计算, 开启 section 后
+def _calculate_max_schedule_size(batch_size, num_heads_kv, num_heads_q=None, layout_q_descale=None):
+    """dim0 按 sectionNum 最坏值(batch*head_num)动态计算, 开启 section 后
     FA/FD 调度区需求随 section 数线性增长, 固定值无法覆盖; 对齐 4096 便于对拍。
-    (2, dim0) 布局中第二行即反向 FAG 区, grad 按 shape.GetDim(1)=dim0 推导其偏移。"""
+    (2, dim0) 布局中第二行即反向 FAG 区, grad 按 shape.GetDim(1)=dim0 推导其偏移。
+
+    这里的 head_num 必须与 AICPU 侧保持一致: aicpu 的
+    baseInfo.kvHeadNum = isDecode ? numHeadsKv : numHeadsQ
+    (isDecode 即 layout_q_descale == "N2TGD"), 而 CalcGridInfoSection 的内层循环
+    按 baseInfo.GetKvHeadNum() 计数。因此 sectionNum 的最坏值在 decode(N2TGD) 下
+    是 batch*num_heads_kv, 在 prefill(其余 layout_q_descale) 下是 batch*num_heads_q。
+    GQA 下两者相差 G = num_heads_q / num_heads_kv 倍, 若一律按 num_heads_kv 估算,
+    prefill 会欠分配, FaMetaData::Clear() 越界写, 触发 AICPU abort。"""
     align_size = 4096
     head_size = METADATA_STRIDE  # head 区占 1 个 stride
     # batch_size 为 -1/None/0(未知, 由 AICPU 从 varlen tensor 推断)时无法预估 section 数,
     # 按 1 兜底: sn 恒为 1 时需求为 16+(aic+aiv)*16, 4096 预算已覆盖
     batch_size = batch_size if batch_size and batch_size > 0 else 1
+    # num_heads_q 未传入时维持原行为; layout_q_descale 为 None(meta 侧未做 None 归一化)
+    # 时按 prefill 取大值, 宁可多分配也不欠分配
+    head_num = num_heads_kv
+    if num_heads_q is not None and layout_q_descale != "N2TGD":
+        head_num = num_heads_q
     aic_num, aiv_num = _get_core_nums()
-    fa_size = aic_num * METADATA_STRIDE * batch_size * num_heads_kv
-    fd_size = aiv_num * METADATA_STRIDE * batch_size * num_heads_kv
+    fa_size = aic_num * METADATA_STRIDE * batch_size * head_num
+    fd_size = aiv_num * METADATA_STRIDE * batch_size * head_num
 
     schedule_size = head_size + fa_size + fd_size
     return ((schedule_size + align_size - 1) // align_size) * align_size
@@ -240,7 +253,7 @@ class QuantFlashAttnOpBuilder(OpBuilder):
             is_grad_enabled: Optional[bool] = False,
         ):
             b_size = _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q)
-            max_schedule_size = _calculate_max_schedule_size(b_size, num_heads_kv)
+            max_schedule_size = _calculate_max_schedule_size(b_size, num_heads_kv, num_heads_q, layout_q_descale)
             return torch.empty((2, max_schedule_size), dtype=torch.int32, device="meta")
 
         @impl(get_as_library(), self.name, "Meta")
@@ -391,7 +404,7 @@ def quant_flash_attn_metadata(
 
     _check_layout_constraint(quant_mode, layout_q, layout_kv, layout_out)
 
-    max_schedule_size = _calculate_max_schedule_size(batch_size, num_heads_kv)
+    max_schedule_size = _calculate_max_schedule_size(batch_size, num_heads_kv, num_heads_q, layout_q_descale)
     output = torch.empty((2, max_schedule_size), dtype=torch.int32, device="npu")
 
     op_module = quant_flash_attn_op_builder.load()
