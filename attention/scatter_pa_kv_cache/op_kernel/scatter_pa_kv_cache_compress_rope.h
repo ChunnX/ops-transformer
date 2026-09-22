@@ -35,56 +35,97 @@ public:
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID2);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID2);
             uint8_t repeatTimes_ = CeilDiv(tokenSize_, repeatDivisor);
-            uint16_t copyStrid = static_cast<uint16_t>((numHeads_ - 1) * numBlocks_);
-            uint16_t tail = headWin % addNumPerLoop;
-            uint32_t loop = headWin / addNumPerLoop;                        // 每一轮处理FP_NUM/tokenSize个token
-            uint64_t addStrid = PER_FLOAT_NUM - PER_FLOAT_NUM % tokenSize_; // 考虑每一轮计算都按照tokenSize对齐
+            uint16_t tail = addNumPerLoop == 0 ? static_cast<uint16_t>(headWin) : headWin % addNumPerLoop;
+            uint32_t loop = addNumPerLoop == 0 ? 0 : headWin / addNumPerLoop;
+            uint64_t addStrid = static_cast<uint64_t>(addNumPerLoop) * tokenSize_;
             uint64_t start = tokenSize_ * (numHeads_ * (consumSeqLen + offsetIdx) + headId);
             uint64_t tokenStart = 0;
+            uint32_t tokenStrideT = tokenAlignElem_;
+            uint32_t tokenStrideF = RoundUp(static_cast<uint32_t>(tokenSize_), 8);
+            bool aligned = IsTokenBytesAligned(tokenBytes_);
 
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
             for (uint32_t j = 0; j < loop; j++) {
-                AscendC::DataCopyParams copyParams = {addNumPerLoop, static_cast<uint16_t>(numBlocks_), copyStrid, 0};
                 tokenStart = j % BUFFER_NUM == 0 ? 0 : PER_FLOAT_NUM;
                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(j % BUFFER_NUM);
-                DataCopy(tokenLocal_[tokenStart], src[start], copyParams);
+                if (aligned) {
+                    AscendC::DataCopyParams copyParams = {addNumPerLoop, static_cast<uint16_t>(numBlocks_),
+                                                          static_cast<uint16_t>(offsetPerLine), 0};
+                    DataCopy(tokenLocal_[tokenStart], src[start], copyParams);
+                } else {
+                    AscendC::DataCopyExtParams copyParams = {addNumPerLoop, tokenBytes_, srcGapBytes_, 0, 0};
+                    AscendC::DataCopyPadExtParams<T> padParams = {false, 0, 0, 0};
+                    DataCopyPad(tokenLocal_[tokenStart], src[start], copyParams, padParams);
+                }
                 AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
                 start += numHeads_ * addStrid;
                 AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
-                Cast(tokenCompressLocal_[tokenStart], tokenLocal_[tokenStart], AscendC::RoundMode::CAST_NONE,
-                     PER_FLOAT_NUM);
-                AscendC::PipeBarrier<PIPE_V>();
-                for (uint32_t k = 0; k < addNumPerLoop; k++) {
-                    AscendC::Add<float, false>(tokenSumLocal_, tokenCompressLocal_[k * tokenSize_ + tokenStart],
-                                               tokenSumLocal_, AscendC::MASK_PLACEHOLDER, repeatTimes_,
-                                               {1, 1, 1, 8, 8, 8});
+                if (aligned) {
+                    Cast(tokenCompressLocal_[tokenStart], tokenLocal_[tokenStart], AscendC::RoundMode::CAST_NONE,
+                         PER_FLOAT_NUM);
                     AscendC::PipeBarrier<PIPE_V>();
+                    for (uint32_t k = 0; k < addNumPerLoop; k++) {
+                        AscendC::Add<float, false>(tokenSumLocal_, tokenCompressLocal_[k * tokenSize_ + tokenStart],
+                                                   tokenSumLocal_, AscendC::MASK_PLACEHOLDER, repeatTimes_,
+                                                   {1, 1, 1, 8, 8, 8});
+                        AscendC::PipeBarrier<PIPE_V>();
+                    }
+                } else {
+                    for (uint32_t k = 0; k < addNumPerLoop; k++) {
+                        Cast(tokenCompressLocal_[k * tokenStrideF + tokenStart],
+                             tokenLocal_[k * tokenStrideT + tokenStart], AscendC::RoundMode::CAST_NONE, tokenSize_);
+                        AscendC::PipeBarrier<PIPE_V>();
+                        AscendC::Add<float, false>(tokenSumLocal_,
+                                                   tokenCompressLocal_[k * tokenStrideF + tokenStart],
+                                                   tokenSumLocal_, AscendC::MASK_PLACEHOLDER, repeatTimes_,
+                                                   {1, 1, 1, 8, 8, 8});
+                        AscendC::PipeBarrier<PIPE_V>();
+                    }
                 }
                 AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(j % BUFFER_NUM);
             }
             if (tail > 0) {
-                AscendC::DataCopyParams copyParams = {tail, static_cast<uint16_t>(numBlocks_), copyStrid, 0};
                 tokenStart = loop % BUFFER_NUM == 0 ? 0 : PER_FLOAT_NUM;
                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(loop % BUFFER_NUM);
-                DataCopy(tokenLocal_[tokenStart], src[start], copyParams);
+                if (aligned) {
+                    AscendC::DataCopyParams copyParams = {tail, static_cast<uint16_t>(numBlocks_),
+                                                          static_cast<uint16_t>(offsetPerLine), 0};
+                    DataCopy(tokenLocal_[tokenStart], src[start], copyParams);
+                } else {
+                    AscendC::DataCopyExtParams copyParams = {tail, tokenBytes_, srcGapBytes_, 0, 0};
+                    AscendC::DataCopyPadExtParams<T> padParams = {false, 0, 0, 0};
+                    DataCopyPad(tokenLocal_[tokenStart], src[start], copyParams, padParams);
+                }
                 AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
-                Cast(tokenCompressLocal_[tokenStart], tokenLocal_[tokenStart], AscendC::RoundMode::CAST_NONE,
-                     PER_FLOAT_NUM);
-                AscendC::PipeBarrier<PIPE_V>();
-                for (uint32_t k = 0; k < tail; k++) {
-                    AscendC::Add<float, false>(tokenSumLocal_, tokenCompressLocal_[k * tokenSize_ + tokenStart],
-                                               tokenSumLocal_, AscendC::MASK_PLACEHOLDER, repeatTimes_,
-                                               {1, 1, 1, 8, 8, 8});
+                if (aligned) {
+                    Cast(tokenCompressLocal_[tokenStart], tokenLocal_[tokenStart], AscendC::RoundMode::CAST_NONE,
+                         PER_FLOAT_NUM);
                     AscendC::PipeBarrier<PIPE_V>();
+                    for (uint32_t k = 0; k < tail; k++) {
+                        AscendC::Add<float, false>(tokenSumLocal_, tokenCompressLocal_[k * tokenSize_ + tokenStart],
+                                                   tokenSumLocal_, AscendC::MASK_PLACEHOLDER, repeatTimes_,
+                                                   {1, 1, 1, 8, 8, 8});
+                        AscendC::PipeBarrier<PIPE_V>();
+                    }
+                } else {
+                    for (uint32_t k = 0; k < tail; k++) {
+                        Cast(tokenCompressLocal_[k * tokenStrideF + tokenStart],
+                             tokenLocal_[k * tokenStrideT + tokenStart], AscendC::RoundMode::CAST_NONE, tokenSize_);
+                        AscendC::PipeBarrier<PIPE_V>();
+                        AscendC::Add<float, false>(tokenSumLocal_,
+                                                   tokenCompressLocal_[k * tokenStrideF + tokenStart],
+                                                   tokenSumLocal_, AscendC::MASK_PLACEHOLDER, repeatTimes_,
+                                                   {1, 1, 1, 8, 8, 8});
+                        AscendC::PipeBarrier<PIPE_V>();
+                    }
                 }
                 AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(loop % BUFFER_NUM);
             }
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
 
-            AscendC::DataCopyParams copyParams = {1, static_cast<uint16_t>(numBlocks_), 0, 0};
             uint64_t cacheStart = tokenSize_ * (slotInputGt_.GetValue(startTaskOffset) + offsetIdx);
             Duplicate(tokenCompressLocal_, (float)static_cast<int32_t>(headWin), tokenSize_);
             AscendC::PipeBarrier<PIPE_V>();
@@ -93,35 +134,38 @@ public:
             Cast(tokenLocal_, tokenSumLocal_, AscendC::RoundMode::CAST_RINT, tokenSize_);
             AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-            DataCopy(dst[cacheStart], tokenLocal_, copyParams);
+            if (aligned) {
+                AscendC::DataCopyParams copyParams = {1, static_cast<uint16_t>(numBlocks_), 0, 0};
+                DataCopy(dst[cacheStart], tokenLocal_, copyParams);
+            } else {
+                AscendC::DataCopyExtParams copyParams = {1, tokenBytes_, 0, 0, 0};
+                DataCopyPad(dst[cacheStart], tokenLocal_, copyParams);
+            }
         }
     }
 
     template <bool PHASE>
     __aicore__ inline void Copy2Cache(AscendC::GlobalTensor<T> &inputCache, AscendC::GlobalTensor<T> &outputCache,
-                                      uint32_t srcStart, uint32_t dstStart)
+                                      uint64_t srcStart, uint64_t dstStart)
     {
         event_t eventID = EVENT_ID0;
         uint32_t totalCopyLoop = 0; // 需要搬多少次
         uint32_t tokensPerLoop = 0; // 每次搬几个token
         uint32_t tailTokens = 0;    // 最后一轮需要搬多少个token
+        uint32_t tokenStride = tokenAlignElem_ == 0 ? 1 : tokenAlignElem_;
         if constexpr (PHASE) {
-            totalCopyLoop = ((offsetIdx * tokenSize_) / copyFp16Num);
-            tokensPerLoop = totalCopyLoop == 0 ? 0 : copyFp16Num / tokenSize_;
+            totalCopyLoop = ((offsetIdx * tokenStride) / copyFp16Num);
+            tokensPerLoop = totalCopyLoop == 0 ? 0 : copyFp16Num / tokenStride;
             tailTokens = offsetIdx - totalCopyLoop * tokensPerLoop;
         } else {
             uint32_t remainingLength = seqLen - offsetIdx - headWin;
-            totalCopyLoop = ((remainingLength * tokenSize_) / copyFp16Num);
-            tokensPerLoop = totalCopyLoop == 0 ? 0 : copyFp16Num / tokenSize_;
+            totalCopyLoop = ((remainingLength * tokenStride) / copyFp16Num);
+            tokensPerLoop = totalCopyLoop == 0 ? 0 : copyFp16Num / tokenStride;
             tailTokens = remainingLength - totalCopyLoop * tokensPerLoop;
         }
-        AscendC::DataCopyParams copyParamsIn = {static_cast<uint16_t>(tokensPerLoop), static_cast<uint16_t>(numBlocks_),
-                                                static_cast<uint16_t>(offsetPerLine), 0};
-        AscendC::DataCopyParams copyParamsOut = {static_cast<uint16_t>(tokensPerLoop),
-                                                 static_cast<uint16_t>(numBlocks_), 0, 0};
         if (totalCopyLoop != 0) {
-            CopyKvCacheDoubleBuf(inputCache, copyLocalPing_, outputCache, eventID, srcStart, dstStart, copyParamsIn,
-                                 copyParamsOut);
+            CopyKvCacheDoubleBuf(inputCache, copyLocalPing_, outputCache, eventID, srcStart, dstStart,
+                                 static_cast<uint16_t>(tokensPerLoop), tokenBytes_, srcGapBytes_);
         }
         if constexpr (PHASE) { // partA
             srcStart = tokenSize_ * (numHeads_ * consumSeqLen + headId);
@@ -140,13 +184,10 @@ public:
                 copyLocal_ = copyLocalPong_;
                 eventID = EVENT_ID1;
             }
-            CopyKvCacheDoubleBuf(inputCache, copyLocal_, outputCache, eventID, srcStart, dstStart, copyParamsIn,
-                                 copyParamsOut);
+            CopyKvCacheDoubleBuf(inputCache, copyLocal_, outputCache, eventID, srcStart, dstStart,
+                                 static_cast<uint16_t>(tokensPerLoop), tokenBytes_, srcGapBytes_);
         }
         if (tailTokens != 0) {
-            copyParamsIn = {static_cast<uint16_t>(tailTokens), static_cast<uint16_t>(numBlocks_),
-                            static_cast<uint16_t>(offsetPerLine), 0};
-            copyParamsOut = {static_cast<uint16_t>(tailTokens), static_cast<uint16_t>(numBlocks_), 0, 0};
             if constexpr (PHASE) {
                 srcStart = tokenSize_ * (numHeads_ * (consumSeqLen + offsetIdx - tailTokens) + headId);
                 dstStart = tokenSize_ * (slotValue + tokensPerLoop * totalCopyLoop);
@@ -161,8 +202,8 @@ public:
                 copyLocal_ = copyLocalPong_;
                 eventID = EVENT_ID1;
             }
-            CopyKvCacheDoubleBuf(inputCache, copyLocal_, outputCache, eventID, srcStart, dstStart, copyParamsIn,
-                                 copyParamsOut);
+            CopyKvCacheDoubleBuf(inputCache, copyLocal_, outputCache, eventID, srcStart, dstStart,
+                                 static_cast<uint16_t>(tailTokens), tokenBytes_, srcGapBytes_);
         }
     }
 

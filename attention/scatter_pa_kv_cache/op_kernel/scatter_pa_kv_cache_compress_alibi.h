@@ -41,7 +41,9 @@ public:
         seqLenLocal_ = seqLenBuf_.Get<int32_t>();
 
         tokenSize_ = 1 * headSizeK_;
-        numBlocks_ = static_cast<uint32_t>(tokenSize_) * sizeof(T) / BLOCK_SIZE;
+        uint32_t tokenBytes = static_cast<uint32_t>(tokenSize_) * sizeof(T);
+        uint32_t srcGapBytes = (numHeads_ - 1) * tokenBytes;
+        uint32_t tokenBytesAlign = RoundUp(tokenBytes, BLOCK_SIZE);
 
         uint32_t winSize = RoundUp(numHeads_ * numBatchs_ * sizeof(int32_t), BLOCK_SIZE);
         uint32_t seqSize = RoundUp(numHeads_ * sizeof(int32_t), BLOCK_SIZE);
@@ -58,8 +60,6 @@ public:
         }
 
         AllocateTask();
-        AscendC::DataCopyParams copyParamsIn = {0, 0, 0, 0};
-        AscendC::DataCopyParams copyParamsOut = {0, 0, 0, 0};
         uint64_t start;
         uint64_t cacheStart;
         for (uint32_t i = 0; i < perCoreTaskNum_; i++) {
@@ -67,36 +67,32 @@ public:
             auto headId = (i + startTaskId_) % numHeads_;
             uint32_t headWin = static_cast<uint32_t>(winsLocal_.GetValue(i + startTaskId_));
             int32_t consumSeqLen = seqLenLocal_.GetValue(batchId);
-            auto offsetPerLine = (numHeads_ - 1) * numBlocks_;
 
-            // 至多需要这么多次 去分块搬运一个head
-            uint32_t totalCopyLoop = ((headWin * tokenSize_ * sizeof(T)) / ubSize) + 1;
+            // 至多需要这么多次 去分块搬运一个head（按 UB 中对齐后的 token 占用估算）
+            uint32_t totalCopyLoop = ((headWin * tokenBytesAlign) / ubSize) + 1;
             uint32_t tokensPerLoop = headWin / totalCopyLoop;
             uint32_t tailTokens = headWin - totalCopyLoop * tokensPerLoop;
             for (int j = 0; j < totalCopyLoop; j++) {
-                copyParamsIn = {static_cast<uint16_t>(tokensPerLoop), static_cast<uint16_t>(numBlocks_),
-                                static_cast<uint16_t>(offsetPerLine), 0};
-                copyParamsOut = {static_cast<uint16_t>(tokensPerLoop), static_cast<uint16_t>(numBlocks_), 0, 0};
                 start = tokenSize_ * (numHeads_ * (consumSeqLen - headWin + tokensPerLoop * j) + headId);
                 cacheStart = tokenSize_ * (slotInputGt_.GetValue(i + startTaskId_) + tokensPerLoop * j);
-                CopyKvCache(keyInputGt_, tokenLocal_, keyOutputGt_, start, cacheStart, copyParamsIn, copyParamsOut);
-                CopyKvCache(valueInputGt_, tokenLocal_, valueOutputGt_, start, cacheStart, copyParamsIn, copyParamsOut);
+                CopyKvCache(keyInputGt_, tokenLocal_, keyOutputGt_, start, cacheStart,
+                            static_cast<uint16_t>(tokensPerLoop), tokenBytes, srcGapBytes);
+                CopyKvCache(valueInputGt_, tokenLocal_, valueOutputGt_, start, cacheStart,
+                            static_cast<uint16_t>(tokensPerLoop), tokenBytes, srcGapBytes);
             }
             if (tailTokens != 0) {
-                copyParamsIn = {static_cast<uint16_t>(tailTokens), static_cast<uint16_t>(numBlocks_),
-                                static_cast<uint16_t>(offsetPerLine), 0};
-                copyParamsOut = {static_cast<uint16_t>(tailTokens), static_cast<uint16_t>(numBlocks_), 0, 0};
                 start = tokenSize_ * (numHeads_ * (consumSeqLen - tailTokens) + headId);
                 cacheStart = tokenSize_ * (slotInputGt_.GetValue(i + startTaskId_) + tokensPerLoop * totalCopyLoop);
-                CopyKvCache(keyInputGt_, tokenLocal_, keyOutputGt_, start, cacheStart, copyParamsIn, copyParamsOut);
-                CopyKvCache(valueInputGt_, tokenLocal_, valueOutputGt_, start, cacheStart, copyParamsIn, copyParamsOut);
+                CopyKvCache(keyInputGt_, tokenLocal_, keyOutputGt_, start, cacheStart,
+                            static_cast<uint16_t>(tailTokens), tokenBytes, srcGapBytes);
+                CopyKvCache(valueInputGt_, tokenLocal_, valueOutputGt_, start, cacheStart,
+                            static_cast<uint16_t>(tailTokens), tokenBytes, srcGapBytes);
             }
         }
     }
 
 private:
     uint64_t tokenSize_ = 0;
-    uint32_t numBlocks_ = 0;
 
     AscendC::LocalTensor<T> tokenLocal_;
 
