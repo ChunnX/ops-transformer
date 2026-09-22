@@ -160,6 +160,25 @@ struct MegaMoeSendMaskBufferConfig {
     uint32_t bufferBytes;
 };
 
+// Host-computed A8W4 layout, shared by Wave/Layered and routed/shared experts.
+// Offsets are bytes; A and expanded W8 B tiles both use 256 x 256 bytes.
+struct MegaMoeL1Layout {
+    static constexpr uint64_t MAX_A_BUFFER_NUM = 6;
+    static constexpr uint64_t MAX_B_BUFFER_NUM = 8;
+    uint64_t aBufferNum;
+    uint64_t bBufferNum;
+    uint64_t tileK;
+    uint64_t scaleK;
+    uint64_t aSlotBytes;
+    uint64_t bSlotBytes;
+    uint64_t scaleASlotBytes;
+    uint64_t scaleBSlotBytes;
+    uint64_t aOffsets[MAX_A_BUFFER_NUM];
+    uint64_t bOffsets[MAX_B_BUFFER_NUM];
+    uint64_t scaleAOffsets[2];
+    uint64_t scaleBOffsets[2];
+};
+
 struct MegaMoeTilingData {
     uint32_t moeExpertPerRank; // 本卡参与 topK 路由的 MoE 专家数，与 weight1 表达的专家数一致
     uint32_t bs;
@@ -211,5 +230,7 @@ struct MegaMoeTilingData {
     uint32_t rankNumPerServer;
     // MTE 下 MoE/shared 量化输出类型不同时，需要为共享专家准备独立的 token/scale 拼接数据。
     bool isSharedQuantIndependent;
+    // Appended to retain all existing field offsets; host and kernel packages must match.
+    MegaMoeL1Layout a8w4L1Layout;
 };
 #endif

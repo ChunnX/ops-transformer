@@ -75,8 +75,10 @@ class ElasticBuffer:
         num_max_tokens_per_rank: Optional[int] = None,
         expert_alignment: Optional[int] = None,
         do_cpu_sync: Optional[bool] = None,
-    ) -> Tuple[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
-               Optional[torch.Tensor], Optional[torch.Tensor], EPHandle]
+        async_with_compute_stream: bool = False,
+    ) -> Union[Tuple[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
+                     Optional[torch.Tensor], Optional[torch.Tensor], EPHandle],
+               object]
 
     def combine(
         self,
@@ -85,7 +87,8 @@ class ElasticBuffer:
         *,
         topk_weights: Optional[torch.Tensor] = None,
         bias: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor], None] = None,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]
+        async_with_compute_stream: bool = False,
+    ) -> Union[Tuple[torch.Tensor, Optional[torch.Tensor]], object]
 
     @staticmethod
     def get_moe_ep_ccl_buffer_size(
@@ -362,7 +365,8 @@ ElasticBuffer.dispatch(
     num_max_tokens_per_rank=None,
     expert_alignment=None,
     do_cpu_sync=None,
-) -> (Tensor | Tuple[Tensor, Tensor], Tensor | None, Tensor | None, EPHandle)
+    async_with_compute_stream=False,
+) -> (Tensor | Tuple[Tensor, Tensor], Tensor | None, Tensor | None, EPHandle) | object
 ```
 
 **输入参数**：
@@ -376,8 +380,14 @@ ElasticBuffer.dispatch(
 - **num_max_tokens_per_rank** (`int`)：可选参数，表示每张卡上的最大token数量上限，传入时覆盖ElasticBuffer初始化的值。默认使用初始化时传入的值。cached模式下使用 `handle` 中的值，传入参数被忽略。
 - **expert_alignment** (`int`)：可选参数，表示专家对齐数。当前仅支持取值1；cached模式使用 `handle` 中的值。
 - **do_cpu_sync** (`bool`)：可选参数，表示是否进行CPU同步等待。非cached模式默认为 `True`，cached模式下不能为 `True`。
+- **async_with_compute_stream** (`bool`)：可选参数，表示是否启用异步调用，默认为 `False`。设为 `True` 时返回event对象，可在执行独立计算后调用 `event.current_stream_wait()` 获取dispatch结果。
 
 **输出说明**：
+
+- `async_with_compute_stream=False`：接口直接返回最终结果。
+- `async_with_compute_stream=True`：主阶段提交后，接口返回 **event** (`object`)，用于管理本次异步调用。调用 `event.current_stream_wait()` 获取最终结果。
+
+两种方式的最终结果内容、顺序和类型一致，各项说明如下：
 
 - **recv_x** (`Tensor` 或 `Tuple[Tensor, Tensor]`)：表示本卡收到的token数据。Tensor shape为 `(A, H)`，数据类型与 `x` 一致，数据格式为 $ND$。经专家网络处理后，作为 [combine](#combine) 的 `x` 输入。当 `x` 输入包含scales时，输出为 `(recv_x, recv_scales)`。
 - **recv_topk_idx** (`None`)：当前版本始终为 `None`，预留参数。
@@ -416,7 +426,9 @@ $$combined\_x_i = \sum_{k=0}^{K-1} x_{slot(i,k)}$$
 **函数原型**：
 
 ```python
-ElasticBuffer.combine(x, handle, *, topk_weights=None, bias=None) -> (Tensor, Tensor?)
+ElasticBuffer.combine(
+    x, handle, *, topk_weights=None, bias=None, async_with_compute_stream=False
+) -> (Tensor, Tensor?) | object
 ```
 
 **输入参数**：
@@ -426,8 +438,14 @@ ElasticBuffer.combine(x, handle, *, topk_weights=None, bias=None) -> (Tensor, Te
 - <strong>*</strong>：其之前的变量是位置相关的；之后的变量是可选参数，需要使用键值对赋值，不赋值会使用默认值。
 - **topk_weights** (`Tensor`)：可选参数，表示每个token对应的topK专家权重，用于加权聚合。要求为1 维张量，shape为 `(A,)`，数据类型支持 `float32`，数据格式为 $ND$，对应 [dispatch](#dispatch) 的 `recv_topk_weights` 输出。若不提供，则进行纯累加combine，输出 `combined_topk_weights` 为 `None`。
 - **bias** (`Tensor` 或 `Tuple[Tensor, Tensor]`)：可选参数，当前版本不支持bias，传入 `None` 即可。预留支持单个bias张量或 `bias_0`、`bias_1` 双张量模式。
+- **async_with_compute_stream** (`bool`)：可选参数，表示是否启用异步调用，默认为 `False`。设为 `True` 时返回event对象，可在执行独立计算后调用 `event.current_stream_wait()` 获取combine结果。
 
 **输出说明**：
+
+- `async_with_compute_stream=False`：接口直接返回最终结果。
+- `async_with_compute_stream=True`：主阶段提交后，接口返回 **event** (`object`)，用于管理本次异步调用。调用 `event.current_stream_wait()` 获取最终结果。
+
+两种方式的最终结果内容、顺序和类型一致，各项说明如下：
 
 - **combined_x** (`Tensor`)：表示combine后的token数据，还原为原始序列顺序。要求为2 维张量，shape为 `(BS, H)`，数据类型与 `x` 一致（`bfloat16` 或 `float16`），数据格式为 $ND$，不支持非连续的Tensor。
 - **combined_topk_weights** (`Tensor | None`)：表示combine后的topK专家权重。当 `topk_weights` 输入不为 `None` 时，要求为2 维张量，shape为 `(BS, K)`，数据类型为 `float32`，数据格式为 $ND$；当 `topk_weights` 输入为 `None` 时，返回 `None`。
@@ -505,6 +523,10 @@ ElasticBuffer.get_moe_ep_ccl_buffer_size(world_size, num_max_tokens_per_rank, hi
   - 调用接口过程中使用的 `num_experts`、`num_max_tokens_per_rank` 参数取值所有卡需保持一致，且 [dispatch](#dispatch) 和 [combine](#combine) 对应参数也需保持一致。
   - 当前版本不支持bias参数，`bias` 必须传入 `None`。
   - cached模式下，`topk_idx` 和 `topk_weights` 必须为 `None`，`do_cpu_sync` 必须为 `False`；非cached模式下，`topk_idx` 为必选参数，`topk_weights` 为可选参数。
+
+- **Dispatch/Combine异步调用约束**：
+  - 同一通信组的各rank需要保持相同的dispatch/combine调用顺序。
+  - 启用异步调用时，每次dispatch/combine都需要配套调用其返回event的 `event.current_stream_wait()` 方法。
 
 - **Dispatch/Combine Shape变量说明**：
   - `A`：表示本卡接收的最大token数量，`A = ep_world_size * num_max_tokens_per_rank * MIN(K, num_local_experts)`。
@@ -786,20 +808,32 @@ def run_dispatch_combine(rank):
         device=f"npu:{rank}",
     )
 
-    recv_x, _, recv_topk_weights, handle = buffer.dispatch(
+    a = torch.randn((1024, 1024), dtype=torch.float16, device=x.device)
+    b = torch.randn_like(a)
+    c = torch.empty_like(a)
+
+    dispatch_event = buffer.dispatch(
         x,
         topk_idx=topk_idx,
         topk_weights=topk_weights,
         num_experts=num_experts,
+        do_cpu_sync=False,
+        async_with_compute_stream=True,
     )
-    torch.npu.synchronize()
+    # 执行独立计算
+    torch.mm(a, b, out=c)
+    recv_x, _, recv_topk_weights, handle = dispatch_event.current_stream_wait()
 
     expert_output = recv_x
-    combined_x, combined_topk_weights = buffer.combine(
+    combine_event = buffer.combine(
         expert_output,
         handle,
         topk_weights=recv_topk_weights,
+        async_with_compute_stream=True,
     )
+    # 执行独立计算
+    torch.mm(a, b, out=c)
+    combined_x, combined_topk_weights = combine_event.current_stream_wait()
 
     torch.npu.synchronize()
     print(f"[rank {rank}] combined_x shape={combined_x.shape}, expected ({num_tokens}, {hidden})")

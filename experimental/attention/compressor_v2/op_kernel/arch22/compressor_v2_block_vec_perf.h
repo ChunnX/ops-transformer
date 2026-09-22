@@ -397,6 +397,8 @@ __aicore__ inline void CompressorV2BlockVectorPerf<COMP>::OverLap(
     if constexpr (IS_SCORE) {
         PipeBarrier<PIPE_V>();
     }
+    SaveState(srcLocal, stateGm, blockTableGm, sliceInfo, dStartIdx, dDealSize, static_cast<uint32_t>(IS_SCORE));
+
     event_t eventId_V_MTE2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE2));
     SetFlag<HardEvent::V_MTE2>(eventId_V_MTE2);
     WaitFlag<HardEvent::V_MTE2>(eventId_V_MTE2);
@@ -409,7 +411,6 @@ __aicore__ inline void CompressorV2BlockVectorPerf<COMP>::OverLap(
     event_t eventId_MTE2_V = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
     SetFlag<HardEvent::MTE2_V>(eventId_MTE2_V);
     WaitFlag<HardEvent::MTE2_V>(eventId_MTE2_V);
-    SaveState(srcLocal, stateGm, blockTableGm, sliceInfo, dStartIdx, dDealSize, static_cast<uint32_t>(IS_SCORE));
 }
 
 template <typename COMP>

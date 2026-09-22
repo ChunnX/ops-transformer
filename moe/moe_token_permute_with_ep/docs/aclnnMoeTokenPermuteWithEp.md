@@ -5,7 +5,7 @@
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：不支持
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
@@ -41,6 +41,9 @@
 
     $$
     permuteTokensOut[sortedIndicesOut[i] - rangeOptional[0]]=tokens[i//topK]
+    $$
+
+    permuteProbsOut[sortedIndicesOut[i] - rangeOptional[0]]=probsOptional[i]
     $$
 
   - paddedMode为`true`时（暂不支持）：

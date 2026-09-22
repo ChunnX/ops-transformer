@@ -16,15 +16,21 @@ import torch
 def customize_inputs(
     q,
     k_cache,
-    *,
     block_table=None,
     cache_seqlens=None,
     cu_seqlens_q=None,
     seqused_q=None,
     attn_mask=None,
     metadata=None,
-    layout_kv="PA_BBND",
+    head_dim_v=512,
+    softmax_scale=1.0,
     mask_mode=0,
+    max_seqlen_q=-1,
+    max_seqlen_kv=-1,
+    layout_q="BSND",
+    layout_kv="PA_BBND",
+    layout_out="BSND",
+    return_softmax_lse=False,
     **kwargs,
 ):
     for name, tensor in (

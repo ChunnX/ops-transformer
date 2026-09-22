@@ -991,28 +991,6 @@ __aicore__ inline void CompressorV2BlockVectorFullLoad<COMP>::ComputeVec1()
             vec1SplitInfo_.dealTcNum += CeilDivT(startPos + seqLength, cmpRatio_) - (startPos / cmpRatio_);
             curLoopCompressedCnt += (startPos + seqLength) / cmpRatio_ - startPos / cmpRatio_;
         }
-        if (curLoopCompressedCnt > 0) {
-            for (uint32_t dLoopIdx = 0; dLoopIdx < vec1SplitInfo_.dLoopCount; dLoopIdx++) {
-                uint64_t dBaseOffset = baseOffset + dLoopIdx * vec1SplitInfo_.dSplitSize;
-                loopInfo_.dLoopIdx = dLoopIdx;
-
-                sliceIterator.Reset(vec1SplitInfo_.curBStart, vec1SplitInfo_.curSStart, 0U, 0U);
-                compressedCnt_ = vec1SplitInfo_.preCompressedCnt;
-                for (uint32_t tcIdx = 0; tcIdx < vec1SplitInfo_.dealTcNum; tcIdx += vec1SplitInfo_.tcSplitSize) {
-                    uint32_t actDealTcSize = min(vec1SplitInfo_.tcSplitSize, vec1SplitInfo_.dealTcNum - tcIdx);
-
-                    loopInfo_.isCoreLoopFirst = tcIdx == 0;
-                    loopInfo_.isCoreLoopLast = tcIdx + vec1SplitInfo_.tcSplitSize >= vec1SplitInfo_.dealTcNum;
-                    // 处理单个切块
-                    sliceIterator.SetNeedDealTcSize(actDealTcSize);
-                    sliceIterator.SetDealedTcCnt(0U);
-                    DealVec1BaseBlock(sliceIterator, loopInfo_, baseOffset, dLoopIdx * vec1SplitInfo_.dSplitSize,
-                                      vec1SplitInfo_.dSplitSize, vec1SplitInfo_.dBaseSize,
-                                      vec1SplitInfo_.dealSeqStartIdx);
-                }
-            }
-        }
-
         sliceIterator.Reset(vec1SplitInfo_.curBStart, vec1SplitInfo_.curSStart, 0U, 0U);
         sliceIterator.SetNeedDealTcSize(vec1SplitInfo_.dealTcNum);
         sliceIterator.SetDealedTcCnt(0U);
@@ -1028,10 +1006,29 @@ __aicore__ inline void CompressorV2BlockVectorFullLoad<COMP>::ComputeVec1()
             sliceIterator.IteratorSlice();
         }
 
-        inputQue1.FreeTensor(scoreUb);
         if (curLoopCompressedCnt == 0) {
+            inputQue1.FreeTensor(scoreUb);
             continue;
         }
+        for (uint32_t dLoopIdx = 0; dLoopIdx < vec1SplitInfo_.dLoopCount; dLoopIdx++) {
+            uint64_t dBaseOffset = baseOffset + dLoopIdx * vec1SplitInfo_.dSplitSize;
+            loopInfo_.dLoopIdx = dLoopIdx;
+
+            sliceIterator.Reset(vec1SplitInfo_.curBStart, vec1SplitInfo_.curSStart, 0U, 0U);
+            compressedCnt_ = vec1SplitInfo_.preCompressedCnt;
+            for (uint32_t tcIdx = 0; tcIdx < vec1SplitInfo_.dealTcNum; tcIdx += vec1SplitInfo_.tcSplitSize) {
+                uint32_t actDealTcSize = min(vec1SplitInfo_.tcSplitSize, vec1SplitInfo_.dealTcNum - tcIdx);
+
+                loopInfo_.isCoreLoopFirst = tcIdx == 0;
+                loopInfo_.isCoreLoopLast = tcIdx + vec1SplitInfo_.tcSplitSize >= vec1SplitInfo_.dealTcNum;
+                // 处理单个切块
+                sliceIterator.SetNeedDealTcSize(actDealTcSize);
+                sliceIterator.SetDealedTcCnt(0U);
+                DealVec1BaseBlock(sliceIterator, loopInfo_, baseOffset, dLoopIdx * vec1SplitInfo_.dSplitSize,
+                                  vec1SplitInfo_.dSplitSize, vec1SplitInfo_.dBaseSize, vec1SplitInfo_.dealSeqStartIdx);
+            }
+        }
+        inputQue1.FreeTensor(scoreUb);
         vec1SplitInfo_.curBStart += curLoopBatchNum;
         vec1SplitInfo_.dealSeqStartIdx += curLoopBatchNum * constInfo_.sSize;
         vec1SplitInfo_.preCompressedCnt += curLoopCompressedCnt;
