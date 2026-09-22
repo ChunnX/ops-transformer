@@ -22,8 +22,8 @@
 #include "../../../core/aiv_comm/collective_comm_context.h"
 #include "../../../../mc2_tiling_struct.h"
 
-// DFX 头部约定: dumpInfo 必须是 tiling 结构的第一个成员(offset 0)，
-// 异常 dump 回调直接从 tiling blob 起始位置解析 DfxDumpInfo
+// DFX 约定: dumpInfo 位于 Mc2InitTiling/Mc2CcTiling 之后，否则放在最前面
+// 异常 dump 回调按调用方传入的 offsetof(..., dumpInfo) 偏移解析 DfxDumpInfo
 struct allToAllMatmulTilingData {
     Utils::DfxDumpInfo dumpInfo{};
     CommTilingData commTilingData;
@@ -39,7 +39,7 @@ struct CommContext {
 
 // Hcomm通信MX量化tiling结构体
 namespace Apace {
-// DFX 约定: dumpInfo 位于 mc2InitTiling/mc2CcTiling 之后，
+// DFX 约定: dumpInfo 位于 Mc2InitTiling/Mc2CcTiling 之后，否则放在最前面
 // 异常 dump 回调按调用方传入的 offsetof(..., dumpInfo) 偏移解析 DfxDumpInfo
 struct hcommAllToAllMatmulTilingData {
     Mc2InitTiling mc2InitTiling;
