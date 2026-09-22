@@ -33,7 +33,7 @@ from fag_common import (
     VECTOR_BASEM,
     VECTOR_BASEN,
     VF_LANES,
-    VF_LANES_FP16,
+    VF_LANES_F16,
 )
 from fag_mem import BN2_CAST_W, BN2_V1_ROWS, POST_ELEMS, PRE_ELEMS
 from fag_vector_api import (
@@ -41,7 +41,7 @@ from fag_vector_api import (
     cast_p_vf,
     dsink_partial_vf,
     dsink_reduce_add_vf,
-    fill_zero_fp16_vf,
+    fill_zero_f16_vf,
     fill_zero_vf,
     muls_cast_vf,
     softmax_grad_front_row192_vf,
@@ -375,7 +375,7 @@ def process_pre(tensor_ws, zt, elemStart, nElems):
     trip count 0/1 的第二个 pl.range。
     PyPTO tile 必须是二维，故写成 [1, N]，语义仍是一维元素。
     zt 已由调用方填零，本函数只 store。dtype 跟 zt / tensor_ws（fp32 ws
-    或 fp16 out）。
+    或 16-bit out）。
     """
     chunk = PRE_ELEMS[d_align]
     nFull = nElems // chunk
@@ -392,10 +392,10 @@ def process_pre(tensor_ws, zt, elemStart, nElems):
 
 
 def process_pre_from_meta(meta, fagOff, tensor_dq, tensor_dk, tensor_dv, dQ, dV, zt):
-    """按 metadata 行区间清 dq/dk/dv。GS1S2 清 fp32 workspace，bn2_need_zero 清 fp16 out。
+    """按 metadata 行区间清 dq/dk/dv。GS1S2 清 fp32 workspace，bn2_need_zero 清 16-bit out。
 
     AICPU FagSplitRows：dqRows=B*S1*N1、dkvRows=B*S2*N2，按 AIV 均分行。
-    元素起点 = rowStart * 行宽。填零 VF 跟 tilingkey：bn2_need_zero==1 走 fp16。
+    元素起点 = rowStart * 行宽。填零 VF 跟 tilingkey：bn2_need_zero==1 走 16-bit。
     """
     vBlockIdx = pl.get_block_idx()
     dqRowStart = pl.astype(
@@ -416,7 +416,7 @@ def process_pre_from_meta(meta, fagOff, tensor_dq, tensor_dk, tensor_dv, dQ, dV,
     preElems = pl.min(PRE_ELEMS[d_align], pl.max(dqNElems, pl.max(dkvNElems, dvNElems)))
     pl.set_validshape(zt, [1, PRE_ELEMS[d_align]])
     if bn2_need_zero == 1:
-        fill_zero_fp16_vf(zt, (preElems + VF_LANES_FP16 - 1) // VF_LANES_FP16)
+        fill_zero_f16_vf(zt, (preElems + VF_LANES_F16 - 1) // VF_LANES_F16)
     else:
         fill_zero_vf(zt, (preElems + VF_LANES - 1) // VF_LANES)
     process_pre(tensor_dq, zt, dqRowStart * dQ, dqNElems)
@@ -440,7 +440,7 @@ def process_sink_zero(tensor_slots, constInfo, zt, aiv_idx):
 
 
 def process_post(tensor_ws, tensor_out, f32_ub, f16_ub, scale, elemStart, nElems):
-    """fp32 workspace -> muls(scale) -> cast fp16，按一维元素切。
+    """fp32 workspace -> muls(scale) -> cast 16-bit，按一维元素切。
 
     本核 [elemStart, elemStart+nElems)。full tile 的 VF 段数是编译期常量；
     尾块用 trip count 0/1 的第二个 pl.range。
@@ -520,7 +520,7 @@ def process_vec3_bn2(
 
 
 def process_muls_cast_dq_bn2(tensor_dq, src_ub, dst_ub, constInfo, runInfo, subIdx):
-    """v5：mm3 的 fp32 UB → muls(scale) → cast fp16 → dQ GM。
+    """v5：mm3 的 fp32 UB → muls(scale) → cast 16-bit → dQ GM。
 
     DualModeSplitM 在第 64 行切开，子核 0/1 各拿半块 S1。
     """
@@ -544,7 +544,7 @@ def process_muls_cast_dq_bn2(tensor_dq, src_ub, dst_ub, constInfo, runInfo, subI
 
 
 def process_muls_cast_dk_bn2(tensor_dk, src_ub, dst_ub, constInfo, runInfo, subIdx):
-    """v6：mm4 的 fp32 UB → muls(scale) → cast fp16 → dK GM。"""
+    """v6：mm4 的 fp32 UB → muls(scale) → cast 16-bit → dK GM。"""
     rowOff = subIdx * VECTOR_BASEM
     rows = pl.max(pl.min(runInfo.s2RealSize - rowOff, VECTOR_BASEM), 0)
     pl.set_validshape(src_ub, [VECTOR_BASEM, BN2_CAST_W])
