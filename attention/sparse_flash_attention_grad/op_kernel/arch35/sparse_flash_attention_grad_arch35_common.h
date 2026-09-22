@@ -16,6 +16,7 @@
 #pragma once
 
 #include "kernel_operator.h"
+#include "sparse_flash_attention_grad_block_index.h"
 #include "../../../common/op_kernel/arch35/util_regbase.h"
 #include <cstdint>
 
@@ -236,6 +237,8 @@ struct FagRunInfo {
     int64_t blkCntOffset = 0;
     int64_t actualSelCntOffset = 0;
     int64_t lastBlockSize = 1;
+    int64_t partialBlockGmOffset = -1;
+    int64_t lastBlockGmOffset = -1;
     bool isLastBasicBlock = false;
 
     int64_t kSelectedWsAddr = 0;
