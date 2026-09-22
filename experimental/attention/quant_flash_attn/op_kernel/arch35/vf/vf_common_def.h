@@ -81,6 +81,22 @@ constexpr static AscendC::Reg::CastTrait castTraitRintOne = {
     AscendC::RoundMode::CAST_RINT,
 };
 
+// float→fp8 窄化 4:1 第 2 位元素（float→fp8 配对用），饱和
+constexpr static AscendC::Reg::CastTrait castTraitRintTwo = {
+    AscendC::Reg::RegLayout::TWO,
+    AscendC::Reg::SatMode::SAT,
+    AscendC::Reg::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::CAST_RINT,
+};
+
+// float→fp8 窄化 4:1 第 3 位元素（float→fp8 配对用），饱和
+constexpr static AscendC::Reg::CastTrait castTraitRintThree = {
+    AscendC::Reg::RegLayout::THREE,
+    AscendC::Reg::SatMode::SAT,
+    AscendC::Reg::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::CAST_RINT,
+};
+
 // ===== 数学常量（log2 整数域量化用） =====
 constexpr half NUM_127      = static_cast<half>(127.0f);   // fp32/e8m0 指数偏置
 constexpr half ZERO_VALUE   = static_cast<half>(0.0f);     // 防御负指数

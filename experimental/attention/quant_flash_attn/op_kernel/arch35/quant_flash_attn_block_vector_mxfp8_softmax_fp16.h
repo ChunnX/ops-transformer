@@ -186,7 +186,7 @@ public:
         uint32_t validRows = isLastSub
             ? (runInfo.actSingleLoopS2Size - subLoopIdx * s2SubLoopSize)   // 1..128
             : s2SubLoopSize;
-        uint32_t mmSlot = runInfo.loop % 2U;                    // 对齐 cube FixpipeMm1 ring
+        uint32_t mmSlot = subLoopIdx % 2U;                    // 对齐 cube FixpipeMm1 ring
         uint32_t stateSlot = runInfo.softmaxStateSlot;          // mloop % 3
         uint32_t taskSlot = runInfo.loop % 3U;                  // exp/pscale/pSlot 共用
 
@@ -241,6 +241,14 @@ public:
             LocalTensor<SCALE_T> &pScaleL1Target =
                 (constInfo_.subBlockIdx == 0U) ? pScaleL1V0Tensor_ : pScaleL1V1Tensor_;
             LocalTensor<uint8_t> pscaleU8 = pscaleUB_.template ReinterpretCast<uint8_t>();
+            // PScale L1 布局：NZ 2D，每 S2 组（32 元素）一行 × 128B/行。
+            // 行间距 = (actS2Align64/64+1)*32B，匹配 cube LoadData2DMx srcStride（bank 冲突 +1）。
+            // 同一 subLoop 内所有 S2 组共享相同 [128] pscale（softmax max 为 per-S1，与 S2 行无关），
+            // 故每 subLoop 的 [128] 需复制到 s2SubLoopSize/32=4 行。
+            constexpr uint32_t mxfpGroupSize = 32;
+            constexpr uint32_t s2GroupsPerSubLoop = s2SubLoopSize / mxfpGroupSize;  // 128/32 = 4
+            uint32_t actS2Align64 = (runInfo.actSingleLoopS2Size + 63U) / 64U * 64U;
+            uint32_t l1RowStride = (actS2Align64 / 64U + 1U) * 32U;  // bytes
             for (uint32_t i = 0; i < c1v1Loop; i++) {
                 if (i < c1v1Loop - 1) {
                     QfaVectorApi::VfCalcPScale(pscaleU8, subLoopUsedMaxUB_, softmaxMaxUB_,
@@ -252,10 +260,14 @@ public:
                 }
                 SetFlag<HardEvent::V_MTE3>(EVT_P_COPY);
                 WaitFlag<HardEvent::V_MTE3>(EVT_P_COPY);
-                DataCopy(pScaleL1Target.template ReinterpretCast<uint8_t>()
-                             [runInfo.pSlot * L1_PSCALE_V0_SINGLE_SLOT_SIZE + i * UB_PSCALE_SLOT],
-                         pscaleU8[(taskSlot * UB_PSCALE_SUBLOOPS + i) * UB_PSCALE_SLOT],
-                         UB_PSCALE_SLOT);
+                // 将 [128] pscale 复制到 s2GroupsPerSubLoop 个 S2 组行
+                for (uint32_t g = 0; g < s2GroupsPerSubLoop; g++) {
+                    uint32_t l1Row = i * s2GroupsPerSubLoop + g;
+                    DataCopy(pScaleL1Target.template ReinterpretCast<uint8_t>()
+                                 [runInfo.pSlot * L1_PSCALE_V0_SINGLE_SLOT_SIZE + l1Row * l1RowStride],
+                             pscaleU8[(taskSlot * UB_PSCALE_SUBLOOPS + i) * UB_PSCALE_SLOT],
+                             UB_PSCALE_SLOT);
+                }
             }
             // 为下一任务的顶部等待补 Set（全部 P/pscale MTE3 排空后触发）
             SetFlag<HardEvent::MTE3_V>(EVT_P_COPY);

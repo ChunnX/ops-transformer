@@ -74,6 +74,14 @@ __simd_vf__ inline void VfFlashUpdateAccVF(__ubuf__ float *dstOut, __ubuf__ floa
             StoreAlign(dstOut + base1, vreg_out_1, preg_f32);
             StoreAlign(dstOut + base2, vreg_out_2, preg_f32);
             StoreAlign(dstOut + base3, vreg_out_3, preg_f32);
+            LoadAlign(vreg_out_0, cur + base0 + 64);
+            LoadAlign(vreg_out_1, cur + base1 + 64);
+            LoadAlign(vreg_out_2, cur + base2 + 64);
+            LoadAlign(vreg_out_3, cur + base3 + 64);
+            StoreAlign(dstOut + base0 + 64, vreg_out_0, preg_f32);
+            StoreAlign(dstOut + base1 + 64, vreg_out_1, preg_f32);
+            StoreAlign(dstOut + base2 + 64, vreg_out_2, preg_f32);
+            StoreAlign(dstOut + base3 + 64, vreg_out_3, preg_f32);
         }
         return;
     }
