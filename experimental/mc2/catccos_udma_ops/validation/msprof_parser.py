@@ -48,7 +48,7 @@ def _quantile(values: Sequence[float], fraction: float) -> float:
 
 
 def _read_rows(
-    profile_dir: Path, kernel_name_substrings: Sequence[str]
+    profile_dir: Path, kernel_name_substrings: Sequence[str], *, gmm_only: bool = False
 ) -> Tuple[Dict[str, List[Tuple[float, float]]], List[str], List[str]]:
     op_files = sorted(profile_dir.rglob("op_summary_*.csv"))
     if not op_files:
@@ -63,7 +63,20 @@ def _read_rows(
                 name = _field(row, ("Op Name", "Name", "OP Type", "Op Type", "Type"))
                 if name:
                     candidate_names.add(name)
-                if not any(fragment.lower() in name.lower() for fragment in kernel_name_substrings):
+                if gmm_only:
+                    op_type = _field(row, ("OP Type", "Op Type", "Type"))
+                    normalized_name = name.lower().replace("_", "")
+                    normalized_type = op_type.lower().replace("_", "")
+                    # CANN may export a generic task name but a precise OP Type.
+                    # Do not accidentally count the enclosing fused GMM kernel.
+                    matches = (
+                        "alltoall" not in normalized_name + normalized_type
+                        and (normalized_type == "groupedmatmul"
+                             or "groupedmatmul" in normalized_name)
+                    )
+                else:
+                    matches = any(fragment.lower() in name.lower() for fragment in kernel_name_substrings)
+                if not matches:
                     continue
                 device = _field(row, ("Device_id", "Device ID", "device_id"), "unknown")
                 duration_text = _field(row, ("Task Duration(us)", "Duration(us)", "Task Duration"))
@@ -87,10 +100,15 @@ def parse_msprof_case(profile_dir: Union[Path, str], case: Mapping[str, Any]) ->
     operator = case.get("operator", "all_to_allv_grouped_mat_mul")
     if operator not in KERNEL_NAME_SUBSTRINGS:
         raise ValueError("unsupported operator for msprof parsing: {}".format(operator))
-    devices, candidate_names, used_files = _read_rows(
-        Path(profile_dir), KERNEL_NAME_SUBSTRINGS[operator]
-    )
     performance = case["performance"]
+    gmm_only = performance.get("gmm_only", False)
+    identity = {
+        "case_id": case["id"], "source_operator": operator,
+        "performance_target": "grouped_matmul" if gmm_only else operator,
+    }
+    devices, candidate_names, used_files = _read_rows(
+        Path(profile_dir), KERNEL_NAME_SUBSTRINGS[operator], gmm_only=gmm_only,
+    )
     expected = performance["warmup"] + performance["repeats"] * (
         performance["align_iterations"] + performance["iterations"]
     )
@@ -102,7 +120,7 @@ def parse_msprof_case(profile_dir: Union[Path, str], case: Mapping[str, Any]) ->
             errors.append("device {}: expected {} target rows, found {}".format(device, expected, len(entries)))
     if errors:
         return {
-            "case_id": case["id"], "valid": False, "passed": False,
+            **identity, "valid": False, "passed": False,
             "errors": errors, "candidate_op_names": candidate_names,
             "op_summary_files": used_files,
             "expected_target_launches_per_device": expected,
@@ -148,7 +166,7 @@ def parse_msprof_case(profile_dir: Union[Path, str], case: Mapping[str, Any]) ->
         }
     valid = skew_p90 <= skew_limit
     return {
-        "case_id": case["id"], "valid": valid, "passed": valid,
+        **identity, "valid": valid, "passed": valid,
         "errors": [] if valid else [
             "p90 rank skew {:.2%} exceeds {:.2%}; result is invalid for regression gating".format(
                 skew_p90, skew_limit

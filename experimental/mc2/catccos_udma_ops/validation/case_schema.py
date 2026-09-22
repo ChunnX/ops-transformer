@@ -176,6 +176,14 @@ def _validate_case(raw_case: Mapping[str, Any]) -> Dict[str, Any]:
     if not isinstance(performance, Mapping):
         raise CaseManifestError(f"case {case_id}: performance must be a mapping")
     performance = dict(performance)
+    gmm_only = performance.get("gmm_only", False)
+    if not isinstance(gmm_only, bool):
+        raise CaseManifestError(f"case {case_id}: performance.gmm_only must be a boolean")
+    if gmm_only and operator != "grouped_mat_mul_all_to_allv":
+        raise CaseManifestError(
+            f"case {case_id}: performance.gmm_only requires grouped_mat_mul_all_to_allv "
+            "(expert-packed GMM inputs)"
+        )
     for name, default in (
         ("warmup", 10),
         ("align_iterations", 3),
@@ -292,6 +300,9 @@ def performance_workload_digest(case: Mapping[str, Any]) -> str:
             for key in ("warmup", "align_iterations", "iterations", "repeats")
         },
     }
+    # Preserve existing fused baselines, but never compare pure GMM against them.
+    if case["performance"].get("gmm_only", False):
+        payload["performance"]["gmm_only"] = True
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 

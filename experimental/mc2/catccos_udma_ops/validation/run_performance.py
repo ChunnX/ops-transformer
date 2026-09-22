@@ -48,12 +48,22 @@ def main():
     parser.add_argument("--baseline", help="summary.json from the original or a previous build")
     parser.add_argument("--allow-environment-mismatch", action="store_true")
     parser.add_argument("--task-time", choices=("on", "l1"))
+    parser.add_argument(
+        "--gmm-only", action="store_true",
+        help="run torch_npu.npu_grouped_matmul on the local GMM inputs of "
+             "grouped_mat_mul_all_to_allv cases, without UDMA communication",
+    )
     parser.add_argument("--fail-fast", action="store_true")
     args = parser.parse_args()
     cases = select_cases(
         load_case_manifest(args.cases), mode="performance",
         case_ids=args.case_id, include_tags=args.include_tag,
     )
+    if args.gmm_only:
+        for case in cases:
+            if case["operator"] != "grouped_mat_mul_all_to_allv":
+                parser.error("--gmm-only requires grouped_mat_mul_all_to_allv cases")
+            case["performance"]["gmm_only"] = True
     msprof = shutil.which("msprof")
     if not msprof:
         raise RuntimeError("msprof is not on PATH; source the CANN environment first")
@@ -67,22 +77,25 @@ def main():
     baselines = _load_baseline(args.baseline)
     results = []
     for index, case in enumerate(cases):
+        gmm_only = case["performance"].get("gmm_only", False)
         case_root = output_root / case["id"]
         profile_root = case_root / "msprof"
         profile_root.mkdir(parents=True, exist_ok=True)
         resolved = case_root / "resolved_case.json"
         write_resolved_cases(resolved, [case])
         process_environment = os.environ.copy()
-        process_environment.setdefault("UDMA_MASTER_ADDR", "127.0.0.1")
+        if not gmm_only:
+            process_environment.setdefault("UDMA_MASTER_ADDR", "127.0.0.1")
         rendezvous_port = int(
             process_environment.get(
                 "VALIDATION_MASTER_PORT", process_environment.get("MASTER_PORT", "29500")
             )
         ) + index
-        udma_port = int(process_environment.get("UDMA_MASTER_PORT", "29601")) + index
-        if rendezvous_port == udma_port:
-            raise RuntimeError("torchrun and UDMA bootstrap ports must differ")
-        process_environment["UDMA_MASTER_PORT"] = str(udma_port)
+        if not gmm_only:
+            udma_port = int(process_environment.get("UDMA_MASTER_PORT", "29601")) + index
+            if rendezvous_port == udma_port:
+                raise RuntimeError("torchrun and UDMA bootstrap ports must differ")
+            process_environment["UDMA_MASTER_PORT"] = str(udma_port)
         command = [
             msprof, "--output={}".format(profile_root), "--task-time={}".format(task_time),
             "--ascendcl=off", "--runtime-api=off", "--aicpu=off", "--ai-core=off",
@@ -114,6 +127,10 @@ def main():
             except Exception as error:
                 result = {"case_id": case["id"], "valid": False, "passed": False, "errors": ["profile parse failed: {}".format(error)]}
         result["performance_workload_digest"] = performance_workload_digest(case)
+        result["source_operator"] = case["operator"]
+        result["performance_target"] = (
+            "grouped_matmul" if gmm_only else case["operator"]
+        )
         result["environment"] = environment
         baseline = baselines.get(case["id"])
         if args.baseline and baseline is None and result.get("valid"):
@@ -159,6 +176,7 @@ def main():
 
     rows = [{
         "case_id": item["case_id"], "passed": item.get("passed", False),
+        "performance_target": item["performance_target"],
         "valid": item.get("valid", False),
         "p50_us": item.get("latency_us", {}).get("p50"),
         "p90_us": item.get("latency_us", {}).get("p90"),
@@ -167,7 +185,7 @@ def main():
         "errors": "; ".join(item.get("errors", [])),
     } for item in results]
     write_csv(output_root / "summary.csv", rows, [
-        "case_id", "passed", "valid", "p50_us", "p90_us", "skew_p90",
+        "case_id", "performance_target", "passed", "valid", "p50_us", "p90_us", "skew_p90",
         "regression_ratio", "errors",
     ])
     summary = {

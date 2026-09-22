@@ -328,6 +328,47 @@ inside the fused operator. If p90 cross-rank skew exceeds the case's
 `max_rank_skew_ratio`, the capture is marked invalid and cannot pass regression
 gating; raw per-iteration and per-device data remain in `report.json`.
 
+To investigate clock changes under a compute-only workload, use `--gmm-only`
+with a `grouped_mat_mul_all_to_allv` case. This keeps the same case, rank/device
+count, BF16 inputs, weights, seed, warmup/primer/repeat schedule and msprof
+statistics, while calling `torch_npu.npu_grouped_matmul` independently on each
+rank. UDMA initialization and device communication are skipped; CPU Gloo still
+coordinates the repeat boundaries. The original fused mode remains the default.
+
+```bash
+bash scripts/run_performance.sh \
+  --cases validation/cases/grouped_mat_mul_all_to_allv.yaml \
+  --case-id gmm_a2av_model_case_2 --gmm-only \
+  --output-dir /tmp/gmm_only_model_case_2
+```
+
+The inputs of this direction are already packed by local expert. Each GMM group
+size is the sum of that expert's source-rank counts in the global route table;
+the group list is their cumulative sum, built once before warmup. For
+`gmm_a2av_model_case_2`, each of the eight ranks runs 32 local experts with 4096
+rows each, `x=[131072,512]`, `weight=[32,512,2048]` and `y=[131072,2048]`.
+This mode currently requires this direction's cases; it does not reinterpret
+the undispatched inputs of `all_to_allv_grouped_mat_mul` as expert-packed inputs.
+It can also be enabled with `performance: {gmm_only: true}` in the manifest.
+
+This is the standard CANN GMM implementation, so its tiling and compute schedule
+can differ from the CatCCOS fused kernel. The torch_npu API has no reusable
+`out` argument: inputs and group boundaries are reused, while the API allocates
+the output. Allocation is outside the selected kernel duration, but can affect
+launch gaps. Compare the frequency timelines and sustained execution periods
+alongside latency; equal iteration counts need not mean equal time under load.
+The test measures performance only and does not add an accuracy check.
+
+`resolved_case.json` records `performance.gmm_only`; worker JSON files record the
+GMM shapes, group sizes, cumulative boundaries and API. Reports and summaries
+label `performance_target=grouped_matmul` and retain `source_operator`. Pure-GMM
+captures have a different workload digest and cannot be used as fused regression
+baselines. The parser selects standalone GMM rows by kernel name or `OP Type`,
+excludes AllToAllV kernels, and still requires exactly one target row per launch
+(169 per device for the default settings). Rank-skew validation remains active;
+if it fails, inspect the preserved per-device/per-iteration samples for independent
+clock changes rather than treating the capture as a passing regression result.
+
 For an apples-to-apples original-example baseline, run the original binary with
 the same YAML case and the exact warmup/primer/measured launch layout, collect
 CSV `op_summary` with `msprof`, then import it:
