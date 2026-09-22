@@ -383,7 +383,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeMm1(const QLIV2Common::RunInf
                     if constexpr (IS_MX) {
                         LoadKScaleToL1(s2L1LoadSize, s2GmBaseOffset + s2GmOffset, runInfo);
                     } else if constexpr (IS_HIFLOAT4) {
-                        LoadKScaleToL1Hif4(s2L1LoadSize, s2GmOffset, runInfo);
+                        LoadKScaleToL1Hif4(s2L1LoadSize, s2GmBaseOffset + s2GmOffset, runInfo);
                     }
                 } else {
                     if constexpr (IS_HIFLOAT4) {
@@ -849,7 +849,8 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::FreeEventID()
 }
 
 template <typename QLIV2T>
-__aicore__ inline QLIV2Matmul<QLIV2T>::QueryNd2NzHif4(uint64_t s1gL1RealSize, uint64_t s1gGmOffset, const QLIV2Common::RunInfo runInfo)
+__aicore__ inline void QLIV2Matmul<QLIV2T>::QueryND2NzHif4(
+    uint64_t s1gL1RealSize, uint64_t s1gGmOffset, const QLIV2Common::RunInfo &runInfo)
 {
     Nd2NzParams nd2nzPara;
     nd2nzPara.ndNum = 1;
@@ -863,13 +864,15 @@ __aicore__ inline QLIV2Matmul<QLIV2T>::QueryNd2NzHif4(uint64_t s1gL1RealSize, ui
     nd2nzPara.srcNdMatrixStride = 0;
     nd2nzPara.dstNzMatrixStride = 0;
 
-    LocalTensor<uint8_t> queryL1Cast = queryL1_[(queryL1Mte2BufIdx_ % QUERY_BUF_NUM) * QUERY_BUFFER_OFFSET].template ReinterpretCast<uint8_t>();
+    LocalTensor<uint8_t> queryL1Cast =
+        queryL1_[(queryL1Mte2BufIdx_ % QUERY_BUF_NUM) * queryBufferOffset_].template ReinterpretCast<uint8_t>();
     GlobalTensor<uint8_t> queryGmCast = queryGm_.template ReinterpretCast<uint8_t>();
     DataCopy(queryL1Cast, queryGmCast[runInfo.tensorQueryOffset + s1gGmOffset * (constInfo_.headDim / 2)], nd2nzPara);
 }
 
 template <typename QLIV2T>
-__aicore__ inline QLIV2Matmul<QLIV2T>::KeyNd2NzHif4(uint64_t s2L1RealSize, uint64_t s2GmOffset, const QLIV2Common::RunInfo runInfo)
+__aicore__ inline void QLIV2Matmul<QLIV2T>::KeyNd2NzHif4(
+    uint64_t s2L1RealSize, uint64_t s2GmOffset, const QLIV2Common::RunInfo &runInfo)
 {
     Nd2NzParams nd2nzPara;
     nd2nzPara.ndNum = 1;
@@ -884,11 +887,12 @@ __aicore__ inline QLIV2Matmul<QLIV2T>::KeyNd2NzHif4(uint64_t s2L1RealSize, uint6
 
     LocalTensor<uint8_t> keyL1Cast = keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * keyBufferOffset_].template ReinterpretCast<uint8_t>();
     GlobalTensor<uint8_t> keyGmCast = keyGm_.template ReinterpretCast<uint8_t>();
-    DataCopy(keyL1Cast, keyGmCast[runInfo.tensorQueryOffset + s2GmOffset * (constInfo_.headDim / 2)], nd2nzPara);
+    DataCopy(keyL1Cast, keyGmCast[runInfo.tensorKeyOffset + s2GmOffset * qkHeadDim_], nd2nzPara);
 }
 
 template <typename QLIV2T>
-__aicore__ inline QLIV2Matmul<QLIV2T>::keyNd2NzForPAHif4(uint64_t s2L1RealSize, uint64_t s2GmOffset, const QLIV2Common::RunInfo runInfo)
+__aicore__ inline void QLIV2Matmul<QLIV2T>::KeyNd2NzForPAHif4(
+    uint64_t s2L1RealSize, uint64_t s2GmOffset, const QLIV2Common::RunInfo &runInfo)
 {
     uint64_t s2L1Offset = 0;
     while (s2L1Offset < s2L1RealSize) {
@@ -920,8 +924,8 @@ __aicore__ inline QLIV2Matmul<QLIV2T>::keyNd2NzForPAHif4(uint64_t s2L1RealSize, 
 }
 
 template <typename QLIV2T>
-__aicore__ inline QLIV2Matmul<QLIV2T>::LoadQScaleToL1Hif4(uint64_t s1gL1RealSize, uint64_t s1gGmOffset,
-                                                           const QLIV2Common::RunInfo &runInfo)
+__aicore__ inline void QLIV2Matmul<QLIV2T>::LoadQScaleToL1Hif4(
+    uint64_t s1gL1RealSize, uint64_t s1gGmOffset, const QLIV2Common::RunInfo &runInfo)
 {
     uint64_t scaleOffsetInBuf = (queryL1Mte2BufIdx_ % QUERY_BUF_NUM) * queryScaleBufferOffset;
     LocalTensor<bfloat16_t> scaleL1 = queryScaleL1_[scaleOffsetInBuf].template ReinterpretCast<bfloat16_t>();
@@ -1008,7 +1012,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::LoadQueryToL0aHif4(uint64_t s1gL1Off
     loadData2DParams.dstStride = CeilDiv(s1gL0RealSize, BLOCK_CUBE);
     loadData2DParams.ifTranspose = false;
     
-    LocalTensor<hifloat4x2_t> dstTensor = queryL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET];
+    LocalTensor<hifloat4x2_t> dstTensor = queryL0_[(l0BufIdx_ % L0_BUF_NUM) * l0abBufferOffset_];
     uint64_t scaleOffsetInBuf = (queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * queryScaleBufferOffset;
     LocalTensor<bfloat16_t> scaleL1 = queryScaleL1_[scaleOffsetInBuf].template ReinterpretCast<bfloat16_t>();
 
@@ -1019,7 +1023,8 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::LoadQueryToL0aHif4(uint64_t s1gL1Off
     loadDataMxParams.yStep = (constInfo_.headDim + 31) * 2 / HIFLOAT4_BLOCK_SIZE;
     loadDataMxParams.srcStride = (constInfo_.headDim + 31) * 2 / HIFLOAT4_BLOCK_SIZE;
     loadDataMxParams.dstStride = loadDataMxParams.yStep;
-    LoadData(dstTensor, queryL1_[(queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * QUERY_BUFFER_OFFSET], scaleL1, loadData2DParams, loadDataMxParams);
+    LoadData(dstTensor, queryL1_[(queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * queryBufferOffset_], scaleL1,
+             loadData2DParams, loadDataMxParams);
 }
 
 template <typename QLIV2T>

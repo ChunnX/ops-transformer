@@ -77,7 +77,7 @@ __global__ __aicore__ void quant_lightning_indexer_v2(
     // todo
     } else if (tiling_data->quantMode == QUANT_MODE_HIFLOAT4) {
         INVOKE_LI_NO_KFC_OP_IMPL(QLIV2Preload, hifloat4x2_t, hifloat4x2_t, bfloat16_t, uint16_t, int32_t, PAGE_ATTENTION, 
-                                LI_LAYOUT(Q_LAYOUT_T), LI_LAYOUT(K_LAYOUT_T), float, float32_t);
+                                LI_LAYOUT(Q_LAYOUT_T), LI_LAYOUT(K_LAYOUT_T), float, float);
     }
 
 #else
