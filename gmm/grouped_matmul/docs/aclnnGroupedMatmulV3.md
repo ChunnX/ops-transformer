@@ -396,8 +396,8 @@ aclnnStatus aclnnGroupedMatmulV3(
     - x为FLOAT16、weight为INT8、biasOptional为FLOAT16、scaleOptional为空，offsetOptional为空，antiquantScaleOptional为FLOAT16、antiquantOffsetOptional为FLOAT16、y为FLOAT16；
     - x为BFLOAT16、weight为INT8、biasOptional为FLOAT32、scaleOptional为空，offsetOptional为空，antiquantScaleOptional为BFLOAT16、antiquantOffsetOptional为BFLOAT16、y为BFLOAT16；
   - 不同groupType支持场景：
-    - A16W8场景仅支持groupType为-1和0场景。
-    - A8W8场景仅支持groupType为0场景中x tensor数为单。
+    - a16w8、a16w4场景仅支持groupType为-1和0场景。
+    - A8W8、A8W4、A4W4场景仅支持groupType为0场景中x tensor数为单。
     - x、weight、y的输入类型为aclTensorList，表示一个aclTensor类型的数组对象。下面表格支持场景用"单"表示由一个aclTensor组成的aclTensorList，"多"表示由多个aclTensor组成的aclTensorList。例如"单多单"，分别表示x为单tensor、weight为多tensor、y为单tensor。
 
       | groupType | x tensor数 | weight tensor数 | y tensor数 | splitItem| groupListOptional | 转置 | 其余场景限制 |
