@@ -540,7 +540,7 @@ void QSFAMlaTiling::GetWorkspaceSize()
         workspaceSize_ += 4 * 512 * (512 + 64) * 2 * actCoreNum;
         // 缓存有效mte2 size的长度 份数  512B对齐的长度  sizeof(int32_t)   aiv核数
         workspaceSize_ +=
-            4 * 128 * 4 * (2 * actCoreNum); // 4:缓存有效mte2 size的长度 128:份数  4:512B对齐的长度  2:aiv核数
+            4 * 128 * 4 * (4 * actCoreNum); // valid-size ring plus equal-sized TQ4 scale staging region
     }
 
     CalcFDWorkSpace(actCoreNum);
@@ -1339,10 +1339,24 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantShapeSparseAndHeadDim()
                     "The head num of query only support 576, but got " + std::to_string(qHeadDim_)),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(kHeadDim_ != 656, // 656:当前不泛化
+    // INT8 affine slots are 656 bytes; TQ4 packs 512 int4 values, 64 BF16
+    // RoPE values and one FP16 scale into a 386-byte slot.
+    OP_CHECK_IF(kHeadDim_ != 656 && !(keyQuantMode_ == 3 && kHeadDim_ == 386),
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     opName_, "key", ToStringRaw(opParamInfo_.key.shape->GetStorageShape()).c_str(),
-                    "The head num of key only support 656, but got " + std::to_string(kHeadDim_)),
+                    "The key slot dimension must be 656 (INT8) or 386 (TQ4), but got " + std::to_string(kHeadDim_)),
+                return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(keyQuantMode_ == 3 && kHeadDim_ != 386,
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    opName_, "key", ToStringRaw(opParamInfo_.key.shape->GetStorageShape()).c_str(),
+                    "TQ4 key slot dimension must be 386, but got " + std::to_string(kHeadDim_)),
+                return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(keyQuantMode_ == 3 && vHeadDim_ != 386,
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    opName_, "value", ToStringRaw(opParamInfo_.value.shape->GetStorageShape()).c_str(),
+                    "TQ4 value slot dimension must be 386, but got " + std::to_string(vHeadDim_)),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -1395,16 +1409,23 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantAttr() const
                                                       "Attention_mode should be 2(MLA-absorb)"),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(keyQuantMode_ != 2, // 2:per-tile
+    OP_CHECK_IF(keyQuantMode_ != 2 && keyQuantMode_ != 3, // 2:per-tile, 3:TQ4
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "key_quant_mode", std::to_string(keyQuantMode_).c_str(),
-                                                      "Key_quant_mode should be 2(per-tile)"),
+                                                      "Key_quant_mode should be 2(per-tile) or 3(TQ4)"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(
-        valueQuantMode_ != 2, // 2:per-tile
+        valueQuantMode_ != 2 && valueQuantMode_ != 3, // 2:per-tile, 3:TQ4
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "value_quant_mode", std::to_string(valueQuantMode_).c_str(),
-                                              "Value_quant_mode should be 2(per-tile)"),
+                                              "Value_quant_mode should be 2(per-tile) or 3(TQ4)"),
         return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF((keyQuantMode_ == 3) != (valueQuantMode_ == 3),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    opName_, "key_quant_mode/value_quant_mode",
+                    (std::to_string(keyQuantMode_) + "/" + std::to_string(valueQuantMode_)).c_str(),
+                    "TQ4 key and value quant modes must both be 3"),
+                return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(quantScaleRepoMode_ != 1, // 1:combine
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "quant_scale_repo_mode",
