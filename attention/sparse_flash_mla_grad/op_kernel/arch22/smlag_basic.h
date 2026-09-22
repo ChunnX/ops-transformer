@@ -312,9 +312,9 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::Process(
     if ASCEND_IS_AIV {
         TPipe pipeVec;
         VecOp<SMLAGT> vecOp;
-        vecOp.Init(ori_kv, cmp_kv, attention_out, attention_out_grad, lse, topk_indices, sinks, dsinks,
-                    cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, cmp_residual_kv, cmp_softmax_l1_norm,
-                    workspace, tilingData, &pipeVec);
+        vecOp.Init(ori_kv, cmp_kv, attention_out, attention_out_grad, lse, topk_indices, sinks, dsinks, cu_seqlens_q,
+                   cu_seqlens_ori_kv, cu_seqlens_cmp_kv, cmp_residual_kv, cmp_softmax_l1_norm, workspace, tilingData,
+                   &pipeVec);
         SyncAll();
         int64_t task = 0;
         for (int32_t i = 0; i < processBS1ByCore; i++) {
@@ -673,7 +673,8 @@ __aicore__ inline int64_t SparseFlashMlaGrad<SMLAGT>::EstimateCoreTaskNum(int64_
 }
 
 template <typename SMLAGT>
-__aicore__ inline void SparseFlashMlaGrad<SMLAGT>::GetActualSelCount(const int64_t t1Idx, const int64_t n2Idx, int32_t &curS2Loop)
+__aicore__ inline void SparseFlashMlaGrad<SMLAGT>::GetActualSelCount(const int64_t t1Idx, const int64_t n2Idx,
+                                                                     int32_t &curS2Loop)
 {
     // EOD 下 usedS* 为槽位内有效长度（非 EOD 时等于 curS*），因果对齐与窗口上界都必须按有效长度计算
     oriWinDiagOffset = usedS2 - usedS1;

@@ -36,11 +36,11 @@ public:
     static constexpr bool IS_DETER = SMLAGT::is_deter;
 
     __aicore__ inline VecOp(){};
-    __aicore__ inline void Init(GM_ADDR ori_kv, GM_ADDR cmp_kv, GM_ADDR attention_out,
-                                GM_ADDR attention_out_grad, GM_ADDR lse, GM_ADDR topk_indices, GM_ADDR sinks, GM_ADDR dsinks,
-                                GM_ADDR cu_seqlens_q, GM_ADDR cu_seqlens_ori_kv, GM_ADDR cu_seqlens_cmp_kv,
-                                GM_ADDR cmp_residual_kv, GM_ADDR cmp_softmax_l1_norm,
-                                GM_ADDR workspace, const TILING_CLASS *__restrict ordTilingData, TPipe *pipe);
+    __aicore__ inline void Init(GM_ADDR ori_kv, GM_ADDR cmp_kv, GM_ADDR attention_out, GM_ADDR attention_out_grad,
+                                GM_ADDR lse, GM_ADDR topk_indices, GM_ADDR sinks, GM_ADDR dsinks, GM_ADDR cu_seqlens_q,
+                                GM_ADDR cu_seqlens_ori_kv, GM_ADDR cu_seqlens_cmp_kv, GM_ADDR cmp_residual_kv,
+                                GM_ADDR cmp_softmax_l1_norm, GM_ADDR workspace,
+                                const TILING_CLASS *__restrict ordTilingData, TPipe *pipe);
     __aicore__ inline void Process(const RunInfo &runInfo);
     __aicore__ inline void GatherKV(const int64_t n2Index, uint64_t currentS1Offset, const RunInfo &runInfo);
     __aicore__ inline void ScatterAdd(const RunInfo &runInfo);
@@ -51,15 +51,17 @@ public:
 
 protected:
     __aicore__ inline void InitParams(const TILING_CLASS *__restrict ordTilingData);
-    __aicore__ inline void InitGMBuffer(GM_ADDR ori_kv, GM_ADDR cmp_kv, GM_ADDR attention_out, GM_ADDR attention_out_grad, GM_ADDR lse,
-                                        GM_ADDR topk_indices, GM_ADDR sinks, GM_ADDR dsinks, GM_ADDR cmp_softmax_l1_norm, GM_ADDR workspace);
+    __aicore__ inline void InitGMBuffer(GM_ADDR ori_kv, GM_ADDR cmp_kv, GM_ADDR attention_out,
+                                        GM_ADDR attention_out_grad, GM_ADDR lse, GM_ADDR topk_indices, GM_ADDR sinks,
+                                        GM_ADDR dsinks, GM_ADDR cmp_softmax_l1_norm, GM_ADDR workspace);
     __aicore__ inline bool ResolveCoreS1ForScatter(int64_t coreIdx, int64_t s1Round, int64_t n2Idx,
                                                    int64_t &indicesGmOffset, int64_t &cmpKeyGmOffset,
                                                    int64_t &actualSelCnt);
     __aicore__ inline void InitUB(TPipe *pipe);
     __aicore__ inline void AtomicClean();
     __aicore__ inline void DumpGmZero(GlobalTensor<float> &gm, int64_t num, int64_t offset = 0);
-    __aicore__ inline void CalRowsumAndSftCopyIn(const int64_t dyGmOffset, const int64_t lseGmOffset, const int32_t processM);
+    __aicore__ inline void CalRowsumAndSftCopyIn(const int64_t dyGmOffset, const int64_t lseGmOffset,
+                                                 const int32_t processM);
     __aicore__ inline void CalAttenMsk(const int32_t processM, const RunInfo &runInfo, const float maskVal);
     __aicore__ inline void CalSoftmax(const int32_t processM, const int64_t mm12Addr, const int64_t mm345Addr,
                                       const RunInfo &runInfo, const int32_t mOffset, const int64_t s1Index);
@@ -231,17 +233,19 @@ protected:
 
 template <typename SMLAGT>
 __aicore__ inline void VecOp<SMLAGT>::Init(GM_ADDR ori_kv, GM_ADDR cmp_kv, GM_ADDR attention_out,
-                                          GM_ADDR attention_out_grad, GM_ADDR lse, GM_ADDR topk_indices, GM_ADDR sinks, GM_ADDR dsinks,
-                                          GM_ADDR cu_seqlens_q, GM_ADDR cu_seqlens_ori_kv, GM_ADDR cu_seqlens_cmp_kv,
-                                          GM_ADDR cmp_residual_kv, GM_ADDR cmp_softmax_l1_norm,
-                                          GM_ADDR workspace, const TILING_CLASS *__restrict ordTilingData, TPipe *pipe)
+                                           GM_ADDR attention_out_grad, GM_ADDR lse, GM_ADDR topk_indices, GM_ADDR sinks,
+                                           GM_ADDR dsinks, GM_ADDR cu_seqlens_q, GM_ADDR cu_seqlens_ori_kv,
+                                           GM_ADDR cu_seqlens_cmp_kv, GM_ADDR cmp_residual_kv,
+                                           GM_ADDR cmp_softmax_l1_norm, GM_ADDR workspace,
+                                           const TILING_CLASS *__restrict ordTilingData, TPipe *pipe)
 {
     InitParams(ordTilingData);
     cuSeqlensQ = cu_seqlens_q;
     cuSeqlensOriKv = cu_seqlens_ori_kv;
     cuSeqlensCmpKv = cu_seqlens_cmp_kv;
     cmpResidualKv = cmp_residual_kv;
-    InitGMBuffer(ori_kv, cmp_kv, attention_out, attention_out_grad, lse, topk_indices, sinks, dsinks, cmp_softmax_l1_norm, workspace);
+    InitGMBuffer(ori_kv, cmp_kv, attention_out, attention_out_grad, lse, topk_indices, sinks, dsinks,
+                 cmp_softmax_l1_norm, workspace);
     InitUB(pipe);
     AtomicClean();
 }
@@ -384,13 +388,14 @@ __aicore__ inline void VecOp<SMLAGT>::InitGMBuffer(GM_ADDR ori_kv, GM_ADDR cmp_k
         aivNum = tilingData->opInfo.aivNum;
         deterKvWorkspaceLen = tilingData->opInfo.deterKvWorkspaceLen;
         deterKvDataLen = deterKvWorkspaceLen > static_cast<int64_t>(DETER_ACC_META_BYTES) ?
-                         deterKvWorkspaceLen - static_cast<int64_t>(DETER_ACC_META_BYTES) : 0;
+                             deterKvWorkspaceLen - static_cast<int64_t>(DETER_ACC_META_BYTES) :
+                             0;
         dSinkWorkspaceLen = tilingData->opInfo.dSinkWorkspaceLen;
         cmpSoftmaxL1WorkspaceLen = tilingData->opInfo.cmpSoftmaxL1WorkspaceLen;
         dSinkWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace +
                                          tilingData->postTilingData.dSinkWorkSpaceOffset / sizeof(float));
-        cmpSoftmaxL1WorkspaceGm.SetGlobalBuffer(
-            (__gm__ float *)workspace + tilingData->postTilingData.cmpSoftmaxL1WorkSpaceOffset / sizeof(float));
+        cmpSoftmaxL1WorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace +
+                                                tilingData->postTilingData.cmpSoftmaxL1WorkSpaceOffset / sizeof(float));
         deterKvWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace +
                                            tilingData->postTilingData.deterKvWorkSpaceOffset / sizeof(float));
         deterAccMetaGm.SetGlobalBuffer(
@@ -463,8 +468,7 @@ __aicore__ inline void VecOp<SMLAGT>::InitUB(TPipe *pipe)
     rowsumUbOffset += 16 * dimDAlign * 2 * sizeof(float);
     scatterAddTensorV = vecQue.GetWithOffset<float>(16 * dimD2Align * 2, rowsumUbOffset);
     rowsumUbOffset += 16 * dimD2Align * 2 * sizeof(float);
-    deterAccMetaTensor =
-        vecQue.GetWithOffset<int64_t>(MAX_CORE_NUM * DETER_ACC_META_FIELDS, rowsumUbOffset);
+    deterAccMetaTensor = vecQue.GetWithOffset<int64_t>(MAX_CORE_NUM * DETER_ACC_META_FIELDS, rowsumUbOffset);
     rowsumUbOffset += MAX_CORE_NUM * DETER_ACC_META_FIELDS * sizeof(int64_t);
 
     maxSelCnt = 2;
@@ -524,8 +528,7 @@ __aicore__ inline void VecOp<SMLAGT>::AtomicClean()
     }
     if constexpr (IS_DETER) {
         int64_t metaFloatOff = deterKvDataLen / static_cast<int64_t>(sizeof(float));
-        int64_t metaFloatNum =
-            static_cast<int64_t>(DETER_ACC_META_BYTES) / static_cast<int64_t>(sizeof(float));
+        int64_t metaFloatNum = static_cast<int64_t>(DETER_ACC_META_BYTES) / static_cast<int64_t>(sizeof(float));
         DumpGmZero(deterKvWorkspaceGm, metaFloatNum, metaFloatOff);
         DumpGmZero(dSinkWorkspaceGm, dSinkWorkspaceLen / sizeof(float));
     }
@@ -818,14 +821,16 @@ __aicore__ inline void VecOp<SMLAGT>::CopyOutDsinks()
 {
     if constexpr (IS_DETER) {
         // dSinkTensor 布局为 [g]*BLOCK_FP32（每元素占 8 个 float），压成连续 [G] 再写 workspace
+        event_t eventIdVToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
+        SetFlag<HardEvent::V_S>(eventIdVToS);
+        WaitFlag<HardEvent::V_S>(eventIdVToS);
         for (int64_t i = 0; i < dimG; ++i) {
             dSinkTensor.SetValue(i, dSinkTensor.GetValue(i * BLOCK_FP32));
         }
         event_t eventIdSToMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_MTE3));
         SetFlag<HardEvent::S_MTE3>(eventIdSToMte3);
         WaitFlag<HardEvent::S_MTE3>(eventIdSToMte3);
-        DataCopyPad(dSinkWorkspaceGm[vecBlockIdx * dimG], dSinkTensor,
-                    {1, (uint32_t)(dimG * sizeof(float)), 0, 0, 0});
+        DataCopyPad(dSinkWorkspaceGm[vecBlockIdx * dimG], dSinkTensor, {1, (uint32_t)(dimG * sizeof(float)), 0, 0, 0});
     } else {
         SetAtomicAdd<float>();
         DataCopyPad(dSinksGm, dSinkTensor, {static_cast<uint16_t>(dimG), sizeof(float), 0, 0});
@@ -1013,8 +1018,7 @@ __aicore__ inline void VecOp<SMLAGT>::Process(const RunInfo &runInfo)
                     int64_t peerOffset = (vecBlockIdx + 1) * params.singleN + runInfo.blkCntOffset;
                     LocalTensor<float> peerTensor = sinkTmpBuf;
                     DataCopyPad(peerTensor, cmpSoftmaxL1WorkspaceGm[peerOffset],
-                                {1, (uint32_t)(actualSelS2 * sizeof(float)), 0, 0, 0},
-                                {false, 0, 0, 0});
+                                {1, (uint32_t)(actualSelS2 * sizeof(float)), 0, 0, 0}, {false, 0, 0, 0});
                     SET_FLAG(MTE2, V, mte2WaitV);
                     WAIT_FLAG(MTE2, V, mte2WaitV);
                     Add(cmpL1NormTensor, cmpL1NormTensor, peerTensor, actualSelS2);
@@ -1279,7 +1283,7 @@ __aicore__ inline void VecOp<SMLAGT>::ScatterAddDeter(int64_t s1Round, int64_t s
             int64_t avgSize = s2RealSize / totalVec;
             int64_t mySize = avgSize + (myVecId < remainder ? 1 : 0);
             int64_t myOffset = myVecId < remainder ? (myVecId * (avgSize + 1)) :
-                (remainder * (avgSize + 1) + (myVecId - remainder) * avgSize);
+                                                     (remainder * (avgSize + 1) + (myVecId - remainder) * avgSize);
 
             if (mySize > 0) {
                 GlobalTensor<float> dCmpKvOutGm = dkWorkspaceGm[cmpKeyGmOffset + dOriKvSize];
@@ -1364,8 +1368,7 @@ __aicore__ inline void VecOp<SMLAGT>::PublishDeterAccMeta(bool valid, const RunI
     DataCopy(deterAccMetaGm[base], deterAccMetaTensor, DETER_ACC_META_FIELDS);
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3);
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3);
-    DataCacheCleanAndInvalid<int64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
-        deterAccMetaGm[base]);
+    DataCacheCleanAndInvalid<int64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(deterAccMetaGm[base]);
 }
 
 template <typename SMLAGT>

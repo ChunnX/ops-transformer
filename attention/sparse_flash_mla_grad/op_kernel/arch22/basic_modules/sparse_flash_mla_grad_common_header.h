@@ -78,7 +78,7 @@ struct RunInfo {
     int64_t dqOutGmOffset;
     int64_t actualSelCntOffset;
     int64_t scatterTaskId;
-    int64_t s1Round{0}; // processBS1 轮次 i，供全局 ScatterAddDeter 解析各 core 的 S1
+    int64_t s1Round{0};    // processBS1 轮次 i，供全局 ScatterAddDeter 解析各 core 的 S1
     int64_t roundDbIdx{0}; // SCFA scatter staging face：s1Round & 1（2-buffer）
     int64_t s1Index;
     int64_t actualSelectedBlockCount;

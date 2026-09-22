@@ -93,13 +93,15 @@ __aicore__ inline __attribute__((always_inline)) void CubeOp<T1>::cube5Process(c
             // l0a复用
             uint32_t l0a_ping_pong_flag = ping_pong_flag_l0a_;
             if (runInfo.isOri) {
-                MmadInnerWithSync<T1, IS_DETER ? false : true>(l0cTensor, l1_p_tensor, current_l1_dy_tensor,
-                    aL0TensorPingPong, bL0TensorPingPong,
-                    mmParam, l0a_ping_pong_flag, ping_pong_flag_l0b_, ping_pong_flag_l0c_, dIdx == 0, mm5ResWorkspaceGm[currentOutGmOffset]);
+                MmadInnerWithSync<T1, IS_DETER ? false : true>(
+                    l0cTensor, l1_p_tensor, current_l1_dy_tensor, aL0TensorPingPong, bL0TensorPingPong, mmParam,
+                    l0a_ping_pong_flag, ping_pong_flag_l0b_, ping_pong_flag_l0c_, dIdx == 0,
+                    mm5ResWorkspaceGm[currentOutGmOffset]);
             } else {
-                MmadInnerWithSync<T1, IS_DETER ? false : (MODE!=SMLAG_SCFA_MODE)>(l0cTensor, l1_p_tensor, current_l1_dy_tensor,
-                    aL0TensorPingPong, bL0TensorPingPong,
-                    mmParam, l0a_ping_pong_flag, ping_pong_flag_l0b_, ping_pong_flag_l0c_, dIdx == 0, mm5ResWorkspaceGm[currentOutGmOffset]);
+                MmadInnerWithSync<T1, IS_DETER ? false : (MODE != SMLAG_SCFA_MODE)>(
+                    l0cTensor, l1_p_tensor, current_l1_dy_tensor, aL0TensorPingPong, bL0TensorPingPong, mmParam,
+                    l0a_ping_pong_flag, ping_pong_flag_l0b_, ping_pong_flag_l0c_, dIdx == 0,
+                    mm5ResWorkspaceGm[currentOutGmOffset]);
             }
             UpdatePingPongFlag(ping_pong_flag_l0c_);
         }

@@ -174,8 +174,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tenso
               cmpSparseIndicesConst, cuSeqlensQConst, cuSeqlensOriKvConst, cuSeqlensCmpKvConst, sequsedQConst,
               sequsedOriKvConst, sequsedCmpKvConst, cmpResidualKvConst, oriTopkLengthConst, cmpTopkLengthConst,
               sinksConst, metadataConst, softmaxScaleConst, cmpRatioConst, oriMaskModeConst, cmpMaskModeConst,
-              oriWinLeftConst, oriWinRightConst, layoutQPtr, layoutKvPtr, dq, dOriKv, dCmpKv, dSinks,
-              oriSoftmaxL1Norm, cmpSoftmaxL1Norm);
+              oriWinLeftConst, oriWinRightConst, layoutQPtr, layoutKvPtr, dq, dOriKv, dCmpKv, dSinks, oriSoftmaxL1Norm,
+              cmpSoftmaxL1Norm);
 
     return std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor>(
         dq, dOriKv, dCmpKv, dSinks, oriSoftmaxL1Norm, cmpSoftmaxL1Norm);

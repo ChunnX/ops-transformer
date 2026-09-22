@@ -76,9 +76,11 @@ __global__ __aicore__ void sparse_flash_mla_grad(
     if constexpr (ORIG_DTYPE_QUERY == DT_FLOAT16) {
         if (MODE == SMLAG_SCFA_MODE) {
             if (LAYOUT == SMLAG_LAYOUT_BSND) {
-                INVOKE_SMLAG_BASIC_IMPL(SMLAG_BASIC::SelectedAttentionGradBasic, half, true, SMLAG_SCFA_MODE, HAS_SEQUSED, Deterministic);
+                INVOKE_SMLAG_BASIC_IMPL(SMLAG_BASIC::SelectedAttentionGradBasic, half, true, SMLAG_SCFA_MODE,
+                                        HAS_SEQUSED, Deterministic);
             } else {
-                INVOKE_SMLAG_BASIC_IMPL(SMLAG_BASIC::SelectedAttentionGradBasic, half, false, SMLAG_SCFA_MODE, HAS_SEQUSED, Deterministic);
+                INVOKE_SMLAG_BASIC_IMPL(SMLAG_BASIC::SelectedAttentionGradBasic, half, false, SMLAG_SCFA_MODE,
+                                        HAS_SEQUSED, Deterministic);
             }
         } else {
             if (LAYOUT == SMLAG_LAYOUT_BSND) {
@@ -91,15 +93,19 @@ __global__ __aicore__ void sparse_flash_mla_grad(
     if constexpr (ORIG_DTYPE_QUERY == DT_BF16) {
         if (MODE == SMLAG_SCFA_MODE) {
             if (LAYOUT == SMLAG_LAYOUT_BSND) {
-                INVOKE_SMLAG_BASIC_IMPL(SMLAG_BASIC::SelectedAttentionGradBasic, bfloat16_t, true, SMLAG_SCFA_MODE, HAS_SEQUSED, Deterministic);
+                INVOKE_SMLAG_BASIC_IMPL(SMLAG_BASIC::SelectedAttentionGradBasic, bfloat16_t, true, SMLAG_SCFA_MODE,
+                                        HAS_SEQUSED, Deterministic);
             } else {
-                INVOKE_SMLAG_BASIC_IMPL(SMLAG_BASIC::SelectedAttentionGradBasic, bfloat16_t, false, SMLAG_SCFA_MODE, HAS_SEQUSED, Deterministic);
+                INVOKE_SMLAG_BASIC_IMPL(SMLAG_BASIC::SelectedAttentionGradBasic, bfloat16_t, false, SMLAG_SCFA_MODE,
+                                        HAS_SEQUSED, Deterministic);
             }
         } else {
             if (LAYOUT == SMLAG_LAYOUT_BSND) {
-                INVOKE_SMLAG_BASIC_IMPL(SMLAG_BASIC::SparseFlashMlaGrad, bfloat16_t, true, MODE, HAS_SEQUSED, Deterministic);
+                INVOKE_SMLAG_BASIC_IMPL(SMLAG_BASIC::SparseFlashMlaGrad, bfloat16_t, true, MODE, HAS_SEQUSED,
+                                        Deterministic);
             } else {
-                INVOKE_SMLAG_BASIC_IMPL(SMLAG_BASIC::SparseFlashMlaGrad, bfloat16_t, false, MODE, HAS_SEQUSED, Deterministic);
+                INVOKE_SMLAG_BASIC_IMPL(SMLAG_BASIC::SparseFlashMlaGrad, bfloat16_t, false, MODE, HAS_SEQUSED,
+                                        Deterministic);
             }
         }
     }
