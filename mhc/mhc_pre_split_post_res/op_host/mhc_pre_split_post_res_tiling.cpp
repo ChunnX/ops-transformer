@@ -102,9 +102,7 @@ ge::graphStatus MhcPreSplitPostResInfoParser::GetNpuInfo()
     OP_CHECK_IF(coreNum_ == 0 || ubSize_ == 0,
         OP_LOGE(opName_, "coreNum=%lu, ubSize=%lu obtained from platform/compile info is invalid.", coreNum_, ubSize_),
         return GRAPH_FAILED);
-    OP_CHECK_IF((socVersion_ != platform_ascendc::SocVersion::ASCEND910B) &&
-                    (socVersion_ != platform_ascendc::SocVersion::ASCEND910_93) &&
-                    (socVersion_ != platform_ascendc::SocVersion::ASCEND950),
+    OP_CHECK_IF(socVersion_ != platform_ascendc::SocVersion::ASCEND950,
         OP_LOGE(opName_, "SOC Version[%d] is not support.", (int32_t)socVersion_),
         return GRAPH_FAILED);
 

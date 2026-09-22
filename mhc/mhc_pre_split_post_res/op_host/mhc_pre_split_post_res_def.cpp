@@ -59,17 +59,7 @@ public:
 
         this->Attr("norm_eps").AttrType(OPTIONAL).Float(1e-6f);
 
-        OpAICoreConfig configApply;
-        configApply.DynamicCompileStaticFlag(true)
-            .DynamicFormatFlag(true)
-            .DynamicRankSupportFlag(true)
-            .DynamicShapeSupportFlag(true)
-            .NeedCheckSupportFlag(false)
-            .ExtendCfgInfo("opFile.value", "mhc_pre_split_post_res");
-        this->AICore().AddConfig("ascend910b", configApply);
-        this->AICore().AddConfig("ascend910_93", configApply);
-
-        // ascend950 走独立 kernel 入口（arch35 实现）
+        // 本算子仅支持 ascend950（A5）：走独立 kernel 入口（arch35 APT 实现）
         OpAICoreConfig configApt;
         configApt.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)

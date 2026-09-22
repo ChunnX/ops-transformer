@@ -67,7 +67,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_4_4_100_1_4_00
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = 0;
     std::string expectTilingData = "";
@@ -100,7 +100,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_128_4_2560_32_
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = optiling::MHC_PRE_SPLIT_TILING_KEY_SINGLE_TILE;
     std::string expectTilingData = "";
@@ -133,7 +133,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_fp16_128_4_2560_32_
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = optiling::MHC_PRE_SPLIT_TILING_KEY_SINGLE_TILE;
     std::string expectTilingData = "";
@@ -168,7 +168,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_4_4_5120_1_4_0
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = optiling::MHC_PRE_SPLIT_TILING_KEY_MULTI_TILE;
     std::string expectTilingData = "";
@@ -201,7 +201,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_fp16_4_4_5120_1_4_0
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = optiling::MHC_PRE_SPLIT_TILING_KEY_MULTI_TILE;
     std::string expectTilingData = "";
@@ -234,7 +234,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_128_4_8192_32_
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = optiling::MHC_PRE_SPLIT_TILING_KEY_MULTI_TILE;
     std::string expectTilingData = "";
@@ -267,7 +267,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_fp16_256_4_16400_64
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = 0;
     std::string expectTilingData = "";
@@ -304,7 +304,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_TND_bf16_1_4_100_000000)
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = 0;
     std::string expectTilingData = "";
@@ -336,7 +336,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_TND_bf16_512_4_2560_0000
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = optiling::MHC_PRE_SPLIT_TILING_KEY_SINGLE_TILE;
     std::string expectTilingData = "";
@@ -368,7 +368,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_TND_fp16_512_4_2560_0000
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = optiling::MHC_PRE_SPLIT_TILING_KEY_SINGLE_TILE;
     std::string expectTilingData = "";
@@ -402,7 +402,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_TND_bf16_1_4_5120_000000
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = optiling::MHC_PRE_SPLIT_TILING_KEY_MULTI_TILE;
     std::string expectTilingData = "";
@@ -434,7 +434,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_TND_fp16_1_4_5120_000000
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = optiling::MHC_PRE_SPLIT_TILING_KEY_MULTI_TILE;
     std::string expectTilingData = "";
@@ -466,7 +466,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_TND_bf16_512_4_8192_0000
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = optiling::MHC_PRE_SPLIT_TILING_KEY_MULTI_TILE;
     std::string expectTilingData = "";
@@ -498,7 +498,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_TND_fp16_512_4_16400_000
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = 0;
     std::string expectTilingData = "";
@@ -533,7 +533,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_emptyX_000000)
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = 0;
     std::string expectTilingData = "";
@@ -564,7 +564,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_emptyPhi_000000)
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = 0;
     std::string expectTilingData = "";
@@ -596,7 +596,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_emptyAlpha_000000)
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = 0;
     std::string expectTilingData = "";
@@ -628,7 +628,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_emptyBias_000000)
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = 0;
     std::string expectTilingData = "";
@@ -661,7 +661,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_errorXDimNum_000000
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = 0;
     std::string expectTilingData = "";
@@ -692,7 +692,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_errorPhiDimNum_0000
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = 0;
     std::string expectTilingData = "";
@@ -724,7 +724,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_errorAlphaDimNum_00
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = 0;
     std::string expectTilingData = "";
@@ -756,7 +756,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_errorBiasDimNum_000
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = 0;
     std::string expectTilingData = "";
@@ -790,7 +790,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_errorTMin_000000)
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = 0;
     std::string expectTilingData = "";
@@ -822,7 +822,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_errorTMax_000000)
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = 0;
     std::string expectTilingData = "";
@@ -854,7 +854,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_errorN_000000)
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = 0;
     std::string expectTilingData = "";
@@ -886,7 +886,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_errorDMin_000000)
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = 0;
     std::string expectTilingData = "";
@@ -918,7 +918,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_errorDMax_000000)
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = 0;
     std::string expectTilingData = "";
@@ -950,7 +950,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_errorDAlign_000000)
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = 0;
     std::string expectTilingData = "";
@@ -982,7 +982,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_errorPhiRows_000000
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = 0;
     std::string expectTilingData = "";
@@ -1014,7 +1014,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_errorPhiCols_000000
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = 0;
     std::string expectTilingData = "";
@@ -1046,7 +1046,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_errorAlphaShape_000
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = 0;
     std::string expectTilingData = "";
@@ -1079,7 +1079,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_errorBiasShape_0000
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = 0;
     std::string expectTilingData = "";
@@ -1113,7 +1113,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_errorXDtype_000000)
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = 0;
     std::string expectTilingData = "";
@@ -1145,7 +1145,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_errorPhiDtype_000000)
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = 0;
     std::string expectTilingData = "";
@@ -1177,7 +1177,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_errorAlphaDtype_000000)
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = 0;
     std::string expectTilingData = "";
@@ -1209,7 +1209,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_errorBiasDtype_000000)
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = 0;
     std::string expectTilingData = "";
@@ -1250,7 +1250,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_corenum48_T23_
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = optiling::MHC_PRE_SPLIT_TILING_KEY_SINGLE_TILE;
     std::string expectTilingData = "";
@@ -1285,7 +1285,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_corenum48_T24_
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = optiling::MHC_PRE_SPLIT_TILING_KEY_SINGLE_TILE;
     std::string expectTilingData = "";
@@ -1320,7 +1320,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_corenum48_T512
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = optiling::MHC_PRE_SPLIT_TILING_KEY_SINGLE_TILE;
     std::string expectTilingData = "";
@@ -1357,7 +1357,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_corenum40_T19_
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = optiling::MHC_PRE_SPLIT_TILING_KEY_SINGLE_TILE;
     std::string expectTilingData = "";
@@ -1392,7 +1392,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_corenum40_T20_
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = optiling::MHC_PRE_SPLIT_TILING_KEY_SINGLE_TILE;
     std::string expectTilingData = "";
@@ -1428,7 +1428,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_TND_bf16_corenum40_T19_D
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = optiling::MHC_PRE_SPLIT_TILING_KEY_SINGLE_TILE;
     std::string expectTilingData = "";
@@ -1462,7 +1462,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_TND_bf16_corenum40_T20_D
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = optiling::MHC_PRE_SPLIT_TILING_KEY_SINGLE_TILE;
     std::string expectTilingData = "";
@@ -1496,7 +1496,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_TND_bf16_corenum40_T512_
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = optiling::MHC_PRE_SPLIT_TILING_KEY_SINGLE_TILE;
     std::string expectTilingData = "";
@@ -1531,7 +1531,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_128_4_6144_32_
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = optiling::MHC_PRE_SPLIT_TILING_KEY_MULTI_TILE;
     std::string expectTilingData = "";
@@ -1564,7 +1564,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_128_4_7168_32_
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = optiling::MHC_PRE_SPLIT_TILING_KEY_MULTI_TILE;
     std::string expectTilingData = "";
@@ -1597,7 +1597,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_128_4_16384_32
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = optiling::MHC_PRE_SPLIT_TILING_KEY_MULTI_TILE;
     std::string expectTilingData = "";
@@ -1630,7 +1630,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_128_4_16_32_4)
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = optiling::MHC_PRE_SPLIT_TILING_KEY_SINGLE_TILE;
     std::string expectTilingData = "";
@@ -1664,7 +1664,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_128_4_2064_32_
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = optiling::MHC_PRE_SPLIT_TILING_KEY_SINGLE_TILE;
     std::string expectTilingData = "";
@@ -1697,7 +1697,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_128_4_2576_32_
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = optiling::MHC_PRE_SPLIT_TILING_KEY_MULTI_TILE;
     std::string expectTilingData = "";
@@ -1730,7 +1730,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_norm_eps_invalid)
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(-1.0f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = 0;
     std::string expectTilingData = "";
@@ -1763,7 +1763,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_norm_eps_zero_invalid)
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(0.0f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = 0;
     std::string expectTilingData = "";
@@ -1797,7 +1797,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_norm_eps_nan_invalid)
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(
                              std::numeric_limits<float>::quiet_NaN())},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = 0;
     std::string expectTilingData = "";
@@ -1832,7 +1832,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_dualcore_4_512
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = optiling::MHC_PRE_SPLIT_TILING_KEY_MULTI_TILE;
     std::string expectTilingData = "";
@@ -1865,7 +1865,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_singlecore_64_
         {
             {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
         },
-        &compileInfo);
+        &compileInfo, "Ascend950");
 
     int64_t expectTilingKey = optiling::MHC_PRE_SPLIT_TILING_KEY_MULTI_TILE;
     std::string expectTilingData = "";
@@ -2038,7 +2038,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_950_BSND_bf16_4_4_100_1_
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
 }
 
-// 非 910B/910_93/950 的 soc（如 Ascend310P）仍应被白名单拒绝
+// 非 950 的 soc（如 Ascend310P/910B）仍应被白名单拒绝（本算子仅支持 ascend950）
 TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_soc310p_not_support)
 {
     int64_t B = 32;

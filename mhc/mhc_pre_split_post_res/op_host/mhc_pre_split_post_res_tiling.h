@@ -80,7 +80,7 @@ protected:
     gert::TilingContext  *context_     = nullptr;
     const char           *opName_      = nullptr;
     fe::PlatFormInfos    *platformInfo_ = nullptr;
-    platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910_93;
+    platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND950;
 
     // 硬件参数
     uint64_t coreNum_ = 0;
