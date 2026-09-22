@@ -475,8 +475,10 @@ aclnnStatus aclnnAllGatherMatmulV2(
 - <term>Ascend 950PR/Ascend 950DT</term>：
     - 非量化FLOAT16/BFLOAT16路径存在两套内核实现并存，接口行为与约束完全一致（接口冻结，对使用者透明）：
         - **v1实现（默认）**：HCCL windows + mat_mul_v3 计算栈，覆盖量化与非量化全部支持域；
-        - **APACE实现**：基于APACE框架（hcomm变体）的非量化融合实现，仅承接非量化FLOAT16/BFLOAT16路径。
-    - 实现切换开关：环境变量`ASCEND_MC2_AGMV2_APACE_IMPL=1`启用APACE实现（仅对非量化FLOAT16/BFLOAT16且rank_size不超过64时生效）；默认关闭（初期默认v1路径），APACE路径上板验证通过后计划切换为默认。量化路径（FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8/FLOAT4_E2M1/INT8/INT4）不受该开关影响，恒走v1实现。
+        - **APACE实现**：基于APACE框架（hcomm变体）的非量化融合实现，仅承接非量化FLOAT16/BFLOAT16路径。2026-09边界缺陷修复后形态：计算块循环按通信区域（HEAD/MAIN/TAIL）边界分段执行（跨界块切分，数值结果不变），Blaze basic调度器尾块分裂因子固定为1（plain网格）。
+    - 实现切换开关：环境变量`ASCEND_MC2_AGMV2_APACE_IMPL=1`启用APACE实现（仅对非量化FLOAT16/BFLOAT16且rank_size不超过64时生效）；默认关闭（默认v1路径）——APACE路径已上板验证通过，但受P10-R1登记限制（APACE分支须携带`ASCEND_GLOBAL_LOG_LEVEL=1`执行配方，见下条）暂维持v1默认。量化路径（FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8/FLOAT4_E2M1/INT8/INT4）不受该开关影响，恒走v1实现。
+    - APACE分支执行配方：生产使用须携带环境变量`ASCEND_GLOBAL_LOG_LEVEL=1`——APACE分支在无host日志的快路径时序下，特定shape（如m=2048, k=4096, n=2048）存在kernel挂起至任务超时（507014）的风险（P10-R1登记项，待HCCL/框架侧闭环）；携带该环境变量实测100%通过，v1分支不受影响。
+    - ccu模式调用侧要求：通信域创建前须设置环境变量`HCCL_OP_EXPANSION_MODE=CCU_SCHED`；未设置时CCU资源分配失败且设备进程崩溃。
     - 两分支共享同一接口签名、入参校验与shape推导；切换实现不改变本文件的接口描述与约束说明，v1分支既有tiling key编码值不变。
 <!-- end id15 -->
 
@@ -488,7 +490,7 @@ aclnnStatus aclnnAllGatherMatmulV2(
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 <!-- npu="950" id16 -->
-- <term>Ascend 950PR/Ascend 950DT</term>非量化FLOAT16/BFLOAT16场景另提供参数化样例[test_aclnn_all_gather_matmul_v2_fp16.cpp](../examples/arch35/test_aclnn_all_gather_matmul_v2_fp16.cpp)：通过环境变量`AGM_V2_DEV_NUM`（rank数，默认2，取值2/4/8/...）、`AGM_V2_COMM_MODE`（通信模式，`ccu`/`ai_cpu`，默认`ccu`）、`AGM_V2_DTYPE`（数据类型，`fp16`/`bf16`，默认`fp16`）、`AGM_V2_M`/`AGM_V2_K`/`AGM_V2_N`（矩阵形状，默认256/256/128，k取值范围为[256, 65535)）参数化执行，并内嵌精度自校验（gatherOut位级比对、output混合容差比对，全rank通过时进程退出码为0）。运行命令、实现切换开关（`ASCEND_MC2_AGMV2_APACE_IMPL`）与批量用例驱动方式参见[算子README](../README.md)的「调用说明」「实现说明」与「有卡环境验证指引」。
+- <term>Ascend 950PR/Ascend 950DT</term>非量化FLOAT16/BFLOAT16场景另提供参数化样例[test_aclnn_all_gather_matmul_v2_fp16.cpp](../examples/arch35/test_aclnn_all_gather_matmul_v2_fp16.cpp)：通过环境变量参数化执行——`AGM_V2_CASE_ID`（用例号）、`AGM_V2_DUMP_DIR`（dump输出目录）、`AGM_V2_DEV_NUM`/`AGM_V2_RANK_SIZE`（rank数，默认2，取值2/4/8/...，`RANK_SIZE`为契约主键）、`AGM_V2_COMM_MODE`（通信模式，`ccu`/`ai_cpu`，默认`ccu`）、`AGM_V2_DTYPE`（数据类型，`fp16`/`bf16`，默认`fp16`）、`AGM_V2_M`/`AGM_V2_K`/`AGM_V2_N`（矩阵形状，默认256/256/128，k取值范围为[256, 65535)，m=0/n=0合法）、`AGM_V2_BIAS`（bias开关，默认0）、`AGM_V2_TRANS_B`（x2转置实参开关，默认0）、`AGM_V2_GATHER_OUT`（gatherOut输出开关，默认1）、`AGM_V2_VALUE_SPEC`（输入数值语义，默认`clean`）、`AGM_V2_VALUE_SCALE`（输入幅值缩放系数，默认1.0）、`AGM_V2_REPEAT_LAUNCH`（确定性重复launch次数，默认1）、`AGM_V2_SEED`（确定性伪随机种子）；每次launch后打印计时行`AGM_V2_TIMING_US`。样例内嵌精度自校验（gatherOut位级比对、output混合容差比对，全rank通过时进程退出码为0），ccu模式下自动设置`HCCL_OP_EXPANSION_MODE=CCU_SCHED`。运行命令、实现切换开关（`ASCEND_MC2_AGMV2_APACE_IMPL`）、APACE分支执行配方（`ASCEND_GLOBAL_LOG_LEVEL=1`）与批量用例驱动方式参见[算子README](../README.md)的「调用说明」「实现说明」与「有卡环境验证指引」。
 <!-- end id16 -->
 
 

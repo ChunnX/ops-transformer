@@ -1,10 +1,10 @@
 /**
  * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
@@ -52,9 +52,23 @@ constexpr uint64_t UT_APACE_IMPL_KEY_BIT = 1ULL << 9; // 512：USING_APACE_IMPL 
 // 未设/其他值=off（B2 冻结：初期默认 v1 路径）
 constexpr char kAscendMc2UsingApaceImpl[] = "ASCEND_MC2_AGMV2_APACE_IMPL";
 
-// HA2（静态断言）：DFX 头部约定——dumpInfo 必须位于 apace 结构 offset 0
-static_assert(offsetof(Apace::hcommAllGatherMatmulTilingData, dumpInfo) == 0,
-              "HA2: dumpInfo must reside at offset 0 of hcommAllGatherMatmulTilingData");
+// HA2（静态断言，B9⑤ 公共结构布局修复后同步）：hcomm 路径布局契约——
+// HCCL 框架从 tiling blob offset 0 解析 Mc2InitTiling.version（task-sink 契约），
+// mc2InitTiling 必须位于 apace 结构 offset 0；dumpInfo-first 头部约定仅适用于
+// URMA 结构。mc2CcTiling 紧随其后；dumpInfo 位于 mc2InitTiling/mc2CcTiling 之后，
+// 前缀（mc2InitTiling→mc2CcTiling→dumpInfo）与 v1 结构
+// Mc2Tiling::AllGatherMatmulTilingDataV2 同型同序对齐（异常 dump 回调按调用方
+// 传入的 v1 offsetof(..., dumpInfo) 偏移解析 DfxDumpInfo，前缀对齐后
+// v1/APACE 两分支均正确）。
+static_assert(offsetof(Apace::hcommAllGatherMatmulTilingData, mc2InitTiling) == 0,
+              "HA2: mc2InitTiling must reside at offset 0 of hcommAllGatherMatmulTilingData "
+              "(HCCL parses Mc2InitTiling.version from tiling blob offset 0, task-sink contract)");
+static_assert(offsetof(Apace::hcommAllGatherMatmulTilingData, mc2CcTiling) == sizeof(Mc2InitTiling),
+              "HA2: mc2CcTiling must follow mc2InitTiling (prefix aligned with v1/a2a layout)");
+static_assert(offsetof(Apace::hcommAllGatherMatmulTilingData, dumpInfo) ==
+                  offsetof(Mc2Tiling::AllGatherMatmulTilingDataV2, dumpInfo),
+              "HA2: dumpInfo offset must equal v1 AllGatherMatmulTilingDataV2's (dump callback "
+              "parses DfxDumpInfo at caller-passed v1 offsetof)");
 
 // 非量化链路 v1 tiling key 换算（all_gather_matmul_tiling_base.cpp GetTilingKey 实源）：
 // GET_TPL_TILING_KEY(inputIsBf16Fp16_=1, isBTrans, outputType=0, TPL_DEFAULT_MODE=0,
@@ -147,12 +161,10 @@ TEST_P(AllGatherMatmulV2Arch35TilingTest, param)
         ASSERT_GE(tilingInfo.tilingDataSize, sizeof(Mc2Tiling::AllGatherMatmulTilingDataV2));
         const auto *agmTiling =
             reinterpret_cast<const Mc2Tiling::AllGatherMatmulTilingDataV2 *>(tilingInfo.tilingData.get());
-        EXPECT_EQ(agmTiling->mc2MmV3TileTilingData.tCubeTiling.Ka,
-                  static_cast<int32_t>(agmTiling->param.rankK))
+        EXPECT_EQ(agmTiling->mc2MmV3TileTilingData.tCubeTiling.Ka, static_cast<int32_t>(agmTiling->param.rankK))
             << "ut_kak_inv: tile tCubeTiling.Ka != rankK (split-K triggered on gather path)";
         if (agmTiling->param.tailM > 0) {
-            EXPECT_EQ(agmTiling->mc2MmV3TailTilingData.tCubeTiling.Ka,
-                      static_cast<int32_t>(agmTiling->param.rankK))
+            EXPECT_EQ(agmTiling->mc2MmV3TailTilingData.tCubeTiling.Ka, static_cast<int32_t>(agmTiling->param.rankK))
                 << "ut_kak_inv: tail tCubeTiling.Ka != rankK (split-K triggered on gather path)";
         }
         if (debugModeEnvSet) {
@@ -215,17 +227,19 @@ TEST_P(AllGatherMatmulV2Arch35TilingTest, param)
                   << " tailM=" << rcs.tailM << std::endl;
         if (nVal > 0) {
             // 4) 切分一致性（n>0 时 tCubeTiling 有效；n==0 跳过 mmv3 tiling）
-            const uint32_t structTileM = static_cast<uint32_t>(agmStruct->mc2MmV3TileTilingData.tCubeTiling.M) /
-                (rcs.rankDim - 1);
-            EXPECT_EQ(static_cast<uint64_t>(rcs.tileCnt) * structTileM +
-                static_cast<uint64_t>(rcs.tailCnt) * rcs.tailM, static_cast<uint64_t>(mVal))
+            const uint32_t structTileM =
+                static_cast<uint32_t>(agmStruct->mc2MmV3TileTilingData.tCubeTiling.M) / (rcs.rankDim - 1);
+            EXPECT_EQ(static_cast<uint64_t>(rcs.tileCnt) * structTileM + static_cast<uint64_t>(rcs.tailCnt) * rcs.tailM,
+                      static_cast<uint64_t>(mVal))
                 << "切分一致性: tileCnt*tileM + tailCnt*tailM == m";
             EXPECT_LE(rcs.tailCnt, 1u);
             EXPECT_GE(rcs.tileCnt, 1u);
             if (param.comm_mode == "ccu") {
                 // 5) CCU 后置条件：单轮通信量 ≤ 256MB（fp16/bf16 dtypeSize=2）
                 EXPECT_LE(static_cast<uint64_t>(structTileM) * static_cast<uint64_t>(kVal) * 2ULL *
-                    static_cast<uint64_t>(rcs.rankDim), 268435456ULL) << "CCU 单轮通信量 <= 256MB";
+                              static_cast<uint64_t>(rcs.rankDim),
+                          268435456ULL)
+                    << "CCU 单轮通信量 <= 256MB";
             }
             EXPECT_LE(rcs.tileCnt + rcs.tailCnt, 62u) << "总通信次数 <= HCCL_MAX_TOTAL_TILES";
         }
@@ -236,7 +250,7 @@ TEST_P(AllGatherMatmulV2Arch35TilingTest, param)
     }
     // 白盒补充（3.3 v2，ut_wbkey_ 前缀）：使能开关 env 取值语义 + 范围隔离验证。
     // using_apace_impl 列在本前缀下作 env 取值选择：1=setenv"1"（on）、2=setenv"0"
-    //（set 但非 "1"——验证 N4 L83 strncmp(env,"1",2)==0 的严格相等语义）、0/unset=默认 off。
+    // （set 但非 "1"——验证 N4 L83 strncmp(env,"1",2)==0 的严格相等语义）、0/unset=默认 off。
     // 覆盖：APACE key 515（ccu×transB，3.2 缺口）/ 量化 dtype+env on 隔离（key 264 不变，
     // N4 切换条件 INPUT_IS_BF16FP16 因子 false 侧）/ env="0" 严格 off（key 257）。
     constexpr const char kUtWbKeyPrefix[] = "ut_wbkey_";
@@ -257,8 +271,7 @@ TEST_P(AllGatherMatmulV2Arch35TilingTest, param)
             << "ut_wbkey: key 与 csv 期望一致（envSel=" << param.using_apace_impl
             << "：1=on / 2=env\"0\"严格off / 0=unset默认off）";
         std::cout << "  [ut_wbkey] " << param.case_name << " envSel=" << param.using_apace_impl
-                  << " key=" << wbKeyTilingInfo.tilingKey << "（期望 " << param.expectTilingKey << "）"
-                  << std::endl;
+                  << " key=" << wbKeyTilingInfo.tilingKey << "（期望 " << param.expectTilingKey << "）" << std::endl;
         (void)unsetenv(kAscendMc2UsingApaceImpl);
         if (debugModeEnvSet) {
             (void)unsetenv(kAscendMc2DebugMode);
@@ -314,8 +327,8 @@ TEST_P(AllGatherMatmulV2Arch35TilingTest, param)
                 << "HA1: tilingDataSize >= sizeof(apace 结构)";
             EXPECT_GE(apaceTilingInfo.tilingDataSize, sizeof(Mc2Tiling::AllGatherMatmulTilingDataV2))
                 << "HA1: tilingDataSize >= sizeof(v1 结构)（max 口径）";
-            const auto *apaceTd = reinterpret_cast<const Apace::hcommAllGatherMatmulTilingData *>(
-                apaceTilingInfo.tilingData.get());
+            const auto *apaceTd =
+                reinterpret_cast<const Apace::hcommAllGatherMatmulTilingData *>(apaceTilingInfo.tilingData.get());
             // HA3：commTile 语义（切分轴=M_per_rank、非切分轴=K；fit-balance+256 对齐封顶）
             EXPECT_EQ(apaceTd->commTile.nonSplitAxisSize, static_cast<uint64_t>(apaceK))
                 << "HA3: nonSplitAxisSize == k";
@@ -353,8 +366,7 @@ TEST_P(AllGatherMatmulV2Arch35TilingTest, param)
                 EXPECT_LE(apaceTd->mmTile.baseM, apaceTd->commTile.splitAxisTileSize)
                     << "HA4-S3: baseM <= splitAxisTileSize（多通信块：mm 单块不跨 tile 边界）";
             } else {
-                const uint64_t mmv3MClamp =
-                    (static_cast<uint64_t>(apaceM) + 15ULL) / 16ULL * 16ULL; // CeilAlign(m,16)
+                const uint64_t mmv3MClamp = (static_cast<uint64_t>(apaceM) + 15ULL) / 16ULL * 16ULL; // CeilAlign(m,16)
                 EXPECT_LE(apaceTd->mmTile.baseM, mmv3MClamp)
                     << "HA4-S3(单块): baseM <= CeilAlign(m,16)（mmv3 夹取域，边界由尾块拆分承接）";
             }
@@ -387,6 +399,44 @@ TEST_P(AllGatherMatmulV2Arch35TilingTest, param)
                           << " tailM%16=" << (apaceTd->commTile.splitAxisTailSize % 16ULL)
                           << "（非 0 即驱动 N1 L155 paddedTailM CeilAlign 进位支）" << std::endl;
             }
+            // 3.3 v2.4 白盒标记断言（P10 修复分支决策变量，3.4 上卡补验 v1.7 §12.6 交办；
+            // 跨界判据与 3.4 §12.2 实测规律一致：跨界 ⟺ headRows%baseM≠0 或 tileM%baseM≠0）：
+            if (param.case_name.find("_xregion_") != std::string::npos) {
+                // P10-①：区域边界跨界块 → Process 分段循环 seg>=2 多段路径
+                // （all_gather_bmm_kernel.h L403-450，段边界=region/MAIN-round 边界）
+                const uint64_t wbHeadRows = apaceTd->commTile.splitAxisTileSize * apaceTd->commTile.splitAxisTileCnt;
+                const uint64_t wbBaseM = apaceTd->mmTile.baseM;
+                EXPECT_TRUE(wbHeadRows % wbBaseM != 0ULL || apaceTd->commTile.splitAxisTileSize % wbBaseM != 0ULL)
+                    << "WB-xregion: 区域边界跨界块（headRows%baseM / tileM%baseM 至少一个非 0"
+                    << " → P10 分段循环多段路径决策变量成立）";
+                std::cout << "  [ut_apace-wb] headRows=" << wbHeadRows << " baseM=" << wbBaseM
+                          << " headRows%baseM=" << (wbHeadRows % wbBaseM)
+                          << " tileM%baseM=" << (apaceTd->commTile.splitAxisTileSize % wbBaseM)
+                          << "（非 0 即跨界块 → seg>=2 多段路径，上卡 P10 原 FAIL 集同形态）" << std::endl;
+            }
+            if (param.case_name.find("_noseg_") != std::string::npos) {
+                // P10-①退化侧：无跨界块（对齐）→ 单段原路径（首段 segStop=blkEnd 即块尾，
+                // 逐值等价修复前路径；N2 L396「无跨界块时退化为单段原路径」的驱动变量侧）
+                const uint64_t wbHeadRows = apaceTd->commTile.splitAxisTileSize * apaceTd->commTile.splitAxisTileCnt;
+                const uint64_t wbBaseM = apaceTd->mmTile.baseM;
+                EXPECT_EQ(wbHeadRows % wbBaseM, 0ULL) << "WB-noseg: headRows 对齐 baseM（无跨界块）";
+                EXPECT_EQ(apaceTd->commTile.splitAxisTileSize % wbBaseM, 0ULL)
+                    << "WB-noseg: tileM 对齐 baseM（无跨界块）";
+            }
+            if (param.case_name.find("_tailsplit_") != std::string::npos) {
+                // P10-②：mmv3 尾块分裂协议参数产出侧保留（mTailTile 等非平凡输出——修复前
+                // 该形态曾驱动 basic 调度器畸形块，L1-133 上卡 printf 实测）；kernel 消费侧
+                // 已固定 1（Run L300-313 plain 网格化）——本断言钉住「产出侧保留、消费侧
+                // 解耦」事实（tiling 输出与修复前逐字节不变，P10 修复不触 tiling 侧）
+                EXPECT_TRUE(apaceTd->mmTile.mTailTile > 1U || apaceTd->mmTile.mBaseTailSplitCnt > 1U ||
+                            apaceTd->mmTile.mTailMain > 0U)
+                    << "WB-tailsplit: mmv3 尾块分裂参数非平凡（tiling 产出侧保留；kernel 消费侧"
+                    << " P10 修复固定 1——断言钉住产出侧保留事实）";
+                std::cout << "  [ut_apace-wb] mTailTile=" << apaceTd->mmTile.mTailTile
+                          << " mBaseTailSplitCnt=" << apaceTd->mmTile.mBaseTailSplitCnt
+                          << " mTailMain=" << apaceTd->mmTile.mTailMain
+                          << "（kernel 消费侧固定 1，P10-② plain 网格；core_num=28 镜像真卡 950PR）" << std::endl;
+            }
             // workspace 覆盖断言（N4 GetWorkspaceSize apace 覆写支 L435-444：ws=libApi+gatherLen；
             // libApi 为平台常量，跨行常量性由观测记录核对，行内断言 ws>=gatherLen）
             if (!apaceTilingInfo.workspaceSizes.empty() && apaceTd->gatherLen > 0) {
@@ -409,17 +459,17 @@ TEST_P(AllGatherMatmulV2Arch35TilingTest, param)
             // 观测值打印（分支命中证据；stepK/nBufferNum 为 2.2 §3.4 W2 核定项——
             // 期望值不冻结，3.1 落地后按实际输出回填核对）
             std::cout << "  [ut_apace] " << param.case_name << " key=" << apaceTilingInfo.tilingKey
-                      << " dataSize=" << apaceTilingInfo.tilingDataSize << " commTile(tile/cnt/tail/cnt/nonSplit)="
-                      << apaceTd->commTile.splitAxisTileSize << "/" << apaceTd->commTile.splitAxisTileCnt << "/"
-                      << apaceTd->commTile.splitAxisTailSize << "/" << apaceTd->commTile.splitAxisTailCnt << "/"
-                      << apaceTd->commTile.nonSplitAxisSize << " mmTile(m/n/k/baseM/baseN/baseK/stepK/nBuf/dbL0c)="
-                      << apaceTd->mmTile.m << "/" << apaceTd->mmTile.n << "/" << apaceTd->mmTile.k << "/"
-                      << apaceTd->mmTile.baseM << "/" << apaceTd->mmTile.baseN << "/" << apaceTd->mmTile.baseK
-                      << "/" << static_cast<uint32_t>(apaceTd->mmTile.stepK) << "/"
+                      << " dataSize=" << apaceTilingInfo.tilingDataSize
+                      << " commTile(tile/cnt/tail/cnt/nonSplit)=" << apaceTd->commTile.splitAxisTileSize << "/"
+                      << apaceTd->commTile.splitAxisTileCnt << "/" << apaceTd->commTile.splitAxisTailSize << "/"
+                      << apaceTd->commTile.splitAxisTailCnt << "/" << apaceTd->commTile.nonSplitAxisSize
+                      << " mmTile(m/n/k/baseM/baseN/baseK/stepK/nBuf/dbL0c)=" << apaceTd->mmTile.m << "/"
+                      << apaceTd->mmTile.n << "/" << apaceTd->mmTile.k << "/" << apaceTd->mmTile.baseM << "/"
+                      << apaceTd->mmTile.baseN << "/" << apaceTd->mmTile.baseK << "/"
+                      << static_cast<uint32_t>(apaceTd->mmTile.stepK) << "/"
                       << static_cast<uint32_t>(apaceTd->mmTile.nBufferNum) << "/"
                       << static_cast<uint32_t>(apaceTd->mmTile.dbL0c) << " gatherLen=" << apaceTd->gatherLen
-                      << " ws=" << (apaceTilingInfo.workspaceSizes.empty() ?
-                                          -1 : apaceTilingInfo.workspaceSizes[0])
+                      << " ws=" << (apaceTilingInfo.workspaceSizes.empty() ? -1 : apaceTilingInfo.workspaceSizes[0])
                       << std::endl;
         } else {
             // HA8 off 侧（AT-150）：使能开关 off（默认）→ v1 分支
@@ -429,8 +479,8 @@ TEST_P(AllGatherMatmulV2Arch35TilingTest, param)
                 << "HA8-off: key 最高位 = 0";
             EXPECT_EQ(param.expectTilingKey, utV1Key) << "csv expectTilingKey = v1 旧值";
             EXPECT_GE(apaceTilingInfo.tilingDataSize, sizeof(Mc2Tiling::AllGatherMatmulTilingDataV2));
-            const auto *utV1Td = reinterpret_cast<const Mc2Tiling::AllGatherMatmulTilingDataV2 *>(
-                apaceTilingInfo.tilingData.get());
+            const auto *utV1Td =
+                reinterpret_cast<const Mc2Tiling::AllGatherMatmulTilingDataV2 *>(apaceTilingInfo.tilingData.get());
             EXPECT_EQ(utV1Td->param.rankM, static_cast<uint32_t>(apaceM)) << "HA8-off: v1 结构 rankM";
             EXPECT_EQ(utV1Td->param.rankK, static_cast<uint32_t>(apaceK)) << "HA8-off: v1 结构 rankK";
             EXPECT_EQ(utV1Td->param.rankN, static_cast<uint32_t>(apaceN)) << "HA8-off: v1 结构 rankN";

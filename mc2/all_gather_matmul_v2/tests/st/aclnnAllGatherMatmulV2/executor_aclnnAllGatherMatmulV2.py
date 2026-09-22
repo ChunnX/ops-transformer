@@ -22,7 +22,7 @@ from atk.tasks.api_execute.base_api import BaseApi
 from atk.tasks.api_execute.aclnn_base_api import AclnnBaseApi
 from atk.tasks.dataset.base_dataset import OpsDataset
 from atk.tasks.backends.lib_interface.acl_wrapper import AclTensor
-from atk.tasks.backends.lib_interface.acl_wrapper import AclFormat
+from atk.tasks.backends.lib_interface.acl_wrapper import AclFormat, nnopbase
 
 
 @register("function_allgather_matmul_v2")
@@ -164,10 +164,20 @@ class AllGatherMatmulV2(BaseApi):
 
 @register("aclnn_allgather_matmul_v2")
 class AclnnAllGatherMatmulV2(AclnnBaseApi):
+    # aclnnAllGatherMatmulV2GetWorkspaceSize 实参布局：
+    # [0..12] = 13 个输入（x1/x2/bias/x1Scale/x2Scale/quantScale/blockSize/
+    # group/gatherIndex/commTurn/streamMode/groupSize/commMode），
+    # [13] = output，[14] = gatherOut，[15] = amaxOut（init_by_input_data
+    # 末尾 append）。
+    GATHER_OUT_ARG_INDEX = 14
+
     def __init__(self, task_result: TaskResult, backend):
         super(AclnnAllGatherMatmulV2, self).__init__(task_result, backend)
         self.dist_task_info = task_result.dist_task_info
         self.is_format_nz = False
+        # 非量化 ST 扩展：gather_output=0 用例标志（init_by_input_data 置位，
+        # after_call 消费）
+        self.gather_output_disabled = False
 
     def init_by_input_data(self, input_data: InputDataset):
         if input_data.kwargs["isFormatNz"]:
@@ -191,9 +201,35 @@ class AclnnAllGatherMatmulV2(AclnnBaseApi):
         input_data.kwargs.pop("useX1Scale")
         input_data.kwargs.pop("useInt64")
 
+        # ============ 非量化 ST 扩展（tests/sim/README.md §ST 依赖，B9⑤） ============
+        # 因子来源：json 用例 remark（is_trans_b / is_bias / gather_output），
+        # 文法与共享 golden（golden_utils.golden_all_gather_compare）一致。
+        # 无 remark 的旧 json（arch22_atk_*.json）走缺省因子，既有行为零改动。
+        x1 = input_data.kwargs["x1"]
+        is_non_quant = x1.dtype != torch.int8
+        factors = self._parse_remark_factors(self._get_case_remark())
+
+        # 依赖 2/3（transB 实参视图构造）：json 声明 x2 为 (n,k)（TTK/inner
+        # 形态）时，950 CCU/ai_cpu 路径 aclnn 实参要求 view shape (k,n) +
+        # strides (1,k)、底层 storage 保持 (n,k) 行主序（即 W.t()）；(n,k)
+        # 形态实参会被 op_api CheckShape 拒绝（kValX2 取 view dim0）。仅视图
+        # 转置、存储不变；若 x2 已是 (k,n) 形态（含上游已转置的非连续视图）
+        # 则原样透传，保证幂等。
+        if is_non_quant and factors["is_trans_b"]:
+            x2 = input_data.kwargs["x2"]
+            k_dim = x1.shape[1]
+            if x2.shape[0] != k_dim and x2.shape[1] == k_dim:
+                input_data.kwargs["x2"] = x2.t()
+
         input_args, output_packages = super().init_by_input_data(input_data)
 
-        input_args[2] = self.get_null_tensor_pte()
+        # 依赖 1/3（bias 透传）：非量化且 remark is_bias=1 时保留 super() 构造
+        # 的 bias 实参（json bias dtype 与 x1 一致、值域 [-5,5]），与共享
+        # golden 的加 bias 对齐；其余场景（int8 量化 / 无 remark 旧 json /
+        # is_bias=0 且值域 [0]）维持置 null 既有行为——设备侧不加、golden
+        # 侧加 0，两侧均为 no-op。
+        if not (is_non_quant and factors["is_bias"]):
+            input_args[2] = self.get_null_tensor_pte()
         input_args[5] = self.get_null_tensor_pte()
 
         if input_data.kwargs["x1"].dtype != torch.int8:
@@ -203,6 +239,22 @@ class AclnnAllGatherMatmulV2(AclnnBaseApi):
         if not use_x1_scale:
             input_args[3] = self.get_null_tensor_pte()
 
+        # 依赖 3/3（gatherOut 空 tensor）：gather_output=0 用例把 gatherOut
+        # 实参替换为空 tensor，触发 op_api IsGatherOut=false 路径（IsEmpty
+        # 判定，非 nullptr）；同时从 output_packages 收敛 gather 输出
+        # （attention_update executor 同型先例：output_packages.pop() +
+        # after_call 占位），使框架侧仅注册/比对 main 输出。gather_output=1
+        # 用例维持框架默认双输出路径。
+        self.gather_output_disabled = is_non_quant and not factors["gather_output"]
+        if self.gather_output_disabled:
+            if len(input_args) > self.GATHER_OUT_ARG_INDEX:
+                empty_gather_out = torch.zeros((0,), dtype=x1.dtype).npu()
+                input_args[self.GATHER_OUT_ARG_INDEX] = nnopbase.create_acl_tensor(
+                    empty_gather_out, AclFormat.ACL_FORMAT_ND
+                )
+            if len(output_packages) > 1:
+                output_packages.pop()
+
         amax_out = self.get_null_tensor_pte()
 
         input_args.append(amax_out)
@@ -210,6 +262,11 @@ class AclnnAllGatherMatmulV2(AclnnBaseApi):
         return input_args, output_packages
 
     def after_call(self, output_packages):
+        if self.gather_output_disabled:
+            # gather_output=0：output_packages 已收敛为单输出，gather 位返回
+            # 占位空 tensor（attention_update executor 同型先例）
+            outputs = super().after_call(output_packages)
+            return outputs[0], torch.ones(0)
         output, allgather_out = super().after_call(output_packages)
         allgather_out.zero_()
         return output, allgather_out
@@ -224,3 +281,42 @@ class AclnnAllGatherMatmulV2(AclnnBaseApi):
         null_void_ptr = ctypes.c_void_p(None)
         null_tensor_ptr = ctypes.cast(null_void_ptr, acl_tensor_ptr)
         return null_tensor_ptr
+
+    @staticmethod
+    def _parse_remark_factors(remark):
+        """解析 json 用例 remark 的因子标注。
+
+        文法与共享 golden（golden_utils.golden_all_gather_compare）一致：
+        逗号分隔的 key=value；is_trans_b / is_bias / gather_output 按
+        value=="1" 判真。缺省值对应无 remark 旧 json（arch22）的既有行为
+        （不转置 / bias 置 null / 框架默认双输出）。
+        """
+        factors = {"is_trans_b": False, "is_bias": False, "gather_output": True}
+        for part in (remark or "").split(","):
+            kv = part.split("=", 1)
+            if len(kv) != 2:
+                continue
+            key = kv[0].strip()
+            value = kv[1].strip()
+            if key == "is_trans_b":
+                factors["is_trans_b"] = value == "1"
+            elif key == "is_bias":
+                factors["is_bias"] = value == "1"
+            elif key == "gather_output":
+                factors["gather_output"] = value == "1"
+        return factors
+
+    def _get_case_remark(self):
+        """取当前用例 remark（json 用例字段，经 task_result.case_config 透出）。
+
+        兼容 dataclass 属性与 dict 两种形态；取不到时返回空串（走缺省
+        因子，保持既有行为）。
+        """
+        task_result = getattr(self, "task_result", None)
+        case_config = getattr(task_result, "case_config", None)
+        if case_config is None:
+            return ""
+        remark = getattr(case_config, "remark", None)
+        if remark is None and isinstance(case_config, dict):
+            remark = case_config.get("remark")
+        return remark or ""

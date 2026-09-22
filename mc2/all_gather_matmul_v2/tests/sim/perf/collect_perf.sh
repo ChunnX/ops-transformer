@@ -25,6 +25,8 @@
 #   --apace on：USING_APACE_IMPL 双分支对比的 APACE 侧（export
 #   ASCEND_MC2_AGMV2_APACE_IMPL=1，进程内 tiling 读取）；off（默认）显式
 #   unset 走 v1 分支。round 目录按分支隔离：perf_raw/<case>/branch_{v1|apace}/。
+#   msprof 模式每轮轮前执行 L2 cache flush（l2_flush.py，B9⑤-5 口径：
+#   每轮实际 flush、FLUSH_OK 证据行校验、失败判该轮失败）。
 #
 # 注意：多卡 HCCL 的仿真支持能力属 A9 风险项（未证实），sim 模式失败时
 # 脚本记录错误并继续（框架可用性不受单例成败影响）。
@@ -32,9 +34,19 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SIM_DIR="$(dirname "${SCRIPT_DIR}")"
-REPO_ROOT="$(cd "${SIM_DIR}/../../.." && pwd)"
+# 仓根四级上行（perf → sim → tests → <算子目录> → mc2 → 仓根）：
+# 本脚本位于 mc2/<op>/tests/sim/perf/，SIM_DIR/../../.. 只到 mc2/（少一级，
+# 实证见 3.4 落地烟雾），须 ../../../.. 才到 ops-transformer 仓根——与
+# run_sim_cases.sh 的 SCRIPT_DIR/../../../..（四级）算法一致。
+REPO_ROOT="$(cd "${SIM_DIR}/../../../.." && pwd)"
 BUILD_SH="${REPO_ROOT}/build.sh"
-EXAMPLE_BIN="${REPO_ROOT}/test_aclnn_all_gather_matmul_v2"
+# example 产物路径：build.sh 的 build_example 在 build/ 内以
+# -o test_aclnn_${EXAMPLE_NAME}（EXAMPLE_NAME 为 --run_example 的算子名
+# 位置实参）产出二进制；example_name 的区分在构建期完成——
+# --example_name=test_aclnn_all_gather_matmul_v2_fp16 选定参数化 example
+# 编译进该产物（避免 arch35 下 quant example 同 pattern 互覆），本框架
+# 运行期直接复跑该二进制。
+EXAMPLE_BIN="${REPO_ROOT}/build/test_aclnn_all_gather_matmul_v2"
 
 MODE="sim"
 LEVEL="all"
@@ -89,11 +101,26 @@ run_round() {
              -o "${round_dir}" > "${round_dir}/stdout.log" 2>&1)
     elif [[ "${MODE}" == "msprof" ]]; then
         # 有卡环境：msprof task-based（MC2 多 rank 必须 msprof，禁 msprof op）
+        # B9⑤-5 口径：--ai-core/--aic-metrics=PipeUtilization/--task-time/
+        # --ascendcl 显式声明（对齐 ops-profiling msprof-guide「MC² 多 rank
+        # 算子采集」标准命令，防默认值跨版本漂移）。
+        # 每轮轮前实际执行 L2 cache flush（l2_flush.py：256MB bf16 ×2 遍
+        # in-place add，> 950PR PCIE L2 112MB；禁止只分配不 flush）；flush
+        # 进程独立于 msprof 采集进程，flush kernel 不进 task 记录；无
+        # FLUSH_OK 证据行判该轮失败（fail loud）。
+        (cd "${REPO_ROOT}" && export ${CURRENT_ENVS} && \
+         python3 "${SCRIPT_DIR}/l2_flush.py" > "${round_dir}/flush.log" 2>&1)
+        if ! grep -q "FLUSH_OK" "${round_dir}/flush.log" 2>/dev/null; then
+            echo "[perf] case ${CURRENT_CASE} round ${round_idx}: L2 flush FAILED (see ${round_dir}/flush.log)" >&2
+            return 1
+        fi
         (cd "${REPO_ROOT}" && export ${CURRENT_ENVS} && \
          msprof --application="${EXAMPLE_BIN}" \
                 --output="${round_dir}/prof" \
-                --aic-mode=task-based -t on \
-             > "${round_dir}/stdout.log" 2>&1)
+                --ai-core=on --aic-mode=task-based \
+                --aic-metrics=PipeUtilization \
+                --task-time=on --ascendcl=on \
+              > "${round_dir}/stdout.log" 2>&1)
     else
         echo "[perf] unknown mode ${MODE}" >&2
         return 1
@@ -109,7 +136,8 @@ while IFS= read -r line; do
         fi
         echo "########## perf case ${CURRENT_CASE} [branch:${BRANCH_TAG}] (${MODE}, ${ROUNDS} rounds) ##########"
         if [[ ! -x "${EXAMPLE_BIN}" ]]; then
-            echo "[perf] example binary not found, build once via run_sim_cases.sh or build.sh --run_example first"
+            echo "[perf] example binary not found: ${EXAMPLE_BIN}"
+            echo "[perf] build once first: bash ${BUILD_SH} --run_example all_gather_matmul_v2 eager cust --vendor_name=custom --soc=ascend950 --example_name=test_aclnn_all_gather_matmul_v2_fp16"
             FAILED_CASES="${FAILED_CASES} ${CURRENT_CASE}"
             CURRENT_CASE=""; CURRENT_ENVS=""
             continue
