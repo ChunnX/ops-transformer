@@ -21,6 +21,7 @@
 #include "opdev/op_log.h"
 #include "log/log.h"
 #include "aclnnInner_engram_fetch.h"
+#include "engram_fetch_mode_def.h"
 
 using namespace op;
 
@@ -32,9 +33,28 @@ static bool CheckNotNull(const aclTensor *commContext, const aclTensor *indices,
     return true;
 }
 
-static aclnnStatus CheckParams(const aclTensor *commContext, const aclTensor *indices, const aclTensor *fetched)
+// fetch_mode: 0 = sliced cross-NPU (default, train/infer), 1 = local full table (infer only)
+static bool CheckFetchMode(int64_t withGrad, int64_t fetchMode)
+{
+    if (fetchMode != ENGRAM_FETCH_MODE_SLICED && fetchMode != ENGRAM_FETCH_MODE_LOCAL) {
+        OP_LOGE_WITH_INVALID_ATTR("aclnnEngramFetch", "fetch_mode", std::to_string(fetchMode).c_str(), "[0, 1]");
+        return false;
+    }
+    if (withGrad != 0 && fetchMode == ENGRAM_FETCH_MODE_LOCAL) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "fetch_mode=1 (local, full replication) only supports inference, with_grad=1 is rejected, "
+                "got with_grad=%ld, fetch_mode=%ld.",
+                withGrad, fetchMode);
+        return false;
+    }
+    return true;
+}
+
+static aclnnStatus CheckParams(const aclTensor *commContext, const aclTensor *indices, const aclTensor *fetched,
+                               int64_t withGrad, int64_t fetchMode)
 {
     CHECK_RET(CheckNotNull(commContext, indices, fetched), ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(CheckFetchMode(withGrad, fetchMode), ACLNN_ERR_PARAM_INVALID);
     return ACLNN_SUCCESS;
 }
 
@@ -48,15 +68,15 @@ aclnnStatus aclnnEngramFetchGetWorkspaceSize(const aclTensor *commContext, const
                                              aclTensor *recvCountsOut, aclTensor *recvLocalEntryOut,
                                              aclTensor *numRecvOut, aclTensor *fetchedSf, int32_t hiddenSize,
                                              int64_t numEntriesPerRank, int64_t numMaxTokensPerRank,
-                                             int64_t commBufferSize, int64_t withGrad, uint64_t *workspaceSize,
-                                             aclOpExecutor **executor)
+                                             int64_t commBufferSize, int64_t withGrad, int64_t fetchMode,
+                                             uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    auto retParam = CheckParams(commContext, indices, fetched);
+    auto retParam = CheckParams(commContext, indices, fetched, withGrad, fetchMode);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     aclnnStatus ret = aclnnInnerEngramFetchGetWorkspaceSize(
         commContext, indices, localStorageAddr, sfTable, hiddenSize, numEntriesPerRank, numMaxTokensPerRank,
-        commBufferSize, withGrad, fetched, permOut, sendCountsOut, recvCountsOut, recvLocalEntryOut, numRecvOut,
-        fetchedSf, workspaceSize, executor);
+        commBufferSize, withGrad, fetchMode, fetched, permOut, sendCountsOut, recvCountsOut, recvLocalEntryOut,
+        numRecvOut, fetchedSf, workspaceSize, executor);
     return ret;
 }
 
