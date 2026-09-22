@@ -493,3 +493,21 @@ TEST_F(MoeTokenPermuteWithEpGradTiling, test_tiling_no_probs_fp32)
                                             &compileInfo);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 0);
 }
+
+TEST_F(MoeTokenPermuteWithEpGradTiling, test_tiling_missing_topk)
+{
+    MoeTokenPermuteWithEpGradCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("MoeTokenPermuteWithEpGrad",
+                                            {
+                                                {{{16, 128}, {16, 128}}, ge::DT_BF16, ge::FORMAT_ND},
+                                                {{{128}, {128}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{128}, {128}}, ge::DT_BF16, ge::FORMAT_ND}
+                                            },
+                                            {
+                                                {{{16, 128}, {16, 128}}, ge::DT_BF16, ge::FORMAT_ND},
+                                                {{{16, 8}, {16, 8}}, ge::DT_BF16, ge::FORMAT_ND}
+                                            },
+                                            {},
+                                            &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
