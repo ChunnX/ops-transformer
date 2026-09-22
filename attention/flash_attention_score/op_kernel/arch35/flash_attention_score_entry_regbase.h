@@ -18,6 +18,9 @@
 #include "flash_attention_score_drop_mask_adapter_regbase.h"
 #include "flash_attention_score_kernel_train.h"
 
+// TEMPORARY experiment 1: keep tiling and InitBaseAPI, skip all Process calls.
+// Both AIC and AIV must initialize: AIV sends ssbuf parameters and flag 15 to AIC.
+// For the BF16 BNSD reproducer, Q/K/V and output data are not transferred.
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 
 #ifdef __DAV_C310_CUBE__ // CUBE 实现
@@ -37,7 +40,7 @@
                        actualSeqLengthsKv, nullptr, nullptr, nullptr, deqScaleQ, deqScaleK, deqScaleV, pScale, \
                        nullptr, nullptr, nullptr, nullptr, nullptr, queryRope, keyRope, sink, softmaxMax, softmaxSum, \
                        softmaxOut, nullptr, attentionOut, user, nullptr, &tPipe); \
-        op.Process(); \
+        /* Experiment 1: op.Process(); intentionally disabled after InitBaseAPI. */ \
     } while (0)
 #else // VECTOR 实现
 #define REGBASE_COPY_TILING_DATA(tiling) \
@@ -53,7 +56,7 @@
         if (tilingData->inputParamsRegbase.needDropMaskOp) { \
             FlashAttentionScoreDropMaskAdapterRegbase dropMaskAdapter; \
             dropMaskAdapter.Init(dropMask, user, tilingData, &tPipe); \
-            dropMaskAdapter.Process(); \
+            /* Experiment 1: dropMaskAdapter.Process(); intentionally disabled. */ \
             tPipe.Reset(); \
         } \
         using CubeBlockType = typename BaseApi::FANoQuantBlockCube<__VA_ARGS__>; \
@@ -63,7 +66,7 @@
                        actualSeqLengthsKv, nullptr, nullptr, nullptr, deqScaleQ, deqScaleK, deqScaleV, pScale, \
                        nullptr, nullptr, queryRope, keyRope, softmaxMax, softmaxSum, softmaxOut, nullptr, \
                        attentionOut, user, tilingData, &tPipe); \
-        op.Process(); \
+        /* Experiment 1: op.Process(); intentionally disabled after InitBaseAPI. */ \
     } while (0)
 #else
 #define INVOKE_FA_OP_IMPL_BASEAPI(templateClass, ...) \
@@ -74,7 +77,7 @@
         if (tilingData->inputParamsRegbase.needDropMaskOp) { \
             FlashAttentionScoreDropMaskAdapterRegbase dropMaskAdapter; \
             dropMaskAdapter.Init(dropMask, user, tilingData, &tPipe); \
-            dropMaskAdapter.Process(); \
+            /* Experiment 1: dropMaskAdapter.Process(); intentionally disabled. */ \
             tPipe.Reset(); \
         } \
         using CubeBlockType = \
@@ -88,7 +91,7 @@
                        actualSeqLengthsKv, nullptr, nullptr, nullptr, deqScaleQ, deqScaleK, deqScaleV, pScale, \
                        nullptr, nullptr, nullptr, nullptr, nullptr, queryRope, keyRope, sink, softmaxMax, softmaxSum, \
                        softmaxOut, nullptr, attentionOut, user, tilingData, &tPipe); \
-        op.Process(); \
+        /* Experiment 1: op.Process(); intentionally disabled after InitBaseAPI. */ \
     } while (0)
 #endif
 #endif
