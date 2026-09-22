@@ -1583,6 +1583,8 @@ void QLIV2InfoParser::GenerateInfo(QLIV2TilingInfo &QLIV2Info)
             keyStride0 /= HIFLOAT4_PACK_NUM;
         }
         QLIV2Info.keyStride0 = keyStride0;
+    } else if (kLayout_ == DataLayout::PA_BBND && *opParamInfo_.quantMode == QUANT_MODE_HIFLOAT4) {
+        QLIV2Info.keyStride0 = static_cast<uint32_t>(blockSize_) * n2Size_ * (headDim_ / HIFLOAT4_PACK_NUM);
     } else {
         QLIV2Info.keyStride0 = 0; // 非PA无需使用stride
     }

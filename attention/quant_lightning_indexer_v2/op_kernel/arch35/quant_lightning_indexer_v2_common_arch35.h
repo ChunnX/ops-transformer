@@ -147,6 +147,7 @@ struct ConstInfo {
     uint32_t mBaseSizeMax = 1ULL;
     uint32_t s1BaseSize = 1ULL;
     uint32_t s2BaseSize = 1ULL;
+    uint64_t mAlignSize = 128U;
 
     uint64_t batchSize = 0ULL;
     uint64_t gSize = 0ULL;
