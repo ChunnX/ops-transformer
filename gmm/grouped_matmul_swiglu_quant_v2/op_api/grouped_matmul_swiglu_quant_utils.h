@@ -365,6 +365,14 @@ protected:
         CHECK_COND(gmmDsqParams_.xScale != nullptr, ACLNN_ERR_INNER_NULLPTR, "Contiguous xScale failed.");
         gmmDsqParams_.groupList = l0op::Contiguous(gmmDsqParams_.groupList, l0Executor_);
         CHECK_COND(gmmDsqParams_.groupList != nullptr, ACLNN_ERR_INNER_NULLPTR, "Contiguous groupList failed.");
+        if (gmmDsqParams_.bias != nullptr) {
+            gmmDsqParams_.bias = l0op::Contiguous(gmmDsqParams_.bias, l0Executor_);
+            CHECK_COND(gmmDsqParams_.bias != nullptr, ACLNN_ERR_INNER_NULLPTR, "Contiguous bias failed.");
+        }
+        if (gmmDsqParams_.smoothScale != nullptr) {
+            gmmDsqParams_.smoothScale = l0op::Contiguous(gmmDsqParams_.smoothScale, l0Executor_);
+            CHECK_COND(gmmDsqParams_.smoothScale != nullptr, ACLNN_ERR_INNER_NULLPTR, "Contiguous smoothScale failed.");
+        }
 
         return ACLNN_SUCCESS;
     }
