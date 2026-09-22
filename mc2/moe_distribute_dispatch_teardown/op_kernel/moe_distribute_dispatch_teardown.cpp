@@ -19,7 +19,9 @@
 #include "kernel_operator.h"
 #endif
 #include "moe_distribute_dispatch_teardown_tiling.h"
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
 #include "arch35/moe_distribute_dispatch_teardown_arch35.h"
+#endif // __NPU_ARCH__ == 3510
 
 using namespace AscendC;
 using namespace Mc2Kernel;
@@ -30,6 +32,7 @@ extern "C" __global__ __aicore__ void moe_distribute_dispatch_teardown(
 {
     REGISTER_TILING_DEFAULT(MoeDistributeDispatchTeardownTilingData);
     TPipe pipe;
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
 #if (ORIG_DTYPE_EXPAND_X == DT_BF16 || ORIG_DTYPE_EXPAND_X == DT_FLOAT16)
     if (TILING_KEY_IS(10000)) {
         GET_TILING_DATA_WITH_STRUCT(MoeDistributeDispatchTeardownTilingData, tilingData, tilingGM);
@@ -114,4 +117,5 @@ extern "C" __global__ __aicore__ void moe_distribute_dispatch_teardown(
         op.Process();
     }
 #endif
+#endif // __NPU_ARCH__ == 3510
 }

@@ -28,13 +28,13 @@ using DTYPE_Y = DTYPE_RESIDUAL;
 #include "../../../matmul_all_reduce/op_kernel/matmul_all_reduce_common.h"
 #if defined(MC2_QUANT)
 #include "../../../matmul_all_reduce_add_rms_norm/op_kernel/matmul_all_reduce_add_rms_norm_tiling_data.h"
-#include "../../../matmul_all_reduce_add_rms_norm/op_kernel/mm_allreduce_add_rms_norm_quant.h"
+#include "../../../matmul_all_reduce_add_rms_norm/op_kernel/arch22/mm_allreduce_add_rms_norm_quant.h"
 #elif defined(MC2_WEIGHT_QUANT)
 #include "../../../matmul_all_reduce_add_rms_norm/op_kernel/matmul_all_reduce_add_rms_norm_tiling_data.h"
-#include "../../../matmul_all_reduce_add_rms_norm/op_kernel/mm_allreduce_add_rms_norm_weight_quant.h"
+#include "../../../matmul_all_reduce_add_rms_norm/op_kernel/arch22/mm_allreduce_add_rms_norm_weight_quant.h"
 #else
 #include "../../../matmul_all_reduce_add_rms_norm/op_kernel/matmul_all_reduce_add_rms_norm_tiling_data.h"
-#include "../../../matmul_all_reduce_add_rms_norm/op_kernel/mm_allreduce_add_rms_norm_910_general.h"
+#include "../../../matmul_all_reduce_add_rms_norm/op_kernel/arch22/mm_allreduce_add_rms_norm_910_general.h"
 #endif
 
 namespace MatmulAllReduceAddRmsNormImpl {}
