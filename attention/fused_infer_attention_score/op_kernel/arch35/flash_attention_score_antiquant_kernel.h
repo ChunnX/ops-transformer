@@ -488,6 +488,7 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
         this->cubeBlock.WaitCrossCoreFlag();
     } else {
         this->vecBlock.WaitCrossCoreFlag();
+        this->vecBlock.FreeEventID();
     }
 }
 
