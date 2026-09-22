@@ -760,7 +760,8 @@ class ElasticBuffer:
         Write data to the Engram storage of ElasticBuffer.
 
         Arguments:
-            storage: the CPU tensor to write (must be 2D, contiguous, dtype=bf16/fp16/fp32/fp8_e4m3fn/fp8_e5m2).
+            storage: the CPU tensor to write (must be 2D, contiguous; bf16/fp16/fp32 without sf,
+                fp8_e4m3fn/fp8_e5m2 with sf).
             sf: optional scaling factor table for FP8 quantization (GPU tensor,
                 shape [num_entries, num_sf_packs]). When provided, engram_fetch
                 will return a fetched_sf tensor alongside fetched data.
@@ -795,17 +796,17 @@ class ElasticBuffer:
             lambda: f"storage must be 2D, got dimensions: {storage.dim()}",
         )
         torch._check(storage.is_contiguous(), lambda: "storage must be contiguous")
-        torch._check(
-            storage.dtype
-            in (
-                torch.bfloat16,
-                torch.float16,
-                torch.float32,
-                torch.float8_e4m3fn,
-                torch.float8_e5m2,
-            ),
-            lambda: f"storage dtype must be bfloat16/float16/float32/float8_e4m3fn/float8_e5m2, got: {storage.dtype}",
-        )
+        if sf is not None:
+            torch._check(
+                storage.dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+                lambda: f"storage dtype must be float8_e4m3fn/float8_e5m2 when sf is provided, got: {storage.dtype}",
+            )
+        else:
+            torch._check(
+                storage.dtype in (torch.bfloat16, torch.float16, torch.float32),
+                lambda: f"storage dtype must be bfloat16/float16/float32 when sf is not provided, "
+                f"got: {storage.dtype}",
+            )
         torch._check(
             storage.size(1) > 0,
             lambda: f"storage second dimension must be positive, got: {storage.size(1)}",
