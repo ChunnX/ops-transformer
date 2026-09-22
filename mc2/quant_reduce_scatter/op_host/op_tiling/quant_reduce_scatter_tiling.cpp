@@ -44,16 +44,17 @@ static void PrintTilingDataInfo(const gert::TilingContext *context, QuantReduceS
  * @param tilingData: 框架根据context的opName匹配tiling模板，计算产生的tilingData
  * @return
  */
-static void SetTilingData(gert::TilingContext *context, QuantReduceScatterTilingData &tilingData)
+static bool SetTilingData(gert::TilingContext *context, QuantReduceScatterTilingData &tilingData)
 {
+    const char *nodeName = context->GetNodeName();
     fe::PlatFormInfos *platformInfoPtr = context->GetPlatformInfo();
     platform_ascendc::PlatformAscendC ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
     // set tilingData
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
+    OP_TILING_CHECK(aivNum == 0, OP_LOGE(nodeName, "aivNum is 0."), return false);
     context->SetBlockDim(ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum));
     tilingData.quantReduceScatterTilingInfo.aivNum = aivNum;
     size_t xDimNum = context->GetInputShape(X_INDEX)->GetStorageShape().GetDimNum();
-    size_t scalesDimNum = context->GetInputShape(SCALES_INDEX)->GetStorageShape().GetDimNum();
     uint64_t xValueBS = 1UL;
     uint64_t scalesValueH = 0UL;
     // 3d场景，context->GetInputShape在函数CheckInputTensorDim中已经校验
@@ -70,6 +71,7 @@ static void SetTilingData(gert::TilingContext *context, QuantReduceScatterTiling
     tilingData.quantReduceScatterTilingInfo.hiddenSize = xValueH;
     tilingData.quantReduceScatterTilingInfo.scaleHiddenSize = scalesValueH;
     tilingData.quantReduceScatterTilingInfo.totalWinSize = mc2tiling::Mc2TilingUtils::GetMaxWindowSize();
+    return true;
 }
 
 // 基于 TARGET_ITER 公式计算 host 推荐的 xPerBlock（先除 rankSize 再反推），写入 tilingData
@@ -131,7 +133,8 @@ static ge::graphStatus QuantReduceScatterTilingFunc(gert::TilingContext *context
 
     tilingData->quantReduceScatterTilingInfo.hcclBufferSize = runInfo.hcclBufferSize;
     tilingData->quantReduceScatterTilingInfo.quantMode = runInfo.quantMode;
-    SetTilingData(context, *tilingData);
+    OP_TILING_CHECK(SetTilingData(context, *tilingData) == false,
+        OP_LOGE(nodeName, "SetTilingData failed in quant_reduce_scatter."), return ge::GRAPH_FAILED);
     SetXPerBlock(*tilingData, runInfo);
     SetTilingKey(context);
     PrintTilingDataInfo(context, *tilingData);

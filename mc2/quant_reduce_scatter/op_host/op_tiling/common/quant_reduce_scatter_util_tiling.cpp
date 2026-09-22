@@ -131,7 +131,7 @@ static bool SetQuantMode(const gert::TilingContext *context, TilingRunInfo &runI
                                                   .c_str(),
                                               "The value of quantMode must match a known quantization mode (TG/MX/PT)"),
         return false);
-    OP_TILING_CHECK(runInfo.quantMode == TG_QUANT_MOD && opType != OpType::OP_QUANT_REDUCE_SCATTER,
+    OP_TILING_CHECK(quantMode == PT_QUANT_MOD && opType != OpType::OP_QUANT_REDUCE_SCATTER,
                     OP_LOGE(nodeName, "Only QuantReduceScatter support quantMode pertensor(PT)."), return false);
     // 设置quantMode
     runInfo.quantMode = quantMode;
@@ -321,8 +321,9 @@ static std::string FormatShape(const std::vector<uint64_t> &dims)
     std::stringstream ss;
     ss << "[";
     for (size_t i = 0; i < dims.size(); ++i) {
-        if (i > 0)
+        if (i > 0) {
             ss << ", ";
+        }
         ss << dims[i];
     }
     ss << "]";
@@ -444,7 +445,7 @@ static bool CheckOutputDimSize(const gert::TilingContext *context, size_t output
  * @brief 检查quant_all_reduce的输出形状
  */
 static bool CheckAllReduceOutputShape(const gert::TilingContext *context, const gert::StorageShape *outputShape,
-                                      size_t outputDim, size_t xDimNum, TilingRunInfo &runInfo, const char *nodeName)
+                                size_t outputDim, size_t xDimNum, const TilingRunInfo &runInfo, const char *nodeName)
 {
     (void)xDimNum; // Reserved for future extension
     uint64_t outputValueOne = outputShape->GetStorageShape().GetDim(DIM_ZERO);
@@ -491,7 +492,7 @@ static bool CheckAllReduceOutputShape(const gert::TilingContext *context, const 
  */
 static bool CheckReduceScatter3DShape(const gert::TilingContext *context, uint64_t outputValueOne,
                                       uint64_t outputValueTwo, uint64_t xValueOne, uint64_t xValueTwo,
-                                      TilingRunInfo &runInfo, const char *nodeName)
+                                      const TilingRunInfo &runInfo, const char *nodeName)
 {
     // 若X为3维，则要对b,s进行合轴，再与output判断是否合法
     uint64_t xValueBS = xValueOne * xValueTwo;
@@ -513,7 +514,7 @@ static bool CheckReduceScatter3DShape(const gert::TilingContext *context, uint64
  * @brief 检查quant_reduce_scatter的的输出形状, 当输入x为2D时
  */
 static bool CheckReduceScatter2DShape(uint64_t outputValueOne, uint64_t outputValueTwo, uint64_t xValueOne,
-                                      uint64_t xValueTwo, TilingRunInfo &runInfo, const char *nodeName)
+                                      const uint64_t xValueTwo, const TilingRunInfo &runInfo, const char *nodeName)
 {
     // 若X为2维, 逐个校验即可
     bool invalidShape = xValueOne / runInfo.rankSize != outputValueOne; // 校验bs轴
@@ -533,7 +534,7 @@ static bool CheckReduceScatter2DShape(uint64_t outputValueOne, uint64_t outputVa
  * @brief 检查quant_reduce_scatter的输出形状
  */
 static bool CheckReduceScatterOutputShape(const gert::TilingContext *context, const gert::StorageShape *outputShape,
-                                          size_t outputDim, size_t xDimNum, TilingRunInfo &runInfo,
+                                          size_t outputDim, size_t xDimNum, const TilingRunInfo &runInfo,
                                           const char *nodeName)
 {
     (void)outputDim; // Reserved for future extension
@@ -557,7 +558,7 @@ static bool CheckReduceScatterOutputShape(const gert::TilingContext *context, co
  * @param runInfo: 封装的doTiling所需要的参数
  * @return
  */
-static bool CheckOutputDim(const gert::TilingContext *context, TilingRunInfo &runInfo, const OpType opType)
+static bool CheckOutputDim(const gert::TilingContext *context, const TilingRunInfo &runInfo, const OpType opType)
 {
     const char *nodeName = context->GetNodeName();
     // context->GetOutputShape在函数CheckOutputTensorDim中已经校验
@@ -585,7 +586,7 @@ static bool CheckOutputDim(const gert::TilingContext *context, TilingRunInfo &ru
  * @param opType: 当前op类型
  * @return
  */
-static bool CheckOutputTensorDim(const gert::TilingContext *context, TilingRunInfo &runInfo, const OpType opType)
+static bool CheckOutputTensorDim(const gert::TilingContext *context, const TilingRunInfo &runInfo, const OpType opType)
 {
     const char *nodeName = context->GetNodeName();
     // 红线校验

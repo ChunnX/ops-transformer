@@ -63,8 +63,9 @@ private:
     GlobalTensor<ScalesType> remoteWinScaleTensor_;
     LocalTensor<float> sumTensor_;
 
-    TQue<QuePosition::VECIN, 1> xInQueue_, scaleInQue_; // 用于读数据和反量化求和的通算并行
-    TBuf<> sumBuf_;                                     // 用于Reduce_sum 求和
+    TQue<QuePosition::VECIN, 1> xInQueue_;      // 用于读数据和反量化求和的通算并行
+    TQue<QuePosition::VECIN, 1> scaleInQue_;    // 用于读数据和反量化求和的通算并行
+    TBuf<> sumBuf_;                             // 用于Reduce_sum 求和
 
     uint64_t xSize_{0};
     uint64_t totalWinSize_{0};
@@ -85,6 +86,7 @@ private:
     uint64_t xOffset_{0};           // 当前核的起始x偏移
     uint64_t scaleOffset_{0};       // 当前核的起始scale偏移
     uint32_t tailXNums_{0};         // 尾块的x数量
+    uint32_t tailScaleNums_{0};     // 尾块的scale数量
 };
 
 template <TemplateTypeClass>
@@ -112,12 +114,12 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::ParseTilingInfo(
     if (quantMode_ == PT_QUANT_MOD) {
         scaleSliceNums_ = 0;
         scaleSize_ = sizeof(ScalesType);
-    } else if (quantMode_ == TG_QUANT_MOD){
+    } else if (quantMode_ == TG_QUANT_MOD) {
         scaleSliceNums_ = info.bs * info.scaleHiddenSize / mteComm_.rankDimHccl_;
         scaleSize_ = info.bs * info.scaleHiddenSize * sizeof(ScalesType);
     } else if (quantMode_ == MX_QUANT_MOD) {
         scaleSliceNums_ = info.bs * info.scaleHiddenSize * MX_SCALES_LAST_DIM / mteComm_.rankDimHccl_;
-        scaleSize_ = info.bs * info.scaleHiddenSize * sizeof(ScalesType)* MX_SCALES_LAST_DIM;
+        scaleSize_ = info.bs * info.scaleHiddenSize * sizeof(ScalesType) * MX_SCALES_LAST_DIM;
     }
     uint64_t xSliceSize = xSize_ / mteComm_.rankDimHccl_;
     xSliceSizeNums_ = xSliceSize / sizeof(XType);
@@ -206,7 +208,14 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::ComputeBlockDistribu
     xOffset_ = blockIdx * xPerBlock_;
     // PT量化下每块都使用同一个scale，scaleOffset恒为0
     scaleOffset_ = (quantMode_ == PT_QUANT_MOD) ? 0 : blockIdx * scaleNumsPerBlock_;
-    tailXNums_ = BlockAlignMod(xSliceSizeNums_, xPerBlock_);
+    tailXNums_ = static_cast<uint32_t>(BlockAlignMod(xSliceSizeNums_, xPerBlock_));
+    if (quantMode_ == PT_QUANT_MOD) {
+        tailScaleNums_ = 1;
+    } else if (quantMode_ == MX_QUANT_MOD) {
+        tailScaleNums_ = CeilDivU32(tailXNums_, MX_SIZE);
+    } else if (quantMode_ == TG_QUANT_MOD) {
+        tailScaleNums_ = CeilDivU32(tailXNums_, PER_GROUP_SIZE);
+    }
 }
 
 // 初始化 vecComp、mteComm 子模块参数并分配其 UB buffer，绑定 GM Tensor
@@ -220,7 +229,7 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::InitSubModules(GM_AD
     mteComm_.round_ = round_;
     mteComm_.tailBlockNums_ = tailBlockNums_;
     mteComm_.ComputeTailAivId(aivNum);
-    mteComm_.SetBlockSize(xPerBlock_, aivNum, tailXNums_, scaleNumsPerBlock_);
+    mteComm_.SetBlockSize(xPerBlock_, aivNum, tailXNums_, scaleNumsPerBlock_, tailScaleNums_);
     mteComm_.SetQuantMode(quantMode_);
     mteComm_.InitParams();
     mteComm_.InitBuffer(tPipe);
@@ -233,13 +242,13 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::ReadDataBlockReduceS
                                                                                    uint64_t curScaleOffset,
                                                                                    uint32_t xNum, uint32_t scaleNum)
 {
-    /* 读取 x 从 Win -> UB */
+    // 读取 x 从 Win -> UB
     LocalTensor<XType> xTmpTensor = xInQueue_.AllocTensor<XType>();
     DataCopy(xTmpTensor, remoteWinXTensor_[curXOffset], xNum);
     xInQueue_.EnQue(xTmpTensor);
     xTmpTensor = xInQueue_.DeQue<XType>();
 
-    /* 读取 scale 从 Win -> UB（DataCopyPad 处理 sub-32B 对齐） */
+    // 读取 scale 从 Win -> UB（DataCopyPad 处理 sub-32B 对齐）
     LocalTensor<ScalesType> scaleTmpTensor = scaleInQue_.AllocTensor<ScalesType>();
     DataCopyParams scaleCopyParams;
     scaleCopyParams.blockLen = scaleNum * sizeof(ScalesType);
@@ -249,7 +258,7 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::ReadDataBlockReduceS
     scaleInQue_.EnQue(scaleTmpTensor);
     scaleTmpTensor = scaleInQue_.DeQue<ScalesType>();
 
-    /* 反量化计算与ReduceSum求和 */
+    // 反量化计算与ReduceSum求和
     vecComp_.DequantReduceSum(xTmpTensor, scaleTmpTensor, sumTensor_);
     xInQueue_.FreeTensor(xTmpTensor);
     scaleInQue_.FreeTensor(scaleTmpTensor);
@@ -309,7 +318,7 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::ExecuteReduceScatter
             uint64_t curRankScaleOffset = curScaleOffset + mteComm_.rankIdHccl_ * scaleSliceNums_;
             ReadDataBlockReduceSum(curRankXOffset, curRankScaleOffset, curXNum, curScaleNum);
         }
-
+        PipeBarrier<PIPE_V>();
         // 将计算好的数据拷贝到输出tensor
         mteComm_.CopyResultToOutput(curXOffset, sumTensor_, curXNum);
     }
