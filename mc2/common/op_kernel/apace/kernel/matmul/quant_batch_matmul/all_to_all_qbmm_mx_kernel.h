@@ -188,7 +188,7 @@ private:
     __aicore__ inline void MmadSelfLocalRank(const Params &params, uint64_t scaleKLen, int64_t mPos, int64_t nPos,
                                              const BlockShape &singleShape, TensorALocal &gmALocal,
                                              TensorScaleALocal &gmScaleALocal, TensorB &gmB, TensorScaleB &gmScaleB,
-                                             TensorBias &gmBlockBias, TensorC &gmBlockC);
+                                             TensorBias &gmBias, TensorC &gmC);
 
     template <typename TensorB, typename TensorScaleB, typename TensorC>
     __aicore__ inline void SetL2Cache(const ProblemShape &problemShape, uint64_t curBaseM, uint64_t baseN,
@@ -380,14 +380,13 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Wai
                 bufferSyncMgr_.Release(static_cast<uint32_t>(readyTileIdx) % bufferSyncMgr_.slotNum %
                                        Apace::Basic::BufferChannel::FLAG_ID_MODULO);
             }
-        }
-        readyTileIdx++;
-        if constexpr (enableBufferReuse) {
+            readyTileIdx++;
             auto dataSlot = dataChannel_->GetNextSlot();
             bufferSyncMgr_.Acquire(dataSlot.slotIdx);
             dataSlotOffset = dataSlot.offset;
             scaleSlotOffset = scaleChannel_->GetNextSlot().offset;
         } else {
+            readyTileIdx++;
             bufferSyncMgr_.Acquire(static_cast<uint32_t>(readyTileIdx));
         }
         opStateDump.DoDump(DUMP_FIELD_WAIT);
@@ -406,12 +405,11 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Dra
                 bufferSyncMgr_.Release(static_cast<uint32_t>(readyTileIdx) % bufferSyncMgr_.slotNum %
                                        Apace::Basic::BufferChannel::FLAG_ID_MODULO);
             }
-        }
-        readyTileIdx++;
-        if constexpr (enableBufferReuse) {
+            readyTileIdx++;
             bufferSyncMgr_.Acquire(static_cast<uint32_t>(readyTileIdx) % bufferSyncMgr_.slotNum %
                                    Apace::Basic::BufferChannel::FLAG_ID_MODULO);
         } else {
+            readyTileIdx++;
             bufferSyncMgr_.Acquire(static_cast<uint32_t>(readyTileIdx));
         }
         opStateDump.DoDump(DUMP_FIELD_WAIT);
@@ -423,8 +421,8 @@ template <typename TensorALocal, typename TensorScaleALocal, typename TensorB, t
           typename TensorBias, typename TensorC>
 __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::MmadSelfLocalRank(
     const Params &params, uint64_t scaleKLen, int64_t mPos, int64_t nPos, const BlockShape &singleShape,
-    TensorALocal &gmALocal, TensorScaleALocal &gmScaleALocal, TensorB &gmB, TensorScaleB &gmScaleB,
-    TensorBias &gmBlockBias, TensorC &gmBlockC)
+    TensorALocal &gmALocal, TensorScaleALocal &gmScaleALocal, TensorB &gmB, TensorScaleB &gmScaleB, TensorBias &gmBias,
+    TensorC &gmC)
 {
     constexpr int64_t kPos = 0L;
     // LOCAL 模式 / DEFERRED_SYNC Phase 1 共用：计算本 Rank 的 A 和 本 Rank 的 B 对应部分
@@ -440,6 +438,11 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Mma
                   asc::te::make_shape(asc::te::get<MNK_K>(params.problemShape), asc::te::get<MNK_N>(singleShape)));
     auto gmBlockScaleB = gmScaleB.slice(asc::te::make_coord(params.localParams.rankId * scaleKLen, nPos),
                                         asc::te::make_shape(scaleKLen, asc::te::get<MNK_N>(singleShape)));
+    // 切分输出块：地址基址已在外部按流水步偏移，此处仅按调度器位置切局部块
+    auto gmBlockC = gmC.slice(asc::te::make_coord(mPos, nPos),
+                              asc::te::make_shape(asc::te::get<MNK_M>(singleShape), asc::te::get<MNK_N>(singleShape)));
+    auto gmBlockBias =
+        gmBias.slice(asc::te::make_coord(0L, nPos), asc::te::make_shape(1L, asc::te::get<IDX_N_TILEIDX>(singleShape)));
     mmadOp_(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBlockBias, gmBlockC, singleShape, 0);
 }
 
@@ -488,14 +491,8 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Pro
 
         opStateDump.DoDump(DUMP_FIELD_TURN_INC);
         bs.GetTileCoord(blockIdx, mPos, nPos);
-        // 切分输出块：地址基址已在外部按流水步偏移，此处仅按调度器位置切局部块
-        auto gmBlockC =
-            gmC.slice(asc::te::make_coord(mPos, nPos),
-                      asc::te::make_shape(asc::te::get<MNK_M>(singleShape), asc::te::get<MNK_N>(singleShape)));
-        auto gmBlockBias = gmBias.slice(asc::te::make_coord(0L, nPos),
-                                        asc::te::make_shape(1L, asc::te::get<IDX_N_TILEIDX>(singleShape)));
-        MmadSelfLocalRank(params, scaleKLen, mPos, nPos, singleShape, gmALocal, gmScaleALocal, gmB, gmScaleB,
-                          gmBlockBias, gmBlockC);
+        MmadSelfLocalRank(params, scaleKLen, mPos, nPos, singleShape, gmALocal, gmScaleALocal, gmB, gmScaleB, gmBias,
+                          gmC);
     }
 }
 
@@ -560,22 +557,22 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Pro
         bs.GetTileCoord(blockIdx, mPos, nPos);
         int64_t blockM = asc::te::get<IDX_M_TILEIDX>(singleShape);
         int32_t dependTileIdx = CalcDependTileIdx(mPos + blockM - 1, params.localParams.headTileSize, totalTiles);
+
+        // Phase 1: 本 rank 的 local A × 本 rank 的 B 段 → L0C（reset，remoteRankCnt=0）
+        //          此处读 GM 的 localAGmAddr_，不依赖通信，可与 AIV 的 UDMA put 并行。
+        MmadSelfLocalRank(params, scaleKLen, mPos, nPos, singleShape, gmALocal, gmScaleALocal, gmB, gmScaleB, gmBias,
+                          gmC);
+
+        // Phase 2: 在 self rank mmad 之后 wait，阻塞后续 shmem 读（去重：同一 tile 只 wait 一次）
+        WaitDependTiles(totalTiles, dependTileIdx, readyTileIdx, dataSlotOffset, scaleSlotOffset, opStateDump);
+
+        // Phase 3: 遍历其它 rank，在 L0C 上累加（最后一个 rank 触发 fixpipe）
         // 切分输出块：地址基址已在外部按流水步偏移，此处仅按调度器位置切局部块
         auto gmBlockC =
             gmC.slice(asc::te::make_coord(mPos, nPos),
                       asc::te::make_shape(asc::te::get<MNK_M>(singleShape), asc::te::get<MNK_N>(singleShape)));
         auto gmBlockBias = gmBias.slice(asc::te::make_coord(0L, nPos),
                                         asc::te::make_shape(1L, asc::te::get<IDX_N_TILEIDX>(singleShape)));
-
-        // Phase 1: 本 rank 的 local A × 本 rank 的 B 段 → L0C（reset，remoteRankCnt=0）
-        //          此处读 GM 的 localAGmAddr_，不依赖通信，可与 AIV 的 UDMA put 并行。
-        MmadSelfLocalRank(params, scaleKLen, mPos, nPos, singleShape, gmALocal, gmScaleALocal, gmB, gmScaleB,
-                          gmBlockBias, gmBlockC);
-
-        // Phase 2: 在 self rank mmad 之后 wait，阻塞后续 shmem 读（去重：同一 tile 只 wait 一次）
-        WaitDependTiles(totalTiles, dependTileIdx, readyTileIdx, dataSlotOffset, scaleSlotOffset, opStateDump);
-
-        // Phase 3: 遍历其它 rank，在 L0C 上累加（最后一个 rank 触发 fixpipe）
         auto gmA = asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::gm>(reinterpret_cast<__gm__ AType *>(
                                             reinterpret_cast<__gm__ char *>(aGmAddr_) + dataSlotOffset)),
                                         layoutA);
