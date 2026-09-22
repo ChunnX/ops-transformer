@@ -66,6 +66,12 @@ private:
     __aicore__ inline void CreateZeroTensor(LocalTensor<uint32_t> &outTensor);
     __aicore__ inline void ResetStatus();
     __aicore__ inline void QuantInit(GM_ADDR scales);
+    __aicore__ inline void InitCommAndState(TPipe *pipe, const MoeDistributeDispatchTilingData *tilingData);
+    __aicore__ inline void InitBasicParam(GM_ADDR x, GM_ADDR expertIds, GM_ADDR expandXOut, GM_ADDR dynamicScalesOut,
+                                          GM_ADDR expandIdxOut, GM_ADDR expertTokenNumsOut, GM_ADDR sendCountsOut,
+                                          const MoeDistributeDispatchTilingData *tilingData);
+    __aicore__ inline void InitStatusBuffer();
+    __aicore__ inline void InitDataBuffer(GM_ADDR scales);
     __aicore__ inline void UpdateMultiMoeTokenNumsOut();
     __aicore__ inline void UpdateTokenNumsOut();
     __aicore__ inline void InitBufferWait();
@@ -202,6 +208,17 @@ __aicore__ inline void MoeDistributeDispatch<TemplateDispatchTypeFunc>::Init(
     GM_ADDR expertTokenNumsOut, GM_ADDR sendCountsOut, GM_ADDR workspaceGM, TPipe *pipe,
     const MoeDistributeDispatchTilingData *tilingData)
 {
+    InitCommAndState(pipe, tilingData);
+    InitBasicParam(x, expertIds, expandXOut, dynamicScalesOut, expandIdxOut, expertTokenNumsOut, sendCountsOut,
+                   tilingData);
+    InitStatusBuffer();
+    InitDataBuffer(scales);
+}
+
+template <TemplateDispatchTypeClass>
+__aicore__ inline void MoeDistributeDispatch<TemplateDispatchTypeFunc>::InitCommAndState(
+    TPipe *pipe, const MoeDistributeDispatchTilingData *tilingData)
+{
     tpipe_ = pipe;
     aivId_ = GetBlockIdx();
     epRankId_ = tilingData->moeDistributeDispatchInfo.epRankId;
@@ -221,6 +238,13 @@ __aicore__ inline void MoeDistributeDispatch<TemplateDispatchTypeFunc>::Init(
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
         selfDataStatusTensor[aivId_ * STATE_ALIGN]);
     PipeBarrier<PIPE_ALL>();
+}
+
+template <TemplateDispatchTypeClass>
+__aicore__ inline void MoeDistributeDispatch<TemplateDispatchTypeFunc>::InitBasicParam(
+    GM_ADDR x, GM_ADDR expertIds, GM_ADDR expandXOut, GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut,
+    GM_ADDR expertTokenNumsOut, GM_ADDR sendCountsOut, const MoeDistributeDispatchTilingData *tilingData)
+{
     axisBS_ = tilingData->moeDistributeDispatchInfo.bs;
     axisH_ = tilingData->moeDistributeDispatchInfo.h;
     epWorldSize_ = tilingData->moeDistributeDispatchInfo.epWorldSize;
@@ -270,6 +294,11 @@ __aicore__ inline void MoeDistributeDispatch<TemplateDispatchTypeFunc>::Init(
     recvWinBlockNum_ = epWorldSize_ * moeExpertNumPerRank_;
     isShareExpertRank_ = (epRankId_ < sharedExpertRankNum_) ? true : false;
     windyquantOffset_ = epWorldSize_ * axisMaxBS_ * hOutSize_;
+}
+
+template <TemplateDispatchTypeClass>
+__aicore__ inline void MoeDistributeDispatch<TemplateDispatchTypeFunc>::InitStatusBuffer()
+{
     GlobalTensor<int32_t> selfStatusTensor;
     selfStatusTensor.SetGlobalBuffer((__gm__ int32_t *)(statusSpaceGm_ + SELF_STATE_OFFSET));
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
@@ -291,6 +320,11 @@ __aicore__ inline void MoeDistributeDispatch<TemplateDispatchTypeFunc>::Init(
     }
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
         selfStatusTensor[aivId_ * STATE_ALIGN]);
+}
+
+template <TemplateDispatchTypeClass>
+__aicore__ inline void MoeDistributeDispatch<TemplateDispatchTypeFunc>::InitDataBuffer(GM_ADDR scales)
+{
     if (isQuant_) {
         QuantInit(scales);
     } else {
