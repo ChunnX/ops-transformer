@@ -176,7 +176,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>q（aclTensor*）</td>
       <td>输入</td>
       <td>Query输入张量。</td>
-      <td><term>Ascend 950PR/Ascend 950DT</term>不支持空Tensor；<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> TurboQuant允许qT为0。qN支持1-128，TurboQuant还要求为4的倍数；D仅支持512。</td>
+      <td>qN支持1-128；D仅支持512。具体产品约束见约束说明。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>
@@ -191,7 +191,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>oriKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>原始KV输入张量，Key与Value共享同一份数据。</td>
-      <td>必须传入。<term>Ascend 950PR/Ascend 950DT</term>的quantMode=1/2保持原量化KV布局：模式1依次拼接rope（64，bfloat16）、nope（448，FLOAT8_E4M3FN）、scale（7，bfloat16）、pad（18B）；模式2依次拼接nope（448，FLOAT8_E4M3FN）、rope（64，bfloat16）、scale（7，FLOAT8_E8M0）、pad（1B）。<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>的quantMode=3使用与q相同的FLOAT16或BFLOAT16原始KV，kvD=512。</td>
+      <td>必须传入。quantMode=1/2保持原量化KV布局：模式1依次拼接rope（64，bfloat16）、nope（448，FLOAT8_E4M3FN）、scale（7，bfloat16）、pad（18B）；模式2依次拼接nope（448，FLOAT8_E4M3FN）、rope（64，bfloat16）、scale（7，FLOAT8_E8M0）、pad（1B）。quantMode=3使用与q相同的FLOAT16或BFLOAT16原始KV，kvD=512。</td>
       <td>FLOAT8_E4M3FN、FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>
@@ -208,7 +208,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>cmpKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>压缩KV输入张量，Key与Value共享同一份数据。</td>
-      <td><term>Ascend 950PR/Ascend 950DT</term>的CSA/HCA场景必须传入，SWA场景不传入，布局同oriKvOptional。<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>的quantMode=3必须传入UINT8 TQ4压缩KV，kvD=258。</td>
+      <td>CSA/HCA场景必须传入，SWA场景不传入。quantMode=1/2的布局同oriKvOptional；quantMode=3使用UINT8 TQ4压缩KV，kvD=258。</td>
       <td>FLOAT8_E4M3FN、UINT8</td>
       <td>ND</td>
       <td>
@@ -241,7 +241,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>cmpSparseIndicesOptional（aclTensor*）</td>
       <td>输入</td>
       <td>代表离散取cmpKvCache的TopK索引。</td>
-      <td>cmpKv稀疏场景必须传入，其他不传入。无效位置填-1，其余为非负整数；<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> TurboQuant固定为TND三维输入，cmpKvK仅支持512或1024。</td>
+      <td>cmpKv稀疏场景必须传入，其他不传入。无效位置填-1，其余为非负整数；quantMode=3时固定为TND三维输入，cmpKvK仅支持512或1024。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>
@@ -249,7 +249,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
           <li>layoutQ为BSND时：(b, qS, kvN, cmpKvK)</li>
           <li>layoutQ为TND时：(qT, kvN, cmpKvK)</li>
         </ul>
-        其中cmpKvK为对cmpKvOptional的TopK稀疏选择数；<term>Ascend 950PR/Ascend 950DT</term>要求大于0，<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> TurboQuant仅支持512或1024。
+        其中cmpKvK为对cmpKvOptional的TopK稀疏选择数，范围支持大于0；quantMode=3时仅支持512或1024。
       </td>
       <td>√</td>
     </tr>
@@ -337,7 +337,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>cmpResidualKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>压缩KV余数，用于恢复cmp侧mask使用的压缩前KV长度。</td>
-      <td><term>Ascend 950PR/Ascend 950DT</term>可选输入。传入时shape必须为(B,)，第b个batch按cmp_len * cmpRatio + cmpResidualKvOptional[b]恢复压缩前KV长度；在cmpMaskMode为3且cmpRatio不等于1场景必传，cmpMaskMode为0或cmpRatio等于1时不允许传入。<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> TurboQuant不支持传入。</td>
+      <td>quantMode=1/2时可选输入。传入时shape必须为(B,)，第b个batch按cmp_len * cmpRatio + cmpResidualKvOptional[b]恢复压缩前KV长度；在cmpMaskMode为3且cmpRatio不等于1场景必传，cmpMaskMode为0或cmpRatio等于1时不允许传入。quantMode=3时不支持传入。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(b,)</td>
@@ -397,7 +397,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>quantMode（int64_t）</td>
       <td>输入</td>
       <td>表示量化模式。</td>
-      <td>表示量化模式。<term>Ascend 950PR/Ascend 950DT</term>仅支持1和2：模式1的scale类型为bfloat16，模式2的scale类型为FLOAT8_E8M0且仅支持layoutKv为PA_BBND。<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>仅支持3，表示融合TQ4反量化的TurboQuant路径。</td>
+      <td>表示量化模式。支持1、2、3：模式1的scale类型为bfloat16；模式2的scale类型为FLOAT8_E8M0且仅支持layoutKv为PA_BBND；模式3表示融合TQ4反量化的TurboQuant路径。具体产品支持的量化模式见约束说明。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -673,28 +673,30 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
   - aclnnMixedQuantSparseFlashMlaMetadata和aclnnMixedQuantSparseFlashMla的入参在调用时应该保持一致。由于算子分为两个接口分段调用，算子无法自行校验，正确性需要由用户自行保证。若接口传入参数不一致，会发生未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
   - oriTopkLengthOptional、cmpTopkLengthOptional表示ori/cmp sparseIndices实际参与计算的长度。其值不能大于sparseIndicesOptional的最后一维大小，且当sequsedQOptional传入时，topkLength对应有效部分的值需要大于等于0。
   - 当oriMaskMode/cmpMaskMode为0时，oriKvK/cmpKvK需要大于等于oriTopkLengthOptional/cmpTopkLengthOptional的最大值。
-  - <term>Ascend 950PR/Ascend 950DT</term>上cmpResidualKvOptional配合cmpRatio使用，可恢复压缩前KV长度。且每个batch的值需要小于cmpRatio。仅当cmpMaskMode为3且cmpRatio不等于1时允许传入；cmpMaskMode为0或cmpRatio等于1时不允许传入。
+  - quantMode=1/2时，cmpResidualKvOptional配合cmpRatio使用，可恢复压缩前KV长度。且每个batch的值需要小于cmpRatio。仅当cmpMaskMode为3且cmpRatio不等于1时允许传入；cmpMaskMode为0或cmpRatio等于1时不允许传入。
   - attnOutOut：tensor类型，公式中的输出。数据类型支持FLOAT16、BFLOAT16，数据格式支持ND，shape和dtype与q一致。
   - returnSoftmaxLse=False时返回shape为[1]的值为0的tensor；returnSoftmaxLse=True时返回FLOAT32的log-sum-exp结果。
   - cuSeqlensQOptional、cuSeqlensOriKvOptional、cuSeqlensCmpKvOptional须满足首元素为0，且序列整体呈非递减排列，即任一元素不小于其前一个元素。
   - 当layoutKv为PA_BBND时，oriKvOptional和cmpKvOptional支持0轴非连续。
   - 各参数shape中以相同符号表示的维度，其对应轴的实际数值需保持一致。
 
-  - `quantMode=1/2`仅支持<term>Ascend 950PR/Ascend 950DT</term>，q、attnOutOut的数据类型为BFLOAT16，oriKvOptional、cmpKvOptional的数据类型为FLOAT8_E4M3FN。
+### 产品差异化约束
 
-### TurboQuant参数约束
+<!-- npu="950" id7 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：
+  - 仅支持`quantMode=1/2`。q、attnOutOut的数据类型为BFLOAT16，oriKvOptional、cmpKvOptional的数据类型为FLOAT8_E4M3FN。
+  - 下文参数组约束适用于`quantMode=1/2`场景。
+<!-- end id7 -->
 
-`quantMode=3`时仅支持<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>，参数约束如下：
-
-| 参数 | 约束 |
-| :--- | :--- |
-| q、attnOutOut | `layoutQOptional`为TND；数据类型为FLOAT16或BFLOAT16且保持一致；qN为4到128的4的倍数，qD为512，qT允许为0。 |
-| oriKvOptional、cmpKvOptional | 均必须传入，`layoutKvOptional`为PA_BBND。oriKvOptional的数据类型与q一致且kvD为512；cmpKvOptional的数据类型为UINT8且kvD为258。两者blockSize均为16到1024的16的倍数。 |
-| 稀疏与PA参数 | cmpSparseIndicesOptional、oriBlockTableOptional、cmpBlockTableOptional必须传入；cmpSparseIndicesOptional的shape为(qT, 1, 512)或(qT, 1, 1024)。oriSparseIndicesOptional、oriTopkLengthOptional、cmpTopkLengthOptional不支持传入。 |
-| 序列参数 | cuSeqlensQOptional、sequsedOriKvOptional必须传入；cuSeqlensOriKvOptional、cuSeqlensCmpKvOptional、sequsedQOptional、sequsedCmpKvOptional不支持传入。 |
-| Mask与压缩参数 | `oriMaskMode=4`、`cmpMaskMode=3`、`oriWinLeft>=0`、`oriWinRight=0`，`cmpRatio`仅支持4或128；cmpResidualKvOptional不支持传入。 |
-
-下文参数组约束未特别说明时适用于<term>Ascend 950PR/Ascend 950DT</term>的`quantMode=1/2`场景，TurboQuant以本节为准。
+<!-- npu="A3,910b" id8 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+  - 仅支持`quantMode=3`的TurboQuant路径。
+  - q、attnOutOut：`layoutQOptional`为TND；数据类型为FLOAT16或BFLOAT16且保持一致；qN为4到128的4的倍数，qD为512，qT允许为0。
+  - oriKvOptional、cmpKvOptional：均必须传入，`layoutKvOptional`为PA_BBND。oriKvOptional的数据类型与q一致且kvD为512；cmpKvOptional的数据类型为UINT8且kvD为258。两者blockSize均为16到1024的16的倍数。
+  - 稀疏与PA参数：cmpSparseIndicesOptional、oriBlockTableOptional、cmpBlockTableOptional必须传入；cmpSparseIndicesOptional的shape为(qT, 1, 512)或(qT, 1, 1024)。oriSparseIndicesOptional、oriTopkLengthOptional、cmpTopkLengthOptional不支持传入。
+  - 序列参数：cuSeqlensQOptional、sequsedOriKvOptional必须传入；cuSeqlensOriKvOptional、cuSeqlensCmpKvOptional、sequsedQOptional、sequsedCmpKvOptional不支持传入。
+  - Mask与压缩参数：`oriMaskMode=4`、`cmpMaskMode=3`、`oriWinLeft>=0`、`oriWinRight=0`，`cmpRatio`仅支持4或128；cmpResidualKvOptional不支持传入。
+<!-- end id8 -->
 
 ### 特性参数组
 
@@ -747,7 +749,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
         <td>q</td>
         <td>
             <ul>
-                <li><term>Ascend 950PR/Ascend 950DT</term>的dtype支持BFLOAT16；<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> TurboQuant支持FLOAT16、BFLOAT16</li>
+                <li>dtype支持FLOAT16、BFLOAT16，其中quantMode=1/2仅支持BFLOAT16</li>
                 <li>layoutQ为BSND时，q的shape为(b, qS, qN, qD)</li>
                 <li>layoutQ为TND时，q的shape为(qT, qN, qD)</li>
             </ul>
@@ -758,7 +760,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
         <td rowspan="4">
             <ul>
                 <li>q、attnOutOut的dtype、shape需相同</li>
-                <li><term>Ascend 950PR/Ascend 950DT</term>上若cmpKvOptional传入，oriKvOptional与cmpKvOptional的dtype需一致；<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> TurboQuant要求q、oriKvOptional、attnOutOut的dtype一致，cmpKvOptional为UINT8</li>
+                <li>quantMode=1/2时，若cmpKvOptional传入，oriKvOptional与cmpKvOptional的dtype需一致；quantMode=3时，q、oriKvOptional、attnOutOut的dtype需一致，cmpKvOptional为UINT8</li>
                 <li>layoutKv不为PA_BBND时，layoutQ和layoutKv需保持一致</li>
                 <li>layoutKv为PA_BBND时，layoutQ可为BSND或TND</li>
             </ul>
@@ -770,16 +772,16 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
                 <li>qS > 0</li>
                 <li>0 < qN <= 128</li>
                 <li>qD = 512</li>
-                <li><term>Ascend 950PR/Ascend 950DT</term>要求qT > 0；<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> TurboQuant允许qT >= 0</li>
+                <li>quantMode=1/2时qT > 0，quantMode=3时qT >= 0</li>
                 <li>oriKvS > 0</li>
                 <li>cmpKvS > 0</li>
                 <li>kvN = 1</li>
-                <li><term>Ascend 950PR/Ascend 950DT</term>上quantMode=1时kvD=608，quantMode=2时kvD=584；<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>上quantMode=3时oriKv的kvD=512、cmpKv的kvD=258</li>
+                <li>quantMode=1时kvD=608，quantMode=2时kvD=584；quantMode=3时oriKvOptional的kvD=512、cmpKvOptional的kvD=258</li>
                 <li>oriKvT > 0</li>
                 <li>cmpKvT > 0</li>
                 <li>oriKvBlockNums > 0</li>
                 <li>cmpKvBlockNums > 0</li>
-                <li><term>Ascend 950PR/Ascend 950DT</term>上1 <= oriKvBlockSize、cmpKvBlockSize <= 1024；<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> TurboQuant还要求blockSize为16的倍数</li>
+                <li>1 <= oriKvBlockSize、cmpKvBlockSize <= 1024；quantMode=3时还要求blockSize为16的倍数</li>
             </ul>
         </td>
     </tr>
@@ -787,7 +789,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
         <td>oriKvOptional</td>
         <td>
             <ul>
-                <li><term>Ascend 950PR/Ascend 950DT</term>的dtype支持FLOAT8_E4M3FN；<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> TurboQuant支持FLOAT16、BFLOAT16且与q一致</li>
+                <li>dtype支持FLOAT8_E4M3FN、FLOAT16、BFLOAT16；quantMode=3时支持FLOAT16、BFLOAT16且与q一致</li>
                 <li>layoutKv为BSND时，oriKvOptional的shape为(b, oriKvS, kvN, kvD)</li>
                 <li>layoutKv为TND时，oriKvOptional的shape为(oriKvT, kvN, kvD)</li>
                 <li>layoutKv为PA_BBND时，oriKvOptional的shape为(oriKvBlockNums, oriKvBlockSize, kvN, kvD)</li>
@@ -801,7 +803,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
         <td>attnOutOut</td>
         <td>
             <ul>
-                <li><term>Ascend 950PR/Ascend 950DT</term>的dtype支持BFLOAT16；<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> TurboQuant支持FLOAT16、BFLOAT16且与q一致</li>
+                <li>dtype支持FLOAT16、BFLOAT16；quantMode=3时需与q一致</li>
                 <li>layoutQ为BSND时，attnOutOut的shape为(b, qS, qN, qD)</li>
                 <li>layoutQ为TND时，attnOutOut的shape为(qT, qN, qD)</li>
             </ul>
@@ -814,7 +816,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
         <td>cmpKvOptional</td>
         <td>
             <ul>
-                <li><term>Ascend 950PR/Ascend 950DT</term>的dtype支持FLOAT8_E4M3FN；<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> TurboQuant固定为UINT8</li>
+                <li>dtype支持FLOAT8_E4M3FN、UINT8；quantMode=3时固定为UINT8</li>
                 <li>layoutKv为BSND时，cmpKvOptional的shape为(b, cmpKvS, kvN, kvD)</li>
                 <li>layoutKv为TND时，cmpKvOptional的shape为(cmpKvT, kvN, kvD)</li>
                 <li>layoutKv为PA_BBND时，cmpKvOptional的shape为(cmpKvBlockNums, cmpKvBlockSize, kvN, kvD)</li>
@@ -1207,7 +1209,7 @@ metadataOptional校验
                     <li>dtype支持INT32</li>
                     <li>shape为(qT, kvN, cmpKvK)或(b, qS, kvN, cmpKvK)</li>
                     <li>无效位置填-1，其余为非负整数</li>
-                    <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> TurboQuant仅支持(qT, 1, 512)或(qT, 1, 1024)</li>
+                    <li>quantMode=3时仅支持(qT, 1, 512)或(qT, 1, 1024)</li>
                 </ul>
             </td>
             <td>
