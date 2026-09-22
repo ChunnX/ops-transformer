@@ -175,6 +175,9 @@ __aicore__ inline void FlashAttentionVarLenScoreSameAB<
     int64_t actualS1Len;
     int64_t actualS2Len;
     for (int64_t i = 0; i < this->tilingData->inputParams.bSize; ++i) {
+        if (this->vecBlockIdx >= this->tilingData->multiCoreParams.coreNum) {
+            continue;
+        }
         GetSeqQlenKvlenByBoidx(i, actualS1Len, actualS2Len);
         if (actualS2Len <= 0 && actualS1Len != 0) {
             int64_t accumSize = (i == 0) ? 0 : ((__gm__ int64_t *)actualSeqQlenAddr)[i - 1];
@@ -198,6 +201,11 @@ __aicore__ inline void FlashAttentionVarLenScoreSameAB<
                                        static_cast<float>(0.0));
         }
     }
+    // InitOutput 内部经 MTE3 从 UB 搬出，该缓冲在 InitBuffer() 之后会被 maskTBufPing 复用；
+    // 补一条 MTE3_MTE2 同步，避免掩码搬入的 MTE2 写冲突。
+    event_t eventIdMte3ToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
+    AscendC::SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2);
+    AscendC::WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2);
     this->InitBuffer();
     if (this->needL1Carry) {
         this->pipe->InitBuffer(this->queryBufL1, L1_Q_SIZE);

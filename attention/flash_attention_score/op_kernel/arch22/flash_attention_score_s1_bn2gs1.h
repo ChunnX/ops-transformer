@@ -1558,6 +1558,7 @@ __aicore__ inline void FlashAttentionScoreS1Bn2gs1<FA_S1BN2GS1_FUNCTION_PARAMS_T
         nz2NdInfo.ndFirstAxisBaseSize = extraInfo.vecS1BaseSize;
         nz2NdInfo.ndFirstAxisLoopSize = extraInfo.vecS1TailSize;
         nz2NdInfo.ndLastAxis = extraInfo.s2RealSizeAlign64;
+        nz2NdInfo.ndLastAxisInSlot = extraInfo.s2RealSizeAlign16;
         nz2NdInfo.loopIdx = loopIdx;
         LocalTensor<T> tempUb = this->stage1PongBuf.template Get<T>();
         NzToNd(nz2NdInfo, this->mm1Res[extraInfo.taskIdMod2], tempUb, bmm1ResUb);
