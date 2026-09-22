@@ -83,7 +83,17 @@ META_SCHEDULE_ROWS_OFFSET_IDX = 10
 META_SCHEDULE_COLS_OFFSET_IDX = 11
 META_S1_TOKEN_OFFSET_IDX = 12
 META_S2_TOKEN_OFFSET_IDX = 13
-META_SCHEDULE_VERSION_IDX = 14
+META_SCHEDULE_KIND_IDX = 14
+# TND line swizzle 时槽8为mode；dense swizzle 时槽8为 ROW_BEGIN 偏移
+META_SCHEDULE_MODE_IDX = 8
+META_TND_LINE_MODE = 1
+META_TND_LINE_M_OFFSET_IDX = 9
+META_TND_LINE_N_OFFSET_IDX = 10
+META_TND_LINE_P_OFFSET_IDX = 11
+META_TND_LINE_Q_OFFSET_IDX = 12
+META_TND_LINE_RUN_SIZE_OFFSET_IDX = 13
+META_DENSE_SWIZZLE = 2
+META_TND_LINE_SWIZZLE = 3
 
 init_data = [1] * 16
 
@@ -113,7 +123,6 @@ VA1 = _align_up(VA0 + VB4_KV)
 VA2 = _align_up(VA1 + VB4_KV)
 VA3 = _align_up(VA2 + VB4_KV)
 VA4 = VA3 + TS * HALF_D_SIZE * 4
-# VA4 = VA3 + TS_HALF * 4
 VAP_0 = 0
 VAP_1 = _align_up(VAP_0 + VB_P)
 MA0 = 0
@@ -220,6 +229,19 @@ def l1_ds(i, j, task_mod2):
 
 def is_var_len():
     return layout == 2 or has_seq_used_q == 1 or has_seq_used_kv == 1
+
+
+def qk_s1_fuse():
+    return False
+
+
+def is_fused_s1_pair(run_info, s1_idx):
+    return (
+        s1_idx % 2 == 0
+        and (s1_idx + 1) < run_info.inner_s1_loop_num
+        and run_info.inner_s1_real_size[s1_idx] == 128
+        and run_info.inner_s1_real_size[s1_idx + 1] == 128
+    )
 
 
 def meta_get(const_info, tensor_metadata, idx):
@@ -635,6 +657,26 @@ def free_event_id():
         )
 
 
+def deter_empty_round_barrier():
+    """Pass through one dQ uniqueness barrier without writing.
+
+    Swizzle uniqueness is per outer 512 tile (s1o), not per inner 128 slice.
+    FAG does one INTER_BLOCK wait+set per round; matching that keeps idle
+    cores in lockstep without 4x bubbles on every 128 writeback.
+    """
+    with pl.section_vector():
+        pl.system.wait_cross_core(
+            pipe=pl.PipeType.MTE3,
+            event_id=SYNC_DETER_FLAG,
+            sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
+        )
+        pl.system.set_cross_core(
+            pipe=pl.PipeType.MTE3,
+            event_id=SYNC_DETER_FLAG,
+            sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
+        )
+
+
 def cal_dense_index_for_single_n(k, m, b, j, r, R, coordinate):
     n = 1
     id_ = (j - 1) * R + r
@@ -706,9 +748,10 @@ def _isqrt(x):
 
 
 def _ceil_trunc(a, b):
-    q = (a + b - 1) // b
-    if (a + b - 1) % b != 0 and a + b - 1 < 0:
-        q += 1
+    num = a + b - 1
+    q = num // b
+    if num % b != 0 and num < 0:
+        return q + 1
     return q
 
 
@@ -1267,14 +1310,12 @@ def cal_dense_swizzle_deter_index(
     s2_outer_base = meta_base + pl.getval(tensor_metadata, meta_base + META_S2_OUTER_OFFSET_IDX)
     found_b = -1
     delta = 0
-    prefix_lo = 0
-    prefix_lo = pl.astype(prefix_lo, pl.DT_INT64)
     for b_idx in pl.range(0, b_size, 1):
+        prefix_lo = pl.astype(pl.getval(tensor_metadata, prefix_base + b_idx), pl.DT_INT64)
         prefix_hi = pl.astype(pl.getval(tensor_metadata, prefix_base + b_idx + 1), pl.DT_INT64)
         if found_b < 0 and round_id < prefix_hi:
             found_b = b_idx
             delta = round_id - prefix_lo
-        prefix_lo = prefix_hi
     if found_b < 0:
         return -1
     m_b = pl.getval(tensor_metadata, s1_outer_base + found_b)
@@ -1325,6 +1366,266 @@ def cal_dense_swizzle_deter_index(
     coordinate_info.s1_token = s1_token
     coordinate_info.s2_token = s2_token
     return (found_b * n1 + n1_idx) * m_b * n_b + s2_idx * m_b + s1_idx
+
+
+def _tnd_line_commit(
+    coordinate_info,
+    const_info,
+    tensor_metadata,
+    tensor_seq_q,
+    tensor_seq_kv,
+    found_b,
+    copy_id,
+    x,
+    y,
+    n1,
+    g_size,
+    is_band,
+    s1_outer_base,
+    s2_outer_base,
+    s1_token_base,
+    s2_token_base,
+):
+    batch = found_b + (copy_id - 1) // n1
+    n1_idx = (copy_id - 1) % n1
+    s1o_real = pl.getval(tensor_metadata, s1_outer_base + batch)
+    s2o_real = pl.getval(tensor_metadata, s2_outer_base + batch)
+    s1_token = pl.getval(tensor_metadata, s1_token_base + batch)
+    s2_token = pl.getval(tensor_metadata, s2_token_base + batch)
+    if is_band:
+        p0 = min(_ceil_trunc(s1_token, CUBE_BASEM) + 1, s1o_real)
+        q0 = min(_ceil_trunc(s2_token, CUBE_BASEN) + 1, s2o_real)
+        if p0 < 0:
+            s1_idx = x - 1
+            s2_idx = y - 1 + (0 - p0)
+        elif q0 < 0:
+            s1_idx = x - 1 + (0 - q0)
+            s2_idx = y - 1
+        else:
+            s1_idx = x - 1
+            s2_idx = y - 1
+    else:
+        s1_idx = x + max(0, s1o_real - s2o_real - 1) - 1
+        s2_idx = y - 1
+    if s1_idx >= s1o_real or s2_idx >= s2o_real or s1_idx < 0 or s2_idx < 0:
+        return -1
+    actual_s1 = get_actual_s1_len(const_info, tensor_seq_q, batch)
+    actual_s2 = get_actual_s2_len(const_info, tensor_seq_kv, batch)
+    coordinate_info.batch_id = batch
+    coordinate_info.n2_idx = n1_idx // g_size
+    coordinate_info.g_idx = n1_idx % g_size
+    coordinate_info.s1_idx = s1_idx
+    coordinate_info.s2_idx = s2_idx
+    coordinate_info.s1_outer = s1o_real
+    coordinate_info.s2_outer = s2o_real
+    coordinate_info.actual_s1_len = actual_s1
+    coordinate_info.actual_s2_len = actual_s2
+    coordinate_info.s1_token = s1_token
+    coordinate_info.s2_token = s2_token
+    return (batch * n1 + n1_idx) * s1o_real * s2o_real + s2_idx * s1o_real + s1_idx
+
+
+def cal_tnd_line_swizzle_deter_index(
+    round_id,
+    coordinate_info,
+    const_info,
+    tensor_metadata,
+    tensor_seq_q,
+    tensor_seq_kv,
+    flag,
+):
+    coordinate_info.batch_id = -1
+    j = const_info.core_id_cube
+    if flag == True:
+        j += 1
+    k = const_info.core_num
+    if j >= k:
+        return -1
+    n1 = const_info.n2_size * const_info.g_size
+    g_size = const_info.g_size
+    mask_mode = const_info.mask_mode
+    is_band = mask_mode == 4
+    meta_base = const_info.metadata_len
+    b_size = const_info.b_size
+    prefix_base = meta_base + pl.getval(tensor_metadata, meta_base + META_ROUND_PREFIX_OFFSET_IDX)
+    s1_outer_base = meta_base + pl.getval(tensor_metadata, meta_base + META_S1_OUTER_OFFSET_IDX)
+    s2_outer_base = meta_base + pl.getval(tensor_metadata, meta_base + META_S2_OUTER_OFFSET_IDX)
+    line_m_base = meta_base + pl.getval(tensor_metadata, meta_base + META_TND_LINE_M_OFFSET_IDX)
+    line_n_base = meta_base + pl.getval(tensor_metadata, meta_base + META_TND_LINE_N_OFFSET_IDX)
+    line_p_base = meta_base + pl.getval(tensor_metadata, meta_base + META_TND_LINE_P_OFFSET_IDX)
+    line_q_base = meta_base + pl.getval(tensor_metadata, meta_base + META_TND_LINE_Q_OFFSET_IDX)
+    run_size_base = meta_base + pl.getval(tensor_metadata, meta_base + META_TND_LINE_RUN_SIZE_OFFSET_IDX)
+    s1_token_base = run_size_base + b_size
+    s2_token_base = s1_token_base + b_size
+    found_b = -1
+    delta = 0
+    for b_idx in pl.range(0, b_size, 1):
+        prefix_lo = pl.astype(pl.getval(tensor_metadata, prefix_base + b_idx), pl.DT_INT64)
+        prefix_hi = pl.astype(pl.getval(tensor_metadata, prefix_base + b_idx + 1), pl.DT_INT64)
+        if found_b < 0 and round_id < prefix_hi:
+            found_b = b_idx
+            delta = round_id - prefix_lo
+    if found_b < 0:
+        return -1
+    line_m = pl.getval(tensor_metadata, line_m_base + found_b)
+    line_n = pl.getval(tensor_metadata, line_n_base + found_b)
+    line_p = pl.getval(tensor_metadata, line_p_base + found_b)
+    line_q = pl.getval(tensor_metadata, line_q_base + found_b)
+    run_size = pl.getval(tensor_metadata, run_size_base + found_b)
+    if line_m <= 0 or line_n <= 0 or run_size <= 0 or n1 <= 0:
+        return -1
+    a = delta + 1
+    j1 = j + 1
+    m = line_m
+    n = line_n
+    p = line_p
+    q = line_q
+    if is_band:
+        copies = n1 * run_size
+        if p >= m:
+            if j1 >= 1 and j1 <= k and a >= 1 and copies > 0 and m > 0 and n > 0:
+                y1_d = ((a - 1) // m) * k + j1
+                if y1_d <= n * copies:
+                    w_d = (y1_d - 1) // n + 1
+                    y_d = (y1_d - 1) % n + 1
+                    x_d = (y_d + (a - 1) - 1) % m + 1
+                    if (
+                        w_d >= 1
+                        and w_d <= copies
+                        and x_d >= 1
+                        and x_d <= m
+                        and y_d >= 1
+                        and y_d <= n
+                        and y_d <= x_d + q - 1
+                    ):
+                        return _tnd_line_commit(
+                            coordinate_info, const_info, tensor_metadata, tensor_seq_q, tensor_seq_kv,
+                            found_b, w_d, x_d, y_d, n1, g_size, is_band,
+                            s1_outer_base, s2_outer_base, s1_token_base, s2_token_base,
+                        )
+            return -1
+        if p + q > m:
+            n_new = min(m - 1 + q, n)
+            l1_w = m - p
+            l2_w = p + q - m
+            l3_w = n_new - l1_w - l2_w
+            dense_n = n_new - max(0, l3_w - p + 1)
+            if j1 >= 1 and j1 <= k and a >= 1 and copies > 0 and m > 0 and dense_n > 0:
+                y1_w = ((a - 1) // m) * k + j1
+                if y1_w <= dense_n * copies:
+                    w_w = (y1_w - 1) // dense_n + 1
+                    y_w = (y1_w - 1) % dense_n + 1
+                    x_w = (y_w + (a - 1) - 1) % m + 1
+                    l1_m = m - p
+                    l2_m = p + q - m
+                    l3_m = n - l1_m - l2_m
+                    fold = max(0, l3_m - p + 1)
+                    fold_hit = 0
+                    if fold > 0 and y_w <= fold and x_w >= p + y_w:
+                        fold_hit = 1
+                    y_m = y_w + fold_hit * (n - fold)
+                    miss = 0
+                    if fold_hit == 0 and y_w <= l1_m and x_w >= p + y_w:
+                        miss = 1
+                    if y_m > l1_m + l2_m and x_w <= y_m - l1_m - l2_m:
+                        miss = 1
+                    if (
+                        miss == 0
+                        and w_w >= 1
+                        and w_w <= copies
+                        and x_w >= 1
+                        and x_w <= m
+                        and y_m >= 1
+                        and y_m <= n
+                    ):
+                        return _tnd_line_commit(
+                            coordinate_info, const_info, tensor_metadata, tensor_seq_q, tensor_seq_kv,
+                            found_b, w_w, x_w, y_m, n1, g_size, is_band,
+                            s1_outer_base, s2_outer_base, s1_token_base, s2_token_base,
+                        )
+            return -1
+        seg = p + q - 1
+        if seg <= 0:
+            return -1
+        a1 = (a - 1) // seg + 1
+        a2 = (a - 1) % seg + 1
+        l3_n = max(0, min(p + n - m - 1, p + q - 2))
+        if l3_n == 0 or n - m < 1:
+            idx = (a1 - 1) * k + j1
+            w_n = (idx - 1) // n + 1
+            y_n = (idx - 1) % n + 1
+            x_n = y_n + a2 - q
+            if w_n >= 1 and w_n <= copies and x_n >= 1 and x_n <= m and y_n >= 1 and y_n <= n:
+                return _tnd_line_commit(
+                    coordinate_info, const_info, tensor_metadata, tensor_seq_q, tensor_seq_kv,
+                    found_b, w_n, x_n, y_n, n1, g_size, is_band,
+                    s1_outer_base, s2_outer_base, s1_token_base, s2_token_base,
+                )
+            return -1
+        y_abs = (a1 - 1) * k + j1
+        x_abs = y_abs + a2 - q
+        if x_abs < 1:
+            return -1
+        w_n2 = (x_abs - 1) // m + 1
+        x_n2 = (x_abs - 1) % m + 1
+        y_n2 = x_n2 + q - a2
+        if w_n2 >= 1 and w_n2 <= copies and x_n2 >= 1 and x_n2 <= m and y_n2 >= 1 and y_n2 <= n:
+            return _tnd_line_commit(
+                coordinate_info, const_info, tensor_metadata, tensor_seq_q, tensor_seq_kv,
+                found_b, w_n2, x_n2, y_n2, n1, g_size, is_band,
+                s1_outer_base, s2_outer_base, s1_token_base, s2_token_base,
+            )
+        return -1
+    total = n1 * run_size
+    pairs = total // 2
+    virt_m = m
+    virt_n = 2 * n - m + 3
+    pair_rounds = ceil(virt_n * pairs, k) * virt_m
+    if a <= pair_rounds:
+        if j1 >= 1 and j1 <= k and a >= 1 and pairs > 0 and virt_m > 0 and virt_n > 0:
+            y1_c = ((a - 1) // virt_m) * k + j1
+            if y1_c <= virt_n * pairs:
+                w_c = (y1_c - 1) // virt_n + 1
+                y_c = (y1_c - 1) % virt_n + 1
+                x_c = (y_c + (a - 1) - 1) % virt_m + 1
+                n_ext = n + 1
+                flip = 0
+                if y_c >= x_c + n_ext - m + 1:
+                    flip = 1
+                y_cm = y_c + flip * (2 * n_ext - m + 2 - 2 * y_c)
+                x_cm = x_c + flip * (m + 1 - 2 * x_c)
+                nid = 2 * w_c - 1 + flip
+                if (
+                    nid >= 1
+                    and nid <= pairs * 2
+                    and x_cm >= 1
+                    and x_cm <= m
+                    and y_cm >= 1
+                    and y_cm <= n
+                    and y_cm <= x_cm + n - m + 1
+                ):
+                    return _tnd_line_commit(
+                        coordinate_info, const_info, tensor_metadata, tensor_seq_q, tensor_seq_kv,
+                        found_b, nid, x_cm, y_cm, n1, g_size, is_band,
+                        s1_outer_base, s2_outer_base, s1_token_base, s2_token_base,
+                    )
+        return -1
+    if (total % 2) == 1:
+        single_round = a - pair_rounds
+        if j1 >= 1 and j1 <= k and single_round >= 1 and m > 0 and n > 0:
+            y1_s = ((single_round - 1) // m) * k + j1
+            if y1_s <= n:
+                w_s = (y1_s - 1) // n + 1
+                y_s = (y1_s - 1) % n + 1
+                x_s = (y_s + (single_round - 1) - 1) % m + 1
+                if x_s >= 1 and x_s <= m and y_s >= 1 and y_s <= n and y_s <= x_s + n - m + 1:
+                    return _tnd_line_commit(
+                        coordinate_info, const_info, tensor_metadata, tensor_seq_q, tensor_seq_kv,
+                        found_b, total, x_s, y_s, n1, g_size, is_band,
+                        s1_outer_base, s2_outer_base, s1_token_base, s2_token_base,
+                    )
+        return -1
+    return -1
 
 
 def cal_band_deter_index(round_id, max_loop_num, coordinate_info, const_info, band_info, flag):
@@ -1485,17 +1786,35 @@ def cal_deter_index(
     coordinate_info.mask_mode = const_info.mask_mode
     next_valid_round_id = max_loop_num
     next_valid_index = -1
+    schedule_kind = 0
+    if is_var_len():
+        schedule_kind = meta_get(const_info, tensor_metadata, META_SCHEDULE_KIND_IDX)
     for current_round_id in pl.range(round_id, max_loop_num, 1):
         if is_var_len():
-            next_valid_index = cal_dense_swizzle_deter_index(
-                current_round_id,
-                coordinate_info,
-                const_info,
-                tensor_metadata,
-                tensor_seq_q,
-                tensor_seq_kv,
-                flag,
-            )
+            # pl.range 上界必须是 tiling; 真实轮数只做提前退出, 避免扫完保守上界.
+            deter_rounds = meta_get(const_info, tensor_metadata, META_DETER_MAX_NUM_IDX)
+            if current_round_id >= deter_rounds:
+                break
+            if schedule_kind == META_TND_LINE_SWIZZLE:
+                next_valid_index = cal_tnd_line_swizzle_deter_index(
+                    current_round_id,
+                    coordinate_info,
+                    const_info,
+                    tensor_metadata,
+                    tensor_seq_q,
+                    tensor_seq_kv,
+                    flag,
+                )
+            else:
+                next_valid_index = cal_dense_swizzle_deter_index(
+                    current_round_id,
+                    coordinate_info,
+                    const_info,
+                    tensor_metadata,
+                    tensor_seq_q,
+                    tensor_seq_kv,
+                    flag,
+                )
         elif sparse_type == 4:
             next_valid_index = cal_band_deter_index(
                 current_round_id, max_loop_num, coordinate_info, const_info, band_info, flag
@@ -1598,7 +1917,12 @@ def set_run_info(
         if not is_var_len() and (sparse_type == 3 or sparse_type == 4):
             run_info.kv_need_atomic = True
         elif is_var_len():
-            run_info.kv_need_atomic = run_info.is_value_reuse
+            # swizzle 下 (n1_idx, s2o) 与 linearIdx = (delta // m_b) * k + j 一一对应,
+            # 同一列只会落在唯一一个核上, dk/dv 不存在跨核累加, 只需核内跨 s1 行累加。
+            if sparse_type != 0:
+                run_info.kv_need_atomic = 1
+            else:
+                run_info.kv_need_atomic = run_info.is_value_reuse
         else:
             run_info.kv_need_atomic = (
                 coordinate_info.s2_outer != 1 and run_info.is_value_reuse
@@ -1785,6 +2109,8 @@ def iterate_mm_ds_p(mm1_res, mm2_res, const_info, run_info, tensor_info):
     pl.move(mm2_res, mm2_acc, [0, 0], acc_to_vec_mode=pl.AccToVecMode.DualModeSplitN)
 
 
+
+
 @pl.vector_function
 def merge_band_attn_mask_vf(attn_tile, attn_pre_tile):
     preg_all_16 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_UINT16)
@@ -1869,7 +2195,6 @@ def compute_p_ds_vf(
         vreg_sp2 = vf.exp_sub(vreg_sp2, vreg_lse, preg_all)
         vreg_sp3 = vf.exp_sub(vreg_sp3, vreg_lse, preg_all)
         vreg_sp4 = vf.exp_sub(vreg_sp4, vreg_lse, preg_all)
-
         vreg_p1 = vf.astype(
             vreg_sp1,
             preg_all,
@@ -2025,7 +2350,6 @@ def compute_p_ds_vf(
         vreg_sp2 = vf.exp_sub(vreg_sp2, vreg_lse, preg_all)
         vreg_sp3 = vf.exp_sub(vreg_sp3, vreg_lse, preg_all)
         vreg_sp4 = vf.exp_sub(vreg_sp4, vreg_lse, preg_all)
-
         vreg_p1 = vf.astype(
             vreg_sp1,
             preg_all,
@@ -2194,13 +2518,19 @@ def compute_p_ds(
     )
 
 
-def cal_atten_mask_offset(run_info, const_info):
+def cal_atten_mask_offset(run_info, const_info, s1_extra=0):
+    # Mask coordinates are batch-local, including packed TND. q_start/kv_start
+    # are only for GM addressing; metadata supplies the per-batch token.
+    # Next boundary: s2 - s1 <= s2_token.
     real_s1 = run_info.inner_s1_real_size[run_info.s1_idx]
+    if qk_s1_fuse() and is_fused_s1_pair(run_info, run_info.s1_idx):
+        real_s1 = real_s1 + run_info.inner_s1_real_size[run_info.s1_idx + 1]
     first_half_s1 = ceil(real_s1, QUANT_S1_BASE_COUNT) * QUANT_S1_BASE_COUNT // 2
     s1_offset = (
         run_info.s1o_idx * CUBE_BASEM
         + run_info.s1_idx * TS
         + const_info.sub_id * first_half_s1
+        + s1_extra
     )
     s2_offset = run_info.s2_cv_begin + run_info.s2_idx * TS
     delta = s1_offset - s2_offset + run_info.s2_token
@@ -2337,7 +2667,6 @@ def iterate_p_ds(p_l1_bit8, ds_l1_bit8, sdp_id, const_info, run_info, tensor_inf
     sp_vec_bit8 = tensor_info.sp_vec_bit8[sdp_id]
     dpds_vec = tensor_info.dpds_vec[sdp_id]
     dpds_vec_bit8 = tensor_info.dpds_vec_bit8[sdp_id]
-
     compute_p_ds(
         sp_vec,
         dpds_vec,
@@ -2357,7 +2686,6 @@ def iterate_p_ds(p_l1_bit8, ds_l1_bit8, sdp_id, const_info, run_info, tensor_inf
         const_info.deq_scale_p_value,
         const_info.deq_scale_p_value * const_info.scale_ds,
     )
-
     if first_half_s1 > BLOCK_SIZE:
         pl.insert(p_l1_bit8, sp_vec_bit8[:, :256], [const_info.sub_id * 32, 0])
         pl.insert(p_l1_bit8, sp_vec_bit8[:, 512:768], [const_info.sub_id * 32 + 16, 0])
@@ -2369,6 +2697,64 @@ def iterate_p_ds(p_l1_bit8, ds_l1_bit8, sdp_id, const_info, run_info, tensor_inf
     else:
         pl.insert(p_l1_bit8, sp_vec_bit8[:, :256], [const_info.sub_id * 16, 0])
         pl.insert(ds_l1_bit8, dpds_vec_bit8[:, :256], [const_info.sub_id * 16, 0])
+
+
+def load_k_for_dq(right_first, right_second, k_size_first, k_size_second, run_info, tensor_info):
+    k_l1_first = tensor_info.common_l1.next()
+    k_l1_second = tensor_info.common_l1.next()
+    tensor_info.common_l1_db.next()
+    pl.set_validshape(k_l1_first, [k_size_first, D_SIZE])
+    pl.set_validshape(k_l1_second, [k_size_second, D_SIZE])
+    if layout == 0 or layout == 2:  # BSND
+        pl.load(
+            k_l1_first,
+            tensor_info.tensor_k,
+            [
+                run_info.gm_batch_id,
+                run_info.kv_start + run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS,
+                run_info.n2o_idx,
+                0,
+            ],
+            order=[1, 3],
+        )
+        pl.load(
+            k_l1_second,
+            tensor_info.tensor_k,
+            [
+                run_info.gm_batch_id,
+                run_info.kv_start + run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS + TS,
+                run_info.n2o_idx,
+                0,
+            ],
+            order=[1, 3],
+        )
+    elif layout == 1:  # BNSD
+        pl.load(
+            k_l1_first,
+            tensor_info.tensor_k,
+            [
+                run_info.gm_batch_id,
+                run_info.n2o_idx,
+                run_info.kv_start + run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS,
+                0,
+            ],
+            order=[2, 3],
+        )
+        pl.load(
+            k_l1_second,
+            tensor_info.tensor_k,
+            [
+                run_info.gm_batch_id,
+                run_info.n2o_idx,
+                run_info.kv_start + run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS + TS,
+                0,
+            ],
+            order=[2, 3],
+        )
+    pl.set_validshape(right_first, [k_size_first, D_SIZE])
+    pl.set_validshape(right_second, [k_size_second, D_SIZE])
+    pl.move(right_first, k_l1_first, [0, 0])
+    pl.move(right_second, k_l1_second, [0, 0])
 
 
 def iterate_mm_ds_k(
@@ -2391,7 +2777,6 @@ def iterate_mm_ds_k(
     right_first = tensor_info.right_four.next()
     right_second = tensor_info.right_four.next()
     right = tensor_info.right_db.next()
-
     mm_acc = tensor_info.acc_db[tmp_info.l0c_buffer_id]
 
     pl.set_validshape(left_first, [128, 128])
@@ -2401,63 +2786,12 @@ def iterate_mm_ds_k(
     if run_info.is_key_reuse:
         k_l1_first = tensor_info.k_l1[run_info.s2_idx]
         k_l1_second = tensor_info.k_l1[run_info.s2_idx + 1]
+        pl.set_validshape(right_first, [k_size_first, D_SIZE])
+        pl.set_validshape(right_second, [k_size_second, D_SIZE])
+        pl.move(right_first, k_l1_first, [0, 0])
+        pl.move(right_second, k_l1_second, [0, 0])
     else:
-        k_l1_first = tensor_info.common_l1.next()
-        k_l1_second = tensor_info.common_l1.next()
-        tensor_info.common_l1_db.next()
-
-        pl.set_validshape(k_l1_first, [k_size_first, D_SIZE])
-        pl.set_validshape(k_l1_second, [k_size_second, D_SIZE])
-        if layout == 0 or layout == 2:  # BSND
-            pl.load(
-                k_l1_first,
-                tensor_info.tensor_k,
-                [
-                    run_info.gm_batch_id,
-                    run_info.kv_start + run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS,
-                    run_info.n2o_idx,
-                    0,
-                ],
-                order=[1, 3],
-            )
-            pl.load(
-                k_l1_second,
-                tensor_info.tensor_k,
-                [
-                    run_info.gm_batch_id,
-                    run_info.kv_start + run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS + TS,
-                    run_info.n2o_idx,
-                    0,
-                ],
-                order=[1, 3],
-            )
-        elif layout == 1:  # BNSD
-            pl.load(
-                k_l1_first,
-                tensor_info.tensor_k,
-                [
-                    run_info.gm_batch_id,
-                    run_info.n2o_idx,
-                    run_info.kv_start + run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS,
-                    0,
-                ],
-                order=[2, 3],
-            )
-            pl.load(
-                k_l1_second,
-                tensor_info.tensor_k,
-                [
-                    run_info.gm_batch_id,
-                    run_info.n2o_idx,
-                    run_info.kv_start + run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS + TS,
-                    0,
-                ],
-                order=[2, 3],
-            )
-    pl.set_validshape(right_first, [k_size_first, D_SIZE])
-    pl.set_validshape(right_second, [k_size_second, D_SIZE])
-    pl.move(right_first, k_l1_first, [0, 0])
-    pl.move(right_second, k_l1_second, [0, 0])
+        load_k_for_dq(right_first, right_second, k_size_first, k_size_second, run_info, tensor_info)
     pl.set_validshape(left, [128, real_k])
     pl.set_validshape(right, [real_k, D_SIZE])
     if run_info.is_dq_fix_out:
@@ -2478,7 +2812,6 @@ def iterate_mm_p_dy(
     do_l1 = tensor_info.common_l1_db.next()
     tensor_info.common_l1.next()
     tensor_info.common_l1.next()
-
     left_first = tensor_info.left_four.next()
     left_second = tensor_info.left_four.next()
     left = tensor_info.left_db.next()
@@ -2486,7 +2819,6 @@ def iterate_mm_p_dy(
     right_first = tensor_info.right_four.next()
     right_second = tensor_info.right_four.next()
     right = tensor_info.right_db.next()
-
     acc = tensor_info.acc_db[tmp_info.l0c_buffer_id]
     pl.set_validshape(left_first, [128, 128])  #
     pl.set_validshape(left_second, [128, 128])  #
@@ -2542,7 +2874,6 @@ def iterate_mm_ds_q(
     q_l1 = tensor_info.common_l1_db.next()
     tensor_info.common_l1.next()
     tensor_info.common_l1.next()
-
     left_first = tensor_info.left_four.next()
     left_second = tensor_info.left_four.next()
     left = tensor_info.left_db.next()
@@ -2866,12 +3197,20 @@ def process_p_ds(run_info, const_info, sdp_id, tensor_info, tmp_info):
             )
         p_l1_bit8_tmp = tensor_info.p_l1_bit8
         p_l1_bit8 = p_l1_bit8_tmp.next()
+        fused = qk_s1_fuse() and is_fused_s1_pair(run_info, run_info.s1_idx)
+        if fused:
+            p_l1_bit8_hi = p_l1_bit8_tmp.next()
+            if const_info.sub_id == 1:
+                p_l1_bit8 = p_l1_bit8_hi
         if (
             run_info.s2_idx < run_info.inner_s2_loop_num
             and run_info.s1_idx < run_info.inner_s1_loop_num
         ):
+            ds_s1 = run_info.s1_idx
+            if fused:
+                ds_s1 = run_info.s1_idx + const_info.sub_id
             ds_l1_bit8 = tensor_info.ds_l1_bit8[
-                l1_ds(run_info.s1_idx, run_info.s2_idx, run_info.task_id_mod2)
+                l1_ds(ds_s1, run_info.s2_idx, run_info.task_id_mod2)
             ]
             iterate_p_ds(
                 p_l1_bit8, ds_l1_bit8, sdp_id, const_info, run_info, tensor_info
@@ -2882,7 +3221,7 @@ def process_p_ds(run_info, const_info, sdp_id, tensor_info, tmp_info):
             event_id=sdp_id,
             sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK,
         )
-        if sdp_id % 2 == 1:
+        if fused or sdp_id % 2 == 1:
             pl.system.set_cross_core(
                 pipe=pl.PipeType.MTE3,
                 event_id=SYNC_PDS_TO_DKV_FLAG,
@@ -2894,6 +3233,12 @@ def process_p_ds(run_info, const_info, sdp_id, tensor_info, tmp_info):
                 event_id=SYNC_PDS_TO_DKV_FLAG_TAIL,
                 sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK,
             )
+            if fused:
+                pl.system.set_cross_core(
+                    pipe=pl.PipeType.MTE3,
+                    event_id=SYNC_PDS_TO_DKV_FLAG_TAIL,
+                    sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK,
+                )
 
 
 def process_dq(run_info, sdp_id, const_info, tensor_info, tmp_info):
@@ -3056,6 +3401,9 @@ def process_dkv(is_dk, run_info, sdp_id, const_info, tensor_info, tmp_info):
 def process_first_s2(
     const_info, run_info, last_run_info, kv_inner_id, tensor_info, tmp_info
 ):
+    skip_s1_1 = qk_s1_fuse() and is_fused_s1_pair(run_info, 0)
+    skip_s1_3 = qk_s1_fuse() and is_fused_s1_pair(run_info, 2)
+
     set_quant_run_info(run_info, 0, kv_inner_id)
     process_sp(run_info, const_info, 0, tensor_info)
     process_p_ds(run_info, const_info, 0, tensor_info, tmp_info)
@@ -3064,9 +3412,10 @@ def process_first_s2(
             set_quant_run_info(last_run_info, kv_inner_id, 0)
             process_dq(last_run_info, 0, const_info, tensor_info, tmp_info)
 
-    set_quant_run_info(run_info, 1, kv_inner_id)
-    process_sp(run_info, const_info, 1, tensor_info)
-    process_p_ds(run_info, const_info, 1, tensor_info, tmp_info)
+    if not skip_s1_1:
+        set_quant_run_info(run_info, 1, kv_inner_id)
+        process_sp(run_info, const_info, 1, tensor_info)
+        process_p_ds(run_info, const_info, 1, tensor_info, tmp_info)
     with pl.section_cube():
         if not last_run_info.is_dq_completed:
             set_quant_run_info(last_run_info, kv_inner_id, 2)
@@ -3113,9 +3462,10 @@ def process_first_s2(
         set_quant_run_info(last_run_info, 2, 3)
         process_dkv(False, last_run_info, 2, const_info, tensor_info, tmp_info)
 
-    set_quant_run_info(run_info, 3, kv_inner_id)
-    process_sp(run_info, const_info, 1, tensor_info)
-    process_p_ds(run_info, const_info, 1, tensor_info, tmp_info)
+    if not skip_s1_3:
+        set_quant_run_info(run_info, 3, kv_inner_id)
+        process_sp(run_info, const_info, 1, tensor_info)
+        process_p_ds(run_info, const_info, 1, tensor_info, tmp_info)
 
     with pl.section_vector():
         if not last_run_info.is_dq_completed:
@@ -3853,16 +4203,17 @@ def quant_flash_attn_grad(
         addrs=VA3,
         mutex_ids=[31],
     )
+    lse_n = 128 if qk_s1_fuse() else 64
     lse_vec = pl.make_tile_group(
         type=pl.TileType(
-            shape=[1, 64], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec
+            shape=[1, lse_n], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec
         ),
         addrs=[VA4, VA4 + 512, VA4 + 512 * 2, VA4 + 512 * 3],
         mutex_ids=[9, 10, 11, 12],
     )
     d_vec = pl.make_tile_group(
         type=pl.TileType(
-            shape=[1, 64], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec
+            shape=[1, lse_n], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec
         ),
         addrs=[VA4 + 512 * 4, VA4 + 512 * 5, VA4 + 512 * 6, VA4 + 512 * 7],
         mutex_ids=[13, 14, 15, 16],
@@ -4040,9 +4391,11 @@ def quant_flash_attn_grad(
         addrs=RA0,
         mutex_ids=[[25, 26], [27, 28]],
     )
+    acc_n = TS * 2 if qk_s1_fuse() else TS
+    acc_db_addr = CA0 + TS * TS * 8 if qk_s1_fuse() else CA2
     acc_mm1 = pl.make_tile_group(
         type=pl.TileType(
-            shape=[TS, TS],
+            shape=[TS, acc_n],
             dtype=pl.DT_FP32,
             target_memory=pl.MemorySpace.Acc,
             compact=1,
@@ -4057,7 +4410,7 @@ def quant_flash_attn_grad(
             target_memory=pl.MemorySpace.Acc,
             compact=1,
         ),
-        addrs=CA1,
+        addrs=CA0 if qk_s1_fuse() else CA1,
         mutex_ids=[2],
     )
     acc_db = pl.make_tile_group(
@@ -4067,10 +4420,9 @@ def quant_flash_attn_grad(
             target_memory=pl.MemorySpace.Acc,
             compact=1,
         ),
-        addrs=CA2,
+        addrs=acc_db_addr,
         mutex_ids=[4, 6],
     )
-    ## post
     post_in = pl.make_tile_group(
         type=pl.TileType(
             shape=[1, TS * TS],
@@ -4242,36 +4594,22 @@ def quant_flash_attn_grad(
     )
     band_info = band_infos[0]
 
-    # process presfmg
     if is_var_len():
         init_sfmg_workspace(const_info, tensor_info)
         pl.system.sync_all()
     presfmg_quant_inner_hif8(const_info, tensor_info)
     pl.system.sync_all()
 
-    # process kernel
 
     alloc_event_id()
     if sparse_type == 4 and not is_var_len():
         gen_band_info(const_info, band_info)
+    # pl.range / cal_deter_index 的上界必须来自 tiling (host 标量).
+    # metadata 槽0 是 GM, 赋给 loop_max 会让 CCE 报「定义前使用」.
     loop_max = 0
     if is_var_len():
-        loop_max = (
-            const_info.b_size
-            * ceil(
-                ceil(const_info.s2_size, CUBE_BASEN)
-                * const_info.n2_size
-                * const_info.g_size,
-                const_info.core_num,
-            )
-            * ceil(const_info.s1_size, CUBE_BASEM)
-        )
-        if sparse_type != 0 or layout == 2:
-            loop_max = (
-                const_info.b_size
-                * ceil(const_info.s2_outer * const_info.n1_size, const_info.core_num)
-                * max(const_info.s1_outer, min(const_info.core_num, const_info.s2_outer))
-            )
+        loop_max = const_info.deter_max_round
+        meta_rounds = meta_get(const_info, tensor_metadata, META_DETER_MAX_NUM_IDX)
     else:
         loop_max = cal_deter_max_loop_num(const_info, band_info)
     task_id = 0
@@ -4321,6 +4659,9 @@ def quant_flash_attn_grad(
         tensor_seq_kv,
     )
     for loop_idx in pl.range(loop_max):
+        if is_var_len():
+            if loop_idx >= meta_rounds:
+                break
         block_inner_idx = next_block_idx
         if loop_idx >= next_valid_loop_idx:
             block_inner_idx = next_block_idx
@@ -4343,18 +4684,10 @@ def quant_flash_attn_grad(
             if not is_var_len():
                 is_valid_block = is_valid_for_deter(block_inner_idx, const_info)
         if is_valid_block:
+            # A gap may have already drained the previous task. Match the
+            # single dQ uniqueness barrier even when this core has no pending dQ.
             if loop_idx > 0 and run_infos[(task_id + 1) % 2].is_dq_completed:
-                with pl.section_vector():
-                    pl.system.wait_cross_core(
-                        pipe=pl.PipeType.MTE3,
-                        event_id=SYNC_DETER_FLAG,
-                        sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
-                    )
-                    pl.system.set_cross_core(
-                        pipe=pl.PipeType.MTE3,
-                        event_id=SYNC_DETER_FLAG,
-                        sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
-                    )
+                deter_empty_round_barrier()
             set_run_info(
                 run_infos[task_id % 2],
                 run_infos[(task_id + 1) % 2],
