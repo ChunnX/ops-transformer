@@ -123,7 +123,6 @@ int LaunchOneProcessDispatchAndCombine(Args &args)
     void *epRecvCountsDeviceAddr = nullptr;
     void *tpRecvCountsDeviceAddr = nullptr;
     void *expandScalesDeviceAddr = nullptr;
-    void *residualXDeviceAddr = nullptr;
     void *sharedExpertXDeviceAddr = nullptr;
 
     void *elasticInfoDeviceAddr = nullptr;
@@ -181,7 +180,6 @@ int LaunchOneProcessDispatchAndCombine(Args &args)
     std::vector<int64_t> xOutShape{BS, H};
 
     int64_t xShapeSize = GetShapeSize(xShape);
-    int64_t expertIdsShapeSize = GetShapeSize(expertIdsShape);
     int64_t scalesShapeSize = GetShapeSize(scalesShape);
     int64_t expertScalesShapeSize = GetShapeSize(expertScalesShape);
 
@@ -194,7 +192,6 @@ int LaunchOneProcessDispatchAndCombine(Args &args)
     int64_t expandScalesShapeSize = GetShapeSize(expandScalesShape);
     int64_t sharedExpertXShapeSize = GetShapeSize(sharedExpertXShape);
 
-    int64_t elasticInfoSize = GetShapeSize(elasticInfoShape);
     int64_t oriXSize = GetShapeSize(oriXShape);
     int64_t constExpertAlpha1Size = GetShapeSize(constExpertAlpha1Shape);
     int64_t constExpertAlpha2Size = GetShapeSize(constExpertAlpha2Shape);
@@ -494,7 +491,7 @@ int main(int argc, char *argv[])
     }
 
     int32_t devicesEp[EP_WORLD_SIZE];
-    for (int32_t epId = 0; epId < EP_WORLD_SIZE; epId++) {
+    for (uint32_t epId = 0; epId < EP_WORLD_SIZE; epId++) {
         devicesEp[epId] = epId;
     }
 

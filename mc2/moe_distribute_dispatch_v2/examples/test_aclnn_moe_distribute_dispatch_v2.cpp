@@ -175,7 +175,6 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     std::vector<int64_t> expandScalesShape{A};
 
     long long xShapeSize = GetShapeSize(xShape);
-    long long expertIdsShapeSize = GetShapeSize(expertIdsShape);
     long long scalesShapeSize = GetShapeSize(scalesShape);
     long long expertScalesShapeSize = GetShapeSize(expertScalesShape);
     long long expandXShapeSize = GetShapeSize(expandXShape);
@@ -426,7 +425,6 @@ int launchOneThreadDispatchV2AndCombineV2_A2(Args &args)
     std::vector<int64_t> xOutShape{Bs, H};
 
     int64_t xShapeSize = GetShapeSize(xShape);
-    int64_t expertIdsShapeSize = GetShapeSize(expertIdsShape);
     int64_t scalesShapeSize = GetShapeSize(scalesShape);
     int64_t expertScalesShapeSize = GetShapeSize(expertScalesShape);
 
@@ -627,7 +625,7 @@ int run_example_on_A2()
     }
 
     int32_t devicesEp[EP_WORLD_SIZE_A2];
-    for (int32_t epId = 0; epId < EP_WORLD_SIZE_A2; epId++) {
+    for (uint32_t epId = 0; epId < EP_WORLD_SIZE_A2; epId++) {
         devicesEp[epId] = epId;
     }
 
@@ -679,7 +677,7 @@ int run_example_on_A3A5()
     }
 
     int32_t devicesEp[EP_WORLD_SIZE];
-    for (int32_t epId = 0; epId < EP_WORLD_SIZE; epId++) {
+    for (uint32_t epId = 0; epId < EP_WORLD_SIZE; epId++) {
         devicesEp[epId] = epId;
     }
     // 初始化ep通信域.
@@ -717,16 +715,16 @@ int main(int argc, char *argv[])
         return 0;
     }
     int actual_env_dev_num = std::stoi(std::string(env_dev_num));
-    if (actual_env_dev_num < DEV_NUM) {
+    if (actual_env_dev_num < static_cast<int32_t>(DEV_NUM)) {
         LOG_PRINT("[INFO] ENV_DEV_NUM = %d is less than %d, currently not supported\n", actual_env_dev_num, DEV_NUM);
         return 0;
     }
     if (IS_TEST_A2) {
         LOG_PRINT("Example on <Atlas A2> will be executed!\n");
-        int ret = run_example_on_A2();
+        run_example_on_A2();
     } else if (IS_TEST_A3A5) {
         LOG_PRINT("Example on <Atlas A3> or <Atlas A5> will be executed!\n");
-        int ret = run_example_on_A3A5();
+        run_example_on_A3A5();
     }
 
     return 0;
