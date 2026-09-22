@@ -94,8 +94,8 @@ struct hcommQuantGmmAlltoAllvTilingData {
     volatile uint32_t barrierSlots[GMM_A2AV_MAX_AIC_CORE_NUM];
 
     // ============ 分阶段诊断开关（host 读环境变量 MC2_APACE_GMM_A2AV_DEBUG_STAGE 填入） ============
-    // 0=完整流程（默认） 1=仅通信(GMM/SoftBarrier 跳过) 2=仅计算(Submit/Wait/Finalize 跳过)
-    // 3=计算+提交(逐批 Wait 跳过, 尾部统一 Wait) —— 真机二分定位卡死域用
+    // 0=完整(默认) 1=仅通信 2=计算+barrier 3=计算+提交(无逐批Wait)
+    // 4=仅GMM 5=仅SoftBarrier 6=仅Init(hcclInit+建表) 7=空kernel —— 真机二分定位卡死域用
     uint32_t debugStage;
 };
 

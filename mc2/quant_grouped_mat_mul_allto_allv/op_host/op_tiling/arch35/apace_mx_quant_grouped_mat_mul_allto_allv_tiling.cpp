@@ -180,11 +180,15 @@ ge::graphStatus ApaceMxQuantGroupedMatmulAllToAllvTiling::SetApaceTilingData(
     td->e = static_cast<uint32_t>(localParams_.ep);
     td->epWorldSize = static_cast<uint32_t>(localParams_.epWorldSize);
     td->hasSharedMm = localParams_.hasSharedMm ? 1U : 0U;
-    // 分阶段诊断开关（真机二分定位卡死域）：0=完整(默认) 1=仅通信 2=仅计算 3=计算+提交
+    // 分阶段诊断开关（真机二分定位卡死域，所有 rank 须一致设置）：
+    // 0=完整(默认) 1=仅通信 2=计算+barrier 3=计算+提交 4=仅GMM 5=仅SoftBarrier 6=仅Init 7=空kernel
     td->debugStage = 0U;
     if (const char *stageEnv = getenv("MC2_APACE_GMM_A2AV_DEBUG_STAGE"); stageEnv != nullptr) {
         td->debugStage = static_cast<uint32_t>(atoi(stageEnv));
-        OP_LOGI(opName_, "Apace debugStage=%u (1=comm-only 2=compute-only 3=submit-no-batch-wait)", td->debugStage);
+        // ERROR 级别确保现场可见，用于确认开关已生效
+        OP_LOGE(opName_,
+                "Apace debugStage=%u生效 (1=仅通信 2=计算+barrier 3=计算+提交 4=仅GMM 5=仅barrier 6=仅Init 7=空kernel)",
+                td->debugStage);
     }
     for (uint64_t i = 0; i < expertNum; i++) {
         td->sendCnt[i] = localTilingData_.taskTilingInfo.sendCnt[i];

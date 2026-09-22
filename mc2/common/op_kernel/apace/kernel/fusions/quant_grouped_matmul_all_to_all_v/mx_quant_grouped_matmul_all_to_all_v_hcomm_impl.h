@@ -235,11 +235,16 @@ MxQuantGroupedMatmulAllToAllvHcommImpl<AType, BType, CType, ServerType, TransGmm
     barrierSlotsGM_ = reinterpret_cast<__gm__ uint32_t *>(tilingGM + offsetof(TilingData, barrierSlots));
 
     // HCCL 初始化（全部 AIC 核；workingFlag_ 仅 block 0 真正写共享状态，镜像同款）
-    hccl_.InitV2(AscendC::GetHcclContext<0>(), &(tilingData_->mc2InitTiling));
-    hccl_.SetCcTilingV2(static_cast<uint64_t>(offsetof(TilingData, mc2CcTiling)));
+    // stage=7（空 kernel 诊断）跳过全部 Hccl 接触
+    if (debugStage_ != 7U) {
+        hccl_.InitV2(AscendC::GetHcclContext<0>(), &(tilingData_->mc2InitTiling));
+        hccl_.SetCcTilingV2(static_cast<uint64_t>(offsetof(TilingData, mc2CcTiling)));
+    }
 
     // 各核写入相同表内容后各自消费（与原算子 QuantGroupedMatmul 模板一致）
-    BuildGmmTables();
+    if (debugStage_ != 7U) {
+        BuildGmmTables();
+    }
 }
 
 // =================================================================================
@@ -431,9 +436,21 @@ __aicore__ inline void
 MxQuantGroupedMatmulAllToAllvHcommImpl<AType, BType, CType, ServerType, TransGmmB, TransMmB>::Run()
 {
     const uint32_t expertNumPerBatch = GetExpertNumPerBatch();
-    // 分阶段诊断（真机二分定位卡死域）：0=完整 1=仅通信 2=仅计算 3=计算+提交
-    const bool skipCompute = (debugStage_ == 1U);
-    const bool skipComm = (debugStage_ == 2U);
+    // 分阶段诊断（真机二分定位卡死域，由小到大逐级累加执行内容）：
+    //   7=空 kernel（仅基址解析，不触碰 Hccl/建表/GMM/barrier）
+    //   6=仅 Init（hccl InitV2/SetCcTilingV2 + 建表，Run 直接返回）
+    //   5=仅 SoftBarrier（跳过 GMM 与通信）
+    //   4=仅 GMM+PipeBarrier（跳过 SoftBarrier 与通信）
+    //   2=GMM+SoftBarrier（跳过通信）
+    //   1=仅通信（跳过 GMM/SoftBarrier）
+    //   3=计算+提交（跳过逐批 Wait，尾部统一 Wait）
+    //   0=完整流程（默认）
+    if (debugStage_ == 7U || debugStage_ == 6U) {
+        return;
+    }
+    const bool skipCompute = (debugStage_ == 1U || debugStage_ == 5U);
+    const bool skipComm = (debugStage_ == 2U || debugStage_ == 4U);
+    const bool skipBarrier = (debugStage_ == 1U || debugStage_ == 4U);
     const bool skipBatchWait = (debugStage_ == 3U);
 
     // 主 GMM 分批（镜像逐批节奏：GMM(b) → barrier → Submit(b) → Wait(b-1)）：
@@ -460,7 +477,9 @@ MxQuantGroupedMatmulAllToAllvHcommImpl<AType, BType, CType, ServerType, TransGmm
             AscendC::PipeBarrier<PIPE_ALL>();
 
             // 跨 AIC 软 barrier（generation = 批序号 + 1，单调递增）
-            SoftBarrier(submitted + 1U);
+            if (!skipBarrier) {
+                SoftBarrier(submitted + 1U);
+            }
         }
 
         if (!skipComm) {
