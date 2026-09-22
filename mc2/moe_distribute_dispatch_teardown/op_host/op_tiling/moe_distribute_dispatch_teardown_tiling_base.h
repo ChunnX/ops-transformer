@@ -55,6 +55,14 @@ protected:
     const bool CheckOutputTensorShapeDim() const;
     const bool CheckTensorShapeRelation();
     const bool CheckTensorShapeSize();
+    struct ShapeSizeCheckParams {
+        int64_t bs = 0;
+        int64_t h = 0;
+        int64_t k = 0;
+        int64_t quantMode = 0;
+    };
+    const bool CheckInputTensorShapeSize(ShapeSizeCheckParams &params);
+    const bool CheckOutputTensorShapeSize(const ShapeSizeCheckParams &params);
     const bool CheckInputTensorDataType();
     const bool CheckOutputTensorDataType() const;
     const bool CheckRelationTensorDataType() const;
