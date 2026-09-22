@@ -17,6 +17,19 @@
 #include "register/op_def_registry.h"
 
 namespace ops {
+namespace {
+// 910b / 910_93 / 950 共用同一组编译与校验开关，仅 opFile.value 不同；
+// 抽为文件内 helper，避免同一段链式配置在每个算子定义里重复。
+inline void ApplyK2qCsrAICoreFlags(OpAICoreConfig &config)
+{
+    config.DynamicCompileStaticFlag(true);
+    config.DynamicFormatFlag(false);
+    config.DynamicRankSupportFlag(true);
+    config.DynamicShapeSupportFlag(true);
+    config.NeedCheckSupportFlag(false);
+    config.PrecisionReduceFlag(true);
+}
+}  // namespace
 class K2qCsrRowPrefix : public OpDef {
 public:
     explicit K2qCsrRowPrefix(const char *name) : OpDef(name)
@@ -43,24 +56,14 @@ public:
         this->Attr("batch").AttrType(REQUIRED).Int(0);
 
         OpAICoreConfig aicoreConfig;
-        aicoreConfig.DynamicCompileStaticFlag(true)
-            .DynamicFormatFlag(false)
-            .DynamicRankSupportFlag(true)
-            .DynamicShapeSupportFlag(true)
-            .NeedCheckSupportFlag(false)
-            .PrecisionReduceFlag(true)
-            .ExtendCfgInfo("opFile.value", "k2q_csr_row_prefix");
+        ApplyK2qCsrAICoreFlags(aicoreConfig);
+        aicoreConfig.ExtendCfgInfo("opFile.value", "k2q_csr_row_prefix");
         this->AICore().AddConfig("ascend910b", aicoreConfig);
         this->AICore().AddConfig("ascend910_93", aicoreConfig);
 
         OpAICoreConfig a5Config;
-        a5Config.DynamicCompileStaticFlag(true)
-            .DynamicFormatFlag(false)
-            .DynamicRankSupportFlag(true)
-            .DynamicShapeSupportFlag(true)
-            .NeedCheckSupportFlag(false)
-            .PrecisionReduceFlag(true)
-            .ExtendCfgInfo("opFile.value", "k2q_csr_row_prefix_apt");
+        ApplyK2qCsrAICoreFlags(a5Config);
+        a5Config.ExtendCfgInfo("opFile.value", "k2q_csr_row_prefix_apt");
         this->AICore().AddConfig("ascend950", a5Config);
     }
 };
