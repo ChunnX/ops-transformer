@@ -548,7 +548,7 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::Init(__gm__ uint8_t *query
 {
     if ASCEND_IS_AIV {
         tmpBlockIdx = GetBlockIdx(); // vec:0-47
-        aiCoreIdx = tmpBlockIdx / 2;
+        aiCoreIdx = tmpBlockIdx / CVRATIO;
     } else {
         tmpBlockIdx = GetBlockIdx(); // cube:0-23
         aiCoreIdx = tmpBlockIdx;
@@ -707,7 +707,7 @@ template <typename LIT>
 __aicore__ inline void LightningIndexerV2Kernel<LIT>::ProcessInvalid()
 {
     if ASCEND_IS_AIV {
-        uint32_t aivCoreNum = GetBlockNum() * 2; // 2 means c:v = 1:2
+        uint32_t aivCoreNum = GetBlockNum() * CVRATIO;
         uint64_t totalOutputSize =
             static_cast<uint64_t>(constInfo.batchSize) * constInfo.qSeqSize * constInfo.kHeadNum * constInfo.topk;
         uint64_t singleCoreSize =
@@ -778,10 +778,13 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::ProcessMain()
         matmulService.FreeEventID();
         CrossCoreWaitFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(LIV2Common::ConstInfo::CROSS_VC_EVENT + 0);
         CrossCoreWaitFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(LIV2Common::ConstInfo::CROSS_VC_EVENT + 1);
+#if CVRATIO > 1
+        // 950(1:2): 收尾需等待AIV1(配对第二V核)的VC事件; 960(1:1): 无AIV1, +OFFSET事件无人设置, 不能等待
         CrossCoreWaitFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(LIV2Common::ConstInfo::CROSS_VC_EVENT + 0 +
                                                                           LIV2Common::ConstInfo::AIV0_AIV1_OFFSET);
         CrossCoreWaitFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(LIV2Common::ConstInfo::CROSS_VC_EVENT + 1 +
                                                                           LIV2Common::ConstInfo::AIV0_AIV1_OFFSET);
+#endif
     }
 }
 
