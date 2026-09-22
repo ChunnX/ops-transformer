@@ -3,22 +3,22 @@
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Ascend 950PR&950DT系列产品</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+- <term>Atlas A3系列产品</term>：支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+- <term>Atlas A2系列产品</term>：支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 200I/500 A2推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas推理系列产品</term>：不支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：不支持
+- <term>Atlas训练系列产品</term>：不支持
 <!-- end id6 -->
 
 ## 功能说明
@@ -248,13 +248,13 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
 ### 产品差异化约束
 
 <!-- npu="950" id7 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：
+- <term>Ascend 950PR&950DT系列产品</term>：
   - 仅支持`quant_mode=1/2`。q、attention_out的数据类型为bfloat16，ori_kv、cmp_kv的数据类型为fp8_e4m3。
   - 下文参数组约束适用于`quant_mode=1/2`场景。
 <!-- end id7 -->
 
-<!-- npu="A3,910b" id8 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+<!-- npu="A3" id8 -->
+- <term>Atlas A3系列产品</term>：
   - 仅支持`quant_mode=3`的TurboQuant路径。
   - q、attention_out：`layout_q`为TND；数据类型为float16或bfloat16且保持一致；q_n为4到128的4的倍数，q_d为512，q_t允许为0。
   - ori_kv、cmp_kv：均必须传入，`layout_kv`为PA_BBND。ori_kv的数据类型与q一致且kv_d为512；cmp_kv的数据类型为uint8且kv_d为258。两者block_size均为16到1024的16的倍数。
@@ -262,6 +262,16 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
   - 序列参数：cu_seqlens_q、seqused_ori_kv必须传入；cu_seqlens_ori_kv、cu_seqlens_cmp_kv、seqused_q、seqused_cmp_kv不支持传入。
   - Mask与压缩参数：`ori_mask_mode=4`、`cmp_mask_mode=3`、`ori_win_left>=0`、`ori_win_right=0`，`cmp_ratio`仅支持4或128；cmp_residual_kv不支持传入。
 <!-- end id8 -->
+
+<!-- npu="910b" id9 -->
+- <term>Atlas A2系列产品</term>：
+  - 仅支持`quant_mode=3`的TurboQuant路径。
+  - q、attention_out：`layout_q`为TND；数据类型为float16或bfloat16且保持一致；q_n为4到128的4的倍数，q_d为512，q_t允许为0。
+  - ori_kv、cmp_kv：均必须传入，`layout_kv`为PA_BBND。ori_kv的数据类型与q一致且kv_d为512；cmp_kv的数据类型为uint8且kv_d为258。两者block_size均为16到1024的16的倍数。
+  - 稀疏与PA参数：cmp_sparse_indices、ori_block_table、cmp_block_table必须传入；cmp_sparse_indices的shape为(q_t, 1, 512)或(q_t, 1, 1024)。ori_sparse_indices、ori_topk_length、cmp_topk_length不支持传入。
+  - 序列参数：cu_seqlens_q、seqused_ori_kv必须传入；cu_seqlens_ori_kv、cu_seqlens_cmp_kv、seqused_q、seqused_cmp_kv不支持传入。
+  - Mask与压缩参数：`ori_mask_mode=4`、`cmp_mask_mode=3`、`ori_win_left>=0`、`ori_win_right=0`，`cmp_ratio`仅支持4或128；cmp_residual_kv不支持传入。
+<!-- end id9 -->
 
 ### 特性参数组
 
