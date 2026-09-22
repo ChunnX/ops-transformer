@@ -90,7 +90,8 @@ __aicore__ inline void GroupedMatMulKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bi
                                           gmmBaseParams.singleY == 1,
                                           BlockMmad::TRANS_B,
                                           BlockMmad::WEIGHT_NZ_FORMAT,
-                                          static_cast<uint32_t>(sizeof(BType))};
+                                          static_cast<uint32_t>(sizeof(BType)),
+                                          static_cast<uint32_t>(gmmBaseParams.groupListType)};
 
     typename BlockMmad::Params mmParams;
     mmParams.aGmAddr = x;
