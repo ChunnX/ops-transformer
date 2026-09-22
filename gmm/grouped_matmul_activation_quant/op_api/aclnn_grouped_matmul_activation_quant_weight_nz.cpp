@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include "../../common/op_api/gmm_tensor_storage_check.h"
 #include "aclnn_grouped_matmul_activation_quant_weight_nz.h"
 
 #include <cmath>
@@ -767,6 +768,14 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
     aclnnStatus checkRet = CheckRequiredParams(x, groupList, weight, weightScale, activationType, y, yScale);
     CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
+    CHECK_RET(gmm::CheckTensorStorageBounds(x, "x"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(groupList, "groupList"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorListStorageBounds(weight, "weight"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorListStorageBounds(weightScale, "weightScale"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorListStorageBounds(bias, "bias"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(xScaleOptional, "xScaleOptional"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(y, "y"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(yScale, "yScale"), ACLNN_ERR_PARAM_INVALID);
     bool transposeWeight = false;
 
     auto uniqueExecutor = CREATE_EXECUTOR();
