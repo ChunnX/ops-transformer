@@ -1,0 +1,296 @@
+﻿# aclnnFusedFloydAttentionGrad 测试因子定义
+# 来源: tests/st/design/01_parameter_description.md（步骤 2 映射产物）
+operator_name: aclnnFusedFloydAttentionGrad
+
+# ===== 中间因子（shape 轴语义变量，预算分配链：_h/_d 锚点 → _b → _n → _m → _k 级联预算收窄） =====
+intermediate:
+  _h:
+    type: int64_t
+    factors:
+      _h.value_range:
+        - [1, 1]
+        - [1, 4]
+        - [4, 16]
+        - [16, 64]
+        - [64, 256]
+      # 来源: 01 约束关系 R2 "H：取值范围为1~256"（接口文档约束说明）；5 段覆盖完整文档范围
+  _d:
+    type: int64_t
+    factors:
+      _d.value: [32, 64, 128]
+      # 来源: 01 约束关系 R6 "D：取值范围为32/64/128"（有限离散集合，显式枚举）
+  _b:
+    type: int64_t
+    factors:
+      _b.value_range:
+        - [1, 1]
+        - [1, 8]
+        - [8, 64]
+        - [64, 512]
+        - [512, 2048]
+      # 来源: 01 约束关系 R1 "B：取值范围为1~2K"（接口文档约束说明）；5 段覆盖完整文档范围；
+      #       _b.value 由 @solves 按 2G shape 预算收窄（B*H*K*M*D ≤ 2G，K/M 下界 128）
+  _n:
+    type: int64_t
+    factors:
+      _n.value_range:
+        - [16, 16]
+        - [16, 256]
+        - [256, 4096]
+        - [4096, 65536]
+        - [65536, 1048576]
+      # 来源: 01 约束关系 R3 "N：取值范围为16~1M且N%16==0"；5 段覆盖完整文档范围；
+      #       _n.value 由 @solves 做 16 对齐采样 + 2G 预算收窄
+  _m:
+    type: int64_t
+    factors:
+      _m.value_range:
+        - [128, 128]
+        - [128, 1024]
+        - [1024, 16384]
+        - [16384, 131072]
+        - [131072, 1048576]
+      # 来源: 01 约束关系 R4 "M：取值范围为128~1M且M%128==0"；5 段覆盖完整文档范围；
+      #       _m.value 由 @solves 做 128 对齐采样 + 2G 预算收窄
+  _k:
+    type: int64_t
+    factors:
+      _k.value_range:
+        - [128, 128]
+        - [128, 1024]
+        - [1024, 16384]
+        - [16384, 131072]
+        - [131072, 1048576]
+      # 来源: 01 约束关系 R5 "K：取值范围为128~1M且K%128==0"；5 段覆盖完整文档范围；
+      #       _k.value 由 @solves 做 128 对齐采样 + 2G 预算收窄
+
+# ===== 算子参数 =====
+query:
+  type: aclTensor
+  io_type: input
+  support_empty_tensor: false
+  # 来源: 01 参数表"空tensor"列 "不支持"（各轴下界均为正：B≥1/H≥1/N≥16/M≥128/D∈{32,64,128}，
+  #       接口文档约束说明轴范围排除 0；host 代码 "input shape error, got 0 in bhmnkd" 佐证）
+  factors:
+    query.exist: [true]
+    query.format: [ND]
+    # 来源: 01 参数表"数据格式"列 "ND"（单一格式）
+    query.dimensions: [5]
+    # 来源: 01 参数表"维度/长度"列 "5维 [B,H,N,M,D]"
+    query.dtype: [float16, bfloat16]
+    # 来源: 01 参数表"数据类型"列 "FLOAT16、BFLOAT16"
+    query.shape: []
+    # 来源: @solved — R7/R10/R11/R14/R19 shape 约束链，由 _b/_h/_n/_m/_d 推导
+
+key1:
+  type: aclTensor
+  io_type: input
+  support_empty_tensor: false
+  factors:
+    key1.exist: [true]
+    key1.format: [ND]
+    key1.dimensions: [5]
+    key1.dtype: [float16, bfloat16]
+    key1.shape: []
+
+value1:
+  type: aclTensor
+  io_type: input
+  support_empty_tensor: false
+  factors:
+    value1.exist: [true]
+    value1.format: [ND]
+    value1.dimensions: [5]
+    value1.dtype: [float16, bfloat16]
+    value1.shape: []
+
+key2:
+  type: aclTensor
+  io_type: input
+  support_empty_tensor: false
+  factors:
+    key2.exist: [true]
+    key2.format: [ND]
+    key2.dimensions: [5]
+    key2.dtype: [float16, bfloat16]
+    key2.shape: []
+
+value2:
+  type: aclTensor
+  io_type: input
+  support_empty_tensor: false
+  factors:
+    value2.exist: [true]
+    value2.format: [ND]
+    value2.dimensions: [5]
+    value2.dtype: [float16, bfloat16]
+    value2.shape: []
+
+dy:
+  type: aclTensor
+  io_type: input
+  support_empty_tensor: false
+  factors:
+    dy.exist: [true]
+    dy.format: [ND]
+    dy.dimensions: [5]
+    dy.dtype: [float16, bfloat16]
+    dy.shape: []
+
+attenMaskOptional:
+  type: aclTensor
+  io_type: input
+  support_empty_tensor: false
+  factors:
+    attenMaskOptional.exist: [true, false]
+    # 来源: 01 参数表"必选/可选"列 "可选（推断自：参数名含Optional后缀 + README'可选输入'）"
+    attenMaskOptional.format: [ND]
+    attenMaskOptional.dimensions: [5]
+    attenMaskOptional.dtype: [bool, uint8]
+    # 来源: 01 参数表"数据类型"列 "BOOL、UINT8"
+    attenMaskOptional.shape: []
+    attenMaskOptional.value_range_bool:
+      - [0, 0]
+      - [1, 1]
+      - [0, 1]
+    # 来源: 01 约束关系 R20 元素值域 {0,1}（"取值为1代表该位不参与计算，为0代表该位参与计算"）；
+    #       三段覆盖 全参与(0)/全掩蔽(1)/混合(0~1) 三种取数场景
+    attenMaskOptional.value_range_uint8:
+      - [0, 0]
+      - [1, 1]
+      - [0, 1]
+    # 来源: 同上（uint8 dtype 的二值语义与 bool 一致）
+
+softmaxMax:
+  type: aclTensor
+  io_type: input
+  support_empty_tensor: false
+  factors:
+    softmaxMax.exist: [true]
+    softmaxMax.format: [ND]
+    softmaxMax.dimensions: [5]
+    softmaxMax.dtype: [float32]
+    # 来源: 01 参数表"数据类型"列 "FLOAT"（固定 float32）
+    softmaxMax.shape: []
+
+softmaxSum:
+  type: aclTensor
+  io_type: input
+  support_empty_tensor: false
+  factors:
+    softmaxSum.exist: [true]
+    softmaxSum.format: [ND]
+    softmaxSum.dimensions: [5]
+    softmaxSum.dtype: [float32]
+    softmaxSum.shape: []
+
+attentionIn:
+  type: aclTensor
+  io_type: input
+  support_empty_tensor: false
+  factors:
+    attentionIn.exist: [true]
+    attentionIn.format: [ND]
+    attentionIn.dimensions: [5]
+    attentionIn.dtype: [float16, bfloat16]
+    attentionIn.shape: []
+
+scaleValue:
+  type: double
+  io_type: input
+  factors:
+    scaleValue.exist: [true]
+    scaleValue.dtype: [float64]
+    # 来源: 01 参数表"数据类型"列 "DOUBLE"（固定单值，属性参数类型固定，不作为离散覆盖维度）
+    scaleValue.value_range_float64:
+      - [0, 0.001]
+      - [0.001, 0.01]
+      - [0.01, 1]
+      - [1, 2]
+      - [2, 10]
+      - [10, 1000]
+      - [-0.001, 0]
+      - [-0.01, -0.001]
+      - [-1, -0.01]
+      - [-2, -1]
+      - [-10, -2]
+      - [-1000, -10]
+      - [-1, 1]
+      - [-0.01, 0.01]
+      - [-100, 100]
+      - [0, 0]
+      - [1.0, 1.0]
+      - [0.0884, 0.1768]
+      - [3.4028235e+38, 3.4028235e+38]
+      - [-3.4028235e+38, -3.4028235e+38]
+      - [1.7976931348623157e+308, 1.7976931348623157e+308]
+      - [-1.7976931348623157e+308, -1.7976931348623157e+308]
+      - [2.2250738585072014e-308, 2.2250738585072014e-308]
+      - [-2.2250738585072014e-308, -2.2250738585072014e-308]
+      - ["-0", "-0"]
+      - ["+0", "+0"]
+      - ["-0", "+0"]
+    # 来源: 01 参数表"取值范围"列 — dtype 数值边界集合（极值/零/±1 段/最小正数/±0）+ 文档语义边界
+    #       （README "默认值为1.0" → [1.0,1.0] 退化段；调用示例 "1.0/sqrt(128)" → 典型 1/√D ∈ [0.0884,0.1768] 段）；
+    #       scaleValue 为缩放系数属性（非 tensor 浮点输入），01 取值范围未定义 inf/nan 语义，
+    #       与 spec.md §2.2 数据范围覆盖一致（零/±1/极值/最小正数/±0 + 语义边界），不含 inf/nan 段
+
+dqOut:
+  type: aclTensor
+  io_type: output
+  support_non_contiguous: false
+  # 来源: 01 参数表"非连续"列 "不支持"（约束说明"该接口不支持非连续输出"）
+  factors:
+    dqOut.exist: [true]
+    dqOut.format: [ND]
+    dqOut.dimensions: [5]
+    dqOut.dtype: [float16, bfloat16]
+    dqOut.shape: []
+
+dk1Out:
+  type: aclTensor
+  io_type: output
+  support_non_contiguous: false
+  # 来源: 同上（约束说明"该接口不支持非连续输出"）
+  factors:
+    dk1Out.exist: [true]
+    dk1Out.format: [ND]
+    dk1Out.dimensions: [5]
+    dk1Out.dtype: [float16, bfloat16]
+    dk1Out.shape: []
+
+dv1Out:
+  type: aclTensor
+  io_type: output
+  support_non_contiguous: false
+  # 来源: 同上（约束说明"该接口不支持非连续输出"）
+  factors:
+    dv1Out.exist: [true]
+    dv1Out.format: [ND]
+    dv1Out.dimensions: [5]
+    dv1Out.dtype: [float16, bfloat16]
+    dv1Out.shape: []
+
+dk2Out:
+  type: aclTensor
+  io_type: output
+  support_non_contiguous: false
+  # 来源: 同上（约束说明"该接口不支持非连续输出"）
+  factors:
+    dk2Out.exist: [true]
+    dk2Out.format: [ND]
+    dk2Out.dimensions: [5]
+    dk2Out.dtype: [float16, bfloat16]
+    dk2Out.shape: []
+
+dv2Out:
+  type: aclTensor
+  io_type: output
+  support_non_contiguous: false
+  # 来源: 同上（约束说明"该接口不支持非连续输出"）
+  factors:
+    dv2Out.exist: [true]
+    dv2Out.format: [ND]
+    dv2Out.dimensions: [5]
+    dv2Out.dtype: [float16, bfloat16]
+    dv2Out.shape: []
