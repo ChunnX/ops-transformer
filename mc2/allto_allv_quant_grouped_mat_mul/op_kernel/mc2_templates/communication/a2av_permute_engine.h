@@ -94,6 +94,55 @@ __aicore__ inline void TileDataCopyLoopDoubleBuf(LocalTensor<ElemType> &ubBufA, 
     }
 }
 
+struct PermutePairInfo {
+    uint32_t rankIndex;
+    uint32_t expertIdx;
+    uint32_t srcPos;
+    uint32_t dstPos;
+};
+
+template <bool SrcIsExpertFirst, bool DstIsExpertFirst>
+__aicore__ inline PermutePairInfo GetPermutePairInfo(uint32_t pairIdx, uint32_t rankDim, uint32_t startExpertIdx,
+                                                     uint32_t expertNum)
+{
+    PermutePairInfo pairInfo;
+    if constexpr (!SrcIsExpertFirst) {
+        pairInfo.rankIndex = pairIdx / expertNum;
+        pairInfo.expertIdx = startExpertIdx + (pairIdx % expertNum);
+    } else {
+        pairInfo.expertIdx = startExpertIdx + (pairIdx / rankDim);
+        pairInfo.rankIndex = pairIdx % rankDim;
+    }
+
+    uint32_t localExpertIdx = pairInfo.expertIdx - startExpertIdx;
+
+    if constexpr (!SrcIsExpertFirst) {
+        pairInfo.srcPos = pairInfo.rankIndex * expertNum + localExpertIdx;
+    } else {
+        pairInfo.srcPos = localExpertIdx * rankDim + pairInfo.rankIndex;
+    }
+    if constexpr (!DstIsExpertFirst) {
+        pairInfo.dstPos = pairInfo.rankIndex * expertNum + localExpertIdx;
+    } else {
+        pairInfo.dstPos = localExpertIdx * rankDim + pairInfo.rankIndex;
+    }
+
+    return pairInfo;
+}
+
+__aicore__ inline uint64_t GetPermuteBatchTokenCount(const uint64_t *offsetCounts, uint32_t e, uint32_t rankDim,
+                                                     uint32_t startExpertIdx, uint32_t expertNum)
+{
+    uint32_t endExpertIdx = startExpertIdx + expertNum;
+    uint64_t currentDataCount = 0UL;
+    for (uint32_t expertIdxIter = startExpertIdx; expertIdxIter < endExpertIdx; expertIdxIter++) {
+        for (uint32_t rankIndexIter = 0U; rankIndexIter < rankDim; rankIndexIter++) {
+            currentDataCount += offsetCounts[rankIndexIter * e + expertIdxIter];
+        }
+    }
+    return currentDataCount;
+}
+
 template <typename ElemType, bool SrcIsExpertFirst, bool DstIsExpertFirst>
 __aicore__ inline void PermuteImplParallel(GlobalTensor<ElemType> &srcBuffer, GlobalTensor<ElemType> &dstBuffer,
                                            const uint64_t *offsetCounts, uint32_t e, uint32_t rankDim,
@@ -119,42 +168,21 @@ __aicore__ inline void PermuteImplParallel(GlobalTensor<ElemType> &srcBuffer, Gl
     uint32_t myStartPair = myBlockIdx * pairsPerCore;
     uint32_t myEndPair = (myStartPair + pairsPerCore > totalPairs) ? totalPairs : (myStartPair + pairsPerCore);
 
-    uint32_t endExpertIdx = startExpertIdx + expertNum;
-
     for (uint32_t pairIdx = myStartPair; pairIdx < myEndPair; pairIdx++) {
-        uint32_t rankIndex, expertIdx;
-        if constexpr (!SrcIsExpertFirst) {
-            rankIndex = pairIdx / expertNum;
-            expertIdx = startExpertIdx + (pairIdx % expertNum);
-        } else {
-            expertIdx = startExpertIdx + (pairIdx / rankDim);
-            rankIndex = pairIdx % rankDim;
-        }
-
-        uint32_t localExpertIdx = expertIdx - startExpertIdx;
-
-        uint32_t srcPos, dstPos;
-        if constexpr (!SrcIsExpertFirst) {
-            srcPos = rankIndex * expertNum + localExpertIdx;
-        } else {
-            srcPos = localExpertIdx * rankDim + rankIndex;
-        }
-        if constexpr (!DstIsExpertFirst) {
-            dstPos = rankIndex * expertNum + localExpertIdx;
-        } else {
-            dstPos = localExpertIdx * rankDim + rankIndex;
-        }
+        const auto pairInfo =
+            GetPermutePairInfo<SrcIsExpertFirst, DstIsExpertFirst>(pairIdx, rankDim, startExpertIdx, expertNum);
 
         uint64_t srcOffset = permuteBaseOffset;
-        if (srcPos != 0U) {
-            srcOffset += sumCntSrc[srcPos - 1U] * axis;
+        if (pairInfo.srcPos != 0U) {
+            srcOffset += sumCntSrc[pairInfo.srcPos - 1U] * axis;
         }
         uint64_t dstOffset = permuteBaseOffset;
-        if (dstPos != 0U) {
-            dstOffset += sumCntDst[dstPos - 1U] * axis;
+        if (pairInfo.dstPos != 0U) {
+            dstOffset += sumCntDst[pairInfo.dstPos - 1U] * axis;
         }
 
-        uint64_t totalCnt = static_cast<uint64_t>(offsetCounts[rankIndex * e + expertIdx]) * axis * sizeof(ElemType);
+        uint64_t totalCnt =
+            static_cast<uint64_t>(offsetCounts[pairInfo.rankIndex * e + pairInfo.expertIdx]) * axis * sizeof(ElemType);
 
         if (totalCnt == 0UL) {
             continue;
@@ -164,12 +192,7 @@ __aicore__ inline void PermuteImplParallel(GlobalTensor<ElemType> &srcBuffer, Gl
                                             bufferLen, pipe);
     }
 
-    uint64_t currentDataCount = 0UL;
-    for (uint32_t expertIdxIter = startExpertIdx; expertIdxIter < endExpertIdx; expertIdxIter++) {
-        for (uint32_t rankIndexIter = 0U; rankIndexIter < rankDim; rankIndexIter++) {
-            currentDataCount += offsetCounts[rankIndexIter * e + expertIdxIter];
-        }
-    }
+    uint64_t currentDataCount = GetPermuteBatchTokenCount(offsetCounts, e, rankDim, startExpertIdx, expertNum);
     permuteBaseOffset += currentDataCount * axis;
 }
 
