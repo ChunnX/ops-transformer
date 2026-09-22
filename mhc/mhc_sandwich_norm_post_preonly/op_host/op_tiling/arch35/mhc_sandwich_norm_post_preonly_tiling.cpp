@@ -28,6 +28,7 @@ constexpr uint32_t PARTIAL_SLOTS_PER_TOKEN = 2;
 constexpr uint64_t TILING_KEY_USE_RMS_MID = 1ULL << 0;
 constexpr uint64_t TILING_KEY_RETURN_H_IN_F32 = 1ULL << 1;
 constexpr uint64_t TILING_KEY_DUAL_SIBLING_AIV = 1ULL << 2;
+constexpr uint64_t TILING_KEY_D_SPLIT_AIV = 1ULL << 3;
 
 static ge::graphStatus TilingMhcSandwichNormPostPreonly(gert::TilingContext *context)
 {
@@ -193,6 +194,8 @@ static ge::graphStatus TilingMhcSandwichNormPostPreonly(gert::TilingContext *con
     const bool dualSiblingDim = D == 2560U || D == 5120U || D == 6144U || D == 7168U;
     const bool enableDualSibling =
         totalTokens == 4U && dualSiblingDim && useRmsMid && !returnHInF32 && hOutDesc->GetDataType() == ge::DT_BF16;
+    // D轴切分仅在D=5120（dimLoop==2、无尾块、可均分给两条lane）时启用，其余继续走head切分。
+    const bool enableDSplit = enableDualSibling && D == 5120U;
     const uint32_t coresPerToken = enableDualSibling ? 2U : 1U;
     const uint32_t usedCoreNum = std::min(totalTokens, enableDualSibling ? (coreNumAiv / 2U) : coreNumAiv);
     uint32_t rowsPerCore = totalTokens / usedCoreNum;
@@ -240,7 +243,8 @@ static ge::graphStatus TilingMhcSandwichNormPostPreonly(gert::TilingContext *con
     }
     uint64_t tilingKey = (useRmsMid ? TILING_KEY_USE_RMS_MID : 0ULL) |
                          (returnHInF32 ? TILING_KEY_RETURN_H_IN_F32 : 0ULL) |
-                         (coresPerToken == 2 ? TILING_KEY_DUAL_SIBLING_AIV : 0ULL);
+                         (coresPerToken == 2 ? TILING_KEY_DUAL_SIBLING_AIV : 0ULL) |
+                         (enableDSplit ? TILING_KEY_D_SPLIT_AIV : 0ULL);
     context->SetTilingKey(tilingKey);
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());

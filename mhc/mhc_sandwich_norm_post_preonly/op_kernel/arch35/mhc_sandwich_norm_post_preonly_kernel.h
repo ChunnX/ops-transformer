@@ -23,7 +23,7 @@
 #include "mhc_sandwich_norm_post_preonly_common.h"
 #include "mhc_sandwich_norm_post_preonly_regbase.h"
 
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING = false>
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING = false, bool D_SPLIT = false>
 class KernelMhcSandwichNormPostPreonly {
 public:
     __aicore__ inline KernelMhcSandwichNormPostPreonly() {}
@@ -110,9 +110,9 @@ public:
         // UB空间分配
         pipe_.InitBuffer(bufHOutBf16_, BUFFER_NUM_ONE, dimTile_ * sizeof(T));
         pipe_.InitBuffer(bufGamma0Fp32_, D_ * sizeof(float));
-        // 双sibling每条lane只恢复并归约自己负责的两个head，使用紧凑两行缓存。
-        const uint32_t x2Fp32Rows = DUAL_SIBLING ? 2U : N_;
-        pipe_.InitBuffer(bufX2Fp32_, x2Fp32Rows * dimTile_ * sizeof(float));
+        // 双sibling的head切分每条lane只恢复并归约自己负责的两个head，使用紧凑两行缓存；
+        // D轴切分每条lane负责全部四个head的D/2段，需要完整四行。统一分配N_行，head切分只用前两行。
+        pipe_.InitBuffer(bufX2Fp32_, N_ * dimTile_ * sizeof(float));
         // 完整gamma0复用初始同步；gamma1在D不超过5120时完整缓存。
         // D=7168时总UB为260448B，小于A5的256KiB上限并保留1696B余量。
         pipe_.InitBuffer(bufX2Cache_, K_ * sizeof(T));
@@ -147,8 +147,8 @@ public:
         if (tokenStart_ >= tokenEnd_) {
             return;
         }
-        // 双AIV的follower在会合后退出，不参与gate计算，省去五次无效标量GM读取。
-        if constexpr (!DUAL_SIBLING) {
+        // 双AIV的head切分follower在会合后退出，不参与gate计算；D切分两条lane对称、都需要gate参数。
+        if constexpr (!DUAL_SIBLING || D_SPLIT) {
             alpha0_ = alpha0Gm_.GetValue(0);
             for (uint32_t i = 0; i < N_MAX; ++i) {
                 biasCache_[i] = biasGm_.GetValue(i);
@@ -173,7 +173,9 @@ public:
         WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
 
         for (uint32_t t = tokenStart_; t < tokenEnd_; ++t) {
-            if constexpr (DUAL_SIBLING) {
+            if constexpr (D_SPLIT) {
+                ProcessTokenDSplitAiv(t);
+            } else if constexpr (DUAL_SIBLING) {
                 ProcessTokenDualSiblingAiv(t);
             } else {
                 ProcessTokenSingleAiv(t);
@@ -197,6 +199,7 @@ public:
 private:
     __aicore__ inline void ProcessTokenSingleAiv(uint32_t token);
     __aicore__ inline void ProcessTokenDualSiblingAiv(uint32_t token);
+    __aicore__ inline void ProcessTokenDSplitAiv(uint32_t token);
     __aicore__ inline void ComputeX2PostTile(uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
                                              const float (&postVals)[N_MAX]);
     __aicore__ inline void ComputeX2PostTileForLane(uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
@@ -209,7 +212,7 @@ private:
     __aicore__ inline void LoadHInCacheTile(uint32_t tOff, uint32_t tD, LocalTensor<float> hIn);
     __aicore__ inline void AccumulateHalfPartials(uint32_t tOff, uint32_t tD, float (&sumSqHalf)[2],
                                                   float (&dotHalf)[2][N_MAX], uint32_t halfBegin = 0,
-                                                  uint32_t halfEnd = 2);
+                                                  uint32_t halfEnd = 2, bool laneLayout = DUAL_SIBLING);
 
     // =================================================================
     //  共享计算模块

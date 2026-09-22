@@ -25,4 +25,11 @@ __aicore__ inline void MhcPairReadySync()
     CrossCoreWaitFlag<0x1, PIPE_MTE2>(PAIR_READY_FLAG);
 }
 
+// D轴切分：四阶段各自独立mode1握手。
+__aicore__ inline void MhcDSplitSync(uint16_t flag)
+{
+    CrossCoreSetFlag<0x1, PIPE_MTE3>(flag);
+    CrossCoreWaitFlag<0x1, PIPE_MTE2>(flag);
+}
+
 #endif // MHC_SANDWICH_NORM_POST_PREONLY_CROSSCORE_SYNC_H_
