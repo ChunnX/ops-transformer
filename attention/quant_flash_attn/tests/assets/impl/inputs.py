@@ -330,6 +330,12 @@ def generate_qfa_mxfp8_inputs(
         for b in range(B):
             main_len = actual_seq_kv[b] - tail_lens[b]
             seg = v_bf16[b, :, main_len : actual_seq_kv[b], :]  # (N_kv, tail, D) bf16原值
+            # [红线溢出用例] data_range极端值(±fp32_max)时bf16表示溢出为NaN/Inf —
+            # clamp到bf16安全范围(finfo), 避免NaN毒化golden(全NaN)与NPU输入
+            if torch.isnan(seg.float()).any() or torch.isinf(seg.float()).any():
+                seg = seg.float().clamp(
+                    torch.finfo(torch.bfloat16).min, torch.finfo(torch.bfloat16).max
+                ).to(torch.bfloat16)
             seg_pad = torch.zeros(N_kv, tail_capacity, D, dtype=torch.bfloat16)
             if tail_lens[b] > 0:
                 seg_pad[:, : tail_lens[b], :] = seg
