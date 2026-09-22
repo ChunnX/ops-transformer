@@ -19,6 +19,10 @@
 namespace FFNToAttentionV2UT {
 namespace {
 
+// GET_TPL_TILING_KEY 宏展开引用不带限定的 g_tilingDeclareParams（由 tilling_key.h 在
+// namespace Mc2Tiling 内生成），此处显式引入该 TU 内符号。
+using Mc2Tiling::g_tilingDeclareParams;
+
 using TensorDescription = gert::TilingContextPara::TensorDescription;
 using OpAttr = gert::TilingContextPara::OpAttr;
 
