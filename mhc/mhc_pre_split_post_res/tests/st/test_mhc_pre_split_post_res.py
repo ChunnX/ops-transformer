@@ -235,10 +235,17 @@ def mhc_pre_split_golden_npu(
     x_flat = x2.reshape(B, S, N * D).float()
     inv_rms = torch.rsqrt(x_flat.square().mean(dim=-1, keepdim=True) + norm_eps)
     x_hat = torch.matmul(x_flat, phi.float().T) * inv_rms
-    x_post, x_comb = torch.split(x_hat, [N, N * N], dim=-1)
-    b_post, b_comb = torch.split(bias.float(), [N, N * N], dim=-1)
+    # phi 双形态：行数 N^2+N（完整，输出 h_res）/ N（仅 post，无 h_res）
+    has_res = phi.shape[0] == N * N + N
+    x_post = x_hat[..., :N]
+    b_post = bias.float()[..., :N]
     h_post = 2.0 * torch.sigmoid(alpha[0] * x_post + b_post)
-    h_res = alpha[1] * x_comb.view(B, S, N, N) + b_comb.view(N, N)
+    if has_res:
+        x_comb = x_hat[..., N:]
+        b_comb = bias.float()[..., N:]
+        h_res = alpha[1] * x_comb.view(B, S, N, N) + b_comb.view(N, N)
+    else:
+        h_res = torch.empty(0, dtype=h_post.dtype, device=h_post.device)
     return MhcOutputTensors(h_post=h_post, h_res=h_res)
 
 
@@ -251,17 +258,25 @@ def mhc_pre_split_golden_cpu(
     x_flat = x2.reshape(B, S, N * D)
     inv_rms = torch.rsqrt(x_flat.square().mean(dim=-1, keepdim=True) + norm_eps)
     x_hat = torch.matmul(x_flat, phi.T) * inv_rms
-    x_post, x_comb = torch.split(x_hat, [N, N * N], dim=-1)
-    b_post, b_comb = torch.split(bias, [N, N * N], dim=-1)
+    # phi 双形态：行数 N^2+N（完整，输出 h_res）/ N（仅 post，无 h_res）
+    has_res = phi.shape[0] == N * N + N
+    x_post = x_hat[..., :N]
+    b_post = bias[..., :N]
     h_post = 2.0 * torch.sigmoid(alpha[0] * x_post + b_post)
-    h_res = alpha[1] * x_comb.view(B, S, N, N) + b_comb.view(N, N)
+    if has_res:
+        x_comb = x_hat[..., N:]
+        b_comb = bias[..., N:]
+        h_res = alpha[1] * x_comb.view(B, S, N, N) + b_comb.view(N, N)
+    else:
+        h_res = torch.empty(0, dtype=h_post.dtype)
     return MhcOutputTensors(h_post=h_post, h_res=h_res)
 
 
 class TestMhcPreSplitPostRes(TestCase):
-    def _generate_input_tensors(self, B, S, N, D, dtype, seed) -> MhcInputTensors:
+    def _generate_input_tensors(self, B, S, N, D, dtype, seed, phi_rows=None) -> MhcInputTensors:
         np.random.seed(seed)
-        phi_rows = N * N + N
+        if phi_rows is None:
+            phi_rows = N * N + N
 
         x_np = np.random.uniform(-2, 2, (B, S, N, D)).astype(np.float32)
         phi_np = np.random.uniform(-2, 2, (phi_rows, N * D)).astype(np.float32)
@@ -333,10 +348,11 @@ class TestMhcPreSplitPostRes(TestCase):
         dtype: torch.dtype,
         seed: int = 42,
         norm_eps: float = 1e-6,
-        use_aclgraph=False
+        use_aclgraph=False,
+        phi_rows=None
     ):
-        # 1. 生成输入（封装类）
-        inputs = self._generate_input_tensors(B, S, N, D, dtype, seed)
+        # 1. 生成输入（封装类；phi_rows=None 走完整形态 N^2+N，=N 走仅 post 形态）
+        inputs = self._generate_input_tensors(B, S, N, D, dtype, seed, phi_rows=phi_rows)
 
         # 2. 计算CPU金标准（封装类）
         cpu_outputs = self._compute_cpu_golden(inputs, norm_eps)
@@ -353,9 +369,10 @@ class TestMhcPreSplitPostRes(TestCase):
             h_res=npu_outputs.h_res.cpu().to(GOLDEN_CPU_DTYPE)
         )
 
-        # 6. 精度校验
+        # 6. 精度校验（仅 post 形态（phi_rows==N）无 h_res，跳过 res 校验）
         self._check_output_precision(npu_outputs.h_post, npu_golden_outputs.h_post, cpu_outputs.h_post, dtype, "h_post")
-        self._check_output_precision(npu_outputs.h_res, npu_golden_outputs.h_res, cpu_outputs.h_res, dtype, "h_res")
+        if phi_rows != N:
+            self._check_output_precision(npu_outputs.h_res, npu_golden_outputs.h_res, cpu_outputs.h_res, dtype, "h_res")
 
     @pytest.mark.resources(device="npu:*")
     def test_mhc_pre_split_post_res_bf16_BSND_2_2560_pangu_l0_000000(self):
@@ -389,22 +406,24 @@ class TestMhcPreSplitPostRes(TestCase):
     def test_mhc_pre_split_post_res_bf16_BSND_5_5120_pangu_l0_000000(self):
         self.__run_test_bsnd(B=1, S=5, N=4, D=5120, dtype=torch.bfloat16, norm_eps=1e-6)
 
-    # ======================== D 泛化用例 ========================
-
-    @pytest.mark.resources(device="npu:*")
-    def test_mhc_pre_split_post_res_bf16_BSND_2_16_general_l0_000000(self):
-        """D 泛化下界：D=16，SINGLE_TILE 路径"""
-        self.__run_test_bsnd(B=1, S=2, N=4, D=16, dtype=torch.bfloat16, norm_eps=1e-6)
-
-    @pytest.mark.resources(device="npu:*")
-    def test_mhc_pre_split_post_res_bf16_BSND_3_2064_general_l0_000000(self):
-        """D 泛化：D=2064（16 对齐非 128 对齐），dimLoop=1 SINGLE_TILE 路径"""
-        self.__run_test_bsnd(B=1, S=3, N=4, D=2064, dtype=torch.bfloat16, norm_eps=1e-6)
+    # ======================== D 典型值用例（白名单 2560/5120/6144/7168） ========================
 
     @pytest.mark.resources(device="npu:*")
     def test_mhc_pre_split_post_res_bf16_BSND_4_6144_general_l0_000000(self):
-        """D 泛化：D=6144，dimLoop=3 MULTI_TILE 路径（尾块 1024）"""
+        """D 白名单典型值：D=6144，dimLoop=3 MULTI_TILE 路径（尾块 1024）"""
         self.__run_test_bsnd(B=1, S=4, N=4, D=6144, dtype=torch.bfloat16, norm_eps=1e-6)
+
+    # ======================== phi 仅 post 形态用例（phi=[N, N*D]，无 h_res） ========================
+
+    @pytest.mark.resources(device="npu:*")
+    def test_mhc_pre_split_post_res_bf16_BSND_post_only_phiN_2560(self):
+        """phi=[4, 10240] 仅 post 形态：SINGLE_TILE，h_res 为空 tensor，仅校验 h_post"""
+        self.__run_test_bsnd(B=1, S=4, N=4, D=2560, dtype=torch.bfloat16, norm_eps=1e-6, phi_rows=4)
+
+    @pytest.mark.resources(device="npu:*")
+    def test_mhc_pre_split_post_res_bf16_BSND_post_only_phiN_5120(self):
+        """phi=[4, 20480] 仅 post 形态：MULTI_TILE，h_res 为空 tensor，仅校验 h_post"""
+        self.__run_test_bsnd(B=1, S=4, N=4, D=5120, dtype=torch.bfloat16, norm_eps=1e-6, phi_rows=4)
 
     # ======================== aclgraph静态kernel编译模式测试 ========================
 

@@ -32,17 +32,20 @@ class MhcPreSplitPostResOpBuilder(OpBuilder):
         def mhc_pre_split_post_res_meta(x, phi, alpha, bias, norm_eps=1e-6):
             # norm_eps 默认值与 schema 对齐：torch.compile(fake tensor) 不会替 Meta 实现
             # 填充 schema 默认值，签名缺默认值会报 missing positional argument 并打断 fullgraph 捕获
+            # h_res 为可选输出：phi 行数为 N（仅 post 形态）时第二个返回为 0 元素 tensor
+            n = x.size(-2)
+            has_res = phi.size(0) == n * n + n
             if x.dim() == 3:
                 t = x.size(0)
-                n = x.size(1)
                 h_post = torch.empty(t, n, dtype=phi.dtype, device="meta")
-                h_res = torch.empty(t, n, n, dtype=phi.dtype, device="meta")
+                h_res = torch.empty(t, n, n, dtype=phi.dtype, device="meta") if has_res \
+                    else torch.empty(0, dtype=phi.dtype, device="meta")
             else:
                 b = x.size(0)
                 s = x.size(1)
-                n = x.size(2)
                 h_post = torch.empty(b, s, n, dtype=phi.dtype, device="meta")
-                h_res = torch.empty(b, s, n, n, dtype=phi.dtype, device="meta")
+                h_res = torch.empty(b, s, n, n, dtype=phi.dtype, device="meta") if has_res \
+                    else torch.empty(0, dtype=phi.dtype, device="meta")
             return (h_post, h_res)
 
 

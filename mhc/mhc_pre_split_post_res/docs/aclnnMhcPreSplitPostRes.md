@@ -25,7 +25,8 @@
 
 ## 功能说明
 
-- 接口功能：MhcPreSplitPostRes是MhcPre算子的一部分，负责计算mHC（Manifold-Constrained Hyper-Connections）架构中x2输入对应的post分支和comb/Res分支，输出h_post和h_res两个变换矩阵。具体流程为：将输入x展平并转FP32后计算RMSNorm的InvRMS因子，执行线性投影得到x_hat，然后切分为post分支和comb分支分别计算h_post和h_res。
+- 接口功能：MhcPreSplitPostRes是MhcPre算子的一部分，负责计算mHC（Manifold-Constrained Hyper-Connections）架构中x2输入对应的post分支和comb/Res分支。具体流程为：将输入x展平并转FP32后计算RMSNorm的InvRMS因子，执行线性投影得到x_hat，然后切分为post分支和comb分支分别计算h_post和h_res。**h_res为可选输出，由phi形态决定**：phi行数为n^2+n（完整形态）时输出h_post与h_res；phi行数为n（仅post形态）时仅输出h_post（h_res传空）。
+
 
 - 计算公式：
 
@@ -238,7 +239,7 @@ aclnnStatus aclnnMhcPreSplitPostRes(
               <td>x、phi、alpha、bias、hPostOut、hResOut的数据类型不在支持的范围内。</td>
           </tr>
           <tr>
-              <td>x、phi、alpha、bias、hPostOut、hResOut的shape维度不在支持的范围内（如n不等于4、D非16对齐或超出16~16384、T超出1~512K范围）。</td>
+              <td>x、phi、alpha、bias、hPostOut、hResOut的shape维度不在支持的范围内（如n不等于4、D不在白名单{2560,5120,6144,7168}、phi行数非n或n^2+n、完整形态下hResOut为空）。</td>
           </tr>
           <tr>
               <td>normEps不大于0。</td>

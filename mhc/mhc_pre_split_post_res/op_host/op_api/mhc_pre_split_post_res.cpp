@@ -26,18 +26,28 @@ using namespace op;
 namespace l0op {
 OP_TYPE_REGISTER(MhcPreSplitPostRes);
 
-// h_post / h_res 为 def 显式声明的输出（用户分配），无需 AllocTensor/INFER_SHAPE，
-// 直接加入 launch 列表，由 op_host 注册的 tiling/kernel 流程执行。
+// h_post 为 def 显式声明的输出（用户分配）直接加入 launch 列表；h_res 为可选输出：
+// 完整形态（phi 行数 N^2+N）时同样用户分配直接加入；仅 post 形态（phi 行数 N，
+// hResOut 为空）时分配 1 元素 dummy 占位保持 launch 输出形态，kernel 不写该段。
 bool MhcPreSplitPostRes(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha,
                         const aclTensor *bias, float normEps,
                         const aclTensor *hPostOut, const aclTensor *hResOut, aclOpExecutor *executor)
 {
     L0_DFX(MhcPreSplitPostRes, x, phi, alpha, bias, normEps, hPostOut, hResOut);
 
+    const aclTensor *hRes = hResOut;
+    if (hResOut == nullptr) {
+        hRes = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
+        if (hRes == nullptr) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "MhcPreSplitPostRes alloc dummy h_res failed.");
+            return false;
+        }
+    }
+
     auto ret = ADD_TO_LAUNCHER_LIST_AICORE(
         MhcPreSplitPostRes,
         OP_INPUT(x, phi, alpha, bias),
-        OP_OUTPUT(hPostOut, hResOut),
+        OP_OUTPUT(hPostOut, hRes),
         OP_ATTR(normEps));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "MhcPreSplitPostRes ADD_TO_LAUNCHER_LIST_AICORE failed.");

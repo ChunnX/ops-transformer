@@ -209,7 +209,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_fp16_4_4_5120_1_4_0
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
 
-// BF16, T=B*S=32*4=128, N=4, D=8192（泛化支持：16 对齐，dimLoop=4 → MULTI_TILE）
+// BF16, T=128, N=4, D=8192（D 白名单外，拒绝）
 TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_128_4_8192_32_4_000000)
 {
     int64_t B = 32;
@@ -239,10 +239,10 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_128_4_8192_32_
     int64_t expectTilingKey = optiling::MHC_PRE_SPLIT_TILING_KEY_MULTI_TILE;
     std::string expectTilingData = "";
 
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
 }
 
-// FP16, T=B*S=64*4=256, N=4, D=16400（不支持，超出 D 上限 16384）
+// FP16, T=256, N=4, D=16400（D 白名单外，拒绝）
 TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_fp16_256_4_16400_64_4_000000)
 {
     int64_t B = 64;
@@ -442,7 +442,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_TND_fp16_1_4_5120_000000
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
 
-// BF16, T=512, N=4, D=8192（泛化支持：16 对齐，dimLoop=4 → MULTI_TILE）
+// BF16, T=512, N=4, D=8192（D 白名单外，拒绝）
 TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_TND_bf16_512_4_8192_000000)
 {
     int64_t T = 512;
@@ -471,7 +471,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_TND_bf16_512_4_8192_0000
     int64_t expectTilingKey = optiling::MHC_PRE_SPLIT_TILING_KEY_MULTI_TILE;
     std::string expectTilingData = "";
 
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
 }
 
 // FP16, T=512, N=4, D=16400（不支持，超出 D 上限 16384）
@@ -798,12 +798,12 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_errorTMin_000000)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
 }
 
-// T > MHC_MAX_T（T=512*1024+1，TND 格式）
-TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_errorTMax_000000)
+// T 无上限（T=512*1024+1，TND 格式，D 取白名单值）→ 放行
+TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_TLarge_000000)
 {
-    int64_t T = 512 * 1024 + 1;  // T > MHC_MAX_T (512*1024)
+    int64_t T = 512 * 1024 + 1;  // T 不再有上限
     int64_t N = 4;
-    int64_t D = 100;
+    int64_t D = 2560;
     int64_t phiRows = N * N + N;  // 20
     int64_t phiCols = N * D;      // 400
 
@@ -827,7 +827,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_errorTMax_000000)
     int64_t expectTilingKey = 0;
     std::string expectTilingData = "";
 
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
 
 // N 不等于 4（N=8，TND 格式）
@@ -894,7 +894,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_errorDMin_000000)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
 }
 
-// D 超出上限 16384（D=16385，TND 格式）
+// D=16385（D 白名单外，拒绝）
 TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_bf16_errorDMax_000000)
 {
     int64_t T = 1;
@@ -1572,7 +1572,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_128_4_7168_32_
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
 
-// BF16, T=B*S=32*4=128, N=4, D=16384（泛化上限边界，dimLoop=7 → MULTI_TILE）
+// BF16, T=128, N=4, D=16384（D 白名单外，拒绝）
 TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_128_4_16384_32_4)
 {
     int64_t B = 32;
@@ -1602,10 +1602,10 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_128_4_16384_32
     int64_t expectTilingKey = optiling::MHC_PRE_SPLIT_TILING_KEY_MULTI_TILE;
     std::string expectTilingData = "";
 
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
 }
 
-// BF16, T=B*S=32*4=128, N=4, D=16（泛化下界，dimLoop=1 → SINGLE_TILE）
+// BF16, T=128, N=4, D=16（D 白名单外，拒绝）
 TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_128_4_16_32_4)
 {
     int64_t B = 32;
@@ -1635,11 +1635,10 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_128_4_16_32_4)
     int64_t expectTilingKey = optiling::MHC_PRE_SPLIT_TILING_KEY_SINGLE_TILE;
     std::string expectTilingData = "";
 
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
 }
 
-// BF16, T=B*S=32*4=128, N=4, D=2064（16 对齐但非 128 对齐，dimLoop=1 → SINGLE_TILE，
-// 回归用例：dimTile 不再做 128 向下取整，D<=2560 时不再误入 MULTI_TILE）
+// BF16, T=128, N=4, D=2064（D 白名单外，拒绝）
 TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_128_4_2064_32_4)
 {
     int64_t B = 32;
@@ -1669,10 +1668,10 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_128_4_2064_32_
     int64_t expectTilingKey = optiling::MHC_PRE_SPLIT_TILING_KEY_SINGLE_TILE;
     std::string expectTilingData = "";
 
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
 }
 
-// BF16, T=B*S=32*4=128, N=4, D=2576（16 对齐，dimLoop=2，尾块 16 元素 → MULTI_TILE）
+// BF16, T=128, N=4, D=2576（D 白名单外，拒绝）
 TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_128_4_2576_32_4)
 {
     int64_t B = 32;
@@ -1702,7 +1701,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_128_4_2576_32_
     int64_t expectTilingKey = optiling::MHC_PRE_SPLIT_TILING_KEY_MULTI_TILE;
     std::string expectTilingData = "";
 
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
 }
 
 // BF16, D=5120，norm_eps=-1（非法：必须大于 0）
@@ -2022,6 +2021,108 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_950_BSND_bf16_4_4_100_1_
             {{{phiRows, phiCols}, {phiRows, phiCols}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{2}, {2}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
+        },
+        &compileInfo, "Ascend950");
+
+    int64_t expectTilingKey = 0;
+    std::string expectTilingData = "";
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+// ==================== phi 仅 post 形态（[N, N*D]，无 h_res）用例 ====================
+
+// BF16, B*S=4, N=4, D=2560, phi=[4, 10240]（仅 post 形态）→ SINGLE_TILE + 双核
+TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_post_only_phiN_2560)
+{
+    int64_t B = 1;
+    int64_t S = 4;
+    int64_t N = 4;
+    int64_t D = 2560;
+    int64_t phiRows = N;          // 仅 post 形态：phi 行数为 N
+    int64_t phiCols = N * D;      // 10240
+
+    optiling::MhcPreSplitPostResCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("MhcPreSplitPostRes",
+        {
+            {{{B, S, N, D}, {B, S, N, D}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{phiRows, phiCols}, {phiRows, phiCols}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{2}, {2}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
+        },
+        &compileInfo, "Ascend950");
+
+    int64_t expectTilingKey = optiling::MHC_PRE_SPLIT_TILING_KEY_SINGLE_TILE;
+    std::string expectTilingData = "";
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
+}
+
+// BF16, B*S=4, N=4, D=5120, phi=[4, 20480]（仅 post 形态，MULTI 路径）→ MULTI_TILE + 双核
+TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_post_only_phiN_5120)
+{
+    int64_t B = 1;
+    int64_t S = 4;
+    int64_t N = 4;
+    int64_t D = 5120;
+    int64_t phiRows = N;          // 仅 post 形态：phi 行数为 N
+    int64_t phiCols = N * D;      // 20480
+
+    optiling::MhcPreSplitPostResCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("MhcPreSplitPostRes",
+        {
+            {{{B, S, N, D}, {B, S, N, D}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{phiRows, phiCols}, {phiRows, phiCols}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{2}, {2}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
+        },
+        &compileInfo, "Ascend950");
+
+    int64_t expectTilingKey = optiling::MHC_PRE_SPLIT_TILING_KEY_MULTI_TILE;
+    std::string expectTilingData = "";
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
+}
+
+// BF16, phi=[4, 10240] 但 bias=[20]（bias 行数须跟随 phi 行数）→ 拒绝
+TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_post_only_bias_mismatch)
+{
+    int64_t B = 1;
+    int64_t S = 4;
+    int64_t N = 4;
+    int64_t D = 2560;
+    int64_t phiRows = N;          // 仅 post 形态：phi 行数为 N
+    int64_t phiCols = N * D;      // 10240
+    int64_t biasRows = N * N + N; // 20：与 phi 行数不匹配
+
+    optiling::MhcPreSplitPostResCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("MhcPreSplitPostRes",
+        {
+            {{{B, S, N, D}, {B, S, N, D}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{phiRows, phiCols}, {phiRows, phiCols}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{2}, {2}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{biasRows}, {biasRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},

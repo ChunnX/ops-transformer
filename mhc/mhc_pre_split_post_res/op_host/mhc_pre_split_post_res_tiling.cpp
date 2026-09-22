@@ -55,12 +55,12 @@ static constexpr int64_t MHC_N_VALUE = 4;          // N 固定为4
 static constexpr int64_t MHC_DIM_TILE_MAX = 2560;  // UB单次能处理的最大D大小
 
 // 入参限制
-static constexpr int64_t MHC_MIN_T = 1;
-static constexpr int64_t MHC_MAX_T = 512 * 1024;
-// D 泛化：16 对齐，范围 [16, 16384]，典型值 2560/5120/6144/7168
-static constexpr int64_t MHC_D_MIN = 16;
-static constexpr int64_t MHC_D_MAX = 16384;
-static constexpr int64_t MHC_D_ALIGN = 16;
+static constexpr int64_t MHC_MIN_T = 1;  // T 无上限（B·S 折叠后任意规模）
+// D 白名单：仅支持 4 种典型 shape（2560/5120/6144/7168，均为 128 对齐）
+static constexpr int64_t MHC_D_2560 = 2560;
+static constexpr int64_t MHC_D_5120 = 5120;
+static constexpr int64_t MHC_D_6144 = 6144;
+static constexpr int64_t MHC_D_7168 = 7168;
 
 static constexpr int64_t MIN_FP32_ALIGN_ELEM_SIZE = 8;
 
@@ -161,17 +161,16 @@ ge::graphStatus MhcPreSplitPostResInfoParser::CheckXValid()
     }
 
     bool isValid = true;
-    isValid = isValid && (totalLength_ >= MHC_MIN_T && totalLength_ <= MHC_MAX_T);
+    isValid = isValid && (totalLength_ >= MHC_MIN_T);
     isValid = isValid && (N_ == MHC_N_VALUE);
-    isValid = isValid && (D_ >= MHC_D_MIN && D_ <= MHC_D_MAX && D_ % MHC_D_ALIGN == MHC_NUM_ZERO);
+    isValid = isValid && (D_ == MHC_D_2560 || D_ == MHC_D_5120 || D_ == MHC_D_6144 || D_ == MHC_D_7168);
     OP_CHECK_IF(!isValid,
         OP_LOGE(context_->GetNodeName(),
-            "x shape is invalid: T=%ld, N=%ld, D=%ld (N must be 4; D must be 16-aligned within [%ld, %ld]).",
+            "x shape is invalid: T=%ld, N=%ld, D=%ld (N must be 4; D must be one of "
+            "2560/5120/6144/7168).",
             totalLength_,
             N_,
-            D_,
-            MHC_D_MIN,
-            MHC_D_MAX),
+            D_),
         return ge::GRAPH_FAILED);
 
     auto xDesc = context_->GetInputDesc(MHC_X_INDEX);
@@ -195,18 +194,21 @@ ge::graphStatus MhcPreSplitPostResInfoParser::CheckPhiValid()
         OP_LOGE(context_->GetNodeName(), "phi: number of dimensions must be 2."),
         return ge::GRAPH_FAILED);
 
-    // phi shape: [N^2+N, N*D]
+    // phi shape 两种形态：[N^2+N, N*D]（完整，输出 h_res）/ [N, N*D]（仅 post，无 h_res）
     int64_t phiDim0 = phiShapePtr->GetStorageShape().GetDim(MHC_DIM_ZERO);
     int64_t phiDim1 = phiShapePtr->GetStorageShape().GetDim(MHC_DIM_ONE);
-    phiRows_ = N_ * N_ + N_;
+    phiRows_ = phiDim0;
+    hasRes_ = (phiDim0 == N_ * N_ + N_);
 
     bool isValid = true;
-    isValid = isValid && (phiDim0 == phiRows_);
+    isValid = isValid && (phiDim0 == N_ * N_ + N_ || phiDim0 == N_);
     isValid = isValid && (phiDim1 == N_ * D_);
     OP_CHECK_IF(!isValid,
         OP_LOGE(context_->GetNodeName(),
-            "phi shape invalid: expected [%ld, %ld], got [%ld, %ld].",
-            phiRows_,
+            "phi shape invalid: expected [%ld, %ld] or [%ld, %ld], got [%ld, %ld].",
+            N_ * N_ + N_,
+            N_ * D_,
+            N_,
             N_ * D_,
             phiDim0,
             phiDim1),
@@ -351,8 +353,11 @@ ge::graphStatus MhcPreSplitPostResInfoParser::GenerateTiling()
 
     // 每token使用核数：token 数不足以填满一半核数时启用双核 phi 行并行
     // （SINGLE/MULTI 路径统一，D>2560 场景同样生效，对齐设计 2.7：小 T 时把 phi 读负载摊到 2*T 核）
-    // token 充足（totalLength >= coreNum/2）时单核已能饱和所有核，双核只引入额外开销
-    bool needDualCore = (totalLength_ < static_cast<int64_t>(coreNum_) / MHC_NUM_TWO);
+    // token 充足（totalLength >= coreNum/2）时单核已能饱和所有核，双核只引入额外开销。
+    // 仅 post 形态（phiRows==N，无 h_res）恒单核：双核 phi 行对半（phiRowMid=N/2）会把
+    // h_post 的 N 行劈到两个核，而 h_post 段仅 core0 写出（xHat 各核只算自己的半行），
+    // 且该形态 phi 仅 N 行搬运量小、单核足够。
+    bool needDualCore = hasRes_ && (totalLength_ < static_cast<int64_t>(coreNum_) / MHC_NUM_TWO);
     coresPerToken_ = needDualCore ? MHC_NUM_TWO : MHC_NUM_ONE;
 
     // phi行分配：双核模式下，phiRowMid是前半部分的行数
@@ -362,6 +367,10 @@ ge::graphStatus MhcPreSplitPostResInfoParser::GenerateTiling()
 
     // tilingKey
     tilingKey_ = (dimLoop_ == MHC_NUM_ONE) ? MHC_PRE_SPLIT_TILING_KEY_SINGLE_TILE : MHC_PRE_SPLIT_TILING_KEY_MULTI_TILE;
+
+    // h_res 可选输出：完整形态（hasRes_）"必须提供 h_res"的校验在 aclnn 层完成
+    // （GetWorkspaceSize 拦 hResOut==nullptr）；tiling 侧 GetOutputDesc 返回
+    // CompileTimeTensorDesc（无 shape 接口）且 UT faker 常为空，不做额外校验。
 
     if (CalcTokenGrouping() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;

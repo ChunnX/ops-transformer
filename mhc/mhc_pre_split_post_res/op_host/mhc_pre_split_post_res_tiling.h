@@ -90,7 +90,8 @@ protected:
     int64_t  totalLength_   = 0;   // 合轴后 T = B*S 或直接 T
     int64_t  N_             = 0;
     int64_t  D_             = 0;
-    int64_t  phiRows_       = 0;   // N^2 + N
+    int64_t  phiRows_       = 0;   // N^2 + N（完整形态）或 N（仅 post 形态，无 h_res）
+    bool     hasRes_        = true; // phi 行数为 N^2+N 时为 true（h_res 必选）
     int64_t  dimTile_       = 0;
     int64_t  dimLoop_       = 0;
     int64_t  coresPerToken_ = 0;

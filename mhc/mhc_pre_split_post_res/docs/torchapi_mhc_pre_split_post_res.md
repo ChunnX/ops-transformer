@@ -25,7 +25,7 @@
 
 - 接口功能：
 
-    mhc_pre_split_post_res是mhc_pre算子的一部分，负责计算mHC（Manifold-Constrained Hyper-Connections）架构中x2输入对应的post分支和comb/Res分支，输出h_post和h_res两个变换矩阵。该算子作为独立的纯Vector算子，可与Atten/MLP层的Cube算子做多流并行，掩盖该部分计算时延。
+    mhc_pre_split_post_res是mhc_pre算子的一部分，负责计算mHC（Manifold-Constrained Hyper-Connections）架构中x2输入对应的post分支和comb/Res分支，输出h_post和h_res两个变换矩阵（h_res为可选输出：phi行数为n^2+n时输出，为n时仅输出h_post）。该算子作为独立的纯Vector算子，可与Atten/MLP层的Cube算子做多流并行，掩盖该部分计算时延。
 
 - 计算公式：
 

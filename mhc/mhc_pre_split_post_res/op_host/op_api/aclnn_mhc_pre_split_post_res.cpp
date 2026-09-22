@@ -46,6 +46,14 @@ aclnnStatus MhcPreSplitPostResCommonProcess(const aclTensor *x, const aclTensor 
     bias = l0op::Contiguous(bias, uniqueExecutor.get());
     CHECK_COND(bias != nullptr, ACLNN_ERR_INNER_NULLPTR, "Contiguous bias failed.");
 
+    // h_res 可选输出由 phi 行数决定：N^2+N（完整形态）时必选，N（仅 post 形态）时忽略
+    // （形态 B 传 nullptr 或空 tensor 均可，kernel 按 phiRows 跳过 res 段）
+    const int64_t nValue = x->GetViewShape().GetDim(x->GetViewShape().GetDimNum() - 2);
+    if (phi->GetViewShape().GetDim(0) == nValue * nValue + nValue) {
+        CHECK_COND(hResOut != nullptr, ACLNN_ERR_PARAM_INVALID,
+                   "h_res output is required when phi rows is N^2+N (%ld).", nValue * nValue + nValue);
+    }
+
     bool ok = l0op::MhcPreSplitPostRes(x, phi, alpha, bias, normEps, hPostOut, hResOut,
                                        uniqueExecutor.get());
     CHECK_RET(ok, ACLNN_ERR_INNER_NULLPTR);
