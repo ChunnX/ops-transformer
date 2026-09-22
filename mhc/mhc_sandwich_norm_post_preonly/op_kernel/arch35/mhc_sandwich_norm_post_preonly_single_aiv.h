@@ -35,9 +35,8 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
 {
     LoadCachedHOut(tOff, tD);
     LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-    ApplyScaleAndGamma(hOut, invRms0, bufGamma0Fp32_.Get<float>()[tOff], tD);
-    QuantizeRoundTrip(hOut, tD);
 
+    // 提前发起residual搬运（MTE2），与下方h_out的scale/gamma/quantize（Vector）重叠。
     const uint32_t headBegin = laneId_ * 2U;
     const uint64_t gmBaseOffset = (uint64_t)token * N_ * D_ + tOff;
     LocalTensor<T> residual = bufResidualBf16_.AllocTensor<T>();
@@ -45,6 +44,10 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         DataCopy(residual[n * dimTile_], residualGm_[gmBaseOffset + (uint64_t)n * D_], tD);
     }
     bufResidualBf16_.EnQue(residual);
+
+    ApplyScaleAndGamma(hOut, invRms0, bufGamma0Fp32_.Get<float>()[tOff], tD);
+    QuantizeRoundTrip(hOut, tD);
+
     residual = bufResidualBf16_.DeQue<T>();
     LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
     LocalTensor<float> combWeights = bufPostComb_.Get<float>()[ALIGN8];
