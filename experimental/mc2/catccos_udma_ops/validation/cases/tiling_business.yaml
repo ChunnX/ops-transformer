@@ -1,0 +1,36 @@
+schema_version: 1
+
+defaults:
+  dtype: bfloat16
+  route: balanced
+  world_size: 8
+  expert_num: 256
+  seed: 2026
+  input_distribution: {kind: uniform, low: -5.0, high: 5.0}
+  run: [accuracy, performance]
+  tags: [business, tiling]
+  accuracy:
+    standard: opbase_experimental
+    repeats: 3
+    dump_on_failure: true
+  performance:
+    warmup: 10
+    align_iterations: 3
+    iterations: 50
+    repeats: 5
+
+cases:
+  - id: a2av_gmm_m131072_k2048_n1024_export
+    operator: all_to_allv_grouped_mat_mul
+    shape: {m: 131072, k: 2048, n: 1024}
+    output_all_to_allv: true
+  - id: a2av_gmm_m131072_k2048_n512_export
+    operator: all_to_allv_grouped_mat_mul
+    shape: {m: 131072, k: 2048, n: 512}
+    output_all_to_allv: true
+  - id: gmm_a2av_m131072_k1024_n2048
+    operator: grouped_mat_mul_all_to_allv
+    shape: {m: 131072, k: 1024, n: 2048}
+  - id: gmm_a2av_m131072_k512_n2048
+    operator: grouped_mat_mul_all_to_allv
+    shape: {m: 131072, k: 512, n: 2048}
