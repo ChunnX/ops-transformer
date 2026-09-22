@@ -162,44 +162,8 @@ static bool CheckDynamicScalesDim(const gert::TilingContext *context, const char
 static bool CheckScaleTensorDim(const gert::TilingContext *context, const char *nodeName, const bool isScales,
                                 const uint32_t quantMode, DispatchV2Config &config)
 {
-    if (isScales) {
-        const gert::StorageShape *scalesStorageShape = context->GetOptionalInputShape(config.scalesIndex);
-        OP_TILING_CHECK(scalesStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "scalesShape"),
-                        return false);
-        if (quantMode != static_cast<uint32_t>(QuantModeA5::STATIC_QUANT)) {
-            // the cond is compatible with A2/A3 because static quant is only supported on A5
-            if (scalesStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS) {
-                std::string dimStr = std::to_string(scalesStorageShape->GetStorageShape().GetDimNum()) + "D";
-                OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "scales", dimStr.c_str(), "2D");
-                return false;
-            }
-            OP_LOGD(nodeName, "scales dim0 = %ld", scalesStorageShape->GetStorageShape().GetDim(0));
-            OP_LOGD(nodeName, "scales dim1 = %ld", scalesStorageShape->GetStorageShape().GetDim(1));
-        } else {
-            size_t scalesDimNum = scalesStorageShape->GetStorageShape().GetDimNum();
-            if ((scalesDimNum != ONE_DIM) && (scalesDimNum != TWO_DIMS)) {
-                std::string dimStr = std::to_string(scalesDimNum) + "D";
-                OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "scales", dimStr.c_str(), "1D or 2D");
-                return false;
-            }
-            // additional check for hif8 quant
-            auto expandXDesc = context->GetOutputDesc(OUTPUT_EXPAND_X_INDEX);
-            if (expandXDesc == nullptr) {
-                OP_LOGE_WITH_INVALID_INPUT(nodeName, "expandXDesc");
-                return false;
-            }
-            if ((expandXDesc->GetDataType() == ge::DT_HIFLOAT8) && (scalesDimNum != ONE_DIM)) {
-                std::string dimStr = std::to_string(scalesDimNum) + "D";
-                OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "scales", dimStr.c_str(), "1D");
-                return false;
-            }
-            OP_LOGD(nodeName, "scales dim0 = %ld", scalesStorageShape->GetStorageShape().GetDim(0));
-            if (scalesStorageShape->GetStorageShape().GetDimNum() == TWO_DIMS) {
-                OP_LOGD(nodeName, "scales dim1 = %ld", scalesStorageShape->GetStorageShape().GetDim(1));
-            }
-        }
-    }
-    return true;
+    return MoeDistributeDispatchTilingHelper::CheckScaleTensorDim(context, nodeName, isScales, quantMode,
+                                                                  config.scalesIndex);
 }
 
 // x, expertIds, scales维度校验

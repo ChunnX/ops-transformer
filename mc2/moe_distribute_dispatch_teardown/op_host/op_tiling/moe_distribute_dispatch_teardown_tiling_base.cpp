@@ -475,58 +475,74 @@ const bool MoeDistributeDispatchTeardownTilingBase::CheckTensorShapeRelation()
 
 const bool MoeDistributeDispatchTeardownTilingBase::CheckTensorShapeSize()
 {
+    ShapeSizeCheckParams params;
+    if (!CheckInputTensorShapeSize(params)) {
+        return false;
+    }
+    if (!CheckOutputTensorShapeSize(params)) {
+        return false;
+    }
+
+    // 设置 tilingdata
+    tilingData_->moeDistributeDispatchTeardownInfo.bs = static_cast<uint32_t>(params.bs);
+    tilingData_->moeDistributeDispatchTeardownInfo.k = static_cast<uint32_t>(params.k);
+    tilingData_->moeDistributeDispatchTeardownInfo.h = static_cast<uint32_t>(params.h);
+
+    return true;
+}
+
+const bool MoeDistributeDispatchTeardownTilingBase::CheckInputTensorShapeSize(ShapeSizeCheckParams &params)
+{
     const gert::StorageShape *xShape = context_->GetInputShape(INPUT_X_INDEX);
     const gert::StorageShape *yShape = context_->GetInputShape(INPUT_Y_INDEX);
     const gert::StorageShape *expertIdsShape = context_->GetInputShape(INPUT_EXPERT_IDS_INDEX);
-    const gert::StorageShape *commCmdInfoShape = context_->GetInputShape(INPUT_COMM_CMD_INFO_INDEX);
-    const gert::StorageShape *expandXOutShape = context_->GetOutputShape(OUTPUT_EXPAND_X_INDEX);
-    const gert::StorageShape *dynamicScalesOutShape = context_->GetOutputShape(OUTPUT_DYNAMIC_SCALES_INDEX);
-    const gert::StorageShape *assitInfoForCombineOutShape =
-        context_->GetOutputShape(OUTPUT_ASSIST_INFO_FOR_COMBINE_INDEX);
-    const gert::StorageShape *expertTokenNumsOutShape = context_->GetOutputShape(OUTPUT_EXPERT_TOKEN_NUMS_INDEX);
 
-    auto bs = xShape->GetStorageShape().GetDim(DIM_ZERO);
-    OP_TILING_CHECK(((bs <= 0) || (bs > MAX_BS)),
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName_, "x", (std::string("dim0=") + std::to_string(bs)).c_str(),
-                                              (std::string("(0, ") + std::to_string(MAX_BS) + "]").c_str()),
-                    return false);
+    params.bs = xShape->GetStorageShape().GetDim(DIM_ZERO);
+    OP_TILING_CHECK(
+        ((params.bs <= 0) || (params.bs > MAX_BS)),
+        OP_LOGE_FOR_INVALID_VALUE(nodeName_, "x", (std::string("dim0=") + std::to_string(params.bs)).c_str(),
+                                  (std::string("(0, ") + std::to_string(MAX_BS) + "]").c_str()),
+        return false);
 
-    auto h = xShape->GetStorageShape().GetDim(DIM_ONE);
-    OP_TILING_CHECK(((h < MIN_H) || (h > MAX_H)),
+    params.h = xShape->GetStorageShape().GetDim(DIM_ONE);
+    OP_TILING_CHECK(((params.h < MIN_H) || (params.h > MAX_H)),
                     OP_LOGE_FOR_INVALID_VALUE(
-                        nodeName_, "x", (std::string("dim1=") + std::to_string(h)).c_str(),
+                        nodeName_, "x", (std::string("dim1=") + std::to_string(params.h)).c_str(),
                         (std::string("[") + std::to_string(MIN_H) + ", " + std::to_string(MAX_H) + "]").c_str()),
                     return false);
 
-    auto k = expertIdsShape->GetStorageShape().GetDim(DIM_ONE);
+    params.k = expertIdsShape->GetStorageShape().GetDim(DIM_ONE);
     auto moeExpertNum = static_cast<int64_t>(tilingData_->moeDistributeDispatchTeardownInfo.moeExpertNum);
     OP_TILING_CHECK(
-        ((k <= 0) || (k > std::min(MAX_K, moeExpertNum))),
-        OP_LOGE_FOR_INVALID_VALUE(nodeName_, "expertIds", (std::string("dim1=") + std::to_string(k)).c_str(),
+        ((params.k <= 0) || (params.k > std::min(MAX_K, moeExpertNum))),
+        OP_LOGE_FOR_INVALID_VALUE(nodeName_, "expertIds", (std::string("dim1=") + std::to_string(params.k)).c_str(),
                                   (std::string("(0, ") + std::to_string(std::min(MAX_K, moeExpertNum)) + "]").c_str()),
         return false);
 
     auto sharedExpertNum = static_cast<int64_t>(tilingData_->moeDistributeDispatchTeardownInfo.sharedExpertNum);
-    auto yDim0Golden = bs * (k + sharedExpertNum);
+    auto yDim0Golden = params.bs * (params.k + sharedExpertNum);
     auto yDim0 = yShape->GetStorageShape().GetDim(DIM_ZERO);
     OP_TILING_CHECK(
         (yDim0Golden != yDim0),
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "y", (std::string("dim0=") + std::to_string(yDim0)).c_str(),
                                               "Dim0 of y must be equal to bs * (k + sharedExpertNum)"),
         return false);
+
+    params.quantMode = static_cast<int64_t>(tilingData_->moeDistributeDispatchTeardownInfo.quantMode);
     int64_t tokenMsgSize1;
-    auto quantMode = static_cast<int64_t>(tilingData_->moeDistributeDispatchTeardownInfo.quantMode);
-    if (quantMode == UNQUANT) {
-        tokenMsgSize1 = ops::CeilAlign(h, ALIGN_256);
-    } else if (quantMode == STATIC_QUANT) {
-        tokenMsgSize1 = ops::CeilAlign(h, ALIGN_512);
-    } else if (quantMode == PERTOKEN_DYNAMIC_QUANT) {
-        tokenMsgSize1 = ops::CeilAlign(ops::CeilAlign(h, ALIGN_32) + QUANT_ALIGN_OFFSET, ALIGN_512);
-    } else if (quantMode == PERGROUP_DYNAMIC_QUANT) {
-        tokenMsgSize1 = ops::CeilAlign(ops::CeilAlign(h, ALIGN_128) + ops::CeilDiv(h, ALIGN_128), ALIGN_512);
-    } else if (quantMode == MX_QUANT) {
+    if (params.quantMode == UNQUANT) {
+        tokenMsgSize1 = ops::CeilAlign(params.h, ALIGN_256);
+    } else if (params.quantMode == STATIC_QUANT) {
+        tokenMsgSize1 = ops::CeilAlign(params.h, ALIGN_512);
+    } else if (params.quantMode == PERTOKEN_DYNAMIC_QUANT) {
+        tokenMsgSize1 = ops::CeilAlign(ops::CeilAlign(params.h, ALIGN_32) + QUANT_ALIGN_OFFSET, ALIGN_512);
+    } else if (params.quantMode == PERGROUP_DYNAMIC_QUANT) {
+        tokenMsgSize1 =
+            ops::CeilAlign(ops::CeilAlign(params.h, ALIGN_128) + ops::CeilDiv(params.h, ALIGN_128), ALIGN_512);
+    } else if (params.quantMode == MX_QUANT) {
         tokenMsgSize1 = ops::CeilAlign(
-            ops::CeilAlign(h, ALIGN_256) + ops::CeilAlign(ops::CeilDiv(h, ALIGN_32), EVEN_ALIGN), ALIGN_512);
+            ops::CeilAlign(params.h, ALIGN_256) + ops::CeilAlign(ops::CeilDiv(params.h, ALIGN_32), EVEN_ALIGN),
+            ALIGN_512);
     }
     auto tokenMsgSize2 = yShape->GetStorageShape().GetDim(DIM_ONE);
     OP_TILING_CHECK((tokenMsgSize1 != tokenMsgSize2),
@@ -535,21 +551,37 @@ const bool MoeDistributeDispatchTeardownTilingBase::CheckTensorShapeSize()
                         "Dim1 of y must be equal to tokenMsgSize"),
                     return false);
 
-    int64_t a1;
-    int64_t localExpertNum1;
+    return true;
+}
+
+const bool MoeDistributeDispatchTeardownTilingBase::CheckOutputTensorShapeSize(const ShapeSizeCheckParams &params)
+{
+    const gert::StorageShape *commCmdInfoShape = context_->GetInputShape(INPUT_COMM_CMD_INFO_INDEX);
+    const gert::StorageShape *expandXOutShape = context_->GetOutputShape(OUTPUT_EXPAND_X_INDEX);
+    const gert::StorageShape *dynamicScalesOutShape = context_->GetOutputShape(OUTPUT_DYNAMIC_SCALES_INDEX);
+    const gert::StorageShape *assitInfoForCombineOutShape =
+        context_->GetOutputShape(OUTPUT_ASSIST_INFO_FOR_COMBINE_INDEX);
+    const gert::StorageShape *expertTokenNumsOutShape = context_->GetOutputShape(OUTPUT_EXPERT_TOKEN_NUMS_INDEX);
+
+    auto moeExpertNum = static_cast<int64_t>(tilingData_->moeDistributeDispatchTeardownInfo.moeExpertNum);
+    auto sharedExpertNum = static_cast<int64_t>(tilingData_->moeDistributeDispatchTeardownInfo.sharedExpertNum);
     auto epWorldSize = static_cast<int64_t>(tilingData_->moeDistributeDispatchTeardownInfo.epWorldSize);
     auto epRankId = static_cast<int64_t>(tilingData_->moeDistributeDispatchTeardownInfo.epRankId);
     auto sharedExpertRankNum = static_cast<int64_t>(tilingData_->moeDistributeDispatchTeardownInfo.sharedExpertRankNum);
     auto globalBs = static_cast<int64_t>(tilingData_->moeDistributeDispatchTeardownInfo.globalBs);
-    auto globalBsReal = (globalBs == 0) ? (bs * epWorldSize) : globalBs;
+    auto globalBsReal = (globalBs == 0) ? (params.bs * epWorldSize) : globalBs;
+
+    int64_t a1;
+    int64_t localExpertNum1;
     if (epRankId < sharedExpertRankNum) {
         localExpertNum1 = 1;
-        a1 = bs * epWorldSize * sharedExpertNum / sharedExpertRankNum;
+        a1 = params.bs * epWorldSize * sharedExpertNum / sharedExpertRankNum;
     } else {
         localExpertNum1 = moeExpertNum / (epWorldSize - sharedExpertRankNum);
-        a1 = globalBsReal * std::min(localExpertNum1, k);
+        a1 = globalBsReal * std::min(localExpertNum1, params.k);
     }
-    auto commCmdInfoSize1 = (bs * (k + sharedExpertNum) + epWorldSize * localExpertNum1) * COMM_CMD_INFO_BASE;
+    auto commCmdInfoSize1 =
+        (params.bs * (params.k + sharedExpertNum) + epWorldSize * localExpertNum1) * COMM_CMD_INFO_BASE;
     auto commCmdINfoSize2 = commCmdInfoShape->GetStorageShape().GetDim(DIM_ZERO);
     OP_TILING_CHECK((commCmdInfoSize1 != commCmdINfoSize2),
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
@@ -566,7 +598,7 @@ const bool MoeDistributeDispatchTeardownTilingBase::CheckTensorShapeSize()
                                                           "Dim0 of expandXOut must be equal to the expected value"),
                     return false);
 
-    if ((quantMode != UNQUANT) && (quantMode != STATIC_QUANT)) {
+    if ((params.quantMode != UNQUANT) && (params.quantMode != STATIC_QUANT)) {
         auto a3 = dynamicScalesOutShape->GetStorageShape().GetDim(DIM_ZERO);
         OP_TILING_CHECK((a1 != a3),
                         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
@@ -575,20 +607,22 @@ const bool MoeDistributeDispatchTeardownTilingBase::CheckTensorShapeSize()
                         return false);
     }
     auto dynamicScalesDim1 = dynamicScalesOutShape->GetStorageShape().GetDim(DIM_ONE);
-    OP_TILING_CHECK((quantMode == PERGROUP_DYNAMIC_QUANT) && (dynamicScalesDim1 != ops::CeilDiv(h, ALIGN_128)),
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "dynamicScalesOut",
-                                                          (std::string("dim1=") + std::to_string(dynamicScalesDim1) +
-                                                           ", quantMode=" + std::to_string(quantMode))
-                                                              .c_str(),
-                                                          "Dim1 of dynamicScalesOut must be equal to CeilDiv(h, 128)"),
-                    return false);
     OP_TILING_CHECK(
-        (quantMode == MX_QUANT) && (dynamicScalesDim1 != ops::CeilAlign(ops::CeilDiv(h, ALIGN_32), EVEN_ALIGN)),
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-            nodeName_, "dynamicScalesOut",
-            (std::string("dim1=") + std::to_string(dynamicScalesDim1) + ", quantMode=" + std::to_string(quantMode))
-                .c_str(),
-            "Dim1 of dynamicScalesOut must be equal to CeilAlign(CeilDiv(h, 32), 2)"),
+        (params.quantMode == PERGROUP_DYNAMIC_QUANT) && (dynamicScalesDim1 != ops::CeilDiv(params.h, ALIGN_128)),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "dynamicScalesOut",
+                                              (std::string("dim1=") + std::to_string(dynamicScalesDim1) +
+                                               ", quantMode=" + std::to_string(params.quantMode))
+                                                  .c_str(),
+                                              "Dim1 of dynamicScalesOut must be equal to CeilDiv(h, 128)"),
+        return false);
+    OP_TILING_CHECK(
+        (params.quantMode == MX_QUANT) &&
+            (dynamicScalesDim1 != ops::CeilAlign(ops::CeilDiv(params.h, ALIGN_32), EVEN_ALIGN)),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "dynamicScalesOut",
+                                              (std::string("dim1=") + std::to_string(dynamicScalesDim1) +
+                                               ", quantMode=" + std::to_string(params.quantMode))
+                                                  .c_str(),
+                                              "Dim1 of dynamicScalesOut must be equal to CeilAlign(CeilDiv(h, 32), 2)"),
         return false);
     auto localExpertNum2 = expertTokenNumsOutShape->GetStorageShape().GetDim(DIM_ZERO);
     OP_TILING_CHECK(
@@ -606,11 +640,6 @@ const bool MoeDistributeDispatchTeardownTilingBase::CheckTensorShapeSize()
                         (std::string("dim0=") + std::to_string(assistInfoForCombineOutSize2)).c_str(),
                         "Dim0 of assistInfoForCombineOut must be equal to a1 * 128"),
                     return false);
-
-    // 设置 tilingdata
-    tilingData_->moeDistributeDispatchTeardownInfo.bs = static_cast<uint32_t>(bs);
-    tilingData_->moeDistributeDispatchTeardownInfo.k = static_cast<uint32_t>(k);
-    tilingData_->moeDistributeDispatchTeardownInfo.h = static_cast<uint32_t>(h);
 
     return true;
 }

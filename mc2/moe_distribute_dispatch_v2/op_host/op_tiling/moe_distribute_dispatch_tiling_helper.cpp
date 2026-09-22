@@ -20,12 +20,13 @@
 using namespace ge;
 
 namespace optiling {
-static bool CheckOptionalScaleDimensions(const gert::TilingContext *context, const char *nodeName, bool isScales,
-                                         uint32_t quantMode)
+bool MoeDistributeDispatchTilingHelper::CheckScaleTensorDim(const gert::TilingContext *context, const char *nodeName,
+                                                            const bool isScales, const uint32_t quantMode,
+                                                            const uint32_t scalesIndex)
 {
     // 如果scales不为空进行shape维度检查
     if (isScales) {
-        const gert::StorageShape *scalesStorageShape = context->GetOptionalInputShape(SCALES_INDEX);
+        const gert::StorageShape *scalesStorageShape = context->GetOptionalInputShape(scalesIndex);
         OP_TILING_CHECK(scalesStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "scalesShape"),
                         return false);
         if (quantMode != static_cast<uint32_t>(QuantModeA5::STATIC_QUANT)) {
@@ -86,7 +87,7 @@ inline bool MoeDistributeDispatchTilingHelper::CheckInputTensorDim(const gert::T
         return false);
     OP_LOGD(nodeName, "expertId dim0 = %ld", expertIdStorageShape->GetStorageShape().GetDim(0));
     OP_LOGD(nodeName, "expertId dim1 = %ld", expertIdStorageShape->GetStorageShape().GetDim(1));
-    if (!CheckOptionalScaleDimensions(context, nodeName, isScales, quantMode)) {
+    if (!CheckScaleTensorDim(context, nodeName, isScales, quantMode, SCALES_INDEX)) {
         return false;
     }
     return true;
