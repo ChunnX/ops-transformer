@@ -33,6 +33,7 @@
 #include "../engram_fetch_tiling_key.h"
 #include "engram_fetch_arch35.h"
 #include "engram_fetch_train_arch35.h"
+#include "engram_fetch_local_arch35.h"
 
 using namespace Mc2Kernel;
 
@@ -56,6 +57,11 @@ __global__ __aicore__ void engram_fetch(GM_ADDR commContext, GM_ADDR indices, GM
         EngramFetchTrainArch35 op;
         op.Init(commContext, indices, fetched, permOut, sendCountsOut, recvCountsOut, recvLocalEntryOut, numRecvOut,
                 workspaceGM, localStorageAddr, &pipe, &tilingData);
+        op.Process();
+    } else if constexpr (EngramFetchMode == ENGRAM_FETCH_LOCAL_MODE) {
+        AscendC::TPipe pipe;
+        EngramFetchLocalArch35 op;
+        op.Init(commContext, indices, fetched, sfTable, fetchedSf, workspaceGM, &pipe, &tilingData);
         op.Process();
     }
 #endif
