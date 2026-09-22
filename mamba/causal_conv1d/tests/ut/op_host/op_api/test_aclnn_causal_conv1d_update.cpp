@@ -493,3 +493,43 @@ TEST_F(l2_causal_conv1d_update_test, Ascend950_update_2d_varlen_numCacheLines_le
     aclnnStatus ret = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(ret, ACLNN_ERR_PARAM_INVALID);
 }
+
+// convStatesRef (in-place) 与 y 非连续：宿主侧应走 Contiguous 临时张量 + ViewCopy 拷回，
+// 保证状态更新与 y 结果写回调用方原始张量。
+TEST_F(l2_causal_conv1d_update_test, Ascend950_update_convStates_y_non_contiguous)
+{
+    auto x = TensorDesc({4, 1, 512}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-10, 10);
+    auto weight = TensorDesc({4, 512}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-10, 10);
+    auto convStates = TensorDesc({4, 4, 512}, ACL_FLOAT16, ACL_FORMAT_ND, {4096, 1024, 1}).ValueRange(-10, 10);
+    auto bias = TensorDesc({512}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-10, 10);
+    auto y = TensorDesc({4, 1, 512}, ACL_FLOAT16, ACL_FORMAT_ND, {1024, 512, 1});
+    const char *activation = "silu";
+    auto ut = OP_API_UT(aclnnCausalConv1dUpdate,
+                        INPUT(x, weight, convStates, bias, nullptr, nullptr, nullptr, nullptr, nullptr, activation,
+                              (int64_t)0, (int64_t)-1),
+                        OUTPUT(y));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus ret = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(ret, ACLNN_SUCCESS);
+}
+
+// x 与 y 同时非连续（2D 投机解码变长场景）。
+TEST_F(l2_causal_conv1d_update_test, Ascend950_update_2d_varlen_non_contiguous)
+{
+    auto x = TensorDesc({64, 512}, ACL_FLOAT16, ACL_FORMAT_ND, {1024, 1}).ValueRange(-10, 10);
+    auto weight = TensorDesc({4, 512}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-10, 10);
+    auto convStates = TensorDesc({4, 4, 512}, ACL_FLOAT16, ACL_FORMAT_ND, {4096, 1024, 1}).ValueRange(-10, 10);
+    auto queryStartLoc = TensorDesc({5}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 64);
+    auto numAcceptedTokens = TensorDesc({4}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 4);
+    auto y = TensorDesc({64, 512}, ACL_FLOAT16, ACL_FORMAT_ND, {1024, 1});
+    const char *activation = "silu";
+    auto ut = OP_API_UT(aclnnCausalConv1dUpdate,
+                        INPUT(x, weight, convStates, nullptr, queryStartLoc, nullptr, numAcceptedTokens, nullptr,
+                              nullptr, activation, (int64_t)0, (int64_t)-1),
+                        OUTPUT(y));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus ret = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(ret, ACLNN_SUCCESS);
+}

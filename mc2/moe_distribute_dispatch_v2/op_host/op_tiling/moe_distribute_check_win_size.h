@@ -96,7 +96,7 @@ inline ge::graphStatus CheckActualWinSize(const gert::TilingContext *context, co
                             maxBs, h, actualSize / MB_SIZE + 1UL, hcclBufferSizeEp / MB_SIZE),
                         return ge::GRAPH_FAILED);
     } else {
-        if (socVersion == "Ascend950") {
+        if (mc2tiling::GetNpuArch(context) == Ops::Base::DAV_3510) {
             actualSize += epWorldSize * EP_RANK_OFFSET_STEP;
             OP_TILING_CHECK(
                 (actualSize > maxWindowSizeEp),
@@ -162,9 +162,9 @@ inline ge::graphStatus CheckWinSize(const gert::TilingContext *context, const ch
     uint64_t h = static_cast<uint64_t>(winSizeData.h);
     // combine数据区 token首地址对齐512
     uint64_t tokenNeedSizeCombine = ((h * MAX_OUT_DTYPE_SIZE + WIN_ADDR_ALIGN - 1UL) / WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
-    if (winSizeData.reserveA3FullMeshWindowPadding) {
-        // Preserve the established offset of the A3 fullmesh dispatch data region.
-        // This extra reservation is not a packed Combine payload protocol.
+    if (mc2tiling::GetSocVersion(context) == "Ascend950" || winSizeData.reserveA3FullMeshWindowPadding) {
+        // A5 packs 480-byte payloads into 512-byte blocks. A3 fullmesh reserves the
+        // same stride to preserve its Dispatch offset, but Combine still sends raw data.
         tokenNeedSizeCombine =
             ((h * MAX_OUT_DTYPE_SIZE + FULL_MESH_DATA_ALIGN - 1UL) / FULL_MESH_DATA_ALIGN) * WIN_ADDR_ALIGN;
     }
