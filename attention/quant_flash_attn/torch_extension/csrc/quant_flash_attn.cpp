@@ -110,13 +110,9 @@ std::tuple<at::Tensor, at::Tensor> quant_flash_attn(
     } else {
         dSize = v.size(v.dim() - 1);
     }
-    bool isTndSoftmaxLse = false;
     if (return_softmax_lse) {
         if (q.dim() == DIM_THREE) {
-            // Kernel writes T-major contiguous data to avoid N-major strided MTE3.
-            // Expose the public (N, T) shape as a zero-copy transpose view below.
-            softmaxOutSize = {tSize, nSize};
-            isTndSoftmaxLse = true;
+            softmaxOutSize = {nSize, tSize};
         } else {
             softmaxOutSize = {bSize, nSize, sSize};
         }
@@ -165,9 +161,6 @@ std::tuple<at::Tensor, at::Tensor> quant_flash_attn(
                   layout_kv_ptr, layout_out_ptr, return_softmax_lse, attentionOutput, softmaxLse);
     }
 
-    if (isTndSoftmaxLse) {
-        softmaxLse = softmaxLse.transpose(0, 1);
-    }
     return std::tuple<at::Tensor, at::Tensor>(attentionOutput, softmaxLse);
 }
 
