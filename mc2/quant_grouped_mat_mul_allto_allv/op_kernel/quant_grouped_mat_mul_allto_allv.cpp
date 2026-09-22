@@ -47,7 +47,7 @@ struct GMMATAVType { // Grouped_Mat_Mul_All_To_Allv_Type
 };
 
 template <bool TILINGKEY_COMPUTE_MATMUL, bool TILINGKEY_GROUPED_MATMUL_TRANS, bool TILINGKEY_MATMUL_TRANS,
-          int TILINGKEY_COMM_MODE>
+          int TILINGKEY_COMM_MODE, bool TILINGKEY_USING_APACE_IMPL>
 __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
     GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR gmmxScaleGM, GM_ADDR gmmWeightScaleGM,
     GM_ADDR sendCountsTensorOptionalGM, GM_ADDR recvCountsTensorOptionalGM, GM_ADDR mmxOptionalGM,
@@ -71,7 +71,7 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
                                   Apace::hcommQuantGmmAlltoAllvTilingData);
 #endif
 
-    if constexpr (TILINGKEY_COMM_MODE == TILINGKEY_TPL_APACE) {
+    if constexpr (TILINGKEY_USING_APACE_IMPL) {
         // apace hcomm 融合通路（AIC-only，镜像算子 PR 11573 同款模型）：
         // GMM 走 Blaze GroupedMatmulMxKernel，AllToAllV 由全部 AIC 核经 Hccl 提交；
         // 内核任务类型由 tiling key 的 ASCENDC_TPL_KERNEL_TYPE_SEL(AIC_ONLY) 声明

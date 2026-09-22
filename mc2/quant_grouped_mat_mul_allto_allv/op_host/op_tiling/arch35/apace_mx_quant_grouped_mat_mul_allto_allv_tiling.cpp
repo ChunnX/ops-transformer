@@ -264,8 +264,8 @@ ge::graphStatus ApaceMxQuantGroupedMatmulAllToAllvTiling::GetWorkspaceSize()
 uint64_t ApaceMxQuantGroupedMatmulAllToAllvTiling::GetTilingKey() const
 {
     const uint64_t tilingKey = GET_TPL_TILING_KEY(localParams_.hasSharedMm, localParams_.isGmmWeightTrans,
-                                                  localParams_.isMmWeightTrans, TILINGKEY_TPL_APACE);
-    OP_LOGD(opName_, "Apace GET_TPL_TILING_KEY: [%d,%d,%d,%d], TilingKey is [%lu].", localParams_.hasSharedMm,
+                                                  localParams_.isMmWeightTrans, TILINGKEY_TPL_APACE, true);
+    OP_LOGD(opName_, "Apace GET_TPL_TILING_KEY: [%d,%d,%d,%d,1], TilingKey is [%lu].", localParams_.hasSharedMm,
             localParams_.isGmmWeightTrans, localParams_.isMmWeightTrans, TILINGKEY_TPL_APACE, tilingKey);
     return tilingKey;
 }
