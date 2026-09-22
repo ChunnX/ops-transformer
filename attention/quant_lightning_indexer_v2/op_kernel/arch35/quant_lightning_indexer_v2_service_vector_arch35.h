@@ -562,7 +562,11 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
 
     auto qkBase = resMm1UB_[pingpong * (UB_BANK_STRIDE / sizeof(QK_T))];
     auto qkVLstride = (UB_BANK_DEPTH_STRIDE / sizeof(QK_T)) / CVRATIO * constInfo_.mBaseSizeMax;
-    if constexpr (IS_MXFP4 || IS_HIFLOAT4) {
+    if constexpr (IS_HIFLOAT4) {
+        vector1::BatchMulWeightAndReduceSumFP4(outBase, UB_BANK_DEPTH_STRIDE / sizeof(SCORE_T), qkBase, qkVLstride,
+                                               (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T)), weightBase,
+                                               UB_BANK_DEPTH_STRIDE / sizeof(WEIGHT_T), gSize_, curAivS1ProcNum);
+    } else if constexpr (IS_MXFP4) {
         vector1::BatchMulWeightAndReduceSumMXFP4(outBase, UB_BANK_DEPTH_STRIDE / sizeof(SCORE_T), qkBase, qkVLstride,
                                                  (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T)), weightBase,
                                                  UB_BANK_DEPTH_STRIDE / sizeof(WEIGHT_T), gSize_, curAivS1ProcNum);

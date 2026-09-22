@@ -620,13 +620,10 @@ __simd_vf__ void MulWeightAndReduceSum2F32VF(__ubuf__ uint16_t *out0, __ubuf__ u
         Reg::LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(regwBrc[1], weightTemp + i);
 // A6: relu在fixpipe随路做，vec1不做; A6: __NPU__ARCH__ 9201/9202
 #if !(defined(__NPU__ARCH__) && (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202))
-// A6: relu在fixpipe随路做，vec1不做; A6: __NPU__ARCH__ 9201/9202
-#if !(defined(__NPU__ARCH__) && (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202))
         Reg::Relu(regQK0[0], regQK0[0], maskAllB32);
         Reg::Relu(regQK0[1], regQK0[1], maskAllB32);
         Reg::Relu(regQK1[0], regQK1[0], maskAllB32);
         Reg::Relu(regQK1[1], regQK1[1], maskAllB32);
-#endif
 #endif
         Reg::MulAddDst(regSum0[0], regQK0[0], regwBrc[0], maskAllB32);
         Reg::MulAddDst(regSum0[1], regQK0[1], regwBrc[0], maskAllB32);
@@ -737,13 +734,10 @@ __simd_vf__ void MulWeightAndReduceSum2Int32VF(__ubuf__ uint16_t *out0, __ubuf__
         Reg::LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(regwBrc[1], weightTemp + i);
 // A6: relu在fixpipe随路做，vec1不做; A6: __NPU__ARCH__ 9201/9202
 #if !(defined(__NPU__ARCH__) && (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202))
-// A6: relu在fixpipe随路做，vec1不做; A6: __NPU__ARCH__ 9201/9202
-#if !(defined(__NPU__ARCH__) && (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202))
         Reg::Relu(regQK0[0], regQK0[0], maskAllB32);
         Reg::Relu(regQK0[1], regQK0[1], maskAllB32);
         Reg::Relu(regQK1[0], regQK1[0], maskAllB32);
         Reg::Relu(regQK1[1], regQK1[1], maskAllB32);
-#endif
 #endif
 
         CastFP32ToFP16ToFP32(regQK0, regQK0Half, maskAllB32);
@@ -967,25 +961,11 @@ __aicore__ inline void BatchMulWeightAndReduceSum(const LocalTensor<SCORE_T> &ou
                                                   uint32_t qScaleStride,
                                                   const int gSize, // G 64
                                                   const int s1ProcNum)
-                                                  const int s1ProcNum)
 {
-    // 暂只支持这四种情况, 后续改成循环
-    if (s1ProcNum != 1 && s1ProcNum != 2 && s1ProcNum !=3 && s1ProcNum != 4) {
     // 暂只支持这四种情况, 后续改成循环
     if (s1ProcNum != 1 && s1ProcNum != 2 && s1ProcNum !=3 && s1ProcNum != 4) {
         return;
     }
-    int pairCount = s1ProcNum / 2;
-    for (int32_t p = 0; p < pairCount; p++) {
-        MulWeightAndReduceSum2(out_[p * 2 * outStride], outStride, qk_[p * 2 * qkStride], qkVLStride, qkStride, weight_[p * 2 * weightStride],
-                               weightStride, weightTemp_, kScale_[p * 2 * kScaleStride],
-                               kScaleStride, qScale_[p * 2 * qScaleStride], qScaleStride, gSize);
-    }
-
-    // 奇数行: 最后一行用s1=1处理
-    if (s1ProcNum % 2 != 0) {
-        MulWeightAndReduceSum(out_[(s1ProcNum - 1) * outStride], qk_[(s1ProcNum - 1) * qkStride], qkVLStride, weight_[(s1ProcNum - 1) * weightStride],
-                              kScale_[(s1ProcNum - 1) * kScaleStride], qScale_[(s1ProcNum - 1) * qScaleStride], gSize);
     int pairCount = s1ProcNum / 2;
     for (int32_t p = 0; p < pairCount; p++) {
         MulWeightAndReduceSum2(out_[p * 2 * outStride], outStride, qk_[p * 2 * qkStride], qkVLStride, qkStride, weight_[p * 2 * weightStride],
@@ -1239,13 +1219,10 @@ __simd_vf__ void MulWeightAndReduceSumOptionalScale2VF(__ubuf__ uint16_t *out0, 
         Reg::LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(regwBrc[1], weightTemp + i);
 // A6: relu在fixpipe随路做，vec1不做; A6: __NPU__ARCH__ 9201/9202
 #if !(defined(__NPU__ARCH__) && (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202))
-// A6: relu在fixpipe随路做，vec1不做; A6: __NPU__ARCH__ 9201/9202
-#if !(defined(__NPU__ARCH__) && (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202))
         Reg::Relu(regQK0[0], regQK0[0], maskAllB32);
         Reg::Relu(regQK0[1], regQK0[1], maskAllB32);
         Reg::Relu(regQK1[0], regQK1[0], maskAllB32);
         Reg::Relu(regQK1[1], regQK1[1], maskAllB32);
-#endif
 #endif
         Reg::MulAddDst(regSum0[0], regQK0[0], regwBrc[0], maskAllB32);
         Reg::MulAddDst(regSum0[1], regQK0[1], regwBrc[0], maskAllB32);
@@ -1441,7 +1418,8 @@ __aicore__ inline void BatchMulWeightAndReduceSumMXFP4(const LocalTensor<SCORE_T
     static_assert(std::is_same_v<QK_T, bfloat16_t>);
     static_assert(std::is_same_v<SCORE_T, uint16_t>);
     static_assert(std::is_same_v<WEIGHT_T, float>);
-    if (s1ProcNum < 1 || s1ProcNum > 4) {
+    // 暂只支持这四种情况, 后续改成循环
+    if (s1ProcNum != 1 && s1ProcNum != 2 && s1ProcNum !=3 && s1ProcNum != 4) {
         return;
     }
     int pairCount = s1ProcNum / 2;
@@ -1453,20 +1431,20 @@ __aicore__ inline void BatchMulWeightAndReduceSumMXFP4(const LocalTensor<SCORE_T
     // 奇数行: 最后一行用s1=1处理
     if (s1ProcNum % 2 != 0) {
         MulWeightAndReduceSumMXFP4(out_[(s1ProcNum - 1) * outStride], qk_[(s1ProcNum - 1) * qkStride],
-                                    qkVLStride, weight_[(s1ProcNum - 1) * weightStride], gSize);
+                                   qkVLStride, weight_[(s1ProcNum - 1) * weightStride], gSize);
     }
 }
-
 template <typename QK_T, typename SCORE_T, typename WEIGHT_T>
 __aicore__ inline void BatchMulWeightAndReduceSumMX(const LocalTensor<SCORE_T> &out_,
                                                     uint32_t outStride,           // out    [S2Base]     [128   ]
                                                     const LocalTensor<QK_T> &qk_, // q*k^t  [G, S2Base]  [64 128]
-                                                     uint32_t qkVLStride, uint32_t qkStride,
-                                                     const LocalTensor<WEIGHT_T> &weight_, // w      [G]      [64    ]
-                                                     uint32_t weightStride, const LocalTensor<float> &weightTemp_,
-                                                     const int gSize, const int s1ProcNum)
+                                                    uint32_t qkVLStride, uint32_t qkStride,
+                                                    const LocalTensor<WEIGHT_T> &weight_, // w      [G]      [64    ]
+                                                    uint32_t weightStride, const LocalTensor<float> &weightTemp_,
+                                                    const int gSize, const int s1ProcNum)
 {
-    if (s1ProcNum < 1 || s1ProcNum > 4) {
+    // 暂只支持这四种情况, 后续改成循环
+    if (s1ProcNum != 1 && s1ProcNum != 2 && s1ProcNum !=3 && s1ProcNum != 4) {
         return;
     }
     int pairCount = s1ProcNum / 2;
@@ -1480,6 +1458,8 @@ __aicore__ inline void BatchMulWeightAndReduceSumMX(const LocalTensor<SCORE_T> &
         MulWeightAndReduceSumMX(out_[(s1ProcNum - 1) * outStride], qk_[(s1ProcNum - 1) * qkStride], qkVLStride,
                                 weight_[(s1ProcNum - 1) * weightStride], gSize);
     }
+
+
 }
 
 template <typename QK_T, typename SCORE_T, typename WEIGHT_T>
@@ -1492,7 +1472,8 @@ __aicore__ inline void BatchMulWeightAndReduceSumPerTensor(
     uint32_t weightStride, const LocalTensor<float> &weightTemp_, const float kScaleValue, const float qScaleValue,
     const int gSize, const int s1ProcNum)
 {
-    if (s1ProcNum < 1 || s1ProcNum > 4) {
+    // 暂只支持这四种情况, 后续改成循环
+    if (s1ProcNum != 1 && s1ProcNum != 2 && s1ProcNum !=3 && s1ProcNum != 4) {
         return;
     }
     int pairCount = s1ProcNum / 2;
@@ -1506,6 +1487,127 @@ __aicore__ inline void BatchMulWeightAndReduceSumPerTensor(
     if (s1ProcNum % 2 != 0) {
         MulWeightAndReduceSumPerTensor(out_[(s1ProcNum - 1) * outStride], qk_[(s1ProcNum - 1) * qkStride], qkVLStride,
                                        weight_[(s1ProcNum - 1) * weightStride], kScaleValue, qScaleValue, gSize);
+    }
+}
+
+// HiFloat4 uses its own reduction entry points and shares the existing FP32-to-BF16 weight conversion helper.
+__simd_vf__ void MulWeightAndReduceSumFP4TwoRowsVF(__ubuf__ uint16_t *out0, __ubuf__ uint16_t *out1,
+                                                  __ubuf__ bfloat16_t *qk0, __ubuf__ bfloat16_t *qk1,
+                                                  __ubuf__ float *weight0, __ubuf__ float *weight1, uint16_t gSize)
+{
+    constexpr uint32_t BF16_QK_ROW_STRIDE = UB_BANK_DEPTH_STRIDE / sizeof(bfloat16_t);
+    AscendC::Reg::RegTensor<bfloat16_t> regQK0;
+    AscendC::Reg::RegTensor<bfloat16_t> regQK1;
+    AscendC::Reg::RegTensor<bfloat16_t> regWeight[2];
+    AscendC::Reg::RegTensor<bfloat16_t> regWeightBrc[2];
+    AscendC::Reg::RegTensor<bfloat16_t> regSum[2];
+    AscendC::Reg::MaskReg maskAllB16 = AscendC::Reg::CreateMask<bfloat16_t, AscendC::Reg::MaskPattern::ALL>();
+    AscendC::Reg::MaskReg maskAllB32 = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
+
+    liV2Vector1::FloatSortConstCtx<bfloat16_t> bf16Ctx;
+    liV2Vector1::InitFloatSortConstCtx(bf16Ctx, maskAllB16);
+
+    CastWeightToBf16(regWeight[0], weight0, maskAllB32);
+    CastWeightToBf16(regWeight[1], weight1, maskAllB32);
+    AscendC::Reg::Duplicate(regSum[0], bfloat16_t(0.0f), maskAllB16);
+    AscendC::Reg::Duplicate(regSum[1], bfloat16_t(0.0f), maskAllB16);
+
+    for (uint16_t i = 0; i < gSize; i++) {
+        AscendC::Reg::LoadAlign<bfloat16_t>(regQK0, qk0 + BF16_QK_ROW_STRIDE * i);
+        AscendC::Reg::LoadAlign<bfloat16_t>(regQK1, qk1 + BF16_QK_ROW_STRIDE * i);
+        liV2Vector1::BroadcastLane(regWeightBrc[0], regWeight[0], i);
+        liV2Vector1::BroadcastLane(regWeightBrc[1], regWeight[1], i);
+        AscendC::Reg::MulAddDst(regSum[0], regQK0, regWeightBrc[0], maskAllB16);
+        AscendC::Reg::MulAddDst(regSum[1], regQK1, regWeightBrc[1], maskAllB16);
+    }
+
+    AscendC::Reg::RegTensor<uint16_t> regOut[2];
+    liV2Vector1::FloatX2ToSortableKey<bfloat16_t>(regOut[0], regOut[1], regSum[0], regSum[1], bf16Ctx, maskAllB16);
+    AscendC::Reg::StoreAlign<uint16_t, AscendC::Reg::StoreDist::DIST_NORM>(out0, regOut[0], maskAllB16);
+    AscendC::Reg::StoreAlign<uint16_t, AscendC::Reg::StoreDist::DIST_NORM>(out1, regOut[1], maskAllB16);
+}
+
+__simd_vf__ void MulWeightAndReduceSumFP4VF(__ubuf__ uint16_t *out, __ubuf__ bfloat16_t *qk, __ubuf__ float *weight,
+                                            uint16_t gSize)
+{
+    constexpr uint32_t BF16_QK_ROW_STRIDE = UB_BANK_DEPTH_STRIDE / sizeof(bfloat16_t);
+    AscendC::Reg::RegTensor<bfloat16_t> regQK;
+    AscendC::Reg::RegTensor<bfloat16_t> regWeight;
+    AscendC::Reg::RegTensor<bfloat16_t> regWeightBrc;
+    AscendC::Reg::RegTensor<bfloat16_t> regSum;
+    AscendC::Reg::MaskReg maskAllB16 = AscendC::Reg::CreateMask<bfloat16_t, AscendC::Reg::MaskPattern::ALL>();
+    AscendC::Reg::MaskReg maskAllB32 = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
+
+    liV2Vector1::FloatSortConstCtx<bfloat16_t> bf16Ctx;
+    liV2Vector1::InitFloatSortConstCtx(bf16Ctx, maskAllB16);
+
+    CastWeightToBf16(regWeight, weight, maskAllB32);
+    AscendC::Reg::Duplicate(regSum, bfloat16_t(0.0f), maskAllB16);
+
+    for (uint16_t i = 0; i < gSize; i++) {
+        AscendC::Reg::LoadAlign<bfloat16_t>(regQK, qk + BF16_QK_ROW_STRIDE * i);
+        liV2Vector1::BroadcastLane(regWeightBrc, regWeight, i);
+        AscendC::Reg::MulAddDst(regSum, regQK, regWeightBrc, maskAllB16);
+    }
+
+    AscendC::Reg::RegTensor<uint16_t> regOut;
+    liV2Vector1::FloatToSortableKey<bfloat16_t>(regOut, regSum, bf16Ctx, maskAllB16);
+    AscendC::Reg::StoreAlign<uint16_t, AscendC::Reg::StoreDist::DIST_NORM>(out, regOut, maskAllB16);
+}
+
+__aicore__ inline void MulWeightAndReduceSumFP4TwoRows(const LocalTensor<uint16_t> &out_, uint32_t outStride,
+                                                        const LocalTensor<bfloat16_t> &qk_, uint32_t qkVLStride,
+                                                        uint32_t qkStride, const LocalTensor<float> &weight_,
+                                                        uint32_t weightStride, const int gSize)
+{
+    (void)qkVLStride;
+    __ubuf__ uint16_t *out0 = (__ubuf__ uint16_t *)out_.GetPhyAddr();
+    __ubuf__ uint16_t *out1 = out0 + outStride;
+    __ubuf__ bfloat16_t *qk0 = (__ubuf__ bfloat16_t *)qk_.GetPhyAddr();
+    __ubuf__ bfloat16_t *qk1 = qk0 + qkStride;
+    __ubuf__ float *weight0 = (__ubuf__ float *)weight_.GetPhyAddr();
+    __ubuf__ float *weight1 = weight0 + weightStride;
+    MulWeightAndReduceSumFP4TwoRowsVF(out0, out1, qk0, qk1, weight0, weight1, static_cast<uint16_t>(gSize));
+}
+
+__aicore__ inline void MulWeightAndReduceSumFP4(const LocalTensor<uint16_t> &out_, const LocalTensor<bfloat16_t> &qk_,
+                                                const uint32_t qkVLStride, const LocalTensor<float> &weight_,
+                                                const int gSize)
+{
+    (void)qkVLStride;
+    __ubuf__ uint16_t *out = (__ubuf__ uint16_t *)out_.GetPhyAddr();
+    __ubuf__ bfloat16_t *qk = (__ubuf__ bfloat16_t *)qk_.GetPhyAddr();
+    __ubuf__ float *weight = (__ubuf__ float *)weight_.GetPhyAddr();
+    MulWeightAndReduceSumFP4VF(out, qk, weight, static_cast<uint16_t>(gSize));
+}
+
+template <typename QK_T, typename SCORE_T, typename WEIGHT_T>
+__aicore__ inline void BatchMulWeightAndReduceSumFP4(const LocalTensor<SCORE_T> &out_, uint32_t outStride,
+                                                     const LocalTensor<QK_T> &qk_, uint32_t qkVLStride,
+                                                     uint32_t qkStride, const LocalTensor<WEIGHT_T> &weight_,
+                                                     uint32_t weightStride, const int gSize, const int batch)
+{
+    static_assert(std::is_same_v<QK_T, bfloat16_t>);
+    static_assert(std::is_same_v<SCORE_T, uint16_t>);
+    static_assert(std::is_same_v<WEIGHT_T, float>);
+    if (batch < 1) {
+        return;
+    }
+
+    int pairCount = batch / 2;
+    for (int p = 0; p < pairCount; p++) {
+        auto curOut = out_[p * 2 * outStride];
+        auto curQk = qk_[p * 2 * qkStride];
+        auto curWeight = weight_[p * 2 * weightStride];
+        MulWeightAndReduceSumFP4TwoRows(curOut, outStride, curQk, qkVLStride, qkStride,
+                                        curWeight, weightStride, gSize);
+    }
+
+    if (batch % 2 != 0) {
+        auto lastOut = out_[(batch - 1) * outStride];
+        auto lastQk = qk_[(batch - 1) * qkStride];
+        auto lastWeight = weight_[(batch - 1) * weightStride];
+        MulWeightAndReduceSumFP4(lastOut, lastQk, qkVLStride, lastWeight, gSize);
     }
 }
 
