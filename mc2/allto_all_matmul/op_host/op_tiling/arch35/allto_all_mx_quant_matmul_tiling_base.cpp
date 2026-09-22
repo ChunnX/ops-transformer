@@ -409,9 +409,19 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::InitTilingContextParameters()
         opName_, MatmulAlltoAllTilingUtil::SetAttrsInfo(context_, opName_, contextInfo_, ALLTOALL_MATMUL_INDEX_SCHEMA));
     MC2_CHECK_LOG_RET(opName_, SetMxDataTypeInfo(context_, opName_, contextInfo_));
     MC2_CHECK_LOG_RET(opName_, SetAlltoAllMatmulShapeInfo(context_, contextInfo_));
-    // 判断是否使用apace实现: all2all_out为空且卡数<=8
+    // rankDim不超过8时，all2all_out为空继续使用原APACE路径；all2all_out非空仅在CCU通信模式下启用。
     constexpr uint64_t APACE_IMPL_MAX_RANK_DIM = 8;
-    usingApaceImpl_ = (!contextInfo_.allToAllOutFlag) && (contextInfo_.args_.rankDim <= APACE_IMPL_MAX_RANK_DIM);
+    const bool rankSupported = contextInfo_.args_.rankDim <= APACE_IMPL_MAX_RANK_DIM;
+    usingApaceImpl_ = !contextInfo_.allToAllOutFlag && rankSupported;
+    if (contextInfo_.allToAllOutFlag && rankSupported) {
+        uint8_t commMode = mc2tiling::A5_AICPU_TS_ENGINE;
+        if (MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo_,
+                                                           ALLTOALL_MATMUL_INDEX_SCHEMA,
+                                                           commMode) == ge::GRAPH_SUCCESS &&
+            commMode == mc2tiling::A5_CCU_ENGINE) {
+            usingApaceImpl_ = true;
+        }
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -503,10 +513,10 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::DoOpTiling()
 ge::graphStatus AllToAllMxQuantMatmulTilingBase::DoMxQuantMMTiling()
 {
     if (usingApaceImpl_) {
-        // hcomm 路径: all2all_out为空且卡数<16，使用 Blaze tiling
+        // HCOMM路径：output-off保持原有行为，output-on仅在CCU模式下启用AIV输出特化。
         return DoHcommMxQuantMMTiling();
     }
-    // arch35 主线路径: all2all_out非空或卡数>=16，使用 DequantBmm tiling
+    // arch35主线路径：不满足HCOMM启用条件时使用DequantBmm tiling。
     // 在切m时已经考虑除了rankDim
     mmMvalueLen_ = inferredInfo_.tileM;
     AlltoAllMxQuantMatmulHelper mmTile(*this, localTilingData_.mc2QuantMmTileTilingData, mmMvalueLen_);
@@ -810,6 +820,7 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::PostTiling()
     if (usingApaceImpl_) {
         // hcomm 路径: 输出 hcommAllToAllMatmulTilingData
         SetHcommTilingInfo(hcommTilingData_.commTilingData);
+        hcommTilingData_.rankDim = static_cast<uint32_t>(contextInfo_.args_.rankDim);
         Apace::hcommAllToAllMatmulTilingData* outTilingData =
             context_->GetTilingData<Apace::hcommAllToAllMatmulTilingData>();
 #if MC2_DFX_ENABLE
@@ -826,8 +837,9 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::PostTiling()
             OP_LOGE(opName_, "AlltoAllMxQuantMatmul postTiling: memcpy_s hcomm tiling data failed, ret=%d.", ret);
             return ge::GRAPH_FAILED;
         }
-        OP_LOGD(opName_, "Final hcomm tiling data size=%zu and context capacity size=%zu.",
-                sizeof(Apace::hcommAllToAllMatmulTilingData), context_->GetRawTilingData()->GetCapacity());
+        OP_LOGD(opName_, "Final hcomm tiling data size=%zu, context capacity size=%zu, rankDim=%u.",
+                sizeof(Apace::hcommAllToAllMatmulTilingData), context_->GetRawTilingData()->GetCapacity(),
+                hcommTilingData_.rankDim);
         const size_t registeredMaxTilingSize = sizeof(AlltoAllQuantMatmulTilingData);
         if (tilingBufCap >= registeredMaxTilingSize && registeredMaxTilingSize > sizeof(hcommTilingData_)) {
             errno_t zeroRet = memset_s(reinterpret_cast<uint8_t*>(outTilingData) + sizeof(hcommTilingData_),
@@ -954,12 +966,15 @@ uint64_t AllToAllMxQuantMatmulTilingBase::GetTilingKey() const
     uint8_t biasDType = DTYPE_BIAS_FP32;
     // 获取commMode
     uint8_t commMode = (hcclServerType_ == mc2tiling::A5_CCU_ENGINE) ? ALL2ALL_COMM_TYPE_CCU : ALL2ALL_COMM_TYPE_AICPU;
-    const uint64_t tilingKey =
-        GET_TPL_TILING_KEY(MX_QUANT_MODE, x2TransposeFlag, biasDType, false, commMode, usingApaceImpl_, ADDBIAS_OFF);
+    // Only the CCU HCOMM output path uses the AIV all-to-all output specialization.
+    const bool enableHcommAllToAllOut =
+        usingApaceImpl_ && (commMode == ALL2ALL_COMM_TYPE_CCU) && contextInfo_.allToAllOutFlag;
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(
+        MX_QUANT_MODE, x2TransposeFlag, biasDType, false, commMode, usingApaceImpl_, ADDBIAS_OFF, enableHcommAllToAllOut);
     OP_LOGD(opName_,
-            "MXQUANTMODE,X2TRANSPOSE,DTYPEBIAS,ISSMALLK,COMMMODE,USING_APACE_IMPL,ADDBIASSPLITMODE: "
-            "[%d,%d,%d,0,%d,%d,0], TilingKey is [%lu].",
-            MX_QUANT_MODE, x2TransposeFlag, biasDType, commMode, usingApaceImpl_, tilingKey);
+            "MXQUANTMODE,X2TRANSPOSE,DTYPEBIAS,ISSMALLK,COMMMODE,USING_APACE_IMPL,ADDBIASSPLITMODE,ENABLE_HCOMM_ALL_TO_ALL_OUT: "
+            "[%d,%d,%d,0,%d,%d,0,%d], TilingKey is [%lu].",
+            MX_QUANT_MODE, x2TransposeFlag, biasDType, commMode, usingApaceImpl_, enableHcommAllToAllOut, tilingKey);
     return tilingKey;
 }
 

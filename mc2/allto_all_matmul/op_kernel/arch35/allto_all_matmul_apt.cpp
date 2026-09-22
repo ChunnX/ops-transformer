@@ -133,7 +133,7 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
 #endif
 
 template <uint32_t QUANTMODE, bool X2TRANSPOSE, uint32_t DTYPEBIAS, bool ISSMALLK, uint32_t COMMTYPE,
-          bool USING_APACE_IMPL, uint32_t ADDBIASSPLITMODE>
+          bool USING_APACE_IMPL, uint32_t ADDBIASSPLITMODE, bool ENABLE_HCOMM_ALL_TO_ALL_OUT>
 __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR x1_scale, GM_ADDR x2_scale,
                                             GM_ADDR comm_scale, GM_ADDR x1_offset, GM_ADDR x2_offset, GM_ADDR y,
                                             GM_ADDR all2all_out, GM_ADDR workspaceGM, GM_ADDR tilingGM)
@@ -155,15 +155,18 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
     }
 
 #else
+    static_assert(sizeof(Apace::hcommAllToAllMatmulTilingData) <= sizeof(AlltoAllQuantMatmulTilingData),
+                  "Registered tiling storage must cover the hcomm payload");
     REGISTER_TILING_DEFAULT(AlltoAllQuantMatmulTilingData); // 按当前最大的结构体申请内存
 #if (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) && \
      ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2)))
     if constexpr (USING_APACE_IMPL) {
         GET_TILING_DATA_WITH_STRUCT(Apace::hcommAllToAllMatmulTilingData, tilingData, tilingGM);
         Apace::AllToAllMxQuantMatmulHcommImpl<DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_X1,
-                                              Apace::hcommAllToAllMatmulTilingData, hcclServerType, false>
+                                              Apace::hcommAllToAllMatmulTilingData, hcclServerType, false,
+                                              ENABLE_HCOMM_ALL_TO_ALL_OUT>
             op(&tilingData);
-        op.Init(x1, x2, bias, y, all2all_out, x1_scale, x2_scale, workspaceGM);
+        op.Init(x1, x2, bias, y, all2all_out, x1_scale, x2_scale, workspaceGM, &pipe);
         op.Run();
     } else {
         GET_TILING_DATA_WITH_STRUCT(AlltoAllQuantMatmulTilingData, tilingData, tilingGM);
@@ -177,9 +180,10 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
     if constexpr (USING_APACE_IMPL) {
         GET_TILING_DATA_WITH_STRUCT(Apace::hcommAllToAllMatmulTilingData, tilingData, tilingGM);
         Apace::AllToAllMxQuantMatmulHcommImpl<DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_X1,
-                                              Apace::hcommAllToAllMatmulTilingData, hcclServerType, true>
+                                              Apace::hcommAllToAllMatmulTilingData, hcclServerType, true,
+                                              ENABLE_HCOMM_ALL_TO_ALL_OUT>
             op(&tilingData);
-        op.Init(x1, x2, bias, y, all2all_out, x1_scale, x2_scale, workspaceGM);
+        op.Init(x1, x2, bias, y, all2all_out, x1_scale, x2_scale, workspaceGM, &pipe);
         op.Run();
     } else {
         GET_TILING_DATA_WITH_STRUCT(AlltoAllQuantMatmulTilingData, tilingData, tilingGM);
