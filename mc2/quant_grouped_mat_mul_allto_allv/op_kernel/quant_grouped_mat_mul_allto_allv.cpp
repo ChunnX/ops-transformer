@@ -30,8 +30,8 @@
 // 其余 dtype 二进制中 APACE tiling key 实例退化为兜底空实现（tiling 侧 IsCapable 同步拦截）
 #define APACE_GMM_A2AV_MX_DTYPE_OK() \
     ((((ORIG_DTYPE_GMM_X == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_GMM_X == DT_FLOAT8_E5M2)) && \
-     ((ORIG_DTYPE_GMM_WEIGHT == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_GMM_WEIGHT == DT_FLOAT8_E5M2))) || \
-    ((ORIG_DTYPE_GMM_X == DT_FLOAT4_E2M1) && (ORIG_DTYPE_GMM_WEIGHT == DT_FLOAT4_E2M1))
+      ((ORIG_DTYPE_GMM_WEIGHT == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_GMM_WEIGHT == DT_FLOAT8_E5M2))) || \
+     ((ORIG_DTYPE_GMM_X == DT_FLOAT4_E2M1) && (ORIG_DTYPE_GMM_WEIGHT == DT_FLOAT4_E2M1)))
 #endif
 
 using namespace AscendC;
