@@ -896,9 +896,9 @@ inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, CommPrimitiv
     };
     double computesPerCycle = calib.mmFit.defaultComputesPerCycle;
     for (size_t i = 0; i < FitBalanceCalibration::MAX_CUBE_CALC_ROWS; ++i) {
-        if (calib.mmFit.cubeCalc[i].aBytes == 0) { // 哨兵截断
-            break;
-        }
+        if (calib.mmFit.cubeCalc[i].computesPerCycle == 0.0) { // 哨兵截断(未填行; 勿用 aBytes——
+            break;                                             // glue 真实口径 fp4 行 aBytes=0 合法, 见
+        } // AGMM_QUANT_CPC_KEY_DEFECT_AND_FIX.md)
         if (matchesCalcProfile(calib.mmFit.cubeCalc[i])) {
             computesPerCycle = calib.mmFit.cubeCalc[i].computesPerCycle;
             break;
